@@ -1,0 +1,63 @@
+SA for FM, provides query and registration services
+
+
+Summary of a few attributes:
+
+ATTRIBUTE (IBTA)                 | URID | RID  | SRID | SRID format          | method | 1234 |
+---------------------------------+------+------+------|----------------------+--------|------|
+ClassPortInfo                    |      |      |      |                      | G      | Rnnn |
+Notice                           |      |      |      |                      |        | Rnnn |
+InformInfo                       |      |      |      |                      |  S     | Rnnn |
+---------------------------------+------+------+------|----------------------+--------|------|
+NodeRecord                       |      |  *   |      |                      | G   TB | RYnS |
+PortInfoRecord                   |      |  *   |      |                      | G   TB | RYnS |
+SltoVlMappingTableRecord         |  *   |      |  *   | <LID><IPORT><OPORT>  | G   TB | RYnS |
+---------------------------------+------+------+------|----------------------+--------|------|
+SwitchRecord                     |      |  *   |      |                      | G   TB | OYnS |
+LinearForwardingTableRecord      |  *   |      |  *   | <LID><INDEX>         |     TB | OYnS |
+RandomForwardingTableRecord      |  *   |      |  *   | <LID><INDEX>         |     TB | OYnS |
+---------------------------------+------+------+------|----------------------+--------|------|
+MulticastForwardingTableRecord   |  *   |      |  *   | <LID><INDEX_00>      |     TB | OYnS |
+VLArbitrationRecord              |  *   |      |  *   | <LID><PORT><INDEX>   |     TB | RYnS |
+SMInfoRecord                     |      |  *   |      |                      | G   TB | OYnS |
+---------------------------------+------+------+------|----------------------+--------|------|
+InformRecord                     |  *   |  *   |      |                      | GS  TB | OYCS |
+LinkRecord                       |      |  *   |      |                      | G   TB | OYnS |
+---------------------------------+------+------+------|----------------------+--------|------|
+GuidRecord                       |  *   |  *   |      |                      | G   TB | OYnS |
+ServiceRecord                    |      |  *   |      |                      | GS  TB | RYCS |
+PartitionRecord                  |  *   |  *   |      |                      | G   TB | RYnS |
+---------------------------------+------+------+------|----------------------+--------|------|
+PathRecord                       |      |  *   |      |                      | G   T  | RYnS |
+---------------------------------+------+------+------|----------------------+--------|------|
+MCMemberRecord                   |      |  *   |      |                      | GS  TB | OYCS |
+SAResponse                       |      |      |      |                      |      B | Onnn |
+                                 |      |      |      |                      |        |      |
+---------------------------------+------+------+------|----------------------+--------|------|
+
+ATTRIBUTE (VIEO)                 | URID | RID  | SRID | SRID format          | method |      |
+---------------------------------+------+------+------|----------------------+--------|------|
+TopologyInfo                     |      |      |      |                      | G      |      |
+TopologyNodeInfo                 |      |      |      |                      | G      |      |
+TopologyPortInfo                 |      |      |      |                      | G      |      |
+---------------------------------+------+------+------|----------------------+--------|------|
+
+	1 = Required / Optional
+	2 = Record Attribute (Yes / No)
+	3 = Configuration
+	4 = State
+
+	 RID = <LID><PORTNO><INDEX>
+	URID = <anything>
+
+	PORTNO = 0 for CA and routers (affects the input port only)
+
+	For example, GUIDInfo RA for CA port with LID=5 would have RID = 0x000500nn.
+	(Because the index can vary since there are multiple GUIDInfos.)
+
+=======================================================================================
+
+Method		AID		AMOD
+--------	--------	----------------
+Get		0x0011		RID			Get a NodeRecord
+Set		

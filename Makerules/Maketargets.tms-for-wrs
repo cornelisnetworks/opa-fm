@@ -1,0 +1,96 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+# These rules build VxWorks TMS
+
+.PHONY: buildtms cleantms
+
+include $(TL_DIR)/Makerules/Maketargets.product
+
+ifneq "$(CARD_TYPE)" ""
+#TMS_OBJECT_TAGS= envoy $(PROJECT_SSP) test tms vx zlib
+# new WRS has test, zlib but it's for linux - not sure if i can use it
+#TMS_OBJECT_TAGS= envoy $(PROJECT_SSP) tms vx 
+TMS_OBJECT_TAGS= envoy tms vx zlib
+TMS_OBJECT_DIRECTORIES=$(foreach d,$(TMS_OBJECT_TAGS),$(TL_DIR)/target/lib/obj$(CARD_TYPE).$(TARGET_BSP).$(BUILD_CONFIG).$(TORNADO_CPU)$(TORNADO_TOOL)$(d))
+TMS_OBJECT_DIR_MARKER_FILE=.tmsObjDirs
+TMS_DEFS_FILE=$(TL_DIR)/target/h/tool/gnu/make.$(CARD_TYPE).$(TARGET_BSP).$(BUILD_CONFIG).$(TORNADO_CPU)$(TORNADO_TOOL)
+# previously, this is where binaries from old obj directories were copied
+# into new location where it could be replaced by new binaries.
+# But, for atom, there is no need for all this.
+obj$(CARD_TYPE).$(TARGET_BSP).$(BUILD_CONFIG).% : 
+	echo $@ "to be built"
+endif
+
+ifeq "$(CARD_TYPE)" ""
+TMS_LIBRARIES=$(notdir $(wildcard $(TORNADO_LIB_DIR)/lib$(TORNADO_CPU)$(TORNADO_TOOL)*.a))
+else
+TMS_LIBRARIES=$(notdir $(wildcard $(TORNADO_LIB_DIR)/lib$(CARD_TYPE).$(TARGET_BSP).$(BUILD_CONFIG).$(TORNADO_CPU)$(TORNADO_TOOL)*.a))
+endif
+
+ifneq (1,$(NO_SSP))
+TMS_OPTIONS = SSP_NAME=$(PROJECT_SSP) TMS_CFLAGS="-DINCLUDE_L2 $(PRODUCT_DEFINES)"
+else
+endif
+
+
+ifeq "$(CARD_TYPE)" ""
+
+buildtms:
+	cd $(TL_DIR)/target/tmsTarget/src;PATH=$(ATOM_PATH):$(PATH) BUILD_CONFIG="$(BUILD_CONFIG)" BUILD_ESM=$(BUILD_ESM) make CPU=ATOM $(TMS_OPTIONS)
+	cd $(TORNADO_LIB_DIR); $(VS)$(INSTALL) $(INSTALL_DIR_OPT) $(PROJ_SHLIB_DIR) lib$(TORNADO_CPU)$(TORNADO_TOOL)*.a
+
+cleantms:
+	cd $(TL_DIR)/target/tmsTarget/src;BUILD_CONFIG="$(BUILD_CONFIG)" PATH=$(ATOM_PATH):$(PATH) CLEANING=true BUILD_ESM=$(BUILD_ESM) make CPU=ATOM SSP_NAME=$(PROJECT_SSP) TMS_CFLAGS=-DINCLUDE_L2 rclean
+
+else
+
+$(TMS_OBJECT_DIR_MARKER_FILE): $(TMS_OBJECT_DIRECTORIES)
+	echo $(TMS_DEFS_FILE)
+	echo done > $(TMS_OBJECT_DIR_MARKER_FILE)
+$(TMS_DEFS_FILE): $(TL_DIR)/target/h/tool/gnu/make.$(TORNADO_CPU)$(TORNADO_TOOL)
+	cp $< $@
+buildtms:	$(TMS_OBJECT_DIR_MARKER_FILE) $(TMS_DEFS_FILE)
+	cd $(TL_DIR)/target/tmsTarget/src;PATH=$(ATOM_PATH):$(PATH) BUILD_CONFIG="$(BUILD_CONFIG)" BUILD_ESM=$(BUILD_ESM) make CPU=$(CARD_TYPE).$(TARGET_BSP).$(BUILD_CONFIG).$(TORNADO_CPU) CARD_TYPE=$(CARD_TYPE) TARGET_BSP=$(TARGET_BSP) $(TMS_OPTIONS)
+	cd $(TORNADO_LIB_DIR); $(VS)$(INSTALL) $(INSTALL_DIR_OPT) $(PROJ_SHLIB_DIR) lib$(CARD_TYPE).$(TARGET_BSP).$(BUILD_CONFIG).$(TORNADO_CPU)$(TORNADO_TOOL)*.a
+
+cleantms:
+	cd $(TL_DIR)/target/tmsTarget/src;BUILD_CONFIG="$(BUILD_CONFIG)" PATH=$(ATOM_PATH):$(PATH) CLEANING=true BUILD_ESM=$(BUILD_ESM) make CPU=$(CARD_TYPE).$(TARGET_BSP).$(BUILD_CONFIG).$(TORNADO_CPU) SSP_NAME=$(PROJECT_SSP) TMS_CFLAGS=-DINCLUDE_L2 rclean
+	rm -f $(TMS_DEFS_FILE)
+
+endif
+
+ifeq "$(BUILD_TMS)" "yes"
+LIBS::	buildtms
+endif
+
+ifneq "$(CLEAN_TMS)" "no"
+clobber::	cleantms
+endif
+
+.DELETE_ON_ERROR:

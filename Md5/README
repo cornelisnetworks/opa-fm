@@ -1,0 +1,15 @@
+Md5 module README
+
+Md5 is a so-called message-digest algorithm developed by Ronald Rivest
+(the 'R' in RSA).  See RFC 1321 for details.  This is a very powerful
+and relatively efficient means of verifying the integrity of a block
+of data, such as a downloaded application image.
+
+This module currently provides two implementations of Md5, selectable
+by #define, behind a single API.
+
+On a BCM12500 processor running at 450MHz, it takes about 150ms to Md5
+1 megabyte of data if compiled with -O0 (no optimization).  It takes
+only 40ms to Md5 1 megabyte of data when compiled with -O3 (full
+optimization).
+

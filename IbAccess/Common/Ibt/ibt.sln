@@ -1,0 +1,33 @@
+Microsoft Visual Studio Solution File, Format Version 7.00
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "cm", "Cm\cm.vcproj", "{E0AB4A3D-7415-4CF4-AC51-C95B4865AD5A}"
+EndProject
+Global
+	GlobalSection(SourceCodeControl) = preSolution
+		SccNumberOfProjects = 2
+		SccProjectName0 = vendor/linux/Iba/Common/Ibt
+		SccLocalPath0 = .
+		SccProvider0 = MSSCCI:Jalindi\u0020Igloo
+		CanCheckoutShared = true
+		SolutionUniqueID = {17707F23-D962-4622-96E5-E2327B21077C}
+		SccProjectUniqueName1 = Cm\\cm.vcproj
+		SccLocalPath1 = .
+		CanCheckoutShared = true
+		SccProjectFilePathRelativizedFromConnection1 = Cm\\
+	EndGlobalSection
+	GlobalSection(SolutionConfiguration) = preSolution
+		ConfigName.0 = Debug
+		ConfigName.1 = Release
+	EndGlobalSection
+	GlobalSection(ProjectDependencies) = postSolution
+	EndGlobalSection
+	GlobalSection(ProjectConfiguration) = postSolution
+		{E0AB4A3D-7415-4CF4-AC51-C95B4865AD5A}.Debug.ActiveCfg = Debug|Win32
+		{E0AB4A3D-7415-4CF4-AC51-C95B4865AD5A}.Debug.Build.0 = Debug|Win32
+		{E0AB4A3D-7415-4CF4-AC51-C95B4865AD5A}.Release.ActiveCfg = Release|Win32
+		{E0AB4A3D-7415-4CF4-AC51-C95B4865AD5A}.Release.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+	EndGlobalSection
+	GlobalSection(ExtensibilityAddIns) = postSolution
+	EndGlobalSection
+EndGlobal

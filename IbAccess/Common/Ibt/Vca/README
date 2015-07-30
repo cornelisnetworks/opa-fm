@@ -1,0 +1,4 @@
+Kernel Virtual Channel Adapter - primary kernel interface for IB.
+
+	driver or Vka -> Vca -> Vpd -> hardware
+                   kernel

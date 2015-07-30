@@ -1,0 +1,485 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+
+#[ICS VERSION STRING: unknown]
+#
+# Test error detection
+#
+
+# check module
+[Module]
+Name=Test
+
+# extra module section
+[Module]
+Name=Again
+
+# invalid names
+[Module]
+Name=This one is not an identifier
+
+[Module]
+Name=1bad1
+
+[Module]
+Name=This_is_2_long
+
+[Module]
+Name=SameWithThisOne
+
+# OK, but yet another Module section
+[Module]
+Name=Good4U
+
+[Module]
+Name=AName
+Name=Again
+
+[Module]
+Name=WithUC
+UcName=WITH_UC
+
+[Module]
+Name=DupUc
+UcName=DUP_UC
+UcName=DUP_UC
+
+#
+# Check Message Name
+#
+[Message]
+Name=MIN_MESSAGE
+Severity=Warning
+Description.English="As simple as it gets"
+
+# duplicate name
+[Message]
+Name=MIN_MESSAGE
+Severity=Warning
+Description.English="A duplicate name"
+
+# slip in another Module section
+[Module]
+Name=Bad2
+
+# back to messages
+[Message]
+# missing name
+Severity=Warning
+Description.English="Missing Name"
+
+[Message]
+Name=MixedCase
+Severity=Warning
+Description.English="Mixed Case Name"
+
+[Message]
+Name=WITH SPACES
+Severity=Warning
+Description.English="Name with spaces"
+
+[Message]
+Name=4_A_BAD_NAME
+Severity=Warning
+Description.English="Name with leading digit"
+
+[Message]
+Name=MIN_MESSAGE
+Severity=Warning
+Description.English="A duplicate again"
+
+#
+# Comments
+#
+[Message]
+Name=WITH_COMMENT
+Comment=This is OK
+Severity=Warning
+Description.English="With a comment"
+
+[Message]
+Name=MULTIPLE_COMMENTS
+Comment=This is OK
+Comment=But this is not
+Severity=Warning
+Description.English="With multiple comments"
+
+#
+# Arg list
+#
+[Message]
+Name=ARG_1
+Arglist=arg1
+Severity=Warning
+Description.English="%d"
+
+[Message]
+Name=ARG_2
+Arglist=arg1,arg2
+Severity=Warning
+Description.English="%d%d"
+
+[Message]
+Name=ARG_3
+Arglist=arg1,arg2,arg3
+Severity=Warning
+Description.English="%d%d%d"
+
+[Message]
+Name=ARG_4
+Arglist=arg1,arg2,arg3,arg4
+Severity=Warning
+Description.English="%d%d%d%d"
+
+[Message]
+Name=ARG_5
+Arglist=arg1,arg2,arg3,arg4,arg5
+Severity=Warning
+Description.English="%d%d%d%d%d"
+
+[Message]
+Name=ARG_6
+Arglist=arg1,arg2,arg3,arg4,arg5,arg6
+Severity=Warning
+Description.English="%d%d%d%d%d%d"
+
+# too many args
+[Message]
+Name=ARG_7
+Arglist=arg1,arg2,arg3,arg4,arg5,arg6,arg7
+Severity=Warning
+Description.English="%d%d%d%d%d%d%d"
+
+[Message]
+Name=MISSING_ARGS
+Severity=Warning
+Description.English="%d%d%d%d%d%d%d"
+
+[Message]
+Name=EXTRA_ARGS
+Arglist=arg1,arg2,arg3,arg4,arg5,arg6
+Severity=Warning
+Description.English="%d%d%d%d%d"
+
+[Message]
+Name=INSUFFICIENT_ARGS
+Arglist=arg1,arg2,arg3,arg4
+Severity=Warning
+Description.English="%d%d%d%d%d"
+
+[Message]
+Name=NAMED_ARGS
+Arglist=first: arg1, second: arg2
+Severity=Warning
+Description.English="%d%d"
+
+[Message]
+Name=BAD_ARG_NAMES
+Arglist=1badName: has a leading number, second: this is OK,
+		third one: has a space, B*d_character: as it says
+Severity=Warning
+Description.English="%d%d%d%d"
+
+#
+# UnitArg
+#
+[Message]
+Name=UNIT_0
+Arglist=arg1,arg2,arg3,arg4,arg5,arg6
+UnitArg=0
+Severity=Warning
+Description.English="Unit arg is 0 %d%d%d%d%d%d"
+
+[Message]
+Name=UNIT_1
+Arglist=arg1,arg2,arg3,arg4,arg5,arg6
+UnitArg=1
+Severity=Warning
+Description.English="Unit arg is 1 %d%d%d%d%d%d"
+
+[Message]
+Name=UNIT_2
+Arglist=arg1,arg2,arg3,arg4,arg5,arg6
+UnitArg=2
+Severity=Warning
+Description.English="Unit arg is 2 %d%d%d%d%d%d"
+
+[Message]
+Name=UNIT_3
+Arglist=arg1,arg2,arg3,arg4,arg5,arg6
+UnitArg=3
+Severity=Warning
+Description.English="Unit arg is 3 %d%d%d%d%d%d"
+
+[Message]
+Name=UNIT_4
+Arglist=arg1,arg2,arg3,arg4,arg5,arg6
+UnitArg=4
+Severity=Warning
+Description.English="Unit arg is 4 %d%d%d%d%d%d"
+
+[Message]
+Name=UNIT_5
+Arglist=arg1,arg2,arg3,arg4,arg5,arg6
+UnitArg=5
+Severity=Warning
+Description.English="Unit arg is 5 %d%d%d%d%d%d"
+
+[Message]
+Name=UNIT_6
+Arglist=arg1,arg2,arg3,arg4,arg5,arg6
+UnitArg=6
+Severity=Warning
+Description.English="Unit arg is 6 %d%d%d%d%d%d"
+
+[Message]
+Name=UNIT_7
+Arglist=arg1,arg2,arg3,arg4,arg5,arg6
+UnitArg=7
+Severity=Warning
+Description.English="Unit arg is 7 %d%d%d%d%d%d"
+
+[Message]
+Name=UNIT_OUT_OF_LIST
+Arglist=arg1,arg2,arg3,arg4,arg5
+UnitArg=6
+Severity=Warning
+Description.English="Unit arg is 6 %d%d%d%d%d"
+
+[Message]
+Name=BAD_UNIT_ARG_VAL
+Arglist=arg1,arg2,arg3,arg4,arg5,arg6
+UnitArg=six
+Severity=Warning
+Description.English="Unit arg is six %d%d%d%d%d%d"
+
+#
+# TrapFunc
+#
+[Message]
+Name=TRAP_GOOD
+Trapfunc=goodId
+Severity=Warning
+Description.English="Check trap func"
+
+[Message]
+Name=TRAP_NUM
+Trapfunc=1badFuncName
+Severity=Warning
+Description.English="Check trap func"
+
+[Message]
+Name=TRAP_SPACE
+Trapfunc=No spaces allowed
+Severity=Warning
+Description.English="Check trap func"
+
+[Message]
+Name=TRAP_PUNC
+Trapfunc=BadToo!!!
+Severity=Warning
+Description.English="Check trap func"
+
+#
+# Severity
+#
+[Message]
+Name=SEV_NONE
+Description.English="No Severity"
+
+[Message]
+Name=SEV_ADD_PART
+Severity=ADD_PART
+Description.English="Partial"
+
+[Message]
+Name=SEV_PARTIAL
+Severity=PARTIAL
+Description.English="Partial again"
+
+[Message]
+Name=SEV_ALARM
+Severity=ALARM
+Description.English="Alarm"
+
+[Message]
+Name=SEV_ERROR
+Severity=ERROR
+Description.English="Error"
+
+[Message]
+Name=SEV_WARNING
+Severity=WARNING
+Description.English="Warning"
+
+[Message]
+Name=SEV_FATAL
+Severity=FATAL
+Description.English="Fatal"
+
+[Message]
+Name=SEV_DUMP
+Severity=DUMP
+Description.English="Dump"
+
+[Message]
+Name=SEV_CONFIG
+Severity=CONFIG
+Description.English="Config"
+
+[Message]
+Name=SEV_PROGRAM_INFO
+Severity=PROGRAM_INFO
+Description.English="Program Info"
+
+[Message]
+Name=SEV_PERIODIC_INFO
+Severity=PERIODIC_INFO
+Description.English="Periodic Info"
+
+[Message]
+Name=SEV_BAD
+Severity=Unknown
+Description.English="Bad Severity"
+
+#
+# Description
+#
+[Message]
+Name=MISSING_DESCRIPTION
+Severity=Warning
+
+[Message]
+Name=BAD_LANGUAGE
+Severity=Warning
+Description.BorkBork="Bork Bork Bork"
+Description.English="Huh?"
+
+[Message]
+Name=MISSING_LANGUAGE
+Severity=Warning
+Description="Say what?"
+
+# Format tests
+
+# Mix positional and non-positional
+[Message]
+Name=FMT_1
+Severity=Warning
+Arglist=arg1,arg2,arg3,arg4
+Description.English="%*4$d"
+
+[Message]
+Name=FMT_2
+Severity=Warning
+Arglist=arg1,arg2,arg3,arg4
+Description.English="%4$*d"
+
+[Message]
+Name=FMT_3
+Severity=Warning
+Arglist=arg1,arg2,arg3,arg4
+Description.English="%.*4$d"
+
+[Message]
+Name=FMT_4
+Severity=Warning
+Arglist=arg1,arg2,arg3,arg4
+Description.English="%4$.*d"
+
+# no warning, uses last arg only
+[Message]
+Name=FMT_5
+Severity=Warning
+Arglist=arg1,arg2,arg3,arg4
+Description.English="%4$d"
+
+# warning, uses next-to-last arg only
+[Message]
+Name=FMT_6
+Severity=Warning
+Arglist=arg1,arg2,arg3,arg4
+Description.English="%3$d"
+
+# invalid format (no fp support)
+[Message]
+Name=FMT_7
+Severity=Warning
+Description.English="%f"
+
+# warn about duplicate flags (and don't use # in quotes to start comments)
+[Message]
+Name=FMT_8
+Severity=Warning
+Arglist=arg1
+Description.English="%# #d"
+
+# positional can be before or after width.precision
+[Message]
+Name=FMT_9
+Severity=Warning
+Arglist=arg1,arg2,arg3
+Description.English="%2$*3$.*1$d"
+
+[Message]
+Name=FMT_10
+Severity=Warning
+Arglist=arg1,arg2,arg3
+Description.English="%*3$.*1$2$d"
+
+# but not both
+[Message]
+Name=FMT_11
+Severity=Warning
+Arglist=arg1,arg2,arg3,arg4
+Description.English="%4$*3$.*1$2$d"
+
+# format tests should go in Format.in
+
+#
+# Response and Correction are handled with the same logic as Description
+#
+
+#
+# Check Strings, format parsing, comments, arglists, and duplicates are
+# checked above (same logic as for messages)
+#
+[String]
+# missing name
+String.English="Missing Name"
+
+[String]
+Name=MISSING_STRING
+
+[String]
+Name=GOOD_STRING
+String.English="End on a high note"
+
+[String]
+Name=MAYBE_NOT

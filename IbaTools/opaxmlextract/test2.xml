@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Report date="Fri May 01 00:01:02 2008" unixtime="1202331765" options="Test 2" >
+
+<!-- Run with: '-e t3 -e t4 -e t5 -e t6 -e t3:a3 -e t4:a4 -e t5:a5 -e t4:aa4 -e t3:a3:va3K -e t7 -e t7:a7 -s t7:a7:va7K -s t9 -s t10:a10 -s t11:a11:va11K' -->
+
+<!-- Sequence 1; basic element output rules -->
+<t1>
+  <t4>v4</t4>
+  <t5>v5</t5>
+</t1>                                 <!-- OUT ";v4;v5;;;;;;;;"   CLR t4,t5 -->
+
+<t2>
+  <t3>v3</t3>
+  <t4>v4a</t4>
+</t2>                                 <!-- OUT "v3;v4a;;;;;;;;;"   CLR t3,t4 -->
+
+
+<!-- Sequence 2; repeated element values -->
+<t1>
+  <t2>
+    <t3>v3a</t3>
+  </t2>                               <!-- OUT "v3a;;;;;;;;;;"   CLR t3 -->
+  <t2>
+    <t3>v3a</t3>
+  </t2>                               <!-- OUT "v3a;;;;;;;;;;"   CLR t3 -->
+</t1>
+
+<t1>
+  <t3>v3b</t3>
+  <t3>v3c</t3>                        <!-- OUT "v3b;;;;;;;;;;" -->
+  <t3>v3b</t3>                        <!-- OUT "v3c;;;;;;;;;;" -->
+</t1>                                 <!-- OUT "v3b;;;;;;;;;;"   CLR t3 -->
+
+<t1>
+  <t3>v3d</t3>
+  <t3>v3d</t3>
+</t1>                                 <!-- OUT "v3d;;;;;;;;;;"   CLR t3 -->
+
+
+<!-- Sequence 3; output based on element value going out of scope -->
+<t1>
+  <t3>
+    <t4>
+      <t5>v5</t5>
+    </t4>                             <!-- OUT ";;v5;;;;;;;;"   CLR t5 -->
+
+    <t5>
+      <t6>v6</t6>
+    </t5>                             <!-- OUT ";;;v6;;;;;;;"   CLR t6 -->
+    <t6>v6a</t6>
+  </t3>                               <!-- OUT ";;;v6a;;;;;;;"   CLR t4,t5,t6 -->
+</t1>
+
+<t1>
+  <t3>
+    <t4>
+      <t5>v5b</t5>
+    </t4>                             <!-- OUT ";;v5b;;;;;;;;"   CLR t5 -->
+
+    <t4>
+      <t5>v5c</t5>
+    </t4>                             <!-- OUT ";;v5c;;;;;;;;"   CLR t5 -->
+
+    <t4>v4c</t4>
+    <t4>
+      <t5>v5d</t5>
+    </t4>                             <!-- OUT ";v4c;v5d;;;;;;;;" -->
+                                      <!-- OUT ";;v5d;;;;;;;;"   CLR t5 -->
+
+  </t3>                               <!-- CLR t4 -->
+
+  <t4>v4e</t4>
+</t1>                                 <!-- OUT ";v4e;;;;;;;;;"   CLR t3,t4 -->
+
+
+<!-- Sequence 4; element value at multiple levels -->
+<t1>
+  <t3>v3</t3>
+  <t2>
+    <t3>v3</t3>
+  </t2>                               <!-- OUT "v3;;;;;;;;;;"   CLR t3 -->
+</t1>
+
+<t1>
+  <t3>v3a</t3>
+  <t2>
+    <t3>v3b</t3>                      <!-- OUT "v3a;;;;;;;;;;" -->
+  </t2>                               <!-- OUT "v3b;;;;;;;;;;"   CLR t3 -->
+</t1>
+
+
+<!-- Sequence 5; t9 suppress element value output -->
+<t1>
+  <t2>
+    <t3>v3</t3>
+  </t2>                               <!-- OUT "v3;;;;;;;;;;"   CLR t3 -->
+  <t9>
+    <t3>v3a</t3>
+  </t9>                               <!-- NO OUT   NO CLR t3 -->
+</t1>
+
+<t1>
+  <t3>v3b</t3>
+  <t9>
+    <t3>v3c</t3>                      <!-- NO OUT -->
+  </t9>                               <!-- NO OUT   NO CLR t3 -->
+</t1>                                 <!-- OUT "v3b;;;;;;;;;;"   CLR t3 -->
+
+<!-- Sequence 6; basic attribute value output -->
+<t1>
+  <t4 a4="va4">v4</t4>                <!-- OUT ";v4;;;;va4;;;;;"   CLR a4 -->
+  <t5 a5="va5">v5</t5>                <!-- OUT ";v4;v5;;;;va5;;;;"   CLR a5 -->
+</t1>                                 <!-- CLR t4,t5 -->
+
+<t2>
+  <t3 a3="va3">v3</t3>                <!-- OUT "v3;;;;va3;;;;;;"   CLR a3 -->
+  <t4 a4="va4a">v4a</t4>              <!-- OUT "v3;v4a;;;;va4a;;;;;"   CLR a4 -->
+</t2>                                 <!-- CLR t3,t4 -->
+
+<!-- Sequence 7; repeated attribute values -->
+<t1>
+  <t3 a3="va3">v3</t3>                <!-- OUT "v3;;;;va3;;;;;;"   CLR a3 -->
+  <t3 a3="va3a">v3a</t3>              <!-- OUT "v3a;;;;va3a;;;;;;"   CLR a3 -->
+  <t3 a3="va3b">v3b</t3>              <!-- OUT "v3b;;;;va3b;;;;;;"   CLR a3 -->
+</t1>                                 <!-- CLR t3 -->
+
+<t1>
+  <t3 a3="va3c">v3c</t3>              <!-- OUT "v3c;;;;va3c;;;;;;"   CLR a3 -->
+  <t3 a3="va3c">v3c</t3>              <!-- OUT "v3c;;;;va3c;;;;;;"   CLR a3 -->
+  <t3 a3="va3c">v3d</t3>              <!-- OUT "v3d;;;;va3c;;;;;;"   CLR a3 -->
+  <t3 a3="va3d">v3d</t3>              <!-- OUT "v3d;;;;va3d;;;;;;"   CLR a3 -->
+  <t3 a3="va3d">v3d</t3>              <!-- OUT "v3d;;;;va3d;;;;;;"   CLR a3 -->
+</t1>                                 <!-- CLR t3 --> 
+
+<!-- Sequence 8; nested element and attribute values -->
+<t1>              <!-- LinearFDB-like -->
+  <t3 a3="va3">
+    <t4>v4</t4>
+  </t3>                               <!-- OUT ";v4;;;va3;;;;;;"   CLR t4,a3 -->
+  <t3 a3="va3a">
+    <t4>v4a</t4>
+  </t3>                               <!-- OUT ";v4a;;;va3a;;;;;;"   CLR t4,a3 -->
+</t1>
+
+<t1>              <!-- SLtoVLMap-like -->
+  <t3 a3="va3b">
+    <t4 a4="va4">v4b</t4>             <!-- OUT ";v4b;;;va3b;va4;;;;;"   CLR a4 -->
+    <t4 a4="va4a">v4c</t4>            <!-- OUT ";v4c;;;va3b;va4a;;;;;"   CLR a4 -->
+  </t3>                               <!-- CLR t4 -->
+</t1>
+
+<!-- Sequence 9; constant attribute and multiple attribute values -->
+<t1>
+  <t3 a3="va3a">v3a</t3>              <!-- OUT "v3a;;;;va3a;;;;;;" -->
+  <t3 a3="va3K">v3b</t3>              <!-- OUT "v3b;;;;va3K;;;;v3b;;" -->
+  <t3 a3="va3c">v3c</t3>              <!-- OUT "v3c;;;;va3c;;;;v3b;;" -->
+  <t3 a3="va3K">v3d</t3>              <!-- OUT "v3d;;;;va3K;;;;v3d;;" -->
+  <t3 a3="va3e">v3e</t3>              <!-- OUT "v3e;;;;va3e;;;;v3d;;" -->
+</t1>
+
+<t1>
+  <t3>v3f</t3>
+  <t3 a3="va3K">v3g</t3>              <!-- OUT "v3f;;;;;;;;;" -->
+                                      <!-- OUT "v3g;;;;va3K;;;;v3g;;" -->
+  <t3>v3h</t3>
+  <t4>v4</t4>
+</t1>                                 <!-- OUT "v3h;v4;;;;;;;v3g;;" -->
+
+<t1>
+  <t3 a3="va3f">
+    <t4 a4="va4" aa4="vaa4">v4a</t4>  <!-- OUT ";v4a;;;va3f;va4;;vaa4;;;" -->
+    <t5 a5="va5">
+      <t4 a4="va4a">v4b</t4>          <!-- OUT ";v4b;;;va3f;va4a;va5;;;;" -->
+    </t5>
+    <t5 a5="va5a">v5</t5>             <!-- OUT ";;v5;;va3f;;va5a;;;;" -->
+  </t3>
+</t1>
+
+<!-- Sequence 10; t10, t11 attribute suppression -->
+<t1>
+  <t3 a3="va3a">v3a</t3>              <!-- OUT "v3a;;;;va3a;;;;;;" -->
+  <t10 a10="va10a">
+    <t3>v3b</t3>                      <!-- NO OUT   NO CLR t3 -->
+  </t10>
+  <t3 a3="va3b">v3c</t3>              <!-- OUT "v3c;;;;va3b;;;;;;" -->
+  <t11 a11="va11a">
+    <t3>v3d</t3>                      <!-- OUT "v3d;;;;;;;;;;" -->
+  </t11>
+  <t3 a3="va3c">v3e</t3>              <!-- OUT "v3e;;;;va3c;;;;;;" -->
+  <t11 a11="va11K">
+    <t3>v3f</t3>                      <!-- NO OUT   NO CLR t3 -->
+  </t11>
+  <t3 a3="va3K">v3g</t3>              <!-- OUT "v3g;;;;va3K;;;;v3g;;" -->
+  <t10 a10="va10b">
+    <t3 a3="va3K">v3h</t3>            <!-- NO OUT   NO CLR t3 -->
+  </t10>
+</t1>
+
+<!-- Sequence 11; attribute extraction and suppression on same line -->
+<t1>
+  <t7 a7="va7a">v7a</t7>              <!-- OUT ";;;,;v7a;va7a" -->
+  <t7 a7="va7b">v7b</t7>              <!-- OUT ";;;,;v7b;va7b" -->
+  <t7 a7="va7K">v7c</t7>              <!-- NO OUT -->
+  <t7 a7="va7c">v7d</t7>              <!-- OUT ";;;,;v7d;va7c" -->
+  <t7 a7="va7d">v7e</t7>              <!-- OUT ";;;,;v7e;va7d" -->
+</t1>
+
+</Report>

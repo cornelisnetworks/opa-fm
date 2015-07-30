@@ -1,0 +1,167 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+#=============================================================================#
+# Rules:
+#-----------------------------------------------------------------------------#
+# These rules perform the standard build steps
+
+ifneq "$(strip $(IDL_TARGETS))" ""
+# Windows IDL files
+# FIXME: BUILDDIR path prefix for target
+$(IDL_TARGETS): $(IDLFILE)
+	@echo Compiling IDL files...
+	@mkdir -p $(dir $@)
+	$(VS)$(MIDL) $(MIDLFLAGS) /h $(^:.idl=.h) /iid $(^:.idl=_i.c) /tlb $(^:.idl=.tlb) /dlldata $(^:.idl=_dlldata.c) /proxy $(^:.idl=_p.c) $^
+endif
+
+ifneq "$(strip $(LIB_TARGETS_IMPLIB))" ""
+# Windows import library files for DLLs
+# FIXME: BUILDDIR path prefix for target
+$(LIB_TARGETS_IMPLIB): $(ARLIBS) $(OBJECTS) $(RSCOBJECTS)
+	@echo Creating import library files...
+	@mkdir -p $(dir $@)
+	$(VS)$(MKIMPLIB)$@ $^
+endif
+
+ifneq "$(strip $(LIB_TARGETS_ARLIB))" ""
+# archive/static library
+# FIXME: BUILDDIR path prefix for target
+CT_OBJECTS	= $(foreach f,$(OBJECTS),$(BUILDDIR)/$(f))
+$(LIB_TARGETS_ARLIB): $(ARLIBS) $(CT_OBJECTS) $(RSCOBJECTS)
+	@mkdir -p $(dir $@)
+	@echo Creating static library file...
+	@echo $(PWD)
+	$(VS)$(MKARLIB)$@ $^
+endif
+
+ifneq "$(strip $(LIB_TARGETS_EXP))" ""
+# windows export file for DLLs
+$(LIB_TARGETS_EXP):  TBD
+endif
+
+ifneq "$(strip $(CMD_TARGETS_SHLIB))" ""
+# shared library/DLL
+# FIXME: BUILDDIR path prefix for target
+CT_OBJECTS	= $(foreach f,$(OBJECTS),$(BUILDDIR)/$(f))
+# don't use $^, would have deplibs explicit on line
+$(CMD_TARGETS_SHLIB): $(ARLIBS) $(CT_OBJECTS) $(EXP_TARGET) $(RSCOBJECTS) $(DEPLIBS_TARGETS)
+	@echo Linking dynamic library...
+	@mkdir -p $(dir $@)
+ifeq "$(BUILD_TARGET_OS)" "DARWIN"
+	$(VS)$(MKSHLIB) $(LDFLAGS)$@ -install_name $(SHLIB_SONAME) $(ARLIBS) $(CT_OBJECTS) $(LDLIBS)
+else
+ifneq "$(strip $(SHLIB_SONAME))" ""
+	$(VS)$(MKSHLIB) $(LDFLAGS)$@ -Xlinker -soname -Xlinker $(SHLIB_SONAME) $(ARLIBS) $(CT_OBJECTS) $(EXP_TARGET) $(RSCOBJECTS) $(LDLIBS)
+else
+	$(VS)$(MKSHLIB) $(LDFLAGS)$@ $(ARLIBS) $(CT_OBJECTS) $(EXP_TARGET) $(RSCOBJECTS) $(LDLIBS)
+endif
+endif
+endif
+
+ifneq "$(strip $(LIB_BSC_TARGET)$(CMD_BSC_TARGET))" ""
+# windows browse file builder
+# FIXME: BUILDDIR path prefix for target
+$(LIB_BSC_TARGET) $(CMD_BSC_TARGET) : $(OBJECTS)
+	@echo Creating browse info file...
+	@mkdir -p $(dir $@)
+	$(VS)$(BSC) $(BSCFLAGS)$@ $(OBJECTS:.obj=.sbr)
+endif
+
+## Rules for building executables and images (.out files for VXWORKS)
+
+#ifneq "$(strip $(CMD_TARGETS_EXE))" ""
+# This is a much simpler version, which could be used
+# if the mips munch code were scripted or simplified
+# don't use $^, would have deplibs explicit on line
+#CT_OBJECTS	= $(foreach f,$(OBJECTS),$(BUILDDIR)/$(f))
+#$(CMD_TARGETS_EXE): $(CT_OBJECTS) $(RSCOBJECTS) $(DEPLIBS_TARGETS)
+#	@echo Linking executable...
+#	@mkdir -p $(dir $@)
+#	$(VS)$(LD) $(LDFLAGS)$@ $(CT_OBJECTS) $(RSCOBJECTS) $(LDLIBS)
+#endif
+ifneq "$(strip $(CMD_TARGETS_EXE))" ""
+# user applications/commands build
+CT_OBJECTS	= $(foreach f,$(OBJECTS),$(BUILDDIR)/$(f))
+ifeq "$(BUILD_TARGET_OS)" "VXWORKS"
+
+$(CMD_TARGETS_EXE) :	$(BUILDDIR)/$(CMD_TARGETS_EXE)
+$(BUILDDIR)/$(CMD_TARGETS_EXE) :	$(CT_OBJECTS) $(RSCOBJECTS) $(DEPLIBS_TARGETS)
+#	@echo Linking executable...
+#	$(VS)$(LD) $(LDFLAGS)$@ $(OBJECTS) $(RSCOBJECTS) $(LDLIBS)
+	@echo Linking builddir executable...
+	echo $(CT_OBJECTS)
+	$(VS)$(CC) $(LDFLAGS) partialImage.o -Wl,$(CT_OBJECTS) $(RSCOBJECTS) $(LDLIBS)
+	$(VS)$(NM) -g partialImage.o | wtxtcl $(TORNADO_TCL_DIR)/munch.tcl -asm mips > ctdt.c
+	$(VS)$(CC) $(CFLAGS) -c ctdt.c -o ctdt.o 
+	$(VS)$(CC) $(LDMACH) partialImage.o ctdt.o -o $@
+	$(RM) $(RMFORCE) partialImage.o ctdt.c ctdt.o
+
+else # BUILD_TARGET_OS is not VXWORKS
+# FIXME, need to fix CMD_TARGETS_EXE to have BUILDDIR prefixing it
+# This may need update in all makefiles?  Especially when referenced for STAGE:
+$(CMD_TARGETS_EXE) :	$(CT_OBJECTS) $(RSCOBJECTS) $(DEPLIBS_TARGETS)
+	@echo Linking executable...
+	@mkdir -p $(dir $@)
+	$(VS)$(CC) $(LDFLAGS)$@ $(CT_OBJECTS) $(LDLIBS)
+endif # BUILD_TARGET_OS is VXWORKS
+endif # CMD_TARGETS_EXE non-null
+
+ifneq "$(BUILD_26)" "1"
+ifneq "$(strip $(CMD_TARGETS_DRIVER))" ""
+# kernel driver builds
+CT_OBJECTS	= $(foreach f,$(OBJECTS),$(BUILDDIR)/$(f))
+ifeq "$(BUILD_TARGET_OS)" "LINUX"
+$(CMD_TARGETS_DRIVER): $(CT_OBJECTS) $(ARLIBS) $(DEPLIBS_TARGETS)
+	@echo Linking Kernel Module...
+	@mkdir -p $(dir $@)
+	$(VS)$(MKMODULE) $@ $(CT_OBJECTS) $(ARLIBS)
+endif
+ifeq "$(BUILD_TARGET_OS)" "DARWIN"
+$(CMD_TARGETS_DRIVER): $(CT_OBJECTS) $(ARLIBS) $(DEPLIBS_TARGETS)
+	@echo Linking Kernel Module...
+	@mkdir -p $(dir $@)
+	$(VS)$(MKMODULE) $@ $(CT_OBJECTS) $(KERNELOPTS) $(ARLIBS)
+endif
+endif
+endif
+
+ifneq "$(strip $(CMD_TARGETS_KEXT))" ""
+# Darwin kernel extension packaging
+ifeq "$(BUILD_TARGET_OS)" "DARWIN"
+$(CMD_TARGETS_KEXT) $(CMD_TARGETS_KEXT)/Contents/Info.plist $(CMD_TARGETS_KEXT)/Contents/MacOS/$(CMD_TARGETS_DRIVER) $(CMD_TARGETS_KEXT)/Contents/Resources/English.lproj: $(CMD_TARGETS_DRIVER) IOKit/Info.plist IOKit/English.lproj/InfoPlist.strings
+	echo Packaging $(CMD_TARGETS_KEXT)
+	mkdir -p $(CMD_TARGETS_KEXT)/Contents
+	mkdir -p $(CMD_TARGETS_KEXT)/Contents/MacOS
+	mkdir -p $(CMD_TARGETS_KEXT)/Contents/Resources/English.lproj
+	${PBXCP} -exclude .DS_Store -exclude CVS -resolve-src-symlinks IOKit/Info.plist $(CMD_TARGETS_KEXT)/Contents
+	cp $(CMD_TARGETS_DRIVER) $(CMD_TARGETS_KEXT)/Contents/MacOS/
+	${PBXCP} -exclude .DS_Store -exclude CVS -resolve-src-symlinks IOKit/English.lproj/InfoPlist.strings $(CMD_TARGETS_KEXT)/Contents/Resources/English.lproj
+	touch $(CMD_TARGETS_KEXT)
+endif
+endif

@@ -1,0 +1,145 @@
+
+Copyright (c) 2001, VIEO Inc.  All rights reserved.
+
+
+        Use Cases for CS Operating System Specific Event Functions
+        -----------------------------------------------------------
+
+1.  Use Case: cs:vs_event_create:1 
+        Create a set of 32 global events in an OS independent manner.
+
+    Context of Use:  Any user, kernel, or embedded code which needs an event
+        object.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level: Subfunction
+
+    The caller supplies a pointer to an uninitialized event handle to be
+    filled in by common services, a pointer to a name (null terminated 
+    string) to associate with the event, and the initial event state for 
+    each of the 32 events in the event set.
+    
+    If the handle pointer is valid, the name pointer is valid,  and the
+    initial creation state is valid, the event may be created.  
+
+    The name is simply used to associate a human readable description
+    with the event.  It must be supplied, but can be empty (i.e. ""),
+    and is not required to be unique across all events.
+
+    The initial event state is set individually for each of the 32 
+    events in the set.  A 32 bit vector is used to represent the
+    event state.  A value of 1 indicates the event is set, a value
+    of 0 indicates it is not set.
+    
+    If the event is successfully created, the handle is initialized and 
+    VSTATUS_OK is returned.  Otherwise an error describing the condition is 
+    returned.
+
+2.  Use Case: cs:vs_event_delete:1
+        Deletes a previously created global event set in an OS independent 
+        manner.
+
+    Context of Use:  Any user, kernel, or embedded thread may delete a
+        previously created event.
+   
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level: Subfunction
+
+    The caller supplies a pointer to the event's handle that was filled in
+    with the cs:vs_event_create:1 use case.
+
+    If the event pointer is non-null and no threads are waiting on the event,
+    the event may be deleted.
+
+    If the event is successfully deleted, VSTATUS_OK is returned.  Otherwise 
+    an error describing the condition is returned.
+
+3.  Use Case: cs:vs_event_wait:1
+        Causes the caller to wait up to a specified amount of time
+        (in microseconds) for any of the events specified in the 32
+        event set to be posted.
+
+    Context of Use:  Any user, kernel, or embedded code may wait on a
+        previously created event.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level:  Subfunction
+
+    The caller supplies a pointer to the event's handle that was filled in
+    with the cs:vs_event_create:1 use case.  This parameter is validated 
+    as a pointer and a valid handle.
+
+    The caller specifies a maximum timeout for waiting for events to be posted 
+    in microseconds.  A zero timeout indicates to wait indefinitely.  If any 
+    of the events in the event set has previously been posted, the call 
+    returns immediately.
+  
+    The caller specifies a vector indicating which of the 32 events are of 
+    interest.  This is a logical OR mask, indicating that any of the 
+    specified events will cause this function to return.
+
+    The caller specifies a pointer to return a vector indicating which of 
+    the 32 events were received.  Upon return, this mask is updated to 
+    contain the combination of the events the were received.  This mask
+    may be a subset of the actual events for which notification was
+    requested, or no events.  This parameter is validated as a pointer.
+ 
+    If one of the events requested in the 32 bit event set is set at the time
+    of the call, the call will return immediately returning VSTATUS_OK.
+ 
+    If one of the events requested in the 32 bit event set is posted before 
+    the timeout expires, VSTATUS_OK is returned.  If no less than the 
+    specified number of microseconds elapse without the event being posted, 
+    VSTATUS_TIMEOUT is returned.  Otherwise an error describing the condition
+    is returned.
+
+4.  Use Case: cs:vs_event_post:1
+        Posts one or more events in a 32 bit event set in an OS 
+        independent manner waking a single waiter.
+
+    Context of Use:  Any user, kernel, or embedded code may post to a 
+        previously created event.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level: Subfunction
+
+    The caller supplies a pointer to the event's handle that was filled in
+    with the cs:vs_event_create:1 use case.  The caller supplies a "wakeup
+    one" post option, and passes the a 32 event vector indicating which
+    events should be posted.
+
+    If a post has occurred to this event for which the "wake all" option
+    has been specified, an error will be returned.
+
+    If the event is successfully posted, VSTATUS_OK is returned and only one
+    waiter thread will awakened.  Otherwise an error describing the condition 
+    is returned.
+
+    Only one waiter thread will be awakened.
+
+5.  Use Case: cs:vs_event_post:2
+        Posts one or more events in a 32 bit event set in an OS 
+        independent manner waking all waiting threads.
+
+    Context of Use:  Any user, kernel, or embedded code may post to a 
+        previously created event.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level: Subfunction
+
+    The caller supplies a pointer to the event's handle that was filled in
+    with the cs:vs_event_create:1 use case.  The caller supplies a "wakeup
+    all" post option, and passes the a 32 event vector indicating which
+    events should be posted.
+
+    If a post has occurred to this event for which the "wake one" option
+    has been specified, an error will be returned.
+
+    If the event is successfully posted, VSTATUS_OK is returned and all 
+    waiting threads will be awakened.  Otherwise an error describing the 
+    condition is returned.

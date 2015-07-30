@@ -1,0 +1,35 @@
+// Defines APIs to IBAccess and datastructures used by the Interface
+
+// Common (User/Application or Kernel access)
+ib_types.h - primary data types for IB
+vpi.h - data types used as arguments to verbs
+ib_mad.h - IB MAD packet headers
+ib_pkt.h - IB Link, Network and Transport layer packet headers
+ib_sm.h - SMA/SMI packets
+ib_sd.h - Subnet Data interfaces for User and Kernel
+ib_generalServices.h - GSI packet headers
+ib_pm.h - PMA packets
+ib_cc.h - CCA packets
+ib_dm.h - DMA packets
+ib_sa_records.h - SA packets
+
+
+// For User/Application space access
+uvca_exp.h - User Verbs
+umadt.h - User SMI/GSI interface
+
+// For Kernel access
+ibt.h - interface function tables
+vpi_export.h - kernel verbs
+ib_gsi.h - Kernel GSI
+ib_smi.h - Kernel SMI
+SvcLib.h - Kernel TSL
+ib_cm.h - Kernel CM
+ib_ibt.h - Kernel CA and Notification handling
+
+
+// Omit
+bldver.h - intel source version
+ib_status.h - TBD defines to build FSTATUS codes
+ib_helper.h - internal helper functions
+ib_debug.h - internal debug interfaces

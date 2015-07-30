@@ -1,0 +1,236 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+#=============================================================================#
+## Automated Testing makerules
+## ---------------------------
+##
+#=============================================================================#
+##
+#=============================================================================#
+## The following list is the standard list of definitions which will be defined
+## or are used in other variable definitions or rules in this makerules file.
+## Each project variable name is listed with a definition of the purpose and
+## intended use.  Defaults for items are shown in brackets, and may be
+## overridden by the user in a local makefile.  If no default is shown, the
+## user can use the variable, but should not change the value.
+##
+## CLEAN_TARGETS	= Intermediate build process file names to be deleted
+##		  on a clean operation [Not defined]
+## CLOBBER_TARGETS	= Intermediate build process file names to be deleted
+##		  on a clobber operation [Not defined]
+## DIRS		= List of directories containing the next level of the testing
+##		  hierarchy. [Not defined]
+## EXPECT	= name of the expect program to use
+## ID_FILENAME	= Name of the file in which test case information is placed.
+##		  The default is identify.res
+## MAKE		= System make application
+## SUITES	= List of test suites in the current makefile [Not defined]
+## TEE		= UNIX tee command
+## VS		= Visible shell commands (may be overridden in local makefiles)
+##
+#=============================================================================#
+# Common platform definitions:
+#-----------------------------------------------------------------------------#
+EXPECT		= TCLLIBPATH="$(TL_DIR)/TestTools $(TL_DIR)/TestOnly /usr/lib/tcl /usr/lib/tdom0.8.3 $(TL_DIR)/iv/TestOnly" expect
+MAKE		= make
+MAKEFILE	= Makefile
+TEE		= tee
+ID_FILENAME	= identify.res
+SUMMARY_REPORT = $(TL_DIR)/TestOnly/summary_report
+VS		= @
+#-----------------------------------------------------------------------------#
+# Platform specific definitions:
+#-----------------------------------------------------------------------------#
+#=============================================================================#
+
+#=============================================================================#
+## The makerules file also contains the following basic make target rules for
+## simplifying the testing processes:
+##
+## all: This target should be the first target in the makefile stream and
+##      will be if this makerules file is included before the rules section
+##      of any local makefile.  The purpose of this target is to run the ALL
+##      target.
+##
+## ALL:: The purpose of this extensible target is to run all of the test
+##      targets.
+##
+## check_test_config: This non-extensible target will verify that the
+##      TEST_CONFIG_FILE environment variable is defined and can be used as a
+##      dependency for use in local makefiles.  The target does not validate
+##      the value of the variable, only that it is set.  The TEST_CONFIG_FILE
+##      variable should be set by the setup_tests script.
+##
+## clean:: This extensible target is used to remove all intermediate files
+##      created during the tests process.  All of the temporary files will
+##      automatically be deleted along with those defined in CLEAN_TARGETS.
+##
+## clobber:: This extensible target is used to remove all intermediate and
+##      target files and should restore the directory to a checkout state where
+##      only source tests exist.  This target has a dependency on the clean
+##      target, and removes CLOBBER_TARGETS files.
+##
+## identify: This non-extensible target is used to generate an output file with
+##      the test case information.  This data is used by the user selection front
+##      end to allow user selection of the various test cases available and to
+##      construct the proper operating environment.
+##
+#=============================================================================#
+# The following section contains a list of standard targets which will be used
+# by all of the makefiles.  The targets are listed in alphabetical order and
+# depend on the above definitions section as well as externally defined items
+# from the user specific makefile.
+#=============================================================================#
+# General Rules:
+#-----------------------------------------------------------------------------#
+ifdef DIRS
+
+ifdef SUITES
+all: defboth badmake
+else #SUITES
+all: ALL
+endif #SUITES
+
+.PHONY: $(DIRS)
+else #DIRS
+
+ifdef SUITES
+all: ALL
+else #SUITES
+all: defnone badmake
+endif #SUITES
+
+endif #DIRS
+
+defboth:
+	@echo "DIRS and SUITES may not both be set in the same makefile."
+defnone:
+	@echo "DIRS or SUITES must be set in the makefile."
+badmake:
+	@echo "Separate the directories into a top level makefile, create"
+	@echo "directories as appropriate, and place the test suites in one"
+	@echo "or more of the directories with their own makefiles."
+	@exit 1
+
+ALL:: check_test_config $(SUITES)
+ifdef DIRS
+ALL:: $(DIRS)
+$(DIRS):
+ifdef TEST_IDENTIFY
+	$(VS)echo '*******************************************************************************' >> $(ID_FILENAME)
+	$(VS)echo "Directory: $@" >> $(ID_FILENAME)
+	$(VS)cd $@; $(MAKE) identify
+	$(VS)cat $@/$(ID_FILENAME) >> $(ID_FILENAME)
+else #TEST_IDENTIFY
+$(DIRS): $(SUMMARY_REPORT)
+	$(VS)( echo "Executing $@ Tests `date` ..." ;\
+		cd $@; $(MAKE) ;\
+		echo "Done $@ Tests `date`" ) | $(SUMMARY_REPORT) -r -o
+	@echo "Test(s) Complete"
+endif #TEST_IDENTIFY
+else # DIRS
+	@echo "Test(s) Complete"
+endif #DIRS
+
+clean::
+	@echo "Removing Intermediate Files"
+ifdef DIRS
+	$(VS)for i in $(DIRS) ;\
+	do \
+		( cd $$i; $(MAKE) clean ) ;\
+	done
+endif
+	rm -fr *.log case_tmp save_tmp core test_tmp*
+	rm -fr $(CLEAN_TARGETS)
+
+ifeq "$(MAKELEVEL)" "0"
+clobber:: clean
+else
+clobber::
+endif
+	@echo "Removing Target/Build Files"
+ifdef DIRS
+	$(VS)for i in $(DIRS) ;\
+	do \
+		( cd $$i; $(MAKE) clobber ) ;\
+	done
+endif
+ifdef TEST_IDENTIFY
+	rm -rf identify.res
+else
+	rm -fr test.res test.items.res test.cases.res test.suites.res $(CLOBBER_TARGETS)
+endif
+
+identify:
+	$(VS)rm -f $(ID_FILENAME)
+	$(VS)$(MAKE) $(ID_FILENAME)
+
+$(ID_FILENAME):
+	$(VS)TEST_IDENTIFY=yes $(MAKE) all > /dev/null
+
+$(SUMMARY_REPORT):
+	$(VS)cd $(TL_DIR)/TestTools; $(MAKE) all > /dev/null
+	$(VS)cd $(TL_DIR)/TestOnly; $(MAKE) all > /dev/null
+	$(VS)cd $(TL_DIR)/iv/TestOnly; $(MAKE) all > /dev/null
+
+%: %.exp
+	$(VS)cd $(TL_DIR)/TestTools; $(MAKE) all > /dev/null
+	$(VS)cd $(TL_DIR)/TestOnly; $(MAKE) all > /dev/null
+	$(VS)cd $(TL_DIR)/iv/TestOnly; $(MAKE) all > /dev/null
+
+ifdef TEST_IDENTIFY
+	$(VS)TEST_IDENTIFY=$(TEST_IDENTIFY) $(EXPECT) -f $^ >> $(ID_FILENAME)
+else #TEST_IDENTIFY
+	>> test.log
+	$(VS)$(EXPECT) -f $^ | $(SUMMARY_REPORT) -r -o
+endif #TEST_IDENTIFY
+#=============================================================================#
+
+#=============================================================================#
+# This section contains a set of targets which override the standard ones
+# provided for by GNU make.
+#=============================================================================#
+# Standard Makefile Rules Overrides:
+#-----------------------------------------------------------------------------#
+#=============================================================================#
+
+#=============================================================================#
+# Targets to make sure the initial environment is properly configured
+#=============================================================================#
+ifndef TEST_CONFIG_FILE
+check_test_config:
+	@echo "The TEST_CONFIG_FILE environment variable must be set to be valid"
+	@echo "run setup_tests first"
+	@exit 1
+else #TEST_CONFIG_FILE
+check_test_config:
+endif #TEST_CONFIG_FILE
+.PHONY: check_test_config
+#=============================================================================#
+

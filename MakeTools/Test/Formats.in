@@ -1,0 +1,18 @@
+Mix positional and non-positional: %*4$F
+Mix positional and non-positional: %4$*F
+Mix positional and non-positional: %.*4$F
+Mix positional and non-positional: %4$.*F
+Simple Positional: %4$F
+Simple Positional: %3$F
+Invalid Type (no fp): %f
+Duplicate flags: %# #F
+Full Positional: %2$*3$.*1$F
+Full Positional: %*3$.*1$2$F
+Multiple Positionals: %4$*3$.*1$2$F
+Multiple Positionals: %4$#6$*3$.*1$2$F
+Positional before flags: %4$#*3$.*6$F
+Positional after flags: %#4$*3$.*6$F
+Zero is a flag: %04$F
+Out of range, but should select correctly: %64$F
+Multiple args: %4$F %1$F %*3$7$F
+Reused arg: %p %d %1$F

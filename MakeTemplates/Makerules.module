@@ -1,0 +1,129 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+## Rules for <FILL IN MODULE NAME> module
+#=============================================================================#
+## Module Make Rules File
+## -----------------------
+##
+#=============================================================================#
+##
+#=============================================================================#
+# The following list is the standard list of definitions which will be defined
+# for all platforms.  It consists of general and machine specific sections that
+# contain many system parameters which may be used in a makefile.  Please keep
+# the list(s) in strictly aphabetical order to facilitate simple searches.
+#
+# See Makerules.global for the meaning of these flags
+#-----------------------------------------------------------------------------#
+# Common platform definitions:
+#-----------------------------------------------------------------------------#
+MOD_DIR=$(PROJ_DIR)
+MOD_INCLUDE_DIR=$(PROJ_INCLUDE_DIR)
+MOD_LIB_DIR=$(PROJ_LIB_DIR)	# or $(MOD_DIR)/builtlibs
+MOD_BIN_DIR=$(PROJ_BIN_DIR)
+MOD_SHLIB_DIR=$(PROJ_SHLIB_DIR)
+MOD_SBR_DIR=$(PROJ_SBR_DIR)
+MOD_DRIVER_BIN_DIR=$(PROJ_DRIVER_BIN_DIR)
+
+MOD_STAGE_DIR=$(PROJ_STAGE_DIR)
+MOD_STAGE_INCLUDE_DIR=$(PROJ_STAGE_INCLUDE_DIR)
+MOD_STAGE_LIB_DIR=$(PROJ_STAGE_LIB_DIR)	# or $(MOD_DIR)/builtlibs
+MOD_STAGE_BIN_DIR=$(PROJ_STAGE_BIN_DIR)
+MOD_STAGE_SHLIB_DIR=$(PROJ_STAGE_SHLIB_DIR)
+MOD_STAGE_SBR_DIR=$(PROJ_STAGE_SBR_DIR)
+MOD_STAGE_DRIVER_BIN_DIR=$(PROJ_STAGE_DRIVER_BIN_DIR)
+
+MOD_BIN_SUBDIR	=
+MOD_DRIVER_BIN_SUBDIR	=
+MOD_INCLUDE_SUBDIR =		# or module_name	
+
+MOD_INCLUDE_DIRS	= 	# or $(GLOBAL_INCLUDE_DIR)/$(MOD_INCLUDE_SUBDIR)
+MOD_LIB_DIRS		= 	# or $(MOD_LIB_DIR)
+MODDEPLIBS		=
+MODLIBS		= 
+
+BSCMOD			=
+CMOD			= 
+CCMOD			=
+DEPENDMOD		=
+LDMOD			= 
+LINTMOD		=
+MIDLMOD		=
+RSCMOD			=
+
+#-----------------------------------------------------------------------------#
+# Platform specific definitions:
+#-----------------------------------------------------------------------------#
+ifeq "$(TARGET_OS)" "VXWORKS"
+endif # VXWORKS
+ifeq "$(TARGET_OS)" "LINUX"
+endif # LINUX
+ifeq "$(TARGET_OS)" "WIN32"
+endif # WIN32
+ifeq "$(TARGET_OS)" "DARWIN"
+endif # DARWIN
+#=============================================================================#
+# Include Global makerules definitions and rules
+include $(TL_DIR)/$(PROJ_FILE_DIR)/Makerules.project
+#=============================================================================#
+
+#=============================================================================#
+## The project makerules file also contains the following basic make target
+## rules for simplifying application build processes:
+##
+#=============================================================================#
+# The following section contains a list of standard targets which will be used
+# by all of the makefiles.  The targets are listed in alphabetical order and
+# depend on the above definitions section as well as externally defined items
+# from the user specific makefile.
+#=============================================================================#
+# General Rules:
+#-----------------------------------------------------------------------------#
+#=============================================================================#
+
+#=============================================================================#
+# This section contains a set of targets which override the standard ones
+# provided for by GNU make.
+#=============================================================================#
+# Standard Makefile Rules Overrides:
+#-----------------------------------------------------------------------------#
+#=============================================================================#
+
+#=============================================================================#
+# Targets to make sure the initial environment is properly configured
+#=============================================================================#
+#ifndef ENVIRONMENT
+#check_env:
+#	@echo "The ENVIRONMENT environment variable must be set to be valid"
+#	@exit 1
+#else #ENVIRONMENT
+#check_env:
+#endif #ENVIRONMENT
+#.PHONY: check_env
+#=============================================================================#

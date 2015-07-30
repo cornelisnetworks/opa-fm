@@ -1,0 +1,154 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+#=============================================================================#
+
+# Rules:
+#-----------------------------------------------------------------------------#
+# These rules iterate on all the directories in DIRS
+# if DIRS is "", we ifdef out all these rules
+ifneq "$(strip $(DIRS))" ""
+
+
+ifneq "$(STOP_ON_ERROR)" "yes"
+TEST_EXIT=
+else
+ERROR_EXIT_STATUS=127
+TEST_EXIT=if test $$? -ne 0; then exit $(ERROR_EXIT_STATUS); fi
+endif
+
+# if DIR itself is specified as a target, run install build in it
+$(DIRS):
+	cd $@ && $(MAKE) $(MFLAGS) install
+.PHONY: $(DIRS)
+
+# iterate on sub-directories for simple targets
+# for CMDS, STAGE, INSTALL and RUNTEST we can directly invoke them
+# we know an earlier pass (ie. libs) build the dependency files
+
+# if CMDS_FIRMWARE_ONLY is yes and make has been invoked in TL_DIR,
+# only do the CMDS phase in the firmware directory. Do nothing if
+# it is set and make has not been invoked in TL_DIR.
+
+ifeq "$(CMDS_FIRMWARE_ONLY)" "yes"
+
+ifeq "$(CARD_TYPE)" ""
+FIRMWARE_DIR		= Firmware
+else
+FIRMWARE_DIR		= $(PROJ_FILE_DIR)/Firmware
+endif
+
+clean clobber cleandepend depend force STAGE INSTALL RUNTEST build_dsfiles clobber_dsfiles lint cflow ::
+	$(VS)for d in $(DIRS) ;\
+	do \
+          echo "cd $$d && $(MAKE) $(MFLAGS) $@";\
+          ( cd $$d && $(MAKE) $(MFLAGS) $@ ); \
+          $(TEST_EXIT) \
+	done
+
+CMDS::
+ifeq ($(TL_DIR),$(PWD))
+	echo "cd $(FIRMWARE_DIR) && $(MAKE) $(MFLAGS) cmdsonly";\
+	  ( cd $(FIRMWARE_DIR) && $(MAKE) $(MFLAGS) cmdsonly ); \
+	  $(TEST_EXIT)
+endif
+ifeq ($(TL_DIR)/All_Emb,$(PWD))
+	echo "cd $(TL_DIR)/$(FIRMWARE_DIR) && $(MAKE) $(MFLAGS) cmdsonly";\
+	  ( cd $(TL_DIR)/$(FIRMWARE_DIR) && $(MAKE) $(MFLAGS) cmdsonly ); \
+	  $(TEST_EXIT)
+endif
+
+else # CMDS_FIRMWARE_ONLY is not yes
+
+clean clobber cleandepend depend force STAGE INSTALL RUNTEST build_dsfiles clobber_dsfiles lint cflow ::
+	$(VS)for d in $(DIRS) ;\
+	do \
+          echo "cd $$d && $(MAKE) $(MFLAGS) $@";\
+          ( cd $$d && $(MAKE) $(MFLAGS) $@ ); \
+          $(TEST_EXIT) \
+	done
+CMDS::
+	$(VS)for d in $(DIRS) ;\
+	do \
+          echo "cd $$d && $(MAKE) $(MFLAGS) cmdsonly";\
+          ( cd $$d && $(MAKE) $(MFLAGS) cmdsonly ); \
+          $(TEST_EXIT) \
+	done
+endif # if CMDS_FIRMWARE_ONLY
+
+# special clobber used between BSP builds during weeklybuild
+# only hits directories which are bsp specific, hence speeding up
+# overall weeklybuild performance for multi-bsp products
+clobber_bsp_specific::
+ifneq "$(BSP_SPECIFIC_DIRS)" ""
+	$(VS)for d in $(BSP_SPECIFIC_DIRS) ;\
+		do \
+			echo "cd $$d && $(MAKE) $(MFLAGS) clobber";\
+			( cd $$d && $(MAKE) $(MFLAGS) clobber ); \
+			$(TEST_EXIT) \
+		done 
+endif
+
+
+# descend the tree while building a DSP file
+# add the directory names to the GROUP and ../ to the Filename
+# so that everything in the DSP can stay as relative pathnames
+dsp_body ::
+	$(VS)for d in $(DIRS) ;\
+	do \
+          echo "cd $$d && $(MAKE) $(MFLAGS) dsp_group" ;\
+          ( cd $$d && $(MAKE) $(MFLAGS) dsp_group DSP_TMP_FILE=../$(DSP_TMP_FILE) \
+                   DSP_GROUP=$(DSP_GROUP)/$$d ); \
+          $(TEST_EXIT) \
+	done
+
+# For ALL we must iterate the sub-directories for INCLUDES, LIBS then CMDS
+# we can't simply iterate for ALL/all because of possible cross-dependencies
+# for include files and libraries between directories
+# We use the lowercase targets here so that makedepend can be properly
+# invoked as needed
+ALL :: INCLUDES LIBS CMDS
+#ALL :: LIBS CMDS
+INCLUDES::
+	$(VS)for d in $(DIRS) ;\
+	do \
+          echo "cd $$d && $(MAKE) $(MFLAGS) includes";\
+          ( cd $$d && $(MAKE) $(MFLAGS) includes ); \
+          $(TEST_EXIT) \
+	done
+LIBS ::
+	$(VS)for d in $(DIRS) ;\
+	do \
+          echo "cd $$d && $(MAKE) $(MFLAGS) libsonly";\
+          ( cd $$d && $(MAKE) $(MFLAGS) libsonly ); \
+          $(TEST_EXIT) \
+	done
+endif # DIRS
+
+.DELETE_ON_ERROR:
+#=============================================================================#

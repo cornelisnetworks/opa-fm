@@ -1,0 +1,125 @@
+
+Copyright (c) 2001-2002, VIEO Inc.  All rights reserved.
+
+
+        Use Cases for CS Operating System Specific Lock Functions
+        ---------------------------------------------------------
+
+1.  Use Case: cs:vs_lock_init:1 
+        Create a lock in an OS independent manner.
+
+    Context of Use:  Any user, kernel, or embedded code which needs a lock
+        object.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level: Subfunction
+
+    The caller supplies a pointer to an uninitialized lock handle, an 
+    initial state for the lock, and the type of lock to create.
+
+    If the supplied pointer, state, and type are valid, the lock may
+    be created.  The lock can be created in either a locked or free
+    state.  The lock created may be a thread lock or a spin lock.
+
+    If the lock is successfully created, the handle is initialized and 
+    VSTATUS_OK is returned.  Otherwise an error describing the condition is 
+    returned.
+
+2.  Use Case: cs:vs_lock:1
+        Sets the specified thread lock.
+
+    Context of Use:  Any user, kernel, or embedded code may set a
+        previously created thread lock.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level:  Subfunction
+
+    The caller supplies a pointer to the thread lock's handle.
+
+    If the lock handle pointer is non-null and the lock is not currently
+    set, the lock may become set.  If the lock is currently set, the
+    calling thread will block until the lock is cleared.
+
+    If the lock is successfully set, VSTATUS_OK is returned.  Otherwise an
+    error describing the condition is returned.
+
+3.  Use Case: cs:vs_unlock:1
+        Clears the specified thread lock in an OS independent manner.
+
+    Context of Use:  Any user, kernel, or embedded code may clear a
+        previously set thread lock.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level: Subfunction
+
+    The caller supplies a pointer to the thread lock's handle.
+
+    If the lock handle pointer is non-null and the lock is currently set,
+    the lock may become unlocked.  If one or more threads are waiting to
+    acquire the lock, one of the threads will be woken.
+
+    If the lock is successfully unlocked, VSTATUS_OK is returned.  Otherwise
+    an error describing the condition is returned.
+
+4.  Use Case: cs:vs_lock_delete:1
+        Deletes a previously created lock in an OS independent manner.
+
+    Context of Use:  Any user, kernel, or embedded code may delete a
+        previously created lock.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level: Subfunction
+
+    The caller supplies a pointer to the lock's handle.
+
+    If the lock handle pointer is non-null, the lock may be deleted.  All
+    threads currently waiting for the lock will be woken, and passed a return
+    status indicating the lock is no longer valid.
+
+    If the lock is successfully deleted, VSTATUS_OK is returned.  Otherwise 
+    an error describing the condition is returned.
+
+5.  Use Case: cs:vs_spinlock:1
+        Sets the specified spin lock.
+
+    Context of Use:  Any user, kernel, or embedded code may lock a
+        previously created spin lock.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level:  Subfunction
+
+    The caller supplies a pointer to the spin lock's handle.
+
+    If the lock handle pointer is non-null and the lock is not currently
+    set, the lock may become set.  If the lock is currently set, the
+    calling thread will block until the lock is cleared.  If the caller
+    owns the spin lock, the call will return immediately.
+
+    If the lock is successfully set, VSTATUS_OK is returned.  Otherwise an
+    error describing the condition is returned.
+
+6.  Use Case: cs:vs_spinunlock:1
+        Clears the specified spin lock in an OS independent manner.
+
+    Context of Use:  Any user, kernel, or embedded code may clear a
+        previously set spin lock.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level: Subfunction
+
+    The caller supplies a pointer to the spin lock's handle.
+
+    If the lock handle pointer is non-null and the lock was nested, it
+    will un-nest one level.  When the spin lock has been completely
+    unwound, the lock will be cleared allowing it to be claimed by another
+    processor spinning on the lock.
+
+    If the lock is successfully unlocked, VSTATUS_OK is returned.  Otherwise
+    an error describing the condition is returned.
+

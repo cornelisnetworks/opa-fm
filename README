@@ -1,0 +1,24 @@
+OPA Fabric Manager
+-------------------
+
+* To build the RPM and SRPM:
+
+  1. mkdir -p $HOME/rpmbuild/{SOURCES,RPMS,SRPMS}
+  2. tar czf $HOME/rpmbuild/SOURCES/opa-fm.tar.gz --exclude-vcs .
+  3. rpmbuild -ba ./opafm.spec
+
+  This will build the opa-fm RPM in $HOME/rpmbuild/RPMS(architecture)/
+
+  This will also create a opa-fm-debuginfo RPM, which by default contains basic
+  symbol information - see blow on how to build with full debugging information.
+
+* To build in this directory:
+
+1. cd Esm; ./fmbuild
+
+
+* How to include debugging symbols:
+
+  export BUILD_CONFIG=debug
+
+  prior to either of the aforementioned build procedures.

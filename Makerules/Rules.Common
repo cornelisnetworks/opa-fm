@@ -1,0 +1,916 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+#=============================================================================#
+#
+#  Common Rules
+#
+#=============================================================================#
+## The global makerules file also contains the following basic make target
+## rules for simplifying application build processes:
+##
+## stage:: This extensible target should be overridden in the local makefile
+##	to provide staging of the application.  The local makefile should
+##	make reference to staging variables which should be defined in the
+##	project level makerules file.  The stage target depends on a
+##	successful completion of the all target.
+##	To allow integration with developer studio (which does not allow
+##	custom build tool options for the incremental build case)
+##  this target should be the first target in the makefile
+##	stream and will be if this makerules file is included before the rules
+##	section of any project makerules file or local makefile.
+## STAGE:: The purpose of this extensible target 
+##	is to stage all of the application target objects including
+##	executable(s) and readme file(s).
+##	This target is strictly for internal use within a makefile
+##
+## prepfiles_global:: This extensible target is used to prep file stage
+##	directory.  It should be a dependent of prepfiles in the topmost makefile
+##	for a project.
+##
+## vars_include_global:: This extensible target is used to create
+##  ./vars_include file listing variables often needed by runmake scripts
+##	It should be a dependent of var_include in the topmost makefile
+##	for a project.
+##
+## clobber_vars_include:: This extensible target is used to remove the
+##	./vars_include file.
+##  It should be a dependent of clobber in the topmost makefile
+##	for a project or may be invoked by runmake for products which iterate
+##  on clobbering and rebuilding for a variety of configurations.
+##
+## all: The purpose of 
+##	the all target is to optionally build the depend.mk makefile
+##	(which includes	dependencies) and all of the application target objects
+##	including executable(s) and readme file(s) (ALL).
+##	This target is strictly for use as an argument to make.
+##	Individual makefiles should not define this target.
+##
+## ALL:: The purpose of this extensible target 
+##	is to build all of the application target objects including
+##	executable(s) and readme file(s).
+##	This target is strictly for internal use within a makefile
+##
+## check_target: This non-extensible target will verify that the BUILD_TARGET
+##	environment variable is defined and can be used as a dependency for
+##	use in project or local makefiles.  The target validates the
+##	value of the variable.  The BUILD_TARGET variable
+##	should be set by the target command prior to running make.
+##
+## clean: This target is used to remove all intermediate files
+##	created during the build process.  All object $(OBJECTS) and core files will
+##	automatically removed along with those defined in OBJECTS and
+##	CLEAN_TARGETS. (it does this by running CLEAN).
+##	This target is strictly for use as an argument to make.
+##	Individual makefiles should not define this target.
+##
+## CLEAN:: This extensible target is used to remove all intermediate files
+##	created during the build process.  All object $(OBJECTS) and core files will
+##	automatically removed along with those defined in OBJECTS and
+##	CLEAN_TARGETS.
+##	This target is strictly for internal use within a makefile
+##
+## cleandepend: This target is used to remove targets built
+##	by the depend target (or automatically built if AUTODEP!=no).
+##	It is useful when external factors invalidate the results of the
+##	depend target. (It does this by running CLEANDEPEND).
+##	This target is strictly for use as an argument to make.
+##	Individual makefiles should not define this target.
+##
+## CLEANDEPEND:: This extensible target is used to remove targets built
+##	by the depend target (or automatically built if AUTODEP!=no).
+##	It is useful when external factors invalidate the results of the
+##	depend target
+##	This target is strictly for internal use within a makefile
+##
+## clobber: This extensible target is used to remove all intermediate and
+##	target files and should restore the directory to a checkout state where
+##	only source files exist.  This target has a dependency on the clean
+##	and ClOBBER targets, and removes CLOBBER_TARGETS and MISC_TARGETS files.
+## CLOBBER:: This extensible target is used to remove target files
+##	created during the build process.
+##	This target is strictly for internal use within a makefile
+##
+## clobber_global:: This extensible target is used to remove the GLOBAL_X
+##	directories.  It should be a dependent of clobber in the topmost makefile
+##	for a project.
+##
+## clobber_module:: This extensible target is used to remove the MOD_X
+##	directories.  It should be a dependent of clobber in the topmost makefile
+##	for a module. Only MOD_X directories whose names don't match the
+##	corresponding PROJ_X directories will be removed.
+##
+## clobber_bsp_specific:: This extensible target is used to perform a clobber
+##	in the BSP_SPECIFIC_DIRS.  Useful between BSP builds during weeklybuild
+##	so that only the BSP specific directories are clobbered
+##
+## clobber_dsfiles:: This extensible target is used to remove the dsp and dsw
+##	files built by dsfiles.  It purposely does not remove the
+##  ncb, plg and opt files which are used to retain the present dsw views
+##
+## clobber_stage:: This extensible target is used to remove the STAGE_DIR
+##	directories and related packaging files.
+##  It should be a dependent of clobber in the topmost makefile
+##	for a project or may be invoked by runmake for products which iterate
+##  on clobbering and rebuilding for a variety of configurations.
+##
+## clobber_release:: This extensible target is used to remove the RELEASE_DIR
+##	directories and related packaging files.
+##  It should be a dependent of clobber in the topmost makefile
+##	for a project or may be invoked by runmake for products which iterate
+##  on clobbering and rebuilding for a variety of configurations.
+##
+## depend:: This extensible target will update the project dependencies in
+##	the local makefile provided that the MAKEFILE variable is set to the
+##	name of the local makefile (default: "Makfile").  To accomplish this,
+##	the target uses MAKEDEPEND with the output placed in the file MAKEFILE.
+##
+## force:: This extensible target is used to force a rebuild of the entire
+##	application by performing a clobber operation and then building the
+##	all target.  With a properly constructed makefile, all targets and
+##	intermediates will be removed leaving only source.  When all is made,
+##	all targets should be rebuilt from scratch.
+##
+## INSTALL:: This extensible target should be overridden in the local makefile
+##	to provide installation of the application.  The local makefile should
+##	make reference to installation variables which should be defined in the
+##	project level makerules file.  The install target depends on a
+##	successful completion of the all target.
+##
+## lint:: This extensible target is used to lint the CFILES and create lint.res
+##
+## cflow:: This extensible target is used to cflow the CFILES and create
+##	cflow.res
+##
+## dsfiles:: This target creates the dsp and dsw files for Visual Studio
+## build_dsfiles: performs dsfiles iteratively throughout the subdirs
+## dsp_file: This target creates the dsp file for Visual Studio for this directory only
+## dsw_file: This target creates the dsw file for Visual Studio for this directory only
+##
+#=============================================================================#
+# The following section contains a list of standard targets which will be used
+
+#default target is ALL
+# project level makefiles will provide a default of stage by declaring it
+# in the makefile itself before including this file
+all::
+
+include $(TL_DIR)/Makerules/Rules.$(BUILD_PLATFORM)
+
+# libsonly and cmdsonly versions are for use in recursive makes to avoid
+# repeating steps.  recursive makes will recurse on includes, then on
+# libsonly, then on cmdsonly, then on STAGE
+ifeq ($(MAKECMDGOALS),clobber)
+AUTODEP=no
+endif
+ifeq ($(MAKECMDGOALS),INCLUDES)
+AUTODEP=no
+endif
+ifeq ($(MAKECMDGOALS),includes)
+AUTODEP=no
+endif
+ifeq "$(AUTODEP)" "no"
+  all:: check_env ALL
+  includes: check_env INCLUDES
+  libs: check_env INCLUDES LIBS
+  libsonly: check_env LIBS
+  cmds: check_env INCLUDES LIBS CMDS
+  cmdsonly: check_env CMDS
+else # AUTODEP
+  all:: check_env buildall
+  includes: check_env buildincludes
+  libs: check_env buildlibs
+  libsonly: check_env buildlibsonly
+  cmds: check_env buildcmds
+  cmdsonly: check_env buildcmdsonly
+endif #AUTODEP
+
+DEPEND_MK_FILE	= $(BUILDDIR)/depend.mk
+
+buildincludes: INCLUDES
+buildlibs: $(DEPEND_MK_FILE)
+	$(MAKE) -f $(DEPEND_MK_FILE) INCLUDES LIBS
+buildlibsonly: $(DEPEND_MK_FILE)
+	$(MAKE) -f $(DEPEND_MK_FILE) LIBS
+buildcmds: $(DEPEND_MK_FILE)
+	$(MAKE) -f $(DEPEND_MK_FILE) INCLUDES LIBS CMDS
+buildcmdsonly: $(DEPEND_MK_FILE)
+	$(MAKE) -f $(DEPEND_MK_FILE) CMDS
+buildall: $(DEPEND_MK_FILE)
+	$(MAKE) -f $(DEPEND_MK_FILE) ALL
+
+.PHONY: INCLUDES LIBS CMDS
+.PHONY: includes imports libs cmds
+.PHONY: buildincludes buildimports buildlibs buildcmds buildall check_env
+
+check_env:: check_target check_config check_platform check_subsystem check_usemfc check_windbase check_mipspath	check_i386path check_target_bsp
+
+ALL:: INCLUDES LIBS CMDS
+	@echo "Product(s) Built"
+
+clean:: CLEAN
+CLEAN::
+	@echo "Removing Intermediate Files"
+	-$(VS)$(RM) $(RMFORCE) $(OBJECTS) $(PREPROCESSED_FILES) $(CLEAN_TARGETS) $(INC_FILE) $(LIB_FILE) $(BIN_FILE) core .ICSBOOTROMVERSIONSTRING
+    ifneq "$(RSCOBJECTS)" ""
+	-$(VS)$(RM) $(RMFORCE) $(RSCOBJECTS)
+    endif
+
+clobber:: check_env CLEANDEPEND CLEAN CLOBBER
+CLOBBER::
+	@echo "Removing Target/Build Files"
+	-$(VS)$(RM) $(RMFORCE) $(RMRECURSE) $(CLOBBER_TARGETS)
+
+check_brand::
+    ifneq "$(BRANDIT)" ""
+        BRAND_DIRS := $(BRANDIT)
+    endif
+
+
+#FIXME - this CARD_TYPE check should be cleaned up
+prepfiles::
+# use of PATCH_VERSION below is a quick hack.  Really project makefile
+# should decide what to patch.  But this works for now
+ifeq "$(CARD_TYPE)" "X"
+prepfiles_global:: check_env check_brand
+	cd $(PROJ_STAGE_DIR) && find . -print| $(PREP)
+	-cd $(PROJ_STAGE_BIN_DIR) && $(PATCH_VERSION) $(RELEASE_TAG) *
+	-if [ -n "$(BRANDIT)" ]; then \
+	for x in $(BRAND_DIRS);\
+	do\
+		y=`echo $$x | sed 's/_/ /g'`;\
+                imgU=`which icsImageUtil`;\
+		rm -rf $(PROJ_STAGE_BIN_DIR)_$$x;\
+		cp -r $(PROJ_STAGE_BIN_DIR) $(PROJ_STAGE_BIN_DIR)_$$x;\
+                cd $(PROJ_STAGE_BIN_DIR)_$$x;\
+		bspcode=`$$imgU -d *.pkg| awk -F= ' /BSP/ {print $$NF}' | sed 's/[^0-9]//g'`;\
+		rm -rf *.pkg;\
+                $(PATCH_BRAND) "$$y" *;\
+                mkpkg `ls | sed '/.*\..*\..*/d'` $(CARD_TYPE) $(TARGET_BSP) $(PRODUCT_CODE) $$bspcode $(STRIP) $(DEFLATE);\
+		rm -rf *.Z *.stripped;\
+	done;\
+	fi
+else
+prepfiles_global:: check_env check_brand
+	cd $(PROJ_STAGE_DIR) && find . -print| $(PREP)
+	-cd $(PROJ_STAGE_BIN_DIR) && $(PATCH_VERSION) $(RELEASE_TAG) *
+	-if [ -n "$(BRANDIT)" ]; then \
+	for x in $(BRAND_DIRS);\
+	do\
+		y=`echo $$x | sed 's/_/ /g'`;\
+                imgU=`which icsImageUtil`;\
+		rm -rf $(PROJ_STAGE_BIN_DIR)_$$x;\
+		cp -r $(PROJ_STAGE_BIN_DIR) $(PROJ_STAGE_BIN_DIR)_$$x;\
+                cd $(PROJ_STAGE_BIN_DIR)_$$x;\
+		bspcode=`$$imgU -d *.pkg| awk -F= ' /BSP/ {print $$NF}' | sed 's/[^0-9]//g'`;\
+		rm -rf *.pkg;\
+                $(PATCH_BRAND) "$$y" *;\
+                mkpkg `ls | sed '/.*\..*\..*/d'` $(PROJECT_PACKAGE_EXTERNAL_NAME) $(TARGET_BSP) $(PRODUCT_CODE) $$bspcode $(STRIP) $(DEFLATE);\
+		rm -rf *.Z *.stripped;\
+	done;\
+	fi
+endif
+.PHONY: prepfiles_global
+
+vars_include_global:: check_env
+	rm -f vars_include
+	echo STAGE_DIR='$(STAGE_DIR)' >> vars_include
+	echo STAGE_SUB_DIR='$(STAGE_SUB_DIR)' >> vars_include
+	echo PROJ_STAGE_DIR='$(PROJ_STAGE_DIR)' >> vars_include
+	echo RELEASE_DIR='$(RELEASE_DIR)' >> vars_include
+	$(CHMOD) +x vars_include
+# marked as phony so we force rebuild each time asked
+.PHONY: vars_include_global
+
+clobber_vars_include:: check_env
+	rm -f vars_include
+.PHONY: clobber_vars_include
+
+clobber_global:: check_env
+	-$(VS)$(RM) $(RMFORCE) $(RMRECURSE) $(GLOBAL_INCLUDE_DIR)
+	-$(VS)$(RM) $(RMFORCE) $(RMRECURSE) $(GLOBAL_LIB_DIR)
+	-$(VS)$(RM) $(RMFORCE) $(RMRECURSE) $(GLOBAL_SHLIB_DIR)
+	-$(VS)$(RM) $(RMFORCE) $(RMRECURSE) $(GLOBAL_BIN_DIR)
+	-$(VS)$(RM) $(RMFORCE) $(RMRECURSE) $(GLOBAL_SBR_DIR)
+
+clobber_module:: check_env
+ifneq "$(MOD_INCLUDE_DIR)" "$(PROJ_INCLUDE_DIR)"
+	-$(VS)$(RM) $(RMFORCE) $(RMRECURSE) $(MOD_INCLUDE_DIR)
+endif
+ifneq "$(MOD_LIB_DIR)" "$(PROJ_LIB_DIR)"
+	-$(VS)$(RM) $(RMFORCE) $(RMRECURSE) $(MOD_LIB_DIR)
+endif
+ifneq "$(MOD_SHLIB_DIR)" "$(PROJ_SHLIB_DIR)"
+	-$(VS)$(RM) $(RMFORCE) $(RMRECURSE) $(MOD_SHLIB_DIR)
+endif
+ifneq "$(MOD_BIN_DIR)" "$(PROJ_BIN_DIR)"
+	-$(VS)$(RM) $(RMFORCE) $(RMRECURSE) $(MOD_BIN_DIR)
+endif
+ifneq "$(MOD_SBR_DIR)" "$(PROJ_SBR_DIR)"
+	-$(VS)$(RM) $(RMFORCE) $(RMRECURSE) $(MOD_SBR_DIR)
+endif
+
+clobber_stage:: check_env
+	-$(VS)$(RM) $(RMFORCE) $(RMRECURSE) $(STAGE_DIR)
+
+clobber_release:: check_env
+	-$(VS)$(RM) $(RMFORCE) $(RMRECURSE) $(RELEASE_DIR)
+
+#release:: check_env
+#	cd $(PROJ_STAGE_INCLUDE_DIR) && $(INSTALL) -d $(PROJ_RELEASE_INCLUDE_DIR) *
+#	cd $(PROJ_STAGE_LIB_DIR) && $(INSTALL) -d $(PROJ_RELEASE_LIB_DIR) *
+#	cd $(PROJ_STAGE_BIN_DIR) && $(INSTALL) -d $(PROJ_RELEASE_BIN_DIR) *
+#	cd $(PROJ_STAGE_SBR_DIR) && $(INSTALL) -d $(PROJ_RELEASE_SBR_DIR) *
+
+cleandepend:: check_env CLEANDEPEND
+CLEANDEPEND::
+	@echo "Removing Generated Dependency Files"
+	-$(VS)$(RM) $(RMFORCE) $(DEPEND_MK_FILE) $(DEPEND_MK_FILE).bak $(addsuffix .dep,$(SOURCES)) $(addsuffix .dep.bak,$(SOURCES))
+
+depend:: check_env $(DEPEND_MK_FILE)
+
+# This was kind of a kludge to get things going, dependences may depend on
+# include files be available.  For a top level makefile which has source files
+# this can cause a catch 22, those files will fail to build since the
+# INCLUDES pass have not been done on the subdirs.  However this approach
+# adds overhead.  A better fix is for top level directories to not have code
+# instead a Main module could be included below it which actually builds the
+# executable.  In which case INCLUDES below can be removed!
+#depend.mk: INCLUDES $(MAKEFILE) $(addsuffix .dep,$(SOURCES))
+DEPEND_FILES = $(foreach dep, $(addsuffix .dep,$(SOURCES)), $(BUILDDIR)/$(dep))
+
+$(DEPEND_MK_FILE): $(MAKEFILE) $(DEPEND_FILES) $(BUILDDIR)
+	@echo "Updating Makefile Dependencies"
+	$(VS)> $(DEPEND_MK_FILE)
+	$(VS)$(CHMOD) 666 $(DEPEND_MK_FILE)
+	$(VS)for f in $^ ;\
+	do \
+            if [ ! -d $$f ]; then \
+		$(ECHO) "include $$f" >> $(DEPEND_MK_FILE) ;\
+	    fi \
+	done
+
+$(BUILDDIR):
+	@mkdir -p $@
+	
+
+.SUFFIXES: .dep
+%.cpp.dep: %.cpp
+	@echo "Updating $< Dependencies"
+ifeq "$(BUILD_TARGET_OS)" "WIN32"
+	$(VS)$(MAKEDEPEND) -p /usr/bin -f $@ -- $(CCDEPENDFLAGS) -- $<
+	@$(RM) $(RMFORCE) $@.bak
+else
+	$(CCC) $(CCDEPENDFLAGS) -MM $< > $@
+ifneq "$(CARD_TYPE)" ""
+	$(STRIPDEPENDS) $@
+endif
+endif
+
+%.c.dep: %.c
+	@echo "Updating $< Dependencies"
+ifeq "$(BUILD_TARGET_OS)" "WIN32"
+	$(VS)$(MAKEDEPEND) -p /usr/bin -f $@ -- $(DEPENDFLAGS) -- $<
+	@$(RM) $(RMFORCE) $@.bak
+else
+	$(CC) $(DEPENDFLAGS) -MM $< > $@
+ifneq "$(CARD_TYPE)" ""
+	$(STRIPDEPENDS) $@
+endif
+endif
+
+
+ifneq "$(strip $(BUILDDIR))" ""
+$(BUILDDIR)/%.c.dep: %.c
+	@echo "Updating $< Dependencies"
+	@mkdir -p $(dir $@)
+	$(CC) $(DEPENDFLAGS) -MM $< > $@
+ifneq "$(CARD_TYPE)" ""
+	$(STRIPDEPENDS) $@
+endif
+$(BUILDDIR)/%.cpp.dep: %.cpp
+	@echo "Updating $< Dependencies"
+	@mkdir -p $(dir $@)
+	$(CC) $(CCDEPENDFLAGS) -MM $< > $@
+ifneq "$(CARD_TYPE)" ""
+	$(STRIPDEPENDS) $@
+endif
+endif
+
+.SUFFIXES: .gz .1 .8 .manPage
+%.gz: %
+	$(GZIP) $<
+%.1: %.manPage
+	$(CP) $< $@
+%.8: %.manPage
+	$(CP) $< $@
+
+# TBD - makerules.build has this rule in it
+#ifeq "$(BUILD_TARGET_OS)" "LINUX"
+#lib%.so	: %.o
+#	$(MKSHLIB) $^ $(LDLOCAL) $(LDLIBS) -o $@
+#endif # BUILD_TARGET_OS is LINUX
+
+force:: clobber all
+
+stage:: check_env all
+	@echo "Staging Product(s)"
+stage:: STAGE
+
+# special target for boot loaders
+stageboot:: check_env
+	@echo "Staging Bootloader Product(s)"
+stageboot:: STAGEBOOT
+
+runtest:: check_env all
+	@echo "Running Unit Test(s)"
+runtest:: RUNTEST
+
+install:: check_env stage
+	@echo "Building Installable Product(s)"
+install:: INSTALL
+
+lint::	check_env $(CFILES)
+	$(LINT) $(LINTFLAGS) $(CFILES) > lint.res 2>&1
+
+cflow::	check_env $(CFILES)
+	$(LINT) $(CFLOWFLAGS) $(CFILES) > cflow.res 2>&1
+
+
+.PHONY: ALL all clean clobber depend force stage install runtest lint cflow \
+	clobber_global clobber_stage clobber_release finish \
+	cleandepend CLEAN CLEANDEPEND CLOBBER
+
+.SUFFIXES: .lex $(OBJ_SUFFIX) $(PRE_SUFFIX)
+%$(OBJ_SUFFIX) : %.cpp
+	$(VS)$(CCC) $(CCFLAGS) -c $<
+%$(OBJ_SUFFIX) : %.c
+	$(VS)$(CC) $(CFLAGS) -c $<
+%$(PRE_SUFFIX) : %.cpp
+	$(VS)$(CCC) $(CCFLAGS) -E $< > $@
+%$(PRE_SUFFIX) : %.c
+	$(VS)$(CC) $(CFLAGS) -E $< > $@
+
+$(BUILDDIR)/%$(OBJ_SUFFIX) : %.cpp
+	@mkdir -p $(dir $@)
+	$(VS)$(CCC) $(CCFLAGS) -c $< -o $@
+$(BUILDDIR)/%$(OBJ_SUFFIX) : %.c
+	@mkdir -p $(dir $@)
+	$(VS)$(CC) $(CFLAGS) -c $< -o $@
+$(BUILDDIR)/%$(OBJ_SUFFIX) : $(BUILDDIR)/%.s
+	@mkdir -p $(dir $@)
+	$(VS)$(CC) $(CFLAGS) -c $< -o $@
+$(BUILDDIR)/%$(PRE_SUFFIX) : %.cpp
+	@mkdir -p $(dir $@)
+	$(VS)$(CCC) $(CCFLAGS) -E $< > $@
+$(BUILDDIR)/%$(PRE_SUFFIX) : %.c
+	@mkdir -p $(dir $@)
+	$(VS)$(CC) $(CFLAGS) -E $< > $@
+ifeq "$(BUILD_TARGET_OS)" "VXWORKS"
+$(BUILDDIR)/Config.h : Config.h.in $(TL_DIR)/BSP/Config.csv $(BUILDDIR)
+	$(VS)$(MKCONFIG) $(TARGET_BSP) $(PRODUCT) $(TL_DIR)/BSP/Config.csv Config.h.in $@
+endif
+
+.lex.c:
+	@rm -f $@
+	$(LEX) $<
+	mv lex.yy.c $@
+
+
+.SUFFIXES: .msg _Messages.h _Messages.c
+%_Messages.h %_Messages.c: %.msg $(BUILDMSGS_PL)
+	$(VS)$(BUILDMSGS) $<
+
+#.y.c:
+#	$(YACC) -d $<
+#	mv y.tab.c $@
+
+
+
+ifneq "$(strip $(BUILDDSW))" ""
+# optimize performance when not doing dsp files, by skipping this $(shell)
+ifneq "$(strip $(DO_DSP_SUBPROJECTS))" ""
+# we have a dependency on the subprojects by our dsw file
+# this rule will rebuild the missing subprojects
+DSP_SUBPROJECTS= $(foreach dir,$(DIRS),$(DS_PROJECT_DIR)/$(dir)/$(dir)$(DSP_SUFFIX)) $(shell $(FINDDSPFILES) $(DS_SUBPROJECTS) $(DS_PROJECTS))
+
+$(DSP_SUBPROJECTS):
+	cd $(@D) && $(MAKE) dsp_file
+endif # DO_DSP_SUBPROJECTS
+
+# don't build dsw_file if no project defined
+ifneq "$(DS_PROJECT)" ""
+# paths given to BUILDDSW go into a dsw file, hence they must be windows paths
+# but we can get away with forward slashes
+dsw_file: 
+	$(MAKE) DO_DSP_SUBPROJECTS=yes DSW_FILE
+DSW_FILE: $(DSP_SUBPROJECTS) $(DSW_FILE)
+$(DSW_FILE): $(MAKEFILE)
+	@echo "Building Dev Studio Workspace file ($(DSW_FILE))..."
+	$(VS)$(RM) $(RMFORCE) $(DSW_TMP_FILE)
+ifneq "$(BUILD_PLATFORM)" "LINUX"
+ifneq "$(BUILD_PLATFORM)" "DARWIN"
+	$(VS)$(BUILDDSW) -f $(DSW_TMP_FILE) $(DSP_FILE) $(foreach path,$(DSP_SUBPROJECTS),$(subst \,/,$(shell cygpath -w $(path))))
+else
+	$(VS)$(BUILDDSW) -f $(DSW_TMP_FILE) $(DSP_FILE) $(DSP_SUBPROJECTS)
+endif
+else
+	$(VS)$(BUILDDSW) -f $(DSW_TMP_FILE) $(DSP_FILE) $(DSP_SUBPROJECTS)
+endif # LINUX
+	$(VS)$(MV) -f $(DSW_TMP_FILE) $(DSW_FILE)
+else
+dsw_file:
+	@echo "DS_PROJECT undefined, Can't Build Dev Studio Workspace file"
+endif # DS_PROJECT
+
+# The building of dsp files is a little involved, however all this work
+# makes it easy to keep the dsp consistent with the makefiles
+# The build proceeds as follows:
+# In makefile dsp is being built for:
+#	dsp_file - main summary target
+#	dsp_header - customize the generic dsp boilerplate to DSP_TMP_FILE
+#				using MAKE and DS_PROJECT
+#	dsp_group - summary target for building a group in dsp file
+#	dsp_group_header - output #Begin Group directive to DSP_TMP_FILE
+#	dsp_body - output source file directives for each entry in DSP_SOURCES
+#			recursively do a make dsp_group on sub-directories
+#			setting DSP_GROUP and DSP_TMP_FILE with the appropriate
+#			relative path settings
+#	dsp_group_trailer - output #End Group to DSP_TMP_FILE
+#	dsp_trailer - output generic end of dsp boilerplate to DSP_TMP_FILE
+#				  and rename DSP_TMP_FILE as DSP_FILE to its now visible to VS
+# file rename is done at the end so that Visual Studio will not see the
+# updates until the new dsp file is completely written
+# Note the recusive make invokation allows the make system to automatically
+# generate a dsp group heirarchy which exactly matches the source tree
+
+dsp_header:
+	@echo "Building Dev Studio Project file ($(DSP_FILE))..."
+	$(VS)$(RM) $(RMFORCE) $(DSP_TMP_FILE)
+	$(VS)$(SED) \
+          -e 's|ProjectTemplate|$(DS_PROJECT)|g' \
+          -e 's|ProjectMake|icstargetmake $(BUILD_TARGET)|g' \
+		  -e 's|ProjectExecute|$(EXECUTABLE)|g' \
+          < $(TL_DIR)/Makerules/template.dsp \
+          > $(DSP_TMP_FILE)
+
+dsp_group_header:
+     ifneq "$(DSP_GROUP)" ""
+	$(VS)$(ECHO) '# Begin Group "'$(DSP_SRC_DIR)'"' >> $(DSP_TMP_FILE)
+     endif #DSP_GROUP
+
+dsp_body::
+	$(VS)for d in $(DSP_SOURCES) ;\
+	do \
+          $(ECHO) '# Begin Source File' >> $(DSP_TMP_FILE) ;\
+          $(ECHO) "SOURCE=$(DSP_SRC_DIR)/$$d" >> $(DSP_TMP_FILE) ;\
+          $(ECHO) '# End Source File' >> $(DSP_TMP_FILE) ;\
+	done
+
+dsp_group_trailer:
+     ifneq "$(DSP_GROUP)" ""
+	$(VS)$(ECHO) '# End Group' >> $(DSP_TMP_FILE)
+     endif #DSP_GROUP
+
+dsp_trailer:
+	$(VS)$(ECHO) '# End Target' >> $(DSP_TMP_FILE)
+	$(VS)$(ECHO) '# End Project' >> $(DSP_TMP_FILE)
+	$(VS)$(MV) -f $(DSP_TMP_FILE) $(DSP_FILE)
+
+dsp_group::	dsp_group_header dsp_body dsp_group_trailer
+# don't build dsp_file if no project defined
+ifneq "$(DS_PROJECT)" ""
+dsp_file:	$(DSP_FILE)
+# for toplevel/middle makefile, always rebuild dsp (can't be sure if sub-dirs makefiles have changed)
+# for local makefile, only rebuild dsp if makefile has changed
+ifneq "$(strip $(DIRS))" ""
+$(DSP_FILE):	dsp_header dsp_group dsp_trailer
+else
+$(DSP_FILE):	$(MAKEFILE)
+	$(VS)$(MAKE) dsp_header dsp_group dsp_trailer
+endif # DIRS
+else
+dsp_file:
+	@echo "DS_PROJECT undefined, Can't Build Dev Studio Project file"
+endif # DS_PROJECT
+build_dsfiles:: dsfiles
+dsfiles::	check_env dsp_file dsw_file
+clobber_dsfiles:: check_env
+	@echo "Removing Developer Studio Project and Workspace Files"
+ifneq "$(DS_PROJECT)" ""
+	$(VS)$(RM) $(RMFORCE) $(DSP_FILE) $(DSP_TMP_FILE) $(DSW_FILE) $(DSW_TMP_FILE)
+endif # DS_PROJECT
+
+
+.PHONY: dsfiles dsp_file dsw_file dsp_group dsp_group_header \
+	dsp_group_trailer dsp_header dsp_body dsp_trailer clobber_dsfiles
+else # BUILDDSW not defined
+build_dsfiles:: dsfiles
+dsfiles::
+	@echo "Can't Build Dev Studio Project files in $(BUILD_PLATFORM) for $(BUILD_TARGET)"
+dsw_file:
+	@echo "Can't Build Dev Studio Project files in $(BUILD_PLATFORM) for $(BUILD_TARGET)"
+dsp_file:
+	@echo "Can't Build Dev Studio Project files in $(BUILD_PLATFORM) for $(BUILD_TARGET)"
+clobber_dsfiles::
+	@echo "Removing Developer Studio Project and Workspace Files"
+ifneq "$(DS_PROJECT)" ""
+	$(VS)$(RM) $(RMFORCE) $(DSP_FILE) $(DSP_TMP_FILE) $(DSW_FILE) $(DSW_TMP_FILE)
+endif # DS_PROJECT
+
+endif # BUILDDSW defined
+
+#=============================================================================#
+#
+#  Platform specific Rules
+#
+#=============================================================================#
+
+ifeq "$(BUILD_TARGET_OS)" "WIN32"
+.SUFFIXES: .rc .res .sbr .bsc
+%.res:%.rc
+	$(VS)$(RSC) $(RSCFLAGS) /fo"$@" $<
+%.sbr:%.cpp
+	$(VS)$(CCC) $(CCFLAGS) -c $<
+%.sbr:%.c
+	$(VS)$(CC) $(CFLAGS) -c $<
+%.bsc:%.sbr
+	$(VS)$(BSC) $(BSCFLAGS)$@ $<
+endif # BUILD_TARGET_OS is WIN32
+
+#-----------------------------------------------------------------------------#
+# Check the environment for the BUILD_TARGET variable for validity
+
+SUPPORTED_TARGETS = ATOM MIPS I386 IA32 IA64 MIPS_BSP CYGWIN WIN32 X86_64 PPC PPC64 EM64T
+badtarget:
+	@echo "Invalid BUILD_TARGET value was specified: $(BUILD_TARGET)"
+	@echo "Must be one of: $(SUPPORTED_TARGETS)"
+	@echo "Please run the target shell function and try again."
+	@exit 1
+ifeq "$(strip $(BUILD_TARGET))" ""
+check_target: badtarget
+else
+ifneq "$(findstring $(BUILD_TARGET),$(SUPPORTED_TARGETS))" "$(BUILD_TARGET)"
+check_target: badtarget
+else
+check_target:
+endif # BUILD_TARGET in SUPPORTED_TARGETS
+endif # BUILD_TARGET defined
+.PHONY: check_target
+#-----------------------------------------------------------------------------#
+# Check the environment for the BUILD_CONFIG variable for validity
+ifeq "$(BUILD_TARGET_OS)" "VXWORKS"
+SUPPORTED_CONFIGS = debug release loadable
+else
+
+SUPPORTED_CONFIGS = debug release
+endif
+badconfig:
+	@echo "Invalid BUILD_CONFIG value was specified: $(BUILD_CONFIG)"
+	@echo "Must be one of: $(SUPPORTED_CONFIGS)"
+	@echo "Please set BUILD_CONFIG and try again."
+	@exit 1
+ifeq "$(strip $(BUILD_CONFIG))" ""
+check_config: badconfig
+else
+ifneq "$(findstring $(BUILD_CONFIG),$(SUPPORTED_CONFIGS))" "$(BUILD_CONFIG)"
+check_config: badconfig
+else
+check_config:
+endif # BUILD_CONFIG in SUPPORTED_CONFIGS
+endif # BUILD_CONFIG defined
+.PHONY: SUPPORTED_CONFIGS
+
+ifeq "$(BUILD_TARGET_OS)" "WIN32"
+#-----------------------------------------------------------------------------#
+# Check the environment for the SUBSYSTEM variable for validity
+SUPPORTED_SUBSYSTEMS	= none console windows
+badsubsystem:
+	@echo "Invalid SUBSYSTEM value was specified: $(SUBSYSTEM)"
+	@echo "Must be one of: $(SUPPORTED_SUBSYSTEMS)"
+	@echo "Please check your configuration and try again."
+	@exit 1
+ifneq "$(findstring $(SUBSYSTEM),$(SUPPORTED_SUBSYSTEMS))" "$(SUBSYSTEM)"
+check_subsystem: badsubsystem
+else
+check_subsystem:
+endif # SUBSYSTEM in SUPPORTED_SUBSYSTEMS
+else
+check_subsystem:
+endif # BUILD_TARGET_OS of WIN32
+.PHONY: check_subsystem
+
+ifeq "$(BUILD_TARGET_OS)" "WIN32"
+#-----------------------------------------------------------------------------#
+# Check the environment for the USEMFC variable for validity
+SUPPORTED_USEMFCS	= none no_mfc shared static
+badusemfc:
+	@echo "Invalid USEMFC value was specified: $(USEMFC)"
+	@echo "Must be one of: $(SUPPORTED_USEMFCS)"
+	@echo "Please check your configuration and try again."
+	@exit 1
+ifneq "$(findstring $(USEMFC),$(SUPPORTED_USEMFCS))" "$(USEMFC)"
+check_usemfc: badusemfc
+else
+check_usemfc:
+endif # USEMFC in SUPPORTED_USEMFCS
+else
+check_usemfc:
+endif # BUILD_TARGET_OS of WIN32
+.PHONY: check_usemfc
+#-----------------------------------------------------------------------------#
+
+ifeq "$(BUILD_TARGET_OS)" "VXWORKS"
+#-----------------------------------------------------------------------------#
+# Check the environment for the TARGET_BSP variable for validity
+# TBD - this dumps the shell, hardcode possible BSPs for now
+CAT?=cat
+SUPPORTED_TARGET_BSPS = $(shell $(CAT) $(TL_DIR)/$(PROJ_FILE_DIR)/SUPPORTED_TARGET_BSPS)
+badtarget_bsp:
+	@echo "Invalid TARGET_BSP value was specified: $(TARGET_BSP)"
+	@echo "Must be one of: $(SUPPORTED_TARGET_BSPS)"
+	@echo "Please check your configuration and try again."
+	@exit 1
+ifeq "$(strip $(TARGET_BSP))" ""
+check_target_bsp: badtarget_bsp
+else
+ifneq "$(findstring $(TARGET_BSP),$(SUPPORTED_TARGET_BSPS))" "$(TARGET_BSP)"
+check_target_bsp: badtarget_bsp
+else
+check_target_bsp:
+endif # TARGET_BSP in SUPPORTED_TARGET_BSPS
+endif # TARGET_BSP defined
+else
+check_target_bsp:
+endif # BUILD_TARGET_OS of VXWORKS
+.PHONY: check_target_bsp
+
+#-----------------------------------------------------------------------------#
+# Check the environment for the BUILD_PLATFORM variable for validity
+#    BUILD_PLATFORM is set within this rules file based on "uname -s"
+
+SUPPORTED_PLATFORMS = CYGWIN LINUX DOS DARWIN
+badplatform:
+	@echo "Invalid BUILD_PLATFORM value was specified: $(BUILD_PLATFORM)"
+	@echo "Must be one of: $(SUPPORTED_PLATFORMS)"
+	@echo "Please update the make files to support this platform and try again."
+	@exit 1
+ifeq "$(strip $(BUILD_PLATFORM))" ""
+check_platform: badplatform
+else
+ifneq "$(findstring $(BUILD_PLATFORM),$(SUPPORTED_PLATFORMS))" "$(BUILD_PLATFORM)"
+check_platform: badplatform
+else
+check_platform:
+endif # BUILD_PLATFORM in SUPPORTED_PLATFORMS
+endif # BUILD_PLATFORM defined
+.PHONY: check_platform
+
+#-----------------------------------------------------------------------------#
+# Check the environment for the WIND_BASE variable begin set
+
+ifeq "$(BUILD_TARGET_OS)" "VXWORKS"
+badwindbase:
+	@echo "WIND_BASE value was not defined"
+	@echo "Please export WIND_BASE and try again."
+	@exit 1
+ifeq "$(strip $(WIND_BASE))" ""
+check_windbase: badwindbase
+else
+check_windbase:
+endif # WIND_BASE defined
+else
+check_windbase:
+endif # BUILD_TARGET_OS VXWORKS
+.PHONY: check_windbase
+
+#-----------------------------------------------------------------------------#
+# Check the environment for the MIPS_PATH variable begin set
+
+# really VXWORKS/MIPS, but CYGWIN is defunct anyway so no need to refine test
+ifeq "$(BUILD_TARGET_OS)" "VXWORKS"
+ifeq "$(BUILD_PLATFORM)" "CYGWIN"
+badmipspath:
+	@echo "MIPS_PATH value was not defined"
+	@echo 'Please run the target function and try again.'
+	@exit 1
+ifeq "$(strip $(MIPS_PATH))" ""
+check_mipspath: badmipspath
+else
+check_mipspath:
+endif # MIPS_PATH defined
+else
+check_mipspath:
+endif # BUILD_PLATFORM CYGWIN defined
+else
+check_mipspath:
+endif # BUILD_TARGET_OS VXWORKS
+.PHONY: check_mipspath
+
+#-----------------------------------------------------------------------------#
+# Check the environment for the I386_PATH variable begin set
+
+ifeq "$(BUILD_TARGET)" "I386"
+ifeq "$(BUILD_PLATFORM)" "CYGWIN"
+badi386path:
+	@echo "I386_PATH value was not defined"
+	@echo 'Please run the target function and try again.'
+	@exit 1
+ifeq "$(strip $(I386_PATH))" ""
+check_i386path: i386mipspath
+else
+check_i386path:
+endif # I386_PATH defined
+else
+check_i386path:
+endif # BUILD_PLATFORM CYGWIN defined
+else
+check_i386path:
+endif # BUILD_TARGET I386
+.PHONY: check_i386path
+
+
+#-----------------------------------------------------------------------------#
+ifeq "$(BUILD_PLATFORM)" "LINUX"
+# Check if running as root
+
+badroot:
+	@echo "You must be running as root for this step."
+	@echo "Please log in as root and try again."
+	@exit 1
+ifneq "$(shell id -u)" "0"
+check_root: badroot
+else
+check_root:
+endif # UID is 0
+else
+checkroot:
+endif # BUILD_PLATFORM LINUX
+ifeq "$(BUILD_PLATFORM)" "DARWIN"
+# Check if running as root
+
+badroot:
+	@echo "You must be running as root for this step."
+	@echo "Please log in as root and try again."
+	@exit 1
+ifneq "$(shell id -u)" "0"
+check_root: badroot
+else
+check_root:
+endif # UID is 0
+else
+checkroot:
+endif # BUILD_PLATFORM DARWIN
+.PHONY: check_root
+
+#-----------------------------------------------------------------------------#
+
+ifneq (,$(USE_NETF1_IP_STACK))
+CFLAGS += -DUSE_NETF1_IP_STACK
+CCFLAGS += -DUSE_NETF1_IP_STACK
+ifneq (,$(USE_NETF1_IP_V6))
+CFLAGS += -DINET6
+CCFLAGS += -DINET6
+endif
+
+.PHONY: $(GLOBAL_INCLUDE_DIR)/netF1Target
+$(GLOBAL_INCLUDE_DIR)/netF1Target:
+	rm -rf $(GLOBAL_INCLUDE_DIR)/netF1Target
+ifneq (ATOM,$(BUILD_TARGET))
+	mkdir -p $(GLOBAL_INCLUDE_DIR)/netF1Target/h
+	# NB: lndir doesn't overwrite existing links, so netF1 goes first
+	lndir -silent $(TL_DIR)/tmsTarget/src/netF1/h $(GLOBAL_INCLUDE_DIR)/netF1Target/h 2>/dev/null
+	lndir -silent $(TL_DIR)/tmsTarget/src/netF1/h/port/vxworks $(GLOBAL_INCLUDE_DIR)/netF1Target/h 2>/dev/null
+	# NB: want newest version of adaptos used by ssecure users
+	mkdir -p $(GLOBAL_INCLUDE_DIR)/netF1Target/h/ssecure
+	mkdir -p $(GLOBAL_INCLUDE_DIR)/netF1Target/h/ssecure/adaptos
+	lndir -silent $(TL_DIR)/tmsTarget/src/netF1/h/adaptos $(GLOBAL_INCLUDE_DIR)/netF1Target/h/ssecure/adaptos 2>/dev/null
+	lndir -silent $(TL_DIR)/tmsTarget/h $(GLOBAL_INCLUDE_DIR)/netF1Target/h 2>/dev/null
+endif
+
+endif

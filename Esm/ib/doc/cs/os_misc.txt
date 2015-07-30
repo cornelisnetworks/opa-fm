@@ -1,0 +1,24 @@
+
+Copyright (c) 2001, VIEO Inc.  All rights reserved.
+
+
+        Use Cases for CS Operating System Specific Miscellaneous Functions
+        ------------------------------------------------------------------
+
+3.  Use Case: cs:vs_time_get:1
+        Returns the current number of microseconds since the epoch.  This
+        function should always return a monotonically non-decreasing value.
+
+    Context of Use:  Any user, kernel, or embedded code may request the
+        current time.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level: Subfunction
+
+    The caller supplies a pointer to a location to receive the time.
+
+    If the time pointer is non-null, the time may be returned.
+
+    If the time is successfully retreived, VSTATUS_OK is returned.  Otherwise
+    an error describing the condition is returned.

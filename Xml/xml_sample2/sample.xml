@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- sample input file for parser -->
+<Config>
+   	<Mode>1</Mode>
+	<LogMask>0xf567</LogMask>
+	<LogMask>0xf568</LogMask>	<!-- if simple tag occurs twice, 2nd is used -->
+	<Extra>67</Extra> <!-- extra tags silently ignored -->
+	<SM>
+			<Instance>0</Instance>
+			<Port>0</Port>
+			<MKey>0x12345</MKey>
+	</SM>
+	<SM instance="1"> <!-- extra attributes silently ignored -->
+			<Instance>1</Instance>
+			<Port>0</Port>
+			<MKey>0x12345</MKey>
+	</SM>
+</Config>

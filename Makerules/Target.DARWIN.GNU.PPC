@@ -1,0 +1,148 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+# Target specific defines for building PPC target using GNU tools
+
+SHLIB_VERSION		?= 0.0
+LIB_PREFIX			= $(BUILDDIR)/lib
+SHLIB_SUFFIX		= .dylib
+SHLIB_VERSION_SUFFIX= .$(SHLIB_VERSION).dylib
+ARLIB_SUFFIX		= .a
+EXE_SUFFIX			= 
+KEXT_SUFFIX			= .kext
+OBJ_SUFFIX			= .o
+EXP_SUFFIX			= .exp
+RES_SUFFIX			= .res
+PRE_SUFFIX			= .pre
+
+# Paths:
+# let compiler default inclusion of /usr/include, otherwise g++ builds broken
+SYS_INCLUDE_DIRS =
+SYS_LIB_DIRS	 =
+
+CC			= /usr/bin/distcc /usr/bin/gcc-3.3
+CCC			= /usr/bin/distcc /usr/bin/gcc-3.3 -x c++
+LD			= ld
+LINT		= lint
+AR			= ar
+NM			= nm
+OBJCOPY		= objcopy
+
+include $(TL_DIR)/Makerules/Defs.GNU
+
+# for GNU we set an soname on shared libraries
+# on MAC it must be a full pathname
+# this is a bit of a HACK since we hardcode the pathname
+SHLIB_SONAME=/usr/lib/$(notdir $(CMD_TARGETS_SHLIB))
+
+# C/C++ compilation
+# ----------------------------
+# no-common - will put globals uninitialized in .bss instead of .common
+# 		hence get link error if multiple declaration
+# -fcheck-new does the opposite of what the manual implies.
+# -fcheck-new DISABLES the run-time test of return value from new
+# TBD - should the following only be for kernel:
+#	-fno-common
+# TBD -mcpu=970
+CMACH		= -Wall -arch ppc -pipe -Wno-trigraphs -fasm-blocks -mtune=G5 -fmessage-length=0 -fpch-preprocess -fno-common -finline -fno-keep-inline-functions -force_cpusubtype_ALL -DCPU_BE -D__PPC__ 
+CCMACH		= $(CMACH) -fcheck-new -Wno-ctor-dtor-privacy -fno-rtti
+CSYS		= -D__DARWIN__ -DAPPLE -DNeXT
+CCSYS		= $(CSYS)
+CCLIBS		=
+release_CCOPT_Flags	=-O2 -fno-strength-reduce
+debug_CCOPT_Flags	= -O0
+release_COPT_Flags	=-O2 -fno-strength-reduce
+debug_COPT_Flags	= -O0
+# Assemble the optimization flags based upon desired build configuration.
+CCOPT		= $($(strip $(BUILD_CONFIG))_CCOPT_Flags)
+COPT		= $($(strip $(BUILD_CONFIG))_COPT_Flags)
+release_CCDEBUG_Flags	= 
+release_CDEBUG_Flags	= 
+debug_CCDEBUG_Flags	=-g -DIB_DEBUG -D_DEBUG -DDEBUG -DIB_TRACE $(CCPROJDEBUG) $(CCLOCALDEBUG) 
+debug_CDEBUG_Flags	=-g -DIB_DEBUG -D_DEBUG -DDEBUG -DIB_TRACE $(CPROJDEBUG) $(CLOCALDEBUG) 
+# Assemble the debug flags based upon desired build configuration.
+CCDEBUG		= $($(strip $(BUILD_CONFIG))_CCDEBUG_Flags)
+CDEBUG		= $($(strip $(BUILD_CONFIG))_CDEBUG_Flags)
+
+# Kernel build settings
+#---------------------------------------------
+# use CKERNEL and KERNEL_INCLUDE_DIRS to augment CLOCAL, LOCAL_INCLUDE_DIRS when
+# building a kernel module
+
+# TBD -fno-strict-aliasing - disables optimizations related to unions/casts
+# -include picks up special kernel version specific flags, this allows portable
+# kernel modules to be built for multiple system types from a single running
+# system
+# TBD keep -g on release builds to aid stack backtraces
+CKERNELOPTS = -fno-exceptions -msoft-float -mlong-branch -fno-builtin -nostdinc -DKERNEL -DKERNEL_PRIVATE -DDRIVER_PRIVATE -D__KERNEL__ -D_KERNEL -static -include $(TL_DIR)/Makerules/DARWIN/$(BUILD_TARGET).$(BUILD_TARGET_OS_VENDOR).$(BUILD_TARGET_OS_VERSION).h
+# omit frame pointer for simple functions
+ifeq "$(BUILD_CONFIG)" "release"
+#CKERNELOPTS+= -Os -fomit-frame-pointer
+CKERNELOPTS+= -O2 -fomit-frame-pointer
+else
+CKERNELOPTS+= -O1
+endif
+CKERNEL = -x c++ -fapple-kext $(CKERNELOPTS)
+
+# Include directories for kernel
+KERNELDIR=/System/Library/Frameworks/Kernel.framework
+KERNEL_INCLUDE_DIRS=$(KERNELDIR)/Headers $(KERNELDIR)/Headers/bsd $(KERNELDIR)/PrivateHeaders /usr/include/g++-3/ke /usr/include/g++-3
+
+# linking
+# ----------------------------
+LDMACH		= -arch ppc
+LDSYS		=
+#MKSHLIB		= $(CCC) $(CCDEBUG) $(COPT) -shared
+#MKSHLIB		= $(LD) -dylib
+MKSHLIB		= $(CC) -dynamiclib -Wl,-prebind_allow_overlap -Wl,-single_module -compatibility_version 1 -current_version 1
+#MKSHLIB		= /usr/bin/libtool -dynamic -prebind -compatibility_version 1 -current_version 1
+#MKSHLIB		= /usr/bin/libtool -dynamic
+ifeq "$(strip $(LIBFILES))" ""
+MKARLIB		= $(AR) crus$(space)
+else
+MKARLIB		= $(MAKETOOLS_DIR)/mkarlib.sh $(AR) crus$(space)
+endif
+MKPARTIAL	= $(LD) -r -o
+#MKMODULE	= /usr/bin/g++-3.3 -arch ppc -static -nostdlib -r -lkmodc++ -lkmod -lcc_kext -o
+MKMODULE	= /usr/bin/g++-3.3 -o
+
+KERNELOPTS	= -arch ppc -static -nostdlib -r -lkmodc++ -lkmod -lcc_kext
+
+SYSLIBS		= -lpthread -lstdc++
+#LDLIBS		= -Xlinker --start-group $(foreach lib,$(LOCALLIBS) $(LOCALDEPLIBS) $(MODLIBS) $(MODDEPLIBS) $(PROJLIBS) $(PROJDEPLIBS),-l$(lib)) -Xlinker --end-group $(SYSLIBS)
+LDLIBS		= $(foreach lib,$(LOCALLIBS) $(LOCALDEPLIBS) $(MODLIBS) $(MODDEPLIBS) $(PROJLIBS) $(PROJDEPLIBS),-l$(lib)) $(SYSLIBS)
+# libraries for partial link of a kernel loadable module
+#KERNELLIBS		= -static -r -Xlinker --start-group -nostdlib -lkmodc++ -lkmod -lcc_kext $(foreach lib,$(LOCALLIBS) $(LOCALDEPLIBS) $(MODLIBS) $(MODDEPLIBS) $(PROJLIBS) $(PROJDEPLIBS),-l$(lib)) -Xlinker --end-group
+KERNELLIBS		= $(KERNELOPTS)
+
+# KEXT creation
+ifeq "$(BUILD_PLATFORM_OS_VENDOR_VERSION)" "10.3"
+PBXCP = "/Developer/Tools/pbxcp"
+else
+PBXCP = "/System/Library/PrivateFrameworks/DevToolsCore.framework/Resources/pbxcp"
+endif

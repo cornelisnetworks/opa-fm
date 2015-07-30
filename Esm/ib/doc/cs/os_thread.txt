@@ -1,0 +1,126 @@
+
+Copyright (c) 2001 - 2002, VIEO Inc.  All rights reserved.
+
+
+        Use Cases for CS Operating System Specific Thread Functions
+        -----------------------------------------------------------
+
+1.  Use Case: cs:vs_thread_create:1 
+        Create a thread in an OS independent manner.
+
+    Context of Use:  Any user, kernel, or embedded code which needs to 
+        spawn a thread of execution.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level: Subfunction 
+
+    The caller supplies an uninitialized thread object to be filled in
+    by the call, a textual name for the thread, the startup function
+    for the thread, a argument count and array of arguments for the
+    startup function, the base address of the stack for this thread,
+    and the stack size.
+   
+    All pointers are validated and if the supplied state and addresses
+    are valid, the thread is created.
+
+    The textual name is not used internally and is only a debug aid.
+    Stack resources must be managed by the caller.
+   
+    If the thread is successfully created, the handle is initialized and 
+    VSTATUS_OK is returned.  Otherwise an error describing the condition is 
+    returned.
+
+2.  Use Case: cs:vs_thread_name:1
+        Returns the current executing threads name.
+
+    Context of Use:  Any user, kernel, or embedded thread which needs an 
+        opaque tag unique to the calling thread.
+   
+    Primary Actor:  Any user, kernel, or embedded thread.
+
+    Level: Subfunction 
+
+    The caller provides a pointer in which to return the thread name
+    identifier of the currently executing thread.  If the pointer is
+    valid, the thread name will be returned.
+
+    If the call succeeds, VSTATUS_OK is returned.  Otherwise an error
+    describing the condition is returned.
+
+4.  Use Case: cs:vs_thread_groupname:1
+        Returns the current executing threads group name.
+
+    Context of Use:  Any user, kernel, or embedded thread which needs an 
+        opaque tag unique to all thread in the same group.
+   
+    Primary Actor:  Any user, kernel, or embedded thread.
+
+    Level: Subfunction 
+
+    The caller provides a the thread name for which the
+    associated group name is desired.  The caller provides a pointer
+    used to return the group name.  The call will return the associated
+    group name, or a well know group name for spaces without group
+    leaders.
+
+    If the call succeeds, VSTATUS_OK is returned.  Otherwise an error
+    describing the condition is returned.
+
+5.  Use Case: cs:vs_thread_kill:1
+        Kills a thread in an OS independent manner.
+
+    Context of Use:  Any user, kernel, or embedded code which needs to kill a
+        previously created thread.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level: Subfunction 
+
+    The caller supplies a pointer to the thread's handle.
+
+    If the thread handle pointer is non-null, the thread may be killed.
+
+    If the thread is successfully killed, VSTATUS_OK is returned.  Otherwise
+    an error describing the condition is returned.
+
+6.  Use Case: cs:vs_thread_exit:1
+        Exit the currently executing thread in an OS independent manner.
+
+    Context of Use:  Any user, kernel, or embedded code which needs to exit
+        a previously created thread.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level: Subfunction 
+
+    The caller supplies a pointer to the thread's handle.
+
+    If the thread handle pointer is non-null and valid, the thread will
+    exit and not return.
+
+    If the thread can not exit,an error describing the condition is 
+    returned.
+
+7.  Use Case: cs:vs_thread_sleep:1
+        Put the currently executing thread to sleep in an OS independent 
+        manner.
+
+    Context of Use:  Any user, kernel, or embedded code which needs to sleep.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level: Subfunction 
+
+    The caller supplies a pointer to value initialized to the number of
+    microseconds to sleep.  It the pointer is non-null and valid,
+    the thread may be put to sleep.
+
+    If the thread is successfully put to sleep, VSTATUS_OK or 
+    VSTATUS_AGAIN will be returned indicating the sleep was
+    prematurely interrupted.  In all cases the actual time of 
+    the sleep is returned to the caller.
+
+    If the thread can not be put to sleep, an error describing the 
+    condition is returned.
+

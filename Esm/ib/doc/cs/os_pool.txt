@@ -1,0 +1,112 @@
+
+Copyright (c) 2001, VIEO Inc.  All rights reserved.
+
+
+        Use Cases for CS Operating System Specific Pool Functions
+        ---------------------------------------------------------
+
+1.  Use Case: cs:vs_pool_create:1 
+        Create a memory pool with the given characteristics.
+
+    Context of Use: Any user, kernel, or embedded code which needs dynamic
+        memory allocation in an operating system independent manner can call
+        this function to create a memory pool.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level: Subfunction
+
+    The caller supplies a pointer to an uninitialized pool handle, a set
+    of characteristics (cached, pinned, page aligned, physically contiguous, 
+    backed by an IO adapter), a pointer to a name, a base address pointer, 
+    and a size.  
+    
+    If the characteristics are valid, the name pointer is not null, the handle
+    pointer is not null and the size is non-zero then the pool may be created.  
+    In VM environments, the base address parameter is ignored; memory segments
+    allocated with the vs_pool_alloc function are allocated from system
+    resources. In environments that don't support VM, a non-zero base address
+    parameter is required; memory segments allocated with the vs_pool_alloc
+    function are allocated from the heap managed by the vs_pool family of 
+    functions.
+    
+    If the pool is successfully created, the handle is initialized and 
+    VSTATUS_OK is returned.  Otherwise an error describing the condition is 
+    returned.
+
+2.  Use Case: cs:vs_pool_delete:1
+        Deletes a previously created memory pool.
+
+    Context of Use: Any user, kernel, or embedded code which no longer needs a
+        previously created memory pool can call this function to release
+        resources associated with the pool.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level:  Subfunction
+
+    The caller supplies a pointer to a previously initialized pool handle.
+
+    If the pool handle pointer is non-null and the pool handle is valid, the 
+    pool may be deleted. The pool will not be deleted if memory segments are
+    still allocated.
+
+    If the pool is successfully deleted, VSTATUS_OK is returned.  Otherwise an
+    error describing the condition is returned.
+
+3.  Use Case: cs:vs_pool_alloc:1
+
+    Context of Use: Any user, kernel, or embedded code which has access to a
+        previously created memory pool can call this function to dynamically
+        allocate memory from the pool.  The memory allocated will have the
+        characteristics which were supplied when the pool was created.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level:  Subfunction
+
+    The caller supplies a pointer to a previously initialized pool handle, a
+    size indicating how many bytes to allocate, and a pointer to a void
+    pointer to accept the base address of the memory allocated.
+
+    If the pool handle and base address location pointers are non-null and the 
+    pool handle is valid, a memory segment at least as large as the specified
+    size may be allocated from the pool.
+
+    If the allocation is successful, VSTATUS_OK is returned.  Otherwise an
+    error describing the condition is returned.
+
+4.  Use Case: cs:vs_pool_free:1
+
+    Context of Use:  Any user, kernel, or embedded code which holds a pointer
+        to memory previously allocated from a pool can return it to the pool
+        by calling this function.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level:  Subfunction
+
+    The caller supplies pointers to the pool handle and the previously
+    allocated buffer.
+
+    If the handle and buffer pointers are non-null and the pool handle is
+    valid, the memory may be returned to the associated pool.
+
+    If the deallocation succeeds, VSTATUS_OK is returned.  Otherwise an error
+    describing the condition is returned.
+
+5.  Use Case: cs:vs_pool_page_size:1
+
+    Context of Use:  Any user, kernel, or embedded code may obtain the native
+        memory page size by calling this function.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level:  Subfunction
+
+    The caller supplies a valid pointer to an unsigned integer and this 
+    function assigns the integer to the size in bytes of a physical memory
+    page.
+
+    If successful, VSTATUS_OK is returned. Otherwise an error describing
+    the condition is returned.

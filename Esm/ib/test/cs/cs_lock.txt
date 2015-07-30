@@ -1,0 +1,567 @@
+
+Copyright (c) 2001-2002, VIEO Inc.  All rights reserved.
+
+
+    Test Cases for CS Operation System Specific Lock Functions
+    ----------------------------------------------------------
+
+
+1.  Test: vs_lock_init:1
+
+    Description: 
+        This test validates the CS OS specific function vs_lock_init()
+
+    Associated Use Case: 
+        cs:vs_lock_init:1
+
+    Valid Runtime Environments: 
+        User, Kernel, embedded
+
+    External Configuration: 
+        None required.
+
+    Preconditions: 
+        None.
+   
+    Notes: 
+        None.
+
+    Test Application: 
+        Linux Kernel Module: ib/src/linux/cs/kernel/lib/tstlock.o
+        Linux User Module: ib/src/linux/cs/usr/bin/tstlock
+        ATI: run from serial screens.
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tstlock.o
+        9.  verify results from log data
+       10.  rmmod tstlock
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tstlock
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "Lock Tests"
+       10.  verify results from log data
+
+    Expected Results: 
+        Program output should indicate that all tests obtained expected results.
+
+    Postconditions:
+        Error log indicates all test cases in the form "vs_lock_init:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description:  Test validation of handle pointer parameter.
+
+        a.  Call fails if the supplied handle pointer is NULL, all other
+            parameters may be valid.  Call should return a VSTATUS_ILLPARM 
+            error code.
+
+    2.  Description:  Test validation of state parameter.
+
+        a.  Call fails if the supplied state parameter is neither VLOCK_LOCKED
+            or VLOCK_FREE.  Call should return a VSTATUS_ILLPARM error code.
+
+    3.  Description:  Test validation of type parameter.
+
+        a.  Call fails if the suppiled state parameter is neither VLOCK_SPIN
+            or VLOCK_THREAD.  Call should return a VSTATUS_ILLPARM error code.
+
+    4.  Description:  Test for successful initialization of a free lock.
+
+        a.  Initialize a lock in the free state.  Call should return a
+            VSTATUS_OK code.
+
+        b.  Create a sequence of threads that will attempt to serially obtain
+            and free the lock.  Verify that the threads begin execution
+            immediately.
+
+        c.  Create a sequence of threads that will attempt to serially obtain
+            the lock.  Verify that only one thread has access to the lock at
+            any given time and that if the lock is currently set, the calling
+            thread will block until the lock is cleared.
+
+    5.  Description:  Test for successful initialization of a locked lock.
+
+        a.  Initialize a lock in the locked state.  Call should return a
+            VSTATUS_OK code.
+
+        b.  Create a sequence of threads that will attempt to serially
+            obtain and free the lock.  Verify that the threads are suspended,
+            while waiting for the lock.  Unlock the lock and verify that the
+            threads begin execution.
+
+
+2.  Test: vs_lock:1
+
+    Description: 
+        This test validates the CS OS specific function vs_lock()
+
+    Associated Use Case: 
+        cs:vs_lock:1  
+
+    Valid Runtime Environments: 
+        User, Kernel, embedded
+
+    External Configuration: 
+        None required.
+
+    Preconditions: 
+        1.  Requires existence of vs_lock_init()
+   
+    Notes: 
+        None.
+
+    Test Application: 
+        Linux Kernel Module: ib/src/linux/cs/kernel/lib/tstlock.o
+        Linux User Module: ib/src/linux/cs/usr/bin/tstlock
+        ATI: run from serial screens.
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tstlock.o
+        9.  verify results from log data
+       10.  rmmod tstlock
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tstlock
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "Lock Tests"
+       10.  verify results from log data
+
+    Expected Results: 
+        Program output should indicate that all tests obtained expected results.
+
+    Postconditions:
+        Error log indicates all test cases in the form "vs_lock:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description:  Test validation of handle pointer parameter.
+
+        a.  Call fails if the supplied handle pointer is NULL.  Call should
+            return a VSTATUS_ILLPARM error code.
+
+    2.  Description:  Verify the ability of a thread to obtain a lock.
+
+        a.  Create a lock in the free state.  Attempt to obtain a lock.
+            Call should return a VSTATUS_OK code.
+
+        b.  Create a sequence of threads that attempt to obtain the lock.
+            Verify that no other threads are able to obtain the lock, until
+            it is freed, and these threads should block until the lock is
+            freed.
+
+    3.  Description:  Verify VSTATUS_AGAIN is returned, if thread making the
+        call is interrupted.
+
+        a.  Create a thread lock initially in the locked state.  Create a
+            sequence of threads that attempt to obtain the lock.  Kill
+            one of the threads waiting on the lock.  Call should return a
+            VSTATUS_AGAIN error code.
+
+        This subtest is only validated in Linux Kernel space.
+
+
+3.  Test: vs_unlock:1
+
+    Description: 
+        This test validates the CS OS specific function vs_unlock()
+
+    Associated Use Case: 
+        cs:vs_unlock:1
+
+    Valid Runtime Environments: 
+        User, Kernel, embedded
+
+    External Configuration: 
+        None required.
+
+    Preconditions: 
+        Requires existence of vs_lock_init() and vs_lock()
+   
+    Notes: 
+        None.
+
+    Test Application: 
+        Linux Kernel Module: ib/src/linux/cs/kernel/lib/tstlock.o
+        Linux User Module: ib/src/linux/cs/usr/bin/tstlock
+        ATI: run from serial screens.
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tstlock.o
+        9.  verify results from log data
+       10.  rmmod tstlock
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tstlock
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "Lock Tests"
+       10.  verify results from log data
+
+    Expected Results: 
+        Program output should indicate that all tests obtained expected results.
+
+    Postconditions:
+        Error log indicates all test cases in the form "vs_unlock:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description:  Test validation of handle pointer parameter.
+
+        a.  Call fails if the supplied handle pointer is NULL.  Call should
+            return a VSTATUS_ILLPARM error code.
+
+    2.  Description:  Verify the ability of a thread to unlock a lock.
+
+        a.  Create a lock in the locked state.  Attempt to free the lock.
+            Call should return a VSTATUS_OK code.
+
+        b.  Create a sequence of threads that attempt to obtain the lock.
+            Verify that the first attempt to obtain the lock should succeed
+            immediately.  The remaining attempts to should block.  Free the
+            lock and verify that one of the waiting threads is woken.
+
+
+4.  Test: vs_lock_delete:1
+
+    Description:
+        This test validates the CS OS specific function vs_lock_delete()
+
+    Associated Use Case:
+        cs:vs_lock_delete:1
+
+    Valid Runtime Environments:
+        User, Kernel, embedded
+
+    External Configuration:
+        None required.
+
+    Preconditions:
+        1.  Requires existence of vs_lock_init()
+
+    Notes:
+        None.
+
+    Test Application:
+        Linux Kernel Module: ib/src/linux/cs/kernel/lib/tstlock.o
+        Linux User Module: ib/src/linux/cs/usr/bin/tstlock
+        ATI: run from serial screens.
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tstlock.o
+        9.  verify results from log data
+       10.  rmmod tstlock
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tstlock
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "Lock Tests"
+       10.  verify results from log data
+
+    Expected Results:
+        Program output should indicate that all tests obtained expected results.
+
+    Postconditions:
+        Error log indicates all test cases in the form "vs_lock_delete:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description:  Test validation of handle pointer parameter.
+
+        a.  Call fails if the supplied handle pointer is NULL.  Call should
+            return a VSTATUS_ILLPARM error code.
+
+    2.  Description:  Verify the ability of a thread to delete a lock.
+
+        a.  Create a lock.  Attempt to delete the lock.  Call should return
+            a VSTATUS_OK code.
+
+        b.  Create a thread lock initially in the locked state.  Create a
+            sequence of threads that attempt to obtain the lock.  Attempt to
+            delete the lock.  Call should return a VSTATUS_OK code.  Other
+            threads waiting for the lock will be woken and passed a return
+            status of VSTATUS_NXIO.
+
+        c.  Create a spin lock initially in the locked state.  Create a
+            sequence of threads that attempt to obtain the lock.  Attempt to
+            delete the lock.  Call should return a VSTATUS_OK code.  Other
+            threads waiting for the lock will be woken and passed a return
+            status of VSTATUS_NXIO.
+
+            This subtest is only validated in Linux User space.
+
+
+5.  Test: vs_spinlock:1
+
+    Description:
+        This test validates the CS OS specific function vs_spinlock()
+
+    Associated Use Case:
+        cs:vs_spinlock:1
+
+    Valid Runtime Environments:
+        User, Kernel, embedded
+
+    External Configuration:
+        None required.
+
+    Preconditions:
+        1.  Requires existence of vs_lock_init()
+
+    Notes:
+        None.
+
+    Test Application:
+        Linux Kernel Module: ib/src/linux/cs/kernel/lib/tstlock.o
+        Linux User Module: ib/src/linux/cs/usr/bin/tstlock
+        ATI: run from serial screens.
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tstlock.o
+        9.  verify results from log data
+       10.  rmmod tstlock
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tstlock
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "Lock Tests"
+       10.  verify results from log data
+
+    Expected Results:
+        Program output should indicate that all tests obtained expected results.
+
+    Postconditions:
+        Error log indicates all test cases in the form "vs_spinlock:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description:  Test validation of handle pointer parameter.
+
+        a.  Call fails if the supplied handle pointer is NULL.  Call should
+            return a VSTATUS_ILLPARM error code.
+
+    2.  Description:  Verify the ability of a thread to obtain a spin lock.
+
+        a.  Create a spin lock in the free state.  Attempt to obtain a spin
+            lock.  Call should return a VSTATUS_OK code.
+
+        b.  Create a spin lock in the free state.  Create a thread that
+            makes two calls to vs_spinlock.  Verify that if the caller owns
+            the spin lock, the second call will return immediately.
+
+        c.  Create a spin lock in the locked state.  Create a sequence of
+            threads that attempt to obtain the lock.  Verify that no other
+            threads are able to obtain the lock, until it is freed, and these
+            threads should block until the lock is freed.
+
+            This subtest is only validated in Linux User space.
+
+6.  Test: vs_spinunlock:1
+
+    Description:
+        This test validates the CS OS specific function vs_spinunlock()
+
+    Associated Use Case:
+        cs:vs_spinunlock:1
+
+    Valid Runtime Environments:
+        User, Kernel, embedded
+
+    External Configuration:
+        None required.
+
+    Preconditions:
+        Requires existence of vs_lock_init() and vs_spinlock()
+
+    Notes:
+        None.
+
+    Test Application:
+        Linux Kernel Module: ib/src/linux/cs/kernel/lib/tstlock.o
+        Linux User Module: ib/src/linux/cs/usr/bin/tstlock
+        ATI: run from serial screens.
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tstlock.o
+        9.  verify results from log data
+       10.  rmmod tstlock
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tstlock
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "Lock Tests"
+       10.  verify results from log data
+
+    Expected Results:
+        Program output should indicate that all tests obtained expected results.
+
+    Postconditions:
+        Error log indicates all test cases in the form "vs_spinunlock:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description:  Test validation of handle pointer parameter.
+
+        a.  Call fails if the supplied handle pointer is NULL.  Call should
+            return a VSTATUS_ILLPARM error code.
+
+    2.  Description:  Verify the ability of a thread to unlock a spin lock.
+
+        a.  Create a spin lock in the locked state.  Attempt to free the lock.
+            Call should return a VSTATUS_OK code.
+
+        b.  Create a spin lock in the free state.  Create a thread that
+            makes 3 calls to vs_spinlock to obtain the lock.  Verify that
+            it takes 3 calls to vs_spinunlock to un-nest the lock.  Verify
+            that another call vs_spinunlock will result in an error code
+            of VSTATUS_NXIO.
+

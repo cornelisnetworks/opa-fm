@@ -1,0 +1,223 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+#=============================================================================#
+# Rules:
+#-----------------------------------------------------------------------------#
+# These rules build a Embedded Firmware image
+
+ifdef TARGET_BSP
+# the start-group and end-group options cause the linker to loop through
+# all the libraries within the given group and resolve symbols until it can do
+# no more.  This avoids the need to have libraries in a specific order on the
+# linker line.  It also nicely handles co-dependent libraries
+
+# BSP's are built with an older version of Cygwin.  It requires Windows style
+# paths for the libraries
+ifeq "$(strip $(EXECUTABLE))" ""
+BSP_TARGETS=
+else
+BSP_TARGETS= $(EXECUTABLE) $(EXECUTABLE).map $(EXECUTABLE).map2
+endif
+
+ifeq "$(strip $(BOOTEXE))" ""
+BOOTEXE= $(EXECUTABLE)
+endif
+
+# default the BSP target if not specified in the Firmware Makefile
+ifeq (,$(BSP_MAKE_TARGET))
+BSP_MAKE_TARGET=vxWorks
+endif
+
+# determine whether or not the build will include a .sym file
+ifeq (vxWorks,$(BSP_MAKE_TARGET))
+BSP_TARGETS += $(EXECUTABLE).sym
+endif
+
+# DEMOHACK - get FCIOU sb1250 bsp to work
+ifeq (FCIOU,$(PRODUCT))
+ifeq (vxWorks.st,$(BSP_MAKE_TARGET))
+BSP_TARGETS += $(EXECUTABLE).sym
+endif
+endif
+
+# add the list of output files to our list
+CMD_TARGETS_MISC += $(BSP_TARGETS)
+
+CT_OBJECTS = $(foreach obj,$(OBJECTS),$(BUILDDIR)/$(obj))
+OBJS = $(CT_OBJECTS)
+TMP_O	= $(BUILDDIR)/tmp.o
+
+include $(TL_DIR)/Makerules/Maketargets.product
+
+ifneq "$(PRODUCT_ALIAS)" ""
+BSP_OPTIONS += PRODUCT_ALIAS=$(PRODUCT_ALIAS)
+endif
+
+$(BSP_TARGETS): $(OBJS) $(DEPLIBS_TARGETS)
+	echo "$(BSP_TARGETS)"
+	echo "$(OBJS)"
+	cd $(TL_DIR)/BSP/$(TARGET_BSP); \
+	echo "$(DEPLIBS_TARGETS)"; \
+	ICS_DEFINES=" $(PRODUCT_DEFINES) $(BSP_DEFINES) " \
+	ICS_LIBS="$(foreach obj,$(OBJS),$(TL_DIR)/$(PROJ_FILE_DIR)/Firmware/$(obj)) $(foreach lib,$(DEPLIBS_TARGETS),$(PROJ_LIB_DIR)/$(lib))" BUILD_ESM=$(BUILD_ESM) make $(BSP_MAKE_TARGET) $(BSP_OPTIONS);    
+	$(NM) --numeric-sort $(TL_DIR)/BSP/$(TARGET_BSP)/$(BSP_MAKE_TARGET) > $(EXECUTABLE).map2  
+	$(NM) --size-sort $(TL_DIR)/BSP/$(TARGET_BSP)/$(BSP_MAKE_TARGET) > $(EXECUTABLE).map3  
+	$(CP) $(TL_DIR)/BSP/$(TARGET_BSP)/$(BSP_MAKE_TARGET) $(EXECUTABLE)   
+	$(CP) $(TL_DIR)/BSP/$(TARGET_BSP)/$(BSP_MAKE_TARGET).map $(EXECUTABLE).map
+ifeq "$(RELEASE_TAG)" ""
+	$(PATCH_ENG_VERSION) $(EXECUTABLE)
+else
+	$(PATCH_VERSION) $(RELEASE_TAG) $(EXECUTABLE)
+endif
+	$(PATCH_BRAND) "$(BUILD_BRAND)" $(EXECUTABLE)
+	
+# DEMOHACK - get FCIOU sb1250 bsp to work
+ifeq (FCIOU,$(PRODUCT))
+ifeq (vxWorks.st,$(BSP_MAKE_TARGET))
+	$(ELFXSYMS) < $(TL_DIR)/BSP/$(TARGET_BSP)/$(BSP_MAKE_TARGET) > $(TL_DIR)/BSP/$(TARGET_BSP)/vxWorks.sym
+	$(CP) $(TL_DIR)/BSP/$(TARGET_BSP)/vxWorks.sym $(EXECUTABLE).sym
+	$(CP) $(TL_DIR)/BSP/$(TARGET_BSP)/$(BSP_MAKE_TARGET) $(TL_DIR)/BSP/$(TARGET_BSP)/vxWorks
+endif
+endif
+ifeq (vxWorks,$(BSP_MAKE_TARGET))
+	$(CP) $(TL_DIR)/BSP/$(TARGET_BSP)/$(BSP_MAKE_TARGET).sym $(EXECUTABLE).sym
+endif
+
+CLEAN::
+	cd $(TL_DIR)/BSP/$(TARGET_BSP); \
+	PATH="$(MIPS_PATH):$(PATH)" BUILD_ESM=$(BUILD_ESM) make clean SSP_NAME=$(PROJECT_SSP); \
+	$(RM) $(RMFORCE) -- --start-group --end-group -Xlinker
+	$(RM) $(RMFORCE) $(BSP_TARGETS)
+
+safeboot advboot:
+# don't checked NETF1 stuff for atom safe boot 
+ifeq "$(BUILD_TARGET)" "ATOM"
+	cd $(TL_DIR) && make clobber; 
+	cd $(TL_DIR) && make NO_NETF1_IP_STACK=TRUE includes; 
+	cd $(TL_DIR) && make BUILD_SAFEBOOT=yes NO_NETF1_IP_STACK=TRUE libs;
+	echo "here atom" $(OBJECTS) " " $(DEPLIBS_TARGETS) 
+	$(MAKE) NO_SSP=1 BUILD_SAFEBOOT=yes DEBUG_CODE="" ADVBOOT 
+else
+ifneq (,$(USE_NETF1_IP_STACK))
+ifeq "$(PRESERVE_BOOT_OBJECTS)" ""
+	cd $(TL_DIR) && make clobber; \
+	cd $(TL_DIR) && make NO_NETF1_IP_STACK=TRUE includes; \
+	cd $(TL_DIR) && make BUILD_SAFEBOOT=yes NO_NETF1_IP_STACK=TRUE libs
+endif
+endif
+	$(MAKE) NO_SSP=1 BUILD_SAFEBOOT=yes DEBUG_CODE="" ADVBOOT 
+endif
+	
+ifeq "$(LAMINATE)" ""
+LAM_SUFFIX=
+else
+LAM_SUFFIX=.$(LAMINATE)
+endif
+ADVBOOT: $(OBJECTS) $(DEPLIBS_TARGETS)
+	echo "OBJECTS is $(OBJECTS)"
+	echo "DEPLIBS is $(DEPLIBS_TARGETS)"
+	cd $(TL_DIR)/BSP/$(TARGET_BSP); \
+	echo "$(DEPLIBS_TARGETS)"; \
+	ICS_DEFINES=" $(PRODUCT_DEFINES) $(BSP_DEFINES) " \
+	ICS_LIBS="$(foreach lib,$(DEPLIBS_TARGETS),$(PROJ_LIB_DIR)/$(lib))" make bootrom.img $(BSP_OPTIONS);
+ifneq "$(BUILDDIR)" ""
+	@ if [ ! -d $(BUILDDIR) ]; then \
+	  mkdir $(BUILDDIR); \
+	fi
+endif
+	$(NM) --numeric-sort $(TL_DIR)/BSP/$(TARGET_BSP)/$(TMP_O) > $(BOOTEXE)$(LAM_SUFFIX).img.map
+	$(CP) $(TL_DIR)/BSP/$(TARGET_BSP)/$(BUILDDIR)/bootrom.img $(BOOTEXE)$(LAM_SUFFIX).img
+ifeq "$(CARD_TYPE)" ""
+	cd $(BUILDDIR);mkbootpkg $(notdir $(BOOTEXE)$(LAM_SUFFIX).img) $(PROJECT_PACKAGE_EXTERNAL_NAME) $(PRODUCT_CODE) $(BSP_CODE) $(TL_DIR)/BSP/$(TARGET_BSP)/$(BUILDDIR)
+else
+
+ifeq "$(BUILD_TARGET)" "MIPS"
+	cd $(BUILDDIR);mkbootpkg $(notdir $(BOOTEXE)$(LAM_SUFFIX).img) $(CARD_TYPE) $(PRODUCT_CODE) $(BSP_CODE) $(TL_DIR)/BSP/$(TARGET_BSP)/$(BUILDDIR)
+else
+ifeq "$(BUILD_TARGET)" "ATOM"
+	$(CP) $(TL_DIR)/BSP/$(TARGET_BSP)/$(BUILDDIR)/bootrom.img $(BOOTEXE)$(LAM_SUFFIX).bootapp
+	$(CP) $(TL_DIR)/BSP/$(TARGET_BSP)/$(BUILDDIR)/vxStage1Boot.bin $(BOOTEXE)$(LAM_SUFFIX).bootrom
+	cd $(BUILDDIR);mkbootpkg $(notdir $(BOOTEXE)$(LAM_SUFFIX).img) $(CARD_TYPE) $(PRODUCT_CODE) $(BSP_CODE) $(TL_DIR)/BSP/$(TARGET_BSP)/$(BUILDDIR)
+else
+	cd $(BUILDDIR);mkbootpkg $(notdir $(BOOTEXE)$(LAM_SUFFIX).img) $(PROJECT_PACKAGE_EXTERNAL_NAME) $(PRODUCT_CODE) $(BSP_CODE) $(TL_DIR)/BSP/$(TARGET_BSP)/$(BUILDDIR)
+endif
+endif
+endif
+
+	
+# The package target only works in the Firmware directory.
+
+ifneq "$(strip $(EXECUTABLE))" ""
+ifeq "$(CARD_TYPE)" ""
+ICS_PACKAGE		= $(BUILDDIR)/$(PROJECT_PACKAGE_EXTERNAL_NAME).$(TARGET_BSP).pkg
+else
+ifeq "$(BUILD_TARGET)" "MIPS"
+ICS_PACKAGE		= $(BUILDDIR)/$(CARD_TYPE).$(TARGET_BSP).pkg
+else
+ifeq "$(BUILD_TARGET)" "ATOM"
+ifeq "$(DEBUG_SIGN)" "no"
+ICS_PACKAGE		= $(BUILDDIR)/$(CARD_TYPE).$(TARGET_BSP).pkg
+else
+ICS_PACKAGE		= $(BUILDDIR)/$(CARD_TYPE).$(TARGET_BSP).spkg
+endif
+else
+ICS_PACKAGE		= $(BUILDDIR)/$(PROJECT_PACKAGE_EXTERNAL_NAME).$(TARGET_BSP).pkg
+endif
+endif
+endif
+CMD_TARGETS_MISC	+= $(ICS_PACKAGE)
+$(ICS_PACKAGE): icspkg
+
+package: $(EXECUTABLE)
+	echo "The package target only works in the Firmware directory."
+	$(CP) $(EXECUTABLE) $(EXECUTABLE).stripped
+	$(STRIP) -S $(EXECUTABLE).stripped
+	$(DEFLATE) < $(EXECUTABLE).stripped > $(EXECUTABLE).Z
+
+icspkg: $(EXECUTABLE)
+	echo "The icspkg target only works in the Firmware directory."
+ifeq "$(CARD_TYPE)" ""
+	mkpkg $(EXECUTABLE) $(PROJECT_PACKAGE_EXTERNAL_NAME) $(TARGET_BSP) $(PRODUCT_CODE) $(BSP_CODE) $(STRIP) $(DEFLATE)
+else
+ifeq "$(BUILD_TARGET)" "MIPS"
+	mkpkg $(EXECUTABLE) $(CARD_TYPE) $(TARGET_BSP) $(PRODUCT_CODE) $(BSP_CODE) $(STRIP) $(DEFLATE)
+else
+ifeq "$(BUILD_TARGET)" "ATOM"
+	mkpkg $(EXECUTABLE) $(CARD_TYPE) $(TARGET_BSP) $(PRODUCT_CODE) $(BSP_CODE) $(STRIP) $(DEFLATE)
+else
+	mkpkg $(EXECUTABLE) $(PROJECT_PACKAGE_EXTERNAL_NAME) $(TARGET_BSP) $(PRODUCT_CODE) $(BSP_CODE) $(STRIP) $(DEFLATE)
+endif
+endif
+endif
+
+endif # EXECUTABLE
+	
+endif # TARGET_BSP
+
+

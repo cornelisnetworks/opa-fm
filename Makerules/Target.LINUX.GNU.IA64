@@ -1,0 +1,151 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+# suffixes and commands to build targets for:
+# BUILD_TARGET_OS=LINUX
+# BUILD_TARGET_TOOLCHAIN=GNU
+# BUILD_TARGET=IA64
+# Target specific defines for building LINUX target using GNU tools
+
+SHLIB_VERSION		?= 0.0
+LIB_PREFIX			= $(BUILDDIR)/lib
+SHLIB_SUFFIX		= .so
+SHLIB_VERSION_SUFFIX= .so.$(SHLIB_VERSION)
+ARLIB_SUFFIX		= .a
+EXE_SUFFIX			= 
+OBJ_SUFFIX			= .o
+ifdef BUILD_26
+KOBJ_SUFFIX			= .ko
+else
+KOBJ_SUFFIX			= .o
+endif
+EXP_SUFFIX			= .exp
+RES_SUFFIX			= .res
+PRE_SUFFIX			= .pre
+
+# Paths:
+# let compiler default inclusion of /usr/include, otherwise g++ builds broken
+SYS_INCLUDE_DIRS =
+SYS_LIB_DIRS	 =
+
+CC			= gcc
+CCC			= g++
+LD			= ld
+LINT			= lint
+AR			= ar
+NM			= nm
+OBJCOPY			= objcopy
+
+include $(TL_DIR)/Makerules/Defs.GNU
+
+# for GNU we set an soname on shared libraries
+SHLIB_SONAME=$(notdir $(CMD_TARGETS_SHLIB))
+
+# C/C++ compilation
+# ----------------------------
+# -fcheck-new does the opposite of what the manual implies.
+# -fcheck-new DISABLES the run-time test of return value from new
+CMACH		= -pipe -DTARGET_CPU_FAMILY_IA64 -Wall -Wno-multichar -Wstrict-prototypes -D__IA64__ -ffixed-r13 -mfixed-range=f10-f15,f32-f127 -DCPU_LE -fno-strict-aliasing
+CCMACH		= $(CMACH) -fcheck-new -Wno-ctor-dtor-privacy
+CSYS		= -DLINUX -Dlinux -D__LINUX__
+CCSYS		= $(CSYS)
+CCLIBS		= 
+release_CCOPT_Flags	=-O2 -funwind-tables -fno-strength-reduce
+debug_CCOPT_Flags	=
+release_COPT_Flags	=-O2 -funwind-tables -fno-strength-reduce
+debug_COPT_Flags	=
+# Assemble the optimization flags based upon desired build configuration.
+CCOPT		= $($(strip $(BUILD_CONFIG))_CCOPT_Flags)
+COPT		= $($(strip $(BUILD_CONFIG))_COPT_Flags)
+release_CCDEBUG_Flags	=
+release_CDEBUG_Flags	=
+debug_CCDEBUG_Flags	=-g -DIB_DEBUG -DIB_TRACE $(CCPROJDEBUG) $(CCLOCALDEBUG)
+debug_CDEBUG_Flags	=-g -DIB_DEBUG -DIB_TRACE $(CPROJDEBUG) $(CLOCALDEBUG)
+# Assemble the debug flags based upon desired build configuration.
+CCDEBUG		= $($(strip $(BUILD_CONFIG))_CCDEBUG_Flags)
+CDEBUG		= $($(strip $(BUILD_CONFIG))_CDEBUG_Flags)
+
+# Kernel build settings
+#---------------------------------------------
+# use CKERNEL and KERNEL_INCLUDE_DIRS to augment CLOCAL, LOCAL_INCLUDE_DIRS when
+# building a kernel module
+
+# strict-aliasing - disables optimizations related to unions/casts
+# no-common - will put globals uninitialized in .bss instead of common
+# 		hence get link error if multiple declaration
+# preferred-stack-boundary=2 -align stack to 2^2 byte boundary,
+#		possible performance penalty for 64 bit data
+# 		TBD, what does kernel use
+# -D_I386_PTRACE_H was a workaround for a ptrace.h header file inclusion issue
+# 		identify where needed and just put in that one makefile
+# -include picks up special flags for SMP and MODVERSIONS, this allows portable
+# kernel modules to be built for multiple system types from a single running
+# system
+ifndef BUILD_26
+
+CKERNEL=-D_KERNEL -D__KERNEL__ -DMODULE -DEXPORT_SYMTAB -fno-strict-aliasing -fno-common
+# omit frame pointer for simple functions
+# take advantage of pentium pro instructions, default is i386 compatible code
+ifeq "$(BUILD_CONFIG)" "release"
+CKERNEL+=-fomit-frame-pointer -O2 -funwind-tables -fno-strength-reduce
+else
+# due to extern inline virt_to_phys in io.h in kernel, we must use at least -O1
+# COPT will follow CLOCAL in CFLAGS, so it can request a different level
+# of optimization if needed
+CKERNEL+=-O1
+endif
+ifeq ($(GCC_MAJOR_VERSION),3)
+CKERNEL+=-frename-registers --param max-inline-insns=5000
+endif
+
+endif
+CKERNEL+=-DLINUX -Dlinux -include $(TL_DIR)/Makerules/LINUX/$(BUILD_TARGET).$(BUILD_TARGET_OS_VENDOR).$(BUILD_TARGET_OS_VERSION).h
+
+# Include directories for kernel
+KERNELDIR=/lib/modules/$(BUILD_TARGET_OS_VERSION)/build
+KERNEL_INCLUDE_DIRS=$(KERNELDIR)/include
+
+# linking
+# ----------------------------
+LDMACH		= 
+LDSYS		=
+MKSHLIB		= $(CCC) $(CCDEBUG) $(COPT) -shared
+ifeq "$(strip $(LIBFILES))" ""
+MKARLIB		= $(AR) crus$(space)
+else
+MKARLIB		= $(MAKETOOLS_DIR)/mkarlib.sh $(AR) crus$(space)
+endif
+MKPARTIAL	= $(LD) -r -o
+MKMODULE	= $(LD) -r -o
+
+LDLIBSRCH	+= $(foreach lib,$(LD_LIB_DIRS),-Xlinker -rpath-link -Xlinker $(lib))
+SYSLIBS		= -lpthread
+LDLIBS		= -Xlinker --start-group $(foreach lib,$(LOCALLIBS) $(LOCALDEPLIBS) $(MODLIBS) $(MODDEPLIBS) $(PROJLIBS) $(PROJDEPLIBS),-l$(lib)) -Xlinker --end-group $(SYSLIBS)
+
+# libraries for partial link of a kernel loadable module
+KERNELLIBS		= 

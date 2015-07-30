@@ -1,0 +1,31 @@
+The .h files in Makerules/DARWIN/ contain defines that key special case handling
+for the various kernels that this source base supports (currently Panther [10.3.x]
+and Tiger [10.4.x]).
+
+When adding new flags please following the following guidelines:
+
+- Make the sense of the flags positive instead of negative so that old files
+  don't need to be changed when a new kernel is added to the build
+- Make the flag specific to API difference
+
+Currently the KERNEL_VERSION flag is not used.
+
+The following flags are currently defined:
+
+CONFIG_PROC_FS - Enables/Disables the "/proc" implementation under Darwin
+HAS_KALLOC - kalloc() is exported for use by the kernel.
+HAS_CPU_NUMBER - cpu_number() is exported for use by the kernel.
+HAS_KERNEL_FUNNEL - kernel funnel is exported for use by the kernel.
+HAS_KERNEL_SOCKETS - kernel sockets are exported for use by the kernel.
+HAS_ENABLE_PREEMPTION - preemption values are exported for getting and setting 
+by the kernel.
+HAS_ABSOLUTETIME - enable if clock calls use AbsoluteTime instead of uint64_t
+HAS_THREAD_DEADLINE - thread_set_timer_deadline() is exported for use by the kernel.
+HAS_NETWORK_LOGGING - indicates whether or not to use the CNetworkInterface class.
+This is a temporary measure until the CNetworkInterface class is ported to Tiger.
+HAS_PANTHER_DEBUGGING - Supports CTrace::BackTrace(), CTrace::PointerCheck()
+HAS_HOSTNAME - kernel exports the _hostname symbol.
+HAS_MEMORY_GLOBALS - kernel exports the _mem_actual symbol.
+HAS_OPAQUE_PROCPTR - struct proc is an opaque data type, use proc_t instead.
+HAS_MBUF_FUNCS - struct mbuf is opaque type, use mbuf_* functions to access
+HAS_IFNET_T - struct ifnet replaced with ifnet_t

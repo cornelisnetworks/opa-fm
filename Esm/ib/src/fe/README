@@ -1,0 +1,3 @@
+The Fabric Executive (FE), this is a protocol translater which allows access
+to SA and PA MADs over TCP/IP.  Hence allowing workstations, such as the
+FM GUI to access the FM without requiring a direct fabric connection

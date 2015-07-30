@@ -1,0 +1,395 @@
+
+Copyright (c) 2001-2002, VIEO Inc.  All rights reserved.
+
+
+           Test Cases for CS Operation System Specific Semaphore Functions
+           ---------------------------------------------------------------
+
+
+1.  Test: cs_sema_create:1
+
+    Description: 
+        This test validates the CS Counting Semaphores function cs_sema_create.
+
+    Associated Use Case: 
+        cs:cs_sema_create:1  
+
+    Valid Runtime Environments: 
+        User, Kernel, embedded
+
+    External Configuration: 
+        None required.
+
+    Preconditions: 
+        1.  Ability to decrement a semaphore.
+        2.  Ability to increment a semaphore.
+
+    Notes: 
+        None.
+
+    Test Application: 
+        Linux Kernel Module: ib/src/linux/cs/kernel/lib/tstsema.o
+        Linux User Module: ib/src/linux/cs/usr/bin/tstsema
+        ATI: run from serial screens.
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tstsema.o
+        9.  verify results from log data
+       10.  rmmod tstsema
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tstsema
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "Semaphore Tests"
+       10.  verify results from log data
+
+    Expected Results: 
+        Program output should indicate that all tests obtained expected results.
+
+    Postconditions:
+        Error log indicates all test cases in the form "cs_sema_create:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of handle pointer parameter.
+
+        a.  Call fails if the supplied handle pointer is NULL, all other
+            parameters may be valid.  Call should return a VSTATUS_ILLPARM 
+            error code.
+
+    2.  Description: Test for successful semaphore creation.
+
+        a.  Create a semaphore with an initial count of 0.  Call should return 
+            a VSTATUS_OK code.
+
+        b.  Create a semaphore with an initial count of 0.  Create a thread
+            which decrements the semaphore.  Verify that the thread is put
+            to sleep.  Increment the semaphore, and verify that the sleeping
+            thread is woken and resumes execution.
+
+        c.  Create a semaphore with an initial count greater than 0.  Call
+            should return a VSTATUS_OK code.
+
+        d.  Create a semaphore with an initial count greater than 0.  Create
+            a thread which repeatedly attempts to decrement the semaphore.
+            Verify that the thread resumes its execution, after decrementing
+            the semaphore, a number of times equal to the initial count of the
+            semaphore.
+
+
+2.  Test: cs_sema_delete:1
+
+    Description:
+        This test validates the CS Counting Semaphores function cs_sema_delete.
+
+    Associated Use Case: 
+        cs:cs_sema_delete:1 
+
+    Valid Runtime Environments: 
+        User, Kernel, embedded
+
+    External Configuration: 
+        None required.
+
+    Preconditions: 
+        1.  Ability to create a semaphore object for use.
+        2.  Ability to decrement a semaphore.
+
+    Notes: 
+        None.
+
+    Test Application:
+        Linux Kernel Module: ib/src/linux/cs/kernel/lib/tstsema.o
+        Linux User Module: ib/src/linux/cs/usr/bin/tstsema
+        ATI: run from serial screens.
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tstsema.o
+        9.  verify results from log data
+       10.  rmmod tstsema
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tstsema
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "Semaphore Tests"
+       10.  verify results from log data
+
+    Expected Results: 
+        Script should pass indicating that all tests obtained expected results.
+
+    Postconditions:
+        Error log indicates all test cases in the form "cs_sema_delete:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of handle pointer parameter.
+
+        a.  Call fails if the supplied handle pointer is NULL, all other
+            parameters may be valid.  Call should return a VSTATUS_ILLPARM 
+            error code.
+
+    2.  Description: Test for successful semaphore deletion.
+
+        a.  Create a semaphore with an initial count of 0.  Attempt to delete
+            the semaphore.  Call should return a VSTATUS_OK code.
+
+        b.  Create a semaphore with an initial count greater than 0.  Attempt
+            to delete the semaphore.  Call should return a VSTATUS_OK code.
+
+        c.  Create a semaphore with an initial count of 0.  Create multiple
+            threads which decrement the semaphore and are put to sleep, while
+            waiting on the semaphore.  Attempt to delete the semaphore.  Call
+            should return a VSTATUS_OK code.  Verify that the threads are
+            woken, when the semaphore is deleted, and are returned a
+            VSTATUS_NXIO code.
+
+
+3.  Test: cs_vsema:1
+
+    Description:
+        This test validates the CS Counting Semaphores function cs_vsema.
+
+    Associated Use Case: 
+        cs:cs_vsema:1
+
+    Valid Runtime Environments: 
+        User, Kernel, embedded
+
+    External Configuration: 
+        None required.
+
+    Preconditions: 
+        1.  Ability to create a semaphore object for use.
+        2.  Ability to decrement a semaphore.
+
+    Notes:
+        None.
+
+    Test Application: 
+        Linux Kernel Module: ib/src/linux/cs/kernel/lib/tstsema.o
+        Linux User Module: ib/src/linux/cs/usr/bin/tstsema
+        ATI: run from serial screens.
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tstsema.o
+        9.  verify results from log data
+       10.  rmmod tstsema
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tstsema
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "Semaphore Tests"
+       10.  verify results from log data
+
+    Expected Results:
+        Script should pass indicating that all tests obtained expected results. 
+
+    Postconditions:
+        Error log indicates all test cases in the form "cs_vsema:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of handle pointer parameter.
+
+        a.  Call fails if the supplied handle pointer is NULL, all other
+            parameters may be valid.  Call should return a VSTATUS_ILLPARM 
+            error code.
+
+    2.  Description: Test for successful semaphore increment.
+
+        a.  Create a semaphore.  Attempt to increment the semaphore.  Call
+            should return a VSTATUS_OK code.  Verify that the call does not
+            block.
+
+        b.  Create a semaphore with an initial count of 0.  Create multiple
+            threads that decrement the semaphore and are put to sleep, while
+            waiting on the semaphore.  Attempt to increment the semaphore.
+            Call should return a VSTATUS_OK code.  Verify that the increment
+            call wakes only one of the sleeping threads, which then resumes
+            execution.
+
+
+4.  Test: cs_psema:1
+
+    Description:
+        This test validates the CS Counting Semaphores function cs_psema.
+
+    Associated Use Case: 
+        cs:cs_psema:1  
+
+    Valid Runtime Environments: 
+        User, Kernel, embedded
+
+    External Configuration: 
+        None required.
+
+    Preconditions: 
+        1.  Ability to create a semaphore object for use.
+        2.  Ability to increment a semaphore.
+
+    Notes: 
+        None.
+
+    Test Application: 
+        Linux Kernel Module: ib/src/linux/cs/kernel/lib/tstsema.o
+        Linux User Module: ib/src/linux/cs/usr/bin/tstsema
+        ATI: run from serial screens.
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tstsema.o
+        9.  verify results from log data
+       10.  rmmod tstsema
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tstsema
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "Semaphore Tests"
+       10.  verify results from log data
+
+    Expected Results: 
+        Script should pass indicating that all tests obtained expected results. 
+
+    Postconditions:
+        Error log indicates all test cases in the form "cs_psema:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of handle pointer parameter.
+
+        a.  Call fails if the supplied handle pointer is NULL, all other
+            parameters may be valid.  Call should return a VSTATUS_ILLPARM 
+            error code.
+
+    2.  Description: Test for successful semaphore decrement.
+
+        a.  Create a semaphore with an initial count greater than 0.  Attempt
+            to decrement the semaphore.  Call should return a VSTATUS_OK code.
+            Verify that the call does not block.
+
+        b.  Create a semaphore with an initial count of 0.  Create multiple
+            threads which attempt to decrement the semaphore.  Verify that the
+            threads are put to sleep.  Verify that each call to increment
+            the semaphore wakes one of the sleeping threads.
+
+        c.  Create a semaphore with an initial count of 0.  Create a thread
+            that increments the semaphore.  Create a second thread that
+            attempts to decrement the semaphore.  Verify that the thread
+            successfully decrements the semaphore and does not block.
+
+        d.  Create a semaphore with an initial count of 1.  Create a thread
+            that decrements the semaphore.  Create a second thread that
+            increments the semaphore.  Create a third thread that attempts to
+            decrement the semaphore.  Verify that the threads successfully
+            decrements the semaphore and do not block.
+
+    3.  Description:  Verify VSTATUS_AGAIN is returned, if thread making the
+        call is interrupted.
+
+        a.  Create a sempahore with an initial count of 0.  Create multiple
+            threads which block, while attempting to decrement the semaphore.
+            Kill one of the threads waiting on the semaphore.  Call should
+            return a VSTATUS_AGAIN error code.
+
+        This subtest is only validated in Linux Kernel space.
+
+

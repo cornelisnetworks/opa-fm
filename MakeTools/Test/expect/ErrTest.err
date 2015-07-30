@@ -1,0 +1,65 @@
+ErrTest.in:10: ERROR: Module Test: Only one Module section is permitted
+ErrTest.in:14: ERROR: Module Again: Only one Module section is permitted
+ErrTest.in:15: ERROR: Module: Name must be an identifier
+ErrTest.in:17: ERROR: Module: Only one Module section is permitted
+ErrTest.in:17: ERROR: Module: Missing Name attribute
+ErrTest.in:18: ERROR: Module: Name must be an identifier
+ErrTest.in:20: ERROR: Module: Only one Module section is permitted
+ErrTest.in:20: ERROR: Module: Missing Name attribute
+ErrTest.in:21: ERROR: Module: Name must be no more than 6 characters
+ErrTest.in:23: ERROR: Module: Only one Module section is permitted
+ErrTest.in:23: ERROR: Module: Missing Name attribute
+ErrTest.in:24: ERROR: Module: Name must be no more than 6 characters
+ErrTest.in:27: ERROR: Module: Only one Module section is permitted
+ErrTest.in:27: ERROR: Module: Missing Name attribute
+ErrTest.in:30: ERROR: Module Good4U: Only one Module section is permitted
+ErrTest.in:32: ERROR: Module AName: Duplicate attribute Name
+ErrTest.in:34: ERROR: Module AName: Only one Module section is permitted
+ErrTest.in:38: ERROR: Module WithUC: Only one Module section is permitted
+ErrTest.in:41: ERROR: Module DupUc: Duplicate attribute Ucname
+ErrTest.in:58: ERROR: Message MIN_MESSAGE: Only one Module section is permitted
+ErrTest.in:58: ERROR: Message MIN_MESSAGE: Duplicate Message definition with Name=MIN_MESSAGE
+ErrTest.in:67: ERROR: Message: Missing Name attribute
+ErrTest.in:68: ERROR: Message: Name must be an uppercase identifier
+ErrTest.in:72: ERROR: Message: Missing Name attribute
+ErrTest.in:73: ERROR: Message: Name must be an uppercase identifier
+ErrTest.in:77: ERROR: Message: Missing Name attribute
+ErrTest.in:78: ERROR: Message: Name must be an uppercase identifier
+ErrTest.in:82: ERROR: Message: Missing Name attribute
+ErrTest.in:90: ERROR: Message MIN_MESSAGE: Duplicate Message definition with Name=MIN_MESSAGE
+ErrTest.in:99: ERROR: Message MULTIPLE_COMMENTS: Duplicate attribute Comment
+ErrTest.in:145: ERROR: Message ARG_7: Arglist must be no more than 6 elements
+ErrTest.in:149: ERROR: Message ARG_7: Missing Arglist (7 args used)
+ErrTest.in:154: ERROR: Message MISSING_ARGS: Missing Arglist (7 args used)
+ErrTest.in:160: WARNING: Message EXTRA_ARGS: Extra arguments (6) for format (5 args used)
+ErrTest.in:166: ERROR: Message INSUFFICIENT_ARGS: Insufficient arguments (4) for format (5 args used)
+ErrTest.in:182: WARNING: Message BAD_ARG_NAMES: No name given for BAD_ARG_NAMES argument 1, defaulting to arg1
+ErrTest.in:182: WARNING: Message BAD_ARG_NAMES: No name given for BAD_ARG_NAMES argument 3, defaulting to arg3
+ErrTest.in:182: WARNING: Message BAD_ARG_NAMES: No name given for BAD_ARG_NAMES argument 4, defaulting to arg4
+ErrTest.in:234: ERROR: Message UNIT_7: Unitarg must be <= 6
+ErrTest.in:245: ERROR: Message UNIT_OUT_OF_LIST: Insufficient arguments (5) for UnitArg (6)
+ErrTest.in:248: ERROR: Message BAD_UNIT_ARG_VAL: Non-integer value six for Unitarg
+ErrTest.in:263: ERROR: Message TRAP_NUM: Trapfunc must be an identifier
+ErrTest.in:269: ERROR: Message TRAP_SPACE: Trapfunc must be an identifier
+ErrTest.in:275: ERROR: Message TRAP_PUNC: Trapfunc must be an identifier
+ErrTest.in:286: WARNING: Message SEV_NONE: Missing Severity attribute
+ErrTest.in:338: ERROR: Message SEV_BAD: Invalid Severity
+ErrTest.in:344: WARNING: Message SEV_BAD: Missing Severity attribute
+ErrTest.in:348: ERROR: Message MISSING_DESCRIPTION: Missing Description attribute
+ErrTest.in:351: ERROR: Message BAD_LANGUAGE: Unknown language 'BORKBORK'
+ErrTest.in:357: ERROR: Message MISSING_LANGUAGE: Missing language
+ErrTest.in:362: ERROR: Message MISSING_LANGUAGE: Missing Description attribute
+ErrTest.in:366: ERROR: Message FMT_1: Format mixes positional and non positional parameters
+ErrTest.in:372: ERROR: Message FMT_2: Format mixes positional and non positional parameters
+ErrTest.in:374: ERROR: Message FMT_2: Insufficient arguments (4) for format (5 args used)
+ErrTest.in:378: ERROR: Message FMT_3: Format mixes positional and non positional parameters
+ErrTest.in:384: ERROR: Message FMT_4: Format mixes positional and non positional parameters
+ErrTest.in:387: ERROR: Message FMT_4: Insufficient arguments (4) for format (5 args used)
+ErrTest.in:401: WARNING: Message FMT_6: Extra arguments (4) for format (3 args used)
+ErrTest.in:404: ERROR: Message FMT_7: Invalid format specifier at "%f""
+ErrTest.in:411: WARNING: Message FMT_8: Repeated flag '#' in format specifier
+ErrTest.in:431: ERROR: Message FMT_11: Multiple positional specifiers '4$' and '.*1$' in format specifier
+ErrTest.in:447: ERROR: String: Missing Name attribute
+ErrTest.in:450: ERROR: String MISSING_STRING: Missing String attribute
+ErrTest.in:455: ERROR: String MAYBE_NOT: Missing String attribute
+ErrTest.in: 8 warnings, 56 errors

@@ -1,0 +1,98 @@
+#!/bin/bash
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+
+# Simple script to setup environment for a build for current OS version/type
+. $ICSBIN/funcs.sh
+settl
+
+. $TL_DIR/MakeTools/funcs-ext.sh
+
+export BUILD_PLATFORM_OS_VENDOR=`os_vendor`
+export BUILD_UNIT_TEST=no
+export BUILD_CONFIG=${BUILD_CONFIG:-release} # can be exported as "debug"
+export BUILD_TARGET_OS_VENDOR=$BUILD_PLATFORM_OS_VENDOR
+if [ `uname -s` == "Darwin" ]
+then
+    export BUILD_PLATFORM=DARWIN
+    export BUILD_TARGET_OS=DARWIN
+    export BUILD_TARGET_TOOLCHAIN=GNU
+    export BUILD_TARGET_OS_VERSION=`sw_vers -productVersion|cut -f1-2 -d.`
+else
+    export BUILD_PLATFORM=LINUX
+    export BUILD_TARGET_OS=LINUX
+    export BUILD_TARGET_TOOLCHAIN=GNU
+    export BUILD_TARGET_OS_VERSION=${BUILD_TARGET_OS_VERSION:-`uname -r`}
+    if [ ${BUILD_TARGET_OS_VERSION:0:3} = '2.6' -o ${BUILD_TARGET_OS_VERSION:0:2} = '3.' ]
+    then
+	    export BUILD_26=1
+    else
+	    unset BUILD_26
+    fi
+fi
+
+case `uname -m` in
+"Power Macintosh")
+	export BUILD_TARGET=PPC
+	;;
+ppc64)
+	export BUILD_TARGET=PPC64
+	;;
+i686|ia32|IA32)
+	export BUILD_TARGET=IA32
+	;;
+ia64|IA64)
+	export BUILD_TARGET=IA64
+	;;
+x86_64|X86_64)
+	chip_vendor=`grep vendor_id /proc/cpuinfo | tail -1 | awk '{print $3}'`
+	BUILD_TARGET=X86_64
+	# should just be redhat and rocks
+	if [ x$BUILD_26 = x -a "$chip_vendor" = "GenuineIntel" ]
+	then
+		BUILD_TARGET=EM64T
+	fi
+	export BUILD_TARGET
+	;;
+*)
+	echo "Unsupported platform: `uname -m`" >&2
+	exit 1
+	;;
+esac
+export BUILD_PLATFORM_OS_VENDOR_VERSION=`os_vendor_version $BUILD_PLATFORM_OS_VENDOR`
+export BUILD_TARGET_OS_VENDOR_VERSION=$BUILD_PLATFORM_OS_VENDOR_VERSION
+set_os_identifier
+if [ -e Version ]
+then
+	export RELEASE_TAG=`cat Version`G
+fi
+export BUILD_ULPS=${BUILD_ULPS:-all}
+export BUILD_SKIP_ULPS=${BUILD_SKIP_ULPS:-none}
+
+showenv

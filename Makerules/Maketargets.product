@@ -1,0 +1,123 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+#=============================================================================#
+# Rules:
+#-----------------------------------------------------------------------------#
+# These rules define product flags for embedded firmware images
+
+ifeq "$(PRODUCT)" ""
+PROJECT_PACKAGE_EXTERNAL_NAME	= Unknown
+endif
+
+ifeq "$(TARGET_BSP)" "capemay"
+BSP_CODE	= 1
+endif
+ifeq "$(TARGET_BSP)" "FCIOU_1XD2G"
+BSP_CODE	= 2
+endif
+ifeq "$(TARGET_BSP)" "sw_aux"
+BSP_CODE	= 3
+endif
+ifeq "$(TARGET_BSP)" "sb1250"
+BSP_CODE	= 4
+endif
+ifeq "$(TARGET_BSP)" "gt64120a"
+BSP_CODE	= 5
+endif
+ifeq "$(TARGET_BSP)" "gt64240"
+BSP_CODE	= 6
+endif
+ifeq "$(TARGET_BSP)" "pcix"
+BSP_CODE	= 7
+endif
+ifeq "$(TARGET_BSP)" "4131_rh"
+BSP_CODE	= 8
+endif
+ifeq "$(TARGET_BSP)" "mc1125"
+BSP_CODE	= 9
+endif
+ifeq "$(TARGET_BSP)" "t3"
+BSP_CODE	= 10
+endif
+ifeq "$(TARGET_BSP)" "vio"
+BSP_CODE	= 11
+endif
+ifeq "$(TARGET_BSP)" "bc2"
+BSP_CODE	= 12
+endif
+ifeq "$(TARGET_BSP)" "xt3"
+BSP_CODE	= 13
+endif
+ifeq "$(TARGET_BSP)" "n450"
+BSP_CODE	= 14
+endif
+ifeq "$(TARGET_BSP)" "q7"
+BSP_CODE	= 15
+endif
+ifeq "$(TARGET_BSP)" ""
+BSP_CODE	= 0
+endif
+
+PRODUCT_DEFINES = -DICS_FIRMWARE 
+PRODUCT_DEFINES += -DPRODUCT_NAME="$(PROJECT_PACKAGE_EXTERNAL_NAME)" -DPRODUCT_$(PRODUCT) -DPRODUCT_CODE=$(PRODUCT_CODE)
+PRODUCT_DEFINES += -DBSP_$(TARGET_BSP_UPCASE) -DBSP_NAME="$(TARGET_BSP)" -DBSP_CODE=$(BSP_CODE)
+ifneq "$(VXWORKS_REV)" ""
+PRODUCT_DEFINES += -DVXWORKS_REV=$(VXWORKS_REV)
+endif
+ifneq "$(VXWORKS_REV_6_9)" ""
+PRODUCT_DEFINES += -DVXWORKS_REV_6_9=$(VXWORKS_REV_6_9)
+endif
+ifneq "$(STL_GEN)" ""
+PRODUCT_DEFINES += -DSTL_GEN=$(STL_GEN)
+endif
+ifeq "$(CHECK_HEADERS)" "yes"
+PRODUCT_DEFINES += -DCHECK_HEADERS
+endif
+ifeq "$(BUILD_DMC)" "yes"
+PRODUCT_DEFINES += -DBUILD_DMC
+endif
+ifeq "$(BUILD_BMA)" "yes"
+PRODUCT_DEFINES += -DBUILD_BMA
+endif
+ifeq "$(BUILD_CM)" "yes"
+PRODUCT_DEFINES += -DBUILD_CM
+endif
+ifeq "$(BUILD_DISCOVERY)" "yes"
+PRODUCT_DEFINES += -DBUILD_DISCOVERY
+endif
+ifeq "$(FAKE_PRR_ON_PCI)" "yes"
+PRODUCT_DEFINES += -DFAKE_PRR_ON_PCI
+endif
+BSP_DEFINES += -DP_NAME=\\\"$(PROJECT_PACKAGE_EXTERNAL_NAME)\\\" -DB_NAME=\\\"$(TARGET_BSP)\\\"
+
+ifneq "$(PRODUCT_ALIAS)" ""
+PRODUCT_DEFINES += -DALIAS_$(PRODUCT_ALIAS) -D$(PRODUCT_ALIAS)
+endif
+
+.DELETE_ON_ERROR:

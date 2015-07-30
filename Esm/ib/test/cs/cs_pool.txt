@@ -1,0 +1,575 @@
+
+Copyright (c) 2001, VIEO Inc.  All rights reserved.
+
+
+           Test Cases for CS Operating System Specific Pool Functions
+           ----------------------------------------------------------
+
+
+1.  Test: cs:vs_pool_create:1
+
+    Description: 
+        This test validates the CS OS specific function vs_pool_create()
+
+    Associated Use Case: 
+        cs:vs_pool_create:1  
+
+    Valid Runtime Environments: 
+        User, Kernel, embedded
+
+    External Configuration: 
+        None required.
+
+    Preconditions: 
+        None.
+   
+    Notes: 
+        1. This call is not valid in interrupt context.  The test code
+           will adjust the expected return code to be VSTATUS_NOPRIV
+           for all attempts to execute the call in interrupt context.
+
+    Test Application: 
+       ib/src/cs/test/pool
+
+    Procedure: 
+        1.  Run the test application.
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "Pool Tests"
+       10.  verify results from log data
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  ./calu_load
+        6.  cd image/vieo_fm/bin
+        7.  ./vslogdr -f scr -d 0xFFFFFFFF
+        8.  cd ib/src/linux/cs/kernel/lib/
+        9.  insmod tstpool.o
+       10.  verify results from log data
+       11.  rmmod tstpool
+
+    Expected Results: 
+        Test application should run indicating that all tests obtained 
+        expected results.  
+    
+    Postconditions:
+        Error log indicates all test cases in the form "vs_pool_create:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of handle pointer parameter.
+
+        a.  Call fails if the supplied handle pointer is NULL, all other
+            parameters may be valid.  Call should return a VSTATUS_ILLPARM 
+            error code.
+
+    2.  Description: Test validation of option parameter.
+                     The following parameters will be used in the 
+                     other fields for all tests:
+                       handle:  Valid handle
+                       name:    "tst_pool"
+                       address: NULL
+                       size:    From vs_pool_page_size()
+                     Failures will cause an additional line of test
+                     output to describe the exact failure cause.  The failure
+                     message will be written once per-test, but many lines 
+                     of exact failure descriptions may be written.
+
+        a.  Call succeeds with all permutations of the following options:
+              VMEM_PAGE
+            Call should return VSTATUS_OK.  Verify that the pool is created
+            by attempting to allocate 'size' memory from it.  In all
+            permutations the allocation should
+            succeed with VSTATUS_OK.
+        b.  Call fails with any other option bit set.  The call will be
+            made with each invalid bit set individually, all invalid bits
+            set together, and all bits (invalid+valid) set.  In all cases
+            the call should return VSTATUS_ILLPARM
+
+                     The following tests will be setup with option=VMEM_PAGE
+                     and various combinations of address and size.
+
+         c. Test for failure with address=NULL, 0<size<vs_pool_size.  The
+            return code should be VSTATUS_NOMEM.
+         d. Test for failure with address=<any>, 0<size<vs_pool_size.  The
+            return code should be VSTATUS_NOMEM
+         e. Test for failure with address=<non-page aligned address>,
+            0<size<2*vs_pool_size.  The return code should be VSTATUS_NOMEM.
+         f. Create a valid memory pool with address=NULL, size=vs_pool_size.  
+            Call should return VSTATUS_OK.  Verify that pool was correctly 
+            creating by allocating vs_pool_size() bytes from it.  The 
+            address returned should be page aligned.
+                  
+    3.  Description: Test validation of pagesize parameter.
+
+        a.  Call fails if the supplied pagesize is zero, all other 
+            parameters may be valid. Call should return a VSTATUS_BADPAGESIZE
+            error code.
+
+        b.  Call fails if the supplied pagesize is not supported by 
+            the vs_pool_page_size() result, all other parameters may
+            be valid. Call should return a VSTATUS_BADPAGESIZE error code.
+
+        c.  Call fails if the supplied pagesize specifies more than one
+            power-of-two pagesize, all other parameters may be valid.
+            Call should return a VSTATUS_BADPAGESIZE error code. 
+            
+    4.  Description: Test validation of name parameter.
+
+        a.  Call fails if the supplied name parameter is NULL, all other
+            parameters may be valid.  Call should return a VSTATUS_ILLPARM
+            error code.
+        b.  Call fails if supplied name is too long (> VS_NAME_MAX).  All
+            other parameters may be valid.   Call should return 
+            VSTATUS_ILLPARM.
+
+    5.  Description: Test validation of address pointer parameter.
+        The following parameters will be used in the other fields for
+        all tests:
+          handle:  Valid handle
+          options: 0
+          name:    "test_pool"
+          size:    1
+
+        a.  Create a valid memory pool with NULL.  Call should return
+            VSTATUS_OK.  Verify that the pool is created by attempting
+            to allocate memory (1 byte) from it.
+        b.  Create a valid memory pool with non-NULL.  Call should
+            return VSTATUS_OK.  Verify that the pool is created by 
+            allocating memory from it.  Verify that the address of the
+            allocated memory is the same as the non-NULL parameter.
+
+
+    6.  Description: Test validation of size parameter.
+
+        a.  Call fails if the supplied size parameter is zero, all other
+            parameters may be valid.  Call should return a VSTATUS_ILLPARM
+            error code.
+        b.  Call fails if 'address pointer' is NULL and size is greater 
+            than the memory available (0xfffffff0).  Call should return
+            a VSTATUS_NOMEM error code.
+        c.  Create an invalid memory pool with a non-NULL 'address
+            pointer' and a length that is too long (0xfffffff0).  Call
+            should return VSTATUS_ILLPARM.  If there is no easy 
+            operating environment way to validate the size parameter,
+            this test may be skipped.
+
+    7.  Description: Test for successful pool creation.
+
+        a.  Create a valid memory pool with a non-NULL 'address pointer'
+            and a valid size.  Call should return a VSTATUS_OK code.
+            Verify that the pool is created by attempting to allocate
+            memory from it.
+        b.  Create a valid memory pool with NULL 'address pointer'
+            and the rest of the parameters valid.  Call should return
+            VSTATUS_OK code.  Verify that the pool is created by attempting
+            to allocate memory from it.
+
+2.  Test: cs:vs_pool_alloc:1
+
+    Description: 
+        This test validates the CS OS specific function vs_pool_alloc().
+
+    Associated Use Case: 
+        cs:vs_pool_alloc:1  
+
+    Valid Runtime Environments: 
+        User, Kernel, embedded
+
+    External Configuration: 
+        None required.
+
+    Preconditions: 
+        1.  Previously created memory pools are required to perform this
+            test.  All tests will be run for each pool.  All pools are
+            explicitly allocated.  The following values are tried for
+            each allocation:
+              a. start_address
+                   - page aligned
+                   - not page aligned
+              b. size
+                   - page_size-1
+                   - page_size
+                   - 2*page_size-1
+                   - 2*page_size
+                   - 2*page_size+1
+              c. options
+                   - None
+                   - VMEM_PAGE
+            All pools (2x5x2 or 20) are preallocated.  Each test runs
+            against all pools.
+            
+            start_address = page aligned; size = page_size -1; 
+              options = VMEM_PAGE is an invalid POOL configuration.
+
+            start_address = not page aligned; size = page_size -1; 
+              options = VMEM_PAGE is an invalid POOL configuration.
+
+            start_address = not page aligned; size = page_size; 
+              options = VMEM_PAGE is an invalid POOL configuration.
+
+            start_address = not page aligned; size = 2*page_size-1; 
+              options = VMEM_PAGE is an invalid POOL configuration.
+
+    Notes: 
+        1. Problems that show up in other interfaces (vs_pool_create,
+           vs_pool_free, and vs_pool_delete) will be logged and a
+           description of which interface failed will be given.
+
+    Test Application: 
+       ib/src/cs/test/pool
+
+    Procedure: 
+        1.  Run the test application.
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "Pool Tests"
+       10.  verify results from log data
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  ./calu_load
+        6.  cd image/vieo_fm/bin
+        7.  ./vslogdr -f scr -d 0xFFFFFFFF
+        8.  cd ib/src/linux/cs/kernel/lib/
+        9.  insmod tstpool.o
+       10.  verify results from log data
+       11.  rmmod tstpool
+
+    Expected Results: 
+        Test application should run indicating that all tests obtained 
+        expected results.  
+    
+    Postconditions:
+        Error log indicates all test cases in the form "vs_pool_alloc:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of handle pointer parameter.
+
+        a.  Call fails if the supplied handle pointer is NULL, all other
+            parameters may be valid.  Call should return a VSTATUS_ILLPARM 
+            error code.
+
+    2.  Description: Test validation of loc pointer parameter.
+
+        a.  Call fails if the supplied loc pointer is NULL, all other
+            parameters may be valid.  Call should return a VSTATUS_ILLPARM
+            error code.
+
+    3.  Description: Test validation of size parameter.
+
+        a.  Call fails if the supplied size is zero, all other
+            parameters may be valid.  Call should return a VSTATUS_ILLPARM
+            error code.
+
+    4.  Description: Test ability to allocate memory from a pool.
+                     These tests will run against all pools in the
+                     preconditions section.  In each case, we will
+                     calculate the expected return code for each of
+                     the following tests:
+
+        a.  Allocate memory of size 1 from pool.
+        b.  Allocate memory of size 1 from pool until an error 
+            occurs.  If option != VMEM_PAGE, then this should
+            succeed (if we expect it to succeed) more than once.
+        c.  Allocate memory of size page_size-1
+        d.  Allocate memory of size page_size
+        e.  Allocate memory of size page_size+1
+        f.  Allocate memory of size 'size' -1
+        g.  Allocate memory of size 'size'
+        h.  Allocate memory of size 'size' +1
+
+    5.  Description: Multiple allocations with VMEM_PAGE option.
+
+        a.  Create a Pool with size = 32K bytes. Allocate 3-400byte
+            segments and verify page alignment; release all segments.
+            Allocate 3-3000byte segments and verify page alignment; 
+            release all segments. All operations should complete with
+            VSTATUS_OK.
+
+3.  Test: cs:vs_pool_free:1
+
+    Description: 
+        This test validates the CS OS specific function vs_pool_free().
+
+    Associated Use Case: 
+        cs:vs_pool_free:1  
+
+    Valid Runtime Environments: 
+        User, Kernel, embedded
+
+    External Configuration: 
+        None required.
+
+    Preconditions: 
+        1.  A previously created memory pool is required to perform this test.
+        2.  A previously allocated memory buffer from the pool mentioned in
+            the above condition is required to perform this test.
+   
+    Notes: 
+        1. Most of the vs_pool_free testing will have been done in test 2,
+           the vs_pool_alloc tests.  These tests are for boundary cases.
+
+    Test Application: 
+       ib/src/cs/test/pool
+
+    Procedure: 
+        1.  Run the test application.
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "Pool Tests"
+       10.  verify results from log data
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  ./calu_load
+        6.  cd image/vieo_fm/bin
+        7.  ./vslogdr -f scr -d 0xFFFFFFFF
+        8.  cd ib/src/linux/cs/kernel/lib/
+        9.  insmod tstpool.o
+       10.  verify results from log data
+       11.  rmmod tstpool
+
+    Expected Results: 
+        Test application should run indicating that all tests obtained 
+        expected results.  
+    
+    Postconditions:
+        Error log indicates all test cases in the form "vs_pool_free:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of handle pointer parameter.
+
+        a.  Call fails if the supplied handle pointer is NULL, all other
+            parameters may be valid.  Call should return a VSTATUS_ILLPARM 
+            error code.
+
+    2.  Description: Test validation of buffer pointer parameter.
+
+        a.  Call fails if the supplied buffer pointer is NULL, all other
+            parameters may be valid.  Call should return a VSTATUS_ILLPARM
+            error code.
+
+    3.  Description: Test ability to successfully free memory from a pool.
+        
+        a.  Attempt to free the memory already allocated from the pool.  Call 
+            should return a VSTATUS_OK value and the associated buffer should
+            be returned to the pool.
+
+    4. Description: Test ability to detect a wild pointer.
+
+        a.  Call fails if the supplied buffer pointer points to the
+            handle.  Call should return VSTATUS_NXIO.
+
+        b.  Call fails if the buffer has already been freed.  Call should
+            return VSTATUS_NXIO.
+
+        c.  Call fails if buffer points to the first byte of the pool,
+            and that address has not been returned by a vs_pool_alloc 
+            call.  Call should return VSTATUS_NXIO.
+
+        d.  Call fails if the supplied buffer pointer is within pool
+            bounds but not the pointer returned by vs_pool_alloc.
+            Call should return a VSTATUS_NXIO error code.
+
+4.  Test: cs:vs_pool_delete:1
+
+    Description: 
+        This test validates the CS OS specific function vs_pool_delete().
+
+    Associated Use Case: 
+        cs:vs_pool_delete:1  
+
+    Valid Runtime Environments: 
+        User, Kernel, embedded
+
+    External Configuration: 
+        None required.
+
+    Preconditions: 
+        1.  A previously created memory pool is required to perform this test.
+   
+    Notes: 
+        1. Problems that show up in other interfaces (vs_pool_create,
+           vs_pool_free, and vs_pool_alloc) will be logged and a
+           description of which interface failed will be given.
+
+    Test Application: 
+       ib/src/cs/test/pool
+
+    Procedure: 
+        1.  Run the test application.
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "Pool Tests"
+       10.  verify results from log data
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  ./calu_load
+        6.  cd image/vieo_fm/bin
+        7.  ./vslogdr -f scr -d 0xFFFFFFFF
+        8.  cd ib/src/linux/cs/kernel/lib/
+        9.  insmod tstpool.o
+       10.  verify results from log data
+       11.  rmmod tstpool
+
+    Expected Results: 
+        Test application should run indicating that all tests obtained 
+        expected results.  
+    
+    Postconditions:
+        Error log indicates all test cases in the form "vs_pool_delete:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of handle pointer parameter.
+
+        a.  Call fails if the supplied handle pointer is NULL, all other
+            parameters may be valid.  Call should return a VSTATUS_ILLPARM 
+            error code.
+
+    2.  Description: Test ability to successfully delete memory pool.
+        
+        a.  Attempt to delete the memory pool.  Call should return a 
+            VSTATUS_OK value and the associated pool should be deleted.
+
+    3. Description: Test delete with active allocation.
+
+        a.  Attempt to delete a memory pool that has active allocations
+            from it.  Call should return VSTATUS_OK.
+
+
+5.  Test: cs:vs_pool_page_size:1
+
+    Description: 
+        This test validates the CS OS specific function vs_pool_page_size().
+
+    Associated Use Case: 
+        cs:vs_pool_page_size:1
+
+    Valid Runtime Environments: 
+        User, Kernel, embedded
+
+    External Configuration: 
+        None required.
+
+    Preconditions: 
+        None.
+   
+    Notes: 
+        None.
+
+    Linux User-space Test Application: 
+          `GetBuildRoot`/ib/src/linux/cs/usr/bin/tstpool
+    Linux Kernel-space Test Application: 
+          `GetBuildRoot`/ib/src/linux/cs/kernel/lib/tstpool.o
+       
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  ./calu_load
+        6.  cd image/vieo_fm/bin
+        7.  ./vslogdr -f scr -d 0xFFFFFFFF
+        8.  cd ib/src/linux/cs/kernel/lib/
+        9.  insmod tstpool.o
+       10.  verify results from log data
+       11.  rmmod tstpool
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  ./calu_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tstpool
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "Pool Tests"
+       10.  verify results from log data
+
+    Expected Results: 
+        Test application should run indicating that all tests obtained 
+        expected results.  
+    
+    Postconditions:
+        Error log indicates all test cases in the form "vs_pool_page_size:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test ability to successfully obtain page size.
+        
+        a.  The call outputs the page size.
+
+        b.  Verify that page size is an integral multiple of two.  Count
+            the number of 1 bits in the returned page size and this
+            test succeeds if that count is 1.
+
+        c.  Verify that the page size is reasonable.  Verify that the
+            page size is more than 256.

@@ -1,0 +1,37 @@
+MAD message passing interface used by the FM
+
+
+This directory contains the management API code.  The prefix for this code
+is 'mai_'.  The following files exist:
+
+
+mai.c
+  Contains code to implement all of the management API functions.  Also has
+a large number of internal utility routines.  This module contains all the
+static data.
+
+
+maif.c
+  Holds all the code that understands the exact semantics of filters.  It is
+used only by other management API code.
+
+
+maic.c
+  Holds functions that convert between endian and wordsize opaque binary
+data streams and the Mai_t and Filter_t structures used by the mai
+subsystem.  These 'helper' routines are available to the ib_send_sma
+and ib_recv_sma implementations that cross such boundaries.
+
+
+mai_l.h
+  Holds structure definitions and function prototypes for internal use only
+items.
+
+
+../include/mai_g.h
+  Holds data structure definitions, defines, and function prototypes for 
+all the code that can be used by external agents and managers.
+
+../include/cs_g.h
+  Contains the structure definition Mai_t used by both clients of the
+management API and common services routines that send and receive MADs.

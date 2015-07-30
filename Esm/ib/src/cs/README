@@ -1,0 +1,5 @@
+Component Services and OS obstraction for FM
+
+This library is supported by code in vxworks or ibaccess trees to
+complete the OS specific aspects of the OS abstraction.
+Some OS independent utility data structures are also provided here.

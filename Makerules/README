@@ -1,0 +1,447 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+
+# This directory contains makerules files.  These files control the compiler and
+# linker flags and provide mechanisms for individual makefiles to augment the
+# defaults as needed
+
+## Global Make Settings File
+## ----------------------
+## All project makesettings files (or local makefiles not associated with a
+## specific project) should include this file
+## before the local definitions section.
+## This file allows setting variables which can be used by Makefiles to make
+## decisions on which targets or DIRS to build.  This allows such controls
+## to be placed here as opposed to extending the build system environment
+## variable tools like setenv, target, etc.
+##
+## Global Make Rules File
+## ----------------------
+## All project makerules files (or local makefiles not associated with a
+## specific project) should include this file
+## after the local definitions section and before the local rules section.  The
+## function of the global makerules file is to define the system applications,
+## standardized make targets (rules) and commonly used variables and structure.
+## The makefile is coded so that it is platform independent.  Specifics to a
+## given platform are taken care of in 'ifdef' type statements so that the
+## makefile can be used on all platforms with little or no modification.  Any
+## modifications to the source should be made with portability in mind and
+## should follow the embedded notations.
+##
+## More information about the
+## execution of the makefile can be had by specifying the -d option on the
+## command line to make.
+##
+## NOTE: This makerules file (as well as the project makerules and the template
+##       makefiles) depend on using the GNU version of make.  GNU make 
+##		 (which is included in cygwin) must be
+##       installed on your system prior to using this makefile.
+#=============================================================================#
+##
+#=============================================================================#
+## The following list is the standard list of definitions which will be defined
+## or are used in other variable definitions or rules in this makerules file.
+## Each global variable name is listed with a definition of the purpose and
+## intended use.  Defaults for items are shown in brackets, and may be
+## overridden by the user in a local makefile or project makerules file.  If
+## no default is shown, the user can use the variable, but should not change
+## the value.
+##
+## Make Control Variables:
+##AUTODEP	= environment defined to enable/disable makedepend during
+##			  make all phase of build (default is yes, set to no to
+##			  disable makedepend)
+##BUILD_CONFIG= Type of build to do: debug or release or loadable [debug]
+##				Debug release includes CDEBUG/CCDEBUG flags and does not use
+##				COPT/CCOPT.  Non-debug omits CDEBUG/CCDEBUG and uses COPT/CCOPT
+##				loadable is only allowed for MIPS/VxWorks builds.  This does:
+##					Libraries build to .rel files which have all objects in
+##					Only SYSLIBS in included in link
+##					Firmware/BSP is built with .rel files, BSP has all symbols
+##					Hence Unit Tests can be built to a .out and downloaded
+##					against a full firmware which was built as loadable as well
+##					loadable builds define -DBUILD_LOADABLE so initialization
+##					code for system libraries can be disabled in unit tests
+##BUILD_PLATFORM= system build is running on (DOS, CYGWIN, LINUX, or DARWIN)
+##				determined dynamically in this file if not pre-defined
+##BUILD_TARGET= Target for build (MIPS, MIPS_BSP, IA32, IA64, X86_64, WIN32, CYGWIN, PPC)
+##BUILD_UNIT_TEST= should build of UNIT_TEST directories be enabled (!="" or "")
+##			when set to != "", the variable $(TEST) is defined as Test
+##			when set to "" $(TEST) is set to ""
+##			$(TEST) should be used in DIRS and DS_SUBPROJECTS to select
+##			unit test directories
+##MAKE		= System make application
+##MAKEFILE	= Name of makefile [Makefile]
+##BUILD_TARGET_OS= OS to build for (VXWORKS, LINUX, WIN32, CYGWIN, DARWIN)
+##BUILD_TARGET_OS_VERSION= version of OS to build for (2.4.7-10, etc).
+##BUILD_BRAND= branding for product, default is "SilverStorm Technologies Inc."
+##REGISTER	= Enable Registration, set to "#" to disable registration of
+##				Windows DLLs and applications built (Windows Only)
+##VS		= Visible shell commands [""], set to "" to see more
+## 			  set to "@" to see less
+##
+## Make Targets and Byproducts:
+##PRODUCT	= actual product name, used in BSPs and other common code
+##				as needed to create a product specific flavor
+##				created as basename of TL_DIR
+##DIRS		= list of subdirectories to build (for toplevel & middle makefiles)
+##BSP_SPECIFIC_DIRS	= list of subdirectories to clobber when rebuilding
+##				for a different BSP
+##CFILES	= list of C source files to compile (.c suffix)
+##CCFILES	= list of C++ source files to compile (.cpp suffix)
+##LFILES	= list of lex source files to compiler (.lex suffix)
+##LIBFILES	= list of library names to combine into archive/shlib built
+##IDLFILE	= idl source file (.idl suffix) (Windows Only)
+##IDL_TARGETS = files to build from IDLFILE during INCLUDES phase (Windows Only)
+##IDL_HEADERS = .h files to build from IDLFILE during INCLUDES phase
+##					 (Windows Only)
+##IDL_OTHER = .c and .tlb  files to build from IDLFILE during INCLUDES phase
+##					 (Windows Only)
+##RSCFILES	= list of resource source files (.rc suffix) (Windows Only)
+##SOURCES	= list of source files, used to drive dependency generation
+##OBJECTS	= Intermediate object file names [Not Defined]
+##ARLIBS	= Intermediate archive libraries to combine in archive and
+##			shared library targets
+##INCLUDE_TARGETS = include files to install (not clobbered)
+##LIB_TARGETS_IMPLIB = import libraries built during libs phase
+##LIB_TARGETS_ARLIB	= archive libraries built during libs phase
+##LIB_TARGETS_EXP= .exp file built during libs phase (Windows Only)
+##LIB_TARGETS_MISC= Miscellaneous targets built during libs phase
+##LIB_TARGETS = complete set of targets built during libs phase
+##CMD_TARGETS_SHLIB	= shared libraries built during cmds phase
+##CMD_TARGETS_EXE	= executables built during cmds phase
+##CMD_TARGETS_DRIVER= Device Drivers built during cmds phase
+##					can also be a partial link of a device driver
+##					(LINUX and DARWIN only)
+##CMD_TARGETS_KEXT= Final IOKit packaged Kernel Extension built during cmds
+##					phase and packaged using CMD_TARGETS_DRIVER (DARWIN only)
+##CMD_TARGETS_MISC= Miscellaneous targets built during cmds phase
+##CMD_TARGETS = complete set of targets built during cmds phase
+##EXECUTABLE= executable to be run when testing/debugging [Not Defined]
+##MISC_FILES= Miscellaneous files not-build (nor clobbered)
+##CLEAN_TARGETS_MISC= Miscellaneous backup and junk files created during a
+##				 build [Empty], removed during clean
+##CLEAN_TARGETS	= Intermediate build process file names to remove during clean
+##				or clobber (in addition to $(OBJECTS) [Not Defined]
+##CLOBBER_TARGETS_MISC	= Miscellaneous backup and junk files created during a
+##				 build [Empty], removed during clobber
+##CLOBBER_TARGETS	= Targets to remove on a clobber [Not Defined]
+##
+## Suffixes (all include the . ):
+##LIB_PREFIX	= prefix for shared and archive libraries (e.g., lib or "")
+##SHLIB_SUFFIX	= suffix for shared libraries (e.g., .dll, .sl, .so, etc)
+##ARLIB_SUFFIX	= suffix for static/archive libraries (e.g., .a, .lib, etc)
+##EXE_SUFFIX	= suffix for executable files (e.g, "", .exe, .out, etc)
+##OBJ_SUFFIX	= suffix for object files (e.g, .o, .obj, etc)
+##KEXT_SUFFIX	= suffix for kernel extensions (e.g, .kext) (DARWIN only)
+##EXP_SUFFIX	= suffix for export files (e.g, .exp, etc)
+##PRE_SUFFIX	= suffix for preprocessor output files (e.g, .pre, etc)
+##RES_SUFFIX	= suffix for compiled resource object files (e.g, .res, etc)
+##DSP_SUFFIX	= suffix for generated dsp files (e.g, _$(BUILD_TARGET).dsp)
+##DSW_SUFFIX	= suffix for generated dsw files (e.g, _$(BUILD_TARGET).dsw)
+##
+## Basic Commands:
+##CAT		= Unix cat command
+##CHMOD		= change file permissions
+##CP		= copy file
+##ECHO		= echo output to stdout
+##INSTALL	= tool to copy files if changed
+##MV		= command to rename or move files
+##PERL		= Perl Interpreter
+##RM		= command to remove file(s)
+##RMFORCE	= option to RM to ignore missing files and permissions problems
+##RMRECURSE	= option to RM to recursively remove directories
+##SED		= stream editor
+##SHELL		= Default system shell (bash)
+##TOUCH		= update file date (or create empty file)
+##
+## Paths:
+##BIN_SUBDIR= subdirectory to install cmds to within
+##				PROJ_BIN_DIR/MOD_BIN_SUBDIR or PROJ_STAGE_BIN_DIR/MOD_BIN_SUBDIR
+##INCLUDE_SUBDIR= subdirectory to install includes to within
+##				PROJ_INCLUDE_DIR/MOD_INCLUDE_SUBDIR or
+##				PROJ_STAGE_INCLUDE_DIR/MOD_INCLUDE_SUBDIR
+##TOOLS_DIR	- where to get development environment tools [/usr/local/ics/bin]
+##TOOLCHAIN_DIR	- where to get cross compilation tools [varies based on BUILD_TARGET]
+##MAKETOOLS_DIR	- where to get make tools [$(TL_DIR)/MakeTools]
+##TL_DIR	= defines Top Level directory for build
+##			  (ie. where Makerules directory exists.)
+##COMN_INCLUDE_DIRS	= global include directories
+##				 (include in PROJ_INCLUDE_DIRS or LOCAL_INCLUDE_DIRS when
+##				 appropriate)
+##COMN_LIB_DIRS		= global library directories
+##				 (include in PROJ_LIB_DIRS or LOCAL_LIB_DIRS when appropriate)
+##
+##The following paths are of the form:
+##		X_DIR - base directory for the subdirs below
+##		X_BIN_DIR - where to copy executable files built
+##		X_INCLUDE_DIR - where to copy include files built
+##		X_LIB_DIR - where to copy archive lib files built
+##		X_SHLIB_DIR - where to copy shared lib files built
+##		X_SBR_DIR - where to copy sbr files built (Windows Only)
+##Where X is:
+## 		GLOBAL - during basic build pass, use to define PROJ versions
+## 		PROJ - in a local makefile without Makerules.module during
+##				basic build pass [Empty]
+## 		MOD - in a local makefile during basic build pass [Empty]
+## 		STAGE - during stage build pass, use to define PROJ_STAGE versions
+## 		PROJ_STAGE - in a local makefile without Makerules.module during
+##				stage build pass [Empty]
+## 		MOD_STAGE - in a local makefile during stage build pass [Empty]
+## 		RELEASE - during release step,(used to be part of COMN_ paths above)
+##		if the MOD and MOD_STAGE versions are not defined (as would be
+##		the case for a local makefile which is not part of a module)
+##		The PROJ and PROJ_STATE versions will be used.  This occurs on
+##		a path by path basis.  This applies to all the paths above
+##		except X_DIR.
+##
+## Compilation/Build Commands and flags:
+##Within the execution of commands, a common style is used for naming
+##the variables:
+##	X = tool name
+##	XSYS = special windows options required to make tool work properly
+##		for combination of BUILD_TARGET and BUILD_PLATFORM
+##		defined in makerules.global
+##	XLOCAL = User supplied flags for tool [Empty]
+##		these can be defined in the local makefile
+##	XMOD = User supplied flags for tool [Not Defined]
+##		these can be defined in the local module makefile
+##		for multiple level modules (ie. with sub-directories)
+##		these will drive down into the sub-directories, much as
+##		XPROJ flags drive into all the modules in a project
+##	XPROJ = project level flags for tool [Not Defined]
+##		these should only be defined in the makerules.project file
+##	XENV = environment supplied flags for tool [Not Defined]
+##		these can be defined in the environment
+##	XMACH - flags to tell tool the machine type being built for
+##		(does not apply to all tool types)
+##	XFLAGS = complete set of flags for tool
+##		composed from all the above flags
+##
+##BSC		= Browse File Builder (Windows Only)
+##BSCSYS	= Win32 flags for Browse File Builder
+##BSCLOCAL	= User flags for Browse File Builder [Empty]
+##BSCMOD	= module level flags for Browse File Builder [Not Defined]
+##BSCPROJ	= project level flags for Browse File Builder [Not Defined]
+##BSCENV	= Environment defined Browse File Builder flags [Not Defined]
+##BSCFLAGS	= complete set of flags for Browse File Builder
+##
+##TARGET_BSP	= BSP to be built.  This indicates the sub-directory in
+##		BSP/ to build when doing a maketargets.bsp
+##		If this is not defined, BSP builds do not occur
+##		This only applies to VXWORKS based BUILD_TARGETs
+##BSP_TARGETS	= set of files which are created by the BSP build (e.g. vxWorks, map, sym)
+##		during a BSP build [internal value set in maketargets.bsp]
+##BSP_MAKE_TARGET= which BSP to build (e.g. vxWorks, vxWorks,st, defaults to vxWorks)
+##		[internal value set in maketargets.bsp]
+##
+##BUILDMSGS	= Message Table translator command
+##BUILDMSGS_PL	= Message Table translator script file
+##
+##CC		= Platform C compiler program
+##CCC		= Platform C++ compiler program
+##CLOCALDEBUG= User defined C debugging compilation flags [Empty]
+##				only used when BUILD_CONFIG=debug
+##CCLOCALDEBUG= User defined C++ debugging compilation flags [Empty]
+##				only used when BUILD_CONFIG=debug
+##CDEBUG	= C debugging compilation flags
+##CCDEBUG	= C++ debugging compilation flags
+##COPT		= C optimization options
+##CCOPT		= C++ optimization options
+##CANSI		= C Compilation flags for ANSI C (Use in CLOCAL, CMOD or CPROJ for
+##				ANSI-C compatible C source code)
+##CPIC		= C Compilation flags for Position Indepdent Code
+##				 (Use in CLOCAL, CMOD or CPROJ for Shared Library builds)
+##CCPIC		= C++ Compilation flags for Position Indepdent Code
+##				 (Use in CLOCAL, CMOD or CPROJ for Shared Library builds)
+##CCRTTI 	= C++ compilation flags to enable C++ Run Time Type Information
+##CCEXH		= C++ compilation flags to enable C++ Exception handling
+##CLOCAL	= User defined C flags for compiling [Empty]
+##CCLOCAL	= User defined C++ flags for compiling [Empty]
+##CENV		= Environment defined C compilation flags [Not Defined]
+##CCENV		= Environment defined C++ compilation flags [Not Defined]
+##CMOD		= module level defined C compilation flags [Not Defined]
+##CCMOD		= module level defined C++ compilation flags [Not Defined]
+##CPROJ		= project level defined C compilation flags [Not Defined]
+##CCPROJ	= project level defined C++ compilation flags [Not Defined]
+##CMACH		= defines for system type
+##CSYS		= target/platform specific C compilation flags
+##CCSYS		= target/platform specific C++ compilation flags
+##SYS_INCLUDE_DIRS	= target/platform specific include directories
+##LOCAL_INCLUDE_DIRS	= User include directories to search for C/C++ headers [Empty]
+##MOD_INCLUDE_DIRS	= module level directories to search for C/C++ headers [Not Defined]
+##PROJ_INCLUDE_DIRS	= project level directories to search for C/C++ headers [Not Defined]
+##CSHARED	= C compilation flags for shared library .o files (include in
+##		  		CLOCAL, CMOD or CPROJ when appropriate)
+##CCSHARED	= C++ compilation flags for shared library .o files (include in
+##		  		CCLOCAL, CMOD or CCPROJ when appropriate)
+##CFLAGS	= Complete set of C compilation flags
+##CCFLAGS	= Complete set of C++ compilation flags
+##CINCLUDE_DIRS	= Complete set of C include directories
+##CINCSRCH = full compiler directives for include paths to search
+##SUBSYSTEM = Subsystem to build for (none, console or windows) (Windows Only)
+##				[default console]
+##USEMFC	= How Windows MFC should be used (none, static, shared, no_mfc)
+##				(Windows Only) [default none]
+##
+##
+##MAKEDEPEND	= System makedepend application (Windows Only, on others
+##					$(CC) -MM $(DEPENDFLAGS) is used)
+##DEPENDFLAGS	= makedepend flags for .c files
+##CCDEPENDFLAGS	= makedepend flags for .cpp files
+##DEPENDMOD		= module level defined makedepend flags [Not Defined]
+##DEPENDPROJ	= project level defined makedepend flags [Not Defined]
+##DEPENDLOCAL	= user defined makedepend flags [Empty]
+##DEPENDENV		= Environment defined makedepend flags [Not Defined]
+##
+##LD		= System linker
+##LDSTRIP	= LD option to strip [-s] ("" on Win32)
+##LDPDB_DEBUG	= LD option to create pdb file for debug builds [/debug /pdbtype:sept /debugtype:both] (Windows Only)
+##LDPDB_RELEASE	= LD option to create pdb file for release builds [/debug /pdbtype:sept /debugtype:both] (Windows Only)
+##LDLOCAL	= User defined C flags for linking [Empty]
+##LDENV		= Environment defined linker flags [Not Defined]
+##LDMOD		= module level defined linker flags [Not Defined]
+##LDPROJ	= project level defined linker flags [Not Defined]
+##LDMACH	= Flags to specify machine type to linker
+##LDSYS		= target/platform specific Linker flags
+##LDOUTPUT	= platform specific linker flag to specify output file
+##LDSTATIC	= platform specific linker flag to specify linking only with static
+##				(eg. non-dynamic) libraries
+##LDFLAGS	= Complete set of Linker flags
+##CCLIBS	= basic C++ libraries (include in MODLIBS, PROJLIBS or LIBS when appropriate)
+##LOCALDEPLIBS	= User archive libraries to include in dependencies [Empty]
+##				(omit the lib prefix and .a suffix)
+##LOCALLIBS		= User libraries to use when linking [Empty]
+##				(in addition to LOCALDEPLIBS)
+##				(omit the lib prefix and .a suffix)
+##LOCAL_LIB_DIRS	= User library directories for libpaths [Empty]
+##MODDEPLIBS	= module level archive libraries to include in dependencies [Empty]
+##				(omit the lib prefix and .a suffix)
+##MODLIBS		= module level libraries to use when linking [Empty]
+##				(in addition to MODDEPLIBS)
+##MOD_LIB_DIRS	= module level library directories for libpaths [Empty]
+##PROJDEPLIBS	= project level archive libraries to include in dependencies [Empty]
+##				(omit the lib prefix and .a suffix)
+##PROJLIBS		= project level libraries to use when linking [Empty]
+##				(in addition to PROJDEPLIBS)
+##				(omit the lib prefix and .a suffix)
+##PROJ_LIB_DIRS	= project level library directories for libpaths [Empty]
+##SYSLIBS		= target/platform specific library link directives
+##SYS_LIB_DIRS	= target/platform specific library directories
+##LD_LIB_DIRS = full list of library paths to search
+##LDLIBSRCH = full link directives for library paths to search
+##LDLIBS	= full link directives for libraries
+##DEPLIBS_TARGETS = target names for make dependencies based on archive libraries
+##
+##LEX		= platform specific Lexical analyzer generator
+##LEX_LIB	= library needed by code compiled with lex
+##
+##LINT		= platform specific Lint code analyzer
+##LINTENV	= Environment defined lint flags [Not Defined]
+##LINTLOCAL	= User defined lint flags [Empty]
+##LINTMOD	= module level lint flags [Not Defined]
+##LINTPROJ	= project level lint flags [Not Defined]
+##LINTFLAGS	= lint flags (includes CFLAGS)
+##
+## Flags for building kernel modules/drivers/kext:
+##CKERNEL	= C/C++ compiler flags to use
+##CKERNELOPS= base C/C++ compiler flags to use [Darwin only]
+##KERNEL_INCLUDE_DIRS= directories to get include files from
+##KERNELLIBS = libraries to link with (and linker options)
+##KERNELDIR = primary path to kernel headers/libs/etc for desired kernel version
+##CPROJKERNEL= project level C compiler flags for use by individual makefiles
+##				as part of CLOCAL and/or CCLOCAL for makefiles building
+##				drivers, typically composed of $(CKERNEL) [Not Defined]
+##
+##MIDL		= IDL compiler (Windows Only)
+##MIDLSYS	= Win32 specific IDL compiler flags
+##MIDLLOCAL	= User flags for IDL compiler [Empty]
+##MIDLMOD	= module level flags for IDL compiler [Not Defined]
+##MIDLPROJ	= project level flags for IDL compiler [Not Defined]
+##MIDLENV	= Environment defined IDL compiler flags [Not Defined]
+##MIDLFLAGS	= Complete set of IDL compiler flags
+##
+##REGEXE	= command to update registry from a .exe file (Windows Only)
+##REGDLL	= command to update registry from a .dll file (Windows Only)
+##
+##MKSHLIB	= command to build dynamic/shared library from .o's built w/CSHARED
+##MKARLIB	= command to build static/archive library from .o's
+##MKPARTIAL	= command to partially link .o's into a single .o's
+##MKMODULE	= command to link .o's into a single kernel module (Linux only)
+##DEFFILE	= definition file for dynamic/shared library used by MKSHLIB
+##				(Windows Only)
+##IMPLIBLOCAL	= User flags for Object Lirary Manager [Empty]
+##
+##PREP		= File post-processor to prepare files for release, by marking with
+##				build date and version string
+##PATCH_VERSION	= program to patch version into data in code file
+##PATCH_ENG_VERSION	= program to patch version into data in code file for
+##				engineer non-offical builds/releases
+##CONVERT_RELEASETAG= program to convert RELEASE_TAG to a doted version format
+##
+##RSC		= resource compiler (Windows Only)
+##RSCMACH	= flags to specify machine type to RSC compiler
+##RSCLOCAL	= User flags for resource compiler [Empty]
+##RSCMOD	= module level flags for resource compiler [Not Defined]
+##RSCPROJ	= project level flags for resource compiler [Not Defined]
+##RSCSYS	= Win32 specific resource compiler flags
+##RSCENV	= Environment defined resource compiler flags [Not Defined]
+##RSCFLAGS	= Compile set of Resource compiler flags
+##
+## The parameters below control the construction of Visual Studio Project Files
+## These are only used on BUILD_PLATFORMS of DOS and CYGWIN when building
+## for CYGWIN, WIN32 or MIPS.
+##BUILDDSW	= command to build DSW file from a list of project files
+##FINDDSPFILES= command to expand module names into complete pathnames
+##				to dsp files
+##DS_PROJECT= Developer Studio Project name (set to this directory name),
+##            for use in .dsp and .dsw filenames
+##DS_SUBPROJECTS= User specified other dsp files to include as subprojects
+##            in dsw.  [Not Defined]
+##			  These must be pathnames relative to TL_DIR.  They can be
+##			  directory names (in which case the .dsp is assumed to have the
+##			  same basename as the directory) or dsp filenames.
+##DS_PROJECTS= Base set of projects to include in all dsw files
+##DSP_SOURCES= User specified list of source files, in the present directory
+##            which are to be included in the dsp file [Not Defined]
+##DSP_FILE	= dsp file to build
+##DSP_TMP_FILE=temp dsp file to build to
+##DSW_FILE	= dsw file to build
+##DSW_TMP_FILE= temp dsw file to build to
+##DSP_SRC_DIR= Source directory to use for files in this directory
+##DSP_GROUP	= Group name to use for this source directory in dsp file
+##
+##FUTURE - on windows allow PCH_TARGET to be defined, which will cause a
+## precompiled header to be built or used
+## PCHFLAGS - compiler files to make PCH_TARGET into a precompiled header
+## FUTURE - support SUSYSTEM=posix on Windows
+## FUTURE - rename DEPLIBS as DEPARLIBS and DEPSHLIBS if need to support
+##			dependent shared libraries
+##
+#=============================================================================#

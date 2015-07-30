@@ -1,0 +1,278 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+## Rules for ALL_HOST project
+#=============================================================================#
+## Project Make Rules File
+## -----------------------
+##
+## All tools local makefiles should include this makerules file after its own
+## local definitions section and before the local rules section.  Use
+## Makefile.template as a base makefile and modify the template according to
+## your application needs.  The template makefile includes this makerules file
+## and this project makerules file includes the global makerules file.  Any
+## modifications to this makerules file or to local makefiles should be made
+## in a portable fashion using 'ifdef' structures where necessary so that the
+## same makefile can be used on multiple platforms.  The main purpose of this
+## include makerules file is for local variable definitions and rules which are
+## specific to the project at hand.  Global modifications should be made in the
+## global makerules file and local items should be in the local makefile, not
+## in this makerules file.  Any modifications to the source should be made with
+## portability in mind and should follow the embedded notations.  Documentation
+## is automatically generated from this makefile!  Use the correct conventions
+## for those items which should be documented.
+##
+## NOTE: This makefile inclusion (the global makerules, and the template
+##       makefile) depend on using the GNU version of make.  GNU make must be
+##       installed on your system prior to using this makefile.
+#=============================================================================#
+##
+#=============================================================================#
+# The following list is the standard list of definitions which will be defined
+# for all platforms.  It consists of general and machine specific sections that
+# contain many system parameters which may be used in a makefile.  Please keep
+# the list(s) in strictly aphabetical order to facilitate simple searches.
+#
+# See Makerules.global for the meaning of these flags
+#-----------------------------------------------------------------------------#
+# Common platform definitions:
+#-----------------------------------------------------------------------------#
+
+# TBD code should be redone so that prepfiles can insert version string instead 
+# of using MODULEVERSION
+# Use of .999 below prevents RPM_VER from being "" if insufficient fields
+ifeq "$(RELEASE_TAG)" ""
+MODULEVERSION=$(shell $(PATCH_ENG_VERSION))
+RPM_REL=$(shell echo $(MODULEVERSION)|cut -d"." -f1-2)
+RPM_VER=$(shell echo $(MODULEVERSION).999.999|cut -d"." -f3)
+else
+MODULEVERSION=$(shell $(CONVERT_RELEASETAG) $(RELEASE_TAG))
+RPM_REL=$(shell echo $(MODULEVERSION)|cut -d"." -f1-4)
+RPM_VER=$(shell echo $(MODULEVERSION).999.999.999.999|cut -d"." -f5)
+endif
+RPM_NAME=opafm
+
+PROJ_DIR		= $(GLOBAL_DIR)
+PROJ_BIN_DIR		= $(GLOBAL_BIN_DIR)
+PROJ_DRIVER_BIN_DIR	= $(GLOBAL_BIN_DIR)
+PROJ_INCLUDE_DIR	= $(GLOBAL_INCLUDE_DIR)
+PROJ_LIB_DIR		= $(GLOBAL_LIB_DIR)
+PROJ_SHLIB_DIR		= $(GLOBAL_SHLIB_DIR)
+PROJ_SBR_DIR		= $(GLOBAL_SBR_DIR)
+
+ifeq "$(RELEASE_TAG)" ""
+# only use engineer's name for directory name (omit timestamp part),
+# otherwise each partial build goes to a different place
+STAGE_SUB_DIR		= IntelOPA-FM-$(BUILD_TARGET_OS_ID).$(shell $(PATCH_ENG_VERSION)|cut -d"." -f1)
+else
+STAGE_SUB_DIR		= IntelOPA-FM.$(BUILD_TARGET_OS_ID).$(MODULEVERSION)
+endif
+# items which we don't plan to package and are side effects, such as
+# fastfabric, we put up in STAGE_DIR so
+# they are not mistakenly included in final packaging
+# We also put the intermediate files for rpm packaging (image and packages)
+# directly in STAGE_DIR
+PROJ_STAGE_DIR		= $(STAGE_DIR)/$(STAGE_SUB_DIR)
+PROJ_STAGE_BIN_DIR	= $(PROJ_STAGE_DIR)/bin
+PROJ_STAGE_INCLUDE_DIR	= $(PROJ_STAGE_DIR)/include
+PROJ_STAGE_TESTS_DIR	= $(PROJ_STAGE_DIR)/Tests
+PROJ_STAGE_SRC_DIR	= $(PROJ_STAGE_DIR)/src
+PROJ_STAGE_TESTS_BIN_DIR= $(PROJ_STAGE_DIR)/Tests/bin
+PROJ_STAGE_LIB_DIR	= $(PROJ_STAGE_DIR)/bin/$(BUILD_TARGET)/$(BUILD_TARGET_OS_VERSION)/lib/$(BUILD_CONFIG)
+PROJ_STAGE_SHLIB_DIR= $(PROJ_STAGE_LIB_DIR)
+PROJ_STAGE_SBR_DIR	= $(STAGE_SBR_DIR)
+PROJ_STAGE_DRIVER_BIN_DIR= $(PROJ_STAGE_DIR)/bin/$(BUILD_TARGET)/$(BUILD_TARGET_OS_VERSION)/$(BUILD_CONFIG)
+PROJ_STAGE_FASTFABRIC_DIR	= $(STAGE_DIR)/fastfabric
+PROJ_STAGE_IBTOOLS_DIR	= $(PROJ_STAGE_DIR)/fastfabric/ib_tools
+PROJ_STAGE_SAMPLES_DIR	= $(PROJ_STAGE_DIR)/iba_samples
+PROJ_STAGE_FIRMWARE_DIR	= $(PROJ_STAGE_DIR)/Firmware
+PROJ_STAGE_IMAGE_SUB_DIR = $(RPM_NAME)-$(RPM_REL)
+PROJ_STAGE_IMAGE_DIR = $(STAGE_DIR)/$(PROJ_STAGE_IMAGE_SUB_DIR)
+PROJ_STAGE_PACKAGES_DIR = $(STAGE_DIR)/packages
+
+PROJ_INCLUDE_DIRS	= $(COMN_INCLUDE_DIRS)
+PROJ_LIB_DIRS		= $(COMN_LIB_DIRS)
+PROJDEPLIBS		=
+PROJLIBS		= $(CCLIBS)
+
+BSCPROJ			=
+
+# strict-prototypes - treat extern int foo() as function with no args
+CPROJ			= -DPRODUCT=$(PRODUCT) -DPRODUCT_$(PRODUCT) -DMODULEVERSION=$(MODULEVERSION)
+ifeq ($(IB_STACK),OPENIB)
+CPROJ			+= -DIB_STACK_OPENIB
+else
+CPROJ			+= -DIB_STACK_IBACCESS
+endif
+ifeq ($(__GNUC__),2)
+CPROJ   += -fstrict-prototypes
+endif
+CCPROJ			= $(CCNORTTI) $(CCNOEXH) $(CPROJ)
+# DBG and _DEBUG_ are primarily used by IbAccess and modules using it
+CPROJDEBUG		= -DICSDEBUG -DDBG -DIB_DEBUG
+DEPENDPROJ		=
+LDPROJ			= 
+LINTPROJ		=
+MIDLPROJ		=
+RSCPROJ			=
+
+# On Windows ACE needs MFC DLL
+USEMFC			= shared
+
+# variables for use in modules building against IbAccess
+IBACCESS_INCLUDE_DIRS= $(GLOBAL_INCLUDE_DIR)/linux/iba $(GLOBAL_INCLUDE_DIR)/linux/iba/public
+IBACCESS_USER_INCLUDE_DIRS= $(GLOBAL_INCLUDE_DIR)/iba $(GLOBAL_INCLUDE_DIR)/iba/public
+IBACCESS_USER_LIB_DIRS= 
+IBACCESS_USER_LIBS= public
+
+# add in core IbAccess library if building for IbAccess
+ifeq "$(IB_STACK)" "IBACCESS"
+IBACCESS_USER_LIBS+= ibt
+endif
+
+CPROJKERNEL=$(CKERNEL)
+
+# variables for use in modules building against Open IB Stack
+ifeq "$(IB_STACK)" "OPENIB"
+ifeq "$(OFED_STACK_PREFIX)" ""
+OFED_STACK_PREFIX=/usr
+endif
+OPENIB_USER_INCLUDE_DIRS= \
+	$(OFED_STACK_PREFIX)/include/infiniband \
+	$(OFED_STACK_PREFIX)/include
+ifeq "$(BUILD_TARGET)" "X86_64"
+OPENIB_USER_LIB_DIRS= $(OFED_STACK_PREFIX)/lib64
+else
+ifeq "$(BUILD_TARGET)" "PPC64"
+OPENIB_USER_LIB_DIRS= $(OFED_STACK_PREFIX)/lib64
+else
+OPENIB_USER_LIB_DIRS= $(OFED_STACK_PREFIX)/lib
+endif
+endif
+OPENIB_USER_LIBS= ibverbs ibumad ibmad
+PROJ_INCLUDE_DIRS+= $(IBACCESS_USER_INCLUDE_DIRS) $(OPENIB_INCLUDE_DIRS) $(OPENIB_USER_INCLUDE_DIRS)
+endif
+
+#-----------------------------------------------------------------------------#
+# Platform specific definitions:
+#-----------------------------------------------------------------------------#
+ifeq "$(BUILD_TARGET_OS)" "VXWORKS"
+endif # VXWORKS
+#ifeq "$(BUILD_TARGET_OS)" "DARWIN"
+#endif # DARWIN
+ifeq "$(BUILD_TARGET_OS)" "LINUX"
+ifndef BUILD_TARGET_OS_VERSION
+$(error BUILD_TARGET_OS_VERSION not defined)
+endif
+ICS_KERNEL_CONF_FILE:=$(TL_DIR)/Makerules/LINUX/$(BUILD_TARGET).$(BUILD_TARGET_OS_VENDOR).$(BUILD_TARGET_OS_VERSION).h
+endif # LINUX
+ifeq "$(BUILD_TARGET_OS)" "WIN32"
+endif # WIN32
+#=============================================================================#
+#=============================================================================#
+## TL_DIR must be set in the environment for the 'make' to succeed.
+## icsmake will do this for you
+#-----------------------------------------------------------------------------#
+# Include Global makerules definitions and rules
+include $(TL_DIR)/Makerules/Makerules.global
+ifdef BUILD_26
+ifndef KERNELRELEASE
+#parse cflags for KBUILD
+#only trick is with -I options
+#with relative path directories
+
+# get an alternate copy of CFLAGS without any compiler options
+KBUILD_CFLAGS:=$(filter -D%, $(CMACH)) $(CSYS) $(CENV) $(CPROJ) $(CMOD) $(CLOCAL) $(CINCSRCH)
+ifeq "$(BUILD_CONFIG)" "debug"
+KBUILD_CFLAGS+=$(filter -D%, $(CDEBUG))
+endif
+KBUILD_EXTRA_CFLAGS=$(filter-out -I%,$(KBUILD_CFLAGS))
+# -I options with absolute paths
+KBUILD_INCS:=$(filter -I%,$(KBUILD_CFLAGS))
+KBUILD_EXTRA_CFLAGS+=$(filter -I/%,$(KBUILD_INCS))
+# -I options with relative paths
+KBUILD_REL_INC_DIRS:=$(patsubst -I%,%,$(filter-out -I/%,$(KBUILD_INCS)))
+KBUILD_EXTRA_CFLAGS+=$(addprefix -I${PWD}/,$(KBUILD_REL_INC_DIRS))
+endif
+endif
+#=============================================================================#
+
+#=============================================================================#
+## The project makerules file also contains the following basic make target
+## rules for simplifying application build processes:
+##
+#=============================================================================#
+# The following section contains a list of standard targets which will be used
+# by all of the makefiles.  The targets are listed in alphabetical order and
+# depend on the above definitions section as well as externally defined items
+# from the user specific makefile.
+#=============================================================================#
+# General Rules:
+#-----------------------------------------------------------------------------#
+ifeq "$(BUILD_TARGET_OS)" "DARWIN"
+Info.plist: Info.$(BUILD_TARGET_OS_VERSION).plist
+	$(SED) -e 's/MODULEVERSION/$(MODULEVERSION)/' < $< > $@
+endif
+#=============================================================================#
+
+#=============================================================================#
+# This section contains a set of targets which override the standard ones
+# provided for by GNU make.
+#=============================================================================#
+# Standard Makefile Rules Overrides:
+#-----------------------------------------------------------------------------#
+#=============================================================================#
+
+#=============================================================================#
+# Targets to make sure the initial environment is properly configured
+#=============================================================================#
+#ifndef ENVIRONMENT
+#check_env:
+#	@echo "The ENVIRONMENT environment variable must be set to be valid"
+#	@exit 1
+#else #ENVIRONMENT
+#check_env:
+#endif #ENVIRONMENT
+#.PHONY: check_env
+check_env::
+ifneq ("/ALL_EMB",$(findstring "/ALL_EMB",$(TL_DIR)))
+else
+	@ if [ "$(PROJ_FILE_DIR)" = "" ] ; then \
+		  echo "Error: PROJ_FILE_DIR must be set" ; \
+		  echo "Enter: export PROJ_FILE_DIR=Esm" ; \
+		  exit 1 ; \
+	  fi
+endif	  
+ifneq "$(IB_STACK)" "IBACCESS"
+ifneq "$(IB_STACK)" "OPENIB"
+	@echo "IB_STACK not defined, or unknown value:" $(IB_STACK)
+	@echo "export IB_STACK = IBACCESS | OPENIB"
+	@exit 1
+endif
+endif
+#=============================================================================#

@@ -1,0 +1,205 @@
+#!/bin/bash
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+##
+## runmake
+## -----------
+## Perform a full build
+##
+## Usage:
+##	rpm_runmake [-V 'module_version'] [-B 'build_config'] [-n]
+##			or
+##	rpm_runmake [-V 'module_version'] -r [-B 'build_config'] [-C] [-n]
+##
+## Arguments:
+##	-B build_config	release type to build, (debug/release). default is release
+##	-r 		rerun the build in place without doing a new checkout/tag
+##	-C		don't clobber prior to the rerun
+##	-n		No build.  Useful for checking build machine
+##	-V module_version The MODULEVERSION define.
+##
+## In addition, the following environment variables are expected to be set:
+##	RELEASE_TAG, BRANCH_TAG, BUILD_TARGET, PRODUCT, RELEASE_HOME, BUILD_CONFIG 
+##	The target command is expected to have already been run to set up the
+##	environment for the specified target
+##
+##	re-run can be used for 2 situations:
+##	1. re-run a failed build to correct incorrect weeklybuild arguments
+##		or other non-source code related problems (out of disk space)
+##	2. re-run a build for a different BUILD_TARGET_OS_VERSION while using the same
+##		source code image/tag
+##	If the source code needs to be corrected, a full weeklybuild should be run
+##	after the correction such that the code is properly tagged.
+##
+##	Since weeklybuild and target commands always set BUILD_CONFIG, this
+##	script ignores BUILD_CONFIG.  As such the BuildOptions file
+##	or the -B argument completely control BUILD_CONFIG for this product.
+
+export BUILD_PLATFORM="LINUX"
+
+if [ -d IbAccess ]
+then
+. MakeTools/funcs-ext.sh
+else
+. ../MakeTools/funcs-ext.sh
+fi
+
+settarget x86_64
+settl
+
+# A given release will be targeted for a specific version of ofed
+# however we allow build.config to override if needed
+export OFED_STACK_PREFIX=${OFED_STACK_PREFIX:-/usr}
+
+# typically exported by build.config
+export BUILD_WITH_STACK=${BUILD_WITH_STACK:-OPENIB}
+
+Usage()
+{
+	# include "ERROR" in message so weeklybuild catches it in error log
+	echo "ERROR: rpm_runmake failed" >&2
+	echo "Usage: rpm_runmake [-V 'module_version'] [-B 'build_config'] [-n]" >&2
+	echo "            OR" >&2
+	echo "       rpm_runmake [-V 'module_version'] -r [-B 'build_config'] [-C] [-n]" >&2
+	exit 2
+}
+
+showbuild()
+{
+	# output summary of what we are building to stdout
+	echo "Building for $SUBPRODUCT $BUILD_TARGET $BUILD_CONFIG $(date)..."
+}
+
+fix_version()
+{
+	# translate underscores and dashes to dots
+	echo "$1"|tr '_-' '..'
+}
+
+build_config=
+rerun=n
+Cflag=n
+module_version=
+while getopts V:B:rCnS param
+do
+	case $param in
+	r)
+		rerun=y;;
+	B)
+		build_config="$OPTARG";;
+	C)
+		Cflag=y;;
+	n)
+		nflag=y;;
+	V)
+		module_version="$OPTARG";;
+	?)
+		Usage
+	esac
+done
+shift $(($OPTIND -1))
+
+if [ $# != 0 ]
+then
+		Usage
+fi
+
+# for HSM the kernel rev is not important.  We simply use the kernel rev
+# of the running kernel.  While BUILD_TARGET_OS_VERSION is needed by Makerules
+# it will have no impact on what is actually built for HSM
+export BUILD_TARGET_OS_VERSION=${BUILD_TARGET_OS_VERSION:-`uname -r`}
+setver $BUILD_TARGET_OS_VENDOR $BUILD_TARGET_OS_VERSION
+
+if [ -z "$build_config" ]
+then
+	# default to release build
+	setrel
+elif [ "$build_config" != debug -a "$build_config" != release ]
+then
+	Usage
+else
+	export BUILD_CONFIG="$build_config"
+fi
+
+# This is used to build a HSM from an ALL_EMB checkout  
+THISDIR=`basename $PWD`
+if [ $THISDIR = Esm ]; then
+	export PROJ_FILE_DIR=Esm
+else
+	export PROJ_FILE_DIR=.
+fi
+
+if [ "$BUILD_WITH_STACK" = "OPENIB" ]
+then
+	if [ ! -d $OFED_STACK_PREFIX ]
+	then
+		echo "$0: ERROR: OFED stack not found: $OFED_STACK_PREFIX" >&2
+		exit 1
+	fi
+fi
+
+if [ "$nflag" = "y" ]
+then
+	if [ "$BUILD_WITH_STACK" = "OPENIB" ]
+	then
+		echo "Stack to build for: $BUILD_WITH_STACK ($OFED_STACK_PREFIX)"
+	else
+		echo "Stack to build for: $BUILD_WITH_STACK"
+	fi
+	exit 0
+fi
+
+# The following does not make much sense since we start the build
+# from scratch every time. However, in the future, if we decide
+# to support incremental build, just uncomment it.
+# clean up from prior build when rebuilding
+#if [ "$rerun" = y -a "$Cflag" != y ]
+if [ ]
+then
+	# force full rebuild
+	export REMOVE_DEPENDS=yes
+	clobber_arg="clobber clobber_stage clobber_release"
+else
+	clobber_arg=
+fi
+rm -rf packaged_files dist_files
+
+# export DATE for use by prep so all files get same date/time stamp
+DATE=${DATE:-"`date +'%m/%d/%y %H:%M'`"}
+
+# Do the actual MAKE
+showbuild
+env
+make $clobber_arg stage
+echo "Done $BUILD_TARGET_OS $BUILD_TARGET HSM $SUBPRODUCT $(date)"
+echo "=============================================================="
+
+echo "Preping Files for $BUILD_TARGET_OS $BUILD_TARGET $(date)..."
+# run prep and package once at end
+make prepfiles package

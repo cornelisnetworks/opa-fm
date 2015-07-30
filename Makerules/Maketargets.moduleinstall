@@ -1,0 +1,82 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+#=============================================================================#
+# Rules:
+#-----------------------------------------------------------------------------#
+# These rules perform the standard module toplevel directory install steps
+
+INCLUDES:: $(INC_FILE)
+LIBS:: $(LIB_FILE)
+CMDS:: $(BIN_FILE)
+
+# changes to Makefile will force re-install
+$(INC_FILE):: $(INCLUDE_TARGETS) $(IDL_HEADERS) $(IDLFILE) $(MAKEFILE)
+ifneq "$(strip $(INCLUDE_TARGETS))" ""
+	$(VS)$(INSTALL) $(INSTALL_RDONLY_OPT) $(INSTALL_DIR_OPT) $(PROJ_INCLUDE_DIR)/$(MOD_INCLUDE_SUBDIR)/$(INCLUDE_SUBDIR) $(INCLUDE_TARGETS) $(IDL_HEADERS) $(IDLFILE)
+	$(VS)echo done > $(INC_FILE)
+endif
+
+$(LIB_FILE): $(LIB_TARGETS) $(LIB_MISC_TARGETS)
+ifneq "$(strip $(LIB_TARGETS)$(LIB_MISC_TARGETS))" ""
+	$(VS)$(INSTALL) $(INSTALL_DIR_OPT) $(PROJ_LIB_DIR) $(LIB_TARGETS) $(LIB_MISC_TARGETS)
+endif
+	$(VS)echo done > $(LIB_FILE)
+
+$(BIN_FILE): $(CMD_TARGETS) $(CMD_TARGETS_MISC) $(MISC_FILES)
+ifneq "$(strip $(CMD_TARGETS_EXE)$(CMD_TARGETS_MISC)$(MISC_FILES))" ""
+	$(VS)$(INSTALL) $(INSTALL_RDONLY_OPT) $(INSTALL_DIR_OPT) $(PROJ_BIN_DIR)/$(MOD_BIN_SUBDIR)/$(BIN_SUBDIR) $(CMD_TARGETS_EXE) $(CMD_TARGETS_MISC) $(MISC_FILES)
+endif
+ifneq "$(strip $(CMD_TARGETS_DRIVER))" ""
+ifeq "$(BUILD_TARGET_OS)" "LINUX"
+	$(VS)$(INSTALL) $(INSTALL_RDONLY_OPT) $(INSTALL_DIR_OPT) $(PROJ_BIN_DIR)/$(MOD_BIN_SUBDIR)/$(BIN_SUBDIR) $(CMD_TARGETS_DRIVER)
+endif
+ifeq "$(BUILD_TARGET_OS)" "DARWIN"
+	$(VS)$(INSTALL) $(INSTALL_RDONLY_OPT) $(INSTALL_DIR_OPT) $(PROJ_BIN_DIR)/$(MOD_BIN_SUBDIR)/$(BIN_SUBDIR) $(CMD_TARGETS_DRIVER)
+endif
+endif
+ifneq "$(strip $(CMD_TARGETS_KEXT))" ""
+ifeq "$(BUILD_TARGET_OS)" "DARWIN"
+	$(VS)$(INSTALL) $(INSTALL_RDONLY_OPT) $(INSTALL_DIR_OPT) $(PROJ_BIN_DIR)/$(MOD_BIN_SUBDIR)/$(BIN_SUBDIR)/$(CMD_TARGETS_KEXT)/Contents $(CMD_TARGETS_KEXT)/Contents/Info.plist
+	$(VS)$(INSTALL) $(INSTALL_RDONLY_OPT) $(INSTALL_DIR_OPT) $(PROJ_BIN_DIR)/$(MOD_BIN_SUBDIR)/$(BIN_SUBDIR)/$(CMD_TARGETS_KEXT)/Contents/MacOS $(CMD_TARGETS_KEXT)/Contents/MacOS/$(CMD_TARGETS_DRIVER)
+	$(VS)$(INSTALL) $(INSTALL_RDONLY_OPT) $(INSTALL_DIR_OPT) $(PROJ_BIN_DIR)/$(MOD_BIN_SUBDIR)/$(BIN_SUBDIR)/$(CMD_TARGETS_KEXT)/Contents/Resources/English.lproj $(CMD_TARGETS_KEXT)/Contents/Resources/English.lproj/InfoPlist.strings
+endif
+endif
+ifneq "$(strip $(CMD_TARGETS_SHLIB))" ""
+	$(VS)$(INSTALL) $(INSTALL_DIR_OPT) $(PROJ_SHLIB_DIR) $(CMD_TARGETS_SHLIB)
+	$(VS)$(LNSHLIB) $(PROJ_SHLIB_DIR) $(CMD_TARGETS_SHLIB)
+endif
+ifneq "$(strip $(CMD_TARGETS_PDB))" ""
+	$(VS)$(INSTALL) $(INSTALL_DIR_OPT) $(PROJ_BIN_DIR)/$(MOD_BIN_SUBDIR)/$(BIN_SUBDIR) $(CMD_TARGETS_PDB)
+endif
+ifeq "$$(BUILD_TARGET_OS)" "WIN32"
+ifneq "$(strip $(OBJECTS))" ""
+	$(VS)$(INSTALL) $(INSTALL_DIR_OPT) $(PROJ_SBR_DIR) $(OBJECTS:$(OBJ_SUFFIX)=.sbr)
+endif
+endif
+	$(VS)echo done > $(BIN_FILE)

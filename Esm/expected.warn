@@ -1,0 +1,26 @@
+config.status: WARNING:  'MCONFIG.in' seems to ignore the --datarootdir setting
+warning: No version string in file: ./arch
+warning: No version string in file: ./distro
+warning: No version string in file: ./distro_version
+warning: No version string in file: ./etc/opafm_src.xml
+warning: No version string in file: ./os_id
+warning: No version string in file: ./Version
+paServer.c:1008:2: warning: missing braces around initializer [-Wmissing-braces]
+paServer.c:1008:2: warning: (near initialization for 'groupInfo.groupName') [-Wmissing-braces]
+paServer.c:1011:2: warning: missing braces around initializer [-Wmissing-braces]
+paServer.c:1011:2: warning: (near initialization for 'response.groupName') [-Wmissing-braces]
+paServer.c:1331:2: warning: missing braces around initializer [-Wmissing-braces]
+paServer.c:1331:2: warning: (near initialization for 'pmGroupConfig.groupName') [-Wmissing-braces]
+paServer.c:1642:2: warning: missing braces around initializer [-Wmissing-braces]
+paServer.c:1642:2: warning: (near initialization for 'response.vfName') [-Wmissing-braces]
+paServer.c:1835:2: warning: missing braces around initializer [-Wmissing-braces]
+paServer.c:1835:2: warning: (near initialization for 'pmVFConfig.vfName') [-Wmissing-braces]
+paServer.c:2157:2: warning: missing braces around initializer [-Wmissing-braces]
+paServer.c:2157:2: warning: (near initialization for 'pmVFFocusPorts.vfName') [-Wmissing-braces]
+paServer.c:397:5: warning: missing braces around initializer [-Wmissing-braces]
+paServer.c:397:5: warning: (near initialization for 'response.counterSelectMask') [-Wmissing-braces]
+paServer.c:807:5: warning: missing braces around initializer [-Wmissing-braces]
+paServer.c:807:5: warning: (near initialization for 'response.oldFreezeImage') [-Wmissing-braces]
+paServer.c:888:5: warning: missing braces around initializer [-Wmissing-braces]
+paServer.c:888:5: warning: (near initialization for 'response.imageId') [-Wmissing-braces]
+

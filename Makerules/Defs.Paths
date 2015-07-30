@@ -1,0 +1,139 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+
+# standard paths within build tree.  These are mostly platform
+# independent, there are a few if tests below
+
+# make sure TL_DIR from topmost makefile sticks in lower level makefiles
+export TL_DIR
+
+ifeq "$(filter-out No no NO,$(BUILD_UNIT_TEST))" ""
+TEST=
+else
+TEST=Test
+endif # BUILD_UNIT_TEST
+
+# we use product information in filenames for build outputs so that
+# developers can quickly flip between products in a ALL or ALL_EMB checkout
+ifeq "$(CARD_TYPE)" ""
+# Non-embedded product build
+PRODUCT?=$(strip $(notdir $(TL_DIR)))
+else
+# embedded product build
+# override PRODUCT from env and always use CARD_TYPE
+PRODUCT=$(strip $(CARD_TYPE))
+endif
+export PRODUCT
+
+# FIXME - this is a hack to override use of BUILDDIR and built* suffixes
+# which is used by a few products such as OFED_SOURCE and HostTestCases
+ifeq "$(NO_BUILD_SUFFIX)" "y"
+BUILT_SUFFIX=
+STAGE_SUFFIX=
+BUILDDIR=.
+BUILDDIR_RM=
+else
+
+ifeq "$(CARD_TYPE)" ""
+# Non-embedded product build
+BUILT_SUFFIX=.$(PRODUCT).$(BUILD_CONFIG)
+STAGE_SUFFIX=$(BUILT_SUFFIX)/$(BUILD_TARGET_OS_VENDOR)/$(BUILD_TARGET)
+else
+# embedded product build
+BUILT_SUFFIX=.$(CARD_TYPE).$(TARGET_BSP).$(BUILD_CONFIG)
+STAGE_SUFFIX=$(BUILT_SUFFIX)
+endif
+# BUILDDIR is guaranteed not to be "".  Hence it is always safe
+# to use $(BUILDDIR)/ or to cd $(BUILDDIR)
+# on some future environments, BUILDDIR may be defined as "."
+BUILDDIR=build$(BUILT_SUFFIX)
+# BUILDDIR_RM is safe to use in clobber and rm targets.  If BUILDDIR is "."
+# this will be ""
+BUILDDIR_RM=$(BUILDDIR)
+endif
+
+
+# Paths:
+GLOBAL_DIR		= $(TL_DIR)
+GLOBAL_BIN_DIR		= $(GLOBAL_DIR)/builtbin$(BUILT_SUFFIX)
+GLOBAL_INCLUDE_DIR	= $(GLOBAL_DIR)/builtinclude$(BUILT_SUFFIX)
+GLOBAL_LIB_DIR		= $(GLOBAL_DIR)/builtlibs$(BUILT_SUFFIX)
+ifeq "$(BUILD_TARGET)" "WIN32"
+GLOBAL_SHLIB_DIR	= $(GLOBAL_DIR)/builtbin$(BUILT_SUFFIX)
+else
+GLOBAL_SHLIB_DIR	= $(GLOBAL_DIR)/builtlibs$(BUILT_SUFFIX)
+endif
+GLOBAL_SBR_DIR		= $(GLOBAL_DIR)/builtsbr$(BUILT_SUFFIX)
+
+STAGE_DIR		= $(TL_DIR)/stage$(STAGE_SUFFIX)
+STAGE_BIN_DIR		= $(STAGE_DIR)/bin
+STAGE_INCLUDE_DIR	= $(STAGE_DIR)/include
+STAGE_LIB_DIR		= $(STAGE_DIR)/lib
+ifeq "$(BUILD_TARGET)" "WIN32"
+STAGE_SHLIB_DIR		= $(STAGE_DIR)/bin
+else
+STAGE_SHLIB_DIR		= $(STAGE_DIR)/lib
+endif
+STAGE_SBR_DIR		= $(STAGE_DIR)/sbr
+
+RELEASE_DIR		= $(TL_DIR)/release$(STAGE_SUFFIX)
+RELEASE_BIN_DIR		= $(RELEASE_DIR)/bin
+RELEASE_INCLUDE_DIR	= $(RELEASE_DIR)/include
+RELEASE_LIB_DIR		= $(RELEASE_DIR)/lib
+ifeq "$(BUILD_TARGET)" "WIN32"
+RELEASE_SHLIB_DIR	= $(RELEASE_DIR)/bin
+else
+RELEASE_SHLIB_DIR	= $(RELEASE_DIR)/lib
+endif
+RELEASE_SBR_DIR		= $(RELEASE_DIR)/sbr
+
+TOOLS_DIR			= $(subst \,/,$(ICSBIN))
+MAKETOOLS_DIR		= $(TL_DIR)/MakeTools
+
+#COMN_INCLUDE_DIRS	= $(GLOBAL_INCLUDE_DIR) $(RELEASE_INCLUDE_DIR)
+COMN_INCLUDE_DIRS	= $(GLOBAL_INCLUDE_DIR)
+
+# Paths for installing the results of a build
+# if MOD paths are not defined, default to PROJ paths
+MOD_BIN_DIR?=$(PROJ_BIN_DIR)
+MOD_DRIVER_BIN_DIR?=$(PROJ_DRIVER_BIN_DIR)
+MOD_INCLUDE_DIR?=$(PROJ_INCLUDE_DIR)
+MOD_LIB_DIR?=$(PROJ_LIB_DIR)
+MOD_SHLIB_DIR?=$(PROJ_SHLIB_DIR)
+MOD_SBR_DIR?=$(PROJ_SBR_DIR)
+# if MOD_STAGE paths are not defined, default to PROJ_STAGE paths
+MOD_STAGE_BIN_DIR?=$(PROJ_STAGE_BIN_DIR)
+MOD_STAGE_DRIVER_BIN_DIR?=$(PROJ_STAGE_DRIVER_BIN_DIR)
+MOD_STAGE_INCLUDE_DIR?=$(PROJ_STAGE_INCLUDE_DIR)
+MOD_STAGE_LIB_DIR?=$(PROJ_STAGE_LIB_DIR)
+MOD_STAGE_SHLIB_DIR?=$(PROJ_STAGE_SHLIB_DIR)
+MOD_STAGE_SBR_DIR?=$(PROJ_STAGE_SBR_DIR)
+
+#COMN_LIB_DIRS		= $(GLOBAL_LIB_DIR) $(RELEASE_LIB_DIR)
+COMN_LIB_DIRS		= $(GLOBAL_LIB_DIR)

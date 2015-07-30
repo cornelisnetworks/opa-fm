@@ -1,0 +1,162 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+
+#[ICS VERSION STRING: unknown]
+- if DestroyCQ fails, the Global handle should not be cleared.  See how
+  deregister_mr handles the FBUSY (or any error) return.
+- review other failure paths.
+- modify_mr failure paths inconcistent.  Some destroy the original MR, some
+  leave it untouched.  Need a consistent way for caller to know.
+  Should NewMr returned be the original if it still exists or NULL if
+  original was destroyed?
+- single/multi threaded flags allow locks in driver to be skipped
+	- on 3.0 GHz Pentium allows 40-50ns MPI improvement
+	- add UVCA, UVP API;
+		iba_set_flags(flags) - IBA_MULTI_THREADED, IBA_SINGLE_THREADED (0), later others
+		- entire appl/driver context is single/multi-threaded
+		- N/A for kernel since CONFIG_SMP tells kernel
+		- ? how to drive into UVP?
+			- via iba_ca_set_flags calls with special flags?
+				- call for presently open CAs as well as all future opens
+			- single threaded implies ca is single threaded
+			- multi-threaded does not imply ca behaviour
+	- add VPD, UVCA?, VCA API, UVP API?:
+		iba_ca_set_flags (flags) - IBA_MULTI_THREADED, IBA_SINGLE_THREADED (0), later others
+		- glue into TavorVpd spin lock optimization
+		- given ca instance is single/multi threaded
+- review data structures between user and kernel.
+- could allow non-owner user space iba_query_mr, issue query to
+  VKA using GetFirstDevice() for device context.  This could be used to
+  create a tool to query all MR handles (1-10,000 or so) and report sizes,
+  total size.
+- OsWait Object handle validation in VKA (Cq->WaitObjPtr) and CM (CEP->EventObj)
+.   Also review how these objects get created
+	is it via VKA calls?
+- Ibt Open failures call close for subcomponents never opened
+- make sure all output parameters can be NULL/optional in APIs, including
+	verbs drivers
+- add const to API definitions
+- VKA and VCA (possibly VPD) need to verify that same HCA applies when 2
+	handles given such as CA and PD given for create QP, register MR, modify MR,
+	etc.
+- some outputs from VPD/UVP not needed: QueryMR PdHandle, QueryAV PdHandle, etc
+	These are always replaced by VCA/UVCA
+- iba_gsi_coallse, make it multiple APIs so don't have to copy into 1
+	buffer.  Such as iba_gsi_copy_dgrm(....,offset, len) to copy part of it
+	and let gsi deal with fragmentation of packets in RMPP response.
+	and iba_gsi_get_len(....)
+- CM ProcessRej not right when in established or LAP states, see TBD comment
+	in ProcessRejReq
+- could internally have a struct QP_CONTEXT in Vca which forms
+	base structure for IB_HANDLE returned by Vpd.
+	As such eliminate need for 2 small structures.
+	ditto for other resources (CQ, CA, etc).
+- maintain reference counts in CA/QP/CQ during callbacks (async and completion)
+	avoid or defer destroy while in callback.  May be able to have a simple
+	flag, much as CM does instead of an actual count.
+	applies to UVCA and possibly VCA.
+- review error checks in UVCA, where possible just depend on checks in VKA
+	or VPD.  Hence removing checks and code from UVCA.
+- add API to query a single PKey/Gid by Index
+- move common error checks, caching, etc from VPD to VCA
+- move SMA caching from VPD to SMI
+- utility function - GetAVFromCompletion(WORK_COMPLETION)
+	- build a IB_ADDRESS_VECTOR from a UD completion
+- use IB_ADDRESS_VECTOR in Ibt_Dgrm for GSI
+- Drop Element in Ibt_Dgrm for GSI
+- growable dgrm pool in GSI
+- ? use physical memory regions in GSI and kmalloc MAD buffers on fly?
+- RD QpAttr lists for various state changes not correct
+- declare ATOMIC_UINT as atomic_t in linux kernel
+- look at removing thundering heard in Public/ithreadpool.c, could use
+	a counting semaphore instead and each release could add 1 free to
+	the semaphore.  Would need to review counting semaphores truely work
+	on all platforms as this would be the 1st true use of them.
+- RMPP and SA query timeouts should be based on:
+	ClassPortInfo.RespTimeValue + 2*PortInfo.SubnetTimeout
+	- if user provides a timeout, use larger of user timeout and this value.
+	- requery ClassPortInfo at a slow (hourly?) period rate
+	- see page 642, 650 IBTA 1.1
+- should RMPP context expect 1st data packet from sender (SA) within RespTimeout
+	for ClassPortInfo of SA rather than wait on TotalTransationTimeout?
+- response time miscomputed for self querye of ClassPortInfo in SA CmdSentTime
+- debug SA redirect code (requires fixes from SA).
+  Expected response to ClassPortInfo:
+	If no redirect, or a redirect to a known local subnet path
+	(This is what our SA should do at present):
+	Redirect SL, LID, P_Key,QP,Q_Key - set
+	RedirectGID, TC, FL=0
+
+	if no redirect, or a redirect to a known global subnet path:
+	Redirect SL, LID, P_Key,QP,Q_Key,RedirectGID, TC, FL - set
+
+	If redirect and consumer needs to resolve path:
+	Redirect GID, QP, P_Key, Q_key -set
+	Redirect SL, LID, TC, FL = 0
+
+	Note some versions of our SM return 0 in all fields except QP
+	if not redirect.
+	Also our agents need to be fixed to return proper ClassPortInfo, most
+	zero the fields.
+
+- subnet driver, bInitialized flag seems unnecessary/incomplete
+	- should reset on port down and insure re-issue ClassPortInfo
+	when port comes up, see infop.c and calls to InitializeProviders
+	- class port info not really used yet, sdsend.c has use of redirect
+	ifdef'ed out
+- Vka:
+	- pOpenContext and DeviceClose interaction with fork
+	- UVCA and VKA should not add handle to map's until object fully built?
+	- after validate handle, no locks nor reference counts held, so it could
+		get destroyed while in use by call which validated it.
+			- need a refcount and destroy must wait, make sure no deadlock
+			if callback calls destroy
+- new test case in user_cm_test
+	- check handling of race between DREP w/o a callback:
+			RTU ->
+					callback sleep
+			DREQ ->
+			CmDisconnect(NULL, Drep, -)
+- /proc/iba - have a file in release build showing overall memory locking stats
+	debug build can have the list.  Ditto for memory allocation stats?
+- merge umadt and sqpt into Common Umadt
+- should CM grab QP error events and disconnect?
+- VCA could keep lists of all CAs and their attributes, update in SMA
+	GetLocalCaInfo in Subnet/infop, sqpt_misc.c, umadt could be
+		a iba_query_all_cas_alloc function instead
+- In HCA hot swap environment, SystemImageGuid can go stale if CA it was
+  chosen from is removed.  Should have VcaSystemImageGuid(0) called by all SMA
+  and query CA operations (perhaps in IbAccess itself).  Then if CA which
+  is SystemImageGuid is removed, change system image guid in Vca global to
+  that of another CA (or 0 if last CA) and issue the SystemImageGuid Change
+  notice to the SM on all active ports.
+  Also have a SystemImageGuid change callback in IBT notify
+  interface.  Should somehow separate the system shutdown case since the
+  remaining CAs will quickly be removed and the notice and traps are of little
+  value.

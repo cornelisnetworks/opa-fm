@@ -1,0 +1,222 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+# suffixes and commands to build targets for:
+# BUILD_TARGET_OS=WIN32
+# BUILD_TARGET_TOOLCHAIN=MSVS
+# BUILD_TARGET=WIN32
+# Target specific defines for building WIN32 Target using WIN32 tools (visual C++)
+
+SHLIB_VERSION		?= 0.0
+LIB_PREFIX			= $(BUILDDIR)/
+SHLIB_SUFFIX		= .dll
+SHLIB_VERSION_SUFFIX= .dll # or .$(SHLIB_VERSION).dll
+ARLIB_SUFFIX		= .lib
+EXE_SUFFIX			=  .exe
+OBJ_SUFFIX			= .obj
+EXP_SUFFIX			= .exp
+RES_SUFFIX			= .res
+PRE_SUFFIX			= .pre
+
+# Paths:
+SYS_INCLUDE_DIRS=
+SYS_LIB_DIRS	=
+
+REGISTER?=
+
+# Basic Commands:
+#RUNDOS		= $(TOOLS_DIR)/rundos.exe
+
+# Compilation/Build Commands and flags:
+
+# Browse Compiler
+# ----------------------------
+BSC			= bscmake.exe
+BSCSYS		= /nologo /n
+BSCLOCAL	= # Empty by default
+BSCFLAGS	= $(BSCSYS) $(BSCENV) $(BSCPROJ) $(BSCMOD) $(BSCLOCAL) /o
+
+# C/C++ compilation
+# ----------------------------
+CC			= cl.exe
+CCC			= cl.exe
+LINT		= lint	# TBD
+	# convert include dirs to windows paths so Windows tools can understand
+	# however use forward slashes so make is not confused
+CINCSRCH 	= $(foreach inc,$(CINCLUDE_DIRS),/I $(subst \,/,$(shell cygpath -w $(inc))))
+#CANSI		= /D "__STDC__=1"
+CANSI		=
+CPIC		= 
+CCPIC		= 
+CMACH		= /D TARGET_CPU_FAMILY_X86 /D WIN32 /D CPU_LE
+CCEXH		= /GX
+CCNOEXH		= /GX-
+CCRTTI		= /GR
+CCNORTTI	= /GR-
+CSHARED		= 
+CCSHARED	= 
+CCLIBS		= 
+ifdef PCH_TARGET
+PCHFLAGS	= $(addprefix /YX /Fp,$(PCH_TARGET))
+endif
+  # Define all variations of C/CC compiler flags.
+     # Subsystem based flags
+none_CC_Flags		=
+console_CC_Flags	=/D "_CONSOLE" /D "_MBCS"
+windows_CC_Flags	=/D "_WINDOWS"
+     # Build_Config and UseMFC based flags
+common_CC_Flags		=/D "STRICT" /nologo /W3 $(PCHFLAGS) /Fo /Fd /FR /FD
+release_none_CC_Flags	=$(common_CC_Flags) /Zi /D "NDEBUG"
+release_no_mfc_CC_Flags	=$(common_CC_Flags) /Zi /D "NDEBUG" /ML
+release_shared_CC_Flags	=$(common_CC_Flags) /Zi /D "NDEBUG" /MD /D "_AFXDLL"
+release_static_CC_Flags	=$(common_CC_Flags) /Zi /D "NDEBUG" /MT
+debug_none_CC_Flags	=$(common_CC_Flags) /Gm /Zi /D "IB_DEBUG" /D "_DEBUG" /D "DEBUG" /D "IB_TRACE"
+debug_no_mfc_CC_Flags	=$(common_CC_Flags) /Gm /Zi /D "IB_DEBUG" /D "_DEBUG" /D "DEBUG" /D "IB_TRACE" /MLd
+debug_shared_CC_Flags	=$(common_CC_Flags) /Gm /Zi /D "IB_DEBUG" /D "_DEBUG" /D "DEBUG" /D "IB_TRACE" /MDd /D "_AFXDLL"
+debug_static_CC_Flags	=$(common_CC_Flags) /Gm /Zi /D "IB_DEBUG" /D "_DEBUG" /D "DEBUG" /D "IB_TRACE" /MTd
+    # Config based flags for debug options
+release_CCDEBUG_Flags	=
+debug_CCDEBUG_Flags	= $(CCPROJDEBUG) $(CCLOCALDEBUG)
+release_CDEBUG_Flags	=
+debug_CDEBUG_Flags	= $(CPROJDEBUG) $(CLOCALDEBUG)
+   # Assemble the compiler flags based upon desired build configuration.
+CCSYS		=$($(strip $(SUBSYSTEM))_CC_Flags)\
+    		 $($(strip $(BUILD_CONFIG))_$(strip $(USEMFC))_CC_Flags) \
+    		 $($(strip $(BUILD_CONFIG))_CCDEBUG_Flags)
+   # for now assume most C++ flags are valid on C compiler
+CSYS		=$($(strip $(SUBSYSTEM))_CC_Flags)\
+    		 $($(strip $(BUILD_CONFIG))_$(strip $(USEMFC))_CC_Flags) \
+    		 $($(strip $(BUILD_CONFIG))_CDEBUG_Flags)
+
+   # Define all variations of the C/CC compiler optimization flags.
+    # Config based flags for optimization options
+release_CCOPT_Flags	=/O2
+debug_CCOPT_Flags	=/Od
+# Assemble the optimization flags based upon desired build configuration.
+CCOPT		= $($(strip $(BUILD_CONFIG))_CCOPT_Flags)
+# for now assume C++ flags are valid on C compiler
+COPT 		= $(CCOPT)
+
+# linking
+# ----------------------------
+LD			= link.exe
+LDMACH		= /machine:I386
+	# convert lib dirs to windows paths so Windows tools can understand
+	# however use forward slashes so make is not confused
+LDLIBSRCH	= $(foreach lib,$(LD_LIB_DIRS),/libpath:"$(subst \,/,$(shell cygpath -w $(lib)))")
+LDSTRIP		=
+# the /debug option causes creation of the pdb file, however it does increase
+# the exe file size significantly
+LDPDB_RELEASE	= /debug /pdbtype:sept /debugtype:both
+LDPDB_DEBUG	= /debug /pdbtype:sept /debugtype:both
+LDOUTPUT		= /out:
+	# Windows does not use -l
+	# DLLs and static libraries use a .lib file to link against
+LDLIBS		= $(foreach lib,$(LOCALLIBS) $(LOCALDEPLIBS) $(MODLIBS) $(MODDEPLIBS) $(PROJLIBS) $(PROJDEPLIBS),$(lib).lib) $(SYSLIBS)
+LDSTATIC	=/noshared
+   # Define all variations of linker flags.
+none_LD_Flags		=
+console_LD_Flags	=/subsystem:console
+windows_LD_Flags	=/subsystem:windows
+common_LD_Flags		=/nologo
+release_LD_Flags	=$(common_LD_Flags) /incremental:no  $(LDPDB_RELEASE)
+debug_LD_Flags		=$(common_LD_Flags) /incremental:no $(LDPDB_DEBUG)
+   # Assemble the linker flags based upon desired build configuration.
+LDSYS		=$($(strip $(strip $(SUBSYSTEM)))_LD_Flags) $($(strip $(BUILD_CONFIG))_LD_Flags)
+   # Specify the default Microsoft WIN32 libs to link, if any.
+    # WIN32 libraries based on UseMFC selection
+none_SYSLIBS		=
+no_mfc_SYSLIBS	=kernel32.lib user32.lib gdi32.lib winspool.lib\
+    		 comdlg32.lib advapi32.lib shell32.lib ole32.lib\
+    		 oleaut32.lib uuid.lib odbc32.lib odbccp32.lib 
+shared_SYSLIBS	=
+static_SYSLIBS	=
+# Assemble the Common libraries based upon desired MFC configuration.
+SYSLIBS		=$($(strip $(USEMFC))_SYSLIBS)
+
+# Lexical Analyzer Generator
+# --------------------------
+#LEX_LIB		= fl	# TBD
+
+# makedepend
+# ----------------------------
+MAKEDEPEND	= $(SHELL) $(MAKETOOLS_DIR)/makewin32depend.sh
+
+# IDL Compiler
+# ----------------------------
+MIDL		= midl.exe
+MIDLSYS		= /ms_ext /c_ext /win32 /nologo
+MIDLLOCAL	= # Empty by default
+MIDLFLAGS	= $(MIDLSYS) $(MIDLENV) $(MIDLPROJ) $(MIDLMOD) $(MIDLLOCAL) $(CINCSRCH)
+
+# targets to build from IDLFILE during INCLUDES phase
+IDL_HEADERS	= $(IDLFILE:.idl=.h)
+IDL_OTHER	= $(IDLFILE:.idl=_i.c) $(IDLFILE:.idl=_p.c) \
+			  $(IDLFILE:.idl=_dlldata.c) $(IDLFILE:.idl=.tlb)
+IDL_TARGETS	= $(IDL_HEADERS) $(IDL_OTHER)
+
+# building libraries
+# ----------------------------
+MKARLIB		= link.exe -lib /nologo /out:
+MKPARTIAL	= link.exe /nologo /r /out:
+MKIMPLIB	= link.exe -lib /nologo /def:"$(DEFFILE)" $(IMPLIBLOCAL) /out:
+MKSHLIB		= link.exe /nologo /dll
+# Only add the /def option to the MKSHLIB link command if there is a .def file and no import
+# library is being created.
+ifneq "$(DEFFILE)" ""
+ifeq "$(strip $(LIB_TARGETS_EXP))" ""
+  MKSHLIB+=/def:"$(DEFFILE)"
+endif # LIB_TARGETS_EXP
+endif # DEFFILE
+ifeq "$(strip $(LIBFILES))" ""
+ARLIBS=
+else
+ARLIBS=$(foreach lib, $(LIBFILES), $(subst \,/,$(shell cygpath -w $(MOD_LIB_DIR)/$(LIB_PREFIX)$(lib)$(ARLIB_SUFFIX))))
+endif
+
+# updating registry
+# ----------------------------
+REGEXE		= $(REGISTER)$(MAKETOOLS_DIR)/regexe.bat
+REGDLL		= $(REGISTER)$(MAKETOOLS_DIR)/regdll.bat
+
+# resource compiler
+# ----------------------------
+RSC			= rc.exe
+# this defines the "CodePage" (ie. character set) which the text is in
+RSCMACH		= /l 0x409
+# Define all variations of resource compiler flags.
+none_RSC_Flags		=
+release_RSC_Flags	=/D "NDEBUG"
+nodebug_RSC_Flags	=/D "NDEBUG"
+debug_RSC_Flags		=/D "_DEBUG" /D "DEBUG"
+# Assemble the resource compiler flags based upon desired build configuration.
+RSCLOCAL			= # Empty by default
+RSCSYS	= $($(strip $(BUILD_CONFIG))_RSC_Flags)
+# stupid RSC compiler uses /i instead of /I for include paths
+RSCINCSRCH = $(foreach inc,$(CINCLUDE_DIRS),/i $(subst \,/,$(shell cygpath -w $(inc))))
+RSCFLAGS= $(RSCMACH) $(RSCSYS) $(RSCENV) $(RSCPROJ) $(RSCMOD) $(RSCLOCAL) $(RSCINCSRCH)

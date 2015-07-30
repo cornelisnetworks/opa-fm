@@ -1,0 +1,42 @@
+dnl
+dnl autoconf input file to generate MCONFIG
+dnl
+
+AC_INIT(MCONFIG.in)
+AC_PREFIX_DEFAULT(/usr)
+
+AC_PROG_CC
+AC_C_CONST
+AC_C_INLINE
+
+PA_ADD_CFLAGS(-Wall)
+PA_ADD_CFLAGS(-W)
+PA_ADD_CFLAGS(-Wpointer-arith)
+PA_ADD_CFLAGS(-Wbad-function-cast)
+PA_ADD_CFLAGS(-Wcast-equal)
+PA_ADD_CFLAGS(-Wstrict-prototypes)
+PA_ADD_CFLAGS(-Wmissing-prototypes)
+PA_ADD_CFLAGS(-Wmissing-declarations)
+PA_ADD_CFLAGS(-Wnested-externs)
+PA_ADD_CFLAGS(-Winline)
+PA_ADD_CFLAGS(-Wshadow)
+PA_ADD_CFLAGS(-Wcast-align)
+PA_ADD_CFLAGS(-pipe)
+
+AC_CHECK_HEADERS(sysexits.h)
+AC_CHECK_HEADERS(getopt.h)
+
+AC_CHECK_TYPE(off_t, signed long)
+AC_CHECK_TYPE(size_t, unsigned long)
+AC_CHECK_TYPE(ssize_t, signed long)
+
+AC_CHECK_FUNCS(lchown)
+
+AC_SEARCH_LIBS(compress2, z, , [AC_MSG_ERROR(zlib not found, cannot continue)])
+AC_SEARCH_LIBS(getopt_long, [getopt getopt_long], AC_DEFINE(HAVE_GETOPT_LONG))
+
+AC_PROG_RANLIB
+AC_PROG_INSTALL
+
+AC_CONFIG_HEADER(config.h)
+AC_OUTPUT(MCONFIG)

@@ -1,0 +1,246 @@
+
+Copyright (c) 2001, VIEO Inc.  All rights reserved.
+
+
+    Test Cases for CS Operation System Specific Tracing/Logging Functions
+    ---------------------------------------------------------------------
+
+
+1.  Test: vs_enter:1
+
+    Description: 
+        This test validates the CS OS specific function vs_enter()
+
+    Associated Use Case: 
+        vs_enter:1  
+
+    Valid Runtime Environments: 
+        Kernel, embedded
+
+    External Configuration: 
+        None required.
+
+    Preconditions: 
+        None.
+   
+    Notes: 
+        None.
+
+    Test Application: 
+       ib/src/cs/test/logging
+
+    Procedure: 
+        1.  Run the test application.
+
+    Expected Results: 
+        Test application should run indicating that all tests obtained 
+        expected results.  
+    
+    Postconditions:
+        Error log indicates all test cases in the form "vs_enter:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description:  Test validation of name pointer parameter.
+
+        a.  Call fails if the supplied name pointer is NULL, all other
+            parameters may be valid.  Call should return a VSTATUS_ILLPARM 
+            error code.
+
+    2.  Description:  Test for successful logging of function entry.
+
+        a.  Call vs_enter() passing in four unique integer values in addition 
+            to a function name string.  Verify that the data is correctly
+            logged to the trace log.
+
+
+2.  Test: vs_exit:1
+
+    Description: 
+        This test validates the CS OS specific function vs_exit()
+
+    Associated Use Case: 
+        vs_exit:1  
+
+    Valid Runtime Environments: 
+        Kernel, embedded
+
+    External Configuration: 
+        None required.
+
+    Preconditions: 
+        None.
+   
+    Notes: 
+        None.
+
+    Test Application: 
+       ib/src/cs/test/logging
+
+    Procedure: 
+        1.  Run the test application.
+
+    Expected Results: 
+        Test application should run indicating that all tests obtained 
+        expected results.  
+    
+    Postconditions:
+        Error log indicates all test cases in the form "vs_exit:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description:  Test validation of name pointer parameter.
+
+        a.  Call fails if the supplied name pointer is NULL, all other
+            parameters may be valid.  Call should return a VSTATUS_ILLPARM 
+            error code.
+
+    2.  Description:  Test for successful logging of function exit.
+
+        a.  Call vs_exit() passing in an integer value in addition to a 
+            function name string.  Verify that the data is correctly
+            logged to the trace log.
+
+
+3.  Test: vs_fatal_error:1
+
+    Description: 
+        This test validates the CS OS specific function vs_fatal_error()
+
+    Associated Use Case: 
+        vs_fatal_error:1  
+
+    Valid Runtime Environments: 
+        Kernel, embedded
+
+    External Configuration: 
+        None required.
+
+    Preconditions: 
+        None.
+   
+    Notes: 
+        None.
+
+    Test Application: 
+       ib/src/cs/test/logging
+
+    Procedure: 
+        1.  Run the test application.
+
+    Expected Results: 
+        Test application should run indicating that all tests obtained 
+        expected results.  
+    
+    Postconditions:
+        Error log indicates all test cases in the form "vs_fatal_error:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description:  Test for successful vs_fatal_error call.
+
+        a.  Call vs_fatal_error() passing in a pointer to a descriptive
+            string.  The call should not return.  Verify that the descriptive
+            string is logged to the trace log subsystem.
+
+
+4.  Test: vs_log_info:1
+
+    Description: 
+        This test validates the CS OS specific function vs_log_info()
+
+    Associated Use Case: 
+        vs_log_info:1  
+
+    Valid Runtime Environments: 
+        Kernel, embedded
+
+    External Configuration: 
+        None required.
+
+    Preconditions: 
+        None.
+   
+    Notes: 
+        None.
+
+    Test Application: 
+       ib/src/cs/test/logging
+
+    Procedure: 
+        1.  Run the test application.
+
+    Expected Results: 
+        Test application should run indicating that all tests obtained 
+        expected results.  
+    
+    Postconditions:
+        Error log indicates all test cases in the form "vs_log_info:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description:  Test validation of string pointer parameter.
+
+        a.  Call fails if the supplied string pointer is NULL, all other
+            parameters may be valid.  Call should return a VSTATUS_ILLPARM 
+            error code.
+
+    1.  Description:  Test for successful vs_log_info call.
+
+        a.  Call vs_log_info() passing in a pointer to a descriptive
+            string and a test value.  Verify that the descriptive
+            string is logged correctly to the trace log subsystem.
+
+
+5.  Test: vs_log_error:1
+
+    Description: 
+        This test validates the CS OS specific function vs_log_error()
+
+    Associated Use Case: 
+        vs_log_error:1  
+
+    Valid Runtime Environments: 
+        Kernel, embedded
+
+    External Configuration: 
+        None required.
+
+    Preconditions: 
+        None.
+   
+    Notes: 
+        None.
+
+    Test Application: 
+       ib/src/cs/test/logging
+
+    Procedure: 
+        1.  Run the test application.
+
+    Expected Results: 
+        Test application should run indicating that all tests obtained 
+        expected results.  
+    
+    Postconditions:
+        Error log indicates all test cases in the form "vs_log_error:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description:  Test validation of string pointer parameter.
+
+        a.  Call fails if the supplied string pointer is NULL, all other
+            parameters may be valid.  Call should return a VSTATUS_ILLPARM 
+            error code.
+
+    1.  Description:  Test for successful vs_log_error call.
+
+        a.  Call vs_log_error() passing in a pointer to a descriptive
+            string and a test value.  Verify that the descriptive
+            string is logged correctly to the trace log subsystem.
+

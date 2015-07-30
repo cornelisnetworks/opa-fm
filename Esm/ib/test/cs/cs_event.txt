@@ -1,0 +1,547 @@
+
+Copyright (c) 2001, VIEO Inc.  All rights reserved.
+
+
+           Test Cases for CS Operating System Specific Event Functions
+           -----------------------------------------------------------
+
+
+1.  Test: vs_event_create:1
+
+    Description: 
+        This test validates the CS OS specific function vs_event_create()
+
+    Associated Use Case: 
+        cs:vs_event_create:1  
+
+    Valid Runtime Environments: 
+        User, Kernel, embedded
+
+    External Configuration: 
+        None required.
+
+    Preconditions: 
+        None.
+   
+    Notes: 
+        None.
+
+    Test Application: 
+       Linux Kernel Module: ib/src/linux/cs/kernel/lib/tstevthr.o
+       Linux User Module: ib/src/linux/cs/usr/bin/tstevt
+       ATI Module: run from serial screens.
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tstevthr.o
+        9.  verify results from log data
+       10.  rmmod tstevthr
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tstevt
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "Event Tests"
+       10.  verify results from log data
+
+
+    Expected Results: 
+        Program output should indicate that all tests obtained expected results.
+
+    Postconditions:
+        Error log indicates all test cases in the form "vs_event_create:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of event pointer parameter.
+
+        a.  Call fails if the supplied event pointer is NULL, all other
+            parameters may be valid.  Call should return a VSTATUS_ILLPARM 
+            error code.
+
+    2.  Description: Test validation of name parameter.
+
+        a.  Call fails if the supplied name parameter pointer is NULL, all 
+            other parameters may be valid.  Call should return a 
+            VSTATUS_ILLPARM error code.
+        b.  Call fails if name and NULL terminator combined length is
+            greater than VNAME_LENGTH.  Call should return a 
+            VSTATUS_ILLPARM error code.
+
+    3.  Description: Test validation of initial state parameters.  Initial
+        event state is cleared.
+
+        a.  The initial state mask indicates all events should be NOT
+            set after creation.  The call should return a VSTATUS_OK.
+        b.  For each event in the event set, a call to wait on that
+            individual event should return VSTATUS_TIMEOUT.
+        c.  For all events in the event set, a call to wait on any of
+            the individual events should return VSTATUS_TIMEOUT.
+
+    4.  Description: Test validation of initial state parameters.  Initial
+        event state is set for individual events in the event set.
+
+        a.  For each individual bit in the event state vector, the initial
+            state of the event is set.  The call should return VSTATUS_OK.
+        b.  A call to wait for the individual event should return immediately
+            with the event returned to the caller.
+        c.  A call to wait on all but the individual event in question should
+            not return prior to timeout.
+        d.  A call to wait on a combination of events that includes an
+            event set at creation should return immediately with only the
+            individual event returned in the callers event mask.
+
+    5.  Description: Test validation of initial state parameters.  Initial
+        event state is set for all events in the event set.
+
+        a.  For all events in the initial state event mask, the initial
+            state of the event is set.  The call should return VSTATUS_OK.
+        b.  A call to wait for any single event should return immediately
+            with the event returned to the caller.
+        c.  A call to wait for an event mask of {0, VEVENT_NUM_EVENTS - 1}
+            should return immediately, with the combination returned in 
+            the callers event mask.
+        d.  A call to wait for an event mask of all events should return
+            immediately, with the combination returned in the callers
+            event mask.
+        e.  A call to wait for an event mask of {15, 16}  should return
+            immediately, with the combination returned in the callers
+            event mask.
+
+    6.  Description: Test validation of initial state parameters.  Initial
+        event state mask is set to {0, VEVENT_NUM_EVENTS - 1}.  Each event 
+        waited on individually.
+
+        a.  The call should return a VSTATUS_OK return code.
+        b.  A call to wait for {VEVENT_NUM_EVENTS - 1} should return 
+            immediately.  The mask returned in the wait call should be 
+            {VEVENT_NUM_EVENTS - 1}.
+        c.  A call to wait for {0} should return immediately.
+            The mask returned in the wait call should be {0}.
+        d.  A call to wait for {0, VEVENT_NUM_EVENTS - 1} should return 
+            immediately.  The mask returned in the wait call should be 
+            {0, VEVENT_NUM_EVENTS - 1}.  
+
+    7.  Description: This test is only valid in the Linux User space.
+        The number of event sets created with vs_event_create() from 
+        user space is fixed.
+
+        a. Verify the maximum number of events supported by the User 
+           space implementation can be created. Attempt to allocate
+           one additional event; the call should fail and return a
+           VSTATUS_NODEV error code.
+
+2.  Test: vs_event_wait:1
+
+    Description: 
+        This test validates the CS OS specific function vs_event_wait()
+
+    Associated Use Case: 
+        cs:vs_event_wait:1  
+
+    Valid Runtime Environments: 
+        User, Kernel, embedded
+
+    External Configuration: 
+        None required.
+
+    Preconditions: 
+        1.  Requires existence of vs_event_create()
+   
+    Notes: 
+        None.
+
+    Test Application: 
+       Linux Kernel Module: ib/src/linux/cs/kernel/lib/tstevthr.o
+       Linux User Module: ib/src/linux/cs/usr/bin/tstevt
+       ATI Module: run from serial screens.
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tstevthr.o
+        9.  verify results from log data
+       10.  rmmod tstevthr
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tstevt
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "Event Tests"
+       10.  verify results from log data
+
+    Expected Results: 
+        Program output should indicate that all tests obtained expected results. 
+
+    Postconditions:
+        Error log indicates all test cases in the form "vs_event_wait:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of handle parameter.
+
+        a.  Call fails if the supplied handle is NULL, all other
+            parameters may be valid.  Call should return a VSTATUS_ILLPARM 
+            error code.
+        b.  Call fails if the supplied handle is not a valid CS event
+            handle returned by vs_event_create, all other parameters may be 
+            valid.  Call should return a VSTATUS_NXIO error code.
+
+    2.  Description: Test validation of the mask parameter.
+
+        a.  Call fails if the supplied mask is zero, all other parameters
+            may be valid. Call should return a VSTATUS_ILLPARM error code.
+
+    3.  Description: Test validation of the events parameter.
+
+        a.  Call fails if the supplied pointer is zero, all other parameters
+            may be valid. Call should return a VSTATUS_ILLPARM error code.
+
+    4.  Description: Test usage of timeout parameter, no event posted.
+
+        a.  Invoke vs_event_wait() with a timeout of less than 0.5 seconds.
+            Verify the call returns with a VSTATUS_TIMEOUT return code.
+            The caller resumes execution after the timeout period has elapsed
+            when no event has been posted. Verify the approximate wait time
+            is 0.5 seconds.
+
+        b.  Using a large timeout value, call vs_event_wait and verify the
+            call returns with a VSTATUS_TIMEOUT return code. The caller 
+            resumes execution after the timeout period has elapsed
+            when no event has been posted. Verify the approximate wait time
+            is equal to the timeout value.
+
+    5.  Description: Verify that events are binary.
+
+        a. Create an event set with an initial value of 0x00FFFF00U; invoke
+           vs_event_wait() with a mask of 0x00FFFF00U; this should immediately
+           complete with all requested events. Verify that a second 
+           vs_event_wait() call with a mask of 0x00FFFF00U returns a timeout.
+
+        b. Create an event set with an initial value of {all events}; invoke
+           vs_event_wait() with a mask of 0x00FFFF00U; this should
+           immediately complete with all requested events. Verify that a second
+           vs_event_wait() call with a mask of {all events} returns immediately
+           with an event set of 0xFF0000FFU.
+
+3.  Test: vs_event_post:1
+
+    Description: 
+        This test validates the CS OS specific function vs_event_post()
+
+    Associated Use Case: 
+        vs_event_post:1  
+
+    Valid Runtime Environments: 
+        User, Kernel, embedded
+
+    External Configuration: 
+        None required.
+
+    Preconditions: 
+        1.  Requires a previously created event.
+        2.  Requires multiple threads waiting on previously created event.
+   
+    Notes: 
+        None.
+
+    Test Application: 
+       Linux Kernel Module: ib/src/linux/cs/kernel/lib/tstevthr.o
+       Linux User Module: ib/src/linux/cs/usr/bin/tstevt
+       ATI Module: run from serial screens.
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tstevthr.o
+        9.  verify results from log data
+       10.  rmmod tstevthr
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tstevt
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "Event Tests"
+       10.  verify results from log data
+
+    Expected Results: 
+        Script should pass indicating that all tests obtained expected results.  
+    
+    Postconditions:
+        Error log indicates all test cases in the form "vs_event_post:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of handle parameter.
+
+        a.  Call fails if the supplied handle is NULL, all other
+            parameters may be valid.  Call should return a VSTATUS_ILLPARM 
+            error code.
+
+    2.  Description: Test validation of option parameter.
+
+        a.  Call fails if the supplied option is not VEVENT_WAKE_ONE or
+            VEVENT_WAKE_ALL.  Call should return a VSTATUS_ILLPARM error code.
+
+    3.  Description: Test validation of the mask parameter.
+
+        a.  Call fails if the supplied mask is zero, all other parameters
+            may be valid. Call should return a VSTATUS_ILLPARM error code.
+
+    4.  Description: Test for successful event post with the VEVENT_WAKE_ONE
+        option.
+
+        a.  With multiple threads waiting on the same event, post the event
+            with the VEVENT_WAKE_ONE option and verify only one waiter gets
+            the event; continue this sequence until all waiters get the event.
+
+        b.  With threadA waiting on events {0,1}, threadB waiting on events
+            {1,2}, post event 0, post event 1; verify event 1 is cleared by 
+            invoking vs_event_wait on event 1; the vs_event_wait call should
+            return VSTATUS_TIMEOUT.
+
+    5.  Description: Test for successful event post with the VEVENT_WAKE_ALL
+        option.
+
+        a.  With multiple threads waiting on the same event, post the event
+            with the VEVENT_WAKE_ALL option and verify all waiters get
+            the event.
+
+        b.  With threadA waiting on events {0,1}, threadB waiting on events
+            {1,2}, post event 1 and event 2 at the same time. Verify 
+            threadA gets events {1} and threadB gets {1,2}.
+
+        c.  With threadA waiting on events {0,1}, threadB waiting on events
+            {1,2}, post event 0, post event 1; verify event 1 is cleared by 
+            invoking vs_event_wait on event 1; the vs_event_wait call should
+            return VSTATUS_TIMEOUT.
+
+
+4.  Test: vs_event_delete:1
+
+    Description: 
+        This test validates the CS OS specific function vs_event_delete()
+
+    Associated Use Case: 
+        vs_event_delete:1  
+
+    Valid Runtime Environments: 
+        User, Kernel, embedded
+
+    External Configuration: 
+        None required.
+
+    Preconditions: 
+        1.  Requires a previously created event.
+        2.  Requires a thread waiting on previously created event.
+   
+    Notes: 
+        None.
+
+    Test Application: 
+       Linux Kernel Module: ib/src/linux/cs/kernel/lib/tstevthr.o
+       Linux User Module: ib/src/linux/cs/usr/bin/tstevt
+       ATI Module: run from serial screens.
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tstevthr.o
+        9.  verify results from log data
+       10.  rmmod tstevthr
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tstevt
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "Event Tests"
+       10.  verify results from log data
+
+    Expected Results: 
+        Script should pass indicating that all tests obtained expected results. 
+
+    Postconditions:
+        Error log indicates all test cases in the form "vs_event_delete:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of handle parameter.
+
+        a.  Call fails if the supplied handle is NULL, all other
+            parameters may be valid.  Call should return a VSTATUS_ILLPARM 
+            error code.
+
+    2.  Description: Test deletion of event with a thread waiting on the
+        event.
+
+        a.  vs_event_delete is successful and returns a VSTATUS_OK code.
+            The waiting thread returns a VSTATUS_NXIO error code.
+
+    3.  Description: Test for successful event deletion.
+
+        a.  With no threads waiting on the event, attempt to delete it.  Call
+            should succeed and return a VSTATUS_OK code.
+
+5.  Test: vs_event_post:2
+
+    Description: 
+        This test validates the CS OS specific function vs_event_post()
+        operation between Linux Kernel and Linux User space.
+
+    Associated Use Case: 
+        vs_event_post:1  
+
+    Valid Runtime Environments: 
+        User, Kernel
+
+    External Configuration: 
+        None required.
+
+    Preconditions: 
+        1.  Requires a previously created event.
+        2.  Requires multiple threads waiting on previously created event.
+   
+    Notes: 
+        None.
+
+    Test Application: 
+       Linux User Module: ib/src/linux/cs/usr/bin/tstevt
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tstevt
+        9.  verify results from log data
+
+    Expected Results: 
+        Script should pass indicating that all tests obtained expected results. 
+
+    Postconditions:
+        Error log indicates all test cases in the form "vs_event_post:2:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test for successful event post with the VEVENT_WAKE_ONE
+        option. These tests have a combination of waiters in Kernel space and
+        waiters in User space.
+
+        a.  With multiple threads waiting on the same event, post the event
+            with the VEVENT_WAKE_ONE option and verify only one waiter gets
+            the event; continue this sequence until all waiters get the event.
+
+        b.  With threadA waiting on events {0,1}, threadB waiting on events
+            {1,2}, post event 0, post event 1; verify event 1 is cleared by 
+            invoking vs_event_wait on event 1; the vs_event_wait call should
+            return VSTATUS_TIMEOUT.
+
+    2.  Description: Test for successful event post with the VEVENT_WAKE_ALL
+        option. These tests have a combination of waiters in Kernel space and
+        waiters in User space.
+
+        a.  With multiple threads waiting on the same event, post the event
+            with the VEVENT_WAKE_ALL option and verify all waiters get
+            the event.
+
+        b.  With threadA waiting on events {0,1}, threadB waiting on events
+            {1,2}, post event 1 and event 2 at the same time. Verify 
+            threadA gets events {1} and threadB gets {1,2}.
+
+        c.  With threadA waiting on events {0,1}, threadB waiting on events
+            {1,2}, post event 0, post event 1; verify event 1 is cleared by 
+            invoking vs_event_wait on event 1; the vs_event_wait call should
+            return VSTATUS_TIMEOUT.

@@ -1,0 +1,42 @@
+Network library to support out-of-band queries to the FE through oib_utils and opafequery.
+
+It contains utility functions for OOB connections and packet sending to the
+Fabric Executive (FE).
+
+opa_fe_utils is located under OPENIB_FF. It acts as an API layer under the oib_utils
+layer, enabling queries to the SA and PA through the FE. Because of the functionality
+provided, tools that interface at the oib_utils layer can make queries while
+situated on an out-of-band host. opafequery also makes use of osf_fe_utils as a
+lower layer for communicating with the FE, but it does so directly, rather than invoking 
+oib_utils functions. 
+
+The following source files (with associated header files) are included in the
+library. A brief summary of each file's provided functionality is given below.
+
+fe_connections.c:
+- out-of-band connection/disconnection
+- out-of-band packet sending and receiving 
+
+fe_net.c:
+- opening/closing and reading/writing sockets 
+- creating, sending, receving, and destroying NetBlobs
+- connection list management
+- error handling
+
+fe_net_blob.c:
+- creating and freeing NetBlobs  
+- updating "bytes sent" metadata
+
+fe_net_queue.c:
+- initialization, enqueuing/dequeuing, peeking, and empty checks for NetBlob queues 
+
+
+Additionally, the two header files listed below are included for convenience.
+
+fe_error_types.h:
+- contains generic, configuration, subnet, performance, device, baseboard, and
+  unsolicited error types 
+
+fe_protocol.h:
+- contains definitions for OOB packets and header, as well as byte-swapping macros
+

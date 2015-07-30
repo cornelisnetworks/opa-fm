@@ -1,0 +1,699 @@
+#!/bin/bash
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+# This script will create a basic makefile for all the source code
+# files found in the present directory.
+
+#
+# It handles the following special cases automatically:
+#	if the directory name is Test, a unit test makefile is build
+#		to unit test the parent directory's library
+#	if the directory is a top level directory, a project makefile is built
+#	if the directory is a middle level directory, a middle makefile is built
+#	if the directory is sub-directory of a module which has a
+#		Makerules.module file, a module sub-directory makefile is built
+#		(it is best to build the module top level makefile first
+#		then buildMakefile for sub-directories will properly build)
+#	For other directories, a library Makefile is built
+#	Any source files which should not be processed by the Makefile
+#	should have the strings: "INTERNAL USE ONLY" or "DO NOT BUILD"
+#	"INTERNAL USE ONLY" should be used for non-public headers
+#	"DO NOT BUILD" should be used for source which is not ready yet
+#
+# In update mode (-u) an existing makefile is rebuilt, retaining selected
+# customizations.  The original is renamed Makefile-old
+#
+# Other Options:
+#	-x - create a makefile for building an executable
+#	-d - create a makefile for building a driver
+#	-k - create a makefile for building a darwin kernel extension
+#	-s - create a makefile for building a shared library
+#	-a - create a makefile for building an archive library (the default)
+#	-m - create a makefile for the toplevel directory of a module
+#	-c dir - create a makefile which builds code from this directory and dir
+#			(dir is relative to MOD_DIR)
+#			this option is only valid within a module style tree
+#	-p project - project name, default is current dir name
+
+# Known Limitations:
+#	The update option (-u) only handles LOCALDEPLIBS and DS_SUBPROJECTS
+#		other customizations will be lost
+#	All include files will be installed as visible to other modules
+#		one exception is file containing the string "INTERNAL USE ONLY"
+#		on "DO NOT BUILD"
+#	out of the ordinary situations are not handled
+#	all non-special sub-directories are simply included in the Makefile
+#	.rc, .idl, .def files not handled
+#	misc source files not handled
+#	building of shared libraries not handled
+#	building makefiles for integration tests is not supported
+
+. $ICSBIN/funcs.sh
+
+tempFiles=
+foundSource=n
+# This will always be run when we exit, so it can do all our cleanup
+trap 'rm -f $tempFiles' 0 1 2 9 15
+
+Usage() {
+	echo "Usage: buildMakefile [-p project] [-u] [-m] [-c dir] [-x|-sad]" >&2
+		echo "   -p project   project name, default is current dir name" >&2
+        echo "   -x   create a makefile for building an executable" >&2
+        echo "   -d   create a makefile for building a driver" >&2
+		echo "   -k   create a makefile for building a darwin kernel extension" >&2
+        echo "   -s   create a makefile for building a shared library" >&2
+        echo "   -a   create a makefile for building an archive library (the default)" >&2
+		echo "   -m   create a makefile for the toplevel directory of a module" >&2
+		echo "   -c dir   create a makefile which builds code from this directory and dir" >&2
+		echo "            (dir is relative to MOD_DIR)" >&2
+		echo "            this option is only valid within a module style tree" >&2
+        echo "   -u   In update mode (-u) an existing makefile is rebuilt, retaining selected" >&2
+        echo "        customizations.  The original is renamed Makefile-old" >&2
+        
+        
+	exit 2
+}
+
+grepValue()
+{
+	# grep for the value of a variable in the present Makefile
+	# $1 = variable name
+	# returns on stdout, the value of the variable
+	# leading spaces are removed from the value
+	grep "^$1" Makefile|cut -f2- -d=|sed -e's/^[ 	]*//'
+}
+
+
+uflag=n
+xflag=n
+sflag=n
+aflag=n
+dflag=n
+kflag=n
+mflag=n
+cdir=
+project=
+while getopts uxsadkmc:p: opt
+do
+	case $opt in
+	u) uflag=y;;
+	x) xflag=y;;
+	s) sflag=y;;
+	a) aflag=y;;
+	d) dflag=y;;
+	k) dflag=y	# -d implied by -k
+		kflag=y;;
+	m) mflag=y;;
+	c) cdir=$OPTARG;;
+	p) project=$OPTARG;;
+	?) Usage;;
+	esac
+done
+shift `expr $OPTIND - 1`
+if [ $# != 0 ]
+then
+	Usage
+fi
+if [ "$xflag" = y ]
+then
+	if [ "$aflag" = y -o "$sflag" = y -o "$dflag" = y ]
+	then
+		Usage
+	fi
+fi
+
+if [ -f Makefile ]
+then
+	if [ "$uflag" = n ]
+	then
+		echo "buildMakefile aborted.  A Makefile already exists in this directory!" >&2
+		echo "To update an existing makefile, use buildMakefile -u" >&2
+		exit 1
+	else
+		ds_subprojects=`grepValue DS_SUBPROJECTS`
+		shlib_version=`grepValue SHLIB_VERSION`
+		localdeplibs=`grepValue LOCALDEPLIBS`
+		clocal=`grepValue CLOCAL`
+		cclocal=`grepValue CCLOCAL`
+		copt=`grepValue COPT`
+		ccopt=`grepValue CCOPT`
+		local_include_dirs=`grepValue LOCAL_INCLUDE_DIRS`
+		libfiles=`grepValue LIBFILES`
+		mv Makefile Makefile-old
+	fi
+else
+	ds_subprojects=""
+	shlib_version=""
+	localdeplibs=""
+	clocal=""
+	cclocal=""
+	copt=""
+	ccopt=""
+	if [ "$mflag" = y ]
+	then
+		libfiles='FILL IN libraries built to $(MOD_LIB_DIR)'
+	else
+		libfiles=
+	fi
+	if [ "$uflag" = y ]
+	then
+		uflag=n	# ignore -u, no existing makefile
+		echo "buildMakefile: ignoring -u, no existing Makefile"
+	fi
+fi
+
+extractModuleDir()
+{
+	# extract the module sub-directory from a full path
+	# and set module_dir to the resulting sub-directory path
+	# $1 = full path to module (should be within TL_DIR)
+	module_dir=`expr "$1" : "$TL_DIR/\(.*\)"`
+}
+	
+findModuleDir()
+{
+	# sets module_dir to the sub-directory under TL_DIR for this module
+	# if this is not a module, module_dir is set to ""
+	# uses $TL_DIR
+	full_module_dir="$pwd"
+	while [ ! -f "$full_module_dir/Makerules.module" ]
+	do
+		full_module_dir=`dirname $full_module_dir`
+		if [ "$full_module_dir" = "/" -o "$full_module_dir" = "$TL_DIR" -o -f "$full_module_dir"/Makerules/Makerules.global ]
+		then
+			full_module_dir=""
+			module_dir=""
+			return
+		fi
+	done
+
+	extractModuleDir "$full_module_dir"
+}
+
+
+formatFileList()
+{
+	# Create a variable specifying a source file list
+	# and output the value to the given temp file
+	# $1 = output temp file name
+	# $2 = list of directories to process
+	# $3 = prefix to use for filenames not in directory .
+	#		cheat for now, assumes dir list is only . and 1 other
+	#		hence we can get away with a single prefix
+	# $4 = list of extra filenames to explicitly add to list
+	# $5 = heading to declare variable for list
+	# $6 ... = suffixes for files to include in list
+	output=$1
+	list_dirs=$2
+	dir_prefix=$3
+	extra="$4"
+	heading=$5
+	shift; shift; shift; shift; shift
+	echo "$heading \\" > $output
+	{
+		for file in $extra
+		do
+			echo "				$file \\"
+		done
+		for suffix in $*
+		do
+			for dir in $list_dirs
+			do
+				for i in $dir/*.$suffix
+				do
+					if [ -f "$i" ]
+					then
+						foundSource=y
+						base=`basename $i`
+						if egrep 'DO NOT BUILD|INTERNAL USE ONLY' $i > /dev/null
+						then
+							> /dev/null
+						elif [ "$base" != "$extra" ]
+						then
+							# This is a cheat, should test extra as a list, but for now we know it only has 1 filename
+							if [ "$dir" != "." -a "$dir_prefix" != "" ]
+							then
+								echo "				$dir_prefix/$base \\"
+							else
+								echo "				$base \\"
+							fi
+						fi
+					fi
+				done
+			done
+		done
+	} > temp$$
+	sort < temp$$ >> $output
+	echo "				# Add more $* files here" >> $output
+	rm -f temp$$
+	tempFiles="$tempFiles $output temp$$"
+}
+
+formatVariable()
+{
+	# Create a variable specifying a target file or 1 line list
+	# and output the value to the given temp file
+	# $1 = output temp file name
+	# $2 = heading to declare variable
+	# $3 = value for variable
+	if [ "$2" = "" ]
+	then
+		> $1
+	else
+		echo "$2 $3" > $1
+	fi
+	tempFiles="$tempFiles $1"
+}
+
+formatOptionalVariable()
+{
+	# Create a variable specifying a target file or 1 line list
+	# and output the value to the given temp file
+	# If the value ($3) is null, an empty file is created
+	# $1 = output temp file name
+	# $2 = heading to declare variable
+	# $3 = value for variable
+	if [ x"$3" = "x" ]
+	then
+		formatVariable "$1" "" ""
+	else
+		formatVariable "$1" "$2" "$3"
+	fi
+}
+
+formatRule()
+{
+	# Create a makefile rule line
+	# and output the line to the given temp file
+	# $1 = output temp file name
+	# $2 = rule line
+	echo -e "$2" > $1
+	tempFiles="$tempFiles $1"
+}
+
+CommonMakefileEdits()
+{
+# Edits of Makefile applicable to most Makefiles
+ex Makefile <<!
+/^DS_SUBPROJECTS/d
+.-1
+r DS_SUBPROJECTS.tmp
+/^EXECUTABLE/d
+.-1
+r EXECUTABLE.tmp
+/^DIRS/d
+.-1
+r DIRS.tmp
+/^CFILES/d
+.-1
+r CFILES.tmp
+/^CCFILES/d
+.-1
+r CCFILES.tmp
+/^LFILES/d
+.-1
+r LFILES.tmp
+/^LIBFILES/d
+.-1
+r LIBFILES.tmp
+/^INCLUDE_TARGETS/d
+.-1
+r INCLUDE_TARGETS.tmp
+/^DSP_SOURCES/
+.+1
+s/\$(MAKEFILE)/\$(MAKEFILE) $message_file/
+/^LIB_TARGETS_ARLIB/d
+.-1
+r LIB_TARGETS_ARLIB.tmp
+/^SHLIB_VERSION/d
+.-1
+r SHLIB_VERSION.tmp
+/^CMD_TARGETS_SHLIB/d
+.-1
+r CMD_TARGETS_SHLIB.tmp
+/^CMD_TARGETS_DRIVER/d
+.-1
+r CMD_TARGETS_DRIVER.tmp
+/^CMD_TARGETS_KEXT/d
+.-1
+r CMD_TARGETS_KEXT.tmp
+/^CLEAN_TARGETS_MISC/d
+.-1
+r CLEAN_TARGETS_MISC.tmp
+/^LOCALDEPLIBS/d
+.-1
+r CLOCAL.tmp
+r CCLOCAL.tmp
+r LOCAL_INCLUDE_DIRS.tmp
+r LOCALDEPLIBS.tmp
+/Makerules.project/d
+.-1
+r rules.tmp
+/Overrides/
+/^#=====/
+.-1
+r COPT.tmp
+r CCOPT.tmp
+/runtest/d
+.-1
+r runtest.tmp
+w
+q
+!
+}
+
+buildProjectMakefile()
+{
+	if [ ! -f Makerules.project ]
+	then
+		sed -e "s/<FILL IN PROJECT NAME>/$project/" < $TL_DIR/MakeTemplates/Makerules.project > Makerules.project
+	fi
+	sed -e "s/<FILL IN PROJECT NAME>/$project/" < $TL_DIR/MakeTemplates/Makefile.projHeading > Makefile
+	cat $TL_DIR/MakeTemplates/Makefile.basic >> Makefile
+	CommonMakefileEdits
+	ex Makefile <<!
+/^DSP_SOURCES/
+.+1
+s/\$(MAKEFILE)/\$(MAKEFILE) Makerules.project/
+w
+q
+!
+	echo "edit BSP_SPECIFIC_DIRS line in Makefile"
+}
+
+buildModuleMakefile()
+{
+	if [ ! -f Makerules.module ]
+	then
+		sed -e "s/<FILL IN MODULE NAME>/$project/" < $TL_DIR/MakeTemplates/Makerules.module > Makerules.module
+		ex Makerules.module <<!
+/^MOD_DIR/d
+.-1
+r MOD_DIR.tmp
+w
+q
+!
+	fi
+	sed -e "s/<FILL IN MODULE NAME>/$project/" < $TL_DIR/MakeTemplates/Makefile.modHeading > Makefile
+	cat $TL_DIR/MakeTemplates/Makefile.basic >> Makefile
+	CommonMakefileEdits
+	ex Makefile <<!
+/^DSP_SOURCES/
+.+1
+s/\$(MAKEFILE)/\$(MAKEFILE) Makerules.module/
+/Maketargets.install/
+s/Maketargets.install/Maketargets.moduleinstall/
+/Maketargets.stage/
+s/Maketargets.stage/Maketargets.modulestage/
+/runtest/
+a
+
+clobber:: clobber_module
+.
+w
+q
+!
+}
+
+buildBasicMakefile()
+{
+	# Create a basic Makefile using the temp files created
+	echo "# Makefile for ${project}" > Makefile
+	echo >> Makefile
+	if [ "$foundSource" = n ]
+	then
+		cat $TL_DIR/MakeTemplates/Makefile.middle >> Makefile
+		ex Makefile <<!
+/^DS_SUBPROJECTS/d
+.-1
+r DS_SUBPROJECTS.tmp
+/^DIRS/d
+.-1
+r DIRS.tmp
+/Makerules.project/d
+.-1
+r rules.tmp
+w
+q
+!
+	else
+		cat $TL_DIR/MakeTemplates/Makefile.basic >> Makefile
+		CommonMakefileEdits
+	fi
+}
+
+rm -f $tempFiles
+
+TL_DIR=`findTopDir`
+pwd=`pwd`
+
+if [ -f Makerules/Makerules.global ]
+then
+	projectDir=y
+	if [ "$mflag" = y ]
+	then
+		echo "Project level directories cannot be module Makefiles" 2>&1
+		exit 1
+	fi
+	module_dir=""
+else
+	projectDir=n
+	if [ "$mflag" = y ]
+	then
+		extractModuleDir "$pwd"
+	else
+		findModuleDir
+	fi
+fi
+dirName=`basename $pwd`
+if [ "$cdir" != "" -a "$module_dir" = "" ]
+then
+	echo "-c option is not valid outside a module Makefile tree" 2>&1
+	exit 1
+fi
+
+# find all directories
+dirs=
+for i in *
+do
+	if [ -d "$i" -a "$i" != CVS -a "$i" != "builtbin" -a "$i" != builtinclude \
+		 -a "$i" != builtlibs -a "$i" != stage -a "$i" != Makerules \
+		 -a "$i" != MakeTools \
+		 -a "$i" != MakeTemplates -a "$i" != CodeTemplates ]
+	then
+		if [ "$i" = Test ]
+		then
+			# translate to make variable so unit tests are optional
+			i='$(TEST)'
+		fi
+		if [ "$dirs" = "" ]
+		then
+			dirs="$i"
+		else
+			dirs="$dirs $i"
+		fi
+	fi
+done
+
+if [ -f "$dirName".msg ]
+then
+	# Message files to be built
+	message_file="${dirName}.msg"
+	message_hfile="${dirName}_Messages.h"
+	message_cfile="${dirName}_Messages.c"
+elif [ "$cdir" != "" -a -f "$dirName".msg ]
+then
+	# Message files to be built from common dir
+	message_file="${dirName}.msg"
+	message_hfile="${dirName}_Messages.h"
+	message_cfile="${dirName}_Messages.c"
+else
+	message_file=""
+	message_hfile=""
+	message_cfile=""
+fi
+
+formatVariable DIRS.tmp 'DIRS			=' "$dirs"
+
+if [ "$cdir" != "" ]
+then
+	file_dirs=". $full_module_dir/$cdir"
+else
+	file_dirs="."
+fi
+formatFileList CFILES.tmp "$file_dirs" "" "$message_cfile" "CFILES			=" c
+formatFileList CCFILES.tmp "$file_dirs" "" "" "CCFILES			=" cpp
+formatFileList LFILES.tmp "$file_dirs" "" "" "LFILES			=" lex
+foundCode=$foundSource
+formatFileList INCLUDE_TARGETS.tmp "$file_dirs" "\$(COMMON_SRCDIR)" "$message_hfile" "INCLUDE_TARGETS	=" h hpp
+formatVariable CLEAN_TARGETS_MISC.tmp 'CLEAN_TARGETS_MISC	=' "$message_hfile $message_cfile"
+
+if [ "$project" = "" ]
+then
+	project="$dirName"
+fi
+if [ "$dirName" = "Test" ]
+then
+	if [ "$mflag" = y ]
+	then
+		echo "Module makefiles cannot be Unit Test directories" 2>&1
+		Usage
+	fi
+	# Unit Test
+	parent=`dirname $pwd`
+	parent=`basename $parent`
+	project=${parent}_Test
+	libTarget=n
+	exeTarget=y
+	driverTarget=n
+	kextTarget=n
+	if [ "$uflag" = n ]
+	then
+		ds_subprojects="$parent Osa Gen Log Err Rai UiUtil UTest"
+		localdeplibs="$parent Osa Gen Log Err Rai UiUtil UTest"
+	fi
+	formatRule runtest.tmp 'include $(TL_DIR)/Makerules/Maketargets.runtest'
+else
+	# TBD other tests, projectDir should be y for exe, check for a main?
+	# if we didn't find any real code files (just headers)
+	# we don't build a library nor executable
+	if [ "$foundCode" = y -a "$dflag" != y ]
+	then
+		libTarget=y
+		exeTarget=n
+		driverTarget=n
+		kextTarget=n
+	else
+		libTarget=n
+		exeTarget=n
+		driverTarget=n
+		kextTarget=n
+	fi
+	formatRule runtest.tmp '#include $(TL_DIR)/Makerules/Maketargets.runtest'
+fi
+# -x, -a and -s, -d override the above heuristics
+if [ "$xflag" = y ]
+then
+	exeTarget=y
+	libTarget=n
+elif [ "$sflag" = y -o "$aflag" = y ]
+then
+	exeTarget=n
+	libTarget=y
+fi
+if [ "$dflag" = y ]
+then
+	driverTarget=y
+fi
+if [ "$kflag" = y ]
+then
+	kextTarget=y
+fi
+
+arlib=""
+shlib=""
+driver=""
+kext=""
+if [ "$libTarget" = y ]
+then
+	if [ "$sflag" = y ]
+	then
+		shlib='$(LIB_PREFIX)'"${project}"'$(SHLIB_VERSION_SUFFIX)'
+		if [ "$shlib_version" = "" ]
+		then
+			shlib_version="0.0"
+		fi
+	fi
+	if [ "$aflag" = y -o "$sflag" = n ]
+	then
+		arlib='$(LIB_PREFIX)'"${project}"'$(ARLIB_SUFFIX)'
+	fi
+fi
+if [ "$driverTarget" = y ]
+then
+	driver="${project}"'$(KOBJ_SUFFIX)'
+fi
+if [ "$kextTarget" = y ]
+then
+	kext="${project}"'$(KEXT_SUFFIX)'
+fi
+formatVariable LIB_TARGETS_ARLIB.tmp 'LIB_TARGETS_ARLIB	=' "$arlib"
+formatVariable SHLIB_VERSION.tmp 'SHLIB_VERSION		=' "$shlib_version"
+formatVariable CMD_TARGETS_SHLIB.tmp 'CMD_TARGETS_SHLIB	=' "$shlib"
+formatVariable CMD_TARGETS_DRIVER.tmp 'CMD_TARGETS_DRIVER	=' "$driver"
+formatVariable CMD_TARGETS_KEXT.tmp 'CMD_TARGETS_KEXT	=' "$kext"
+
+if [ "$exeTarget" = y ]
+then
+	executable="${project}"'$(EXE_SUFFIX)'
+else
+	executable='# '"${project}"'$(EXE_SUFFIX)'
+fi
+formatVariable EXECUTABLE.tmp 'EXECUTABLE		=' "\$(BUILDDIR)/$executable"
+
+formatVariable DS_SUBPROJECTS.tmp 'DS_SUBPROJECTS	=' "$ds_subprojects"
+formatVariable LOCALDEPLIBS.tmp 'LOCALDEPLIBS =' "$localdeplibs"
+formatOptionalVariable CLOCAL.tmp 'CLOCAL =' "$clocal"
+formatOptionalVariable CCLOCAL.tmp 'CCLOCAL =' "$cclocal"
+formatOptionalVariable LOCAL_INCLUDE_DIRS.tmp 'LOCAL_INCLUDE_DIRS =' "$local_include_dirs"
+formatVariable LIBFILES.tmp 'LIBFILES =' "$libfiles"
+if [ "$module_dir" != "" ]
+then
+	if [ "$cdir" != "" ]
+	then
+		cdir_def="\n\nCOMMON_SRCDIR = \$(MOD_DIR)/$cdir"
+	else
+		cdir_def=""
+	fi
+	formatRule rules.tmp "include \$(TL_DIR)/$module_dir/Makerules.module$cdir_def"
+else
+	formatRule rules.tmp "include \$(TL_DIR)/\$(PROJ_FILE_DIR)/Makerules.project"
+fi
+if [ "$driverTarget" = y ]
+then
+	formatOptionalVariable COPT.tmp 'COPT =' "# set by CKERNEL for drivers"
+	formatOptionalVariable CCOPT.tmp 'CCOPT =' "# set by CKERNEL for drivers"
+else
+	formatOptionalVariable COPT.tmp 'COPT =' "$copt"
+	formatOptionalVariable CCOPT.tmp 'COPT =' "$ccopt"
+fi
+
+if [ "$projectDir" = y ]
+then
+	# building a project level makefile
+	buildProjectMakefile
+elif [ "$mflag" = y ]
+then
+	# building a lower level module makefile
+	formatRule MOD_DIR.tmp "MOD_DIR=\$(TL_DIR)/$module_dir"
+	buildModuleMakefile
+else
+	# building a lower level makefile
+	buildBasicMakefile
+fi

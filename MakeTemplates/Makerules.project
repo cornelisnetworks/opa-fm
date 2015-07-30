@@ -1,0 +1,163 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+## Rules for <FILL IN PROJECT NAME> project
+#=============================================================================#
+## Project Make Rules File
+## -----------------------
+##
+## All tools local makefiles should include this makerules file after its own
+## local definitions section and before the local rules section.  Use
+## Makefile.template as a base makefile and modify the template according to
+## your application needs.  The template makefile includes this makerules file
+## and this project makerules file includes the global makerules file.  Any
+## modifications to this makerules file or to local makefiles should be made
+## in a portable fashion using 'ifdef' structures where necessary so that the
+## same makefile can be used on multiple platforms.  The main purpose of this
+## include makerules file is for local variable definitions and rules which are
+## specific to the project at hand.  Global modifications should be made in the
+## global makerules file and local items should be in the local makefile, not
+## in this makerules file.  Any modifications to the source should be made with
+## portability in mind and should follow the embedded notations.  Documentation
+## is automatically generated from this makefile!  Use the correct conventions
+## for those items which should be documented.
+##
+## NOTE: This makefile inclusion (the global makerules, and the template
+##       makefile) depend on using the GNU version of make.  GNU make must be
+##       installed on your system prior to using this makefile.
+#=============================================================================#
+##
+#=============================================================================#
+# The following list is the standard list of definitions which will be defined
+# for all platforms.  It consists of general and machine specific sections that
+# contain many system parameters which may be used in a makefile.  Please keep
+# the list(s) in strictly aphabetical order to facilitate simple searches.
+#
+# See Makerules.global for the meaning of these flags
+#-----------------------------------------------------------------------------#
+# Common platform definitions:
+#-----------------------------------------------------------------------------#
+
+PROJ_DIR			= $(GLOBAL_DIR)
+PROJ_BIN_DIR		= $(GLOBAL_BIN_DIR)
+PROJ_DRIVER_BIN_DIR	= $(GLOBAL_BIN_DIR)
+PROJ_INCLUDE_DIR	= $(GLOBAL_INCLUDE_DIR)
+PROJ_LIB_DIR		= $(GLOBAL_LIB_DIR)
+PROJ_SHLIB_DIR		= $(GLOBAL_SHLIB_DIR)
+PROJ_SBR_DIR		= $(GLOBAL_SBR_DIR)
+PROJ_DRIVER_BIN_DIR	= $(GLOBAL_BIN_DIR)
+
+PROJ_STAGE_DIR		= $(STAGE_DIR)
+PROJ_STAGE_BIN_DIR	= $(STAGE_BIN_DIR)
+PROJ_STAGE_INCLUDE_DIR	= $(STAGE_INCLUDE_DIR)
+PROJ_STAGE_LIB_DIR	= $(STAGE_LIB_DIR)
+PROJ_STAGE_SHLIB_DIR= $(STAGE_SHLIB_DIR)
+PROJ_STAGE_SBR_DIR	= $(STAGE_SBR_DIR)
+PROJ_STAGE_DRIVER_BIN_DIR	= $(STAGE_BIN_DIR)
+
+PROJ_INCLUDE_DIRS	= $(COMN_INCLUDE_DIRS)
+PROJ_LIB_DIRS		= $(COMN_LIB_DIRS)
+PROJDEPLIBS		=
+PROJLIBS		= $(CCLIBS)
+
+BSCPROJ			=
+CPROJ			= -DPRODUCT=$(PRODUCT) -DPRODUCT_$(PRODUCT) -DIB_STACK_OPENIB
+CCPROJ			= $(CCNORTTI) $(CCNOEXH) -DPRODUCT=$(PRODUCT) -DPRODUCT_$(PRODUCT) -DIB_STACK_OPENIB
+DEPENDPROJ		=
+LDPROJ			= 
+LINTPROJ		=
+MIDLPROJ		=
+RSCPROJ			=
+
+# On Windows ACE needs MFC DLL
+USEMFC			= shared
+
+#-----------------------------------------------------------------------------#
+# Platform specific definitions:
+#-----------------------------------------------------------------------------#
+ifeq "$(BUILD_TARGET_OS)" "VXWORKS"
+endif # VXWORKS
+ifeq "$(BUILD_TARGET_OS)" "LINUX"
+endif # LINUX
+ifeq "$(BUILD_TARGET_OS)" "WIN32"
+endif # WIN32
+ifeq "$(BUILD_TARGET_OS)" "DARWIN"
+endif # DARWIN
+
+PROJECT_SSP = # ssp name for TMS
+PROJECT_PACKAGE_EXTERNAL_NAME = # external name for package file
+PRODUCT_CODE = # product code enumeration
+
+CMDS_FIRMWARE_ONLY ?= yes
+
+#=============================================================================#
+#=============================================================================#
+## TL_DIR must be set in the environment for the 'make' to succeed.
+## icsmake will do this for you
+#-----------------------------------------------------------------------------#
+# Include Global makerules definitions and rules
+include $(TL_DIR)/Makerules/Makerules.global
+#=============================================================================#
+
+#=============================================================================#
+## The project makerules file also contains the following basic make target
+## rules for simplifying application build processes:
+##
+#=============================================================================#
+# The following section contains a list of standard targets which will be used
+# by all of the makefiles.  The targets are listed in alphabetical order and
+# depend on the above definitions section as well as externally defined items
+# from the user specific makefile.
+#=============================================================================#
+# General Rules:
+#-----------------------------------------------------------------------------#
+#=============================================================================#
+include $(TL_DIR)/Makerules/Maketargets.product
+CPROJ += $(PRODUCT_DEFINES)
+CCPROJ += $(PRODUCT_DEFINES)
+
+#=============================================================================#
+# This section contains a set of targets which override the standard ones
+# provided for by GNU make.
+#=============================================================================#
+# Standard Makefile Rules Overrides:
+#-----------------------------------------------------------------------------#
+#=============================================================================#
+
+#=============================================================================#
+# Targets to make sure the initial environment is properly configured
+#=============================================================================#
+#ifndef ENVIRONMENT
+#check_env:
+#	@echo "The ENVIRONMENT environment variable must be set to be valid"
+#	@exit 1
+#else #ENVIRONMENT
+#check_env:
+#endif #ENVIRONMENT
+#.PHONY: check_env
+#=============================================================================#

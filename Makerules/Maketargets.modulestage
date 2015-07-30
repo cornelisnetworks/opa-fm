@@ -1,0 +1,67 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+
+#=============================================================================#
+# Rules:
+#-----------------------------------------------------------------------------#
+# These rules perform the standard module toplevel directory stage steps
+
+STAGE::
+ifneq "$(strip $(INCLUDE_TARGETS)$(IDL_HEADERS)$(IDLFILE))" ""
+	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_INCLUDE_DIR)/$(MOD_INCLUDE_SUBDIR)/$(INCLUDE_SUBDIR) $(INCLUDE_TARGETS) $(IDL_HEADERS) $(IDLFILE)
+endif
+ifneq "$(strip $(LIB_TARGETS)$(LIB_MISC_TARGETS))" ""
+	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_LIB_DIR) $(LIB_TARGETS) $(LIB_MISC_TARGETS)
+endif
+ifneq "$(strip $(CMD_TARGETS_EXE)$(CMD_TARGETS_MISC)$(MISC_FILES))" ""
+	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_BIN_DIR)/$(MOD_BIN_SUBDIR)/$(BIN_SUBDIR) $(CMD_TARGETS_EXE) $(CMD_TARGETS_MISC) $(MISC_FILES)
+endif
+ifneq "$(strip $(CMD_TARGETS_DRIVER))" ""
+ifeq "$(BUILD_TARGET_OS)" "LINUX"
+	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_DRIVER_BIN_DIR)/$(MOD_DRIVER_BIN_SUBDIR)/$(DRIVER_BIN_SUBDIR) $(CMD_TARGETS_DRIVER)
+endif
+endif
+ifneq "$(strip $(CMD_TARGETS_KEXT))" ""
+ifeq "$(BUILD_TARGET_OS)" "DARWIN"
+	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_RDONLY_OPT) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_DRIVER_BIN_DIR)/$(MOD_DRIVER_BIN_SUBDIR)/$(DRIVER_BIN_SUBDIR)/$(CMD_TARGETS_KEXT)/Contents $(CMD_TARGETS_KEXT)/Contents/Info.plist
+	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_RDONLY_OPT) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_DRIVER_BIN_DIR)/$(MOD_DRIVER_BIN_SUBDIR)/$(DRIVER_BIN_SUBDIR)/$(CMD_TARGETS_KEXT)/Contents/MacOS $(CMD_TARGETS_KEXT)/Contents/MacOS/$(CMD_TARGETS_DRIVER)
+	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_RDONLY_OPT) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_DRIVER_BIN_DIR)/$(MOD_DRIVER_BIN_SUBDIR)/$(DRIVER_BIN_SUBDIR)/$(CMD_TARGETS_KEXT)/Contents/Resources/English.lproj $(CMD_TARGETS_KEXT)/Contents/Resources/English.lproj/InfoPlist.strings
+endif
+endif
+ifneq "$(strip $(CMD_TARGETS_SHLIB))" ""
+	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_SHLIB_DIR) $(CMD_TARGETS_SHLIB)
+endif
+ifneq "$(strip $(CMD_TARGETS_PDB))" ""
+	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_BIN_DIR)/$(MOD_BIN_SUBDIR)/$(BIN_SUBDIR) $(CMD_TARGETS_PDB)
+endif
+ifeq "$(BUILD_TARGET_OS)" "WIN32"
+ifneq "$(strip $(OBJECTS))" ""
+	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_SBR_DIR) $(OBJECTS:.obj=.sbr)
+endif
+endif

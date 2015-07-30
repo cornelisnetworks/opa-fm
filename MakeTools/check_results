@@ -1,0 +1,179 @@
+#!/bin/bash
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+##
+## check_results
+## -----------
+## Examine the output from the build and filter it into warning and error
+## files allowing for quick analysis of the success of the build
+## This is used by the weeklybuild script to provide product specific
+## build operations for product's whose analysis of results is more complex
+## than simply grepping for various error keywords
+##
+## Usage:
+## When this is invoked, the current directory will be the TL_DIR for a
+## full checkout of the product to be built
+##
+## Usage:
+##	check_results [-r] [-e add_error] [-E add_error_filter]
+##		 [-w add_warn] [-W add_warn_filter]
+##		 results_file errors_file warn_file
+##
+## Arguments:
+##	-r - generate a report on success/failure of a build and
+##		exit with a status of 1 for failure, 0 for success
+##	-e add_error - additional egrep patterns for identifying errors
+##		must start with |
+##	-E add_error_filter - additional egrep patterns to filter out of errors
+##		must start with |
+##	-w add_warn - additional egrep patterns for identifying warnings
+##		must start with |
+##	-W add_warn_filter - additional egrep patterns to filter out of warnings
+##		must start with |
+##	results_file - input file containing results from a weeklybuild
+##		could be a full or partial (limited OS/build_config/build_smp combos)
+##		build
+##	errors_file - output file where serious errors should be output which
+##		reflect a build failure
+##	warn_file - output file where non-serious errors and warning should be
+##		output which might reflect a minor problem or a bug in code detected by
+##		the compilers
+##
+## In addition, the following environment variables are expected to be set:
+##	RELEASE_TAG, BRANCH_TAG, BUILD_TARGET, PRODUCT, RELEASE_HOME, BUILD_CONFIG 
+##	The target command is expected to have already been run to set up the
+##	environment for the specified target
+##
+
+results_file=/dev/null
+errors_file=/dev/null
+warn_file=/dev/null
+
+Usage()
+{
+	echo "Error: check_results failed" >&2
+	echo "Usage: check_results [-r] [-e add_error] [-E add_error_filter]">&2
+	echo "                     [-w add_warn] [-W add_warn_filter]">&2
+	echo "                     results_file errors_file warn_file">&2
+	echo "    -r - generate a report on success/failure of a build and">&2
+	echo "         exit with a status of 1 for failure, 0 for success">&2
+	echo "    -e add_error - additional egrep patterns for identifying errors">&2
+	echo "         must start with |">&2
+	echo "    -E add_error_filter - additional egrep patterns to filter out of errors">&2
+	echo "         must start with |">&2
+	echo "    -w add_warn - additional egrep patterns for identifying warnings">&2
+	echo "         must start with |">&2
+	echo "    -W add_warn_filter - additional egrep patterns to filter out of warnings">&2
+	echo "         must start with |">&2
+	echo "    results_file - input file containing results from a weeklybuild">&2
+	echo "         could be a full or partial (limited OS/build_config/build_smp combos)">&2
+	echo "         build">&2
+	echo "    errors_file - output file where serious errors should be output which">&2
+	echo "         reflect a build failure">&2
+	echo "    warn_file - output file where non-serious errors and warning should be">&2
+	echo "         output which might reflect a minor problem or a bug in code detected by">&2
+	echo "         the compilers">&2
+	exit 2
+}
+
+filter()
+{
+	# stdin is to be filtered using $1
+	# lines in both stdin and $1 are filtered
+	# lines in just $1 are ignored
+	# lines in just stdin are put to stdout
+	# if the file $1 does not exist, all lines in stdin are put to stdout
+	if [ -f $1 ]
+	then
+		# since build can be run multiple times for various OS combos
+		comm -23 - $1
+	else
+		cat
+	fi
+}
+
+ropt=n
+add_error=
+add_error_filter=
+add_warn=
+add_warn_filter=
+while getopts "re:E:w:W:" param
+do
+	case $param in
+	r)	ropt=y;;
+	e)	add_error="$OPTARG";;
+	E)	add_error_filter="$OPTARG";;
+	w)	add_warn="$OPTARG";;
+	W)	add_warn_filter="$OPTARG";;
+	?)
+		Usage;;
+	esac
+done
+shift $(($OPTIND -1))
+
+if [ $# != 3 ]
+then
+		Usage
+fi
+results_file=$1
+errors_file=$2
+warn_file=$3
+
+# filter out _ERROR defines used in mellanox code and in some warnings
+# sort out duplicated messages from multiple build runs
+sort -u expected.err > .expected.err
+# future: add back in check for "No such file"
+egrep " Error |ERROR|Bad|failed|FAILED| Stop|No space left on device$add_error" $results_file |egrep -v "_ERROR|group_failed$add_error_filter"| sort -u|filter .expected.err > $errors_file 
+
+sort -u expected.warn > .expected.warn
+egrep -i "warning:$add_warn" $results_file |egrep -v "Warnings$add_warn_filter" | sort -u |filter .expected.warn > $warn_file
+
+if [ "$ropt" = "n" ]
+then
+	exit 0
+fi
+
+if [ -s $errors_file ] 
+then
+	echo "Build Errors:"
+	sort -u $errors_file
+	echo
+	echo "FAILED Build, errors detected: $PRODUCT $SUBPRODUCT $BUILD_TARGET $BUILD_CONFIG"
+	exit 1
+else
+	if [ -s $warn_file ]
+	then
+		echo "SUCCESSFUL Build, no errors detected, BUT THERE WERE $(sort -u $warn_file|wc -l) WARNINGS..: $PRODUCT $SUBPRODUCT $BUILD_TARGET $BUILD_CONFIG"
+		sort -u $warn_file
+		exit 0
+	else
+		echo "SUCCESSFUL Build, no errors or warnings detected: $PRODUCT $SUBPRODUCT $BUILD_TARGET $BUILD_CONFIG"
+		exit 0
+	fi
+fi

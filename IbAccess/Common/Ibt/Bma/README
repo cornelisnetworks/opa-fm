@@ -1,0 +1,4 @@
+Baseboard Management Agent
+
+Much of the real work is done via OS-specific BmaShim interfaces in
+IbAccess/*/Ibt/Bma.

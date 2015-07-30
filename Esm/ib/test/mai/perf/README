@@ -1,0 +1,10 @@
+MAI Unit test of simple send/recv between two processes
+
+To test that the MAI stack is active start ar reader in one window
+ ./htest -d 0 -p 6   -l 100 -r 1  -m 4
+then in window B start the writer
+ ./htest -d 0 -p 6  -l 100   -w 1 -m 4
+
+The writer will send INTERNAL mads and the reader should pick them up.
+This validates the MAI stack to be operational
+

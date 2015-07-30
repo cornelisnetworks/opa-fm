@@ -1,0 +1,150 @@
+
+Copyright (c) 2002, VIEO Inc.  All rights reserved.
+
+
+        Use Cases for CS String Conversion Functions
+        --------------------------------------------
+
+1.  Use Case: cs:cs_strtoui8:1 
+        Convert a string to an unsigned 8-bit integer.
+
+    Context of Use:  Any user, kernel, or embedded code which needs to
+        convert a string to an unsigned 8-bit integer.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level: Subfunction
+
+    The caller supplies a pointer to a string, in decimal or hexadecimal
+    format, to convert and a user specified return-on-error value.
+
+    If the supplied pointer and string are valid, the converted 8-bit
+    unsigned value will be returned.  Otherwise, the return-on-error
+    value will be returned.
+
+
+2.  Use Case: cs:cs_strtoui16:1
+        Convert a string to an unsigned 16-bit integer.
+
+    Context of Use:  Any user, kernel, or embedded code which needs to
+        convert a string to an unsigned 16-bit integer.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level: Subfunction
+
+    The caller supplies a pointer to a string, in decimal or hexadecimal 
+    format, to convert and a user specified return-on-error value.
+
+    If the supplied pointer and string are valid, the converted 16-bit
+    unsigned value will be returned.  Otherwise, the return-on-error
+    value will be returned.
+
+
+3.  Use Case: cs:cs_strtoui32:1
+        Convert a string to an unsigned 32-bit integer.
+
+    Context of Use:  Any user, kernel, or embedded code which needs to
+        convert a string to an unsigned 32-bit integer.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level: Subfunction
+
+    The caller supplies a pointer to a string, in decimal or hexadecimal 
+    format, to convert and a user specified return-on-error value.
+
+    If the supplied pointer and string are valid, the converted 32-bit
+    unsigned value will be returned.  Otherwise, the return-on-error
+    value will be returned.
+
+
+4.  Use Case: cs:cs_strtoui64:1
+        Convert a string to an unsigned 64-bit integer.
+
+    Context of Use:  Any user, kernel, or embedded code which needs to
+        convert a string to an unsigned 64-bit integer.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level: Subfunction
+
+    The caller supplies a pointer to a string, in decimal or hexadecimal
+    format, to convert and a user specified return-on-error value.
+
+    If the supplied pointer and string are valid, the converted 64-bit
+    unsigned value will be returned.  Otherwise, the return-on-error
+    value will be returned.
+
+
+5.  Use Case: cs:cs_strtoi8:1 
+        Convert a string to a signed 8-bit integer.
+
+    Context of Use:  Any user, kernel, or embedded code which needs to
+        convert a string to a signed 8-bit integer.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level: Subfunction
+
+    The caller supplies a pointer to a string, in decimal or hexadecimal
+    format, to convert and a user specified return-on-error value.
+
+    If the supplied pointer and string are valid, the converted 8-bit
+    signed value will be returned.  Otherwise, the return-on-error
+    value will be returned.
+
+
+6.  Use Case: cs:cs_strtoi16:1
+        Convert a string to a signed 16-bit integer.
+
+    Context of Use:  Any user, kernel, or embedded code which needs to
+        convert a string to a signed 16-bit integer.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level: Subfunction
+
+    The caller supplies a pointer to a string, in decimal or hexadecimal
+    format, to convert and a user specified return-on-error value.
+
+    If the supplied pointer and string are valid, the converted 16-bit
+    signed value will be returned.  Otherwise, the return-on-error
+    value will be returned.
+
+
+7.  Use Case: cs:cs_strtoi32:1
+        Convert a string to a signed 32-bit integer.
+
+    Context of Use:  Any user, kernel, or embedded code which needs to
+        convert a string to a signed 32-bit integer.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level: Subfunction
+
+    The caller supplies a pointer to a string, in decimal or hexadecimal
+    format, to convert and a user specified return-on-error value.
+
+    If the supplied pointer and string are valid, the converted 32-bit
+    signed value will be returned.  Otherwise, the return-on-error
+    value will be returned.
+
+
+8.  Use Case: cs:cs_strtoi64:1
+        Convert a string to a signed 64-bit integer.
+
+    Context of Use:  Any user, kernel, or embedded code which needs to
+        convert a string to a signed 64-bit integer.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level: Subfunction
+
+    The caller supplies a pointer to a string, in decimal or hexadecimal
+    format, to convert and a user specified return-on-error value.
+
+    If the supplied pointer and string are valid, the converted 64-bit
+    signed value will be returned.  Otherwise, the return-on-error
+    value will be returned.
+

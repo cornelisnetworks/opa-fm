@@ -1,0 +1,372 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+
+#[ICS VERSION STRING: unknown]
+Initial cut, no support for reloading path, just for load a new Alt path
+when in Migrated
+
+Inbound LAP would be in a dgrm?  No need to copy til accept?
+
+in cep:
+	PrimaryPath
+	AlternatePath
+
+CmMigrated(cep) // path has migrated, later hook directly to Async event callback
+	// CMS_LAP_RCVD, CMS_LAP_SENT do not have a valid alt path
+	if cep->State != FCM_CONNECT_ESTABLISHED
+		FINVALID_STATE	// race of migration with LAP may have occurred
+	if cep->AlternatePath.lid == 0
+		FINVALID_STATE
+	cep->PrimaryPath = cep->AlternatePath
+	clear cep->AlternatePath
+	recompute CM timeouts using new PrimaryPath's PktLifeTime
+	adjust remote path for future dgrms to use new primary
+
+
+Active Side:
+
+CmConnect
+	save PrimaryPath and AlternatePath to CEP from REQ
+
+CmAltPathRequest(cep, Info.Lap)
+	if Info.AlternatePath == cep->PrimaryPath
+		FINVALID_ARGUMENTS or other error
+		// Note State==LAP_SENT invalid case, must complete present exchange
+	if State != CMS_CONNECT_ESTABLISHED
+		FINVALID_STATE
+	if ! APM available from REP (Rep->FailoverAccepted=1)
+		error
+	if Mode != ACTIVE
+		FINVALID_STATE
+	TBD disable allowing reload of path to avoid races??? (fail if AltValid?)
+		if cep->AlternatePath.lid != 0
+			error	// reload of path case
+	verify alternate path - SGID on same Ca, SGidIndex valid, PKey Valid
+		error if not
+	SendLAP
+	move to CMS_LAP_SENT
+	clear retry counter
+	start LAP timer
+
+ProcessApr
+	case CMS_LAP_SENT, CMS_MRA_LAP_RCVD
+		ASSERT Mode == ACTIVE
+		if APStatus == 0
+			cep->AlternatePath = AlternatePath from cep->pDgrmElement->LAP
+		save APR Dgrm (prepareDgrm, DgrmCopyAddrAndMad) to cep->pDgrmElement
+		stop timer
+		move to FCM_CONNECT_ESTABLISHED
+		set notify CME_RCVD_APR
+	other states
+		discard
+
+ProcessMraLap
+	case CMS_LAP_SENT
+		State = MRA_LAP_RCVD
+		restart timer
+	case MRA_LAP_RCVD
+		discard
+	other states
+		discard
+
+TimerCallback
+	case CMS_LAP_SENT/MRA_LAP_RCVD
+		resend LAP, retry count
+		if retry exceeded
+			move to CMS_CONNECT_ESTABLISHED
+			set CME_TIMEOUT_LAP
+
+		
+Other aspects of LAP_SENT/MRA_LAP_RCVD
+	DREQ, CmCancel, CmDisconnect processed same as CONNECT_ESTABLISHED
+	CmAltPathReply - not allowed, FINVALID_STATE
+	CmGetConnInfo - error
+	CmMigrated - error
+	cep->AlternatePath.lid == 0 in this state
+	if get a REP and need to resend RTU, send one with no private data
+		- Dgrm for send was replaced with LAP Dgrm
+		- must still keep LAP Dgrm as cep->pDgrmElement for LAP retries
+
+
+Passive Side:
+
+ProcessReq
+	reverse sense and save PrimaryPath and AlternatePath to CEP from REQ 
+
+CmAltPathReply(Info.Apr)
+	case CMS_LAP_RCVD
+		if APR.Status == 0
+			cep->AlternatePath = Path in pCEP->pDgrmElement->LAP
+		SendAPR
+		cep->State = FCM_CONNECT_ESTABLISHED
+
+CmGetConnInfo
+	case CMS_LAP_RCVD:
+		if CME_RCVD_LAP
+			ASSERT(cep->Mode == PASSIVE)
+			Copy into Info.Lap (inbound LAP in pCEP->pDgrmElement)
+			return FCM_ALTPATH_REQUEST
+	case CMS_CONNECT_ESTABLISHED:
+		if CME_RCVD_APR
+			ASSERT(cep->Mode == ACTIVE)
+				// AltPath returned for convenience of appl
+			if Info.Apr.APStatus == 0
+				Copy into Info.Apr (inbound APR and cep->AlternatePath)
+				return FCM_ALTPATH_REPLY
+			else
+				Copy into Info.Apr (inbound APR) // AlternatePath not avail
+				return FCM_ALTPATH_REJECT
+		if CME_TIMEOUT_LAP	// should we disconnect when this happens?
+			ASSERT(cep->Mode == ACTIVE)
+			return FCM_ALTPATH_TIMEOUT
+
+ProcessLap
+	case CMS_CONNECT_ESTABLISHED
+		if Mode != PASSIVE
+			discard (or REJ?)
+		if ! APM available from REP (Rep->FailoverAccepted=1)
+			REJ
+		if LAP->AlternatePath == cep->PrimaryPath
+			REJ
+		if LAP->AlternatePath == cep->AlternatePath
+			APR it, no callback (duplicate)
+			reverse path for response
+		TBD disable allowing reload of path to avoid races??? (fail if AltValid?)
+			if cep->AlternatePath.lid != 0
+				REJ
+		verify alternate path - SGID on same Ca, SGidIndex valid, PKey Valid
+			error if not
+		// hang onto LAP
+		PrepareCepDgrm
+		DgrmCopyAddrAndMad(pCep->pDgrmElement, pMad, pRemoteDgrm);
+		state = CMS_LAP_RCVD
+		notify CME_RCVD_LAP
+		// no provision for MRA of LAP, but throughout code treat
+		// MRA_LAP_SENT as LAP_RCVD
+	case LAP_RCVD
+		ASSERT Mode == PASSIVE
+		if LAP->AlternatePath == cep->PrimaryPath
+			REJ
+		if LAP matches pCep->pDgrmElement->LAP
+			APR it, no callback (duplicate)
+			reverse path for response
+		REJ
+		?? or disconnect? slow APR vs new LAP issue
+	other states
+		discard
+
+Other aspects of LAP_RCVD/MRA_LAP_SENT
+	DREQ, CmCancel, CmDisconnect processed same as CONNECT_ESTABLISHED
+	CmAltPathReply - used to accept/reject LAP, see other notes
+	CmGetConnInfo - CME_RCVD_LAP, otherwise same as CONNECT_ESTABLISHED
+	CmMigrated - ? error
+	cep->AltPathValid always 0 in this state
+
+Sequences:
+	Server							Client
+							<--- LAP
+	APR --->  lost
+							<---- LAP retries
+	APR ---------------->
+duplicate LAP receipt must resend APR, cep stays connected
+
+
+							<--- LAP
+	APR --->  slow
+							<---- LAP retry
+	APR ---------------->
+get 2nd APR, client must discard
+
+broken for delayed APR, no way to identify if APR correlated to LAP
+(all CM messages for a given CEP use same transaction ID)
+							<--- LAP1
+	APR1 --->  slow
+							<---- LAP1 retry
+	APR1 ---------------->  <---- LAP2
+								APR1 mistaken as APR for LAP2
+Resolution: do not allow an alterate path to be replaced, require a
+migrated event before hand.  This is not a complete resolution, but will
+make this a less likely timing window
+
+broken for delayed APR, no way to identify if APR correlated to LAP
+(all CM messages for a given CEP use same transaction ID)
+							<--- LAP1
+	APR1 --->  very slow
+							<---- LAP1 retry exceeded, timeout
+							<---- LAP2
+								APR1 mistaken as APR for LAP2
+Resolution: treate timeout as indication server does not support APM
+
+Basic Sequences:
+load new path (valid if don't have (Migrated) present alt path):
+			Server					Client
+									CmLoadAltPath
+						 		<--- LAP
+			FCM_ALTPATH_REQUEST
+			if good
+				QpModify, new alt path, Rearm
+				CmAltPathReply, good status
+				APR --->
+									FCM_ALTPATH_REPLY
+									QpModify, new alt path, Rearm
+
+Reject new path:
+			Server					Client
+									CmLoadAltPath
+						 		<--- LAP
+			FCM_ALTPATH_REQUEST
+			if not good
+				CmAltPathReply, bad status
+				APR/Error --->
+									FCM_ALTPATH_REJECT
+									// leave QP w/no alt path
+
+Timeout new path:
+			Server					Client
+									CmLoadAltPath
+						 		<--- LAP
+			no response or lost LAP
+									FCM_ALTPATH_TIMEOUT
+									// leave QP w/no alt path
+		We cannot match a late APR with proper LAP.
+		???timeout may need to be a disconnect situation?
+
+Migrate:
+			Server						Client
+			QP handshake --->  <----    QP handshake
+			Async Event callback		Async Event callback
+			CmMigrated					CmMigrated
+		After migrated, neither side has a valid alternate path
+		future CM messages will use new PrimaryPath (and its timeouts)
+		?? does kernel get callbacks for all QPs (user and kernel)
+		if so we could hook Async Event now quite easily
+
+Situtations to review:
+	Must allow load of new alternate path even if present altpath one is valid
+	- migrated while LAP in progress
+		? more interaction with CmMigrated?
+		how is arm/rearm/migrated QP states interact
+		what if LAP/APR retries in progress before or after migrate
+		what path to use if LAP in progress or does QPModify make
+		alt path invalid until LAP sequence completed
+		                  <-- LAP
+						  <--- CmMigrated
+			APR ---->
+			CmMigrated --->
+			Migrated beats APR to client?  Which alt path is used?  Or should
+			QpModify be used by appl prior to LAP to invalidate AltPath
+			while negotiate a new one
+
+						<--LAP
+			CmMigrated -->
+			APR --->
+			If QpModify prior to LAP made alt path invalid, migrated could
+			not occur after LAP.  Don't allow CmMigrated call if
+			!AltPathValid
+
+						<-- LAP
+			APR --> lost
+			CmMigrated -->
+
+		Check QP maybe if:
+			Server					Client
+									QpModify, new alt path, disable migration
+									CmLoadAltPath
+						 		<--- LAP
+			FCM_ALTPATH_REQUEST
+			if good
+				QpModify, new alt path
+				CmAltPathReply, good status
+				APR --->
+			else
+				QpModify, no alt path
+				CmAltPathReply, bad status
+				APR/error -->
+									FCM_ALTPATH_REPLY
+									QpModify, enable migration
+		provided QP handshake occurs for migration, above would
+		prevent migrated from occuring during LAP sequence
+		failure of LAP on client would leave QP w/o migration enabled
+		cep->AltValid cleared on LAP send/receipt
+		cep->AltValid set on APR send/receipt (or in REQ/REP w/alt)
+
+	- decision to propose a new alt path while LAP in progress
+		- esp is active side timed out and passive has LAP queued waiting
+		  callback to CmAltPathReply it
+
+Old Basic Sequences:
+load new path (valid if have or don't have present alt path):
+			Server					Client
+									QpModify, new alt path, disable migration
+									CmLoadAltPath
+						 		<--- LAP
+			FCM_ALTPATH_REQUEST
+			if good
+				QpModify, new alt path
+				CmAltPathReply, good status
+				APR --->
+									FCM_ALTPATH_REPLY
+									QpModify, enable migration
+
+Reject new path:
+			Server					Client
+									QpModify, new alt path, disable migration
+									CmLoadAltPath
+						 		<--- LAP
+			FCM_ALTPATH_REQUEST
+			if not good
+				QpModify, no alt path
+				CmAltPathReply, bad status
+				APR/error --->
+									FCM_ALTPATH_REJECT
+									// leave QP w/migration disabled
+
+Timeout new path:
+			Server					Client
+									QpModify, new alt path, disable migration
+									CmLoadAltPath
+						 		<--- LAP
+			no response or lost LAP
+									FCM_ALTPATH_TIMEOUT
+									// leave QP w/migration disabled
+		Note, late APR would be discarded by client.
+		What if APR was way late and client had a new LAP in progress?
+		Can we match APR exactly to a LAP to ensure don't treat late
+		APR as a match for newer LAP?  If not, timeout may need to
+		be a disconnect situations?
+
+Migrate:
+			Server						Client
+			QP handshake --->  <----    QP handshake
+			Async Event callback		Async Event callback
+			CmMigrated					CmMigrated
+		After migrated, neither side has a valid alternate path
+		future CM messages will use new PrimaryPath (and its timeouts)
+		?? does kernel get callbacks for all QPs (user and kernel)
+		if so we could hook Async Event now quite easily

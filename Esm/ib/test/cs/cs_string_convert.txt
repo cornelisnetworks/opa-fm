@@ -1,0 +1,967 @@
+
+Copyright (c) 2002, VIEO Inc.  All rights reserved.
+
+
+           Test Cases for CS String Conversion Functions
+           ---------------------------------------------
+
+
+1.  Test: cs_strtoui8:1
+
+    Description:
+        This test validates the CS String Conversion function cs_strtoui8.
+
+    Associated Use Case:
+        cs:cs_strtoui8:1  
+
+    Valid Runtime Environments:
+        User, Kernel, embedded
+
+    External Configuration:
+        None required.
+
+    Preconditions:
+        None.
+
+    Notes:
+        None.
+
+    Test Application:
+        Linux Kernel Module: ib/src/linux/cs/kernel/lib/tststring.o
+        Linux User Module: ib/src/linux/cs/usr/bin/tststring
+        ATI: run from serial screens.
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tststring.o
+        9.  verify results from log data
+       10.  rmmod tststring
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tststring
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "String Converstion Tests"
+       10.  verify results from log data
+
+    Expected Results: 
+        Program output should indicate that all tests obtained expected results.
+
+    Postconditions:
+        Error log indicates all test cases in the form "cs_strtoui8:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of string pointer parameter.
+
+        a.  Call fails if the supplied string pointer is NULL.  Call should
+            return the user specified return-on-error value.
+
+        b.  Call fails if the supplied pointer points to a string that is
+            not in the form of a valid decimal or hexadecimal number.  Call
+            should return the user specified return-on-error value.
+
+        c.  Call fails if the supplied pointer points to a string that is
+            in the form of a negative number.  Call should return the user
+            specified return-on-error value.
+
+        d.  Call fails if the supplied pointer points to a string that is
+            greater than the maximum value for an unsigned 8-bit integer.
+            Call should return the user specified return-on-error value.
+
+    2.  Description: Test for successful string conversion.
+
+        a.  Call cs_strtoui8 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number and is
+            equal to the maximum valid value.  Call should return the
+            converted value.
+
+        b.  Call cs_strtoui8 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number and is
+            equal to the minimum valid value.  Call should return the
+            converted value.
+
+        c.  Call cs_strtoui8 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number, containing
+            a leading plus sign.  Call should return the converted value.
+
+        d.  Call cs_strtoui8 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number, containing
+            leading spaces.  Call should return the converted value.
+
+        e.  Call cs_strtoui8 such that the supplied pointer points to a
+            string that is in the form of a valid hexadecimal number and is
+            equal to the maximum valid value.  Call should return the
+            converted value.
+
+        f.  Call cs_strtoui8 such that the supplied pointer points to a
+            string that is in the form of a valid hexadecimal number and is
+            equal to the minimum valid value.  Call should return the
+            converted value.
+
+        g.  Call cs_strtoui8 such that the supplied pointer points to a
+            string that is in the form of a valid hexadecimal number,
+            containing leading spaces.  Call should return the
+            converted value.
+
+
+2.  Test: cs_strtoui16:1
+
+    Description:
+        This test validates the CS String Conversion function cs_strtoui16.
+
+    Associated Use Case:
+        cs:cs_strtoui16:1  
+
+    Valid Runtime Environments:
+        User, Kernel, embedded
+
+    External Configuration:
+        None required.
+
+    Preconditions:
+        None.
+
+    Notes:
+        None.
+
+    Test Application:
+        Linux Kernel Module: ib/src/linux/cs/kernel/lib/tststring.o
+        Linux User Module: ib/src/linux/cs/usr/bin/tststring
+        ATI: run from serial screens.
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tststring.o
+        9.  verify results from log data
+       10.  rmmod tststring
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tststring
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "String Converstion Tests"
+       10.  verify results from log data
+
+    Expected Results: 
+        Program output should indicate that all tests obtained expected results.
+
+    Postconditions:
+        Error log indicates all test cases in the form "cs_strtoui16:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of string pointer parameter.
+
+        a.  Call fails if the supplied string pointer is NULL.  Call should
+            return the user specified return-on-error value.
+
+        b.  Call fails if the supplied pointer points to a string that is
+            not in the form of a valid decimal or hexadecimal number.  Call
+            should return the user specified return-on-error value.
+
+        c.  Call fails if the supplied pointer points to a string that is
+            in the form of a negative number.  Call should return the user
+            specified return-on-error value.
+
+        d.  Call fails if the supplied pointer points to a string that is
+            greater than the maximum value for an unsigned 16-bit integer.
+            Call should return the user specified return-on-error value.
+
+    2.  Description: Test for successful string conversion.
+
+        a.  Call cs_strtoui16 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number and is
+            equal to the maximum valid value.  Call should return the
+            converted value.
+
+        b.  Call cs_strtoui16 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number and is
+            equal to the minimum valid value.  Call should return the
+            converted value.
+
+        c.  Call cs_strtoui16 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number, containing
+            a leading plus sign.  Call should return the converted value.
+
+        d.  Call cs_strtoui16 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number, containing
+            leading spaces.  Call should return the converted value.
+
+        e.  Call cs_strtoui16 such that the supplied pointer points to a
+            string that is in the form of a valid hexadecimal number and is
+            equal to the maximum valid value.  Call should return the
+            converted value.
+
+        f.  Call cs_strtoui16 such that the supplied pointer points to a
+            string that is in the form of a valid hexadecimal number and is
+            equal to the minimum valid value.  Call should return the
+            converted value.
+
+        g.  Call cs_strtoui16 such that the supplied pointer points to a
+            string that is in the form of a valid hexadecimal number,
+            containing leading spaces.  Call should return the
+            converted value.
+
+
+3.  Test: cs_strtoui32:1
+
+    Description:
+        This test validates the CS String Conversion function cs_strtoui32.
+
+    Associated Use Case:
+        cs:cs_strtoui32:1  
+
+    Valid Runtime Environments:
+        User, Kernel, embedded
+
+    External Configuration:
+        None required.
+
+    Preconditions:
+        None.
+
+    Notes:
+        None.
+
+    Test Application:
+        Linux Kernel Module: ib/src/linux/cs/kernel/lib/tststring.o
+        Linux User Module: ib/src/linux/cs/usr/bin/tststring
+        ATI: run from serial screens.
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tststring.o
+        9.  verify results from log data
+       10.  rmmod tststring
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tststring
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "String Converstion Tests"
+       10.  verify results from log data
+
+    Expected Results: 
+        Program output should indicate that all tests obtained expected results.
+
+    Postconditions:
+        Error log indicates all test cases in the form "cs_strtoui32:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of string pointer parameter.
+
+        a.  Call fails if the supplied string pointer is NULL.  Call should
+            return the user specified return-on-error value.
+
+        b.  Call fails if the supplied pointer points to a string that is
+            not in the form of a valid decimal or hexadecimal number.  Call
+            should return the user specified return-on-error value.
+
+        c.  Call fails if the supplied pointer points to a string that is
+            in the form of a negative number.  Call should return the user
+            specified return-on-error value.
+
+        d.  Call fails if the supplied pointer points to a string that is
+            greater than the maximum value for an unsigned 32-bit integer.
+            Call should return the user specified return-on-error value.
+
+    2.  Description: Test for successful string conversion.
+
+        a.  Call cs_strtoui32 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number and is
+            equal to the maximum valid value.  Call should return the
+            converted value.
+
+        b.  Call cs_strtoui32 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number and is
+            equal to the minimum valid value.  Call should return the
+            converted value.
+
+        c.  Call cs_strtoui32 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number, containing
+            a leading plus sign.  Call should return the converted value.
+
+        d.  Call cs_strtoui32 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number, containing
+            leading spaces.  Call should return the converted value.
+
+        e.  Call cs_strtoui32 such that the supplied pointer points to a
+            string that is in the form of a valid hexadecimal number and is
+            equal to the maximum valid value.  Call should return the
+            converted value.
+
+        f.  Call cs_strtoui32 such that the supplied pointer points to a
+            string that is in the form of a valid hexadecimal number and is
+            equal to the minimum valid value.  Call should return the
+            converted value.
+
+        g.  Call cs_strtoui32 such that the supplied pointer points to a
+            string that is in the form of a valid hexadecimal number,
+            containing leading spaces.  Call should return the
+            converted value.
+
+
+4.  Test: cs_strtoui64:1
+
+    Description:
+        This test validates the CS String Conversion function cs_strtoui64.
+
+    Associated Use Case:
+        cs:cs_strtoui64:1  
+
+    Valid Runtime Environments:
+        User, Kernel, embedded
+
+    External Configuration:
+        None required.
+
+    Preconditions:
+        None.
+
+    Notes:
+        None.
+
+    Test Application:
+        Linux Kernel Module: ib/src/linux/cs/kernel/lib/tststring.o
+        Linux User Module: ib/src/linux/cs/usr/bin/tststring
+        ATI: run from serial screens.
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tststring.o
+        9.  verify results from log data
+       10.  rmmod tststring
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tststring
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "String Converstion Tests"
+       10.  verify results from log data
+
+    Expected Results: 
+        Program output should indicate that all tests obtained expected results.
+
+    Postconditions:
+        Error log indicates all test cases in the form "cs_strtoui64:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of string pointer parameter.
+
+        a.  Call fails if the supplied string pointer is NULL.  Call should
+            return the user specified return-on-error value.
+
+        b.  Call fails if the supplied pointer points to a string that is
+            not in the form of a valid decimal or hexadecimal number.  Call
+            should return the user specified return-on-error value.
+
+        c.  Call fails if the supplied pointer points to a string that is
+            in the form of a negative number.  Call should return the user
+            specified return-on-error value.
+
+    2.  Description: Test for successful string conversion.
+
+        a.  Call cs_strtoui64 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number and is
+            equal to the maximum valid value.  Call should return the
+            converted value.
+
+        b.  Call cs_strtoui64 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number and is
+            equal to the minimum valid value.  Call should return the
+            converted value.
+
+        c.  Call cs_strtoui64 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number, containing
+            a leading plus sign.  Call should return the converted value.
+
+        d.  Call cs_strtoui64 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number, containing
+            leading spaces.  Call should return the converted value.
+
+        e.  Call cs_strtoui64 such that the supplied pointer points to a
+            string that is in the form of a valid hexadecimal number and is
+            equal to the maximum valid value.  Call should return the
+            converted value.
+
+        f.  Call cs_strtoui64 such that the supplied pointer points to a
+            string that is in the form of a valid hexadecimal number and is
+            equal to the minimum valid value.  Call should return the
+            converted value.
+
+        g.  Call cs_strtoui64 such that the supplied pointer points to a
+            string that is in the form of a valid hexadecimal number,
+            containing leading spaces.  Call should return the
+            converted value.
+
+
+5.  Test: cs_strtoi8:1
+
+    Description:
+        This test validates the CS String Conversion function cs_strtoi8.
+
+    Associated Use Case:
+        cs:cs_strtoi8:1
+
+    Valid Runtime Environments:
+        User, Kernel, embedded
+
+    External Configuration:
+        None required.
+
+    Preconditions:
+        None.
+
+    Notes:
+        None.
+
+    Test Application:
+        Linux Kernel Module: ib/src/linux/cs/kernel/lib/tststring.o
+        Linux User Module: ib/src/linux/cs/usr/bin/tststring
+        ATI: run from serial screens.
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tststring.o
+        9.  verify results from log data
+       10.  rmmod tststring
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tststring
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "String Converstion Tests"
+       10.  verify results from log data
+
+    Expected Results: 
+        Program output should indicate that all tests obtained expected results.
+
+    Postconditions:
+        Error log indicates all test cases in the form "cs_strtoi8:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of string pointer parameter.
+
+        a.  Call fails if the supplied string pointer is NULL.  Call should
+            return the user specified return-on-error value.
+
+        b.  Call fails if the supplied pointer points to a string that is
+            not in the form of a valid decimal or hexadecimal number.  Call
+            should return the user specified return-on-error value.
+
+        c.  Call fails if the supplied pointer points to a string, in decimal
+            format, that is less than the minimum value for a signed 8-bit
+            integer.  Call should return the user specified return-on-error
+            value.
+
+        d.  Call fails if the supplied pointer points to a string, in decimal
+            format, that is greater than the maximum value for a signed 8-bit
+            integer.  Call should return the user specified return-on-error
+            value.
+
+    2.  Description: Test for successful string conversion.
+
+        a.  Call cs_strtoi8 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number and is
+            equal to the maximum valid value.  Call should return the
+            converted value.
+
+        b.  Call cs_strtoi8 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number and is
+            equal to the minimum valid value.  Call should return the
+            converted value.
+
+        c.  Call cs_strtoi8 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number, containing
+            a leading plus sign.  Call should return the converted value.
+
+        d.  Call cs_strtoi8 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number, containing
+            leading spaces.  Call should return the converted value.
+
+        e.  Call cs_strtoi8 such that the supplied pointer points to a
+            string that is in the form of a valid hexadecimal number and is
+            equal to the maximum valid value.  Call should return the
+            converted value.
+
+        f.  Call cs_strtoi8 such that the supplied pointer points to a
+            string that is in the form of a valid hexadecimal number,
+            containing leading spaces.  Call should return the
+            converted value.
+
+
+6.  Test: cs_strtoi16:1
+
+    Description:
+        This test validates the CS String Conversion function cs_strtoi16.
+
+    Associated Use Case:
+        cs:cs_strtoi16:1
+
+    Valid Runtime Environments:
+        User, Kernel, embedded
+
+    External Configuration:
+        None required.
+
+    Preconditions:
+        None.
+
+    Notes:
+        None.
+
+    Test Application:
+        Linux Kernel Module: ib/src/linux/cs/kernel/lib/tststring.o
+        Linux User Module: ib/src/linux/cs/usr/bin/tststring
+        ATI: run from serial screens.
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tststring.o
+        9.  verify results from log data
+       10.  rmmod tststring
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tststring
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "String Converstion Tests"
+       10.  verify results from log data
+
+    Expected Results: 
+        Program output should indicate that all tests obtained expected results.
+
+    Postconditions:
+        Error log indicates all test cases in the form "cs_strtoi16:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of string pointer parameter.
+
+        a.  Call fails if the supplied string pointer is NULL.  Call should
+            return the user specified return-on-error value.
+
+        b.  Call fails if the supplied pointer points to a string that is
+            not in the form of a valid decimal or hexadecimal number.  Call
+            should return the user specified return-on-error value.
+
+        c.  Call fails if the supplied pointer points to a string, in decimal
+            format, that is less than the minimum value for a signed 16-bit
+            integer.  Call should return the user specified return-on-error
+            value.
+
+        d.  Call fails if the supplied pointer points to a string, in decimal
+            format, that is greater than the maximum value for a signed 16-bit
+            integer.  Call should return the user specified return-on-error
+            value.
+
+    2.  Description: Test for successful string conversion.
+
+        a.  Call cs_strtoi16 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number and is
+            equal to the maximum valid value.  Call should return the
+            converted value.
+
+        b.  Call cs_strtoi16 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number and is
+            equal to the minimum valid value.  Call should return the
+            converted value.
+
+        c.  Call cs_strtoi16 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number, containing
+            a leading plus sign.  Call should return the converted value.
+
+        d.  Call cs_strtoi16 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number, containing
+            leading spaces.  Call should return the converted value.
+
+        e.  Call cs_strtoi16 such that the supplied pointer points to a
+            string that is in the form of a valid hexadecimal number and is
+            equal to the maximum valid value.  Call should return the
+            converted value.
+
+        f.  Call cs_strtoi16 such that the supplied pointer points to a
+            string that is in the form of a valid hexadecimal number,
+            containing leading spaces.  Call should return the
+            converted value.
+
+
+7.  Test: cs_strtoi32:1
+
+    Description:
+        This test validates the CS String Conversion function cs_strtoi32.
+
+    Associated Use Case:
+        cs:cs_strtoi32:1
+
+    Valid Runtime Environments:
+        User, Kernel, embedded
+
+    External Configuration:
+        None required.
+
+    Preconditions:
+        None.
+
+    Notes:
+        None.
+
+    Test Application:
+        Linux Kernel Module: ib/src/linux/cs/kernel/lib/tststring.o
+        Linux User Module: ib/src/linux/cs/usr/bin/tststring
+        ATI: run from serial screens.
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tststring.o
+        9.  verify results from log data
+       10.  rmmod tststring
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tststring
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "String Converstion Tests"
+       10.  verify results from log data
+
+    Expected Results: 
+        Program output should indicate that all tests obtained expected results.
+
+    Postconditions:
+        Error log indicates all test cases in the form "cs_strtoi32:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of string pointer parameter.
+
+        a.  Call fails if the supplied string pointer is NULL.  Call should
+            return the user specified return-on-error value.
+
+        b.  Call fails if the supplied pointer points to a string that is
+            not in the form of a valid decimal or hexadecimal number.  Call
+            should return the user specified return-on-error value.
+
+        c.  Call fails if the supplied pointer points to a string, in decimal
+            format, that is less than the minimum value for a signed 32-bit
+            integer.  Call should return the user specified return-on-error
+            value.
+
+        d.  Call fails if the supplied pointer points to a string, in decimal
+            format, that is greater than the maximum value for a signed 32-bit
+            integer.  Call should return the user specified return-on-error
+            value.
+
+    2.  Description: Test for successful string conversion.
+
+        a.  Call cs_strtoi32 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number and is
+            equal to the maximum valid value.  Call should return the
+            converted value.
+
+        b.  Call cs_strtoi32 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number and is
+            equal to the minimum valid value.  Call should return the
+            converted value.
+
+        c.  Call cs_strtoi32 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number, containing
+            a leading plus sign.  Call should return the converted value.
+
+        d.  Call cs_strtoi32 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number, containing
+            leading spaces.  Call should return the converted value.
+
+        e.  Call cs_strtoi32 such that the supplied pointer points to a
+            string that is in the form of a valid hexadecimal number and is
+            equal to the maximum valid value.  Call should return the
+            converted value.
+
+        f.  Call cs_strtoi32 such that the supplied pointer points to a
+            string that is in the form of a valid hexadecimal number,
+            containing leading spaces.  Call should return the
+            converted value.
+
+
+8.  Test: cs_strtoi64:1
+
+    Description:
+        This test validates the CS String Conversion function cs_strtoi64.
+
+    Associated Use Case:
+        cs:cs_strtoi64:1
+
+    Valid Runtime Environments:
+        User, Kernel, embedded
+
+    External Configuration:
+        None required.
+
+    Preconditions:
+        None.
+
+    Notes:
+        None.
+
+    Test Application:
+        Linux Kernel Module: ib/src/linux/cs/kernel/lib/tststring.o
+        Linux User Module: ib/src/linux/cs/usr/bin/tststring
+        ATI: run from serial screens.
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tststring.o
+        9.  verify results from log data
+       10.  rmmod tststring
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tststring
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "String Converstion Tests"
+       10.  verify results from log data
+
+    Expected Results: 
+        Program output should indicate that all tests obtained expected results.
+
+    Postconditions:
+        Error log indicates all test cases in the form "cs_strtoi64:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of string pointer parameter.
+
+        a.  Call fails if the supplied string pointer is NULL.  Call should
+            return the user specified return-on-error value.
+
+        b.  Call fails if the supplied pointer points to a string that is
+            not in the form of a valid decimal or hexadecimal number.  Call
+            should return the user specified return-on-error value.
+
+        c.  Call fails if the supplied pointer points to a string, in decimal
+            format, that is less than the minimum value for a signed 64-bit
+            integer.  Call should return the user specified return-on-error
+            value.
+
+        d.  Call fails if the supplied pointer points to a string, in decimal
+            format, that is greater than the maximum value for a signed 64-bit
+            integer.  Call should return the user specified return-on-error
+            value.
+
+    2.  Description: Test for successful string conversion.
+
+        a.  Call cs_strtoi64 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number and is
+            equal to the maximum valid value.  Call should return the
+            converted value.
+
+        b.  Call cs_strtoi64 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number and is
+            equal to the minimum valid value.  Call should return the
+            converted value.
+
+        c.  Call cs_strtoi64 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number, containing
+            a leading plus sign.  Call should return the converted value.
+
+        d.  Call cs_strtoi64 such that the supplied pointer points to a
+            string that is in the form of a valid decimal number, containing
+            leading spaces.  Call should return the converted value.
+
+        e.  Call cs_strtoi64 such that the supplied pointer points to a
+            string that is in the form of a valid hexadecimal number and is
+            equal to the maximum valid value.  Call should return the
+            converted value.
+
+        f.  Call cs_strtoi64 such that the supplied pointer points to a
+            string that is in the form of a valid hexadecimal number,
+            containing leading spaces.  Call should return the
+            converted value.
+

@@ -1,0 +1,89 @@
+
+Copyright (c) 2002, VIEO Inc.  All rights reserved.
+
+
+        Use Cases for CS Operating System Counting Semaphores Functions
+        ---------------------------------------------------------------
+
+1.  Use Case: cs:cs_sema_create:1 
+        Initialize a counting semaphore object for use.
+
+    Context of Use:  Any user, kernel, or embedded code which needs a
+        counting semaphore object.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level: Subfunction
+
+    The caller supplies a pointer to an uninitialized semaphore handle,
+    and the initial count value for the semaphore.
+
+    If the supplied pointer and count are valid, the semaphore may
+    be created.
+
+    If the semaphore is successfully created, the handle is initialized,
+    the count is set to the specified value, and VSTATUS_OK is returned.
+    Otherwise an error describing the condition is returned.
+
+2.  Use Case: cs:cs_sema_delete:1
+        Deletes a counting semaphore object.
+
+    Context of Use:  Any user, kernel, or embedded code may delete
+        a previously created semaphore object.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level:  Subfunction
+
+    The caller supplies a pointer to the semaphore's handle.
+
+    If the semaphore handle pointer is non-null and it points to a
+    valid semaphore object, the semaphore object will be deleted.  Any
+    threads waiting on the semaphore object will be woken and returned
+    a status of VSTATUS_NXIO.
+
+    If the sempahore is successfully deleted, VSTATUS_OK is returned.
+    Otherwise an error describing the condition is returned.
+
+3.  Use Case: cs:cs_vsema:1
+        Increment a semaphore.
+
+    Context of Use:  Any user, kernel, or embedded code may increment
+        a semaphore.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level: Subfunction
+
+    The caller supplies a pointer to the semaphore's handle.
+
+    If the semaphore handle pointer is non-null and it points to a
+    valid semaphore object,  the semaphore object's count will be
+    incremented.  The caller never blocks.  After the increment, if the
+    count is less than or equal to zero, cs_vsema() will awaken a single
+    process put to sleep by the cs_psema() function.
+
+    If the semaphore is successfully incremented, VSTATUS_OK is returned.
+    Otherwise an error describing the condition is returned.
+
+4.  Use Case: cs:cs_psema:1
+        Decrement a semaphore.
+
+    Context of Use:  Any user, kernel, or embedded code may decrement
+        a semaphore.
+
+    Primary Actor:  Any user, kernel, or embedded code.
+
+    Level: Subfunction
+
+    The caller supplies a pointer to the semaphore's handle.
+
+    If the semaphore handle pointer is non-null and it points to a 
+    valid semaphore object, the semaphore object's count may be
+    decremented.  After the decrement, if the the semaphore count is
+    negative, the calling thread is put to sleep.  Subsequent calls to
+    cs_vsema() will awaken the process.
+
+    If the semaphore is successfully decremented, VSTATUS_OK is returned.
+    Otherwise an error describing the condition is returned.
+

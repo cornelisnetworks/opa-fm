@@ -1,0 +1,124 @@
+MAI unit test using two process client server
+
+Instructions for client.c and server.c sample programs.
+
+COMPONENT BEING TESTED: Management API 
+
+PURPOSE: The client.c sample program will send a MAD to a server 
+		and wait for acknowledgement from the server.
+	    The server.c sample program executes a loop which receives 
+		a MAD based on filters that are specified by command line arguments.
+
+CONFIGURATION:  System A (Linux machine) and system B (Linux machine).
+   	   	 NOTE: These sample programs may be executed on the same machine. 
+		 If executing the sample programs from the same machine and the "mclass" filter has been specified,
+		 the server will receive its own acknowledgement. 
+
+SETUP: Start the Subnet Manager (SM) on system A to initialize the fabric.
+
+INSTRUCTIONS:
+
+1. Execute server.c from system A:
+
+	# ./server
+
+    Syntax: server [ -d <ibdev> -p <ibport> -m <manager class> -s <sport> -n <sname> -h ]
+
+    Where -d  specifies the IBA device to open (default = 0)
+	-p  specifies the IBA port  on the device (default = 5)
+	-r   specifies the how many times to execute loop (default = 1)
+	-m specifies the manager class (default = 7)
+	-f   specifies the filter to attach to handle
+		1 - mclass filter
+		2 - method filter for SEND_ONE
+		3 - option filter for SEND_ONE, AID_ONE
+	-t  specifies the how long to wait for message (msecs)
+	-s  specifies the simulator IP port to use
+	-n  specifies the simulator host machine name
+	-?  displays help
+
+2. Execute client.c from system B:
+
+	#  ./client -l <slid>
+
+    Syntax: client [ -d <ibdev> -p <ibport> -c <command> -m <manager class> -l <slid> -s <sport> -n <sname> -h ]
+
+    Where	-d  specifies the IBA device to open (default = 0)
+	-p  specifies the IBA port  on the device (default = 5)
+	-m specifies the manager class (default = 7)
+	-l   specifies the sender LID (slid); see SM output for SLID (default = 1)
+	-r   specifies the receiver LID (dlid); see SM output for DLID (default = 1)
+	-k   specifies the how many times to execute loop (default = 1)
+	-c  specifies the method to use (default = SEND_ONE)
+		1 - Send SEND_ONE.
+		2 - Send GET_ONE.
+	-a  specifies the AID to send (default = AID_ONE)
+		1 - Send AID_ONE
+		2 - Send AID_TWO
+	-t   specifies the how long to wait for acknowledgement (msecs)
+	-s  specifies the simulator IP port to use
+	-n  specifies the simulator host machine name
+	-?  displays help
+
+NOTE: When running client from the same system as server, client parameters are optional; 
+	i.e., the sender LID does not need to be specified.
+
+3. Verify that the test was successful by referring to the output:
+
+   server.c output will be similar to the following:
+
+	Opened a handle: 0 
+	Waiting for MADs
+	SEND_ONE received
+	AID_ONE received
+	Loop 0: 
+	Waiting for MADs
+	SEND_ONE received
+	AID_ONE received
+	Loop 1: 
+	Test successful!!
+
+   client.c output will be similar to the following:
+
+	MAD sent
+	Waiting for acknowledgement
+	Acknowledgement received
+	Passed Loop 0
+	MAD sent
+	Waiting for acknowledgement
+	Acknowledgement received
+	Passed Loop 1
+
+/*****************************************************************************/
+
+OVERVIEW:
+
+The client.c sample program performs the following actions:
+
+1. Parses the command line arguments. 
+2. Initializes the MAI subsystem.
+3. Creates an MAI handle.
+4. Initializes the MAD to be sent.
+5. Creates a filter to listen for response.
+6. Initiates a loop to send the MAD to receiver. The loop performs the following actions:
+	- Gets a transaction ID for message we are about to send
+     	- Assigns transaction ID to the MAD to be sent
+	- Sends command to receiver
+	- Gets acknowledgement
+7. Deletes the filter.
+8. Closes the MAI channel.
+
+The server.c sample program performs the following actions:
+
+1. Parse command line arguments. 
+2. Initializes the MAI subsystem.
+3. Opens a connection to listen for messages on the device and port that was passed in.
+4. Creates the filters that will allow receipt of the commands on the handle.      
+5. Initiates a loop to receive messages. The loop performs the following actions:
+	- Determines what method was received.
+	- Determines what AID was received.
+	- Prepares to send acknowledgement.
+	- Swizzles destination and source LID.
+	- Sends acknowledgement MAD.
+6. Deletes the filter.
+7. Closes the MAI channel.

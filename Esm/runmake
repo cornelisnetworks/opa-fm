@@ -1,0 +1,271 @@
+#!/bin/bash
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+##
+## runmake
+## -----------
+## Perform a full build
+## This is used by the weeklybuild script to provide product specific
+## build operations for product's whose build is more complex
+## than simply a "make stage prepfiles"
+## When this is invoked, the current directory will be the TL_DIR for a
+## full checkout of the product to be built
+## This is also invoked by the ALL_EMB runmake, in which case the current
+## directory will be Esm while TL_DIR will be ALL_EMB
+##
+## Usage:
+##	runmake [-B 'build_config'] [-n]
+##			or
+##	runmake -r [-B 'build_config'] [-C] [-n]
+##
+## Arguments:
+##	-B build_config	release type to build, (debug/release). default is release
+##	-r 		rerun the build in place without doing a new checkout/tag
+##	-C		don't clobber prior to the rerun
+##	-n		No build.  Useful for checking build machine
+##
+## In addition, the following environment variables are expected to be set:
+##	RELEASE_TAG, BRANCH_TAG, BUILD_TARGET, PRODUCT, RELEASE_HOME, BUILD_CONFIG 
+##	The target command is expected to have already been run to set up the
+##	environment for the specified target
+##
+##	re-run can be used for 2 situations:
+##	1. re-run a failed build to correct incorrect weeklybuild arguments
+##		or other non-source code related problems (out of disk space)
+##	2. re-run a build for a different BUILD_TARGET_OS_VERSION while using the same
+##		source code image/tag
+##	If the source code needs to be corrected, a full weeklybuild should be run
+##	after the correction such that the code is properly tagged.
+##
+##	Since weeklybuild and target commands always set BUILD_CONFIG, this
+##	script ignores BUILD_CONFIG.  As such the BuildOptions file
+##	or the -B argument completely control BUILD_CONFIG for this product.
+
+. $ICSBIN/funcs.sh
+
+# A given release will be targeted for a specific version of ofed
+# however we allow build.config to override if needed
+export OFED_STACK_PREFIX=${OFED_STACK_PREFIX:-/usr/ofed-1.5.2}
+
+# typically exported by build.config
+export BUILD_WITH_STACK=${BUILD_WITH_STACK:-OPENIB}
+
+Usage()
+{
+	# include "ERROR" in message so weeklybuild catches it in error log
+	echo "ERROR: runmake failed" >&2
+	echo "Usage: runmake [-B 'build_config'] [-n]" >&2
+	echo "            OR" >&2
+	echo "       runmake -r [-B 'build_config'] [-C] [-n]" >&2
+	exit 2
+}
+
+showbuild()
+{
+	# output summary of what we are building to stdout
+	echo "Building for $SUBPRODUCT $BUILD_TARGET $BUILD_CONFIG $(date)..."
+}
+
+fix_version()
+{
+	# translate underscores and dashes to dots
+	echo "$1"|tr '_-' '..'
+}
+
+build_config=
+rerun=n
+Cflag=n
+args="$*"
+while getopts B:rCnS param
+do
+	case $param in
+	r)
+		rerun=y;;
+	B)
+		build_config="$OPTARG";;
+	C)
+		Cflag=y;;
+	n)
+		nflag=y;;
+	?)
+		Usage
+	esac
+done
+shift $(($OPTIND -1))
+
+if [ $# != 0 ]
+then
+		Usage
+fi
+
+if [ -z "$RELEASE_TAG" ]
+then
+	export RELEASE_TAG=`patch_engineer_version|cut -d"." -f1`
+	echo "Defaulting RELEASE_TAG to $RELEASE_TAG"
+	# engineers will always forget this flag, since clobber is fast
+	# default to a rerun which will clobber first unless -C specified
+	rerun=y
+fi
+
+
+
+# target will adjust TL_DIR to be our directory, hence it will be
+# ALL_EMB/Esm when building in a ALL_EMB checkout
+resetct
+resetbsp
+target $BUILD_TARGET
+
+# for HSM the kernel rev is not important.  We simply use the kernel rev
+# of the running kernel.  While BUILD_TARGET_OS_VERSION is needed by Makerules
+# it will have no impact on what is actually built for HSM
+export BUILD_TARGET_OS_VERSION=${BUILD_TARGET_OS_VERSION:-`uname -r`}
+setver $BUILD_TARGET_OS_VENDOR $BUILD_TARGET_OS_VERSION
+
+if [ -z "$build_config" ]
+then
+	# default to release build
+	setrel
+elif [ "$build_config" != debug -a "$build_config" != release ]
+then
+	Usage
+else
+	export BUILD_CONFIG="$build_config"
+fi
+
+# This is used to build a HSM from an ALL_EMB checkout  
+THISDIR=`basename $PWD`
+if [ $THISDIR = Esm ]; then
+	export PROJ_FILE_DIR=Esm
+else
+	export PROJ_FILE_DIR=.
+fi
+
+if [ "$BUILD_WITH_STACK" = "OPENIB" ]
+then
+	if [ ! -d $OFED_STACK_PREFIX ]
+	then
+		echo "$0: ERROR: OFED stack not found: $OFED_STACK_PREFIX" >&2
+		exit 1
+	fi
+fi
+
+if [ "$nflag" = "y" ]
+then
+	if [ "$BUILD_WITH_STACK" = "OPENIB" ]
+	then
+		echo "Stack to build for: $BUILD_WITH_STACK ($OFED_STACK_PREFIX)"
+	else
+		echo "Stack to build for: $BUILD_WITH_STACK"
+	fi
+	exit 0
+fi
+
+# Check if we need to build SRPM and start from there
+if [ "$BUILD_TARGET_OS" = "VXWORKS" ]
+then
+	echo "Err: Wrong runmake file"
+	exit 1
+fi
+
+if [ "x${RELEASE_TAG}" = "x" ]
+then
+	MODULEVERSION=`patch_engineer_version`
+	RPM_REL=`echo ${MODULEVERSION}|cut -d"." -f1-2`
+	RPM_VER=`echo ${MODULEVERSION}.999.999|cut -d"." -f3`
+else
+	MODULEVERSION=`patch_version ${RELEASE_TAG}`
+	RPM_REL=`echo ${MODULEVERSION}|cut -d"." -f1-4`
+	RPM_VER=`echo ${MODULEVERSION}.999.999.999.999|cut -d"." -f5`
+fi
+export MKRPM_REL=${RPM_REL}
+export MKRPM_VER=${RPM_VER}
+
+# Copy the spec file for editing.
+cp opafm.spec.base opafm.spec
+
+# Repair the spec file
+sed -i "s/^Version:.*/Version: ${RPM_REL}/g" opafm.spec
+sed -i "s/^Release:.*/Release: ${RPM_VER}/g" opafm.spec
+if [ -d IbAccess ] ; then 
+	sed -i "s/^%doc Esm\/README/%doc README/g" opafm.spec; 
+fi;
+
+# Pass command-line arguments to rpmbuild 
+sed -i "s/^\.\/fmbuild.*/\.\/fmbuild -V \%{version}\.\%{release} $args/g" opafm.spec
+
+# Pass env variables to rpmbuild. In integration build,
+# Most of the rpmbuild environment variables remains the same except
+# a few (like TL_DIR). However, when the SRPM is built on another
+# different machine, the environment variables may be totally
+# different. In that case, we may want to pass (hardcode) some
+# environment variables.
+echo "# Adjust the environment variables if necessary" > build.env
+echo "export PRODUCT=${PRODUCT}" >> build.env
+echo "export RELEASE_TAG=${RELEASE_TAG}" >> build.env
+echo "export BUILD_CONFIG=${BUILD_CONFIG}" >> build.env
+echo "export BUILD_WITH_STACK=${BUILD_WITH_STACK}" >> build.env
+
+# differentiate the checkout
+cur_dir=`pwd |xargs basename`
+if [ "$cur_dir" = "Esm" ]
+then
+	cd ../
+	#rm -rf rpmbuild
+	mkdir -p rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+	tar -czf rpmbuild/SOURCES/opa-fm.tar.gz -T Esm/tar_inc_srcs_all --exclude-vcs -X Esm/tar_exc_pattern 
+	cp Esm/opafm.spec rpmbuild/SPECS/
+	cd rpmbuild
+	rpmbuild -ba --define "_topdir $(pwd)" SPECS/opafm.spec
+	cd ../Esm
+	make final_package
+	cp ../rpmbuild/BUILD/opa-fm-${RPM_REL}/packaged_files .
+	cp ../rpmbuild/BUILD/opa-fm-${RPM_REL}/dist_files .
+else
+	#rm -rf rpmbuild
+	mkdir -p rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+	tar -czf rpmbuild/SOURCES/opa-fm.tar.gz -T tar_inc_srcs_host --exclude-vcs -X tar_exc_pattern
+	cp opafm.spec rpmbuild/SPECS/
+	cd rpmbuild
+	rpmbuild -ba --define "_topdir $(pwd)" SPECS/opafm.spec
+	cd ../
+	make final_package
+	cp rpmbuild/BUILD/opa-fm-${RPM_REL}/packaged_files .
+	cp rpmbuild/BUILD/opa-fm-${RPM_REL}/dist_files .
+fi
+
+# Remove temp files
+rm -f opafm.spec
+rm -f build.env
+
+exit 0
+
+
+
+
+

@@ -1,0 +1,106 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+
+#[ICS VERSION STRING: unknown]
+CM_notes.txt
+
+Build label "Cm062201"
+----------------------
+
+- Clarified size of struct member field using bitfield length.
+Remove Reserved fields and packing requirement.
+
+- Added code to handle comm established event on RQ (-D_CM_EVENT_ON_QP_).
+
+- Allow upto 92 bytes and private data offset for discriminator matching (ModifyCEP()).
+
+- Fixed SendSIDR_RESP() copy private data.
+
+- Fixed FormatRTU() to access RTU struct instead of DREQ
+
+- Cleanup SIDR_REQ_INFO. Removed unnecessary fields.
+
+- Added more printout
+
+
+Build label "Cm062501"
+----------------------
+
+- Allow the SID namespace to be reuse within the port namespace i.e.
+2 instances of the service can listen on the same SID 
+but different port LID/GID. CaGuid must be specified.
+
+- RequestMatch() simplify listen/peer request matching
+
+- Fixed rounding up in TimeoutTimeToMult()
+
+- Cleanup printout in ProcessMadCallback()
+
+
+Build label "Cm062701"
+----------------------
+- Fixed #8819. Use DListIterate() instead of while loop. Do not destroy the cep
+object since the user may have reference to it.
+- Destroyed the spinlock during CmDestroy()
+- Initialized the global event obj before usage in CmWait()
+
+
+Build label "Cm062801" or "TSL3_5"
+----------------------
+- CmDeviceDestroy() - set the next ptr to prev only when entry is removed. Also,
+we cannot just remove the obj, we must either cancel, disconnect or ignore it.
+- CancelP() - wrong list
+- CmDestroy() - No need to walk thru the lists. This is done in CmDeviceDestroy()
+- CancelA() - Added CMS_SIDR_REQ_SENT case
+
+
+Build label "Cm070901"
+----------------------
+- CmDestroy() - Undo the change in prev label. Walk thru all the lists and destroy the cep obj.
+- CmDestroy() - Must wait for all callbacks to return. Move DgrmDestroyPool() to here from CmDeviceDestroy() 
+- CancelA() - Allow cancel operation in CMS_DREQ_SENT, CMS_DREQ_RCVD and CMS_TIMEWAIT states
+- CmSystemCallback() - Check if cep obj is marked for destruction before callback
+
+
+Build label "Cm071101"
+----------------------
+- During device removal, call user callback with FCM_DISCONNECTED status when connections are established already. Move code from CancelA() to ShutdownA(). 
+Added SYSE_DISCONNECT event
+
+
+Build label "Cm072401"
+----------------------
+- Added code to handle MRA msg
+
+
+TTD
+---
+
+Check CaGUID is specified when port addr is specified
+Make callbackrefcnt a more generic version to include handle refcnt

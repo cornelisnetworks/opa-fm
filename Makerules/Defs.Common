@@ -1,0 +1,87 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+# some common settings which are platform independent
+
+# dependency file "compression"
+# ----------------------------
+ifeq "$(BUILD_TARGET_OS)" "VXWORKS"
+# for vxWorks cross builds we use devtools
+STRIPDEPENDS = stripdepends
+else
+# the prefered setting, use tools in source itself
+STRIPDEPENDS = $(MAKETOOLS_DIR)/stripdepends/stripdepends
+endif
+
+# building Developer Studio workspace/project files.
+# ----------------------------
+ifeq "$(BUILD_TARGET_OS)" "VXWORKS"
+# for vxWorks cross builds we use devtools
+BUILDDSW	= builddsw
+FINDDSPFILES= finddspfiles
+else
+# the prefered setting, use tools in source itself
+BUILDDSW	= $(MAKETOOLS_DIR)/builddsw.sh
+FINDDSPFILES= $(MAKETOOLS_DIR)/finddspfiles.sh $(TL_DIR) $(DSP_SUFFIX)
+endif
+
+# Message Table Translator
+# ----------------
+BUILDMSGS_PL	= $(MAKETOOLS_DIR)/buildmsgs.pl
+BUILDMSGS	= $(PERL) $(BUILDMSGS_PL)
+
+# Config File Translator
+# ----------------------
+MKCONFIG_PL = $(MAKETOOLS_DIR)/mkconfig.pl
+MKCONFIG = $(PERL) $(MKCONFIG_PL)
+
+# File Preparer
+# -------------
+ifeq "$(BUILD_TARGET_OS)" "VXWORKS"
+# for vxWorks cross builds we use devtools
+PREP		= prep
+PATCH_VERSION	= patch_version
+PATCH_ENG_VERSION	= $(MAKETOOLS_DIR)/patch_engineer_version.sh
+PATCH_BRAND	= patch_brand
+CONVERT_RELEASETAG	= $(MAKETOOLS_DIR)/convert_releasetag.pl
+else
+# the prefered setting, use tools in source itself
+PREP		= $(MAKETOOLS_DIR)/prep.sh
+PATCH_VERSION	= $(MAKETOOLS_DIR)/patch_version/patch_version
+PATCH_ENG_VERSION	= $(MAKETOOLS_DIR)/patch_engineer_version.sh
+PATCH_BRAND	= $(MAKETOOLS_DIR)/patch_version/patch_brand
+CONVERT_RELEASETAG	= $(MAKETOOLS_DIR)/convert_releasetag.pl
+endif
+
+# CD Generation
+# -------------
+MAKEISO = $(MAKETOOLS_DIR)/makeiso.sh
+
+# Optional Directory selection
+# ----------------------------
+OPTIONALDIR		= $(MAKETOOLS_DIR)/optionaldir.sh

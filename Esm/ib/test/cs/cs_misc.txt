@@ -1,0 +1,114 @@
+
+Copyright (c) 2001, VIEO Inc.  All rights reserved.
+
+
+    Test Cases for CS Operation System Specific Miscellaneous Functions
+    -------------------------------------------------------------------
+
+
+3.  Test: vs_time_get:1
+
+    Description: 
+        This test validates the CS OS specific function vs_time_get()
+
+    Associated Use Case: 
+        vs_time_get:1  
+
+    Valid Runtime Environments: 
+        Kernel, embedded
+
+    External Configuration: 
+        None required.
+
+    Preconditions: 
+        None.
+   
+    Notes: 
+        None.
+
+    Test Application: 
+       Linux Kernel: ib/src/linux/cs/kernel/lib/tsttget.o
+       Linux User: ib/src/linux/cs/usr/bin/tsttget
+
+    Procedure: 
+        1.  cd image/vieo_fm/driver/
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  ../bin/vslogdr -f scr -d 0xffffffff -k cs -u cs
+        6.  Run the test program:
+        6.a Linux User: ../../../ib/src/linux/cs/usr/bin/tsttget
+        6.b Linux Kernel: insmod ../../../ib/src/linux/cs/kernel/lib/tsttget.o
+
+    Expected Results: 
+        Test application should run indicating that all tests obtained 
+        expected results.  
+    
+    Postconditions:
+        Error log indicates all test cases in the form "vs_time_get:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of now pointer parameter.
+
+        a.  Call fails if the supplied now pointer is NULL.  Call should 
+            return a VSTATUS_ILLPARM error code.
+
+    2.  Description: Test for monotonically non-decreasing values returned by
+        the function.
+        
+        a.  Call vs_time_get a number of times.  Each call should return a 
+            VSTATUS_OK code.  Verify that the returned time values are
+            monotonically non-decreasing.
+
+4.  Test: vs_sleep:1
+
+    Description: 
+        This test validates the CS OS specific function vs_sleep()
+
+    Associated Use Case: 
+        vs_sleep:1  
+
+    Valid Runtime Environments: 
+        Kernel, embedded
+
+    External Configuration: 
+        None required.
+
+    Preconditions: 
+        None.
+   
+    Notes: 
+        None.
+
+    Test Application: 
+       ib/src/cs/test/misc
+
+    Procedure: 
+        1.  Run the test application.
+
+    Expected Results: 
+        Test application should run indicating that all tests obtained 
+        expected results.  
+    
+    Postconditions:
+        Error log indicates all test cases in the form "vs_sleep:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test for successful sleep of a thread using various
+        timeout values:
+
+        a.  Call vs_sleep() using a timeout value 0 microseconds. Call should
+            return VSTATUS_OK code and the thread should resume execution. 
+
+        b.  Call vs_sleep() using a non-zero value for the timeout.  Call
+            should return VSTATUS_OK code after the sleep time has elapsed.
+            Verify that the thread was asleep for at least the duration
+            requested.
+        
+        c.  ATI only:  Call vs_sleep() using a value UINT_MAX + 1.  Call
+            should return VSTATUS_ILLPARM error code and the thread should
+            resume execution immediately.

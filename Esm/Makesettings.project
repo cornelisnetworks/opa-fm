@@ -1,0 +1,95 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+## Make Settings at project level
+#=============================================================================#
+## Project Make Settings File
+## -----------------------
+##
+## This file allows setting variables which can be used by Makefiles to make
+## decisions on which targets or DIRS to build.  This allows such controls
+## to be placed here as opposed to extending the build system environment
+## variable tools like setenv, target, etc.
+##
+## All tools local makefiles should include this makerules file before its own
+## local definitions section.  Use
+## Makefile.template as a base makefile and modify the template according to
+## your application needs.  The template makefile includes this file
+## and this project makesettings file includes the global makesettings file.
+## Any modifications to this makesettings file or to local makefiles should be
+## made in a portable fashion using 'ifdef' structures where necessary so that
+## the same makefile can be used on multiple platforms.
+## The main purpose of this
+## include makesettings file is for local variable definitions 
+## specific to the project at hand.  Global modifications should be made in the
+## global makesettings file and local items should be in the local makefile, not
+## in this makesettings file.
+## Any modifications to the source should be made with
+## portability in mind and should follow the embedded notations.  Documentation
+## is automatically generated from this makefile!  Use the correct conventions
+## for those items which should be documented.
+##
+## NOTE: This makefile inclusion (the global makesettings, and the template
+##       makefile) depend on using the GNU version of make.  GNU make must be
+##       installed on your system prior to using this makefile.
+#=============================================================================#
+##
+#=============================================================================#
+# The following list is the standard list of settings which will be defined
+# for all platforms.  It consists of general and machine specific sections that
+# contain many system parameters which may be used in a makefile.  Please keep
+# the list(s) in strictly aphabetical order to facilitate simple searches.
+#
+# See Makerules.global for the meaning of these flags
+#-----------------------------------------------------------------------------#
+# Common platform definitions:
+#-----------------------------------------------------------------------------#
+
+IB_STACK=$(BUILD_WITH_STACK)
+NO_BUILD_SUFFIX=n
+PROJ_SM_DIR=$(TL_DIR)/$(PROJ_FILE_DIR)/ib
+
+#-----------------------------------------------------------------------------#
+# Platform specific definitions:
+#-----------------------------------------------------------------------------#
+ifeq "$(BUILD_TARGET_OS)" "VXWORKS"
+endif # VXWORKS
+#ifeq "$(BUILD_TARGET_OS)" "DARWIN"
+#endif # DARWIN
+ifeq "$(BUILD_TARGET_OS)" "LINUX"
+endif # LINUX
+ifeq "$(BUILD_TARGET_OS)" "WIN32"
+endif # WIN32
+#=============================================================================#
+#=============================================================================#
+## TL_DIR must be set in the environment for the 'make' to succeed.
+## icsmake will do this for you
+#-----------------------------------------------------------------------------#
+# Include Global makerules definitions and rules
+include $(TL_DIR)/Makerules/Makesettings.global
+#=============================================================================#

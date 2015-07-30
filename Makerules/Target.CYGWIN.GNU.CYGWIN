@@ -1,0 +1,96 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+# suffixes and commands to build targets for:
+# BUILD_TARGET_OS=CYGWIN
+# BUILD_TARGET_TOOLCHAIN=GNU
+# BUILD_TARGET=CYGWIN
+# CYGWIN BUILD_TARGET is used only to build devtools to run on Windows
+
+SHLIB_VERSION		?= 0.0
+LIB_PREFIX			= $(BUILDDIR)/lib
+SHLIB_SUFFIX		= .so
+SHLIB_VERSION_SUFFIX= .so.$(SHLIB_VERSION)
+ARLIB_SUFFIX		= .a
+EXE_SUFFIX			= .exe
+OBJ_SUFFIX			= .o
+EXP_SUFFIX			= .exp
+RES_SUFFIX			= .res
+PRE_SUFFIX			= .pre
+
+# Paths:
+SYS_INCLUDE_DIRS= $(subst \,/,$(shell cygpath -w /usr/include))
+SYS_LIB_DIRS	=
+
+CC			= gcc
+CCC			= g++
+LD			= ld
+LINT		= lint
+AR			= ar
+NM			= nm
+
+include $(TL_DIR)/Makerules/Defs.GNU
+
+# for GNU we set an soname on shared libraries
+SHLIB_SONAME=$(notdir $(CMD_TARGETS_SHLIB))
+
+# C/C++ compilation
+# ----------------------------
+CMACH		= -DTARGET_CPU_FAMILY_X86 -Wall -DCPU_LE
+CCMACH		= $(CMACH)
+CSYS		=
+CCSYS		=
+CSHARED		= 
+CCSHARED	= 
+CCLIBS		= 
+release_CCOPT_Flags	=-O
+debug_CCOPT_Flags	=
+# Assemble the optimization flags based upon desired build configuration.
+CCOPT		= $($(strip $(BUILD_CONFIG))_CCOPT_Flags)
+# for now assume C++ flags are valid on C compiler
+COPT 		= $(CCOPT)
+release_CCDEBUG_Flags	=
+debug_CCDEBUG_Flags	=-g -DIB_DEBUG -DIB_TRACE $(CCPROJDEBUG) $(CCLOCALDEBUG)
+debug_CDEBUG_Flags	=-g -DIB_DEBUG -DIB_TRACE $(CPROJDEBUG) $(CLOCALDEBUG)
+# Assemble the debug flags based upon desired build configuration.
+CCDEBUG		= $($(strip $(BUILD_CONFIG))_CCDEBUG_Flags)
+CDEBUG		= $($(strip $(BUILD_CONFIG))_CDEBUG_Flags)
+
+# linking
+# ----------------------------
+LDMACH		= 
+MKSHLIB		= $(CCC) $(CCDEBUG) $(COPT) -shared
+ifeq "$(strip $(LIBFILES))" ""
+MKARLIB		= $(AR) crus$(space)
+else
+MKARLIB		= $(MAKETOOLS_DIR)/mkarlib.sh $(AR) crus$(space)
+endif
+MKPARTIAL	= $(LD) -r -o
+
+SYSLIBS		= 
+LDLIBS		= -Xlinker --start-group $(foreach lib,$(LOCALLIBS) $(LOCALDEPLIBS) $(MODLIBS) $(MODDEPLIBS) $(PROJLIBS) $(PROJDEPLIBS),-l$(lib)) -Xlinker --end-group $(SYSLIBS)

@@ -1,0 +1,3 @@
+Utility functions and infrastructure for secondary processes/threads of FM
+Used for PM/PA, FE
+Also provides user space rmpp support for SA

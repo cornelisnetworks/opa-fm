@@ -1,0 +1,551 @@
+
+Copyright (c) 2001-2002, VIEO Inc.  All rights reserved.
+
+
+           Test Cases for CS Operation System Specific Thread Functions
+           ------------------------------------------------------------
+
+
+1.  Test: vs_thread_create:1
+
+    Description: 
+        This test validates the CS OS specific function vs_thread_create()
+
+    Associated Use Case: 
+        cs:vs_thread_create:1  
+
+    Valid Runtime Environments: 
+        User, Kernel, embedded
+
+    External Configuration: 
+        None required.
+
+    Preconditions: 
+        None.
+   
+    Notes: 
+        None.
+
+    Test Application: 
+       Linux Kernel Module: ib/src/linux/cs/kernel/lib/tstthread.o
+       Linux User Module: ib/src/linux/cs/usr/bin/tstthread
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tstthread.o
+        9.  verify results from log data
+       10.  rmmod tstthread
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tstthread
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "Thread Tests"
+       10.  verify results from log data
+
+    Expected Results: 
+        Program output should indicate that all tests obtained expected results.
+
+    Postconditions:
+        Error log indicates all test cases in the form "vs_thread_create:1:#.#"
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of thread pointer parameter.
+
+        a.  Call fails if the supplied thread pointer is NULL, all other
+            parameters may be valid.  Call should return a VSTATUS_ILLPARM
+            error code.
+
+    2.  Description: Test validation of name parameter.
+
+        a.  Call fails if the supplied name parameter pointer is NULL, all
+            other parameters may be valid.  Call should return a
+            VSTATUS_ILLPARM error code.
+        b.  Call fails if name and NULL terminator combined length is
+            greater than VNAME_LENGTH.  Call should return a
+            VSTATUS_ILLPARM error code.
+                                        
+    3.  Description: Test validation of startup function pointer.
+
+        a.  Call fails if the supplied function pointer is NULL, all
+            other parameters may be valid.  Call should return a
+            VSTATUS_ILLPARM error code.
+                                         
+    4.  Description: Test validation of argc parameter.
+
+        a.  Call passes if argc is set to 0.  Call should return
+            VSTATUS_OK.
+
+    5.  Description: Test validation of argv pointer array  parameter.
+
+        a.  Call fails if argv[N] == NULL, where N is less than various
+            values of argc.  Values of argc and N to test:
+               argc                   N            
+                5                     1,2,3,4
+
+    6.  Description: Test validation of stack pointer.  
+
+        a.  Call fails if the supplied stack pointer is NULL, all
+            other parameters may be valid.  Call should return a
+            VSTATUS_ILLPARM error code.
+
+    7.  Description: Test validation of stack size.  
+
+        a.  Call fails if the supplied stack is 0, all
+            other parameters may be valid.  Call should return a
+            VSTATUS_ILLPARM error code.
+
+    8.  Description: Test valid creation of new thread.
+
+        a.  Create call passes and returns VSTATUS_OK.  
+        b.  Thread execution starts and updates shared variable with
+            status.
+
+2.  Test: vs_thread_name:1
+
+    Description:
+        This test validates the CS OS specific function vs_thread_name().
+
+    Associated Use Case:
+        cs:vs_thread_name:1
+
+    Valid Runtime Environments:
+        User, Kernel, embedded
+
+    External Configuration:
+        None required.
+
+    Preconditions:
+        1.  Requires vs_thread_create().
+
+    Notes:
+        None.
+
+    Test Application: 
+       Linux Kernel Module: ib/src/linux/cs/kernel/lib/tstthread.o
+       Linux User Module: ib/src/linux/cs/usr/bin/tstthread
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tstthread.o
+        9.  verify results from log data
+       10.  rmmod tstthread
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tstthread
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "Thread Tests"
+       10.  verify results from log data
+
+    Expected Results: 
+        Program output should indicate that all tests obtained expected results.
+
+    Postconditions
+        Error log indicates all test cases in the form "vs_thread_name:1:#.#" 
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of thread name pointer parameter.
+
+        a.  Call fails if the supplied thread name pointer is NULL.
+            Call should return a VSTATUS_ILLPARM error code.
+
+    2.  Description:  Verify that a thread name is returned in a non-
+        interrupt context.
+
+        a.  All parameters are valid, the Thread name is returned.
+        b.  The call returns VSTATUS_OK.
+
+    3.  Description:  Unique thread names in group.
+        a.  Start a series of threads in the same thread group and 
+            verify that each has a unique thread name.
+
+3.  Test: vs_thread_exit:1
+
+    Description:
+        This test validates the CS OS specific function vs_thread_exit().
+
+    Associated Use Case:
+        cs:vs_thread_exit:1
+
+    Valid Runtime Environments:
+        User, Kernel, embedded
+
+    External Configuration:
+        None required.
+
+    Preconditions:
+        1.  Requires vs_thread_create().
+
+    Notes:
+        None.
+
+    Test Application: 
+       Linux Kernel Module: ib/src/linux/cs/kernel/lib/tstthread.o
+       Linux User Module: ib/src/linux/cs/usr/bin/tstthread
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tstthread.o
+        9.  verify results from log data
+       10.  rmmod tstthread
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tstthread
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "Thread Tests"
+       10.  verify results from log data
+
+    Expected Results: 
+        Program output should indicate that all tests obtained expected results.
+
+    Postconditions
+        Error log indicates all test cases in the form "vs_thread_exit:1:#.#" 
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of thread pointer parameter.
+
+        a.  Call fails if the supplied thread name pointer is NULL.
+            Call should return a VSTATUS_ILLPARM error code.
+
+    2.  Description:  Test validation that thread exits.
+
+        a.  Get Threadname_t of thread, verify after exit that
+            the thread no longer exists.
+
+4.  Test: vs_thread_groupname:1
+
+    Description:
+        This test validates the CS OS specific function vs_thread_groupname().
+
+    Associated Use Case:
+        cs:vs_thread_groupname:1
+
+    Valid Runtime Environments:
+        User, Kernel, embedded
+
+    External Configuration:
+        None required.
+
+    Preconditions:
+        1.  Requires vs_thread_create().
+        1.  Requires vs_thread_name().
+
+    Notes:
+        None.
+
+    Test Application: 
+       Linux Kernel Module: ib/src/linux/cs/kernel/lib/tstthread.o
+       Linux User Module: ib/src/linux/cs/usr/bin/tstthread
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tstthread.o
+        9.  verify results from log data
+       10.  rmmod tstthread
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tstthread
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "Thread Tests"
+       10.  verify results from log data
+
+    Expected Results: 
+        Program output should indicate that all tests obtained expected results.
+
+    Postconditions
+        Error log indicates all test cases in the form "vs_thread_groupname:1:#.#" 
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of thread name pointer parameter.
+
+        a.  Call fails if the supplied thread name pointer is NULL.
+            Call should return a VSTATUS_ILLPARM error code.
+        b.  Call fails if the supplied thread name is not a valid
+            thread name.  Call should return a VSTATUS_ILLPARM error code.
+
+    2.  Description: Test passes, single thread.
+
+        a.  All parameters valid, call passes for a single thread and
+            call returns with VSTATUS_OK.
+
+    3.  Description: Test passes, multiple threads in same group.
+
+        a.  All parameters valid, multiple threads are created each
+            updating an array of Threadname_t structures with their
+            thread groupname.  Calls should return VSTATUS_OK.
+        b.  Each groupname should be the same.
+
+5.  Test: vs_thread_sleep:1
+
+    Description:
+        This test validates the CS OS specific function vs_thread_sleep().
+
+    Associated Use Case:
+        cs:vs_thread_sleep:1
+
+    Valid Runtime Environments:
+        User, Kernel, embedded
+
+    External Configuration:
+        None required.
+
+    Preconditions:
+        1.  Requires vs_thread_create().
+        1.  Requires vs_time_get().
+
+    Notes:
+        None.
+
+    Test Application: 
+       Linux Kernel Module: ib/src/linux/cs/kernel/lib/tstthread.o
+       Linux User Module: ib/src/linux/cs/usr/bin/tstthread
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tstthread.o
+        9.  verify results from log data
+       10.  rmmod tstthread
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tstthread
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "Thread Tests"
+       10.  verify results from log data
+
+    Expected Results: 
+        Program output should indicate that all tests obtained expected results.
+
+    Postconditions
+        Error log indicates all test cases in the form "vs_thread_sleep:1:#.#" 
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of sleep_time pointer parameter.
+        ** Deprecated by OS API version 2.0g **
+
+        a.  Call fails if the supplied sleep_time pointer is NULL.
+            Call should return a VSTATUS_ILLPARM error code.
+
+    2.  Description: Test passes.
+
+        a.  All parameters valid, calling thread sleeps, call returns 
+            with VSTATUS_OK.
+
+    3.  Description: Accuracy of sleep time.
+        a.  The time of sleep matches the requested time of 1000000.
+        b.  The time of sleep matches the requested time of 2000000.
+        c.  The time of sleep matches the requested time of 5000000.
+        d.  The time of sleep matches the requested time of 500000.
+
+    4.  Description: Interrupt of sleep.
+        ** Deprecated by OS API version 2.0g **
+
+        a.  All parameters valid, thread is created and sleeps for
+            long duration.  Thread is woken early, call returns
+            VSTATUS_AGAIN.
+        b.  sleep_time is updated to reflect time of actual sleep.
+
+6.  Test: vs_thread_kill:1
+
+    Description:
+        This test validates the CS OS specific function vs_thread_kill().
+
+    Associated Use Case:
+        cs:vs_thread_kill:1
+
+    Valid Runtime Environments:
+        User, Kernel, embedded
+
+    External Configuration:
+        None required.
+
+    Preconditions:
+        1.  Requires vs_thread_create().
+
+    Notes:
+        None.
+
+    Test Application: 
+       Linux Kernel Module: ib/src/linux/cs/kernel/lib/tstthread.o
+       Linux User Module: ib/src/linux/cs/usr/bin/tstthread
+
+    Procedure: Linux Kernel
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/kernel/lib/
+        8.  insmod tstthread.o
+        9.  verify results from log data
+       10.  rmmod tstthread
+
+    Procedure: Linux User
+        1.  cd image/vieo_fm/driver
+        2.  su
+        3.  ./log_load
+        4.  ./vsdd_load
+        5.  cd image/vieo_fm/bin
+        6.  ./vslogdr -f scr -d 0xFFFFFFFF
+        7.  cd ib/src/linux/cs/usr/bin
+        8.  ./tstthread
+        9.  verify results from log data
+
+    Procedure: ATI
+        1.  "IB Test Menu"
+        2.  "LOG Menu"
+        3.  "Start Log Drain"
+        4.  "Set Log Debug Level", enter ffffffff when prompted.
+        5.  "Set Trace Mask", enter 0 when prompted.
+        6.  "Exit this menu"
+        7.  "Exit this menu"
+        8.  "CS Test Menu"
+        9.  "Thread Tests"
+       10.  verify results from log data
+
+    Expected Results: 
+        Program output should indicate that all tests obtained expected results.
+
+    Postconditions
+        Error log indicates all test cases in the form "vs_thread_kill:1:#.#" 
+        where #.# is the subtest variation number and letter.
+
+    Sub-test Variations:
+
+    1.  Description: Test validation of thread handle  pointer parameter.
+
+        a.  Call fails if the supplied thread pointer is NULL.
+            Call should return a VSTATUS_ILLPARM error code.
+
+    2.  Description: Test passes.
+
+        a.  A thread is created which sleeps.  The creator of the 
+            thread passes the thread control structure to the 
+            vs_thread_kill() to terminate the task.  The call
+            complete with VSTATUS_OK status.
+        b.  The caller verifies the thread was killed.
+

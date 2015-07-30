@@ -1,0 +1,173 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+
+#[ICS VERSION STRING: unknown]
+###########################
+# Script for testing all of common services in one fell swoop.
+# run it from the parent of the image directory.
+# It will create several *.log files.
+# Look for test results in *.log files
+###########################
+# clean up in anticipation of block store tests
+###########################
+rm -rf /var/adm/vieo/*
+
+pushd image/vieo_fm-2.0/driver
+./log_load
+./vsdd_load
+./calu_load
+popd
+
+###########################
+# test locks
+###########################
+# kernel
+image/vieo_fm-2.0/bin/vslogdr -f lock.log -d 0xFFFFFFFF &
+pushd ib/src/linux/cs/kernel/lib/
+insmod tstlock.o
+rmmod tstlock
+popd 
+
+# user
+pushd ib/src/linux/cs/usr/bin
+./tstlock
+popd
+killall vslogdr
+
+
+###########################
+# test events
+###########################
+# kernel
+image/vieo_fm-2.0/bin/vslogdr -f event.log -d 0xFFFFFFFF &
+pushd ib/src/linux/cs/kernel/lib/
+insmod tstevthr.o
+rmmod tstevthr
+popd
+
+# user
+pushd ib/src/linux/cs/usr/bin
+./tstevt
+popd
+killall vslogdr
+
+###########################
+# test sema
+###########################
+# kernel
+image/vieo_fm-2.0/bin/vslogdr -f sema.log -d 0xFFFFFFFF &
+pushd ib/src/linux/cs/kernel/lib
+insmod tstsema.o
+rmmod tstsema
+popd
+
+# user
+pushd ib/src/linux/cs/usr/bin
+./tstsema
+popd
+killall vslogdr
+
+###########################
+# test dynamic allocator
+###########################
+# user
+image/vieo_fm-2.0/bin/vslogdr -f dall.log -d 0xFFFFFFFF &
+pushd ib/src/linux/cs/usr/bin
+./tstdall
+popd
+killall vslogdr
+
+
+###########################
+# test pools
+###########################
+# kernel
+image/vieo_fm-2.0/bin/vslogdr -f pool.log -d 0xFFFFFFFF &
+pushd ib/src/linux/cs/kernel/lib
+insmod tstpool.o
+rmmod tstpool
+popd
+
+# user
+pushd ib/src/linux/cs/usr/bin
+./tstpool
+popd
+killall vslogdr
+
+
+###########################
+# test threads
+###########################
+# kernel
+image/vieo_fm-2.0/bin/vslogdr -f thread.log -d 0xFFFFFFFF &
+pushd ib/src/linux/cs/kernel/lib
+insmod tstthread.o
+rmmod tstthread
+popd
+
+# user
+pushd ib/src/linux/cs/usr/bin
+./tstthread
+popd
+killall vslogdr
+
+
+###########################
+# test tget
+###########################
+# kernel
+image/vieo_fm-2.0/bin/vslogdr -f tget.log -d 0xFFFFFFFF &
+pushd ib/src/linux/cs/kernel/lib
+insmod tsttget.o
+rmmod tsttget
+popd
+
+# user
+pushd ib/src/linux/cs/usr/bin
+./tsttget
+popd
+killall vslogdr
+
+
+###########################
+# test cs_string
+###########################
+image/vieo_fm-2.0/bin/vslogdr -f string.log -d 0xFFFFFFFF &
+
+# kernel
+pushd ib/src/linux/cs/kernel/lib
+insmod tststring.o
+rmmod tststring
+popd
+
+# user
+pushd ib/src/linux/cs/usr/bin
+./tststring
+popd
+killall vslogdr

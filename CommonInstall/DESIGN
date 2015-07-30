@@ -1,0 +1,47 @@
+All the util_*pl files are provide utility functions for use.
+
+The comp*pl files are various examples of comp.pl files for assorted products.
+
+the main*pl files are the main installer algorithm for assorted packagings,
+the one of interest for QLogicIB-IFS is main_openibwrap.pl
+
+The comp_qlgc_fm.pl is a good example.  It implements a component consisting of
+two user space rpms with init.d scripts.
+
+The main*pl defines which components are part of the packaging and what their
+capabilities are.  main_openibwrap.pl is a packaging for IntelOPA-IFS and
+IntelOPA-Basic.  A simpler example is main_qlgc_fm.pl which is a packaging
+consisting of just the SM.
+
+routines in a comp.pl file:
+config_autostart_X - called to configure autostart of component.  Only called if HasStart set in main.
+
+start_X/stop_X - immediately stops or starts given component, only called if HasStart
+
+available_X - is component X available on the install media (use of this allows for optional components in packaging or limited availability if a component isn't available on some OS/CPU combos)
+
+installed_X - is component X presently installed on the system.  This is a quick check, not a "verify".
+
+installed_version_X - what is the version installed on system.  Only called if installed_X is true.  versions are short strings displayed and logged, no operations are done (eg. only compare for equality)
+
+media_version_X - only called if available_X.  Indicates version on media.  Will be compared with installed_version_X to determine if present installation is up to date.  Should return exact same format for version string so comparison of equality is possible.
+
+build_X - used to build/rebuild component on local system (if supported).  We support this for many items in comp_ofed.pl.  Other components (like SM) are not available in source and hence do not support this and simply implement a noop.
+
+need_reinstall_X - does this need to be reinstalled.  Mainly used for ofed due to subtle changes such as install prefix or kernel options which may force a reinstall.  You'll find this is a noop in most others.
+
+check_os_prereqs_X - optional function to verify OS prereqs (such as required rpms) are installed already.  Typically calls rpm_check_os_prereqs() to do the checks.  see comp_fastfabric or comp_ofed for examples.
+
+preinstall_X - called for all components before they are installed.  Use to build things if needed, etc.
+
+install_X - installs component.  also handles reinstall on top of existing installation and upgrade.
+
+postinstall_X - called after all components are installed.
+
+uninstall_X - uninstalls component.  May be called even if component is partially or not installed at all in which case should do its best to get rid or what might remain of component from a previously aborted uninstall or failed install
+
+The above routines are called from util_component.pl which has functions to drive
+the main menus and call these per component functions.  main sets up lists of
+what components will be in the menus and calls functions in util_component.pl
+to perform the actions selected by the user in the main menu.
+

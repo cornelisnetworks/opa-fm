@@ -1,0 +1,2 @@
+include files for use within host and embedded fabric manager only
+these represent global includes for APIs between modules in the FM
