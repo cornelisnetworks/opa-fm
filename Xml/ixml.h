@@ -39,7 +39,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define _GNU_SOURCE
 #endif
 
+#ifdef VXWORKS
 #include <XmlParser/expat.h>
+#else
+#include <expat.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {

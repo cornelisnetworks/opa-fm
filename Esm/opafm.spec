@@ -41,12 +41,18 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
 #BuildRequires: libibverbs-devel >= 1.1-1, libibumad-devel, libibmad-devel
 AutoReq: no
-Requires(post): libibmad, libibumad, libibverbs
+if 0%{?rhel}
+Requires(post): expat libibmad, libibumad, libibverbs
+%else
+Requires(post): expat libibmad5, libibumad, libibverbs1
+%endif
 %if 0%{?suse_version} >= 1210 || 0%{?rhel} >= 7
+BuildRequires: expat-devel systemd %{?systemd_requires}
 BuildRequires: systemd %{?systemd_requires}
 Requires(post): systemd %{?systemd_requires}
 Requires(preun): systemd %{?systemd_requires}
 %else
+BuildRequires: expat-devel
 Requires(post): /sbin/chkconfig
 Requires(preun): /sbin/chkconfig
 %endif

@@ -115,6 +115,7 @@ INCLUDE_SUBDIR		=
 #LOCAL_LIB_DIRS	= User library directories for libpaths [Empty]
 
 LOCALDEPLIBS=$(IBACCESS_USER_LIBS) Xml
+LOCALLIBS = expat
 LOCAL_LIB_DIRS= $(IBACCESS_USER_LIB_DIRS)
 
 # Include Make Rules definitions and rules

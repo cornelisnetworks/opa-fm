@@ -130,6 +130,10 @@ LOCALDEPLIBS = sm sa pm fe if3sa if3 cs mai ibaccess config rem_conf net public 
 LOCALLIBS=rt $(OPENIB_USER_LIBS) z ssl crypto
 LOCAL_INCLUDE_DIRS = $(TL_DIR)/Topology
 
+ifneq "$(BUILD_TARGET_OS)" "VXWORKS"
+LOCALLIBS+= expat
+endif
+
 # Include Make Rules definitions and rules
 include $(PROJ_SM_DIR)/Makerules.module
 

@@ -123,6 +123,10 @@ include $(TL_DIR)/$(PROJ_FILE_DIR)/Makerules.project
 LOCAL_INCLUDE_DIRS=$(TL_DIR)/HSM_Inc/ib_include $(TL_DIR)/HSM_Inc/cs_include/smi_include
 endif
 
+ifneq "$(BUILD_TARGET_OS)" "VXWORKS"
+LOCALLIBS+= expat
+endif
+
 #=============================================================================#
 # Overrides:
 #-----------------------------------------------------------------------------#

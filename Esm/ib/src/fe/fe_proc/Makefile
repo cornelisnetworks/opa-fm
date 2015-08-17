@@ -120,6 +120,10 @@ LOCAL_INCLUDE_DIRS=$(MOD_DIR)/src/smi/include $(MOD_DIR)/src/fe/ $(OPENIB_USER_L
 LOCALDEPLIBS = if3 if3sa net cs mai ibaccess config vslogu public Xml Md5 oib_utils
 LOCALLIBS=rt ssl crypto $(OPENIB_USER_LIBS)
 
+ifneq "$(BUILD_TARGET_OS)" "VXWORKS"
+LOCALLIBS+= expat
+endif
+
 # Include Make Rules definitions and rules
 include $(PROJ_SM_DIR)/Makerules.module
 

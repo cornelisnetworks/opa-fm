@@ -116,6 +116,10 @@ LOCAL_INCLUDE_DIRS=
 LOCALLIBS=
 LOCAL_LIB_DIRS=
 
+ifneq "$(BUILD_TARGET_OS)" "VXWORKS"
+LOCALLIBS+= expat
+endif
+
 # Include Make Rules definitions and rules
 include $(TL_DIR)/IbaTools/Makerules.module
 

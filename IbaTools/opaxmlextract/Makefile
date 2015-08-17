@@ -116,6 +116,10 @@ LOCALDEPLIBS=$(IBACCESS_USER_LIBS) Xml
 LOCAL_INCLUDE_DIRS=
 LOCALLIBS=
 
+ifneq "$(BUILD_TARGET_OS)" "VXWORKS"
+LOCALLIBS+= expat
+endif
+
 # Include Make Rules definitions and rules
 include $(TL_DIR)/IbaTools/Makerules.module
 
