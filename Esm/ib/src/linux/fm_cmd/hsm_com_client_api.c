@@ -98,6 +98,11 @@ hcom_client_init
 	strcpy(hdl->s_path,server_path);
 	strcpy(hdl->c_path,client_path);
 
+	if (mkstemp(hdl->c_path) == -1)
+	{
+		res = HSM_COM_PATH_ERR;
+		goto cleanup;
+	}
 
 	hdl->client_state = HSM_COM_C_STATE_IN;
 

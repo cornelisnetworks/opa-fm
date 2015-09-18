@@ -33,10 +33,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "hsm_config_api.h"
 #include "snmp_com_api.h"
 
-#define HSM_FM_SCK_PREFIX	"/tmp/"
+#define HSM_FM_SCK_PREFIX	"/opt/opafm/"
 #define HSM_FM_SCK_SM		"sm_"
 #define HSM_FM_SCK_PM		"pm_"
-#define HSM_FM_SCK_BM		"bm_"
 #define HSM_FM_SCK_FE		"fe_"
 
 typedef struct	_fm_config_conx_hdl{

@@ -87,7 +87,7 @@ my_rc_status_all=0
 my_rc_exit()     { exit $my_rc_status_all; }
 my_rc_status()   { my_rc_status_all=$(($my_rc_status_all || $?)); }
 
-temp=/tmp/ifsfm$$
+temp=$(mktemp "/tmp/ifsfmXXXXX")
 invalid_config()
 {
 	local i

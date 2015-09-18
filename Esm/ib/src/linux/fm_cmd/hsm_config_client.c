@@ -52,12 +52,9 @@ fm_mgr_config_mgr_connect
 	char                    c_path[256];
 	char                    *mgr_prefix;
 	p_hsm_com_client_hdl_t  *mgr_hdl;
-	pid_t                   pid;
 
 	memset(s_path,0,sizeof(s_path));
 	memset(c_path,0,sizeof(c_path));
-
-	pid = getpid();
 
 	switch ( mgr )
 	{
@@ -80,8 +77,7 @@ fm_mgr_config_mgr_connect
 	// Fill in the paths for the server and client sockets.
 	sprintf(s_path,"%s%s%d",HSM_FM_SCK_PREFIX,mgr_prefix,hdl->instance);
 
-	sprintf(c_path,"%s%s%d_C_%lu",HSM_FM_SCK_PREFIX,mgr_prefix,
-			hdl->instance, (long unsigned)pid);
+	sprintf(c_path,"%s%s%d_C_XXXXXX",HSM_FM_SCK_PREFIX,mgr_prefix,hdl->instance);
 
 	if ( *mgr_hdl == NULL )
 	{
@@ -147,17 +143,7 @@ fm_mgr_config_init
 		}
 	}
 
-
-	return res;
-
-
-	cleanup:
-
-	if ( hdl ) {
-		free(hdl);
-		hdl = NULL;
-	}
-
+cleanup:
 	return res;
 }
 

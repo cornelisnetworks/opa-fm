@@ -89,7 +89,7 @@ my_rc_status_all=0
 my_rc_exit()     { exit $my_rc_status_all; }
 my_rc_status()   { my_rc_status_all=$(($my_rc_status_all || $?)); }
 
-temp=/tmp/ifsfm$$
+temp=$(mktemp "/tmp/ifsfmXXXXX")
 
 trap "rm -rf $tempdir; exit 1" 1 2 3 9 1
 
