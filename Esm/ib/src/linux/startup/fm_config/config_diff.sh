@@ -30,9 +30,10 @@
 
 # [ICS VERSION STRING: unknown]
 
-TEMP1=/tmp/smdiffa$$
-TEMP2=/tmp/smdiffb$$
+TEMP1=`mktemp`
+TEMP2=`mktemp`
 trap "rm -f $TEMP1 $TEMP2; exit 1" SIGHUP SIGTERM SIGINT
+trap "rm -f $TEMP1 $TEMP2" EXIT
 
 Usage()
 {

@@ -30,8 +30,9 @@
 
 # [ICS VERSION STRING: unknown]
 
-TEMP=/tmp/smgen$$
+TEMP=`mktemp`
 trap "rm -f $TEMP; exit 1" SIGHUP SIGTERM SIGINT
+trap "rm -f $TEMP" EXIT
 
 Usage()
 {
