@@ -46,8 +46,10 @@ fi
 
 
 PROGNAME="$0"
-dirName="smdump-"`date '+%d%b%y%H%M%S'`
-dumpLocation="/tmp/$dirName"
+# Hedge against bash vs. sh
+dateStr=`date '+%d%b%y%H%M%S'`
+dumpLocation="`mktemp -d /tmp/smdump-${dateStr}-XXXXXX`"
+dirName=`basename $dumpLocation`
 
 usage() {
 	echo "Usage:"
