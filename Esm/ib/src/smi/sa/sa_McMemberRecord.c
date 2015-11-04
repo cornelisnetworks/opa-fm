@@ -66,6 +66,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sa_l.h"
 #include "sm_dbsync.h"
 #include "iba/ib_helper.h"
+#include "stl_print.h"
 
 
 extern	IB_GID nullGid;
@@ -201,6 +202,18 @@ sa_McMemberRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
 	uint16_t	rec_sz;
 
 	IB_ENTER("sa_McMemberRecord", maip, 0, 0, 0);
+
+#ifdef NO_STL_MCMEMBER_RECORD     // SA shouldn't support STL McMember Record
+	if (maip->base.cversion != SA_MAD_CVERSION) {
+		maip->base.status = MAD_STATUS_BAD_CLASS;
+		(void) sa_send_reply(maip, sa_cntxt);
+		IB_LOG_WARN("sa_McMemberRecord: invalid CLASS:",
+				maip->base.cversion);
+		IB_EXIT("sa_McMemberRecord", VSTATUS_OK);
+		return (VSTATUS_OK);
+	}
+#endif
+
 
 //
 //	Assume failure.
@@ -402,9 +415,9 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 //	Find the requestors port.
 //
 	if ((req_portp = sm_find_active_port_lid(&old_topology, maip->addrInfo.slid)) == NULL) {
-		//maip->base.status = isSweeping ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID;
+		//maip->base.status = activateInProgress ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID;
         // temp patch for Sun Oregon
-        maip->base.status = isSweeping ? 0x0700 : MAD_STATUS_SA_REQ_INVALID;
+        maip->base.status = activateInProgress ? 0x0700 : MAD_STATUS_SA_REQ_INVALID;
         if (saDebugPerf) {
 		IB_LOG_INFINI_INFO_FMT( "sa_McMemberRecord_Set", 
                "Can not find requester's LID (0x%.4X) or not active in current topology, "
@@ -447,7 +460,7 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 	}
 
 	if ((portp = sm_find_active_port_guid(&old_topology, guid)) == NULL) {
-		maip->base.status = isSweeping ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID;
+		maip->base.status = activateInProgress ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID;
 		IB_LOG_INFINI_INFO_FMT( "sa_McMemberRecord_Set", 
                "Port GID in request ("FMT_GID") from %s, Port "FMT_U64", "
 			   "LID 0x%.4X, for group "FMT_GID" can't be found or not active in current topology, "
@@ -465,9 +478,9 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 	smGetVfMaxMtu(portp, req_portp, mcmp, &vfMaxMtu, &vfMaxRate);
 
 	if (sm_mc_config.disable_mcast_check == McGroupBehaviorRelaxed) {
-		maxMtu = portp->portData->mtuActive;
+		maxMtu = portp->portData->maxVlMtu;
 	} else {
-		maxMtu = Min(portp->portData->mtuActive, old_topology.maxMcastMtu);
+		maxMtu = Min(portp->portData->maxVlMtu, old_topology.maxMcastMtu);
 		if (vfMaxMtu) {
 			maxMtu = Min(maxMtu, vfMaxMtu);
 		}
@@ -999,13 +1012,13 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 			}
 
 			if (!(samad.header.mask & STL_MCMEMBER_COMPONENTMASK_OK_MTU)) { // Wildcarded, port's MTU must be >= group's
-                if (portp->portData->mtuActive < mcGroup->mtu) {
+                if (portp->portData->maxVlMtu < mcGroup->mtu) {
                     maip->base.status = MAD_STATUS_SA_REQ_INVALID;
                     IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", 
                            "Group MTU of %d greater than requester port mtu of %d "
                            "for group "FMT_GID" in request from %s, "
                            "Port "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
-                           mcGroup->mtu, portp->portData->mtuActive, mGid[0], mGid[1],
+                           mcGroup->mtu, portp->portData->maxVlMtu, mGid[0], mGid[1],
                            nodeName, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
                     goto done;
                 }
@@ -1015,7 +1028,7 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 					   "for requested MTU of %d, MTU selector of %d, and port MTU of %d "
 					   "for group "FMT_GID" in request from %s, "
 					   "Port "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
-					   mcGroup->mtu, mcmp->Mtu, mcmp->MtuSelector, portp->portData->mtuActive, mGid[0], mGid[1],
+					   mcGroup->mtu, mcmp->Mtu, mcmp->MtuSelector, portp->portData->maxVlMtu, mGid[0], mGid[1],
 					   nodeName, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
 				goto done;
 			} else if (mcGroup->mtu > mtu && mcmp->MtuSelector != PR_GT &&
@@ -1025,16 +1038,16 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 					   "for requested MTU of %d, MTU selector of %d, and port MTU of %d "
 					   "for group "FMT_GID" in request from %s, "
 					   "Port "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
-					   mcGroup->mtu, mcmp->Mtu, mcmp->MtuSelector, portp->portData->mtuActive, mGid[0], mGid[1], nodeName,
+					   mcGroup->mtu, mcmp->Mtu, mcmp->MtuSelector, portp->portData->maxVlMtu, mGid[0], mGid[1], nodeName,
 					   req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
 				goto done;
-			} else if (mcGroup->mtu > portp->portData->mtuActive) { // Group's MTU is higher than port's
+			} else if (mcGroup->mtu > portp->portData->maxVlMtu) { // Group's MTU is higher than port's
 				maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 				IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", "Group MTU of 0x%.2X is too high "
 					   "for requested MTU of %d, MTU selector of %d, and port MTU of %d "
 					   "for group "FMT_GID" in request from %s, "
 					   "Port "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
-					   mcGroup->mtu, mcmp->Mtu, mcmp->MtuSelector, portp->portData->mtuActive, mGid[0], mGid[1], nodeName,
+					   mcGroup->mtu, mcmp->Mtu, mcmp->MtuSelector, portp->portData->maxVlMtu, mGid[0], mGid[1], nodeName,
 					   req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
 				goto done;
 			}
@@ -1924,6 +1937,74 @@ void showGroups(int termWidth, uint8_t showNodeName){
 		vs_rwunlock(&old_topology_lock);
 
 	return;
+}
+
+void showStlGroups(int termWidth, uint8_t showNodeName) { 
+    uint32_t i = 0; 
+    McGroup_t	*dGroup; 
+    McMember_t	*dMember; 
+    Status_t	status; 
+    char		*nodeName = 0; 
+    PrintDest_t dest; 
+    
+    if (topology_passcount < 1) {
+        sysPrintf("\nSM is currently in the %s state, count = %d\n\n", sm_getStateText(sm_state), (int)sm_smInfo.ActCount); 
+        return;
+    }
+    if (sm_McGroups_lock.type == 0) {
+        sysPrintf("Fabric Manager is not running!\n"); 
+        return;
+    } else if (sm_McGroups == 0) {
+        sysPrintf("There are no Multicast Groups at this time!\n"); 
+        return;
+    }
+    
+    if (showNodeName) {
+        status = vs_rdlock(&old_topology_lock); 
+        if (status != VSTATUS_OK) {
+            sysPrintf("error locking old_topology_lock %lu\n", (long)status); 
+            return;
+        }
+    }
+    
+    PrintDestInitFile(&dest, stdout); 
+    
+    status = vs_lock(&sm_McGroups_lock); 
+    if (status != VSTATUS_OK) {
+        sysPrintf("error locking sm_McGroups_lock %lu\n", (long)status); 
+        return;
+    }
+    
+    for_all_multicast_groups(dGroup) {
+        for_all_multicast_members(dGroup, dMember) {
+            Port_t *portp; 
+            
+            if (i++) 
+                PrintSeparator(&dest); 
+            (void)PrintStlMcMemberRecord(&dest, 0, (STL_MCMEMBER_RECORD *)&dMember->record); 
+            
+            if (showNodeName) {
+                if (old_topology.node_head == NULL) {
+                    sysPrintf(" %s\n", "?"); 
+                    continue;
+                }
+                
+                if ((portp = sm_find_port_guid(&old_topology, dMember->portGuid)) != NULL) {
+                    Node_t *nodep; 
+                    if ((nodep = sm_find_port_node(&old_topology, portp)) != 0) {
+                        nodeName = sm_nodeDescString(nodep); 
+                        sysPrintf("Node: %s\n", (nodeName == NULL) ? "?" : nodeName);
+                    }
+                }
+            }
+        }
+    }
+    
+    vs_unlock(&sm_McGroups_lock); 
+    if (showNodeName) 
+        vs_rwunlock(&old_topology_lock); 
+    
+    return;
 }
 
 void logGroups(){

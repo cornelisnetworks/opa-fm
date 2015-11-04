@@ -77,7 +77,8 @@ iba_smi_post_recv(
 {
 	FSTATUS				status = FERROR;
 	SMA_CA_OBJ_PRIVATE	*pCaObj;
-	POOL_DATA_BLOCK		*pSmpBlock, *pSmpBlockNext;
+	POOL_DATA_BLOCK		*pSmpBlock = NULL;
+	POOL_DATA_BLOCK		*pSmpBlockNext;
 	uint32				smps;
 	IB_WORK_REQ			*workRequest;
 	SMA_PORT_TABLE_PRIV	*pCaPortTbl=NULL;
@@ -136,10 +137,11 @@ iba_smi_post_recv(
 
 
 	if ( (NULL != pCaPortTbl) && 
-		 (FSUCCESS == status) )
+		 (FSUCCESS == status) &&
+		 (NULL != pSmpBlock) )
 	{
 		// Fill in common work request info
-		MemoryClear(&wrq, sizeof(IB_WORK_REQ));
+		MemoryClear(&wrq, sizeof(wrq));
 		workRequest = &wrq;
 		workRequest->DSList = &dsList[0];
 		workRequest->Operation = WROpRecv;

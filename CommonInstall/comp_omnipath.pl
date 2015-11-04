@@ -70,7 +70,7 @@ sub install_generic_mpi
     # enable this code if mpitests is missing for some compilers or MPIs
     #my $mpitests_rpmfile = rpm_resolve("$srcdir/OtherMPIs", "any", "mpitests_$mpifullname");
     #if ( "$mpitests_rpmfile" ne "" && -e "$mpitests_rpmfile" ) {
-        rpm_install_list ("$srcdir", "user", @list);
+        rpm_install_list_with_options ("$srcdir", "user", " -U --nodeps ", @list);
     #} else {
     #    rpm_install("$srcdir/OtherMPIs", "user", "$mpifullname");
     #}
@@ -213,7 +213,11 @@ sub need_reinstall_openmpi_gcc_hfi
 # has proper dependent rpms installed.
 sub check_os_prereqs_openmpi_gcc_hfi
 {
-	return rpm_check_os_prereqs("openmpi_gcc_hfi", "user", ( "libstdc++"));
+    if (lc($CUR_DISTRO_VENDOR) eq "redhat") {
+	return rpm_check_os_prereqs("openmpi_gcc_hfi", "user", ( "libstdc++", "infinipath-psm" ));
+    } else {
+        return rpm_check_os_prereqs("openmpi_gcc_hfi", "user", ( "libstdc++", "libpsm_infinipath1" ));
+    }
 }                              
 
 # called for all components before they are installed.  Use
@@ -335,7 +339,11 @@ sub need_reinstall_openmpi_intel_hfi
 sub check_os_prereqs_openmpi_intel_hfi
 {
 	# we allow this to install even if intel compiler runtime not available
-	return rpm_check_os_prereqs("openmpi_intel_hfi", "user", ( "libstdc++"));
+    if (lc($CUR_DISTRO_VENDOR) eq "redhat") {
+	return rpm_check_os_prereqs("openmpi_intel_hfi", "user", ( "libstdc++",  "infinipath-psm" ));
+    } else {
+	return rpm_check_os_prereqs("openmpi_intel_hfi", "user", ( "libstdc++",  "libpsm_infinipath1" ));
+    }
 }                              
 
 # called for all components before they are installed.  Use
@@ -457,7 +465,11 @@ sub need_reinstall_openmpi_pgi_hfi
 sub check_os_prereqs_openmpi_pgi_hfi
 {
 	# we allow this to install even if pgi compiler runtime not available
-	return rpm_check_os_prereqs("openmpi_pgi_hfi", "user", ( "libstdc++"));
+    if (lc($CUR_DISTRO_VENDOR) eq "redhat") {
+	return rpm_check_os_prereqs("openmpi_pgi_hfi", "user", ( "libstdc++",  "infinipath-psm" ));
+    } else {
+	return rpm_check_os_prereqs("openmpi_pgi_hfi", "user", ( "libstdc++",  "libpsm_infinipath1" ));
+    }
 }                              
 
 # called for all components before they are installed.  Use

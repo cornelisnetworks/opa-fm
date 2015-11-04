@@ -103,7 +103,6 @@ Usage()
 	echo "" >&2
 	echo "Environment:" >&2
 	echo "    STACK_PREFIX - where to find IB stack." >&2
-	echo "            Default obtained from /etc/infiniband/info, typically /usr" >&2
 	echo "    BUILD_DIR - temporary directory to use during build of MPI" >&2
 	echo "            Default is /var/tmp/Intel-openmpi" >&2
 	echo "    MPICH_PREFIX - selects location for installed MPI" >&2
@@ -347,9 +346,7 @@ fi
 
 logfile=make.openmpi.$interface.$compiler
 (
-	prefix=$(/etc/infiniband/info 2>/dev/null|grep '^prefix='|cut -f2 -d=)
-	STACK_PREFIX=${STACK_PREFIX:-"$prefix"}
-	STACK_PREFIX=${STACK_PREFIX:-/usr}	# just in case $prefix not defined
+	STACK_PREFIX=${STACK_PREFIX:-/usr}
 	BUILD_DIR=${BUILD_DIR:-/var/tmp/Intel-openmpi}
 	BUILD_ROOT="$BUILD_DIR/build";
 	RPM_DIR="$BUILD_DIR/OFEDRPMS";
@@ -433,7 +430,7 @@ logfile=make.openmpi.$interface.$compiler
 
 	case "$compiler" in
 	gcc)
-		openmpi_comp_env="$openmpi_comp_env CC=gcc"
+		openmpi_comp_env="$openmpi_comp_env CC=gcc CFLAGS=-O3"
 		if have_comp g++
 		then
 			openmpi_comp_env="$openmpi_comp_env CXX=g++"
@@ -562,7 +559,7 @@ logfile=make.openmpi.$interface.$compiler
 				--define '_defaultdocdir $MPICH_PREFIX' \
 				--define '_mandir %{_prefix}/share/man' \
 				--define 'mflags -j 4' \
-				--define 'configure_options $CONFIG_OPTIONS $openmpi_ldflags --with-verbs=$STACK_PREFIX --with-verbs-libdir=$STACK_PREFIX/$openmpi_lib $openmpi_comp_env $openmpi_conf_psm --with-contrib-vt-flags=--disable-iotrace' \
+				--define 'configure_options $CONFIG_OPTIONS $openmpi_ldflags --with-verbs=$STACK_PREFIX --with-verbs-libdir=$STACK_PREFIX/$openmpi_lib $openmpi_comp_env $openmpi_conf_psm --with-contrib-vt-flags=--disable-iotrace --with-devel-headers' \
 				--define 'use_default_rpm_opt_flags $use_default_rpm_opt_flags' \
 				$disable_auto_requires"
 	cmd="$cmd \
@@ -582,8 +579,7 @@ logfile=make.openmpi.$interface.$compiler
 	echo "=========================================================="
 	echo "Installing OpenMPI MPI $openmpi_version Library/Tools..."
 	rpmfile=$RPM_DIR/RPMS/$target_cpu/openmpi_$compiler$openmpi_rpm_suffix-$openmpi_fullversion.$target_cpu.rpm
-	# make sure old files are removed first
-	rm -rf $INSTALL_ROOT/$MPICH_PREFIX
+
 	# need force for reinstall case
 	if [ x"$INSTALL_ROOT" != x"" -a x"$INSTALL_ROOT" != x"/" ]
 	then

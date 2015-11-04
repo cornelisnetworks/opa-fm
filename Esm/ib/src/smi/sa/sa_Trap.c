@@ -414,7 +414,6 @@ Status_t
 sa_Trap(Mai_t *maip) {
 	STL_NOTICE  notice = {{{{0}}}};
 	STL_TRAP_BAD_KEY_DATA pkeyTrap;
-	STL_SMP		lrSmp;
 	STL_INFORM_INFO_RECORD *	iRecordp = NULL;
 	SubscriberKeyp  subsKeyp = NULL;
 	CS_HashTableItr_t itr;
@@ -648,7 +647,7 @@ sa_Trap(Mai_t *maip) {
 								 (trap_count));
 				}
 			} else {
-                (void)BSWAPCOPY_STL_TRAP_BAD_KEY_DATA((STL_TRAP_BAD_KEY_DATA *)lrSmp.SmpExt.LIDRouted.SMPData, &pkeyTrap);
+                (void)BSWAPCOPY_STL_TRAP_BAD_KEY_DATA((STL_TRAP_BAD_KEY_DATA *)notice.Data, &pkeyTrap);
 
 				if (log) {
 					smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_SECURITY_ERROR, &csmNodeId, NULL,
@@ -667,7 +666,7 @@ sa_Trap(Mai_t *maip) {
 			                  ((notice.Attributes.Generic.TrapNumber == MAD_SMT_BAD_QKEY) ? "BAD QKEY" : "BAD PKEY"),
 			                notice.IssuerLID, tid);
 			} else {
-                (void)BSWAPCOPY_STL_TRAP_BAD_KEY_DATA((STL_TRAP_BAD_KEY_DATA *)lrSmp.SmpExt.LIDRouted.SMPData, &pkeyTrap);
+                (void)BSWAPCOPY_STL_TRAP_BAD_KEY_DATA((STL_TRAP_BAD_KEY_DATA *)notice.Data, &pkeyTrap);
 				smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_SECURITY_ERROR, NULL, NULL,
 			                "Received a BAD PKEY trap from LID 0x%.4X, PKEY= 0x%x (from LID= 0x%.4x to LID= 0x%.4x) on SL %d (QP1= %d,QP2 =%d) TID="FMT_U64, 
 				            notice.IssuerLID, pkeyTrap.Key, pkeyTrap.Lid1, pkeyTrap.Lid2, pkeyTrap.u.s.SL, pkeyTrap.qp1, pkeyTrap.qp2, tid);

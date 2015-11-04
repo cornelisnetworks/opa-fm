@@ -194,8 +194,6 @@ sub rpm_is_installed($$)
 	my $rc;
 	my $cpu;
 
-	# for now, when checking for qlogic_fm, check the opafm rpm instead, as it has been renamed
-
 	( $mode, $cpu ) = rpm_adjust_mode_cpu($package, $mode);
 	if ("$mode" eq "any" ) {
 		# any variation is ok
@@ -294,7 +292,7 @@ sub rpm_check_os_prereqs_internal($$@)
 		# now process the expanded list of alternatives
 		DebugPrint "Checking prereq: $full_package_info\n";
 		my $errmessage="";
-		my @alternatives = (split ('\|',$full_package_info));
+		@alternatives = (split ('\|',$full_package_info));
 		for my $altpackage_info ( @alternatives )
 		{
 			DebugPrint "Checking prereq: $altpackage_info\n";
@@ -601,7 +599,14 @@ sub rpm_run_install($$$)
 		# also need --force for reinstall case
 		LogPrint "  $chrootcmd$RPM -U --force $options $rpmfile\n";
 		$out=`$chrootcmd$RPM -U --force $options $rpmfile 2>&1`;
-		NormalPrint("$out");
+		if ( $? == 0 ) {
+			NormalPrint("$out");
+		} else {
+			NormalPrint("ERROR - Failed to install $rpmfile");
+			NormalPrint("$out");
+			HitKeyCont;
+		}
+
 	} else {
 		# initial install of rpm
 		# force not required, even if other architectures already installed
@@ -611,7 +616,13 @@ sub rpm_run_install($$$)
 		}
 		LogPrint "  $chrootcmd$RPM -i $options $rpmfile\n";
 		$out=`$chrootcmd$RPM -i $options $rpmfile 2>&1`;
-		NormalPrint("$out");
+		if ( $? == 0 ) {
+			NormalPrint("$out");
+		} else {
+			NormalPrint("ERROR - Failed to install $rpmfile");
+			NormalPrint("$out");
+			HitKeyCont;
+		}
 	}
 	if (ROOT_is_set()) {
 		system("rm -f $ROOT/var/tmp/rpminstall.tmp.rpm");
@@ -817,7 +828,7 @@ sub rpm_install_list_with_options($$$@)
 
 	foreach my $package ( @package_list )
 	{
-		rpm_install_with_options($rpmdir, $mode, $options, $package);
+		rpm_install_with_options($rpmdir, $mode, $package, $options);
 	}
 }
 

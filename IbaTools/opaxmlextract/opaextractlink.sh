@@ -34,34 +34,59 @@
 #   Extract optional cable values, and values for both ports of each link
 #   Remove redundant information and combine cable and port information
 
+Usage_full()
+{
+	echo "Usage: opaextractlink [opareport options]" >&2
+	echo "              or" >&2
+	echo "       opaextractlink --help" >&2
+	echo "   --help - produce full help text" >&2
+	echo "   opareport options - options will be passed to opareport." >&2
+	echo "for example:" >&2
+	echo "   opaextractlink" >&2
+	echo "   opaextractlink -h 1 -p 2" >&2
+	exit 0
+}
+
+Usage()
+{
+	echo "Usage: opaextractlink" >&2
+	echo "              or" >&2
+	echo "       opaextractlink --help" >&2
+	echo "   --help - produce full help text" >&2
+	echo "for example:" >&2
+	echo "   opaextractlink" >&2
+	exit 2
+}
+
+if [ x"$1" = "x--help" ]
+then
+	Usage_full
+fi
 
 ## Main function:
 
 # NOTE: opaxmlextract produces the following CSV for each port:
-#    3 Link values (CSV 1-3)
-#    3 Cable values (CSV 4-6)
-#    2 Port values (CSV 7-8)
-
-TOOLSDIR=${TOOLSDIR:-/opt/opa/tools}
-BINDIR=${BINDIR:-/usr/sbin}
+#    2 Link values (CSV 1-2)
+#    3 Cable values (CSV 3-5)
+#    2 Port values (CSV 6-7)
 
 ix=0
 
-$BINDIR/opareport -x -o links $@ | \
-  $BINDIR/opaxmlextract -d \; -e Rate -e MTU -e LinkDetails -e CableLength \
+/usr/sbin/opareport -x -o links $@ | \
+  /usr/sbin/opaxmlextract -d \; -e Rate -e LinkDetails -e CableLength \
   -e CableLabel -e CableDetails -e Port.NodeDesc -e Port.PortNum | while read line
 do
   case $ix in
   0)
-    echo $line";"`echo $line | cut -d \; -f 7-`
+    echo $line";"`echo $line | cut -d \; -f 6-`
     ix=$((ix+1))
     ;;
 
   1)
-    line1=`echo $line | cut -d \; -f 1-6`
-    if echo "$line1" | cut -d \; -f4-6 | grep ";;" >/dev/null 2>&1
+    line1=`echo $line | cut -d \; -f 1-5`
+    if echo "$line1" | cut -d \; -f3-5 | grep ";;" >/dev/null 2>&1
       then
-      line2=`echo $line | cut -d \; -f 7-`
+      line2=`echo $line | cut -d \; -f 6-`
       ix=3
     else
       ix=$((ix+1))
@@ -69,12 +94,12 @@ do
     ;;
 
   2)
-    line2=`echo $line | cut -d \; -f 7-`
+    line2=`echo $line | cut -d \; -f 6-`
     ix=$((ix+1))
     ;;
 
   3)
-    line3=`echo $line | cut -d \; -f 7-`
+    line3=`echo $line | cut -d \; -f 6-`
     echo $line1";"$line2";"$line3
     ix=1
     ;;

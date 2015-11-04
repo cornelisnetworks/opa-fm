@@ -186,18 +186,11 @@ sub remove_limits_conf()
 # Override the system's standard udev configuration to allow
 # different access rights to some of the infiniband device files.
 #
-my $UDEV_PERMISSIONS_DIR = "/etc/udev/permissions.d";
-my $UDEV_PERMISSIONS_FILE = "05-qib.permissions";
-my $OLD_UDEV_PERMISSIONS_FILE = "05-qlogic.permissions";
 my $UDEV_RULES_DIR ="/etc/udev/rules.d";
-my $UDEV_RULES_FILE = "05-umad.rules";
-my $OLD_UDEV_RULES_FILE = "05-qib.rules";
+my $UDEV_RULES_FILE = "05-opa.rules";
 my $Default_UserQueries = 0;
 
-my $udev_perm_string = "Would you like the umadX device files?\n" .
-     				"(NOTE: Allowing access to umadX device files may present a security risk.\n" .
-					" However, this allows tools such as opasaquery, opaportinfo, etc \n" .
-					"to be used by non-root users.)";
+my $udev_perm_string = "Allow non-root users to access the UMAD interface?";
 
 AddAnswerHelp("UserQueries", "$udev_perm_string");
 
@@ -208,10 +201,6 @@ sub install_udev_permissions($)
 
 	if ($Default_UserQueries == 0) {
 		$Default_UserQueries = GetYesNoWithMemory("UserQueries",0,"$udev_perm_string", "y");
-	}
-
-	if ( -e "$UDEV_RULES_DIR/$OLD_UDEV_RULES_FILE" ) {
-		remove_file("$UDEV_RULES_DIR/$OLD_UDEV_RULES_FILE");
 	}
 
 	if ($Default_UserQueries > 0) {
@@ -231,28 +220,44 @@ sub install_udev_permissions($)
 
 sub remove_udev_permissions()
 {
-	remove_file("$UDEV_PERMISSIONS_DIR/$OLD_UDEV_PERMISSIONS_FILE");
-	remove_file("$UDEV_RULES_DIR/$OLD_UDEV_RULES_FILE");
-	remove_file("$UDEV_PERMISSIONS_DIR/$UDEV_PERMISSIONS_FILE");
 	remove_file("$UDEV_RULES_DIR/$UDEV_RULES_FILE");
 }
 
 #
 # Ensures OPA drivers are incorporated in the initial ram disk.
 #
+my $CallDracut = 0;
+my $DracutOutputLogFile = "";
+
 sub rebuild_ramdisk()
 {
-	my $cmd = "/usr/bin/dracut";
+	# Save current logfile path
+	$DracutOutputLogFile = $LogFile;
+	$CallDracut++;
 
-	if ( -e $cmd ) {
-		NormalPrint("Rebuilding boot image with \"$cmd -f\"...");
-		if (system("$cmd -f") == 0) {
-			NormalPrint("done.\n");
+	# Capture INT/TERM to make sure end call is made
+	$SIG{INT} = sub {die "$!"};
+	$SIG{TERM} = sub {die "$!"};
+
+# Call dracut once only at the end of INSTALL
+END {
+	if ($CallDracut) {
+		my $cmd = "/usr/bin/dracut";
+
+		# Reopen logfile
+		open_log($DracutOutputLogFile);
+		if ( -e $cmd ) {
+			NormalPrint("Rebuilding boot image with \"$cmd -f\"...");
+			if (system("$cmd -f") == 0) {
+				NormalPrint("done.\n");
+			} else {
+				NormalPrint("failed.\n");
+			}
 		} else {
-			NormalPrint("failed.\n");
+			NormalPrint("$cmd not found, cannot update initial ram disk.");
 		}
-	} else {
-		NormalPrint("$cmd not found, cannot update initial ram disk.");
+		close_log();
 	}
+}
 		
 }

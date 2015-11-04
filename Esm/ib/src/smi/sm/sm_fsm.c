@@ -169,6 +169,7 @@ state_event_mad(Mai_t *maip) {
     char        nodescription[64]={0};
     int         identified=0;
 	boolean		uptodate = 0;
+	SmRecp      smrecp = NULL;
 
 	IB_ENTER(__func__, maip, 0, 0, 0);
 
@@ -272,6 +273,21 @@ state_event_mad(Mai_t *maip) {
 		switch (theirSmInfo.u.s.SMStateCurrent) {
         case SM_STATE_MASTER:
         case SM_STATE_STANDBY:
+
+			/* If this is an SM that is not in our list, trigger a sweep to add it */
+
+			/* lock out SM record table */
+			if ((status = vs_lock(&smRecords.smLock)) != VSTATUS_OK) {
+				IB_LOG_ERROR("Can't lock SM Record table, rc:", status);
+			} else {
+				if ((smrecp = (SmRecp)cs_hashtable_search(smRecords.smMap, &theirSmInfo.PortGUID)) != NULL) {
+					/* do nothing; we already know about this SM */
+				} else {
+					sm_trigger_sweep(SM_SWEEP_REASON_UNEXPECTED_SM);
+				}
+				(void)vs_unlock(&smRecords.smLock);
+			}
+
             if ((sm_smInfo.u.s.Priority < theirSmInfo.u.s.Priority) ||
                 (sm_smInfo.u.s.Priority == theirSmInfo.u.s.Priority && sm_smInfo.PortGUID > theirSmInfo.PortGUID)) {
                 if (uptodate) {

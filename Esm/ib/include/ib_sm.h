@@ -472,6 +472,7 @@ typedef enum {
 	DBSYNC_PM_HIST_IMAGE
 } DBSyncFileType_t;
 
+#define SMDBSYNCFILE_NAME_LEN 64
 typedef struct {
     uint32_t        version;        /* structure version */
     uint32_t        length;         /* structure length */
@@ -482,7 +483,7 @@ typedef struct {
     uint32_t        spare2;
     uint32_t        spare3;
     uint32_t        spare4;
-    char            name[64];       /* filename */
+    char            name[SMDBSYNCFILE_NAME_LEN];       /* filename */
 } SMDBSyncFile_t;
 typedef SMDBSyncFile_t *SMDBSyncFilep;  /* pointer to sync file transport structure */
 

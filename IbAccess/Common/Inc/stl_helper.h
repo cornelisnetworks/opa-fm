@@ -68,6 +68,12 @@ StlPortPhysStateToText( uint8_t state )
 	return IbPortPhysStateToText((IB_PORT_PHYS_STATE)state);
 }
 
+static __inline int IsPortInitialized(STL_PORT_STATES portStates)
+{
+	return (portStates.s.PortState == IB_PORT_ARMED
+			|| portStates.s.PortState == IB_PORT_ACTIVE);
+}
+
 static __inline uint32 StlMbpsToStaticRate(uint32 rate_mbps)
 {
 	/* 1Gb rate is obsolete */
@@ -350,7 +356,7 @@ StlLinkWidthToText(uint16_t w, char *buf, size_t len)
 	};
 	
 	if (w == STL_LINK_WIDTH_NOP) {
-		snprintf(buf,len-1,"NOP");
+		snprintf(buf,len-1,"None");
 		buf[len-1]=0;
 	} else {
 		l=len-4;	// the max we can tack on in 1 pass is 3 bytes.
@@ -359,7 +365,7 @@ StlLinkWidthToText(uint16_t w, char *buf, size_t len)
 		for (i=0, j=0; w!=0 && i<STL_WIDTH_TEXT_LENGTH && j<l; i++, w>>=1) {
 			if (w & 1) {
 				if (j>0) buf[j++]=',';
-				j+=snprintf(buf+j,len-j,StlWidthText[i]);
+				j+=snprintf(buf+j,len-j,"%s", StlWidthText[i]);
 			}
 		}
 	}
@@ -373,7 +379,7 @@ StlLinkSpeedToText(uint16_t speed, char *str, size_t len)
 	size_t i = 0;
 
 	if (speed == STL_LINK_SPEED_NOP) {
-		PRINT_OR_OUT(str, len, "Noop");
+		PRINT_OR_OUT(str, len, "None");
 		goto out;
 	}
 
@@ -408,10 +414,7 @@ StlPortLinkModeToText(uint16_t mode, char *str, size_t len)
 	size_t n = 0;
 	size_t i = 0;
 
-	if (mode == STL_PORT_LINK_MODE_ALL_SUPPORTED) {
-		PRINT_OR_OUT(str, len, "All");
-		goto out;
-	} else if (mode == STL_PORT_LINK_MODE_NOP) {
+	if (mode == STL_PORT_LINK_MODE_NOP) {
 		PRINT_OR_OUT(str, len, "Noop");
 		goto out;
 	}
@@ -434,10 +437,7 @@ StlPortLtpCrcModeToText(uint16_t mode, char *str, size_t len)
 	size_t n = 0;
 	size_t i = 0;
 
-	if (mode == STL_PORT_LTP_CRC_MODE_ALL) {
-		PRINT_OR_OUT(str, len, "All");
-		goto out;
-	} else if (mode == STL_PORT_LTP_CRC_MODE_NONE) {
+	if (mode == STL_PORT_LTP_CRC_MODE_NONE) {
 		PRINT_OR_OUT(str, len, "None");
 		goto out;
 	}
@@ -729,65 +729,301 @@ StlQPServiceTypeToText(uint8_t code)
 	}
 }
 
-static __inline const char*
-StlCableInfoDevTechToText(uint8_t code)
+static __inline
+int IsStlCableInfoActiveCable(uint8_t code_xmit)
 {
-	switch (code) {
-		case 0:
-			return "850 nm VCSEL";
-		case 1:
-			return "1300 nm VCSEL";
-		case 2:
-			return "1550 nm VCSEL";
-		case 3:
-			return "1310 nm FP";
-		case 4:
-			return "1310 nm DFP";
-		case 5:
-			return "1550 nm DFP";
-		case 6:
-			return "1310 nm EML";
-		case 7:
-			return "1550 nm EML";
-		case 8:
-			return "Other";
-		case 9:
-			return "1490 nm DFB";
-		case 10:
-			return "copper cable, unequalized";
-		case 11:
-			return "copper, passive equalized";
-		case 12:
-			return "copper cable, near and far end limiting active equalizers";
-		case 13:
-			return "copper cable, far end limiting active equalizers";
-		case 14:
-			return "copper cable, near end limiting active equalizers";
-		case 15:
-			return "copper cable, linear active equalizers";
-		default:
-			return "Unknown Tech";
-	}
-}
+	if ((code_xmit == STL_CIB_STD_TXTECH_CU_UNEQ) ||
+			(code_xmit == STL_CIB_STD_TXTECH_CU_PASSIVEQ) ||
+			(code_xmit > STL_CIB_STD_TXTECH_MAX))
+		return 0;
+	else
+		return 1;
 
-static __inline const char*
-StlCableInfoOutputModuleCodeToText(uint8_t code)
+}	// End of IsStlCableInfoActiveCable()
+
+static __inline
+int IsStlCableInfoCableLengthValid(uint8_t code_xmit, uint8_t code_connector)
 {
-	switch (code) {
-		case 0:
-			return "SDR";
-		case 1:
-			return "DDR";
-		case 2:
-			return "QDR";
-		case 3:
-			return "FDR";
-		case 4:
-			return "EDR";
+	if ( (code_xmit == STL_CIB_STD_TXTECH_OTHER) ||
+			( (code_xmit <= STL_CIB_STD_TXTECH_1490_DFB) &&
+			(code_connector != STL_CIB_STD_CONNECTOR_NO_SEP) ) ||
+			(code_xmit > STL_CIB_STD_TXTECH_MAX) )
+		return 0;
+	else
+		return 1;
+
+}	// End of IsStlCableInfoCableLengthValid()
+
+static __inline
+int IsStlCableInfoCableCertified(uint8_t code_cert)
+{
+	if (code_cert == STL_CIB_STD_OPA_CERTIFIED_CABLE)
+		return 1;
+	else
+		return 0;
+
+}	// End of IsStlCableInfoCableLengthValid()
+
+static __inline
+void StlCableInfoBitRateToText(uint8_t code_low, uint8_t code_high, char *text_out)
+{
+	if (! text_out)
+		return;
+	if (code_low == STL_CIB_STD_RATELOW_EXCEED)
+		sprintf(text_out, "%u Gb", code_high / 4);
+	else
+		sprintf(text_out, "%u Gb", code_low / 10);
+	return;
+
+}	// End of StlCableInfoBitRateToText()
+
+static __inline
+const char * StlCableInfoOpaCertifiedRateToText(uint8_t code_rate)
+{
+	if (code_rate & STL_CIB_STD_OPACERTRATE_4X25G)
+		return "4x25G";
+	else
+		return "Undefined";
+
+}	// End of StlCableInfoOpaCertifiedRateToText()
+
+static __inline
+const char * StlCableInfoPowerClassToText(uint8_t code_low, uint8_t code_high)
+{
+	switch (code_high) {
+	case STL_CIB_STD_PWRHIGH_LEGACY:
+		switch (code_low) {
+		case STL_CIB_STD_PWRLOW_1_5:
+			return "Power Class 1, 1.5W max";
+		case STL_CIB_STD_PWRLOW_2_0:
+			return "Power Class 2, 2.0W max";
+		case STL_CIB_STD_PWRLOW_2_5:
+			return "Power Class 3, 2.5W max";
+		case STL_CIB_STD_PWRLOW_3_5:
+			return "Power Class 4, 3.5W max";
 		default:
-			return "Unknown";
+			return "Undefined";
+		}
+		break;
+	case STL_CIB_STD_PWRHIGH_4_0:
+		return "Power Class 5, 4.0W max";
+	case STL_CIB_STD_PWRHIGH_4_5:
+		return "Power Class 6, 4.5W max";
+	case STL_CIB_STD_PWRHIGH_5_0:
+		return "Power Class 7, 5.0W max";
+	default:
+		return "Undefined";
 	}
-}
+
+}	// End of StlCableInfoPowerClassToText()
+
+static __inline
+void StlCableInfoCableTypeToTextShort(uint8_t code_xmit, uint8_t code_connector, char *text_out)
+{
+	if (! text_out)
+		return;
+	if (code_xmit <= STL_CIB_STD_TXTECH_1490_DFB) {
+		if (code_xmit == STL_CIB_STD_TXTECH_OTHER) {
+			strcpy(text_out, "Other");
+			return;
+		}
+		if (code_connector == STL_CIB_STD_CONNECTOR_NO_SEP) {
+			strcpy(text_out, "AOC");
+			return;
+		}
+		strcpy(text_out, "OpticXcvr");
+		return;
+	}
+	if (code_xmit <= STL_CIB_STD_TXTECH_CU_PASSIVEQ) {
+		strcpy(text_out, "PassiveCu");
+		return;
+	}
+	if (code_xmit <= STL_CIB_STD_TXTECH_CU_LINACTEQ) {
+		strcpy(text_out, "ActiveCu");
+		return;
+	} else {
+		strcpy(text_out, "Undefined");
+		return;
+	}
+
+}	// End of StlCableInfoCableTypeToTextShort()
+
+static __inline
+void StlCableInfoCableTypeToTextLong(uint8_t code_xmit, uint8_t code_connector, char *text_out)
+{
+	if (! text_out)
+		return;
+	if ((code_xmit <= STL_CIB_STD_TXTECH_1490_DFB) && (code_xmit != STL_CIB_STD_TXTECH_OTHER)) {
+		if (code_connector == STL_CIB_STD_CONNECTOR_NO_SEP)
+			strcpy(text_out, "AOC, ");
+		else
+			strcpy(text_out, "Optical transceiver, ");
+	}
+	switch (code_xmit) {
+	case STL_CIB_STD_TXTECH_850_VCSEL:
+		strcat(text_out, "850nm VCSEL");
+		break;
+	case STL_CIB_STD_TXTECH_1310_VCSEL:
+		strcat(text_out, "1310nm VCSEL");
+		break;
+	case STL_CIB_STD_TXTECH_1550_VCSEL:
+		strcat(text_out, "1550nm VCSEL");
+		break;
+	case STL_CIB_STD_TXTECH_1310_FP:
+		strcat(text_out, "1310nm FP");
+		break;
+	case STL_CIB_STD_TXTECH_1310_DFB:
+		strcat(text_out, "1310nm DFB");
+		break;
+	case STL_CIB_STD_TXTECH_1550_DFB:
+		strcat(text_out, "1550nm DFB");
+		break;
+	case STL_CIB_STD_TXTECH_1310_EML:
+		strcat(text_out, "1310nm EML");
+		break;
+	case STL_CIB_STD_TXTECH_1550_EML:
+		strcat(text_out, "1550nm EML");
+		break;
+	case STL_CIB_STD_TXTECH_OTHER:
+		strcpy(text_out, "Other/Undefined");
+		break;
+	case STL_CIB_STD_TXTECH_1490_DFB:
+		strcat(text_out, "1490nm DFB");
+		break;
+	case STL_CIB_STD_TXTECH_CU_UNEQ:
+		strcpy(text_out, "Passive copper cable");
+		break;
+	case STL_CIB_STD_TXTECH_CU_PASSIVEQ:
+		strcpy(text_out, "Equalized passive copper cable");
+		break;
+	case STL_CIB_STD_TXTECH_CU_NFELIMACTEQ:
+		strcpy(text_out, "Active copper cable, TX and RX repeaters");
+		break;
+	case STL_CIB_STD_TXTECH_CU_FELIMACTEQ:
+		strcpy(text_out, "Active copper cable, RX repeaters");
+		break;
+	case STL_CIB_STD_TXTECH_CU_NELIMACTEQ:
+		strcpy(text_out, "Active copper cable, TX repeaters");
+		break;
+	case STL_CIB_STD_TXTECH_CU_LINACTEQ:
+		strcpy(text_out, "Linear active copper cable");
+		break;
+	default:
+		strcpy(text_out, "Undefined");
+		break;
+	}	// End of switch (code_xmit)
+
+	return;
+
+}	// End of StlCableInfoCableTypeToTextLong()
+
+static __inline
+uint32_t StlCableInfoSMFLength(uint8_t code_len)
+{
+	return code_len;
+
+}	// End of StlCableInfoSMFLength()
+
+static __inline
+uint32_t StlCableInfoOM1Length(uint8_t code_len)
+{
+	return code_len;
+
+}	// End of StlCableInfoOM1Length()
+
+static __inline
+uint32_t StlCableInfoOM2Length(uint8_t code_len)
+{
+	return code_len;
+
+}	// End of StlCableInfoOM2Length()
+
+static __inline
+uint32_t StlCableInfoOM3Length(uint8_t code_len)
+{
+	return code_len * 2;
+
+}	// End of StlCableInfoOM3Length()
+
+static __inline
+uint32_t StlCableInfoOM4Length(uint8_t code_len, uint8_t code_valid)
+{
+	if (code_valid)
+		return code_len;
+	else
+		return code_len * 2;
+
+}	// End of StlCableInfoOM4Length()
+
+#if 0
+// This macro is based on stl_sma.c/GET_LENGTH() but contains invalid logic
+//  for current CableInfo configurations 
+static __inline
+void StlCableInfoCableLengthToText(uint8_t code_smf, uint8_t code_om1, uint8_t code_om2, uint8_t code_om3, uint8_t code_om4, char *text_out)
+{
+	if (! text_out)
+		return;
+	if (code_smf)
+		sprintf(text_out, "%3ukm", StlCableInfoSMFLength(code_smf));
+	else if (code_om3)
+		sprintf(text_out, "%3um", StlCableInfoOM3Length(code_om3));
+	else if (code_om2)
+		sprintf(text_out, "%3um", StlCableInfoOM2Length(code_om2));
+	else if (code_om1)
+		sprintf(text_out, "%3um", StlCableInfoOM1Length(code_om1));
+	else if (code_om4)
+		sprintf(text_out, "%3um", StlCableInfoOM4Length(code_om4));
+	else
+		strcpy(text_out, "");
+	return;
+
+}	// End of StlCableInfoCableLengthToText()
+#endif
+
+static __inline
+void StlCableInfoValidCableLengthToText(uint8_t code_len, uint8_t code_valid, char *text_out)
+{
+	if (! text_out)
+		return;
+	if (code_valid)
+		sprintf(text_out, "%3um", code_len);
+	else
+		strcpy(text_out, "");
+	return;
+
+}	// End of StlCableInfoValidCableLengthToText()
+
+static __inline
+void StlCableInfoDateCodeToText(uint8_t * code_date, char *text_out)
+{
+	if (! text_out)
+		return;
+	// Format date code as: 20YY/MM/DD LL (lot)
+	strcpy(text_out, "20xx/xx/xx-xx");
+	text_out[2] = code_date[0];
+	text_out[3] = code_date[1];
+	text_out[5] = code_date[2];
+	text_out[6] = code_date[3];
+	text_out[8] = code_date[4];
+	text_out[9] = code_date[5];
+	text_out[11] = code_date[6];
+	text_out[12] = code_date[7];
+	text_out[13] = '\0';
+	return;
+
+}	// End of StlCableInfoOutputDateCodeToText()
+
+static __inline
+const char * StlCableInfoCDRToText(uint8_t code_supp, uint8_t code_ctrl)
+{
+	if (! code_supp)
+		return "N/A";
+	else if (code_ctrl)
+		return "On ";
+	else
+		return "Off";
+
+}	// End of StlCableInfoCDRToText()
 
 static __inline const char*
 StlPortTypeToText(uint8_t code)
@@ -900,8 +1136,36 @@ StlLinkQualToText(uint8 linkQual)
 static __inline const char*
 OpaNeighborNodeTypeToText(uint8 ntype)
 {
-	return (ntype == 0) ? "HFI":
-		(ntype == 1) ? "Switch" : "Unknown";
+	return (ntype == STL_NEIGH_NODE_TYPE_HFI) ? "HFI":
+		(ntype == STL_NEIGH_NODE_TYPE_SW) ? "Switch" : "Unknown";
+}
+
+static __inline int
+IsCableInfoAvailable(STL_PORT_INFO *portInfo)
+{
+	return (portInfo->PortPhyConfig.s.PortType == STL_PORT_TYPE_STANDARD
+			&& ! (portInfo->PortStates.s.PortPhysicalState == STL_PORT_PHYS_OFFLINE
+				&& portInfo->PortStates.s.OfflineDisabledReason == STL_OFFDIS_REASON_LOCAL_MEDIA_NOT_INSTALLED));
+}
+
+static __inline uint8
+StlResolutionToShift(uint32 res, uint8 add) {
+// shift = log2(res) - add
+	uint8 shift = 0;
+	while (res > 1) {
+		shift++;
+		res = res >> 1;
+	}
+	if (shift > 15) return 15; // 15 is the maximum allowed value
+	else if (shift > add) return shift-add;
+	else return 0;
+}
+
+static __inline uint32
+StlShiftToResolution(uint8 shift, uint8 add) {
+// res = 2^(shift + add)
+	if (shift) return (uint32)1<<(shift + add);
+	else return 0;
 }
 
 #if !defined(ROUNDUP)

@@ -86,7 +86,6 @@ static SSL_METHOD * g_if3_ssl_server_method = NULL;
 
 static int g_if3_ssl_dh_params_inited = 0;
 static DH *g_if3_ssl_dh_parms = NULL;
-static int g_if3_ssl_ec_inited = 0;
 
 static int g_if3_ssl_x509_store_inited=0;
 static X509_STORE *g_if3_ssl_x509_store = NULL;
@@ -94,6 +93,7 @@ static X509_STORE *g_if3_ssl_x509_store = NULL;
 #ifdef __VXWORKS__
 static Lock_t * g_if3_thread_mutexs = NULL;
 #else
+static int g_if3_ssl_ec_inited = 0;
 static pthread_mutex_t * g_if3_thread_mutexs = NULL;
 #endif
 
@@ -346,18 +346,20 @@ void if3_ssl_thread_cleanup(void)
 #endif
         CRYPTO_set_locking_callback(NULL);
 
-        // deallocating the mutexs
-        for (mutex = 0; mutex < totalMutexs; mutex++) {
+        if (g_if3_thread_mutexs) {
+            // deallocating the mutexs
+            for (mutex = 0; mutex < totalMutexs; mutex++) {
 #ifdef __LINUX__
-            pthread_mutex_destroy(&g_if3_thread_mutexs[mutex]);
+                pthread_mutex_destroy(&g_if3_thread_mutexs[mutex]);
 #else
-            vs_lock_delete(&g_if3_thread_mutexs[mutex]);
+                vs_lock_delete(&g_if3_thread_mutexs[mutex]);
 #endif
+            }
         }
-
         // deallocate the mutexs table
         vs_pool_free(g_if3_ssl_thread_pool, (void *)g_if3_thread_mutexs);
         g_if3_thread_mutexs = NULL;
+        g_if3_ssl_inited = 0;
     }
 }
 

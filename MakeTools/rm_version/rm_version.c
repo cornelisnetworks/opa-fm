@@ -29,7 +29,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /*!
  @file    $Source: /cvs/ics/MakeTools/rm_version/rm_version.c,v $
  $Author: mwheinz $
- $Name: ALL_EMB_ATOM_ALL_ALPHA0-BRANCH_10_0_0_0_438 $
+ $Name: ALL_EMB_ATOM_ALL_10_0_BETA0-BRANCH_10_0_0_0_625 $
  $Revision: 1.5 $
  $Date: 2015/01/22 18:04:00 $
  @brief   Program to remove version strings appended at end of file by prep

@@ -34,6 +34,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <stdint.h>
 
+#include <infiniband/umad.h>
 #include "iba/public/datatypes.h"
 #include "iba/ib_types.h"
 
@@ -95,6 +96,7 @@ int oib_close_port       (struct oib_port *port);
  */
 uint32_t  oib_get_port_lid(struct oib_port *port);
 uint32_t  oib_get_port_sm_lid(struct oib_port *port);
+uint8_t   oib_get_port_sm_sl(struct oib_port *port);
 uint64_t  oib_get_port_guid(struct oib_port *port);
 uint8_t   oib_get_hfi_port_num(struct oib_port *port);
 int       oib_get_hfi_num(struct oib_port *port);
@@ -371,6 +373,15 @@ FSTATUS oib_recv_mad_no_alloc(struct oib_port *port, uint8_t *recv_mad, size_t *
  *
 FSTATUS oib_mad_refresh_port_details(struct oib_port *port);
  */
+
+
+/**
+ * Exact same function semantics as umad_get_cas_names
+ * However, the list returned is OPA HFIs only.
+ *
+ * See man umad_get_cas_names for details
+ */
+int oib_get_hfi_names(char hfis[][UMAD_CA_NAME_LEN], int max);
 
 
 /** =========================================================================

@@ -246,10 +246,22 @@ iba_sd_get_local_port_guids_alloc2(
 
 	_DBG_ENTER_LVL(_DBG_LVL_FUNC_TRACE, iba_sd_get_local_port_guids_alloc2);
 
-	*ppLocalPortGuidsList = NULL;
+	if (ppLocalPortGuidsList) {
+		*ppLocalPortGuidsList = NULL;
+	} else {
+		Fstatus = FINVALID_PARAMETER;
+		goto done;
+	}
+
 	if (ppLocalPortSubnetPrefixList)
 		*ppLocalPortSubnetPrefixList = NULL;
-	*LocalPortGuidsCount = 0;
+
+	if (LocalPortGuidsCount) {
+		*LocalPortGuidsCount = 0;
+	} else {
+		Fstatus = FINVALID_PARAMETER;
+		goto done;
+	}
 
 	if (NumTotalPorts == 0)
 	{
@@ -320,9 +332,10 @@ iba_sd_get_local_port_guids_alloc2(
 
 fail:
 	if (Fstatus != FSUCCESS) {
-		ASSERT(ppLocalPortGuidsList != NULL);
-		MemoryDeallocate(*ppLocalPortGuidsList);
-		*ppLocalPortGuidsList = 0;
+		if (*ppLocalPortGuidsList != NULL) {
+			MemoryDeallocate(*ppLocalPortGuidsList);
+			*ppLocalPortGuidsList = 0;
+		}
 		*LocalPortGuidsCount = 0;
 		if (ppLocalPortSubnetPrefixList && *ppLocalPortSubnetPrefixList)
 		{

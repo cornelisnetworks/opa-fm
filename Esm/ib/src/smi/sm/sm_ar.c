@@ -113,7 +113,7 @@ sm_AdaptiveRoutingSwitchUpdate(Topology_t* topop, Node_t* switchp)
 
 	// Update the port group table. By definition, this will never take more 
 	// than two MADs, so we send the first half and, if needed, send the rest.
-	if (switchp->pgt && switchp->pgtLen) {
+	if (switchp->pgt) {
 		uint64_t	amod = 0ll;
 		uint8_t		blocks = ROUNDUP(switchp->switchInfo.PortGroupTop+1,
 								NUM_PGT_ELEMENTS_BLOCK)/NUM_PGT_ELEMENTS_BLOCK;
@@ -171,7 +171,7 @@ sm_AdaptiveRoutingSwitchUpdate(Topology_t* topop, Node_t* switchp)
 	// Update the port group forwarding table. The PGFT is similar to the LFT,
 	// so we use the LFT settings and method to break the PGFT down into
 	// multiple MADs.
-	if (status == VSTATUS_OK && sm_Node_get_pgft(switchp)) {
+	if (status == VSTATUS_OK) {
 		uint16_t	currentSet, currentLid, numBlocks;
 		uint64_t	amod;
 		const uint16_t  lids_per_mad = sm_config.lft_multi_block * MAX_LFT_ELEMENTS_BLOCK;

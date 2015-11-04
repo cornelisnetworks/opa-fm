@@ -84,6 +84,8 @@ FSTATUS fe_oob_send_packet(struct net_connection *conn, uint8_t *data, size_t le
 	packet.Header.Length = len;
 	BSWAP_OOB_HEADER(&(packet.Header));
 
+	len += sizeof(OOB_HEADER) + sizeof(RMPP_HEADER);
+
 	/* Do nothing if no conn */
 	if (!conn)
 		return CONNECTION;

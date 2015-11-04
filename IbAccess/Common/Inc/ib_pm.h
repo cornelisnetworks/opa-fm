@@ -101,10 +101,10 @@ extern "C" {
 
 	/* Vendor-specific Capability Mask2 bits */
 #define PM_CLASS_PORT_CAPMASK2_VENDOR_PORT_COUNTERS	0x04000000
-		/* QLogic VENDOR_PORT_COUNTERS attribute is supported */
+		/* TrueScale VENDOR_PORT_COUNTERS attribute is supported */
 
 #define PM_CLASS_PORT_CAPMASK2_VENDOR_PORT_COUNTERS2	0x02000000
-		/* QLogic VENDOR_PORT_COUNTERS allows clear thresholds */
+		/* TrueScale VENDOR_PORT_COUNTERS allows clear thresholds */
 
 /* CounterSelect values in PortSamplesControl */
 typedef enum _SAMPLE_SELECT {
@@ -776,8 +776,8 @@ typedef struct __VendorPortCounters {
 	uint64		PortRcvData;
 	uint64		PortXmitPkts;
 	uint64		PortRcvPkts;
-	uint64		PortXmitCongestion;	// QLogic SW, Num of Xmit congestion events
-	uint64		PortAdaptiveRouting;// QLogic SW adaptive routing events
+	uint64		PortXmitCongestion;	// TrueScale SW, Num of Xmit congestion events
+	uint64		PortAdaptiveRouting;// TrueScale SW adaptive routing events
 #if 0
 	struct {
 		uint32	PortRcvDataMB;	// VL RcvData in units of MBytes

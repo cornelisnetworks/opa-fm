@@ -100,6 +100,63 @@ FieldMask_t	StlPortInfoRecordFieldMask[] = {
 	{     0,     0 },	// No other fields are searchable at this time.
 };
 
+
+FieldMask_t	IbPortInfoRecordFieldMask[] = {
+	{     0,    16 },
+    {    16,     8 },
+    {    24,     8 },
+	{    32,    64 },
+	{    96,    64 },
+	{   160,    16 },
+	{   176,    16 },
+	{   192,    32 },
+	{   224,    16 },
+	{   240,    16 },
+	{   256,     8 },
+	{   264,     8 },
+	{   272,     8 },
+	{   280,     8 },
+	{   288,     4 },
+	{   292,     4 },
+	{   296,     4 },
+	{   300,     4 },
+	{   304,     2 },
+	{   306,     3 },
+	{   309,     3 },
+	{   312,     4 },
+	{   316,     4 },
+	{   320,     4 },
+	{   324,     4 },
+	{   328,     4 },
+	{   332,     4 },
+	{   336,     8 },
+	{   344,     8 },
+	{   352,     8 },
+	{   360,     4 },
+	{   364,     4 },
+	{   368,     3 },
+	{   371,     5 },
+	{   376,     4 },
+	{   380,     1 },
+	{   381,     1 },
+	{   382,     1 },
+	{   383,     1 },
+	{   384,    16 },
+	{   400,    16 },
+	{   416,    16 },
+	{   432,     8 },
+	{   440,     3 },
+	{   443,     5 },
+	{   448,     3 },
+	{   451,     5 },
+	{   456,     4 },
+	{   460,     4 },
+    {   464,     16},
+    {   480,     8 },
+    {   488,     24},
+	{     0,     0 },
+};
+
 #if 0
 // No longer supported.
 FieldMask_t	SLVLTableRecordFieldMask[] = {
@@ -157,40 +214,6 @@ FieldMask_t	StlSwitchInfoRecordFieldMask[] = {
 	{   000,    00 },
 };
 
-#if 0
-// No longer supported.
-FieldMask_t	VendorSwitchInfoRecordFieldMask[] = {
-	{     0,    16 },
-	{    16,    16 },
-	{    32,    16 },
-	{    48,    16 },
-	{    64,    16 },
-	{    80,    16 },
-	{    96,     8 },
-	{   104,     8 },
-	{   112,     8 },
-	{   120,     5 },
-	{   125,     1 },
-	{   126,     2 },
-	{   128,    16 },
-	{   144,    16 },
-	{   160,     1 },
-	{   161,     1 },
-	{   162,     1 },
-	{   163,     1 },
-	{   164,     1 },
-	{   165,     3 },
-	{   168,     8 },
-	{   176,     1 },
-	{   177,     1 },
-	{   178,     1 },
-	{   179,     1 },
-	{   180,     4 },
-	{   184,    16 },
-	{     0,     0 },
-};
-#endif
-
 FieldMask_t	StlLFTRecordFieldMask[] = {
 	{   000,    32 },	// RID LID
 	{    32,    14 },	// Reserved
@@ -245,6 +268,26 @@ FieldMask_t	StlInformRecordFieldMask[] = {
 	{   352,     8 },	// Reserved
 	{   360,    24 },	// Producer Type
 	{   000,    00 },
+};
+
+FieldMask_t	IbInformRecordFieldMask[] = {
+	{     0,   128 },	// SubscriberGID
+	{   128,    16 },	// Enum
+	{   144,    48 },	// Reserved
+	{   192,   128 },	// GID
+	{   320,    16 },	// LidRangeBegin
+	{   336,    16 },	// LidRangeEnd
+	{   352,    16 },	// Reserved
+	{   368,     8 },	// IsGeneric
+	{   376,     8 },	// Subscribe
+	{   384,    16 },	// Type
+	{   400,    16 },	// Trap # / Dev ID
+	{   416,    24 },	// QPN
+	{   440,     3 },	// Reserved
+	{   443,     5 },	// RespTimeValue
+	{   448,     8 },	// Reserved
+	{   456,    24 },	// Producer Type / Vendor ID
+	{     0,     0 },
 };
 
 FieldMask_t	StlLinkRecordFieldMask[] = {
@@ -487,6 +530,10 @@ FieldMask_t	StlVfInfoRecordFieldMask[] = {
 	{   816,     1 },	// Priority
 	{   817,     7 },	// Reserved
 	{   824,     8 },	// Routing SLs
-	{   832,   192 },	// Reserved
+	{   832,     1 },	// Reserved
+	{   833,     7 },	// Preemption Rank
+	{   840,     3 },	// Reserved
+	{   843,     5 },	// HOQ Life
+	{   848,   176 },	// Reserved
 	{     0,     0 },
 };

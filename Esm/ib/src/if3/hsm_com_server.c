@@ -27,6 +27,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
  * ** END_ICS_COPYRIGHT2   ****************************************/
 
+#ifdef __LINUX__
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -102,12 +103,14 @@ unix_serv_accept(int listenfd, uid_t *uidptr)
 
 	if (stat(unix_addr.sun_path,&statbuf) < 0) 
 	{
+		close(clifd);
 		return(-2);
 	}
 
 #ifdef S_ISSOCK
 	if (S_ISSOCK(statbuf.st_mode) == 0) 
 	{
+		close(clifd);
 		return(-3);
 	}
 #endif
@@ -115,6 +118,7 @@ unix_serv_accept(int listenfd, uid_t *uidptr)
 	if ((statbuf.st_mode & (S_IRWXG | S_IRWXO)) ||
 		(statbuf.st_mode & S_IRWXU) != S_IRWXU) 
 	{
+		close(clifd);
 		return(-4);
 	}
 
@@ -123,6 +127,7 @@ unix_serv_accept(int listenfd, uid_t *uidptr)
 		statbuf.st_ctime < staletime ||
 		statbuf.st_mtime < staletime) 
 	{
+		close(clifd);
 		return(-5);
 	}
 
@@ -448,5 +453,5 @@ unix_sck_run_server(hsm_com_server_hdl_t *hdl)
 
 	return 0;
 }
-
+#endif
 

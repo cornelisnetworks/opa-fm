@@ -144,13 +144,20 @@ typedef struct PmCompositePortCounters_s {
 	union {
 		uint8 AsReg8;
 		struct {
-			uint8 Reserved:5;
+			uint8 NumLanesDown:4;
+			uint8 Reserved:1;
 			uint8 LinkQualityIndicator:3;
 		} s;
 	} lq;
 } PmCompositePortCounters_t;
 
 typedef struct _vls_pctrs PmCompositeVLCounters_t;
+
+
+typedef struct PmCompositeVfvlmap_s {
+	uint8   VF; //index into vf array
+	uint32	vl;
+} PmCompositeVfvlmap_t;
 
 #define UPDATE_MAX(max, cnt) do { if (cnt > max) max = cnt; } while (0)
 #define UPDATE_MIN(min, cnt) do { if (cnt < min) min = cnt; } while (0)
@@ -193,12 +200,8 @@ typedef struct ErrorSummary_s {
 	uint32 Security;
 	uint32 Routing;
 
-	uint16 CongInefficiencyPct10;		/* in units of 10% */
-	uint16 WaitInefficiencyPct10;   	/* in units of 10% */
-	uint16 BubbleInefficiencyPct10; 	/* in units of 10% */
+	uint16 UtilizationPct10;        	/* in units of 10% */
 	uint16 DiscardsPct10;           	/* in units of 10% */
-	uint16 CongestionDiscardsPct10; 	/* in units of 10% */
-	uint16 UtilizationPct10;        	/* in units of 10% to help with context of above */
 } ErrorSummary_t;
 
 // weight to use for each Integrity counter in weighted sum
@@ -210,6 +213,8 @@ typedef struct IntegrityWeights_s {
 	uint8 LinkDowned;
 	uint8 UncorrectableErrors;
 	uint8 FMConfigErrors;
+	uint8 LinkQualityIndicator;
+	uint8 LinkWidthDowngrade;
 } IntegrityWeights_t;
 
 // weight to use for each Congestion counter in weighted sum
@@ -417,14 +422,6 @@ typedef struct PmNode_s {
 
 typedef	struct PmNodeImage_s PmNodeImage_t;
 
-// Counters[].flags for Port
-// first two flags are also used for PmNode.Image[].u.s.flags
-#define PM_PORT_CLEARED_ALL				0x1	// cleared all counters
-#define PM_PORT_CLEARED_SOME			0x2	// cleared all some counters
-#define PM_PORT_GOT_DATAPORTCOUNTERS	0x4	// successfully got DataPortCounters
-#define PM_PORT_GOT_ERRORPORTCOUNTERS	0x8	// successfully got ErrorPortCounters
-#define PM_PORT_NEED_ERRORPORTCOUNTERS	0x80	// need to retrieve ErrorPortCounters
-
 // queryStatus for Port
 #define PM_QUERY_STATUS_OK			0x0	// query success (or not yet attempted)
 #define PM_QUERY_STATUS_SKIP		0x1	// port skipped, no PMA or filtered
@@ -433,7 +430,7 @@ typedef	struct PmNodeImage_s PmNodeImage_t;
 #define PM_QUERY_STATUS_FAIL_CLEAR	0x3	// query ok, but failed clear
 
 typedef struct _vfmap {
-	char vfName[MAX_VFABRIC_NAME];
+	PmVF_t *pVF;
 	uint32 vl;
 } vfmap_t;
 
@@ -465,35 +462,10 @@ typedef struct PmPort_s {
 	// count warnings
 	uint32 groupWarnings;
 
-	// This is a scratch area during sweep.  Delta is kept
-	// in Image and PortCountersTotal is kept below
-	// and are the final values of interest.
-	// These are the counters as fetched from the hardware during this sweep
-	// Needed when computing Delta between sweeps (eg. when clear not used).
-	// These are only for use by Engine Thread, not protected by lock
-	// we keep last 2 sweeps, CountersIndex selects one to use for this sweep
-	// CountersIndex^1 selects one from prev sweep
-	struct PmAllPortCounters_s {
-        CounterSelectMask_t clearSelectMask;
-		uint32 NumSweep;	// sweep this data written during
-		uint64 PortErrorCounterSummary;		/* sum of all error counters for port */
-		uint8  flags;// PM_PORT_* flags (see above), private
-		STL_PORT_STATUS_RSP *PortStatus;
-	} Counters[2];
-
-	// We keep interval delta per image and one copy of running totals.
-	// Running totals will allow PM to emulate the counters for tools like
-	// opareport which want to clear the counters and then get the value
-	// over the opareport interval since the clear (which could be hours).
-	// Newer tools should instead using the interval delta.
-	// Later implementation of a history feature will remove the need for
-	// supporting the clear approach, but lets walk before we run
-	// For now, IBM will need to continue to use opafabricanalysis daily
-	// runs with 1 symbol error per day type thresholds
 	// protected by Pm_t.totalsLock
-
 	PmCompositePortCounters_t StlPortCountersTotal;	// running total
-	PmCompositeVLCounters_t StlVLPortCountersTotal[MAX_PM_VLS]; // somehow configure this based on pm_config.process_vl_counters
+	PmCompositeVLCounters_t StlVLPortCountersTotal[MAX_PM_VLS];
+	// somehow configure this based on pm_config.process_vl_counters
 
 	// per Image data protected by Pm.Image[].imageLock
 	// must be last in structure so can dynamically size total images in future
@@ -503,20 +475,24 @@ typedef struct PmPort_s {
 			struct {
 				// imageLock protects state, rate and mtu
 				uint32	active:1;// is port IB_PORT_ACTIVE (SW port 0 fixed up)
-				uint32	rate:5;	// IB_STATIC_RATE - due to actual range, 5 bits
 				uint32	mtu:4;	// enum IB_MTU - due to actual range, 3 bits
+				uint32  txActiveWidth:4; // LinkWidthDowngrade.txActive
+				uint32	rxActiveWidth:4; // LinkWidthDowngrade.rxActive
+				uint32	activeSpeed:2;
 				uint32	bucketComputed:1; // only r/w by engine, no lock
 				uint32	Initialized:1;	// has group membership been initialized
 				uint32	queryStatus:2;	// PMA query or clear result
 				uint32	UnexpectedClear:1;	// PMA Counters unexpectedly cleared
-				// From Counters->flags above
+				// From Counters->flags
+				uint32	gotDataCntrs:1;  // Should Always be true
 				uint32	gotErrorCntrs:1; // Should Always be true for HFI
-				uint32	clearSent:1;	// PMA Counters were cleared by the PM
+				uint32  ClearSome:1;     // PMA Counters were cleared by the PM
+				uint32  ClearAll:1;
 #if PM_COMPRESS_GROUPS
 				uint32	InGroups:3;	// number of groups port is a member of
-				// 12 spare bits
+				// 5 spare bits
 #else
-				// 15 spare bits
+				// 8 spare bits
 #endif
 			} s;
 		} u;
@@ -526,10 +502,9 @@ typedef struct PmPort_s {
 		// in addition all ports are implicitly in the AllPorts group
 		PmGroup_t 	*Groups[PM_MAX_GROUPS_PER_PORT];
 		uint16_t	dgMember[MAX_DEVGROUPS];
-		PmVF_t 		*VFs[MAX_VFABRICS];
-		VlVfMap_t 	vlvfmap;
 		uint8 		numVFs;
 		vfmap_t 	vfvlmap[MAX_VFABRICS];
+		uint32_t 	vlSelectMask;
 
 		// for each group a bit is used to indicate if the given group contains
 		// both this port and its neighbor (Internal Link)
@@ -567,7 +542,7 @@ typedef struct PmPort_s {
 		// Newer tools should use this instead of PortCountersTotal
 		PmCompositePortCounters_t	StlPortCounters;	// Port Level Counters
 		PmCompositeVLCounters_t 	StlVLPortCounters[MAX_PM_VLS]; // VL Level Counters - used for VFs
-        CounterSelectMask_t 		clearSelectMask;	// what counters were cleared by PM after this image was recorded.
+		CounterSelectMask_t 		clearSelectMask;	// what counters were cleared by PM after this image was recorded.
 
 		// Use larger of Send-from and Recv-to (Send should be >= Recv)
 		// keep our output stats here and look to neighbor for other direction
@@ -583,12 +558,21 @@ typedef struct PmPort_s {
 	} Image[1];	// sized when allocate PmPort_t
 } PmPort_t;
 
-// macros to select proper Counters[] entry
-#define PM_PORT_COUNTERS(pmportp)	((pmportp)->Counters[(pmportp)->u.s.CountersIndex])
-#define PM_PORT_LAST_COUNTERS(pmportp)	((pmportp)->Counters[((pmportp)->u.s.CountersIndex^1)&1])
+#define PM_PORT_ERROR_SUMMARY(portImage, lli, ler)	((portImage)->StlPortCounters.PortRcvConstraintErrors + \
+											(portImage)->StlPortCounters.PortRcvSwitchRelayErrors + \
+											(portImage)->StlPortCounters.PortRcvSwitchRelayErrors + \
+											(portImage)->StlPortCounters.PortXmitDiscards         + \
+											(portImage)->StlPortCounters.PortXmitConstraintErrors + \
+											(portImage)->StlPortCounters.PortRcvRemotePhysicalErrors + \
+											((portImage)->StlPortCounters.LocalLinkIntegrityErrors >> (lli?(lli + RES_ADDER_LLI):0)) + \
+											(portImage)->StlPortCounters.PortRcvErrors            + \
+											(portImage)->StlPortCounters.ExcessiveBufferOverruns  + \
+											(portImage)->StlPortCounters.FMConfigErrors           + \
+											((portImage)->StlPortCounters.LinkErrorRecovery >> (ler?(ler + RES_ADDER_LER):0)) + \
+											(portImage)->StlPortCounters.LinkDowned               + \
+											(portImage)->StlPortCounters.UncorrectableErrors)
 
 typedef	struct PmPortImage_s PmPortImage_t;
-typedef struct PmAllPortCounters_s PmAllPortCounters_t;
 
 // FI port or 1st Port of switch
 #define pm_node_lided_port(pmnodep) \
@@ -624,7 +608,8 @@ typedef struct PmDispatcherPort_s {
 	PmPort_t *pmportp;
     struct PmDispatcherSwitchPort_s *dispNodeSwPort;
 	struct PmDispatcherNode_s *dispnode;	// setup once at boot
-	PmAllPortCounters_t *pCounters;
+	PmPortImage_t *pPortImage;
+	PmPortImage_t *pPortImagePrev;
 } PmDispatcherPort_t;
 
 typedef struct PmDispatcherPacket_s {
@@ -648,16 +633,6 @@ struct Pm_s;
 
 typedef struct PmDispatcherSwitchPort_s {
 	uint8	portNum;
-// RHB temporary work-around - PACK_SUFFIX not defined
-#if 0
-	STL_FIELDUNION6(flags, 8,
-				IsDispatched:1,				// Port has been dispatched
-				DoNotMerge:1,				// Query failed, retry with out mergeing to isolate port
-				NeedsClear:1,				// Replaces 256-bit mask in Node Struct.
-				NeedsError:1, 
-				Skip:1,						// Any other reason we should skip this packet. 
-				Reserved:3);
-#else
 	union {
 		uint8	AsReg8;
 		struct {
@@ -669,8 +644,6 @@ typedef struct PmDispatcherSwitchPort_s {
 				uint8	Reserved:3;
 		} s;
 	} flags;
-#endif
-
 	uint8	NumVLs;							// Number of active VLs in the Mask
 
 	uint32	VLSelectMask;					// VLSelect Mask associated with port.  
@@ -751,6 +724,7 @@ typedef struct PmImage_s {
 	uint32		SkippedNodes;	// Skipped all ports on Node
 	uint32		SkippedPorts;	// No PMA or filtered
 	uint32		UnexpectedClearPorts;	// Ports which whose counters decreased
+	uint32		DowngradedPorts; // Ports whose Link Width has been downgraded
 
 } PmImage_t;
 
@@ -759,7 +733,7 @@ typedef struct PmImage_s {
 #define PM_HISTORY_FILENAME_LEN 133
 #define PM_HISTORY_MAX_IMAGES_PER_COMPOSITE 60
 #define PM_HISTORY_MAX_LOCATION_LEN 111
-#define PM_HISTORY_VERSION 1
+#define PM_HISTORY_VERSION 3
 #define PM_MAX_COMPRESSION_DIVISIONS 32
 
 typedef struct PmCompositePort_s {
@@ -769,14 +743,20 @@ typedef struct PmCompositePort_s {
 		uint32 AsReg32;
 		struct {
 			uint32 active:1;
-			uint32 rate:5;
 			uint32 mtu:4;
+			uint32 txActiveWidth:4;
+			uint32 rxActiveWidth:4;
+			uint32 activeSpeed:2;
 			uint32 bucketComputed:1;
 			uint32 Initialized:1;
 			uint32 queryStatus:2;
 			uint32 UnexpectedClear:1;
+			uint32 gotDataCntrs:1;
+			uint32 gotErrorCntrs:1;
+			uint32 ClearSome:1;
+			uint32 ClearAll:1;
 #if PM_COMPRESS_GROUPS
-			uint32 InGroups:2;
+			uint32 InGroups:3;
 #endif
 		} s;
 	} u;
@@ -788,9 +768,8 @@ typedef struct PmCompositePort_s {
 	uint32	VFSendMBps[MAX_VFABRICS];
 	uint32	VFSendKPps[MAX_VFABRICS];
 	uint8	groups[PM_MAX_GROUPS_PER_PORT];
-	uint8	VFs[MAX_VFABRICS];
-	VlVfMap_t vlvfmap;
-	vfmap_t	vfvlmap[MAX_VFABRICS];
+	PmCompositeVfvlmap_t compVfVlmap[MAX_VFABRICS];
+	uint32 vlSelectMask;
 
 	uint32 intLinkFlags:8;
 	uint32 utilBucket:4;
@@ -877,6 +856,7 @@ typedef struct PmCompositeImage_s {
 	uint32	skippedNodes;
 	uint32	skippedPorts;
 	uint32	unexpectedClearPorts;
+	uint32  downgradedPorts;
 	uint32	numGroups;
 	uint32	numVFs;
 	uint32	numVFsActive;
@@ -1205,8 +1185,9 @@ void PmFailPacket(Pm_t *pm, PmDispatcherPacket_t *disppacket, uint8 queryStatus,
 void PmFailNode(Pm_t *pm, PmNode_t *pmnodep, uint8 queryStatus, const char* message);
 
 // pm_debug.c
-void DisplayPm(Pm_t *pm, uint32 imageIndex);
+void DisplayPm(Pm_t *pm);
 
+void ComputeBuckets(Pm_t *pm, PmPortImage_t *portImage);
 void PmFinalizePortStats(Pm_t *pm, PmPort_t *portp, uint32 index);
 boolean PmTabulatePort(Pm_t *pm, PmPort_t *portp, uint32 index,
 			   			uint32 *counterSelect);
@@ -1216,6 +1197,7 @@ void FinalizeGroupStats(PmGroupImage_t *groupImage);
 void PmClearPortImage(PmPortImage_t *portImage);
 void FinalizeVFStats(PmVFImage_t *vfImage);
 
+uint32_t PmCalculateRate(uint32_t speed, uint32_t width);
 void UpdateInGroupStats(Pm_t *pm, PmGroupImage_t *groupImage, PmPortImage_t *portImage);
 void UpdateExtGroupStats(Pm_t *pm, PmGroupImage_t *groupImage, PmPortImage_t *portImage, PmPortImage_t *portImage2);
 void UpdateVFStats(Pm_t *pm, PmVFImage_t *vfImage, PmPortImage_t *portImage);

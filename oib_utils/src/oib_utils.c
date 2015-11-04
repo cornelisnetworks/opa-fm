@@ -50,6 +50,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "oib_utils_dump_mad.h"
 #include "oib_utils_sa.h"
 #include "stl_convertfuncs.h"
+#include "iba/ib_sm.h"
 
 FILE *dbg_file = NULL;
 FILE *error_file = NULL;
@@ -88,7 +89,6 @@ static int init_sub_lib(void)
  *
  * @param port
  * @return 0 on success +ERRNO on failure
- * FIXME: we should use events from the port to make sure our cache is up to date
  */
 static int cache_port_details(struct oib_port *port)
 {
@@ -344,6 +344,193 @@ static int start_port_thread(struct oib_port *port)
     return err;
 }
 
+static int find_pkey_from_umad_port(umad_port_t *umad_port, uint16_t pkey)
+{
+    int i = -1;
+
+    if (pkey == 0xffff || pkey == 0x7fff) {
+        /* Mgmt P_Keys are to be an exact match */
+        for (i = 0; i < umad_port->pkeys_size; i++) {
+            if (umad_port->pkeys[i] == pkey)
+                goto done;
+		}
+        i = -1;
+        goto done;
+    }
+
+    for (i = 0; i < umad_port->pkeys_size; i++) {
+        if ((umad_port->pkeys[i] & OIB_PKEY_MASK) == (pkey & OIB_PKEY_MASK))
+            goto done;
+    }
+
+    i = -1;
+
+done:
+	return i;
+}
+
+/*
+ * Register to send IB DR SMAs
+ * This is used only to send DR Packets to the local ports to determine OPA
+ * support
+ */
+static int register_ib_smi_dr(int fd, uint32_t *aid)
+{
+    struct umad_reg_attr reg_attr;
+	int err;
+
+	memset(&reg_attr, 0, sizeof(reg_attr));
+	reg_attr.mgmt_class = UMAD_CLASS_SUBN_DIRECTED_ROUTE;
+    reg_attr.mgmt_class_version = 0x01;
+
+	err = umad_register2(fd, &reg_attr, aid);
+	if (err !=0 )
+		DBGPRINT("OPA Port check: SMA register failed\n");
+
+	return err;
+}
+
+/* Returns 0 (invalid base version) on error */
+static uint8_t get_base_version_from_ni(int fd, uint32_t aid, int pkey_index)
+{
+	uint8_t rc;
+    void *umad_p = NULL;
+	struct umad_smp *send_mad;
+	size_t length;
+
+    umad_p = umad_alloc(1, sizeof(*send_mad) + umad_size());
+    if (!umad_p) {
+        OUTPUT_ERROR ("can't alloc umad for OPA check; send_size %ld\n", sizeof(*send_mad));
+        return 0;
+    }
+    memset(umad_p, 0, sizeof(*send_mad) + umad_size());
+    umad_set_grh(umad_p, 0);
+
+    send_mad = umad_get_mad(umad_p);
+	send_mad->base_version = UMAD_BASE_VERSION;
+	send_mad->mgmt_class = UMAD_CLASS_SUBN_DIRECTED_ROUTE;
+	send_mad->class_version = 0x01;
+	send_mad->method = UMAD_METHOD_GET;
+	send_mad->tid = htonl(0xDEADBEEF);
+	send_mad->attr_id = htons(UMAD_SM_ATTR_NODE_INFO);
+	send_mad->dr_slid = 0xffff;
+	send_mad->dr_dlid = 0xffff;
+
+    umad_set_pkey(umad_p, pkey_index);
+    umad_set_addr(umad_p, 0xffff, 0, 0, 0);
+
+	rc = 0;
+    if (umad_send(fd, aid, umad_p, sizeof(*send_mad), 100, 1) < 0)
+		goto free_mad;
+
+	length = sizeof(*send_mad);
+	if (umad_recv(fd, umad_p, (int *)&length, 100) < 0)
+		goto free_mad;
+
+	if (length < sizeof(*send_mad))
+		goto free_mad;
+
+	if (umad_status(umad_p) != 0)
+		goto free_mad;
+
+	rc = ((NODE_INFO *)(send_mad->data))->BaseVersion;
+
+free_mad:
+	free(umad_p);
+	return rc;
+}
+
+static int port_is_opa(char *hfi_name, int port_num)
+{
+	int fd;
+	int rc;
+	int pkey_index;
+    uint32_t aid;
+	uint8_t base_version;
+	umad_port_t umad_port;
+
+	if (umad_get_port(hfi_name, port_num, &umad_port) != 0)
+		return 0;
+
+	pkey_index = find_pkey_from_umad_port(&umad_port, 0x7fff);
+	umad_release_port(&umad_port);
+
+	if (pkey_index < 0)
+		return 0;
+
+    if ((fd = umad_open_port(hfi_name, port_num)) < 0)
+		return 0;
+
+	if (register_ib_smi_dr(fd, &aid) != 0) {
+		rc = 0;
+		goto close;
+	}
+
+	base_version = get_base_version_from_ni(fd, aid, pkey_index);
+
+	umad_unregister(fd, (int)aid);
+
+	rc = (base_version == 0x80);
+
+close:
+	umad_close_port(fd);
+	return rc;
+}
+
+static int hfi_is_opa(char *hfi_name)
+{
+	return port_is_opa(hfi_name, 1);
+}
+
+int oib_get_hfi_names(char hfis[][UMAD_CA_NAME_LEN], int max)
+{
+	int i;
+	int caCount;
+	int hfiCount = 0;
+	char (*ca_names)[UMAD_CA_NAME_LEN];
+
+	ca_names = calloc(max, UMAD_CA_NAME_LEN * sizeof(char));
+
+	if (!ca_names)
+		return 0;
+
+    if ((caCount = umad_get_cas_names((void *)ca_names, max)) <= 0) {
+		hfiCount = caCount;
+		goto out;
+	}
+
+	for (i = 0; i < caCount; i++) {
+		if (hfi_is_opa(ca_names[i])) {
+			memcpy(hfis[hfiCount], ca_names[i], UMAD_CA_NAME_LEN);
+			hfiCount++;
+		}
+	}
+
+out:
+	free(ca_names);
+
+	return hfiCount;
+}
+
+static int open_first_opa_hfi(int port_num, char *hfi_name, size_t name_len)
+{
+	int ca_cnt;
+	char hfis[UMAD_MAX_DEVICES][UMAD_CA_NAME_LEN];
+
+	ca_cnt = oib_get_hfi_names(hfis, UMAD_MAX_DEVICES);
+	if (ca_cnt < 0)
+		return ca_cnt;
+
+	ca_cnt = umad_open_port(hfis[0], port_num);
+
+	if (ca_cnt >= 0) {
+		strncpy(hfi_name, hfis[0], name_len);
+		hfi_name[name_len-1] = '\0';
+	}
+
+	return ca_cnt;
+}
+
 /** ========================================================================= */
 int oib_open_port(struct oib_port **port, char *hfi_name, uint8_t port_num)
 {
@@ -363,8 +550,39 @@ int oib_open_port(struct oib_port **port, char *hfi_name, uint8_t port_num)
 		goto free_rc;
     }
 
-	strncpy(rc->hfi_name, hfi_name, sizeof(rc->hfi_name));
-	rc->hfi_name[IBV_SYSFS_NAME_MAX-1] = '\0';
+	if (!port_is_opa(hfi_name, port_num)) {
+		umad_close_port(rc->umad_fd);
+
+		if (hfi_name) {
+			OUTPUT_ERROR ("Port is not OPA (%s:%d)\n", hfi_name, port_num);
+			err = EIO;
+			goto free_rc;
+		}
+
+		/* hfi was wild carded, attempt to open the first OPA HFI */
+		rc->umad_fd = open_first_opa_hfi(port_num, rc->hfi_name, sizeof(rc->hfi_name));
+		if (rc->umad_fd < 0) {
+			OUTPUT_ERROR ("OPA port not found (%d)\n", port_num);
+			err = EIO;
+			goto free_rc;
+		}
+	} else if (!hfi_name) {
+		/* get the actual name from a null hfi_name */
+		umad_port_t umad_port;
+
+		if (umad_get_port(NULL, port_num, &umad_port) < 0) {
+			OUTPUT_ERROR ("Failed to get umad port name (<null>:%d)\n", port_num);
+			err = EIO;
+			goto close_port;
+		}
+
+		snprintf(rc->hfi_name, sizeof(rc->hfi_name), "%s", umad_port.ca_name);
+
+		umad_release_port(&umad_port);
+	} else {
+		snprintf(rc->hfi_name, sizeof(rc->hfi_name), "%s", hfi_name);
+	}
+
 	rc->hfi_port_num = port_num;
     rc->num_userspace_recv_buf = DEFAULT_USERSPACE_RECV_BUF;
     rc->num_userspace_send_buf = DEFAULT_USERSPACE_SEND_BUF;
@@ -424,7 +642,8 @@ int oib_open_port_by_num (struct oib_port **port, int hfiNum, uint8_t port_num)
 			       &ca_count, &port_count, name, &num, NULL);
     if (fstatus != FSUCCESS) {
 	    if (fstatus != FNOT_FOUND ||
-		(ca_count == 0 || port_count == 0)) {
+		(ca_count == 0 || port_count == 0) ||
+		hfiNum > ca_count || port_num > port_count) {
 		    return (EIO);
 	    }
 	    /* no active port was found for wildcard ca/port.
@@ -467,7 +686,7 @@ int oib_open_port_by_guid(struct oib_port **port, uint64_t port_guid)
 
 	if (rc == 0) {
 		(*port)->hfi_num = ca_num;
-		strncpy((*port)->hfi_name,name,IBV_SYSFS_NAME_MAX);
+		snprintf((*port)->hfi_name, IBV_SYSFS_NAME_MAX, "%s", name);
 		(*port)->hfi_port_num = num;
 		(*port)->local_gid.Type.Global.SubnetPrefix = prefix;
 		(*port)->local_gid.Type.Global.InterfaceID = port_guid;
@@ -652,6 +871,23 @@ uint32_t oib_get_port_sm_lid(struct oib_port *port)
     }
 
 	rc = port->umad_port_cache.sm_lid;
+
+    oib_unlock_sem(&port->umad_port_cache_lock);
+    return rc;
+}
+
+/** ========================================================================= */
+uint8_t oib_get_port_sm_sl(struct oib_port *port)
+{
+    uint8_t rc;
+	int err = 0;
+
+    if ((err = oib_lock_sem(&port->umad_port_cache_lock)) != 0) {
+		OUTPUT_ERROR("Cannot get port SM SL, failed to acquire lock (err: %d)\n", err);
+        return 0;
+    }
+
+	rc = port->umad_port_cache.sm_sl;
 
     oib_unlock_sem(&port->umad_port_cache_lock);
     return rc;
@@ -909,12 +1145,12 @@ int oib_bind_classes(struct oib_port *port, struct oib_class_args *mgmt_classes)
 	int rc;
     int i = 1;
 
-    if (port->umad_fd < 0) {
+    if (!port || port->umad_fd < 0) {
         OUTPUT_ERROR("Mad port is not initialized / opened\n");
         return EINVAL;
     }
 
-    while (mgmt_classes->base_version != 0) {
+    while (mgmt_classes && mgmt_classes->base_version != 0) {
         uint64_t method_mask[2];
 
 		DBGPRINT("Registering 0x%x/0x%x with umad layer\n",
@@ -1028,26 +1264,8 @@ int oib_find_pkey(struct oib_port *port, uint16_t pkey)
         return -1;
     }
 
-    if (pkey == 0xffff || pkey == 0x7fff) {
-        /* Mgmt P_Keys are to be an exact match */
-        for (i=0; i<port->umad_port_cache.pkeys_size; i++) {
-            if (port->umad_port_cache.pkeys[i] == pkey) {
-                goto unlock;
-            }
-        }
-        i = -1;
-        goto unlock;
-    }
+	i = find_pkey_from_umad_port(&port->umad_port_cache, pkey);
 
-    for (i=0; i<port->umad_port_cache.pkeys_size; i++) {
-        if ((port->umad_port_cache.pkeys[i] & OIB_PKEY_MASK) == (pkey & OIB_PKEY_MASK)) {
-            goto unlock;
-        }
-    }
-
-    i = -1;
-
-unlock:
     oib_unlock_sem(&port->umad_port_cache_lock);
     return i;
 }
@@ -1135,7 +1353,8 @@ FSTATUS oib_send_mad2(struct oib_port *port, uint8_t *send_mad, size_t send_size
     }
 
     // Initialize the user mad.
-    padded_size = (send_size+7) & ~0x7;
+    // umad has limititation that outgoing packets must be > 36 bytes.
+    padded_size = ( MAX(send_size,36) + 7) & ~0x7;
     DBGPRINT ("dlid %d qpn %d qkey %x sl %d\n", ib_lid, addr->qpn, addr->qkey, addr->sl);
     umad_p = umad_alloc(1, padded_size + umad_size());
     if (!umad_p) {
@@ -1148,27 +1367,29 @@ FSTATUS oib_send_mad2(struct oib_port *port, uint8_t *send_mad, size_t send_size
     umad_set_grh(umad_p, 0);   
 
     pkey_idx = oib_find_pkey(port, addr->pkey);
-    if ((pkey_idx < 0) && (addr->pkey==0xffff)) {
-        // ADDED BACK IN UNTIL WE DETERMINE HOW B2B SYSTEMS SHOULD WORK.
-        pkey_idx = oib_find_pkey(port, 0x7fff);
+    if (pkey_idx < 0) {
         DBGPRINT("P_Key 0x%x not found in pkey table\n", addr->pkey);
-        if (pkey_idx < 0) {
-            OUTPUT_ERROR("Failed to find 0x7fff pkey defaulting to index 1\n");
-            pkey_idx = 1;
+        if (addr->pkey == 0xffff) {
+            pkey_idx = oib_find_pkey(port, 0x7fff);
+            if (pkey_idx < 0) {
+                OUTPUT_ERROR("Failed to find 0x7fff pkey defaulting to index 1\n");
+                pkey_idx = 1;
+            } else {
+               DBGPRINT("... using 0x7fff found at index %d\n", pkey_idx);
+            }
         } else {
-            DBGPRINT("... using 0x7fff found at index %d\n", pkey_idx);
+            // Previously, this code would try to find the limited managment pkey 
+            //   if it could not find the requested pkey, and use that pkey instead.
+            // This would often "work" because all nodes should have the limited
+            //   managment pkey, but b/c it was a limited member, this would result
+            //   in potential timeouts - especially where the full managment pkey was
+            //   required.
+            // Changed this code fail immediately without retrying a new pkey.
+            OUTPUT_ERROR("Failed to find requested pkey:0x%x, class 0x%x aid:0x%x \n",
+                         addr->pkey, mclass, ntohs(mad_hdr->attr_id));
+            status = FPROTECTION;
+            goto done;
         }
-        // Previously, this code would try to find the limited managment pkey 
-        //   if it could not find the requested pkey, and use that pkey instead.
-        // This would often "work" because all nodes should have the limited
-        //   managment pkey, but b/c it was a limited member, this would result
-        //   in potential timeouts - especially where the full managment pkey was
-        //   required.
-        // Changed this code fail immediately without retrying a new pkey.
-        //OUTPUT_ERROR("Failed to find requested pkey:0x%x, class 0x%x aid:0x%x \n",
-        //             addr->pkey, mclass, ntohs(mad_hdr->attr_id));
-        //status = FPROTECTION;
-        //goto done;
     }
     umad_set_pkey(umad_p, pkey_idx);
 
@@ -1230,7 +1451,7 @@ retry:
    if (mad_agent < 0) {
       if (length <= STL_MAD_SIZE) {
 			// no MAD returned.  None available.
-            OUTPUT_ERROR ("recv error on MAD sized umad (%s) length=%ld\n",
+            DBGPRINT ("recv error on MAD sized umad (%s) length=%ld\n",
 			  strerror(errno), length);
 			if (errno == EINTR)
 				goto retry;
@@ -1344,7 +1565,7 @@ retry:
     if (mad_agent < 0) {
         if (length <= *recv_size) {
 			// no MAD returned.  None available.
-            OUTPUT_ERROR ("recv error on umad (size %zu) (%s)\n", *recv_size,
+            DBGPRINT ("recv error on umad (size %zu) (%s)\n", *recv_size,
 			  strerror(errno));
 			if (errno == EINTR)
 				goto retry;

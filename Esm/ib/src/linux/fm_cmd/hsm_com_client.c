@@ -283,8 +283,7 @@ unix_client_connect(hsm_com_client_hdl_t *hdl)
 	memset(&unix_addr,0,sizeof(unix_addr));
 
 	unix_addr.sun_family = AF_UNIX;
-	strncpy(unix_addr.sun_path, hdl->s_path, sizeof(unix_addr.sun_path));
-	unix_addr.sun_path[sizeof(unix_addr.sun_path)-1] = 0;
+	snprintf(unix_addr.sun_path, sizeof(unix_addr.sun_path), "%s", hdl->s_path);
 
 	len = SUN_LEN(&unix_addr);
 

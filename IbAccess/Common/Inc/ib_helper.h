@@ -224,7 +224,7 @@ IbMTUToText(IB_MTU mtu)
 {
 	switch ((int)mtu)
 	{
-#if !defined (VXWORKS)
+#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 		case STL_MTU_0:
 #endif
 		default:
@@ -239,7 +239,7 @@ IbMTUToText(IB_MTU mtu)
 			return "2048";
 		case IB_MTU_4096:
 			return "4096";
-#if !defined (VXWORKS)
+#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
         case STL_MTU_8192:
             return "8192";
         case STL_MTU_10240:
@@ -416,7 +416,7 @@ IbMbpsToStaticRate(uint32 rate_mbps)
 static __inline const char*
 IbLinkWidthToText(IB_LINK_WIDTH width)
 {
-	return (width == IB_LINK_WIDTH_NOP)?"Noop":
+	return (width == IB_LINK_WIDTH_NOP)?"None":
 		(width == IB_LINK_WIDTH_1X)?"1x":
 		(width == IB_LINK_WIDTH_4X)?"4x":
 		(width == IB_LINK_WIDTH_8X)?"8x":
@@ -519,7 +519,7 @@ IbBestLinkWidth(IB_LINK_WIDTH width)
 static __inline const char*
 IbLinkSpeedToText(IB_LINK_SPEED speed)
 {
-	return (speed == IB_LINK_SPEED_NOP)?"Noop":
+	return (speed == IB_LINK_SPEED_NOP)?"None":
 			(speed == IB_LINK_SPEED_2_5G)?"2.5Gb":
 			(speed == IB_LINK_SPEED_2_5G+IB_LINK_SPEED_5G)?"2.5-5Gb":
 			(speed == IB_LINK_SPEED_2_5G+IB_LINK_SPEED_10G)?"2.5,10Gb":

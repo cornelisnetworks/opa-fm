@@ -70,6 +70,15 @@ void PrintQueryResultValue(PrintDest_t *dest, int indent, PrintDest_t *dbgDest,
 		}
 		break;
 		}
+	case OutputTypeClassPortInfo:
+		{
+		IB_CLASS_PORT_INFO_RESULTS *p = (IB_CLASS_PORT_INFO_RESULTS*)pResult->QueryResult;
+		
+		/* There should never be more than 1 ClassPortInfo in the results. */
+		if (p->NumClassPortInfo)
+			PrintClassPortInfo(dest, indent, &(p->ClassPortInfo[0]));
+		break;
+		}
 	case OutputTypeStlClassPortInfo:
 		{
 		STL_CLASS_PORT_INFO_RESULT *p = (STL_CLASS_PORT_INFO_RESULT*)pResult->QueryResult;
@@ -77,6 +86,15 @@ void PrintQueryResultValue(PrintDest_t *dest, int indent, PrintDest_t *dbgDest,
 		/* There should never be more than 1 ClassPortInfo in the results. */
 		if (p->NumClassPortInfo)
 			PrintStlClassPortInfo(dest, indent, &p->ClassPortInfo);
+		break;
+		}
+	case OutputTypeStlFabricInfoRecord:
+		{
+		STL_FABRICINFO_RECORD_RESULT *p = (STL_FABRICINFO_RECORD_RESULT*)pResult->QueryResult;
+		
+		/* There should never be more than 1 FaricInfoRecord in the results. */
+		if (p->NumFabricInfoRecords)
+			PrintStlFabricInfoRecord(dest, indent, &p->FabricInfoRecord);
 		break;
 		}
 	case OutputTypeStlLid:
@@ -214,6 +232,7 @@ void PrintQueryResultValue(PrintDest_t *dest, int indent, PrintDest_t *dbgDest,
 		}
 		break;
 		}
+#ifndef NO_STL_SERVICE_OUTPUT       // Don't output STL Service if defined
 	case OutputTypeStlServiceRecord:
 		{
 		STL_SERVICE_RECORD_RESULTS *p = (STL_SERVICE_RECORD_RESULTS*)pResult->QueryResult;
@@ -224,6 +243,8 @@ void PrintQueryResultValue(PrintDest_t *dest, int indent, PrintDest_t *dbgDest,
 		}
 		break;
 		}
+#endif
+#ifndef NO_STL_MCMEMBER_OUTPUT       // Don't output STL McMember if defined
 	case OutputTypeStlMcMemberRecord:
 		{
 		STL_MCMEMBER_RECORD_RESULTS *p = (STL_MCMEMBER_RECORD_RESULTS*)pResult->QueryResult;
@@ -234,6 +255,7 @@ void PrintQueryResultValue(PrintDest_t *dest, int indent, PrintDest_t *dbgDest,
 		}
 		break;
 		}
+#endif
 	case OutputTypeMcMemberRecord:
 		{
 		MCMEMBER_RECORD_RESULTS *p = (MCMEMBER_RECORD_RESULTS*)pResult->QueryResult;
@@ -437,16 +459,6 @@ void PrintQueryResultValue(PrintDest_t *dest, int indent, PrintDest_t *dbgDest,
 		}
 		break;
 		}
-	case OutputTypeVendSwitchInfoRecord:
-		{
-		VENDSWITCHINFO_RECORD_RESULTS *p = (VENDSWITCHINFO_RECORD_RESULTS*)pResult->QueryResult;
-		for (i=0; i<p->NumVendSwitchInfoRecords; ++i)
-		{
-			if (i) PrintSeparator(dest);
-			PrintVendorSwitchInfoRecord(dest, indent, &p->VendSwitchInfoRecords[i]);
-		}
-		break;
-		}
 	case OutputTypeStlQuarantinedNodeRecord:
 		{
 		STL_QUARANTINED_NODE_RECORD_RESULTS *p = (STL_QUARANTINED_NODE_RECORD_RESULTS*)pResult->QueryResult;
@@ -552,11 +564,69 @@ void PrintQueryResultValue(PrintDest_t *dest, int indent, PrintDest_t *dbgDest,
 		}
 	case OutputTypeStlCableInfoRecord:
 		{
+		const uint32	max_records = 2;	// Max number of grouped records
+											//  NOTE that CIR.Length is 7 bits (<= 127)
 		STL_CABLE_INFO_RECORD_RESULTS *p = (STL_CABLE_INFO_RECORD_RESULTS*)pResult->QueryResult;
+		STL_CABLE_INFO_RECORD *p_rec;
+		uint32	ct_records = 0;			// Count of grouped records
+		uint8	first_addr = 0;			// First CableInfo addr in bf_cable_info
+		uint8	last_addr = 0;			// Last CableInfo addr in bf_cable_info
+		uint32	prev_lid;
+		uint8	prev_port;
+		uint8	prev_addr;
+		uint8	bf_cable_info[sizeof(STL_CABLE_INFO_RECORD) * max_records];
 		for(i = 0; i < p->NumCableInfoRecords; ++i)
 		{
-			if (i) PrintSeparator(dest);
-			PrintStlCableInfoRecord(dest, indent, &p->CableInfoRecords[i]);
+			p_rec = &p->CableInfoRecords[i];
+			// Skip unaligned or partial records
+			if ( ( (p_rec->u1.s.Address != STL_CIB_STD_START_ADDR) &&
+					(p_rec->u1.s.Address != STL_CIB_STD_START_ADDR + STL_CABLE_INFO_MAXLEN + 1) ) ||
+					(p_rec->Length != STL_CABLE_INFO_MAXLEN) )
+				continue;
+			// Group multiple records for same LID and port into one
+			if (! ct_records) {
+				// First record for LID/Port
+				memset(bf_cable_info, 0, sizeof(bf_cable_info));
+				memcpy(bf_cable_info, p_rec, sizeof(STL_CABLE_INFO_RECORD));
+				last_addr = 0;
+			}
+			else {
+				if ((p_rec->LID == prev_lid) && (p_rec->Port == prev_port) &&
+						(p_rec->u1.s.Address != prev_addr) && (ct_records < max_records)) {
+					// Subsequent record for same LID/Port
+					if (p_rec->u1.s.Address < first_addr) {
+						memmove( ((STL_CABLE_INFO_RECORD *)bf_cable_info)->Data + first_addr - p_rec->u1.s.Address,
+							((STL_CABLE_INFO_RECORD *)bf_cable_info)->Data,
+							STL_CIR_DATA_SIZE * max_records - (first_addr - p_rec->u1.s.Address) );
+						memcpy(bf_cable_info, p_rec, sizeof(STL_CABLE_INFO_RECORD));
+					}
+					else {
+						memcpy( ((STL_CABLE_INFO_RECORD *)bf_cable_info)->Data + p_rec->u1.s.Address - first_addr,
+							p_rec->Data, STL_CIR_DATA_SIZE );
+					}
+				}
+				else {
+					// Print grouped record
+					if (i - ct_records) PrintSeparator(dest);
+					PrintStlCableInfoRecord(dest, indent, (STL_CABLE_INFO_RECORD *)bf_cable_info);
+					memset(bf_cable_info, 0, sizeof(bf_cable_info));
+					memcpy(bf_cable_info, p_rec, sizeof(STL_CABLE_INFO_RECORD));
+					last_addr = 0;
+					ct_records = 0;
+				}
+			}
+			prev_lid = p_rec->LID;
+			prev_port = p_rec->Port;
+			prev_addr = p_rec->u1.s.Address;
+			if (prev_addr > last_addr)
+				last_addr = prev_addr;
+			ct_records += 1;
+			first_addr = ((STL_CABLE_INFO_RECORD *)bf_cable_info)->u1.s.Address;
+			((STL_CABLE_INFO_RECORD *)bf_cable_info)->Length = last_addr - first_addr + STL_CIR_DATA_SIZE - 1;
+		}
+		if (ct_records) {
+			if (i - ct_records) PrintSeparator(dest);
+			PrintStlCableInfoRecord(dest, indent, (STL_CABLE_INFO_RECORD *)bf_cable_info);
 		}
 		break;
 		}
@@ -597,7 +667,7 @@ int PrintQueryResult(PrintDest_t *dest, int indent, PrintDest_t *dbgDest,
 {
 	int ret = 0;
 
-	if (! pResult)
+	if (! pResult || status == FINVALID_PARAMETER)
 	{
 		PrintFunc(dest, "%*sFailed: %s\n", indent, "", iba_fstatus_msg(status));
 		// for FINVALID_PARAMETER, use special exit status

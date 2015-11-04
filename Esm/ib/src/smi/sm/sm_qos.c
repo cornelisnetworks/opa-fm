@@ -565,8 +565,8 @@ AllocateVL(uint8_t numVLs, Qos_t * qos, VirtualFabrics_t *VirtualFabrics)
     }
 
     // If we have no low and high, assign all VLs to high.
-    if ((highPrioritySCs.nset_m==0) &&
-        (lowPrioritySCs.nset_m!=0)) {
+    if ((highPrioritySCs.nset_m!=0) &&
+        (lowPrioritySCs.nset_m==0)) {
         scvlAssign(startVL, numVLs, &highPrioritySCs, qos, 1, VirtualFabrics);
         goto done;
     }
@@ -668,7 +668,7 @@ AllocateSCsForFixedMap(uint8_t numVLs, Qos_t * qos, VirtualFabrics_t *VirtualFab
     }
 
     // If we have no low and high, assign all VLs to high.
-    if ((highPrioritySLs.nset_m==0) && (lowPrioritySLs.nset_m!=0)) {
+    if ((highPrioritySLs.nset_m!=0) && (lowPrioritySLs.nset_m==0)) {
         slscFixedAssign(0, numVLs, &highPrioritySLs, qos, 1, VirtualFabrics);
         goto done;
     }
@@ -821,7 +821,7 @@ sm_setup_SC2VLFixedMap(int numMandatoryVLs, VirtualFabrics_t *VirtualFabrics)
 		//Update base_sc if this VF is active
 		uint32_t idxToUpdate;
 		if (!VirtualFabrics->v_fabric_all[i].standby) {
-			idxToUpdate = findVfIdxInActiveList(&VirtualFabrics->v_fabric_all[i], VirtualFabrics);
+			idxToUpdate = findVfIdxInActiveList(&VirtualFabrics->v_fabric_all[i], VirtualFabrics, TRUE);
 			if (idxToUpdate != -1) {
 				VirtualFabrics->v_fabric[idxToUpdate].base_sc = VirtualFabrics->v_fabric_all[i].base_sc;
 			}
@@ -1004,7 +1004,7 @@ sm_initialize_Switch_SCVLMaps(Topology_t * topop, Node_t * switchp)
     uint8_t synchModeGen1 = 1;
     Status_t status = VSTATUS_OK; 
     Node_t *neighborNodep; 
-    Port_t * out_portp,*neighborPortp, *swportp, *neighborSwPortp; 
+    Port_t * out_portp,*neighborPortp, *swportp = NULL, *neighborSwPortp = NULL; 
     STL_SCVLMAP scvlmap; 
 
     IB_ENTER(__func__, topop, switchp, 0, 0);
@@ -1050,13 +1050,13 @@ sm_initialize_Switch_SCVLMaps(Topology_t * topop, Node_t * switchp)
 
         if (!out_portp->portData->current.scvlt) {
             IB_LOG_WARN_FMT(__func__,
-                "SCVLt for node %s nodeGuid "FMT_U64" port %d is not current",
+                "SCVLt for node %s nodeGuid "FMT_U64" port %d stale, will attempt update",
                 sm_nodeDescString(switchp), switchp->nodeInfo.NodeGUID, out_portp->index);
         }
 
         if (!neighborPortp->portData->current.scvlnt) {
             IB_LOG_WARN_FMT(__func__,
-                "SCVLnt for node %s nodeGuid "FMT_U64" port %d is not current",
+                "SCVLnt for node %s nodeGuid "FMT_U64" port %d stale, will attempt update",
                 sm_nodeDescString(neighborNodep), neighborNodep->nodeInfo.NodeGUID, neighborPortp->index);
         }
 
@@ -1316,7 +1316,7 @@ sm_initialize_Node_Port_SCVLMaps(Topology_t * topop, Node_t * nodep, Port_t * in
     uint8_t synchModeGen1 = 1;
     Status_t status = VSTATUS_OK; 
     Node_t *neighborNodep; 
-    Port_t * neighborPortp,*swportp; 
+    Port_t * neighborPortp,*swportp = NULL; 
     STL_SCVLMAP scvlmap;
     STL_SCVLMAP * curScvlt, * curScvlnt;
 
@@ -1365,13 +1365,13 @@ sm_initialize_Node_Port_SCVLMaps(Topology_t * topop, Node_t * nodep, Port_t * in
 
     if (!in_portp->portData->current.scvlt) {
         IB_LOG_WARN_FMT(__func__,
-            "SCVLt for node %s nodeGuid "FMT_U64" port %d is not current",
+            "SCVLt for node %s nodeGuid "FMT_U64" port %d stale, will attempt update",
             sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, in_portp->index);
     }
 
     if (!neighborPortp->portData->current.scvlnt) {
         IB_LOG_WARN_FMT(__func__,
-            "SCVLnt for node %s nodeGuid "FMT_U64" port %d is not current",
+            "SCVLnt for node %s nodeGuid "FMT_U64" port %d stale, will attempt update",
             sm_nodeDescString(neighborNodep), neighborNodep->nodeInfo.NodeGUID, neighborPortp->index);
     }
 
@@ -2089,9 +2089,8 @@ sm_initialize_VLArbitration(Topology_t * topop, Node_t * nodep, Port_t * portp)
 
 	/* 
 	 *  Preemption table - we never set this, but we should retain what the device has stored
-	 *  for SA queries.
+	 *  for SA queries. Therefore do not overwrite what's in curArb.vlarbPre.
 	 */
-	memcpy(portp->portData->curArb.vlarbPre, arbp->vlarbPre, sizeof(arbp->vlarbPre));
 
 	/* 
 	 *  Preemption Matrix.
@@ -2218,7 +2217,7 @@ SetVlarbEntry(STL_VLARB_TABLE_ELEMENT * vlblockp, uint8_t vl, int* entry,
 
 	vlblockp[*entry].s.VL = vl;
 
-	if (!twoSlicesPerSlot) {
+	if (bwFitsInTable && !twoSlicesPerSlot) {
 		vlblockp[*entry].Weight = weight;
 		vlSlices[vl]--;
 		vlSlots[vl]--;
@@ -2269,6 +2268,7 @@ FillLowRR(Node_t * nodep, Port_t * portp, STL_VLARB_TABLE_ELEMENT * vlblockp, Qo
 	uint16_t totalSlices = 0;
 	uint16_t totalSlots = 0;
 	int bwFitsInTable = 1;
+	int bwRequiresTwoSlicesPerSlot = 0;
 	bitset_t vlsInUse;
 	bitset_t highbwVLs;
 
@@ -2281,6 +2281,14 @@ FillLowRR(Node_t * nodep, Port_t * portp, STL_VLARB_TABLE_ELEMENT * vlblockp, Qo
 	}
 
 	bitset_copy(&vlsInUse, &qos->lowPriorityVLs);
+
+	if ((qos->weightMultiplier == 5) &&
+		(portp->portData->portInfo.VL.ArbitrationLowCap < 20)) {
+		// Method expects at least 16 entries.
+		// If 5% increments are used and they do not fit in the table,
+		// 5% will get base weight and 10% will getweight*2.
+		bwRequiresTwoSlicesPerSlot = 1;
+	}
 
 	for (currentVl = bitset_find_first_one(&vlsInUse); currentVl >= 0;
 		 currentVl = bitset_find_next_one(&vlsInUse, currentVl + 1)) {
@@ -2306,7 +2314,7 @@ FillLowRR(Node_t * nodep, Port_t * portp, STL_VLARB_TABLE_ELEMENT * vlblockp, Qo
 
 		totalSlices += vlSlices[currentVl];
 
-		if (qos->weightMultiplier == 5) {
+		if (bwRequiresTwoSlicesPerSlot) {
 			vlSlots[currentVl] = vlSlices[currentVl]/2;
 			if (vlSlices[currentVl] % 2)
 				vlSlots[currentVl]++;
@@ -2316,8 +2324,8 @@ FillLowRR(Node_t * nodep, Port_t * portp, STL_VLARB_TABLE_ELEMENT * vlblockp, Qo
 		totalSlots += vlSlots[currentVl];
 	}
 
-	if (totalSlices > portp->portData->portInfo.VL.ArbitrationHighCap) {
-		if ((totalSlices / 2) > portp->portData->portInfo.VL.ArbitrationHighCap) {
+	if (totalSlices > portp->portData->portInfo.VL.ArbitrationLowCap) {
+		if ((totalSlices / 2) > portp->portData->portInfo.VL.ArbitrationLowCap) {
 			// Unexpected device (less than 16 vlarb entries) and BW configured with
 			// too small of an increment.  Disable BW and log a warning.  Will allow
 			// config to run, but QoS BW disbled on this device port.
@@ -2337,43 +2345,38 @@ FillLowRR(Node_t * nodep, Port_t * portp, STL_VLARB_TABLE_ELEMENT * vlblockp, Qo
 	currentVl = bitset_find_first_one(&vlsInUse);
 	currentEntry = 0;
 
-	while (currentEntry < portp->portData->portInfo.VL.ArbitrationHighCap) {
+	while (currentEntry < portp->portData->portInfo.VL.ArbitrationLowCap) {
 		interleave = 0;
 		for (i = bitset_find_first_one(&highbwVLs); i>=0; 
 		 	 i = bitset_find_next_one(&highbwVLs, i+1)) {
 
 			if (!interleave) {
-				interleave = (totalSlots - (bitset_nset(&highbwVLs)*vlSlots[i])) / vlSlots[i];
+				interleave = (int)(totalSlots - (bitset_nset(&highbwVLs)*vlSlots[i])) / vlSlots[i];
 			}
 
 			if (vlSlices[i] == 0)
 				break;
 
-			if (currentEntry >= portp->portData->portInfo.VL.ArbitrationHighCap)
+			if (currentEntry >= portp->portData->portInfo.VL.ArbitrationLowCap)
 				break;
 
 			SetVlarbEntry(vlblockp, i, &currentEntry, weight, bwFitsInTable,
-						  (totalSlices > portp->portData->portInfo.VL.ArbitrationHighCap),
-						  vlSlices, vlSlots, &totalSlots);
+							bwRequiresTwoSlicesPerSlot, vlSlices, vlSlots, &totalSlots);
 
-			if (!vlSlices[i]) {
+			if (!vlSlices[i] || !vlSlots[i]) {
 				bitset_clear(&highbwVLs, i);
 			}
 		}
 
 		for (i=0; i<interleave; i++) {
-			if (currentVl < 0 && bitset_nset(&highbwVLs)== 0)
+			if (currentVl < 0)
 				break;
 
-			if (currentVl < 0)
-				continue;
-
-			if (currentEntry >= portp->portData->portInfo.VL.ArbitrationHighCap)
+			if (currentEntry >= portp->portData->portInfo.VL.ArbitrationLowCap)
 				break;
 
 			SetVlarbEntry(vlblockp, currentVl, &currentEntry, weight, bwFitsInTable,
-						  (totalSlices > portp->portData->portInfo.VL.ArbitrationHighCap),
-						  vlSlices, vlSlots, &totalSlots);
+							bwRequiresTwoSlicesPerSlot, vlSlices, vlSlots, &totalSlots);
 
 			if (!vlSlices[currentVl]) {
 				bitset_clear(&vlsInUse, currentVl);
@@ -2384,8 +2387,9 @@ FillLowRR(Node_t * nodep, Port_t * portp, STL_VLARB_TABLE_ELEMENT * vlblockp, Qo
 				currentVl = bitset_find_first_one(&vlsInUse);
 			}
 		}
+
 		if (bitset_nset(&highbwVLs) == 0) {
-			if (totalSlots) {
+			if ((bitset_nset(&vlsInUse) > 0) && totalSlots) {
 				interleave = totalSlots;
 			} else {
 				 break;
@@ -2410,7 +2414,7 @@ QosFillVlarbTable(Topology_t * topop, Node_t * nodep, Port_t * portp, Qos_t * qo
 	memset(arbp->vlarbHigh, 0, sizeof(arbp->vlarbHigh));
 	memset(arbp->vlarbPre, 0, sizeof(arbp->vlarbPre));
 
-	weight = Decode_MTU_To_Int(portp->portData->mtuActive) / 64;
+	weight = Decode_MTU_To_Int(portp->portData->maxVlMtu) / 64;
 
 	// Setup high priority table.
 	// No bandwidth associated with high priority.
@@ -2482,6 +2486,17 @@ void dumpit(int32_t memSize, int16_t * pbw, uint8_t* mtu, int32_t wd, int32_t au
 
 
 #define PROTOCOL_HEADER_SIZE 128
+
+// The following defines are represented in terms of bytes
+//  and will later be converted to buffer credits.
+// [Buffer credit sizes may change in future generations]
+//
+// These defines are derived from tuning algorithms to determine the
+//  additional latency incurred from using sideband credit returns and
+//  packet credit returns.
+// The buffer allocation schemes much account for this latency.
+#define CR_LATENCY_SIDEBAND 2304   // 36 credits
+#define CR_LATENCY_PACKET 4224     // 66 credits
 
 static int bwCompare(const void * a, const void * b) { return (*(int16_t*)a - *(int16_t*)b);}
 
@@ -2704,44 +2719,84 @@ sm_initialize_Port_BfrCtrl(Topology_t * topop, Node_t * nodep, Port_t * portp,
         return (VSTATUS_BAD);
     }
 
-	// Override wire depth / replay depths from configuration.
-    if ((int32_t)(sm_config.wireDepthOverride) == -1) {
+    // Intent is to initialize the initial WireDepth if:
+    //  - First time SM is run (restart SM case, in which WD will be defaulted)
+    //  - First time encountering the port (which may be active, WD will be defaulted)
+    //  - Bounced ports (Port will be in init)
+    //  - Initial configuration (Port will be in init)
+    //
+    // We always want to use the same value for Wire Depth even though it may vary
+    // throughout the life of the connection even though the port may not bounce.
+    // This value will be the max wire depth of the port pair.
+    if ((portp->portData->initWireDepth == -1) || (portp->state == IB_PORT_INIT)){
 
-		if ((int32_t)(sm_config.replayDepthOverride) == -1) {
-			wd = BYTES_PER_LTP * MIN(portp->portData->portInfo.ReplayDepth.WireDepth, 
-									 portp->portData->portInfo.ReplayDepth.BufferDepth);
-		} else if (sm_config.replayDepthOverride == 0) {
-			wd = portp->portData->portInfo.ReplayDepth.WireDepth * BYTES_PER_LTP;
+        // Tests to override wire depth / replay depths from configuration.
+        if ((int32_t)(sm_config.wireDepthOverride) == -1) {
+            // No override for Wire depth
+            // Choose the largest LTP Round Trip among self and neighbor.
+            wd = MAX(portp->portData->portInfo.ReplayDepth.WireDepth,
+                neighborPort->portData->portInfo.ReplayDepth.WireDepth);
+            if ((int32_t)(sm_config.replayDepthOverride) == -1) {
+                // No override for Replay depth
+                // Choose the min of wire depth / replay depth, and covert to bytes.
+                wd = BYTES_PER_LTP * MIN(wd, portp->portData->portInfo.ReplayDepth.BufferDepth);
+            } else if (sm_config.replayDepthOverride == 0) {
+                // Do not consider replay depth, convert wire depth to bytes.
+                wd = wd * BYTES_PER_LTP;
+            }
+            else {
+                // Replay depth overriden.
+                // Choose the min of wire depth / replay depth, and covert to bytes.
+                wd = MIN(wd * BYTES_PER_LTP, sm_config.replayDepthOverride);
+            }
+        } else if (sm_config.wireDepthOverride == 0) {
+            // Do not consider wire depth
+            if ((int32_t)(sm_config.replayDepthOverride) == -1) {
+                // No override for replay depth. Choose replay depth; convert to bytes.
+                wd = portp->portData->portInfo.ReplayDepth.BufferDepth * BYTES_PER_LTP;
+            } else if (sm_config.replayDepthOverride == 0) {
+                // Do not consider either wire depth or replay depth from port info.
+                wd = 0;
+            } else {
+                // Replay depth overridden. (Already in bytes)
+                wd = sm_config.replayDepthOverride;
+            }
+        } else {
+            // Wire Depth overridden
+            if ((int32_t)(sm_config.replayDepthOverride) == -1) {
+                // No override for replay depth.
+                // Choose min of wire depth (override) and replay depth. Convert to bytes.
+                wd = MIN(sm_config.wireDepthOverride,
+                         portp->portData->portInfo.ReplayDepth.BufferDepth * BYTES_PER_LTP);
+            } else if (sm_config.replayDepthOverride == 0) {
+                // Do not consider replay depth; only overridden wire depth remains, already in bytes.
+                wd = sm_config.wireDepthOverride;
+            } else {
+                // Both wire depth and reply depth overridden. Choose min, already in bytes.
+                wd = MIN(sm_config.wireDepthOverride, sm_config.replayDepthOverride);
+            }
         }
-		else {
-			wd = MIN(portp->portData->portInfo.ReplayDepth.WireDepth * BYTES_PER_LTP, 
-					 sm_config.replayDepthOverride);
-		}
 
-    } else if (sm_config.wireDepthOverride == 0) {
-
-		if ((int32_t)(sm_config.replayDepthOverride) == -1) {
-			wd = portp->portData->portInfo.ReplayDepth.BufferDepth * BYTES_PER_LTP;
-		} else if (sm_config.replayDepthOverride == 0) {
-			wd = 0;
+        // Add in "Extra Credits" to account for credit return latencies.
+        // This is based on whether credits are returned in-band through idle flits
+        // or through idle packets, which is based on CRC mode.
+        // The "Extra Credits" are expressed in terms of bytes to allow for future expansion.
+        if (portp->portData->portInfo.PortLTPCRCMode.s.Active == STL_PORT_LTP_CRC_MODE_14) {
+            wd += CR_LATENCY_SIDEBAND;
         } else {
-			wd = sm_config.replayDepthOverride;
-		}
+            wd += CR_LATENCY_PACKET;
+        }
 
-	} else {
+        // Convert WD from bytes to AU's (rounding up)
+        wd = (wd + au - 1) / au;
 
-		if ((int32_t)(sm_config.replayDepthOverride) == -1) {
-			wd = MIN(sm_config.wireDepthOverride, 
-					 portp->portData->portInfo.ReplayDepth.BufferDepth * BYTES_PER_LTP);
-		} else if (sm_config.replayDepthOverride == 0) {
-			wd = sm_config.wireDepthOverride;
-        } else {
-			wd = MIN(sm_config.wireDepthOverride, sm_config.replayDepthOverride);
-		}
+        portp->portData->initWireDepth = wd;
+    } else {
+        // Assumes port state is ARMED or ACTIVE
+        // and that SM has seen this port before.
+        wd = portp->portData->initWireDepth;
+    }
 
-	}
-	// Convert WD from bytes to AU's (rounding up)
-    wd = (wd + au - 1) / au; 
 
     // Setup BW and MTU per VL based on this ports VL membership in VFs
 	topop->routingModule->funcs.select_vlvf_map(topop, nodep, portp, &vlvfmap);
@@ -2757,7 +2812,7 @@ sm_initialize_Port_BfrCtrl(Topology_t * topop, Node_t * nodep, Port_t * portp,
 			mtu[vl]=MAX(mtu[vl], VirtualFabrics->v_fabric[vf].max_mtu_int);
 			bw[vl]+= sm_VfBandwidthAllocated[vf];
         }
-		mtu[vl] = MIN(mtu[vl], portp->portData->mtuActive);
+		mtu[vl] = MIN(mtu[vl], portp->portData->maxVlMtu);
     }
 
     // Setup the buffer control map.
@@ -2864,7 +2919,7 @@ sm_node_updateFromSma_aggregate(IBhandle_t fd, uint16_t slid, Node_t * nodep, Po
         2 * stl_ReqAggrSegMem(numPorts, sizeof(STL_SCVLMAP)) + // 2 * -> SCVLt and SCVLnt
 
         // Not optimal; in the worst case, can do 2 VLArb blocks/segment
-        3 * (numPorts * (sizeof(STL_AGGREGATE) + sizeof(STL_VLARB_TABLE))); // vlarbLow, vlarbHigh, and preempt matrix use the same wire-size structure even though they are not the same size
+        4 * (numPorts * (sizeof(STL_AGGREGATE) + sizeof(STL_VLARB_TABLE))); // vlarbLow, vlarbHigh, and preempt matrix/table use the same wire-size structure even though they are not the same size
 
     STL_AGGREGATE * aggrBuffer;
     vs_pool_alloc(&sm_pool, reqMem, (void*)&aggrBuffer);
@@ -2896,6 +2951,7 @@ sm_node_updateFromSma_aggregate(IBhandle_t fd, uint16_t slid, Node_t * nodep, Po
     boolean getScvlnt = FALSE;
     boolean getVlarbLow = FALSE;
     boolean getVlarbHigh = FALSE;
+	boolean getVlarbPre = FALSE;
     boolean getVlarbMatrix = FALSE;
 
     {
@@ -2911,10 +2967,11 @@ sm_node_updateFromSma_aggregate(IBhandle_t fd, uint16_t slid, Node_t * nodep, Po
             if (portp->portData->vl0 > 1) {
                 getVlarbLow |= !portp->portData->current.vlarbLow;
                 getVlarbHigh |= !portp->portData->current.vlarbHigh;
+                getVlarbPre |=  !portp->portData->current.vlarbPre;
                 getVlarbMatrix |= !portp->portData->current.vlarbMatrix;
             }
 
-            if (getScvlt && getScvlnt && getVlarbLow && getVlarbHigh && getVlarbMatrix)
+            if (getScvlt && getScvlnt && getVlarbLow && getVlarbHigh && getVlarbPre && getVlarbMatrix)
                 break;
         }
     }
@@ -2954,9 +3011,9 @@ sm_node_updateFromSma_aggregate(IBhandle_t fd, uint16_t slid, Node_t * nodep, Po
         }
     }
 
-    const int SEC_COUNT = 3;
-    boolean getVlarb[] = { getVlarbHigh, getVlarbLow, getVlarbMatrix };
-    uint8_t vlarbSec[] = { STL_VLARB_HIGH_ELEMENTS, STL_VLARB_LOW_ELEMENTS, STL_VLARB_PREEMPT_MATRIX };
+    const int SEC_COUNT = 4;
+    boolean getVlarb[] = { getVlarbHigh, getVlarbLow, getVlarbPre, getVlarbMatrix };
+    uint8_t vlarbSec[] = { STL_VLARB_HIGH_ELEMENTS, STL_VLARB_LOW_ELEMENTS, STL_VLARB_PREEMPT_ELEMENTS, STL_VLARB_PREEMPT_MATRIX };
     int i;
     for (i = 0; i < SEC_COUNT; ++i) {
         if (!getVlarb[i])
@@ -3110,6 +3167,7 @@ sm_node_updateFromSma_solo(IBhandle_t fd, uint16_t slid, Node_t * nodep, Port_t 
     boolean getScvlnt = FALSE;
     boolean getVlarbLow = FALSE;
     boolean getVlarbHigh = FALSE;
+	boolean getVlarbPre = FALSE;
     boolean getVlarbMatrix = FALSE;
 
     Port_t * portp = NULL;
@@ -3127,10 +3185,11 @@ sm_node_updateFromSma_solo(IBhandle_t fd, uint16_t slid, Node_t * nodep, Port_t 
             if (portp->portData->vl0 > 1) {
                 getVlarbLow |= !portp->portData->current.vlarbLow;
                 getVlarbHigh |= !portp->portData->current.vlarbHigh;
+                getVlarbPre |=  !portp->portData->current.vlarbPre;
                 getVlarbMatrix |= !portp->portData->current.vlarbMatrix;
             }
 
-            if (getScvlt && getScvlnt && getVlarbLow && getVlarbHigh && getVlarbMatrix)
+            if (getScvlt && getScvlnt && getVlarbLow && getVlarbHigh && getVlarbPre && getVlarbMatrix)
                 break;
         }
     }
@@ -3185,9 +3244,9 @@ sm_node_updateFromSma_solo(IBhandle_t fd, uint16_t slid, Node_t * nodep, Port_t 
         }
     }
 
-    const int SEC_COUNT = 3;
-    boolean getVlarb[] = { getVlarbHigh, getVlarbLow, getVlarbMatrix };
-    uint8_t vlarbSec[] = { STL_VLARB_HIGH_ELEMENTS, STL_VLARB_LOW_ELEMENTS, STL_VLARB_PREEMPT_MATRIX };
+    const int SEC_COUNT = 4;
+    boolean getVlarb[] = { getVlarbHigh, getVlarbLow, getVlarbPre, getVlarbMatrix };
+    uint8_t vlarbSec[] = { STL_VLARB_HIGH_ELEMENTS, STL_VLARB_LOW_ELEMENTS, STL_VLARB_PREEMPT_ELEMENTS, STL_VLARB_PREEMPT_MATRIX };
 
     int i;
     for (i = 0; i < SEC_COUNT; ++i) {

@@ -765,6 +765,16 @@ MapItemExchange(
 	IN MAP_ITEM* const pOldItem,
 	IN MAP_ITEM* const pNewItem )
 {
+	if ( NULL == pOldItem ) {
+		ASSERT( FALSE );
+		return;
+	}
+
+	if ( NULL == pNewItem ) {
+		ASSERT( FALSE );
+		return;
+	}
+
 	*MapItemGetPtrAbove( pOldItem ) = pNewItem;
 
 	pNewItem->m_pLeft = pOldItem->m_pLeft;
@@ -797,6 +807,10 @@ MapItemInsertLeft(
 	IN MAP_ITEM* const pInsertItem,
 	IN MAP_ITEM* const pAtItem )
 {
+	if ( NULL == pAtItem ) {
+		ASSERT( FALSE );
+		return;
+	}
 	ASSERT( pAtItem->m_pLeft == NULL );
 
 	pInsertItem->m_pRight = NULL;
@@ -827,6 +841,10 @@ MapItemInsertRight(
 	IN MAP_ITEM* const pInsertItem,
 	IN MAP_ITEM* const pAtItem )
 {
+	if ( NULL == pAtItem ) {
+		ASSERT( FALSE );
+		return;
+	}
 	ASSERT( pAtItem->m_pRight == NULL );
 	pInsertItem->m_pRight = NULL;
 	pInsertItem->m_pLeft = NULL;
@@ -1335,6 +1353,10 @@ MapDoubleLeft(
 
 	// point the root to the new root
 	// and record the old balance of the new root
+	if ( NULL == pItem->m_pRight ) {
+		ASSERT( FALSE );
+		return;
+	}
 	*ppRoot = pItem->m_pRight->m_pLeft;
 	(*ppRoot)->m_pUp = pItem->m_pUp;
 
@@ -1575,7 +1597,8 @@ MapHead(
 	if( pItem )
 	{
 		pItem = MapItorProbeLeft( pItor );
-		return pItem->m_pObj;
+		if( pItem )
+			return pItem->m_pObj;
 	}
 
 	return NULL;
@@ -1648,7 +1671,8 @@ MapTail(
 	if( pItem )
 	{
 		pItem = MapItorProbeRight( pItor );
-		return pItem->m_pObj;
+		if( pItem )
+			return pItem->m_pObj;
 	}
 
 	return NULL;
@@ -1944,11 +1968,11 @@ uint32 MapConsoleDumpDepth(	IN const MAP_ITEM* const pItem,
 		{
 			if( CurrentDepth < 4 )
 				// show balance in addition to key
-				sprintf( Num, "%"PRIx64"[%d,%d,%d,%d]", pItem->m_Key,
+				snprintf( Num, sizeof(Num) - 1, "%"PRIx64"[%d,%d,%d,%d]", pItem->m_Key,
 					pItem->m_DLMin, pItem->m_DLMax,
 					pItem->m_DRMin, pItem->m_DRMax );
 			else
-				sprintf( Num, "%"PRIx64, pItem->m_Key );
+				snprintf( Num, sizeof(Num) - 1, "%"PRIx64, pItem->m_Key );
 
 			Width = strlen( Num );
 			// compensate if width is not an even number

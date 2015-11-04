@@ -154,9 +154,10 @@ sub install_opafm
 	rpm_run_install($rpmfile, "user", "-U");
 	$rpmfile = rpm_resolve("$srcdir/RPMS/*/", "user", "opa-fm-debuginfo");
 	if ($rpmfile) {
-		rpm_run_install($rpmfile, "user", "-U");
+		rpm_run_install($rpmfile, "user", " -U ");
 	}
 
+	check_rpm_config_file("$CONFIG_DIR/opafm.xml");
 	check_dir("/opt/opa");
 	copy_systool_file("$srcdir/comp.pl", "/opt/opa/.comp_opafm.pl");
 
@@ -180,7 +181,6 @@ sub uninstall_opafm
 	my $install_list = $_[0];	# total that will be left installed when done
 	my $uninstalling_list = $_[1];	# what items are being uninstalled
 
-	my $driver_subdir=$ComponentInfo{'qlgc_fm'}{'DriverSubdir'};
 	my $driver_subdir=$ComponentInfo{'opafm'}{'DriverSubdir'};
 	NormalPrint("Uninstalling $ComponentInfo{'opafm'}{'Name'}...\n");
 

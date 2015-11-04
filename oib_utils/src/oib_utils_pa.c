@@ -131,7 +131,7 @@ struct oib_rmpp_md
     uint8_t     oui[3];
 };
 
-static uint8_t ib_qlogic_oui[] = {OUI_QLOGIC_0, OUI_QLOGIC_1, OUI_QLOGIC_2};
+static uint8_t ib_truescale_oui[] = {OUI_TRUESCALE_0, OUI_TRUESCALE_1, OUI_TRUESCALE_2};
 
 static const char* const pa_query_input_type_text[] = 
 {
@@ -734,7 +734,7 @@ oib_send_pa_mad(
     rmpp_md.data_size = snddatalen;
     /* STL PA class (VFI PM) uses same data offset as STL SA class */
     rmpp_md.dataoffs = offsetof(struct umad_sa_packet, data);
-    memcpy(&rmpp_md.oui, &ib_qlogic_oui, 3);
+    memcpy(&rmpp_md.oui, &ib_truescale_oui, 3);
 
     DBGPRINT("class 0x%x method 0x%x attr 0x%x mod 0x%x data_size %d off %d res_ex %d\n",
              rmpp_md.mgtclass, rmpp_md.method, rmpp_md.attr_id, rmpp_md.attr_mod,
@@ -1168,11 +1168,11 @@ iba_pa_single_mad_clr_port_counters_response_query(
     }
 
     p = (STL_CLR_PORT_COUNTERS_DATA *)request_data;
-    p->nodeLid = node_lid;
-    p->portNumber = port_number;
-    p->counterSelectMask.AsReg32 = select;
-	p->counterSelectMask.s.reserved = 0;
-	memset(p->reserved, 0, sizeof(p->reserved));
+    p->NodeLid = node_lid;
+    p->PortNumber = port_number;
+    p->CounterSelectMask.AsReg32 = select;
+	p->CounterSelectMask.s.Reserved = 0;
+	memset(p->Reserved, 0, sizeof(p->Reserved));
     BSWAP_STL_PA_CLR_PORT_COUNTERS(p);
 
     DBGPRINT("Sending Get Single Record request\n");
@@ -1271,8 +1271,8 @@ iba_pa_single_mad_clr_all_port_counters_response_query(
     }
 
     p = (STL_CLR_ALL_PORT_COUNTERS_DATA *)request_data;
-    p->counterSelectMask.AsReg32 = select;
-	p->counterSelectMask.s.reserved = 0;
+    p->CounterSelectMask.AsReg32 = select;
+	p->CounterSelectMask.s.Reserved = 0;
 	BSWAP_STL_PA_CLR_ALL_PORT_COUNTERS(p);
 
     DBGPRINT("Sending Get Single Record request\n");
@@ -2580,7 +2580,7 @@ iba_pa_multi_mad_vf_info_response_query(
     uint8_t                     *data;
     int                         rcv_buf_len = DEF_BUF_DATA_SIZE; 
     int                         snd_buf_len = DEF_BUF_DATA_SIZE;
-    char                        request_data[PA_REQ_HEADER_SIZE + 88] = {0}; //80 = VFName + vfSID + ImageID
+    char                        request_data[PA_REQ_HEADER_SIZE + 88] = {0}; //80 = VFName + reserved + ImageID
     STL_PA_VF_INFO_DATA         *pa_data;
     STL_PA_VF_INFO_DATA         *p;
     STL_PA_VF_INFO_RESULTS      *pa_result;
@@ -3347,7 +3347,7 @@ oib_pa_client_init(
     mgmt_class[0].is_report_client = 0;
     mgmt_class[0].kernel_rmpp = 1; // TODO: determine if this should be 0
     mgmt_class[0].use_methods = 0;
-    mgmt_class[0].oui = ib_qlogic_oui;
+    mgmt_class[0].oui = ib_truescale_oui;
 
     if ((err = oib_bind_classes(*port, mgmt_class)) != 0) 
     {
@@ -3420,7 +3420,7 @@ oib_pa_client_init_by_guid(
     mgmt_class[0].is_report_client = 0;
     mgmt_class[0].kernel_rmpp = 1;
     mgmt_class[0].use_methods = 0;
-    mgmt_class[0].oui = ib_qlogic_oui;
+    mgmt_class[0].oui = ib_truescale_oui;
 
     if ((err = oib_bind_classes(*port, mgmt_class)) != 0) 
     {
@@ -4594,6 +4594,7 @@ pa_client_get_port_stats(
         DBGPRINT( "\tLinkErrorRecovery = %u\n", response->linkErrorRecovery);	// 32 bit
         DBGPRINT("\tLinkDowned = %u\n", response->linkDowned);	// 32 bit
         DBGPRINT("\tUncorrectableErrors = %u\n", response->uncorrectableErrors); // 8 bit
+        DBGPRINT("\tNumLanesDown = %u\n", response->lq.s.numLanesDown);
         DBGPRINT("\tLinkQualityIndicator = %u\n", response->lq.s.linkQualityIndicator);
         if (pm_image_id_resp)
             *pm_image_id_resp = response->imageId;
@@ -4706,7 +4707,6 @@ pa_client_get_vf_port_stats(
 				 (user_cntrs?"User":"PM"), (delta?"Delta":"Total"), lid, port_num,
 				 response->flags & STL_PA_PC_FLAG_UNEXPECTED_CLEAR?" (Unexpected Clear)":"" );
         DBGPRINT("\tvfName = %s\n", response->vfName);
-        DBGPRINT("\tvfSID = %"PRIu64"\n", response->vfSID);
         DBGPRINT("\tXmitData = %" PRIu64 "\n", response->portVFXmitData);
         DBGPRINT("\tRcvData = %" PRIu64 "\n", response->portVFRcvData);
         DBGPRINT("\tXmitPkts = %" PRIu64 "\n", response->portVFXmitPkts);

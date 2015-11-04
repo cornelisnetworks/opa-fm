@@ -275,8 +275,6 @@ int IB2STL_PORT_INFO(PORT_INFO *pIb, STL_PORT_INFO *pStl)
 		uint8	Timeout:	5;
 #else
 		uint8	Timeout:	5;	/* Timer value used for subnet timeout  */
-								/* value, a multiple of 96us.  */
-								/* unit is 96 ms  */
 		uint8	Reserved:	2;
 		uint8	ClientReregister:	1;
 #endif

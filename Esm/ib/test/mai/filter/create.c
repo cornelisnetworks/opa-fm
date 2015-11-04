@@ -505,7 +505,7 @@ MAIN(int argc, char *argv[])
 		      break;
 		  default:
 		      {
-			  printf("ERROR: %d - Unkown filter test mode\n",
+			  printf("ERROR: %d - Unknown filter test mode\n",
 			       mode);
 			  EXIT(-1);
 		      }
@@ -1926,7 +1926,7 @@ MAIN(int argc, char *argv[])
 			default:
 			    {
 				printf
-				    ("ERROR: %d - Unkown filter test mode\n",
+				    ("ERROR: %d - Unknown filter test mode\n",
 				     mode);
 				EXIT(-1);
 			    }

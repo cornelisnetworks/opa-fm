@@ -77,7 +77,7 @@ iba_get_caguids_alloc(
 		goto done;
 	}
 
-	if (CaCount <= 0) {
+	if (*CaCount <= 0) {
 		_DBG_INFO(("No CA reported by GetCaGuids\n"));
 		Status = FSUCCESS;
 		goto done;
@@ -232,7 +232,7 @@ FSTATUS iba_get_ca_portguid(
 
 	_DBG_INFO(("iba_get_ca_portguid: Ca 0x%016"PRIx64"\n", caGuid));
 
-	memset(&caAttribs, 0, sizeof(IB_CA_ATTRIBUTES));
+	memset(&caAttribs, 0, sizeof(caAttribs));
 	caAttribs.PortAttributesList = NULL;
 
 	status = iba_query_ca_by_guid_alloc(caGuid, &caAttribs);
@@ -332,7 +332,7 @@ FSTATUS iba_get_portguid(
 	_DBG_INFO(("iba_get_portguid: ca %u, port %u\n", ca, port));
 
 	status = iba_get_caguids_alloc(&caCount, &caGuids);
-	if (status != FSUCCESS)
+	if ((status != FSUCCESS) || (caGuids == NULL))
 		goto done;
 	if (pCaCount)
 		*pCaCount = caCount;
@@ -582,14 +582,14 @@ FSTATUS iba_find_gid(
 	)
 {
 	uint32	CaCount;
-	EUI64	*CaGuidList;
+	EUI64	*CaGuidList = NULL;
 	FSTATUS status;
 	uint32 i;
 
 	_DBG_ENTER_FUNC(iba_find_gid);
 
 	status = iba_get_caguids_alloc(&CaCount, &CaGuidList);
-	if (status != FSUCCESS)
+	if ((status != FSUCCESS) || (CaGuidList == NULL))
 		goto done;
 
 	for (i=0; i<CaCount; ++i)

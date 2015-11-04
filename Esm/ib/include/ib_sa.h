@@ -224,7 +224,6 @@ typedef	struct {
 #define	SA_SARESPONSE		0x8001	// Container for query responses
 #define SA_VFABRIC_RECORD	0xFF02  // "Vendor unique" vfabric record
 #define SA_JOB_MANAGEMENT	0xFFB2  // job management extensions
-#define	SA_VENDORSWITCH_RECORD	0xFFB3	// VendorSwitchInfo record
 
 // IBTA:  Volume 1, Section 15.2.5.1
 
@@ -531,7 +530,7 @@ typedef	struct {
 #define MR_COMPONENTMASK_INDEP_SEL  0x0000000000020000ull
 
 //
-//	VIEO specific SA records.
+//	OPA specific internal SA records.
 //
 //	***** WARNING ***** WARNING ***** WARNING ***** WARNING *****
 //
@@ -541,15 +540,15 @@ typedef	struct {
 //
 
 //
-//	VieoServiceRecord_t - This is the same as the original with a
+//	OpaServiceRecord_t - This is the same as the original with a
 //			      timestamp appended.
 //
 typedef	struct {
 	STL_SERVICE_RECORD	serviceRecord;	
 	uint64_t			expireTime;	
 	uint8_t				pkeyDefined;// was the record created using pkey mask?
-} VieoServiceRecord_t;
-typedef VieoServiceRecord_t * VieoServiceRecordp; /* pointer to record */
+} OpaServiceRecord_t;
+typedef OpaServiceRecord_t * OpaServiceRecordp; /* pointer to record */
 
 /*
  * subscriber table (informInfo)

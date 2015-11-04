@@ -128,7 +128,7 @@ $WrapperComponent = "opa_config_omnipath";
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
-	"mvapich2_gcc_hfi" =>	{ Name => "MVAPICH2 (hfi, gcc)",
+	"mvapich2_gcc_hfi" =>	{ Name => "MVAPICH2 (hfi,gcc)",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "",
 					  PreReq => " intel_hfi ", CoReq => "",
@@ -137,7 +137,7 @@ $WrapperComponent = "opa_config_omnipath";
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
-	"mvapich2_pgi_hfi" =>	{ Name => "MVAPICH2 (hfi, PGI)",
+	"mvapich2_pgi_hfi" =>	{ Name => "MVAPICH2 (hfi,PGI)",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "",
 					  PreReq => " intel_hfi ", CoReq => "",
@@ -146,7 +146,7 @@ $WrapperComponent = "opa_config_omnipath";
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
-	"mvapich2_intel_hfi" =>	{ Name => "MVAPICH2 (hfi, Intel)",
+	"mvapich2_intel_hfi" =>	{ Name => "MVAPICH2 (hfi,Intel)",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "",
 					  PreReq => " intel_hfi ", CoReq => "",
@@ -155,7 +155,7 @@ $WrapperComponent = "opa_config_omnipath";
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
-	"openmpi_gcc_hfi" =>	{ Name => "OpenMPI (hfi, gcc)",
+	"openmpi_gcc_hfi" =>	{ Name => "OpenMPI (hfi,gcc)",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "",
 					  PreReq => " intel_hfi ", CoReq => "",
@@ -164,7 +164,7 @@ $WrapperComponent = "opa_config_omnipath";
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
-	"openmpi_pgi_hfi" =>	{ Name => "OpenMPI (hfi, PGI)",
+	"openmpi_pgi_hfi" =>	{ Name => "OpenMPI (hfi,PGI)",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "",
 					  PreReq => " intel_hfi ", CoReq => "",
@@ -173,7 +173,7 @@ $WrapperComponent = "opa_config_omnipath";
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
-	"openmpi_intel_hfi" =>	{ Name => "OpenMPI (hfi, Intel)",
+	"openmpi_intel_hfi" =>	{ Name => "OpenMPI (hfi,Intel)",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "",
 					  PreReq => " intel_fhi ", CoReq => "",
@@ -328,7 +328,7 @@ sub verify_distrib
 sub Usage
 {
 	if ( $allow_install ) {
-		printf STDERR "Usage: $0 [-r root] [-v|-vv] [-a|-U|-u|-i comp|-e comp] [--without-depcheck] [--force] [--answer keyword=value]\n";
+		printf STDERR "Usage: $0 [-r root] [-v|-vv] [-a|-U|-u|-O|-N|-i comp|-e comp] [--without-depcheck] [--force] [--answer keyword=value]\n";
 	} else {
 		printf STDERR "Usage: $0 [-r root] [-v|-vv] [-u|-e comp] [--answer keyword=value]\n";
 	}
@@ -347,6 +347,8 @@ sub Usage
 	 	printf STDERR "       --without-depcheck - disable check of OS dependencies\n";
 		printf STDERR "       --force - force install even if distos don't match\n";
 		printf STDERR "                 Use of this option can result in undefined behaviors\n";
+		printf STDERR "       -O - Keep current modified rpm config file\n";
+		printf STDERR "       -N - Use new default rpm config file\n";
 	}
 	printf STDERR "       -u - uninstall all ULPs and drivers with default options\n";
 	#printf STDERR "       -s - enable autostart for all installed drivers\n";
@@ -517,6 +519,12 @@ sub process_args
 				} elsif ( "$arg" eq "-U" ) {
 					$Default_Upgrade=1;
 					$Default_SameAutostart=1;
+				} elsif ("$arg" eq "-O") {
+					$Default_RpmConfigKeepOld=1;
+					$Default_RpmConfigUseNew=0;
+				} elsif ("$arg" eq "-N") {
+					$Default_RpmConfigKeepOld=0;
+					$Default_RpmConfigUseNew=1;
 				} else {
 					printf STDERR "Invalid option: $arg\n";
 					Usage;

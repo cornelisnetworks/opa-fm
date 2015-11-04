@@ -30,7 +30,7 @@
 #[ICS VERSION STRING: unknown]
 Name: opa-fm
 Version: 10.0.0.0
-Release: 438
+Release: 625
 Summary: Intel Omni-Path Fabric Management Software
 
 Group: System Environment/Daemons
@@ -39,20 +39,22 @@ Url: http://www.intel.com/
 Source0: %{name}.tar.gz
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
+Requires: rdma
+
 #BuildRequires: libibverbs-devel >= 1.1-1, libibumad-devel, libibmad-devel
 AutoReq: no
-if 0%{?rhel}
-Requires(post): expat libibmad, libibumad, libibverbs
-%else
-Requires(post): expat libibmad5, libibumad, libibverbs1
-%endif
-%if 0%{?suse_version} >= 1210 || 0%{?rhel} >= 7
-BuildRequires: expat-devel systemd %{?systemd_requires}
-BuildRequires: systemd %{?systemd_requires}
-Requires(post): systemd %{?systemd_requires}
-Requires(preun): systemd %{?systemd_requires}
-%else
+%if 0%{?rhel}
 BuildRequires: expat-devel
+Requires: expat, libibmad, libibumad, libibverbs
+%else
+Requires: libexpat1, libibmad5, libibumad, libibverbs1
+BuildRequires: libexpat-devel
+%endif
+
+%if 0%{?suse_version} >= 1210 || 0%{?rhel} >= 7
+BuildRequires: systemd %{?systemd_requires} %{?BuildRequires}
+Requires: systemd %{?systemd_requires}
+%else
 Requires(post): /sbin/chkconfig
 Requires(preun): /sbin/chkconfig
 %endif
@@ -77,11 +79,11 @@ fi
 ./fmbuild -V %{version}.%{release} 
 
 %install
-install -D -m 755 stage.rpm/opafm.service $RPM_BUILD_ROOT/usr/lib/systemd/system/opafm.service
+install -D -m 644 stage.rpm/opafm.service $RPM_BUILD_ROOT/usr/lib/systemd/system/opafm.service
 install -D -m 755 stage.rpm/opafmctrl.sh $RPM_BUILD_ROOT/opt/opafm/bin/opafmctrl.sh
 install -D -m 755 stage.rpm/opafmd $RPM_BUILD_ROOT/opt/opafm/bin/opafmd
 
-%if 0%{?rhel} < 7
+%if 0%{?rhel} && 0%{?rhel} < 7
 install -D -m 755 stage.rpm/opafm $RPM_BUILD_ROOT%{_sysconfdir}/init.d/opafm
 %endif
 
@@ -142,7 +144,7 @@ fi
 %defattr(-,root,root,-)
 %doc Esm/README 
 
-%if 0%{?rhel} < 7
+%if 0%{?rhel} && 0%{?rhel} < 7
 %{_sysconfdir}/init.d/opafm
 %endif
 

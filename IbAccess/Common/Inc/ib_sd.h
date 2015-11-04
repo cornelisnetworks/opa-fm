@@ -408,7 +408,7 @@ typedef enum  _QUERY_RESULT_TYPE
 	OutputTypeVLArbTableRecord,		/* VLARBTABLE_RECORD_RESULTS is set of VL Arbitration records */
 	OutputTypePKeyTableRecord,		/* PKEYTABLE_RECORD_RESULTS is set of VL Arbitration records */
 	OutputTypeVfInfoRecord,			/* VF_RECORD_RESULTS is set of VF info records */
-	OutputTypeVendSwitchInfoRecord,	/* VENDSWITCHINFO_RECORD_RESULTS is set of vendor sw info records */
+	OutputTypeClassPortInfo,		
 
     /* PA query results */
 	OutputTypePaRecord,             /* PA_PACKET_RESULTS complete PA SinglePacketRespRecords */
@@ -632,14 +632,11 @@ typedef struct _VF_RECORD_RESULTS  {
 	VEND_VFINFO_RECORD	VfInfoRecords[1];   /* list of VF Info records returned */
 } VF_RECORD_RESULTS, *PVF_RECORD_RESULTS;
 
-typedef struct _VENDSWITCHINFO_RECORD_RESULTS  {
-    uint32 			    NumVendSwitchInfoRecords;   /* Number of VendSwitchInfoRecords returned */
-	IB_VENDSWITCHINFO_RECORD 	VendSwitchInfoRecords[1];   /* list of Vendor Switch Info records returned */
-} VENDSWITCHINFO_RECORD_RESULTS, *PVENDSWITCHINFO_RECORD_RESULTS;
+typedef struct _IB_CLASS_PORT_INFO_RESULTS  {
+    uint32 			    NumClassPortInfo;   /* Number of records returned */
+	IB_CLASS_PORT_INFO	ClassPortInfo[1];   /* list of records returned */
+} IB_CLASS_PORT_INFO_RESULTS, *PIB_CLASS_PORT_INFO_RESULTS;
 
-
-
-
 /* ===========================================================================
  * FabricOperation
  * Data structures used to manage records in the SA/SM via Set or Delete

@@ -119,6 +119,9 @@ cleanup:
 		if (hdl->recv_buf) {
 			free(hdl->recv_buf);
 		}
+		if (hdl->send_buf) {
+			free(hdl->send_buf);
+		}
 		free(hdl);
 	}
 

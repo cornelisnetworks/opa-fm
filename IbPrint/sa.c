@@ -461,8 +461,3 @@ void PrintVfInfoCSV2(PrintDest_t *dest, int indent, const VEND_VFINFO_RECORD *pV
 				pVfInfo->s1.rateSpecified ? pVfInfo->s1.rate:0);
 }
 
-void PrintVendorSwitchInfoRecord(PrintDest_t *dest, int indent, const IB_VENDSWITCHINFO_RECORD *pVendSwitchInfoRecord)
-{
-	PrintVendorSwitchInfo(dest, indent, &pVendSwitchInfoRecord->VendSwitchInfoData,
-				pVendSwitchInfoRecord->RID.s.LID);
-}

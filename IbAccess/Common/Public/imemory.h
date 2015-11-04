@@ -79,7 +79,9 @@ MemoryDisplayUsage( int method, uint32 minSize, uint32 minTick );
 #else
 #if defined(VXWORKS) && 0 /* change 0 to 1 to enable memory tracking in VXWORKS */
 	#define MEM_TRACK_ON 
-	#define MALLOC_TRACK_ON
+	#if !defined(MALLOC_TRACK_ON)
+		#define MALLOC_TRACK_ON
+	#endif
 #endif
 #endif /* defined( _DEBUG ) */
 

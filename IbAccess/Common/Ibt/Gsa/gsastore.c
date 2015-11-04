@@ -278,7 +278,8 @@ CreateDgrmPool(
 				}	// j loop
 				
 				// Delink previous buffer
-				pPrevBuffer->pNextBuffer = NULL;
+				if (pPrevBuffer)
+					pPrevBuffer->pNextBuffer = NULL;
 
 				// Do not update context info if zero
 				if ( 0 != ContextSize )
@@ -314,7 +315,8 @@ CreateDgrmPool(
 			}	// i loop
 
 			// Delink next for last element
-			pPrevDgrmElement->Element.pNextElement = NULL;
+			if (pPrevDgrmElement)
+				pPrevDgrmElement->Element.pNextElement = NULL;
 
 		} else {
 			//

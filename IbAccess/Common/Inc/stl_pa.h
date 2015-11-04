@@ -36,6 +36,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "iba/public/ibyteswap.h"
 #include "iba/ib_generalServices.h"
 #include "iba/ib_pa.h"
+#include "iba/stl_pm.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -93,13 +94,9 @@ typedef struct _STL_PA_PM_Error_Summary {
 	uint32					securityErrors;
 	uint32					routingErrors;
 
-	uint16					congInefficiencyPct10;		/* in units of 10% */
-	uint16					waitInefficiencyPct10;      /* in units of 10% */
-	uint16					bubbleInefficiencyPct10;    /* in units of 10% */
-	uint16					discardsPct10;              /* in units of 10% */
-	uint16					congestionDiscardsPct10;    /* in units of 10% */
-	uint16					utilizationPct10;           /* in units of 10% to help with context of above */
-	uint32					reserved;
+	uint16					utilizationPct10; /* in units of 10% */
+	uint16					discardsPct10;    /* in units of 10% */
+	uint16					reserved[6];
 } PACK_SUFFIX STL_PA_PM_ERROR_SUMMARY;
 
 typedef struct _STL_PMERRTHRESHOLDSTRUCT {
@@ -162,10 +159,10 @@ typedef struct _STL_PA_Group_Cfg_Rsp {
 
 
 // STL_PORT_COUNTERS_DATA.flags
-#define STL_PA_PC_FLAG_DELTA			0x00000001	// are these DELTA(1) or running totals
-#define STL_PA_PC_FLAG_UNEXPECTED_CLEAR 0x00000002	// was there an unexpected clear
-#define STL_PA_PC_FLAG_SHARED_VL        0x00000004	// for vf port counters, vl is shared >1 vf
-#define STL_PA_PC_FLAG_USER_COUNTERS	0x00000008	// for PA user controlled running counters
+#define STL_PA_PC_FLAG_DELTA            0x00000001 // are these DELTA(1) or running totals
+#define STL_PA_PC_FLAG_UNEXPECTED_CLEAR 0x00000002 // was there an unexpected clear
+#define STL_PA_PC_FLAG_SHARED_VL        0x00000004 // for vf port counters, vl is shared >1 vf
+#define STL_PA_PC_FLAG_USER_COUNTERS    0x00000008 // for PA user controlled running counters
 
 typedef struct _STL_PORT_COUNTERS_DATA {
 	uint32				nodeLid;
@@ -173,6 +170,8 @@ typedef struct _STL_PORT_COUNTERS_DATA {
 	uint8				reserved[3];
 	uint32				flags;
 	uint32				reserved1;
+	uint64				reserved3;
+	STL_PA_IMAGE_ID_DATA imageId;
 	uint64				portXmitData;
 	uint64				portRcvData;
 	uint64				portXmitPkts;
@@ -202,88 +201,25 @@ typedef struct _STL_PORT_COUNTERS_DATA {
 	uint8				uncorrectableErrors;
 	union {
 		uint8			AsReg8;
-		struct {		IB_BITFIELD2(uint8,
-						  reserved : 5,
-						  linkQualityIndicator : 3)
+		struct {		IB_BITFIELD3(uint8,
+						numLanesDown : 4,
+						reserved : 1,
+						linkQualityIndicator : 3)
 		} PACK_SUFFIX s;
 	} lq;
 	uint8				reserved2[6];
-	STL_PA_IMAGE_ID_DATA imageId;
 } PACK_SUFFIX STL_PORT_COUNTERS_DATA;
 
 typedef struct _STL_CLR_PORT_COUNTERS_DATA {
-	uint32		nodeLid;
-	uint8		portNumber;
-	uint8		reserved[3];
-	union {
-		uint32	AsReg32;
-		struct { IB_BITFIELD28(uint32,
-			portXmitData : 1,
-			portRcvData : 1,
-			portXmitPkts : 1,
-			portRcvPkts : 1,
-			portXmitMulticastPkts : 1,
-			portRcvMulticastPkts : 1,
-			localLinkIntegrityErrors : 1,
-			fmConfigErrors : 1,
-			portRcvErrors : 1,
-			excessiveBufferOverruns : 1,
-			portRcvConstraintErrors : 1,
-			portRcvSwitchRelayErrors : 1,
-			portXmitDiscards : 1,
-			portXmitConstraintErrors : 1,
-			portRcvRemotePhysicalErrors : 1,
-			swPortCongestion : 1,
-			portXmitWait : 1,
-			portRcvFECN : 1,
-			portRcvBECN : 1,
-			portXmitTimeCong : 1,
-			portXmitWastedBW : 1,
-			portXmitWaitData : 1,
-			portRcvBubble : 1,
-			portMarkFECN : 1,
-			linkErrorRecovery : 1,
-			linkDowned : 1,
-			uncorrectableErrors : 1,
-			reserved : 5)
-		} PACK_SUFFIX s;
-	} counterSelectMask;
+	uint32		NodeLid;
+	uint8		PortNumber;
+	uint8		Reserved[3];
+	uint64		Reserved2;
+	CounterSelectMask_t CounterSelectMask;
 } PACK_SUFFIX STL_CLR_PORT_COUNTERS_DATA;
 
 typedef struct _STL_CLR_ALL_PORT_COUNTERS_DATA {
-	union {
-		uint32	AsReg32;
-		struct { IB_BITFIELD28(uint32,
-			portXmitData : 1,
-			portRcvData : 1,
-			portXmitPkts : 1,
-			portRcvPkts : 1,
-			portXmitMulticastPkts : 1,
-			portRcvMulticastPkts : 1,
-			localLinkIntegrityErrors : 1,
-			fmConfigErrors : 1,
-			portRcvErrors : 1,
-			excessiveBufferOverruns : 1,
-			portRcvConstraintErrors : 1,
-			portRcvSwitchRelayErrors : 1,
-			portXmitDiscards : 1,
-			portXmitConstraintErrors : 1,
-			portRcvRemotePhysicalErrors : 1,
-			swPortCongestion : 1,
-			portXmitWait : 1,
-			portRcvFECN : 1,
-			portRcvBECN : 1,
-			portXmitTimeCong : 1,
-			portXmitWastedBW : 1,
-			portXmitWaitData : 1,
-			portRcvBubble : 1,
-			portMarkFECN : 1,
-			linkErrorRecovery : 1,
-			linkDowned : 1,
-			uncorrectableErrors : 1,
-			reserved : 5)
-		} PACK_SUFFIX s;
-	} counterSelectMask;
+	CounterSelectMask_t CounterSelectMask;
 } PACK_SUFFIX STL_CLR_ALL_PORT_COUNTERS_DATA;
 
 typedef struct _STL_INTEGRITY_WEIGHTS {
@@ -294,7 +230,9 @@ typedef struct _STL_INTEGRITY_WEIGHTS {
 	uint8					LinkDowned;
 	uint8					UncorrectableErrors;
 	uint8					FMConfigErrors;
-	uint8					reserved;
+	uint8					LinkQualityIndicator;
+	uint8					LinkWidthDowngrade;
+	uint8					reserved[7];
 } PACK_SUFFIX STL_INTEGRITY_WEIGHTS_T;
 
 typedef struct _STL_PM_ERR_THRESHOLDS {
@@ -395,7 +333,6 @@ typedef struct _STL_FOCUS_PORTS_REQ {
 	uint32					range;
 } PACK_SUFFIX STL_FOCUS_PORTS_REQ;
 
-// TBD is value2 always guid?
 typedef struct _STL_FOCUS_PORTS_RSP {
 	STL_PA_IMAGE_ID_DATA	imageId;
 	uint32					nodeLid;
@@ -404,7 +341,7 @@ typedef struct _STL_FOCUS_PORTS_RSP {
 	uint8					mtu;	// enum IB_MTU - 4 bit value
 	uint8					reserved;
 	uint64					value;		// list sorting factor
-	uint64					value2;		// good place for GUID
+	uint64					nodeGUID;
 	char					nodeDesc[STL_PM_NODEDESCLEN]; // \0 terminated.
 	uint32					neighborLid;
 	uint8					neighborPortNumber;
@@ -451,7 +388,7 @@ typedef struct _STL_PA_VF_LIST {
 
 typedef struct _STL_PA_VF_INFO_DATA {
 	char					vfName[STL_PM_VFNAMELEN];	// \0 terminated
-	uint64					vfSID;
+	uint64					reserved;
 	STL_PA_IMAGE_ID_DATA	imageId;
 	uint32					numPorts;
 	STL_PA_PM_UTIL_STATS	internalUtilStats;
@@ -465,7 +402,7 @@ typedef struct _STL_PA_VF_INFO_DATA {
 
 typedef struct _STL_PA_VF_Cfg_Req {
 	char					vfName[STL_PM_VFNAMELEN]; // \0 terminated 
-	uint64					vfSID;
+	uint64					reserved;
 	STL_PA_IMAGE_ID_DATA	imageId;
 } PACK_SUFFIX STL_PA_VF_CFG_REQ;
 
@@ -484,8 +421,9 @@ typedef struct _STL_PA_VF_PORT_COUNTERS_DATA {
 	uint8				reserved[3];
 	uint32				flags;
 	uint32				reserved1;
+	uint64				reserved3;
 	char				vfName[STL_PM_VFNAMELEN]; // \0 terminated 
-	uint64				vfSID;
+	uint64				reserved2;
 	STL_PA_IMAGE_ID_DATA imageId;
 	uint64				portVFXmitData;
 	uint64				portVFRcvData;
@@ -528,15 +466,16 @@ typedef struct _STL_PA_CLEAR_VF_PORT_COUNTERS_DATA {
 	uint32		nodeLid;
 	uint8		portNumber;
 	uint8		reserved[3];
+	uint64		reserved4;
 	char		vfName[STL_PM_VFNAMELEN]; // \0 terminated 
-	uint64		vfSID;
+	uint64		reserved3;
 	STLVlCounterSelectMask vfCounterSelectMask;
-	uint32	reserved2;
+	uint32	        reserved2;
 } PACK_SUFFIX STL_PA_CLEAR_VF_PORT_COUNTERS_DATA;
 
 typedef struct _STL_PA_VF_FOCUS_PORTS_REQ {
 	char				vfName[STL_PM_VFNAMELEN]; // \0 terminated 
-	uint64				vfSID;
+	uint64				reserved;
 	STL_PA_IMAGE_ID_DATA imageId;
 	uint32				select;
 	uint32				start;
@@ -551,7 +490,7 @@ typedef struct _STL_PA_VF_FOCUS_PORTS_RSP {
 	uint8					mtu;	// enum IB_MTU - 4 bit value
 	uint8					reserved;
 	uint64					value;		// list sorting factor
-	uint64					value2;		// good place for GUID
+	uint64					nodeGUID;
 	char					nodeDesc[STL_PM_NODEDESCLEN]; // \0 terminated.
 	uint32					neighborLid;
 	uint8					neighborPortNumber;
@@ -825,12 +764,8 @@ BSWAP_STL_PA_PM_GROUP_INFO(STL_PA_PM_GROUP_INFO_DATA *pRecord, boolean isRequest
 	pRecord->internalErrors.errorMaximums.securityErrors			= ntoh32(pRecord->internalErrors.errorMaximums.securityErrors);
 	pRecord->internalErrors.errorMaximums.routingErrors				= ntoh32(pRecord->internalErrors.errorMaximums.routingErrors);
 
-	pRecord->internalErrors.errorMaximums.congInefficiencyPct10		= ntoh16(pRecord->internalErrors.errorMaximums.congInefficiencyPct10);
-	pRecord->internalErrors.errorMaximums.waitInefficiencyPct10		= ntoh16(pRecord->internalErrors.errorMaximums.waitInefficiencyPct10);
-	pRecord->internalErrors.errorMaximums.bubbleInefficiencyPct10	= ntoh16(pRecord->internalErrors.errorMaximums.bubbleInefficiencyPct10);
-	pRecord->internalErrors.errorMaximums.discardsPct10				= ntoh16(pRecord->internalErrors.errorMaximums.discardsPct10);
-	pRecord->internalErrors.errorMaximums.congestionDiscardsPct10	= ntoh16(pRecord->internalErrors.errorMaximums.congestionDiscardsPct10);
-	pRecord->internalErrors.errorMaximums.utilizationPct10			= ntoh16(pRecord->internalErrors.errorMaximums.utilizationPct10);
+        pRecord->internalErrors.errorMaximums.utilizationPct10 = ntoh16(pRecord->internalErrors.errorMaximums.utilizationPct10);
+        pRecord->internalErrors.errorMaximums.discardsPct10    = ntoh16(pRecord->internalErrors.errorMaximums.discardsPct10);
 
 	for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
 		pRecord->internalErrors.ports[i].integrityErrors			= ntoh32(pRecord->internalErrors.ports[i].integrityErrors);
@@ -847,13 +782,11 @@ BSWAP_STL_PA_PM_GROUP_INFO(STL_PA_PM_GROUP_INFO_DATA *pRecord, boolean isRequest
 	pRecord->externalErrors.errorMaximums.bubbleErrors				= ntoh32(pRecord->externalErrors.errorMaximums.bubbleErrors);
 	pRecord->externalErrors.errorMaximums.securityErrors			= ntoh32(pRecord->externalErrors.errorMaximums.securityErrors);
 	pRecord->externalErrors.errorMaximums.routingErrors				= ntoh32(pRecord->externalErrors.errorMaximums.routingErrors);
-	pRecord->externalErrors.errorMaximums.congInefficiencyPct10     = ntoh16(pRecord->externalErrors.errorMaximums.congInefficiencyPct10);
-	pRecord->externalErrors.errorMaximums.waitInefficiencyPct10     = ntoh16(pRecord->externalErrors.errorMaximums.waitInefficiencyPct10);
-	pRecord->externalErrors.errorMaximums.bubbleInefficiencyPct10   = ntoh16(pRecord->externalErrors.errorMaximums.bubbleInefficiencyPct10);
-	pRecord->externalErrors.errorMaximums.discardsPct10             = ntoh16(pRecord->externalErrors.errorMaximums.discardsPct10);
-	pRecord->externalErrors.errorMaximums.congestionDiscardsPct10   = ntoh16(pRecord->externalErrors.errorMaximums.congestionDiscardsPct10);
-	pRecord->externalErrors.errorMaximums.utilizationPct10          = ntoh16(pRecord->externalErrors.errorMaximums.utilizationPct10);
-	for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
+
+        pRecord->externalErrors.errorMaximums.utilizationPct10 = ntoh16(pRecord->externalErrors.errorMaximums.utilizationPct10);
+        pRecord->externalErrors.errorMaximums.discardsPct10    = ntoh16(pRecord->externalErrors.errorMaximums.discardsPct10);
+
+        for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
 		pRecord->externalErrors.ports[i].integrityErrors			= ntoh32(pRecord->externalErrors.ports[i].integrityErrors);
 		pRecord->externalErrors.ports[i].congestionErrors			= ntoh32(pRecord->externalErrors.ports[i].congestionErrors);
 		pRecord->externalErrors.ports[i].smaCongestionErrors		= ntoh32(pRecord->externalErrors.ports[i].smaCongestionErrors);
@@ -905,12 +838,12 @@ BSWAP_STL_PA_PORT_COUNTERS(STL_PORT_COUNTERS_DATA *pRecord)
 	pRecord->portMulticastRcvPkts				= ntoh64(pRecord->portMulticastRcvPkts);
 	pRecord->localLinkIntegrityErrors			= ntoh64(pRecord->localLinkIntegrityErrors);
 	pRecord->fmConfigErrors						= ntoh64(pRecord->fmConfigErrors);
-	pRecord->portRcvErrors						= ntoh16(pRecord->portRcvErrors);
-	pRecord->excessiveBufferOverruns			= ntoh16(pRecord->excessiveBufferOverruns);
-	pRecord->portRcvConstraintErrors			= ntoh16(pRecord->portRcvConstraintErrors);
-	pRecord->portRcvSwitchRelayErrors			= ntoh16(pRecord->portRcvSwitchRelayErrors);
-	pRecord->portXmitDiscards					= ntoh16(pRecord->portXmitDiscards);
-	pRecord->portXmitConstraintErrors			= ntoh32(pRecord->portXmitConstraintErrors);
+	pRecord->portRcvErrors						= ntoh64(pRecord->portRcvErrors);
+	pRecord->excessiveBufferOverruns			= ntoh64(pRecord->excessiveBufferOverruns);
+	pRecord->portRcvConstraintErrors			= ntoh64(pRecord->portRcvConstraintErrors);
+	pRecord->portRcvSwitchRelayErrors			= ntoh64(pRecord->portRcvSwitchRelayErrors);
+	pRecord->portXmitDiscards					= ntoh64(pRecord->portXmitDiscards);
+	pRecord->portXmitConstraintErrors			= ntoh64(pRecord->portXmitConstraintErrors);
 	pRecord->portRcvRemotePhysicalErrors		= ntoh64(pRecord->portRcvRemotePhysicalErrors);
 	pRecord->swPortCongestion					= ntoh64(pRecord->swPortCongestion);
 	pRecord->portXmitWait						= ntoh64(pRecord->portXmitWait);
@@ -931,8 +864,8 @@ static __inline void
 BSWAP_STL_PA_CLR_PORT_COUNTERS(STL_CLR_PORT_COUNTERS_DATA *pRecord)
 {
 #if CPU_LE
-	pRecord->nodeLid							= ntoh32(pRecord->nodeLid);
-	pRecord->counterSelectMask.AsReg32			= ntoh32(pRecord->counterSelectMask.AsReg32);
+	pRecord->NodeLid							= ntoh32(pRecord->NodeLid);
+	pRecord->CounterSelectMask.AsReg32			= ntoh32(pRecord->CounterSelectMask.AsReg32);
 #endif /* CPU_LE */
 }
 
@@ -940,7 +873,7 @@ static __inline void
 BSWAP_STL_PA_CLR_ALL_PORT_COUNTERS(STL_CLR_ALL_PORT_COUNTERS_DATA *pRecord)
 {
 #if CPU_LE
-	pRecord->counterSelectMask.AsReg32			= ntoh32(pRecord->counterSelectMask.AsReg32);
+	pRecord->CounterSelectMask.AsReg32			= ntoh32(pRecord->CounterSelectMask.AsReg32);
 #endif /* CPU_LE */
 }
 
@@ -989,7 +922,7 @@ BSWAP_STL_PA_FOCUS_PORTS_RSP(STL_FOCUS_PORTS_RSP *pRecord)
 	pRecord->value						= ntoh64(pRecord->value);
 	pRecord->neighborLid				= ntoh32(pRecord->neighborLid);
 	pRecord->neighborValue				= ntoh64(pRecord->neighborValue);
-	pRecord->value2						= ntoh64(pRecord->value2);
+	pRecord->nodeGUID					= ntoh64(pRecord->nodeGUID);
 	pRecord->neighborGuid				= ntoh64(pRecord->neighborGuid);
 	BSWAP_STL_PA_IMAGE_ID(&pRecord->imageId);
 #endif /* CPU_LE */
@@ -1001,21 +934,21 @@ BSWAP_STL_PA_IMAGE_INFO(STL_PA_IMAGE_INFO_DATA *pRecord)
 #if CPU_LE
 	int i;
 	BSWAP_STL_PA_IMAGE_ID(&pRecord->imageId);
-	pRecord->sweepStart					= ntoh64(pRecord->sweepStart);
-	pRecord->sweepDuration				= ntoh32(pRecord->sweepDuration);
-	pRecord->numHFIPorts				= ntoh16(pRecord->numHFIPorts);
-	pRecord->numSwitchNodes				= ntoh16(pRecord->numSwitchNodes);
-	pRecord->numSwitchPorts				= ntoh32(pRecord->numSwitchPorts);
-	pRecord->numLinks					= ntoh32(pRecord->numLinks);
-	pRecord->numSMs						= ntoh32(pRecord->numSMs);
-	pRecord->numFailedNodes				= ntoh32(pRecord->numFailedNodes);
-	pRecord->numFailedPorts				= ntoh32(pRecord->numFailedPorts);
-	pRecord->numSkippedNodes			= ntoh32(pRecord->numSkippedNodes);
-	pRecord->numSkippedPorts			= ntoh32(pRecord->numSkippedPorts);
-	pRecord->numUnexpectedClearPorts	= ntoh32(pRecord->numUnexpectedClearPorts);
+	pRecord->sweepStart              = ntoh64(pRecord->sweepStart);
+	pRecord->sweepDuration           = ntoh32(pRecord->sweepDuration);
+	pRecord->numHFIPorts             = ntoh16(pRecord->numHFIPorts);
+	pRecord->numSwitchNodes          = ntoh16(pRecord->numSwitchNodes);
+	pRecord->numSwitchPorts          = ntoh32(pRecord->numSwitchPorts);
+	pRecord->numLinks                = ntoh32(pRecord->numLinks);
+	pRecord->numSMs                  = ntoh32(pRecord->numSMs);
+	pRecord->numFailedNodes          = ntoh32(pRecord->numFailedNodes);
+	pRecord->numFailedPorts          = ntoh32(pRecord->numFailedPorts);
+	pRecord->numSkippedNodes         = ntoh32(pRecord->numSkippedNodes);
+	pRecord->numSkippedPorts         = ntoh32(pRecord->numSkippedPorts);
+	pRecord->numUnexpectedClearPorts = ntoh32(pRecord->numUnexpectedClearPorts);
 	for (i = 0; i < 2; i++) {
-		pRecord->SMInfo[i].lid			= ntoh32(pRecord->SMInfo[i].lid);
-		pRecord->SMInfo[i].smPortGuid	= ntoh64(pRecord->SMInfo[i].smPortGuid);
+		pRecord->SMInfo[i].lid        = ntoh32(pRecord->SMInfo[i].lid);
+		pRecord->SMInfo[i].smPortGuid = ntoh64(pRecord->SMInfo[i].smPortGuid);
 	}
 #endif /* CPU_LE */
 }
@@ -1041,7 +974,6 @@ BSWAP_STL_PA_VF_INFO(STL_PA_VF_INFO_DATA *pRecord, boolean isRequest)
 {
 #if CPU_LE
 	int i;
-	pRecord->vfSID			 				= ntoh64(pRecord->vfSID);
 	BSWAP_STL_PA_IMAGE_ID(&pRecord->imageId);
 
 	if (isRequest) return;
@@ -1067,12 +999,8 @@ BSWAP_STL_PA_VF_INFO(STL_PA_VF_INFO_DATA *pRecord, boolean isRequest)
 	pRecord->internalErrors.errorMaximums.securityErrors			= ntoh32(pRecord->internalErrors.errorMaximums.securityErrors);
 	pRecord->internalErrors.errorMaximums.routingErrors				= ntoh32(pRecord->internalErrors.errorMaximums.routingErrors);
 
-	pRecord->internalErrors.errorMaximums.congInefficiencyPct10     = ntoh16(pRecord->internalErrors.errorMaximums.congInefficiencyPct10);
-	pRecord->internalErrors.errorMaximums.waitInefficiencyPct10     = ntoh16(pRecord->internalErrors.errorMaximums.waitInefficiencyPct10);
-	pRecord->internalErrors.errorMaximums.bubbleInefficiencyPct10   = ntoh16(pRecord->internalErrors.errorMaximums.bubbleInefficiencyPct10);
-	pRecord->internalErrors.errorMaximums.discardsPct10             = ntoh16(pRecord->internalErrors.errorMaximums.discardsPct10);
-	pRecord->internalErrors.errorMaximums.congestionDiscardsPct10   = ntoh16(pRecord->internalErrors.errorMaximums.congestionDiscardsPct10);
-	pRecord->internalErrors.errorMaximums.utilizationPct10          = ntoh16(pRecord->internalErrors.errorMaximums.utilizationPct10);
+        pRecord->internalErrors.errorMaximums.utilizationPct10 = ntoh16(pRecord->internalErrors.errorMaximums.utilizationPct10);
+        pRecord->internalErrors.errorMaximums.discardsPct10    = ntoh16(pRecord->internalErrors.errorMaximums.discardsPct10);
 
 	for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
 		pRecord->internalErrors.ports[i].integrityErrors			= ntoh32(pRecord->internalErrors.ports[i].integrityErrors);
@@ -1091,7 +1019,6 @@ static __inline void
 BSWAP_STL_PA_VF_CFG_REQ(STL_PA_VF_CFG_REQ *pRecord)
 {
 #if CPU_LE
-	pRecord->vfSID							= ntoh64(pRecord->vfSID);
 	BSWAP_STL_PA_IMAGE_ID(&pRecord->imageId);
 #endif /* CPU_LE */
 }
@@ -1112,7 +1039,6 @@ BSWAP_STL_PA_VF_PORT_COUNTERS(STL_PA_VF_PORT_COUNTERS_DATA *pRecord)
 #if CPU_LE
 	pRecord->nodeLid							= ntoh32(pRecord->nodeLid);
 	pRecord->flags								= ntoh32(pRecord->flags);
-	pRecord->vfSID								= ntoh64(pRecord->vfSID);
 	pRecord->portVFXmitData						= ntoh64(pRecord->portVFXmitData);
 	pRecord->portVFRcvData						= ntoh64(pRecord->portVFRcvData);
 	pRecord->portVFXmitPkts						= ntoh64(pRecord->portVFXmitPkts);
@@ -1136,7 +1062,6 @@ BSWAP_STL_PA_CLEAR_VF_PORT_COUNTERS(STL_PA_CLEAR_VF_PORT_COUNTERS_DATA *pRecord)
 {
 #if CPU_LE
 	pRecord->nodeLid							= ntoh32(pRecord->nodeLid);
-	pRecord->vfSID								= ntoh64(pRecord->vfSID);
 	pRecord->vfCounterSelectMask.AsReg32		= ntoh32(pRecord->vfCounterSelectMask.AsReg32);
 #endif /* CPU_LE */
 }
@@ -1145,7 +1070,6 @@ static __inline void
 BSWAP_STL_PA_VF_FOCUS_PORTS_REQ(STL_PA_VF_FOCUS_PORTS_REQ *pRecord)
 {
 #if CPU_LE
-	pRecord->vfSID						= ntoh64(pRecord->vfSID);
 	pRecord->select						= ntoh32(pRecord->select);
 	pRecord->start						= ntoh32(pRecord->start);
 	pRecord->range						= ntoh32(pRecord->range);
@@ -1161,7 +1085,7 @@ BSWAP_STL_PA_VF_FOCUS_PORTS_RSP(STL_PA_VF_FOCUS_PORTS_RSP *pRecord)
 	pRecord->value						= ntoh64(pRecord->value);
 	pRecord->neighborLid				= ntoh32(pRecord->neighborLid);
 	pRecord->neighborValue				= ntoh64(pRecord->neighborValue);
-	pRecord->value2						= ntoh64(pRecord->value2);
+	pRecord->nodeGUID					= ntoh64(pRecord->nodeGUID);
 	pRecord->neighborGuid				= ntoh64(pRecord->neighborGuid);
 	BSWAP_STL_PA_IMAGE_ID(&pRecord->imageId);
 #endif /* CPU_LE */

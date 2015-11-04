@@ -39,35 +39,30 @@ use strict;
 # The functions and constants below assist in editing hotplug and blacklists
 # to prevent autoloading of drivers prior to startup scripts
 
-#my $HOTPLUG_BLACKLIST_PREFIX = "";
-#my $HOTPLUG_BLACKLIST_SPACE = "";
-#my $HOTPLUG_BLACKLIST_SPACE_WILDCARD = "";
-#my $HOTPLUG_BLACKLIST_FILE = "/etc/hotplug/blacklist";
 my $HOTPLUG_HARDWARE_DIR = "/etc/sysconfig/hardware";
-#if (-f "/etc/modprobe.d/blacklist")
-#{
-#	$HOTPLUG_BLACKLIST_FILE = "/etc/modprobe.d/blacklist";
-#	$HOTPLUG_BLACKLIST_PREFIX = "blacklist";
-#	$HOTPLUG_BLACKLIST_SPACE = " ";
-#	$HOTPLUG_BLACKLIST_SPACE_WILDCARD = "[ 	]*";
-#}
-#if (-f "/etc/modprobe.d/blacklist.conf")
-#{
-#	$HOTPLUG_BLACKLIST_FILE = "/etc/modprobe.d/blacklist.conf";
-#	$HOTPLUG_BLACKLIST_PREFIX = "blacklist";
-#	$HOTPLUG_BLACKLIST_SPACE = " ";
-#	$HOTPLUG_BLACKLIST_SPACE_WILDCARD = "[ 	]*";
-#}
-#if (! -f "$HOTPLUG_BLACKLIST_FILE")
-#{
-	# if not existing file on OS, use this location and create empty file
-	# code in add_blacklist depends on pre-existance of file
-	my $HOTPLUG_BLACKLIST_FILE = "/etc/modprobe.d/opa-blacklist.conf";
-	my $HOTPLUG_BLACKLIST_PREFIX = "blacklist";
-	my $HOTPLUG_BLACKLIST_SPACE = " ";
-	my $HOTPLUG_BLACKLIST_SPACE_WILDCARD = "[ 	]*";
-	system(">> $HOTPLUG_BLACKLIST_FILE");
-#}
+
+# if not existing file on OS, use this location and create empty file
+# code in add_blacklist depends on pre-existance of file
+my $HOTPLUG_BLACKLIST_FILE = "/etc/modprobe.d/opa-blacklist.conf";
+my $HOTPLUG_BLACKLIST_PREFIX = "blacklist";
+my $HOTPLUG_BLACKLIST_SPACE = " ";
+my $HOTPLUG_BLACKLIST_SPACE_WILDCARD = "[ 	]*";
+
+# check if the module is blacklisted
+sub is_blacklisted($)
+{
+	my $module = shift();
+
+	my $file = "${ROOT}${HOTPLUG_BLACKLIST_FILE}";
+	my $found;
+
+	if (! -f "$file")
+	{
+		return 0;
+	}
+
+	return ! system("grep $module $file");
+}
 
 # add to list to prevent automatic hotplug of driver
 sub add_blacklist($)
@@ -77,9 +72,11 @@ sub add_blacklist($)
 	my $file = "${ROOT}${HOTPLUG_BLACKLIST_FILE}";
 	my $found;
 
-	if (! -f "$file")
+	if (! -e "$file")
 	{
-		return;
+		system("touch $file"); # Blacklist file missing, let's create it.
+	} elsif (! -f "$file") {
+		return; # Blacklist file exists but is not regular file, abort.
 	}
 	open (INPUT, "$file");
 	open (OUTPUT, ">>$TMP_CONF");
@@ -142,5 +139,8 @@ sub remove_blacklist($)
 	close (INPUT);
 	close (OUTPUT);
 	system "mv $TMP_CONF $file";
+	if ( -z "$file" ) {
+	   system("rm -f $file"); # blacklist file is empty, remove it.
+	}
 }
 

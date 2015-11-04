@@ -80,10 +80,11 @@ extern "C" {
 
 #define IB_MAD_BLOCK_SIZE			256
 
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #if !defined(STL_MAD_BLOCK_SIZE)
 #define STL_MAD_BLOCK_SIZE			2048
 #endif
+
+#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #define MAD_BLOCK_SIZE				STL_MAD_BLOCK_SIZE
 #else
 #define MAD_BLOCK_SIZE				IB_MAD_BLOCK_SIZE

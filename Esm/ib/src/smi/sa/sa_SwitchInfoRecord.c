@@ -43,7 +43,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //									     //
 // FUNCTIONS								     //
 //    sa_SwitchInfoRecord						     //
-//    sa_VendorSwitchInfoRecord						     //
 //									     //
 // DEPENDENCIES								     //
 //    ib_mad.h								     //

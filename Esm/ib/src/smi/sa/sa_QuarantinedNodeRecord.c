@@ -139,7 +139,7 @@ static Status_t sa_QuarantinedNodeRecord_GetTable(Mai_t *maip, uint32_t *records
 
 static Status_t sa_QuarantinedNodeRecord_BuildRecord(uint8_t *cp, QuarantinedNode_t *nodep)
 {
-	STL_QUARANTINED_NODE_RECORD qnRecord;
+	STL_QUARANTINED_NODE_RECORD qnRecord = { 0 };
 
 	IB_ENTER("sa_QuarantinedNodeRecord_BuildRecord", cp, nodep, 0, 0);
 

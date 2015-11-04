@@ -226,6 +226,7 @@ sm_counter_t smCounters[smCountersMax] = {
 	[smCounterSaRxGetMultiPathRecord]   = { "SA RX GETMULTI(MultiPathRecord)", 0, 0, 0 },
 	[smCounterSaRxGetVfRecord]			= { "SA RX GET(vFabricRecord)", 0, 0, 0 },
 	[smCounterSaRxGetTblVfRecord]		= { "SA RX GETTBL(vFabricRecord)", 0, 0, 0 },
+	[smCounterSaRxGetFabricInfoRecord]			= { "SA RX GET(FabricInfoRecord)", 0, 0, 0 },
 
 	[smCounterSaRxGetTblQuarantinedNodeRecord] = { "SA RX GETTBL(QuarantinedNodeRecord)", 0, 0, 0 },
 	[smCounterSaRxGetCongInfoRecord] = { "SA RX GET(CongInfoRecord)", 0, 0, 0 }, 

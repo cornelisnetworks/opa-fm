@@ -90,6 +90,8 @@ static const char * conditionStrings[CSM_COND_MAX] = {
 	"#15 SM standby virtual fabric configuration inconsistency",
 	"#16 BM secondary configuration inconsistency",
 	"#17 PM secondary configuration inconsistency",
+	"#18 Master SM deactivating standby that is not responding",
+
 };
 
 

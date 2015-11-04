@@ -67,10 +67,7 @@ my $DAT_CONF_FILE_SOURCE = "dat.conf";
 my $NETWORK_CONF_DIR = "/etc/sysconfig/network-scripts";
 my $ROOT = "/";	# TBD prepared to make this "" removes some // prompts and logs
 
-my $BIN_DIR;
-if ( "$BIN_DIR" eq "" ) {
-	$BIN_DIR = "/usr/sbin";
-}
+my $BIN_DIR = "/usr/sbin";
 
 #This string is compared in verify_os_rev for correct revision of
 #kernel release.
@@ -207,6 +204,7 @@ sub os_vendor_version($)
 	my $vendor = shift();
 
 	my $rval = "";
+	my $mn = "";
 	if ($vendor eq "apple") {
 		$rval=`sw_vers -productVersion|cut -f1-2 -d.`;
 		chop($rval);
@@ -242,8 +240,14 @@ sub os_vendor_version($)
 			# Red Hat Enterprise Linux Server release $a.$b (name)
 			#PR 110926
 			$rval=`cat /etc/redhat-release | cut -d' ' -f7 | cut -d'.' -f1`;
+			$mn=`cat /etc/redhat-release | cut -d' ' -f7 | cut -d'.' -f2`;
 			chop($rval);
-			$rval="ES".$rval;
+			if (($rval >= 7) && ($mn > 0)){
+				chomp($mn);
+				$rval=join "","ES","$rval","$mn";
+			} else {
+				$rval="ES".$rval;
+			}
 		} else {
 			$rval=`cat /etc/redhat-release | cut -d' ' -f5`;
 			chop($rval);

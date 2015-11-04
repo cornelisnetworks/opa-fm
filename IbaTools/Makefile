@@ -35,7 +35,6 @@ DS_SUBPROJECTS	=
 DSP_SOURCES = Makefile
 
 DIRS			= \
-				$(shell ls -d bsd_ping 2>/dev/null) \
 				$(shell ls -d disable_ports 2>/dev/null) \
 				$(shell ls -d FastFabric 2>/dev/null) \
 				$(shell ls -d fabric_info 2>/dev/null) \

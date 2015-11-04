@@ -1,4 +1,3 @@
-
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
 Copyright (c) 2015, Intel Corporation
@@ -35,11 +34,14 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <unistd.h>
 #include <errno.h>
 #include <ctype.h>
+#include <time.h>
 #include <iba/ibt.h>
 #include <stdarg.h>
 #include "stl_print.h"
 #include <iba/stl_helper.h>
 #include <iba/stl_sa.h>
+
+#define SIZE_TIME 256   // used in buffer to generate time string for output
 
 void
 PrintStlNodeRecord(PrintDest_t * dest, int indent,
@@ -74,6 +76,8 @@ PrintStlPortInfoRecord(PrintDest_t * dest, int indent,
 					   const STL_PORTINFO_RECORD * pPortInfoRecord)
 {
 	const STL_PORT_INFO *pPortInfo = &pPortInfoRecord->PortInfo;
+	char buffer[SIZE_TIME];      // Buffer for formatting time output
+	struct tm *loctime;          // Time structure to convert into human readable time
 
 	PrintFunc(dest,
 			  "%*sPortLID:       0x%08x        PortNum:   0x%02x (%2u)\n",
@@ -103,11 +107,19 @@ PrintStlPortInfoRecord(PrintDest_t * dest, int indent,
 			}
 			uint8 ldr = pPortInfoRecord->LinkDownReasons[startIdx].LinkDownReason;
 			uint8 nldr = pPortInfoRecord->LinkDownReasons[startIdx].NeighborLinkDownReason;
-			uint64 ts = pPortInfoRecord->LinkDownReasons[startIdx].Timestamp;
-			PrintFunc(dest, "%*sLinkDownErrorLog: %2d (%20s) Time: 0x%016" PRIx64 "\n",
-				indent, "", ldr, StlLinkDownReasonToText(ldr), ts);
-			PrintFunc(dest, "%*sNeighborLinkDownErrorLog: %2d (%20s) Time: 0x%016" PRIx64 "\n",
-				indent, "", nldr, StlLinkDownReasonToText(nldr), ts);
+			time_t ts = (time_t) pPortInfoRecord->LinkDownReasons[startIdx].Timestamp;
+
+			loctime=localtime(&ts);    // convert timestamp into time structure
+                        if (loctime == NULL) {     // ensure we have a valid time back
+			  strncpy(buffer, "N/A", SIZE_TIME);
+			}
+                        else {
+			  strftime(buffer, SIZE_TIME, "%B %d, %I:%M:%S %p",loctime);   // generate time string
+                        }
+			PrintFunc(dest, "%*sLinkDownErrorLog: %2d (%20s) Time: %s \n",
+				indent, "", ldr, StlLinkDownReasonToText(ldr), buffer);
+			PrintFunc(dest, "%*sNeighborLinkDownErrorLog: %2d (%20s) Time: %s\n",
+				indent, "", nldr, StlLinkDownReasonToText(nldr), buffer);
 			if (++startIdx >= STL_NUM_LINKDOWN_REASONS) {
 				startIdx = 0;
 			}
@@ -325,21 +337,22 @@ void PrintStlVfInfoRecord(PrintDest_t *dest, int indent, const STL_VFINFO_RECORD
 				(pVfInfo->optionFlags&OPT_VF_QOS) ? "QoS " : "",
 				(pVfInfo->optionFlags&OPT_VF_FLOW_DISABLE) ? "FlowCtrlDisable" : "");
 
+	FormatTimeoutMult(buf, pVfInfo->hoqLife);
 	if (pVfInfo->optionFlags&OPT_VF_QOS) {
 		if (pVfInfo->priority) {
 			if (pVfInfo->bandwidthPercent) {
-				PrintFunc(dest,"%*sQOS: Bandwidth: %3d%%  Priority: %s\n",
-					indent, "", pVfInfo->bandwidthPercent, "high");
+				PrintFunc(dest,"%*sQOS: Bandwidth: %3d%%  Priority: %s  PreemptionRank: %u  HoQLife: %s\n",
+					indent, "", pVfInfo->bandwidthPercent, "high", pVfInfo->preemptionRank, buf);
 			} else {
-				PrintFunc(dest,"%*sQOS: HighPriority\n", indent, "");
+				PrintFunc(dest,"%*sQOS: HighPriority  PreemptionRank: %u  HoQLife: %s\n", indent, "", pVfInfo->preemptionRank, buf);
 			}
 		} else {
-			PrintFunc(dest,"%*sQOS: Bandwidth: %3d%%\n",
-				indent, "", pVfInfo->bandwidthPercent);
+			PrintFunc(dest,"%*sQOS: Bandwidth: %3d%%  PreemptionRank: %u  HoQLife: %s\n",
+				indent, "", pVfInfo->bandwidthPercent, pVfInfo->preemptionRank, buf);
 		}
 	} else {
-		PrintFunc(dest,"%*sQOS: Disabled\n",
-				indent, "");
+		PrintFunc(dest,"%*sQOS: Disabled  PreemptionRank: %u  HoQLife: %s\n",
+				indent, "", pVfInfo->preemptionRank, buf);
 	}
 }
 
@@ -384,6 +397,39 @@ void PrintStlTraceRecord(PrintDest_t *dest, int indent, const STL_TRACE_RECORD *
 			  indent, "", pTraceRecord->EntryPortID, pTraceRecord->ExitPortID);
 	PrintFunc(dest, "%*sEntryPort: 0x%02x ExitPort: 0x%02x\n",
 			  indent, "", pTraceRecord->EntryPort, pTraceRecord->ExitPort);
+}
+
+void PrintStlFabricInfoRecord(PrintDest_t *dest, int indent, const STL_FABRICINFO_RECORD *pFabricInfoRecord)
+{
+	PrintFunc(dest, "%*sNumber of HFIs: %u\n",
+			  indent, "", pFabricInfoRecord->NumHFIs);
+	PrintFunc(dest, "%*sNumber of Switches: %u\n",
+			  indent, "", pFabricInfoRecord->NumSwitches);
+	PrintFunc(dest, "%*sNumber of Links: %u\n",
+			  indent, "", pFabricInfoRecord->NumInternalHFILinks
+			  				+ pFabricInfoRecord->NumExternalHFILinks
+			  				+ pFabricInfoRecord->NumInternalISLs
+			  				+ pFabricInfoRecord->NumExternalISLs);
+	PrintFunc(dest, "%*sNumber of HFI Links: %-7u        (Internal: %u   External: %u)\n",
+			  indent, "", pFabricInfoRecord->NumInternalHFILinks +
+			  				pFabricInfoRecord->NumExternalHFILinks,
+			  pFabricInfoRecord->NumInternalHFILinks,
+			  pFabricInfoRecord->NumExternalHFILinks);
+	PrintFunc(dest, "%*sNumber of ISLs: %-7u             (Internal: %u   External: %u)\n",
+			  indent, "", pFabricInfoRecord->NumInternalISLs +
+			  				pFabricInfoRecord->NumExternalISLs,
+			  pFabricInfoRecord->NumInternalISLs,
+			  pFabricInfoRecord->NumExternalISLs);
+	PrintFunc(dest, "%*sNumber of Degraded Links: %-7u   (HFI Links: %u   ISLs: %u)\n",
+			  indent, "", pFabricInfoRecord->NumDegradedHFILinks +
+			  					pFabricInfoRecord->NumDegradedISLs,
+			  pFabricInfoRecord->NumDegradedHFILinks,
+			  pFabricInfoRecord->NumDegradedISLs);
+	PrintFunc(dest, "%*sNumber of Omitted Links: %-7u    (HFI Links: %u   ISLs: %u)\n",
+			  indent, "", pFabricInfoRecord->NumOmittedHFILinks +
+			  					pFabricInfoRecord->NumOmittedISLs,
+			  pFabricInfoRecord->NumOmittedHFILinks,
+			  pFabricInfoRecord->NumOmittedISLs);
 }
 
 void PrintQuarantinedNodeRecord(PrintDest_t *dest, int indent, const STL_QUARANTINED_NODE_RECORD *pQuarantinedNodeRecord)
@@ -490,8 +536,8 @@ void PrintStlCableInfoRecord(PrintDest_t *dest, int indent, const STL_CABLE_INFO
 {
 	PrintFunc(dest, "%*sLID %d Port %d:\nPortType: %s\n", indent, "", 
 				pCableInfoRecord->LID, pCableInfoRecord->Port, StlPortTypeToText(pCableInfoRecord->u1.s.PortType));
-	PrintStlCableInfo(dest, indent, (STL_CABLE_INFO*)pCableInfoRecord->Data, 
-				pCableInfoRecord->u1.s.Address, pCableInfoRecord->Length, pCableInfoRecord->u1.s.PortType, 0);
+	PrintStlCableInfo(dest, indent, pCableInfoRecord->Data, 
+				pCableInfoRecord->u1.s.Address, pCableInfoRecord->Length+1, pCableInfoRecord->u1.s.PortType, CABLEINFO_DETAIL_ALL, 0);
 }
 
 void PrintStlPortGroupTabRecord(PrintDest_t *dest, int indent, const STL_PORT_GROUP_TABLE_RECORD *pRecord)

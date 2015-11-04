@@ -1433,6 +1433,62 @@ SM_Get_SwitchPortCongestionSetting(IBhandle_t fd, uint32_t amod, uint8_t *path, 
 }
 
 Status_t
+SM_Set_BufferControlTable_LR(IBhandle_t fd, uint32_t amod, uint32_t slid, uint32_t dlid, STL_BUFFER_CONTROL_TABLE pbct[], uint64_t mkey, uint32_t *madStatus)
+{
+	Status_t status;
+	uint32_t i;
+	uint8_t buffer[STL_MAD_PAYLOAD_SIZE];
+	uint8_t portCount = (amod>>24 & 0xff);
+
+	uint32_t bufferLength = STL_BFRCTRLTAB_PAD_SIZE * portCount;
+	if (bufferLength > STL_MAD_PAYLOAD_SIZE)
+		return (VSTATUS_ILLPARM);
+
+	memset(buffer, 0, bufferLength);
+	uint8_t * data = buffer;
+	STL_BUFFER_CONTROL_TABLE *table = (STL_BUFFER_CONTROL_TABLE *)data;
+
+	INCREMENT_COUNTER(smCounterSetBufferControlTable);
+
+	if (madStatus)
+		*madStatus = 0;
+
+	for (i = 0; i < portCount; i++) {
+		memcpy(table, &pbct[i], sizeof(STL_BUFFER_CONTROL_TABLE));
+		table->Reserved = 0;
+		(void)BSWAP_STL_BUFFER_CONTROL_TABLE(table);
+		// Handle the dissimilar sizes of Buffer Table and 8-byte pad alignment
+		data += STL_BFRCTRLTAB_PAD_SIZE;
+		table = (STL_BUFFER_CONTROL_TABLE *)(data);
+	}
+
+	sm_topop->slid = slid;
+	sm_topop->dlid = dlid;
+	if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_BFRCTRL) {
+		status = VSTATUS_OK;
+	} else {
+		// sm_set_stl_attribute_mad_status returns VSTATUS_BAD, if there is a madStatus error code.
+        status = sm_set_stl_attribute_mad_status(fd, STL_MCLASS_ATTRIB_ID_BUFFER_CONTROL_TABLE, amod, NULL, buffer, &bufferLength, mkey, madStatus);
+		// PR 125784: If buffer control table update is attempted for the same port back-to-back (say due to a SM retry following
+		// lost response), FW can return BUSY only if the values are being changed otherwise, returns OK. Caller to treat BUSY as error and trigger resweep.
+	}
+	if (status == VSTATUS_OK) {
+		data= buffer;
+		table = (STL_BUFFER_CONTROL_TABLE *)(data);
+		for (i = 0; i < portCount; i++) {
+			(void)BSWAP_STL_BUFFER_CONTROL_TABLE(table);
+			table->Reserved = 0;
+			memcpy(&pbct[i], table, sizeof(STL_BUFFER_CONTROL_TABLE));
+			// Handle the dissimilar sizes of Buffer Table and 8-byte pad alignment
+			data += STL_BFRCTRLTAB_PAD_SIZE;
+			table = (STL_BUFFER_CONTROL_TABLE *)(data);
+		}
+	}
+
+	return (status);
+}
+
+Status_t
 SM_Set_BufferControlTable(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_BUFFER_CONTROL_TABLE pbct[], uint64_t mkey, uint32_t *madStatus)
 {
 	Status_t status;

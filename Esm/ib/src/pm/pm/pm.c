@@ -123,7 +123,11 @@ int		        pm_inconsistency_posted = FALSE;
 extern Status_t vfi_GetPortGuid(ManagerInfo_t * fp, uint32_t gididx);
 
 #define SID_ASCII_FORMAT "%02x%02x%02x%02x%02x%02x%02x%02x"
+#ifdef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
+static IB_SERVICE_RECORD  pmServRer;
+#else
 static STL_SERVICE_RECORD  pmServRer;
+#endif
 #ifndef __VXWORKS__
 static char msgbuf[256];
 #endif
@@ -250,20 +254,22 @@ void pm_parse_xml_config(void) {
 	g_pmThresholdsExceededMsgLimit.Security 		= pm_config.thresholdsExceededMsgLimit.Security;
 	g_pmThresholdsExceededMsgLimit.Routing 			= pm_config.thresholdsExceededMsgLimit.Routing;
 
-	g_pmIntegrityWeights.LocalLinkIntegrityErrors		= pm_config.integrityWeights.LocalLinkIntegrityErrors;
-	g_pmIntegrityWeights.PortRcvErrors					= pm_config.integrityWeights.PortRcvErrors;
-	g_pmIntegrityWeights.ExcessiveBufferOverruns	= pm_config.integrityWeights.ExcessiveBufferOverruns;
-	g_pmIntegrityWeights.LinkErrorRecovery				= pm_config.integrityWeights.LinkErrorRecovery;
-	g_pmIntegrityWeights.LinkDowned						= pm_config.integrityWeights.LinkDowned;
-	g_pmIntegrityWeights.UncorrectableErrors			= pm_config.integrityWeights.UncorrectableErrors;
-	g_pmIntegrityWeights.FMConfigErrors					= pm_config.integrityWeights.FMConfigErrors;
+	g_pmIntegrityWeights.LocalLinkIntegrityErrors = pm_config.integrityWeights.LocalLinkIntegrityErrors;
+	g_pmIntegrityWeights.PortRcvErrors            = pm_config.integrityWeights.PortRcvErrors;
+	g_pmIntegrityWeights.ExcessiveBufferOverruns  = pm_config.integrityWeights.ExcessiveBufferOverruns;
+	g_pmIntegrityWeights.LinkErrorRecovery        = pm_config.integrityWeights.LinkErrorRecovery;
+	g_pmIntegrityWeights.LinkDowned               = pm_config.integrityWeights.LinkDowned;
+	g_pmIntegrityWeights.UncorrectableErrors      = pm_config.integrityWeights.UncorrectableErrors;
+	g_pmIntegrityWeights.FMConfigErrors           = pm_config.integrityWeights.FMConfigErrors;
+	g_pmIntegrityWeights.LinkQualityIndicator     = pm_config.integrityWeights.LinkQualityIndicator;
+	g_pmIntegrityWeights.LinkWidthDowngrade       = pm_config.integrityWeights.LinkWidthDowngrade;
 
-	g_pmCongestionWeights.PortXmitWait		= pm_config.congestionWeights.PortXmitWait;
-	g_pmCongestionWeights.SwPortCongestion	= pm_config.congestionWeights.SwPortCongestion;
-	g_pmCongestionWeights.PortRcvFECN		= pm_config.congestionWeights.PortRcvFECN;
-	g_pmCongestionWeights.PortRcvBECN		= pm_config.congestionWeights.PortRcvBECN;
-	g_pmCongestionWeights.PortXmitTimeCong	= pm_config.congestionWeights.PortXmitTimeCong;
-	g_pmCongestionWeights.PortMarkFECN		= pm_config.congestionWeights.PortMarkFECN;
+	g_pmCongestionWeights.PortXmitWait     = pm_config.congestionWeights.PortXmitWait;
+	g_pmCongestionWeights.SwPortCongestion = pm_config.congestionWeights.SwPortCongestion;
+	g_pmCongestionWeights.PortRcvFECN      = pm_config.congestionWeights.PortRcvFECN;
+	g_pmCongestionWeights.PortRcvBECN      = pm_config.congestionWeights.PortRcvBECN;
+	g_pmCongestionWeights.PortXmitTimeCong = pm_config.congestionWeights.PortXmitTimeCong;
+	g_pmCongestionWeights.PortMarkFECN     = pm_config.congestionWeights.PortMarkFECN;
 	
 
 	// TBD - simply use sm_numEndPorts for unified SM?
@@ -307,7 +313,11 @@ void pm_parse_xml_config(void) {
  * Build Service Record
  */
 static void
+#ifdef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
+BuildRecord(IB_SERVICE_RECORD * srp, uint8_t * servName, uint64_t servID,
+#else
 BuildRecord(STL_SERVICE_RECORD * srp, uint8_t * servName, uint64_t servID,
+#endif
             uint16_t flags, uint32_t lease, uint8_t pmVersion, uint8_t pmState)
 {
 
@@ -315,7 +325,9 @@ BuildRecord(STL_SERVICE_RECORD * srp, uint8_t * servName, uint64_t servID,
     srp->ServiceData16[0] = flags;
     strncpy((void *)srp->ServiceName, (void *)servName, sizeof(srp->ServiceName));
     srp->RID.ServiceID = servID;
+#ifndef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
 	srp->RID.Reserved = 0;
+#endif
     //SidToAscii((srp->id), servID);
 
 	// encode PM version and state into first bytes of data8
@@ -352,7 +364,11 @@ BuildRecord(STL_SERVICE_RECORD * srp, uint8_t * servName, uint64_t servID,
  * registered with the SA
  */
 static int
+#ifdef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
+select_master_compare(IB_SERVICE_RECORD *sr1, IB_SERVICE_RECORD *sr2)
+#else
 select_master_compare(STL_SERVICE_RECORD *sr1, STL_SERVICE_RECORD *sr2)
+#endif
 {
     unsigned i;
 
@@ -432,7 +448,7 @@ registerPM(void)
     flags = pm_config.priority;
     lease = 2 * pm_interval;
 
-    memset((void *)&pmServRer, 0, sizeof(STL_SERVICE_RECORD));
+    memset((void *)&pmServRer, 0, sizeof(pmServRer));
     memset((void *)&pathr[0], 0, sizeof(pathr));
     BuildRecord(&pmServRer, (void *)PM_SERVICE_NAME, PM_SERVICE_ID, flags, lease, PM_VERSION, PM_MASTER);
 
@@ -583,6 +599,9 @@ pm_compute_pool_size(void)
 	if (pm_config.shortTermHistory.enable && pm_config.sweep_interval) {
 		// PM Short Term History storage
 		// Allocate space for all history records
+		// check that imagesPerComposite isn't 0
+		if (pm_config.shortTermHistory.imagesPerComposite == 0) 
+			IB_FATAL_ERROR("Invalid Short Term History configuration, imagesPerComposite must not be 0");
 		g_pmPoolSize +=
 			sizeof(PmHistoryRecord_t)*((3600*pm_config.shortTermHistory.totalHistory)/(pm_config.shortTermHistory.imagesPerComposite*pm_config.sweep_interval))
 			// also allocate space for the 'current' composite and the 'cached' composite
@@ -815,7 +834,7 @@ pm_main()
 			// if SM is inactive then it was shut-down due to the config consistency problem - shutdown PM
 			if (sm_isDeactivated()) {
 				pm_shutdown = TRUE;
-				IB_LOG_WARN_FMT( __func__, "Engine shutting down since SM is not active due to configuration consistency problems!");
+				IB_LOG_WARN_FMT( __func__, "Engine shutting down since SM is not active due to dbsync problems!");
 				continue;
 			}
            if (!sm_isActive() && !sm_isDeactivated()) {

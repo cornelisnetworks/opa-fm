@@ -54,15 +54,16 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef __VXWORKS__
 #define MAX_SUBNET_SIZE						64000		// HSM has no realistic max
+#define DEFAULT_SUBNET_SIZE					2560		// XML default subnet size
 #else  // __VXWORKS__
 #if defined(PRODUCT_X)
 #define MAX_SUBNET_SIZE						1000		// ESM has a max subnet size of 1000 for X
 #else  // PRODUCT_X
 #define MAX_SUBNET_SIZE						288			// ESM has a max subnet size of 288 for non-X
 #endif // PRODUCT_X
+#define DEFAULT_SUBNET_SIZE					100		    // XML default subnet size
 #endif // __VXWORKS__
 
-#define DEFAULT_SUBNET_SIZE					2560		// XML default subnet size
 
 // Key PM config parameter defaults and ranges
 #define PM_DEFAULT_TOTAL_IMAGES	10			// for Image[] and history[]
@@ -234,6 +235,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // priority range
 #define MAX_PRIORITY						15
+
+// VL15CreditRate range
+#define MAX_VL15_CREDIT_RATE				21
 
 // out of memory error
 #define OUT_OF_MEMORY					"Memory limit has been exceeded parsing the XML configuration"
@@ -713,8 +717,6 @@ typedef struct _SmCaCongestionXmlConfig {
 typedef struct _SmCongestionXmlConfig {
 	uint8_t enable;
 	uint8_t debug;
-	uint8_t discovery_attempts;
-	uint8_t discover_always;
 	SmSwCongestionXmlConfig_t sw;
 	SmCaCongestionXmlConfig_t ca;
 } SmCongestionXmlConfig_t;
@@ -868,6 +870,7 @@ typedef struct _SMXmlConfig {
 	uint32_t	non_resp_max_count;
 
 	uint32_t	monitor_standby_enable;
+	uint32_t	loopback_mode; 		// disable duplicate portguid checking, allowing loopback fabrics
 	uint32_t	topo_lid_offset;
 	uint32_t	force_rebalance;
 	uint32_t	use_cached_node_data;
@@ -1021,6 +1024,8 @@ typedef struct _PmIntegrityWeightsXmlConfig {
 	uint8_t LinkDowned;
 	uint8_t UncorrectableErrors;
 	uint8_t FMConfigErrors;
+	uint8_t LinkQualityIndicator;
+	uint8_t LinkWidthDowngrade;
 } PmIntegrityWeightsXmlConfig_t;
 
 // Pm CongestionWeights
@@ -1032,6 +1037,11 @@ typedef struct _PmCongestionWeightsConfig {
 	uint8_t PortXmitTimeCong;
 	uint8_t PortMarkFECN;
 } PmCongestionWeightsXmlConfig_t;
+
+typedef struct _PmResolutionXmlConfig {
+	uint64_t LocalLinkIntegrity;
+	uint32_t LinkErrorRecovery;
+} PmResolutionXmlConfig_t;
 
 typedef struct _PmShortTermHistoryXmlConfig {
 	uint8_t		enable;
@@ -1045,7 +1055,6 @@ typedef struct _PmShortTermHistoryXmlConfig {
 // PM configuration
 typedef struct _PMXmlConfig {
 	uint32_t	subnet_size;
-	uint16_t	default_pkey;
 	uint32_t	config_consistency_check_level;
 	uint32_t	config_consistency_check_method;
 
@@ -1073,6 +1082,7 @@ typedef struct _PMXmlConfig {
 	PmThresholdsXmlConfig_t thresholds;
 	PmIntegrityWeightsXmlConfig_t integrityWeights;
 	PmCongestionWeightsXmlConfig_t congestionWeights;
+	PmResolutionXmlConfig_t resolution;
 	uint8_t		number_of_pm_groups;
 	PmPortGroupXmlConfig_t pm_portgroups[STL_PM_MAX_GROUPS];
 	PmShortTermHistoryXmlConfig_t shortTermHistory;
@@ -1116,7 +1126,6 @@ typedef struct _PMXmlConfig {
 typedef struct _FEXmlConfig {
 	uint32_t	subnet_size;
 	uint32_t	config_consistency_check_method;
-	uint16_t	default_pkey;
 
 	uint32_t 	manager_check_rate;
     uint32_t   	login;
@@ -1160,7 +1169,6 @@ typedef struct _FMXmlConfig {
     uint32_t	subnet_size;
 	uint32_t	config_consistency_check_level;
 	uint32_t	config_consistency_check_method;
-	uint16_t	default_pkey;
     uint32_t    SslSecurityEnabled;
 	char		SslSecurityDir[FILENAME_SIZE];
 	char		SslSecurityFmCertificate[FILENAME_SIZE];
@@ -1249,7 +1257,6 @@ extern int nodeDescCompare(IN const uint64 desc1, IN const uint64 desc2);
 extern int getXMLConfigData(uint8_t *buffer, uint32_t bufflen, uint32_t *filelen);
 extern int putXMLConfigData(uint8_t *buffer, uint32_t filelen);
 extern int copyCompressXMLConfigFile(char *src, char *dst);
-extern boolean isValidMtuSetting(VFConfig_t* vfp);
 extern int8_t copyDgVfInfo(FMXmlInstance_t *instance, DGXmlConfig_t *dg, VFXmlConfig_t *vf);
 
 // Export XML Memory mapping functions for the SM to use with the Topology lib on ESM

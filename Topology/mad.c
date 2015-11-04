@@ -286,7 +286,7 @@ static FSTATUS stl_sma_send_recv_mad(struct oib_port *port,
 	memset(&addr, 0, sizeof(addr));
 	addr.lid = lid;
 	addr.qpn = 0;
-	addr.qkey = QP1_WELL_KNOWN_Q_KEY;
+	addr.qkey = 0;
 	addr.pkey = pkey;
 
 	smp->common.BaseVersion = STL_BASE_VERSION;
@@ -429,38 +429,6 @@ FSTATUS SmaGetSwitchInfo(struct oib_port *port,
 	return fstatus;
 }
 
-#if 0
-/* Get VendorSwitchInfo from SMA at lid
- * Retry as needed
- */
-FSTATUS SmaGetVendorSwitchInfo(NodeData *nodep, uint16_t lid, VENDOR_SWITCH_INFO *pVendorSwitchInfo)
-{
-	SMP smp;
-	FSTATUS fstatus;
-
-	MemoryClear(&smp, sizeof(smp));
-	// rest of fields should be ignored for a Get, zero'ed above
-
-	DBGPRINT("Sending SMA Get(VendorSwitchInfo) to LID 0x%04x Node 0x%016"PRIx64"\n",
-				lid,
-				nodep->NodeInfo.NodeGUID);
-	DBGPRINT("    Name: %.*s\n",
-				NODE_DESCRIPTION_ARRAY_SIZE,
-				(char*)nodep->NodeDesc.NodeString);
-	fstatus = sma_send_recv_mad(lid, MMTHD_GET, MCLASS_ATTRIB_ID_VENDOR_SWITCH_INFO, 0, &smp);
-	if (FSUCCESS == fstatus) {
-		if (smp.common.u.DR.s.Status != MAD_STATUS_SUCCESS) {
-			DBGPRINT("SMA response with bad status: 0x%x\n", smp.common.u.DR.s.Status);
-			fstatus = FERROR;
-		} else {
-			*pVendorSwitchInfo = *(VENDOR_SWITCH_INFO*)stl_get_smp_data(&smp);
-			BSWAP_VENDOR_SWITCH_INFO(pVendorSwitchInfo);
-		}
-	}
-	return fstatus;
-}
-#endif
-
 /* Get PortInfo from SMA at lid
  * Retry as needed
  */
@@ -506,11 +474,12 @@ FSTATUS SmaGetCableInfo(struct oib_port *port,
 						uint8_t portnum,
 						uint16_t addr, 
 						uint8_t len,
-						STL_CABLE_INFO *pCableInfo)
+						uint8_t *data)
 {
 	STL_SMP smp;
 	FSTATUS fstatus;
 	uint32_t amod = (addr & 0x07ff)<<19 | (len & 0x3f)<<13 | (portnum & 0xff);
+	STL_CABLE_INFO *pCableInfo;
 
 	MemoryClear(&smp, sizeof(smp));
 
@@ -525,8 +494,9 @@ FSTATUS SmaGetCableInfo(struct oib_port *port,
 			DBGPRINT("SMA response with bad status: 0x%x\n", smp.common.u.DR.s.Status);
 			fstatus = FERROR;
 		} else {
-			*pCableInfo = *(STL_CABLE_INFO*)stl_get_smp_data(&smp);
+			pCableInfo = (STL_CABLE_INFO*)stl_get_smp_data(&smp);
 			BSWAP_STL_CABLE_INFO(pCableInfo);
+			memcpy(data, pCableInfo->Data, len+1);
 		}
 	}
 	return fstatus;
@@ -1040,7 +1010,7 @@ FSTATUS STLPmGetPortStatus(struct oib_port *port, PortData *portp, uint8 portNum
 							   0x01000000, &req, &resp);
 	if (FSUCCESS != fstatus)
 		goto fail;
-	BSWAP_STL_PORT_STATUS_RSP((STL_PORT_STATUS_RSP*)resp.PerfData, 0);
+	BSWAP_STL_PORT_STATUS_RSP((STL_PORT_STATUS_RSP*)resp.PerfData);
 	*pPortStatus = *(STL_PortStatusData_t*)resp.PerfData;
 	DBGPRINT("SendPkts=0x%16"PRIx64"\n", pPortStatus->PortXmitPkts);
 fail:

@@ -60,6 +60,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "cs_queue.h"
 #include "ib_mad.h"
 #include "ib_sa.h"
+#include "ib_pa.h"
 #include "sm_l.h"
 #include "stl_sa.h"
 #include "mai_g.h"
@@ -417,6 +418,8 @@ char *cs_getAidName(uint16_t aidClass, uint16_t aid) {
 #define CASE_STL_SA_AID(aid) case STL_SA_ATTR_##aid: return #aid
 #define CASE_STL_PM_AID(aid) case STL_PM_ATTRIB_ID_##aid: return #aid
 #define CASE_MAD_CV(aid) case MAD_CV_##aid: return "Class " #aid
+#define CASE_PA_AID(aid) case PA_ATTRID_##aid: return #aid
+#define CASE_STL_PA_AID(aid) case STL_PA_ATTRID_##aid: return #aid
 
 	// Check common attribute ids first
 	switch (aid) {
@@ -465,7 +468,6 @@ char *cs_getAidName(uint16_t aidClass, uint16_t aid) {
 		// IB AIDs that do not conflict with STL AIDs
 		CASE_MCLASS_AID(GUID_INFO);
 		CASE_MCLASS_AID(VENDOR_DIAG);
-		CASE_MCLASS_AID(VENDOR_SWITCH_INFO);
 		CASE_MCLASS_AID(PORT_LFT);
 		CASE_MCLASS_AID(PORT_GROUP);
 		CASE_MCLASS_AID(AR_LIDMASK);
@@ -522,6 +524,7 @@ char *cs_getAidName(uint16_t aidClass, uint16_t aid) {
         CASE_STL_SA_AID(PORT_STATE_INFO_RECORD);
         CASE_STL_SA_AID(PORTGROUP_TABLE_RECORD);
         CASE_STL_SA_AID(BUFF_CTRL_TAB_RECORD);
+        CASE_STL_SA_AID(FABRICINFO_RECORD);
         CASE_STL_SA_AID(QUARANTINED_NODE_RECORD);
         CASE_STL_SA_AID(CONGESTION_INFO_RECORD);
         CASE_STL_SA_AID(SWITCH_CONG_RECORD);
@@ -541,6 +544,30 @@ char *cs_getAidName(uint16_t aidClass, uint16_t aid) {
 		default:
 			break;
 		}
+    case MAD_CV_VFI_PM:
+        switch (aid) {
+        CASE_PA_AID(GET_GRP_LIST);
+        CASE_PA_AID(GET_GRP_INFO);
+        CASE_PA_AID(GET_GRP_CFG); 
+        CASE_PA_AID(GET_PORT_CTRS);
+        CASE_PA_AID(CLR_PORT_CTRS);
+        CASE_PA_AID(CLR_ALL_PORT_CTRS);
+        CASE_PA_AID(GET_PM_CONFIG);
+        CASE_PA_AID(FREEZE_IMAGE);
+        CASE_PA_AID(RELEASE_IMAGE);
+        CASE_PA_AID(RENEW_IMAGE);
+        CASE_PA_AID(GET_FOCUS_PORTS);
+        CASE_PA_AID(GET_IMAGE_INFO);
+        CASE_PA_AID(MOVE_FREEZE_FRAME);
+        CASE_STL_PA_AID(GET_VF_LIST);
+        CASE_STL_PA_AID(GET_VF_INFO);
+        CASE_STL_PA_AID(GET_VF_CONFIG);
+        CASE_STL_PA_AID(GET_VF_PORT_CTRS);
+        CASE_STL_PA_AID(CLR_VF_PORT_CTRS);
+        CASE_STL_PA_AID(GET_VF_FOCUS_PORTS);
+        default:
+            break;
+        }
 	// Unhandled Classes
 	CASE_MAD_CV(BM);
 	CASE_MAD_CV(DEV_MGT);
@@ -553,7 +580,6 @@ char *cs_getAidName(uint16_t aidClass, uint16_t aid) {
 	CASE_MAD_CV(APP_1);
 	CASE_MAD_CV(CC);
 	CASE_MAD_CV(VENDOR_FE);
-	CASE_MAD_CV(VFI_PM);
 	CASE_MAD_CV(VFI_BM);
     default:
         break;

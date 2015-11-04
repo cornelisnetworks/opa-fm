@@ -88,7 +88,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 extern uint8_t if3_is_master(void);
 extern void if3_set_rmpp_minfo(ManagerInfo_t *mi);
-extern char* if3_dbsync_rmpp_get_aid_name(uint16_t aid); 
 
 static ManagerInfo_t maninfo[MAX_MANAGER];
 
@@ -106,119 +105,6 @@ static Status_t if3_dbsync_send_multi_mad (IBhandle_t fd, SA_MAD *psa,
 
 static int initialized;
 static Lock_t lock;
-static char* if3_rmpp_get_aid_name(uint16_t aid) 
-{ 
-   switch (aid) {
-   case STL_SA_ATTR_NODE_RECORD:
-       return "STL_SA_NODE_RECORD"; 
-       break;
-   case STL_SA_ATTR_PORTINFO_RECORD:
-       return "STL_SA_PORTINFO_RECORD"; 
-       break;
-   case STL_SA_ATTR_SC_MAPTBL_RECORD:
-       return "STL_SA_SC_MAPTBL_RECORD"; 
-       break;
-   case STL_SA_ATTR_SWITCHINFO_RECORD:
-       return "STL_SA_SWITCHINFO_RECORD"; 
-       break;
-   case STL_SA_ATTR_LINEAR_FWDTBL_RECORD:
-       return "STL_SA_LINEAR_FWDTBL_RECORD"; 
-       break;
-   case STL_SA_ATTR_MCAST_FWDTBL_RECORD:
-       return "STL_SA_MCAST_FWDTBL_RECORD"; 
-       break;
-   case STL_SA_ATTR_VLARBTABLE_RECORD:
-       return "STL_SA_VLARBTABLE_RECORD"; 
-       break;
-   case STL_SA_ATTR_SMINFO_RECORD:
-       return "STL_SA_SMINFO_RECORD"; 
-       break;
-   case STL_SA_ATTR_INFORM_INFO_RECORD:
-       return "STL_SA_INFORM_INFO_RECORD"; 
-       break;
-   case STL_SA_ATTR_LINK_RECORD:
-       return "STL_SA_LINK_RECORD"; 
-       break;
-   case STL_SA_ATTR_SERVICE_RECORD:
-       return "STL_SA_SERVICE_RECORD"; 
-       break;
-   case STL_SA_ATTR_P_KEY_TABLE_RECORD:
-       return "STL_SA_P_KEY_TABLE_RECORD"; 
-       break;
-   case STL_SA_ATTR_PATH_RECORD:
-       return "STL_SA_PATH_RECORD"; 
-       break;
-   case STL_SA_ATTR_MCMEMBER_RECORD:
-       return "STL_SA_MCMEMBER_RECORD"; 
-       break;
-   case STL_SA_ATTR_SERVICEASSOCIATION_RECORD:
-       return "STL_SA_SERVICEASSOCIATION_RECORD"; 
-       break;
-   case PA_ATTRID_GET_CLASSPORTINFO:
-      return "PA_GET_CLASSPORTINFO"; 
-      break;
-   case PA_ATTRID_GET_GRP_LIST:
-      return "PA_GET_GRP_LIST"; 
-      break;
-   case PA_ATTRID_GET_GRP_INFO:
-      return "PA_GET_GRP_INFO"; 
-      break;
-   case PA_ATTRID_GET_GRP_CFG: 
-      return "PA_GET_GRP_CFG"; 
-      break;
-   case PA_ATTRID_GET_PORT_CTRS: 
-      return "PA_GET_PORT_CTRS"; 
-      break;
-   case PA_ATTRID_CLR_PORT_CTRS: 
-      return "PA_CLR_PORT_CTRS"; 
-      break;
-   case PA_ATTRID_CLR_ALL_PORT_CTRS: 
-      return "PA_CLR_ALL_PORT_CTRS"; 
-      break;
-   case PA_ATTRID_GET_PM_CONFIG: 
-      return "PA_GET_PM_CONFIG"; 
-      break;
-   case PA_ATTRID_FREEZE_IMAGE:
-      return "PA_FREEZE_IMAGE"; 
-      break;
-   case PA_ATTRID_RELEASE_IMAGE: 
-      return "PA_RELEASE_IMAGE"; 
-      break;
-   case PA_ATTRID_RENEW_IMAGE: 
-      return "PA_RENEW_IMAGE"; 
-      break;
-   case PA_ATTRID_GET_FOCUS_PORTS: 
-      return "PA_GET_FOCUS_PORTS"; 
-      break;
-   case PA_ATTRID_GET_IMAGE_INFO: 
-      return "PA_GET_IMAGE_INFO"; 
-      break;
-   case PA_ATTRID_MOVE_FREEZE_FRAME: 
-      return "PA_MOVE_FREEZE_FRAME"; 
-      break;
-   case STL_PA_ATTRID_GET_VF_LIST:
-       return "PA_VF_LIST"; 
-       break;
-   case STL_PA_ATTRID_GET_VF_INFO:
-       return "PA_VF_INFO:"; 
-       break;
-   case STL_PA_ATTRID_GET_VF_CONFIG:
-       return "PA_VF_PORT_CTRS"; 
-       break;
-   case STL_PA_ATTRID_GET_VF_PORT_CTRS:
-       return "PA_VF_PORT_CTRS"; 
-       break;
-   case STL_PA_ATTRID_CLR_VF_PORT_CTRS:
-       return "PA_CLR_VF_PORT_CTRS"; 
-       break;
-   case STL_PA_ATTRID_GET_VF_FOCUS_PORTS:
-       return "PA_GET_VF_FOCUS_PORTS"; 
-       break;
-   default:
-      return "UNKNOWN AID"; 
-      break;
-   }
-}
 
 static char* if3_rmpp_get_method_text(int method) 
 { 
@@ -1387,7 +1273,11 @@ open_mngr_cnx(uint32_t dev, uint32_t port,
     
     if (mode == 1) {
         // query SA for location of manager
+#ifdef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
+        IB_SERVICE_RECORD sr; 
+#else
         STL_SERVICE_RECORD sr; 
+#endif
         uint32_t count; 
         uint16_t sl; 
         
@@ -1962,7 +1852,7 @@ if3_dbsync_reply_to_mngr(IBhandle_t fhdl, Mai_t * fmad,
     }
     
     // get RMPP connection for the STL manager
-    if ((fd_rmpp_usrid = rmpp_is_cnx_open(mi->rmppMngrfd)) == -1) {
+    if ((fd_rmpp_usrid = rmpp_is_cnx_open(mi->rmppMngrfd)) == -1 || rmpp_is_cnx_partial_open(fd_rmpp_usrid)) {
         rc = VSTATUS_NOHANDLE; 
         IB_LOG_ERROR_FMT(__func__, "Connection not open"); 
         goto bail;
@@ -2134,7 +2024,7 @@ if3_mngr_send_mad(IBhandle_t fd, SA_MAD *psa, uint32_t dataLength, uint8_t *buff
     }
     
     // initialize and open RMPP connection for the STL manager
-    if ((fd_rmpp_usrid = rmpp_is_cnx_open(mi->rmppMngrfd)) == -1) {
+    if ((fd_rmpp_usrid = rmpp_is_cnx_open(mi->rmppMngrfd)) == -1 || rmpp_is_cnx_partial_open(fd_rmpp_usrid)) {
         fd_rmpp_usrid = rmpp_mngr_open_cnx(
            mi->rmppMngrfd,   
            MAI_GSI_QP, 
@@ -2147,7 +2037,7 @@ if3_mngr_send_mad(IBhandle_t fd, SA_MAD *psa, uint32_t dataLength, uint8_t *buff
            &mi->rmppGetTablefd, 
            mi->mclass, 
            if3_rmpp_get_method_text, 
-           if3_rmpp_get_aid_name, 
+           cs_getAidName, 
            if3_pre_process_request, 
            if3_pre_process_response, 
            if3_is_master, 
@@ -2351,7 +2241,7 @@ if3_mngr_send_passthru_mad (IBhandle_t fd, SA_MAD *psa, uint32_t dataLength,
     }
     
     // initialize and open RMPP connection for the STL manager
-    if ((fd_rmpp_usrid = rmpp_is_cnx_open(mi->rmppMngrfd)) == -1) {
+    if ((fd_rmpp_usrid = rmpp_is_cnx_open(mi->rmppMngrfd)) == -1 || rmpp_is_cnx_partial_open(fd_rmpp_usrid)) {
         fd_rmpp_usrid = rmpp_mngr_open_cnx(
            mi->rmppMngrfd,   
            MAI_GSI_QP, 
@@ -2364,7 +2254,7 @@ if3_mngr_send_passthru_mad (IBhandle_t fd, SA_MAD *psa, uint32_t dataLength,
            &mi->rmppGetTablefd,
            mi->mclass, 
            if3_rmpp_get_method_text, 
-           if3_rmpp_get_aid_name, 
+           cs_getAidName, 
            if3_pre_process_request, 
            if3_pre_process_response, 
            if3_is_master, 
@@ -2571,7 +2461,7 @@ if3_dbsync_send_mad(IBhandle_t fd, SA_MAD *psa, uint32_t dataLength, uint8_t *bu
     }
     
     // initialize and open RMPP connection for the STL manager
-    if ((fd_rmpp_usrid = rmpp_is_cnx_open(mi->rmppMngrfd)) == -1) {
+    if ((fd_rmpp_usrid = rmpp_is_cnx_open(mi->rmppMngrfd)) == -1 || rmpp_is_cnx_partial_open(fd_rmpp_usrid)) {
         fd_rmpp_usrid = rmpp_mngr_open_cnx(
            mi->rmppMngrfd,   
            MAI_GSI_QP, 
@@ -2584,7 +2474,7 @@ if3_dbsync_send_mad(IBhandle_t fd, SA_MAD *psa, uint32_t dataLength, uint8_t *bu
            &mi->rmppGetTablefd,
            mi->mclass, 
            if3_rmpp_get_method_text, 
-           if3_dbsync_rmpp_get_aid_name, 
+           cs_getAidName, 
            if3_pre_process_request, 
            if3_pre_process_response, 
            if3_is_master, 
@@ -2799,7 +2689,7 @@ if3_dbsync_send_multi_mad (IBhandle_t fd, SA_MAD *psa,
     }
     
     // initialize and open RMPP connection for the STL manager
-    if ((fd_rmpp_usrid = rmpp_is_cnx_open(mi->rmppMngrfd)) == -1) {
+    if ((fd_rmpp_usrid = rmpp_is_cnx_open(mi->rmppMngrfd)) == -1 || rmpp_is_cnx_partial_open(fd_rmpp_usrid)) {
         fd_rmpp_usrid = rmpp_mngr_open_cnx(
            mi->rmppMngrfd,   
            MAI_GSI_QP, 
@@ -2812,7 +2702,7 @@ if3_dbsync_send_multi_mad (IBhandle_t fd, SA_MAD *psa,
            &mi->rmppGetTablefd,
            mi->mclass, 
            if3_rmpp_get_method_text, 
-           if3_dbsync_rmpp_get_aid_name, 
+           cs_getAidName, 
            if3_pre_process_request, 
            if3_pre_process_response, 
            if3_is_master, 
@@ -2961,7 +2851,7 @@ if3_dbsync_cmd_from_mngr (IBhandle_t fd, Mai_t *maip, uint8_t *buffer, uint32_t 
     }
     
     // initialize and open RMPP connection for the STL manager
-    if ((fd_rmpp_usrid = rmpp_is_cnx_open(mi->rmppMngrfd)) == -1) {
+    if ((fd_rmpp_usrid = rmpp_is_cnx_open(mi->rmppMngrfd)) == -1 || rmpp_is_cnx_partial_open(fd_rmpp_usrid)) {
         fd_rmpp_usrid = rmpp_mngr_open_cnx(
            mi->rmppMngrfd,   
            MAI_GSI_QP, 
@@ -2974,7 +2864,7 @@ if3_dbsync_cmd_from_mngr (IBhandle_t fd, Mai_t *maip, uint8_t *buffer, uint32_t 
            &mi->rmppGetTablefd,
            mi->mclass, 
            if3_rmpp_get_method_text, 
-           if3_dbsync_rmpp_get_aid_name, 
+           cs_getAidName, 
            if3_pre_process_request, 
            if3_pre_process_response, 
            if3_is_master, 
@@ -3043,7 +2933,11 @@ if3_mngr_register_sa (IBhandle_t fd, uint8_t * servName, uint64_t servID, uint32
 
 	uint32_t rc;
 	ManagerInfo_t *mi;
+#ifdef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
+	IB_SERVICE_RECORD serviceFound;
+#else
 	STL_SERVICE_RECORD serviceFound;
+#endif
 	uint32_t count;
 
 	IB_ENTER(__func__, fd, servName, servID, option);

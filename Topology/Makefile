@@ -53,7 +53,7 @@ CFILES			= \
 				topology.c \
 				util.c \
 				mad_info.c 
-ifneq "$(BUILD_TARGET)" "MIPS"
+ifneq "$(BUILD_TARGET_OS)" "VXWORKS"
 CFILES 			+= \
 				mad.c \
 				route.c \
@@ -135,6 +135,11 @@ LOCALDEPLIBS = ibaccess oib_utils
 LOCAL_INCLUDE_DIRS = $(TL_DIR)/oib_utils/include \
 					 $(TL_DIR)/oib_utils/src \
 		     		 $(TL_DIR)/IbAccess/Common/Inc
+ifeq "$(BUILD_TARGET)" "ATOM"
+LOCAL_INCLUDE_DIRS   += \
+		     		 $(TL_DIR)/target/include
+endif
+
 
 # Include Make Rules definitions and rules
 include $(TL_DIR)/$(PROJ_FILE_DIR)/Makerules.project

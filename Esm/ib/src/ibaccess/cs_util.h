@@ -34,7 +34,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //									/
 // DESCRIPTION								/
 //									/
-//	This is the Vieo IBA common services transport utility header	/
+//	This is the OPA FM common services transport utility header	/
 //									/
 // DATA STRUCTURES							/
 //    [global component data structures defined in this file]		/

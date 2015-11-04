@@ -1213,7 +1213,16 @@ uint32_t idbGetSmTrapThreshold() {
 	return value;
 }
 uint32_t idbGetMcGrpCreate(void) {
-	return (sm_getMibOptionFlags() & SM_CREATE_MCGRP_MASK) ? 1 : 0;
+	uint32_t value;
+	IB_ENTER(__func__, 0, 0, 0, 0);
+    if (idbGetSmStatus() == EicsSmControlStatus_running) {
+    	value = (sm_getMibOptionFlags() & SM_CREATE_MCGRP_MASK) ? 1 : 0;
+    }
+    else {
+        value = idbErrorNoAccess();
+    }
+	IB_EXIT(__func__, value);
+	return value;
 }
 
 uint32_t idbGetDynamicPltSupport(void) {

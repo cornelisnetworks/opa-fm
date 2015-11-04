@@ -134,7 +134,7 @@ pa_getGroupListResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 
 		IB_LOG_DEBUG2_FMT(__func__, "Number of groups: %u", GroupList.NumGroups);
 		for (i = 0; i < GroupList.NumGroups; i++) {
-    		strncpy(response[i].groupName, GroupList.GroupList[i].Name, STL_PM_GROUPNAMELEN);
+    		strncpy(response[i].groupName, GroupList.GroupList[i].Name, STL_PM_GROUPNAMELEN-1);
 			IB_LOG_DEBUG2_FMT(__func__, "Group %d: %.*s", i+1,
 								sizeof(response[i].groupName), response[i].groupName);
 		}
@@ -212,48 +212,50 @@ pa_getPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 
 	status = paGetPortStats(&g_pmSweepData, nodeLid, portNumber, &pmPortCounters, delta, userCntrs, imageId, offset, &flags, &retImageId);
 	if (status == FSUCCESS) {
-		records = 1;
-    	response.nodeLid						= nodeLid;
-    	response.portNumber						= portNumber;
-    	response.flags							= flags;
-		response.portXmitData					= pmPortCounters.PortXmitData;
-		response.portRcvData					= pmPortCounters.PortRcvData;
-		response.portXmitPkts					= pmPortCounters.PortXmitPkts;
-		response.portRcvPkts					= pmPortCounters.PortRcvPkts;
-		response.portMulticastXmitPkts			= pmPortCounters.PortMulticastXmitPkts;
-		response.portMulticastRcvPkts			= pmPortCounters.PortMulticastRcvPkts;
-		response.localLinkIntegrityErrors		= pmPortCounters.LocalLinkIntegrityErrors;
-		response.fmConfigErrors					= pmPortCounters.FMConfigErrors;
-		response.portRcvErrors					= pmPortCounters.PortRcvErrors;
-		response.excessiveBufferOverruns		= pmPortCounters.ExcessiveBufferOverruns;
-		response.portRcvConstraintErrors		= pmPortCounters.PortRcvConstraintErrors;
-		response.portRcvSwitchRelayErrors		= pmPortCounters.PortRcvSwitchRelayErrors;
-		response.portXmitDiscards				= pmPortCounters.PortXmitDiscards;
-		response.portXmitConstraintErrors		= pmPortCounters.PortXmitConstraintErrors;
-		response.portRcvRemotePhysicalErrors	= pmPortCounters.PortRcvRemotePhysicalErrors;
-		response.swPortCongestion				= pmPortCounters.SwPortCongestion;
-		response.portXmitWait					= pmPortCounters.PortXmitWait;
-		response.portRcvFECN					= pmPortCounters.PortRcvFECN;
-		response.portRcvBECN					= pmPortCounters.PortRcvBECN;
-		response.portXmitTimeCong				= pmPortCounters.PortXmitTimeCong;
-		response.portXmitWastedBW				= pmPortCounters.PortXmitWastedBW;
-		response.portXmitWaitData				= pmPortCounters.PortXmitWaitData;
-		response.portRcvBubble					= pmPortCounters.PortRcvBubble;
-		response.portMarkFECN					= pmPortCounters.PortMarkFECN;
-		response.linkErrorRecovery				= pmPortCounters.LinkErrorRecovery;
-		response.linkDowned						= pmPortCounters.LinkDowned;
-		response.uncorrectableErrors			= pmPortCounters.UncorrectableErrors;
-		response.lq.s.linkQualityIndicator 		= pmPortCounters.lq.s.LinkQualityIndicator;
-    	response.imageId.imageNumber			= retImageId;
-    	response.imageId.imageOffset			= 0;
+            records = 1;
+            response.nodeLid                     = nodeLid;
+            response.portNumber                  = portNumber;
+            response.flags                       = flags;
+            response.portXmitData                = pmPortCounters.PortXmitData;
+            response.portRcvData                 = pmPortCounters.PortRcvData;
+            response.portXmitPkts                = pmPortCounters.PortXmitPkts;
+            response.portRcvPkts                 = pmPortCounters.PortRcvPkts;
+            response.portMulticastXmitPkts       = pmPortCounters.PortMulticastXmitPkts;
+            response.portMulticastRcvPkts        = pmPortCounters.PortMulticastRcvPkts;
+            response.localLinkIntegrityErrors    = pmPortCounters.LocalLinkIntegrityErrors;
+            response.fmConfigErrors              = pmPortCounters.FMConfigErrors;
+            response.portRcvErrors               = pmPortCounters.PortRcvErrors;
+            response.excessiveBufferOverruns     = pmPortCounters.ExcessiveBufferOverruns;
+            response.portRcvConstraintErrors     = pmPortCounters.PortRcvConstraintErrors;
+            response.portRcvSwitchRelayErrors    = pmPortCounters.PortRcvSwitchRelayErrors;
+            response.portXmitDiscards            = pmPortCounters.PortXmitDiscards;
+            response.portXmitConstraintErrors    = pmPortCounters.PortXmitConstraintErrors;
+            response.portRcvRemotePhysicalErrors = pmPortCounters.PortRcvRemotePhysicalErrors;
+            response.swPortCongestion            = pmPortCounters.SwPortCongestion;
+            response.portXmitWait                = pmPortCounters.PortXmitWait;
+            response.portRcvFECN                 = pmPortCounters.PortRcvFECN;
+            response.portRcvBECN                 = pmPortCounters.PortRcvBECN;
+            response.portXmitTimeCong            = pmPortCounters.PortXmitTimeCong;
+            response.portXmitWastedBW            = pmPortCounters.PortXmitWastedBW;
+            response.portXmitWaitData            = pmPortCounters.PortXmitWaitData;
+            response.portRcvBubble               = pmPortCounters.PortRcvBubble;
+            response.portMarkFECN                = pmPortCounters.PortMarkFECN;
+            response.linkErrorRecovery           = pmPortCounters.LinkErrorRecovery;
+            response.linkDowned                  = pmPortCounters.LinkDowned;
+            response.uncorrectableErrors         = pmPortCounters.UncorrectableErrors;
+            response.lq.s.numLanesDown           = pmPortCounters.lq.s.NumLanesDown;
+            response.lq.s.linkQualityIndicator   = pmPortCounters.lq.s.LinkQualityIndicator;
+            response.imageId.imageNumber         = retImageId;
+            response.imageId.imageOffset         = 0;
 
 		/* debug logging */
 		IB_LOG_DEBUG2_FMT(__func__, "%s Controlled Port Counters (%s) for node lid 0x%x, port number %u%s:", (userCntrs?"User":"PM"),
-						delta?"delta":"total", nodeLid, portNumber, flags & STL_PA_PC_FLAG_UNEXPECTED_CLEAR?" (Unexpected Clear)":"");
+			delta?"delta":"total", nodeLid, portNumber,
+			flags & STL_PA_PC_FLAG_UNEXPECTED_CLEAR?" (Unexpected Clear)":"");
 		IB_LOG_DEBUG2_FMT(__func__, "Xmit: Data:%-10" PRIu64 " MB (%10" PRIu64 " Flits) Pkts: %-10"PRIu64" ",
-						response.portXmitData / FLITS_PER_MB, response.portXmitData, response.portXmitPkts);
+			response.portXmitData / FLITS_PER_MB, response.portXmitData, response.portXmitPkts);
 		IB_LOG_DEBUG2_FMT(__func__, "Recv: Data:%-10" PRIu64 " MB (%10" PRIu64 " Flits) Pkts: %-10"PRIu64" ",
-						response.portRcvData / FLITS_PER_MB, response.portRcvData, response.portRcvPkts);
+			response.portRcvData / FLITS_PER_MB, response.portRcvData, response.portRcvPkts);
 		IB_LOG_DEBUG2_FMT(__func__, "Errors: Local Link Integ:   %10"PRIu64" ", response.localLinkIntegrityErrors);
 		IB_LOG_DEBUG2_FMT(__func__, "Errors: FM Cfg:             %10"PRIu64" ", response.fmConfigErrors);
 		IB_LOG_DEBUG2_FMT(__func__, "Errors: Rcv Errors:         %10"PRIu64" ", response.portRcvErrors);
@@ -275,6 +277,7 @@ pa_getPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		IB_LOG_DEBUG2_FMT(__func__, "Errors: Link Recovery:      %10u", response.linkErrorRecovery);
 		IB_LOG_DEBUG2_FMT(__func__, "Errors: Link Downed:        %10u", response.linkDowned);
 		IB_LOG_DEBUG2_FMT(__func__, "Errors: Link Recovery:      %10u", response.uncorrectableErrors);
+		IB_LOG_DEBUG2_FMT(__func__, "Errors: Num Lanes Down:     %10u", response.lq.s.numLanesDown);
 		IB_LOG_DEBUG2_FMT(__func__, "Errors: Link Qual Ind:      %10u", response.lq.s.linkQualityIndicator);
 
 		IB_LOG_DEBUG2_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d",
@@ -340,9 +343,9 @@ pa_clrPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 
 	INCREMENT_PM_COUNTER(pmCounterPaRxClrPortCtrs);
 	BSWAP_STL_PA_CLR_PORT_COUNTERS(p);
-	nodeLid 		= p->nodeLid;
-	portNumber 		= p->portNumber;
-	select.AsReg32 	= p->counterSelectMask.AsReg32;
+	nodeLid 		= p->NodeLid;
+	portNumber 		= p->PortNumber;
+	select.AsReg32 	= p->CounterSelectMask.AsReg32;
 
 	IB_LOG_DEBUG1_FMT(__func__, "Clearing counters on LID: 0x%x  Port Number: %u  Select: 0x%4x",
 		nodeLid, portNumber, select);
@@ -350,13 +353,13 @@ pa_clrPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	status = paClearPortStats(&g_pmSweepData, nodeLid, portNumber, select);
 	if (status == FSUCCESS) {
 		records = 1;
-		response.counterSelectMask.AsReg32 	= select.AsReg32;
-		response.nodeLid 					= nodeLid;
-		response.portNumber 				= portNumber;
+		response.CounterSelectMask.AsReg32 	= select.AsReg32;
+		response.NodeLid 					= nodeLid;
+		response.PortNumber 				= portNumber;
 
-		IB_LOG_DEBUG2_FMT(__func__, "LID:         0x%x", response.nodeLid);
-		IB_LOG_DEBUG2_FMT(__func__, "Port Number: %u", response.portNumber);
-		IB_LOG_DEBUG2_FMT(__func__, "Select:      0x%4x", response.counterSelectMask.AsReg32);
+		IB_LOG_DEBUG2_FMT(__func__, "LID:         0x%x", response.NodeLid);
+		IB_LOG_DEBUG2_FMT(__func__, "Port Number: %u", response.PortNumber);
+		IB_LOG_DEBUG2_FMT(__func__, "Select:      0x%4x", response.CounterSelectMask.AsReg32);
 
 		BSWAP_STL_PA_CLR_PORT_COUNTERS(&response);
 		memcpy(data, &response, sizeof(response));
@@ -414,16 +417,16 @@ pa_clrAllPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 
 	INCREMENT_PM_COUNTER(pmCounterPaRxClrAllPortCtrs);
     BSWAP_STL_PA_CLR_ALL_PORT_COUNTERS(p);
-	select.AsReg32 = p->counterSelectMask.AsReg32;
+	select.AsReg32 = p->CounterSelectMask.AsReg32;
 
 	IB_LOG_DEBUG1_FMT(__func__, "Clearing all counters with select 0x%4x", select);
 
 	status = paClearAllPortStats(&g_pmSweepData, select);
 	if (status == FSUCCESS) {
 		records = 1;
-		response.counterSelectMask.AsReg32 = select.AsReg32;
+		response.CounterSelectMask.AsReg32 = select.AsReg32;
 
-		IB_LOG_DEBUG2_FMT(__func__, "Select: 0x%4x", response.counterSelectMask.AsReg32);
+		IB_LOG_DEBUG2_FMT(__func__, "Select: 0x%4x", response.CounterSelectMask.AsReg32);
 
 		BSWAP_STL_PA_CLR_ALL_PORT_COUNTERS(&response);
 		memcpy(data, &response, sizeof(response));
@@ -508,13 +511,15 @@ pa_getPmConfigResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		response.congestionWeights.PortXmitTimeCong		  	= g_pmSweepData.congestionWeights.PortXmitTimeCong;
 		response.congestionWeights.PortMarkFECN			  	= g_pmSweepData.congestionWeights.PortMarkFECN;
 
-		response.integrityWeights.LocalLinkIntegrityErrors	= g_pmSweepData.integrityWeights.LocalLinkIntegrityErrors;
-		response.integrityWeights.PortRcvErrors			  	= g_pmSweepData.integrityWeights.PortRcvErrors;
-		response.integrityWeights.ExcessiveBufferOverruns 	= g_pmSweepData.integrityWeights.ExcessiveBufferOverruns;
-		response.integrityWeights.LinkErrorRecovery		  	= g_pmSweepData.integrityWeights.LinkErrorRecovery;
-		response.integrityWeights.LinkDowned			  	= g_pmSweepData.integrityWeights.LinkDowned;
-		response.integrityWeights.UncorrectableErrors	  	= g_pmSweepData.integrityWeights.UncorrectableErrors;
-		response.integrityWeights.FMConfigErrors		  	= g_pmSweepData.integrityWeights.FMConfigErrors;
+		response.integrityWeights.LocalLinkIntegrityErrors = g_pmSweepData.integrityWeights.LocalLinkIntegrityErrors;
+		response.integrityWeights.PortRcvErrors            = g_pmSweepData.integrityWeights.PortRcvErrors;
+		response.integrityWeights.ExcessiveBufferOverruns  = g_pmSweepData.integrityWeights.ExcessiveBufferOverruns;
+		response.integrityWeights.LinkErrorRecovery        = g_pmSweepData.integrityWeights.LinkErrorRecovery;
+		response.integrityWeights.LinkDowned               = g_pmSweepData.integrityWeights.LinkDowned;
+		response.integrityWeights.UncorrectableErrors      = g_pmSweepData.integrityWeights.UncorrectableErrors;
+		response.integrityWeights.FMConfigErrors           = g_pmSweepData.integrityWeights.FMConfigErrors;
+		response.integrityWeights.LinkQualityIndicator     = g_pmSweepData.integrityWeights.LinkQualityIndicator;
+		response.integrityWeights.LinkWidthDowngrade       = g_pmSweepData.integrityWeights.LinkWidthDowngrade;
 
 		response.errorThresholds.integrityErrors		  	= g_pmSweepData.Thresholds.Integrity;
 		response.errorThresholds.congestionErrors		  	= g_pmSweepData.Thresholds.Congestion;
@@ -551,6 +556,8 @@ pa_getPmConfigResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		IB_LOG_DEBUG2_FMT(__func__, "   LinkDowned                %u", response.integrityWeights.LinkDowned);
 		IB_LOG_DEBUG2_FMT(__func__, "   UncorrectableErrors       %u", response.integrityWeights.UncorrectableErrors);
 		IB_LOG_DEBUG2_FMT(__func__, "   FMConfigErrors            %u", response.integrityWeights.FMConfigErrors);
+		IB_LOG_DEBUG2_FMT(__func__, "   LinkQualityIndicator      %u", response.integrityWeights.LinkQualityIndicator);
+		IB_LOG_DEBUG2_FMT(__func__, "   LinkWidthDowngrade        %u", response.integrityWeights.LinkWidthDowngrade);
 		IB_LOG_DEBUG2_FMT(__func__, "Error thresholds:");
 		IB_LOG_DEBUG2_FMT(__func__, "   Integrity:                %u", response.errorThresholds.integrityErrors);
 		IB_LOG_DEBUG2_FMT(__func__, "   Congestion:               %u", response.errorThresholds.congestionErrors);
@@ -901,20 +908,20 @@ pa_getImageInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	status = paGetImageInfo(&g_pmSweepData, imageId, offset, &imageInfo, &retImageId);
 	if (status == FSUCCESS) {
 		records = 1;
-		response.imageId.imageNumber			= retImageId;
-		response.imageId.imageOffset			= 0;
-		response.sweepStart						= imageInfo.sweepStart;
-		response.sweepDuration					= imageInfo.sweepDuration;
-		response.numHFIPorts					= imageInfo.numHFIPorts;
-		response.numSwitchNodes					= imageInfo.numSwitchNodes;
-		response.numSwitchPorts					= imageInfo.numSwitchPorts;
-		response.numLinks						= imageInfo.numLinks;
-		response.numSMs							= imageInfo.numSMs;
-		response.numFailedNodes					= imageInfo.numFailedNodes;
-		response.numFailedPorts					= imageInfo.numFailedPorts;
-		response.numSkippedNodes				= imageInfo.numSkippedNodes;
-		response.numSkippedPorts				= imageInfo.numSkippedPorts;
-		response.numUnexpectedClearPorts		= imageInfo.numUnexpectedClearPorts;
+		response.imageId.imageNumber     = retImageId;
+		response.imageId.imageOffset     = 0;
+		response.sweepStart              = imageInfo.sweepStart;
+		response.sweepDuration           = imageInfo.sweepDuration;
+		response.numHFIPorts             = imageInfo.numHFIPorts;
+		response.numSwitchNodes          = imageInfo.numSwitchNodes;
+		response.numSwitchPorts          = imageInfo.numSwitchPorts;
+		response.numLinks                = imageInfo.numLinks;
+		response.numSMs                  = imageInfo.numSMs;
+		response.numFailedNodes          = imageInfo.numFailedNodes;
+		response.numFailedPorts          = imageInfo.numFailedPorts;
+		response.numSkippedNodes         = imageInfo.numSkippedNodes;
+		response.numSkippedPorts         = imageInfo.numSkippedPorts;
+		response.numUnexpectedClearPorts = imageInfo.numUnexpectedClearPorts;
 		for (i = 0; i < 2; i++) {
 			response.SMInfo[i].lid				= imageInfo.SMInfo[i].smLid;
 			response.SMInfo[i].portNumber		= imageInfo.SMInfo[i].portNumber;
@@ -922,7 +929,7 @@ pa_getImageInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			response.SMInfo[i].state			= imageInfo.SMInfo[i].state;
 			response.SMInfo[i].smPortGuid		= imageInfo.SMInfo[i].smPortGuid;
 			strncpy(response.SMInfo[i].smNodeDesc, imageInfo.SMInfo[i].smNodeDesc,
-				sizeof(response.SMInfo[i].smNodeDesc));
+				sizeof(response.SMInfo[i].smNodeDesc)-1);
 		}
 
 		/* debug logging */
@@ -1014,7 +1021,8 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	BSWAP_STL_PA_PM_GROUP_INFO(p, 1);
 	imageId = p->imageId.imageNumber;
 	offset 	= p->imageId.imageOffset;
-	strncpy(groupName, p->groupName, STL_PM_GROUPNAMELEN);
+	strncpy(groupName, p->groupName, STL_PM_GROUPNAMELEN-1);
+	groupName[STL_PM_GROUPNAMELEN-1]=0;
 
 	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", imageId, offset);
 	IB_LOG_DEBUG1_FMT(__func__, "Group: %.*s", sizeof(groupName), groupName);
@@ -1033,61 +1041,58 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			memset(response, 0, responseSize);
 		}
 
-    	strncpy(response[0].groupName, groupName, STL_PM_GROUPNAMELEN);
+    	strncpy(response[0].groupName, groupName, STL_PM_GROUPNAMELEN-1);
 		response[0].numInternalPorts							= groupInfo.NumIntPorts;
 		response[0].numExternalPorts							= groupInfo.NumExtPorts;
-    	response[0].internalUtilStats.totalMBps					= groupInfo.IntUtil.TotMBps;
-    	response[0].internalUtilStats.totalKPps					= groupInfo.IntUtil.TotKPps;
-    	response[0].internalUtilStats.avgMBps					= groupInfo.IntUtil.AvgMBps;
-    	response[0].internalUtilStats.minMBps					= groupInfo.IntUtil.MinMBps;
-    	response[0].internalUtilStats.maxMBps					= groupInfo.IntUtil.MaxMBps;
-    	response[0].internalUtilStats.numBWBuckets				= STL_PM_UTIL_BUCKETS;
+		response[0].internalUtilStats.totalMBps					= groupInfo.IntUtil.TotMBps;
+		response[0].internalUtilStats.totalKPps					= groupInfo.IntUtil.TotKPps;
+		response[0].internalUtilStats.avgMBps					= groupInfo.IntUtil.AvgMBps;
+		response[0].internalUtilStats.minMBps					= groupInfo.IntUtil.MinMBps;
+		response[0].internalUtilStats.maxMBps					= groupInfo.IntUtil.MaxMBps;
+		response[0].internalUtilStats.numBWBuckets				= STL_PM_UTIL_BUCKETS;
 		for (i = 0; i < STL_PM_UTIL_BUCKETS; i++) {
-    		response[0].internalUtilStats.BWBuckets[i]			= groupInfo.IntUtil.BwPorts[i];
+			response[0].internalUtilStats.BWBuckets[i]			= groupInfo.IntUtil.BwPorts[i];
 		}
-    	response[0].internalUtilStats.avgKPps					= groupInfo.IntUtil.AvgKPps;
-    	response[0].internalUtilStats.minKPps					= groupInfo.IntUtil.MinKPps;
-    	response[0].internalUtilStats.maxKPps					= groupInfo.IntUtil.MaxKPps;
+		response[0].internalUtilStats.avgKPps					= groupInfo.IntUtil.AvgKPps;
+		response[0].internalUtilStats.minKPps					= groupInfo.IntUtil.MinKPps;
+		response[0].internalUtilStats.maxKPps					= groupInfo.IntUtil.MaxKPps;
 
-    	response[0].sendUtilStats.totalMBps						= groupInfo.SendUtil.TotMBps;
-    	response[0].sendUtilStats.totalKPps						= groupInfo.SendUtil.TotKPps;
-    	response[0].sendUtilStats.avgMBps						= groupInfo.SendUtil.AvgMBps;
-    	response[0].sendUtilStats.minMBps						= groupInfo.SendUtil.MinMBps;
-    	response[0].sendUtilStats.maxMBps						= groupInfo.SendUtil.MaxMBps;
-    	response[0].sendUtilStats.numBWBuckets					= STL_PM_UTIL_BUCKETS;
+		response[0].sendUtilStats.totalMBps						= groupInfo.SendUtil.TotMBps;
+		response[0].sendUtilStats.totalKPps						= groupInfo.SendUtil.TotKPps;
+		response[0].sendUtilStats.avgMBps						= groupInfo.SendUtil.AvgMBps;
+		response[0].sendUtilStats.minMBps						= groupInfo.SendUtil.MinMBps;
+		response[0].sendUtilStats.maxMBps						= groupInfo.SendUtil.MaxMBps;
+		response[0].sendUtilStats.numBWBuckets					= STL_PM_UTIL_BUCKETS;
 		for (i = 0; i < STL_PM_UTIL_BUCKETS; i++) {
-    		response[0].sendUtilStats.BWBuckets[i]				= groupInfo.SendUtil.BwPorts[i];
+			response[0].sendUtilStats.BWBuckets[i]				= groupInfo.SendUtil.BwPorts[i];
 		}
-    	response[0].sendUtilStats.avgKPps						= groupInfo.SendUtil.AvgKPps;
+		response[0].sendUtilStats.avgKPps						= groupInfo.SendUtil.AvgKPps;
 		response[0].sendUtilStats.minKPps						= groupInfo.SendUtil.MinKPps;
-    	response[0].sendUtilStats.maxKPps						= groupInfo.SendUtil.MaxKPps;
+		response[0].sendUtilStats.maxKPps						= groupInfo.SendUtil.MaxKPps;
 
-    	response[0].recvUtilStats.totalMBps						= groupInfo.RecvUtil.TotMBps;
-    	response[0].recvUtilStats.totalKPps						= groupInfo.RecvUtil.TotKPps;
-    	response[0].recvUtilStats.avgMBps						= groupInfo.RecvUtil.AvgMBps;
-    	response[0].recvUtilStats.minMBps						= groupInfo.RecvUtil.MinMBps;
-    	response[0].recvUtilStats.maxMBps						= groupInfo.RecvUtil.MaxMBps;
-    	response[0].recvUtilStats.numBWBuckets					= STL_PM_UTIL_BUCKETS;
+		response[0].recvUtilStats.totalMBps						= groupInfo.RecvUtil.TotMBps;
+		response[0].recvUtilStats.totalKPps						= groupInfo.RecvUtil.TotKPps;
+		response[0].recvUtilStats.avgMBps						= groupInfo.RecvUtil.AvgMBps;
+		response[0].recvUtilStats.minMBps						= groupInfo.RecvUtil.MinMBps;
+		response[0].recvUtilStats.maxMBps						= groupInfo.RecvUtil.MaxMBps;
+		response[0].recvUtilStats.numBWBuckets					= STL_PM_UTIL_BUCKETS;
 		for (i = 0; i < STL_PM_UTIL_BUCKETS; i++) {
-    		response[0].recvUtilStats.BWBuckets[i]				= groupInfo.RecvUtil.BwPorts[i];
+			response[0].recvUtilStats.BWBuckets[i]				= groupInfo.RecvUtil.BwPorts[i];
 		}
-    	response[0].recvUtilStats.avgKPps						= groupInfo.RecvUtil.AvgKPps;
+		response[0].recvUtilStats.avgKPps						= groupInfo.RecvUtil.AvgKPps;
 		response[0].recvUtilStats.minKPps						= groupInfo.RecvUtil.MinKPps;
-    	response[0].recvUtilStats.maxKPps						= groupInfo.RecvUtil.MaxKPps;
+		response[0].recvUtilStats.maxKPps						= groupInfo.RecvUtil.MaxKPps;
 
-    	response[0].internalErrors.errorMaximums.integrityErrors		= groupInfo.IntErr.Max.Integrity;
-    	response[0].internalErrors.errorMaximums.congestionErrors		= groupInfo.IntErr.Max.Congestion;
+		/* Internal Error */
+		response[0].internalErrors.errorMaximums.integrityErrors		= groupInfo.IntErr.Max.Integrity;
+		response[0].internalErrors.errorMaximums.congestionErrors		= groupInfo.IntErr.Max.Congestion;
 		response[0].internalErrors.errorMaximums.smaCongestionErrors 	= groupInfo.IntErr.Max.SmaCongestion;
 		response[0].internalErrors.errorMaximums.bubbleErrors			= groupInfo.IntErr.Max.Bubble;
 		response[0].internalErrors.errorMaximums.securityErrors			= groupInfo.IntErr.Max.Security;
-    	response[0].internalErrors.errorMaximums.routingErrors			= groupInfo.IntErr.Max.Routing;
+		response[0].internalErrors.errorMaximums.routingErrors			= groupInfo.IntErr.Max.Routing;
 
-		response[0].internalErrors.errorMaximums.congInefficiencyPct10     = groupInfo.IntErr.Max.CongInefficiencyPct10;
-    	response[0].internalErrors.errorMaximums.waitInefficiencyPct10     = groupInfo.IntErr.Max.WaitInefficiencyPct10;
-		response[0].internalErrors.errorMaximums.bubbleInefficiencyPct10   = groupInfo.IntErr.Max.BubbleInefficiencyPct10;
-		response[0].internalErrors.errorMaximums.discardsPct10             = groupInfo.IntErr.Max.DiscardsPct10;
-		response[0].internalErrors.errorMaximums.congestionDiscardsPct10   = groupInfo.IntErr.Max.CongestionDiscardsPct10;
-		response[0].internalErrors.errorMaximums.utilizationPct10          = groupInfo.IntErr.Max.UtilizationPct10;
+		response[0].internalErrors.errorMaximums.utilizationPct10 = groupInfo.IntErr.Max.UtilizationPct10;
+		response[0].internalErrors.errorMaximums.discardsPct10    = groupInfo.IntErr.Max.DiscardsPct10;
 
 		for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
 			response[0].internalErrors.ports[i].integrityErrors		= groupInfo.IntErr.Ports[i].Integrity;
@@ -1097,13 +1102,16 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			response[0].internalErrors.ports[i].securityErrors		= groupInfo.IntErr.Ports[i].Security;
 			response[0].internalErrors.ports[i].routingErrors		= groupInfo.IntErr.Ports[i].Routing;
 		}
+		/* External Errors */
+		response[0].externalErrors.errorMaximums.integrityErrors     = groupInfo.ExtErr.Max.Integrity;
+		response[0].externalErrors.errorMaximums.congestionErrors    = groupInfo.ExtErr.Max.Congestion;
+		response[0].externalErrors.errorMaximums.smaCongestionErrors = groupInfo.ExtErr.Max.SmaCongestion;
+		response[0].externalErrors.errorMaximums.bubbleErrors        = groupInfo.ExtErr.Max.Bubble;
+		response[0].externalErrors.errorMaximums.securityErrors      = groupInfo.ExtErr.Max.Security;
+		response[0].externalErrors.errorMaximums.routingErrors       = groupInfo.ExtErr.Max.Routing;
 
-		response[0].externalErrors.errorMaximums.congInefficiencyPct10  	= groupInfo.ExtErr.Max.CongInefficiencyPct10;
-		response[0].externalErrors.errorMaximums.waitInefficiencyPct10  	= groupInfo.ExtErr.Max.WaitInefficiencyPct10;
-		response[0].externalErrors.errorMaximums.bubbleInefficiencyPct10	= groupInfo.ExtErr.Max.BubbleInefficiencyPct10;
-		response[0].externalErrors.errorMaximums.discardsPct10          	= groupInfo.ExtErr.Max.DiscardsPct10;
-		response[0].externalErrors.errorMaximums.congestionDiscardsPct10	= groupInfo.ExtErr.Max.CongestionDiscardsPct10;
-		response[0].externalErrors.errorMaximums.utilizationPct10       	= groupInfo.ExtErr.Max.UtilizationPct10;
+		response[0].externalErrors.errorMaximums.utilizationPct10 = groupInfo.ExtErr.Max.UtilizationPct10;
+		response[0].externalErrors.errorMaximums.discardsPct10    = groupInfo.ExtErr.Max.DiscardsPct10;
 
 		for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
 			response[0].externalErrors.ports[i].integrityErrors		= groupInfo.ExtErr.Ports[i].Integrity;
@@ -1200,20 +1208,9 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			IB_LOG_DEBUG2_FMT(__func__,"    Utilization: %3u.%1u%%",
 							  response[0].internalErrors.errorMaximums.utilizationPct10 / 10,
 							  response[0].internalErrors.errorMaximums.utilizationPct10 % 10);
-			IB_LOG_DEBUG2_FMT(__func__,"    CongIneffic: %3u.%1u%%",
-							  response[0].internalErrors.errorMaximums.congInefficiencyPct10 / 10,
-							  response[0].internalErrors.errorMaximums.congInefficiencyPct10 % 10);
-			IB_LOG_DEBUG2_FMT(__func__,"    BubbleIneffic: %3u.%1u%%",
-							  response[0].internalErrors.errorMaximums.bubbleInefficiencyPct10 / 10,
-							  response[0].internalErrors.errorMaximums.bubbleInefficiencyPct10 % 10);
-			IB_LOG_DEBUG2_FMT(__func__,"    WaitIneffic: %3u.%1u%%",
-							  response[0].internalErrors.errorMaximums.waitInefficiencyPct10 / 10,
-							  response[0].internalErrors.errorMaximums.waitInefficiencyPct10 % 10);
-			IB_LOG_DEBUG2_FMT(__func__,"    Discards: %3u.%1u%%    Congest: %3u.%1u%%",
+			IB_LOG_DEBUG2_FMT(__func__,"    Discards: %3u.%1u%%",
 							  response[0].internalErrors.errorMaximums.discardsPct10 / 10,
-							  response[0].internalErrors.errorMaximums.discardsPct10 % 10,
-							  response[0].internalErrors.errorMaximums.congestionDiscardsPct10 / 10,
-							  response[0].internalErrors.errorMaximums.congestionDiscardsPct10 % 10);
+							  response[0].internalErrors.errorMaximums.discardsPct10 % 10);
 			IB_LOG_DEBUG2_FMT(__func__, "External Error Summary:");
 			p1 = logBuf;
 			p1 += sprintf(p1, "  Err Integrity       Max %10u Buckets: ", response[0].externalErrors.errorMaximums.integrityErrors);
@@ -1255,20 +1252,9 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			IB_LOG_DEBUG2_FMT(__func__,"    Utilization: %3u.%1u%%",
 							  response[0].externalErrors.errorMaximums.utilizationPct10 / 10,
 							  response[0].externalErrors.errorMaximums.utilizationPct10 % 10);
-			IB_LOG_DEBUG2_FMT(__func__,"    CongIneffic: %3u.%1u%%",
-							  response[0].externalErrors.errorMaximums.congInefficiencyPct10 / 10,
-							  response[0].externalErrors.errorMaximums.congInefficiencyPct10 % 10);
-			IB_LOG_DEBUG2_FMT(__func__,"    BubbleIneffic: %3u.%1u%%",
-							  response[0].externalErrors.errorMaximums.bubbleInefficiencyPct10 / 10,
-							  response[0].externalErrors.errorMaximums.bubbleInefficiencyPct10 % 10);
-			IB_LOG_DEBUG2_FMT(__func__,"    WaitIneffic: %3u.%1u%%",
-							  response[0].externalErrors.errorMaximums.waitInefficiencyPct10 / 10,
-							  response[0].externalErrors.errorMaximums.waitInefficiencyPct10 % 10);
-			IB_LOG_DEBUG2_FMT(__func__,"    Discards: %3u.%1u%%    Congest: %3u.%1u%%",
+			IB_LOG_DEBUG2_FMT(__func__,"    Discards: %3u.%1u%%",
 							  response[0].externalErrors.errorMaximums.discardsPct10 / 10,
-							  response[0].externalErrors.errorMaximums.discardsPct10 % 10,
-							  response[0].externalErrors.errorMaximums.congestionDiscardsPct10 / 10,
-							  response[0].externalErrors.errorMaximums.congestionDiscardsPct10 % 10);
+							  response[0].externalErrors.errorMaximums.discardsPct10 % 10);
 
 			IB_LOG_DEBUG2_FMT(__func__, "  Min Internal Rate %u", response[0].minInternalRate);
 			IB_LOG_DEBUG2_FMT(__func__, "  Max Internal Rate %u", response[0].maxInternalRate);
@@ -1356,7 +1342,8 @@ pa_getGroupConfigResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	BSWAP_STL_PA_GROUP_CONFIG_REQ(p);
 	imageId = p->imageId.imageNumber;
 	offset 	= p->imageId.imageOffset;
-	strncpy(groupName, p->groupName, STL_PM_GROUPNAMELEN);
+	strncpy(groupName, p->groupName, STL_PM_GROUPNAMELEN-1);
+	groupName[STL_PM_GROUPNAMELEN-1]=0;
 
 	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", imageId, offset);
 	IB_LOG_DEBUG1_FMT(__func__, "Group: %.*s", sizeof(groupName), groupName);
@@ -1379,7 +1366,7 @@ pa_getGroupConfigResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
     		response[i].nodeLid				= pmGroupConfig.portList[i].lid;
     		response[i].portNumber			= pmGroupConfig.portList[i].portNum;
     		response[i].nodeGUID			= pmGroupConfig.portList[i].guid;
-    		strncpy(response[i].nodeDesc, pmGroupConfig.portList[i].nodeDesc, sizeof(response[i].nodeDesc));
+    		strncpy(response[i].nodeDesc, pmGroupConfig.portList[i].nodeDesc, sizeof(response[i].nodeDesc)-1);
 			response[i].imageId.imageNumber = retImageId;
 			response[i].imageId.imageOffset = 0;
 		}
@@ -1473,7 +1460,8 @@ pa_getFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	start   = p->start;
 	range   = p->range;
 
-	strncpy(groupName, p->groupName, STL_PM_GROUPNAMELEN);
+	strncpy(groupName, p->groupName, STL_PM_GROUPNAMELEN-1);
+	groupName[STL_PM_GROUPNAMELEN-1] = 0; 
 
 	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", imageId, offset);
 	IB_LOG_DEBUG1_FMT(__func__, "Group: %.*s  Select: 0x%x  Start: %u  Range: %u",
@@ -1501,14 +1489,14 @@ pa_getFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
     		response[i].rate				= pmFocusPorts.portList[i].rate;
     		response[i].mtu					= pmFocusPorts.portList[i].mtu;
     		response[i].value				= pmFocusPorts.portList[i].value;
-    		response[i].value2				= pmFocusPorts.portList[i].guid;
-    		strncpy(response[i].nodeDesc, pmFocusPorts.portList[i].nodeDesc, sizeof(response[i].nodeDesc));
+    		response[i].nodeGUID			= pmFocusPorts.portList[i].guid;
+    		strncpy(response[i].nodeDesc, pmFocusPorts.portList[i].nodeDesc, sizeof(response[i].nodeDesc)-1);
     		response[i].neighborLid 		= pmFocusPorts.portList[i].neighborLid;
     		response[i].neighborPortNumber	= pmFocusPorts.portList[i].neighborPortNum;
     		response[i].neighborValue		= pmFocusPorts.portList[i].neighborValue;
     		response[i].neighborGuid		= pmFocusPorts.portList[i].neighborGuid;
     		strncpy(response[i].neighborNodeDesc, pmFocusPorts.portList[i].neighborNodeDesc,
-					sizeof(response[i].neighborNodeDesc));
+					sizeof(response[i].neighborNodeDesc)-1);
 			response[i].imageId.imageNumber = retImageId;
 			response[i].imageId.imageOffset = 0;
 		}
@@ -1518,7 +1506,7 @@ pa_getFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		for (i = 0; i < pmFocusPorts.NumPorts; i++) {
 			IB_LOG_DEBUG2_FMT(__func__, "  %u:LID:0x%08X Port:%u Value:%"PRId64" ",
 					i+1, response[i].nodeLid, response[i].portNumber, response[i].value);
-			IB_LOG_DEBUG2_FMT(__func__, "     value2 0x%"PRIx64" ", response[i].value2);
+			IB_LOG_DEBUG2_FMT(__func__, "     nodeGUID 0x%"PRIx64" ", response[i].nodeGUID);
 			IB_LOG_DEBUG2_FMT(__func__, "     Node Description %.*s",
 					sizeof(response[i].nodeDesc), response[i].nodeDesc);
 			IB_LOG_DEBUG2_FMT(__func__, "     nLID:0x%08X nPort:%u nValue:%"PRId64" ",
@@ -1615,7 +1603,7 @@ pa_getVFListResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 
 		IB_LOG_DEBUG2_FMT(__func__, "Number of VFs: %u", VFList.NumVFs);
 		for (i = 0; i < VFList.NumVFs; i++) {
-    		strncpy(response[i].vfName, VFList.VfList[i].Name, STL_PM_VFNAMELEN);
+    		strncpy(response[i].vfName, VFList.VfList[i].Name, STL_PM_VFNAMELEN-1);
 			IB_LOG_DEBUG2_FMT(__func__, "VF %d: %.*s", i+1,
 							  sizeof(response[i].vfName),response[i].vfName);
 		}
@@ -1687,12 +1675,13 @@ pa_getVFInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	BSWAP_STL_PA_VF_INFO(p, 1);
 	imageId = p->imageId.imageNumber;
 	offset 	= p->imageId.imageOffset;
-	strncpy(vfName, p->vfName, STL_PM_GROUPNAMELEN);
+	strncpy(vfName, p->vfName, STL_PM_GROUPNAMELEN-1);
+	vfName[STL_PM_GROUPNAMELEN-1]=0;
 
 	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", imageId, offset);
 	IB_LOG_DEBUG1_FMT(__func__, "VF: %.*s", sizeof(vfName), vfName);
 
-	status = paGetVFInfo(&g_pmSweepData, vfName, 0, &vfInfo, imageId, offset, &retImageId, &isFailedPort);
+	status = paGetVFInfo(&g_pmSweepData, vfName, &vfInfo, imageId, offset, &retImageId, &isFailedPort);
 	if (status == FSUCCESS) {
 		records = 1;
 		responseSize = records * sizeof(STL_PA_PM_GROUP_INFO_DATA);
@@ -1705,7 +1694,7 @@ pa_getVFInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			}
 			memset(response, 0, responseSize);
 		}
-    	strncpy(response[0].vfName, vfName, STL_PM_GROUPNAMELEN);
+    	strncpy(response[0].vfName, vfName, STL_PM_GROUPNAMELEN-1);
 		response[0].numPorts											= vfInfo.NumPorts;
     	response[0].internalUtilStats.totalMBps						= vfInfo.IntUtil.TotMBps;
     	response[0].internalUtilStats.totalKPps						= vfInfo.IntUtil.TotKPps;
@@ -1727,12 +1716,8 @@ pa_getVFInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		response[0].internalErrors.errorMaximums.securityErrors   	 	= vfInfo.IntErr.Max.Security;
 		response[0].internalErrors.errorMaximums.routingErrors	   	 	= vfInfo.IntErr.Max.Routing;
 
-		response[0].internalErrors.errorMaximums.congInefficiencyPct10     = vfInfo.IntErr.Max.CongInefficiencyPct10;
-		response[0].internalErrors.errorMaximums.waitInefficiencyPct10     = vfInfo.IntErr.Max.WaitInefficiencyPct10;
-		response[0].internalErrors.errorMaximums.bubbleInefficiencyPct10   = vfInfo.IntErr.Max.BubbleInefficiencyPct10;
-		response[0].internalErrors.errorMaximums.discardsPct10             = vfInfo.IntErr.Max.DiscardsPct10;
-		response[0].internalErrors.errorMaximums.congestionDiscardsPct10   = vfInfo.IntErr.Max.CongestionDiscardsPct10;
-		response[0].internalErrors.errorMaximums.utilizationPct10          = vfInfo.IntErr.Max.UtilizationPct10;
+		response[0].internalErrors.errorMaximums.utilizationPct10 = vfInfo.IntErr.Max.UtilizationPct10;
+		response[0].internalErrors.errorMaximums.discardsPct10    = vfInfo.IntErr.Max.DiscardsPct10;
 
 		for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
 			response[0].internalErrors.ports[i].integrityErrors		= vfInfo.IntErr.Ports[i].Integrity;
@@ -1803,20 +1788,9 @@ pa_getVFInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			IB_LOG_DEBUG2_FMT(__func__,"    Utilization: %3u.%1u%%",
 							  response[0].internalErrors.errorMaximums.utilizationPct10 / 10,
 							  response[0].internalErrors.errorMaximums.utilizationPct10 % 10);
-			IB_LOG_DEBUG2_FMT(__func__,"    CongIneffic: %3u.%1u%%",
-							  response[0].internalErrors.errorMaximums.congInefficiencyPct10 / 10,
-							  response[0].internalErrors.errorMaximums.congInefficiencyPct10 % 10);
-			IB_LOG_DEBUG2_FMT(__func__,"    BubbleIneffic: %3u.%1u%%",
-							  response[0].internalErrors.errorMaximums.bubbleInefficiencyPct10 / 10,
-							  response[0].internalErrors.errorMaximums.bubbleInefficiencyPct10 % 10);
-			IB_LOG_DEBUG2_FMT(__func__,"    WaitIneffic: %3u.%1u%%",
-							  response[0].internalErrors.errorMaximums.waitInefficiencyPct10 / 10,
-							  response[0].internalErrors.errorMaximums.waitInefficiencyPct10 % 10);
-			IB_LOG_DEBUG2_FMT(__func__,"    Discards: %3u.%1u%%    Congest: %3u.%1u%%",
+			IB_LOG_DEBUG2_FMT(__func__,"    Discards: %3u.%1u%%",
 							  response[0].internalErrors.errorMaximums.discardsPct10 / 10,
-							  response[0].internalErrors.errorMaximums.discardsPct10 % 10,
-							  response[0].internalErrors.errorMaximums.congestionDiscardsPct10 / 10,
-							  response[0].internalErrors.errorMaximums.congestionDiscardsPct10 % 10);
+							  response[0].internalErrors.errorMaximums.discardsPct10 % 10);
 
 			IB_LOG_DEBUG2_FMT(__func__, "  Min Internal Rate %u", response[0].minInternalRate);
 			IB_LOG_DEBUG2_FMT(__func__, "  Max Internal Rate %u", response[0].maxInternalRate);
@@ -1900,7 +1874,8 @@ pa_getVFConfigResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	BSWAP_STL_PA_VF_CFG_REQ(p);
 	imageId = p->imageId.imageNumber;
 	offset 	= p->imageId.imageOffset;
-	strncpy(vfName, p->vfName, STL_PM_VFNAMELEN);
+	strncpy(vfName, p->vfName, STL_PM_VFNAMELEN-1);
+	vfName[STL_PM_VFNAMELEN-1]=0;
 
 	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", imageId, offset);
 	IB_LOG_DEBUG1_FMT(__func__, "VF: %.*s", sizeof(vfName), vfName);
@@ -1923,7 +1898,7 @@ pa_getVFConfigResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
     		response[i].nodeLid 			= pmVFConfig.portList[i].lid;
     		response[i].portNumber			= pmVFConfig.portList[i].portNum;
     		response[i].nodeGUID			= pmVFConfig.portList[i].guid;
-    		strncpy(response[i].nodeDesc, pmVFConfig.portList[i].nodeDesc, sizeof(response[i].nodeDesc));
+    		strncpy(response[i].nodeDesc, pmVFConfig.portList[i].nodeDesc, sizeof(response[i].nodeDesc)-1);
 			response[i].imageId.imageNumber	= retImageId;
 			response[i].imageId.imageOffset	= 0;
 		}
@@ -2011,7 +1986,8 @@ pa_getVFPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 
 	INCREMENT_PM_COUNTER(pmCounterPaRxGetVFPortCtrs);
 	BSWAP_STL_PA_VF_PORT_COUNTERS(p);
-	strncpy(vfName, p->vfName, STL_PM_VFNAMELEN);
+	strncpy(vfName, p->vfName, STL_PM_VFNAMELEN-1);
+	vfName[STL_PM_VFNAMELEN-1]=0;
 	imageId 	= p->imageId.imageNumber;
 	offset 		= p->imageId.imageOffset;
 	nodeLid		= p->nodeLid;
@@ -2045,14 +2021,13 @@ pa_getVFPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		response.portVFRcvBubble				= pmVLPortCounters.PortVLRcvBubble;
 		response.portVFMarkFECN					= pmVLPortCounters.PortVLMarkFECN;
     	response.imageId.imageNumber			= retImageId;
-		strncpy(response.vfName, vfName, STL_PM_VFNAMELEN);
+		strncpy(response.vfName, vfName, STL_PM_VFNAMELEN-1);
 
 		/* debug logging */
 		IB_LOG_DEBUG2_FMT(__func__, "%s Controlled VF Port Counters (%s) for node lid 0x%x, port number %u%s:",
-						  (userCntrs?"User":"PM"), (delta?"delta":"total"), nodeLid, portNumber,
-						  flags & STL_PA_PC_FLAG_UNEXPECTED_CLEAR?" (Unexpected Clear)":"");
+			(userCntrs?"User":"PM"), (delta?"delta":"total"), nodeLid, portNumber,
+			flags & STL_PA_PC_FLAG_UNEXPECTED_CLEAR?" (Unexpected Clear)":"");
 		IB_LOG_DEBUG2_FMT(__func__, " VF Name: %s", vfName);
-		IB_LOG_DEBUG2_FMT(__func__, " VF SID:  0x%016"PRIx64" ", response.vfSID);
 		IB_LOG_DEBUG2_FMT(__func__, "Perfromance:");
 		IB_LOG_DEBUG2_FMT(__func__, " Xmit Data:       %10"PRIu64" MB (%"PRIu64" Flits)",
 						  response.portVFXmitData/FLITS_PER_MB, response.portVFXmitData);
@@ -2141,7 +2116,8 @@ pa_clrVFPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	nodeLid			= p->nodeLid;
 	portNumber		= p->portNumber;
 	select.AsReg32	= p->vfCounterSelectMask.AsReg32;
-	strncpy(vfName, p->vfName, STL_PM_VFNAMELEN);
+	strncpy(vfName, p->vfName, STL_PM_VFNAMELEN-1);
+	vfName[STL_PM_VFNAMELEN-1]=0;
 
 	IB_LOG_DEBUG1_FMT(__func__, "Clearing VF %.*s counters on LID 0x%x port %u with select 0x%04x",
 		sizeof(vfName), vfName, nodeLid, portNumber, select.AsReg32);
@@ -2152,7 +2128,7 @@ pa_clrVFPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		response.nodeLid						= nodeLid;
 		response.portNumber 					= portNumber;
 		response.vfCounterSelectMask.AsReg32	= select.AsReg32;
-		strncpy(response.vfName, vfName, STL_PM_VFNAMELEN);
+		strncpy(response.vfName, vfName, STL_PM_VFNAMELEN-1);
     	BSWAP_STL_PA_CLEAR_VF_PORT_COUNTERS(&response);
 		memcpy(data, &response, sizeof(response));
 	}
@@ -2222,7 +2198,8 @@ pa_getVFFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	select	= p->select;
 	start	= p->start;
 	range	= p->range;
-	strncpy(vfName, p->vfName, STL_PM_VFNAMELEN);
+	strncpy(vfName, p->vfName, STL_PM_VFNAMELEN-1);
+	vfName[STL_PM_VFNAMELEN-1]=0;
 
 	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", imageId, offset);
 	IB_LOG_DEBUG1_FMT(__func__, "VF: %.*s  Select: 0x%x  Start: %u  Range: %u",
@@ -2249,16 +2226,16 @@ pa_getVFFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
     		response[i].rate				= pmVFFocusPorts.portList[i].rate;
     		response[i].mtu					= pmVFFocusPorts.portList[i].mtu;
     		response[i].value				= pmVFFocusPorts.portList[i].value;
-    		response[i].value2 				= pmVFFocusPorts.portList[i].guid;
+    		response[i].nodeGUID			= pmVFFocusPorts.portList[i].guid;
     		strncpy(response[i].nodeDesc, pmVFFocusPorts.portList[i].nodeDesc,
-					sizeof(response[i].nodeDesc));
+					sizeof(response[i].nodeDesc)-1);
 
     		response[i].neighborLid 		= pmVFFocusPorts.portList[i].neighborLid;
     		response[i].neighborPortNumber 	= pmVFFocusPorts.portList[i].neighborPortNum;
     		response[i].neighborValue 		= pmVFFocusPorts.portList[i].neighborValue;
     		response[i].neighborGuid 		= pmVFFocusPorts.portList[i].neighborGuid;
     		strncpy(response[i].neighborNodeDesc, pmVFFocusPorts.portList[i].neighborNodeDesc,
-					sizeof(response[i].neighborNodeDesc));
+					sizeof(response[i].neighborNodeDesc)-1);
 
 			response[i].imageId.imageNumber = retImageId;
 			response[i].imageId.imageOffset = 0;
@@ -2269,7 +2246,7 @@ pa_getVFFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		for (i = 0; i < pmVFFocusPorts.NumPorts; i++) {
 			IB_LOG_DEBUG2_FMT(__func__, "  %d:LID:0x%08X Port:%u Value:%"PRId64" ",
 							  i+1, response[i].nodeLid, response[i].portNumber, response[i].value);
-			IB_LOG_DEBUG2_FMT(__func__, "     value2 0x%"PRIx64" ", response[i].value2);
+			IB_LOG_DEBUG2_FMT(__func__, "     nodeGUID 0x%"PRIx64" ", response[i].nodeGUID);
 			IB_LOG_DEBUG2_FMT(__func__, "     Node Description %.*s",
 							  sizeof(response[i].nodeDesc), response[i].nodeDesc);
 			IB_LOG_DEBUG2_FMT(__func__, "     nLID:0x%08X nPort:%u nValue:%"PRId64" ",

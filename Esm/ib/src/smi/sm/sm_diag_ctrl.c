@@ -72,7 +72,7 @@ static uint32_t	sm_diag_fast_mode_start;
  */
 char* sm_looptest_start(int numPkts) {
 	char * buf = NULL;
-	int len = 500;
+	int len = 500, pos = 0;
 
 	if (vs_pool_alloc(&sm_pool, len, (void*)&buf) != VSTATUS_OK) {
 		IB_FATAL_ERROR("sm_looptest_start: CAN'T ALLOCATE SPACE.");
@@ -102,16 +102,16 @@ char* sm_looptest_start(int numPkts) {
 		sm_forceSweep("SM Loop Test Start");
 		vs_thread_sleep(VTIMER_1S*3);   /* wait a bit for sweep to complete */
 		sm_setSweepRate(0);
-		sprintf(buf, "Loop Test has been started with %u packets\n", esmLoopTestNumPkts);
+		pos = snprintf(buf, len, "Loop Test has been started with %u packets\n", esmLoopTestNumPkts);
 		if (esmLoopTestNumPkts == 0) {
 			if (sm_diag_fast_mode_start)
-				strcat(buf, "Loop Test Fast Mode is setup, but no packets have been injected and no traffic is running\n)");
+				snprintf(buf + pos, len - pos, "Loop Test Fast Mode is setup, but no packets have been injected and no traffic is running\n)");
 			else
-				strcat(buf, "Loop Test is setup, but no packets have been injected and no traffic is running\n");
+				snprintf(buf + pos, len - pos, "Loop Test is setup, but no packets have been injected and no traffic is running\n");
 		}
     } else {
 		IB_LOG_WARN0("Loop Test is already running!");
-		sprintf(buf, "Loop Test has already been started - ignoring command!\n");
+		snprintf(buf, len, "Loop Test has already been started - ignoring command!\n");
     }
 	return buf;
 }

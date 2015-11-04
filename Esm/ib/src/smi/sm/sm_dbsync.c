@@ -67,6 +67,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "mal_g.h"
 #endif
 
+extern	IBhandle_t	fd_dbsync;
+
 
 /*
  * sm sb sync parameters 
@@ -362,6 +364,7 @@ static Status_t dbsync_reconfigSMDBSync(SMSyncReq_t *syncReqp) {
     }
 	/* Mark its sync capability as unknown. We'll have to rediscover it after it has reconfigured */
 	sm_dbsync_upSmDbsyncCap(syncReqp->portguid, DBSYNC_CAP_UNKNOWN);
+    sm_trigger_sweep(SM_SWEEP_REASON_UPDATED_STANDBY);
     IB_EXIT(__func__, 0);
     return status;
 }
@@ -398,7 +401,7 @@ static Status_t dbsync_getSMDBCCCSync(SMSyncReq_t *syncReqp) {
             /* extract the sync checksums of standby SM */
             (void)BSWAPCOPY_SM_DBSYNC_CCC_DATA((SMDBCCCSyncp)msgbuf, &smSyncConsistency);
             /* check configuration checksum info if set to that level */
-                if ((status = sm_dbsync_configCheck((SmRecKey_t)syncReqp->portguid, &smSyncConsistency)) != VSTATUS_OK) { 
+			if ((status = sm_dbsync_configCheck((SmRecKey_t)syncReqp->portguid, &smSyncConsistency)) != VSTATUS_OK) {
             		IB_LOG_WARN_FMT(__func__, 
                            "Can't perform config consistency checking for SM at portGuid="FMT_U64" in SM list", syncReqp->portguid);
             }
@@ -528,9 +531,9 @@ static Status_t dbsync_sendFileSMDBSync(SMSyncReq_t *syncReqp) {
             } else {
                 
                 /* successfully sent file to standby SM */
-                IB_LOG_WARN_FMT(__func__, 
-                        "Send file %s to SM at portGuid "FMT_U64", LID=[0x%x] ",
-                        syncFile.name, syncReqp->portguid, syncReqp->standbyLid);
+                IB_LOG_INFO_FMT(__func__, 
+                        "Send file %s [%d bytes] to SM at portGuid "FMT_U64", LID=[0x%x] ",
+                        syncFile.name, outlen, syncReqp->portguid, syncReqp->standbyLid);
             }
 			if (syncFile.type == DBSYNC_PM_SWEEP_IMAGE || syncFile.type == DBSYNC_PM_HIST_IMAGE) {
 				(void)sm_send_pm_image_complete(syncReqp->portguid, status);
@@ -578,17 +581,17 @@ static Status_t processSMDBSyncGetSet(Mai_t *maip, uint8_t *msgbuf, uint32_t len
 
             (void)BSWAPCOPY_SM_DBSYNC_DATA(&smrecp->dbsync, (SMDBSyncp)msgbuf);
             /* send the sync capability of standby SM */
-                status = dbSyncMngrReply (dbsyncfd_if3, maip, msgbuf, SMDBSYNC_NSIZE, VSTATUS_OK);
-                IB_LOG_INFO_FMT(__func__, 
-                        "sent sync settings of [version %lu, informTimeLastSync=%"CS64"ld, groupTimeLastSync=%lu, serviceTimeLastSync=%lu]",
-                        smrecp->dbsync.version, smrecp->dbsync.informTimeLastSync, smrecp->dbsync.groupTimeLastSync, 
-                        smrecp->dbsync.serviceTimeLastSync);
-            } else {
+			status = dbSyncMngrReply (dbsyncfd_if3, maip, msgbuf, SMDBSYNC_NSIZE, VSTATUS_OK);
+			IB_LOG_INFO_FMT(__func__, 
+							"sent sync settings of [version %lu, informTimeLastSync=%"CS64"ld, groupTimeLastSync=%lu, serviceTimeLastSync=%lu]",
+							smrecp->dbsync.version, smrecp->dbsync.informTimeLastSync, smrecp->dbsync.groupTimeLastSync, 
+							smrecp->dbsync.serviceTimeLastSync);
+		} else {
             /* return error */
             (void) dbSyncMngrReply (dbsyncfd_if3, maip, msgbuf, 0, VSTATUS_DROP);
             status = VSTATUS_BAD;
             IB_LOG_ERROR_FMT(__func__,
-                   "Can't find SM record for portGuid="FMT_U64" in SM list", reckey);
+							 "Can't find SM record for portGuid="FMT_U64" in SM list", reckey);
         }
         /* unlock the SM table */
         (void)vs_unlock(&smRecords.smLock);
@@ -1408,6 +1411,20 @@ static Status_t processGroupSync(Mai_t *maip, uint8_t *msgbuf, uint32_t reclen) 
                     mcMember->record = mcms.member;
                     mcMember->index = mcms.index;
                 }
+                (void)vs_rdlock(&old_topology_lock);
+                VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
+                if (VirtualFabrics) {
+                    vfmGid[0] = mcGroup->mGid.AsReg64s.H;
+                    vfmGid[1] = mcGroup->mGid.AsReg64s.L;
+                    for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
+                        if ((PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey) == PKEY_VALUE(mcGroup->pKey)) &&
+                            (smVFValidateMcDefaultGroup(vf, vfmGid) == VSTATUS_OK)) {
+                            bitset_set(&mcGroup->vfMembers, vf);
+                        }
+                    }
+                }
+                (void)vs_rwunlock(&old_topology_lock);
+
                 IB_LOG_INFO_FMT(__func__,
                        "ADD/UPDATE group " FMT_GID " with %d members", ((IB_GID *)mcgs.mGid)->Type.Global.SubnetPrefix, ((IB_GID *)mcgs.mGid)->Type.Global.InterfaceID, mcgs.membercount);
             } else {
@@ -1466,7 +1483,7 @@ static Status_t dbsync_setSMDBService(SMSyncReq_t *syncReqp) {
     uint8_t *       buff;
     uint32_t        numRecs=0, outlen=0;
     uint32_t        resp_status=0;
-	VieoServiceRecord_t	*vsrp;
+	OpaServiceRecord_t	*osrp;
     ServiceRecKeyp  srkeyp;
     CS_HashTableItr_t itr;
 
@@ -1501,8 +1518,8 @@ static Status_t dbsync_setSMDBService(SMSyncReq_t *syncReqp) {
 					outlen -= sizeof(STL_SERVICE_RECORD);
 					continue;
 				}
-                vsrp = cs_hashtable_iterator_value(&itr);
-            	BSWAPCOPY_STL_SERVICE_RECORD(&vsrp->serviceRecord, 
+                osrp = cs_hashtable_iterator_value(&itr);
+            	BSWAPCOPY_STL_SERVICE_RECORD(&osrp->serviceRecord, 
 					(STL_SERVICE_RECORD*)buff);
                 buff += sizeof(STL_SERVICE_RECORD);
             } while (cs_hashtable_iterator_advance(&itr));
@@ -1554,7 +1571,7 @@ static Status_t dbsync_setSMDBService(SMSyncReq_t *syncReqp) {
 static Status_t dbsync_updateSMDBService(SMSyncReq_t *syncReqp) {
     Status_t        status=VSTATUS_OK;
     uint32_t        resp_status=0;
-	VieoServiceRecord_t	*vsrp=NULL;
+	OpaServiceRecord_t	*osrp=NULL;
     uint32_t        numRecs=0, outlen=0, inlen=0;
     uint8_t        *buff = msgbuf;
 
@@ -1562,10 +1579,10 @@ static Status_t dbsync_updateSMDBService(SMSyncReq_t *syncReqp) {
 
     if (syncReqp->portguid && (syncReqp->standbyLid >= UNICAST_LID_MIN && syncReqp->standbyLid <= UNICAST_LID_MAX)) {
         numRecs++;
-        vsrp = (VieoServiceRecord_t *)(syncReqp->data);
+        osrp = (OpaServiceRecord_t *)(syncReqp->data);
         BSWAPCOPY_SM_DBSYNC_RECORD_CNT(&numRecs, (uint32_t*)buff);
         buff += sizeof(numRecs);
-		BSWAPCOPY_STL_SERVICE_RECORD(&vsrp->serviceRecord, (STL_SERVICE_RECORD*)buff);
+		BSWAPCOPY_STL_SERVICE_RECORD(&osrp->serviceRecord, (STL_SERVICE_RECORD*)buff);
         outlen = sizeof(STL_SERVICE_RECORD);
 		outlen += sizeof(numRecs);
         if (if3_set_dlid (dbsyncfd_if3, syncReqp->standbyLid)) {
@@ -1606,8 +1623,8 @@ static Status_t dbsync_updateSMDBService(SMSyncReq_t *syncReqp) {
 static Status_t processServiceSync(Mai_t *maip, uint8_t *msgbuf, uint32_t reclen) {
     Status_t        status=VSTATUS_OK;
     uint32_t        bufidx=0, numRecs;
-	VieoServiceRecord_t	vsr = {.pkeyDefined = 0, .expireTime = 0l};
-	VieoServiceRecord_t	*vsrp;
+	OpaServiceRecord_t	osr = {.pkeyDefined = 0, .expireTime = 0l};
+	OpaServiceRecord_t	*osrp;
     ServiceRecKeyp  srkeyp;
     ServiceRecKey_t srkey = { .serviceId=0, .servicep_key=0, .serviceGid={.AsReg64s.H=0, .AsReg64s.L=0 }} ;
     uint64_t        now;
@@ -1632,14 +1649,14 @@ static Status_t processServiceSync(Mai_t *maip, uint8_t *msgbuf, uint32_t reclen
         (void) sa_ServiceRecClear();
         while (numRecs-- && (bufidx < reclen)) {
             BSWAPCOPY_STL_SERVICE_RECORD((STL_SERVICE_RECORD*)&msgbuf[bufidx], 
-				&vsr.serviceRecord);
+				&osr.serviceRecord);
             bufidx += sizeof(STL_SERVICE_RECORD);
             /* calculate the expiration time for the record */
             (void)vs_time_get(&now);
-            if (vsr.serviceRecord.ServiceLease != 0xffffffff) {
-                vsr.expireTime = now + (1000000 * (uint64_t)vsr.serviceRecord.ServiceLease);
+            if (osr.serviceRecord.ServiceLease != 0xffffffff) {
+                osr.expireTime = now + (1000000 * (uint64_t)osr.serviceRecord.ServiceLease);
             } else {
-                vsr.expireTime = VTIMER_ETERNITY;
+                osr.expireTime = VTIMER_ETERNITY;
             }
             /* allocate service key storage */
             if ((srkeyp = (ServiceRecKeyp) malloc(sizeof(ServiceRecKey_t))) == NULL) {
@@ -1648,38 +1665,38 @@ static Status_t processServiceSync(Mai_t *maip, uint8_t *msgbuf, uint32_t reclen
                 break;
             } else {
                 /* fill in the key data */
-                memcpy(&srkeyp->serviceGid, &vsr.serviceRecord.RID.ServiceGID, sizeof(IB_GID));
-                srkeyp->serviceId = vsr.serviceRecord.RID.ServiceID;
-                srkeyp->servicep_key = vsr.serviceRecord.RID.ServiceP_Key;
+                memcpy(&srkeyp->serviceGid, &osr.serviceRecord.RID.ServiceGID, sizeof(IB_GID));
+                srkeyp->serviceId = osr.serviceRecord.RID.ServiceID;
+                srkeyp->servicep_key = osr.serviceRecord.RID.ServiceP_Key;
                 /* allocate vieo service iRecord for adding to hash table */
-                if ((vsrp = (VieoServiceRecord_t *) malloc(sizeof(VieoServiceRecord_t))) == NULL) {
+                if ((osrp = (OpaServiceRecord_t *) malloc(sizeof(OpaServiceRecord_t))) == NULL) {
                     free(srkeyp);
                     IB_LOG_ERROR_FMT(__func__, "Can't allocate SERVICE entry for SET");
                     status = VSTATUS_NOMEM;
                     break;
                 }
                 /* fill in the allocated record for hash table insertion */
-                memcpy((void *)vsrp, (void *)&vsr, sizeof(VieoServiceRecord_t));
+                memcpy((void *)osrp, (void *)&osr, sizeof(OpaServiceRecord_t));
                 if (vs_lock(&saServiceRecords.serviceRecLock) != VSTATUS_OK) {
                     free(srkeyp);
-                    free(vsrp);
+                    free(osrp);
                     IB_LOG_ERROR_FMT(__func__, "Can't lock SERVICE table");
                     status = VSTATUS_NOMEM;
                     break;
                 }
-                if (!cs_hashtable_insert(saServiceRecords.serviceRecMap, srkeyp, vsrp)) {
+                if (!cs_hashtable_insert(saServiceRecords.serviceRecMap, srkeyp, osrp)) {
                     free(srkeyp);
-                    free(vsrp);
+                    free(osrp);
                     (void)vs_unlock(&saServiceRecords.serviceRecLock);
                     IB_LOG_ERROR_FMT(__func__, 
                            "Failed to insert sync'd %s, serviceID="FMT_U64" with gid " FMT_GID " in SERVICE table (SET)",
-                           vsr.serviceRecord.ServiceName, vsr.serviceRecord.RID.ServiceID, STLGIDPRINTARGS(vsr.serviceRecord.RID.ServiceGID));
+                           osr.serviceRecord.ServiceName, osr.serviceRecord.RID.ServiceID, STLGIDPRINTARGS(osr.serviceRecord.RID.ServiceGID));
                     status = VSTATUS_BAD;
                     break;
                 } else {
                     IB_LOG_INFO_FMT(__func__, 
                            "ADDED (SET) %s, serviceID="FMT_U64" with gid " FMT_GID ", p_key 0x%.8X to SERVICE table",
-                           vsrp->serviceRecord.ServiceName, srkey.serviceId, STLGIDPRINTARGS(srkey.serviceGid), srkey.servicep_key);
+                           osrp->serviceRecord.ServiceName, srkey.serviceId, STLGIDPRINTARGS(srkey.serviceGid), srkey.servicep_key);
                     status = VSTATUS_OK;
                     (void)vs_unlock(&saServiceRecords.serviceRecLock);
                 }
@@ -1691,14 +1708,14 @@ static Status_t processServiceSync(Mai_t *maip, uint8_t *msgbuf, uint32_t reclen
         /* ADD: add/update entry in dataset */
         while (numRecs-- &&(bufidx < reclen)) {
             BSWAPCOPY_STL_SERVICE_RECORD((STL_SERVICE_RECORD*)&msgbuf[bufidx], 
-				&vsr.serviceRecord);
+				&osr.serviceRecord);
             bufidx += sizeof(STL_SERVICE_RECORD);
             /* calculate the expiration time for the record */
             (void)vs_time_get(&now);
-            if (vsr.serviceRecord.ServiceLease != 0xffffffff) {
-                vsr.expireTime = now + (1000000 * (uint64_t)vsr.serviceRecord.ServiceLease);
+            if (osr.serviceRecord.ServiceLease != 0xffffffff) {
+                osr.expireTime = now + (1000000 * (uint64_t)osr.serviceRecord.ServiceLease);
             } else {
-                vsr.expireTime = VTIMER_ETERNITY;
+                osr.expireTime = VTIMER_ETERNITY;
             }
             if (vs_lock(&saServiceRecords.serviceRecLock) != VSTATUS_OK) {
                 IB_LOG_ERROR_FMT(__func__, "Can't lock SERVICE table");
@@ -1706,12 +1723,12 @@ static Status_t processServiceSync(Mai_t *maip, uint8_t *msgbuf, uint32_t reclen
                 break;
             }
             /* fill in the key data */
-            memcpy(&srkey.serviceGid, &vsr.serviceRecord.RID.ServiceGID, sizeof(IB_GID));
-            srkey.serviceId = vsr.serviceRecord.RID.ServiceID;
-            srkey.servicep_key = vsr.serviceRecord.RID.ServiceP_Key;
+            memcpy(&srkey.serviceGid, &osr.serviceRecord.RID.ServiceGID, sizeof(IB_GID));
+            srkey.serviceId = osr.serviceRecord.RID.ServiceID;
+            srkey.servicep_key = osr.serviceRecord.RID.ServiceP_Key;
             /* replace existing entry or create a new one */
-            if (NULL == (vsrp = (VieoServiceRecord_t *)cs_hashtable_search(saServiceRecords.serviceRecMap, &srkey))) {
-                /* allocate a service key and vsr for adding to hash table */
+            if (NULL == (osrp = (OpaServiceRecord_t *)cs_hashtable_search(saServiceRecords.serviceRecMap, &srkey))) {
+                /* allocate a service key and osr for adding to hash table */
                 if ((srkeyp = (ServiceRecKeyp) malloc(sizeof(ServiceRecKey_t))) == NULL) {
                     (void)vs_unlock(&saServiceRecords.serviceRecLock);
                     status = VSTATUS_NOMEM;
@@ -1721,27 +1738,27 @@ static Status_t processServiceSync(Mai_t *maip, uint8_t *msgbuf, uint32_t reclen
                     /* fill in the key data */
                     memcpy((void *)srkeyp, (void *)&srkey, sizeof(ServiceRecKey_t));
                     /* allocate vieo service for adding to hash table */
-                    if ((vsrp = (VieoServiceRecord_t *) malloc(sizeof(VieoServiceRecord_t))) == NULL) {
+                    if ((osrp = (OpaServiceRecord_t *) malloc(sizeof(OpaServiceRecord_t))) == NULL) {
                         free(srkeyp);
                         (void)vs_unlock(&saServiceRecords.serviceRecLock);
                         status = VSTATUS_NOMEM;
                         IB_LOG_ERROR_FMT(__func__, "Can't allocate SERVICE record for ADD");
                         break;
                     } else {
-                        memcpy((void *)vsrp, (void *)&vsr, sizeof(VieoServiceRecord_t));
-                        if (!cs_hashtable_insert(saServiceRecords.serviceRecMap, srkeyp, vsrp)) {
+                        memcpy((void *)osrp, (void *)&osr, sizeof(OpaServiceRecord_t));
+                        if (!cs_hashtable_insert(saServiceRecords.serviceRecMap, srkeyp, osrp)) {
                             free(srkeyp);
-                            free(vsrp);
+                            free(osrp);
                             (void)vs_unlock(&saServiceRecords.serviceRecLock);
                             status = VSTATUS_BAD;
                             IB_LOG_ERROR_FMT(__func__, 
                                    "Failed to ADD sync'd serviceID="FMT_U64", gid "FMT_GID " to service table", 
-                                   vsr.serviceRecord.RID.ServiceID, STLGIDPRINTARGS(vsr.serviceRecord.RID.ServiceGID));
+                                   osr.serviceRecord.RID.ServiceID, STLGIDPRINTARGS(osr.serviceRecord.RID.ServiceGID));
                             break;
                         } else {
                             IB_LOG_INFO_FMT(__func__, 
                                    "ADDED %s, serviceID="FMT_U64", gid " FMT_GID " to service table",
-                                   vsr.serviceRecord.ServiceName ,vsr.serviceRecord.RID.ServiceID, STLGIDPRINTARGS(vsr.serviceRecord.RID.ServiceGID));
+                                   osr.serviceRecord.ServiceName ,osr.serviceRecord.RID.ServiceID, STLGIDPRINTARGS(osr.serviceRecord.RID.ServiceGID));
                             status = VSTATUS_OK;
                             (void)vs_unlock(&saServiceRecords.serviceRecLock);
                         }
@@ -1749,11 +1766,11 @@ static Status_t processServiceSync(Mai_t *maip, uint8_t *msgbuf, uint32_t reclen
                 }
             } else {
                 /* replace existing record contents */
-                vsrp->expireTime = vsr.expireTime;
-                vsrp->serviceRecord = vsr.serviceRecord;
+                osrp->expireTime = osr.expireTime;
+                osrp->serviceRecord = osr.serviceRecord;
                 IB_LOG_INFO_FMT(__func__, 
                        "UPDATED (ADD) serviceID="FMT_U64", gid " FMT_GID " in service table",
-                       vsr.serviceRecord.RID.ServiceID, STLGIDPRINTARGS(vsr.serviceRecord.RID.ServiceGID));
+                       osr.serviceRecord.RID.ServiceID, STLGIDPRINTARGS(osr.serviceRecord.RID.ServiceGID));
                 status = VSTATUS_OK;
                 (void)vs_unlock(&saServiceRecords.serviceRecLock);
             }
@@ -1764,26 +1781,26 @@ static Status_t processServiceSync(Mai_t *maip, uint8_t *msgbuf, uint32_t reclen
         /* DELETE: remove record from dataset */
         while (numRecs-- && (bufidx < reclen)) {
             BSWAPCOPY_STL_SERVICE_RECORD((STL_SERVICE_RECORD*)&msgbuf[bufidx], 
-				&vsr.serviceRecord);
+				&osr.serviceRecord);
             bufidx += sizeof(STL_SERVICE_RECORD);
-            memcpy(&srkey.serviceGid, &vsr.serviceRecord.RID.ServiceGID, sizeof(IB_GID));
-            srkey.serviceId = vsr.serviceRecord.RID.ServiceID;
-            srkey.servicep_key = vsr.serviceRecord.RID.ServiceP_Key;
+            memcpy(&srkey.serviceGid, &osr.serviceRecord.RID.ServiceGID, sizeof(IB_GID));
+            srkey.serviceId = osr.serviceRecord.RID.ServiceID;
+            srkey.servicep_key = osr.serviceRecord.RID.ServiceP_Key;
             if (vs_lock(&saServiceRecords.serviceRecLock) != VSTATUS_OK) {
                 IB_LOG_ERROR_FMT(__func__, "Can't lock SERVICE table");
                 status = VSTATUS_BAD;
                 break;
             } else {
-                if (NULL == (vsrp = (VieoServiceRecord_t *)cs_hashtable_remove(saServiceRecords.serviceRecMap, &srkey))) {
+                if (NULL == (osrp = (OpaServiceRecord_t *)cs_hashtable_remove(saServiceRecords.serviceRecMap, &srkey))) {
                     IB_LOG_INFO_FMT(__func__, 
                            "Could not find serviceID="FMT_U64", gid " FMT_GID " in service table",
                            srkey.serviceId, STLGIDPRINTARGS(srkey.serviceGid));
                 } else {
                     /* free the actual serviceRecord - remove only frees the key */
-                    free(vsrp);
+                    free(osrp);
                     IB_LOG_INFO_FMT(__func__, 
 						"Free'd %s, serviceID="FMT_U64", gid " FMT_GID ", inservice table",
-						vsr.serviceRecord.ServiceName, srkey.serviceId, 
+						osr.serviceRecord.ServiceName, srkey.serviceId, 
 						STLGIDPRINTARGS(srkey.serviceGid));
                 }
                 (void)vs_unlock(&saServiceRecords.serviceRecLock);
@@ -1940,17 +1957,28 @@ static void dbsync_procReqQ(void) {
 					}
             	}
 			} else if (status != VSTATUS_AGAIN) {
+
+				/* Never received the DBSync Capability Response from Standby SM
+				 * Removing remote SM from list, triggering resweep which will
+				 * find the standby SM the second time and request capability again
+				 */
+
                 IB_LOG_INFINI_INFO_FMT(__func__, 
                         "failed to get sync capability of SM at portGuid "FMT_U64", LID=[0x%x]", 
                         syncReqp->portguid, syncReqp->standbyLid);
-                /* 
-                 * update the sync capability of remote SM to NOT_SUPPORTED 
-                 * We will actually give it a few tries before giving up
-                 */
+
                 if (sm_dbsync_upSmDbsyncCap(syncReqp->portguid, DBSYNC_CAP_NOTSUPPORTED)) {
                     IB_LOG_WARN_FMT(__func__,
                            "Can't update sync capability of SM at portGuid="FMT_U64" in SM list", syncReqp->portguid);
                 }
+
+				IB_LOG_WARN_FMT(__func__,
+						"Removing standby SM at portGuid "FMT_U64" from SM list and triggering resweep; failed to get sync capability",
+						syncReqp->portguid);
+
+				sm_dbsync_deleteSm(syncReqp->portguid);
+
+				sm_trigger_sweep(SM_SWEEP_REASON_SECONDARY_TROUBLE);
 			}
 		} else if (sm_dbsync_getDbsyncSupport(syncReqp->portguid) != DBSYNC_CAP_SUPPORTED) {
             /* just free the syncReq space and continue */

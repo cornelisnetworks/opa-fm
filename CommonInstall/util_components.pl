@@ -459,6 +459,7 @@ sub check_prereqs($)
 		if (comp_has_prereq_of($comp, $c) && ! comp_is_installed("$c") )
 		{
 			NormalPrint "Unable to Install $ComponentInfo{$comp}{'Name'}, prereq $ComponentInfo{$c}{'Name'} not installed\n";
+			HitKeyCont;
 			return 0;
 		}
 	}
@@ -1179,7 +1180,7 @@ DO_INS:
 			$installState{$comp} = $State_Uninstall;
 		}
 		$newstate = $State_Uninstall;
-	} elsif ($inp =~ /[0123456789abcdef]/) {
+	} elsif ($inp =~ /[0123456789abcdefABCDEF]/) {
 		my $value = hex($inp);
 		my $index = get_comp_subscript($firstline, $maxlines, $value);
 		if ( $value < $maxlines && $index < scalar(@Components)) {
@@ -1647,7 +1648,7 @@ DO_UNINS:
 		}
 		$newstate = $State_Uninstall;
 	}
-	elsif ($inp =~ /[0123456789abcdef]/)
+	elsif ($inp =~ /[0123456789abcdefABCDEF]/)
 	{
 		my $value = hex($inp);
 		my $index = get_comp_subscript($firstline, $maxlines, $value);
@@ -2044,7 +2045,7 @@ DO_AUTOSTART:
 			$enabled{$comp} = 0;
 		}
 		$newenabled = 0;
-	} elsif ($inp =~ /[0123456789abcdef]/) {
+	} elsif ($inp =~ /[0123456789abcdefABCDEF]/) {
 		my $value = hex($inp);
 		my $index = get_subscript($firstline, $maxlines, $value, @PromptAutostart);
 		if ( $value < $maxlines && $index < scalar(@PromptAutostart)) {

@@ -140,7 +140,6 @@ void sm_process_trap_forward_requests(void) {
 	IB_EXIT(__func__, 0);
 }
 
-
 //
 // initialize static data
 //
@@ -154,7 +153,6 @@ async_init(void) {
 	
 	IB_EXIT(__func__, 0);
 }
-
 
 void
 async_main(uint32_t argc, uint8_t ** argv) {
@@ -346,6 +344,7 @@ async_main(uint32_t argc, uint8_t ** argv) {
     handles[1] = fd_saTrap;
 	while (1) {
         status = mai_recv_handles(handles, 2, delta_time, &index, &mad);
+
         if (status == VSTATUS_OK) {
             if ((mad.base.cversion != SA_MAD_CVERSION && mad.base.cversion != STL_SA_CLASS_VERSION) &&
                 mad.base.bversion != MAD_BVERSION && mad.base.bversion != STL_BASE_VERSION)
@@ -494,7 +493,8 @@ async_main(uint32_t argc, uint8_t ** argv) {
 		 *  requested a sweep.
 		 */
 		/* First time we come here, we will always check port state as lastTimePortChecked will be 0*/
-		if ((sm_state == SM_STATE_MASTER) && !smFabricDiscoveryNeeded && ((now - lastTimePortChecked) > (VTIMER_1S * 2))) {
+		if ((sm_state == SM_STATE_MASTER) && !smFabricDiscoveryNeeded && !isSweeping && 
+			((now - lastTimePortChecked) > (VTIMER_1S * 2))) {
 			memset((void *)path, 0, 64);
 			status = SM_Get_PortInfo(fd_sminfo, 1<<24, path, &portInfo);
 			if (status != VSTATUS_OK) {

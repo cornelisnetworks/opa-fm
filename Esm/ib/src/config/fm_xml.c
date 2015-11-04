@@ -36,9 +36,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "if3.h"
 
 
-
 #ifndef __VXWORKS__
 #include <syslog.h> // Needed for getFacility / showFacility
+#include <fcntl.h>
 #endif
 #include <ctype.h>
 #include <ib_helper.h>
@@ -50,6 +50,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <Md5.h>
 
 #ifdef __VXWORKS__
+#include "Ism_Idb.h"
 #include "ioLib.h"
 #include "bspcommon/h/icsBspUtil.h"
 #include "bspcommon/h/sysFlash.h"
@@ -79,6 +80,7 @@ extern Status_t vs_pool_delete (Pool_t * handle);
 extern void* getEsmXmlParserMemory(uint32_t size, char* info);
 extern void freeEsmXmlParserMemory(void *address, uint32_t size, char* info);
 #if defined(__VXWORKS__)
+extern void idbSmGetManagersToStart(int * pm, int * fe);
 extern STATUS cmuRed_cfgIfMasterSyncSlave(char *remote);
 #endif
 
@@ -196,6 +198,7 @@ void XmlParsePrintError(const char *message)
 	IB_LOG_ERROR0(Log_StrDup(message));
 	fprintf(stderr, "%s\n", message);
 }
+
 
 static void XmlParsePrintWarning(const char *message)
 {
@@ -378,6 +381,8 @@ static void *cksumBegin(uint32_t method)
 
 	cksum->method = method;
 
+	//SIMPLE_CHECKSUM is no longer setable by the user in the config file;
+	//only way to use simple checksum is to hardcode and recompile
 	if (method == SIMPLE_CHECKSUM_METHOD) {
 		cksum->u.simple_sum = 0;
 	} else {
@@ -444,6 +449,19 @@ static uint32_t cksumEnd(void *ctx)
 
 #define CKSUM_STR(string, flags)	AddToCksums(#string, string, strlen(string), flags)
 #define CKSUM_DATA(data, flags)	AddToCksums(#data, &data, sizeof(data), flags)
+#ifndef __VXWORKS__
+#define CKSUM_FILE(file, flags) do{                                                             \
+                                    int fd = open(file, O_RDONLY);                              \
+                                    int filein, len;                                            \
+                                    if (fd >= 0) {                                              \
+                                        while((len = read(fd, &filein, sizeof(int))) > 0)       \
+                                            AddToCksums(#file, &filein, len, flags);            \
+                                        close(fd);                                              \
+                                    }                                                           \
+                                } while(0);                                                     
+#else
+#define CKSUM_FILE(file, flags)
+#endif
 
 #ifdef CHECKSUM_DEBUG
 #define CKSUM_BEGIN(method) { printf("CKSUM_BEGIN %s (%d)\n",__func__,method); BeginCksums(method); }
@@ -777,6 +795,34 @@ void PercentageXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, v
 	}
 }
 
+// Validate pkey
+void PKeyParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	uint32_t *p = (uint32_t *)IXmlParserGetField(field, object);
+	uint32_t pkey;
+	char *sym;
+
+	if (xml_parse_debug)
+		fprintf(stdout, "PKeyParserEnd %s instance %u common %u\n", field->tag, (unsigned int)instance, (unsigned int)common); 
+		
+	if (!valid) {
+		fprintf(stderr, "Error processing XML %s tag\n",field->tag); 
+		return;
+	}
+
+	if (!content) {
+		IXmlParserPrintError(state, "Invalid %s tag value, cannot be empty", field->tag);
+		return;
+	}
+
+	pkey = strtol(content, &sym, 16);
+	if (*sym || pkey == 0 || pkey > 0x7fff) {		
+		IXmlParserPrintError(state, "Invalid %s tag value, must be in the range 0x0001-0x7fff\n", field->tag);
+		return;
+	} 
+	*p = pkey;
+}
+
 // Handle U8 percentage value (0-100) with trailing % symbol
 void PercentU8XmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
 {
@@ -852,16 +898,17 @@ void MtuU8XmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *
 		return;
 	}
 
+	/* we restrict vFabric and Multicast group MTU to >= 2K MTU.  This avoids
+	 * potential issues with support for 1500 byte UDP payloads as well
+	 * as ensuring all vFabrics are capable of sending 2K MADs
+	 */
 	if (!strcasecmp(content, "Unlimited")) *p = UNDEFINED_XML8;
-	else if (!strcasecmp(content, "256")) *p = GetMtuFromBytes(256);
-	else if (!strcasecmp(content, "512")) *p = GetMtuFromBytes(512);
-	else if (!strcasecmp(content, "1024")) *p = GetMtuFromBytes(1024);
 	else if (!strcasecmp(content, "2048")) *p = GetMtuFromBytes(2048);
 	else if (!strcasecmp(content, "4096")) *p = GetMtuFromBytes(4096);
 	else if (!strcasecmp(content, "8192")) *p = GetMtuFromBytes(8192);
 	else if (!strcasecmp(content, "10240")) *p = GetMtuFromBytes(10240);
 	else {
-			IXmlParserPrintError(state, "Virtual Fabric MaxMTU must be (256, 512, 1024, 2048, 4096, 8192, 10240, or Unlimited)");
+			IXmlParserPrintError(state, "Virtual Fabric MaxMTU must be (2048, 4096, 8192, 10240, or Unlimited)");
 			return;
 	}
 }
@@ -927,25 +974,6 @@ static void set_log_masks(uint32_t log_level, uint32_t syslog_mode, FmParamU32_t
 	}
 }
 
-boolean isValidMtuSetting(VFConfig_t* vfp) {
-	int numApplications = vfp->number_of_applications;
-	int appIdx;
-	boolean isValid = TRUE;
-	for (appIdx = 0; appIdx < numApplications; appIdx++) {
-		char* appName = &vfp->application[appIdx].application[0];
-		if ( (strcasecmp(appName, "SA") == 0) ||
-			 (strcasecmp(appName, "PA") == 0) ||
-			 (strcasecmp(appName, "PM") == 0) ) {
-
-			if (vfp->max_mtu_int < IB_MTU_2048) {
-				isValid = FALSE;
-				break;
-			}
-		}
-	}
-	return isValid;
-}
-
 // Clear FM config
 void fmClearConfig(FMXmlConfig_t *fmp)
 {
@@ -979,6 +1007,15 @@ void fmInitConfig(FMXmlConfig_t *fmp, uint32_t instance)
 	DEFAULT_U32(fmp->hca, 0);
 	DEFAULT_U32(fmp->port, 1);
 	DEFAULT_U32(fmp->subnet_size, DEFAULT_SUBNET_SIZE);
+	if (fmp->subnet_size > MAX_SUBNET_SIZE) {
+        IB_LOG_INFO_FMT(__func__, "FM subnet size is being adjusted from %u to %u", fmp->subnet_size, MAX_SUBNET_SIZE);
+        fmp->subnet_size = MAX_SUBNET_SIZE;
+    }
+    if (fmp->subnet_size < MIN_SUPPORTED_ENDPORTS) {
+        IB_LOG_WARN_FMT(__func__, "FM subnet size of %d is too small, setting to %d", fmp->subnet_size, MIN_SUPPORTED_ENDPORTS);
+        fmp->subnet_size = MIN_SUPPORTED_ENDPORTS;
+    }
+
 	DEFAULT_U32(fmp->debug, 0);
 	DEFAULT_U32(fmp->debug_rmpp, 0);
 	DEFAULT_U32(fmp->priority, 0);
@@ -989,7 +1026,6 @@ void fmInitConfig(FMXmlConfig_t *fmp, uint32_t instance)
 	set_log_masks(fmp->log_level, fmp->syslog_mode, fmp->log_masks);
 	DEFAULT_U32(fmp->config_consistency_check_level, DEFAULT_CCC_LEVEL);
 	DEFAULT_U32(fmp->config_consistency_check_method, DEFAULT_CCC_METHOD);
-	DEFAULT_U16(fmp->default_pkey, 0);
 	DEFAULT_U64(fmp->subnet_prefix, 0);
 	DEFAULT_U64(fmp->port_guid, 0);
 	DEFAULT_STR(fmp->CoreDumpLimit, "0");
@@ -1035,12 +1071,23 @@ void pmInitConfig(PMXmlConfig_t *pmp, uint32_t instance, uint32_t ccc_method)
 {
 	int i;
 
+#ifdef __VXWORKS__
+	int startPM=1;
+	int startFE=1;
+#endif
+
 	if (!pmp)
 		return;
 
+#ifdef __VXWORKS__
+	idbSmGetManagersToStart(&startPM, &startFE);
+	if (!startPM)
+		pmp->start = 0;
+#endif
+
 	CKSUM_BEGIN(ccc_method);
 
-	CKSUM_DATA(pmp->start, CKSUM_OVERALL_DISRUPT);
+	CKSUM_DATA(pmp->start, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(pmp->hca, 0, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_U32(pmp->port, 1, CKSUM_OVERALL_DISRUPT);
 
@@ -1062,7 +1109,6 @@ void pmInitConfig(PMXmlConfig_t *pmp, uint32_t instance, uint32_t ccc_method)
 	DEFAULT_AND_CKSUM_STR(pmp->CoreDumpLimit, "0", CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_STR(pmp->CoreDumpDir, "/var/crash/opafm", CKSUM_OVERALL_DISRUPT);
 
-	DEFAULT_AND_CKSUM_U16(pmp->default_pkey, 0xffff, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(pmp->priority, 0, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_U32(pmp->elevated_priority, 0, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_U32(pmp->timer, 60, CKSUM_OVERALL_DISRUPT_CONSIST);
@@ -1086,13 +1132,13 @@ void pmInitConfig(PMXmlConfig_t *pmp, uint32_t instance, uint32_t ccc_method)
 	DEFAULT_AND_CKSUM_U32(pmp->max_clients, PM_DEFAULT_PA_MAX_CLIENTS, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(pmp->freeze_frame_images, PM_DEFAULT_FF_IMAGES, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(pmp->total_images, MAX(pmp->freeze_frame_images + 2, PM_DEFAULT_TOTAL_IMAGES), CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_U16(pmp->image_update_interval, pmp->sweep_interval < 2 ? (pmp->sweep_interval + 1) / 2 : pmp->sweep_interval / 2, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_U16(pmp->image_update_interval, pmp->sweep_interval < 2 ? (pmp->sweep_interval + 1) / 2 : pmp->sweep_interval / 2);
 
 	DEFAULT_AND_CKSUM_U32(pmp->thresholds.Integrity, 100, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(pmp->thresholds.Congestion, 100, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(pmp->thresholds.SmaCongestion, 100, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(pmp->thresholds.Bubble, 100, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_U32(pmp->thresholds.Security, 100, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U32(pmp->thresholds.Security, 10, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(pmp->thresholds.Routing, 100, CKSUM_OVERALL_DISRUPT_CONSIST);
 
 	DEFAULT_AND_CKSUM_U32(pmp->thresholdsExceededMsgLimit.Integrity, 10, CKSUM_OVERALL_DISRUPT);
@@ -1102,20 +1148,25 @@ void pmInitConfig(PMXmlConfig_t *pmp, uint32_t instance, uint32_t ccc_method)
 	DEFAULT_AND_CKSUM_U32(pmp->thresholdsExceededMsgLimit.Security, 10, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_U32(pmp->thresholdsExceededMsgLimit.Routing, 10, CKSUM_OVERALL_DISRUPT);
 
-	DEFAULT_AND_CKSUM_U8(pmp->integrityWeights.LocalLinkIntegrityErrors, 25, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_U8(pmp->integrityWeights.PortRcvErrors, 25, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_U8(pmp->integrityWeights.ExcessiveBufferOverruns, 50, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_U8(pmp->integrityWeights.LinkErrorRecovery, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_U8(pmp->integrityWeights.LinkDowned, 100, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U8(pmp->integrityWeights.LocalLinkIntegrityErrors, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U8(pmp->integrityWeights.PortRcvErrors, 100, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U8(pmp->integrityWeights.ExcessiveBufferOverruns, 100, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U8(pmp->integrityWeights.LinkErrorRecovery, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U8(pmp->integrityWeights.LinkDowned, 25, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U8(pmp->integrityWeights.UncorrectableErrors, 100, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_U8(pmp->integrityWeights.FMConfigErrors, 5, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U8(pmp->integrityWeights.FMConfigErrors, 100, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U8(pmp->integrityWeights.LinkQualityIndicator, 40, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U8(pmp->integrityWeights.LinkWidthDowngrade, 100, CKSUM_OVERALL_DISRUPT_CONSIST);
 
-	DEFAULT_AND_CKSUM_U8(pmp->congestionWeights.PortXmitWait, 25, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U8(pmp->congestionWeights.PortXmitWait, 10, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U8(pmp->congestionWeights.SwPortCongestion, 100, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U8(pmp->congestionWeights.PortRcvFECN, 5, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U8(pmp->congestionWeights.PortRcvBECN, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U8(pmp->congestionWeights.PortXmitTimeCong, 25, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U8(pmp->congestionWeights.PortMarkFECN, 25, CKSUM_OVERALL_DISRUPT_CONSIST);
+
+	DEFAULT_AND_CKSUM_U8(pmp->resolution.LocalLinkIntegrity, 8000000, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U8(pmp->resolution.LinkErrorRecovery, 100000, CKSUM_OVERALL_DISRUPT_CONSIST);
 
 	for (i = 0; i < pmp->number_of_pm_groups; i++) {
 		if (pmp->pm_portgroups[i].Enabled) {
@@ -1126,13 +1177,23 @@ void pmInitConfig(PMXmlConfig_t *pmp, uint32_t instance, uint32_t ccc_method)
 
 	DEFAULT_AND_CKSUM_U32(pmp->debug, 0, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_U32(pmp->debug_rmpp, 0, CKSUM_OVERALL_DISRUPT);
-	DEFAULT_AND_CKSUM_U32(pmp->subnet_size, MIN_SUPPORTED_ENDPORTS, CKSUM_OVERALL_DISRUPT_CONSIST);
+
+	DEFAULT_U32(pmp->subnet_size, DEFAULT_SUBNET_SIZE);
+	if (pmp->subnet_size > MAX_SUBNET_SIZE) {
+        IB_LOG_INFO_FMT(__func__, "PM subnet size is being adjusted from %u to %u", pmp->subnet_size, MAX_SUBNET_SIZE);
+        pmp->subnet_size = MAX_SUBNET_SIZE;
+    }
+    if (pmp->subnet_size < MIN_SUPPORTED_ENDPORTS) {
+        IB_LOG_WARN_FMT(__func__, "PM subnet size of %d is too small, setting to %d", pmp->subnet_size, MIN_SUPPORTED_ENDPORTS);
+        pmp->subnet_size = MIN_SUPPORTED_ENDPORTS;
+    }
+	CKSUM_DATA(pmp->subnet_size, CKSUM_OVERALL_DISRUPT_CONSIST);
 
 	DEFAULT_AND_CKSUM_U8(pmp->shortTermHistory.enable, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
 	if (pmp->shortTermHistory.enable) {
 		DEFAULT_AND_CKSUM_U32(pmp->shortTermHistory.imagesPerComposite, 3, CKSUM_OVERALL_DISRUPT_CONSIST);
 		DEFAULT_AND_CKSUM_U32(pmp->shortTermHistory.maxDiskSpace, 1024, CKSUM_OVERALL_DISRUPT_CONSIST);
-		DEFAULT_AND_CKSUM_STR(pmp->shortTermHistory.StorageLocation, "/opt/opafm", CKSUM_OVERALL_DISRUPT_CONSIST);
+		DEFAULT_AND_CKSUM_STR(pmp->shortTermHistory.StorageLocation, "/var/opt/opafm", CKSUM_OVERALL_DISRUPT_CONSIST);
 		DEFAULT_AND_CKSUM_U32(pmp->shortTermHistory.totalHistory, 24, CKSUM_OVERALL_DISRUPT_CONSIST);
 		DEFAULT_AND_CKSUM_U8(pmp->shortTermHistory.compressionDivisions, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
 	}
@@ -1147,6 +1208,13 @@ void pmInitConfig(PMXmlConfig_t *pmp, uint32_t instance, uint32_t ccc_method)
 		DEFAULT_AND_CKSUM_STR(pmp->SslSecurityFmDHParameters, "fm_dh_parms.pem", CKSUM_OVERALL_DISRUPT);
 		DEFAULT_AND_CKSUM_STR(pmp->SslSecurityFmCaCRL, "fm_ca_crl.pem", CKSUM_OVERALL_DISRUPT);
 	}
+
+	if (pmp->image_update_interval >= pmp->sweep_interval) {
+		IB_LOG_WARN_FMT(__func__, "Image Update Interval (%d) cannot be >= than the Sweep Interval (%d)", pmp->image_update_interval, pmp->sweep_interval);
+		pmp->image_update_interval = (pmp->sweep_interval < 2 ? (pmp->sweep_interval + 1) / 2 : pmp->sweep_interval / 2);
+		IB_LOG_WARN_FMT(__func__, "Setting Image Update Interval to 1/2 Sweep Interval (%d) ", pmp->image_update_interval);
+	}
+	CKSUM_DATA(pmp->image_update_interval, CKSUM_OVERALL_DISRUPT_CONSIST);
 
 	CKSUM_END(pmp->overall_checksum, pmp->disruptive_checksum, pmp->consistency_checksum);
 
@@ -1193,7 +1261,6 @@ void pmShowConfig(PMXmlConfig_t *pmp)
 	printf("XML - syslog_mode %u\n", (unsigned int)pmp->syslog_mode);
 	printf("XML - config_consistency_check_level %u\n", (unsigned int)pmp->config_consistency_check_level);
 	printf("XML - config_consistency_check_method %u\n", (unsigned int)pmp->config_consistency_check_method);
-	printf("XML - default_pkey 0x%4.4x\n", (unsigned int)pmp->default_pkey);
 	printf("XML - priority %u\n", (unsigned int)pmp->priority);
 	printf("XML - elevated_priority %u\n", (unsigned int)pmp->elevated_priority);
 	printf("XML - timer %u\n", (unsigned int)pmp->timer);
@@ -1232,20 +1299,25 @@ void pmShowConfig(PMXmlConfig_t *pmp)
 	printf("XML - thresholdsExceededMsgLimit.Security %u\n", (unsigned int)pmp->thresholdsExceededMsgLimit.Security);
 	printf("XML - thresholdsExceededMsgLimit.Routing %u\n", (unsigned int)pmp->thresholdsExceededMsgLimit.Routing);
 
-	printf("XML - integrityWeights.LocalLinkIntegrityErrors %u\n",	(unsigned int)pmp->integrityWeights.LocalLinkIntegrityErrors);
-	printf("XML - integrityWeights.RcvErrors %u\n",					(unsigned int)pmp->integrityWeights.PortRcvErrors);
-	printf("XML - integrityWeights.ExcessiveBufferOverruns %u\n",	(unsigned int)pmp->integrityWeights.ExcessiveBufferOverruns);
-	printf("XML - integrityWeights.LinkErrorRecovery %u\n",			(unsigned int)pmp->integrityWeights.LinkErrorRecovery);
-	printf("XML - integrityWeights.LinkDowned %u\n",				(unsigned int)pmp->integrityWeights.LinkDowned);
-	printf("XML - integrityWeights.UncorrectableErrors %u\n",		(unsigned int)pmp->integrityWeights.UncorrectableErrors);
-	printf("XML - integrityWeights.FMConfigErrors %u\n",			(unsigned int)pmp->integrityWeights.FMConfigErrors);
+	printf("XML - integrityWeights.LocalLinkIntegrityErrors %u\n", (unsigned int)pmp->integrityWeights.LocalLinkIntegrityErrors);
+	printf("XML - integrityWeights.RcvErrors %u\n", (unsigned int)pmp->integrityWeights.PortRcvErrors);
+	printf("XML - integrityWeights.ExcessiveBufferOverruns %u\n", (unsigned int)pmp->integrityWeights.ExcessiveBufferOverruns);
+	printf("XML - integrityWeights.LinkErrorRecovery %u\n", (unsigned int)pmp->integrityWeights.LinkErrorRecovery);
+	printf("XML - integrityWeights.LinkDowned %u\n", (unsigned int)pmp->integrityWeights.LinkDowned);
+	printf("XML - integrityWeights.UncorrectableErrors %u\n", (unsigned int)pmp->integrityWeights.UncorrectableErrors);
+	printf("XML - integrityWeights.FMConfigErrors %u\n", (unsigned int)pmp->integrityWeights.FMConfigErrors);
+	printf("XML - integrityWeights.LinkQualityIndicator %u\n", (unsigned int)pmp->integrityWeights.LinkQualityIndicator);
+	printf("XML - integrityWeights.LinkWidthDowngrade %u\n", (unsigned int)pmp->integrityWeights.LinkWidthDowngrade);
 
-	printf("XML - congestionWeights.XmitWait %u\n",                 (unsigned int)pmp->congestionWeights.PortXmitWait);
-	printf("XML - congestionWeights.CongDiscards %u\n",             (unsigned int)pmp->congestionWeights.SwPortCongestion);
-	printf("XML - congestionWeights.RcvFECN %u\n", 		        	(unsigned int)pmp->congestionWeights.PortRcvFECN);
-	printf("XML - congestionWeights.RcvBECN %u\n", 			        (unsigned int)pmp->congestionWeights.PortRcvBECN);
-	printf("XML - congestionWeights.XmitTimeCong %u\n", 		    (unsigned int)pmp->congestionWeights.PortXmitTimeCong);
-	printf("XML - congestionWeights.MarkFECN %u\n", 		    	(unsigned int)pmp->congestionWeights.PortMarkFECN);
+	printf("XML - congestionWeights.XmitWaitPct %u\n", (unsigned int)pmp->congestionWeights.PortXmitWait);
+	printf("XML - congestionWeights.CongDiscards %u\n", (unsigned int)pmp->congestionWeights.SwPortCongestion);
+	printf("XML - congestionWeights.RcvFECNPct %u\n", (unsigned int)pmp->congestionWeights.PortRcvFECN);
+	printf("XML - congestionWeights.RcvBECNPct %u\n", (unsigned int)pmp->congestionWeights.PortRcvBECN);
+	printf("XML - congestionWeights.XmitTimeCongPct %u\n", (unsigned int)pmp->congestionWeights.PortXmitTimeCong);
+	printf("XML - congestionWeights.MarkFECNPct %u\n", (unsigned int)pmp->congestionWeights.PortMarkFECN);
+
+	printf("XML - resolution.LocalLinkIntegrity %u\n",				(unsigned int)pmp->resolution.LocalLinkIntegrity);
+	printf("XML - resolution.LinkErrorRecovery %u\n",				(unsigned int)pmp->resolution.LinkErrorRecovery);
 
 	printf("XML - number_of_pm_groups %u\n", (unsigned int)pmp->number_of_pm_groups);
 	for (i = 0; i < pmp->number_of_pm_groups; i++) {
@@ -1286,11 +1358,21 @@ void feClearConfig(FEXmlConfig_t *fep)
 // initialize FE defaults
 void feInitConfig(FEXmlConfig_t *fep, uint32_t instance, uint32_t ccc_method)
 {
+#ifdef __VXWORKS__
+	int startPM=1;
+	int startFE=1;
+#endif
+
     if (!fep)
         return;
 
     CKSUM_BEGIN(ccc_method);
 
+#ifdef __VXWORKS__
+	idbSmGetManagersToStart(&startPM, &startFE);
+	if (!startFE)
+		fep->start = 0;
+#endif
 
 	CKSUM_DATA(fep->start, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_U32(fep->hca, 0, CKSUM_OVERALL_DISRUPT);
@@ -1298,13 +1380,23 @@ void feInitConfig(FEXmlConfig_t *fep, uint32_t instance, uint32_t ccc_method)
 
 	// These are now processed when "fill" at end of parsing whole file
 	DEFAULT_AND_CKSUM_U32(fep->login, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_U32(fep->subnet_size, MIN_SUPPORTED_ENDPORTS, CKSUM_OVERALL_DISRUPT_CONSIST);
+
+	DEFAULT_U32(fep->subnet_size, DEFAULT_SUBNET_SIZE);
+	if (fep->subnet_size > MAX_SUBNET_SIZE) {
+        IB_LOG_INFO_FMT(__func__, "FE subnet size is being adjusted from %u to %u", fep->subnet_size, MAX_SUBNET_SIZE);
+        fep->subnet_size = MAX_SUBNET_SIZE;
+    }
+    if (fep->subnet_size < MIN_SUPPORTED_ENDPORTS) {
+        IB_LOG_WARN_FMT(__func__, "FE subnet size of %d is too small, setting to %d", fep->subnet_size, MIN_SUPPORTED_ENDPORTS);
+        fep->subnet_size = MIN_SUPPORTED_ENDPORTS;
+    }
+	CKSUM_DATA(fep->subnet_size, CKSUM_OVERALL_DISRUPT_CONSIST);
+
 	DEFAULT_AND_CKSUM_U32(fep->debug, 0, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_U32(fep->debug_rmpp, 0, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_U32(fep->log_level, 1, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_U32(fep->syslog_mode, 0, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_U32(fep->listen, FE_LISTEN_PORT, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_U32(fep->default_pkey, 0xffff, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(fep->window, FE_WIN_SIZE, CKSUM_OVERALL_DISRUPT_CONSIST);
 	set_log_masks(fep->log_level, fep->syslog_mode, fep->log_masks);
 	CKSUM_DATA(fep->log_masks, CKSUM_OVERALL_DISRUPT);
@@ -1366,7 +1458,6 @@ void feShowConfig(FEXmlConfig_t *fep)
 	printf("XML - SslSecurityFmCaCRLEnabled %u\n", (unsigned int)fep->SslSecurityFmCaCRLEnabled);
 	printf("XML - SslSecurityFmCaCRL %s\n", fep->SslSecurityFmCaCRL);
 
-	printf("XML - default_pkey 0x%4.4x\n", (unsigned int)fep->default_pkey);
 	printf("XML - listen %u\n", (unsigned int)fep->listen);
 	printf("XML - login %u\n", (unsigned int)fep->login);
 	printf("XML - window %u\n", (unsigned int)fep->window);
@@ -1411,7 +1502,7 @@ void smClearConfig(SMXmlConfig_t *smp)
 	memset(smp->log_masks, 0, sizeof(smp->log_masks));
 	memset(smp->name, 0, sizeof(smp->name));
 	memset(smp->routing_algorithm, 0, sizeof(smp->routing_algorithm));
-
+	memset(smp->preDefTopo.topologyFilename, 0, sizeof(smp->preDefTopo.topologyFilename));
 	memset(&smp->ftreeRouting.coreSwitches, 0, sizeof(smp->ftreeRouting.coreSwitches));
 	memset(&smp->ftreeRouting.routeLast, 0, sizeof(smp->ftreeRouting.routeLast));
 
@@ -1468,9 +1559,31 @@ void smInitConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 	DEFAULT_AND_CKSUM_U32(smp->spine_first_routing, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(smp->shortestPathBalanced, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(smp->lid, 0x0, CKSUM_OVERALL_DISRUPT);
-	DEFAULT_AND_CKSUM_U32(smp->lmc, 0x0, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_U32(smp->lmc_e0, 0x0, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_U32(smp->subnet_size, MIN_SUPPORTED_ENDPORTS, CKSUM_OVERALL_DISRUPT_CONSIST);
+
+	DEFAULT_U32(smp->lmc, 0x0);
+	DEFAULT_U32(smp->lmc_e0, 0x0);
+	if (smp->lmc > 7) {
+        IB_LOG_WARN_FMT(__func__, "'Lmc' option of %d is not valid; defaulting to 0", smp->lmc);
+        smp->lmc = 0;
+    }
+    if (smp->lmc_e0 > smp->lmc) {
+        IB_LOG_WARN_FMT(__func__, "'LmcE0' option of must be <= Lmc; defaulting to %d", smp->lmc);
+        smp->lmc_e0 = smp->lmc;
+    }
+	CKSUM_DATA(smp->lmc, CKSUM_OVERALL_DISRUPT_CONSIST);
+	CKSUM_DATA(smp->lmc_e0, CKSUM_OVERALL_DISRUPT_CONSIST);
+
+	DEFAULT_U32(smp->subnet_size, DEFAULT_SUBNET_SIZE);
+	if (smp->subnet_size > MAX_SUBNET_SIZE) {
+        IB_LOG_INFO_FMT(__func__, "SM subnet size is being adjusted from %u to %u", smp->subnet_size, MAX_SUBNET_SIZE);
+        smp->subnet_size = MAX_SUBNET_SIZE;
+    }
+    if (smp->subnet_size < MIN_SUPPORTED_ENDPORTS) {
+        IB_LOG_WARN_FMT(__func__, "SM subnet size of %d is too small, setting to %d", smp->subnet_size, MIN_SUPPORTED_ENDPORTS);
+        smp->subnet_size = MIN_SUPPORTED_ENDPORTS;
+    }
+	CKSUM_DATA(smp->subnet_size, CKSUM_OVERALL_DISRUPT_CONSIST);
+
 	DEFAULT_AND_CKSUM_STR(smp->CoreDumpLimit, "0", CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_STR(smp->CoreDumpDir, "/var/crash/opafm", CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_STR(smp->syslog_facility, "local6", CKSUM_OVERALL_DISRUPT);
@@ -1507,8 +1620,17 @@ void smInitConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 	DEFAULT_AND_CKSUM_U32(smp->config_consistency_check_level, DEFAULT_CCC_LEVEL, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(smp->path_selection, PATH_MODE_MINIMAL, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(smp->queryValidation, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_U32(smp->sma_batch_size, 2, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_U32(smp->max_parallel_reqs, 3, CKSUM_OVERALL_DISRUPT_CONSIST);
+
+	DEFAULT_U32(smp->sma_batch_size, 2);
+	DEFAULT_U32(smp->max_parallel_reqs, 3);
+    if (smp->sma_batch_size == 0)
+        smp->sma_batch_size = 1;
+    if (smp->max_parallel_reqs == 0)
+        smp->max_parallel_reqs = 1;
+	CKSUM_DATA(smp->sma_batch_size, CKSUM_OVERALL_DISRUPT_CONSIST);
+	CKSUM_DATA(smp->max_parallel_reqs, CKSUM_OVERALL_DISRUPT_CONSIST);
+
+
 	DEFAULT_AND_CKSUM_U32(smp->check_mft_responses, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(smp->sm_debug_perf, 0, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_U32(smp->sa_debug_perf, 0, CKSUM_OVERALL_DISRUPT);
@@ -1524,13 +1646,14 @@ void smInitConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 	DEFAULT_AND_CKSUM_U32(smp->monitor_standby_enable, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(smp->dynamic_port_alloc, 1, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_U32(smp->topo_lid_offset, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U32(smp->loopback_mode, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(smp->force_rebalance, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(smp->use_cached_node_data, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(smp->sma_spoofing_check, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U16(smp->link_policy.link_max_downgrade, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U8(smp->link_policy.width_policy.enabled, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U16(smp->link_policy.width_policy.policy, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_U8(smp->link_policy.speed_policy.enabled, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U8(smp->link_policy.speed_policy.enabled, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U16(smp->link_policy.speed_policy.policy, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(smp->preemption.small_packet, SM_PREEMPT_SMALL_PACKET_DEF, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(smp->preemption.large_packet, SM_PREEMPT_LARGE_PACKET_DEF, CKSUM_OVERALL_DISRUPT_CONSIST);
@@ -1538,10 +1661,12 @@ void smInitConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 	DEFAULT_AND_CKSUM_U8(smp->congestion.enable, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	if (smp->congestion.enable) {
 		DEFAULT_AND_CKSUM_U8(smp->congestion.debug, 0, CKSUM_OVERALL_DISRUPT);
-		DEFAULT_AND_CKSUM_U8(smp->congestion.discovery_attempts, 3, CKSUM_OVERALL_DISRUPT_CONSIST);
-		DEFAULT_AND_CKSUM_U8(smp->congestion.discover_always, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 		DEFAULT_AND_CKSUM_U8(smp->congestion.sw.victim_marking_enable, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 		DEFAULT_AND_CKSUM_U8(smp->congestion.sw.threshold, 8, CKSUM_OVERALL_DISRUPT_CONSIST);
+		if (smp->congestion.sw.packet_size > 162) {
+			IB_LOG_WARN_FMT(__func__, "FM CC SwitchCongestionSetting:Packet Size Limit %d exceeds max value setting to 162", smp->congestion.sw.packet_size);
+			smp->congestion.sw.packet_size = 162;
+		}
 		DEFAULT_AND_CKSUM_U8(smp->congestion.sw.packet_size, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 		DEFAULT_AND_CKSUM_U8(smp->congestion.sw.cs_threshold, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 		DEFAULT_AND_CKSUM_U16(smp->congestion.sw.cs_return_delay, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
@@ -1600,24 +1725,31 @@ void smInitConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 	}
 	DEFAULT_AND_CKSUM_U32(smp->appliances.enable, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	if (smp->appliances.enable)
-	// If no pre-defined topology filename was provided, disable the feature
-	CKSUM_STR(smp->preDefTopo.topologyFilename, CKSUM_OVERALL_DISRUPT_CONSIST);
-	if (!strlen(smp->preDefTopo.topologyFilename)) smp->preDefTopo.enabled = 0;
-	#ifdef __VXWORKS__
+		for (i = 0; i < MAX_SM_APPLIANCES; i++)
+			DEFAULT_AND_CKSUM_U32(smp->appliances.guids[i], 0, CKSUM_OVERALL_DISRUPT_CONSIST);
+
+	DEFAULT_U8(smp->preDefTopo.enabled, 0)
+#ifdef __VXWORKS__
 	if(smp->preDefTopo.enabled) {
 		smp->preDefTopo.enabled = 0;
 		IB_LOG_ERROR0("Pre Defined Topology: (Disabled) Not supported on embedded platforms.");
 	}
-	#endif
+#endif
+	// If no pre-defined topology filename was provided, disable the feature
+	if (!strlen(smp->preDefTopo.topologyFilename)) 
+		smp->preDefTopo.enabled = 0;
+	
 	DEFAULT_AND_CKSUM_U8(smp->preDefTopo.enabled, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_U32(smp->preDefTopo.logMessageThreshold, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_U32(smp->preDefTopo.fieldEnforcement.nodeDesc, FIELD_ENF_LEVEL_DISABLED, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_U32(smp->preDefTopo.fieldEnforcement.nodeGuid, FIELD_ENF_LEVEL_DISABLED, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_U32(smp->preDefTopo.fieldEnforcement.portGuid, FIELD_ENF_LEVEL_DISABLED, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_U32(smp->preDefTopo.fieldEnforcement.undefinedLink, FIELD_ENF_LEVEL_DISABLED, CKSUM_OVERALL_DISRUPT_CONSIST);
+	if(smp->preDefTopo.enabled) {
+		CKSUM_STR(smp->preDefTopo.topologyFilename, CKSUM_OVERALL_DISRUPT);
+		CKSUM_FILE(smp->preDefTopo.topologyFilename, CKSUM_OVERALL_DISRUPT_CONSIST);
+		DEFAULT_AND_CKSUM_U32(smp->preDefTopo.logMessageThreshold, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
+		DEFAULT_AND_CKSUM_U32(smp->preDefTopo.fieldEnforcement.nodeDesc, FIELD_ENF_LEVEL_DISABLED, CKSUM_OVERALL_DISRUPT_CONSIST);
+		DEFAULT_AND_CKSUM_U32(smp->preDefTopo.fieldEnforcement.nodeGuid, FIELD_ENF_LEVEL_DISABLED, CKSUM_OVERALL_DISRUPT_CONSIST);
+		DEFAULT_AND_CKSUM_U32(smp->preDefTopo.fieldEnforcement.portGuid, FIELD_ENF_LEVEL_DISABLED, CKSUM_OVERALL_DISRUPT_CONSIST);
+		DEFAULT_AND_CKSUM_U32(smp->preDefTopo.fieldEnforcement.undefinedLink, FIELD_ENF_LEVEL_DISABLED, CKSUM_OVERALL_DISRUPT_CONSIST);
+	}
 
-		for (i = 0; i < MAX_SM_APPLIANCES; i++)
-			DEFAULT_AND_CKSUM_U32(smp->appliances.guids[i], 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 
 	DEFAULT_AND_CKSUM_U32(dplp->dp_lifetime[0], 0x01, CKSUM_OVERALL_DISRUPT_CONSIST);
 	for (i = 1; i < DYNAMIC_PACKET_LIFETIME_ARRAY_SIZE; i++)
@@ -1640,7 +1772,7 @@ void smInitConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 	DEFAULT_AND_CKSUM_U32(smp->dedicatedVLMemMulti, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U8(smp->cableInfoPolicy, CIP_LINK, CKSUM_OVERALL_DISRUPT_CONSIST);
     DEFAULT_AND_CKSUM_U32(smp->timerScalingEnable, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_U32(smp->min_supported_vls, 4, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U32(smp->min_supported_vls, 8, CKSUM_OVERALL_DISRUPT_CONSIST);
 
 	CKSUM_DATA(smp->wireDepthOverride, CKSUM_OVERALL_DISRUPT_CONSIST);
 	CKSUM_DATA(smp->replayDepthOverride, CKSUM_OVERALL_DISRUPT_CONSIST);
@@ -1819,6 +1951,7 @@ void smShowConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 	printf("XML - monitor_standby_enable %u\n", (unsigned int)smp->monitor_standby_enable);
 	printf("XML - dynamic_port_alloc %u\n", (unsigned int)smp->dynamic_port_alloc);
 	printf("XML - topo_lid_offset %u\n", (unsigned int)smp->topo_lid_offset);
+	printf("XML - loopback_mode %u\n", (unsigned int)smp->loopback_mode);
 	printf("XML - force_rebalance %u\n", (unsigned int)smp->force_rebalance);
 	printf("XML - use_cached_node_data %u\n", (unsigned int)smp->use_cached_node_data);
 	printf("XML - NoReplyIfBusy %u\n", (unsigned int)smp->NoReplyIfBusy);
@@ -1843,8 +1976,6 @@ void smShowConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 	printf("XML - preemption.preempt_limit 0x%x\n", (unsigned int) smp->preemption.preempt_limit);  
 	printf("XML - congestion.enable %u\n", (unsigned int)smp->congestion.enable);
 	printf("XML - congestion.debug %u\n", (unsigned int)smp->congestion.debug);
-	printf("XML - congestion.discovery_attempts %u\n", (unsigned int)smp->congestion.discovery_attempts);
-	printf("XML - congestion.discover_always %u\n", (unsigned int)smp->congestion.discover_always);
 	printf("XML - congestion.sw.victim_marking_enable %u\n", (unsigned int)smp->congestion.sw.victim_marking_enable);
 	printf("XML - congestion.sw.threshold %u\n", (unsigned int)smp->congestion.sw.threshold);
 	printf("XML - congestion.sw.packet_size %u\n", (unsigned int)smp->congestion.sw.packet_size);
@@ -1881,18 +2012,18 @@ void smShowConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 	printf("XML - sm_mc_config.mcroot_select_algorithm %s\n", mcp->mcroot_select_algorithm);
 	printf("XML - sm_mc_config.mcroot_min_cost_improvement %s\n", mcp->mcroot_min_cost_improvement);
 
-	sprintf(str,"dynamicPlt");
+	snprintf(str, 32, "dynamicPlt");
 	for (i = 0; i < DYNAMIC_PACKET_LIFETIME_ARRAY_SIZE; i++) {
 		printf("XML - %s %u\n", str, (unsigned int)dplp->dp_lifetime[i]);
-		sprintf(str, "dynamicPlt_%.2u", (unsigned int)(i + 1));
+		snprintf(str, 32, "dynamicPlt_%.2u", (unsigned int)(i + 1));
 	}
 
 	for (i = 0; i < MAX_SUPPORTED_MCAST_GRP_CLASSES; ++i) {
-		sprintf(str, "mcastGrpMGidLimitMask_%u", (unsigned int)i);
+		snprintf(str, 32, "mcastGrpMGidLimitMask_%u", (unsigned int)i);
 		printf("XML - %s %s\n", str, mlsp->mcastMlid[i].mcastGrpMGidLimitMaskConvert.value);
-		sprintf(str, "mcastGrpMGidLimitValue_%u", (unsigned int)i);
+		snprintf(str, 32, "mcastGrpMGidLimitValue_%u", (unsigned int)i);
 		printf("XML - %s %s\n", str, mlsp->mcastMlid[i].mcastGrpMGidLimitValueConvert.value);
-		sprintf(str, "mcastGrpMGidLimitMax_%u", (unsigned int)i);
+		snprintf(str, 32, "mcastGrpMGidLimitMax_%u", (unsigned int)i);
 		printf("XML - %s %u\n", str, (unsigned int)mlsp->mcastMlid[i].mcastGrpMGidLimitMax);
 	}
 	printf("XML - sm_mc_config.mcroot_min_cost_improvement %s\n", mcp->mcroot_min_cost_improvement);
@@ -3181,7 +3312,7 @@ boolean addDefaultVirtualFabric(uint32_t fm, FMXmlCompositeConfig_t *config, VFX
 	// not in use.
 	strcpy(app->name, "Default");
 	j = 0;
-	while (cl_qmap_get(&app_config->appMap, XML_QMAP_U64_CAST app) != NULL) {
+	while (cl_qmap_get(&app_config->appMap, XML_QMAP_U64_CAST app->name) != cl_qmap_end(&app_config->appMap)) {
 		// Name already in use
 		j++;
 		sprintf(app->name, "Default_%d",j);
@@ -3240,7 +3371,7 @@ boolean addDefaultVirtualFabric(uint32_t fm, FMXmlCompositeConfig_t *config, VFX
     vfp->number_of_limited_members = 0;
 
     vfp->number_of_applications = 1;
-    sprintf(vfp->application[0].application,app->name);
+    snprintf(vfp->application[0].application, sizeof(vfp->application[0].application), app->name);
 
 	if (!addMap(&app_config->appMap, XML_QMAP_U64_CAST app)) {
 		freeApplicationObject(app);
@@ -3616,6 +3747,10 @@ VirtualFabrics_t* renderVirtualFabricsConfig(uint32_t fm, FMXmlCompositeConfig_t
 	uint32_t 					v_fabrics;
 	uint32_t					valid_vfs;
 	uint32_t					total_bw;
+	uint32_t					num_non_qos_enabled;
+	uint32_t					num_qos_defined;
+	uint32_t					num_enabled;
+	uint32_t					needed_bw_reserve;
 	int32_t						result;
 	uint8_t						dg_match;
 	uint8_t						default_vf_check;
@@ -3640,6 +3775,10 @@ VirtualFabrics_t* renderVirtualFabricsConfig(uint32_t fm, FMXmlCompositeConfig_t
 	// is not 0 length
 	valid_vfs = 0;
 	total_bw = 0;
+	num_non_qos_enabled = 0;
+	num_qos_defined = 0;
+	num_enabled = 0;
+	needed_bw_reserve = 0;
 
 	for (v_fabrics = 0; v_fabrics < MAX_CONFIGURED_VFABRICS; v_fabrics++) {
 
@@ -3672,6 +3811,16 @@ VirtualFabrics_t* renderVirtualFabricsConfig(uint32_t fm, FMXmlCompositeConfig_t
 			continue;
 		}
 
+		// verify that Virtual Fabric PKey is >0 and <= 15 bits
+		if ((vfp->pkey != UNDEFINED_XML32) && (((vfp->pkey == 0) || (vfp->pkey > 0x7fff)))) {
+			if (error) {
+				sprintf(error, "Virtual Fabric (%s) Invalid PKey: 0x%x, must be in the range 0x0001-0x7fff", vfp->name, vfp->pkey); 
+				releaseVirtualFabricsConfig(vfsip);
+				return NULL;
+			}
+			continue;
+		}
+
 		// verify that necessary objects in Virtual Fabric are specified
 		if (vfp->number_of_full_members == 0 && vfp->number_of_limited_members == 0) {
 			if (error) {
@@ -3688,13 +3837,6 @@ VirtualFabrics_t* renderVirtualFabricsConfig(uint32_t fm, FMXmlCompositeConfig_t
 				return NULL;
 			}
 			continue;
-		}
-
-		//Check MTU setting
-		if (!isValidMtuSetting(vfp)) {
-			sprintf(error, "Virtual Fabric (%s), which includes SA, PA, or PM, has invalid MTU setting", vfp->name);
-			releaseVirtualFabricsConfig(vfsip);
-			return NULL;
 		}
 
 		default_vf_check = (vfp->pkey & ~0x8000) == STL_DEFAULT_PKEY;
@@ -3715,6 +3857,11 @@ VirtualFabrics_t* renderVirtualFabricsConfig(uint32_t fm, FMXmlCompositeConfig_t
 		vfip->security = vfp->security;
 
 		vfip->qos_enable = vfp->qos_enable;
+		if (!vfip->qos_enable)
+			num_non_qos_enabled++;
+
+		num_enabled++;
+
 		vfip->base_sl = vfp->base_sl;
 
 		if (vfp->flowControlDisable == UNDEFINED_XML8) {
@@ -3729,6 +3876,8 @@ VirtualFabrics_t* renderVirtualFabricsConfig(uint32_t fm, FMXmlCompositeConfig_t
 		vfip->routing_sls = vfip->routing_scs;
 
 		vfip->percent_bandwidth = vfp->percent_bandwidth;
+		if (vfp->qos_enable && vfp->percent_bandwidth != UNDEFINED_XML8)
+			num_qos_defined++;
 
 		if (vfp->priority == UNDEFINED_XML8) {
 			// Change undefined to low.
@@ -3737,6 +3886,9 @@ VirtualFabrics_t* renderVirtualFabricsConfig(uint32_t fm, FMXmlCompositeConfig_t
 		vfip->priority = vfp->priority;
 
 		vfip->pkt_lifetime_mult = vfp->pkt_lifetime_mult;
+		if (vfip->pkt_lifetime_mult != UNDEFINED_XML8) {
+        	vfip->pkt_lifetime_specified = 1;
+		} 
 		if (vfp->max_mtu_int != UNDEFINED_XML8) {
 			vfip->max_mtu_int = vfp->max_mtu_int;
         	vfip->max_mtu_specified = 1;
@@ -3762,6 +3914,31 @@ VirtualFabrics_t* renderVirtualFabricsConfig(uint32_t fm, FMXmlCompositeConfig_t
 				releaseVirtualFabricsConfig(vfsip);
 				return NULL;
 			}
+
+			//need to leave at least 1% for each unallocated QoS enabled VF
+			if (num_enabled > num_qos_defined) {
+				needed_bw_reserve = (num_enabled - num_qos_defined - num_non_qos_enabled) * 1;
+				if (num_non_qos_enabled)
+					needed_bw_reserve += 5;
+
+				if ((total_bw+needed_bw_reserve) > 100) {
+					//if there is at least 1 nonQos VF, BW can't be greater than 95%
+					if (num_non_qos_enabled != 0) {
+						if (error) 
+							sprintf(error, "Total QOS Bandwidth cannot exceed 95%% for enabled Virtual Fabrics with QOS enabled when there is an enabled VF with QoS disabled");
+						fprintf(stdout, "Total QOS Bandwidth cannot exceed 95%% for enabled Virtual Fabrics with QOS enabled when there is an enabled VF with QoS disabled\n" );
+					}
+					else {
+						if (error) 
+							sprintf(error, "QOS Bandwidth allocation error; not enough BW to allocate to the VFs with QoS enabled, but that did not explicitly specify a BW allocation amount");
+						fprintf(stdout, "QOS Bandwidth allocation error; not enough BW to allocate to the VFs with QoS enabled, but that did not explicitly specify a BW allocation amount\n" );
+					}
+
+					releaseVirtualFabricsConfig(vfsip);
+					return NULL;
+				}
+			}
+
 		}
 
 		// Inherit default values from SM Instance if not yet defined by VF.
@@ -4502,9 +4679,10 @@ int getFacility(char* name, uint8_t test)
 }
 
 // Show possible Facility settings
-char* showFacilities(char *facility)
+char* showFacilities(char *facility, size_t size)
 {
 	struct log_facility* p;
+	int res = 0;
 
 	if (!facility)
 		return NULL;
@@ -4512,9 +4690,11 @@ char* showFacilities(char *facility)
 	facility[0] = 0;
 
 	for (p = log_facilities; p->name != NULL; ++p) {
-		strcat(facility, p->name);
-		if ((p + 1)->name != NULL)
-			strcat(facility, ", ");
+		res = snprintf(facility, size, "%s%s", p->name, ((p + 1)->name != NULL) ? ", " : "");
+		if(res > 0 && res < size)
+			size -= res;
+		else
+			break;
 	}
 	return facility;
 }
@@ -4882,7 +5062,7 @@ static void VfDgMGidMaskedEnd(IXmlParserState_t *state, const IXML_FIELD *field,
 static IXML_FIELD SmMcastDgFields[] = {
 	{ tag:"Create", format:'u', IXML_FIELD_INFO(SMMcastDefGrp_t, def_mc_create) },
 	{ tag:"VirtualFabric", format:'s', IXML_FIELD_INFO(SMMcastDefGrp_t, virtual_fabric) },
-	{ tag:"PKey", format:'h', IXML_FIELD_INFO(SMMcastDefGrp_t, def_mc_pkey) },
+	{ tag:"PKey", format:'h', IXML_FIELD_INFO(SMMcastDefGrp_t, def_mc_pkey),  end_func:PKeyParserEnd},
 	{ tag:"MTU_Int", format:'u', IXML_FIELD_INFO(SMMcastDefGrp_t, def_mc_mtu_int) },
 	{ tag:"MTU", format:'k', IXML_FIELD_INFO(SMMcastDefGrp_t, def_mc_mtu_int), end_func:MtuU8XmlParserEnd },
 	{ tag:"Rate_Int", format:'u', IXML_FIELD_INFO(SMMcastDefGrp_t, def_mc_rate_int) },
@@ -5309,8 +5489,6 @@ static void* SmCaCongestionXmlParserStart(IXmlParserState_t *state, void *parent
 static IXML_FIELD SmCongestionFields[] = {
 	{ tag:"Enable", format:'u', IXML_FIELD_INFO(SmCongestionXmlConfig_t, enable) },
 	{ tag:"Debug", format:'u', IXML_FIELD_INFO(SmCongestionXmlConfig_t, debug) },
-	{ tag:"DiscoveryAttempts", format:'u', IXML_FIELD_INFO(SmCongestionXmlConfig_t, discovery_attempts) },
-	{ tag:"DiscoverAlways", format:'u', IXML_FIELD_INFO(SmCongestionXmlConfig_t, discover_always) },
 	{ tag:"Switch", format:'k', subfields:SmSwCongestionFields, start_func:SmSwCongestionXmlParserStart },
 	{ tag:"Fi", format:'k', subfields:SmCaCongestionFields, start_func:SmCaCongestionXmlParserStart },
 	{ NULL }
@@ -5805,6 +5983,7 @@ static IXML_FIELD SmFields[] = {
 	{ tag:"NonRespTimeout", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, non_resp_tsec) },
 	{ tag:"NonRespMaxCount", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, non_resp_max_count) },
 	{ tag:"DynamicPortAlloc", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, dynamic_port_alloc) },
+	{ tag:"LoopbackMode", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, loopback_mode) },
 	{ tag:"LIDSpacing", format:'h', IXML_FIELD_INFO(SMXmlConfig_t, topo_lid_offset) },
 	{ tag:"ForceRebalance", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, force_rebalance) },
 	{ tag:"UseCachedNodeData", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, use_cached_node_data) },
@@ -5817,7 +5996,7 @@ static IXML_FIELD SmFields[] = {
 	{ tag:"CongestionControl", format:'k', subfields:SmCongestionFields, start_func:SmCongestionXmlParserStart },
 	{ tag:"AdaptiveRouting", format:'k', subfields:SmAdaptiveRoutingFields, start_func:SmAdaptiveRoutingXmlParserStart, end_func:SmAdaptiveRoutingXmlParserEnd },
 	{ tag:"FatTreeTopology", format:'k', subfields:SmFtreeRoutingFields, start_func:SmFtreeRoutingXmlParserStart, end_func:SmFtreeRoutingXmlParserEnd },
-	{ tag:"DGMinHopTopology", format:'k', subfields:SmDGRoutingFields, start_func:SmDGRoutingXmlParserStart, end_func:SmDGRoutingXmlParserEnd },
+	{ tag:"DGShortestPathTopology", format:'k', subfields:SmDGRoutingFields, start_func:SmDGRoutingXmlParserStart, end_func:SmDGRoutingXmlParserEnd },
 #ifdef CONFIG_INCLUDE_DOR
 	{ tag:"MeshTorusTopology", format:'k', subfields:SmDorRoutingFields, start_func:SmDorRoutingXmlParserStart, end_func:SmDorRoutingXmlParserEnd },
 #endif
@@ -5901,6 +6080,11 @@ static void SmXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, vo
 			freeXmlMemory(smp, sizeof(SMXmlConfig_t), "SMXmlConfig_t SmXmlParserEnd()");
 			return;
 		}
+		if (smp->vl15_credit_rate != UNDEFINED_XML32 && smp->vl15_credit_rate > MAX_VL15_CREDIT_RATE) {
+			IXmlParserPrintError(state, "Sm VL15CreditRate must be in the range of 0-21");
+			freeXmlMemory(smp, sizeof(SMXmlConfig_t), "SMXmlConfig_t SmXmlParserEnd()");
+			return;
+		}
 		if (strlen(smp->CoreDumpLimit) && vs_getCoreDumpLimit(smp->CoreDumpLimit, NULL) < 0) {
 			IXmlParserPrintError(state, "Invalid Sm CoreDumpLimit: '%s'", smp->CoreDumpLimit);
 			freeXmlMemory(smp, sizeof(SMXmlConfig_t), "SMXmlConfig_t SmXmlParserEnd()");
@@ -5914,7 +6098,7 @@ static void SmXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, vo
 
 #ifndef __VXWORKS__
 		if (strlen(smp->syslog_facility) && getFacility(smp->syslog_facility, /* test */ 1) < 0) {
-			IXmlParserPrintError(state, "Sm SyslogFacility must be set to one of the following - %s", showFacilities(facility));
+			IXmlParserPrintError(state, "Sm SyslogFacility must be set to one of the following - %s", showFacilities(facility, sizeof(facility)));
 			freeXmlMemory(smp, sizeof(SMXmlConfig_t), "SMXmlConfig_t SmXmlParserEnd()");
 			return;
 		}
@@ -5990,7 +6174,6 @@ static IXML_FIELD FeFields[] = {
 	{ tag:"SslSecurityFmDHParameters", format:'s', IXML_FIELD_INFO(FEXmlConfig_t, SslSecurityFmDHParameters) },
 	{ tag:"SslSecurityFmCaCRLEnabled", format:'u', IXML_FIELD_INFO(FEXmlConfig_t, SslSecurityFmCaCRLEnabled) },
 	{ tag:"SslSecurityFmCaCRL", format:'s', IXML_FIELD_INFO(FEXmlConfig_t, SslSecurityFmCaCRL) },
-	{ tag:"DefaultPKey", format:'u', IXML_FIELD_INFO(FEXmlConfig_t, default_pkey) },
 	{ tag:"CS_LogMask", format:'u', IXML_FIELD_INFO(FEXmlConfig_t, log_masks[VIEO_CS_MOD_ID]), end_func:ParamU32XmlParserEnd },
 	{ tag:"MAI_LogMask", format:'u', IXML_FIELD_INFO(FEXmlConfig_t, log_masks[VIEO_MAI_MOD_ID]), end_func:ParamU32XmlParserEnd },
 	{ tag:"CAL_LogMask", format:'u', IXML_FIELD_INFO(FEXmlConfig_t, log_masks[VIEO_CAL_MOD_ID]), end_func:ParamU32XmlParserEnd },
@@ -6056,7 +6239,7 @@ static void FeXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, vo
 		}
 #ifndef __VXWORKS__
 		if (strlen(fep->syslog_facility) && getFacility(fep->syslog_facility, /* test */ 1) < 0) {
-			IXmlParserPrintError(state, "Fe SyslogFacility must be set to one of the following - %s", showFacilities(facility));
+			IXmlParserPrintError(state, "Fe SyslogFacility must be set to one of the following - %s", showFacilities(facility, sizeof(facility)));
 			freeXmlMemory(fep, sizeof(FEXmlConfig_t), "FEXmlConfig_t FeXmlParserEnd()");
 			return;
 		}
@@ -6120,6 +6303,8 @@ static IXML_FIELD PmIntegrityWeightsFields[] = {
 	{ tag:"LinkDowned", format:'u', IXML_FIELD_INFO(PmIntegrityWeightsXmlConfig_t, LinkDowned) },
 	{ tag:"UncorrectableErrors", format:'u', IXML_FIELD_INFO(PmIntegrityWeightsXmlConfig_t, UncorrectableErrors) },
 	{ tag:"FMConfigErrors", format:'u', IXML_FIELD_INFO(PmIntegrityWeightsXmlConfig_t, FMConfigErrors) },
+	{ tag:"LinkQualityIndicator", format:'u', IXML_FIELD_INFO(PmIntegrityWeightsXmlConfig_t, LinkQualityIndicator) },
+	{ tag:"LinkWidthDowngrade", format:'u', IXML_FIELD_INFO(PmIntegrityWeightsXmlConfig_t, LinkWidthDowngrade) },
 	{ NULL }
 };
 
@@ -6131,12 +6316,12 @@ static void* PmIntegrityWeightsXmlParserStart(IXmlParserState_t *state, void *pa
 
 // fields within "Pm/CongestionWeights" tag
 static IXML_FIELD PmCongestionWeightsFields[] = {
-	{ tag:"XmitWait", format:'u', IXML_FIELD_INFO(PmCongestionWeightsXmlConfig_t, PortXmitWait) },
+	{ tag:"XmitWaitPct", format:'u', IXML_FIELD_INFO(PmCongestionWeightsXmlConfig_t, PortXmitWait) },
 	{ tag:"CongDiscards", format:'u', IXML_FIELD_INFO(PmCongestionWeightsXmlConfig_t, SwPortCongestion) },
-	{ tag:"RcvFECN", format:'u', IXML_FIELD_INFO(PmCongestionWeightsXmlConfig_t, PortRcvFECN) },
-	{ tag:"RcvBECN", format:'u', IXML_FIELD_INFO(PmCongestionWeightsXmlConfig_t, PortRcvBECN) },
-	{ tag:"XmitTimeCong", format:'u', IXML_FIELD_INFO(PmCongestionWeightsXmlConfig_t, PortXmitTimeCong) },
-	{ tag:"MarkFECN", format:'u', IXML_FIELD_INFO(PmCongestionWeightsXmlConfig_t, PortMarkFECN) },
+	{ tag:"RcvFECNPct", format:'u', IXML_FIELD_INFO(PmCongestionWeightsXmlConfig_t, PortRcvFECN) },
+	{ tag:"RcvBECNPct", format:'u', IXML_FIELD_INFO(PmCongestionWeightsXmlConfig_t, PortRcvBECN) },
+	{ tag:"XmitTimeCongPct", format:'u', IXML_FIELD_INFO(PmCongestionWeightsXmlConfig_t, PortXmitTimeCong) },
+	{ tag:"MarkFECNPct", format:'u', IXML_FIELD_INFO(PmCongestionWeightsXmlConfig_t, PortMarkFECN) },
 	{ NULL }
 };
 
@@ -6144,6 +6329,18 @@ static IXML_FIELD PmCongestionWeightsFields[] = {
 static void* PmCongestionWeightsXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr)
 {
 	return &((PMXmlConfig_t *)parent)->congestionWeights;
+}
+
+// fields within the "Pm/Resolution" tag
+static IXML_FIELD PmResolutionFields[] = {
+	{ tag:"LocalLinkIntegrity", format:'u', IXML_FIELD_INFO(PmResolutionXmlConfig_t, LocalLinkIntegrity) },
+	{ tag:"LinkErrorRecovery", format:'u', IXML_FIELD_INFO(PmResolutionXmlConfig_t, LinkErrorRecovery) },
+	{ NULL }
+};
+
+static void* PmResolutionXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr)
+{
+	return &((PMXmlConfig_t *)parent)->resolution;
 }
 
 // fields withing "Pm/ShortTermHistory" tag
@@ -6226,6 +6423,7 @@ static IXML_FIELD PmFields[] = {
 	{ tag:"ThresholdsExceededMsgLimit", format:'k', subfields:PmThresholdsExceededMsgLimitFields, start_func:PmThresholdsExceededMsgLimitXmlParserStart },
 	{ tag:"IntegrityWeights", format:'k', subfields:PmIntegrityWeightsFields, start_func:PmIntegrityWeightsXmlParserStart },
 	{ tag:"CongestionWeights", format:'k', subfields:PmCongestionWeightsFields, start_func:PmCongestionWeightsXmlParserStart },
+	{ tag:"Resolution", format:'k', subfields:PmResolutionFields, start_func:PmResolutionXmlParserStart },
 	{ tag:"Debug", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, debug) },
 	{ tag:"RmppDebug", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, debug_rmpp) },
 	{ tag:"Priority", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, priority) },
@@ -6233,7 +6431,6 @@ static IXML_FIELD PmFields[] = {
 	{ tag:"LogLevel", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, log_level) },
 	{ tag:"LogMode", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, syslog_mode) },
 	{ tag:"SyslogFacility", format:'s', IXML_FIELD_INFO(PMXmlConfig_t, syslog_facility) },
-	{ tag:"DefaultPKey", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, default_pkey) },
 	{ tag:"CS_LogMask", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, log_masks[VIEO_CS_MOD_ID]), end_func:ParamU32XmlParserEnd },
 	{ tag:"MAI_LogMask", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, log_masks[VIEO_MAI_MOD_ID]), end_func:ParamU32XmlParserEnd },
 	{ tag:"CAL_LogMask", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, log_masks[VIEO_CAL_MOD_ID]), end_func:ParamU32XmlParserEnd },
@@ -6309,7 +6506,7 @@ static void PmXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, vo
 		}
 #ifndef __VXWORKS__
 		if (strlen(pmp->syslog_facility) && getFacility(pmp->syslog_facility, /* test */ 1) < 0) {
-			IXmlParserPrintError(state, "Pm SyslogFacility must be set to one of the following - %s", showFacilities(facility));
+			IXmlParserPrintError(state, "Pm SyslogFacility must be set to one of the following - %s", showFacilities(facility, sizeof(facility)));
 			freeXmlMemory(pmp, sizeof(PMXmlConfig_t), "PMXmlConfig_t PmXmlParserEnd()");
 			return;
 		}
@@ -7375,7 +7572,7 @@ static IXML_FIELD VfFields[] = {
 	{ tag:"Name", format:'s', IXML_FIELD_INFO(VFConfig_t, name) },
 	{ tag:"Enable", format:'u', IXML_FIELD_INFO(VFConfig_t, enable) },
 	{ tag:"Standby", format:'u', IXML_FIELD_INFO(VFConfig_t, standby) },
-	{ tag:"PKey", format:'h', IXML_FIELD_INFO(VFConfig_t, pkey) },
+	{ tag:"PKey", format:'h', IXML_FIELD_INFO(VFConfig_t, pkey),  end_func:PKeyParserEnd},
 	{ tag:"Security", format:'u', IXML_FIELD_INFO(VFConfig_t, security) },
 	{ tag:"BaseSL", format:'u', IXML_FIELD_INFO(VFConfig_t, base_sl) },
 	{ tag:"FlowControlDisable", format:'u', IXML_FIELD_INFO(VFConfig_t, flowControlDisable) },
@@ -7835,7 +8032,6 @@ static IXML_FIELD FmSharedFields[] = {
 	{ tag:"APP_LogMask", format:'u', IXML_FIELD_INFO(FMXmlConfig_t, log_masks[VIEO_APP_MOD_ID]), end_func:ParamU32XmlParserEnd },
 	{ tag:"SyslogFacility", format:'s', IXML_FIELD_INFO(FMXmlConfig_t, syslog_facility) },
 	{ tag:"ConfigConsistencyCheckLevel", format:'u', IXML_FIELD_INFO(FMXmlConfig_t, config_consistency_check_level) },
-	{ tag:"ConfigConsistencyCheckMethod", format:'u', IXML_FIELD_INFO(FMXmlConfig_t, config_consistency_check_method) },
 	{ tag:"SslSecurityEnabled", format:'u', IXML_FIELD_INFO(FMXmlConfig_t, SslSecurityEnabled) },
 #ifndef __VXWORKS__
 	{ tag:"SslSecurityDir", format:'s', IXML_FIELD_INFO(FMXmlConfig_t, SslSecurityDir) },
@@ -7847,7 +8043,6 @@ static IXML_FIELD FmSharedFields[] = {
 	{ tag:"SslSecurityFmDHParameters", format:'s', IXML_FIELD_INFO(FMXmlConfig_t, SslSecurityFmDHParameters) },
 	{ tag:"SslSecurityFmCaCRLEnabled", format:'u', IXML_FIELD_INFO(FMXmlConfig_t, SslSecurityFmCaCRLEnabled) },
 	{ tag:"SslSecurityFmCaCRL", format:'s', IXML_FIELD_INFO(FMXmlConfig_t, SslSecurityFmCaCRL) },
-	{ tag:"DefaultPKey", format:'h', IXML_FIELD_INFO(FMXmlConfig_t, default_pkey) },
 	{ tag:"Hfi", format:'u', IXML_FIELD_INFO(FMXmlConfig_t, hca), end_func:HfiXmlParserEnd },
 	{ tag:"Port", format:'u', IXML_FIELD_INFO(FMXmlConfig_t, port) },
 	{ tag:"SubnetPrefix", format:'h', IXML_FIELD_INFO(FMXmlConfig_t, subnet_prefix) },
@@ -7885,7 +8080,6 @@ static void* FmSharedXmlParserStart(IXmlParserState_t *state, void *parent, cons
 	memset(fmp->log_masks, 0, sizeof(fmp->log_masks));
 	fmp->config_consistency_check_level = UNDEFINED_XML32;
 	fmp->config_consistency_check_method = UNDEFINED_XML32;
-	fmp->default_pkey = UNDEFINED_XML16;
 	memset(fmp->log_file, 0, sizeof(fmp->log_file));
 	memset(fmp->CoreDumpLimit, 0, sizeof(fmp->CoreDumpLimit));
 	memset(fmp->CoreDumpDir, 0, sizeof(fmp->CoreDumpDir));
@@ -7938,18 +8132,13 @@ static void FmSharedXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *fie
 		}
 #ifndef __VXWORKS__
 		if (strlen(fmp->syslog_facility) && getFacility(fmp->syslog_facility, /* test */ 1) < 0) {
-			IXmlParserPrintError(state, "Fm SyslogFacility must be set to one of the following - %s", showFacilities(facility));
+			IXmlParserPrintError(state, "Fm SyslogFacility must be set to one of the following - %s", showFacilities(facility, sizeof(facility)));
 			freeXmlMemory(fmp, sizeof(FMXmlConfig_t), "FMXmlConfig_t FmSharedXmlParserEnd()");
 			return;
 		}
 #endif
 		if (fmp->config_consistency_check_level != UNDEFINED_XML32 && fmp->config_consistency_check_level > CHECK_ACTION_CCC_LEVEL) {
 			IXmlParserPrintError(state, "Fm ConfigConsistencyCheckLevel must be set to 0, 1, or 2");
-			freeXmlMemory(fmp, sizeof(FMXmlConfig_t), "FMXmlConfig_t FmSharedXmlParserEnd()");
-			return;
-		}
-		if (fmp->config_consistency_check_method != UNDEFINED_XML32 && fmp->config_consistency_check_method > SIMPLE_CHECKSUM_METHOD) {
-			IXmlParserPrintError(state, "Fm ConfigConsistencyCheckMethod must be set to 0 or 1");
 			freeXmlMemory(fmp, sizeof(FMXmlConfig_t), "FMXmlConfig_t FmSharedXmlParserEnd()");
 			return;
 		}
@@ -8078,11 +8267,6 @@ static void FmSharedXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *fie
 			smp->config_consistency_check_method = fmp->config_consistency_check_method;
 			pmp->config_consistency_check_method = fmp->config_consistency_check_method;
 			fep->config_consistency_check_method = fep->config_consistency_check_method;
-		}
-
-		if (fmp->default_pkey != UNDEFINED_XML16) {
-			pmp->default_pkey = fmp->default_pkey;
-			fep->default_pkey = fmp->default_pkey;
 		}
 
 		if (fmp->SslSecurityEnabled != UNDEFINED_XML32) {
@@ -8243,8 +8427,6 @@ static IXML_FIELD CommonSharedFields[] = {
 	{ tag:"APP_LogMask", format:'u', IXML_FIELD_INFO(FMXmlConfig_t, log_masks[VIEO_APP_MOD_ID]), end_func:ParamU32XmlParserEnd },
 	{ tag:"SyslogFacility", format:'s', IXML_FIELD_INFO(FMXmlConfig_t, syslog_facility) },
 	{ tag:"ConfigConsistencyCheckLevel", format:'u', IXML_FIELD_INFO(FMXmlConfig_t, config_consistency_check_level) },
-	{ tag:"ConfigConsistencyCheckMethod", format:'u', IXML_FIELD_INFO(FMXmlConfig_t, config_consistency_check_method) },
-	{ tag:"DefaultPKey", format:'h', IXML_FIELD_INFO(FMXmlConfig_t, default_pkey) },
 	{ NULL }
 };
 
@@ -8303,18 +8485,13 @@ static void CommonSharedXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD 
 		}
 #ifndef __VXWORKS__
 		if (strlen(fmp->syslog_facility) && getFacility(fmp->syslog_facility, /* test */ 1) < 0) {
-			IXmlParserPrintError(state, "Common Shared SyslogFacility must be set to one of the following - %s", showFacilities(facility));
+			IXmlParserPrintError(state, "Common Shared SyslogFacility must be set to one of the following - %s", showFacilities(facility, sizeof(facility)));
 			freeXmlMemory(fmp, sizeof(FMXmlConfig_t), "FMXmlConfig_t CommonSharedXmlParserEnd()");
 			return;
 		}
 #endif
 		if (fmp->config_consistency_check_level != UNDEFINED_XML32 && fmp->config_consistency_check_level > CHECK_ACTION_CCC_LEVEL) {
 			IXmlParserPrintError(state, "Sm ConfigConsistencyCheckLevel must be set to 0, 1, or 2");
-			freeXmlMemory(fmp, sizeof(FMXmlConfig_t), "FMXmlConfig_t CommonSharedXmlParserEnd()");
-			return;
-		}
-		if (fmp->config_consistency_check_method != UNDEFINED_XML32 && fmp->config_consistency_check_method > SIMPLE_CHECKSUM_METHOD) {
-			IXmlParserPrintError(state, "Sm ConfigConsistencyCheckMethod must be set to 0 or 1");
 			freeXmlMemory(fmp, sizeof(FMXmlConfig_t), "FMXmlConfig_t CommonSharedXmlParserEnd()");
 			return;
 		}
@@ -8370,7 +8547,6 @@ static void CommonSharedXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD 
 	for (modid=0; modid <= VIEO_LAST_MOD_ID; ++modid)
 		pmp->log_masks[modid] = fmp->log_masks[modid];
 	strcpy(pmp->syslog_facility, fmp->syslog_facility);
-	pmp->default_pkey = fmp->default_pkey;
 	pmp->SslSecurityEnabled = fmp->SslSecurityEnabled;
 	strncpy(pmp->SslSecurityDir, fmp->SslSecurityDir, sizeof(pmp->SslSecurityDir) - 1);
 	strncpy(pmp->SslSecurityFmCertificate, fmp->SslSecurityFmCertificate, sizeof(pmp->SslSecurityFmCertificate) -1);
@@ -8395,7 +8571,6 @@ static void CommonSharedXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD 
 		fep->log_masks[modid] = fmp->log_masks[modid];
 	strcpy(fep->syslog_facility, fmp->syslog_facility);
 	fep->config_consistency_check_method = fmp->config_consistency_check_method;
-	fep->default_pkey = fmp->default_pkey;
 	fep->SslSecurityEnabled = fmp->SslSecurityEnabled;
 	strncpy(fep->SslSecurityDir, fmp->SslSecurityDir, sizeof(fep->SslSecurityDir) - 1);
 	strncpy(fep->SslSecurityFmCertificate, fmp->SslSecurityFmCertificate, sizeof(fep->SslSecurityFmCertificate) - 1);

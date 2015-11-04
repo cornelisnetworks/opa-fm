@@ -147,15 +147,15 @@ GetCableInfoRecord(Mai_t *maip, uint32_t *records)
 
 	BSWAPCOPY_STL_SA_MAD((STL_SA_MAD*)maip->data, &samad, sizeof(STL_CABLE_INFO_RECORD));
 
-	checkLid = samad.header.mask & STL_CIB_COMP_LID;
+	checkLid = samad.header.mask & STL_CIR_COMP_LID;
 	if (checkLid) {
 		portLid = ntoh32(((STL_CABLE_INFO_RECORD*)(samad.data))->LID);
-		samad.header.mask ^= STL_CIB_COMP_LID;
+		samad.header.mask ^= STL_CIR_COMP_LID;
 	}
-	checkPort = samad.header.mask & STL_CIB_COMP_PORT;
+	checkPort = samad.header.mask & STL_CIR_COMP_PORT;
 	if (checkPort) {
 		portNum = ((STL_CABLE_INFO_RECORD*)(samad.data))->Port;
-		samad.header.mask ^= STL_CIB_COMP_PORT;
+		samad.header.mask ^= STL_CIR_COMP_PORT;
 	}
 
 	status = sa_create_template_mask(maip->base.aid, samad.header.mask);
@@ -164,7 +164,7 @@ GetCableInfoRecord(Mai_t *maip, uint32_t *records)
 		return VSTATUS_OK;
 	}
 
-	if (!(samad.header.mask & STL_CIB_COMP_LEN) || !(samad.header.mask & STL_CIB_COMP_ADDR)) {
+	if (!(samad.header.mask & STL_CIR_COMP_LEN) || !(samad.header.mask & STL_CIR_COMP_ADDR)) {
 		maip->base.status = MAD_STATUS_SA_REQ_INSUFFICIENT_COMPONENTS;
 		IB_EXIT("GetCableInfoRecord", VSTATUS_OK);
 		return VSTATUS_OK;
@@ -175,14 +175,14 @@ GetCableInfoRecord(Mai_t *maip, uint32_t *records)
 	// Note: Len is NOT the real length, its the length-1, as defined in STL spec,
 	len = ((STL_CABLE_INFO_RECORD*)(samad.data))->Length;
 	addr = ((STL_CABLE_INFO_RECORD*)(samad.data))->u1.s.Address;
-	samad.header.mask ^= (STL_CIB_COMP_LEN|STL_CIB_COMP_ADDR);
+	samad.header.mask ^= (STL_CIR_COMP_LEN|STL_CIR_COMP_ADDR);
 
 	// Cable info query is expected to query specific addresses / length
 	// Check here for these expected values.
-	if ((addr<STL_CIB_START_ADDR) ||
-        (addr>STL_CIB_END_ADDR)   ||
+	if ((addr<STL_CIB_STD_START_ADDR) ||
+        (addr>STL_CIB_STD_END_ADDR)   ||
         (len >= STL_CABLE_INFO_PAGESZ) || 
-        ((addr+len) > STL_CIB_END_ADDR)) {
+        ((addr+len) > STL_CIB_STD_END_ADDR)) {
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 		IB_EXIT("GetCableInfoRecord", VSTATUS_OK);
 		return VSTATUS_OK;
@@ -212,7 +212,7 @@ GetCableInfoRecord(Mai_t *maip, uint32_t *records)
 					record.u1.s.Address = addr + offset;
 					record.Length = MIN(len - offset, STL_CABLE_INFO_MAXLEN);
 					record.u1.s.PortType = pPort->portData->portInfo.PortPhyConfig.s.PortType;
-					bfrIdx = addr - STL_CIB_START_ADDR + offset;
+					bfrIdx = addr - STL_CIB_STD_START_ADDR + offset;
 					memcpy(record.Data, &pPort->portData->cableInfo->buffer[bfrIdx], record.Length + 1); 
 					BSWAPCOPY_STL_CABLE_INFO_RECORD(&record, (STL_CABLE_INFO_RECORD*)data);
 					(void)sa_template_test_mask(samad.header.mask, samad.data, &data, sizeof(STL_CABLE_INFO_RECORD), bytes, records);
@@ -245,7 +245,7 @@ GetCableInfoRecord(Mai_t *maip, uint32_t *records)
 					record.u1.s.Address = addr + offset;
 					record.Length = MIN(len - offset, STL_CABLE_INFO_MAXLEN);
 					record.u1.s.PortType = pPort->portData->portInfo.PortPhyConfig.s.PortType;
-					bfrIdx = addr - STL_CIB_START_ADDR + offset;
+					bfrIdx = addr - STL_CIB_STD_START_ADDR + offset;
 					memcpy(record.Data, &pPort->portData->cableInfo->buffer[bfrIdx], record.Length + 1);
 					BSWAPCOPY_STL_CABLE_INFO_RECORD(&record, (STL_CABLE_INFO_RECORD*)data);
 					(void)sa_template_test_mask(samad.header.mask, samad.data, &data, sizeof(STL_CABLE_INFO_RECORD), bytes, records);

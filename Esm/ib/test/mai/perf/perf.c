@@ -452,17 +452,12 @@ Status_t mai_wait_handle(IBhandle_t *ha, int count,
 		       uint64_t timeout, int *pfirst, Mai_t *maip)
 
 {
- 
-  uint32_t         *p_to;
+  uint32_t          *p_to = (uint32_t *)&timeout;
   uint64_t          timenow;
   uint64_t          wakeup;
   int               rc,i;
-  uint32_t          hi, low;
 
-  p_to = (uint32_t *)&timeout;
-  hi  = p_to[0];
-  low = p_to[1];
-  IB_ENTER("mai_wait_handle", ha, count, hi, low);
+  IB_ENTER("mai_wait_handle", ha, count, p_to[0], p_to[1]);
 
  
   

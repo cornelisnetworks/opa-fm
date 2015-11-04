@@ -83,14 +83,14 @@ CSYS		= -DLINUX -Dlinux -D__LINUX__
 CCSYS		= $(CSYS)
 CCLIBS		= 
 release_CCOPT_Flags	=-O3 -fno-strength-reduce -D_FORTIFY_SOURCE=2
-debug_CCOPT_Flags	=
+debug_CCOPT_Flags	= -O -D_FORTIFY_SOURCE=2
 release_COPT_Flags	=-O3 -fno-strength-reduce -D_FORTIFY_SOURCE=2
-debug_COPT_Flags	=
+debug_COPT_Flags	= -O -D_FORTIFY_SOURCE=2
 # Assemble the optimization flags based upon desired build configuration.
 CCOPT		= $($(strip $(BUILD_CONFIG))_CCOPT_Flags)
 COPT		= $($(strip $(BUILD_CONFIG))_COPT_Flags)
-release_CCDEBUG_Flags	=
-release_CDEBUG_Flags	=
+release_CCDEBUG_Flags	=-g
+release_CDEBUG_Flags	=-g
 debug_CCDEBUG_Flags	=-g -DIB_DEBUG -DIB_TRACE $(CCPROJDEBUG) $(CCLOCALDEBUG)
 debug_CDEBUG_Flags	=-g -DIB_DEBUG -DIB_TRACE $(CPROJDEBUG) $(CLOCALDEBUG)
 # Assemble the debug flags based upon desired build configuration.

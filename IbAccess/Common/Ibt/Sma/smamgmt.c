@@ -279,8 +279,7 @@ SmaCreateSmaObj(
 				pPortTbl = (SMA_PORT_TABLE_PRIV *)pCaObj->CaPublic.PortTbl;
 			
 				// CaInfo
-				MemoryCopy( pCaTblUsr[i].CaObj, &pCaObj->CaPublic, 
-									sizeof( SMA_CA_OBJECT ));
+				*pCaTblUsr[i].CaObj = pCaObj->CaPublic;
 
 				// Port info
 				pCaTblUsr[i].CaObj->PortTbl = pCaPortTbl;
@@ -289,7 +288,7 @@ SmaCreateSmaObj(
 					MemoryCopy(
 						&pCaTblUsr[i].CaObj->PortTbl[j], 
 						&pPortTbl[j].PortBlock->Public, 
-						sizeof( SMA_PORT_BLOCK ));
+						sizeof( pPortTbl[j].PortBlock->Public ));
 				}
 
 				// advance pointers

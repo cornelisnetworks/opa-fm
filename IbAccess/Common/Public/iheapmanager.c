@@ -267,6 +267,10 @@ static FSTATUS HeapManagerSplitBucket(HEAP_MANAGER *heap_mng,uint32 log2_size)
 
 	count = 1 << (max_index - log2_size);
 	ASSERT(count > 1);
+	if ( log2_size >= 32 ) {
+		ASSERT( FALSE );
+		return FOVERRUN;
+	}
 	list = &heap_mng->bucket_lists[log2_size];
 	/* so we can split into count blocks and add to log2_size queue */
 	for(i = 0;i< count;i++)
@@ -342,6 +346,10 @@ HEAP_OBJECT * HeapManagerAllocate(HEAP_MANAGER *heap_mng,uint32 size)
 	if(size < heap_mng->block_size)
 		size = heap_mng->block_size;
 	log2_size = CeilLog2(size);
+	if ( log2_size >= 32 ) {
+		ASSERT( FALSE );
+		return NULL;
+	}
 	size = 1<< log2_size;
 	list = &heap_mng->bucket_lists[log2_size];
 
@@ -424,6 +432,10 @@ FSTATUS HeapManagerDeallocate(HEAP_MANAGER *heap_mng,HEAP_OBJECT *heap_obj)
 
 	/* add back to free list */
 	log2_size = CeilLog2(heap_obj->size);		
+	if ( log2_size >= 32 ) {
+		ASSERT( FALSE );
+		return FOVERRUN;
+	}
 	list = &heap_mng->bucket_lists[log2_size];
 	QListInsertTail(list, &heap_obj->u.list_item);
 	QListSetObj(&heap_obj->u.list_item, heap_obj);
@@ -441,6 +453,10 @@ FSTATUS HeapManagerDeallocate(HEAP_MANAGER *heap_mng,HEAP_OBJECT *heap_obj)
 			heap_mng->cur_offset -=  heap_obj->size;
 			heap_mng->available_memory += heap_obj->size;
 			log2_size = CeilLog2(heap_obj->size);
+			if ( log2_size >= 32 ) {
+				ASSERT( FALSE );
+				return FOVERRUN;
+			}
 			list = &heap_mng->bucket_lists[log2_size];
 			QListRemoveItem(list, &heap_obj->u.list_item);
 			heap_mng->last_obj = heap_obj->prev;

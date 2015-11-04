@@ -60,6 +60,7 @@ DIRS			+= \
 				$(TL_DIR)/Xml \
 				$(TL_DIR)/Md5 \
 				$(TL_DIR)/Topology \
+				$(TL_DIR)/IbPrint \
 				$(TL_DIR)/IbaTools/opaxmlextract \
 				$(TL_DIR)/IbaTools/opaxmlfilter \
 				$(PWD)/ib
@@ -86,7 +87,7 @@ DEFFILE			=
 INCLUDE_TARGETS	= \
 				# Add more h hpp files here
 # Non-compiled files
-MISC_FILES		= 
+MISC_FILES		= $(PWD)/README 
 # all source files
 SOURCES			= $(CFILES) $(CCFILES) $(LFILES) $(RSCFILES) $(IDLFILE)
 INSTALL_SOURCES	= \
@@ -203,6 +204,7 @@ endif
 	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_DIR) INSTALL.pl
 	cd $(PROJ_STAGE_DIR) ; mv INSTALL.pl INSTALL
 	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_DIR) comp.pl
+	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_DIR) README
 
 # put version number into a file to facilitate rpm construction
 # presently only INSTALL allows dynamic version patch
@@ -230,7 +232,7 @@ package package_full:
 	ver=`expr IntelOPA-FM.* : 'IntelOPA-FM.\(.*\)$$'`; \
 	rm -rf $(RELEASE_DIR)/IntelOPA-FM.$$ver; \
 	mkdir -p $(RELEASE_DIR)/IntelOPA-FM.$$ver ; \
-	cp -r $$dir/arch $$dir/distro $$dir/distro_version $$dir/os_id $(RELEASE_DIR)/IntelOPA-FM.$$ver 2>/dev/null; \
+	cp -r $$dir/arch $$dir/distro $$dir/distro_version $$dir/os_id $$dir/README $(RELEASE_DIR)/IntelOPA-FM.$$ver 2>/dev/null; \
 	cp -r $$dir/INSTALL $$dir/comp.pl $$dir/Version $(RELEASE_DIR)/IntelOPA-FM.$$ver ; \
 	echo "$(RELEASE_DIR)/IntelOPA-FM.$$ver.tgz" >> $(TL_DIR)/packaged_files; \
 	echo "$(RELEASE_DIR)/IntelOPA-FM.$$ver.tgz" >> $(TL_DIR)/dist_files; \

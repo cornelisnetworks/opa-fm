@@ -57,7 +57,7 @@
     <!--        Can be used as an easy catch-all -->
 
     <!-- A special case is SA queries.  This special "application" allows -->
-    <!-- SA query operations to be assigned to an appropriate VF.  Per IBTA -->
+    <!-- SA query operations to be assigned to an appropriate VF.  -->
     <!-- SA queries must use the default Partition Key (0x7fff or 0xffff). -->
     <!-- However other aspects of SA access can be controlled (SL, etc). -->
     <!-- This syntax allows an Application to be specified which includes -->
@@ -174,7 +174,7 @@
       <ServiceID>0x0000494353535250</ServiceID>
     </Application>
 
-    <!-- Unfortunately, none of the OFED Verbs MPIs use the SA nor CM. -->
+    <!-- Unfortunately, none of the OFA Verbs MPIs use the SA nor CM. -->
     <!-- Hence to put an MPI job in its own Virtual Fabric, the PKey/SL of -->
     <!-- the desired Virtual fabric must be manually provided to the MPI run -->
     <Application>
@@ -220,7 +220,11 @@
 
     <Application>
       <Name>ibacm</Name>
-      <MGIDMasked>0xff15400100000000:0*0xffffffff:0x00ffffffffffffff</MGIDMasked>
+      <!-- MGID = 0xff154001PPPP00RR:MM00000000000000 -->
+      <!-- where  P=PKey, R=Rate and M=MTU -->
+      <!-- Rate: 9 (75gb), 12 (50gb), 15 (25gb), 16 (100gb) -->
+      <!-- MTU: 4 (2K), 5 (2K) -->
+      <MGIDMasked>0xff15400100000000:0*0xffffffff0000ff00:0x00ffffffffffffff</MGIDMasked>
     </Application>
 
     <!-- all the common networking protocols/applications -->
@@ -265,76 +269,94 @@
 
   </Applications>
 
-  <!-- Various Groups of Ports/Nodes which may be used in Virtual Fabrics -->
-  <!-- DeviceGroups defined here are available for use in all FM instances. -->
-  <!-- Additional DeviceGroups may be defined here or per FM instance. -->
-  <!-- DeviceGroups specified per FM instance will add to -->
-  <!-- instead of replace these DeviceGroup definitions. -->
+  <!-- Various Groups of Ports/Nodes which may be used in Virtual Fabrics    -->
+  <!-- DeviceGroups defined here are available for use in all FM instances.  -->
+  <!-- Additional DeviceGroups may be defined here or per FM instance.       -->
+  <!-- DeviceGroups specified per FM instance will add to                    -->
+  <!-- instead of replace these DeviceGroup definitions.                     -->
   <DeviceGroups>
-    <!-- Each DeviceGroup can have one or more Nodes/Ports (eg. Devices). -->
-    <!-- These will be matched against PathRecord and Multicast SA queries -->
-    <!-- so that the returned SLID/DLID, PKey, SL, etc are appropriate for -->
-    <!-- the Virtual Fabric(VF) which contains the Device(s). -->
-    <!-- Devices in a DeviceGroup but not found in the fabric are ignored. -->
+    <!-- Each DeviceGroup can have one or more Nodes/Ports (eg. Devices).    -->
+    <!-- These will be matched against PathRecord and Multicast SA queries   -->
+    <!-- so that the returned SLID/DLID, PKey, SL, etc are appropriate for   -->
+    <!-- the Virtual Fabric(VF) which contains the Device(s).                -->
+    <!-- Devices in a DeviceGroup but not found in the fabric are ignored.   -->
 
-    <!-- Every DeviceGroup must have a unique <Name> -->
-    <!-- The name must be unique among all DeviceGroup names within an -->
-    <!-- FM instance. -->
-    <!-- When defined at Common level must be unique within all instances. -->
-    <!-- The name is limited to 64 characters and is case sensitive. -->
+    <!-- Every DeviceGroup must have a unique <Name>                         -->
+    <!-- The name must be unique among all DeviceGroup names within an       -->
+    <!-- FM instance.                                                        -->
+    <!-- When defined at Common level must be unique within all instances.   -->
+    <!-- The name is limited to 64 characters and is case sensitive.         -->
 
-    <!-- Devices can be explicitly specified in the following ways in the -->
-    <!-- DeviceGroup section: -->
-    <!-- A SystemImageGUID: <SystemImageGUID>0x123567</SystemImageGUID> -->
-    <!--        selects all nodes and ports in the system -->
-    <!-- A NodeGUID: <NodeGUID>0x123567</NodeGUID> -->
-    <!--        selects all ports in the node (a FI or SW is a single node) -->
-    <!-- A PortGUID: <PortGUID>0x123567</PortGUID> -->
-    <!--        selects a specific port -->
-    <!-- A NodeDesc: <NodeDesc>Some Name</NodeDesc> -->
-    <!--        selects all nodes exactly matching given name -->
-    <!--        typically will match exactly one, but multiple nodes with -->
-    <!--        same NodeDesc is possible. -->
+    <!-- Devices can be explicitly specified in the following ways in the    -->
+    <!-- DeviceGroup section:                                                -->
+    <!-- A SystemImageGUID: <SystemImageGUID>0x123567</SystemImageGUID>      -->
+    <!--        selects all nodes and ports in the system                    -->
+    <!-- A NodeGUID: <NodeGUID>0x123567</NodeGUID>                           -->
+    <!--        selects all ports in the node (a FI or SW is a single node)  -->
+    <!-- A PortGUID: <PortGUID>0x123567</PortGUID>                           -->
+    <!--        selects a specific port                                      -->
+    <!-- A NodeDesc: <NodeDesc>Some Name</NodeDesc>                          -->
+    <!--        selects all nodes exactly matching given name                -->
+    <!--        typically will match exactly one, but multiple nodes with    -->
+    <!--        same NodeDesc is possible.                                   -->
+    <!-- Wildcard rules that can be used in NodeDesc specification:          -->   
+    <!--        * Wildcard is 0 or more of any combination of:               -->
+    <!--             (A-Z)(a-z)(0-9) "-" "," "=" "." "_"                     -->
+    <!--        ? Wildcard is 0 or 1 of any combination of:                  -->
+    <!--             (A-Z)(a-z)(0-9) "-" "," "=" "." "_"                     -->
+    <!--        [##-##] can be used to specify a range of numbers            -->
+    <!--             (ie: node[1-4] matches nodes named node1, node2,        -->        
+    <!--             node3, node4                                            -->
+    <!--        :[##-##] can be used to specify a range of ports             -->
+    <!--             (ie: switch:[2-4] would match node name "switch",       -->
+    <!--              ports 2,3, and 4                                       -->
+    <!-- WildcardExamples:                                                   -->
+    <!--        <NodeDesc>SWITCH*</NodeDesc>                                 -->
+    <!--        <NodeDesc>HFI?</NodeDesc>                                    -->
+    <!--        <NodeDesc>HFI[1-4]</NodeDesc>                                -->
+    <!--        <NodeDesc>?SWITCH[0-1]</NodeDesc>                            -->
+    <!--        <NodeDesc>?SWITCH[0-1]:[2-3]</NodeDesc>                      -->
+    <!--        <NodeDesc>SWITCH</NodeDesc>                                  -->
 
-    <!-- Devices can be generically specified in the following ways in the -->
-    <!-- DeviceGroup section: -->
-    <!-- All FIs: <NodeType>FI</NodeType> -->
-    <!-- All Switches: <NodeType>SW</NodeType> -->
-    <!-- The values above are case insensitive: FI, SW -->
-    <!-- Each of the above selects all ports on the selected nodes. -->
-    <!-- The above can be combined as desired in the same DeviceGroup. -->
+    <!-- Devices can be generically specified in the following ways in the   -->
+    <!-- DeviceGroup section:                                                -->
+    <!-- All FIs: <NodeType>FI</NodeType>                                    -->
+    <!-- All Switches: <NodeType>SW</NodeType>                               -->
+    <!-- The values above are case insensitive: FI, SW                       -->
+    <!-- Each of the above selects all ports on the selected nodes.          -->
+    <!-- The above can be combined as desired in the same DeviceGroup.       -->
 
-    <!-- Some special types of Devices can be generically specified in -->
-    <!-- the following ways in the DeviceGroup section: -->
-    <!-- All Devices: <Select>All</Select> -->
-    <!-- This FM Instance's Port: <Select>Self</Select> -->
-    <!-- All SMs: <Select>AllSMs</Select> -->
-    <!--        All ports which report IsSM Capability mask, including Self -->
-    <!-- All HFIs directly connected: <Select>HFIDirectConnect</Select> -->
-    <!--        Both HFI ports which are directly connected to each other -->
-    <!--        with no switch. A typical back to back configuration -->
-    <!-- All TFIs: <Select>TFIs</Select> -->
-    <!--        A TFI is a passive device e.g. storage unit or gateway -->
-    <!--        This DeviceGroup will select all ports on all TFI devices -->
-    <!-- All Switch Enhanced Port 0s: <Select>SWE0</Select> -->
-    <!--        All Switch Port 0 with Enhanced Port 0 in Capability Mask. -->
-    <!--        By definition will also include all Embedded SMs. -->
-    <!-- The values above are case insensitive:  -->
-    <!--      All, Self, AllSMs, SWE0, HFIDirectConnect -->
-    <!-- The above can be combined as desired in the same DeviceGroup. -->
+    <!-- Some special types of Devices can be generically specified in       -->
+    <!-- the following ways in the DeviceGroup section:                      -->
+    <!-- All Devices: <Select>All</Select>                                   -->
+    <!-- This FM Instance's Port: <Select>Self</Select>                      -->
+    <!-- All SMs: <Select>AllSMs</Select>                                    -->
+    <!--        All ports which report IsSM Capability mask, including Self  -->
+    <!-- All HFIs directly connected: <Select>HFIDirectConnect</Select>      -->
+    <!--        Both HFI ports which are directly connected to each other    -->
+    <!--        with no switch. A typical back to back configuration         -->
+    <!-- All TFIs: <Select>TFIs</Select>                                     -->
+    <!--        A TFI is a passive device e.g. storage unit or gateway       -->
+    <!--        This DeviceGroup will select all ports on all TFI devices    -->
+    <!-- All Switch Enhanced Port 0s: <Select>SWE0</Select>                  -->
+    <!--        All Switch Port 0 with Enhanced Port 0 in Capability Mask.   -->
+    <!--        By definition will also include all Embedded SMs.            -->
+    <!-- The values above are case insensitive:                              -->
+    <!--      All, Self, AllSMs, SWE0, HFIDirectConnect                      -->
+    <!-- The above can be combined as desired in the same DeviceGroup.       -->
 
-    <!-- In addition, a DeviceGroup can include another DeviceGroup via: -->
-    <!-- <IncludeGroup>mygroup</IncludeGroup> -->
-    <!-- This will include all the Devices in the given DeviceGroup. -->
-    <!-- Loops (including the parent DeviceGroup) are not allowed. -->
+    <!-- In addition, a DeviceGroup can include another DeviceGroup via:     -->
+    <!-- <IncludeGroup>mygroup</IncludeGroup>                                -->
+    <!-- This will include all the Devices in the given DeviceGroup.         -->
+    <!-- Loops (including the parent DeviceGroup) are not allowed.           -->
     <!-- It is valid to have more than 1 specification match the same device -->
-    <!-- in which case the device is only included in the DeviceGroup once. -->
-    <!-- There is a nesting limit of 32. -->
+    <!-- in which case the device is only included in the DeviceGroup once.  -->
+    <!-- There is a nesting limit of 32.                                     -->
 
-    <!-- Some predefined DeviceGroups follow.  These are also a good set -->
-    <!-- of examples to cut/paste to make other site specific DeviceGroups: -->
+    <!-- Some predefined DeviceGroups follow.  These are also a good set     -->
+    <!-- of examples to cut/paste to make other site specific DeviceGroups:  -->
 
-    <!-- All Nodes/Ports, can be used when Device specific VFs not needed -->
+    <!-- All Nodes/Ports, can be used when Device specific VFs not needed    -->
     <DeviceGroup>
       <Name>All</Name>
       <Select>All</Select>
@@ -404,22 +426,6 @@
       <IncludeGroup>AllSWE0s</IncludeGroup>
     </DeviceGroup>
 
-    <!-- <DeviceGroup>  -->
-      <!-- * Wildcard is 0 or more of any combination of: (A-Z)(a-z)(0-9) "-" "," "=" "." "_"  -->
-      <!-- ? Wildcard is 0 or 1 of any combination of: (A-Z)(a-z)(0-9) "-" "," "=" "." "_"  -->
-      <!-- [##-##] can be used to specify a range of numbers -->
-      <!--         (ie: node[1-4] matches nodes named node1, node2, node3, node4   -->
-      <!-- :[##-##] can be used to specify a range of ports -->
-      <!--         (ie: switch:[2-4] would match node name "switch" ports 2,3, and 4   -->
-      <!-- <Name>WildcardExamples</Name>  -->
-      <!-- <NodeDesc>SWITCH*</NodeDesc>  -->
-      <!-- <NodeDesc>HFI?</NodeDesc>  -->
-      <!-- <NodeDesc>HFI[1-4]</NodeDesc>  -->
-      <!-- <NodeDesc>?SWITCH[0-1]</NodeDesc>  -->
-      <!-- <NodeDesc>?SWITCH[0-1]:[2-3]</NodeDesc>  -->
-      <!-- <NodeDesc>SWITCH</NodeDesc>  -->
-    <!-- </DeviceGroup>  -->
-
     <!-- Group for all nodes matching wildcarded NodeDesc -->
     <DeviceGroup>
       <Name>Rack1DG</Name>
@@ -428,177 +434,183 @@
 
   </DeviceGroups>
 
-  <!-- Virtual Fabric Configuration -->
+  <!-- Virtual Fabric Configuration                                          -->
   <!-- VirtualFabrics defined here are available for use in all FM instances -->
-  <!-- Additional VirtualFabrics may be defined here or per FM instance. -->
-  <!-- VirtualFabrics specified per FM instance will add to -->
-  <!-- instead of replace these VirtualFabric definitions. -->
+  <!-- Additional VirtualFabrics may be defined here or per FM instance.     -->
+  <!-- VirtualFabrics specified per FM instance will add to                  -->
+  <!-- instead of replace these VirtualFabric definitions.                   -->
   <VirtualFabrics>
-    <!-- Each VirtualFabric (VF) is comprised of: -->
-    <!-- 1. one or more Groups of devices -->
-    <!-- 2. AND one or more sets of Applications -->
-    <!-- 3. AND administrator policies -->
+    <!-- Each VirtualFabric (VF) is comprised of:                            -->
+    <!-- 1. one or more Groups of devices                                    -->
+    <!-- 2. AND one or more sets of Applications                             -->
+    <!-- 3. AND administrator policies                                       -->
 
-    <!-- The Virtual Fabric will control the configuration of Security -->
-    <!-- for the given set of Devices and -->
-    <!-- Applications in the overall Fabric. -->
+    <!-- The Virtual Fabric will control the configuration of Security       -->
+    <!-- for the given set of Devices and                                    -->
+    <!-- Applications in the overall Fabric.                                 -->
 
     <!-- The Applications and DeviceGroups are matched against PathRecord and-->
-    <!-- Multicast SA queries so that the returned SLID/DLID, PKey, SL, etc -->
+    <!-- Multicast SA queries so that the returned SLID/DLID, PKey, SL, etc  -->
     <!-- are consistent with the policies established for the VirtualFabric. -->
-    <!-- Devices in a DeviceGroup but not found in the fabric are ignored. -->
+    <!-- Devices in a DeviceGroup but not found in the fabric are ignored.   -->
 
-    <!-- Every VirtualFabric must have a unique <Name> -->
-    <!-- The name must be unique among all VirtualFabric names within an -->
-    <!-- FM instance. -->
-    <!-- When defined at Common level must be unique within all instances. -->
-    <!-- The name is limited to 64 characters and is case sensitive. -->
+    <!-- Every VirtualFabric must have a unique <Name>                       -->
+    <!-- The name must be unique among all VirtualFabric names within an     -->
+    <!-- FM instance.                                                        -->
+    <!-- When defined at Common level must be unique within all instances.   -->
+    <!-- The name is limited to 64 characters and is case sensitive.         -->
 
-    <!-- Devices are specified by DeviceGroup Name in the following ways in -->
-    <!-- the VirtualFabric section: -->
-    <!-- As Full Members: <Member>group_name</Member> -->
-    <!--        such devices may talk to any other Member or LimitedMember -->
-    <!-- As Limited Members: <LimitedMember>group_name</LimitedMember> -->
-    <!--        When Security is 1 (On), LimitedMembers are not permitted -->
-    <!--        to talk to other LimitedMembers. -->
-    <!--        However LimitedMembers can always talk to Members. -->
-    <!--        If Security is 0 (Off) LimitedMembers are treated the same -->
-    <!--        as Members -->
-    <!--        This allows the user to easily turn off Security for a -->
-    <!--        Virtual Fabric without changing the rest of the definition. -->
-    <!--        When Security is on, LimitedMembers will not be able to -->
-    <!--        join multicast groups in the VirtualFabric. -->
-    <!-- Member and LimitedMember can each be specified more than once per -->
-    <!-- VirtualFabric if desired. -->
+    <!-- Devices are specified by DeviceGroup Name in the following ways in  -->
+    <!-- the VirtualFabric section:                                          -->
+    <!-- As Full Members: <Member>group_name</Member>                        -->
+    <!--        such devices may talk to any other Member or LimitedMember   -->
+    <!-- As Limited Members: <LimitedMember>group_name</LimitedMember>       -->
+    <!--        When Security is 1 (On), LimitedMembers are not permitted    -->
+    <!--        to talk to other LimitedMembers.                             -->
+    <!--        However LimitedMembers can always talk to Members.           -->
+    <!--        If Security is 0 (Off) LimitedMembers are treated the same   -->
+    <!--        as Members                                                   -->
+    <!--        This allows the user to easily turn off Security for a       -->
+    <!--        Virtual Fabric without changing the rest of the definition.  -->
+    <!--        When Security is on, LimitedMembers will not be able to      -->
+    <!--        join multicast groups in the VirtualFabric.                  -->
+    <!-- Member and LimitedMember can each be specified more than once per   -->
+    <!-- VirtualFabric if desired.                                           -->
     <!-- If a Device is in both the Members and LimitedMembers DeviceGroups, -->
-    <!-- they will be treated as Members. -->
-    <!-- This allows All to be specified as a LimitedMember, then selected -->
-    <!-- Members can be specified.  Hence insuring the VirtualFabric -->
-    <!-- includes All devices while allowing a limited set of Members. -->
+    <!-- they will be treated as Members.                                    -->
+    <!-- This allows All to be specified as a LimitedMember, then selected   -->
+    <!-- Members can be specified.  Hence insuring the VirtualFabric         -->
+    <!-- includes All devices while allowing a limited set of Members.       -->
 
-    <!-- Applications are specified by Application Name via: -->
-    <!-- <Application>application_name</Application> -->
-    <!-- Application can be specified more than once per VirtualFabric if -->
-    <!-- desired. -->
+    <!-- Applications are specified by Application Name via:                 -->
+    <!-- <Application>application_name</Application>                         -->
+    <!-- Application can be specified more than once per VirtualFabric if    -->
+    <!-- desired.                                                            -->
 
     <!-- The following Administrator Policies and Controls can be specified: -->
-    <!-- Enable/Disable: <Enable>1</Enable> -->
-    <!--        When Disabled (0) the VirtualFabric is ignored. -->
-    <!--        This allows the user to easily disable a VirtualFabric -->
-    <!--        without deleting it's definition. -->
-    <!-- Security: <Security>1</Security> -->
-    <!--        When On (1) the FM will provide security within this VF -->
-    <!--        and between other VFs. -->
+    <!-- Enable/Disable: <Enable>1</Enable>                                  -->
+    <!--        When Disabled (0) the VirtualFabric is ignored.              -->
+    <!--        This allows the user to easily disable a VirtualFabric       -->
+    <!--        without deleting it's definition.                            -->
+    <!-- Security: <Security>1</Security>                                    -->
+    <!--        When On (1) the FM will provide security within this VF      -->
+    <!--        and between other VFs.                                       -->
     <!--        When On, LimitedMembers cannot talk to each other in the VF. -->
-    <!--        When Off (0) the FM is free to manage Routes and PKeys as -->
-    <!--        it chooses and there are no guarantees.  -->
-    <!--        When Off (0) LimitedMembers can talk to each other in the VF. -->
-    <!-- Partition Key: <PKey>0x1234</PKey> -->
-    <!--        By default the FM will pick an available PKey. -->
-    <!--        However if desired a user selected PKey can be specified. -->
+    <!--        When Off (0) the FM is free to manage Routes and PKeys as    -->
+    <!--        it chooses and there are no guarantees.                      -->
+    <!--        When Off (0) LimitedMembers can talk to each other in the VF.-->
+    <!-- Partition Key: <PKey>0x1234</PKey>                                  -->
+    <!--        By default the FM will pick an available PKey.               -->
+    <!--        However if desired a user selected PKey can be specified.    -->
     <!--        Specification may be necessary such that it is known apriori -->
-    <!--        for applications which do not use SA PathRecord queries, -->
-    <!--        such as MPIs which use non-IBTA compliant mechanisms for job -->
-    <!--        startup. -->
-    <!--        The PKey is a 16 bit value, the high bit will be ignored. -->
-    <!--        The FM will use the appropriate high bit based on the -->
-    <!--        Security and Member/LimitedMember status per device. -->
-    <!-- Max MTU: <MaxMTU>2048</MaxMTU> -->
-    <!--        Maximum MTU for SM to return in any PathRecord or -->
-    <!--        Multicast group for the VirtualFabric. -->
-    <!--        Actual values may be further reduced by Hardware -->
-    <!--        capabilities or if the PathRecord or Multicast group is -->
-    <!--        requested to have a smaller MTU. -->
-    <!--        However, SM will consider it an error to create a Multicast -->
-    <!--        group with MTU larger than that of the VirtualFabric. -->
-    <!--        The value can also be stated as Unlimited. -->
-    <!--        If not specified the default MaxMTU will be Unlimited. -->
-    <!-- Max Rate: <MaxRate>20g</MaxRate> -->
-    <!--        Maximum static rate for SM to return in any PathRecord or -->
-    <!--        Multicast group for the VirtualFabric. -->
-    <!--        Similar behaviors to MaxMTU. -->
-    <!--        The value can also be stated as Unlimited. -->
-    <!--        If not specified the default MaxRate will be Unlimited. -->
-    <!-- Active/Standby: <Standby>0</Standby> -->
-    <!--        A Virual Fabric in Standby cannot pass traffic. -->
-    <!--        The active/standby state of a Virtual Fabric can be -->
-    <!--		changed dynamically (without restarting the FM). -->
-	<!--		Defaults to false (0). -->
+    <!--        for applications which do not use SA PathRecord queries,     -->
+    <!--        such as MPIs which use non-OFA compliant mechanisms for job  -->
+    <!--        startup.                                                     -->
+    <!--        The PKey is a 15 bit value, ranging from 0x1 to 0x7fff.      -->
+    <!--        The FM will use the appropriate high bit based on the        -->
+    <!--        Security and Member/LimitedMember status per device.         -->
+    <!-- Max MTU: <MaxMTU>2048</MaxMTU>                                      -->
+    <!--        Maximum MTU for SM to return in any PathRecord or            -->
+    <!--        Multicast group for the VirtualFabric.                       -->
+    <!--        Actual values may be further reduced by Hardware             -->
+    <!--        capabilities or if the PathRecord or Multicast group is      -->
+    <!--        requested to have a smaller MTU.                             -->
+    <!--        However, SM will consider it an error to create a Multicast  -->
+    <!--        group with MTU larger than that of the VirtualFabric.        -->
+    <!--        The value can also be stated as Unlimited.                   -->
+    <!--        If not specified the default MaxMTU will be Unlimited.       -->
+    <!-- Max Rate: <MaxRate>20g</MaxRate>                                    -->
+    <!--        Maximum static rate for SM to return in any PathRecord or    -->
+    <!--        Multicast group for the VirtualFabric.                       -->
+    <!--        Similar behaviors to MaxMTU.                                 -->
+    <!--        The value can also be stated as Unlimited.                   -->
+    <!--        If not specified the default MaxRate will be Unlimited.      -->
+    <!-- Active/Standby: <Standby>0</Standby>                                -->
+    <!--        A Virual Fabric in Standby cannot pass traffic.              -->
+    <!--        The active/standby state of a Virtual Fabric can be          -->
+    <!--        changed dynamically (without restarting the FM).             -->
+    <!--        Defaults to false (0).                                       -->
 
-    <!-- IBTA requires a "default" partition. -->
-    <!-- To meet this requirement there must be an enabled VirtualFabric: -->
-    <!-- *  with a PKey of 0x7fff (or 0xffff) -->
-    <!-- *  it must include the SA Application -->
+    <!-- OPA requires a "Admin" partition.                                   -->
+    <!-- To meet this requirement there must be an enabled VirtualFabric:    -->
+    <!-- *  with a PKey of 0x7fff (or 0xffff)                                -->
+    <!-- *  it must include the SA Application                               -->
     <!-- *  it must be the only enabled VF which includes the SA Application -->
-    <!-- *  it must have All as a Member or LimitedMember -->
-    <!-- *  as desired it may have additional Applications -->
-    <!-- *  as desired it may have additional DeviceGroups as Member -->
-    <!-- *  all other VF policies (Security, MTU ...) may be set as desired -->
+    <!-- *  it must have All as a Member or LimitedMember                    -->
+    <!-- *  as desired it may have additional Applications                   -->
+    <!-- *  as desired it may have additional DeviceGroups as Member         -->
+    <!-- *  all other VF policies (Security, MTU ...) may be set as desired  -->
 
-    <!-- QOS settings -->
-    <!-- QOS Enable: <QOS>0</QOS> -->
-    <!--        0=disable, 1=enable, if 0 the QOS settings are ignored -->
-    <!-- High Priority: <HighPriority>0</HighPriority> -->
-    <!--        If set to one, this indicates high priority traffic which -->
-    <!--        does not require any bandwidth limiting. This would -->
+    <!-- QOS settings                                                        -->
+    <!-- QOS Enable: <QOS>0</QOS>                                            -->
+    <!--        0=disable, 1=enable, if 0 the QOS settings are ignored       -->
+    <!-- High Priority: <HighPriority>0</HighPriority>                       -->
+    <!--        If set to one, this indicates high priority traffic which    -->
+    <!--        does not require any bandwidth limiting. This would          -->
     <!--        typically include management or control traffic which is low -->
-    <!--        bandwidth, but critical to process in a timely manner. -->  
-    <!--        An example is SA traffic where there is no reason to -->
-    <!--        restrict bandwidth since it is low volume, but it needs to -->
-    <!--        be serviced at a high priority. -->
-    <!--        When priority is set to High, any bandwidth allocation is -->
-    <!--        ignored for this Virtual Fabric. -->
-    <!-- Bandwidth Allocation: <Bandwidth>100%</Bandwidth> -->
-    <!--        1-100%   This is the minimum percentage of bandwidth which -->
+    <!--        bandwidth, but critical to process in a timely manner.       -->  
+    <!--        An example is SA traffic where there is no reason to         -->
+    <!--        restrict bandwidth since it is low volume, but it needs to   -->
+    <!--        be serviced at a high priority.                              -->
+    <!--        When priority is set to High, any bandwidth allocation is    -->
+    <!--        ignored for this Virtual Fabric.                             -->
+    <!-- Bandwidth Allocation: <Bandwidth>100%</Bandwidth>                   -->
+    <!--        1-100%   This is the minimum percentage of bandwidth which   -->
     <!--        should be given to this Virtual Fabric relative to other low -->
     <!--        priority Virtual Fabrics.  When there is no contention, this -->
-    <!--        Virtual Fabric could get more than this amount.  -->
-    <!--        If unspecified, the SM evenly distributes remaining -->
-    <!--        among all the Virtual Fabrics with unspecified Bandwidth. -->
-    <!--        Total Bandwidth for all enabled Virtual Fabrics with QOS -->
-    <!--        enabled must not exceed 100%. -->
-    <!--        If HighPriority is specified, this field is ignored. -->
-    <!-- Packet Lifetime Multiplier: <PktLifeTimeMult>2</PktLifeTimeMult> -->
-    <!--        Amount to multiply PktLifeTime by when reported by SM for -->
-    <!--        this Virtual Fabric. -->
-    <!--        This can permit extra time in PathRecords (and hence end to -->
-    <!--        end timeouts) to account for delays in Low Priority Virtual -->
-    <!--        Fabrics which are given low bandwidth allocations. -->
-    <!--        Value will be rounded up to the next power of 2. -->
-    <!--        0 is invalid, default is 1 -->
-    <!-- Base Service Level: <BaseSL>0</BaseSL> --> 
-    <!--        Allows a specific SL (0-15) to be used for the VF. -->
-    <!--        SM selects value if unspecified -->
-    <!-- FlowControlDisable: <FlowControlDisable>0</FlowControlDisable> -->
-    <!--        By default, the fabric uses link level flow control. -->
+    <!--        Virtual Fabric could get more than this amount.              -->
+    <!--        If unspecified, the SM evenly distributes remaining          -->
+    <!--        among all the Virtual Fabrics with unspecified Bandwidth.    -->
+    <!--        Total Bandwidth cannot exceed 95% for enabled Virtual        -->
+    <!--        Fabrics with QoS enabled when there is at least 1            -->
+    <!--        enabled VF with QoS disabled.                                -->
+    <!--        Total Bandwidth cannot exceed 100% for enabled Virtual       -->
+    <!--        Fabrics.  VFs with QoS disabled share at least 5% BW and     -->
+    <!--        all QoS enabled VFs require at least 1% BW.                  -->
+    <!--        If HighPriority is specified, this field is ignored.         -->
+    <!-- Packet Lifetime Multiplier: <PktLifeTimeMult>2</PktLifeTimeMult>    -->
+    <!--        Amount to multiply PktLifeTime by when reported by SM for    -->
+    <!--        this Virtual Fabric.                                         -->
+    <!--        This can permit extra time in PathRecords (and hence end to  -->
+    <!--        end timeouts) to account for delays in Low Priority Virtual  -->
+    <!--        Fabrics which are given low bandwidth allocations.           -->
+    <!--        Value will be rounded up to the next power of 2.             -->
+    <!--        0 is invalid, default is 1                                   -->
+    <!-- Base Service Level: <BaseSL>0</BaseSL>                              --> 
+    <!--        Allows a specific SL (0-15) to be used for the VF.           -->
+    <!--        SM selects value if unspecified                              -->
+    <!-- FlowControlDisable: <FlowControlDisable>0</FlowControlDisable>      -->
+    <!--        By default, the fabric uses link level flow control.         -->
     <!--        When link layer flow control has been disabled, packets will -->
-    <!--        be discarded by that VL when there are insufficent credits. -->
-    <!--        Disabling flow control for a vFabric can effect traffic on -->
-    <!--        VLs shared with other vFabrics, so the user is generally -->
-    <!--        advised not to disable flow control without care.  -->
-    <!-- Preemption Rank: <PreemptRank>0</PreemptRank> -->
-    <!--        See SM Common / Instance - Fabric Programming for detailed -->
-    <!--        description of preemption configuration. -->
-    <!--        Preemption capability of scan be configured per Virtual Fabric -->
-    <!--        in terms of a rank which is a value ranging from 0 to 127 -->
-    <!--        Rank 0 indicates that this VF cannot preempt nor be preempted -->
-    <!--        Ranks of a higher value can preempt ranks of a lower value -->
-    <!--        (except ranks of 0)-->
-    <!--        If QOS is disabled then preemption is disabled and the rank is 0. -->
-    <!-- HoqLife: -->
-    <!--        This timeout is specified per SM instance and may be overridden -->
-    <!--        per Virtual Fabric.  See SM instance representation for detailed -->
-    <!--        configuration options. If not specified per Virtual Fabric, -->
-    <!--        default to the SM instance values -->
+    <!--        be discarded by that VL when there are insufficent credits.  -->
+    <!--        Disabling flow control for a vFabric can effect traffic on   -->
+    <!--        VLs shared with other vFabrics, so the user is generally     -->
+    <!--        advised not to disable flow control without care.            -->
+    <!-- Preemption Rank: <PreemptRank>0</PreemptRank>                       -->
+    <!--        See SM Common / Instance - Fabric Programming for detailed   -->
+    <!--        description of preemption configuration.                     -->
+    <!--        Preemption capability can be configured per Virtual Fabric   -->
+    <!--        in terms of a rank, which is a value ranging from 0 to 127.  -->
+    <!--        Rank 0 indicates that this VF cannot preempt nor be          -->
+    <!--        preempted.  Ranks of a higher value can preempt ranks of     -->
+    <!--        a lower value (except ranks of 0)                            -->
+    <!--        If QOS is disabled then preemption is disabled and the rank  -->
+    <!--        is 0.                                                        -->
+    <!-- HoqLife:                                                            -->
+    <!--        This timeout is specified per SM instance and may be         -->
+    <!--        overridden per Virtual Fabric.  See SM instance              -->
+    <!--        representation for detailed configuration options. If not    -->
+    <!--        specified per Virtual Fabric, default to the SM instance     -->
+    <!--        values                                                       -->
 
-    <!-- Some predefined VirtualFabrics follow.  These are also a good set -->
-    <!-- of examples to cut/paste to make other site specific VFs: -->
+    <!-- Some predefined VirtualFabrics follow.  These are also a good set   -->
+    <!-- of examples to cut/paste to make other site specific VFs:           -->
 
-    <!-- An example networking VF.  When IPoIB runs, it will use the -->
+    <!-- An example networking VF.  When IPoIB runs, it will use the         -->
     <!-- 1st PKey on the given Port for the default (ib0 ...) network device -->
-    <!-- Hence its best to place the Networking/IPoIB VF 1st. -->
+    <!-- Hence its best to place the Networking/IPoIB VF 1st.                -->
     <!-- For additional IPoIB subnets which a node participates in, the PKey -->
-    <!-- needs to be manually specified to IPoIB as a "ipoib vlan" -->
+    <!-- needs to be manually specified to IPoIB as a "ipoib vlan"           -->
     <VirtualFabric>
       <Name>Networking</Name>
       <Enable>0</Enable>
@@ -631,7 +643,7 @@
     <VirtualFabric>
       <Name>Admin</Name>
       <Enable>1</Enable>
-      <PKey>0x7fff</PKey> <!-- must be STL Management PKey -->
+      <PKey>0x7fff</PKey> <!-- must be OPA Management PKey -->
       <Security>1</Security>
       <QOS>0</QOS>
       <!-- <HighPriority>1</HighPriority> can make admin High priority -->
@@ -747,6 +759,13 @@
     <!-- 2. AND one or more sets of DeviceGroups to be monitored -->
     <!-- 3. AND an enable/disbable flag -->
 
+    <!-- All ports that provide an I/O connection -->
+    <PmPortGroup>
+      <Name>TFIs</Name>
+      <Monitor>AllTFIs</Monitor>
+      <Enabled>0</Enabled>
+    </PmPortGroup>
+
     <!-- All ports on Fabric Interfaces, includes HFIs and TFI, and all switch ports -->
     <PmPortGroup>
       <Name>AllHFISWPG</Name>
@@ -839,23 +858,17 @@
     <!--      (only log a message) -->
     <!-- 2 = enable Configuration Consistency Checking and take action -->
     <!--      (log message and move standby to inactive state) -->
-	<!-- This parameter cannot be overridden in the SM or PM section. -->
+    <!-- This parameter cannot be overridden in the SM or PM section. -->
     <ConfigConsistencyCheckLevel>2</ConfigConsistencyCheckLevel>
-    <!-- Controls the checksum generation method for Configuration -->
-    <!-- Consistency Checking. The default method is MD5 -->
-    <!-- 0 = use MD5 checksum method -->
-    <!-- 1 = use simple additive checksum method -->
-	<!-- This parameter cannot be overridden in the SM or PM section. -->
-    <ConfigConsistencyCheckMethod>0</ConfigConsistencyCheckMethod>
 
     <!-- The PKey for PM and FE can be specified. -->
-    <!-- This must be the Default PKey so they can manage all nodes. -->
-    <!-- IBTA defines the DefaultPKey as 0xffff. -->
+    <!-- This must be the OPA Managament PKey so they can manage all nodes. -->
+    <!-- OPA defines the OPA Management PKey as 0xffff. -->
     <!-- Other values are Not Supported at this time. -->
     <!-- <DefaultPKey>0xffff</DefaultPKey> -->
 
-    <!-- OpenSSL OOB network security related parameters  -->
-    <SslSecurityEnabled>0</SslSecurityEnabled>
+    <!-- OpenSSL FE network security related parameters  -->
+    <SslSecurityEnabled>1</SslSecurityEnabled>
     <SslSecurityDir>/usr/local/ssl/opafm</SslSecurityDir>
     <SslSecurityFmCertificate>fm_cert.pem</SslSecurityFmCertificate>
     <SslSecurityFmPrivateKey>fm_key.pem</SslSecurityFmPrivateKey>
@@ -877,6 +890,8 @@
     <!-- 0x80=notice, 0x100=progress, 0x200=info, 0x400=verbose, 0x800=data, -->
     <!-- 0x1000=debug1, 0x2000=debug2, 0x4000=debug3, 0x8000=debug4 -->
     <!-- 0x10000=func call, 0x20000=func args, 0x40000=func exit, -->
+    <!-- For Host SM, the Linux syslog service will need to have an -->
+    <!-- appropriate level of logging enabled. -->
     <!-- For ESM corresponding Chassis Logging must also be enabled -->
     <!-- and Sm config applies to all managers. -->
     <!-- <CS_LogMask>0x00000000</CS_LogMask> --> <!-- severities of messages -->
@@ -908,13 +923,14 @@
     <!-- **************** Fabric Routing **************************** -->
     <!-- The following Routing Algorithms are supported -->
     <!-- shortestpath - pick shortest path and balance lids on ISLs -->
-    <!-- dgminhop - A variation of shortestpath that uses the RoutingOrder -->
-    <!--            parameter to control the order in which switch egress  -->
-    <!--            ports are assigned to LIDs being routed through the    -->
-    <!--            fabric. This can provide a better balance of traffic   -->
-    <!--            through fabrics with multiple types of end nodes.      -->
-    <!--            See the <DGMinHop></DGMinHop> section, below, for more -->
-    <!--            information.                                           -->
+    <!-- dgshortestpath - A variation of shortestpath that uses the        -->
+    <!--            RoutingOrder parameter to control the order in which   -->
+    <!--            switch egress ports are assigned to LIDs being routed  -->
+    <!--            through the fabric. This can provide a better balance  -->
+    <!--            of traffic through fabrics with multiple types of end  -->
+    <!--            nodes.                                                 -->
+    <!--            See the <DGShortestPathTopology> section, below, for   -->
+    <!--            more information.                                      -->
     <!-- fattree -  A variation of shortestpath with better balancing      -->
     <!--            and improved SM performance on pure fat tree fabrics.  -->
     <RoutingAlgorithm>shortestpath</RoutingAlgorithm>
@@ -988,17 +1004,17 @@
       <!-- initially balance across compute nodes in the tree. -->
       <!-- <RouteLast>hfi_device_group</RouteLast>  -->
     </FatTreeTopology>
-	
-    <!-- **************** DG MinHop Topology **************************** -->
-	<!-- When the routing algorithm is set to "dgminhop" the following -->
+    
+    <!-- **************** DG ShortestPath Topology **************************** -->
+    <!-- When the routing algorithm is set to "dgshortestpath" the following -->
     <!-- section is used to configure the algorithm. -->
-    <!-- Overall, "dgminhop" routing is a form of "Min Hop" or -->
+    <!-- Overall, "dgshortestpath" routing is a form of "Min Hop" or -->
     <!-- "Shortestpath" routing, except you can control the order in which -->
     <!-- routes to end nodes are assigned. This can be used to ensure --> 
     <!-- diversity of routing within groups of devices as well as the -->
     <!-- entire fabric overall. End nodes that are not members of any -->
     <!-- listed groups will be routed last. -->
-    <DGMinHopTopology>
+    <DGShortestPathTopology>
         <!-- RoutingOrder lists the device groups in the order they should -->
         <!-- be handled. Each device group must have been declared in the -->
         <!-- DeviceGroups section. -->
@@ -1007,15 +1023,15 @@
             <!-- <DeviceGroup>All</DeviceGroup> -->
             <!-- <DeviceGroup>Storage</DeviceGroup> -->
         <!-- </RoutingOrder> -->
-    </DGMinHopTopology>
+    </DGShortestPathTopology>
 
     <!-- **************** IB Multicast **************************** -->
     <Multicast>
-      <!-- IBTA has a limitation in that the SM must make the realizable -->
+      <!-- OPA has a limitation in that the SM must make the realizable -->
       <!-- decision for a Multicast group at Multicast Join/Create time.  -->
       <!-- However later fabric changes (removal of links, loss of switches) -->
       <!-- could make the multicast group unrealizable, but there is no -->
-      <!-- notice in IBTA which the SM could send the end node. -->
+      <!-- notice in OPA which the SM could send the end node. -->
       <!-- To address this situation, the SM performs stricter Multicast -->
       <!-- checking at Join/Create time.  This means a Multicast join/create -->
       <!-- is rejected if there are any Switch to Switch links which do -->
@@ -1079,7 +1095,7 @@
       <!-- *************************************************************** -->
       <!-- Pre-Created Multicast Groups -->
       <!-- These groups will be pre-created by the SM. -->
-      <!-- OFED requires this for IPoIB, config can specify others as needed -->
+      <!-- OFA requires this for IPoIB, config can specify others as needed -->
 
       <!-- Every pre-created MulticastGroup can have one or more MGIDs. -->
       <!-- The MGID must be unique among all MulticastGroups within an -->
@@ -1103,12 +1119,10 @@
       <!--        Alternatively a <PKey> may be specified.  -->
       <!--        If neither is specified, the MGID will be created for all -->
       <!--        Virtual Fabrics which contain the MGID as an Application -->
-      <!-- Static Rate: <Rate>100g</Rate>  or <Rate_Int>16</Rate_Int> -->
-      <!--        Rate can either be specified in natural format e.g. '100g' or '25g', or in -->
-      <!--        IBTA Int values: e.g. '16'=100g, '15'=25g -->
-      <!-- MTU: <MTU>2048</MTU>  or <MTU_Int>4</MTU_Int> -->
-      <!--        MTU can either be specified in natural format or in -->
-      <!--        IBTA Int values: 1=256, 2=512, 3=1024, 4=2048, 5=4096, 8=8192, 9=10240 -->
+      <!-- Static Rate: <Rate>100g</Rate> specified in natural format -->
+      <!--        e.g. one of '25g', '50g', '75g' or '100g'  -->
+      <!-- MTU: <MTU>2048</MTU> specified in natural format -->
+      <!--        e.g. one of '2048', '4096', '8192' or '10240' -->
       <!-- Service Level: <SL>0</SL> -->
       <!--        SL can be specified, but must match the BaseSL of the -->
       <!--        associated VirtualFabric.  -->
@@ -1122,7 +1136,7 @@
         <Create>1</Create>                                                                                             <!--SM_0_def_mc_create:dec-->
         <PKey>0x0001</PKey>                                                                                            <!--#SM_0_def_mc_pkey:hex-->
         <MTU>2048</MTU>                                                                                                <!--SM_0_def_mc_mtu:mtu-->
-        <Rate_Int>15</Rate_Int>                                                                                        <!--SM_0_def_mc_rate:rate-->
+        <Rate>25g</Rate>                                                                                               <!--SM_0_def_mc_rate-->
         <!-- <SL>0</SL> -->                                                                                            <!--SM_0_def_mc_sl:dec-->
         <QKey>0x0</QKey>                                                                                               <!--SM_0_def_mc_qkey:hex-->
         <FlowLabel>0x0</FlowLabel>                                                                                     <!--SM_0_def_mc_fl:hex-->
@@ -1207,7 +1221,7 @@
     <!-- The field is defined as 1/(2^X) of the full return rate. For instance, if -->
     <!-- the field is set to 2, the credit return rate will be 1/(2^2) = 1/4 --> 
     <!-- (one fourth) the full credit rate when a denial of service attack is detected. -->
-    <!-- Valid values are between 0 and 22, with 0 disabling the credit rate limiting -->
+    <!-- Valid values are between 0 and 21, with 0 disabling the credit rate limiting -->
     <VL15CreditRate>18</VL15CreditRate>
 
     <!-- ******   VL Buffer Allocation Parameters   *****************-->
@@ -1242,38 +1256,29 @@
     <!-- **************Link Policy************** -->
 
     <!-- LinkPolicy -->
-	<!-- These settings set bounds on acceptable Link Speed and Width values. -->
-	<!-- -->
-	<!--	MaxDroppedLanes -->
-    <!--		The link manager can chose to downgrade width by dropping lanes that are not -->
-    <!--		performing adequately. The link will drop up to MaxDroppedLanes from -->
-    <!--		the initial negotiated width. -->
-	<!--		Example: If a link comes up through LNI with an active width of 4x and MaxDroppedLanes -->
-	<!--			has a value of 1, the link will be allowed to downgrade to 3x but no lower. -->
-	<!--		*Note: This setting is communicated to each SMA which is then responsible for -->
-	<!--			performing the downgrades. This setting is independent of WidthPolicy discussed below -->
-    <!--	SpeedPolicy: -->
-    <!--		"Supported" - The SM will disable links whose active speed is not  -->
-    <!--		              highest speed supported in firmware -->
-    <!--		"12.5G" - The SM will disable any links operating at lower than 12.5Gbps -->
-    <!--		"25G" - The SM will disable any links operating at lower than 25 Gbps-->
-    <!--	WidthPolicy-->
-    <!--		"Supported" - The SM will disable links whose active width is not  -->
-    <!--			          widest width supported in firmware-->
-    <!--		"2x" - The SM will disable any links operating with less than 2 lanes-->
-    <!--		"3x" - The SM will disable any links operating with less than 3 lanes-->
-    <!--		"4x" - The SM will disable any links operating with less than 4 lanes-->
+    <!-- These settings set bounds on acceptable Link Width values. -->
+    <!-- -->
+    <!--    MaxDroppedLanes -->
+    <!--        The link manager can chose to downgrade width by dropping lanes that are not -->
+    <!--        performing adequately. The link will drop up to MaxDroppedLanes from -->
+    <!--        the initial negotiated width. -->
+    <!--        Example: If a link comes up through LNI with an active width of 4x and MaxDroppedLanes -->
+    <!--            has a value of 1, the link will be allowed to downgrade to 3x but no lower. -->
+    <!--        *Note: This setting is communicated to each SMA which is then responsible for -->
+    <!--            performing the downgrades. This setting is independent of WidthPolicy discussed below -->
+    <!--    WidthPolicy-->
+    <!--        "Supported" - The SM will disable links whose active width is not  -->
+    <!--                      widest width supported in firmware-->
+    <!--        "2x" - The SM will disable any links operating with less than 2 lanes-->
+    <!--        "3x" - The SM will disable any links operating with less than 3 lanes-->
+    <!--        "4x" - The SM will disable any links operating with less than 4 lanes-->
     <!-- *Note that the "Supported" quality policy is implicitly enabled when -->
     <!--  using any of the available policies. -->
     <!--  -->
-	
-	
+    
+    
     <LinkPolicy>
         <MaxDroppedLanes>1</MaxDroppedLanes>
-        <SpeedPolicy>
-            <Enable>1</Enable>
-            <Policy>Supported</Policy>
-        </SpeedPolicy>
         <WidthPolicy>
             <Enable>1</Enable>
             <Policy>Supported</Policy>
@@ -1292,7 +1297,7 @@
     <!--   LargePacket:   Field (specified in bytes), and is the minimum size for a "Large"-->
     <!--                  (and therefore pre-emptible) packet.--> 
     <!--                  May also specify "MIN" or "MAX", defaults to 4096 if not listed . -->
-    <!--   SmallPacket:	  Field (specified in bytes), and is the maximum size for a "Small" -->
+    <!--   SmallPacket:   Field (specified in bytes), and is the maximum size for a "Small" -->
     <!--                  (and therefore a candidate for a preempting packet). --> 
     <!--                  May also specify "MIN" or "MAX", defaults to 256 if not listed -->
     <!--   PreemptLimit:  Field (specified in bytes) for a limit threshold of total bytes --> 
@@ -1307,57 +1312,35 @@
       <PreemptLimit>4096</PreemptLimit>
     </Preemption>
     
-    <!-- Configures support for STL Congestion Control -->
+    <!-- Configures support for OPA Congestion Control -->
     <CongestionControl>
       <!-- 1 = Enable, 0 = Disable -->
       <Enable>0</Enable>
       <!-- Turn on additional debug logging for CCA -->
       <!-- 1 = Enable, 0 = Disable -->
       <Debug>0</Debug>
-      <!-- Number of attempts made when discovering whether a node      -->
-      <!-- supports Congestion Control.  Increasing this value increases-->
-      <!-- resiliency, but also increases the timeout against nodes that-->
-      <!-- do not support Contestion Control. Range 0-255. Defaults to 3-->
-      <DiscoveryAttempts>3</DiscoveryAttempts>
-      <!-- This setting allows discovery to occur regardless of whether -->
-      <!-- CC is enabled or disabled thus allowing CC to be cleared in a-->
-      <!-- topology after being disabled -->
-      <!-- 1 = Enable, 0 = Disable -->
-      <DiscoverAlways>0</DiscoverAlways>
       <!-- CC settings applicable to all switches. -->
       <!-- Default settings for switch are selected to provide the best -->
       <!-- congestion control for various traffic mixes but may require -->
       <!-- tuning for best performance -->
       <Switch>
-        <!-- STL CC SwitchCongestionSetting:Threshold -->
+        <!-- OPA CC SwitchCongestionSetting:Threshold -->
         <!-- A value in the range 0 to 15. Used to determine when       -->
         <!-- to use congestion marking. Higher values indicate more     -->
         <!-- aggressive congestion thresholds. 0 disables congestion    -->
         <!-- marking. Default is 8. -->
         <Threshold>1</Threshold>
-        <!-- STL CC SwitchCongestionSetting:Packet Size -->
-        <!-- Minimum packet size to mark in units of credits. Packets   -->
-        <!-- packets smaller than this size are ignored by congestion   -->
-        <!-- control. Default is 0, range is 0-255. -->
+        <!-- OPA CC SwitchCongestionSetting:Packet Size -->
+        <!-- Minimum packet size to mark in 64 byte units. Packets      -->
+        <!-- smaller than this size are ignored by congestion           -->
+        <!-- control. Default is 0, range is 0-162. -->
         <PacketSize>0</PacketSize>
-        <!-- STL CC SwitchCongestionSetting:Credit Starvation Threshold -->
-        <!-- A value in the range 0 to 15.  Higher values indicate more -->
-        <!-- aggressive throttling of credit returns. 0 disables        -->
-        <!-- throttling of credit returns. Default is 0. -->
-        <CsThreshold>0</CsThreshold>
-        <!-- STL CC SwitchCongestionSetting:CS Return Delay             -->
-        <!-- The rate at which credits are returned once the CsThreshold-->
-        <!-- has been reached. Field consists of a 2 bit shift field and-->
-        <!-- a 14-bit multiplier and determines the number of micro     -->
-        <!-- seconds between credit return messages. Defaults to 0      -->
-        <!-- (no delay). -->
-        <CsReturnDelay>0</CsReturnDelay>
-        <!-- STL CC SwitchCongestionSetting:Marking Rate                -->
+        <!-- OPA CC SwitchCongestionSetting:Marking Rate                -->
         <!-- The average number of packets between packets that are     -->
         <!-- eligible to be marked with a Forward Explicit Congestion   -->
         <!-- Notification. Range is 0-65535. Defaults to 0. -->
         <MarkingRate>0</MarkingRate>
-        <!-- STL CC SwitchCongestionSetting: Victim Marking             -->
+        <!-- OPA CC SwitchCongestionSetting: Victim Marking             -->
         <!-- Boolean value (0 or 1). Default is 0.  A value of 0 will   -->
         <!-- cause marking of only sources of congestion. A value of 1  -->
         <!-- will cause marking of both sources and victims of          -->
@@ -1365,38 +1348,34 @@
         <VictimMarkingEnable>1</VictimMarkingEnable>
       </Switch>
       <!-- CC settings applicable to all fabric interfaces. -->
-      <!-- When using Intel True Scale Fabric HFIs, the settings for -->
-      <!-- Congestion Control can be configured with the following -->
-      <!-- environment variables such as the ones shown here and may -->
-      <!-- require tuning for best performance -->
+      <!-- Congestion Control may require tuning for best performance -->
+      <!-- When using PSM, the CC settings for a given job -->
+      <!-- can be overridden with the following environment variables -->
       <!-- PSM_DISABLE_CCA 0 -->
       <!-- PSM_CCTI_INCREMENT 1 -->
       <!-- PSM_CCTI_TIMER 1 -->
       <!-- PSM_CCTI_TABLE_SIZE 128 -->
+
       <Fi>
-        <!-- STL CC FICongestionSetting:Port_Control -->
-        <!-- Determines whether congestion control is handled per-QP or -->
-        <!-- per-SL.  Valid values are "qp" or "sl". -->
-        <Basis>qp</Basis>
-        <!-- STL CC FICongestionEntry:CCTI Increase                     -->
+        <!-- OPA CC FICongestionEntry:CCTI Increase                     -->
         <!-- The number to be added to the CCTI on the receipt of a BECN-->
         <!-- Range is 0-255 and default is 8. -->
         <Increase>1</Increase>
-        <!-- STL CC FICongestionEntry:CCTI Timer                        -->
+        <!-- OPA CC FICongestionEntry:CCTI Timer                        -->
         <!-- Determines the amount of time that must elapse before      -->
         <!-- reducing the CCTI. Measured in multiples of 1.024 uS.      -->
         <!-- Range is 0 to 65535. Default is 10. -->
         <Timer>1</Timer>
-        <!-- STL CC FICongestionEntry:Trigger Threshold                 -->
+        <!-- OPA CC FICongestionEntry:Trigger Threshold                 -->
         <!-- When the CCTI is equal to this value, an event is logged   -->
         <!-- in the FI's congestion log. Range is 0-255, default is 8.  -->
         <Threshold>8</Threshold>
-        <!-- STL CC FICongestionEntry:CCTI Min                          -->
+        <!-- OPA CC FICongestionEntry:CCTI Min                          -->
         <!-- The minimum value for the CCTI, effective the minimum      -->
         <!-- injection rate delay for an SL or QP. Range is 0 to 255,   -->
         <!-- default is 0. -->
         <Min>0</Min>
-        <!-- STL CC CongestionControlTable:CCTI Limit                   -->
+        <!-- OPA CC CongestionControlTable:CCTI Limit                   -->
         <!-- Maximum value for the CCTI. Range is 0-65535 and the       -->
         <!-- default is 128. -->
         <Limit>127</Limit>
@@ -1445,13 +1424,13 @@
 
     <!-- Minimum Supported VLs -->
     <!-- Any port that does not support this minimum number of VLs will -->
-    <!-- be quarantined. Valid values are 1-8. The default value is 4. -->
-    <!-- <MinSupportedVLs>4</MinSupportedVLs> -->
+    <!-- be quarantined. Valid values are 1-8. The default value is 8. -->
+    <MinSupportedVLs>8</MinSupportedVLs>
 
     <!-- Packet Lifetime Settings -->
     <!-- These control the PktLifetime reported in PathRecord queries. -->
-    <!-- PktLifetime is used by IBTA compliant applications to set the -->
-    <!-- Queue Pair timeout and retry intervals.  Per the IBTA algorithm -->
+    <!-- PktLifetime is used by OFA compliant applications to set the -->
+    <!-- Queue Pair timeout and retry intervals.  Per the OPA/OFA algorithm -->
     <!-- the Queue Pair timeout will typically be 2x or 4x these values. -->
     <!-- When DynamicPacketLifetime is enabled, the PktLifetime reported -->
     <!-- will depend on number of switch hops. -->
@@ -1504,7 +1483,7 @@
 
     <!-- When 1, this enabled IBTA compilant SA query operation for -->
     <!-- GetTable(PathRecord).  As such a SGID and NumbPath is required -->
-    <!-- When 0, this allows interop with some non-compliant OFED queries -->
+    <!-- When 0, this allows interop with some non-compliant OFA queries -->
     <!-- and permits GetTable(PathRecord) to specify either a SGID or SLID -->
     <!-- and defaults numbPath to 127 if not specified. -->
     <QueryValidation>0</QueryValidation>
@@ -1632,7 +1611,7 @@
     <!-- Additional parameters for debug/development use -->
     <!-- <LoopTestOn>0</LoopTestOn> --> <!-- cable loop test -->                                                       <!--SM_0_loop_test_on:dec^=-->
     <!-- <LoopTestFastMode>0</LoopTestFastMode> -->
-    <!-- <LoopTestPackets>4</LoopTestPackets> --> <!-- inject count -->                                                <!--SM_0_loop_test_packets:dec^=-->
+    <!-- <LoopTestPackets>5</LoopTestPackets> --> <!-- inject count -->                                                <!--SM_0_loop_test_packets:dec^=-->
     <!-- <LIDSpacing>0x0</LIDSpacing> --> <!-- spacing of LIDs to test LFT -->                                         <!--SM_0_topo_lid_offset:hex-->
     <!-- <SaRmppChecksum>0</SaRmppChecksum> --> <!-- RMPP internal checksum -->                                        <!--SM_0_sa_rmpp_checksum:dec-->
     <!-- <DynamicPortAlloc>1</DynamicPortAlloc> -->                                                                    <!--SM_0_dynamic_port_alloc:dec-->
@@ -1644,6 +1623,7 @@
     <!-- Log suppression is disabled if set to 0. -->
     <!-- Default is log suppression enabled with interval set to 30 seconds. -->
     <!-- <TrapLogSuppressTriggerInterval>30</TrapLogSuppressTriggerInterval> -->
+    <!-- <LoopbackMode>0</LoopbackMode> --> <!-- Enable to test HFIs operating in loopback mode. -->
 
     <!-- Bitmask controlling which kinds of errors will cause the device to bounce the link. -->
     <!-- 0x00000001:Reserved --> 
@@ -1682,6 +1662,8 @@
     <!-- 0x80=notice, 0x100=progress, 0x200=info, 0x400=verbose, 0x800=data, -->
     <!-- 0x1000=debug1, 0x2000=debug2, 0x4000=debug3, 0x8000=debug4 -->
     <!-- 0x10000=func call, 0x20000=func args, 0x40000=func exit, -->
+    <!-- For Host SM, the Linux syslog service will need to have an -->
+    <!-- appropriate level of logging enabled. -->
     <!-- For ESM corresponding Chassis Logging must also be enabled -->
     <!-- and Sm config applies to all managers. -->
     <!-- <CS_LogMask>0x00000000</CS_LogMask> --> <!-- severities of messages -->
@@ -1705,7 +1687,6 @@
     <!-- <ScMultiblock>29</ScMultiblock> --> <!-- SC tables per MAD packet -->
     <!-- <UseAggregateMADs>1</UseAggregateMADs> --> <!-- Enable aggregate MADs -->
     <!-- <OptimizedPortInfo>1</OptimizedPortInfo> --> <!-- Enable aggregate/multiblock portinfo -->
-    <!-- <SmaSpoofingCheck>1</SmaSpoofingCheck> --> <!-- Enable STL switch security-->
     <!-- Cable Info Caching Policy -->
     <!-- The SM can be configured to collect Cable Info data and make -->
     <!-- that data available via Cable Info SA queries.               -->
@@ -1734,8 +1715,13 @@
 
   <!-- Common FE (Fabric Executive) attributes -->
   <Fe>
-    <!-- ESM does not support Start via XML configuration. Use CLI commands -->
-    <Start>1</Start> <!-- default FE startup for all instances -->
+    <!-- The FE is required by the Intel Omni-Path FM GUI. -->
+    <!-- To enable the FE, configure the SslSecurity parameters in this file -->
+    <!-- as desired. -->
+    <!-- For Host FM then set Start to 1. -->
+    <!-- For Embedded FM the Start parameter in this file is not used;  -->
+    <!-- enable the FE via the smConfig and smPmStart chassis CLI commands. -->
+    <Start>0</Start> <!-- default FE startup for all instances -->
     <!-- Overrides of the Common.Shared parameters if desired -->
     <!-- <LogLevel>2</LogLevel> -->                                                                                    <!--#FE_0_log_level:dec-->
     <!-- <LogFile></LogFile> -->                                                                                       <!--#FE_0_log_file-->
@@ -1758,6 +1744,8 @@
     <!-- 0x80=notice, 0x100=progress, 0x200=info, 0x400=verbose, 0x800=data, -->
     <!-- 0x1000=debug1, 0x2000=debug2, 0x4000=debug3, 0x8000=debug4 -->
     <!-- 0x10000=func call, 0x20000=func args, 0x40000=func exit, -->
+    <!-- For Host SM, the Linux syslog service will need to have an -->
+    <!-- appropriate level of logging enabled. -->
     <!-- For ESM corresponding Chassis Logging must also be enabled -->
     <!-- and Sm config applies to all managers. -->
     <!-- <CS_LogMask>0x00000000</CS_LogMask> --> <!-- severities of messages -->
@@ -1789,6 +1777,7 @@
     <!-- The PM has a PA which supports client queries from tools such as -->
     <!-- opatop, opareport and the FE (for the Fabric Viewer). -->
     <!-- This sets the number of concurrent client queries allowed. -->
+    <!-- The minimum setting for MaxClients is 3 -->
     <MaxClients>3</MaxClients>                                                                                         <!--PM_0_MaxClients:dec-->
 
     <!-- The PM can retain recent fabric topology and performance data. -->
@@ -1796,6 +1785,8 @@
     <!-- access to recent history and/or Freeze Frame by clients -->
     <!-- However, each image consumes memory, so care must be taken not to -->
     <!-- take an excessive amount of memory, especially for larger fabrics -->
+    <!-- FreezeFrameImages must be at least 2*MaxClients - 1, so minimum is 5 -->
+    <!-- TotalImages must be at least FreezeFrameImages + 2. so minimum is 7 -->
     <TotalImages>10</TotalImages> <!-- total images for history and freeze -->                                         <!--PM_0_TotalImages:dec-->
     <FreezeFrameImages>5</FreezeFrameImages> <!-- max unique frozen images -->                                         <!--PM_0_FreezeFrameImages:dec-->
     <!-- If a PA client application hangs or dies, after this much time all -->
@@ -1805,8 +1796,9 @@
     <!-- ImageUpdateInterval is the minimum (fastest) interval, -->
     <!-- in seconds, at which the update will occur.  The MASTER will update -->
     <!-- all STANDBY PMs in the specified interval.  If ImageUpdateInterval -->
-	<!-- is set to 0, no RAM-resident images will be copied, nor will -->
+    <!-- is set to 0, no RAM-resident images will be copied, nor will -->
     <!-- short-term PA history files be copied to STANDBY PMs. -->
+    <!-- This value must be less than PM SweepInterval. -->
     <ImageUpdateInterval>5</ImageUpdateInterval>                                                                       <!--PM_0_ImageUpdateInterval:dec-->
 
     <!-- Thresholds for the classes of error counters -->
@@ -1833,23 +1825,42 @@
     <!-- Weight to use for each individual counter when computing Integrity -->
     <!-- 0 causes given counter to be ignored -->
     <IntegrityWeights>
-        <LocalLinkIntegrityErrors>25</LocalLinkIntegrityErrors>
-        <RcvErrors>25</RcvErrors>
-        <ExcessiveBufferOverruns>50</ExcessiveBufferOverruns>
-        <LinkErrorRecovery>1</LinkErrorRecovery>
-        <LinkDowned>100</LinkDowned>
+        <LocalLinkIntegrityErrors>0</LocalLinkIntegrityErrors>
+        <RcvErrors>100</RcvErrors>
+        <ExcessiveBufferOverruns>100</ExcessiveBufferOverruns>
+        <LinkErrorRecovery>0</LinkErrorRecovery>
+        <LinkDowned>25</LinkDowned>
         <UncorrectableErrors>100</UncorrectableErrors>
-        <FMConfigErrors>5</FMConfigErrors>
+        <FMConfigErrors>100</FMConfigErrors>
+        <!-- LQI is first put through an equation before used in Integrity -->
+        <!-- category calculation: 2^(5-LQI)-1 -->
+        <LinkQualityIndicator>40</LinkQualityIndicator>
+        <!-- The number of lanes down for this port: -->
+        <!--  LinkWidth.Active - LinkWidthDowngrade.RxActive -->
+        <LinkWidthDowngrade>100</LinkWidthDowngrade>
     </IntegrityWeights>
 
+    <!-- Weight to use for each individual counter when computing Congestion -->
+    <!-- Pct (Percentage) means the specified counter is divided by the -->
+    <!-- appropriate data transfer counter, then normalized to a -->
+    <!-- predetermined range, then weighted, and summed into the category -->
+    <!-- 0 causes given counter to be ignored -->
     <CongestionWeights>
-        <XmitWait>25</XmitWait>
+        <XmitWaitPct>10</XmitWaitPct> <!-- 0.01% to 1%-->
         <CongDiscards>100</CongDiscards>
-        <RcvFECN>5</RcvFECN>
-        <RcvBECN>1</RcvBECN>
-        <XmitTimeCong>25</XmitTimeCong>
-        <MarkFECN>25</MarkFECN>
+        <RcvFECNPct>5</RcvFECNPct> <!-- 0.1% to 10%-->
+        <RcvBECNPct>1</RcvBECNPct> <!-- 0.1% to 10%-->
+        <XmitTimeCongPct>25</XmitTimeCongPct> <!-- 0.1% to 10%-->
+        <MarkFECNPct>25</MarkFECNPct> <!-- 0.1% to 10%-->
     </CongestionWeights>
+
+<!-- Resolution determines the number of LocalLinkIntegrity or -->
+<!-- LinkErrorRecovery errors must occur before the PMA will -->
+<!-- include them in the ErrorCounterSummary. -->
+    <Resolution>
+        <LocalLinkIntegrity>8000000</LocalLinkIntegrity>
+        <LinkErrorRecovery>100000</LinkErrorRecovery>
+    </Resolution>
 
     <!-- This controls when the PM clears PMA Error counters -->
     <!-- 0 = clear when non-zero -->
@@ -1905,14 +1916,14 @@
     <!-- TotalHistory is the total number of hours of history that will be stored  -->
     <!-- ImagesPerComposite deteremines how many images will be compounded -->
     <!-- into a single file. A higher number will save space but will result in a lower -->
-    <!-- data granularity. -->
+    <!-- data granularity. Must not be 0. -->
     <!-- MaxDiskSpace puts a cap on how much disk space the short term history is -->
     <!-- allowed to use. If this size is exceeded, the oldest files will be deleted to -->
     <!-- save space. -->
-	<!-- CompressionDivisions determines how many divisons will be used to -->
-	<!-- concurrently compress or decompress data. Recommend less than or  -->
-	<!-- equal to number of processing cores of the management node, must -->
-	<!-- not exceed 32 -->
+    <!-- CompressionDivisions determines how many divisons will be used to -->
+    <!-- concurrently compress or decompress data. Recommend less than or  -->
+    <!-- equal to number of processing cores of the management node, must -->
+    <!-- not exceed 32 -->
     <ShortTermHistory>
         <Enable>1</Enable>
         <StorageLocation>/var/opt/opafm</StorageLocation> <!-- must be absolute path -->
@@ -1942,6 +1953,8 @@
     <!-- 0x80=notice, 0x100=progress, 0x200=info, 0x400=verbose, 0x800=data, -->
     <!-- 0x1000=debug1, 0x2000=debug2, 0x4000=debug3, 0x8000=debug4 -->
     <!-- 0x10000=func call, 0x20000=func args, 0x40000=func exit, -->
+    <!-- For Host SM, the Linux syslog service will need to have an -->
+    <!-- appropriate level of logging enabled. -->
     <!-- For ESM corresponding Chassis Logging must also be enabled -->
     <!-- and Sm config applies to all managers. -->
     <!-- <CS_LogMask>0x00000000</CS_LogMask> --> <!-- severities of messages -->
@@ -1984,7 +1997,7 @@
 
     <!-- Name, Hfi, Port, and PortGUID are not supported for ESM since they -->
     <!-- are automatically set -->
-    <Name>fm0</Name> <!-- also for logging with _sm, _fe, _pm appended --> <!--SM_0_name-->
+    <Name>fm0</Name> <!-- also for logging with _sm, _fe, _pm appended -->                                             <!--SM_0_name-->
     <Hfi>1</Hfi> <!-- local HFI to use for FM instance, 1=1st HFI -->                                                  <!--SM_0_device:plus-->
     <Port>1</Port> <!-- local HFI port to use for FM instance, 1=1st Port -->                                          <!--SM_0_port:dec-->
     <PortGUID>0x0000000000000000</PortGUID> <!-- local port to use for FM -->                                          <!--SM_0_portGuid-->
@@ -1994,7 +2007,6 @@
     <!-- ESM does not support LogFile -->
     <!-- <LogFile>/var/log/fm0_log</LogFile> --> <!-- log for this instance -->
     <!-- <ConfigConsistencyCheckLevel>2</ConfigConsistencyCheckLevel> -->
-    <!-- <ConfigConsistencyCheckMethod>0</ConfigConsistencyCheckMethod> -->
   </Shared>
 
   <!-- Instance Specific SM (Subnet Manager) attributes -->
@@ -2008,7 +2020,7 @@
   <Fe>
     <TcpPort>3245</TcpPort>  <!-- TCP socket to listen for FV on -->                                                   <!--FE_0_listen-->
     <!-- Overrides of the Common.Shared, Common.Fe or Fm.Shared parameters -->
-    <!-- ESM does not support Start via XML configuration. Use CLI commands -->
+    <!-- See Common.Fe for more information about enabling the FE -->
     <!-- <Start>1</Start> -->                                                                                          <!--#FE_0_start:dec==1-->
   </Fe>
 
@@ -2037,7 +2049,7 @@
   <!-- Shared Instance config, applies to all components: SM, PM and FE -->
   <Shared>
     <Start>0</Start> <!-- Overall Instance Startup, see fm0 for more info -->                                          <!--SM_1_start:dec-->
-    <Name>fm1</Name> <!-- also for logging with _sm, _fe, _pm appended --> <!--SM_1_name-->
+    <Name>fm1</Name> <!-- also for logging with _sm, _fe, _pm appended -->                                             <!--SM_1_name-->
     <Hfi>1</Hfi> <!-- local HFI to use for FM instance, 1=1st HFI -->                                                  <!--SM_1_device:plus-->
     <Port>2</Port> <!-- local HFI port to use for FM instance, 1=1st Port -->                                          <!--SM_1_port:dec-->
     <PortGUID>0x0000000000000000</PortGUID> <!-- local port to use for FM -->                                          <!--SM_1_portGuid-->
@@ -2045,7 +2057,6 @@
     <!-- Overrides of the Common.Shared or Fm.Shared parameters if desired -->
     <!-- <LogFile>/var/log/fm1_log</LogFile> --> <!-- log for this instance -->
     <!-- <ConfigConsistencyCheckLevel>2</ConfigConsistencyCheckLevel> -->
-    <!-- <ConfigConsistencyCheckMethod>0</ConfigConsistencyCheckMethod> -->
   </Shared>
 
   <!-- Instance Specific SM (Subnet Manager) attributes -->
@@ -2122,6 +2133,7 @@
   <Fe>
     <TcpPort>3246</TcpPort>  <!-- TCP socket to listen for FV on -->                                                   <!--FE_1_listen-->
     <!-- Overrides of the Common.Shared, Common.Fe or Fm.Shared parameters -->
+    <!-- See Common.Fe for more information about enabling the FE -->
     <!-- <Start>0</Start> -->                                                                                          <!--#FE_1_start:dec==0-->
     <!-- <Debug>0</Debug> -->                                                                                          <!--#FE_1_debug:dec-->
     <!-- <LogLevel>2</LogLevel> -->                                                                                    <!--#FE_1_log_level:dec-->
@@ -2168,7 +2180,7 @@
   <!-- Shared Instance config, applies to all components: SM, PM and FE -->
   <Shared>
     <Start>0</Start> <!-- Overall Instance Startup, see fm0 for more info -->                                          <!--SM_2_start:dec-->
-    <Name>fm2</Name> <!-- also for logging with _sm, _fe, _pm appended --> <!--SM_2_name-->
+    <Name>fm2</Name> <!-- also for logging with _sm, _fe, _pm appended -->                                             <!--SM_2_name-->
     <Hfi>2</Hfi> <!-- local HFI to use for FM instance, 1=1st HFI -->                                                  <!--SM_2_device:plus-->
     <Port>1</Port> <!-- local HFI port to use for FM instance, 1=1st Port -->                                          <!--SM_2_port:dec-->
     <PortGUID>0x0000000000000000</PortGUID> <!-- local port to use for FM -->                                          <!--SM_2_portGuid-->
@@ -2177,7 +2189,6 @@
     <!-- <LogFile>/var/log/fm2_log</LogFile> --> <!-- log for this instance -->
     <!-- <SyslogFacility>Local6</SyslogFacility> -->
     <!-- <ConfigConsistencyCheckLevel>2</ConfigConsistencyCheckLevel> -->
-    <!-- <ConfigConsistencyCheckMethod>0</ConfigConsistencyCheckMethod> -->
   </Shared>
 
   <!-- Instance Specific SM (Subnet Manager) attributes -->
@@ -2198,7 +2209,7 @@
         <!-- <Create>1</Create> -->                                                                                    <!--#SM_2_def_mc_create:dec^=-->
         <!-- <PKey>0x7fff</PKey> -->                                                                                   <!--#SM_2_def_mc_pkey:hex-->
         <!-- <MTU>2048</MTU> -->                                                                                       <!--#SM_2_def_mc_mtu:mtu^=-->
-        <!-- <Rate>100g</Rate> -->                                                                                     <!--#SM_2_def_mc_rate:rate^=-->
+        <!-- <Rate>100g</Rate> -->                                                                                     <!--#SM_2_def_mc_rate-->
         <!-- <SL>0</SL> -->                                                                                            <!--#SM_2_def_mc_sl:dec-->
         <!-- <QKey>0x0</QKey> -->                                                                                      <!--#SM_2_def_mc_qkey:hex^=-->
         <!-- <FlowLabel>0x0</FlowLabel> -->                                                                            <!--#SM_2_def_mc_fl:hex^=-->
@@ -2263,6 +2274,7 @@
   <Fe>
     <TcpPort>3247</TcpPort>  <!-- TCP socket to listen for FV on -->                                                   <!--FE_2_listen-->
     <!-- Overrides of the Common.Shared, Common.Fe or Fm.Shared parameters -->
+    <!-- See Common.Fe for more information about enabling the FE -->
     <!-- <Start>0</Start> -->                                                                                          <!--#FE_2_start:dec==0-->
     <!-- <Debug>0</Debug> -->                                                                                          <!--#FE_2_debug:dec-->
     <!-- <LogLevel>2</LogLevel> -->                                                                                    <!--#FE_2_log_level:dec-->
@@ -2308,7 +2320,7 @@
   <!-- Shared Instance config, applies to all components: SM, PM and FE -->
   <Shared>
     <Start>0</Start> <!-- Overall Instance Startup, see fm0 for more info -->                                          <!--SM_3_start:dec-->
-    <Name>fm3</Name> <!-- also for logging with _sm, _fe, _pm appended --> <!--SM_3_name-->
+    <Name>fm3</Name> <!-- also for logging with _sm, _fe, _pm appended -->                                             <!--SM_3_name-->
     <Hfi>2</Hfi> <!-- local HFI to use for FM instance, 1=1st HFI -->                                                  <!--SM_3_device:plus-->
     <Port>2</Port> <!-- local HFI port to use for FM instance, 1=1st Port -->                                          <!--SM_3_port:dec-->
     <PortGUID>0x0000000000000000</PortGUID> <!-- local port to use for FM -->                                          <!--SM_3_portGuid-->
@@ -2317,7 +2329,6 @@
     <!-- <LogFile>/var/log/fm3_log</LogFile> --> <!-- log for this instance -->
     <!-- <SyslogFacility>Local6</SyslogFacility> -->
     <!-- <ConfigConsistencyCheckLevel>2</ConfigConsistencyCheckLevel> -->
-    <!-- <ConfigConsistencyCheckMethod>0</ConfigConsistencyCheckMethod> -->
   </Shared>
 
   <!-- Instance Specific SM (Subnet Manager) attributes -->
@@ -2338,7 +2349,7 @@
         <!-- <Create>1</Create> -->                                                                                    <!--#SM_3_def_mc_create:dec^=-->
         <!-- <PKey>0x7fff</PKey> -->                                                                                   <!--#SM_3_def_mc_pkey:hex-->
         <!-- <MTU>2048</MTU> -->                                                                                       <!--#SM_3_def_mc_mtu:mtu^=-->
-        <!-- <Rate>100g</Rate> -->                                                                                     <!--#SM_3_def_mc_rate:rate^=-->
+        <!-- <Rate>100g</Rate> -->                                                                                     <!--#SM_3_def_mc_rate-->
         <!-- <SL>0</SL> -->                                                                                            <!--#SM_3_def_mc_sl:dec-->
         <!-- <QKey>0x0</QKey> -->                                                                                      <!--#SM_3_def_mc_qkey:hex^=-->
         <!-- <FlowLabel>0x0</FlowLabel> -->                                                                            <!--#SM_3_def_mc_fl:hex^=-->
@@ -2403,6 +2414,7 @@
   <Fe>
     <TcpPort>3248</TcpPort>  <!-- TCP socket to listen for FV on -->                                                   <!--FE_3_listen-->
     <!-- Overrides of the Common.Shared, Common.Fe or Fm.Shared parameters -->
+    <!-- See Common.Fe for more information about enabling the FE -->
     <!-- <Start>0</Start> -->                                                                                          <!--#FE_3_start:dec==0-->
     <!-- <Debug>0</Debug> -->                                                                                          <!--#FE_3_debug:dec-->
     <!-- <LogLevel>2</LogLevel> -->                                                                                    <!--#FE_3_log_level:dec-->

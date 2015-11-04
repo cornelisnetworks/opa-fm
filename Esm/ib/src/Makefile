@@ -125,10 +125,10 @@ CLOCAL = $(CPIE) -xc
 else
 CLOCAL = $(CPIE)
 endif
-LOCALDEPLIBS = sm sa pm fe if3sa if3 cs mai ibaccess config rem_conf net public vslogu Xml Md5 oib_utils Topology
+LOCALDEPLIBS = sm sa pm fe if3sa if3 cs mai ibaccess config rem_conf net public vslogu Xml Md5 oib_utils Topology IbPrint
 # FIXME - need to build zlib so can use well defined version?
 LOCALLIBS=rt $(OPENIB_USER_LIBS) z ssl crypto
-LOCAL_INCLUDE_DIRS = $(TL_DIR)/Topology
+LOCAL_INCLUDE_DIRS = $(TL_DIR)/Topology $(TL_DIR)/IbPrint
 
 ifneq "$(BUILD_TARGET_OS)" "VXWORKS"
 LOCALLIBS+= expat

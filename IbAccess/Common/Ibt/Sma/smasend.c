@@ -273,6 +273,11 @@ iba_smi_post_send(
 		smps					= 0;
 		pSmpList = (SMP_LIST*)MemoryAllocateAndClear(sizeof(SMP_LIST), FALSE, SMA_MEM_TAG);
 
+		if (pSmpList == NULL) {
+			status = FINSUFFICIENT_MEMORY;
+			goto exit;
+		}
+
 		// Prepare Posts and send out
 		pSmpList->SmpsIn		= NumSmps;			// input
 		AtomicWrite(&pSmpList->SmpsOut, 0);			// output
@@ -427,6 +432,7 @@ iba_smi_post_send(
 		}
 	}
 
+exit:
 	_DBG_LEAVE_LVL(_DBG_LVL_SEND);
 	return status;
 }
@@ -481,7 +487,7 @@ SmaPostSmp(
 	_DBG_ENTER_LVL ( _DBG_LVL_SEND, SmaPostSmp );
 
 	
-	MemoryClear(&wrq, sizeof(IB_WORK_REQ));
+	MemoryClear(&wrq, sizeof(wrq));
 
 	workRequest					= &wrq;
 	workRequest->DSList			= &dsList[0];

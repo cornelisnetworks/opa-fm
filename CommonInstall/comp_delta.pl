@@ -67,14 +67,14 @@ use strict;
 
 my $default_prefix="/usr";
 
-my $RPMS_SUBDIR = "RPMS";	# within ComponentInfo{'ib_stack'}{'SrcDir'}
-my $SRPMS_SUBDIR = "SRPMS";	# within ComponentInfo{'ib_stack'}{'SrcDir'}
+my $RPMS_SUBDIR = "RPMS";	# within ComponentInfo{'opa_stack'}{'SrcDir'}
+my $SRPMS_SUBDIR = "SRPMS";	# within ComponentInfo{'opa_stack'}{'SrcDir'}
 
 # list of components which are part of OFED
 # can be a superset or subset of @Components
 # ofed_vnic
 my @delta_components = ( 
-				"ib_stack", 		# Kernel drivers.
+				"opa_stack", 		# Kernel drivers.
 				"ibacm", 			# OFED IB communication manager assistant.
 				"intel_hfi", 		# HFI drivers
 				"delta_ipoib", 		# ipoib module.
@@ -83,7 +83,7 @@ my @delta_components = (
 				"openmpi",
 				"gasnet",
 				"openshmem",
-				"ib_stack_dev", 	# dev libraries.
+				"opa_stack_dev", 	# dev libraries.
 				"delta_mpisrc", 	# Source bundle for MPIs.
 				"mpiRest",			# PGI, Intel mpi variants.
 				"delta_debug",		# must be last real component
@@ -113,15 +113,19 @@ my @delta_components = (
 #
 # Note KernelRpms are always installed before UserRpms
 my %delta_comp_info = (
-	'ib_stack' => {
+	'opa_stack' => {
 					KernelRpms => [ "compat-rdma" ], # special case
 					UserRpms =>	  [ "opa-scripts",
-									"libibumad",
+								"libibumad",
+								"srptools",
+								"libibmad",
+								"infiniband-diags",
 								  ],
 					DebugRpms =>  [ "libibumad-debuginfo",
+									"srptools-debuginfo",
 								  ],
 					Drivers => "", 
-					StartupScript => "",
+					StartupScript => "opa",
 					StartupParams => [ "ARPTABLE_TUNING" ],
 					},
 	'ibacm' => {
@@ -137,8 +141,8 @@ my %delta_comp_info = (
 					UserRpms =>	  [ "libhfi1verbs", "libhfi1verbs-devel",
 							    "hfi1-psm", 
 							    "hfi1-psm-devel", "hfi1-psm-compat",
-							    "hfi1-psm-compat-devel", "hfi1-diagtools-sw",
-							    "hfi1-firmware" 
+							    "hfi1-diagtools-sw",
+							    "hfi1-firmware", "hfi1-firmware_debug" 
 					    ],
 					DebugRpms =>  [ "hfi1_debuginfo",
 							"hfi1-diagtools-sw-debuginfo",
@@ -174,7 +178,7 @@ my %delta_comp_info = (
 					},
 	'mvapich2' => {
 					KernelRpms => [ ],
-					UserRpms =>	  [ "mvapich2_gcc", "mpitests_mvapich2_gcc", "mvapich2_gcc_hfi", "mpitests_mvapich2_gcc_hfi" ],
+					UserRpms =>	  [ "mvapich2_gcc", "mpitests_mvapich2_gcc", ],
 					DebugRpms =>  [ ],
 					Drivers => "", # none
 					StartupScript => "",
@@ -182,7 +186,7 @@ my %delta_comp_info = (
 					},
 	'openmpi' => {
 					KernelRpms => [ ],
-					UserRpms =>	  [ "openmpi_gcc_hfi", "mpitests_openmpi_gcc_hfi" , "openmpi_gcc", "mpitests_openmpi_gcc" ],
+					UserRpms =>	  [ "openmpi_gcc", "mpitests_openmpi_gcc" ],
 					DebugRpms =>  [ ],
 					Drivers => "", # none
 					StartupScript => "",
@@ -198,13 +202,14 @@ my %delta_comp_info = (
 					},
 	'openshmem' => {
 					KernelRpms => [ ],
-					UserRpms =>	  [ "openshmem_gcc_hfi", "openshmem-test-suite_gcc_hfi"  ],
-					DebugRpms =>  [ "openshmem_gcc_hfi-debuginfo", "openshmem-test-suite_gcc_hfi-debuginfo" ],
+					UserRpms =>	  [ "openshmem_gcc_hfi", "openshmem-test-suite_gcc_hfi", "shmem-benchmarks_gcc_hfi"  ],
+					DebugRpms =>  [ "openshmem_gcc_hfi-debuginfo", "openshmem-test-suite_gcc_hfi-debuginfo",
+							"shmem-benchmarks_gcc_hfi-debuginfo" ],
 					Drivers => "", # none
 					StartupScript => "",
 					StartupParams => [ ],
 					},
-	'ib_stack_dev' => {
+	'opa_stack_dev' => {
 					KernelRpms => [  ],
 					UserRpms =>	  [ "ibacm-devel", 
 							    "compat-rdma-devel",
@@ -270,8 +275,9 @@ my @delta_kernel_srpms = ( 'compat-rdma' );
 # these are in the order we must build/process them to meet basic dependencies
 my @delta_user_srpms = (
 		"opa-scripts", "libibumad", "ibacm", "mpi-selector",
-		"libhfi1verbs", "hfi1-psm", "hfi1-diagtools-sw", "hfi1-firmware",
- 		"mvapich2", "openmpi", "gasnet", "openshmem", "openshmem-test-suite"
+		"libhfi1verbs", "hfi1-psm", "hfi1-diagtools-sw", "hfi1-firmware", "hfi1-firmware_debug",
+ 		"mvapich2", "openmpi", "gasnet", "openshmem", "openshmem-test-suite",
+		"shmem-benchmarks", "srptools", "libibmad", "infiniband-diags"
 );
 
 # rpms not presently automatically built
@@ -304,8 +310,8 @@ my %delta_srpm_info = (
 					  BuildPrereq => [],
 					},
 	"hfi1-psm" =>	{ Available => "",
-					  Builds => "hfi1-psm hfi1-psm-devel hfi1-psm-compat hfi1-psm-compat-devel",
-					  PostReq => "hfi1-psm hfi1-psm-devel hfi1-psm-compat hfi1-psm-compat-devel",
+					  Builds => "hfi1-psm hfi1-psm-devel hfi1-psm-compat",
+					  PostReq => "hfi1-psm hfi1-psm-devel hfi1-psm-compat",
 					  PartOf => "", # filled in at runtime
 					  BuildPrereq => [],
 					},
@@ -323,6 +329,12 @@ my %delta_srpm_info = (
 					},
 	"hfi1-firmware" =>	{ Available => "",
 					  Builds => "hfi1-firmware",
+					  PostReq => "",
+					  PartOf => "", # filled in at runtime
+					  BuildPrereq => [],
+					},
+	"hfi1-firmware_debug" =>	{ Available => "",
+					  Builds => "hfi1-firmware_debug",
 					  PostReq => "",
 					  PartOf => "", # filled in at runtime
 					  BuildPrereq => [],
@@ -397,6 +409,34 @@ my %delta_srpm_info = (
 					  PartOf => "", # filled in at runtime
 					  BuildPrereq => [],
 					},
+	"shmem-benchmarks" =>	{ Available => "",
+					  Builds => "shmem-benchmarks_gcc_hfi",
+					  PostReq => "",
+					  PartOf => "", # filled in at runtime
+					  BuildPrereq => [],
+					},
+	"srptools" =>	{ Available => "",
+					  Builds => "srptools srptools-debuginfo",
+					  PostReq => "",
+					  PartOf => "", # filled in at runtime
+					  BuildPrereq => [ 'libtool any user' ],
+					},
+	"libibmad" =>  { Available => "",
+					  Builds => "libibmad libibmad-devel libibmad-static",
+					  PostReq => "libibmad libibmad-devel",
+					  PartOf => "", # filled in at runtime
+					  BuildPrereq => [ 'libtool any user' ],
+					},
+        "infiniband-diags" =>  { Available => "",
+					  Builds => "infiniband-diags infiniband-diags-compat",
+					  PostReq => "infiniband-diags",
+					  PartOf => "", # filled in at runtime
+					  BuildPrereq => [ 'opensm-devel any user', 
+						  	   'opensm-libs any user',
+							   'glib2-devel any user',
+						  	 ],
+					},
+
 );
 
 # This provides information for all kernel and user space rpms
@@ -411,7 +451,7 @@ my @delta_rpms = ();
 
 my %delta_autostart_save = ();
 # ==========================================================================
-# Delta ib_stack build in prep for installation
+# Delta opa_stack build in prep for installation
 
 # based on %delta_srpm_info{}{'Available'} determine if the given SRPM is
 # buildable and hence available on this CPU for $osver combination
@@ -489,6 +529,15 @@ sub init_delta_rpm_info($)
 		}
 	}
 
+	# disable libibmad and infiniband-diags for all distros but RHEL71 and SLES12 
+	if ( "$CUR_VENDOR_VER" ne "ES71" && "$CUR_VENDOR_VER" ne "ES12" ) {
+		foreach my $package ( @delta_rpms ) {
+			if ($package =~ /libibmad/ ||
+			    $package =~ /infiniband-diag/ ) {
+				$delta_rpm_info{$package}{'Available'} = 0;
+			}
+		}
+	}
 	# every package must be part of some component (could be a dummy component)
 	foreach my $package ( @delta_rpms ) {
 		if ( "$delta_rpm_info{$package}{'PartOf'}" eq "" ) {
@@ -629,18 +678,11 @@ sub delta_rpm_exists_list($$@)
 sub delta_get_prefix()
 {
 	my $prefix = "/usr";	# default
-	if ( -e "$ROOT/etc/infiniband/info" ) {
-		$prefix = `chroot /$ROOT /etc/infiniband/info 2>/dev/null|grep -w prefix|cut -d '=' -f 2`;
-		chomp $prefix;
-		if ( "$prefix" eq "" ) {
-			$prefix = "/usr";	# fallback to default
-		}
-	}
 	return "$prefix";
 }
 
 # unfortunately OFED mpitests leaves empty directories on uninstall
-# this can confuse QLogic MPI tools because correct MPI to use
+# this can confuse IFS MPI tools because correct MPI to use
 # cannot be identified.  This remove such empty directories for all
 # compilers in all possible prefixes for OFED
 sub delta_cleanup_mpitests()
@@ -678,6 +720,9 @@ RPM: foreach my $package ( reverse(@package_list) ) {
 				 && " $delta_rpm_info{$package}{'PartOf'} " =~ / $c / ) {
 				next RPM;	# its still needed, leave it installed
 			}
+		}
+		if ( $delta_rpm_info{$package}{'Available'} == 0 ) {
+			next RPM; # package was not installed.
 		}
 		# if we get here, package is not in any component we are interested in
 		if ( "$uninstalling_list" ne "" && "$comp" ne "" ) {
@@ -721,9 +766,9 @@ sub delta_srpm_file($$)
 # indicate where DELTA built RPMs can be found
 sub delta_rpms_dir()
 {
-	my $srcdir=$ComponentInfo{'ib_stack'}{'SrcDir'};
+	my $srcdir=$ComponentInfo{'opa_stack'}{'SrcDir'};
 	# we purposely use a different directory than OFED, this way
-	# runs of OFED install or build scripts will not confuse the QLogic
+	# runs of OFED install or build scripts will not confuse the IFS
 	# wrapped install
 	##return "$srcdir/$RPMS_SUBDIR/$RPM_DIST/";
 	if (-d "$srcdir/$RPMS_SUBDIR/$CUR_DISTRO_VENDOR-$CUR_VENDOR_VER"
@@ -764,7 +809,7 @@ sub is_built_srpm($$)
 {
 	my $srpm = shift();	# srpm name prefix
 	my $mode = shift();	# "user" or kernel rev
-	my $srcdir=$ComponentInfo{'ib_stack'}{'SrcDir'};
+	my $srcdir=$ComponentInfo{'opa_stack'}{'SrcDir'};
 	my $rpmsdir = delta_rpms_dir();
 
 	my @rpmlist = split /[[:space:]]+/, $delta_srpm_info{$srpm}{'Builds'};
@@ -874,7 +919,7 @@ sub delta_install_needed_rpms($$$$$@)
 # Build RPM from source RPM
 # build a specific SRPM
 # this is heavily based on build_rpm in OFED install.pl
-# main changes from cut and paste are marked with # QLOGIC commands
+# main changes from cut and paste are marked with # IFS commands
 # this has an srpm orientation and is only called when we really want to
 # build the srpm
 sub build_srpm($$$$$)
@@ -885,7 +930,7 @@ sub build_srpm($$$$$)
 	my $prefix = shift();	# prefix for install path
 	my $resfileop = shift(); # append or replace build.res file
 	my $configure_options = '';	# delta keeps per srpm, but only initializes here
-	my $srcdir=$ComponentInfo{'ib_stack'}{'SrcDir'};
+	my $srcdir=$ComponentInfo{'opa_stack'}{'SrcDir'};
 	my $SRC_RPM = delta_srpm_file($srcdir, "$srpm*.src.rpm");
 
         if ("$srpm" eq "openshmem") {
@@ -922,7 +967,7 @@ sub build_srpm($$$$$)
         }
     }
 
-	# QLOGIC - OFED tested rpm_exist.  We only get here if we
+	# IFS - OFED tested rpm_exist.  We only get here if we
 	# want to build the rpm, so we force true and proceed
 	# (keeps indentation same as OFED install.pl for easier cut/paste)
     if (1) {
@@ -948,12 +993,12 @@ sub build_srpm($$$$$)
         $cmd = "$pref_env rpmbuild --rebuild --define '_topdir $TOPDIR'";
         $cmd .= " --define 'dist  %{nil}'";
         $cmd .= " --target $target_cpu";
-		# QLOGIC - also set build_root so we can cleanup and avoid conflicts
+		# IFS - also set build_root so we can cleanup and avoid conflicts
     	$cmd .= " --buildroot '${BUILD_ROOT}'";
     	$cmd .= " --define 'build_root ${BUILD_ROOT}'";
 
         # Prefix should be defined per package
-		# QLOGIC - dropped MPIs, built via do_X_build scripts instead
+		# IFS - dropped MPIs, built via do_X_build scripts instead
         if ($parent eq "mpi-selector") {
             $cmd .= " --define '_prefix $prefix'";
             $cmd .= " --define '_exec_prefix $prefix'";
@@ -962,7 +1007,7 @@ sub build_srpm($$$$$)
             $cmd .= " --define 'shell_startup_dir /etc/profile.d'";
         }
 # TBD - odd that prefix, exec_prefix, sysconfdir and usr not defined
-# QLOGIC - may want to add these 4 just to be safe, they are not in OFED
+# IFS - may want to add these 4 just to be safe, they are not in OFED
 #            $cmd .= " --define '_prefix $prefix'";
 #            $cmd .= " --define '_exec_prefix $prefix'";
 #            $cmd .= " --define '_sysconfdir $sysconfdir'";
@@ -974,12 +1019,12 @@ sub build_srpm($$$$$)
             $cmd .= " --define '_usr $prefix'";
         }
 
-		# QLOGIC - keep configure_options as a local
+		# IFS - keep configure_options as a local
         if ($configure_options or $OFED_user_configure_options) {
             $cmd .= " --define 'configure_options $configure_options $OFED_user_configure_options'";
         }
 
-		# QLOGIC - use SRC_RPM (computed above) instead of srpmpath_for_distro
+		# IFS - use SRC_RPM (computed above) instead of srpmpath_for_distro
 #       $cmd .= " $main_packages{$parent}{'srpmpath'}";
 		$cmd .= " $SRC_RPM";
 
@@ -988,7 +1033,7 @@ sub build_srpm($$$$$)
 	    $cmd .= " --define '_prefix /usr/shmem/gcc/gasnet-1.24.0-openmpi-hfi'";
 	    $cmd .= " --define '_name gasnet_gcc_hfi'";
 	    $cmd .= " --define 'spawner mpi'";
-	    $cmd .= " --define 'mpi_prefix /usr/mpi/gcc/openmpi-1.8.2a1-hfi'";
+	    $cmd .= " --define 'mpi_prefix /usr/mpi/gcc/openmpi-1.8.5-hfi'";
 	}
 
 	if ("$srpm" eq "openshmem") {
@@ -1003,6 +1048,12 @@ sub build_srpm($$$$$)
 	    $cmd .= " --define '_prefix /usr/shmem/gcc/openshmem-1.0h-hfi'";
 	    $cmd .= " --define 'openshmem_prefix /usr/shmem/gcc/openshmem-1.0h-hfi'";
 	}
+
+	if ("$srpm" eq "shmem-benchmarks") {
+	    $cmd .= " --define '_prefix /usr/shmem/gcc/openshmem-1.0h-hfi'";
+	    $cmd .= " --define 'openshmem_prefix /usr/shmem/gcc/openshmem-1.0h-hfi'";
+	}
+
 		return run_build("$srcdir $SRC_RPM $RPM_ARCH", "$srcdir", $cmd, "$resfileop");
 	}
 	# NOTREACHED
@@ -1043,9 +1094,9 @@ sub build_delta($$$$$$)
 			$prompt_srpm=0;
 		}
 	}
-	# we base our decision on status of ib_stack.  Possible risk if
-	# ib_stack is partially upgraded and was interrupted.
-	if (! comp_is_uptodate('ib_stack') || $force_srpm  || $force_user_srpm || $force_kernel_srpm) {
+	# we base our decision on status of opa_stack.  Possible risk if
+	# opa_stack is partially upgraded and was interrupted.
+	if (! comp_is_uptodate('opa_stack') || $force_srpm  || $force_user_srpm || $force_kernel_srpm) {
 		$force_rpm = 1;
 	} elsif (! $Default_Prompt) {
 		my $choice = GetChoice("Reinstall OFED dependent RPMs (a=all, p=prompt per RPM, n=only as needed?)", "n", ("a", "p", "n"));
@@ -1138,7 +1189,7 @@ sub build_delta($$$$$$)
 
 	# -------------------------------------------------------------------------
 	# perform the builds
-	my $srcdir=$ComponentInfo{'ib_stack'}{'SrcDir'};
+	my $srcdir=$ComponentInfo{'opa_stack'}{'SrcDir'};
 
 	my $must_force_rpm = 0;	# set if we rebuild something so force updates
 	my @need_install = ( );	# keep track of PostReqs not yet installed
@@ -1166,8 +1217,6 @@ sub build_delta($$$$$$)
 		return 1;	# failure
 	}
 
-	my $rpm_os_version=rpm_tr_os_version($K_VER);
-
 	# OFED has all the ULPs in a single compat-rdma RPM.  We build that
 	# RPM here from the compat-rdma SRPM with all ULPs included.
 	# Later during install we remove ULPs not desired after installing
@@ -1178,17 +1227,23 @@ sub build_delta($$$$$$)
 		my $K_SRC = "/lib/modules/$K_VER/build";
 		my $configure_options_kernel;
 		my $cok_macro;
+		my $rpm_release = rpm_query_attr("$srcdir/$OFA_KERNEL_SRC_RPM", "RELEASE");
+		my $rpm_version = rpm_query_attr("$srcdir/$OFA_KERNEL_SRC_RPM", "VERSION");
+
 		$configure_options_kernel = get_build_options($K_VER, %delta_kernel_ib_options);
 		if ( $OFED_debug ) {
 			# TBD --with-memtrack
 			#$configure_options_kernel .= " --with-memtrack";
 		}
-
+		my $conf_opts = "--with-core-mod --with-user_mad-mod --with-user_access-mod --with-addr_trans-mod --with-ipoib-mod  --with-hfi1-mod  --with-qib-mod  --with-srp-mod  --with-srp-target-mod";
 		VerbosePrint("OS specific kernel configure options: '$configure_options_kernel'\n");
 
 		if ($configure_options_kernel != "") {
 			$cok_macro=" --define 'configure_options ${configure_options_kernel} $OFED_kernel_configure_options'";
+		} else {
+			$cok_macro=" --define 'configure_options ${conf_opts}'";
 		}
+
 		if (0 != run_build("$srcdir $OFA_KERNEL_SRC_RPM $RPM_KERNEL_ARCH $K_VER", "$srcdir",
 				 "rpmbuild --rebuild --define '_topdir ${RPM_DIR}'"
         		.		" --target $RPM_KERNEL_ARCH"
@@ -1202,7 +1257,8 @@ sub build_delta($$$$$$)
 				.		" --define 'build_kernel_ib_devel 1'"
 				.		" --define 'network_dir ${NETWORK_CONF_DIR}'"
             	.		" --define '__arch_install_post %{nil}'"
-				.		" --define '_release $rpm_os_version'"
+				.		" --define '_release $rpm_release'"
+				.               " --define '_version $rpm_version'"
 				.		" ${OFA_KERNEL_SRC_RPM}",
 				"$resfileop"
 				)) {
@@ -1298,7 +1354,7 @@ sub build_delta($$$$$$)
 }
 
 # forward declarations
-sub installed_delta_ib_stack();
+sub installed_delta_opa_stack();
 
 # track if install_kernel_ib function was used so we only install
 # compat-rdma once in a given "Perform" of install menu
@@ -1314,6 +1370,7 @@ sub uninstall_old_delta_rpms($$$)
 
 	my $ret = 0;	# assume success
 	my @packages = ();
+	my @prev_release_rpms = ( "hfi1-psm-compat-devel" );
 
 	if ("$message" eq "" ) {
 		$message = "previous OFED Delta";
@@ -1348,6 +1405,9 @@ sub uninstall_old_delta_rpms($$$)
 	my @filtered_packages = ();
 	my @rest_packages = ();
 	foreach my $i ( @packages ) {
+		if ( $delta_rpm_info{$i}{'Available'} == 0 ) {
+			next; # skip, rpm was not installed.
+		}
 		if (scalar(grep /^$i$/, (@filtered_packages, @rest_packages)) > 0) {
 			# skip, already in list
 		} elsif ( "$i" eq "mpi-selector" ) {
@@ -1376,6 +1436,10 @@ sub uninstall_old_delta_rpms($$$)
 		}
 	}
 
+	if (rpm_uninstall_all_list_with_options($mode, " --nodeps ", $verbosity, @prev_release_rpms) && ! $ret) {
+		NormalPrint "The previous errors can be ignored\n";
+	}
+
 	delta_cleanup_mpitests();
 
 	if ( $ret ) {
@@ -1390,9 +1454,9 @@ sub uninstall_old_delta_rpms($$$)
 # rpms
 sub uninstall_prev_versions()
 {
-	if (! installed_delta_ib_stack) {
+	if (! installed_delta_opa_stack) {
 		return 0;
-	} elsif (! comp_is_uptodate('ib_stack')) { # all delta_comp same version
+	} elsif (! comp_is_uptodate('opa_stack')) { # all delta_comp same version
 		if (0 != uninstall_old_delta_rpms("any", "silent", "previous OFED DELTA")) {
 			return 1;
 		}
@@ -1402,8 +1466,8 @@ sub uninstall_prev_versions()
 
 sub media_version_delta()
 {
-	# all OFED components at same version as ib_stack
-	my $srcdir=$ComponentInfo{'ib_stack'}{'SrcDir'};
+	# all OFED components at same version as opa_stack
+	my $srcdir=$ComponentInfo{'opa_stack'}{'SrcDir'};
 	return `cat "$srcdir/Version"`;
 }
 
@@ -1538,7 +1602,7 @@ sub delta_comp_change_opa_conf_param($$)
 }
 
 # generic functions to handle autostart needs for delta components with
-# more complex rdma.conf based startup needs.  These assume ib_stack handles
+# more complex rdma.conf based startup needs.  These assume opa_stack handles
 # the actual startup script.  Hence these focus on the rdma.conf parameters
 # determine if the given capability is configured for Autostart at boot
 sub IsAutostart_delta_comp2($)
@@ -1557,7 +1621,11 @@ sub autostart_desc_delta_comp($)
 {
 	my $comp = shift();	# component to describe
 	my $WhichStartup = $delta_comp_info{$comp}{'StartupScript'};
-	return "$ComponentInfo{$comp}{'Name'} ($WhichStartup)";
+	if ( "$WhichStartup" eq "" ) {
+		return "$ComponentInfo{$comp}{'Name'}"
+	} else {
+		return "$ComponentInfo{$comp}{'Name'} ($WhichStartup)";
+	}
 }
 # enable autostart for the given capability
 sub enable_autostart_delta_comp2($)
@@ -1565,7 +1633,7 @@ sub enable_autostart_delta_comp2($)
 	my $comp = shift();	# component to enable
 	#my $WhichStartup = $delta_comp_info{$comp}{'StartupScript'};
 
-	#ib_stack handles this: enable_autostart($WhichStartup);
+	#opa_stack handles this: enable_autostart($WhichStartup);
 	delta_comp_change_opa_conf_param($comp, "yes");
 }
 # disable autostart for the given capability
@@ -1588,7 +1656,7 @@ sub remove_delta_kernel_ib_drivers($$)
 	# cheat on driver_subdir so delta_components can have some stuff not
 	# in @Components
 	# we know driver_subdir is same for all delta components in compat-rdma
-	my $driver_subdir=$ComponentInfo{'ib_stack'}{'DriverSubdir'};
+	my $driver_subdir=$ComponentInfo{'opa_stack'}{'DriverSubdir'};
 
 	my $i;
 	my @list = split /[[:space:]]+/, $delta_comp_info{$comp}{'Drivers'};
@@ -1608,7 +1676,7 @@ sub print_install_banner_delta_comp($)
 	my $version=media_version_delta();
 	chomp $version;
 	printf("Installing $ComponentInfo{$comp}{'Name'} $version $DBG_FREE...\n");
-	# all OFED components at same version as ib_stack
+	# all OFED components at same version as opa_stack
 	LogPrint "Installing $ComponentInfo{$comp}{'Name'} $version $DBG_FREE for $CUR_OS_VER\n";
 }
 
@@ -1621,7 +1689,7 @@ sub need_reinstall_delta_comp($$$)
 
 	if (get_delta_rpm_prefix(delta_rpms_dir()) ne "$OFED_prefix" ) {
 		return "all";
-	} elsif (! comp_is_uptodate('ib_stack')) { # all delta_comp same version
+	} elsif (! comp_is_uptodate('opa_stack')) { # all delta_comp same version
 		# on upgrade force reinstall to recover from uninstall of old rpms
 		return "all";
 	} else {
@@ -1708,7 +1776,7 @@ sub install_kernel_ib($$)
 	my $rpmdir = shift();
 	my $install_list = shift();	# total that will be installed when done
 
-	my $driver_subdir=$ComponentInfo{'ib_stack'}{'DriverSubdir'};	# same for all delta components
+	my $driver_subdir=$ComponentInfo{'opa_stack'}{'DriverSubdir'};	# same for all delta components
 
 	if ( $install_kernel_ib_was_run) {
 		return;
@@ -1724,71 +1792,67 @@ sub install_kernel_ib($$)
 }
 
 # ==========================================================================
-# OFED ib_stack installation
+# OFED opa_stack installation
 
 # determine if the given capability is configured for Autostart at boot
-sub IsAutostart2_ib_stack()
+sub IsAutostart2_opa_stack()
 {
-	# ib_stack is tricky, there are multiple parameters.  We just test
+	# opa_stack is tricky, there are multiple parameters.  We just test
 	# the things we control here, if user has edited rdma.conf they
 	# could end up with startup still disabled by having disabled all
 	# the individual HCA drivers
-	return IsAutostart_delta_comp2('ib_stack') || IsAutostart("iba");
+	return IsAutostart_delta_comp2("opa_stack");
 }
-sub autostart_desc_ib_stack()
+sub autostart_desc_opa_stack()
 {
-	return autostart_desc_delta_comp('ib_stack');
+	return autostart_desc_delta_comp('opa_stack');
 }
 # enable autostart for the given capability
-sub enable_autostart2_ib_stack()
+sub enable_autostart2_opa_stack()
 {
 	enable_autostart("opa");
 }
 # disable autostart for the given capability
-sub disable_autostart2_ib_stack()
+sub disable_autostart2_opa_stack()
 {
 	disable_autostart("opa");
 }
 
-sub start_ib_stack()
+sub start_opa_stack()
 {
-	my $driver_subdir=$ComponentInfo{'ib_stack'}{'DriverSubdir'};
-	start_driver($ComponentInfo{'ib_stack'}{'Name'}, "ib_core", "$driver_subdir/drivers/infiniband/core", "");
+	my $driver_subdir=$ComponentInfo{'opa_stack'}{'DriverSubdir'};
+	start_driver($ComponentInfo{'opa_stack'}{'Name'}, "ib_core", "$driver_subdir/drivers/infiniband/core", "");
 }
 
-sub stop_ib_stack()
+sub stop_opa_stack()
 {
-	stop_driver($ComponentInfo{'ib_stack'}{'Name'}, "ib_core", "");
+	stop_driver($ComponentInfo{'opa_stack'}{'Name'}, "ib_core", "");
 }
 
-sub available_ib_stack()
+sub available_opa_stack()
 {
-	my $srcdir=$ComponentInfo{'ib_stack'}{'SrcDir'};
+	my $srcdir=$ComponentInfo{'opa_stack'}{'SrcDir'};
 # TBD better checks for available?
 # check file_glob("$srcdir/SRPMS/compat-rdma*.src.rpm") ne ""
 #			|| rpm_exists($rpmsdir, $CUR_OS_VER, "compat-rdma")
 	return ( -d "$srcdir/SRPMS" || -d "$srcdir/RPMS" );
 }
 
-sub installed_delta_ib_stack()
+sub installed_delta_opa_stack()
 {
-	my $driver_subdir=$ComponentInfo{'ib_stack'}{'DriverSubdir'};
+	my $driver_subdir=$ComponentInfo{'opa_stack'}{'DriverSubdir'};
 	return (rpm_is_installed("libibumad", "user")
 			&& -e "$ROOT$BASE_DIR/version_delta"
-			&& rpm_is_installed("compat-rdma", $CUR_OS_VER)
-	# MWHEINZ - commented out because compat-rdma does not follow
-	# the old ofa_kernel installation model.
-	#		&& installed_delta_driver("ib_core", "$driver_subdir", "drivers/infiniband/core")
-			 );
+			&& rpm_is_installed("compat-rdma", $CUR_OS_VER));
 }
 
-sub installed_ib_stack()
+sub installed_opa_stack()
 {
-	return (installed_delta_ib_stack);
+	return (installed_delta_opa_stack);
 }
 
-# only called if installed_ib_stack is true
-sub installed_version_ib_stack()
+# only called if installed_opa_stack is true
+sub installed_version_opa_stack()
 {
 	if ( -e "$ROOT$BASE_DIR/version_delta" ) {
 		return `cat $ROOT$BASE_DIR/version_delta`;
@@ -1797,8 +1861,8 @@ sub installed_version_ib_stack()
 	}
 }
 
-# only called if available_ib_stack is true
-sub media_version_ib_stack()
+# only called if available_opa_stack is true
+sub media_version_opa_stack()
 {
 	return media_version_delta();
 }
@@ -1821,7 +1885,7 @@ sub run_uninstall($$$)
 }
 
 # return 0 on success, !=0 on failure
-sub build_ib_stack($$$$)
+sub build_opa_stack($$$$)
 {
 	my $osver = shift();
 	my $debug = shift();	# enable extra debug of build itself
@@ -1851,37 +1915,37 @@ sub build_ib_stack($$$$)
 	}
 }
 
-sub need_reinstall_ib_stack($$)
+sub need_reinstall_opa_stack($$)
 {
 	my $install_list = shift();	# total that will be installed when done
 	my $installing_list = shift();	# what items are being installed/reinstalled
 
-	return (need_reinstall_delta_comp('ib_stack', $install_list, $installing_list));
+	return (need_reinstall_delta_comp('opa_stack', $install_list, $installing_list));
 }
 
-sub check_os_prereqs_ib_stack
+sub check_os_prereqs_opa_stack
 {
- 	return rpm_check_os_prereqs("ib_stack", "any", (
+ 	return rpm_check_os_prereqs("opa_stack", "any", (
 				'pciutils', 'libstdc++ any user'
    				));
 }
 
-sub preinstall_ib_stack($$)
+sub preinstall_opa_stack($$)
 {
 	my $install_list = shift();	# total that will be installed when done
 	my $installing_list = shift();	# what items are being installed/reinstalled
 
-	return preinstall_delta("ib_stack", $install_list, $installing_list);
+	return preinstall_delta("opa_stack", $install_list, $installing_list);
 }
 
-sub install_ib_stack($$)
+sub install_opa_stack($$)
 {
 	my $install_list = shift();	# total that will be installed when done
 	my $installing_list = shift();	# what items are being installed/reinstalled
 
-	my $srcdir=$ComponentInfo{'ib_stack'}{'SrcDir'};
+	my $srcdir=$ComponentInfo{'opa_stack'}{'SrcDir'};
 
-	print_install_banner_delta_comp('ib_stack');
+	print_install_banner_delta_comp('opa_stack');
 
 	#override the udev permissions.
 	install_udev_permissions("$srcdir/config");
@@ -1895,11 +1959,12 @@ sub install_ib_stack($$)
 
 	copy_systool_file("$srcdir/comp.pl", "/opt/opa/.comp_ofed_delta.pl");
 
-	install_delta_comp('ib_stack', $install_list);
+	install_delta_comp('opa_stack', $install_list);
 
 	prompt_opa_conf_param('RENICE_IB_MAD', 'OFED SMI/GSI renice', "y");
 	prompt_opa_conf_param('ARPTABLE_TUNING', 'Adjust kernel ARP table size for large fabrics?', "y");
-
+	prompt_opa_conf_param('SRP_LOAD', 'SRP initiator autoload?', "n");
+	
 	copy_data_file("$srcdir/Version", "$BASE_DIR/version_delta");
 
 	# prevent distro's open IB from loading
@@ -1907,20 +1972,16 @@ sub install_ib_stack($$)
 	#add_blacklist("ib_ipath");
 	disable_distro_ofed();
 
-# Disable wfr-lite
-#	if ( GetYesNo ("Enable wfr-lite driver?", "n")) {
-#		add_blacklist("ib_wfr_lite");
-#		remove_blacklist("ib_qib");
-#	} else {
-#		remove_blacklist("ib_wfr_lite");
-#		add_blacklist("ib_qib");
-#	}
+	# Take care of the configuration files for srptools
+	check_rpm_config_file("/etc/srp_daemon.conf");
+	check_rpm_config_file("/etc/logrotate.d/srp_daemon");
+	check_rpm_config_file("/etc/rsyslog.d/srp_daemon.conf");
 
 	need_reboot();
-	$ComponentWasInstalled{'ib_stack'}=1;
+	$ComponentWasInstalled{'opa_stack'}=1;
 }
 
-sub postinstall_ib_stack($$)
+sub postinstall_opa_stack($$)
 {
 	my $old_conf = 0;	# do we have an existing conf file
 	my $install_list = shift();	# total that will be installed when done
@@ -1937,7 +1998,7 @@ sub postinstall_ib_stack($$)
 	{
 		if ($install_list !~ / $c /) {
 			# disable autostart of uninstalled components
-			# ib_stack is at least installed
+			# opa_stack is at least installed
 			delta_comp_change_opa_conf_param($c, "no");
 		} else {
 			# retain previous setting for components being installed
@@ -1957,26 +2018,25 @@ sub postinstall_ib_stack($$)
 		}
 	}
 
-	delta_restore_autostart('ib_stack');
+	delta_restore_autostart('opa_stack');
 }
 
 # Do we need to do any of the stuff???
-sub uninstall_ib_stack($$)
+sub uninstall_opa_stack($$)
 {
 	my $install_list = shift();	# total that will be left installed when done
 	my $uninstalling_list = shift();	# what items are being uninstalled
 
-	my $driver_subdir=$ComponentInfo{'ib_stack'}{'DriverSubdir'};
-	print_uninstall_banner_delta_comp('ib_stack');
-	stop_ib_stack;
+	my $driver_subdir=$ComponentInfo{'opa_stack'}{'DriverSubdir'};
+	print_uninstall_banner_delta_comp('opa_stack');
+	stop_opa_stack;
 	remove_blacklist("ib_qib");
-#	remove_blacklist("ib_wfr_lite");
 
 	# allow open IB to load
 	#remove_blacklist("ib_mthca");
 	#remove_blacklist("ib_ipath");
 
-	uninstall_delta_comp('ib_stack', $install_list, $uninstalling_list, 'verbose');
+	uninstall_delta_comp('opa_stack', $install_list, $uninstalling_list, 'verbose');
 	remove_driver_dirs($driver_subdir);
 	#remove_modules_conf;
 	remove_limits_conf;
@@ -1990,7 +2050,7 @@ sub uninstall_ib_stack($$)
 	system "rmdir $ROOT$OPA_CONFIG_DIR 2>/dev/null";	# remove only if empty
 
 	need_reboot();
-	$ComponentWasInstalled{'ib_stack'}=0;
+	$ComponentWasInstalled{'opa_stack'}=0;
 }
 # ==========================================================================
 # intel_hfi installation
@@ -1998,7 +2058,10 @@ sub uninstall_ib_stack($$)
 # determine if the given capability is configured for Autostart at boot
 sub IsAutostart2_intel_hfi()
 {
-    return IsAutostart_delta_comp2('intel_hfi');
+	my $WhichStartup = $delta_comp_info{'intel_hfi'}{'StartupScript'};
+	my $ret = IsAutostart($WhichStartup);	# just to be safe, test this too
+
+    return ($ret && ! is_blacklisted('hfi1'));
 }
 sub autostart_desc_intel_hfi()
 {
@@ -2007,12 +2070,14 @@ sub autostart_desc_intel_hfi()
 # enable autostart for the given capability
 sub enable_autostart2_intel_hfi()
 {
-    enable_autostart_delta_comp2('intel_hfi');
+	remove_blacklist('hfi1');
+	rebuild_ramdisk();
 }
 # disable autostart for the given capability
 sub disable_autostart2_intel_hfi()
 {
-    disable_autostart_delta_comp2('intel_hfi');
+	add_blacklist('hfi1');
+	rebuild_ramdisk();
 }
 
 sub available_intel_hfi()
@@ -2027,13 +2092,7 @@ sub installed_intel_hfi()
     my $driver_subdir=$ComponentInfo{'intel_hfi'}{'DriverSubdir'};
         return (rpm_is_installed("libhfi1verbs", "user")
                         && -e "$ROOT$BASE_DIR/version_delta"
-                        && rpm_is_installed("compat-rdma", $CUR_OS_VER)
-        # JFLECK: Needs to be adjusted for hfi elements
-
-        # MWHEINZ: The mlx driver is part of stock Linux now.
-        #               && (installed_delta_driver("mlx4_ib", "$driver_subdir", "drivers/infiniband/hw/mlx4")
-        #               && installed_delta_driver("mlx4_core", "$driver_subdir", "drivers/net/mlx4"))
-	    );
+                        && rpm_is_installed("compat-rdma", $CUR_OS_VER));
 }
 
 # only called if installed_intel_hfi is true
@@ -2108,8 +2167,8 @@ sub uninstall_intel_hfi($$)
     uninstall_delta_comp('intel_hfi', $install_list, $uninstalling_list, 'verbose');
     need_reboot();
     $ComponentWasInstalled{'intel_hfi'}=0;
-
-	rebuild_ramdisk();
+    remove_blacklist('hfi1');
+    rebuild_ramdisk();
 }
 
 # ==========================================================================
@@ -2118,7 +2177,10 @@ sub uninstall_intel_hfi($$)
 # determine if the given capability is configured for Autostart at boot
 sub IsAutostart2_ib_wfr_lite()
 {
-    return IsAutostart_delta_comp2('ib_wfr_lite');
+    my $WhichStartup = $delta_comp_info{'ib_wfr_lite'}{'StartupScript'};
+	my $ret = IsAutostart($WhichStartup);
+
+	return ($ret && ! is_blacklisted('ib_wfr_lite'));
 }
 sub autostart_desc_ib_wfr_lite()
 {
@@ -2127,12 +2189,14 @@ sub autostart_desc_ib_wfr_lite()
 # enable autostart for the given capability
 sub enable_autostart2_ib_wfr_lite()
 {
-    enable_autostart_delta_comp2('ib_wfr_lite');
+	remove_blacklist('ib_wfr_lite');
+	rebuild_ramdisk();
 }
 # disable autostart for the given capability
 sub disable_autostart2_ib_wfr_lite()
 {
-    disable_autostart_delta_comp2('ib_wfr_lite');
+	add_blacklist('ib_wfr_lite');
+	rebuild_ramdisk();
 }
 
 sub available_ib_wfr_lite()
@@ -2236,23 +2300,23 @@ sub uninstall_ib_wfr_lite($$)
 }
 
 # ==========================================================================
-# OFED ib_stack development installation
+# OFED opa_stack development installation
 
-sub available_ib_stack_dev()
+sub available_opa_stack_dev()
 {
-	my $srcdir=$ComponentInfo{'ib_stack_dev'}{'SrcDir'};
+	my $srcdir=$ComponentInfo{'opa_stack_dev'}{'SrcDir'};
 	return ( -d "$srcdir/SRPMS" || -d "$srcdir/RPMS" );
 }
 
-sub installed_ib_stack_dev()
+sub installed_opa_stack_dev()
 {
 	return ((rpm_is_installed("libibumad-devel", "user")
 			&& -e "$ROOT$BASE_DIR/version_delta")
 			|| installed_ibdev);
 }
 
-# only called if installed_ib_stack_dev is true
-sub installed_version_ib_stack_dev()
+# only called if installed_opa_stack_dev is true
+sub installed_version_opa_stack_dev()
 {
 	if ( -e "$ROOT$BASE_DIR/version_delta" ) {
 		return `cat $ROOT$BASE_DIR/version_delta`;
@@ -2261,13 +2325,13 @@ sub installed_version_ib_stack_dev()
 	}
 }
 
-# only called if available_ib_stack_dev is true
-sub media_version_ib_stack_dev()
+# only called if available_opa_stack_dev is true
+sub media_version_opa_stack_dev()
 {
 	return media_version_delta();
 }
 
-sub build_ib_stack_dev($$$$)
+sub build_opa_stack_dev($$$$)
 {
 	my $osver = shift();
 	my $debug = shift();	# enable extra debug of build itself
@@ -2276,48 +2340,48 @@ sub build_ib_stack_dev($$$$)
 	return 0;	# success
 }
 
-sub need_reinstall_ib_stack_dev($$)
+sub need_reinstall_opa_stack_dev($$)
 {
 	my $install_list = shift();	# total that will be installed when done
 	my $installing_list = shift();	# what items are being installed/reinstalled
 
-	return (need_reinstall_delta_comp('ib_stack_dev', $install_list, $installing_list));
+	return (need_reinstall_delta_comp('opa_stack_dev', $install_list, $installing_list));
 }
 
-sub preinstall_ib_stack_dev($$)
+sub preinstall_opa_stack_dev($$)
 {
 	my $install_list = shift();	# total that will be installed when done
 	my $installing_list = shift();	# what items are being installed/reinstalled
 
-	return preinstall_delta("ib_stack_dev", $install_list, $installing_list);
+	return preinstall_delta("opa_stack_dev", $install_list, $installing_list);
 }
 
-sub install_ib_stack_dev($$)
+sub install_opa_stack_dev($$)
 {
 	my $install_list = shift();	# total that will be installed when done
 	my $installing_list = shift();	# what items are being installed/reinstalled
 
-	print_install_banner_delta_comp('ib_stack_dev');
-	install_delta_comp('ib_stack_dev', $install_list);
+	print_install_banner_delta_comp('opa_stack_dev');
+	install_delta_comp('opa_stack_dev', $install_list);
 
-	$ComponentWasInstalled{'ib_stack_dev'}=1;
+	$ComponentWasInstalled{'opa_stack_dev'}=1;
 }
 
-sub postinstall_ib_stack_dev($$)
+sub postinstall_opa_stack_dev($$)
 {
 	my $install_list = shift();	# total that will be installed when done
 	my $installing_list = shift();	# what items are being installed/reinstalled
-	#delta_restore_autostart('ib_stack_dev');
+	#delta_restore_autostart('opa_stack_dev');
 }
 
-sub uninstall_ib_stack_dev($$)
+sub uninstall_opa_stack_dev($$)
 {
 	my $install_list = shift();	# total that will be left installed when done
 	my $uninstalling_list = shift();	# what items are being uninstalled
 
-	print_uninstall_banner_delta_comp('ib_stack_dev');
-	uninstall_delta_comp('ib_stack_dev', $install_list, $uninstalling_list, 'verbose');
-	$ComponentWasInstalled{'ib_stack_dev'}=0;
+	print_uninstall_banner_delta_comp('opa_stack_dev');
+	uninstall_delta_comp('opa_stack_dev', $install_list, $uninstalling_list, 'verbose');
+	$ComponentWasInstalled{'opa_stack_dev'}=0;
 	if (installed_ibdev) {
 		print_separator;
 		uninstall_ibdev("", " ibdev ");

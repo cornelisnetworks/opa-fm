@@ -246,7 +246,7 @@ FSTATUS paGetVFList(Pm_t *pm, PmVFList_t *pmVFList, uint32 imageIndex);
 FSTATUS paGetVFConfig(Pm_t *pm, char *vfName, uint64 vfSid, PmVFConfig_t *pmVFConfig, uint64 imageId, int32 offset, uint64 *retImageId);
 
 // get vf info - caller declares Pm_T and PmGroupInfo_t, and passes pointers
-FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, uint64 vfSID, PmVFInfo_t *pmVFInfo, uint64 imageId, int32 offset, uint64 *retImageId,
+FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, PmVFInfo_t *pmVFInfo, uint64 imageId, int32 offset, uint64 *retImageId,
 		boolean *isFailedPort);
 
 // get vf port stats - caller declares Pm_T and PmCompositeVLCounters_t

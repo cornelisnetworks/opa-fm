@@ -116,7 +116,8 @@ fe_conf_fill_common(fm_mgr_action_t action, fm_config_common_t *common)
 			common->log_level	= fe_config.log_level;
 			common->log_mask	= 0;	// fe_log_mask; no longer allowed
 			common->nodaemon	= fe_nodaemon;
-			strncpy(&common->log_file[0], fe_config.log_file, strlen(fe_config.log_file));
+			strncpy(common->log_file, fe_config.log_file, sizeof(fe_config.log_file)-1);
+			common->log_file[sizeof(common->log_file)-1] = 0;
 			
 			return FM_RET_OK;
 		case FM_ACT_SUP_GET:
@@ -168,7 +169,8 @@ fe_conf_fill_common(fm_mgr_action_t action, fm_config_common_t *common)
 			}
 #endif
 			if(common->select_mask & CFG_COM_SEL_LOG_FILE){
-				strncpy(fe_config.log_file, &common->log_file[0], sizeof(fe_config.log_file));
+				strncpy(fe_config.log_file, &common->log_file[0], sizeof(fe_config.log_file)-1);
+				fe_config.log_file[sizeof(fe_config.log_file)-1] = 0;
 				reset_log_flag = 1;
 			}
 
@@ -328,7 +330,7 @@ fe_conf_server_init(void){
 	memset(server_path,0,sizeof(server_path));
 
 
-	sprintf(server_path,"%s%s",HSM_FM_SCK_PREFIX,fe_env_str);
+	snprintf(server_path, sizeof(server_path), "%s%s",HSM_FM_SCK_PREFIX,fe_env_str);
 
 	if(hcom_server_init(&conf_handle,server_path,5,1024,&fe_conf_callback) != HSM_COM_OK){
 		IB_LOG_ERROR0("Could not allocate server handle");
@@ -360,7 +362,7 @@ void fe_init_log_setting(void)
 
 void fe_set_log_level(uint32_t log_level)
 {
-	sprintf(msgbuf, "Setting FE LogLevel to %u", (unsigned)log_level);
+	snprintf(msgbuf, sizeof(msgbuf), "Setting FE LogLevel to %u", (unsigned)log_level);
 	fe_config.log_level = log_level;
 	vs_log_output_message(msgbuf, FALSE);
 	cs_log_set_log_masks(fe_config.log_level, fe_config.syslog_mode, fe_log_masks);
@@ -369,7 +371,7 @@ void fe_set_log_level(uint32_t log_level)
 
 void fe_set_log_mode(uint32_t log_mode)
 {
-	sprintf(msgbuf, "Setting FE LogMode to %u", (unsigned)log_mode);
+	snprintf(msgbuf, sizeof(msgbuf), "Setting FE LogMode to %u", (unsigned)log_mode);
 	fe_config.syslog_mode = log_mode;
 	vs_log_output_message(msgbuf, FALSE);
 	cs_log_set_log_masks(fe_config.log_level, fe_config.syslog_mode, fe_log_masks);
@@ -379,10 +381,10 @@ void fe_set_log_mode(uint32_t log_mode)
 void fe_set_log_mask(const char* mod, uint32_t mask)
 {
 	if (! cs_log_get_module_id(mod)) {
-		sprintf(msgbuf, "Requested setting FE LogMask for invalid subsystem: %s", mod);
+		snprintf(msgbuf, sizeof(msgbuf), "Requested setting FE LogMask for invalid subsystem: %s", mod);
 		vs_log_output_message(msgbuf, FALSE);
 	} else {
-		sprintf(msgbuf, "Setting FE %s_LogMask to 0x%x", mod, (unsigned)mask);
+		snprintf(msgbuf, sizeof(msgbuf), "Setting FE %s_LogMask to 0x%x", mod, (unsigned)mask);
 		vs_log_output_message(msgbuf, FALSE);
 		cs_log_set_log_masks(fe_config.log_level, fe_config.syslog_mode, fe_log_masks);
 		fe_init_log_setting();
@@ -454,9 +456,8 @@ void
 unified_sm_fe(uint32_t argc, uint8_t ** argv)
 {
 	fe_config.subnet_size = MAX(fe_config.subnet_size, MIN_SUPPORTED_ENDPORTS);
-	if(fe_config.default_pkey){
-		mai_set_default_pkey(fe_config.default_pkey);
-	}
+	mai_set_default_pkey(STL_DEFAULT_FM_PKEY);
+
     if (fe_config.debug_rmpp) if3RmppDebugOn();
     
 	IB_LOG_INFO("Device: ", fe_config.hca);

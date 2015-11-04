@@ -250,7 +250,7 @@ fe_if3_subscribe_sa()
   memset(&info,0,sizeof(info)); 
     
     // subscibe for Port Down 65
-    info.LIDRangeBegin = TRAP_ALL;
+    info.LIDRangeBegin = STL_LID_PERMISSIVE;
   info.IsGeneric = 1;
   info.Subscribe = 1;
   info.Type = TRAP_ALL;
@@ -285,7 +285,7 @@ fe_if3_subscribe_sa()
   } else {
         // subscibe for Port Up 64
         memset(&info,0,sizeof(info));
-      info.LIDRangeBegin = TRAP_ALL;
+      info.LIDRangeBegin = STL_LID_PERMISSIVE;
       info.IsGeneric = 1;
       info.Subscribe = 1;
       info.Type = TRAP_ALL;
@@ -376,7 +376,7 @@ fe_if3_unsubscribe_sa(int doUnsubscribe)
     if (doUnsubscribe) {
         // unsubscribe for port down traps
         memset(&info, 0, sizeof(info)); 
-        info.LIDRangeBegin = TRAP_ALL; 
+        info.LIDRangeBegin = STL_LID_PERMISSIVE; 
         info.IsGeneric = 1; 
         info.Subscribe = 0; 
         info.Type = TRAP_ALL; 
@@ -410,7 +410,7 @@ fe_if3_unsubscribe_sa(int doUnsubscribe)
         // unsubscribe for port up traps
         sz = FE_SA_RECV_BUF_SIZE; 
         memset(&info, 0, sizeof(info)); 
-        info.LIDRangeBegin = TRAP_ALL; 
+        info.LIDRangeBegin = STL_LID_PERMISSIVE; 
         info.IsGeneric = 1; 
         info.Subscribe = 0; 
         info.Type = TRAP_ALL; 
@@ -616,6 +616,7 @@ fe_if3_get_traps(FE_Trap_t* trapinfo,uint32_t* found)
   Lid_t tempLid;
   uint64_t  timeout=50000;  // 50 millisecs
   FE_Trap_Processing_State_t state;
+  SA_MAD_HDR *sa_hdr;
 
   IB_ENTER(__func__,0,0,0,0);
 
@@ -667,11 +668,11 @@ fe_if3_get_traps(FE_Trap_t* trapinfo,uint32_t* found)
                   temp->trapType = UNSOLICITED_TOPO_CHANGE;
                   temp->lidAddr = state.smlid;
                   temp->portNum = 0;
-                  temp = temp->next;
                   // this is a trap initiated by the FE, so just set the trap number
                   // field of the raw notice data to assist the FEC 
                   memset(&temp->notice, 0, sizeof(temp->notice));
                   temp->notice.Attributes.Generic.TrapNumber = STL_TRAP_LINK_PORT_CHANGE_STATE;
+                  temp = temp->next;
                   *found = *found+1;
               }
               rc = FE_SUCCESS;
@@ -695,7 +696,9 @@ fe_if3_get_traps(FE_Trap_t* trapinfo,uint32_t* found)
       switch (mai.base.method)
         {
       case MAD_CM_REPORT:
-          (void)BSWAPCOPY_STL_NOTICE((STL_NOTICE *)STL_GET_SMP_DATA(&maip), &notice);
+          sa_hdr = (SA_MAD_HDR*)maip->data;
+          sa_hdr = sa_hdr+1;
+          (void)BSWAPCOPY_STL_NOTICE((STL_NOTICE *)sa_hdr, &notice);
 
           /* Prepare to send reply */
           /* Swap QPs, except we always send from QP1 */

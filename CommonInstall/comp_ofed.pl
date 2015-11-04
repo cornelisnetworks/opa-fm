@@ -63,25 +63,25 @@ use strict;
 #use Math::BigInt;
 
 # ==========================================================================
-# OFED installation, includes ib_stack and OFED supplied ULPs
+# OFED installation, includes opa_stack and OFED supplied ULPs
 
 my $OFED_CONFIG = "$OFED_CONFIG_DIR/openib.conf";
 my $default_prefix="/usr";
 
-my $RPMS_SUBDIR = "RPMS";	# within ComponentInfo{'ib_stack'}{'SrcDir'}
-my $SRPMS_SUBDIR = "SRPMS";	# within ComponentInfo{'ib_stack'}{'SrcDir'}
+my $RPMS_SUBDIR = "RPMS";	# within ComponentInfo{'opa_stack'}{'SrcDir'}
+my $SRPMS_SUBDIR = "SRPMS";	# within ComponentInfo{'opa_stack'}{'SrcDir'}
 
 # list of components which are part of OFED
 # can be a superset or subset of @Components
 # ofed_vnic
 my @ofed_components = ( 
-				"ib_stack", 		# Kernel drivers.
+				"opa_stack", 		# Kernel drivers.
 				"intel_hfi", 		# HFI drivers
 				"ib_wfr_lite",		# ib_wfr_lite kernel module 
 				"ofed_mlx4", 		# MLX drivers
-				"ib_stack_dev", 	# dev libraries.
+				"opa_stack_dev", 	# dev libraries.
 				"ofed_ipoib", 		# ipoib module.
-				"ofed_ib_bonding", 	# ib_bonding rpm is separate from ib_stack.
+				"ofed_ib_bonding", 	# ib_bonding rpm is separate from opa_stack.
 				"ofed_rds",  		# Now just tools. 
 				"ofed_udapl", "ofed_udaplRest", 
 				"ofed_srp", 		# SRP module.
@@ -125,7 +125,7 @@ my @ofed_components = (
 #
 # Note KernelRpms are always installed before UserRpms
 my %ofed_comp_info = (
-	'ib_stack' => {
+	'opa_stack' => {
 					KernelRpms => [ "ifs-kernel-updates" ], # special case
 					UserRpms =>	  [ "ifs-scripts", "ofed-scripts",
 									"libibverbs", "libibverbs-utils",
@@ -181,12 +181,11 @@ my %ofed_comp_info = (
 							    "hfi-utils", 
 							    "hfi1-psm", 
 							    "hfi1-psm-devel", "hfi1-psm-compat",
-							    "hfi1-psm-compat-devel", "hfi1-diagtools-sw",
+							    "hfi1-diagtools-sw",
 							    "hfi-firmware" 
 					    ],
 					DebugRpms =>  [ "hfi1_debuginfo", "hfi1-psm-devel-noship", 
-							"hfi1-diagtools-sw-debuginfo",
-							"hfi1-psm-compat-devel-noship" 
+							"hfi1-diagtools-sw-debuginfo"
 					    ],
 					Drivers => "",
 					StartupScript => "openibd",
@@ -213,7 +212,7 @@ my %ofed_comp_info = (
 					# MWHEINZ FIXME StartupParams => [ "MLX4_LOAD" ],
 					StartupParams => [  ],
 					},
-	'ib_stack_dev' => {
+	'opa_stack_dev' => {
 					KernelRpms => [  ],
 					UserRpms =>	  [ "ibacm-devel", 
 							    "ifs-kernel-updates-devel",
@@ -528,8 +527,8 @@ my %ofed_srpm_info = (
 					  BuildPrereq => [],
 					},
 	"hfi1-psm" =>	{ Available => "",
-					  Builds => "hfi1-psm hfi1-psm-devel hfi1-psm-devel-noship hfi1-psm-compat hfi1-psm-compat-devel",
-					  PostReq => "hfi1-psm hfi1-psm-devel hfi1-psm-devel-noship hfi1-psm-compat hfi1-psm-compat-devel",
+					  Builds => "hfi1-psm hfi1-psm-devel hfi1-psm-devel-noship hfi1-psm-compat",
+					  PostReq => "hfi1-psm hfi1-psm-devel hfi1-psm-devel-noship hfi1-psm-compat",
 					  PartOf => "", # filled in at runtime
 					  BuildPrereq => [],
 					},
@@ -917,7 +916,7 @@ my @suse_rpms = (
 
 my %ofed_autostart_save = ();
 # ==========================================================================
-# OFED ib_stack build in prep for installation
+# OFED opa_stack build in prep for installation
 
 # based on %ofed_srpm_info{}{'Available'} determine if the given SRPM is
 # buildable and hence available on this CPU for $osver combination
@@ -1130,18 +1129,11 @@ sub ofed_rpm_exists_list($$@)
 sub ofed_get_prefix()
 {
 	my $prefix = "/usr";	# default
-	if ( -e "$ROOT/etc/infiniband/info" ) {
-		$prefix = `chroot /$ROOT /etc/infiniband/info 2>/dev/null|grep -w prefix|cut -d '=' -f 2`;
-		chomp $prefix;
-		if ( "$prefix" eq "" ) {
-			$prefix = "/usr";	# fallback to default
-		}
-	}
 	return "$prefix";
 }
 
 # unfortunately OFED mpitests leaves empty directories on uninstall
-# this can confuse QLogic MPI tools because correct MPI to use
+# this can confuse IFS MPI tools because correct MPI to use
 # cannot be identified.  This remove such empty directories for all
 # compilers in all possible prefixes for OFED
 sub ofed_cleanup_mpitests()
@@ -1222,9 +1214,9 @@ sub ofed_srpm_file($$)
 # indicate where OFED built RPMs can be found
 sub ofed_rpms_dir()
 {
-	my $srcdir=$ComponentInfo{'ib_stack'}{'SrcDir'};
+	my $srcdir=$ComponentInfo{'opa_stack'}{'SrcDir'};
 	# we purposely use a different directory than OFED, this way
-	# runs of OFED install or build scripts will not confuse the QLogic
+	# runs of OFED install or build scripts will not confuse the IFS
 	# wrapped install
 	##return "$srcdir/$RPMS_SUBDIR/$RPM_DIST/";
 	if (-d "$srcdir/$RPMS_SUBDIR/$CUR_DISTRO_VENDOR-$CUR_VENDOR_VER"
@@ -1265,7 +1257,7 @@ sub is_built_srpm($$)
 {
 	my $srpm = shift();	# srpm name prefix
 	my $mode = shift();	# ""user" or kernel rev
-	my $srcdir=$ComponentInfo{'ib_stack'}{'SrcDir'};
+	my $srcdir=$ComponentInfo{'opa_stack'}{'SrcDir'};
 	my $rpmsdir = ofed_rpms_dir();
 
 	my @rpmlist = split /[[:space:]]+/, $ofed_srpm_info{$srpm}{'Builds'};
@@ -1375,7 +1367,7 @@ sub ofed_install_needed_rpms($$$$$@)
 # Build RPM from source RPM
 # build a specific SRPM
 # this is heavily based on build_rpm in OFED install.pl
-# main changes from cut and paste are marked with # QLOGIC commands
+# main changes from cut and paste are marked with # IFS commands
 # this has an srpm orientation and is only called when we really want to
 # build the srpm
 sub build_srpm($$$$$)
@@ -1386,7 +1378,7 @@ sub build_srpm($$$$$)
 	my $prefix = shift();	# prefix for install path
 	my $resfileop = shift(); # append or replace build.res file
 	my $configure_options = '';	# ofed keeps per srpm, but only initializes here
-	my $srcdir=$ComponentInfo{'ib_stack'}{'SrcDir'};
+	my $srcdir=$ComponentInfo{'opa_stack'}{'SrcDir'};
 	my $SRC_RPM = ofed_srpm_file($srcdir, "$srpm*.src.rpm");
 
         if ("$srpm" eq "openshmem") {
@@ -1423,7 +1415,7 @@ sub build_srpm($$$$$)
         }
     }
 
-	# QLOGIC - OFED tested rpm_exist.  We only get here if we
+	# IFS - OFED tested rpm_exist.  We only get here if we
 	# want to build the rpm, so we force true and proceed
 	# (keeps indentation same as OFED install.pl for easier cut/paste)
     if (1) {
@@ -1449,12 +1441,12 @@ sub build_srpm($$$$$)
         $cmd = "$pref_env rpmbuild --rebuild --define '_topdir $TOPDIR'";
         $cmd .= " --define 'dist  %{nil}'";
         $cmd .= " --target $target_cpu";
-		# QLOGIC - also set build_root so we can cleanup and avoid conflicts
+		# IFS - also set build_root so we can cleanup and avoid conflicts
     	$cmd .= " --buildroot '${BUILD_ROOT}'";
     	$cmd .= " --define 'build_root ${BUILD_ROOT}'";
 
         # Prefix should be defined per package
-		# QLOGIC - dropped MPIs, built via do_X_build scripts instead
+		# IFS - dropped MPIs, built via do_X_build scripts instead
         if ($parent eq "mpi-selector") {
             $cmd .= " --define '_prefix $prefix'";
             $cmd .= " --define '_exec_prefix $prefix'";
@@ -1463,20 +1455,20 @@ sub build_srpm($$$$$)
             $cmd .= " --define 'shell_startup_dir /etc/profile.d'";
         }
         elsif ($parent =~ m/dapl/) {
-			# QLOGIC - use rpm_query_param
+			# IFS - use rpm_query_param
             my $def_doc_dir = rpm_query_param('_defaultdocdir');
             #my $def_doc_dir = `rpm --eval '%{_defaultdocdir}'`;
             chomp $def_doc_dir;
             $cmd .= " --define '_prefix $prefix'";
             $cmd .= " --define '_exec_prefix $prefix'";
             $cmd .= " --define '_sysconfdir $sysconfdir'";
-			# QLOGIC - the srpm name given includes the version for dapl
+			# IFS - the srpm name given includes the version for dapl
             $cmd .= " --define '_defaultdocdir $def_doc_dir/$srpm'";
             #$cmd .= " --define '_defaultdocdir $def_doc_dir/$main_packages{$parent}{'name'}-$main_packages{$parent}{'version'}'";
             $cmd .= " --define '_usr $prefix'";
         }
 # TBD - odd that prefix, exec_prefix, sysconfdir and usr not defined
-# QLOGIC - may want to add these 4 just to be safe, they are not in OFED
+# IFS - may want to add these 4 just to be safe, they are not in OFED
 #            $cmd .= " --define '_prefix $prefix'";
 #            $cmd .= " --define '_exec_prefix $prefix'";
 #            $cmd .= " --define '_sysconfdir $sysconfdir'";
@@ -1489,19 +1481,19 @@ sub build_srpm($$$$$)
         }
 
 		if ($parent eq "librdmacm") {
-			# QLOGIC - keep configure_options as a local, ibacm always installed
+			# IFS - keep configure_options as a local, ibacm always installed
 			#if ( $packages_info{'ibacm'}{'selected'}) {
 			if ( $ofed_rpm_info{'ibacm'}{'Available'}) {
 				$configure_options .= " --with-ib_acm";
 			}
 		}
 
-		# QLOGIC - keep configure_options as a local
+		# IFS - keep configure_options as a local
         if ($configure_options or $OFED_user_configure_options) {
             $cmd .= " --define 'configure_options $configure_options $OFED_user_configure_options'";
         }
 
-		# QLOGIC - use SRC_RPM (computed above) instead of srpmpath_for_distro
+		# IFS - use SRC_RPM (computed above) instead of srpmpath_for_distro
 #       $cmd .= " $main_packages{$parent}{'srpmpath'}";
 		$cmd .= " $SRC_RPM";
 
@@ -1518,7 +1510,7 @@ sub build_srpm($$$$$)
 	    $cmd .= " --define '_prefix /usr/shmem/gcc/gasnet-1.24.0-openmpi-hfi'";
 	    $cmd .= " --define '_name gasnet_gcc_hfi'";
 	    $cmd .= " --define 'spawner mpi'";
-	    $cmd .= " --define 'mpi_prefix /usr/mpi/gcc/openmpi-1.8.2a1-hfi'";
+	    $cmd .= " --define 'mpi_prefix /usr/mpi/gcc/openmpi-1.10.0-hfi'";
 	}
 
 	if ("$srpm" eq "openshmem") {
@@ -1573,9 +1565,9 @@ sub build_ofed($$$$$$)
 			$prompt_srpm=0;
 		}
 	}
-	# we base our decision on status of ib_stack.  Possible risk if
-	# ib_stack is partially upgraded and was interrupted.
-	if (! comp_is_uptodate('ib_stack') || $force_srpm  || $force_user_srpm || $force_kernel_srpm) {
+	# we base our decision on status of opa_stack.  Possible risk if
+	# opa_stack is partially upgraded and was interrupted.
+	if (! comp_is_uptodate('opa_stack') || $force_srpm  || $force_user_srpm || $force_kernel_srpm) {
 		$force_rpm = 1;
 	} elsif (! $Default_Prompt) {
 		my $choice = GetChoice("Reinstall OFED dependent RPMs (a=all, p=prompt per RPM, n=only as needed?)", "n", ("a", "p", "n"));
@@ -1715,7 +1707,7 @@ sub build_ofed($$$$$$)
 
 	# -------------------------------------------------------------------------
 	# perform the builds
-	my $srcdir=$ComponentInfo{'ib_stack'}{'SrcDir'};
+	my $srcdir=$ComponentInfo{'opa_stack'}{'SrcDir'};
 
 	my $must_force_rpm = 0;	# set if we rebuild something so force updates
 	my @need_install = ( );	# keep track of PostReqs not yet installed
@@ -1888,7 +1880,7 @@ sub build_ofed($$$$$$)
 }
 
 # forward declarations
-sub installed_ofed_ib_stack();
+sub installed_ofed_opa_stack();
 sub uninstall_old_stacks($);
 
 # track if install_kernel_ib function was used so we only install
@@ -2010,11 +2002,11 @@ sub cleanup_iba_sdp()
 sub uninstall_prev_versions()
 {
 	cleanup_iba_sdp();
-	if (! installed_ofed_ib_stack) {
+	if (! installed_ofed_opa_stack) {
 		if (0 != uninstall_old_stacks(1)) {
 			return 1;
 		}
-	} elsif (! comp_is_uptodate('ib_stack')) { # all ofed_comp same version
+	} elsif (! comp_is_uptodate('opa_stack')) { # all ofed_comp same version
 		if (0 != uninstall_old_ofed_rpms("any", "silent", "previous OFED")) {
 			return 1;
 		}
@@ -2024,8 +2016,8 @@ sub uninstall_prev_versions()
 
 sub media_version_ofed()
 {
-	# all OFED components at same version as ib_stack
-	my $srcdir=$ComponentInfo{'ib_stack'}{'SrcDir'};
+	# all OFED components at same version as opa_stack
+	my $srcdir=$ComponentInfo{'opa_stack'}{'SrcDir'};
 	return `cat "$srcdir/Version"`;
 }
 
@@ -2163,7 +2155,7 @@ sub ofed_comp_change_openib_conf_param($$)
 }
 
 # generic functions to handle autostart needs for ofed components with
-# more complex openib.conf based startup needs.  These assume ib_stack handles
+# more complex openib.conf based startup needs.  These assume opa_stack handles
 # the actual startup script.  Hence these focus on the openib.conf parameters
 # determine if the given capability is configured for Autostart at boot
 sub IsAutostart_ofed_comp2($)
@@ -2190,7 +2182,7 @@ sub enable_autostart_ofed_comp2($)
 	my $comp = shift();	# component to enable
 	#my $WhichStartup = $ofed_comp_info{$comp}{'StartupScript'};
 
-	#ib_stack handles this: enable_autostart($WhichStartup);
+	#opa_stack handles this: enable_autostart($WhichStartup);
 	ofed_comp_change_openib_conf_param($comp, "yes");
 }
 # disable autostart for the given capability
@@ -2201,7 +2193,7 @@ sub disable_autostart_ofed_comp2($)
 
 	# Note: as a side effect this ULP will also not be manually started
 	# when openibd is manually run
-	#ib_stack handles this: disable_autostart($WhichStartup);
+	#opa_stack handles this: disable_autostart($WhichStartup);
 	ofed_comp_change_openib_conf_param($comp, "no");
 }
 
@@ -2216,7 +2208,7 @@ sub remove_ofed_kernel_ib_drivers($$)
 	# cheat on driver_subdir so ofed_components can have some stuff not
 	# in @Components
 	# we know driver_subdir is same for all ofed components in ifs-kernel-updates
-	my $driver_subdir=$ComponentInfo{'ib_stack'}{'DriverSubdir'};
+	my $driver_subdir=$ComponentInfo{'opa_stack'}{'DriverSubdir'};
 
 	my $i;
 	my @list = split /[[:space:]]+/, $ofed_comp_info{$comp}{'Drivers'};
@@ -2236,7 +2228,7 @@ sub print_install_banner_ofed_comp($)
 	my $version=media_version_ofed();
 	chomp $version;
 	printf("Installing $ComponentInfo{$comp}{'Name'} $version $DBG_FREE...\n");
-	# all OFED components at same version as ib_stack
+	# all OFED components at same version as opa_stack
 	LogPrint "Installing $ComponentInfo{$comp}{'Name'} $version $DBG_FREE for $CUR_OS_VER\n";
 }
 
@@ -2249,7 +2241,7 @@ sub need_reinstall_ofed_comp($$$)
 
 	if (get_ofed_rpm_prefix(ofed_rpms_dir()) ne "$OFED_prefix" ) {
 		return "all";
-	} elsif (! comp_is_uptodate('ib_stack')) { # all ofed_comp same version
+	} elsif (! comp_is_uptodate('opa_stack')) { # all ofed_comp same version
 		# on upgrade force reinstall to recover from uninstall of old rpms
 		return "all";
 	} else {
@@ -2340,7 +2332,7 @@ sub install_kernel_ib($$)
 	my $rpmdir = shift();
 	my $install_list = shift();	# total that will be installed when done
 
-	my $driver_subdir=$ComponentInfo{'ib_stack'}{'DriverSubdir'};	# same for all ofed components
+	my $driver_subdir=$ComponentInfo{'opa_stack'}{'DriverSubdir'};	# same for all ofed components
 
 	if ( $install_kernel_ib_was_run) {
 		return;
@@ -2356,57 +2348,57 @@ sub install_kernel_ib($$)
 }
 
 # ==========================================================================
-# OFED ib_stack installation
+# OFED opa_stack installation
 
 # determine if the given capability is configured for Autostart at boot
-sub IsAutostart2_ib_stack()
+sub IsAutostart2_opa_stack()
 {
-	# ib_stack is tricky, there are multiple parameters.  We just test
+	# opa_stack is tricky, there are multiple parameters.  We just test
 	# the things we control here, if user has edited openib.conf they
 	# could end up with startup still disabled by having disabled all
 	# the individual HCA drivers
-	return IsAutostart_ofed_comp2('ib_stack') || IsAutostart("iba");
+	return IsAutostart_ofed_comp2('opa_stack') || IsAutostart("iba");
 }
-sub autostart_desc_ib_stack()
+sub autostart_desc_opa_stack()
 {
-	return autostart_desc_ofed_comp('ib_stack');
+	return autostart_desc_ofed_comp('opa_stack');
 }
 # enable autostart for the given capability
-sub enable_autostart2_ib_stack()
+sub enable_autostart2_opa_stack()
 {
 	enable_autostart("openibd");
-	ofed_comp_change_openib_conf_param('ib_stack', "yes");
+	ofed_comp_change_openib_conf_param('opa_stack', "yes");
 }
 # disable autostart for the given capability
-sub disable_autostart2_ib_stack()
+sub disable_autostart2_opa_stack()
 {
 	disable_autostart("openibd");
-	ofed_comp_change_openib_conf_param('ib_stack', "no");
+	ofed_comp_change_openib_conf_param('opa_stack', "no");
 }
 
-sub start_ib_stack()
+sub start_opa_stack()
 {
-	my $driver_subdir=$ComponentInfo{'ib_stack'}{'DriverSubdir'};
-	start_driver($ComponentInfo{'ib_stack'}{'Name'}, "ib_core", "$driver_subdir/drivers/infiniband/core", "openibd");
+	my $driver_subdir=$ComponentInfo{'opa_stack'}{'DriverSubdir'};
+	start_driver($ComponentInfo{'opa_stack'}{'Name'}, "ib_core", "$driver_subdir/drivers/infiniband/core", "openibd");
 }
 
-sub stop_ib_stack()
+sub stop_opa_stack()
 {
-	stop_driver($ComponentInfo{'ib_stack'}{'Name'}, "ib_core", "openibd");
+	stop_driver($ComponentInfo{'opa_stack'}{'Name'}, "ib_core", "openibd");
 }
 
-sub available_ib_stack()
+sub available_opa_stack()
 {
-	my $srcdir=$ComponentInfo{'ib_stack'}{'SrcDir'};
+	my $srcdir=$ComponentInfo{'opa_stack'}{'SrcDir'};
 # TBD better checks for available?
 # check file_glob("$srcdir/SRPMS/ifs-kernel-updates*.src.rpm") ne ""
 #			|| rpm_exists($rpmsdir, $CUR_OS_VER, "ifs-kernel-updates")
 	return ( -d "$srcdir/SRPMS" || -d "$srcdir/RPMS" );
 }
 
-sub installed_ofed_ib_stack()
+sub installed_ofed_opa_stack()
 {
-	my $driver_subdir=$ComponentInfo{'ib_stack'}{'DriverSubdir'};
+	my $driver_subdir=$ComponentInfo{'opa_stack'}{'DriverSubdir'};
 	return (rpm_is_installed("libibverbs", "user")
 			&& -e "$ROOT$BASE_DIR/version_ofed"
 			&& rpm_is_installed("ifs-kernel-updates", $CUR_OS_VER)
@@ -2416,13 +2408,13 @@ sub installed_ofed_ib_stack()
 			 );
 }
 
-sub installed_ib_stack()
+sub installed_opa_stack()
 {
-	return (installed_ofed_ib_stack);
+	return (installed_ofed_opa_stack);
 }
 
-# only called if installed_ib_stack is true
-sub installed_version_ib_stack()
+# only called if installed_opa_stack is true
+sub installed_version_opa_stack()
 {
 	if ( -e "$ROOT$BASE_DIR/version_ofed" ) {
 		return `cat $ROOT$BASE_DIR/version_ofed`;
@@ -2431,8 +2423,8 @@ sub installed_version_ib_stack()
 	}
 }
 
-# only called if available_ib_stack is true
-sub media_version_ib_stack()
+# only called if available_opa_stack is true
+sub media_version_opa_stack()
 {
 	return media_version_ofed();
 }
@@ -2455,8 +2447,8 @@ sub run_uninstall($$$)
 }
 
 # uninstall 3rd party and older IB stacks
-# only called when ib_stack is not installed, hence it can also safely
-# uninstall files/rpms which may overlap with the ib_stack
+# only called when opa_stack is not installed, hence it can also safely
+# uninstall files/rpms which may overlap with the opa_stack
 # return 0 on success, != 0 on failure
 sub	uninstall_old_stacks($)
 {
@@ -2572,7 +2564,7 @@ sub	uninstall_old_stacks($)
 }
 
 # return 0 on success, !=0 on failure
-sub build_ib_stack($$$$)
+sub build_opa_stack($$$$)
 {
 	my $osver = shift();
 	my $debug = shift();	# enable extra debug of build itself
@@ -2599,37 +2591,37 @@ sub build_ib_stack($$$$)
 	}
 }
 
-sub need_reinstall_ib_stack($$)
+sub need_reinstall_opa_stack($$)
 {
 	my $install_list = shift();	# total that will be installed when done
 	my $installing_list = shift();	# what items are being installed/reinstalled
 
-	return (need_reinstall_ofed_comp('ib_stack', $install_list, $installing_list));
+	return (need_reinstall_ofed_comp('opa_stack', $install_list, $installing_list));
 }
 
-sub check_os_prereqs_ib_stack
+sub check_os_prereqs_opa_stack
 {
- 	return rpm_check_os_prereqs("ib_stack", "any", (
+ 	return rpm_check_os_prereqs("opa_stack", "any", (
 				'pciutils', 'libstdc++ any user'
    				));
 }
 
-sub preinstall_ib_stack($$)
+sub preinstall_opa_stack($$)
 {
 	my $install_list = shift();	# total that will be installed when done
 	my $installing_list = shift();	# what items are being installed/reinstalled
 
-	return preinstall_ofed("ib_stack", $install_list, $installing_list);
+	return preinstall_ofed("opa_stack", $install_list, $installing_list);
 }
 
-sub install_ib_stack($$)
+sub install_opa_stack($$)
 {
 	my $install_list = shift();	# total that will be installed when done
 	my $installing_list = shift();	# what items are being installed/reinstalled
 
-	my $srcdir=$ComponentInfo{'ib_stack'}{'SrcDir'};
+	my $srcdir=$ComponentInfo{'opa_stack'}{'SrcDir'};
 
-	print_install_banner_ofed_comp('ib_stack');
+	print_install_banner_ofed_comp('opa_stack');
 
 	#override the udev permissions.
 	install_udev_permissions("$srcdir/config");
@@ -2643,7 +2635,7 @@ sub install_ib_stack($$)
 
 	copy_systool_file("$srcdir/comp.pl", "/opt/opa/.comp_ofed.pl");
 
-	install_ofed_comp('ib_stack', $install_list);
+	install_ofed_comp('opa_stack', $install_list);
 
 	# in some recovery situations OFED doesn't properly restore openib.conf
 	# this makes sure the SMA NodeDesc is properly set so the hostnmae is used
@@ -2672,10 +2664,10 @@ sub install_ib_stack($$)
 	#add_blacklist("ib_ipath");
 	disable_distro_ofed();
 	need_reboot();
-	$ComponentWasInstalled{'ib_stack'}=1;
+	$ComponentWasInstalled{'opa_stack'}=1;
 }
 
-sub postinstall_ib_stack($$)
+sub postinstall_opa_stack($$)
 {
 	my $old_conf = 0;	# do we have an existing conf file
 	my $install_list = shift();	# total that will be installed when done
@@ -2693,7 +2685,7 @@ sub postinstall_ib_stack($$)
 		if ($install_list !~ / $c /) {
 			# disable autostart of uninstalled components
 			# no need to disable openibd, since being in this function implies
-			# ib_stack is at least installed
+			# opa_stack is at least installed
 			ofed_comp_change_openib_conf_param($c, "no");
 		} else {
 			# retain previous setting for components being installed
@@ -2713,17 +2705,17 @@ sub postinstall_ib_stack($$)
 		}
 	}
 
-	ofed_restore_autostart('ib_stack');
+	ofed_restore_autostart('opa_stack');
 }
 
-sub uninstall_ib_stack($$)
+sub uninstall_opa_stack($$)
 {
 	my $install_list = shift();	# total that will be left installed when done
 	my $uninstalling_list = shift();	# what items are being uninstalled
 
-	my $driver_subdir=$ComponentInfo{'ib_stack'}{'DriverSubdir'};
-	print_uninstall_banner_ofed_comp('ib_stack');
-	stop_ib_stack;
+	my $driver_subdir=$ComponentInfo{'opa_stack'}{'DriverSubdir'};
+	print_uninstall_banner_ofed_comp('opa_stack');
+	stop_opa_stack;
 	remove_blacklist("ib_qib");
 	remove_blacklist("ib_wfr_lite");
 
@@ -2732,7 +2724,7 @@ sub uninstall_ib_stack($$)
 	#remove_blacklist("ib_ipath");
 
 	# ofed rpm -e will keep an rpmsave copy of openib.conf for us
-	uninstall_ofed_comp('ib_stack', $install_list, $uninstalling_list, 'verbose');
+	uninstall_ofed_comp('opa_stack', $install_list, $uninstalling_list, 'verbose');
 	remove_driver_dirs($driver_subdir);
 	#remove_modules_conf;
 	remove_limits_conf;
@@ -2748,11 +2740,7 @@ sub uninstall_ib_stack($$)
 		Abort "Unable to uninstall old IB stacks\n";
 	}
 	need_reboot();
-	$ComponentWasInstalled{'ib_stack'}=0;
-	if (installed_ibboot) {
-		print_separator;
-		uninstall_ibboot("", " iba ibboot ");
-	}
+	$ComponentWasInstalled{'opa_stack'}=0;
 }
 # ==========================================================================
 # intel_hfi installation
@@ -2868,6 +2856,7 @@ sub uninstall_intel_hfi($$)
     uninstall_ofed_comp('intel_hfi', $install_list, $uninstalling_list, 'verbose');
     need_reboot();
     $ComponentWasInstalled{'intel_hfi'}=0;
+    remove_blacklist('hfi1');
 }
 
 # ==========================================================================
@@ -3121,23 +3110,23 @@ sub uninstall_ofed_mlx4($$)
 
 
 # ==========================================================================
-# OFED ib_stack development installation
+# OFED opa_stack development installation
 
-sub available_ib_stack_dev()
+sub available_opa_stack_dev()
 {
-	my $srcdir=$ComponentInfo{'ib_stack_dev'}{'SrcDir'};
+	my $srcdir=$ComponentInfo{'opa_stack_dev'}{'SrcDir'};
 	return ( -d "$srcdir/SRPMS" || -d "$srcdir/RPMS" );
 }
 
-sub installed_ib_stack_dev()
+sub installed_opa_stack_dev()
 {
 	return ((rpm_is_installed("libibverbs-devel", "user")
 			&& -e "$ROOT$BASE_DIR/version_ofed")
 			|| installed_ibdev);
 }
 
-# only called if installed_ib_stack_dev is true
-sub installed_version_ib_stack_dev()
+# only called if installed_opa_stack_dev is true
+sub installed_version_opa_stack_dev()
 {
 	if ( -e "$ROOT$BASE_DIR/version_ofed" ) {
 		return `cat $ROOT$BASE_DIR/version_ofed`;
@@ -3146,13 +3135,13 @@ sub installed_version_ib_stack_dev()
 	}
 }
 
-# only called if available_ib_stack_dev is true
-sub media_version_ib_stack_dev()
+# only called if available_opa_stack_dev is true
+sub media_version_opa_stack_dev()
 {
 	return media_version_ofed();
 }
 
-sub build_ib_stack_dev($$$$)
+sub build_opa_stack_dev($$$$)
 {
 	my $osver = shift();
 	my $debug = shift();	# enable extra debug of build itself
@@ -3161,48 +3150,48 @@ sub build_ib_stack_dev($$$$)
 	return 0;	# success
 }
 
-sub need_reinstall_ib_stack_dev($$)
+sub need_reinstall_opa_stack_dev($$)
 {
 	my $install_list = shift();	# total that will be installed when done
 	my $installing_list = shift();	# what items are being installed/reinstalled
 
-	return (need_reinstall_ofed_comp('ib_stack_dev', $install_list, $installing_list));
+	return (need_reinstall_ofed_comp('opa_stack_dev', $install_list, $installing_list));
 }
 
-sub preinstall_ib_stack_dev($$)
+sub preinstall_opa_stack_dev($$)
 {
 	my $install_list = shift();	# total that will be installed when done
 	my $installing_list = shift();	# what items are being installed/reinstalled
 
-	return preinstall_ofed("ib_stack_dev", $install_list, $installing_list);
+	return preinstall_ofed("opa_stack_dev", $install_list, $installing_list);
 }
 
-sub install_ib_stack_dev($$)
+sub install_opa_stack_dev($$)
 {
 	my $install_list = shift();	# total that will be installed when done
 	my $installing_list = shift();	# what items are being installed/reinstalled
 
-	print_install_banner_ofed_comp('ib_stack_dev');
-	install_ofed_comp('ib_stack_dev', $install_list);
+	print_install_banner_ofed_comp('opa_stack_dev');
+	install_ofed_comp('opa_stack_dev', $install_list);
 
-	$ComponentWasInstalled{'ib_stack_dev'}=1;
+	$ComponentWasInstalled{'opa_stack_dev'}=1;
 }
 
-sub postinstall_ib_stack_dev($$)
+sub postinstall_opa_stack_dev($$)
 {
 	my $install_list = shift();	# total that will be installed when done
 	my $installing_list = shift();	# what items are being installed/reinstalled
-	#ofed_restore_autostart('ib_stack_dev');
+	#ofed_restore_autostart('opa_stack_dev');
 }
 
-sub uninstall_ib_stack_dev($$)
+sub uninstall_opa_stack_dev($$)
 {
 	my $install_list = shift();	# total that will be left installed when done
 	my $uninstalling_list = shift();	# what items are being uninstalled
 
-	print_uninstall_banner_ofed_comp('ib_stack_dev');
-	uninstall_ofed_comp('ib_stack_dev', $install_list, $uninstalling_list, 'verbose');
-	$ComponentWasInstalled{'ib_stack_dev'}=0;
+	print_uninstall_banner_ofed_comp('opa_stack_dev');
+	uninstall_ofed_comp('opa_stack_dev', $install_list, $uninstalling_list, 'verbose');
+	$ComponentWasInstalled{'opa_stack_dev'}=0;
 	if (installed_ibdev) {
 		print_separator;
 		uninstall_ibdev("", " ibdev ");

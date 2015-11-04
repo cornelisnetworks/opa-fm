@@ -123,7 +123,7 @@ ifeq "$(BUILD_TARGET_OS)" "VXWORKS"
 LOCALDEPLIBS = vxworks mai cs if3 if3sa pm sm sa config fe net 
 endif
 
-LOCAL_INCLUDE_DIRS = $(TL_DIR)/Topology
+LOCAL_INCLUDE_DIRS = $(TL_DIR)/Topology $(TL_DIR)/IbPrint
 
 # Include Make Rules definitions and rules
 include $(PROJ_SM_DIR)/Makerules.module

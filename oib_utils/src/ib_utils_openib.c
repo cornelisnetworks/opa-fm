@@ -72,9 +72,9 @@ int oib_get_hfiNum (IN char * hfiName)
    int caCount = 0;
 
    // get ca count and names
-   if ((caCount  = umad_get_cas_names((void *)ca_names, MAX_NUM_CAS)) <= 0)
+   if ((caCount  = oib_get_hfi_names((void *)ca_names, MAX_NUM_CAS)) <= 0)
    {
-      OUTPUT_ERROR( "No ca names found, nothing to do.\n" );
+      OUTPUT_ERROR( "No hfi names found, nothing to do.\n" );
         return -1;
    }
 
@@ -122,10 +122,10 @@ FSTATUS oib_get_caguids(OUT uint32 *pCaCount, OUT uint64 **pCaGuidArray)
    *pCaCount = 0;
 
    // get ca count and names
-   c = umad_get_cas_names((void *)ca_names, MAX_NUM_CAS);
+   c = oib_get_hfi_names((void *)ca_names, MAX_NUM_CAS);
    if (c <= 0)
    {
-      OUTPUT_ERROR( "No ca names found, no GUID to be found.\n" );
+      OUTPUT_ERROR( "No hfi names found, no GUID to be found.\n" );
       // _DBG_LEAVE_FUNC();
       *pCaCount = 0;
       return FNOT_FOUND;
@@ -224,8 +224,8 @@ FSTATUS oib_get_hfi_from_portguid(IN uint64_t portGuid,
    *pPortState = PortStateNop;
 
    // get ca count and names
-   if ((caCount  = umad_get_cas_names((void *)ca_names, MAX_NUM_CAS)) <= 0) {
-      OUTPUT_ERROR( "No ca names found, no data to be found.\n");
+   if ((caCount  = oib_get_hfi_names((void *)ca_names, MAX_NUM_CAS)) <= 0) {
+      OUTPUT_ERROR( "No hfi names found, no data to be found.\n");
         return FERROR;
    }
 
@@ -351,16 +351,16 @@ FSTATUS oib_get_portguid(
     if (pPortCount) *pPortCount = 0;
 
     // get ca count and names
-    OUTPUT_INFO( "oib_get_portguid calling umad_get_cas_names()... \n" );
-    if ((caCount  = umad_get_cas_names((void *)ca_names, MAX_NUM_CAS)) <= 0)
+    OUTPUT_INFO( "oib_get_portguid calling oib_get_hfi_names()... \n" );
+    if ((caCount  = oib_get_hfi_names((void *)ca_names, MAX_NUM_CAS)) <= 0)
     {
-       OUTPUT_ERROR( "No ca names found, no port GUID to find.\n" );
+       OUTPUT_ERROR( "No hfi names found, no port GUID to find.\n" );
        return FNOT_FOUND;
     }
-    OUTPUT_INFO( "returned umad_get_cas_names (%s,)...caCount=%u \n", ca_names[0], caCount);
+    OUTPUT_INFO( "returned oib_get_hfi_names (%s,)...caCount=%u \n", ca_names[0], caCount);
 
     if (caCount > MAX_NUM_CAS) {
-        OUTPUT_ERROR ("OFED'S umad_get_cas_names returned more CA's than max allowed."
+        OUTPUT_ERROR ("OFED'S oib_get_hfi_names returned more CA's than max allowed."
                        "Cas:%d, Max:%d\n",caCount, MAX_NUM_CAS);
     }
 
@@ -582,9 +582,9 @@ FSTATUS oib_query_ca_by_guid_alloc(IN  EUI64 CaGuid,OUT IB_CA_ATTRIBUTES *CaAttr
    IB_PORT_ATTRIBUTES *cur, *prev;
 
    // get ca count and names
-   if ((count  = umad_get_cas_names((void *)ca_names, MAX_NUM_CAS)) < 0)
+   if ((count  = oib_get_hfi_names((void *)ca_names, MAX_NUM_CAS)) < 0)
    {
-      OUTPUT_ERROR( "No ca names found, nothing to allocate.\n" );
+      OUTPUT_ERROR( "No hfi names found, nothing to allocate.\n" );
       return FNOT_FOUND;
    }
 
@@ -675,9 +675,9 @@ FSTATUS oib_query_ca_by_guid(IN EUI64 CaGuid, OUT IB_CA_ATTRIBUTES *CaAttributes
    IB_PORT_ATTRIBUTES *cur, *prev;
 
    // get ca count and names
-   if ((count  = umad_get_cas_names((void *)ca_names, MAX_NUM_CAS)) < 0)
+   if ((count  = oib_get_hfi_names((void *)ca_names, MAX_NUM_CAS)) < 0)
    {
-      OUTPUT_ERROR( "No ca names found, no attributes to return.\n" );
+      OUTPUT_ERROR( "No hfi names found, no attributes to return.\n" );
       return FNOT_FOUND;
    }
 

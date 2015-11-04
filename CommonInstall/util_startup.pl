@@ -85,7 +85,7 @@ sub IsAutostart($)
 {
 	my($WhichStartup) = shift();
 
-	if($SYSTEMCTL_EXEC eq 0 && $WhichStartup eq "opafm")
+	if($SYSTEMCTL_EXEC eq 0 && ($WhichStartup eq "opafm" || $WhichStartup eq "opa"))
 	{
 		my($isEnabled) = `systemctl is-enabled $WhichStartup 2>/dev/null`;
 		chomp($isEnabled);
@@ -214,7 +214,7 @@ sub stop_utility($$$)
 		{
 			if (-e "$INIT_DIR/$InitScript" )
 			{
-				if($SYSTEMCTL_EXEC eq 0 && $InitScript eq "opafm")
+				if($SYSTEMCTL_EXEC eq 0 && ($InitScript eq "opafm" || $InitScript eq "opa"))
 				{
 					system "systemctl stop $InitScript >/dev/null 2>&1";
 				} else {
@@ -259,7 +259,7 @@ sub start_utility($$$$)
 			{
 				if (-e "$INIT_DIR/$InitScript" )
 				{
-					if($SYSTEMCTL_EXEC eq 0 && $InitScript eq "opafm")
+					if($SYSTEMCTL_EXEC eq 0 && ($InitScript eq "opafm" || $InitScript eq "opa"))
 					{
 						system "systemctl restart $InitScript >/dev/null 2>&1";
 					} else {
@@ -274,7 +274,7 @@ sub start_utility($$$$)
 			{
 				if (-e "$INIT_DIR/$InitScript" )
 				{
-					if($SYSTEMCTL_EXEC eq 0 && $InitScript eq "opafm")
+					if($SYSTEMCTL_EXEC eq 0 && ($InitScript eq "opafm" || $InitScript eq "opa"))
 					{
 						system "systemctl start $InitScript >/dev/null 2>&1";
 					} else {

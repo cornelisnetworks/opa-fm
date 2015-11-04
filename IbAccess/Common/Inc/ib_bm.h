@@ -76,9 +76,9 @@ extern "C" {
 #define	BM_ATTRIB_ID_OEM					0x002f	/* 0x0000_0000-0x0000_0001*/
 
     /* Baseboard Management Vendor ID */
-#define BM_OEM_QLOGIC_VENDOR_ID_BYTE_0      0x00
-#define BM_OEM_QLOGIC_VENDOR_ID_BYTE_1      0x06
-#define BM_OEM_QLOGIC_VENDOR_ID_BYTE_2      0x6A
+#define BM_OEM_TRUESCALE_VENDOR_ID_BYTE_0      0x00
+#define BM_OEM_TRUESCALE_VENDOR_ID_BYTE_1      0x06
+#define BM_OEM_TRUESCALE_VENDOR_ID_BYTE_2      0x6A
 
     /* Definitions moved to ib_mad.h header file */
 /*#define BM_ATTRIB_MOD_REQUEST		        0x0000 */
@@ -196,34 +196,34 @@ typedef enum _BM_DEV_ID {
 	BM_DEV_BM			= 0xfe
 } BM_DEV_ID;
 
-typedef enum _BM_OEM_QLOGIC_METHOD {
-	BM_OEM_QLOGIC_METHOD_GET = 0x0001,
-    BM_OEM_QLOGIC_METHOD_SET = 0x0002
-} BM_OEM_QLOGIC_METHOD;
+typedef enum _BM_OEM_TRUESCALE_METHOD {
+	BM_OEM_TRUESCALE_METHOD_GET = 0x0001,
+    BM_OEM_TRUESCALE_METHOD_SET = 0x0002
+} BM_OEM_TRUESCALE_METHOD;
 
-typedef enum _BM_OEM_QLOGIC_ATTRIBUTE {
-	BM_OEM_QLOGIC_ATTR_FT_STAT         = 0x0001,
-	BM_OEM_QLOGIC_ATTR_PS_STAT         = 0x0002,
-	BM_OEM_QLOGIC_ATTR_READ_VPD        = 0x0003,
-	BM_OEM_QLOGIC_ATTR_SLOT_STAT       = 0x0004,
-    BM_OEM_QLOGIC_ATTR_CHASSIS_IP      = 0x0005,
-	BM_OEM_QLOGIC_ATTR_EXT_SLOT_STAT   = 0x0006
-} BM_OEM_QLOGIC_ATTRIBUTE;
+typedef enum _BM_OEM_TRUESCALE_ATTRIBUTE {
+	BM_OEM_TRUESCALE_ATTR_FT_STAT         = 0x0001,
+	BM_OEM_TRUESCALE_ATTR_PS_STAT         = 0x0002,
+	BM_OEM_TRUESCALE_ATTR_READ_VPD        = 0x0003,
+	BM_OEM_TRUESCALE_ATTR_SLOT_STAT       = 0x0004,
+    BM_OEM_TRUESCALE_ATTR_CHASSIS_IP      = 0x0005,
+	BM_OEM_TRUESCALE_ATTR_EXT_SLOT_STAT   = 0x0006
+} BM_OEM_TRUESCALE_ATTRIBUTE;
 
-typedef struct _BM_OEM_QLOGIC_CMD {
+typedef struct _BM_OEM_TRUESCALE_CMD {
 	uint8_t	  vendorId[3];  /* Vendor ID */
 	uint8_t	  method;		/* Get/Set method identifier */
 	uint16_t  attrId;	    /* Attribute identifier */
-} BM_OEM_QLOGIC_CMD;
+} BM_OEM_TRUESCALE_CMD;
 
 /*
  * BM OEM chassis IP address structure
  */
 #define BM_OEM_CHASSIS_IP_LEN   46      // INET6_ADDRSTRLEN
 
-typedef	struct _BM_OEM_QLOGIC_CHASSIS_IP {
+typedef	struct _BM_OEM_TRUESCALE_CHASSIS_IP {
 	uint8_t chassisIP[BM_OEM_CHASSIS_IP_LEN];
-} BM_OEM_QLOGIC_CHASSIS_IP;
+} BM_OEM_TRUESCALE_CHASSIS_IP;
 
 
 

@@ -37,8 +37,8 @@ mkdir obj
 cd obj
 echo "Packaging $1..."
 tar xvfz ../$1
-rm -rf */bin/fabric_info */bin/opascpall */bin/opauploadall */bin/opadownloadall \
+rm -rf */bin/opafabricinfo */bin/opascpall */bin/opauploadall */bin/opadownloadall \
 	*/bin/opasetupssh */bin/opapingall */bin/opacmdall */bin/opacaptureall \
-	*/bin/showallports */bin/opatest */tools
+	*/bin/opashowallports */bin/opatest */tools
 tar cvfz ../$1 InfiniServ*
 rm -rf obj

@@ -202,7 +202,7 @@ sub copy_arlib_file($$)
 sub copy_systool_file($$)
 {
 	# Administrator execution only
-	copy_file("$_[0]", "$_[1]", "$OWNER", "$GROUP", "ugo=r,ug=rx,u=rwx");
+	copy_file("$_[0]", "$_[1]", "$OWNER", "$GROUP", "ug=rx,u=rwx");
 }
 
 sub copy_all_systool_files($$;$)

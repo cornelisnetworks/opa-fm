@@ -124,10 +124,11 @@ sub install_oftools
 	check_dir("/opt/opa/samples");
 
 	my $rpmfile = rpm_resolve("$srcdir/RPMS/*/", "any", "opa-basic-tools");
-	rpm_run_install($rpmfile, "any", "-U");
+	rpm_run_install($rpmfile, "any", " -U ");
 
 	$rpmfile = rpm_resolve("$srcdir/RPMS/*/", "any", "opa-address-resolution");
-	rpm_run_install($rpmfile, "any", "-U");
+	rpm_run_install($rpmfile, "any", " -U ");
+	check_rpm_config_file("/etc/rdma/dsap.conf");
 
 	# we copy version file here for both fastfabric and oftools
 	copy_data_file("$srcdir/version", "$BASE_DIR/version_ff");

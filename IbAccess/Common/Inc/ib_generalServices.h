@@ -60,17 +60,17 @@ extern "C" {
  * however for 1.1, classes using RMPP have a smaller HDRSIZE and more DATA
  */
 #define		IBA_GS_HDRSIZE			64 /* common + class specific header */
-#define		IBA_GS_DATASIZE			(MAD_BLOCK_SIZE - IBA_GS_HDRSIZE) /* what's left for class payload */
+#define		IBA_GS_DATASIZE			(IB_MAD_BLOCK_SIZE - IBA_GS_HDRSIZE) /* what's left for class payload */
 
 #define		STL_GS_HDRSIZE			24 /* common header */
-#define		STL_IBA_GS_DATASIZE		(MAD_BLOCK_SIZE - IBA_GS_HDRSIZE)
-#define		STL_GS_DATASIZE			(MAD_BLOCK_SIZE - STL_GS_HDRSIZE)
+#define		STL_IBA_GS_DATASIZE		(STL_MAD_BLOCK_SIZE - IBA_GS_HDRSIZE)
+#define		STL_GS_DATASIZE			(STL_MAD_BLOCK_SIZE - STL_GS_HDRSIZE)
 										/* can include SAR header */
 /* IBA_RMPP_GS* is computed below, these are here as a reminder for users */
 /*#define	IBA_RMPP_GS_DATASIZE	220*//* what's left for class payload */
 /*#define	IBA_RMPP_GS_HDRSIZE		36 *//* common + RMPP header */
 #define		IBA_SUBN_ADM_HDRSIZE	56 /* common + class specific header */
-#define		IBA_SUBN_ADM_DATASIZE	(MAD_BLOCK_SIZE - IBA_SUBN_ADM_HDRSIZE) /* what's left for class payload */
+#define		IBA_SUBN_ADM_DATASIZE	(IB_MAD_BLOCK_SIZE - IBA_SUBN_ADM_HDRSIZE) /* what's left for class payload */
 
 #define		IB_SUBN_ADM_DATASIZE (IB_MAD_BLOCK_SIZE - (sizeof(MAD_COMMON) + sizeof(RMPP_HEADER) + sizeof(SA_HDR)))
 #define		STL_SUBN_ADM_DATASIZE (STL_MAD_BLOCK_SIZE - (sizeof(MAD_COMMON) + sizeof(RMPP_HEADER) + sizeof(SA_HDR)))
@@ -206,6 +206,16 @@ typedef struct _SA_MAD_HDR {
 	RMPP_HEADER	RmppHdr;		/* RMPP header */
 	SA_HDR		SaHdr;			/* SA class specific header */
 } PACK_SUFFIX SA_MAD_HDR;
+
+typedef struct _IB_SA_MAD {
+	RMPP_HEADER	RmppHdr;		/* RMPP header */
+	SA_HDR		SaHdr;			/* SA class specific header */
+#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
+	uint8		Data[STL_SUBN_ADM_DATASIZE];
+#else
+	uint8		Data[IB_SUBN_ADM_DATASIZE];
+#endif
+} PACK_SUFFIX IB_SA_MAD;
 
 typedef struct _SA_MAD {
 	MAD_COMMON	common;	/* Generic MAD Header */
@@ -361,6 +371,16 @@ BSWAPCOPY_SA_HDR(SA_MAD_HDR *Src, SA_MAD_HDR *Dest)
     memcpy(Dest, Src, sizeof(SA_MAD_HDR));
     BSWAP_SA_HDR(&Dest->SaHdr);
     BSWAP_RMPP_HEADER(&Dest->RmppHdr);
+}
+
+static __inline
+void
+BSWAPCOPY_IB_SA_MAD(IB_SA_MAD *src, IB_SA_MAD *dst, size_t len) 
+{
+    memcpy(dst, src, sizeof(SA_MAD_HDR));
+    BSWAP_SA_HDR(&dst->SaHdr);
+    BSWAP_RMPP_HEADER(&dst->RmppHdr);
+	memcpy(&dst->Data, &src->Data, len);
 }
 
 static __inline

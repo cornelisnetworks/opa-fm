@@ -97,7 +97,6 @@ void BSWAP_OOB_PACKET(OOBPacket *packet)
 {
     BSWAP_OOB_HEADER(&(packet->Header));
     BSWAP_MAD_HEADER((MAD*) &(packet->MadData));
-    BSWAP_RMPP_HEADER(&(packet->MadData.RmppHdr));
 }
 
 /**************************************************************************

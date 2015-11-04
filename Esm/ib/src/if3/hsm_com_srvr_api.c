@@ -27,6 +27,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
  * ** END_ICS_COPYRIGHT2   ****************************************/
 
+#ifdef __LINUX__
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -207,3 +208,4 @@ hcom_server_stop
 
 	return HSM_COM_OK;
 }
+#endif

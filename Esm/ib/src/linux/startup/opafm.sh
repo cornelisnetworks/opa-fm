@@ -91,7 +91,8 @@ my_rc_status()   { my_rc_status_all=$(($my_rc_status_all || $?)); }
 
 temp=$(mktemp "/tmp/ifsfmXXXXX")
 
-trap "rm -rf $tempdir; exit 1" 1 2 3 9 1
+trap "rm -f $temp; exit 1" 1 2 3 9
+trap "rm -f $temp" EXIT
 
 CONFIG_DIR=/etc/sysconfig
 CONFIG_FILE=$CONFIG_DIR/opafm.xml	# opafm.info can override

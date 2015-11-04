@@ -53,10 +53,11 @@ $FirstIPoIBInterface=0; # first device is ib0
 	# Names of supported install components
 	# must be listed in depdency order such that prereqs appear 1st
 # TBD ofed_vnic
-@Components = ( "ib_stack", "ibacm", "intel_hfi", "mpi_selector",
+@Components = ( "opa_stack", "ibacm", "intel_hfi", "mpi_selector",
 		"delta_ipoib", 
-		"mvapich2", "openmpi", "gasnet", "openshmem",
-		"ib_stack_dev",
+		"opa_stack_dev",
+ 		"gasnet", "openshmem",
+		"mvapich2", "openmpi",
 		"delta_mpisrc", 
 		"delta_debug", );
 # delta_debug must be last
@@ -126,7 +127,7 @@ $WrapperComponent = "opa_config_delta";
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
-	"ib_stack" =>	{ Name => "OFED IB Stack",
+	"opa_stack" =>	{ Name => "OFED OPA Stack",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "updates",
 					  PreReq => "", CoReq => "",
@@ -134,31 +135,31 @@ $WrapperComponent = "opa_config_delta";
 					  Hidden => 0, Disabled => 0,
 					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
 					  StartPreReq => "",
-					  StartComponents => [ "ib_stack" ],
+					  StartComponents => [ "opa_stack" ],
 					},
 	"ibacm" =>		{ Name => "OFED IBACM",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "",
-					  PreReq => " ib_stack ", CoReq => "",
+					  PreReq => " opa_stack ", CoReq => "",
 					  Hidden => 0, Disabled => 0,
 					  HasStart => 1, HasFirmware => 0, DefaultStart => 0,
-					  StartPreReq => " ib_stack ",
+					  StartPreReq => " opa_stack ",
 					  StartComponents => [ "ibacm" ],
 					},
 	"intel_hfi" =>	{ Name => "Intel HFI Components",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "updates",
-					  PreReq => " ib_stack ", CoReq => "",
+					  PreReq => " opa_stack ", CoReq => "",
  						# TBD - HasFirmware - FW update
 					  Hidden => 0, Disabled => 0,
 					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
-					  StartPreReq => " ib_stack ",
+					  StartPreReq => " opa_stack ",
 					  StartComponents => [ "intel_hfi" ],
 					},
 	"mpi_selector" =>	{ Name => "MPI selector",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "",
-					  PreReq => " ib_stack ", CoReq => "",
+					  PreReq => " opa_stack ", CoReq => "",
 					  Hidden => 1, Disabled => 0,
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
@@ -167,25 +168,25 @@ $WrapperComponent = "opa_config_delta";
 	"delta_ipoib" =>	{ Name => "OFED IP over IB",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "updates",
-					  PreReq => " ib_stack ", CoReq => "",
+					  PreReq => " opa_stack ", CoReq => "",
 					  Hidden => 0, Disabled => 0,
 					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
-					  StartPreReq => " ib_stack ",
+					  StartPreReq => " opa_stack ",
 					  StartComponents => [ "delta_ipoib" ],
 					},
-	"mvapich2" =>	{ Name => "MVAPICH2 (verbs, gcc)",
+	"mvapich2" =>	{ Name => "MVAPICH2 (verbs,gcc)",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "",
-					  PreReq => " intel_hfi ib_stack mpi_selector ", CoReq => "",
+					  PreReq => " intel_hfi opa_stack mpi_selector ", CoReq => "",
 					  Hidden => 0, Disabled => 0,
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
-	"openmpi" =>	{ Name => "OpenMPI (verbs & hfi, gcc)",
+	"openmpi" =>	{ Name => "OpenMPI (v&h,gcc)",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "",
-					  PreReq => " intel_hfi ib_stack mpi_selector ", CoReq => "",
+					  PreReq => " intel_hfi opa_stack mpi_selector ", CoReq => "",
 					  Hidden => 0, Disabled => 0,
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
@@ -194,7 +195,7 @@ $WrapperComponent = "opa_config_delta";
 	"gasnet" =>	{ Name => "Gasnet HFI (gcc)",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "",
-					  PreReq => " intel_hfi ib_stack ", CoReq => "",
+					  PreReq => " intel_hfi opa_stack ", CoReq => "",
 					  Hidden => 0, Disabled => 0,
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
@@ -203,16 +204,16 @@ $WrapperComponent = "opa_config_delta";
 	"openshmem" =>	{ Name => "OpenSHMEM HFI (gcc)",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "",
-					  PreReq => " intel_hfi ib_stack gasnet", CoReq => "",
+					  PreReq => " intel_hfi opa_stack gasnet", CoReq => "",
 					  Hidden => 0, Disabled => 0,
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
-	"ib_stack_dev" => { Name => "OFED IB Development",
+	"opa_stack_dev" => { Name => "OFED IB Development",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "",
-					  PreReq => " ib_stack ", CoReq => "",
+					  PreReq => " opa_stack ", CoReq => "",
 					  Hidden => 0, Disabled => 0,
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
@@ -221,7 +222,7 @@ $WrapperComponent = "opa_config_delta";
 	"delta_mpisrc" =>{ Name => "MPI Source",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "",
-					  PreReq => " ib_stack ib_stack_dev mpi_selector ", CoReq => "",
+					  PreReq => " opa_stack opa_stack_dev mpi_selector ", CoReq => "",
 					  Hidden => 0, Disabled => 0,
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
@@ -230,7 +231,7 @@ $WrapperComponent = "opa_config_delta";
 	"delta_debug" =>{ Name => "OFED Debug Info",
 					  DefaultInstall => $State_DoNotInstall,
 					  SrcDir => ".", DriverSubdir => "",
-					  PreReq => " ib_stack ", CoReq => "",
+					  PreReq => " opa_stack ", CoReq => "",
 					  Hidden => 0, Disabled => 0,
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
@@ -239,15 +240,15 @@ $WrapperComponent = "opa_config_delta";
 	);
 	# translate from startup script name to component/subcomponent name
 %StartupComponent = (
-				"opa" => "ib_stack",
+				"opa" => "opa_stack",
 				"ipoib" => "ipoib",
 			);
 	# has component been loaded since last configured autostart
 %ComponentWasInstalled = (
-				"ib_stack" => 0,
+				"opa_stack" => 0,
 				"intel_hfi" => 0,
 				"mpi_selector" => 0,
-				"ib_stack_dev" => 0,
+				"opa_stack_dev" => 0,
 				"delta_ipoib" => 0,
 				"mvapich2" => 0,
 				"openmpi" => 0,
@@ -282,7 +283,7 @@ sub install_opa_config_delta
 	copy_systool_file("$srcdir/INSTALL", "/sbin/opa_config_delta");
 	# no need for a version file, ofed delta will have its own
 
-	# if QLogic OFED is not installed, create opa_config too
+	# if IFS OFED is not installed, create opa_config too
 	if ( ! -e "$BASE_DIR/version_wrapper" ) {
 		copy_systool_file("$srcdir/INSTALL", "/sbin/opaconfig");
 	}
@@ -297,7 +298,7 @@ sub uninstall_opa_config_delta
 
 	NormalPrint("Uninstalling $ComponentInfo{'opa_config_delta'}{'Name'}...\n");
 	system("rm -rf $ROOT/sbin/opa_config_delta");
-	# if QLogic OFED is not installed, remove opaconfig too
+	# if IFS OFED is not installed, remove opaconfig too
 	if ( ! -e "$BASE_DIR/version_wrapper" ) {
 		system("rm -rf $ROOT/sbin/opaconfig");
 	}
@@ -350,7 +351,7 @@ sub Usage
 		#printf STDERR "               or\n";
 		#printf STDERR "Usage: $0 [-r root] [-v|-vv] [-a|-n|-U|-u|-s|-i comp|-e comp] [-E comp] [-D comp] [-l] [--user_configure_options 'options'] [--kernel_configure_options 'options'] [--prefix dir] [--without-depcheck] [--rebuild] [--force] [--answer keyword=value] [--debug]\n";
 		#printf STDERR "Usage: $0 [-r root] [-v|-vv] [-a|-n|-U|-u|-s|-i comp|-e comp|-E comp|-D comp] [--user_configure_options 'options'] [--kernel_configure_options 'options'] [--prefix dir] [--without-depcheck] [--rebuild] [--force] [--answer=value]\n";
-		printf STDERR "Usage: $0 [-r root] [-v|-vv] [-a|-n|-U|-u|-s|-i comp|-e comp|-E comp|-D comp] [--user_configure_options 'options'] [--kernel_configure_options 'options'] [--prefix dir] [--without-depcheck] [--rebuild] [--force] [--answer=value]\n";
+		printf STDERR "Usage: $0 [-r root] [-v|-vv] [-a|-n|-U|-u|-s|-O|-N|-i comp|-e comp|-E comp|-D comp] [--user_configure_options 'options'] [--kernel_configure_options 'options'] [--prefix dir] [--without-depcheck] [--rebuild] [--force] [--answer=value]\n";
 	} else {
 		printf STDERR "Usage: $0 [-r root] [-v|-vv] [-u|-s|-e comp] [-E comp] [-D comp] [--answer=value]\n";
 		printf STDERR "          [--user_queries|--no_user_queries]\n";
@@ -378,6 +379,8 @@ sub Usage
 		printf STDERR "       --rebuild - force OFED rebuild\n";
 		printf STDERR "       --force - force install even if distos don't match\n";
 		printf STDERR "                 Use of this option can result in undefined behaviors\n";
+		printf STDERR "       -O - Keep current modified rpm config file\n";
+		printf STDERR "       -N - Use new default rpm config file\n";
 		# --debug, -B, -t and -d options are purposely not documented
 		#printf STDERR "       --debug - build a debug version of modules\n";
 		#printf STDERR "       -B osver - run build for all components targetting kernel osver\n";
@@ -429,8 +432,10 @@ sub Usage
 sub translate_comp
 {
 	my($arg)=$_[0];
-	if ("$arg" eq "ibdev")			{ return ( "ib_stack_dev" );
-	} elsif ("$arg" eq "mpi")		{ return ( "mvapich2", "openmpi" );
+	if ("$arg" eq "ibdev")			{ return ( "opa_stack_dev" );
+	} elsif ("$arg" eq "mpi")		{ return ( "mvapich2", "openmpi", 
+		"mvapich2_gcc_hfi", "openmpi_gcc_hfi", "mvapich2_intel_hfi", 
+		"openmpi_intel_hfi", "mvapich2_pgi_hfi", "openmpi_pgi_hfi" );
 	} elsif ("$arg" eq "mpisrc")	{ return ( "delta_mpisrc" );
 		# no ibaccess argument equivalent for:  ofed_srpt, ofed_iser,
 		#	openmpi, ofed_iwarp, opensm, ofed_nfsrdma, delta_debug
@@ -691,6 +696,12 @@ sub process_args
 				} elsif ( "$arg" eq "-U" ) {
 					$Default_Upgrade=1;
 					$Default_SameAutostart=1;
+				} elsif ("$arg" eq "-O") {
+					$Default_RpmConfigKeepOld=1;
+					$Default_RpmConfigUseNew=0;
+				} elsif ("$arg" eq "-N") {
+					$Default_RpmConfigKeepOld=0;
+					$Default_RpmConfigUseNew=1;
 				} else {
 					printf STDERR "Invalid option: $arg\n";
 					Usage;
@@ -727,8 +738,8 @@ sub process_args
 	}
 	if ( $patch_ofed) {
 		NormalPrint("Patching OFED...\n");
-		LogPrint("Executing: cd $ComponentInfo{'ib_stack'}{'SrcDir'}; ./patch_ofed3\n");
-		system("cd $ComponentInfo{'ib_stack'}{'SrcDir'}; ./patch_ofed3");
+		LogPrint("Executing: cd $ComponentInfo{'opa_stack'}{'SrcDir'}; ./patch_ofed3\n");
+		system("cd $ComponentInfo{'opa_stack'}{'SrcDir'}; ./patch_ofed3");
 		HitKeyCont;
 	}
 }
@@ -842,10 +853,10 @@ foreach my $INSTALL_CHOICE ( @INSTALL_CHOICES )
 {
 	if ($allow_install && $INSTALL_CHOICE == 1) 
 	{
-		NormalPrint ("Alert: you are going to install/uninstall only some components of the OFED IB stack.\n");
-		NormalPrint ("       Due to rpm dependency, this operation may lead to rpm database inconsistency\n");
-		NormalPrint ("       in your system. Alternatively, you can unload your OFED IB stack and then \n");
-		NormalPrint ("       load individual rpms one by one. \n");
+		NormalPrint ("Alert: This may install/uninstall only some components of the OFED OPA stack.\n");
+		NormalPrint ("       Due to rpm dependency, this operation may lead to rpm database\n");
+		NormalPrint ("       inconsistency in your system. Alternatively, you can uninstall your\n");
+		NormalPrint ("       OFED OPA stack and then install individual rpms one by one. \n");
 		my $choice = GetChoice("Do you still wish to proceed(y/n)?", "y", ("y", "n"));
 		if ("$choice" eq "n") {
 			goto RESTART;

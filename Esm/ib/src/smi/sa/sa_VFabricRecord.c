@@ -50,6 +50,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sm_counters.h"
 #include "sm_l.h"
 #include "sa_l.h"
+#include "stl_print.h"
 
 Status_t sa_VFabric_GetTable(Mai_t *, uint32_t *);
 
@@ -137,6 +138,8 @@ sa_VFabric_Set(uint8_t *vfrp, uint8_t vf, STL_SA_MAD *samad, uint64_t serviceId,
 	vfRecord.bandwidthPercent = VirtualFabrics->v_fabric[vf].percent_bandwidth;
 	vfRecord.priority = VirtualFabrics->v_fabric[vf].priority;
 	vfRecord.routingSLs = VirtualFabrics->v_fabric[vf].routing_sls;
+	vfRecord.preemptionRank = VirtualFabrics->v_fabric[vf].preempt_rank;
+	vfRecord.hoqLife = VirtualFabrics->v_fabric[vf].hoqlife_vf;
 	vfRecord.optionFlags = 0;
 
 	if (VirtualFabrics->v_fabric[vf].security) {
@@ -255,7 +258,6 @@ sa_VFabric_GetTable(Mai_t *maip, uint32_t *records) {
 		}
 
 		if (samad.header.mask & STL_VFINFO_REC_COMP_MGID) {
-			// FIXME: EEKAHN - Possible endian problem
 			if (VSTATUS_OK != smVFValidateVfMGid(vf, (uint64_t*)vFabricRecord.MGID.Raw) ) continue;
 		}
 
@@ -337,4 +339,29 @@ reply_vFabric:
 
 	IB_EXIT("sa_VFabric_GetTable", status);
 	return(status);
+}
+
+void showStlVFabrics(void) {
+	STL_VFINFO_RECORD vFabricRecord;
+	int vf;
+	IB_GID mGid = (IB_GID){.Raw = {0}}; // only reported if in samad.header.mask
+    PrintDest_t dest; 
+	VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
+
+	if (!VirtualFabrics)
+        return;
+
+	memset(&vFabricRecord, 0, sizeof(vFabricRecord));
+    PrintDestInitFile(&dest, stdout);
+     
+	(void)vs_rdlock(&old_topology_lock);
+
+	for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
+		sa_VFabric_Set((uint8_t *)&vFabricRecord, vf, NULL, 0, mGid);
+
+        if (vf) PrintSeparator(&dest);
+        PrintStlVfInfoRecord(&dest, 0, &vFabricRecord);
+	}
+
+	(void)vs_rwunlock(&old_topology_lock);
 }

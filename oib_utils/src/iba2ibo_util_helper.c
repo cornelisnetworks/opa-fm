@@ -168,13 +168,13 @@ iba_format_get_portguid_error(
 	if (ca) {
 		if (portCount) {
 			if (port) {
-				sprintf(errstr, "Invalid port number: %u, Ca %u only has %u Ports",
+				sprintf(errstr, "Invalid port number: %u, FI %u only has %u Ports",
 						port, ca, portCount);
 			} else {
-				sprintf(errstr, "No Active Ports found on Ca %u", ca);
+				sprintf(errstr, "No Active Ports found on FI %u", ca);
 			}
 		} else {
-			sprintf(errstr,"Invalid CA number: %u, only have %u FIs",
+			sprintf(errstr,"Invalid FI number: %u, only have %u FIs",
 						ca, caCount);
 		}
 	} else {

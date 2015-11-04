@@ -228,7 +228,7 @@ sed -i "s/^\.\/fmbuild.*/\.\/fmbuild -V \%{version}\.\%{release} $args/g" opafm.
 echo "# Adjust the environment variables if necessary" > build.env
 echo "export PRODUCT=${PRODUCT}" >> build.env
 echo "export RELEASE_TAG=${RELEASE_TAG}" >> build.env
-echo "export BUILD_CONFIG=${BUILD_CONFIG}" >> build.env
+echo "export BUILD_CONFIG=\${BUILD_CONFIG:-\"${BUILD_CONFIG}\"}" >> build.env
 echo "export BUILD_WITH_STACK=${BUILD_WITH_STACK}" >> build.env
 
 # differentiate the checkout

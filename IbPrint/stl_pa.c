@@ -117,20 +117,9 @@ void PrintStlPAGroupErrorStats(PrintDest_t *dest, int indent, const STL_PMERRSTA
 	PrintFunc(dest, "%*sUtilization:    %3u.%1u%%\n", indent, "",
 		   pErrStat->errorMaximums.utilizationPct10 / 10,
 		   pErrStat->errorMaximums.utilizationPct10 % 10);
-	PrintFunc(dest, "%*sCongIneffic:    %3u.%1u%%\n", indent, "",
-		   pErrStat->errorMaximums.congInefficiencyPct10 / 10,
-		   pErrStat->errorMaximums.congInefficiencyPct10 % 10);
-	PrintFunc(dest, "%*sBubbleIneffic:  %3u.%1u%%\n", indent, "",
-		   pErrStat->errorMaximums.bubbleInefficiencyPct10 / 10,
-		   pErrStat->errorMaximums.bubbleInefficiencyPct10 % 10);
-	PrintFunc(dest, "%*sWaitIneffic:    %3u.%1u%%\n", indent, "",
-		   pErrStat->errorMaximums.waitInefficiencyPct10 / 10,
-		   pErrStat->errorMaximums.waitInefficiencyPct10 % 10);
-	PrintFunc(dest, "%*sDiscards:       %3u.%1u%%    Congest:   %3u.%1u%%\n", indent, "",
+	PrintFunc(dest, "%*sDiscards:       %3u.%1u%%\n", indent, "",
 		   pErrStat->errorMaximums.discardsPct10 / 10,
-		   pErrStat->errorMaximums.discardsPct10 % 10,
-		   pErrStat->errorMaximums.congestionDiscardsPct10 / 10,
-		   pErrStat->errorMaximums.congestionDiscardsPct10 % 10);
+		   pErrStat->errorMaximums.discardsPct10 % 10);
 
 	return;
 }
@@ -278,6 +267,9 @@ void PrintStlPAPortCounters(PrintDest_t *dest, int indent, const STL_PORT_COUNTE
 	PrintFunc(dest, "%*s    Uncorrectable Err     %10u\n",
 			indent, "",
 		   	pPortCounters->uncorrectableErrors);
+	PrintFunc(dest, "%*s    Num Lanes Down        %10u\n",
+			indent, "",
+			pPortCounters->lq.s.numLanesDown);
 	PrintFunc(dest, "%*s    Link Quality Ind      %10u\n",
 			indent, "",
 		   	pPortCounters->lq.s.linkQualityIndicator);
@@ -371,6 +363,11 @@ void PrintStlPMConfig(PrintDest_t *dest, int indent, const STL_PA_PM_CFG_DATA *p
 	PrintFunc(dest, "%*s                Uncorrectable: %-7u    FM Config Err: %-7u\n",
 				indent, "", pPMConfig->integrityWeights.UncorrectableErrors,
 				pPMConfig->integrityWeights.FMConfigErrors );
+	PrintFunc(dest, "%*s                Link Qual: %-7u        Lnk Wdth Dngd: %-7u\n",
+				indent, "", pPMConfig->integrityWeights.LinkQualityIndicator,
+				pPMConfig->integrityWeights.LinkWidthDowngrade );
+	PrintFunc(dest, "%*s                Excs Bfr Ovrn: %-7u\n", indent, "",
+				pPMConfig->integrityWeights.ExcessiveBufferOverruns);
 	PrintFunc(dest, "%*s Congest Wts:   Tx Wait: %-7u          Cong Discards: %-7u\n",
 				indent, "", pPMConfig->congestionWeights.PortXmitWait,
 				pPMConfig->congestionWeights.SwPortCongestion);
@@ -411,13 +408,13 @@ void PrintStlPAFocusPorts(PrintDest_t *dest, int indent, const char *groupName, 
 		PrintFunc(dest, "%*s   Value:  %16"PRIu64"   nbrValue:  %16"PRIu64"\n",
 				indent, "", pFocusPorts[i].value, pFocusPorts[i].neighborValue);
 		PrintFunc(dest, "%*s   GUID: 0x%016"PRIx64"   nbrGuid: 0x%016"PRIx64"\n",
-				indent, "", pFocusPorts[i].value2, pFocusPorts[i].neighborGuid);
+				indent, "", pFocusPorts[i].nodeGUID, pFocusPorts[i].neighborGuid);
 		PrintFunc(dest, "%*s   Name: %.*s\n", indent, "",
 				  sizeof(pFocusPorts[i].nodeDesc), pFocusPorts[i].nodeDesc);
 		PrintFunc(dest, "%*s   Neighbor Name: %.*s\n", indent, "",
 				  sizeof(pFocusPorts[i].neighborNodeDesc), pFocusPorts[i].neighborNodeDesc);
 	}
-	PrintStlPAImageId(dest, indent, &pFocusPorts[i].imageId);
+	PrintStlPAImageId(dest, indent, &pFocusPorts[0].imageId);
 
 	return;
 }
@@ -494,8 +491,6 @@ void PrintStlPAVFInfo(PrintDest_t *dest, int indent, const STL_PA_VF_INFO_DATA *
 
 	PrintFunc(dest, "%*sVF name: %s\n",
 				indent, "", pVFInfo->vfName);
-	PrintFunc(dest, "%*sVF SID: 0x%x\n",
-				indent, "", pVFInfo->vfSID);
 	if (pVFInfo->minInternalRate != IB_STATIC_RATE_DONTCARE
 				|| pVFInfo->maxInternalRate != IB_STATIC_RATE_DONTCARE)
 		PrintFunc(dest, "%*sNumPorts: %u MinRate: %4s MaxRate: %4s MaxMiBps: %u\n",
@@ -520,14 +515,12 @@ void PrintStlPAVFInfo(PrintDest_t *dest, int indent, const STL_PA_VF_INFO_DATA *
 	return;
 }
 
-void PrintStlPAVFConfig(PrintDest_t *dest, int indent, const char *vfName, const uint64 vfSID, const int numRecords, const STL_PA_VF_CFG_RSP *pVFConfig)
+void PrintStlPAVFConfig(PrintDest_t *dest, int indent, const char *vfName, const int numRecords, const STL_PA_VF_CFG_RSP *pVFConfig)
 {
 	int i;
 
 	PrintFunc(dest, "%*sVF name: %s\n",
 				indent, "", vfName);
-	PrintFunc(dest, "%*sVF SID: 0x%x\n",
-				indent, "", vfSID);
 	PrintFunc(dest, "%*sNumber ports: %u\n",
 				indent, "", numRecords);
 	for (i = 0; i < numRecords; i++) {
@@ -551,8 +544,6 @@ void PrintStlPAVFPortCounters(PrintDest_t *dest, int indent, const STL_PA_VF_POR
 			  (flags & STL_PA_PC_FLAG_UNEXPECTED_CLEAR) ? " (Unexpected Clear)" : "");
 	PrintFunc(dest, "%*sVF name: %s\n",
 				indent, "", pVFPortCounters->vfName);
-	PrintFunc(dest, "%*sVF SID: 0x%x\n",
-				indent, "", pVFPortCounters->vfSID);
 	PrintFunc(dest, "%*sPerformance: Transmit\n", indent, "");
 	PrintFunc(dest, "%*s    Xmit Data             %20"PRIu64" MB (%"PRIu64" Flits)\n",
 			indent, "",
@@ -610,13 +601,12 @@ void PrintStlPAVFPortCounters(PrintDest_t *dest, int indent, const STL_PA_VF_POR
 	return;
 }
 
-void PrintStlPAVFFocusPorts(PrintDest_t *dest, int indent, const char *vfName, const uint64 vfSID, const int numRecords, const uint32 select, const uint32 start, const uint32 range,
+void PrintStlPAVFFocusPorts(PrintDest_t *dest, int indent, const char *vfName, const int numRecords, const uint32 select, const uint32 start, const uint32 range,
 	const STL_PA_VF_FOCUS_PORTS_RSP *pVFFocusPorts)
 {
 	int i;
 
 	PrintFunc(dest, "%*sVF name: %s\n", indent, "", vfName);
-	PrintFunc(dest, "%*sVF SID: 0x%x\n", indent, "", vfSID);
 	PrintFunc(dest, "%*sNumber ports: %u\n", indent, "", numRecords);
 	PrintFunc(dest, "%*sFocus select: 0x%x\n", indent, "", select);
 	PrintFunc(dest, "%*sFocus start:  %u\n", indent, "", start);
@@ -629,14 +619,14 @@ void PrintStlPAVFFocusPorts(PrintDest_t *dest, int indent, const char *vfName, c
 		PrintFunc(dest, "%*s   Value:   %16"PRIu64"   nbrValue:  %16"PRIu64"\n",
 				indent, "", pVFFocusPorts[i].value, pVFFocusPorts[i].neighborValue);
 		PrintFunc(dest, "%*s   GUID:  0x%016"PRIx64"   nbrGuid: 0x%016"PRIx64"\n",
-				indent, "", pVFFocusPorts[i].value2, pVFFocusPorts[i].neighborGuid);
+				indent, "", pVFFocusPorts[i].nodeGUID, pVFFocusPorts[i].neighborGuid);
 		PrintFunc(dest, "%*s   Name: %.*s\n", indent, "",
 				  sizeof(pVFFocusPorts[i].nodeDesc), pVFFocusPorts[i].nodeDesc);
 		PrintFunc(dest, "%*s   Neighbor Name: %.*s\n",
 				indent, "", sizeof(pVFFocusPorts[i].neighborNodeDesc),
 				pVFFocusPorts[i].neighborNodeDesc);
 	}
-	PrintStlPAImageId(dest, indent, &pVFFocusPorts[i].imageId);
+	PrintStlPAImageId(dest, indent, &pVFFocusPorts[0].imageId);
 
 	return;
 }

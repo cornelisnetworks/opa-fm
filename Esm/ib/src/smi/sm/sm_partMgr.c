@@ -192,9 +192,11 @@ sm_set_portPkey(Topology_t *topop, Node_t *nodep, Port_t *portp,
 							// adjust entry; otherwise they have been accounted for 
 							if (pkeyEntry <= STL_DEFAULT_CLIENT_PKEY_IDX) {
 								pkeyEntry += 2;
-                                pkeyEntryCntr += 2;
                             }
+                            // adjust pkey counter to reflect management PKEYs 
+                            pkeyEntryCntr += 2;
 						}
+
 						(void)sm_set_port_stl_mngnt_pkey(nodep, portp, pkey, pkeyTable.PartitionTableBlock, portp->portData->pPKey);
 						continue;
 					}
@@ -274,8 +276,9 @@ sm_set_portPkey(Topology_t *topop, Node_t *nodep, Port_t *portp,
 					// adjust entry; otherwise they have been accounted for 
 					if (pkeyEntry <= STL_DEFAULT_CLIENT_PKEY_IDX) {
 						pkeyEntry += 2;
-                        pkeyEntryCntr += 2;
                     }
+                    // adjust pkey counter to reflect management PKEYs 
+                    pkeyEntryCntr += 2;
 				}
 
 				(void)sm_set_port_stl_mngnt_pkey(nodep, portp, pkey, pkeyTable.PartitionTableBlock, portp->portData->pPKey);
@@ -480,49 +483,48 @@ sm_set_portPkey(Topology_t *topop, Node_t *nodep, Port_t *portp,
 Status_t
 sm_set_local_port_pkey(STL_NODE_INFO *nodeInfop)
 {
-	uint32_t    amod=0;
 	Status_t	status=VSTATUS_OK;
-    STL_PARTITION_TABLE pkeyTable;
-	uint8_t     pkeys, numBlocks=1;
-	uint16_t	block=0;
-	uint8_t		path[64];
+    STL_PARTITION_TABLE pkeyTable = {{{0}}};
+	uint8_t		path[64] = {0};
+	uint8		needsSet = 0;
 
-	memset(&path, 0, sizeof(path));
-	memset(&pkeyTable, 0, sizeof(pkeyTable));
-	pkeyTable.PartitionTableBlock[STL_DEFAULT_APP_PKEY_IDX].AsReg16 = 0;
-	pkeyTable.PartitionTableBlock[STL_DEFAULT_CLIENT_PKEY_IDX].AsReg16 = STL_DEFAULT_CLIENT_PKEY;
-	pkeyTable.PartitionTableBlock[STL_DEFAULT_FM_PKEY_IDX].AsReg16 = STL_DEFAULT_FM_PKEY;
+	status = SM_Get_PKeyTable(fd_topology, 1<<24, path, &pkeyTable, 0);
+	if (status != VSTATUS_OK) {
+		IB_LOG_WARN_FMT(__func__,
+						"Failed to get Partition Table for local node guid "FMT_U64" port index %d",
+						nodeInfop->NodeGUID, sm_config.port);
+		return(status);
+	}
+	if (pkeyTable.PartitionTableBlock[STL_DEFAULT_CLIENT_PKEY_IDX].AsReg16 != STL_DEFAULT_CLIENT_PKEY) {
+		pkeyTable.PartitionTableBlock[STL_DEFAULT_CLIENT_PKEY_IDX].AsReg16 = STL_DEFAULT_CLIENT_PKEY;
+		needsSet = 1;
+	}
+	if (pkeyTable.PartitionTableBlock[STL_DEFAULT_FM_PKEY_IDX].AsReg16 != STL_DEFAULT_FM_PKEY) {
+		pkeyTable.PartitionTableBlock[STL_DEFAULT_FM_PKEY_IDX].AsReg16 = STL_DEFAULT_FM_PKEY;
+		needsSet = 1;
+	}
 
     IB_LOG_INFO_FMT(__func__,
            "Local node ["FMT_U64":%d] partition cap = %d, pkey = 0x%x", 
            nodeInfop->NodeGUID, sm_config.port, nodeInfop->PartitionCap, pkeyTable.PartitionTableBlock[0].AsReg16);
-
-    for (pkeys = 0; pkeys < nodeInfop->PartitionCap; pkeys += 32, ++amod) {
-        uint32_t attrmod;
-
-        attrmod = amod;
-        attrmod |= PKEY_BLOCK_NUM_MASK & block;
-        attrmod |= (0xff & numBlocks) << 24;
-
-        status = SM_Set_PKeyTable(fd_topology, attrmod, path, &pkeyTable, sm_config.mkey, 0);
-        if (status != VSTATUS_OK) {
-            IB_LOG_WARN_FMT(__func__,
-                   "Failed to set Partition Table for local node guid "FMT_U64" port index %d",
-                   nodeInfop->NodeGUID, sm_config.port);
-            return(status);
-        }
-#if defined(IB_STACK_OPENIB)
-        IB_LOG_INFINI_INFO0("sm pkey table refresh");
-        status = ib_refresh_devport();
-        if (status != VSTATUS_OK) {
-            IB_LOG_ERRORRC("cannot refresh sm pkeys rc:", status);
-            }
-#endif
-
-        if (pkeys == 0) {	/* Only first table should be set until larger pkey table supported. */
-            memset(&pkeyTable, 0, sizeof(pkeyTable));
-        }
+	if (!needsSet) {
+        IB_LOG_INFINI_INFO0("sm pkey table already set");
+		return(status);
 	}
+    status = SM_Set_PKeyTable(fd_topology, 1<<24, path, &pkeyTable, sm_config.mkey, 0);
+	if (status != VSTATUS_OK) {
+		IB_LOG_WARN_FMT(__func__,
+			   "Failed to set Partition Table for local node guid "FMT_U64" port index %d",
+			   nodeInfop->NodeGUID, sm_config.port);
+		return(status);
+	}
+#if defined(IB_STACK_OPENIB)
+	IB_LOG_INFINI_INFO0("sm pkey table refresh");
+	status = ib_refresh_devport();
+	if (status != VSTATUS_OK) {
+		IB_LOG_ERRORRC("cannot refresh sm pkeys rc:", status);
+	}
+#endif
 
 	return(status);
 }
@@ -641,7 +643,8 @@ smValidateGsiMadPKey(Mai_t *maip, uint8_t mgmntAllowedRequired, uint8_t antiSpoo
     if ((pPort = sm_find_node_and_port_lid(&old_topology, maip->addrInfo.slid, &pNode)) != NULL) {
         if (sm_valid_port(pPort) && pPort->state > IB_PORT_DOWN) {
             if (mgmntAllowedRequired) {
-                valid = sm_valid_port_mgmt_allowed_pkey(pPort);    // validate PKEY for full member
+                if (maip->addrInfo.pkey == STL_DEFAULT_FM_PKEY)
+                    valid = sm_valid_port_mgmt_allowed_pkey(pPort);    // validate PKEY for full member
             } else {
                 if (pNode->nodeInfo.NodeType == NI_TYPE_CA) {
                     if (maip->addrInfo.pkey == STL_DEFAULT_FM_PKEY)
@@ -662,18 +665,9 @@ smValidateGsiMadPKey(Mai_t *maip, uint8_t mgmntAllowedRequired, uint8_t antiSpoo
                                 if (PKEY_VALUE(pPort->portData->pPKey[STL_DEFAULT_CLIENT_PKEY_IDX].AsReg16) == PKEY_VALUE(STL_DEFAULT_CLIENT_PKEY))
                                     valid = 1; 
                             }
-                        } else {
-                            // Base port 0 must _only_ use full pkey.
-                            if (maip->addrInfo.pkey == STL_DEFAULT_FM_PKEY) {
-                                // Cannot use the fn: sm_valid_port_mgmt_allowed_pkey()
-                                // b/c base port 0 does not have client pkey configured.
-                                // Check exclusively for full mgmt pkey only... 
-                                if ((PKEY_VALUE(pPort->portData->pPKey[STL_DEFAULT_FM_PKEY_IDX].AsReg16) == PKEY_VALUE(STL_DEFAULT_FM_PKEY)) && 
-                                    (PKEY_TYPE(pPort->portData->pPKey[STL_DEFAULT_FM_PKEY_IDX].AsReg16) == PKEY_TYPE_FULL)) {
-                                    valid= 1; 
-                                }
-                            }
-                        }
+                        // Base port 0 must _only_ use full pkey.
+                        } else if (maip->addrInfo.pkey == STL_DEFAULT_FM_PKEY)
+							valid = sm_valid_port_mgmt_allowed_pkey(pPort);
                     } 
                 }
             }
@@ -692,6 +686,15 @@ smValidatePortPKey2Way(uint16_t pkey, Port_t* port1p, Port_t* port2p)
 
 	if (port1p == port2p) return 1;
 
+	// Special handling required for managment pkey.
+	if (IB_EXPECT_FALSE(PKEY_VALUE(pkey) == STL_DEFAULT_CLIENT_PKEY)) {
+		// A special case may exist where the FM PKEY is actually in index 1 instead of 2.
+		if (port1p->portData->pPKey[STL_DEFAULT_FM_PKEY_IDX].AsReg16 == STL_DEFAULT_FM_PKEY ||
+			port1p->portData->pPKey[STL_DEFAULT_CLIENT_PKEY_IDX].AsReg16 == STL_DEFAULT_FM_PKEY)
+			return smValidatePortPKey(STL_DEFAULT_FM_PKEY, port2p);
+		else
+			return smValidatePortPKey(STL_DEFAULT_CLIENT_PKEY, port2p);
+	}
 	for (i=0; i<PKEY_TABLE_LIST_COUNT; ++i) {
 		if (PKEY_VALUE(port1p->portData->pPKey[i].AsReg16) == PKEY_VALUE(pkey)) {
 			for (j=0; j<PKEY_TABLE_LIST_COUNT; ++j) {
@@ -740,8 +743,9 @@ smGetCommonPKey(Port_t* port1, Port_t* port2) {
 
 		if (PKEY_VALUE(pkey) == INVALID_PKEY) break;
 	
-		if (PKEY_VALUE(pkey) == DEFAULT_PKEY) {
-			defPkeyEntry = pkeyEntry;
+		if (PKEY_VALUE(pkey) == PKEY_VALUE(STL_DEFAULT_FM_PKEY)) { 
+			if (defPkeyEntry < 0 || PKEY_TYPE(pkey) == PKEY_TYPE_FULL)
+				defPkeyEntry = pkeyEntry;
 			continue;
 		}
 
@@ -1776,6 +1780,8 @@ void smLogVFs() {
 
 		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "bandwidthPercent= %d  priority= %d",
 				VirtualFabrics->v_fabric[vf].percent_bandwidth, VirtualFabrics->v_fabric[vf].priority);
+		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "preemptionRank= %d  hoqLife= %d",
+				VirtualFabrics->v_fabric[vf].preempt_rank, VirtualFabrics->v_fabric[vf].hoqlife_vf);
 
 		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "VF APPs:", 0);
 		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tselect_sa= %d, select_unmatched_sid= %d, select_unmatched_mgid= %d, select_pm= %d",

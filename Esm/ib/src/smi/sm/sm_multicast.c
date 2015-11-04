@@ -206,7 +206,7 @@ Status_t sm_ideal_spanning_tree(McSpanningTree_t *mcST, int filter_mtu_rate, int
 			}
 
 			if (filter_mtu_rate) {
-				if (portp->portData->mtuActive < mtu) {	// MTU too small, skip
+				if (portp->portData->maxVlMtu < mtu) {	// MTU too small, skip
 					continue;
 				}
 
@@ -410,7 +410,7 @@ sm_spanning_tree(int32_t mtu, int32_t rate, int *complete) {
 				continue;
 			}
 
-			if (portp->portData->mtuActive < mtu) {	// MTU too small, skip
+			if (portp->portData->maxVlMtu < mtu) {	// MTU too small, skip
 				continue;
 			}
 

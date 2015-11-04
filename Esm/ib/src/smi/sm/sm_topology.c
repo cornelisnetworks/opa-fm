@@ -77,6 +77,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "stl_cca.h"
 #include "ispinlock.h"
 #include "topology.h"
+#include <stl_helper.h>
 
 #if defined(__VXWORKS__)
 #include "bspcommon/h/usrBootManager.h"
@@ -134,7 +135,8 @@ extern inline void prefetcht0(const void *x) {
 
 #define PREFETCH PREFETCH_T0
 
-int	isSweeping = 0;
+int isSweeping = 0;
+int	activateInProgress = 0;
 int	forceRebalanceNextSweep = 0;
 int oldSmActiveCount = 0;
 void dump_cost_array(uint16_t *);
@@ -197,7 +199,7 @@ static const char *sweep_reasons[] = {
 	[SM_SWEEP_REASON_ROUTING_FAIL] = "Error while programming linear fowarding table(s) in fabric.",
 	[SM_SWEEP_REASON_MC_ROUTING_FAIL] = "Error while programming multicast table(s) in fabric.",
 	[SM_SWEEP_REASON_UNEXPECTED_BOUNCE] = "Port(s) in fabric bounced unexpectedly during bringup.", 
-	[SM_SWEEP_REASON_LOCAL_PORT_FAIL] = "Our SM's port (or its direct neighboring port) wasn't ready.",
+	[SM_SWEEP_REASON_LOCAL_PORT_FAIL] = "Our SM's port wasn't ready, or went down unexpectedly.",
 	[SM_SWEEP_REASON_STATE_TRANSITION] = "Our SM state transitioned to DISCOVERY or MASTER.",
 	[SM_SWEEP_REASON_SECONDARY_TROUBLE] = "Abnormal behavior from a secondary SM observed.",
 	[SM_SWEEP_REASON_MASTER_TROUBLE] = "Abnormal behavior from the MASTER SM observed.",
@@ -207,7 +209,7 @@ static const char *sweep_reasons[] = {
 	[SM_SWEEP_REASON_FORCED] = "SM sweep forced by user.",
 	[SM_SWEEP_REASON_INTERVAL_CHANGE] = "SM sweep interval changed by user.",
 	[SM_SWEEP_REASON_FAILED_SWEEP] = "Problems during previous sweep, retrying.",
-	[SM_SWEEP_REASON_TRAP_EVENT] = "Trap event occoured that requires re-sweep.",
+	[SM_SWEEP_REASON_TRAP_EVENT] = "Trap event occurred that requires re-sweep.",
 	[SM_SWEEP_REASON_UNDETERMINED] = "No reason was specified (WARNING: abormal!)."
 };
 
@@ -286,18 +288,20 @@ VirtualFabrics_t *updatedVirtualFabrics;
 
 #ifndef __VXWORKS__
 extern 	uint32_t 		xml_trace;
+
+static int sm_peer_quarantined = 0;
 #endif
 
-static char*
+static const char*
 GetStr_SpeedActive(STL_PORT_INFO *portInfo, char *buf, size_t len)
 {
-    return (Decode_SpeedSupport(portInfo->LinkSpeed.Active, buf, len));
+    return (StlLinkSpeedToText(portInfo->LinkSpeed.Active, buf, len));
 }
 
-static char*
+static const char*
 GetStr_SpeedSupport(STL_PORT_INFO *portInfo, char *buf, size_t len)
 {
-    return (Decode_SpeedSupport(portInfo->LinkSpeed.Supported, buf, len));
+    return (StlLinkSpeedToText(portInfo->LinkSpeed.Supported, buf, len));
 }
 
 /*
@@ -321,6 +325,7 @@ static void clearSaTables(void) {
     	sm_lmc_0_freeLid_hint = 1;
 
         sm_lid = sm_config.lid;
+
         /* clear subscriptions, sa context, broadcast groups, sm table, and service records here */
         (void) sa_SubscriberClear();
         (void) sa_cntxt_clear();
@@ -620,8 +625,9 @@ static Status_t UpdateHoq(Node_t * nodep, Port_t * curPort, boolean * updHoq)
             }
 
             if (incrTimeouts && (sm_config.timerScalingEnable!=0)) {
-                uint32_t oldHoq = maxHoqVals[vl];
+                uint32_t oldHoq;
 
+                oldHoq = maxHoqVals[vl];
                 if (maxHoqVals[vl] < IB_LIFETIME_MAX)
                     maxHoqVals[vl]++;
 
@@ -652,8 +658,8 @@ static Status_t UpdateHoq(Node_t * nodep, Port_t * curPort, boolean * updHoq)
 
 static int LdrCacheKey_cmp(const uint64 ia, const uint64 ib)
 {
-	LdrCacheKey_t *a = (LdrCacheKey_t*) ia;
-	LdrCacheKey_t *b = (LdrCacheKey_t*) ib;
+	LdrCacheKey_t *a = (LdrCacheKey_t*) ((long int)ia);
+	LdrCacheKey_t *b = (LdrCacheKey_t*) ((long int)ib);
 
 	if (a->guid != b->guid)
 		return (a->guid < b->guid? -1: 1);
@@ -875,6 +881,26 @@ topology_main(uint32_t argc, uint8_t ** argv)
 
 		topo_retry_backoff = 0;
 
+#ifndef __VXWORKS__
+		// sm_peer_quarantined implies sm_state == SM_STATE_NOTACTIVE
+		if (sm_peer_quarantined && sm_state == SM_STATE_NOTACTIVE) {
+			STL_PORT_INFO portInfo;
+			uint8_t path[64];
+
+			memset((void*)path, 0, 64);
+			status = SM_Get_PortInfo(fd_sminfo, 1<<24, path, &portInfo);
+			if (status != VSTATUS_OK) {
+				IB_LOG_ERROR_FMT(__func__,
+				  "Failed to get local port info; cannot transition back to DISCOVERING");
+			} else if (sm_peer_quarantined &&
+			  !portInfo.PortStates.s.IsSMConfigurationStarted &&
+			  portInfo.PortStates.s.PortState > IB_PORT_DOWN) {
+				sm_peer_quarantined = 0;
+				sm_transition(SM_STATE_DISCOVERING);
+			}
+		}
+#endif
+
 		if ((sm_state == SM_STATE_DISCOVERING) || (sm_state == SM_STATE_MASTER)) {
 
 			if (!sweepsPaused) {
@@ -889,6 +915,7 @@ topology_main(uint32_t argc, uint8_t ** argv)
 				}
 #endif
 				sm_resweep_reason = SM_SWEEP_REASON_UNDETERMINED;
+				isSweeping = 1;
 
 				(void)vs_lock(&new_topology_lock);
 
@@ -957,6 +984,7 @@ topology_main(uint32_t argc, uint8_t ** argv)
 
 					/* Track how many times we do full discovery */
 					++topology_passcount;
+					activateInProgress = 0;
 					isSweeping = 0;
 					/* send out all the mft changes from old_topology to not hold up the SA */
 					if (smSendOutMFTs || topology_forceMfts || topology_changed || topology_passcount <= 1) {
@@ -1108,7 +1136,7 @@ topology_main(uint32_t argc, uint8_t ** argv)
             /* clear the SA tables if necessary */
             clearSaTables();
 			topology_passcount=0;
-        }
+		}
 
 		(void)vs_time_get(&now);
         if (newTopologyValid && !topology_resweep) {
@@ -1299,11 +1327,18 @@ topology_initialize(void)
                 vs_thread_sleep(5 * VTIMER_1S);
                 continue;
             }
+			// set PKey table of the local Enhanced Port 0
+			status = sm_set_local_port_pkey(&nodeInfo);
+			if (status != VSTATUS_OK) {
+				IB_LOG_ERRORRC("can't set PKey table, sleeping rc:", status);
+				vs_thread_sleep(5 * VTIMER_1S);
+				continue;
+			}
             break;
 
         case NI_TYPE_CA:
             {
-                // set PKey table of the local port
+                // set PKey table of the local HSM port
                 status = sm_set_local_port_pkey(&nodeInfo);
                 if (status != VSTATUS_OK) {
                     IB_LOG_ERRORRC("can't set PKey table, sleeping rc:", status);
@@ -1329,6 +1364,8 @@ topology_initialize(void)
                     sm_hfi_direct_connect = TRUE;
                     break;
 
+				// We need to explicitly test MgmtAllowed from our neighbor to properly
+				// support internal simulation and diagnostic tools
                 case NI_TYPE_SWITCH:
                     // Get the port info of the switch port connected to ours.
                     status = SM_Get_PortInfo(fd_topology, (1<<24) | neighborNodeInfo.u1.s.LocalPortNum | STL_SM_CONF_START_ATTR_MOD, path, &neighborPortInfo);
@@ -1364,14 +1401,6 @@ topology_initialize(void)
             break;
         }
 
-        // set PKey table of the local port
-        status = sm_set_local_port_pkey(&nodeInfo);
-		if (status != VSTATUS_OK) {
-			IB_LOG_ERRORRC("can't set PKey table, sleeping rc:", status);
-			vs_thread_sleep(5 * VTIMER_1S);
-			continue;
-		}
-		
 		if ((sm_config.port != 0) && (portInfo.PortStates.s.PortState < IB_PORT_INIT)) {
 			IB_LOG_ERROR("port number:", sm_config.port);
 			IB_LOG_ERROR("port state < INIT, sleeping state:", portInfo.PortStates.s.PortState);
@@ -1684,13 +1713,14 @@ unlock_bail:
 				status = VSTATUS_OK;
 			}
 
-            if (topology_main_exit == 1) {
+			if (topology_main_exit == 1) {
 #ifdef __VXWORKS__
-                ESM_LOG_ESMINFO("topology_discovery: SM has been stopped", 0);
+					ESM_LOG_ESMINFO("topology_discovery: SM has been stopped", 0);
 #endif
-                IB_EXIT(__func__, VSTATUS_OK);
-                return(VSTATUS_OK);
-            }
+					IB_EXIT(__func__, VSTATUS_OK);
+					return(VSTATUS_OK);
+			}
+
 			if (status == VSTATUS_NOT_MASTER) {
 				IB_LOG_INFO("now running as a STANDBY SM", sm_state);
 				status = sm_topop->routingModule->funcs.post_process_discovery(
@@ -1698,29 +1728,49 @@ unlock_bail:
 				IB_EXIT(__func__, VSTATUS_NOT_MASTER);
 				return(VSTATUS_NOT_MASTER);
 			} else if (status != VSTATUS_OK) {
-                IB_LOG_WARN_FMT(__func__, 
-                       " unable to setup port[%d] of node %s, nodeGuid "FMT_U64", ignoring port!",
-                       portp->index, sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID);
+#ifndef __VXWORKS__
+				Node_t *sm_nodep;
+				Port_t *sm_portp;
+
+				sm_nodep = sm_topop->node_head;
+				sm_portp = sm_get_port(sm_nodep, sm_config.port);
+#endif
+				IB_LOG_WARN_FMT(__func__, 
+					" unable to setup port[%d] of node %s, nodeGuid "FMT_U64
+					", ignoring port!", portp->index, sm_nodeDescString(nodep),
+					nodep->nodeInfo.NodeGUID);
 				portp->state = IB_PORT_DOWN;
-                DECR_PORT_COUNT(sm_topop, nodep);
-                topology_changed = 1;   /* indicates a fabric change has been detected */
+				DECR_PORT_COUNT(sm_topop, nodep);
+				topology_changed = 1;	/* indicates a fabric change has been detected */
+
+#ifndef __VXWORKS__
+				// Self-quarantining not implementing for ESM due to ESM
+				// presumably having multiple ports to the fabric
+				if (nodep == sm_nodep && portp == sm_portp &&
+				  sm_portp->portData->neighborQuarantined) {
+					sm_peer_quarantined = 1;
+					IB_LOG_ERROR_FMT(__func__, "SM neighbor is quarantined."
+					  " Cannot manage fabric. Transitioning to NOTACTIVE.");
+					sm_transition(SM_STATE_NOTACTIVE);
+					return status;
+				}
+#endif
 			} else {
 				// discovery went well
-
 
 				// update fabric MTU & rate for use in multicast group creation/join requests...
 				// and the maximum ISL MTU and rate we have seen so far
 				// we only care about ISL's so that's all we're checking
 				if (  sm_valid_port(portp)
-				   && sm_valid_port(neighborPortp = sm_find_port_peer(sm_topop, nodep->nodeInfo.NodeGUID, portp->index))
-				   && nodep->nodeInfo.NodeType == NI_TYPE_SWITCH
-				   && neighborPortp->portData->nodePtr->nodeInfo.NodeType == NI_TYPE_SWITCH )
+					 && sm_valid_port(neighborPortp = sm_find_port_peer(sm_topop, nodep->nodeInfo.NodeGUID, portp->index))
+					 && nodep->nodeInfo.NodeType == NI_TYPE_SWITCH
+					 && neighborPortp->portData->nodePtr->nodeInfo.NodeType == NI_TYPE_SWITCH )
 				{
 					uint32_t rate = portp->portData->rate;
 
 					if (sm_mc_config.disable_mcast_check == McGroupBehaviorStrict) {
-                        // PR123793: First time through, the maxVlMtu is not setup yet.
-                        // So don't check it against the maxMcastMtu until the port maxVlMtu is non-zero.
+												// PR123793: First time through, the maxVlMtu is not setup yet.
+												// So don't check it against the maxMcastMtu until the port maxVlMtu is non-zero.
 						if ((portp->portData->maxVlMtu !=0) && (portp->portData->maxVlMtu < sm_topop->maxMcastMtu)) {
 							sm_topop->maxMcastMtu = portp->portData->maxVlMtu;
 						}
@@ -2668,9 +2718,14 @@ topology_assignments(void)
 			status = sm_node_updateFields(fd_topology, sm_lid, nodep, smaportp);
 
 			if (status != VSTATUS_OK) {
+				Port_t *neigh = sm_find_port(sm_topop, smaportp->nodeno, smaportp->portno);
+
 				IB_LOG_WARN_FMT(__func__,
-					"Non-OK status returned on updating node from SMA.  Node %s, nodeGuid "FMT_U64", port %d, status %d",
-					sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, smaportp->index, status);
+					"Non-OK status returned on updating node attatched to %s port %d via SMA:"
+					"  Node %s, nodeGuid "FMT_U64", port %d, status %d",
+					sm_valid_port(neigh) ? sm_nodeDescString(neigh->portData->nodePtr) : "???", 
+					neigh ? neigh->index : -1, sm_nodeDescString(nodep), 
+					nodep->nodeInfo.NodeGUID, smaportp->index, status);
 				continue;
 			}
 		}
@@ -3149,7 +3204,7 @@ topology_activate(void)
 	}
 
     /* we are about to activate new nodes so mark us as sweeping now */
-    isSweeping = 1;
+    activateInProgress = 1;
 	topology_port_bounce_log_num = 0;
 
 	switch(sm_config.switchCascadeActivateEnable) {
@@ -3520,28 +3575,23 @@ topology_activate(void)
 	int linkInitReason=0;
 	for_all_quarantined_nodes(sm_topop, qnodep) {
 		if((qnodep->quarantineReasons & STL_QUARANTINE_REASON_SMALL_MTU_SIZE) ||
-			(qnodep->quarantineReasons & STL_QUARANTINE_REASON_VL_COUNT)) {
+			(qnodep->quarantineReasons & STL_QUARANTINE_REASON_VL_COUNT)) 
 			linkInitReason = STL_LINKINIT_INSUFIC_CAPABILITY;
-
-			//If node is quarantined for insuf. cap. setlinkInitReason on all it's ports
-			//if node is quar. for security, we don't attempt to set anything because 
-			for_all_ports(qnodep->quarantinedNode, portp) {
-				if(!sm_valid_port(portp)) {	
-					if(portp && sm_dynamic_port_alloc()) {
-						if ((portp->portData = sm_alloc_port(NULL, qnodep->quarantinedNode, portp->index, NULL)) == NULL) {
-							IB_LOG_ERROR_FMT(__func__, "cannot create  port %d for quarantined node %s",
-							 portp->index, sm_nodeDescString(qnodep->quarantinedNode));
-							continue;
-						}
-					} else if (!portp) continue;
-				}
-				sm_set_linkinit_reason(qnodep->quarantinedNode, portp, linkInitReason);
-				sm_enable_port_led(qnodep->quarantinedNode, portp, TRUE);
-			}
-
-		}
-		else {
+		else	
 			linkInitReason = STL_LINKINIT_QUARANTINED;
+
+		for_all_ports(qnodep->quarantinedNode, portp) {
+			if(!sm_valid_port(portp)) {	
+				if(portp && sm_dynamic_port_alloc()) {
+					if ((portp->portData = sm_alloc_port(NULL, qnodep->quarantinedNode, portp->index, NULL)) == NULL) {
+						IB_LOG_ERROR_FMT(__func__, "cannot create  port %d for quarantined node %s",
+						 portp->index, sm_nodeDescString(qnodep->quarantinedNode));
+						continue;
+					}
+				} else if (!portp) continue;
+			}
+			sm_set_linkinit_reason(qnodep->quarantinedNode, portp, linkInitReason);
+			sm_enable_port_led(qnodep->quarantinedNode, portp, TRUE);
 		}
 
 		//set linkInit reason for connected authentic port
@@ -3797,7 +3847,7 @@ topology_saveLdr(Topology_t * topo, uint64_t guid, Port_t * port)
 	t->key.index = port->index;
 	memcpy(&t->ldr, port->portData->LinkDownReasons,
 		sizeof(STL_LINKDOWN_REASON) * STL_NUM_LINKDOWN_REASONS);
-	cl_qmap_insert(topo->ldrCache, (uint64)&t->key, &t->mapItem);
+	cl_qmap_insert(topo->ldrCache, (long int)&t->key, &t->mapItem);
 }
 
 //
@@ -4133,23 +4183,23 @@ topology_TrapDown(STL_NOTICE * noticep, Topology_t * tp_present, Topology_t * tp
 	/* If this node was providing any services, remove the service records */
 	if (vs_lock(&saServiceRecords.serviceRecLock) == VSTATUS_OK)
 	{
-		VieoServiceRecord_t * pVsr = NULL;
+		OpaServiceRecord_t * pOsr = NULL;
 
 		if (cs_hashtable_count(saServiceRecords.serviceRecMap) > 0)
 		{
 			cs_hashtable_iterator(saServiceRecords.serviceRecMap, &itr);
 			do {
-				pVsr = cs_hashtable_iterator_value(&itr);
-				if (memcmp(&pVsr->serviceRecord.RID.ServiceGID, port->portData->gid, sizeof(IB_GID)) == 0)
+				pOsr = cs_hashtable_iterator_value(&itr);
+				if (memcmp(&pOsr->serviceRecord.RID.ServiceGID, port->portData->gid, sizeof(IB_GID)) == 0)
 				{
 
 					IB_LOG_INFO_FMT(__func__, "Deleting service for GID " FMT_GID " that "
 					                           "went out of service", STLGIDPRINTARGS2(port->portData->gid));
 					moreEntries = cs_hashtable_iterator_remove(&itr);
                     /* sync the service record deletion to standby SMs if necessary */
-                    (void)sm_dbsync_syncService(DBSYNC_TYPE_DELETE, pVsr);
+                    (void)sm_dbsync_syncService(DBSYNC_TYPE_DELETE, pOsr);
                 	/* remove the entry from hashtable and free the value - key is freed by remove func */
-					free(pVsr);
+					free(pOsr);
 				} else
 				{
 					moreEntries = cs_hashtable_iterator_advance(&itr);
@@ -4365,14 +4415,97 @@ topology_copy(void)
 }
 
 Status_t
+topology_free_topology(Topology_t * topop)
+{
+	LoopPath_t  *loopPath;
+	QuarantinedNode_t *qnodep;
+	Node_t *nodep;
+
+	if(topop->nodeIdMap){
+		cl_qmap_remove_all(topop->nodeIdMap);
+		(void)vs_pool_free(&sm_pool, (void *)topop->nodeIdMap);
+		topop->nodeIdMap = NULL;
+	}
+
+	if(topop->nodeMap){
+		cl_qmap_remove_all(topop->nodeMap);
+		(void)vs_pool_free(&sm_pool, (void *)topop->nodeMap);
+		topop->nodeMap = NULL;
+	}
+
+	if(topop->portMap){
+		cl_qmap_remove_all(topop->portMap);
+		(void)vs_pool_free(&sm_pool, (void *)topop->portMap);
+		topop->portMap = NULL;
+	}
+
+	if(topop->nodeArray != NULL) {
+		(void)vs_pool_free(&sm_pool, (void *)topop->nodeArray);
+		topop->nodeArray = NULL;
+	}
+
+	if(topop->quarantinedNodeMap){
+		cl_qmap_remove_all(topop->quarantinedNodeMap);
+		(void)vs_pool_free(&sm_pool, (void *)topop->quarantinedNodeMap);
+		topop->quarantinedNodeMap = NULL;
+	}
+
+	while ((qnodep = topop->quarantined_node_head) != NULL) {
+		topop->quarantined_node_head = qnodep->next;
+        Node_Quarantined_Delete(qnodep);
+	}
+
+	while ((nodep = topop->node_head) != NULL) {
+		topop->node_head = nodep->next;
+		Node_Delete(nodep);
+	}
+
+	if (topop->cost != NULL) {
+		(void)vs_pool_free(&sm_pool, (void *)topop->cost);
+		topop->cost = NULL;
+	}
+
+	if (topop->smaChanges != NULL) {
+		vs_pool_free(&sm_pool, topop->smaChanges);
+		topop->smaChanges = NULL;
+	}
+
+	// release memory allocated for loop paths
+	topop->numLoopPaths = 0;
+	while ((loopPath = topop->loopPaths) != NULL) {
+		topop->loopPaths = loopPath->next;
+		(void)vs_pool_free(&sm_pool, (void *)loopPath);
+	}
+	
+	if (topop->routingModule != NULL) {
+		sm_routing_freeModule(&topop->routingModule, topop);
+	}
+
+	if (topop->ldrCache) {
+		cl_map_item_t *it;
+		for (it = cl_qmap_head(topop->ldrCache);
+			it != cl_qmap_end(topop->ldrCache);) {
+			LdrCacheEntry_t *c = PARENT_STRUCT(it, LdrCacheEntry_t, mapItem);
+			it = cl_qmap_next(it);
+			vs_pool_free(&sm_pool, c);
+		}
+		vs_pool_free(&sm_pool, topop->ldrCache);
+		topop->ldrCache = NULL;
+	}
+
+	return VSTATUS_OK;
+}
+
+Status_t
 topology_release_saved_topology(void)
 {
 	Node_t		*nodep;
 	Port_t    *portp = NULL;
-    LoopPath_t  *loopPath;
-	QuarantinedNode_t *qnodep;
 
-	// old_topology_lock is used here because CableInfo may exist in both save_topology and old_topology
+	/*
+	 * old_topology_lock is used here because CableInfo may exist in both
+	 * save_topology and old_topology
+	 */
 	if (vs_wrlock(&old_topology_lock) == VSTATUS_OK) {
 
 		for_all_nodes(&save_topology, nodep) {
@@ -4386,81 +4519,8 @@ topology_release_saved_topology(void)
 
 		vs_rwunlock(&old_topology_lock);
 	}
-    /*
-     *	Clear the saved topology.  We did this to save the time under the lock.
-	 *  JPG Remove all nodes from their respective sorted trees
-     */
-	if(save_topology.nodeIdMap){
-		cl_qmap_remove_all(save_topology.nodeIdMap);
-		(void)vs_pool_free(&sm_pool, (void *)save_topology.nodeIdMap);
-		save_topology.nodeIdMap = NULL;
-	}
 
-	if(save_topology.nodeMap){
-		cl_qmap_remove_all(save_topology.nodeMap);
-		(void)vs_pool_free(&sm_pool, (void *)save_topology.nodeMap);
-		save_topology.nodeMap = NULL;
-	}
-
-	if(save_topology.portMap){
-		cl_qmap_remove_all(save_topology.portMap);
-		(void)vs_pool_free(&sm_pool, (void *)save_topology.portMap);
-		save_topology.portMap = NULL;
-	}
-
-	if(save_topology.nodeArray != NULL) {
-		(void)vs_pool_free(&sm_pool, (void *)save_topology.nodeArray);
-		save_topology.nodeArray = NULL;
-	}
-
-	if(save_topology.quarantinedNodeMap){
-		cl_qmap_remove_all(save_topology.quarantinedNodeMap);
-		(void)vs_pool_free(&sm_pool, (void *)save_topology.quarantinedNodeMap);
-		save_topology.quarantinedNodeMap = NULL;
-	}
-
-	while ((qnodep = save_topology.quarantined_node_head) != NULL) {
-		save_topology.quarantined_node_head = qnodep->next;
-        Node_Quarantined_Delete(qnodep);
-	}
-
-	while ((nodep = save_topology.node_head) != NULL) {
-		save_topology.node_head = nodep->next;
-		Node_Delete(nodep);
-	}
-
-	if (save_topology.cost != NULL) {
-		(void)vs_pool_free(&sm_pool, (void *)save_topology.cost);
-		save_topology.cost = NULL;
-	}
-
-	if (save_topology.smaChanges != NULL) {
-		vs_pool_free(&sm_pool, save_topology.smaChanges);
-		save_topology.smaChanges = NULL;
-	}
-    // release memory allocated for loop paths
-    save_topology.numLoopPaths = 0;
-    while ((loopPath = save_topology.loopPaths) != NULL) {
-        save_topology.loopPaths = loopPath->next;
-        (void)vs_pool_free(&sm_pool, (void *)loopPath);
-    }
-
-	
-	if (save_topology.routingModule != NULL) {
-		sm_routing_freeModule(&save_topology.routingModule, &save_topology);
-	}
-
-	if (save_topology.ldrCache) {
-		cl_map_item_t *it;
-		for (it = cl_qmap_head(save_topology.ldrCache);
-			it != cl_qmap_end(save_topology.ldrCache);) {
-			LdrCacheEntry_t *c = PARENT_STRUCT(it, LdrCacheEntry_t, mapItem);
-			it = cl_qmap_next(it);
-			vs_pool_free(&sm_pool, c);
-		}
-		vs_pool_free(&sm_pool, save_topology.ldrCache);
-		save_topology.ldrCache = NULL;
-	}
+	topology_free_topology(&save_topology);
 
 	return VSTATUS_OK;
 }
@@ -4476,8 +4536,6 @@ topology_clearNew(void)
 {
 	Node_t		*nodep;
     Port_t      *portp;
-    LoopPath_t  *loopPath;
-	QuarantinedNode_t *qnodep;
     int         lid, nextLid, delta, i;
 
 	IB_ENTER(__func__, 0, 0, 0, 0);
@@ -4508,10 +4566,12 @@ topology_clearNew(void)
     }
 
 	/*
-		old_topology_lock is used here because any CableInfo in sm_newTopology after a failed
-		sweep came from old_topology, however, we should only consider the ports in sm_newTopology
-		since these are the ones we're sure have had their cableInfo copied.
-*/
+	 * old_topology_lock is used here because any CableInfo in
+	 * sm_newTopology after a failed sweep came from old_topology,
+	 * however, we should only consider the ports in sm_newTopology
+	 * since these are the ones we're sure have had their
+	 * cableInfo copied.
+	 */
 	if (vs_wrlock(&old_topology_lock) == VSTATUS_OK) {
 		for_all_nodes(&sm_newTopology, nodep) {
 			for_all_ports(nodep, portp) {
@@ -4525,78 +4585,7 @@ topology_clearNew(void)
 		vs_rwunlock(&old_topology_lock);
 	}
 
-	// JPG Remove nodes and ports from their respective sorted trees
-	if(sm_newTopology.nodeIdMap){
-		cl_qmap_remove_all(sm_newTopology.nodeIdMap);
-		(void)vs_pool_free(&sm_pool, (void *)sm_newTopology.nodeIdMap);
-		sm_newTopology.nodeIdMap = NULL;
-	}
-
-	if(sm_newTopology.nodeMap){
-		cl_qmap_remove_all(sm_newTopology.nodeMap);
-		(void)vs_pool_free(&sm_pool, (void *)sm_newTopology.nodeMap);
-		sm_newTopology.nodeMap = NULL;
-	}
-
-	if(sm_newTopology.portMap){
-		cl_qmap_remove_all(sm_newTopology.portMap);
-		(void)vs_pool_free(&sm_pool, (void *)sm_newTopology.portMap);
-		sm_newTopology.portMap = NULL;
-	}
-	
-	if(sm_newTopology.nodeArray != NULL) {
-		(void)vs_pool_free(&sm_pool, (void *)sm_newTopology.nodeArray);
-		sm_newTopology.nodeArray = NULL;
-	}
-
-	if(sm_newTopology.quarantinedNodeMap){
-		cl_qmap_remove_all(sm_newTopology.quarantinedNodeMap);
-		(void)vs_pool_free(&sm_pool, (void *)sm_newTopology.quarantinedNodeMap);
-		sm_newTopology.quarantinedNodeMap = NULL;
-	}
-
-	while ((qnodep = sm_newTopology.quarantined_node_head) != NULL) {
-		sm_newTopology.quarantined_node_head = qnodep->next;
-        Node_Quarantined_Delete(qnodep);
-	}
-	
-	while ((nodep = sm_newTopology.node_head) != NULL) {
-		sm_newTopology.node_head = nodep->next;
-		Node_Delete(nodep);
-	}
-
-	if (sm_newTopology.cost != NULL) {
-		(void)vs_pool_free(&sm_pool, (void *)sm_newTopology.cost);
-		sm_newTopology.cost = NULL;
-	}
-
-	if (sm_newTopology.smaChanges != NULL) {
-		vs_pool_free(&sm_pool, sm_newTopology.smaChanges);
-		sm_newTopology.smaChanges = NULL;
-	}
-
-    // release memory allocated for loop paths
-    sm_newTopology.numLoopPaths = 0;
-    while ((loopPath = sm_newTopology.loopPaths) != NULL) {
-        sm_newTopology.loopPaths = loopPath->next;
-        (void)vs_pool_free(&sm_pool, (void *)loopPath);
-    }
-
-	if (sm_newTopology.routingModule) {
-		sm_routing_freeModule(&sm_newTopology.routingModule, &sm_newTopology);
-	}
-
-	if (sm_newTopology.ldrCache) {
-		cl_map_item_t *it;
-		for (it = cl_qmap_head(sm_newTopology.ldrCache);
-			it != cl_qmap_end(sm_newTopology.ldrCache);) {
-			LdrCacheEntry_t *c = PARENT_STRUCT(it, LdrCacheEntry_t, mapItem);
-			it = cl_qmap_next(it);
-			vs_pool_free(&sm_pool, c);
-		}
-		vs_pool_free(&sm_pool, sm_newTopology.ldrCache);
-		sm_newTopology.ldrCache = NULL;
-	}
+	topology_free_topology(&sm_newTopology);
 
 	IB_EXIT(__func__, 0);
 	return(VSTATUS_OK);
@@ -4718,9 +4707,6 @@ Status_t topology_congestion(void)
 
 	IB_ENTER(__func__, 0, 0, 0, 0);
 
-	if (!sm_config.congestion.enable && !sm_config.congestion.discover_always)
-		return VSTATUS_OK;
-
 	if (smDebugPerf) {
 		vs_time_get(&sTime);
 		IB_LOG_INFINI_INFO0("START");
@@ -4734,14 +4720,17 @@ Status_t topology_congestion(void)
 			break;
 		}
 
-		status = SM_Get_CongestionInfo(fd_topology, 0, nodep->path, &nodep->congestionInfo);
-		if (status != VSTATUS_OK) {
-			IB_LOG_ERROR_FMT(__func__,
-				"Failed to get Congestion Info for NodeGUID "FMT_U64" [%s]; rc: %d",
-				nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep), status);
-			continue;
+		if (sm_config.congestion.enable) {
+			status = SM_Get_CongestionInfo(fd_topology, 0, nodep->path, &nodep->congestionInfo);
+			if (status != VSTATUS_OK) {
+				IB_LOG_ERROR_FMT(__func__,
+					"Failed to get Congestion Info for NodeGUID "FMT_U64" [%s]; rc: %d",
+					nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep), status);
+				continue;
+			}
 		}
 
+		/* Need to call these functions even if disabled so we can clear CCA attributes */
 		if (nodep->nodeInfo.NodeType == STL_NODE_SW)
 			status = stl_sm_cca_configure_sw(nodep);
 		else
@@ -4893,13 +4882,12 @@ static char* dump_topology(char* buf, int buffer) {
     if (sm_state == SM_STATE_MASTER) {
 	for_all_nodes(&old_topology, nodep) {
 		char buf1[32], buf2[32], buf3[32], buf4[32];
-		unsigned int nguid[2];
-		memcpy(nguid,&nodep->nodeInfo.NodeGUID,sizeof(nguid));
+
 		buf = snprintfcat(buf, &len, "-----------------------------------------------------------------------------------------\n");
 		buf = snprintfcat(buf, &len, "%s\n", sm_nodeDescString(nodep));
 		buf = snprintfcat(buf, &len, "-----------------------------------------------------------------------------------------\n");
-		buf = snprintfcat(buf, &len, "Node[%3d] => %08x%08x  (%x)  ports=%d, path=",
-			(int)nodep->index, nguid[0],nguid[1], nodep->nodeInfo.NodeType, (int)nodep->nodeInfo.NumPorts);
+		buf = snprintfcat(buf, &len, "Node[%3d] => "FMT_U64"  (%x)  ports=%d, path=",
+				(int)nodep->index, nodep->nodeInfo.NodeGUID, nodep->nodeInfo.NodeType, (int)nodep->nodeInfo.NumPorts);
 
 		for (i = 1; i <= (int)nodep->path[0]; i++) {
 			buf = snprintfcat(buf, &len, "%2d ", nodep->path[i]);
@@ -4909,28 +4897,25 @@ static char* dump_topology(char* buf, int buffer) {
 
             buf = snprintfcat(buf, &len, "        Port ----  GUID  ----  (S) LID       LMC   _VL_   __MTU__  __WIDTH__ _____SPEED_______  CAP_MASK   N#  P#\n");
             for_all_ports(nodep, portp) {
-                unsigned int guid[2];
-
                 if (!sm_valid_port(portp) || portp->state <= IB_PORT_DOWN) {
                     continue;
                 }
-                /* Note: For vxWorks we need to split the guid up in order to print it */
-                memcpy(guid,&portp->portData->guid,sizeof(guid));
+
                 if (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH && portp->index > 0) {
-                    buf = snprintfcat(buf, &len, "%12d %08x%08x   %d                 %2d/%2d %3s/%3s %6s/%3s %11s %3s %08x %4d  %2d ",
-                        portp->index, guid[0], guid[1], (int)portp->state,
+                    buf = snprintfcat(buf, &len, "%12d "FMT_U64"   %d                 %2d/%2d %3s/%3s %6s/%3s %11s %3s %08x %4d  %2d ",
+                        portp->index, portp->portData->guid, (int)portp->state,
                         portp->portData->vl0,portp->portData->vl1,
-                        Decode_MTU(portp->portData->mtuSupported), Decode_MTU(portp->portData->mtuActive),
-                        Decode_Width(portp->portData->portInfo.LinkWidth.Supported, buf1, sizeof(buf1)), Decode_Width(portp->portData->portInfo.LinkWidth.Active, buf2, sizeof(buf2)),
+                        Decode_MTU(portp->portData->mtuSupported), Decode_MTU(portp->portData->maxVlMtu),
+                        StlLinkWidthToText(portp->portData->portInfo.LinkWidth.Supported, buf1, sizeof(buf1)), StlLinkWidthToText(portp->portData->portInfo.LinkWidth.Active, buf2, sizeof(buf2)),
                         GetStr_SpeedSupport(&portp->portData->portInfo, buf3, sizeof(buf3)), 
 						GetStr_SpeedActive(&portp->portData->portInfo, buf4, sizeof(buf4)),
                         (int)portp->portData->capmask, (int)portp->nodeno, (int)portp->portno);
                 } else {
-                    buf = snprintfcat(buf, &len, "%12d %08x%08x   %d  %08x  %04x  %2d/%2d %3s/%3s %6s/%3s %11s %3s %08x %4d  %2d ",
-                        portp->index, guid[0], guid[1], (int)portp->state, (int)portp->portData->lid, portp->portData->lmc,
+                    buf = snprintfcat(buf, &len, "%12d "FMT_U64"   %d  %08x  %04x  %2d/%2d %3s/%3s %6s/%3s %11s %3s %08x %4d  %2d ",
+                        portp->index, portp->portData->guid, (int)portp->state, (int)portp->portData->lid, portp->portData->lmc,
                         portp->portData->vl0, portp->portData->vl1,
-                        Decode_MTU(portp->portData->mtuSupported), Decode_MTU(portp->portData->mtuActive),
-                        Decode_Width(portp->portData->portInfo.LinkWidth.Supported, buf1, sizeof(buf1)), Decode_Width(portp->portData->portInfo.LinkWidth.Active, buf2, sizeof(buf2)),
+                        Decode_MTU(portp->portData->mtuSupported), Decode_MTU(portp->portData->maxVlMtu),
+                        StlLinkWidthToText(portp->portData->portInfo.LinkWidth.Supported, buf1, sizeof(buf1)), StlLinkWidthToText(portp->portData->portInfo.LinkWidth.Active, buf2, sizeof(buf2)),
                         GetStr_SpeedSupport(&portp->portData->portInfo, buf3, sizeof(buf3)), 
 						GetStr_SpeedActive(&portp->portData->portInfo, buf4, sizeof(buf4)),
                         (int)portp->portData->capmask, (int)portp->nodeno, (int)portp->portno);

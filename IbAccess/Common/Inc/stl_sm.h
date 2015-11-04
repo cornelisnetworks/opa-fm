@@ -99,8 +99,8 @@ extern "C" {
 #define STL_MAX_PAYLOAD_SMP_DR	1872	/* Max size of DR SMP payload */
 #define STL_MAX_PAYLOAD_SMP_LR	2016	/* Max size of LR SMP payload */
 
-#define STL_MIN_SMP_DR_MAD	(MAD_BLOCK_SIZE - STL_MAX_PAYLOAD_SMP_DR)
-#define STL_MIN_SMP_LR_MAD	(MAD_BLOCK_SIZE - STL_MAX_PAYLOAD_SMP_LR)
+#define STL_MIN_SMP_DR_MAD	(STL_MAD_BLOCK_SIZE - STL_MAX_PAYLOAD_SMP_DR)
+#define STL_MIN_SMP_LR_MAD	(STL_MAD_BLOCK_SIZE - STL_MAX_PAYLOAD_SMP_LR)
 
 typedef struct {
 	MAD_COMMON  common;
@@ -333,7 +333,7 @@ typedef struct {
  * Attribute Modifier as: 0 (not used)
  */
 
-#define OUI_QLOGIC 0x00066a
+#define OUI_TRUESCALE 0x00066a
 
 typedef struct {
 
@@ -670,6 +670,11 @@ typedef struct {
 											 * implies TBD defined format for CableInfo as defined by Intel SFO group */
 /* 6 - 15 Reserved */
 
+/* STL NEIGHBOR NODE TYPE indicate whether the neighbor is an HFI or 
+ * a switch. */
+#define STL_NEIGH_NODE_TYPE_HFI		0	/* Gen 1 HFIs are considered "untrusted" */
+#define STL_NEIGH_NODE_TYPE_SW		1	/* Gen 1 Switches are considered "trusted" */
+/* Values 2 & 3 are reserved in Gen1. */
 
 typedef union {
 	uint32  AsReg32;
@@ -701,7 +706,8 @@ typedef union {
  * values are additive for Supported and Enabled fields
  */
 
-#define STL_LINK_SPEED_NOP		 0		/* no change, valid only for enabled */
+#define STL_LINK_SPEED_NOP		 0		/* LinkSpeed.Enabled: no change */
+										/* LinkSpeeed.Active: link is LinkDown*/
 #define STL_LINK_SPEED_12_5G	 0x0001	/* 12.5 Gbps */
 #define STL_LINK_SPEED_25G		 0x0002		/* 25.78125? Gbps (EDR) */
 
@@ -728,7 +734,6 @@ typedef union {
 /* reserved 1 */
 #define STL_PORT_LINK_MODE_ETH	2		/* Port mode is ETH (Gateway) */
 #define STL_PORT_LINK_MODE_STL	4		/* Port mode is STL */
-#define STL_PORT_LINK_MODE_ALL_SUPPORTED 7
 
 /* STL Port link formats, indicated as follows:
  * values are additive for Supported and Enabled fields
@@ -747,7 +752,6 @@ typedef union {
 #define STL_PORT_LTP_CRC_MODE_16	2	/* 16-bit LTP CRC mode */
 #define STL_PORT_LTP_CRC_MODE_48	4	/* 48-bit LTP CRC mode (optional) */
 #define STL_PORT_LTP_CRC_MODE_12_16_PER_LANE 8	/* 12/16-bit per lane LTP CRC mode */
-#define STL_PORT_LTP_CRC_MODE_ALL   15
 
 /* STL Port Flit distance mode, indicated as follows:
  * values are additive for Supported and Enabled fields
@@ -922,7 +926,6 @@ typedef struct {
 		ClientReregister:	1,	/* RW/H-PE POD/LUD: 0 */
 		MulticastPKeyTrapSuppressionEnabled:2,	/* RW/H-PE */
 		Timeout:			5 )	/* RW/H-PE Timer value used for subnet timeout */
-								/* value, a multiple of 96us */
 	} Subnet;
 
 	struct {					/* Link speed (see STL_LINK_SPEED_XXX) LinkBounce */
@@ -1438,6 +1441,7 @@ typedef struct {
 	uint32 Reserved2;
 
 } PACK_SUFFIX STL_LED_INFO;
+
 /*
  * CableInfo
  *
@@ -1453,8 +1457,9 @@ typedef struct {
  * Cable Info can only be read within 128-byte pages; that is, a single
  * read cannot cross a 128-byte (page) boundary.
  */
+#define STL_CABLE_INFO_DATA_SIZE 	64
 typedef struct {
-	uint8   Data[64];			/* RO Cable Info data (up to 64 bytes) */
+	uint8   Data[STL_CABLE_INFO_DATA_SIZE];			/* RO Cable Info data (up to 64 bytes) */
 		
 } PACK_SUFFIX STL_CABLE_INFO;
 
@@ -1462,12 +1467,153 @@ typedef struct {
 #define STL_CABLE_INFO_MAXADDR 	4095
 #define STL_CABLE_INFO_MAXLEN 	63
 
-
 // Note: Even though the entire cable memory is available to be read,
 //  tools only interpret one page of cable info memory which contains
 //  relevant data.
-#define STL_CIB_START_ADDR		128 /* Inclusive */
-#define STL_CIB_END_ADDR		(STL_CIB_START_ADDR+STL_CABLE_INFO_PAGESZ-1) /* Inclusive */
+
+// These are for PortType Standard, uses of these can assume START and END
+// will be on and STL_CABLE_INFO_DATA_SIZE boundary
+#define STL_CIB_STD_START_ADDR		128
+#define STL_CIB_STD_END_ADDR		(STL_CIB_STD_START_ADDR+STL_CABLE_INFO_PAGESZ-1)
+#define STL_CIB_STD_LEN				(STL_CABLE_INFO_PAGESZ)
+
+#define STL_CIB_STD_MAX_STRING			16		// Max ASCII string in STD CableInfo field
+
+// Byte 129: pwr_class_low, pwr_class_high
+#define STL_CIB_STD_PWRLOW_1_5			0		// Pwr class low class 1 (1.5 W)
+#define STL_CIB_STD_PWRLOW_2_0			1		// Pwr class low class 2 (2.0 W)
+#define STL_CIB_STD_PWRLOW_2_5			2		// Pwr class low class 3 (2.5 W)
+#define STL_CIB_STD_PWRLOW_3_5			3		// Pwr class low class 4 (3.5 W)
+#define STL_CIB_STD_PWRHIGH_LEGACY		0		// Pwr class high legacy settings
+#define STL_CIB_STD_PWRHIGH_4_0			1		// Pwr class high class 5 (4.0 W)
+#define STL_CIB_STD_PWRHIGH_4_5			2		// Pwr class high class 6 (4.5 W)
+#define STL_CIB_STD_PWRHIGH_5_0			3		// Pwr class high class 7 (5.0 W)
+
+// Byte 130: connector
+#define STL_CIB_STD_CONNECTOR_NO_SEP	0x23	// Connector type is non-separable
+
+// Byte 140: bit_rate_low
+#define STL_CIB_STD_RATELOW_NONE		0		// Nominal bit rate low not specified 
+#define STL_CIB_STD_RATELOW_EXCEED		0xFF	// Nominal bit rate low > 25.4 Gbps
+
+// Byte 147: dev_tech.xmit_tech
+#define STL_CIB_STD_TXTECH_850_VCSEL		0x0	// Tx tech 850 nm VCSEL
+#define STL_CIB_STD_TXTECH_1310_VCSEL		0x1	// Tx tech 1310 nm VCSEL
+#define STL_CIB_STD_TXTECH_1550_VCSEL		0x2	// Tx tech 1550 nm VCSEL
+#define STL_CIB_STD_TXTECH_1310_FP			0x3	// Tx tech 1310 nm FP
+#define STL_CIB_STD_TXTECH_1310_DFB			0x4	// Tx tech 1310 nm DFB
+#define STL_CIB_STD_TXTECH_1550_DFB			0x5	// Tx tech 1550 nm DFB
+#define STL_CIB_STD_TXTECH_1310_EML			0x6	// Tx tech 1310 nm EML
+#define STL_CIB_STD_TXTECH_1550_EML			0x7	// Tx tech 1550 nm EML
+#define STL_CIB_STD_TXTECH_OTHER			0x8	// Tx tech Other/Undefined
+#define STL_CIB_STD_TXTECH_1490_DFB			0x9	// Tx tech 1490 nm DFB
+#define STL_CIB_STD_TXTECH_CU_UNEQ			0xA	// Tx tech Cu unequalized
+#define STL_CIB_STD_TXTECH_CU_PASSIVEQ		0xB	// Tx tech Cu passive equalized
+#define STL_CIB_STD_TXTECH_CU_NFELIMACTEQ	0xC	// Tx tech Cu near & far end limiting active equalizers
+#define STL_CIB_STD_TXTECH_CU_FELIMACTEQ	0xD	// Tx tech Cu far end limiting active equalizers
+#define STL_CIB_STD_TXTECH_CU_NELIMACTEQ	0xE	// Tx tech Cu near end limiting active equalizers
+#define STL_CIB_STD_TXTECH_CU_LINACTEQ		0xF	// Tx tech Cu linear active equalizers
+#define STL_CIB_STD_TXTECH_MAX				0xF	// Tx tech max value
+
+// Byte 250: opa_cert_cable
+#define STL_CIB_STD_OPA_CERTIFIED_CABLE		0xAB	// OPA certified cable
+
+// Byte 252: opa_cert_data_rate
+#define STL_CIB_STD_OPACERTRATE_4X25G		0x02	// Certified data rate 4x25G
+
+// The following structure represents STD CableInfo page 0 upper in memory.
+// (based on SFF-8636 Rev 2-5)
+typedef struct {
+	// Page 0 upper, bytes 128-255
+	uint8	ident;					// 128: Identifier
+	union {
+		uint8	AsReg8;
+		struct { IB_BITFIELD5( uint8,	// 129: Extended identifier:
+			pwr_class_low:	2,			//		Power class low
+			other:			2,			//		Other settings
+			tx_cdr_supp:	1,			//		Tx CDR support
+			rx_cdr_supp:	1,			//		Rx CDR support
+			pwr_class_high:	2)			//		Power class low
+		} s;
+	} ext_ident;				
+	uint8	connector;				// 130: Connector (see STL_CIB_CONNECTOR_TYPE_xxx)
+	uint8	spec_comp[8];			// 131-138: Elec/optical compliance code
+	uint8	encode;					// 139: Encoding algorithm
+	uint8	bit_rate_low;			// 140: Nominal bit rate low (units 100 Mbps)
+									//		(0xFF see bit_rate_high)
+	uint8	ext_rate_comp;			// 141: Extended rate compliance code
+	uint8	len_smf;				// 142: Link len SMF fiber (units km)
+	uint8	len_om3;				// 143: Link len OM3 fiber (units 2m)
+	uint8	len_om2;				// 144: Link len OM2 fiber (units 1m)
+	uint8	len_om1;				// 145: Link len OM1 fiber (units 1m)
+	uint8	len_om4;				// 146: Link len OM4 copper or fiber (units 1m or 2m)
+	union {
+		uint8	AsReg8;
+		struct { IB_BITFIELD2( uint8,	// 147: Device technology:
+			xmit_tech:	4,				//		Transmitter technology
+			other:		4)				//		Other settings
+		} s;
+	} dev_tech;				
+	uint8	vendor_name[16];		// 148-163: Vendor name
+	uint8	ext_mod;				// 164: Extended module code
+	uint8	vendor_oui[3];			// 165-167: Vendor OUI
+	uint8	vendor_pn[16];			// 168-183: Vendor part number
+	uint8	vendor_rev[2];			// 184-185: Vendor revision
+	uint8	wave_atten[2];			// 186-187: Wave length (value/20 nm) or
+									//			copper attenuation (units dB)
+	uint8	wave_tol[2];			// 188-189: Wave length tolerance (value/200 nm)
+	uint8	max_case_temp;			// 190: Max case temperature (degrees C)
+	uint8	cc_base;				// 191: Checksum addresses 128-190
+	uint8	link_codes;				// 192: Link codes
+	union {
+		uint8	AsReg8;
+		struct { IB_BITFIELD5( uint8,   // 193: RxTx options: equalization & emphasis
+			reserved:		4,			//		Reserved
+			tx_inpeq_autadp_cap:	1,	//		Tx inp equal auto-adaptive capable
+			tx_inpeq_fixpro_cap:	1,	//		Tx inp equal fixed-prog capable
+			rx_outemp_fixpro_cap:	1,	//		Rx outp emphasis fixed-prog capable
+			rx_outamp_fixpro_cap:	1)	//		Rx outp amplitude fixed-prog capable
+		} s;
+	} rxtx_opt_equemp;
+	union {
+		uint8	AsReg8;
+		struct { IB_BITFIELD8( uint8,   // 194: RxTx options: CDR, LOL, squelch
+			tx_cdr_ctrl:	1,			//		Tx CDR On/Off ctrl implemented
+			rx_cdr_ctrl:	1,			//		Rx CDR On/Off ctrl implemented
+			tx_cdr_lol:		1,			//		Tx CDR loss of lock flag implemented
+			rx_cdr_lol:		1,			//		Rx CDR loss of lock flag implemented
+			rx_squel_dis:	1,			//		Rx squelch disable implemented
+			rx_out_dis:		1,			//		Rx output disable implemented
+			tx_squel_dis:	1,			//		Tx squelch disable implemented
+			tx_squel:		1)			//		Tx squelch implemented
+		} s;
+	} rxtx_opt_cdrsquel;
+	union {
+		uint8	AsReg8;
+		struct { IB_BITFIELD8( uint8,   // 195: MemTx options: pages 1 & 2, implementations
+			page_2:				1,		//		Mem page 2 implemented
+			page_1:				1,		//		Mem page 1 implemented
+			rate_sel:			1,		//		Rate select implemented
+			tx_dis:				1,		//		Tx disable implemented
+			tx_fault:			1,		//		Tx fault signal implemented
+			tx_squel_omapav:	1,		//		Tx squelch OMA/Pave
+			tx_los:				1,		//		Tx loss of signal implemented
+			reserved:			1)		//		Reserved
+		} s;
+	} memtx_opt_pagesquel;
+	uint8	vendor_sn[16];			// 196-211: Vendor serial number
+	uint8	date_code[8];			// 212-219: Vendor manufacture date code
+	uint8	diag_mon_type;			// 220: Diagnostic monitoring type
+	uint8	options_enh;			// 221: Enhanced options
+	uint8	bit_rate_high;			// 222: Nominal bit rate high (units 250 Mbps)
+									//		(see also bit_rate_low)
+	uint8	cc_ext;					// 223: Checksum addresses 192-222
+	uint8	vendor[26];				// 224-249: Vendor specific
+	uint8	opa_cert_cable;			// 250: OPA certified cable (see STL_CIB_CERTIFIED_CABLE)
+	uint8	vendor2;				// 251: Vendor specific
+	uint8	opa_cert_data_rate;		// 252: OPA certified data rate
+	uint8	vendor3[3];				// 253-255: Vendor specific
+} PACK_SUFFIX STL_CABLE_INFO_STD;
 
 /*
  * Aggregate

@@ -647,11 +647,7 @@ void IXmlParserPrintError(IXmlParserState_t *state, const char *format, ...)
 
 	va_start(args, format);
 
-#ifdef VXWORKS
-	vsprintf(buf, format, args);
-#else
 	vsnprintf(buf, sizeof(buf), format, args);
-#endif
 	va_end(args);
 
 	if (state->current.field && state->current.field->tag)
@@ -699,11 +695,7 @@ void IXmlParserPrintWarning(IXmlParserState_t *state, const char *format, ...)
 
 	va_start(args, format);
 
-#ifdef VXWORKS
-	vsprintf(buf, format, args);
-#else
 	vsnprintf(buf, sizeof(buf), format, args);
-#endif
 	va_end(args);
 
 	snprintf(buf2, sizeof(buf2),

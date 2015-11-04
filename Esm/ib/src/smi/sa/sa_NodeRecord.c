@@ -61,6 +61,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sm_counters.h"
 #include "sm_l.h"
 #include "sa_l.h"
+#include "stl_print.h"
 
 static Status_t sa_NodeRecord_GetTable(Mai_t *, uint32_t *, SACacheEntry_t **);
 static Status_t sa_IbNodeRecord_GetTable(Mai_t *, uint32_t *);
@@ -318,7 +319,7 @@ sa_NodeRecord_GetTable(Mai_t * maip, uint32_t * records, SACacheEntry_t ** outCa
 	 */
 	lid = maip->addrInfo.slid;
 	if ((portp = sm_find_active_port_lid(&old_topology, lid)) == NULL) {
-		maip->base.status = isSweeping ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID;
+		maip->base.status = activateInProgress ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID;
 		(void) vs_rwunlock(&old_topology_lock);
 		IB_EXIT("sa_NodeRecord_GetTable", VSTATUS_OK);
 		return (VSTATUS_OK);
@@ -461,7 +462,7 @@ sa_IbNodeRecord_GetTable(Mai_t * maip, uint32_t * records)
 	 */
 	lid = maip->addrInfo.slid;
 	if ((portp = sm_find_active_port_lid(&old_topology, lid)) == NULL) {
-		maip->base.status = isSweeping ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID;
+		maip->base.status = activateInProgress ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID;
 		(void) vs_rwunlock(&old_topology_lock);
 		IB_EXIT("sa_IbNodeRecord_GetTable", VSTATUS_OK);
 		return (VSTATUS_OK);
@@ -794,3 +795,29 @@ sa_NodeRecord_BuildSwitchCache(SACacheEntry_t * cachep, Topology_t * top)
 	IB_EXIT("sa_NodeRecord_BuildSwitchCache", rc);
 	return rc;
 }
+
+void showStlLids(void)
+{ 
+    Node_t *nodep; 
+    STL_NODE_RECORD nodeRecord, tempNodeRecord; 
+    PrintDest_t dest; 
+    
+    PrintDestInitFile(&dest, stdout); 
+    
+    (void)vs_rdlock(&old_topology_lock); 
+    
+    for_all_nodes(&old_topology, nodep) {
+        Port_t *portp = NULL; 
+        
+        for_all_end_ports(nodep, portp) {
+            if (!sm_valid_port(portp) || portp->state <= IB_PORT_DOWN) 
+                continue; 
+            (void)sa_NodeRecord_Set((uint8_t *)&tempNodeRecord, nodep, portp); 
+            BSWAPCOPY_STL_NODE_RECORD(&tempNodeRecord, &nodeRecord); 
+            PrintStlLid(&dest, 0, nodeRecord.RID.LID, 0);
+        }
+    }
+    
+    (void)vs_rwunlock(&old_topology_lock);
+}
+

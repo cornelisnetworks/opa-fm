@@ -224,6 +224,7 @@ typedef enum _smCounters {
 	smCounterSaRxGetMultiPathRecord,
 	smCounterSaRxGetVfRecord,
 	smCounterSaRxGetTblVfRecord,
+	smCounterSaRxGetFabricInfoRecord,
 
 	smCounterSaRxGetTblQuarantinedNodeRecord,
     smCounterSaRxGetCongInfoRecord,

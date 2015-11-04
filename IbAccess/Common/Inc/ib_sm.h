@@ -97,7 +97,6 @@ extern "C" {
 													/* Diagnostic */
 #define MCLASS_ATTRIB_ID_LED_INFO			0x0031	/* Turn on/off LED */
 
-#define MCLASS_ATTRIB_ID_VENDOR_SWITCH_INFO	0xff12	/* Vendor Switch Info */
 #define MCLASS_ATTRIB_ID_PORT_LFT			0xff19	/* Port Linear forwarding table */
 #define MCLASS_ATTRIB_ID_PORT_GROUP			0xff21	/* Vendor Port Group Info */
 #define MCLASS_ATTRIB_ID_AR_LIDMASK			0xff22	/* LID Mask for Adaptive Routing */
@@ -377,7 +376,7 @@ typedef struct _SMA_TRAP_DATA_BAD_QKEY {
  * NodeInfo
  */
 
-#define OUI_QLOGIC 0x00066a
+#define OUI_TRUESCALE 0x00066a
 
 
 typedef struct _NODE_INFO {
@@ -796,8 +795,6 @@ typedef struct _PORT_INFO {
 		uint8	Timeout:	5;
 #else
 		uint8	Timeout:	5;	/* Timer value used for subnet timeout  */
-								/* value, a multiple of 96us.  */
-								/* unit is 96 ms  */
 		uint8	Reserved:	2;
 		uint8	ClientReregister:	1;
 #endif
@@ -1171,75 +1168,6 @@ typedef enum _IB_VLARBTABLE_PART {
 } IB_VLARBTABLE_PART;
 
 
-/*
- * VendorSwitchInfo
- */
-typedef	union _VendorCapabilityMask {
-	uint16	AsReg16;
-	struct {
-#if CPU_BE
-		uint16	VcmReserved:						14;
-		uint16	IsAdaptiveRoutingTier1Supported:	1;
-		uint16  IsAdaptiveRoutingSupported:			1;
-#else /* CPU_BE */
-		uint16  IsAdaptiveRoutingSupported:			1;
-		uint16	IsAdaptiveRoutingTier1Supported:	1;
-		uint16	VcmReserved:						14;
-#endif /* CPU_BE */
-	} s; 
-} VENDOR_CAPABILITY_MASK;
-
-#define SMP_VSWITCH_AR_SUPPORT(x)		(x)->CapabilityMask.s.IsAdaptiveRoutingSupported
-
-/* The vendor Switch Info query is supported by devices which report
- * NodeType Switch
- * NumPorts >= 36
- * VendorId 0x66a
- * Revision >= 2
- */
-static __inline
-boolean
-NodeSupportsVendorSwitchInfo(
-	IN NODE_INFO			*pNodeInfo
-	 )
-{
-	return (pNodeInfo->NodeType == IBA_NODE_SWITCH
-			&& pNodeInfo->NumPorts >= 36
-			&& pNodeInfo->u1.s.VendorID == OUI_QLOGIC
-			&& pNodeInfo->Revision >= 2);
-}
-
-typedef struct _VENDOR_SWITCH_INFO {
-
-	SWITCH_INFO		SwitchInfo;
-
-	uint8			Reserved1[8];		/* Extra space reserved for switch info extensions */
-	uint8			Version;			/* Version of vendor specific implementation */
-	
-	union {
-		uint8	AsReg8;
-		struct {
-#if CPU_BE
-			uint8	LostRoutesOnly:					1;	/* Adaptive Routing of lost routes only */
-			uint8	AdaptiveRoutingPause:			1;	/* Adaptive Routing Pause */
-			uint8	AdaptiveRoutingEnable:			1;	/* Set by SM to enable/disable adaptive routing */
-			uint8	AdaptiveRoutingTier1Enable:		1;	/* Set by SM to enable/disable tier1 */
-			uint8	Reserved2:						4;
-#else
-			uint8	Reserved2:						4;
-			uint8	AdaptiveRoutingTier1Enable:		1;
-			uint8	AdaptiveRoutingEnable:			1;	
-			uint8	AdaptiveRoutingPause:			1;
-			uint8	LostRoutesOnly:					1;
-#endif
-		} s;
-	} u;
-
-	VENDOR_CAPABILITY_MASK	CapabilityMask;		/* Vendor specific capabilities */
-
-} PACK_SUFFIX VENDOR_SWITCH_INFO;
-
-
 #define PGTABLE_LIST_COUNT 64
 
 typedef struct _PORT_GROUP_TABLE {
@@ -1253,7 +1181,7 @@ typedef struct _ADAPTIVE_ROUTING_LIDMASK {
 } PACK_SUFFIX ADAPTIVE_ROUTING_LIDMASK;
 
 /*
- * SM attributes for QLogic Collectives feature.  See DN0310.
+ * SM attributes for TrueScale Collectives feature.  See DN0310.
  */
 
 typedef enum {
@@ -1664,18 +1592,6 @@ BSWAP_ICS_LED_INFO(
 {
 #if CPU_LE
 	Dest->AsReg32 = ntoh32(Dest->AsReg32);
-#endif
-}
-
-static __inline
-void
-BSWAP_VENDOR_SWITCH_INFO(
-	VENDOR_SWITCH_INFO	*Dest
-	)
-{
-	BSWAP_SWITCH_INFO((SWITCH_INFO *)&Dest->SwitchInfo);
-#if CPU_LE
-	Dest->CapabilityMask.AsReg16 = ntoh16(Dest->CapabilityMask.AsReg16);
 #endif
 }
 

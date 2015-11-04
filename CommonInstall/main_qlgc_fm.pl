@@ -110,10 +110,10 @@ $WrapperComponent = "opa_config_fm";
 	"opafm" =>	{ Name => "OPA FM",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "",
-					  PreReq => " ib_stack ", CoReq => "",
+					  PreReq => " opa_stack ", CoReq => "",
 					  Hidden => 0, Disabled => 0,
 					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
-					  StartPreReq => " ib_stack ",
+					  StartPreReq => " opa_stack ",
 					  StartComponents => [ "opafm" ],
 					},
 	);
@@ -199,7 +199,7 @@ sub Usage
 	if ( $allow_install ) {
 		#printf STDERR "Usage: $0 [-r root] [-v|-vv] [-a|-n|-U|-u|-s|-i comp|-e comp] [-E comp] [-D comp] [--without-depcheck] [--force] [--answer keyword=value]\n";
 		# don't document -i and -e (-a and -u should be equivalent)
-		printf STDERR "Usage: $0 [-r root] [-v|-vv] [-a|-n|-U|-u|-s] [-E comp] [-D comp] [--without-depcheck] [--force] [--answer keyword=value]\n";
+		printf STDERR "Usage: $0 [-r root] [-v|-vv] [-a|-n|-U|-u|-s|-O|-N] [-E comp] [-D comp] [--without-depcheck] [--force] [--answer keyword=value]\n";
 	} else {
 		#printf STDERR "Usage: $0 [-r root] [-v|-vv] [-u|-s|-e comp] [-E comp] [-D comp] [--answer keyword=value]\n";
 		printf STDERR "Usage: $0 [-r root] [-v|-vv] [-u|-s] [-E comp] [-D comp] [--answer keyword=value]\n";
@@ -219,6 +219,8 @@ sub Usage
 		printf STDERR "       --without-depcheck - disable check of OS dependencies\n";
 		printf STDERR "       --force - force install even if distos don't match\n";
 		printf STDERR "                 Use of this option can result in undefined behaviors\n";
+		printf STDERR "       -O - Keep current modified rpm config file\n";
+		printf STDERR "       -N - Use new default rpm config file\n";
 	}
 	printf STDERR "       -u - uninstall all ULPs and drivers with default options\n";
 	printf STDERR "       -s - enable autostart for all installed drivers\n";
@@ -389,6 +391,12 @@ sub process_args
 				} elsif ( "$arg" eq "-U" ) {
 					$Default_Upgrade=1;
 					$Default_SameAutostart=1;
+				} elsif ("$arg" eq "-O") {
+					$Default_RpmConfigKeepOld=1;
+					$Default_RpmConfigUseNew=0;
+				} elsif ("$arg" eq "-N") {
+					$Default_RpmConfigKeepOld=0;
+					$Default_RpmConfigUseNew=1;
 				} else {
 					printf STDERR "Invalid option: $arg\n";
 					Usage;

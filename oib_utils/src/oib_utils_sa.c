@@ -109,7 +109,7 @@ static const char* const SdQueryResultTypeText[] = {
 	"OutputTypeVLArbTableRecord",
 	"OutputTypePKeyTableRecord",
 	"OutputTypeVfInfoRecord",
-	"OutputTypeVendSwitchInfoRecord",
+	"OutputTypeClassPortInfo",
 	// PM query results
 	"OutputTypePaRecord",
 	"OutputTypePaTableRecord",
@@ -152,7 +152,8 @@ static const char* const SdQueryStlResultTypeText[] = {
 	"OutputTypeStlSCVLtTableRecord",
 	"OutputTypeStlSCVLntTableRecord",
 	"OutputTypeStlSCSCTableRecord",
-	"OutputTypeStlClassPortInfo"
+	"OutputTypeStlClassPortInfo",
+	"OutputTypeStlFabricInfoRecord"
 };
 
 /* TBD get from libibt? */
@@ -267,6 +268,7 @@ static FSTATUS sa_query_common (SA_MAD * pSA,
 	uint32_t   memsize;
 	struct oib_mad_addr addr = {
 		lid : oib_get_port_sm_lid(port),
+		sl: oib_get_port_sm_sl(port),
 		qpn : 1,
 		qkey : QP1_WELL_KNOWN_Q_KEY,
 		pkey : OIB_DEFAULT_PKEY
@@ -284,6 +286,12 @@ static FSTATUS sa_query_common (SA_MAD * pSA,
 	if (oib_find_pkey(port, 0xffff)<0) {
 		// No full mgmt pkey available on this node.
 		switch (pSA->common.AttributeID) {
+        case SA_ATTRIB_PORTINFO_RECORD:
+            if (pSA->common.BaseVersion != IB_BASE_VERSION) {
+                fstatus = FPROTECTION;
+                break;
+            }
+			// fall through 
 		case SA_ATTRIB_PATH_RECORD:
 		case SA_ATTRIB_MULTIPATH_RECORD:
 		case SA_ATTRIB_NODE_RECORD:
@@ -354,14 +362,15 @@ static FSTATUS sa_query_common (SA_MAD * pSA,
 			 (unsigned int)((*ppRsp)->SaHdr.ComponentMask >> 32));
 
 	// if no records IBTA 1.2.1 says AttributeOffset should be 0
-	// Assume we never get here for a non-RMPP (eg. non-GetTable) response
-	if ((*ppRsp)->SaHdr.AttributeOffset) {
+	if ((*ppRsp)->common.mr.AsReg8 == SUBN_ADM_GET_RESP) {
+		cnt = 1; /* Count is always 1 for a GET(). */
+	} else if ((*ppRsp)->SaHdr.AttributeOffset) {
+		/* Count is data length / attribute offset. */
 		cnt = (int)((length-IBA_SUBN_ADM_HDRSIZE) / 
 					((*ppRsp)->SaHdr.AttributeOffset * sizeof(uint64)) );
-	} else if ((*ppRsp)->common.mr.AsReg8 == SUBN_ADM_GET_RESP)
-		cnt = 1; /* ClassPortInfo is a GET(). */
-	else
+	} else {
 		cnt = 0;
+	}
 
 	DBGPRINT("Result count is %d\n", cnt);
 
@@ -461,12 +470,12 @@ static FSTATUS fillInNodeRecord(SA_MAD * pSA,
 			   pQuery->InputValue.NodeDesc.NameLength);
 		break;
 	default:
-		fprintf(stderr, "Query Not supported in OFED: Input=%s(%d), Output=%s(%d)\n",
+		fprintf(stderr, "Query not supported in OFED: Input=%s(%d), Output=%s(%d)\n",
 				iba_sd_query_input_type_msg(pQuery->InputType),
 				pQuery->InputType,
 				iba_sd_query_result_type_msg(pQuery->OutputType),
 				pQuery->OutputType);
-		return(FERROR);
+		return(FINVALID_PARAMETER);
 	}
 
 	BSWAP_STL_NODE_RECORD(pNR);
@@ -528,12 +537,12 @@ static FSTATUS fillInIbNodeRecord(SA_MAD * pSA,
 			   pQuery->InputValue.NodeDesc.NameLength);
 		break;
 	default:
-		fprintf(stderr, "Query Not supported in OFED: Input=%s(%d), Output=%s(%d)\n",
+		fprintf(stderr, "Query not supported in OFED: Input=%s(%d), Output=%s(%d)\n",
 				iba_sd_query_input_type_msg(pQuery->InputType),
 				pQuery->InputType,
 				iba_sd_query_result_type_msg(pQuery->OutputType),
 				pQuery->OutputType);
-		return(FERROR);
+		return(FINVALID_PARAMETER);
 	}
 
 	BSWAP_IB_NODE_RECORD(pNR);
@@ -592,6 +601,32 @@ FSTATUS oib_query_sa(struct oib_port *port,
 
 	// Process the command.
 	switch ((int)pQuery->OutputType) {
+	case OutputTypeClassPortInfo:
+		{
+			IB_CLASS_PORT_INFO_RESULTS *pCPIR;
+			IB_CLASS_PORT_INFO *pCPI;
+
+			if (pQuery->InputType != InputTypeNoInput)
+				break;
+
+			MAD_SET_VERSION_INFO(&mad, IB_BASE_VERSION, MCLASS_SUBN_ADM, 
+								 IB_SUBN_ADM_CLASS_VERSION);
+			MAD_SET_ATTRIB_ID(&mad, SA_ATTRIB_CLASS_PORT_INFO);
+			MAD_SET_METHOD_TYPE(&mad, SUBN_ADM_GET);
+			
+			fstatus = sa_query_common(&mad, &pRsp, sizeof(IB_CLASS_PORT_INFO), &pQR, port);
+			if (fstatus != FSUCCESS) break;
+
+			pCPIR = (IB_CLASS_PORT_INFO_RESULTS*)pQR->QueryResult;
+			pCPI = &pCPIR->ClassPortInfo[0];
+			
+			// There should only be one ClassPortInfo result.
+			if (pCPIR->NumClassPortInfo > 0) {
+				*pCPI = *((IB_CLASS_PORT_INFO*)(GET_RESULT_OFFSET(pRsp, 0)));
+				BSWAP_IB_CLASS_PORT_INFO(pCPI);
+			}
+		}
+		break;
 	case OutputTypeStlClassPortInfo:
 		{
 			STL_CLASS_PORT_INFO_RESULT *pCPIR;
@@ -622,7 +657,7 @@ FSTATUS oib_query_sa(struct oib_port *port,
 			STL_NODE_RECORD      *pNR;
 
 			// Take care of input types in fillIn...
-			if (fillInNodeRecord(&mad, pQuery) != FSUCCESS) break;
+			if ((fstatus = fillInNodeRecord(&mad, pQuery)) != FSUCCESS) break;
 
 			fstatus = sa_query_common(&mad, &pRsp, sizeof (STL_NODE_RECORD), &pQR, port);
 			if (fstatus != FSUCCESS) break;
@@ -675,10 +710,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pPI->RID.s.EndPortLID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr,"Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr,"Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			BSWAP_IB_PORTINFO_RECORD(pPI, TRUE);
@@ -733,10 +768,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pPI->RID.EndPortLID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr,"Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr,"Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			BSWAP_STL_PORTINFO_RECORD(pPI);
@@ -769,10 +804,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pLR->RID.FromLID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			pLR->Reserved = 0;
@@ -806,10 +841,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pLR->RID.FromLID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			BSWAP_IB_LINK_RECORD(pLR);
@@ -846,10 +881,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pSI->RID.LID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			pSI->Reserved = 0;
@@ -884,10 +919,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pSI->RID.s.LID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			BSWAP_IB_SWITCHINFO_RECORD(pSI);
@@ -924,10 +959,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 			case InputTypeNoInput:     
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
                            
 			BSWAP_IB_SMINFO_RECORD(pSMI);
@@ -959,10 +994,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 			case InputTypeNoInput:     
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			pSMI->Reserved = 0;
@@ -1212,10 +1247,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				break;
 
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			if(pPR){
@@ -1305,10 +1340,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pPR->NumbPath = PATHRECORD_NUMBPATH;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
                            
 			BSWAP_IB_PATH_RECORD(pPR);
@@ -1389,7 +1424,7 @@ FSTATUS oib_query_sa(struct oib_port *port,
 			STL_NODE_DESCRIPTION    *pND;
 			STL_NODE_RECORD      *pNR;
 
-			if (fillInNodeRecord(&mad, pQuery) != FSUCCESS) break;
+			if ((fstatus = fillInNodeRecord(&mad, pQuery)) != FSUCCESS) break;
 
 			fstatus = sa_query_common(&mad, &pRsp, sizeof (STL_NODE_RECORD), &pQR, port);
 			if (fstatus != FSUCCESS) break;
@@ -1436,7 +1471,7 @@ FSTATUS oib_query_sa(struct oib_port *port,
 			EUI64               *pGuid;
 			STL_NODE_RECORD      *pNR;
 
-			if (fillInNodeRecord(&mad, pQuery) != FSUCCESS) break;
+			if ((fstatus = fillInNodeRecord(&mad, pQuery)) != FSUCCESS) break;
 
 			fstatus = sa_query_common(&mad, &pRsp, sizeof (STL_NODE_RECORD), &pQR, port);
 			if (fstatus != FSUCCESS) break;
@@ -1478,7 +1513,7 @@ FSTATUS oib_query_sa(struct oib_port *port,
 			EUI64               *pGuid;
 			STL_NODE_RECORD      *pNR;
 
-			if (fillInNodeRecord(&mad, pQuery) != FSUCCESS) break;
+			if ((fstatus = fillInNodeRecord(&mad, pQuery)) != FSUCCESS) break;
 
 			fstatus = sa_query_common(&mad, &pRsp, sizeof (STL_NODE_RECORD), &pQR, port);
 			if (fstatus != FSUCCESS) break;
@@ -1500,7 +1535,7 @@ FSTATUS oib_query_sa(struct oib_port *port,
 			uint32		*pLid;
 			STL_NODE_RECORD	*pNR;
 
-			if (fillInNodeRecord(&mad, pQuery) != FSUCCESS) break;
+			if ((fstatus = fillInNodeRecord(&mad, pQuery)) != FSUCCESS) break;
 
 			fstatus = sa_query_common(&mad, &pRsp, sizeof (STL_NODE_RECORD), &pQR, port);
 			if (fstatus != FSUCCESS) break;
@@ -1535,10 +1570,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pSR->RID.ServiceGID = pQuery->InputValue.Gid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
                            
 			BSWAP_IB_SERVICE_RECORD(pSR);
@@ -1559,6 +1594,7 @@ FSTATUS oib_query_sa(struct oib_port *port,
 		}
 		break;
 
+#ifndef NO_STL_SERVICE_OUTPUT       // Don't output STL Service if defined
 	case OutputTypeStlServiceRecord:   
 		{   
 			STL_SERVICE_RECORD_RESULTS *pSRR;
@@ -1582,10 +1618,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pSR->RID.ServiceGID = pQuery->InputValue.Gid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			pSR->RID.Reserved = 0;
@@ -1606,7 +1642,9 @@ FSTATUS oib_query_sa(struct oib_port *port,
 			}
 		}
 		break;
+#endif
 
+#ifndef NO_STL_MCMEMBER_OUTPUT      // Don't output STL McMember (use IB format) if defined
 	case OutputTypeStlMcMemberRecord:  
         {   
 			STL_MCMEMBER_RECORD_RESULTS *pMCRR;
@@ -1638,10 +1676,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pMCR->P_Key = pQuery->InputValue.PKey;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			pMCR->Reserved = 0;
@@ -1665,6 +1703,7 @@ FSTATUS oib_query_sa(struct oib_port *port,
 			}
 		}
 		break;
+#endif
 
 	case OutputTypeMcMemberRecord:
 		{
@@ -1697,10 +1736,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pIbMCR->P_Key = pQuery->InputValue.PKey;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			BSWAP_IB_MCMEMBER_RECORD(pIbMCR);
@@ -1741,10 +1780,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pIIR->RID.SubscriberGID = pQuery->InputValue.Gid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			BSWAP_IB_INFORM_INFO_RECORD(pIIR);
@@ -1778,10 +1817,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pIIR->RID.SubscriberLID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			pIIR->Reserved = 0;
@@ -1815,10 +1854,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pSLVLR->RID.s.LID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			BSWAP_IB_SLVLMAP_RECORD(pSLVLR);
@@ -1852,10 +1891,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pSCSCR->RID.LID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			BSWAP_STL_SC_MAPPING_TABLE_RECORD(pSCSCR);
@@ -1889,10 +1928,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pSLSCR->RID.LID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR;
+				fstatus = FINVALID_PARAMETER;
 				goto done;
 			}
 			BSWAP_STL_SL2SC_MAPPING_TABLE_RECORD(pSLSCR);
@@ -1928,10 +1967,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pSCSLR->RID.LID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR;
+				fstatus = FINVALID_PARAMETER;
 				goto done;
 			}
 			BSWAP_STL_SC2SL_MAPPING_TABLE_RECORD(pSCSLR);
@@ -1963,10 +2002,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pSCVLtR->RID.LID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR;
+				fstatus = FINVALID_PARAMETER;
 				goto done;
 			}
 			BSWAP_STL_SC2VL_R_MAPPING_TABLE_RECORD(pSCVLtR);
@@ -1998,10 +2037,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pSCVLntR->RID.LID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR;
+				fstatus = FINVALID_PARAMETER;
 				goto done;
 			}
 			BSWAP_STL_SC2VL_R_MAPPING_TABLE_RECORD(pSCVLntR);
@@ -2033,10 +2072,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pVLR->RID.LID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			pVLR->Reserved = 0;
@@ -2073,10 +2112,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pPKR->RID.LID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			pPKR->Reserved = 0;
@@ -2108,10 +2147,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pPKR->RID.s.LID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			BSWAP_IB_P_KEY_TABLE_RECORD(pPKR);
@@ -2144,10 +2183,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pLFR->RID.LID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			pLFR->RID.Reserved = 0;
@@ -2181,10 +2220,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pRFR->RID.s.LID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			BSWAP_IB_RANDOM_FDB_RECORD(pRFR);
@@ -2216,10 +2255,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pMFR->RID.LID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			pMFR->RID.u1.s.Reserved = 0;
@@ -2279,10 +2318,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 					   pQuery->InputValue.NodeDesc.NameLength);
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			pVFR->rsvd1 = 0;
@@ -2309,43 +2348,27 @@ FSTATUS oib_query_sa(struct oib_port *port,
 		}
 		break;
 
-	case OutputTypeVendSwitchInfoRecord:
+	case OutputTypeStlFabricInfoRecord:
 		{
-			VENDSWITCHINFO_RECORD_RESULTS *pVSIR;
-			IB_VENDSWITCHINFO_RECORD      *pVSI = (IB_VENDSWITCHINFO_RECORD*)mad.Data;
-			int                           extended_data;
+			STL_FABRICINFO_RECORD_RESULT *pFIR;
+			STL_FABRICINFO_RECORD *pFI;
 
-			switch (pQuery->InputType) {
-			case InputTypeNoInput:     
+			if (pQuery->InputType != InputTypeNoInput)
 				break;
-			case InputTypeLid:           
-				mad.SaHdr.ComponentMask = IB_VENDSWITCHINFO_RECORD_COMP_LID;
-				pVSI->RID.s.LID = pQuery->InputValue.Lid;
-				break;
-			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
-						iba_sd_query_input_type_msg(pQuery->InputType),
-						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
-			}
 
-            BSWAP_IB_VENDOR_SWITCHINFO_RECORD(pVSI);
-			MAD_SET_ATTRIB_ID(&mad, SA_ATTRIB_VENDSWITCHINFO_RECORD);
-
-			fstatus = sa_query_common(&mad, &pRsp, sizeof (IB_VENDSWITCHINFO_RECORD), &pQR, port);
+			MAD_SET_ATTRIB_ID(&mad, STL_SA_ATTR_FABRICINFO_RECORD);
+			MAD_SET_METHOD_TYPE(&mad, SUBN_ADM_GET);
+			
+			fstatus = sa_query_common(&mad, &pRsp, sizeof(STL_FABRICINFO_RECORD), &pQR, port);
 			if (fstatus != FSUCCESS) break;
 
-			// Translate the data.
-			pVSIR = (VENDSWITCHINFO_RECORD_RESULTS*)pQR->QueryResult;
-			pVSI  = pVSIR->VendSwitchInfoRecords;
-			extended_data = ( (pRsp->SaHdr.AttributeOffset * 8) >=
-							  sizeof(IB_VENDSWITCHINFO_RECORD) );
-			for (i=0; i< pVSIR->NumVendSwitchInfoRecords; i++, pVSI++) {
-				*pVSI =  * ((IB_VENDSWITCHINFO_RECORD*)(GET_RESULT_OFFSET(pRsp, i)));
-				BSWAP_IB_VENDOR_SWITCHINFO_RECORD(pVSI);
-				// Clear MulticastFDBTop if no extended_data
-				if (!extended_data)
-					pVSI->VendSwitchInfoData.SwitchInfo.MulticastFDBTop = 0;
+			pFIR = (STL_FABRICINFO_RECORD_RESULT*)pQR->QueryResult;
+			pFI = &pFIR->FabricInfoRecord;
+			
+			// There should only be one FabricInfoRecord result.
+			if (pFIR->NumFabricInfoRecords > 0) {
+				*pFI = *((STL_FABRICINFO_RECORD*)(GET_RESULT_OFFSET(pRsp, 0)));
+				BSWAP_STL_FABRICINFO_RECORD(pFI);
 			}
 		}
 		break;
@@ -2357,10 +2380,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 
 			if(pQuery->InputType != InputTypeNoInput)
 			{
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			BSWAP_STL_QUARANTINED_NODE_RECORD(pQNR);
@@ -2376,6 +2399,7 @@ FSTATUS oib_query_sa(struct oib_port *port,
 			for(i = 0; i < pQNRR->NumQuarantinedNodeRecords; i++, pQNR++)
 			{
 				*pQNR = * ((STL_QUARANTINED_NODE_RECORD*)(GET_RESULT_OFFSET(pRsp, i)));
+
 				BSWAP_STL_QUARANTINED_NODE_RECORD(pQNR);
 			}
 			break;
@@ -2394,10 +2418,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pRec->LID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			pRec->reserved = 0;
@@ -2433,10 +2457,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pRec->LID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			pRec->reserved = 0;
@@ -2472,10 +2496,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pRec->RID.LID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			memset(pRec->Reserved, 0, sizeof(pRec->Reserved));
@@ -2511,10 +2535,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pRec->LID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			pRec->reserved = 0;
@@ -2550,10 +2574,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pRec->RID.LID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			pRec->reserved = 0;
@@ -2589,10 +2613,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pBCTR->RID.LID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			memset(pBCTR->Reserved, 0, sizeof(pBCTR->Reserved));
@@ -2621,23 +2645,23 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				case InputTypeNoInput:
 					break;
 				case InputTypeLid:
-					mad.SaHdr.ComponentMask |= STL_CIB_COMP_LID;
+					mad.SaHdr.ComponentMask |= STL_CIR_COMP_LID;
 					pCIR->LID = pQuery->InputValue.Lid;
 					break;
 				default:
 					fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 							iba_sd_query_input_type_msg(pQuery->InputType),
 							iba_sd_query_result_type_msg(pQuery->OutputType));
-					fstatus = FERROR; goto done;
+					fstatus = FINVALID_PARAMETER; goto done;
 					break;
 			}
 
 			pCIR->Reserved = 0;
 
 			// Default values.
-			mad.SaHdr.ComponentMask |= STL_CIB_COMP_LEN | STL_CIB_COMP_ADDR;
+			mad.SaHdr.ComponentMask |= STL_CIR_COMP_LEN | STL_CIR_COMP_ADDR;
 			pCIR->Length = STL_CABLE_INFO_PAGESZ - 1;
-			pCIR->u1.s.Address = STL_CIB_START_ADDR;
+			pCIR->u1.s.Address = STL_CIB_STD_START_ADDR;
 
 			BSWAP_STL_CABLE_INFO_RECORD(pCIR);
 			MAD_SET_ATTRIB_ID(&mad, STL_SA_ATTR_CABLE_INFO_RECORD);
@@ -2666,10 +2690,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pRec->RID.LID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			pRec->RID.Reserved = 0;
@@ -2705,10 +2729,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pRec->RID.LID = pQuery->InputValue.Lid;
 				break;
 			default:
-				fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+				fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
 						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FERROR; goto done;
+				fstatus = FINVALID_PARAMETER; goto done;
 			}
 
 			pRec->RID.u1.s.Reserved = 0;
@@ -2733,10 +2757,10 @@ FSTATUS oib_query_sa(struct oib_port *port,
 
 	case OutputTypeGid:             /* Not supported in IBA Saquery */
 	default:
-		fprintf(stderr, "Query Not supported by oib_utils: Input=%s, Output=%s\n",
+		fprintf(stderr, "Query not supported by oib_utils: Input=%s, Output=%s\n",
 				iba_sd_query_input_type_msg(pQuery->InputType),
 				iba_sd_query_result_type_msg(pQuery->OutputType));
-		fstatus = FERROR; goto done;
+		fstatus = FINVALID_PARAMETER; goto done;
 		break;
 	}
 

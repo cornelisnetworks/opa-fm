@@ -192,7 +192,7 @@ impl_vs_thread_create (Thread_t *thr,
 
     impl->magic = IMPLPRIV_THREAD_MAGIC;
     impl->start_function = start_function;
-	strncpy(impl->name, (const char*)name, sizeof(impl->name));
+	strncpy(impl->name, (const char*)name, sizeof(impl->name)-1);
 	impl->name[sizeof(impl->name)-1] = '\0';
 
     /*

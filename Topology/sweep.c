@@ -997,8 +997,9 @@ static FSTATUS GetAllBCTDirect(struct oib_port *port,
 
 		if (nodep->NodeInfo.NodeType == STL_NODE_SW)
 		{
+				// skip port 0
 			uint8_t p;
-			STL_BUFFER_CONTROL_TABLE *pBCT = malloc((numPorts+1) * sizeof(*pBCT));
+			STL_BUFFER_CONTROL_TABLE *pBCT = malloc((numPorts) * sizeof(*pBCT));
 			PortData *portp = FindNodePort(nodep, 0);
 
 			if (!portp) {
@@ -1010,7 +1011,7 @@ static FSTATUS GetAllBCTDirect(struct oib_port *port,
 				free(pBCT);
 				goto done;
 			} else {
-				status = SmaGetBufferControlTable(port, nodep, portp->EndPortLID, 0, numPorts, pBCT);
+				status = SmaGetBufferControlTable(port, nodep, portp->EndPortLID, 1, numPorts, pBCT);
 			} 
 			if (status != FSUCCESS)
 			{
@@ -1022,12 +1023,19 @@ static FSTATUS GetAllBCTDirect(struct oib_port *port,
 				free(pBCT);
 				goto done;
 			} else {
-				for (p = 0; p < numPorts+1; p++) {
+				for (p = 1; p <= numPorts; p++) {
 					portp = FindNodePort(nodep, p);
 					if (!portp)
 						continue;
+					// data is undefined for down ports
+					if (portp->PortInfo.PortStates.s.PortState == IB_PORT_DOWN)
+						continue;
+					if (! portp->pBufCtrlTable) {
+						if ((status = PortDataAllocateBufCtrlTable(fabricp, portp)) != FSUCCESS)
+							continue;
+					}
 
-					memcpy(&portp->bufCtrlTable, &pBCT[p], sizeof(portp->bufCtrlTable));
+					memcpy(portp->pBufCtrlTable, &pBCT[p-1], sizeof(*portp->pBufCtrlTable));
 				}
 			}
 			free(pBCT);
@@ -1049,7 +1057,11 @@ static FSTATUS GetAllBCTDirect(struct oib_port *port,
 									(char*)nodep->NodeDesc.NodeString, iba_fstatus_msg(status));
 					goto done;
 				} else {
-					memcpy(&portp->bufCtrlTable, &bct, sizeof(portp->bufCtrlTable));
+					if (! portp->pBufCtrlTable) {
+						if ((status = PortDataAllocateBufCtrlTable(fabricp, portp)) != FSUCCESS)
+							continue;
+					}
+					memcpy(portp->pBufCtrlTable, &bct, sizeof(*portp->pBufCtrlTable));
 				}
 			}
 		}
@@ -1124,9 +1136,13 @@ static FSTATUS GetAllBCTSA(struct oib_port *port,
 
 			if (focus && !ComparePortPoint(port, focus))
 				continue;
+			if (! port->pBufCtrlTable) {
+				if ((status = PortDataAllocateBufCtrlTable(fabricp, port)) != FSUCCESS)
+					continue;
+			}
 
-			memcpy(&port->bufCtrlTable, &pBCTRecords[i].BufferControlTable,
-				sizeof(port->bufCtrlTable));
+			memcpy(port->pBufCtrlTable, &pBCTRecords[i].BufferControlTable,
+				sizeof(*port->pBufCtrlTable));
 		}
 	}
 
@@ -1135,6 +1151,7 @@ static FSTATUS GetAllBCTSA(struct oib_port *port,
 	if (pQueryResults)
 		oib_free_query_result_buffer(pQueryResults);
 
+	if (! quiet) ProgressPrint(TRUE, "Done Getting Buffer Control Tables");
 	return status;
 }
 
@@ -1262,7 +1279,8 @@ static FSTATUS GetNodePortsDirect(struct oib_port *port,
 					(char*)nodep->NodeDesc.NodeString, iba_fstatus_msg(status));
 				goto fail;
 			}
-			if (PortInfoRecord.PortInfo.PortStates.s.PortState == IB_PORT_DOWN)
+			if (! (fabricp->flags & FF_DOWNPORTINFO)
+				&& PortInfoRecord.PortInfo.PortStates.s.PortState == IB_PORT_DOWN)
 			{
 				DBGPRINT("skip down port\n");
 				continue;
@@ -1294,6 +1312,97 @@ static FSTATUS GetNodePortsDirect(struct oib_port *port,
 
 fail:
 	return FERROR;
+}
+
+/* query all down ports on switch nodes in fabric directly from SMA
+ * Note: It would have been wonderful if we could have used focus to limit the
+ * scope of this scan.  However many of the focus formats have options to select
+ * individual ports and that is performed once after Sweep and before reports.
+ * The focus selection occurs by using the FabricData and searching it for
+ * matching points.  As such there is a catch 22 so when we are asked to report
+ * all down ports, we must scan them all, even if a focus was specified.
+ */
+static FSTATUS GetAllDownPortsDirect(struct oib_port *port,
+									 FabricData_t *fabricp,
+									 int quiet)
+{
+	FSTATUS	status = FSUCCESS;
+	int ix_node;
+
+	cl_map_item_t *p;
+
+	int num_nodes = cl_qmap_count(&fabricp->AllNodes);
+
+	if (! quiet) ProgressPrint(FALSE, "Getting All Down Switch Ports...");
+	for ( p=cl_qmap_head(&fabricp->AllNodes), ix_node = 0; p != cl_qmap_end(&fabricp->AllNodes);
+			p = cl_qmap_next(p), ix_node++ )
+	{
+		NodeData *nodep = PARENT_STRUCT(p, NodeData, AllNodesEntry);
+
+		if (ix_node%PROGRESS_FREQ == 0)
+			if (! quiet) ProgressPrint(FALSE, "Processed %6d of %6d Nodes...", ix_node, num_nodes);
+
+		// Process switch nodes
+		if (nodep->NodeInfo.NodeType == STL_NODE_SW) {
+			uint32 lid = nodep->pSwitchInfo->RID.LID;
+			uint64 guid = nodep->NodeInfo.PortGUID;	// SW only used on port 0
+			STL_PORTINFO_RECORD PortInfoRecord = {{0}};
+			unsigned i;
+			cl_map_item_t *q;
+
+			// Switch Port 0 should always have been found so start at 1
+			for (i=1, q=cl_qmap_head(&nodep->Ports); i<= nodep->NodeInfo.NumPorts; ) {
+				PortData *portp;
+ 				if (q != cl_qmap_end(&nodep->Ports)) {
+					portp = PARENT_STRUCT(q, PortData, NodePortsEntry);
+					if (portp->PortNum <= i)
+					{
+						q = cl_qmap_next(q);
+						if (portp->PortNum == i)
+							i++;
+						continue;	/* skip already found switch ports */
+					}
+				}
+				// port i not in DB
+				status= SmaGetPortInfo(port, nodep, lid, i, &PortInfoRecord.PortInfo);
+				if (status != FSUCCESS)
+				{
+					fprintf(stderr, "%*sSMA Get(PortInfo %u) Failed to LID 0x%x Node 0x%016"PRIx64" Name: %.*s: %s\n", 0, "", i, lid,
+						nodep->NodeInfo.NodeGUID,
+						STL_NODE_DESCRIPTION_ARRAY_SIZE,
+						(char*)nodep->NodeDesc.NodeString, iba_fstatus_msg(status));
+					goto fail;
+				}
+				PortInfoRecord.RID.EndPortLID = lid;
+				PortInfoRecord.RID.PortNum = i;
+				// only switch port 0 have a guid
+				portp = NodeDataAddPort(fabricp, nodep, guid, &PortInfoRecord);
+				if (NULL == portp)
+					goto fail;
+				//DisplayPortInfoRecord(&PortInfo, 0);
+fail:
+				i++;
+			}
+		}	// End of if (nodep->NodeInfo.NodeType == STL_NODE_SW
+
+	}	// End of for ( p=cl_qmap_head(&fabricp->AllNodes)
+	status = FSUCCESS;	// don't let failure to get some devices stop everything
+
+	if (! quiet) ProgressPrint(TRUE, "Done Getting All Down Switch Ports");
+
+	return (status);
+
+}	// End of GetAllDownPorts()
+
+/* query all down ports on switch nodes in fabric
+ */
+static FSTATUS GetAllDownPorts(struct oib_port *port,
+								 EUI64 portGuid,
+								 FabricData_t *fabricp,
+								 int quiet)
+{
+	// We must get direct from SMA, SA only tracks Active ports
+	return GetAllDownPortsDirect(port, fabricp, quiet);
 }
 
 /* if applicable, get the Switch information for the given node */
@@ -1508,13 +1617,87 @@ done:
 }
 #endif
 
-/* Change this define to skip or enable GetAllCables during sweep */
+static FSTATUS GetPortCableInfoDirect(struct oib_port *port,
+									  FabricData_t *fabricp,
+									  PortData *portp,
+									  int quiet)
+{
+	FSTATUS status = FSUCCESS;
+	uint8_t cableInfo[STL_CIB_STD_LEN];
+	uint16_t addr;
+	uint8_t *data;
+
+	if (! IsCableInfoAvailable(&portp->PortInfo))
+		return FSUCCESS;
+
+	for (addr = STL_CIB_STD_START_ADDR, data=cableInfo;
+		 addr + STL_CABLE_INFO_MAXLEN <= STL_CIB_STD_END_ADDR; addr += STL_CABLE_INFO_DATA_SIZE, data += STL_CABLE_INFO_DATA_SIZE)
+	{
+		status = SmaGetCableInfo(port, portp->nodep, portp->EndPortLID, portp->PortNum, addr, STL_CABLE_INFO_MAXLEN, data);
+		if (status != FSUCCESS) {
+			fprintf(stderr, "%s: SMA Get(CableInfo) Failed to LID 0x%x Node 0x%016"PRIx64" for port %u. Name: %.*s: %s\n",
+					g_Top_cmdname, portp->EndPortLID, portp->nodep->NodeInfo.NodeGUID, portp->PortNum,
+					STL_NODE_DESCRIPTION_ARRAY_SIZE, (char*)portp->nodep->NodeDesc.NodeString,
+					iba_fstatus_msg(status));
+			break;
+		}
+	}
+	if (status != FSUCCESS)
+		return status;
+	if (! portp->pCableInfoData) {
+		if ((status = PortDataAllocateCableInfoData(fabricp, portp)) != FSUCCESS)
+			return status;
+	}
+
+	memcpy(portp->pCableInfoData, cableInfo, sizeof(cableInfo));
+	return FSUCCESS;
+}
+
+static FSTATUS GetAllCablesDirect(struct oib_port *port,
+									  FabricData_t *fabricp,
+									  int skip_init_ports,
+									  int quiet)
+{
+	cl_map_item_t *p;
+	FSTATUS status = FSUCCESS;
+	int ix_node;
+	int numNodes = cl_qmap_count(&fabricp->AllNodes);
+
+	if (! quiet) ProgressPrint(TRUE, "Getting All Cable Info ...");
+
+	for ( p = cl_qmap_head(&fabricp->AllNodes), ix_node = 0; p != cl_qmap_end(&fabricp->AllNodes);
+			p = cl_qmap_next(p), ix_node++ )
+	{
+		NodeData *nodep = PARENT_STRUCT(p, NodeData, AllNodesEntry);
+		uint8_t numPorts = nodep->NodeInfo.NumPorts;
+		uint8_t portNum;
+
+		if (ix_node%PROGRESS_FREQ == 0)
+			if (! quiet) ProgressPrint(FALSE, "Processed %6d of %6d Nodes...", ix_node, numNodes);
+
+		// switch port 0 has no cable, so just do external ports on switch
+		// or all ports on HFI
+		for (portNum = 1; portNum <= numPorts; portNum++) {
+			PortData *portp = FindNodePort(nodep, portNum);
+			if (!portp)
+				continue;
+
+			if (skip_init_ports && IsPortInitialized(portp->PortInfo.PortStates))
+				continue;
+			(void)GetPortCableInfoDirect(port, fabricp, portp, quiet);
+		}
+	}
+	status = FSUCCESS;
+
+	if (! quiet) ProgressPrint(TRUE, "Done Getting Cable Info");
+
+	return status;
+}
 
 /* query all CableInfo Records on fabric connected to given HFI port
  * and put results into PortData's CableInfo.
  */
-static FSTATUS GetAllCables(struct oib_port *port,
-							EUI64 portGuid,
+static FSTATUS GetAllCablesSA(struct oib_port *port,
 							FabricData_t *fabricp,
 							int quiet)
 {
@@ -1563,38 +1746,30 @@ static FSTATUS GetAllCables(struct oib_port *port,
 				continue;
 			}
 			
-			if (pCableInfoRecord->u1.s.Address > PORTDATA_CABLEINFO_SIZE * sizeof(STL_CABLE_INFO)) {
-				fprintf(stderr, "%s: Cable Info Data Address 0x%x is outside of utilities max range on node with"
+			if (pCableInfoRecord->u1.s.Address < STL_CIB_STD_START_ADDR
+				|| pCableInfoRecord->u1.s.Address > STL_CIB_STD_END_ADDR) {
+				fprintf(stderr, "%s: Cable Info Data Address 0x%x is outside of utilities range on node with"
 						" Lid 0x%x Port %u: Ignoring\n", 
 						g_Top_cmdname, pCableInfoRecord->u1.s.Address, pCableInfoRecord->LID,
 						pCableInfoRecord->Port);
 				continue;
 			}
 
-
-			// Direct query to overwrite what the SA told us.
-			if (fabricp->flags & FF_SMADIRECT) {
-				NodeData *nodep = portp->nodep;
-				const uint16_t addr = pCableInfoRecord->u1.s.Address;
-
-				status = SmaGetCableInfo(port, nodep, pCableInfoRecord->LID, pCableInfoRecord->Port, addr, 63, 
-							(STL_CABLE_INFO*)pCableInfoRecord->Data);
-
-				if (status != FSUCCESS) {
-					fprintf(stderr, "%s: SMA Get(CableInfo) Failed to LID 0x%x Node 0x%016"PRIx64" for port %u. Name: %.*s: %s\n",
-								g_Top_cmdname, pCableInfoRecord->LID, nodep->NodeInfo.NodeGUID, pCableInfoRecord->Port,
-								STL_NODE_DESCRIPTION_ARRAY_SIZE, (char*)nodep->NodeDesc.NodeString,
-								iba_fstatus_msg(status));
-				}
-					
+			if (! portp->pCableInfoData) {
+				if ((status = PortDataAllocateCableInfoData(fabricp, portp)) != FSUCCESS)
+					continue;
 			}
 
-			memcpy(((uint8_t*)portp->cableInfo) + pCableInfoRecord->u1.s.Address, pCableInfoRecord->Data, 
-					pCableInfoRecord->Length + 1);
+			memcpy(portp->pCableInfoData
+						+ pCableInfoRecord->u1.s.Address-STL_CIB_STD_START_ADDR,
+					pCableInfoRecord->Data, 
+					MIN(sizeof(pCableInfoRecord->Data),
+						MIN(pCableInfoRecord->Length + 1,
+							 STL_CIB_STD_LEN - (pCableInfoRecord->u1.s.Address-STL_CIB_STD_START_ADDR))));
 		}
 	}
 	status = FSUCCESS;
-	if (!quiet) ProgressPrint(TRUE, "Done Getting All CableInfo Records");
+	if (!quiet) ProgressPrint(TRUE, "Done Getting All Cable Info Records");
 	
 done:
 	if (pQueryResults)
@@ -1604,6 +1779,25 @@ done:
 fail:
 	status = FERROR;
 	goto done;
+}
+
+FSTATUS GetAllCables(struct oib_port *port,
+						EUI64 portGuid, 
+ 						FabricData_t *fabricp,
+						int quiet)
+{
+	FSTATUS fstatus = FSUCCESS;
+
+	if (fabricp->flags & FF_SMADIRECT) {
+		fstatus = GetAllCablesDirect(port, fabricp, FALSE, quiet);
+	} else {
+		fstatus = GetAllCablesSA(port, fabricp, quiet);
+		if (fabricp->flags & FF_DOWNPORTINFO) {
+			fstatus = GetAllCablesDirect(port, fabricp, TRUE, quiet);
+		}
+	}
+
+	return fstatus;
 }
 
 /* query all NodeInfo Records on fabric connected to given HFI port
@@ -1699,9 +1893,13 @@ static FSTATUS GetAllNodes(struct oib_port *port,
 			}
 		}
 	}
+	if (! quiet) ProgressPrint(TRUE, "Done Getting All Node Records");
+	if (fabricp->flags & FF_DOWNPORTINFO) {
+		if (FSUCCESS != (status = GetAllDownPorts(port, portGuid, fabricp, quiet)))
+			goto done;
+	}
 	BuildFabricDataLists(fabricp);
 	status = FSUCCESS;
-	if (! quiet) ProgressPrint(TRUE, "Done Getting All Node Records");
 
 done:
 	// oib_query_sa will have allocated a result buffer
@@ -1785,6 +1983,9 @@ fail:
 
 /* query all SMInfo Records on fabric connected to given HFI port
  * and put results into fabricp->AllSMs
+ * We always perform this via an SA query.  Note that an SMA SMInfo query
+ * can trigger an SM to resweep in order to find the potentially new
+ * SM in the fabric which is querying it.
  */
 static FSTATUS GetAllSMs(struct oib_port *port,
 						 EUI64 portGuid, 
@@ -2162,7 +2363,7 @@ PQUERY_RESULT_VALUES GetAllVFInfo(struct oib_port *port,
 
 }	// End of GetAllVFInfo
 
-// TBD - should we do whle fabric queries (which will be large responses)
+// TBD - should we do whole fabric queries (which will be large responses)
 // or per port queries
 /* query all Port VL info from SA
  */
@@ -2500,9 +2701,15 @@ static FSTATUS GetAllPortVLInfoSA(struct oib_port *port,
 			uint16 pkey_cap;
 			portp = PARENT_STRUCT(p2, PortData, NodePortsEntry);
 
+			// QOS and PKey data is undefined for down ports
+			if (portp->PortInfo.PortStates.s.PortState == IB_PORT_DOWN)
+			{
+				DBGPRINT("skip down port\n");
+				continue;
+			}
+
 			if ((status = PortDataAllocateQOSData(fabricp, portp)) != FSUCCESS)
 				break;
-
 
 			if (nodep->NodeInfo.NodeType == STL_NODE_SW && portp->PortNum) {
 				// switch external ports have SC2SC tables
@@ -2704,8 +2911,8 @@ static FSTATUS GetAllPortVLInfoDirect(struct oib_port *port,
 			p = cl_qmap_next(p), ix_node++ )
 	{
 		nodep = PARENT_STRUCT(p, NodeData, AllNodesEntry);
-		boolean enhancedp0 = ( nodep->pSwitchInfo
-									&& nodep->pSwitchInfo->SwitchInfoData.u2.s.EnhancedPort0);
+		//boolean enhancedp0 = ( nodep->pSwitchInfo
+		//							&& nodep->pSwitchInfo->SwitchInfoData.u2.s.EnhancedPort0);
 
 		if (ix_node%PROGRESS_FREQ == 0)
 			if (! quiet) ProgressPrint(FALSE, "Processed %6d of %6d Nodes...", ix_node, num_nodes);
@@ -2720,6 +2927,11 @@ static FSTATUS GetAllPortVLInfoDirect(struct oib_port *port,
 			int pkey_cap;
 			portp = PARENT_STRUCT(p2, PortData, NodePortsEntry);
 
+			if (portp->PortInfo.PortStates.s.PortState == IB_PORT_DOWN)
+			{
+				DBGPRINT("skip down port\n");
+				continue;
+			}
 			if ((status = PortDataAllocateQOSData(fabricp, portp)) != FSUCCESS)
 				break;
 
@@ -2820,9 +3032,10 @@ static FSTATUS GetAllPortVLInfoDirect(struct oib_port *port,
 
 			// Process VL Arb Table data, only valid on ports which
 			// support > 1 VL.  Not valid on non-enhanced port 0
+			// SA does not report this port any switch port 0, so skip
 			if (portp->PortInfo.VL.s2.Cap != 1
 				&& (nodep->NodeInfo.NodeType != STL_NODE_SW
-						|| portp->PortNum != 0 || enhancedp0)) {
+						|| portp->PortNum != 0 /*|| enhancedp0*/)) {
 				out_port = portp->PortNum;
 
 				for ( block = 0, pQOSVLARB = portp->pQOS->VLArbTable;
@@ -2951,8 +3164,8 @@ static FSTATUS GetAllFDBsSA(struct oib_port *port, FabricData_t *fabricp, Point 
 	STL_MULTICAST_FORWARDING_TABLE_RECORD	*pMFR;
 	STL_LINEAR_FDB_RECORD_RESULTS		*pLFRR;
 	STL_MCAST_FDB_RECORD_RESULTS	*pMFRR;
-	STL_PORT_GROUP_TABLE_RECORD_RESULTS *pPGTRR;
-	STL_PORT_GROUP_FORWARDING_TABLE_RECORD_RESULTS *pPGFTRR;
+	STL_PORT_GROUP_TABLE_RECORD_RESULTS *pPGTRR = NULL;
+	STL_PORT_GROUP_FORWARDING_TABLE_RECORD_RESULTS *pPGFTRR = NULL;
 	uint32	linearFDBSize = 0;
 	uint32	multicastFDBSize = 0;
 	uint16	portGroupSize = 0;
@@ -3450,7 +3663,7 @@ FSTATUS ClearAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabr
 						(void)STLPmGetClassPortInfo(g_portHandle, first_portp);
 
 					ports = cl_qmap_count(&nodep->Ports);
-					status = STLPmClearPortCounters(g_portHandle, first_portp, nodep->NodeInfo.NumPorts-1, counterselect);
+					status = STLPmClearPortCounters(g_portHandle, first_portp, nodep->NodeInfo.NumPorts, counterselect);
 				} else {
 					/* CA and router, issue clear to specific port */
 					status = GetPathToPort(g_portHandle, portGuid, portp);

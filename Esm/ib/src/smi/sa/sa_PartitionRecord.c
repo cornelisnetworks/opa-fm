@@ -63,6 +63,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sm_counters.h"
 #include "sm_l.h"
 #include "sa_l.h"
+#include "stl_print.h"
 
 /* *******************************************************************
  */
@@ -287,3 +288,42 @@ sa_PartitionRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt)
 
 	return rc;
 }
+
+/* *******************************************************************
+ */
+void showStlPKeys(void)
+{
+    uint32_t i = 0; 
+    PrintDest_t dest; 
+    Node_t *node = NULL; 
+    Port_t *port = NULL; 
+    STL_P_KEY_TABLE_RECORD partitionRec, tempPartitionRec; 
+    
+    PrintDestInitFile(&dest, stdout); 
+    
+    // lock the topology
+    if (vs_rdlock(&old_topology_lock) != VSTATUS_OK) 
+        return; 
+    
+    for_all_nodes(&old_topology, node) {
+        for_all_ports(node, port) {
+            int block;
+
+            if (!sm_valid_port(port) || port->state <= IB_PORT_DOWN) 
+                continue; 
+            
+            for (block = 0; (block * PKEY_TABLE_LIST_COUNT) < port->portData->num_pkeys; ++block) {
+                sa_setPartitionRecord((uint8_t *)&tempPartitionRec, node, port, block); 
+                BSWAPCOPY_STL_PARTITION_TABLE_RECORD(&tempPartitionRec, (STL_P_KEY_TABLE_RECORD *)&partitionRec);
+                 
+                if (i++) 
+                    PrintSeparator(&dest); 
+                PrintStlPKeyTableRecord(&dest, 0, &partitionRec);
+            }
+        }
+    }
+    
+    // unlock the topology
+    vs_rwunlock(&old_topology_lock);
+}
+

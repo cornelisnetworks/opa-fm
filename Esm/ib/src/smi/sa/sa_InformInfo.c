@@ -66,6 +66,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sm_dbsync.h"
 #include <iba/stl_mad.h>
 #include <iba/stl_sa.h>
+#include "stl_print.h"
 
 extern IB_GID nullGid;
 
@@ -76,8 +77,6 @@ static Status_t sa_InformInfo_Unsubscribe(Mai_t *, STL_INFORM_INFO *);
 uint16_t saInformCount = 1;		// JSY - need bitmap of unused records
 
 void dumpSubscriptions(void);
-static void dumpSubscriber(SubscriberKeyp subsKeyp,
-						   STL_INFORM_INFO_RECORD * iRecordp);
 
 /*****************************************************************************/
 
@@ -249,6 +248,8 @@ sa_InformInfo(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 		informInfo.IsGeneric = ibInformInfo->IsGeneric;
 		informInfo.Subscribe = ibInformInfo->Subscribe;
     	informInfo.LIDRangeBegin = (uint32)ntoh16(ibInformInfo->LIDRangeBegin);
+		if (informInfo.LIDRangeBegin == PERMISSIVE_LID)
+			informInfo.LIDRangeBegin = STL_LID_PERMISSIVE;
     	informInfo.LIDRangeEnd = (uint32)ntoh16(ibInformInfo->LIDRangeEnd);
     	informInfo.Type = ntoh16(ibInformInfo->Type);
     	informInfo.Reserved1 = 0;
@@ -311,7 +312,10 @@ sa_InformInfo(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 
 		ibInformInfo->IsGeneric = informInfo.IsGeneric;
 		ibInformInfo->Subscribe = informInfo.Subscribe;
-    	ibInformInfo->LIDRangeBegin = (uint16)ntoh32(informInfo.LIDRangeBegin);
+		if (informInfo.LIDRangeBegin == STL_LID_PERMISSIVE)
+			ibInformInfo->LIDRangeBegin = PERMISSIVE_LID;
+		else
+    		ibInformInfo->LIDRangeBegin = (uint16)ntoh32(informInfo.LIDRangeBegin);
     	ibInformInfo->LIDRangeEnd = (uint16)ntoh32(informInfo.LIDRangeEnd);
     	ibInformInfo->Type = ntoh16(informInfo.Type);
     	ibInformInfo->Reserved = 0;
@@ -368,8 +372,8 @@ sa_InformInfo_Subscribe(Mai_t * maip, STL_INFORM_INFO * iip, uint8_t ibMode)
 	if ((subscriberPortp =
 		 sm_find_active_port_lid(&old_topology, lid)) == NULL) {
 		maip->base.status =
-			isSweeping ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID;
-		if (isSweeping)
+			activateInProgress ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID;
+		if (activateInProgress)
 			logseverity = VS_LOG_VERBOSE;
 		else
 			logseverity = VS_LOG_INFINI_INFO;
@@ -377,7 +381,7 @@ sa_InformInfo_Subscribe(Mai_t * maip, STL_INFORM_INFO * iip, uint8_t ibMode)
 			cs_log(logseverity, "sa_InformInfo_Subscribe",
 				   "Can not find source lid of 0x%.4X in topology "
 				   "in request to subscribe with GID " FMT_GID
-				   ", start LID 0x%.4X, end LID 0x%.4X, "
+				   ", start LID 0x%.8X, end LID 0x%.8X, "
 				   "PKey 0x%.4X, isGeneric %d, subscribe %d, type 0x%.4X, trap number 0x%.4X, "
 				   "QPN 0x%.8X, response time of 0x%.2X, returning status 0x%.4X",
 				   lid, gid[0], gid[1], iip->LIDRangeBegin,
@@ -413,15 +417,15 @@ sa_InformInfo_Subscribe(Mai_t * maip, STL_INFORM_INFO * iip, uint8_t ibMode)
 			if ((portp =
 				 sm_find_active_port_guid(&old_topology, guid)) == NULL) {
 				maip->base.status =
-					isSweeping ? MAD_STATUS_BUSY :
+					activateInProgress ? MAD_STATUS_BUSY :
 					MAD_STATUS_SA_REQ_INVALID;
 				IB_LOG_ERROR_FMT("sa_InformInfo_Subscribe",
 								 "Can not find port GUID " FMT_U64 " from "
 								 "%s, port " FMT_U64
 								 ", lid of 0x%.4X in topology "
 								 "in request to subscribe with GID "
-								 FMT_GID ", start LID 0x%.4X, "
-								 "end LID 0x%.4X, PKey 0x%.4X, isGeneric %d, subscribe %d, type 0x%.4X, "
+								 FMT_GID ", start LID 0x%.8X, "
+								 "end LID 0x%.8X, PKey 0x%.4X, isGeneric %d, subscribe %d, type 0x%.4X, "
 								 "trap number 0x%.4X, QPN 0x%.8X, response time of 0x%.2X, "
 								 "returning status 0x%.4X", guid, nodeName,
 								 subsPort.portData->guid, lid, gid[0],
@@ -442,12 +446,35 @@ sa_InformInfo_Subscribe(Mai_t * maip, STL_INFORM_INFO * iip, uint8_t ibMode)
 		LIDRangeBegin = portp->portData->lid;
 		LIDRangeEnd = LIDRangeBegin;
 	} else {
-		if (iip->LIDRangeBegin == PERMISSIVE_LID) {
-			/* no validation required when LidRangeBegin is 0xFFFF in
+		if (iip->LIDRangeBegin == STL_LID_PERMISSIVE) {
+			/* no validation required when LidRangeBegin is 0xFFFFFFFF in
 			   request - per IBTA R1.1 13-14.1.1 */
 			validateLidRange = 0;
 			LIDRangeBegin = 1;
 			LIDRangeEnd = UNICAST_LID_MAX;
+		} else if (iip->LIDRangeBegin > UNICAST_LID_MAX
+					 || iip->LIDRangeEnd > UNICAST_LID_MAX) {
+			/* we don't yet fully support extended LIDs */
+			IB_LOG_ERROR_FMT("sa_InformInfo_Subscribe",
+							 "Invalid LIDRange from "
+							 "%s, port " FMT_U64
+							 ", lid of 0x%.4X in topology "
+							 "in request to subscribe with GID "
+							 FMT_GID ", start LID 0x%.8X, "
+							 "end LID 0x%.8X, PKey 0x%.4X, isGeneric %d, subscribe %d, type 0x%.4X, "
+							 "trap number 0x%.4X, QPN 0x%.8X, response time of 0x%.2X, "
+							 "returning status 0x%.4X", nodeName,
+							 subsPort.portData->guid, lid, gid[0],
+							 gid[1], iip->LIDRangeBegin,
+							 iip->LIDRangeEnd, maip->addrInfo.pkey,
+							 iip->IsGeneric, iip->Subscribe, iip->Type,
+							 iip->u.Generic.TrapNumber,
+							 iip->u.Generic.u1.s.QPNumber,
+							 iip->u.Generic.u1.s.RespTimeValue,
+							 maip->base.status);
+			IB_EXIT("sa_InformInfo_Subscribe - bad Lid Range",
+					VSTATUS_BAD);
+			return (VSTATUS_BAD);
 		} else if (iip->LIDRangeEnd != 0) {
 			LIDRangeBegin = iip->LIDRangeBegin;
 			LIDRangeEnd = iip->LIDRangeEnd;
@@ -484,8 +511,8 @@ sa_InformInfo_Subscribe(Mai_t * maip, STL_INFORM_INFO * iip, uint8_t ibMode)
 									 "%s, port " FMT_U64
 									 ", lid of 0x%.4X in topology "
 									 "to subscribe with GID " FMT_GID
-									 ", start LID 0x%.4X, "
-									 "end LID 0x%.4X, PKey 0x%.4X, isGeneric %d, subscribe %d, type 0x%.4X, "
+									 ", start LID 0x%.8X, "
+									 "end LID 0x%.8X, PKey 0x%.4X, isGeneric %d, subscribe %d, type 0x%.4X, "
 									 "trap number 0x%.4X, QPN 0x%.8X, response time of 0x%.2X, "
 									 "returning status 0x%.4X", nodeName,
 									 subsPort.portData->guid, lid, gid[0],
@@ -514,8 +541,8 @@ sa_InformInfo_Subscribe(Mai_t * maip, STL_INFORM_INFO * iip, uint8_t ibMode)
 									 "%s, port " FMT_U64
 									 ", lid of 0x%.4X in topology "
 									 "to subscribe with GID " FMT_GID
-									 ", start LID 0x%.4X, "
-									 "end LID 0x%.4X, PKey 0x%.4X, isGeneric %d, subscribe %d, type 0x%.4X, "
+									 ", start LID 0x%.8X, "
+									 "end LID 0x%.8X, PKey 0x%.4X, isGeneric %d, subscribe %d, type 0x%.4X, "
 									 "trap number 0x%.4X, QPN 0x%.8X, response time of 0x%.2X, "
 									 "returning status 0x%.4X", nodeName,
 									 subsPort.portData->guid, lid, gid[0],
@@ -615,8 +642,8 @@ sa_InformInfo_Subscribe(Mai_t * maip, STL_INFORM_INFO * iip, uint8_t ibMode)
 								   "%s, port " FMT_U64
 								   ", lid of 0x%.4X in topology "
 								   "to subscribe with GID " FMT_GID
-								   ", start LID 0x%.4X, "
-								   "end LID 0x%.4X, PKey 0x%.4X, isGeneric %d, subscribe %d, type 0x%.4X, "
+								   ", start LID 0x%.8X, "
+								   "end LID 0x%.8X, PKey 0x%.4X, isGeneric %d, subscribe %d, type 0x%.4X, "
 								   "trap number 0x%.4X, QPN 0x%.8X, response time of 0x%.2X, Qkey of 0x%.8X, "
 								   "Producer 0x%.6X, returning status 0x%.4X",
 								   nodeName, subsPort.portData->guid, lid,
@@ -682,7 +709,7 @@ sa_InformInfo_Unsubscribe(Mai_t * maip, STL_INFORM_INFO * iip)
 							   "Cannot find source lid of 0x%.4X in topology "
 							   "in request to Unsubscribe with GID "
 							   FMT_GID
-							   ", start LID 0x%.4X, end LID 0x%.4X, "
+							   ", start LID 0x%.8X, end LID 0x%.8X, "
 							   "PKey 0x%.4X, isGeneric %d, subscribe %d, type 0x%.4X, trap number 0x%.4X, "
 							   "QPN 0x%.8X, response time of 0x%.2X, returning status 0x%.4X",
 							   maip->addrInfo.slid, gid[0], gid[1],
@@ -749,7 +776,8 @@ sa_InformInfo_Unsubscribe(Mai_t * maip, STL_INFORM_INFO * iip)
 	return (status);
 }
 
-
+#ifdef __VXWORKS__
+#if !defined(PRODUCT_STL1)
 static char *
 getType(uint16_t type)
 {
@@ -786,45 +814,6 @@ getNodeType(uint32_t nodeType)
 	default:
 		return NULL;
 	}
-}
-
-void
-dumpSubscriptions(void)
-{
-	CS_HashTableItr_t itr;
-	SubscriberKeyp key;
-	STL_INFORM_INFO_RECORD *val;
-	uint32_t numsubs = 0;
-
-	if (topology_passcount < 1) {
-		sysPrintf("\nSM is currently in the %s state, count = %d\n\n",
-				  sm_getStateText(sm_state), (int) sm_smInfo.ActCount);
-		return;
-	}
-	if (!saSubscribers.subsMap || vs_lock(&saSubscribers.subsLock)) {
-		sysPrintf("Fabric Manager is not running!\n");
-		return;
-	}
-	/* iterate through the hashtable */
-	if ((numsubs = cs_hashtable_count(saSubscribers.subsMap)) > 0) {
-		cs_hashtable_iterator(saSubscribers.subsMap, &itr);
-		sysPrintf
-			("******************************************************************\n");
-		sysPrintf("                  There are %d subscriptions  \n",
-				  (int) numsubs);
-		do {
-			key = cs_hashtable_iterator_key(&itr);
-			val = cs_hashtable_iterator_value(&itr);
-			dumpSubscriber(key, val);
-		} while (cs_hashtable_iterator_advance(&itr));
-	}
-	sysPrintf
-		("******************************************************************\n");
-	sysPrintf("                  There are %d subscriptions  \n",
-			  (int) numsubs);
-	sysPrintf
-		("******************************************************************\n");
-	(void) vs_unlock(&saSubscribers.subsLock);
 }
 
 static void
@@ -885,3 +874,60 @@ dumpSubscriber(SubscriberKeyp subsKeyp, STL_INFORM_INFO_RECORD * iRecordp)
 		sysPrintf("%s\n", type);
 	}
 }
+#endif
+
+void
+dumpSubscriptions(void)
+{
+	CS_HashTableItr_t itr;
+	STL_INFORM_INFO_RECORD *val;
+	uint32_t numsubs = 0;
+#if !defined(PRODUCT_STL1)
+	SubscriberKeyp key = NULL;
+#else
+	uint32_t i = 0;
+    PrintDest_t dest;
+#endif
+
+	if (topology_passcount < 1) {
+		sysPrintf("\nSM is currently in the %s state, count = %d\n\n",
+				  sm_getStateText(sm_state), (int) sm_smInfo.ActCount);
+		return;
+	}
+	if (!saSubscribers.subsMap || vs_lock(&saSubscribers.subsLock)) {
+		sysPrintf("Fabric Manager is not running!\n");
+		return;
+	}
+	/* iterate through the hashtable */
+	if ((numsubs = cs_hashtable_count(saSubscribers.subsMap)) > 0) {
+		cs_hashtable_iterator(saSubscribers.subsMap, &itr);
+		sysPrintf
+			("******************************************************************\n");
+		sysPrintf("                  There are %d subscriptions  \n", (int) numsubs);
+#if defined(PRODUCT_STL1)
+        PrintDestInitFile(&dest, stdout);
+        sysPrintf
+            ("******************************************************************\n");
+#endif
+
+		do {
+			val = cs_hashtable_iterator_value(&itr);
+
+#if defined(PRODUCT_STL1)
+			if (i++) PrintSeparator(&dest);
+            (void)PrintStlInformInfoRecord(&dest, 0, val);
+#else
+			key = cs_hashtable_iterator_key(&itr);
+			dumpSubscriber(key, val);
+#endif
+		} while (cs_hashtable_iterator_advance(&itr));
+	}
+
+	sysPrintf
+		("******************************************************************\n");
+	sysPrintf("                  There are %d subscriptions  \n", (int) numsubs);
+	sysPrintf
+		("******************************************************************\n");
+	(void) vs_unlock(&saSubscribers.subsLock);
+}
+#endif

@@ -69,7 +69,6 @@ int sm_reset_counters(p_fm_config_conx_hdlt hdl, fm_mgr_type_t mgr, int argc, ch
 int pm_get_counters(p_fm_config_conx_hdlt hdl, fm_mgr_type_t mgr, int argc, char *argv[]);
 int pm_reset_counters(p_fm_config_conx_hdlt hdl, fm_mgr_type_t mgr, int argc, char *argv[]);
 int sm_state_dump(p_fm_config_conx_hdlt hdl, fm_mgr_type_t mgr, int argc, char *argv[]);
-int pm_restore_priority(p_fm_config_conx_hdlt hdl, fm_mgr_type_t mgr, int argc, char *argv[]);
 int mgr_log_level(p_fm_config_conx_hdlt hdl, fm_mgr_type_t mgr, int argc, char *argv[]);
 int mgr_log_mode(p_fm_config_conx_hdlt hdl, fm_mgr_type_t mgr, int argc, char *argv[]);
 int mgr_log_mask(p_fm_config_conx_hdlt hdl, fm_mgr_type_t mgr, int argc, char *argv[]);
@@ -106,28 +105,24 @@ static command_t commandList[] = {
 	{"smShowCounters", sm_get_counters, FM_MGR_SM, "Get statistics and performance counters from the SM"},
 	{"smResetCounters",sm_reset_counters, FM_MGR_SM, "Reset SM statistics and performace counters"},
 	{"smStateDump",sm_state_dump, FM_MGR_SM, "Dump Internal SM state into directory specified"},
-	{"smLogLevel", mgr_log_level, FM_MGR_SM, "Set the SM logging level (1=WARN+, 2=INFINI_INFO+,\n                           3=INFO+, 4=VERBOSE+, 5=DEBUG2+, 6=DEBUG3+, 7=TRACE+)"},
+	{"smLogLevel", mgr_log_level, FM_MGR_SM, "Set the SM logging level (0=NONE+, 1=WARN+, 2=INFO+,\n                           3=INFO+, 4=VERBOSE+, 5=DEBUG2+, 6=DEBUG4+, 7=TRACE+)"},
 	{"smLogMode", mgr_log_mode, FM_MGR_SM, "Set the SM log mode flags (0/1 1=downgrade\n                           non-actionable, 0/2 2=logfile only)"},
-	{"smLogMask", mgr_log_mask, FM_MGR_SM, "Set the SM log mask for a specific subsystem to the\n                           value given see /etc/sysconfig/opafm.xml-sample\n                           for a list of subsystems and mask bit meanings"},
+	{"smLogMask", mgr_log_mask, FM_MGR_SM, "Set the SM log mask for a specific subsystem to the\n                           value given see /etc/sysconfig/opafm.xml\n                           or /opt/opafm/etc/opafm.xml\n                           for a list of subsystems and mask bit meanings"},
 	{"smPerfDebug", sm_perf_debug_toggle, FM_MGR_SM, "Toggle performance debug output for SM"},
 	{"saPerfDebug", sa_perf_debug_toggle, FM_MGR_SM, "Toggle performance debug output for SA"},
 	{"saRmppDebug", mgr_rmpp_debug_toggle, FM_MGR_SM, "Toggle Rmpp debug output for SA"},
-	{"pmRestorePriority", pm_restore_priority, FM_MGR_PM, "No longer supported, use smRestorePriority"},
-	{"pmLogLevel", mgr_log_level, FM_MGR_PM, "No longer supported, use smLogLevel"},
-	{"pmLogMode", mgr_log_mode, FM_MGR_PM, "No longer supported, use smLogMode"},
-	{"pmLogMask", mgr_log_mask, FM_MGR_PM, "No longer supported, use smLogMask"},
 	// these commands can be issued direct to PM without issue
 	{"pmShowCounters", pm_get_counters, FM_MGR_PM, "Get statistics and performance counters about the PM"},
 	{"pmResetCounters",pm_reset_counters, FM_MGR_PM, "Reset statistics and performace counters about the PM"},
 	{"pmDebug", mgr_debug_toggle, FM_MGR_PM, "Toggle debug output for PM"},
 	{"pmRmppDebug", mgr_rmpp_debug_toggle, FM_MGR_PM, "Toggle Rmpp debug output for PM"},
-	{"feLogLevel", mgr_log_level, FM_MGR_FE, "Set the FE logging level (1=WARN+, 2=INFINI_INFO+,\n                           3=INFO+, 4=VERBOSE+, 5=DEBUG2+, 6=DEBUG3+, 7=TRACE+)"},
+	{"feLogLevel", mgr_log_level, FM_MGR_FE, "Set the FE logging level (0=NONE+, 1=WARN+, 2=INFO+,\n                           3=INFO+, 4=VERBOSE+, 5=DEBUG2+, 6=DEBUG4+, 7=TRACE+)"},
 	{"feLogMode", mgr_log_mode, FM_MGR_FE, "Set the FE log mode flags (0/1 1=downgrade\n                           non-actionable, 0/2 2=logfile only)"},
-	{"feLogMask", mgr_log_mask, FM_MGR_FE, "Set the FE log mask for a specific subsystem to the\n                           value given see /etc/sysconfig/opafm.xml-sample\n                           for a list of subsystems and mask bit meanings"},
+	{"feLogMask", mgr_log_mask, FM_MGR_FE, "Set the FE log mask for a specific subsystem to the\n                           value given see /etc/sysconfig/opafm.xml\n                           or /opt/opafm/etc/opafm.xml\n                           for a list of subsystems and mask bit meanings"},
 	{"feDebug", mgr_debug_toggle, FM_MGR_FE, "Toggle debug output for FE"},
 	{"feRmppDebug", mgr_rmpp_debug_toggle, FM_MGR_FE, "Toggle Rmpp debug output for FE"},
 	{"smLooptestStart", sm_looptest_start, FM_MGR_SM, "START loop test in normal mode - specify the number of 256 byte packets\n                           (default=0)"},
-	{"smLooptestFastModeStart", sm_looptest_fast_mode_start, FM_MGR_SM, "START loop test in fast mode - specify the number of 256 byte packets\n                           (default=4)"},
+	{"smLooptestFastModeStart", sm_looptest_fast_mode_start, FM_MGR_SM, "START loop test in fast mode - specify the number of 256 byte packets\n                           (default=5)"},
 	{"smLooptestStop", sm_looptest_stop, FM_MGR_SM, "STOP the loop test (puts switch LFTs back to normal)"},
 	//{"smLooptestFastMode", sm_looptest_fast, FM_MGR_SM, "1 to turn loop test fast mode ON, 0 to turn OFF"},
 	{"smLooptestInjectPackets", sm_looptest_inject_packets, FM_MGR_SM, "Enter numPkts to send to all switch loops\n                           (default=1)"},
@@ -326,30 +321,12 @@ int sm_state_dump(p_fm_config_conx_hdlt hdl, fm_mgr_type_t mgr, int argc, char *
 	return 0;
 }
 
-
-int pm_restore_priority(p_fm_config_conx_hdlt hdl, fm_mgr_type_t mgr, int argc, char *argv[]) {
-	fprintf(stderr, "pmRestorePriority:\n");
-	fprintf(stderr, "\tThis command is not supported any more.  The priority of the\n");
-	fprintf(stderr, "\tPerformance Manager(PM) is now based on the priority of the\n");
-	fprintf(stderr, "\tSubnet manager(SM).  Use the smRestorePriority command\n");
-	fprintf(stderr, "\tfor restoring the priority of the SM and PM.\n");
-	return 0;
-}
-
-
 int mgr_log_level(p_fm_config_conx_hdlt hdl, fm_mgr_type_t mgr, int argc, char *argv[]) {
 	fm_mgr_config_errno_t	res;
 	fm_msg_ret_code_t		ret_code;
 	uint32_t 				loglevel=0;
 
-	if (mgr == FM_MGR_PM) {
-		fprintf(stderr, "pmLogLevel:\n");
-		fprintf(stderr, "\tThis command is not supported any more.  The logging of the\n");
-		fprintf(stderr, "\tPerformance Manager(PM) is now\n");
-		fprintf(stderr, "\tbased on the logging of the Subnet manager(SM).  Use the\n");
-		fprintf(stderr, "\tsmLogLevel command for changing the logging level of the\n");
-		fprintf(stderr, "\tSM and PM\n");
-	} else if (argc == 1) {
+	if (argc == 1) {
 		loglevel = atol(argv[0]);
 		if((res = fm_mgr_simple_query(hdl, FM_ACT_GET, FM_DT_LOG_LEVEL, mgr, sizeof(loglevel), (void *)&loglevel, &ret_code)) != FM_CONF_OK)
 		{
@@ -372,14 +349,7 @@ int mgr_log_mode(p_fm_config_conx_hdlt hdl, fm_mgr_type_t mgr, int argc, char *a
 	fm_msg_ret_code_t		ret_code;
 	uint32_t				logmode=0;
 
-	if (mgr == FM_MGR_PM) {
-		fprintf(stderr, "pmLogMode:\n");
-		fprintf(stderr, "\tThis command is not supported any more.  The logging of the\n");
-		fprintf(stderr, "\tPerformance Manager(PM) is now\n");
-		fprintf(stderr, "\tbased on the logging of the Subnet manager(SM).  Use the\n");
-		fprintf(stderr, "\tsmLogMode command for changing the logging level of the\n");
-		fprintf(stderr, "\tSM and PM\n");
-	} else if (argc == 1) {
+	if (argc == 1) {
 		logmode = atol(argv[0]);
 		if((res = fm_mgr_simple_query(hdl, FM_ACT_GET, FM_DT_LOG_MODE, mgr, sizeof(logmode), (void *)&logmode, &ret_code)) != FM_CONF_OK)
 		{
@@ -404,15 +374,7 @@ int mgr_log_mask(p_fm_config_conx_hdlt hdl, fm_mgr_type_t mgr, int argc, char *a
 	uint32_t				mask=0;
 	char buf[32];			// 32 bit mask followed by subsystem name
 
-	if (mgr == FM_MGR_PM) {
-		fprintf(stderr, "pmLogMask:\n");
-		fprintf(stderr, "\tThis command is not supported any more.  The logging of the\n");
-		fprintf(stderr, "\tPerformance Manager(PM) is now\n");
-		fprintf(stderr, "\tbased on the logging of the Subnet manager(SM).  Use the\n");
-		fprintf(stderr, "\tsmLogMask command for changing the logging level of the\n");
-		fprintf(stderr, "\tSM and PM\n");
-
-	} else if (argc == 2) {
+	if (argc == 2) {
 		mask = strtoul(argv[1], NULL, 0);
 		//mask = hton32(mask);	// TBD - endian issues seem to be ignored here
 		memcpy(buf, &mask, sizeof(mask));
@@ -616,7 +578,7 @@ int sm_looptest_start(p_fm_config_conx_hdlt hdl, fm_mgr_type_t mgr, int argc, ch
 int sm_looptest_fast_mode_start(p_fm_config_conx_hdlt hdl, fm_mgr_type_t mgr, int argc, char *argv[]) {
 	fm_mgr_config_errno_t	res;
 	fm_msg_ret_code_t		ret_code;
-	int						numpkts=4;
+	int						numpkts=5;
 	uint8_t 				data[BUF_SZ];
 
 	if (argc > 1) {

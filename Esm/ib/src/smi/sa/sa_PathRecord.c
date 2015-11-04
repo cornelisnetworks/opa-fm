@@ -85,7 +85,7 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 	uint32_t	records;
 	uint64_t	prefix=0,pf2=0;
 	uint64_t	guid=0,sguid=0;
-	STL_SA_MAD		samad;
+	IB_SA_MAD		samad;
 	Port_t		*src_portp;
 	Port_t		*dst_portp;
 	IB_PATH_RECORD	*prp;
@@ -102,6 +102,15 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 	uint32_t    slid = PERMISSIVE_LID, dlid = PERMISSIVE_LID;
 
 	IB_ENTER("sa_PathRecord", maip, 0, 0, 0);
+
+	if (maip->base.cversion != SA_MAD_CVERSION) {
+		maip->base.status = MAD_STATUS_BAD_CLASS;
+		(void) sa_send_reply(maip, sa_cntxt);
+		IB_LOG_WARN("sa_PathRecord: invalid CLASS:",
+					maip->base.cversion);
+		IB_EXIT("sa_PathRecord", VSTATUS_OK);
+		return (VSTATUS_OK);
+	}
 
 //
 //	Assume failure.
@@ -134,24 +143,24 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 //
 //  Verify the size of the data received for the request
 //
-	if ( maip->datasize-sizeof(STL_SA_MAD_HEADER) < sizeof(IB_PATH_RECORD) ) {
+	if ( maip->datasize-sizeof(SA_MAD_HDR) < sizeof(IB_PATH_RECORD) ) {
 		IB_LOG_ERROR_FMT("sa_PathRecord",
-						 "invalid MAD length; size of IB_PATH_RECORD[%lu], datasize[%d]", sizeof(IB_PATH_RECORD), maip->datasize-sizeof(STL_SA_MAD_HEADER));
+						 "invalid MAD length; size of IB_PATH_RECORD[%lu], datasize[%d]", sizeof(IB_PATH_RECORD), maip->datasize-sizeof(SA_MAD_HDR));
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 		IB_EXIT("sa_PathRecord", MAD_STATUS_SA_REQ_INVALID);
 		return (MAD_STATUS_SA_REQ_INVALID);
 	}
 	
-	BSWAPCOPY_STL_SA_MAD((STL_SA_MAD*)maip->data, &samad, sizeof(IB_PATH_RECORD));
-	memcpy(prp,samad.data,sizeof(IB_PATH_RECORD));
+	BSWAPCOPY_IB_SA_MAD((IB_SA_MAD*)maip->data, &samad, sizeof(IB_PATH_RECORD));
+	memcpy(prp,samad.Data,sizeof(IB_PATH_RECORD));
 	BSWAP_IB_PATH_RECORD(prp);
 
 
 //
 //	JSY - this is a quick cut-through check for temporarily static fields.
 //
-	if (sa_PathRecord_Interop(prp, samad.header.mask) != VSTATUS_OK) {
-		IB_LOG_WARNX("sa_PathRecord: mask failed interop:", samad.header.mask);
+	if (sa_PathRecord_Interop(prp, samad.SaHdr.ComponentMask) != VSTATUS_OK) {
+		IB_LOG_WARNX("sa_PathRecord: mask failed interop:", samad.SaHdr.ComponentMask);
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 		goto reply_PathRecord;
 	}
@@ -159,18 +168,18 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 //
 //	Check the validity of the requested PKey.
 //
-	if (samad.header.mask & PR_COMPONENTMASK_PKEY) {
+	if (samad.SaHdr.ComponentMask & PR_COMPONENTMASK_PKEY) {
 		pkey = prp->P_Key;
 	}
 
-	if (samad.header.mask & PR_COMPONENTMASK_SRV_ID) {
+	if (samad.SaHdr.ComponentMask & PR_COMPONENTMASK_SRV_ID) {
 		serviceId = prp->ServiceID;
 		serviceIdCheck = 1;
 	} else {
 		serviceIdCheck = 0;
 	}
 
-	if (samad.header.mask & PR_COMPONENTMASK_SL) {
+	if (samad.SaHdr.ComponentMask & PR_COMPONENTMASK_SL) {
 		sl = prp->u2.s.SL;
 	}
 
@@ -181,9 +190,9 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 		/* validate the minimal set of components are specified */
 		if (sm_config.queryValidation) {
 			/* IBTA requires SGID and NumbPath on GetTable */
-			if ((samad.header.mask & PR_COMPONENTMASK_OK_SRC) != PR_COMPONENTMASK_OK_SRC) {
+			if ((samad.SaHdr.ComponentMask & PR_COMPONENTMASK_OK_SRC) != PR_COMPONENTMASK_OK_SRC) {
 				maip->base.status = MAD_STATUS_SA_REQ_INSUFFICIENT_COMPONENTS;
-				IB_LOG_WARNX("sa_PathRecord: must specify a SGID and number of paths for GetTable:", samad.header.mask);
+				IB_LOG_WARNX("sa_PathRecord: must specify a SGID and number of paths for GetTable:", samad.SaHdr.ComponentMask);
 				goto reply_PathRecord;
 			}
 		} else {
@@ -191,14 +200,14 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 			// instead of a SGID.
 
 			/* Were the SGID or SLID and NumbPath specified? */
-			if (!(samad.header.mask & PR_COMPONENTMASK_SGID) && !(samad.header.mask & PR_COMPONENTMASK_SLID)) {
+			if (!(samad.SaHdr.ComponentMask & PR_COMPONENTMASK_SGID) && !(samad.SaHdr.ComponentMask & PR_COMPONENTMASK_SLID)) {
 				maip->base.status = MAD_STATUS_SA_REQ_INSUFFICIENT_COMPONENTS;
-				IB_LOG_WARNX("sa_PathRecord: must specify a SLID or SGID for GetTable:", samad.header.mask);
+				IB_LOG_WARNX("sa_PathRecord: must specify a SLID or SGID for GetTable:", samad.SaHdr.ComponentMask);
 				goto reply_PathRecord;
-			} else if (!(samad.header.mask & PR_COMPONENTMASK_PATHS)) {
+			} else if (!(samad.SaHdr.ComponentMask & PR_COMPONENTMASK_PATHS)) {
 #if 0
 				maip->base.status = MAD_STATUS_SA_REQ_INSUFFICIENT_COMPONENTS;
-				IB_LOG_WARNX("sa_PathRecord: must specify the number of paths for GetTable:", samad.header.mask);
+				IB_LOG_WARNX("sa_PathRecord: must specify the number of paths for GetTable:", samad.SaHdr.ComponentMask);
 				goto reply_PathRecord;
 #else
 				// OFED expects a default of 127
@@ -208,22 +217,22 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 		}
 
 		/* now validate the components we have present */
-		if ((samad.header.mask & PR_COMPONENTMASK_SGID) &&
+		if ((samad.SaHdr.ComponentMask & PR_COMPONENTMASK_SGID) &&
 			(memcmp(&prp->SGID, &nullGid, sizeof(IB_GID)) == 0)) {
 			maip->base.status = MAD_STATUS_SA_REQ_INVALID_GID;
-			IB_LOG_WARN0("sa_PathRecord: NULL src Gid");
+			IB_LOG_WARN0("Invalid Query: Mask specifies a source GID but source GID is NULL.");
 			goto reply_PathRecord;
 		}
-		if ((samad.header.mask & PR_COMPONENTMASK_SLID) &&
+		if ((samad.SaHdr.ComponentMask & PR_COMPONENTMASK_SLID) &&
 			(prp->SLID == 0)) {
 			maip->base.status = MAD_STATUS_SA_REQ_INVALID;
-			IB_LOG_WARN0("sa_PathRecord: NULL src Lid");
+			IB_LOG_WARN0("Invalid Query: Mask specifies a source LID but source LID is zero.");
 			goto reply_PathRecord;
 		}
-		if ((samad.header.mask & PR_COMPONENTMASK_PATHS) &&
+		if ((samad.SaHdr.ComponentMask & PR_COMPONENTMASK_PATHS) &&
 	   		(prp->NumbPath == 0)) {
 			maip->base.status = MAD_STATUS_SA_REQ_INVALID;
-			IB_LOG_WARN0("sa_PathRecord: numPath == 0");
+			IB_LOG_WARN0("Invalid Query: Mask specifies numbPath, but numbPath = 0.");
 			goto reply_PathRecord;
 		}
 	} else {
@@ -243,7 +252,7 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 //
 //	Find the source port.
 //
-	if ((samad.header.mask & PR_COMPONENTMASK_SGID) != 0) {
+	if ((samad.SaHdr.ComponentMask & PR_COMPONENTMASK_SGID) != 0) {
 		prefix = prp->SGID.Type.Global.SubnetPrefix;
 		guid = prp->SGID.Type.Global.InterfaceID;
 		if (prefix != sm_config.subnet_prefix) {
@@ -263,7 +272,7 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 			if (saDebugPerf) {
 				IB_LOG_INFINI_INFOLX("sa_PathRecord: requested source GUID not found/active in current topology:", guid);
 			}
-			maip->base.status = isSweeping ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID_GID;
+			maip->base.status = activateInProgress ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID_GID;
 			goto reply_PathRecord;
 		}
     	if (src_portp->portData->gidPrefix != prefix || src_portp->portData->guid != guid) {
@@ -276,10 +285,10 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 			maip->base.status = MAD_STATUS_SA_REQ_INVALID_GID;
 			goto reply_PathRecord;
 		}
-	} else if ((samad.header.mask & PR_COMPONENTMASK_SLID) != 0) {
+	} else if ((samad.SaHdr.ComponentMask & PR_COMPONENTMASK_SLID) != 0) {
 		if ((src_portp = sm_find_active_port_lid(&old_topology, prp->SLID)) == NULL) {
 			IB_LOG_INFINI_INFOX("sa_PathRecord: requested source Lid not found/active in current topology:", prp->SLID);
-            maip->base.status = isSweeping ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID;
+            maip->base.status = activateInProgress ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID;
 			goto reply_PathRecord;
 		}
 	} else {
@@ -299,7 +308,7 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 	}
 
 // if srclid is specified, store it.
-	if ((samad.header.mask & PR_COMPONENTMASK_SLID) != 0)
+	if ((samad.SaHdr.ComponentMask & PR_COMPONENTMASK_SLID) != 0)
 		slid = prp->SLID;
 
 //
@@ -316,7 +325,7 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 //
 //	Check for Bus-walk operation.
 //
-	if ((samad.header.mask & PR_COMPONENTMASK_NO_DST) == 0) {
+	if ((samad.SaHdr.ComponentMask & PR_COMPONENTMASK_NO_DST) == 0) {
 		if (sa_PathRecord_Wildcard(src_portp, slid, &records, pkey, prp->NumbPath, reqNodep, serviceId, sl) != VSTATUS_OK) {
             maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
 		}
@@ -326,7 +335,7 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 //
 //	Find the destination port.
 //
-	if ((samad.header.mask & PR_COMPONENTMASK_DGID) != 0) {
+	if ((samad.SaHdr.ComponentMask & PR_COMPONENTMASK_DGID) != 0) {
 		prefix = prp->DGID.Type.Global.SubnetPrefix;
 		guid = prp->DGID.Type.Global.InterfaceID;
 		if (prefix != sm_config.subnet_prefix) {
@@ -366,7 +375,7 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
             goto reply_PathRecord;
         }
 
-	} else if ((samad.header.mask & PR_COMPONENTMASK_DLID) != 0) {
+	} else if ((samad.SaHdr.ComponentMask & PR_COMPONENTMASK_DLID) != 0) {
 		if ((dst_portp = sm_find_active_port_lid(&old_topology, prp->DLID)) == NULL) {
 			if (saDebugPerf) IB_LOG_INFINI_INFOX("sa_PathRecord: requested destination Lid not found/active:", prp->DLID);
             maip->base.status = MAD_STATUS_SA_NO_RECORDS;
@@ -382,7 +391,7 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 //
 // if dlid is specified, store it
 //
-	if ((samad.header.mask & PR_COMPONENTMASK_DLID) != 0)
+	if ((samad.SaHdr.ComponentMask & PR_COMPONENTMASK_DLID) != 0)
 		dlid = prp->DLID;
 
 //
@@ -708,12 +717,12 @@ sa_PathRecord_Set(uint32_t* records, uint32_t numPath, Port_t *src_portp, uint32
 	next_portp = src_portp;
 	last_portp = dst_portp;
 	if (src_portp == dst_portp) {
-		mtu = src_portp->portData->mtuActive;
+		mtu = src_portp->portData->maxVlMtu;
 		rate = linkWidthToRate(src_portp->portData);
 		hopCount = 0;
 
 	} else if (IsDirectConnected(next_nodep, next_portp, last_nodep, last_portp)) {
-		mtu = Min(src_portp->portData->mtuActive, dst_portp->portData->mtuActive);
+		mtu = Min(src_portp->portData->maxVlMtu, dst_portp->portData->maxVlMtu);
 		// rates are enums, we need to use linkrate_gt to see which is less.
 		rate = linkWidthToRate(src_portp->portData);
 		rated = linkWidthToRate(dst_portp->portData);
@@ -733,10 +742,10 @@ sa_PathRecord_Set(uint32_t* records, uint32_t numPath, Port_t *src_portp, uint32
 				goto done_PathRecordSet;
 			}
 			next_portp = sm_get_port(next_nodep,0);
-			mtu = src_portp->portData->mtuActive;
+			mtu = src_portp->portData->maxVlMtu;
         	rate = linkWidthToRate(src_portp->portData);
 		} else if (next_nodep->switchInfo.u2.s.EnhancedPort0) {
-			mtu = src_portp->portData->mtuActive;
+			mtu = src_portp->portData->maxVlMtu;
         	rate = linkWidthToRate(src_portp->portData);
 		} else {
 			mtu = IB_MTU_2048; 
@@ -755,11 +764,11 @@ sa_PathRecord_Set(uint32_t* records, uint32_t numPath, Port_t *src_portp, uint32
 			}
 			last_portp = sm_get_port(last_nodep,0);
 
-			mtu = Min(mtu, dst_portp->portData->mtuActive);
+			mtu = Min(mtu, dst_portp->portData->maxVlMtu);
 			rated = linkWidthToRate(dst_portp->portData);
 			if (linkrate_gt(rate,rated)) rate=rated;
 		} else if (last_nodep->switchInfo.u2.s.EnhancedPort0) {
-			mtu = Min(mtu, dst_portp->portData->mtuActive);
+			mtu = Min(mtu, dst_portp->portData->maxVlMtu);
 			rated = linkWidthToRate(dst_portp->portData);
 			if (linkrate_gt(rate,rated)) rate=rated;
 		} else {
@@ -814,7 +823,7 @@ sa_PathRecord_Set(uint32_t* records, uint32_t numPath, Port_t *src_portp, uint32
 			}
 			next_nodep = sm_find_node(&old_topology, next_portp->nodeno);
 
-			if ( (mtu = Min(mtu, next_portp->portData->mtuActive)) < IB_MTU_2048)
+			if ( (mtu = Min(mtu, next_portp->portData->maxVlMtu)) < IB_MTU_2048)
 				break;
 			rated = linkWidthToRate(next_portp->portData);
 			if (linkrate_gt(rate,rated)) rate=rated;
@@ -1040,19 +1049,19 @@ sa_PathRecord_Interop(IB_PATH_RECORD *prp, uint64_t mask) {	// JSY - interop fix
 		if (selector < PR_MAX && (mask & PR_COMPONENTMASK_RATE)) {
 			value = prp->Rate;
 			if (value < IB_STATIC_RATE_MIN || value > IB_STATIC_RATE_MAX) {
-				IB_LOG_WARN("sa_MultiPathRecord_Interop: invalid specified RATE value:", value);
-				IB_EXIT("sa_MultiPathRecord_Interop", VSTATUS_BAD);
+				IB_LOG_WARN("sa_PathRecord_Interop: invalid specified RATE value:", value);
+				IB_EXIT("sa_PathRecord_Interop", VSTATUS_BAD);
 				return(VSTATUS_BAD);
 			} else if (value == IB_STATIC_RATE_MAX) {
 				if (selector == PR_GT) {
-					IB_LOG_WARN("sa_MultiPathRecord_Interop: invalid selector with 30GPS rate value:", selector);
-					IB_EXIT("sa_MultiPathRecord_Interop", VSTATUS_BAD);
+					IB_LOG_WARN("sa_PathRecord_Interop: invalid selector with 30GPS rate value:", selector);
+					IB_EXIT("sa_PathRecord_Interop", VSTATUS_BAD);
 					return(VSTATUS_BAD);
 				}
 			} else if (value == IB_STATIC_RATE_MIN) {
 				if (selector == PR_LT) {
-					IB_LOG_WARN("sa_MultiPathRecord_Interop: invalid selector with 2.5GPS rate value:", selector);
-					IB_EXIT("sa_MultiPathRecord_Interop", VSTATUS_BAD);
+					IB_LOG_WARN("sa_PathRecord_Interop: invalid selector with 2.5GPS rate value:", selector);
+					IB_EXIT("sa_PathRecord_Interop", VSTATUS_BAD);
 					return(VSTATUS_BAD);
 				}
 			}

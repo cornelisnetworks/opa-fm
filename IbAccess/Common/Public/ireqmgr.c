@@ -315,6 +315,9 @@ ReqMgrResume(
 	// Get the item at the head of the request queue, but do not remove it yet.
 	pQueuedRequest = (REQUEST_OBJECT*)
 		QueueGetHead( &pReqMgr->m_RequestQueue );
+	// If no requests are pending, there's nothing to return.
+	if (pQueuedRequest == NULL)
+		return FNOT_DONE;
 
 	*ppfnCallback = pQueuedRequest->pfnCallback;
 	*pContext1 = pQueuedRequest->Context1;

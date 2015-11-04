@@ -34,9 +34,6 @@
 #   Extract values (including port statistics) for both ports of each link
 #   Remove redundant information for each link and combine link port information
 
-TOOLSDIR=${TOOLSDIR:-/opt/opa/tools}
-BINDIR=${BINDIR:-/usr/sbin}
-
 ## Local functions:
 
 # Usage()
@@ -58,7 +55,7 @@ usage()
 
 ## Main function:
 
-if [ $# -ne 1 ]
+if [[ $# -ne 1 || "$1" == -* ]]
 then
     usage
 fi
@@ -73,8 +70,8 @@ fi
 
 ix=0
 
-$BINDIR/opareport -x -d 10 -s -o errors -T $@ | \
-  $BINDIR/opaxmlextract -d \; -e Rate -e MTU -e Internal -e LinkDetails \
+/usr/sbin/opareport -x -d 10 -s -o errors -T $@ | \
+  /usr/sbin/opaxmlextract -d \; -e Rate -e MTU -e Internal -e LinkDetails \
   -e CableLength -e CableLabel -e CableDetails -e Port.NodeGUID \
   -e Port.PortGUID -e Port.PortNum -e Port.PortType -e Port.NodeDesc \
   -e Port.PortDetails \

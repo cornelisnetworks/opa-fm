@@ -327,9 +327,7 @@ int main (int argc, char *argv [])
     debug       = FALSE;
     line_number = 0;
     
-    memset (config_file, 0, 256);
-    
-    strcpy ((void *)config_file, oldFile);
+    snprintf(config_file, 256, "%s", oldFile);
     
     status=readAndParseConfigFile(FALSE);
     if (status!=VSTATUS_OK)
@@ -535,29 +533,29 @@ char *formatOldValue(Ag_Man_t *sp, OldFormat_t format)
     case FORMAT_HEX:
         if (FALSE == getOldUllValue(sp, &value))
             return (char*)sp->value;
-        sprintf(buf,"0x%Lx",value);
+        snprintf(buf,sizeof(buf),"0x%Lx",value);
         return buf;
     case FORMAT_DEC:
         if (FALSE == getOldUllValue(sp, &value))
             return (char*)sp->value;
-        sprintf(buf,"%Ld",value);
+        snprintf(buf,sizeof(buf),"%Ld",value);
         return buf;
     case FORMAT_MTU:
         if (FALSE == getOldUllValue(sp, &value))
             return (char*)sp->value;
-        strcpy(buf, IbMTUToText((IB_MTU)value));
+        snprintf(buf, 50, IbMTUToText((IB_MTU)value));
         return buf;
     case FORMAT_RATE:
         if (FALSE == getOldUllValue(sp, &value))
             return (char*)sp->value;
         if (value == IB_STATIC_RATE_DONTCARE)
             return (char*)sp->value;
-        sprintf(buf,"%s",StlStaticRateToText((IB_STATIC_RATE)value));
+        snprintf(buf,sizeof(buf),"%s",StlStaticRateToText((IB_STATIC_RATE)value));
         return buf;
     case FORMAT_PLUS:
         if (FALSE == getOldUllValue(sp, &value))
             return (char*)sp->value;
-        sprintf(buf,"%lld",value+1);
+        snprintf(buf,sizeof(buf),"%lld",value+1);
         return buf;
     case FORMAT_2N:
     case FORMAT_2NINF:
@@ -615,7 +613,7 @@ char *formatOldValue(Ag_Man_t *sp, OldFormat_t format)
                                 sp->system, sp->instance, sp->key, sp->value);
                 return (char*)sp->value;
             }
-            sprintf(buf,"0x%016llx:0x%016llx",value,value2);
+            snprintf(buf,sizeof(buf),"0x%016llx:0x%016llx",value,value2);
             return buf;
         }
     }
@@ -639,16 +637,18 @@ char *formatOldValue(Ag_Man_t *sp, OldFormat_t format)
 char* getOldValue(char *keyDescIn,int showMissing)
 {
     char system[3];
-    char instance[10];
-    char keyIn[50];
-    char key[50];
+	static const int INSTANCE_LEN=10;
+    char instance[INSTANCE_LEN+1];
+	static const int KEY_LEN=50;
+    char keyIn[KEY_LEN+1];
+    char key[KEY_LEN+1];
     OldFormat_t format = FORMAT_NONE;
 
     // strip format specified off keyIn
     if (keyDescIn[0] == '#')
-        strncpy(keyIn, keyDescIn+1, sizeof(keyIn));
+        strncpy(keyIn, keyDescIn+1, KEY_LEN);
     else
-        strncpy(keyIn, keyDescIn, sizeof(keyIn));
+        strncpy(keyIn, keyDescIn, KEY_LEN);
 
 	keyIn[sizeof(keyIn)-1]='\0';
 
@@ -685,12 +685,17 @@ char* getOldValue(char *keyDescIn,int showMissing)
         system[2]=0;
 
         char *secondUnderScore=strchr(&keyIn[3],'_');
-        int len=(int)(secondUnderScore-&keyIn[3]);
-        strncpy(instance,&keyIn[3],len);
-        instance[len]=0;
+	if (!secondUnderScore) return NULL;
 
-        strncpy(key,secondUnderScore+1,50);
-        key[49]=0;
+        int len=(int)(secondUnderScore-&keyIn[3]);
+	if (len>=INSTANCE_LEN) return NULL;
+
+        strncpy(instance,&keyIn[3],len);
+
+        instance[INSTANCE_LEN]=0;
+
+        strncpy(key,secondUnderScore+1,KEY_LEN);
+        key[KEY_LEN]=0;
 
     //    fprintf(stdout,"tag:%s sys:%s, instance:%s, key:%s\n",keyIn,system,instance,key);
         int instanceValue=atoi(instance);
@@ -913,8 +918,9 @@ int parseLine(char *line,
     // for lines with a oldKey, we expect to find either:
     // <tag>value</tag>
     // <!--<tag>value</tag>-->
-    char tag[128];
-    char tag2[128];
+    static const int TAG_LENGTH=128;
+    char tag[TAG_LENGTH];
+    char tag2[TAG_LENGTH];
     char *leftBracket1=strchr(lineIn,'<');
     char *startValue;
     int valueLength;
@@ -940,8 +946,13 @@ int parseLine(char *line,
         exit(1);
     }
     int tagLength=(int)(rightBracket1-leftBracket1)-1;
+    if (tagLength<0||tagLength>TAG_LENGTH)
+    {
+        fprintf(stderr,"Invalid tag length %d\n%s\n",lineNumber,line);
+        exit(1);
+    }
     strncpy(tag,leftBracket1+1,tagLength);
-    tag[tagLength]='\0';
+    if (tagLength==TAG_LENGTH) tag[tagLength-1]='\0';
     startValue=rightBracket1+1;
     char *leftBracket2=strstr(rightBracket1+1,"</");
     if (leftBracket2==NULL)
@@ -964,7 +975,7 @@ int parseLine(char *line,
         exit(1);
     }
     strncpy(tag2,leftBracket2+2,tagLength);
-    tag2[tagLength]='\0';
+    if (tagLength == TAG_LENGTH) tag2[tagLength-1]='\0';
     if (strncmp(tag,tag2,tagLength)!=0)
     {
         fprintf(stderr,"Closing tag does not match opening tag on line %d. %s!=%s\n%s\n",lineNumber,tag,tag2,line);

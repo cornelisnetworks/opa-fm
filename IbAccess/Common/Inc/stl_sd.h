@@ -34,6 +34,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "iba/ib_sd.h"
 #include "iba/stl_sa.h"
 
+#define NO_STL_MCMEMBER_OUTPUT      // Don't output STL McMember Records in SA tools
+#define NO_STL_SERVICE_OUTPUT      // Don't output STL Service Records in SA tools
+
 /*
  * Extensions to the QUERY_RESULT_TYPE found in ib_sd.h. 
  * NOTE: Also update iba2ibo_saquery_helper.c with text version of any additions! 
@@ -48,14 +51,18 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OutputTypeStlSMInfoRecord			(OutputTypeStlBase+7)
 #define OutputTypeStlLinearFDBRecord		(OutputTypeStlBase+8)
 #define OutputTypeStlVLArbTableRecord		(OutputTypeStlBase+9)
+#ifndef NO_STL_MCMEMBER_OUTPUT       // Don't output STL McMember if defined
 #define OutputTypeStlMcMemberRecord			(OutputTypeStlBase+10)
+#endif
 #define OutputTypeStlLid					(OutputTypeStlBase+11)
 #define OutputTypeStlMCastFDBRecord			(OutputTypeStlBase+12)
 #define OutputTypeStlLinkRecord				(OutputTypeStlBase+13)
 #define OutputTypeStlSystemImageGuid		(OutputTypeStlBase+14)
 #define OutputTypeStlPortGuid				(OutputTypeStlBase+15)
 #define OutputTypeStlNodeGuid				(OutputTypeStlBase+16)
+#ifndef NO_STL_SERVICE_OUTPUT       // Don't output STL Service if defined
 #define OutputTypeStlServiceRecord			(OutputTypeStlBase+17)
+#endif
 #define OutputTypeStlInformInfoRecord		(OutputTypeStlBase+18)
 #define OutputTypeStlVfInfoRecord			(OutputTypeStlBase+19)
 #define OutputTypeStlTraceRecord			(OutputTypeStlBase+20)
@@ -74,11 +81,17 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OutputTypeStlSCVLntTableRecord		(OutputTypeStlBase+33)
 #define OutputTypeStlSCSCTableRecord		(OutputTypeStlBase+34)
 #define OutputTypeStlClassPortInfo			(OutputTypeStlBase+35)
+#define OutputTypeStlFabricInfoRecord		(OutputTypeStlBase+36)
 
 typedef struct {
 	uint32							NumClassPortInfo;	/* Should always be 1 or 0 */
 	STL_CLASS_PORT_INFO				ClassPortInfo;		/* Should never have more than 1 */
 } STL_CLASS_PORT_INFO_RESULT, *PSTL_CLASS_PORT_INFO_RESULT;
+
+typedef struct {
+	uint32							NumFabricInfoRecords;/* Should always be 1 or 0 */
+	STL_FABRICINFO_RECORD			FabricInfoRecord;	/* Should never have more than 1 */
+} STL_FABRICINFO_RECORD_RESULT, *PSTL_FABRICINFO_RECORD_RESULT;
 
 typedef struct {
     uint32 							NumNodeRecords;		/* Number of NodeRecords returned */

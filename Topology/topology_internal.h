@@ -93,7 +93,7 @@ extern FSTATUS SmaGetLinearFDBTable(struct oib_port *port, NodeData *nodep, uint
 extern FSTATUS SmaGetMulticastFDBTable(struct oib_port *port, NodeData *nodep, uint32_t lid, uint32 block, uint8 position, STL_MULTICAST_FORWARDING_TABLE *pFDB);
 extern FSTATUS SmaGetBufferControlTable(struct oib_port *port, NodeData *nodep, uint32_t lid, 
 							   uint8_t startPort, uint8_t endPort, STL_BUFFER_CONTROL_TABLE pBCT[]);
-extern FSTATUS SmaGetCableInfo(struct oib_port *port, NodeData *nodep, uint32_t lid, uint8_t portnum, uint16_t addr, uint8_t len, STL_CABLE_INFO *pCableInfo);
+extern FSTATUS SmaGetCableInfo(struct oib_port *port, NodeData *nodep, uint32_t lid, uint8_t portnum, uint16_t addr, uint8_t len, uint8_t *data);
 
 #ifdef __cplusplus
 };

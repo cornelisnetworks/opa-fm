@@ -113,7 +113,7 @@ pm_conf_fill_common(fm_mgr_action_t action, fm_config_common_t *common)
 			common->log_level	= pm_config.log_level;
 			common->log_mask	= 0; // pm_log_mask; no longer allowed
 			common->nodaemon	= pm_nodaemon;
-			strncpy(&common->log_file[0],pm_config.log_file,strlen(pm_config.log_file));
+			strncpy(common->log_file,pm_config.log_file,strlen(pm_config.log_file));
 			
 			return FM_RET_OK;
 		case FM_ACT_SUP_GET:
@@ -165,7 +165,8 @@ pm_conf_fill_common(fm_mgr_action_t action, fm_config_common_t *common)
 			}
 #endif
 			if(common->select_mask & CFG_COM_SEL_LOG_FILE){
-				strncpy(pm_config.log_file,&common->log_file[0],sizeof(pm_config.log_file));
+				strncpy(pm_config.log_file,common->log_file,sizeof(pm_config.log_file)-1);
+				pm_config.log_file[sizeof(pm_config.log_file)-1]=0;
 				reset_log_flag = 1;
 			}
 
@@ -432,9 +433,8 @@ pm_initialize_config(void)
 void
 unified_sm_pm(uint32_t argc, uint8_t ** argv)
 {
-	if(pm_config.default_pkey){
-		mai_set_default_pkey(pm_config.default_pkey);
-	}
+	mai_set_default_pkey(STL_DEFAULT_FM_PKEY);
+
     if (pm_config.debug_rmpp) if3RmppDebugOn();
     
 	IB_LOG_INFO("Device: ", pm_config.hca);

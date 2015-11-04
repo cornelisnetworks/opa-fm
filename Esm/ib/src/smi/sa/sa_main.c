@@ -88,7 +88,7 @@ SACacheBuildFunc_t  saCacheBuildFunctions[SA_NUM_CACHES] = {
 };
 
 
-//VieoServiceRecord_t	* globalServiceRecords = NULL;
+//OpaServiceRecord_t	* globalServiceRecords = NULL;
 
 /************ support for dynamic update of switch config parms *************/
 uint8_t sa_dynamicPlt[DYNAMIC_PACKET_LIFETIME_ARRAY_SIZE]={1,16,17,17,18,18,18,18,19,19};   // entry zero set to 1 indicates table in use
@@ -186,6 +186,9 @@ static int sa_filter_validate_mad(Mai_t *maip, STL_SA_MAD_HEADER *samad)
         case SA_MCMEMBER_RECORD:
         case SA_CLASSPORTINFO:
             break;
+        case SA_PORTINFO_RECORD:
+            if (maip->base.bversion == IB_BASE_VERSION)
+                break;
         default:
             if (!smValidateGsiMadPKey(maip, 1, sm_config.sma_spoofing_check))
                 rc = 1;
@@ -1161,7 +1164,7 @@ int saSubscriberSize() {
 }
 
 int saServiceRecordSize() {
-	size_t size = sizeof(VieoServiceRecord_t);
+	size_t size = sizeof(OpaServiceRecord_t);
 	sysPrintf("An SA Service Record is %d bytes\n", size);
 	return size;
 }

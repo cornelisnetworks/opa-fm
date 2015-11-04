@@ -221,6 +221,7 @@ const char *stl_attribute_str(uint8_t BaseVersion, uint8_t class, be16_t attr)
 		case STL_SA_ATTR_PORT_STATE_INFO_RECORD:		return("PortStateInfoRecord");
 		case STL_SA_ATTR_PORTGROUP_TABLE_RECORD:		return("PortGroupTableRecord");
 		case STL_SA_ATTR_BUFF_CTRL_TAB_RECORD:			return("BufferCtrlTableRecord");
+		case STL_SA_ATTR_FABRICINFO_RECORD:				return("FabricInfoRecord");
 		case STL_SA_ATTR_QUARANTINED_NODE_RECORD:		return("QuarantinedNodeRecord");
 		case STL_SA_ATTR_CONGESTION_INFO_RECORD:		return("CongestionInfoRecord");
 		case STL_SA_ATTR_SWITCH_CONG_RECORD:			return("SwitchCongestionRecord");

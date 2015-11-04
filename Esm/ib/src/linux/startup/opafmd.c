@@ -9,6 +9,7 @@
 #include <signal.h>
 #include <ctype.h>
 #include <pthread.h>
+#include <errno.h>
 
 #define SM_COMPONENT 1
 #define FE_COMPONENT 2
@@ -17,6 +18,7 @@ extern char *optarg;
 extern int optind;
 
 char *progName;
+char *nullEnv[] = {0};
 int smPID[4] = {0};
 int fePID[4] = {0};
 int doStop = 0;
@@ -268,7 +270,7 @@ int spawn(const unsigned int instance, const int component, int *pids){
 	case 0:
 		sprintf(prog, "/opt/opafm/runtime/%s", component == SM_COMPONENT ? "sm" : "fe");
 		sprintf(name, "%s_%d", component == SM_COMPONENT ?"sm" : "fe", instance);
-		execlp(prog, prog, "-e", name, NULL);
+		execle(prog, prog, "-e", name, NULL, nullEnv);
 		return 0;
 	case -1:
 		fprintf(stderr, "Failed to start %s for instance %d.\n", component == SM_COMPONENT ? "SM" : "FE", instance);
@@ -340,12 +342,12 @@ int daemon_main(){
 	char buf[128] = {0};
 	unlink(pipe); // cleanup any bad states
 	if(mkfifo(pipe, 0660) == -1){
-		fprintf(stderr, "Failed to create pipe...\n");
+		fprintf(stderr, "Failed to create pipe: %s\n", strerror(errno));
 		return(-1);
 	}
 	while (!doStop){
 		if((fd = open(pipe, O_RDONLY)) == -1){
-			fprintf(stderr, "Failed to open pipe for reading.\n");
+			fprintf(stderr, "Failed to open pipe for reading: %s\n", strerror(errno));
 			return(-2);
 		}
 		while(read(fd, buf, 127) != 0){
@@ -360,7 +362,7 @@ int daemon_main(){
 int main(int argc, char* argv[]) {
 	char opts[] = "Di:";
 	char c;
-	int isDaemon = 0;
+	int isDaemon = 0, res = 0;
 	char *cmd = NULL, *comp = NULL, inst[2] = {0};
 	progName = argv[0];
 	if(argc < 2)
@@ -427,10 +429,16 @@ int main(int argc, char* argv[]) {
 				Usage(-1);
 			} else {
 				if((isDaemon = open("/var/run/opafmd", O_WRONLY)) == -1){	//re-using isDaemon because reasons.
-					fprintf(stderr, "Failed to open pipe to daemon.\nMake sure daemon is running and you have permission to speak with it.");
+					fprintf(stderr, "Failed to open pipe to daemon: %s\nMake sure daemon is running and you have permission to speak with it.\n", strerror(errno));
 					exit(-2);
 				}
-				write(isDaemon, "stop", 4);	// write stop command without parameters to named pipe to kill it softly. With our words.
+				res = write(isDaemon, "stop", 4);	// write stop command without parameters to named pipe to kill it softly. With our words.
+				if(res <= 0){
+					//Something went wrong while writing to pipe.
+					fprintf(stderr, "Failed to send stop command to daemon: %s\n", strerror(errno));
+					close(isDaemon);
+					exit(-2);
+				}
 				close(isDaemon);
 				exit(0);
 			}
@@ -452,21 +460,21 @@ int main(int argc, char* argv[]) {
 			// and the parent calls the control script to start up defaults.
 			sleep(1);
 			char *args[] = {"/opt/opafm/bin/opafmctrl.sh", "start", NULL};
-			execvp(args[0], args);
+			execve(args[0], args, nullEnv);
 			return 0;
 		}
 	} else {
 		char prog[] = "/opt/opafm/bin/opafmctrl.sh";
 		if(inst[0] != 0){
 			if(comp != NULL)
-				execlp(prog, prog, cmd, "-i", inst, comp, NULL);	// Call opafmctl with instance number and component,
+				execle(prog, prog, cmd, "-i", inst, comp, NULL, nullEnv);	// Call opafmctl with instance number and component,
 			else
-				execlp(prog, prog, cmd, "-i", inst, NULL);			// only with instance number,
+				execle(prog, prog, cmd, "-i", inst, NULL, nullEnv);			// only with instance number,
 		} else {
 			if(comp != NULL)
-				execlp(prog, prog, cmd, comp, NULL);				// only with component,
+				execle(prog, prog, cmd, comp, NULL, nullEnv);				// only with component,
 			else
-				execlp(prog, prog, cmd, NULL);						// or without additional arguments.
+				execle(prog, prog, cmd, NULL, nullEnv);						// or without additional arguments.
 		}
 	}
 	return 0;

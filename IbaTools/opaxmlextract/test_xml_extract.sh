@@ -28,8 +28,6 @@
 # END_ICS_COPYRIGHT8   ****************************************
 
 #[ICS VERSION STRING: unknown]
-TOOLSDIR=${TOOLSDIR:-/opt/opa/tools}
-BINDIR=${BINDIR:-/usr/sbin}
 
-$BINDIR/opaxmlextract -e t3 -e t4 -e t5 -e t6 -e t3:a3 -e t4:a4 -e t5:a5 -e t4:aa4 -e t3:a3:va3K -e t7 -e t7:a7 -s t7:a7:va7K -s t9 -s t10:a10 -s t11:a11:va11K < test2.xml > out
+/usr/sbin/opaxmlextract -e t3 -e t4 -e t5 -e t6 -e t3:a3 -e t4:a4 -e t5:a5 -e t4:aa4 -e t3:a3:va3K -e t7 -e t7:a7 -s t7:a7:va7K -s t9 -s t10:a10 -s t11:a11:va11K < test2.xml > out
 diff test2.xml.out out

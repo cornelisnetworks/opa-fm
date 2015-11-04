@@ -176,6 +176,7 @@ int InstallTarget(const char* targetDir, const char* srcFileName, const boolean 
     struct stat targetStat;
 	char	     targetFileName[2000];
     boolean copyResult = TRUE;
+    int     res = 0;
 
     /* If the source file does not exist as a regular file, return an error unless the */
     /* force flag is set. */
@@ -192,9 +193,9 @@ int InstallTarget(const char* targetDir, const char* srcFileName, const boolean 
     }
 
     /* Build the target file name spec */
-    strcpy(targetFileName, targetDir);
-    strcat(targetFileName, "/");
-    strcat(targetFileName, basename((char *)srcFileName));
+    res = snprintf(targetFileName, 2000, "%s/%s", targetDir, basename((char*)srcFileName));
+    if(res <= 0 || res > 2000)
+        return 1;   //Path could not be created or is too long (very unlikely)
 
     /* If the target file does not exist OR the source file modified time is greater than */
     /* the target file modified time, OR the source file size is not equal to the target */

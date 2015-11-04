@@ -219,9 +219,11 @@ uint32  fvDebugProg  = 0;			// Debug/Trace variable as:
 										//  0MMM MMMM NNNN NNNN  SSSS 21RC SIEB SNEB
 
 // Command line option table, each has a short and long flag name
+static const char* tbShortOptions="#vHe:s:X:P:d:Z:";
 struct option tbOptions[] =
 {
 	// Basic controls
+	{ "help", no_argument, NULL, 'h' },
 	{ "verbose", no_argument, NULL, 'v' },
 	{ "extract", required_argument, NULL, 'e' },
 	{ "suppress", required_argument, NULL, 's' },
@@ -467,7 +469,7 @@ void dispHeaderRecord(int argc, char ** argv)
 void errUsage(void)
 {
 	fprintf(stderr, "Usage: " NAME_PROG " [-v][-H][-d delimiter][-e element][-s element][-X input_file][-P param_file]\n");
-	fprintf(stderr, "  -e/--extract element      - name of XML element to extract\n");
+	fprintf(stderr, "  -e/--extract element      - name of an XML element to extract\n");
 	fprintf(stderr, "                              can be used multiple times\n");
 	fprintf(stderr, "                              elements can be nested in any order, but will\n");
 	fprintf(stderr, "                              be output in the order specified\n");
@@ -475,9 +477,24 @@ void errUsage(void)
 	fprintf(stderr, "                              attribute and value can be specified\n");
 	fprintf(stderr, "                              -e element\n");
 	fprintf(stderr, "                              -e element:attrName\n");
-	fprintf(stderr, "                              -e element:attrName:attrValue\n");
+	fprintf(stderr, "                              -e element:attrName:attrValue\n\n");
+	fprintf(stderr, "                              Note that elements can be compound values\n");
+	fprintf(stderr, "                              separated by a dot. For example,\n");
+	fprintf(stderr, "                              'Switches.Node' is a Node element contained\n"); 
+	fprintf(stderr, "                              within a Switches element.\n\n"); 
+	fprintf(stderr, "                              If its desired to output the attribute value as\n");
+	fprintf(stderr, "                              opposed to the element value, a specification such\n");
+	fprintf(stderr, "                              as '-e FIs.Node:id' can be used, which will return\n");
+	fprintf(stderr, "                              the value of the id attribute of any Node elements\n");
+    fprintf(stderr, "                              within FIs element. If desired a specific element\n");
+	fprintf(stderr, "                              can be selected by its attribute value, such as\n");
+	fprintf(stderr, "                              '-e MulticastFDB.Value:LID:0xc000', which will\n");
+	fprintf(stderr, "                              return the value of the Value element within\n");
+	fprintf(stderr, "                              Multicast FDB element where the Value element has\n");
+	fprintf(stderr, "                              an attribute of LID with a value of 0xc000.\n\n");
+
 #if ALLOW_MULTI_MATCH
-	fprintf(stderr, "                              a given element can be specified multiple\n");
+	fprintf(stderr, "                              A given element can be specified multiple\n");
 	fprintf(stderr, "                              times each with a different AttrName or attrValue\n");
 #else
 	fprintf(stderr, "                              a given element can be specified only once\n");
@@ -492,6 +509,7 @@ void errUsage(void)
 	fprintf(stderr, "  -H/--noheader             - do not output element name header record\n");
 	fprintf(stderr, "  -v/--verbose              - verbose output: progress reports during extraction,\n");
 	fprintf(stderr, "                              and element name prepended wildcard characters\n");
+	fprintf(stderr, "  --help                    - print this usage text.\n");
 
 	if (hFileInput && (hFileInput != stdin))
 		fclose(hFileInput);
@@ -951,10 +969,11 @@ void getRecu_opt( int argc, char ** argv, const char *pOptShort,
 			}
 			break;
 
+		case '#':
 		default:
-			fprintf(stderr, NAME_PROG ": Invalid Option -<%c>\n", cOpt);
 			errUsage();
 			break;
+
         }	// End of switch (cOpt)
 
     }	// End of while ( ( cOpt = getopt_long( argc, argv,
@@ -962,8 +981,7 @@ void getRecu_opt( int argc, char ** argv, const char *pOptShort,
 	// Validate command line arguments
 	if (optind < argc)
 	{
-		fprintf(stderr, NAME_PROG ": Unprocessed Parameters (%d of %d)\n",
-			argc - optind, argc);
+		fprintf(stderr, "%s: invalid argument %s\n", NAME_PROG, argv[optind]);
 		errUsage();
 	}
 
@@ -1004,7 +1022,7 @@ int main(int argc, char ** argv)
 	}
 	
 	// Get and validate command line arguments
-	getRecu_opt(argc, argv, "vHe:s:X:P:d:Z:", tbOptions);
+	getRecu_opt(argc, argv, tbShortOptions, tbOptions);
 
 	dispHeaderRecord(argc, argv);
 

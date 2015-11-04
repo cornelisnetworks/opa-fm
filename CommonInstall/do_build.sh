@@ -46,7 +46,6 @@ Usage()
 	echo "" >&2
 	echo "Environment:" >&2
 	echo "    STACK_PREFIX - where to find IB stack." >&2
-	echo "            Default obtained from /etc/infiniband/info, typically /usr" >&2
 	echo "    BUILD_DIR - temporary directory to use during build of MPI" >&2
 	echo "            Default is /var/tmp/Intel-mvapich or /var/tmp/Intel-mvapich2" >&2
 	echo "            or /var/tmp/Intel-openmpi" >&2

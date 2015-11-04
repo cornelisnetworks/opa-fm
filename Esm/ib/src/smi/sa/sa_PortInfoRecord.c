@@ -65,11 +65,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sm_l.h"
 #include "sa_l.h"
 
-Status_t	sa_PortInfoRecord_GetTable(Mai_t *, uint32_t *);
+static Status_t	sa_PortInfoRecord_GetTable(Mai_t *, uint32_t *);
+static Status_t sa_IbPortInfoRecord_GetTable(Mai_t *maip, uint32_t *records);
+static Status_t sa_IbPortInfoRecord_Set(uint8_t *prp, Node_t *nodep, Port_t *portp, STL_SA_MAD *samad);
 
 Status_t
 sa_PortInfoRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
-	uint32_t			records;
+	uint32_t			records, recordLength;
 	uint16_t			attribOffset;
 
 	IB_ENTER("sa_PortInfoRecord", maip, 0, 0, 0);
@@ -86,11 +88,9 @@ sa_PortInfoRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
 	switch (maip->base.method) {
 	case SA_CM_GET:
 		INCREMENT_COUNTER(smCounterSaRxGetPortInfoRecord);
-		(void)sa_PortInfoRecord_GetTable(maip, &records);
 		break;
 	case SA_CM_GETTABLE:
 		INCREMENT_COUNTER(smCounterSaRxGetTblPortInfoRecord);
-		(void)sa_PortInfoRecord_GetTable(maip, &records);
 		break;
 	default:
 		maip->base.status = MAD_STATUS_BAD_METHOD;
@@ -101,9 +101,20 @@ sa_PortInfoRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
 		break;
 	}
 
-//
-//	Determine reply status
-//
+	//
+	// Do the search. Note that we don't support caching of IB records.
+	//
+	if (maip->base.cversion == STL_SA_CLASS_VERSION) {
+        recordLength = sizeof(STL_PORTINFO_RECORD);
+		(void)sa_PortInfoRecord_GetTable(maip, &records);
+    } else {
+        recordLength = sizeof(IB_PORTINFO_RECORD);
+		(void)sa_IbPortInfoRecord_GetTable(maip, &records);
+    }
+
+    //
+    //	Determine reply status
+    //
 	if (maip->base.status != MAD_STATUS_OK) {
 		records = 0;
 	} else if (records == 0) {
@@ -114,7 +125,8 @@ sa_PortInfoRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
 		maip->base.status = MAD_STATUS_SA_TOO_MANY_RECS;
 	}
 
-	attribOffset =  sizeof(STL_PORTINFO_RECORD) + Calculate_Padding(sizeof(STL_PORTINFO_RECORD));
+	attribOffset =  recordLength + Calculate_Padding(recordLength);
+
 	/* setup attribute offset for possible RMPP transfer */
 	sa_cntxt->attribLen = attribOffset;
 	sa_cntxt_data( sa_cntxt, sa_data, records * attribOffset);
@@ -124,7 +136,7 @@ sa_PortInfoRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
 	return(VSTATUS_OK);
 }
 
-Status_t
+static Status_t
 sa_PortInfoRecord_Set(uint8_t *prp, Node_t *nodep, Port_t *portp, STL_SA_MAD *samad) {
 	uint32_t		    portno;
 	Lid_t			    lid;
@@ -170,7 +182,71 @@ sa_PortInfoRecord_Set(uint8_t *prp, Node_t *nodep, Port_t *portp, STL_SA_MAD *sa
 	return(VSTATUS_OK);
 }
 
-Status_t
+static Status_t
+sa_IbPortInfoRecord_Set(uint8_t *prp, Node_t *nodep, Port_t *portp, STL_SA_MAD *samad) {
+	uint32_t		    portno;
+	Lid_t			    lid;
+    Port_t              *piPortp;
+	IB_PORTINFO_RECORD	*ibPortInfoRecord = (IB_PORTINFO_RECORD *)prp;
+
+	IB_ENTER(__func__, prp, nodep, portp, 0);
+
+    if (portp == NULL) {
+        IB_LOG_ERROR_FMT(__func__,
+               "NULL port parameter for Node Guid["FMT_U64"], %s",
+               nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep));
+		IB_EXIT(__func__, VSTATUS_BAD);
+		return(VSTATUS_BAD);
+    }
+
+	portno = (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH) ? 0 : portp->index;
+
+    if (!sm_valid_port((piPortp = sm_get_port(nodep,portno)))) {
+        IB_LOG_ERROR0("sa_IbPortInfoRecord_Set: failed to get port");
+        IB_EXIT(__func__, VSTATUS_BAD);
+        return(VSTATUS_BAD);
+    }
+
+	lid = piPortp->portData->lid;
+
+	memset(ibPortInfoRecord,0,sizeof(IB_PORTINFO_RECORD));
+
+	//
+	// map STL data to IB record.
+	//
+    // PortInfoRecords for the requesting node and remote nodes which it is permitted
+    // to communicate with. However the contents of such records shall be limited to
+    // the following fields: SubnetPrefix, LID, LMC, LocalPortNum,
+    // CapabilityMask.IsDeviceMgmtSupported, CapablityMask.isConnectionMgmtSupported,
+    // PortState (Active), PortPhysState (Linkup), NeighborMTU (always reported as 2K)
+    // and MTUCap (always reported as 2K).
+    // 
+    // NOTE:   Rationale, this minimizes exposure to information which may be helpful
+    // for attacks, while allowing HFIs to query for IO devices such as SRP storage
+    // targets.
+    //
+
+    ibPortInfoRecord->RID.s.EndPortLID = lid;
+	ibPortInfoRecord->RID.s.PortNum = (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH) ? portp->index : 0;
+    ibPortInfoRecord->PortInfoData.SubnetPrefix = piPortp->portData->portInfo.SubnetPrefix;
+    ibPortInfoRecord->PortInfoData.LID = piPortp->portData->portInfo.LID;
+    ibPortInfoRecord->PortInfoData.CapabilityMask.AsReg32 = piPortp->portData->portInfo.CapabilityMask.s.IsDeviceManagementSupported |
+                                                            piPortp->portData->portInfo.CapabilityMask.s.IsConnectionManagementSupported;
+    ibPortInfoRecord->PortInfoData.LocalPortNum = piPortp->portData->portInfo.LocalPortNum;
+    ibPortInfoRecord->PortInfoData.Link.PortState = piPortp->portData->portInfo.PortStates.s.PortState;
+    ibPortInfoRecord->PortInfoData.Link.PortPhysicalState = piPortp->portData->portInfo.PortStates.s.PortPhysicalState;
+    ibPortInfoRecord->PortInfoData.s1.LMC = piPortp->portData->portInfo.s1.LMC;
+    ibPortInfoRecord->PortInfoData.s2.NeighborMTU = IB_MTU_2048;
+    ibPortInfoRecord->PortInfoData.MTU.Cap = IB_MTU_2048;
+
+	BSWAP_IB_PORTINFO_RECORD(ibPortInfoRecord, TRUE);
+
+	IB_EXIT(__func__, VSTATUS_OK);
+
+	return(VSTATUS_OK);
+}
+
+static Status_t
 sa_PortInfoRecord_GetTable(Mai_t *maip, uint32_t *records) {
 	uint8_t		*data;
 	uint32_t	bytes;
@@ -241,7 +317,7 @@ sa_PortInfoRecord_GetTable(Mai_t *maip, uint32_t *records) {
      * This should throttle back the host
      */
 	if ( (portp = sm_find_active_port_lid(&old_topology, maip->addrInfo.slid)) == NULL) {
-		maip->base.status = isSweeping ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID;
+		maip->base.status = activateInProgress ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID;
         (void)vs_rwunlock(&old_topology_lock);
         IB_EXIT("sa_PortInfoRecord_GetTable", VSTATUS_OK);
         return(VSTATUS_OK);
@@ -309,3 +385,149 @@ done:
 	IB_EXIT("sa_PortInfoRecord_GetTable", status);
 	return(status);
 }
+
+static boolean sa_valid_ib_port_state(const Port_t	*portp)
+{
+    // PortInfoRecords for the requesting node and remote nodes which it is permitted
+    // to communicate with. However the contents of such records shall be limited to
+    // ports with PortState (Active) and PortPhysState (Linkup).
+    // 
+    // NOTE:   Rationale, this minimizes exposure to information which may be helpful
+    // for attacks, while allowing HFIs to query for IO devices such as SRP storage
+    // targets.
+    return ((portp->portData->portInfo.PortStates.s.PortPhysicalState == IB_PORT_PHYS_LINKUP) &&
+            (portp->portData->portInfo.PortStates.s.PortState == IB_PORT_ACTIVE)); 
+}
+
+static Status_t
+sa_IbPortInfoRecord_GetTable(Mai_t *maip, uint32_t *records) {
+	uint8_t		*data;
+	uint32_t	bytes;
+	Node_t		*nodep;
+	Port_t		*portp, *srcportp;
+	STL_SA_MAD	samad;
+	Status_t	status;
+	bool_t		checkLid;
+	Lid_t		endPortLid=0;
+	uint8_t		checkCapMask = 0;
+	uint32_t	capMask = 0, cap;
+
+	IB_ENTER(__func__, maip, *records, 0, 0);
+	*records = 0;
+	data = sa_data;
+	bytes = Calculate_Padding(sizeof(IB_PORTINFO_RECORD));
+
+    // verify the size of the data received for the request
+	if (maip->datasize-sizeof(STL_SA_MAD_HEADER) < sizeof(IB_PORTINFO_RECORD)) {
+		IB_LOG_ERROR_FMT(__func__,
+						 "invalid MAD length; size of IB_PORTINFO_RECORD[%lu], datasize[%d]", sizeof(IB_PORTINFO_RECORD), maip->datasize-sizeof(STL_SA_MAD_HEADER));
+		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
+		IB_EXIT(__func__, MAD_STATUS_SA_REQ_INVALID);
+		return (MAD_STATUS_SA_REQ_INVALID);
+	}
+
+	BSWAPCOPY_STL_SA_MAD((STL_SA_MAD*)maip->data, &samad, sizeof(IB_PORTINFO_RECORD));
+
+	// IBTA 1.2.1 15.2.5.3 - We set the CapMaskMatchSupported bit in our SA ClassPortInfo
+	checkLid = (samad.header.mask & IB_PORTINFO_RECORD_COMP_ENDPORTLID);
+	if (checkLid) {	
+		endPortLid = ntoh16(*(uint16_t*)samad.data);
+		samad.header.mask ^= IB_PORTINFO_RECORD_COMP_ENDPORTLID;
+	}
+
+	// IBTA 1.2.1 15.2.5.3 - We set the CapMaskMatchSupported bit in our SA ClassPortInfo
+	// So, if bit 31 of amod is set, matching of capmask should be done only on those bits
+    // in the PortInfo:CapabilityMask embedded in the query
+	if ((samad.header.mask & IB_PORTINFO_RECORD_COMP_CAPABILITYMASK) && (maip->base.amod & (1 << 31))) {
+		checkCapMask = 1;
+		memcpy(&cap, &samad.data[24], 4);
+		capMask = ntoh32(cap);
+		samad.header.mask ^= IB_PORTINFO_RECORD_COMP_CAPABILITYMASK;
+	}
+
+    // create the template mask for the lookup.
+	status = sa_create_template_mask(maip->base.aid, samad.header.mask);
+	if (status != VSTATUS_OK) {
+		IB_EXIT(__func__, status);
+		return(status);
+	}
+
+    //
+    // load the PortInfoRecords in the SADB
+    //
+	(void)vs_rdlock(&old_topology_lock);
+
+    // return busy if source lid not in topology yet.  This should throttle back the host
+	if ( (srcportp = sm_find_active_port_lid(&old_topology, maip->addrInfo.slid)) == NULL) {
+		maip->base.status = activateInProgress ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID;
+        (void)vs_rwunlock(&old_topology_lock);
+        IB_EXIT(__func__, VSTATUS_OK);
+        return(VSTATUS_OK);
+    }
+
+	if (checkLid) {
+		Port_t		*matched_portp;
+
+		if ((matched_portp = sm_find_node_and_port_lid(&old_topology, endPortLid, &nodep)) != NULL) {
+			for_all_matched_ports(nodep, portp, matched_portp) {
+				if (!sm_valid_port(portp) || !sa_valid_ib_port_state(portp))
+					continue;
+
+				if (checkCapMask) {
+					if ((capMask & portp->portData->portInfo.CapabilityMask.AsReg32) != capMask)
+						continue;
+				}
+
+                // IBTA 1.2 C15-0.1.21 - pairwise pkey check for dst and src ports
+                if (sa_Compare_Port_PKeys(portp, srcportp) != VSTATUS_OK)
+                    continue;
+
+				if ((status = sa_check_len(data, sizeof(IB_PORTINFO_RECORD), bytes)) != VSTATUS_OK) {
+					maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
+					IB_LOG_ERROR_FMT(__func__, "Bad buffer");
+					goto done;
+				}
+				if ((status = sa_IbPortInfoRecord_Set(data, nodep, portp, &samad)) != VSTATUS_OK) {
+					maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
+					goto done;
+				}
+				// if more mask bits, check for match, else give them all ports that are not down
+				(void)sa_template_test_mask(samad.header.mask, samad.data, &data, sizeof(IB_PORTINFO_RECORD), bytes, records);
+			}
+		}
+	} else {
+		for_all_nodes(&old_topology, nodep) {
+			for_all_ports(nodep, portp) {
+				if (!sm_valid_port(portp) || !sa_valid_ib_port_state(portp))
+					continue;
+
+				if (checkCapMask) {
+					if ((capMask & portp->portData->portInfo.CapabilityMask.AsReg32) != capMask)
+						continue;
+				}
+
+                // IBTA 1.2 C15-0.1.21 - pairwise pkey check for dst and src ports
+                if (sa_Compare_Port_PKeys(portp, srcportp) != VSTATUS_OK)
+                    continue;
+	
+				if ((status = sa_check_len(data, sizeof(IB_PORTINFO_RECORD), bytes)) != VSTATUS_OK) {
+					maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
+					IB_LOG_ERROR_FMT(__func__, "Reached size limit at %d records", *records);
+					goto done;
+				}
+				if ((status = sa_IbPortInfoRecord_Set(data, nodep, portp, &samad)) != VSTATUS_OK) {
+					maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
+					goto done;
+				}	
+				(void)sa_template_test_mask(samad.header.mask, samad.data, &data, sizeof(IB_PORTINFO_RECORD), bytes, records);
+			}
+		}
+	}
+
+done:
+	(void)vs_rwunlock(&old_topology_lock);
+
+	IB_EXIT(__func__, status);
+	return(status);
+}
+

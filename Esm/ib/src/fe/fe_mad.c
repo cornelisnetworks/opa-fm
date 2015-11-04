@@ -108,7 +108,7 @@ uint32_t fe_vieo_init(uint8_t *logName)
             IB_LOG_ERRORRC("Failed to subscribe for traps in SA rc:", rc);
         }
 
-        // register Performance Manager
+        // connect to Performance Manager
         if (pm_lid)
             rc = if3_lid_mngr_cnx(fe_config.hca,fe_config.port,MAD_CV_VFI_PM,pm_lid,&fd_pm);
         else
@@ -121,7 +121,7 @@ uint32_t fe_vieo_init(uint8_t *logName)
         }
 
 #ifdef DEVICE_MANAGER   // not implemented yet
-        // register Device Manager
+        // connect to Device Manager
         if (dm_lid)
             rc = if3_lid_mngr_cnx(fe_config.hca,fe_config.port,DM_IF3_MCLASS,dm_lid,&fd_dm);
         else
@@ -221,7 +221,6 @@ static uint32_t fe_passthrough_send_failure_response(uint8_t *netbuf, FE_ConnLis
 	NetConnection *curConn; 					/* Pointer to the current connection */
 	OOBPacket *ipacket; 						/* The incoming packet */
 	OOBPacket *opacket; 						/* The out going packet */
-	OOBHeader *messageHeader; 					/* Header on the incoming and outgoing message */
 	SA_MAD* saMad;								/* Pointer to the incoming mad data to forward */
 	uint32_t rc = FE_SUCCESS;				    /* Whether or not the response to the FEC was successful */
     SA_MAD* returnMad; 							/* Outgoing mad to send */
@@ -230,7 +229,6 @@ static uint32_t fe_passthrough_send_failure_response(uint8_t *netbuf, FE_ConnLis
 
 	/* Sort out the incoming information */
 	ipacket = (OOBPacket *) netbuf;
-	messageHeader = &(ipacket->Header);
 	saMad = (SA_MAD*) &(ipacket->MadData);
 	curConn = connList->conn;
 
@@ -334,6 +332,7 @@ uint32_t fe_sa_passthrough(uint8_t *netbuf, FE_ConnList *connList, IBhandle_t fd
 	case STL_SA_ATTR_PORT_STATE_INFO_RECORD:
 	case STL_SA_ATTR_PORTGROUP_TABLE_RECORD:
 	case STL_SA_ATTR_BUFF_CTRL_TAB_RECORD:
+	case STL_SA_ATTR_FABRICINFO_RECORD:
 	case STL_SA_ATTR_QUARANTINED_NODE_RECORD:
 	case STL_SA_ATTR_CONGESTION_INFO_RECORD:
 	case STL_SA_ATTR_SWITCH_CONG_RECORD:

@@ -146,12 +146,8 @@ void fe_main_kill(void)
 
 static int fe_init_failure(char *msg, int status)
 {
-#ifdef __VXWORKS__
-	IB_FATAL_ERROR(msg);
-#else
 	sysPrintf("%s (status %d)\n", msg, status);
 	IB_LOG_ERROR_FMT(__func__, "%s (status %d)", msg, status);
-#endif
 	return status;
 }
 
@@ -699,8 +695,12 @@ uint32_t fe_init(void)
     if (rc == SUCCESS) {
         // initialize the network
         if (fe_net_init(fe_config.listen, &err, fe_callBack)) {
-            IB_FATAL_ERROR("fe_init: NetConnect err, could not setup listen port for FE");
             rc = VSTATUS_BAD;
+#ifndef __VXWORKS__
+            IB_FATAL_ERROR("fe_init: NetConnect err, could not setup listen port for FE");
+#else
+            IB_LOG_INFINI_INFORC("NetConnect err, could not setup listen port for FE. rc:", rc);
+#endif
         }
     }
 

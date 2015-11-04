@@ -147,10 +147,6 @@ extern void SwitchInfoXmlOutput(IXmlOutputState_t *state, const char *tag, void 
 extern void SwitchInfoXmlOutputOptional(IXmlOutputState_t *state, const char *tag, void *data /*STL_SWITCHINFO_RECORD*/);
 /* caller must supply SwitchInfoXmlParserStart and SwitchInfoXmlParserEnd */
 
-extern IXML_FIELD VendorSwitchInfoFields[];
-extern void VendorSwitchInfoXmlOutput(IXmlOutputState_t *state, const char *tag, void *data /*IB_VENDSWITCHINFO_RECORD*/);
-extern void VendorSwitchInfoXmlOutputOptional(IXmlOutputState_t *state, const char *tag, void *data /*IB_VENDSWITCHINFO_RECORD*/);
-
 #ifdef __cplusplus
 };
 #endif

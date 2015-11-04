@@ -93,6 +93,7 @@ typedef enum {
 extern uint32_t rmpp_sma_spoofing_check_get(void);
 extern void rmpp_sma_spoofing_check_set(uint32_t value);
 extern int rmpp_is_cnx_open(IBhandle_t *fd);
+extern int rmpp_is_cnx_partial_open(int usrId);
 extern rmpp_cntxt_t *rmpp_mngr_get_cmd(int usrId, Mai_t * mad, uint8_t * processMad);
 extern rmpp_cntxt_t* rmpp_cntxt_get(int usrId, Mai_t *mad, uint8_t *processMad); 
 extern Status_t rmpp_cntxt_data(int usrId, rmpp_cntxt_t* rmpp_cntxt, void* buf, uint32_t len);
@@ -118,7 +119,7 @@ extern int rmpp_mngr_open_cnx(
                                  IBhandle_t *fhRmppTable,
                                  uint8_t mclass,
                                  char * (*get_method_text)(int),
-                                 char * (*get_aid_name)(uint16_t),
+                                 char * (*get_aid_name)(uint16_t, uint16_t),
                                  Status_t(*pre_process_get)(Mai_t *, rmpp_cntxt_t *),
                                  Status_t(*pre_process_response)(Mai_t *, rmpp_cntxt_t *),
                                  uint8_t (*rmpp_is_master)(void),

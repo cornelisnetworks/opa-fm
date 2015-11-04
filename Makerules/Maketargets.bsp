@@ -115,6 +115,11 @@ CLEAN::
 	$(RM) $(RMFORCE) -- --start-group --end-group -Xlinker
 	$(RM) $(RMFORCE) $(BSP_TARGETS)
 
+safenoclobber:
+ifeq "$(BUILD_TARGET)" "ATOM"
+	$(MAKE) NO_SSP=1 BUILD_SAFEBOOT=yes DEBUG_CODE="" ADVBOOT 
+endif
+
 safeboot advboot:
 # don't checked NETF1 stuff for atom safe boot 
 ifeq "$(BUILD_TARGET)" "ATOM"

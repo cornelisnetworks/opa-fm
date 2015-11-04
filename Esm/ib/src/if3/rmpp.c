@@ -150,6 +150,7 @@ typedef struct _FieldMask {
 typedef struct rmpp_user_info_s {
    int usrId; 
    int inuse; 
+   int partial_close; 
    // logging related fields
    uint32_t vieo_mod_id; 
    // IB related fields
@@ -180,7 +181,7 @@ typedef struct rmpp_user_info_s {
    rmpp_cntxt_t *rmpp_hash[RMPP_CNTXT_HASH_TABLE_DEPTH]; 
    // callback related fields
    char* (*rmpp_get_method_text)(int); 
-   char* (*rmpp_get_aid_name)(uint16_t); 
+   char* (*rmpp_get_aid_name)(uint16_t, uint16_t); 
    Status_t(*rmpp_pre_process_request)(Mai_t *, rmpp_cntxt_t *); 
    Status_t(*rmpp_pre_process_response)(Mai_t *, rmpp_cntxt_t *); 
    uint8_t(*rmpp_is_master)(void); 
@@ -354,7 +355,7 @@ rmpp_validate_response_mad(rmpp_user_info_t *info, Mai_t *maip)
    if (maip->base.cversion > STL_SA_CLASS_VERSION) {
       IB_LOG_WARN_FMT(__func__, 
                       "Invalid Class Version %d received in %s[%s] request from LID [0x%x], TID ["FMT_U64"], ignoring request!", 
-                      maip->base.cversion, info->rmpp_get_method_text((int)maip->base.method), info->rmpp_get_aid_name((int)maip->base.aid), maip->addrInfo.slid, maip->base.tid); 
+                      maip->base.cversion, info->rmpp_get_method_text((int)maip->base.method), info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), maip->addrInfo.slid, maip->base.tid); 
       rc = VSTATUS_BAD;
    } else if (maip->base.mclass != MAD_CV_VENDOR_DBSYNC) {
       //  drop unsupported MADs
@@ -364,7 +365,7 @@ rmpp_validate_response_mad(rmpp_user_info_t *info, Mai_t *maip)
          if (if3DebugRmpp) {
             IB_LOG_INFINI_INFO_FMT(__func__, 
                                    "Unsupported or invalid %s[%s] request from LID [0x%x], TID["FMT_U64"]", 
-                                   info->rmpp_get_method_text((int)maip->base.method), info->rmpp_get_aid_name((int)maip->base.aid), maip->addrInfo.slid, maip->base.tid);
+                                   info->rmpp_get_method_text((int)maip->base.method), info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), maip->addrInfo.slid, maip->base.tid);
          }
          IB_EXIT(__func__, VSTATUS_OK); 
          rc = VSTATUS_BAD; 
@@ -755,7 +756,7 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
             IB_LOG_INFINI_INFO_FMT(__func__, 
                                    "Lid[0x%x] STARTING RMPP %s[%s] with TID="FMT_U64", CHKSUM[%d]", 
                                    (int)rmpp_cntxt->lid, info->rmpp_get_method_text((int)rmpp_cntxt->method), 
-                                   (maip?info->rmpp_get_aid_name(maip->base.aid):"<null>"), rmpp_cntxt->tid, rmpp_cntxt->chkSum);
+                                   (maip?info->rmpp_get_aid_name((int)maip->base.mclass, maip->base.aid):"<null>"), rmpp_cntxt->tid, rmpp_cntxt->chkSum);
         }
     } else if (maip) {
         /* get original mad with appropriate offset */
@@ -768,7 +769,7 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
             // invalid RMPP type
             IB_LOG_WARN_FMT(__func__, 
                             "ABORTING - RMPP protocol error; RmppType is NULL in %s[%s] from Lid[%d] for TID="FMT_U64, 
-                            info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name(maip->base.aid), (int)rmpp_cntxt->lid, rmpp_cntxt->tid); 
+                            info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), (int)rmpp_cntxt->lid, rmpp_cntxt->tid); 
             //INCREMENT_COUNTER(smCounterRmppStatusAbortBadType);
             sendAbort = 1; 
             mad.header.rmppStatus = RMPP_STATUS_ABORT_BADTYPE;
@@ -779,12 +780,12 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
             mad.header.rmppStatus = RMPP_STATUS_ABORT_UNSUPPORTED_VERSION; 
             IB_LOG_WARN_FMT(__func__, 
                             "ABORTING - Unsupported Version %d in %s[%s] request from LID[0x%x], TID["FMT_U64"]", 
-                            resp.header.rmppVersion, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name(maip->base.aid), (int)rmpp_cntxt->lid, rmpp_cntxt->tid);
+                            resp.header.rmppVersion, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), (int)rmpp_cntxt->lid, rmpp_cntxt->tid);
         } else if (!(resp.header.u.tf.rmppFlags & RMPP_FLAGS_ACTIVE)) {
             /* invalid RMPP type */
             IB_LOG_WARN_FMT(__func__, 
                             "RMPP protocol error, RMPPFlags.Active bit is NULL in %s[%s] from LID[0x%x] for TID["FMT_U64"]", 
-                            info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name(maip->base.aid), (int)rmpp_cntxt->lid, rmpp_cntxt->tid); 
+                            info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), (int)rmpp_cntxt->lid, rmpp_cntxt->tid); 
             //INCREMENT_COUNTER(smCounterRmppStatusAbortBadType);
             mad.header.rmppStatus = RMPP_STATUS_ABORT_BADTYPE; 
             sendAbort = 1;
@@ -830,7 +831,7 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
                     if (if3DebugRmpp) {
                         IB_LOG_INFINI_INFO_FMT(__func__, 
                                                " Received seg %d ACK, %s[%s] transaction from LID[0x%x], TID["FMT_U64"] has completed", 
-                                               resp.header.segNum, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name(rmpp_cntxt->mad.base.aid), 
+                                               resp.header.segNum, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)rmpp_cntxt->mad.base.mclass, (int)rmpp_cntxt->mad.base.aid), 
                                                rmpp_cntxt->lid, rmpp_cntxt->tid);
                     }
                 } else {
@@ -844,7 +845,7 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
                             IB_LOG_INFINI_INFO_FMT(__func__, 
                                                    "LID[0x%x] set RespTimeValue (%d usec) in ACK of seg %d for %s[%s], TID["FMT_U64"]", 
                                                    rmpp_cntxt->lid, (int)rmpp_cntxt->RespTimeout, resp.header.segNum, 
-                                                   info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)rmpp_cntxt->mad.base.aid), 
+                                                   info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)rmpp_cntxt->mad.base.mclass, (int)rmpp_cntxt->mad.base.aid), 
                                                    rmpp_cntxt->tid);
                         }
                     }
@@ -855,7 +856,7 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
             if (if3DebugRmpp) {
                 IB_LOG_INFINI_INFO_FMT(__func__, 
                                        "STOP/ABORT received for %s[%s] from LID[0x%x], status code = %x, for TID["FMT_U64"]", 
-                                       info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)maip->base.aid), 
+                                       info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), 
                                        rmpp_cntxt->lid, resp.header.rmppStatus);
             }
             rmpp_cntxt_release(rmpp_cntxt); 
@@ -865,7 +866,7 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
             /* invalid RmppType received */
             IB_LOG_WARN_FMT(__func__, 
                             "ABORT - Invalid rmppType %d received for %s[%s] from LID[0x%x] for TID["FMT_U64"]", 
-                            resp.header.rmppType, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)maip->base.aid), 
+                            resp.header.rmppType, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), 
                             rmpp_cntxt->lid, rmpp_cntxt->tid); 
             // abort with badtype status
             //INCREMENT_COUNTER(smCounterRmppStatusAbortBadType);
@@ -882,7 +883,7 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
             if (if3DebugRmpp) {
                 IB_LOG_INFINI_INFO_FMT(__func__,
                    "rmpp_send_multi", "ABORT - MAX RETRIES EXHAUSTED; no ACK for seg %d of %s[%s] request from LID[0x%X], TID = "FMT_U64, 
-                   (int)rmpp_cntxt->WL, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name(rmpp_cntxt->mad.base.aid), rmpp_cntxt->lid, rmpp_cntxt->tid);
+                   (int)rmpp_cntxt->WL, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)rmpp_cntxt->mad.base.mclass, (int)rmpp_cntxt->mad.base.aid), rmpp_cntxt->lid, rmpp_cntxt->tid);
             }
             /* ABORT transaction with too many retries status */
             //INCREMENT_COUNTER(smCounterRmppStatusAbortTooManyRetries);
@@ -896,7 +897,7 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
             if (if3DebugRmpp) {
                 IB_LOG_INFINI_INFO_FMT(__func__, 
                                        "Timed out waiting for ACK of seg %d of %s[%s] from LID[0x%x], TID["FMT_U64"], retry #%d", 
-                                       (int)rmpp_cntxt->WL, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)rmpp_cntxt->mad.base.aid), 
+                                       (int)rmpp_cntxt->WL, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)rmpp_cntxt->mad.base.mclass, (int)rmpp_cntxt->mad.base.aid), 
                                        rmpp_cntxt->lid, rmpp_cntxt->tid, rmpp_cntxt->retries);
             }
         }
@@ -909,12 +910,12 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
             delta = tnow - rmpp_cntxt->mad.intime; 
             IB_LOG_INFINI_INFO_FMT(__func__, 
                                    "%s[%s] RMPP [CHKSUM=%d] TRANSACTION from LID[0x%x], TID["FMT_U64"] has completed in %d.%.3d seconds (%"CS64"d usecs)", 
-                                   info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name(rmpp_cntxt->mad.base.aid), 
+                                   info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)rmpp_cntxt->mad.base.mclass, (int)rmpp_cntxt->mad.base.aid), 
                                    rmpp_cntxt->chkSum, rmpp_cntxt->lid, rmpp_cntxt->tid, 
                                    (int)(delta / 1000000), (int)((delta - delta / 1000000 * 1000000)) / 1000, delta);
         }
         /* validate that the 8-bit cheksum of the rmpp response is still the same as when we started */
-        if (rmppCheckSum) {
+        if (rmppCheckSum && rmpp_cntxt->data) {
             chkSum = 0; 
             for (i = 0; i < rmpp_cntxt->len; i++) {
                 chkSum += rmpp_cntxt->data[i];
@@ -922,7 +923,7 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
             if (chkSum != rmpp_cntxt->chkSum) {
                 IB_LOG_ERROR_FMT(__func__, 
                                  "CHECKSUM FAILED [%d vs %d] for completeted %s[%s] RMPP TRANSACTION from LID[0x%x], TID["FMT_U64"]", 
-                                 chkSum, rmpp_cntxt->chkSum, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name(rmpp_cntxt->mad.base.aid), 
+                                 chkSum, rmpp_cntxt->chkSum, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)rmpp_cntxt->mad.base.mclass, (int)rmpp_cntxt->mad.base.aid), 
                                  rmpp_cntxt->lid, rmpp_cntxt->tid);
             }
         }
@@ -1020,7 +1021,7 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
         if (status != VSTATUS_OK) {
             IB_LOG_ERROR_FMT(__func__, 
                              "mai_send error [%d] while processing %s[%s] request from LID[0x%x], TID["FMT_U64"]", 
-                             status, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name(maip->base.aid), 
+                             status, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), 
                              rmpp_cntxt->lid, rmpp_cntxt->tid); 
             if (releaseContext) 
                 rmpp_cntxt_release(rmpp_cntxt); 
@@ -1044,7 +1045,7 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
         if ((status = mai_send(rmpp_cntxt->sendFd, maip)) != VSTATUS_OK) 
             IB_LOG_ERROR_FMT(__func__, 
                              "error[%d] from mai_send while sending ABORT of [%s] request to LID[0x%x], TID["FMT_U64"]", 
-                             status, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name(maip->base.aid), 
+                             status, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), 
                              rmpp_cntxt->lid, maip->base.tid); 
         /*
            * We are done with this RMPP xfer.  Release the context here if 
@@ -1117,7 +1118,7 @@ rmpp_send_reply(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
       if (rmpp_cntxt->len > info->rmpp_data_length) {
          IB_LOG_WARN_FMT(__func__, 
                          "rmpp_cntxt->len[%d] too large, returning no resources error to caller to %s[%s] request from LID [0x%x], TID ["FMT_U64"]!", 
-                         rmpp_cntxt->len, info->rmpp_get_method_text((int)method), (maip?info->rmpp_get_aid_name((int)maip->base.aid):"<null>"), rmpp_cntxt->lid, rmpp_cntxt->tid); 
+                         rmpp_cntxt->len, info->rmpp_get_method_text((int)method), (maip?info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid):"<null>"), rmpp_cntxt->lid, rmpp_cntxt->tid); 
          if (maip) maip->base.status = MAD_STATUS_SA_NO_RESOURCES; 
          rmpp_cntxt->len = 0;
       }
@@ -1130,7 +1131,7 @@ rmpp_send_reply(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
    if (rmpp_cntxt->len > STL_SAMAD_DATA_COUNT) {
       IB_LOG_WARN_FMT(__func__, 
                       "rmpp_cntxt->len[%d] too large for GET, returning too many recs error to caller to %s[%s] request from LID [0x%x], TID ["FMT_U64"]!", 
-                      rmpp_cntxt->len, info->rmpp_get_method_text((int)method), (maip?info->rmpp_get_aid_name((int)maip->base.aid):"<null>"), rmpp_cntxt->lid, rmpp_cntxt->tid); 
+                      rmpp_cntxt->len, info->rmpp_get_method_text((int)method), (maip?info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid):"<null>"), rmpp_cntxt->lid, rmpp_cntxt->tid); 
       if (maip) maip->base.status = MAD_STATUS_SA_TOO_MANY_RECS; 
       rmpp_cntxt->len = 0;
    }
@@ -1174,7 +1175,7 @@ rmpp_send_request(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
       if (rmpp_cntxt->len > info->rmpp_data_length) {
          IB_LOG_WARN_FMT(__func__, 
                          "rmpp_cntxt->len[%d] too large, returning no resources error to caller to %s[%s] request from LID [0x%x], TID ["FMT_U64"]!", 
-                         rmpp_cntxt->len, info->rmpp_get_method_text((int)maip->base.method), info->rmpp_get_aid_name((int)maip->base.aid), rmpp_cntxt->lid, rmpp_cntxt->tid); 
+                         rmpp_cntxt->len, info->rmpp_get_method_text((int)maip->base.method), info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), rmpp_cntxt->lid, rmpp_cntxt->tid); 
          maip->base.status = MAD_STATUS_SA_NO_RESOURCES; 
          rmpp_cntxt->len = 0;
       }
@@ -1188,7 +1189,7 @@ rmpp_send_request(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
    if (rmpp_cntxt->len > STL_SAMAD_DATA_COUNT) {
       IB_LOG_WARN_FMT(__func__, 
                       "rmpp_cntxt->len[%d] too large for GET, returning too many recs error to caller to %s[%s] request from LID [0x%x], TID ["FMT_U64"]!", 
-                      rmpp_cntxt->len, info->rmpp_get_method_text((int)maip->base.method), info->rmpp_get_aid_name((int)maip->base.aid), rmpp_cntxt->lid, rmpp_cntxt->tid); 
+                      rmpp_cntxt->len, info->rmpp_get_method_text((int)maip->base.method), info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), rmpp_cntxt->lid, rmpp_cntxt->tid); 
       maip->base.status = MAD_STATUS_SA_TOO_MANY_RECS; 
       rmpp_cntxt->len = 0;
    }
@@ -1412,7 +1413,7 @@ rmpp_process_inflight_rmpp_request(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
    } else {
       IB_LOG_INFINI_INFO_FMT(__func__, 
                              "SA_WRITER received %s[%s] RMPP packet from LID [0x%x] TID ["FMT_U64"] after transaction completion", 
-                             info->rmpp_get_method_text((int)maip->base.method), info->rmpp_get_aid_name((int)maip->base.aid), maip->addrInfo.slid, maip->base.tid);
+                             info->rmpp_get_method_text((int)maip->base.method), info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), maip->addrInfo.slid, maip->base.tid);
    }
 
    IB_EXIT(__func__, VSTATUS_OK); 
@@ -1527,7 +1528,7 @@ rmpp_writer_filter(Mai_t *maip)
          if (if3DebugRmpp) {
             IB_LOG_INFINI_INFO_FMT(__func__, 
                                    "Processing inflight Rmpp packet for %s[%s] from LID[0x%x], TID="FMT_U64, 
-                                   info->rmpp_get_method_text((int)maip->base.method), info->rmpp_get_aid_name((int)maip->base.aid), maip->addrInfo.slid, maip->base.tid);
+                                   info->rmpp_get_method_text((int)maip->base.method), info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), maip->addrInfo.slid, maip->base.tid);
          }
          return 0;  // process inflight rmpp responses
       }
@@ -1606,7 +1607,7 @@ rmpp_main_writer(uint32_t argc, uint8_t **argv)
             if (if3DebugRmpp) {
                IB_LOG_INFINI_INFO_FMT(__func__, 
                                       "dropping %s[%s] RMPP packet from LID[0x%x], TID ["FMT_U64"] already completed/aborted", 
-                                      info->rmpp_get_method_text((int)in_mad.base.method), info->rmpp_get_aid_name(in_mad.base.aid), 
+                                      info->rmpp_get_method_text((int)in_mad.base.method), info->rmpp_get_aid_name((int)in_mad.base.mclass, (int)in_mad.base.aid), 
                                       in_mad.addrInfo.slid, in_mad.base.tid);
             }
          }
@@ -1650,6 +1651,18 @@ int rmpp_is_cnx_open(IBhandle_t *fd)
    vs_unlock(&rmpp_user_lock); 
    
    return usrId;
+}
+
+int rmpp_is_cnx_partial_open(int usrId) 
+{ 
+   rmpp_user_info_t *info = rmpp_get_userinfo(usrId); 
+   
+   if (!info) {
+      IB_LOG_ERROR_FMT(__func__, "failed to get info for user %d!", usrId); 
+      return 0;
+   }
+      
+   return info->partial_close;
 }
 
 static int rmpp_get_new_user(void) 
@@ -1722,7 +1735,7 @@ rmpp_protocol_init(
    uint32_t dev, 
    uint32_t port, 
    char* (*get_method_text)(int), 
-   char* (*get_aid_name)(uint16_t), 
+   char* (*get_aid_name)(uint16_t, uint16_t), 
    Status_t(*pre_process_request)(Mai_t *, rmpp_cntxt_t *), 
    Status_t(*pre_process_response)(Mai_t *, rmpp_cntxt_t *), 
    uint8_t(*rmpp_is_master)(void), 
@@ -1904,7 +1917,7 @@ rmpp_mngr_open_cnx(
    IBhandle_t *fh_req_gettable, 
    uint8_t mclass, 
    char* (*get_method_text)(int), 
-   char* (*get_aid_name)(uint16_t), 
+   char* (*get_aid_name)(uint16_t, uint16_t), 
    Status_t(*pre_process_request)(Mai_t *, rmpp_cntxt_t *), 
    Status_t(*pre_process_response)(Mai_t *, rmpp_cntxt_t *), 
    uint8_t(*rmpp_is_master)(void), 
@@ -1937,15 +1950,18 @@ rmpp_mngr_open_cnx(
    
    // check whether connection has already been established
    if ((-1 != (usrId = rmpp_is_cnx_open(fd))) && (info = rmpp_get_userinfo(usrId))) {
-      if (if3DebugRmpp) 
-         IB_LOG_WARN_FMT(__func__, "RMPP connection already openned for user %d", usrId); 
-      // assume it is a partial open
-      if ((status = rmpp_create_filters(info, fd, fh_req_get, fh_req_gettable, mclass)) == VSTATUS_OK) {
-         return usrId;
-      } else {
-         IB_LOG_ERROR_FMT(__func__, "failed to create filter in partial open of RMPP connection"); 
-         return -1;
-      }
+       if (info->partial_close) {
+           if (if3DebugRmpp) 
+               IB_LOG_WARN_FMT(__func__, "RMPP connection already openned for user %d", usrId); 
+           // simply create the filters for a partially open RMPP connection
+           if ((status = rmpp_create_filters(info, fd, fh_req_get, fh_req_gettable, mclass)) == VSTATUS_OK) {
+               info->partial_close = 0;
+               return usrId;
+           } else {
+               IB_LOG_ERROR_FMT(__func__, "failed to create filter in partial open of RMPP connection"); 
+               return -1;
+           }
+       }
    }
    
    // get ID for new RMPP user
@@ -2014,6 +2030,7 @@ rmpp_close_cnx(int usrId, uint8_t complete)
         if (!complete) {
             // paritial close of a connection 
             (void)rmpp_delete_filters(info); 
+            info->partial_close = 1; 
             return;
         }
         
@@ -2084,7 +2101,7 @@ rmpp_process_response(int usrId, Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
     if (VSTATUS_ILLPARM == info->rmpp_pre_process_response(maip, rmpp_cntxt)) {
         IB_LOG_INFINI_INFO_FMT(__func__, 
                                "Unsupported or invalid %s[%s] response from LID [0x%x], TID["FMT_U64"]", 
-                             info->rmpp_get_method_text((int)maip->base.method), info->rmpp_get_aid_name((int)maip->base.aid), maip->addrInfo.slid, maip->base.tid); 
+                             info->rmpp_get_method_text((int)maip->base.method), info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), maip->addrInfo.slid, maip->base.tid); 
       maip->base.status = MAD_STATUS_SA_REQ_INVALID; 
       IB_EXIT(__func__, VSTATUS_ILLPARM); 
       return (VSTATUS_ILLPARM);
@@ -2124,7 +2141,7 @@ rmpp_pre_process_request(int usrId, Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
    if (maip->base.cversion > STL_SA_CLASS_VERSION) {
       IB_LOG_ERROR_FMT(__func__, 
                       "Invalid Class Version %d received in %s[%s] request from LID [0x%x], TID ["FMT_U64"], ignoring request!", 
-                      maip->base.cversion, info->rmpp_get_method_text((int)maip->base.method), info->rmpp_get_aid_name((int)maip->base.aid), maip->addrInfo.slid, maip->base.tid); 
+                      maip->base.cversion, info->rmpp_get_method_text((int)maip->base.method), info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), maip->addrInfo.slid, maip->base.tid); 
       IB_EXIT(__func__, VSTATUS_BAD_VERSION); 
       return VSTATUS_BAD_VERSION;
    }
@@ -2138,7 +2155,7 @@ rmpp_pre_process_request(int usrId, Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
    if (info->rmpp_pre_process_request(maip, rmpp_cntxt)) {
        IB_LOG_INFINI_INFO_FMT(__func__, 
                              "Unsupported or invalid %s[%s] request from LID [0x%x], TID["FMT_U64"]", 
-                             info->rmpp_get_method_text((int)maip->base.method), info->rmpp_get_aid_name((int)maip->base.aid), maip->addrInfo.slid, maip->base.tid); 
+                             info->rmpp_get_method_text((int)maip->base.method), info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), maip->addrInfo.slid, maip->base.tid); 
       return VSTATUS_ILLPARM;
    }
 
@@ -2149,7 +2166,7 @@ rmpp_pre_process_request(int usrId, Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
       IB_LOG_INFINI_INFO_FMT(__func__, 
                              "%ld microseconds to process %s[%s] request from LID 0x%.4X, TID="FMT_U64, 
                              (long)(endTime - startTime), info->rmpp_get_method_text((int)rmpp_cntxt->method), 
-                             info->rmpp_get_aid_name(maip->base.aid), maip->addrInfo.dlid, maip->base.tid);
+                             info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), maip->addrInfo.dlid, maip->base.tid);
    }
    
    IB_EXIT(__func__, VSTATUS_OK); 
@@ -2191,7 +2208,7 @@ rmpp_mngr_get_cmd(int usrId, Mai_t *mad, uint8_t *processMad)
             if (if3DebugRmpp) {
                IB_LOG_INFINI_INFO_FMT(__func__, 
                                       "Ignoring inflight request for %s[%s] from LID[0x%x], TID="FMT_U64, 
-                                      info->rmpp_get_method_text((int)mad->base.method), info->rmpp_get_aid_name((int)mad->base.aid), mad->addrInfo.slid, mad->base.tid);
+                                      info->rmpp_get_method_text((int)mad->base.method), info->rmpp_get_aid_name((int)mad->base.mclass, (int)mad->base.aid), mad->addrInfo.slid, mad->base.tid);
             }
             /* ignore inflight request */
             *processMad = FALSE; 
@@ -2202,7 +2219,7 @@ rmpp_mngr_get_cmd(int usrId, Mai_t *mad, uint8_t *processMad)
       if (if3DebugRmpp) {
          IB_LOG_INFINI_INFO_FMT(__func__, 
                                 "Processing request for %s[%s] from LID[0x%x], TID="FMT_U64, 
-                                info->rmpp_get_method_text((int)mad->base.method), info->rmpp_get_aid_name((int)mad->base.aid), mad->addrInfo.slid, mad->base.tid);
+                                info->rmpp_get_method_text((int)mad->base.method), info->rmpp_get_aid_name((int)mad->base.mclass, (int)mad->base.aid), mad->addrInfo.slid, mad->base.tid);
       }
       // Drop new requests that have been sitting on PM receive queue for too long
       if (mad->intime) {
@@ -2234,7 +2251,7 @@ rmpp_mngr_get_cmd(int usrId, Mai_t *mad, uint8_t *processMad)
             if (if3DebugRmpp) {
                IB_LOG_INFINI_INFO_FMT(__func__, 
                                       "Dropping stale %s[%s] request from LID[0x%x], TID="FMT_U64"; On queue for %d.%d seconds.", 
-                                      info->rmpp_get_method_text((int)mad->base.method), info->rmpp_get_aid_name((int)mad->base.aid), mad->addrInfo.slid, 
+                                      info->rmpp_get_method_text((int)mad->base.method), info->rmpp_get_aid_name((int)mad->base.mclass, (int)mad->base.aid), mad->addrInfo.slid, 
                                       mad->base.tid, (int)(delta / 1000000), (int)((delta - delta / 1000000 * 1000000)) / 1000);
             }
             /* drop the request without returning a response; sender will retry */
@@ -2264,7 +2281,7 @@ rmpp_mngr_get_cmd(int usrId, Mai_t *mad, uint8_t *processMad)
          if (if3DebugRmpp) {
             IB_LOG_INFINI_INFO_FMT(__func__, 
                                    "received duplicate %s[%s] from LID [0x%x] with TID ["FMT_U64"] ", 
-                                   info->rmpp_get_method_text((int)mad->base.method), info->rmpp_get_aid_name((int)mad->base.aid), mad->addrInfo.slid, mad->base.tid);
+                                   info->rmpp_get_method_text((int)mad->base.method), info->rmpp_get_aid_name((int)mad->base.mclass, (int)mad->base.aid), mad->addrInfo.slid, mad->base.tid);
          }
       } else if (cntxGetStatus == ContextNotAvailable) {
          /* we are swamped, return BUSY to caller */
@@ -2272,7 +2289,7 @@ rmpp_mngr_get_cmd(int usrId, Mai_t *mad, uint8_t *processMad)
          if (if3DebugRmpp) { /* log msg before send changes method and lids */
             IB_LOG_INFINI_INFO_FMT(__func__, 
                                    "NO CONTEXT AVAILABLE, returning MAD_STATUS_BUSY to %s[%s] request from LID [0x%x], TID ["FMT_U64"]!", 
-                                   info->rmpp_get_method_text((int)mad->base.method), info->rmpp_get_aid_name((int)mad->base.aid), mad->addrInfo.slid, mad->base.tid);
+                                   info->rmpp_get_method_text((int)mad->base.method), info->rmpp_get_aid_name((int)mad->base.mclass, (int)mad->base.aid), mad->addrInfo.slid, mad->base.tid);
          }
          mad->base.status = MAD_STATUS_BUSY; 
          //rmpp_send_reply( &in_mad, rmpp_cntxt );
@@ -2318,7 +2335,7 @@ rmpp_cntxt_get(int usrId, Mai_t *mad, uint8_t *processMad)
       if (if3DebugRmpp) {
          IB_LOG_INFINI_INFO_FMT(__func__, 
                                 "Processing request for %s[%s] from LID[0x%x], TID="FMT_U64, 
-                                info->rmpp_get_method_text((int)mad->base.method), info->rmpp_get_aid_name((int)mad->base.aid), mad->addrInfo.slid, mad->base.tid);
+                                info->rmpp_get_method_text((int)mad->base.method), info->rmpp_get_aid_name((int)mad->base.mclass, (int)mad->base.aid), mad->addrInfo.slid, mad->base.tid);
       }
 
       //
@@ -2336,7 +2353,7 @@ rmpp_cntxt_get(int usrId, Mai_t *mad, uint8_t *processMad)
          if (if3DebugRmpp) {
             IB_LOG_INFINI_INFO_FMT(__func__, 
                                    "received duplicate %s[%s] from LID [0x%x] with TID ["FMT_U64"] ", 
-                                   info->rmpp_get_method_text((int)mad->base.method), info->rmpp_get_aid_name((int)mad->base.aid), mad->addrInfo.slid, mad->base.tid);
+                                   info->rmpp_get_method_text((int)mad->base.method), info->rmpp_get_aid_name((int)mad->base.mclass, (int)mad->base.aid), mad->addrInfo.slid, mad->base.tid);
          }
       } else if (cntxGetStatus == ContextNotAvailable) {
          // we are swamped, return BUSY to caller
@@ -2344,7 +2361,7 @@ rmpp_cntxt_get(int usrId, Mai_t *mad, uint8_t *processMad)
          if (if3DebugRmpp) { /* log msg before send changes method and lids */
             IB_LOG_INFINI_INFO_FMT(__func__, 
                                    "NO CONTEXT AVAILABLE, returning MAD_STATUS_BUSY to %s[%s] request from LID [0x%x], TID ["FMT_U64"]!", 
-                                   info->rmpp_get_method_text((int)mad->base.method), info->rmpp_get_aid_name((int)mad->base.aid), mad->addrInfo.slid, mad->base.tid);
+                                   info->rmpp_get_method_text((int)mad->base.method), info->rmpp_get_aid_name((int)mad->base.mclass, (int)mad->base.aid), mad->addrInfo.slid, mad->base.tid);
          }
          mad->base.status = MAD_STATUS_BUSY; 
          if ((++numContextBusy % info->rmpp_max_cntxt) == 0) {
@@ -2919,7 +2936,7 @@ rmpp_receive_response(int usrId, ManagerInfo_t *mi, Mai_t *maip, uint8_t *buffer
                 if (if3DebugRmpp) {
                     IB_LOG_INFINI_INFO_FMT(__func__, 
                                            "RMPP READER got response from manager %s[%s] from LID [0x%x] with TID ["FMT_U64"] mclass=0x%x", 
-                                           (info?info->rmpp_get_method_text((int)mad.base.method):"<null>"), (info?info->rmpp_get_aid_name((int)mad.base.aid):"<null>"), mad.addrInfo.slid, mad.base.tid, 
+                                           (info?info->rmpp_get_method_text((int)mad.base.method):"<null>"), (info?info->rmpp_get_aid_name((int)mad.base.mclass, (int)mad.base.aid):"<null>"), mad.addrInfo.slid, mad.base.tid, 
                                            mad.base.mclass);
                 }
 
@@ -2936,7 +2953,7 @@ rmpp_receive_response(int usrId, ManagerInfo_t *mi, Mai_t *maip, uint8_t *buffer
                 if (status) {
                     IB_LOG_ERROR_FMT(__func__, 
                                      "RMPP READER failed to process response response from manager %s[%s] from LID [0x%x] with TID ["FMT_U64"] mclass=0x%x", 
-                                     (info?info->rmpp_get_method_text((int)mad.base.method):"<null>"), (info?info->rmpp_get_aid_name((int)mad.base.aid):"<null>"), mad.addrInfo.slid, mad.base.tid, 
+                                     (info?info->rmpp_get_method_text((int)mad.base.method):"<null>"), (info?info->rmpp_get_aid_name((int)mad.base.mclass, (int)mad.base.aid):"<null>"), mad.addrInfo.slid, mad.base.tid, 
                                      mad.base.mclass); 
                     goto bail;
                 } else {
@@ -2945,7 +2962,7 @@ rmpp_receive_response(int usrId, ManagerInfo_t *mi, Mai_t *maip, uint8_t *buffer
                         if (if3DebugRmpp) 
                             IB_LOG_INFINI_INFO_FMT(__func__, 
                                                    "RMPP READER processing multi-packet response from manager %s[%s] from LID [0x%x] with TID ["FMT_U64"] mclass=0x%x", 
-                                                   (info?info->rmpp_get_method_text((int)mad.base.method):"<null>"), (info?info->rmpp_get_aid_name((int)mad.base.aid):"<null>"), mad.addrInfo.slid, mad.base.tid, 
+                                                   (info?info->rmpp_get_method_text((int)mad.base.method):"<null>"), (info?info->rmpp_get_aid_name((int)mad.base.mclass, (int)mad.base.aid):"<null>"), mad.addrInfo.slid, mad.base.tid, 
                                                    mad.base.mclass);
                     } else {
                         if (if3DebugRmpp) 
@@ -2970,7 +2987,7 @@ rmpp_receive_response(int usrId, ManagerInfo_t *mi, Mai_t *maip, uint8_t *buffer
                 if (if3DebugRmpp) {
                     IB_LOG_INFINI_INFO_FMT(__func__, 
                                            "RMPP READER received duplicate %s[%s] from LID [0x%x] with TID ["FMT_U64"] ", 
-                                           (info?info->rmpp_get_method_text((int)mad.base.method):"<null>"), (info?info->rmpp_get_aid_name((int)mad.base.aid):"<null>"), mad.addrInfo.slid, mad.base.tid);
+                                           (info?info->rmpp_get_method_text((int)mad.base.method):"<null>"), (info?info->rmpp_get_aid_name((int)mad.base.mclass, (int)mad.base.aid):"<null>"), mad.addrInfo.slid, mad.base.tid);
                 }
             } else if (cntxGetStatus == ContextNotAvailable) {
                 // we are swamped, return BUSY to caller
@@ -2978,7 +2995,7 @@ rmpp_receive_response(int usrId, ManagerInfo_t *mi, Mai_t *maip, uint8_t *buffer
                     // log msg before send changes method and lids
                     IB_LOG_INFINI_INFO_FMT(__func__, 
                                            "RMPP READER NO CONTEXT AVAILABLE, returning MAD_STATUS_BUSY to %s[%s] request from LID [0x%x], TID ["FMT_U64"]!", 
-                                           (info?info->rmpp_get_method_text((int)mad.base.method):"<null>"), (info?info->rmpp_get_aid_name((int)mad.base.aid):"<null>"), mad.addrInfo.slid, mad.base.tid);
+                                           (info?info->rmpp_get_method_text((int)mad.base.method):"<null>"), (info?info->rmpp_get_aid_name((int)mad.base.mclass, (int)mad.base.aid):"<null>"), mad.addrInfo.slid, mad.base.tid);
                 }
                 mad.base.status = MAD_STATUS_BUSY; 
                 rmpp_send_reply(&mad, rmpp_cntxt); 
@@ -2993,14 +3010,14 @@ rmpp_receive_response(int usrId, ManagerInfo_t *mi, Mai_t *maip, uint8_t *buffer
                 if (if3DebugRmpp)
                     IB_LOG_INFINI_INFO_FMT(__func__, 
                                            "RMPP READER got another SEGMENT from manager %s[%s] from LID [0x%x] with TID ["FMT_U64"] ", 
-                                           (info?info->rmpp_get_method_text((int)mad.base.method):"<null>"), (info?info->rmpp_get_aid_name((int)mad.base.aid):"<null>"), mad.addrInfo.slid, mad.base.tid); 
+                                           (info?info->rmpp_get_method_text((int)mad.base.method):"<null>"), (info?info->rmpp_get_aid_name((int)mad.base.mclass, (int)mad.base.aid):"<null>"), mad.addrInfo.slid, mad.base.tid); 
 
                 (void)rmpp_process_getmulti_response(&mad, rmpp_cntxt); 
                 if (rmpp_cntxt->reqInProg) {
                     if (if3DebugRmpp)
                         IB_LOG_INFINI_INFO_FMT(__func__, 
                                                "RMPP READER processing next multi-packet response from manager %s[%s] from LID [0x%x] with TID ["FMT_U64"] mclass=0x%x", 
-                                               (info?info->rmpp_get_method_text((int)mad.base.method):"<null>"), (info?info->rmpp_get_aid_name((int)mad.base.aid):"<null>"), mad.addrInfo.slid, mad.base.tid,
+                                               (info?info->rmpp_get_method_text((int)mad.base.method):"<null>"), (info?info->rmpp_get_aid_name((int)mad.base.mclass, (int)mad.base.aid):"<null>"), mad.addrInfo.slid, mad.base.tid,
                                                mad.base.mclass);
                 } else {
                     if (if3DebugRmpp) 
@@ -3106,26 +3123,26 @@ int rmpp_gsi_check_packet_filter(Mai_t *maip)
             IB_LOG_WARN_FMT(__func__, 
                             "Dropping packet, invalid SM_Key "FMT_U64" %s[%s] from LID [0x%x] with TID ["FMT_U64"] ", 
                             mad.smKey, info->rmpp_get_method_text((int)maip->base.method),
-                            info->rmpp_get_aid_name((int)maip->base.aid), maip->addrInfo.slid, maip->base.tid); 
+                            info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), maip->addrInfo.slid, maip->base.tid); 
             break; 
         case 2:
             IB_LOG_WARN_FMT(__func__, 
                             "Dropping packet, invalid limited member attribute 0x%x %s[%s] from LID [0x%x] with TID ["FMT_U64"] ", 
                             maip->base.aid, info->rmpp_get_method_text((int)maip->base.method), 
-                            info->rmpp_get_aid_name((int)maip->base.aid), maip->addrInfo.slid, maip->base.tid); 
+                            info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), maip->addrInfo.slid, maip->base.tid); 
             break; 
         case 3:
             IB_LOG_WARN_FMT(__func__, 
                             "Dropping packet, invalid P_Key 0x%x %s[%s] from LID [0x%x] with TID ["FMT_U64"] ", 
                             maip->addrInfo.pkey, info->rmpp_get_method_text((int)maip->base.method),
-                            info->rmpp_get_aid_name((int)maip->base.aid), maip->addrInfo.slid, maip->base.tid); 
+                            info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), maip->addrInfo.slid, maip->base.tid); 
             break; 
         case 4:
         default:
             IB_LOG_WARN_FMT(__func__, 
                             "Dropping packet, Unexpected class 0x%x AID:0x%x %s[%s] from LID [0x%x] with TID ["FMT_U64"] ", 
                             maip->base.mclass, maip->base.aid, info->rmpp_get_method_text((int)maip->base.method), 
-                            info->rmpp_get_aid_name((int)maip->base.aid), maip->addrInfo.slid, maip->base.tid); 
+                            info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), maip->addrInfo.slid, maip->base.tid); 
             break;
         }
     }

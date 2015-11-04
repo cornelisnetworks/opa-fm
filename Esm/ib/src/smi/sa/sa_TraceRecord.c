@@ -173,7 +173,7 @@ sa_TraceRecord(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 			IB_LOG_INFINI_INFO
 				("sa_TraceRecord: requested source Lid not found/active in current topology:",
 				 prp->SLID);
-			maip->base.status = isSweeping ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID;
+			maip->base.status = activateInProgress ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID;
 			goto reply_TraceRecord;
 		}
 		slid = prp->SLID;
@@ -189,7 +189,7 @@ sa_TraceRecord(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 					("sa_TraceRecord: requested source GUID not found/active in current topology:",
 					 guid);
 			}
-			maip->base.status = isSweeping ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID_GID;
+			maip->base.status = activateInProgress ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID_GID;
 			goto reply_TraceRecord;
 		}
 		if (src_portp->portData->gidPrefix != prefix || src_portp->portData->guid != guid) {

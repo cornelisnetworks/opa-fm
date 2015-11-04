@@ -33,9 +33,35 @@
 # Run opareport with standard options and pipe output to opaxmlextract to extract
 #  performance counts
 
-TOOLSDIR=${TOOLSDIR:-/opt/opa/tools}
-BINDIR=${BINDIR:-/usr/sbin}
+Usage_full()
+{
+	echo "Usage: opaextractperf [opareport options]" >&2
+	echo "              or" >&2
+	echo "       opaextractperf --help" >&2
+	echo "   --help - produce full help text" >&2
+	echo "   opareport options - options will be passed to opareport." >&2
+	echo "for example:" >&2
+	echo "   opaextractperf" >&2
+	echo "   opaextractperf -h 1 -p 2" >&2
+	exit 0
+}
 
-$BINDIR/opareport -o comps -s -x -d 10 $@ | $BINDIR/opaxmlextract -d \; -e NodeDesc -e SystemImageGUID -e PortNum -e XmitDataMB -e XmitData -e XmitPkts -e MulticastXmitPkts -e RcvDataMB -e RcvData -e RcvPkts -e MulticastRcvPkts -e XmitWait -e CongDiscards -e XmitTimeCong -e MarkFECN -e RcvFECN -e RcvBECN -e RcvBubble -e XmitWastedBW -e XmitWaitData -e LinkQualityIndicator -e LocalLinkIntegrityErrors -e RcvErrors -e ExcessiveBufferOverruns -e LinkErrorRecovery -e LinkDowned -e UncorrectableErrors -e FMConfigErrors -e XmitConstraintErrors -e RcvConstraintErrors -e RcvSwitchRelayErrors -e XmitDiscards -e RcvRemotePhysicalErrors -s Neighbor -s SMs
+Usage()
+{
+	echo "Usage: opaextractperf" >&2
+	echo "              or" >&2
+	echo "       opaextractperf --help" >&2
+	echo "   --help - produce full help text" >&2
+	echo "for example:" >&2
+	echo "   opaextractperf" >&2
+	exit 2
+}
+
+if [ x"$1" = "x--help" ]
+then
+	Usage_full
+fi
+
+/usr/sbin/opareport -o comps -s -x -d 10 $@ | /usr/sbin/opaxmlextract -d \; -e NodeDesc -e SystemImageGUID -e PortNum -e LinkSpeedActive -e LinkWidthDnGradeTxActive -e LinkWidthDnGradeRxActive -e XmitDataMB -e XmitData -e XmitPkts -e MulticastXmitPkts -e RcvDataMB -e RcvData -e RcvPkts -e MulticastRcvPkts -e XmitWait -e CongDiscards -e XmitTimeCong -e MarkFECN -e RcvFECN -e RcvBECN -e RcvBubble -e XmitWastedBW -e XmitWaitData -e LinkQualityIndicator -e LocalLinkIntegrityErrors -e RcvErrors -e ExcessiveBufferOverruns -e LinkErrorRecovery -e LinkDowned -e UncorrectableErrors -e FMConfigErrors -e XmitConstraintErrors -e RcvConstraintErrors -e RcvSwitchRelayErrors -e XmitDiscards -e RcvRemotePhysicalErrors -s Neighbor -s SMs
 
 exit 0

@@ -76,10 +76,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 static char pathBuffer[PATH_BUF_SZ];
 
+#define MAPADDR_FILENAME_LEN 32
 typedef struct _MapAddress
 {
 	void * memAddr;
-	char file[32];
+	char file[MAPADDR_FILENAME_LEN];
 	uint64_t fileOffset;
 } MapAddress;
 
@@ -93,19 +94,6 @@ dumpfunc_t dumpFunctions[] = {
 	dumpMcGroups,
 	NULL
 };
-
-//
-//
-//
-static char * pathConcat(char buf[], const char * head,
-                         const char * tail, int size)
-{
-	strncpy(buf, head, size); buf[size-1]=0;
-	strncat(buf, "/", size-1); buf[size-1]=0;
-	strncat(buf, tail, size-1); buf[size-1]=0;
-
-	return buf;
-}
 
 //
 //
@@ -128,7 +116,8 @@ static Status_t dumpStructure(void * ptr, size_t size, FILE * file,
 			return VSTATUS_BAD;
 
 		addr.memAddr = ptr;
-		strncpy(addr.file, fileName, 32);
+		strncpy(addr.file, fileName, sizeof(addr.file)-1);
+		addr.file[sizeof(addr.file)-1]=0;
 		addr.fileOffset = pos;
 
 		if (fwrite(ptr, size, 1, file) != 1)
@@ -159,11 +148,11 @@ Status_t dumpTopologyStruct(const char * dumpDir, FILE * mapFile)
 	FILE * topoFile = NULL, * lidFile = NULL;
 
 	
-	pathConcat(pathBuffer, dumpDir, TOPO_FNAME, PATH_BUF_SZ);
+	snprintf(pathBuffer, PATH_BUF_SZ, "%s/%s", dumpDir, TOPO_FNAME);
 	if ((topoFile = fopen(pathBuffer, "a")) == NULL)
 		return VSTATUS_BAD;
 
-	pathConcat(pathBuffer, dumpDir, LIDMAP_FNAME, PATH_BUF_SZ);
+	snprintf(pathBuffer, PATH_BUF_SZ, "%s/%s", dumpDir, LIDMAP_FNAME);
 	if ((lidFile = fopen(pathBuffer, "a")) == NULL)
 	{
 		fclose(topoFile);
@@ -212,11 +201,11 @@ Status_t dumpTopologyNodes(const char * dumpDir, FILE * mapFile)
 	Port_t * port = NULL;
 	size_t len;
 
-	pathConcat(pathBuffer, dumpDir, NODE_FNAME, PATH_BUF_SZ);
+	snprintf(pathBuffer, PATH_BUF_SZ, "%s/%s", dumpDir, NODE_FNAME);
 	if ((nodeFile = fopen(pathBuffer, "a")) == NULL)
 		return VSTATUS_BAD;
 
-	pathConcat(pathBuffer, dumpDir, PORT_FNAME, PATH_BUF_SZ);
+	snprintf(pathBuffer, PATH_BUF_SZ, "%s/%s", dumpDir, PORT_FNAME);
 	if ((portFile = fopen(pathBuffer, "a")) == NULL)
 	{
 		fclose(nodeFile);
@@ -362,20 +351,20 @@ Status_t dumpMcGroups(const char * dumpDir, FILE * mapFile)
 	int i = 0, j = 0;
 	cl_map_item_t * mi;
 
-	pathConcat(pathBuffer, dumpDir, MCGRP_FNAME, PATH_BUF_SZ);
+	snprintf(pathBuffer, PATH_BUF_SZ, "%s/%s", dumpDir, MCGRP_FNAME);
 	if ((groupFile = fopen(pathBuffer, "a")) == NULL)
 	{
 		return rc;
 	}
 
-	pathConcat(pathBuffer, dumpDir, MCMEMBER_FNAME, PATH_BUF_SZ);
+	snprintf(pathBuffer, PATH_BUF_SZ, "%s/%s", dumpDir, MCMEMBER_FNAME);
 	if ((memberFile = fopen(pathBuffer, "a")) == NULL)
 	{
 		fclose(groupFile);
 		return rc;
 	}
 
-	pathConcat(pathBuffer, dumpDir, MCCLS_FNAME, PATH_BUF_SZ);
+	snprintf(pathBuffer, PATH_BUF_SZ, "%s/%s", dumpDir, MCCLS_FNAME);
 	if ((classFile = fopen(pathBuffer, "a")) == NULL)
 	{
 		fclose(groupFile);
@@ -383,7 +372,7 @@ Status_t dumpMcGroups(const char * dumpDir, FILE * mapFile)
 		return rc;
 	}
 
-	pathConcat(pathBuffer, dumpDir, MCTREE_FNAME, PATH_BUF_SZ);
+	snprintf(pathBuffer, PATH_BUF_SZ, "%s/%s", dumpDir, MCTREE_FNAME);
 	if ((spanFile = fopen(pathBuffer, "a")) == NULL)
 	{
 		fclose(groupFile);
@@ -517,7 +506,7 @@ Status_t sm_dump_state(const char * dumpDir)
 		status = VSTATUS_BAD;
 	}
 
-	pathConcat(pathBuffer, dumpDir, "mapFile", PATH_BUF_SZ);
+	snprintf(pathBuffer, PATH_BUF_SZ, "%s/%s", dumpDir, "mapFile");
 
 	if ((mapFile = fopen(pathBuffer, "w")) == NULL)
 	{

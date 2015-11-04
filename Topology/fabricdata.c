@@ -89,7 +89,7 @@ FSTATUS InitFabricData(FabricData_t *fabricp, FabricFlags_t flags)
 	} else {
 		cl_qmap_init(&fabricp->u.AllLids, NULL);
 	}
-	fabricp->flags = flags & (FF_LIDARRAY|FF_PMADIRECT|FF_SMADIRECT);
+	fabricp->flags = flags & (FF_LIDARRAY|FF_PMADIRECT|FF_SMADIRECT|FF_DOWNPORTINFO);
 	cl_qmap_init(&fabricp->AllSystems, NULL);
 	QListInitState(&fabricp->AllPorts);
 	if (! QListInit(&fabricp->AllPorts)) {
@@ -273,6 +273,20 @@ boolean isInternalLink(PortData *portp)
 					== neighbor->nodep->NodeInfo.NodeGUID));
 }
 
+// count the number of armed/active links in the node
+uint32 CountInitializedPorts(FabricData_t *fabricp, NodeData *nodep)
+{
+	cl_map_item_t *p;
+	uint32 count = 0;
+	for (p=cl_qmap_head(&nodep->Ports); p != cl_qmap_end(&nodep->Ports); p = cl_qmap_next(p))
+	{
+		PortData *portp = PARENT_STRUCT(p, PortData, NodePortsEntry);
+		if (IsPortInitialized(portp->PortInfo.PortStates))
+			count++;
+	}
+	return count;
+}
+
 void PortDataFreeQOSData(FabricData_t *fabricp, PortData *portp)
 {
 	if (portp->pQOS) {
@@ -290,12 +304,36 @@ void PortDataFreeQOSData(FabricData_t *fabricp, PortData *portp)
 	portp->pQOS = NULL;
 }
 
+void PortDataFreeBufCtrlTable(FabricData_t *fabricp, PortData *portp)
+{
+	if (portp->pBufCtrlTable) {
+		MemoryDeallocate(portp->pBufCtrlTable);
+	}
+	portp->pBufCtrlTable = NULL;
+}
+
 void PortDataFreePartitionTable(FabricData_t *fabricp, PortData *portp)
 {
 	if (portp->pPartitionTable) {
 		MemoryDeallocate(portp->pPartitionTable);
 	}
 	portp->pPartitionTable = NULL;
+}
+
+void PortDataFreeCableInfoData(FabricData_t *fabricp, PortData *portp)
+{
+	if (portp->pCableInfoData) {
+		MemoryDeallocate(portp->pCableInfoData);
+	}
+	portp->pCableInfoData = NULL;
+}
+
+void PortDataFreeCongestionControlTableEntries(FabricData_t *fabricp, PortData *portp)
+{
+	if (portp->pCongestionControlTableEntries) {
+		MemoryDeallocate(portp->pCongestionControlTableEntries);
+	}
+	portp->pCongestionControlTableEntries = NULL;
 }
 
 void AllLidsRemove(FabricData_t *fabricp, PortData *portp)
@@ -443,7 +481,10 @@ void PortDataFree(FabricData_t *fabricp, PortData *portp)
 	if (portp->pPortStatus)
 		MemoryDeallocate(portp->pPortStatus);
 	PortDataFreeQOSData(fabricp, portp);
+	PortDataFreeBufCtrlTable(fabricp, portp);
 	PortDataFreePartitionTable(fabricp, portp);
+	PortDataFreeCableInfoData(fabricp, portp);
+	PortDataFreeCongestionControlTableEntries(fabricp, portp);
 	MemoryDeallocate(portp);
 }
 
@@ -501,6 +542,36 @@ FSTATUS PortDataAllocateAllQOSData(FabricData_t *fabricp)
 	return status;
 }
 
+FSTATUS PortDataAllocateBufCtrlTable(FabricData_t *fabricp, PortData *portp)
+{
+	ASSERT(! portp->pBufCtrlTable);	// or could free if present
+	portp->pBufCtrlTable = MemoryAllocate2AndClear(sizeof(STL_BUFFER_CONTROL_TABLE), IBA_MEM_FLAG_PREMPTABLE, MYTAG);
+	if (! portp->pBufCtrlTable) {
+		fprintf(stderr, "%s: Unable to allocate memory\n", g_Top_cmdname);
+		goto fail;
+	}
+
+	return FSUCCESS;
+fail:
+	//PortDataFreeBufCtrlTable(fabricp, portp);
+	return FINSUFFICIENT_MEMORY;
+}
+
+FSTATUS PortDataAllocateAllBufCtrlTable(FabricData_t *fabricp)
+{
+	LIST_ITEM *p;
+	FSTATUS status = FSUCCESS;
+
+	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+		PortData *portp = (PortData *)QListObj(p);
+		FSTATUS s;
+		s = PortDataAllocateBufCtrlTable(fabricp, portp);
+		if (FSUCCESS != s)
+			status = s;
+	}
+	return status;
+}
+
 uint16 PortPartitionTableSize(PortData *portp)
 {
 	if (portp->nodep->NodeInfo.NodeType == STL_NODE_SW
@@ -543,6 +614,75 @@ FSTATUS PortDataAllocateAllPartitionTable(FabricData_t *fabricp)
 		PortData *portp = (PortData *)QListObj(p);
 		FSTATUS s;
 		s = PortDataAllocatePartitionTable(fabricp, portp);
+		if (FSUCCESS != s)
+			status = s;
+	}
+	return status;
+}
+
+FSTATUS PortDataAllocateCableInfoData(FabricData_t *fabricp, PortData *portp)
+{
+	ASSERT(! portp->pCableInfoData);	// or could free if present
+	portp->pCableInfoData = MemoryAllocate2AndClear(STL_CIB_STD_LEN, IBA_MEM_FLAG_PREMPTABLE, MYTAG);
+	if (! portp->pCableInfoData) {
+		fprintf(stderr, "%s: Unable to allocate memory\n", g_Top_cmdname);
+		goto fail;
+	}
+
+	return FSUCCESS;
+fail:
+	//PortDataFreeCableInfoData(fabricp, portp);
+	return FINSUFFICIENT_MEMORY;
+}
+
+FSTATUS PortDataAllocateAllCableInfo(FabricData_t *fabricp)
+{
+	LIST_ITEM *p;
+	FSTATUS status = FSUCCESS;
+
+	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+		PortData *portp = (PortData *)QListObj(p);
+		FSTATUS s;
+		// skip switch port 0
+		if (! portp->PortNum)
+			continue;
+		s = PortDataAllocateCableInfoData(fabricp, portp);
+		if (FSUCCESS != s)
+			status = s;
+	}
+	return status;
+}
+
+FSTATUS PortDataAllocateCongestionControlTableEntries(FabricData_t *fabricp, PortData *portp)
+{
+	ASSERT(! portp->pCongestionControlTableEntries);	// or could free if present
+	portp->pCongestionControlTableEntries = MemoryAllocate2AndClear(
+							sizeof(STL_HFI_CONGESTION_CONTROL_TABLE_ENTRY)*128,
+							IBA_MEM_FLAG_PREMPTABLE, MYTAG);
+	if (! portp->pCongestionControlTableEntries) {
+		fprintf(stderr, "%s: Unable to allocate memory\n", g_Top_cmdname);
+		goto fail;
+	}
+
+	return FSUCCESS;
+fail:
+	//PortDataFreeCongestionControlTableEntries(fabricp, portp);
+	return FINSUFFICIENT_MEMORY;
+}
+
+FSTATUS PortDataAllocateAllCongestionControlTableEntries(FabricData_t *fabricp)
+{
+	LIST_ITEM *p;
+	FSTATUS status = FSUCCESS;
+
+	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+		PortData *portp = (PortData *)QListObj(p);
+		FSTATUS s;
+		// only applicable to HFIs and enhanced switch port 0
+		if (portp->nodep->NodeInfo.NodeType == STL_NODE_SW
+			&& portp->PortNum)
+			continue;
+		s = PortDataAllocateCongestionControlTableEntries(fabricp, portp);
 		if (FSUCCESS != s)
 			status = s;
 	}
@@ -611,8 +751,6 @@ fail:
 	return NULL;
 }
 
-// can only call this function or NodeDataSetVendorSwitchInfo, can't call both
-// for a given nodep
 FSTATUS NodeDataSetSwitchInfo(NodeData *nodep, STL_SWITCHINFO_RECORD *pSwitchInfo)
 {
 	ASSERT(! nodep->pSwitchInfo);

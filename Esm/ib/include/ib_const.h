@@ -56,9 +56,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //                                                                      //
 // ******************************************************************** //
 
-#define OUI_QLOGIC_0 (0x00) /* 3-byte InfiniCon (now Intel) OUI */
-#define OUI_QLOGIC_1 (0x06)
-#define OUI_QLOGIC_2 (0x6a)
+#define OUI_TRUESCALE_0 (0x00) /* 3-byte InfiniCon (now Intel) OUI */
+#define OUI_TRUESCALE_1 (0x06)
+#define OUI_TRUESCALE_2 (0x6a)
 
 #define GSI_WELLKNOWN_QKEY		(0x80010000)  /* QKEY for GSI            */
 #define UNICAST_LID_MAX			(0xBFFF)      /* Unicast LID upper range */
@@ -148,7 +148,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define     MAX_SUPPORTED_ENDPORTS  512
 #define     MAX_SUPPORTED_ENDPORTS_9020  MIN_SUPPORTED_ENDPORTS
 #else
-#define     MIN_SUPPORTED_ENDPORTS  1280 
+#define     MIN_SUPPORTED_ENDPORTS  40 
 #endif
 
 #endif	// _IB_CONST_H_

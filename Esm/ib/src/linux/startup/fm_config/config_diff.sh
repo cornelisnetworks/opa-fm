@@ -30,8 +30,8 @@
 
 # [ICS VERSION STRING: unknown]
 
-TEMP1=`mktemp`
-TEMP2=`mktemp`
+TEMP1="$(mktemp)"
+TEMP2="$(mktemp)"
 trap "rm -f $TEMP1 $TEMP2; exit 1" SIGHUP SIGTERM SIGINT
 trap "rm -f $TEMP1 $TEMP2" EXIT
 
@@ -44,15 +44,11 @@ Usage()
 	exit 2
 }
 
-if [ ! -f /etc/sysconfig/opa/opafm.info -a ! -f /etc/sysconfig/opa/qlogic_fm.info ]
+if [ ! -f /etc/sysconfig/opa/opafm.info ]
 then
 	echo "config_diff: IFS FM not installed" >&2
 	exit 1
 else
-	if [ -f /etc/sysconfig/opa/qlogic_fm.info ]
-	then 
-		cp -f /etc/sysconfig/opa/qlogic_fm.info /etc/sysconfig/opa/opafm.info
-	fi
 	. /etc/sysconfig/opa/opafm.info # get IFS_FM_BASE
 	tooldir=$IFS_FM_BASE/etc
 fi

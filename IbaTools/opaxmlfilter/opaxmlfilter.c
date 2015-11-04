@@ -210,12 +210,7 @@ static void addElement(const char *element)
 		exit(1);
 	}
 
-	if (strchr(element, '*'))
-		g_elements[g_numElements][0] = 0;
-	else
-		strcpy(g_elements[g_numElements], "*.");
-
-	strcat(g_elements[g_numElements], element);
+	snprintf(g_elements[g_numElements], len, "%s%s", strchr(element, '*') ? "" : "*.", element);
 	// no issue with duplicates, so no need to check
 	g_numElements++;
 }

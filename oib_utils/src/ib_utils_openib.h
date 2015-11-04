@@ -63,9 +63,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #define COMPUTE_MAX_TIMEOUT(timeout, retries) (((timeout)*((retries)+1))+1000)
 
-#define OUI_QLOGIC_0 (0x00) /* 3-byte InfiniCon (now Intel) OUI */
-#define OUI_QLOGIC_1 (0x06)
-#define OUI_QLOGIC_2 (0x6a)
+#define OUI_TRUESCALE_0 (0x00) /* 3-byte InfiniCon (now Intel) OUI */
+#define OUI_TRUESCALE_1 (0x06)
+#define OUI_TRUESCALE_2 (0x6a)
 
 
 /**

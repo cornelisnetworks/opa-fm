@@ -80,7 +80,7 @@ extern FEXmlConfig_t fe_config;
 
 Pool_t fe_pool;                /* Memory pool for FE    */
 static int G_initted_;
-static SOCKET_t G_listenSock_;
+static SOCKET_t G_listenSock_ = INVALID_SOCKET;
 static int G_numConnections_;
 static int G_connectCount;
 static NetConnection *G_connections_;
@@ -900,7 +900,7 @@ int fe_net_shutdown(void) {
     G_numConnections_ = 0;
     G_connections_ = NULL;
     G_initted_ = 0;
-	G_listenSock_ = 0;
+	G_listenSock_ = INVALID_SOCKET;
 #endif
 
     IB_EXIT(__func__,0);

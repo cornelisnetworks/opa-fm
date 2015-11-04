@@ -52,7 +52,7 @@ CFILES			= \
 		  		  sa_SMInfoRecord.c sa_ServiceRecord.c sa_SwitchInfoRecord.c \
 		  		  sa_VLArbitrationRecord.c sa_Trap.c		\
 		  		  sa_TraceRecord.c sa_VFabricRecord.c \
-				  sa_QuarantinedNodeRecord.c \
+				  sa_FabricInfoRecord.c sa_QuarantinedNodeRecord.c \
 		  		  sa_BufferControlTableRecord.c	sa_CongestionRecords.c \
 		  		  sa_CableInfoRecord.c sa_PortGroupRecord.c \
  		  		  sa_SCSLTableRecord.c sa_SCVLTableRecord.c \
@@ -129,6 +129,7 @@ CLOCAL = -DLOCAL_MOD_ID=VIEO_SA_MOD_ID $(CPIE) -xc
 else
 CLOCAL = -DLOCAL_MOD_ID=VIEO_SA_MOD_ID $(CPIE)
 endif
+CLOCAL += -I$(TL_DIR)/IbPrint
 
 LOCAL_INCLUDE_DIRS = $(MOD_DIR)/src/smi/include
 LOCALDEPLIBS = 

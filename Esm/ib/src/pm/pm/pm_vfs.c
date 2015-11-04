@@ -40,7 +40,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 void PmAddPortToVFIndex(PmPortImage_t * portImage, uint32 vfIndex,
 			   					PmVF_t *vfp)
 {
-	portImage->VFs[vfIndex] = vfp;
+	portImage->vfvlmap[vfIndex].pVF = vfp;
 }
 
 // removes a port from a vf.
@@ -48,7 +48,7 @@ void PmRemovePortFromVFIndex(PmPortImage_t *portImage, uint32 vfIndex,
 			   						PmVF_t *vfp)
 {
 	for (; vfIndex < MAX_VFABRICS-1; vfIndex++) {
-		portImage->VFs[vfIndex] = portImage->VFs[vfIndex+1];
+		portImage->vfvlmap[vfIndex] = portImage->vfvlmap[vfIndex+1];
 	}
 }
 
@@ -57,7 +57,7 @@ static boolean PmIsPortImageInVF(PmPortImage_t *portImage, PmVF_t *vfp)
 	int i;
 
 	for (i=0; i<MAX_VFABRICS; i++) {
-		if (portImage->VFs[i] == vfp)
+		if (portImage->vfvlmap[i].pVF == vfp)
 			return TRUE;
 	}
 	return FALSE;

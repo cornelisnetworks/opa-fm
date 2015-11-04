@@ -1609,11 +1609,33 @@ void BCTXmlOutputVLLimitAttr(struct IXmlOutputState *state, void *data)
 	IXmlOutputPrint(state, " VL=\"%u\"", *(uint8 *)data);
 }
 
+static void *BCTXmlParserStart(IXmlParserState_t *state, void *parent, const char **atr)
+{
+	PortData *portp = (PortData *)parent;	// parent points to PortData
+
+	if (portp->pBufCtrlTable) {
+		IXmlParserPrintError(state, "BufCtrlTable improperly allocated");
+		return (NULL);
+	}
+
+	if ( !( portp->pBufCtrlTable = (STL_BUFFER_CONTROL_TABLE*)MemoryAllocate2AndClear(
+			sizeof(STL_BUFFER_CONTROL_TABLE), IBA_MEM_FLAG_PREMPTABLE, MYTAG ) ) ) {
+		IXmlParserPrintError(state, "Unable to allocate memory");
+		return (NULL);
+	}
+
+	return ((void *)portp->pBufCtrlTable);
+
+}
+
 static void PortDataXmlOutputBCT(IXmlOutputState_t *state, const char *tag, void *data)
 {
 	PortData *portp = (PortData *)data;	// data points to PortData
-	STL_BUFFER_CONTROL_TABLE *bct = &portp->bufCtrlTable;
+	STL_BUFFER_CONTROL_TABLE *bct = portp->pBufCtrlTable;
 	uint8_t vl;
+
+	if (! bct)
+		return;
 
 	IXmlOutputStartTag(state, tag);
 
@@ -1637,8 +1659,7 @@ static void PortDataXmlOutputBCT(IXmlOutputState_t *state, const char *tag, void
 
 static void *BCTVLLimitStartFunc(IXmlParserState_t *state, void *parent, const char **attr)
 {
-	PortData *portp = (PortData *)parent;	// parent points to PortData
-	STL_BUFFER_CONTROL_TABLE *bct = &portp->bufCtrlTable;
+	STL_BUFFER_CONTROL_TABLE *bct = (STL_BUFFER_CONTROL_TABLE *)parent;	// parent points to BufCtrlTable
 	uint8_t vl;
 
 	if ( !attr || !attr[0] || (0 != strcmp(attr[0], "VL"))) {
@@ -1669,9 +1690,9 @@ static IXML_FIELD BCTVLLimitFields[] = {
 	{ NULL }
 };
 
-// parent is PortData
+// parent is BufCtrlTable
 static IXML_FIELD BufferControlTableFields[] = {
-	{ tag:"TxOverallSharedLimit", format:'U', IXML_FIELD_INFO(PortData, bufCtrlTable.TxOverallSharedLimit) },
+	{ tag:"TxOverallSharedLimit", format:'U', IXML_FIELD_INFO(STL_BUFFER_CONTROL_TABLE, TxOverallSharedLimit) },
 	{ tag:"VLLimit", format:'k', subfields:BCTVLLimitFields, start_func:BCTVLLimitStartFunc },
 	{ NULL }
 };
@@ -1720,232 +1741,114 @@ static void PortDataXmlOutputPortStatusData(IXmlOutputState_t *state, const char
 	PortStatusDataXmlOutputOptional(state, "PortStatus", portp->pPortStatus);
 }
 
-static void CableInfoXmlOutputBitrate(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	IXmlOutputUint(state, tag, (unsigned int)(*(uint8_t*)data) * 100);
-}
+/** =========================================================================
+ * CableInfo definitions
+ */
 
-static void CableInfoXmlOutputRxOutAmp(IXmlOutputState_t *state, const char *tag, void *data)
+static void *CableInfoXmlParserStartSegValue(IXmlParserState_t *state, void *parent, const char **attr)
 {
-	const uint8_t input = (*(uint8_t*)data) & 0x1;
-	
-	IXmlOutputStr(state, tag, input ? "True" : "False");	
-}
+	// parent points to CableInfoData
+	uint32 seg;
 
-static void CableInfoXmlOutputRxSqlchDisable(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	const uint8_t input = (*(uint8_t*)data) & 1<<3;
-	
-	IXmlOutputStr(state, tag, input ? "True" : "False");	
-}
-
-static void CableInfoXmlOutputRxOutDisable(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	const uint8_t input = (*(uint8_t*)data) & 1<<2;
-	
-	IXmlOutputStr(state, tag, input ? "True" : "False");	
-}
-
-static void CableInfoXmlOutputTxSqlchDisable(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	const uint8_t input = (*(uint8_t*)data) & 1<<1;
-	
-	IXmlOutputStr(state, tag, input ? "True" : "False");	
-}
-
-static void CableInfoXmlOutputTxSqlchImp(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	const uint8_t input = (*(uint8_t*)data) & 1<<0;
-	
-	IXmlOutputStr(state, tag, input ? "True" : "False");	
-}
-
-static void CableInfoXmlOutputMemPage2(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	const uint8_t input = (*(uint8_t*)data) & 1<<7;
-	
-	IXmlOutputStr(state, tag, input ? "True" : "False");	
-}
-
-static void CableInfoXmlOutputMemPage1(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	const uint8_t input = (*(uint8_t*)data) & 1<<6;
-	
-	IXmlOutputStr(state, tag, input ? "True" : "False");	
-}
-
-static void CableInfoXmlOutputTxDisable(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	const uint8_t input = (*(uint8_t*)data) & 1<<4;
-	
-	IXmlOutputStr(state, tag, input ? "True" : "False");	
-}
-
-static void CableInfoXmlOutputTxFaultReport(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	const uint8_t input = (*(uint8_t*)data) & 1<<3;
-	
-	IXmlOutputStr(state, tag, input ? "True" : "False");	
-}
-
-static void CableInfoXmlOutputLOSReport(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	const uint8_t input = (*(uint8_t*)data) & 1<<1;
-	
-	IXmlOutputStr(state, tag, input ? "True" : "False");	
-}
-
-static void CableInfoXmlOutputDeviceTech(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	const uint8_t input = ((*(uint8_t*)data)>>4) & 0xf;
-	
-	switch(input) {
-		case 0:
-			IXmlOutputStr(state, tag, "850 nm VCSEL");	
-			break;
-		case 1:
-			IXmlOutputStr(state, tag, "1300 nm VCSEL");	
-			break;
-		case 2:
-			IXmlOutputStr(state, tag, "1550 nm VCSEL");	
-			break;
-		case 3:
-			IXmlOutputStr(state, tag, "1310 nm FP");	
-			break;
-		case 4:
-			IXmlOutputStr(state, tag, "1310 nm DFP");	
-			break;
-		case 5:
-			IXmlOutputStr(state, tag, "1550 nm DFP");	
-			break;
-		case 6:
-			IXmlOutputStr(state, tag, "1310 nm EML");	
-			break;
-		case 7:
-			IXmlOutputStr(state, tag, "1550 nm EML");	
-			break;
-		case 8:
-			IXmlOutputStr(state, tag, "Other");	
-			break;
-		case 9:
-			IXmlOutputStr(state, tag, "1490 nm DFB");	
-			break;
-		case 10:
-			IXmlOutputStr(state, tag, "copper cable, unequalized");	
-			break;
-		case 11:
-			IXmlOutputStr(state, tag, "copper, passive equalized");	
-			break;
-		case 12:
-			IXmlOutputStr(state, tag, "copper cable, near and far end limiting active equalizers");	
-			break;
-		case 13:
-			IXmlOutputStr(state, tag, "copper cable, far end limiting active equalizers");	
-			break;
-		case 14:
-			IXmlOutputStr(state, tag, "copper cable, near end limiting active equalizers");	
-			break;
-		case 15:
-			IXmlOutputStr(state, tag, "copper cable, linear active equalizers");	
-			break;
-		default:
-			// Shouldn't be reachable.
-			IXmlOutputStr(state, tag, "Unknown Tech");	
+	if ( !attr || !attr[0] || 0 != strcmp(attr[0], "Seg")) {
+		IXmlParserPrintError(state, "Missing Seg attribute for CableInfo.Value");
+		return NULL;
 	}
-}
-
-static void CableInfoXmlOutputModuleCode(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	const uint8_t input = (*(uint8_t*)data) & 0xf;
-	
-	switch (input) {
-		case 0:
-			IXmlOutputStr(state, tag, "SDR");	
-			break;
-		case 1:
-			IXmlOutputStr(state, tag, "DDR");	
-			break;
-		case 2:
-			IXmlOutputStr(state, tag, "QDR");	
-			break;
-		case 3:
-			IXmlOutputStr(state, tag, "FDR");	
-			break;
-		case 4:
-			IXmlOutputStr(state, tag, "EDR");	
-			break;
-		default:
-			IXmlOutputStr(state, tag, "Unknown");	
+	if (FSUCCESS != StringToUint32(&seg, attr[1], NULL, 0, TRUE)) {
+		IXmlParserPrintError(state, "Invalid Seg attribute for CableInfo.Value  Seg: %s", attr[1]);
+		return NULL;
 	}
-}
+	if (seg >= STL_CIB_STD_LEN / sizeof(uint64) ) {
+		IXmlParserPrintError(state, "Seg attribute Out-of-Range in CableInfo: %s", attr[1]);
+		return NULL;
+	}
 
-static void CableInfoXmlOutputCaseTemp(IXmlOutputState_t *state, const char *tag, void *data)
+	return (&((uint8 *)parent)[seg * sizeof(uint64)]);
+
+}	// End of CableInfoXmlParserStartSegValue()
+
+static void CableInfoXmlParserEndSegValue(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
 {
-	IXmlOutputUint(state, tag, (unsigned int)(*(uint8_t*)data) + 70);
-}
+	// parent points to CableInfoData; object points to segment-specific CableInfoData
+	uint8 *pCableInfoData = (uint8 *)parent;
+	uint8 *pCableInfoSegData = (uint8 *)object;
+	uint64 value;
 
-static void CableInfoXmlOutputVendorOUI(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	IXmlOutputHex(state, tag, (uint32_t)(*(uint8_t*)data) & 0x00ffffff);
-}
+	if (! valid)
+		return;
+	if ( !pCableInfoData || !pCableInfoSegData || !content || !len ||
+			(pCableInfoSegData < pCableInfoData) ||
+			(pCableInfoSegData > pCableInfoData + STL_CIB_STD_LEN) ) {
+		IXmlParserPrintError(state, "CableInfo improperly allocated");
+		return;
+	}
 
-/* See IBTA V2, table 123 for more info on this table */
+	if(IXmlParseUint64(state, content, len, &value)) {
+#if CPU_LE
+		value = ntoh64(value);
+#endif
+		*(uint64*)pCableInfoSegData = value;
+	}
+
+}	// End of CableInfoXmlParserEndSegValue()
+
 const IXML_FIELD CableInfoFields[] = {
-	{ tag:"Identifier", format:'x', size:1, offset:128},
-	{ tag:"ExtIdentifier", format:'x', size:1, offset:129},
-	{ tag:"Connector", format:'x', size:1, offset:130},
-	{ tag:"NominalBR", format:'k', size:1, offset:140, format_func:CableInfoXmlOutputBitrate},
-	{ tag:"NominalBR_Int", format:'u', size:1, offset:140},
-	{ tag:"SMFLength", format:'u', size:1, offset:142},
-	{ tag:"OM3Length", format:'u', size:1, offset:143},
-	{ tag:"OM2Length", format:'u', size:1, offset:144},
-	{ tag:"OM1Length", format:'u', size:1, offset:145},
-	{ tag:"CopperLength", format:'u', size:1, offset:146},
-	{ tag:"DeviceTech", format:'k', size:1, offset:147, format_func:CableInfoXmlOutputDeviceTech},
-	{ tag:"DeviceTech_Int", format:'u', size:1, offset:147},
-	{ tag:"VendorName", format:'c', size:16, offset:148},
-	{ tag:"ExtendedModule", format:'k', size:1, offset:164, format_func:CableInfoXmlOutputModuleCode},
-	{ tag:"ExtendedModule_Int", format:'u', size:1, offset:164},
-	{ tag:"VendorOUI", format:'k', size:3, offset:165, format_func:CableInfoXmlOutputVendorOUI},
-	{ tag:"VendorOUI_Int", format:'u', size:4, offset:165}, // The size is different, but that's ok. VendorPN will get properly written over.
-	{ tag:"VendorPN", format:'c', size:16, offset:168},
-	{ tag:"VendorRev", format:'c', size:2, offset:184},
-	{ tag:"OpticalWavelength_Int", format:'x', size:4, offset:186}, // FIXME: EEKAHN - Uhh, this one may require more effort
-	{ tag:"MaxCasetemp", format:'k', size:1, offset:190, format_func:CableInfoXmlOutputCaseTemp},
-	{ tag:"MaxCasetemp_Int", format:'u', size:1, offset:190},
-	{ tag:"CC_BASE", format:'x', size:1, offset:191},
-	{ tag:"RxOutputAmpProg", format:'s', size:1, offset:193, format_func:CableInfoXmlOutputRxOutAmp, start_func:NULL, end_func:IXmlParserEndNoop},
-	{ tag:"RxSquelchDisImp", format:'s', size:1, offset:194, format_func:CableInfoXmlOutputRxSqlchDisable, start_func:NULL, end_func:IXmlParserEndNoop},
-	{ tag:"RxOutputDisCap", format:'s', size:1, offset:194, format_func:CableInfoXmlOutputRxOutDisable, start_func:NULL, end_func:IXmlParserEndNoop},
-	{ tag:"TxSquelchDisImp", format:'s', size:1, offset:194, format_func:CableInfoXmlOutputTxSqlchDisable, start_func:NULL, end_func:IXmlParserEndNoop},
-	{ tag:"TxSquelchImp", format:'s', size:1, offset:194, format_func:CableInfoXmlOutputTxSqlchImp, start_func:NULL, end_func:IXmlParserEndNoop},
-	{ tag:"MemPage02Provided", format:'s', size:1, offset:195, format_func:CableInfoXmlOutputMemPage2, start_func:NULL, end_func:IXmlParserEndNoop},
-	{ tag:"MemPage01Provided", format:'s', size:1, offset:195, format_func:CableInfoXmlOutputMemPage1, start_func:NULL, end_func:IXmlParserEndNoop},
-	{ tag:"TxDisImp", format:'s', size:1, offset:195, format_func:CableInfoXmlOutputTxDisable, start_func:NULL, end_func:IXmlParserEndNoop},
-	{ tag:"TxFaultRepImp", format:'s', size:1, offset:195, format_func:CableInfoXmlOutputTxFaultReport, start_func:NULL, end_func:IXmlParserEndNoop},
-	{ tag:"LOSReportImp", format:'s', size:1, offset:195, format_func:CableInfoXmlOutputLOSReport, start_func:NULL, end_func:IXmlParserEndNoop},
-	{ tag:"OtherFlags_Int", format:'x', size:4, offset:193},
-	{ tag:"VendorSN", format:'c', size:16, offset:196},
-	{ tag:"DataCode", format:'c', size:8, offset:212},
-	{ tag:"LotCode", format:'c', size:2, offset:218},
-	{ tag:"CC_EXT", format:'x', size:1, offset:223},
+	{ tag:"Value", start_func:CableInfoXmlParserStartSegValue, end_func:CableInfoXmlParserEndSegValue },
 	{ NULL }
 };
 
 static void *CableInfoXmlParserStart(IXmlParserState_t *state, void *parent, const char **atr)
 {
-	PortData *portp = (PortData*)parent;
-	
-	return portp->cableInfo;
+	PortData *portp = (PortData *)parent;	// parent points to PortData
+
+	if (portp->pCableInfoData) {
+		IXmlParserPrintError(state, "CableInfo improperly allocated");
+		return (NULL);
+	}
+
+	if ( !( portp->pCableInfoData = MemoryAllocate2AndClear(
+			STL_CABLE_INFO_PAGESZ, IBA_MEM_FLAG_PREMPTABLE, MYTAG ) ) ) {
+		IXmlParserPrintError(state, "Unable to allocate memory");
+		return (NULL);
+	}
+
+	return ((void *)portp->pCableInfoData);
+}
+
+static void CableInfoOutputSegAttr(IXmlOutputState_t *state, void *data)
+{
+	IXmlOutputPrint(state, " Seg=\"0x%x\"", *(unsigned int *)data);
 }
 
 static void PortDataXmlOutputCableInfo(IXmlOutputState_t *state, const char *tag, void *data)
 {
+	unsigned int ix_seg;
 	PortData *portp = (PortData*)data;
-	
-	IXmlOutputStruct(state, tag, (STL_CABLE_INFO*)portp->cableInfo, NULL, CableInfoFields);
+	uint64 *pData = (uint64 *)portp->pCableInfoData;
+	uint64 temp;
+
+	if (! pData)
+		return;
+
+	IXmlOutputStartTag(state, tag);
+
+	for ( ix_seg = 0; ix_seg < STL_CABLE_INFO_PAGESZ / sizeof(uint64);
+			pData++, ix_seg++ ) {
+		temp = *pData;
+#if CPU_LE
+		temp = ntoh64(temp);
+#endif
+		IXmlOutputStartAttrTag(state, "Value", &ix_seg, CableInfoOutputSegAttr);
+		IXmlOutputPrint(state, "0x%016lx", temp);
+		IXmlOutputEndTag(state, "Value");
+	}
+
+	IXmlOutputEndTag(state, tag);
 }
 
+/** =========================================================================
+ * PortData definitions
+ */
 static IXML_FIELD PortDataFields[] = {
 	{ tag:"PortNum", format:'U', IXML_FIELD_INFO(PortData, PortNum) },
 	{ tag:"GUID", format:'H', IXML_FIELD_INFO(PortData, PortGUID) },
@@ -2022,7 +1925,7 @@ static IXML_FIELD PortDataFields[] = {
 	{ tag:"SLtoSCMap", format:'k', format_func:PortDataXmlOutputSLtoSCMap, subfields:SLtoSCMapSCFields, start_func:SLtoSCMapXmlParserStart, end_func:SLtoSCMapXmlParserEnd }, // structure
 	{ tag:"SCtoSLMap", format:'k', format_func:PortDataXmlOutputSCtoSLMap, subfields:SCtoSLMapSLFields, start_func:SCtoSLMapXmlParserStart, end_func:SCtoSLMapXmlParserEnd }, // structure
 	{ tag:"SCtoSCMap", format:'k', format_func:PortDataXmlOutputSCtoSCMap, subfields:SCtoSCMapOutPortFields, start_func:SCtoSCMapXmlParserStart, end_func:SCtoSCMapXmlParserEnd }, // structure
-	{ tag:"BufferControlTable", format:'k', format_func:PortDataXmlOutputBCT, subfields:BufferControlTableFields, }, // structure
+	{ tag:"BufferControlTable", format:'k', format_func:PortDataXmlOutputBCT, subfields:BufferControlTableFields, start_func:BCTXmlParserStart }, // structure
 	{ tag:"VLArbitrationLow", format:'k', format_func:PortDataXmlOutputVLArbLow, subfields:VLArbFields, start_func:VLArbLowXmlParserStart, end_func:VLArbLowXmlParserEnd }, // structure
 	{ tag:"VLArbitrationHigh", format:'k', format_func:PortDataXmlOutputVLArbHigh, subfields:VLArbFields, start_func:VLArbHighXmlParserStart, end_func:VLArbHighXmlParserEnd }, // structure
 	{ tag:"VLArbitrationPreemptElements", format:'k', format_func:PortDataXmlOutputVLArbPreemptElements, subfields:VLArbFields, start_func:VLArbPreemptElementsXmlParserStart, end_func:VLArbPreemptElementsXmlParserEnd },
@@ -3512,6 +3415,16 @@ static void *SnapshotXmlParserStart(IXmlParserState_t *state, void *parent, cons
 				IXmlParserPrintError(state, "Invalid qosdata attribute: %s", attr[i+1]);
 			else
 				fabricp->flags |= temp?FF_QOSDATA:FF_NONE;
+		} else if (strcmp(attr[i], "bfrctrl") == 0) {
+			if (FSUCCESS != StringToUint64(&temp, attr[i+1], NULL, 0, TRUE))
+				IXmlParserPrintError(state, "Invalid bfrctrl attribute: %s", attr[i+1]);
+			else
+				fabricp->flags |= temp?FF_BUFCTRLTABLE:FF_NONE;
+		} else if (strcmp(attr[i], "downports") == 0) {
+			if (FSUCCESS != StringToUint64(&temp, attr[i+1], NULL, 0, TRUE))
+				IXmlParserPrintError(state, "Invalid downports attribute: %s", attr[i+1]);
+			else
+				fabricp->flags |= temp?FF_DOWNPORTINFO:FF_NONE;
 		}
 	}
 	if (! gottime) {
@@ -3555,11 +3468,12 @@ static void SnapshotInfoXmlFormatAttr(IXmlOutputState_t *state, void *data)
 
 	Top_formattime(datestr, sizeof(datestr), info->fabricp->time);
 	IXmlOutputPrint( state, " date=\"%s\" unixtime=\"%ld\" stats=\"%d\""
-		" routes=\"%d\" qosdata=\"%d\" bfrctrl=\"%d\" options=\"",
+		" routes=\"%d\" qosdata=\"%d\" bfrctrl=\"%d\" downports=\"%d\" options=\"",
 		datestr, info->fabricp->time, (info->fabricp->flags & FF_STATS) ? 1:0,
 		(info->fabricp->flags & FF_ROUTES) ? 1:0,
 		(info->fabricp->flags & FF_QOSDATA) ? 1:0,
-		(info->fabricp->flags & FF_BUFCTRLTABLE) ? 1:0 );
+		(info->fabricp->flags & FF_BUFCTRLTABLE) ? 1:0,
+		(info->fabricp->flags & FF_DOWNPORTINFO) ? 1:0 );
 	for (i=1; i<info->argc; i++)
 		IXmlOutputPrint(state, "%s%s", i>1?" ":"", info->argv[i]);
 	IXmlOutputPrint(state, "\"");

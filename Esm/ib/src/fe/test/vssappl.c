@@ -266,44 +266,29 @@ size_t vs_pool_page_size (void)
 /***********************************************************************/
 
 #define HSTR_LEN 96
-void hexout(uint8_t *cmd,int cc)
-{
-  int    i,j;
-  char   hstr[HSTR_LEN+5];
-  char   astr[19];
-  char   tbuf[10];
-  int    tcnt;
+void hexout(uint8_t *cmd, int cc) {
+	int    i,j;
+	char   hstr[HSTR_LEN+5];
+	char   astr[19];
+	int    tcnt;
 
-  tcnt = 0;
-  fprintf(stderr,"-----------------\n");
-  while(cc)
-	{
-	strcpy(astr,"[................]");
-	strcpy(hstr,"");
-
-	for(i=0,j=1;i<16 && cc>0;i++,j++)
-		{
-		cc--;
-		snprintf(tbuf,sizeof(tbuf),"%02X",*(cmd+i) & 0xff);
-		if (strlen(hstr)<HSTR_LEN) 
-			{
-			strncat(hstr,tbuf,2);
-			if(j==8)
-				strcat(hstr," - ");
-			else
-				strcat(hstr," ");
+	tcnt = 0;
+	fprintf(stderr, "-----------------\n");
+	while(cc) {
+		strcpy(astr, "[................]");
+		strcpy(hstr, "");
+		
+		j = 0;
+		for(i=0;i<16 && cc>0;i++){
+			cc--;
+			j += snprintf(hstr + j, 6, "%02X%s", cmd[i], i == 7 ? " - " : " ");
+			if(isprint(cmd[i])){
+				astr[i+1] = cmd[i];
 			}
-		if(isprint(*(cmd+i)))
-          		{
-			astr[j] = *(cmd+i);
-          		}
-      		}
-	hstr[HSTR_LEN]=0;
-	cmd+=16;
-	fprintf(stderr,"%04X: %-50s %s\n",tcnt,hstr,astr);
-	tcnt += 16;
+		}
+		cmd += 16;
+		fprintf(stderr, "%04X: %-50s %s\n", tcnt, hstr, astr);
+		tcnt += 16;
 	}
-
-  fprintf(stderr,"\n");
-
+	fprintf(stderr,"\n");
 }

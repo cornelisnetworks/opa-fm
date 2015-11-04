@@ -147,6 +147,7 @@ extern Pool_t sm_pool;
 #define SmaEnableLRDR_FALLBACK_OPTION		2	
 #define	SmaEnableLRDR_MAX_RETRIES			3	//total retries while using LR-DR SMPs approach
 
+extern int activateInProgress;
 extern int isSweeping;
 extern int forceRebalanceNextSweep;
 extern int topology_changed;  /* indicates a change in the topology during discovery */
@@ -232,10 +233,8 @@ typedef	struct _PortData {
 	uint8_t		lmc;		// LMC for this port
 	uint8_t		vl0;		// VLs supported
 	uint8_t		vl1;		// VLs actual
-// TBD MTUs below could be a much smaller field, only need 3-6 bits
-	uint16_t	mtuSupported;		// MTUs supported
-	uint16_t	mtuActive;		// actual MTU
-    uint16_t    maxVlMtu;   // Largest mtu of VLs/VFs on this port.
+	uint8_t		mtuSupported:4;		// MTUs supported
+    uint8_t		maxVlMtu:4;   // Largest mtu of VLs/VFs on this port.
     uint8_t     rate;       // static rate of link (speed*width)
     uint8_t     lsf;        // calculated link speed data rate factor used in cost
 	uint8_t		guidCap;	// # of GUIDs
@@ -325,6 +324,7 @@ typedef	struct _PortData {
 	} changes;
 
 	void		*routingData; 	// Private data used by topology algorithm.
+	int32_t		initWireDepth;		// Initial wire depth to use for buffer calculations.
 } PortData_t;
 
 // This structure is retained for all switch ports and has summary information
@@ -1259,13 +1259,11 @@ static __inline__ int sm_valid_port(Port_t * portp) {
 }
 
 static __inline__ int sm_valid_port_mgmt_allowed_pkey(Port_t * portp) {
-    if (PKEY_VALUE(portp->portData->pPKey[STL_DEFAULT_CLIENT_PKEY_IDX].AsReg16) == PKEY_VALUE(STL_DEFAULT_CLIENT_PKEY)) {
-        if ((PKEY_VALUE(portp->portData->pPKey[STL_DEFAULT_FM_PKEY_IDX].AsReg16) == PKEY_VALUE(STL_DEFAULT_FM_PKEY)) && 
-            (PKEY_TYPE(portp->portData->pPKey[STL_DEFAULT_FM_PKEY_IDX].AsReg16) == PKEY_TYPE_FULL)) {
-            return 1; 
-        }
-    }
-    return 0;
+	if (portp->portData->pPKey[STL_DEFAULT_FM_PKEY_IDX].AsReg16 == STL_DEFAULT_FM_PKEY ||
+		portp->portData->pPKey[STL_DEFAULT_CLIENT_PKEY_IDX].AsReg16 == STL_DEFAULT_FM_PKEY)
+		return 1;
+    else
+		return 0;
 }
 
 
@@ -1509,69 +1507,6 @@ static __inline__ Lid_t sm_port_top_lid(Port_t * portp) {
 			(((Z) == 6) ? " 8k" :   \
 			(((Z) == 7) ? " 10k" : "---"))))))
 
-/*
- * In STL there are 512 variations of width. It is implausible to
- * list them all in a #define.
- */
-static __inline__ char *
-Decode_Width(uint16_t w, char *buf, size_t len)
-{
-	int i, j, l;
-
-#define STL_WIDTH_TEXT_LENGTH 16
-
-	char *StlWidthText[STL_WIDTH_TEXT_LENGTH] = {
-		"1", "4", "8", "12", "2", "3", "6", "9", 
-		"16", "?", "?", "?", "?", "?", "?", "?", 
-	};
-	
-	if (w == STL_LINK_WIDTH_NOP) {
-		snprintf(buf,len-1,"NOP");
-		buf[len-1]=0;
-	} else {
-		l=len-4;	// the max we can tack on in 1 pass is 3 bytes.
-
-		// Loop terminates as soon as the width is zero.
-		for (i=0, j=0; w!=0 && i<STL_WIDTH_TEXT_LENGTH && j<l; i++, w>>=1) {
-			if (w & 1) {
-				if (j>0) buf[j++]=',';
-				j+=snprintf(buf+j,len-j,StlWidthText[i]);
-			}
-		}
-	}
-	return buf;
-}
-
-/*
- * In STL there are 512 variations of width. It is implausible to
- * list them all in a #define.
- */
-static __inline__ char *
-Decode_SpeedSupport(uint16_t w, char *buf, size_t len)
-{
-	int i, j, l;
-
-#define STL_SPEED_TEXT_LENGTH 2
-
-	char *StlSpeedText[STL_SPEED_TEXT_LENGTH] = {"12.5", "25"};
-	
-	if (w == STL_LINK_SPEED_NOP) {
-		snprintf(buf,len-1,"NOP");
-		buf[len-1]=0;
-	} else {
-		l=len-5;	// the max we can tack on in 1 pass is 4 bytes.
-
-		// Loop terminates as soon as the width is zero.
-		for (i=0, j=0; w!=0 && i<STL_SPEED_TEXT_LENGTH && j<l; i++, w>>=1) {
-			if (w & 1) {
-				if (j>0) buf[j++]=',';
-				j+=snprintf(buf+j,len-j,StlSpeedText[i]);
-			}
-		}
-	}
-	return buf;
-}
-
 // Converts a rate into a "speed factor" used in cost calculations.
 // factor ~= rate * 64/66 * 2.
 // Currently only handles 12.5 and 25G 
@@ -1628,8 +1563,8 @@ static __inline__ int sm_stl_appliance(uint64 nodeGuid) {
 #define PORTGUID_PNUM_MASK 0x7ull
 #define PORTGUID_PNUM_SHIFT 32
 static __inline__ int sm_stl_authentic_node(Topology_t *tp, Node_t *cnp, Port_t *cpp,
-                                            STL_NODE_INFO *neighborInfo, STL_NODE_DESCRIPTION *neighborNodeDesc,
-                                            STL_PORT_INFO *neighborPI, uint32* quarantineReasons) {
+                                            STL_NODE_INFO *neighborInfo, STL_PORT_INFO *neighborPI,
+											uint32* quarantineReasons) {
     int authentic = 1;
 	uint64 expectedPortGuid;
 
@@ -1646,13 +1581,11 @@ static __inline__ int sm_stl_authentic_node(Topology_t *tp, Node_t *cnp, Port_t 
         }
 #ifdef USE_FIXED_SCVL_MAPS
         // Verify port supports min number required VLs
+		// This test against LocalPortNum should likely be against NeighborPortNum instead, but as this code is
+		// only called when communicating directly across the LocalPortNum link to this node, the point is moot
         if ( (neighborInfo->NodeType != NI_TYPE_SWITCH) ||
              ((neighborInfo->NodeType == NI_TYPE_SWITCH) && (neighborPI->LocalPortNum!=0)) ) {
             if (neighborPI->VL.s2.Cap < sm_config.min_supported_vls) {
-                // Temporarily log an error until users become familar with this limitation.
-                IB_LOG_ERROR_FMT(__func__, "Node:%s guid:"FMT_U64" type:%d port:%d. Supported VLs(%d) too small(needs %d). Quarantined.",
-                                 neighborNodeDesc->NodeString, neighborInfo->NodeGUID, neighborInfo->NodeType, neighborPI->LocalPortNum,
-                                 neighborPI->VL.s2.Cap, sm_config.min_supported_vls);
 				*quarantineReasons |= STL_QUARANTINE_REASON_VL_COUNT;
                 authentic = 0;
                 return (authentic);
@@ -1662,7 +1595,7 @@ static __inline__ int sm_stl_authentic_node(Topology_t *tp, Node_t *cnp, Port_t 
 	}
 
     if (sm_config.sma_spoofing_check) {
-        if (cnp && cpp && neighborInfo && neighborNodeDesc) {
+        if (cnp && cpp && neighborInfo) {
             // LNI neighbor related fields only supported on external switch
             // ports and enhanced switch ports
             if (sm_stl_port(cpp) && 
@@ -1674,7 +1607,9 @@ static __inline__ int sm_stl_authentic_node(Topology_t *tp, Node_t *cnp, Port_t 
                 case NI_TYPE_SWITCH:
                     if ((sm_config.neighborFWAuthenEnable && cpp->portData->portInfo.PortNeighborMode.NeighborFWAuthenBypass != 0) ||
                         cpp->portData->portInfo.NeighborNodeGUID != neighborInfo->NodeGUID ||
-                        cpp->portData->portInfo.PortNeighborMode.NeighborNodeType != 1) {
+                        cpp->portData->portInfo.PortNeighborMode.NeighborNodeType != STL_NEIGH_NODE_TYPE_SW ||
+						cpp->portData->portInfo.NeighborPortNum != neighborInfo->u1.s.LocalPortNum ||
+						(neighborPI != NULL && cpp->portData->portInfo.NeighborPortNum != neighborPI->LocalPortNum)) {
                         authentic = 0;
 						*quarantineReasons |= STL_QUARANTINE_REASON_SPOOF_GENERIC;
                     }
@@ -1686,8 +1621,10 @@ static __inline__ int sm_stl_authentic_node(Topology_t *tp, Node_t *cnp, Port_t 
                     // for Gen-1 the HFI is never trusted, no need to check the
                     // portInfo.PortNeighborMode.NeighborFWAuthenBypass field 
                     if (cpp->portData->portInfo.NeighborNodeGUID != neighborInfo->NodeGUID ||
-                        cpp->portData->portInfo.PortNeighborMode.NeighborNodeType != 0  ||
-                        expectedPortGuid != neighborInfo->PortGUID) {
+                        cpp->portData->portInfo.PortNeighborMode.NeighborNodeType != STL_NEIGH_NODE_TYPE_HFI  ||
+                        expectedPortGuid != neighborInfo->PortGUID ||
+						cpp->portData->portInfo.NeighborPortNum != neighborInfo->u1.s.LocalPortNum ||
+						(neighborPI != NULL && cpp->portData->portInfo.NeighborPortNum != neighborPI->LocalPortNum)) {
                         authentic = 0;
 						*quarantineReasons |= STL_QUARANTINE_REASON_SPOOF_GENERIC;
                     }
@@ -1699,24 +1636,12 @@ static __inline__ int sm_stl_authentic_node(Topology_t *tp, Node_t *cnp, Port_t 
                     break;
                 }
 
-                if (!authentic) {
-                    if (sm_stl_appliance(cpp->portData->portInfo.NeighborNodeGUID)) {
-                        // neighbor node is an appliance, so ignore security violation
-                        authentic = 1;
-                    } else {
-					IB_LOG_ERROR_FMT(__func__, "Neighbor of %s %s [%s] guid "FMT_U64" on port %d could not be authenticated (node reports to "
-									"be a %s, [%s] guid "FMT_U64" on port %d - actual guid is "FMT_U64")",
-									cnp->nodeInfo.NodeType ? "SW" : "HFI", (cnp == tp->node_head) ? "SM node" : "node",
-									sm_nodeDescString(cnp), cnp->nodeInfo.NodeGUID, cpp->index,
-									neighborInfo->NodeType ? "switch" : "HFI",
-									neighborNodeDesc->NodeString, neighborInfo->NodeGUID,
-									neighborInfo->u1.s.LocalPortNum,
-									cpp->portData->portInfo.NeighborNodeGUID);
-                    IB_LOG_ERROR_FMT(__func__, "Authentication expected from the neighbor guid "FMT_U64" neighbor node type %s",
-                                     cpp->portData->portInfo.NeighborNodeGUID,
-                                     cpp->portData->portInfo.PortNeighborMode.NeighborNodeType ? "SW" : "HFI");
-                    }
-                }
+				// neighbor node is an appliance, so ignore security violation
+				if (!authentic && sm_stl_appliance(cpp->portData->portInfo.NeighborNodeGUID)) {
+					authentic = 1;
+					// Unclear the generic spoof flag so we don't report predef violations as spoofing when using an appliance
+					*quarantineReasons &= ~STL_QUARANTINE_REASON_SPOOF_GENERIC;
+				}
             }
         }
     }
@@ -1724,7 +1649,7 @@ static __inline__ int sm_stl_authentic_node(Topology_t *tp, Node_t *cnp, Port_t 
 	return (authentic);
 }
 
-static __inline__ void sm_stl_quarantine_node(Topology_t *tp, Node_t *cnp, Port_t *cpp, Node_t *qnp, uint32 quarantineReasons, STL_EXPECTED_NODE_INFO* expNodeInfo) {
+static __inline__ void sm_stl_quarantine_node(Topology_t *tp, Node_t *cnp, Port_t *cpp, Node_t *qnp, uint32 quarantineReasons, STL_EXPECTED_NODE_INFO* expNodeInfo, const STL_PORT_INFO *pQPI) {
     QuarantinedNode_t * qnodep;
 
     // allocate memory for quarantined node list entry
@@ -1751,6 +1676,40 @@ static __inline__ void sm_stl_quarantine_node(Topology_t *tp, Node_t *cnp, Port_
                        &qnp->mapQuarantinedObj.item) == &qnp->mapQuarantinedObj.item) {
         cl_qmap_set_obj(&qnp->mapQuarantinedObj, qnp);
     }
+
+	if (pQPI) {
+		// Temporarily log an error until users become familar with this limitation (VL or MTU).
+		if (quarantineReasons & STL_QUARANTINE_REASON_VL_COUNT) {
+			IB_LOG_ERROR_FMT(__func__, "Node:%s guid:"FMT_U64" type:%s port:%d. Supported VLs(%d) too small(needs => %d). Quarantined.",
+			sm_nodeDescString(qnp), qnp->nodeInfo.NodeGUID, StlNodeTypeToText(qnp->nodeInfo.NodeType), pQPI->LocalPortNum,
+			pQPI->VL.s2.Cap, sm_config.min_supported_vls);
+			return;
+		}
+		if (quarantineReasons & STL_QUARANTINE_REASON_SMALL_MTU_SIZE) {
+			IB_LOG_ERROR_FMT(__func__, "Node:%s guid:"FMT_U64" type:%s port:%d. Supported MTU(%s) too small(needs => 2048). Quarantined.",
+			sm_nodeDescString(qnp), qnp->nodeInfo.NodeGUID, StlNodeTypeToText(qnp->nodeInfo.NodeType), pQPI->LocalPortNum,
+			IbMTUToText(pQPI->MTU.Cap));
+			return;
+		}
+	}
+
+	if (cpp) {
+		IB_LOG_ERROR_FMT(__func__, "Neighbor of %s %s [%s] guid "FMT_U64" on port %d could not be authenticated (node reports to "
+						"be a %s with NodeDesc [%s] and guid "FMT_U64" on port %d - but actual guid is "FMT_U64", on port %d)",
+						StlNodeTypeToText(cnp->nodeInfo.NodeType), (cnp == tp->node_head) ? "SM node" : "node",
+						sm_nodeDescString(cnp), cnp->nodeInfo.NodeGUID, cpp->index,
+						StlNodeTypeToText(qnp->nodeInfo.NodeType),
+						sm_nodeDescString(qnp), qnp->nodeInfo.NodeGUID,
+						qnp->nodeInfo.u1.s.LocalPortNum,
+						cpp->portData->portInfo.NeighborNodeGUID,
+						cpp->portData->portInfo.NeighborPortNum);
+		IB_LOG_ERROR_FMT(__func__, "Authentication expected from the neighbor guid "FMT_U64" neighbor node type %s",
+						cpp->portData->portInfo.NeighborNodeGUID,
+						OpaNeighborNodeTypeToText(cpp->portData->portInfo.PortNeighborMode.NeighborNodeType));
+	} else {
+		// Yes, the SM can fail authentication. (Failure in validation of pre-defined topology).
+		IB_LOG_ERROR_FMT(__func__, "SM's port failed authentication.");
+	}
 }
 
 // --------------------------------------------------------------------------- //
@@ -1936,6 +1895,7 @@ Status_t	SM_Set_PortGroup(IBhandle_t fd, uint32_t amod, uint8_t *path, uint16_t 
 Status_t	SM_Get_PortGroupFwdTable(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_PORT_GROUP_FORWARDING_TABLE *pp, uint8_t blocks);
 Status_t	SM_Set_PortGroupFwdTable(IBhandle_t fd, uint32_t amod, uint8_t *path, uint16_t slid, uint16_t dlid, STL_PORT_GROUP_FORWARDING_TABLE *pp, uint8_t blocks, uint64_t mkey);
 Status_t    SM_Get_BufferControlTable(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_BUFFER_CONTROL_TABLE pbct[]);
+Status_t    SM_Set_BufferControlTable_LR(IBhandle_t fd, uint32_t amod, uint32_t slid, uint32_t dlid, STL_BUFFER_CONTROL_TABLE pbct[], uint64_t mkey, uint32_t* madStatus);
 Status_t    SM_Set_BufferControlTable(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_BUFFER_CONTROL_TABLE pbct[], uint64_t mkey, uint32_t* madStatus);
 Status_t	SM_Get_CongestionInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_CONGESTION_INFO * congestionInfo);
 Status_t	SM_Get_HfiCongestionSetting(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_HFI_CONGESTION_SETTING *hfics);
@@ -2006,6 +1966,7 @@ typedef	struct _VfInfo {
     uint32_t totalVFsQos;
     uint32_t activeVFsQos;
     uint32_t totalSLsNeeded;
+    uint32_t activeSLs;
     int      numHighPriority;
     uint32_t totalConfiguredBandwidth;
     uint32_t totalVFwithConfiguredBW;
@@ -2046,6 +2007,8 @@ const char *sm_getStateText (uint32_t state);
 Status_t	sa_Get_PKeys(Lid_t, uint16_t *, uint32_t *);
 Status_t	sa_Compare_PKeys(STL_PKEY_ELEMENT *, STL_PKEY_ELEMENT *);
 Status_t	sa_Compare_Node_PKeys(Node_t *, Node_t *);
+Status_t    sa_Compare_Port_PKeys(Port_t *port1, Port_t *port2);
+
 uint8_t		linkWidthToRate(PortData_t *portData);
 
 Status_t	sm_mkey_check(Mai_t *,  uint64_t *);
@@ -2160,7 +2123,7 @@ void        fe_config_apply(FMXmlCompositeConfig_t *xml_config);
 boolean     sm_config_valid(FMXmlCompositeConfig_t *xml_config, VirtualFabrics_t* newVfPtr, VirtualFabrics_t* oldVfPtr);
 boolean     pm_config_valid(FMXmlCompositeConfig_t *xml_config);
 boolean     fe_config_valid(FMXmlCompositeConfig_t *xml_config);
-uint32_t    findVfIdxInActiveList(VF_t* vfToFind, VirtualFabrics_t *VirtualFabrics);
+uint32_t    findVfIdxInActiveList(VF_t* vfToFind, VirtualFabrics_t *VirtualFabrics, uint8_t logWarning);
 
 /**
 	Update SLSC, SCSL, SCVLt/nt, and VLArb values on @c nodep with values from old topology and/or SMA at @c smaportp.
@@ -2191,6 +2154,7 @@ Status_t	sm_activate_port(Topology_t *, Node_t *, Port_t *);
 Status_t	sm_disable_port(Topology_t *, Node_t *, Port_t *);
 Status_t	sm_bounce_port(Topology_t *, Node_t *, Port_t *);
 Status_t	sm_bounce_link(Topology_t *, Node_t *, Port_t *);
+Status_t    sm_bounce_all_switch_ports(Topology_t *topop, Node_t *nodep, Port_t *portp, uint8_t *path);
 Status_t	sm_get_CapabilityMask(IBhandle_t, uint8_t, uint32_t *);
 Status_t	sm_set_CapabilityMask(IBhandle_t, uint8_t, uint32_t);
 Status_t	sm_process_notice(Notice_t *);

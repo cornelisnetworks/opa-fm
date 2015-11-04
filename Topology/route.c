@@ -50,10 +50,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // for use in other routines.
 //typedef FSTATUS (RouteCallback_t)(PortData *entryPortp, PortData *exitPortp, void *context);
 
-// lookup dlid in LFT of switch
+// lookup dlid in LFT of switch and return portp to exit switch
 static PortData *LookupLFT(NodeData *nodep, IB_LID dlid)
 {
 	uint8 portNum;
+	PortData *portp;
 
 	DEBUG_ASSERT(nodep->switchp && nodep->switchp->LinearFDB);	//caller checks
 	if (! dlid || dlid >= nodep->switchp->LinearFDBSize)
@@ -63,7 +64,15 @@ static PortData *LookupLFT(NodeData *nodep, IB_LID dlid)
 	if (portNum == 0xff)
 		return NULL;	// invalid table entry, no route
 
-	return FindNodePort(nodep, portNum);
+	portp = FindNodePort(nodep, portNum);
+	// Analysis is focused on datapath routes.  While VL15 can route through an
+	// Init port, that analysis is atypical.  Prior to FF_DOWNPORTINFO
+	// we would tend not to have ports Down or Init in our DB so
+	// search above would fail.
+	if (! portp || ! IsPortInitialized(portp->PortInfo.PortStates)
+		|| (portNum != 0 && ! portp->neighbor))
+		return NULL;	// Non viable route
+	return portp;
 }
 
 // Walk route from portp to dlid.

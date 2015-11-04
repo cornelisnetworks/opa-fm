@@ -73,6 +73,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "iba/stl_mad.h"
 #include "iba/ib_sa_records.h"
 
+#define NO_STL_MCMEMBER_RECORD     // SA shouldn't support STL McMember Record
+#define NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
+
 #if defined (__cplusplus)
 extern "C" {
 #endif
@@ -95,7 +98,7 @@ extern "C" {
 //#define	STL_SA_ATTR_RANDOM_FWD_TBL_RECORD	0x0016 // Undefined in STL.
 #define	STL_SA_ATTR_MCAST_FWDTBL_RECORD			0x0017
 #define	STL_SA_ATTR_SMINFO_RECORD				0x0018
-#define STL_SA_ATTR_LINK_SPD_WDTH_PAIRS_RECORD	0x0019 // Defined by never impl'ed
+#define STL_SA_ATTR_LINK_SPD_WDTH_PAIRS_RECORD	0x0019 // Defined but never impl'ed
 //Available										0x001A-0x001F
 #define	STL_SA_ATTR_LINK_RECORD					0x0020
 //#define	STL_SA_ATTR_GUIDINFO_RECORD			0x0030 // Undefined in STL.
@@ -106,7 +109,7 @@ extern "C" {
 #define	STL_SA_ATTR_MCMEMBER_RECORD				0x0038
 #define	STL_SA_ATTR_TRACE_RECORD				0x0039
 #define	STL_SA_ATTR_MULTIPATH_GID_RECORD		0x003A 
-#define	STL_SA_ATTR_SERVICEASSOCIATION_RECORD	0x003B
+#define	STL_SA_ATTR_SERVICEASSOCIATION_RECORD	0x003B	/* not implemented */
 //Available										0x003C-0x007F
 #define	STL_SA_ATTR_INFORM_INFO_RECORD			0x00F3
 
@@ -119,14 +122,15 @@ extern "C" {
 #define STL_SA_ATTR_SC2VL_T_MAPTBL_RECORD		0x0083 
 #define STL_SA_ATTR_SC2VL_R_MAPTBL_RECORD		0x0084 
 #define	STL_SA_ATTR_PGROUP_FWDTBL_RECORD		0x0085 
-#define	STL_SA_ATTR_MULTIPATH_GUID_RECORD		0x0086 
-#define	STL_SA_ATTR_MULTIPATH_LID_RECORD		0x0087 
+#define	STL_SA_ATTR_MULTIPATH_GUID_RECORD		0x0086 	/* not implemented */
+#define	STL_SA_ATTR_MULTIPATH_LID_RECORD		0x0087 	/* not implemented */
 #define STL_SA_ATTR_CABLE_INFO_RECORD			0x0088 
 #define STL_SA_ATTR_VF_INFO_RECORD				0x0089 // Previously vendor specific
 #define STL_SA_ATTR_PORT_STATE_INFO_RECORD		0x008A 
 #define STL_SA_ATTR_PORTGROUP_TABLE_RECORD		0x008B 
 #define STL_SA_ATTR_BUFF_CTRL_TAB_RECORD		0x008C 
-//Available										0x008D-0x008F
+#define STL_SA_ATTR_FABRICINFO_RECORD			0x008D
+//Available										0x008E-0x008F
 #define STL_SA_ATTR_QUARANTINED_NODE_RECORD		0x0090 // Previously vendor specific
 #define STL_SA_ATTR_CONGESTION_INFO_RECORD		0x0091 // Previously vendor specific
 #define STL_SA_ATTR_SWITCH_CONG_RECORD			0x0092 // Previously vendor specific
@@ -135,7 +139,6 @@ extern "C" {
 #define STL_SA_ATTR_HFI_CONG_CTRL_RECORD		0x0095 // Previously vendor specific
 
 //#define STL_SA_ATTR_JOB_ROUTE_RECORD			0xffb2  // Never implemented.
-//#define STL_SA_ATTR_VENDSWITCHINFO_RECORD		0xffb3  // Never implemented.
 //#define STL_SA_ATTR_CG_RECORD        			0xff40  // Never implemented.
 //#define STL_SA_ATTR_CG_STATUS_RECORD 			0xff41  // Never implemented.
 //#define STL_SA_ATTR_CFT_RECORD       			0xff42  // Never implemented.
@@ -1721,11 +1724,11 @@ typedef struct {
 
 } PACK_SUFFIX STL_CABLE_INFO_RECORD;
 
-#define STL_CIB_COMP_LID 	0x1ul
-#define STL_CIB_COMP_PORT	0x2ul
-#define STL_CIB_COMP_LEN	0x4ul
+#define STL_CIR_COMP_LID 	0x1ul
+#define STL_CIR_COMP_PORT	0x2ul
+#define STL_CIR_COMP_LEN	0x4ul
 //Reserved					0x8ul
-#define STL_CIB_COMP_ADDR	0x10ul
+#define STL_CIR_COMP_ADDR	0x10ul
 //Reserved2					0x20ul
 
 static __inline void
@@ -1800,15 +1803,23 @@ typedef struct {
 				priority:1);		/* priority, 1 bit */
 
 	uint8		routingSLs;
+
+	IB_BITFIELD2(uint8,
+				rsvd8:1,	
+				preemptionRank:7);
 	
-	uint8		rsvd7[24];
+	IB_BITFIELD2(uint8,
+				rsvd9:3,	
+				hoqLife:5);
+	
+	uint8		rsvd7[22];
 
 } PACK_SUFFIX STL_VFINFO_RECORD;
 
 #define STL_VFINFO_REC_COMP_INDEX				0x0000000000000001ll
 #define STL_VFINFO_REC_COMP_PKEY				0x0000000000000002ll
 #define STL_VFINFO_REC_COMP_NAME				0x0000000000000008ll
-#define STL_VFINFO_REC_COMP_SERVICEID				0x0000000000000010ll
+#define STL_VFINFO_REC_COMP_SERVICEID			0x0000000000000010ll
 #define STL_VFINFO_REC_COMP_MGID				0x0000000000000020ll
 #define STL_VFINFO_REC_COMP_SL					0x0000000000000080ll
 
@@ -1870,12 +1881,13 @@ typedef struct {
 
 typedef struct {
 	STL_LID_32 trustedLid;
-	uint64 trustedNodeGUID;
 	uint8 trustedPortNum;
+	uint8 Reserved[3];
+	uint64 trustedNodeGUID;
 	uint64 trustedNeighborNodeGUID;
 
-	STL_NODE_INFO NodeInfo;
 	STL_NODE_DESCRIPTION NodeDesc;
+	STL_NODE_INFO NodeInfo;
 
 	uint32 quarantineReasons;
 	// expectedNodeInfo only valid if quarantineReasons != 0
@@ -2097,6 +2109,51 @@ BSWAPCOPY_STL_BUFFER_CONTROL_TABLE_RECORD(STL_BUFFER_CONTROL_TABLE_RECORD *Src, 
 	BSWAP_STL_BUFFER_CONTROL_TABLE_RECORD(Dest);
 }
 
+/*
+ * FabricInfo Record
+ *
+ * STL Differences:
+ * 		New for STL
+ * 		supports only Get, Component Mask N/A
+ */
+typedef struct {
+	uint32	NumHFIs;				/* HFI Nodes */
+	uint32	NumSwitches;			/* Switch Nodes (ASICs) */
+		/* Internal = in same SystemImageGuid */
+		/* HFI = HFI to switch and HFI to HFI links */
+		/* ISL = switch to switch links */
+		/* links which are Omitted will not be considered for Degraded checks */
+		/* switch port 0 is not counted as a link */
+	uint32	NumInternalHFILinks;	/* HFI to switch (or HFI) links */
+	uint32	NumExternalHFILinks;	/* HFI to switch (or HFI) links */
+	uint32	NumInternalISLs;		/* switch to switch links */
+	uint32	NumExternalISLs;		/* switch to switch links */
+	uint32	NumDegradedHFILinks;	/* links with one or both sides below best enabled */
+	uint32	NumDegradedISLs;		/* links with one or both sides below best enabled */
+	uint32	NumOmittedHFILinks;		/* links quarantined or left in Init */
+	uint32	NumOmittedISLs;			/* links quarantined or left in Init */
+	uint32	rsvd5[92];
+} PACK_SUFFIX STL_FABRICINFO_RECORD;
+
+static __inline
+void
+BSWAP_STL_FABRICINFO_RECORD(
+    STL_FABRICINFO_RECORD  *Dest
+    )
+{
+#if CPU_LE
+	Dest->NumHFIs = ntoh32(Dest->NumHFIs);
+	Dest->NumSwitches = ntoh32(Dest->NumSwitches);
+	Dest->NumInternalHFILinks = ntoh32(Dest->NumInternalHFILinks);
+	Dest->NumExternalHFILinks = ntoh32(Dest->NumExternalHFILinks);
+	Dest->NumInternalISLs = ntoh32(Dest->NumInternalISLs);
+	Dest->NumExternalISLs = ntoh32(Dest->NumExternalISLs);
+	Dest->NumDegradedHFILinks = ntoh32(Dest->NumDegradedHFILinks);
+	Dest->NumDegradedISLs = ntoh32(Dest->NumDegradedISLs);
+	Dest->NumOmittedHFILinks = ntoh32(Dest->NumOmittedHFILinks);
+	Dest->NumOmittedISLs = ntoh32(Dest->NumOmittedISLs);
+#endif /* CPU_LE */
+}
 
 /*
  * Port State Info

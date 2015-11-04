@@ -547,25 +547,6 @@ void PrintGuidInfo(PrintDest_t *dest, int indent, const GUID_INFO *pGuidInfo, ui
 	PrintFunc(dest, "%*s%s\n", indent, "", buf);
 }
 
-void PrintVendorSwitchInfo(PrintDest_t *dest, int indent, const VENDOR_SWITCH_INFO *pVendorSwitchInfo, IB_LID lid)
-{
-	PrintSwitchInfo(dest, indent, &pVendorSwitchInfo->SwitchInfo, lid);
-
-	PrintFunc(dest, "%*sLostRoutesOnly: %d AdaptiveRoutingPause: %d AREnable: %d ARTier1Enable: %d\n",
-				indent, "",
-				pVendorSwitchInfo->u.s.LostRoutesOnly,
-				pVendorSwitchInfo->u.s.AdaptiveRoutingPause,
-				pVendorSwitchInfo->u.s.AdaptiveRoutingEnable,
-				pVendorSwitchInfo->u.s.AdaptiveRoutingTier1Enable);
-
-	PrintFunc(dest, "%*sVersion: %d  VendorCapability: 0x%02x: %s %s\n",
-				indent, "",
-				pVendorSwitchInfo->Version,
-				pVendorSwitchInfo->CapabilityMask.AsReg16,
-				pVendorSwitchInfo->CapabilityMask.s.IsAdaptiveRoutingSupported?"AR_SUPPORT": "",
-				pVendorSwitchInfo->CapabilityMask.s.IsAdaptiveRoutingTier1Supported?"AR_TIER1": "");
-}
-
 void PrintPortGroupTable(PrintDest_t *dest, int indent, const PORT_GROUP_TABLE *pPortGroup, uint16 tier, uint16 blockNum)
 {
 	int i;
@@ -715,10 +696,6 @@ void PrintSmp(PrintDest_t *dest, int indent, const SMP *smp)
 		break;
 	case MCLASS_ATTRIB_ID_LED_INFO:
 		// TBD Hex Dump
-		break;
-	case MCLASS_ATTRIB_ID_VENDOR_SWITCH_INFO:
-		PrintVendorSwitchInfo(dest, indent,
-			(const VENDOR_SWITCH_INFO *)&smp->SmpExt.DirectedRoute.SMPData, 0);
 		break;
 	case MCLASS_ATTRIB_ID_PORT_LFT:
 		PrintLinearFDB(dest, indent,

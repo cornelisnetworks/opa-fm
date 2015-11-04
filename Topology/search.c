@@ -391,7 +391,35 @@ FSTATUS FindPortState(FabricData_t *fabricp, IB_PORT_STATE state, Point *pPoint)
 	}
 	if (pPoint->Type == POINT_TYPE_NONE) {
 		fprintf(stderr, "%s: Port State Not Found: %s\n",
-					   	g_Top_cmdname, IbPortStateToText(state));
+					   	g_Top_cmdname, StlPortStateToText(state));
+		return FNOT_FOUND;
+	}
+	PointCompress(pPoint);
+	return FSUCCESS;
+}
+
+// search for the PortData corresponding to the given port phys state
+FSTATUS FindPortPhysState(FabricData_t *fabricp, IB_PORT_PHYS_STATE physstate, Point *pPoint)
+{
+	LIST_ITEM *p;
+	FSTATUS status;
+
+	ASSERT(pPoint->Type == POINT_TYPE_NONE);
+	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+		PortData *portp = (PortData *)QListObj(p);
+
+		///* omit switch port 0, state can be odd */
+		//if (portp->PortNum == 0)
+		//	continue;
+		if (portp->PortInfo.PortStates.s.PortPhysicalState == physstate) {
+			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+			if (FSUCCESS != status)
+				return status;
+		}
+	}
+	if (pPoint->Type == POINT_TYPE_NONE) {
+		fprintf(stderr, "%s: Port Phys State Not Found: %s\n",
+					   	g_Top_cmdname, StlPortPhysStateToText(physstate));
 		return FNOT_FOUND;
 	}
 	PointCompress(pPoint);
@@ -482,6 +510,226 @@ FSTATUS FindCableDetailsPat(FabricData_t *fabricp, const char* pattern, Point *p
 	PointCompress(pPoint);
 	return FSUCCESS;
 }
+
+// search for ports whose CABLE_INFO has the given length
+FSTATUS FindCabinfLenPat(FabricData_t *fabricp, const char* pattern, Point *pPoint)
+{
+	LIST_ITEM *p;
+	FSTATUS status;
+	uint32 n_pattern = 0;
+	uint8 xmit_tech;
+	STL_CABLE_INFO_STD *pCableInfo;
+
+	ASSERT(pPoint->Type == POINT_TYPE_NONE);
+	if ((sscanf(pattern, "%3u", &n_pattern) != 1) || (n_pattern > 255))
+	{
+		fprintf(stderr, "%s: Invalid CABLE_INFO length Pattern: %s\n",
+			g_Top_cmdname, pattern);
+		return FNOT_FOUND;
+	}
+	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+		PortData *portp = (PortData *)QListObj(p);
+
+		pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
+		if (! pCableInfo)
+			continue;
+		xmit_tech = pCableInfo->dev_tech.s.xmit_tech;
+		if ( ( ( (xmit_tech <= STL_CIB_STD_TXTECH_1490_DFB) &&
+				(xmit_tech != STL_CIB_STD_TXTECH_OTHER) &&
+				(pCableInfo->connector == STL_CIB_STD_CONNECTOR_NO_SEP) ) ||
+				(xmit_tech >= STL_CIB_STD_TXTECH_CU_UNEQ) ) &&
+				(pCableInfo->len_om4 == (uint8)n_pattern) )
+		{
+			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+			if (FSUCCESS != status)
+				return status;
+		}
+	}
+	if (pPoint->Type == POINT_TYPE_NONE) {
+		fprintf(stderr, "%s: CABLE_INFO length Not Found: %u\n",
+					   	g_Top_cmdname, n_pattern);
+		return FNOT_FOUND;
+	}
+	PointCompress(pPoint);
+	return FSUCCESS;
+
+}	// End of FindCabinfLenPat()
+
+// search for ports whose CABLE_INFO has the given vendor name
+FSTATUS FindCabinfVendNamePat(FabricData_t *fabricp, const char* pattern, Point *pPoint)
+{
+	LIST_ITEM *p;
+	FSTATUS status;
+	uint32 len_pattern;
+	STL_CABLE_INFO_STD *pCableInfo;
+	char bf_pattern[sizeof(pCableInfo->vendor_name) + 1];
+	char tempStr[sizeof(pCableInfo->vendor_name) + 1];
+
+	ASSERT(pPoint->Type == POINT_TYPE_NONE);
+	len_pattern = strnlen(pattern, sizeof(pCableInfo->vendor_name));
+	memset (bf_pattern, ' ', sizeof(bf_pattern));
+	memcpy (bf_pattern, pattern, len_pattern);
+	if (! len_pattern || (bf_pattern[len_pattern-1] != ' ' && bf_pattern[len_pattern-1] != '*'))
+		bf_pattern[sizeof(pCableInfo->vendor_name)] = '\0';
+	else
+		bf_pattern[len_pattern] = '\0';
+
+	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+		PortData *portp = (PortData *)QListObj(p);
+
+		pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
+		if (! pCableInfo)
+			continue;
+		memcpy(tempStr, pCableInfo->vendor_name, sizeof(pCableInfo->vendor_name));
+		tempStr[sizeof(pCableInfo->vendor_name)] = '\0';
+		if (fnmatch(bf_pattern, (const char *)tempStr, 0) == 0)
+		{
+			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+			if (FSUCCESS != status)
+				return status;
+		}
+	}
+	if (pPoint->Type == POINT_TYPE_NONE) {
+		fprintf(stderr, "%s: CABLE_INFO vendor name Not Found: %s\n",
+					   	g_Top_cmdname, pattern);
+		return FNOT_FOUND;
+	}
+	PointCompress(pPoint);
+	return FSUCCESS;
+
+}	// End of FindCabinfVendNamePat()
+
+// search for ports whose CABLE_INFO has the given vendor part number
+FSTATUS FindCabinfVendPNPat(FabricData_t *fabricp, const char* pattern, Point *pPoint)
+{
+	LIST_ITEM *p;
+	FSTATUS status;
+	uint32 len_pattern;
+	STL_CABLE_INFO_STD *pCableInfo;
+	char bf_pattern[sizeof(pCableInfo->vendor_pn) + 1];
+	char tempStr[sizeof(pCableInfo->vendor_pn) + 1];
+
+	ASSERT(pPoint->Type == POINT_TYPE_NONE);
+	len_pattern = strnlen(pattern, sizeof(pCableInfo->vendor_pn));
+	memset (bf_pattern, ' ', sizeof(bf_pattern));
+	memcpy (bf_pattern, pattern, len_pattern);
+	if (! len_pattern || (bf_pattern[len_pattern-1] != ' ' && bf_pattern[len_pattern-1] != '*'))
+		bf_pattern[sizeof(pCableInfo->vendor_pn)] = '\0';
+	else
+		bf_pattern[len_pattern] = '\0';
+
+	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+		PortData *portp = (PortData *)QListObj(p);
+
+		pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
+		if (! pCableInfo)
+			continue;
+		memcpy(tempStr, pCableInfo->vendor_pn, sizeof(pCableInfo->vendor_pn));
+		tempStr[sizeof(pCableInfo->vendor_pn)] = '\0';
+		if (fnmatch(bf_pattern, (const char *)tempStr, 0) == 0)
+		{
+			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+			if (FSUCCESS != status)
+				return status;
+		}
+	}
+	if (pPoint->Type == POINT_TYPE_NONE) {
+		fprintf(stderr, "%s: CABLE_INFO vendor PN Not Found: %s\n",
+					   	g_Top_cmdname, pattern);
+		return FNOT_FOUND;
+	}
+	PointCompress(pPoint);
+	return FSUCCESS;
+
+}	// End of FindCabinfVendPNPat()
+
+// search for ports whose CABLE_INFO has the given vendor rev
+FSTATUS FindCabinfVendRevPat(FabricData_t *fabricp, const char* pattern, Point *pPoint)
+{
+	LIST_ITEM *p;
+	FSTATUS status;
+	uint32 len_pattern;
+	STL_CABLE_INFO_STD *pCableInfo;
+	char bf_pattern[sizeof(pCableInfo->vendor_rev) + 1];
+	char tempStr[sizeof(pCableInfo->vendor_rev) + 1];
+
+	ASSERT(pPoint->Type == POINT_TYPE_NONE);
+	len_pattern = strnlen(pattern, sizeof(pCableInfo->vendor_rev));
+	memset (bf_pattern, ' ', sizeof(bf_pattern));
+	memcpy (bf_pattern, pattern, len_pattern);
+	if (! len_pattern || (bf_pattern[len_pattern-1] != ' ' && bf_pattern[len_pattern-1] != '*'))
+		bf_pattern[sizeof(pCableInfo->vendor_rev)] = '\0';
+	else
+		bf_pattern[len_pattern] = '\0';
+
+	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+		PortData *portp = (PortData *)QListObj(p);
+
+		pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
+		if (! pCableInfo)
+			continue;
+		memcpy(tempStr, pCableInfo->vendor_rev, sizeof(pCableInfo->vendor_rev));
+		tempStr[sizeof(pCableInfo->vendor_rev)] = '\0';
+		if (fnmatch(bf_pattern, (const char *)tempStr, 0) == 0)
+		{
+			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+			if (FSUCCESS != status)
+				return status;
+		}
+	}
+	if (pPoint->Type == POINT_TYPE_NONE) {
+		fprintf(stderr, "%s: CABLE_INFO vendor rev Not Found: %s\n",
+					   	g_Top_cmdname, pattern);
+		return FNOT_FOUND;
+	}
+	PointCompress(pPoint);
+	return FSUCCESS;
+
+}	// End of FindCabinfVendRevPat()
+
+// search for ports whose CABLE_INFO has the given vendor serial number
+FSTATUS FindCabinfVendSNPat(FabricData_t *fabricp, const char* pattern, Point *pPoint)
+{
+	LIST_ITEM *p;
+	FSTATUS status;
+	uint32 len_pattern;
+	STL_CABLE_INFO_STD *pCableInfo;
+	char bf_pattern[sizeof(pCableInfo->vendor_sn) + 1];
+	char tempStr[sizeof(pCableInfo->vendor_sn) + 1];
+
+	ASSERT(pPoint->Type == POINT_TYPE_NONE);
+	len_pattern = strnlen(pattern, sizeof(pCableInfo->vendor_sn));
+	memset (bf_pattern, ' ', sizeof(bf_pattern));
+	memcpy (bf_pattern, pattern, len_pattern);
+	if (! len_pattern || (bf_pattern[len_pattern-1] != ' ' && bf_pattern[len_pattern-1] != '*'))
+		bf_pattern[sizeof(pCableInfo->vendor_sn)] = '\0';
+	else
+		bf_pattern[len_pattern] = '\0';
+
+	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+		PortData *portp = (PortData *)QListObj(p);
+
+		pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
+		if (! pCableInfo)
+			continue;
+		memcpy(tempStr, pCableInfo->vendor_sn, sizeof(pCableInfo->vendor_sn));
+		tempStr[sizeof(pCableInfo->vendor_sn)] = '\0';
+		if (fnmatch(bf_pattern, (const char *)tempStr, 0) == 0)
+		{
+			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+			if (FSUCCESS != status)
+				return status;
+		}
+	}
+	if (pPoint->Type == POINT_TYPE_NONE) {
+		fprintf(stderr, "%s: CABLE_INFO vendor SN Not Found: %s\n",
+					   	g_Top_cmdname, pattern);
+		return FNOT_FOUND;
+	}
+	PointCompress(pPoint);
+	return FSUCCESS;
+
+}	// End of FindCabinfVendSNPat()
 
 // search for ports whose ExpectedLink has the given link details
 FSTATUS FindLinkDetailsPat(FabricData_t *fabricp, const char* pattern, Point *pPoint)

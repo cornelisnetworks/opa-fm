@@ -32,9 +32,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "topology.h"
 #include "topology_internal.h"
 
-#if defined(VXWORKS)
-#include <string.h>
-#else
+#ifndef __VXWORKS__
 #include <strings.h>
 #endif
 
@@ -788,7 +786,9 @@ static FSTATUS ParsePortStatePoint(FabricData_t *fabricp, char *arg, Point *pPoi
 		len = strlen(arg);
 		*pp = arg + len;
 	}
-	if (strncasecmp(arg, "init", len) == 0)
+	if (strncasecmp(arg, "down", len) == 0)
+		state = IB_PORT_DOWN;
+	else if (strncasecmp(arg, "init", len) == 0)
 		state = IB_PORT_INIT;
 	else if (strncasecmp(arg, "armed", len) == 0)
 		state = IB_PORT_ARMED;
@@ -801,6 +801,61 @@ static FSTATUS ParsePortStatePoint(FabricData_t *fabricp, char *arg, Point *pPoi
 	}
 
 	status = FindPortState(fabricp, state, pPoint);
+	return status;
+}
+
+static FSTATUS ParsePortPhysStatePoint(FabricData_t *fabricp, char *arg, Point *pPoint, char **pp)
+{
+	char *p;
+	char PhysState[8+1];	// recovery is largest valid state name
+	FSTATUS status;
+	int len;
+	IB_PORT_PHYS_STATE physstate;
+
+	ASSERT(pPoint->Type == POINT_TYPE_NONE);
+	p = strchr(arg, ':');
+	if (p) {
+		if (p == arg) {
+			fprintf(stderr, "%s: Invalid Port Phys State format: '%s'\n",
+						   	g_Top_cmdname, arg);
+			return FINVALID_PARAMETER;
+		}
+		if (p - arg > sizeof(PhysState)-1) {
+			fprintf(stderr, "%s: Invalid Port Phys State: %.*s\n",
+						   	g_Top_cmdname, (int)(p-arg), arg);
+			return FINVALID_PARAMETER;
+		}
+		len = (int)(p-arg);
+		strncpy(PhysState, arg, len);
+		PhysState[len] = '\0';
+		*pp = p;
+		arg = PhysState;
+	} else {
+		len = strlen(arg);
+		*pp = arg + len;
+	}
+	// SLEEP is N/A to OPA
+	if (strncasecmp(arg, "polling", len) == 0)
+		physstate = IB_PORT_PHYS_POLLING;
+	else if (strncasecmp(arg, "disabled", len) == 0)
+		physstate = IB_PORT_PHYS_DISABLED;
+	else if (strncasecmp(arg, "training", len) == 0)
+		physstate = IB_PORT_PHYS_TRAINING;
+	else if (strncasecmp(arg, "linkup", len) == 0)
+		physstate = IB_PORT_PHYS_LINKUP;
+	else if (strncasecmp(arg, "recovery", len) == 0)
+		physstate = IB_PORT_PHYS_LINK_ERROR_RECOVERY;
+	else if (strncasecmp(arg, "offline", len) == 0)
+		physstate = STL_PORT_PHYS_OFFLINE;
+	else if (strncasecmp(arg, "test", len) == 0)
+		physstate = STL_PORT_PHYS_TEST;
+	else {
+		fprintf(stderr, "%s: Invalid Port Phys State: %.*s\n", g_Top_cmdname, len, arg);
+		*pp -= len;	/* back up for syntax error report */
+		return FINVALID_PARAMETER;
+	}
+
+	status = FindPortPhysState(fabricp, physstate, pPoint);
 	return status;
 }
 
@@ -917,6 +972,156 @@ static FSTATUS ParseCableDetailsPatPoint(FabricData_t *fabricp, char *arg, Point
 		fprintf(stderr, "%s: Warning: No Cable Data supplied via topology_input\n", g_Top_cmdname);
 	return FindCableDetailsPat(fabricp, arg, pPoint);
 }
+
+static FSTATUS ParseCabinfLenPatPoint(FabricData_t *fabricp, char *arg, Point *pPoint, char **pp)
+{
+	char *p;
+	char Pattern[STL_CIB_STD_MAX_STRING + 1];
+
+	ASSERT(pPoint->Type == POINT_TYPE_NONE);
+	p = strchr(arg, ':');
+	if (p) {
+		if (p == arg) {
+			fprintf(stderr, "%s: Invalid CableInfo Cable Length pattern format: '%s'\n",
+						   	g_Top_cmdname, arg);
+			return FINVALID_PARAMETER;
+		}
+		if (p - arg > sizeof(Pattern)-1) {
+			fprintf(stderr, "%s: CableInfo Cable Length pattern too long: %.*s\n",
+						   	g_Top_cmdname, (int)(p-arg), arg);
+			return FINVALID_PARAMETER;
+		}
+		strncpy(Pattern, arg, p-arg);
+		Pattern[p-arg] = '\0';
+		*pp = p;
+		arg = Pattern;
+	} else {
+		*pp = arg + strlen(arg);
+	}
+
+	return FindCabinfLenPat(fabricp, arg, pPoint);
+
+}	// End of ParseCabinfLenPatPoint()
+
+static FSTATUS ParseCabinfVendNamePatPoint(FabricData_t *fabricp, char *arg, Point *pPoint, char **pp)
+{
+	char *p;
+	char Pattern[STL_CIB_STD_MAX_STRING + 1];
+
+	ASSERT(pPoint->Type == POINT_TYPE_NONE);
+	p = strchr(arg, ':');
+	if (p) {
+		if (p == arg) {
+			fprintf(stderr, "%s: Invalid Vendor Name pattern format: '%s'\n",
+						   	g_Top_cmdname, arg);
+			return FINVALID_PARAMETER;
+		}
+		if (p - arg > sizeof(Pattern)-1) {
+			fprintf(stderr, "%s: Vendor Name pattern too long: %.*s\n",
+						   	g_Top_cmdname, (int)(p-arg), arg);
+			return FINVALID_PARAMETER;
+		}
+		strncpy(Pattern, arg, p-arg);
+		Pattern[p-arg] = '\0';
+		*pp = p;
+		arg = Pattern;
+	} else {
+		*pp = arg + strlen(arg);
+	}
+
+	return FindCabinfVendNamePat(fabricp, arg, pPoint);
+
+}	// End of ParseCabinfVendNamePatPoint()
+
+static FSTATUS ParseCabinfVendPNPatPoint(FabricData_t *fabricp, char *arg, Point *pPoint, char **pp)
+{
+	char *p;
+	char Pattern[STL_CIB_STD_MAX_STRING + 1];
+
+	ASSERT(pPoint->Type == POINT_TYPE_NONE);
+	p = strchr(arg, ':');
+	if (p) {
+		if (p == arg) {
+			fprintf(stderr, "%s: Invalid Vendor PN pattern format: '%s'\n",
+						   	g_Top_cmdname, arg);
+			return FINVALID_PARAMETER;
+		}
+		if (p - arg > sizeof(Pattern)-1) {
+			fprintf(stderr, "%s: Vendor PN pattern too long: %.*s\n",
+						   	g_Top_cmdname, (int)(p-arg), arg);
+			return FINVALID_PARAMETER;
+		}
+		strncpy(Pattern, arg, p-arg);
+		Pattern[p-arg] = '\0';
+		*pp = p;
+		arg = Pattern;
+	} else {
+		*pp = arg + strlen(arg);
+	}
+
+	return FindCabinfVendPNPat(fabricp, arg, pPoint);
+
+}	// End of ParseCabinfVendPNPatPoint()
+
+static FSTATUS ParseCabinfVendRevPatPoint(FabricData_t *fabricp, char *arg, Point *pPoint, char **pp)
+{
+	char *p;
+	char Pattern[STL_CIB_STD_MAX_STRING + 1];
+
+	ASSERT(pPoint->Type == POINT_TYPE_NONE);
+	p = strchr(arg, ':');
+	if (p) {
+		if (p == arg) {
+			fprintf(stderr, "%s: Invalid Vendor Rev pattern format: '%s'\n",
+						   	g_Top_cmdname, arg);
+			return FINVALID_PARAMETER;
+		}
+		if (p - arg > sizeof(Pattern)-1) {
+			fprintf(stderr, "%s: Vendor Rev pattern too long: %.*s\n",
+						   	g_Top_cmdname, (int)(p-arg), arg);
+			return FINVALID_PARAMETER;
+		}
+		strncpy(Pattern, arg, p-arg);
+		Pattern[p-arg] = '\0';
+		*pp = p;
+		arg = Pattern;
+	} else {
+		*pp = arg + strlen(arg);
+	}
+
+	return FindCabinfVendRevPat(fabricp, arg, pPoint);
+
+}	// End of ParseCabinfVendRevPatPoint()
+
+static FSTATUS ParseCabinfVendSNPatPoint(FabricData_t *fabricp, char *arg, Point *pPoint, char **pp)
+{
+	char *p;
+	char Pattern[STL_CIB_STD_MAX_STRING + 1];
+
+	ASSERT(pPoint->Type == POINT_TYPE_NONE);
+	p = strchr(arg, ':');
+	if (p) {
+		if (p == arg) {
+			fprintf(stderr, "%s: Invalid Vendor SN pattern format: '%s'\n",
+						   	g_Top_cmdname, arg);
+			return FINVALID_PARAMETER;
+		}
+		if (p - arg > sizeof(Pattern)-1) {
+			fprintf(stderr, "%s: Vendor SN pattern too long: %.*s\n",
+						   	g_Top_cmdname, (int)(p-arg), arg);
+			return FINVALID_PARAMETER;
+		}
+		strncpy(Pattern, arg, p-arg);
+		Pattern[p-arg] = '\0';
+		*pp = p;
+		arg = Pattern;
+	} else {
+		*pp = arg + strlen(arg);
+	}
+
+	return FindCabinfVendSNPat(fabricp, arg, pPoint);
+
+}	// End of ParseCabinfVendSNPatPoint()
 
 static FSTATUS ParseLinkDetailsPatPoint(FabricData_t *fabricp, char *arg, Point *pPoint, char **pp)
 {
@@ -1088,10 +1293,16 @@ static FSTATUS ParseLinkQualityPoint(FabricData_t *fabricp, char *arg, Point *pP
  *	ioctype:ioc type:port:#
  *	rate:rate string
  *	portstate:state string
+ *	portphysstate:phys state string
  *	mtu:#
  *	labelpat:cable label pattern
  *	lengthpat:cable length pattern
  *	cabledetpat:cable details pattern
+ *	cabinflenpat:cable info cable length pattern
+ *	cabinfvendnamepat:cable info vendor name pattern
+ *	cabinfvendpnpat:cable info vendor part number pattern
+ *	cabinfvendrevpat:cable info vendor rev pattern
+ *	cabinfvendsnpat:cable info vendor serial number pattern
  *	linkdetpat:cable details pattern
  *	portdetpat:port details pattern
  *	sm
@@ -1140,6 +1351,8 @@ FSTATUS ParsePoint(FabricData_t *fabricp, char* arg, Point* pPoint, char **pp)
 		return ParseRatePoint(fabricp, param, pPoint, pp);
 	} else if (NULL != (param = ComparePrefix(arg, "portstate:"))) {
 		return ParsePortStatePoint(fabricp, param, pPoint, pp);
+	} else if (NULL != (param = ComparePrefix(arg, "portphysstate:"))) {
+		return ParsePortPhysStatePoint(fabricp, param, pPoint, pp);
 	} else if (NULL != (param = ComparePrefix(arg, "mtucap:"))) {
 		return ParseMtuPoint(fabricp, param, pPoint, pp);
 	} else if (NULL != (param = ComparePrefix(arg, "labelpat:"))) {
@@ -1148,6 +1361,16 @@ FSTATUS ParsePoint(FabricData_t *fabricp, char* arg, Point* pPoint, char **pp)
 		return ParseCableLenPatPoint(fabricp, param, pPoint, pp);
 	} else if (NULL != (param = ComparePrefix(arg, "cabledetpat:"))) {
 		return ParseCableDetailsPatPoint(fabricp, param, pPoint, pp);
+	} else if (NULL != (param = ComparePrefix(arg, "cabinflenpat:"))) {
+		return ParseCabinfLenPatPoint(fabricp, param, pPoint, pp);
+	} else if (NULL != (param = ComparePrefix(arg, "cabinfvendnamepat:"))) {
+		return ParseCabinfVendNamePatPoint(fabricp, param, pPoint, pp);
+	} else if (NULL != (param = ComparePrefix(arg, "cabinfvendpnpat:"))) {
+		return ParseCabinfVendPNPatPoint(fabricp, param, pPoint, pp);
+	} else if (NULL != (param = ComparePrefix(arg, "cabinfvendrevpat:"))) {
+		return ParseCabinfVendRevPatPoint(fabricp, param, pPoint, pp);
+	} else if (NULL != (param = ComparePrefix(arg, "cabinfvendsnpat:"))) {
+		return ParseCabinfVendSNPatPoint(fabricp, param, pPoint, pp);
 	} else if (NULL != (param = ComparePrefix(arg, "linkdetpat:"))) {
 		return ParseLinkDetailsPatPoint(fabricp, param, pPoint, pp);
 	} else if (NULL != (param = ComparePrefix(arg, "portdetpat:"))) {

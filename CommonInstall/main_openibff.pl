@@ -116,19 +116,19 @@ $WrapperComponent = "opa_config_ff";
 	"oftools" => 	{ Name => "OPA Tools",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "",
-					  PreReq => " ib_stack ", CoReq => "",
+					  PreReq => " opa_stack ", CoReq => "",
 					  Hidden => 0, Disabled => 0,
 					  HasStart => 1, HasFirmware => 0, DefaultStart => 0,
-					  StartPreReq => " ib_stack ",
+					  StartPreReq => " opa_stack ",
 					  StartComponents => [ ],
 					},
 	"fastfabric" =>	{ Name => "FastFabric",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "",
-					  PreReq => " ib_stack oftools ", CoReq => "",
+					  PreReq => " opa_stack oftools ", CoReq => "",
 					  Hidden => 0, Disabled => 0,
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
-					  StartPreReq => " ib_stack ",
+					  StartPreReq => " opa_stack ",
 					  StartComponents => [ ],
 					},
  			# ipoib is not on media, just for a few prompts
@@ -232,7 +232,7 @@ sub Usage
 	if ( $allow_install ) {
 		#printf STDERR "Usage: $0 [-r root] [-v|-vv] [-a|-n|-U|-F|-u|-s|-i comp|-e comp] [-E comp] [-D comp] [-f] [--fwupdate asneeded|always] [-l] [--without-depcheck] [--force] [--answer keyword=value]\n";
 #		printf STDERR "Usage: $0 [-r root] [-v|-vv] [-a|-n|-U|-F|-u|-s|-i comp|-e comp] [-E comp] [-D comp] [-f] [--fwupdate asneeded|always] [--without-depcheck] [--force] [--answer keyword=value]\n";
-		printf STDERR "Usage: $0 [-r root] [-v|-vv] [-a|-n|-U|-u|-s|-i comp|-e comp] [-E comp] [-D comp] [--without-depcheck] [--force] [--answer keyword=value]\n";
+		printf STDERR "Usage: $0 [-r root] [-v|-vv] [-a|-n|-U|-u|-s|-O|-N|-i comp|-e comp] [-E comp] [-D comp] [--without-depcheck] [--force] [--answer keyword=value]\n";
 	} else {
 #		printf STDERR "Usage: $0 [-r root] [-v|-vv] [-F|-u|-s|-e comp] [-E comp] [-D comp][--fwupdate asneeded|always] [--answer keyword=value]\n";
 		printf STDERR "Usage: $0 [-r root] [-v|-vv] [-u|-s|-e comp] [-E comp] [-D comp] [--answer keyword=value]\n";
@@ -254,6 +254,8 @@ sub Usage
 		printf STDERR "       --without-depcheck - disable check of OS dependencies\n";
 		printf STDERR "       --force - force install even if distos don't match\n";
 		printf STDERR "                 Use of this option can result in undefined behaviors\n";
+		printf STDERR "       -O - Keep current modified rpm config file\n";
+		printf STDERR "       -N - Use new default rpm config file\n";
 	}
 #	printf STDERR "       -F - upgrade HCA Firmware with default options\n";
 #	printf STDERR "       --fwupdate asneeded|always - select fw update auto update mode\n";
@@ -447,6 +449,12 @@ sub process_args
 					$Default_SameAutostart=1;
 #				} elsif ( "$arg" eq "-F" ) {
 #					$Default_FirmwareUpgrade=1;
+				} elsif ("$arg" eq "-O") {
+					$Default_RpmConfigKeepOld=1;
+					$Default_RpmConfigUseNew=0;
+				} elsif ("$arg" eq "-N") {
+					$Default_RpmConfigKeepOld=0;
+					$Default_RpmConfigUseNew=1;
 				} else {
 					printf STDERR "Invalid option: $arg\n";
 					Usage;

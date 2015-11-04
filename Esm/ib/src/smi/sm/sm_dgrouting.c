@@ -81,7 +81,7 @@ dgmh_pre_process_discovery(Topology_t *topop, void **outContext)
 	DGTopology *dgp;
 	int i, allFound;
 
-	IB_LOG_INFO_FMT(__func__, "Initializing DGMinHop.");
+	IB_LOG_INFO_FMT(__func__, "Initializing DGShortestPath.");
 
 	if (sm_config.dgRouting.dgCount == 0) {
 		IB_LOG_ERROR_FMT(__func__,"DG Routing selected but no Routing Order specified.");
@@ -152,7 +152,7 @@ dgmh_post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *c
 	cl_map_item_t *qp, *tqp;
 	uint32_t 	i, start, end;
 	
-	IB_LOG_INFO_FMT(__func__, "Initializing DGMinHop.");
+	IB_LOG_INFO_FMT(__func__, "Initializing DGShortestPath.");
 
 	// Examine every node in the fabric.
 	for (qp = cl_qmap_head(nodeMap); qp != cl_qmap_end(nodeMap);
@@ -698,7 +698,7 @@ dgmh_make_routing_module(RoutingModule_t *rm)
 	sm_shortestpath_make_routing_module(rm);
 
 	// Initialize functions which are different from shortestpath.
-	rm->name = "dgminhop";
+	rm->name = "dgshortestpath";
 	rm->funcs.pre_process_discovery = dgmh_pre_process_discovery;
 	rm->funcs.post_process_discovery = dgmh_post_process_discovery;
 	rm->funcs.post_process_routing = dgmh_post_process_routing;
@@ -722,6 +722,6 @@ Status_t
 sm_dgmh_init(Topology_t *topop)
 {
 	
-	return sm_routing_addModuleFac("dgminhop", dgmh_make_routing_module);
+	return sm_routing_addModuleFac("dgshortestpath", dgmh_make_routing_module);
 }
 

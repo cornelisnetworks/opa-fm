@@ -27,6 +27,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
  * ** END_ICS_COPYRIGHT2   ****************************************/
 
+#ifdef __LINUX__
 #include <stdio.h>
 #include <stdlib.h>
 #if defined(__VXWORKS__) && defined(BSP_XT3)
@@ -153,3 +154,4 @@ unix_sck_read_data(int fd, hsm_com_scratch_t *scratch, char *buf, int buf_len, i
 
 
 }
+#endif

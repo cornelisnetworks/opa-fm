@@ -539,6 +539,7 @@ _setup_pgs(struct _Topology *topop, struct _Node * srcSw, const struct _Node * d
 
 	int end_port = _select_ports(topop, srcSw, dstSw->swIdx, ordered_ports, 0);
 	if (end_port <= 1) {
+		srcSw->switchInfo.PortGroupTop = 0;
 		return VSTATUS_OK;
 	}
 

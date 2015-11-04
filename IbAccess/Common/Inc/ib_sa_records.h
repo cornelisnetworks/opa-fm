@@ -109,7 +109,6 @@ extern "C" {
 
 #define SA_ATTRIB_VFABRIC_RECORD				0xff02
 #define	SA_ATTRIB_JOB_ROUTE_RECORD				0xFFB2  // Reserved AID used by opasadb_route
-#define	SA_ATTRIB_VENDSWITCHINFO_RECORD			0xFFB3  // Reserved AID used by vend sw info query
 
 #define SA_ATTRIB_CG_RECORD        				0xff40  // Vendor unique collective group record
 #define SA_ATTRIB_CG_STATUS_RECORD 				0xff41  // Vendor unique collective group status record
@@ -1126,60 +1125,6 @@ typedef struct _VF_INFO_RECORD {
 
 } PACK_SUFFIX VEND_VFINFO_RECORD;
 
-
-/* --------------------------------------------------------------------------
- * Vendor Switch Info Record - vendor information about a switch in the fabric
- */
-
-/* ComponentMask bits */
-#define IB_VENDSWITCHINFO_RECORD_COMP_LID							0x00000001
-	/* reserved field												0x00000002*/
-	/* vendor switch info fields from switch info */
-#define IB_VENDSWITCHINFO_RECORD_COMP_LINEARFDBCAP					0x00000004
-#define IB_VENDSWITCHINFO_RECORD_COMP_RANDOMFDBCAP					0x00000008
-#define IB_VENDSWITCHINFO_RECORD_COMP_MULTICASTFDBCAP				0x00000010
-#define IB_VENDSWITCHINFO_RECORD_COMP_LINEARFDBTOP					0x00000020
-#define IB_VENDSWITCHINFO_RECORD_COMP_DEFAULTPORT					0x00000040
-#define IB_VENDSWITCHINFO_RECORD_COMP_DEFAULTMULTICASTPRIMARYPORT	0x00000080
-#define IB_VENDSWITCHINFO_RECORD_COMP_DEFAULTMULTICASTNOTPRIMARYPORT	0x00000100
-#define IB_VENDSWITCHINFO_RECORD_COMP_LIFETIMEVALUE					0x00000200
-#define IB_VENDSWITCHINFO_RECORD_COMP_PORTSTATECHANGE				0x00000400
-	/* reserved field												0x00000800*/
-#define IB_VENDSWITCHINFO_RECORD_COMP_LIDSPERPORT					0x00001000
-#define IB_VENDSWITCHINFO_RECORD_COMP_PARTITIONENFORCEMENTCAP		0x00002000
-#define IB_VENDSWITCHINFO_RECORD_COMP_INBOUNDENFORCEMENTCAP	   		0x00004000
-#define IB_VENDSWITCHINFO_RECORD_COMP_OUTBOUNDENFORCEMENTCAP   		0x00008000
-#define IB_VENDSWITCHINFO_RECORD_COMP_FILTERRAWINBOUNDCAP	   		0x00010000
-#define IB_VENDSWITCHINFO_RECORD_COMP_FILTERRAWOUTBOUNDCAP	   		0x00020000
-#define IB_VENDSWITCHINFO_RECORD_COMP_ENHANCEDPORT0			   		0x00040000
-	/* reserved field												0x00080000*/
-	/* unique vendor switch info fields */
-	/* reserved field												0x00100000*/
-#define IB_VENDSWITCHINFO_RECORD_COMP_VERSION						0x00200000
-#define IB_VENDSWITCHINFO_RECORD_COMP_LOSTROUTESONLY				0x00400000
-#define IB_VENDSWITCHINFO_RECORD_COMP_ADAPTIVEROUTINGPAUSE			0x00800000
-#define IB_VENDSWITCHINFO_RECORD_COMP_ADAPTIVEROUTINGENABLE			0x01000000
-#define IB_VENDSWITCHINFO_RECORD_COMP_ADAPTIVEROUTINGTIER1ENABLE	0x02000000
-	/* reserved field												0x04000000*/
-#define IB_VENDSWITCHINFO_RECORD_COMP_CAPABILITYMASK				0x08000000
-
-typedef struct _IB_VENDSWITCHINFO_RECORD {
-	union {
-		uint32	AsReg32;
-		struct {
-#if CPU_BE
-			uint32		LID:16;
-			uint32		Reserved:16;
-#else
-			uint32		Reserved:16;
-			uint32		LID:16;
-#endif
-		} PACK_SUFFIX s;
-	} RID;
-	VENDOR_SWITCH_INFO		VendSwitchInfoData;
-} PACK_SUFFIX IB_VENDSWITCHINFO_RECORD;
-
-
 /* --------------------------------------------------------------------------
  * Vendor unique collective group Record
  */
@@ -1540,19 +1485,6 @@ BSWAP_VEND_VFINFO_RECORD(
     Dest->ServiceID =  ntoh64(Dest->ServiceID);
 	BSWAP_IB_GID(&Dest->MGID);
 #endif /* CPU_LE */
-}
-
-static __inline
-void
-BSWAP_IB_VENDOR_SWITCHINFO_RECORD(
-    IB_VENDSWITCHINFO_RECORD  *Dest
-    )
-{
-#if CPU_LE
-
-	Dest->RID.AsReg32 = ntoh32(Dest->RID.AsReg32);
-	BSWAP_VENDOR_SWITCH_INFO(&Dest->VendSwitchInfoData);
-#endif
 }
 
 static __inline

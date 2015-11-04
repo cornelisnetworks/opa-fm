@@ -40,6 +40,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "cs_info_file.h"
 #include "if3.h"
 #include "mal_g.h"
+#include <oib_utils.h>
 
 
 extern void fe_compute_pool_size(void);
@@ -92,7 +93,7 @@ fe_conf_fill_common(fm_mgr_action_t action, fm_config_common_t *common)
 			common->log_level	= fe_config.log_level;
 			common->log_mask	= 0;	// fe_log_mask; no longer allowed
 			common->nodaemon	= fe_nodaemon;
-			strncpy(&common->log_file[0], fe_config.log_file, strlen(fe_config.log_file));
+			snprintf(common->log_file, sizeof(common->log_file),"%s", fe_config.log_file);
 			
 			return FM_RET_OK;
 		case FM_ACT_SUP_GET:
@@ -144,7 +145,9 @@ fe_conf_fill_common(fm_mgr_action_t action, fm_config_common_t *common)
 			}
 #endif
 			if(common->select_mask & CFG_COM_SEL_LOG_FILE){
-				strncpy(fe_config.log_file, &common->log_file[0], sizeof(fe_config.log_file));
+				strncpy(fe_config.log_file, &common->log_file[0], sizeof(fe_config.log_file)-1);
+				fe_config.log_file[sizeof(fe_config.log_file)-1] = 0;
+
 				reset_log_flag = 1;
 			}
 
@@ -308,7 +311,7 @@ fe_conf_server_init(void){
 		return(-1);
     }
 
-	sprintf(server_path,"%s%s",HSM_FM_SCK_PREFIX,fe_env_str);
+	snprintf(server_path, sizeof(server_path), "%s%s",HSM_FM_SCK_PREFIX,fe_env_str);
 
 	if(hcom_server_init(&conf_handle,server_path,5,1024,&fe_conf_callback) != HSM_COM_OK){
 		IB_LOG_ERROR0("Could not allocate server handle");
@@ -332,8 +335,30 @@ void fe_init_log_setting(void){
 		vs_log_control(VS_LOG_SETSYSLOGNAME, (void *)fe_config.name, (void *)0, (void *)0);
 	else
 		vs_log_control(VS_LOG_SETSYSLOGNAME, (void *)"fm_fe", (void *)0, (void *)0);
-	if(strlen(fe_config.log_file) > 0)
+	if(strlen(fe_config.log_file) > 0) {
 		vs_log_control(VS_LOG_SETOUTPUTFILE, (void *)fe_config.log_file, (void *)0, (void *)0);
+		if(fe_config.log_level > 0)
+			oib_set_err(vs_log_get_logfile_fd());
+		else
+			oib_set_err(NULL);
+
+		if(fe_config.log_level > 2)
+			oib_set_dbg(vs_log_get_logfile_fd());
+		else
+			oib_set_dbg(NULL);
+    } else {
+		vs_log_control(VS_LOG_SETOUTPUTFILE, (void *)0, (void *)0, (void *)0);
+
+		if(fe_config.log_level > 0)
+			oib_set_err(OIB_DBG_FILE_SYSLOG);
+		else
+			oib_set_err(NULL);
+
+		if(fe_config.log_level > 2)
+			oib_set_dbg(OIB_DBG_FILE_SYSLOG);
+		else
+			oib_set_dbg(NULL);
+    }
 
 	vs_log_set_log_mode(fe_config.syslog_mode);
 
@@ -348,7 +373,7 @@ void fe_init_log_setting(void){
 
 void fe_set_log_level(uint32_t log_level)
 {
-	sprintf(msgbuf, "Setting FE LogLevel to %u", (unsigned)log_level);
+	snprintf(msgbuf, sizeof(msgbuf), "Setting FE LogLevel to %u", (unsigned)log_level);
 	fe_config.log_level = log_level;
 	vs_log_output_message(msgbuf, FALSE);
 	cs_log_set_log_masks(fe_config.log_level, fe_config.syslog_mode, fe_log_masks);
@@ -357,7 +382,7 @@ void fe_set_log_level(uint32_t log_level)
 
 void fe_set_log_mode(uint32_t log_mode)
 {
-	sprintf(msgbuf, "Setting FE LogMode to %u", (unsigned)log_mode);
+	snprintf(msgbuf, sizeof(msgbuf), "Setting FE LogMode to %u", (unsigned)log_mode);
 	fe_config.syslog_mode = log_mode;
 	vs_log_output_message(msgbuf, FALSE);
 	cs_log_set_log_masks(fe_config.log_level, fe_config.syslog_mode, fe_log_masks);
@@ -367,10 +392,10 @@ void fe_set_log_mode(uint32_t log_mode)
 void fe_set_log_mask(const char* mod, uint32_t mask)
 {
 	if (! cs_log_get_module_id(mod)) {
-		sprintf(msgbuf, "Requested setting FE LogMask for invalid subsystem: %s", mod);
+		snprintf(msgbuf, sizeof(msgbuf), "Requested setting FE LogMask for invalid subsystem: %s", mod);
 		vs_log_output_message(msgbuf, FALSE);
 	} else {
-		sprintf(msgbuf, "Setting FE %s_LogMask to 0x%x", mod, (unsigned)mask);
+		snprintf(msgbuf, sizeof(msgbuf), "Setting FE %s_LogMask to 0x%x", mod, (unsigned)mask);
 		vs_log_output_message(msgbuf, FALSE);
 		cs_log_set_log_mask(mod, mask, fe_log_masks);
 		fe_init_log_setting();
@@ -420,11 +445,6 @@ if3_set_rmpp_minfo (ManagerInfo_t *mi)
     // used to define the RMPP context pool sizes for the SA.
     mi->rmppDataLength = 512 * cs_numPortRecords(fe_config.subnet_size);
     mi->rmppMaxCntxt = 2 * fe_config.subnet_size;
-}
-
-char* if3_dbsync_rmpp_get_aid_name(uint16_t aid) 
-{ 
-    return NULL; 
 }
 
 int
@@ -557,8 +577,7 @@ int main(int argc, char *argv[]){
     // surpress getopt() error messages
     opterr = 0;
 
-    memset (fe_env_str, 0, sizeof(fe_env_str));
-    strcpy (fe_env_str, "fe_0");
+    snprintf(fe_env_str, sizeof(fe_env_str), "fe_0");
 
     while ((op = getopt (argc, argv, "De:E:hH:l:C:X:")) != -1) {
         switch (op) {
@@ -609,9 +628,8 @@ int main(int argc, char *argv[]){
 	fe_parse_xml_config();
 
 	fe_config.subnet_size = MAX(fe_config.subnet_size, MIN_SUPPORTED_ENDPORTS);
-	if(fe_config.default_pkey){
-		mai_set_default_pkey(fe_config.default_pkey);
-	}
+	mai_set_default_pkey(STL_DEFAULT_FM_PKEY);
+	
     // enable rmpp debug messages if desired
     if (fe_config.debug_rmpp) if3RmppDebugOn();
 

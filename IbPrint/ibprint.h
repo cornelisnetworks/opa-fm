@@ -33,6 +33,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define IBPRINT_H
 
 #include <stdio.h>
+#include <iba/public/idebug_osd.h>
 #include <iba/ibt.h>
 #include <iba/ib_pm.h>
 #include <iba/stl_sm.h>
@@ -149,8 +150,6 @@ extern void PrintSLVLMapSmp2(PrintDest_t *dest, int indent,
 				const SMP *smp, NODE_TYPE nodetype, boolean heading);
 extern void PrintSwitchInfo(PrintDest_t *dest, int indent,
 				const SWITCH_INFO *pSwitchInfo, IB_LID lid);
-extern void PrintVendorSwitchInfo(PrintDest_t *dest, int indent,
-				const VENDOR_SWITCH_INFO *pVendorSwitchInfo, IB_LID lid);
 extern void PrintLinearFDB(PrintDest_t *dest, int indent,
 				const FORWARDING_TABLE *pLinearFDB, uint16 blockNum);
 extern void PrintRandomFDB(PrintDest_t *dest, int indent,
@@ -232,8 +231,6 @@ extern void PrintVfInfoCSV(PrintDest_t *dest, int indent,
 			   	const VEND_VFINFO_RECORD *pVfInfo);
 extern void PrintVfInfoCSV2(PrintDest_t *dest, int indent,
 			   	const VEND_VFINFO_RECORD *pVfInfo);
-extern void PrintVendorSwitchInfoRecord(PrintDest_t *dest, int indent,
-				const IB_VENDSWITCHINFO_RECORD *pVendSwitchInfoRecord);
 
 ///////////////////////////////////////////////////////////////////////////////
 // IbAccess SubnetDriver interface

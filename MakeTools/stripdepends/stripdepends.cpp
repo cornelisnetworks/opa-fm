@@ -100,7 +100,7 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	strncpy(infname, argv[1], BUFSIZE);
+	strncpy(infname, argv[1], BUFSIZE-1);
 	infname[BUFSIZE-1] = 0;
 
 	if ((fp_in = fopen(argv[1], "r")) == NULL)

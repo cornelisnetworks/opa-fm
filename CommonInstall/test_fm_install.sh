@@ -41,7 +41,7 @@
 
 rm_config()
 {
-	rm -f /etc/sysconfig/qlogic_fm.xml /etc/sysconfig/iview_fm.config /etc/sysconfig/*rpmnew /etc/sysconfig/opafm.xml
+	rm -f /etc/sysconfig/iview_fm.config /etc/sysconfig/*rpmnew /etc/sysconfig/opafm.xml
 }
 
 check_default()

@@ -33,8 +33,37 @@
 # Run opareport with standard options and pipe output to opaxmlextract to extract
 #  error counts
 
+Usage_full()
+{
+	echo "Usage: opaextracterror [opareport options]" >&2
+	echo "              or" >&2
+	echo "       opaextracterror --help" >&2
+	echo "   --help - produce full help text" >&2
+	echo "   opareport options - options will be passed to opareport." >&2
+	echo "for example:" >&2
+	echo "   opaextracterror" >&2
+	echo "   opaextracterror -h 1 -p 2" >&2
+	exit 0
+}
+
+Usage()
+{
+	echo "Usage: opaextracterror" >&2
+	echo "              or" >&2
+	echo "       opaextracterror --help" >&2
+	echo "   --help - produce full help text" >&2
+	echo "for example:" >&2
+	echo "   opaextracterror" >&2
+	exit 2
+}
+
+if [ x"$1" = "x--help" ]
+then
+	Usage_full
+fi
+
 BINDIR=${BINDIR:-/usr/sbin}
 
-$BINDIR/opareport -o comps -s -x -d 10 $@ | $BINDIR/opaxmlextract -d \; -e NodeDesc -e SystemImageGUID -e PortNum -e LinkQualityIndicator -e RcvSwitchRelayErrors -e LocalLinkIntegrityErrors -e RcvErrors -e ExcessiveBufferOverruns -e FMConfigErrors -e LinkErrorRecovery -e LinkDowned -e UncorrectableErrors -e RcvConstraintErrors -e XmitConstraintErrors -s Neighbor -s SMs
 
+$BINDIR/opareport -o comps -s -x -d 10 $@ | $BINDIR/opaxmlextract -d \; -e NodeDesc -e SystemImageGUID -e PortNum -e LinkSpeedActive -e LinkWidthDnGradeTxActive -e LinkWidthDnGradeRxActive -e LinkQualityIndicator -e RcvSwitchRelayErrors -e LocalLinkIntegrityErrors -e RcvErrors -e ExcessiveBufferOverruns -e FMConfigErrors -e LinkErrorRecovery -e LinkDowned -e UncorrectableErrors -e RcvConstraintErrors -e XmitConstraintErrors -s Neighbor -s SMs
 exit 0

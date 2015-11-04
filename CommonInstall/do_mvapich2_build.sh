@@ -103,7 +103,6 @@ Usage()
 	echo "" >&2
 	echo "Environment:" >&2
 	echo "    STACK_PREFIX - where to find IB stack." >&2
-	echo "            Default obtained from /etc/infiniband/info, typically /usr" >&2
 	echo "    BUILD_DIR - temporary directory to use during build of MPI" >&2
 	echo "            Default is /var/tmp/Intel-mvapich2" >&2
 	echo "    MPICH_PREFIX - selects location for installed MPI" >&2
@@ -279,11 +278,7 @@ interface=verbs
 if [ "$skip_prompt" == "n" -a "$Qflag" == "n" -a "$Oflag" == "n" ]
 then
 	echo
-	# only have a choice if psm or dapl is installed
-	if rpm -qa|grep dapl >/dev/null 2>&1
-	then
-		choices+=("udapl")
-	fi
+	# only have a choice if psm is installed
 	if rpm -qa|grep infinipath-devel >/dev/null 2>&1
 	then
 		choices+=("ts-psm")
@@ -301,9 +296,6 @@ then
 			case "$mvapich2_conf_impl" in
 			ofa)
 				interface=verbs
-				break;;
-			udapl)
-				interface=udapl
 				break;;
 			ts-psm)
 				interface=psm
@@ -332,15 +324,10 @@ case $interface in
 		mvapich2_path_suffix=
 		mvapich2_rpm_suffix=
 		;;
-	udapl)
-		mvapich2_conf_impl_define="impl $mvapich2_conf_impl"
-		mvapich2_path_suffix=
-		mvapich2_rpm_suffix=
-		PREREQ+=("dapl-devel")
-		;;
 	psm)
 		mvapich2_conf_impl=psm
-		mvapich2_conf_impl_define="channel ch3:psm"
+#		mvapich2_conf_impl_define="channel ch3:psm"
+		mvapich2_conf_impl_define="impl psm2"
 		mvapich2_conf_psm=
 		if [ "$Oflag" == "y" ]
 		then
@@ -397,37 +384,6 @@ else
 			fi
 		done
 	fi
-	if [ "$mvapich2_conf_impl" = "udapl" ]
-	then
-		PS3="Cluster Size: "
-		select mvapich2_conf_vcluster in small medium large
-		do
-			case "$mvapich2_conf_vcluster" in
-			small|medium|large) break;;
-			esac
-		done
-		PS3="I/O Bus: "
-		select mvapich2_conf_io_bus in PCI_EX PCI_X
-		do
-			case "$mvapich2_conf_io_bus" in
-			PCI_EX|PCI_X) break;;
-			esac
-		done
-		if [ "$mvapich2_conf_io_bus" = "PCI_EX" ]
-		then
-			PS3="IB Link Speed: "
-			select mvapich2_conf_link_speed in SDR DDR
-			do
-				case "$mvapich2_conf_link_speed" in
-				SDR|DDR) break;;
-				esac
-			done
-		else
-			mvapich2_conf_link_speed=SDR
-		fi
-		echo -n "Default DAPL provider []: "
-		read mvapich2_conf_dapl_provider
-	fi
 fi
 
 if [ "$ARCH" = "PPC64" -a \
@@ -453,9 +409,7 @@ fi
 
 logfile=make.mvapich2.$interface.$compiler
 (
-	prefix=$(/etc/infiniband/info 2>/dev/null|grep '^prefix='|cut -f2 -d=)
-	STACK_PREFIX=${STACK_PREFIX:-"$prefix"}
-	STACK_PREFIX=${STACK_PREFIX:-/usr}	# just in case $prefix not defined
+	STACK_PREFIX=${STACK_PREFIX:-/usr}
 	BUILD_DIR=${BUILD_DIR:-/var/tmp/Intel-mvapich2}
 	BUILD_ROOT="$BUILD_DIR/build";
 	RPM_DIR="$BUILD_DIR/OFEDRPMS";
@@ -610,25 +564,6 @@ logfile=make.mvapich2.$interface.$compiler
 			cmd="$cmd --define 'blcr_include --with-blcr-include=$mvapich2_conf_blcr_home/include' \
 				--define 'blcr_libpath --with-blcr-libpath=$mvapich2_conf_blcr_home/lib'"
 		fi
-	elif [ "$mvapich2_conf_impl" = "udapl" ]
-	then
-		if [ "$ARCH" = "PPC64" -o "$ARCH" = "X86_64" ]
-		then
-			mvapich2_dat_lib="$STACK_PREFIX/lib64";
-		elif [ -d "$STACK_PREFIX/lib" ]
-		then
-			mvapich2_dat_lib="$STACK_PREFIX/lib";
-		fi
-		cmd="$cmd  --define 'rdma --with-rdma=udapl' \
-				--define 'dapl_include --with-dapl-include=$STACK_PREFIX/include' \
-				--define 'dapl_libpath --with-dapl-libpath=$mvapich2_dat_lib' \
-				--define 'cluster_size --with-cluster-size=$mvapich2_conf_vcluster' \
-				--define 'io_bus --with-io-bus=$mvapich2_conf_io_bus' \
-				--define 'link_speed --with-link=$mvapich2_conf_link_speed'"
-		if [ "$mvapich2_conf_dapl_provider" != "" ]
-		then
-			cmd="$cmd --define 'dapl_provider --with-dapl-provider=$mvapich2_conf_dapl_provider'"
-		fi
 	elif [ "$mvapich2_conf_impl" = "psm" ]
 	then
 		# no special args needed
@@ -655,9 +590,7 @@ logfile=make.mvapich2.$interface.$compiler
 	echo "=========================================================="
 	echo "Installing MVAPICH2 MPI $mvapich2_version Library/Tools..."
 	rpmfile=$RPM_DIR/RPMS/$target_cpu/mvapich2_$compiler$mvapich2_rpm_suffix-$mvapich2_fullversion.$target_cpu.rpm
-    
-	# make sure old files are removed first
-	rm -rf $INSTALL_ROOT/$MPICH_PREFIX
+
 	# need force for reinstall case
 	if [ x"$INSTALL_ROOT" != x"" -a x"$INSTALL_ROOT" != x"/" ]
 	then

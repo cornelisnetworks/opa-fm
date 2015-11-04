@@ -35,7 +35,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 static Status_t build_cca_congestion_control_table(Node_t *nodep, Port_t *portp, STL_HFI_CONGESTION_CONTROL_TABLE *hfiCongCon,
 int cap)
 {
-	const unsigned int mtu = Decode_MTU_To_Int(portp->portData->mtuActive);
+	const unsigned int mtu = Decode_MTU_To_Int(portp->portData->maxVlMtu);
 	const double packet_xmit_time = (double)(mtu + 40) / (double)sm_GetBandwidth(&portp->portData->portInfo);
 	uint32_t maxMultiplier;
 	uint64_t maxIPG_shifted;
@@ -77,11 +77,14 @@ int cap)
 			nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep));
 	}
 
-	hfiCongCon->CCTI_Limit = MIN(sm_config.congestion.ca.limit, cap * STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES);
+	// CCTI_Limit is max valid index = num valid entries-1
+	hfiCongCon->CCTI_Limit = MIN(sm_config.congestion.ca.limit, cap * STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES - 1);
 	if (hfiCongCon->CCTI_Limit != sm_config.congestion.ca.limit)
 		IB_LOG_WARN_FMT(__func__,
-			"Config too large of cap (%d vs %d) NodeGUID "FMT_U64" [%s]",
-			cap, sm_config.congestion.ca.limit, nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep));
+			"SM Config has too large a CCT Index Limit: %d; max is %d for node: NodeGUID "FMT_U64" [%s]",
+ 				sm_config.congestion.ca.limit,
+				cap*STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES-1,
+				nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep));
 	
 	for (b = 0,i = 0; b <= cap; ++b) {
 		STL_HFI_CONGESTION_CONTROL_TABLE_BLOCK *block = &hfiCongCon->CCT_Block_List[b];
@@ -105,7 +108,6 @@ Status_t stl_sm_cca_configure_hfi(Node_t *nodep)
 	STL_HFI_CONGESTION_SETTING hfiCongSett;
 	STL_HFI_CONGESTION_CONTROL_TABLE *hfiCongCon = NULL;
 	unsigned int i;
-	const uint8_t clearing = !sm_config.congestion.enable && sm_config.congestion.discover_always;
     const int blockSize = sizeof(STL_HFI_CONGESTION_CONTROL_TABLE_BLOCK);
 	const uint8_t maxBlocks = (STL_MAD_PAYLOAD_SIZE - CONGESTION_CONTROL_TABLE_CCTILIMIT_SZ) / blockSize; // Maximum number of blocks we can fit in a single MAD;
 	uint8_t payloadBlocks = 0; // How many blocks being sent in this MAD
@@ -128,7 +130,7 @@ Status_t stl_sm_cca_configure_hfi(Node_t *nodep)
 
 	/* Build the congestion control table for each end port. */
 	for_all_end_ports(nodep, portp) {
-		uint8_t numBlocks = nodep->congestionInfo.ControlTableCap;
+		uint8_t numBlocks = (!sm_config.congestion.enable ? 1 : nodep->congestionInfo.ControlTableCap);
 		const size_t tableSize = CONGESTION_CONTROL_TABLE_CCTILIMIT_SZ + sizeof(STL_HFI_CONGESTION_CONTROL_TABLE_BLOCK) * numBlocks;
 
 		if (!(sm_valid_port(portp) && portp->state >= IB_PORT_DOWN)) continue;
@@ -142,17 +144,19 @@ Status_t stl_sm_cca_configure_hfi(Node_t *nodep)
 		memset(hfiCongCon, 0, tableSize);
 		
 
-		if (!clearing)
+		if (sm_config.congestion.enable) {
 			build_cca_congestion_control_table(nodep, portp, hfiCongCon, numBlocks);
-		numBlocks = MIN(numBlocks, (hfiCongCon->CCTI_Limit + 32) / STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES);
-		numBlocks = (clearing ? 1 : numBlocks);
-		//IB_LOG_ERROR_FMT(__func__, "SET HfiCongCtrl NodeGUID "FMT_U64" [%s]",
-		//	nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep));
+		}
+
+		// CCTI_Limit is max valid index = num valid entries-1
+		numBlocks = MIN(numBlocks, (hfiCongCon->CCTI_Limit + STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES) / STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES);
+		//IB_LOG_ERROR_FMT(__func__, "SET HfiCongCtrl NodeGUID "FMT_U64" [%s] %u blocks",
+		//	nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep), numBlocks);
 		for(i = 0; i < numBlocks;){
 			payloadBlocks = numBlocks - i;  // Calculate how many blocks are left to be sent
 			payloadBlocks = MIN(payloadBlocks, maxBlocks);  // Limit the number of blocks to be sent
 			amod = payloadBlocks << 24 | i;
-			status = SM_Set_HfiCongestionControl(fd_topology, MIN(hfiCongCon->CCTI_Limit, (i + payloadBlocks) * STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES),
+			status = SM_Set_HfiCongestionControl(fd_topology, hfiCongCon->CCTI_Limit,
 												 payloadBlocks, amod, portp->path, &hfiCongCon->CCT_Block_List[i], sm_config.mkey);
 			if(status != VSTATUS_OK)
 				break;
@@ -171,7 +175,7 @@ Status_t stl_sm_cca_configure_hfi(Node_t *nodep)
 		portp->portData->hfiCongCon = hfiCongCon;
 	}
 
-	if (!clearing) {
+	if (sm_config.congestion.enable) {
 		hfiCongSett.Port_Control = sm_config.congestion.ca.sl_based ? 
 									CC_HFI_CONGESTION_SETTING_SL_PORT : 0;
 		hfiCongSett.Control_Map = 0xffffffff;
@@ -215,13 +219,14 @@ Status_t stl_sm_cca_configure_sw(Node_t *nodep)
 	if (nodep->switchInfo.u2.s.EnhancedPort0) 
 		stl_sm_cca_configure_hfi(nodep);
 
-	setting.Control_Map = CC_SWITCH_CONTROL_MAP_VICTIM_VALID
-						| CC_SWITCH_CONTROL_MAP_CREDIT_VALID
-						| CC_SWITCH_CONTROL_MAP_CC_VALID
-						| CC_SWITCH_CONTROL_MAP_CS_VALID
-						| CC_SWITCH_CONTROL_MAP_MARKING_VALID;
+	if (sm_config.congestion.enable) {
 
-	if (sm_config.congestion.enable || !sm_config.congestion.discover_always) {
+		setting.Control_Map = CC_SWITCH_CONTROL_MAP_VICTIM_VALID
+							| CC_SWITCH_CONTROL_MAP_CREDIT_VALID
+							| CC_SWITCH_CONTROL_MAP_CC_VALID
+							| CC_SWITCH_CONTROL_MAP_CS_VALID
+							| CC_SWITCH_CONTROL_MAP_MARKING_VALID;
+
 		setting.Threshold     = sm_config.congestion.sw.threshold;
 		setting.Packet_Size    = sm_config.congestion.sw.packet_size;
 		setting.CS_Threshold   = sm_config.congestion.sw.cs_threshold;
@@ -240,7 +245,10 @@ Status_t stl_sm_cca_configure_sw(Node_t *nodep)
 			if (!nodep->switchInfo.u2.s.EnhancedPort0) setting.Victim_Mask[31] &= 0xfe;
 		}
 		
-		// Credit Starvation not available for STL Gen 1 - don't update Credit Mask.
+	} else {
+		// Disable CCA on this switch
+		setting.Control_Map = CC_SWITCH_CONTROL_MAP_CC_VALID;
+		setting.Threshold = 0;
 	}
 
 	status = SM_Set_SwitchCongestionSetting(fd_topology, 0, nodep->path, &setting, sm_config.mkey);
@@ -251,8 +259,11 @@ Status_t stl_sm_cca_configure_sw(Node_t *nodep)
 		return status;
 	}
 
+	if (!sm_config.congestion.enable)
+		return status;
+
 	nodep->swCongestionSetting = setting;
-	
+
 	if (vs_pool_alloc(&sm_pool, sizeof(STL_SWITCH_PORT_CONGESTION_SETTING_ELEMENT) * port_count, 
 			(void *)&swPortSet) != VSTATUS_OK) {
 		IB_LOG_ERROR_FMT(__func__, "Failed to allocate memory for switch port congestion setting.");

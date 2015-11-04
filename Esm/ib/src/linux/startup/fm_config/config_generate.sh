@@ -30,7 +30,7 @@
 
 # [ICS VERSION STRING: unknown]
 
-TEMP=`mktemp`
+TEMP="$(mktemp)"
 trap "rm -f $TEMP; exit 1" SIGHUP SIGTERM SIGINT
 trap "rm -f $TEMP" EXIT
 
@@ -41,20 +41,13 @@ Usage()
 	exit 2
 }
 
-if [ -f /opt/opa/fm_tools/config_convert -a -f /opt/opa/fm_tools/opafm_src.xml ]
-then
-	tooldir=/opt/opa/fm_tools
-elif [ ! -f /etc/sysconfig/opa/opafm.info || ! -f /etc/sysconfig/opa/qlogic_fm.info ]
+if [ ! -f /etc/sysconfig/opa/opafm.info ]
 then
 	echo "config_generate: IFS FM not installed" >&2
 	exit 1
 else
-	if [ -f /etc/sysconfig/opa/qlogic_fm.info ]
-        then
-                cp -f /etc/sysconfig/opa/qlogic_fm.info /etc/sysconfig/opa/opafm.info
-        fi
 
-	. /etc/sysconfig/opa/qlogic_fm.info # get IFS_FM_BASE
+	. /etc/sysconfig/opa/opafm.info # get IFS_FM_BASE
 	tooldir=$IFS_FM_BASE/etc
 fi
 
@@ -192,16 +185,10 @@ get_mtu()
 }
 
 # global $ans set to value input
-# rate 1 is obsolete
-rate[2]="2.5g"
-rate[3]="10g"
-rate[4]="30g"
-rate[5]="5g"
-rate[6]="20g"
-rate[7]="40g"
-rate[8]="60g"
-rate[9]="80g"
-rate[10]="120g"
+rate[1]="25g"
+rate[2]="50g"
+rate[3]="75g"
+rate[4]="100g"
 
 get_rate()
 {
@@ -211,22 +198,20 @@ get_rate()
 
 	# set default in case cntrl-D entered
 	case "$default" in
-	'10g(4xSDR)') ans=3;;	# convert to IBTA enum
-	'20g(4xDDR)') ans=6;;	# convert to IBTA enum
-	'30g(12xSDR)') ans=4;;	# convert to IBTA enum
-	'60g(12xDDR)') ans=8;;	# convert to IBTA enum
+	'25g') ans=1;;
+	'50g') ans=2;;
+	'75g') ans=3;;
+	'100g') ans=4;;
 	esac
 
 	PS3="$prompt ($default recommended): "
-	#select input in '10g(4xSDR)' '20g(4xDDR)' '30g(12xSDR)' '60g(12xDDR)' '40g(4xQDR)'
-	select input in '10g(4xSDR)' '20g(4xDDR)' '40g(4xQDR)'
+	select input in '25g' '50g' '75g' '100g'
 	do
 		case "$input" in
-		'10g(4xSDR)') ans=3; break;;	# convert to IBTA enum
-		'20g(4xDDR)') ans=6; break;;	# convert to IBTA enum
-		'30g(12xSDR)') ans=4; break;;	# convert to IBTA enum
-		'40g(4xQDR)') ans=7; break;;	# convert to IBTA enum
-		'60g(12xDDR)') ans=8; break;;	# convert to IBTA enum
+		'25g') ans=1; break;;	
+		'50g') ans=2; break;;
+		'75g') ans=3; break;;
+		'100g') ans=4; break;;
 		esac
 	done
 }
@@ -269,11 +254,11 @@ then
 	fi
 fi
 
-# FM instance HCAs
-fm_hca[0]=1
-fm_hca[1]=1
-fm_hca[2]=2
-fm_hca[3]=2
+# FM instance HFIs
+fm_hfi[0]=1
+fm_hfi[1]=1
+fm_hfi[2]=2
+fm_hfi[3]=2
 # FM instance Ports
 fm_port[0]=1
 fm_port[1]=2
@@ -290,10 +275,10 @@ fm_name[1]=fm1
 fm_name[2]=fm2
 fm_name[3]=fm3
 # FM device descriptions
-fm_device[0]="HCA ${fm_hca[0]} Port ${fm_port[0]}"
-fm_device[1]="HCA ${fm_hca[1]} Port ${fm_port[1]}"
-fm_device[2]="HCA ${fm_hca[2]} Port ${fm_port[2]}"
-fm_device[3]="HCA ${fm_hca[3]} Port ${fm_port[3]}"
+fm_device[0]="HFI ${fm_hfi[0]} Port ${fm_port[0]}"
+fm_device[1]="HFI ${fm_hfi[1]} Port ${fm_port[1]}"
+fm_device[2]="HFI ${fm_hfi[2]} Port ${fm_port[2]}"
+fm_device[3]="HFI ${fm_hfi[3]} Port ${fm_port[3]}"
 
 fm_allinstances="all FM instances"
 	
@@ -301,12 +286,12 @@ fm_allinstances="all FM instances"
 rm -f $TEMP
 print_separator
 echo "FM resources and buffering are scaled to match the anticipated maximum size"
-echo "of the fabric.  The size is specified in terms of the number of CAs in"
+echo "of the fabric.  The size is specified in terms of the number of HFIs in"
 echo "a single fabric."
 if [ "$esm" = y ]
 then
-	echo "For Embedded Fabric Manager, its recommended to use a value of 1000 or less."
-	get_number "Anticipated maximum fabric size" 1000 0 1000
+	echo "For Embedded Fabric Manager, its recommended to use a value of 100 or less."
+	get_number "Anticipated maximum fabric size" 100 0 100
 else
 	echo "For Host Fabric Manager, its recommended to use a value of 2560 or larger."
 	get_number "Anticipated maximum fabric size" 2560 0 10000
@@ -315,17 +300,17 @@ echo "  Setting SubnetSize to $ans"
 echo "SUBNET_SIZE=$ans" >> $TEMP
 
 print_separator
-echo "LMC is used to control the number of LIDs per CA."
+echo "LMC is used to control the number of LIDs per HFI."
 echo "Multiple LIDs can be used to permit multiple routes between endpoints."
-echo "This permits selected applications (such as MPIs using QLogic PSM) to"
+echo "This permits selected applications (such as MPIs using Intel(R) PSM) to"
 echo "optimize performance and/or resiliency by using dispersive routing."
-get_number "LMC value to use (there will be 2^LMC LIDs per CA)" 0 0 7
+get_number "LMC value to use (there will be 2^LMC LIDs per HFI)" 0 0 7
 echo "  Setting Lmc to $ans"
-echo "  There will be $((2**$ans)) LIDs per CA"
+echo "  There will be $((2**$ans)) LIDs per HFI"
 echo "SM_0_lmc=$ans" >> $TEMP	# sets for all instances
 
 print_separator
-echo "Adaptive routing permits QLogic QDR switches to dynamically adjust routing"
+echo "Adaptive routing permits Intel(R) Omni-Path Architecture switches to dynamically adjust routing"
 echo "based on traffic patterns and hence reduce congestion and improve overall"
 echo "cluster performance and efficiency."
 get_yes_no "Should Adaptive Routing be enabled" "n"
@@ -377,10 +362,10 @@ then
 	fm_allinstances="this FM"
 else
 	print_separator
-	echo "By default a FM node will run a single FM on the 1st Port of the 1st HCA."
+	echo "By default a FM node will run a single FM on the 1st Port of the 1st HFI."
 	echo "However, in larger configurations, a single FM node may be used to"
 	echo "manage multiple fabrics.  Each such fabric would be contected to a different"
-	echo "HCA port.  Each HCA port is associated with a different FM instance."
+	echo "HFI port.  Each HFI port is associated with a different FM instance."
 	num_instances=0
 	default=y
 	for instance in 0 1 2 3
@@ -419,7 +404,7 @@ echo "The rate selected must be no greater than the rate of the slowest link"
 echo "in the fabric(s)."
 echo "The MTU selected must be no greater than the MTU of the smallest MTU link"
 echo "in the fabric(s)."
-echo "When selecting the rate and MTU, CAs which won't run IPoIB can be ignored."
+echo "When selecting the rate and MTU, HFIs which won't run IPoIB can be ignored."
 echo "However all Switches must be operating with at least the rate and MTU selected."
 echo
 if [ $num_instances -eq 1 ]
@@ -434,7 +419,7 @@ else
 fi
 if [ $same_rate -eq 1 ]
 then
-	get_rate "IPoIB rate for $fm_allinstances" '20g(4xDDR)'
+	get_rate "IPoIB rate for $fm_allinstances" '25g'
 	rate=$ans
 fi
 if [ $same_mtu -eq 1 ]
@@ -447,13 +432,13 @@ then
 	echo "  Setting MulticastGroup.MTU to ${mtu[$mtu]}"
 	echo "  Setting MulticastGroup.Rate to ${rate[$rate]}"
 	echo "SM_0_def_mc_mtu=$mtu" >> $TEMP # sets for all instances
-	echo "SM_0_def_mc_rate=$rate" >> $TEMP # sets for all instances
+	echo "SM_0_def_mc_rate=${rate[$rate]}" >> $TEMP # sets for all instances
 else
 	for instance in $instances
 	do
 		if [ $same_rate -eq 0 ]
 		then
-			get_rate "IPoIB rate for FM instance $instance (${fm_name[$instance]}) (${fm_device[$instance]})" '20g(4xDDR)'
+			get_rate "IPoIB rate for FM instance $instance (${fm_name[$instance]}) (${fm_device[$instance]})" '25g'
 			rate=$ans
 		fi
 		if [ $same_mtu -eq 0 ]
@@ -466,12 +451,12 @@ else
 		if [ $instance -eq 0 ]
 		then
 			echo "SM_0_def_mc_mtu=$mtu" >> $TEMP
-			echo "SM_0_def_mc_rate=$rate" >> $TEMP
+			echo "SM_0_def_mc_rate=${rate[$rate]}" >> $TEMP
 		else
 			echo "SM_${instance}_def_mc_create=0x1" >> $TEMP
 			#echo "SM_${instance}_def_mc_pkey=0xffff" >> $TEMP
 			echo "SM_${instance}_def_mc_mtu=$mtu" >> $TEMP
-			echo "SM_${instance}_def_mc_rate=$rate" >> $TEMP
+			echo "SM_${instance}_def_mc_rate=${rate[$rate]}" >> $TEMP
 			#echo "SM_${instance}_def_mc_sl=0x0" >> $TEMP
 			echo "SM_${instance}_def_mc_qkey=0x0" >> $TEMP
 			echo "SM_${instance}_def_mc_fl=0x0" >> $TEMP
@@ -483,7 +468,7 @@ fi
 print_separator
 echo "The FM supports failover.  The FM to be preferred as the primary can be"
 echo "selected per FM instance."
-echo "If no preferred primary is selected, FMs will negotiate based on CA GUIDs."
+echo "If no preferred primary is selected, FMs will negotiate based on HFI GUIDs."
 get_yes_no "Do you want to configure a preferred primary or secondary FM" "n"
 if [ $ans -eq 1 ]
 then

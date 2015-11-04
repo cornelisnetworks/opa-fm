@@ -67,7 +67,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 //==============================================================================
 
-static uint8_t ib_qlogic_oui[] = {OUI_QLOGIC_0, OUI_QLOGIC_1, OUI_QLOGIC_2};
+static uint8_t ib_truescale_oui[] = {OUI_TRUESCALE_0, OUI_TRUESCALE_1, OUI_TRUESCALE_2};
 
 typedef struct
 {
@@ -87,7 +87,7 @@ static struct oib_class_args sm_class_args[] = {
 	{ STL_BASE_VERSION, MAD_CV_SUBN_LR, STL_SM_CLASS_VERSION, 
 		.is_responding_client=1, .is_trap_client=1, .is_report_client=0, .kernel_rmpp=0, .oui=0, .use_methods=0 },
 	{ STL_BASE_VERSION, MAD_CV_VENDOR_DBSYNC, STL_SA_CLASS_VERSION, 
-		.oui=ib_qlogic_oui, .use_methods=1, 
+		.oui=ib_truescale_oui, .use_methods=1, 
 		.methods={ FE_MNGR_PROBE_CMD, FE_MNGR_CLOSE_CMD,
     	  FM_CMD_SHUTDOWN, SA_CM_GET, SA_CM_SET, SA_CM_GETTABLE }},
 	{ STL_BASE_VERSION, MAD_CV_SUBN_ADM, STL_SA_CLASS_VERSION, 
@@ -103,21 +103,21 @@ static struct oib_class_args sm_class_args[] = {
 
 static struct oib_class_args fe_class_args[] = {
 	{ IB_BASE_VERSION, MAD_CV_VENDOR_FE, 1, 
-		.kernel_rmpp=0, .oui=ib_qlogic_oui, .use_methods=1, 
+		.kernel_rmpp=0, .oui=ib_truescale_oui, .use_methods=1, 
 		.methods={ FE_MNGR_PROBE_CMD,
 					FE_MNGR_CLOSE_CMD, FM_CMD_SHUTDOWN, RMPP_CMD_GET, RMPP_CMD_GETTABLE }},
 	{ IB_BASE_VERSION, MAD_CV_VFI_PM, 1,
-		.kernel_rmpp=0, .oui=ib_qlogic_oui, .use_methods=1,
+		.kernel_rmpp=0, .oui=ib_truescale_oui, .use_methods=1,
 		.methods={ FE_CMD_RESP, RMPP_CMD_GET, RMPP_CMD_GETTABLE }},
 };
 
 static struct oib_class_args fe_proc_class_args[] = {
 	{ IB_BASE_VERSION, MAD_CV_VENDOR_FE, 1, 
-		.kernel_rmpp=0, .oui=ib_qlogic_oui, .use_methods=1, 
+		.kernel_rmpp=0, .oui=ib_truescale_oui, .use_methods=1, 
 		.methods={ FE_MNGR_PROBE_CMD,
 					FE_MNGR_CLOSE_CMD, FM_CMD_SHUTDOWN, RMPP_CMD_GET, RMPP_CMD_GETTABLE }},
 	{ STL_BASE_VERSION, MAD_CV_VFI_PM, STL_PM_CLASS_VERSION, 
-        .kernel_rmpp=0, .oui=ib_qlogic_oui, .use_methods=1,
+        .kernel_rmpp=0, .oui=ib_truescale_oui, .use_methods=1,
         .methods={ FE_CMD_RESP }},
 	{ IB_BASE_VERSION, MAD_CV_SUBN_DR, 1, 
 		.is_responding_client=0, .is_trap_client=0, .is_report_client=0, .kernel_rmpp=0, .oui=0, .use_methods=0 },
@@ -136,7 +136,7 @@ static struct oib_class_args fe_proc_class_args[] = {
 
 static struct oib_class_args pm_class_args[] = {
 	{ STL_BASE_VERSION, MAD_CV_VFI_PM, STL_PM_CLASS_VERSION, 
-		.kernel_rmpp = 0, .oui=ib_qlogic_oui, .use_methods=1, 
+		.kernel_rmpp = 0, .oui=ib_truescale_oui, .use_methods=1, 
 		.methods={ FE_MNGR_PROBE_CMD, FE_MNGR_CLOSE_CMD, FM_CMD_SHUTDOWN,
 					STL_PA_CMD_GET, STL_PA_CMD_SET, STL_PA_CMD_GETTABLE }},
 	{ STL_BASE_VERSION, MAD_CV_PERF, STL_PM_CLASS_VERSION, 
@@ -927,7 +927,7 @@ ib_mai_to_wire(Mai_t *mad, uint8_t *buf)
 	// just write the OUI directly into the MAD.
 	if (  mad->base.mclass >= IBA_VENDOR_RANGE2_START
 	   && mad->base.mclass <= IBA_VENDOR_RANGE2_END)
-		memcpy(buf + 37, ib_qlogic_oui, 3);
+		memcpy(buf + 37, ib_truescale_oui, 3);
 	// END HORRIBLE HORRIBLE HACK
 
 	IB_EXIT(__func__, VSTATUS_OK);
@@ -1036,25 +1036,6 @@ stl_mai_to_wire(Mai_t *mad, uint8_t *buf, uint32_t *bufLen)
                IB_LOG_ERROR("datasize out of range:", mad->datasize); 
                IB_EXIT(__func__, VSTATUS_TOO_LARGE); 
                return VSTATUS_TOO_LARGE;
-           } else {
-			   switch(mad->base.mclass) {
-			   case MAD_CV_SUBN_DR:
-				   if (mad->datasize < STL_SMP_DR_HDR_LEN)
-					   mad->datasize = STL_SMP_DR_HDR_LEN;
-				   break;
-			   case MAD_CV_SUBN_ADM:
-			   case MAD_CV_VFI_PM:
-				   if (mad->datasize < sizeof(SA_MAD_HDR))
-					   mad->datasize = sizeof(SA_MAD_HDR);
-				   break;
-			   case MAD_CV_SUBN_LR:
-			   case MAD_CV_PERF:
-				// TODO: Remove default case once need for wfr-lite support is gone.
-				// See: PR 128382.
-			   default:
-				   if (mad->datasize < IB_MAD_PAYLOAD_SIZE)
-					   mad->datasize = IB_MAD_PAYLOAD_SIZE;
-			   }
            }
        } else {
            // in order to handle requests from legacy code, check validity of
@@ -1086,7 +1067,7 @@ stl_mai_to_wire(Mai_t *mad, uint8_t *buf, uint32_t *bufLen)
    // just write the OUI directly into the MAD.
    if (mad->base.mclass >= IBA_VENDOR_RANGE2_START
        && mad->base.mclass <= IBA_VENDOR_RANGE2_END) {
-	 memcpy(buf + 37, ib_qlogic_oui, 3); 
+	 memcpy(buf + 37, ib_truescale_oui, 3); 
    }
    // END HORRIBLE HORRIBLE HACK
    

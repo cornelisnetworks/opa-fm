@@ -239,13 +239,13 @@ void IXmlOutputOptionalInitReason(IXmlOutputState_t *state, const char *tag, voi
 /* typically a bitfield, so need to call with value instead of ptr */
 void IXmlOutputPortPhysStateValue(IXmlOutputState_t *state, const char *tag, uint8 value)
 {
-	IXmlOutputStrUint(state, tag, IbPortPhysStateToText(value), value);
+	IXmlOutputStrUint(state, tag, StlPortPhysStateToText(value), value);
 }
 
 // only output if value != 0
 void IXmlOutputOptionalPortPhysStateValue(IXmlOutputState_t *state, const char *tag, uint8 value)
 {
-	IXmlOutputOptionalStrUint(state, tag, IbPortPhysStateToText(value), value);
+	IXmlOutputOptionalStrUint(state, tag, StlPortPhysStateToText(value), value);
 }
 
 void IXmlOutputPortPhysState(IXmlOutputState_t *state, const char *tag, void *data)
@@ -330,30 +330,10 @@ boolean IXmlParseRateMult_Str(IXmlParserState_t *state, XML_Char *content, uint8
 		content++;
 	}
 
-	if (0 == strcasecmp(content, "1g") || 0 == strcasecmp(content, "1")) {
-		*value = IB_STATIC_RATE_1GB;
-	} else if (0 == strcasecmp(content, "2.5g") || 0 == strcasecmp(content, "2.5")) {
-		*value = IB_STATIC_RATE_2_5G;
-	} else if (0 == strcasecmp(content, "5g") || 0 == strcasecmp(content, "5")) {
-		*value = IB_STATIC_RATE_5G;
-	} else if (0 == strcasecmp(content, "10g") || 0 == strcasecmp(content, "10")) {
-		*value = IB_STATIC_RATE_10G;
-	} else if (0 == strcasecmp(content, "20g") || 0 == strcasecmp(content, "20")) {
-		*value = IB_STATIC_RATE_20G;
-	} else if (0 == strcasecmp(content, "25g") || 0 == strcasecmp(content, "25")) {
+	if (0 == strcasecmp(content, "25g") || 0 == strcasecmp(content, "25")) {
 		*value = IB_STATIC_RATE_25G;
-	} else if (0 == strcasecmp(content, "30g") || 0 == strcasecmp(content, "30")) {
-		*value = IB_STATIC_RATE_30G;
-	} else if (0 == strcasecmp(content, "40g") || 0 == strcasecmp(content, "40")) {
-		*value = IB_STATIC_RATE_40G;
 	} else if (0 == strcasecmp(content, "50g") || 0 == strcasecmp(content, "50")) {
 		*value = IB_STATIC_RATE_56G; // STL_STATIC_RATE_50G
-	} else if (0 == strcasecmp(content, "60g") || 0 == strcasecmp(content, "60")) {
-		*value = IB_STATIC_RATE_60G;
-	} else if (0 == strcasecmp(content, "80g") || 0 == strcasecmp(content, "80")) {
-		*value = IB_STATIC_RATE_80G;
-	} else if (0 == strcasecmp(content, "120g") || 0 == strcasecmp(content, "120")) {
-		*value = IB_STATIC_RATE_120G;
 	} else if (0 == strcasecmp(content, "12.5g") || 0 == strcasecmp(content, "12.5")) {
 		*value = IB_STATIC_RATE_14G; // STL_STATIC_RATE_12_5G
 	} else if (0 == strcasecmp(content, "37.5g") || 0 == strcasecmp(content, "37.5")) {
@@ -376,7 +356,7 @@ boolean IXmlParseRateMult_Str(IXmlParserState_t *state, XML_Char *content, uint8
 		*value = STL_STATIC_RATE_400G;
 #endif
 	} else {
-		IXmlParserPrintError(state, "Invalid Rate: '%s'  Must be 12.5g, 25g, 37.5g, 50g, 75g, 100g", content);
+		IXmlParserPrintError(state, "Invalid Rate: '%s'  Must be 25g, 50g, 75g, 100g", content);
 		return FALSE;
 	}
 	return TRUE;
@@ -999,156 +979,6 @@ void SwitchInfoXmlOutput(IXmlOutputState_t *state, const char *tag, void *data)
 void SwitchInfoXmlOutputOptional(IXmlOutputState_t *state, const char *tag, void *data)
 {
 	IXmlOutputOptionalStruct(state, tag, (STL_SWITCHINFO_RECORD*)data, NULL, SwitchInfoFields);
-}
-
-/****************************************************************************/
-/* VendorSwitchInfo Input/Output functions */
-
-/* bitfields needs special handling: LID */
-static void VendorSwitchInfoXmlOutputLID(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	IXmlOutputLIDValue(state, tag, ((IB_VENDSWITCHINFO_RECORD *)data)->RID.s.LID);
-}
-
-static void VendorSwitchInfoXmlParserEndLID(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
-{
-	uint16 value;
-	
-	if (IXmlParseUint16(state, content, len, &value))
-		((IB_VENDSWITCHINFO_RECORD *)object)->RID.s.LID = value;
-}
-
-/* bitfields needs special handling: LifeTimeValue */
-static void VendorSwitchInfoXmlOutputLifeTimeValue(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	IXmlOutputTimeoutMultValue(state, tag,
-		((IB_VENDSWITCHINFO_RECORD*)data)->VendSwitchInfoData.SwitchInfo.u1.s.LifeTimeValue);
-}
-
-static void VendorSwitchInfoXmlParserEndLifeTimeValue(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
-{
-	uint8 value;
-	
-	if (IXmlParseUint8(state, content, len, &value))
-		((IB_VENDSWITCHINFO_RECORD*)object)->VendSwitchInfoData.SwitchInfo.u1.s.LifeTimeValue = value;
-}
-
-/* bitfields needs special handling: PortStateChange */
-static void VendorSwitchInfoXmlOutputPortStateChange(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	IXmlOutputUint(state, tag, ((IB_VENDSWITCHINFO_RECORD *)data)->VendSwitchInfoData.SwitchInfo.u1.s.PortStateChange);
-}
-
-static void VendorSwitchInfoXmlParserEndPortStateChange(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
-{
-	uint8 value;
-	
-	if (IXmlParseUint8(state, content, len, &value))
-		((IB_VENDSWITCHINFO_RECORD *)object)->VendSwitchInfoData.SwitchInfo.u1.s.PortStateChange = value;
-}
-
-static void VendorSwitchInfoXmlOutputOptimizedSLVL(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	IXmlOutputUint(state, tag, ((IB_VENDSWITCHINFO_RECORD *)data)->VendSwitchInfoData.SwitchInfo.u1.s.OptimizedSLVL);
-}
-
-static void VendorSwitchInfoXmlParserEndOptimizedSLVL(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
-{
-	uint8 value;
-	
-	if (IXmlParseUint8(state, content, len, &value))
-		((IB_VENDSWITCHINFO_RECORD *)object)->VendSwitchInfoData.SwitchInfo.u1.s.OptimizedSLVL = value;
-}
-#if 0
-/* bitfields needs special handling: LostRoutesOnly */
-static void VendorSwitchInfoXmlOutputLostRoutesOnly(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	IXmlOutputUint(state, tag, ((IB_VENDSWITCHINFO_RECORD *)data)->VendSwitchInfoData.u.s.LostRoutesOnly);
-}
-
-static void VendorSwitchInfoXmlParserEndLostRoutesOnly(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
-{
-	uint8 value;
-	
-	if (IXmlParseUint8(state, content, len, &value))
-		((IB_VENDSWITCHINFO_RECORD *)object)->VendSwitchInfoData.u.s.LostRoutesOnly = value;
-}
-
-/* bitfields needs special handling: AdaptiveRoutingPause */
-static void VendorSwitchInfoXmlOutputAdaptiveRoutingPause(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	IXmlOutputUint(state, tag, ((IB_VENDSWITCHINFO_RECORD *)data)->VendSwitchInfoData.u.s.AdaptiveRoutingPause);
-}
-
-static void VendorSwitchInfoXmlParserEndAdaptiveRoutingPause(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
-{
-	uint8 value;
-	
-	if (IXmlParseUint8(state, content, len, &value))
-		((IB_VENDSWITCHINFO_RECORD *)object)->VendSwitchInfoData.u.s.AdaptiveRoutingPause = value;
-}
-
-/* bitfields needs special handling: AdaptiveRoutingEnable */
-static void VendorSwitchInfoXmlOutputAdaptiveRoutingEnable(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	IXmlOutputUint(state, tag, ((IB_VENDSWITCHINFO_RECORD *)data)->VendSwitchInfoData.u.s.AdaptiveRoutingEnable);
-}
-
-static void VendorSwitchInfoXmlParserEndAdaptiveRoutingEnable(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
-{
-	uint8 value;
-	
-	if (IXmlParseUint8(state, content, len, &value))
-		((IB_VENDSWITCHINFO_RECORD *)object)->VendSwitchInfoData.u.s.AdaptiveRoutingEnable = value;
-}
-
-/* bitfields needs special handling: AdaptiveRoutingTier1Enable */
-static void VendorSwitchInfoXmlOutputAdaptiveRoutingTier1Enable(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	IXmlOutputUint(state, tag, ((IB_VENDSWITCHINFO_RECORD *)data)->VendSwitchInfoData.u.s.AdaptiveRoutingTier1Enable);
-}
-
-static void VendorSwitchInfoXmlParserEndAdaptiveRoutingTier1Enable(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
-{
-	uint8 value;
-	
-	if (IXmlParseUint8(state, content, len, &value))
-		((IB_VENDSWITCHINFO_RECORD *)object)->VendSwitchInfoData.u.s.AdaptiveRoutingTier1Enable = value;
-}
-#endif
-
-IXML_FIELD VendorSwitchInfoFields[] = {
-	{ tag:"LID", format:'K', format_func:VendorSwitchInfoXmlOutputLID, end_func:VendorSwitchInfoXmlParserEndLID }, // bitfield
-	{ tag:"LinearFDBCap", format:'U', IXML_FIELD_INFO(IB_VENDSWITCHINFO_RECORD, VendSwitchInfoData.SwitchInfo.LinearFDBCap) },
-	{ tag:"MulticastFDBCap", format:'U', IXML_FIELD_INFO(IB_VENDSWITCHINFO_RECORD, VendSwitchInfoData.SwitchInfo.MulticastFDBCap) },
-	{ tag:"LinearFDBTop", format:'U', IXML_FIELD_INFO(IB_VENDSWITCHINFO_RECORD, VendSwitchInfoData.SwitchInfo.LinearFDBTop) },
-	{ tag:"LifeTimeValue", format:'k', format_func:VendorSwitchInfoXmlOutputLifeTimeValue, end_func:IXmlParserEndNoop }, // output only bitfield
-	{ tag:"LifeTimeValue_Int", format:'K', format_func:IXmlOutputNoop, end_func:VendorSwitchInfoXmlParserEndLifeTimeValue }, // input only bitfield
-	{ tag:"PortStateChange", format:'K', format_func:VendorSwitchInfoXmlOutputPortStateChange, end_func:VendorSwitchInfoXmlParserEndPortStateChange }, // bitfield
-	{ tag:"OptimizedSLVL", format:'k', format_func:VendorSwitchInfoXmlOutputOptimizedSLVL, end_func:VendorSwitchInfoXmlParserEndOptimizedSLVL }, // bitfield
-	{ tag:"LIDsPerPort", format:'U', IXML_FIELD_INFO(IB_VENDSWITCHINFO_RECORD, VendSwitchInfoData.SwitchInfo.LIDsPerPort) },
-	{ tag:"PartitionEnforcementCap", format:'U', IXML_FIELD_INFO(IB_VENDSWITCHINFO_RECORD, VendSwitchInfoData.SwitchInfo.PartitionEnforcementCap) },
-	{ tag:"CapabilityMask", format:'X', IXML_FIELD_INFO(IB_VENDSWITCHINFO_RECORD, VendSwitchInfoData.SwitchInfo.u2.AsReg8) },
-	{ tag:"MulticastFDBTop", format:'u', IXML_FIELD_INFO(IB_VENDSWITCHINFO_RECORD, VendSwitchInfoData.SwitchInfo.MulticastFDBTop) },
-	{ tag:"VendCapabilityMask", format:'x', IXML_FIELD_INFO(IB_VENDSWITCHINFO_RECORD, VendSwitchInfoData.CapabilityMask.AsReg16) },
-	{ tag:"VendVersion", format:'x', IXML_FIELD_INFO(IB_VENDSWITCHINFO_RECORD, VendSwitchInfoData.Version) },
-	{ tag:"VendConfigFlags", format:'x', IXML_FIELD_INFO(IB_VENDSWITCHINFO_RECORD, VendSwitchInfoData.u.AsReg8) },
-	//{ tag:"LostRoutesOnly", format:'k', format_func:VendorSwitchInfoXmlOutputLostRoutesOnly, end_func:VendorSwitchInfoXmlParserEndLostRoutesOnly }, // bitfield
-	//{ tag:"AdaptiveRoutingPause", format:'k', format_func:VendorSwitchInfoXmlOutputAdaptiveRoutingPause, end_func:VendorSwitchInfoXmlParserEndAdaptiveRoutingPause }, // bitfield
-	//{ tag:"AdaptiveRoutingEnable", format:'k', format_func:VendorSwitchInfoXmlOutputAdaptiveRoutingEnable, end_func:VendorSwitchInfoXmlParserEndAdaptiveRoutingEnable }, // bitfield
-	//{ tag:"AdaptiveRoutingTier1Enable", format:'k', format_func:VendorSwitchInfoXmlOutputAdaptiveRoutingTier1Enable, end_func:VendorSwitchInfoXmlParserEndAdaptiveRoutingTier1Enable }, // bitfield
-	{ NULL }
-};
-
-void VendorSwitchInfoXmlOutput(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	IXmlOutputStruct(state, tag, (IB_VENDSWITCHINFO_RECORD*)data, NULL, VendorSwitchInfoFields);
-}
-
-// only output if value != NULL
-void VendorSwitchInfoXmlOutputOptional(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	IXmlOutputOptionalStruct(state, tag, (IB_VENDSWITCHINFO_RECORD*)data, NULL, VendorSwitchInfoFields);
 }
 
 /* caller must supply SwitchInfoXmlParserStart and SwitchInfoXmlParserEnd */

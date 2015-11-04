@@ -48,6 +48,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // Default number of headers to allocate at a time.
 #define MEM_HDR_ALLOC_SIZE	50
 
+#if defined(MEM_TRACK_ON)
+static void *unTAddr[5000];
+int unTindex=0;
+#endif
+
 MEM_TRACKER	*pMemTracker = NULL;
 static uint32 last_reported_allocations;
 static uint32 total_allocations;
@@ -348,17 +353,20 @@ FSTATUS StringToUint64Bytes(uint64 *value, const char* str, char **endptr, int b
 static __inline void
 DestroyMemTracker( void )
 {
+	MEM_TRACKER *tmp;
 	if( !pMemTracker )
 		return;
 
+	tmp = pMemTracker;
+	pMemTracker = NULL; /* so no one uses it while we're destroying it */
+
 	// Destory all objects in the memory tracker object.
-	QListDestroy( &pMemTracker->FreeHrdList );
-	SpinLockDestroy( &pMemTracker->Lock );
-	QListDestroy( &pMemTracker->AllocList );
+	QListDestroy( &tmp->FreeHrdList );
+	SpinLockDestroy( &tmp->Lock );
+	QListDestroy( &tmp->AllocList );
 
 	// Free the memory allocated for the memory tracker object.
-	MEMORY_DEALLOCATE_PRIV( pMemTracker );
-	pMemTracker = NULL;
+	MEMORY_DEALLOCATE_PRIV( tmp );
 }
 
 //
@@ -367,43 +375,55 @@ DestroyMemTracker( void )
 static __inline boolean
 CreateMemTracker( void )
 {
+	MEM_TRACKER *tmp;
+
 	if( pMemTracker )
 		return TRUE;
 
-	// Allocate the memory tracker object.
-	pMemTracker = (MEM_TRACKER*)MEMORY_ALLOCATE_PRIV( sizeof(MEM_TRACKER), IBA_MEM_FLAG_LEGACY, TRK_TAG );
+	// Allocate the memory tracker object. Don't update global until we're done
+	tmp = (MEM_TRACKER*)MEMORY_ALLOCATE_PRIV( sizeof(MEM_TRACKER), IBA_MEM_FLAG_LEGACY, TRK_TAG );
 
-	if( !pMemTracker )
+	if( !tmp )
 		return FALSE;
 
 	// Pre-initialize all objects in the memory tracker object.
-	QListInitState( &pMemTracker->AllocList );
+	QListInitState( &tmp->AllocList );
 	SpinLockInitState( &pMemTracker->Lock );
-	QListInitState( &pMemTracker->FreeHrdList );
+	QListInitState( &tmp->FreeHrdList );
 
 	// Initialize the list.
-	if( !QListInit( &pMemTracker->AllocList ) )
+	if( !QListInit( &tmp->AllocList ) )
 	{
-		DestroyMemTracker();
+		/* global isn't initialize, don't call Destroy func; do the clean up */
+		MEMORY_DEALLOCATE_PRIV( tmp );
 		return FALSE;
 	}
 
 	// Initialize the spin lock to protect list operations.
-	if( !SpinLockInit( &pMemTracker->Lock ) )
+	if( !SpinLockInit( &tmp->Lock ) )
 	{
-		DestroyMemTracker();
+		/* global isn't initialize, don't call Destroy func; do the clean up */
+		QListDestroy( &tmp->AllocList );
+		SpinLockDestroy( &tmp->Lock );
+		MEMORY_DEALLOCATE_PRIV( tmp );
 		return FALSE;
 	}
 
 	// Initialize the free list.
-	if( !QListInit( &pMemTracker->FreeHrdList ) )
+	if( !QListInit( &tmp->FreeHrdList ) )
 	{
-		DestroyMemTracker();
+		/* global isn't initialize, don't call Destroy func; do the clean up */
+		QListDestroy( &tmp->AllocList );
+		SpinLockDestroy( &tmp->Lock );
+		MEMORY_DEALLOCATE_PRIV( tmp );
 		return FALSE;
 	}
 
-//	MsgOut( "\n\n\n*** Memory tracker object address = %p ***\n\n\n", pMemTracker );
+//	MsgOut( "\n\n\n*** Memory tracker object address = %p ***\n\n\n", tmp );
 	MsgOut( "\n*** Memory tracker enabled ***\n" );
+
+	/* NOW update the global */
+	pMemTracker = tmp;
 
 	return TRUE;
 }
@@ -488,7 +508,11 @@ MemoryTrackerShow(
 		IN char *suffix)
 {
 #if defined(VXWORKS)
+#if defined(VXWORKS_REV) && (VXWORKS_REV >= VXWORKS_REV_6_9)
+	if ((int)pHdr->LineNum >= 0x00408000) {
+#else
 	if ((int)pHdr->LineNum < 0) {
+#endif
 		MsgOut( "%s%p(%u) %s ra=%p tick=%u%s\n", prefix,
 				pHdr->ListItem.pObject, pHdr->Bytes, pHdr->trk->filename,
 				(void *)pHdr->LineNum, pHdr->tick, suffix );
@@ -699,8 +723,11 @@ MemoryTrackerTrackAllocation(
 		pFtr->OutOfBound = TRK_TAG;
 #endif  // MEM_TRACK_FTR
 
-	if( !pMemTracker )
+	if( !pMemTracker ) {
+		if (unTindex < 5000)
+			unTAddr[unTindex++] = pMem;
 		return;
+	}
 
 	// Get a header from the free header list.
 	SpinLockAcquire( &pMemTracker->Lock );
@@ -790,13 +817,22 @@ MemoryTrackerTrackDeallocate(
 				MemoryTrackerUnlink(pHdr);
 			}
 		} else {
-			result = 1;
+			int ii;
+			for (ii=0; ii<unTindex; ii++) {
+				if (unTAddr[ii] == pMemory) {
+					unTAddr[ii] = 0; /* found it */
+					break;
+				}
+			}
+			if (ii == unTindex) {
+				result = 1;
 #if defined(VXWORKS)
-			MsgOut( "UNMATCHED FREE %p ra=%p\n", pMemory, __builtin_return_address(0));
+				MsgOut( "UNMATCHED FREE %p ra=%p\n", pMemory, __builtin_return_address(0));
 #else
-			MsgOut( "BAD FREE %p\n", pMemory);
+				MsgOut( "BAD FREE %p\n", pMemory);
 #endif
-			DumpStack();
+				DumpStack();
+			}
 		}
 		SpinLockRelease( &pMemTracker->Lock );
 	}
@@ -1091,6 +1127,9 @@ MemoryDeallocate(
 {
 #if defined(MEM_TRACK_ON)
 	int result;
+
+	if (pMemory == NULL)
+		return 0;
 
 	result = MemoryTrackerTrackDeallocate(pMemory );
 	MEMORY_DEALLOCATE_PRIV( pMemory );

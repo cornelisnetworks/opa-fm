@@ -306,7 +306,9 @@ void bitset_info_log(bitset_t* bitset, char* prelude) {
 	int		range_start = -1;
 	int		prev = -1;
 	int		bit = -1;
-	char	str[32];
+	size_t	max_str_len = bitset->nset_m*5+1;
+	size_t	pos = 0;
+	int		res = 0;
     Status_t	status;
 	
 	if (!bitset) return;
@@ -333,7 +335,7 @@ void bitset_info_log(bitset_t* bitset, char* prelude) {
 		return;
 	}
 
-	status = vs_pool_alloc(bitset->pool_m, bitset->nset_m*5+1, (void *)&string);
+	status = vs_pool_alloc(bitset->pool_m, max_str_len, (void *)&string);
 	if (status != VSTATUS_OK) {
 		if (prelude) {
 			IB_LOG_INFINI_INFO_FMT(__func__, "%s, nset= %d", prelude, (int)bitset->nset_m);
@@ -348,26 +350,47 @@ void bitset_info_log(bitset_t* bitset, char* prelude) {
 
 	while (bit != -1) {
 		if (first) {
-			sprintf(str, "%d", bit);
-			strcat(string, str);
+			res = snprintf(string + pos, max_str_len - pos, "%d", bit);
+			if (res > 0){
+				pos += res;
+			} else {
+				if (res == 0)
+					break;
+				else
+					goto bail;
+			}
 			first = 0;
 		} else {
 			if (range && (prev != bit-1)) {
 				range = 0;
 				if ((prev - range_start) > 1) {
-					sprintf(str, "-%d,%d", prev, bit);
+					res = snprintf(string + pos, max_str_len - pos, "-%d,%d", prev, bit);
 				} else {
-					sprintf(str, ",%d,%d", prev, bit);
+					res = snprintf(string + pos, max_str_len - pos, ",%d,%d", prev, bit);
 				}
-				strcat(string, str);
+				if (res > 0){
+					pos += res;
+				} else {
+					if (res == 0)
+						break;
+					else
+						goto bail;
+				}
 				prev = -1;
 				range_start = -1;
 			} else if (!range && (prev == bit-1)) {
 				range_start = prev;
 				range = 1;
 			} else if (!range) {
-				sprintf(str, ",%d", bit);
-				strcat(string, str);
+				res = snprintf(string + pos, max_str_len - pos, ",%d", bit);
+				if (res > 0){
+					pos += res;
+				} else {
+					if (res == 0)
+						break;
+					else
+						goto bail;
+				}
 			}
 		}
 		prev = bit;
@@ -376,13 +399,16 @@ void bitset_info_log(bitset_t* bitset, char* prelude) {
 
 	if (range && (prev != -1)) {
 		if ((prev - range_start) > 1) {
-			sprintf(str, "-%d", prev);
+			res = snprintf(string + pos, max_str_len - pos, "-%d", prev);
 		} else {
-			sprintf(str, ",%d", prev);
+			res = snprintf(string + pos, max_str_len - pos, ",%d", prev);
 		}
-		strcat(string, str);
+		if (res > 0){
+			pos += res;
+		}
 	}
-  
+
+bail:  
 	if (prelude) {
 		IB_LOG_INFINI_INFO_FMT(__func__, "%s %s", prelude, string);
 	} else {

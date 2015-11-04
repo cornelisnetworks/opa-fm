@@ -300,6 +300,7 @@ static Status_t cntxt_release( cntxt_entry_t *a_cntxt, generic_cntxt_t *cntx, St
 //
 Status_t cs_cntxt_send_mad_nolock (cntxt_entry_t *entry, generic_cntxt_t *cntx) {
     Status_t    status;
+	uint32_t	datalen;
 
     if (! entry->hashed)
         cntxt_reserve( entry, cntx );	// clears sendFailed
@@ -343,6 +344,18 @@ count++;
 }
 }
 #endif
+	if (entry->mad.base.mclass == MAD_CV_PERF) {
+		datalen = MIN((uint32_t)entry->mad.datasize, STL_GS_DATASIZE);
+		if ((status = mai_send_stl_timeout(cntx->ibHandle, &entry->mad, &datalen, entry->RespTimeout)) != VSTATUS_OK) {
+			IB_LOG_ERROR_FMT(__func__,
+				   "status %d sending %s[%s] MAD length %u in context entry[%d] to LID[0x%x], TID 0x%.16"CS64"X",
+				   status, cs_getMethodText(entry->mad.base.method),
+				   cs_getAidName(entry->mad.base.mclass, entry->mad.base.aid), (uint32)entry->mad.datasize,
+				   entry->index, entry->mad.addrInfo.dlid, entry->tid);
+			entry->sendFailed = 1;
+		}
+		return status;
+	}
     if ((status = mai_send_timeout(cntx->ibHandle, &entry->mad, entry->RespTimeout)) != VSTATUS_OK) {
         IB_LOG_ERROR_FMT(__func__, 
                "status %d sending %s[%s] MAD in context entry[%d] to LID[0x%x], TID 0x%.16"CS64"X",

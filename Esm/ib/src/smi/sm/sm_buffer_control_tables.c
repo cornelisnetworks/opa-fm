@@ -71,10 +71,11 @@ sm_get_buffer_control_tables(IBhandle_t fd_topology, Node_t *nodep,
 {
 	int port;
 	Status_t status = FERROR;
-	unsigned char *path = nodep->path;
+	unsigned char *path;
 	uint8_t num_ports;
 	STL_BUFFER_CONTROL_TABLE *pbct;
     uint8 maxcount = STL_NUM_BFRCTLTAB_BLOCKS_PER_DRSMP;
+	Port_t *portp;
 
 	if (!nodep || !start_port || start_port > end_port) {
 		cs_log(VS_LOG_ERROR, "sm_get_buffer_control_table",
@@ -87,11 +88,22 @@ sm_get_buffer_control_tables(IBhandle_t fd_topology, Node_t *nodep,
 	num_ports = (end_port - start_port) +1;
 	pbct = malloc(num_ports * sizeof(STL_BUFFER_CONTROL_TABLE));
 	if (!pbct) {
-		cs_log(VS_LOG_ERROR, "get_buffer_control_table",
+		cs_log(VS_LOG_ERROR, "sm_get_buffer_control_table",
 				"Failed to allocate buffer control table; node %s; no memory",
 				sm_nodeDescString(nodep));
 		return (VSTATUS_NOMEM);
 	}
+
+	port = nodep->nodeInfo.NodeType == NI_TYPE_CA ? start_port : 0;
+	portp = sm_get_port(nodep, port);
+	if (!sm_valid_port(portp)) {
+		cs_log(VS_LOG_VERBOSE, "sm_get_buffer_control_table",
+			   "Failed to get Port %d of node %s",
+			   port, sm_nodeDescString(nodep));
+		free(pbct);
+		return VSTATUS_BAD;
+	} 
+	path = PathToPort(nodep, portp);
 
 	/*
 	 * FIXME Optimization:
@@ -107,7 +119,7 @@ sm_get_buffer_control_tables(IBhandle_t fd_topology, Node_t *nodep,
 
 		status = SM_Get_BufferControlTable(fd_topology, am, path, buf);
 		if (status != VSTATUS_OK) {
-			cs_log(VS_LOG_ERROR, "get_buffer_control_table",
+			cs_log(VS_LOG_ERROR, "sm_get_buffer_control_table",
 					"buffer control table query failed; node %s; %s",
 					sm_nodeDescString(nodep),
 					cs_convert_status (status));
@@ -116,21 +128,13 @@ sm_get_buffer_control_tables(IBhandle_t fd_topology, Node_t *nodep,
 	}
 
 	for (port = start_port; port <= end_port; port++) {
-		Port_t *portp;
-		if ((portp = sm_get_port(nodep, port)) == NULL) {
-			cs_log(VS_LOG_VERBOSE, "get_buffer_control_table",
-					"node %s port %d not allocated",
-					sm_nodeDescString(nodep), port);
+		portp = sm_get_port(nodep, port);
+		if (!sm_valid_port(portp)) {
+			cs_log(VS_LOG_VERBOSE, "sm_get_buffer_control_tables",
+				   "Failed to get port %d of node %s",
+				   port, sm_nodeDescString(nodep));
 			continue;
 		}
-
-		if (portp->portData == NULL) {
-			cs_log(VS_LOG_VERBOSE, "get_buffer_control_table",
-					"node %s port %d 'portData' not allocated",
-					sm_nodeDescString(nodep), port);
-			continue;
-		}
-
 		memcpy(&portp->portData->bufCtrlTable, &(pbct[port-start_port]),
 			sizeof(portp->portData->bufCtrlTable));
 	}
@@ -141,23 +145,21 @@ error:
 }
 
 
-/*
- * FIXME Optimization:
- * What about using Lid Routed packets?
- */
 Status_t
 sm_set_buffer_control_tables(IBhandle_t fd_topology, Node_t *nodep,
 						uint8_t start_port, uint8_t end_port,
 						STL_BUFFER_CONTROL_TABLE bcts[])
 {
 	Status_t status = VSTATUS_OK;
-    uint8 maxcount = STL_NUM_BFRCTLTAB_BLOCKS_PER_DRSMP;
-	unsigned char *path;
+    uint8 maxcount = STL_NUM_BFRCTLTAB_BLOCKS_PER_LID_SMP;
+//	unsigned char *path = NULL;
 	uint16_t port;
 	uint8_t num_ports;
 	uint64_t mkey;
 	uint32_t madStatus;
 	extern char * sm_getMadStatusText(uint16_t status);
+	Port_t *destPortp;
+	uint32_t dlid = 0;
 
 	// Temporary debug if needed...
 	//printf ("sm_set_buffer_control_table for node %s ports %u - %u\n",
@@ -172,7 +174,6 @@ sm_set_buffer_control_tables(IBhandle_t fd_topology, Node_t *nodep,
 		return (VSTATUS_ILLPARM);
 	}
 
-	path = nodep->path;
 	num_ports = (end_port - start_port) +1;
 
 	if (nodep->nodeInfo.NodeType == NI_TYPE_CA && num_ports > 1 ) {
@@ -184,6 +185,17 @@ sm_set_buffer_control_tables(IBhandle_t fd_topology, Node_t *nodep,
 
 	if ((status = sm_get_mkey(nodep, &mkey, start_port)) != VSTATUS_OK)
 		return (status);
+
+	port = nodep->nodeInfo.NodeType == NI_TYPE_CA ? start_port : 0;
+	destPortp = sm_get_port(nodep, port);
+	if (!sm_valid_port(destPortp)) {
+		cs_log(VS_LOG_VERBOSE, "sm_set_buffer_control_table", 
+			   "Failed to get Port %d of node %s",
+			   port, sm_nodeDescString(nodep));
+		return VSTATUS_BAD;
+	} 
+//	path = PathToPort(nodep, destpPortp);
+	dlid = destPortp->portData->lid;
 
 	/**
 	 * FIXME Optimization loop through ports specified and see if they are all
@@ -202,7 +214,7 @@ sm_set_buffer_control_tables(IBhandle_t fd_topology, Node_t *nodep,
 		uint32_t am = (n << 24) | port;
 		STL_BUFFER_CONTROL_TABLE *buf = &bcts[port-start_port];
 
-		status = SM_Set_BufferControlTable(fd_topology, am, path, buf, mkey, &madStatus);
+		status = SM_Set_BufferControlTable_LR(fd_topology, am, sm_lid, dlid, buf, mkey, &madStatus);
 		if (status != VSTATUS_OK) {
 			cs_log(VS_LOG_ERROR, "sm_set_buffer_control_table",
 					"buffer control table query failed; node %s; %s (madStatus=%s)",
@@ -216,16 +228,11 @@ sm_set_buffer_control_tables(IBhandle_t fd_topology, Node_t *nodep,
 			uint8_t p;
 			for (p = port; p < (port+n); p++) {
 				Port_t *portp;
-				if ((portp = sm_get_port(nodep, p)) == NULL) {
-					cs_log(VS_LOG_VERBOSE, "sm_set_buffer_control_table",
-							"node %s port %d not allocated",
-							sm_nodeDescString(nodep), port);
-					continue;
-				}
-				if (portp->portData == NULL) {
-					cs_log(VS_LOG_VERBOSE, "sm_set_buffer_control_table",
-							"node %s port %d 'portData' not allocated",
-							sm_nodeDescString(nodep), port);
+				portp = sm_get_port(nodep, p);
+				if (!sm_valid_port(portp)) {
+					cs_log(VS_LOG_VERBOSE, "sm_set_buffer_control_table", 
+						   "Failed to get port %d of node %s",
+						   port, sm_nodeDescString(nodep));
 					continue;
 				}
 				memcpy(&portp->portData->bufCtrlTable, &buf[p-port],

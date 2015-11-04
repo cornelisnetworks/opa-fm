@@ -210,7 +210,8 @@ sm_conf_fill_common(fm_mgr_action_t action, fm_config_common_t *common)
 			}
 #endif
 			if(common->select_mask & CFG_COM_SEL_LOG_FILE){
-				strncpy(sm_config.log_file,&common->log_file[0],sizeof(sm_config.log_file));
+				strncpy(sm_config.log_file,&common->log_file[0],sizeof(sm_config.log_file)-1);
+				sm_config.log_file[sizeof(sm_config.log_file)-1]=0;
 				reset_log_flag = 1;
 			}
 
@@ -592,30 +593,6 @@ void if3_set_rmpp_minfo (ManagerInfo_t *mi)
     default:
         IB_LOG_INFINI_INFO_FMT(__func__, "MCLASS 0x%x not supported", mi->mclass);
         break;
-    }
-}
-
-char* if3_dbsync_rmpp_get_aid_name(uint16_t aid) 
-{ 
-   switch (aid) {
-   case DBSYNC_AID_SYNC:
-       return "DBSYNC_AID_SYNC"; 
-       break;
-   case DBSYNC_AID_GROUP:
-       return "DBSYNC_AID_GROUP"; 
-       break;
-   case DBSYNC_AID_SERVICE:
-       return "DBSYNC_AID_SERVICE"; 
-       break;
-   case DBSYNC_AID_INFORM:
-       return "DBSYNC_AID_INFORM"; 
-       break;
-   case DBSYNC_AID_MCROOT:
-       return "DBSYNC_AID_MCROOT"; 
-       break;
-    default:
-      return "UNKNOWN AID"; 
-      break;
     }
 }
 

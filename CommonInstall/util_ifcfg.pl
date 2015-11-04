@@ -43,7 +43,7 @@ use strict;
 # used for IPoIB at present but generalized so could support VNIC or
 # iPathEther also
 
-my $MAX_IB_PORTS=20;	# maximum valid ports
+my $MAX_HFI_PORTS=20;	# maximum valid ports
 
 # Validate the passed in IP address (or netmask).
 # Verify there are enough dots '.' and same number of
@@ -490,10 +490,10 @@ sub Config_ifcfg($$$$$)
 
 	if ( $showoptions != 0 )
 	{
-		printf ("\nYou may configure an $compname interface for each IB port\n");
-		printf ("Or you may select to have $compname only run on some IB ports\n");
-		printf ("Or you may select to configure redundant IB ports with a\n");
-		printf ("pair of IB ports running a single $compname interface\n");
+		printf ("\nYou may configure an $compname interface for each HFI port\n");
+		printf ("Or you may select to have $compname only run on some HFI ports\n");
+		printf ("Or you may select to configure redundant HFI ports with a\n");
+		printf ("pair of HFI ports running a single $compname interface\n");
 	}
 	do
 	{
@@ -505,9 +505,9 @@ sub Config_ifcfg($$$$$)
 		if ( length($inp) == 0 ) 
 		{
 			$max_ports=1;
-		} elsif ($inp < 0 || $inp > $MAX_IB_PORTS)
+		} elsif ($inp < 0 || $inp > $MAX_HFI_PORTS)
 		{
-			printf ("You must specify a number between 0 and $MAX_IB_PORTS\n");
+			printf ("You must specify a number between 0 and $MAX_HFI_PORTS\n");
 		} elsif ($inp == 0) {
 			LogPrint "How many $compname interfaces would you like to configure? -> $inp\n";
 			if (GetYesNo("You specified 0, would you like to skip IP address configuration?", "n") == 1)
@@ -525,7 +525,7 @@ sub Config_ifcfg($$$$$)
 	print "\nAbout to create $compname ifcfg files in $NETWORK_CONF_DIR\n";
 
 	# Does the user want sequential IP address assignment starting at a base
-	# IP address or specify an IP address for each IB port (a.k.a. IPoIB device
+	# IP address or specify an IP address for each HFI port (a.k.a. IPoIB device
 	# instance). 
 
 	if ( $max_ports > 1 ) {
@@ -605,7 +605,7 @@ sub net_interface_down($)
 		return;
 	}
 	# make sure the specified network interfaces are not running
-	for($a=0; $a < $MAX_IB_PORTS; $a++)
+	for($a=0; $a < $MAX_HFI_PORTS; $a++)
 	{
 		$IF = "$NETWORK_CONF_DIR/ifcfg-".$dev."$a";
 		if ( -r $IF )

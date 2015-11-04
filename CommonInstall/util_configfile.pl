@@ -45,6 +45,8 @@ my $OFED_CONFIG = "$OFED_CONFIG_DIR/openib.conf";
 my $OPA_CONFIG_DIR = "/etc/rdma"; 
 my $OPA_CONFIG = "$OPA_CONFIG_DIR/rdma.conf";
 my %KeepConfig = (); # keep track of past questions to config questions
+my $Default_RpmConfigKeepOld=0; # -O option used to select current rpm config file
+my $Default_RpmConfigUseNew=0; # -N option used to select new rpm config file
 
 my $TMP_CONF="/tmp/conf.$$";	# scratch file
 
@@ -82,6 +84,34 @@ sub check_keep_config($$$)
 		}
 	}
 	return $KeepConfig{"$ROOT$configFile"};
+}
+
+# This subroutine is used to check if we should keep a modified rpm config file
+sub check_rpm_config_file($)
+{
+	my($config) = shift();
+
+	if ( -e "$config.rpmsave") {
+		if ($Default_RpmConfigKeepOld) {
+			system "mv -f $config.rpmsave $config";
+		} elsif ($Default_RpmConfigUseNew){
+			system "rm -f $config.rpmsave";
+		} elsif (GetYesNo ("Do you want to keep $config?", "y")) {
+			system "mv -f $config.rpmsave $config";
+		} else {
+			system "rm -f $config.rpmsave";
+		}
+	} elsif ( -e "$config.rpmnew") {
+		if ($Default_RpmConfigKeepOld) {
+			system "rm -f $config.rpmnew";
+		} elsif ($Default_RpmConfigUseNew){
+			system "mv -f $config.rpmnew $config";
+		} elsif (GetYesNo ("Do you want to keep $config?", "y")) {
+			system "rm -f $config.rpmnew";
+		} else {
+			system "mv -f $config.rpmnew $config";
+		}
+	}
 }
 
 sub clear_keep_config($)

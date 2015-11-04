@@ -99,7 +99,7 @@ int saSubscriberSize(void) {
 }
 
 int saServiceRecordSize(void) {
-	int size = sizeof(VieoServiceRecord_t);
+	int size = sizeof(OpaServiceRecord_t);
 	sysPrintf("An SA Service Record is %d bytes\n", size);
 	return size;
 }

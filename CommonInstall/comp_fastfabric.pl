@@ -119,16 +119,23 @@ sub install_fastfabric
 	}
 
 	my $rpmfile = rpm_resolve("$srcdir/RPMS/*/", "any", "opa-fastfabric");
-	rpm_run_install($rpmfile, "any", "-U");
+	rpm_run_install($rpmfile, "any", " -U ");
 
 	check_dir("/opt/opa/tools");
 	check_dir("/opt/opa/samples");
 	system "chmod ug+x $ROOT/opt/opa/samples/hostverify.sh";
 	system "rm -f $ROOT/opt/opa/samples/nodeverify.sh";
 
-	preserve_prev_rpm_conf("$FF_TLS_CONF_FILE");
+	check_rpm_config_file("$FF_TLS_CONF_FILE");
 	printf("Default opaff.xml can be found in '/opt/opa/samples/opaff.xml-sample'\n");
-	preserve_prev_rpm_conf("$OPA_CONFIG_DIR/opamon.conf");
+	check_rpm_config_file("$CONFIG_DIR/opa/opamon.conf");
+	check_rpm_config_file("$CONFIG_DIR/opa/opafastfabric.conf");
+	check_rpm_config_file("$CONFIG_DIR/opa/allhosts");
+	check_rpm_config_file("$CONFIG_DIR/opa/chassis");
+	check_rpm_config_file("$CONFIG_DIR/opa/hosts");
+	check_rpm_config_file("$CONFIG_DIR/opa/ports");
+	check_rpm_config_file("$CONFIG_DIR/opa/switches");
+	check_rpm_config_file("/opt/opa/tools/osid_wrapper");
 
 	#install_conf_file("$ComponentInfo{'fastfabric'}{'Name'}", "$FF_TLS_CONF_FILE", "$srcdir/fastfabric/tools/tls");
 	#remove_conf_file("$ComponentInfo{'fastfabric'}{'Name'}", "$OPA_CONFIG_DIR/iba_stat.conf");

@@ -47,6 +47,13 @@ extern "C" {
 // First grouping are those used for debug/output primarily of SM/SMA interactions.
 // Second grouping is for RECORD prints in support of customer-visible iba_* prints of SA info.
 
+// Usage defines
+#define CABLEINFO_DETAIL_ONELINE  0			// One-line output
+#define CABLEINFO_DETAIL_SUMMARY  1			// Multi-line but abbreviated output
+#define CABLEINFO_DETAIL_BRIEF    2			// Brief output
+#define CABLEINFO_DETAIL_VERBOSE  3			// Verbose output
+#define CABLEINFO_DETAIL_ALL      4			// All fields output
+
 // Basic STL prints
 void PrintStlLid(PrintDest_t *dest, int indent, uint32_t lid, int printLineByLine);
 
@@ -99,8 +106,8 @@ void PrintStlHfiCongestionLog(PrintDest_t *dest, int indent, const STL_HFI_CONGE
 void PrintStlHfiCongestionControlTab(PrintDest_t *dest, int indent, const STL_HFI_CONGESTION_CONTROL_TABLE *pHfiCongestionControl, uint8_t cnt, uint8_t start, int printLineByLine);
 void PrintStlBfrCtlTable(PrintDest_t *dest, int indent, const STL_BUFFER_CONTROL_TABLE *pBfrCtlTable, int printLineByLine);
 void PrintStlBfrCtlTableSmp(PrintDest_t *dest, int indent, const STL_SMP *smp, uint8_t nodeType, int printLineByLine);
-// len is L value from attribute modifier, eg. length of cable data -1
-void PrintStlCableInfo(PrintDest_t *dest, int indent, const STL_CABLE_INFO *pCableInfo, uint16_t addr, uint8_t len, uint8_t portType, int printLineByLine);
+// len is real length of cable data
+void PrintStlCableInfo(PrintDest_t *dest, int indent, const uint8_t *cableInfoData, uint16_t addr, uint8_t len, uint8_t portType, uint8_t detail, int printLineByLine);
 void PrintStlCableInfoSmp(PrintDest_t *dest, int indent, const STL_SMP *smp, uint8_t portType, int printLineByLine);
 void PrintStlPortGroupFDB(PrintDest_t *dest, int indent, const STL_PORT_GROUP_FORWARDING_TABLE *pPortGroupFDB, uint32 blockNum, int printLineByLine);
 void PrintStlPortGroupTable(PrintDest_t *dest, int indent, const uint64_t *pPortGroup, uint32 blockNum, int position, int printLineByLine);
@@ -128,6 +135,7 @@ void PrintStlVfInfoRecord(PrintDest_t *dest, int indent, const STL_VFINFO_RECORD
 void PrintStlVfInfoRecordCSV(PrintDest_t *dest, int indent, const STL_VFINFO_RECORD *pVfInfo);
 void PrintStlVfInfoRecordCSV2(PrintDest_t *dest, int indent, const STL_VFINFO_RECORD *pVfInfo);
 void PrintStlTraceRecord(PrintDest_t *dest, int indent, const STL_TRACE_RECORD *pTraceRecord);
+void PrintStlFabricInfoRecord(PrintDest_t *dest, int indent, const STL_FABRICINFO_RECORD *pFabricInfoRecord);
 void PrintQuarantinedNodeRecord(PrintDest_t *dest, int indent, const STL_QUARANTINED_NODE_RECORD *pQuarantinedNodeRecord);
 void PrintStlCongestionInfoRecord(PrintDest_t *dest, int indent, const STL_CONGESTION_INFO_RECORD *pCongestionInfo);
 void PrintStlSwitchCongestionSettingRecord(PrintDest_t *dest, int indent, const STL_SWITCH_CONGESTION_SETTING_RECORD *pSwCongestionSetting);
@@ -138,18 +146,16 @@ void PrintBfrCtlTableRecord(PrintDest_t *dest, int indent, const STL_BUFFER_CONT
 void PrintStlCableInfoRecord(PrintDest_t *dest, int indent, const STL_CABLE_INFO_RECORD *pCableInfoRecord);
 void PrintStlPortGroupTabRecord(PrintDest_t *dest, int indent, const STL_PORT_GROUP_TABLE_RECORD *pRecord);
 void PrintStlPortGroupFwdTabRecord(PrintDest_t *dest, int indent, const STL_PORT_GROUP_FORWARDING_TABLE_RECORD *pRecord);
-// len is L value from attribute modifier, eg. length of cable data -1
-void PrintStlCableInfoSummary(PrintDest_t *dest, int indent, const STL_CABLE_INFO *pCableInfo, uint16_t addr, uint8_t len, uint8_t portType, int printLineByLine);
-// len is L value from attribute modifier, eg. length of cable data -1
-void PrintStlPortSummary(PrintDest_t *dest, int indent, const char* portName, const STL_PORT_INFO *pPortInfo, EUI64 portGuid, uint16_t g_pkey, const STL_CABLE_INFO *pCableInfo, uint16_t addr, uint8_t len, const STL_PORT_STATUS_RSP *pPortStatusRsp, int printLineByLine);
+// len is real length of cable data
+void PrintStlPortSummary(PrintDest_t *dest, int indent, const char* portName, const STL_PORT_INFO *pPortInfo, EUI64 portGuid, uint16_t g_pkey, const uint8_t *cableInfoData, uint16_t addr, uint8_t len, const STL_PORT_STATUS_RSP *pPortStatusRsp, uint8_t detail, int printLineByLine);
 
 // PM
 void PrintStlPortStatusRsp(PrintDest_t *dest, int indent, const STL_PORT_STATUS_RSP *pStlPortStatusRsp);
 void PrintStlPortStatusRspSummary(PrintDest_t *dest, int indent, const STL_PORT_STATUS_RSP *pStlPortStatusRsp, int printLineByLine);
 void PrintStlClearPortStatus(PrintDest_t *dest, int indent, const STL_CLEAR_PORT_STATUS *pStlClearPortStatus);
 void PrintStlDataPortCountersRsp(PrintDest_t *dest, int indent, const STL_DATA_PORT_COUNTERS_RSP *pStlDataPortCountersRsp);
-void PrintStlErrorPortCountersRsp(PrintDest_t *dest, int indent, const STL_ERROR_PORT_COUNTERS_RSP *pStlErrorPortCountersRsp, int counterSizeMode);
-void PrintStlErrorInfoReq(PrintDest_t *dest, int indent, const STL_ERROR_INFO_REQ *pStlErrorInfoReq);
+void PrintStlErrorPortCountersRsp(PrintDest_t *dest, int indent, const STL_ERROR_PORT_COUNTERS_RSP *pStlErrorPortCountersRsp);
+void PrintStlErrorInfoRsp(PrintDest_t *dest, int indent, const STL_ERROR_INFO_RSP *pStlErrorInfoRsp, int headerOnly);
 
 // PA
 void PrintStlPAGroupList(PrintDest_t *dest, int indent, const int numRecords, const STL_PA_GROUP_LIST *pGroupList);
@@ -164,9 +170,9 @@ void PrintStlPAImageInfo(PrintDest_t *dest, int indent, const STL_PA_IMAGE_INFO_
 void PrintStlPAMoveFreeze(PrintDest_t *dest, int indent, const STL_MOVE_FREEZE_DATA *pMoveFreeze);
 void PrintStlPAVFList(PrintDest_t *dest, int indent, const int numRecords, const STL_PA_VF_LIST *pVFList);
 void PrintStlPAVFInfo(PrintDest_t *dest, int indent, const STL_PA_VF_INFO_DATA *pVFInfo);
-void PrintStlPAVFConfig(PrintDest_t *dest, int indent, const char *vfName, const uint64 vfSID, const int numRecords, const STL_PA_VF_CFG_RSP *pVFConfig);
+void PrintStlPAVFConfig(PrintDest_t *dest, int indent, const char *vfName, const int numRecords, const STL_PA_VF_CFG_RSP *pVFConfig);
 void PrintStlPAVFPortCounters(PrintDest_t *dest, int indent, const STL_PA_VF_PORT_COUNTERS_DATA *pVFPortCounters, const uint32 nodeLid, const uint32 portNumber, const uint32 flags);
-void PrintStlPAVFFocusPorts(PrintDest_t *dest, int indent, const char *vfName, const uint64 vfSID, const int numRecords, const uint32 select, const uint32 start, const uint32 range,
+void PrintStlPAVFFocusPorts(PrintDest_t *dest, int indent, const char *vfName, const int numRecords, const uint32 select, const uint32 start, const uint32 range,
 	const STL_PA_VF_FOCUS_PORTS_RSP *pVFFocusPorts);
 
 ///////////////////////////////////////////////////////////////////////////////

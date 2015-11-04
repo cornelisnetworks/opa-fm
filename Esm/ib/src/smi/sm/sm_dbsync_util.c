@@ -476,7 +476,7 @@ boolean sm_dbsync_isUpToDate(SmRecKey_t recKey, char **reason) {
 			uptodate = 1;
 		} else if (smrecp->syncCapability == DBSYNC_CAP_NOTSUPPORTED) {
 			/* Sync is disabled */
-			uptodate = 1;
+			uptodate = 0;
 		} else if (smrecp->syncCapability == DBSYNC_CAP_SUPPORTED) {
 			if (smrecp->dbsync.fullSyncStatus == DBSYNC_STAT_FAILURE) {
 				if (reason) *reason = "SM synchrnoization failed";
@@ -684,10 +684,9 @@ Status_t sm_dbsync_upSmDbsyncStat(SmRecKey_t recKey, DBSyncDatTyp_t type, DBSync
  */
 Status_t sm_dbsync_configCheck(SmRecKey_t recKey, SMDBCCCSyncp smSyncSetting) {
 	SmRecp          smrecp = NULL;
-	STL_SM_INFO		smInfoCopy;
 	Status_t        status = VSTATUS_OK;
-	uint8_t			deactivated = 0;
-	SmCsmNodeId_t	csmNodeId;
+	uint8_t			deactivateSM = 0;
+	SmCsmMsgCondition_t condition;
 
 	IB_ENTER(__func__, recKey, smSyncSetting, 0, 0);
 
@@ -720,90 +719,40 @@ Status_t sm_dbsync_configCheck(SmRecKey_t recKey, SMDBCCCSyncp smSyncSetting) {
 			} else {
 				if (smSyncSetting->smVfChecksum != 0 && smRecords.ourChecksums.smVfChecksum != 0) {
 					if (smSyncSetting->smVfChecksum != smRecords.ourChecksums.smVfChecksum) {
+
 						IB_LOG_WARN_FMT(__func__,
 							"SM at %s, portGuid="FMT_U64" has a different enabled Virtual Fabric configuration consistency checksum [%u] from us [%u]",
 							smrecp->nodeDescString, recKey, smSyncSetting->smVfChecksum, smRecords.ourChecksums.smVfChecksum);
-						/* are we configured to disable standby */
-						if (sm_config.config_consistency_check_level == CHECK_ACTION_CCC_LEVEL) {
-                			smrecp->configDiff = 1;
-							smInfoCopy = sm_smInfo;
-							status = SM_Set_SMInfo(fd_dbsync, SM_AMOD_DISABLE, smrecp->path, &smInfoCopy, sm_config.mkey);
-							if (status != VSTATUS_OK) {
-								IB_LOG_WARN_FMT(__func__,
-									"could not DEACTIVATE standby SM %s : "FMT_U64" which has a Virtual Fabric configuration inconsistency with master!",
-									smrecp->nodeDescString, recKey);
-							} else {
-								smCsmFormatNodeId(&csmNodeId, smrecp->nodeDescString, smrecp->portNumber, smrecp->portguid);
-								smCsmLogMessage(CSM_SEV_WARNING, CSM_COND_STANDBY_SM_VF_DEACTIVATION, &csmNodeId, NULL,
-									"Deactivating standby SM %s : "FMT_U64" which has a Virtual Fabric configuration inconsistency with master! " 
-									"The secondary PM will also be deactivated.", smrecp->nodeDescString, recKey);
-								deactivated = 1;
-								/* set sync capability to not supported since the Standby SM will go Inactive */
-								smrecp->syncCapability = DBSYNC_CAP_NOTSUPPORTED;
-								/* trigger a sweep so the inactive status gets updated */
-								sm_trigger_sweep(SM_SWEEP_REASON_UPDATED_STANDBY);
-							}
-						}
+
+						deactivateSM = 1;
+						condition = CSM_COND_STANDBY_SM_VF_DEACTIVATION;
+						smrecp->syncCapability = DBSYNC_CAP_NOTSUPPORTED;
 					}
 				}
 
 				if (smSyncSetting->smConfigChecksum != 0 && smRecords.ourChecksums.smConfigChecksum != 0) {
 					if (smSyncSetting->smConfigChecksum != smRecords.ourChecksums.smConfigChecksum) {
+
 						IB_LOG_WARN_FMT(__func__,
 							"SM at %s, portGuid="FMT_U64" has a different SM configuration consistency checksum [%u] from us [%u]",
 							smrecp->nodeDescString, recKey, smSyncSetting->smConfigChecksum, smRecords.ourChecksums.smConfigChecksum);
-						/* are we configured to disable standby */
-						if (sm_config.config_consistency_check_level == CHECK_ACTION_CCC_LEVEL) {
-               				smrecp->configDiff = 1;
-							smInfoCopy = sm_smInfo;
-							if (!deactivated) {
-								status = SM_Set_SMInfo(fd_dbsync, SM_AMOD_DISABLE, smrecp->path, &smInfoCopy, sm_config.mkey);
-								if (status != VSTATUS_OK) {
-									IB_LOG_WARN_FMT(__func__,
-										"could not DEACTIVATE standby SM %s : "FMT_U64" which has a SM configuration inconsistency with master!",
-										smrecp->nodeDescString, recKey);
-								} else {
-								smCsmFormatNodeId(&csmNodeId, smrecp->nodeDescString, smrecp->portNumber, smrecp->portguid);
-								smCsmLogMessage(CSM_SEV_WARNING, CSM_COND_STANDBY_SM_DEACTIVATION, &csmNodeId, NULL,
-									"Deactivating standby SM %s : "FMT_U64" which has a SM configuration inconsistency with master! " 
-									"The secondary PM will also be deactivated.", smrecp->nodeDescString, recKey);
-									deactivated = 1;
-								/* set sync capability to not supported since the Standby SM will go Inactive */
-								smrecp->syncCapability = DBSYNC_CAP_NOTSUPPORTED;
-									/* trigger a sweep so the inactive status gets updated */
-									sm_trigger_sweep(SM_SWEEP_REASON_UPDATED_STANDBY);
-								}
-							}
-						}
+
+						deactivateSM = 1;
+						condition = CSM_COND_STANDBY_SM_DEACTIVATION;
+						smrecp->syncCapability = DBSYNC_CAP_NOTSUPPORTED;
 					}
 				}
 				if (smSyncSetting->pmConfigChecksum != 0 && smRecords.ourChecksums.pmConfigChecksum != 0) {
 					if (smSyncSetting->pmConfigChecksum != smRecords.ourChecksums.pmConfigChecksum) {
+
+
 						IB_LOG_WARN_FMT(__func__,
 							"SM at %s, portGuid="FMT_U64" detected a different PM configuration consistency checksum [%u] from us [%u]",
 							smrecp->nodeDescString, recKey, smSyncSetting->pmConfigChecksum, smRecords.ourChecksums.pmConfigChecksum);
-						if (pm_config.config_consistency_check_level == CHECK_ACTION_CCC_LEVEL) {
-                			smrecp->configDiff = 1;
-							smCsmFormatNodeId(&csmNodeId, smrecp->nodeDescString, smrecp->portNumber, smrecp->portguid);
-							smCsmLogMessage(CSM_SEV_WARNING, CSM_COND_SECONDARY_PM_DEACTIVATION, &csmNodeId, NULL,
-								"Attempting to deactivate secondary PM which has a configuration inconsistency with primary! "
-								"The standby SM will also be deactivated.");
-							smInfoCopy = sm_smInfo;
-							if (!deactivated) {
-								status = SM_Set_SMInfo(fd_dbsync, SM_AMOD_DISABLE, smrecp->path, &smInfoCopy, sm_config.mkey);
-								if (status != VSTATUS_OK) {
-									IB_LOG_WARN_FMT(__func__,
-										"could not DEACTIVATE standby SM %s : "FMT_U64" which needs to be deactivated along with secondary PM!",
-										smrecp->nodeDescString, recKey);
-								} else {
-									deactivated = 1;
-									/* set sync capability to not supported since the Standby SM will go Inactive */
-									smrecp->syncCapability = DBSYNC_CAP_NOTSUPPORTED;
-									/* trigger a sweep so the inactive status gets updated */
-									sm_trigger_sweep(SM_SWEEP_REASON_UPDATED_STANDBY);
-								}
-							} 
-						}
+
+						deactivateSM = 1;
+						condition = CSM_COND_SECONDARY_PM_DEACTIVATION;
+						smrecp->syncCapability = DBSYNC_CAP_NOTSUPPORTED;
 					}
 				}
 				if (smSyncSetting->feConfigChecksum != 0 && smRecords.ourChecksums.feConfigChecksum != 0) {
@@ -811,6 +760,16 @@ Status_t sm_dbsync_configCheck(SmRecKey_t recKey, SMDBCCCSyncp smSyncSetting) {
 						IB_LOG_WARN_FMT(__func__,
 							"SM at %s, portGuid="FMT_U64" detected a different FE configuration consistency checksum [%u] from us [%u]",
 							smrecp->nodeDescString, recKey, smSyncSetting->feConfigChecksum, smRecords.ourChecksums.feConfigChecksum);
+					}
+				}
+
+				if (deactivateSM) {
+					if (sm_config.config_consistency_check_level == CHECK_ACTION_CCC_LEVEL)
+						sm_dbsync_disableStandbySm(smrecp, condition); 
+					else {
+						IB_LOG_WARN_FMT(__func__,
+										"Skipping DEACTIVATION of standby SM %s : "FMT_U64"; consistency check level not set",
+										smrecp->nodeDescString, recKey);
 					}
 				}
 			}
@@ -821,9 +780,42 @@ Status_t sm_dbsync_configCheck(SmRecKey_t recKey, SMDBCCCSyncp smSyncSetting) {
         }
         (void)vs_unlock(&smRecords.smLock);
     }
+
     IB_EXIT(__func__, status);
 	return status;
 }
+
+
+/*
+ * disable a standby SM
+*/
+Status_t sm_dbsync_disableStandbySm(SmRecp smRecp, SmCsmMsgCondition_t condition) {
+
+	STL_SM_INFO		smInfoCopy;
+	SmCsmNodeId_t	csmNodeId;
+    Status_t        status = VSTATUS_OK;
+
+	/* Calling function needs to have acquired the smRecords.smLock */
+
+	smRecp->configDiff = 1;
+	smInfoCopy = sm_smInfo;
+	status = SM_Set_SMInfo(fd_dbsync, SM_AMOD_DISABLE, smRecp->path, &smInfoCopy, sm_config.mkey);
+	if (status != VSTATUS_OK) {
+		IB_LOG_WARN_FMT(__func__,
+						"could not DEACTIVATE standby SM %s : "FMT_U64"",
+						smRecp->nodeDescString, smRecp->portguid);
+	} else {
+		smCsmFormatNodeId(&csmNodeId, smRecp->nodeDescString, smRecp->portNumber, smRecp->portguid);
+		smCsmLogMessage(CSM_SEV_WARNING, condition, &csmNodeId, NULL,
+						"Deactivating standby SM %s : "FMT_U64""
+						"The secondary PM will also be deactivated.", smRecp->nodeDescString, smRecp->portguid);
+		/* trigger a sweep so the inactive status gets updated */
+		sm_trigger_sweep(SM_SWEEP_REASON_UPDATED_STANDBY);
+	}
+
+	return status;
+}
+
 
 /*
  * update sync settings of an SM in the Sm table
@@ -915,7 +907,7 @@ Status_t sm_dbsync_upsmlist(void) {
     Status_t        status=VSTATUS_OK;
 	InformRecordp	iRecordp = NULL;
     SubscriberKeyp  subsKeyp = NULL;
-	VieoServiceRecord_t	*vsrp;
+	OpaServiceRecord_t	*osrp;
     ServiceRecKeyp  srkeyp;
 	Guid_t		    mcastGid[2], portguid;
 	McGroup_t       *mcGroup=NULL, *prevMcGroup=NULL;
@@ -1071,17 +1063,17 @@ Status_t sm_dbsync_upsmlist(void) {
             cs_hashtable_iterator(saServiceRecords.serviceRecMap, &itr);
             do {
                 srkeyp = cs_hashtable_iterator_key(&itr);
-                vsrp = cs_hashtable_iterator_value(&itr);
+                osrp = cs_hashtable_iterator_value(&itr);
                 portguid = srkeyp->serviceGid.Type.Global.InterfaceID;
                 if ((sm_find_port_guid(&sm_newTopology, portguid) == NULL)) {
                     /* remove the entry from hashtable and free the value - key is freed by remove func */
                     moreEntries = cs_hashtable_iterator_remove(&itr);
                     IB_LOG_INFO_FMT(__func__,
 						"Deleted service record ID="FMT_U64" for GID="FMT_GID", Name=%s", 
-						vsrp->serviceRecord.RID.ServiceID, 
-						STLGIDPRINTARGS(vsrp->serviceRecord.RID.ServiceGID),
-						vsrp->serviceRecord.ServiceName);
-						free(vsrp);
+						osrp->serviceRecord.RID.ServiceID, 
+						STLGIDPRINTARGS(osrp->serviceRecord.RID.ServiceGID),
+						osrp->serviceRecord.ServiceName);
+						free(osrp);
                 } else {
                     /* advance the iterator */
                     moreEntries = cs_hashtable_iterator_advance(&itr);
@@ -1182,18 +1174,18 @@ Status_t sm_dbsync_upsmlist(void) {
 /*
  * sync a service record update or addition with standby SMs
 */
-Status_t sm_dbsync_syncService(DBSyncType_t synctype, VieoServiceRecordp vsrp) {
+Status_t sm_dbsync_syncService(DBSyncType_t synctype, OpaServiceRecordp osrp) {
     Status_t        status=VSTATUS_OK;
     SmRecp          smrecp;
     CS_HashTableItr_t itr;
     SMSyncData_t    syncData={0};
 //  time_t          tnow=0;
 
-    IB_ENTER(__func__, synctype, vsrp, 0, 0);
+    IB_ENTER(__func__, synctype, osrp, 0, 0);
 
     /* do nothing if sync is not turned on or we are exiting */
     if (!sm_config.db_sync_interval || dbsync_main_exit) return VSTATUS_OK;
-    if ((sizeof(VieoServiceRecord_t)) > sizeof(SMSyncData_t)) {
+    if ((sizeof(OpaServiceRecord_t)) > sizeof(SMSyncData_t)) {
         status = VSTATUS_NOMEM;
         IB_LOG_ERROR_FMT(__func__, "SMSyncData_t type not large enough");
     } else {
@@ -1203,7 +1195,7 @@ Status_t sm_dbsync_syncService(DBSyncType_t synctype, VieoServiceRecordp vsrp) {
             /* must have Sms besides us */
             if (cs_hashtable_count(smRecords.smMap) > 1) {
 //              tnow = time(NULL);
-                if (vsrp) memcpy(syncData, (void *)vsrp, sizeof(VieoServiceRecord_t));
+                if (osrp) memcpy(syncData, (void *)osrp, sizeof(OpaServiceRecord_t));
                 cs_hashtable_iterator(smRecords.smMap, &itr);
                 do {
                     smrecp = cs_hashtable_iterator_value(&itr);
@@ -1455,16 +1447,21 @@ Status_t sm_dbsync_syncFile(DBSyncType_t synctype, SMDBSyncFile_t *syncFile) {
 Status_t sm_dbsync_queuePmFile(SmRecp smrecp, DBSyncType_t synctype, SMSyncData_t syncData) {
     Status_t        status=VSTATUS_OK;
 
-    IB_LOG_INFINI_INFO_FMT(__func__, "BEGIN: Queuing PM DBSYNC_DATATYPE_FILE request: lid=0x%x", smrecp->lid);
+	if (smDebugPerf)
+		IB_LOG_INFINI_INFO_FMT(__func__, "BEGIN: Queuing PM DBSYNC_DATATYPE_FILE request: lid=0x%x", smrecp->lid);
+
 	if (smrecp->pmdbsync.firstUpdateState != DBSYNC_STAT_SYNCHRONIZED) {
 		if (smrecp->pmdbsync.firstUpdateState == DBSYNC_STAT_INPROGRESS) {
-    		IB_LOG_INFINI_INFO_FMT(__func__, "ABORT: Queuing PM DBSYNC_DATATYPE_FILE request, already in progress");
+			if (smDebugPerf)
+				IB_LOG_INFINI_INFO_FMT(__func__, "ABORT: Queuing PM DBSYNC_DATATYPE_FILE request, already in progress");
 			return status;
 		}
 		smrecp->pmdbsync.firstUpdateState = DBSYNC_STAT_INPROGRESS;
 	}
 	(void) sm_dbsync_queueMsg(synctype, DBSYNC_DATATYPE_FILE, smrecp->lid, smrecp->portguid, syncData);
-    IB_LOG_INFINI_INFO_FMT(__func__, "COMPLETED: Queuing PM DBSYNC_DATATYPE_FILE request");
+
+	if (smDebugPerf)
+		IB_LOG_INFINI_INFO_FMT(__func__, "COMPLETED: Queuing PM DBSYNC_DATATYPE_FILE request");
 
     return status;
 }
@@ -1529,7 +1526,8 @@ int sm_send_pm_image(uint64_t portguid, uint32_t histindex, char *histImgFile) {
 	syncFile->version = DBSYNC_FILE_TRANSPORT_VERSION;
 	syncFile->length = sizeof(SMDBSyncFile_t);
 	if (histImgFile) {
-		strncpy(syncFile->name, histImgFile, sizeof(syncFile->name));
+		strncpy(syncFile->name, histImgFile, sizeof(syncFile->name)-1);
+		syncFile->name[sizeof(syncFile->name)-1] = 0;
 		syncFile->type = DBSYNC_PM_HIST_IMAGE;
 	}
 	else {

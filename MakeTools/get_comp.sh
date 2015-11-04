@@ -54,7 +54,7 @@
 ##
 ##	FTPSERVER - ftp server to get files from of the form:
 ## 			ftp:password@server
-##     defaults to: ftp:ftp@kop-sds-ftp.qlogic.org
+##     defaults to: ftp:ftp@kop-sds-ftp
 ##  if FTPSERVER is cp:self@localhost the directory name for the source file
 ##	of the component is ignored.  In its place the directory name part of
 ##	FTPINT is used.  Note that typically FTPSERVER is derrived from FTPINT
@@ -100,7 +100,7 @@ shift 3
 
 # These variables control where the pre-built packages are pulled from.
 # See documentation above.
-export FTPSERVER=${FTPSERVER:-"ftp:ftp@kop-sds-ftp.qlogic.org"}
+export FTPSERVER=${FTPSERVER:-"ftp:ftp@kop-sds-ftp"}
 export SCPTOP=${SCPTOP:-"/nfs/site/proj/stlbuilds"}
 export SCPSERVER=${SCPSERVER:-"phcvs2@phlsvlogin01"}:$SCPTOP
 

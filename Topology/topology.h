@@ -83,9 +83,6 @@ typedef struct QOSData_s {
 
 typedef STL_PORT_STATUS_RSP STL_PortStatusData_t;
 
-// How many STL_CABLE_INFO structs to store per port
-#define PORTDATA_CABLEINFO_SIZE 4
-
 // information about an IB Port in the fabric
 // for switches a GUID and LID are only available for Port 0 of the switch
 // for all other switch ports, LID is port 0 LID (LID for whole switch)
@@ -126,12 +123,16 @@ typedef struct PortData_s {
 			uint32		xmitAllPaths;
 		} routes;			// for TabulateRoutes of any topology
 	} analysisData;	// per port holding space for transient analysis data
-	STL_BUFFER_CONTROL_TABLE bufCtrlTable;
-	STL_HFI_CONGESTION_CONTROL_TABLE_ENTRY CongestionControlTableEntries[128];
+	STL_BUFFER_CONTROL_TABLE *pBufCtrlTable;
+	// 128 table entries allocate when needed
+	STL_HFI_CONGESTION_CONTROL_TABLE_ENTRY *pCongestionControlTableEntries;
     uint16_t CCTI_Limit;
 
-	/// CableInfo is organized in 128-byte pages but is stored in 64-byte half-pages
-	STL_CABLE_INFO cableInfo[PORTDATA_CABLEINFO_SIZE];
+	// CableInfo is organized in 128-byte pages but is stored in
+	// 64-byte half-pages
+	// We only store STL_CIB_STD_START_ADDR to STL_CIB_STD_END_ADDR with
+	// STL_CIB_STD_START_ADDR stored starting at pCableInfoData[0]
+	uint8_t *pCableInfoData;
 	void *context;					// application specific field
 } PortData;
 
@@ -446,8 +447,9 @@ typedef enum {
 	FF_PMADIRECT		=0x000000080,	// Force direct PMA access of port counters
 	FF_ROUTES			=0x000000100,	// Routing tables (linear/mcast) fetched
 	FF_QOSDATA			=0x000000200,	// QOS data fetched
-	FF_SMADIRECT			=0x000000400,	// Force direct SMA access
-	FF_BUFCTRLTABLE			=0x000000800,	// BufferControlData collected
+	FF_SMADIRECT		=0x000000400,	// Force direct SMA access
+	FF_BUFCTRLTABLE		=0x000000800,	// BufferControlData collected
+	FF_DOWNPORTINFO		=0x000001000,	// Get PortInfo for Down switch ports
 } FabricFlags_t;
 
 typedef struct FabricData_s {
@@ -588,6 +590,8 @@ extern PortSelector* GetPortSelector(PortData *portp);
 // system.  Note that some 3rd party products report SystemImageGuid of 0 in
 // which case we can only consider links between the same node as internal links
 extern boolean isInternalLink(PortData *portp);
+// count the number of armed/active links in the node
+uint32 CountInitializedPorts(FabricData_t *fabricp, NodeData *nodep);
 extern FSTATUS NodeDataAllocateSwitchData(FabricData_t *fabricp, NodeData *nodep,
 				uint32 LinearFDBSize, uint32 MulticastFDBSize);
 
@@ -607,13 +611,31 @@ extern FSTATUS NodeDataAllocateSwitchData(FabricData_t *fabricp, NodeData *nodep
 FSTATUS NodeDataSwitchResizeFDB(NodeData * nodep, uint32 newLfdbSize, uint32 newMfdbSize);
 
 extern FSTATUS PortDataAllocateAllQOSData(FabricData_t *fabricp);
+extern FSTATUS PortDataAllocateAllBufCtrlTable(FabricData_t *fabricp);
 extern FSTATUS PortDataAllocateAllPartitionTable(FabricData_t *fabricp);
+extern FSTATUS PortDataAllocateAllCableInfo(FabricData_t *fabricp);
+extern FSTATUS PortDataAllocateAllCongestionControlTableEntries(FabricData_t *fabricp);
 extern FSTATUS PortDataAllocateAllGuidTable(FabricData_t *fabricp);
 
 /// @param fabricp optional, can be NULL
 extern void PortDataFreeQOSData(FabricData_t *fabricp, PortData *portp);
 /// @param fabricp optional, can be NULL
 extern FSTATUS PortDataAllocateQOSData(FabricData_t *fabricp, PortData *portp);
+
+/// @param fabricp optional, can be NULL
+extern void PortDataFreeBufCtrlTable(FabricData_t *fabricp, PortData *portp);
+/// @param fabricp optional, can be NULL
+extern FSTATUS PortDataAllocateBufCtrlTable(FabricData_t *fabricp, PortData *portp);
+
+/// @param fabricp optional, can be NULL
+extern void PortDataFreeCableInfoData(FabricData_t *fabricp, PortData *portp);
+/// @param fabricp optional, can be NULL
+extern FSTATUS PortDataAllocateCableInfoData(FabricData_t *fabricp, PortData *portp);
+
+/// @param fabricp optional, can be NULL
+extern void PortDataFreeCongestionControlTableEntries(FabricData_t *fabricp, PortData *portp);
+/// @param fabricp optional, can be NULL
+extern FSTATUS PortDataAllocateCongestionControlTableEntries(FabricData_t *fabricp, PortData *portp);
 
 // these routines can be used to manually build FabricData.  Use as follows:
 // for each node
@@ -629,6 +651,7 @@ extern FSTATUS PortDataAllocateQOSData(FabricData_t *fabricp, PortData *portp);
 // if desired, after building the basic topology, can build empty SMA tables:
 //		NodeDataAllocateAllSwitchData
 //		PortDataAllocateAllQOSData
+//		PortDataAllocateAllBufCtrlTable
 //		PortDataAllocateAllPartitionTable
 //		PortDataAllocateAllGuidTable
 //	when process Set(PortInfo)
@@ -694,9 +717,15 @@ extern IocData * FindIocGuid(FabricData_t* fabricp, EUI64 guid);
 extern SystemData * FindSystemGuid(FabricData_t* fabricp, EUI64 guid);
 extern FSTATUS FindRate(FabricData_t* fabricp, uint32 rate, Point *pPoint);
 extern FSTATUS FindPortState(FabricData_t* fabricp, IB_PORT_STATE state, Point *pPoint);
+extern FSTATUS FindPortPhysState(FabricData_t* fabricp, IB_PORT_PHYS_STATE state, Point *pPoint);
 extern FSTATUS FindCableLabelPat(FabricData_t* fabricp, const char* pattern, Point *pPoint);
 extern FSTATUS FindCableLenPat(FabricData_t* fabricp, const char* pattern, Point *pPoint);
 extern FSTATUS FindCableDetailsPat(FabricData_t* fabricp, const char* pattern, Point *pPoint);
+extern FSTATUS FindCabinfLenPat(FabricData_t *fabricp, const char* pattern, Point *pPoint);
+extern FSTATUS FindCabinfVendNamePat(FabricData_t *fabricp, const char* pattern, Point *pPoint);
+extern FSTATUS FindCabinfVendPNPat(FabricData_t *fabricp, const char* pattern, Point *pPoint);
+extern FSTATUS FindCabinfVendRevPat(FabricData_t *fabricp, const char* pattern, Point *pPoint);
+extern FSTATUS FindCabinfVendSNPat(FabricData_t *fabricp, const char* pattern, Point *pPoint);
 extern FSTATUS FindLinkDetailsPat(FabricData_t* fabricp, const char* pattern, Point *pPoint);
 extern FSTATUS FindPortDetailsPat(FabricData_t* fabricp, const char* pattern, Point *pPoint);
 extern FSTATUS FindMtu(FabricData_t* fabricp, IB_MTU mtu, uint8 vl_num, Point *pPoint);

@@ -63,15 +63,20 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sm_l.h"
 #include "sa_l.h"
 #include "sm_dbsync.h"
+#include "stl_print.h"
 
 
 Status_t	sa_ServiceRecord_GetTable(Mai_t *, uint32_t *);
 Status_t	sa_IbServiceRecord_GetTable(Mai_t *, uint32_t *);
+Status_t	sa_ServiceRecord_DoDelete(uint32_t *records, ServiceRecKey_t *srkeyp, uint8 *serviceName);
 Status_t	sa_ServiceRecord_Delete(Mai_t *maip, uint32_t *records);
+Status_t	sa_IbServiceRecord_Delete(Mai_t *maip, uint32_t *records);
+Status_t	sa_ServiceRecord_DoAdd(uint16_t slid, STL_SERVICE_RECORD *serviceRecordp,
+                       uint32_t *records, int havepkey);
 Status_t	sa_ServiceRecord_Add(Mai_t *maip, uint32_t *records);
+Status_t	sa_IbServiceRecord_Add(Mai_t *maip, uint32_t *records);
 
 void dumpServices(void);
-static void dumpService(VieoServiceRecordp);
 
 /*****************************************************************************/
 
@@ -164,6 +169,18 @@ sa_ServiceRecord(Mai_t *maip, sa_cntxt_t *sa_cntxt) {
 
 	IB_ENTER("sa_ServiceRecord", maip, 0, 0, 0);
 
+#ifdef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
+	// disable STL ServiceRecord, support only IB ServiceRecord for now
+	if (maip->base.cversion != SA_MAD_CVERSION) {
+		maip->base.status = MAD_STATUS_BAD_CLASS;
+		(void) sa_send_reply(maip, sa_cntxt);
+		IB_LOG_WARN("sa_ServiceRecord: invalid CLASS:",
+					maip->base.cversion);
+		IB_EXIT("sa_ServiceRecord", VSTATUS_OK);
+		return (VSTATUS_OK);
+	}
+#endif
+
 //
 //	Assume failure.
 //
@@ -179,7 +196,7 @@ sa_ServiceRecord(Mai_t *maip, sa_cntxt_t *sa_cntxt) {
 //
 //	Check the method.  If this is a template lookup, then call the regular
 //	GetTable(*) template lookup routine.  For ServiceRecord_t calls, we
-//	really need to use VieoServiceRecord_t for timings.
+//	really need to use OpaServiceRecord_t for timings.
 //
 	switch (maip->base.method) {
 	case SA_CM_GET:        // both are searches controlled by componentmask bits
@@ -200,8 +217,7 @@ sa_ServiceRecord(Mai_t *maip, sa_cntxt_t *sa_cntxt) {
 		if (maip->base.cversion == STL_SA_CLASS_VERSION) {
 			(void)sa_ServiceRecord_Add(maip, &records);
 		} else {
-			IB_LOG_WARN("sa_ServiceRecord: invalid cversion for SA_CM_GET:", maip->base.cversion);
-			//(void)sa_IbServiceRecord_Add(maip, &records);
+			(void)sa_IbServiceRecord_Add(maip, &records);
 		}
 		break;
 	case SA_CM_DELETE:
@@ -209,15 +225,14 @@ sa_ServiceRecord(Mai_t *maip, sa_cntxt_t *sa_cntxt) {
 		if (maip->base.cversion == STL_SA_CLASS_VERSION) {
 			(void)sa_ServiceRecord_Delete(maip, &records);
 		} else {
-			IB_LOG_WARN("sa_ServiceRecord: invalid cversion for SA_CM_DELETE:", maip->base.cversion);
-			//(void)sa_IbServiceRecord_Delete(maip, &records);
+			(void)sa_IbServiceRecord_Delete(maip, &records);
 		}
 		break;
 	default:                                                                     
 		maip->base.status = MAD_STATUS_BAD_METHOD;                           
 		(void)sa_send_reply(maip, sa_cntxt);                                 
-		IB_LOG_WARN("sa_PortInfoRecord: invalid METHOD:", maip->base.method);
-		IB_EXIT("sa_PortInfoRecord", VSTATUS_OK);                            
+		IB_LOG_WARN("sa_ServiceRecord: invalid METHOD:", maip->base.method);
+		IB_EXIT("sa_ServiceRecord", VSTATUS_OK);                            
 		return VSTATUS_OK;                                                   
 		break;                                                               
 	}
@@ -260,7 +275,7 @@ sa_ServiceRecord_GetTable(Mai_t *maip, uint32_t *records) {
 	uint64_t		now;
 	STL_SA_MAD		samad;
 	Status_t		status;
-	VieoServiceRecord_t	*vsrp;
+	OpaServiceRecord_t	*osrp;
     ServiceRecKeyp  srkeyp;
     CS_HashTableItr_t itr;
 	Port_t*			reqPortp=NULL;
@@ -270,7 +285,6 @@ sa_ServiceRecord_GetTable(Mai_t *maip, uint32_t *records) {
 
 	*records = 0;
 	pad_len = Calculate_Padding(sizeof(STL_SERVICE_RECORD));
-	/* Note: This works because STL SA headers are identical to the IB version. */
 
 //
 //  Verify the size of the data received for the request
@@ -302,9 +316,9 @@ sa_ServiceRecord_GetTable(Mai_t *maip, uint32_t *records) {
 		cs_hashtable_iterator(saServiceRecords.serviceRecMap, &itr);
         do {
             srkeyp = cs_hashtable_iterator_key(&itr);
-            vsrp = cs_hashtable_iterator_value(&itr);
+            osrp = cs_hashtable_iterator_value(&itr);
 
-			BSWAPCOPY_STL_SERVICE_RECORD(&vsrp->serviceRecord, srp);
+			BSWAPCOPY_STL_SERVICE_RECORD(&osrp->serviceRecord, srp);
             status = sa_template_test_noinc(samad.data, (uint8_t*)srp, 
 				sizeof(STL_SERVICE_RECORD));
             if (status == VSTATUS_OK) {
@@ -317,8 +331,8 @@ sa_ServiceRecord_GetTable(Mai_t *maip, uint32_t *records) {
                 }
 
 				// Lease is given in "seconds from now" or "indefinite".
-                if (vsrp->expireTime != VTIMER_ETERNITY) {
-                    temp = (uint32_t)((vsrp->expireTime - now) / 1000000);
+                if (osrp->expireTime != VTIMER_ETERNITY) {
+                    temp = (uint32_t)((osrp->expireTime - now) / 1000000);
                 } else {
                     temp = 0xffffffff;
                 }
@@ -326,7 +340,7 @@ sa_ServiceRecord_GetTable(Mai_t *maip, uint32_t *records) {
 
                 if (sm_smInfo.SM_Key && samad.header.smKey != sm_smInfo.SM_Key) {
 					/* IBTA 1.2.1 C15-0.2-1.3 - if not trusted and pkey is defined on create, check req pkey */
-					if (vsrp->pkeyDefined) {
+					if (osrp->pkeyDefined) {
 						if (!reqPortp) {
 							reqPortp = sm_find_node_and_port_lid(&old_topology, maip->addrInfo.slid, 
 								&reqNodep);
@@ -337,7 +351,7 @@ sa_ServiceRecord_GetTable(Mai_t *maip, uint32_t *records) {
 							IB_LOG_WARN_FMT( "sa_ServiceRecord_GetTable", 
 								"Filter serviced record ID="FMT_U64" from lid 0x%.4X "
 								"due to pkey mismatch from request port",
-								vsrp->serviceRecord.RID.ServiceID, maip->addrInfo.slid);
+								osrp->serviceRecord.RID.ServiceID, maip->addrInfo.slid);
 							continue;
 						}
 					}
@@ -370,8 +384,8 @@ sa_IbServiceRecord_GetTable(Mai_t *maip, uint32_t *records) {
 	uint32_t			temp;
 	uint32_t			pad_len;
 	uint64_t			now;
-	STL_SA_MAD			samad;
-	VieoServiceRecord_t	*vsrp;
+	IB_SA_MAD			samad;
+	OpaServiceRecord_t	*osrp;
     ServiceRecKeyp		srkeyp;
     CS_HashTableItr_t	itr;
 	Port_t*				reqPortp=NULL;
@@ -382,13 +396,12 @@ sa_IbServiceRecord_GetTable(Mai_t *maip, uint32_t *records) {
 	*records = 0;
 	pad_len = Calculate_Padding(sizeof(IB_SERVICE_RECORD));
 	
-	// This works because IB and STL have identical SA headers.
-	BSWAPCOPY_STL_SA_MAD((STL_SA_MAD*)maip->data, &samad,
+	BSWAPCOPY_IB_SA_MAD((IB_SA_MAD*)maip->data, &samad,
 		sizeof(IB_SERVICE_RECORD));
 
 	// The query is in IB format, the database is in STL format
 	// Convert to a STL query in host byte order
-	ibsrp = (IB_SERVICE_RECORD*)&samad.data;
+	ibsrp = (IB_SERVICE_RECORD*)&samad.Data;
 	memcpy(&query.RID.ServiceGID.Raw, &ibsrp->RID.ServiceGID.Raw, sizeof(query.RID.ServiceGID.Raw));
 	query.RID.ServiceID = ibsrp->RID.ServiceID;
 	query.RID.ServiceLID = 0; // field does not exist in IB
@@ -414,27 +427,27 @@ sa_IbServiceRecord_GetTable(Mai_t *maip, uint32_t *records) {
 		cs_hashtable_iterator(saServiceRecords.serviceRecMap, &itr);
 		do {
 			srkeyp = cs_hashtable_iterator_key(&itr);
-			vsrp = cs_hashtable_iterator_value(&itr);
-			answer = &vsrp->serviceRecord;
+			osrp = cs_hashtable_iterator_value(&itr);
+			answer = &osrp->serviceRecord;
 
-			if (samad.header.mask & SR_COMPONENTMASK_ID &&
+			if (samad.SaHdr.ComponentMask & SR_COMPONENTMASK_ID &&
 				query.RID.ServiceID != answer->RID.ServiceID) {
 				continue;
-			} else if (samad.header.mask & SR_COMPONENTMASK_PKEY &&
+			} else if (samad.SaHdr.ComponentMask & SR_COMPONENTMASK_PKEY &&
 				query.RID.ServiceP_Key != answer->RID.ServiceP_Key) {
 				continue;
-			} else if (samad.header.mask & SR_COMPONENTMASK_GID &&
+			} else if (samad.SaHdr.ComponentMask & SR_COMPONENTMASK_GID &&
 				memcmp(query.RID.ServiceGID.Raw, 
 					answer->RID.ServiceGID.Raw, 
 					sizeof(IB_GID))) {
 				continue;
-			} else if (samad.header.mask & SR_COMPONENTMASK_LEASE &&
+			} else if (samad.SaHdr.ComponentMask & SR_COMPONENTMASK_LEASE &&
 				query.ServiceLease != answer->ServiceLease) {
 				continue;
-			} else if (samad.header.mask & SR_COMPONENTMASK_KEY &&
+			} else if (samad.SaHdr.ComponentMask & SR_COMPONENTMASK_KEY &&
 				memcmp(query.ServiceKey, answer->ServiceKey, sizeof(query.ServiceKey))) {
 				continue;
-			} else if (samad.header.mask & SR_COMPONENTMASK_NAME &&
+			} else if (samad.SaHdr.ComponentMask & SR_COMPONENTMASK_NAME &&
 				memcmp(query.ServiceName, answer->ServiceName, sizeof(query.ServiceName))) {
 				continue;
 			}
@@ -447,8 +460,8 @@ sa_IbServiceRecord_GetTable(Mai_t *maip, uint32_t *records) {
 			   }
 
 			// Lease is given in "seconds from now" or "indefinite".
-			if (vsrp->expireTime != VTIMER_ETERNITY) {
-				temp = (uint32_t)((vsrp->expireTime - now) / 1000000);
+			if (osrp->expireTime != VTIMER_ETERNITY) {
+				temp = (uint32_t)((osrp->expireTime - now) / 1000000);
 			} else {
 				temp = 0xffffffff;
 			}
@@ -467,9 +480,9 @@ sa_IbServiceRecord_GetTable(Mai_t *maip, uint32_t *records) {
 			memcpy(ibsrp->ServiceData64,answer->ServiceData64,sizeof(ibsrp->ServiceData64));
 			BSWAP_IB_SERVICE_RECORD(ibsrp);
 
-			if (sm_smInfo.SM_Key && samad.header.smKey != sm_smInfo.SM_Key) {
+			if (sm_smInfo.SM_Key && samad.SaHdr.SmKey != sm_smInfo.SM_Key) {
 				/* IBTA 1.2.1 C15-0.2-1.3 - if not trusted and pkey is defined on create, check req pkey */
-				if (vsrp->pkeyDefined) {
+				if (osrp->pkeyDefined) {
 					reqPortp = sm_find_node_and_port_lid(&old_topology, 
 						maip->addrInfo.slid, 
 						&reqNodep);
@@ -480,7 +493,7 @@ sa_IbServiceRecord_GetTable(Mai_t *maip, uint32_t *records) {
 						IB_LOG_WARN_FMT( "sa_IbServiceRecord_GetTable", 
 							"Filter serviced record ID="FMT_U64" from lid "
 							"0x%.4X due to pkey mismatch from request port",
-							vsrp->serviceRecord.RID.ServiceID, 
+							osrp->serviceRecord.RID.ServiceID, 
 							maip->addrInfo.slid);
 						continue;
 					}
@@ -510,7 +523,7 @@ sa_ServiceRecord_Delete(Mai_t *maip, uint32_t *records) {
 	STL_SA_MAD			samad;
 	STL_SERVICE_RECORD	serviceRecord;
     ServiceRecKey_t		srkey;
-	VieoServiceRecordp	vsrp;
+	Status_t			status;
 
 	IB_ENTER("sa_ServiceRecord_Delete", maip, *records, 0, 0);
 
@@ -527,6 +540,21 @@ sa_ServiceRecord_Delete(Mai_t *maip, uint32_t *records) {
 
 	BSWAPCOPY_STL_SA_MAD((STL_SA_MAD*)maip->data, &samad, sizeof(STL_SERVICE_RECORD));
 	BSWAPCOPY_STL_SERVICE_RECORD((STL_SERVICE_RECORD*)&samad.data, &serviceRecord);
+    /* fill in a service record key for searching hash table */
+    memcpy(&srkey.serviceGid, &serviceRecord.RID.ServiceGID, sizeof(IB_GID));
+    srkey.serviceId = serviceRecord.RID.ServiceID;
+    srkey.servicep_key = serviceRecord.RID.ServiceP_Key;
+
+	status =  sa_ServiceRecord_DoDelete(records, &srkey, serviceRecord.ServiceName);
+	if (*records == 0)
+		maip->base.status = MAD_STATUS_SA_NO_RECORDS;
+	IB_EXIT("sa_ServiceRecord_Delete", status);
+	return status;
+}
+
+Status_t
+sa_ServiceRecord_DoDelete(uint32_t *records, ServiceRecKey_t *srkeyp, uint8 *serviceName) {
+	OpaServiceRecordp	osrp;
 
     /*
      * Since lease period changes between a Get(*) and Set(*), can't do straight 
@@ -534,54 +562,78 @@ sa_ServiceRecord_Delete(Mai_t *maip, uint32_t *records) {
      */
 
 	*records = 0;
+
+    /* lock out service record hash table */
+	if (vs_lock(&saServiceRecords.serviceRecLock) != VSTATUS_OK) return VSTATUS_BAD;
+    if (NULL == (osrp = (OpaServiceRecordp)cs_hashtable_remove(saServiceRecords.serviceRecMap, srkeyp))) {
+		IB_LOG_VERBOSE_FMT( "sa_serviceRecord_DoDelete",
+			"Could not find service record ID="FMT_U64" for GID="FMT_GID", Name=%.63s", 
+			srkeyp->serviceId, 
+			ntoh64(srkeyp->serviceGid.AsReg64s.L),
+			ntoh64(srkeyp->serviceGid.AsReg64s.H), 
+			serviceName);
+    } else {
+        *records = 1;  /* let caller know how many deleted */
+		if (saDebugPerf) {
+			IB_LOG_INFINI_INFO_FMT( "sa_serviceRecord_DoDelete",
+			"Deleted service record ID="FMT_U64" for GID="FMT_GID", Name=%s", 
+			srkeyp->serviceId, 
+			ntoh64(osrp->serviceRecord.RID.ServiceGID.AsReg64s.L),
+			ntoh64(osrp->serviceRecord.RID.ServiceGID.AsReg64s.H), 
+			osrp->serviceRecord.ServiceName);
+		}
+        /* sync the service record deletion to standby SMs if necessary */
+        (void)sm_dbsync_syncService(DBSYNC_TYPE_DELETE, osrp);
+        /* free the actual ServiceRecord - remove only frees the key */
+        free(osrp);
+    }
+    (void)vs_unlock(&saServiceRecords.serviceRecLock);
+
+	IB_EXIT("sa_ServiceRecord_DoDelete", VSTATUS_OK);
+	return(VSTATUS_OK);
+}
+
+Status_t
+sa_IbServiceRecord_Delete(Mai_t *maip, uint32_t *records) {
+	IB_SA_MAD			samad;
+	IB_SERVICE_RECORD	serviceRecord;
+    ServiceRecKey_t		srkey;
+	Status_t			status;
+
+	IB_ENTER("sa_IbServiceRecord_Delete", maip, *records, 0, 0);
+
+//
+//  Verify the size of the data received for the request
+//
+	if ( maip->datasize-sizeof(SA_MAD_HDR) < sizeof(IB_SERVICE_RECORD) ) {
+		IB_LOG_ERROR_FMT("sa_IbServiceRecord_Delete",
+						 "invalid MAD length; size of IB_SERVICE_RECORD[%lu], datasize[%d]", sizeof(IB_SERVICE_RECORD), maip->datasize-sizeof(SA_MAD_HDR));
+		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
+		IB_EXIT("sa_IbServiceRecord_Delete", MAD_STATUS_SA_REQ_INVALID);
+		return (MAD_STATUS_SA_REQ_INVALID);
+	}
+
+	BSWAPCOPY_IB_SA_MAD((IB_SA_MAD*)maip->data, &samad, sizeof(IB_SERVICE_RECORD));
+	serviceRecord = *(IB_SERVICE_RECORD*)&samad.Data;
+	BSWAP_IB_SERVICE_RECORD(&serviceRecord);
+
     /* fill in a service record key for searching hash table */
     memcpy(&srkey.serviceGid, &serviceRecord.RID.ServiceGID, sizeof(IB_GID));
     srkey.serviceId = serviceRecord.RID.ServiceID;
     srkey.servicep_key = serviceRecord.RID.ServiceP_Key;
 
-    /* lock out service record hash table */
-	if (vs_lock(&saServiceRecords.serviceRecLock) != VSTATUS_OK) return VSTATUS_BAD;
-    if (NULL == (vsrp = (VieoServiceRecordp)cs_hashtable_remove(saServiceRecords.serviceRecMap, &srkey))) {
+	status =  sa_ServiceRecord_DoDelete(records, &srkey, serviceRecord.ServiceName);
+	if (*records == 0)
 		maip->base.status = MAD_STATUS_SA_NO_RECORDS;
-		IB_LOG_VERBOSE_FMT( "sa_serviceRecord_Delete",
-			"Could not find service record ID="FMT_U64" for GID="FMT_GID", Name=%s", 
-			serviceRecord.RID.ServiceID, 
-			ntoh64(serviceRecord.RID.ServiceGID.AsReg64s.L),
-			ntoh64(serviceRecord.RID.ServiceGID.AsReg64s.H), 
-			serviceRecord.ServiceName);
-    } else {
-        *records = 1;  /* let caller know how many deleted */
-		if (saDebugPerf) {
-			IB_LOG_INFINI_INFO_FMT( "sa_serviceRecord_Delete",
-			"Deleted service record ID="FMT_U64" for GID="FMT_GID", Name=%s", 
-			serviceRecord.RID.ServiceID, 
-			ntoh64(vsrp->serviceRecord.RID.ServiceGID.AsReg64s.L),
-			ntoh64(vsrp->serviceRecord.RID.ServiceGID.AsReg64s.H), 
-			vsrp->serviceRecord.ServiceName);
-		}
-        /* sync the service record deletion to standby SMs if necessary */
-        (void)sm_dbsync_syncService(DBSYNC_TYPE_DELETE, vsrp);
-        /* free the actual ServiceRecord - remove only frees the key */
-        free(vsrp);
-    }
-    (void)vs_unlock(&saServiceRecords.serviceRecLock);
-
-	IB_EXIT("sa_ServiceRecord_Delete", VSTATUS_OK);
-	return(VSTATUS_OK);
+	IB_EXIT("sa_IbServiceRecord_Delete", status);
+	return status;
 }
 
 Status_t
 sa_ServiceRecord_Add(Mai_t *maip, uint32_t *records) {
-	uint32_t		timer;
-	uint32_t		sbytes;
-	uint64_t		now;
 	STL_SA_MAD			samad;
 	STL_SERVICE_RECORD	serviceRecord;
-    ServiceRecKeyp  srkeyp;
-	VieoServiceRecordp vsrp;
-	Port_t*			servicePortp;
-	Port_t*			reqPortp;
-	Node_t*			reqNodep;
+	Status_t		status;
 
 	IB_ENTER("sa_ServiceRecord_Add", maip, *records, 0, 0);
 
@@ -598,57 +650,78 @@ sa_ServiceRecord_Add(Mai_t *maip, uint32_t *records) {
 
 	BSWAPCOPY_STL_SA_MAD((STL_SA_MAD*)maip->data, &samad, sizeof(STL_SERVICE_RECORD));
 	BSWAPCOPY_STL_SERVICE_RECORD((STL_SERVICE_RECORD*)samad.data, &serviceRecord);
+	status = sa_ServiceRecord_DoAdd(maip->addrInfo.slid, &serviceRecord,
+							 records, 
+							 0 != (samad.header.mask & STL_SERVICE_RECORD_COMP_SERVICEPKEY));
+	if (*records == 1)
+		(void)memcpy((void *)sa_data, samad.data, sizeof(STL_SERVICE_RECORD));
+				
+	IB_EXIT("sa_ServiceRecord_Add", status);
+	return(status);
+}
 
-	sbytes = sizeof(STL_SERVICE_RECORD);
+Status_t
+sa_ServiceRecord_DoAdd(uint16_t slid, STL_SERVICE_RECORD *serviceRecordp,
+                       uint32_t *records, int havepkey) {
+	uint32_t		timer;
+	uint64_t		now;
+    ServiceRecKeyp  srkeyp;
+	OpaServiceRecordp osrp;
+	Port_t*			servicePortp;
+	Port_t*			reqPortp;
+	Node_t*			reqNodep;
 
-	timer = serviceRecord.ServiceLease;
+	timer = serviceRecordp->ServiceLease;
 	(void)vs_time_get(&now);
     *records = 0;
 	
+	// protect outselves
+	serviceRecordp->ServiceName[sizeof(serviceRecordp->ServiceName)-1] = '\0';
 
     /* 
      * see if this entry already exist in the hash table
      * if it does, replace the service record data with the incoming
      * if it does not, create a new one and add to the hash table
      */
+
     /* allocate a service record key for searching hash table */
     srkeyp = (ServiceRecKeyp) malloc(sizeof(ServiceRecKey_t));
     if (srkeyp == NULL) {
         IB_FATAL_ERROR("sa_ServiceRecord_Add: Can't allocate service record key");
         return VSTATUS_NOMEM;
     }
-    memcpy(&srkeyp->serviceGid, &serviceRecord.RID.ServiceGID, sizeof(IB_GID));
-    srkeyp->servicep_key = serviceRecord.RID.ServiceP_Key;
-    srkeyp->serviceId = serviceRecord.RID.ServiceID;
+    memcpy(&srkeyp->serviceGid, &serviceRecordp->RID.ServiceGID, sizeof(IB_GID));
+    srkeyp->servicep_key = serviceRecordp->RID.ServiceP_Key;
+    srkeyp->serviceId = serviceRecordp->RID.ServiceID;
 
-	if (samad.header.mask & STL_SERVICE_RECORD_COMP_SERVICEPKEY) {
+	if (havepkey) {
 		/* C15-02-1.3 */
 		if (PKEY_VALUE(srkeyp->servicep_key) == 0) {
 			IB_LOG_WARN_FMT( "sa_ServiceRecord_Add", 
 				"Failed to ADD serviced record ID="FMT_U64" from lid 0x%.4X due to invalid pkey",
-				serviceRecord.RID.ServiceID, maip->addrInfo.slid);
+				serviceRecordp->RID.ServiceID, slid);
 			free(srkeyp);
 			return(VSTATUS_BAD);
 		}
 
 		/* C15-0.2-1.4 */
-		reqPortp = sm_find_node_and_port_lid(&old_topology, maip->addrInfo.slid, &reqNodep);
+		reqPortp = sm_find_node_and_port_lid(&old_topology, slid, &reqNodep);
 		if (!sm_valid_port(reqPortp) ||
 			reqPortp->state <= IB_PORT_DOWN ||
 			!smValidatePortPKey(srkeyp->servicep_key, reqPortp)) {
 			IB_LOG_WARN_FMT( "sa_ServiceRecord_Add", 
 				"Failed to ADD serviced record ID="FMT_U64" from lid 0x%.4X due to pkey mismatch from request port",
-				serviceRecord.RID.ServiceID, maip->addrInfo.slid);
+				serviceRecordp->RID.ServiceID, slid);
 			free(srkeyp);
 			return(VSTATUS_BAD);
 		}
-		servicePortp = sm_find_port_guid(&old_topology, serviceRecord.RID.ServiceGID.Type.Global.InterfaceID);
+		servicePortp = sm_find_port_guid(&old_topology, serviceRecordp->RID.ServiceGID.Type.Global.InterfaceID);
 		if (!sm_valid_port(servicePortp) ||
 			servicePortp->state <= IB_PORT_DOWN ||
 			!smValidatePortPKey(srkeyp->servicep_key, servicePortp)) {
 			IB_LOG_WARN_FMT( "sa_ServiceRecord_Add", 
 				"Failed to ADD serviced record ID="FMT_U64" from lid 0x%.4X due to pkey mismatch from service port",
-				serviceRecord.RID.ServiceID, maip->addrInfo.slid);
+				serviceRecordp->RID.ServiceID, slid);
 			free(srkeyp);
 			return(VSTATUS_BAD);
 		}
@@ -659,70 +732,113 @@ sa_ServiceRecord_Add(Mai_t *maip, uint32_t *records) {
         free(srkeyp);
         return VSTATUS_NOMEM;
     }
-    if (NULL == (vsrp = (VieoServiceRecordp)cs_hashtable_search(saServiceRecords.serviceRecMap, srkeyp))) {
+    if (NULL == (osrp = (OpaServiceRecordp)cs_hashtable_search(saServiceRecords.serviceRecMap, srkeyp))) {
         /* allocate a service record for adding to hash table */
-        if ((vsrp = (VieoServiceRecordp) malloc(sizeof(VieoServiceRecord_t))) == NULL) {
+        if ((osrp = (OpaServiceRecordp) malloc(sizeof(OpaServiceRecord_t))) == NULL) {
             free(srkeyp);
             (void)vs_unlock(&saServiceRecords.serviceRecLock);
             IB_FATAL_ERROR("sa_ServiceRecord_Add: Can't allocate Service Record hash entry");
             IB_EXIT("sa_ServiceRecord_Add - memory allocation failure", VSTATUS_NOMEM);
             return VSTATUS_NOMEM;
         }
-        vsrp->serviceRecord = serviceRecord;
-        vsrp->pkeyDefined = (samad.header.mask & STL_SERVICE_RECORD_COMP_SERVICEPKEY) ? 1 : 0;
+        osrp->serviceRecord = *serviceRecordp;
+        osrp->pkeyDefined = havepkey ? 1 : 0;
 
         if (timer != 0xffffffff) {
-            vsrp->expireTime = now + (1000000 * (uint64_t)timer);
+            osrp->expireTime = now + (1000000 * (uint64_t)timer);
         } else {
-            vsrp->expireTime = VTIMER_ETERNITY;
+            osrp->expireTime = VTIMER_ETERNITY;
         }
-        if (!cs_hashtable_insert(saServiceRecords.serviceRecMap, srkeyp, vsrp)) {
+        if (!cs_hashtable_insert(saServiceRecords.serviceRecMap, srkeyp, osrp)) {
             (void)vs_unlock(&saServiceRecords.serviceRecLock);
             IB_LOG_ERROR_FMT( "sa_ServiceRecord_Add", 
                    "Failed to ADD serviced record ID="FMT_U64", serviceName[%s] from lid 0x%.4X to service record hashtable",
-                   vsrp->serviceRecord.RID.ServiceID, vsrp->serviceRecord.ServiceName, maip->addrInfo.slid);
+                   osrp->serviceRecord.RID.ServiceID, osrp->serviceRecord.ServiceName, slid);
             free(srkeyp);
-            free(vsrp);
+            free(osrp);
             IB_EXIT("sa_InformInfo_Subscribe - hashtable insert failure", VSTATUS_BAD);
             return(VSTATUS_BAD);
         }
-		BSWAPCOPY_STL_SERVICE_RECORD(&vsrp->serviceRecord,
-			(STL_SERVICE_RECORD*)sa_data);
         *records = 1;  /* let caller know record added */
         if (saDebugPerf) {
             IB_LOG_INFINI_INFO_FMT( "sa_ServiceRecord_Add",
 				"Added service record for Gid "FMT_GID", ID="FMT_U64", serviceName[%s]", 
-				STLGIDPRINTARGS2(vsrp->serviceRecord.RID.ServiceGID.Raw),
-				vsrp->serviceRecord.RID.ServiceID, 
-				vsrp->serviceRecord.ServiceName);
+				STLGIDPRINTARGS2(osrp->serviceRecord.RID.ServiceGID.Raw),
+				osrp->serviceRecord.RID.ServiceID, 
+				osrp->serviceRecord.ServiceName);
         }
     } else {
         /* entry existed already - replace value (serviceRecord) with new input and free allocated key */
-        vsrp->serviceRecord = serviceRecord;
-        vsrp->pkeyDefined = (samad.header.mask & STL_SERVICE_RECORD_COMP_SERVICEPKEY) ? 1 : 0;
+        osrp->serviceRecord = *serviceRecordp;
+        osrp->pkeyDefined = havepkey ? 1 : 0;
         free(srkeyp);
 		/* Update the expiration timer since this is now a duplicate record */
 		if (timer != 0xffffffff) {
-			vsrp->expireTime = now + (1000000 * (uint64_t)timer);
+			osrp->expireTime = now + (1000000 * (uint64_t)timer);
 		} else {
-			vsrp->expireTime = VTIMER_ETERNITY;
+			osrp->expireTime = VTIMER_ETERNITY;
 		}
-		(void)memcpy((void *)sa_data, samad.data, sbytes);
 		if (saDebugPerf) {
             IB_LOG_INFINI_INFO_FMT( "sa_ServiceRecord_Add",
                    "Updated service record for ID="FMT_U64", serviceName[%s]", 
-                   vsrp->serviceRecord.RID.ServiceID, vsrp->serviceRecord.ServiceName);
+                   osrp->serviceRecord.RID.ServiceID, osrp->serviceRecord.ServiceName);
         }
-		*records = 1;  /* let caller know how many deleted */
+		*records = 1;  /* let caller know how many added */
     }
     /* sync the service record change to standby SMs if necessary */
-    (void)sm_dbsync_syncService(DBSYNC_TYPE_UPDATE, vsrp);
+    (void)sm_dbsync_syncService(DBSYNC_TYPE_UPDATE, osrp);
 	(void)vs_unlock(&saServiceRecords.serviceRecLock);
 
 	IB_EXIT("sa_ServiceRecord_Add", VSTATUS_OK);
 	return(VSTATUS_OK);
 }
 
+Status_t
+sa_IbServiceRecord_Add(Mai_t *maip, uint32_t *records) {
+	IB_SA_MAD			samad;
+	IB_SERVICE_RECORD	*ibsrp;
+	STL_SERVICE_RECORD	serviceRecord;
+	Status_t		status;
+
+	IB_ENTER("sa_IbServiceRecord_Add", maip, *records, 0, 0);
+
+//
+//  Verify the size of the data received for the request
+//
+	if ( maip->datasize-sizeof(SA_MAD_HDR) < sizeof(IB_SERVICE_RECORD) ) {
+		IB_LOG_ERROR_FMT("sa_IbServiceRecord_Add",
+						 "invalid MAD length; size of IB_SERVICE_RECORD[%lu], datasize[%d]", sizeof(IB_SERVICE_RECORD), maip->datasize-sizeof(SA_MAD_HDR));
+		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
+		IB_EXIT("sa_IbServiceRecord_Add", MAD_STATUS_SA_REQ_INVALID);
+		return (MAD_STATUS_SA_REQ_INVALID);
+	}
+
+	BSWAPCOPY_IB_SA_MAD((IB_SA_MAD*)maip->data, &samad, sizeof(IB_SERVICE_RECORD));
+	// The service record is in IB format, the database is in STL format
+	// Convert to a STL service record in host byte order
+	ibsrp = (IB_SERVICE_RECORD*)&samad.Data;
+	memcpy(&serviceRecord.RID.ServiceGID.Raw, &ibsrp->RID.ServiceGID.Raw, sizeof(serviceRecord.RID.ServiceGID.Raw));
+	serviceRecord.RID.ServiceID = ibsrp->RID.ServiceID;
+	serviceRecord.RID.ServiceLID = 0; // field does not exist in IB
+	serviceRecord.RID.ServiceP_Key = ibsrp->RID.ServiceP_Key;
+	serviceRecord.ServiceLease = ibsrp->ServiceLease;
+	memcpy(&serviceRecord.ServiceKey,&ibsrp->ServiceKey,sizeof(serviceRecord.ServiceKey));
+	memcpy(&serviceRecord.ServiceName,&ibsrp->ServiceName,sizeof(serviceRecord.ServiceName));
+	memcpy(&serviceRecord.ServiceData8,&ibsrp->ServiceData8,sizeof(serviceRecord.ServiceData8));
+	memcpy(&serviceRecord.ServiceData16,&ibsrp->ServiceData16,sizeof(serviceRecord.ServiceData16));
+	memcpy(&serviceRecord.ServiceData32,&ibsrp->ServiceData32,sizeof(serviceRecord.ServiceData32));
+	memcpy(&serviceRecord.ServiceData64,&ibsrp->ServiceData64,sizeof(serviceRecord.ServiceData64));
+	BSWAP_STL_SERVICE_RECORD(&serviceRecord);
+
+	status = sa_ServiceRecord_DoAdd(maip->addrInfo.slid, &serviceRecord,
+							 records,
+							 0 != (samad.SaHdr.ComponentMask & SR_COMPONENTMASK_PKEY));
+	if (*records == 1)
+		(void)memcpy((void *)sa_data, samad.Data, sizeof(IB_SERVICE_RECORD));
+				
+	IB_EXIT("sa_IbServiceRecord_Add", status);
+	return(status);
+}
 
 /*
  *	clear the records whose timers have expired.
@@ -731,7 +847,7 @@ Status_t
 sa_ServiceRecord_Age(uint32_t *records) {
 	uint32_t		moreEntries;
 	uint64_t		now;
-	VieoServiceRecord_t	*vsrp;
+	OpaServiceRecord_t	*osrp;
     CS_HashTableItr_t itr;
 
 	IB_ENTER("sa_ServiceRecord_Age", *records, 0, 0, 0);
@@ -744,14 +860,14 @@ sa_ServiceRecord_Age(uint32_t *records) {
     {
 		cs_hashtable_iterator(saServiceRecords.serviceRecMap, &itr);
         do {
-            vsrp = cs_hashtable_iterator_value(&itr);
-            if (vsrp->expireTime < now) {
+            osrp = cs_hashtable_iterator_value(&itr);
+            if (osrp->expireTime < now) {
                 /* remove record from hash table */
                 moreEntries = cs_hashtable_iterator_remove(&itr);
                 ++(*records);
                 /* sync the service record deletion to standby SMs if necessary */
-                (void)sm_dbsync_syncService(DBSYNC_TYPE_DELETE, vsrp);
-				free(vsrp);
+                (void)sm_dbsync_syncService(DBSYNC_TYPE_DELETE, osrp);
+				free(osrp);
             } else
                 moreEntries = cs_hashtable_iterator_advance(&itr);
         } while (moreEntries);
@@ -762,41 +878,11 @@ sa_ServiceRecord_Age(uint32_t *records) {
 	return(VSTATUS_OK);
 }
 
-void dumpServices(void)
+#ifdef __VXWORKS__
+#if !defined(PRODUCT_STL1)
+static void dumpService(OpaServiceRecordp osrp)
 {
-	VieoServiceRecordp  vsrp;
-    CS_HashTableItr_t   itr;
-    uint32_t            numservrecs=0;
-
-	if (topology_passcount < 1)
-	{
-		sysPrintf("\nSM is currently in the %s state, count = %d\n\n", sm_getStateText(sm_state), (int)sm_smInfo.ActCount);
-		return;
-	}
-	if (!saServiceRecords.serviceRecMap || vs_lock(&saServiceRecords.serviceRecLock)) {
-		sysPrintf("Fabric Manager is not running!\n");
-		return;
-	}
-    numservrecs = cs_hashtable_count(saServiceRecords.serviceRecMap);
-    if (numservrecs > 0)
-    {
-		cs_hashtable_iterator(saServiceRecords.serviceRecMap, &itr);
-        sysPrintf("******************************************************************\n");
-        sysPrintf("                  There are %d Service Records  \n", (int)numservrecs);
-        do {
-            vsrp = cs_hashtable_iterator_value(&itr);
-            (void)dumpService(vsrp);
-        } while (cs_hashtable_iterator_advance(&itr));
-    }
-    sysPrintf("******************************************************************\n");
-    sysPrintf("                  There are %d Service Records  \n", (int)numservrecs);
-    sysPrintf("******************************************************************\n");
-	(void)vs_unlock(&saServiceRecords.serviceRecLock);
-}
-
-static void dumpService(VieoServiceRecordp vsrp)
-{
-	STL_SERVICE_RECORD *srp=&vsrp->serviceRecord;
+	STL_SERVICE_RECORD *srp=&osrp->serviceRecord;
 
 	sysPrintf("*********************************************************\n");
 	sysPrintf("Service ID          = ");
@@ -823,10 +909,58 @@ static void dumpService(VieoServiceRecordp vsrp)
 	sysPrintf("Service Data 64     = \n");
 	dumpGuids(srp->ServiceData64, sizeof(srp->ServiceData64) / sizeof(srp->ServiceData64[0]));
 	sysPrintf("Service Expire Time = ");
-	dumpGuid(vsrp->expireTime);
+	dumpGuid(osrp->expireTime);
 	sysPrintf("\n");
 }
+#endif
 
+
+void dumpServices(void)
+{
+	OpaServiceRecordp  osrp;
+    CS_HashTableItr_t   itr;
+    uint32_t            numservrecs=0;
+#if defined(PRODUCT_STL1)
+	uint32_t i = 0;
+    PrintDest_t dest;
+#endif
+
+	if (topology_passcount < 1)
+	{
+		sysPrintf("\nSM is currently in the %s state, count = %d\n\n", sm_getStateText(sm_state), (int)sm_smInfo.ActCount);
+		return;
+	}
+	if (!saServiceRecords.serviceRecMap || vs_lock(&saServiceRecords.serviceRecLock)) {
+		sysPrintf("Fabric Manager is not running!\n");
+		return;
+	}
+    numservrecs = cs_hashtable_count(saServiceRecords.serviceRecMap);
+    if (numservrecs > 0)
+    {
+		cs_hashtable_iterator(saServiceRecords.serviceRecMap, &itr);
+        //sysPrintf("******************************************************************\n");
+        //sysPrintf("                  There are %d Service Records  \n", (int)numservrecs);
+#if defined(PRODUCT_STL1)
+        PrintDestInitFile(&dest, stdout);
+        //sysPrintf("******************************************************************\n");
+#endif
+
+        do {
+            osrp = cs_hashtable_iterator_value(&itr);
+#if defined(PRODUCT_STL1)
+			if (i++) PrintSeparator(&dest);
+            (void)PrintStlServiceRecord(&dest, 0, &osrp->serviceRecord);
+#else
+            (void)dumpService(osrp);
+#endif
+        } while (cs_hashtable_iterator_advance(&itr));
+    }
+    //sysPrintf("******************************************************************\n");
+    //sysPrintf("                  There are %d Service Records  \n", (int)numservrecs);
+    //sysPrintf("******************************************************************\n");
+	(void)vs_unlock(&saServiceRecords.serviceRecLock);
+}
+#endif
 
 STL_SERVICE_RECORD*
 getNextService(uint64_t *serviceId, IB_GID *serviceGid, uint16_t *servicep_key, STL_SERVICE_RECORD *pSrp)
@@ -835,7 +969,7 @@ getNextService(uint64_t *serviceId, IB_GID *serviceGid, uint16_t *servicep_key, 
 	STL_SERVICE_RECORD *srp = NULL;
     ServiceRecKey_t  srkey;
     ServiceRecKeyp   srkeyp;
-	VieoServiceRecordp vsrp;
+	OpaServiceRecordp osrp;
     CS_HashTableItr_t itr;;
 
 	if (!saServiceRecords.serviceRecMap || vs_lock(&saServiceRecords.serviceRecLock)) {
@@ -855,9 +989,9 @@ getNextService(uint64_t *serviceId, IB_GID *serviceGid, uint16_t *servicep_key, 
 		cs_hashtable_iterator(saServiceRecords.serviceRecMap, &itr);
         do {
             srkeyp = cs_hashtable_iterator_key(&itr);
-            vsrp = cs_hashtable_iterator_value(&itr);
+            osrp = cs_hashtable_iterator_value(&itr);
             if (nextOneIsIt) {
-                memcpy(pSrp, &vsrp->serviceRecord, sizeof(STL_SERVICE_RECORD));
+                memcpy(pSrp, &osrp->serviceRecord, sizeof(STL_SERVICE_RECORD));
                 srp = pSrp;
                 break;
             } else {
@@ -881,7 +1015,7 @@ getService(uint64_t *serviceId, IB_GID *serviceGid, uint16_t *servicep_key, STL_
 {
 	STL_SERVICE_RECORD *srp = NULL;
     ServiceRecKey_t  srkey;
-	VieoServiceRecordp vsrp;
+	OpaServiceRecordp osrp;
 
 	if (!saServiceRecords.serviceRecMap || vs_lock(&saServiceRecords.serviceRecLock)) {
 		sysPrintf("Fabric Manager is not running!\n");
@@ -893,8 +1027,8 @@ getService(uint64_t *serviceId, IB_GID *serviceGid, uint16_t *servicep_key, STL_
     srkey.servicep_key = *servicep_key;
 
     /* lock out service record hash table */
-    if ((vsrp = (VieoServiceRecordp)cs_hashtable_search(saServiceRecords.serviceRecMap, &srkey))) {
-        memcpy(pSrp, &vsrp->serviceRecord, sizeof(STL_SERVICE_RECORD));
+    if ((osrp = (OpaServiceRecordp)cs_hashtable_search(saServiceRecords.serviceRecMap, &srkey))) {
+        memcpy(pSrp, &osrp->serviceRecord, sizeof(STL_SERVICE_RECORD));
         srp = pSrp;
     }
 	(void)vs_unlock(&saServiceRecords.serviceRecLock);

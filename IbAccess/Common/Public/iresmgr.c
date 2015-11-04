@@ -280,6 +280,9 @@ FreePoolDequeueRequest(
 	// Get the item at the head of the request queue, but do not remove it yet.
 	pQueuedRequest = (REQUEST_OBJECT*)
 		QueueGetHead( &pFreePool->m_RequestQueue );
+	// If no requests are pending, there's nothing to return.
+	if (pQueuedRequest == NULL)
+		return FALSE;
 
 	ItemCount = FreePoolGetAvailableCount( pFreePool, 
 			pQueuedRequest->Count, pQueuedRequest->PartialOk );

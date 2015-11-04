@@ -717,7 +717,7 @@ SetPortCapabilities ( void )
 					&smps,			
 					(SMP_BLOCK **)&pSmpBlock );
 
-		if ( FSUCCESS != status )
+		if ( (FSUCCESS != status) || (pSmpBlock == NULL) )
 		{
 			_DBG_ERROR ((
 					"Could not Grab from Pool!\n" ));
@@ -830,12 +830,13 @@ SetPortCapabilities ( void )
 					break;				// nothing to change
 				
 				// Do not change other fields
-				pPortInfo->LinkWidth.Enabled = IB_LINK_WIDTH_NOP;
 #if (defined(STL_GEN) && (STL_GEN >= 1))
+				pPortInfo->LinkWidth.Enabled = STL_LINK_WIDTH_NOP;
 				pPortInfo->PortStates.s.PortState = IB_PORT_NOP;
 				pPortInfo->PortStates.s.PortPhysicalState = IB_PORT_PHYS_NOP;
 				pPortInfo->s4.OperationalVL = 0;
 #else
+				pPortInfo->LinkWidth.Enabled = IB_LINK_WIDTH_NOP;
 				pPortInfo->CapabilityMask.s.IsSNMPTunnelingSupported = \
 					g_Sma->IsSNMPTunnelingSupported;
 				pPortInfo->Link.PortState = IB_PORT_NOP;

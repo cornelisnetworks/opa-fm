@@ -29,7 +29,7 @@
 
 #[ICS VERSION STRING: unknown]
 
-# run this script from within the IntelOPA-Basic/*OFED* or QLogicIB-IFS/*OFED*
+# run this script from within the IntelOPA-Basic/*OFED* 
 # tree which is patched.  It will recreate the ofa_kernel SRPMS
 # it expects the ofa_kernel srpm to have been torn apart via:
 #	cd *OFED*

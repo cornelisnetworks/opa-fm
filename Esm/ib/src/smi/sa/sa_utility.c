@@ -341,6 +341,9 @@ sa_process_mad(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
     case SA_VFABRIC_RECORD:
 		(void)sa_VFabricRecord(maip, sa_cntxt);
 		break;
+	case STL_SA_ATTR_FABRICINFO_RECORD:
+		(void)sa_FabricInfoRecord(maip, sa_cntxt);
+		break;
 	case STL_SA_ATTR_QUARANTINED_NODE_RECORD:
 		(void)sa_QuarantinedNodeRecord(maip, sa_cntxt);
 		break;
@@ -419,9 +422,13 @@ sa_send_reply(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
     // a MAD_STATUS_BUSY status to be generated, the return packet will be discarded.
     if (!(sm_config.NoReplyIfBusy &&  maip && (maip->base.status == MAD_STATUS_BUSY))) {
         if( maip )  {
-            /* Always return with full pkey... */
-            /* This assumes the SM/SA node must always be a full member of every
-             * partition, or how would we be able to respond? */
+			/* the fact the SA received the request implies its a member or */
+			/* limited member of this pkey */
+			/* Always use the best possible pkey for responses */
+			/* In most cases only 1 pkey with the given low 15 bits will */
+			/* be in our SMA's table and the lower layers will use that one */
+			/* In some cases both 0x7fff and 0xffff will be in our table */
+			/* and we will want to use the 0xffff pkey */
 			maip->addrInfo.pkey |= FULL_MEMBER;
 
 			lid = maip->addrInfo.slid;
@@ -1005,6 +1012,8 @@ sa_send_single(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
 		if( maip->base.status == MAD_STATUS_OK )
 			maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
 	} else if (sa_cntxt->len != 0 ) {
+		if( maip->base.status == MAD_STATUS_OK )
+            samad.header.offset = sa_cntxt->attribLen / 8; // setup attribute offset for RMPP xfer
 		(void)memcpy(samad.data, sa_cntxt->data, sa_cntxt->len);
         datalen += sa_cntxt->len;
 	}
@@ -1926,6 +1935,50 @@ sa_Compare_PKeys(STL_PKEY_ELEMENT *key1, STL_PKEY_ELEMENT *key2) {
 	return(VSTATUS_BAD);
 }
 
+
+Status_t
+sa_Compare_Port_PKeys(Port_t *port1, Port_t *port2) {
+    STL_PKEY_ELEMENT *key1, *key2;
+	int		i;
+	int		j;
+
+    if (!port1 || !port2)
+        return VSTATUS_BAD;
+
+	IB_ENTER(__func__, port1, port2, 0, 0);
+
+    key1 = port1->portData->pPKey;
+    key2 = port2->portData->pPKey;
+
+    //
+    //	If there are no PKeys, then return good.
+    //
+	if ((key1[0].AsReg16 == 0) && (key2[0].AsReg16 == 0)) {
+		IB_EXIT(__func__, VSTATUS_OK);
+		return(VSTATUS_OK);
+	}
+
+    //
+    //	Loop over both arrays looking for at least one match.
+    //
+	for (i = 0; (i < SM_PKEYS) && (i < port1->portData->num_pkeys); i++) {
+		for (j = 0; (j < SM_PKEYS) && (j < port2->portData->num_pkeys); j++) {
+			if ((PKEY_VALUE(key1[i].AsReg16) == PKEY_VALUE(key2[j].AsReg16)) &&
+				((PKEY_TYPE(key1[i].AsReg16) == PKEY_TYPE_FULL) ||
+				 (PKEY_TYPE(key2[j].AsReg16) == PKEY_TYPE_FULL))) {
+				IB_EXIT(__func__, VSTATUS_OK);
+				return(VSTATUS_OK);
+			}
+		}
+	}
+
+    //
+    //	No match was found.  Return an error.
+    //
+	IB_EXIT(__func__, VSTATUS_BAD);
+	return(VSTATUS_BAD);
+}
+
 Status_t
 sa_Compare_Node_PKeys(Node_t *node1p, Node_t *node2p) {
 	Port_t		*port1p;
@@ -2009,8 +2062,13 @@ sa_data_offset(uint16_t class, uint16_t type) {
 		}
 		break;
 	case STL_SA_ATTR_PORTINFO_RECORD:
-		template_length = sizeof(STL_PORTINFO_RECORD);
-		template_fieldp = StlPortInfoRecordFieldMask;
+		if (class == STL_SA_CLASS_VERSION) {
+    		template_length = sizeof(STL_PORTINFO_RECORD);
+    		template_fieldp = StlPortInfoRecordFieldMask;
+        } else {
+            template_length = sizeof(IB_PORTINFO_RECORD);
+            template_fieldp = IbPortInfoRecordFieldMask;
+            }
 		break;
 	case STL_SA_ATTR_SWITCHINFO_RECORD:
 		template_length = sizeof(STL_SWITCHINFO_RECORD);
@@ -2029,8 +2087,13 @@ sa_data_offset(uint16_t class, uint16_t type) {
 		template_fieldp = StlSMInfoRecordFieldMask;
 		break;
 	case STL_SA_ATTR_INFORM_INFO_RECORD:
-		template_length = sizeof(STL_INFORM_INFO_RECORD);
-		template_fieldp = StlInformRecordFieldMask;
+		if (class == STL_SA_CLASS_VERSION) {
+			template_length = sizeof(STL_INFORM_INFO_RECORD);
+			template_fieldp = StlInformRecordFieldMask;
+        } else {
+			template_length = sizeof(IB_INFORM_INFO_RECORD);
+			template_fieldp = IbInformRecordFieldMask;
+		}
 		break;
 	case STL_SA_ATTR_LINK_RECORD:
 		template_length = sizeof(STL_LINK_RECORD);
@@ -2091,31 +2154,32 @@ sa_data_offset(uint16_t class, uint16_t type) {
 
 char *sa_getAidName(uint16_t aid) {
 	static char num[] = "0x0000";
-    static char *aidName[59]={ "0x00","CLASSPORTINFO","NOTICE","INFORMINFO","0x4","0x5","0x6","0x7",
-						"0x08","0x09","0x0A","0x0B","0x0C","0x0D","0x0E","0x0F","0x10",
-						"NODE","PORTINFO","SLVL MAP","SWITCH","LFT","0x16","MFT","SMINFO",
-						"0x19","0x1A","0x1B","0x1C","0x1D","0x1E","0x1F","LINK",
-						"0x21","0x22","0x23","0x24","0x25","0x26","0x27","0x28","0x29",
-						"0x2A","0x2B","0x2C","0x2D","0x2E","0x2F",
-						"GUIDINFO","SERVICE","0x32","PARTITION","0x34","PATH","VL ARB",
-						"0x37","MCMEMBER","TRACE","MULTIPATH"};
+    static char *aidName[0x40]={	/* 0x00 to 0x3F */
+		"0x00","CLASSPORTINFO","NOTICE","INFORMINFO","0x4","0x5","0x6","0x7",
+		"0x08","0x09","0x0A","0x0B","0x0C","0x0D","0x0E","0x0F",
+		"0x10","NODE","PORTINFO","SC MAP","SWITCH","LFT","0x16","MFT",
+		"SMINFO","0x19","0x1A","0x1B","0x1C","0x1D","0x1E","0x1F",
+		"LINK","0x21","0x22","0x23","0x24","0x25","0x26","0x27",
+		"0x28","0x29","0x2A","0x2B","0x2C","0x2D","0x2E","0x2F",
+		"0x30","SERVICE","0x32","PARTITION","0x34","PATH","VL ARB","0x37",
+		"MCMEMBER","TRACE","MULTIPATH","SERVICEASSOC","0x3C","0x3D","0x3E","0x3F",
+	};
+    static char *aidNameHigh[0x18]={	/* 0x80 to 0x97 */
+		"SL2SC","SC2SL","SC2VLnt","SC2VLt","SC2VLr","PGFWD","MULTIPATH_GUID","MULTIPATH_LID",
+		"CABLEINFO","VFABRICINFO","PORTSTATEINFO","PGTBL","BUFCTRL","FABRICINFO","0x8E", "0x8F",
+		"QUARANTINED","CONGINFO","SWCONFINFO","SWPORTCONG","HFICONG","HFICONGCTRL","0x96","0x97"
+	};
 
-	if (aid > 58) {
-
-		if (aid == SA_INFORM_RECORD) {
-			return "INFORMINFORECORD";
-		}
-
-		if (aid == SA_VFABRIC_RECORD) {
-			return "VFABRICINFO";
-		}
-
+	if (aid < 0x40)
+		return(aidName[aid]);
+	else if (aid >= 0x80 && aid <= 0x97)
+		return(aidNameHigh[aid-0x80]);
+	else if (aid == SA_INFORM_RECORD)	/* 0xF3 */
+		return "INFORMINFORECORD";
+	else {
 		sprintf(num, "0x%.2X", aid);
 		return(num);
-
 	}
-
-	return(aidName[aid]);
 }
 
 uint8_t linkWidthToRate(PortData_t *portData) { 

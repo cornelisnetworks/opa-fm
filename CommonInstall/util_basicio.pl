@@ -345,7 +345,7 @@ sub GetChoice($$@)
 		NormalPrint "$Question -> $default\n";
 		foreach $c ( @choices )
 		{
-			if ("$default" eq "$c" ) {
+			if (my_tolower("$default") eq my_tolower("$c")) {
 				return $c;
 			}
 		}
@@ -363,7 +363,7 @@ sub GetChoice($$@)
 		$_ = my_tolower($_);
 		foreach $c ( @choices )
 		{
-			if ("$_" eq "$c" ) {
+			if ("$_" eq my_tolower("$c")) {
 				LogPrint "$Question -> $c\n";
 				return $c;
 			}

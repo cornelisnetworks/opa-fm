@@ -126,6 +126,14 @@ CLOCAL	= $(CPIE)
 #LOCALLIBS		= User libraries to use when linking [Empty]
 #				(in addition to LOCALDEPLIBS)
 #LOCAL_LIB_DIRS	= User library directories for libpaths [Empty]
+CLOCAL += -I$(TL_DIR)/IbAccess/Common/Inc -I$(TL_DIR)/IbAccess/Vxworks/Public/
+
+LOCAL_INCLUDE_DIRS = $(TL_DIR)/IbAccess/Common/Inc \
+                     $(TL_DIR)/IbAccess/Common/Public
+ifeq "$(BUILD_TARGET)" "ATOM"
+LOCAL_INCLUDE_DIRS   += \
+		     		 $(TL_DIR)/target/include
+endif
 
 LOCALDEPLIBS = 
 

@@ -30,9 +30,6 @@
 
 # [ICS VERSION STRING: unknown]
 
-TOOLSDIR=${TOOLSDIR:-/opt/opa/tools}
-BINDIR=${BINDIR:-/usr/sbin}
-
 # Run opareport -o errors with topology XML, then:
 #   Extract values (including port statistics) for both ports of each link
 #   Remove redundant information for each link and combine link port information
@@ -59,7 +56,7 @@ usage()
 
 ## Main function:
 
-if [ $# -ne 1 ]
+if [[ $# -ne 1 || "$1" == -* ]]
 then
     usage
 fi
@@ -74,8 +71,8 @@ fi
 
 ix=0
 
-$BINDIR/opareport -x -d 10 -s -o errors -T $@ | \
-  $BINDIR/opaxmlextract -d \; -e Rate -e MTU -e LinkDetails -e CableLength \
+/usr/sbin/opareport -x -d 10 -s -o errors -T $@ | \
+  /usr/sbin/opaxmlextract -d \; -e Rate -e MTU -e LinkDetails -e CableLength \
   -e CableLabel -e CableDetails -e Port.NodeDesc -e Port.PortNum \
   -e LinkQualityIndicator.Value | while read line
 do

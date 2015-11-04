@@ -95,10 +95,10 @@ iba_sd_register(
 	{
 		_DBG_INFO(("ClientParameters is NULL, Setting Driver Defaults\n"));
         MemoryCopy(&pClientEntry->ClientParameters, &DefaultClientParameters,
-            sizeof(CLIENT_CONTROL_PARAMETERS));
+            sizeof(pClientEntry->ClientParameters));
     } else { 
         MemoryCopy(&pClientEntry->ClientParameters, pClientParameters,
-            sizeof(CLIENT_CONTROL_PARAMETERS));
+            sizeof(pClientEntry->ClientParameters));
     }
 
     QListInit(&pClientEntry->ClientTraps);
@@ -286,7 +286,7 @@ iba_sd_get_client_control_parameters(
     if (Fstatus == FSUCCESS)  
 	{
         MemoryCopy(pClientControlParameters, &ClientParams,
-            sizeof(CLIENT_CONTROL_PARAMETERS));
+            sizeof(ClientParams));
     }
 	_DBG_LEAVE_LVL( _DBG_LVL_FUNC_TRACE );
     return(Fstatus);
@@ -320,7 +320,7 @@ iba_sd_set_client_control_parameters(
     // cannot be touched at high priority with the spin lock held. We therefore
     // copy the parameters first to a local (non-pageable) stack location.
     MemoryCopy(&ClientParams, pClientControlParameters,
-        			sizeof(CLIENT_CONTROL_PARAMETERS));
+        			sizeof(ClientParams));
 
     SpinLockAcquire(pClientListLock);
 	if (QListIsItemInList(pClientList, pListItem))
@@ -328,7 +328,7 @@ iba_sd_set_client_control_parameters(
     	ClientListEntry *pClientEntry = (ClientListEntry*)ClientHandle;
 		Fstatus = FSUCCESS;
 		MemoryCopy(&(pClientEntry->ClientParameters), &ClientParams,
-                	sizeof(CLIENT_CONTROL_PARAMETERS));
+                	sizeof(pClientEntry->ClientParameters));
     }
     SpinLockRelease(pClientListLock);
 	_DBG_LEAVE_LVL( _DBG_LVL_FUNC_TRACE );

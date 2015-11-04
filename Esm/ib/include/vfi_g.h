@@ -54,12 +54,23 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define VFI_DEFAULT_GUID     (0)
 
+#ifdef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
+#define VFI_SERVICE_RECORD	IB_SERVICE_RECORD
+#define VFI_SVRREC_ID		IB_SERVICE_RECORD_COMP_SERVICEID
+#define VFI_SVRREC_GID		IB_SERVICE_RECORD_COMP_SERVICEGID
+#define VFI_SVREC_NAME		IB_SERVICE_RECORD_COMP_SERVICENAME
+#define VFI_SVREC_PARTITION	IB_SERVICE_RECORD_COMP_SERVICEPKEY
+#define VFI_SVREC_LEASE 	IB_SERVICE_RECORD_COMP_SERVICELEASE
+#define VFI_SVREC_KEY		IB_SERVICE_RECORD_COMP_SERVICEKEY
+#else
+#define VFI_SERVICE_RECORD	STL_SERVICE_RECORD
 #define VFI_SVRREC_ID		STL_SERVICE_RECORD_COMP_SERVICEID
 #define VFI_SVRREC_GID		STL_SERVICE_RECORD_COMP_SERVICEGID
 #define VFI_SVREC_NAME		STL_SERVICE_RECORD_COMP_SERVICENAME
 #define VFI_SVREC_PARTITION	STL_SERVICE_RECORD_COMP_SERVICEPKEY
 #define VFI_SVREC_LEASE 	STL_SERVICE_RECORD_COMP_SERVICELEASE
 #define VFI_SVREC_KEY		STL_SERVICE_RECORD_COMP_SERVICEKEY
+#endif
 
 #define VFI_REGFORCE_FABRIC (0x01)
 #define VFI_REGTRY_FABRIC   (0x00)
@@ -70,20 +81,20 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define VFI_MAX_SERVICE_PATH (128)
 #define VFI_MAX_PORT_GUID    (7)      /* The maximum guid index */
 
-typedef int (*VfiSvcRecCmp_t)(STL_SERVICE_RECORD *, STL_SERVICE_RECORD *);
+typedef int (*VfiSvcRecCmp_t)(VFI_SERVICE_RECORD *, VFI_SERVICE_RECORD *);
 
 Status_t        vfi_mngr_register(IBhandle_t fd, uint8_t mclass,
-				  int gididx, STL_SERVICE_RECORD * service,
+				  int gididx, VFI_SERVICE_RECORD * service,
 				  uint64_t mask, int option);
 Status_t        vfi_mngr_unregister(IBhandle_t fd, uint8_t mclass,
-				    int gididx, STL_SERVICE_RECORD * service,
+				    int gididx, VFI_SERVICE_RECORD * service,
 				    uint64_t mask);
 Status_t        vfi_mngr_find(IBhandle_t fd, uint8_t mclass,
-			      int slmc, STL_SERVICE_RECORD * service, uint64_t mask,
+			      int slmc, VFI_SERVICE_RECORD * service, uint64_t mask,
 			      int *count, IB_PATH_RECORD * pbuff);
 
 Status_t        vfi_mngr_find_cmp(IBhandle_t fd, uint8_t mclass,
-			      int slmc, STL_SERVICE_RECORD * service, uint64_t mask,
+			      int slmc, VFI_SERVICE_RECORD * service, uint64_t mask,
 			      int *count, IB_PATH_RECORD * pbuff, VfiSvcRecCmp_t cmp);
 
 #endif
