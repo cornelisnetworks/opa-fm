@@ -55,7 +55,6 @@ DIRS		= \
 			installtargets \
 			stripdepends \
 			rm_version \
-			zisofs-tools \
 			$(TEST)
 CMD_TARGETS_MISC = \
 			builddsw \
