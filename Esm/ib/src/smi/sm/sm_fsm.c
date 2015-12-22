@@ -281,7 +281,16 @@ state_event_mad(Mai_t *maip) {
 				IB_LOG_ERROR("Can't lock SM Record table, rc:", status);
 			} else {
 				if ((smrecp = (SmRecp)cs_hashtable_search(smRecords.smMap, &theirSmInfo.PortGUID)) != NULL) {
-					/* do nothing; we already know about this SM */
+
+					//trigger sweep if theirSmInfo.u.s.SMStateCurrent changed
+					if (smrecp->smInfoRec.SMInfo.u.s.SMStateCurrent != theirSmInfo.u.s.SMStateCurrent) {
+						IB_LOG_INFINI_INFO_FMT(__func__, 
+											   "triggering a sweep, remote SM lid[0x%x] state changed from %s to %s", 
+											   maip->addrInfo.dlid, sm_getStateText(smrecp->smInfoRec.SMInfo.u.s.SMStateCurrent), 
+											   sm_getStateText(theirSmInfo.u.s.SMStateCurrent));
+						sm_trigger_sweep(SM_SWEEP_REASON_UPDATED_STANDBY);
+					}
+
 				} else {
 					sm_trigger_sweep(SM_SWEEP_REASON_UNEXPECTED_SM);
 				}
@@ -305,11 +314,10 @@ state_event_mad(Mai_t *maip) {
 					 * previous trigger, we do not cause multiple triggers.
 					 */
 					if (!triggered_handover) {
-		                   IB_LOG_INFINI_INFO_FMT(__func__, 
-        	                  "triggering a sweep to hand over to node %s, lid[0x%x], portguid "FMT_U64", TID="FMT_U64,
-                           nodescription, maip->addrInfo.dlid, theirSmInfo.PortGUID, maip->base.tid);  // lids got swapped by mai_reply
-                           sm_trigger_sweep(SM_SWEEP_REASON_HANDOFF);
-                	    dbsyncCheckStat = VSTATUS_OK;    /* no need to force sweep again */
+						IB_LOG_INFINI_INFO_FMT(__func__, 
+											   "triggering a sweep to hand over to node %s, lid[0x%x], portguid "FMT_U64", TID="FMT_U64,
+											   nodescription, maip->addrInfo.dlid, theirSmInfo.PortGUID, maip->base.tid);  // lids got swapped by mai_reply
+						sm_trigger_sweep(SM_SWEEP_REASON_HANDOFF);
 						triggered_handover = 1;
 					}
                 }
@@ -325,22 +333,21 @@ state_event_mad(Mai_t *maip) {
 				/* If it restarted, forget what we think we know about it */
 				sm_dbsync_deleteSm(theirSmInfo.PortGUID);
 			}
-            dbsyncCheckStat = VSTATUS_OK;    /* Don't force a full sweep. Wait until it is in Standby */
 			break;
         case SM_STATE_NOTACTIVE:
 			IB_LOG_INFINI_INFO_FMT(__func__, 
 				"standby SM indicating no longer active, node %s, lid[0x%x], portguid "FMT_U64,
 				nodescription,  maip->addrInfo.dlid, theirSmInfo.PortGUID); 
 			sm_dbsync_deleteSm(theirSmInfo.PortGUID);
-        }
 
-        /* If this SM is not in our list (stat equals not found); force a sweep to find this SM */
-        if (dbsyncCheckStat == VSTATUS_NOT_FOUND) {
-            sm_trigger_sweep(SM_SWEEP_REASON_UNEXPECTED_SM);
-        }
+			break;
+
+        } // end of case
+
 		IB_EXIT(__func__, VSTATUS_OK);
 		return(VSTATUS_OK);
-	}
+	} // end if MAD_CM_GET
+
     if (smDebugPerf) {
         IB_LOG_INFINI_INFO_FMT(__func__, "got SMInfo SET request from node %s, Lid [0x%x], portguid "FMT_U64", TID="FMT_U64,
                nodescription, maip->addrInfo.slid, portguid, maip->base.tid);

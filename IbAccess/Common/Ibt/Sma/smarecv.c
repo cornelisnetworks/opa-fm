@@ -208,21 +208,13 @@ iba_smi_post_recv(
 			//
 			workRequest->DSList[1].Address = \
 						(uintn)pSmpBlock->Block.Smp;		
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 			workRequest->DSList[1].Length = sizeof(STL_SMP);
-#else
-			workRequest->DSList[1].Length = sizeof(SMP);
-#endif
 			
 			workRequest->DSList[1].Lkey = caMemList.LKey;
 
 			
 			workRequest->DSListDepth = 2;
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 			workRequest->MessageLen = sizeof(IB_GRH) + sizeof(STL_SMP);
-#else
-			workRequest->MessageLen = sizeof(IB_GRH) + sizeof(SMP);
-#endif
 
 			//
 			// set Id to request stucture to unload

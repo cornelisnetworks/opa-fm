@@ -80,11 +80,7 @@ iba_smi_post_send(
 	SMA_CA_OBJ_PRIVATE		*pCaObj;
 	SMA_PORT_TABLE_PRIV		*pPortTbl;
 	SMP_LIST				*pSmpList;
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 	STL_SMP					*pSmp;
-#else
-	SMP						*pSmp;
-#endif
 	uint8					portNo;
 		
 
@@ -97,22 +93,14 @@ iba_smi_post_send(
 
 	while ( smps < NumSmps ) 
 	{
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 		pSmp				= (STL_SMP*)pReq->Block.Smp;
-#else
-		pSmp				= (SMP*)pReq->Block.Smp;
-#endif
 
 		if (pReq->Block.SmpByteCount == 0)
 		{
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 			if (pSmp->common.BaseVersion == IB_BASE_VERSION)
 				pReq->Block.SmpByteCount = IB_MAD_BLOCK_SIZE;
 			else
 				pReq->Block.SmpByteCount = STL_MAD_BLOCK_SIZE;
-#else
-			pReq->Block.SmpByteCount = IB_MAD_BLOCK_SIZE;
-#endif
 		}
 		
 		// Get CaContext
@@ -229,13 +217,8 @@ iba_smi_post_send(
 						}
 						
 						// Local loopback check
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 						if (( 0 == pSmp->common.u.DR.HopCount ) && \
 							( pReq->Block.DLID != STL_LID_PERMISSIVE ))
-#else
-						if (( 0 == pSmp->common.u.DR.HopCount ) && \
-							( pReq->Block.DLID != LID_PERMISSIVE ))
-#endif
 						{
 							_DBG_ERROR ((
 								"Local loopback with DR DLID not Permissive!\n" ));
@@ -296,11 +279,7 @@ iba_smi_post_send(
 			pReq->Base			= pSmpList;			
 			pReq->Block.Status	= 0;
 
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 			pSmp				= (STL_SMP*)pReq->Block.Smp;
-#else
-			pSmp				= (SMP*)pReq->Block.Smp;
-#endif
 			
 			// Get CaContext
 			pCaObj			= (SMA_CA_OBJ_PRIVATE *)pReq->Block.SmaCaContext;
@@ -347,11 +326,7 @@ iba_smi_post_send(
 					MemoryCopy(
 							pSmpBlock->Block.Smp,
 							pReq->Block.Smp,
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 							sizeof(STL_SMP)
-#else
-							sizeof(SMP)
-#endif
 							);
 
 					// call common local function
@@ -472,11 +447,7 @@ SmaPostSmp(
 	IB_WORK_REQ					*workRequest;
 	CA_MEM_LIST					caMemList;
 	SMA_PORT_TABLE_PRIV			*pPortTbl;
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 	STL_SMP						*pSmp;
-#else
-	SMP							*pSmp;
-#endif
 	IB_WORK_REQ					wrq;
 	IB_LOCAL_DATASEGMENT		dsList[1];
 	IB_ADDRESS_VECTOR			avInfo;
@@ -492,11 +463,7 @@ SmaPostSmp(
 	workRequest					= &wrq;
 	workRequest->DSList			= &dsList[0];
 
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 	pSmp						= (STL_SMP*)Req->Block.Smp;
-#else
-	pSmp						= (SMP*)Req->Block.Smp;
-#endif
 
 	
 #ifdef IB_DEBUG
@@ -642,11 +609,7 @@ SmaPostSmp(
 		//
 		// Byte Order MAD Commen Header
 		//
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 		BSWAP_STL_SMP_HEADER ((STL_SMP*)Req->Block.Smp);
-#else
-		BSWAP_SMP_HEADER ((SMP*)Req->Block.Smp);
-#endif
 
 #if 0
 		//

@@ -33,11 +33,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <imemory.h>
 #include <ilist.h>
 #include <ievent.h>
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 #include <stl_sd.h>
-#else
-#include <ib_sd.h>
-#endif
 #include <sdi.h>
 #include <ibt.h>
 #include <ib_generalServices.h>
@@ -266,11 +262,7 @@ SdGsaRecvCallback(
 		uint8 ClassVer=0;
 
 		MAD_GET_VERSION_INFO((MAD*)pMadSar, &BaseVer, &MgmtClass, &ClassVer);
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 		if ( ((BaseVer != IB_BASE_VERSION) && (BaseVer != STL_BASE_VERSION)) ||
-#else
-		if ( (BaseVer != IB_BASE_VERSION) ||
-#endif
 			 (MgmtClass != SdContext->MgmtClass) ||
 			 (ClassVer != classVersion))
 		{
@@ -327,15 +319,10 @@ SdGsaRecvCallback(
 	// unlock so we can prempt during coallese
 	SpinLockRelease(&pQueryList->m_Lock);
 
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 	rmppGsDataSize = (pMadSar->common.BaseVersion == IB_BASE_VERSION)
 		? IBA_RMPP_GS_DATASIZE : STL_RMPP_GS_DATASIZE;
 	madBlockSize =  (pMadSar->common.BaseVersion == IB_BASE_VERSION)
 		? IB_MAD_BLOCK_SIZE : STL_MAD_BLOCK_SIZE;
-#else
-	rmppGsDataSize = IBA_RMPP_GS_DATASIZE;
-	madBlockSize = IB_MAD_BLOCK_SIZE;
-#endif
 
 	if(pDgrmList->TotalRecvSize > (sizeof(IB_GRH) + madBlockSize))
 	{

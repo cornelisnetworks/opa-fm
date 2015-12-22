@@ -3203,6 +3203,7 @@ iba_pa_query_master_pm_lid(
                         status = oib_query_sa(port, &query, &query_path_results);
                         if ((status != FSUCCESS) || (query_path_results == NULL) || (query_path_results->ResultDataSize == 0)) 
                         {
+                            status = FERROR;
                             OUTPUT_ERROR("Error, failed to get path record (status=0x%x) query_path_esults=%p: %s\n",
                                     (unsigned int)status, (void *)query_path_results, FSTATUS_MSG(status));
                             break;

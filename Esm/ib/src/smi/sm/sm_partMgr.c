@@ -1401,7 +1401,7 @@ smEvaluateNodeDG(Node_t* nodep, int dgIdxToEvaluate, PortRangeInfo_t* portInfo) 
 						boolean isMatch = FALSE;
 						RegexBracketParseInfo_t* regexInfoPtr = &regExprPtr->regexInfo;
 
-#if defined(VXWORKS_REV) && (VXWORKS_REV >= VXWORKS_REV_6_9)
+#if defined(__VXWORKS__)
 						int status = regexec(regExprPtr->regexpCompiled, sm_nodeDescString(nodep), TRUE);
 						if (status)
 							isMatch = TRUE;

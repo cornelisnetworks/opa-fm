@@ -217,7 +217,7 @@ then
 fi
 
 echo
-echo "OFED MVAPICH2 MPI Library/Tools rebuild"
+echo "OFA MVAPICH2 MPI Library/Tools rebuild"
 
 if [ x"$1" != x"" ]
 then

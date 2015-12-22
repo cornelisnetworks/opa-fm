@@ -753,7 +753,7 @@ mai_send_timeout(IBhandle_t fd, Mai_t * inbuf, uint64_t timeout)
 
     if (inbuf->base.bversion == STL_BASE_VERSION) 
       {
-	  uint32_t datalen = STL_MAD_PAYLOAD_SIZE;
+	  uint32_t datalen = inbuf->datasize ? inbuf->datasize : STL_MAD_PAYLOAD_SIZE;
 	  return mai_send_stl_timeout(fd, inbuf, &datalen, timeout);
       }
 

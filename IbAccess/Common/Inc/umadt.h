@@ -33,15 +33,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define _IBA_UMADT_H_
 
 #include <iba/public/datatypes.h>
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 #include <iba/stl_types.h>
 #include <iba/stl_mad.h>
 #include <iba/stl_sa.h>
-#else
-#include <iba/ib_types.h>
-#include <iba/ib_mad.h>
-#include <iba/ib_sa_records.h>
-#endif
 #include <iba/vpi.h>
 
 #if defined (__cplusplus)
@@ -104,21 +98,13 @@ typedef struct MadtStruct_ {
 	} MadtStruct;
 
 typedef struct MadAddrStruct_ {
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 		STL_LID_32	DestLid;				/* DLID */
-#else
-		IB_LID		DestLid;				/* DLID */
-#endif
 		IB_PATHBITS	PathBits;				/* PathBits */
 		uint8		StaticRate;				/* The maximum static rate supported */
 											/* enum IB_STATIC_RATE */
 		union AddrType_ {
 			struct Smi_ {
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 				STL_LID_32	SourceLid;		/* SLID */
-#else
-				IB_LID		SourceLid;		/* SLID */
-#endif
 				uint8		PortNumber;		/* Incomming PortNumber		 */
 											/* Returned on RecvCompletion */
 											/* not required for Sends */

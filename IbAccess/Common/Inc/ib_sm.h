@@ -31,14 +31,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #if defined(CHECK_HEADERS)
 
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #ifndef __IBA_STL_SM_H__
 #warning FIX ME!!! Your includes should use the stl_sm.h header and not the ib_sm.h header for STL builds
-#endif
-#else
-#ifdef __IBA_STL_SM_H__
-#warning FIX ME!!! Your includes should use the ib_sm.h header and not the stl_sm.h header for IB builds
-#endif
 #endif
 
 #endif
@@ -48,15 +42,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "iba/public/datatypes.h"
 #include "iba/vpi.h"
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #include "iba/stl_mad.h"
-#else
-#include "iba/ib_mad.h"
-#endif
 #include "iba/public/ibyteswap.h"
 
 // CPU_LE code below can't get to uint typedef
-#if defined(VXWORKS_REV) && (VXWORKS_REV >= VXWORKS_REV_6_9)
+#if defined(VXWORKS)
 typedef unsigned int uint;
 #endif
 
@@ -583,21 +573,6 @@ typedef enum _IB_PORT_PHYS_STATE {
 } IB_PORT_PHYS_STATE;
 
 /* IB_MTU is defined in ib_types.h */
-
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
-/* No STL equivalent fns. In STL VL is represented as number of VLs, not enum.*/
-#else
-/*  Virtual Lanes supported on this port, indicated as follows: */
-typedef enum _IB_VL {
-	IB_VL_NOP		= 0,	/* no change, valid for OperationalVLs only */
-	IB_VL0			= 1,
-	IB_VL0_VL1		= 2,
-	IB_VL0_VL3		= 3,
-	IB_VL0_VL7		= 4,
-	IB_VL0_VL14		= 5
-							/* 6 - 15: reserved */
-} IB_VL;
-#endif 
 
 #define IB_LIFETIME_MAX 19	/* max for HOQLife and LifeTimeValue, >19 -> Infinite */
 
@@ -1516,7 +1491,7 @@ BSWAP_RANDOM_FWD_TABLE(
     )
 {
 #if CPU_LE
-#if defined(VXWORKS_REV) && (VXWORKS_REV >= VXWORKS_REV_6_9)
+#if defined(VXWORKS)
 	uint32 i;
 #else
 	uint i;
@@ -1536,7 +1511,7 @@ BSWAP_MCAST_FWD_TABLE(
     )
 {
 #if CPU_LE
-#if defined(VXWORKS_REV) && (VXWORKS_REV >= VXWORKS_REV_6_9)
+#if defined(VXWORKS)
 	uint32 i;
 #else
 	uint i;
@@ -1630,7 +1605,7 @@ BSWAP_COLLECTIVE_MEMBER_LIST(
 	)
 {
 #if CPU_LE
-#if defined(VXWORKS_REV) && (VXWORKS_REV >= VXWORKS_REV_6_9)
+#if defined(VXWORKS)
 	uint32 i;
 #else
 	uint i;

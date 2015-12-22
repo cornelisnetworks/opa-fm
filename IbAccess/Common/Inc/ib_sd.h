@@ -31,14 +31,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #if defined(CHECK_HEADERS)
 
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #ifndef __STL_SD_H__
 #warning FIX ME!!! Your includes should use the stl_sd.h header and not the ib_sd.h header for STL builds
-#endif
-#else
-#ifdef __STL_SD_H__
-#warning FIX ME!!! Your includes should use the ib_sd.h header and not the stl_sd.h header for IB builds
-#endif
 #endif
 
 #endif
@@ -64,13 +58,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include <iba/public/datatypes.h>
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #include <iba/stl_types.h>
 #include <iba/stl_mad.h>
-#else
-#include <iba/ib_types.h>
-#include <iba/ib_mad.h>
-#endif
 #ifdef IB_STACK_OPENIB
 #include <iba/stl_sa.h>
 #else

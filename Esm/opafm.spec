@@ -30,7 +30,7 @@
 #[ICS VERSION STRING: unknown]
 Name: opa-fm
 Version: 10.0.0.0
-Release: 625
+Release: 655
 Summary: Intel Omni-Path Fabric Management Software
 
 Group: System Environment/Daemons
@@ -80,7 +80,7 @@ fi
 
 %install
 install -D -m 644 stage.rpm/opafm.service $RPM_BUILD_ROOT/usr/lib/systemd/system/opafm.service
-install -D -m 755 stage.rpm/opafmctrl.sh $RPM_BUILD_ROOT/opt/opafm/bin/opafmctrl.sh
+install -D -m 755 stage.rpm/opafmctrl $RPM_BUILD_ROOT/opt/opafm/bin/opafmctrl
 install -D -m 755 stage.rpm/opafmd $RPM_BUILD_ROOT/opt/opafm/bin/opafmd
 
 %if 0%{?rhel} && 0%{?rhel} < 7
@@ -115,6 +115,9 @@ install -D ${sub_dir}ib/src/linux/startup/opafm_src.xml $RPM_BUILD_ROOT/opt/opaf
 install -D stage.rpm/opafm.xml $RPM_BUILD_ROOT/opt/opafm/etc/opafm.xml
 install -D stage.rpm/opaxmlextract $RPM_BUILD_ROOT/opt/opafm/etc/opaxmlextract
 install -D stage.rpm/opaxmlfilter $RPM_BUILD_ROOT/opt/opafm/etc/opaxmlfilter
+
+install -D stage.rpm/opa_ca_openssl.cnf-sample $RPM_BUILD_ROOT/opt/opafm/samples/opa_ca_openssl.cnf-sample
+install -D stage.rpm/opa_comp_openssl.cnf-sample $RPM_BUILD_ROOT/opt/opafm/samples/opa_comp_openssl.cnf-sample
 
 mkdir -p $RPM_BUILD_ROOT%{_sbindir}
 ln -s /opt/opafm/bin/fm_cmd $RPM_BUILD_ROOT%{_sbindir}/opafmcmd
@@ -154,6 +157,7 @@ fi
 /opt/opafm/bin/*
 /opt/opafm/etc/*
 /opt/opafm/runtime/*
+/opt/opafm/samples/*
 %{_sbindir}/opafmcmd
 %{_sbindir}/opafmcmdall
 

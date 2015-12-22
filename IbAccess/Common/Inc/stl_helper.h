@@ -387,7 +387,7 @@ StlLinkSpeedToText(uint16_t speed, char *str, size_t len)
 
 	if ((speed & (STL_LINK_SPEED_12_5G|STL_LINK_SPEED_25G))
 	  != speed) {
-		i = snprintf(str, len, "Warning: Unexpected speed (0x%04X) ", speed);
+		i = snprintf(str, len, "Unexpected (0x%04X) ", speed);
 		if (i >= len-n) {
 			DEBUG_ASSERT(0 == "IbPrint: ERROR buffer length short\n");
 			goto out;
@@ -1151,11 +1151,7 @@ IsCableInfoAvailable(STL_PORT_INFO *portInfo)
 static __inline uint8
 StlResolutionToShift(uint32 res, uint8 add) {
 // shift = log2(res) - add
-	uint8 shift = 0;
-	while (res > 1) {
-		shift++;
-		res = res >> 1;
-	}
+	uint8 shift = FloorLog2(res);
 	if (shift > 15) return 15; // 15 is the maximum allowed value
 	else if (shift > add) return shift-add;
 	else return 0;
@@ -1166,6 +1162,40 @@ StlShiftToResolution(uint8 shift, uint8 add) {
 // res = 2^(shift + add)
 	if (shift) return (uint32)1<<(shift + add);
 	else return 0;
+}
+
+static __inline void
+FormatStlCounterSelectMask(char buf[128], CounterSelectMask_t mask) {
+
+	sprintf(buf, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
+		(mask.s.PortXmitData                ? "TxD ": ""),
+		(mask.s.PortRcvData                 ? "RxD ": ""),
+		(mask.s.PortXmitPkts                ? "TxP ": ""),
+		(mask.s.PortRcvPkts                 ? "RxP ": ""),
+		(mask.s.PortMulticastXmitPkts       ? "MTxP ": ""),
+		(mask.s.PortMulticastRcvPkts        ? "MRxP ": ""),
+
+		(mask.s.PortXmitWait                ? "TxW ": ""),
+		(mask.s.SwPortCongestion            ? "CD ": ""), /* CongDiscards */
+		(mask.s.PortRcvFECN                 ? "RxF ": ""),
+		(mask.s.PortRcvBECN                 ? "RxB ": ""),
+		(mask.s.PortXmitTimeCong            ? "TxTC ": ""),
+		(mask.s.PortXmitWastedBW            ? "WBW ": ""),
+		(mask.s.PortXmitWaitData            ? "TxWD ": ""),
+		(mask.s.PortRcvBubble               ? "RxBb ": ""),
+		(mask.s.PortMarkFECN                ? "MkF ": ""),
+		(mask.s.PortRcvConstraintErrors     ? "RxCE ": ""),
+		(mask.s.PortRcvSwitchRelayErrors    ? "RxSR ": ""),
+		(mask.s.PortXmitDiscards            ? "TxDc ": ""),
+		(mask.s.PortXmitConstraintErrors    ? "TxCE ": ""),
+		(mask.s.PortRcvRemotePhysicalErrors ? "RxRP ": ""),
+		(mask.s.LocalLinkIntegrityErrors    ? "LLI ": ""),
+		(mask.s.PortRcvErrors               ? "RxE ": ""),
+		(mask.s.ExcessiveBufferOverruns     ? "EBO ": ""),
+		(mask.s.FMConfigErrors              ? "FMC ": ""),
+		(mask.s.LinkErrorRecovery           ? "LER ": ""),
+		(mask.s.LinkDowned                  ? "LD ": ""),
+		(mask.s.UncorrectableErrors         ? "Unc": ""));
 }
 
 #if !defined(ROUNDUP)

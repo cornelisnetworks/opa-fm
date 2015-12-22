@@ -1155,12 +1155,8 @@ RmppMadCheck(
 				return RMPP_STATUS_UNSPECIFIED;	// TBD
 			}
 			// validate PayloadLen for a First packet
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 			rmppGsDataSize = (pMadRmpp->common.BaseVersion == IB_BASE_VERSION)
 				? IBA_RMPP_GS_DATASIZE : STL_RMPP_GS_DATASIZE;
-#else
-			rmppGsDataSize = IBA_RMPP_GS_DATASIZE;
-#endif
 			if (pMadRmpp->RmppHdr.RmppFlags.s.FirstPkt
 				&& ! pMadRmpp->RmppHdr.RmppFlags.s.LastPkt
 				&& pMadRmpp->RmppHdr.u2.PayloadLen != 0
@@ -1517,12 +1513,8 @@ RmppReceiverProcessRecv (
 				// PayloadLen processing
 					// PayloadLen is 0 or exact payload size
 					// TBD - a ROUNDUP function
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 	rmppGsDataSize = (pMadRmpp->common.BaseVersion == IB_BASE_VERSION)
 		? IBA_RMPP_GS_DATASIZE : STL_RMPP_GS_DATASIZE;
-#else
-	rmppGsDataSize = IBA_RMPP_GS_DATASIZE;
-#endif
 				pSarContext->TotalSegs	=
 						(pMadRmpp->RmppHdr.u2.PayloadLen +rmppGsDataSize -1)
 							/ rmppGsDataSize;
@@ -1668,12 +1660,8 @@ RmppReceiverGotLast(
 
 	// compute overall payload size and put in first for use by client
 		// last indicates amount of data in itself
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 	rmppGsDataSize = (pMadRmpp->common.BaseVersion == IB_BASE_VERSION)
 		? IBA_RMPP_GS_DATASIZE : STL_RMPP_GS_DATASIZE;
-#else
-	rmppGsDataSize = IBA_RMPP_GS_DATASIZE;
-#endif
 	((MAD_RMPP *)GsiDgrmGetRecvMad(pSarContext->RecvHead))->RmppHdr.u2.PayloadLen =
 				(pMadRmpp->RmppHdr.u1.SegmentNum-1) * rmppGsDataSize
 				+ pMadRmpp->RmppHdr.u2.PayloadLen;
@@ -2108,11 +2096,7 @@ STATIC void SendRmppReply(
 	pMadRmpp->common.mr.s.R	= ! pMadRmpp->common.mr.s.R;
 			
 	pMadRmpp->RmppHdr = *pRmppHdr;		// struct copy - RMPP header to use
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 	MemoryClear(&pMadRmpp->Data[0], STL_RMPP_GS_DATASIZE);	// no Data
-#else
-	MemoryClear(&pMadRmpp->Data[0], IBA_RMPP_GS_DATASIZE);	// no Data
-#endif
 	ASSERT(RMPP_STATUS_NORMAL == RmppMadCheck(pMadRmpp));
 
 	// Set remote info
@@ -2126,10 +2110,8 @@ STATIC void SendRmppReply(
 	AtomicWrite(&pPostList->DgrmOut, 0);
 	pPostList->DgrmList			= pDgrmList;
 	pPostList->SARRequest		= TRUE;
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 	pPostList->DgrmList->Element.pBufferList->pNextBuffer->ByteCount =
 		pDgrm->Element.pBufferList->pNextBuffer->ByteCount;
-#endif
 
 	status = GsiDoSendDgrm( NULL, pPostList);
 	if (status != FSUCCESS)

@@ -180,13 +180,8 @@ typedef struct _BM_SEND {
 	uint16		Sequence;				/* incremented on Requests */
 	uint8		SourceDevice;			/* IBML_DEV_ID for source device */
 	uint8		ParamCount;				/* number of bytes in Parameters field, 1-based */
-#if defined(PRODUCT_I9K) || defined(PRODUCT_X) || !defined(VXWORKS)
 	uint8		Parameters[64];			/* ParamCount command-specific parameters */
 	uint8		Reserved[124];          /* Filler to produce the required 192 byte */
-#else
-	uint8		Parameters[40];			/* ParamCount command-specific parameters */
-	uint8		Reserved[148];          /* Filler to produce the required 192 byte */
-#endif
 } PACK_SUFFIX BM_SEND;
 
 typedef enum _BM_DEV_ID {
@@ -255,11 +250,7 @@ typedef	struct _BM_OEM_TRUESCALE_CHASSIS_IP {
 #define BM_READ_VPD_MAX_BYTES			39
 #define BM_GET_MODULE_STATUS_BYTES		6
 #define BM_OEM_REQ_MAX_BYTES			37
-#if defined(PRODUCT_I9K) || defined(PRODUCT_X)
 #define BM_OEM_RSP_MAX_BYTES			192
-#else
-#define BM_OEM_RSP_MAX_BYTES			36
-#endif
 #define BM_OEM_READ_VPD_MAX_BYTES		36
 #define BM_OEM_SLOTS_STAT_MAX_CHASSIS   54 
 #define BM_OEM_SLOTS_STAT_MAX_SLOTS     32

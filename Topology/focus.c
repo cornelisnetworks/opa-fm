@@ -34,6 +34,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef __VXWORKS__
 #include <strings.h>
+#else
+#include "icsBspUtil.h"
 #endif
 
 // Functions to Parse Focus arguments and build POINTs for matches
@@ -794,6 +796,10 @@ static FSTATUS ParsePortStatePoint(FabricData_t *fabricp, char *arg, Point *pPoi
 		state = IB_PORT_ARMED;
 	else if (strncasecmp(arg, "active", len) == 0)
 		state = IB_PORT_ACTIVE;
+	else if (strncasecmp(arg, "notactive", len) == 0)
+		state = PORT_STATE_SEARCH_NOTACTIVE;
+	else if (strncasecmp(arg, "initarmed", len) == 0)
+		state = PORT_STATE_SEARCH_INITARMED;
 	else {
 		fprintf(stderr, "%s: Invalid Port State: %.*s\n", g_Top_cmdname, len, arg);
 		*pp -= len;	/* back up for syntax error report */

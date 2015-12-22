@@ -33,9 +33,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/types.h>
 #include <sys/socket.h>
 #ifdef __VXWORKS__
-#if defined(BSP_XT3)
-#include <sys/param.h>
-#endif
 #include  <sockLib.h>
 #endif
 #include <sys/un.h>
@@ -44,6 +41,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <unistd.h>
 #include <time.h>
 #include <string.h>
+#include <libgen.h>
+#include <errno.h>
 #include "hsm_com_srvr_api.h"
 #include "hsm_com_srvr_data.h"
 
@@ -53,13 +52,31 @@ int unix_serv_listen(char *name)
 {
 	int		fd,len;
 	struct	sockaddr_un socketaddr;
+	char *dname, *namecpy = strdup(name);
 
 	if((fd = socket(AF_UNIX,SOCK_STREAM,0)) < 0)
 	{
-		return(-1);
+		return(-HSM_COM_SOCK_ERR);
 	}
 
 	unlink(name);
+	
+	//check strdup call completed successfully 
+	if (!namecpy)
+	{
+		return (-HSM_COM_NO_MEM);
+	}
+	
+	//ensure socket directory exists
+	dname = dirname(namecpy);
+	if (mkdir(dname, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH) < 0)
+	{
+		if (errno != EEXIST)
+		{
+			return (-HSM_COM_PATH_ERR);
+		}
+	}
+	free(namecpy);
 
 	memset(&socketaddr,0,sizeof(socketaddr));
 
@@ -70,12 +87,12 @@ int unix_serv_listen(char *name)
 
 	if(bind(fd,(struct sockaddr*)&socketaddr,len) < 0)
 	{
-		return(-2);
+		return(-HSM_COM_BIND_ERR);
 	}
 
 	if(listen(fd,5) < 0)
 	{
-		return(-3);
+		return(-HSM_COM_LISTEN_ERR);
 	}
 
 	
@@ -361,7 +378,7 @@ unix_sck_run_server(hsm_com_server_hdl_t *hdl)
 	{
 		if(hsm_com_dbg)
 			printf("Error creating server socket\n");
-		return(-1);
+		return(listenfd);
 	}
 
 	FD_SET(listenfd,&allset);

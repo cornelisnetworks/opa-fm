@@ -31,14 +31,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #if defined(CHECK_HEADERS)
 
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #ifndef __IBA_STL_MAD_H__
 #warning FIX ME!!! Your includes should use the stl_mad.h header and not the ib_mad.h header for STL builds
-#endif
-#else
-#ifdef __IBA_STL_MAD_H__
-#warning FIX ME!!! Your includes should use the ib_mad.h header and not the stl_mad.h header for IB builds
-#endif
 #endif
 
 #endif
@@ -49,12 +43,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "iba/public/datatypes.h"
 #include "iba/vpi.h"
 
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 /* Ths should be removed from here */
 #include "iba/stl_types.h"
-#else
-#include "iba/ib_types.h"
-#endif
 
 #include "iba/public/ibyteswap.h"
 #include "iba/public/imemory.h"
@@ -84,11 +74,7 @@ extern "C" {
 #define STL_MAD_BLOCK_SIZE			2048
 #endif
 
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #define MAD_BLOCK_SIZE				STL_MAD_BLOCK_SIZE
-#else
-#define MAD_BLOCK_SIZE				IB_MAD_BLOCK_SIZE
-#endif
 
 #define IB_BASE_VERSION				1
 /* use ib_generalServices.h or ib_sm.h to get proper class version */

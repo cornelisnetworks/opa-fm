@@ -903,9 +903,10 @@ int parseLine(char *line,
         // text                              <!--#oldKey#!-->
         // simple case, we need to output first and firstTag but "" for all else
         strcpy(first,lineIn);
-        while (first[strlen(first)-1]==' ')
+        int firstLen = strlen(first);
+        while (firstLen > 1 && first[firstLen-1]==' ')
         {
-            first[strlen(first)-1]='\0';
+            first[--firstLen]='\0';
         }
         strcpy(tagOut,"");
         strcpy(valueOut,"");
@@ -988,9 +989,9 @@ int parseLine(char *line,
     int lastLen=strlen(lineIn)-(firstLen+valueLength);
     strncpy(last,&lineIn[firstLen+valueLength],lastLen);
     last[lastLen]='\0';
-    while (last[strlen(last)-1]==' ')
+    while (lastLen > 1 && last[lastLen-1]==' ')
     {
-        last[strlen(last)-1]='\0';
+        last[--lastLen]='\0';
     }
 
     strncpy(tagOut,tag,255);
@@ -1029,9 +1030,10 @@ int parseLine(char *line,
         }
         strncpy(lastTag, last, commentStart-last);
         strcpy(lastTag+(commentStart-last), commentStart+3);
-        while (lastTag[strlen(lastTag)-1]==' ')
+        lastLen = strlen(lastTag);
+        while (lastLen > 1 && lastTag[lastLen-1]==' ')
         {
-            lastTag[strlen(lastTag)-1]='\0';
+            lastTag[--lastLen]='\0';
         }
 
     strncpy(tagOut,tag,255);

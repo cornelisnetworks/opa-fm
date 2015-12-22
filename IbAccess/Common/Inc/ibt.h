@@ -47,13 +47,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifdef BUILD_CM
 #include "iba/ib_cm.h"
 #endif
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 #include "iba/stl_sd.h"
 #include "iba/stl_pa.h"
-#else
-#include "iba/ib_sd.h"
-#include "iba/ib_pa.h"
-#endif
 #include "iba/ib_avtracker.h"
 #include "iba/umadt.h"
 #ifdef BUILD_DMC

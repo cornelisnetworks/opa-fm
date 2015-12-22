@@ -317,7 +317,7 @@ sub rpm_check_os_prereqs_internal($$@)
 				# TBD - openSUSE has libstdc++42
 				# TBD - openSUSE11.2 has libstdc++44
 			} elsif ("$package" eq "libstdc++" && "$CUR_DISTRO_VENDOR" eq 'SuSE'
-					&& "$CUR_VENDOR_VER" eq 'ES12') {
+					&& ("$CUR_VENDOR_VER" eq 'ES12' || "$CUR_VENDOR_VER" eq 'ES121')) {
 				$package="libstdc++6";
 		 	} elsif ("$package" eq "libstdc++-devel" && "$CUR_DISTRO_VENDOR" eq 'SuSE'
 					&& "$CUR_VENDOR_VER" eq 'ES11') {
@@ -528,6 +528,9 @@ sub rpm_uninstall_matches($$$;$)
 		my $out =`chroot /$ROOT $RPM -e $options $rpms 2>&1`;
 		my $rc=$?;
 		NormalPrint("$out");
+		if ($rc != 0) {
+			$exit_code = 1;
+		}
 		return $rc;
 	} else {
 		return 0;
@@ -604,6 +607,7 @@ sub rpm_run_install($$$)
 		} else {
 			NormalPrint("ERROR - Failed to install $rpmfile");
 			NormalPrint("$out");
+			$exit_code = 1;
 			HitKeyCont;
 		}
 
@@ -621,6 +625,7 @@ sub rpm_run_install($$$)
 		} else {
 			NormalPrint("ERROR - Failed to install $rpmfile");
 			NormalPrint("$out");
+			$exit_code = 1;
 			HitKeyCont;
 		}
 	}
@@ -648,6 +653,9 @@ sub rpm_uninstall($$$$)
 		my $out=`chroot /$ROOT $RPM -e $options $fullname 2>&1`;
 		$rc |= $?;
 		NormalPrint("$out");
+		if ($rc != 0) {
+			$exit_code = 1;
+		}
 	}
 	return $rc;
 }
@@ -897,6 +905,9 @@ sub rpm_uninstall_all_list($$@)
 		my $out=`chroot /$ROOT $RPM -e $options @uninstall 2>&1`;
 		my $rc=$?;
 		NormalPrint("$out");
+		if ($rc != 0) {
+			$exit_code = 1;
+		}
 		return $rc;
 	} else {
 		LogPrint "None Found\n";
@@ -940,6 +951,9 @@ sub rpm_uninstall_all_list_with_options($$$@)
 		my $out=`chroot /$ROOT $RPM -e $options @uninstall 2>&1`;
 		my $rc=$?;
 		NormalPrint("$out");
+		if ($rc != 0) {
+			$exit_code = 1;
+		}
 		return $rc;
 	} else {
 		LogPrint "None Found\n";

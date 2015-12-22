@@ -97,7 +97,7 @@ BmaLoad(
 	MsgOut ("Bma:DebugFlags = 0x%8x\n", __DBG_LEVEL__);
 #endif
 
-#if !defined(VXWORKS_REV) || (VXWORKS_REV < VXWORKS_REV_6_9)
+#if defined(VXWORKS)
 	_DBG_PRINT(_DBG_LVL_MAIN,  
 	(" InfiniBand Baseboard Management Class agent. Built %s %s\n",\
 	__DATE__, __TIME__ ));

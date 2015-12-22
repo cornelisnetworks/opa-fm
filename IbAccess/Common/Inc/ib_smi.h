@@ -38,13 +38,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* kernel mode SMI Interfaces */
 
 #include <iba/vpi.h>
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 #include "iba/stl_types.h"
 #include "iba/stl_sm.h"
-#else
-#include "iba/ib_types.h"
-#include "iba/ib_sm.h"
-#endif
 
 
 #if defined (__cplusplus)
@@ -152,13 +147,8 @@ typedef struct _SMP_BLOCK {
 	uint32		SmpByteCount;		/* Used size of *Smp in bytes */
 									/* When zero indicates MAD_BLOCK_SIZE */
 	void		*Smp;				/* Pointer to SMP/MAD */
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 	uint32		DLID;				/* destination LID */
 	uint32		SLID;				/* source LID */
-#else
-	uint16		DLID;				/* destination LID */
-	uint16		SLID;				/* source LID */
-#endif
 
 	IB_PATHBITS	PathBits;			/* path bits */
 	uint8		StaticRate;			/* enum IB_STATIC_RATE */

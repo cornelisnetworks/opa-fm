@@ -210,11 +210,15 @@ char * smGetNodeString(uint8_t *path, uint16_t lid, Node_t *node, Port_t *port,
 		if(path[0] == 0 && buffIdx < buffLen)
 		{
 			buffIdx += snprintf(buff + buffIdx, buffLen - buffIdx, "Local Port");
+			if (!node && sm_topop) 
+				node = sm_topop->node_head;
 		}
 		else {
 			for (i = 1; i <= (int) path[0] && buffIdx < buffLen; i++) {
 				buffIdx += snprintf(buff + buffIdx, buffLen - buffIdx, "%2d ", path[i]);
 			}
+			if (!node && sm_topop)
+				node = sm_find_node_by_path(sm_topop, path);
 		}
 		if (buffIdx < buffLen)
 			buffIdx += snprintf(buff + buffIdx, buffLen - buffIdx, "]");
@@ -230,7 +234,7 @@ char * smGetNodeString(uint8_t *path, uint16_t lid, Node_t *node, Port_t *port,
 	//topo
 	if(lid){
 		buffIdx += snprintf(buff + buffIdx, buffLen - buffIdx, " Lid:[%d]", lid);
-		if(!node && (lid <= UNICAST_LID_MAX))
+		if(!node && (lid <= UNICAST_LID_MAX) && sm_topop)
 			port = sm_find_node_and_port_lid(sm_topop, lid, &node);
 
 		// If we just found the node by its LID, and its not a switch
@@ -1812,7 +1816,7 @@ check_for_new_endnode(STL_NODE_INFO * nodeInfo, Node_t * nodep, Node_t * oldnode
 	}
 }
 
-uint32
+uint32_t
 sm_Node_release_pgft(Node_t * node)
 {
 	if (node->pgft) {
@@ -1826,13 +1830,18 @@ sm_Node_release_pgft(Node_t * node)
 size_t
 sm_Node_get_pgft_size(const Node_t * node)
 {
-	return node->pgftSize;
+	return (size_t)(node->pgftSize);
 }
 
 size_t
 sm_Node_compute_pgft_size(const Node_t * node)
 {
-	return ROUNDUP(node->switchInfo.LinearFDBTop+1, LFT_BLOCK_SIZE);
+	// The PGFT is the same length as the LFT, up to 8192.
+	// (This is a limitation of early gen 1 firmware)
+	uint32 pgftCap = DEFAULT_MAX_PGFT_BLOCK_NUM * NUM_PGFT_ELEMENTS_BLOCK;
+	
+	if (node->switchInfo.LinearFDBTop < pgftCap) pgftCap = node->switchInfo.LinearFDBTop+1;
+	return ROUNDUP(pgftCap, NUM_PGFT_ELEMENTS_BLOCK);
 }
 
 const PORT *
@@ -2031,13 +2040,87 @@ sm_log_predef_field_violation(Topology_t* topop, uint32_t logQuarantineReasons,
 	topop->preDefLogCounts.totalLogCount++;
 }
 
+static int portsel_match(PortSelector *ps, const char *nd, int pnum)
+{
+	return (ps && strncmp(nd, ps->NodeDesc,
+		STL_NODE_DESCRIPTION_ARRAY_SIZE) == 0 && pnum == ps->PortNum);
+}
+
+/*
+ * Find all ExpectedLink elems in @fdp given NodeDesc and PortNum values.
+ *
+ * Can do partial matches if either @ndesc1 or @ndesc2 is NULL. Writes
+ * up to @elSize found links to @elOut. Writes in order discovered so
+ * if there are more than @elSize hits, additional matching
+ * ExpectedLinks will not be written.
+ *
+ * @returns number of matches in fdp->ExpectedLinks, even if greater
+ * than @elSize. Does not invalidate @elOut; only up to @return value
+ * pointers in @elOut are guaranteed to be valid.
+ */
+static int
+find_exp_links_by_desc_and_port(FabricData_t * fdp,
+	const char *ndesc1, int pnum1,
+	const char *ndesc2, int pnum2,
+	ExpectedLink **elOut, int elSize)
+{
+	int hits = 0;
+	LIST_ITEM *it;
+
+	if (!ndesc1 && !ndesc2)
+		return 0;
+
+	for (it = QListHead(&fdp->ExpectedLinks); it != NULL;
+		it = QListNext(&fdp->ExpectedLinks, it)) {
+		int n1match, n2match; // Matching side
+		n1match = n2match = 0;
+		ExpectedLink *el = PARENT_STRUCT(it, ExpectedLink, ExpectedLinksEntry);
+
+		if (!el->portselp1 || !el->portselp2)
+			continue;
+
+		if (ndesc1) {
+			if (portsel_match(el->portselp1, ndesc1, pnum1))
+				n1match = 1;
+			else if (portsel_match(el->portselp2, ndesc1, pnum1))
+				n1match = 2;
+		}
+
+		if (ndesc2) {
+			if (portsel_match(el->portselp1, ndesc2, pnum2))
+				n2match = 1;
+			else if (portsel_match(el->portselp2, ndesc2, pnum2))
+				n2match = 2;
+		}
+
+		// Both are defined, require complete match
+		if (ndesc1 && ndesc2) {
+			if (!n1match || !n2match)
+				continue;
+			if (n1match == n2match)
+				continue;
+		} else if (ndesc1 && !n1match) {
+			continue;
+		} else if (ndesc2 && !n2match)
+			continue;
+
+		if (hits < elSize)
+			elOut[hits] = el;
+		++hits;
+	}
+
+	return hits;
+}
+
 int
 sm_validate_predef_fields(Topology_t* topop, FabricData_t* pdtop, Node_t * cnp, Port_t * cpp, STL_NODE_INFO* nodeInfo, 
-							STL_NODE_DESCRIPTION* nodeDesc, uint32_t* quarantineReasons, STL_EXPECTED_NODE_INFO* expNodeInfo) {
+							STL_NODE_DESCRIPTION* nodeDesc, uint32_t* quarantineReasons, STL_EXPECTED_NODE_INFO* expNodeInfo)
+{
 	int authentic = 1;
 	ExpectedLink* validationLink;
 	uint8_t linkSide;
 	uint32_t logQuarantineReasons = 0x00000000;
+	SmPreDefTopoXmlConfig_t *pdtCfg = &sm_config.preDefTopo;
 
 	if(pdtop == NULL || quarantineReasons == NULL || nodeInfo == NULL || nodeDesc == NULL) {
 		authentic = 0;
@@ -2049,9 +2132,9 @@ sm_validate_predef_fields(Topology_t* topop, FabricData_t* pdtop, Node_t * cnp, 
 	if(cnp == NULL || cpp == NULL) {
 		ExpectedNode* currentNode = FindExpectedNodeByNodeGuid(pdtop, nodeInfo->NodeGUID);
 		if(currentNode == NULL) {
-			if(sm_config.preDefTopo.fieldEnforcement.nodeGuid == FIELD_ENF_LEVEL_WARN) {
-				if(sm_config.preDefTopo.logMessageThreshold != 0 && 
-						topop->preDefLogCounts.totalLogCount < sm_config.preDefTopo.logMessageThreshold) {
+			if(pdtCfg->fieldEnforcement.nodeGuid == FIELD_ENF_LEVEL_WARN) {
+				if(pdtCfg->logMessageThreshold != 0 && 
+						topop->preDefLogCounts.totalLogCount < pdtCfg->logMessageThreshold) {
 					IB_LOG_WARN_FMT(__func__, "Pre-Defined Topology: %s (NodeGUID: " FMT_U64 ", PortGUID: "FMT_U64") was not found in input file (Warn).",
 									(char*) nodeDesc->NodeString, nodeInfo->NodeGUID, nodeInfo->PortGUID);
 
@@ -2060,9 +2143,9 @@ sm_validate_predef_fields(Topology_t* topop, FabricData_t* pdtop, Node_t * cnp, 
 
 				topop->preDefLogCounts.nodeDescWarn++;
 			}
-			else if(sm_config.preDefTopo.fieldEnforcement.nodeGuid == FIELD_ENF_LEVEL_ENABLED) {
-				if(sm_config.preDefTopo.logMessageThreshold != 0 && 
-						topop->preDefLogCounts.totalLogCount < sm_config.preDefTopo.logMessageThreshold) {
+			else if(pdtCfg->fieldEnforcement.nodeGuid == FIELD_ENF_LEVEL_ENABLED) {
+				if(pdtCfg->logMessageThreshold != 0 && 
+						topop->preDefLogCounts.totalLogCount < pdtCfg->logMessageThreshold) {
 					IB_LOG_ERROR_FMT(__func__, "Pre-Defined Topology: %s (NodeGUID: " FMT_U64 ", PortGUID: "FMT_U64") was not found in input file (Quarantined).",
 									(char*) nodeDesc->NodeString, nodeInfo->NodeGUID, nodeInfo->PortGUID);
 
@@ -2074,10 +2157,10 @@ sm_validate_predef_fields(Topology_t* topop, FabricData_t* pdtop, Node_t * cnp, 
 			}
 
 			// If we have hit our log threshold, spit out a final message but then stop logging
-			if(sm_config.preDefTopo.logMessageThreshold != 0 &&
-					topop->preDefLogCounts.totalLogCount == sm_config.preDefTopo.logMessageThreshold) {
+			if(pdtCfg->logMessageThreshold != 0 &&
+					topop->preDefLogCounts.totalLogCount == pdtCfg->logMessageThreshold) {
 				IB_LOG_WARN_FMT(__func__, "Pre-Defined Topology: Log message threshold of %d messages per sweep has been reached. Suppressing further topology mismatch information.", 
-									sm_config.preDefTopo.logMessageThreshold);
+									pdtCfg->logMessageThreshold);
 				topop->preDefLogCounts.totalLogCount++;
 			}
 		}
@@ -2085,15 +2168,55 @@ sm_validate_predef_fields(Topology_t* topop, FabricData_t* pdtop, Node_t * cnp, 
 		return authentic;
 	}
 
+	// UndefinedLink Validation
 	validationLink = FindExpectedLinkByOneSide(pdtop, cnp->nodeInfo.NodeGUID, cpp->index, &linkSide);
 
-	// UndefinedLink Validation
-	if(validationLink == NULL) {
-		if(sm_config.preDefTopo.fieldEnforcement.undefinedLink == FIELD_ENF_LEVEL_DISABLED)
+	// Special case: match by NodeDesc and PortNum
+	if(validationLink == NULL &&
+		pdtCfg->fieldEnforcement.nodeGuid == FIELD_ENF_LEVEL_DISABLED) {
+		int hitCnt;
+		int forcePrint = 0;
+
+		if(pdtCfg->logMessageThreshold != 0 &&
+			topop->preDefLogCounts.totalLogCount < pdtCfg->logMessageThreshold) {
+			IB_LOG_WARN_FMT(__func__, "Validation link not found using (NodeGUID: "
+				FMT_U64", PortNum: %d). Looking up link by (NodeDesc: %s,"
+				" PortNum: %d). False matches may occur if node descriptions are"
+				" not unique.", cnp->nodeInfo.NodeGUID, cpp->index,
+				sm_nodeDescString(cnp), cpp->index);
+			topop->preDefLogCounts.totalLogCount++;
+			forcePrint = (topop->preDefLogCounts.totalLogCount >= pdtCfg->logMessageThreshold);
+		}
+
+		hitCnt = find_exp_links_by_desc_and_port(pdtop,
+			(char*)cnp->nodeDesc.NodeString, cpp->index, NULL, 0,
+			&validationLink, 1);
+
+		if (hitCnt > 1 && pdtCfg->logMessageThreshold != 0 && (forcePrint ||
+			topop->preDefLogCounts.totalLogCount < pdtCfg->logMessageThreshold)) {
+			IB_LOG_WARN_FMT(__func__, "Mutlitple expected links matched by node"
+				" desc and port number. NodeGUID: "FMT_U64", NodeDesc: %s,"
+				" PortNum: %d", cnp->nodeInfo.NodeGUID, sm_nodeDescString(cnp),
+				cpp->index);
+			if (!forcePrint)
+				topop->preDefLogCounts.totalLogCount++;
+		}
+
+		if (validationLink) {
+			if (strncmp(validationLink->portselp1->NodeDesc,
+				(char*) cnp->nodeDesc.NodeString, STL_NODE_DESCRIPTION_ARRAY_SIZE) == 0)
+				linkSide = 1;
+			else
+				linkSide = 2;
+		}
+	}
+
+	if (validationLink == NULL) {
+		if(pdtCfg->fieldEnforcement.undefinedLink == FIELD_ENF_LEVEL_DISABLED)
 			return authentic;
 
 		logQuarantineReasons |= STL_QUARANTINE_REASON_TOPO_UNDEFINED_LINK;
-		if(sm_config.preDefTopo.fieldEnforcement.undefinedLink == FIELD_ENF_LEVEL_ENABLED) {
+		if(pdtCfg->fieldEnforcement.undefinedLink == FIELD_ENF_LEVEL_ENABLED) {
 			*quarantineReasons |= STL_QUARANTINE_REASON_TOPO_UNDEFINED_LINK;
 			authentic = 0;
 		}
@@ -2107,8 +2230,8 @@ sm_validate_predef_fields(Topology_t* topop, FabricData_t* pdtop, Node_t * cnp, 
 	PortSelector* validationPort = linkSide == 1 ? validationLink->portselp2 : validationLink->portselp1;
 
 	// NodeGUID Validation
-	if(sm_config.preDefTopo.fieldEnforcement.nodeGuid != FIELD_ENF_LEVEL_DISABLED && nodeInfo->NodeGUID != validationPort->NodeGUID) {
-		if(sm_config.preDefTopo.fieldEnforcement.nodeGuid == FIELD_ENF_LEVEL_ENABLED) {
+	if(pdtCfg->fieldEnforcement.nodeGuid != FIELD_ENF_LEVEL_DISABLED && nodeInfo->NodeGUID != validationPort->NodeGUID) {
+		if(pdtCfg->fieldEnforcement.nodeGuid == FIELD_ENF_LEVEL_ENABLED) {
 			if(expNodeInfo)
 				expNodeInfo->nodeGUID = validationPort->NodeGUID;
 
@@ -2117,12 +2240,11 @@ sm_validate_predef_fields(Topology_t* topop, FabricData_t* pdtop, Node_t * cnp, 
 		}
 		logQuarantineReasons |= STL_QUARANTINE_REASON_TOPO_NODE_GUID;
 	}
-	
-	// NodeDesc Validation
-	if(sm_config.preDefTopo.fieldEnforcement.nodeDesc != FIELD_ENF_LEVEL_DISABLED &&
+
+	if(pdtCfg->fieldEnforcement.nodeDesc != FIELD_ENF_LEVEL_DISABLED &&
 			(validationPort->NodeDesc == NULL ||
 			strncmp((char*) nodeDesc->NodeString, validationPort->NodeDesc, STL_NODE_DESCRIPTION_ARRAY_SIZE))) {
-		if(sm_config.preDefTopo.fieldEnforcement.nodeDesc == FIELD_ENF_LEVEL_ENABLED) {
+		if(pdtCfg->fieldEnforcement.nodeDesc == FIELD_ENF_LEVEL_ENABLED) {
 			if(expNodeInfo){
 				if(validationPort->NodeDesc == NULL)
 					strncpy((char*) expNodeInfo->nodeDesc.NodeString, "<UNDEFINED>", STL_NODE_DESCRIPTION_ARRAY_SIZE);
@@ -2139,10 +2261,10 @@ sm_validate_predef_fields(Topology_t* topop, FabricData_t* pdtop, Node_t * cnp, 
 	// PortGUID Validation
 	// Only valid for HFIs, as Switches only have a single PortGUID for Port 0.
 	// If we expected a switch and found an HFI, do a PortGUID comparison as it is technically an invalid PortGUID (we were expecting 0)
-	if(sm_config.preDefTopo.fieldEnforcement.portGuid != FIELD_ENF_LEVEL_DISABLED &&
+	if(pdtCfg->fieldEnforcement.portGuid != FIELD_ENF_LEVEL_DISABLED &&
 			((validationPort->NodeType == NI_TYPE_CA && nodeInfo->PortGUID != validationPort->PortGUID) ||
 			(validationPort->NodeType == NI_TYPE_SWITCH && nodeInfo->NodeType == NI_TYPE_CA && nodeInfo->PortGUID != validationPort->PortGUID))) {
-		if(sm_config.preDefTopo.fieldEnforcement.portGuid == FIELD_ENF_LEVEL_ENABLED) {
+		if(pdtCfg->fieldEnforcement.portGuid == FIELD_ENF_LEVEL_ENABLED) {
 			if(expNodeInfo)
 				expNodeInfo->portGUID = validationPort->PortGUID;
 
@@ -2503,7 +2625,7 @@ sm_setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t * cnp, Port_t * c
 			IB_EXIT(__func__, VSTATUS_BAD);
 			return (VSTATUS_BAD);
 		}
-
+		
 		if (!sm_config.loopback_mode && (nodep->nodeInfo.NodeType != nodeInfo.NodeType ||
 				((nodep->nodeInfo.NodeType == NI_TYPE_CA && nodeInfo.NodeType == NI_TYPE_CA) && 
 				(nodep->nodeInfo.PortGUID == nodeInfo.PortGUID || nodeInfo.u1.s.LocalPortNum == nodep->nodeInfo.u1.s.LocalPortNum)))) {
@@ -2620,6 +2742,31 @@ sm_setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t * cnp, Port_t * c
 			nodep->edgeSwitch = 1;
 		}
 	}
+
+
+	// We may have seen this node before, but not had both sides of the link set up
+	// properly to evaluate link policy, so check again now.
+	if(new_node == 0) {
+		if(!sm_valid_port(portp))
+			return(VSTATUS_BAD);
+		if (nodep->nodeInfo.NodeType != NI_TYPE_SWITCH
+			|| (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH
+			&& (portp->index > 0))) {	
+		
+			if(sm_verifyPortSpeedAndWidth(topop, nodep, portp) != VSTATUS_OK) {
+			
+				portp->state = IB_PORT_DOWN;
+				Port_t *con_portp = sm_find_port(topop, portp->nodeno, portp->portno);
+
+				//now mark down connected port as well.
+				if(sm_valid_port(con_portp))
+					con_portp->state = IB_PORT_DOWN;
+
+				return(VSTATUS_BAD);
+			}
+		}
+	}
+
 
 	if (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH) {
 		if (cnp && cpp &&
@@ -2945,13 +3092,6 @@ sm_setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t * cnp, Port_t * c
 			}
 		}
 
-		//port may have previously failed "supported" policy check on previous sweep
-		//but we have not discovered both ends of the link so far in this sweep, so catch here
-		//and move on
-		if(portp->portData->linkPolicyViolation) {
-			portp->state = IB_PORT_DOWN;
-			goto cleanup_down_ports;
-		}
 
 		if (portInfo.PortStates.s.PortState == IB_PORT_INIT) {
 				bitset_set(&nodep->initPorts, portp->index);
@@ -3232,6 +3372,40 @@ sm_find_node(Topology_t * topop, int32_t nodeno)
 
 	IB_EXIT(__func__, NULL);
 	return (NULL);
+}
+
+
+Node_t *
+sm_find_node_by_path(Topology_t * topop, uint8_t * path)
+{
+	uint8_t pathIndex;
+	int32_t nextNodeNumber;
+        Node_t *node_ptr;
+        
+	IB_ENTER(__func__, topop, path, 0, 0);
+
+#ifdef TRACK_SEARCHES
+	sm_node_id_cnt++;
+#endif
+
+	if ( (!path) || (path[0]>IBA_MAX_PATHSIZE) ) {
+                IB_EXIT(__func__, NULL);
+		return NULL;
+	}
+       
+        node_ptr = topop->node_head;
+	for (pathIndex=1; pathIndex<=path[0]; pathIndex++) {
+		nextNodeNumber = node_ptr->port[ path[pathIndex] ].nodeno;
+		if (topop->nodeArray[nextNodeNumber])
+			node_ptr = topop->nodeArray[nextNodeNumber];
+		else {
+	                IB_EXIT(__func__, NULL);
+			return NULL;
+		}
+	}
+
+	IB_EXIT(__func__, node_ptr);
+	return (node_ptr);
 }
 
 

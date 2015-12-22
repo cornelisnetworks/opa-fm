@@ -114,7 +114,7 @@ $WrapperComponent = "";
 #	Name, PreReq (should reference only components), HasStart, StartPreReq,
 #	DefaultStart
 %ComponentInfo = (
-	"opa_stack" => 	{ Name => "OFED OPA Stack",
+	"opa_stack" => 	{ Name => "OFA OPA Stack",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "updates",
 					  PreReq => "", CoReq => "",
@@ -123,7 +123,7 @@ $WrapperComponent = "";
 					  StartPreReq => "",
 					  StartComponents => [ "opa_stack" ],
 					},
-	"ofed_mlx4" => 	{ Name => "OFED mlx4 Driver",
+	"ofed_mlx4" => 	{ Name => "OFA mlx4 Driver",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "updates",
 					  PreReq => " opa_stack ", CoReq => "",
@@ -132,7 +132,7 @@ $WrapperComponent = "";
 					  StartPreReq => " opa_stack ",
 					  StartComponents => [ "ofed_mlx4" ],
 					},
-	"opa_stack_dev" => { Name => "OFED IB Development",
+	"opa_stack_dev" => { Name => "OFA OPA Development",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "",
 					  PreReq => " opa_stack ", CoReq => "",
@@ -141,7 +141,7 @@ $WrapperComponent = "";
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
-	"ofed_ipoib" => { Name => "OFED IP over IB",
+	"ofed_ipoib" => { Name => "OFA IP over IB",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "updates",
 					  PreReq => " opa_stack ", CoReq => "",
@@ -150,7 +150,7 @@ $WrapperComponent = "";
 					  StartPreReq => " opa_stack ",
 					  StartComponents => [ "ofed_ipoib" ],
 					},
-	"ofed_ib_bonding" =>	{ Name => "OFED IB Bonding",
+	"ofed_ib_bonding" =>	{ Name => "OFA IB Bonding",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "",
 					  PreReq => " opa_stack ofed_ipoib ", CoReq => "",
@@ -159,7 +159,7 @@ $WrapperComponent = "";
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
-	"ofed_rds" =>	{ Name => "OFED RDS",
+	"ofed_rds" =>	{ Name => "OFA RDS",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "updates",
 					  PreReq => " opa_stack ofed_ipoib ", CoReq => "",
@@ -168,7 +168,7 @@ $WrapperComponent = "";
 					  StartPreReq => " opa_stack ",
 					  StartComponents => [ "ofed_rds" ],
 					},
-	"ofed_udapl" =>	{ Name => "OFED uDAPL",
+	"ofed_udapl" =>	{ Name => "OFA uDAPL",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "",
 					  PreReq => " opa_stack ofed_ipoib ", CoReq => "",
@@ -213,7 +213,7 @@ $WrapperComponent = "";
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
-	"ofed_srp" =>	{ Name => "OFED SRP",
+	"ofed_srp" =>	{ Name => "OFA SRP",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "updates",
 					  PreReq => " opa_stack ", CoReq => "",
@@ -222,7 +222,7 @@ $WrapperComponent = "";
 					  StartPreReq => " opa_stack ",
 					  StartComponents => [ "ofed_srp" ],
 					},
-	"ofed_srpt" =>	{ Name => "OFED SRP Target",
+	"ofed_srpt" =>	{ Name => "OFA SRP Target",
 					  DefaultInstall => $State_DoNotAutoInstall,
 					  SrcDir => ".", DriverSubdir => "updates",
 					  PreReq => " opa_stack ", CoReq => "",
@@ -231,7 +231,7 @@ $WrapperComponent = "";
 					  StartPreReq => " opa_stack ",
 					  StartComponents => [ "ofed_srpt" ],
 					},
-	"ofed_iser" =>	{ Name => "OFED iSER",
+	"ofed_iser" =>	{ Name => "OFA iSER",
 					  DefaultInstall => $State_DoNotInstall,
 					  SrcDir => ".", DriverSubdir => "updates",
 					  PreReq => " opa_stack ", CoReq => "",
@@ -240,7 +240,7 @@ $WrapperComponent = "";
 					  StartPreReq => " opa_stack ",
 					  StartComponents => [ "ofed_iser" ],
 					},
-	"ofed_iwarp" =>	{ Name => "OFED iWARP",
+	"ofed_iwarp" =>	{ Name => "OFA iWARP",
 					  DefaultInstall => $State_DoNotAutoInstall,
 					  SrcDir => ".", DriverSubdir => "updates",
 					  PreReq => " opa_stack ", CoReq => "",
@@ -249,7 +249,7 @@ $WrapperComponent = "";
 					  StartPreReq => " opa_stack ",
 					  StartComponents => [ "ofed_iwarp" ],
 					},
-	"opensm" =>		{ Name => "OFED Open SM",
+	"opensm" =>		{ Name => "OFA Open SM",
 					  DefaultInstall => $State_DoNotInstall,
 					  SrcDir => ".", DriverSubdir => "",
 					  PreReq => " opa_stack ", CoReq => "",
@@ -258,7 +258,7 @@ $WrapperComponent = "";
 					  StartPreReq => " opa_stack ",
 					  StartComponents => [ "opensm" ],
 					},
-	"ofed_nfsrdma" =>{ Name => "OFED NFS RDMA",
+	"ofed_nfsrdma" =>{ Name => "OFA NFS RDMA",
 					  DefaultInstall => $State_DoNotAutoInstall,
 					  SrcDir => ".", DriverSubdir => "updates",
 					  PreReq => " opa_stack ofed_ipoib ", CoReq => "",
@@ -268,7 +268,7 @@ $WrapperComponent = "";
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
-	"ofed_debug" =>	{ Name => "OFED Debug Info",
+	"ofed_debug" =>	{ Name => "OFA Debug Info",
 					  DefaultInstall => $State_DoNotInstall,
 					  SrcDir => ".", DriverSubdir => "",
 					  PreReq => " opa_stack ", CoReq => "",
@@ -319,9 +319,9 @@ sub Usage
 	printf STDERR "       -V osver - kernel version to build for, default is $CUR_OS_VER\n";
 	printf STDERR "       -t - temp area for use by builds, only valid with -B\n";
 	printf STDERR "       -d - enable build debugging assists, only valid with -B\n";
-	printf STDERR "       --user_configure_options 'options' - specify additional OFED build\n";
+	printf STDERR "       --user_configure_options 'options' - specify additional OFA build\n";
 	printf STDERR "             options for user space srpms.  Causes rebuild of all user srpms\n";
-	printf STDERR "       --kernel_configure_options 'options' - specify additional OFED build\n";
+	printf STDERR "       --kernel_configure_options 'options' - specify additional OFA build\n";
 	printf STDERR "             options for driver srpms.  Causes rebuild of all driver srpms\n";
 	printf STDERR "       --prefix dir - specify alternate directory prefix for install\n";
 	printf STDERR "             default is /usr.  Causes rebuild of needed srpms\n";

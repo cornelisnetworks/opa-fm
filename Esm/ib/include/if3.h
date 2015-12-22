@@ -142,6 +142,7 @@ typedef struct {
     uint64_t        servID;	/* service ID regiseter */
     uint32_t        retries;
     uint64_t        timeout;
+    uint8_t         rmppCreateFilters;
     Pool_t          *rmppPool;
     uint32_t        rmppDataLength;
     uint32_t        rmppMaxCntxt;

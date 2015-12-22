@@ -371,7 +371,7 @@ FSTATUS FindRate(FabricData_t *fabricp, uint32 rate, Point *pPoint)
 }
 
 // search for the PortData corresponding to the given port state
-FSTATUS FindPortState(FabricData_t *fabricp, IB_PORT_STATE state, Point *pPoint)
+FSTATUS FindPortState(FabricData_t *fabricp, uint8 state, Point *pPoint)
 {
 	LIST_ITEM *p;
 	FSTATUS status;
@@ -383,7 +383,12 @@ FSTATUS FindPortState(FabricData_t *fabricp, IB_PORT_STATE state, Point *pPoint)
 		///* omit switch port 0, state can be odd */
 		//if (portp->PortNum == 0)
 		//	continue;
-		if (portp->PortInfo.PortStates.s.PortState == state) {
+		if ((state == PORT_STATE_SEARCH_NOTACTIVE
+				&& portp->PortInfo.PortStates.s.PortState != IB_PORT_ACTIVE)
+			|| (state == PORT_STATE_SEARCH_INITARMED
+				&& (portp->PortInfo.PortStates.s.PortState == IB_PORT_INIT
+					|| portp->PortInfo.PortStates.s.PortState == IB_PORT_ARMED))
+			|| (portp->PortInfo.PortStates.s.PortState == state)) {
 			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
 			if (FSUCCESS != status)
 				return status;
@@ -391,7 +396,10 @@ FSTATUS FindPortState(FabricData_t *fabricp, IB_PORT_STATE state, Point *pPoint)
 	}
 	if (pPoint->Type == POINT_TYPE_NONE) {
 		fprintf(stderr, "%s: Port State Not Found: %s\n",
-					   	g_Top_cmdname, StlPortStateToText(state));
+					   	g_Top_cmdname,
+							 (state==PORT_STATE_SEARCH_NOTACTIVE)?"Not Active":
+							 (state==PORT_STATE_SEARCH_INITARMED)?"Init Armed":
+													StlPortStateToText(state));
 		return FNOT_FOUND;
 	}
 	PointCompress(pPoint);

@@ -105,18 +105,7 @@ Status_t stl_sm_cca_configure_hfi(Node_t *nodep)
 {
 	Status_t status;
 	Port_t *portp;
-	STL_HFI_CONGESTION_SETTING hfiCongSett;
-	STL_HFI_CONGESTION_CONTROL_TABLE *hfiCongCon = NULL;
-	unsigned int i;
-    const int blockSize = sizeof(STL_HFI_CONGESTION_CONTROL_TABLE_BLOCK);
-	const uint8_t maxBlocks = (STL_MAD_PAYLOAD_SIZE - CONGESTION_CONTROL_TABLE_CCTILIMIT_SZ) / blockSize; // Maximum number of blocks we can fit in a single MAD;
-	uint8_t payloadBlocks = 0; // How many blocks being sent in this MAD
-	uint32_t amod = 0;
-
-	memset(&hfiCongSett, 0, sizeof(STL_HFI_CONGESTION_SETTING));
-
-	//IB_LOG_ERROR_FMT(__func__, "ENTER: NodeGUID "FMT_U64" [%s]",
-	//	nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep));
+	STL_HFI_CONGESTION_SETTING hfiCongSett = {0};
 
 	// Can be called for ESP0. Return if Switch port 0 has no congestion table capacity.
 	if ( (nodep->nodeInfo.NodeType==STL_NODE_SW) &&
@@ -125,57 +114,57 @@ Status_t stl_sm_cca_configure_hfi(Node_t *nodep)
 		return (VSTATUS_OK);
 	}
 
-	//IB_LOG_ERROR_FMT(__func__, "GET GetCongInfo NodeGUID "FMT_U64" [%s]",
-	//	nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep));
-
-	/* Build the congestion control table for each end port. */
-	for_all_end_ports(nodep, portp) {
-		uint8_t numBlocks = (!sm_config.congestion.enable ? 1 : nodep->congestionInfo.ControlTableCap);
-		const size_t tableSize = CONGESTION_CONTROL_TABLE_CCTILIMIT_SZ + sizeof(STL_HFI_CONGESTION_CONTROL_TABLE_BLOCK) * numBlocks;
-
-		if (!(sm_valid_port(portp) && portp->state >= IB_PORT_DOWN)) continue;
-		
-		if ((status = vs_pool_alloc(&sm_pool, tableSize, (void *)&hfiCongCon)) != VSTATUS_OK) {
-			IB_LOG_ERROR_FMT(__func__,
-				"No memory for HFI Congestion Control Table");
-			return status;
-		}
-		
-		memset(hfiCongCon, 0, tableSize);
-		
-
-		if (sm_config.congestion.enable) {
-			build_cca_congestion_control_table(nodep, portp, hfiCongCon, numBlocks);
-		}
-
-		// CCTI_Limit is max valid index = num valid entries-1
-		numBlocks = MIN(numBlocks, (hfiCongCon->CCTI_Limit + STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES) / STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES);
-		//IB_LOG_ERROR_FMT(__func__, "SET HfiCongCtrl NodeGUID "FMT_U64" [%s] %u blocks",
-		//	nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep), numBlocks);
-		for(i = 0; i < numBlocks;){
-			payloadBlocks = numBlocks - i;  // Calculate how many blocks are left to be sent
-			payloadBlocks = MIN(payloadBlocks, maxBlocks);  // Limit the number of blocks to be sent
-			amod = payloadBlocks << 24 | i;
-			status = SM_Set_HfiCongestionControl(fd_topology, hfiCongCon->CCTI_Limit,
-												 payloadBlocks, amod, portp->path, &hfiCongCon->CCT_Block_List[i], sm_config.mkey);
-			if(status != VSTATUS_OK)
-				break;
-			else
-				i += payloadBlocks;
-		}
-		if (status != VSTATUS_OK) {
-			IB_LOG_ERROR_FMT(__func__,
-				"Failed to set HFI Congestion Control Table for NodeGUID "FMT_U64" [%s], portGUID "
-				FMT_U64"; rc: %d, NumBlocks: %u", nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep), 
-				portp->portData->guid, status, numBlocks);
-			vs_pool_free(&sm_pool, hfiCongCon);
-			return status;
-		}
-
-		portp->portData->hfiCongCon = hfiCongCon;
-	}
-
 	if (sm_config.congestion.enable) {
+		STL_HFI_CONGESTION_CONTROL_TABLE *hfiCongCon = NULL;
+		uint8_t numBlocks = nodep->congestionInfo.ControlTableCap;
+		const size_t tableSize = CONGESTION_CONTROL_TABLE_CCTILIMIT_SZ + sizeof(STL_HFI_CONGESTION_CONTROL_TABLE_BLOCK) * numBlocks;
+		const uint8_t maxBlocks = (STL_MAD_PAYLOAD_SIZE - CONGESTION_CONTROL_TABLE_CCTILIMIT_SZ) /
+								 sizeof(STL_HFI_CONGESTION_CONTROL_TABLE_BLOCK); // Maximum number of blocks we can fit in a single MAD;
+		unsigned int i;
+
+		/* Build the congestion control table for each end port. */
+		for_all_end_ports(nodep, portp) {
+
+			if (!(sm_valid_port(portp) && portp->state >= IB_PORT_DOWN)) continue;
+		
+			if ((status = vs_pool_alloc(&sm_pool, tableSize, (void *)&hfiCongCon)) != VSTATUS_OK) {
+				IB_LOG_ERROR_FMT(__func__,
+					"No memory for HFI Congestion Control Table");
+				return status;
+			}
+		
+			memset(hfiCongCon, 0, tableSize);
+		
+			build_cca_congestion_control_table(nodep, portp, hfiCongCon, numBlocks);
+
+			// CCTI_Limit is max valid index = num valid entries-1
+			numBlocks = MIN(numBlocks, (hfiCongCon->CCTI_Limit + STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES) / STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES);
+			for(i = 0; i < numBlocks;){
+				uint8_t payloadBlocks; // How many blocks being sent in this MAD
+				uint32_t amod = 0;
+
+				payloadBlocks = numBlocks - i;  // Calculate how many blocks are left to be sent
+				payloadBlocks = MIN(payloadBlocks, maxBlocks);  // Limit the number of blocks to be sent
+				amod = payloadBlocks << 24 | i;
+				status = SM_Set_HfiCongestionControl(fd_topology, hfiCongCon->CCTI_Limit,
+													 payloadBlocks, amod, portp->path, &hfiCongCon->CCT_Block_List[i], sm_config.mkey);
+				if(status != VSTATUS_OK)
+					break;
+				else
+					i += payloadBlocks;
+			}
+			if (status != VSTATUS_OK) {
+				IB_LOG_ERROR_FMT(__func__,
+					"Failed to set HFI Congestion Control Table for NodeGUID "FMT_U64" [%s], portGUID "
+					FMT_U64"; rc: %d, NumBlocks: %u", nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep), 
+					portp->portData->guid, status, numBlocks);
+				vs_pool_free(&sm_pool, hfiCongCon);
+				return status;
+			}
+
+			portp->portData->hfiCongCon = hfiCongCon;
+		}
+
 		hfiCongSett.Port_Control = sm_config.congestion.ca.sl_based ? 
 									CC_HFI_CONGESTION_SETTING_SL_PORT : 0;
 		hfiCongSett.Control_Map = 0xffffffff;
@@ -190,8 +179,6 @@ Status_t stl_sm_cca_configure_hfi(Node_t *nodep)
 		}
 	}
 
-	//IB_LOG_ERROR_FMT(__func__, "SET HfiCongSet NodeGUID "FMT_U64" [%s]",
-	//	nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep));
 	status = SM_Set_HfiCongestionSetting(fd_topology, 0, nodep->path, &hfiCongSett, sm_config.mkey);
 	if (status != VSTATUS_OK) {
 		IB_LOG_ERROR_FMT(__func__,
@@ -202,9 +189,6 @@ Status_t stl_sm_cca_configure_hfi(Node_t *nodep)
 	
 	nodep->hfiCongestionSetting = hfiCongSett;
 
-	
-	//IB_LOG_ERROR_FMT(__func__, "EXIT: NodeGUID "FMT_U64" [%s]",
-	//	nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep), status);
 	return VSTATUS_OK;
 }
 

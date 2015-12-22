@@ -141,10 +141,10 @@ $WrapperComponent = "opaconfig";
 					  StartComponents => [ ],
 					},
 		# "ofed" is only used for source_comp
-	"ofed" =>		{ Name => "OFED",
+	"ofed" =>		{ Name => "OFA",
 					  SrcDir => file_glob("./IntelOPA-OFED.*"),
 					},
-	"opa_stack" =>	{ Name => "OFED OPA Stack",
+	"opa_stack" =>	{ Name => "OFA OPA Stack",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob("./IntelOPA-OFED.*"),
 					  DriverSubdir => "updates",
@@ -196,7 +196,7 @@ $WrapperComponent = "opaconfig";
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
-	"opa_stack_dev" => { Name => "OFED OPA Development",
+	"opa_stack_dev" => { Name => "OFA OPA Development",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob("./IntelOPA-OFED.*"),
 					  DriverSubdir => "",
@@ -216,7 +216,7 @@ $WrapperComponent = "opaconfig";
 					  StartPreReq => " opa_stack ",
 					  StartComponents => [ ],
 					},
-	"ofed_ipoib" =>	{ Name => "OFED IP over IB",
+	"ofed_ipoib" =>	{ Name => "OFA IP over IB",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob("./IntelOPA-OFED.*"),
 					  DriverSubdir => "updates",
@@ -226,7 +226,7 @@ $WrapperComponent = "opaconfig";
 					  StartPreReq => " opa_stack ",
 					  StartComponents => [ "ofed_ipoib" ],
 					},
-	"ofed_ib_bonding" =>	{ Name => "OFED IB Bonding",
+	"ofed_ib_bonding" =>	{ Name => "OFA IB Bonding",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob("./IntelOPA-OFED.*"),
 					  DriverSubdir => "",
@@ -236,7 +236,7 @@ $WrapperComponent = "opaconfig";
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
-	"ofed_rds" =>	{ Name => "OFED RDS",
+	"ofed_rds" =>	{ Name => "OFA RDS",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob("./IntelOPA-OFED.*"),
 					  DriverSubdir => "updates",
@@ -246,7 +246,7 @@ $WrapperComponent = "opaconfig";
 					  StartPreReq => " opa_stack ",
 					  StartComponents => [ "ofed_rds" ],
 					},
-	"ofed_udapl" =>	{ Name => "OFED uDAPL",
+	"ofed_udapl" =>	{ Name => "OFA uDAPL",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob("./IntelOPA-OFED.*"),
 					  DriverSubdir => "",
@@ -366,7 +366,7 @@ $WrapperComponent = "opaconfig";
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
-	"ofed_srp" =>	{ Name => "OFED SRP",
+	"ofed_srp" =>	{ Name => "OFA SRP",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob("./IntelOPA-OFED.*"),
 					  DriverSubdir => "updates",
@@ -376,7 +376,7 @@ $WrapperComponent = "opaconfig";
 					  StartPreReq => " opa_stack ",
 					  StartComponents => [ "ofed_srp" ],
 					},
-	"ofed_srpt" =>	{ Name => "OFED SRP Target",
+	"ofed_srpt" =>	{ Name => "OFA SRP Target",
 					  DefaultInstall => $State_DoNotAutoInstall,
 					  SrcDir => file_glob("./IntelOPA-OFED.*"),
 					  DriverSubdir => "updates",
@@ -405,7 +405,7 @@ $WrapperComponent = "opaconfig";
 					  StartPreReq => " opa_stack opafm ",
 					  StartComponents => [ "opafm_snmp" ],
 					},
-	"ofed_iser" =>	{ Name => "OFED iSER",
+	"ofed_iser" =>	{ Name => "OFA iSER",
 					  DefaultInstall => $State_DoNotInstall,
 					  SrcDir => file_glob("./IntelOPA-OFED.*"),
 					  DriverSubdir => "updates",
@@ -415,7 +415,7 @@ $WrapperComponent = "opaconfig";
 					  StartPreReq => " opa_stack ",
 					  StartComponents => [ "ofed_iser" ],
 					},
-	"ofed_nfsrdma" =>{ Name => "OFED NFS RDMA",
+	"ofed_nfsrdma" =>{ Name => "OFA NFS RDMA",
 					  DefaultInstall => $State_DoNotAutoInstall,
 					  SrcDir => file_glob("./IntelOPA-OFED.*"),
 					  DriverSubdir => "updates",
@@ -426,7 +426,7 @@ $WrapperComponent = "opaconfig";
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
-	"ofed_debug" =>	{ Name => "OFED Debug Info",
+	"ofed_debug" =>	{ Name => "OFA Debug Info",
 					  DefaultInstall => $State_DoNotInstall,
 					  SrcDir => file_glob("./IntelOPA-OFED.*"),
 					  DriverSubdir => "",
@@ -633,14 +633,14 @@ sub Usage
 		printf STDERR "            can appear more than once on command line\n";
 #		printf STDERR "       -f - skip HCA firmware upgrade during install\n";
 		#printf STDERR "       -l - skip creating/removing symlinks to /usr/local from /opt/opa\n";
-		printf STDERR "       --user_configure_options 'options' - specify additional OFED build\n";
+		printf STDERR "       --user_configure_options 'options' - specify additional OFA build\n";
 		printf STDERR "             options for user space srpms.  Causes rebuild of all user srpms\n";
-		printf STDERR "       --kernel_configure_options 'options' - specify additional OFED build\n";
+		printf STDERR "       --kernel_configure_options 'options' - specify additional OFA build\n";
 		printf STDERR "             options for driver srpms.  Causes rebuild of all driver srpms\n";
-		printf STDERR "       --prefix dir - specify alternate directory prefix for install of OFED\n";
+		printf STDERR "       --prefix dir - specify alternate directory prefix for install of OFA\n";
 		printf STDERR "             default is /usr.  Causes rebuild of needed srpms\n";
 		printf STDERR "       --without-depcheck - disable check of OS dependencies\n";
-		printf STDERR "       --rebuild - force OFED rebuild\n";
+		printf STDERR "       --rebuild - force OFA rebuild\n";
 		printf STDERR "       --force - force install even if distos don't match\n";
 		printf STDERR "                 Use of this option can result in undefined behaviors\n";
 		# --debug, -B, -t and -d options are purposely not documented
@@ -705,6 +705,9 @@ sub translate_comp
 {
 	my($arg)=$_[0];
 	if ("$arg" eq "opadev")			{ return ( "opa_stack_dev" );
+    } elsif ("$arg" eq "opa")       { return ( "oftools",
+		"mvapich2_gcc_hfi", "openmpi_gcc_hfi", "mvapich2_intel_hfi",
+        "openmpi_intel_hfi", "mvapich2_pgi_hfi", "openmpi_pgi_hfi" );
 	} elsif ("$arg" eq "fastfabric"){ return ( "fastfabric" );	# unexpected
 			# marker for ib-bonding so we can postprocess later
 	} elsif ("$arg" eq "ipoib")		{ return ( "ofed_ipoib", "ib_bonding_marker" );
@@ -1023,7 +1026,7 @@ sub process_args
 		Usage;
 	}
 	if ( $patch_ofed) {
-		NormalPrint("Patching OFED...\n");
+		NormalPrint("Patching OFA...\n");
 		LogPrint("Executing: cd $ComponentInfo{'opa_stack'}{'SrcDir'}; ./patch_ofed3\n");
 		system("cd $ComponentInfo{'opa_stack'}{'SrcDir'}; ./patch_ofed3");
 		HitKeyCont;
@@ -1183,6 +1186,8 @@ foreach my $INSTALL_CHOICE ( @INSTALL_CHOICES )
 		} else {
 			if ($exit_code == 0) {
 				print "Done Installing OPA Software.\n"
+			} else {
+				print "Failed to install all OPA software.\n"
 			}
 		}
 	} 
@@ -1198,6 +1203,8 @@ foreach my $INSTALL_CHOICE ( @INSTALL_CHOICES )
 		} else {
 			if ($exit_code == 0) {
 				print "Done Uninstalling OPA Software.\n"
+			} else {
+				print "Failed to uninstall all OPA Software.\n"
 			}
 		}
 	}

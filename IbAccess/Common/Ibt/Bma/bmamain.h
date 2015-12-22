@@ -67,11 +67,7 @@ extern "C" {
 
 #define BMA_TAG	MAKE_MEM_TAG(B,m,a,M)
 
-#if defined(PRODUCT_X)
 #define BMA_MAX_NDGRM 128
-#else
-#define BMA_MAX_NDGRM 20
-#endif
 
 //
 // Performance management data structures and definitions.

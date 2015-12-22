@@ -34,30 +34,18 @@ uint64 PciGetMemoryPciPhysAddr(IN PCI_DEVICE *pDev, IN uint8 barNumber)
 	uint32 addr_l;
 	uint32 addr_h = 0;
 
-#if defined(BSP_N450) || defined(BSP_Q7)
 	if (! PciReadConfig(pDev, 
 			offsetof(IBA_PCI_COMMON_CONFIG,u.type0.BaseAddresses[barNumber]),
 			4, &addr_l))
-#else
-	if (! PciReadConfig32(pDev, 
-			offsetof(IBA_PCI_COMMON_CONFIG,u.type0.BaseAddresses[barNumber]),
-			&addr_l))
-#endif
 	{
 		return 0;
 	}
 	if ((addr_l & IBA_PCI_BAR_CNTL_TYPE_MASK) == IBA_PCI_BAR_CNTL_TYPE_64BIT)
 	{
 		// 64 bit BAR, get high bits
-#if defined(BSP_N450) || defined(BSP_Q7)
 		if (! PciReadConfig(pDev, 
 				offsetof(IBA_PCI_COMMON_CONFIG,u.type0.BaseAddresses[barNumber+1]),
 				4, &addr_h))
-#else
-		if (! PciReadConfig32(pDev, 
-				offsetof(IBA_PCI_COMMON_CONFIG,u.type0.BaseAddresses[barNumber+1]),
-				&addr_h))
-#endif
 		{
 			return 0;
 		}

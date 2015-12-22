@@ -32,11 +32,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef __IBA_IB_GENERAL_SERVICES_H__
 #define __IBA_IB_GENERAL_SERVICES_H__ (1) /* suppress duplicate loading of this file */
 
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #include "iba/stl_mad.h"
-#else
-#include "iba/ib_mad.h"
-#endif
 #include "iba/public/ibyteswap.h"
 
 #ifdef __cplusplus
@@ -179,18 +175,12 @@ typedef struct _RMPP_HEADER {
 /* Common RMPP MAD packet */
 #define	RMPP_GS_HDRSIZE      (sizeof(MAD_COMMON)+sizeof(RMPP_HEADER))
 #define	IBA_RMPP_GS_DATASIZE (IB_MAD_BLOCK_SIZE - RMPP_GS_HDRSIZE)
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #define	STL_RMPP_GS_DATASIZE (STL_MAD_BLOCK_SIZE - RMPP_GS_HDRSIZE)
-#endif
 
 typedef struct	_MAD_RMPP {
 	MAD_COMMON			common;
 	RMPP_HEADER			RmppHdr;
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 	uint8				Data[STL_RMPP_GS_DATASIZE];
-#else
-	uint8				Data[IBA_RMPP_GS_DATASIZE];
-#endif
 } PACK_SUFFIX	MAD_RMPP;
 
 /*---------------------------------------------------------------- */
@@ -210,22 +200,14 @@ typedef struct _SA_MAD_HDR {
 typedef struct _IB_SA_MAD {
 	RMPP_HEADER	RmppHdr;		/* RMPP header */
 	SA_HDR		SaHdr;			/* SA class specific header */
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 	uint8		Data[STL_SUBN_ADM_DATASIZE];
-#else
-	uint8		Data[IB_SUBN_ADM_DATASIZE];
-#endif
 } PACK_SUFFIX IB_SA_MAD;
 
 typedef struct _SA_MAD {
 	MAD_COMMON	common;	/* Generic MAD Header */
 	RMPP_HEADER	RmppHdr;		/* RMPP header */
 	SA_HDR		SaHdr;			/* SA class specific header */
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 	uint8		Data[STL_SUBN_ADM_DATASIZE];
-#else
-	uint8		Data[IB_SUBN_ADM_DATASIZE];
-#endif
 } PACK_SUFFIX SA_MAD, *PSA_MAD;
 
 /* -------------------------------------------------------------------------- */

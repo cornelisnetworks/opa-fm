@@ -213,12 +213,12 @@ sub need_reinstall_openmpi_gcc_hfi
 # has proper dependent rpms installed.
 sub check_os_prereqs_openmpi_gcc_hfi
 {
-    if (lc($CUR_DISTRO_VENDOR) eq "redhat") {
-	return rpm_check_os_prereqs("openmpi_gcc_hfi", "user", ( "libstdc++", "infinipath-psm" ));
-    } else {
-        return rpm_check_os_prereqs("openmpi_gcc_hfi", "user", ( "libstdc++", "libpsm_infinipath1" ));
-    }
-}                              
+	if (lc($CUR_DISTRO_VENDOR) eq "suse") {
+		return rpm_check_os_prereqs("openmpi_gcc_hfi", "user", ( "libstdc++", "libpsm_infinipath1", "opensm-libs3" ));
+	} else {
+		return rpm_check_os_prereqs("openmpi_pgi_hfi", "user", ( "libstdc++",  "infinipath-psm" ));
+	}
+}
 
 # called for all components before they are installed.  Use
 # to build things if needed, etc.
@@ -339,12 +339,12 @@ sub need_reinstall_openmpi_intel_hfi
 sub check_os_prereqs_openmpi_intel_hfi
 {
 	# we allow this to install even if intel compiler runtime not available
-    if (lc($CUR_DISTRO_VENDOR) eq "redhat") {
-	return rpm_check_os_prereqs("openmpi_intel_hfi", "user", ( "libstdc++",  "infinipath-psm" ));
-    } else {
-	return rpm_check_os_prereqs("openmpi_intel_hfi", "user", ( "libstdc++",  "libpsm_infinipath1" ));
-    }
-}                              
+	if (lc($CUR_DISTRO_VENDOR) eq "suse") {
+		return rpm_check_os_prereqs("openmpi_gcc_hfi", "user", ( "libstdc++", "libpsm_infinipath1", "opensm-libs3" ));
+	} else {
+		return rpm_check_os_prereqs("openmpi_pgi_hfi", "user", ( "libstdc++",  "infinipath-psm" ));
+	}
+}
 
 # called for all components before they are installed.  Use
 # to build things if needed, etc.
@@ -465,12 +465,12 @@ sub need_reinstall_openmpi_pgi_hfi
 sub check_os_prereqs_openmpi_pgi_hfi
 {
 	# we allow this to install even if pgi compiler runtime not available
-    if (lc($CUR_DISTRO_VENDOR) eq "redhat") {
-	return rpm_check_os_prereqs("openmpi_pgi_hfi", "user", ( "libstdc++",  "infinipath-psm" ));
-    } else {
-	return rpm_check_os_prereqs("openmpi_pgi_hfi", "user", ( "libstdc++",  "libpsm_infinipath1" ));
-    }
-}                              
+	if (lc($CUR_DISTRO_VENDOR) eq "suse") {
+		return rpm_check_os_prereqs("openmpi_gcc_hfi", "user", ( "libstdc++", "libpsm_infinipath1", "opensm-libs3" ));
+	} else {
+		return rpm_check_os_prereqs("openmpi_pgi_hfi", "user", ( "libstdc++",  "infinipath-psm" ));
+	}
+}
 
 # called for all components before they are installed.  Use
 # to build things if needed, etc.

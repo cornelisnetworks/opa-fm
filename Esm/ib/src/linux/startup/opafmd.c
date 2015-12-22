@@ -17,6 +17,13 @@
 extern char *optarg;
 extern int optind;
 
+struct thread_data {
+	pthread_t thread_id;
+	int component;
+	int instance;
+	int *pid;
+};
+
 char *progName;
 char *nullEnv[] = {0};
 int smPID[4] = {0};
@@ -29,13 +36,6 @@ int spawn(const unsigned int instance, const int component, int *pids);
 int pkill(const unsigned int instance, const int component, int *pid);
 int daemon_main(void);
 void *kill_thread(void *arg);
-
-struct thread_data {
-	pthread_t thread_id;
-	int component;
-	int instance;
-	int *pid;
-};
 
 /**
  * Print program usage information
@@ -51,16 +51,35 @@ void Usage(int err){
 }
 
 /**
- * Handle Linux signals, specifically SIGTERM.
+ * Handle Linux signals, specifically SIGTERM and SIGCHLD.
  * 
  * @author gomezchr (3/16/2015)
  * 
  * @param signo Caught signal
  */
 void sig_handler(int signo){
+	int i = 0, pid = 0;
+	unsigned int instance = 0, component = 0;
 	if(signo == SIGTERM){
 		doStop = 1;
 		raise(SIGINT);	// Send signal to self to stop any blocking I/O
+		return;
+	} else if (signo == SIGCHLD){
+		if(doStop)
+			return;
+		pid = wait(NULL);
+		for(i = 0; i < 4; ++i){
+			if(smPID[i] == pid){
+				component = SM_COMPONENT;
+				instance = i;
+				break;
+			} else if (fePID[i] == pid){
+				component = FE_COMPONENT;
+				instance = i;
+				break;
+			}
+		}
+		pkill(instance, component, component == SM_COMPONENT ? &smPID[instance] : &fePID[instance]);
 	}
 }
 
@@ -345,6 +364,8 @@ int daemon_main(){
 		fprintf(stderr, "Failed to create pipe: %s\n", strerror(errno));
 		return(-1);
 	}
+	signal(SIGTERM, sig_handler);
+	signal(SIGCHLD, sig_handler);
 	while (!doStop){
 		if((fd = open(pipe, O_RDONLY)) == -1){
 			fprintf(stderr, "Failed to open pipe for reading: %s\n", strerror(errno));
@@ -355,8 +376,9 @@ int daemon_main(){
 		}
 		close(fd);
 	}
-	unlink(pipe);		// Destroy pipe
-	pthread_exit(0);	// Allows any running background threads to terminate properly.
+	doStop = -(doStop - 1);	// Use doStop value as return value. Allows systemd to show daemon status on failure.
+	unlink(pipe);			// Destroy pipe
+	pthread_exit(&doStop);	// Allows any running background threads to terminate properly.
 }
 
 int main(int argc, char* argv[]) {
@@ -459,12 +481,12 @@ int main(int argc, char* argv[]) {
 		default:
 			// and the parent calls the control script to start up defaults.
 			sleep(1);
-			char *args[] = {"/opt/opafm/bin/opafmctrl.sh", "start", NULL};
+			char *args[] = {"/opt/opafm/bin/opafmctrl", "start", NULL};
 			execve(args[0], args, nullEnv);
 			return 0;
 		}
 	} else {
-		char prog[] = "/opt/opafm/bin/opafmctrl.sh";
+		char prog[] = "/opt/opafm/bin/opafmctrl";
 		if(inst[0] != 0){
 			if(comp != NULL)
 				execle(prog, prog, cmd, "-i", inst, comp, NULL, nullEnv);	// Call opafmctl with instance number and component,

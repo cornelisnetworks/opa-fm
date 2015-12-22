@@ -651,6 +651,8 @@ pm_main()
 
 #ifndef __VXWORKS__
 		pm_init_log_setting();
+		// Verify PortGUID matches the SM
+		pm_config.port_guid = sm_config.port_guid;
 #endif
 		vs_log_output_message("Performance Manager starting up.", TRUE);
 

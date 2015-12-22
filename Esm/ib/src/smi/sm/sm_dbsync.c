@@ -2256,7 +2256,8 @@ void sm_dbsync(uint32_t argc, uint8_t ** argv) {
 	if (pm_config.image_update_interval) {
 		buflen = 75000000; /* FIXME: PM Sweep/History data is using SM Dbsync. */
 	}
-    if ((msgbuf = (uint8_t *) malloc(buflen)) == NULL) {
+
+    if ((status = vs_pool_alloc(&sm_pool, buflen, (void *)&msgbuf)) != VSTATUS_OK) {
         IB_FATAL_ERROR("sm_dbsync: Can't allocate space for SM to SM sync messages");
         IB_EXIT(__func__, VSTATUS_NOMEM);
         return;
@@ -2382,6 +2383,9 @@ bail:
     dbsyncfd_if3 = -1;
     dbsync_initialized_flag = 0;
     sm_dbsync_recDelete();
+    if (msgbuf) {
+        vs_pool_free(&sm_pool, msgbuf);
+    }
     IB_EXIT(__func__, 0);
 }
 

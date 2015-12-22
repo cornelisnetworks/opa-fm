@@ -40,15 +40,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "iba/public/datatypes.h"
 #include "iba/public/statustext.h"
 #include "iba/ib_ibt.h"
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #include "iba/stl_types.h"
 #include "iba/stl_sd.h"
 #include "iba/stl_pa.h"
-#else
-#include "iba/ib_types.h"
-#include "iba/ib_sd.h"
-#include "iba/ib_pa.h"
-#endif
 #if defined(VXWORKS)
 #ifdef BUILD_CM
 #include "iba/ib_cm.h"

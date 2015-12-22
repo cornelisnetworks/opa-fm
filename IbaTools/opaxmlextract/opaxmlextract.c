@@ -468,7 +468,8 @@ void dispHeaderRecord(int argc, char ** argv)
  */
 void errUsage(void)
 {
-	fprintf(stderr, "Usage: " NAME_PROG " [-v][-H][-d delimiter][-e element][-s element][-X input_file][-P param_file]\n");
+	fprintf(stderr, "Usage: " NAME_PROG " [-v][-H][-d delimiter][-e element][-s element]\n");
+	fprintf(stderr, "                        [-X input_file] [-P param_file]\n");
 	fprintf(stderr, "  -e/--extract element      - name of an XML element to extract\n");
 	fprintf(stderr, "                              can be used multiple times\n");
 	fprintf(stderr, "                              elements can be nested in any order, but will\n");
@@ -486,7 +487,7 @@ void errUsage(void)
 	fprintf(stderr, "                              opposed to the element value, a specification such\n");
 	fprintf(stderr, "                              as '-e FIs.Node:id' can be used, which will return\n");
 	fprintf(stderr, "                              the value of the id attribute of any Node elements\n");
-    fprintf(stderr, "                              within FIs element. If desired a specific element\n");
+	fprintf(stderr, "                              within FIs element. If desired a specific element\n");
 	fprintf(stderr, "                              can be selected by its attribute value, such as\n");
 	fprintf(stderr, "                              '-e MulticastFDB.Value:LID:0xc000', which will\n");
 	fprintf(stderr, "                              return the value of the Value element within\n");
@@ -507,7 +508,7 @@ void errUsage(void)
 	fprintf(stderr, "  -X/--infile input_file    - parse XML in input_file\n");
 	fprintf(stderr, "  -P/--pfile param_file     - read command parameters from param_file\n");
 	fprintf(stderr, "  -H/--noheader             - do not output element name header record\n");
-	fprintf(stderr, "  -v/--verbose              - verbose output: progress reports during extraction,\n");
+	fprintf(stderr, "  -v/--verbose              - verbose output: progress reports during extraction\n");
 	fprintf(stderr, "                              and element name prepended wildcard characters\n");
 	fprintf(stderr, "  --help                    - print this usage text.\n");
 

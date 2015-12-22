@@ -28,14 +28,16 @@
     <!-- ServiceIDs can be specified in the following ways in the -->
     <!-- Application section: -->
     <!-- a single ServiceID: <ServiceID>0x1234567812345678</ServiceID> -->
-    <!-- a range of ServiceIDs: <ServiceIDRange>0-0xffffffffffffffff</ServiceIDRange> -->
-    <!-- a masked compare of ServiceID: <ServiceIDMasked>0x120003567*0xff000ffff</ServiceIDMasked> -->
+    <!-- a range of ServiceIDs: -->
+    <!---       <ServiceIDRange>0-0xffffffffffffffff</ServiceIDRange> -->
+    <!-- a masked compare of ServiceID: -->
+    <!---       <ServiceIDMasked>0x120003567*0xff000ffff</ServiceIDMasked> -->
     <!--        Matches ServiceIDs which when ANDed with 2nd value (the -->
     <!--        mask) match the 1st value -->
     <!-- all others not in any VF: <Select>UnmatchedServiceID</Select> -->
     <!--        UnmatchedServiceID matches all applications' ServiceIDs -->
     <!--        which match none of the Virtual Fabrics after filtering -->
-    <!--        by src/dest/requestor. -->
+    <!--        by src/dest/requester. -->
     <!--        Can be used as an easy catch-all. -->
 
     <!-- MGIDs (IB Multicast GIDs) are 128 bit values which identify -->
@@ -46,14 +48,16 @@
     <!-- MGIDs can be specified in the following ways in the Application -->
     <!-- section: -->
     <!-- a single MGID: <MGID>0xabc:0x123567</MGID> -->
-    <!-- a range of MGIDs: <MGIDRange>0:0-0xffffffffffffffff:0xffffffffffffffff</MGIDRange> -->
-    <!-- a masked compare of MGID: <MGIDMasked>0xabc:0x120003567*0xfff:0xff000ffff</MGIDMasked> -->
+    <!-- a range of MGIDs: -->
+    <!--        <MGIDRange>0:0-0xffffffffffffffff:0xffffffffffffffff</MGIDRange> -->
+    <!-- a masked compare of MGID: -->
+    <!--        <MGIDMasked>0xabc:0x120003567*0xfff:0xff000ffff</MGIDMasked> -->
     <!--        Matches MGIDs which when ANDed with 2nd value (the -->
     <!--        mask) match the 1st value. -->
     <!-- all others not in any VF: <Select>UnmatchedMGID</Select> -->
     <!--        UnmatchedMGID matches all applications' MGIDs which match -->
     <!--        none of the Virtual Fabrics after filtering by -->
-    <!--        src/dest/requestor. -->
+    <!--        src/dest/requester. -->
     <!--        Can be used as an easy catch-all -->
 
     <!-- A special case is SA queries.  This special "application" allows -->
@@ -111,9 +115,9 @@
       <MGIDMasked>0xff00401b00000000:0*0xff00ffff0000ffff:0xffffffff00000000</MGIDMasked>
     </Application>
 
-    <!-- IPv4 over IB (IETF UD mode) for PKey 0x8002/0x0002 -->
+    <!-- Sample of IPv4 over IB (IETF UD mode) for PKey 0x8002/0x0002 -->
     <Application>
-      <Name>IPv4_1001</Name>
+      <Name>IPv4_0002</Name>
       <!-- MGID = 0xffFS401bPPPP0000:00000000GGGGGGGG -->
       <!-- where F=flags, S=scope, P=PKey and G=IP Multicast Group -->
       <MGIDMasked>0xff00401b80020000:0*0xff00ffffffffffff:0xffffffff00000000</MGIDMasked>
@@ -127,9 +131,9 @@
       <MGIDMasked>0xff00601b00000000:0*0xff00ffff00000000:0</MGIDMasked>
     </Application>
 
-    <!-- IPv6 over IB (IETF UD mode) for PKey 0x8002/0x0002 -->
+    <!-- Sample of IPv6 over IB (IETF UD mode) for PKey 0x8002/0x0002 -->
     <Application>
-      <Name>IPv6_1001</Name>
+      <Name>IPv6_0002</Name>
       <!-- MGID = 0xffFS601bPPPPGGGG:GGGGGGGGGGGGGGGG -->
       <!-- where F=flags, S=scope, P=PKey and G=IP Multicast Group -->
       <MGIDMasked>0xff00601b80020000:0*0xff00ffffffff0000:0</MGIDMasked>
@@ -143,35 +147,11 @@
       <ServiceIDMasked>0x1000000000000000*0xffffffffff000000</ServiceIDMasked>
     </Application>
 
-    <!-- Sockets Direct Protocol (SDP) -->
-    <Application>
-      <Name>SDP</Name>
-      <!-- ServiceID = 0x000000000001XXXX where XXXX is socket "port number" -->
-      <ServiceIDRange>0x0000000000010000-0x000000000001ffff</ServiceIDRange>
-    </Application>
-
     <!-- Reliable Datagram Service (RDS) (for Oracle) -->
     <Application>
       <Name>RDS</Name>
       <!-- ServiceID = 0x000000000106XXXX where XXXX is socket "port number" -->
       <ServiceIDRange>0x0000000001060000-0x000000000106ffff</ServiceIDRange>
-    </Application>
-
-    <!-- Intel True Scale Ethernet Virtual IO Controller (EVIC) -->
-    <Application>
-      <Name>TrueScaleEVIC</Name>
-      <!-- control connection -->
-      <ServiceIDRange>0x1000066a00000000-0x1000066a000000ff</ServiceIDRange>
-      <!-- datapath connection -->
-      <ServiceIDRange>0x1000066a00000100-0x1000066a000001ff</ServiceIDRange>
-      <!-- Multicast for VNIC2 protocol -->
-      <MGIDMasked>0xff0000066a000000:0*0xff00ffffffffffff:0xfff0000000000000</MGIDMasked>
-    </Application>
-
-    <!-- Intel True Scale FibreChannel Virtual IO Controller (FVIC) -->
-    <Application>
-      <Name>TrueScaleFVIC</Name>
-      <ServiceID>0x0000494353535250</ServiceID>
     </Application>
 
     <!-- Unfortunately, none of the OFA Verbs MPIs use the SA nor CM. -->
@@ -182,9 +162,8 @@
       <!-- <ServiceID>TBD</ServiceID> -->
     </Application>
 
-    <!-- HPC Libraries (MPI, SHMEM, etc) which use the Intel True Scale Fabric HFIs -->
-    <!-- and PSM technology can query the SA and hence can use service IDs -->
-    <!-- to select the desired Virtual Fabric. -->
+    <!-- HPC Libraries (MPI, SHMEM, etc) which use PSM can query the SA and -->
+    <!-- hence can use service IDs to select the desired Virtual Fabric. -->
 
     <!-- when separating PSM Control from Data Traffic: -->
     <!-- 1st Service ID in range is used for Control traffic. -->
@@ -227,28 +206,41 @@
       <MGIDMasked>0xff15400100000000:0*0xffffffff0000ff00:0x00ffffffffffffff</MGIDMasked>
     </Application>
 
+    <Application>
+      <Name>iSER</Name>
+      <!-- ServiceID = 0x000000000106XXXX where XXXX is socket "port number" -->
+      <!-- <ServiceIDRange>0x0000000001060000-0x000000000106FFFF</ServiceIDRange> -->
+      <!-- Default port 3260 = 0x0CBC -->
+      <ServiceID>0x0000000001060CBC</ServiceID>
+    </Application>
+
+    <Application>
+      <Name>Lustre</Name>
+      <!-- ServiceID = 0x000000000106XXXX where XXXX is socket "port number" -->
+      <!-- <ServiceIDRange>0x0000000001060000-0x000000000106FFFF</ServiceIDRange> -->
+      <!-- Default port 987 = 0x03DB -->
+      <ServiceID>0x00000000010603DB</ServiceID>
+    </Application>
+
+    <Application>
+      <Name>RDMA_Apps</Name>
+      <ServiceIDRange>0x0000000001000000-0x0000000001FFFFFF</ServiceIDRange>
+    </Application>
+
     <!-- all the common networking protocols/applications -->
     <Application>
       <Name>Networking</Name>
       <IncludeApplication>IPv4</IncludeApplication>
       <IncludeApplication>IPv6</IncludeApplication>
       <IncludeApplication>IPoIBCM</IncludeApplication>
-      <IncludeApplication>SDP</IncludeApplication>
       <IncludeApplication>RDS</IncludeApplication>
-      <IncludeApplication>TrueScaleEVIC</IncludeApplication>
     </Application>
 
     <!-- all the common storage protocols/applications -->
     <Application>
       <Name>Storage</Name>
-      <IncludeApplication>TrueScaleFVIC</IncludeApplication>
-    </Application>
-
-    <!-- all the Intel True Scale Virtual IO Controller protocols/applications -->
-    <Application>
-      <Name>VirtualIO</Name>
-      <IncludeApplication>TrueScaleEVIC</IncludeApplication>
-      <IncludeApplication>TrueScaleFVIC</IncludeApplication>
+      <IncludeApplication>iSER</IncludeApplication>
+      <IncludeApplication>Lustre</IncludeApplication>
     </Application>
 
     <!-- all the common compute protocols/applications -->
@@ -275,7 +267,7 @@
   <!-- DeviceGroups specified per FM instance will add to                    -->
   <!-- instead of replace these DeviceGroup definitions.                     -->
   <DeviceGroups>
-    <!-- Each DeviceGroup can have one or more Nodes/Ports (eg. Devices).    -->
+    <!-- Each DeviceGroup can have one or more Nodes/Ports (e.g. Devices).   -->
     <!-- These will be matched against PathRecord and Multicast SA queries   -->
     <!-- so that the returned SLID/DLID, PKey, SL, etc are appropriate for   -->
     <!-- the Virtual Fabric(VF) which contains the Device(s).                -->
@@ -299,18 +291,24 @@
     <!--        selects all nodes exactly matching given name                -->
     <!--        typically will match exactly one, but multiple nodes with    -->
     <!--        same NodeDesc is possible.                                   -->
-    <!-- Wildcard rules that can be used in NodeDesc specification:          -->   
-    <!--        * Wildcard is 0 or more of any combination of:               -->
+    <!-- Wild card rules that can be used in NodeDesc specification:         -->
+    <!--        * Wild card is 0 or more of any combination of:              -->
     <!--             (A-Z)(a-z)(0-9) "-" "," "=" "." "_"                     -->
-    <!--        ? Wildcard is 0 or 1 of any combination of:                  -->
+    <!--        ? Wild card is 0 or 1 of any combination of:                 -->
     <!--             (A-Z)(a-z)(0-9) "-" "," "=" "." "_"                     -->
     <!--        [##-##] can be used to specify a range of numbers            -->
-    <!--             (ie: node[1-4] matches nodes named node1, node2,        -->        
-    <!--             node3, node4                                            -->
+    <!--             (ie: node[1-4] matches nodes named node1, node2,        -->
+    <!--             node3, node4)                                           -->
+    <!--             leading zeros may be specified and must match           -->
+    <!--             (ie: node[06-10] matches nodes named node06, node07,    -->
+    <!--             node08, node09, node10, but does not match node6)       -->
+    <!--             more than one range can be specified                    -->
+    <!--             (ie: rack[1-2]node[01-02] matches nodes named           -->
+    <!--             rack1node01, rack1node02, rack2node01, rack2node02      -->
     <!--        :[##-##] can be used to specify a range of ports             -->
     <!--             (ie: switch:[2-4] would match node name "switch",       -->
-    <!--              ports 2,3, and 4                                       -->
-    <!-- WildcardExamples:                                                   -->
+    <!--             ports 2,3, and 4                                        -->
+    <!-- Wild card Examples:                                                 -->
     <!--        <NodeDesc>SWITCH*</NodeDesc>                                 -->
     <!--        <NodeDesc>HFI?</NodeDesc>                                    -->
     <!--        <NodeDesc>HFI[1-4]</NodeDesc>                                -->
@@ -337,12 +335,13 @@
     <!--        with no switch. A typical back to back configuration         -->
     <!-- All TFIs: <Select>TFIs</Select>                                     -->
     <!--        A TFI is a passive device e.g. storage unit or gateway       -->
+    <!--        which reports a Device Management Agent capability           -->
     <!--        This DeviceGroup will select all ports on all TFI devices    -->
     <!-- All Switch Enhanced Port 0s: <Select>SWE0</Select>                  -->
     <!--        All Switch Port 0 with Enhanced Port 0 in Capability Mask.   -->
     <!--        By definition will also include all Embedded SMs.            -->
     <!-- The values above are case insensitive:                              -->
-    <!--      All, Self, AllSMs, SWE0, HFIDirectConnect                      -->
+    <!--      All, Self, AllSMs, SWE0, HFIDirectConnect, TFIs                -->
     <!-- The above can be combined as desired in the same DeviceGroup.       -->
 
     <!-- In addition, a DeviceGroup can include another DeviceGroup via:     -->
@@ -362,7 +361,7 @@
       <Select>All</Select>
     </DeviceGroup>
 
-    <!-- All Fabric Interfaces, includes HFIs and TFI -->
+    <!-- All Fabric Interfaces, includes HFIs and TFIs -->
     <DeviceGroup>
       <Name>AllFIs</Name>
       <NodeType>FI</NodeType>
@@ -392,7 +391,7 @@
       <IncludeGroup>AllSWE0s</IncludeGroup>
     </DeviceGroup>
 
-    <!-- All ports with IsSM Capability (eg. running an SM) -->
+    <!-- All ports with IsSM Capability (e.g. running an SM) -->
     <DeviceGroup>
       <Name>AllSMs</Name>
       <Select>AllSMs</Select>
@@ -404,7 +403,7 @@
       <Select>HFIDirectConnect</Select>
     </DeviceGroup>
 
-    <!-- All node which has MgmtAllowed set -->
+    <!-- All nodes which have MgmtAllowed set -->
     <DeviceGroup>
       <Name>AllMgmtAllowed</Name>
       <Select>AllMgmtAllowed</Select>
@@ -419,14 +418,14 @@
     <!-- Example using specific device selection -->
     <DeviceGroup>
       <Name>Example</Name>
-      <SystemImageGUID>0x123567</SystemImageGUID>
-      <NodeGUID>0x123567</NodeGUID>
-      <PortGUID>0x123567</PortGUID>
+      <SystemImageGUID>0x123567812345678</SystemImageGUID>
+      <NodeGUID>0x123567812345678</NodeGUID>
+      <PortGUID>0x123567812345678</PortGUID>
       <NodeDesc>Some Name</NodeDesc>
       <IncludeGroup>AllSWE0s</IncludeGroup>
     </DeviceGroup>
 
-    <!-- Group for all nodes matching wildcarded NodeDesc -->
+    <!-- Group for all nodes matching wild carded NodeDesc -->
     <DeviceGroup>
       <Name>Rack1DG</Name>
       <NodeDesc>*Rack1*</NodeDesc>
@@ -529,17 +528,7 @@
     <!--        A Virual Fabric in Standby cannot pass traffic.              -->
     <!--        The active/standby state of a Virtual Fabric can be          -->
     <!--        changed dynamically (without restarting the FM).             -->
-    <!--        Defaults to false (0).                                       -->
-
-    <!-- OPA requires a "Admin" partition.                                   -->
-    <!-- To meet this requirement there must be an enabled VirtualFabric:    -->
-    <!-- *  with a PKey of 0x7fff (or 0xffff)                                -->
-    <!-- *  it must include the SA Application                               -->
-    <!-- *  it must be the only enabled VF which includes the SA Application -->
-    <!-- *  it must have All as a Member or LimitedMember                    -->
-    <!-- *  as desired it may have additional Applications                   -->
-    <!-- *  as desired it may have additional DeviceGroups as Member         -->
-    <!-- *  all other VF policies (Security, MTU ...) may be set as desired  -->
+    <!--        Defaults to active (0).                                      -->
 
     <!-- QOS settings                                                        -->
     <!-- QOS Enable: <QOS>0</QOS>                                            -->
@@ -548,8 +537,8 @@
     <!--        If set to one, this indicates high priority traffic which    -->
     <!--        does not require any bandwidth limiting. This would          -->
     <!--        typically include management or control traffic which is low -->
-    <!--        bandwidth, but critical to process in a timely manner.       -->  
-    <!--        An example is SA traffic where there is no reason to         -->
+    <!--        bandwidth, but critical to process in a timely manner.       -->
+    <!--        An example is PM traffic where there is no reason to         -->
     <!--        restrict bandwidth since it is low volume, but it needs to   -->
     <!--        be serviced at a high priority.                              -->
     <!--        When priority is set to High, any bandwidth allocation is    -->
@@ -560,7 +549,8 @@
     <!--        priority Virtual Fabrics.  When there is no contention, this -->
     <!--        Virtual Fabric could get more than this amount.              -->
     <!--        If unspecified, the SM evenly distributes remaining          -->
-    <!--        among all the Virtual Fabrics with unspecified Bandwidth.    -->
+    <!--        bandwidth among all the Virtual Fabrics with unspecified     -->
+    <!--        Bandwidth.                                                   -->
     <!--        Total Bandwidth cannot exceed 95% for enabled Virtual        -->
     <!--        Fabrics with QoS enabled when there is at least 1            -->
     <!--        enabled VF with QoS disabled.                                -->
@@ -571,19 +561,19 @@
     <!-- Packet Lifetime Multiplier: <PktLifeTimeMult>2</PktLifeTimeMult>    -->
     <!--        Amount to multiply PktLifeTime by when reported by SM for    -->
     <!--        this Virtual Fabric.                                         -->
-    <!--        This can permit extra time in PathRecords (and hence end to  -->
+    <!--        This can permit PktLifeTime in PathRecords (and hence end to -->
     <!--        end timeouts) to account for delays in Low Priority Virtual  -->
     <!--        Fabrics which are given low bandwidth allocations.           -->
     <!--        Value will be rounded up to the next power of 2.             -->
     <!--        0 is invalid, default is 1                                   -->
-    <!-- Base Service Level: <BaseSL>0</BaseSL>                              --> 
+    <!-- Base Service Level: <BaseSL>0</BaseSL>                              -->
     <!--        Allows a specific SL (0-15) to be used for the VF.           -->
     <!--        SM selects value if unspecified                              -->
     <!-- FlowControlDisable: <FlowControlDisable>0</FlowControlDisable>      -->
     <!--        By default, the fabric uses link level flow control.         -->
     <!--        When link layer flow control has been disabled, packets will -->
-    <!--        be discarded by that VL when there are insufficent credits.  -->
-    <!--        Disabling flow control for a vFabric can effect traffic on   -->
+    <!--        be discarded by that VL when there are insufficient credits. -->
+    <!--        Disabling flow control for a vFabric can affect traffic on   -->
     <!--        VLs shared with other vFabrics, so the user is generally     -->
     <!--        advised not to disable flow control without care.            -->
     <!-- Preemption Rank: <PreemptRank>0</PreemptRank>                       -->
@@ -602,6 +592,16 @@
     <!--        representation for detailed configuration options. If not    -->
     <!--        specified per Virtual Fabric, default to the SM instance     -->
     <!--        values                                                       -->
+
+    <!-- OPA requires a "Admin" partition.                                   -->
+    <!-- To meet this requirement there must be an enabled VirtualFabric:    -->
+    <!-- *  with a PKey of 0x7fff (or 0xffff)                                -->
+    <!-- *  it must include the SA Application                               -->
+    <!-- *  it must be the only enabled VF which includes the SA Application -->
+    <!-- *  it must have All as a Member or LimitedMember                    -->
+    <!-- *  as desired it may have additional Applications                   -->
+    <!-- *  as desired it may have additional DeviceGroups as Member         -->
+    <!-- *  all other VF policies (Security, MTU ...) may be set as desired  -->
 
     <!-- Some predefined VirtualFabrics follow.  These are also a good set   -->
     <!-- of examples to cut/paste to make other site specific VFs:           -->
@@ -649,7 +649,7 @@
       <!-- <HighPriority>1</HighPriority> can make admin High priority -->
       <Member>HFIDirectConnect</Member> <!-- Both HFIs directly connected -->
       <Member>AllMgmtAllowed</Member> 
-      <Member>AllSWE0s</Member> <!-- so managed spines can access leafs -->
+      <Member>AllSWE0s</Member> <!-- so chassis CMU can access leafs & spines-->
       <!-- <Member>AdminNodes</Member> add more FF/admin nodes if desired -->
       <LimitedMember>All</LimitedMember>
       <Application>SA</Application>
@@ -721,8 +721,8 @@
       <Application>PSM</Application>
     </VirtualFabric>
 
-    <!-- when using Intel True Scale Fabric HFIs with PSM technology, Control and -->
-    <!-- Data traffic can be separated into different vFabrics. -->
+    <!-- when using PSM, Control and Data traffic can be separated into -->
+    <!-- different vFabrics. -->
     <!-- To do this, PSM must be run with PSM_PATH_REC="opp" -->
     <!-- Then enable these two VFs instead of the MPI Compute ones above -->
     <VirtualFabric>
@@ -749,6 +749,9 @@
   </VirtualFabrics>
 
   <!-- PM Port Group Configuration -->
+  <!-- PM Port Groups allow the PM to gather and consolidate statistics for -->
+  <!-- the specified set of devices.  In addition, the PM will always have -->
+  <!-- the All, HFIs and SWs groups. -->
   <!-- PM Port Groups defined here are available for use in all FM instances -->
   <!-- Additional PmPortGroups may be defined here or per FM instance. -->
   <!-- PmPortGroups specified per FM instance will add to -->
@@ -757,20 +760,19 @@
     <!-- Each PMPortGroup is comprised of: -->
     <!-- 1. a name -->
     <!-- 2. AND one or more sets of DeviceGroups to be monitored -->
-    <!-- 3. AND an enable/disbable flag -->
+    <!-- 3. AND an enable/disable flag -->
 
-    <!-- All ports that provide an I/O connection -->
+    <!-- All ports providing a Device Management Agent, typically IO devices -->
     <PmPortGroup>
       <Name>TFIs</Name>
       <Monitor>AllTFIs</Monitor>
       <Enabled>0</Enabled>
     </PmPortGroup>
 
-    <!-- All ports on Fabric Interfaces, includes HFIs and TFI, and all switch ports -->
+    <!-- All ports on Fabric Interfaces, includes HFIs and TFIs -->
     <PmPortGroup>
-      <Name>AllHFISWPG</Name>
+      <Name>AllFIs</Name>
       <Monitor>AllFIs</Monitor>
-      <Monitor>AllSWs</Monitor>
       <Enabled>0</Enabled>
     </PmPortGroup>
 
@@ -787,7 +789,7 @@
   <Shared>
     <!-- Max FI Ports, estimates switches assuming optimal Fat Tree. -->
     <!-- Increase if non-optimal Fat Tree. -->
-    <!-- For ESM this value will be automatically adjusted to a maximum of 1000 -->
+    <!-- For ESM this will be automatically adjusted to ESM maximum -->
     <SubnetSize>9216</SubnetSize>                                                                                      <!--SUBNET_SIZE:dec-->
 
     <!-- Core file generation options to aid debug of Host FM crashes -->
@@ -803,8 +805,8 @@
     <CoreDumpDir>/var/crash/opafm</CoreDumpDir>
 
     <!-- Priority and Elevated Priority control failover for SM, PM. -->
-    <!-- Priority is used during initial negotiation, high Priority wins. -->
-    <!-- ElevatedPriority is assumed by winning master.  This can prevent -->
+    <!-- Priority is used during initial negotiation, higher Priority wins. -->
+    <!-- ElevatedPriority is assumed by winning master, this can prevent -->
     <!-- fallback when previous master comes back on line.  -->
     <Priority>0</Priority> <!-- 0 to 15, higher wins -->
     <ElevatedPriority>0</ElevatedPriority> <!-- 0 to 15, higher wins -->
@@ -834,7 +836,7 @@
     <!-- Low Bit (0/1): -->
     <!--    0 - use normal logging levels -->
     <!--    1 - logging is quieted by downgrading the majority of -->
-    <!--        fatal, error, warn and infiniinfo log messages to level -->
+    <!--        fatal, error, warn and progress log messages to level -->
     <!--        3 (INFO) and only outputting user actionable events when -->
     <!--        LogLevel is 1 or 2. -->
     <!-- Next Bit (0/2) (only affects logging when LogFile specified): -->
@@ -861,13 +863,7 @@
     <!-- This parameter cannot be overridden in the SM or PM section. -->
     <ConfigConsistencyCheckLevel>2</ConfigConsistencyCheckLevel>
 
-    <!-- The PKey for PM and FE can be specified. -->
-    <!-- This must be the OPA Managament PKey so they can manage all nodes. -->
-    <!-- OPA defines the OPA Management PKey as 0xffff. -->
-    <!-- Other values are Not Supported at this time. -->
-    <!-- <DefaultPKey>0xffff</DefaultPKey> -->
-
-    <!-- OpenSSL FE network security related parameters  -->
+    <!-- OpenSSL FE network security parameters  -->
     <SslSecurityEnabled>1</SslSecurityEnabled>
     <SslSecurityDir>/usr/local/ssl/opafm</SslSecurityDir>
     <SslSecurityFmCertificate>fm_cert.pem</SslSecurityFmCertificate>
@@ -883,7 +879,7 @@
     <RmppDebug>0</RmppDebug> <!-- RMPP debug messages for SA, PM and FE -->
 
     <!-- Alternative to use of LogLevel.  Use of LogLevel recommended. -->
-    <!-- for each subsystem there can be a LogMask.  The mask selects -->
+    <!-- For each subsystem there can be a LogMask.  The mask selects -->
     <!-- severities of log messages to enable: --> 
     <!-- 0x1=fatal, 0x2=actionable error, 0x4=actionable warning, -->
     <!-- 0x8=actionable notice, 0x10=actionable info, 0x20=error, 0x40=warn, -->
@@ -894,17 +890,17 @@
     <!-- appropriate level of logging enabled. -->
     <!-- For ESM corresponding Chassis Logging must also be enabled -->
     <!-- and Sm config applies to all managers. -->
-    <!-- <CS_LogMask>0x00000000</CS_LogMask> --> <!-- severities of messages -->
-    <!-- <MAI_LogMask>0x000001ff</MAI_LogMask> --> <!-- severities of messages -->
-    <!-- <CAL_LogMask>0x000001ff</CAL_LogMask> --> <!-- severities of messages -->
-    <!-- <DVR_LogMask>0x000001ff</DVR_LogMask> --> <!-- severities of messages -->
-    <!-- <IF3_LogMask>0x000001ff</IF3_LogMask> --> <!-- severities of messages -->
-    <!-- <SM_LogMask>0x000001ff</SM_LogMask> --> <!-- severities of messages -->
-    <!-- <SA_LogMask>0x000001ff</SA_LogMask> --> <!-- severities of messages -->
-    <!-- <PM_LogMask>0x000001ff</PM_LogMask> --> <!-- severities of messages -->
-    <!-- <PA_LogMask>0x000001ff</PA_LogMask> --> <!-- severities of messages -->
-    <!-- <FE_LogMask>0x000001ff</FE_LogMask> --> <!-- severities of messages -->
-    <!-- <APP_LogMask>0x000001ff</APP_LogMask> --> <!-- severities of messages -->
+    <!-- <CS_LogMask>0x00000000</CS_LogMask> -->
+    <!-- <MAI_LogMask>0x000001ff</MAI_LogMask> -->
+    <!-- <CAL_LogMask>0x000001ff</CAL_LogMask> -->
+    <!-- <DVR_LogMask>0x000001ff</DVR_LogMask> -->
+    <!-- <IF3_LogMask>0x000001ff</IF3_LogMask> -->
+    <!-- <SM_LogMask>0x000001ff</SM_LogMask> -->
+    <!-- <SA_LogMask>0x000001ff</SA_LogMask> -->
+    <!-- <PM_LogMask>0x000001ff</PM_LogMask> -->
+    <!-- <PA_LogMask>0x000001ff</PA_LogMask> -->
+    <!-- <FE_LogMask>0x000001ff</FE_LogMask> -->
+    <!-- <APP_LogMask>0x000001ff</APP_LogMask> -->
   </Shared>
 
   <!-- Common SM (Subnet Manager) attributes -->
@@ -932,7 +928,7 @@
     <!--            See the <DGShortestPathTopology> section, below, for   -->
     <!--            more information.                                      -->
     <!-- fattree -  A variation of shortestpath with better balancing      -->
-    <!--            and improved SM performance on pure fat tree fabrics.  -->
+    <!--            and improved SM performance on fat tree-like fabrics.  -->
     <RoutingAlgorithm>shortestpath</RoutingAlgorithm>
 
     <!-- SpineFirstRouting - An option to avoid credit loops in complex    -->
@@ -946,37 +942,8 @@
     <Lmc>0</Lmc>  <!-- assign 2^lmc LIDs to all FIs (Lmc can be 0-7) -->                                               <!--SM_0_lmc:dec-->
     <LmcE0>0</LmcE0>  <!-- assign 2^lmce0 LIDs to all Enhanced SW port 0 -->                                           <!--SM_0_lmc_e0:dec-->
 
-    <ForceRebalance>0</ForceRebalance>  <!-- rebalance routing every change -->
-
-    <!-- **************** Pre-defined Topology Verification **************** -->
-    <!-- The PreDefinedTopology section is used for verifying the layout of  -->
-    <!-- the fabric against a topology input file of the expected layout.    -->
-    <!-- There are three modes of handling mismatches: Disabled, Warn, and   -->
-    <!-- Enabled. Disabled ignores any mismatches on that field, Warn prints -->
-    <!-- a warning to the log file, and Enabled prints a warning to the log  -->
-    <!-- file and quarantines the node from the fabric.                      -->
-    <!-- Field Definitions:                                                  -->
-    <!--     Enabled:                                                        -->
-    <!--         Whether or not this feature is enabled.                     -->
-    <!--     TopologyFilename:                                               -->
-    <!--         Fully qualified filename of pre-defined input topology.     -->
-    <!--     LogMessageThreshold: Number of warnings to output to log        -->
-    <!--         Number of warnings to output to log file before suppressing -->
-    <!--         further warnings and only printing a summary at the end of  -->
-    <!--         a sweep. Entering 0 disables this threshold.                -->
-    <!--     FieldEnforcement:                                               -->
-    <!--         Per-field enforcement levels for mismatch handling.         -->
-    <PreDefinedTopology>
-        <Enabled>0</Enabled>
-        <TopologyFilename></TopologyFilename>
-        <LogMessageThreshold>100</LogMessageThreshold>
-        <FieldEnforcement>
-            <NodeDesc>Warn</NodeDesc>
-            <NodeGUID>Warn</NodeGUID>
-            <PortGUID>Warn</PortGUID>
-            <UndefinedLink>Warn</UndefinedLink>
-        </FieldEnforcement>
-    </PreDefinedTopology>
+    <ForceRebalance>0</ForceRebalance>  
+    <!-- Toggle to force rebalancing routing every change -->
 
     <!-- **************** Fat Tree Topology **************************** -->
     <!-- When the RoutingAlgorithm is set to fattree, the following -->
@@ -1000,7 +967,7 @@
       <!-- <CoreSwitches>core_device_group</CoreSwitches> -->
       <!-- Nodes may be specified for exclusion from initial round-robin -->
       <!-- to give better route balancing of remaining nodes. -->
-      <!-- This may be useful in assymetric fat trees or to -->
+      <!-- This may be useful in assymmetric fat trees or to -->
       <!-- initially balance across compute nodes in the tree. -->
       <!-- <RouteLast>hfi_device_group</RouteLast>  -->
     </FatTreeTopology>
@@ -1025,7 +992,40 @@
         <!-- </RoutingOrder> -->
     </DGShortestPathTopology>
 
-    <!-- **************** IB Multicast **************************** -->
+    <!-- **************** Pre-defined Topology Verification **************** -->
+    <!-- The PreDefinedTopology section is used for verifying the layout of  -->
+    <!-- the fabric against a topology input file of the expected layout.    -->
+    <!-- There are three modes of handling mismatches: Disabled, Warn, and   -->
+    <!-- Enabled. Disabled ignores any mismatches on that field, Warn prints -->
+    <!-- a warning to the log file, and Enabled prints a warning to the log  -->
+    <!-- file and quarantines the node from the fabric.                      -->
+    <!-- Field Definitions:                                                  -->
+    <!--     Enabled:                                                        -->
+    <!--         Whether or not this feature is enabled.                     -->
+    <!--     TopologyFilename:                                               -->
+    <!--         Fully qualified filename of pre-defined input topology.     -->
+    <!--     LogMessageThreshold: Number of warnings to output to log        -->
+    <!--         Number of warnings to output to log file before suppressing -->
+    <!--         further warnings and only printing a summary at the end of  -->
+    <!--         a sweep. Entering 0 disables this threshold.                -->
+    <!--     FieldEnforcement:                                               -->
+    <!--         Per-field enforcement levels for mismatch handling.         -->
+    <!-- Field comparison is done on a validation link. Validation links are -->
+    <!-- found using (NodeGUID,PortNum) unless NodeGUID enforcement is       -->
+    <!-- DISABLED, in which case (NodeDesc,PortNum) is used to find the      -->
+    <!-- link. If there is more than one link matches by (NodeDesc,PortNum)  -->
+    <!-- a log warning will be printed and false matches may occur.          -->
+    <PreDefinedTopology>
+        <LogMessageThreshold>100</LogMessageThreshold>
+        <FieldEnforcement>
+            <NodeDesc>Warn</NodeDesc>
+            <NodeGUID>Warn</NodeGUID>
+            <PortGUID>Warn</PortGUID>
+            <UndefinedLink>Warn</UndefinedLink>
+        </FieldEnforcement>
+    </PreDefinedTopology>
+
+    <!-- **************** Fabric Multicast **************************** -->
     <Multicast>
       <!-- OPA has a limitation in that the SM must make the realizable -->
       <!-- decision for a Multicast group at Multicast Join/Create time.  -->
@@ -1052,7 +1052,7 @@
       <!-- When enabled, multicast traffic will only propagate through -->
       <!-- the minimal set of switches, reducing overhead in the fabric. -->
       <!-- Recommended to be disabled for typical fabrics where multicast -->
-      <!-- is mainly used to support IPoIB ARP. -->
+      <!-- is mainly used to support IPoIB ARP and DHCP. -->
       <EnablePruning>0</EnablePruning>
 
       <!-- Selecting root switch for Multicast Spanning Tree -->
@@ -1192,11 +1192,11 @@
     <!-- Stalled State and discards all that VL's egress packets -->
     <!-- for 8*HoqLife. -->
     <!-- Packets discarded for any of these reasons will be included in the -->
-    <!-- TxDiscards counter which is queryable via FastFabric. -->
+    <!-- TxDiscards counter which is query-able via FastFabric. -->
 
     <!-- HoqLife can be automatically adjusted based on -->
     <!-- Virtual Fabric configurations and preemption configurations -->
-    <!-- This feature is Timeout Scaling, and can be enabled below. -->
+    <!-- This feature is called TimerScaling, and can be enabled below. -->
     <!-- Furthermore, HoqLife can be specified per -->
     <!-- Virtual Fabric, overriding the global definition below. --> 
     <!-- When HoqLife is specified at the Virtual Fabric -->
@@ -1207,76 +1207,81 @@
     <HoqLife>8ms</HoqLife>                                                                                             <!--SM_0_hoqlife:2ninf-->
     <VLStallCount>7</VLStallCount>                                                                                     <!--SM_0_vlstall:dec-->
 
-    <!-- VL15FlowControlDisable can be used to turn off the link-level reliable -->
-    <!-- transport flow control behavior on VL15. -->
-    <!-- When reliable transport flow control has been disabled for a VL, packets will -->
-    <!-- be discarded by that VL when the packet length is larger than the -->
-    <!-- current available VL credit. -->
+    <!-- VL15FlowControlDisable can be used to turn off the link-level -->
+    <!-- reliable transport flow control behavior on VL15. -->
+    <!-- When reliable transport flow control has been disabled for a VL, -->
+    <!-- packets will be discarded by that VL when the packet length is -->
+    <!-- larger than the current available VL credit. -->
     <VL15FlowControlDisable>1</VL15FlowControlDisable>
 
     <!-- *************** Security Features ******************************-->
-    <!-- VL15CreditRate: Rate at which to return credits to an HFI that has been -->
-    <!-- recognized  as attempting to spoof the fabric. Prevents DoS attacks against -->
-    <!-- the fabric from a spoofed host. -->
-    <!-- The field is defined as 1/(2^X) of the full return rate. For instance, if -->
-    <!-- the field is set to 2, the credit return rate will be 1/(2^2) = 1/4 --> 
-    <!-- (one fourth) the full credit rate when a denial of service attack is detected. -->
-    <!-- Valid values are between 0 and 21, with 0 disabling the credit rate limiting -->
+    <!-- VL15CreditRate: Rate at which to return credits to a non-mgmt HFI. -->
+    <!-- Helps avoid VL15 Denial of Service attacks against the fabric -->
+    <!-- The field is defined as 1/(2^X) of the normal return rate. For -->
+    <!-- instance, if the field is set to 3, the credit return rate will be --> 
+    <!-- 1/(2^3) = 1/8 (one eighth) the normal credit return rate. -->
+    <!-- Valid values are between 0 and 21, with 0 disabling the feature. -->
     <VL15CreditRate>18</VL15CreditRate>
 
     <!-- ******   VL Buffer Allocation Parameters   *****************-->
-    <!-- VL Memory allocation can be fine tuned with the parameters specified below. -->
-    <!-- Normally, parameters from the port info are used to drive the allocation according -->
-    <!--     to a set of rules.  However, the parameters below can override the information -->
-    <!--     returned from port info, and also can be used to modify the rules to allow for -->
-    <!--     more or less dedicated memory / shared memory among the VLs. -->
-    <!-- MinSharedVLMemory is an integer representing a percentage of overall Buffer memory -->
-    <!--     that will be guaranteed to be shared among the ports (provided that the port -->
-    <!--     supports shared memory). If not specified, defaults to 0. -->
-    <!-- DedicatedVLMemMulti is an integer multiplier that can increase the amount of -->
-    <!--     dedicated memory per VL.  It is specified in multiples of MTUs for that VL. -->
+    <!-- VL Memory allocation can be fine tuned with the parameters -->
+    <!-- specified below. Normally, parameters from the port info are used -->
+    <!-- to drive the allocation according to a set of rules.  However, the -->
+    <!-- parameters below can override the information returned from port -->
+    <!-- info, and also can be used to modify the rules to allow for more or -->
+    <!-- less dedicated memory / shared memory among the VLs. -->
+    <!-- MinSharedVLMemory is an integer representing a percentage of -->
+    <!--     overall Buffer memory that will be guaranteed to be shared -->
+    <!--     among a port's VLs (provided that the port supports -->
+    <!---    shared memory). If not specified, defaults to 0. -->
+    <!-- DedicatedVLMemMulti is an integer multiplier that can increase the -->
+    <!--     amount of dedicated memory per VL.  It is specified in -->
+    <!--     multiples of MTUs for that VL. -->
     <!--     If not specified, defaults to 1. -->
-    <!-- WireDepthOverride is an integer value (in bytes) that overrides the wire depth returned -->
-    <!--     in the port info. If not specified, defaults to -1. -->
+    <!-- WireDepthOverride is an integer value (in bytes) that overrides -->
+    <!--     the wire depth returned in the port info. If not specified, -->
+    <!--     defaults to -1. -->
     <!--     A value of -1 indicates to use the value from port info. -->
     <!--     A value of 0 means to ignore Wire Depth, and use Replay Depth. -->
-    <!--     Any other value indicates a byte-value to use instead of wire depth from port info. -->
-    <!-- ReplayDepthOverride is an integer value (in bytes) that overrides the buffer depth returned -->
-    <!--     in the port info. If not specified, defaults to -1. Similar to WireDepthOveried as above. -->
+    <!--     Any other value indicates a byte-value to use instead of wire -->
+    <!--     depth from port info. -->
+    <!-- ReplayDepthOverride is an integer value (in bytes) that overrides -->
+    <!--     the buffer depth returned in the port info. If not specified, -->
+    <!--     defaults to -1. Similar to WireDepthOveried as above. -->
     <!--     A value of -1 indicates to use the value from port info. -->
     <!--     A value of 0 means to ignore Replay Depth, and use Wire Depth. -->
-    <!--     Any other value indicates a byte-value to use instead of replay depth from port info. -->
-    <!--     If both ReplayDepthOverride and WireDepthOverride are 0, then no bytes are considered -->
-    <!--     for data outstanding on the wire. -->
+    <!--     Any other value indicates a byte-value to use instead of -->
+    <!--     replay depth from port info. -->
+    <!-- If both ReplayDepthOverride and WireDepthOverride are 0, then no -->
+    <!-- bytes are considered for data outstanding on the wire. -->
     <MinSharedVLMem>0</MinSharedVLMem>
     <DedicatedVLMemMulti>1</DedicatedVLMemMulti>
     <WireDepthOverride>-1</WireDepthOverride>
     <ReplayDepthOverride>-1</ReplayDepthOverride>
 
     <!-- **************Link Policy************** -->
-
     <!-- LinkPolicy -->
     <!-- These settings set bounds on acceptable Link Width values. -->
     <!-- -->
     <!--    MaxDroppedLanes -->
-    <!--        The link manager can chose to downgrade width by dropping lanes that are not -->
-    <!--        performing adequately. The link will drop up to MaxDroppedLanes from -->
-    <!--        the initial negotiated width. -->
-    <!--        Example: If a link comes up through LNI with an active width of 4x and MaxDroppedLanes -->
-    <!--            has a value of 1, the link will be allowed to downgrade to 3x but no lower. -->
-    <!--        *Note: This setting is communicated to each SMA which is then responsible for -->
-    <!--            performing the downgrades. This setting is independent of WidthPolicy discussed below -->
+    <!--        The link can chose to downgrade width by dropping lanes -->
+    <!--        that are not performing adequately. The link will drop -->
+    <!--        up to MaxDroppedLanes from the initial negotiated width. -->
+    <!--        Example: If a link comes up through LNI with an active -->
+    <!--            width of 4x and MaxDroppedLanes has a value of 1, the -->
+    <!---           link will be allowed to downgrade to 3x but no lower. -->
+    <!--        *Note: This setting is communicated to each SMA which is -->
+    <!--            then responsible for performing the downgrades. This -->
+    <!--            setting is independent of WidthPolicy discussed below -->
     <!--    WidthPolicy-->
-    <!--        "Supported" - The SM will disable links whose active width is not  -->
-    <!--                      widest width supported in firmware-->
-    <!--        "2x" - The SM will disable any links operating with less than 2 lanes-->
-    <!--        "3x" - The SM will disable any links operating with less than 3 lanes-->
-    <!--        "4x" - The SM will disable any links operating with less than 4 lanes-->
-    <!-- *Note that the "Supported" quality policy is implicitly enabled when -->
-    <!--  using any of the available policies. -->
-    <!--  -->
-    
-    
+    <!--        This enforces the initial negotiated width for the link. -->
+    <!--        "Supported" - The SM will disable links whose initial width -->
+    <!--                      is not widest width supported by the devices -->
+    <!--        "2x" - disable any links initialized with less than 2 lanes-->
+    <!--        "3x" - disable any links initialized with less than 3 lanes-->
+    <!--        "4x" - disable any links initialized with less than 4 lanes-->
+    <!-- *Note that the "Supported" link policy is implicitly enabled when -->
+    <!-- using any of the available policies. -->
     <LinkPolicy>
         <MaxDroppedLanes>1</MaxDroppedLanes>
         <WidthPolicy>
@@ -1287,25 +1292,30 @@
 
     <!-- Preemption Configuration -->
     <!-- Preemption is based on packet size and a VL/VF Preemption matrix. -->
-    <!-- Preemption allows a "small" packet to preempt a "large" packet to reduce latency. -->
+    <!-- Preemption allows a "small" packet to preempt a "large" packet to -->
+    <!-- reduce latency. -->
     <!-- "Small" packets are expected to be latency sensitive packets; -->
-    <!-- "Large" packets are expected to be I/O packets. -->
-    <!--     NOTE: These sizes represent PACKET sizes and includes all HEADERS -->
-    <!--           Packet sizes can be constrained by HW limitations, and will be -->
-    <!--           adjusted when necessary. Consult logs for potential limitations. --> 
+    <!-- "Large" packets are expected to be less latency sensitive packets. -->
+    <!--     NOTE: These sizes represent PACKET sizes including all HEADERS -->
+    <!--           Packet sizes can be constrained by HW limitations, and -->
+    <!--           will be adjusted when necessary. Consult logs for -->
+    <!--           potential limitations. --> 
     <!-- These sizes are configurable by the user: -->
-    <!--   LargePacket:   Field (specified in bytes), and is the minimum size for a "Large"-->
-    <!--                  (and therefore pre-emptible) packet.--> 
-    <!--                  May also specify "MIN" or "MAX", defaults to 4096 if not listed . -->
-    <!--   SmallPacket:   Field (specified in bytes), and is the maximum size for a "Small" -->
-    <!--                  (and therefore a candidate for a preempting packet). --> 
-    <!--                  May also specify "MIN" or "MAX", defaults to 256 if not listed -->
-    <!--   PreemptLimit:  Field (specified in bytes) for a limit threshold of total bytes --> 
-    <!--                  involving one or more preempting packets which may preempt a packet.-->
-    <!--                  May also specify "MIN", "MAX" or "INF" for infinite -->
-    <!--                  This value, if not specified, defaults to 4096 bytes. -->
-    <!-- Preemption capability can be configured (enabled, disabled, ranked) per Virtual Fabric.--> 
-    <!-- See Virtual Fabric configuration options for more info on preemption rank -->
+    <!--   LargePacket:   The minimum size (in bytes) for a "Large" (and -->
+    <!--                  therefore pre-emptible) packet. --> 
+    <!--                  May also specify "MIN" or "MAX", defaults to 4096 -->
+    <!--   SmallPacket:   The maximum size (in bytes), for a "Small" (and -->
+    <!--                  therefore a candidate for a preempting packet). --> 
+    <!--                  May also specify "MIN" or "MAX", defaults to 256 -->
+    <!--   PreemptLimit:  Limit of total bytes for all preempting packets -->
+    <!--                  which may preempt a given packet.  Once limit is -->
+    <!--                  reached no further packets may preempt the given -->
+    <!--                  packet. -->
+    <!--                  May also specify "MIN", "MAX" or "INF" (infinite), -->
+    <!--                  defaults to 4096 bytes. -->
+    <!-- Preemption capability can be configured (enabled, disabled, ranked) -->
+    <!-- per Virtual Fabric via the PreemptRank parameter.--> 
+    <!-- See Virtual Fabric configuration options for more info. -->
     <Preemption>
       <SmallPacket>256</SmallPacket>
       <LargePacket>4096</LargePacket>
@@ -1328,25 +1338,25 @@
         <!-- A value in the range 0 to 15. Used to determine when       -->
         <!-- to use congestion marking. Higher values indicate more     -->
         <!-- aggressive congestion thresholds. 0 disables congestion    -->
-        <!-- marking. Default is 8. -->
+        <!-- marking. -->
         <Threshold>1</Threshold>
         <!-- OPA CC SwitchCongestionSetting:Packet Size -->
         <!-- Minimum packet size to mark in 64 byte units. Packets      -->
-        <!-- smaller than this size are ignored by congestion           -->
-        <!-- control. Default is 0, range is 0-162. -->
+        <!-- smaller than this size are ignored by congestion control.  -->
+        <!-- Range is 0-162. -->
         <PacketSize>0</PacketSize>
         <!-- OPA CC SwitchCongestionSetting:Marking Rate                -->
         <!-- The average number of packets between packets that are     -->
         <!-- eligible to be marked with a Forward Explicit Congestion   -->
-        <!-- Notification. Range is 0-65535. Defaults to 0. -->
+        <!-- Notification. Range is 0-65535. -->
         <MarkingRate>0</MarkingRate>
         <!-- OPA CC SwitchCongestionSetting: Victim Marking             -->
-        <!-- Boolean value (0 or 1). Default is 0.  A value of 0 will   -->
-        <!-- cause marking of only sources of congestion. A value of 1  -->
-        <!-- will cause marking of both sources and victims of          -->
-        <!-- congestion. -->
+        <!-- Boolean value (0 or 1). A value of 0 will cause marking    -->
+        <!-- of only sources of congestion. A value of 1 will cause     -->
+        <!-- marking of both sources and victims of congestion          -->
         <VictimMarkingEnable>1</VictimMarkingEnable>
       </Switch>
+
       <!-- CC settings applicable to all fabric interfaces. -->
       <!-- Congestion Control may require tuning for best performance -->
       <!-- When using PSM, the CC settings for a given job -->
@@ -1355,40 +1365,37 @@
       <!-- PSM_CCTI_INCREMENT 1 -->
       <!-- PSM_CCTI_TIMER 1 -->
       <!-- PSM_CCTI_TABLE_SIZE 128 -->
-
       <Fi>
         <!-- OPA CC FICongestionEntry:CCTI Increase                     -->
         <!-- The number to be added to the CCTI on the receipt of a BECN-->
-        <!-- Range is 0-255 and default is 8. -->
+        <!-- Range is 0-255. -->
         <Increase>1</Increase>
         <!-- OPA CC FICongestionEntry:CCTI Timer                        -->
         <!-- Determines the amount of time that must elapse before      -->
         <!-- reducing the CCTI. Measured in multiples of 1.024 uS.      -->
-        <!-- Range is 0 to 65535. Default is 10. -->
+        <!-- Range is 0 to 65535. -->
         <Timer>1</Timer>
         <!-- OPA CC FICongestionEntry:Trigger Threshold                 -->
         <!-- When the CCTI is equal to this value, an event is logged   -->
-        <!-- in the FI's congestion log. Range is 0-255, default is 8.  -->
+        <!-- in the FI's congestion log. Range is 0-255.  -->
         <Threshold>8</Threshold>
         <!-- OPA CC FICongestionEntry:CCTI Min                          -->
         <!-- The minimum value for the CCTI, effective the minimum      -->
-        <!-- injection rate delay for an SL or QP. Range is 0 to 255,   -->
-        <!-- default is 0. -->
+        <!-- injection rate delay for an SL or QP. Range is 0 to 255.   -->
         <Min>0</Min>
         <!-- OPA CC CongestionControlTable:CCTI Limit                   -->
-        <!-- Maximum value for the CCTI. Range is 0-65535 and the       -->
-        <!-- default is 128. -->
+        <!-- Maximum value for the CCTI. Range is 0-65535.              -->
         <Limit>127</Limit>
         <!-- Maximum injection rate delay in ns -->
         <!-- The Congestion Control Table will be generated with Limit -->
         <!-- entries such that the final entry will result in -->
-        <!-- DesiredMaxDelay for a maximum MTU packet. Value is in nS  -->
-        <!-- and the range is 0 through (2^32)-1. Default is 8000 nS.  -->
+        <!-- DesiredMaxDelay for a maximum MTU packet. Value is in ns  -->
+        <!-- and the range is 0 through (2^32)-1.                      -->
         <DesiredMaxDelay>8300</DesiredMaxDelay>
       </Fi>
     </CongestionControl>
 
-    <!-- Configures support for AdaptiveRouting in Intel Switches -->
+    <!-- Configures support for AdaptiveRouting in Switches -->
     <AdaptiveRouting>
       <!-- 1 = Enable, 0 = Disable -->
       <Enable>0</Enable>                                                                                               <!--SM_0_ar_enable:dec-->
@@ -1399,27 +1406,28 @@
       <!-- Algorithm the switch should use when selecting an egress port -->
       <!-- Algorithms are currently 0 = Random, 1 = Greedy and -->
       <!-- 2 = GreedyRandom. -->
-      <Algorithm>0</Algorithm>
+      <Algorithm>2</Algorithm>
       <!-- Update Frequency: Specifies the minimum time between -->
       <!-- AR adjustments. Values range from 0 to 7 and are read as 2^n -->
-      <!-- times 64 ms. Default is 4, or about 1 second  . -->
-      <ARFrequency>4</ARFrequency>
+      <!-- times 64 ms. Default is 0. -->
+      <ARFrequency>0</ARFrequency>
       <!-- Congestion threshold above which switch uses adaptive routing. -->
       <!-- Congestion threshold is per-VL and measured by tag consumption percentage. -->
       <!-- Values range from 0 to 7. -->
       <!-- 7, 6, 5, 4 correspond to 55%, 60%, 65%, and 70%, respectively. -->
       <!-- 3, 2, 1 correspond to 80%, 90%, and 100%, respectively. -->
       <!-- 0 means "Use firmware default" -->
-      <Threshold>0</Threshold>
+      <Threshold>1</Threshold>
     </AdaptiveRouting>
 
     <SaRespTime>1s</SaRespTime> <!-- maximum anticipated SA response time -->                                          <!--SM_0_saRespTime:2n-->
 
-    <!-- Normally if SA cannot process a request because a context is temporarily -->
-    <!-- not available or an error is detected which may be resolved when an in  -->
-    <!-- progress sweep completes, a busy status is returned to the requester. -->
-    <!-- Setting NoReplyIfBusy to 1 will result in the busy status not being returned. -->
-    <!-- The default value is 0.  in which case the busy status will be returned. -->
+    <!-- Normally if SA cannot process a request because resources are -->
+    <!-- temporarily not available or an error is detected which may be -->
+    <!-- resolved when an in progress sweep completes, a busy status is -->
+    <!-- returned to the requester so the requester can delay and retry. -->
+    <!-- Setting NoReplyIfBusy to 1 results in no response being returned. -->
+    <!-- The default is 0, in which case the busy status will be returned. -->
     <NoReplyIfBusy>0</NoReplyIfBusy>
 
     <!-- Minimum Supported VLs -->
@@ -1453,7 +1461,7 @@
 
     <!-- PathRecord path selection and ordering.  Most applications will -->
     <!-- use the first path or only the first few paths.  When LMC=0 this -->
-    <!-- setting makes no difference because there is only a src/dst address -->
+    <!-- setting makes no difference because there is only 1 src/dst address -->
     <!-- per pair of ports.  However when LMC!=0, there can be N=(1<<LMC) -->
     <!-- addresses per port.  This means there are N^2 possible combinations -->
     <!-- of SLID and DLID which the SA could return in the Path Records. -->
@@ -1481,7 +1489,7 @@
     <!--           SLID2/DLID1, SLID2/DLID2, SLID2/DLID3, SLID2/DLID4 -->
     <PathSelection>Minimal</PathSelection>
 
-    <!-- When 1, this enabled IBTA compilant SA query operation for -->
+    <!-- When 1, this enables IBTA compliant SA query operation for -->
     <!-- GetTable(PathRecord).  As such a SGID and NumbPath is required -->
     <!-- When 0, this allows interop with some non-compliant OFA queries -->
     <!-- and permits GetTable(PathRecord) to specify either a SGID or SLID -->
@@ -1586,11 +1594,12 @@
     <!-- **************** Miscellaneous **************************** -->
     <LID>0</LID> <!-- lid for this SM, 0=pick any available -->                                                        <!--SM_0_lid:dec-->
 
-    <!-- Appliance nodes are nodes whose self-reported NodeGUIDs are expected -->
-    <!--  not to match the NeighborNodeGUID on the appliance node's peer ports. -->
-    <!-- SmAppliances is used to prevent these nodes from being quarantined by SM. -->
+    <!-- Appliance nodes are nodes whose self-reported NodeGUIDs are -->
+    <!-- expected not to match the NeighborNodeGUID on the appliance node's -->
+    <!-- peer ports. SmAppliances is used to prevent these nodes from being -->
+    <!-- quarantined by SM. -->
     <SmAppliances>
-        <Enable>0</Enable> <!-- Disable (0) or enable (1) appliance GUID-checking. -->
+        <Enable>0</Enable> <!-- Disable(0) or enable(1) appliance checking. -->
         <!-- Add node GUID for appliance node as it will appear in appliance -->
         <!-- node's peer ports' NeighborNodeGUID.  Limited to five entries -->
         <!-- (Appliance01 to Appliance05) -->
@@ -1629,7 +1638,7 @@
     <!-- 0x00000001:Reserved --> 
     <!-- 0x00000002:Illegal packet length in header -->
     <!-- 0x00000004:Packet longer than Length -->
-    <!-- 0x00000008:Packet shorter than Length with normal tial -->
+    <!-- 0x00000008:Packet shorter than Length with normal tail -->
     <!-- 0x00000010:Illegal SLID (0, using multicast as SLID, does not include security validation of SLID) -->
     <!-- 0x00000020:Illegal DLID (0, doesn't match HFI) -->
     <!-- 0x00000040:Illegal L2 opcode -->
@@ -1666,17 +1675,17 @@
     <!-- appropriate level of logging enabled. -->
     <!-- For ESM corresponding Chassis Logging must also be enabled -->
     <!-- and Sm config applies to all managers. -->
-    <!-- <CS_LogMask>0x00000000</CS_LogMask> --> <!-- severities of messages -->
-    <!-- <MAI_LogMask>0x000001ff</MAI_LogMask> --> <!-- severities of messages -->
-    <!-- <CAL_LogMask>0x000001ff</CAL_LogMask> --> <!-- severities of messages -->
-    <!-- <DVR_LogMask>0x000001ff</DVR_LogMask> --> <!-- severities of messages -->
-    <!-- <IF3_LogMask>0x000001ff</IF3_LogMask> --> <!-- severities of messages -->
-    <!-- <SM_LogMask>0x000001ff</SM_LogMask> --> <!-- severities of messages -->
-    <!-- <SA_LogMask>0x000001ff</SA_LogMask> --> <!-- severities of messages -->
-    <!-- <PM_LogMask>0x000001ff</PM_LogMask> --> <!-- severities of messages -->
-    <!-- <PA_LogMask>0x000001ff</PA_LogMask> --> <!-- severities of messages -->
-    <!-- <FE_LogMask>0x000001ff</FE_LogMask> --> <!-- severities of messages -->
-    <!-- <APP_LogMask>0x000001ff</APP_LogMask> --> <!-- severities of messages -->
+    <!-- <CS_LogMask>0x00000000</CS_LogMask> -->
+    <!-- <MAI_LogMask>0x000001ff</MAI_LogMask> -->
+    <!-- <CAL_LogMask>0x000001ff</CAL_LogMask> -->
+    <!-- <DVR_LogMask>0x000001ff</DVR_LogMask> -->
+    <!-- <IF3_LogMask>0x000001ff</IF3_LogMask> -->
+    <!-- <SM_LogMask>0x000001ff</SM_LogMask> -->
+    <!-- <SA_LogMask>0x000001ff</SA_LogMask> -->
+    <!-- <PM_LogMask>0x000001ff</PM_LogMask> -->
+    <!-- <PA_LogMask>0x000001ff</PA_LogMask> -->
+    <!-- <FE_LogMask>0x000001ff</FE_LogMask> -->
+    <!-- <APP_LogMask>0x000001ff</APP_LogMask> -->
 
     <!-- Debug Only: Skip Write. -->
     <!-- A bitmask for SM to skip the writing of specified attributes -->
@@ -1700,12 +1709,12 @@
     <!-- resweep. Can be used to force devices out of a bad state.   -->
     <ForceAttributeRewrite>0</ForceAttributeRewrite>
 
-    <!-- Enables fabric activation optimization to reduce packet counts during -->
-    <!-- fabric bring up. 0 - Disable, 1 - Switches only, 2 - All devices -->
+    <!-- Enables fabric activation optimization to reduce packet counts -->
+    <!-- during fabric bring up. 0-Disable, 1-Switches only, 2-All devices -->
     <SwitchCascadeActivateEnable>0</SwitchCascadeActivateEnable>
 
-    <!-- Number of times to retry activation upon detecting an armed port with -->
-    <!-- a non-armed/active neighbor. -->
+    <!-- Number of times to retry activation upon detecting an armed port -->
+    <!-- with a non-armed/active neighbor. -->
     <NeighborNormalRetries>10</NeighborNormalRetries>
 
     <!-- Number of port bounce events to log before suppressing the rest. -->
@@ -1748,17 +1757,17 @@
     <!-- appropriate level of logging enabled. -->
     <!-- For ESM corresponding Chassis Logging must also be enabled -->
     <!-- and Sm config applies to all managers. -->
-    <!-- <CS_LogMask>0x00000000</CS_LogMask> --> <!-- severities of messages -->
-    <!-- <MAI_LogMask>0x000001ff</MAI_LogMask> --> <!-- severities of messages -->
-    <!-- <CAL_LogMask>0x000001ff</CAL_LogMask> --> <!-- severities of messages -->
-    <!-- <DVR_LogMask>0x000001ff</DVR_LogMask> --> <!-- severities of messages -->
-    <!-- <IF3_LogMask>0x000001ff</IF3_LogMask> --> <!-- severities of messages -->
-    <!-- <SM_LogMask>0x000001ff</SM_LogMask> --> <!-- severities of messages -->
-    <!-- <SA_LogMask>0x000001ff</SA_LogMask> --> <!-- severities of messages -->
-    <!-- <PM_LogMask>0x000001ff</PM_LogMask> --> <!-- severities of messages -->
-    <!-- <PA_LogMask>0x000001ff</PA_LogMask> --> <!-- severities of messages -->
-    <!-- <FE_LogMask>0x000001ff</FE_LogMask> --> <!-- severities of messages -->
-    <!-- <APP_LogMask>0x000001ff</APP_LogMask> --> <!-- severities of messages -->
+    <!-- <CS_LogMask>0x00000000</CS_LogMask> -->
+    <!-- <MAI_LogMask>0x000001ff</MAI_LogMask> -->
+    <!-- <CAL_LogMask>0x000001ff</CAL_LogMask> -->
+    <!-- <DVR_LogMask>0x000001ff</DVR_LogMask> -->
+    <!-- <IF3_LogMask>0x000001ff</IF3_LogMask> -->
+    <!-- <SM_LogMask>0x000001ff</SM_LogMask> -->
+    <!-- <SA_LogMask>0x000001ff</SA_LogMask> -->
+    <!-- <PM_LogMask>0x000001ff</PM_LogMask> -->
+    <!-- <PA_LogMask>0x000001ff</PA_LogMask> -->
+    <!-- <FE_LogMask>0x000001ff</FE_LogMask> -->
+    <!-- <APP_LogMask>0x000001ff</APP_LogMask> -->
   </Fe>
 
   <!-- Common PM (Performance Manager) attributes -->
@@ -1781,7 +1790,7 @@
     <MaxClients>3</MaxClients>                                                                                         <!--PM_0_MaxClients:dec-->
 
     <!-- The PM can retain recent fabric topology and performance data. -->
-    <!-- Each such dataset is refered to as an Image.  Images allow for -->
+    <!-- Each such dataset is referred to as an Image.  Images allow for -->
     <!-- access to recent history and/or Freeze Frame by clients -->
     <!-- However, each image consumes memory, so care must be taken not to -->
     <!-- take an excessive amount of memory, especially for larger fabrics -->
@@ -1854,9 +1863,9 @@
         <MarkFECNPct>25</MarkFECNPct> <!-- 0.1% to 10%-->
     </CongestionWeights>
 
-<!-- Resolution determines the number of LocalLinkIntegrity or -->
-<!-- LinkErrorRecovery errors must occur before the PMA will -->
-<!-- include them in the ErrorCounterSummary. -->
+    <!-- Resolution determines the number of LocalLinkIntegrity or -->
+    <!-- LinkErrorRecovery errors must occur before the PMA will -->
+    <!-- include them in the ErrorCounterSummary. -->
     <Resolution>
         <LocalLinkIntegrity>8000000</LocalLinkIntegrity>
         <LinkErrorRecovery>100000</LinkErrorRecovery>
@@ -1907,26 +1916,27 @@
     <!-- messages output per sweep -->
     <SweepErrorsLogThreshold>10</SweepErrorsLogThreshold>
 
-    <!-- Short Term History will enable the PM to store an extended time period -->
-    <!-- of history data on the disk. -->
-    <!-- If compression is enabled, the data will be compressed before it is stored. -->
-    <!-- This will save disk space but will incur a performance hit for data access. -->
-    <!-- StorageLocation is where the history files will be stored. It must be a full -->
-    <!-- filepath, begining with a '/' -->
-    <!-- TotalHistory is the total number of hours of history that will be stored  -->
-    <!-- ImagesPerComposite deteremines how many images will be compounded -->
-    <!-- into a single file. A higher number will save space but will result in a lower -->
-    <!-- data granularity. Must not be 0. -->
-    <!-- MaxDiskSpace puts a cap on how much disk space the short term history is -->
-    <!-- allowed to use. If this size is exceeded, the oldest files will be deleted to -->
-    <!-- save space. -->
-    <!-- CompressionDivisions determines how many divisons will be used to -->
-    <!-- concurrently compress or decompress data. Recommend less than or  -->
-    <!-- equal to number of processing cores of the management node, must -->
-    <!-- not exceed 32 -->
+    <!-- Short Term History will enable the PM to store an extended time -->
+    <!-- period of history data on the disk. -->
+    <!-- The data will be compressed before it is stored. -->
+    <!-- StorageLocation is where the history files will be stored. -->
+    <!--    It must be a full filepath, beginning with a '/' -->
+    <!-- TotalHistory is the total number of hours of history that will be -->
+    <!--    stored. -->
+    <!-- ImagesPerComposite determines how many images will be compounded -->
+    <!--    into a single image as part of writing to the file. A higher -->
+    <!--    number will save disk space but will result in a lower data -->
+    <!--    granularity. Must not be 0. -->
+    <!-- MaxDiskSpace puts a cap on how much disk space the short term -->
+    <!--    history is allowed to use. If this size is exceeded, the oldest -->
+    <!--    files will be deleted to save space. -->
+    <!-- CompressionDivisions determines how many divisions will be used to -->
+    <!--    concurrently compress or decompress data. Recommend less than -->
+    <!--    or equal to number of processing cores of the management node, -->
+    <!--    must not exceed 32 -->
     <ShortTermHistory>
         <Enable>1</Enable>
-        <StorageLocation>/var/opt/opafm</StorageLocation> <!-- must be absolute path -->
+        <!-- <StorageLocation>/var/opt/opafm/pahistory</StorageLocation> --> <!-- must be absolute path -->
         <TotalHistory>24</TotalHistory> <!-- in hours -->
         <ImagesPerComposite>3</ImagesPerComposite>
         <MaxDiskSpace>1024</MaxDiskSpace> <!-- in MiB -->
@@ -1957,17 +1967,17 @@
     <!-- appropriate level of logging enabled. -->
     <!-- For ESM corresponding Chassis Logging must also be enabled -->
     <!-- and Sm config applies to all managers. -->
-    <!-- <CS_LogMask>0x00000000</CS_LogMask> --> <!-- severities of messages -->
-    <!-- <MAI_LogMask>0x000001ff</MAI_LogMask> --> <!-- severities of messages -->
-    <!-- <CAL_LogMask>0x000001ff</CAL_LogMask> --> <!-- severities of messages -->
-    <!-- <DVR_LogMask>0x000001ff</DVR_LogMask> --> <!-- severities of messages -->
-    <!-- <IF3_LogMask>0x000001ff</IF3_LogMask> --> <!-- severities of messages -->
-    <!-- <SM_LogMask>0x000001ff</SM_LogMask> --> <!-- severities of messages -->
-    <!-- <SA_LogMask>0x000001ff</SA_LogMask> --> <!-- severities of messages -->
-    <!-- <PM_LogMask>0x000001ff</PM_LogMask> --> <!-- severities of messages -->
-    <!-- <PA_LogMask>0x000001ff</PA_LogMask> --> <!-- severities of messages -->
-    <!-- <FE_LogMask>0x000001ff</FE_LogMask> --> <!-- severities of messages -->
-    <!-- <APP_LogMask>0x000001ff</APP_LogMask> --> <!-- severities of messages -->
+    <!-- <CS_LogMask>0x00000000</CS_LogMask> -->
+    <!-- <MAI_LogMask>0x000001ff</MAI_LogMask> -->
+    <!-- <CAL_LogMask>0x000001ff</CAL_LogMask> -->
+    <!-- <DVR_LogMask>0x000001ff</DVR_LogMask> -->
+    <!-- <IF3_LogMask>0x000001ff</IF3_LogMask> -->
+    <!-- <SM_LogMask>0x000001ff</SM_LogMask> -->
+    <!-- <SA_LogMask>0x000001ff</SA_LogMask> -->
+    <!-- <PM_LogMask>0x000001ff</PM_LogMask> -->
+    <!-- <PA_LogMask>0x000001ff</PA_LogMask> -->
+    <!-- <FE_LogMask>0x000001ff</FE_LogMask> -->
+    <!-- <APP_LogMask>0x000001ff</APP_LogMask> -->
   </Pm>
 </Common>
 
@@ -1995,7 +2005,7 @@
     <!-- ESM does not support Start via XML configuration. Use CLI commands -->
     <Start>1</Start>
 
-    <!-- Name, Hfi, Port, and PortGUID are not supported for ESM since they -->
+    <!-- Name, Hfi, Port, and PortGUID are ignored for ESM since they -->
     <!-- are automatically set -->
     <Name>fm0</Name> <!-- also for logging with _sm, _fe, _pm appended -->                                             <!--SM_0_name-->
     <Hfi>1</Hfi> <!-- local HFI to use for FM instance, 1=1st HFI -->                                                  <!--SM_0_device:plus-->
@@ -2014,6 +2024,11 @@
     <!-- Overrides of the Common.Shared, Common.Sm or Fm.Shared parameters -->
     <!-- ESM does not support Start via XML configuration. Use CLI commands -->
     <!-- <Start>1</Start> -->                                                                                          <!--#SM_0_start:dec==1-->
+
+    <PreDefinedTopology>
+        <Enabled>0</Enabled>
+        <TopologyFilename>/etc/sysconfig/opa/topology.0:0.xml</TopologyFilename>
+    </PreDefinedTopology>
   </Sm>
 
   <!-- Instance Specific FE (Fabric Executive Manager) attributes -->
@@ -2029,6 +2044,9 @@
     <!-- Overrides of the Common.Shared, Common.Pm or Fm.Shared parameters -->
     <!-- ESM does not support Start via XML configuration. Use CLI commands -->
     <!-- <Start>1</Start> -->                                                                                          <!--#PM_0_start:dec==1-->
+    <ShortTermHistory>
+        <StorageLocation>/var/opt/opafm/pm0_pahistory</StorageLocation> <!-- must be absolute path -->
+    </ShortTermHistory>
   </Pm>
 </Fm>
 
@@ -2127,6 +2145,11 @@
     <!-- <LIDSpacing>0x0</LIDSpacing> --> <!-- spacing of LIDs to test LFT -->                                         <!--#SM_1_topo_lid_offset:hex-->
     <!-- <SaRmppChecksum>0</SaRmppChecksum> --> <!-- RMPP internal checksum -->                                        <!--#SM_1_sa_rmpp_checksum:dec-->
     <!-- <DynamicPortAlloc>1</DynamicPortAlloc> -->                                                                    <!--#SM_1_dynamic_port_alloc:dec-->
+
+    <PreDefinedTopology>
+      <Enabled>0</Enabled>
+      <TopologyFilename>/etc/sysconfig/opa/topology.1:2.xml</TopologyFilename>
+    </PreDefinedTopology>
   </Sm>
 
   <!-- Instance Specific FE (Fabric Executive Manager) attributes -->
@@ -2150,7 +2173,9 @@
     <!-- <SweepInterval>10</SweepInterval> --> <!-- time between sweeps in seconds -->                                 <!--#PM_1_SweepInterval:dec-->
     <!-- <TotalImages>10</TotalImages> --> <!-- total images for history and freeze -->                                <!--#PM_1_TotalImages:dec-->
     <!-- <FreezeFrameImages>5</FreezeFrameImages> --> <!-- max unique frozen images -->                                <!--#PM_1_FreezeFrameImages:dec-->
-
+    <ShortTermHistory>
+        <StorageLocation>/var/opt/opafm/pm1_pahistory</StorageLocation> <!-- must be absolute path -->
+    </ShortTermHistory>
     <!-- <Debug>0</Debug> -->                                                                                          <!--#PM_1_debug:dec-->
     <!-- <LogLevel>2</LogLevel> -->                                                                                    <!--#PM_1_log_level:dec-->
     <!-- <LogFile></LogFile> -->                                                                                       <!--#PM_1_log_file-->
@@ -2268,6 +2293,11 @@
     <!-- <LIDSpacing>0x0</LIDSpacing> --> <!-- spacing of LIDs to test LFT -->                                         <!--#SM_2_topo_lid_offset:hex-->
     <!-- <SaRmppChecksum>0</SaRmppChecksum> --> <!-- RMPP internal checksum -->                                        <!--#SM_2_sa_rmpp_checksum:dec-->
     <!-- <DynamicPortAlloc>1</DynamicPortAlloc> -->                                                                    <!--#SM_2_dynamic_port_alloc:dec-->
+
+    <PreDefinedTopology>
+      <Enabled>0</Enabled>
+      <TopologyFilename>/etc/sysconfig/opa/topology.2:1.xml</TopologyFilename>
+    </PreDefinedTopology>
   </Sm>
 
   <!-- Instance Specific FE (Fabric Executive Manager) attributes -->
@@ -2291,6 +2321,9 @@
     <!-- <SweepInterval>10</SweepInterval> --> <!-- time between sweeps in seconds -->                                 <!--#PM_2_SweepInterval:dec-->
     <!-- <TotalImages>10</TotalImages> --> <!-- total images for history and freeze -->                                <!--#PM_2_TotalImages:dec-->
     <!-- <FreezeFrameImages>5</FreezeFrameImages> --> <!-- max unique frozen images -->                                <!--#PM_2_FreezeFrameImages:dec-->
+    <ShortTermHistory>
+        <StorageLocation>/var/opt/opafm/pm2_pahistory</StorageLocation> <!-- must be absolute path -->
+    </ShortTermHistory>
     <!-- <Debug>0</Debug> -->                                                                                          <!--#PM_2_debug:dec-->
     <!-- <LogLevel>2</LogLevel> -->                                                                                    <!--#PM_2_log_level:dec-->
     <!-- <LogFile></LogFile> -->                                                                                       <!--#PM_2_log_file-->
@@ -2408,6 +2441,11 @@
     <!-- <LIDSpacing>0x0</LIDSpacing> --> <!-- spacing of LIDs to test LFT -->                                         <!--#SM_3_topo_lid_offset:hex-->
     <!-- <SaRmppChecksum>0</SaRmppChecksum> --> <!-- RMPP internal checksum -->                                        <!--#SM_3_sa_rmpp_checksum:dec-->
     <!-- <DynamicPortAlloc>1</DynamicPortAlloc> -->                                                                    <!--#SM_3_dynamic_port_alloc:dec-->
+
+    <PreDefinedTopology>
+      <Enabled>0</Enabled>
+      <TopologyFilename>/etc/sysconfig/opa/topology.2:2.xml</TopologyFilename>
+    </PreDefinedTopology>
   </Sm>
 
   <!-- Instance Specific FE (Fabric Executive Manager) attributes -->
@@ -2431,6 +2469,9 @@
     <!-- <SweepInterval>10</SweepInterval> --> <!-- time between sweeps in seconds -->                                 <!--#PM_3_SweepInterval:dec-->
     <!-- <TotalImages>10</TotalImages> --> <!-- total images for history and freeze -->                                <!--#PM_3_TotalImages:dec-->
     <!-- <FreezeFrameImages>5</FreezeFrameImages> --> <!-- max unique frozen images -->                                <!--#PM_3_FreezeFrameImages:dec-->
+    <ShortTermHistory>
+        <StorageLocation>/var/opt/opafm/pm3_pahistory</StorageLocation> <!-- must be absolute path -->
+    </ShortTermHistory>
     <!-- <Debug>0</Debug> -->                                                                                          <!--#PM_3_debug:dec-->
     <!-- <LogLevel>2</LogLevel> -->                                                                                    <!--#PM_3_log_level:dec-->
     <!-- <LogFile></LogFile> -->                                                                                       <!--#PM_3_log_file-->

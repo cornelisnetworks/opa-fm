@@ -31,14 +31,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #if defined(CHECK_HEADERS)
 
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #ifndef __IBA_STL_PM_H__
 #warning FIX ME!!! Your includes should use the stl_pm.h header and not the ib_pm.h header for STL builds
-#endif
-#else
-#ifdef __IBA_STL_PM_H__
-#warning FIX ME!!! Your includes should use the ib_pm.h header and not the stl_pm.h header for IB builds
-#endif
 #endif
 
 #endif

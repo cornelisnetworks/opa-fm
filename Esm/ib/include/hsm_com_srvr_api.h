@@ -79,6 +79,7 @@ typedef enum{
 	HSM_COM_CONX_ERR,
 	HSM_COM_SEND_ERR,
 	HSM_COM_NOT_CONNECTED,
+	HSM_COM_LISTEN_ERR,
 	HSM_COM_MAX_ERROR_NUM
 }hsm_com_errno_t;
 

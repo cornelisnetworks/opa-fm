@@ -41,13 +41,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define _IBA_IB_PKT_H_	(1)
 
 #include "iba/public/datatypes.h"
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 #include "iba/stl_types.h"
 #include "iba/stl_helper.h"
-#else
-#include "iba/ib_types.h"
-#include "iba/ib_helper.h"
-#endif
 #include "iba/public/ibyteswap.h"
 #include "iba/public/imemory.h"
 #include "iba/public/ispinlock.h"

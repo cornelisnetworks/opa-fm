@@ -173,7 +173,8 @@ FSTATUS Xml2ParseInputFile(const char *input_file, void *context, IXML_FIELD *fi
 
 void Usage(void)
 {
-	fprintf(stderr, "Usage: opaxmlfilter [-t|-k] [-l] [-i indent] [-s element] [-P param_file] [input_file]\n");
+	fprintf(stderr, "Usage: opaxmlfilter [-t|-k] [-l] [-i indent] [-s element] [-P param_file]\n");
+	fprintf(stderr, "                       [input_file]\n");
 	fprintf(stderr, "       -t - trim leading and trailing whitespace in tag contents\n");
 	fprintf(stderr, "       -k - in tags with purely whitespace which contain newlines,\n");
 	fprintf(stderr, "            keep newlines as is (default is to format as an empty list)\n");

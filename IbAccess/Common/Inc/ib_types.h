@@ -31,14 +31,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #if defined(CHECK_HEADERS)
 
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #ifndef _IBA_STL_TYPES_H_
 #warning FIX ME!!! Your includes should use the stl_types.h header and not the ib_types.h header for STL builds
-#endif
-#else
-#ifdef _IBA_STL_TYPES_H_
-#warning FIX ME!!! Your includes should use the ib_types.h header and not the stl_types.h header for IB builds
-#endif
 #endif
 
 #endif

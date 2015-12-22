@@ -777,117 +777,14 @@ sa_InformInfo_Unsubscribe(Mai_t * maip, STL_INFORM_INFO * iip)
 }
 
 #ifdef __VXWORKS__
-#if !defined(PRODUCT_STL1)
-static char *
-getType(uint16_t type)
-{
-	switch (type) {
-	case NOTICE_TYPE_FATAL:
-		return "Fatal";
-	case NOTICE_TYPE_URGENT:
-		return "Urgent";
-	case NOTICE_TYPE_SECURITY:
-		return "Security";
-	case NOTICE_TYPE_SM:
-		return "Subnet Management";
-	case NOTICE_TYPE_INFO:
-		return "Informational";
-	case TRAP_ALL:
-		return "All Types";
-	default:
-		return NULL;
-	}
-}
-
-static char *
-getNodeType(uint32_t nodeType)
-{
-	switch (nodeType) {
-	case NOTICE_PRODUCERTYPE_CA:
-		return "Fabric Interface";
-	case NOTICE_PRODUCERTYPE_SWITCH:
-		return "Switch";
-	case NOTICE_PRODUCERTYPE_CLASSMANAGER:
-		return "Subnet Management";
-	case NODE_TYPE_ALL:
-		return "All producer types";
-	default:
-		return NULL;
-	}
-}
-
-static void
-dumpSubscriber(SubscriberKeyp subsKeyp, STL_INFORM_INFO_RECORD * iRecordp)
-{
-	STL_INFORM_INFO *iip;
-	char *type;
-
-	iip = &iRecordp->InformInfoData;
-	sysPrintf
-		("******************************************************************\n");
-	sysPrintf("Subscriber LID         = 0x%.4X\n", subsKeyp->lid);
-	sysPrintf("Subscriber PKey        = 0x%.4X\n", subsKeyp->pkey);
-	sysPrintf("Subscriber Start LID   = 0x%.4X\n", subsKeyp->startLid);
-	sysPrintf("Subscriber End LID     = 0x%.4X\n", subsKeyp->endLid);
-	sysPrintf("Subscriber Record ID   = 0x%.8X\n",
-			  (int) iRecordp->RID.Enum);
-	sysPrintf("Subscriber Inform Info =\n");
-	sysPrintf("\tGID                  = 0x%16"__PRI64_PREFIX"X:%016"__PRI64_PREFIX"X\n",
-			  iip->GID.AsReg64s.H, iip->GID.AsReg64s.L);
-	sysPrintf("\tStart LID            = 0x%.8X\n",
-			  (unsigned int) iip->LIDRangeBegin);
-	sysPrintf("\tEnd LID              = 0x%.8X\n",
-			  (unsigned int) iip->LIDRangeEnd);
-	sysPrintf("\tIs Generic?          = %s\n",
-			  iip->IsGeneric ? "Yes" : "No");
-	sysPrintf("\tSubscribe?           = %s\n",
-			  iip->Subscribe ? "Subscribe" : "Unsubscribe");
-	sysPrintf("\tType                 = ");
-	type = getType(iip->Type);
-	if (type) {
-		sysPrintf("%s\n", type);
-	} else {
-		sysPrintf("0x%.4X\n", iip->Type);
-	}
-	if (iip->IsGeneric) {
-		sysPrintf("Trap Number            = 0x%.4X\n",
-				  iip->u.Generic.TrapNumber);
-	} else {
-		sysPrintf("Device ID              = 0x%.6X\n",
-				  iip->u.Vendor.DeviceID);
-	}
-
-	sysPrintf("Queue Pair Number      = 0x%.6X\n",
-			  (int) iip->u.Generic.u1.s.QPNumber);
-	sysPrintf("Response Time Value    = %d\n",
-			  iip->u.Generic.u1.s.RespTimeValue);
-	if (iip->IsGeneric) {
-		type = getNodeType(iip->u.Generic.u2.s.ProducerType);
-		sysPrintf("Producer Type          = ");
-	} else {
-		type = NULL;
-		sysPrintf("Vendor ID              = ");
-	}
-	if (type == NULL) {
-		sysPrintf("0x%.6X\n", (int) iip->u.Generic.u2.s.ProducerType);
-	} else {
-		sysPrintf("%s\n", type);
-	}
-}
-#endif
-
 void
 dumpSubscriptions(void)
 {
 	CS_HashTableItr_t itr;
 	STL_INFORM_INFO_RECORD *val;
 	uint32_t numsubs = 0;
-#if !defined(PRODUCT_STL1)
-	SubscriberKeyp key = NULL;
-#else
 	uint32_t i = 0;
     PrintDest_t dest;
-#endif
 
 	if (topology_passcount < 1) {
 		sysPrintf("\nSM is currently in the %s state, count = %d\n\n",
@@ -904,22 +801,15 @@ dumpSubscriptions(void)
 		sysPrintf
 			("******************************************************************\n");
 		sysPrintf("                  There are %d subscriptions  \n", (int) numsubs);
-#if defined(PRODUCT_STL1)
         PrintDestInitFile(&dest, stdout);
         sysPrintf
             ("******************************************************************\n");
-#endif
 
 		do {
 			val = cs_hashtable_iterator_value(&itr);
 
-#if defined(PRODUCT_STL1)
 			if (i++) PrintSeparator(&dest);
             (void)PrintStlInformInfoRecord(&dest, 0, val);
-#else
-			key = cs_hashtable_iterator_key(&itr);
-			dumpSubscriber(key, val);
-#endif
 		} while (cs_hashtable_iterator_advance(&itr));
 	}
 

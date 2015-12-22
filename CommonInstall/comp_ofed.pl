@@ -98,7 +98,7 @@ my @ofed_components = (
 				"opensm", 			# OFED SM.
 				"ofed_nfsrdma",		# Enabling NFS over RDMA.
 				"ofed_debug", # must be last real component
-				"ibacm", 			# OFED IB communication manager assistant.
+				"ibacm", 			# OFA IB communication manager assistant.
 );
 
 # information about each component in ofed_components
@@ -1040,7 +1040,7 @@ sub init_ofed_rpm_info($)
 		}
 
 		# dump all OFED component info
-		DebugPrint "\nOFED Components:\n";
+		DebugPrint "\nOFA Components:\n";
 		foreach my $comp ( @ofed_components ) {
 			DebugPrint("   $comp: KernelRpms: @{ $ofed_comp_info{$comp}{'KernelRpms'}}\n");
 			DebugPrint("           UserRpms: @{ $ofed_comp_info{$comp}{'UserRpms'}}\n");
@@ -1556,7 +1556,7 @@ sub build_ofed($$$$$$)
 	}
 
 	if (! $force && ! $Default_Prompt && ! ($force_user_srpm && $force_kernel_srpm)) {
-		my $choice = GetChoice("Rebuild OFED SRPMs (a=all, p=prompt per SRPM, n=only as needed?)", "n", ("a", "p", "n"));
+		my $choice = GetChoice("Rebuild OFA SRPMs (a=all, p=prompt per SRPM, n=only as needed?)", "n", ("a", "p", "n"));
 		if ("$choice" eq "a") {
 			$force_srpm=1;
 		} elsif ("$choice" eq "p") {
@@ -1570,7 +1570,7 @@ sub build_ofed($$$$$$)
 	if (! comp_is_uptodate('opa_stack') || $force_srpm  || $force_user_srpm || $force_kernel_srpm) {
 		$force_rpm = 1;
 	} elsif (! $Default_Prompt) {
-		my $choice = GetChoice("Reinstall OFED dependent RPMs (a=all, p=prompt per RPM, n=only as needed?)", "n", ("a", "p", "n"));
+		my $choice = GetChoice("Reinstall OFA dependent RPMs (a=all, p=prompt per RPM, n=only as needed?)", "n", ("a", "p", "n"));
 		if ("$choice" eq "a") {
 			$force_rpm=1;
 		} elsif ("$choice" eq "p") {
@@ -1899,7 +1899,7 @@ sub uninstall_old_ofed_rpms($$$)
 	my @packages = ();
 
 	if ("$message" eq "" ) {
-		$message = "previous OFED";
+		$message = "previous OFA";
 	}
 	NormalPrint "\nUninstalling $message RPMs\n";
 
@@ -2094,8 +2094,8 @@ sub preinstall_ofed($$$)
 		print_separator;
 		my $version=media_version_ofed();
 		chomp $version;
-		printf("Preparing OFED $version $DBG_FREE for Install...\n");
-		LogPrint "Preparing OFED $version $DBG_FREE for Install for $CUR_OS_VER\n";
+		printf("Preparing OFA $version $DBG_FREE for Install...\n");
+		LogPrint "Preparing OFA $version $DBG_FREE for Install for $CUR_OS_VER\n";
 		if (ROOT_is_set()) {
 			# this directory is used during rpm installs, create it as needed
 			if (0 != system("mkdir -p $ROOT/var/tmp")) {
@@ -4215,7 +4215,7 @@ sub install_ofed_srp($$)
 	print_install_banner_ofed_comp('ofed_srp');
 	install_ofed_comp('ofed_srp', $install_list);
 
-	prompt_openib_conf_param('SRPHA_ENABLE', 'OFED SRP High Availability deamon', "n");
+	prompt_openib_conf_param('SRPHA_ENABLE', 'OFA SRP High Availability deamon', "n");
 	need_reboot();
 	$ComponentWasInstalled{'ofed_srp'}=1;
 }

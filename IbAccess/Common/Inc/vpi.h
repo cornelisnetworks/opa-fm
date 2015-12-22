@@ -37,11 +37,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * and Service Level Interface
  */
 
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #include "iba/stl_types.h"
-#else
-#include "iba/ib_types.h"
-#endif
 
 #ifdef __cplusplus
 extern "C" {

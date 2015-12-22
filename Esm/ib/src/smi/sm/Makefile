@@ -127,7 +127,7 @@ else
 CLOCAL = -DLOCAL_MOD_ID=VIEO_SM_MOD_ID $(CPIE)
 endif
 
-LOCAL_INCLUDE_DIRS = $(MOD_DIR)/src/smi/include $(OPENIB_USER_LIB_DIRS)
+LOCAL_INCLUDE_DIRS = $(MOD_DIR)/src/smi/include $(MOD_DIR)/src/pm/pm/ $(TL_DIR)/BSP/bspcommon/h $(TL_DIR)/BSP/bspcommon/ibml/h $(OPENIB_USER_LIB_DIRS)
 LOCALDEPLIBS = ssl crypto
 LOCALLIBS=rt ssl crypto $(OPENIB_USER_LIBS)
 

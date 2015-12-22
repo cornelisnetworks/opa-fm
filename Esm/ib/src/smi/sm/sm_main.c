@@ -85,9 +85,8 @@ extern Status_t pm_main_kill(void);
 extern void fe_main_kill(void);
 
 #ifdef __VXWORKS__
-extern int Ics_IsIn9020(void);
-extern char * Ics_GetIBDesc(void);
-extern int strncasecmp(const char *, const char *, size_t n);
+#include "icsApi.h"
+#include "icsBspUtil.h"
 #else
 extern int sm_conf_server_init(void);
 
@@ -1581,7 +1580,7 @@ Status_t sm_parse_xml_config(void) {
 					}
 					else {
 
-#if defined(VXWORKS_REV) && (VXWORKS_REV >= VXWORKS_REV_6_9)
+#ifdef __VXWORKS__
 						RegexBracketParseInfo_t* regexInfoPtr = &regExprPtr->regexInfo;
 						if (regexInfoPtr->numBracketRangesDefined > 0) {
 							IB_LOG_WARN_FMT(__func__, "DG evaluation ignoring NodeDesc %s: VxWorks does not support bracket syntax in node descriptions", nodeDescPtr->node);

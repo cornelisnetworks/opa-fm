@@ -651,7 +651,6 @@ FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo, ui
 					*isFailedPort = TRUE;
 					continue;
 				}
-				ComputeBuckets(pm, pmPortImageP);
 				if (isGroupAll) {
 					pmGroupImage.NumIntPorts++;
 					UpdateInGroupStats(pm, &pmGroupImage, pmPortImageP); // includes all ports
@@ -677,7 +676,6 @@ FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo, ui
 						} else {
 							pmGroupImage.NumExtPorts++;
 							pmPortImageNeighborP = &pmPortP->Image[imageIndex].neighbor->Image[imageIndex];
-							ComputeBuckets(pm, pmPortImageNeighborP);
 							UpdateExtGroupStats(pm, &pmGroupImage, pmPortImageP, pmPortImageNeighborP);
 						}
 					}
@@ -692,7 +690,6 @@ FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo, ui
 				*isFailedPort = TRUE;
 				continue;
 			}
-			ComputeBuckets(pm, pmPortImageP);
 			if (isGroupAll) {
 				pmGroupImage.NumIntPorts++;
 				UpdateInGroupStats(pm, &pmGroupImage, pmPortImageP); // includes all ports
@@ -718,7 +715,6 @@ FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo, ui
 					} else {
 						pmGroupImage.NumExtPorts++;
 						pmPortImageNeighborP = &pmPortP->Image[imageIndex].neighbor->Image[imageIndex];
-						ComputeBuckets(pm, pmPortImageNeighborP);
 						UpdateExtGroupStats(pm, &pmGroupImage, pmPortImageP, pmPortImageNeighborP);
 					}
 				}
@@ -2622,7 +2618,6 @@ FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, PmVFInfo_t *pmVFInfo, uint64 imageId
 					*isFailedPort = TRUE;
 					continue;
 				}
-				ComputeBuckets(pm, pmPortImageP);
 				for (v=0; v < pmPortImageP->numVFs; v++) {
 					PmVF_t *pmPortVFP = pmPortImageP->vfvlmap[v].pVF;
 					if (pmPortVFP != pmVFP) continue;
@@ -2639,7 +2634,6 @@ FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, PmVFInfo_t *pmVFInfo, uint64 imageId
 				*isFailedPort = TRUE;
 				continue;
 			}
-			ComputeBuckets(pm, pmPortImageP);
 			for (v=0; v < pmPortImageP->numVFs; v++) {
 				PmVF_t *pmPortVFP = pmPortImageP->vfvlmap[v].pVF;
 				if (pmPortVFP != pmVFP) continue;

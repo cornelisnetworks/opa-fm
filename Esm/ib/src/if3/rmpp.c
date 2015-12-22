@@ -1841,12 +1841,6 @@ rmpp_create_filters(rmpp_user_info_t *info, IBhandle_t *fd, IBhandle_t *fh_req_g
    if (!info) {
       IB_LOG_ERROR_FMT(__func__, "user info is NULL!"); 
       return VSTATUS_BAD;
-   } else if (!fh_req_get) {
-      IB_LOG_ERROR_FMT(__func__, "GET request filter handle is NULL!"); 
-      return VSTATUS_BAD;
-   } else if (!fh_req_gettable) {
-      IB_LOG_ERROR_FMT(__func__, "GET TABLE request filter handle is NULL!"); 
-      return VSTATUS_BAD;
    } else if (!fd) {
       IB_LOG_ERROR_FMT(__func__, "IF3 connection handle is NULL!"); 
       return VSTATUS_BAD;
@@ -1856,6 +1850,14 @@ rmpp_create_filters(rmpp_user_info_t *info, IBhandle_t *fd, IBhandle_t *fh_req_g
    if (*fd <= 0)
        IB_LOG_ERROR_FMT(__func__, "invalid handle %d", *fd );
    else {
+      // creation of filters is optional; these filters are not necessary
+      // for threads not interested in receiving MAD requests (i.e., FE) 
+      if (!fh_req_get || !fh_req_gettable) {
+          info->fd = fd; 
+          info->mclass = mclass;
+          return VSTATUS_OK; 
+      }
+
       if ((rc = mai_filter_method(*fd, VFILTER_SHARE, MAI_TYPE_ANY, fh_req_get, mclass, RMPP_CMD_GET)) != VSTATUS_OK) {
          IB_LOG_ERROR_FMT(__func__, "can't create filter for RMPP_CMD_GET for user %d: rc %d", info->usrId, rc);
       }

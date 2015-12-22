@@ -87,7 +87,7 @@ GSALoad(
 	_DBG_ENTER_LVL (_DBG_LVL_MAIN, GSALoad);
 	_DBG_INIT;
 	
-#if !defined(VXWORKS_REV) || (VXWORKS_REV < VXWORKS_REV_6_9)
+#if !defined(VXWORKS)
 	_DBG_PRINT (_DBG_LVL_MAIN,  
 		(" InfiniBand General Services Agent. Built %s %s\n",\
 		__DATE__, __TIME__ ));

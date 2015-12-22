@@ -30,9 +30,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifdef __LINUX__
 #include <stdio.h>
 #include <stdlib.h>
-#if defined(__VXWORKS__) && defined(BSP_XT3)
-#include <sys/param.h>
-#endif
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>

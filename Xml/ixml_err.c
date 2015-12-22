@@ -30,10 +30,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /* this is a separate file because _XOPEN_SOURCE define breaks ib_sm.h */
 
-#if !defined(VXWORKS_REV) || (VXWORKS_REV < VXWORKS_REV_6_9)
-#define _XOPEN_SOURCE 600	// for strerror_r portable version
-#endif
-
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>

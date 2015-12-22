@@ -27,11 +27,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ** END_ICS_COPYRIGHT6   ****************************************/
 
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 #include "stl_sd.h"
-#else
-#include "ib_sd.h"
-#endif
 
 static const char* const SdQueryInputTypeText[] = {
     "InputTypeNoInput",

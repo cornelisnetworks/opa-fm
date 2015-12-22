@@ -31,14 +31,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #if defined(CHECK_HEADERS)
 
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #ifndef __STL_SA_H__
 #warning FIX ME!!! Your includes should use the stl_sa.h header and not the ib_sa_records.h header for STL builds
-#endif
-#else
-#ifdef __STL_SA_H__
-#warning FIX ME!!! Your includes should use the ib_sa_records.h header and not the stl_sa.h header for IB builds
-#endif
 #endif
 
 #endif
@@ -49,15 +43,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* IB Subnet Adminstration records and methods */
 
 #include "iba/public/datatypes.h"				/* Portable datatypes */
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #include "iba/stl_types.h"				/* IBA specific datatypes */
 #include "iba/stl_sm.h"
 #include "iba/stl_helper.h"
-#else
-#include "iba/ib_types.h"				/* IBA specific datatypes */
-#include "iba/ib_sm.h"
-#include "iba/ib_helper.h"
-#endif
 #ifndef IB_STACK_OPENIB
 #include "iba/vpi.h"
 #endif

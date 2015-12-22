@@ -35,13 +35,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 #include "datatypes.h"
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #include "stl_types.h"
 #include "stl_mad.h"
-#else
-#include "ib_types.h"
-#include "ib_mad.h"
-#endif
 #include "vpi.h"
 #include "sma_osd.h"
 #include "ib_debug_osd.h"
@@ -97,7 +92,6 @@ typedef struct _SMA_STORED_SETTINGS {
 // defined globally
 //
 #ifdef VXWORKS
-#if defined(STL_GEN) && (STL_GEN >= 1)
 #define DEFAULT_SMA_SETTINGS {													\
 				(4*1024),					/* MaxCqSize */					  \
 				64, 64,						/* SendQDepth, RecvQDepth */	  \
@@ -107,17 +101,6 @@ typedef struct _SMA_STORED_SETTINGS {
 				63,							/* MinSMPsToPostPerPort */		  \
 				((32*1024)/sizeof(MAD)*32),	/* MaxSMPs = 512 */				  \
 				(32*1024) };					/* MemTableSize */
-#else
-#define DEFAULT_SMA_SETTINGS {													\
-				(4*1024),					/* MaxCqSize */					  \
-				64, 64,						/* SendQDepth, RecvQDepth */	  \
-				25,							/* MaxUsers */					  \
-				((4*1024)/sizeof(MAD)*8),	/* PreAllocSMPsPerDevice = 128 */ \
-				(4*1024)/sizeof(MAD),		/* MinSMPsPerAllocate */		  \
-				63,							/* MinSMPsToPostPerPort */		  \
-				((4*1024)/sizeof(MAD)*32),	/* MaxSMPs = 512 */				  \
-				(4*1024) };					/* MemTableSize */
-#endif
 #else
 #define DEFAULT_SMA_SETTINGS {													\
 				(4*1024)*5,					/* MaxCqSize */					  \
@@ -216,11 +199,7 @@ typedef struct	_SMP_LIST {
 
 typedef struct _SMP_POOL {
 	uint32		NumSmps;			// Total no. of SMPs in list
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 	STL_SMP		*Smp[1];			// An array of SMPs
-#else
-	SMP			*Smp[1];			// An array of SMPs
-#endif
 } SMP_POOL;
 
 typedef struct _RECV_BLOCK {

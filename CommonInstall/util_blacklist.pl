@@ -61,7 +61,7 @@ sub is_blacklisted($)
 		return 0;
 	}
 
-	return ! system("grep $module $file");
+	return ! system("grep -q $module $file");
 }
 
 # add to list to prevent automatic hotplug of driver

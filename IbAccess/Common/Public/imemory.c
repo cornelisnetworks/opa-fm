@@ -388,7 +388,7 @@ CreateMemTracker( void )
 
 	// Pre-initialize all objects in the memory tracker object.
 	QListInitState( &tmp->AllocList );
-	SpinLockInitState( &pMemTracker->Lock );
+	SpinLockInitState( &tmp->Lock );
 	QListInitState( &tmp->FreeHrdList );
 
 	// Initialize the list.
@@ -508,11 +508,7 @@ MemoryTrackerShow(
 		IN char *suffix)
 {
 #if defined(VXWORKS)
-#if defined(VXWORKS_REV) && (VXWORKS_REV >= VXWORKS_REV_6_9)
 	if ((int)pHdr->LineNum >= 0x00408000) {
-#else
-	if ((int)pHdr->LineNum < 0) {
-#endif
 		MsgOut( "%s%p(%u) %s ra=%p tick=%u%s\n", prefix,
 				pHdr->ListItem.pObject, pHdr->Bytes, pHdr->trk->filename,
 				(void *)pHdr->LineNum, pHdr->tick, suffix );

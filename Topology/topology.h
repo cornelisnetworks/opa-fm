@@ -68,8 +68,13 @@ struct NodeData_s;
 struct SystemData_s;
 struct oib_port;
 
-/// Selection indicies for SCVL* tables
+// Selection indicies for SCVL* tables
 typedef enum { Enum_SCVLt, Enum_SCVLnt, Enum_SCVLr } ScvlEnum_t;
+
+// selection of PortState for  FindPortState, includes all of IB_PORT_STATE
+// plus these additional special searches
+#define PORT_STATE_SEARCH_NOTACTIVE (IB_PORT_STATE_MAX+1)	// != active
+#define PORT_STATE_SEARCH_INITARMED (IB_PORT_STATE_MAX+2)	// init or armed
 
 // QOS information for a Port in the fabric
 typedef struct QOSData_s {
@@ -716,7 +721,7 @@ extern IocData * FindIocGuid(FabricData_t* fabricp, EUI64 guid);
 #endif
 extern SystemData * FindSystemGuid(FabricData_t* fabricp, EUI64 guid);
 extern FSTATUS FindRate(FabricData_t* fabricp, uint32 rate, Point *pPoint);
-extern FSTATUS FindPortState(FabricData_t* fabricp, IB_PORT_STATE state, Point *pPoint);
+extern FSTATUS FindPortState(FabricData_t* fabricp, uint8 state, Point *pPoint);
 extern FSTATUS FindPortPhysState(FabricData_t* fabricp, IB_PORT_PHYS_STATE state, Point *pPoint);
 extern FSTATUS FindCableLabelPat(FabricData_t* fabricp, const char* pattern, Point *pPoint);
 extern FSTATUS FindCableLenPat(FabricData_t* fabricp, const char* pattern, Point *pPoint);

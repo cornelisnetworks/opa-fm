@@ -1858,6 +1858,7 @@ static IXML_FIELD PortDataFields[] = {
 	{ tag:"LID", format:'H', IXML_FIELD_INFO(PortData, PortInfo.LID) },
 	{ tag:"SMLID", format:'H', IXML_FIELD_INFO(PortData, PortInfo.MasterSMLID) },
 	{ tag:"CapabilityMask", format:'H', IXML_FIELD_INFO(PortData, PortInfo.CapabilityMask.AsReg32) },
+	{ tag:"CapabilityMask3", format:'H', IXML_FIELD_INFO(PortData, PortInfo.CapabilityMask3.AsReg16) },
 	{ tag:"DiagCode", format:'H', IXML_FIELD_INFO(PortData, PortInfo.DiagCode.AsReg16) },
 	{ tag:"Lease", format:'U', IXML_FIELD_INFO(PortData, PortInfo.M_KeyLeasePeriod) },
 	{ tag:"PortState", format:'k', format_func: PortDataXmlOutputPortState, end_func:IXmlParserEndNoop }, // output only bitfield
@@ -2806,6 +2807,8 @@ static void *SwitchDataXmlParserStartPortGroupFDBValue(IXmlParserState_t *state,
 	}
 	// we depend on LinearFDBSize preceeding this tag in XML
 	// PortGroupFDB is always the same length as LinearFDB
+	// EXCEPTION: For early STL1 HW PortGroupFDB is capped at 8k
+
 	if (FSUCCESS != StringToUint32(&lidFDB, attr[1], NULL, 0, TRUE)
 		|| lidFDB >= switchp->LinearFDBSize) {
 		IXmlParserPrintError(state, "Invalid LID attribute for PortGroupFDB.Value  LID: %s", attr[1]);
@@ -2825,6 +2828,7 @@ static void SwitchDataXmlParserEndPortGroupFDBValue(IXmlParserState_t *state, co
 	}
 	
 	//PortGroupFDB is always the same length as LinearFDB
+	// EXCEPTION: For early STL1 HW PortGroupFDB is capped at 8k
 	if (!switchp || !switchp->PortGroupFDB || !pLID || !content ||
 		!len || (*pLID >= switchp->LinearFDBSize)) {
 		IXmlParserPrintError(state, "PortGroupFDB improperly allocated");
@@ -2847,13 +2851,16 @@ IXML_FIELD PortGroupFDBFields[] = {
 static void SwitchDataOutputPortGroupFDB(IXmlOutputState_t *state, const char *tag, void *data) 
 {
 	unsigned int ix_lid;
+	unsigned int PortGroupFDBSize;
 	SwitchData *switchp = (SwitchData *)data;
 	PORT *pPortGroup = (PORT *)switchp->PortGroupFDB;
 
 	IXmlOutputStartTag(state, tag);
 
 	//PortGroupFDB is always the same length as LinearFDB
-	for (ix_lid = 0; ix_lid < switchp->LinearFDBSize;
+	// EXCEPTION: For early STL1 HW PortGroupFDB is capped at 8k
+	PortGroupFDBSize = MIN(switchp->LinearFDBSize, DEFAULT_MAX_PGFT_LID+1);
+	for (ix_lid = 0; ix_lid < PortGroupFDBSize;
 		  pPortGroup++, ix_lid++) {
 		if (*pPortGroup == 0xFF) {
 			continue;
@@ -2869,6 +2876,7 @@ static void SwitchDataOutputPortGroupFDB(IXmlOutputState_t *state, const char *t
 static void *SwitchDataXmlParserStartPortGroupFDB(IXmlParserState_t *state, void *parent, const char **attr)
 {
 	SwitchData *switchp = (SwitchData *)parent;
+	unsigned int PortGroupFDBSize;
 	STL_PORT_GROUP_FORWARDING_TABLE *pPortGroup;
 
 	if (!switchp || switchp->PortGroupFDB) {
@@ -2877,13 +2885,15 @@ static void *SwitchDataXmlParserStartPortGroupFDB(IXmlParserState_t *state, void
 	}
 
 	//PortGroupFDB is always the same length as LinearFDB
+	// EXCEPTION: For early STL1 HW PortGroupFDB is capped at 8k
+	PortGroupFDBSize = MIN(switchp->LinearFDBSize, DEFAULT_MAX_PGFT_LID+1);
 	if ( !(pPortGroup = (STL_PORT_GROUP_FORWARDING_TABLE *)MemoryAllocate2AndClear(
-	   ROUNDUP(switchp->LinearFDBSize, MAX_LFT_ELEMENTS_BLOCK), IBA_MEM_FLAG_PREMPTABLE, MYTAG))) {
+	   ROUNDUP(PortGroupFDBSize, MAX_LFT_ELEMENTS_BLOCK), IBA_MEM_FLAG_PREMPTABLE, MYTAG))) {
 		IXmlParserPrintError(state, "Unable to allocate memory");
 		return NULL;
 	}
 
-	memset(pPortGroup, 255, ROUNDUP(switchp->LinearFDBSize, MAX_LFT_ELEMENTS_BLOCK));
+	memset(pPortGroup, 255, ROUNDUP(PortGroupFDBSize, MAX_LFT_ELEMENTS_BLOCK));
 	switchp->PortGroupFDB = pPortGroup;
 
 	return (switchp);

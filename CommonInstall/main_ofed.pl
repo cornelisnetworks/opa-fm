@@ -129,7 +129,7 @@ $WrapperComponent = "opa_config_ofed";
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
-	"opa_stack" =>	{ Name => "OFED OPA Stack",
+	"opa_stack" =>	{ Name => "OFA OPA Stack",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "updates",
 					  PreReq => "", CoReq => "",
@@ -178,7 +178,7 @@ $WrapperComponent = "opa_config_ofed";
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
-	"opa_stack_dev" => { Name => "OFED IB Development",
+	"opa_stack_dev" => { Name => "OFA OPA Development",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "",
 					  PreReq => " opa_stack ", CoReq => "",
@@ -196,7 +196,7 @@ $WrapperComponent = "opa_config_ofed";
 					  StartPreReq => " opa_stack ",
 					  StartComponents => [ "ofed_vnic" ],
 					},
-	"ofed_ipoib" =>	{ Name => "OFED IP over IB",
+	"ofed_ipoib" =>	{ Name => "OFA IP over IB",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "updates",
 					  PreReq => " opa_stack ", CoReq => "",
@@ -205,7 +205,7 @@ $WrapperComponent = "opa_config_ofed";
 					  StartPreReq => " opa_stack ",
 					  StartComponents => [ "ofed_ipoib" ],
 					},
-	"ofed_ib_bonding" =>	{ Name => "OFED IB Bonding",
+	"ofed_ib_bonding" =>	{ Name => "OFA IB Bonding",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "",
 					  PreReq => " opa_stack ofed_ipoib ", CoReq => "",
@@ -332,7 +332,7 @@ $WrapperComponent = "opa_config_ofed";
 					  StartPreReq => " opa_stack ",
 					  StartComponents => [ ],
 					},
-	"ofed_debug" =>	{ Name => "OFED Debug Info",
+	"ofed_debug" =>	{ Name => "OFA Debug Info",
 					  DefaultInstall => $State_DoNotInstall,
 					  SrcDir => ".", DriverSubdir => "",
 					  PreReq => " opa_stack ", CoReq => "",
@@ -341,7 +341,7 @@ $WrapperComponent = "opa_config_ofed";
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
-   "ibacm" =>		{ Name => "OFED IBACM",
+   "ibacm" =>		{ Name => "OFA IBACM",
 					  DefaultInstall => $State_Install,
 					  SrcDir => ".", DriverSubdir => "",
 					  PreReq => " opa_stack ", CoReq => "",
@@ -558,6 +558,9 @@ sub translate_comp
 {
 	my($arg)=$_[0];
 	if ("$arg" eq "ibdev")			{ return ( "opa_stack_dev" );
+    } elsif ("$arg" eq "opa")       { return ( "oftools",
+		"mvapich2_gcc_hfi", "openmpi_gcc_hfi", "mvapich2_intel_hfi",
+		"openmpi_intel_hfi", "mvapich2_pgi_hfi", "openmpi_pgi_hfi" );
 	} elsif ("$arg" eq "ifibre")	{ return ( "ofed_srp" );
 	} elsif ("$arg" eq "ipoib")		{ return ( "ofed_ipoib", "ib_bonding_marker" );
 	} elsif ("$arg" eq "mpi")		{ return ( "mvapich2", "openmpi", 
@@ -1000,6 +1003,8 @@ foreach my $INSTALL_CHOICE ( @INSTALL_CHOICES )
 		} else {
 			if ($exit_code == 0) {
 				print "Done Installing OPA Software.\n"
+			} else {
+				print "Failed to install all OPA software.\n"
 			}
 		}
 	} 
@@ -1015,6 +1020,8 @@ foreach my $INSTALL_CHOICE ( @INSTALL_CHOICES )
 		} else {
 			if ($exit_code == 0) {
 				print "Done Uninstalling OPA Software.\n"
+			} else {
+				print "Failed to uninstall all OPA Software.\n"
 			}
 		}
 	}

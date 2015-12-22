@@ -198,6 +198,8 @@ sub install_udev_permissions($)
 {
 	my ($srcdir) = shift(); # source directory.
 	my $SourceFile;
+	my $Context;
+	my $Cnt;
 
 	if ($Default_UserQueries == 0) {
 		$Default_UserQueries = GetYesNoWithMemory("UserQueries",0,"$udev_perm_string", "y");
@@ -208,10 +210,20 @@ sub install_udev_permissions($)
 			$SourceFile="$srcdir/udev.rules";
 			print "Updating udev rules.\n";
 			#removing older file
-			copy_file("$SourceFile",
+			$Context=`ls -Z /etc/udev/ |grep rules.d |awk '{print \$(NF-1)}'`;
+			chomp($Context);
+			$Cnt=`echo $Context | cut -d ':' -f 1- --output-delimiter=' ' |awk '{print NF}'`;
+			if ($Cnt > 1) {
+				copy_file_context("$SourceFile",
+					  "$UDEV_RULES_DIR/$UDEV_RULES_FILE",
+					  "root", "root",
+					  "0644", "$Context");
+			} else {
+				copy_file("$SourceFile",
 					  "$UDEV_RULES_DIR/$UDEV_RULES_FILE",
 					  "root", "root",
 					  "0644");
+			}
 		}
 	} elsif ( -e "$UDEV_RULES_DIR/$UDEV_RULES_FILE" ) {
 		remove_files("$UDEV_RULES_DIR/$UDEV_RULES_FILE");
@@ -260,4 +272,55 @@ END {
 	}
 }
 		
+}
+
+my $OPA_MODPROBE_DIR = "/etc/modprobe.d";
+
+sub enable_mod_force_load_file($$)
+{
+	my ($module) = shift(); # module name
+	my ($conf_file) = shift(); # modprobe configuration file
+	my ($retval);
+
+	# Create the configuration file if not existing
+	if (! -e "$conf_file" ) {
+		system ("touch $conf_file");
+		system ("echo 'install $module modprobe -i -f $module \$CMDLINE_OPTS' > $conf_file");
+		return;
+	}
+	# Check if we have an entry for this module in the config file
+	$retval=`grep -e "install $module" -e "modprobe -i $module" $conf_file  2>/dev/null | grep -v "#"`;
+	if ("$retval" eq "") {
+		system ("echo 'install $module modprobe -i -f $module \$CMDLINE_OPTS' >> $conf_file");
+	} else {
+		system("sed -i 's/modprobe -i $module/modprobe -i -f $module/g' $conf_file");
+	}
+}
+
+sub enable_mod_force_load($)
+{
+	my ($module) = shift(); # module name
+	my ($file);
+	my ($retval);
+	my ($found) = 0;
+	my (@conf_files) = ( `ls $OPA_MODPROBE_DIR` );
+
+	# Check if there is any config file that contains install entry for the module
+	# if yes, update it; otherwise, create a new conf file.
+	chomp(@conf_files);
+	foreach $file (@conf_files) {
+		$retval=`grep "install $module" $OPA_MODPROBE_DIR/$file 2>/dev/null | grep -v "#"`;
+		if ("$retval" ne "") {
+			$found = 1;
+			$retval=`echo "$retval" | grep "modprobe -i $module"`;
+			if ("$retval" ne "") {
+				enable_mod_force_load_file($module, "$OPA_MODPROBE_DIR/$file");
+			}
+		}
+	}
+
+	if (!$found) {
+		enable_mod_force_load_file($module, 
+			"$OPA_MODPROBE_DIR/$module.conf");
+	}
 }

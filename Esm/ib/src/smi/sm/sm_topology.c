@@ -1106,7 +1106,7 @@ topology_main(uint32_t argc, uint8_t ** argv)
 				if ((oldSmActiveCount > 1) && (newSmActiveCount == 1))
 					smCsmLogMessage(CSM_SEV_WARNING, CSM_COND_REDUNDANCY_LOST, getMyCsmNodeId(), NULL, "Only one SM remains in fabric");
 				else if ((topology_passcount == 1) && (newSmActiveCount == 1))
-					smCsmLogMessage(CSM_SEV_WARNING, CSM_COND_REDUNDANCY_LOST, getMyCsmNodeId(), NULL, "SM redundancy not available");
+					IB_LOG_INFINI_INFO_FMT(__func__, "SM redundancy not available");
 				else if ((oldSmActiveCount == 1) && (newSmActiveCount > 1))
 					smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_REDUNDANCY_RESTORED, getMyCsmNodeId(), NULL, "%d SM's now online in fabric", newSmActiveCount);
 

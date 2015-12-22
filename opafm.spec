@@ -80,7 +80,7 @@ fi
 
 %install
 install -D -m 644 stage.rpm/opafm.service $RPM_BUILD_ROOT/usr/lib/systemd/system/opafm.service
-install -D -m 755 stage.rpm/opafmctrl.sh $RPM_BUILD_ROOT/opt/opafm/bin/opafmctrl.sh
+install -D -m 755 stage.rpm/opafmctrl $RPM_BUILD_ROOT/opt/opafm/bin/opafmctrl
 install -D -m 755 stage.rpm/opafmd $RPM_BUILD_ROOT/opt/opafm/bin/opafmd
 
 %if 0%{?rhel} && 0%{?rhel} < 7

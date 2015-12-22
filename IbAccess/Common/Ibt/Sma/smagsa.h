@@ -35,13 +35,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 #include "datatypes.h"
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #include "stl_types.h"
 #include "stl_mad.h"
-#else
-#include "ib_types.h"
-#include "ib_mad.h"
-#endif
 #include "vpi.h"
 #include "ieventthread.h"
 

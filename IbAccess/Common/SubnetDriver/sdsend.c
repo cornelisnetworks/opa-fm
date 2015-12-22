@@ -32,13 +32,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <imemory.h>
 #include <ilist.h>
 #include <ievent.h>
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 #include <stl_sd.h>
 #include <stl_helper.h>
-#else
-#include <ib_sd.h>
-#include <ib_helper.h>
-#endif
 #include <sdi.h>
 
 // only add to list if FirstAttempt
@@ -162,9 +157,7 @@ SendQueryElement(
 	MemoryCopy( GsiDgrmGetSendMad(pIbtDgrmElement),
 		pQueryElement->u.pGmp, pQueryElement->TotalBytesInGmp );
 
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 	pIbtDgrmElement->Element.pBufferList->ByteCount = pQueryElement->TotalBytesInGmp;
-#endif
 
 	if(pCaPort->SdSMAddressValid == TRUE) //Send only if the we have atleast one port active
 	{

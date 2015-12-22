@@ -32,11 +32,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef __IBA_IB_IBT_H__
 #define __IBA_IB_IBT_H__	(1)
 
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #include "iba/stl_types.h"
-#else
-#include "iba/ib_types.h"
-#endif
 
 #ifdef __cplusplus
 extern "C" {

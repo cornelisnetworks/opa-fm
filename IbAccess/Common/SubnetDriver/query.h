@@ -29,13 +29,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* [ICS VERSION STRING: unknown] */
 
 
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #include <stl_sd.h>
 #include <stl_types.h>
-#else
-#include <ib_sd.h>
-#include <ib_types.h>
-#endif
 #include <dbg.h>
 #include <ilist.h>
 #include <ispinlock.h>

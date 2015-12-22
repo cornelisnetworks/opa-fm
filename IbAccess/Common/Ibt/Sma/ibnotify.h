@@ -33,11 +33,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define __IBA_IB_IBNOTIFY_H__	(1)
 
 #include "datatypes.h"
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #include "stl_types.h"
-#else
-#include "ib_types.h"
-#endif
 #include "ib_debug.h"
 #include "idebug_osd.h"
 #include "statustext.h"

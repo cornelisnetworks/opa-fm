@@ -31,11 +31,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ilist.h>
 #include <ievent.h>
 #include <ispinlock.h>
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 #include <stl_sd.h>
-#else
-#include <ib_sd.h>
-#endif
 #include <sdi.h>
 #include <ib_generalServices.h>
 #include <itimer.h>
@@ -160,11 +156,7 @@ IssueTrapSubscribe(TRAP_REFERENCE        *pTrapReference)
 		pFabOp->Value.InformInfo.u.Generic.TrapNumber = pTrapReference->TrapNumber;
 		pFabOp->Value.InformInfo.u.Generic.u2.s.QPNumber = GSI_QP;
 		pFabOp->Value.InformInfo.u.Generic.u2.s.RespTimeValue = 18;
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 		pFabOp->Value.InformInfo.u.Generic.u.s.ProducerType = STL_NODE_FI;
-#else
-		pFabOp->Value.InformInfo.u.Generic.u.s.ProducerType = IBA_NODE_CHANNEL_ADAPTER;
-#endif
 
 		Status = iba_sd_port_fabric_operation( SdClientHandle, pTrapReference->PortGuid, pFabOp, ProcessTrapSubscribeResponse, NULL, pTrapReference );
 		if ((Status != FPENDING) && (Status != FSUCCESS))
@@ -213,11 +205,7 @@ void IssueTrapUnSubscribe(TRAP_REFERENCE *pTrapReference)
 		pFabOp->Value.InformInfo.u.Generic.TrapNumber = pTrapReference->TrapNumber;
 		pFabOp->Value.InformInfo.u.Generic.u2.s.QPNumber = GSI_QP;
 		pFabOp->Value.InformInfo.u.Generic.u2.s.RespTimeValue = 18;
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 		pFabOp->Value.InformInfo.u.Generic.u.s.ProducerType = STL_NODE_FI;
-#else
-		pFabOp->Value.InformInfo.u.Generic.u.s.ProducerType = IBA_NODE_CHANNEL_ADAPTER;
-#endif
 
 		Status = iba_sd_port_fabric_operation( SdClientHandle, pTrapReference->PortGuid, pFabOp, ProcessTrapSubscribeResponse, NULL, pTrapReference );
 		if ((Status != FPENDING) && (Status != FSUCCESS))

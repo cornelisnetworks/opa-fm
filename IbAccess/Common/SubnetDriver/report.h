@@ -30,9 +30,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
   \file report.h
 
-  $Author: mwheinz $
-  $Revision: 1.4 $
-  $Date: 2015/01/22 18:07:55 $
+  $Author: gsleshne $
+  $Revision: 1.5 $
+  $Date: 2015/11/18 15:14:11 $
 
   \brief Routines to handle reports for trap events
 */
@@ -40,11 +40,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef _REPORT_H_
 #define _REPORT_H_
 
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 #include <stl_types.h>
-#else
-#include <ib_types.h>
-#endif
 #include <ib_gsi.h>
 
 #ifdef __cplusplus

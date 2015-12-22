@@ -34,11 +34,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ilist.h>
 #include <ievent.h>
 #include <ispinlock.h>
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 #include <stl_sd.h>
-#else
-#include <ib_sd.h>
-#endif
 #include <sdi.h>
 #include <ib_generalServices.h>
 #include <itimer.h>

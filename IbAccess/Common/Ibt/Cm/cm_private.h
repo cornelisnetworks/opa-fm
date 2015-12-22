@@ -54,17 +54,9 @@ extern "C" {
 #include "ibyteswap.h"
 #include "iquickmap.h"
 #include "ilist.h"
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
-/* STL header files */
 #include "stl_types.h"
 #include "stl_mad.h"
 #include "stl_helper.h"
-#else
-/* IB header files */
-#include "ib_types.h"
-#include "ib_mad.h"
-#include "ib_helper.h"
-#endif
 #include "ib_gsi.h"
 #include "ibt.h"
 #include "cm_common.h"

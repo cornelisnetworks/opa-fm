@@ -879,51 +879,14 @@ sa_ServiceRecord_Age(uint32_t *records) {
 }
 
 #ifdef __VXWORKS__
-#if !defined(PRODUCT_STL1)
-static void dumpService(OpaServiceRecordp osrp)
-{
-	STL_SERVICE_RECORD *srp=&osrp->serviceRecord;
-
-	sysPrintf("*********************************************************\n");
-	sysPrintf("Service ID          = ");
-	dumpGuid(srp->RID.ServiceID);
-	sysPrintf("\n");
-	sysPrintf("Service GID         = ");
-	dumpGid(srp->RID.ServiceGID);
-	sysPrintf("\n");
-	sysPrintf("Service P_Key       = 0x%.4X\n", srp->RID.ServiceP_Key);
-	if (srp->ServiceLease == 0xFFFFFFFF) {
-		sysPrintf("Service Lease       = infinite\n");
-	} else {
-		sysPrintf("Service Lease       = %d seconds\n", (int)srp->ServiceLease);
-	}
-	sysPrintf("Service Key         = \n");
-	dumpBytes(srp->ServiceKey, SERVICE_RECORD_KEY_COUNT);
-	sysPrintf("Service Name        = %s\n", srp->ServiceName);
-	sysPrintf("Service Data 8      = \n");
-	dumpBytes(srp->ServiceData8, sizeof(srp->ServiceData8));
-	sysPrintf("Service Data 16     = \n");
-	dumpHWords(srp->ServiceData16, sizeof(srp->ServiceData16) / sizeof(srp->ServiceData16[0]));
-	sysPrintf("Service Data 32     = \n");
-	dumpWords((uint32_t *)srp->ServiceData32, sizeof(srp->ServiceData32) / sizeof(srp->ServiceData32[0]));
-	sysPrintf("Service Data 64     = \n");
-	dumpGuids(srp->ServiceData64, sizeof(srp->ServiceData64) / sizeof(srp->ServiceData64[0]));
-	sysPrintf("Service Expire Time = ");
-	dumpGuid(osrp->expireTime);
-	sysPrintf("\n");
-}
-#endif
-
 
 void dumpServices(void)
 {
 	OpaServiceRecordp  osrp;
     CS_HashTableItr_t   itr;
     uint32_t            numservrecs=0;
-#if defined(PRODUCT_STL1)
 	uint32_t i = 0;
     PrintDest_t dest;
-#endif
 
 	if (topology_passcount < 1)
 	{
@@ -940,19 +903,13 @@ void dumpServices(void)
 		cs_hashtable_iterator(saServiceRecords.serviceRecMap, &itr);
         //sysPrintf("******************************************************************\n");
         //sysPrintf("                  There are %d Service Records  \n", (int)numservrecs);
-#if defined(PRODUCT_STL1)
         PrintDestInitFile(&dest, stdout);
         //sysPrintf("******************************************************************\n");
-#endif
 
         do {
             osrp = cs_hashtable_iterator_value(&itr);
-#if defined(PRODUCT_STL1)
 			if (i++) PrintSeparator(&dest);
             (void)PrintStlServiceRecord(&dest, 0, &osrp->serviceRecord);
-#else
-            (void)dumpService(osrp);
-#endif
         } while (cs_hashtable_iterator_advance(&itr));
     }
     //sysPrintf("******************************************************************\n");

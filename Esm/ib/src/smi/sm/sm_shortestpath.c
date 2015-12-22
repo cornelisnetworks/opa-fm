@@ -569,17 +569,26 @@ _setup_pgs(struct _Topology *topop, struct _Node * srcSw, const struct _Node * d
 
 		//PGFT is independent of LFT with LMC, though it's supposed to re-use the LMC data
 		PORT * pgft = sm_Node_get_pgft_wr(srcSw);
+		uint32_t pgftLen = sm_Node_get_pgft_size(srcSw);
+
 		if (!pgft) {
 			IB_LOG_ERROR_FMT(__func__, "Failed to acquire memory for PGFT");
 			return VSTATUS_BAD;
 		}
 
+		// Add every lid of dstSw to srSw's pgft.
+		// (assuming the lid is < the pgftLen)
 		STL_LID_32 portLid = 0;
 		for_all_port_lids(&dstSw->port[0], portLid) {
+			if (portLid < pgftLen) {
 			srcSw->arChange |= (pgft[portLid] != pgid);
 			pgft[portLid] = pgid;
 		}
+		}
 
+		// iterate through the end nodes attached to dstSw,
+		// adding their LIDs to the pgft.
+		// (assuming the lid is < the pgftLen)
 		Port_t * edgePort = NULL;
 		for_all_physical_ports(dstSw, edgePort) {
 			if (!sm_valid_port(edgePort) || edgePort->state <= IB_PORT_DOWN)
@@ -593,10 +602,12 @@ _setup_pgs(struct _Topology *topop, struct _Node * srcSw, const struct _Node * d
 				continue;
 
 			for_all_port_lids(endPort, portLid) {
+				if (portLid < pgftLen) {
 				srcSw->arChange |= (pgft[portLid] != pgid);
 				pgft[portLid] = pgid;
 			}
 		}
+	}
 	}
 
 	return VSTATUS_OK;

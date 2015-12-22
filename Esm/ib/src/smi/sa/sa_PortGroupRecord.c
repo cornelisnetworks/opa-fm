@@ -370,14 +370,14 @@ GetPortGroupFwdRecord(Mai_t *maip, uint32_t *records)
 
 		//@todo: modify to respond with all ff's for PGFT records when AR is supported and enabled but hasn't been set on this switch in this topology
         if (nodep->pgft==0 || sm_Node_get_pgft_size(nodep) == 0) {
-            maip->base.status = MAD_STATUS_SA_REQ_INVALID;
-            IB_LOG_ERROR_FMT("GetPortGroupFwdRecord","PG FDB uninitialized. LID:%d",(int)port0Lid);
-            goto done; // Need to unlock topology db.
+			// skip this node.
+            continue;
         }
 
+		// blocks range from 0 to # blocks - 1.
         endBlock = ROUNDUP(sm_Node_get_pgft_size(nodep),
 					STL_PGFDB_NUM_ENTRIES_PER_BLOCK)/
-					STL_PGFDB_NUM_ENTRIES_PER_BLOCK; 
+					STL_PGFDB_NUM_ENTRIES_PER_BLOCK - 1; 
         blkIdx = checkBlock ? blockNum : 0;
         if (blkIdx>endBlock) {
             maip->base.status = MAD_STATUS_SA_REQ_INVALID;

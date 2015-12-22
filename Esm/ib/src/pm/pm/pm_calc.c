@@ -38,6 +38,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <iba/stl_helper.h>
 
 extern Pm_t g_pmSweepData;
+extern CounterSelectMask_t LinkDownIgnoreMask;
 
 static void ClearUtilStats(PmUtilStats_t *utilp)
 {
@@ -308,7 +309,7 @@ void ComputeBuckets(Pm_t *pm, PmPortImage_t *portImage)
 #undef COMPUTE_ERR_BUCKET
 }
 
-static void PmPrintExceededPort(PmPort_t *pmportp, uint32 index,
+void PmPrintExceededPort(PmPort_t *pmportp, uint32 index,
 				const char *statistic, uint32 threshold, uint32 value)
 {
 	PmPort_t *pmportp2 = pmportp->Image[index].neighbor;
@@ -336,7 +337,7 @@ static void PmPrintExceededPort(PmPort_t *pmportp, uint32 index,
 					pmportp->portNum);
 	}
 }
-static void PmPrintExceededPortDetailsIntegrity(PmPortImage_t *portImage, PmPortImage_t *portImage2)
+void PmPrintExceededPortDetailsIntegrity(PmPortImage_t *portImage, PmPortImage_t *portImage2)
 {
 	IB_LOG_WARN_FMT(__func__, "LocalLinkIntegrityErrors=%"PRIu64", PortRcvErrors=%"PRIu64", LinkErrorRecovery=%u, ",
             portImage->StlPortCounters.LocalLinkIntegrityErrors,
@@ -356,7 +357,7 @@ static void PmPrintExceededPortDetailsIntegrity(PmPortImage_t *portImage, PmPort
             portImage2 ? portImage2->StlPortCounters.ExcessiveBufferOverruns : 0
             );
 }
-static void PmPrintExceededPortDetailsCongestion(PmPortImage_t *portImage, PmPortImage_t *portImage2)
+void PmPrintExceededPortDetailsCongestion(PmPortImage_t *portImage, PmPortImage_t *portImage2)
 {
 	IB_LOG_WARN_FMT(__func__, "XmitWait=%"PRIu64", CongDiscards=%"PRIu64", neighbor RcvFECN=%"PRIu64", ",
 					portImage->StlPortCounters.PortXmitWait,
@@ -369,7 +370,7 @@ static void PmPrintExceededPortDetailsCongestion(PmPortImage_t *portImage, PmPor
 					portImage->StlPortCounters.PortMarkFECN
 					);
 }
-static void PmPrintExceededPortDetailsSmaCongestion(PmPortImage_t *portImage, PmPortImage_t *portImage2)
+void PmPrintExceededPortDetailsSmaCongestion(PmPortImage_t *portImage, PmPortImage_t *portImage2)
 {
 	IB_LOG_WARN_FMT(__func__, "VLXmitWait[15]=%"PRIu64", VLCongDiscards[15]=%"PRIu64", neighbor VLRcvFECN[15]=%"PRIu64", ",
 					portImage->StlVLPortCounters[15].PortVLXmitWait,
@@ -382,7 +383,7 @@ static void PmPrintExceededPortDetailsSmaCongestion(PmPortImage_t *portImage, Pm
 				   portImage->StlVLPortCounters[15].PortVLMarkFECN
 				   );
 }
-static void PmPrintExceededPortDetailsBubble(PmPortImage_t *portImage, PmPortImage_t *portImage2)
+void PmPrintExceededPortDetailsBubble(PmPortImage_t *portImage, PmPortImage_t *portImage2)
 {
 	IB_LOG_WARN_FMT(__func__, "XmitWastedBW=%"PRIu64", XmitWaitData=%"PRIu64", neighbor RcvBubble=%"PRIu64" ",
 					portImage->StlPortCounters.PortXmitWastedBW,
@@ -390,14 +391,14 @@ static void PmPrintExceededPortDetailsBubble(PmPortImage_t *portImage, PmPortIma
 					portImage2 ? portImage2->StlPortCounters.PortRcvBubble : 0
 				   );
 }
-static void PmPrintExceededPortDetailsSecurity(PmPortImage_t *portImage, PmPortImage_t *portImage2)
+void PmPrintExceededPortDetailsSecurity(PmPortImage_t *portImage, PmPortImage_t *portImage2)
 {
 	IB_LOG_WARN_FMT(__func__, "XmitConstraintErrors=%"PRIu64", neighbor RcvConstraintErrors=%"PRIu64" ",
 					portImage->StlPortCounters.PortXmitConstraintErrors,
 					portImage2 ? portImage2->StlPortCounters.PortRcvConstraintErrors : 0
 					);
 }
-static void PmPrintExceededPortDetailsRouting(PmPortImage_t *portImage, PmPortImage_t *portImage2)
+void PmPrintExceededPortDetailsRouting(PmPortImage_t *portImage, PmPortImage_t *portImage2)
 {
 	IB_LOG_WARN_FMT(__func__, "RcvSwitchRelayErrors=%"PRIu64" ",
 					portImage->StlPortCounters.PortRcvSwitchRelayErrors
@@ -410,23 +411,25 @@ static void PmUnexpectedClear(Pm_t *pm, PmPort_t *pmportp, uint32 imageIndex,
 	PmNode_t *pmnodep = pmportp->pmnodep;
 	char *detail = "";
 	detail=": Make sure no other tools are clearing fabric counters";
+	char CounterNameBuffer[128];
+	FormatStlCounterSelectMask(CounterNameBuffer, unexpectedClear);
 
 	if (pmimagep->FailedNodes + pmimagep->FailedPorts
 				   	+ pmimagep->UnexpectedClearPorts < pm_config.SweepErrorsLogThreshold)
 	{
-		IB_LOG_WARN_FMT(__func__, "Unexpected counter clear for %.*s Guid "FMT_U64" LID 0x%x Port %u%s (Mask 0x%08x)",
+		IB_LOG_WARN_FMT(__func__, "Unexpected counter clear for %.*s Guid "FMT_U64" LID 0x%x Port %u%s (Mask 0x%08x: %s)",
 			sizeof(pmnodep->nodeDesc.NodeString),
 		   	pmnodep->nodeDesc.NodeString,
 		   	pmnodep->guid,
 			pmnodep->Image[imageIndex].lid, pmportp->portNum, detail,
-			unexpectedClear.AsReg32);
+			unexpectedClear.AsReg32, CounterNameBuffer);
 	} else {
-		IB_LOG_INFO_FMT(__func__, "Unexpected counter clear for %.*s Guid "FMT_U64" LID 0x%x Port %u%s (Mask 0x%08x)",
+		IB_LOG_INFO_FMT(__func__, "Unexpected counter clear for %.*s Guid "FMT_U64" LID 0x%x Port %u%s (Mask 0x%08x: %s)",
 			sizeof(pmnodep->nodeDesc.NodeString),
 		   	pmnodep->nodeDesc.NodeString,
 		   	pmnodep->guid,
 			pmnodep->Image[imageIndex].lid, pmportp->portNum, detail,
-			unexpectedClear.AsReg32);
+			unexpectedClear.AsReg32, CounterNameBuffer);
 	}
 	pmimagep->UnexpectedClearPorts++;
 	INCREMENT_PM_COUNTER(pmCounterPmUnexpectedClearPorts);
@@ -592,13 +595,21 @@ void PmFinalizePortStats(Pm_t *pm, PmPort_t *pmportp, uint32 index)
 #undef GET_DELTA_PORTCOUNTERS
 	}
 
-	if (unexpectedClear.AsReg32) {
-		portImage->u.s.UnexpectedClear = 1;
-		if (unexpectedClear.AsReg32 & ~0x00040000)
-			PmUnexpectedClear(pm, pmportp, index, unexpectedClear); 
-		//Copy In the Unexpected Clears to the previous image so the PA can handle them correctly
-		portImagePrev->clearSelectMask.AsReg32 |= unexpectedClear.AsReg32;
+	if (DeltaPortCounters.LinkDowned) {
+		if (unexpectedClear.AsReg32 & ~LinkDownIgnoreMask.AsReg32) {
+			CounterSelectMask_t tempMask;
+			tempMask.AsReg32 = unexpectedClear.AsReg32 & ~LinkDownIgnoreMask.AsReg32 ;
+			portImage->u.s.UnexpectedClear = 1;
+			PmUnexpectedClear(pm, pmportp, index, tempMask);
+		}
+	} else {
+		if (unexpectedClear.AsReg32) {
+			portImage->u.s.UnexpectedClear = 1;
+			PmUnexpectedClear(pm, pmportp, index, unexpectedClear);
+		}
 	}
+	//Copy In the Unexpected Clears to the previous image so the PA can handle them correctly
+	portImagePrev->clearSelectMask.AsReg32 |= unexpectedClear.AsReg32;
 
 
 	// Calulate Port Utilization
@@ -883,26 +894,6 @@ void PmFinalizePortStats(Pm_t *pm, PmPort_t *pmportp, uint32 index)
 		}
 #undef INC_VLRUNNING
 	}
-
-	// Log Ports which exceeded threshold up to ThresholdExceededMsgLimit
-#define LOG_EXCEEDED_THRESHOLD(stat) \
-	do { \
-		if (portImage->stat##Bucket >= (PM_ERR_BUCKETS-1) \
-			&& pm->AllPorts->Image[index].IntErr.Ports[PM_ERR_BUCKETS-1].stat \
-					< pm_config.thresholdsExceededMsgLimit.stat) { \
-			PmPrintExceededPort(pmportp, index, \
-				#stat, pm->Thresholds.stat, portImage->Errors.stat); \
-			PmPrintExceededPortDetails##stat(portImage, portImageNeighbor); \
-		} \
-	} while (0)
-	LOG_EXCEEDED_THRESHOLD(Integrity);
-	LOG_EXCEEDED_THRESHOLD(Congestion);
-	LOG_EXCEEDED_THRESHOLD(SmaCongestion);
-	LOG_EXCEEDED_THRESHOLD(Bubble);
-	LOG_EXCEEDED_THRESHOLD(Security);
-	LOG_EXCEEDED_THRESHOLD(Routing);
-#undef LOG_EXCEEDED_THRESHOLD
-
 }
 
 // for a port clear counters which can tabulate information from both

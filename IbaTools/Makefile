@@ -64,7 +64,8 @@ DIRS			= \
 				$(shell ls -d nodeverify 2>/dev/null) \
 				$(shell ls -d usemem 2>/dev/null) \
 				$(shell ls -d opapacketcapture 2>/dev/null) \
-				$(shell ls -d man 2>/dev/null)
+				$(shell ls -d man 2>/dev/null) \
+				$(shell ls -d opatmmtool 2>/dev/null)
 ifeq "$(IB_STACK)" "OPENIB"
 DIRS			+= \
 				$(shell ls -d opainfo 2>/dev/null) \

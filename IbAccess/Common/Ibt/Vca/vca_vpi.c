@@ -1679,7 +1679,6 @@ default_poll_and_rearm_cq(
 // Private interfaces for the SMA and CM
 //
 
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 FSTATUS
 iba_get_set_mad(
 	IN IB_HANDLE	QpHandle,
@@ -1688,19 +1687,9 @@ iba_get_set_mad(
 	IN STL_SMP		*SmpInOut,
 	IN uint32		*SmpLength
 	)
-#else
-FSTATUS
-iba_get_set_mad(
-	IN IB_HANDLE	QpHandle,
-	IN uint8		PortNumber,
-	IN IB_LID		SLID,
-	IN void			*SmpInOut
-	)
-#endif
 {
 	FSTATUS rc;
 
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 	BSWAP_STL_SMP_HEADER(SmpInOut);
 	rc = ((VCA_QP_CONTEXT*)QpHandle)->VpInterface->GetSetMad(
 										((VCA_QP_CONTEXT*)QpHandle)->VpHandle,
@@ -1708,19 +1697,7 @@ iba_get_set_mad(
 										SLID,
 		  								(void*)SmpInOut,
 		  								SmpLength);
-#else
-	BSWAP_SMP_HEADER((SMP*)SmpInOut);
-	rc = ((VCA_QP_CONTEXT*)QpHandle)->VpInterface->GetSetMad(
-										((VCA_QP_CONTEXT*)QpHandle)->VpHandle,
-										PortNumber,
-										SLID,
-		  								SmpInOut);
-#endif
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 	BSWAP_STL_SMP_HEADER(SmpInOut);
-#else
-	BSWAP_SMP_HEADER((SMP*)SmpInOut);
-#endif
 
 	return rc;
 }

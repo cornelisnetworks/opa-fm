@@ -34,28 +34,35 @@
 #   Extract optional cable values, and values for both ports of each link
 #   Remove redundant information and combine cable and port information
 
+cmd=`basename $0`
 Usage_full()
 {
-	echo "Usage: opaextractlink [opareport options]" >&2
-	echo "              or" >&2
-	echo "       opaextractlink --help" >&2
+	echo >&2
+	echo "Usage: ${cmd} [--help]|[opareport options]" >&2
 	echo "   --help - produce full help text" >&2
-	echo "   opareport options - options will be passed to opareport." >&2
+	echo "   [opareport options] - options will be passed to opareport." >&2
+	echo >&2
+	echo "${cmd} is a front end to the opareport tool that generates" >&2
+	echo "a report listing all or some of the links in the fabric." >&2
+	echo "The output is in a CSV format suitable for importing into a spreadsheet or" >&2
+	echo "parsed by other scripts." >&2
+	echo >&2
 	echo "for example:" >&2
-	echo "   opaextractlink" >&2
-	echo "   opaextractlink -h 1 -p 2" >&2
+	echo "   List all the links in the fabric:" >&2
+	echo "      ${cmd}" >&2
+	echo >&2
+	echo "   List all the links to a switch named \"OmniPth00117501ffffffff\":" >&2
+	echo "      ${cmd} -F \"node:OmniPth00117501ffffffff\"" >&2
+	echo >&2
+	echo "   List all the links to end-nodes:" >&2
+	echo "      ${cmd} -F \"nodetype:FI\"" >&2
+	echo >&2
+	echo "   List all the links on the 2nd HFI's fabric of a multi-plane fabric:" >&2
+	echo "      ${cmd} -h 2" >&2
+	echo >&2
+	echo "See the man page for \"opareport\" for the full set of options." >&2
+	echo >&2
 	exit 0
-}
-
-Usage()
-{
-	echo "Usage: opaextractlink" >&2
-	echo "              or" >&2
-	echo "       opaextractlink --help" >&2
-	echo "   --help - produce full help text" >&2
-	echo "for example:" >&2
-	echo "   opaextractlink" >&2
-	exit 2
 }
 
 if [ x"$1" = "x--help" ]
@@ -72,7 +79,7 @@ fi
 
 ix=0
 
-/usr/sbin/opareport -x -o links $@ | \
+/usr/sbin/opareport -x -o links "$@" | \
   /usr/sbin/opaxmlextract -d \; -e Rate -e LinkDetails -e CableLength \
   -e CableLabel -e CableDetails -e Port.NodeDesc -e Port.PortNum | while read line
 do

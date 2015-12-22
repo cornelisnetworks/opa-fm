@@ -38,11 +38,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* Kernel mode GSI interfaces */
 
 #include "iba/vpi.h"
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #include "iba/stl_mad.h"
-#else
-#include "iba/ib_mad.h"
-#endif
 
 #if defined (__cplusplus)
 extern "C" {

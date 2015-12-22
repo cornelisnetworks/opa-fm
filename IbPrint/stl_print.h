@@ -186,4 +186,108 @@ void PrintStrWithDots(PrintDest_t *dest, int indent, const char * name, const ch
 }
 #endif
 
+
+static __inline const char*
+FMConfigErrorInfoToText(uint8 errorInfo)
+{
+        switch (errorInfo)
+        {
+                case 0:
+                        return "BadHeadDist";
+                case 1:
+                        return "BadTailDist";
+                case 2:
+                        return "BadCtrlDist";
+                case 3:
+                        return "BadCrdtAck";
+                case 4:
+                        return "UnsupportedVLMarker";
+                case 5:
+                        return "BadPreempt";
+                case 6:
+                        return "BadControlFlit";
+                case 7:
+                        return "ExceedMulticastLimit";
+                default:
+                        return "Unknown"; 
+        }
+}
+
+static __inline const char*
+PortRcvErrorInfoToText(uint8 errorInfo)
+{
+        switch (errorInfo)
+        {
+                case 0:
+                        return "reserved";
+                case 1:
+                        return "BadPktLen";
+                case 2:
+                        return "PktLenTooLong";
+                case 3:
+                        return "PktLenTooShort";
+                case 4:
+                        return "BadSLID";
+                case 5:
+                        return "BadDLID";
+                case 6:
+                        return "BadL2";
+                case 7:
+                        return "BadSC";
+                case 8:
+                        return "reserved";
+                case 9:
+                        return "Headless";
+                case 10:
+                        return "reserved";
+                case 11:
+                        return "PreemptError";
+                case 12:
+                        return "PreemptVL15";
+                case 13:
+                        return "BadVLMarker";
+                default:
+                        return "Unknown"; 
+        }
+}
+
+static __inline const char*
+PortRcvSwitchRelayErrorInfoToText(uint8 errorInfo)
+{
+        switch (errorInfo)
+        {
+                case 0:
+                        return "BadDLIDRange";
+                case 1:
+                        return "reserved";
+                case 2:
+                        return "BadEgress";
+                case 3:
+                        return "BadSC2SC";
+                default:
+                        return "Unknown"; 
+        }
+}
+
+static __inline const char*
+UncorrectableErrorInfoToText(uint8 errorInfo)
+{
+        switch (errorInfo)
+        {
+                case 0:
+                        return "BadHead";
+                case 1:
+                        return "BadBody";
+                case 2:
+                        return "BadTail";
+                case 3:
+                        return "BadLFCmd";
+                case 4:
+                        return "InternalError";
+                default:
+                        return "Unknown"; 
+        }
+}
+
+
 #endif /* __STL_PRINT_H__ */

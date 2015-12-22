@@ -62,13 +62,21 @@ my @OmniPathAllComponents = ( "mvapich2_gcc_hfi",
  					);
 
 # these are now gone, list them so they get uninstalled
-@Components = ( "opa_stack", "ibacm", "mpi_selector", "intel_hfi", 
+my @Components_other = ( "opa_stack", "ibacm", "mpi_selector", "intel_hfi",
 	   	"oftools", "opa_stack_dev", "fastfabric",
 		"delta_ipoib", "opafm",
 	   	@OmniPathAllComponents, 
 		"gasnet", "openshmem",
 	   	"mvapich2", "openmpi",
-	   	"delta_mpisrc", "delta_debug", );
+	   	"delta_mpisrc", "hfi1_uefi", "delta_debug", );
+my @Components_rhel72 = ( "opa_stack", "mpi_selector", "intel_hfi",
+	   	"oftools", "opa_stack_dev", "fastfabric",
+		"delta_ipoib", "opafm",
+	   	@OmniPathAllComponents,
+		"gasnet", "openshmem",
+	   	"mvapich2", "openmpi",
+	   	"delta_mpisrc", "hfi1_uefi", "delta_debug", );
+@Components = ( );
 
 # delta_debug must be last
 
@@ -126,7 +134,7 @@ $WrapperComponent = "opaconfig";
 # SubComponents only require the following fields:
 #	Name, PreReq (should reference only components), HasStart, StartPreReq,
 #	DefaultStart
-%ComponentInfo = (
+my %ComponentInfo_other = (
 		# our special WrapperComponent, limited use
 	"opaconfig" =>	{ Name => "opaconfig",
 					  DefaultInstall => $State_Install,
@@ -138,10 +146,10 @@ $WrapperComponent = "opaconfig";
 					  StartComponents => [ ],
 					},
 		# "ofed" is only used for source_comp
-	"ofed_delta" =>	{ Name => "OFED_DELTA",
+	"ofed_delta" =>	{ Name => "OFA_DELTA",
 					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
 					},
-	"opa_stack" =>	{ Name => "OFED OPA Stack",
+	"opa_stack" =>	{ Name => "OFA OPA Stack",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
 					  DriverSubdir => "updates",
@@ -152,7 +160,7 @@ $WrapperComponent = "opaconfig";
 					  StartPreReq => "",
 					  StartComponents => [ "opa_stack" ],
 					},
-	"ibacm" =>		{ Name => "OFED IBACM",
+	"ibacm" =>		{ Name => "OFA IBACM",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"), 
 					  DriverSubdir => "",
@@ -193,7 +201,7 @@ $WrapperComponent = "opaconfig";
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
-	"opa_stack_dev" => { Name => "OFED OPA Development",
+	"opa_stack_dev" => { Name => "OFA OPA Development",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
 					  DriverSubdir => "",
@@ -213,7 +221,7 @@ $WrapperComponent = "opaconfig";
 					  StartPreReq => " opa_stack ",
 					  StartComponents => [ ],
 					},
-	"delta_ipoib" =>	{ Name => "OFED IP over IB",
+	"delta_ipoib" =>	{ Name => "OFA IP over IB",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
 					  DriverSubdir => "updates",
@@ -224,7 +232,7 @@ $WrapperComponent = "opaconfig";
 					  StartComponents => [ "delta_ipoib" ],
 					},
 	"mvapich2" =>	{ Name => "MVAPICH2 (verbs,gcc)",
-					  DefaultInstall => $State_Install,
+					  DefaultInstall => $State_DoNotInstall,
 					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
 					  DriverSubdir => "",
 					  PreReq => " opa_stack mpi_selector intel_hfi ", CoReq => "",
@@ -234,7 +242,7 @@ $WrapperComponent = "opaconfig";
 					  StartComponents => [ ],
 					},
 	"openmpi" =>	{ Name => "OpenMPI (verbs,gcc)",
-					  DefaultInstall => $State_Install,
+					  DefaultInstall => $State_DoNotInstall,
 					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
 					  DriverSubdir => "",
 					  PreReq => " opa_stack mpi_selector intel_hfi ", CoReq => "",
@@ -344,7 +352,17 @@ $WrapperComponent = "opaconfig";
 					  #StartComponents => [ "qlgc_fm", "qlgc_fm_snmp"],
 					  StartComponents => [ "opafm" ],
 					},
-	"delta_debug" =>	{ Name => "OFED Debug Info",
+	"delta_debug" =>	{ Name => "OFA Debug Info",
+					  DefaultInstall => $State_DoNotInstall,
+					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
+					  DriverSubdir => "",
+					  PreReq => " opa_stack ", CoReq => "",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => "",
+					  StartComponents => [ ],
+					},
+	"hfi1_uefi" =>		{ Name => "Pre-Boot Components",
 					  DefaultInstall => $State_DoNotInstall,
 					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
 					  DriverSubdir => "",
@@ -355,6 +373,238 @@ $WrapperComponent = "opaconfig";
 					  StartComponents => [ ],
 					},
 	);
+my %ComponentInfo_rhel72 = (
+		# our special WrapperComponent, limited use
+	"opaconfig" =>	{ Name => "opaconfig",
+					  DefaultInstall => $State_Install,
+					  SrcDir => ".", DriverSubdir => "",
+					  PreReq => "", CoReq => "",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 0, HasFirmware => 0,
+					  StartPreReq => "",
+					  StartComponents => [ ],
+					},
+		# "ofed" is only used for source_comp
+	"ofed_delta" =>	{ Name => "OFA_DELTA",
+					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
+					},
+	"opa_stack" =>	{ Name => "OFA OPA Stack",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
+					  DriverSubdir => "updates",
+					  PreReq => "", CoReq => " oftools ",
+ 						# TBD - HasFirmware - FW update
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  StartPreReq => "",
+					  StartComponents => [ "opa_stack" ],
+					},
+	"intel_hfi" =>	{ Name => "Intel HFI Components",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
+					  DriverSubdir => "updates",
+					  PreReq => " opa_stack ", CoReq => " oftools ",
+ 						# TBD - HasFirmware - FW update
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ "intel_hfi" ],
+					},
+	"oftools" =>	{ Name => "OPA Tools",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-Tools*.*"),
+					  DriverSubdir => "",
+					  PreReq => " opa_stack ibacm ", CoReq => " opa_stack ",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => " opa_stack ", # TBD
+					  StartComponents => [ ],
+					},
+	"mpi_selector" =>	{ Name => "MPI selector",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
+					  DriverSubdir => "",
+					  PreReq => " opa_stack ", CoReq => "",
+					  Hidden => 1, Disabled => 0,
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => "",
+					  StartComponents => [ ],
+					},
+	"opa_stack_dev" => { Name => "OFA OPA Development",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
+					  DriverSubdir => "",
+					  PreReq => " opa_stack ", CoReq => "",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => "",
+					  StartComponents => [ ],
+					},
+	"fastfabric" =>	{ Name => "FastFabric",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-Tools*.*"),
+					  DriverSubdir => "",
+					  PreReq => " opa_stack oftools ", CoReq => "",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ ],
+					},
+	"delta_ipoib" =>	{ Name => "OFA IP over IB",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
+					  DriverSubdir => "updates",
+					  PreReq => " opa_stack ", CoReq => "",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ "delta_ipoib" ],
+					},
+	"mvapich2" =>	{ Name => "MVAPICH2 (verbs,gcc)",
+					  DefaultInstall => $State_DoNotInstall,
+					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
+					  DriverSubdir => "",
+					  PreReq => " opa_stack mpi_selector intel_hfi ", CoReq => "",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => "",
+					  StartComponents => [ ],
+					},
+	"openmpi" =>	{ Name => "OpenMPI (verbs,gcc)",
+					  DefaultInstall => $State_DoNotInstall,
+					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
+					  DriverSubdir => "",
+					  PreReq => " opa_stack mpi_selector intel_hfi ", CoReq => "",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => "",
+					  StartComponents => [ ],
+					},
+	"gasnet" =>	{ Name => "GASNet (hfi,gcc)",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
+					  DriverSubdir => "",
+					  PreReq => " opa_stack intel_hfi ", CoReq => "",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => "",
+					  StartComponents => [ ],
+					},
+	"openshmem" =>	{ Name => "OpenSHMEM (hfi,gcc)",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
+					  DriverSubdir => "",
+					  PreReq => " opa_stack gasnet intel_hfi ", CoReq => "",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => "",
+					  StartComponents => [ ],
+					},
+	"mvapich2_gcc_hfi" =>	{ Name => "MVAPICH2 (hfi,gcc)",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob ("./OFED_MPIS.*"),
+					  DriverSubdir => "",
+					  PreReq => " opa_stack intel_hfi mpi_selector ", CoReq => "",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => "",
+					  StartComponents => [ ],
+					},
+	"mvapich2_pgi_hfi" =>	{ Name => "MVAPICH2 (hfi,PGI)",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob ("./OFED_MPIS.*"),
+					  DriverSubdir => "",
+					  PreReq => " opa_stack intel_hfi mpi_selector ", CoReq => "",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => "",
+					  StartComponents => [ ],
+					},
+	"mvapich2_intel_hfi" =>	{ Name => "MVAPICH2 (hfi,Intel)",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob ("./OFED_MPIS.*"),
+					  DriverSubdir => "",
+					  PreReq => " opa_stack intel_hfi mpi_selector ", CoReq => "",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => "",
+					  StartComponents => [ ],
+					},
+	"openmpi_gcc_hfi" =>	{ Name => "OpenMPI (hfi,gcc)",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob ("./OFED_MPIS.*"),
+					  DriverSubdir => "",
+					  PreReq => " opa_stack intel_hfi mpi_selector ", CoReq => "",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => "",
+					  StartComponents => [ ],
+					},
+	"openmpi_pgi_hfi" =>	{ Name => "OpenMPI (hfi,PGI)",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob ("./OFED_MPIS.*"),
+					  DriverSubdir => "",
+					  PreReq => " opa_stack intel_hfi mpi_selector ", CoReq => "",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => "",
+					  StartComponents => [ ],
+					},
+	"openmpi_intel_hfi" =>	{ Name => "OpenMPI (hfi,Intel)",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob ("./OFED_MPIS.*"),
+					  DriverSubdir => "",
+					  PreReq => " opa_stack intel_hfi mpi_selector ", CoReq => "",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => "",
+					  StartComponents => [ ],
+					},
+	"delta_mpisrc" =>{ Name => "MPI Source",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
+					  DriverSubdir => "",
+					  PreReq => " opa_stack opa_stack_dev mpi_selector ", CoReq => "",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => "",
+					  StartComponents => [ ],
+					},
+	"opafm" =>	{ Name => "OPA FM",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-FM.*"),
+					  DriverSubdir => "",
+					  PreReq => " opa_stack ", CoReq => "",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  StartPreReq => " opa_stack ",
+					  #StartComponents => [ "qlgc_fm", "qlgc_fm_snmp"],
+					  StartComponents => [ "opafm" ],
+					},
+	"delta_debug" =>	{ Name => "OFA Debug Info",
+					  DefaultInstall => $State_DoNotInstall,
+					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
+					  DriverSubdir => "",
+					  PreReq => " opa_stack ", CoReq => "",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => "",
+					  StartComponents => [ ],
+					},
+	"hfi1_uefi" =>		{ Name => "UEFI Binaries",
+					  DefaultInstall => $State_DoNotInstall,
+					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
+					  DriverSubdir => "",
+					  PreReq => " opa_stack ", CoReq => "",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => "",
+					  StartComponents => [ ],
+					},
+	);
+
+%ComponentInfo = ( );
+
 	# translate from startup script name to component/subcomponent name
 %StartupComponent = (
 				"opa_stack" => "opa_stack",
@@ -379,8 +629,20 @@ $WrapperComponent = "opaconfig";
 				"openmpi_intel_hfi" => 0,
 				"delta_mpisrc" => 0,
 				"opafm" => 0,
+				"hfi1_uefi" => 0,
 				"delta_debug" => 0,
 			);
+
+sub init_components
+{
+	if ( "$CUR_VENDOR_VER" eq "ES72" ) {
+		@Components = ( @Components_rhel72 );
+		%ComponentInfo = ( %ComponentInfo_rhel72 );
+	} else {
+		@Components = ( @Components_other );
+		%ComponentInfo = ( %ComponentInfo_other );
+	}
+}
 
 # ==========================================================================
 # opaconfig installation
@@ -498,7 +760,6 @@ if ( my_basename($0) ne "INSTALL" )
 #
 sub verify_os_ver 
 {
-	determine_os_version;
 	#my $supported_kernel;
 	#
 	#if (!$allow_install)
@@ -547,14 +808,14 @@ sub Usage
 		printf STDERR "            can appear more than once on command line\n";
 #		printf STDERR "       -f - skip HCA firmware upgrade during install\n";
 		#printf STDERR "       -l - skip creating/removing symlinks to /usr/local from /opt/opa\n";
-		printf STDERR "       --user_configure_options 'options' - specify additional OFED build\n";
+		printf STDERR "       --user_configure_options 'options' - specify additional OFA build\n";
 		printf STDERR "             options for user space srpms.  Causes rebuild of all user srpms\n";
-		printf STDERR "       --kernel_configure_options 'options' - specify additional OFED build\n";
+		printf STDERR "       --kernel_configure_options 'options' - specify additional OFA build\n";
 		printf STDERR "             options for driver srpms.  Causes rebuild of all driver srpms\n";
-		printf STDERR "       --prefix dir - specify alternate directory prefix for install of OFED\n";
+		printf STDERR "       --prefix dir - specify alternate directory prefix for install of OFA\n";
 		printf STDERR "             default is /usr.  Causes rebuild of needed srpms\n";
 		printf STDERR "       --without-depcheck - disable check of OS dependencies\n";
-		printf STDERR "       --rebuild - force OFED_DELTA rebuild\n";
+		printf STDERR "       --rebuild - force OFA Delta rebuild\n";
 		printf STDERR "       --force - force install even if distos don't match\n";
 		printf STDERR "                 Use of this option can result in undefined behaviors\n";
 		printf STDERR "       -O - Keep current modified rpm config file\n";
@@ -599,7 +860,7 @@ sub Usage
 	}
 	printf STDERR "\n";
 	printf STDERR "       supported component name aliases:\n";
-	printf STDERR "            opa ipoib mpi mpisrc opadev\n";
+	printf STDERR "            opa ipoib mpi psm_mpi verbs_mpi pgas mpisrc opadev\n";
 	if (scalar(@SubComponents) > 0) {
 		printf STDERR "       additional component names allowed for -E and -D options:\n";
 		printf STDERR "            ";
@@ -621,11 +882,19 @@ sub translate_comp
 {
 	my($arg)=$_[0];
 	if ("$arg" eq "opadev")			{ return ( "opa_stack_dev" );
+	} elsif ("$arg" eq "opa")		{ return ( "oftools",
+		"mvapich2_gcc_hfi", "openmpi_gcc_hfi", "mvapich2_intel_hfi",
+		"openmpi_intel_hfi", "mvapich2_pgi_hfi", "openmpi_pgi_hfi" );
 	} elsif ("$arg" eq "fastfabric"){ return ( "fastfabric" );	# unexpected
 	} elsif ("$arg" eq "ipoib")		{ return ( "delta_ipoib" );
 	} elsif ("$arg" eq "mpi")		{ return ( "mvapich2", "openmpi", 
 		"mvapich2_gcc_hfi", "openmpi_gcc_hfi", "mvapich2_intel_hfi", 
 		"openmpi_intel_hfi", "mvapich2_pgi_hfi", "openmpi_pgi_hfi" );
+	} elsif ("$arg" eq "psm_mpi")	{ return ( "mvapich2_gcc_hfi",
+		"openmpi_gcc_hfi", "mvapich2_intel_hfi", 
+		"openmpi_intel_hfi", "mvapich2_pgi_hfi", "openmpi_pgi_hfi" );
+	} elsif ("$arg" eq "verbs_mpi")	{ return ( "mvapich2", "openmpi" );
+	} elsif ("$arg" eq "pgas")		{ return ( "gasnet", "openshmem" );
 	} elsif ("$arg" eq "mpisrc")	{ return ( "delta_mpisrc" );
 		# no ibaccess argument equivalent for:  
 		#	openmpi, delta_debug
@@ -942,7 +1211,7 @@ sub process_args
 		Usage;
 	}
 	if ( $patch_ofed) {
-		NormalPrint("Patching OFED...\n");
+		NormalPrint("Patching OFA...\n");
 		LogPrint("Executing: cd $ComponentInfo{'opa_stack'}{'SrcDir'}; ./patch_ofed3\n");
 		system("cd $ComponentInfo{'opa_stack'}{'SrcDir'}; ./patch_ofed3");
 		HitKeyCont;
@@ -1033,6 +1302,9 @@ START:
 	@INSTALL_CHOICES = ( $inp );
 }
 
+determine_os_version;
+init_components;
+
 process_args;
 check_root_user;
 if ( ! $Default_Build ) {
@@ -1052,8 +1324,6 @@ if ( ! $Default_Build ) {
 	if ($allow_install) {
 		verify_distrib_files;
 	}
-} else {
-	determine_os_version;
 }
 
 foreach my $comp ( @OmniPathAllComponents )
@@ -1084,6 +1354,8 @@ foreach my $INSTALL_CHOICE ( @INSTALL_CHOICES )
 		} else {
 			if ($exit_code == 0) {
 				print "Done Installing OPA Software.\n"
+			} else {
+				print "Failed to install all OPA software.\n"
 			}
 		}
 	} 
@@ -1099,6 +1371,8 @@ foreach my $INSTALL_CHOICE ( @INSTALL_CHOICES )
 		} else {
 			if ($exit_code == 0) {
 				print "Done Uninstalling OPA Software.\n"
+			} else {
+				print "Failed to uninstall all OPA Software.\n"
 			}
 		}
 	}

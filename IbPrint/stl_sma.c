@@ -1149,7 +1149,7 @@ void PrintStlHfiCongestionControlTab(PrintDest_t *dest, int indent, const STL_HF
     	PrintFunc(dest, "%*sCCT Entries:\n", indent, "");
     	for (i = 0 + start; i < cnt * STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES; ++i) {
             const STL_HFI_CONGESTION_CONTROL_TABLE_ENTRY *cursor = &pHfiCongestionControl->CCT_Block_List[i/STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES].CCT_Entry_List[i%STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES];
-            PrintFunc(dest, "%*sEntry %u: Shift %u, Multiplier: %u\n", indent+4, "", i + 1, 
+            PrintFunc(dest, "%*sEntry %u: Shift %u, Multiplier: %u\n", indent+4, "", i, 
                 cursor->s.CCT_Shift, cursor->s.CCT_Multiplier);
         }
     }
@@ -2224,7 +2224,7 @@ void PrintStlPortSummary(PrintDest_t *dest, int indent, const char* portName, co
 			PrintIntWithDots(dest, indent, "PortLTPCRCMode.s.Enabled", (uint32)pPortInfo->PortLTPCRCMode.s.Enabled);
 			PrintIntWithDots(dest, indent, "PortLTPCRCMode.s.Active", (uint32)pPortInfo->PortLTPCRCMode.s.Active);
 			if (show_mgmt)
-				PrintStrWithDots(dest, indent, "Mgmt", (pkey = 0xffff)?"True":"False");
+				PrintStrWithDots(dest, indent, "Mgmt", (pkey == 0xffff)?"True":"False");
 			break;
 		}
 		if (show_address) {
@@ -2343,7 +2343,7 @@ void PrintStlPortSummary(PrintDest_t *dest, int indent, const char* portName, co
 					indent, "",
 					StlPortLtpCrcModeToText(pPortInfo->PortLTPCRCMode.s.Active, tempBuf, sizeof(tempBuf)), 
 					StlPortLtpCrcModeToText(pPortInfo->PortLTPCRCMode.s.Enabled, tempBuf3, sizeof(tempBuf3)),
-					(pkey = 0xffff)?"True":"False");
+					(pkey == 0xffff)?"True":"False");
 			} else {
 				PrintFunc(dest, "%*sLCRC           Act: %-8s     En: %-8s\n", 
 					indent, "",

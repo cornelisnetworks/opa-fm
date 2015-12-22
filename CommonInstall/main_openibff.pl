@@ -591,6 +591,8 @@ foreach my $INSTALL_CHOICE ( @INSTALL_CHOICES )
 		} else {
 			if ($exit_code == 0) {
 				print "Done Installing OPA Software.\n"
+			} else {
+				print "Failed to install all OPA software.\n"
 			}
 		}
 	} 
@@ -606,6 +608,8 @@ foreach my $INSTALL_CHOICE ( @INSTALL_CHOICES )
 		} else {
 			if ($exit_code == 0) {
 				print "Done Uninstalling OPA Software.\n"
+			} else {
+				print "Failed to uninstall all OPA Software.\n"
 			}
 		}
 	}

@@ -134,7 +134,9 @@ CLOCAL = $(CPIE)
 LOCALDEPLIBS = ibaccess oib_utils
 LOCAL_INCLUDE_DIRS = $(TL_DIR)/oib_utils/include \
 					 $(TL_DIR)/oib_utils/src \
-		     		 $(TL_DIR)/IbAccess/Common/Inc
+		     		 $(TL_DIR)/IbAccess/Common/Inc \
+		     		 $(TL_DIR)/BSP/bspcommon/h
+
 ifeq "$(BUILD_TARGET)" "ATOM"
 LOCAL_INCLUDE_DIRS   += \
 		     		 $(TL_DIR)/target/include

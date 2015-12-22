@@ -69,10 +69,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define PM_ENGINE_STACK_SIZE (24 * 1024)
 #define PM_ASYNC_RCV_STACK_SIZE (24 * 1024)
 #define PM_DBSYNC_THREAD_STACK_SIZE (24 * 1024)
-#if !defined(VXWORKS_REV) || (VXWORKS_REV < VXWORKS_REV_6_9)
-typedef int intptr_t;
-typedef unsigned int uintptr_t;
-#endif
 #else
 #define PM_ENGINE_STACK_SIZE (256 * 1024)
 #define PM_ASYNC_RCV_STACK_SIZE (256 * 1024)
@@ -90,6 +86,7 @@ Event_t g_pmEngineShutdownEvent;
 boolean g_pmEngineThreadRunning = FALSE;
 boolean g_pmFirstSweepAsMaster = TRUE;
 extern boolean isUnexpectedClearUserCounters;
+CounterSelectMask_t LinkDownIgnoreMask;
 
 Thread_t g_pmAsyncRcvThread;
 boolean g_pmAsyncRcvThreadRunning = FALSE;
@@ -3245,10 +3242,23 @@ FSTATUS PmLoadComposite(Pm_t *pm, PmHistoryRecord_t *record, PmCompositeImage_t 
 	unsigned char *raw_data, *img_data;
 	size_t raw_len, img_len;
 	FSTATUS ret = FSUCCESS;
+#ifndef __VXWORKS__
+	char errbuf[256]; 
+#endif
 
 	fp = fopen(record->header.filename, "rb");
 	if (!fp) {
+#ifdef __VXWORKS__
 		IB_LOG_ERROR0("Unable to open PM history file");
+#else
+		if (errno) {
+			strerror_r(errno, errbuf, sizeof(errbuf));
+		} else {
+			snprintf(errbuf,sizeof(errbuf),"Unknown error");
+		}
+		IB_LOG_ERROR_FMT(__func__, "Unable to open PM history file %s: %d/%s", 
+			record->header.filename, errno, errbuf);
+#endif
 		return FNOT_FOUND;
 	}
 
@@ -3266,7 +3276,17 @@ FSTATUS PmLoadComposite(Pm_t *pm, PmHistoryRecord_t *record, PmCompositeImage_t 
 	}
 	//read the raw data
 	if (fread(raw_data, 1, raw_len, fp)!=raw_len || ferror(fp) ) {
+#ifdef __VXWORKS__
 		IB_LOG_ERROR0("Error reading PM History file");
+#else
+		if (ferror(fp)) {
+			strerror_r(errno, errbuf, sizeof(errbuf));
+		} else {
+			snprintf(errbuf,sizeof(errbuf),"Short read");
+		}
+		IB_LOG_ERROR_FMT(__func__, "Error reading PM History file %s: %s",
+			record->header.filename,errbuf); 
+#endif
 		free(raw_data);
 		fclose(fp);
 		return FERROR;
@@ -3276,7 +3296,12 @@ FSTATUS PmLoadComposite(Pm_t *pm, PmHistoryRecord_t *record, PmCompositeImage_t 
 	img_len = ((PmFileHeader_t*)raw_data)->flatSize;
 	// checkout the flat size - it needs to be at least enough to hold the image header
 	if (img_len < sizeof(PmFileHeader_t)) {
+#ifdef __VXWORKS__
 		IB_LOG_ERROR0("Invalid history file");
+#else
+		IB_LOG_ERROR_FMT(__func__, "Invalid history file %s",
+			record->header.filename);
+#endif
 		fclose(fp);
 		free(raw_data);
 		return FERROR;
@@ -3318,13 +3343,19 @@ FSTATUS PmLoadComposite(Pm_t *pm, PmHistoryRecord_t *record, PmCompositeImage_t 
 	}
 
 	// check the version
-	if (((PmFileHeader_t*)img_data)->historyVersion != PM_HISTORY_VERSION)
-		IB_LOG_WARN0("Loaded PM history image that does not match current version");
+	if (((PmFileHeader_t*)img_data)->historyVersion != PM_HISTORY_VERSION) {
+#ifdef __VXWORKS__
+		IB_LOG_ERROR0("Loaded PM history image that does not match current version");
+#else
+		IB_LOG_ERROR_FMT("Loaded PM history image that does not match current version: %s",
+			record->header.filename);
+#endif
+	}
 
 	*cimg = calloc(1 , sizeof(PmCompositeImage_t));
 	if (!(*cimg)) {
 		IB_LOG_ERROR0("Unable to allocate memory for the cached PM Composite Image");
-		ret = FNOT_FOUND;
+		ret = FINSUFFICIENT_MEMORY;
 		goto end;
 	}
 	memcpy(*cimg, img_data, sizeof(PmFileHeader_t));
@@ -3996,40 +4027,60 @@ static Status_t PmLoadHistory(Pm_t *pm, boolean master) {
 Status_t PmInitHistory(Pm_t *pm) {
 	Status_t status = VSTATUS_OK;
 	int i;
+	size_t storage_len;
 	struct stat dirInfo;
+	char *basename;
+	char storageLocation[FILENAME_SIZE];
+
 	// check the history filepath
-	// TODO: also check that it does not end with / ?
-	if (pm_config.shortTermHistory.StorageLocation[0] != '/') {
-		IB_LOG_ERROR0("Invalid storage location for PM Short-Term History - must be absolute path");
+	snprintf(storageLocation, FILENAME_SIZE, "%s", pm_config.shortTermHistory.StorageLocation);
+	storage_len = strnlen(storageLocation, FILENAME_SIZE);
+	if ((storage_len < 3) || (storageLocation[0] != '/')) {
+		IB_LOG_ERROR_FMT(__func__, "Invalid storage location for PM Short-Term History %s - must be non-NULL absolute path",
+			pm_config.shortTermHistory.StorageLocation);
 		return VSTATUS_ILLPARM;
 	}
+	if (storageLocation[storage_len - 1] == '/')
+		storageLocation[storage_len - 1] = 0;
 
-	// check that the location exists, try to create it if it doesnt
-	if (stat(pm_config.shortTermHistory.StorageLocation, &dirInfo)) {
-		if (errno == ENOENT) {
-			// directory doesn't exist, try to create it
-			if(mkdir(pm_config.shortTermHistory.StorageLocation, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) != 0){
-				// failed to create the directory
-				IB_LOG_ERROR0("Invalid Short-Term History storage location - location doesn't exist, unable to create new directory");
+	// check that the location exists, try to create it if it doesn't
+	basename = strrchr(storageLocation, '/');
+	if (basename == storageLocation || basename == NULL) {
+		IB_LOG_ERROR_FMT(__func__, "Invalid Short-Term History storage location %s - no directory name",
+			storageLocation);
+		status = VSTATUS_ILLPARM;
+		goto fail;
+	} else {
+		*basename = 0;
+		if (stat(storageLocation, &dirInfo)) {
+			if (errno == ENOENT) {
+				// directory doesn't exist, try to create it
+				if(mkdir(storageLocation, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) != 0) {
+					// failed to create the directory
+					IB_LOG_ERROR_FMT(__func__, "Invalid Short-Term History storage location %s - unable to create",
+						storageLocation);
+					status = VSTATUS_ILLPARM;
+					goto fail;
+				}
+			} else {
+				IB_LOG_ERROR_FMT(__func__, "Invalid Short-Term History storage location %s",
+					storageLocation);
 				status = VSTATUS_ILLPARM;
 				goto fail;
 			}
 		} else {
-			IB_LOG_ERROR0("Invalid Short-Term History storage location");
-			status = VSTATUS_ILLPARM;
-			goto fail;
-		}
-	} else {
-		if (!S_ISDIR(dirInfo.st_mode)) {
-			// not a directory
-			IB_LOG_ERROR0("Invalid Short-Term History storage location - must be a directory");
-			status = VSTATUS_ILLPARM;
-			goto fail;
+			if (!S_ISDIR(dirInfo.st_mode)) {
+				// not a directory
+				IB_LOG_ERROR_FMT(__func__, "Invalid Short-Term History storage location %s - must be a directory",
+					storageLocation);
+				status = VSTATUS_ILLPARM;
+				goto fail;
+			}
 		}
 	}
 
 	// set up the storage directory if needed
-	snprintf(pm->ShortTermHistory.filepath, PM_HISTORY_MAX_LOCATION_LEN, "%s/.pahistory", pm_config.shortTermHistory.StorageLocation);
+	strncpy(pm->ShortTermHistory.filepath, pm_config.shortTermHistory.StorageLocation, FILENAME_SIZE);
 
 	// check that images per composite doesn't exceed the limit
 	if (pm_config.shortTermHistory.imagesPerComposite > PM_HISTORY_MAX_IMAGES_PER_COMPOSITE) {
@@ -4072,13 +4123,27 @@ Status_t PmInitHistory(Pm_t *pm) {
 			pm->ShortTermHistory.historyRecords[i]->historyImageEntries[j].inx = INDEX_NOT_IN_USE;
 		}
 	}
-	if (mkdir(pm->ShortTermHistory.filepath, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) != 0) {
-		if (errno==EEXIST) {
-			// if it failed because the directory already exists, that's ok
-			status = VSTATUS_OK;
+	if (stat(pm->ShortTermHistory.filepath, &dirInfo)) {
+		if (errno == ENOENT) {
+			// directory doesn't exist, try to create it
+			if (mkdir(pm->ShortTermHistory.filepath, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) != 0) {
+				// failed to create the directory
+				IB_LOG_ERROR_FMT(__func__, "Invalid Short-Term History storage location %s - unable to create",
+					pm->ShortTermHistory.filepath);
+				status = VSTATUS_ILLPARM;
+				goto fail;
+			}
 		} else {
-			// otherwise the failure is not acceptable
-			IB_LOG_ERROR0("Invalid Short-Term History storage location - unable to intialize pahistory directory");
+			IB_LOG_ERROR_FMT(__func__, "Invalid Short-Term History storage location %s",
+				pm->ShortTermHistory.filepath);
+			status = VSTATUS_ILLPARM;
+			goto fail;
+		}
+	} else {
+		if (!S_ISDIR(dirInfo.st_mode)) {
+			// not a directory
+			IB_LOG_ERROR_FMT(__func__, "Invalid Short-Term History storage location %s - must be a directory",
+				pm->ShortTermHistory.filepath);
 			status = VSTATUS_ILLPARM;
 			goto fail;
 		}
@@ -4427,6 +4492,15 @@ static Status_t PmInit(Pm_t *pm, EUI64 portguid, uint16 pmflags,
 	}
 	MemoryClear(pm->freezeFrames, size);
 
+	// On the transition into LinkUp State, the following counters shall be
+	// cleared: PortRcvErrors, LinkErrorRecovery, LocalLinkIntegrityErrors,
+	// and ExcessiveBufferOverruns
+	LinkDownIgnoreMask.AsReg32 = 0;
+	LinkDownIgnoreMask.s.PortRcvErrors = 1;
+	LinkDownIgnoreMask.s.LinkErrorRecovery = 1;
+	LinkDownIgnoreMask.s.LocalLinkIntegrityErrors = 1;
+	LinkDownIgnoreMask.s.ExcessiveBufferOverruns = 1;
+
 	PM_BuildClearCounterSelect(&pm->clearCounterSelect, (pmflags & STL_PM_PROCESS_CLR_DATA_COUNTERS?1:0),
 							   (pmflags & STL_PM_PROCESS_CLR_64BIT_COUNTERS?1:0),
 							   (pmflags & STL_PM_PROCESS_CLR_32BIT_COUNTERS?1:0),
@@ -4655,17 +4729,7 @@ static void PmFinalizeAllPortStats(Pm_t *pm)
 	uint16 lid;
 	PmPort_t *pmportp;
 	PmImage_t *pmimagep = &pm->Image[pm->SweepIndex];
-#if 0 //ACG: Removed because Group/VF Stats were moved to Query Time
-	uint8 i;
-	// no need to get Fabric.lock since in Sweep Thread
-	ClearGroupStats(&pm->AllPorts->Image[pm->SweepIndex]);// everyone is in AllPorts group
-	for (i=0; i<pm->NumGroups; i++) {
-		ClearGroupStats(&pm->Groups[i]->Image[pm->SweepIndex]);
-	}
-	for (i=0; i<pm->numVFs; i++) {
-		ClearVFStats(&pm->VFs[i]->Image[pm->SweepIndex]);
-	}
-#endif
+	PmPortImage_t *portImage, *portImageNeighbor = NULL;
 	// get totalsLock so we can update RunningTotals and avoid any races
 	// with paClearPortCounters
 	(void)vs_wrlock(&pm->totalsLock);
@@ -4688,6 +4752,55 @@ static void PmFinalizeAllPortStats(Pm_t *pm)
 		}
 	}
 	(void)vs_rwunlock(&pm->totalsLock);
+	// Log Ports which exceeded threshold up to ThresholdExceededMsgLimit
+#define LOG_EXCEEDED_THRESHOLD(stat) \
+	do { \
+		if (portImage->stat##Bucket >= (PM_ERR_BUCKETS-1) \
+			&& pm->AllPorts->Image[pm->SweepIndex].IntErr.Ports[PM_ERR_BUCKETS-1].stat \
+					< pm_config.thresholdsExceededMsgLimit.stat) { \
+			PmPrintExceededPort(pmportp, pm->SweepIndex, \
+				#stat, pm->Thresholds.stat, portImage->Errors.stat); \
+			PmPrintExceededPortDetails##stat(portImage, portImageNeighbor); \
+		} \
+	} while (0)
+
+	for (lid = 1; lid <= pmimagep->maxLid; ++lid) {
+		PmNode_t *pmnodep = pmimagep->LidMap[lid];
+		if (! pmnodep)
+			continue;
+		if (pmnodep->nodeType == STL_NODE_SW) {
+			uint8 i;
+			for (i=0; i<= pmnodep->numPorts; ++i) {
+				pmportp = pmnodep->up.swPorts[i];
+				if (pmportp && ! pmportp->u.s.PmaAvoid
+					&& pmportp->Image[pm->SweepIndex].u.s.active) {
+					portImage = &pmportp->Image[pm->SweepIndex];
+					portImageNeighbor = (portImage->neighbor ? &portImage->neighbor->Image[pm->SweepIndex] : NULL);
+					ComputeBuckets(pm, portImage);
+					LOG_EXCEEDED_THRESHOLD(Integrity);
+					LOG_EXCEEDED_THRESHOLD(Congestion);
+					LOG_EXCEEDED_THRESHOLD(SmaCongestion);
+					LOG_EXCEEDED_THRESHOLD(Bubble);
+					LOG_EXCEEDED_THRESHOLD(Security);
+					LOG_EXCEEDED_THRESHOLD(Routing);
+                }
+            }
+		} else {
+			pmportp = pmnodep->up.caPortp;
+			if (pmportp && ! pmportp->u.s.PmaAvoid) {
+                portImage = &pmportp->Image[pm->SweepIndex];
+                portImageNeighbor = (portImage->neighbor ? &portImage->neighbor->Image[pm->SweepIndex] : NULL);
+                ComputeBuckets(pm, portImage);
+				LOG_EXCEEDED_THRESHOLD(Integrity);
+                LOG_EXCEEDED_THRESHOLD(Congestion);
+                LOG_EXCEEDED_THRESHOLD(SmaCongestion);
+                LOG_EXCEEDED_THRESHOLD(Bubble);
+                LOG_EXCEEDED_THRESHOLD(Security);
+                LOG_EXCEEDED_THRESHOLD(Routing);
+            }
+		}
+	}
+#undef LOG_EXCEEDED_THRESHOLD
 }
 
 #if 0

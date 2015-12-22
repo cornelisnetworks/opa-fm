@@ -205,7 +205,11 @@ sub os_vendor_version($)
 
 	my $rval = "";
 	my $mn = "";
-	if ($vendor eq "apple") {
+	if ( -e "/etc/os-release" ) {
+		$rval=`cat /etc/os-release | grep VERSION_ID | cut -d'=' -f2 | tr -d [\\"\\.0]`;
+		chop($rval);
+		$rval="ES".$rval;
+	} elsif ($vendor eq "apple") {
 		$rval=`sw_vers -productVersion|cut -f1-2 -d.`;
 		chop($rval);
 	} elsif ($vendor eq "rocks") {
@@ -279,6 +283,8 @@ sub determine_os_version()
 	# TBD we expect client image for diskless client install to have these files
 	if ( -e "/etc/redhat-release" && !(-l "/etc/redhat-release") ) 
 	{
+		$CUR_DISTRO_VENDOR = "redhat";
+	} elsif ( -s "/etc/centos-release" ) {
 		$CUR_DISTRO_VENDOR = "redhat";
 	} elsif ( -s "/etc/UnitedLinux-release" ) {          
 		$CUR_DISTRO_VENDOR = "UnitedLinux";

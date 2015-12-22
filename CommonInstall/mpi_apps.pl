@@ -35,57 +35,6 @@ use strict;
 #use File::Basename;
 #use Math::BigInt;
 
-# ==========================================================================
-# MPI Sample Applications sub-component installation
-
-# remove the files built from source or installed
-# (as listed in .files and .dirs)
-# $0 = dirname relative to $ROOT
-sub remove_mpi_apps($)
-{
-	my $dirname = shift();
-
-	if ( -d "$ROOT/$dirname" ) {
-		system "cd $ROOT/$dirname; make clean >/dev/null 2>&1";
-		system "cd $ROOT/$dirname; cat .files 2>/dev/null|xargs rm -f 2>/dev/null";
-		system "cd $ROOT/$dirname; cat .files 2>/dev/null|sort -r|xargs rmdir 2>/dev/null";
-		system "rm -f $ROOT/$dirname/.files 2>/dev/null";
-		system "rmdir $ROOT/$dirname/hpl-config 2>/dev/null";
-		system "rmdir $ROOT/$dirname/ 2>/dev/null";
-	}
-}
-
-sub uninstall_mpi_apps();
-
-sub install_mpi_apps($)
-{
-	my $srcdir=shift();
-
-	my $file;
-
-	# clean existing mpi sample applications
-	uninstall_mpi_apps;
-
-	# Copy all mpi sample applications
-	check_dir("/opt/opa/src");
-	check_dir("/opt/opa/src/mpi_apps");
-	if ( -e "$srcdir/mpi/mpi_apps/mpi_apps.tgz" )
-	{
-		system("tar xfvz $srcdir/mpi/mpi_apps/mpi_apps.tgz --directory $ROOT/opt/opa/src/mpi_apps > $ROOT/opt/opa/src/mpi_apps/.files");
-	}
-	# allow all users to read the files so they can copy and use
-	system("chmod -R ugo+r $ROOT/opt/opa/src/mpi_apps");
-	system("find $ROOT/opt/opa/src/mpi_apps -type d|xargs chmod ugo+x");
-}
-
-sub uninstall_mpi_apps()
-{
-	# remove mpi_apps we installed or user compiled, however do not remove
-	# any logs or other files the user may have created
-	remove_mpi_apps "/opt/opa/src/mpi_apps";
-	system "rmdir $ROOT/opt/opa/src 2>/dev/null";	# remove only if empty
-	system "rmdir $ROOT/opt/opa 2>/dev/null";	# remove only if empty
-}
 
 # ==========================================================================
 # SHMEM Sample Applications sub-component installation

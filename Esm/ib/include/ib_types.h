@@ -112,20 +112,7 @@ typedef	__int64			int64_t;
 #elif   defined(__VXWORKS__)
 
 #include <sys/types.h>
-#if defined(VXWORKS_REV) && (VXWORKS_REV >= VXWORKS_REV_6_9)
 // VxWorks for ATOM defines uint64_t and int64_t
-#else
-#ifdef uint64_t
-#undef uint64_t
-#endif
-
-typedef unsigned long long int      uint64_t;
-
-#if !defined(HAVE_INT64_T)
-#define HAVE_INT64_T
-typedef	long long int                int64_t;
-#endif
-#endif
 
 
 

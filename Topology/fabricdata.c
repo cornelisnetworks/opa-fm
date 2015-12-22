@@ -656,8 +656,12 @@ FSTATUS PortDataAllocateAllCableInfo(FabricData_t *fabricp)
 FSTATUS PortDataAllocateCongestionControlTableEntries(FabricData_t *fabricp, PortData *portp)
 {
 	ASSERT(! portp->pCongestionControlTableEntries);	// or could free if present
+	if (! portp->nodep->CongestionInfo.ControlTableCap)
+		return FSUCCESS;
 	portp->pCongestionControlTableEntries = MemoryAllocate2AndClear(
-							sizeof(STL_HFI_CONGESTION_CONTROL_TABLE_ENTRY)*128,
+							sizeof(STL_HFI_CONGESTION_CONTROL_TABLE_ENTRY)
+								* STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES
+								* portp->nodep->CongestionInfo.ControlTableCap,
 							IBA_MEM_FLAG_PREMPTABLE, MYTAG);
 	if (! portp->pCongestionControlTableEntries) {
 		fprintf(stderr, "%s: Unable to allocate memory\n", g_Top_cmdname);
@@ -681,6 +685,8 @@ FSTATUS PortDataAllocateAllCongestionControlTableEntries(FabricData_t *fabricp)
 		// only applicable to HFIs and enhanced switch port 0
 		if (portp->nodep->NodeInfo.NodeType == STL_NODE_SW
 			&& portp->PortNum)
+			continue;
+		if (! portp->nodep->CongestionInfo.ControlTableCap)
 			continue;
 		s = PortDataAllocateCongestionControlTableEntries(fabricp, portp);
 		if (FSUCCESS != s)
@@ -1069,7 +1075,7 @@ fail:
 FSTATUS NodeDataSwitchResizeFDB(NodeData * nodep, uint32 newLfdbSize, uint32 newMfdbSize)
 {
 	int errStatus = FINSUFFICIENT_MEMORY;
-
+	uint32 newPgdbSize;
 	STL_LINEAR_FORWARDING_TABLE * newLfdb = NULL;
 	STL_PORT_GROUP_FORWARDING_TABLE * newPgdb = NULL;
 	STL_PORTMASK * newMfdb = NULL;
@@ -1096,15 +1102,17 @@ FSTATUS NodeDataSwitchResizeFDB(NodeData * nodep, uint32 newLfdbSize, uint32 new
 			newLtop = MIN(size - 1, newLtop);
 		}
 
-		// Port Group Forwarding table same as Linear FDB
+		// Port Group Forwarding table same as Linear FDB but capped
+		// for early STL1 HW at 8kb.
+		newPgdbSize = MIN(newLfdbSize, DEFAULT_MAX_PGFT_LID+1);
 		newPgdb = (STL_PORT_GROUP_FORWARDING_TABLE*) MemoryAllocate2AndClear(
-			ROUNDUP(newLfdbSize,NUM_PGFT_ELEMENTS_BLOCK), IBA_MEM_FLAG_PREMPTABLE, MYTAG);
+			ROUNDUP(newPgdbSize, NUM_PGFT_ELEMENTS_BLOCK), IBA_MEM_FLAG_PREMPTABLE, MYTAG);
 
 		if (!newPgdb) goto fail;
 
-		memset(newPgdb, 0xff, ROUNDUP(newLfdbSize,NUM_PGFT_ELEMENTS_BLOCK));
+		memset(newPgdb, 0xff, ROUNDUP(newPgdbSize, NUM_PGFT_ELEMENTS_BLOCK));
 		if (nodep->switchp->PortGroupFDB) {
-			size_t size = MIN(newLfdbSize, switchInfo->LinearFDBTop + 1);
+			size_t size = MIN(newPgdbSize, switchInfo->LinearFDBTop + 1);
 			memcpy(newPgdb, nodep->switchp->PortGroupFDB, size * sizeof(PORT));
 		}
 	}

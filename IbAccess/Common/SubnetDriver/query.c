@@ -32,13 +32,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <imemory.h>
 #include <ievent.h>
 #include <imutex.h>
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 #include <stl_sd.h>
 #include <stl_sa.h>
-#else
-#include <ib_sd.h>
-#include <ib_sa_records.h>
-#endif
 #include <sdi.h>
 
 LOCKED_QUICK_LIST *pQueryList = NULL;
@@ -2094,13 +2089,9 @@ BuildCommonSAMad(
 	}
 	FillCommonSADetails(pQueryElement, AttribId, RecordSize);
 
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 	pQueryElement->TotalBytesInGmp = (pQueryElement->u.pSaMad->common.BaseVersion == IB_BASE_VERSION)
 		? IB_MAD_BLOCK_SIZE
 		: (sizeof(SA_MAD) - STL_SUBN_ADM_DATASIZE) + RecordSize;
-#else
-	pQueryElement->TotalBytesInGmp = sizeof(SA_MAD);
-#endif
 
 	return FSUCCESS;
 }

@@ -1760,8 +1760,9 @@ typedef struct {
  * linear array of blocks[2**18].
  */
 
-#define NUM_PGFT_ELEMENTS_BLOCK		64		/* Num elements per block */
-#define MAX_PGFT_BLOCK_NUM	0x3FFFF
+#define NUM_PGFT_ELEMENTS_BLOCK	0x40		/* Num elements per block */
+#define DEFAULT_MAX_PGFT_BLOCK_NUM 0x80		/* Cap for alpha PRR is 128 blocks. */
+#define DEFAULT_MAX_PGFT_LID ((DEFAULT_MAX_PGFT_BLOCK_NUM * NUM_PGFT_ELEMENTS_BLOCK) - 1)
 #define STL_NUM_PGFT_BLOCKS_PER_DRSMP ((uint8_t)(STL_MAX_PAYLOAD_SMP_DR/NUM_PGFT_ELEMENTS_BLOCK))
 
 typedef struct {							/* RW POD: PGFTn=0xFF */
@@ -2065,6 +2066,13 @@ typedef struct {						/* RW */
 } PACK_SUFFIX STL_HFI_CONGESTION_CONTROL_TABLE;
 
 #define CONGESTION_CONTROL_TABLE_CCTILIMIT_SZ	(sizeof(uint16))
+
+/* this is conservative and considers the least payload */
+#define CONGESTION_CONTROL_TABLE_BLOCKS_PER_MAD \
+    ((MIN(STL_MAX_PAYLOAD_SMP_DR, STL_MAX_PAYLOAD_SMP_LR) - CONGESTION_CONTROL_TABLE_CCTILIMIT_SZ) / sizeof(STL_HFI_CONGESTION_CONTROL_TABLE_BLOCK))
+#define CONGESTION_CONTROL_TABLE_ENTRIES_PER_MAD \
+		(CONGESTION_CONTROL_TABLE_BLOCKS_PER_MAD  * \
+			STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES)
 /*
  * The following prototype definitions are included in temporary form
  * for reference only.  They will be reworked as needed and moved into

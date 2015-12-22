@@ -441,6 +441,8 @@ if3_set_rmpp_minfo (ManagerInfo_t *mi)
 {
     mi->rmppMngrfd = &fdsa;
     mi->rmppPool = &fe_pool;
+    // FE does not receive inbound MAD requests, so RMPP filters not required
+    mi->rmppCreateFilters = 0;
     // set the RMPP context pool sizes for the FE process, with the same techniques
     // used to define the RMPP context pool sizes for the SA.
     mi->rmppDataLength = 512 * cs_numPortRecords(fe_config.subnet_size);

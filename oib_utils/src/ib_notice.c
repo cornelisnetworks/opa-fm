@@ -466,29 +466,42 @@ int repost_pending_registrations(struct oib_port *port)
 	        new_timeout_ms = NOTICE_REG_TIMEOUT_MS;
 	        post_send_sa_msg(port, msg, OIB_RRS_SEND_RETRY);    		
     	} else {
-        	reg = msg->reg;
-        	thread_msg.size = sizeof *reg;
-		    thread_msg.evt  = OIB_TH_EVT_TRAP_REG_ERR_TIMEOUT;
+		/*
+		 * When the registration is unregistered (in
+		 * userspace_unregister()), msg->reg is NULL and we could not
+		 * send the timeout event anymore (the caller is not waiting
+		 * for notification anymore).
+		 */
+		if (msg->reg) {
+			reg = msg->reg;
+			thread_msg.size = sizeof *reg;
+			thread_msg.evt  = OIB_TH_EVT_TRAP_REG_ERR_TIMEOUT;
 
-    		iov[0].iov_base = &thread_msg;
-    		iov[0].iov_len  = sizeof thread_msg;
-    		iov[1].iov_base = reg;
-    		iov[1].iov_len  = sizeof *reg;
-    		write_size = iov[0].iov_len + iov[1].iov_len;
+			iov[0].iov_base = &thread_msg;
+			iov[0].iov_len  = sizeof thread_msg;
+			iov[1].iov_base = reg;
+			iov[1].iov_len  = sizeof *reg;
+			write_size = iov[0].iov_len + iov[1].iov_len;
 
-		    if ( write_size !=
-		        (write_count = writev(port->umad_port_sv[1], iov, 2)) )
-		         OUTPUT_ERROR("bad write count %d\n", (int)write_count);
+			write_count = writev(port->umad_port_sv[1], iov, 2);
+			if ( write_size != write_count)
+				OUTPUT_ERROR("bad write count %d\n",
+					     (int)write_count);
+		}
 
-		    // detach the msg to be deleted from the list first
-		    del_msg = msg;
-		    msg = msg->prev;
-            DBGPRINT("registration timeout on trap %d : req %p\n",
-                        del_msg->reg->trap_num, del_msg->reg);
+		// detach the msg to be deleted from the list first
+		del_msg = msg;
+		msg = msg->prev;
+		if (del_msg->reg) {
+			DBGPRINT("registration timeout on trap %d : req %p\n",
+			 	del_msg->reg->trap_num, del_msg->reg);
+		} else {
+			DBGPRINT("registration timeout on trap: No information available.\n");
+		}
 		if (del_msg->reg) 
 			del_msg->reg->reg_msg = NULL;
-		    LIST_DEL(del_msg);
-            free_sa_msg(del_msg);
+		LIST_DEL(del_msg);
+		free_sa_msg(del_msg);
         }
     }
 

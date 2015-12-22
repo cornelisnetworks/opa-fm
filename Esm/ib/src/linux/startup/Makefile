@@ -62,7 +62,7 @@ DEFFILE			=
 INCLUDE_TARGETS	= \
 				# Add more h hpp files here
 # Non-compiled files
-MISC_FILES		= opafm.info opafm.service opafe@.service opasm@.service opafmctrl.sh
+MISC_FILES		= opafm.info opafm.service opafe@.service opasm@.service
 # all source files
 SOURCES			= $(CFILES) $(CCFILES) $(LFILES) $(RSCFILES) $(IDLFILE)
 # Source files to include in DSP File
@@ -83,7 +83,7 @@ CMD_TARGETS_SHLIB	=
 CMD_TARGETS_EXE		= $(EXECUTABLE)
 CMD_TARGETS_MISC	= fm_cmdall opafm fm_capture \
 				  opafm.xml $(BUILDDIR)/opaxmlextract $(BUILDDIR)/opaxmlfilter \
-				  $(BUILDDIR)/opafmd opafm.arch 
+				  $(BUILDDIR)/opafmd opafm.arch opafmctrl 
 # files to remove during clean phase
 CLEAN_TARGETS_MISC	=  
 CLEAN_TARGETS		= $(OBJECTS) $(RSCOBJECTS) $(IDL_TARGETS) $(CLEAN_TARGETS_MISC)
@@ -163,13 +163,16 @@ opafm.xml : opafm_src.xml $(BUILDDIR)/config_convert
 opafm.arch:
 	echo "$(BUILD_TARGET_OS_ID)" > opafm.arch
 
+opafmctrl: opafmctrl.sh
+	cp opafmctrl.sh opafmctrl
+
 # install for stage phase
 #include $(TL_DIR)/Makerules/Maketargets.stage
 STAGE::
 	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_DIR)/etc \
 		opafm_src.xml
 	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_IMAGE_DIR)/bin \
-		fm_capture fm_cmdall opafmctrl.sh
+		fm_capture fm_cmdall opafmctrl
 	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_IMAGE_DIR)/etc \
 		opafm \
 		opafm.xml $(BUILDDIR)/opaxmlextract $(BUILDDIR)/opaxmlfilter \

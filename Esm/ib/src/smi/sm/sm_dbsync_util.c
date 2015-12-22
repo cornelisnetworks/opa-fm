@@ -191,7 +191,7 @@ void sm_dbsync_initSmRec(SmRecp smrecp) {
 	smrecp->dbsyncCCC.smVfChecksum = smrecp->dbsyncCCC.smConfigChecksum = 0;
 	smrecp->dbsyncCCC.pmConfigChecksum = smrecp->dbsyncCCC.feConfigChecksum = 0;
 	smrecp->dbsyncCCC.spare1 = smrecp->dbsyncCCC.spare2 = smrecp->dbsyncCCC.spare3 = smrecp->dbsyncCCC.spare4 = 0;
-	smrecp->dbsyncCCC.spare5 = smrecp->dbsyncCCC.spare6 = smrecp->dbsyncCCC.spare7 = smrecp->dbsyncCCC.spare4 = 8;
+	smrecp->dbsyncCCC.spare5 = smrecp->dbsyncCCC.spare6 = smrecp->dbsyncCCC.spare7 = smrecp->dbsyncCCC.spare8 = 0;
 }
 
 /*
@@ -479,9 +479,9 @@ boolean sm_dbsync_isUpToDate(SmRecKey_t recKey, char **reason) {
 			uptodate = 0;
 		} else if (smrecp->syncCapability == DBSYNC_CAP_SUPPORTED) {
 			if (smrecp->dbsync.fullSyncStatus == DBSYNC_STAT_FAILURE) {
-				if (reason) *reason = "SM synchrnoization failed";
+				if (reason) *reason = "SM synchronization failed";
 			} else if (smrecp->dbsync.fullSyncStatus != DBSYNC_STAT_SYNCHRONIZED) {
-				if (reason) *reason = "SM not fully synchrnoization";
+				if (reason) *reason = "SM not fully synchronization";
 			} else if (pm_config.start && pm_config.image_update_interval
 			&& smrecp->pmdbsync.firstUpdateState != DBSYNC_STAT_SYNCHRONIZED) {
 				if (reason) *reason = "PM not synchronized";
@@ -489,7 +489,7 @@ boolean sm_dbsync_isUpToDate(SmRecKey_t recKey, char **reason) {
 					uptodate = 1;
 			}
         } else if (smrecp->syncCapability <= DBSYNC_CAP_ASKING) {
-				if (reason) *reason = "SM synchrnoization capabilities unknown";
+				if (reason) *reason = "SM synchronization capabilities unknown";
 		}
         (void)vs_unlock(&smRecords.smLock);
     }

@@ -46,7 +46,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ixml.h>
 #include "cs_log.h"
 
-#if defined(VXWORKS_REV) && (VXWORKS_REV >= VXWORKS_REV_6_9)
+#ifdef __VXWORKS__
 #include "regexp.h"
 #else
 #include "regex.h"
@@ -56,11 +56,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define MAX_SUBNET_SIZE						64000		// HSM has no realistic max
 #define DEFAULT_SUBNET_SIZE					2560		// XML default subnet size
 #else  // __VXWORKS__
-#if defined(PRODUCT_X)
-#define MAX_SUBNET_SIZE						1000		// ESM has a max subnet size of 1000 for X
-#else  // PRODUCT_X
-#define MAX_SUBNET_SIZE						288			// ESM has a max subnet size of 288 for non-X
-#endif // PRODUCT_X
+#define MAX_SUBNET_SIZE						288			// ESM has a max subnet size of 288
 #define DEFAULT_SUBNET_SIZE					100		    // XML default subnet size
 #endif // __VXWORKS__
 
@@ -338,7 +334,7 @@ typedef struct _RegExp {
 	boolean                 isSyntaxValid;
 	RegexBracketParseInfo_t regexInfo;
 
-#if defined(VXWORKS_REV) && (VXWORKS_REV >= VXWORKS_REV_6_9)
+#ifdef __VXWORKS__
 	regexp                  *regexpCompiled;
 #else
 	regmatch_t              groupArray[MAX_BRACKETS_SUPPORTED];
@@ -709,7 +705,7 @@ typedef struct _SmCaCongestionXmlConfig {
 	uint16_t timer;
 	uint8_t  threshold;
 	uint8_t  min;
-	uint8_t  limit;
+	uint16_t  limit;
 	uint32_t desired_max_delay;
 } SmCaCongestionXmlConfig_t;
 

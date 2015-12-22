@@ -60,16 +60,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "tms/common/rdHelper.h"
 #include <xml.h>
 
-#if defined(VXWORKS_REV) && (VXWORKS_REV >= VXWORKS_REV_6_9)
 #include "sftp.h"
 void updateLastScpRetCodeForXML(scpFastFabricRetCode_t retCode) {
 	Sftp_updateLastScpRetCodeForXML(retCode);
 }
-#else
-typedef int intptr_t;
-typedef unsigned int uintptr_t;
-extern void updateLastScpRetCodeForXML(scpFastFabricRetCode_t retCode);
-#endif
 
 extern uint32_t sm_state;
 extern size_t g_smPoolSize;
@@ -477,7 +471,7 @@ static uint32_t cksumEnd(void *ctx)
 #define DEFAULT_AND_CKSUM_U16(data, default, flags) { DEFAULT_U16(data, default); AddToCksums(#data, &data, sizeof(uint16_t), flags); }
 #define DEFAULT_AND_CKSUM_U32(data, default, flags) { DEFAULT_U32(data, default); AddToCksums(#data, &data, sizeof(uint32_t), flags); }
 #define DEFAULT_AND_CKSUM_U64(data, default, flags) { DEFAULT_U64(data, default); AddToCksums(#data, &data, sizeof(uint64_t), flags); }
-#define DEFAULT_AND_CKSUM_STR(data, default, flags) { DEFAULT_STR(data, default); AddToCksums(#data, &data, sizeof(uint64_t), flags); }
+#define DEFAULT_AND_CKSUM_STR(data, default, flags) { DEFAULT_STR(data, default); AddToCksums(#data, &data, strlen(data), flags); }
 #ifdef CHECKSUM_DEBUG
 #define CKSUM_END(overall, disruptive, consistency) { EndCksums(&overall, &disruptive, &consistency); printf("CKSUM_END %s %d, %d, %d\n",__func__,overall,disruptive,consistency); }
 #else
@@ -1193,7 +1187,7 @@ void pmInitConfig(PMXmlConfig_t *pmp, uint32_t instance, uint32_t ccc_method)
 	if (pmp->shortTermHistory.enable) {
 		DEFAULT_AND_CKSUM_U32(pmp->shortTermHistory.imagesPerComposite, 3, CKSUM_OVERALL_DISRUPT_CONSIST);
 		DEFAULT_AND_CKSUM_U32(pmp->shortTermHistory.maxDiskSpace, 1024, CKSUM_OVERALL_DISRUPT_CONSIST);
-		DEFAULT_AND_CKSUM_STR(pmp->shortTermHistory.StorageLocation, "/var/opt/opafm", CKSUM_OVERALL_DISRUPT_CONSIST);
+		DEFAULT_AND_CKSUM_STR(pmp->shortTermHistory.StorageLocation, "/var/opt/opafm", CKSUM_OVERALL_DISRUPT);
 		DEFAULT_AND_CKSUM_U32(pmp->shortTermHistory.totalHistory, 24, CKSUM_OVERALL_DISRUPT_CONSIST);
 		DEFAULT_AND_CKSUM_U8(pmp->shortTermHistory.compressionDivisions, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
 	}
@@ -1663,11 +1657,12 @@ void smInitConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 		DEFAULT_AND_CKSUM_U8(smp->congestion.debug, 0, CKSUM_OVERALL_DISRUPT);
 		DEFAULT_AND_CKSUM_U8(smp->congestion.sw.victim_marking_enable, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 		DEFAULT_AND_CKSUM_U8(smp->congestion.sw.threshold, 8, CKSUM_OVERALL_DISRUPT_CONSIST);
+		DEFAULT_U8(smp->congestion.sw.packet_size, 0);
 		if (smp->congestion.sw.packet_size > 162) {
 			IB_LOG_WARN_FMT(__func__, "FM CC SwitchCongestionSetting:Packet Size Limit %d exceeds max value setting to 162", smp->congestion.sw.packet_size);
 			smp->congestion.sw.packet_size = 162;
 		}
-		DEFAULT_AND_CKSUM_U8(smp->congestion.sw.packet_size, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
+		CKSUM_DATA(smp->congestion.sw.packet_size, CKSUM_OVERALL_DISRUPT_CONSIST);
 		DEFAULT_AND_CKSUM_U8(smp->congestion.sw.cs_threshold, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 		DEFAULT_AND_CKSUM_U16(smp->congestion.sw.cs_return_delay, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 		DEFAULT_AND_CKSUM_U32(smp->congestion.sw.marking_rate, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
@@ -1676,7 +1671,15 @@ void smInitConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 		DEFAULT_AND_CKSUM_U16(smp->congestion.ca.timer, 10, CKSUM_OVERALL_DISRUPT_CONSIST);
 		DEFAULT_AND_CKSUM_U8(smp->congestion.ca.threshold, 8, CKSUM_OVERALL_DISRUPT_CONSIST);
 		DEFAULT_AND_CKSUM_U8(smp->congestion.ca.min, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
-		DEFAULT_AND_CKSUM_U8(smp->congestion.ca.limit, 128, CKSUM_OVERALL_DISRUPT_CONSIST);
+		DEFAULT_U16(smp->congestion.ca.limit, 127);
+		// limit is max index == max_entries-1
+		if (smp->congestion.ca.limit >  CONGESTION_CONTROL_TABLE_ENTRIES_PER_MAD-1) {
+			IB_LOG_WARN_FMT(__func__, "FM CC SwitchCongestionSetting:CCTI Limit %d exceeds max value, setting to %d", smp->congestion.ca.limit,
+						CONGESTION_CONTROL_TABLE_ENTRIES_PER_MAD-1);
+			smp->congestion.ca.limit =
+						(uint16_t)(CONGESTION_CONTROL_TABLE_ENTRIES_PER_MAD-1);
+		}
+		CKSUM_DATA(smp->congestion.ca.limit, CKSUM_OVERALL_DISRUPT_CONSIST);
 		DEFAULT_AND_CKSUM_U32(smp->congestion.ca.desired_max_delay, 8000, CKSUM_OVERALL_DISRUPT_CONSIST);
 	}
 
@@ -3914,31 +3917,6 @@ VirtualFabrics_t* renderVirtualFabricsConfig(uint32_t fm, FMXmlCompositeConfig_t
 				releaseVirtualFabricsConfig(vfsip);
 				return NULL;
 			}
-
-			//need to leave at least 1% for each unallocated QoS enabled VF
-			if (num_enabled > num_qos_defined) {
-				needed_bw_reserve = (num_enabled - num_qos_defined - num_non_qos_enabled) * 1;
-				if (num_non_qos_enabled)
-					needed_bw_reserve += 5;
-
-				if ((total_bw+needed_bw_reserve) > 100) {
-					//if there is at least 1 nonQos VF, BW can't be greater than 95%
-					if (num_non_qos_enabled != 0) {
-						if (error) 
-							sprintf(error, "Total QOS Bandwidth cannot exceed 95%% for enabled Virtual Fabrics with QOS enabled when there is an enabled VF with QoS disabled");
-						fprintf(stdout, "Total QOS Bandwidth cannot exceed 95%% for enabled Virtual Fabrics with QOS enabled when there is an enabled VF with QoS disabled\n" );
-					}
-					else {
-						if (error) 
-							sprintf(error, "QOS Bandwidth allocation error; not enough BW to allocate to the VFs with QoS enabled, but that did not explicitly specify a BW allocation amount");
-						fprintf(stdout, "QOS Bandwidth allocation error; not enough BW to allocate to the VFs with QoS enabled, but that did not explicitly specify a BW allocation amount\n" );
-					}
-
-					releaseVirtualFabricsConfig(vfsip);
-					return NULL;
-				}
-			}
-
 		}
 
 		// Inherit default values from SM Instance if not yet defined by VF.
@@ -4584,6 +4562,30 @@ VirtualFabrics_t* renderVirtualFabricsConfig(uint32_t fm, FMXmlCompositeConfig_t
 		}
 		vfsip->number_of_vfs_all++; 
 		valid_vfs++;
+	}
+
+	//need to leave at least 1% for each unallocated QoS enabled VF
+	if (num_enabled > num_qos_defined) {
+		needed_bw_reserve = (num_enabled - num_qos_defined - num_non_qos_enabled) * 1;
+		if (num_non_qos_enabled)
+			needed_bw_reserve += 5;
+
+		if ((total_bw+needed_bw_reserve) > 100) {
+			//if there is at least 1 nonQos VF, BW can't be greater than 95%
+			if (num_non_qos_enabled != 0) {
+				if (error) 
+					sprintf(error, "Total QOS Bandwidth cannot exceed 95%% for enabled Virtual Fabrics with QOS enabled when there is an enabled VF with QoS disabled");
+				fprintf(stdout, "Total QOS Bandwidth cannot exceed 95%% for enabled Virtual Fabrics with QOS enabled when there is an enabled VF with QoS disabled\n" );
+			}
+			else {
+				if (error) 
+					sprintf(error, "QOS Bandwidth allocation error; not enough BW to allocate to the VFs with QoS enabled, but that did not explicitly specify a BW allocation amount");
+				fprintf(stdout, "QOS Bandwidth allocation error; not enough BW to allocate to the VFs with QoS enabled, but that did not explicitly specify a BW allocation amount\n" );
+			}
+
+			releaseVirtualFabricsConfig(vfsip);
+			return NULL;
+		}
 	}
 
 	if (!isSAAssigned) {

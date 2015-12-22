@@ -1,7 +1,7 @@
 /*!
  @file    $Source: /cvs/ics/MakeTools/patch_version/patch_version.c,v $
  $Author: mwheinz $
- $Name: ALL_EMB_ATOM_ALL_10_0_BETA0-BRANCH_10_0_0_0_625 $
+ $Name: ALL_EMB_ATOM_HEAD_10_0_0_0_655 $
  $Revision: 1.14 $
  $Date: 2015/01/22 18:03:59 $
  @brief   Utility to manage version and branding strings in executable code

@@ -76,7 +76,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <iba/stl_sm.h>
 #include <iba/stl_helper.h>
 
-#if defined(VXWORKS_REV) && (VXWORKS_REV >= VXWORKS_REV_6_9)
+#ifdef __VXWORKS__
 #include "regexp.h"
 #else
 #include "regex.h"
@@ -2162,6 +2162,7 @@ Node_t		*sm_find_guid(Topology_t *, uint64_t);
 Node_t      *sm_find_quarantined_guid(Topology_t *topop, uint64_t guid);
 Node_t		*sm_find_next_guid(Topology_t *, uint64_t);
 Node_t	 	*sm_find_node(Topology_t *, int32_t);
+Node_t		*sm_find_node_by_path(Topology_t *, uint8_t *);
 Port_t      *sm_find_node_port(Topology_t *, Node_t *, int32_t);
 Node_t	 	*sm_find_switch(Topology_t *, uint16_t);
 Node_t	 	*sm_find_port_node(Topology_t *, Port_t *);

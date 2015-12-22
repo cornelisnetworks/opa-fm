@@ -33,13 +33,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define _MULTICAST_H
 
 #include <datatypes.h>
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #include <stl_sa.h>
 #include <stl_sd.h>
-#else
-#include <ib_sa_records.h>
-#include <ib_sd.h>
-#endif
 #include <ib_ibt.h>
 
 #ifdef __cplusplus

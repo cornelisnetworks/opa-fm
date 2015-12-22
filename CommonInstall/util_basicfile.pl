@@ -130,6 +130,33 @@ sub copy_file($$$$$)
 	}
 }
 
+# Copy file and set security context if SELINUX is enabled;
+# If SELINUX is disabled, it will behave like copy_file()
+sub copy_file_context($$$$$$)
+{
+	my($src) = shift();
+	my($dest) = shift();
+	my($owner) = shift();
+	my($group) = shift();
+	my($mode) = shift();
+	my($context) = shift();
+	# only copy file if source exists, this keep all those cp errors for litering
+	# install for development.
+
+	if ( -e $src)
+	{
+		# If the destination file exists, somehow the context will not be
+		# overwritten using the "--context" option. Remove the file first.
+		if ( -e "$ROOT$dest" ) {
+			system "rm -rf $ROOT$dest";
+		}
+		system "cp -rf --context=$context $src $ROOT$dest 2>/dev/null";
+		system "chown $owner $ROOT$dest";
+		system "chgrp $group $ROOT$dest";
+		system "chmod $mode $ROOT$dest";
+	}
+}
+
 sub symlink_usrlocal($$)
 {
 	my($src) = shift();

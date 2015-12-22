@@ -34,13 +34,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define _IBA_VPI_EXPORT_H_
 
 #include "iba/vpi.h"
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 #include "stl_types.h"
 #include "stl_sm.h"
-#else
-#include "ib_types.h"
-#include "ib_sm.h"
-#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -1859,7 +1854,6 @@ IBA_API VPI_REARMNCQ iba_rearm_n_cq;
  * 	FSUCCESS - MadArg contains an appropriate response packet
  *	other - packet could not be processed and no response should be sent
  */
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 typedef FSTATUS (VPI_GETSETMAD)(
 	IN  IB_HANDLE			QpHandle,
 	IN  uint8				PortNumber,
@@ -1867,14 +1861,6 @@ typedef FSTATUS (VPI_GETSETMAD)(
 	IN STL_SMP				*SmpInOut,
 	IN uint32				*SmpLength
 	);
-#else
-typedef FSTATUS (VPI_GETSETMAD)(
-	IN  IB_HANDLE			QpHandle,
-	IN  uint8				PortNumber,
-	IN  IB_LID				SLID,
-	IN  void					*SmpInOut
-	);
-#endif
 VPI_GETSETMAD iba_get_set_mad;
 
 

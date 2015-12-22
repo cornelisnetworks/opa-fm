@@ -692,13 +692,8 @@ SetPortCapabilities ( void )
 	FSTATUS					status;
 	SMA_PORT_TABLE_PRIV		*pPortTbl;
 	SMA_PORT_BLOCK_PRIV		*pPortBlock;
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 	STL_SMP					*pSmp;
 	STL_PORT_INFO			*pPortInfo;
-#else
-	SMP						*pSmp;
-	PORT_INFO				*pPortInfo;
-#endif
 	uint32					j;
 	uint8					portNo;
 	uint32					smps;
@@ -724,22 +719,15 @@ SetPortCapabilities ( void )
 			break;
 		}
 
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 		pSmp		= (STL_SMP*)pSmpBlock->Block.Smp;
 		pPortInfo	= (STL_PORT_INFO*)pSmp->SmpExt.DirectedRoute.SMPData;
-#else
-		pSmp		= (SMP*)pSmpBlock->Block.Smp;
-		pPortInfo	= (PORT_INFO*)pSmp->SmpExt.DirectedRoute.SMPData;
-#endif
 		
 		// Scan through all CA's
 		SpinLockAcquire(&g_Sma->CaListLock);
 		for (pCaObj	= g_Sma->CaObj; pCaObj != NULL; pCaObj = pCaObj->Next)
 		{
 			uint32	capMaskUpdate=0;
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 			uint32	MadQueryLength;
-#endif
 
 			pCaObj->UseCount++;
 			SpinLockRelease(&g_Sma->CaListLock);
@@ -753,24 +741,14 @@ SetPortCapabilities ( void )
 				portNo								= (uint8)j;	// switch port zero
 
 				// Format MAD get PortInfo
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 				pSmp->common.BaseVersion				= STL_BASE_VERSION;
 				pSmp->common.ClassVersion				= STL_SM_CLASS_VERSION;
-#else
-				pSmp->common.BaseVersion				= IB_BASE_VERSION;
-				pSmp->common.ClassVersion				= IB_SM_CLASS_VERSION;
-#endif
 
 				pSmp->common.mr.AsReg8				= 0;
 				pSmp->common.mr.s.Method				= MMTHD_GET;
 
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 				pSmp->SmpExt.DirectedRoute.DrDLID	= STL_LID_PERMISSIVE;
 				pSmp->SmpExt.DirectedRoute.DrSLID	= STL_LID_PERMISSIVE;
-#else
-				pSmp->SmpExt.DirectedRoute.DrDLID	= LID_PERMISSIVE;
-				pSmp->SmpExt.DirectedRoute.DrSLID	= LID_PERMISSIVE;
-#endif
 
 				pSmp->common.u.DR.s.Status		= 0;
 				pSmp->common.u.DR.s.D			= 0;
@@ -779,7 +757,6 @@ SetPortCapabilities ( void )
 				//pSmp->common.TransactionID	= 0;
 				pSmp->common.MgmtClass			= MCLASS_SM_DIRECTED_ROUTE;
 
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 				pSmp->common.AttributeID		= STL_MCLASS_ATTRIB_ID_PORT_INFO;
 				pSmp->common.AttributeModifier	= 0x01000000 | portNo;
 
@@ -790,16 +767,6 @@ SetPortCapabilities ( void )
 									0, // SLID ignored, local request
 									pSmp,
 									&MadQueryLength );
-#else
-				pSmp->common.AttributeID		= MCLASS_ATTRIB_ID_PORT_INFO;
-				pSmp->common.AttributeModifier	= portNo;
-
-				SMP_SET_LOCAL(pSmp);		// local request
-
-				status = iba_get_set_mad( pPortBlock->QpHandle, portNo,
-									0, // SLID ignored, local request
-									pSmp );
-#endif
 				if ( FSUCCESS != status )
 				{
 					_DBG_ERROR ((
@@ -808,12 +775,8 @@ SetPortCapabilities ( void )
 				}
 
 				// SWAP THE GETPORTINFO response
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 				BSWAP_STL_PORT_INFO(pPortInfo);
 				ZERO_RSVD_STL_PORT_INFO(pPortInfo);
-#else
-				BSWAP_PORT_INFO(pPortInfo, 0);
-#endif
 
 				// Set capability if necessary
 				if (g_Sma->IsConnectionManagementSupported && !pPortInfo->CapabilityMask.s.IsConnectionManagementSupported) {
@@ -830,48 +793,24 @@ SetPortCapabilities ( void )
 					break;				// nothing to change
 				
 				// Do not change other fields
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 				pPortInfo->LinkWidth.Enabled = STL_LINK_WIDTH_NOP;
 				pPortInfo->PortStates.s.PortState = IB_PORT_NOP;
 				pPortInfo->PortStates.s.PortPhysicalState = IB_PORT_PHYS_NOP;
 				pPortInfo->s4.OperationalVL = 0;
-#else
-				pPortInfo->LinkWidth.Enabled = IB_LINK_WIDTH_NOP;
-				pPortInfo->CapabilityMask.s.IsSNMPTunnelingSupported = \
-					g_Sma->IsSNMPTunnelingSupported;
-				pPortInfo->Link.PortState = IB_PORT_NOP;
-				pPortInfo->Link.PortPhysicalState = IB_PORT_PHYS_NOP;
-				pPortInfo->Link.DownDefaultState = IB_PORT_PHYS_NOP;
-				pPortInfo->s3.OperationalVL = IB_VL_NOP;
-#endif
 				pPortInfo->LinkSpeed.Enabled = IB_LINK_SPEED_NOP;
 				
 				// SWAP THE SET PORT INFO payload
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 				BSWAP_STL_PORT_INFO(pPortInfo);
-#else
-				BSWAP_PORT_INFO(pPortInfo, 0);
-#endif
 
 				// Set base MAD info
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 				pSmp->common.BaseVersion				= STL_BASE_VERSION;
 				pSmp->common.ClassVersion				= STL_SM_CLASS_VERSION;
-#else
-				pSmp->common.BaseVersion				= IB_BASE_VERSION;
-				pSmp->common.ClassVersion				= IB_SM_CLASS_VERSION;
-#endif
 				
 				pSmp->common.mr.AsReg8				= 0;
 				pSmp->common.mr.s.Method			= MMTHD_SET;
 
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 				pSmp->SmpExt.DirectedRoute.DrDLID	= STL_LID_PERMISSIVE;
 				pSmp->SmpExt.DirectedRoute.DrSLID	= STL_LID_PERMISSIVE;
-#else
-				pSmp->SmpExt.DirectedRoute.DrDLID	= LID_PERMISSIVE;
-				pSmp->SmpExt.DirectedRoute.DrSLID	= LID_PERMISSIVE;
-#endif
 				
 				pSmp->common.u.DR.s.Status		= 0;
 				pSmp->common.u.DR.s.D			= 0;
@@ -880,7 +819,6 @@ SetPortCapabilities ( void )
 				//pSmp->common.TransactionID	= 0;
 				pSmp->common.MgmtClass			= MCLASS_SM_DIRECTED_ROUTE;
 
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 				pSmp->common.AttributeID		= STL_MCLASS_ATTRIB_ID_PORT_INFO;
 				pSmp->common.AttributeModifier	= 0x01000000 | portNo;
 
@@ -891,16 +829,6 @@ SetPortCapabilities ( void )
 										0, // SLID ignored, local request
 										pSmp,
 										&MadQueryLength );
-#else
-				pSmp->common.AttributeID		= MCLASS_ATTRIB_ID_PORT_INFO;
-				pSmp->common.AttributeModifier	= portNo;
-
-				SMP_SET_LOCAL(pSmp);		// local request
-
-				status = iba_get_set_mad( pPortBlock->QpHandle, portNo,
-										0, // SLID ignored, local request
-										pSmp );
-#endif
 				if ( FSUCCESS != status )
 					break;
 

@@ -33,11 +33,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <idebug.h>
 #include <datatypes.h>
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #include <stl_sd.h>
-#else
-#include <ib_sd.h>
-#endif
 
 // define boolean 
 #define TRUE	1

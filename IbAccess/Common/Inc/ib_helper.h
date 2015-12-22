@@ -31,14 +31,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #if defined(CHECK_HEADERS)
 
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #ifndef _IBA_STL_HELPER_H_
 #warning FIX ME!!! Your includes should use the stl_helper.h header and not the ib_helper.h header for STL builds
-#endif
-#else
-#ifdef _IBA_STL_HELPER_H_
-#warning FIX ME!!! Your includes should use the ib_helper.h header and not the stl_helper.h header for IB builds
-#endif
 #endif
 
 #endif
@@ -46,15 +40,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef _IBA_IB_HELPER_H_
 #define _IBA_IB_HELPER_H_
 
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #include "iba/stl_types.h"
 #include "iba/stl_sm.h"
 #include "iba/stl_pm.h"
-#else
-#include "iba/ib_types.h"
-#include "iba/ib_sm.h"
-#include "iba/ib_pm.h"
-#endif
 
 #include "iba/ib_mad.h"
 #include "iba/public/imemory.h"
@@ -224,9 +212,7 @@ IbMTUToText(IB_MTU mtu)
 {
 	switch ((int)mtu)
 	{
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 		case STL_MTU_0:
-#endif
 		default:
 			return "0";
 		case IB_MTU_256:
@@ -239,12 +225,10 @@ IbMTUToText(IB_MTU mtu)
 			return "2048";
 		case IB_MTU_4096:
 			return "4096";
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
         case STL_MTU_8192:
             return "8192";
         case STL_MTU_10240:
 	        return "10240";
-#endif
 	}
 }
 
@@ -997,44 +981,6 @@ IbPortXmitWaitPct10(uint8 rate, uint16 interval, uint64 PortXmitWait)
 }
 #endif
 
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
-/* No STL equivalent fns. In STL VL is represented as number of VLs, not enum.*/
-#else
-/* convert VLs to Number of Data VLs */
-static __inline uint8
-IbVLsToNumDataVLs(IB_VL vl)
-{
-	return (vl == IB_VL0)?1:
-		(vl == IB_VL0_VL1)?2:
-		(vl == IB_VL0_VL3)?4:
-		(vl == IB_VL0_VL7)?8:
-		(vl == IB_VL0_VL14)?15:0;
-}
-
-/* convert Number of Data VLs to VLs */
-static __inline IB_VL
-IbNumDataVLsToVLs(uint8 vl)
-{
-	if (vl <=1) return IB_VL0;
-	if (vl <=2) return IB_VL0_VL1;
-	if (vl <=4) return IB_VL0_VL3;
-	if (vl <=8) return IB_VL0_VL7;
-	return IB_VL0_VL14;
-}
-
-/* convert VLs to Text */
-static __inline const char*
-IbVLsToText(IB_VL vl)
-{
-	return (vl == IB_VL_NOP)?"Noop":
-		(vl == IB_VL0)?" 1+1":
-		(vl == IB_VL0_VL1)?" 2+1":
-		(vl == IB_VL0_VL3)?" 4+1":
-		(vl == IB_VL0_VL7)?" 8+1":
-		(vl == IB_VL0_VL14)?"15+1":" ???";
-}
-#endif 
-
 /* convert Node Type to text */
 static __inline const char*
 IbNodeTypeToText(NODE_TYPE type)
@@ -1330,17 +1276,9 @@ void FormatTimeoutMult(char buf[8], uint8 timeout)
 
 #if defined(VXWORKS)
 	if (time64 < FORMAT_MULT_THRESHOLD_FRACTION)
-#if defined(VXWORKS_REV) && (VXWORKS_REV >= VXWORKS_REV_6_9)
 		snprintf(buf, 8, "%4u ns", (uint32)time64);
-#else
-		sprintf(buf, "%4u ns", (uint32)time64);
-#endif
 	else if (time64 < FORMAT_MULT_THRESHOLD_FRACTION*1000)
-#if defined(VXWORKS_REV) && (VXWORKS_REV >= VXWORKS_REV_6_9)
 		snprintf(buf, 8, "%4u us", ((uint32)time64)/1000);
-#else
-		sprintf(buf, "%4u us", ((uint32)time64)/1000);
-#endif
 	else {
 		/* Linux kernel doesn't have 64 bit division support */
 		uint32 time32 = 4096 * (((uint32)1<<timeout)/1000000);	/* units of ms */
@@ -1349,29 +1287,13 @@ void FormatTimeoutMult(char buf[8], uint8 timeout)
 			time32=(4096 * (((uint32)1<<timeout)/10))/100000;
 		}
 		if (time32 < FORMAT_MULT_THRESHOLD_FRACTION)
-#if defined(VXWORKS_REV) && (VXWORKS_REV >= VXWORKS_REV_6_9)
 			snprintf(buf, 8, "%4u ms", time32);
-#else
-			sprintf(buf, "%4u ms", time32);
-#endif
 		else if (time32 < FORMAT_MULT_THRESHOLD*1000)
-#if defined(VXWORKS_REV) && (VXWORKS_REV >= VXWORKS_REV_6_9)
 			snprintf(buf, 8, "%4u s ", time32/1000);
-#else
-			sprintf(buf, "%4u s ", time32/1000);
-#endif
 		else if (time32 < FORMAT_MULT_THRESHOLD*1000*60)
-#if defined(VXWORKS_REV) && (VXWORKS_REV >= VXWORKS_REV_6_9)
 			snprintf(buf, 8, "%4u m ", time32/(1000*60));
-#else
-			sprintf(buf, "%4u m ", time32/(1000*60));
-#endif
 		else 
-#if defined(VXWORKS_REV) && (VXWORKS_REV >= VXWORKS_REV_6_9)
 			snprintf(buf, 8, "%4u h ", time32/(1000*60*60));
-#else
-			sprintf(buf, "%4u h ", time32/(1000*60*60));
-#endif
 	}
 #else
 	if (time64 < FORMAT_MULT_THRESHOLD_FRACTION)
@@ -1627,16 +1549,9 @@ ValidatePKey(
 		if( !(pPortAttr->PkeyTable[i] & 0x7FFF) )
 			continue;
 
-#if defined(STL_GEN) && (STL_GEN >= 1)
         /* Compare the PKey value in the port's PKey table with */
         /* the value provided. */
 		if( ((pPortAttr->PkeyTable[i] & 0xffff) == (PKeyValue & 0xffff)) )
-#else
-            /* Compare the PKey value in the port's PKey table with */
-            /* the value provided.  At least one must be a Full Member */
-		if( ((pPortAttr->PkeyTable[i] & 0x7fff) == (PKeyValue & 0x7fff)) &&
-			((pPortAttr->PkeyTable[i] & 0x8000) || (PKeyValue & 0x8000)) )
-#endif
 		{
 			/* We found a match on the value.  Copy the PKey index. */
 			if( pPKeyIndex )

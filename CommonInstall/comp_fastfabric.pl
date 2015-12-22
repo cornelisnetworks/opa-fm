@@ -89,8 +89,12 @@ sub need_reinstall_fastfabric($$)
 }
 
 sub check_os_prereqs_fastfabric
-{
-	return rpm_check_os_prereqs("fastfabric", "user", ( "tcl 8.4", "expect" ));
+{	
+	if ("$CUR_DISTRO_VENDOR" eq 'redhat') {
+		return rpm_check_os_prereqs("fastfabric", "user", ( "tcl 8.4", "expect", "atlas" ));
+	} else {
+		return rpm_check_os_prereqs("fastfabric", "user", ( "tcl 8.4", "expect" ));
+	}
 }
 
 sub preinstall_fastfabric
@@ -143,14 +147,10 @@ sub install_fastfabric
 
 	install_shmem_apps($srcdir);
 
-	#
-	# If TCL was compiled with thread support, fork support is broken.
-	# and will not be used.  In that case, warn the installer.
-	#
-	#my $BADTCL=`expect -c 'if { [ catch { set test \$tcl_platform(threaded) } result] } { set test 0 }; puts "\$test" '`;
-	#if ( $BADTCL != 0 ) {
-	#	NormalPrint "WARNING: The TCL installed on this system has a known bug that prevents\nWARNING: parallel processes. Parallel operations in $ComponentInfo{'fastfabric'}{'Name'} are disabled.\nWARNING: Please contact customer support for more information.\n";
-	#}
+	$rpmfile = rpm_resolve("$srcdir/RPMS/*/", "any", "opa-mpi-apps");
+	rpm_run_install($rpmfile, "any", " -U ");
+
+
 
 	$ComponentWasInstalled{'fastfabric'}=1;
 }
@@ -167,15 +167,15 @@ sub uninstall_fastfabric
 	my $uninstalling_list = $_[1];	# what items are being uninstalled
 
 
-	rpm_uninstall_list("any", "verbose", ("opa-fastfabric") );
+	rpm_uninstall_list("any", "verbose", ("opa-mpi-apps", "opa-fastfabric") );
 
 	NormalPrint("Uninstalling $ComponentInfo{'fastfabric'}{'Name'}...\n");
 	remove_conf_file("$ComponentInfo{'fastfabric'}{'Name'}", "$FF_CONF_FILE");
 	remove_conf_file("$ComponentInfo{'fastfabric'}{'Name'}", "$OPA_CONFIG_DIR/iba_stat.conf");
 	remove_conf_file("$ComponentInfo{'fastfabric'}{'Name'}", "$FF_TLS_CONF_FILE");
 	
-		uninstall_mpi_apps;
-		uninstall_shmem_apps;
+
+	uninstall_shmem_apps;
 
 	# remove samples we installed (or user compiled), however do not remove
 	# any logs or other files the user may have created

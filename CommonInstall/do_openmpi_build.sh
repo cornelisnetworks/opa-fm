@@ -214,7 +214,7 @@ then
 fi
 
 echo
-echo "OFED OpenMPI MPI Library/Tools rebuild"
+echo "OFA OpenMPI MPI Library/Tools rebuild"
 
 if [ x"$1" != x"" ]
 then

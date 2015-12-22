@@ -461,7 +461,12 @@ sm_conf_callback(hsm_com_datagram_t *data)
 void
 sm_conf_server_run(uint32_t argc, uint8_t **argv){
 	if(hcom_server_start(conf_handle) != HSM_COM_OK){
-		IB_LOG_ERROR0("Server exited with error");
+		if (errno != 0) {
+			IB_LOG_ERROR_FMT("pm_conf_server_run", "Command server exited with error \"%s\" (%d)",
+				strerror(errno), errno);
+		} else {
+			IB_LOG_ERROR0("Command server exited with error. No further information.");
+		}
 	}
 }
 
@@ -559,10 +564,16 @@ uint8_t if3_is_master(void)
 
 void if3_set_rmpp_minfo (ManagerInfo_t *mi)
 {
+    // Default, RMPP filters required in order for thread to receive inbound
+    // MAD requests
+    mi->rmppCreateFilters = 1;
+
     switch (mi->mclass) {
     case MAD_CV_VENDOR_FE:
         mi->rmppMngrfd = &fdsa;
         mi->rmppPool = &fe_pool;
+        // FE does not receive inbound MAD requests, so RMPP filters not required
+        mi->rmppCreateFilters = 0;
         (void)if3_set_rmpp_cntx_pool_size_params(mi);
         break;        
     case MAD_CV_VFI_PM:
@@ -574,6 +585,8 @@ void if3_set_rmpp_minfo (ManagerInfo_t *mi)
 			} else if (!strcmp(tname, "fe")) {
             	mi->rmppMngrfd = &fd_pm;
             	mi->rmppPool = &fe_pool;
+                // FE does not receive inbound MAD requests, so RMPP filters not required
+                mi->rmppCreateFilters = 0;
                 (void)if3_set_rmpp_cntx_pool_size_params(mi);
         	} else if (!strcmp(tname, "pm")) {
             	mi->rmppMngrfd = &pm_fd;

@@ -32,11 +32,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ilist.h>
 #include <ievent.h>
 #include <imutex.h>
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 #include <stl_sd.h>
-#else
-#include <ib_sd.h>
-#endif
 #include <sdi.h>
 #include <ib_generalServices.h>
 
@@ -118,13 +114,9 @@ SubnetAdmInit(
 
 		// fields were initialized to 0 above
 		// which is what we want for a single packet RMPP request in 1.0a or 1.1
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 	pQueryElement->TotalBytesInGmp = (mad->common.BaseVersion == IB_BASE_VERSION)
 		? IB_MAD_BLOCK_SIZE
 		: (sizeof(SA_MAD) - STL_SUBN_ADM_DATASIZE) + sizeof(STL_CLASS_PORT_INFO);
-#else
-	pQueryElement->TotalBytesInGmp = sizeof(SA_MAD);
-#endif
 
 		pQueryElement->PortGuid = pLocalPortGuidsList[ii];
 

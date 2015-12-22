@@ -63,11 +63,7 @@ SmaProcessLocalToSma(
 	)
 {
 	FSTATUS					status = FSUCCESS;
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 	STL_SMP					*pSmp = (STL_SMP*)SmpBlock->Block.Smp;
-#else
-	SMP						*pSmp = (SMP*)SmpBlock->Block.Smp;
-#endif
 	SMA_CA_OBJ_PRIVATE		*pCaObj;
 	SMA_PORT_TABLE_PRIV		*pPortTbl;
 	SMA_PORT_BLOCK_PRIV		*pPortBlock;
@@ -88,15 +84,9 @@ SmaProcessLocalToSma(
 	 * on fabric.  What happens is SM sets capability mask using present LID
 	 * which is 0 when HFI first comes up.
 	 */
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 	zero_lid = (pSmp->common.mr.AsReg8 == MMTHD_SET
 		&& pSmp->common.AttributeID == STL_MCLASS_ATTRIB_ID_PORT_INFO
 		&& 0 == ((STL_PORT_INFO *)&pSmp->SmpExt.DirectedRoute.SMPData)->LID);
-#else
-	zero_lid = (pSmp->common.mr.AsReg8 == MMTHD_SET
-		&& pSmp->common.AttributeID == MCLASS_ATTRIB_ID_PORT_INFO
-		&& 0 == ((PORT_INFO *)&pSmp->SmpExt.DirectedRoute.SMPData)->LID);
-#endif
 
 	// save method
 	method = pSmp->common.mr.AsReg8;
@@ -118,20 +108,12 @@ SmaProcessLocalToSma(
 	// call verb
 	if (FSUCCESS == status)
 	{
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 		status = iba_get_set_mad(
 					pPortTbl->PortBlock[portNo].QpHandle,
 					SmpBlock->Block.PortNumber,
 					SmpBlock->Block.SLID,
 					pSmp,
 					&SmpBlock->Block.SmpByteCount);
-#else
-		status = iba_get_set_mad(
-					pPortTbl->PortBlock[portNo].QpHandle,
-					SmpBlock->Block.PortNumber,
-					SmpBlock->Block.SLID,
-					pSmp );
-#endif
 	}
 
 	if ( FSUCCESS != status )
@@ -191,16 +173,10 @@ SmaProcessLocalToSma(
 
 				if (bStatus)
 				{
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 					STL_PORT_INFO *pPortInfo =
 						(STL_PORT_INFO *)&pSmp->SmpExt.DirectedRoute.SMPData;
 					BSWAP_STL_PORT_INFO(pPortInfo);
 					ZERO_RSVD_STL_PORT_INFO(pPortInfo);
-#else
-					PORT_INFO *pPortInfo =
-						(PORT_INFO *)&pSmp->SmpExt.DirectedRoute.SMPData;
-					BSWAP_PORT_INFO(pPortInfo, 0);
-#endif
 					pPortBlock = &pPortTbl->PortBlock[portNo];
 					
 					// Before we update our internal state save 
@@ -213,11 +189,7 @@ SmaProcessLocalToSma(
 					// Update internal state
 					pPortBlock->Public.Address.BaseLID = pPortInfo->LID;
 					pPortBlock->Public.Address.LMC = pPortInfo->s1.LMC;
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 					pPortBlock->Public.State = (IB_PORT_STATE) pPortInfo->PortStates.s.PortState;
-#else
-					pPortBlock->Public.State = (IB_PORT_STATE) pPortInfo->Link.PortState;
-#endif
 					pPortBlock->SMLID = pPortInfo->MasterSMLID;
 
 					// Notify users of a Port event
@@ -259,21 +231,13 @@ SmaProcessLocalToSma(
 							}
 						}
 					}
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 					BSWAP_STL_PORT_INFO(pPortInfo);
-#else
-					BSWAP_PORT_INFO(pPortInfo, 0);
-#endif
 				} // valid portNo
 
 				break;
 			}
 
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 		case	STL_MCLASS_ATTRIB_ID_PART_TABLE:
-#else
-		case	MCLASS_ATTRIB_ID_PART_TABLE:
-#endif
 			if (bStatus && method == MMTHD_SET)
 			{
 				// Notify users of PKey event
@@ -347,11 +311,7 @@ SmaProcessSmaSmpRcvd(
 	IN	POOL_DATA_BLOCK		*SmpBlock
 	)
 {
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 	STL_SMP					*pSmp = (STL_SMP*)SmpBlock->Block.Smp;
-#else
-	SMP						*pSmp = (SMP*)SmpBlock->Block.Smp;
-#endif
 	SMA_CA_OBJ_PRIVATE		*pCaObj;
 	SMA_PORT_TABLE_PRIV		*pPortTbl;
 	boolean					bProcess=TRUE;
@@ -385,13 +345,8 @@ SmaProcessSmaSmpRcvd(
 			// QP0 by firmware.  We send to SM.
 			if ( MCLASS_SM_DIRECTED_ROUTE == pSmp->common.MgmtClass )
 			{
-#if defined (STL_GEN) && (STL_GEN >= 1)
 				SmpBlock->Block.SLID = STL_LID_PERMISSIVE;
 				SmpBlock->Block.DLID = STL_LID_PERMISSIVE;
-#else
-				SmpBlock->Block.SLID = LID_PERMISSIVE;
-				SmpBlock->Block.DLID = LID_PERMISSIVE;
-#endif
 				SmpBlock->Block.PathBits = 0;
 			} else {
 				SmpBlock->Block.DLID = pPortTbl[SmpBlock->Block.PortNumber - 1].PortBlock->SMLID;
@@ -412,7 +367,6 @@ SmaProcessSmaSmpRcvd(
 
 		if ( MCLASS_SM_DIRECTED_ROUTE == pSmp->common.MgmtClass )
 		{
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 			if ( STL_LID_PERMISSIVE == pSmp->SmpExt.DirectedRoute.DrDLID) {
 				// IBTA 1.1 Sec 14.2.2.3 C14-11
 				// the directed route part starts from the respondor node (us)
@@ -420,15 +374,6 @@ SmaProcessSmaSmpRcvd(
 				// safest to use permissive lid, since we may not have a lid yet
 				SmpBlock->Block.SLID = STL_LID_PERMISSIVE;
 			}
-#else
-			if ( LID_PERMISSIVE == pSmp->SmpExt.DirectedRoute.DrDLID) {
-				// IBTA 1.1 Sec 14.2.2.3 C14-11
-				// the directed route part starts from the respondor node (us)
-				// LRH_SLID shall be the permissive lid or a lid of this port
-				// safest to use permissive lid, since we may not have a lid yet
-				SmpBlock->Block.SLID = LID_PERMISSIVE;
-			}
-#endif
 		}
 
 		//
@@ -436,11 +381,7 @@ SmaProcessSmaSmpRcvd(
 		//		SLID = Responder's LID
 		//
 
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 		if ( STL_LID_PERMISSIVE != SmpBlock->Block.SLID )
-#else
-		if ( LID_PERMISSIVE != SmpBlock->Block.SLID )
-#endif
 		{
 			uint8 lmc = pPortTbl[SmpBlock->Block.PortNumber - 1].PortBlock->Public.Address.LMC;
 			SmpBlock->Block.SLID = 
@@ -488,11 +429,7 @@ SmaProcessSmiSmp(
 	IN	boolean				FromWire
 	)
 {
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 	IN STL_SMP			*pSmp     = (STL_SMP*)pSmpBlock->Block.Smp;
-#else
-	IN SMP				*pSmp     = (SMP*)pSmpBlock->Block.Smp;
-#endif
 	SMA_PORT_TABLE_PRIV	*pPortTbl = (SMA_PORT_TABLE_PRIV *)pCaObj->CaPublic.PortTbl;
 
 	_DBG_ENTER_LVL(_DBG_LVL_CALLBACK, SmaProcessSmiSmp);
@@ -537,13 +474,8 @@ SmaProcessSmiSmp(
 	// Provider Driver
 				
 	// Figure 157, SMP Check 1
-#if defined(STL_GEN) && (STL_GEN >= 1)
 	if (pSmp->common.BaseVersion != STL_BASE_VERSION
 		|| pSmp->common.ClassVersion != STL_SM_CLASS_VERSION)
-#else
-	if (pSmp->common.BaseVersion != IB_BASE_VERSION
-		|| pSmp->common.ClassVersion != IB_SM_CLASS_VERSION)
-#endif
 	{
 		// can optionally send a GetResp(MAD_STATUS_UNSUPPORTED_VER)
 		// however since we don't understand the header we could
@@ -589,11 +521,7 @@ SmaProcessSmiSmp(
 	// Figure 161, SMP Direct Route Check 1
 	if ( 0 == pSmp->common.u.DR.s.D)
 	{
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 		if ( ! FromWire && STL_LID_PERMISSIVE != pSmp->SmpExt.DirectedRoute.DrSLID)
-#else
-		if ( ! FromWire && LID_PERMISSIVE != pSmp->SmpExt.DirectedRoute.DrSLID)
-#endif
 		{
 			// IBTA 1.1 sec 14.2.2.1
 			// For packets originated by a local SM
@@ -608,17 +536,10 @@ SmaProcessSmiSmp(
 			// SMP is at beginning of directed route
 			// C14-9 clause 1)
 			++(pSmp->common.u.DR.HopPointer);
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 			pSmpBlock->Block.SLID = STL_LID_PERMISSIVE;
 			// flow chart Figure 161 disagrees with text, Text has priority
 			//pSmpBlock->Block.DLID = pSmp->SmpExt.DirectedRoute.DrDLID;
 			pSmpBlock->Block.DLID = STL_LID_PERMISSIVE;
-#else
-			pSmpBlock->Block.SLID = LID_PERMISSIVE;
-			// flow chart Figure 161 disagrees with text, Text has priority
-			//pSmpBlock->Block.DLID = pSmp->SmpExt.DirectedRoute.DrDLID;
-			pSmpBlock->Block.DLID = LID_PERMISSIVE;
-#endif
 			pSmpBlock->Block.PortNumber = pSmp->SmpExt.DirectedRoute.InitPath[pSmp->common.u.DR.HopPointer];
 			goto sendsmp;
 		}
@@ -635,13 +556,8 @@ SmaProcessSmiSmp(
 				// Switch code here
 				pSmp->SmpExt.DirectedRoute.RetPath[pSmp->common.u.DR.HopPointer] = pSmpBlock->Block.PortNumber;
 				++pSmp->common.u.DR.HopPointer;
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 				pSmpBlock->Block.SLID = STL_LID_PERMISSIVE;
 				pSmpBlock->Block.DLID = STL_LID_PERMISSIVE;
-#else
-				pSmpBlock->Block.SLID = LID_PERMISSIVE;
-				pSmpBlock->Block.DLID = LID_PERMISSIVE;
-#endif
 				pSmpBlock->Block.PortNumber = pSmp->SmpExt.DirectedRoute.InitPath[pSmp->common.u.DR.HopPointer];
 				goto sendsmp;
 			}
@@ -667,17 +583,10 @@ SmaProcessSmiSmp(
 
 			if (pCaObj->CaPublic.Capabilities & CA_IS_ENHANCED_SWITCH_PORT0)
 			{
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 				if (STL_LID_PERMISSIVE == pSmp->SmpExt.DirectedRoute.DrDLID)
 				{
 					pSmpBlock->Block.SLID = STL_LID_PERMISSIVE;
 				}
-#else
-				if (LID_PERMISSIVE == pSmp->SmpExt.DirectedRoute.DrDLID)
-				{
-					pSmpBlock->Block.SLID = LID_PERMISSIVE;
-				}
-#endif
 				else
 				{
 					pSmpBlock->Block.SLID = pPortTbl[0].PortBlock->Public.Address.BaseLID |
@@ -687,11 +596,7 @@ SmaProcessSmiSmp(
 			else
 			{
 				// not a switch
-#if defined(STL_GEN) && (STL_GEN >= 1)
 				if ( STL_LID_PERMISSIVE != pSmp->SmpExt.DirectedRoute.DrDLID)
-#else
-				if ( LID_PERMISSIVE != pSmp->SmpExt.DirectedRoute.DrDLID)
-#endif
 				{
 					_DBG_PRINT (_DBG_LVL_CALLBACK,(
 						"Invalid DR [packet discarded per Check 2]\n"));
@@ -704,11 +609,7 @@ SmaProcessSmiSmp(
 			// Text in clause 3 has this additional test which is
 			// redundant with test above due to DLID assignment above
 			// for a CA DLID will be PERMISSIVE if get here
-#if defined(STL_GEN) && (STL_GEN >= 1)
 			if ( STL_LID_PERMISSIVE == pSmpBlock->Block.DLID )
-#else
-			if ( LID_PERMISSIVE == pSmpBlock->Block.DLID )
-#endif
 			{
 				// per path above, HopPointer is now HopCount+1
 #ifdef  IB_DEBUG
@@ -738,11 +639,7 @@ SmaProcessSmiSmp(
 			goto discard;
 		}
 	} else { // D bit == 1 case of below
-#if defined(STL_GEN) && (STL_GEN >= 1)
 		if ( ! FromWire && (STL_LID_PERMISSIVE != pSmp->SmpExt.DirectedRoute.DrDLID))
-#else
-		if ( ! FromWire && LID_PERMISSIVE != pSmp->SmpExt.DirectedRoute.DrDLID)
-#endif
 		{
 			// IBTA 1.1 sec 14.2.2.3
 			// For packets originated by a local SMA or SM
@@ -759,11 +656,7 @@ SmaProcessSmiSmp(
 			// SMP is at beginning of directed route
 			// C14-13 clause 1)
 			--(pSmp->common.u.DR.HopPointer);
-#if defined(STL_GEN) && (STL_GEN >= 1)
 			pSmpBlock->Block.SLID = STL_LID_PERMISSIVE;
-#else
-			pSmpBlock->Block.SLID = LID_PERMISSIVE;
-#endif
 			pSmpBlock->Block.DLID = pSmp->SmpExt.DirectedRoute.DrDLID;
 			pSmpBlock->Block.PortNumber = pSmp->SmpExt.DirectedRoute.RetPath[pSmp->common.u.DR.HopPointer];
 			goto sendsmp;
@@ -778,13 +671,8 @@ SmaProcessSmiSmp(
 			if (pCaObj->CaPublic.Capabilities & CA_IS_ENHANCED_SWITCH_PORT0)
 			{
 				--pSmp->common.u.DR.HopPointer;
-#if defined(STL_GEN) && (STL_GEN >= 1)
 				pSmpBlock->Block.SLID = STL_LID_PERMISSIVE;
 				pSmpBlock->Block.DLID = STL_LID_PERMISSIVE;
-#else
-				pSmpBlock->Block.SLID = LID_PERMISSIVE;
-				pSmpBlock->Block.DLID = LID_PERMISSIVE;
-#endif
 				pSmpBlock->Block.PortNumber = pSmp->SmpExt.DirectedRoute.RetPath[pSmp->common.u.DR.HopPointer];
 			}
 			else
@@ -803,17 +691,10 @@ SmaProcessSmiSmp(
 			--(pSmp->common.u.DR.HopPointer);
 			if (pCaObj->CaPublic.Capabilities & CA_IS_ENHANCED_SWITCH_PORT0)
 			{
-#if defined(STL_GEN) && (STL_GEN >= 1)
 				if (STL_LID_PERMISSIVE == pSmp->SmpExt.DirectedRoute.DrSLID)
 				{
 					pSmpBlock->Block.SLID = STL_LID_PERMISSIVE;
 				}
-#else
-				if (LID_PERMISSIVE == pSmp->SmpExt.DirectedRoute.DrSLID)
-				{
-					pSmpBlock->Block.SLID = LID_PERMISSIVE;
-				}
-#endif
 				else
 				{
 					pSmpBlock->Block.SLID = pPortTbl[0].PortBlock->Public.Address.BaseLID |
@@ -823,32 +704,20 @@ SmaProcessSmiSmp(
 			else
 			{
 				// we are not a switch
-#if defined(STL_GEN) && (STL_GEN >= 1)
 				if ( STL_LID_PERMISSIVE != pSmp->SmpExt.DirectedRoute.DrSLID)
-#else
-				if ( LID_PERMISSIVE != pSmp->SmpExt.DirectedRoute.DrSLID)
-#endif
 				{
 					_DBG_PRINT (_DBG_LVL_CALLBACK,(
 						"Invalid DR [packet discarded per Check 5]\n"));
 					goto discard;
 				}
-#if defined(STL_GEN) && (STL_GEN >= 1)
 				pSmpBlock->Block.SLID = STL_LID_PERMISSIVE;
-#else
-				pSmpBlock->Block.SLID = LID_PERMISSIVE;
-#endif
 			}
 
 			pSmpBlock->Block.DLID = pSmp->SmpExt.DirectedRoute.DrSLID;
 			// Text in clause 3 has this additional test which is
 			// redundant with test above due to DLID assignment above
 			// for a CA DLID will be PERMISSIVE if get here
-#if defined(STL_GEN) && (STL_GEN >= 1)
 			if ( STL_LID_PERMISSIVE == pSmpBlock->Block.DLID )
-#else
-			if ( LID_PERMISSIVE == pSmpBlock->Block.DLID )
-#endif
 			{
 				// per path above, HopPointer is now HopCount+1
 #ifdef IB_DEBUG
@@ -924,11 +793,7 @@ SmaProcessLocalSmp(
 	IN	POOL_DATA_BLOCK		*pSmpBlock
 	)
 {
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 	STL_SMP			*pSmp = (STL_SMP*)pSmpBlock->Block.Smp;
-#else
-	SMP				*pSmp = (SMP*)pSmpBlock->Block.Smp;
-#endif
 
 	_DBG_ENTER_LVL(_DBG_LVL_CALLBACK, SmaProcessLocalSmp);
 	// M_Key checks are done in GetSetMad, so we defer
@@ -991,12 +856,7 @@ SmaAddToSendQ(
 {
 	FSTATUS					status;
 	SMP_LIST				*pSmpList;
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 	STL_SMP					*pSmp;
-#else
-	SMP						*pSmp;
-#endif
-	
 	
 	//
 	// first free AV handle
@@ -1028,11 +888,7 @@ SmaAddToSendQ(
 		//
 		BSWAP_MAD_HEADER( (MAD*)SmpBlock->Block.Smp);
 
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 		pSmp = (STL_SMP*)SmpBlock->Block.Smp;
-#else
-		pSmp = (SMP*)SmpBlock->Block.Smp;
-#endif
 
 #ifdef  ICS_LOGGING
 		_DBG_PRINT (_DBG_LVL_CALLBACK,(
@@ -1209,11 +1065,7 @@ SmaProcessCQ(
 	boolean						bRearmed		= FALSE;
 	FSTATUS						status;
 	POOL_DATA_BLOCK				*pSmpBlock;
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 	STL_SMP							*pSmp;
-#else
-	SMP							*pSmp;
-#endif
 	IB_WORK_COMPLETION			workCompletion;
 	SMA_CA_OBJ_PRIVATE			*pCaObj;
 	SMA_PORT_TABLE_PRIV			*pCaPortTbl;
@@ -1355,10 +1207,8 @@ SmaProcessCQ(
 				// Port Number and Q pair are filled-up during the iba_smi_post_recv()
 				//
 				pSmpBlock->Block.SLID = workCompletion.Req.RecvUD.SrcLID;
-#if defined(STL_GEN) && (STL_GEN >= 1)
 				if (pSmpBlock->Block.SLID == LID_PERMISSIVE)
 					pSmpBlock->Block.SLID = STL_LID_PERMISSIVE;
-#endif
 				pSmpBlock->Block.PathBits = workCompletion.Req.RecvUD.DestPathBits;
 				pSmpBlock->Block.ServiceLevel = workCompletion.Req.RecvUD.ServiceLevel;
 				// BUGBUG - need to get GRH header out of workCompletion
@@ -1371,19 +1221,11 @@ SmaProcessCQ(
 					"Inbound PathBits: %d\n",
 					pSmpBlock->Block.PathBits));
 				
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 				pSmp = (STL_SMP*)pSmpBlock->Block.Smp;
 				//
 				// Network Byte order block, make Host Byte Order
 				//
 				BSWAP_STL_SMP_HEADER(pSmp);
-#else
-				pSmp = (SMP*)pSmpBlock->Block.Smp;
-				//
-				// Network Byte order block, make Host Byte Order
-				//
-				BSWAP_SMP_HEADER(pSmp);
-#endif
 
 
 

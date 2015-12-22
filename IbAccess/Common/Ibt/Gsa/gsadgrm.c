@@ -520,12 +520,8 @@ iba_gsi_dgrm_len(
 	pBufferHdr	= DgrmElement->Element.pBufferList;
 	pMadRmpp	= (MAD_RMPP*)pBufferHdr->pNextBuffer->pData;// 2nd buffer is MAD
 
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 	rmppGsDataSize = (pMadRmpp->common.BaseVersion == IB_BASE_VERSION)
 		? IBA_RMPP_GS_DATASIZE : STL_RMPP_GS_DATASIZE;
-#else
-	rmppGsDataSize = IBA_RMPP_GS_DATASIZE;
-#endif
 	
 	// Check overloaded field 'base' if the recvd data is SAR
 

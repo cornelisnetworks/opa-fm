@@ -1096,7 +1096,7 @@ sm_initialize_Switch_SCVLMaps(Topology_t * topop, Node_t * switchp)
         // compare the port's current SCVL map against what the topology says it
         // should be. If they're different, send the new one.
         if (!out_portp->portData->current.scvlt ||
-            memcmp((void *)curScvl, (void *)&scvlmap, sizeof(scvlmap)) != 0 || sm_config.forceAttributeRewrite) {
+            memcmp((void *)curScvl, (void *)&scvlmap, sizeof(scvlmap)) != 0) {
             if (synchModeGen1) {
                 status = SM_Set_SCVLtMap_LR(fd_topology, amod, sm_lid, swportp->portData->lid, &scvlmap, sm_config.mkey); 
 
@@ -1126,7 +1126,7 @@ sm_initialize_Switch_SCVLMaps(Topology_t * topop, Node_t * switchp)
 
         STL_SCVLMAP * curScvlnt = &neighborPortp->portData->scvlntMap;
         if (!neighborPortp->portData->current.scvlnt ||
-            memcmp((void *)curScvlnt, (void *)&scvlmap, sizeof(scvlmap)) != 0 || sm_config.forceAttributeRewrite) {
+            memcmp((void *)curScvlnt, (void *)&scvlmap, sizeof(scvlmap)) != 0) {
             if (synchModeGen1) {
                 status = SM_Set_SCVLntMap_LR(fd_topology,
                                              amod,
@@ -1413,7 +1413,7 @@ sm_initialize_Node_Port_SCVLMaps(Topology_t * topop, Node_t * nodep, Port_t * in
     // compare the port's current SCVL map against the computed SCVLt map.
     // If they're different, send the new one.
     if (!in_portp->portData->current.scvlt ||
-        memcmp((void *)curScvlt, (void *)&scvlmap, sizeof(scvlmap)) != 0 || sm_config.forceAttributeRewrite) {
+        memcmp((void *)curScvlt, (void *)&scvlmap, sizeof(scvlmap)) != 0) {
         if (synchModeGen1) {
             status = SM_Set_SCVLtMap_LR(fd_topology, amod, sm_lid, in_portp->portData->lid, &scvlmap, sm_config.mkey); 
 
@@ -1439,7 +1439,7 @@ sm_initialize_Node_Port_SCVLMaps(Topology_t * topop, Node_t * nodep, Port_t * in
     amod = (1 << 24) | neighborPortp->index; // 1 block, port
 
     if (!neighborPortp->portData->current.scvlnt ||
-        memcmp((void *)curScvlnt, (void *)&scvlmap, sizeof(scvlmap)) != 0 || sm_config.forceAttributeRewrite) {
+        memcmp((void *)curScvlnt, (void *)&scvlmap, sizeof(scvlmap)) != 0) {
         if (synchModeGen1) {
             status = SM_Set_SCVLntMap_LR(fd_topology, amod,
                                          sm_lid, 

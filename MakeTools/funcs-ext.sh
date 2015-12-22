@@ -863,6 +863,17 @@ function os_vendor()
 #---------------------------------------------------------------------------
 function os_vendor_version()
 {
+	if [[ -e /etc/os-release ]]; then
+		. /etc/os-release
+		# - use VERSION_ID - it has a common format among distros 
+		# - mimic old way and drop $minor if eq 0 (see redhat handling below)
+		# - drop '.'(dot)
+		rval=ES$(echo $VERSION_ID | sed -e 's/\.[0]//' -e 's/\.//')
+		echo $rval
+		return
+	fi
+
+	# using old way if '/etc/os-release' not found
 	case $1 in
 	apple)
     	rval=`sw_vers -productVersion|cut -f1-2 -d.`

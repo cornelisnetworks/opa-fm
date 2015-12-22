@@ -30,9 +30,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
   \file subscribe.h
 
-  $Author: mwheinz $
-  $Revision: 1.6 $
-  $Date: 2015/03/30 19:33:17 $
+  $Author: gsleshne $
+  $Revision: 1.7 $
+  $Date: 2015/11/18 15:14:11 $
 
   \brief Routines to handle subscribing/unsubscribing to trap events
 */
@@ -40,13 +40,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef _SUBSCRIBE_H_
 #define _SUBSCRIBE_H_
 
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #include <stl_types.h>
 #include <stl_sd.h>
-#else
-#include <ib_types.h>
-#include <ib_sd.h>
-#endif
 #include <sdi.h>
 
 #ifdef __cplusplus

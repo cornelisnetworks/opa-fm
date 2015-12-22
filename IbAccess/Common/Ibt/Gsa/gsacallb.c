@@ -387,7 +387,6 @@ GsaCompletionCallback(
 					status = DgrmPoolPut( pDgrm );	
 					continue;
 				}
-#if defined(STL_GEN) && (STL_GEN >= 1)
 				/* MADs can be of variable length */
 				if ( workCompletion.Length > (sizeof(IB_GRH) + sizeof(MAD)))
 				{
@@ -397,16 +396,6 @@ GsaCompletionCallback(
 					status = DgrmPoolPut( pDgrm );	
 					continue;
 				}
-#else
-				if ( workCompletion.Length != (sizeof(IB_GRH) + sizeof(MAD)))
-				{
-					_DBG_ERROR ((
-						"Invalid MAD receive length (%d bytes)! <Discard>\n",
-						workCompletion.Length ));
-					status = DgrmPoolPut( pDgrm );	
-					continue;
-				}
-#endif
 				// Overload base with SAR field
 				pDgrmPrivate->Base = 0;		// not a SAR Receive Dgrm
 				
@@ -427,13 +416,9 @@ GsaCompletionCallback(
 
 				while (Length && Current)
 				{
-#if (defined(STL_GEN) && (STL_GEN >= 1))
 					Current->ByteCount = (pMadHdr->BaseVersion == IB_BASE_VERSION)
 						? MIN(Length, IB_MAD_BLOCK_SIZE)
 						: MIN(Length, STL_MAD_BLOCK_SIZE);
-#else
-					Current->ByteCount = MIN(Length, MAD_BLOCK_SIZE);
-#endif
 
 					if (__DBG_LEVEL__ & _DBG_LVL_PKTDUMP)
 					{

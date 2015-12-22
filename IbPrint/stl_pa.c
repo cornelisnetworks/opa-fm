@@ -597,6 +597,7 @@ void PrintStlPAVFPortCounters(PrintDest_t *dest, int indent, const STL_PA_VF_POR
 		PrintFunc(dest, "\nCounters may be shared between Virtual Fabrics\n\n",
 				indent, "");
 	}
+	PrintStlPAImageId(dest, indent, &pVFPortCounters->imageId);
 
 	return;
 }

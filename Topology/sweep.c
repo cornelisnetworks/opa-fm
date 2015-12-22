@@ -3302,7 +3302,7 @@ static FSTATUS GetAllFDBsSA(struct oib_port *port, FabricData_t *fabricp, Point 
 						iba_sd_mad_status_msg(pQueryResultsPGFT->MadStatus));
 					DBGPRINT("%d Bytes Returned\n", pQueryResultsPGFT->ResultDataSize);
 					pgftSize = pPGFTRR->NumRecords * MAX_LFT_ELEMENTS_BLOCK;
-					if (pgftSize < linearFDBSize && pgftSize != 0) {
+					if (pgftSize < MIN(linearFDBSize, DEFAULT_MAX_PGFT_LID + 1) && pgftSize != 0) {
 						fprintf(stderr, "%*sIncorrect # of PGFT Records Returned "
 							"(LFT(%d) versus PGFT(%d)\n",
 							0, "", linearFDBSize, pgftSize);
@@ -3380,7 +3380,7 @@ static FSTATUS GetAllFDBsSA(struct oib_port *port, FabricData_t *fabricp, Point 
 
 			if ((status == FSUCCESS) && pgftSize) {
 				STL_PORT_GROUP_FORWARDING_TABLE_RECORD *pPGFTR;
-				unsigned int pgfdbsize = ROUNDUP(nodep->switchp->LinearFDBSize,
+				unsigned int pgfdbsize = ROUNDUP(MIN(nodep->switchp->LinearFDBSize, DEFAULT_MAX_PGFT_LID+1),
 						NUM_PGFT_ELEMENTS_BLOCK)/NUM_PGFT_ELEMENTS_BLOCK;
 
 				// Don't core dump if you received more data than you expected.

@@ -42,6 +42,43 @@ quiet=n	# don't show per manager messages on stop, used by install
 [ "$cmd" = "quietstop" ] && quiet=y	# special case for install
 shift
 
+usage()
+{
+	echo "Usage: $0 [start|stop|restart|sweep|status]" >&2
+	echo "               [-i instance] [-f] [component|compname|insname] ..." >&2
+	echo " start       - start the selected instances/managers" >&2
+	echo " stop        - stop the selected instances/managers" >&2
+	echo " restart     - restart (eg. stop then start) the selected instances/managers" >&2
+	echo " sweep       - force a fabric resweep for the selected instances/managers" >&2
+	echo " status      - show status (running/not runing/disabled) for the selected">&2
+    echo "               instances/managers" >&2
+	echo >&2
+	echo " -i instance - an instance to start components for" >&2
+	echo "               specified by number (0 to n) or Name" >&2
+	echo " -f          - force startup even if appears already started" >&2
+	echo " component   - component (sm, or fe) to start for all selected instances" >&2
+	echo " compname    - a specific component specified by Name_sm or Name_fe" >&2
+	echo " insname     - a specific instance by Name" >&2
+	echo >&2
+	echo " When -i is used, only the specified components in the instance are started">&2
+	echo " -i may be specified more than once to select multiple instances" >&2
+	echo " When a compname is specified, that component is started (regardless of -i)" >&2
+	echo " When a insname is specified, all components of that instance are started" >&2
+	echo " If components are specified, then all components in selected instances are">&2
+   	echo " started">&2
+	echo " If no arguments are specified, all instances are acted on" >&2
+	echo " start, restart and sweep will only act on instances and managers enabled" >&2
+	echo " in config file" >&2
+	echo " Examples:" >&2
+	echo " $0 start -i 0 -i fm1" >&2
+	echo "     start all for instance 0,1" >&2
+	echo " $0 start -i 0 fm1_sm" >&2
+	echo "     start all for instance 0, just sm for instance 1" >&2
+	echo " $0 start -i 1 fm0 sm" >&2
+	echo "     start sm for instance 1, all for fm0" >&2
+	exit 2
+}
+
 # just in case no functions script
 echo_success() { echo "[  OK  ]"; }
 echo_failure() { echo "[FAILED]"; }
@@ -88,6 +125,10 @@ my_rc_exit()     { exit $my_rc_status_all; }
 my_rc_status()   { my_rc_status_all=$(($my_rc_status_all || $?)); }
 
 temp=$(mktemp "/tmp/ifsfmXXXXX")
+
+# make sure temp file is removed on error.
+trap "rm -f $temp" EXIT SIGHUP SIGTERM SIGINT
+
 invalid_config()
 {
 	local i
@@ -312,7 +353,7 @@ parse_args()
 				fi
 			fi
 			;;
-		?) Usage;;
+		?) 	usage;;
 		esac
 	done
 	shift $(($OPTIND - 1))
@@ -496,6 +537,74 @@ stop_manager()
 	return $res
 }
 
+# force resweep of a specific manager instance
+# should only be called for managers which are enabled and support sweep
+sweep_manager()
+# $1 = instance number
+# $2 = manager name in lowercase
+{
+	local upcase pid res
+
+	upcase=$(echo $2|tr a-z A-Z)
+	echo -n "Force Sweep $upcase $1: ${INSTANCES_NAME[$1]}_$2: "
+	if running_manager $1 $2
+	then
+ 		$IFS_FM_BASE/bin/fm_cmd -i $1 ${2}ForceSweep >/dev/null
+		res=$?
+		[ $res -eq 0 ] || false
+		my_rc_status_v
+	else
+		echo "Not Running"
+		res=1; false
+		my_rc_status
+	fi
+	return $res
+}
+
+# used to report error when exclusively PM/FE resweep requested
+sweep_na()
+# $1 = instance number
+# $2 = manager name in lowercase
+{
+	local upcase
+
+	upcase=$(echo $2|tr a-z A-Z)
+	echo -n "Force Sweep $upcase $1: ${INSTANCES_NAME[$1]}_$2: "
+	echo "NA for $upcase"; false
+	#my_rc_status_v
+	my_rc_status
+	return 1
+}
+
+# check a specific manager instance
+status_manager()
+# $1 = instance number
+# $2 = manager name in lowercase
+# $3 = is manager start enabled
+{
+	local upcase res
+
+	upcase=$(echo $2|tr a-z A-Z)
+	if [ ${INSTANCES_EXIST[$1]} = 1 ]
+	then
+		echo -n "Checking $upcase $1: ${INSTANCES_NAME[$1]}_$2: "
+		if running_manager $1 $2
+		then
+			echo "Running"
+			res=0
+		elif [ "$3" = 1 ]
+		then
+			echo "Not Running"
+			res=1; false
+		else
+			echo "Disabled"
+			res=0
+		fi
+	fi
+	my_rc_status
+	return $res
+}
+
 # start all processes which are enabled and selected via command line
 start()
 {
@@ -567,10 +676,59 @@ stop()
 	return $ret
 }
 
+# force sweep for all managers which are enabled and selected via command line
+sweep()
+{
+	local ret i swept
+
+	echo "Forcing IFS Fabric Manager Sweep"
+
+	ret=0
+	i=0
+	while [ $i -lt ${#INSTANCES_NAME[@]} ]
+	do
+		swept=0
+		if [ 1 = "${INSTANCES_SM[$i]}" -a 1 = "${SEL_SM[$i]}" ]
+		then
+			sweep_manager $i sm
+			ret=$(($ret || $?))
+			swept=1
+		fi
+		if [ 1 = "${INSTANCES_FE[$i]}" -a 1 = "${SEL_FE[$i]}" ]
+		then
+			[ $swept = 0 ] && sweep_na $i fe
+		fi
+		i=$(($i + 1))
+	done
+	return $ret
+}
+
+# check all processes which are enabled and selected via command line
+status()
+{
+	local ret i
+
+	echo "Checking IFS Fabric Manager"
+	ret=0
+	i=0
+	while [ $i -lt ${#INSTANCES_NAME[@]} ]
+	do
+		if [ 1 = "${SEL_SM[$i]}" ]
+		then
+			status_manager $i sm "${INSTANCES_SM[$i]}"
+			ret=$(($ret || $?))
+		fi
+		if [ 1 = "${SEL_FE[$i]}" ]
+		then
+			status_manager $i fe "${INSTANCES_FE[$i]}"
+			ret=$(($ret || $?))
+		fi
+		i=$(($i + 1))
+	done
+	return $ret
+}
+
 get_config
-#echo "INSTANCES_NAME=${INSTANCES_NAME[@]}"
-#echo "INSTANCES_SM=${INSTANCES_SM[@]}"
-#echo "INSTANCES_FE=${INSTANCES_FE[@]}"
 
 parse_args "$@"
 
@@ -581,4 +739,15 @@ case "$cmd" in
 	quietstop|stop)
 		allow_invalid_config
 		stop;;
+	restart)
+		must_be_valid_config
+		stop; start;;
+	sweep)
+		must_be_valid_config
+		sweep;;
+	status)
+		status;;
+	*)
+		echo "$0: invalid command \"$cmd\"" >&2
+		usage;;
 esac

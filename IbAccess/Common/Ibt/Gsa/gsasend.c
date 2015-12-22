@@ -324,28 +324,6 @@ GsiDoSendDgrm(
 					"Bad Non SAR Client posted buffer > sizeof(MAD)!\n"));
 					_DBG_BREAK;
 				}
-#if defined(STL_GEN) && (STL_GEN >= 1)
-				// MAD packets can be variable bytes in length
-#else
-				// MAD packets should be exactly sizeof(MAD) bytes in length
-				if ( workRequest.MessageLen < sizeof(MAD) )
-				{
-					workRequest.DSList[i-1].Length += \
-						(sizeof(MAD) - workRequest.MessageLen);
-
-					workRequest.MessageLen = sizeof(MAD);
-
-					_DBG_ERROR((
-						"Non SAR client posted MAD buffer < sizeof(MAD)!\n"
-						"\tMAD class...........: %x\n"
-						"\tClass Manager.......: %s\n"
-						"Refer: Vol1, Chap 13.5.3.1, C13-45\n",
-						ServiceClass->MgmtClass,
-						_DBG_PTR(GSI_IS_RESPONDER(ServiceClass->RegistrationFlags)
-							? "TRUE":"FALSE")
-						));
-				}
-#endif
 				pMad = GsiDgrmGetSendMad(&pDgrmPrivate->DgrmElement);
 			} else {
 				// invoked for single packet GSI SAR send

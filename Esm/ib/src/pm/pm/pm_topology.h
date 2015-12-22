@@ -1188,6 +1188,15 @@ void PmFailNode(Pm_t *pm, PmNode_t *pmnodep, uint8 queryStatus, const char* mess
 void DisplayPm(Pm_t *pm);
 
 void ComputeBuckets(Pm_t *pm, PmPortImage_t *portImage);
+
+void PmPrintExceededPort(PmPort_t *pmportp, uint32 index,
+				const char *statistic, uint32 threshold, uint32 value);
+void PmPrintExceededPortDetailsIntegrity(PmPortImage_t *portImage, PmPortImage_t *portImage2);
+void PmPrintExceededPortDetailsCongestion(PmPortImage_t *portImage, PmPortImage_t *portImage2);
+void PmPrintExceededPortDetailsSmaCongestion(PmPortImage_t *portImage, PmPortImage_t *portImage2);
+void PmPrintExceededPortDetailsBubble(PmPortImage_t *portImage, PmPortImage_t *portImage2);
+void PmPrintExceededPortDetailsSecurity(PmPortImage_t *portImage, PmPortImage_t *portImage2);
+void PmPrintExceededPortDetailsRouting(PmPortImage_t *portImage, PmPortImage_t *portImage2);
 void PmFinalizePortStats(Pm_t *pm, PmPort_t *portp, uint32 index);
 boolean PmTabulatePort(Pm_t *pm, PmPort_t *portp, uint32 index,
 			   			uint32 *counterSelect);

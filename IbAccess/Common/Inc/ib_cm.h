@@ -748,13 +748,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "iba/public/datatypes.h"		/* Portable datatypes */
 #include "iba/vpi.h"
-#if !defined(VXWORKS) || (defined(STL_GEN) && (STL_GEN >= 1))
 #include "iba/stl_types.h"		/* IB-defined types */
 #include "iba/stl_sa.h"	/* PATH_RECORD */
-#else
-#include "iba/ib_types.h"		/* IB-defined types */
-#include "iba/ib_sa_records.h"	/* IB_PATH_RECORD */
-#endif
 #include "iba/ib_status.h"		/* IB-defined status code */
 
 #if defined (__cplusplus)

@@ -331,8 +331,14 @@ pm_conf_callback(hsm_com_datagram_t *data)
 
 void
 pm_conf_server_run(uint32_t argc, uint8_t **argv){
+	errno = 0;
 	if(hcom_server_start(conf_handle) != HSM_COM_OK){
-		IB_LOG_ERROR0("Server exited with error");
+		if (errno != 0) {
+			IB_LOG_ERROR_FMT("pm_conf_server_run", "Command server exited with error \"%s\" (%d)",
+				strerror(errno), errno);
+		} else {
+			IB_LOG_ERROR0("Command server exited with error. No further information.");
+		}
 	}
 }
 

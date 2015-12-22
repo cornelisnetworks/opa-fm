@@ -62,6 +62,6 @@ then
 	Usage_full
 fi
 
-/usr/sbin/opareport -o comps -s -x -d 10 $@ | /usr/sbin/opaxmlextract -d \; -e NodeDesc -e SystemImageGUID -e PortNum -e LinkSpeedActive -e LinkWidthDnGradeTxActive -e LinkWidthDnGradeRxActive -e XmitDataMB -e XmitData -e XmitPkts -e MulticastXmitPkts -e RcvDataMB -e RcvData -e RcvPkts -e MulticastRcvPkts -e XmitWait -e CongDiscards -e XmitTimeCong -e MarkFECN -e RcvFECN -e RcvBECN -e RcvBubble -e XmitWastedBW -e XmitWaitData -e LinkQualityIndicator -e LocalLinkIntegrityErrors -e RcvErrors -e ExcessiveBufferOverruns -e LinkErrorRecovery -e LinkDowned -e UncorrectableErrors -e FMConfigErrors -e XmitConstraintErrors -e RcvConstraintErrors -e RcvSwitchRelayErrors -e XmitDiscards -e RcvRemotePhysicalErrors -s Neighbor -s SMs
+/usr/sbin/opareport -o comps -s -x -d 10 "$@" | /usr/sbin/opaxmlextract -d \; -e NodeDesc -e SystemImageGUID -e PortNum -e LinkSpeedActive -e LinkWidthDnGradeTxActive -e LinkWidthDnGradeRxActive -e XmitDataMB -e XmitData -e XmitPkts -e MulticastXmitPkts -e RcvDataMB -e RcvData -e RcvPkts -e MulticastRcvPkts -e XmitWait -e CongDiscards -e XmitTimeCong -e MarkFECN -e RcvFECN -e RcvBECN -e RcvBubble -e XmitWastedBW -e XmitWaitData -e LinkQualityIndicator -e LocalLinkIntegrityErrors -e RcvErrors -e ExcessiveBufferOverruns -e LinkErrorRecovery -e LinkDowned -e UncorrectableErrors -e FMConfigErrors -e XmitConstraintErrors -e RcvConstraintErrors -e RcvSwitchRelayErrors -e XmitDiscards -e RcvRemotePhysicalErrors -s Neighbor -s SMs
 
 exit 0

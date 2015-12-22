@@ -1405,7 +1405,9 @@ FSTATUS oib_send_mad2(struct oib_port *port, uint8_t *send_mad, size_t send_size
                      ? OIB_UTILS_DEF_TIMEOUT_MS : timeout_ms;
 
     if (umad_send(port->umad_fd, aid, umad_p, padded_size, (response ? 0 : correctedTimeout), retries) < 0) {
-        OUTPUT_ERROR("send failed; %s\n", strerror(errno));
+        OUTPUT_ERROR("send failed; %s, agent id %u MClass 0x%x method 0x%x attrId 0x%x attrM 0x%x\n",
+				strerror(errno), aid, mclass, mad_hdr->method, 
+				ntohs(mad_hdr->attr_id), ntohl(mad_hdr->attr_mod)); 
         status = FNOT_DONE;
         goto done;
     }

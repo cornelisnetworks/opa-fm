@@ -569,7 +569,6 @@ GsaRecvCallback(
 		pNextDgrmElement = (IBT_DGRM_ELEMENT*) pDgrmElement->Element.pNextElement;
 
 		// Basic checks
-#if defined(STL_GEN) && (STL_GEN >= 1)
 		/* MAD_BLOCK_SIZE(2048) + GRH (40) */
 		if (pDgrmElement->Element.RecvByteCount > CM_DGRM_SIZE)
 		{
@@ -580,18 +579,6 @@ GsaRecvCallback(
 							pDgrmElement->Element.RecvByteCount));
 			continue;
 		}
-#else
-		/* MAD_BLOCK_SIZE(256) + GRH (40) */
-		if (pDgrmElement->Element.RecvByteCount != CM_DGRM_SIZE)
-		{
-			AtomicIncrementVoid(&gCM->Recv.Failed);
-			_DBG_WARNING(("<dgrm 0x%p> Datagram passed less than %d bytes <len %d>\n",
-							_DBG_PTR(pDgrmElement),
-							MAD_BLOCK_SIZE,
-							pDgrmElement->Element.RecvByteCount));
-			continue;
-		}
-#endif
 
 		pMad = (CM_MAD*)GsiDgrmGetRecvMad(pDgrmElement);
 		if (!pMad)

@@ -351,17 +351,12 @@ sub Build_ifcfg($$$)
 		system $SysCmd;
 
 		# SLES11 and newer have IPOIB_MODE option in ifcfg
-		# set it consistent with openib.conf
-		if ( "$CUR_VENDOR_VER" ne 'ES10') {
-			my $ipoib_cm = read_openib_conf_param('SET_IPOIB_CM',"");
-			if ( "$ipoib_cm" eq "yes" ) {
-				$SysCmd = "echo \"IPOIB_MODE='connected'\" >> $target";
-			} else {
-				$SysCmd = "echo \"IPOIB_MODE='datagram'\" >> $target";
-			}
-			DebugPrint("cmd '$SysCmd'\n");
-			system $SysCmd;
-		}
+		$SysCmd = "echo \"IPOIB_MODE='connected'\" >> $target";
+		DebugPrint("cmd '$SysCmd'\n");
+		system $SysCmd;
+		$SysCmd = "echo \"MTU=65520\" >> $target";
+		DebugPrint("cmd '$SysCmd'\n");
+		system $SysCmd;
 	} else {
 		# Append the device instance name
 		$SysCmd = "echo DEVICE=$device > $target";
@@ -403,6 +398,13 @@ sub Build_ifcfg($$$)
 		system $SysCmd;
 
 		$SysCmd = "echo NM_CONTROLLED=no >> $target";
+		DebugPrint("cmd '$SysCmd'\n");
+		system $SysCmd;
+
+		$SysCmd = "echo CONNECTED_MODE=yes >> $target";
+		DebugPrint("cmd '$SysCmd'\n");
+		system $SysCmd;
+		$SysCmd = "echo MTU=65520 >> $target";
 		DebugPrint("cmd '$SysCmd'\n");
 		system $SysCmd;
 	}

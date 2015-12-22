@@ -545,8 +545,9 @@ void PrintStlErrorInfoRsp(PrintDest_t *dest, int indent, const STL_ERROR_INFO_RS
 {
 	int i, j, k;
 	int ii;
-	char bits;
-	char *pChar, *pBuf;
+	uint8 bits;
+	uint8 *pChar;
+	char *pBuf;
 	char displayBuf[256];
 
     if (pStlErrorInfoRsp->PortSelectMask[0]) {
@@ -592,44 +593,48 @@ void PrintStlErrorInfoRsp(PrintDest_t *dest, int indent, const STL_ERROR_INFO_RS
 					PrintFunc(dest, "%*s    Rcv Error Info        %s\n",
 						indent+4, "",
 						":");
-					PrintFunc(dest, "%*s        Error Code        %u\n",
+					PrintFunc(dest, "%*s        Error Code        %s (%u)\n",
 						indent+4, "",
+						PortRcvErrorInfoToText(pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.s.ErrorCode),
 						pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.s.ErrorCode);
 					if ((pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.s.ErrorCode >= 1) &&
 					    (pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.s.ErrorCode <= 12)) {
 						pBuf = displayBuf;
-						for (ii = 0, pChar = (char *)pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.ErrorInfo.EI1to12.PacketFlit1; ii < 8; ii++) {
+						for (ii = 0, pChar = (uint8 *)pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.ErrorInfo.EI1to12.PacketFlit1; ii < 8; ii++) {
 							sprintf(pBuf, "0x%02x ", *pChar++);
 							pBuf += 5;
 						}
-						bits = (char)pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.ErrorInfo.EI1to12.s.Flit1Bits;
+						bits = (uint8)pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.ErrorInfo.EI1to12.s.Flit1Bits;
 						pChar = &bits;
-						sprintf(pBuf, "0x%02x ", *pChar++);
+						sprintf(pBuf, "%01x ", *pChar++);
+						pBuf += 2;
 						*pBuf = '\0';
 						PrintFunc(dest, "%*s        Flit 1:           %s\n",
 							indent+4, "",
 							displayBuf);
 						pBuf = displayBuf;
-						for (ii = 0, pChar = (char *)pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.ErrorInfo.EI1to12.PacketFlit2; ii < 8; ii++) {
+						for (ii = 0, pChar = (uint8 *)pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.ErrorInfo.EI1to12.PacketFlit2; ii < 8; ii++) {
 							sprintf(pBuf, "0x%02x ", *pChar++);
 							pBuf += 5;
 						}
-						bits = (char)pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.ErrorInfo.EI1to12.s.Flit2Bits;
+						bits = (uint8)pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.ErrorInfo.EI1to12.s.Flit2Bits;
 						pChar = &bits;
-						sprintf(pBuf, "0x%02x ", *pChar++);
+						sprintf(pBuf, "%01x ", *pChar++);
+						pBuf += 2;
 						*pBuf = '\0';
 						PrintFunc(dest, "%*s        Flit 2:           %s\n",
 							indent+4, "",
 							displayBuf);
 					} else if (pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.s.ErrorCode == 13) {
 						pBuf = displayBuf;
-						for (ii = 0, pChar = (char *)pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.ErrorInfo.EI13.PacketBytes; ii < 8; ii++) {
+						for (ii = 0, pChar = (uint8 *)pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.ErrorInfo.EI13.PacketBytes; ii < 8; ii++) {
 							sprintf(pBuf, "0x%02x ", *pChar++);
 							pBuf += 5;
 						}
-						bits = (char)pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.ErrorInfo.EI13.s.FlitBits;
+						bits = (uint8)pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.ErrorInfo.EI13.s.FlitBits;
 						pChar = &bits;
-						sprintf(pBuf, "0x%02x ", *pChar++);
+						sprintf(pBuf, "%01x ", *pChar++);
+						pBuf += 2;
 						*pBuf = '\0';
 						PrintFunc(dest, "%*s        VL Marker Flit:   %s\n",
 							indent+4, "",
@@ -688,8 +693,9 @@ void PrintStlErrorInfoRsp(PrintDest_t *dest, int indent, const STL_ERROR_INFO_RS
 					PrintFunc(dest, "%*s    Rcv Sw Rel Info       %s\n",
 						indent+4, "",
 						":");
-					PrintFunc(dest, "%*s        Error Code        %u\n",
+					PrintFunc(dest, "%*s        Error Code        %s (%u)\n",
 						indent+4, "",
+						PortRcvSwitchRelayErrorInfoToText(pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.s.ErrorCode),
 						pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.s.ErrorCode);
 					switch (pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.s.ErrorCode) {
 						case 0:
@@ -723,8 +729,9 @@ void PrintStlErrorInfoRsp(PrintDest_t *dest, int indent, const STL_ERROR_INFO_RS
 					PrintFunc(dest, "%*s    Uncorr Error Info     %s\n",
 						indent+4, "",
 						":");
-					PrintFunc(dest, "%*s        Error Code        %u\n",
+					PrintFunc(dest, "%*s        Error Code        %s (%u)\n",
 						indent+4, "",
+						UncorrectableErrorInfoToText(pStlErrorInfoRsp->Port[k].UncorrectableErrorInfo.s.ErrorCode),
 						pStlErrorInfoRsp->Port[k].UncorrectableErrorInfo.s.ErrorCode);
 				} else {
 					PrintFunc(dest, "%*s    Uncorr Error Info     %s\n",
@@ -735,8 +742,9 @@ void PrintStlErrorInfoRsp(PrintDest_t *dest, int indent, const STL_ERROR_INFO_RS
 					PrintFunc(dest, "%*s    FM Config Error Info  %s\n",
 						indent+4, "",
 						":");
-					PrintFunc(dest, "%*s        Error Code        %u\n",
+					PrintFunc(dest, "%*s        Error Code        %s (%u)\n",
 						indent+4, "",
+						FMConfigErrorInfoToText(pStlErrorInfoRsp->Port[k].FMConfigErrorInfo.s.ErrorCode),
 						pStlErrorInfoRsp->Port[k].FMConfigErrorInfo.s.ErrorCode);
 					switch (pStlErrorInfoRsp->Port[k].FMConfigErrorInfo.s.ErrorCode) {
 						case 0:
