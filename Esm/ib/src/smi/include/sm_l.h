@@ -316,6 +316,7 @@ typedef	struct _PortData {
 		uint8_t init:1;
 		uint8_t slsc:1;
 		uint8_t scsl:1;
+		uint8_t portInfo:1;
 	} dirty;
 
 	struct {

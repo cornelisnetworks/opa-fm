@@ -59,8 +59,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ***********************************************************************/
 #ifndef FE_H 
 #define FE_H 
-#include "iba/stl_mad.h"
-#include "iba/ib_generalServices.h"
+#include "net/libnet.h"
 
 /* Configuration Defines    */
 #define PSWD_SIZE       16
@@ -70,11 +69,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /**************************************************************************
 * 		OOB PROTOCOL STRUCTURES
 **************************************************************************/
-typedef struct __OOBHeader {
-    uint32_t        HeaderVersion;      /* Version of the FE protocol header */
-    uint32_t        Length;             /* Length of the message data payload */
-    uint32_t        Reserved[2];        /* Reserved */
-} OOBHeader;
 
 /* Header byte swap for OOB network transmission */
 static __inline
@@ -85,11 +79,6 @@ void BSWAP_OOB_HEADER(OOBHeader *header)
     header->Reserved[0] = 0;
     header->Reserved[1] = 0;
 }
-
-typedef struct _OOBPacket {
-    OOBHeader Header;
-    MAD_RMPP MadData;
-} OOBPacket;
 
 /* Byte swap for OOB packet */
 static __inline

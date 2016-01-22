@@ -43,7 +43,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ctype.h>
 #include <ib_helper.h>
 #include <ixml_ib.h>
-#include <cs_g.h> 
+#include <cs_g.h>
 #include <fm_xml.h>
 #define _GNU_SOURCE
 
@@ -61,8 +61,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <xml.h>
 
 #include "sftp.h"
-void updateLastScpRetCodeForXML(scpFastFabricRetCode_t retCode) {
-	Sftp_updateLastScpRetCodeForXML(retCode);
+#include "bspcommon/h/configDirName.h"
+extern STATUS rm (const char *fileName);
+
+void updateLastScpRetCode(scpFastFabricRetCode_t retCode) {
+	Sftp_updateLastScpRetCode(retCode);
 }
 
 extern uint32_t sm_state;
@@ -75,6 +78,7 @@ extern void* getEsmXmlParserMemory(uint32_t size, char* info);
 extern void freeEsmXmlParserMemory(void *address, uint32_t size, char* info);
 #if defined(__VXWORKS__)
 extern void idbSmGetManagersToStart(int * pm, int * fe);
+extern STATUS cmuRed_cfgIfMasterSyncSlavePEM(char *pem_filename);
 extern STATUS cmuRed_cfgIfMasterSyncSlave(char *remote);
 #endif
 
@@ -1644,11 +1648,16 @@ void smInitConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 	DEFAULT_AND_CKSUM_U32(smp->force_rebalance, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(smp->use_cached_node_data, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(smp->sma_spoofing_check, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_U16(smp->link_policy.link_max_downgrade, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_U8(smp->link_policy.width_policy.enabled, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_U16(smp->link_policy.width_policy.policy, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_U8(smp->link_policy.speed_policy.enabled, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_U16(smp->link_policy.speed_policy.policy, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U16(smp->hfi_link_policy.link_max_downgrade, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U8(smp->hfi_link_policy.width_policy.enabled, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U16(smp->hfi_link_policy.width_policy.policy, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U8(smp->hfi_link_policy.speed_policy.enabled, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U16(smp->hfi_link_policy.speed_policy.policy, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U16(smp->isl_link_policy.link_max_downgrade, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U8(smp->isl_link_policy.width_policy.enabled, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U16(smp->isl_link_policy.width_policy.policy, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U8(smp->isl_link_policy.speed_policy.enabled, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U16(smp->isl_link_policy.speed_policy.policy, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(smp->preemption.small_packet, SM_PREEMPT_SMALL_PACKET_DEF, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(smp->preemption.large_packet, SM_PREEMPT_LARGE_PACKET_DEF, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(smp->preemption.preempt_limit, SM_PREEMPT_LIMIT_DEF, CKSUM_OVERALL_DISRUPT_CONSIST);
@@ -1969,11 +1978,16 @@ void smShowConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 	printf("XML - replayDepthOverride %d\n", (unsigned int)smp->replayDepthOverride);
     printf("XML - timerScalingEnable  %d\n", (unsigned int) smp->timerScalingEnable);
 	printf("XML - min_supported_vls %d\n", (unsigned int)smp->min_supported_vls);
-	printf("XML - link_policy.link_max_downgrade 0x%x\n", (unsigned int)smp->link_policy.link_max_downgrade);   
-	printf("XML - link_policy.link_width.enabled 0x%x\n", (unsigned int)smp->link_policy.width_policy.enabled);  
-	printf("XML - link_policy.link_width.policy 0x%x\n", (unsigned int)smp->link_policy.width_policy.policy);  
-	printf("XML - link_policy.link_speed.enabled 0x%x\n", (unsigned int)smp->link_policy.speed_policy.enabled);  
-	printf("XML - link_policy.link_speed.policy 0x%x\n", (unsigned int)smp->link_policy.speed_policy.policy);  
+	printf("XML - hfi_link_policy.link_max_downgrade 0x%x\n", (unsigned int)smp->hfi_link_policy.link_max_downgrade);
+	printf("XML - hfi_link_policy.link_width.enabled 0x%x\n", (unsigned int)smp->hfi_link_policy.width_policy.enabled);
+	printf("XML - hfi_link_policy.link_width.policy 0x%x\n", (unsigned int)smp->hfi_link_policy.width_policy.policy);
+	printf("XML - hfi_link_policy.link_speed.enabled 0x%x\n", (unsigned int)smp->hfi_link_policy.speed_policy.enabled);
+	printf("XML - hfi_link_policy.link_speed.policy 0x%x\n", (unsigned int)smp->hfi_link_policy.speed_policy.policy);
+	printf("XML - isl_link_policy.link_max_downgrade 0x%x\n", (unsigned int)smp->isl_link_policy.link_max_downgrade);
+	printf("XML - isl_link_policy.link_width.enabled 0x%x\n", (unsigned int)smp->isl_link_policy.width_policy.enabled);
+	printf("XML - isl_link_policy.link_width.policy 0x%x\n", (unsigned int)smp->isl_link_policy.width_policy.policy);
+	printf("XML - isl_link_policy.link_speed.enabled 0x%x\n", (unsigned int)smp->isl_link_policy.speed_policy.enabled);
+	printf("XML - isl_link_policy.link_speed.policy 0x%x\n", (unsigned int)smp->isl_link_policy.speed_policy.policy);
 	printf("XML - preemption.small_packet 0x%x\n", (unsigned int) smp->preemption.small_packet);   
 	printf("XML - preemption.large_packet 0x%x\n", (unsigned int) smp->preemption.large_packet);  
 	printf("XML - preemption.preempt_limit 0x%x\n", (unsigned int) smp->preemption.preempt_limit);  
@@ -3879,7 +3893,8 @@ VirtualFabrics_t* renderVirtualFabricsConfig(uint32_t fm, FMXmlCompositeConfig_t
 		vfip->routing_sls = vfip->routing_scs;
 
 		vfip->percent_bandwidth = vfp->percent_bandwidth;
-		if (vfp->qos_enable && vfp->percent_bandwidth != UNDEFINED_XML8)
+		if (vfp->qos_enable && 
+			((vfp->percent_bandwidth != UNDEFINED_XML8) || (vfp->priority == 1)))
 			num_qos_defined++;
 
 		if (vfp->priority == UNDEFINED_XML8) {
@@ -5350,10 +5365,15 @@ static IXML_FIELD SmLinkPolicyFields[] = {
 	{ NULL }
 };
 
-// "Sm/Link Policy" start tag
-static void* SmLinkPolicyXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr)
+// "Sm/HFILink Policy" start tag
+static void* SmHFILinkPolicyXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr)
 {
-	return &((SMXmlConfig_t *)parent)->link_policy;
+	return &((SMXmlConfig_t *)parent)->hfi_link_policy;
+}
+// "Sm/ISLLink Policy" start tag
+static void* SmISLLinkPolicyXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr)
+{
+	return &((SMXmlConfig_t *)parent)->isl_link_policy;
 }
 
 static boolean minMaxNumString(uint32_t *p, char *str, uint32_t min, uint32_t max)
@@ -5993,7 +6013,8 @@ static IXML_FIELD SmFields[] = {
 	{ tag:"Multicast", format:'k', subfields:SmMcastFields, start_func:SmMcastXmlParserStart, end_func:SmMcastXmlParserEnd },
 	{ tag:"RoutingAlgorithm", format:'s', IXML_FIELD_INFO(SMXmlConfig_t, routing_algorithm) },
 	{ tag:"DebugJm", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, debug_jm) },
-	{ tag:"LinkPolicy", format:'k', subfields:SmLinkPolicyFields, start_func:SmLinkPolicyXmlParserStart },
+	{ tag:"HFILinkPolicy", format:'k', subfields:SmLinkPolicyFields, start_func:SmHFILinkPolicyXmlParserStart },
+	{ tag:"ISLLinkPolicy", format:'k', subfields:SmLinkPolicyFields, start_func:SmISLLinkPolicyXmlParserStart },
 	{ tag:"Preemption", format:'k', subfields:SmPreemptionFields, start_func:SmPreemptionXmlParserStart },
 	{ tag:"CongestionControl", format:'k', subfields:SmCongestionFields, start_func:SmCongestionXmlParserStart },
 	{ tag:"AdaptiveRouting", format:'k', subfields:SmAdaptiveRoutingFields, start_func:SmAdaptiveRoutingXmlParserStart, end_func:SmAdaptiveRoutingXmlParserEnd },
@@ -9257,25 +9278,49 @@ verifyFmConfig(char* filename, uint32_t flags)
 	return 0;
 }
 
+int copyPEMFile(char *src, char *pem_filename) {
+	char fn[64];
+
+	/* copy new file replacing old one */
+	snprintf(fn,  sizeof(fn),"%s/%s.pem", DIR_BASE_NAME, pem_filename);
+	if (vcopy(src, fn, FALSE) != OK) {
+		sysPrintf("%s %d vcopy %s to %s failed\n", __FUNCTION__, __LINE__, src, fn);
+		updateLastScpRetCode(SCP_FF_ERR_XML_UPDATE); 
+		rm(src);
+		return 0;
+	}
+
+    // mirror the XML file to remote CPU - if this is not a multi-CPU system then
+    // the call will simply return without doing any mirroring
+#if defined(__VXWORKS__)
+    cmuRed_cfgIfMasterSyncSlavePEM(pem_filename);
+#endif
+
+	rm(src);
+	updateLastScpRetCode(SCP_FF_ERR_OK); 
+	SCP_LOG( "Copy file %s to %s successful.", src, fn);
+	return 1;
+}
+
 /***********************************
  
 This function will:
-	1 - copy (src) [/firmware/opafm.xml] file to dst compressed file 
+	1 - copy (src) [/firmware/opafm.xml] file to compressed file 
 			[/firmware/temp.xml.z]
 	2 - check max compressed file size limit
 		2a - If file size too big, reove both files 
 	3 - verify XML config file. If invalid remove both files
-	4 - if ok, copy file to dst [/rfa1/opafm.xml.z].
+	4 - if ok, copy file to flash [/<flashdir>/opafm.xml.z].
 	5 - remove src file
 
 *************************/
-int copyCompressXMLConfigFile(char *src, char *dst) {
+int copyCompressXMLConfigFile(char *src, char *dst_unused_param) {
 	long fileSize=0;
 	uint8_t ret;
 
 	if (parsingInProcess) {
 		XmlParsePrintError("scp: unable to compress XML config file while parser is in the process of parsing a file already");
-		updateLastScpRetCodeForXML(SCP_FF_ERR_XML_UPDATE);
+		updateLastScpRetCode(SCP_FF_ERR_XML_UPDATE);
 		sysPrintf ("scp:Unable to compress into %s while parser is in the process of parsing a file already\n",IFS_FM_CFG_NAME_TEMP);
 		return 0;
 	}
@@ -9284,16 +9329,18 @@ int copyCompressXMLConfigFile(char *src, char *dst) {
 
     if (copyFile(src, IFS_FM_CFG_NAME_TEMP,-1,&fileSize)) {
 		XmlParsePrintError("scp: unable to compress XML config file");
-		updateLastScpRetCodeForXML(SCP_FF_ERR_XML_UPDATE); 
+		updateLastScpRetCode(SCP_FF_ERR_XML_UPDATE); 
         sysPrintf ("scp:Unable to compress into %s\n", IFS_FM_CFG_NAME_TEMP);
+		rm(src);
 		scpInProcess = 0;
         return 0;
     }
     if (fileSize>MAX_XML_COMPRESSED_FILE_SIZE) {
 		XmlParsePrintError("scp: compressed XML config file exceeds max size");
-		updateLastScpRetCodeForXML(SCP_FF_ERR_XML_UPDATE); 
+		updateLastScpRetCode(SCP_FF_ERR_XML_UPDATE); 
         sysPrintf ("scp:Compressed file size exceeds limit of %ld\n",MAX_XML_COMPRESSED_FILE_SIZE);
-        rdRemove(RD_DIR_FIRMWARE);
+        rm(src);
+		rm(IFS_FM_CFG_NAME_TEMP);
 		scpInProcess = 0;
         return 0;
     }
@@ -9303,22 +9350,24 @@ int copyCompressXMLConfigFile(char *src, char *dst) {
         SCP_LOG( "XML parsed ok!");
     } else {
 		XmlParsePrintError("scp: Invalid XML config file!");
-		updateLastScpRetCodeForXML(SCP_FF_ERR_XML_UPDATE); 
+		updateLastScpRetCode(SCP_FF_ERR_XML_UPDATE); 
         sysPrintf("scp: Invalid XML config file!\n");
-        rdRemove(RD_DIR_FIRMWARE);
+        rm(src);
+		rm(IFS_FM_CFG_NAME_TEMP);
 		scpInProcess = 0;
 		return 0;
     }
 
 	SCP_LOG( "Removing old config file %s.",IFS_FM_CFG_NAME);
-	remove(IFS_FM_CFG_NAME);
+	rm(IFS_FM_CFG_NAME);
 		
 	SCP_LOG( "copying over %s to %s.",IFS_FM_CFG_NAME_TEMP, IFS_FM_CFG_NAME);
     if (copyFile( IFS_FM_CFG_NAME_TEMP, IFS_FM_CFG_NAME, 0,NULL)) {
 		XmlParsePrintError("scp: unable to copy compressed XML config file to destination");
-		updateLastScpRetCodeForXML(SCP_FF_ERR_XML_UPDATE); 
+		updateLastScpRetCode(SCP_FF_ERR_XML_UPDATE); 
         sysPrintf("scp:Unable to copy %s to %s\n", IFS_FM_CFG_NAME_TEMP, IFS_FM_CFG_NAME);
-        rdRemove(RD_DIR_FIRMWARE);
+		rm(src);
+		rm(IFS_FM_CFG_NAME_TEMP);
 		scpInProcess = 0;
         return 0;
     }
@@ -9328,15 +9377,17 @@ int copyCompressXMLConfigFile(char *src, char *dst) {
 		SCP_LOG( "XML parsed ok on second pass!");
 	} else {
 		XmlParsePrintError("scp: Invalid XML new config file on second pass!");
-		updateLastScpRetCodeForXML(SCP_FF_ERR_XML_UPDATE); 
+		updateLastScpRetCode(SCP_FF_ERR_XML_UPDATE); 
         sysPrintf("scp: Invalid XML new config file in second pass!\n");
-        remove(IFS_FM_CFG_NAME);
+		rm(src);
+		rm(IFS_FM_CFG_NAME_TEMP);
+        rm(IFS_FM_CFG_NAME);
 		scpInProcess = 0;
 		return 0;
     }
 
-    // remove the uncompressed xml file from /firmware
-    rdRemove(RD_DIR_FIRMWARE);
+	rm(src);
+	rm(IFS_FM_CFG_NAME_TEMP);
 
     // mirror the XML file to remote CPU - if this is not a multi-CPU system then
     // the call will simply return without doing any mirroring
@@ -9344,7 +9395,7 @@ int copyCompressXMLConfigFile(char *src, char *dst) {
     cmuRed_cfgIfMasterSyncSlave(NULL);
 #endif
 
-	updateLastScpRetCodeForXML(SCP_FF_ERR_OK); 
+	updateLastScpRetCode(SCP_FF_ERR_OK); 
 
 	scpInProcess = 0;
 

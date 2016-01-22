@@ -601,6 +601,9 @@ void if3_set_rmpp_minfo (ManagerInfo_t *mi)
     case MAD_CV_VENDOR_DBSYNC:
         mi->rmppMngrfd = &dbsyncfd_if3; 
         mi->rmppPool = &sm_pool; 
+        // SM DB Sync uses other filter mechanism to handle inbound MAD requests,
+        // so RMPP filters not required
+        mi->rmppCreateFilters = 0;
         (void)if3_set_rmpp_cntx_pool_size_params(mi);
         break;
     default:

@@ -392,7 +392,7 @@ $WrapperComponent = "opaconfig";
 					  DriverSubdir => "",
 					  PreReq => " opa_stack ", CoReq => "",
 					  Hidden => 0, Disabled => 0,
-					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => " opa_stack ",
 					  #StartComponents => [ "qlgc_fm", "qlgc_fm_snmp"],
 					  StartComponents => [ "opafm" ],

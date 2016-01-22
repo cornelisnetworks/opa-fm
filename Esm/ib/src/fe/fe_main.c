@@ -242,7 +242,7 @@ void fe_init_globals(void)
     //
 }
 
-uint32_t fe_process_passthrough(uint8_t *netbuf, FE_ConnList *clist) {
+uint32_t fe_process_passthrough(uint8_t *netbuf, int buflen, FE_ConnList *clist) {
 	OOBPacket* message; 				/* Pointer to the incoming packet */
 	uint32_t rc; 						/* Return code */
 	
@@ -262,9 +262,16 @@ uint32_t fe_process_passthrough(uint8_t *netbuf, FE_ConnList *clist) {
 		return rc;
 	}
 
-	/* Get the header from the message */
+	/* First do a simple sanity check on the OOB header */
 	message= ((OOBPacket *) netbuf);
-	BSWAP_OOB_PACKET(message);
+
+    BSWAP_OOB_HEADER(&(message->Header));
+    if (message->Header.HeaderVersion != STL_BASE_VERSION || message->Header.Length > buflen) {
+		return FE_NO_COMPLETE;
+    }
+
+	/* OOB header appears reasonable, so continue to process the message  */
+    BSWAP_MAD_HEADER((MAD*) &(message->MadData));
 
 	/* Process message type and route to the apropriate manager */
 	switch(message->MadData.common.MgmtClass) {
@@ -274,6 +281,9 @@ uint32_t fe_process_passthrough(uint8_t *netbuf, FE_ConnList *clist) {
 	case MCLASS_VFI_PM: 			/* PA */
 		rc = fe_pa_passthrough(netbuf, clist, fdsa);
 		break;
+    default:
+		rc = FE_NO_COMPLETE;
+        break;
 	}
 
 	IB_EXIT(__func__, rc);
@@ -436,7 +446,7 @@ int fe_main()
         while (tlist && !Shutdown) {
             fe_net_get_next_message(tlist->conn, &netbuf, &buflen, NULL); 
             if (netbuf) 
-				if ((error = fe_process_passthrough((void *)netbuf, tlist))) {
+				if ((error = fe_process_passthrough((void *)netbuf, buflen, tlist))) {
                     if (error == FE_UNLOGGED) {
                         IB_LOG_ERROR0("Connection not logged in");
                     } else {

@@ -2778,7 +2778,7 @@ smProcessReconfigureRequest(void){
     										IB_LOG_INFINI_INFO_FMT(__func__,
                                             	"SM: Forwarding reconfiguration request to standby SM at Lid 0x%x, portGuid "FMT_U64,
                                    				smrecp->lid, *smreckeyp);
-                            				(void) sm_dbsync_queueMsg(DBSYNC_TYPE_RECONFIG, DBSYNC_DATATYPE_NONE, smrecp->lid, smrecp->portguid, NULL);
+                            				(void) sm_dbsync_queueMsg(DBSYNC_TYPE_RECONFIG, DBSYNC_DATATYPE_NONE, smrecp->lid, smrecp->portguid, smrecp->isEmbedded, NULL);
                 						}
         							} while (cs_hashtable_iterator_advance(&itr));
 								}

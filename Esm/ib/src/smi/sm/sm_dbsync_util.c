@@ -197,7 +197,7 @@ void sm_dbsync_initSmRec(SmRecp smrecp) {
 /*
  * send sync request on sync queue to db_sync thread
 */
-void sm_dbsync_queueMsg(DBSyncType_t syncType, DBSyncDatTyp_t syncDataTye, Lid_t lid, Guid_t portguid, SMSyncData_t data) {
+void sm_dbsync_queueMsg(DBSyncType_t syncType, DBSyncDatTyp_t syncDataTye, Lid_t lid, Guid_t portguid, uint8_t isEmbedded, SMSyncData_t data) {
     SMSyncReqp      srp;
     Status_t        status;
 
@@ -211,6 +211,7 @@ void sm_dbsync_queueMsg(DBSyncType_t syncType, DBSyncDatTyp_t syncDataTye, Lid_t
         srp->datatype = syncDataTye;
         srp->portguid = portguid;
         srp->standbyLid = lid;
+        srp->isEmbedded = isEmbedded;
         /* copy the data if not null */
         if (data) {
             memcpy(srp->data, data, sizeof(SMSyncData_t));
@@ -294,6 +295,16 @@ sm_dbsync_addSm(Node_t *nodep, Port_t * portp, STL_SMINFO_RECORD *sminforec)
         smrecp->portguid = sminforec->SMInfo.PortGUID;
         smrecp->lid = sminforec->RID.LID;
 		smrecp->portNumber = portp->index;
+        if (nodep == sm_newTopology.node_head) {
+#ifdef __VXWORKS__
+			smrecp->isEmbedded = 1;
+#else
+			smrecp->isEmbedded = 0;
+#endif
+		} else {
+			smrecp->isEmbedded = portp->index ? 0 : 1;
+		}
+
         /* fill in dbsync for our node */
         if (nodep == sm_newTopology.node_head) {
 			sm_dbsync_initSmRec(smrecp);
@@ -385,14 +396,14 @@ Status_t sm_dbsync_fullSyncCheck(SmRecKey_t recKey) {
                     smrecp->dbsync.fullSyncStatus == DBSYNC_STAT_UNINITIALIZED) {
                     /* request full sync of this SM */
                     smrecp->dbsync.fullSyncStatus = DBSYNC_STAT_INPROGRESS;
-                    (void) sm_dbsync_queueMsg(DBSYNC_TYPE_FULL, DBSYNC_DATATYPE_ALL, smrecp->lid, smrecp->portguid, NULL);
+                    (void) sm_dbsync_queueMsg(DBSYNC_TYPE_FULL, DBSYNC_DATATYPE_ALL, smrecp->lid, smrecp->portguid, smrecp->isEmbedded, NULL);
                     IB_LOG_INFO_FMT(__func__, 
                            "requested initial full sync of SM node at Lid 0x%x, portGuid "FMT_U64,
                            smrecp->lid, recKey);
                 } else if (!collectiveFailStatus && smrecp->dbsync.fullSyncStatus == DBSYNC_STAT_SYNCHRONIZED) {
                     if (tnow - smrecp->dbsync.fullTimeLastSync > sm_config.db_sync_interval) {
                         smrecp->dbsync.fullSyncStatus = DBSYNC_STAT_INPROGRESS;
-                        (void) sm_dbsync_queueMsg(DBSYNC_TYPE_FULL, DBSYNC_DATATYPE_ALL, smrecp->lid, smrecp->portguid, NULL);
+                        (void) sm_dbsync_queueMsg(DBSYNC_TYPE_FULL, DBSYNC_DATATYPE_ALL, smrecp->lid, smrecp->portguid, smrecp->isEmbedded, NULL);
                         IB_LOG_INFO_FMT(__func__, 
                                "requested full sync of SM node at Lid 0x%x, portGuid "FMT_U64" on configured (%d seconds) interval",
                                smrecp->lid, recKey, sm_config.db_sync_interval);
@@ -409,7 +420,7 @@ Status_t sm_dbsync_fullSyncCheck(SmRecKey_t recKey) {
                        || (  smrecp->dbsync.fullSyncFailCount >= DBSYNC_MAX_FAIL_SYNC_ATTEMPTS
                           && tnow - timeLastFail > sm_config.db_sync_interval)) {
                         smrecp->dbsync.fullSyncStatus = DBSYNC_STAT_INPROGRESS;
-                        (void) sm_dbsync_queueMsg(DBSYNC_TYPE_FULL, DBSYNC_DATATYPE_ALL, smrecp->lid, smrecp->portguid, NULL);
+                        (void) sm_dbsync_queueMsg(DBSYNC_TYPE_FULL, DBSYNC_DATATYPE_ALL, smrecp->lid, smrecp->portguid, smrecp->isEmbedded, NULL);
                         IB_LOG_INFO_FMT(__func__, 
                                "requested full sync of SM node at Lid 0x%x, portGuid "FMT_U64" on failure retry (%d seconds) interval",
                                smrecp->lid, recKey, DBSYNC_TIME_BETWEEN_SYNC_FAILURES);
@@ -515,7 +526,7 @@ DBSyncCap_t sm_dbsync_getDbsyncSupport(SmRecKey_t recKey) {
             if (smrecp->syncCapability == DBSYNC_CAP_UNKNOWN) {
 				/* If Capability is unknown, try to find out */
                 smrecp->syncCapability = DBSYNC_CAP_ASKING;
-                (void) sm_dbsync_queueMsg(DBSYNC_TYPE_GET_CAPABILITY, DBSYNC_DATATYPE_NONE, smrecp->lid, smrecp->portguid, NULL);
+                (void) sm_dbsync_queueMsg(DBSYNC_TYPE_GET_CAPABILITY, DBSYNC_DATATYPE_NONE, smrecp->lid, smrecp->portguid, smrecp->isEmbedded, NULL);
             }
             syncCap = smrecp->syncCapability;
         }
@@ -985,7 +996,7 @@ Status_t sm_dbsync_upsmlist(void) {
                             smrecp->syncCapability == DBSYNC_CAP_UNKNOWN) {/* and we don't know remote sync capability yet */
                             /* request GET of the sync capability of this SM */
                             smrecp->syncCapability = DBSYNC_CAP_ASKING;
-                            (void) sm_dbsync_queueMsg(DBSYNC_TYPE_GET_CAPABILITY, DBSYNC_DATATYPE_NONE, smrecp->lid, smrecp->portguid, NULL);
+                            (void) sm_dbsync_queueMsg(DBSYNC_TYPE_GET_CAPABILITY, DBSYNC_DATATYPE_NONE, smrecp->lid, smrecp->portguid, smrecp->isEmbedded, NULL);
                             IB_LOG_INFO_FMT(__func__, 
                                    "queued request for sync capability of SM node at Lid 0x%x, portGuid "FMT_U64" to SM table",
                                    smrecp->lid, *smreckeyp);
@@ -994,7 +1005,7 @@ Status_t sm_dbsync_upsmlist(void) {
                                    smrecp->dbsync.fullSyncStatus == DBSYNC_STAT_UNINITIALIZED && !smrecp->configDiff) {
                             /* request full sync of this SM unless deactivated */
                             smrecp->dbsync.fullSyncStatus = DBSYNC_STAT_INPROGRESS;
-                            (void) sm_dbsync_queueMsg(DBSYNC_TYPE_FULL, DBSYNC_DATATYPE_ALL, smrecp->lid, smrecp->portguid, NULL);
+                            (void) sm_dbsync_queueMsg(DBSYNC_TYPE_FULL, DBSYNC_DATATYPE_ALL, smrecp->lid, smrecp->portguid, smrecp->isEmbedded, NULL);
                             IB_LOG_INFO_FMT(__func__, 
                                    "requested full sync of SM node at Lid 0x%x, portGuid "FMT_U64" to SM table",
                                    portp->portData->lid, *smreckeyp);
@@ -1204,7 +1215,7 @@ Status_t sm_dbsync_syncService(DBSyncType_t synctype, OpaServiceRecordp osrp) {
                         smrecp->syncCapability == DBSYNC_CAP_SUPPORTED && 
                         smrecp->dbsync.fullSyncStatus == DBSYNC_STAT_SYNCHRONIZED) {
                         if (smrecp->dbsync.serviceSyncStatus == DBSYNC_STAT_SYNCHRONIZED) {
-                            (void) sm_dbsync_queueMsg(synctype, DBSYNC_DATATYPE_SERVICE, smrecp->lid, smrecp->portguid, syncData);
+                            (void) sm_dbsync_queueMsg(synctype, DBSYNC_DATATYPE_SERVICE, smrecp->lid, smrecp->portguid, smrecp->isEmbedded, syncData);
                         } 
                         #if 0
                         else if (smrecp->dbsync.serviceSyncStatus == DBSYNC_STAT_FAILURE &&
@@ -1213,12 +1224,12 @@ Status_t sm_dbsync_syncService(DBSyncType_t synctype, OpaServiceRecordp osrp) {
                             /* 
                              * see if a full sync can clear things up after DBSYNC_TIME_BETWEEN_SYNC_FAILURES seconds 
                              */
-                            (void) sm_dbsync_queueMsg(DBSYNC_TYPE_FULL, DBSYNC_DATATYPE_SERVICE, smrecp->lid, smrecp->portguid, syncData);
+                            (void) sm_dbsync_queueMsg(DBSYNC_TYPE_FULL, DBSYNC_DATATYPE_SERVICE, smrecp->lid, smrecp->portguid, smrecp->isEmbedded, syncData);
                         } else if (smrecp->dbsync.serviceSyncStatus == DBSYNC_STAT_FAILURE &&
                                    smrecp->dbsync.serviceSyncFailCount >= DBSYNC_MAX_FAIL_SYNC_ATTEMPTS &&
                                    ((tnow - smrecp->dbsync.serviceTimeSyncFail) > DBSYNC_TIME_BETWEEN_SYNC_FAILURES)) {
                             /* last attempt, try a full sync of everything */
-                            (void) sm_dbsync_queueMsg(DBSYNC_TYPE_FULL, DBSYNC_DATATYPE_ALL, smrecp->lid, smrecp->portguid, syncData);
+                            (void) sm_dbsync_queueMsg(DBSYNC_TYPE_FULL, DBSYNC_DATATYPE_ALL, smrecp->lid, smrecp->portguid, smrecp->isEmbedded, syncData);
                         }
                         #endif
                     }
@@ -1265,7 +1276,7 @@ Status_t sm_dbsync_syncInform(DBSyncType_t synctype, SubscriberKeyp keyp, STL_IN
                         smrecp->syncCapability == DBSYNC_CAP_SUPPORTED && 
                         smrecp->dbsync.fullSyncStatus == DBSYNC_STAT_SYNCHRONIZED) {
                         if (smrecp->dbsync.informSyncStatus == DBSYNC_STAT_SYNCHRONIZED) {
-                            (void) sm_dbsync_queueMsg(synctype, DBSYNC_DATATYPE_INFORM, smrecp->lid, smrecp->portguid, syncData);
+                            (void) sm_dbsync_queueMsg(synctype, DBSYNC_DATATYPE_INFORM, smrecp->lid, smrecp->portguid, smrecp->isEmbedded, syncData);
                         }
                         #if 0
                         else if (smrecp->dbsync.informSyncStatus == DBSYNC_STAT_FAILURE &&
@@ -1274,12 +1285,12 @@ Status_t sm_dbsync_syncInform(DBSyncType_t synctype, SubscriberKeyp keyp, STL_IN
                             /* 
                              * see if a full sync can clear things up after DBSYNC_TIME_BETWEEN_SYNC_FAILURES seconds 
                              */
-                            (void) sm_dbsync_queueMsg(DBSYNC_TYPE_FULL, DBSYNC_DATATYPE_INFORM, smrecp->lid, smrecp->portguid, syncData);
+                            (void) sm_dbsync_queueMsg(DBSYNC_TYPE_FULL, DBSYNC_DATATYPE_INFORM, smrecp->lid, smrecp->portguid, smrecp->isEmbedded, syncData);
                         } else if (smrecp->dbsync.informSyncStatus == DBSYNC_STAT_FAILURE &&
                                    smrecp->dbsync.informSyncFailCount >= DBSYNC_MAX_FAIL_SYNC_ATTEMPTS &&
                                    ((tnow - smrecp->dbsync.informTimeSyncFail) > DBSYNC_TIME_BETWEEN_SYNC_FAILURES)) {
                             /* last attempt, try a full sync of everything */
-                            (void) sm_dbsync_queueMsg(DBSYNC_TYPE_FULL, DBSYNC_DATATYPE_ALL, smrecp->lid, smrecp->portguid, syncData);
+                            (void) sm_dbsync_queueMsg(DBSYNC_TYPE_FULL, DBSYNC_DATATYPE_ALL, smrecp->lid, smrecp->portguid, smrecp->isEmbedded, syncData);
                         }
                         #endif
                     }
@@ -1325,7 +1336,7 @@ Status_t sm_dbsync_syncGroup(DBSyncType_t synctype, IB_GID * pGid) {
                         smrecp->syncCapability == DBSYNC_CAP_SUPPORTED && 
                         smrecp->dbsync.fullSyncStatus == DBSYNC_STAT_SYNCHRONIZED) {
                         if (smrecp->dbsync.groupSyncStatus == DBSYNC_STAT_SYNCHRONIZED) {
-                            (void) sm_dbsync_queueMsg(synctype, DBSYNC_DATATYPE_GROUP, smrecp->lid, smrecp->portguid, syncData);
+                            (void) sm_dbsync_queueMsg(synctype, DBSYNC_DATATYPE_GROUP, smrecp->lid, smrecp->portguid, smrecp->isEmbedded, syncData);
                         } 
                         #if 0
                         else if (smrecp->dbsync.groupSyncStatus == DBSYNC_STAT_FAILURE &&
@@ -1339,7 +1350,7 @@ Status_t sm_dbsync_syncGroup(DBSyncType_t synctype, IB_GID * pGid) {
                                    smrecp->dbsync.groupSyncFailCount >= DBSYNC_MAX_FAIL_SYNC_ATTEMPTS &&
                                    ((tnow - smrecp->dbsync.groupTimeSyncFail) > DBSYNC_TIME_BETWEEN_SYNC_FAILURES)) {
                             /* last attempt, try a full sync of everything */
-                            (void) sm_dbsync_queueMsg(DBSYNC_TYPE_FULL, DBSYNC_DATATYPE_ALL, smrecp->lid, smrecp->portguid, syncData);
+                            (void) sm_dbsync_queueMsg(DBSYNC_TYPE_FULL, DBSYNC_DATATYPE_ALL, smrecp->lid, smrecp->portguid, smrecp->isEmbedded, syncData);
                         }
                         #endif
                     }
@@ -1378,7 +1389,7 @@ Status_t sm_dbsync_syncMCRoot(DBSyncType_t synctype) {
                         smrecp->syncCapability == DBSYNC_CAP_SUPPORTED && 
                         smrecp->dbsync.fullSyncStatus == DBSYNC_STAT_SYNCHRONIZED) {
                         if (smrecp->dbsync.groupSyncStatus == DBSYNC_STAT_SYNCHRONIZED) {
-                            (void) sm_dbsync_queueMsg(synctype, DBSYNC_DATATYPE_MCROOT, smrecp->lid, smrecp->portguid, syncData);
+                            (void) sm_dbsync_queueMsg(synctype, DBSYNC_DATATYPE_MCROOT, smrecp->lid, smrecp->portguid, smrecp->isEmbedded, syncData);
                         } 
                     }
                 } while (cs_hashtable_iterator_advance(&itr));
@@ -1423,12 +1434,12 @@ Status_t sm_dbsync_syncFile(DBSyncType_t synctype, SMDBSyncFile_t *syncFile) {
                         smrecp->syncCapability == DBSYNC_CAP_SUPPORTED && 
                         smrecp->dbsync.fullSyncStatus == DBSYNC_STAT_SYNCHRONIZED) {
                         if (smrecp->dbsync.serviceSyncStatus == DBSYNC_STAT_SYNCHRONIZED) {
-                            (void) sm_dbsync_queueMsg(synctype, DBSYNC_DATATYPE_FILE, smrecp->lid, smrecp->portguid, syncData);
+                            (void) sm_dbsync_queueMsg(synctype, DBSYNC_DATATYPE_FILE, smrecp->lid, smrecp->portguid, smrecp->isEmbedded, syncData);
                         } 
 /*
 					// even allow a SM that has been set Inactive to receive a new file
                     } else if (smrecp->portguid != sm_smInfo.PortGUID && smrecp->configDiff) {
-						(void) sm_dbsync_queueMsg(synctype, DBSYNC_DATATYPE_FILE, smrecp->lid, smrecp->portguid, syncData);
+						(void) sm_dbsync_queueMsg(synctype, DBSYNC_DATATYPE_FILE, smrecp->lid, smrecp->portguid, smrecp->isEmbedded, syncData);
 */
 					}
 		
@@ -1458,7 +1469,7 @@ Status_t sm_dbsync_queuePmFile(SmRecp smrecp, DBSyncType_t synctype, SMSyncData_
 		}
 		smrecp->pmdbsync.firstUpdateState = DBSYNC_STAT_INPROGRESS;
 	}
-	(void) sm_dbsync_queueMsg(synctype, DBSYNC_DATATYPE_FILE, smrecp->lid, smrecp->portguid, syncData);
+	(void) sm_dbsync_queueMsg(synctype, DBSYNC_DATATYPE_FILE, smrecp->lid, smrecp->portguid, smrecp->isEmbedded, syncData);
 
 	if (smDebugPerf)
 		IB_LOG_INFINI_INFO_FMT(__func__, "COMPLETED: Queuing PM DBSYNC_DATATYPE_FILE request");

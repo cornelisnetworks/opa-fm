@@ -198,17 +198,83 @@ typedef struct {
 #define STL_TRAP_BUFFER_OVERRUN_DATA STL_TRAP_LINK
 #define STL_TRAP_FLOW_WATCHDOG_DATA STL_TRAP_LINK
 
+typedef STL_FIELDUNION16(STL_CAPABILITY_MASK, 32,
+		CmReserved6:						1,  	/* shall be zero */
+		CmReserved24:						2,  	/* shall be zero */
+		CmReserved5:						2,  	/* shall be zero */
+		CmReserved23:  						4,		/* shall be zero */
+		IsCapabilityMaskNoticeSupported:	1,
+		CmReserved22:						1,		/* shall be zero */
+		IsVendorClassSupported: 			1,
+		IsDeviceManagementSupported:		1,
+		CmReserved21:   					2,		/* shall be zero */
+		IsConnectionManagementSupported:	1,
+		CmReserved25: 					   10,		/* shall be zero */
+		IsAutomaticMigrationSupported:		1,
+		CmReserved2:						1,		/* shall be zero */
+		CmReserved20:						2,
+		IsSM:   							1,
+		CmReserved1:						1 );	/* shall be zero */
+
+/* Capability Mask 3 - a bit set to 1 for affirmation of supported capability
+ * by a given port
+ */
+typedef union {
+	uint16  AsReg16;
+	struct { IB_BITFIELD9( uint16,			/* RO/H-PE */
+		CmReserved:					8,
+		IsSnoopSupported: 			1,		/* RO/--PE Packet snoop */
+											/* Reserved in Gen1 */
+		IsAsyncSC2VLSupported:	 	1,		/* RO/H-PE Port 0 indicates whole switch */
+		IsAddrRangeConfigSupported:	1,		/* RO/H-PE Can addr range for Multicast */
+											/* and Collectives be configured */
+											/* Port 0 indicates whole switch */
+		IsPassThroughSupported: 	1,		/* RO/--PE Packet pass through */
+											/* Port 0 indicates whole switch */
+		IsSharedSpaceSupported: 	1,		/* RO/H-PE Shared Space */
+											/* Port 0 indicates whole switch */
+		CmReserved2:			 	1,
+		IsVLMarkerSupported: 		1,		/* RO/H-PE VL Marker */
+											/* Port 0 indicates whole switch */
+		IsVLrSupported: 			1 )		/* RO/H-PE SC->VL_r table */
+											/* Reserved in Gen1 */
+											/* Port 0 indicates whole switch */
+	} s; 
+} STL_CAPABILITY_MASK3;
+
 typedef struct {
-	uint32				Lid;
-	uint32				CapabilityMask;
-	uint16				CapabilityMask2;
-	uint16				CapabilityMask3;
-	STL_FIELDUNION4(u,16,
-						Reserved:13,
-						LinkSpeedEnabledChange:1,
-						LinkWidthEnabledChange:1,
-						NodeDescriptionChange:1);
+	STL_LID_32				Lid;
+	STL_CAPABILITY_MASK		CapabilityMask;
+	uint16					Reserved;
+	STL_CAPABILITY_MASK3	CapabilityMask3;
+	STL_FIELDUNION5(u,16,
+							Reserved:12,
+							LinkWidthDowngradeEnabledChange:1,	
+							LinkSpeedEnabledChange:1,
+							LinkWidthEnabledChange:1,
+							NodeDescriptionChange:1);
 } PACK_SUFFIX STL_TRAP_CHANGE_CAPABILITY_DATA;
+
+static __inline
+void
+BSWAP_STL_TRAP_CHANGE_CAPABILITY_DATA(STL_TRAP_CHANGE_CAPABILITY_DATA *Src)
+{
+#if CPU_LE
+	Src->Lid = ntoh32(Src->Lid);
+	Src->CapabilityMask.AsReg32 = ntoh32(Src->CapabilityMask.AsReg32);
+	Src->CapabilityMask3.AsReg16 = ntoh16(Src->CapabilityMask3.AsReg16);
+	Src->u.AsReg16 = ntoh16(Src->u.AsReg16);
+#endif
+}
+
+static __inline
+void
+BSWAPCOPY_STL_TRAP_CHANGE_CAPABILITY_DATA(STL_TRAP_CHANGE_CAPABILITY_DATA *Src,
+	STL_TRAP_CHANGE_CAPABILITY_DATA *Dest)
+{
+	memcpy(Dest, Src, sizeof(STL_TRAP_CHANGE_CAPABILITY_DATA));
+	BSWAP_STL_TRAP_CHANGE_CAPABILITY_DATA(Dest);
+}
 
 typedef struct {
 	uint64		SystemImageGuid;
@@ -762,50 +828,6 @@ typedef union {
 
 /* STL Port Flit preemption limits of unlimited */
 #define STL_PORT_PREEMPTION_LIMIT_NONE		255 /* Unlimited */
-
-typedef STL_FIELDUNION16(STL_CAPABILITY_MASK, 32,
-		CmReserved6:						1,  	/* shall be zero */
-		CmReserved24:						2,  	/* shall be zero */
-		CmReserved5:						2,  	/* shall be zero */
-		CmReserved23:  						4,		/* shall be zero */
-		IsCapabilityMaskNoticeSupported:	1,
-		CmReserved22:						1,		/* shall be zero */
-		IsVendorClassSupported: 			1,
-		IsDeviceManagementSupported:		1,
-		CmReserved21:   					2,		/* shall be zero */
-		IsConnectionManagementSupported:	1,
-		CmReserved25: 					   10,		/* shall be zero */
-		IsAutomaticMigrationSupported:		1,
-		CmReserved2:						1,		/* shall be zero */
-		CmReserved20:						2,
-		IsSM:   							1,
-		CmReserved1:						1 );	/* shall be zero */
-
-/* Capability Mask 3 - a bit set to 1 for affirmation of supported capability
- * by a given port
- */
-typedef union {
-	uint16  AsReg16;
-	struct { IB_BITFIELD9( uint16,			/* RO/H-PE */
-		CmReserved:					8,
-		IsSnoopSupported: 			1,		/* RO/--PE Packet snoop */
-											/* Reserved in Gen1 */
-		IsAsyncSC2VLSupported:	 	1,		/* RO/H-PE Port 0 indicates whole switch */
-		IsAddrRangeConfigSupported:	1,		/* RO/H-PE Can addr range for Multicast */
-											/* and Collectives be configured */
-											/* Port 0 indicates whole switch */
-		IsPassThroughSupported: 	1,		/* RO/--PE Packet pass through */
-											/* Port 0 indicates whole switch */
-		IsSharedSpaceSupported: 	1,		/* RO/H-PE Shared Space */
-											/* Port 0 indicates whole switch */
-		CmReserved2:			 	1,
-		IsVLMarkerSupported: 		1,		/* RO/H-PE VL Marker */
-											/* Port 0 indicates whole switch */
-		IsVLrSupported: 			1 )		/* RO/H-PE SC->VL_r table */
-											/* Reserved in Gen1 */
-											/* Port 0 indicates whole switch */
-	} s; 
-} STL_CAPABILITY_MASK3;
 
 #define BYTES_PER_LTP 128
 

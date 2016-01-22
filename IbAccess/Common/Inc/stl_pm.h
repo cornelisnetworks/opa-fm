@@ -717,6 +717,7 @@ BSWAP_STL_ERROR_INFO_REQ(STL_ERROR_INFO_REQ *Dest)
 	for (i = 0; i < 4; i++) {
 		Dest->PortSelectMask[3-i] = ntoh64(Dest->PortSelectMask[3-i]);
 	}
+	Dest->ErrorInfoSelectMask.AsReg32 = ntoh32(Dest->ErrorInfoSelectMask.AsReg32);
 #endif
 }
 
@@ -743,6 +744,7 @@ BSWAP_STL_ERROR_INFO_RSP(STL_ERROR_INFO_RSP *Dest)
 		if (Dest->Port[i].PortRcvSwitchRelayErrorInfo.s.ErrorCode == 0)
 			Dest->Port[i].PortRcvSwitchRelayErrorInfo.ErrorInfo.AsReg32 = ntoh32(Dest->Port[i].PortRcvSwitchRelayErrorInfo.ErrorInfo.AsReg32);
 	}
+	Dest->ErrorInfoSelectMask.AsReg32 = ntoh32(Dest->ErrorInfoSelectMask.AsReg32);
 #endif
 }
 

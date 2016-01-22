@@ -144,19 +144,27 @@ typedef struct PmCompositePortCounters_s {
 	union {
 		uint8 AsReg8;
 		struct {
+#if CPU_BE
 			uint8 NumLanesDown:4;
 			uint8 Reserved:1;
 			uint8 LinkQualityIndicator:3;
+#else
+			uint8 LinkQualityIndicator:3;
+			uint8 Reserved:1;
+			uint8 NumLanesDown:4;
+#endif	// CPU_BE
 		} s;
 	} lq;
+	uint8	Reserved2[6];
 } PmCompositePortCounters_t;
 
 typedef struct _vls_pctrs PmCompositeVLCounters_t;
 
 
 typedef struct PmCompositeVfvlmap_s {
-	uint8   VF; //index into vf array
 	uint32	vl;
+	uint8   VF; //index into vf array
+	uint8	Reserved[3];
 } PmCompositeVfvlmap_t;
 
 #define UPDATE_MAX(max, cnt) do { if (cnt > max) max = cnt; } while (0)
@@ -202,6 +210,7 @@ typedef struct ErrorSummary_s {
 
 	uint16 UtilizationPct10;        	/* in units of 10% */
 	uint16 DiscardsPct10;           	/* in units of 10% */
+	uint32 Reserved;
 } ErrorSummary_t;
 
 // weight to use for each Integrity counter in weighted sum
@@ -521,6 +530,7 @@ typedef struct PmPort_s {
 		uint32 spare:2;
 
 		struct _vl_bucket_flagbucket_flags {
+#if CPU_BE
 			uint32 IntLinkFlags:8;	// not used here
 			uint32 UtilBucket:4;// MBps utilization bucket: 0 - PM_UTIL_BUCKETS-1
 			// Error Buckets (0-PM_ERR_BUCKETS-1)
@@ -531,6 +541,17 @@ typedef struct PmPort_s {
 			uint32 SecurityBucket:3; // Security Errors
 			uint32 RoutingBucket:3;// Routing Errors
 			uint32 spare:2;
+#else
+			uint32 spare:2;
+			uint32 RoutingBucket:3;
+			uint32 SecurityBucket:3;
+			uint32 BubbleBucket:3;
+			uint32 SmaCongestionBucket:3;
+			uint32 CongestionBucket:3;
+			uint32 IntegrityBucket:3;
+			uint32 UtilBucket:4;
+			uint32 IntLinkFlags:8;
+#endif	// CPU_BE
 		} VLBucketFlags [MAX_PM_VLS];
 
 		// for statistics below, each interval we:
@@ -732,16 +753,20 @@ typedef struct PmImage_s {
 
 #define PM_HISTORY_FILENAME_LEN 133
 #define PM_HISTORY_MAX_IMAGES_PER_COMPOSITE 60
+#define PM_HISTORY_MAX_SMS_PER_COMPOSITE 2
 #define PM_HISTORY_MAX_LOCATION_LEN 111
-#define PM_HISTORY_VERSION 3
+#define PM_HISTORY_VERSION 4
 #define PM_MAX_COMPRESSION_DIVISIONS 32
 
 typedef struct PmCompositePort_s {
-	Guid_t	guid;
-	uint8	portNum;
+	uint64	guid;
+	// This is problematic to maintain, but a short-term work-around:
+	// Single instances of uint32 are gathered here so that an even number of them
+	//  can be maintained to ensure HSM and ESM have the same 64-bit data alignment
 	union {
 		uint32 AsReg32;
 		struct {
+#if CPU_BE
 			uint32 active:1;
 			uint32 mtu:4;
 			uint32 txActiveWidth:4;
@@ -757,20 +782,33 @@ typedef struct PmCompositePort_s {
 			uint32 ClearAll:1;
 #if PM_COMPRESS_GROUPS
 			uint32 InGroups:3;
+#else
+			uint32 reserved:3;
 #endif
+#else
+#if PM_COMPRESS_GROUPS
+			uint32 InGroups:3;
+#else
+			uint32 reserved:3;
+#endif
+			uint32 ClearAll:1;
+			uint32 ClearSome:1;
+			uint32 gotErrorCntrs:1;
+			uint32 gotDataCntrs:1;
+			uint32 UnexpectedClear:1;
+			uint32 queryStatus:2;
+			uint32 Initialized:1;
+			uint32 bucketComputed:1;
+			uint32 activeSpeed:2;
+			uint32 rxActiveWidth:4;
+			uint32 txActiveWidth:4;
+			uint32 mtu:4;
+			uint32 active:1;
+#endif	// CPU_BE
 		} s;
 	} u;
-	STL_LID_32 neighborLid;
-	PORT	neighborPort;
-	uint8	numVFs;
-	uint32	sendMBps;
-	uint32	sendKPps;
-	uint32	VFSendMBps[MAX_VFABRICS];
-	uint32	VFSendKPps[MAX_VFABRICS];
-	uint8	groups[PM_MAX_GROUPS_PER_PORT];
-	PmCompositeVfvlmap_t compVfVlmap[MAX_VFABRICS];
-	uint32 vlSelectMask;
 
+#if CPU_BE
 	uint32 intLinkFlags:8;
 	uint32 utilBucket:4;
 	uint32 integrityBucket:3;
@@ -780,30 +818,58 @@ typedef struct PmCompositePort_s {
 	uint32 securityBucket:3;
 	uint32 routingBucket:3;
 	uint32 spare:2;
+#else
+	uint32 spare:2;
+	uint32 routingBucket:3;
+	uint32 securityBucket:3;
+	uint32 bubbleBucket:3;
+	uint32 smaCongestionBucket:3;
+	uint32 congestionBucket:3;
+	uint32 integrityBucket:3;
+	uint32 utilBucket:4;
+	uint32 intLinkFlags:8;
+#endif	// CPU_BE
+
+	STL_LID_32 neighborLid;
+	uint8	portNum;
+	PORT	neighborPort;
+	uint8	numVFs;
+	uint8	reserved;
+	uint32	sendMBps;
+	uint32	sendKPps;
+	uint8	groups[PM_MAX_GROUPS_PER_PORT];
+	uint32 vlSelectMask;
+	CounterSelectMask_t clearSelectMask;
+	uint32	reserved99;
+	// End of single instances of uint32; see above
+	uint32	VFSendMBps[MAX_VFABRICS];
+	uint32	VFSendKPps[MAX_VFABRICS];
+	PmCompositeVfvlmap_t compVfVlmap[MAX_VFABRICS];
 
 	struct _vl_bucket_flagbucket_flags VLBucketFlags[MAX_PM_VLS];
 	PmCompositePortCounters_t	stlPortCounters;
 	PmCompositeVLCounters_t	stlVLPortCounters[MAX_PM_VLS];
-	CounterSelectMask_t clearSelectMask;
 	ErrorSummary_t	errors;
 	ErrorSummary_t	VFErrors[MAX_VFABRICS];
 } PmCompositePort_t;
 
 typedef struct PmCompositeNode_s {
-	Guid_t	guid;
+	uint64	guid;
 	char nodeDesc[STL_NODE_DESCRIPTION_ARRAY_SIZE];
 	uint16	lid;
 	uint8	nodeType;
 	uint8	numPorts;
+	uint32	reserved;
 	PmCompositePort_t	**ports;
 } PmCompositeNode_t;
 
 typedef struct PmCompositeVF_s {
 	char	name[MAX_VFABRIC_NAME];
-	uint8	isActive;
 	uint32	numPorts;
+	uint8	isActive;
 	uint8	minIntRate;
 	uint8	maxIntRate;
+	uint8	reserved;
 	PmUtilStats_t	intUtil;
 	PmErrStats_t	intErr;
 } PmCompositeVF_t;
@@ -816,6 +882,7 @@ typedef struct PmCompositeGroups_s {
 	uint8	maxIntRate;
 	uint8	minExtRate;
 	uint8	maxExtRate;
+	uint32	reserved;
 	PmUtilStats_t	intUtil;
 	PmUtilStats_t	sendUtil;
 	PmUtilStats_t	recvUtil;
@@ -825,8 +892,9 @@ typedef struct PmCompositeGroups_s {
 
 typedef struct PmHistoryHeaderCommon_s {
 	char 	filename[PM_HISTORY_FILENAME_LEN];
-	time_t 	timestamp;
-	boolean isCompressed;
+	uint64	timestamp;
+	uint8	isCompressed;
+	uint8	reserved;
 	uint16	imagesPerComposite;
 	uint32	imageSweepInterval;
 	uint64	imageIDs[PM_HISTORY_MAX_IMAGES_PER_COMPOSITE];
@@ -834,20 +902,22 @@ typedef struct PmHistoryHeaderCommon_s {
 
 typedef struct PmFileHeader_s {
 	PmHistoryHeaderCommon_t common;
+	uint64	flatSize;
 	uint16	historyVersion;
-	size_t	flatSize;
-	uint8 	numDivisions;
-	size_t 	divisionSizes[PM_MAX_COMPRESSION_DIVISIONS];
+	uint8	numDivisions;
+	uint8	reserved[5];
+	uint64	divisionSizes[PM_MAX_COMPRESSION_DIVISIONS];
 } PmFileHeader_t;
 
 typedef struct PmCompositeImage_s {
 	PmFileHeader_t	header;
-	time_t	sweepStart;
+	uint64	sweepStart;
 	uint32	sweepDuration;
-	boolean	topologyChanged;
-	boolean	written;
+	uint8	topologyChanged;
+	uint8	written;
 	uint16	HFIPorts;
 	uint16	switchNodes;
+	uint16	reserved;
 	uint32	switchPorts;
 	uint32	numLinks;
 	uint32 	numSMs;
@@ -864,9 +934,16 @@ typedef struct PmCompositeImage_s {
 	uint32	numPorts;
 	struct PmCompositeSmInfo {
 		uint16	smLid;			// implies port, 0 if empty record
+#if CPU_BE
 		uint8	priority:4;		// present priority
 		uint8	state:4;		// present state
-	} SMs[2];
+#else
+		uint8	state:4;
+		uint8	priority:4;
+#endif
+		uint8	reserved;
+	} SMs[PM_HISTORY_MAX_SMS_PER_COMPOSITE];
+	uint32	reserved2;
 	PmCompositeGroup_t	allPortsGroup;
 	PmCompositeGroup_t	groups[PM_MAX_GROUPS];
 	PmCompositeVF_t		VFs[MAX_VFABRICS];
@@ -982,11 +1059,332 @@ typedef struct Pm_s {
 	 PmImage_t *Image;
 } Pm_t;
 
+
+static __inline
+void
+BSWAP_PM_BUCKET(pm_bucket_t *Dest, uint32 numBuckets)
+{
+#if CPU_LE
+	uint32 i;
+
+	for (i = 0; i < numBuckets; i++)
+		Dest[i] = ntoh32(Dest[i]);
+#endif
+}	// End of BSWAP_PM_BUCKET
+
+static __inline
+void
+BSWAP_PM_UTIL_STATS(PmUtilStats_t *Dest)
+{
+#if CPU_LE
+	Dest->TotMBps = ntoh64(Dest->TotMBps);
+	Dest->TotKPps = ntoh64(Dest->TotKPps);
+	Dest->AvgMBps = ntoh32(Dest->AvgMBps);
+	Dest->MinMBps = ntoh32(Dest->MinMBps);
+	Dest->MaxMBps = ntoh32(Dest->MaxMBps);
+	BSWAP_PM_BUCKET(Dest->BwPorts, PM_UTIL_BUCKETS);
+	Dest->AvgKPps = ntoh32(Dest->AvgKPps);
+	Dest->MinKPps = ntoh32(Dest->MinKPps);
+	Dest->MaxKPps = ntoh32(Dest->MaxKPps);
+#endif
+}	// End of BSWAP_PM_UTIL_STATS
+
+static __inline
+void
+BSWAP_PM_ERROR_SUMMARY(ErrorSummary_t *Dest, uint32 numErrors)
+{
+#if CPU_LE
+	uint32 i;
+
+	for (i = 0; i < numErrors; i++) {
+		Dest[i].Integrity = ntoh32(Dest[i].Integrity);
+		Dest[i].Congestion = ntoh32(Dest[i].Congestion);
+		Dest[i].SmaCongestion = ntoh32(Dest[i].SmaCongestion);
+		Dest[i].Bubble = ntoh32(Dest->Bubble);
+		Dest[i].Security = ntoh32(Dest[i].Security);
+		Dest[i].Routing = ntoh32(Dest[i].Routing);
+		Dest[i].UtilizationPct10 = ntoh16(Dest[i].UtilizationPct10);
+		Dest[i].DiscardsPct10 = ntoh16(Dest[i].DiscardsPct10);
+	}
+#endif
+}	// End of BSWAP_PM_ERROR_SUMMARY
+
+static __inline
+void
+BSWAP_PM_ERROR_BUCKET(ErrorBucket_t *Dest, uint32 numBuckets)
+{
+#if CPU_LE
+	uint32 i;
+
+	for (i = 0; i < numBuckets; i++) {
+		BSWAP_PM_BUCKET(&Dest[i].Integrity, 1);
+		BSWAP_PM_BUCKET(&Dest[i].Congestion, 1);
+		BSWAP_PM_BUCKET(&Dest[i].SmaCongestion, 1);
+		BSWAP_PM_BUCKET(&Dest[i].Bubble, 1);
+		BSWAP_PM_BUCKET(&Dest[i].Security, 1);
+		BSWAP_PM_BUCKET(&Dest[i].Routing, 1);
+	}
+#endif
+}	// End of BSWAP_PM_ERROR_BUCKET
+
+static __inline
+void
+BSWAP_PM_ERR_STATS(PmErrStats_t *Dest)
+{
+#if CPU_LE
+	BSWAP_PM_ERROR_SUMMARY(&Dest->Max, 1);
+	BSWAP_PM_ERROR_BUCKET(Dest->Ports, PM_ERR_BUCKETS);
+#endif
+}	// End of BSWAP_PM_ERR_STATS
+
+static __inline
+void
+BSWAP_PM_COMPOSITE_VFVLMAP(PmCompositeVfvlmap_t *Dest, uint32 numVFs)
+{
+#if CPU_LE
+	uint32 i;
+
+	for (i = 0; i < numVFs; i++) {
+		Dest[i].vl = ntoh32(Dest[i].vl);
+	}
+#endif
+}	// End of BSWAP_PM_COMPOSITE_VFVLMAP
+
+static __inline
+void
+BSWAP_PM_COMPOSITE_PORT_COUNTERS(PmCompositePortCounters_t *Dest)
+{
+#if CPU_LE
+	Dest->VLSelectMask = ntoh32(Dest->VLSelectMask);
+	Dest->PortXmitData = ntoh64(Dest->PortXmitData);
+	Dest->PortRcvData = ntoh64(Dest->PortRcvData);
+	Dest->PortXmitPkts = ntoh64(Dest->PortXmitPkts);
+	Dest->PortRcvPkts = ntoh64(Dest->PortRcvPkts);
+	Dest->PortMulticastXmitPkts = ntoh64(Dest->PortMulticastXmitPkts);
+	Dest->PortMulticastRcvPkts = ntoh64(Dest->PortMulticastRcvPkts);
+	Dest->SwPortCongestion = ntoh64(Dest->SwPortCongestion);
+	Dest->SwPortCongestion = ntoh64(Dest->SwPortCongestion);
+	Dest->PortRcvFECN = ntoh64(Dest->PortRcvFECN);
+	Dest->PortRcvBECN = ntoh64(Dest->PortRcvBECN);
+	Dest->PortXmitTimeCong = ntoh64(Dest->PortXmitTimeCong);
+	Dest->PortXmitWastedBW = ntoh64(Dest->PortXmitWastedBW);
+	Dest->PortXmitWaitData = ntoh64(Dest->PortXmitWaitData);
+	Dest->PortRcvBubble = ntoh64(Dest->PortRcvBubble);
+	Dest->PortMarkFECN = ntoh64(Dest->PortMarkFECN);
+	Dest->PortRcvConstraintErrors = ntoh64(Dest->PortRcvConstraintErrors);
+	Dest->PortRcvSwitchRelayErrors = ntoh64(Dest->PortRcvSwitchRelayErrors);
+	Dest->PortXmitDiscards = ntoh64(Dest->PortXmitDiscards);
+	Dest->PortXmitConstraintErrors = ntoh64(Dest->PortXmitConstraintErrors);
+	Dest->PortRcvRemotePhysicalErrors = ntoh64(Dest->PortRcvRemotePhysicalErrors);
+	Dest->LocalLinkIntegrityErrors = ntoh64(Dest->LocalLinkIntegrityErrors);
+	Dest->PortRcvErrors = ntoh64(Dest->PortRcvErrors);
+	Dest->ExcessiveBufferOverruns = ntoh64(Dest->ExcessiveBufferOverruns);
+	Dest->FMConfigErrors = ntoh64(Dest->FMConfigErrors);
+	Dest->LinkErrorRecovery = ntoh32(Dest->LinkErrorRecovery);
+	Dest->LinkDowned = ntoh32(Dest->LinkDowned);
+#endif
+}	// End of BSWAP_PM_COMPOSITE_PORT_COUNTERS
+
+static __inline
+void
+BSWAP_PM_COMPOSITE_VL_COUNTERS(PmCompositeVLCounters_t *Dest, uint32 numVLs)
+{
+#if CPU_LE
+	uint32 i;
+
+	for (i = 0; i < numVLs; i++) {
+		Dest[i].PortVLXmitData = ntoh64(Dest[i].PortVLXmitData);
+		Dest[i].PortVLRcvData = ntoh64(Dest[i].PortVLRcvData);
+		Dest[i].PortVLXmitPkts = ntoh64(Dest[i].PortVLXmitPkts);
+		Dest[i].PortVLRcvPkts = ntoh64(Dest[i].PortVLRcvPkts);
+		Dest[i].PortVLXmitWait = ntoh64(Dest[i].PortVLXmitWait);
+		Dest[i].SwPortVLCongestion = ntoh64(Dest[i].SwPortVLCongestion);
+		Dest[i].PortVLRcvFECN = ntoh64(Dest[i].PortVLRcvFECN);
+		Dest[i].PortVLRcvBECN = ntoh64(Dest[i].PortVLRcvBECN);
+		Dest[i].PortVLXmitTimeCong = ntoh64(Dest[i].PortVLXmitTimeCong);
+		Dest[i].PortVLXmitWastedBW = ntoh64(Dest[i].PortVLXmitWastedBW);
+		Dest[i].PortVLXmitWaitData = ntoh64(Dest[i].PortVLXmitWaitData);
+		Dest[i].PortVLRcvBubble = ntoh64(Dest[i].PortVLRcvBubble);
+		Dest[i].PortVLMarkFECN = ntoh64(Dest[i].PortVLMarkFECN);
+		Dest[i].PortVLXmitDiscards = ntoh64(Dest[i].PortVLXmitDiscards);
+	}
+#endif
+}	// End of BSWAP_PM_COMPOSITE_VL_COUNTERS
+
+// Composite Ports are flattened (not array of pointers)
+static __inline
+void
+BSWAP_PM_COMPOSITE_PORT(PmCompositePort_t *Dest, uint32 numPorts)
+{
+#if CPU_LE
+	uint32 i, j;
+
+	for (i = 0; i < numPorts; i++) {
+		Dest[i].guid = ntoh64(Dest[i].guid);
+		Dest[i].neighborLid = ntoh32(Dest[i].neighborLid);
+		Dest[i].sendMBps = ntoh32(Dest[i].sendMBps);
+		Dest[i].sendKPps = ntoh32(Dest[i].sendKPps);
+
+		for (j = 0; j < MAX_VFABRICS; j++)
+			Dest[i].VFSendMBps[j] = ntoh32(Dest[i].VFSendMBps[j]);
+		for (j = 0; j < MAX_VFABRICS; j++)
+			Dest[i].VFSendKPps[j] = ntoh32(Dest[i].VFSendKPps[j]);
+
+		BSWAP_PM_COMPOSITE_VFVLMAP(Dest[i].compVfVlmap, MAX_VFABRICS);
+		Dest[i].vlSelectMask = ntoh32(Dest[i].vlSelectMask);
+		// VLBucketFlags is an endian-aware bit structure
+		BSWAP_PM_COMPOSITE_PORT_COUNTERS(&Dest[i].stlPortCounters);
+		BSWAP_PM_COMPOSITE_VL_COUNTERS(Dest[i].stlVLPortCounters, MAX_PM_VLS);
+		// clearSelectMask is an endian-aware bit structure
+		BSWAP_PM_ERROR_SUMMARY(&Dest[i].errors, 1);
+		BSWAP_PM_ERROR_SUMMARY(Dest[i].VFErrors, MAX_VFABRICS);
+	}
+#endif
+}	// End of BSWAP_PM_COMPOSITE_PORT
+
+// Composite Nodes are flattened (not array of pointers)
+static __inline
+void
+BSWAP_PM_COMPOSITE_NODE(PmCompositeNode_t *Dest, uint32 numNodes)
+{
+#if CPU_LE
+	PmCompositeNode_t *cnode = Dest;
+	uint32 i;
+
+	for (i = 0; i < numNodes; i++) {
+		cnode->guid = ntoh64(cnode->guid);
+		cnode->lid = ntoh16(cnode->lid);
+		BSWAP_PM_COMPOSITE_PORT((PmCompositePort_t *)&cnode->ports, cnode->numPorts);
+		// Calc address of next (flattened) composite node
+		cnode = (PmCompositeNode_t *)((size_t)cnode + (sizeof(PmCompositePort_t) * cnode->numPorts));
+	}
+#endif
+}	// End of BSWAP_PM_COMPOSITE_NODE
+
+static __inline
+void
+BSWAP_PM_COMPOSITE_VF(PmCompositeVF_t *Dest, uint32 numVFs)
+{
+#if CPU_LE
+	uint32 i;
+
+	for (i = 0; i < numVFs; i++) {
+		Dest[i].numPorts = ntoh32(Dest[i].numPorts);
+		BSWAP_PM_UTIL_STATS(&Dest[i].intUtil);
+		BSWAP_PM_ERR_STATS(&Dest[i].intErr);
+	}
+#endif
+}	// End of BSWAP_PM_COMPOSITE_VF
+
+static __inline
+void
+BSWAP_PM_COMPOSITE_GROUP(PmCompositeGroup_t *Dest, uint32 numGroups)
+{
+#if CPU_LE
+	uint32 i;
+
+	for (i = 0; i < numGroups; i++) {
+		Dest[i].numIntPorts = ntoh32(Dest[i].numIntPorts);
+		Dest[i].numExtPorts = ntoh32(Dest[i].numExtPorts);
+		BSWAP_PM_UTIL_STATS(&Dest[i].intUtil);
+		BSWAP_PM_UTIL_STATS(&Dest[i].sendUtil);
+		BSWAP_PM_UTIL_STATS(&Dest[i].recvUtil);
+		BSWAP_PM_ERR_STATS(&Dest[i].intErr);
+		BSWAP_PM_ERR_STATS(&Dest[i].extErr);
+	}
+#endif
+}	// End of BSWAP_PM_COMPOSITE_GROUP
+
+static __inline
+void
+BSWAP_PM_COMPOSITE_SM_INFO(struct PmCompositeSmInfo *Dest, uint32 numSMs)
+{
+#if CPU_LE
+	uint32 i;
+	for (i = 0; i < numSMs; i++)
+		Dest[i].smLid = ntoh16(Dest[i].smLid);
+#endif
+}	// End of BSWAP_PM_COMPOSITE_SM_INFO
+
+static __inline
+void
+BSWAP_PM_HISTORY_HEADER_COMMON(PmHistoryHeaderCommon_t *Dest)
+{
+#if CPU_LE
+	uint32 i;
+
+	Dest->timestamp = ntoh64(Dest->timestamp);
+	Dest->imagesPerComposite = ntoh16(Dest->imagesPerComposite);
+	Dest->imageSweepInterval = ntoh32(Dest->imageSweepInterval);
+	for (i = 0; i < PM_HISTORY_MAX_IMAGES_PER_COMPOSITE; i++)
+		Dest->imageIDs[i] = ntoh64(Dest->imageIDs[i]);
+#endif
+}	// End of BSWAP_PM_HISTORY_HEADER_COMMON
+
+static __inline
+void
+BSWAP_PM_FILE_HEADER(PmFileHeader_t *Dest)
+{
+#if CPU_LE
+	uint32 i;
+
+	BSWAP_PM_HISTORY_HEADER_COMMON(&Dest->common);
+	Dest->flatSize = ntoh64(Dest->flatSize);
+	Dest->historyVersion = ntoh16(Dest->historyVersion);
+	for (i = 0; i < PM_MAX_COMPRESSION_DIVISIONS; i++)
+		Dest->divisionSizes[i] = ntoh64(Dest->divisionSizes[i]);
+#endif
+}	// End of BSWAP_PM_FILE_HEADER
+
+// Byte-swap flattened Composite Image
+static __inline
+void
+BSWAP_PM_COMPOSITE_IMAGE_FLAT(PmCompositeImage_t *Dest, boolean hton)
+{
+#if CPU_LE
+	uint32 numNodes;
+
+	// Note that header is swapped independently
+
+	if (hton) {
+		numNodes = Dest->maxLid + 1;
+		Dest->maxLid = ntoh32(Dest->maxLid);
+	} else {
+		Dest->maxLid = ntoh32(Dest->maxLid);
+		numNodes = Dest->maxLid + 1;
+	}
+	Dest->sweepStart = ntoh64(Dest->sweepStart);
+	Dest->sweepDuration = ntoh32(Dest->sweepDuration);
+	Dest->HFIPorts = ntoh16(Dest->HFIPorts);
+	Dest->switchNodes = ntoh16(Dest->switchNodes);
+	Dest->switchPorts = ntoh32(Dest->switchPorts);
+	Dest->numLinks = ntoh32(Dest->numLinks);
+	Dest->numSMs = ntoh32(Dest->numSMs);
+	Dest->failedNodes = ntoh32(Dest->failedNodes);
+	Dest->failedPorts = ntoh32(Dest->failedPorts);
+	Dest->skippedNodes = ntoh32(Dest->skippedNodes);
+	Dest->skippedPorts = ntoh32(Dest->skippedPorts);
+	Dest->unexpectedClearPorts = ntoh32(Dest->unexpectedClearPorts);
+	Dest->downgradedPorts = ntoh32(Dest->downgradedPorts);
+	Dest->numGroups = ntoh32(Dest->numGroups);
+	Dest->numVFs = ntoh32(Dest->numVFs);
+	Dest->numVFsActive = ntoh32(Dest->numVFsActive);
+	Dest->maxLid = ntoh32(Dest->maxLid);
+	Dest->numPorts = ntoh32(Dest->numPorts);
+	BSWAP_PM_COMPOSITE_SM_INFO(Dest->SMs, PM_HISTORY_MAX_SMS_PER_COMPOSITE);
+	BSWAP_PM_COMPOSITE_GROUP(&Dest->allPortsGroup, 1);
+	BSWAP_PM_COMPOSITE_GROUP(Dest->groups, PM_MAX_GROUPS);
+	BSWAP_PM_COMPOSITE_VF(Dest->VFs, MAX_VFABRICS);
+	BSWAP_PM_COMPOSITE_NODE((PmCompositeNode_t *)&Dest->nodes, numNodes);
+#endif
+}	// End of BSWAP_PM_COMPOSITE_IMAGE_FLAT
+
+
 void clearLoadedImage(PmShortTermHistory_t *sth);
 size_t computeCompositeSize(void);
 FSTATUS decompressAndReassemble(unsigned char *input_data, size_t input_size, uint8 divs, size_t *input_sizes, unsigned char *output_data, size_t output_size);
 FSTATUS rebuildComposite(PmCompositeImage_t *cimg, unsigned char *data);
-void writeImageToBuffer(Pm_t *pm, uint32 histindex, uint8_t *buffer, uint32_t *bIndex);
+void writeImageToBuffer(Pm_t *pm, uint32 histindex, uint8_t isCompressed, uint8_t *buffer, uint32_t *bIndex);
 void PmFreeComposite(PmCompositeImage_t *cimg);
 FSTATUS PmLoadComposite(Pm_t *pm, PmHistoryRecord_t *record, PmCompositeImage_t **cimg);
 FSTATUS PmFreezeComposite(Pm_t *pm, PmHistoryRecord_t *record);

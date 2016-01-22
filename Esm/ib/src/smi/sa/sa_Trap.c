@@ -543,45 +543,42 @@ sa_Trap(Mai_t *maip) {
 		/* Must tell sm_top to re-sweep fabric */
 		sm_discovery_needed("Port State Change Trap", notice.IssuerLID);
 	} else if (notice.Attributes.Generic.TrapNumber == MAD_SMT_CAPABILITYMASK_CHANGE) {
-		uint32_t    capMask;
-		memcpy(&capMask, &notice.Data[6], 4);
-		capMask = ntoh32(capMask);
+		STL_TRAP_CHANGE_CAPABILITY_DATA ccTrap;
+		
+		BSWAPCOPY_STL_TRAP_CHANGE_CAPABILITY_DATA((STL_TRAP_CHANGE_CAPABILITY_DATA*)notice.Data, &ccTrap);
 		sm_get_lid_info(desc, notice.IssuerLID);
-		/* 
-		 * Must tell sm_top to re-sweep fabric if port state
-		 * change or capability mask change with no MKEY.
-		 * We can't react to capability change when using
-		 * MKEYs until mellanox firmware SMA bug is resolved.
-		 * After setting the mkey, subsequent getPortInfo's
-		 * return the key as zero which causes us to set it
-		 * again. Setting it in turn causes the sma to gen a
-		 * capability change trap leading to an infinite loop.
-		 */
-		if (!(notice.Data[5] & 0x1)) {
-			/* OtherLocalChanges flag is 0 so that means there are changes to capability mask */
-			if (!sm_config.mkey && (capMask & PI_CM_IS_SM)) {
+
+		if (ccTrap.u.AsReg16 == 0) {
+			/* Change fields are zero so one of the capability bits must 
+ 			 * have changed. Realistically, the only bit that might have 
+ 			 * changed is the IS_SM bit. */
+			if (ccTrap.CapabilityMask.s.IsSM) {
 				IB_LOG_INFINI_INFO_FMT( "sa_Trap", 
 				       "Received an (IS_SM on) CAPABILITYMASK CHANGE [0x%.8X] trap from %s, TID="FMT_U64,
-				       capMask, desc, tid);
+				       ccTrap.CapabilityMask.AsReg32, desc, tid);
 				sm_discovery_needed("Port CapabilityMask Change isSM on", 0);
-			} else if (!sm_config.mkey && !(capMask & PI_CM_IS_SM)) {
+			} else {
 				IB_LOG_INFINI_INFO_FMT( "sa_Trap", 
 				       "Received an (IS_SM off) CAPABILITYMASK CHANGE [0x%.8X] trap from %s, TID="FMT_U64,
-			    	   capMask, desc, tid);
+			    	   ccTrap.CapabilityMask.AsReg32, desc, tid);
 				sm_discovery_needed("Port CapabilityMask Change isSM off", 0);
     	    }
 		} else {
+			/* A local change has occurred. */
 			IB_LOG_INFINI_INFO_FMT( "sa_Trap", 
 				       "Received a (OtherLocalChanges) CAPABILITYMASK CHANGE trap from %s, TID="FMT_U64,
 				        desc, tid);
-			if (notice.Data[11] & 0x4) {
-				IB_LOG_INFINI_INFO_FMT("sa_Trap", "OtherLocalChanges are PortInfo:LinkSpeedEnabled changed");
+			if (ccTrap.u.s.LinkSpeedEnabledChange) {
+				IB_LOG_INFINI_INFO_FMT("sa_Trap", "OtherLocalChanges: PortInfo:LinkSpeedEnabled changed");
 			}
-			if (notice.Data[11] & 0x2) {
-				IB_LOG_INFINI_INFO_FMT( "sa_Trap", "OtherLocalChanges are PortInfo:LinkWidthEnabled changed");
+			if (ccTrap.u.s.LinkWidthEnabledChange) {
+				IB_LOG_INFINI_INFO_FMT( "sa_Trap", "OtherLocalChanges: PortInfo:LinkWidthEnabled changed");
 			}
-			if (notice.Data[11] & 0x1) {
-				IB_LOG_INFINI_INFO_FMT( "sa_Trap", "OtherLocalChanges are Node Description changed");
+			if (ccTrap.u.s.LinkWidthDowngradeEnabledChange) {
+				IB_LOG_INFINI_INFO_FMT( "sa_Trap", "OtherLocalChanges: PortInfo:LinkWidthDowngradeEnabled changed");
+			}
+			if (ccTrap.u.s.NodeDescriptionChange) {
+				IB_LOG_INFINI_INFO_FMT( "sa_Trap", "OtherLocalChanges: NodeDescription changed");
 				(void)vs_wrlock(&old_topology_lock);
 				if (sm_find_node_and_port_lid(&old_topology, notice.IssuerLID, &nodep) != NULL) {
 					nodep->nodeDescChgTrap = 1;

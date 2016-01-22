@@ -583,7 +583,7 @@ static int ReadFromSocket(NetConnection *conn) {
                 }
                 blob->len = ntohl (blob->magic[1]) - 2 * sizeof (int);
 
-                if (blob->len < MIN_PACKET_SIZE) {
+                if (blob->len < MIN_PACKET_SIZE || blob->len > sizeof(OOBPacket)) {
                     IB_LOG_WARN("packet size is incorrect len:", blob->len);
                     IB_EXIT(__func__, rc);
                     return(NET_FAILED);

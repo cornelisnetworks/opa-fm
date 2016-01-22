@@ -1759,7 +1759,7 @@ void *threadDecompress(void *args) {
 *  
 *  
 *************************************************************************************/
-FSTATUS decompressAndReassemble(unsigned char *input_data, size_t input_size, uint8 divs, size_t *input_sizes, unsigned char *output_data, size_t output_size) {
+FSTATUS decompressAndReassemble(unsigned char *input_data, size_t input_size, uint8 divs, uint64 *input_sizes, unsigned char *output_data, size_t output_size) {
 	// first check divs, make sure it isn't over the max
 	if (divs > PM_MAX_COMPRESSION_DIVISIONS) {
 		IB_LOG_ERROR_FMT(NULL, "Unable to decompress, invalid number of divisions: %d", divs);
@@ -1785,7 +1785,7 @@ FSTATUS decompressAndReassemble(unsigned char *input_data, size_t input_size, ui
 		// input
 		input_pieces[i] = loc;
 		loc += input_sizes[i];
-		total_in += input_sizes[i];
+		total_in += (size_t)input_sizes[i];
 	}
 	if (total_in > input_size) {
 		IB_LOG_ERROR0("Unable to decompress, invalid division sizes");
@@ -1801,7 +1801,7 @@ FSTATUS decompressAndReassemble(unsigned char *input_data, size_t input_size, ui
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 	for (i = 0; i < divs; i++) {
 		args[i].input_data = input_pieces[i];
-		args[i].input_size = input_sizes[i];
+		args[i].input_size = (size_t)input_sizes[i];
 		args[i].output_data = output_data + (i * len);
 		args[i].output_size = MIN(len, output_size - (i * len));
 
@@ -2391,7 +2391,7 @@ static void copyCompositeVF(PmVF_t *VF, PmCompositeVF_t *cVF, uint64 imageIndex)
 *************************************************************************************/
 static void setFilename(PmShortTermHistory_t *sth, PmCompositeImage_t *cimg) {
 	struct tm *now_tm;
-	now_tm = gmtime(&cimg->sweepStart);
+	now_tm = gmtime((time_t *)&cimg->sweepStart);
 	if (!now_tm) {
 		// This should never happen
 		IB_LOG_ERROR0("Unable to get current time");
@@ -2477,13 +2477,14 @@ void PmFreeComposite(PmCompositeImage_t *cimg) {
 *   Inputs:
 *   	pm - the PM
 *   	imageIndex - the index of the image to use to create the composite
+*   	isCompressed - the image is compressed
 *  
 *   Returns:
 *		A pointer to the newly created composite
 *  
-*   Note: filename, recordID, timestamp, isCompressed, and previousFileName are -not- handled by this function
+*   Note: filename, recordID, timestamp and previousFileName are -not- handled by this function
 *************************************************************************************/ 
-PmCompositeImage_t *PmCreateComposite(Pm_t *pm, uint32 imageIndex) {
+PmCompositeImage_t *PmCreateComposite(Pm_t *pm, uint32 imageIndex, uint8 isCompressed) {
 	PmCompositeImage_t *cimg;
 	PmImage_t *img = &(pm->Image[pm->history[imageIndex]]);
 	int i;
@@ -2493,20 +2494,14 @@ PmCompositeImage_t *PmCreateComposite(Pm_t *pm, uint32 imageIndex) {
 		return NULL;
 
 	// intialize some of the header fields
+	cimg->header.common.isCompressed = isCompressed;
 	cimg->header.common.imagesPerComposite = 1;
 	cimg->header.common.imageSweepInterval = pm_config.sweep_interval;
 	cimg->header.common.imageIDs[0] = buildShortTermHistoryImageId(pm, imageIndex);
 	cimg->header.historyVersion = PM_HISTORY_VERSION;
-#ifdef __VXWORKS__
-	// embedded composites are not compressed
-	cimg->header.common.isCompressed = 0;
-#else
-	// otherwise composites are always compressed
-	cimg->header.common.isCompressed = 1;
-#endif
 	
 	// initialize the composite vales from the image
-	cimg->sweepStart = img->sweepStart;
+	cimg->sweepStart = (uint64)img->sweepStart;
 	cimg->sweepDuration = img->sweepDuration;
 	cimg->topologyChanged = 0;
 	cimg->written = 0;
@@ -2526,7 +2521,7 @@ PmCompositeImage_t *PmCreateComposite(Pm_t *pm, uint32 imageIndex) {
 	cimg->numVFsActive = pm->numVFsActive;
 	cimg->maxLid = img->maxLid;
 	cimg->numPorts = 0;
-	memcpy(cimg->SMs, img->SMs, sizeof(cimg->SMs[0]) * 2);
+	memcpy(cimg->SMs, img->SMs, sizeof(cimg->SMs[0]) * PM_HISTORY_MAX_SMS_PER_COMPOSITE);
 	
 	// copy all of the groups
 	copyCompositeGroup(pm->AllPorts, &(cimg->allPortsGroup), pm->history[imageIndex]);
@@ -3120,7 +3115,7 @@ PmImage_t *PmReconstituteImage(PmShortTermHistory_t *sth, PmCompositeImage_t *ci
 		return NULL;
 	}
 	img->maxLid = cimg->maxLid;
-	img->sweepStart = cimg->sweepStart;
+	img->sweepStart = (time_t)cimg->sweepStart;
 	img->sweepDuration = cimg->sweepDuration;
 	img->HFIPorts = cimg->HFIPorts;
 	img->SwitchNodes = cimg->switchNodes;
@@ -3293,7 +3288,7 @@ FSTATUS PmLoadComposite(Pm_t *pm, PmHistoryRecord_t *record, PmCompositeImage_t 
 	}
 
 	// allocate the img_data buffer
-	img_len = ((PmFileHeader_t*)raw_data)->flatSize;
+	img_len = (size_t)((PmFileHeader_t*)raw_data)->flatSize;
 	// checkout the flat size - it needs to be at least enough to hold the image header
 	if (img_len < sizeof(PmFileHeader_t)) {
 #ifdef __VXWORKS__
@@ -3532,7 +3527,7 @@ FSTATUS storeComposite(Pm_t *pm, PmCompositeImage_t *cimg) {
 	writeLen = len = computeFlatSize(cimg);
 	// update the header
 	cimg->header.flatSize = len;
-	vs_stdtime_get(&(cimg->header.common.timestamp));
+	vs_stdtime_get((time_t *)&(cimg->header.common.timestamp));
 	
 	// data will hold the flattened image
 	data = calloc(1, len);
@@ -3566,7 +3561,7 @@ FSTATUS storeComposite(Pm_t *pm, PmCompositeImage_t *cimg) {
 		writeLen = sizeof(PmFileHeader_t);
 		for (i=0; i < pm_config.shortTermHistory.compressionDivisions; i++) {
 			writeLen += compressed_sizes[i];
-			((PmFileHeader_t*)data)->divisionSizes[i] = compressed_sizes[i];
+			((PmFileHeader_t*)data)->divisionSizes[i] = (uint64)compressed_sizes[i];
 		}
 
 		// check disk space
@@ -3644,6 +3639,14 @@ error:
 // non-static is temporary
 FSTATUS compoundNewImage(Pm_t *pm) {
 	FSTATUS ret = FSUCCESS;
+#ifdef __VXWORKS__
+	// composites are not compressed for embedded
+	uint8_t isCompressed = 0;
+#else
+	// composites are always compressed otherwise
+	uint8_t isCompressed = 1;
+#endif
+
 	// if there is no image, or the current one has already been written
 	if (!pm->ShortTermHistory.currentComposite || pm->ShortTermHistory.currentComposite->written) {
 		if (pm->ShortTermHistory.currentComposite) {
@@ -3652,7 +3655,7 @@ FSTATUS compoundNewImage(Pm_t *pm) {
 			pm->ShortTermHistory.currentComposite = NULL;
 		}
 		//create a new composite from the latest image
-		pm->ShortTermHistory.currentComposite = PmCreateComposite(pm, pm->lastHistoryIndex);
+		pm->ShortTermHistory.currentComposite = PmCreateComposite(pm, pm->lastHistoryIndex, isCompressed);
 		if (!pm->ShortTermHistory.currentComposite) {
 			IB_LOG_WARN0("Failed to create a new composite Image");
 			return FERROR;
@@ -3674,13 +3677,6 @@ FSTATUS compoundNewImage(Pm_t *pm) {
 		pruneOneStoredHistoryFile(&pm->ShortTermHistory, cindex);
 
 		// finalize the header
-#ifdef __VXWORKS__
-		// composites are not compressed for embedded
-		pm->ShortTermHistory.currentComposite->header.common.isCompressed = 0;
-#else
-		// composites are always compressed otherwise
-		pm->ShortTermHistory.currentComposite->header.common.isCompressed = 1;
-#endif
 		setFilename(&(pm->ShortTermHistory), pm->ShortTermHistory.currentComposite);
 
 		ret = storeComposite(pm, pm->ShortTermHistory.currentComposite);
@@ -4176,7 +4172,7 @@ FSTATUS storeCompositeToBuffer(PmCompositeImage_t *cimg, uint8_t *buffer, uint32
 	len = computeFlatSize(cimg);
 	// update the header
 	cimg->header.flatSize = len;
-	vs_stdtime_get(&(cimg->header.common.timestamp));
+	vs_stdtime_get((time_t *)&(cimg->header.common.timestamp));
 	
 	// data will hold the flattened image
 	data = calloc(1, len);
@@ -4190,6 +4186,7 @@ FSTATUS storeCompositeToBuffer(PmCompositeImage_t *cimg, uint8_t *buffer, uint32
 		free(data);
 		return ret;
 	}
+		BSWAP_PM_COMPOSITE_IMAGE_FLAT((PmCompositeImage_t *)data, 1);
 
 	if (cimg->header.common.isCompressed) {
 #ifdef __VXWORKS__
@@ -4199,6 +4196,7 @@ FSTATUS storeCompositeToBuffer(PmCompositeImage_t *cimg, uint8_t *buffer, uint32
 #else
 		unsigned char **compressed_divisions = calloc(1, sizeof(unsigned char*) * pm_config.shortTermHistory.compressionDivisions);
 		size_t *compressed_sizes = calloc(1, sizeof(size_t) * pm_config.shortTermHistory.compressionDivisions);
+
 		if (!compressed_divisions || !compressed_sizes) {
 			IB_LOG_ERROR0("Failed to allocate data for compression");
 			if (compressed_divisions) free(compressed_divisions);
@@ -4238,12 +4236,14 @@ FSTATUS storeCompositeToBuffer(PmCompositeImage_t *cimg, uint8_t *buffer, uint32
 		*bIndex += len;
 	}
 
+		BSWAP_PM_FILE_HEADER(&((PmCompositeImage_t *)buffer)->header);
+
 done:
 	free(data);
 	return ret;
 }
 
-void writeImageToBuffer(Pm_t *pm, uint32 histindex, uint8_t *buffer, uint32_t *bIndex) {
+void writeImageToBuffer(Pm_t *pm, uint32 histindex, uint8_t isCompressed, uint8_t *buffer, uint32_t *bIndex) {
 	FSTATUS ret;
 
 	if (!buffer || !bIndex || histindex == PM_IMAGE_INDEX_INVALID) {
@@ -4252,19 +4252,12 @@ void writeImageToBuffer(Pm_t *pm, uint32 histindex, uint8_t *buffer, uint32_t *b
 	}
 
 	PmCompositeImage_t *cimg1;
-	cimg1 = PmCreateComposite(pm, histindex);
+	cimg1 = PmCreateComposite(pm, histindex, isCompressed);
 	if (cimg1 == NULL) {
 		IB_LOG_ERROR0("Failed to create PM Composite Image");
 		return;
 	}
 
-#ifdef __VXWORKS__
-	// embedded composites are not compressed
-	cimg1->header.common.isCompressed = 0;
-#else
-	// otherwise composites are always compressed
-	cimg1->header.common.isCompressed = 1;
-#endif
 	ret = storeCompositeToBuffer(cimg1, buffer, bIndex);
 	PmFreeComposite(cimg1);
 	if (ret != FSUCCESS) {

@@ -89,7 +89,7 @@ sub IsAutostart($)
 	{
 		my($isEnabled) = `systemctl is-enabled $WhichStartup 2>/dev/null`;
 		chomp($isEnabled);
-		if($isEnabled eq "disabled")
+		if($isEnabled eq "disabled" || $isEnabled eq "")
 		{
 			return 0;
 		} else {

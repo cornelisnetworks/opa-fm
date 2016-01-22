@@ -79,21 +79,23 @@ fi
 
 ix=0
 
-/usr/sbin/opareport -x -o links "$@" | \
+/usr/sbin/opareport -x -o links -d 3 "$@" | \
   /usr/sbin/opaxmlextract -d \; -e Rate -e LinkDetails -e CableLength \
-  -e CableLabel -e CableDetails -e Port.NodeDesc -e Port.PortNum | while read line
+  -e CableLabel -e CableDetails -e DeviceTechShort -e CableInfo.Length \
+  -e CableInfo.VendorName -e CableInfo.VendorPN -e CableInfo.VendorRev \
+  -e Port.NodeDesc -e Port.PortNum | while read line
 do
   case $ix in
   0)
-    echo $line";"`echo $line | cut -d \; -f 6-`
+    echo $line";"`echo $line | cut -d \; -f 11-`
     ix=$((ix+1))
     ;;
 
   1)
-    line1=`echo $line | cut -d \; -f 1-5`
+    line1=`echo $line | cut -d \; -f 1-10`
     if echo "$line1" | cut -d \; -f3-5 | grep ";;" >/dev/null 2>&1
       then
-      line2=`echo $line | cut -d \; -f 6-`
+      line2=`echo $line | cut -d \; -f 11-`
       ix=3
     else
       ix=$((ix+1))
@@ -101,12 +103,12 @@ do
     ;;
 
   2)
-    line2=`echo $line | cut -d \; -f 6-`
+    line2=`echo $line | cut -d \; -f 11-`
     ix=$((ix+1))
     ;;
 
   3)
-    line3=`echo $line | cut -d \; -f 6-`
+    line3=`echo $line | cut -d \; -f 11-`
     echo $line1";"$line2";"$line3
     ix=1
     ;;

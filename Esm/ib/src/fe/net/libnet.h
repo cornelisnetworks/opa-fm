@@ -70,6 +70,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #endif
 
+#include "iba/stl_mad.h"
+#include "iba/ib_generalServices.h"
+
 #include "netblob.h"
 #include "netqueue.h"
 #include "cs_g.h"
@@ -153,6 +156,20 @@ struct NetConnection_t {
 };
 typedef struct NetConnection_t NetConnection;
 
+/**************************************************************************
+* 		OOB PROTOCOL STRUCTURES
+**************************************************************************/
+typedef struct __OOBHeader {
+    uint32_t        HeaderVersion;      /* Version of the FE protocol header */
+    uint32_t        Length;             /* Length of the message data payload */
+    uint32_t        Reserved[2];        /* Reserved */
+} OOBHeader;
+
+typedef struct _OOBPacket {
+    OOBHeader Header;
+    MAD_RMPP MadData;
+} OOBPacket;
+
 /*
  * Error defines
  */
@@ -168,7 +185,7 @@ typedef struct NetConnection_t NetConnection;
 #define NET_CANNOT_CONNECT  6
 typedef int NetError;
 
-#define MIN_PACKET_SIZE 24
+#define MIN_PACKET_SIZE (sizeof(MAD_COMMON) + sizeof(RMPP_HEADER))
 
 /*
  * Prototypes of externally callable Net functions

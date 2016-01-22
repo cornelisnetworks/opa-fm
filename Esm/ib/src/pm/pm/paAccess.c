@@ -3654,7 +3654,7 @@ int getPMHistFileData(char *filename, uint32_t histindex, uint8_t *buffer, uint3
 }	// End of getPMHistFileData()
 
 // return latest Master PM Sweep Image Data copied into memory pointed to by buffer 
-int getPMSweepImageData(char *filename, uint32_t histindex, uint8_t *buffer, uint32_t bufflen, uint32_t *filelen)
+int getPMSweepImageData(char *filename, uint32_t histindex, uint8_t isCompressed, uint8_t *buffer, uint32_t bufflen, uint32_t *filelen)
 {
 	uint32_t	index=0;
 
@@ -3681,7 +3681,7 @@ int getPMSweepImageData(char *filename, uint32_t histindex, uint8_t *buffer, uin
 		}
 		IB_LOG_VERBOSE_FMT(__func__, "Going to send latest hist imageIndex=0x%x size=0x%x", histindex, computeCompositeSize());
 		snprintf(filename, SMDBSYNCFILE_NAME_LEN, "%s/latest_sweep", pm->ShortTermHistory.filepath);
-		writeImageToBuffer(pm, histindex, buffer, &index);
+		writeImageToBuffer(pm, histindex, isCompressed, buffer, &index);
 		appendFreezeFrameDetails(buffer, &index);
 		*filelen = index;
 	}
@@ -4165,8 +4165,9 @@ FSTATUS putPMSweepImageDataR(uint8_t *p_img_in, uint32_t len_img_in) {
 		return -1;
 	}
 
+	BSWAP_PM_FILE_HEADER(&((PmCompositeImage_t *)p_img_in)->header);
 #ifndef __VXWORKS__
-	// Decompress image if compressed (PmLoadComposite as a model)
+	// Decompress image if compressed
 	if (cimg_in->header.common.isCompressed) { 
 		status = vs_pool_alloc(&pm_pool, cimg_in->header.flatSize, (void *)&bf_decompress);
 		if (status != VSTATUS_OK || !bf_decompress) {
@@ -4195,8 +4196,9 @@ FSTATUS putPMSweepImageDataR(uint8_t *p_img_in, uint32_t len_img_in) {
 #ifndef __VXWORKS__
 	}
 #endif
+	BSWAP_PM_COMPOSITE_IMAGE_FLAT((PmCompositeImage_t *)p_decompress, 0);
 
-	// Rebuild composite (PmLoadComposite as a model)
+	// Rebuild composite
 	//status = vs_pool_alloc(&pm_pool, sizeof(PmCompositeImage_t), (void *)&cimg_out);
 	cimg_out = calloc(1,sizeof(PmCompositeImage_t));
 	if (!cimg_out) {

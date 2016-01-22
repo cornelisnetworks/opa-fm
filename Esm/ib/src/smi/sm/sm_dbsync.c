@@ -304,7 +304,7 @@ static Status_t dbsync_getSMDBSync(SMSyncReq_t *syncReqp) {
                                "Failed to set sync status of SM node at Lid 0x%x, portGuid "FMT_U64" to SM table",
                                syncReqp->standbyLid, syncReqp->portguid);
                     } else {
-                        (void) sm_dbsync_queueMsg(DBSYNC_TYPE_FULL, DBSYNC_DATATYPE_ALL, syncReqp->standbyLid, syncReqp->portguid, NULL);
+                        (void) sm_dbsync_queueMsg(DBSYNC_TYPE_FULL, DBSYNC_DATATYPE_ALL, syncReqp->standbyLid, syncReqp->portguid, syncReqp->isEmbedded, NULL);
                         IB_LOG_INFO_FMT(__func__, 
                                "requested full sync of SM node at Lid 0x%x, portGuid "FMT_U64" to SM table",
                                syncReqp->standbyLid, syncReqp->portguid);
@@ -472,7 +472,7 @@ static Status_t dbsync_setSMDBSync(SMSyncReq_t *syncReqp) {
 /*
  * send a file to a standby SM
  */
-extern int getPMSweepImageData(char *filename, uint32_t imageIndex, uint8_t *buffer, uint32_t bufflen, uint32_t *filelen);
+extern int getPMSweepImageData(char *filename, uint32_t imageIndex, uint8_t isCompressed, uint8_t *buffer, uint32_t bufflen, uint32_t *filelen);
 extern int putPMSweepImageData(char *filename, uint8_t *buffer, uint32_t filelen);
 extern FSTATUS putPMSweepImageDataR(uint8_t *p_img_in, uint32_t len_img_in);
 
@@ -506,7 +506,12 @@ static Status_t dbsync_sendFileSMDBSync(SMSyncReq_t *syncReqp) {
 				}
 			} 
 			else if (syncFile.type == DBSYNC_PM_SWEEP_IMAGE || syncFile.type == DBSYNC_PM_HIST_IMAGE) {
-				if (getPMSweepImageData(syncFile.name, syncFile.activate /* hist index */, msgbuf + sizeof(SMDBSyncFile_t), buflen - sizeof(SMDBSyncFile_t), &syncFile.size) < 0) {
+				// Composites are not compressed for embedded, compressed otherwise
+				uint8_t isCompressed = !syncReqp->isEmbedded;
+#ifdef __VXWORKS__
+				isCompressed = 0;
+#endif
+				if (getPMSweepImageData(syncFile.name, syncFile.activate /* hist index */, isCompressed, msgbuf + sizeof(SMDBSyncFile_t), buflen - sizeof(SMDBSyncFile_t), &syncFile.size) < 0) {
 					status = VSTATUS_BAD;
 					IB_EXIT(__func__, status);
 					return status;
@@ -2207,7 +2212,6 @@ static void dbsync_procReqQ(void) {
 void sm_dbsync(uint32_t argc, uint8_t ** argv) {
     Status_t    status;
     Mai_t       mad;
-    Filter_t    filter,filter2,filter3;
     uint32_t    madrc, msglen;
 #ifdef __SIMULATOR__
 	uint64_t	if3open_retry_time = (VTIMER_1S * 10);
@@ -2223,9 +2227,7 @@ void sm_dbsync(uint32_t argc, uint8_t ** argv) {
 
     /* Get my thread name. */
     (void)vs_thread_name(&sm_threads[SM_THREAD_DBSYNC].name);
-    memset((void *)&filter, 0, sizeof(filter));
-    memset((void *)&filter2, 0, sizeof(filter2));
-    memset((void *)&filter3, 0, sizeof(filter3));
+
     /*
      * Open a connection to the IF3 interface. 
      * Stay here until connection is opened and we have our port guid
@@ -2276,16 +2278,9 @@ void sm_dbsync(uint32_t argc, uint8_t ** argv) {
          * standby SM
          */
         while (sm_config.db_sync_interval && sm_state == SM_STATE_MASTER && !dbsync_main_exit) {
-            /* we don't want any filters on the FD  when we're master */
-            if (filter.active) {
-                (void)mai_filter_delete (dbsyncfd_if3, &filter, VFILTER_SHARE|VFILTER_PURGE);
-                memset((void *)&filter, 0, sizeof(filter));
-            }
-            if (filter2.active) {
-                (void)mai_filter_delete (dbsyncfd_if3, &filter2, VFILTER_SHARE|VFILTER_PURGE);
-                memset((void *)&filter2, 0, sizeof(filter2));
-                }
-
+            /* we don't want any filters on the FD when we're master, this is
+             * handled at the if3 layer.
+             */
             (void) dbsync_procReqQ();
             (void) vs_thread_sleep (VTIMER_1S);
         }
@@ -2294,24 +2289,9 @@ void sm_dbsync(uint32_t argc, uint8_t ** argv) {
          */
         while (sm_config.db_sync_interval && sm_state == SM_STATE_STANDBY && !dbsync_main_exit) {
             /* 
-             * have to have a filter for receiving dbsync messages when we're standby
-            */
-            if (!filter.active) {
-                if ((status=sm_dbsync_filter_add(dbsyncfd_if3, &filter, MAD_CV_VENDOR_DBSYNC, 
-                                                 RMPP_CMD_GET, 0, 0, 0, __func__)) != VSTATUS_OK) {
-                    IB_FATAL_ERROR("sm_dbsync: STANDBY SM failed to add filter to dbsync handle");
-                }
-            }
-            if (!filter2.active) {
-                if ((status=sm_dbsync_filter_add(dbsyncfd_if3, &filter2, MAD_CV_VENDOR_DBSYNC, 
-                                                 RMPP_CMD_GETTABLE, 0, 0, 0, __func__)) != VSTATUS_OK) {
-                    IB_FATAL_ERROR("sm_dbsync: STANDBY SM failed to add filter to dbsync handle");
-                }
-            }
-            if (filter3.active) {
-                (void)mai_filter_delete (dbsyncfd_if3, &filter3, VFILTER_SHARE|VFILTER_PURGE);
-                memset((void *)&filter3, 0, sizeof(filter3));
-            }
+             * filter handling for receiving dbsync messages when we're standby 
+             * is handled at the if3 layer.
+             */
 
             /* wait for command from the master SM */
             msglen = buflen;
@@ -2376,9 +2356,6 @@ void sm_dbsync(uint32_t argc, uint8_t ** argv) {
     /* free the SM dbsync request queue, sm record table, and close if3 handle and associated filters */
     cs_queue_DisposeQueue( &sm_pool, sm_dbsync_queue );
 bail:
-    if (filter.active ) (void)mai_filter_delete(dbsyncfd_if3, &filter,  VFILTER_SHARE|VFILTER_PURGE);
-    if (filter2.active) (void)mai_filter_delete(dbsyncfd_if3, &filter2, VFILTER_SHARE|VFILTER_PURGE);
-    if (filter3.active) (void)mai_filter_delete(dbsyncfd_if3, &filter3, VFILTER_SHARE|VFILTER_PURGE);
     if (dbsyncfd_if3 > 0) (void)if3_dbsync_close(dbsyncfd_if3);
     dbsyncfd_if3 = -1;
     dbsync_initialized_flag = 0;

@@ -209,10 +209,8 @@ sub rpm_is_installed($$)
 		# $mode is kernel rev, verify proper kernel version is installed
 		# for kernel packages, RELEASE is kernel rev
 		my $release = rpm_tr_os_version($mode);
-		DebugPrint "chroot /$ROOT $RPM --queryformat '[%{RELEASE}\\n]' -q $package 2>/dev/null|egrep '^$release\$' >/dev/null 2>&1\n";
-		#MWHEINZ - hack to deal with odd rpm name.
-		#$rc = system "chroot /$ROOT $RPM --queryformat '[%{RELEASE}\\n]' -q $package 2>/dev/null|egrep '^$release\$' >/dev/null 2>&1";
-		$rc = system "chroot /$ROOT $RPM --queryformat '[%{RELEASE}\\n]' -q $package >/dev/null 2>&1";
+		DebugPrint "chroot /$ROOT $RPM --queryformat '[%{VERSION}\\n]' -q $package 2>/dev/null|egrep '$release' >/dev/null 2>&1\n";
+		$rc = system "chroot /$ROOT $RPM --queryformat '[%{VERSION}\\n]' -q $package 2>/dev/null|egrep '$release' >/dev/null 2>&1";
 		$last_checked = "for kernel $release";
 	}
 	DebugPrint("Checked if $package $mode is installed: ".(($rc==0)?"yes":"no")."\n");
@@ -711,13 +709,11 @@ sub rpm_resolve($$$)
 	} else {
 		my $osver = rpm_tr_os_version("$mode");	# OS version
 		# we expect 1 match, ignore all other filenames returned
-		DebugPrint("Checking for Kernel Rpm: $rpmdir/${package}-[0-9]*-${osver}.${cpu}.rpm\n");
-		#$rpmfile = file_glob("$rpmdir/${package}-[0-9]*-${osver}.${cpu}.rpm");
-		#MWHEINZ - hack to deal with non-standard rpm package name.
-		$rpmfile = file_glob("$rpmdir/${package}-*.${cpu}.rpm");
+		DebugPrint("Checking for Kernel Rpm: $rpmdir/${package}-[0-9]*.[0-9][0-9].${osver}-[0-9]*.${cpu}.rpm\n");
+		$rpmfile = file_glob("$rpmdir/${package}-[0-9]*.[0-9][0-9].${osver}-[0-9]*.${cpu}.rpm");
 		if ( "$rpmfile" eq "" || ! -e "$rpmfile" ) {
-			DebugPrint("Checking for Kernel Rpm: $rpmdir/${package}-r[0-9]*-${osver}.${cpu}.rpm\n");
-			$rpmfile = file_glob("$rpmdir/${package}-r[0-9]*-${osver}.${cpu}.rpm");
+			DebugPrint("Checking for Kernel Rpm: $rpmdir/${package}-${osver}-[0-9]*.${cpu}.rpm\n");
+			$rpmfile = file_glob("$rpmdir/${package}-${osver}-[0-9]*.${cpu}.rpm");
 		}
 		if ( "$rpmfile" eq "" || ! -e "$rpmfile" ) {
 			DebugPrint("Checking for Kernel Rpm: $rpmdir/${package}-trunk-[0-9]*-${osver}.${cpu}.rpm\n");
@@ -748,9 +744,26 @@ sub rpm_install($$$)
 	my $package = shift();	# package name
 	my $rpmfile;
 
+	# use a different directory for BUILD_ROOT to limit conflict with OFED
+	my $build_temp = "/var/tmp/IntelOPA-DELTA";
+	my $BUILD_ROOT="$build_temp/build";
+	my $RPM_DIR="$build_temp/DELTARPMS";
+	my $RPMS_SUBDIR = "RPMS";
+	my $prefix=$OFED_prefix;
+
+RPM_RES:
+
 	$rpmfile = rpm_resolve($rpmdir, $mode, $package);
 	if ( "$rpmfile" eq "" || ! -e "$rpmfile" ) {
 		NormalPrint "Not Found: $package $mode\n";
+		if ( "$mode" ne "user" && "$mode" ne "any" ) # kernel mode
+		{
+			NormalPrint "Rebuilding $package SRPM $mode\n";
+			if (0 == build_srpm($package, $RPM_DIR, $BUILD_ROOT, $prefix, "append")) {
+				delta_move_rpms("$RPM_DIR/$RPMS_SUBDIR", "$rpmdir");
+				goto RPM_RES;
+			}
+		}
 	} else {
 		if ("$mode" eq "user" || "$mode" eq "any" ) {
 			rpm_run_install($rpmfile, $mode, "");
@@ -776,9 +789,26 @@ sub rpm_install_with_options($$$$)
 	my($options) = shift();	# additional rpm command options
 	my $rpmfile;
 
+	# use a different directory for BUILD_ROOT to limit conflict with OFED
+	my $build_temp = "/var/tmp/IntelOPA-DELTA";
+	my $BUILD_ROOT="$build_temp/build";
+	my $RPM_DIR="$build_temp/DELTARPMS";
+	my $RPMS_SUBDIR = "RPMS";
+	my $prefix=$OFED_prefix;
+
+RPM_RES:
+
 	$rpmfile = rpm_resolve($rpmdir, $mode, $package);
 	if ( "$rpmfile" eq "" || ! -e "$rpmfile" ) {
 		NormalPrint "Not Found: $package $mode\n";
+		if ( "$mode" ne "user" && "$mode" ne "any" ) # kernel mode
+		{
+			NormalPrint "Rebuilding $package SRPM $mode\n";
+			if (0 == build_srpm($package, $RPM_DIR, $BUILD_ROOT, $prefix, "append")) {
+				delta_move_rpms("$RPM_DIR/$RPMS_SUBDIR", "$rpmdir");
+				goto RPM_RES;
+			}
+		}
 	} else {
 		if ("$mode" eq "user" || "$mode" eq "any" ) {
 			rpm_run_install($rpmfile, $mode, $options);

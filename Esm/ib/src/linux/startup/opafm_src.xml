@@ -1261,6 +1261,7 @@
 
     <!-- **************Link Policy************** -->
     <!-- LinkPolicy -->
+    <!-- There is a separate LinkPolicy for HFI and ISL             -->
     <!-- These settings set bounds on acceptable Link Width values. -->
     <!-- -->
     <!--    MaxDroppedLanes -->
@@ -1282,14 +1283,22 @@
     <!--        "4x" - disable any links initialized with less than 4 lanes-->
     <!-- *Note that the "Supported" link policy is implicitly enabled when -->
     <!-- using any of the available policies. -->
-    <LinkPolicy>
+    
+    <HFILinkPolicy>
         <MaxDroppedLanes>1</MaxDroppedLanes>
         <WidthPolicy>
             <Enable>1</Enable>
             <Policy>Supported</Policy>
         </WidthPolicy>
-    </LinkPolicy>
-
+    </HFILinkPolicy>
+    
+    <ISLLinkPolicy>
+        <MaxDroppedLanes>1</MaxDroppedLanes>
+        <WidthPolicy>
+            <Enable>1</Enable>
+            <Policy>Supported</Policy>
+        </WidthPolicy>
+    </ISLLinkPolicy>
     <!-- Preemption Configuration -->
     <!-- Preemption is based on packet size and a VL/VF Preemption matrix. -->
     <!-- Preemption allows a "small" packet to preempt a "large" packet to -->
@@ -1711,7 +1720,7 @@
 
     <!-- Enables fabric activation optimization to reduce packet counts -->
     <!-- during fabric bring up. 0-Disable, 1-Switches only, 2-All devices -->
-    <SwitchCascadeActivateEnable>0</SwitchCascadeActivateEnable>
+    <SwitchCascadeActivateEnable>2</SwitchCascadeActivateEnable>
 
     <!-- Number of times to retry activation upon detecting an armed port -->
     <!-- with a non-armed/active neighbor. -->

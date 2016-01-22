@@ -3051,6 +3051,7 @@ sm_setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t * cnp, Port_t * c
 									portp->index, oldportp->portData->lid, portp->portData->lid);
 
 					portp->portData->lid = oldportp->portData->lid;
+					portp->portData->dirty.portInfo=1;
 				}
 			}
 		}
@@ -3393,13 +3394,21 @@ sm_find_node_by_path(Topology_t * topop, uint8_t * path)
 		return NULL;
 	}
        
-        node_ptr = topop->node_head;
+	node_ptr = topop->node_head;
+	if (!node_ptr) {
+		IB_EXIT(__func__, NULL);
+		return NULL;
+	}
 	for (pathIndex=1; pathIndex<=path[0]; pathIndex++) {
 		nextNodeNumber = node_ptr->port[ path[pathIndex] ].nodeno;
-		if (topop->nodeArray[nextNodeNumber])
+		if (nextNodeNumber < 0 || nextNodeNumber >= topop->num_nodes) {
+			IB_EXIT(__func__, NULL);
+			return NULL;
+		}
+		if (topop->nodeArray[nextNodeNumber]) {
 			node_ptr = topop->nodeArray[nextNodeNumber];
-		else {
-	                IB_EXIT(__func__, NULL);
+		} else {
+			IB_EXIT(__func__, NULL);
 			return NULL;
 		}
 	}
@@ -3910,15 +3919,24 @@ sm_verifyPortSpeedAndWidth(Topology_t *topop, Node_t *nodep, Port_t *portp)
 
 	Port_t *con_portp;
 	uint16_t best_width, best_speed;
+	SMLinkPolicyXmlConfig_t  sm_link_policy;
 
 	if(!sm_valid_port(portp))
 		return(VSTATUS_BAD);
+	
+	if (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH &&
+		portp->portData->portInfo.PortNeighborMode.NeighborNodeType == STL_NEIGH_NODE_TYPE_SW)
+			sm_link_policy = sm_config.isl_link_policy;
+		else
+			sm_link_policy = sm_config.hfi_link_policy;
+
+
 
 	/**mark this port as down if speed or width violate policy.**/
 	//check if LW.A outside policy 
-	if(sm_config.link_policy.width_policy.enabled) {
-		if(sm_config.link_policy.width_policy.policy && 
-			(portp->portData->portInfo.LinkWidth.Active < sm_config.link_policy.width_policy.policy)) {
+	if(sm_link_policy.width_policy.enabled) {
+		if(sm_link_policy.width_policy.policy &&
+			(portp->portData->portInfo.LinkWidth.Active < sm_link_policy.width_policy.policy)) {
 			IB_LOG_WARN_FMT(__func__,"node %s port %d: Link width lower than policy spec",
 				sm_nodeDescString(nodep), portp->index, portp->portData->portInfo.LinkWidth.Active);		
 			if(portp->portData->portInfo.PortStates.s.PortState != IB_PORT_INIT)
@@ -3930,9 +3948,9 @@ sm_verifyPortSpeedAndWidth(Topology_t *topop, Node_t *nodep, Port_t *portp)
 	}
 	
 	//check if LS.A outside policy 
-	if(sm_config.link_policy.speed_policy.enabled) {
-		if(sm_config.link_policy.speed_policy.policy && 
-			(portp->portData->portInfo.LinkSpeed.Active < sm_config.link_policy.speed_policy.policy)) {
+	if(sm_link_policy.speed_policy.enabled) {
+		if(sm_link_policy.speed_policy.policy &&
+			(portp->portData->portInfo.LinkSpeed.Active < sm_link_policy.speed_policy.policy)) {
 			IB_LOG_WARN_FMT(__func__,"node %s port %d: Link Speed lower than policy spec",
 				sm_nodeDescString(nodep), portp->index, portp->portData->portInfo.LinkSpeed.Active);
 			if(portp->portData->portInfo.PortStates.s.PortState != IB_PORT_INIT)
@@ -3968,7 +3986,7 @@ sm_verifyPortSpeedAndWidth(Topology_t *topop, Node_t *nodep, Port_t *portp)
 			sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index, 
 			StlLinkWidthToInt(portp->portData->portInfo.LinkWidth.Active),
 			StlLinkWidthToInt(best_width));
-		if(sm_config.link_policy.width_policy.enabled) {
+		if(sm_link_policy.width_policy.enabled) {
 			if(portp->portData->portInfo.PortStates.s.PortState != IB_PORT_INIT){
 				//We will bounce port from the switch side to bring it back to init, 
 				// This may cause problems in back to back configurations. Link Policy can be disabled
@@ -3984,14 +4002,14 @@ sm_verifyPortSpeedAndWidth(Topology_t *topop, Node_t *nodep, Port_t *portp)
 	}
 	//Check if LS.A is not highest common supported
 	best_speed = StlBestLinkSpeed(portp->portData->portInfo.LinkSpeed.Supported &
-											con_portp->portData->portInfo.LinkSpeed.Supported) ;
+										con_portp->portData->portInfo.LinkSpeed.Supported) ;
 	if(portp->portData->portInfo.LinkSpeed.Active != best_speed) {
 		char buffer1[16], buffer2[16];
 		IB_LOG_WARN_FMT(__func__,"node %s nodeGuid "FMT_U64" port %d: Link Speed (%s) not set to highest supported speed (%s)",
 			sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index, 
 			StlLinkSpeedToText(portp->portData->portInfo.LinkSpeed.Active, buffer1, 16),
 			StlLinkSpeedToText(best_speed, buffer2, 16));
-		if(sm_config.link_policy.speed_policy.enabled) {
+		if(sm_link_policy.speed_policy.enabled) {
 			if(portp->portData->portInfo.PortStates.s.PortState != IB_PORT_INIT) {
 				//We will bounce port from the switch side to bring it back to init,
 				//This may cause problems in back to back configurations. Link Policy can be disabled
@@ -4033,6 +4051,7 @@ sm_initialize_port(Topology_t * topop, Node_t * nodep, Port_t * portp, int use_l
 	uint32_t amod = 0;
 	VirtualFabrics_t *VirtualFabrics = topop->vfs_ptr;
 	uint8_t maxLinkMTU;
+	SMLinkPolicyXmlConfig_t  sm_link_policy;
 
 	// Setup the port MTU per VL map.
 	int vl, i, vf, mtu, activeVf;
@@ -4121,7 +4140,15 @@ sm_initialize_port(Topology_t * topop, Node_t * nodep, Port_t * portp, int use_l
 		needSet = 1;
 	}
 
+	if (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH && 
+		portp->portData->portInfo.PortNeighborMode.NeighborNodeType == STL_NEIGH_NODE_TYPE_SW)
+			sm_link_policy = sm_config.isl_link_policy;
+		else 
+			sm_link_policy = sm_config.hfi_link_policy;
+
+
 	/***** applicable to everyone except switch external ports *****/
+
 	if (nodep->nodeInfo.NodeType != NI_TYPE_SWITCH
 		|| (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH && portp->index == 0)) {
 		if (portInfo.M_Key != sm_config.mkey
@@ -4149,6 +4176,9 @@ sm_initialize_port(Topology_t * topop, Node_t * nodep, Port_t * portp, int use_l
 		}
 		if (portInfo.SubnetPrefix != sm_config.subnet_prefix) {
 			portInfo.SubnetPrefix = sm_config.subnet_prefix;
+			needSet = 1;
+		}
+		if (portp->portData->dirty.portInfo) {
 			needSet = 1;
 		}
 		if (portInfo.LID != portp->portData->lid) {
@@ -4209,20 +4239,21 @@ sm_initialize_port(Topology_t * topop, Node_t * nodep, Port_t * portp, int use_l
 		portInfo.LinkSpeed.Enabled = STL_LINK_SPEED_NOP;
 		uint16_t lwde = portp->portData->portInfo.LinkWidth.Active;
 		
+
 		if(lwde == STL_LINK_WIDTH_4X){
-			if(sm_config.link_policy.link_max_downgrade >= 3)
+			if(sm_link_policy.link_max_downgrade >= 3)
 				lwde |= STL_LINK_WIDTH_3X | STL_LINK_WIDTH_2X | STL_LINK_WIDTH_1X;
-			if(sm_config.link_policy.link_max_downgrade == 2)
+			if(sm_link_policy.link_max_downgrade == 2)
 				lwde |= STL_LINK_WIDTH_3X | STL_LINK_WIDTH_2X;
-			if(sm_config.link_policy.link_max_downgrade == 1)
+			if(sm_link_policy.link_max_downgrade == 1)
 				lwde |= STL_LINK_WIDTH_3X;
 		}else if(lwde == STL_LINK_WIDTH_3X){
-			if(sm_config.link_policy.link_max_downgrade >= 2)
+			if(sm_link_policy.link_max_downgrade >= 2)
 				lwde |= STL_LINK_WIDTH_2X | STL_LINK_WIDTH_1X;
-			if(sm_config.link_policy.link_max_downgrade == 1)
+			if(sm_link_policy.link_max_downgrade == 1)
 				lwde |= STL_LINK_WIDTH_2X;
 		}else if(lwde == STL_LINK_WIDTH_2X){
-			if(sm_config.link_policy.link_max_downgrade >= 1)
+			if(sm_link_policy.link_max_downgrade >= 1)
 				lwde |= STL_LINK_WIDTH_1X;
 		}
 		lwde &= portp->portData->portInfo.LinkWidthDowngrade.Supported;
@@ -4538,19 +4569,21 @@ sm_initialize_port(Topology_t * topop, Node_t * nodep, Port_t * portp, int use_l
 			return (status);
 		}
 
-        // Don't check preempt values if preempt is disabled.
-        if (portInfo.FlitControl.Interleave.s.MaxNestLevelTxEnabled != 0) {
-            if (!sm_eq_Preempt
-                (&preemptVals, &portInfo.FlitControl.Preemption, sm_uses_PreemptRemap(portp))) {
-                IB_LOG_ERROR_FMT(__func__,
-                                 "FlitControl.Preemption requested/response value mismatch for "
-                                 "node %s nodeGuid " FMT_U64
-                                 " port %d.  Failed to set portinfo for node",
-                                 sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index);
-                IB_EXIT(__func__, VSTATUS_BAD);
-                return VSTATUS_BAD;
-            }
-        }
+		portp->portData->dirty.portInfo=0;
+
+		// Don't check preempt values if preempt is disabled.
+		if (portInfo.FlitControl.Interleave.s.MaxNestLevelTxEnabled != 0) {
+			if (!sm_eq_Preempt
+				(&preemptVals, &portInfo.FlitControl.Preemption, sm_uses_PreemptRemap(portp))) {
+					IB_LOG_ERROR_FMT(__func__,
+						"FlitControl.Preemption requested/response value mismatch for "
+						"node %s nodeGuid " FMT_U64
+						" port %d.  Failed to set portinfo for node",
+						sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index);
+				IB_EXIT(__func__, VSTATUS_BAD);
+				return VSTATUS_BAD;
+			}
+		}
 		/* 
 		 *  update the STL_PORT_INFO for SA queries. Set returns back actual settings (Get)
 		 */
@@ -5334,9 +5367,11 @@ sm_set_node_port_states(Topology_t * topop, Node_t * nodep, Port_t * portp, uint
 	memset(portStateInfo, 0, sizeof(STL_PORT_STATE_INFO) * numPSIs);
 	
 	// Set all the port states to active
-	for(i = 0; i < numPSIs; i++) {
-		portStateInfo[i].PortStates.s.PortState = portStateToSet;
-	}
+        for_all_ports(nodep, portp) {
+            if (portp->state == IB_PORT_ARMED) {
+                portStateInfo[portp->index].PortStates.s.PortState = portStateToSet;
+            }
+        }
 
 	// Send out the PortStateInfo packets
 	for(i = 0; i < numPackets; i++) {

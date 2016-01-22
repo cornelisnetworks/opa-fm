@@ -112,7 +112,7 @@ $WrapperComponent = "opa_config_fm";
 					  SrcDir => ".", DriverSubdir => "",
 					  PreReq => " opa_stack ", CoReq => "",
 					  Hidden => 0, Disabled => 0,
-					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => " opa_stack ",
 					  StartComponents => [ "opafm" ],
 					},

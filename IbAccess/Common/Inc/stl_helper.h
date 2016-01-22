@@ -955,6 +955,13 @@ uint32_t StlCableInfoOM4Length(uint8_t code_len, uint8_t code_valid)
 
 }	// End of StlCableInfoOM4Length()
 
+static __inline
+void StlCableInfoOM4LengthToText(uint8_t code_len, uint8_t code_valid, int max_chars, char *text_out)
+{
+	if (! text_out)
+		return;
+	snprintf(text_out, max_chars, "%um", StlCableInfoOM4Length(code_len,code_valid));
+}
 #if 0
 // This macro is based on stl_sma.c/GET_LENGTH() but contains invalid logic
 //  for current CableInfo configurations 
@@ -1116,7 +1123,7 @@ StlLinkQualToText(uint8 linkQual)
 	switch (linkQual)
 	{
 		case STL_LINKQUALITY_NONE:
-			return "None";
+			return "Down";
 		case STL_LINKQUALITY_BAD:
 			return "Bad";
 		case STL_LINKQUALITY_POOR:

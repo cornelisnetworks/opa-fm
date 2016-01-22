@@ -157,6 +157,7 @@ typedef struct {
     uint8_t			nodeDescString[ND_LEN+1]; /* node description of SM node */
     uint8_t         path[64];       /* directed path to SM node */
 	uint8_t			portNumber;		/* port Number of remote node - used only for reporting */
+	uint8_t			isEmbedded;		/* 1: SM is embedded */
 	uint64_t		lastHello;		/* if standby, last hello check */
 } SmRec_t;
 typedef SmRec_t     *SmRecp;        /* sm record pointer type */
@@ -171,6 +172,7 @@ typedef struct {
     DBSyncDatTyp_t  datatype;       /* 1=all (full sync only), 2=InformInfo, 3=groups, 4=services */
     uint64_t        portguid;       /* portguid of standby SM */
     Lid_t           standbyLid;     /* lid of the standby SM */
+	uint8_t			isEmbedded;		/* 1: standby SM is embedded */
     SMSyncData_t    data;           /* opaque data buffer to hold specific sync data */
 }SMSyncReq_t;
 typedef SMSyncReq_t *SMSyncReqp;    /* Sm Sync Request pointer type */
@@ -300,7 +302,7 @@ BSWAPCOPY_SM_DBSYNC_RECORD_CNT(uint32_t *Src, uint32_t *Dest)
 void		sm_dbsync(uint32_t, uint8_t **);    /* sm db sync main function */
 Status_t    sm_dbsync_filter_add(IBhandle_t fd, Filter_t *filter, uint8_t mclass, 
                                  uint8_t method, uint16_t aid, uint32_t amod, uint64_t tid, const char *subRoutine);
-void        sm_dbsync_queueMsg(DBSyncType_t syncType, DBSyncDatTyp_t syncDataTye, Lid_t lid, Guid_t portguid, SMSyncData_t);
+void        sm_dbsync_queueMsg(DBSyncType_t syncType, DBSyncDatTyp_t syncDataTye, Lid_t lid, Guid_t portguid, uint8_t isEmbedded, SMSyncData_t);
 void        sm_dbsync_addSm(Node_t *, Port_t *, STL_SMINFO_RECORD *);
 void        sm_dbsync_deleteSm(uint64_t);
 void        sm_dbsync_updateSm(SmRecKey_t, STL_SM_INFO *);

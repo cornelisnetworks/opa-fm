@@ -871,7 +871,8 @@ typedef struct _SMXmlConfig {
 	uint32_t	force_rebalance;
 	uint32_t	use_cached_node_data;
 
-    SMLinkPolicyXmlConfig_t link_policy;
+    SMLinkPolicyXmlConfig_t hfi_link_policy;
+    SMLinkPolicyXmlConfig_t isl_link_policy;
     SMPreemptionXmlConfig_t preemption;
 
 	SmCongestionXmlConfig_t congestion;

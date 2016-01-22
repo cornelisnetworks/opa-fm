@@ -92,6 +92,7 @@ my @delta_components_other = (
 
 my @delta_components_rhel72 = (
 				"opa_stack", 		# Kernel drivers.
+				"ibacm", 		# OFA IB communication manager assistant.
 				"intel_hfi", 		# HFI drivers
 				"delta_ipoib", 		# ipoib module.
 				"mpi_selector",
@@ -306,14 +307,20 @@ my %delta_comp_info_rhel72 = (
 					KernelRpms => [ "hfi1" ], # special case
 					UserRpms =>	  [ "opa-scripts",
 								"srptools",
-								"libibmad",
-								"infiniband-diags",
 								  ],
 					DebugRpms =>  [ "srptools-debuginfo",
 								  ],
 					Drivers => "",
 					StartupScript => "opa",
 					StartupParams => [ "ARPTABLE_TUNING" ],
+					},
+	'ibacm' => {
+					KernelRpms => [ ],
+					UserRpms =>	  [ "ibacm", ],
+					DebugRpms =>  [ "ibacm-debuginfo" ],
+					Drivers => "", # none
+					StartupScript => "ibacm",
+					StartupParams => [ ],
 					},
 	'intel_hfi' => {
 					KernelRpms => [ ],
@@ -390,7 +397,7 @@ my %delta_comp_info_rhel72 = (
 					},
 	'opa_stack_dev' => {
 					KernelRpms => [ "hfi1-devel" ],
-					UserRpms =>  [  ],
+					UserRpms =>  [ "ibacm-devel" ],
 					DebugRpms =>  [  ],
 					Drivers => "", 	# none
 					StartupScript => "",
@@ -615,7 +622,7 @@ my @delta_user_srpms_other = (
 		"shmem-benchmarks", "srptools", "libibmad", "infiniband-diags", "hfi1_uefi"
 );
 my @delta_user_srpms_rhel72 = (
-		"opa-scripts", "mpi-selector",
+		"opa-scripts", "mpi-selector", "ibacm",
 		"libhfi1verbs", "hfi1-psm", "hfi1-diagtools-sw", "hfi1-firmware", "hfi1-firmware_debug",
  		"mvapich2", "openmpi", "gasnet", "openshmem", "openshmem-test-suite",
 		"shmem-benchmarks", "srptools", "hfi1_uefi"
@@ -852,6 +859,12 @@ my %delta_srpm_info_rhel72 = (
 					  PostReq => "libibumad libibumad-devel",
 					  PartOf => "", # filled in at runtime
 					  BuildPrereq => [ 'libtool any user' ],
+					},
+	"ibacm" =>		{ Available => "",
+					  Builds => "ibacm ibacm-devel",
+					  PostReq => "",
+					  PartOf => "", # filled in at runtime
+					  BuildPrereq => [],
 					},
 	"mpi-selector" => { Available => "",
 					  Builds => "mpi-selector",
@@ -1973,6 +1986,7 @@ sub build_delta($$$$$$)
 			}
 			@need_install = ( @need_install, split /[[:space:]]+/, $delta_srpm_info{$srpm}{'PostReq'});
 			$must_force_rpm=1;
+			delta_move_rpms("$RPM_DIR/$RPMS_SUBDIR", "$rpmsdir");
 		}
 	}
 
@@ -4151,7 +4165,7 @@ sub postinstall_hfi1_uefi($$)
 {
 
 }
-sub uninstall_hfi_uefi($$)
+sub uninstall_hfi1_uefi($$)
 {
 	my $install_list = shift();     # total that will be left installed when done
 	my $uninstalling_list = shift();        # what items are being uninstalled
