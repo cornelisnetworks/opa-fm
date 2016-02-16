@@ -2758,7 +2758,8 @@ FSTATUS compoundImage(Pm_t *pm, uint32 imageIndex, PmCompositeImage_t *cimg) {
 			IB_LOG_WARN0("Node lids do not match");
 		}
 		if (cnode->guid != node->guid) {
-			IB_LOG_WARN0("Node GUIDs do not match");
+			IB_LOG_WARN_FMT(__func__, "Node GUIDs do not match: 0x%016"PRIx64",  0x%016"PRIx64"", cnode->guid, node->guid);
+			continue;
 		}
 
 

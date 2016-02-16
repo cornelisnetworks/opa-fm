@@ -324,3 +324,61 @@ sub enable_mod_force_load($)
 			"$OPA_MODPROBE_DIR/$module.conf");
 	}
 }
+
+my $OPA_IRQBALANCE_FILE = "/etc/sysconfig/irqbalance";
+my $OPA_IRQBALANCE_BAK = "/etc/sysconfig/irqbalance.bak";
+sub set_opairqbalance()
+{
+	print "Updating $ROOT$OPA_IRQBALANCE_FILE\n";
+
+	# Look up the current arguments. Note that this may be an empty string.
+	my ($original_line) = `egrep -e '^IRQBALANCE_ARGS=' $ROOT$OPA_IRQBALANCE_FILE`;
+	chomp($original_line);
+
+	if ($original_line =~ /--hintpolicy=exact/ || $original_line =~ /-h exact/) {
+		# Already set to exact. No action is needed.
+	} else {
+		# Make a backup.
+		copy_data_file("$ROOT$OPA_IRQBALANCE_FILE", "$ROOT/$OPA_IRQBALANCE_BAK");
+
+		# Replace the existing hint policy with the new one.
+		my ($original_args) = $original_line;
+		$original_args =~ s/IRQBALANCE_ARGS=//;
+		$original_args =~ s/["']//g;
+		my ($new_args) = $original_args;
+		$new_args =~ s/--hintpolicy=[a-z]*//;
+		$new_args =~ s/-h [a-z]*//;
+		$new_args = "$new_args --hintpolicy=exact";
+
+		if ($original_line eq "") {
+			# If there were no arguments in the existing file, just append.
+			open (OUTPUT, ">>$ROOT$OPA_IRQBALANCE_FILE");
+			select (OUTPUT);
+			print "IRQBALANCE_ARGS=$new_args\n";
+			select(STDOUT);
+			close(OUTPUT);
+		} else {
+			# Otherwise, rewrite the existing line.
+			open (INPUT, "$ROOT$OPA_IRQBALANCE_BAK");
+			open (OUTPUT, ">$ROOT$OPA_IRQBALANCE_FILE");
+			select (OUTPUT);
+
+			while (($_=<INPUT>)) {
+				if (/^$original_line/) {
+					print "# $_";
+					print "IRQBALANCE_ARGS=$new_args\n";
+				} else {
+					print $_;
+				}
+			}
+			select(STDOUT);
+
+			close (INPUT);
+			close (OUTPUT);
+			unlink("$ROOT$OPA_IRQBALANCE_BAK");
+		}
+	}
+
+	# Make sure irqbalance is enabled and started.
+	`systemctl enable irqbalance; systemctl restart irqbalance`
+}

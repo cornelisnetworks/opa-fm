@@ -30,7 +30,7 @@
 #[ICS VERSION STRING: unknown]
 Name: opa-fm
 Version: 10.0.0.0
-Release: 625
+Release: 696
 Summary: Intel Omni-Path Fabric Management Software
 
 Group: System Environment/Daemons

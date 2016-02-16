@@ -97,6 +97,7 @@ extern Status_t sm_parse_xml_config(void);
 extern Status_t handleVfDgMemory(void);
 extern Status_t sm_initialize_sm_pool(void);
 extern void smLogLevelOverride(void);
+extern size_t computeCompositeSize(void);
 
 /*
  *	External SM independent routine.
@@ -604,7 +605,8 @@ void if3_set_rmpp_minfo (ManagerInfo_t *mi)
         // SM DB Sync uses other filter mechanism to handle inbound MAD requests,
         // so RMPP filters not required
         mi->rmppCreateFilters = 0;
-        (void)if3_set_rmpp_cntx_pool_size_params(mi);
+        mi->rmppDataLength = computeCompositeSize();
+        mi->rmppMaxCntxt = sa_max_cntxt;
         break;
     default:
         IB_LOG_INFINI_INFO_FMT(__func__, "MCLASS 0x%x not supported", mi->mclass);

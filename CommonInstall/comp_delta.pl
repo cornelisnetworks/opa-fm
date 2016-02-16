@@ -304,7 +304,7 @@ my %delta_comp_info_other = (
 
 my %delta_comp_info_rhel72 = (
 	'opa_stack' => {
-					KernelRpms => [ "hfi1" ], # special case
+					KernelRpms => [ "ifs-kernel-updates", "hfi1" ], # special case
 					UserRpms =>	  [ "opa-scripts",
 								"srptools",
 								  ],
@@ -609,7 +609,7 @@ my %delta_kernel_ib_options = (
 # all kernel srpms
 # these are in the order we must build/process them to meet basic dependencies
 my @delta_kernel_srpms_other = ( 'compat-rdma' );
-my @delta_kernel_srpms_rhel72 = ( 'hfi1' );
+my @delta_kernel_srpms_rhel72 = ( 'ifs-kernel-updates', 'hfi1' );
 my @delta_kernel_srpms_rhel70 = ( 'ifs-kernel-updates', 'compat-rdma', 'hfi1' );
 my @delta_kernel_srpms = ( );
 
@@ -811,6 +811,12 @@ my %delta_srpm_info_rhel72 = (
 					  PostReq => "hfi1 hfi1-devel",
 					  PartOf => "", # filled in at runtime
 					  BuildPrereq => [],
+					},
+	"ifs-kernel-updates" =>        { Available => "",
+					Builds => "ifs-kernel-updates",
+					PostReq => "",
+					PartOf => "", # filled in at runtime
+					BuildPrereq => [],
 					},
 	"hfi1-psm" =>	{ Available => "",
 					  Builds => "hfi1-psm hfi1-psm-devel hfi1-psm-compat",
@@ -1304,6 +1310,10 @@ sub delta_rpm_install_list($$$@)
 			if ( "$delta_rpm_info{$package}{'Mode'}" eq "kernel" ) {
 				if ( "$CUR_VENDOR_VER" eq "ES72" ) {
 					if ( " $package " =~ / hfi1 / ) {
+						next if ( $skip_kernelib);
+						$ret = 1;
+					}
+					if ( " $package " =~ / ifs-kernel-updates / ) {
 						next if ( $skip_kernelib);
 						$ret = 1;
 					}
@@ -2876,6 +2886,10 @@ sub preinstall_intel_hfi($$)
     return preinstall_delta("intel_hfi", $install_list, $installing_list);
 }
 
+my $irq_perm_string = "Set IrqBalance to Exact?";
+AddAnswerHelp("IrqBalance", "$irq_perm_string");
+my $Default_IrqBalance = 1;
+
 sub install_intel_hfi($$)
 {
     my $install_list = shift();     # total that will be installed when done
@@ -2883,6 +2897,16 @@ sub install_intel_hfi($$)
 
     print_install_banner_delta_comp('intel_hfi');
     install_delta_comp('intel_hfi', $install_list);
+
+    # Adjust irqbalance
+    if ( -e "/etc/sysconfig/irqbalance" ) {
+		print "Intel strongly recommends that the irqbalance service be enabled\n";
+		print "and run using the --hintpolicy=exact option.\n";
+        $Default_IrqBalance = GetYesNoWithMemory("IrqBalance", 1, "$irq_perm_string", "y");
+        if ( $Default_IrqBalance == 1 ) {
+            set_opairqbalance();
+		}
+    }
 
     need_reboot();
     $ComponentWasInstalled{'intel_hfi'}=1;

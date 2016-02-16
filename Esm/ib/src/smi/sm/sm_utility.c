@@ -5308,8 +5308,8 @@ sm_get_node_port_states(Topology_t * topop, Node_t * nodep, Port_t * portp, uint
 			IB_LOG_WARN_FMT(__func__,
 							"Cannot get PORT_STATE_INFO for node %s nodeGuid " FMT_U64 " status=%d",
 							sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, status);
-			IB_EXIT(__func__, status);
 			memset(portStateInfo, 0, sizeof(STL_PORT_STATE_INFO) * numPSIs);
+			break;
 		}
 	}
 
@@ -5395,8 +5395,7 @@ sm_set_node_port_states(Topology_t * topop, Node_t * nodep, Port_t * portp, uint
 			IB_LOG_WARN_FMT(__func__,
 							"Cannot set PORT_STATE_INFO for node %s nodeGuid " FMT_U64 " status=%d",
 							sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, status);
-			IB_EXIT(__func__, status);
-			return status;
+			break;
 		}
 	}
 
