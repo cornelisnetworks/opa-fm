@@ -942,6 +942,11 @@
     <!--            and improved SM performance on fat tree-like fabrics.  -->
     <RoutingAlgorithm>shortestpath</RoutingAlgorithm>
 
+    <!-- Hypercube - Toggle to follow hypercube DOR rules with             -->
+    <!-- shortestpath or dgshortestpath RoutingAlgorithm for hypercubes    -->
+    <!-- and meshes cabled in port-to-dimension order.                     -->
+    <Hypercube>0</Hypercube>
+
     <!-- SpineFirstRouting - An option to avoid credit loops in complex    -->
     <!--            fabrics using Intel Switches.                          -->
     <!--            Given equal length routes, this option routes through  -->
