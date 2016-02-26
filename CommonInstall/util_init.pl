@@ -205,7 +205,7 @@ sub os_vendor_version($)
 
 	my $rval = "";
 	my $mn = "";
-	if ( -e "/etc/os-release" ) {
+	if ( -e "/etc/os-release" && -e "/etc/redhat-release" ) {
 		$rval=`cat /etc/os-release | grep VERSION_ID | cut -d'=' -f2 | tr -d [\\"\\.0]`;
 		chop($rval);
 		$rval="ES".$rval;

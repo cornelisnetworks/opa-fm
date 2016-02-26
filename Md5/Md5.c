@@ -30,7 +30,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /*!
  @file    $Source: /cvs/ics/Md5/Md5.c,v $
  $Author: mwheinz $
- $Name: ALL_EMB_ATOM_ALL_10_0-BRANCH_10_0_0_0_696 $
+ $Name: ALL_EMB_ATOM_ALL_10_0-BRANCH_10_0_1_0_2 $
  $Revision: 1.3 $
  $Date: 2015/01/22 18:08:49 $
  @brief   Md5 API

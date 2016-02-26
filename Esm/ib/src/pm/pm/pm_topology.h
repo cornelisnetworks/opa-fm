@@ -755,7 +755,7 @@ typedef struct PmImage_s {
 #define PM_HISTORY_MAX_IMAGES_PER_COMPOSITE 60
 #define PM_HISTORY_MAX_SMS_PER_COMPOSITE 2
 #define PM_HISTORY_MAX_LOCATION_LEN 111
-#define PM_HISTORY_VERSION 4
+#define PM_HISTORY_VERSION 5
 #define PM_MAX_COMPRESSION_DIVISIONS 32
 
 typedef struct PmCompositePort_s {
@@ -891,10 +891,12 @@ typedef struct PmCompositeGroups_s {
 } PmCompositeGroup_t;
 
 typedef struct PmHistoryHeaderCommon_s {
+	uint32	historyVersion;			// Must remain fixed for all versions
+	uint32	reserved;
 	char 	filename[PM_HISTORY_FILENAME_LEN];
 	uint64	timestamp;
 	uint8	isCompressed;
-	uint8	reserved;
+	uint8	reserved2;
 	uint16	imagesPerComposite;
 	uint32	imageSweepInterval;
 	uint64	imageIDs[PM_HISTORY_MAX_IMAGES_PER_COMPOSITE];
@@ -903,9 +905,8 @@ typedef struct PmHistoryHeaderCommon_s {
 typedef struct PmFileHeader_s {
 	PmHistoryHeaderCommon_t common;
 	uint64	flatSize;
-	uint16	historyVersion;
 	uint8	numDivisions;
-	uint8	reserved[5];
+	uint8	reserved[7];
 	uint64	divisionSizes[PM_MAX_COMPRESSION_DIVISIONS];
 } PmFileHeader_t;
 
@@ -1308,11 +1309,21 @@ BSWAP_PM_COMPOSITE_SM_INFO(struct PmCompositeSmInfo *Dest, uint32 numSMs)
 
 static __inline
 void
+BSWAP_PM_HISTORY_VERSION(uint32 *Dest)
+{
+#if CPU_LE
+	*Dest = ntoh32(*Dest);
+#endif
+}	// End of BSWAP_PM_HISTORY_VERSION
+
+static __inline
+void
 BSWAP_PM_HISTORY_HEADER_COMMON(PmHistoryHeaderCommon_t *Dest)
 {
 #if CPU_LE
 	uint32 i;
 
+	BSWAP_PM_HISTORY_VERSION(&Dest->historyVersion);
 	Dest->timestamp = ntoh64(Dest->timestamp);
 	Dest->imagesPerComposite = ntoh16(Dest->imagesPerComposite);
 	Dest->imageSweepInterval = ntoh32(Dest->imageSweepInterval);
@@ -1330,7 +1341,6 @@ BSWAP_PM_FILE_HEADER(PmFileHeader_t *Dest)
 
 	BSWAP_PM_HISTORY_HEADER_COMMON(&Dest->common);
 	Dest->flatSize = ntoh64(Dest->flatSize);
-	Dest->historyVersion = ntoh16(Dest->historyVersion);
 	for (i = 0; i < PM_MAX_COMPRESSION_DIVISIONS; i++)
 		Dest->divisionSizes[i] = ntoh64(Dest->divisionSizes[i]);
 #endif
@@ -1369,7 +1379,6 @@ BSWAP_PM_COMPOSITE_IMAGE_FLAT(PmCompositeImage_t *Dest, boolean hton)
 	Dest->numGroups = ntoh32(Dest->numGroups);
 	Dest->numVFs = ntoh32(Dest->numVFs);
 	Dest->numVFsActive = ntoh32(Dest->numVFsActive);
-	Dest->maxLid = ntoh32(Dest->maxLid);
 	Dest->numPorts = ntoh32(Dest->numPorts);
 	BSWAP_PM_COMPOSITE_SM_INFO(Dest->SMs, PM_HISTORY_MAX_SMS_PER_COMPOSITE);
 	BSWAP_PM_COMPOSITE_GROUP(&Dest->allPortsGroup, 1);

@@ -148,9 +148,9 @@ IbPortDownDefaultToText( IN IB_PORT_PHYS_STATE state )
  * Convert IB_MTU enumeration to a byte count
  */
 static __inline uint16
-GetBytesFromMtu(IB_MTU mtu)
+GetBytesFromMtu(uint8 mtu)
 {
-	switch ((int)mtu)
+	switch (mtu)
 	{
 		default:
 #if !defined (VXWORKS)
@@ -167,18 +167,16 @@ GetBytesFromMtu(IB_MTU mtu)
 			return 2048;
 		case IB_MTU_4096:
 			return 4096;
-#if !defined (VXWORKS)
 		case STL_MTU_8192:
 			return 8192;
 		case STL_MTU_10240:
 			return 10240;
-#endif
 	}
 }
 /* Convert byte count to nearest IB_MTU enumeration (rounds up)
  * (eg. returns IB MTU required to support packet sizes of "bytes")
  */
-static __inline IB_MTU
+static __inline uint8
 GetMtuFromBytes(uint16 bytes)
 {
 #if !defined (VXWORKS)
@@ -196,12 +194,10 @@ GetMtuFromBytes(uint16 bytes)
 		return IB_MTU_2048;
 	else if (bytes <= 4096)
 		return IB_MTU_4096;
-#if !defined (VXWORKS)
 	else if (bytes <= 8192)
 		return STL_MTU_8192;
 	else if (bytes <= 10240)
 		return STL_MTU_10240;
-#endif
 	else 
 		return IB_MTU_4096;
 }

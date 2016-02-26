@@ -4146,14 +4146,15 @@ FSTATUS putPMSweepImageDataR(uint8_t *p_img_in, uint32_t len_img_in) {
 	PmShortTermHistory_t *sth = &pm->ShortTermHistory;
 	PmImage_t	*pmimagep;
 #ifndef __VXWORKS__
-	PmCompositeImage_t	*cimg_in = (PmCompositeImage_t *)p_img_in;
 	Status_t	status;
 #endif
+	PmCompositeImage_t	*cimg_in = (PmCompositeImage_t *)p_img_in;
 	PmCompositeImage_t	*cimg_out = NULL;
 	unsigned char *p_decompress = NULL;
 	unsigned char *bf_decompress = NULL;
 	static time_t		firstImageSweepStart;
 	static uint32		processedSweepNum=0;
+	uint32				history_version;
 	double				isTdelta;
 	boolean				skipCompounding = FALSE;
 	uint8		tempInstanceId;
@@ -4165,7 +4166,15 @@ FSTATUS putPMSweepImageDataR(uint8_t *p_img_in, uint32_t len_img_in) {
 		return -1;
 	}
 
-	BSWAP_PM_FILE_HEADER(&((PmCompositeImage_t *)p_img_in)->header);
+	// check the version
+	history_version = cimg_in->header.common.historyVersion;
+	BSWAP_PM_HISTORY_VERSION(&history_version);
+	if (history_version != PM_HISTORY_VERSION) {
+		IB_LOG_INFO0("Received image buffer version does not match current version");
+        return FINVALID_PARAMETER;
+	}
+
+	BSWAP_PM_FILE_HEADER(&cimg_in->header);
 #ifndef __VXWORKS__
 	// Decompress image if compressed
 	if (cimg_in->header.common.isCompressed) { 

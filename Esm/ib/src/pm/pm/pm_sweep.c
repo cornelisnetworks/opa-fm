@@ -2494,11 +2494,11 @@ PmCompositeImage_t *PmCreateComposite(Pm_t *pm, uint32 imageIndex, uint8 isCompr
 		return NULL;
 
 	// intialize some of the header fields
+	cimg->header.common.historyVersion = PM_HISTORY_VERSION;
 	cimg->header.common.isCompressed = isCompressed;
 	cimg->header.common.imagesPerComposite = 1;
 	cimg->header.common.imageSweepInterval = pm_config.sweep_interval;
 	cimg->header.common.imageIDs[0] = buildShortTermHistoryImageId(pm, imageIndex);
-	cimg->header.historyVersion = PM_HISTORY_VERSION;
 	
 	// initialize the composite vales from the image
 	cimg->sweepStart = (uint64)img->sweepStart;
@@ -3288,6 +3288,19 @@ FSTATUS PmLoadComposite(Pm_t *pm, PmHistoryRecord_t *record, PmCompositeImage_t 
 		return FERROR;
 	}
 
+	// check the version
+	if (((PmFileHeader_t *)raw_data)->common.historyVersion != PM_HISTORY_VERSION) {
+#ifdef __VXWORKS__
+		IB_LOG_ERROR0("Loaded PM history image that does not match current version");
+#else
+		IB_LOG_ERROR_FMT("Loaded PM history image that does not match current version: %s",
+			record->header.filename);
+#endif
+		free(raw_data);
+		fclose(fp);
+		return FERROR;
+	}
+
 	// allocate the img_data buffer
 	img_len = (size_t)((PmFileHeader_t*)raw_data)->flatSize;
 	// checkout the flat size - it needs to be at least enough to hold the image header
@@ -3336,16 +3349,6 @@ FSTATUS PmLoadComposite(Pm_t *pm, PmHistoryRecord_t *record, PmCompositeImage_t 
 		memcpy(img_data, raw_data, img_len);
 		// free raw data now that it is not being used
 		free(raw_data);
-	}
-
-	// check the version
-	if (((PmFileHeader_t*)img_data)->historyVersion != PM_HISTORY_VERSION) {
-#ifdef __VXWORKS__
-		IB_LOG_ERROR0("Loaded PM history image that does not match current version");
-#else
-		IB_LOG_ERROR_FMT("Loaded PM history image that does not match current version: %s",
-			record->header.filename);
-#endif
 	}
 
 	*cimg = calloc(1 , sizeof(PmCompositeImage_t));
@@ -3938,14 +3941,26 @@ static Status_t PmLoadHistory(Pm_t *pm, boolean master) {
 					ret = VSTATUS_EIO;
 				} else {
 					const size_t readSize = sizeof(PmHistoryHeaderCommon_t);
+					uint8 bf_header[sizeof(PmHistoryHeaderCommon_t)];
 					PmHistoryRecord_t *rec = pm->ShortTermHistory.historyRecords[i];
 
-					// read the header of the file into the record entry
-					if (fread(pm->ShortTermHistory.historyRecords[i], 1, readSize, fp) != readSize) {
+					// read the header of the file and check the version
+					if (fread(bf_header, 1, readSize, fp) != readSize) {
 						IB_LOG_WARN0("Encountered a problem while loading a Short-Term History file");
 						fclose(fp);
 						continue;
 					}
+					if (((PmHistoryHeaderCommon_t *)bf_header)->historyVersion != PM_HISTORY_VERSION) {
+						IB_LOG_WARN_FMT(__func__, "Encountered a Short-Term History file that does not match current version (%u): %s is v%u",
+							PM_HISTORY_VERSION, filename, ((PmHistoryHeaderCommon_t *)bf_header)->historyVersion);
+						fclose(fp);
+						continue;
+					}
+					// Move header into the record entry
+					memcpy(pm->ShortTermHistory.historyRecords[i], bf_header, readSize);
+
+					// if this was a failover the record may have the wrong filepath, so overwrite it
+					strncpy(pm->ShortTermHistory.historyRecords[i]->header.filename, filename, PM_HISTORY_FILENAME_LEN);
 					fclose(fp);
 
 					// Enforce max disk usage
