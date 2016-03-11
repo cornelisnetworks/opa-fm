@@ -749,6 +749,36 @@ typedef struct _SmDGRouting_t {
 	XMLMember_t	dg[MAX_DGROUTING_ORDER];
 } SmDGRouting_t;
 
+/*
+ * Structures for (DG)SP routing control, per switch.
+ */
+typedef uint32_t portMap_t;
+
+static __inline__ void portMapSet(portMap_t *portMap, int port)
+{
+	portMap[port/(sizeof(portMap_t)*8)] |= (1u << port%(sizeof(portMap_t)*8));
+}
+
+static __inline__ portMap_t portMapTest(portMap_t *portMap, int port)
+{
+	return portMap[port/(sizeof(portMap_t)*8)] & (1u << port%(sizeof(portMap_t)*8));
+}
+
+typedef struct _SmSPRoutingPort {
+	uint8_t			pport;
+	uint8_t			vport;
+	uint16_t		cost;
+} SmSPRoutingPort_t;
+
+typedef struct _SmSPRoutingCtrl {
+	struct _SmSPRoutingCtrl	*next;
+	uint64_t		guid;
+	portMap_t		pportMap[STL_MAX_PORTS/(sizeof(portMap_t)*8) + 1];
+	portMap_t		vportMap[STL_MAX_PORTS/(sizeof(portMap_t)*8) + 1];
+	SmSPRoutingPort_t *ports;
+	uint16_t		portCount;
+} SmSPRoutingCtrl_t;
+
 #ifdef CONFIG_INCLUDE_DOR
 #define MAX_TOROIDAL_DIMENSIONS 3
 #define MAX_DOR_DIMENSIONS 20
@@ -944,6 +974,7 @@ typedef struct _SMXmlConfig {
 
 	SmFtreeRouting_t ftreeRouting;
 	SmDGRouting_t dgRouting;
+	SmSPRoutingCtrl_t *SPRoutingCtrl;
 
 	char        name[MAX_VFABRIC_NAME + 1];
 	uint32_t	start;

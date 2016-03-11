@@ -323,6 +323,7 @@ typedef	struct _PortData {
 	} changes;
 
 	void		*routingData; 	// Private data used by topology algorithm.
+	uint16_t	routingCost;
 	int32_t		initWireDepth;		// Initial wire depth to use for buffer calculations.
 } PortData_t;
 
@@ -369,6 +370,7 @@ typedef	struct _Node {
 	PORT		*pgft;		///< Port Group Forwarding Table
 	uint32_t 	pgftSize; 	///< amount of memory allocated for pgft; should track actual memory allocation, not highest entry in use
 	Port_t		*port;		// ports on this node
+	uint8_t		*portOrder;
 	bitset_t	activePorts;
 	bitset_t	initPorts;
 	bitset_t	vfMember;
@@ -1196,6 +1198,9 @@ void Switch_Enqueue_Type(Topology_t *, Node_t *, int, int);
 	if (NODEP->pgft)	{	\
 		sm_Node_release_pgft(NODEP);		\
 	}\
+	if (NODEP->portOrder)	{	\
+		vs_pool_free(&sm_pool, NODEP->portOrder);	\
+	}\
 	if (NODEP->nodeDescString)	{	\
 		vs_pool_free(&sm_pool, NODEP->nodeDescString);	\
 	}\
@@ -1535,7 +1540,7 @@ static __inline__ uint16_t sm_GetSpeed(PortData_t *portData) {
 }
 
 static __inline__ uint16_t sm_GetCost(PortData_t *portData) {
-	return (SpeedWidth_to_Cost(sm_GetSpeed(portData)));
+	return (portData->routingCost ? portData->routingCost : SpeedWidth_to_Cost(sm_GetSpeed(portData)));
 }
 
 static __inline__ char* sm_nodeDescString(Node_t *nodep) {
