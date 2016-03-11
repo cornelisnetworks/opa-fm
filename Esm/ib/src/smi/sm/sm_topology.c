@@ -3351,6 +3351,7 @@ topology_activate(void)
 
 							if(portStateInfo != NULL) {
 								vs_pool_free(&sm_pool, portStateInfo);
+								portStateInfo = NULL;
 							}
 
 							psiFailed = 1;
@@ -3381,7 +3382,10 @@ topology_activate(void)
 						}
 					}
 
-					vs_pool_free(&sm_pool, portStateInfo);
+					if(portStateInfo != NULL) {
+						vs_pool_free(&sm_pool, portStateInfo);
+						portStateInfo = NULL;
+					}
 				}
 			}
 
