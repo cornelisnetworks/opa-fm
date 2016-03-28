@@ -1519,7 +1519,7 @@ static __inline__ Lid_t sm_port_top_lid(Port_t * portp) {
 		(((Z) == STL_LINK_SPEED_12_5G) ? 12500000000ull : 25781250000ull)
 			 
 // Cost should be evenly divisable by (width * SpeedFactor)
-#define	SpeedWidth_to_Cost(X)	((X) ? 2400/(X) : 2400)
+#define	SpeedWidth_to_Cost(X)	(((X) && !sm_config.hypercube) ? 2400/(X) : 2400)
 
 static __inline__ uint8_t sm_GetLsf(STL_PORT_INFO *portInfo) {
 	return (Decode_SpeedFactor(portInfo->LinkSpeed.Active));

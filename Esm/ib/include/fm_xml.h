@@ -852,6 +852,7 @@ typedef struct _SMXmlConfig {
     uint32_t    node_appearance_msg_thresh;
     uint32_t    spine_first_routing; 
     uint32_t    shortestPathBalanced;
+    uint32_t    hypercube;
     uint32_t    lmc; 
     uint32_t    lmc_e0; 
 	char		routing_algorithm[STRING_SIZE];

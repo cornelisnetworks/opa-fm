@@ -1556,6 +1556,7 @@ void smInitConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 	DEFAULT_AND_CKSUM_U32(smp->node_appearance_msg_thresh, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(smp->spine_first_routing, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(smp->shortestPathBalanced, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U32(smp->hypercube, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(smp->lid, 0x0, CKSUM_OVERALL_DISRUPT);
 
 	DEFAULT_U32(smp->lmc, 0x0);
@@ -1913,6 +1914,7 @@ void smShowConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 	printf("XML - node_appearance_msg_thresh %u\n", (unsigned int)smp->node_appearance_msg_thresh);
 	printf("XML - spine_first_routing %u\n", (unsigned int)smp->spine_first_routing);
 	printf("XML - shortestPathBalanced %u\n", (unsigned int)smp->shortestPathBalanced);
+	printf("XML - hypercube %u\n", (unsigned int)smp->hypercube);
 	printf("XML - lid 0x%x\n", (unsigned int)smp->lid);
 	printf("XML - lmc 0x%x\n", (unsigned int)smp->lmc);
 	printf("XML - lmc_e0 0x%x\n", (unsigned int)smp->lmc_e0);
@@ -5953,6 +5955,7 @@ static IXML_FIELD SmFields[] = {
 	{ tag:"NodeAppearanceMsgThreshold", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, node_appearance_msg_thresh) },
 	{ tag:"SpineFirstRouting", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, spine_first_routing) },
 	{ tag:"ShortestPathBalanced", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, shortestPathBalanced) },
+	{ tag:"Hypercube", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, hypercube) },
 	{ tag:"PathSelection", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, path_selection), end_func:SmPathSelectionParserEnd },
 	{ tag:"QueryValidation", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, queryValidation) },
 	{ tag:"SmaBatchSize", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, sma_batch_size) },
