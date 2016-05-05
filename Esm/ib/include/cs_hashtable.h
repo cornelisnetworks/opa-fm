@@ -91,10 +91,6 @@
  *
  */
 
-#ifndef INLINE
-# define INLINE extern inline
-#endif
-
 typedef enum {
     CS_HASH_KEY_NOT_ALLOCATED,
     CS_HASH_KEY_ALLOCATED
@@ -245,7 +241,7 @@ valuetype * fncname (CS_HashTablep h, keytype *k) \
  * @param   h   the hashtable
  * @return      the number of items stored in the hashtable
  */
-INLINE uint32_t
+static __inline uint32_t
 cs_hashtable_count(CS_HashTablep h)
 {
     return h->entrycount;
@@ -281,7 +277,7 @@ int32_t cs_hashtable_change(CS_HashTablep h, void *k, void *v);
  * cs_hashtable_iterator
  */
 
-INLINE void
+static __inline void
 cs_hashtable_iterator(CS_HashTablep h, CS_HashTableItr_t *itr) {
     itr->h = h;
     itr->e = h->listHead;
@@ -292,7 +288,7 @@ cs_hashtable_iterator(CS_HashTablep h, CS_HashTableItr_t *itr) {
  * - return the value of the (key,value) pair at the current position 
  */
 
-INLINE void *
+static __inline void *
 cs_hashtable_iterator_key(CS_HashTableItrp i)
 {
     return i->e->k;
@@ -302,7 +298,7 @@ cs_hashtable_iterator_key(CS_HashTableItrp i)
  * value - return the value of the (key,value) pair at the current position 
  */
 
-INLINE void *
+static __inline void *
 cs_hashtable_iterator_value(CS_HashTableItrp i)
 {
     return i->e->v;
@@ -313,7 +309,7 @@ cs_hashtable_iterator_value(CS_HashTableItrp i)
  *           returns zero if advanced to end of table 
  */
 
-INLINE int32_t
+static __inline int32_t
 cs_hashtable_iterator_advance(CS_HashTableItrp itr) {
     if (itr->e != NULL)
         return (itr->e = itr->e->listNext) == NULL ? 0 : -1;

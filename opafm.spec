@@ -38,20 +38,21 @@ License: BSD
 Url: http://www.intel.com/
 Source0: %{name}.tar.gz
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
+ExclusiveArch: x86_64
 
 Requires: rdma
 
 #BuildRequires: libibverbs-devel >= 1.1-1, libibumad-devel, libibmad-devel
 AutoReq: no
-%if 0%{?rhel}
-BuildRequires: expat-devel
-Requires: expat, libibmad, libibumad, libibverbs
+%if 0%{?rhel} || 0%{?fedora}
+BuildRequires: expat-devel, libibumad-devel, libibverbs-devel, libibmad-devel, openssl-devel
+Requires: expat, libibmad, libibumad, libibverbs, openssl
 %else
-Requires: libexpat1, libibmad5, libibumad, libibverbs1
-BuildRequires: libexpat-devel
+Requires: libexpat1, libibmad5, libibumad, libibverbs1, openssl
+BuildRequires: libexpat-devel, libibumad-devel, libibverbs-devel, libibmad5-devel, libopenssl-devel
 %endif
 
-%if 0%{?suse_version} >= 1210 || 0%{?rhel} >= 7
+%if 0%{?suse_version} >= 1210 || 0%{?rhel} >= 7 || 0%{?fedora}
 BuildRequires: systemd %{?systemd_requires} %{?BuildRequires}
 Requires: systemd %{?systemd_requires}
 %else
@@ -116,8 +117,8 @@ install -D stage.rpm/opafm.xml $RPM_BUILD_ROOT/opt/opafm/etc/opafm.xml
 install -D stage.rpm/opaxmlextract $RPM_BUILD_ROOT/opt/opafm/etc/opaxmlextract
 install -D stage.rpm/opaxmlfilter $RPM_BUILD_ROOT/opt/opafm/etc/opaxmlfilter
 
-install -D stage.rpm/opa_ca_openssl.cnf-sample $RPM_BUILD_ROOT/opt/opafm/samples/opa_ca_openssl.cnf-sample
-install -D stage.rpm/opa_comp_openssl.cnf-sample $RPM_BUILD_ROOT/opt/opafm/samples/opa_comp_openssl.cnf-sample
+#install -D stage.rpm/opa_ca_openssl.cnf-sample $RPM_BUILD_ROOT/opt/opafm/samples/opa_ca_openssl.cnf-sample
+#install -D stage.rpm/opa_comp_openssl.cnf-sample $RPM_BUILD_ROOT/opt/opafm/samples/opa_comp_openssl.cnf-sample
 
 mkdir -p $RPM_BUILD_ROOT%{_sbindir}
 ln -s /opt/opafm/bin/fm_cmd $RPM_BUILD_ROOT%{_sbindir}/opafmcmd
@@ -157,7 +158,7 @@ fi
 /opt/opafm/bin/*
 /opt/opafm/etc/*
 /opt/opafm/runtime/*
-/opt/opafm/samples/*
+#/opt/opafm/samples/*
 %{_sbindir}/opafmcmd
 %{_sbindir}/opafmcmdall
 
