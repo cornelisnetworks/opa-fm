@@ -157,10 +157,7 @@ fi
 /opt/opafm/bin/*
 /opt/opafm/etc/*
 /opt/opafm/runtime/*
-<<<<<<< HEAD
 #/opt/opafm/samples/*
-=======
->>>>>>> 82600d3632ee0c401c218fc0d9a462347e7ae2fb
 %{_sbindir}/opafmcmd
 %{_sbindir}/opafmcmdall
 
