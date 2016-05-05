@@ -119,7 +119,6 @@ install -D stage.rpm/opaxmlfilter $RPM_BUILD_ROOT/opt/opafm/etc/opaxmlfilter
 
 #install -D stage.rpm/opa_ca_openssl.cnf-sample $RPM_BUILD_ROOT/opt/opafm/samples/opa_ca_openssl.cnf-sample
 #install -D stage.rpm/opa_comp_openssl.cnf-sample $RPM_BUILD_ROOT/opt/opafm/samples/opa_comp_openssl.cnf-sample
-
 mkdir -p $RPM_BUILD_ROOT%{_sbindir}
 ln -s /opt/opafm/bin/fm_cmd $RPM_BUILD_ROOT%{_sbindir}/opafmcmd
 ln -s /opt/opafm/bin/fm_cmdall $RPM_BUILD_ROOT%{_sbindir}/opafmcmdall
@@ -158,7 +157,10 @@ fi
 /opt/opafm/bin/*
 /opt/opafm/etc/*
 /opt/opafm/runtime/*
+<<<<<<< HEAD
 #/opt/opafm/samples/*
+=======
+>>>>>>> 82600d3632ee0c401c218fc0d9a462347e7ae2fb
 %{_sbindir}/opafmcmd
 %{_sbindir}/opafmcmdall
 

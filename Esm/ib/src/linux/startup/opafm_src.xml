@@ -1720,7 +1720,7 @@
 
     <!-- Enables fabric activation optimization to reduce packet counts -->
     <!-- during fabric bring up. 0-Disable, 1-Switches only, 2-All devices -->
-    <SwitchCascadeActivateEnable>2</SwitchCascadeActivateEnable>
+    <SwitchCascadeActivateEnable>0</SwitchCascadeActivateEnable>
 
     <!-- Number of times to retry activation upon detecting an armed port -->
     <!-- with a non-armed/active neighbor. -->
