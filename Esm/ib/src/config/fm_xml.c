@@ -1088,6 +1088,7 @@ void pmInitConfig(PMXmlConfig_t *pmp, uint32_t instance, uint32_t ccc_method)
 	CKSUM_DATA(pmp->start, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(pmp->hca, 0, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_U32(pmp->port, 1, CKSUM_OVERALL_DISRUPT);
+	DEFAULT_AND_CKSUM_U64(pmp->port_guid, 0, CKSUM_OVERALL_DISRUPT);
 
 	// Currently, dynamic changes to pm log_level are supported.
 	DEFAULT_AND_CKSUM_U32(pmp->log_level, 1, CKSUM_OVERALL);
@@ -1375,6 +1376,7 @@ void feInitConfig(FEXmlConfig_t *fep, uint32_t instance, uint32_t ccc_method)
 	CKSUM_DATA(fep->start, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_U32(fep->hca, 0, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_U32(fep->port, 1, CKSUM_OVERALL_DISRUPT);
+	DEFAULT_AND_CKSUM_U64(fep->port_guid, 0, CKSUM_OVERALL_DISRUPT);
 
 	// These are now processed when "fill" at end of parsing whole file
 	DEFAULT_AND_CKSUM_U32(fep->login, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
@@ -1527,6 +1529,7 @@ void smInitConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 	CKSUM_DATA(smp->start, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_U32(smp->hca, 0, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_U32(smp->port, 1, CKSUM_OVERALL_DISRUPT);
+	DEFAULT_AND_CKSUM_U64(smp->port_guid, 0, CKSUM_OVERALL_DISRUPT);
 
 	DEFAULT_AND_CKSUM_U64(smp->sm_key, 0x0ull, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U64(smp->mkey, 0x0ull, CKSUM_OVERALL_DISRUPT_CONSIST);
@@ -1681,13 +1684,19 @@ void smInitConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 		DEFAULT_AND_CKSUM_U8(smp->congestion.ca.threshold, 8, CKSUM_OVERALL_DISRUPT_CONSIST);
 		DEFAULT_AND_CKSUM_U8(smp->congestion.ca.min, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 		DEFAULT_U16(smp->congestion.ca.limit, 127);
+
 		// limit is max index == max_entries-1
-		if (smp->congestion.ca.limit >  CONGESTION_CONTROL_TABLE_ENTRIES_PER_MAD-1) {
+		//Enforcing implementation limit for congestion rather than architectural limit (CONGESTION_CONTROL_TABLE_ENTRIES_PER_MAD-1).
+		if (smp->congestion.ca.limit > CONGESTION_CONTROL_IMPLEMENTATION_LIMIT ) {
 			IB_LOG_WARN_FMT(__func__, "FM CC SwitchCongestionSetting:CCTI Limit %d exceeds max value, setting to %d", smp->congestion.ca.limit,
-						CONGESTION_CONTROL_TABLE_ENTRIES_PER_MAD-1);
-			smp->congestion.ca.limit =
-						(uint16_t)(CONGESTION_CONTROL_TABLE_ENTRIES_PER_MAD-1);
+						CONGESTION_CONTROL_IMPLEMENTATION_LIMIT);
+			smp->congestion.ca.limit = (uint16_t)(CONGESTION_CONTROL_IMPLEMENTATION_LIMIT);
 		}
+		if (smp->congestion.ca.limit == 0) {
+			IB_LOG_WARN_FMT(__func__, "FM CC SwitchCongestionSetting:CCTI Lower limit cannot be 0, setting to 1");
+			smp->congestion.ca.limit =	(uint16_t)(1);
+		}
+
 		CKSUM_DATA(smp->congestion.ca.limit, CKSUM_OVERALL_DISRUPT_CONSIST);
 		DEFAULT_AND_CKSUM_U32(smp->congestion.ca.desired_max_delay, 8000, CKSUM_OVERALL_DISRUPT_CONSIST);
 	}
@@ -4818,6 +4827,24 @@ SmPreDefFieldEnfToText(FieldEnforcementLevel_t fieldEnfLevel) {
 	}
 }
 
+// FM releases 10.0-10.0.1 support modes 0,1,2 for cascade activation. In 10.1 only 
+// mode 0 is supported and any other values are ignored.
+void SmCascadeXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	uint32_t value;
+	
+	if (xml_parse_debug)
+		fprintf(stdout, "SmCascadeXmlParserEnd %s instance %u common %u\n", field->tag, (unsigned int)instance, (unsigned int)common); 
+
+	if (IXmlParseUint32(state, content, len, &value)) {
+		if (value != 0) {
+			XmlParsePrintWarning("Only SwitchCascadeActivateEnable mode 0 (Disabled) supported. Forcing setting to zero.");
+		}
+		uint32_t *p = (uint32_t *)IXmlParserGetField(field, object);
+		*p = 0;
+	}
+}
+
 static void* SmPreDefTopoXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr)
 {
 	return &((SMXmlConfig_t*)parent)->preDefTopo;
@@ -4853,6 +4880,7 @@ static IXML_FIELD SmPreDefTopoFieldEnfFields[] = {
 
 static IXML_FIELD SmPreDefTopoFields[] = {
 	{ tag:"Enabled", format:'u', IXML_FIELD_INFO(SmPreDefTopoXmlConfig_t, enabled) },
+	{ tag:"Enable", format:'u', IXML_FIELD_INFO(SmPreDefTopoXmlConfig_t, enabled) },
 	{ tag:"TopologyFilename", format:'s', IXML_FIELD_INFO(SmPreDefTopoXmlConfig_t, topologyFilename) },
 	{ tag:"LogMessageThreshold", format:'u', IXML_FIELD_INFO(SmPreDefTopoXmlConfig_t, logMessageThreshold) },
 	{ tag:"FieldEnforcement", format:'k', subfields:SmPreDefTopoFieldEnfFields, start_func:SmPreDefTopoFieldEnfXmlParserStart },
@@ -5146,8 +5174,8 @@ static void SmMcastDgXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *fi
 		// the Create to be set if it is undefined.
 		if (mdgp->def_mc_create == UNDEFINED_XML32 &&
 			mdgp->def_mc_pkey == UNDEFINED_XML32 &&
-			mdgp->def_mc_mtu_int == UNDEFINED_XML32 &&
-			mdgp->def_mc_rate_int == UNDEFINED_XML32 &&
+			mdgp->def_mc_mtu_int == UNDEFINED_XML8 &&
+			mdgp->def_mc_rate_int == UNDEFINED_XML8 &&
 			mdgp->def_mc_sl == UNDEFINED_XML8 &&
 			mdgp->def_mc_qkey == UNDEFINED_XML32 &&
 			mdgp->def_mc_fl == UNDEFINED_XML32 &&
@@ -5972,6 +6000,7 @@ static IXML_FIELD SmFields[] = {
 	{ tag:"LogMode", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, syslog_mode) },
 	{ tag:"SyslogFacility", format:'s', IXML_FIELD_INFO(SMXmlConfig_t, syslog_facility) },
 	{ tag:"SslSecurityEnabled", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, SslSecurityEnabled) },
+	{ tag:"SslSecurityEnable", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, SslSecurityEnabled) },
 #ifndef __VXWORKS__
 	{ tag:"SslSecurityDir", format:'s', IXML_FIELD_INFO(SMXmlConfig_t, SslSecurityDir) },
 #endif
@@ -5981,6 +6010,7 @@ static IXML_FIELD SmFields[] = {
 	{ tag:"SslSecurityFmCertChainDepth", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, SslSecurityFmCertChainDepth) },
 	{ tag:"SslSecurityFmDHParameters", format:'s', IXML_FIELD_INFO(SMXmlConfig_t, SslSecurityFmDHParameters) },
 	{ tag:"SslSecurityFmCaCRLEnabled", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, SslSecurityFmCaCRLEnabled) },
+	{ tag:"SslSecurityFmCaCRLEnable", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, SslSecurityFmCaCRLEnabled) },
 	{ tag:"SslSecurityFmCaCRL", format:'s', IXML_FIELD_INFO(SMXmlConfig_t, SslSecurityFmCaCRL) },
 	{ tag:"LID", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, lid) },
 	{ tag:"SmPerfDebug", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, sm_debug_perf) },
@@ -6041,7 +6071,7 @@ static IXML_FIELD SmFields[] = {
 	{ tag:"ForceAttributeRewrite", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, forceAttributeRewrite) },
 	{ tag:"SkipAttributeWrite", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, skipAttributeWrite) },
 	{ tag:"DefaultPortErrorAction", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, defaultPortErrorAction) },
-	{ tag:"SwitchCascadeActivateEnable", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, switchCascadeActivateEnable) },
+	{ tag:"SwitchCascadeActivateEnable", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, switchCascadeActivateEnable), end_func:SmCascadeXmlParserEnd },
 	{ tag:"NeighborNormalRetries", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, neighborNormalRetries) },
 	{ tag:"PreDefinedTopology", format:'k', subfields:SmPreDefTopoFields, start_func:SmPreDefTopoXmlParserStart },
 	{ tag:"TerminateAfter", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, terminateAfter) },
@@ -6188,6 +6218,7 @@ static IXML_FIELD FeFields[] = {
 	{ tag:"LogMode", format:'u', IXML_FIELD_INFO(FEXmlConfig_t, syslog_mode) },
 	{ tag:"SyslogFacility", format:'s', IXML_FIELD_INFO(FEXmlConfig_t, syslog_facility) },
 	{ tag:"SslSecurityEnabled", format:'u', IXML_FIELD_INFO(FEXmlConfig_t, SslSecurityEnabled) },
+	{ tag:"SslSecurityEnable", format:'u', IXML_FIELD_INFO(FEXmlConfig_t, SslSecurityEnabled) },
 #ifndef __VXWORKS__
 	{ tag:"SslSecurityDir", format:'s', IXML_FIELD_INFO(FEXmlConfig_t, SslSecurityDir) },
 #endif
@@ -6196,6 +6227,7 @@ static IXML_FIELD FeFields[] = {
 	{ tag:"SslSecurityFmCertChainDepth", format:'u', IXML_FIELD_INFO(FEXmlConfig_t, SslSecurityFmCertChainDepth) },
 	{ tag:"SslSecurityFmDHParameters", format:'s', IXML_FIELD_INFO(FEXmlConfig_t, SslSecurityFmDHParameters) },
 	{ tag:"SslSecurityFmCaCRLEnabled", format:'u', IXML_FIELD_INFO(FEXmlConfig_t, SslSecurityFmCaCRLEnabled) },
+	{ tag:"SslSecurityFmCaCRLEnable", format:'u', IXML_FIELD_INFO(FEXmlConfig_t, SslSecurityFmCaCRLEnabled) },
 	{ tag:"SslSecurityFmCaCRL", format:'s', IXML_FIELD_INFO(FEXmlConfig_t, SslSecurityFmCaCRL) },
 	{ tag:"CS_LogMask", format:'u', IXML_FIELD_INFO(FEXmlConfig_t, log_masks[VIEO_CS_MOD_ID]), end_func:ParamU32XmlParserEnd },
 	{ tag:"MAI_LogMask", format:'u', IXML_FIELD_INFO(FEXmlConfig_t, log_masks[VIEO_MAI_MOD_ID]), end_func:ParamU32XmlParserEnd },
@@ -6412,6 +6444,7 @@ static IXML_FIELD PmFields[] = {
 	{ tag:"CoreDumpDir", format:'s', IXML_FIELD_INFO(PMXmlConfig_t, CoreDumpDir) },
 	{ tag:"CoreDumpLimit", format:'s', IXML_FIELD_INFO(PMXmlConfig_t, CoreDumpLimit) },
 	{ tag:"SslSecurityEnabled", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, SslSecurityEnabled) },
+	{ tag:"SslSecurityEnable", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, SslSecurityEnabled) },
 #ifndef __VXWORKS__
 	{ tag:"SslSecurityDir", format:'s', IXML_FIELD_INFO(PMXmlConfig_t, SslSecurityDir) },
 #endif
@@ -6421,6 +6454,7 @@ static IXML_FIELD PmFields[] = {
 	{ tag:"SslSecurityFmCertChainDepth", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, SslSecurityFmCertChainDepth) },
 	{ tag:"SslSecurityFmDHParameters", format:'s', IXML_FIELD_INFO(PMXmlConfig_t, SslSecurityFmDHParameters) },
 	{ tag:"SslSecurityFmCaCRLEnabled", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, SslSecurityFmCaCRLEnabled) },
+	{ tag:"SslSecurityFmCaCRLEnable", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, SslSecurityFmCaCRLEnabled) },
 	{ tag:"SslSecurityFmCaCRL", format:'s', IXML_FIELD_INFO(PMXmlConfig_t, SslSecurityFmCaCRL) },
 	{ tag:"ServiceLease", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, timer) },
 	{ tag:"SweepInterval", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, sweep_interval) },
@@ -7877,6 +7911,7 @@ static void PmPgMonitorEnd(IXmlParserState_t *state, const IXML_FIELD *field, vo
 // fields within "PmPortGroup" tag
 static IXML_FIELD PmPgFields[] = {
 	{ tag:"Enabled", format:'u', IXML_FIELD_INFO(PmPortGroupXmlConfig_t, Enabled) },
+	{ tag:"Enable", format:'u', IXML_FIELD_INFO(PmPortGroupXmlConfig_t, Enabled) },
 	{ tag:"Name", format:'s', IXML_FIELD_INFO(PmPortGroupXmlConfig_t, Name) },
 	{ tag:"Monitor", format:'k', end_func:PmPgMonitorEnd },
 	{ NULL }
@@ -8056,6 +8091,7 @@ static IXML_FIELD FmSharedFields[] = {
 	{ tag:"SyslogFacility", format:'s', IXML_FIELD_INFO(FMXmlConfig_t, syslog_facility) },
 	{ tag:"ConfigConsistencyCheckLevel", format:'u', IXML_FIELD_INFO(FMXmlConfig_t, config_consistency_check_level) },
 	{ tag:"SslSecurityEnabled", format:'u', IXML_FIELD_INFO(FMXmlConfig_t, SslSecurityEnabled) },
+	{ tag:"SslSecurityEnable", format:'u', IXML_FIELD_INFO(FMXmlConfig_t, SslSecurityEnabled) },
 #ifndef __VXWORKS__
 	{ tag:"SslSecurityDir", format:'s', IXML_FIELD_INFO(FMXmlConfig_t, SslSecurityDir) },
 #endif
@@ -8065,6 +8101,7 @@ static IXML_FIELD FmSharedFields[] = {
 	{ tag:"SslSecurityFmCertChainDepth", format:'u', IXML_FIELD_INFO(FMXmlConfig_t, SslSecurityFmCertChainDepth) },
 	{ tag:"SslSecurityFmDHParameters", format:'s', IXML_FIELD_INFO(FMXmlConfig_t, SslSecurityFmDHParameters) },
 	{ tag:"SslSecurityFmCaCRLEnabled", format:'u', IXML_FIELD_INFO(FMXmlConfig_t, SslSecurityFmCaCRLEnabled) },
+	{ tag:"SslSecurityFmCaCRLEnable", format:'u', IXML_FIELD_INFO(FMXmlConfig_t, SslSecurityFmCaCRLEnabled) },
 	{ tag:"SslSecurityFmCaCRL", format:'s', IXML_FIELD_INFO(FMXmlConfig_t, SslSecurityFmCaCRL) },
 	{ tag:"Hfi", format:'u', IXML_FIELD_INFO(FMXmlConfig_t, hca), end_func:HfiXmlParserEnd },
 	{ tag:"Port", format:'u', IXML_FIELD_INFO(FMXmlConfig_t, port) },
@@ -8160,11 +8197,17 @@ static void FmSharedXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *fie
 			return;
 		}
 #endif
-		if (fmp->config_consistency_check_level != UNDEFINED_XML32 && fmp->config_consistency_check_level > CHECK_ACTION_CCC_LEVEL) {
-			IXmlParserPrintError(state, "Fm ConfigConsistencyCheckLevel must be set to 0, 1, or 2");
-			freeXmlMemory(fmp, sizeof(FMXmlConfig_t), "FMXmlConfig_t FmSharedXmlParserEnd()");
-			return;
-		}
+		if (fmp->config_consistency_check_level != UNDEFINED_XML32 ) {
+			if (fmp->config_consistency_check_level == NO_CHECK_CCC_LEVEL){
+				XmlParsePrintWarning("Fm ConfigConsistencyCheckLevel = 0 is deprecated. Switched to 1");
+				fmp->config_consistency_check_level = CHECK_NO_ACTION_CCC_LEVEL;
+			}
+			else if(fmp->config_consistency_check_level > CHECK_ACTION_CCC_LEVEL)  {
+			    IXmlParserPrintError(state, "Fm ConfigConsistencyCheckLevel must be set to  1 or 2");
+			    freeXmlMemory(fmp, sizeof(FMXmlConfig_t), "FMXmlConfig_t FmSharedXmlParserEnd()");
+			    return;
+            }  
+        }
 	}
 
 	// save Fm config data for this instance
@@ -8421,6 +8464,7 @@ static IXML_FIELD CommonSharedFields[] = {
 	{ tag:"CoreDumpDir", format:'s', IXML_FIELD_INFO(FMXmlConfig_t, CoreDumpDir) },
 	{ tag:"CoreDumpLimit", format:'s', IXML_FIELD_INFO(FMXmlConfig_t, CoreDumpLimit) },
 	{ tag:"SslSecurityEnabled", format:'u', IXML_FIELD_INFO(FMXmlConfig_t, SslSecurityEnabled) },
+	{ tag:"SslSecurityEnable", format:'u', IXML_FIELD_INFO(FMXmlConfig_t, SslSecurityEnabled) },
 #ifndef __VXWORKS__
 	{ tag:"SslSecurityDir", format:'s', IXML_FIELD_INFO(FMXmlConfig_t, SslSecurityDir) },
 #endif
@@ -8430,6 +8474,7 @@ static IXML_FIELD CommonSharedFields[] = {
 	{ tag:"SslSecurityFmCertChainDepth", format:'u', IXML_FIELD_INFO(FMXmlConfig_t, SslSecurityFmCertChainDepth) },
 	{ tag:"SslSecurityFmDHParameters", format:'s', IXML_FIELD_INFO(FMXmlConfig_t, SslSecurityFmDHParameters) },
 	{ tag:"SslSecurityFmCaCRLEnabled", format:'u', IXML_FIELD_INFO(FMXmlConfig_t, SslSecurityFmCaCRLEnabled) },
+	{ tag:"SslSecurityFmCaCRLEnable", format:'u', IXML_FIELD_INFO(FMXmlConfig_t, SslSecurityFmCaCRLEnabled) },
 	{ tag:"SslSecurityFmCaCRL", format:'s', IXML_FIELD_INFO(FMXmlConfig_t, SslSecurityFmCaCRL) },
 	{ tag:"Priority", format:'u', IXML_FIELD_INFO(FMXmlConfig_t, priority) },
 	{ tag:"ElevatedPriority", format:'u', IXML_FIELD_INFO(FMXmlConfig_t, elevated_priority) },
@@ -8513,10 +8558,16 @@ static void CommonSharedXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD 
 			return;
 		}
 #endif
-		if (fmp->config_consistency_check_level != UNDEFINED_XML32 && fmp->config_consistency_check_level > CHECK_ACTION_CCC_LEVEL) {
-			IXmlParserPrintError(state, "Sm ConfigConsistencyCheckLevel must be set to 0, 1, or 2");
-			freeXmlMemory(fmp, sizeof(FMXmlConfig_t), "FMXmlConfig_t CommonSharedXmlParserEnd()");
-			return;
+		if (fmp->config_consistency_check_level != UNDEFINED_XML32 ) {
+			if (fmp->config_consistency_check_level == NO_CHECK_CCC_LEVEL) {
+               XmlParsePrintWarning("SM ConfigConsistencyCheckLevel = 0 is deprecated. Switched to 1");
+               fmp->config_consistency_check_level = CHECK_NO_ACTION_CCC_LEVEL;
+			}
+			else if (fmp->config_consistency_check_level > CHECK_ACTION_CCC_LEVEL ) {
+			   IXmlParserPrintError(state, "Sm ConfigConsistencyCheckLevel must be set to 1 or 2");
+			   freeXmlMemory(fmp, sizeof(FMXmlConfig_t), "FMXmlConfig_t CommonSharedXmlParserEnd()");
+			   return;
+			}
 		}
 	}
 
@@ -8917,7 +8968,12 @@ void* getParserMemory(size_t size)
 {
 	void* memory;
 	memory = getXmlMemory((uint32_t)size, "getParserMemory()");
+
+	if (memory == NULL)
+		return NULL;
+
 	memset(memory, 0, size);
+
 	return memory;
 }
 

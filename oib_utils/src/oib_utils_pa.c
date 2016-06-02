@@ -2043,8 +2043,7 @@ iba_pa_multi_mad_group_stats_response_query(
     IN PQUERY                       query,
     IN char                         *group_name,
     OUT PQUERY_RESULT_VALUES        *pquery_result,
-    OUT uint32        				*amod,
-    IN COMMAND_CONTROL_PARAMETERS   *query_control_parameters OPTIONAL,
+	IN COMMAND_CONTROL_PARAMETERS   *query_control_parameters OPTIONAL,
     IN STL_PA_IMAGE_ID_DATA         *image_id
     )
 {
@@ -2113,7 +2112,6 @@ iba_pa_multi_mad_group_stats_response_query(
                     oib_dump_rmpp_response(rsp_mad);
                 }
                 data = oib_get_rmpp_mad_data(rsp_mad);
-    			*amod = ntohll(((struct umad_hdr*)umad_get_mad(rsp_mad))->attr_mod);
                 if (port->pa_verbose) 
                 {
                     DBGPRINT("Response Data:\n");
@@ -2389,7 +2387,6 @@ iba_pa_multi_mad_focus_ports_response_query (
                     oib_dump_rmpp_response(rsp_mad);
                 }
                 data = oib_get_rmpp_mad_data(rsp_mad);
-
                 // translate the data.
                 pa_result = (STL_PA_FOCUS_PORTS_RESULTS *)query_result->QueryResult;
                 pa_data = pa_result->FocusPortsRecords;
@@ -2554,8 +2551,7 @@ done:
  * @param query                     Pointer to the query 
  * @param vf_name                	VF name 
  * @param pquery_result             Pointer to query result to be filled. The caller has to 
- *                                  to free the buffer. 
- * @param amod                      Pointer to fill response amod.
+ *                                  to free the buffer.
  * @param query_control_parameters  Optional query control parameters (retry, timeout). 
  * @param image_id                  Pointer to the image ID. 
  *
@@ -2569,7 +2565,6 @@ iba_pa_multi_mad_vf_info_response_query(
     IN PQUERY                       query,
     IN char                         *vf_name,
     OUT PQUERY_RESULT_VALUES        *pquery_result,
-    OUT uint32        				*amod,
     IN COMMAND_CONTROL_PARAMETERS   *query_control_parameters OPTIONAL,
     IN STL_PA_IMAGE_ID_DATA         *image_id
     )
@@ -2639,7 +2634,6 @@ iba_pa_multi_mad_vf_info_response_query(
                     oib_dump_rmpp_response(rsp_mad);
                 }
                 data = oib_get_rmpp_mad_data(rsp_mad);
-    			*amod = ntohll(((struct umad_hdr*)umad_get_mad(rsp_mad))->attr_mod);
                 if (port->pa_verbose) 
                 {
                     DBGPRINT("Response Data:\n");
@@ -3076,7 +3070,6 @@ iba_pa_multi_mad_vf_focus_ports_response_query (
                     oib_dump_rmpp_response(rsp_mad);
                 }
                 data = oib_get_rmpp_mad_data(rsp_mad);
-
                 // translate the data.
                 pa_result = (STL_PA_VF_FOCUS_PORTS_RESULTS *)query_result->QueryResult;
                 pa_data = pa_result->FocusPortsRecords;
@@ -3801,7 +3794,6 @@ pa_client_release_vf_list(
  * @param group_name            Pointer to group name 
  * @param pm_image_id_resp      Pointer to image ID of group info returned. 
  * @param pm_group_info         Pointer to group info to fill. 
- * @param amod                  Pointer to fill response amod. 
  *
  * @return 
  *   FSUCCESS - Get successful
@@ -3813,8 +3805,7 @@ pa_client_get_group_info(
     STL_PA_IMAGE_ID_DATA       pm_image_id_query,
     char                *group_name, 
     STL_PA_IMAGE_ID_DATA       *pm_image_id_resp, 
-    STL_PA_PM_GROUP_INFO_DATA     *pm_group_info,
-	uint32              *amod
+    STL_PA_PM_GROUP_INFO_DATA     *pm_group_info
     )
 {
     FSTATUS                 fstatus = FERROR;
@@ -3842,7 +3833,7 @@ pa_client_get_group_info(
              iba_pa_query_result_type_msg(query.OutputType));
 
     fstatus = iba_pa_multi_mad_group_stats_response_query( 
-       port, &query, group_name, &query_results, amod, NULL, &image_id );
+       port, &query, group_name, &query_results, NULL, &image_id );
 
     if (!query_results)
     {
@@ -4268,9 +4259,8 @@ pa_client_get_group_focus(
              iba_pa_query_input_type_msg(query.InputType),
              iba_pa_query_result_type_msg(query.OutputType));
 
-    fstatus = iba_pa_multi_mad_focus_ports_response_query( 
-       port, &query, group_name, select, start, range, &query_results,
-       NULL, &image_id );
+    fstatus = iba_pa_multi_mad_focus_ports_response_query(port, &query,
+		group_name, select, start, range, &query_results, NULL, &image_id );
 
     if (!query_results)
     {
@@ -4419,9 +4409,8 @@ pa_client_get_vf_focus(
              iba_pa_query_input_type_msg(query.InputType),
              iba_pa_query_result_type_msg(query.OutputType));
 
-	fstatus = iba_pa_multi_mad_vf_focus_ports_response_query(
-		port, &query, vf_name, select, start, range, &query_results,
-		NULL, &image_id);
+	fstatus = iba_pa_multi_mad_vf_focus_ports_response_query(port, &query,
+		vf_name, select, start, range, &query_results, NULL, &image_id);
 
     if (!query_results)
     {
@@ -4566,37 +4555,38 @@ pa_client_get_port_stats(
         DBGPRINT("\tRcvPkts = %" PRIu64 "\n", response->portRcvPkts);
         DBGPRINT("\tMulticastXmitPkts = %" PRIu64 "\n", response->portMulticastXmitPkts);
         DBGPRINT("\tMulticastRcvPkts = %" PRIu64 "\n", response->portMulticastRcvPkts);
-        DBGPRINT( "\tLocalLinkIntegrityErrors = %"PRIu64"\n",
-                  response->localLinkIntegrityErrors );
-        DBGPRINT( "\tFMConfigErrors = %"PRIu64"\n",
-                  response->fmConfigErrors );
+
+        DBGPRINT("\tLinkQualityIndicator = %u\n", response->lq.s.linkQualityIndicator);
+        DBGPRINT("\tUncorrectableErrors = %u\n", response->uncorrectableErrors); // 8 bit
+        DBGPRINT("\tLinkDowned = %u\n", response->linkDowned);	// 32 bit
+        DBGPRINT("\tNumLanesDown = %u\n", response->lq.s.numLanesDown);
         DBGPRINT("\tRcvErrors = %"PRIu64"\n", response->portRcvErrors);
-        DBGPRINT( "\tExcessiveBufferOverruns = %"PRIu64"\n",
-                  response->excessiveBufferOverruns );
-        DBGPRINT( "\tRcvConstraintErrors = %"PRIu64"\n",
+        DBGPRINT("\tExcessiveBufferOverruns = %"PRIu64"\n",
+                response->excessiveBufferOverruns );
+        DBGPRINT("\tFMConfigErrors = %"PRIu64"\n",
+                  response->fmConfigErrors );
+        DBGPRINT( "\tLinkErrorRecovery = %u\n", response->linkErrorRecovery);	// 32 bit
+        DBGPRINT("\tLocalLinkIntegrityErrors = %"PRIu64"\n",
+                  response->localLinkIntegrityErrors );
+        DBGPRINT("\tRcvRemotePhysicalErrors = %"PRIu64"\n",
+                  response->portRcvRemotePhysicalErrors);
+        DBGPRINT("\tXmitConstraintErrors = %"PRIu64"\n",
+                  response->portXmitConstraintErrors );
+        DBGPRINT("\tRcvConstraintErrors = %"PRIu64"\n",
                   response->portRcvConstraintErrors );
-        DBGPRINT( "\tRcvSwitchRelayErrors = %"PRIu64"\n",
+        DBGPRINT("\tRcvSwitchRelayErrors = %"PRIu64"\n",
                   response->portRcvSwitchRelayErrors);
         DBGPRINT("\tXmitDiscards = %"PRIu64"\n", response->portXmitDiscards);
-        DBGPRINT( "\tXmitConstraintErrors = %"PRIu64"\n",
-                  response->portXmitConstraintErrors );
-        DBGPRINT( "\tRcvRemotePhysicalErrors = %"PRIu64"\n",
-                  response->portRcvRemotePhysicalErrors);
-        DBGPRINT( "\tCongDiscards = %"PRIu64"\n",
+        DBGPRINT("\tCongDiscards = %"PRIu64"\n",
                   response->swPortCongestion);
-        DBGPRINT("\tXmitWait = %"PRIu64"\n", response->portXmitWait);
         DBGPRINT("\tRcvFECN = %"PRIu64"\n", response->portRcvFECN);
         DBGPRINT("\tRcvBECN = %"PRIu64"\n", response->portRcvBECN);
+        DBGPRINT("\tMarkFECN = %"PRIu64"\n", response->portMarkFECN);
         DBGPRINT("\tXmitTimeCong = %"PRIu64"\n", response->portXmitTimeCong);
+        DBGPRINT("\tXmitWait = %"PRIu64"\n", response->portXmitWait);
         DBGPRINT("\tXmitWastedBW = %"PRIu64"\n", response->portXmitWastedBW);
         DBGPRINT("\tXmitWaitData = %"PRIu64"\n", response->portXmitWaitData);
         DBGPRINT("\tRcvBubble = %"PRIu64"\n", response->portRcvBubble);
-        DBGPRINT("\tMarkFECN = %"PRIu64"\n", response->portMarkFECN);
-        DBGPRINT( "\tLinkErrorRecovery = %u\n", response->linkErrorRecovery);	// 32 bit
-        DBGPRINT("\tLinkDowned = %u\n", response->linkDowned);	// 32 bit
-        DBGPRINT("\tUncorrectableErrors = %u\n", response->uncorrectableErrors); // 8 bit
-        DBGPRINT("\tNumLanesDown = %u\n", response->lq.s.numLanesDown);
-        DBGPRINT("\tLinkQualityIndicator = %u\n", response->lq.s.linkQualityIndicator);
         if (pm_image_id_resp)
             *pm_image_id_resp = response->imageId;
         if (flags)
@@ -4714,14 +4704,14 @@ pa_client_get_vf_port_stats(
         DBGPRINT("\tRcvPkts = %" PRIu64 "\n", response->portVFRcvPkts);
         DBGPRINT("\tXmitDiscards = %"PRIu64"\n", response->portVFXmitDiscards);
         DBGPRINT("\tCongDiscards = %"PRIu64"\n", response->swPortVFCongestion);
-        DBGPRINT("\tXmitWait = %"PRIu64"\n", response->portVFXmitWait);
         DBGPRINT("\tRcvFECN = %"PRIu64"\n", response->portVFRcvFECN);
         DBGPRINT("\tRcvBECN = %"PRIu64"\n", response->portVFRcvBECN);
+        DBGPRINT("\tMarkFECN = %"PRIu64"\n", response->portVFMarkFECN);
         DBGPRINT("\tXmitTimeCong = %"PRIu64"\n", response->portVFXmitTimeCong);
+        DBGPRINT("\tXmitWait = %"PRIu64"\n", response->portVFXmitWait);
         DBGPRINT("\tXmitWastedBW = %"PRIu64"\n", response->portVFXmitWastedBW);
         DBGPRINT("\tXmitWaitData = %"PRIu64"\n", response->portVFXmitWaitData);
         DBGPRINT("\tRcvBubble = %"PRIu64"\n", response->portVFRcvBubble);
-        DBGPRINT("\tMarkFECN = %"PRIu64"\n", response->portVFMarkFECN);
         if (pm_image_id_resp)
             *pm_image_id_resp = response->imageId;
         if (flags)

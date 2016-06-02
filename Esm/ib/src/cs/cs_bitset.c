@@ -41,8 +41,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // DEPENDENCIES								                                 //
 //    cs_bitset.h							                                 //
 //									                                         //
-// RESPONSIBLE ENGINEER							                             //
-//    Renae Weber  							                                 //
 //									                                         //
 //===========================================================================//	   
 

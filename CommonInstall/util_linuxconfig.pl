@@ -255,12 +255,17 @@ sub rebuild_ramdisk()
 END {
 	if ($CallDracut) {
 		my $cmd = "/usr/bin/dracut";
+		my $kver = `uname -r | xargs echo -n`;
+		my $tmpfile = "/tmp/initramfs-$kver.img";
 
 		# Reopen logfile
 		open_log($DracutOutputLogFile);
 		if ( -e $cmd ) {
 			NormalPrint("Rebuilding boot image with \"$cmd -f\"...");
-			if (system("$cmd -f") == 0) {
+			# Try to build a temporary image first as a dry-run to make sure
+			# a failed run will not destroy an existing image.
+			if (system("$cmd -f $tmpfile") == 0) {
+				system("mv -f $tmpfile /boot/");
 				NormalPrint("done.\n");
 			} else {
 				NormalPrint("failed.\n");

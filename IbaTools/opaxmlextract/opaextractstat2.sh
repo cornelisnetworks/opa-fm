@@ -46,16 +46,52 @@
 #
 # Outputs:
 #   Information about program usage and parameters
+
+
+
 usage()
 {
-    echo "Usage: opaextractstat2 topology_file" >&2
+    echo "Usage:  ${cmd} topology_file [opareport options]" >&2
+    echo "       or  ${cmd} --help" >&2
+    echo "   --help - produce full help text" >&2
+    echo "   [opareport options] - options will be passed to opareport." >&2
+    echo >&2
     exit 2
 }
 
+Usage_full()
+{
+    echo "Usage: ${cmd} topology_file [opareport options]" >&2
+    echo "       or  ${cmd} --help" >&2
+    echo "   --help - produce full help text" >&2
+    echo "   [opareport options] - options will be passed to opareport." >&2
+    echo >&2
+    echo "${cmd} is a front end to the opareport and opaxmlextract tools that" >&2
+    echo "performs an error analysis of a fabric and provides augmented information" >&2
+    echo "from a topology file including all error counters." >&2
+    echo "The output is in a CSV format suitable for importing into a spreadsheet or" >&2
+    echo "parsed by other scripts." >&2
+    echo >&2
+    echo "for example" >&2
+    echo "	${cmd} topology_file" >&2
+    echo >&2
+    echo "	${cmd} topology_file -c my_opamon.conf" >&2
+    echo >&2
+    echo "See the man page for \"opareport\" for the full set of options." >&2
+    echo >&2
+	exit 0
+
+}
 
 ## Main function:
 
-if [[ $# -ne 1 || "$1" == -* ]]
+cmd=`basename $0`
+if [ x"$1" = "x--help" ]
+then
+	Usage_full
+fi
+
+if [[ $# -lt 1 || "$1" == -* ]]
 then
     usage
 fi

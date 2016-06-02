@@ -229,7 +229,7 @@ sm_set_portPkey(Topology_t *topop, Node_t *nodep, Port_t *portp,
                             pkeyEntryCntr++;
 						} else {
 							IB_LOG_ERROR_FMT(__func__,
-								   "Node %s ["FMT_U64":%d] Port:%d,  Pkey 0x%04x"
+								   "Node %s ["FMT_U64":%d] Pkey 0x%04x"
 								   "PKEYEntries:%d (too many unique PKEYs defined in VFs", 
 								   sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index, pkey, pkeyEntry);
 							return (VSTATUS_BAD);
@@ -312,7 +312,7 @@ sm_set_portPkey(Topology_t *topop, Node_t *nodep, Port_t *portp,
                     pkeyEntryCntr++;
 				} else {
 					IB_LOG_ERROR_FMT(__func__,
-						   "Node %s ["FMT_U64":%d] Port:%d,  Pkey 0x%04x"
+						   "Node %s ["FMT_U64":%d] Pkey 0x%04x"
 						   "PKEYEntries:%d (too many unique PKEYs defined in VFs", 
 						   sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index, pkey, pkeyEntry);
 					return (VSTATUS_BAD);

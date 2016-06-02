@@ -205,14 +205,16 @@ sub os_vendor_version($)
 
 	my $rval = "";
 	my $mn = "";
-	if ( -e "/etc/os-release" && -e "/etc/redhat-release" ) {
+	if ( -e "/etc/os-release" ) {
 		$rval=`cat /etc/os-release | grep VERSION_ID | cut -d'=' -f2 | tr -d [\\"\\.0]`;
 		chop($rval);
 		$rval="ES".$rval;
-		if (!system("grep -qi centos /etc/redhat-release")) {
-			$rval = `cat /etc/redhat-release | cut -d' ' -f4`;
-			$rval =~ m/(\d+).(\d+)/;
-			$rval="ES".$1.$2;
+		if ( -e "/etc/redhat-release" ) {
+			if (!system("grep -qi centos /etc/redhat-release")) {
+				$rval = `cat /etc/redhat-release | cut -d' ' -f4`;
+				$rval =~ m/(\d+).(\d+)/;
+				$rval="ES".$1.$2;
+			}	
 		}
 	} elsif ($vendor eq "apple") {
 		$rval=`sw_vers -productVersion|cut -f1-2 -d.`;

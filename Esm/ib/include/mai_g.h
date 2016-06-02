@@ -73,8 +73,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* DEPENDENCIES                                                             */
 /*      VIEO_THREADED                   Global definition                   */
 /*                                                                          */
-/* RESPONSIBLE ENGINEER                                                     */
-/*      Jim Mott, VIEO, Inc.                                                */
 /*                                                                          */
 /* HISTORY                                                                  */
 /*          NAME             DATE                REMARKS                    */

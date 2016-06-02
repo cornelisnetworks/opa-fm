@@ -82,7 +82,8 @@ typedef struct _STL_PA_PM_Util_Stats {
 	uint32					avgKPps;
 	uint32					minKPps;
 	uint32					maxKPps;
-	uint32					reserved;
+	uint16					pmaFailedPorts;
+	uint16					topoFailedPorts;
 } PACK_SUFFIX STL_PA_PM_UTIL_STATS;
 
 /* Error statistical summary */
@@ -121,9 +122,6 @@ typedef struct STL_PMERRSTATSTRUCT {
 	STL_PA_PM_ERROR_SUMMARY		errorMaximums;
 	STL_PMERRBUCKET_T			ports[STL_PM_ERR_BUCKETS];
 } PACK_SUFFIX STL_PMERRSTAT_T;
-
-/* flag to indicate that there is one or more failed ports in the group or vf INFO query */
-#define STL_PA_INFO_COUNTER_FAILED_PORT 0x100
 
 typedef struct _STL_PA_Group_Info_Data {
 	char					groupName[STL_PM_GROUPNAMELEN]; // \0 terminated.
@@ -333,13 +331,31 @@ typedef struct _STL_FOCUS_PORTS_REQ {
 	uint32					range;
 } PACK_SUFFIX STL_FOCUS_PORTS_REQ;
 
+#define STL_PA_FOCUS_FLAG_OK           0
+#define STL_PA_FOCUS_FLAG_PMA_IGNORE   1
+#define STL_PA_FOCUS_FLAG_PMA_FAILURE  2
+#define STL_PA_FOCUS_FLAG_TOPO_FAILURE 3
+
+static __inline
+const char* StlFocusFlagToText(uint8 flag)
+{
+	switch (flag) {
+	case STL_PA_FOCUS_FLAG_OK:           return "OK";
+	case STL_PA_FOCUS_FLAG_PMA_IGNORE:   return "PMA Ignore";
+	case STL_PA_FOCUS_FLAG_PMA_FAILURE:  return "PMA Failure";
+	case STL_PA_FOCUS_FLAG_TOPO_FAILURE: return "Topo Failure";
+	default:                             return "Unknown";
+	}
+}
+
 typedef struct _STL_FOCUS_PORTS_RSP {
 	STL_PA_IMAGE_ID_DATA	imageId;
 	uint32					nodeLid;
 	uint8					portNumber;
 	uint8					rate;	// IB_STATIC_RATE - 5 bit value
 	uint8					mtu;	// enum IB_MTU - 4 bit value
-	uint8					reserved;
+	IB_BITFIELD2(uint8,     localFlags : 4,
+		                    neighborFlags : 4)
 	uint64					value;		// list sorting factor
 	uint64					nodeGUID;
 	char					nodeDesc[STL_PM_NODEDESCLEN]; // \0 terminated.
@@ -378,7 +394,7 @@ typedef struct _STL_PA_IMAGE_INFO_DATA {
 	uint32					numSkippedNodes;
 	uint32					numSkippedPorts;
 	uint32					numUnexpectedClearPorts;
-	uint32					reserved2;
+	uint32					imageInterval;
 	STL_SMINFO_DATA			SMInfo[2];
 } PACK_SUFFIX STL_PA_IMAGE_INFO_DATA;
 
@@ -488,7 +504,8 @@ typedef struct _STL_PA_VF_FOCUS_PORTS_RSP {
 	uint8					portNumber;
 	uint8					rate;	// IB_STATIC_RATE - 5 bit value
 	uint8					mtu;	// enum IB_MTU - 4 bit value
-	uint8					reserved;
+	IB_BITFIELD2(uint8,     localFlags : 4,
+		                    neighborFlags : 4)
 	uint64					value;		// list sorting factor
 	uint64					nodeGUID;
 	char					nodeDesc[STL_PM_NODEDESCLEN]; // \0 terminated.
@@ -732,6 +749,8 @@ BSWAP_STL_PA_PM_GROUP_INFO(STL_PA_PM_GROUP_INFO_DATA *pRecord, boolean isRequest
 	pRecord->internalUtilStats.avgKPps		= ntoh32(pRecord->internalUtilStats.avgKPps);
 	pRecord->internalUtilStats.minKPps		= ntoh32(pRecord->internalUtilStats.minKPps);
 	pRecord->internalUtilStats.maxKPps		= ntoh32(pRecord->internalUtilStats.maxKPps);
+	pRecord->internalUtilStats.pmaFailedPorts = ntoh16(pRecord->internalUtilStats.pmaFailedPorts);
+	pRecord->internalUtilStats.topoFailedPorts = ntoh16(pRecord->internalUtilStats.topoFailedPorts);
 
 	pRecord->sendUtilStats.totalMBps		= ntoh64(pRecord->sendUtilStats.totalMBps);
 	pRecord->sendUtilStats.totalKPps		= ntoh64(pRecord->sendUtilStats.totalKPps);
@@ -744,6 +763,8 @@ BSWAP_STL_PA_PM_GROUP_INFO(STL_PA_PM_GROUP_INFO_DATA *pRecord, boolean isRequest
 	pRecord->sendUtilStats.avgKPps			= ntoh32(pRecord->sendUtilStats.avgKPps);
 	pRecord->sendUtilStats.minKPps			= ntoh32(pRecord->sendUtilStats.minKPps);
 	pRecord->sendUtilStats.maxKPps			= ntoh32(pRecord->sendUtilStats.maxKPps);
+	pRecord->sendUtilStats.pmaFailedPorts   = ntoh16(pRecord->sendUtilStats.pmaFailedPorts);
+	pRecord->sendUtilStats.topoFailedPorts  = ntoh16(pRecord->sendUtilStats.topoFailedPorts);
 
 	pRecord->recvUtilStats.totalMBps		= ntoh64(pRecord->recvUtilStats.totalMBps);
 	pRecord->recvUtilStats.totalKPps		= ntoh64(pRecord->recvUtilStats.totalKPps);
@@ -756,6 +777,8 @@ BSWAP_STL_PA_PM_GROUP_INFO(STL_PA_PM_GROUP_INFO_DATA *pRecord, boolean isRequest
 	pRecord->recvUtilStats.avgKPps			= ntoh32(pRecord->recvUtilStats.avgKPps);
 	pRecord->recvUtilStats.minKPps			= ntoh32(pRecord->recvUtilStats.minKPps);
 	pRecord->recvUtilStats.maxKPps			= ntoh32(pRecord->recvUtilStats.maxKPps);
+	pRecord->recvUtilStats.pmaFailedPorts   = ntoh16(pRecord->recvUtilStats.pmaFailedPorts);
+	pRecord->recvUtilStats.topoFailedPorts  = ntoh16(pRecord->recvUtilStats.topoFailedPorts);
 
 	pRecord->internalErrors.errorMaximums.integrityErrors			= ntoh32(pRecord->internalErrors.errorMaximums.integrityErrors);
 	pRecord->internalErrors.errorMaximums.congestionErrors			= ntoh32(pRecord->internalErrors.errorMaximums.congestionErrors);
@@ -946,6 +969,7 @@ BSWAP_STL_PA_IMAGE_INFO(STL_PA_IMAGE_INFO_DATA *pRecord)
 	pRecord->numSkippedNodes         = ntoh32(pRecord->numSkippedNodes);
 	pRecord->numSkippedPorts         = ntoh32(pRecord->numSkippedPorts);
 	pRecord->numUnexpectedClearPorts = ntoh32(pRecord->numUnexpectedClearPorts);
+	pRecord->imageInterval           = ntoh32(pRecord->imageInterval);
 	for (i = 0; i < 2; i++) {
 		pRecord->SMInfo[i].lid        = ntoh32(pRecord->SMInfo[i].lid);
 		pRecord->SMInfo[i].smPortGuid = ntoh64(pRecord->SMInfo[i].smPortGuid);
@@ -991,6 +1015,8 @@ BSWAP_STL_PA_VF_INFO(STL_PA_VF_INFO_DATA *pRecord, boolean isRequest)
 	pRecord->internalUtilStats.avgKPps		= ntoh32(pRecord->internalUtilStats.avgKPps);
 	pRecord->internalUtilStats.minKPps		= ntoh32(pRecord->internalUtilStats.minKPps);
 	pRecord->internalUtilStats.maxKPps		= ntoh32(pRecord->internalUtilStats.maxKPps);
+	pRecord->internalUtilStats.pmaFailedPorts = ntoh16(pRecord->internalUtilStats.pmaFailedPorts);
+	pRecord->internalUtilStats.topoFailedPorts = ntoh16(pRecord->internalUtilStats.topoFailedPorts);
 
 	pRecord->internalErrors.errorMaximums.integrityErrors			= ntoh32(pRecord->internalErrors.errorMaximums.integrityErrors);
 	pRecord->internalErrors.errorMaximums.congestionErrors			= ntoh32(pRecord->internalErrors.errorMaximums.congestionErrors);

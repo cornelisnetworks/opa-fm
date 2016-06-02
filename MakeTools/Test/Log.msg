@@ -30,10 +30,9 @@
 #[ICS VERSION STRING: unknown]
 #
 # $Source: /cvs/ics/MakeTools/Test/Log.msg,v $
-# $Author: mwheinz $
-# $Name: ALL_EMB_ATOM_ALL_10_0-BRANCH_10_0_1_0_2 $
-# $Revision: 1.3 $
-# $Date: 2015/01/28 20:18:11 $
+# $Name: ALL_EMB_ATOM_ALL_10_1-BRANCH_10_1_0_0_145 $
+# $Revision: 1.4 $
+# $Date: 2016/04/06 10:49:30 $
 #
 
 # 

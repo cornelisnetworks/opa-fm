@@ -42,14 +42,34 @@ else
 fi
 
 
-PROGNAME="$0"
+PROGNAME=`basename $0`
 
 Usage() {
 	echo "Usage: $PROGNAME [-i fm_instance] cmd [args]" >&2
-	echo "    fm_instance - instance number (0-7) to act on" >&2
-	echo "                  specify multiple -i options as needed" >&2
-	echo "                  default is all instances" >&2
+	echo "      or $PROGNAME --help " >&2
+	echo " " >&2
+	echo "	--help           - show this help text." >&2
+	echo "	-i fm_instance   - FM instance number (0-7) to act on" >&2
+	echo "                     specify multiple -i options as needed" >&2
+	echo "                     default is all instances" >&2
+	echo " " >&2
+	echo " See opafmcmd for more details." >&2
 	exit 2
+}
+
+Usage_full() {
+	echo "Usage: $PROGNAME [-i fm_instance] cmd [args]" >&2
+	echo "      or $PROGNAME --help " >&2
+	echo " " >&2
+	echo "	--help		 - show this help text." >&2
+	echo "	-i fm_instance	 - FM instance number (0-7) to act on" >&2
+	echo "			   specify multiple -i options as needed" >&2
+	echo "			   default is all instances" >&2
+	echo " " >&2
+	echo "$PROGNAME executes a command to all FM instances listed" >&2
+	echo "in the options. By default, the command is sent to all" >&2
+	echo "instances of the FM. See opafmcmd for more details" >&2 
+	exit 0
 }
 
 die () {
@@ -60,20 +80,27 @@ die () {
 	exit 1
 }
 
+if [ x"$1" = "x--help" ]
+then
+	Usage_full
+fi
+
 INSTANCES=
 while getopts i: param
 do
 	case $param in
 	i)	INSTANCES="$INSTANCES $OPTARG";;
-	?) Usage;;
+	?)	Usage;;
 	esac
 done
 shift $((OPTIND -1))
+
 if [ $# -le 0 ]
 then
-	echo "$0: Error: Must specify a command" >&2
+	echo "$0: Error: Must specify a command" >&2 
 	Usage
 fi
+
 if [ -z "$INSTANCES" ]
 then
 	INSTANCES="0 1 2 3 4 5 6 7"

@@ -35,8 +35,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 * DESCRIPTION
 *   Libnet protocol header file
 *
-* RESPONSIBLE ENGINEER:
-*   Jason Wiseman 
 *
 * HISTORY
 *
@@ -58,6 +56,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifdef __LINUX__
     #include <sys/types.h>
     #include "unixdefs.h"
+    #include <netinet/tcp.h>
 #elif __WINDOWS__
     #include "windowsdefs.h"
     #define WINDOWS

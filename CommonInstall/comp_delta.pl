@@ -327,7 +327,7 @@ my %delta_comp_info_rhel72 = (
 					UserRpms =>	  [ "libhfi1verbs", "libhfi1verbs-devel",
 							    "hfi1-psm",
 							    "hfi1-psm-devel", "hfi1-psm-compat",
-							    "hfi1-diagtools-sw",
+							    "hfi1-diagtools-sw", "hfidiags", 
 							    "hfi1-firmware", "hfi1-firmware_debug"
 					    ],
 					DebugRpms =>  [ "hfi1_debuginfo",
@@ -623,7 +623,7 @@ my @delta_user_srpms_other = (
 );
 my @delta_user_srpms_rhel72 = (
 		"opa-scripts", "mpi-selector", "ibacm",
-		"libhfi1verbs", "hfi1-psm", "hfi1-diagtools-sw", "hfi1-firmware", "hfi1-firmware_debug",
+		"libhfi1verbs", "hfi1-psm", "hfi1-diagtools-sw", "hfidiags", "hfi1-firmware", "hfi1-firmware_debug",
  		"mvapich2", "openmpi", "gasnet", "openshmem", "openshmem-test-suite",
 		"shmem-benchmarks", "srptools", "hfi1_uefi"
 );
@@ -835,6 +835,12 @@ my %delta_srpm_info_rhel72 = (
 					  PostReq => "",
 					  PartOf => "", # filled in at runtime
 					  BuildPrereq => [ 'readline-devel', 'ncurses-devel', ],
+					},
+	"hfidiags" =>	{ Available => "",
+					  Builds => "hfidiags",
+					  PostReq => "",
+					  PartOf => "", # filled in at runtime
+					  BuildPrereq => [],
 					},
 	"hfi1-firmware" =>	{ Available => "",
 					  Builds => "hfi1-firmware",
@@ -2802,10 +2808,7 @@ sub uninstall_opa_stack($$)
 # determine if the given capability is configured for Autostart at boot
 sub IsAutostart2_intel_hfi()
 {
-	my $WhichStartup = $delta_comp_info{'intel_hfi'}{'StartupScript'};
-	my $ret = IsAutostart($WhichStartup);	# just to be safe, test this too
-
-    return ($ret && ! is_blacklisted('hfi1'));
+    return (! is_blacklisted('hfi1'));
 }
 sub autostart_desc_intel_hfi()
 {
@@ -2814,14 +2817,18 @@ sub autostart_desc_intel_hfi()
 # enable autostart for the given capability
 sub enable_autostart2_intel_hfi()
 {
-	remove_blacklist('hfi1');
-	rebuild_ramdisk();
+	if (! IsAutostart2_intel_hfi()) {
+		remove_blacklist('hfi1');
+		rebuild_ramdisk();
+	}
 }
 # disable autostart for the given capability
 sub disable_autostart2_intel_hfi()
 {
-	add_blacklist('hfi1');
-	rebuild_ramdisk();
+	if (IsAutostart2_intel_hfi()) {
+		add_blacklist('hfi1');
+		rebuild_ramdisk();
+	}
 }
 
 sub available_intel_hfi()

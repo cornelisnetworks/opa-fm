@@ -1857,6 +1857,8 @@ static IXML_FIELD PortDataFields[] = {
 	{ tag:"SubnetPrefix", format:'H', IXML_FIELD_INFO(PortData, PortInfo.SubnetPrefix) },
 	{ tag:"LID", format:'H', IXML_FIELD_INFO(PortData, PortInfo.LID) },
 	{ tag:"SMLID", format:'H', IXML_FIELD_INFO(PortData, PortInfo.MasterSMLID) },
+	{ tag:"IPAddrIPV6", format:'k', format_func:IXmlOutputIPAddrIPV6, IXML_FIELD_INFO(PortData, PortInfo.IPAddrIPV6.addr), end_func:IXmlParserEndIPAddrIPV6},
+	{ tag:"IPAddrIPV4", format:'k', format_func:IXmlOutputIPAddrIPV4, IXML_FIELD_INFO(PortData, PortInfo.IPAddrIPV4.addr), end_func:IXmlParserEndIPAddrIPV4},
 	{ tag:"CapabilityMask", format:'H', IXML_FIELD_INFO(PortData, PortInfo.CapabilityMask.AsReg32) },
 	{ tag:"CapabilityMask3", format:'H', IXML_FIELD_INFO(PortData, PortInfo.CapabilityMask3.AsReg16) },
 	{ tag:"DiagCode", format:'H', IXML_FIELD_INFO(PortData, PortInfo.DiagCode.AsReg16) },

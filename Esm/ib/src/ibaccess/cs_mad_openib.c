@@ -238,7 +238,7 @@ ib_init_devport(uint32_t *devp, uint32_t *portp, uint64_t *Guidp)
 		// note that the oib interface uses 1-based devices
 		status = oib_open_port_by_num(&g_port_handle, *devp + 1, *portp);
 		if (status != FSUCCESS) {
-			// PR 128920 - MWHEINZ - This is a bit of a hack. Some parts of
+			// PR 128290 - MWHEINZ - This is a bit of a hack. Some parts of
 			// the stack use 0-based counting of ports and devices but other
 			// parts use 1-based. We assume the caller of this function 
 			// is using zero-based counting, so we add 1 when we call 
@@ -250,10 +250,7 @@ ib_init_devport(uint32_t *devp, uint32_t *portp, uint64_t *Guidp)
 			IB_EXIT(__func__, VSTATUS_BAD);
 			return VSTATUS_BAD;
 		}
-
-		if (Guidp != NULL) {
-			*Guidp = oib_get_port_guid(g_port_handle);
-		}
+		if (Guidp != NULL) *Guidp = oib_get_port_guid(g_port_handle);
 	} else {
 		IB_LOG_ERROR_FMT(__func__,
 		       "Neither Guid nor device and port were supplied");

@@ -46,6 +46,7 @@ extern int snprintf (char *str, size_t count, const char *fmt, ...);
 #include <stdarg.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <errno.h>
 #define _GNU_SOURCE
 
 #include "ixml_ib.h"
@@ -60,6 +61,10 @@ extern int snprintf (char *str, size_t count, const char *fmt, ...);
 #endif
 #ifndef IOC_SERVICE_NAME_SIZE
 #define IOC_SERVICE_NAME_SIZE 40
+#endif
+
+#ifndef SCNx8
+#define SCNx8 "x"
 #endif
 
 /* sometimes a bitfield, so need to call with value instead of ptr */
@@ -562,6 +567,50 @@ void IXmlOutputHOQLife(IXmlOutputState_t *state, const char* tag, void *data)
 	IXmlOutputHOQLifeValue(state, tag, *(uint8*)data);
 }
 
+void IXmlOutputIPAddrIPV6(IXmlOutputState_t *state, const char *tag, void *data)
+{
+	int i;
+	IXmlOutputStartTag(state, tag);
+	for (i = 0; i < 16; ++i){
+		IXmlOutputPrint(state, "%02x", ((STL_IPV6_IP_ADDR *)data)->addr[i]);
+	}
+	IXmlOutputEndTag(state, tag);
+}
+
+void IXmlOutputIPAddrIPV4(IXmlOutputState_t *state, const char *tag, void *data)
+{
+	int i;
+	IXmlOutputStartTag(state, tag);
+	for (i = 0; i < 4; ++i){
+		IXmlOutputPrint(state, "%02x", ((STL_IPV4_IP_ADDR *)data)->addr[i]);
+	}
+	IXmlOutputEndTag(state, tag);
+}
+
+void IXmlParserEndIPAddrIPV6(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	int i, ret;
+	for (i = 0; i < 16; ++i){//read in hexadecimal address 2 digits at a time
+		ret = sscanf((char *)(content + 2*i), "%2"SCNx8, &(((STL_IPV6_IP_ADDR *)IXmlParserGetField(field, object))->addr[i]));
+		if (ret != 1){
+			IXmlParserPrintError(state, "Error parsing IPV6 address:%s", strerror(errno));
+			break;
+		}
+	}
+}
+
+void IXmlParserEndIPAddrIPV4(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	int i, ret;
+	for (i = 0; i < 4; ++i){ //read in hexadecimal address 2 digits at a time
+		ret = sscanf((char *)(content + 2*i), "%2"SCNx8, &(((STL_IPV4_IP_ADDR *)IXmlParserGetField(field, object))->addr[i]));
+		if (ret != 1){
+			IXmlParserPrintError(state, "Error parsing IPV4 address:%s", strerror(errno));
+			break;
+		}
+	}
+}
+
 // parse TimeoutMult string into a uint8 field and validate value
 // does not handle "infinite".  Returns value between 0 and 31 inclusive
 boolean IXmlParseTimeoutMult_Str(IXmlParserState_t *state, XML_Char *content, unsigned len, uint8 *value)
@@ -959,6 +1008,8 @@ IXML_FIELD SwitchInfoFields[] = {
 	{ tag:"MulticastFDBCap", format:'U', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.MulticastFDBCap) },
 	{ tag:"LinearFDBTop", format:'U', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.LinearFDBTop) },
 	{ tag:"MulticastFDBTop", format:'U', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.MulticastFDBTop) },
+	{ tag:"IPAddrIPV6", format:'k', format_func:IXmlOutputIPAddrIPV6, IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.IPAddrIPV6.addr), end_func:IXmlParserEndIPAddrIPV6},
+	{ tag:"IPAddrIPV4", format:'k', format_func:IXmlOutputIPAddrIPV4, IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.IPAddrIPV4.addr), end_func:IXmlParserEndIPAddrIPV4},
 	{ tag:"LifeTimeValue", format:'k', format_func:SwitchInfoXmlOutputLifeTimeValue, end_func:IXmlParserEndNoop }, // output only bitfield
 	{ tag:"LifeTimeValue_Int", format:'K', format_func:IXmlOutputNoop, end_func:SwitchInfoXmlParserEndLifeTimeValue }, // input only bitfield
 	{ tag:"PortStateChange", format:'K', format_func:SwitchInfoXmlOutputPortStateChange, end_func:SwitchInfoXmlParserEndPortStateChange }, // bitfield

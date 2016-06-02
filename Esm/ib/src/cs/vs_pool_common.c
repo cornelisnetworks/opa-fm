@@ -41,8 +41,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *
 * DEPENDENCIES
 *
-* RESPONSIBLE ENGINEER:
-*      Firmware
 *
 * HISTORY
 *
@@ -85,8 +83,6 @@ extern Status_t vs_implpool_size (Pool_t *, uint64_t *);
 *      Status_t - On success VSTATUS_OK is returned, otherwise
 *      the cause of the error.
 *
-* RESPONSIBLE ENGINEER:
-*      Common Services
 *
 * HISTORY
 *
@@ -226,8 +222,6 @@ vs_pool_create (Pool_t * handle, uint32_t options,
 *      Status_t - On success VSTATUS_OK is returned, otherwise
 *      the cause of the error.
 *
-* RESPONSIBLE ENGINEER:
-*      Common Services
 *
 * HISTORY
 *
@@ -296,8 +290,6 @@ vs_pool_delete (Pool_t * handle)
 *      Status_t - On success VSTATUS_OK is returned, otherwise
 *      the cause of the error.
 *
-* RESPONSIBLE ENGINEER:
-*      Common Services
 *
 * HISTORY
 *
@@ -371,8 +363,6 @@ vs_pool_alloc (Pool_t * handle, size_t length, void **loc)
 *      Status_t - On success VSTATUS_OK is returned, otherwise
 *      the cause of the error.
 *
-* RESPONSIBLE ENGINEER:
-*      Common Services
 *
 * HISTORY
 *

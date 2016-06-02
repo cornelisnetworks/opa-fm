@@ -36,8 +36,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *       Common defines for FE messaging interface.  Defined 
 *       commands/responses and return codes to intereface 2.
 *
-* RESPONSIBLE ENGINEER:
-*       Jason Wiseman   
 *
 * HISTORY
 *

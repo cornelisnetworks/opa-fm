@@ -100,12 +100,14 @@ typedef struct _pmGroupConfig_s {
 
 typedef struct _pmFocusPortEntry_s {
 	STL_LID_32		lid;
-	uint32			index;
 	uint8			portNum;
 	uint8   		rate;			// IB_STATIC_RATE
 	uint8   		mtu;			// enum STL MTU
 	uint8			neighborPortNum;
 	STL_LID_32		neighborLid;
+	uint8           localFlags:4;
+	uint8           neighborFlags:4;
+	uint8           reserved[3];
 	uint64			value;
 	uint64			guid;
 	char			nodeDesc[64];	// can be 64 char w/o \0
@@ -123,7 +125,9 @@ typedef struct _pmFocusPorts_s {
 typedef struct _sortedValueEntry_s {
 	STL_LID_32					lid;
 	uint8						portNum;
-	uint8						reserved2[3];
+	uint8                       localFlags : 4;
+	uint8						neighborFlags : 4;
+	uint8						reserved2[2];
 	uint64						value;
 	uint64						neighborValue;
 	uint64						sortValue;
@@ -166,6 +170,7 @@ typedef struct _pmImageInfo_s {
 	uint32						numSkippedNodes;
 	uint32						numSkippedPorts;
 	uint32						numUnexpectedClearPorts;
+	uint32						imageInterval;
 	PmSmInfo_t					SMInfo[2];
 } PmImageInfo_t;
 
@@ -206,11 +211,11 @@ typedef struct _pmVFFocusPorts_s {
 FSTATUS paGetGroupList(Pm_t *pm, PmGroupList_t *GroupList);
 
 // get group info - caller declares Pm_T and PmGroupInfo_t, and passes pointers
-FSTATUS paGetGroupInfo(struct Pm_s *pm, char *groupName, PmGroupInfo_t *pmGroupInfo, uint64 imageId, int32 offset, uint64 *retImageId,
-		boolean *isFailedPort);
+FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo,
+    uint64 imageId, int32 offset, uint64 *returnImageId);
 
 // get group config - caller declares Pm_T and PmGroupConfig_t, and passes pointers
-FSTATUS paGetGroupConfig(struct Pm_s *pm, char *groupName, PmGroupConfig_t *pmGroupConfig, uint64 imageId, int32 offset, uint64 *retImageId);
+FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConfig, uint64 imageId, int32 offset, uint64 *retImageId);
 
 // get port stats - caller declares Pm_T and PmCompositePortCounters_t
 //                  delta - 1 requests delta counters, 0 gets raw total
@@ -234,8 +239,9 @@ FSTATUS paFreezeFrameCreate(Pm_t *pm, uint64 imageId, int32 offset, uint64 *retI
 
 FSTATUS paFreezeFrameMove(Pm_t *pm, uint64 ffImageId, uint64 imageId, int32 offset, uint64 *retImageId);
 
-FSTATUS paGetFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPorts, uint64 imageId, int32 offset, uint64 *returnImageId,
-						uint32 select, uint32 start, uint32 range);
+FSTATUS paGetFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPorts,
+    uint64 imageId, int32 offset, uint64 *returnImageId, uint32 select,
+    uint32 start, uint32 range);
 FSTATUS paGetImageInfo(Pm_t *pm, uint64 imageId, int32 offset, PmImageInfo_t *imageInfo, uint64 *retImageId);
 
 
@@ -246,8 +252,8 @@ FSTATUS paGetVFList(Pm_t *pm, PmVFList_t *pmVFList, uint32 imageIndex);
 FSTATUS paGetVFConfig(Pm_t *pm, char *vfName, uint64 vfSid, PmVFConfig_t *pmVFConfig, uint64 imageId, int32 offset, uint64 *retImageId);
 
 // get vf info - caller declares Pm_T and PmGroupInfo_t, and passes pointers
-FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, PmVFInfo_t *pmVFInfo, uint64 imageId, int32 offset, uint64 *retImageId,
-		boolean *isFailedPort);
+FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, PmVFInfo_t *pmVFInfo, uint64 imageId,
+    int32 offset, uint64 *returnImageId);
 
 // get vf port stats - caller declares Pm_T and PmCompositeVLCounters_t
 //                  delta - 1 requests delta counters, 0 gets raw total
@@ -256,8 +262,9 @@ FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, char *vfName, 
 
 FSTATUS paClearVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, STLVlCounterSelectMask select, char *vfName);
 
-FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocusPorts, uint64 imageId, int32 offset, uint64 *returnImageId,
-                        uint32 select, uint32 start, uint32 range);
+FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocusPorts,
+    uint64 imageId, int32 offset, uint64 *returnImageId, uint32 select,
+    uint32 start, uint32 range);
 
 
 #ifdef __cplusplus

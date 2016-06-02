@@ -557,8 +557,8 @@ typedef struct Point_s {
 #if !defined(VXWORKS) || defined(BUILD_DMC)
 /* IOC types we can focus on */
 typedef enum {
-	IOC_TYPE_VNIC,
 	IOC_TYPE_SRP,
+	IOC_TYPE_OTHER
 } IocType;
 #endif
 
@@ -722,6 +722,7 @@ extern IocData * FindIocGuid(FabricData_t* fabricp, EUI64 guid);
 extern SystemData * FindSystemGuid(FabricData_t* fabricp, EUI64 guid);
 extern FSTATUS FindRate(FabricData_t* fabricp, uint32 rate, Point *pPoint);
 extern FSTATUS FindPortState(FabricData_t* fabricp, uint8 state, Point *pPoint);
+extern FSTATUS FindLedState(FabricData_t* fabricp, uint8 state, Point *pPoint);
 extern FSTATUS FindPortPhysState(FabricData_t* fabricp, IB_PORT_PHYS_STATE state, Point *pPoint);
 extern FSTATUS FindCableLabelPat(FabricData_t* fabricp, const char* pattern, Point *pPoint);
 extern FSTATUS FindCableLenPat(FabricData_t* fabricp, const char* pattern, Point *pPoint);
@@ -731,6 +732,7 @@ extern FSTATUS FindCabinfVendNamePat(FabricData_t *fabricp, const char* pattern,
 extern FSTATUS FindCabinfVendPNPat(FabricData_t *fabricp, const char* pattern, Point *pPoint);
 extern FSTATUS FindCabinfVendRevPat(FabricData_t *fabricp, const char* pattern, Point *pPoint);
 extern FSTATUS FindCabinfVendSNPat(FabricData_t *fabricp, const char* pattern, Point *pPoint);
+extern FSTATUS FindCabinfCableType(FabricData_t *fabricp, char *cablearg, Point *pPoint);
 extern FSTATUS FindLinkDetailsPat(FabricData_t* fabricp, const char* pattern, Point *pPoint);
 extern FSTATUS FindPortDetailsPat(FabricData_t* fabricp, const char* pattern, Point *pPoint);
 extern FSTATUS FindMtu(FabricData_t* fabricp, IB_MTU mtu, uint8 vl_num, Point *pPoint);

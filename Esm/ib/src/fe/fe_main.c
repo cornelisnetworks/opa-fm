@@ -35,8 +35,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 * DESCRIPTION
 *   Main control module for Fabric Executive manager
 *
-* RESPONSIBLE ENGINEER:
-*   Jason Wiseman 
 *
 * HISTORY
 *
@@ -706,11 +704,7 @@ uint32_t fe_init(void)
         // initialize the network
         if (fe_net_init(fe_config.listen, &err, fe_callBack)) {
             rc = VSTATUS_BAD;
-#ifndef __VXWORKS__
-            IB_FATAL_ERROR("fe_init: NetConnect err, could not setup listen port for FE");
-#else
             IB_LOG_INFINI_INFORC("NetConnect err, could not setup listen port for FE. rc:", rc);
-#endif
         }
     }
 

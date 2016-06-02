@@ -32,17 +32,56 @@
 
 TEMP1="$(mktemp)"
 TEMP2="$(mktemp)"
+PROG_NAME=$0
 trap "rm -f $TEMP1 $TEMP2; exit 1" SIGHUP SIGTERM SIGINT
 trap "rm -f $TEMP1 $TEMP2" EXIT
 
 Usage()
 {
-	echo "Usage: config_diff [-f][-l] [-d 'diff_args'] file1 file2" >&2
-	echo "      -f  - filter out FM parameters which are not part of consistency check" >&2
-	echo "      -l  - include comments in XML to indicate original line numbers" >&2
+	echo "Usage: $(basename $PROG_NAME) [-f][-l] [-d 'diff_args'] file1 file2" >&2
+	echo "       or $(basename $PROG_NAME) --help" >&2
+	echo " " >&2
+	echo "      --help - produce full help text" >&2
+	echo "      -f	   - filter out FM parameters which are not part of consistency check" >&2
+	echo "               Removes config tags that do not cause consistency checks on the" >&2
+	echo "               FM to fail from diff" >&2
+	echo "      -l     - include comments in XML to indicate original line numbers" >&2
 	echo "      -d 'diff_args' - additional arguments to diff command" >&2
+	echo "               e.g. -uw for unified format ignoring whitespace." >&2
+	echo " " >&2
 	exit 2
 }
+
+Usage_full()
+{
+	echo "Usage: $(basename $PROG_NAME) [-f][-l] [-d 'diff_args'] file1 file2" >&2
+	echo "       or $(basename $PROG_NAME) --help" >&2
+	echo " " >&2
+	echo "      --help - produce full help text" >&2
+	echo "      -f     - filter out FM parameters which are not part of consistency check" >&2
+	echo "               Removes config tags that do not cause consistency checks on the" >&2
+	echo "               FM to fail from diff" >&2
+	echo "      -l     - include comments in XML to indicate original line numbers" >&2
+	echo "      -d 'diff_args' - additional arguments to diff command" >&2
+	echo "               e.g. -uw for unified format ignoring whitespace." >&2
+	echo " " >&2
+	echo "$(basename $PROG_NAME) performs a difference between two config files corresponding" >&2
+	echo "to two FM instances described by file1 and file2" >&2
+	echo " " >&2
+	echo "Examples:" >&2
+	echo "  $(basename $PROG_NAME) /etc/sysconfig/opafm.xml /opt/opafm/etc/opafm.xml" >&2
+	echo "  $(basename $PROG_NAME) -f /etc/sysconfig/opafm.xml /opt/opafm/etc/opafm.xml" >&2
+	echo "  $(basename $PROG_NAME) -d -uw /etc/sysconfig/opafm.xml /opt/opafm/etc/opafm.xml" >&2
+	exit 0
+
+}
+
+# Main function
+
+if [ x"$1" = "x--help" ]
+then
+    Usage_full
+fi
 
 if [ ! -f /etc/sysconfig/opa/opafm.info ]
 then
@@ -51,6 +90,11 @@ then
 else
 	. /etc/sysconfig/opa/opafm.info # get IFS_FM_BASE
 	tooldir=$IFS_FM_BASE/etc
+fi
+
+if [ x"$1" = "x--help" ]
+then
+        Usage
 fi
 
 filter=n

@@ -47,8 +47,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //    ib_mad.h								     //
 //    ib_status.h							     //
 //									     //
-// RESPONSIBLE ENGINEER							     //
-//    Jeff Young							     //
 //									     //
 //===========================================================================//
 
@@ -540,6 +538,9 @@ sa_main_reader(uint32_t argc, uint8_t ** argv) {
     (void)sa_SubscriberDelete();
     (void)sa_ServiceRecDelete();
     (void)sa_McGroupDelete();
+	if (mai_filter_delete(fd_sa, &filter, VFILTER_SHARE) != VSTATUS_OK) {
+		IB_LOG_ERROR0("sa_main_reader: can't delete SubnAdm(*) filter");
+	}
 	//IB_LOG_INFINI_INFO0("sa_main_reader thread: Exiting OK");
 }
 

@@ -372,6 +372,11 @@ StlLinkWidthToText(uint16_t w, char *buf, size_t len)
 	return buf;
 }
 
+// writes a text value for the provided link speed, or an error
+// if the specified speed is invalid. 
+//
+// NOTA BENE: This function will assert if the buffer is too short.  The buffer 
+// should be at least 16 bytes long, to hold the error message.
 static __inline const char*
 StlLinkSpeedToText(uint16_t speed, char *str, size_t len)
 {
@@ -387,7 +392,7 @@ StlLinkSpeedToText(uint16_t speed, char *str, size_t len)
 
 	if ((speed & (STL_LINK_SPEED_12_5G|STL_LINK_SPEED_25G))
 	  != speed) {
-		i = snprintf(str, len, "Unexpected (0x%04X) ", speed);
+		i = snprintf(str, len, "Invalid(0x%04X)", speed);
 		if (i >= len-n) {
 			DEBUG_ASSERT(0 == "IbPrint: ERROR buffer length short\n");
 			goto out;
@@ -638,13 +643,13 @@ static __inline
 void FormatStlCapabilityMask3(char *buf, STL_CAPABILITY_MASK3 cmask, int buflen)
 {
 	snprintf(buf, buflen, "%s%s%s%s%s%s%s%s",
-		cmask.s.IsSnoopSupported?"SN":"",
-		cmask.s.IsAsyncSC2VLSupported?"aSC2VL":"",
-		cmask.s.IsAddrRangeConfigSupported?"ARC":"",
-		cmask.s.IsPassThroughSupported?"PT":"",
-		cmask.s.IsSharedSpaceSupported?"SS":"",
-		cmask.s.IsVLMarkerSupported?"VLM":"",
-		cmask.s.IsVLrSupported?"VLr":"",
+		cmask.s.IsSnoopSupported?"SN ":"",
+		cmask.s.IsAsyncSC2VLSupported?"aSC2VL ":"",
+		cmask.s.IsAddrRangeConfigSupported?"ARC ":"",
+		cmask.s.IsPassThroughSupported?"PT ":"",
+		cmask.s.IsSharedSpaceSupported?"SS ":"",
+		cmask.s.IsVLMarkerSupported?"VLM ":"",
+		cmask.s.IsVLrSupported?"VLr ":"",
 		cmask.AsReg16?"":"-");
 	buf[buflen-1] = '\0';
 }
@@ -993,7 +998,7 @@ void StlCableInfoValidCableLengthToText(uint8_t code_len, uint8_t code_valid, ch
 	if (! text_out)
 		return;
 	if (code_valid)
-		sprintf(text_out, "%3um", code_len);
+		sprintf(text_out, "%um", code_len);
 	else
 		strcpy(text_out, "");
 	return;
@@ -1159,8 +1164,10 @@ static __inline uint8
 StlResolutionToShift(uint32 res, uint8 add) {
 // shift = log2(res) - add
 	uint8 shift = FloorLog2(res);
-	if (shift > 15) return 15; // 15 is the maximum allowed value
-	else if (shift > add) return shift-add;
+	if (shift > add) {
+		if ((shift - add) > 15) return 15;
+		else return shift - add;
+	}
 	else return 0;
 }
 
@@ -1203,6 +1210,13 @@ FormatStlCounterSelectMask(char buf[128], CounterSelectMask_t mask) {
 		(mask.s.LinkErrorRecovery           ? "LER ": ""),
 		(mask.s.LinkDowned                  ? "LD ": ""),
 		(mask.s.UncorrectableErrors         ? "Unc": ""));
+}
+
+static __inline int
+StlIsPortInPortMask(const STL_PORTMASK* portSelectMask, uint8_t port)
+{
+        uint64_t pmask = (uint64_t)(1) << (port % 64);
+        return ((portSelectMask[3-(port/64)] & pmask) ? 1 : 0);
 }
 
 #if !defined(ROUNDUP)

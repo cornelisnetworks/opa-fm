@@ -37,8 +37,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *    This module provides the realtime diagnostic and control of the SM/SA using the  
  *    FMI api.  The FMI sm_diag utility make use of these functions.
  *
- * RESPONSIBLE ENGINEER
- *    John Seraphin
  *
  */
 #include "os_g.h"

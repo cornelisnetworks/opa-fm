@@ -165,7 +165,7 @@ do
 done
 
 echo "Packaging capture file..."
-tar --format=gnu -czf ./${dirName}.tgz --directory=/tmp $dirName || \
+tar --format=gnu -czf ./${dirName}.tgz --directory=/tmp $dirName --warning=no-file-changed || \
   die "Could not create state dump tarball"
 
 echo "Saved FM capture as ${dirName}.tgz"

@@ -43,8 +43,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //										//
 // DEPENDENCIES									//
 //										//
-// RESPONSIBLE ENGINEER								//
-//										//
 // HISTORY									//
 //										//
 //    NAME	DATE  REMARKS							//

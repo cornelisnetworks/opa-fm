@@ -111,12 +111,12 @@ static uint8_t  *gdata;
 uint32_t 		pm_engineDebug = 0;
 
 // XM config consistency checking
-uint32_t    pm_overall_checksum = 0;
-uint32_t    pm_consistency_checksum = 0;
+uint32_t        pm_overall_checksum = 0;
+uint32_t        pm_consistency_checksum = 0;
 
-uint32_t		pm_master_consistency_check_level = NO_CHECK_CCC_LEVEL;
-uint32_t		sm_master_consistency_check_level = NO_CHECK_CCC_LEVEL;
-int		        pm_inconsistency_posted = FALSE;
+uint32_t		pm_master_consistency_check_level = DEFAULT_CCC_LEVEL;
+uint32_t		sm_master_consistency_check_level = DEFAULT_CCC_LEVEL;
+int             pm_inconsistency_posted = FALSE;
 
 #define EXIT(a) exit (a)
 
@@ -338,7 +338,6 @@ BuildRecord(STL_SERVICE_RECORD * srp, uint8_t * servName, uint64_t servID,
 	// the bytes 2 and 3 of data8 if we are configured to do so
 	// This is now just informational. PM doesn't validate checksums.
 	// That is left to the SM who will decide if we need to go inactive.
-	if (pm_config.config_consistency_check_level != NO_CHECK_CCC_LEVEL) {
     	srp->ServiceData32[0] = pm_config.consistency_checksum;
     	srp->ServiceData32[1] = sm_config.consistency_checksum;
 
@@ -347,15 +346,8 @@ BuildRecord(STL_SERVICE_RECORD * srp, uint8_t * servName, uint64_t servID,
 		srp->ServiceData8[2] = pm_config.config_consistency_check_level;
 		srp->ServiceData8[3] = sm_config.config_consistency_check_level;
 		// supply the current XM checksum version
-		srp->ServiceData8[4] = XML_CHECKSUM_VERSION;
-	} else {
-		srp->ServiceData32[0] = 0;
-		srp->ServiceData32[1] = 0;
-		srp->ServiceData32[2] = 0;
-		srp->ServiceData8[2] = 0;
-		srp->ServiceData8[3] = 0;
-		srp->ServiceData8[4] = 0;
-	}
+		srp->ServiceData8[4] = FM_PROTOCOL_VERSION;
+
 	srp->Reserved = 0;
 }
 
@@ -549,6 +541,8 @@ Status_t pm_get_xml_config(void)
 void
 pm_compute_pool_size(void)
 {
+    size_t pmImagePoolSize;
+
     // calculate pool size for legacy support
 #ifdef __VXWORKS__
 	// add a couple pages and 10% to allow for inefficiency in allocator
@@ -574,7 +568,7 @@ pm_compute_pool_size(void)
 	// Ideally -only applicable if Pm.SweepInterval != 0, but at this point
 	// on ESM we have not yet read XML config file, so assume Pm enabled
 	// also will use default Pm image counts
-	g_pmPoolSize +=
+	pmImagePoolSize =
 			// pmportp's, 1 per LID + 1 per Switch Port 1-N
 		   	(sizeof(PmPort_t) + sizeof(PmPortImage_t)*(pm_config.total_images-1)) * cs_numPortRecords(pm_config.subnet_size)
 			// pmnodep's, 1 per LID (1 per FI port, 1 per switch)
@@ -596,6 +590,14 @@ pm_compute_pool_size(void)
 			+ sizeof(PmDispatcherPort_t)*pm_config.MaxParallelNodes*pm_config.PmaBatchSize
 			+ sizeof(cntxt_entry_t)*pm_config.MaxParallelNodes*pm_config.PmaBatchSize
 			;
+
+#ifdef __VXWORKS__
+	// keep it simple and just double image memory pool usage
+    g_pmPoolSize += (pmImagePoolSize * 2);
+#else
+    g_pmPoolSize += pmImagePoolSize;
+#endif
+
 	if (pm_config.shortTermHistory.enable && pm_config.sweep_interval) {
 		// PM Short Term History storage
 		// Allocate space for all history records
@@ -612,7 +614,8 @@ pm_compute_pool_size(void)
 			+ sizeof(PmPort_t*) * cs_numNodeRecords(pm_config.subnet_size)
 			+ (sizeof(PmGroup_t) + sizeof(PmGroupImage_t)) * (PM_MAX_GROUPS+1)
 			+ (sizeof(PmVF_t) + sizeof(PmVFImage_t)) * MAX_VFABRICS
-			+ sizeof(PmImage_t);
+			+ sizeof(PmImage_t)
+			+ sizeof(char)*PM_HISTORY_FILENAME_LEN*((3600*pm_config.shortTermHistory.totalHistory)/(pm_config.shortTermHistory.imagesPerComposite*pm_config.sweep_interval));
 	}
 }
 
@@ -672,13 +675,12 @@ pm_main()
 
 #endif
 
-#if 0 // these are already checked by pm_initialize_config, should check for VxWorks too
-
     // check device related configuration parameter settings, and display
     // appropriate warning messages.  And always synch with the current device
     // settings of the SM. 
-    sm_isValidDeviceConfigSettings(VIEO_PM_MOD_ID, pm_config.hca, pm_config.port, pm_config.port_guid);
     (void)sm_getDeviceConfigSettings(&pm_config.hca, &pm_config.port, &pm_config.port_guid);
+
+#if 0 // these are already checked by pm_initialize_config, should check for VxWorks too
 
     // check configuration parameter settings related to being the Master PM, and
     // display appropriate warning messages.  And always synch with the current
@@ -786,6 +788,12 @@ pm_main()
                 (void)vs_thread_sleep(PM_CONN_INTERVAL/2);
                 continue;
             }
+#elif defined(__VXWORKS__)
+           if (sm_isDeactivated()) {
+               pm_shutdown = TRUE;
+               IB_LOG_WARN_FMT( __func__, "Engine shutting down since SM is not active due to problems!");
+               goto bail;
+           }
 #endif
            if ((rc = if3_mngr_open_cnx_fe(pm_config.hca, pm_config.port, vfi_mclass, &pm_fd)) == VSTATUS_OK) {
                while (!pm_shutdown && pm_fd > 0) {

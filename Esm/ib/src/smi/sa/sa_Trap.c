@@ -48,8 +48,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //    ib_mad.h								     //
 //    ib_status.h							     //
 //									     //
-// RESPONSIBLE ENGINEER							     //
-//    Jeff Young							     //
 //									     //
 //===========================================================================//
 
@@ -550,19 +548,75 @@ sa_Trap(Mai_t *maip) {
 
 		if (ccTrap.u.AsReg16 == 0) {
 			/* Change fields are zero so one of the capability bits must 
- 			 * have changed. Realistically, the only bit that might have 
- 			 * changed is the IS_SM bit. */
-			if (ccTrap.CapabilityMask.s.IsSM) {
-				IB_LOG_INFINI_INFO_FMT( "sa_Trap", 
-				       "Received an (IS_SM on) CAPABILITYMASK CHANGE [0x%.8X] trap from %s, TID="FMT_U64,
-				       ccTrap.CapabilityMask.AsReg32, desc, tid);
-				sm_discovery_needed("Port CapabilityMask Change isSM on", 0);
-			} else {
-				IB_LOG_INFINI_INFO_FMT( "sa_Trap", 
-				       "Received an (IS_SM off) CAPABILITYMASK CHANGE [0x%.8X] trap from %s, TID="FMT_U64,
-			    	   ccTrap.CapabilityMask.AsReg32, desc, tid);
-				sm_discovery_needed("Port CapabilityMask Change isSM off", 0);
-    	    }
+			 * have changed. Compare the new CapabilityMask to the previous
+			 * CapabalityMask for this port to determine appropriate action
+			 * to take*/
+			(void)vs_wrlock(&old_topology_lock); 
+			portp = sm_find_node_and_port_lid(&old_topology, notice.IssuerLID, &nodep);
+			if (nodep && sm_valid_port(portp)) { 
+				//determine which bits in Capability Mask changed
+				ccTrap.CapabilityMask.AsReg32 ^= portp->portData->portInfo.CapabilityMask.AsReg32;
+				
+				if (ccTrap.CapabilityMask.s.IsSM){ //node's SM status changed, will need to trigger a sweep
+					if (!portp->portData->portInfo.CapabilityMask.s.IsSM){
+						IB_LOG_INFINI_INFO_FMT(__func__, 
+								"Received an (IS_SM on) CAPABILITYMASK CHANGE [0x%.8X] trap from %s, TID="FMT_U64,
+								ccTrap.CapabilityMask.AsReg32, desc, tid);
+						sm_discovery_needed("Port CapabilityMask Change isSM on", 0);
+					}else{
+						IB_LOG_INFINI_INFO_FMT(__func__, 
+								"Received an (IS_SM off) CAPABILITYMASK CHANGE [0x%.8X] trap from %s, TID="FMT_U64,
+								ccTrap.CapabilityMask.AsReg32, desc, tid);
+						//don't sweep if it was this sm whose bit was turned off
+						if (notice.IssuerLID != sm_lid){
+							sm_discovery_needed("Port CapabilityMask Change isSM off", 0);
+						}
+					} 
+				}else{ //other capability bit changed, just get fresh port info
+					STL_PORT_INFO portInfo;
+					Status_t status = SM_Get_PortInfo_LR(fd_topology, (1 << 24) | portp->index, sm_lid, portp->portData->lid, &portInfo);
+					if (status != VSTATUS_OK){
+						IB_LOG_WARN_FMT(__func__, 
+										"Cannot get PORTINFO for %s, TID="FMT_U64
+										" status=%d", desc, tid, status);
+					}else{
+						portp->portData->portInfo = portInfo;
+					}
+				}
+				/****************LOG WHICH OTHER BIT CHANGED******************/
+				//portp->portData->portInfo contains old information
+				if(ccTrap.CapabilityMask.s.IsAutomaticMigrationSupported){
+						IB_LOG_INFINI_INFO_FMT(__func__, 
+								"Received an (IS_AUTOMATIC_MIGRATION_SUPPORTED %s) CAPABILITYMASK CHANGE [0x%.8X] trap from %s, TID="FMT_U64,
+								(!portp->portData->portInfo.CapabilityMask.s.IsAutomaticMigrationSupported?"on":"off"),
+								ccTrap.CapabilityMask.AsReg32, desc, tid);
+				}
+				if(ccTrap.CapabilityMask.s.IsConnectionManagementSupported){
+						IB_LOG_INFINI_INFO_FMT(__func__, 
+								"Received an (IS_CONNECTION_MANAGEMENT_SUPPORTED %s) CAPABILITYMASK CHANGE [0x%.8X] trap from %s, TID="FMT_U64, 
+								(!portp->portData->portInfo.CapabilityMask.s.IsConnectionManagementSupported?"on":"off"), 
+								ccTrap.CapabilityMask.AsReg32, desc, tid);
+				}
+				if (ccTrap.CapabilityMask.s.IsDeviceManagementSupported){
+						IB_LOG_INFINI_INFO_FMT(__func__, 
+								"Received an (IS_DEVICE_MANAGEMENT_SUPPORTED %s) CAPABILITYMASK CHANGE [0x%.8X] trap from %s, TID="FMT_U64, 
+								(!portp->portData->portInfo.CapabilityMask.s.IsDeviceManagementSupported?"on":"off"),
+								ccTrap.CapabilityMask.AsReg32, desc, tid);
+				}
+				if(ccTrap.CapabilityMask.s.IsVendorClassSupported){
+						IB_LOG_INFINI_INFO_FMT(__func__, 
+								"Received an (IS_VENDOR_CLASS_SUPPORTED %s) CAPABILITYMASK CHANGE [0x%.8X] trap from %s, TID="FMT_U64, 
+								(!portp->portData->portInfo.CapabilityMask.s.IsVendorClassSupported?"on":"off"),
+								ccTrap.CapabilityMask.AsReg32, desc, tid);
+				}
+				if(ccTrap.CapabilityMask.s.IsCapabilityMaskNoticeSupported){
+						IB_LOG_INFINI_INFO_FMT(__func__, 
+								"Received an (IS_CAPABILITY_MASK_NOTICE_SUPPORTED %s) CAPABILITYMASK CHANGE [0x%.8X] trap from %s, TID="FMT_U64, 
+								(!portp->portData->portInfo.CapabilityMask.s.IsCapabilityMaskNoticeSupported?"on":"off"),
+								ccTrap.CapabilityMask.AsReg32, desc, tid);
+				}
+			}
+				(void)vs_rwunlock(&old_topology_lock);
 		} else {
 			/* A local change has occurred. */
 			IB_LOG_INFINI_INFO_FMT( "sa_Trap", 

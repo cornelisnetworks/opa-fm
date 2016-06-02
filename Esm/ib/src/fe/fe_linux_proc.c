@@ -406,7 +406,6 @@ Status_t fe_main_init_port(void)
 {
     Status_t status = VSTATUS_OK;
 
-	if (fe_config.port_guid == 0ull)
         status = ib_init_devport(&fe_config.hca, &fe_config.port, (uint64_t *)&fe_config.port_guid);
 
 	if (status != VSTATUS_OK)

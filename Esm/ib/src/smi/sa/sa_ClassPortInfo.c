@@ -48,8 +48,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //    ib_mad.h								     //
 //    ib_status.h							     //
 //									     //
-// RESPONSIBLE ENGINEER							     //
-//    Jeff Young							     //
 //									     //
 //===========================================================================//
 
@@ -68,8 +66,12 @@ extern	STL_CLASS_PORT_INFO	saClassPortInfo;
 
 Status_t
 sa_ClassPortInfo(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
-	STL_CLASS_PORT_INFO		myCPI;
+
 	uint16_t				attribOffset;
+        union {
+		STL_CLASS_PORT_INFO		stl_version;
+		IB_CLASS_PORT_INFO		ib_version;
+	} myCPI;
 
 	IB_ENTER("sa_ClassPortInfo", maip, 0, 0, 0);
 
@@ -78,15 +80,42 @@ sa_ClassPortInfo(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 //
 	if (maip->base.method == SA_CM_GET) {
 		INCREMENT_COUNTER(smCounterSaRxGetClassPortInfo);
-		myCPI = saClassPortInfo;
-		BSWAP_STL_CLASS_PORT_INFO(&myCPI);
+                if (maip->base.cversion == SA_MAD_CVERSION) {
+			memset(&myCPI.ib_version,0,sizeof(IB_CLASS_PORT_INFO));
+			myCPI.ib_version.BaseVersion = saClassPortInfo.BaseVersion;
+			myCPI.ib_version.ClassVersion = saClassPortInfo.ClassVersion;
+			myCPI.ib_version.CapMask  = SA_CAPABILITY_MULTICAST_SUPPORT |
+                                      SA_CAPABILITY_MULTIPATH_SUPPORT |
+		                      SA_CAPABILITY_PORTINFO_CAPMASK_MATCH |
+		                      SA_CAPABILITY_PA_SERVICES_SUPPORT;
+			myCPI.ib_version.u1.s.CapMask2  = SA_CAPABILITY2_QOS_SUPPORT |
+                                      SA_CAPABILITY2_MFTTOP_SUPPORT |
+                                      SA_CAPABILITY2_FULL_PORTINFO |
+                                      SA_CAPABILITY2_EXT_SUPPORT;
+			myCPI.ib_version.u1.s.RespTimeValue = saClassPortInfo.u1.s.RespTimeValue;
+			myCPI.ib_version.u3.s.RedirectQP = saClassPortInfo.u3.s.RedirectQP;
+			myCPI.ib_version.u5.s.TrapHopLimit = saClassPortInfo.u5.s.TrapHopLimit;
+			myCPI.ib_version.u5.s.TrapQP = saClassPortInfo.u5.s.TrapQP;
+			BSWAP_IB_CLASS_PORT_INFO(&myCPI.ib_version);
 
-		attribOffset = sizeof(STL_CLASS_PORT_INFO) + 
-						Calculate_Padding(sizeof(STL_CLASS_PORT_INFO));
+			attribOffset = sizeof(IB_CLASS_PORT_INFO) + 
+							Calculate_Padding(sizeof(IB_CLASS_PORT_INFO));
+			sa_cntxt_data( sa_cntxt, &myCPI.ib_version, attribOffset);
+			sa_cntxt->attribLen = attribOffset;
+			maip->base.status = MAD_STATUS_OK;
+		} else if (maip->base.cversion >= STL_SM_CLASS_VERSION) {
+			myCPI.stl_version = saClassPortInfo;
+			BSWAP_STL_CLASS_PORT_INFO(&myCPI.stl_version);
 
-		sa_cntxt_data( sa_cntxt, &myCPI, attribOffset);
-		sa_cntxt->attribLen = attribOffset;
+			attribOffset = sizeof(STL_CLASS_PORT_INFO) + 
+							Calculate_Padding(sizeof(STL_CLASS_PORT_INFO));
+
+			sa_cntxt_data( sa_cntxt, &myCPI.stl_version, attribOffset);
+			sa_cntxt->attribLen = attribOffset;
 		maip->base.status = MAD_STATUS_OK;
+		} else {
+			maip->base.status = MAD_STATUS_BAD_METHOD;
+		}
 	} else {
 		maip->base.status = MAD_STATUS_BAD_METHOD;
 	}

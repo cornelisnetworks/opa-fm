@@ -213,8 +213,7 @@ pa_client_release_vf_list(
  * @param pm_image_id_query     Image ID of group info to get. 
  * @param group_name            Pointer to group name 
  * @param pm_image_id_resp      Pointer to image ID of group info returned. 
- * @param pm_group_info         Pointer to group info to fill. 
- * @param amod                  Pointer to error result to be filled.
+ * @param pm_group_info         Pointer to group info to fill.
  *
  * @return 
  *   FSUCCESS - Get successful
@@ -226,8 +225,7 @@ pa_client_get_group_info(
     STL_PA_IMAGE_ID_DATA        pm_image_id_query,
     char                       *group_name, 
     STL_PA_IMAGE_ID_DATA       *pm_image_id_resp, 
-    STL_PA_PM_GROUP_INFO_DATA     *pm_group_info,
-	uint32						*amod
+    STL_PA_PM_GROUP_INFO_DATA     *pm_group_info
     );
 
 /** 
@@ -791,8 +789,7 @@ iba_pa_multi_mad_group_list_response_query(
  * @param query                     Pointer to the query 
  * @param group_name                Group name 
  * @param pquery_result             Pointer to query result to be filled. The caller has 
- *                                  to free the buffer. 
- * @param amod                      Pointer to error result to be filled.
+ *                                  to free the buffer.
  * @param query_control_parameters  Optional query control parameters (retry, timeout). 
  * @param image_id                  Pointer to the image ID. 
  *
@@ -806,7 +803,6 @@ iba_pa_multi_mad_group_stats_response_query(
     IN PQUERY                       query,
     IN char                         *group_name,
     OUT PQUERY_RESULT_VALUES        *pquery_result,
-	OUT uint32						*amod,
     IN COMMAND_CONTROL_PARAMETERS   *query_control_parameters OPTIONAL,
     IN STL_PA_IMAGE_ID_DATA                *image_id
     );
@@ -844,7 +840,7 @@ iba_pa_multi_mad_group_config_response_query(
  * @param group_name                Group name 
  * @param select                    Select value for focus portlist. 
  * @param start                     Start index value of portlist 
- * @param range                     Index range of portlist. 
+ * @param range                     Index range of portlist.
  * @param pquery_result             Pointer to query result to be filled. The caller has 
  *                                  to fill the buffer. 
  * @param query_control_parameters  Optional query control parameters (retry, timeout). 
@@ -895,8 +891,7 @@ iba_pa_multi_mad_vf_list_response_query(
  * @param port                      Local port to operate on. 
  * @param query                     Pointer to the query 
  * @param pquery_result             Pointer to query result to be filled. The caller has 
- *                                  to free the buffer. 
- * @param amod                      Pointer to error result to be filled.
+ *                                  to free the buffer.
  * @param query_control_parameters  Optional query control parameters (retry, timeout). 
  *
  * @return 
@@ -909,7 +904,6 @@ iba_pa_multi_mad_vf_info_response_query(
     IN PQUERY                       query,
     IN char                         *vf_name,
     OUT PQUERY_RESULT_VALUES        *pquery_result,
-	OUT uint32						*amod,
     IN COMMAND_CONTROL_PARAMETERS   *query_control_parameters OPTIONAL,
     IN STL_PA_IMAGE_ID_DATA                *image_id
     );

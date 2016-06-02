@@ -35,8 +35,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 * DESCRIPTION
 *    Interface 3 functions which commuincate with the SA 
 *
-* RESPONSIBLE ENGINEER:
-*    Gifford Rankine
 *
 ***********************************************************************/
 #ifndef IF3_SA_H

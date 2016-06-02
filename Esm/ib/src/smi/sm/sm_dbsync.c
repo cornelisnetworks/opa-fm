@@ -41,8 +41,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //    and updates it's SA DB.
 //
 ////
-// RESPONSIBLE ENGINEER:
-//    John Seraphin
 //
 //===========================================================================//
 
@@ -199,7 +197,7 @@ Status_t sm_dbsync_checksums(uint32_t vfCsum, uint32_t smCsum, uint32_t pmCsum, 
     if ((status = vs_lock(&smRecords.smLock)) != VSTATUS_OK) {
         IB_FATAL_ERROR("sm_dbsync_checksum: Can't lock SM Record table");
     } else {
-		smRecords.ourChecksums.checksumVersion = XML_CHECKSUM_VERSION;
+		smRecords.ourChecksums.protocolVersion = FM_PROTOCOL_VERSION;
     	smRecords.ourChecksums.smVfChecksum = vfCsum;
     	smRecords.ourChecksums.smConfigChecksum = smCsum;
     	smRecords.ourChecksums.pmConfigChecksum = pmCsum;
@@ -1948,19 +1946,18 @@ static void dbsync_procReqQ(void) {
 				}
 
             	/* get the sync Config Consistency Check info of the standby SM if configured to do so */
-            	if (sm_config.config_consistency_check_level != NO_CHECK_CCC_LEVEL) {
-					if (dbsync_getSMDBCCCSync(syncReqp)) {
-                    	IB_LOG_INFINI_INFO_FMT(__func__,
+
+				if (dbsync_getSMDBCCCSync(syncReqp)) {
+                   	IB_LOG_INFINI_INFO_FMT(__func__,
                         	"failed to get sync Config Consistency Check info of SM at portGuid "FMT_U64", LID=[0x%x]", 
                         	syncReqp->portguid, syncReqp->standbyLid);
-					} else {
-						if (smDebugPerf) {
-							IB_LOG_INFINI_INFO_FMT(__func__,
-								"Successful getting sync Config Consistency Check info of SM at portGuid "FMT_U64", LID=[0x%x]",
-								syncReqp->portguid, syncReqp->standbyLid);
-						}
+				} else {
+					if (smDebugPerf) {
+						IB_LOG_INFINI_INFO_FMT(__func__,
+							"Successful getting sync Config Consistency Check info of SM at portGuid "FMT_U64", LID=[0x%x]",
+							syncReqp->portguid, syncReqp->standbyLid);
 					}
-            	}
+				}
 			} else if (status != VSTATUS_AGAIN) {
 
 				/* Never received the DBSync Capability Response from Standby SM
@@ -2233,6 +2230,12 @@ void sm_dbsync(uint32_t argc, uint8_t ** argv) {
      * Stay here until connection is opened and we have our port guid
      */
     dbsyncfd_if3 = -1;
+
+#ifndef VXWORKS
+    // wait until SM is in MASTER/STANDBY state
+    sm_wait_ready(VIEO_IF3_MOD_ID);
+#endif
+
     while (!dbsync_main_exit && dbsyncfd_if3 == -1) {
         if ((status = if3_open (sm_config.hca, sm_config.port, MAD_CV_VENDOR_DBSYNC, &dbsyncfd_if3)) != VSTATUS_OK) {
             IB_LOG_INFINI_INFO_FMT(__func__, "Can't open connection to IF3 driver (status = %d), retrying", status);

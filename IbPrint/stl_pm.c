@@ -51,7 +51,7 @@ void PrintStlPortStatusRsp(PrintDest_t *dest, int indent, const STL_PORT_STATUS_
 	PrintFunc(dest, "%*s    Xmit Pkts             %20"PRIu64"\n",
 		indent+4, "",
 		pStlPortStatusRsp->PortXmitPkts);
-	PrintFunc(dest, "%*s    MC Xmt Pkts           %20"PRIu64"\n",
+	PrintFunc(dest, "%*s    MC Xmt Pkts          %20"PRIu64"\n",
 		indent+4, "",
 		pStlPortStatusRsp->PortMulticastXmitPkts);
 
@@ -68,67 +68,36 @@ void PrintStlPortStatusRsp(PrintDest_t *dest, int indent, const STL_PORT_STATUS_
 		indent+4, "",
 		pStlPortStatusRsp->PortMulticastRcvPkts);
 
-	PrintFunc(dest, "%*sPerformance: Congestion\n",
+	PrintFunc(dest, "%*sErrors: Signal Integrity\n",
 		indent+4, "");
-	PrintFunc(dest, "%*s    Xmit Wait             %20"PRIu64"\n",
-		indent+4, "",
-		pStlPortStatusRsp->PortXmitWait);
-	PrintFunc(dest, "%*s    Congestion Discards   %20"PRIu64"\n",
-		indent+4, "",
-		pStlPortStatusRsp->SwPortCongestion);
-	PrintFunc(dest, "%*s    Xmit Time Congestion  %20"PRIu64"\n",
-		indent+4, "",
-		pStlPortStatusRsp->PortXmitTimeCong);
-	PrintFunc(dest, "%*s    Mark FECN             %20"PRIu64"\n",
-		indent+4, "",
-		pStlPortStatusRsp->PortMarkFECN);
-	PrintFunc(dest, "%*s    Rcv FECN              %20"PRIu64"\n",
-		indent+4, "",
-		pStlPortStatusRsp->PortRcvFECN);
-	PrintFunc(dest, "%*s    Rcv BECN              %20"PRIu64"\n",
-		indent+4, "",
-		pStlPortStatusRsp->PortRcvBECN);
-
-	PrintFunc(dest, "%*sPerformance: Bubbles\n",
-		indent+4, "");
-	PrintFunc(dest, "%*s    Rcv Bubble            %20"PRIu64"\n",
-		indent+4, "",
-		pStlPortStatusRsp->PortRcvBubble);
-	PrintFunc(dest, "%*s    Xmit Wasted BW        %20"PRIu64"\n",
-		indent+4, "",
-		pStlPortStatusRsp->PortXmitWastedBW);
-	PrintFunc(dest, "%*s    Xmit Wait Data        %20"PRIu64"\n",
-		indent+4, "",
-		pStlPortStatusRsp->PortXmitWaitData);
-
-	PrintFunc(dest, "%*sLink Qual Indicator       %20u (%s)\n",
+	PrintFunc(dest, "%*s    Link Qual Indicator   %20u (%s)\n",
 		indent+4, "",
 		pStlPortStatusRsp->lq.s.LinkQualityIndicator,
 		StlLinkQualToText(pStlPortStatusRsp->lq.s.LinkQualityIndicator));
-
-	PrintFunc(dest, "%*sErrors: Signal Integrity\n",
-		indent+4, "");
-	PrintFunc(dest, "%*s    Local Link Integ Err  %20"PRIu64"\n",
+	PrintFunc(dest, "%*s    Uncorrectable Errors  %20u\n",	//8 bit
 		indent+4, "",
-		pStlPortStatusRsp->LocalLinkIntegrityErrors);
+		pStlPortStatusRsp->UncorrectableErrors);
+	PrintFunc(dest, "%*s    Link Downed           %20u\n",	// 32 bit
+		indent+4, "",
+		pStlPortStatusRsp->LinkDowned);
 	PrintFunc(dest, "%*s    Rcv Errors            %20"PRIu64"\n",
 		indent+4, "",
 		pStlPortStatusRsp->PortRcvErrors);
 	PrintFunc(dest, "%*s    Exc. Buffer Overrun   %20"PRIu64"\n",
 		indent+4, "",
 		pStlPortStatusRsp->ExcessiveBufferOverruns);
-	PrintFunc(dest, "%*s    Link Error Recovery   %20u\n",	// 32 bit
-		indent+4, "",
-		pStlPortStatusRsp->LinkErrorRecovery);
-	PrintFunc(dest, "%*s    Link Downed           %20u\n",	// 32 bit
-		indent+4, "",
-		pStlPortStatusRsp->LinkDowned);
-	PrintFunc(dest, "%*s    Uncorrectable Errors  %20u\n",	//8 bit
-		indent+4, "",
-		pStlPortStatusRsp->UncorrectableErrors);
 	PrintFunc(dest, "%*s    FM Config Errors      %20"PRIu64"\n",
 		indent+4, "",
 		pStlPortStatusRsp->FMConfigErrors);
+	PrintFunc(dest, "%*s    Local Link Integ Err  %20"PRIu64"\n",
+		indent+4, "",
+		pStlPortStatusRsp->LocalLinkIntegrityErrors);
+	PrintFunc(dest, "%*s    Link Error Recovery   %20u\n",	// 32 bit
+		indent+4, "",
+		pStlPortStatusRsp->LinkErrorRecovery);
+	PrintFunc(dest, "%*s    Rcv Rmt Phys Err      %20"PRIu64"\n",
+		indent+4, "",
+		pStlPortStatusRsp->PortRcvRemotePhysicalErrors);
 
 	PrintFunc(dest, "%*sErrors: Security\n",
 		indent+4, "");
@@ -139,7 +108,7 @@ void PrintStlPortStatusRsp(PrintDest_t *dest, int indent, const STL_PORT_STATUS_
 		indent+4, "",
 		pStlPortStatusRsp->PortRcvConstraintErrors);
 
-	PrintFunc(dest, "%*sErrors: Other\n",
+	PrintFunc(dest, "%*sErrors: Routing and Other Errors\n",
 		indent+4, "");
 	PrintFunc(dest, "%*s    Rcv Sw Relay Err      %20"PRIu64"\n",
 		indent+4, "",
@@ -147,9 +116,42 @@ void PrintStlPortStatusRsp(PrintDest_t *dest, int indent, const STL_PORT_STATUS_
 	PrintFunc(dest, "%*s    Xmit Discards         %20"PRIu64"\n",
 		indent+4, "",
 		pStlPortStatusRsp->PortXmitDiscards);
-	PrintFunc(dest, "%*s    Rcv Rmt Phys Err      %20"PRIu64"\n",
+
+	PrintFunc(dest, "%*sPerformance: Congestion\n",
+		indent+4, "");
+	PrintFunc(dest, "%*s    Congestion Discards   %20"PRIu64"\n",
 		indent+4, "",
-		pStlPortStatusRsp->PortRcvRemotePhysicalErrors);
+		pStlPortStatusRsp->SwPortCongestion);
+	PrintFunc(dest, "%*s    Rcv FECN              %20"PRIu64"\n",
+		indent+4, "",
+		pStlPortStatusRsp->PortRcvFECN);
+	PrintFunc(dest, "%*s    Rcv BECN              %20"PRIu64"\n",
+		indent+4, "",
+		pStlPortStatusRsp->PortRcvBECN);
+	PrintFunc(dest, "%*s    Mark FECN             %20"PRIu64"\n",
+		indent+4, "",
+		pStlPortStatusRsp->PortMarkFECN);
+	PrintFunc(dest, "%*s    Xmit Time Congestion  %20"PRIu64"\n",
+		indent+4, "",
+		pStlPortStatusRsp->PortXmitTimeCong);
+	PrintFunc(dest, "%*s    Xmit Wait             %20"PRIu64"\n",
+		indent+4, "",
+		pStlPortStatusRsp->PortXmitWait);
+
+	PrintFunc(dest, "%*sPerformance: Bubbles\n",
+		indent+4, "");
+	PrintFunc(dest, "%*s    Xmit Wasted BW        %20"PRIu64"\n",
+		indent+4, "",
+		pStlPortStatusRsp->PortXmitWastedBW);
+	PrintFunc(dest, "%*s    Xmit Wait Data        %20"PRIu64"\n",
+		indent+4, "",
+		pStlPortStatusRsp->PortXmitWaitData);
+	PrintFunc(dest, "%*s    Rcv Bubble            %20"PRIu64"\n",
+		indent+4, "",
+		pStlPortStatusRsp->PortRcvBubble);
+
+
+
 
 	/* per_VL counters */
 	for (i = 0, j = 0; i < MAX_PM_VLS; i++) {
@@ -180,36 +182,36 @@ void PrintStlPortStatusRsp(PrintDest_t *dest, int indent, const STL_PORT_STATUS_
 
 			PrintFunc(dest, "%*s    Performance: Congestion\n",
 				indent+8, "");
-			PrintFunc(dest, "%*s         Xmit Wait             %20"PRIu64"\n",
-				indent+8, "",
-				pStlPortStatusRsp->VLs[j].PortVLXmitWait);
 			PrintFunc(dest, "%*s         Congestion Discards   %20"PRIu64"\n",
 				indent+8, "",
 				pStlPortStatusRsp->VLs[j].SwPortVLCongestion);
-			PrintFunc(dest, "%*s         Xmit Time Congestion  %20"PRIu64"\n",
-				indent+8, "",
-				pStlPortStatusRsp->VLs[j].PortVLXmitTimeCong);
-			PrintFunc(dest, "%*s         Mark FECN             %20"PRIu64"\n",
-				indent+8, "",
-				pStlPortStatusRsp->VLs[j].PortVLMarkFECN);
 			PrintFunc(dest, "%*s         Rcv FECN              %20"PRIu64"\n",
 				indent+8, "",
 				pStlPortStatusRsp->VLs[j].PortVLRcvFECN);
 			PrintFunc(dest, "%*s         Rcv BECN              %20"PRIu64"\n",
 				indent+8, "",
 				pStlPortStatusRsp->VLs[j].PortVLRcvBECN);
+			PrintFunc(dest, "%*s         Mark FECN             %20"PRIu64"\n",
+				indent+8, "",
+				pStlPortStatusRsp->VLs[j].PortVLMarkFECN);
+			PrintFunc(dest, "%*s         Xmit Time Congestion  %20"PRIu64"\n",
+				indent+8, "",
+				pStlPortStatusRsp->VLs[j].PortVLXmitTimeCong);
+			PrintFunc(dest, "%*s         Xmit Wait             %20"PRIu64"\n",
+				indent+8, "",
+				pStlPortStatusRsp->VLs[j].PortVLXmitWait);
 
 			PrintFunc(dest, "%*s    Performance: Bubbles\n",
 				indent+8, "");
-			PrintFunc(dest, "%*s         Rcv Bubble            %20"PRIu64"\n",
-				indent+8, "",
-				pStlPortStatusRsp->VLs[j].PortVLRcvBubble);
 			PrintFunc(dest, "%*s         Xmit Wasted BW        %20"PRIu64"\n",
 				indent+8, "",
 				pStlPortStatusRsp->VLs[j].PortVLXmitWastedBW);
 			PrintFunc(dest, "%*s         Xmit Wait Data        %20"PRIu64"\n",
 				indent+8, "",
 				pStlPortStatusRsp->VLs[j].PortVLXmitWaitData);
+			PrintFunc(dest, "%*s         Rcv Bubble            %20"PRIu64"\n",
+				indent+8, "",
+				pStlPortStatusRsp->VLs[j].PortVLRcvBubble);
 
 			PrintFunc(dest, "%*s    Errors: Other\n",
 				indent+8, "");
@@ -226,11 +228,11 @@ void PrintStlPortStatusRsp(PrintDest_t *dest, int indent, const STL_PORT_STATUS_
 void PrintStlPortStatusRspSummary(PrintDest_t *dest, int indent, const STL_PORT_STATUS_RSP *pStlPortStatusRsp, int printLineByLine)
 {
     if (printLineByLine) {
-		PrintIntWithDots(dest, indent, "XmitDataMB", pStlPortStatusRsp->PortXmitData/FLITS_PER_MB);
-		PrintIntWithDots(dest, indent, "XmitPkts", pStlPortStatusRsp->PortXmitPkts);
-		PrintIntWithDots(dest, indent, "RcvDataMB", pStlPortStatusRsp->PortRcvData/FLITS_PER_MB);
-		PrintIntWithDots(dest, indent, "RcvPkts", pStlPortStatusRsp->PortRcvPkts);
-		PrintIntWithDots(dest, indent, "LinkQualityIndicator", pStlPortStatusRsp->lq.s.LinkQualityIndicator);
+		PrintIntWithDotsDec(dest, indent, "XmitDataMB", pStlPortStatusRsp->PortXmitData/FLITS_PER_MB);
+		PrintIntWithDotsDec(dest, indent, "XmitPkts", pStlPortStatusRsp->PortXmitPkts);
+		PrintIntWithDotsDec(dest, indent, "RcvDataMB", pStlPortStatusRsp->PortRcvData/FLITS_PER_MB);
+		PrintIntWithDotsDec(dest, indent, "RcvPkts", pStlPortStatusRsp->PortRcvPkts);
+		PrintIntWithDotsDec(dest, indent, "LinkQualityIndicator", pStlPortStatusRsp->lq.s.LinkQualityIndicator);
 	} else {
 		PrintFunc(dest, "%*sXmit Data: %18"PRIu64" MB Pkts: %20"PRIu64"\n",
 			indent, "",
@@ -333,10 +335,6 @@ void PrintStlDataPortCountersRsp(PrintDest_t *dest, int indent, const STL_DATA_P
 				PrintFunc(dest, "%*s    Port Number     %u\n",
 					indent, "",
 					port->PortNumber);
-				PrintFunc(dest, "%*s    Link Qual. Indicator  %20u (%s)\n",
-					indent+4, "",
-					port->lq.s.LinkQualityIndicator,
-					StlLinkQualToText(port->lq.s.LinkQualityIndicator));
 				PrintFunc(dest, "%*s    Xmit Data             %20"PRIu64" MB (%"PRIu64" Flits)\n",
 					indent+4, "",
 					port->PortXmitData/FLITS_PER_MB,
@@ -351,15 +349,20 @@ void PrintStlDataPortCountersRsp(PrintDest_t *dest, int indent, const STL_DATA_P
 				PrintFunc(dest, "%*s    Rcv Pkts              %20"PRIu64"\n",
 					indent+4, "",
 					port->PortRcvPkts);
-				PrintFunc(dest, "%*s    MC Xmt Pkts           %20"PRIu64"\n",
+				PrintFunc(dest, "%*s    MC Xmit Pkts          %20"PRIu64"\n",
 					indent+4, "",
 					port->PortMulticastXmitPkts);
 				PrintFunc(dest, "%*s    MC Rcv Pkts           %20"PRIu64"\n",
 					indent+4, "",
 					port->PortMulticastRcvPkts);
-				PrintFunc(dest, "%*s    Xmit Wait             %20"PRIu64"\n",
+				PrintFunc(dest, "%*s    Signal Integrity Errors: \n",
+						indent, "");
+				PrintFunc(dest, "%*s    Link Qual. Indicator  %20u (%s)\n",
 					indent+4, "",
-					port->PortXmitWait);
+					port->lq.s.LinkQualityIndicator,
+					StlLinkQualToText(port->lq.s.LinkQualityIndicator));
+				PrintFunc(dest, "%*s    Congestion: \n",
+						indent, "");
 				PrintFunc(dest, "%*s    Congestion Discards   %20"PRIu64"\n",
 					indent+4, "",
 					port->SwPortCongestion);
@@ -369,9 +372,17 @@ void PrintStlDataPortCountersRsp(PrintDest_t *dest, int indent, const STL_DATA_P
 				PrintFunc(dest, "%*s    Rcv BECN              %20"PRIu64"\n",
 					indent+4, "",
 					port->PortRcvBECN);
+				PrintFunc(dest, "%*s    Mark FECN             %20"PRIu64"\n",
+					indent+4, "",
+					port->PortMarkFECN);
 				PrintFunc(dest, "%*s    Xmit Time Cong        %20"PRIu64"\n",
 					indent+4, "",
 					port->PortXmitTimeCong);
+				PrintFunc(dest, "%*s    Xmit Wait             %20"PRIu64"\n",
+					indent+4, "",
+					port->PortXmitWait);
+				PrintFunc(dest, "%*s    Bubbles: \n",
+						indent, "");
 				PrintFunc(dest, "%*s    Xmit Wasted BW        %20"PRIu64"\n",
 					indent+4, "",
 					port->PortXmitWastedBW);
@@ -381,9 +392,6 @@ void PrintStlDataPortCountersRsp(PrintDest_t *dest, int indent, const STL_DATA_P
 				PrintFunc(dest, "%*s    Rcv Bubble            %20"PRIu64"\n",
 					indent+4, "",
 					port->PortRcvBubble);
-				PrintFunc(dest, "%*s    Mark FECN             %20"PRIu64"\n",
-					indent+4, "",
-					port->PortMarkFECN);
 				PrintFunc(dest, "%*s    Error Counter Summary %20"PRIu64"\n",
 					indent+4, "",
 					port->PortErrorCounterSummary);
@@ -409,9 +417,6 @@ void PrintStlDataPortCountersRsp(PrintDest_t *dest, int indent, const STL_DATA_P
 						PrintFunc(dest, "%*s         Rcv Pkts              %20"PRIu64"\n",
 							indent+4, "",
 							port->VLs[jj].PortVLRcvPkts);
-						PrintFunc(dest, "%*s         Xmit Wait             %20"PRIu64"\n",
-							indent+4, "",
-							port->VLs[jj].PortVLXmitWait);
 						PrintFunc(dest, "%*s         Congestion Discards   %20"PRIu64"\n",
 							indent+4, "",
 							port->VLs[jj].SwPortVLCongestion);
@@ -421,9 +426,15 @@ void PrintStlDataPortCountersRsp(PrintDest_t *dest, int indent, const STL_DATA_P
 						PrintFunc(dest, "%*s         Rcv BECN              %20"PRIu64"\n",
 							indent+4, "",
 							port->VLs[jj].PortVLRcvBECN);
+						PrintFunc(dest, "%*s         Mark FECN             %20"PRIu64"\n",
+							indent+4, "",
+							port->VLs[jj].PortVLMarkFECN);
 						PrintFunc(dest, "%*s         Xmit Time Cong        %20"PRIu64"\n",
 							indent+4, "",
 							port->VLs[jj].PortVLXmitTimeCong);
+						PrintFunc(dest, "%*s         Xmit Wait             %20"PRIu64"\n",
+							indent+4, "",
+							port->VLs[jj].PortVLXmitWait);
 						PrintFunc(dest, "%*s         Xmit Wasted BW        %20"PRIu64"\n",
 							indent+4, "",
 							port->VLs[jj].PortVLXmitWastedBW);
@@ -433,9 +444,6 @@ void PrintStlDataPortCountersRsp(PrintDest_t *dest, int indent, const STL_DATA_P
 						PrintFunc(dest, "%*s         Rcv Bubble            %20"PRIu64"\n",
 							indent+4, "",
 							port->VLs[jj].PortVLRcvBubble);
-						PrintFunc(dest, "%*s         Mark FECN             %20"PRIu64"\n",
-							indent+4, "",
-							port->VLs[jj].PortVLMarkFECN);
 						jj++;
 					}
 				}
@@ -494,18 +502,12 @@ void PrintStlErrorPortCountersRsp(PrintDest_t *dest, int indent, const STL_ERROR
 			if (portSelectMask & (uint64)1) {
 				PrintFunc(dest, "%*s   Port Number     %u\n",
 						indent+1, "", ePort->PortNumber );
-				PrintFunc(dest, "%*s   Rcv Constraint Errors   %10llu\n",
-						indent+4, "", ePort->PortRcvConstraintErrors);
-				PrintFunc(dest, "%*s   Rcv Switch Relay        %10llu\n",
-						indent+4, "", ePort->PortRcvSwitchRelayErrors);
-				PrintFunc(dest, "%*s   Xmit Discards           %10llu\n",
-						indent+4, "", ePort->PortXmitDiscards);
-				PrintFunc(dest, "%*s   Xmt Constraint Errors   %10llu\n",
-						indent+4, "", ePort->PortXmitConstraintErrors);
-				PrintFunc(dest, "%*s   Rcv Rmt Phys. Errors    %10llu\n",
-						indent+4, "", ePort->PortRcvRemotePhysicalErrors);
-				PrintFunc(dest, "%*s   Local Link Integrity    %10llu\n",
-						indent+4, "", ePort->LocalLinkIntegrityErrors);
+				PrintFunc(dest, "%*s    Signal Integrity Errors: \n",
+						indent, "");
+				PrintFunc(dest, "%*s   Uncorrectable Errors    %10u\n",
+						indent+4, "", ePort->UncorrectableErrors);
+				PrintFunc(dest, "%*s   Link Downed             %10u\n",
+						indent+4, "", ePort->LinkDowned);
 				PrintFunc(dest, "%*s   Rcv Errors              %10llu\n",
 						indent+4, "", ePort->PortRcvErrors);
 				PrintFunc(dest, "%*s   Exc. Buffer Overrun     %10llu\n",
@@ -514,10 +516,22 @@ void PrintStlErrorPortCountersRsp(PrintDest_t *dest, int indent, const STL_ERROR
 						indent+4, "", ePort->FMConfigErrors);
 				PrintFunc(dest, "%*s   Link Error Recovery     %10u\n",
 						indent+4, "", ePort->LinkErrorRecovery);
-				PrintFunc(dest, "%*s   Link Downed             %10u\n",
-						indent+4, "", ePort->LinkDowned);
-				PrintFunc(dest, "%*s   Uncorrectable Errors    %10u\n",
-						indent+4, "", ePort->UncorrectableErrors);
+				PrintFunc(dest, "%*s   Local Link Integrity    %10llu\n",
+						indent+4, "", ePort->LocalLinkIntegrityErrors);
+				PrintFunc(dest, "%*s   Rcv Rmt Phys. Errors    %10llu\n",
+						indent+4, "", ePort->PortRcvRemotePhysicalErrors);
+				PrintFunc(dest, "%*s    Security Errors: \n",
+						indent, "");
+				PrintFunc(dest, "%*s   Xmit Constraint Errors  %10llu\n",
+						indent+4, "", ePort->PortXmitConstraintErrors);
+				PrintFunc(dest, "%*s   Rcv Constraint Errors   %10llu\n",
+						indent+4, "", ePort->PortRcvConstraintErrors);
+				PrintFunc(dest, "%*s    Routing and Other Errors: \n",
+						indent, "");
+				PrintFunc(dest, "%*s   Rcv Switch Relay        %10llu\n",
+						indent+4, "", ePort->PortRcvSwitchRelayErrors);
+				PrintFunc(dest, "%*s   Xmit Discards           %10llu\n",
+						indent+4, "", ePort->PortXmitDiscards);
 				/* Count the bits in the mask and process the VLs in succession */
 				/* Assume that even though VL numbers may not be contiguous, that entries */
 				/*   in the array are */
@@ -589,6 +603,19 @@ void PrintStlErrorInfoRsp(PrintDest_t *dest, int indent, const STL_ERROR_INFO_RS
  				PrintFunc(dest, "%*s    Port Number     %u\n",
 					indent, "",
 					pStlErrorInfoRsp->Port[k].PortNumber);
+				if (pStlErrorInfoRsp->Port[k].UncorrectableErrorInfo.s.Status) {
+					PrintFunc(dest, "%*s    Uncorr Error Info     %s\n",
+						indent+4, "",
+						":");
+					PrintFunc(dest, "%*s        Error Code        %s (%u)\n",
+						indent+4, "",
+						UncorrectableErrorInfoToText(pStlErrorInfoRsp->Port[k].UncorrectableErrorInfo.s.ErrorCode),
+						pStlErrorInfoRsp->Port[k].UncorrectableErrorInfo.s.ErrorCode);
+				} else {
+					PrintFunc(dest, "%*s    Uncorr Error Info     %s\n",
+						indent+4, "",
+						"N/A");
+				}
 				if (pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.s.Status) {
 					PrintFunc(dest, "%*s    Rcv Error Info        %s\n",
 						indent+4, "",
@@ -597,8 +624,10 @@ void PrintStlErrorInfoRsp(PrintDest_t *dest, int indent, const STL_ERROR_INFO_RS
 						indent+4, "",
 						PortRcvErrorInfoToText(pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.s.ErrorCode),
 						pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.s.ErrorCode);
-					if ((pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.s.ErrorCode >= 1) &&
-					    (pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.s.ErrorCode <= 12)) {
+
+					if ((pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.s.ErrorCode == RCVERRORINFO1 ) ||
+					    ((pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.s.ErrorCode >= RCVERRORINFO4) &&
+					    (pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.s.ErrorCode <= RCVERRORINFO12))) {
 						pBuf = displayBuf;
 						for (ii = 0, pChar = (uint8 *)pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.ErrorInfo.EI1to12.PacketFlit1; ii < 8; ii++) {
 							sprintf(pBuf, "0x%02x ", *pChar++);
@@ -625,7 +654,7 @@ void PrintStlErrorInfoRsp(PrintDest_t *dest, int indent, const STL_ERROR_INFO_RS
 						PrintFunc(dest, "%*s        Flit 2:           %s\n",
 							indent+4, "",
 							displayBuf);
-					} else if (pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.s.ErrorCode == 13) {
+					} else if (pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.s.ErrorCode == RCVERRORINFO13) {
 						pBuf = displayBuf;
 						for (ii = 0, pChar = (uint8 *)pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.ErrorInfo.EI13.PacketBytes; ii < 8; ii++) {
 							sprintf(pBuf, "0x%02x ", *pChar++);
@@ -656,85 +685,6 @@ void PrintStlErrorInfoRsp(PrintDest_t *dest, int indent, const STL_ERROR_INFO_RS
 						pStlErrorInfoRsp->Port[k].ExcessiveBufferOverrunInfo.s.SC);
 				} else {
 					PrintFunc(dest, "%*s    Exc Buf Overrun Info  %s\n",
-						indent+4, "",
-						"N/A");
-				}
-				if (pStlErrorInfoRsp->Port[k].PortXmitConstraintErrorInfo.s.Status) {
-					PrintFunc(dest, "%*s    Xmt Constraint Info   %s\n",
-						indent+4, "",
-						":");
-					PrintFunc(dest, "%*s        P_Key             0x%010x\n",
-						indent+4, "",
-						pStlErrorInfoRsp->Port[k].PortXmitConstraintErrorInfo.P_Key);
-					PrintFunc(dest, "%*s        SLID              0x%010x\n",
-						indent+4, "",
-						pStlErrorInfoRsp->Port[k].PortXmitConstraintErrorInfo.SLID);
-				} else {
-					PrintFunc(dest, "%*s    Xmt Constraint Info   %s\n",
-						indent+4, "",
-						"N/A");
-				}
-				if (pStlErrorInfoRsp->Port[k].PortRcvConstraintErrorInfo.s.Status) {
-					PrintFunc(dest, "%*s    Rcv Constraint Info   %s\n",
-						indent+4, "",
-						":");
-					PrintFunc(dest, "%*s        P_Key             0x%010x\n",
-						indent+4, "",
-						pStlErrorInfoRsp->Port[k].PortRcvConstraintErrorInfo.P_Key);
-					PrintFunc(dest, "%*s        SLID              0x%010x\n",
-						indent+4, "",
-						pStlErrorInfoRsp->Port[k].PortRcvConstraintErrorInfo.SLID);
-				} else {
-					PrintFunc(dest, "%*s    Rcv Constraint Info   %s\n",
-						indent+4, "",
-						"N/A");
-				}
-				if (pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.s.Status) {
-					PrintFunc(dest, "%*s    Rcv Sw Rel Info       %s\n",
-						indent+4, "",
-						":");
-					PrintFunc(dest, "%*s        Error Code        %s (%u)\n",
-						indent+4, "",
-						PortRcvSwitchRelayErrorInfoToText(pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.s.ErrorCode),
-						pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.s.ErrorCode);
-					switch (pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.s.ErrorCode) {
-						case 0:
-							PrintFunc(dest, "%*s        DLID:             0x%010x\n",
-								indent+4, "",
-								pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.ErrorInfo.EI0.DLID);
-							break;
-						case 2:
-							PrintFunc(dest, "%*s        Egress Port Num:  %u\n",
-								indent+4, "",
-								pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.ErrorInfo.EI2.EgressPortNum);
-							break;
-						case 3:
-							PrintFunc(dest, "%*s        Egress Port Num:  %u\n",
-								indent+4, "",
-								pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.ErrorInfo.EI3.EgressPortNum);
-							PrintFunc(dest, "%*s        SC:               %u\n",
-								indent+4, "",
-								pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.ErrorInfo.EI3.SC);
-							break;
-						default:
-							/* bad error code */
-							break;
-					}
-				} else {
-					PrintFunc(dest, "%*s    Rcv Sw Rel Info       %s\n",
-						indent+4, "",
-						"N/A");
-				}
-				if (pStlErrorInfoRsp->Port[k].UncorrectableErrorInfo.s.Status) {
-					PrintFunc(dest, "%*s    Uncorr Error Info     %s\n",
-						indent+4, "",
-						":");
-					PrintFunc(dest, "%*s        Error Code        %s (%u)\n",
-						indent+4, "",
-						UncorrectableErrorInfoToText(pStlErrorInfoRsp->Port[k].UncorrectableErrorInfo.s.ErrorCode),
-						pStlErrorInfoRsp->Port[k].UncorrectableErrorInfo.s.ErrorCode);
-				} else {
-					PrintFunc(dest, "%*s    Uncorr Error Info     %s\n",
 						indent+4, "",
 						"N/A");
 				}
@@ -780,6 +730,75 @@ void PrintStlErrorInfoRsp(PrintDest_t *dest, int indent, const STL_ERROR_INFO_RS
 						indent+4, "",
 						"N/A");
 				}
+				if (pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.s.Status) {
+					PrintFunc(dest, "%*s    Rcv Sw Rel Info       %s\n",
+						indent+4, "",
+						":");
+					PrintFunc(dest, "%*s        Error Code        %s (%u)\n",
+						indent+4, "",
+						PortRcvSwitchRelayErrorInfoToText(pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.s.ErrorCode),
+						pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.s.ErrorCode);
+					switch (pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.s.ErrorCode) {
+						case 0:
+							PrintFunc(dest, "%*s        DLID:             0x%010x\n",
+								indent+4, "",
+								pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.ErrorInfo.EI0.DLID);
+							break;
+						case 2:
+							PrintFunc(dest, "%*s        Egress Port Num:  %u\n",
+								indent+4, "",
+								pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.ErrorInfo.EI2.EgressPortNum);
+							break;
+						case 3:
+							PrintFunc(dest, "%*s        Egress Port Num:  %u\n",
+								indent+4, "",
+								pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.ErrorInfo.EI3.EgressPortNum);
+							PrintFunc(dest, "%*s        SC:               %u\n",
+								indent+4, "",
+								pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.ErrorInfo.EI3.SC);
+							break;
+						default:
+							/* bad error code */
+							break;
+					}
+				} else {
+					PrintFunc(dest, "%*s    Rcv Sw Rel Info       %s\n",
+						indent+4, "",
+						"N/A");
+				}
+				if (pStlErrorInfoRsp->Port[k].PortXmitConstraintErrorInfo.s.Status) {
+					PrintFunc(dest, "%*s    Xmit Constraint Info  %s\n",
+						indent+4, "",
+						":");
+					PrintFunc(dest, "%*s        P_Key             0x%010x\n",
+						indent+4, "",
+						pStlErrorInfoRsp->Port[k].PortXmitConstraintErrorInfo.P_Key);
+					PrintFunc(dest, "%*s        SLID              0x%010x\n",
+						indent+4, "",
+						pStlErrorInfoRsp->Port[k].PortXmitConstraintErrorInfo.SLID);
+				} else {
+					PrintFunc(dest, "%*s    Xmit Constraint Info  %s\n",
+						indent+4, "",
+						"N/A");
+				}
+				if (pStlErrorInfoRsp->Port[k].PortRcvConstraintErrorInfo.s.Status) {
+					PrintFunc(dest, "%*s    Rcv Constraint Info   %s\n",
+						indent+4, "",
+						":");
+					PrintFunc(dest, "%*s        P_Key             0x%010x\n",
+						indent+4, "",
+						pStlErrorInfoRsp->Port[k].PortRcvConstraintErrorInfo.P_Key);
+					PrintFunc(dest, "%*s        SLID              0x%010x\n",
+						indent+4, "",
+						pStlErrorInfoRsp->Port[k].PortRcvConstraintErrorInfo.SLID);
+				} else {
+					PrintFunc(dest, "%*s    Rcv Constraint Info   %s\n",
+						indent+4, "",
+						"N/A");
+				}
+
+
+
 				k++;
 			}
 		}

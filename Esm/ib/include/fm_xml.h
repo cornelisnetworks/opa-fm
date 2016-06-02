@@ -247,7 +247,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define UNDEFINED_XML64					0xffffffffffffffffull
 
 // array sizes
-#define FILENAME_SIZE					100
+#define FILENAME_SIZE					256
 #define LOGFILE_SIZE					100
 #define STRING_SIZE						32
 

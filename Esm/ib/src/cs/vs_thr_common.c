@@ -47,8 +47,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 * DEPENDENCIES
 *      vs_g.h
 *
-* RESPONSIBLE ENGINEER:
-*      Common Services
 *
 * HISTORY
 *
@@ -218,8 +216,6 @@ vs_real_thread_create (Thread_t *thr,
 *      Status_t - On success VSTATUS_OK is returned, otherwise
 *      the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*      Common Services
 *
 * HISTORY
 *
@@ -309,8 +305,6 @@ vs_thread_create2 (Thread_t *thr,
 *      Status_t - On success VSTATUS_OK is returned, otherwise
 *      the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*      Common Services
 *
 * HISTORY
 *
@@ -358,8 +352,6 @@ vs_thread_name (Threadname_t *name)
 * OUTPUTS
 *      thread name string
 *
-* RESPONSIBLE ENGINEER: 
-*      Common Services
 *
 * HISTORY
 *
@@ -390,8 +382,6 @@ vs_thread_name_str (void)
 *      Status_t - On success VSTATUS_OK is returned, otherwise
 *      the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*      Common Services
 *
 * HISTORY
 *
@@ -439,8 +429,6 @@ vs_thread_groupname (Threadname_t name, Threadname_t *grpname)
 *      Status_t - On success does not return, otherwise
 *      the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*      Common Services
 *
 * HISTORY
 *
@@ -488,8 +476,6 @@ vs_thread_exit (Thread_t *handle)
 *      Status_t - On success VSTATUS_OK is returned, otherwise
 *      the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*      Common Services
 *
 * HISTORY
 *
@@ -537,8 +523,6 @@ vs_thread_kill (Thread_t *handle)
 *      Status_t - On success VSTATUS_OK is returned, otherwise
 *      the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*      Common Services
 *
 * HISTORY
 *

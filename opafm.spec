@@ -29,8 +29,8 @@
 
 #[ICS VERSION STRING: unknown]
 Name: opa-fm
-Version: 10.0.1.0
-Release: 2
+Version: 10.1.0.0
+Release: 145
 Summary: Intel Omni-Path Fabric Management Software
 
 Group: System Environment/Daemons
@@ -80,6 +80,8 @@ fi
 ./fmbuild -V %{version}.%{release} 
 
 %install
+%define fm_mans opafmcmd.8 opafmcmdall.8
+
 install -D -m 644 stage.rpm/opafm.service $RPM_BUILD_ROOT/usr/lib/systemd/system/opafm.service
 install -D -m 755 stage.rpm/opafmctrl $RPM_BUILD_ROOT/opt/opafm/bin/opafmctrl
 install -D -m 755 stage.rpm/opafmd $RPM_BUILD_ROOT/opt/opafm/bin/opafmd
@@ -120,8 +122,12 @@ install -D stage.rpm/opaxmlfilter $RPM_BUILD_ROOT/opt/opafm/etc/opaxmlfilter
 #install -D stage.rpm/opa_ca_openssl.cnf-sample $RPM_BUILD_ROOT/opt/opafm/samples/opa_ca_openssl.cnf-sample
 #install -D stage.rpm/opa_comp_openssl.cnf-sample $RPM_BUILD_ROOT/opt/opafm/samples/opa_comp_openssl.cnf-sample
 mkdir -p $RPM_BUILD_ROOT%{_sbindir}
+mkdir -p $RPM_BUILD_ROOT%{_mandir}/man8
 ln -s /opt/opafm/bin/fm_cmd $RPM_BUILD_ROOT%{_sbindir}/opafmcmd
 ln -s /opt/opafm/bin/fm_cmdall $RPM_BUILD_ROOT%{_sbindir}/opafmcmdall
+
+cd stage.rpm
+cp -t $RPM_BUILD_ROOT%{_mandir}/man8 %fm_mans
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -160,7 +166,7 @@ fi
 #/opt/opafm/samples/*
 %{_sbindir}/opafmcmd
 %{_sbindir}/opafmcmdall
-
+%{_mandir}/man8/*
 
 %changelog
 * Thu Oct 09 2014 Kaike Wan <kaike.wan@intel.com> - 10.0.0.0-177

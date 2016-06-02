@@ -43,8 +43,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 * DEPENDENCIES
 *      vs_g.h
 *
-* RESPONSIBLE ENGINEER:
-*      Common Services
 *
 * HISTORY
 *
@@ -142,8 +140,6 @@ void vs_thread_key_init(void)
 *      Status_t - On success VSTATUS_OK is returned, otherwise
 *      the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*      Common Services
 *
 * HISTORY
 *
@@ -300,8 +296,6 @@ impl_vs_thread_create (Thread_t *thr,
 *      Status_t - On success VSTATUS_OK is returned, otherwise
 *      the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*      Common Services
 *
 * HISTORY
 *
@@ -353,8 +347,6 @@ const char *impl_vs_thread_name_str (void)
 *      Status_t - On success VSTATUS_OK is returned, otherwise
 *      the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*      Common Services
 *
 * HISTORY
 *
@@ -394,8 +386,6 @@ impl_vs_thread_groupname (Threadname_t name, Threadname_t *grpname)
 *      Status_t - On success VSTATUS_OK is returned, otherwise
 *      the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*      Common Services
 *
 * HISTORY
 *
@@ -439,8 +429,6 @@ impl_vs_thread_exit (Thread_t *handle)
 *      Status_t - On success VSTATUS_OK is returned, otherwise
 *      the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*      Common Services
 *
 * HISTORY
 *
@@ -536,8 +524,6 @@ impl_vs_thread_kill (Thread_t *handle)
 *      Status_t - On success VSTATUS_OK is returned, otherwise
 *      the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*      Common Services
 *
 * HISTORY
 *
@@ -582,8 +568,6 @@ impl_vs_thread_sleep (uint64_t sleep_time)
 * OUTPUTS
 *    -
 *
-* RESPONSIBLE ENGINEER: 
-*    Common Services
 *
 **********************************************************************/
 static void
@@ -628,8 +612,6 @@ impl_vs_thread_exit_handler(void *arg)
 *      Status_t - On success VSTATUS_OK is returned, otherwise
 *      the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*      Common Services
 *
 * HISTORY
 *

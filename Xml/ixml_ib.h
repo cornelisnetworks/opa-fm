@@ -115,6 +115,10 @@ extern void IXmlOutputTimeoutMult(IXmlOutputState_t *state, const char* tag, voi
 /* typically a bitfield, so need to call with value instead of ptr */
 extern void IXmlOutputHOQLifeValue(IXmlOutputState_t *state, const char* tag, uint8 value);
 extern void IXmlOutputHOQLife(IXmlOutputState_t *state, const char* tag, void *data);
+extern void IXmlOutputIPAddrIPV6(IXmlOutputState_t *state, const char* tag, void *data);
+extern void IXmlOutputIPAddrIPV4(IXmlOutputState_t *state, const char* tag, void *data);
+extern void IXmlParserEndIPAddrIPV6(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid);
+extern void IXmlParserEndIPAddrIPV4(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid);
 extern boolean IXmlParseTimeoutMult_Str(IXmlParserState_t *state, XML_Char *content, unsigned len, uint8 *value);
 extern void IXmlParserEndTimeoutMult_Str(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid);
 extern void IXmlParserEndTimeoutMult32_Str(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid);

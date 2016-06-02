@@ -603,7 +603,7 @@ sub rpm_run_install($$$)
 		if ( $? == 0 ) {
 			NormalPrint("$out");
 		} else {
-			NormalPrint("ERROR - Failed to install $rpmfile");
+			NormalPrint("ERROR - Failed to install $rpmfile\n");
 			NormalPrint("$out");
 			$exit_code = 1;
 			HitKeyCont;
@@ -621,7 +621,7 @@ sub rpm_run_install($$$)
 		if ( $? == 0 ) {
 			NormalPrint("$out");
 		} else {
-			NormalPrint("ERROR - Failed to install $rpmfile");
+			NormalPrint("ERROR - Failed to install $rpmfile\n");
 			NormalPrint("$out");
 			$exit_code = 1;
 			HitKeyCont;

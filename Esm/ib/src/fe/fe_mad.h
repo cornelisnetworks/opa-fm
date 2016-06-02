@@ -35,8 +35,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 * DESCRIPTION
 *       Fabric Executive MAD support data structures
 * 
-* RESPONSIBLE ENGINEER:
-*       Jason Wiseman 
 *
 * HISTORY
 *

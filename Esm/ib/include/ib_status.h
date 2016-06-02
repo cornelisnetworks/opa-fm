@@ -45,8 +45,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // DEPENDENCIES                                                         //
 //    ib_types.h                                                        //
 //                                                                      //
-// RESPONSIBLE ENGINEER                                                 //
-//    Jeff Young                                                        //
 //                                                                      //
 // HISTORY                                                              //
 //                                                                      //

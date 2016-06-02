@@ -49,8 +49,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //    ib_mad.h                                   //
 //    ib_status.h                                //
 //                                       //
-// RESPONSIBLE ENGINEER                              //
-//    Jeff Young                                 //
 //                                       //
 //===========================================================================//
 
@@ -197,34 +195,38 @@ sm_getMadStatusText(uint16_t status)
 char * smGetNodeString(uint8_t *path, uint16_t lid, Node_t *node, Port_t *port,
 							char *buff, uint32_t buffLen)
 {
-	int buffIdx = 0;
 	int i;
 	int pIndex = -1;
-	
+	char *buffptr = buff;
 
-	memset(buff, 0, buffLen);
+	memset(buffptr, 0, buffLen);
 
 	//If we have a path supplied, lets add it to buffer
 	if(path != NULL){
-		buffIdx = snprintf(buff, buffLen, "Path:[");
-		if(path[0] == 0 && buffIdx < buffLen)
+		snprintf(buffptr, buffLen, "Path:[");
+		buffLen -= strlen(buffptr);
+		buffptr += strlen(buffptr);
+		if(path[0] == 0)
 		{
-			buffIdx += snprintf(buff + buffIdx, buffLen - buffIdx, "Local Port");
+			snprintf(buffptr, buffLen, "Local Port");
+			buffLen -= strlen(buffptr);
+			buffptr += strlen(buffptr);
 			if (!node && sm_topop) 
 				node = sm_topop->node_head;
 		}
 		else {
-			for (i = 1; i <= (int) path[0] && buffIdx < buffLen; i++) {
-				buffIdx += snprintf(buff + buffIdx, buffLen - buffIdx, "%2d ", path[i]);
+			for (i = 1; i <= (int) path[0]; i++) {
+				snprintf(buffptr, buffLen, "%2d ", path[i]);
+				buffLen -= strlen(buffptr);
+				buffptr += strlen(buffptr);
 			}
 			if (!node && sm_topop)
 				node = sm_find_node_by_path(sm_topop, path);
 		}
-		if (buffIdx < buffLen)
-			buffIdx += snprintf(buff + buffIdx, buffLen - buffIdx, "]");
+		snprintf(buffptr, buffLen, "]");
+		buffLen -= strlen(buffptr);
+		buffptr += strlen(buffptr);
 	}
-	if(buffIdx >= buffLen)
-		return buff;
 
 	// If we have a port - then the port index is valid
 	if (port) 
@@ -233,7 +235,9 @@ char * smGetNodeString(uint8_t *path, uint16_t lid, Node_t *node, Port_t *port,
 	//If we don't have a node but we do have a lid, lets try to look it up in
 	//topo
 	if(lid){
-		buffIdx += snprintf(buff + buffIdx, buffLen - buffIdx, " Lid:[%d]", lid);
+		snprintf(buffptr, buffLen, " Lid:[%d]", lid);
+		buffLen -= strlen(buffptr);
+		buffptr += strlen(buffptr);
 		if(!node && (lid <= UNICAST_LID_MAX) && sm_topop)
 			port = sm_find_node_and_port_lid(sm_topop, lid, &node);
 
@@ -243,21 +247,25 @@ char * smGetNodeString(uint8_t *path, uint16_t lid, Node_t *node, Port_t *port,
 			pIndex = port->index;
 		}
 	}
-	if(buffIdx >= buffLen)
-		return buff;
 
 	//Print node info if we have it
 	if(node){
 		if (pIndex!=-1) {
-			buffIdx += snprintf(buff + buffIdx, buffLen - buffIdx, " NodeGUID:[" FMT_U64 "] NodeDesc:[%s] PortIndex:[%d]", 
+			snprintf(buffptr, buffLen, " NodeGUID:[" FMT_U64 "] NodeDesc:[%s] PortIndex:[%d]", 
 								node->nodeInfo.NodeGUID, node->nodeDesc.NodeString, pIndex);
+			buffLen -= strlen(buffptr);
+			buffptr += strlen(buffptr);
 		} else {
-			buffIdx += snprintf(buff + buffIdx, buffLen - buffIdx, " NodeGUID:[" FMT_U64 "] NodeDesc:[%s] PortIndex:[unknown]", 
+			snprintf(buffptr, buffLen, " NodeGUID:[" FMT_U64 "] NodeDesc:[%s] PortIndex:[unknown]", 
 								node->nodeInfo.NodeGUID, node->nodeDesc.NodeString);
+			buffLen -= strlen(buffptr);
+			buffptr += strlen(buffptr);
 		}
 	}
 	else {
-		buffIdx += snprintf(buff + buffIdx, buffLen - buffIdx, " [Can't find node in topology!]");
+		snprintf(buffptr, buffLen, " [Can't find node in topology!]");
+		buffLen -= strlen(buffptr);
+		buffptr += strlen(buffptr);
 	}
 	return buff;
 }
@@ -764,6 +772,9 @@ sm_send_stl_request_impl(IBhandle_t fd, uint32_t method, uint32_t aid,
 			datalen = MIN(STL_SMP_LR_HDR_LEN + reqLength, STL_MAD_PAYLOAD_SIZE);
 		}
 	}
+
+	//make sure datasize is set so packet isn't padded
+	out_mad.datasize = datalen;
 
 	if (howToHandleReply == WAIT_FOR_REPLY) {
 		// 
@@ -3177,12 +3188,6 @@ sm_setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t * cnp, Port_t * c
 			portp->portData->lid = 0;
 		}
 
-		if (portp->portData->mtuSupported < STL_MTU_8192) {
-			/* 
-			   IB_LOG_WARN_FMT(__func__, "Found IB MTU Cap %d for port: Node='%s',
-			   GUID="FMT_U64", NodeIndex=%d, PortIndex=%d", portp->portData->mtuSupported,
-			   sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, nodep->index, portp->index); */
-		}
 		if ((portp->portData->vl0 < 1) || (portp->portData->vl0 > STL_MAX_VLS)) {
 			portp->portData->vl0 = 1;
 		}
@@ -3402,6 +3407,10 @@ sm_find_node_by_path(Topology_t * topop, uint8_t * path)
 	for (pathIndex=1; pathIndex<=path[0]; pathIndex++) {
 		nextNodeNumber = node_ptr->port[ path[pathIndex] ].nodeno;
 		if (nextNodeNumber < 0 || nextNodeNumber >= topop->num_nodes) {
+			IB_EXIT(__func__, NULL);
+			return NULL;
+		}
+		if (!topop->nodeArray) {
 			IB_EXIT(__func__, NULL);
 			return NULL;
 		}
@@ -6947,31 +6956,19 @@ buildServiceRecordSM(STL_SERVICE_RECORD * srp, uint8_t * servName, uint64_t serv
 
 	// add checksums to first 3 words of data32 and the consistency check levels to 
 	// the bytes 2 and 3 of data8 if we are configured to do so
-	if (sm_config.config_consistency_check_level != NO_CHECK_CCC_LEVEL) {
-		srp->ServiceData32[0] = sm_config.consistency_checksum;
-		srp->ServiceData32[1] = pm_config.consistency_checksum;
-
+	srp->ServiceData32[0] = sm_config.consistency_checksum;
+	srp->ServiceData32[1] = pm_config.consistency_checksum;
 		(void)vs_rdlock(&old_topology_lock);
-		VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
-		if (VirtualFabrics)
-			srp->ServiceData32[2] = VirtualFabrics->consistency_checksum;
-		else
-			srp->ServiceData32[2] = 0;
-		(void)vs_rwunlock(&old_topology_lock);
-
-		srp->ServiceData8[2] = sm_config.config_consistency_check_level;
-		srp->ServiceData8[3] = pm_config.config_consistency_check_level;
-
-		// supply the current XM checksum version
-		srp->ServiceData8[4] = XML_CHECKSUM_VERSION;
-	} else {
-		srp->ServiceData32[0] = 0;
-		srp->ServiceData32[1] = 0;
+	VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
+	if (VirtualFabrics)
+		srp->ServiceData32[2] = VirtualFabrics->consistency_checksum;
+	else
 		srp->ServiceData32[2] = 0;
-		srp->ServiceData8[2] = 0;
-		srp->ServiceData8[3] = 0;
-		srp->ServiceData8[4] = 0;
-	}
+	(void)vs_rwunlock(&old_topology_lock);
+		srp->ServiceData8[2] = sm_config.config_consistency_check_level;
+	srp->ServiceData8[3] = pm_config.config_consistency_check_level;
+		// supply the current XM checksum version
+	srp->ServiceData8[4] = FM_PROTOCOL_VERSION;
 
 }								// End of buildServiceRecordSM()
 

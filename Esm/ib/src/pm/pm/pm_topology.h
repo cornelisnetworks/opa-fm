@@ -54,6 +54,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 extern "C" {
 #endif
 
+#include "iba/public/ipackon.h"
+
 // if 1, we compress groups such no gaps in portImage->groups
 //		this speeds up PM sweeps
 // if 0, we can have gaps, this speeds up Removing groups
@@ -211,7 +213,7 @@ typedef struct ErrorSummary_s {
 	uint16 UtilizationPct10;        	/* in units of 10% */
 	uint16 DiscardsPct10;           	/* in units of 10% */
 	uint32 Reserved;
-} ErrorSummary_t;
+} PACK_SUFFIX ErrorSummary_t;
 
 // weight to use for each Integrity counter in weighted sum
 typedef struct IntegrityWeights_s {
@@ -251,7 +253,7 @@ typedef struct ErrorBucket_s {
 	pm_bucket_t Bubble;
 	pm_bucket_t Security;
 	pm_bucket_t Routing;
-} ErrorBucket_t;
+} PACK_SUFFIX ErrorBucket_t;
 
 // we have 10 buckets each covering a 10% range.
 // So we can say number of ports with 0-10% utilization, number with 10-20%
@@ -279,9 +281,18 @@ typedef struct PmUtilStats_s {
 	uint32 MinKPps;	// minimum kilo packets/sec of all selected ports
 	uint32 MaxKPps;	// maximum kilo packets/sec of all selected ports
 
+	uint16 pmaFailedPorts;  // Number of ports with failures but were still able 
+							// to be included in Group/Vf Stats
+	uint16 topoFailedPorts; // Number of ports with failures that were not able
+							// to be included in Group/Vf Stats
 	// buckets for packets/sec % don't make much sense since theroretical
 	// limit is a function of packet size, hence confusing to report
-} PmUtilStats_t;
+
+	uint32 reserved;
+
+} PACK_SUFFIX PmUtilStats_t;
+
+#define PA_INC_COUNTER_NO_OVERFLOW(cntr, max) do { if (cntr >= max) { cntr = max; } else { cntr++; } } while(0)
 
 // we have 4 buckets each covering a 25% range and one extra bucket
 // So we can say number of ports within 0-24% of threshold, number within 25-50%
@@ -303,7 +314,7 @@ typedef struct PmErrStats_s {
 	// buckets are based on % of configured threshold,
 	// last bucket is for >=100% of threshold
 	ErrorBucket_t Ports[PM_ERR_BUCKETS];// in group
-} PmErrStats_t;
+} PACK_SUFFIX PmErrStats_t;
 
 struct PmPort_s;
 typedef boolean (*PmComparePortFunc_t)(struct PmPort_s *pmportp, char *groupName);
@@ -751,12 +762,15 @@ typedef struct PmImage_s {
 
 // --------------- Short-Term PA History --------------------
 
-#define PM_HISTORY_FILENAME_LEN 133
+#define PM_HISTORY_FILENAME_LEN 136		// max length of full filepath
+										// MUST BE MULTIPLE OF 8
 #define PM_HISTORY_MAX_IMAGES_PER_COMPOSITE 60
 #define PM_HISTORY_MAX_SMS_PER_COMPOSITE 2
 #define PM_HISTORY_MAX_LOCATION_LEN 111
-#define PM_HISTORY_VERSION 5
+#define PM_HISTORY_VERSION 6
+#define PM_HISTORY_VERSION_OLD 5 // Old version currently supported by PA
 #define PM_MAX_COMPRESSION_DIVISIONS 32
+#define PM_HISTORY_STHFILE_LEN 15 // the exact length of the filename, not full path
 
 typedef struct PmCompositePort_s {
 	uint64	guid;
@@ -851,7 +865,7 @@ typedef struct PmCompositePort_s {
 	PmCompositeVLCounters_t	stlVLPortCounters[MAX_PM_VLS];
 	ErrorSummary_t	errors;
 	ErrorSummary_t	VFErrors[MAX_VFABRICS];
-} PmCompositePort_t;
+} PACK_SUFFIX PmCompositePort_t;
 
 typedef struct PmCompositeNode_s {
 	uint64	guid;
@@ -861,7 +875,7 @@ typedef struct PmCompositeNode_s {
 	uint8	numPorts;
 	uint32	reserved;
 	PmCompositePort_t	**ports;
-} PmCompositeNode_t;
+} PACK_SUFFIX PmCompositeNode_t;
 
 typedef struct PmCompositeVF_s {
 	char	name[MAX_VFABRIC_NAME];
@@ -872,7 +886,7 @@ typedef struct PmCompositeVF_s {
 	uint8	reserved;
 	PmUtilStats_t	intUtil;
 	PmErrStats_t	intErr;
-} PmCompositeVF_t;
+} PACK_SUFFIX PmCompositeVF_t;
 
 typedef struct PmCompositeGroups_s {
 	char	name[STL_PM_GROUPNAMELEN];
@@ -888,7 +902,7 @@ typedef struct PmCompositeGroups_s {
 	PmUtilStats_t	recvUtil;
 	PmErrStats_t	intErr;
 	PmErrStats_t	extErr;
-} PmCompositeGroup_t;
+} PACK_SUFFIX PmCompositeGroup_t;
 
 typedef struct PmHistoryHeaderCommon_s {
 	uint32	historyVersion;			// Must remain fixed for all versions
@@ -900,7 +914,7 @@ typedef struct PmHistoryHeaderCommon_s {
 	uint16	imagesPerComposite;
 	uint32	imageSweepInterval;
 	uint64	imageIDs[PM_HISTORY_MAX_IMAGES_PER_COMPOSITE];
-} PmHistoryHeaderCommon_t;
+} PACK_SUFFIX PmHistoryHeaderCommon_t;
 
 typedef struct PmFileHeader_s {
 	PmHistoryHeaderCommon_t common;
@@ -908,7 +922,7 @@ typedef struct PmFileHeader_s {
 	uint8	numDivisions;
 	uint8	reserved[7];
 	uint64	divisionSizes[PM_MAX_COMPRESSION_DIVISIONS];
-} PmFileHeader_t;
+} PACK_SUFFIX PmFileHeader_t;
 
 typedef struct PmCompositeImage_s {
 	PmFileHeader_t	header;
@@ -949,7 +963,7 @@ typedef struct PmCompositeImage_s {
 	PmCompositeGroup_t	groups[PM_MAX_GROUPS];
 	PmCompositeVF_t		VFs[MAX_VFABRICS];
 	PmCompositeNode_t	**nodes;
-} PmCompositeImage_t;
+} PACK_SUFFIX PmCompositeImage_t;
 
 #define INDEX_NOT_IN_USE 0xffffffff
 typedef struct PmHistoryRecord_s {
@@ -979,6 +993,8 @@ typedef struct PmShortTermHistory_s {
 		PmGroup_t *Groups[PM_MAX_GROUPS];
 		PmVF_t *VFs[MAX_VFABRICS];
 	} LoadedImage;
+	char	**invalidFiles; // keeps track of history filenames with a version mismatch
+	uint32	oldestInvalid; // index of the oldest invalid file
 	PmHistoryRecord_t	**historyRecords;
 } PmShortTermHistory_t;
 
@@ -1087,6 +1103,8 @@ BSWAP_PM_UTIL_STATS(PmUtilStats_t *Dest)
 	Dest->AvgKPps = ntoh32(Dest->AvgKPps);
 	Dest->MinKPps = ntoh32(Dest->MinKPps);
 	Dest->MaxKPps = ntoh32(Dest->MaxKPps);
+	Dest->pmaFailedPorts = ntoh16(Dest->pmaFailedPorts);
+	Dest->topoFailedPorts = ntoh16(Dest->topoFailedPorts);
 #endif
 }	// End of BSWAP_PM_UTIL_STATS
 
@@ -1250,14 +1268,17 @@ BSWAP_PM_COMPOSITE_NODE(PmCompositeNode_t *Dest, uint32 numNodes)
 {
 #if CPU_LE
 	PmCompositeNode_t *cnode = Dest;
-	uint32 i;
+	uint32 i, numPorts;
 
 	for (i = 0; i < numNodes; i++) {
+		numPorts = (cnode->nodeType == STL_NODE_SW ? cnode->numPorts+1 : cnode->numPorts);
 		cnode->guid = ntoh64(cnode->guid);
 		cnode->lid = ntoh16(cnode->lid);
-		BSWAP_PM_COMPOSITE_PORT((PmCompositePort_t *)&cnode->ports, cnode->numPorts);
+		BSWAP_PM_COMPOSITE_PORT((PmCompositePort_t *)&cnode->ports, numPorts);
 		// Calc address of next (flattened) composite node
-		cnode = (PmCompositeNode_t *)((size_t)cnode + (sizeof(PmCompositePort_t) * cnode->numPorts));
+		cnode = (PmCompositeNode_t *)((size_t)cnode
+			+ (sizeof(PmCompositeNode_t) - sizeof(PmCompositePort_t **))
+			+ (sizeof(PmCompositePort_t) * numPorts));
 	}
 #endif
 }	// End of BSWAP_PM_COMPOSITE_NODE
@@ -1349,13 +1370,22 @@ BSWAP_PM_FILE_HEADER(PmFileHeader_t *Dest)
 // Byte-swap flattened Composite Image
 static __inline
 void
-BSWAP_PM_COMPOSITE_IMAGE_FLAT(PmCompositeImage_t *Dest, boolean hton)
+BSWAP_PM_COMPOSITE_IMAGE_FLAT(PmCompositeImage_t *Dest, boolean hton, uint32 history_version)
 {
 #if CPU_LE
 	uint32 numNodes;
+	PmCompositeNode_t *cnodes = (PmCompositeNode_t *)&Dest->nodes;
+
+	if (history_version == PM_HISTORY_VERSION_OLD) {
+		// Adjust location of cnodes if reading old version
+		cnodes = (PmCompositeNode_t *)((size_t)cnodes
+			- (3 * (PM_MAX_GROUPS + 1) * 8)
+			- (1 * (MAX_VFABRICS) * 8) );
+		// Change in size is due to increase in size of PmUtilStats_t by 8 bytes from v5 to v6
+		//   There is 1 PmUtilStats_t per subgroup (Int, Send, Recv)
+	}
 
 	// Note that header is swapped independently
-
 	if (hton) {
 		numNodes = Dest->maxLid + 1;
 		Dest->maxLid = ntoh32(Dest->maxLid);
@@ -1381,22 +1411,24 @@ BSWAP_PM_COMPOSITE_IMAGE_FLAT(PmCompositeImage_t *Dest, boolean hton)
 	Dest->numVFsActive = ntoh32(Dest->numVFsActive);
 	Dest->numPorts = ntoh32(Dest->numPorts);
 	BSWAP_PM_COMPOSITE_SM_INFO(Dest->SMs, PM_HISTORY_MAX_SMS_PER_COMPOSITE);
-	BSWAP_PM_COMPOSITE_GROUP(&Dest->allPortsGroup, 1);
-	BSWAP_PM_COMPOSITE_GROUP(Dest->groups, PM_MAX_GROUPS);
-	BSWAP_PM_COMPOSITE_VF(Dest->VFs, MAX_VFABRICS);
-	BSWAP_PM_COMPOSITE_NODE((PmCompositeNode_t *)&Dest->nodes, numNodes);
+	// Skip BSWAP of Groups and VFs as data is calculated on PA Query
+	// BSWAP_PM_COMPOSITE_GROUP(&Dest->allPortsGroup, 1);
+	// BSWAP_PM_COMPOSITE_GROUP(Dest->groups, PM_MAX_GROUPS);
+	// BSWAP_PM_COMPOSITE_VF(Dest->VFs, MAX_VFABRICS);
+
+	BSWAP_PM_COMPOSITE_NODE(cnodes, numNodes);
 #endif
 }	// End of BSWAP_PM_COMPOSITE_IMAGE_FLAT
-
 
 void clearLoadedImage(PmShortTermHistory_t *sth);
 size_t computeCompositeSize(void);
 FSTATUS decompressAndReassemble(unsigned char *input_data, size_t input_size, uint8 divs, size_t *input_sizes, unsigned char *output_data, size_t output_size);
-FSTATUS rebuildComposite(PmCompositeImage_t *cimg, unsigned char *data);
+FSTATUS rebuildComposite(PmCompositeImage_t *cimg, unsigned char *data, uint32 history_version);
 void writeImageToBuffer(Pm_t *pm, uint32 histindex, uint8_t isCompressed, uint8_t *buffer, uint32_t *bIndex);
 void PmFreeComposite(PmCompositeImage_t *cimg);
 FSTATUS PmLoadComposite(Pm_t *pm, PmHistoryRecord_t *record, PmCompositeImage_t **cimg);
 FSTATUS PmFreezeComposite(Pm_t *pm, PmHistoryRecord_t *record);
+FSTATUS PmFreezeCurrent(Pm_t *pm);
 PmVF_t *PmReconstituteVFImage(PmCompositeVF_t *cVF);
 PmGroup_t *PmReconstituteGroupImage(PmCompositeGroup_t *cgroup);
 PmPort_t *PmReconstitutePortImage(PmShortTermHistory_t *sth, PmCompositePort_t *cport);
@@ -1643,8 +1675,8 @@ void PmRemovePortFromGroupIndex(PmPortImage_t* portImage, uint32 grpIndex, PmGro
 
 void PmAddPortToVFIndex(PmPortImage_t * portImage, uint32 vfIndex, PmVF_t *vfp);
 
-boolean PmIsPortInGroup(Pm_t *pm, PmPort_t *pmport,
-						PmPortImage_t *portImage, PmGroup_t *groupp, boolean sth);
+boolean PmIsPortInGroup(Pm_t *pm, PmPort_t *pmport, PmPortImage_t *portImage,
+    PmGroup_t *groupp, boolean sth, boolean *isInternal);
 boolean PmIsPortInVF(Pm_t *pm, PmPort_t *pmportp,
 						PmPortImage_t *portImage, PmVF_t *vfp);
 
@@ -1676,6 +1708,8 @@ void PM_BuildClearCounterSelect(CounterSelectMask_t *select, boolean clearXfer, 
 
 //  insert a shortterm history file from the Master PM into the local history filelist
 FSTATUS injectHistoryFile(Pm_t *pm, char *filename, uint8_t *buffer, uint32_t filelen);
+
+#include "iba/public/ipackoff.h"
 
 #ifdef __cplusplus
 };

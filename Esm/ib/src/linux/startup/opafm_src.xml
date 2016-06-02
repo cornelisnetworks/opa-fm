@@ -706,7 +706,7 @@
       <!-- <HoqLife>8ms</HoqLife> Override SM instance value -->
     </VirtualFabric>
 
-    <!-- when using Intel True Scale Fabric HFIs with PSM technology,--> 
+    <!-- when using Intel OmniPath Fabric HFIs with PSM technology,--> 
     <!-- there is no need to configure PKey nor SL. FM can freely select -->
     <!-- since PSM will query the SA using the PSM ServiceIds when -->
     <!-- PSM_PATH_REC="opp" -->
@@ -766,27 +766,33 @@
     <PmPortGroup>
       <Name>TFIs</Name>
       <Monitor>AllTFIs</Monitor>
-      <Enabled>0</Enabled>
+      <Enable>0</Enable>
     </PmPortGroup>
 
     <!-- All ports on Fabric Interfaces, includes HFIs and TFIs -->
     <PmPortGroup>
       <Name>AllFIs</Name>
       <Monitor>AllFIs</Monitor>
-      <Enabled>0</Enabled>
+      <Enable>0</Enable>
     </PmPortGroup>
 
     <!-- All ports in rack 1 as per DG -->
     <PmPortGroup>
       <Name>Rack1PG</Name>
       <Monitor>Rack1DG</Monitor>
-      <Enabled>0</Enabled>
+      <Enable>0</Enable>
     </PmPortGroup>
   </PmPortGroups>
 
   <!-- Shared Common config, applies to all components: SM, PM and FE -->
   <!-- Most of the parameters below can also be set per component if needed -->
   <Shared>
+    <!-- Configure maximum number of times an FM component can be restarted -->
+    <!-- after running less then StartupStabelWait minutes before terminating the opafm service. -->
+    <StartupRetries>5</StartupRetries>
+    <!-- Amount of time in minutes before an instance is considered -->
+    <!-- successfully started and stable. -->
+    <StartupStableWait>10</StartupStableWait>
     <!-- Max FI Ports, estimates switches assuming optimal Fat Tree. -->
     <!-- Increase if non-optimal Fat Tree. -->
     <!-- For ESM this will be automatically adjusted to ESM maximum -->
@@ -851,27 +857,16 @@
     <!-- ESM does not support SyslogFacility, select via chassis Logging -->
     <SyslogFacility>local6</SyslogFacility>
 
-    <!-- Controls the Configuration Consistency Check for SM, and PM -->
-    <!-- Setting can be completely disabled, or can be set to take action -->
-    <!-- by deactivating Standby SM or PM if configuration does not -->
-    <!-- pass the consistency check criteria. The default level is 2 -->
-    <!-- 0 = disable Configuration Consistency Checking -->
-    <!-- 1 = enable Configuration Consistency Checking without taking action -->
-    <!--      (only log a message) -->
-    <!-- 2 = enable Configuration Consistency Checking and take action -->
-    <!--      (log message and move standby to inactive state) -->
-    <!-- This parameter cannot be overridden in the SM or PM section. -->
-    <ConfigConsistencyCheckLevel>2</ConfigConsistencyCheckLevel>
 
     <!-- OpenSSL FE network security parameters  -->
-    <SslSecurityEnabled>1</SslSecurityEnabled>
+    <SslSecurityEnable>1</SslSecurityEnable>
     <SslSecurityDir>/usr/local/ssl/opafm</SslSecurityDir>
     <SslSecurityFmCertificate>fm_cert.pem</SslSecurityFmCertificate>
     <SslSecurityFmPrivateKey>fm_key.pem</SslSecurityFmPrivateKey>
     <SslSecurityFmCaCertificate>fm_ca_cert.pem</SslSecurityFmCaCertificate>
     <SslSecurityFmCertChainDepth>1</SslSecurityFmCertChainDepth>
     <SslSecurityFmDHParameters>fm_dh_parms.pem</SslSecurityFmDHParameters>
-    <SslSecurityFmCaCRLEnabled>0</SslSecurityFmCaCRLEnabled>
+    <SslSecurityFmCaCRLEnable>0</SslSecurityFmCaCRLEnable>
     <SslSecurityFmCaCRL>fm_ca_crl.pem</SslSecurityFmCaCRL>
 
     <!-- Additional parameters for debug/development use -->
@@ -901,12 +896,28 @@
     <!-- <PA_LogMask>0x000001ff</PA_LogMask> -->
     <!-- <FE_LogMask>0x000001ff</FE_LogMask> -->
     <!-- <APP_LogMask>0x000001ff</APP_LogMask> -->
+    
+    <!-- Controls the Configuration Consistency Check for SM, and PM -->
+    <!-- Setting can be completely disabled, or can be set to take action -->
+    <!-- by deactivating Standby SM or PM if configuration does not -->
+    <!-- pass the consistency check criteria. The default level is 2 -->
+    <!-- 1 = enable Configuration Consistency Checking without taking action -->
+    <!--     only logs a message when a consistency mismatch is detected  -->
+    <!--     this is a debug option not recommended for typical use -->
+    <!-- 2 = enable Configuration Consistency Checking and take action -->
+    <!--      (log message and move standby to inactive state) -->
+    <!-- This parameter cannot be overridden in the SM or PM section. -->
+    <!-- <ConfigConsistencyCheckLevel>2</ConfigConsistencyCheckLevel> -->
+        
   </Shared>
 
   <!-- Common SM (Subnet Manager) attributes -->
   <Sm>
     <!-- ESM does not support Start via XML configuration. Use CLI commands -->
     <Start>1</Start> <!-- default SM startup for all instances -->
+    <!-- SM restart parameters can be configured separately; overrides Common.Shared settings -->
+    <!-- <StartupRetries>5</StartupRetries> -->
+    <!-- <StartupStableWait>10</StartupStableWait> -->
     <!-- *************** SM Redundancy **************************** -->
     <!-- MasterPingInterval is the interval secondary SM pings master. -->
     <!-- Ping must fail MasterPingMaxFail times before secondary takes over. -->
@@ -1393,7 +1404,7 @@
         <!-- injection rate delay for an SL or QP. Range is 0 to 255.   -->
         <Min>0</Min>
         <!-- OPA CC CongestionControlTable:CCTI Limit                   -->
-        <!-- Maximum value for the CCTI. Range is 0-65535.              -->
+        <!-- Maximum value for the CCTI. Range is 1-895.                -->
         <Limit>127</Limit>
         <!-- Maximum injection rate delay in ns -->
         <!-- The Congestion Control Table will be generated with Limit -->
@@ -1741,6 +1752,8 @@
     <!-- enable the FE via the smConfig and smPmStart chassis CLI commands. -->
     <Start>0</Start> <!-- default FE startup for all instances -->
     <!-- Overrides of the Common.Shared parameters if desired -->
+    <!-- <StartupRetries>5</StartupRetries> -->
+    <!-- <StartupStableWait>10</StartupStableWait> -->
     <!-- <LogLevel>2</LogLevel> -->                                                                                    <!--#FE_0_log_level:dec-->
     <!-- <LogFile></LogFile> -->                                                                                       <!--#FE_0_log_file-->
     <!-- <SyslogFacility>Local6</SyslogFacility> -->
@@ -1931,7 +1944,9 @@
     <!-- StorageLocation is where the history files will be stored. -->
     <!--    It must be a full filepath, beginning with a '/' -->
     <!-- TotalHistory is the total number of hours of history that will be -->
-    <!--    stored. -->
+    <!--    stored. This is a limit on the total amount of data stored, and -->
+    <!--    not a limit on a file's age. PM downtime does not count towards -->
+    <!--    the total time -->
     <!-- ImagesPerComposite determines how many images will be compounded -->
     <!--    into a single image as part of writing to the file. A higher -->
     <!--    number will save disk space but will result in a lower data -->
@@ -2013,6 +2028,8 @@
     <!-- is defined by Common.Sm.Start, Common.Pm.Start, etc -->
     <!-- ESM does not support Start via XML configuration. Use CLI commands -->
     <Start>1</Start>
+    <!-- <StartupRetries>5</StartupRetries> -->
+    <!-- <StartupStableWait>10</StartupStableWait> -->
 
     <!-- Name, Hfi, Port, and PortGUID are ignored for ESM since they -->
     <!-- are automatically set -->
@@ -2025,7 +2042,6 @@
     <!-- Overrides of the Common.Shared parameters if desired -->
     <!-- ESM does not support LogFile -->
     <!-- <LogFile>/var/log/fm0_log</LogFile> --> <!-- log for this instance -->
-    <!-- <ConfigConsistencyCheckLevel>2</ConfigConsistencyCheckLevel> -->
   </Shared>
 
   <!-- Instance Specific SM (Subnet Manager) attributes -->
@@ -2033,9 +2049,11 @@
     <!-- Overrides of the Common.Shared, Common.Sm or Fm.Shared parameters -->
     <!-- ESM does not support Start via XML configuration. Use CLI commands -->
     <!-- <Start>1</Start> -->                                                                                          <!--#SM_0_start:dec==1-->
+    <!-- <StartupRetries>5</StartupRetries> -->
+    <!-- <StartupStableWait>10</StartupStableWait> -->
 
     <PreDefinedTopology>
-        <Enabled>0</Enabled>
+        <Enable>0</Enable>
         <TopologyFilename>/etc/sysconfig/opa/topology.0:0.xml</TopologyFilename>
     </PreDefinedTopology>
   </Sm>
@@ -2046,6 +2064,8 @@
     <!-- Overrides of the Common.Shared, Common.Fe or Fm.Shared parameters -->
     <!-- See Common.Fe for more information about enabling the FE -->
     <!-- <Start>1</Start> -->                                                                                          <!--#FE_0_start:dec==1-->
+    <!-- <StartupRetries>5</StartupRetries> -->
+    <!-- <StartupStableWait>10</StartupStableWait> -->
   </Fe>
 
   <!-- Instance Specific PM (Performance Manager) attributes -->
@@ -2083,13 +2103,16 @@
     <SubnetPrefix>0xfe80000000001001</SubnetPrefix> <!-- should be unique -->                                          <!--SM_1_gidprefix==0xfe80000000000000-->
     <!-- Overrides of the Common.Shared or Fm.Shared parameters if desired -->
     <!-- <LogFile>/var/log/fm1_log</LogFile> --> <!-- log for this instance -->
-    <!-- <ConfigConsistencyCheckLevel>2</ConfigConsistencyCheckLevel> -->
+    <!-- <StartupRetries>5</StartupRetries> -->
+    <!-- <StartupStableWait>10</StartupStableWait> -->
   </Shared>
 
   <!-- Instance Specific SM (Subnet Manager) attributes -->
   <Sm>
     <!-- Overrides of the Common.Shared, Common.Sm or Fm.Shared parameters -->
     <!-- <Start>0</Start> -->                                                                                          <!--#SM_1_start:dec==0-->
+    <!-- <StartupRetries>5</StartupRetries> -->
+    <!-- <StartupStableWait>10</StartupStableWait> -->
     <!-- <MasterPingInterval>5</MasterPingInterval> -->                                                                <!--#SM_1_master_ping_interval:dec-->
     <!-- <MasterPingMaxFail>3</MasterPingMaxFail> -->                                                                  <!--#SM_1_master_ping_max_fail:dec-->
     <!-- <DbSyncInterval>15</DbSyncInterval> -->                                                                       <!--#SM_1_dbsync_interval:dec-->
@@ -2156,7 +2179,7 @@
     <!-- <DynamicPortAlloc>1</DynamicPortAlloc> -->                                                                    <!--#SM_1_dynamic_port_alloc:dec-->
 
     <PreDefinedTopology>
-      <Enabled>0</Enabled>
+      <Enable>0</Enable>
       <TopologyFilename>/etc/sysconfig/opa/topology.1:2.xml</TopologyFilename>
     </PreDefinedTopology>
   </Sm>
@@ -2167,6 +2190,8 @@
     <!-- Overrides of the Common.Shared, Common.Fe or Fm.Shared parameters -->
     <!-- See Common.Fe for more information about enabling the FE -->
     <!-- <Start>0</Start> -->                                                                                          <!--#FE_1_start:dec==0-->
+    <!-- <StartupRetries>5</StartupRetries> -->
+    <!-- <StartupStableWait>10</StartupStableWait> -->
     <!-- <Debug>0</Debug> -->                                                                                          <!--#FE_1_debug:dec-->
     <!-- <LogLevel>2</LogLevel> -->                                                                                    <!--#FE_1_log_level:dec-->
     <!-- <LogFile></LogFile> -->                                                                                       <!--#FE_1_log_file-->
@@ -2214,6 +2239,8 @@
   <!-- Shared Instance config, applies to all components: SM, PM and FE -->
   <Shared>
     <Start>0</Start> <!-- Overall Instance Startup, see fm0 for more info -->                                          <!--SM_2_start:dec-->
+    <!-- <StartupRetries>5</StartupRetries> -->
+    <!-- <StartupStableWait>10</StartupStableWait> -->
     <Name>fm2</Name> <!-- also for logging with _sm, _fe, _pm appended -->                                             <!--SM_2_name-->
     <Hfi>2</Hfi> <!-- local HFI to use for FM instance, 1=1st HFI -->                                                  <!--SM_2_device:plus-->
     <Port>1</Port> <!-- local HFI port to use for FM instance, 1=1st Port -->                                          <!--SM_2_port:dec-->
@@ -2222,13 +2249,14 @@
     <!-- Overrides of the Common.Shared or Fm.Shared parameters if desired -->
     <!-- <LogFile>/var/log/fm2_log</LogFile> --> <!-- log for this instance -->
     <!-- <SyslogFacility>Local6</SyslogFacility> -->
-    <!-- <ConfigConsistencyCheckLevel>2</ConfigConsistencyCheckLevel> -->
-  </Shared>
+   </Shared>
 
   <!-- Instance Specific SM (Subnet Manager) attributes -->
   <Sm>
     <!-- Overrides of the Common.Shared, Common.Sm or Fm.Shared parameters -->
     <!-- <Start>0</Start> -->                                                                                          <!--#SM_2_start:dec==0-->
+    <!-- <StartupRetries>5</StartupRetries> -->
+    <!-- <StartupStableWait>10</StartupStableWait> -->
     <!-- <MasterPingInterval>5</MasterPingInterval> -->                                                                <!--#SM_2_master_ping_interval:dec-->
     <!-- <MasterPingMaxFail>3</MasterPingMaxFail> -->                                                                  <!--#SM_2_master_ping_max_fail:dec-->
     <!-- <DbSyncInterval>15</DbSyncInterval> -->                                                                       <!--#SM_2_dbsync_interval:dec-->
@@ -2304,7 +2332,7 @@
     <!-- <DynamicPortAlloc>1</DynamicPortAlloc> -->                                                                    <!--#SM_2_dynamic_port_alloc:dec-->
 
     <PreDefinedTopology>
-      <Enabled>0</Enabled>
+      <Enable>0</Enable>
       <TopologyFilename>/etc/sysconfig/opa/topology.2:1.xml</TopologyFilename>
     </PreDefinedTopology>
   </Sm>
@@ -2315,6 +2343,8 @@
     <!-- Overrides of the Common.Shared, Common.Fe or Fm.Shared parameters -->
     <!-- See Common.Fe for more information about enabling the FE -->
     <!-- <Start>0</Start> -->                                                                                          <!--#FE_2_start:dec==0-->
+    <!-- <StartupRetries>5</StartupRetries> -->
+    <!-- <StartupStableWait>10</StartupStableWait> -->
     <!-- <Debug>0</Debug> -->                                                                                          <!--#FE_2_debug:dec-->
     <!-- <LogLevel>2</LogLevel> -->                                                                                    <!--#FE_2_log_level:dec-->
     <!-- <LogFile></LogFile> -->                                                                                       <!--#FE_2_log_file-->
@@ -2362,6 +2392,8 @@
   <!-- Shared Instance config, applies to all components: SM, PM and FE -->
   <Shared>
     <Start>0</Start> <!-- Overall Instance Startup, see fm0 for more info -->                                          <!--SM_3_start:dec-->
+    <!-- <StartupRetries>5</StartupRetries> -->
+    <!-- <StartupStableWait>10</StartupStableWait> -->
     <Name>fm3</Name> <!-- also for logging with _sm, _fe, _pm appended -->                                             <!--SM_3_name-->
     <Hfi>2</Hfi> <!-- local HFI to use for FM instance, 1=1st HFI -->                                                  <!--SM_3_device:plus-->
     <Port>2</Port> <!-- local HFI port to use for FM instance, 1=1st Port -->                                          <!--SM_3_port:dec-->
@@ -2370,13 +2402,14 @@
     <!-- Overrides of the Common.Shared or Fm.Shared parameters if desired -->
     <!-- <LogFile>/var/log/fm3_log</LogFile> --> <!-- log for this instance -->
     <!-- <SyslogFacility>Local6</SyslogFacility> -->
-    <!-- <ConfigConsistencyCheckLevel>2</ConfigConsistencyCheckLevel> -->
   </Shared>
 
   <!-- Instance Specific SM (Subnet Manager) attributes -->
   <Sm>
     <!-- Overrides of the Common.Shared, Common.Sm or Fm.Shared parameters -->
     <!-- <Start>0</Start> -->                                                                                          <!--#SM_3_start:dec==0-->
+    <!-- <StartupRetries>5</StartupRetries> -->
+    <!-- <StartupStableWait>10</StartupStableWait> -->
     <!-- <MasterPingInterval>5</MasterPingInterval> -->                                                                <!--#SM_3_master_ping_interval:dec-->
     <!-- <MasterPingMaxFail>3</MasterPingMaxFail> -->                                                                  <!--#SM_3_master_ping_max_fail:dec-->
     <!-- <DbSyncInterval>15</DbSyncInterval> -->                                                                       <!--#SM_3_dbsync_interval:dec-->
@@ -2452,7 +2485,7 @@
     <!-- <DynamicPortAlloc>1</DynamicPortAlloc> -->                                                                    <!--#SM_3_dynamic_port_alloc:dec-->
 
     <PreDefinedTopology>
-      <Enabled>0</Enabled>
+      <Enable>0</Enable>
       <TopologyFilename>/etc/sysconfig/opa/topology.2:2.xml</TopologyFilename>
     </PreDefinedTopology>
   </Sm>
@@ -2463,6 +2496,8 @@
     <!-- Overrides of the Common.Shared, Common.Fe or Fm.Shared parameters -->
     <!-- See Common.Fe for more information about enabling the FE -->
     <!-- <Start>0</Start> -->                                                                                          <!--#FE_3_start:dec==0-->
+    <!-- <StartupRetries>5</StartupRetries> -->
+    <!-- <StartupStableWait>10</StartupStableWait> -->
     <!-- <Debug>0</Debug> -->                                                                                          <!--#FE_3_debug:dec-->
     <!-- <LogLevel>2</LogLevel> -->                                                                                    <!--#FE_3_log_level:dec-->
     <!-- <LogFile></LogFile> -->                                                                                       <!--#FE_3_log_file-->

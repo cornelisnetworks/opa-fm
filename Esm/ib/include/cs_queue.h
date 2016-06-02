@@ -44,8 +44,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // DEPENDENCIES
 //    None
 //
-// RESPONSIBLE ENGINEER
-//    John Seraphin
 //
 //===========================================================================//
 

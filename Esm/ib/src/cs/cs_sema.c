@@ -47,8 +47,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 * DEPENDENCIES
 *      cs_g.h
 *
-* RESPONSIBLE ENGINEER:
-*      VIEO
 *
 * HISTORY
 *
@@ -95,8 +93,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *    Status_t - On success VSTATUS_OK is returned, otherwise
 *    the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*    CS Developers.
 *
 * HISTORY
 *
@@ -169,8 +165,6 @@ cs_sema_create (Sema_t *handle,
 *    Status_t - On success VSTATUS_OK is returned, otherwise
 *    the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*    CS Developers.
 *
 * HISTORY
 *
@@ -256,8 +250,6 @@ cs_sema_delete (Sema_t *handle)
 *    Status_t - On success VSTATUS_OK is returned, otherwise
 *    the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*    CS Developers.
 *
 * HISTORY
 *
@@ -334,8 +326,6 @@ cs_vsema (Sema_t *handle)
 *    Status_t - On success VSTATUS_OK is returned, otherwise
 *    the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*    CS Developers.
 *
 * HISTORY
 *
@@ -412,8 +402,6 @@ cs_psema_wait (Sema_t *handle, int timeout)
 *    Status_t - On success VSTATUS_OK is returned, otherwise
 *    the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*    CS Developers.
 *
 * HISTORY
 *
@@ -489,8 +477,6 @@ cs_psema (Sema_t *handle)
 * OUTPUTS
 *    int - semaphore count
 *
-* RESPONSIBLE ENGINEER: 
-*    CS Developers.
 *
 * HISTORY
 *

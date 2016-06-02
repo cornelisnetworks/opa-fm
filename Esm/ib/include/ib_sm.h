@@ -59,8 +59,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // DEPENDENCIES                                                         /
 //    ib_types.h                                                        /
 //                                                                      /
-// RESPONSIBLE ENGINEER                                                 /
-//    Jeff Young                                                        /
 //                                                                      /
 // HISTORY                                                              /
 //                                                                      /
@@ -430,14 +428,14 @@ typedef struct {
 } SMDBSync_t;
 typedef SMDBSync_t  *SMDBSyncp;         /* SM DBSYNC pointer type */
 
-// XML consistency checksum version history
-// version 1 - 6.0 - initial creation of feature
-// version 1 - 6.0.1, 6.0.2 - maintained version 1
-// version 2 - 6.1 - changed to version 2 due to integration XML data structures into SM, PM, BM, and FE
-#define     XML_CHECKSUM_VERSION    2
+// FM Protocol Version
+// version 1 - initial creation of FM protocol version feature
+// version 2 - 10.0.1 releases and before
+// version 3 - 10.1 release
+#define     FM_PROTOCOL_VERSION    3
 
 typedef struct {
-    uint32_t        checksumVersion;
+    uint32_t        protocolVersion;
 
     // SM checksums
 	uint32_t		smVfChecksum;			/* Virtual Fabric database checksum */

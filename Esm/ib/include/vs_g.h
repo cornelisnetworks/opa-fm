@@ -45,8 +45,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *    ib_types.h
  *    ib_status.h
  *
- * RESPONSIBLE ENGINEER
- *    Common Services
  *
  * HISTORY
  *

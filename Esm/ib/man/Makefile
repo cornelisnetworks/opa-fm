@@ -1,35 +1,9 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
-# 
-# Copyright (c) 2015, Intel Corporation
-# 
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-# 
-#     * Redistributions of source code must retain the above copyright notice,
-#       this list of conditions and the following disclaimer.
-#     * Redistributions in binary form must reproduce the above copyright
-#       notice, this list of conditions and the following disclaimer in the
-#       documentation and/or other materials provided with the distribution.
-#     * Neither the name of Intel Corporation nor the names of its contributors
-#       may be used to endorse or promote products derived from this software
-#       without specific prior written permission.
-# 
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
-# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-# 
 # END_ICS_COPYRIGHT8   ****************************************
-# Makefile for SM Module
+# Makefile for IbaTools/man
 
-# Include Make Control Settings
-include $(TL_DIR)/$(PROJ_FILE_DIR)/Makesettings.project
+# Include Make Control Settings                                                 
+include $(TL_DIR)/$(PROJ_FILE_DIR)/Makesettings.project                         
 
 #=============================================================================#
 # Definitions:
@@ -38,20 +12,11 @@ include $(TL_DIR)/$(PROJ_FILE_DIR)/Makesettings.project
 # Name of SubProjects
 DS_SUBPROJECTS	= 
 # name of executable or downloadable image
-EXECUTABLE		= # Sm$(EXE_SUFFIX)
+EXECUTABLE		= 
 # list of sub directories to build
 DIRS			= 
 # C files (.c)
 CFILES			= \
-				  reli.c \
-                  felib.c \
-                  service.c \
-                  vfi.c \
-                  rmpp.c \
-                  if3_ssl.c \
-                  hsm_com_server.c \
-                  hsm_com_srvr_api.c \
-                  hsm_com_srvr_common.c \
 				# Add more c files here
 # C++ files (.cpp)
 CCFILES			= \
@@ -71,19 +36,25 @@ DEFFILE			=
 INCLUDE_TARGETS	= \
 				# Add more h hpp files here
 # Non-compiled files
-MISC_FILES		= 
+MAN_PAGE_8_FILES = \
+				opafmcmd.8 \
+				opafmcmdall.8 \
+				# Add more man pages for chapter 8
+MISC_FILES= \
+				$(MAN_PAGE_8_FILES) \
+				# Add more files here
 # all source files
 SOURCES			= $(CFILES) $(CCFILES) $(LFILES) $(RSCFILES) $(IDLFILE)
 # Source files to include in DSP File
 DSP_SOURCES		= $(INCLUDE_TARGETS) $(SOURCES) $(MISC_FILES) \
-				  $(RSCFILES) $(DEFFILE) $(MAKEFILE)
+				  $(RSCFILES) $(DEFFILE) $(MAKEFILE) 
 # all object files
 OBJECTS			= $(CFILES:.c=$(OBJ_SUFFIX)) $(CCFILES:.cpp=$(OBJ_SUFFIX)) \
 				  $(LFILES:.lex=$(OBJ_SUFFIX))
 RSCOBJECTS		= $(RSCFILES:.rc=$(RES_SUFFIX))
 # targets to build during LIBS phase
 LIB_TARGETS_IMPLIB	=
-LIB_TARGETS_ARLIB	= $(LIB_PREFIX)if3$(ARLIB_SUFFIX)
+LIB_TARGETS_ARLIB	= # $(LIB_PREFIX)ResourceTest$(ARLIB_SUFFIX)
 LIB_TARGETS_EXP		= $(LIB_TARGETS_IMPLIB:$(ARLIB_SUFFIX)=$(EXP_SUFFIX))
 LIB_TARGETS_MISC	= 
 # targets to build during CMDS phase
@@ -117,37 +88,15 @@ INCLUDE_SUBDIR		=
 #LOCALLIBS		= User libraries to use when linking [Empty]
 #				(in addition to LOCALDEPLIBS)
 #LOCAL_LIB_DIRS	= User library directories for libpaths [Empty]
-ifeq ($(BUILD_TARGET_OS),VXWORKS)
-CLOCAL = $(CPIE) -xc
-else
-CLOCAL = $(CPIE)
-endif
 
-ifeq "$(BUILD_TARGET)" "ATOM"
-CLOCAL = -DADAPTOS -DADAPTOS_VXWORKS -DTF1_INCLUDE_X509 -DOPENSSL_NO_ENGINE
-#add include for config_compression which is in Xml directory
-CLOCAL += -I$(TL_DIR)/Xml -I$(TGT_DIR)/components/ip_net2-6.9/ipcrypto/openssl-1_0_1/include -I$(TGT_DIR)/components/ip_net2-6.9/ipssl2/openssl-1_0_1/include/openssl -I$(TGT_DIR)/components/ip_net2-6.9/ipssl2/openssl-1_0_1/include -I$(TGT_DIR)/components/ip_net2-6.9/ipcrypto/openssl-1_0_1/ -I$(TGT_DIR)/components/ip_net2-6.9/ipcrypto/include -I$(TGT_DIR)/components/ip_net2-6.9/ipcrypto/config/
-else
-ifeq ($(BUILD_TARGET_OS),VXWORKS)
-CLOCAL = -DOPENSSL_NO_IDEA -DADAPTOS -DADAPTOS_VXWORKS -DTF1_INCLUDE_X509 -DOPENSSL_NO_ENGINE
-CLOCAL += -I$(TL_DIR)/tmsTarget/src/ssecure/sshield/include
-endif
-endif
-CLOCAL += -DDEMO_BLD
-CCLOCAL += -DDEMO_BLD
-ifeq "$(BUILD_TARGET)" "ATOM"
-# this is needed to avoid error from wrsTarget/h/wrn/wm/common/wmos.h
-#   error "You must select an operating system!
-CLOCAL += -DCOMMON_IS_COMPONENT
-CCLOCAL += -DCOMMON_IS_COMPONENT
-endif
-LOCALDEPLIBS = 
-ifeq ($(BUILD_TARGET_OS),VXWORKS)
-LOCAL_INCLUDE_DIRS      = $(TL_DIR)/tmsTarget/src/tms/webif $(TORNADO_INCLUDE_DIR)/tms/idb $(TORNADO_INCLUDE_DIR)/tms/common $(TL_DIR)/BSP/bspcommon/wrs/h $(TL_DIR)/BSP/bspcommon/wrs/config $(TL_DIR)/BSP/bspcommon/h $(TORNADO_INCLUDE_DIR)/ssecure $(TORNADO_INCLUDE_DIR)/ssecure/adaptos $(TL_DIR)/Esm/ib/include
-endif
+CLOCAL = $(CPIE)
+LOCAL_INCLUDE_DIRS=
+LOCALDEPLIBS=
+LOCALLIBS=
+LOCAL_LIB_DIRS=
 
 # Include Make Rules definitions and rules
-include $(PROJ_SM_DIR)/Makerules.module
+include $(TL_DIR)/$(PROJ_FILE_DIR)/Makerules.project                         
 
 #=============================================================================#
 # Overrides:
@@ -175,11 +124,10 @@ include $(TL_DIR)/Makerules/Maketargets.install
 # install for stage phase
 #include $(TL_DIR)/Makerules/Maketargets.stage
 STAGE::
+	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_MAN_DIR)/man8 $(MAN_PAGE_8_FILES)
 
 # Unit test execution
 #include $(TL_DIR)/Makerules/Maketargets.runtest
-
-clobber:: clobber_module
 
 #=============================================================================#
 

@@ -55,7 +55,7 @@ sub disable_autostart($)
 	# disable autostart but leave any kill scripts so stopped on shutdown
 	# Note on SLES off removes kill scripts too, on redhat they remain
 	if($SYSTEMCTL_EXEC eq 0 && 
-		($WhichStartup eq "opafm" || $WhichStartup eq "opa"))
+		($WhichStartup eq "opafm" || $WhichStartup eq "opa" || $WhichStartup eq "ibacm"))
 	{
 		system "systemctl disable $WhichStartup >/dev/null 2>&1";
 	} else {
@@ -69,7 +69,7 @@ sub enable_autostart($)
 
 	# cleanup to be safe
 	if($SYSTEMCTL_EXEC eq 0 && 
-		($WhichStartup eq "opafm" || $WhichStartup eq "opa"))
+		($WhichStartup eq "opafm" || $WhichStartup eq "opa" || $WhichStartup eq "ibacm"))
 	{
 		system "systemctl enable $WhichStartup >/dev/null 2>&1";
 	} else {
@@ -85,7 +85,8 @@ sub IsAutostart($)
 {
 	my($WhichStartup) = shift();
 
-	if($SYSTEMCTL_EXEC eq 0 && ($WhichStartup eq "opafm" || $WhichStartup eq "opa"))
+	if($SYSTEMCTL_EXEC eq 0 &&
+	   ($WhichStartup eq "opafm" || $WhichStartup eq "opa" || $WhichStartup eq "ibacm"))
 	{
 		my($isEnabled) = `systemctl is-enabled $WhichStartup 2>/dev/null`;
 		chomp($isEnabled);

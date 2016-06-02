@@ -1069,7 +1069,7 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				pMPR->SGIDCount = pQuery->InputValue.GidList.SourceGidCount;
 				pMPR->DGIDCount = pQuery->InputValue.GidList.DestGidCount;
 				memcpy(pMPR->GIDList, 
-					pQuery->InputValue.MultiPathRecordValue.Gids,
+					pQuery->InputValue.GidList.GidList,
 					sizeof(IB_GID)*(pMPR->SGIDCount+pMPR->DGIDCount));
 				length = sizeof(IB_MULTIPATH_RECORD) + 
 					sizeof(IB_GID)*(pMPR->SGIDCount+pMPR->DGIDCount);

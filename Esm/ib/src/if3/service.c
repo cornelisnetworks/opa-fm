@@ -36,8 +36,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *    Code to register and delete and query SA for service associated   *
 * with interface 3.                                                    *
 *                                                                      *
-* RESPONSIBLE ENGINEER                                                 *
-*    Peter Walker                                                      *
 *                                                                      *
 *   PJG     06/17/02    PR2397.  Added a dummy #define of              *
 *                                  Endian_ClassPortInfo for ATI builds *

@@ -1008,9 +1008,14 @@ void update_pmnode(Pm_t *pm, PmNode_t *pmnodep, Node_t *nodep, Port_t *portp, Po
 	if (pmnodep->deviceRevision != nodep->nodeInfo.Revision || g_pmFirstSweepAsMaster) {
 		pmnodep->deviceRevision = nodep->nodeInfo.Revision;
 		PmUpdateNodePmaCapabilities(pmnodep,nodep,(pm->flags & STL_PM_PROCESS_HFI_COUNTERS));
+#if 0
 		// to be safe, clear out any previous ClassPortInfo
-		pmnodep->u.s.PmaGotClassPortInfo = 0;
 		// be safe, will update capabilities when get class port info again
+		pmnodep->u.s.PmaGotClassPortInfo = 0;
+#else
+		// Skip getting ClassPortInfo as in Gen1 there are no valid fields
+		pmnodep->u.s.PmaGotClassPortInfo = 1;
+#endif
 
 		// reset path information
 		initialize_path(pmnodep, portp->portData->lid, pm->SweepIndex);
@@ -1158,9 +1163,14 @@ PmNode_t *get_pmnodep(Pm_t *pm, Guid_t guid, uint16 lid)
 		if (pm->LastSweepIndex == PM_IMAGE_INDEX_INVALID
 			|| pmnodep != pm->Image[pm->LastSweepIndex].LidMap[lid]) {
 			// lid changed since last pm sweep
+#if 0
 			// clear out any previous redirect
-			pmnodep->u.s.PmaGotClassPortInfo = 0;
 			// be safe, will update capabilities when get class port info again
+			pmnodep->u.s.PmaGotClassPortInfo = 0;
+#else
+			// Skip getting ClassPortInfo as in Gen1 there are no valid fields
+			pmnodep->u.s.PmaGotClassPortInfo = 1;
+#endif
 
 			// reset path information
 			initialize_path(pmnodep, lid, pm->SweepIndex);
@@ -1272,8 +1282,7 @@ pm_copy_topology_port(Pm_t *pm, Port_t *portp, Port_t *sm_portp)
 				pmnodep->up.swPorts[i] = allocate_pmport(pm, nodep, portp2, pmnodep);
 				if (! pmnodep->up.swPorts[i]) {
 					IB_LOG_ERRORRC("Failed to allocate PM Port ptrs rc:", status);
-					// TBD - how to cleanup on failed allocate
-					// for now just skip the port and move on
+                    return VSTATUS_NOMEM;
 				}
 			} else if (! portp2 && pmportp2) {
 				// we can't free port because other images may be using it
@@ -1331,8 +1340,8 @@ uint32 connect_neighbor(Pm_t *pm, PmPort_t *pmportp)
 
 // copy all the ports which are in the new SM topology
 // does not handle disappeared ports
-static
-void pm_topology_copy_active_ports(Pm_t *pm, Port_t *sm_portp)
+static Status_t
+pm_topology_copy_active_ports(Pm_t *pm, Port_t *sm_portp)
 {
 	Node_t *nodep;
 	PmImage_t *pmimagep = &pm->Image[pm->SweepIndex];
@@ -1348,7 +1357,8 @@ void pm_topology_copy_active_ports(Pm_t *pm, Port_t *sm_portp)
 			portp = sm_get_port(nodep, 0);
 			if (sm_valid_port(portp) && sm_port_active(portp)) {
 				pmimagep->SwitchNodes++;
-				pm_copy_topology_port(pm, portp, sm_portp);
+				if (pm_copy_topology_port(pm, portp, sm_portp) == VSTATUS_NOMEM)
+                    return VSTATUS_NOMEM;
 			}
 		} else {
 			for_all_ports(nodep, portp) {
@@ -1356,11 +1366,14 @@ void pm_topology_copy_active_ports(Pm_t *pm, Port_t *sm_portp)
 					if (nodep->nodeInfo.NodeType == STL_NODE_FI) {
 						pmimagep->HFIPorts++;
 					}
-					pm_copy_topology_port(pm, portp, sm_portp);
+					if (pm_copy_topology_port(pm, portp, sm_portp) == VSTATUS_NOMEM)
+                        return VSTATUS_NOMEM;
 				}
 			}
 		}
 	}
+
+    return VSTATUS_OK;
 }
 
 // re-connect neighbors and free disappeared ports
@@ -1481,6 +1494,17 @@ static FSTATUS pm_copy_topology(Pm_t *pm)
     if (sm_isMaster() && topology_passcount >= 1)
 		ret = FSUCCESS;
 
+#ifdef __VXWORKS__
+    if (old_topology.num_nodes >= MAX_SUBNET_SIZE) {
+        // a SM shutdown race condition exists, so as a safty precaution
+        // verify the fabric size.
+        IB_LOG_ERROR_FMT(__func__, "TT: aborting - fabric size exceeds the %d maximum nodes supported by the ESM", MAX_SUBNET_SIZE);
+        pm_shutdown = TRUE;
+        ret = FINSUFFICIENT_RESOURCES;
+        goto bail;
+    }
+#endif
+
 	// must copy below so Image has copy of latest topology
     if (ret == FSUCCESS) {
 		Port_t *sm_portp;
@@ -1501,8 +1525,9 @@ static FSTATUS pm_copy_topology(Pm_t *pm)
 			rc = vs_pool_alloc(&pm_pool, newSize*sizeof(PmNode_t),
 							(void*)&newLidMap);
 			if (rc != VSTATUS_OK || ! newLidMap) {
+                ret = FINSUFFICIENT_MEMORY;
 				IB_LOG_ERRORRC("Failed to allocate PM Lid Map rc:", rc);
-				goto failalloc;
+				goto bail;
 			}
 			if (newSize > pmimagep->lidMapSize) {
 				// growing
@@ -1561,7 +1586,11 @@ static FSTATUS pm_copy_topology(Pm_t *pm)
 
 		// copy all the ports which are in the new SM topology
 		// we will handle ports which have disappeared below
-		pm_topology_copy_active_ports(pm, sm_portp);
+		if (pm_topology_copy_active_ports(pm, sm_portp) == VSTATUS_NOMEM) {
+            ret = FINSUFFICIENT_MEMORY;
+            IB_LOG_ERRORRC("Failed to allocate copy of active ports rc:", VSTATUS_NOMEM);
+            goto bail;
+        }
 
 		// neighbors are handled below
 		pm->changed_count = topology_passcount; // topology_changed_count;
@@ -1598,9 +1627,9 @@ static FSTATUS pm_copy_topology(Pm_t *pm)
 		pm_sminfo_copy(pm);
 	}
 	return ret;
-failalloc:
+bail:
 	(void)vs_rwunlock(&old_topology_lock);
-	return FINSUFFICIENT_MEMORY;
+	return ret;
 }
 
 /* ------------------ Short-Term History ----------------------------- */
@@ -1965,19 +1994,84 @@ FSTATUS divideAndCompress(unsigned char *input_data, size_t input_size, unsigned
 *  
 *   Inputs:
 *   	cimg - the composite image to create
-*		data - the data buffer
+*   	data - the data buffer
+*   	history_version - version of cimg
 *  
 *   Returns:
 *   	Status - FSUCCESS if okay
 *  
 *************************************************************************************/
-FSTATUS rebuildComposite(PmCompositeImage_t *cimg, unsigned char *data) {
+FSTATUS rebuildComposite(PmCompositeImage_t *cimg, unsigned char *data, uint32 history_version) {
 	unsigned char *loc = data;
 	int i, j;
 
-	memcpy((unsigned char*)cimg + sizeof(PmFileHeader_t), loc, (sizeof(PmCompositeImage_t) - (sizeof(PmFileHeader_t) + sizeof(PmCompositeNode_t**))));
-	loc += (sizeof(PmCompositeImage_t) - (sizeof(PmFileHeader_t) + sizeof(PmCompositeNode_t**)));
+	if (history_version == PM_HISTORY_VERSION) {
+		// Copy everything except for the node pointer at the end of the struct
+		memcpy((unsigned char *)cimg + sizeof(PmFileHeader_t), loc, (sizeof(PmCompositeImage_t) - (sizeof(PmFileHeader_t) + sizeof(PmCompositeNode_t **))));
+		loc += (sizeof(PmCompositeImage_t) - (sizeof(PmFileHeader_t) + sizeof(PmCompositeNode_t **)));
 
+	} else if (history_version == PM_HISTORY_VERSION_OLD) {
+		// Version 5 - Handle Change to PmUtilStats_t structure
+
+		// Copy All data in Compositie Image up to allPortsGroup member (Not Changed)
+		memcpy((unsigned char *)cimg + sizeof(PmFileHeader_t), loc, offsetof(PmCompositeImage_t, allPortsGroup) - sizeof(PmFileHeader_t));
+		loc += (offsetof(PmCompositeImage_t, allPortsGroup) - sizeof(PmFileHeader_t));
+
+		// Copy All data in allPortsGroup up to Util Struct (Not Changed)
+		memcpy((unsigned char *)&cimg->allPortsGroup, loc, offsetof(PmCompositeGroup_t, intUtil));
+		loc += offsetof(PmCompositeGroup_t, intUtil);
+
+		// Copy All Util data (Changed: Added ...FailedPorts and reserved field)
+		memcpy((unsigned char *)&cimg->allPortsGroup.intUtil, loc, offsetof(PmUtilStats_t, pmaFailedPorts));
+		loc += offsetof(PmUtilStats_t, pmaFailedPorts);
+		memcpy((unsigned char *)&cimg->allPortsGroup.sendUtil, loc, offsetof(PmUtilStats_t, pmaFailedPorts));
+		loc += offsetof(PmUtilStats_t, pmaFailedPorts);
+		memcpy((unsigned char *)&cimg->allPortsGroup.recvUtil, loc, offsetof(PmUtilStats_t, pmaFailedPorts));
+		loc += offsetof(PmUtilStats_t, pmaFailedPorts);
+
+		// Copy All Error data (Not Changed)
+		memcpy((unsigned char *)&cimg->allPortsGroup.intErr, loc, sizeof(PmErrStats_t));
+		loc += sizeof(PmErrStats_t);
+		memcpy((unsigned char *)&cimg->allPortsGroup.extErr, loc, sizeof(PmErrStats_t));
+		loc += sizeof(PmErrStats_t);
+
+		// Copy All other PortGroups
+		for (i = 0; i < PM_MAX_GROUPS; i++) {
+			// Copy All data in Port Group up to Util Struct (Not Changed)
+			memcpy((unsigned char *)&cimg->groups[i], loc, offsetof(PmCompositeGroup_t, intUtil));
+			loc += offsetof(PmCompositeGroup_t, intUtil);
+
+			// Copy All Util data (Changed: Added ...FailedPorts and reserved field)
+			memcpy((unsigned char *)&cimg->groups[i].intUtil, loc, offsetof(PmUtilStats_t, pmaFailedPorts));
+			loc += offsetof(PmUtilStats_t, pmaFailedPorts);
+			memcpy((unsigned char *)&cimg->groups[i].sendUtil, loc, offsetof(PmUtilStats_t, pmaFailedPorts));
+			loc += offsetof(PmUtilStats_t, pmaFailedPorts);
+			memcpy((unsigned char *)&cimg->groups[i].recvUtil, loc, offsetof(PmUtilStats_t, pmaFailedPorts));
+			loc += offsetof(PmUtilStats_t, pmaFailedPorts);
+
+			// Copy All Error data (Not Changed)
+			memcpy((unsigned char *)&cimg->groups[i].intErr, loc, sizeof(PmErrStats_t));
+			loc += sizeof(PmErrStats_t);
+			memcpy((unsigned char *)&cimg->groups[i].extErr, loc, sizeof(PmErrStats_t));
+			loc += sizeof(PmErrStats_t);
+		}
+		// Copy All VFs
+		for (i = 0; i < MAX_VFABRICS; i++) {
+			// Copy All data in VF up to Util Struct (Not Changed)
+			memcpy((unsigned char *)&cimg->VFs[i], loc, offsetof(PmCompositeVF_t, intUtil));
+			loc += offsetof(PmCompositeVF_t, intUtil);
+
+			// Copy All Util data (Changed: Added ...FailedPorts and reserved field)
+			memcpy((unsigned char *)&cimg->VFs[i].intUtil, loc, offsetof(PmUtilStats_t, pmaFailedPorts));
+			loc += offsetof(PmUtilStats_t, pmaFailedPorts);
+
+			// Copy All Error data (Not Changed)
+			memcpy((unsigned char *)&cimg->VFs[i].intErr, loc, sizeof(PmErrStats_t));
+			loc += sizeof(PmErrStats_t);
+		}
+	} else {
+		return FINVALID_PARAMETER;
+	}
 	// Nodes
 	cimg->nodes = calloc(1, sizeof(cimg->nodes)*(cimg->maxLid+1));
 	if (!cimg->nodes) {
@@ -2029,6 +2123,7 @@ FSTATUS rebuildComposite(PmCompositeImage_t *cimg, unsigned char *data) {
 *   Inputs: 
 *		cimg - The composite image to flatten
 *		data - The data buffer to flatten into
+*   	history_version - version of cimg
 *    
 *   Return: 
 *   	FSUCCESS if okay
@@ -2037,19 +2132,24 @@ FSTATUS rebuildComposite(PmCompositeImage_t *cimg, unsigned char *data) {
 *   	'data' should already have memory allocated to it (use
 *   	computeFlatSize)
 *************************************************************************************/
-static FSTATUS flattenComposite(PmCompositeImage_t *cimg, unsigned char *data) {
+static FSTATUS flattenComposite(PmCompositeImage_t *cimg, unsigned char *data, uint32 history_version) {
 	//TODO: probably should figure out a way to check for overflow?
 	if (!data) {
 		IB_LOG_WARN0("Unable to flatten image");
 		return FINVALID_PARAMETER;
 	}
-	unsigned char *loc = data;
-	// copy everything except for the node pointer at the end of the struct
-	memcpy(loc, cimg, sizeof(PmCompositeImage_t) - sizeof(PmCompositeNode_t**));
-	// update the location pointer 
-	loc += (sizeof(PmCompositeImage_t) - sizeof(PmCompositeNode_t**));
-	// copy every node
 	int i;
+	unsigned char *loc = data;
+	if (history_version == PM_HISTORY_VERSION) {
+		// Copy everything except for the node pointer at the end of the struct
+		memcpy(loc, cimg, sizeof(PmCompositeImage_t) - sizeof(PmCompositeNode_t **));
+		// update the location pointer
+		loc += (sizeof(PmCompositeImage_t) - sizeof(PmCompositeNode_t **));
+	} else {
+		// Only Current Version should call this function
+		return FINVALID_PARAMETER;
+	}
+	// copy every node
 	for (i = 0; i <= cimg->maxLid; i++) {
 		PmCompositeNode_t *cnode = cimg->nodes[i];
 		if (!cnode) 
@@ -2342,12 +2442,14 @@ cleanup:
 			}
 		}
 		free(cnode->ports);
+		cnode->ports = NULL;
 	} else {
 		if (cnode->ports[0]) {
 			free(cnode->ports[0]);
 			cnode->ports[0] = NULL;
 		}
 		free(cnode->ports);
+		cnode->ports = NULL;
 	}
 	free(cnode);
 	return NULL;
@@ -2442,10 +2544,9 @@ void PmFreeComposite(PmCompositeImage_t *cimg) {
 				if (cnode->ports) {
 					int j;
 					for (j = 0; j <= cnode->numPorts; j++) {
-						PmCompositePort_t *cport = cnode->ports[j];
-						if (cport) {
-							free(cport);
-							cport = NULL;
+						if (cnode->ports[j]) {
+							free(cnode->ports[j]);
+							cnode->ports[j] = NULL;
 						}
 					}
 					free(cnode->ports);
@@ -2462,7 +2563,7 @@ void PmFreeComposite(PmCompositeImage_t *cimg) {
 				}
 			}
 			free(cnode);
-			cnode = NULL;
+			cimg->nodes[i] = NULL;
 		}
 		free(cimg->nodes);
 		cimg->nodes = NULL;
@@ -2712,18 +2813,30 @@ FSTATUS compoundImage(Pm_t *pm, uint32 imageIndex, PmCompositeImage_t *cimg) {
 
 	// take into account that  it is possible that there are more/less nodes now than there were
 	// when the image was created
-	for (i = 0; i <= MIN(cimg->maxLid, img->maxLid); i++) {
+	if (cimg->maxLid < img->maxLid) {
+		// there are more nodes now
+		cimg->nodes = realloc(cimg->nodes, sizeof(PmCompositeNode_t*)*(img->maxLid+1));
+		if (!cimg->nodes) {
+			IB_LOG_ERROR_FMT(__func__, "Failed to resize node list for composite image, imageIndex: %d", imageIndex);
+			return FERROR;
+		}
+		memset(&cimg->nodes[cimg->maxLid], 0, (img->maxLid - cimg->maxLid + 1)*sizeof(PmCompositeNode_t*));
+		cimg->maxLid = img->maxLid;
+	}
+	// if cimg->maxLid > img->maxLid, we are just going to leave the extra nodes alone
+	for (i = 0; i <= img->maxLid; i++) {
 		PmCompositeNode_t *cnode = cimg->nodes[i];
 		PmNode_t *node = img->LidMap[i];
-		if (!node) 
-			continue;
 
 		if (!cnode) {
-			IB_LOG_ERROR_FMT(__func__, "Expected Composite Node Does not exist. ImageIndex: %d"
-				" NodeIndex: %d\n", imageIndex, i);
+			// blank cnode means a new cnode needs to be created
+			cimg->nodes[i] = createCompositeNode(node, cimg, imageIndex);
 			continue;
 		}
-
+		if (!node) {
+			// blank node, leave the old cnode alone
+			continue;
+		}
 		// cnode->lid == 0 indicates placeholder cnode as node was
 		// not present when cnode was created
 		if (cnode->lid == 0) {
@@ -2753,33 +2866,64 @@ FSTATUS compoundImage(Pm_t *pm, uint32 imageIndex, PmCompositeImage_t *cimg) {
 			free(cnode);
 			cimg->nodes[i] = cnode = newCnode;
 		}
-
-		if (cnode->lid != node->Image[pm->history[imageIndex]].lid) {
-			IB_LOG_WARN0("Node lids do not match");
-		}
-		if (cnode->guid != node->guid) {
-			IB_LOG_WARN_FMT(__func__, "Node GUIDs do not match: 0x%016"PRIx64",  0x%016"PRIx64"", cnode->guid, node->guid);
+		// if the guid or node type have changed, we have no choice but to conform to the new values
+		if (cnode->guid != node->guid ||
+			cnode->nodeType != node->nodeType) {
+			IB_LOG_INFO_FMT(__func__, "Reconstructing composite node (Lid: 0x%x) due to GUID or Type change. "
+				"Old GUID: 0x"FMT_U64" Type: %s; new GUID: 0x"FMT_U64" Type: %s", i,
+				cnode->guid, StlNodeTypeToText(cnode->nodeType),
+				node->guid, StlNodeTypeToText(node->nodeType));
+			if (cnode->nodeType == STL_NODE_SW) {
+				if (cnode->ports) {
+					int j;
+					for (j = 0; j <= cnode->numPorts; j++) {
+						if (cnode->ports[j]) {
+							free(cnode->ports[j]);
+							cnode->ports[j] = NULL;
+						}
+					}
+					free(cnode->ports);
+					cnode->ports = NULL;
+				}
+			} else {
+				if (cnode->ports) {
+					if (cnode->ports[0]) {
+						free(cnode->ports[0]);
+						cnode->ports[0] = NULL;
+					}
+					free(cnode->ports);
+					cnode->ports = NULL;
+				}
+			}
+			free(cnode);
+			// create the new node
+			cimg->nodes[i] = createCompositeNode(node, cimg, imageIndex);
 			continue;
 		}
 
-
-
 		if (cnode->nodeType == STL_NODE_SW) {
 			// the number of ports may have changed as well..
-			int j;
-			for (j = 0; j <= MIN(cnode->numPorts, node->numPorts); j++) {
-				PmCompositePort_t *cport = cnode->ports[j];
-				PmPort_t *port = node->up.swPorts[j];
-				if (!port) 
-					continue;
-				if (!cport) {
-					IB_LOG_ERROR_FMT(__func__, "Expected Composite Port Does not exist. ImageIndex: %d"
-						" NodeIndex: %d, portIndex: %d\n", imageIndex, i, j);
+			if (cnode->numPorts < node->numPorts) {
+				cnode->ports = realloc(cnode->ports, (sizeof(cnode->ports)*(node->numPorts+1)));
+				if (!cnode->ports) {
+					IB_LOG_ERROR_FMT(__func__, "Unable to resize port list for LID 0x%x", i);
 					continue;
 				}
-
-				if (cport->portNum != port->portNum) {
-					IB_LOG_WARN0("Port numbers do not match");
+				memset(&cnode->ports[cnode->numPorts], 0, (node->numPorts - cnode->numPorts + 1)*sizeof(PmCompositePort_t *));
+				cnode->numPorts = node->numPorts;
+			}
+			int j; 
+			for (j = 0; j <= node->numPorts; j++) {
+				PmCompositePort_t *cport = cnode->ports[j];
+				PmPort_t *port = node->up.swPorts[j];
+				if (!cport) {
+					// new port, create it
+					cnode->ports[j] = createCompositePort(port, cimg, imageIndex);
+					continue;
+				}
+				if (!port) {
+					// leave the old port alone
+					continue;
 				}
 				cport->clearSelectMask.AsReg32 |= port->Image[imageIndex].clearSelectMask.AsReg32;
 				// counters
@@ -2794,15 +2938,14 @@ FSTATUS compoundImage(Pm_t *pm, uint32 imageIndex, PmCompositeImage_t *cimg) {
 		} else {
 			PmCompositePort_t *cport = cnode->ports[0];
 			PmPort_t *port = node->up.caPortp;
-			if (!port) 
-				continue;
 			if (!cport) {
-				IB_LOG_ERROR_FMT(__func__, "Expected Composite Port Does not exist. ImageIndex: %d"
-					" NodeIndex: %d, portIndex: 0\n", imageIndex, i);
+				// new port, create it
+				cnode->ports[0] = createCompositePort(port, cimg, imageIndex);
 				continue;
 			}
-			if (cport->portNum != port->portNum) {
-				IB_LOG_WARN0("Port numbers do not match");
+			if (!port) {
+				// leave the old one alone
+				continue;
 			}
 			cport->clearSelectMask.AsReg32 |= port->Image[imageIndex].clearSelectMask.AsReg32;
 			combinePortCounters(&(cport->stlPortCounters), &(port->Image[pm->history[imageIndex]].StlPortCounters));
@@ -3238,6 +3381,7 @@ FSTATUS PmLoadComposite(Pm_t *pm, PmHistoryRecord_t *record, PmCompositeImage_t 
 	unsigned char *raw_data, *img_data;
 	size_t raw_len, img_len;
 	FSTATUS ret = FSUCCESS;
+	uint32 history_version;
 #ifndef __VXWORKS__
 	char errbuf[256]; 
 #endif
@@ -3289,11 +3433,12 @@ FSTATUS PmLoadComposite(Pm_t *pm, PmHistoryRecord_t *record, PmCompositeImage_t 
 	}
 
 	// check the version
-	if (((PmFileHeader_t *)raw_data)->common.historyVersion != PM_HISTORY_VERSION) {
+	history_version = ((PmFileHeader_t *)raw_data)->common.historyVersion;
+	if (history_version != PM_HISTORY_VERSION && history_version != PM_HISTORY_VERSION_OLD) {
 #ifdef __VXWORKS__
-		IB_LOG_ERROR0("Loaded PM history image that does not match current version");
+		IB_LOG_ERROR0("Loaded PM history image that does not match current supported versions");
 #else
-		IB_LOG_ERROR_FMT("Loaded PM history image that does not match current version: %s",
+		IB_LOG_ERROR_FMT(__func__, "Loaded PM history image that does not match current supported versions: %s",
 			record->header.filename);
 #endif
 		free(raw_data);
@@ -3359,7 +3504,7 @@ FSTATUS PmLoadComposite(Pm_t *pm, PmHistoryRecord_t *record, PmCompositeImage_t 
 	}
 	memcpy(*cimg, img_data, sizeof(PmFileHeader_t));
 	// rebuild the composite from the data buffer
-	ret = rebuildComposite(*cimg, img_data+sizeof(PmFileHeader_t));
+	ret = rebuildComposite(*cimg, img_data+sizeof(PmFileHeader_t), history_version);
 	if (ret != FSUCCESS) {
 		IB_LOG_ERRORRC("Error rebuilding PM Composite History Image rc:", ret);
 		PmFreeComposite(*cimg);
@@ -3395,6 +3540,97 @@ FSTATUS PmFreezeComposite(Pm_t *pm, PmHistoryRecord_t *record) {
 	}
 	return PmLoadComposite(pm, record, &pm->ShortTermHistory.cachedComposite);
 }
+/************************************************************************************* 
+    PmFreezeComposite - 'Freeze' a the current composite image by caching it
+ 
+    Inputs:
+    	pm - the PM
+    	
+    Returns:
+    	FSUCCESS if okay
+ 
+    Note:
+    	If there is already a cached composite, it will be freed before the
+    	new composite is loaded
+ 
+*************************************************************************************/ 
+FSTATUS PmFreezeCurrent(Pm_t *pm) {
+	if (pm->ShortTermHistory.cachedComposite) {
+		PmFreeComposite(pm->ShortTermHistory.cachedComposite);
+		pm->ShortTermHistory.cachedComposite = NULL;
+	}
+	
+	// we need to copy the entire current composite into the cached composite
+	pm->ShortTermHistory.cachedComposite = calloc(1, sizeof(PmCompositeImage_t));
+	if (!pm->ShortTermHistory.cachedComposite) {
+		return FINSUFFICIENT_MEMORY;
+	}
+	// check that current composite is valid
+	if (!pm->ShortTermHistory.currentComposite) {
+		IB_LOG_ERROR_FMT(__func__, "Trying to freeze current composite, but it is missing");
+		return FERROR;
+	}
+	memcpy(pm->ShortTermHistory.cachedComposite, pm->ShortTermHistory.currentComposite, sizeof(PmCompositeImage_t) - sizeof(PmCompositeNode_t **)); 
+
+	// allocate the node pointer array
+	pm->ShortTermHistory.cachedComposite->nodes = calloc(1, (sizeof(pm->ShortTermHistory.cachedComposite->nodes)*(pm->ShortTermHistory.cachedComposite->maxLid+1)));
+	if (!pm->ShortTermHistory.cachedComposite->nodes) {
+		return FINSUFFICIENT_MEMORY;
+	}
+	// check that node array is valid
+	if (!pm->ShortTermHistory.currentComposite->nodes) {
+		IB_LOG_ERROR_FMT(__func__, "Trying to freeze current composite, but it has no nodes");
+		return FERROR;
+	}
+	// fill in the nodes
+	int i;
+	for (i = 0; i <= pm->ShortTermHistory.cachedComposite->maxLid; i++) {
+		if (!pm->ShortTermHistory.currentComposite->nodes[i]) {
+			IB_LOG_ERROR_FMT(__func__, "Trying to freeze current composite, but it is missing node at index %d", i);
+			return FERROR;
+		}
+		pm->ShortTermHistory.cachedComposite->nodes[i] = calloc(1, sizeof(PmCompositeNode_t)); 
+		if (!pm->ShortTermHistory.cachedComposite->nodes[i]) {
+			return FINSUFFICIENT_MEMORY;
+		}
+		memcpy(pm->ShortTermHistory.cachedComposite->nodes[i], pm->ShortTermHistory.currentComposite->nodes[i], (sizeof(PmCompositeNode_t) - sizeof(PmCompositePort_t**)));
+		if (pm->ShortTermHistory.currentComposite->nodes[i]->ports) {
+			if (pm->ShortTermHistory.cachedComposite->nodes[i]->nodeType == STL_NODE_SW) {
+				// node is a switch
+				pm->ShortTermHistory.cachedComposite->nodes[i]->ports = calloc(1, (sizeof(pm->ShortTermHistory.cachedComposite->nodes[i]->ports) * (pm->ShortTermHistory.cachedComposite->nodes[i]->numPorts + 1))); 
+				if (!pm->ShortTermHistory.cachedComposite->nodes[i]->ports) {
+					return FINSUFFICIENT_MEMORY;
+				}
+				// fill in the ports
+				int j;
+				for (j = 0; j <= pm->ShortTermHistory.cachedComposite->nodes[i]->numPorts; j++) {
+					if (!pm->ShortTermHistory.currentComposite->nodes[i]->ports[j]) {
+						IB_LOG_ERROR_FMT(__func__, "Trying to freeze current composite at node index %d, but it is missing port %d", i, j);
+						return FERROR;
+					}
+					pm->ShortTermHistory.cachedComposite->nodes[i]->ports[j] = calloc(1, sizeof(PmCompositePort_t)); 
+					if (!pm->ShortTermHistory.cachedComposite->nodes[i]->ports[j]) {
+						return FINSUFFICIENT_MEMORY;
+					}
+					memcpy(pm->ShortTermHistory.cachedComposite->nodes[i]->ports[j], pm->ShortTermHistory.currentComposite->nodes[i]->ports[j], sizeof(PmCompositePort_t));
+				}
+			} else {
+				// node is an hfi
+				pm->ShortTermHistory.cachedComposite->nodes[i]->ports = calloc(1, sizeof(pm->ShortTermHistory.cachedComposite->nodes[i]->ports)); 
+				if (!pm->ShortTermHistory.cachedComposite->nodes[i]->ports) {
+					return FINSUFFICIENT_MEMORY;
+				}
+				pm->ShortTermHistory.cachedComposite->nodes[i]->ports[0] = calloc(1, sizeof(PmCompositePort_t));
+				if (!pm->ShortTermHistory.cachedComposite->nodes[i]->ports[0]) {
+					return FINSUFFICIENT_MEMORY;
+				}
+				memcpy(pm->ShortTermHistory.cachedComposite->nodes[i]->ports[0], pm->ShortTermHistory.currentComposite->nodes[i]->ports[0], sizeof(PmCompositePort_t));
+			}
+		}
+
+	}
+	return FSUCCESS;
+}
 
 #ifndef __VXWORKS__
 
@@ -3412,27 +3648,39 @@ static Status_t pruneOneStoredHistoryFile(PmShortTermHistory_t *pSth, uint32 idx
 {
 	struct stat fileInfo;
 	int i = 0;
+	char *filename;
 
-	PmHistoryRecord_t *rec = pSth->historyRecords[idx];
-	if (rec->index == INDEX_NOT_IN_USE) {
+	// find the record, adjusting for the fact that we may have invalid files
+	PmHistoryRecord_t *rec = pSth->historyRecords[(idx + (pSth->totalHistoryRecords - pSth->oldestInvalid)) % pSth->totalHistoryRecords];
+	if (rec->index == INDEX_NOT_IN_USE && pSth->oldestInvalid != 0) {
 		// Entry is already free, nothing to do
 		return VSTATUS_OK;
 	}
 
-	// update the map
-	for (i = 0; i < rec->header.imagesPerComposite; i++) {
-		if (rec->historyImageEntries[i].inx != INDEX_NOT_IN_USE) {
-			cl_qmap_remove_item(&pSth->historyImages, &rec->historyImageEntries[i].historyImageEntry);
-			rec->historyImageEntries[i].inx = INDEX_NOT_IN_USE;
+	// if oldestInvalid == totalHistoryRecords then there are no invalid files
+	if (pSth->oldestInvalid != pSth->totalHistoryRecords && // if oldestInvalid == totalHistoryRecords then there are no invalid files
+			pSth->invalidFiles[pSth->oldestInvalid] != NULL &&
+			(pSth->oldestInvalid == 0 ||	// if oldestInvalid == 0 then ALL files are invalid
+			strncmp(rec->header.filename, pSth->invalidFiles[pSth->oldestInvalid], PM_HISTORY_FILENAME_LEN) > 0)) {
+		filename = pSth->invalidFiles[pSth->oldestInvalid];
+		pSth->oldestInvalid++;
+	} else {
+		filename = rec->header.filename;
+		rec->index = INDEX_NOT_IN_USE;
+		// update the map
+		for (i = 0; i < rec->header.imagesPerComposite; i++) {
+			if (rec->historyImageEntries[i].inx != INDEX_NOT_IN_USE) {
+				cl_qmap_remove_item(&pSth->historyImages, &rec->historyImageEntries[i].historyImageEntry);
+				rec->historyImageEntries[i].inx = INDEX_NOT_IN_USE;
+			}
 		}
 	}
-	rec->index = INDEX_NOT_IN_USE;
-	if (stat(rec->header.filename, &fileInfo) < 0) {
+	if (stat(filename, &fileInfo) < 0) {
 		return VSTATUS_EIO;
 	}
-	if (remove(rec->header.filename) != 0) {
+	if (remove(filename) != 0) {
 		// Can't remove file?
-		IB_LOG_WARN_FMT(__func__, "Unable to remove expired history file: %s", rec->header.filename);
+		IB_LOG_WARN_FMT(__func__, "Unable to remove expired history file: %s", filename);
 		return VSTATUS_EIO;
 	}
 	pSth->totalDiskUsage -= fileInfo.st_size;
@@ -3541,7 +3789,7 @@ FSTATUS storeComposite(Pm_t *pm, PmCompositeImage_t *cimg) {
 		goto error;
 	}
 	// flatten the image
-	ret = flattenComposite(cimg, data);
+	ret = flattenComposite(cimg, data, cimg->header.common.historyVersion);
 	if (ret != FSUCCESS)
 		goto error;
 
@@ -3748,19 +3996,29 @@ FSTATUS injectHistoryFile(Pm_t *pm, char *filename, uint8_t *buffer, uint32_t fi
 	uint32 cindex = pSth->currentRecordIndex;
 	uint32 stop;
 	uint32 len; // Don't compare the file extention
+	char newfilename[PM_HISTORY_FILENAME_LEN];
 
 	if (strstr(filename, ".hist")) {
-		len = strstr(filename, ".hist") - filename;
+		snprintf(newfilename, PM_HISTORY_FILENAME_LEN, "%s/%s",
+				 pm->ShortTermHistory.filepath,
+				 (strstr(filename, ".hist") - PM_HISTORY_STHFILE_LEN));
+		len = strstr(newfilename, ".hist") - newfilename;
 	} else if (strstr(filename, ".zhist")) {
-		len = strstr(filename, ".zhist") - filename;
+		snprintf(newfilename, PM_HISTORY_FILENAME_LEN, "%s/%s",
+				 pm->ShortTermHistory.filepath,
+				 (strstr(filename, ".zhist") - PM_HISTORY_STHFILE_LEN));
+		len = strstr(newfilename, ".zhist") - newfilename;
 	} else {
-		len = strlen(filename);
+		snprintf(newfilename, PM_HISTORY_FILENAME_LEN, "%s/c%s", 
+				pm->ShortTermHistory.filepath,
+				filename + strlen(filename) - PM_HISTORY_STHFILE_LEN);
+		len = strlen(newfilename);
 	}
 
 	// Special case: We already have the maximum number of history files, and this
 	// one is older than all of them.
 	PmHistoryRecord_t *rec = pSth->historyRecords[cindex];
-	if ((rec->index != INDEX_NOT_IN_USE) && strncmp(filename, rec->header.filename, len) < 0) {
+	if ((rec->index != INDEX_NOT_IN_USE) && strncmp(newfilename, rec->header.filename, len) < 0) {
 		// Ignore this incoming file
 		return FSUCCESS;
 	}
@@ -3768,7 +4026,7 @@ FSTATUS injectHistoryFile(Pm_t *pm, char *filename, uint8_t *buffer, uint32_t fi
 	// Start at the end of the list (oldest) and move forward
 	// as long as entries are empty, or in use and older than
 	// this file.
-	while ((rec->index == INDEX_NOT_IN_USE) || strncmp(filename, rec->header.filename, len) > 0) {
+	while ((rec->index == INDEX_NOT_IN_USE) || strncmp(newfilename, rec->header.filename, len) > 0) {
 		cindex = (cindex+1)%pSth->totalHistoryRecords;
 		rec = pSth->historyRecords[cindex];
 		if (cindex == pSth->currentRecordIndex) {
@@ -3779,7 +4037,7 @@ FSTATUS injectHistoryFile(Pm_t *pm, char *filename, uint8_t *buffer, uint32_t fi
 			goto store_file;
 		}
 	}
-	if (rec->index != INDEX_NOT_IN_USE && !strncmp(filename, rec->header.filename, len)) {
+	if (rec->index != INDEX_NOT_IN_USE && !strncmp(newfilename, rec->header.filename, len)) {
 		// If we found the same filename, purge the old one, save the new one
 		pruneOneStoredHistoryFile(pSth, cindex);
 	} else {
@@ -3847,8 +4105,8 @@ store_file:
 	}
 
 	/* Create the new file */
-    IB_LOG_VERBOSE_FMT(__func__, "Received sweep image data (%s) at standby filelen=0x%x", filename,filelen);
-    FILE *file = fopen(filename, "w");
+    IB_LOG_VERBOSE_FMT(__func__, "Received sweep image data (%s) at standby filelen=0x%x", newfilename,filelen);
+    FILE *file = fopen(newfilename, "w");
     if (!file) {
         IB_LOG_ERROR("Error opening PM history image file to write data! rc:",errno);
         return -1;
@@ -3856,7 +4114,7 @@ store_file:
     if (fwrite(buffer, sizeof(uint8_t), filelen, file) != filelen) {
         IB_LOG_ERROR("Error failed writing PM history image file! rc:",errno);
 		fclose(file);
-		remove(filename);
+		remove(newfilename);
 		return -1;
 	}
     fclose(file);
@@ -3867,7 +4125,7 @@ store_file:
 	// Update the record.  Only fill in the filename. Leave the images
 	// per composite as zero. This is all the Standby cares about.
 	// If/When we become Master, we'll reread the history.
-	snprintf(rec->header.filename, sizeof(rec->header.filename), filename);
+	snprintf(rec->header.filename, sizeof(rec->header.filename), newfilename);
 	for (i = 0; i < PM_HISTORY_MAX_IMAGES_PER_COMPOSITE; i++) {
 		rec->historyImageEntries[i].inx = INDEX_NOT_IN_USE;
 	}
@@ -3898,7 +4156,7 @@ int hist_filter (const struct dirent *d) {
 *************************************************************************************/
 static Status_t PmLoadHistory(Pm_t *pm, boolean master) {
 	struct dirent **d;
-	int i, n, x;
+	int i, n, x, ii, tot;
 	uint64_t diskUsage = 0; /* In bytes */
 	boolean isOverQuota = 0;
 	struct stat fileInfo = {0};
@@ -3928,13 +4186,14 @@ static Status_t PmLoadHistory(Pm_t *pm, boolean master) {
 		// in which case, we want to get the most recent ones
 		// History images will be loaded in reverse order from the tail of the history
 		// ring toward the head.
-		i = pm->ShortTermHistory.totalHistoryRecords - 1;
+		// i indexes valid files, ii indexes invalid files, tot keeps track of the total of both
+		i = ii = tot = pm->ShortTermHistory.totalHistoryRecords - 1;
 		// New entries will be added at the head of the history ring
 		pm->ShortTermHistory.currentRecordIndex = 0;
 		while ((ret == VSTATUS_OK) && n--) {
 			snprintf(filename, PM_HISTORY_FILENAME_LEN + 1 + 256, "%s/%s", pm->ShortTermHistory.filepath, d[n]->d_name);
 			free(d[n]);
-			if (i >= 0) {
+			if (tot >= 0) {
 				FILE *fp;
 
 				if (!(fp = fopen(filename, "r"))) {
@@ -3943,29 +4202,22 @@ static Status_t PmLoadHistory(Pm_t *pm, boolean master) {
 					const size_t readSize = sizeof(PmHistoryHeaderCommon_t);
 					uint8 bf_header[sizeof(PmHistoryHeaderCommon_t)];
 					PmHistoryRecord_t *rec = pm->ShortTermHistory.historyRecords[i];
-
-					// read the header of the file and check the version
+					if (stat(filename, &fileInfo) < 0) ret = VSTATUS_EIO;
+					if (fileInfo.st_size == 0) {
+						// empty file, remove
+						fclose(fp);
+						if (remove(filename) < 0) ret = VSTATUS_EIO;
+						continue;
+					}
+					// read the header of the file
 					if (fread(bf_header, 1, readSize, fp) != readSize) {
-						IB_LOG_WARN0("Encountered a problem while loading a Short-Term History file");
+						IB_LOG_WARN_FMT(__func__, "Encountered a problem while loading a Short-Term History file: %s", filename);
 						fclose(fp);
 						continue;
 					}
-					if (((PmHistoryHeaderCommon_t *)bf_header)->historyVersion != PM_HISTORY_VERSION) {
-						IB_LOG_WARN_FMT(__func__, "Encountered a Short-Term History file that does not match current version (%u): %s is v%u",
-							PM_HISTORY_VERSION, filename, ((PmHistoryHeaderCommon_t *)bf_header)->historyVersion);
-						fclose(fp);
-						continue;
-					}
-					// Move header into the record entry
-					memcpy(pm->ShortTermHistory.historyRecords[i], bf_header, readSize);
-
-					// if this was a failover the record may have the wrong filepath, so overwrite it
-					strncpy(pm->ShortTermHistory.historyRecords[i]->header.filename, filename, PM_HISTORY_FILENAME_LEN);
-					fclose(fp);
 
 					// Enforce max disk usage
 					if (!isOverQuota)  {
-						if (stat(filename, &fileInfo) < 0) ret = VSTATUS_EIO;
 						diskUsage += fileInfo.st_size;
 						isOverQuota = diskUsage >= (pm_config.shortTermHistory.maxDiskSpace * (1<<20));
 					}
@@ -3976,6 +4228,31 @@ static Status_t PmLoadHistory(Pm_t *pm, boolean master) {
 						if (remove(filename) < 0) ret = VSTATUS_EIO;
 						continue;
 					}
+
+					// check the version
+					if (((PmHistoryHeaderCommon_t *)bf_header)->historyVersion != PM_HISTORY_VERSION&&
+						((PmHistoryHeaderCommon_t *)bf_header)->historyVersion != PM_HISTORY_VERSION_OLD) {
+						// found history file with invalid version
+						ret = vs_pool_alloc(&pm_pool, (sizeof(char) * PM_HISTORY_FILENAME_LEN), (void *)&(pm->ShortTermHistory.invalidFiles[ii]));
+						if (ret != VSTATUS_OK) {
+							IB_LOG_WARN_FMT(__func__, "Failed to allocate PM Short-Term filename for file: %s", filename);
+							fclose(fp);
+							continue;
+						}
+						MemoryClear(pm->ShortTermHistory.invalidFiles[ii], (sizeof(char) * PM_HISTORY_FILENAME_LEN));
+
+						strncpy(pm->ShortTermHistory.invalidFiles[ii], filename, PM_HISTORY_FILENAME_LEN);
+						fclose(fp);
+						ii--;
+						tot--;
+						continue;
+					}
+					// Move header into the record entry
+					memcpy(pm->ShortTermHistory.historyRecords[i], bf_header, readSize);
+
+					// if this was a failover the record may have the wrong filepath, so overwrite it
+					strncpy(pm->ShortTermHistory.historyRecords[i]->header.filename, filename, PM_HISTORY_FILENAME_LEN);
+					fclose(fp);
 
 					pm->ShortTermHistory.historyRecords[i]->index = i;
 					// update the image ID map (only if master)
@@ -3998,6 +4275,7 @@ static Status_t PmLoadHistory(Pm_t *pm, boolean master) {
 						rec->historyImageEntries[x].inx = x;
 					}
 					i--; // This slot is now consumed
+					tot--;
 				}
 			} else {
 					// More than pm->ShortTermHistory.totalHistoryRecords files
@@ -4005,16 +4283,19 @@ static Status_t PmLoadHistory(Pm_t *pm, boolean master) {
 					if (remove(filename) < 0) ret = VSTATUS_EIO;
 			}
 		}
-
+		pm->ShortTermHistory.oldestInvalid = ii + 1; // if no invalid files were found, then oldestInvalid == totalHistoryRecords
+		
+		ImageId_t temp;
+		temp.AsReg64 =
+			pm->ShortTermHistory.historyRecords[pm->ShortTermHistory.currentRecordIndex ?
+				pm->ShortTermHistory.currentRecordIndex - 1 :
+				pm->ShortTermHistory.totalHistoryRecords - 1]->header.imageIDs[0];
 		if (!master) {
 			// set the instance ID
-			ImageId_t temp;
-			temp.AsReg64 = 
-				pm->ShortTermHistory.historyRecords[pm->ShortTermHistory.currentRecordIndex?pm->ShortTermHistory.currentRecordIndex-1:pm->ShortTermHistory.totalHistoryRecords-1]->header.imageIDs[0];
 			pm->ShortTermHistory.currentInstanceId = temp.s.instanceId;
 		} else {
 			// Increment instance ID
-			pm->ShortTermHistory.currentInstanceId = (pm->ShortTermHistory.currentInstanceId + 1) % IMAGEID_MAX_INSTANCE_ID;
+			pm->ShortTermHistory.currentInstanceId = (temp.s.instanceId + 1) % IMAGEID_MAX_INSTANCE_ID;
 		}
 	}
 
@@ -4092,7 +4373,7 @@ Status_t PmInitHistory(Pm_t *pm) {
 	}
 
 	// set up the storage directory if needed
-	strncpy(pm->ShortTermHistory.filepath, pm_config.shortTermHistory.StorageLocation, FILENAME_SIZE);
+	strncpy(pm->ShortTermHistory.filepath, pm_config.shortTermHistory.StorageLocation, PM_HISTORY_MAX_LOCATION_LEN);
 
 	// check that images per composite doesn't exceed the limit
 	if (pm_config.shortTermHistory.imagesPerComposite > PM_HISTORY_MAX_IMAGES_PER_COMPOSITE) {
@@ -4135,6 +4416,13 @@ Status_t PmInitHistory(Pm_t *pm) {
 			pm->ShortTermHistory.historyRecords[i]->historyImageEntries[j].inx = INDEX_NOT_IN_USE;
 		}
 	}
+	status = vs_pool_alloc(&pm_pool, sizeof(char**) * (pm->ShortTermHistory.totalHistoryRecords), (void *)&pm->ShortTermHistory.invalidFiles);
+	if (status != VSTATUS_OK || !pm->ShortTermHistory.invalidFiles) {
+		IB_LOG_ERRORRC("Failed to allocate PM Short-Term History invalid files rc:", status);
+		status = VSTATUS_NOMEM;
+		goto fail;
+	}
+	MemoryClear(pm->ShortTermHistory.invalidFiles, sizeof(char**) * (pm->ShortTermHistory.totalHistoryRecords));
 	if (stat(pm->ShortTermHistory.filepath, &dirInfo)) {
 		if (errno == ENOENT) {
 			// directory doesn't exist, try to create it
@@ -4197,12 +4485,13 @@ FSTATUS storeCompositeToBuffer(PmCompositeImage_t *cimg, uint8_t *buffer, uint32
 		return FINSUFFICIENT_MEMORY;
 	}
 	// flatten the image
-	ret = flattenComposite(cimg, data);
+	ret = flattenComposite(cimg, data, cimg->header.common.historyVersion);
 	if (ret != FSUCCESS) {
 		free(data);
 		return ret;
 	}
-		BSWAP_PM_COMPOSITE_IMAGE_FLAT((PmCompositeImage_t *)data, 1);
+
+	BSWAP_PM_COMPOSITE_IMAGE_FLAT((PmCompositeImage_t *)data, 1, cimg->header.common.historyVersion);
 
 	if (cimg->header.common.isCompressed) {
 #ifdef __VXWORKS__
@@ -4252,7 +4541,7 @@ FSTATUS storeCompositeToBuffer(PmCompositeImage_t *cimg, uint8_t *buffer, uint32
 		*bIndex += len;
 	}
 
-		BSWAP_PM_FILE_HEADER(&((PmCompositeImage_t *)buffer)->header);
+	BSWAP_PM_FILE_HEADER(&((PmCompositeImage_t *)buffer)->header);
 
 done:
 	free(data);
@@ -4722,6 +5011,14 @@ void PmDestroy(Pm_t *pm)
 	if (pm->ShortTermHistory.LoadedImage.img) {
 		clearLoadedImage(&pm->ShortTermHistory);
 	}
+	if (pm->ShortTermHistory.invalidFiles) {
+		for (i=0; i < pm->ShortTermHistory.totalHistoryRecords; i++) {
+			if (pm->ShortTermHistory.invalidFiles[i]) {
+				vs_pool_free(&pm_pool, pm->ShortTermHistory.invalidFiles[i]);
+			}
+		}
+		vs_pool_free(&pm_pool, pm->ShortTermHistory.invalidFiles);
+	}
 #endif
 }
 
@@ -5059,7 +5356,9 @@ static FSTATUS PmSweep(Pm_t *pm)
 	// imageLock, but no harm in holding it, easier to maintain and review code
 	ret = pm_copy_topology(pm);
 
-	if (pm_shutdown || g_pmEngineState != PM_ENGINE_STARTED) {
+	if (ret == FINSUFFICIENT_MEMORY || pm_shutdown || g_pmEngineState != PM_ENGINE_STARTED) {
+        if (ret == FINSUFFICIENT_MEMORY)
+            pm_shutdown = 1;
 		IB_LOG_INFO0("PM Engine shut down requested");
 		ret = FNOT_DONE;;
 		goto unlock_image;
@@ -5099,7 +5398,7 @@ static FSTATUS PmSweep(Pm_t *pm)
 				}
 				vs_pool_free(&pm_pool, pm->ShortTermHistory.historyRecords);
 			}
-		} 
+		}
 #endif
 	}
 

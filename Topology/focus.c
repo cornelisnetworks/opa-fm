@@ -656,7 +656,7 @@ static FSTATUS ParseIocNamePatPoint(FabricData_t *fabricp, char *arg, Point *pPo
 static FSTATUS ParseIocTypePoint(FabricData_t *fabricp, char *arg, Point *pPoint, char **pp)
 {
 	char *p;
-	char Type[4+1];	// VNIC is largest valid type name
+	char Type[5+1]; //"OTHER" is longest valid type name  
 	char *param;
 	FSTATUS status;
 	int len;
@@ -684,10 +684,11 @@ static FSTATUS ParseIocTypePoint(FabricData_t *fabricp, char *arg, Point *pPoint
 		len = strlen(arg);
 		*pp = arg + len;
 	}
-	if (strncasecmp(arg, "VNIC", len) == 0)
-		type = IOC_TYPE_VNIC;
-	else if (strncasecmp(arg, "SRP", len) == 0)
+	if (strncasecmp(arg, "SRP", len) == 0) 
 		type = IOC_TYPE_SRP;
+	else if (strncasecmp(arg, "OTHER", len) == 0){
+		type = 	IOC_TYPE_OTHER;
+	}
 	else {
 		fprintf(stderr, "%s: Invalid IOC type: %.*s\n", g_Top_cmdname, len, arg);
 		*pp -= len;	/* back up for syntax error report */
@@ -713,7 +714,6 @@ static FSTATUS ParseRatePoint(FabricData_t *fabricp, char *arg, Point *pPoint, c
 	FSTATUS status;
 	int len;
 	uint32 rate;
-
 	ASSERT(pPoint->Type == POINT_TYPE_NONE);
 	p = strchr(arg, ':');
 	if (p) {
@@ -757,6 +757,51 @@ static FSTATUS ParseRatePoint(FabricData_t *fabricp, char *arg, Point *pPoint, c
 	status = FindRate(fabricp, rate, pPoint);
 	return status;
 }
+
+static FSTATUS ParseLedPoint(FabricData_t *fabricp, char *arg, Point *pPoint, char **pp)
+{
+	char *p;
+	char State[3+1];	// active is largest valid state name
+	FSTATUS status;
+	int len;
+	boolean ledon;
+
+	ASSERT(pPoint->Type == POINT_TYPE_NONE);
+	p = strchr(arg, ':');
+	if (p) {
+		if (p == arg) {
+			fprintf(stderr, "%s: Invalid Port State format: '%s'\n",
+						   	g_Top_cmdname, arg);
+			return FINVALID_PARAMETER;
+		}
+		if (p - arg > sizeof(State)-1) {
+			fprintf(stderr, "%s: Invalid Port State: %.*s\n",
+						   	g_Top_cmdname, (int)(p-arg), arg);
+			return FINVALID_PARAMETER;
+		}
+		len = (int)(p-arg);
+		strncpy(State, arg, len);
+		State[len] = '\0';
+		*pp = p;
+		arg = State;
+	} else {
+		len = strlen(arg);
+		*pp = arg + len;
+	}
+	if (strncasecmp(arg, "off", len) == 0)
+		ledon = FALSE;
+	else if (strncasecmp(arg, "on", len) == 0)
+		ledon = TRUE;
+	else {
+		fprintf(stderr, "%s: Invalid Led State: %.*s\n", g_Top_cmdname, len, arg);
+		*pp -= len;	/* back up for syntax error report */
+		return FINVALID_PARAMETER;
+	}
+
+	status = FindLedState(fabricp, ledon, pPoint);
+	return status;
+}
+
 
 static FSTATUS ParsePortStatePoint(FabricData_t *fabricp, char *arg, Point *pPoint, char **pp)
 {
@@ -1129,6 +1174,51 @@ static FSTATUS ParseCabinfVendSNPatPoint(FabricData_t *fabricp, char *arg, Point
 
 }	// End of ParseCabinfVendSNPatPoint()
 
+
+static FSTATUS ParseCabinfCableTypePoint(FabricData_t *fabricp, char *arg, Point *pPoint, char **pp)
+{
+	char *p;
+	char cabletype[STL_CIB_STD_MAX_STRING + 1];	// 'optical' is largest valid cable type name, but we use some more chars for future expansion
+	int len;
+	FSTATUS status;
+
+
+	ASSERT(pPoint->Type == POINT_TYPE_NONE);
+	p = strchr(arg, ':');
+	if (p) {
+		if (p == arg) {
+			fprintf(stderr, "%s: Invalid Cable Type format: '%s'\n", g_Top_cmdname, arg);
+			return FINVALID_PARAMETER;
+		}
+		if (p - arg > sizeof(cabletype)-1) {
+			fprintf(stderr, "%s: Invalid Cable Type: %.*s\n", g_Top_cmdname, (int)(p-arg), arg);
+			fprintf(stderr, "%s: Available Cable Types are: optical, passive_copper, active_copper and unknown.\n",g_Top_cmdname);
+			return FINVALID_PARAMETER;
+		}
+		strncpy(cabletype, arg, p-arg);
+		cabletype[p-arg] = '\0';
+		*pp = p;
+		arg = cabletype;
+	} else {
+		*pp = arg +  strlen(arg);
+	}
+
+	len = strlen(arg);
+
+	if (!((strncmp(arg, "unknown", len) == 0) || (strncmp(arg, "optical", len) == 0)
+			|| (strncmp(arg, "active_copper", len) == 0) || (strncmp(arg, "passive_copper", len) == 0)))
+		 {
+		fprintf(stderr, "%s: Invalid Cable Type: %.*s\n", g_Top_cmdname, len, arg);
+		fprintf(stderr, "%s: Available Cable Types are: optical, passive_copper, active_copper and unknown.\n",g_Top_cmdname);
+		*pp -= len;	/* back up for syntax error report */
+		return FINVALID_PARAMETER;
+	}
+
+	status = FindCabinfCableType(fabricp, arg, pPoint);
+	return status;
+
+} // End of ParseCabinCableTypePoint()
+
 static FSTATUS ParseLinkDetailsPatPoint(FabricData_t *fabricp, char *arg, Point *pPoint, char **pp)
 {
 	char *p;
@@ -1301,7 +1391,9 @@ static FSTATUS ParseLinkQualityPoint(FabricData_t *fabricp, char *arg, Point *pP
  *	portstate:state string
  *	portphysstate:phys state string
  *	mtu:#
+ *	cableinftype:cable type
  *	labelpat:cable label pattern
+ *	led:on/off
  *	lengthpat:cable length pattern
  *	cabledetpat:cable details pattern
  *	cabinflenpat:cable info cable length pattern
@@ -1339,6 +1431,8 @@ FSTATUS ParsePoint(FabricData_t *fabricp, char* arg, Point* pPoint, char **pp)
 		return ParseSystemGuidPoint(fabricp, param, pPoint, pp);
 	} else if (NULL != (param = ComparePrefix(arg, "node:"))) {
 		return ParseNodeNamePoint(fabricp, param, pPoint, pp);
+	} else if (NULL != (param = ComparePrefix(arg, "led:"))) {
+		return ParseLedPoint(fabricp, param, pPoint, pp);
 	} else if (NULL != (param = ComparePrefix(arg, "nodepat:"))) {
 		return ParseNodeNamePatPoint(fabricp, param, pPoint, pp);
 	} else if (NULL != (param = ComparePrefix(arg, "nodedetpat:"))) {
@@ -1377,6 +1471,8 @@ FSTATUS ParsePoint(FabricData_t *fabricp, char* arg, Point* pPoint, char **pp)
 		return ParseCabinfVendRevPatPoint(fabricp, param, pPoint, pp);
 	} else if (NULL != (param = ComparePrefix(arg, "cabinfvendsnpat:"))) {
 		return ParseCabinfVendSNPatPoint(fabricp, param, pPoint, pp);
+	} else if (NULL != (param = ComparePrefix(arg, "cabinftype:"))) {
+		return ParseCabinfCableTypePoint(fabricp, param, pPoint, pp);
 	} else if (NULL != (param = ComparePrefix(arg, "linkdetpat:"))) {
 		return ParseLinkDetailsPatPoint(fabricp, param, pPoint, pp);
 	} else if (NULL != (param = ComparePrefix(arg, "portdetpat:"))) {

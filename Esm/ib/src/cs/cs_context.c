@@ -47,8 +47,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //    ib_mad.h
 //    ib_status.h
 //
-// RESPONSIBLE ENGINEER:
-//    John Seraphin
 //
 //===========================================================================//
 

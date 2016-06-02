@@ -257,7 +257,7 @@ static FSTATUS GetIndexFromImageId(Pm_t *pm, uint8 type, uint64 imageId, int32 o
 }
 #ifndef __VXWORKS__
 
-boolean CheckCachedComposite(Pm_t *pm, uint64 imageId) {
+FSTATUS CheckComposite(Pm_t *pm, uint64 imageId, PmCompositeImage_t *cimg) {
 	ImageId_t temp;
 	temp.AsReg64 = imageId;
 	temp.s.type = IMAGEID_TYPE_HISTORY;
@@ -265,10 +265,10 @@ boolean CheckCachedComposite(Pm_t *pm, uint64 imageId) {
 	temp.s.index = 0;
 	int i;
 	for (i = 0; i < PM_HISTORY_MAX_IMAGES_PER_COMPOSITE; i++) {
-		if (pm->ShortTermHistory.cachedComposite->header.common.imageIDs[i] == temp.AsReg64) 
-			return 1;
+		if (cimg->header.common.imageIDs[i] == temp.AsReg64) 
+			return FSUCCESS;
 	}
-	return 0;
+	return FNOT_FOUND;
 }
 
 #endif
@@ -286,8 +286,8 @@ boolean CheckCachedComposite(Pm_t *pm, uint64 imageId) {
 *       record - if the image was found in Short-Term History, this will be its record
 *       msg - error message
 *       clientId - client ID
-*       frozen - if the found image is the frozen Short-Term History image, this will be true
-*       sth - if the found image is in Short-Term History, this will be true
+*       cimg - if the image is frozen, or the current composite, this will point to
+*   			that image
 *
 *   Returns:
 *   	FSUCCESS if success, FNOT_FOUND if not found
@@ -303,12 +303,10 @@ FSTATUS FindImage(
 	PmHistoryRecord_t **record,
 	const char **msg, 
 	uint8 *clientId,
-	boolean *frozen,
-	boolean *sth)
+	PmCompositeImage_t **cimg
+	)
 {
 	FSTATUS status;
-	*sth = 0;
-	*frozen = 0;
 
 	// image ID in RAM, offset in RAM
 	status = GetIndexFromImageId(pm, type, imageId, offset, imageIndex, retImageId, msg, clientId);
@@ -329,80 +327,131 @@ FSTATUS FindImage(
 		histId.AsReg64 = 0;
 	}
 	
-	int ireq;	// index of the requested imageID in history
-	int icurr;	// index of the record currently be built in history
-	int oneg;	// maximum negative offset allowed
-	int opos;	// maximum positive offset allowed
-	int tot;	// total number of records in history
+	int ireq = -1;	// index of the requested imageID in history
+	int icurr = -1;	// index of the record currently be built in history
+	int oneg = -1;	// maximum negative offset allowed
+	int opos = -1;	// maximum positive offset allowed
+	int tot = -1;	// total number of records in history
 
 	// image ID in RAM, offset negative into history
 	status = GetIndexFromImageId(pm, type, imageId, 0, imageIndex, retImageId, msg, clientId);
 	if (status == FSUCCESS && offset < 0) {
-		// adjust offset and set up ireq
-		int32 ramOff = imageId != IMAGEID_LIVE_DATA ? histId.s.sweepNum - pm->NumSweeps : 0; // this is the offset from live of the image ID in RAM
-		// recalculate the offset: RAM offset + offset + total images - (total images / images per composite)
-		offset = ramOff + offset + (int32)MIN(pm_config.total_images, pm->NumSweeps) - ((int32)MIN(pm_config.total_images, pm->NumSweeps) / (int32)pm_config.shortTermHistory.imagesPerComposite);
-		// when the number of images in the current composite is at its max, the offset needs to adjusted to make up for it, unless total images per composite is 1
-		offset = pm->ShortTermHistory.currentComposite->header.common.imagesPerComposite == pm_config.shortTermHistory.imagesPerComposite && pm_config.shortTermHistory.imagesPerComposite != 1? offset:offset + 1;		
-		ireq = pm->ShortTermHistory.currentRecordIndex==0?pm->ShortTermHistory.totalHistoryRecords - 1:pm->ShortTermHistory.currentRecordIndex - 1; // now we will be working from the first sth record
+	// offset needs to be adjusted to account for the overlap between history images and RAM images
+	// new offset should be: old offset - distance required to cover the rest of the RAM images + offset from 1st record to 1st 'uncovered' record
+		int32 r, t, i, c, o;
+		// r: offset from live to requested image ID
+		r = imageId != IMAGEID_LIVE_DATA ? histId.s.sweepNum - pm->NumSweeps : 0;
+		// t: current total number of RAM images
+		t = (int32)MIN(pm_config.total_images, pm->NumSweeps);
+		// i: images per composite
+		i = (int32)pm_config.shortTermHistory.imagesPerComposite;
+		// c: number of images in the composite currently being built
+		c = (int32)(pm->ShortTermHistory.currentComposite->header.common.imagesPerComposite == pm_config.shortTermHistory.imagesPerComposite ? 0 : pm->ShortTermHistory.currentComposite->header.common.imagesPerComposite);
+		// o: offset from 1st history record to 1st history record not covered by RAM images
+		o = c > t ? 1 : (c - t + 1) / i;
+		offset = offset + r + t + o; // total new offset
+		if (offset > 0) { // this means we went back from RAM images to the current composite
+			*cimg = pm->ShortTermHistory.currentComposite;
+			return status;
+		}
+		// now we will be working from the first history record
+		ireq = pm->ShortTermHistory.currentRecordIndex==0?pm->ShortTermHistory.totalHistoryRecords - 1:pm->ShortTermHistory.currentRecordIndex - 1;
+	} else if (status == FSUCCESS && offset > 0) {
+		// image is in RAM, positive offset - should have been found by first check, return not found
+		*msg = "positive offset exceeds duration of history";
+		return FNOT_FOUND;
 	} else {
 		// image ID in history
 		// check frozen composite
 		if (!offset && pm->ShortTermHistory.cachedComposite) {
-			*sth = *frozen = CheckCachedComposite(pm, histId.AsReg64);
-			if (*frozen) return FSUCCESS;
+			status = CheckComposite(pm, histId.AsReg64, pm->ShortTermHistory.cachedComposite);
+			if (status == FSUCCESS) {
+				// frozen cached composite was requested directly by image ID
+				*cimg = pm->ShortTermHistory.cachedComposite;
+				return status;
+			}
 		}
-		// find this image
-		cl_map_item_t *mi;
-		// look up the image Id in the history images map
-		mi = cl_qmap_get(&pm->ShortTermHistory.historyImages, histId.AsReg64);
-		if (mi == cl_qmap_end(&pm->ShortTermHistory.historyImages)) {
-			*msg = "Invalid image ID";
-			return FNOT_FOUND;
+		// check the current composite
+		if (pm->ShortTermHistory.currentComposite && pm->ShortTermHistory.currentComposite->header.common.imagesPerComposite >= pm_config.total_images) {
+			status = CheckComposite(pm, histId.AsReg64, pm->ShortTermHistory.currentComposite);
+			if (status == FSUCCESS) {
+				if (!offset) {
+					// current composite was requested directly by image ID
+					*cimg = pm->ShortTermHistory.currentComposite;
+					return status;
+				} else {
+					// image ID was for current composite, so use 1st history record as starting place, adjust offset
+					ireq = pm->ShortTermHistory.currentRecordIndex==0?pm->ShortTermHistory.totalHistoryRecords - 1:pm->ShortTermHistory.currentRecordIndex - 1;
+					offset++;
+				}
+			}
 		}
-		// find the parent entry for the map item
-		PmHistoryImageEntry_t *entry = PARENT_STRUCT(mi, PmHistoryImageEntry_t, historyImageEntry);
-		if (!entry) {
-			*msg = "Error looking up image ID entry";
-			return FNOT_FOUND;
+		// ireq has not already been set by finding image ID in RAM or current composite, check history records
+		if (ireq < 0) {
+			// find this image
+			cl_map_item_t *mi;
+			// look up the image Id in the history images map
+			mi = cl_qmap_get(&pm->ShortTermHistory.historyImages, histId.AsReg64);
+			if (mi == cl_qmap_end(&pm->ShortTermHistory.historyImages)) {
+				IB_LOG_ERROR_FMT(__func__, "Unable to find image ID: 0x"FMT_U64" in record map", imageId);
+				*msg = "Invalid history image ID";
+				return FNOT_FOUND;
+			}
+			// find the parent entry for the map item
+			PmHistoryImageEntry_t *entry = PARENT_STRUCT(mi, PmHistoryImageEntry_t, historyImageEntry);
+			if (!entry) {
+				*msg = "Error looking up image ID entry";
+				return FNOT_FOUND;
+			}
+			if (entry->inx == INDEX_NOT_IN_USE) {
+				*msg = "Error looking up image ID entry not in use";
+				return FNOT_FOUND;
+			}
+			// find the parent record of the entries
+			PmHistoryImageEntry_t *entries = entry - (entry->inx);
+			found = PARENT_STRUCT(entries, PmHistoryRecord_t, historyImageEntries);
+			if (!found || found->index == INDEX_NOT_IN_USE) {
+				*msg = "Error looking up image ID no parent entries found";
+				return FNOT_FOUND;
+			}
+			// if offset is 0, then this is the requested record
+			if (offset == 0) {
+				*record = found;
+				return FSUCCESS;
+			}
+			// otherwise, set ireq
+			ireq = found->index;
 		}
-		if (entry->inx == INDEX_NOT_IN_USE) {
-			*msg = "Error looking up image ID entry not in use";
-			return FNOT_FOUND;
-		}
-		// find the parent record of the entries
-		PmHistoryImageEntry_t *entries = entry - (entry->inx);
-		found = PARENT_STRUCT(entries, PmHistoryRecord_t, historyImageEntries);
-		if (!found || found->index == INDEX_NOT_IN_USE) {
-			*msg = "Error looking up image ID no parent entries found";
-			return FNOT_FOUND;
-		}
-		// if offset is 0, then this is the requested record
-		if (offset == 0) {
-			*record = found;
-			*sth = 1;
-			return FSUCCESS;
-		}
-		// otherwise, set ireq
-		ireq = found->index;
 	}
 	icurr = pm->ShortTermHistory.currentRecordIndex;
 	tot = pm->ShortTermHistory.totalHistoryRecords;
 
-	// image ID in history, offset positive into RAM
+	// check: image ID in history, offset positive into RAM
 	if (offset > 0) {
 		// check: offset goes into RAM but doesn't exceed RAM
+		// minimum offset needed to get back into RAM = distance from ireq to icurr - offset of 1st record to 'uncovered' records
 		int32 maxRamOff, minRamOff; // the maximum and minimum values for offset that would place the requested image in RAM
 		// calculate maxRamOff and minRamOff
-		minRamOff = ((ireq < icurr)?(icurr - ireq):(tot - (ireq - icurr))) - ((int32)MIN(pm_config.total_images, pm->NumSweeps)/pm_config.shortTermHistory.imagesPerComposite) + 1;
+		int32 t, c, i, o;
+		// t: total number of RAM images right now
+		t = (int32)MIN(pm_config.total_images, pm->NumSweeps);
+		// i: images per composite
+		i = (int32)pm_config.shortTermHistory.imagesPerComposite;
+		// c: number of images in current composite
+		c = (int32)((!pm->ShortTermHistory.currentComposite || pm->ShortTermHistory.currentComposite->header.common.imagesPerComposite == pm_config.shortTermHistory.imagesPerComposite) ? 0 : pm->ShortTermHistory.currentComposite->header.common.imagesPerComposite);
+		// o: offset of icurr from uncovered records
+		o = c > t ? -1 : (t - c - 1) / i;
+		minRamOff = ((ireq < icurr)?(icurr - ireq):(tot - (ireq - icurr))) - o;
 		maxRamOff = minRamOff + (int32)MIN(pm_config.total_images, pm->NumSweeps) - 2;
 		if (offset <= maxRamOff && offset >= minRamOff) {
+			// offset is within acceptable range
 			// calculate new Offset (offset from the live RAM image)
-			int32 newOffset = offset - maxRamOff + 1;
-			newOffset = pm->ShortTermHistory.currentComposite->header.common.imagesPerComposite == pm_config.shortTermHistory.imagesPerComposite && pm_config.shortTermHistory.imagesPerComposite != 1? newOffset:newOffset + 1;
+			int32 newOffset = offset - maxRamOff;
 			// call GetIndexFromImageId again, with adjusted offset and live image ID
 			status = GetIndexFromImageId(pm, type, IMAGEID_LIVE_DATA, newOffset, imageIndex, retImageId, msg, clientId);
-			if (status == FSUCCESS) return status;
+			if (status == FSUCCESS) {
+				return status;
+			}
 			// we failed - probably because the image is being overwritten by the next sweep
 			// so just look in the short-term history instead
 		} else if (offset > maxRamOff) {
@@ -427,6 +476,11 @@ FSTATUS FindImage(
 		*msg = "Negative offset exceeds duration of Short-Term History";
 		return FNOT_FOUND;
 	} else if (offset > opos) {
+		if ((offset - opos) == 1 && pm->ShortTermHistory.currentComposite && pm->ShortTermHistory.currentComposite->header.common.imagesPerComposite > pm_config.total_images) {
+			// if offset is opos+1, and the current composite spans outside of the range of RAM images, return the current composite
+			*cimg = pm->ShortTermHistory.currentComposite;
+			return FSUCCESS;
+		}
 		*msg = "Positive offset exceeds duration of Short-Term History";
 		return FNOT_FOUND;
 	} else {
@@ -437,12 +491,11 @@ FSTATUS FindImage(
 			r = tot + r;
 		}
 		*record = pm->ShortTermHistory.historyRecords[r];
-		if (!*record || !(*record)->header.timestamp) {
+		if (!*record || !(*record)->header.timestamp || (*record)->index == INDEX_NOT_IN_USE) {
 			*msg = "Image request found empty history record";
 			return FNOT_FOUND;
 		}
 		*imageIndex = 0;
-		*sth = 1;
 		return FSUCCESS;
 	}
 #else
@@ -534,27 +587,27 @@ done:
 *
 *************************************************************************************/
 
-FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo, uint64 imageId, int32 offset, uint64 *returnImageId,
-						boolean *isFailedPort)
+FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo,
+	uint64 imageId, int32 offset, uint64 *returnImageId)
 {
 	uint64				retImageId = 0;
 	FSTATUS				status = FSUCCESS;
 	PmGroup_t			*pmGroupP = NULL;
 	PmGroupImage_t		pmGroupImage;
 	PmImage_t			*pmImageP = NULL;
-	PmPortImage_t		*pmPortImageP = NULL, *pmPortImageNeighborP = NULL;
+	PmPortImage_t		*pmPortImageP = NULL, *pmPortImageNeighborP = NULL, pmPortImageNeighbor = {{0}};
 	PmPort_t			*pmPortP = NULL;
 	uint32				imageIndex;
 	const char 			*msg;
 	boolean				sth = 0;
 	STL_LID_32 			lid;
-	uint32				g;
+	boolean				isInternal = FALSE;
 	boolean				isGroupAll = FALSE;
 	PmHistoryRecord_t	*record = NULL;
-	boolean 			frozen = 0;
+	PmCompositeImage_t	*cimg = NULL;
 
 	// check input parameters
-	if (!pm || !groupName || !pmGroupInfo || !isFailedPort)
+	if (!pm || !groupName || !pmGroupInfo)
 		return(FINVALID_PARAMETER);
 	if (groupName[0] == '\0') {
 		IB_LOG_WARN_FMT(__func__, "Illegal groupName parameter: Empty String\n");
@@ -569,30 +622,28 @@ FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo, ui
 
 	// collect statistics from last sweep and populate pmGroupInfo
 	(void)vs_rdlock(&pm->stateLock);
-	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &frozen, &sth);
+	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &cimg);
 
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
 	}
 
-	if (sth && (frozen || (record && !frozen))) {
-		PmCompositeImage_t *cimg;
-		if (!frozen) {
+	if (record || cimg) {
+		sth = 1;
+		if (record) {
 			// try to load
 			status = PmLoadComposite(pm, record, &cimg);
 			if (status != FSUCCESS || !cimg) {
 				IB_LOG_WARN_FMT(__func__, "Unable to load composite image: %s", FSTATUS_ToString(status));
 				goto error;
 			}
-		} else {
-			cimg = pm->ShortTermHistory.cachedComposite;
 		}
 		// set the return ID
 		retImageId = cimg->header.common.imageIDs[0];
 		// composite is loaded, reconstitute so we can use it
 		status = PmReconstitute(&pm->ShortTermHistory, cimg);
-		if (!frozen) PmFreeComposite(cimg);
+		if (record) PmFreeComposite(cimg);
 		if (status != FSUCCESS) {
 			IB_LOG_WARN_FMT(__func__, "Unable to reconstitute composite image: %s", FSTATUS_ToString(status));
 			goto error;
@@ -601,7 +652,7 @@ FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo, ui
 		// look for the group
 		if (!strcmp(pm->ShortTermHistory.LoadedImage.AllGroup->Name, groupName)) {
 			pmGroupP = pm->ShortTermHistory.LoadedImage.AllGroup;
-			isGroupAll = TRUE;
+			isInternal = isGroupAll = TRUE;
 		} else {
 			int i;
 			for (i = 0; i < PM_MAX_GROUPS; i++) {
@@ -624,7 +675,7 @@ FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo, ui
 			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_GROUP;
 			goto error;
 		}
-		if (pmGroupP == pm->AllPorts) isGroupAll = TRUE;
+		if (pmGroupP == pm->AllPorts) isInternal = isGroupAll = TRUE;
 
 		pmImageP = &pm->Image[imageIndex];
 		(void)vs_rdlock(&pmImageP->imageLock);
@@ -633,90 +684,75 @@ FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo, ui
 	memset(&pmGroupImage, 0, sizeof(PmGroupImage_t));
 	ClearGroupStats(&pmGroupImage);
 
-	*isFailedPort = FALSE;
 	for (lid = 1; lid <= pmImageP->maxLid; lid++ ) {
 		PmNode_t *pmNodeP = pmImageP->LidMap[lid];
 		if (!pmNodeP) continue;
 		if (pmNodeP->nodeType == STL_NODE_SW) {
 			int p;
-			for (p=0; p <= pmNodeP->numPorts; p++) { 	// Includes port 0
+			for (p=0; p <= pmNodeP->numPorts; p++) { // Includes port 0
 				pmPortP = pmNodeP->up.swPorts[p];
 				// if this is a sth image, the port may be 'empty' but not null 
 				// 'Empty' ports should be excluded from the count, and can be indentified by their having a port num and guid of 0
 				if (!pmPortP || (sth && !pmPortP->guid && !pmPortP->portNum)) continue;
 
-				pmPortImageP = &pmPortP->Image[imageIndex];
-				if (pmPortImageP->u.s.queryStatus != PM_QUERY_STATUS_OK) {
-					// mark a flag to indicate there is at least one failed port.
-					*isFailedPort = TRUE;
-					continue;
-				}
-				if (isGroupAll) {
-					pmGroupImage.NumIntPorts++;
-					UpdateInGroupStats(pm, &pmGroupImage, pmPortImageP); // includes all ports
-				} else {
-#if PM_COMPRESS_GROUPS
-					for (g=0; g < pmPortImageP->u.s.InGroups; g++) {
-#else
-					for (g=0; g<PM_MAX_GROUPS_PER_PORT; g++) {
-#endif
-						PmGroup_t *pmPortGroupP = pmPortImageP->Groups[g];
-#if PM_COMPRESS_GROUPS
-						DEBUG_ASSERT(pmPortGroupP);
-#else
-						if (! pmPortGroupP)
-							continue;	// could be gaps, keep going
-#endif
-						if (pmGroupP != pmPortGroupP) 
-							continue;   // only update group
-
-						if (pmPortImageP->IntLinkFlags & (1<<g)) {
-							pmGroupImage.NumIntPorts++;
-							UpdateInGroupStats(pm, &pmGroupImage, pmPortImageP);
-						} else {
-							pmGroupImage.NumExtPorts++;
-							pmPortImageNeighborP = &pmPortP->Image[imageIndex].neighbor->Image[imageIndex];
-							UpdateExtGroupStats(pm, &pmGroupImage, pmPortImageP, pmPortImageNeighborP);
+                pmPortImageP = &pmPortP->Image[imageIndex];
+                if (PmIsPortInGroup(pm, pmPortP, pmPortImageP, pmGroupP, sth, &isInternal)) {
+					if (isGroupAll || isInternal) {
+						if (pmPortImageP->u.s.queryStatus != PM_QUERY_STATUS_OK) {
+							PA_INC_COUNTER_NO_OVERFLOW(pmGroupImage.IntUtil.pmaFailedPorts, IB_UINT16_MAX);
 						}
+						pmGroupImage.NumIntPorts++;
+						UpdateInGroupStats(pm, &pmGroupImage, pmPortImageP);
+						if (pmPortImageP->neighbor == NULL && pmPortP->portNum != 0) {
+							PA_INC_COUNTER_NO_OVERFLOW(pmGroupImage.IntUtil.topoFailedPorts, IB_UINT16_MAX);
+						}
+					} else {
+						if (pmPortImageP->u.s.queryStatus != PM_QUERY_STATUS_OK) {
+							PA_INC_COUNTER_NO_OVERFLOW(pmGroupImage.SendUtil.pmaFailedPorts, IB_UINT16_MAX);
+						}
+						pmGroupImage.NumExtPorts++;
+						if (pmPortImageP->neighbor == NULL) {
+							PA_INC_COUNTER_NO_OVERFLOW(pmGroupImage.RecvUtil.topoFailedPorts, IB_UINT16_MAX);
+							pmPortImageNeighborP = &pmPortImageNeighbor;
+						} else {
+							pmPortImageNeighborP = &pmPortImageP->neighbor->Image[imageIndex];
+							if (pmPortImageNeighborP->u.s.queryStatus != PM_QUERY_STATUS_OK) {
+								PA_INC_COUNTER_NO_OVERFLOW(pmGroupImage.RecvUtil.pmaFailedPorts, IB_UINT16_MAX);
+							}
+						}
+						UpdateExtGroupStats(pm, &pmGroupImage, pmPortImageP, pmPortImageNeighborP);
 					}
 				}
 			}
 		} else {
 			pmPortP = pmNodeP->up.caPortp;
 			if (!pmPortP) continue;
-			pmPortImageP = &pmPortP->Image[imageIndex]; 
-			if (pmPortImageP->u.s.queryStatus != PM_QUERY_STATUS_OK) {
-				// mark a flag to indicate there is at least one failed port.
-				*isFailedPort = TRUE;
-				continue;
-			}
-			if (isGroupAll) {
-				pmGroupImage.NumIntPorts++;
-				UpdateInGroupStats(pm, &pmGroupImage, pmPortImageP); // includes all ports
-			} else {
-#if PM_COMPRESS_GROUPS
-				for (g=0; g < pmPortImageP->u.s.InGroups; g++) {
-#else
-				for (g=0; g<PM_MAX_GROUPS_PER_PORT; g++) {
-#endif
-					PmGroup_t *pmPortGroupP = pmPortImageP->Groups[g];
-#if PM_COMPRESS_GROUPS
-					DEBUG_ASSERT(pmPortGroupP);
-#else
-					if (! pmPortGroupP)
-						continue;	// could be gaps, keep going
-#endif
-					if (pmGroupP != pmPortGroupP) 
-						continue;   // only update group
-
-					if (pmPortImageP->IntLinkFlags & (1<<g)) {
-						pmGroupImage.NumIntPorts++;
-						UpdateInGroupStats(pm, &pmGroupImage, pmPortImageP);
-					} else {
-						pmGroupImage.NumExtPorts++;
-						pmPortImageNeighborP = &pmPortP->Image[imageIndex].neighbor->Image[imageIndex];
-						UpdateExtGroupStats(pm, &pmGroupImage, pmPortImageP, pmPortImageNeighborP);
+			pmPortImageP = &pmPortP->Image[imageIndex];
+			if (PmIsPortInGroup(pm, pmPortP, pmPortImageP, pmGroupP, sth, &isInternal)) {
+				if (isGroupAll || isInternal) {
+					if (pmPortImageP->u.s.queryStatus != PM_QUERY_STATUS_OK) {
+						PA_INC_COUNTER_NO_OVERFLOW(pmGroupImage.IntUtil.pmaFailedPorts, IB_UINT16_MAX);
 					}
+					pmGroupImage.NumIntPorts++;
+					UpdateInGroupStats(pm, &pmGroupImage, pmPortImageP);
+					if (pmPortImageP->neighbor == NULL && pmPortP->portNum != 0) {
+						PA_INC_COUNTER_NO_OVERFLOW(pmGroupImage.IntUtil.topoFailedPorts, IB_UINT16_MAX);
+					}
+				} else {
+					if (pmPortImageP->u.s.queryStatus != PM_QUERY_STATUS_OK) {
+						PA_INC_COUNTER_NO_OVERFLOW(pmGroupImage.SendUtil.pmaFailedPorts, IB_UINT16_MAX);
+					}
+					pmGroupImage.NumExtPorts++;
+					if (pmPortImageP->neighbor == NULL) {
+						PA_INC_COUNTER_NO_OVERFLOW(pmGroupImage.RecvUtil.topoFailedPorts, IB_UINT16_MAX);
+						pmPortImageNeighborP = &pmPortImageNeighbor;
+					} else {
+						pmPortImageNeighborP = &pmPortImageP->neighbor->Image[imageIndex];
+						if (pmPortImageNeighborP->u.s.queryStatus != PM_QUERY_STATUS_OK) {
+							PA_INC_COUNTER_NO_OVERFLOW(pmGroupImage.RecvUtil.pmaFailedPorts, IB_UINT16_MAX);
+						}
+					}
+					UpdateExtGroupStats(pm, &pmGroupImage, pmPortImageP, pmPortImageNeighborP);
 				}
 			}
 		}
@@ -778,7 +814,7 @@ FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConf
 	FSTATUS				status = FSUCCESS;
 	boolean				sth = 0;
 	PmHistoryRecord_t	*record = NULL;
-	boolean 			frozen = 0;
+	PmCompositeImage_t	*cimg = NULL;
 
 	// check input parameters
 	if (!pm || !groupName || !pmGroupConfig)
@@ -802,29 +838,27 @@ FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConf
 	// pmGroupP points to our group
 	// check all ports for membership in our group
 	(void)vs_rdlock(&pm->stateLock);
-	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &frozen, &sth);
+	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &cimg);
 
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
 	}
 	
-	if (sth && (frozen || (record && !frozen))) {
-		PmCompositeImage_t *cimg;
-		if (!frozen) {
+	if (record || cimg) {
+		sth = 1;
+		if (record) {
 			// found the record, try to load it
 			status = PmLoadComposite(pm, record, &cimg);
 			if (status != FSUCCESS || !cimg) {
 				IB_LOG_WARN_FMT(__func__, "Unable to load composite image: %s", FSTATUS_ToString(status));
 				goto error;
 			}
-		} else {
-			cimg = pm->ShortTermHistory.cachedComposite;
 		}
 		retImageId = cimg->header.common.imageIDs[0];
 		// composite is loaded, reconstitute so we can use it
 		status = PmReconstitute(&pm->ShortTermHistory, cimg);
-		if (!frozen) PmFreeComposite(cimg);
+		if (record) PmFreeComposite(cimg);
 		if (status != FSUCCESS) {
 			IB_LOG_WARN_FMT(__func__, "Unable to reconstitute composite image: %s", FSTATUS_ToString(status));
 			goto error;
@@ -871,7 +905,7 @@ FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConf
 				if (! pmportp)
 					continue;
 				portImage = &pmportp->Image[imageIndex];
-				if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth))
+				if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth, NULL))
 				{
 					if (pmGroupConfig->portListSize == pmGroupConfig->NumPorts) {
 						pmGroupConfig->portListSize += PORTLISTCHUNK;
@@ -882,7 +916,7 @@ FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConf
 		} else {
 			PmPort_t *pmportp = pmnodep->up.caPortp;
 			PmPortImage_t *portImage = &pmportp->Image[imageIndex];
-			if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth))
+			if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth, NULL))
 			{
 				if (pmGroupConfig->portListSize == pmGroupConfig->NumPorts) {
 					pmGroupConfig->portListSize += PORTLISTCHUNK;
@@ -918,7 +952,7 @@ FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConf
 				if (!pmportp) 
 					continue;
 				portImage = &pmportp->Image[imageIndex];
-				if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth)) {
+				if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth, NULL)) {
 					pmGroupConfig->portList[i].lid = lid;
 					pmGroupConfig->portList[i].portNum = pmportp->portNum;
 					pmGroupConfig->portList[i].guid = pmnodep->guid;
@@ -930,7 +964,7 @@ FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConf
 		} else {
 			PmPort_t *pmportp = pmnodep->up.caPortp;
 			PmPortImage_t *portImage = &pmportp->Image[imageIndex];
-			if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth)) {
+			if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth, NULL)) {
 				pmGroupConfig->portList[i].lid = lid;
 				pmGroupConfig->portList[i].portNum = pmportp->portNum;
 				pmGroupConfig->portList[i].guid = pmnodep->guid;
@@ -989,8 +1023,8 @@ FSTATUS paGetPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, PmCompositePortC
 	PmImage_t			*pmImageP, *pmImagePreviousP = NULL;
 	uint32				imageIndex = PM_IMAGE_INDEX_INVALID, imageIndexPrevious = PM_IMAGE_INDEX_INVALID;
 	boolean				sth = 0, sth2 = 0;
-	PmHistoryRecord_t	*record, *record2= NULL;
-	boolean 			frozen, frozen2= 0;
+	PmHistoryRecord_t	*record = NULL, *record2 = NULL;
+	PmCompositeImage_t	*cimg = NULL, *cimg2 = NULL;
 
 	// check input parameters
 	if (!pm || !portCountersP || !flagsp)
@@ -1039,26 +1073,24 @@ FSTATUS paGetPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, PmCompositePortC
 			(isUnexpectedClearUserCounters ? STL_PA_PC_FLAG_UNEXPECTED_CLEAR : 0);
 		goto done;
 	}
-	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &frozen, &sth);
+	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &cimg);
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
 	}
 
-	if (sth && (frozen || (record && !frozen))) {
-			PmCompositeImage_t *cimg;
-			if (!frozen) {
+	if (record || cimg) {
+			sth = 1;
+			if (record) {
 				status = PmLoadComposite(pm, record, &cimg);
 				if (status != FSUCCESS || !cimg) {
 					IB_LOG_WARN_FMT(__func__, "Unable to load composite image: %s", FSTATUS_ToString(status));
 					goto error;
 				}
-			} else {
-				cimg = pm->ShortTermHistory.cachedComposite;
 			}
 			retImageId = cimg->header.common.imageIDs[0];
 			status = PmReconstitute(&pm->ShortTermHistory, cimg);
-			if (!frozen) PmFreeComposite(cimg);
+			if (record) PmFreeComposite(cimg);
 			if (status != FSUCCESS) {
 				IB_LOG_WARN_FMT(__func__, "Unable to reconstitute composite image: %s", FSTATUS_ToString(status));
 				goto error;
@@ -1092,26 +1124,24 @@ FSTATUS paGetPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, PmCompositePortC
 			pmPortImageP = &pmPortImage;
 		}
 		
-		status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset-1, &imageIndexPrevious, &retImageId2, &record2, &msg, NULL, &frozen2, &sth2);
+		status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset-1, &imageIndexPrevious, &retImageId2, &record2, &msg, NULL, &cimg2);
 		if (FSUCCESS != status) {
 			IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 			goto unlock;
 		}
 
-		if (sth2 && (frozen2 || (record2 && !frozen2))) {
-			PmCompositeImage_t *cimg2;
-			if (!frozen2) {
+		if (record2 || cimg2) {
+			sth2 = 1;
+			if (record2) {
 				status = PmLoadComposite(pm, record2, &cimg2);
 				if (status != FSUCCESS || !cimg2) {
 					IB_LOG_WARN_FMT(__func__, "Unable to load composite image: %s", FSTATUS_ToString(status));
 					goto unlock;
 				}
-			} else {
-				cimg2 = pm->ShortTermHistory.cachedComposite;
 			}
 
 			status = PmReconstitute(&pm->ShortTermHistory, cimg2);
-			if (!frozen2) PmFreeComposite(cimg2);
+			if (record2) PmFreeComposite(cimg2);
 			if (status != FSUCCESS) {
 				IB_LOG_WARN_FMT(__func__, "Unable to reconstitute composite image: %s", FSTATUS_ToString(status));
 				goto unlock;
@@ -1394,8 +1424,7 @@ FSTATUS paFreezeFrameRenew(Pm_t *pm, uint64 imageId)
 	const char 			*msg;
 	uint64				retImageId;
 	PmHistoryRecord_t	*record = NULL;
-	boolean				frozen = 0;
-	boolean				sth = 0;
+	PmCompositeImage_t	*cimg = NULL;
 
 	// check input parameters
 	if (!pm)
@@ -1409,11 +1438,12 @@ FSTATUS paFreezeFrameRenew(Pm_t *pm, uint64 imageId)
 
 	(void)vs_rdlock(&pm->stateLock);
 	// just touching it will renew the image
-	status = FindImage(pm, IMAGEID_TYPE_FREEZE_FRAME, imageId, 0, &imageIndex, &retImageId, &record, &msg, NULL, &frozen, &sth);
+	status = FindImage(pm, IMAGEID_TYPE_FREEZE_FRAME, imageId, 0, &imageIndex, &retImageId, &record, &msg, NULL, &cimg);
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 	}
-	if (sth && !frozen) // not in the cache, never found
+	
+	if (record || (cimg && cimg !=  pm->ShortTermHistory.cachedComposite)) // not in the cache, never found
 			IB_LOG_WARN_FMT(__func__, "Unable to access cached composite image: %s", msg);
 
 	(void)vs_rwunlock(&pm->stateLock);
@@ -1443,8 +1473,7 @@ FSTATUS paFreezeFrameRelease(Pm_t *pm, uint64 imageId)
 	uint64				retImageId;
 	uint8				clientId;
 	PmHistoryRecord_t	*record = NULL;
-	boolean				frozen = 0;
-	boolean				sth = 0;
+	PmCompositeImage_t	*cimg = NULL;
 
 	// check input parameters
 	if (!pm)
@@ -1457,19 +1486,19 @@ FSTATUS paFreezeFrameRelease(Pm_t *pm, uint64 imageId)
 	}
 
 	(void)vs_wrlock(&pm->stateLock);
-	status = FindImage(pm, IMAGEID_TYPE_FREEZE_FRAME, imageId, 0, &imageIndex, &retImageId, &record, &msg, &clientId, &frozen, &sth);
+	status = FindImage(pm, IMAGEID_TYPE_FREEZE_FRAME, imageId, 0, &imageIndex, &retImageId, &record, &msg, &clientId, &cimg);
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto unlock;
 	}
 
-	if (sth) {
-		if (!frozen)  // not in the cache, never found
-			IB_LOG_WARN_FMT(__func__, "Unable to access cached composite image: %s", msg);
-		else {
+	if (record || cimg) {
+		if (cimg && cimg == pm->ShortTermHistory.cachedComposite) {
 			PmFreeComposite(pm->ShortTermHistory.cachedComposite);
 			pm->ShortTermHistory.cachedComposite = NULL;
 			status = FSUCCESS;
+		} else {
+			IB_LOG_WARN_FMT(__func__, "Unable to access cached composite image: %s", msg);
 		}
 		goto unlock;
 	}
@@ -1547,8 +1576,7 @@ FSTATUS paFreezeFrameCreate(Pm_t *pm, uint64 imageId, int32 offset, uint64 *retI
 	uint8				clientId;
 	uint8				freezeIndex;
 	PmHistoryRecord_t	*record = NULL;
-	boolean				frozen = 0;
-	boolean				sth = 0;
+	PmCompositeImage_t	*cimg = NULL;
 
 	// check input parameters
 	if (!pm)
@@ -1560,22 +1588,28 @@ FSTATUS paFreezeFrameCreate(Pm_t *pm, uint64 imageId, int32 offset, uint64 *retI
 		goto done;
 	}
 	(void)vs_wrlock(&pm->stateLock);
-	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, retImageId, &record, &msg, NULL, &frozen, &sth);
+	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, retImageId, &record, &msg, NULL, &cimg);
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
 	}
-	if (sth && (frozen || (record && !frozen))) {
+	if (record || cimg) {
 		*retImageId = imageId;
-		if (!frozen) { // if it is already frozen, no need to freeze it again!
+		if (record) { // cache the disk image
 			status = PmFreezeComposite(pm, record);
 			if (status != FSUCCESS) {
 				IB_LOG_WARN_FMT(__func__, "Unable to freeze composite image: %s", FSTATUS_ToString(status));
 				goto error;
 			}
 			*retImageId = record->header.imageIDs[0];
-		} else {
+		} else if (cimg && pm->ShortTermHistory.cachedComposite) { // already frozen
 			*retImageId = pm->ShortTermHistory.cachedComposite->header.common.imageIDs[0];
+		} else { // trying to freeze the current composite (unlikely but possible)
+			status = PmFreezeCurrent(pm);
+			if (status != FSUCCESS) {
+				IB_LOG_WARN_FMT(__func__, "Unable to freeze current composite image: %s", FSTATUS_ToString(status));
+				goto error;
+			}
 		}
 		(void)vs_rwunlock(&pm->stateLock);
 		goto done;
@@ -1635,8 +1669,7 @@ FSTATUS paFreezeFrameMove(Pm_t *pm, uint64 ffImageId, uint64 imageId, int32 offs
 	uint8				freezeIndex;
 	boolean				oldIsComp = 0, newIsComp = 0;
 	PmHistoryRecord_t	*record = NULL;
-	boolean				sth = 0;
-	boolean				frozen = 0;
+	PmCompositeImage_t	*cimg = NULL;
 
 	// check input parameters
 	if (!pm)
@@ -1649,22 +1682,33 @@ FSTATUS paFreezeFrameMove(Pm_t *pm, uint64 ffImageId, uint64 imageId, int32 offs
 	}
 
 	(void)vs_wrlock(&pm->stateLock);
-	status = FindImage(pm, IMAGEID_TYPE_ANY, ffImageId, 0, &ffImageIndex, returnImageId, &record, &msg, &ffClientId, &oldIsComp, &sth);
+	status = FindImage(pm, IMAGEID_TYPE_ANY, ffImageId, 0, &ffImageIndex, returnImageId, &record, &msg, &ffClientId, &cimg);
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get freeze frame index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
 	}
-	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, returnImageId, &record, &msg, NULL, &frozen, &sth);
+	if (cimg && cimg == pm->ShortTermHistory.cachedComposite)
+		oldIsComp = 1;
+	
+	record = NULL;
+	cimg = NULL;
+	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, returnImageId, &record, &msg, NULL, &cimg);
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
 	}
-	if (sth && (frozen || (record && !frozen))) {
+	if (record || cimg) {
 		newIsComp = 1;
-		if (!frozen) { //composite isn't already cached
+		if (record) { //composite isn't already cached
 			status = PmFreezeComposite(pm, record);
 			if (status != FSUCCESS) {
 				IB_LOG_WARN_FMT(__func__, "Unable to freeze composite image: %s", FSTATUS_ToString(status));
+				goto error;
+			}
+		} else {
+			status = PmFreezeCurrent(pm);
+			if (status != FSUCCESS) {
+				IB_LOG_WARN_FMT(__func__, "Unable to freeze current composite image: %s", FSTATUS_ToString(status));
 				goto error;
 			}
 		}
@@ -1773,24 +1817,22 @@ uint32 compareLE(uint64 value1, uint64 value2)
 	return(value1 <= value2);
 }
 
-int neighborInList(STL_LID_32 lid, uint8 portNum, PmPort_t *pmNeighborportp, PmPortImage_t *neighborPortImage, sortInfo_t *sortInfo)
+int neighborInList(STL_LID_32 lid, uint8 portNum, uint32 imageIndex,
+	PmPort_t *pmNeighborportp, PmPortImage_t *neighborPortImage,
+	sortInfo_t *sortInfo)
 {
 	sortedValueEntry_t	*listp;
 	STL_LID_32			neighborLid;
 	uint8				neighborPort;
-	uint32				imageIndex;
 
-    if (pmNeighborportp == NULL || neighborPortImage == NULL)
-        return -1;
-
-	imageIndex = ((void *)neighborPortImage - (void *)&pmNeighborportp->Image[0]) / sizeof(PmPortImage_t);
 	neighborPort = pmNeighborportp->portNum;
 	neighborLid = pmNeighborportp->pmnodep->Image[imageIndex].lid;
 
 	for (listp = sortInfo->sortedValueListHead; listp != NULL; listp = listp->next) {
-		if ((lid == listp->neighborPortp->pmnodep->Image[imageIndex].lid) &&
+		if (listp->neighborPortp &&
+			(lid == listp->neighborPortp->pmnodep->Image[imageIndex].lid) &&
 			(portNum == listp->neighborPortp->portNum)) {
-			IB_LOG_DEBUG1_FMT(__func__, "Lid 0x%x portNum %d neighborLid 0x%x neighborPort %d already in list\n",
+			IB_LOG_DEBUG2_FMT(__func__, "Lid 0x%x portNum %d neighborLid 0x%x neighborPort %d already in list\n",
 				lid, portNum, neighborLid, neighborPort);
 			return(1);
 		}
@@ -1799,40 +1841,57 @@ int neighborInList(STL_LID_32 lid, uint8 portNum, PmPort_t *pmNeighborportp, PmP
 	return(0);
 }
 
-FSTATUS processFocusPort(Pm_t *pm, PmPort_t *pmportp, PmPortImage_t *portImage, PmPort_t *pmNeighborportp,
-						 PmPortImage_t *neighborPortImage, STL_LID_32 lid, uint8 portNum, ComputeFunc_t computeFunc,
-						 CompareFunc_t compareFunc, CompareFunc_t candidateFunc, sortInfo_t *sortInfo)
+FSTATUS processFocusPort(Pm_t *pm, PmPort_t *pmportp, PmPortImage_t *portImage,
+	uint32 imageIndex, STL_LID_32 lid, uint8 portNum, ComputeFunc_t computeFunc, 
+	CompareFunc_t compareFunc, CompareFunc_t candidateFunc, sortInfo_t *sortInfo)
 {
 	uint64				computedValue = 0;
 	uint64				nbrComputedValue = 0;
 	uint64				sortValue;
-	PmPort_t			*nbrPt;
-	PmPortImage_t		*nbrPI;
+	uint8               localFlags = STL_PA_FOCUS_FLAG_OK;
+	uint8               neighborFlags = STL_PA_FOCUS_FLAG_OK;
+	PmPort_t			*nbrPt = NULL;
+	PmPortImage_t		*nbrPI = NULL;
 	sortedValueEntry_t	*newListEntry = NULL;
 	sortedValueEntry_t	*thisListEntry = NULL;
 	sortedValueEntry_t	*prevListEntry = NULL;
 
-	if (portNum != 0) {
-        int rc;
-
-        if ((rc = neighborInList(lid, portNum, pmNeighborportp, neighborPortImage, sortInfo)) == -1)
-    		return(FNOT_DONE);
-        else if (rc)
-    		return(FSUCCESS);
-    }
-		
 	if (portNum == 0) {
-		nbrPt = pmportp;
-		nbrPI = portImage;
+		// SW Port zero has no neighbor
+		neighborFlags = STL_PA_FOCUS_FLAG_OK;
 	} else {
-		nbrPt = pmNeighborportp;
-		nbrPI = neighborPortImage;
+		nbrPt = portImage->neighbor;
+		if (nbrPt == NULL) {
+			// Neighbor should never be NULL unless there was a failure during 
+			// the PM's Copy of the SM Topology
+			neighborFlags = STL_PA_FOCUS_FLAG_TOPO_FAILURE;
+		} else {
+			nbrPI = &nbrPt->Image[imageIndex];
+			if (neighborInList(lid, portNum, imageIndex, nbrPt, nbrPI, sortInfo) == 1)
+				return (FSUCCESS);
+			if (nbrPt->u.s.PmaAvoid) {
+				// This means the PM was told to ignore this port during a sweep
+				neighborFlags = STL_PA_FOCUS_FLAG_PMA_IGNORE;
+			} else if (nbrPI->u.s.queryStatus != PM_QUERY_STATUS_OK) {
+				// This means there was a failure during the PM sweep when 
+				// querying this port
+				neighborFlags = STL_PA_FOCUS_FLAG_PMA_FAILURE;
+			}
+			nbrComputedValue = computeFunc(pm, nbrPI);
+		}
 	}
-    if (portImage)
-        computedValue = computeFunc(pm, portImage);
-    if (nbrPI)
-    	nbrComputedValue = computeFunc(pm, nbrPI);
-	sortValue = MAX(computedValue, nbrComputedValue);
+
+	if (pmportp->u.s.PmaAvoid) {
+		// This means the PM was told to ignore this port during a sweep
+		localFlags = STL_PA_FOCUS_FLAG_PMA_IGNORE;
+	} else if (portImage->u.s.queryStatus != PM_QUERY_STATUS_OK) {
+		// This means there was a failure during the PM sweep when querying 
+		// this port
+		localFlags = STL_PA_FOCUS_FLAG_PMA_FAILURE;
+	}
+	computedValue = computeFunc(pm, portImage);
+
+	sortValue = MAX(computedValue, nbrComputedValue); 
 
 	if (sortInfo->sortedValueListHead == NULL) {
 		// list is new - add entry and make it head and tail
@@ -1845,6 +1904,8 @@ FSTATUS processFocusPort(Pm_t *pm, PmPort_t *pmportp, PmPortImage_t *portImage, 
 		sortInfo->sortedValueListHead->neighborPortp = nbrPt;
 		sortInfo->sortedValueListHead->lid = lid;
 		sortInfo->sortedValueListHead->portNum = portNum;
+		sortInfo->sortedValueListHead->localFlags = localFlags;
+		sortInfo->sortedValueListHead->neighborFlags = neighborFlags;
 		sortInfo->sortedValueListHead->next = NULL;
 		sortInfo->sortedValueListHead->prev = NULL;
 		sortInfo->numValueEntries++;
@@ -1858,6 +1919,8 @@ FSTATUS processFocusPort(Pm_t *pm, PmPort_t *pmportp, PmPortImage_t *portImage, 
 		newListEntry->neighborPortp = nbrPt;
 		newListEntry->lid = lid;
 		newListEntry->portNum = portNum;
+		newListEntry->localFlags = localFlags;
+		newListEntry->neighborFlags = neighborFlags;
 		newListEntry->next = NULL;
 		thisListEntry = sortInfo->sortedValueListHead;
 		while ((thisListEntry != NULL) && compareFunc(sortValue, thisListEntry->sortValue)) {
@@ -1892,6 +1955,8 @@ FSTATUS processFocusPort(Pm_t *pm, PmPort_t *pmportp, PmPortImage_t *portImage, 
 				sortInfo->sortedValueListHead->neighborPortp = nbrPt;
 				sortInfo->sortedValueListHead->lid = lid;
 				sortInfo->sortedValueListHead->portNum = portNum;
+				sortInfo->sortedValueListHead->localFlags = localFlags;
+				sortInfo->sortedValueListHead->neighborFlags = neighborFlags;
 			} else {
 				// list is full - bump tail and insert sorted
 				// first, copy into tail entry and adjust tail
@@ -1904,6 +1969,8 @@ FSTATUS processFocusPort(Pm_t *pm, PmPort_t *pmportp, PmPortImage_t *portImage, 
 				newListEntry->neighborPortp = nbrPt;
 				newListEntry->lid = lid;
 				newListEntry->portNum = portNum;
+				newListEntry->localFlags = localFlags;
+				newListEntry->neighborFlags = neighborFlags;
 				sortInfo->sortedValueListTail = sortInfo->sortedValueListTail->prev;
 				// now insert sorted entry
 				thisListEntry = sortInfo->sortedValueListHead;
@@ -1955,6 +2022,7 @@ FSTATUS addSortedPorts(PmFocusPorts_t *pmFocusPorts, sortInfo_t *sortInfo, uint3
 	while ((listp != NULL) && (portCount < pmFocusPorts->NumPorts)) {
 		pmFocusPorts->portList[portCount].lid = listp->lid;
 		pmFocusPorts->portList[portCount].portNum = listp->portNum;
+		pmFocusPorts->portList[portCount].localFlags = listp->localFlags;
 		pmFocusPorts->portList[portCount].rate = PmCalculateRate(listp->portp->Image[imageIndex].u.s.activeSpeed, listp->portp->Image[imageIndex].u.s.rxActiveWidth);
 		pmFocusPorts->portList[portCount].mtu = listp->portp->Image[imageIndex].u.s.mtu;
 		pmFocusPorts->portList[portCount].value = listp->value;
@@ -1962,6 +2030,7 @@ FSTATUS addSortedPorts(PmFocusPorts_t *pmFocusPorts, sortInfo_t *sortInfo, uint3
 		strncpy(pmFocusPorts->portList[portCount].nodeDesc, (char *)listp->portp->pmnodep->nodeDesc.NodeString,
 			sizeof(pmFocusPorts->portList[portCount].nodeDesc)-1);
 		if (listp->portNum != 0) {
+			pmFocusPorts->portList[portCount].neighborFlags = listp->neighborFlags;
 			pmFocusPorts->portList[portCount].neighborLid = listp->neighborPortp->pmnodep->Image[imageIndex].lid;
 			pmFocusPorts->portList[portCount].neighborPortNum = listp->neighborPortp->portNum;
 			pmFocusPorts->portList[portCount].neighborValue = listp->neighborValue;
@@ -1969,6 +2038,7 @@ FSTATUS addSortedPorts(PmFocusPorts_t *pmFocusPorts, sortInfo_t *sortInfo, uint3
 			strncpy(pmFocusPorts->portList[portCount].neighborNodeDesc, (char *)listp->neighborPortp->pmnodep->nodeDesc.NodeString,
 				sizeof(pmFocusPorts->portList[portCount].neighborNodeDesc)-1);
 		} else {
+			pmFocusPorts->portList[portCount].neighborFlags = listp->neighborFlags;
 			pmFocusPorts->portList[portCount].neighborLid = 0;
 			pmFocusPorts->portList[portCount].neighborPortNum = 0;
 			pmFocusPorts->portList[portCount].neighborValue = 0;
@@ -1997,8 +2067,9 @@ FSTATUS addSortedPorts(PmFocusPorts_t *pmFocusPorts, sortInfo_t *sortInfo, uint3
 *
 *************************************************************************************/
 
-FSTATUS paGetFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPorts, uint64 imageId, int32 offset, uint64 *returnImageId,
-					    uint32 select, uint32 start, uint32 range)
+FSTATUS paGetFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPorts,
+	uint64 imageId, int32 offset, uint64 *returnImageId, uint32 select,
+	uint32 start, uint32 range)
 {
 	uint64				retImageId = 0;
 	PmGroup_t			*pmGroupP = NULL;
@@ -2014,11 +2085,11 @@ FSTATUS paGetFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPorts,
 	CompareFunc_t		candidateFunc = NULL;
 	boolean				sth = 0;
 	PmHistoryRecord_t	*record = NULL;
-	boolean				frozen = 0;
+	PmCompositeImage_t	*cimg = NULL;
 
 	// check input parameters
 	if (!pm || !groupName || !pmFocusPorts)
-		return(FINVALID_PARAMETER);
+		return (FINVALID_PARAMETER);
 	if (groupName[0] == '\0') {
 		IB_LOG_WARN_FMT(__func__, "Illegal groupName parameter: Empty String\n");
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER) ;
@@ -2106,26 +2177,24 @@ FSTATUS paGetFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPorts,
 	// pmGroupP points to our group
 	// check all ports for membership in our group
 	(void)vs_rdlock(&pm->stateLock);
-	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &frozen, &sth);
+	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &cimg);
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
 	}
 
-	if (sth && (frozen || (record && !frozen))) {
-		PmCompositeImage_t *cimg;
-		if (!frozen) {
+	if (record || cimg) {
+		sth = 1;
+		if (record) {
 			status = PmLoadComposite(pm, record, &cimg);
 			if (status != FSUCCESS || !cimg) {
 				IB_LOG_WARN_FMT(__func__, "Unable to load composite image: %s", FSTATUS_ToString(status));
 				goto error;
 			}
-		} else {
-			cimg = pm->ShortTermHistory.cachedComposite;
 		}
 		retImageId = cimg->header.common.imageIDs[0];
 		status = PmReconstitute(&pm->ShortTermHistory, cimg);
-		if (!frozen) PmFreeComposite(cimg);
+		if (record) PmFreeComposite(cimg);
 		if (status != FSUCCESS) {
 			IB_LOG_WARN_FMT(__func__, "Unable to reconstitute composite image: %s", FSTATUS_ToString(status));
 			goto error;
@@ -2167,31 +2236,22 @@ FSTATUS paGetFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPorts,
 		if (! pmnodep)
 			continue;
 		if (pmnodep->nodeType == STL_NODE_SW) {
-			for (portnum=0; portnum<=pmnodep->numPorts; ++portnum) {
+			for (portnum = 0; portnum <= pmnodep->numPorts; ++portnum) {
 				PmPort_t *pmportp = pmnodep->up.swPorts[portnum];
-				PmPort_t *pmNeighborportp;
 				PmPortImage_t *portImage;
-				PmPortImage_t *neighborPortImage;
-				if (! pmportp)
-					continue;
+				if (!pmportp) continue;
 				portImage = &pmportp->Image[imageIndex];
-				pmNeighborportp = portImage->neighbor;
-				neighborPortImage = &pmNeighborportp->Image[imageIndex];
-				if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth) &&
-					portImage->u.s.queryStatus == PM_QUERY_STATUS_OK)
-				{
-					processFocusPort(pm, pmportp, portImage, pmNeighborportp, neighborPortImage, lid, portnum, computeFunc, compareFunc, candidateFunc, &sortInfo);
+				if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth, NULL)) {
+					processFocusPort(pm, pmportp, portImage, imageIndex, lid, portnum, 
+						computeFunc, compareFunc, candidateFunc, &sortInfo);
 				}
 			}
 		} else {
 			PmPort_t *pmportp = pmnodep->up.caPortp;
 			PmPortImage_t *portImage = &pmportp->Image[imageIndex];
-			PmPort_t *pmNeighborportp = portImage->neighbor;
-			PmPortImage_t *neighborPortImage = &pmNeighborportp->Image[imageIndex];
-			if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth) &&
-				portImage->u.s.queryStatus == PM_QUERY_STATUS_OK)
-			{
-				processFocusPort(pm, pmportp, portImage, pmNeighborportp, neighborPortImage, lid, pmportp->portNum, computeFunc, compareFunc, candidateFunc, &sortInfo);
+			if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth, NULL)) {
+				processFocusPort(pm, pmportp, portImage, imageIndex, lid, pmportp->portNum,
+					computeFunc, compareFunc, candidateFunc, &sortInfo);
 			}
 		}
 	}
@@ -2228,13 +2288,13 @@ FSTATUS paGetImageInfo(Pm_t *pm, uint64 imageId, int32 offset, PmImageInfo_t *im
 {
 	FSTATUS				status = FSUCCESS;
 	uint64				retImageId = 0;
-	uint32				imageIndex;
+	uint32				imageIndex, imageInterval;
 	int					i;
 	const char 			*msg;
 	PmImage_t			*pmimagep;
 	boolean 			sth = 0;
 	PmHistoryRecord_t 	*record = NULL;
-	boolean 			frozen = 0;
+	PmCompositeImage_t	*cimg = NULL;
 
 	// check input parameters
 	if (!pm || !imageInfo)
@@ -2247,26 +2307,25 @@ FSTATUS paGetImageInfo(Pm_t *pm, uint64 imageId, int32 offset, PmImageInfo_t *im
 	}
 
 	(void)vs_rdlock(&pm->stateLock);
-	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &frozen, &sth);
+	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &cimg);
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
 	}
 
-	if (sth && (frozen || (record && !frozen))) {
-		PmCompositeImage_t *cimg;
-		if (!frozen) {
+	if (record || cimg) {
+		sth = 1;
+		if (record) {
 			status = PmLoadComposite(pm, record, &cimg);
 			if (status != FSUCCESS || !cimg) {
 				IB_LOG_WARN_FMT(__func__, "Unable to load composite image: %s", FSTATUS_ToString(status));
 				goto error;
 			}
-		} else {
-			cimg = pm->ShortTermHistory.cachedComposite;
 		}
+		imageInterval = cimg->header.common.imageSweepInterval;
 		retImageId = cimg->header.common.imageIDs[0];
 		status = PmReconstitute(&pm->ShortTermHistory, cimg);
-		if (!frozen) PmFreeComposite(cimg);
+		if (record) PmFreeComposite(cimg);
 		if (status != FSUCCESS) {
 			IB_LOG_WARN_FMT(__func__, "Unable to reconstitute composite image: %s", FSTATUS_ToString(status));
 			goto error;
@@ -2274,6 +2333,7 @@ FSTATUS paGetImageInfo(Pm_t *pm, uint64 imageId, int32 offset, PmImageInfo_t *im
 		pmimagep = pm->ShortTermHistory.LoadedImage.img;
 	}  else {
 		pmimagep = &pm->Image[imageIndex];
+		imageInterval = pm->interval;
 	}
 
 	imageInfo->sweepStart				= pmimagep->sweepStart;
@@ -2288,6 +2348,7 @@ FSTATUS paGetImageInfo(Pm_t *pm, uint64 imageId, int32 offset, PmImageInfo_t *im
 	imageInfo->numSkippedNodes			= pmimagep->SkippedNodes;
 	imageInfo->numSkippedPorts			= pmimagep->SkippedPorts;
 	imageInfo->numUnexpectedClearPorts	= pmimagep->UnexpectedClearPorts;
+	imageInfo->imageInterval			= imageInterval;
 	for (i = 0; i < 2; i++) {
 		STL_LID_32 smLid = pmimagep->SMs[i].smLid;
 		PmNode_t *pmnodep = pmimagep->LidMap[smLid];
@@ -2476,7 +2537,7 @@ FSTATUS paGetVFList(Pm_t *pm, PmVFList_t *VFList, uint32 imageIndex)
 {
 	Status_t			vStatus;
 	FSTATUS				fStatus = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
-	int					i;
+	int					i, j;
 
 	// check input parameters
 	if (!pm || !VFList)
@@ -2497,9 +2558,9 @@ FSTATUS paGetVFList(Pm_t *pm, PmVFList_t *VFList, uint32 imageIndex)
 	}
 
 	(void)vs_rdlock(&pm->stateLock);
-	for (i = 0; i < pm->numVFs; i++) {
+	for (i = 0, j = 0; i < pm->numVFs; i++) {
 		if (pm->VFs[i]->Image[imageIndex].isActive) {
-			strncpy(VFList->VfList[i].Name, pm->VFs[i]->Name, STL_PM_VFNAMELEN-1);
+			strncpy(VFList->VfList[j++].Name, pm->VFs[i]->Name, STL_PM_VFNAMELEN-1);
 		}
 	}
 	if (VFList->NumVFs)
@@ -2512,8 +2573,8 @@ done:
 	return(fStatus);
 }
 
-FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, PmVFInfo_t *pmVFInfo, uint64 imageId, int32 offset, uint64 *returnImageId,
-					boolean *isFailedPort)
+FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, PmVFInfo_t *pmVFInfo, uint64 imageId,
+    int32 offset, uint64 *returnImageId)
 {
 	uint64				retImageId = 0;
 	FSTATUS				status = FSUCCESS;
@@ -2525,11 +2586,11 @@ FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, PmVFInfo_t *pmVFInfo, uint64 imageId
 	uint32				imageIndex;
 	const char 			*msg;
 	boolean				sth = FALSE;
-	int 				lid, v;
+	int 				lid;
 	PmHistoryRecord_t	*record = NULL;
-	boolean 			frozen = 0;
+	PmCompositeImage_t	*cimg = NULL;
 
-	if (!pm || !vfName || !pmVFInfo || !isFailedPort)
+	if (!pm || !vfName || !pmVFInfo)
 		return(FINVALID_PARAMETER);
 	if (vfName[0] == '\0') {
 		IB_LOG_WARN_FMT(__func__, "Illegal vfName parameter: Empty String\n");
@@ -2543,28 +2604,26 @@ FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, PmVFInfo_t *pmVFInfo, uint64 imageId
 	}
 
 	(void)vs_rdlock(&pm->stateLock);
-	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &frozen, &sth);
+	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &cimg);
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
 	}
 
-	if (sth && (frozen || (record && !frozen))) {
-		PmCompositeImage_t *cimg;
-		if (!frozen) {
+	if (record || cimg) {
+		sth = 1;
+		if (record) {
 			// load the composite
 			status = PmLoadComposite(pm, record, &cimg);
 			if (status != FSUCCESS || !cimg) {
 				IB_LOG_WARN_FMT(__func__, "Unable to load composite image: %s", FSTATUS_ToString(status));
 				goto error;
 			}
-		} else {
-			cimg = pm->ShortTermHistory.cachedComposite;
 		}
 		retImageId = cimg->header.common.imageIDs[0];
 		// composite is loaded, reconstitute so we can use it
 		status = PmReconstitute(&pm->ShortTermHistory, cimg);
-		if (!frozen) PmFreeComposite(cimg);
+		if (record) PmFreeComposite(cimg);
 		if (status != FSUCCESS) {
 			IB_LOG_WARN_FMT(__func__, "Unable to reconstitute composite image: %s", FSTATUS_ToString(status));
 			goto error;
@@ -2603,42 +2662,39 @@ FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, PmVFInfo_t *pmVFInfo, uint64 imageId
 	memset(&pmVFImage, 0, sizeof(PmVFImage_t));
 	ClearVFStats(&pmVFImage);
 
-	*isFailedPort = FALSE;
 	for (lid = 1; lid <= pmImageP->maxLid; lid++) {
 		PmNode_t *pmNodeP = pmImageP->LidMap[lid];
 		if (!pmNodeP) continue;
 		if (pmNodeP->nodeType == STL_NODE_SW) {
 			int p;
-			for (p=0; p <= pmNodeP->numPorts; p++) { 	// Includes port 0
+			for (p = 0; p <= pmNodeP->numPorts; p++) { // Includes port 0
 				pmPortP = pmNodeP->up.swPorts[p];
 				if (!pmPortP) continue;
 				pmPortImageP = &pmPortP->Image[imageIndex];
-				if (pmPortImageP->u.s.queryStatus != PM_QUERY_STATUS_OK) {
-					// mark a flag to indicate there is at least one failed port.
-					*isFailedPort = TRUE;
-					continue;
-				}
-				for (v=0; v < pmPortImageP->numVFs; v++) {
-					PmVF_t *pmPortVFP = pmPortImageP->vfvlmap[v].pVF;
-					if (pmPortVFP != pmVFP) continue;
+				if (PmIsPortInVF(pm, pmPortP, pmPortImageP, pmVFP)) {
+					if (pmPortImageP->u.s.queryStatus != PM_QUERY_STATUS_OK) {
+						PA_INC_COUNTER_NO_OVERFLOW(pmVFImage.IntUtil.pmaFailedPorts, IB_UINT16_MAX);
+					}
 					pmVFImage.NumPorts++;
 					UpdateVFStats(pm, &pmVFImage, pmPortImageP);
+					if (pmPortImageP->neighbor == NULL && pmPortP->portNum != 0) {
+						PA_INC_COUNTER_NO_OVERFLOW(pmVFImage.IntUtil.topoFailedPorts, IB_UINT16_MAX);
+					}
 				}
 			}
 		} else {
 			pmPortP = pmNodeP->up.caPortp;
 			if (!pmPortP) continue;
 			pmPortImageP = &pmPortP->Image[imageIndex];
-			if (pmPortImageP->u.s.queryStatus != PM_QUERY_STATUS_OK) {
-				// mark a flag to indicate there is at least one failed port.
-				*isFailedPort = TRUE;
-				continue;
-			}
-			for (v=0; v < pmPortImageP->numVFs; v++) {
-				PmVF_t *pmPortVFP = pmPortImageP->vfvlmap[v].pVF;
-				if (pmPortVFP != pmVFP) continue;
+			if (PmIsPortInVF(pm, pmPortP, pmPortImageP, pmVFP)) {
+				if (pmPortImageP->u.s.queryStatus != PM_QUERY_STATUS_OK) {
+					PA_INC_COUNTER_NO_OVERFLOW(pmVFImage.IntUtil.pmaFailedPorts, IB_UINT16_MAX);
+				}
 				pmVFImage.NumPorts++;
 				UpdateVFStats(pm, &pmVFImage, pmPortImageP);
+				if (pmPortImageP->neighbor == NULL) {
+					PA_INC_COUNTER_NO_OVERFLOW(pmVFImage.IntUtil.topoFailedPorts, IB_UINT16_MAX);
+				}
 			}
 		}
 	}
@@ -2675,7 +2731,7 @@ FSTATUS paGetVFConfig(Pm_t *pm, char *vfName, uint64 vfSid, PmVFConfig_t *pmVFCo
 	FSTATUS				status = FSUCCESS;
 	boolean				sth = 0;
 	PmHistoryRecord_t	*record = NULL;
-	boolean 			frozen = 0;
+	PmCompositeImage_t	*cimg = NULL;
 
 	// check input parameters
 	if (!pm || !vfName || !pmVFConfig)
@@ -2699,27 +2755,25 @@ FSTATUS paGetVFConfig(Pm_t *pm, char *vfName, uint64 vfSid, PmVFConfig_t *pmVFCo
 	// pmVFP points to our vf
 	// check all ports for membership in our group
 	(void)vs_rdlock(&pm->stateLock);
-	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &frozen, &sth);
+	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &cimg);
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
 	}
 
-	if (sth && (frozen || (record && !frozen))) {
+	if (record || cimg) {
+		sth = 1;
 		int i;
-		PmCompositeImage_t *cimg;
-		if (!frozen) {
+		if (record) {
 			status = PmLoadComposite(pm, record, &cimg);
 			if (status != FSUCCESS || !cimg) {
 				IB_LOG_WARN_FMT(__func__, "Unable to load composite image: %s", FSTATUS_ToString(status));
 				goto error;
 			}
-		} else {
-			cimg = pm->ShortTermHistory.cachedComposite;
 		}
 		retImageId = cimg->header.common.imageIDs[0];
 		status = PmReconstitute(&pm->ShortTermHistory, cimg);
-		if (!frozen) PmFreeComposite(cimg);
+		if (record) PmFreeComposite(cimg);
 		if (status != FSUCCESS) {
 			IB_LOG_WARN_FMT(__func__, "Unable to reconstitute composite image: %s", FSTATUS_ToString(status));
 			goto error;
@@ -2873,8 +2927,8 @@ FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, char *vfName, 
 	PmCompositeVLCounters_t vfPortCountersPrevious = { 0 };
 	uint32	VFVlSelectMask = 0, VlSelectMask = 0,
 			VlSelectMaskShared = 0, SingleVLBit = 0;
-	PmHistoryRecord_t	*record, *record2 = NULL;
-	boolean				frozen, frozen2 = 0;
+	PmHistoryRecord_t	*record = NULL, *record2 = NULL;
+	PmCompositeImage_t	*cimg = NULL, *cimg2 = NULL;
 
 	if (!pm || !vfPortCountersP) {
 		return(FINVALID_PARAMETER);
@@ -2979,26 +3033,24 @@ FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, char *vfName, 
 		goto done;
 	}
 
-	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &frozen, &sth);
+	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &cimg);
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
 	}
 
-	if (sth && (frozen || (record && !frozen))) {
-		PmCompositeImage_t *cimg;
-		if (!frozen) {
+	if (record || cimg) {
+		sth = 1;
+		if (record) {
 			status = PmLoadComposite(pm, record, &cimg);
 			if (status != FSUCCESS || !cimg) {
 				IB_LOG_WARN_FMT(__func__, "Unable to load composite image: %s", FSTATUS_ToString(status));
 				goto error;
 			}
-		} else {
-			cimg = pm->ShortTermHistory.cachedComposite;
 		}
 		retImageId = cimg->header.common.imageIDs[0];
 		status = PmReconstitute(&pm->ShortTermHistory, cimg);
-		if (!frozen) PmFreeComposite(cimg);
+		if (record) PmFreeComposite(cimg);
 		if (status != FSUCCESS) {
 			IB_LOG_WARN_FMT(__func__, "Unable to reconstitute composite image: %s", FSTATUS_ToString(status));
 			goto error;
@@ -3059,26 +3111,24 @@ FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, char *vfName, 
 			pmPortImageP = &pmPortImage;
 		}
 		
-		status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset-1, &imageIndexPrevious, &retImageId2, &record2, &msg, NULL, &frozen2, &sth2);
+		status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset-1, &imageIndexPrevious, &retImageId2, &record2, &msg, NULL, &cimg2);
 		if (FSUCCESS != status) {
 			IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 			goto unlock;
 		}
 
-		if (sth2 && (frozen2 || (record2 && !frozen2))) {
-			PmCompositeImage_t *cimg2;
-			if (!frozen2) {
+		if (record2 || cimg2) {
+			sth2 = 1;
+			if (record2) {
 				status = PmLoadComposite(pm, record2, &cimg2);
 				if (status != FSUCCESS || !cimg2) {
 					IB_LOG_WARN_FMT(__func__, "Unable to load composite image: %s", FSTATUS_ToString(status));
 					goto unlock;
 				}
-			} else {
-				cimg2 = pm->ShortTermHistory.cachedComposite;
 			}
 
 			status = PmReconstitute(&pm->ShortTermHistory, cimg2);
-			if (!frozen2) PmFreeComposite(cimg2);
+			if (record2) PmFreeComposite(cimg2);
 			if (status != FSUCCESS) {
 				IB_LOG_WARN_FMT(__func__, "Unable to reconstitute composite image: %s", FSTATUS_ToString(status));
 				goto unlock;
@@ -3330,6 +3380,7 @@ FSTATUS addVFSortedPorts(PmVFFocusPorts_t *pmVFFocusPorts, sortInfo_t *sortInfo,
 	while ((listp != NULL) && (portCount < pmVFFocusPorts->NumPorts)) {
 		pmVFFocusPorts->portList[portCount].lid = listp->lid;
 		pmVFFocusPorts->portList[portCount].portNum = listp->portNum;
+		pmVFFocusPorts->portList[portCount].localFlags = listp->localFlags;
 		pmVFFocusPorts->portList[portCount].rate = PmCalculateRate(listp->portp->Image[imageIndex].u.s.activeSpeed, listp->portp->Image[imageIndex].u.s.rxActiveWidth);
 		pmVFFocusPorts->portList[portCount].mtu = listp->portp->Image[imageIndex].u.s.mtu;
 		pmVFFocusPorts->portList[portCount].value = listp->value;
@@ -3337,6 +3388,7 @@ FSTATUS addVFSortedPorts(PmVFFocusPorts_t *pmVFFocusPorts, sortInfo_t *sortInfo,
 		strncpy(pmVFFocusPorts->portList[portCount].nodeDesc, (char *)listp->portp->pmnodep->nodeDesc.NodeString,
 			sizeof(pmVFFocusPorts->portList[portCount].nodeDesc)-1);
 		if (listp->portNum != 0) {
+			pmVFFocusPorts->portList[portCount].neighborFlags = listp->neighborFlags;
 			pmVFFocusPorts->portList[portCount].neighborLid = listp->neighborPortp->pmnodep->Image[imageIndex].lid;
 			pmVFFocusPorts->portList[portCount].neighborPortNum = listp->neighborPortp->portNum;
 			pmVFFocusPorts->portList[portCount].neighborValue = listp->neighborValue;
@@ -3344,6 +3396,7 @@ FSTATUS addVFSortedPorts(PmVFFocusPorts_t *pmVFFocusPorts, sortInfo_t *sortInfo,
 			strncpy(pmVFFocusPorts->portList[portCount].neighborNodeDesc, (char *)listp->neighborPortp->pmnodep->nodeDesc.NodeString,
 				sizeof(pmVFFocusPorts->portList[portCount].neighborNodeDesc)-1);
 		} else {
+			pmVFFocusPorts->portList[portCount].neighborFlags = listp->neighborFlags;
 			pmVFFocusPorts->portList[portCount].neighborLid = 0;
 			pmVFFocusPorts->portList[portCount].neighborPortNum = 0;
 			pmVFFocusPorts->portList[portCount].neighborValue = 0;
@@ -3357,8 +3410,9 @@ FSTATUS addVFSortedPorts(PmVFFocusPorts_t *pmVFFocusPorts, sortInfo_t *sortInfo,
 	return(FSUCCESS);
 }
 
-FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocusPorts, uint64 imageId, int32 offset, uint64 *returnImageId,
-					    uint32 select, uint32 start, uint32 range)
+FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocusPorts,
+	uint64 imageId, int32 offset, uint64 *returnImageId, uint32 select,
+	uint32 start, uint32 range)
 {
 	uint64				retImageId = 0;
 	PmVF_t				*pmVFP = NULL;
@@ -3374,7 +3428,7 @@ FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocusPor
 	CompareFunc_t		candidateFunc = NULL;
 	boolean 			sth = 0;
 	PmHistoryRecord_t	*record = NULL;
-	boolean				frozen = 0;
+	PmCompositeImage_t	*cimg = NULL;
 
 	// check input parameters
 	if (!pm || !vfName || !pmVFFocusPorts)
@@ -3464,26 +3518,24 @@ FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocusPor
 	}
 
 	(void)vs_rdlock(&pm->stateLock);
-	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &frozen, &sth);
+	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &cimg);
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
 	}
-	if (sth && (frozen || (record && !frozen))) {
+	if (record || cimg) {
 		int i;
-		PmCompositeImage_t *cimg;
-		if (!frozen) {
+		sth = 1;
+		if (record) {
 			status = PmLoadComposite(pm, record, &cimg);
 			if (status != FSUCCESS || !cimg) {
 				IB_LOG_WARN_FMT(__func__, "Unable to load composite image: %s", FSTATUS_ToString(status));
 				goto error;
 			}
-		} else {
-			cimg = pm->ShortTermHistory.cachedComposite;
 		}
 		retImageId = cimg->header.common.imageIDs[0];
 		status = PmReconstitute(&pm->ShortTermHistory, cimg);
-		if (!frozen) PmFreeComposite(cimg);
+		if (record) PmFreeComposite(cimg);
 		if (status != FSUCCESS) {
 			IB_LOG_WARN_FMT(__func__, "Unable to reconstitute composite image: %s", FSTATUS_ToString(status));
 			goto error;
@@ -3518,37 +3570,28 @@ FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocusPor
 	}
 
 	(void)vs_rwunlock(&pm->stateLock);
-	for (lid=1; lid<= pmimagep->maxLid; ++lid) {
+	for (lid = 1; lid <= pmimagep->maxLid; ++lid) {
 		uint8 portnum;
 		PmNode_t *pmnodep = pmimagep->LidMap[lid];
-		if (! pmnodep)
+		if (!pmnodep)
 			continue;
 		if (pmnodep->nodeType == STL_NODE_SW) {
-			for (portnum=0; portnum<=pmnodep->numPorts; ++portnum) {
+			for (portnum = 0; portnum <= pmnodep->numPorts; ++portnum) {
 				PmPort_t *pmportp = pmnodep->up.swPorts[portnum];
-				PmPort_t *pmNeighborportp;
 				PmPortImage_t *portImage;
-				PmPortImage_t *neighborPortImage;
-				if (! pmportp)
-					continue;
+				if (!pmportp) continue;
 				portImage = &pmportp->Image[imageIndex];
-				pmNeighborportp = portImage->neighbor;
-				neighborPortImage = &pmNeighborportp->Image[imageIndex];
-				if ( PmIsPortInVF(pm, pmportp, portImage, pmVFP) && // Port 0 on switches is in all VF
-					portImage->u.s.queryStatus == PM_QUERY_STATUS_OK)
-				{
-					processFocusPort(pm, pmportp, portImage, pmNeighborportp, neighborPortImage, lid, portnum, computeFunc, compareFunc, candidateFunc, &sortInfo);
+				if (PmIsPortInVF(pm, pmportp, portImage, pmVFP)) {
+					processFocusPort(pm, pmportp, portImage, imageIndex, lid, portnum, 
+						computeFunc, compareFunc, candidateFunc, &sortInfo);
 				}
 			}
 		} else {
 			PmPort_t *pmportp = pmnodep->up.caPortp;
 			PmPortImage_t *portImage = &pmportp->Image[imageIndex];
-			PmPort_t *pmNeighborportp = portImage->neighbor;
-			PmPortImage_t *neighborPortImage = &pmNeighborportp->Image[imageIndex];
-			if (PmIsPortInVF(pm, pmportp, portImage, pmVFP) &&
-				portImage->u.s.queryStatus == PM_QUERY_STATUS_OK)
-			{
-				processFocusPort(pm, pmportp, portImage, pmNeighborportp, neighborPortImage, lid, pmportp->portNum, computeFunc, compareFunc, candidateFunc, &sortInfo);
+			if (PmIsPortInVF(pm, pmportp, portImage, pmVFP)) {
+				processFocusPort(pm, pmportp, portImage, imageIndex, lid, pmportp->portNum,
+					computeFunc, compareFunc, candidateFunc, &sortInfo);
 			}
 		}
 	}
@@ -4169,8 +4212,9 @@ FSTATUS putPMSweepImageDataR(uint8_t *p_img_in, uint32_t len_img_in) {
 	// check the version
 	history_version = cimg_in->header.common.historyVersion;
 	BSWAP_PM_HISTORY_VERSION(&history_version);
-	if (history_version != PM_HISTORY_VERSION) {
-		IB_LOG_INFO0("Received image buffer version does not match current version");
+	if (history_version != PM_HISTORY_VERSION && history_version != PM_HISTORY_VERSION_OLD) {
+		IB_LOG_INFO_FMT(__func__, "Received image buffer version (v%u) does not match current supported versions: v%u & v%u",
+			history_version, PM_HISTORY_VERSION, PM_HISTORY_VERSION_OLD);
         return FINVALID_PARAMETER;
 	}
 
@@ -4205,7 +4249,7 @@ FSTATUS putPMSweepImageDataR(uint8_t *p_img_in, uint32_t len_img_in) {
 #ifndef __VXWORKS__
 	}
 #endif
-	BSWAP_PM_COMPOSITE_IMAGE_FLAT((PmCompositeImage_t *)p_decompress, 0);
+	BSWAP_PM_COMPOSITE_IMAGE_FLAT((PmCompositeImage_t *)p_decompress, 0, history_version);
 
 	// Rebuild composite
 	//status = vs_pool_alloc(&pm_pool, sizeof(PmCompositeImage_t), (void *)&cimg_out);
@@ -4222,7 +4266,7 @@ FSTATUS putPMSweepImageDataR(uint8_t *p_img_in, uint32_t len_img_in) {
 	sweep_num = ((ImageId_t)cimg_out->header.common.imageIDs[0]).s.sweepNum;
 	// Get the instance ID from the image ID
 	tempInstanceId = ((ImageId_t)cimg_out->header.common.imageIDs[0]).s.instanceId;
-	ret = rebuildComposite(cimg_out, p_decompress + sizeof(PmFileHeader_t));
+	ret = rebuildComposite(cimg_out, p_decompress + sizeof(PmFileHeader_t), history_version);
 	if (ret != FSUCCESS) {
 		IB_LOG_ERRORRC("Error rebuilding PM Composite Image rc:", ret);
 		goto exit_free;

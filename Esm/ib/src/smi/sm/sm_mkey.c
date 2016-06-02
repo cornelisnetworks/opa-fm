@@ -50,8 +50,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //    ib_status.h							     //
 //    ib_const.h							     //
 //									     //
-// RESPONSIBLE ENGINEER							     //
-//    Jeff Young							     //
 //									     //
 //===========================================================================//
 

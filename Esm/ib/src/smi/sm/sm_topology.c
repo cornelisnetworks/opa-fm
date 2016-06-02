@@ -55,8 +55,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //    ib_status.h							     //
 //    ib_const.h							     //
 //									     //
-// RESPONSIBLE ENGINEER							     //
-//    Jeff Young							     //
 //									     //
 //===========================================================================//
 
@@ -753,6 +751,9 @@ topology_main(uint32_t argc, uint8_t ** argv)
     int     sweepStartPacketCount=0;
 	int		oldSmCount = 0, newSmActiveCount = 0, oldSwitchCount = 0, oldHfiCount = 0, oldEndPortCount = 0, oldTotalPorts = 0;
 	int		force;
+#ifdef __VXWORKS__
+    uint8_t shutdown=0;
+#endif
 
 	IB_ENTER(__func__, 0, 0, 0, 0);
 
@@ -1048,6 +1049,15 @@ topology_main(uint32_t argc, uint8_t ** argv)
 				       (int)AtomicRead(&smCounters[smCounterPacketRetransmits].sinceLastSweep), 
                        (unsigned int)(temp64/1000000), (unsigned int)((temp64 - temp64/1000000*1000000))/1000);
 #ifdef __VXWORKS__
+                    if (!shutdown && sm_topop->num_nodes >= MAX_SUBNET_SIZE) {
+                        shutdown=1;
+                        IB_LOG_ERROR_FMT(__func__, "TT: aborting - fabric size exceeds the %d maximum nodes supported by the ESM", MAX_SUBNET_SIZE);
+                        smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_SM_SHUTDOWN,
+                            getMyCsmNodeId(), NULL, 
+                            "Terminating SM after %d sweeps.", topology_passcount);
+                        sm_control_shutdown(NULL);
+                        exit(0);
+                    }
 				}
 #endif
 				SET_PEAK_COUNTER(smMaxSweepTime, (uint32)(temp64/1000));
@@ -1208,6 +1218,8 @@ Status_t
 topology_initialize(void)
 {
 	uint8_t path[64];
+	boolean portdown_warned = FALSE;
+
 #if defined(CAL_IBACCESS)
 	uint32_t mask;
 #endif
@@ -1259,11 +1271,12 @@ topology_initialize(void)
 			}
 
 			if(topologyFileValid) {
-				char buf[256];
-				sprintf(buf, "SM: Pre-Defined Topology: (Enabled) Using topology file: %s", sm_config.preDefTopo.topologyFilename);
+				char buf[FILENAME_SIZE + 256];
+				snprintf(buf, sizeof(buf), "SM: Pre-Defined Topology: (Enabled) Using topology file: %s", sm_config.preDefTopo.topologyFilename);
 				vs_log_output_message(buf, FALSE);
 
-				sprintf(buf, "SM: Pre-Defined Topology: Field Enforcement: NodeDesc: %s, NodeGUID: %s, PortGUID: %s, UndefinedLink: %s", 
+				snprintf(buf, sizeof(buf),
+						"SM: Pre-Defined Topology: Field Enforcement: NodeDesc: %s, NodeGUID: %s, PortGUID: %s, UndefinedLink: %s", 
 						SmPreDefFieldEnfToText(sm_config.preDefTopo.fieldEnforcement.nodeDesc),
 						SmPreDefFieldEnfToText(sm_config.preDefTopo.fieldEnforcement.nodeGuid),
 						SmPreDefFieldEnfToText(sm_config.preDefTopo.fieldEnforcement.portGuid),
@@ -1310,7 +1323,18 @@ topology_initialize(void)
 			continue;
 		}
 
-        // validate the privilage level of the local SM
+		if ((sm_config.port != 0) && (portInfo.PortStates.s.PortState < IB_PORT_INIT)) {
+			if (!portdown_warned) {
+				IB_LOG_WARN0("HFI Port is DOWN.");
+				IB_LOG_WARN_FMT(__func__,"Waiting for port (portnum=%d) to reach state INIT (portstate=%s)...", 
+						sm_config.port, IbPortStateToText(portInfo.PortStates.s.PortState));
+				portdown_warned=TRUE;
+			}
+			vs_thread_sleep(5 * VTIMER_1S);
+			status = VSTATUS_BAD;
+			continue;
+		} 
+			// validate the privilege level of the local SM
         switch (nodeInfo.NodeType) {
         case NI_TYPE_SWITCH:
             // get SwitchInfo record of the local switch
@@ -1327,6 +1351,7 @@ topology_initialize(void)
                 vs_thread_sleep(5 * VTIMER_1S);
                 continue;
             }
+
 			// set PKey table of the local Enhanced Port 0
 			status = sm_set_local_port_pkey(&nodeInfo);
 			if (status != VSTATUS_OK) {
@@ -1354,6 +1379,9 @@ topology_initialize(void)
 
                 if (status != VSTATUS_OK) {
                     IB_LOG_ERRORRC("can't get neighbor NodeInfo, sleeping rc:", status);
+                    if((portInfo.PortNeighborMode.NeighborNodeType == STL_NEIGH_NODE_TYPE_SW) &&  (!portInfo.PortNeighborMode.MgmtAllowed)){
+                        IB_LOG_ERROR0("Host SM's port is connected to switch port, mgmtAllowed not set");
+                    }
                     vs_thread_sleep(5 * VTIMER_1S);
                     continue;
                 }
@@ -1401,13 +1429,6 @@ topology_initialize(void)
             break;
         }
 
-		if ((sm_config.port != 0) && (portInfo.PortStates.s.PortState < IB_PORT_INIT)) {
-			IB_LOG_ERROR("port number:", sm_config.port);
-			IB_LOG_ERROR("port state < INIT, sleeping state:", portInfo.PortStates.s.PortState);
-			vs_thread_sleep(5 * VTIMER_1S);
-			status = VSTATUS_BAD;
-			continue;
-		}
 
 #if defined(IB_STACK_OPENIB)
         status = ib_enable_is_sm();
@@ -2179,6 +2200,10 @@ topology_resolve(void)
 					IB_LOG_ERROR0("no more LID space");
 					portp->state = IB_PORT_DOWN;
                     DECR_PORT_COUNT(sm_topop, nodep);
+
+					Port_t *neigh = sm_find_port(sm_topop, portp->nodeno, portp->portno);
+					if (sm_valid_port(neigh))
+						neigh->state = IB_PORT_DOWN;
 				}
 			}
 		}
@@ -3679,6 +3704,7 @@ topology_verification(void)
 
 							if(portStateInfo != NULL) {
 								vs_pool_free(&sm_pool, portStateInfo);
+								portStateInfo = NULL;
 							}
 
 							continue;

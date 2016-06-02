@@ -51,8 +51,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *      cs_g.h
 *      cs_log.h
 *
-* RESPONSIBLE ENGINEER:
-*      VIEO
 *
 * HISTORY
 *
@@ -137,8 +135,6 @@ typedef struct
 *    Status_t - On success VSTATUS_OK is returned, otherwise
 *    the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*    CS Developers.
 *
 * HISTORY
 *
@@ -319,8 +315,6 @@ vs_lock_init (Lock_t *handle,
 *    Status_t - On success VSTATUS_OK is returned, otherwise
 *    the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*    CS Developers.
 *
 * HISTORY
 *
@@ -435,8 +429,6 @@ vs_lock_delete (Lock_t *handle)
 *    Status_t - On success VSTATUS_OK is returned, otherwise
 *    the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*    CS Developers.
 *
 * HISTORY
 *
@@ -541,8 +533,6 @@ vs_lock (Lock_t *handle)
 *    Status_t - On success VSTATUS_OK is returned, otherwise
 *    the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*    CS Developers.
 *
 * HISTORY
 *
@@ -625,8 +615,6 @@ vs_unlock (Lock_t *handle)
 *    Status_t - On success VSTATUS_OK is returned, otherwise
 *    the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*
 * HISTORY
 *
 *   NAME    DATE        REMARKS
@@ -695,8 +683,6 @@ vs_wrlock (Lock_t *handle)
 * OUTPUTS
 *    Status_t - On success VSTATUS_OK is returned, otherwise
 *    the cause of the error.
-*
-* RESPONSIBLE ENGINEER: 
 *
 * HISTORY
 *
@@ -767,8 +753,6 @@ vs_rdlock (Lock_t *handle)
 *    Status_t - On success VSTATUS_OK is returned, otherwise
 *    the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*    CS Developers.
 *
 * HISTORY
 *
@@ -854,8 +838,6 @@ vs_rwunlock (Lock_t *handle)
 *    Status_t - On success VSTATUS_OK is returned, otherwise
 *    the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*    CS Developers.
 *
 * HISTORY
 *
@@ -1009,8 +991,6 @@ vs_spinlock (Lock_t *handle)
 *    Status_t - On success VSTATUS_OK is returned, otherwise
 *    the cause of the error.
 *
-* RESPONSIBLE ENGINEER: 
-*    CS Developers.
 *
 * HISTORY
 *

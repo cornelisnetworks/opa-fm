@@ -53,8 +53,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //    sm_event.h							/
 //    sm_thread.h							/
 //									/
-// RESPONSIBLE ENGINEER							/
-//    Jeff Young							/
 //									/
 // HISTORY								/
 //									/

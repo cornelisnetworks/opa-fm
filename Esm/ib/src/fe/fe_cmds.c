@@ -35,8 +35,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 * DESCRIPTION
 *       Command processor for Fabric Executice Messaging System
 *
-* RESPONSIBLE ENGINEER:
-*       Jason Wiseman   
 *
 * HISTORY
 *

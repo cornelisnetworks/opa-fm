@@ -53,6 +53,11 @@ extern "C" {
 #define CABLEINFO_DETAIL_BRIEF    2			// Brief output
 #define CABLEINFO_DETAIL_VERBOSE  3			// Verbose output
 #define CABLEINFO_DETAIL_ALL      4			// All fields output
+#define RCVERRORINFO1              1
+#define RCVERRORINFO4              4
+#define RCVERRORINFO12            12
+#define RCVERRORINFO13            13
+
 
 // Basic STL prints
 void PrintStlLid(PrintDest_t *dest, int indent, uint32_t lid, int printLineByLine);
@@ -180,6 +185,8 @@ void PrintStlPAVFFocusPorts(PrintDest_t *dest, int indent, const char *vfName, c
 
 // Print___WithDots for -g option printing fo iba_[sp]maquery
 void PrintIntWithDots(PrintDest_t *dest, int indent, const char * name, uint64_t value);
+void PrintIntWithDotsFull(PrintDest_t *dest, int indent, const char * name, uint64_t value);
+void PrintIntWithDotsDec(PrintDest_t *dest, int indent, const char * name, uint64_t value);
 void PrintStrWithDots(PrintDest_t *dest, int indent, const char * name, const char * value);
 
 #if defined (__cplusplus)

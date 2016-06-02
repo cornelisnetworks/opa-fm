@@ -708,7 +708,7 @@ function settarget()
             export ATOM_LIB=$TGT_DIR/lib/pentium/ATOM/common/libgcc.a
             export BUILD_TARGET_TOOLCHAIN=GNU
             export BUILD_TARGET_OS_VENDOR=WindRiver
-            export BUILD_TARGET_OS_VERSION=6.9.2
+            export BUILD_TARGET_OS_VERSION=6.9.4.6
             export BUILD_TARGET=ATOM
             export WIND_HOST_TYPE=x86-linux2
             if [ "$LD_LIBRARY_PATH" == "" ] ; then

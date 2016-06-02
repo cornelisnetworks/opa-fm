@@ -922,6 +922,7 @@ pa_getImageInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		response.numSkippedNodes         = imageInfo.numSkippedNodes;
 		response.numSkippedPorts         = imageInfo.numSkippedPorts;
 		response.numUnexpectedClearPorts = imageInfo.numUnexpectedClearPorts;
+		response.imageInterval           = imageInfo.imageInterval;
 		for (i = 0; i < 2; i++) {
 			response.SMInfo[i].lid				= imageInfo.SMInfo[i].smLid;
 			response.SMInfo[i].portNumber		= imageInfo.SMInfo[i].portNumber;
@@ -948,6 +949,7 @@ pa_getImageInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 						response.numFailedPorts, response.numSkippedNodes);
 		IB_LOG_DEBUG2_FMT(__func__, "  Skipped Ports %u", response.numSkippedPorts);
 		IB_LOG_DEBUG2_FMT(__func__, "  Unexpected Clear Ports %u", response.numUnexpectedClearPorts);
+		IB_LOG_DEBUG2_FMT(__func__, "  Image Interval %u sec", response.imageInterval);
 		for (i = 0; i < 2; i++) {
 			IB_LOG_DEBUG2_FMT(__func__, "  SM %u", i+1);
 			IB_LOG_DEBUG2_FMT(__func__, "     Lid       0x%x", response.SMInfo[i].lid);
@@ -1011,7 +1013,6 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	char		*p1;
 	STL_PA_PM_GROUP_INFO_DATA *response = NULL;
 	STL_PA_PM_GROUP_INFO_DATA *p = (STL_PA_PM_GROUP_INFO_DATA *)&maip->data[STL_PA_DATA_OFFSET];
-	boolean isFailedPort=FALSE;
 	uint32		responseSize = 0;
 	int 		i;
 
@@ -1027,7 +1028,7 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", imageId, offset);
 	IB_LOG_DEBUG1_FMT(__func__, "Group: %.*s", sizeof(groupName), groupName);
 
-	status = paGetGroupInfo(&g_pmSweepData, groupName, &groupInfo, imageId, offset, &retImageId, &isFailedPort);
+	status = paGetGroupInfo(&g_pmSweepData, groupName, &groupInfo, imageId, offset, &retImageId);
 	if (status == FSUCCESS) {
 		records = 1;
 		responseSize = records * sizeof(STL_PA_PM_GROUP_INFO_DATA);
@@ -1056,6 +1057,8 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		response[0].internalUtilStats.avgKPps					= groupInfo.IntUtil.AvgKPps;
 		response[0].internalUtilStats.minKPps					= groupInfo.IntUtil.MinKPps;
 		response[0].internalUtilStats.maxKPps					= groupInfo.IntUtil.MaxKPps;
+		response[0].internalUtilStats.pmaFailedPorts			= groupInfo.IntUtil.pmaFailedPorts;
+		response[0].internalUtilStats.topoFailedPorts			= groupInfo.IntUtil.topoFailedPorts;
 
 		response[0].sendUtilStats.totalMBps						= groupInfo.SendUtil.TotMBps;
 		response[0].sendUtilStats.totalKPps						= groupInfo.SendUtil.TotKPps;
@@ -1069,6 +1072,8 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		response[0].sendUtilStats.avgKPps						= groupInfo.SendUtil.AvgKPps;
 		response[0].sendUtilStats.minKPps						= groupInfo.SendUtil.MinKPps;
 		response[0].sendUtilStats.maxKPps						= groupInfo.SendUtil.MaxKPps;
+		response[0].sendUtilStats.pmaFailedPorts				= groupInfo.SendUtil.pmaFailedPorts;
+		response[0].sendUtilStats.topoFailedPorts				= groupInfo.SendUtil.topoFailedPorts;
 
 		response[0].recvUtilStats.totalMBps						= groupInfo.RecvUtil.TotMBps;
 		response[0].recvUtilStats.totalKPps						= groupInfo.RecvUtil.TotKPps;
@@ -1082,6 +1087,8 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		response[0].recvUtilStats.avgKPps						= groupInfo.RecvUtil.AvgKPps;
 		response[0].recvUtilStats.minKPps						= groupInfo.RecvUtil.MinKPps;
 		response[0].recvUtilStats.maxKPps						= groupInfo.RecvUtil.MaxKPps;
+		response[0].recvUtilStats.pmaFailedPorts				= groupInfo.RecvUtil.pmaFailedPorts;
+		response[0].recvUtilStats.topoFailedPorts				= groupInfo.RecvUtil.topoFailedPorts;
 
 		/* Internal Error */
 		response[0].internalErrors.errorMaximums.integrityErrors		= groupInfo.IntErr.Max.Integrity;
@@ -1145,10 +1152,14 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", sizeof(logBuf), logBuf);
 			IB_LOG_DEBUG2_FMT(__func__, "  Pkts: Tot %6u Max %6u Min %6u Avg %6u KP/s",
-					response[0].internalUtilStats.totalKPps, response[0].internalUtilStats.maxKPps, response[0].internalUtilStats.minKPps, response[0].internalUtilStats.avgKPps);
+				response[0].internalUtilStats.totalKPps, response[0].internalUtilStats.maxKPps,
+				response[0].internalUtilStats.minKPps, response[0].internalUtilStats.avgKPps);
+			IB_LOG_DEBUG2_FMT(__func__, "  Failed PMA Queries: %u    Failures in PM Topology: %u",
+				response[0].internalUtilStats.pmaFailedPorts, response[0].internalUtilStats.topoFailedPorts);
 			IB_LOG_DEBUG2_FMT(__func__, "Send utilization statistics:");
 			IB_LOG_DEBUG2_FMT(__func__, "  Util: Tot %6u Max %6u Min %6u Avg %6u MB/s",
-					response[0].sendUtilStats.totalMBps, response[0].sendUtilStats.maxMBps, response[0].sendUtilStats.minMBps, response[0].sendUtilStats.avgMBps);
+				response[0].sendUtilStats.totalMBps, response[0].sendUtilStats.maxMBps,
+				response[0].sendUtilStats.minMBps, response[0].sendUtilStats.avgMBps);
 			p1 = logBuf;
 			p1 += sprintf(p1, "%s", "  Util: ");
 			for (i = 0; i < STL_PM_UTIL_BUCKETS; i++) {
@@ -1156,10 +1167,14 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", sizeof(logBuf), logBuf);
 			IB_LOG_DEBUG2_FMT(__func__, "  Pkts: Tot %6u Max %6u Min %6u Avg %6u KP/s",
-					response[0].sendUtilStats.totalKPps, response[0].sendUtilStats.maxKPps, response[0].sendUtilStats.minKPps, response[0].sendUtilStats.avgKPps);
+				response[0].sendUtilStats.totalKPps, response[0].sendUtilStats.maxKPps,
+				response[0].sendUtilStats.minKPps, response[0].sendUtilStats.avgKPps);
+			IB_LOG_DEBUG2_FMT(__func__, "  Failed PMA Queries: %u    Failures in PM Topology: %u",
+				response[0].sendUtilStats.pmaFailedPorts, response[0].sendUtilStats.topoFailedPorts);
 			IB_LOG_DEBUG2_FMT(__func__, "Receive utilization statistics:");
 			IB_LOG_DEBUG2_FMT(__func__, "  Util: Tot %6u Max %6u Min %6u Avg %6u MB/s",
-					response[0].recvUtilStats.totalMBps, response[0].recvUtilStats.maxMBps, response[0].recvUtilStats.minMBps, response[0].recvUtilStats.avgMBps);
+				response[0].recvUtilStats.totalMBps, response[0].recvUtilStats.maxMBps,
+				response[0].recvUtilStats.minMBps, response[0].recvUtilStats.avgMBps);
 			p1 = logBuf;
 			p1 += sprintf(p1, "%s", "  Util: ");
 			for (i = 0; i < STL_PM_UTIL_BUCKETS; i++) {
@@ -1167,7 +1182,10 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", sizeof(logBuf), logBuf);
 			IB_LOG_DEBUG2_FMT(__func__, "  Pkts: Tot %6u Max %6u Min %6u Avg %6u KP/s",
-					response[0].recvUtilStats.totalKPps, response[0].recvUtilStats.maxKPps, response[0].recvUtilStats.minKPps, response[0].recvUtilStats.avgKPps);
+				response[0].recvUtilStats.totalKPps, response[0].recvUtilStats.maxKPps,
+				response[0].recvUtilStats.minKPps, response[0].recvUtilStats.avgKPps);
+			IB_LOG_DEBUG2_FMT(__func__, "  Failed PMA Queries: %u    Failures in PM Topology: %u",
+				response[0].recvUtilStats.pmaFailedPorts, response[0].recvUtilStats.topoFailedPorts);
 			IB_LOG_DEBUG2_FMT(__func__, "Internal Error Summary:");
 			p1 = logBuf;
 			p1 += sprintf(p1, "  Err Integrity       Max %10u Buckets: ", response[0].internalErrors.errorMaximums.integrityErrors);
@@ -1296,9 +1314,6 @@ done:
 		IB_LOG_WARN("too many records for STL_PA_CMD_GET:", records);
 		records = 0;
 		maip->base.status = MAD_STATUS_SA_TOO_MANY_RECS;
-	}
-	if (isFailedPort) {
-		maip->base.amod |=  1 << 8;
 	}
 
 	attribOffset = sizeof(STL_PA_PM_GROUP_INFO_DATA) + Calculate_Padding(sizeof(STL_PA_PM_GROUP_INFO_DATA));
@@ -1467,8 +1482,8 @@ pa_getFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	IB_LOG_DEBUG1_FMT(__func__, "Group: %.*s  Select: 0x%x  Start: %u  Range: %u",
 					  sizeof(groupName), groupName, select, start, range);
 
-	status = paGetFocusPorts(&g_pmSweepData, groupName, &pmFocusPorts, imageId, offset, &retImageId,
-							 select, start, range);
+	status = paGetFocusPorts(&g_pmSweepData, groupName, &pmFocusPorts,
+	    imageId, offset, &retImageId, select, start, range);
 
 	if (status == FSUCCESS) {
 		records = pmFocusPorts.NumPorts;
@@ -1486,11 +1501,13 @@ pa_getFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		for (i = 0; i < pmFocusPorts.NumPorts; i++) {
     		response[i].nodeLid				= pmFocusPorts.portList[i].lid;
     		response[i].portNumber			= pmFocusPorts.portList[i].portNum;
+			response[i].localFlags          = pmFocusPorts.portList[i].localFlags;
     		response[i].rate				= pmFocusPorts.portList[i].rate;
     		response[i].mtu					= pmFocusPorts.portList[i].mtu;
     		response[i].value				= pmFocusPorts.portList[i].value;
     		response[i].nodeGUID			= pmFocusPorts.portList[i].guid;
     		strncpy(response[i].nodeDesc, pmFocusPorts.portList[i].nodeDesc, sizeof(response[i].nodeDesc)-1);
+			response[i].neighborFlags       = pmFocusPorts.portList[i].neighborFlags;
     		response[i].neighborLid 		= pmFocusPorts.portList[i].neighborLid;
     		response[i].neighborPortNumber	= pmFocusPorts.portList[i].neighborPortNum;
     		response[i].neighborValue		= pmFocusPorts.portList[i].neighborValue;
@@ -1507,15 +1524,16 @@ pa_getFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			IB_LOG_DEBUG2_FMT(__func__, "  %u:LID:0x%08X Port:%u Value:%"PRId64" ",
 					i+1, response[i].nodeLid, response[i].portNumber, response[i].value);
 			IB_LOG_DEBUG2_FMT(__func__, "     nodeGUID 0x%"PRIx64" ", response[i].nodeGUID);
-			IB_LOG_DEBUG2_FMT(__func__, "     Node Description %.*s",
-					sizeof(response[i].nodeDesc), response[i].nodeDesc);
+			IB_LOG_DEBUG2_FMT(__func__, "     Node Description %.*s Status: %s",
+				sizeof(response[i].nodeDesc), response[i].nodeDesc, 
+				StlFocusFlagToText(response[i].localFlags));
 			IB_LOG_DEBUG2_FMT(__func__, "     nLID:0x%08X nPort:%u nValue:%"PRId64" ",
 					response[i].neighborLid, response[i].neighborPortNumber, response[i].neighborValue);
 			IB_LOG_DEBUG2_FMT(__func__, "     rate:%u mtu:%u", response[i].rate, response[i].mtu);
 			IB_LOG_DEBUG2_FMT(__func__, "     nGUID 0x%"PRIx64" ", response[i].neighborGuid);
-			IB_LOG_DEBUG2_FMT(__func__, "     Nbr Node Desc    %.*s",
-					sizeof(response[i].neighborNodeDesc),
-					response[i].neighborNodeDesc);
+			IB_LOG_DEBUG2_FMT(__func__, "     Nbr Node Desc    %.*s Status: %s",
+				sizeof(response[i].neighborNodeDesc), response[i].neighborNodeDesc,
+				StlFocusFlagToText(response[i].neighborFlags));
 			IB_LOG_DEBUG2_FMT(__func__, "     ImageID: Number 0x%"PRIx64" Offset %d",
 					response[i].imageId.imageNumber, response[i].imageId.imageOffset);
     		BSWAP_STL_PA_FOCUS_PORTS_RSP(&response[i]);
@@ -1667,7 +1685,6 @@ pa_getVFInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	STL_PA_VF_INFO_DATA *p = (STL_PA_VF_INFO_DATA *)&maip->data[STL_PA_DATA_OFFSET];
 	uint32		responseSize = 0;
 	int i;
-	boolean isFailedPort;
 
 	IB_ENTER(__func__, maip, 0, 0, 0);
 	
@@ -1681,7 +1698,8 @@ pa_getVFInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", imageId, offset);
 	IB_LOG_DEBUG1_FMT(__func__, "VF: %.*s", sizeof(vfName), vfName);
 
-	status = paGetVFInfo(&g_pmSweepData, vfName, &vfInfo, imageId, offset, &retImageId, &isFailedPort);
+	status = paGetVFInfo(&g_pmSweepData, vfName, &vfInfo, imageId, offset,
+	    &retImageId);
 	if (status == FSUCCESS) {
 		records = 1;
 		responseSize = records * sizeof(STL_PA_PM_GROUP_INFO_DATA);
@@ -1694,20 +1712,22 @@ pa_getVFInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			}
 			memset(response, 0, responseSize);
 		}
-    	strncpy(response[0].vfName, vfName, STL_PM_GROUPNAMELEN-1);
+		strncpy(response[0].vfName, vfName, STL_PM_GROUPNAMELEN - 1);
 		response[0].numPorts											= vfInfo.NumPorts;
-    	response[0].internalUtilStats.totalMBps						= vfInfo.IntUtil.TotMBps;
-    	response[0].internalUtilStats.totalKPps						= vfInfo.IntUtil.TotKPps;
-    	response[0].internalUtilStats.avgMBps							= vfInfo.IntUtil.AvgMBps;
-    	response[0].internalUtilStats.minMBps							= vfInfo.IntUtil.MinMBps;
-    	response[0].internalUtilStats.maxMBps							= vfInfo.IntUtil.MaxMBps;
-    	response[0].internalUtilStats.numBWBuckets						= STL_PM_UTIL_BUCKETS;
+		response[0].internalUtilStats.totalMBps						= vfInfo.IntUtil.TotMBps;
+		response[0].internalUtilStats.totalKPps						= vfInfo.IntUtil.TotKPps;
+		response[0].internalUtilStats.avgMBps							= vfInfo.IntUtil.AvgMBps;
+		response[0].internalUtilStats.minMBps							= vfInfo.IntUtil.MinMBps;
+		response[0].internalUtilStats.maxMBps							= vfInfo.IntUtil.MaxMBps;
+		response[0].internalUtilStats.numBWBuckets						= STL_PM_UTIL_BUCKETS;
 		for (i = 0; i < STL_PM_UTIL_BUCKETS; i++) {
-    		response[0].internalUtilStats.BWBuckets[i]					= vfInfo.IntUtil.BwPorts[i];
+			response[0].internalUtilStats.BWBuckets[i] = vfInfo.IntUtil.BwPorts[i];
 		}
-    	response[0].internalUtilStats.avgKPps							= vfInfo.IntUtil.AvgKPps;
-    	response[0].internalUtilStats.minKPps							= vfInfo.IntUtil.MinKPps;
-    	response[0].internalUtilStats.maxKPps							= vfInfo.IntUtil.MaxKPps;
+		response[0].internalUtilStats.avgKPps							= vfInfo.IntUtil.AvgKPps;
+		response[0].internalUtilStats.minKPps							= vfInfo.IntUtil.MinKPps;
+		response[0].internalUtilStats.maxKPps							= vfInfo.IntUtil.MaxKPps;
+		response[0].internalUtilStats.pmaFailedPorts					= vfInfo.IntUtil.pmaFailedPorts;
+		response[0].internalUtilStats.topoFailedPorts					= vfInfo.IntUtil.topoFailedPorts;
 
 		response[0].internalErrors.errorMaximums.integrityErrors		= vfInfo.IntErr.Max.Integrity;
 		response[0].internalErrors.errorMaximums.congestionErrors		= vfInfo.IntErr.Max.Congestion;
@@ -1747,7 +1767,10 @@ pa_getVFInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", sizeof(logBuf), logBuf);
 			IB_LOG_DEBUG2_FMT(__func__, "  Pkts: Tot %6u Max %6u Min %6u Avg %6u KP/s",
-					response[0].internalUtilStats.totalKPps, response[0].internalUtilStats.maxKPps, response[0].internalUtilStats.minKPps, response[0].internalUtilStats.avgKPps);
+				response[0].internalUtilStats.totalKPps, response[0].internalUtilStats.maxKPps,
+				response[0].internalUtilStats.minKPps, response[0].internalUtilStats.avgKPps);
+			IB_LOG_DEBUG2_FMT(__func__, "  Failed PMA Queries: %u    Failures in PM Topology: %u",
+				response[0].internalUtilStats.pmaFailedPorts, response[0].internalUtilStats.topoFailedPorts);
 			IB_LOG_DEBUG2_FMT(__func__, "Internal Error Summary:");
 			p1 = logBuf;
 			p1 += sprintf(p1, "  Err Integrity       Max %10u Buckets: ", response[0].internalErrors.errorMaximums.integrityErrors);
@@ -1829,9 +1852,6 @@ done:
 		IB_LOG_WARN("too many records for STL_PA_CMD_GET:", records);
 		records = 0;
 		maip->base.status = MAD_STATUS_SA_TOO_MANY_RECS;
-	}
-	if (isFailedPort) {
-		maip->base.amod |=  1 << 8;
 	}
 
 	attribOffset = sizeof(STL_PA_VF_INFO_DATA) + Calculate_Padding(sizeof(STL_PA_VF_INFO_DATA));
@@ -2205,8 +2225,8 @@ pa_getVFFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	IB_LOG_DEBUG1_FMT(__func__, "VF: %.*s  Select: 0x%x  Start: %u  Range: %u",
 					  sizeof(vfName), vfName, select, start, range);
 
-	status = paGetVFFocusPorts(&g_pmSweepData, vfName, &pmVFFocusPorts, imageId, offset,
-							   &retImageId, select, start, range);
+	status = paGetVFFocusPorts(&g_pmSweepData, vfName, &pmVFFocusPorts, 
+	    imageId, offset, &retImageId, select, start, range);
 	if (status == FSUCCESS) {
 		records = pmVFFocusPorts.NumPorts;
 		responseSize = pmVFFocusPorts.NumPorts * sizeof(STL_PA_VF_FOCUS_PORTS_RSP);
@@ -2223,6 +2243,7 @@ pa_getVFFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		for (i = 0; i < pmVFFocusPorts.NumPorts; i++) {
     		response[i].nodeLid				= pmVFFocusPorts.portList[i].lid;
     		response[i].portNumber			= pmVFFocusPorts.portList[i].portNum;
+			response[i].localFlags          = pmVFFocusPorts.portList[i].localFlags;
     		response[i].rate				= pmVFFocusPorts.portList[i].rate;
     		response[i].mtu					= pmVFFocusPorts.portList[i].mtu;
     		response[i].value				= pmVFFocusPorts.portList[i].value;
@@ -2230,6 +2251,7 @@ pa_getVFFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
     		strncpy(response[i].nodeDesc, pmVFFocusPorts.portList[i].nodeDesc,
 					sizeof(response[i].nodeDesc)-1);
 
+			response[i].neighborFlags       = pmVFFocusPorts.portList[i].neighborFlags;
     		response[i].neighborLid 		= pmVFFocusPorts.portList[i].neighborLid;
     		response[i].neighborPortNumber 	= pmVFFocusPorts.portList[i].neighborPortNum;
     		response[i].neighborValue 		= pmVFFocusPorts.portList[i].neighborValue;
@@ -2247,14 +2269,16 @@ pa_getVFFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			IB_LOG_DEBUG2_FMT(__func__, "  %d:LID:0x%08X Port:%u Value:%"PRId64" ",
 							  i+1, response[i].nodeLid, response[i].portNumber, response[i].value);
 			IB_LOG_DEBUG2_FMT(__func__, "     nodeGUID 0x%"PRIx64" ", response[i].nodeGUID);
-			IB_LOG_DEBUG2_FMT(__func__, "     Node Description %.*s",
-							  sizeof(response[i].nodeDesc), response[i].nodeDesc);
+			IB_LOG_DEBUG2_FMT(__func__, "     Node Description %.*s Status: %s",
+				sizeof(response[i].nodeDesc), response[i].nodeDesc,
+				StlFocusFlagToText(response[i].localFlags));
 			IB_LOG_DEBUG2_FMT(__func__, "     nLID:0x%08X nPort:%u nValue:%"PRId64" ",
 					response[i].neighborLid, response[i].neighborPortNumber, response[i].neighborValue);
 			IB_LOG_DEBUG2_FMT(__func__, "     rate:%u mtu:%u", response[i].rate, response[i].mtu);
 			IB_LOG_DEBUG2_FMT(__func__, "     nGUID 0x%"PRIx64" ", response[i].neighborGuid);
-			IB_LOG_DEBUG2_FMT(__func__, "     Nbr Node Desc    %.*s",
-					sizeof(response[i].neighborNodeDesc), response[i].neighborNodeDesc);
+			IB_LOG_DEBUG2_FMT(__func__, "     Nbr Node Desc    %.*s Status: %s",
+				sizeof(response[i].neighborNodeDesc), response[i].neighborNodeDesc,
+				StlFocusFlagToText(response[i].neighborFlags));
 			IB_LOG_DEBUG2_FMT(__func__, "     ImageID: Number 0x%"PRIx64" Offset %d",
 					response[i].imageId.imageNumber, response[i].imageId.imageOffset);
 

@@ -36,8 +36,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *       Fabric Executive MAD interface functions for collection of
 *       information from the VIEO managers
 * 
-* RESPONSIBLE ENGINEER:
-*       Jason Wiseman 
 *
 * HISTORY
 *

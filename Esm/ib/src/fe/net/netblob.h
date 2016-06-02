@@ -35,8 +35,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 * DESCRIPTION
 *   Libnet protocol buffer structure definitions
 *
-* RESPONSIBLE ENGINEER:
-*   Jason Wiseman 
 *
 * HISTORY
 *

@@ -219,9 +219,7 @@ typedef STL_FIELDUNION16(STL_CAPABILITY_MASK, 32,
 /* Capability Mask 3 - a bit set to 1 for affirmation of supported capability
  * by a given port
  */
-typedef union {
-	uint16  AsReg16;
-	struct { IB_BITFIELD9( uint16,			/* RO/H-PE */
+typedef STL_FIELDUNION9(STL_CAPABILITY_MASK3, 16,
 		CmReserved:					8,
 		IsSnoopSupported: 			1,		/* RO/--PE Packet snoop */
 											/* Reserved in Gen1 */
@@ -236,11 +234,9 @@ typedef union {
 		CmReserved2:			 	1,
 		IsVLMarkerSupported: 		1,		/* RO/H-PE VL Marker */
 											/* Port 0 indicates whole switch */
-		IsVLrSupported: 			1 )		/* RO/H-PE SC->VL_r table */
+		IsVLrSupported: 			1 );	/* RO/H-PE SC->VL_r table */
 											/* Reserved in Gen1 */
 											/* Port 0 indicates whole switch */
-	} s; 
-} STL_CAPABILITY_MASK3;
 
 typedef struct {
 	STL_LID_32				Lid;
@@ -2095,6 +2091,7 @@ typedef struct {						/* RW */
 #define CONGESTION_CONTROL_TABLE_ENTRIES_PER_MAD \
 		(CONGESTION_CONTROL_TABLE_BLOCKS_PER_MAD  * \
 			STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES)
+#define CONGESTION_CONTROL_IMPLEMENTATION_LIMIT 895
 /*
  * The following prototype definitions are included in temporary form
  * for reference only.  They will be reworked as needed and moved into

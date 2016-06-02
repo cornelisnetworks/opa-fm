@@ -49,8 +49,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define MEM_HDR_ALLOC_SIZE	50
 
 #if defined(MEM_TRACK_ON)
-static void *unTAddr[5000];
+#define UNTRACKED_COUNT 12000
+void *unTAddr[UNTRACKED_COUNT];
 int unTindex=0;
+int unTmissed=0;
 #endif
 
 MEM_TRACKER	*pMemTracker = NULL;
@@ -720,8 +722,16 @@ MemoryTrackerTrackAllocation(
 #endif  // MEM_TRACK_FTR
 
 	if( !pMemTracker ) {
-		if (unTindex < 5000)
+		if (unTindex < UNTRACKED_COUNT)
 			unTAddr[unTindex++] = pMem;
+		else {
+			static int firsttime=1;
+			if (firsttime) {
+				MsgOut("***** Untracked memory allocation array LIMIT:%d REACHED; check unTmissed value to calculate new size\n", UNTRACKED_COUNT);
+				firsttime = 0;
+			}
+			unTmissed++; /* so we know how much more to expand the array */
+		}
 		return;
 	}
 
@@ -813,21 +823,32 @@ MemoryTrackerTrackDeallocate(
 				MemoryTrackerUnlink(pHdr);
 			}
 		} else {
-			int ii;
-			for (ii=0; ii<unTindex; ii++) {
+			int ii, found; 
+			for (ii=0, found=0; ii<unTindex; ii++) {
 				if (unTAddr[ii] == pMemory) {
-					unTAddr[ii] = 0; /* found it */
+					int nextii = ii+1;
+					/* move up the remaining entries */
+					if (nextii < unTindex) {
+						memcpy(&unTAddr[ii], &unTAddr[nextii], 
+							(unTindex - nextii)*sizeof(void));
+					}
+					/* decrease entry count */
+					unTindex--;
+					/* zero out the new free location */
+					unTAddr[unTindex] = 0;
+					found = 1;
 					break;
 				}
 			}
-			if (ii == unTindex) {
+			if (!found) {
 				result = 1;
 #if defined(VXWORKS)
-				MsgOut( "UNMATCHED FREE %p ra=%p\n", pMemory, __builtin_return_address(0));
+				MsgOut( "UNMATCHED FREE %p ra=%p %p %p\n", pMemory, __builtin_return_address(0), __builtin_return_address(1), __builtin_return_address(2));
+				/* DumpStack fails in to find Osa_SysThread object in Osa_SysThread::FindThread. Until that is fixed skip dumping the stack. */
 #else
 				MsgOut( "BAD FREE %p\n", pMemory);
-#endif
 				DumpStack();
+#endif
 			}
 		}
 		SpinLockRelease( &pMemTracker->Lock );

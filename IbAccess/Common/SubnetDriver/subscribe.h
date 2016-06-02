@@ -30,9 +30,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
   \file subscribe.h
 
-  $Author: gsleshne $
-  $Revision: 1.7 $
-  $Date: 2015/11/18 15:14:11 $
+  $Revision: 1.8 $
+  $Date: 2016/04/06 10:49:29 $
 
   \brief Routines to handle subscribing/unsubscribing to trap events
 */

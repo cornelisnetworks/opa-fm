@@ -41,8 +41,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //    and updates it's SA DB.
 //
 ////
-// RESPONSIBLE ENGINEER:
-//    John Seraphin
 //
 //===========================================================================//
 
@@ -187,7 +185,7 @@ void sm_dbsync_initSmRec(SmRecp smrecp) {
 	smrecp->dbsync.groupSyncStatus=smrecp->dbsync.groupSyncFailCount=smrecp->dbsync.groupTimeSyncFail=smrecp->dbsync.groupTimeLastSync=0;
 	smrecp->dbsync.serviceSyncStatus=smrecp->dbsync.serviceSyncFailCount=smrecp->dbsync.serviceTimeSyncFail=smrecp->dbsync.serviceTimeLastSync=0;
 	/* fill in the XML consistency check version and clear data */
-	smrecp->dbsyncCCC.checksumVersion = XML_CHECKSUM_VERSION;
+	smrecp->dbsyncCCC.protocolVersion = FM_PROTOCOL_VERSION;
 	smrecp->dbsyncCCC.smVfChecksum = smrecp->dbsyncCCC.smConfigChecksum = 0;
 	smrecp->dbsyncCCC.pmConfigChecksum = smrecp->dbsyncCCC.feConfigChecksum = 0;
 	smrecp->dbsyncCCC.spare1 = smrecp->dbsyncCCC.spare2 = smrecp->dbsyncCCC.spare3 = smrecp->dbsyncCCC.spare4 = 0;
@@ -698,6 +696,7 @@ Status_t sm_dbsync_configCheck(SmRecKey_t recKey, SMDBCCCSyncp smSyncSetting) {
 	Status_t        status = VSTATUS_OK;
 	uint8_t			deactivateSM = 0;
 	SmCsmMsgCondition_t condition;
+	boolean         mismatchDetected = 0;
 
 	IB_ENTER(__func__, recKey, smSyncSetting, 0, 0);
 
@@ -711,22 +710,20 @@ Status_t sm_dbsync_configCheck(SmRecKey_t recKey, SMDBCCCSyncp smSyncSetting) {
         if ((smrecp = (SmRecp)cs_hashtable_search(smRecords.smMap, &recKey)) != NULL) {
 			/* assume the config are consistent until proven otherwise */
 			smrecp->configDiff = 0;
-			/* if consistency checking is turned off then just return good status */
-			if (sm_config.config_consistency_check_level == NO_CHECK_CCC_LEVEL) {
-				IB_LOG_INFO_FMT(__func__,
-					"SM config consistency checking is disabled so config could be out of sync");
-        		(void)vs_unlock(&smRecords.smLock);
-				return status;
-			}
+
 			/* check checksum of Standby SM with Master SM checksum */
-			if (smSyncSetting->checksumVersion == 0) {
+			if (smSyncSetting->protocolVersion == 0) {
 				IB_LOG_WARN_FMT(__func__,
 					"SM at %s, portGuid="FMT_U64" does not support config consistency checking so config could be out of sync",
 					smrecp->nodeDescString, recKey);
-			} else if (smSyncSetting->checksumVersion != XML_CHECKSUM_VERSION) {
+			} else if (smSyncSetting->protocolVersion != FM_PROTOCOL_VERSION) {
 				IB_LOG_WARN_FMT(__func__,
-					"SM at %s, portGuid="FMT_U64" supports a different XML checksum VERSION [%d] from us [%d] so check will not be performed",
-					smrecp->nodeDescString, recKey, smSyncSetting->checksumVersion, XML_CHECKSUM_VERSION);
+					"SM at %s, portGuid="FMT_U64" is running incompatible FM version.  Our version [%d], Their version [%d]. Deactivating remote FM",
+					smrecp->nodeDescString, recKey, FM_PROTOCOL_VERSION, smSyncSetting->protocolVersion);
+
+				condition = CSM_COND_STANDBY_SM_DEACTIVATION;
+				smrecp->syncCapability = DBSYNC_CAP_NOTSUPPORTED;
+				sm_dbsync_disableStandbySm(smrecp, condition); 
 			} else {
 				if (smSyncSetting->smVfChecksum != 0 && smRecords.ourChecksums.smVfChecksum != 0) {
 					if (smSyncSetting->smVfChecksum != smRecords.ourChecksums.smVfChecksum) {
@@ -735,6 +732,7 @@ Status_t sm_dbsync_configCheck(SmRecKey_t recKey, SMDBCCCSyncp smSyncSetting) {
 							"SM at %s, portGuid="FMT_U64" has a different enabled Virtual Fabric configuration consistency checksum [%u] from us [%u]",
 							smrecp->nodeDescString, recKey, smSyncSetting->smVfChecksum, smRecords.ourChecksums.smVfChecksum);
 
+						mismatchDetected = 1;
 						deactivateSM = 1;
 						condition = CSM_COND_STANDBY_SM_VF_DEACTIVATION;
 						smrecp->syncCapability = DBSYNC_CAP_NOTSUPPORTED;
@@ -748,6 +746,7 @@ Status_t sm_dbsync_configCheck(SmRecKey_t recKey, SMDBCCCSyncp smSyncSetting) {
 							"SM at %s, portGuid="FMT_U64" has a different SM configuration consistency checksum [%u] from us [%u]",
 							smrecp->nodeDescString, recKey, smSyncSetting->smConfigChecksum, smRecords.ourChecksums.smConfigChecksum);
 
+						mismatchDetected = 1;
 						deactivateSM = 1;
 						condition = CSM_COND_STANDBY_SM_DEACTIVATION;
 						smrecp->syncCapability = DBSYNC_CAP_NOTSUPPORTED;
@@ -761,6 +760,7 @@ Status_t sm_dbsync_configCheck(SmRecKey_t recKey, SMDBCCCSyncp smSyncSetting) {
 							"SM at %s, portGuid="FMT_U64" detected a different PM configuration consistency checksum [%u] from us [%u]",
 							smrecp->nodeDescString, recKey, smSyncSetting->pmConfigChecksum, smRecords.ourChecksums.pmConfigChecksum);
 
+						mismatchDetected = 1;
 						deactivateSM = 1;
 						condition = CSM_COND_SECONDARY_PM_DEACTIVATION;
 						smrecp->syncCapability = DBSYNC_CAP_NOTSUPPORTED;
@@ -771,7 +771,14 @@ Status_t sm_dbsync_configCheck(SmRecKey_t recKey, SMDBCCCSyncp smSyncSetting) {
 						IB_LOG_WARN_FMT(__func__,
 							"SM at %s, portGuid="FMT_U64" detected a different FE configuration consistency checksum [%u] from us [%u]",
 							smrecp->nodeDescString, recKey, smSyncSetting->feConfigChecksum, smRecords.ourChecksums.feConfigChecksum);
+
+						mismatchDetected = 1;
 					}
+				}
+
+				if (mismatchDetected) {
+					IB_LOG_WARN_FMT(__func__,
+									"config_diff tool can be used to show differences in the configuration files that could be causing the checksum mismatches");
 				}
 
 				if (deactivateSM) {

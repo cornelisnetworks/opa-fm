@@ -48,8 +48,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //    ib_mad.h
 //    ib_status.h
 //
-// RESPONSIBLE ENGINEER:
-//    John Seraphin
 //
 //===========================================================================//
 #ifndef	_SM_DBSYNC_H_
@@ -224,7 +222,7 @@ BSWAPCOPY_SM_DBSYNC_CCC_DATA(SMDBCCCSyncp Src, SMDBCCCSyncp Dest)
 {
 	memcpy(Dest, Src, sizeof(*Src));
 
-    Dest->checksumVersion = ntoh32(Dest->checksumVersion);
+    Dest->protocolVersion = ntoh32(Dest->protocolVersion);
     Dest->smVfChecksum = ntoh32(Dest->smVfChecksum);
     Dest->smConfigChecksum = ntoh32(Dest->smConfigChecksum);
     Dest->pmConfigChecksum = ntoh32(Dest->pmConfigChecksum);

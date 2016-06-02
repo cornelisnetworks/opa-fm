@@ -77,36 +77,41 @@ void PmRemovePortFromGroupIndex(PmPortImage_t *portImage, uint32 grpIndex,
 	}
 }
 
-static boolean PmIsPortImageInGroup(PmPortImage_t *portImage, PmGroup_t *groupp)
+static boolean PmIsPortImageInGroup(PmPortImage_t *portImage, PmGroup_t *groupp, boolean *isInternal)
 {
-	int i;
-
+    uint32 i;
+    boolean isInGroup = FALSE;
 #if PM_COMPRESS_GROUPS
-	for (i=0; i<portImage->u.s.InGroups; i++) {
+    for (i = 0; i < portImage->u.s.InGroups; i++) {
 #else
-	for (i=0; i<PM_MAX_GROUPS_PER_PORT; i++) {
+    for (i = 0; i < PM_MAX_GROUPS_PER_PORT; i++) {
 #endif
-		if (portImage->Groups[i] == groupp)
-			return TRUE;
-	}
-	return FALSE;
+        if (portImage->Groups[i] == groupp) {
+            isInGroup = TRUE;
+            break;
+        }
+    }
+    if (isInternal && isInGroup) {
+        *isInternal = (boolean)(portImage->IntLinkFlags & (1<<i));
+    }
+    return isInGroup;
 }
 
-boolean PmIsPortInGroup(Pm_t *pm, PmPort_t *pmportp,
-						PmPortImage_t *portImage, PmGroup_t *groupp, boolean sth)
+boolean PmIsPortInGroup(Pm_t *pm, PmPort_t *pmportp, PmPortImage_t *portImage,
+    PmGroup_t *groupp, boolean sth, boolean *isInternal)
 {
-	// for non-Switch ports and switch port 0, active will be true
-	// but for other switch ports could be not active
-	// ports without a PMA are not tabulated
-	if (pmportp->u.s.PmaAvoid || ! portImage->u.s.active)
-		return FALSE;
-	if (!sth) {
-		return ((groupp == pm->AllPorts)
-							|| PmIsPortImageInGroup(portImage, groupp));
-	} else {
-		return ((groupp == pm->ShortTermHistory.LoadedImage.AllGroup)
-							|| PmIsPortImageInGroup(portImage, groupp));
-	}
+    // for non-Switch ports and switch port 0, active will be true
+    // but for other switch ports could be not active
+    // ports without a PMA are not tabulated
+    if (pmportp->u.s.PmaAvoid || !portImage->u.s.active)
+        return FALSE;
+    if (!sth) {
+        return ((groupp == pm->AllPorts)
+            || PmIsPortImageInGroup(portImage, groupp, isInternal));
+    } else {
+        return ((groupp == pm->ShortTermHistory.LoadedImage.AllGroup)
+            || PmIsPortImageInGroup(portImage, groupp, isInternal));
+    }
 }
 
 // adds a port to a group where the neighbor of the port WILL NOT be in

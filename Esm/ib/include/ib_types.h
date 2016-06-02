@@ -44,8 +44,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // DEPENDENCIES                                                               //
 //    None                                                                    //
 //                                                                            //
-// RESPONSIBLE ENGINEER                                                       //
-//    Jeff Young                                                              //
 //                                                                            //
 // PJG  05/29/02    PR2176: Include keyword 'signed' in int8_t typedefs.      //
 //----------------------------------------------------------------------------//

@@ -156,7 +156,7 @@ void PrintClassPortInfo2(PrintDest_t *dest, int indent, const IB_CLASS_PORT_INFO
 	PrintFunc(dest, "%*sRespTime: %s Capability: 0x%04x: %s\n",
 				indent, "", tbuf,
 				pClassPortInfo->CapMask, cbuf);
-	(*func)(cbuf, pClassPortInfo->u1.s.CapMask2);
+	(*func2)(cbuf, pClassPortInfo->u1.s.CapMask2);
 	PrintFunc(dest, "%*sCapability2: 0x%07x: %s\n",
 				indent, "",
 				pClassPortInfo->u1.s.CapMask2, cbuf);

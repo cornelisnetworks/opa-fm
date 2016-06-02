@@ -52,8 +52,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 * DEPENDENCIES
 *      cs_g.h
 *
-* RESPONSIBLE ENGINEER:
-*      VIEO
 *
 * HISTORY
 *
@@ -90,8 +88,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 * OUTPUTS
 *    cvalue       - On success, the converted value is returned.
 *
-* RESPONSIBLE ENGINEER: 
-*    CS Developers.
 *
 * HISTORY
 *
@@ -245,8 +241,6 @@ cs_strtoui8 (const char *nptr, uint8_t return_error)
 * OUTPUTS
 *    cvalue       - On success, the converted value is returned.
 *
-* RESPONSIBLE ENGINEER: 
-*    CS Developers.
 *
 * HISTORY
 *
@@ -400,8 +394,6 @@ cs_strtoui16 (const char *nptr, uint16_t return_error)
 * OUTPUTS
 *    cvalue       - On success, the converted value is returned.
 *
-* RESPONSIBLE ENGINEER: 
-*    CS Developers.
 *
 * HISTORY
 *
@@ -555,8 +547,6 @@ cs_strtoui32 (const char *nptr, uint32_t return_error)
 * OUTPUTS
 *    cvalue       - On success, the converted value is returned.
 *
-* RESPONSIBLE ENGINEER: 
-*    CS Developers.
 *
 * HISTORY
 *
@@ -721,8 +711,6 @@ cs_strtoui64 (const char *nptr, uint64_t return_error)
 * OUTPUTS
 *    cvalue       - On success, the converted value is returned.
 *
-* RESPONSIBLE ENGINEER: 
-*    CS Developers.
 *
 * HISTORY
 *
@@ -888,8 +876,6 @@ cs_strtoi8 (const char *nptr, int8_t return_error)
 * OUTPUTS
 *    cvalue       - On success, the converted value is returned.
 *
-* RESPONSIBLE ENGINEER: 
-*    CS Developers.
 *
 * HISTORY
 *
@@ -1055,8 +1041,6 @@ cs_strtoi16 (const char *nptr, int16_t return_error)
 * OUTPUTS
 *    cvalue       - On success, the converted value is returned.
 *
-* RESPONSIBLE ENGINEER: 
-*    CS Developers.
 *
 * HISTORY
 *
@@ -1222,8 +1206,6 @@ cs_strtoi32 (const char *nptr, int32_t return_error)
 * OUTPUTS
 *    cvalue       - On success, the converted value is returned.
 *
-* RESPONSIBLE ENGINEER: 
-*    CS Developers.
 *
 * HISTORY
 *
@@ -1392,8 +1374,6 @@ cs_strtoi64 (const char *nptr, int64_t return_error)
 //
 // OUTPUTS
 //
-// RESPONSIBLE ENGINEER
-//   John Schmerge
 //
 // HISTORY
 //

@@ -282,6 +282,41 @@ FSTATUS FindIocNamePat(FabricData_t *fabricp, char *pattern, Point *pPoint)
 }
 #endif
 
+/**
+ * Determine IocType of an IocData object
+ * @param iocp IocData profile data to determine type from
+ * @return The IocType of this IOC
+ */
+IocType GetIocType(IocData *iocp)
+{
+	if ((iocp->IocProfile.IOClass == 0xff00
+							|| iocp->IocProfile.IOClass == 0x0100)
+						&& iocp->IocProfile.IOSubClass == 0x609e
+						&& iocp->IocProfile.Protocol == 0x108
+						&& iocp->IocProfile.ProtocolVer == 1)
+	{
+		return IOC_TYPE_SRP;
+	}
+	//add cases for new IocTypes here
+	
+	return IOC_TYPE_OTHER;
+}
+
+const char * GetIocTypeName(IocType type)
+{
+	switch(type){
+	case IOC_TYPE_SRP:
+		return "SRP";
+		break;
+	case IOC_TYPE_OTHER:
+		return "OTHER";
+		break;
+	default:
+		return "";
+		break;
+	}
+}
+
 // search for the Ioc corresponding to the given ioc type
 FSTATUS FindIocType(FabricData_t *fabricp, IocType type, Point *pPoint)
 {
@@ -291,28 +326,16 @@ FSTATUS FindIocType(FabricData_t *fabricp, IocType type, Point *pPoint)
 	ASSERT(pPoint->Type == POINT_TYPE_NONE);
 	for (p=cl_qmap_head(&fabricp->AllIOCs); p != cl_qmap_end(&fabricp->AllIOCs); p = cl_qmap_next(p)) {
 		IocData *iocp = PARENT_STRUCT(p, IocData, AllIOCsEntry);
-		if ((type == IOC_TYPE_VNIC &&
-						(iocp->IocProfile.IOClass == 0x2000
-						&& iocp->IocProfile.IOSubClass == 0x66a
-						&& iocp->IocProfile.Protocol == 0
-							// EVIC is 1, 12400 is 3
-						&& (iocp->IocProfile.ProtocolVer == 1
-							|| iocp->IocProfile.ProtocolVer == 3)))
-			|| (type == IOC_TYPE_SRP &&
-						((iocp->IocProfile.IOClass == 0xff00
-							|| iocp->IocProfile.IOClass == 0x0100)
-						&& iocp->IocProfile.IOSubClass == 0x609e
-						&& iocp->IocProfile.Protocol == 0x108
-						&& iocp->IocProfile.ProtocolVer == 1)))
+		if (type == GetIocType(iocp))
 		{
 			status = PointListAppend(pPoint, POINT_TYPE_IOC_LIST, iocp);
 			if (FSUCCESS != status)
 				return status;
-		}
+		} 
 	}
 	if (pPoint->Type == POINT_TYPE_NONE) {
 		fprintf(stderr, "%s: IOC type Not Found: %s\n",
-					   	g_Top_cmdname, (type == IOC_TYPE_VNIC)?"VNIC":"SRP");
+					   	g_Top_cmdname, GetIocTypeName(type));
 		return FNOT_FOUND;
 	}
 	PointCompress(pPoint);
@@ -369,6 +392,39 @@ FSTATUS FindRate(FabricData_t *fabricp, uint32 rate, Point *pPoint)
 	PointCompress(pPoint);
 	return FSUCCESS;
 }
+
+
+// search for the PortData corresponding to the given LED state
+FSTATUS FindLedState(FabricData_t *fabricp, uint8 state, Point *pPoint)
+{
+	LIST_ITEM *p;
+	FSTATUS status;
+
+	ASSERT(pPoint->Type == POINT_TYPE_NONE);
+	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+		PortData *portp = (PortData *)QListObj(p);
+
+		if ( 	(state == 1 &&
+				portp->PortInfo.PortStates.s.LEDEnabled == 1 )
+			|| (state == 0 &&
+				portp->PortInfo.PortStates.s.LEDEnabled == 0 ) ) {
+			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+			if (FSUCCESS != status)
+				return status;
+		}
+	}
+	if (pPoint->Type == POINT_TYPE_NONE) {
+		fprintf(stderr, "%s: LED State Not Found: %d\n",
+					   	g_Top_cmdname,
+						state);
+		return FNOT_FOUND;
+	} 
+	PointCompress(pPoint);
+	return FSUCCESS;
+}
+
+
+
 
 // search for the PortData corresponding to the given port state
 FSTATUS FindPortState(FabricData_t *fabricp, uint8 state, Point *pPoint)
@@ -739,16 +795,74 @@ FSTATUS FindCabinfVendSNPat(FabricData_t *fabricp, const char* pattern, Point *p
 
 }	// End of FindCabinfVendSNPat()
 
-// search for ports whose ExpectedLink has the given link details
-FSTATUS FindLinkDetailsPat(FabricData_t *fabricp, const char* pattern, Point *pPoint)
+// search for the PortData corresponding to the given cable type
+FSTATUS FindCabinfCableType(FabricData_t *fabricp, char *pattern, Point *pPoint)
 {
 	LIST_ITEM *p;
 	FSTATUS status;
+	uint8 xmit_tech;
+	STL_CABLE_INFO_STD *pCableInfo;
+	int len;
+
+	len = strlen(pattern);
 
 	ASSERT(pPoint->Type == POINT_TYPE_NONE);
 	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
 		PortData *portp = (PortData *)QListObj(p);
 
+		/* omit switch port 0, no cable connected to port0 */
+		if (portp->PortNum == 0)
+			continue;
+		pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
+		if (! pCableInfo)
+			continue;
+		xmit_tech = pCableInfo->dev_tech.s.xmit_tech;
+		if (strncmp(pattern, "optical", len) == 0) // this includes AOL and Optical Transceiver
+			if (xmit_tech <= STL_CIB_STD_TXTECH_1490_DFB && (xmit_tech >= STL_CIB_STD_TXTECH_850_VCSEL)
+					&& (xmit_tech != STL_CIB_STD_TXTECH_OTHER)) {
+			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+			if (FSUCCESS != status)
+				return status;
+		}
+		if (strncmp(pattern, "unknown", len) == 0)
+			if (xmit_tech == STL_CIB_STD_TXTECH_OTHER) {
+				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+				if (FSUCCESS != status)
+					return status;
+		}
+		if (strncmp(pattern, "passive_copper", len) == 0)
+			if (xmit_tech == STL_CIB_STD_TXTECH_CU_UNEQ || (xmit_tech == STL_CIB_STD_TXTECH_CU_PASSIVEQ)) {
+			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+			if (FSUCCESS != status)
+				return status;
+		}
+		if (strncmp(pattern, "active_copper", len) == 0)
+			if (xmit_tech <= STL_CIB_STD_TXTECH_CU_LINACTEQ && (xmit_tech >= STL_CIB_STD_TXTECH_CU_NFELIMACTEQ)) {
+			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+			if (FSUCCESS != status)
+				return status;
+		}
+
+	}
+
+	if (pPoint->Type == POINT_TYPE_NONE) {
+		fprintf(stderr, "%s: CABLE_INFO: No %s cables found\n",
+						g_Top_cmdname, pattern);
+		return FNOT_FOUND;
+	}
+	PointCompress(pPoint);
+	return FSUCCESS;
+
+} // End of  FindCabinfCableType()
+
+// search for ports whose ExpectedLink has the given link details
+FSTATUS FindLinkDetailsPat(FabricData_t *fabricp, const char* pattern, Point *pPoint)
+{
+	LIST_ITEM *p;
+	FSTATUS status;	
+	ASSERT(pPoint->Type == POINT_TYPE_NONE);
+	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+		PortData *portp = (PortData *)QListObj(p);
 		if (! portp->elinkp || ! portp->elinkp->details)
 			continue;	// no link information
 		if (fnmatch(pattern, portp->elinkp->details, 0) == 0)

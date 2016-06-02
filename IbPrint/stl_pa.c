@@ -69,6 +69,8 @@ void PrintStlPAGroupUtilStats(PrintDest_t *dest, int indent, const STL_PA_PM_UTI
 	PrintFunc(dest, "%*s\n", indent, "");
 	PrintFunc(dest, "%*sPkts: Tot %6u Max %6u Min %6u Avg %6u KiPps/s\n",	
 				indent, "", pUtilStat->totalKPps, pUtilStat->maxKPps, pUtilStat->minKPps, pUtilStat->avgKPps);
+	PrintFunc(dest, "%*s Failed Ports: PMA: %u  Topo: %u\n",	
+				indent, "", pUtilStat->pmaFailedPorts, pUtilStat->topoFailedPorts);
 
 	return;
 }
@@ -202,50 +204,76 @@ void PrintStlPAPortCounters(PrintDest_t *dest, int indent, const STL_PORT_COUNTE
 	PrintFunc(dest, "%*s    MC Rcv Pkts           %20"PRIu64"\n",
 			indent, "",
 			pPortCounters->portMulticastRcvPkts);
-	PrintFunc(dest, "%*sErrors:                            \n",
+	PrintFunc(dest, "%*sSignal Integrity Errors:             \n",
 			indent, "");
-	PrintFunc(dest, "%*s    Local Link Integrity  %10u\n",
+	PrintFunc(dest, "%*s    Link Quality Ind      %10u\n",
 			indent, "",
-	   		pPortCounters->localLinkIntegrityErrors);
-	PrintFunc(dest, "%*s    FM Config             %10u\n",
+		   	pPortCounters->lq.s.linkQualityIndicator);
+	PrintFunc(dest, "%*s    Uncorrectable Err     %10u\n",
 			indent, "",
-	   		pPortCounters->fmConfigErrors);
+		   	pPortCounters->uncorrectableErrors);
+	PrintFunc(dest, "%*s    Link Downed           %10u\n",
+			indent, "",
+		   	pPortCounters->linkDowned);
+	PrintFunc(dest, "%*s    Num Lanes Down        %10u\n",
+			indent, "",
+			pPortCounters->lq.s.numLanesDown);
 	PrintFunc(dest, "%*s    Rcv Errors            %10u\n",
 			indent, "",
 	   		pPortCounters->portRcvErrors);
 	PrintFunc(dest, "%*s    Exc. Buffer Overrun   %10u\n",
 			indent, "",
 	   		pPortCounters->excessiveBufferOverruns);
+	PrintFunc(dest, "%*s    FM Config             %10u\n",
+			indent, "",
+	   		pPortCounters->fmConfigErrors);
+	PrintFunc(dest, "%*s    Link Error Recovery   %10u\n",
+			indent, "",
+		   	pPortCounters->linkErrorRecovery);
+	PrintFunc(dest, "%*s    Local Link Integrity  %10u\n",
+			indent, "",
+	   		pPortCounters->localLinkIntegrityErrors);
+	PrintFunc(dest, "%*s    Rcv Rmt Phys Err      %10u\n",
+			indent, "",
+	   		pPortCounters->portRcvRemotePhysicalErrors);
+	PrintFunc(dest, "%*sSecurity Errors:              \n",
+			indent, "");
+	PrintFunc(dest, "%*s    Xmit Constraint       %10u\n",
+			indent, "",
+	   		pPortCounters->portXmitConstraintErrors);
 	PrintFunc(dest, "%*s    Rcv Constraint        %10u\n",
 			indent, "",
 	   		pPortCounters->portRcvConstraintErrors);
+	PrintFunc(dest, "%*sRouting and Other Errors:     \n",
+			indent, "");
 	PrintFunc(dest, "%*s    Rcv Sw Relay Err      %10u\n",
 			indent, "",
 	   		pPortCounters->portRcvSwitchRelayErrors);
 	PrintFunc(dest, "%*s    Xmit Discards         %10u\n",
 			indent, "",
 	   		pPortCounters->portXmitDiscards);
-	PrintFunc(dest, "%*s    Xmit Constraint       %10u\n",
-			indent, "",
-	   		pPortCounters->portXmitConstraintErrors);
-	PrintFunc(dest, "%*s    Rcv Rmt Phys Err      %10u\n",
-			indent, "",
-	   		pPortCounters->portRcvRemotePhysicalErrors);
+	PrintFunc(dest, "%*sCongestion:             \n",
+			indent, "");
 	PrintFunc(dest, "%*s    Cong Discards         %10u\n",
 			indent, "",
 	   		pPortCounters->swPortCongestion);
-	PrintFunc(dest, "%*s    Xmit Wait             %10u\n",
-			indent, "",
-		   	pPortCounters->portXmitWait);
 	PrintFunc(dest, "%*s    Rcv FECN              %10u\n",
 			indent, "",
 		   	pPortCounters->portRcvFECN);
 	PrintFunc(dest, "%*s    Rcv BECN              %10u\n",
 			indent, "",
 		   	pPortCounters->portRcvBECN);
+	PrintFunc(dest, "%*s    Mark FECN             %10u\n",
+			indent, "",
+		   	pPortCounters->portMarkFECN);
 	PrintFunc(dest, "%*s    Xmit Time Cong        %10u\n",
 			indent, "",
 		   	pPortCounters->portXmitTimeCong);
+	PrintFunc(dest, "%*s    Xmit Wait             %10u\n",
+			indent, "",
+		   	pPortCounters->portXmitWait);
+	PrintFunc(dest, "%*sBubbles:	             \n",
+			indent, "");
 	PrintFunc(dest, "%*s    Xmit Wasted BW        %10u\n",
 			indent, "",
 		   	pPortCounters->portXmitWastedBW);
@@ -255,24 +283,6 @@ void PrintStlPAPortCounters(PrintDest_t *dest, int indent, const STL_PORT_COUNTE
 	PrintFunc(dest, "%*s    Rcv Bubble            %10u\n",
 			indent, "",
 		   	pPortCounters->portRcvBubble);
-	PrintFunc(dest, "%*s    Mark FECN             %10u\n",
-			indent, "",
-		   	pPortCounters->portMarkFECN);
-	PrintFunc(dest, "%*s    Link Error Recovery   %10u\n",
-			indent, "",
-		   	pPortCounters->linkErrorRecovery);
-	PrintFunc(dest, "%*s    Link Downed           %10u\n",
-			indent, "",
-		   	pPortCounters->linkDowned);
-	PrintFunc(dest, "%*s    Uncorrectable Err     %10u\n",
-			indent, "",
-		   	pPortCounters->uncorrectableErrors);
-	PrintFunc(dest, "%*s    Num Lanes Down        %10u\n",
-			indent, "",
-			pPortCounters->lq.s.numLanesDown);
-	PrintFunc(dest, "%*s    Link Quality Ind      %10u\n",
-			indent, "",
-		   	pPortCounters->lq.s.linkQualityIndicator);
 	PrintStlPAImageId(dest, indent+2, &pPortCounters->imageId);
 #if 0
 	if (flags & STL_PA_PC_FLAG_DELTA) {
@@ -344,7 +354,6 @@ void PrintStlPMConfig(PrintDest_t *dest, int indent, const STL_PA_PM_CFG_DATA *p
 	PrintFunc(dest, "%*sTotal Images: %-7u   Freeze Images: %-7u   Freeze Lease: %-7u sec\n",
 				indent, "", pPMConfig->sizeHistory, pPMConfig->sizeFreeze,
 				pPMConfig->lease);
-
 	PrintFunc(dest, "%*sErr Thresholds: Integrity: %-7u        Congestion: %-7u\n",
 				indent, "", pPMConfig->errorThresholds.integrityErrors,
 				pPMConfig->errorThresholds.congestionErrors );
@@ -354,29 +363,29 @@ void PrintStlPMConfig(PrintDest_t *dest, int indent, const STL_PA_PM_CFG_DATA *p
 	PrintFunc(dest, "%*s                Security: %-7u         Routing: %-7u\n",
 				indent, "", pPMConfig->errorThresholds.securityErrors,
 				pPMConfig->errorThresholds.routingErrors );
-	PrintFunc(dest, "%*s Integrity Wts: Loc Link Integ: %-7u   Rcv Errors: %-7u\n",
-				indent, "", pPMConfig->integrityWeights.LocalLinkIntegrityErrors,
-				pPMConfig->integrityWeights.PortRcvErrors );
-	PrintFunc(dest, "%*s                Link Err Recov: %-7u   Link Downed: %-7u\n",
-				indent, "", pPMConfig->integrityWeights.LinkErrorRecovery,
-				pPMConfig->integrityWeights.LinkDowned );
-	PrintFunc(dest, "%*s                Uncorrectable: %-7u    FM Config Err: %-7u\n",
+	PrintFunc(dest, "%*s Integrity Wts: Lnk Wdth Dngd: %-7u    Link Qual: %-7u\n",
+				indent, "", pPMConfig->integrityWeights.LinkWidthDowngrade,
+				pPMConfig->integrityWeights.LinkQualityIndicator );
+	PrintFunc(dest, "%*s                Uncorrectable: %-7u    Link Downed: %-7u\n",
 				indent, "", pPMConfig->integrityWeights.UncorrectableErrors,
-				pPMConfig->integrityWeights.FMConfigErrors );
-	PrintFunc(dest, "%*s                Link Qual: %-7u        Lnk Wdth Dngd: %-7u\n",
-				indent, "", pPMConfig->integrityWeights.LinkQualityIndicator,
-				pPMConfig->integrityWeights.LinkWidthDowngrade );
-	PrintFunc(dest, "%*s                Excs Bfr Ovrn: %-7u\n", indent, "",
+				pPMConfig->integrityWeights.LinkDowned);
+	PrintFunc(dest, "%*s                Rcv Errors: %-7u       Excs Bfr Ovrn: %-7u\n",
+				indent, "", pPMConfig->integrityWeights.PortRcvErrors,
 				pPMConfig->integrityWeights.ExcessiveBufferOverruns);
-	PrintFunc(dest, "%*s Congest Wts:   Tx Wait: %-7u          Cong Discards: %-7u\n",
-				indent, "", pPMConfig->congestionWeights.PortXmitWait,
-				pPMConfig->congestionWeights.SwPortCongestion);
-	PrintFunc(dest, "%*s                Rcv FECN: %-7u         Rcv BECN: %-7u\n",
-				indent, "", pPMConfig->congestionWeights.PortRcvFECN,
-				pPMConfig->congestionWeights.PortRcvBECN);
-	PrintFunc(dest, "%*s                Tx Time Cong: %-7u     Mark FECN: %-7u\n",
-				indent, "", pPMConfig->congestionWeights.PortXmitTimeCong,
+	PrintFunc(dest, "%*s                FM Config Err: %-7u    Link Err Recov: %-7u\n",
+			    indent, "", pPMConfig->integrityWeights.FMConfigErrors,
+				pPMConfig->integrityWeights.LinkErrorRecovery);
+	PrintFunc(dest, "%*s                Loc Link Integ: %-7u \n",
+				indent, "", pPMConfig->integrityWeights.LocalLinkIntegrityErrors );
+	PrintFunc(dest, "%*s Congest Wts:   Cong Discards: %-7u    Rcv FECN: %-7u\n",
+				indent, "", pPMConfig->congestionWeights.SwPortCongestion,
+				pPMConfig->congestionWeights.PortRcvFECN);
+	PrintFunc(dest, "%*s                Rcv BECN: %-7u         Mark FECN: %-7u\n",
+				indent, "", pPMConfig->congestionWeights.PortRcvBECN,
 				pPMConfig->congestionWeights.PortMarkFECN);
+	PrintFunc(dest, "%*s                Tx Time Cong: %-7u     Tx Wait: %-7u\n",
+				indent, "", pPMConfig->congestionWeights.PortXmitTimeCong,
+				pPMConfig->congestionWeights.PortXmitWait);
 	PrintFunc(dest, "%*sPM Memory Size: %"PRIu64" MiB (%" PRIu64 " bytes)\n",
 				indent, "", pPMConfig->memoryFootprint/(1024*1024),
 				pPMConfig->memoryFootprint );
@@ -395,8 +404,8 @@ void PrintStlPAFocusPorts(PrintDest_t *dest, int indent, const char *groupName, 
 {
 	int i;
 
-	PrintFunc(dest, "%*sGroup Name: %s\n", indent, "", groupName);
-	PrintFunc(dest, "%*sNumber ports: %u\n", indent, "", numRecords);
+	PrintFunc(dest, "%*sGroup name: %s\n", indent, "", groupName);
+	PrintFunc(dest, "%*sNumber links: %u\n", indent, "", numRecords);
 	PrintFunc(dest, "%*sFocus select: 0x%x\n", indent, "", select);
 	PrintFunc(dest, "%*sFocus start:  %u\n", indent, "", start);
 	PrintFunc(dest, "%*sFocus range:  %u\n", indent, "", range);
@@ -409,10 +418,12 @@ void PrintStlPAFocusPorts(PrintDest_t *dest, int indent, const char *groupName, 
 				indent, "", pFocusPorts[i].value, pFocusPorts[i].neighborValue);
 		PrintFunc(dest, "%*s   GUID: 0x%016"PRIx64"   nbrGuid: 0x%016"PRIx64"\n",
 				indent, "", pFocusPorts[i].nodeGUID, pFocusPorts[i].neighborGuid);
-		PrintFunc(dest, "%*s   Name: %.*s\n", indent, "",
-				  sizeof(pFocusPorts[i].nodeDesc), pFocusPorts[i].nodeDesc);
-		PrintFunc(dest, "%*s   Neighbor Name: %.*s\n", indent, "",
-				  sizeof(pFocusPorts[i].neighborNodeDesc), pFocusPorts[i].neighborNodeDesc);
+		PrintFunc(dest, "%*s   Status: %s Name: %.*s\n", indent, "",
+				StlFocusFlagToText(pFocusPorts[i].localFlags),
+				sizeof(pFocusPorts[i].nodeDesc), pFocusPorts[i].nodeDesc);
+		PrintFunc(dest, "%*s   Status: %s Neighbor Name: %.*s\n", indent, "",
+				StlFocusFlagToText(pFocusPorts[i].neighborFlags),
+				sizeof(pFocusPorts[i].neighborNodeDesc), pFocusPorts[i].neighborNodeDesc);
 	}
 	PrintStlPAImageId(dest, indent, &pFocusPorts[0].imageId);
 
@@ -433,6 +444,10 @@ void PrintStlPAImageInfo(PrintDest_t *dest, int indent, const STL_PA_IMAGE_INFO_
 				indent, "", buf,
 				pImageInfo->sweepDuration/1000000,
 				(pImageInfo->sweepDuration%1000000)/1000);
+	if (pImageInfo->imageInterval) {
+		PrintFunc(dest, "%*sImage Interval: %u Seconds\n",
+					indent, "", pImageInfo->imageInterval);
+	}
 	PrintFunc(dest, "%*sNum SW Ports: %u  HFI Ports: %u\n",
 				indent, "", pImageInfo->numSwitchPorts,
 			   	pImageInfo->numHFIPorts);
@@ -561,26 +576,33 @@ void PrintStlPAVFPortCounters(PrintDest_t *dest, int indent, const STL_PA_VF_POR
 	PrintFunc(dest, "%*s    Rcv Pkts              %20"PRIu64"\n",
 			indent, "",
 			pVFPortCounters->portVFRcvPkts);
-	PrintFunc(dest, "%*sErrors:                            \n",
+	PrintFunc(dest, "%*sRouting and Other Errors:   \n",
 			indent, "");
 	PrintFunc(dest, "%*s    Xmit Discards         %20"PRIu64"\n",
 			indent, "",
 	   		pVFPortCounters->portVFXmitDiscards);
+	PrintFunc(dest, "%*sCongestion:                          \n",
+			indent, "");
 	PrintFunc(dest, "%*s    Congestion Discards   %20"PRIu64"\n",
 			indent, "",
 	   		pVFPortCounters->swPortVFCongestion);
-	PrintFunc(dest, "%*s    Xmit Wait             %20"PRIu64"\n",
-			indent, "",
-	   		pVFPortCounters->portVFXmitWait);
 	PrintFunc(dest, "%*s    Rcv FECN              %20"PRIu64"\n",
 			indent, "",
 	   		pVFPortCounters->portVFRcvFECN);
 	PrintFunc(dest, "%*s    Rcv BECN              %20"PRIu64"\n",
 			indent, "",
 	   		pVFPortCounters->portVFRcvBECN);
+	PrintFunc(dest, "%*s    Mark FECN             %20"PRIu64"\n",
+			indent, "",
+	   		pVFPortCounters->portVFMarkFECN);
 	PrintFunc(dest, "%*s    Xmit Time Cong        %20"PRIu64"\n",
 			indent, "",
 	   		pVFPortCounters->portVFXmitTimeCong);
+	PrintFunc(dest, "%*s    Xmit Wait             %20"PRIu64"\n",
+			indent, "",
+	   		pVFPortCounters->portVFXmitWait);
+	PrintFunc(dest, "%*sBubbles:                            \n",
+			indent, "");
 	PrintFunc(dest, "%*s    Xmit Wasted BW        %20"PRIu64"\n",
 			indent, "",
 	   		pVFPortCounters->portVFXmitWastedBW);
@@ -590,9 +612,6 @@ void PrintStlPAVFPortCounters(PrintDest_t *dest, int indent, const STL_PA_VF_POR
 	PrintFunc(dest, "%*s    Rcv Bubble            %20"PRIu64"\n",
 			indent, "",
 	   		pVFPortCounters->portVFRcvBubble);
-	PrintFunc(dest, "%*s    Mark FECN             %20"PRIu64"\n",
-			indent, "",
-	   		pVFPortCounters->portVFMarkFECN);
 	if (flags & STL_PA_PC_FLAG_SHARED_VL) {
 		PrintFunc(dest, "\nCounters may be shared between Virtual Fabrics\n\n",
 				indent, "");
@@ -608,7 +627,7 @@ void PrintStlPAVFFocusPorts(PrintDest_t *dest, int indent, const char *vfName, c
 	int i;
 
 	PrintFunc(dest, "%*sVF name: %s\n", indent, "", vfName);
-	PrintFunc(dest, "%*sNumber ports: %u\n", indent, "", numRecords);
+	PrintFunc(dest, "%*sNumber links: %u\n", indent, "", numRecords);
 	PrintFunc(dest, "%*sFocus select: 0x%x\n", indent, "", select);
 	PrintFunc(dest, "%*sFocus start:  %u\n", indent, "", start);
 	PrintFunc(dest, "%*sFocus range:  %u\n", indent, "", range);
@@ -621,10 +640,15 @@ void PrintStlPAVFFocusPorts(PrintDest_t *dest, int indent, const char *vfName, c
 				indent, "", pVFFocusPorts[i].value, pVFFocusPorts[i].neighborValue);
 		PrintFunc(dest, "%*s   GUID:  0x%016"PRIx64"   nbrGuid: 0x%016"PRIx64"\n",
 				indent, "", pVFFocusPorts[i].nodeGUID, pVFFocusPorts[i].neighborGuid);
-		PrintFunc(dest, "%*s   Name: %.*s\n", indent, "",
-				  sizeof(pVFFocusPorts[i].nodeDesc), pVFFocusPorts[i].nodeDesc);
-		PrintFunc(dest, "%*s   Neighbor Name: %.*s\n",
-				indent, "", sizeof(pVFFocusPorts[i].neighborNodeDesc),
+		PrintFunc(dest, "%*s   Status: %s Name: %.*s\n",
+				indent, "",
+				StlFocusFlagToText(pVFFocusPorts[i].localFlags),
+				sizeof(pVFFocusPorts[i].nodeDesc),
+				pVFFocusPorts[i].nodeDesc);
+		PrintFunc(dest, "%*s   Status: %s Neighbor Name: %.*s\n",
+				indent, "",
+				StlFocusFlagToText(pVFFocusPorts[i].neighborFlags),
+				sizeof(pVFFocusPorts[i].neighborNodeDesc),
 				pVFFocusPorts[i].neighborNodeDesc);
 	}
 	PrintStlPAImageId(dest, indent, &pVFFocusPorts[0].imageId);

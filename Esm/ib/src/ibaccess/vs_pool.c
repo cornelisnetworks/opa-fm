@@ -48,8 +48,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //    ib_status.h							/
 //    cs_g.h								/
 //									/
-// RESPONSIBLE ENGINEER							/
-//    Jeff Young							/
 //									/
 // HISTORY								/
 //									/

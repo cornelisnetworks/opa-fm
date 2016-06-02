@@ -35,8 +35,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 * DESCRIPTION
 *   Libnet protocol main routine
 *
-* RESPONSIBLE ENGINEER:
-*   Jason Wiseman 
 *
 * HISTORY
 *
@@ -744,12 +742,31 @@ static NetConnection* AcceptConnection() {
     SOCKET_t sock;
     NetConnection *conn;
     void * sslSession = NULL;
+#ifndef VXWORKS 
+    int optval;
+    const int USER_TIMEOUT = 300000; //5 minutes in milliseconds
+    socklen_t optlen;
+#endif
 
     IB_ENTER(__func__,0,0,0,0);
 
     sock = ACCEPT (G_listenSock_, 
                   (struct sockaddr*) &addr, 
                    (void *)&addrSize);
+ 
+#ifndef VXWORKS 
+    /*
+ *     replacing TCP_USER_TIMEOUT with 18 due to RHEL issue:
+ *        https://bugzilla.redhat.com/show_bug.cgi?id=1219891
+ *     we can revisit this once RHEL 7.2 is minimum supported version
+ *     TBD replace string 18 below with TCP_USER_TIMEOUT */
+    if ( setsockopt(sock, SOL_TCP, 18, &USER_TIMEOUT, sizeof(USER_TIMEOUT)) < 0 ) {  
+        IB_LOG_ERROR0("Cannot setsockopt TCP_USER_TIMEOUT");
+        IB_EXIT(__func__, 0);
+        return(NULL) ;
+    }
+#endif
+
     if (sock == INVALID_SOCKET) {
         IB_LOG_ERROR0("Invalid IPv6 socket");
         IB_EXIT(__func__, 0);
@@ -779,6 +796,17 @@ static NetConnection* AcceptConnection() {
         IB_EXIT(__func__, 0);
         return(NULL) ;
     }
+
+#ifndef VXWORKS 
+    /* TBD replace 18 with TCP_USER_TIMEOUT */
+    if ( getsockopt(sock, SOL_TCP, 18, &optval, &optlen) < 0 ) {
+        IB_LOG_ERROR0("Cannot getsockopt: TCP_USER_TIMEOUT");
+        IB_EXIT(__func__, 0);
+        return(NULL) ;
+    }
+    if (optval!=USER_TIMEOUT) IB_LOG_WARN0("Cannot set TCP_USER_TIMEOUT");
+#endif
+
     conn->sock = sock;
     conn->sslSession = sslSession;
     conn->id = G_numConnections_++;

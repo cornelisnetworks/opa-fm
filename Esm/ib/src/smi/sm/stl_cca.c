@@ -165,9 +165,6 @@ Status_t stl_sm_cca_configure_hfi(Node_t *nodep)
 			portp->portData->hfiCongCon = hfiCongCon;
 		}
 
-		hfiCongSett.Port_Control = sm_config.congestion.ca.sl_based ? 
-									CC_HFI_CONGESTION_SETTING_SL_PORT : 0;
-		hfiCongSett.Control_Map = 0xffffffff;
 
 		for (i = 0; i < STL_MAX_SLS; ++i) {
 			STL_HFI_CONGESTION_SETTING_ENTRY *current = &hfiCongSett.HFICongestionEntryList[i];
@@ -178,6 +175,13 @@ Status_t stl_sm_cca_configure_hfi(Node_t *nodep)
 			current->CCTI_Min = sm_config.congestion.ca.min;
 		}
 	}
+	
+
+	hfiCongSett.Port_Control = sm_config.congestion.ca.sl_based ? 
+									CC_HFI_CONGESTION_SETTING_SL_PORT : 0;
+	//FM code always updates each SL settings, we have not implemented a way to
+	//change settings on individual SLs, so Control_map bits always set. 
+	hfiCongSett.Control_Map = 0xffffffff;
 
 	status = SM_Set_HfiCongestionSetting(fd_topology, 0, nodep->path, &hfiCongSett, sm_config.mkey);
 	if (status != VSTATUS_OK) {

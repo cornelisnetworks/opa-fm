@@ -34,8 +34,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * DESCRIPTION
  *    FMI sm_diag utility used to control and diagnose a local SM instance
  *
- * RESPONSIBLE ENGINEER
- *    John Seraphin
  *
  */
 #include <stdio.h>
@@ -147,21 +145,18 @@ static command_t commandList[] = {
 static int commandListLen = (sizeof(commandList)/sizeof(commandList[0]));
 
 
-void
-usage(char *cmd)
+void usage(char *cmd)
 {
 	int i;
 
-	fprintf(stderr, "USAGE: %s", cmd);
-	fprintf(stderr, " [OPTIONS] COMMAND [COMMAND ARGS]\n\n");
+	fprintf(stderr, "Usage: %s", cmd);
+	fprintf(stderr, " [options] cmd [args]\n\n");
 
-	fprintf(stderr,
-			"OPTIONS:\n");
-	fprintf(stderr, "  -i <VAL>\t\tinstance to connect to (0 - default)\n");
-	//fprintf(stderr, "  -d <VAL>\t\tdestination ip address or hostname. (Use to connect to a remote instance)\n");
+	fprintf(stderr, "options:\n");
+	fprintf(stderr, "  --help             - show this help text)\n");
+	fprintf(stderr, "  -i fm_instance     - FM instance to connect to (0 - default)\n\n");
 
-	fprintf(stderr,
-			"COMMANDS:\n");
+	fprintf(stderr, "cmd:\n");
 	for(i=0;i<commandListLen;i++){
 		fprintf(stderr, "  %-21s %s\n",commandList[i].name,commandList[i].desc);
 	}
@@ -1020,7 +1015,7 @@ int main(int argc, char *argv[]) {
 	int						i;
 
 	/* Get options at the command line (overide default values) */
-    strcpy(Opts, "i:d:h-");
+    strcpy(Opts, "+i:d:h-");
 
     while ((arg = getopt(argc, argv, Opts)) != EOF) {
         switch (arg) {

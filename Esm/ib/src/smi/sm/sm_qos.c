@@ -433,41 +433,69 @@ slscFixedAssign(int startVL, int endVL, bitset_t * SLs, Qos_t * qos, int high, V
         numSLs -= numZeroSLs;
         numVls -= numZeroVls;
 
-        i=0; vl = startVL; sl = pos[0];
 
-        // Allocate the zero rank SCs to VLs
-        int SLsForThisVL;
-        int SLsperVl = (numZeroVls ? numZeroSLs/numZeroVls : 0);
-        int extraSLs = (numZeroVls ? numZeroSLs%numZeroVls : 0);
-        while ((numZeroVls--) && (sl!=0xff)) {
-            bitset_set(prioVL, vl);
-            SLsForThisVL = SLsperVl + ((extraSLs-- > 0) ? 1 : 0);
-            scOffset = 0;
-            while ((SLsForThisVL--) && (sl!=0xff)) {
-                if ((vl+scOffset) == 15) scOffset += qos->numVLs;
-                if ((vl>=STL_MAX_VLS) || (sl>=STL_MAX_VLS) || (i>=STL_MAX_SLS) || (vl+scOffset>=STL_MAX_SCS)){
-                    IB_LOG_ERROR_FMT(__func__,
-                        "No preempt indices out of range: vl:%d, sl:%d, rank:%d, sc:%d", vl, sl, i, vl+scOffset);
-                    break;
+        // Allocate the zero rank SCs to VLs, while making our best effort to evenly spread
+        // bandwidth usage across VLs
+
+        //first do an in-place sort of rank 0 SLs bringing biggest BW users 
+        //to front of the list. List is small so use selection sort for code
+        //simplicity
+        for(i=0; i<numZeroSLs-1; i++) {
+            int largestIdx = i, largestBW = sm_SlBandwidthAllocated[pos[i]];;
+            int j;
+            for(j=i+1; j<numZeroSLs; j++) {
+                sl = pos[j];
+                if(sm_SlBandwidthAllocated[sl] > largestBW) {
+                    largestBW = sm_SlBandwidthAllocated[sl];
+                    largestIdx = j;
                 }
-                qos->vlBandwidth[vl] += sm_SlBandwidthAllocated[sl]; 
-                sm_SLtoSC[sl] = vl+scOffset; // SC::VL is 1::1 in fixed maps!
-                sm_SCtoSL[vl+scOffset] = sl;
-				i++;
-                if (i>=STL_MAX_SLS) {
-                    IB_LOG_ERROR_FMT(__func__,
-                        "No preempt indices out of range: vl:%d, sl:%d, rank:%d, sc:%d", vl, sl, i, vl+scOffset);
-                    break;
-                }
-                sl = pos[i];
-                scOffset += qos->numVLs;
             }
-            vl++;
+			if(i != largestIdx) {
+                int temp;
+                temp            = pos[i];
+                pos[i]          = pos[largestIdx];
+                pos[largestIdx] = temp;
+			}
         }
 
+        i = 0; sl = pos[i]; int scOffsetForVL[STL_MAX_VLS] = {0};
+        while((numZeroSLs--) && (sl!=0xff)) {
+            int leastUsedVlBw = 0xffff; int leastUsedVl = startVL;
+            //find vl with least bandwidth assigned and map this SL to it
+            for(vl = startVL; vl < startVL+numZeroVls; vl++) {
+                if(qos->vlBandwidth[vl] < leastUsedVlBw) {
+                    leastUsedVlBw = qos->vlBandwidth[vl];
+                    leastUsedVl = vl;
+                }
+            }
+            if(leastUsedVl + scOffsetForVL[leastUsedVl] == 15) 
+                scOffsetForVL[leastUsedVl] += qos->numVLs;
+            if ((leastUsedVl>=STL_MAX_VLS) || (sl>=STL_MAX_VLS) || (i>=STL_MAX_SLS) || (leastUsedVl+scOffsetForVL[leastUsedVl]>=STL_MAX_SCS)){
+                IB_LOG_ERROR_FMT(__func__,
+                        "No preempt indices out of range: vl:%d, sl:%d, rank:%d, sc:%d", vl, sl, i, leastUsedVl+scOffsetForVL[leastUsedVl]);
+                break;
+            }
+
+            bitset_set(prioVL, leastUsedVl);
+            qos->vlBandwidth[leastUsedVl] += sm_SlBandwidthAllocated[sl];
+            sm_SLtoSC[sl] = leastUsedVl+scOffsetForVL[leastUsedVl]; // SC::VL is 1::1 in fixed maps!
+            sm_SCtoSL[leastUsedVl+scOffsetForVL[leastUsedVl]] = sl;
+            i++;
+            if (i>=STL_MAX_SLS) {
+                 IB_LOG_ERROR_FMT(__func__,
+                       "No preempt indices out of range: vl:%d, sl:%d, rank:%d, sc:%d", vl, sl, i, leastUsedVl+scOffsetForVL[leastUsedVl]);
+                 break;
+            }
+            sl = pos[i];
+            scOffsetForVL[leastUsedVl] += qos->numVLs;
+        }
+	
+
         // Allocate the non-zero rank SLs to VLs
-        SLsperVl = (numVls ? numSLs/numVls : 0);
-        extraSLs = (numVls ? numSLs%numVls : 0);
+        vl = startVL+numZeroVls;
+        int SLsForThisVL;
+        int SLsperVl = (numVls ? numSLs/numVls : 0);
+        int extraSLs = (numVls ? numSLs%numVls : 0);
         while ((numVls--) && (sl!=0xff)) {
             bitset_set(prioVL, vl);
             SLsForThisVL = SLsperVl + ((extraSLs-- > 0) ? 1 : 0);
@@ -729,7 +757,7 @@ setup_vlvfmap(Qos_t * qos, VirtualFabrics_t *VirtualFabrics)
     // Default to no VF per VL
     memset(&qos->vlvf, -1, sizeof(qos->vlvf));
 
-    if (VirtualFabrics->number_of_vfs_all >= MAX_VFABRICS) {
+    if (VirtualFabrics->number_of_vfs_all > MAX_VFABRICS) {
         IB_LOG_ERROR("Unexpected number of VFs", VirtualFabrics->number_of_vfs_all);
         return;
     }
@@ -2346,7 +2374,7 @@ FillLowRR(Node_t * nodep, Port_t * portp, STL_VLARB_TABLE_ELEMENT * vlblockp, Qo
 	currentEntry = 0;
 
 	while (currentEntry < portp->portData->portInfo.VL.ArbitrationLowCap) {
-		interleave = 0;
+
 		for (i = bitset_find_first_one(&highbwVLs); i>=0; 
 		 	 i = bitset_find_next_one(&highbwVLs, i+1)) {
 
@@ -2387,6 +2415,7 @@ FillLowRR(Node_t * nodep, Port_t * portp, STL_VLARB_TABLE_ELEMENT * vlblockp, Qo
 				currentVl = bitset_find_first_one(&vlsInUse);
 			}
 		}
+		interleave = 0;
 
 		if (bitset_nset(&highbwVLs) == 0) {
 			if ((bitset_nset(&vlsInUse) > 0) && totalSlots) {

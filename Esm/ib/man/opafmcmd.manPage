@@ -1,0 +1,368 @@
+.\" .\" *********************************************************************
+.\" .\" *                                                                   *
+.\" .\" *             Copyright 2015-2016, Intel Corporation                *
+.\" .\" *                                                                   *
+.\" .\" *                       All Rights Reserved.                        *
+.\" .\" *                                                                   *
+.\" .\" *********************************************************************
+
+.TH opafmcmd 8 "Intel Corporation" "Copyright(C) 2015\-2016" "Master map: IFSFFCLIRG (Man Page)" 
+.SH NAME
+opafmcmd
+
+.NL
+
+.PP
+Executes a command to a specific instance of the Fabric Manager (FM). This command can be used, for example, to query the configuration attributes of a particular instance of an FM as well as issue subnet management commands.
+.SH Syntax
+.NL
+opafmcmd [-i \fIfm\(ulinstance\fR] \fIcmd\fR[ \fIargs\fR]
+.SH Options
+.NL
+
+.TP 10
+--help 
+.NL
+Produces complete help text.
+
+.TP 10
+-i \fIfm\(ulinstance\fR 
+.NL
+FM instance number to act on. Range = 0 to 7. Default = 0.
+
+.TP 10
+ \fIcmd [args]\fR 
+.NL
+Commands and arguments (if applicable) to be run. Values include:
+
+.RS
+.TP 10
+
+.sp
+smForceSweep 
+Makes the Subnet Manager (SM) sweep now.
+.RE
+
+.RS
+.TP 10
+
+.sp
+smRestorePriority 
+Restores the normal priority of the SM, if it is currently elevated.
+
+.RE
+
+.RS
+.TP 10
+
+.sp
+smShowCounters 
+Gets statistics and performance counters from the SM.
+.RE
+
+.RS
+.TP 10
+
+.sp
+smResetCounters 
+Resets SM statistics and performance counters.
+.RE
+
+.RS
+.TP 10
+
+.sp
+smStateDump 
+Dumps internal SM state into specified directory.
+.RE
+
+.RS
+.TP 10
+
+.sp
+smLogLevel 
+Sets the SM logging level. Values include: 0=NONE+, 1=WARN+, 2=NOTICE+, 3=INFO+, 4=VERBOSE+, 5=DEBUG2+, 6=DEBUG4+, 7=TRACE+
+
+.RE
+
+.RS
+.TP 10
+
+.sp
+smLogMode 
+Sets the SM log mode flags. 0/1 1=downgrade non-actionable, 0/2 2=logfile only.
+
+.RE
+
+.RS
+.TP 10
+
+.sp
+smLogMask 
+Sets the SM log mask for a specific subsystem to the value given. For a list of subsystems and mask bit meanings, see the files /etc/sysconfig/opafm.xml or /opt/opafm/etc/opafm.xml.
+
+.RE
+
+.RS
+.TP 10
+
+.sp
+smPerfDebug 
+Toggles performance debug output for SM.
+.RE
+
+.RS
+.TP 10
+
+.sp
+saPerfDebug 
+Toggles performance debug output for Subnet Administration (SA).
+.RE
+
+.RS
+.TP 10
+
+.sp
+saRmppDebug 
+Toggles Reliable Message Passing Protocol (RMPP) debug output for SA.
+.RE
+
+.RS
+.TP 10
+
+.sp
+pmShowCounters 
+Gets statistics and performance counters for the Performance Manager (PM).
+.RE
+
+.RS
+.TP 10
+
+.sp
+pmResetCounters 
+Resets statistics and performance counters for the PM.
+.RE
+
+.RS
+.TP 10
+
+.sp
+pmDebug 
+Toggles debug output for PM.
+.RE
+
+.RS
+.TP 10
+
+.sp
+pmRmppDebug 
+Toggles RMPP debug output for PM.
+.RE
+
+.RS
+.TP 10
+
+.sp
+feLogLevel 
+Sets the Fabric Executive (FE) logging level. Values include: 0=NONE+, 1=WARN+, 2=NOTICE+, 3=INFO+, 4=VERBOSE+, 5=DEBUG2+, 6=DEBUG4+, 7=TRACE+
+
+.RE
+
+.RS
+.TP 10
+
+.sp
+feLogMode 
+Sets the FE log mode flags. 0/1 1=downgrade non-actionable, 0/2 2=logfile only.
+
+.RE
+
+.RS
+.TP 10
+
+.sp
+feLogMask 
+Sets the FE log mask for a specific subsystem to the value given. For a list of subsystems and mask bit meanings, see the files /etc/sysconfig/opafm.xml or /opt/opafm/etc/opafm.xml 
+
+.RE
+
+.RS
+.TP 10
+
+.sp
+feDebug 
+Toggles debug output for FE.
+.RE
+
+.RS
+.TP 10
+
+.sp
+feRmppDebug 
+Toggles RMPP debug output for FE.
+.RE
+
+.RS
+.TP 10
+
+.sp
+smLooptestStart 
+Starts loop test in normal mode. Specify the number of 256 byte packets. Default = 0.
+.RE
+
+.RS
+.TP 10
+
+.sp
+smLooptestFastModeStart 
+Starts loop test in fast mode. Specify the number of 256 byte packets. Default = 5.
+.RE
+
+.RS
+.TP 10
+
+.sp
+smLooptestStop 
+Stops loop test. Returns switch LFTs back to normal.
+.RE
+
+.RS
+.TP 10
+
+.sp
+smLooptestInjectPackets 
+Enter  \fInumPkts\fR to send to all switch loops. Default = 1.
+
+.RE
+
+.RS
+.TP 10
+
+.sp
+smLooptestInjectAtNode 
+Enter the switch node index to inject loop packets. Default = 0.
+
+.RE
+
+.RS
+.TP 10
+
+.sp
+smLooptestInjectEachSweep 
+Enter 1 to inject packets each sweep. Enter 0 to stop injecting each sweep.
+
+.RE
+
+.RS
+.TP 10
+
+.sp
+smLooptestPathLength 
+Sets the loop path length. Range = 2 - 4. Default = 3.
+
+.RE
+
+.RS
+.TP 10
+
+.sp
+smLooptestMinISLRedundancy 
+Sets the minimum number of loops in which to include each ISL. Default = 4.
+
+.RE
+
+.RS
+.TP 10
+
+.sp
+smLooptestShowLoopPaths 
+Displays the loop paths given node index or all loop paths. Default = all.
+
+.RE
+
+.RS
+.TP 10
+
+.sp
+smLooptestShowSwitchLft 
+Displays a switch LFT given node index or all switches LFTs. Default = all.
+
+.RE
+
+.RS
+.TP 10
+
+.sp
+smLooptestShowTopology 
+Displays the topology for the SM Loop Test.
+
+.RE
+
+.RS
+.TP 10
+
+.sp
+smLooptestShowConfig 
+Displays the current active loop configuration.
+
+.RE
+
+.RS
+.TP 10
+
+.sp
+smForceRebalance 
+Toggles Force Rebalance setting for SM.
+
+.RE
+
+.RS
+.TP 10
+
+.sp
+smAdaptiveRouting 
+Displays or modifies Adaptive Routing setting for SM. If no arguments are entered, displays current setting. Enter 0 to Disable. Enter 1 to Enable.
+
+.RE
+
+.RS
+.TP 10
+
+.sp
+smForceAttributeRewrite 
+Sets rewriting of all attributes upon resweeping. Enter 0 to Disable. Enter 1 to Enable.
+
+.RE
+
+.RS
+.TP 10
+
+.sp
+smSkipAttrWrite 
+Bitmask of attributes to be skipped (not written) during sweeps. Enter -help for list of options.
+
+.RE
+
+.RS
+.TP 10
+
+.sp
+smPauseSweeps 
+Pauses SM sweeps.
+
+.RE
+
+.RS
+.TP 10
+
+.sp
+smResumeSweeps 
+Resumes SM sweeps.
+
+.RE
+
+.SH Example 
+.NL
+opafmcmd smForceSweep
+.br
+opafmcmd #8217#8211;i 2 smLogLevel 3

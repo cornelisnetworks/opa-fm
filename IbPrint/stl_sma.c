@@ -36,7 +36,7 @@ void PrintStlLid(PrintDest_t *dest, int indent, uint32_t lid, int printLineByLin
 {
     if (printLineByLine) 
         PrintIntWithDots(dest, indent, "Lid", lid);
-    else 
+    else
         PrintFunc(dest, "%*s0x%08x\n", indent, "", lid);
 }
 
@@ -45,7 +45,7 @@ void PrintIntWithDots(PrintDest_t *dest, int indent, const char * name, uint64_t
 {
 	//            0123456789012345678901234567890123456789012345678901234567890  
     char pad[] = ".............................................................";
-    char dataFormat[] = "%*s%s%.*s : 0x%"PRIx64"\n";
+    char dataFormat[] = "%*s%s%.*s : %#"PRIx64"\n";
 	size_t maxDotColumn = 60;
 #ifndef __VXWORKS__
 	int padLen = maxDotColumn-strnlen((const char *)name, maxDotColumn);
@@ -55,6 +55,40 @@ void PrintIntWithDots(PrintDest_t *dest, int indent, const char * name, uint64_t
 #endif
 	PrintFunc(dest, (const char *)dataFormat, indent, "", name, padLen, pad, value);
 }
+
+// PrintIntWithDotsFull is a local function used when outputing structures in line-by-line format
+void PrintIntWithDotsFull(PrintDest_t *dest, int indent, const char * name, uint64_t value)
+{
+	//            0123456789012345678901234567890123456789012345678901234567890  
+    char pad[] = ".............................................................";
+    char dataFormat[] = "%*s%s%.*s : %#018"PRIx64"\n"; //add padding for full width
+	size_t maxDotColumn = 60;
+#ifndef __VXWORKS__
+	int padLen = maxDotColumn-strnlen((const char *)name, maxDotColumn);
+#else
+    size_t strlength = min(strlen((const char *)name), maxDotColumn);
+	int padLen = maxDotColumn-strlength;
+#endif
+	PrintFunc(dest, (const char *)dataFormat, indent, "", name, padLen, pad, value);
+}
+
+
+// PrintIntWithDotsDec is a local function used when outputing structures in line-by-line format
+void PrintIntWithDotsDec(PrintDest_t *dest, int indent, const char * name, uint64_t value)
+{
+	//            0123456789012345678901234567890123456789012345678901234567890  
+    char pad[] = ".............................................................";
+    char dataFormat[] = "%*s%s%.*s : %"PRIu64"\n";
+	size_t maxDotColumn = 60;
+#ifndef __VXWORKS__
+	int padLen = maxDotColumn-strnlen((const char *)name, maxDotColumn);
+#else
+    size_t strlength = min(strlen((const char *)name), maxDotColumn);
+	int padLen = maxDotColumn-strlength;
+#endif
+	PrintFunc(dest, (const char *)dataFormat, indent, "", name, padLen, pad, value);
+}
+
 // PrintStrWithDots is a local function used when outputing structures in line-by-line format
 void PrintStrWithDots(PrintDest_t *dest, int indent, const char * name, const char * value)
 {
@@ -96,9 +130,9 @@ void PrintStlNodeInfo(PrintDest_t *dest, int indent, const STL_NODE_INFO *pNodeI
         PrintIntWithDots(dest, indent, "ClassVersion", pNodeInfo->ClassVersion);
         PrintStrWithDots(dest, indent, "NodeType", StlNodeTypeToText(pNodeInfo->NodeType));
         PrintIntWithDots(dest, indent, "NumPorts", pNodeInfo->NumPorts);
-        PrintIntWithDots(dest, indent, "SystemImageGUID", pNodeInfo->SystemImageGUID);
-        PrintIntWithDots(dest, indent, "NodeGUID", pNodeInfo->NodeGUID);
-        PrintIntWithDots(dest, indent, "PortGUID", pNodeInfo->PortGUID);
+        PrintIntWithDotsFull(dest, indent, "SystemImageGUID", pNodeInfo->SystemImageGUID);
+        PrintIntWithDotsFull(dest, indent, "NodeGUID", pNodeInfo->NodeGUID);
+        PrintIntWithDotsFull(dest, indent, "PortGUID", pNodeInfo->PortGUID);
         PrintIntWithDots(dest, indent, "PartitionCap", pNodeInfo->PartitionCap);
         PrintIntWithDots(dest, indent, "DeviceID", pNodeInfo->DeviceID);
         PrintIntWithDots(dest, indent, "Revision", pNodeInfo->Revision);
@@ -313,10 +347,10 @@ void PrintStlPortInfo(PrintDest_t *dest, int indent, const STL_PORT_INFO *pPortI
 		uint8_t ldr=0;
 
 		if (portGuid) {
-			PrintFunc(dest, "%*sSubnet:   %016"PRIx64"       GUID: 0x%016"PRIx64"\n",
+			PrintFunc(dest, "%*sSubnet:   %#018"PRIx64"       GUID: %#018"PRIx64"\n",
 				indent, "", pPortInfo->SubnetPrefix, portGuid);
 		} else {
-			PrintFunc(dest, "%*sSubnet:   %016"PRIx64"\n",
+			PrintFunc(dest, "%*sSubnet:   %#018"PRIx64"\n",
 				indent, "", pPortInfo->SubnetPrefix);
 		}
 
@@ -1132,25 +1166,28 @@ void PrintStlHfiCongestionControlTab(PrintDest_t *dest, int indent, const STL_HF
     char tempBuf[64];
     if (printLineByLine) {
         PrintIntWithDots(dest, indent, "CCTI_Limit", pHfiCongestionControl->CCTI_Limit);
-        for (block = 0 + (start/STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES); block < cnt; ++block) {
-            for(i = 0 + MIN(0, (start - (block * STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES))); i < STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES; ++i){
+        for (block = 0; block < cnt; ++block) {
+            for(i = 0; i < STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES; ++i){
                 if (printLineByLine >= 2) {
-                    snprintf(tempBuf, sizeof(tempBuf), "CCT_Block_List[%d].CCT_Entry_List[%d].AsReg16", block, i);
+                    snprintf(tempBuf, sizeof(tempBuf), "CCT_Block_List[%d].CCT_Entry_List[%d].AsReg16", block + start, i);
                     PrintIntWithDots(dest, indent, tempBuf, pHfiCongestionControl->CCT_Block_List[block].CCT_Entry_List[i].AsReg16);
                 }
-                snprintf(tempBuf, sizeof(tempBuf), "CCT_Block_List[%d].CCT_Entry_List[%d].s.CCT_Shift", block, i);
+                snprintf(tempBuf, sizeof(tempBuf), "CCT_Block_List[%d].CCT_Entry_List[%d].s.CCT_Shift", block + start, i);
                 PrintIntWithDots(dest, indent, tempBuf, pHfiCongestionControl->CCT_Block_List[block].CCT_Entry_List[i].s.CCT_Shift);
-                snprintf(tempBuf, sizeof(tempBuf), "CCT_Block_List[%d].CCT_Entry_List[%d].s.CCT_Multiplier", block, i);
+                snprintf(tempBuf, sizeof(tempBuf), "CCT_Block_List[%d].CCT_Entry_List[%d].s.CCT_Multiplier", block + start, i);
                 PrintIntWithDots(dest, indent, tempBuf, pHfiCongestionControl->CCT_Block_List[block].CCT_Entry_List[i].s.CCT_Multiplier);
             }
         }
     } else {
     	PrintFunc(dest, "%*sMax CCTI: %u\n", indent, "", pHfiCongestionControl->CCTI_Limit);
     	PrintFunc(dest, "%*sCCT Entries:\n", indent, "");
-    	for (i = 0 + start; i < cnt * STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES; ++i) {
-            const STL_HFI_CONGESTION_CONTROL_TABLE_ENTRY *cursor = &pHfiCongestionControl->CCT_Block_List[i/STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES].CCT_Entry_List[i%STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES];
-            PrintFunc(dest, "%*sEntry %u: Shift %u, Multiplier: %u\n", indent+4, "", i, 
-                cursor->s.CCT_Shift, cursor->s.CCT_Multiplier);
+    	for (block = 0; block < cnt; ++block) {
+            PrintFunc(dest, "%*sBlock %u:\n", indent+3, "", block + start);
+            for (i = 0; i < STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES; ++i) {
+                const STL_HFI_CONGESTION_CONTROL_TABLE_ENTRY *cursor = &pHfiCongestionControl->CCT_Block_List[block].CCT_Entry_List[i];
+                PrintFunc(dest, "%*sEntry %u: Shift %u, Multiplier: %u\n", indent+4, "", i, 
+                    cursor->s.CCT_Shift, cursor->s.CCT_Multiplier);
+            }
         }
     }
 }
@@ -1406,7 +1443,7 @@ void PrintStlSMInfo(PrintDest_t *dest, int indent, const STL_SM_INFO *pSMInfo, S
         if (lid) {
             PrintIntWithDots(dest, indent, "LID", lid);
         }
-        PrintIntWithDots(dest, indent, "PortGUID", pSMInfo->PortGUID);
+        PrintIntWithDotsFull(dest, indent, "PortGUID", pSMInfo->PortGUID);
         PrintIntWithDots(dest, indent, "SM_Key", pSMInfo->SM_Key);
         PrintIntWithDots(dest, indent, "ActCount", pSMInfo->ActCount);
         PrintIntWithDots(dest, indent, "ElapsedTime", pSMInfo->ElapsedTime);
@@ -1739,7 +1776,6 @@ void PrintStlCableInfo(PrintDest_t *dest, int indent, const uint8_t *cableInfoDa
 						(j?",":""), cableInfoData[i * 16 + j] );
 				PrintStrWithDots(dest, indent, tempBuf, tempVal);
 			}
-			PrintStrWithDots(dest, indent, "", "");
 		}
 		else {
 			PrintFunc(dest, "%*sCableInfo Dump of Received Address and Data:\n", indent, "");
@@ -1750,7 +1786,6 @@ void PrintStlCableInfo(PrintDest_t *dest, int indent, const uint8_t *cableInfoDa
 					PrintFunc(dest, " %.2x", cableInfoData[i * 16 + j]);
 				PrintFunc(dest, "\n");
 			}
-			PrintFunc(dest, "\n");
 		}
 	}
 
@@ -1896,33 +1931,33 @@ void PrintStlCableInfo(PrintDest_t *dest, int indent, const uint8_t *cableInfoDa
 			// Build BRIEF output without dots (68 chars)
 			if (cableLenValid) {
 				StlCableInfoCableTypeToTextLong(cableInfo.dev_tech.s.xmit_tech, cableInfo.connector, tempBuf);
-				PrintFunc(dest, "%*sCable Type: %s\n", indent+4, "", tempBuf);
+				PrintFunc(dest, "%*sCable Type: %s\n", indent+6, "", tempBuf);
 			}
 			else {
 				StlCableInfoCableTypeToTextLong(cableInfo.dev_tech.s.xmit_tech, cableInfo.connector, tempBuf);
-				PrintFunc(dest, "%*sModule Type: %s\n", indent+4, "", tempBuf);
-				PrintFunc(dest, "%*sLength Cap: OM2: %um OM3: %um OM4: %um\n", indent+4, "",
+				PrintFunc(dest, "%*sModule Type: %s\n", indent+6, "", tempBuf);
+				PrintFunc(dest, "%*sLength Cap: OM2: %um OM3: %um OM4: %um\n", indent+6, "",
 					StlCableInfoOM2Length(cableInfo.len_om2), StlCableInfoOM3Length(cableInfo.len_om3),
 					StlCableInfoOM4Length(cableInfo.len_om4, cableLenValid));
 			}
 			if (activeCable) {
 				StlCableInfoBitRateToText(cableInfo.bit_rate_low, cableInfo.bit_rate_high, tempBuf);
-				PrintFunc(dest, "%*sMax Temp: %u C Speed Sup: %s\n", indent+4, "", cableInfo.max_case_temp, tempBuf);
+				PrintFunc(dest, "%*sMax Temp: %u C Speed Sup: %s\n", indent+6, "", cableInfo.max_case_temp, tempBuf);
 			}
 			else {
-				PrintFunc(dest, "%*sMax Temp: %u C\n", indent+4, "", cableInfo.max_case_temp);
+				PrintFunc(dest, "%*sMax Temp: %u C\n", indent+6, "", cableInfo.max_case_temp);
 			}
 			if (detail == CABLEINFO_DETAIL_BRIEF)
 				break;
 
 			// Build VERBOSE output without dots (68 chars)
 			PrintFunc(dest, "%*sTX SI: CDR: %s EQ: Fixed Cap: %s Auto Cap: %s Squelch En: %s\n",
-				indent+4, "", StlCableInfoCDRToText(cableInfo.ext_ident.s.tx_cdr_supp, cableInfo.rxtx_opt_cdrsquel.s.tx_cdr_ctrl),
+				indent+6, "", StlCableInfoCDRToText(cableInfo.ext_ident.s.tx_cdr_supp, cableInfo.rxtx_opt_cdrsquel.s.tx_cdr_ctrl),
 				cableInfo.rxtx_opt_equemp.s.tx_inpeq_fixpro_cap ? "Y" : "N",
 				cableInfo.rxtx_opt_equemp.s.tx_inpeq_autadp_cap ? "Y" : "N",
 				cableInfo.rxtx_opt_cdrsquel.s.tx_squel ? "Y" : "N");
 			PrintFunc(dest, "%*sRX SI: CDR: %s Emph Cap: %s Ampl Cap: %s\n",
-				indent+4, "", StlCableInfoCDRToText(cableInfo.ext_ident.s.rx_cdr_supp, cableInfo.rxtx_opt_cdrsquel.s.rx_cdr_ctrl),
+				indent+6, "", StlCableInfoCDRToText(cableInfo.ext_ident.s.rx_cdr_supp, cableInfo.rxtx_opt_cdrsquel.s.rx_cdr_ctrl),
 				cableInfo.rxtx_opt_equemp.s.rx_outemp_fixpro_cap ? "Y" : "N",
 				cableInfo.rxtx_opt_equemp.s.rx_outamp_fixpro_cap ? "Y" : "N");
 			break;
@@ -2179,7 +2214,7 @@ void PrintStlPortSummary(PrintDest_t *dest, int indent, const char* portName, co
 		// always return all related fields from the summary
 		PrintStrWithDots(dest, indent, "PortName", portName);
 		if (portGuid)
-			PrintIntWithDots(dest, indent, "PortGUID", portGuid);
+			PrintIntWithDotsFull(dest, indent, "PortGUID", portGuid);
 		if (show_address)
 			PrintIntWithDots(dest, indent, "SubnetPrefix", pPortInfo->SubnetPrefix);
 		if (pPortInfo->PortStates.s.PortState == IB_PORT_DOWN) {
@@ -2229,9 +2264,9 @@ void PrintStlPortSummary(PrintDest_t *dest, int indent, const char* portName, co
 		}
 		if (show_address) {
 			PrintIntWithDots(dest, indent, "LID", (uint32)pPortInfo->LID);
-			PrintIntWithDots(dest, indent, "s1.LMC", (uint32)pPortInfo->s1.LMC);
+			PrintIntWithDots(dest, indent, "LMC", (uint32)pPortInfo->s1.LMC);
 			PrintIntWithDots(dest, indent, "MasterSMLID", (uint32)pPortInfo->MasterSMLID);
-			PrintIntWithDots(dest, indent, "s2.MasterSMSL", (uint32)pPortInfo->s2.MasterSMSL);
+			PrintIntWithDots(dest, indent, "MasterSMSL", (uint32)pPortInfo->s2.MasterSMSL);
 		}
 	} else {
 		char tempBuf[64];

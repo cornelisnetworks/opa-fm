@@ -54,11 +54,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //#include "cs_info_file.h"
 
 #ifndef FALSE
-	#define FALSE 0
+#define FALSE 0
 #endif
 
 #ifndef TRUE
-	#define TRUE 1
+#define TRUE 1
 #endif
 
 #define MAX_INSTANCES 8
@@ -69,6 +69,7 @@ uint8_t		checksum;				// checksum mode - default is FALSE
 uint8_t		embedded;				// is it called internally ?- default is FALSE
 char		config_file [PATH_MAX+1]; // location and name of the config file
 Pool_t		startup_pool;			// a generic pool for malloc'ing memory
+char 		prog_name[25];
 
 // XML configuration data structure
 FMXmlCompositeConfig_t *xml_config = NULL;
@@ -86,29 +87,77 @@ void		print_checksum_information		(void);
 void* getXmlParserMemory(uint32_t size, char* info);
 void freeXmlParserMemory(void *address, uint32_t size, char* info);
 
+//command line options
+struct option options[]={
+    { "help", no_argument, NULL, '$'},
+    {0}
+};
+
 void
 Usage (void)
 {
-	printf ("config_check [-s] [-c config_file] [-v] [-d]\n");
-	printf ("   -c config file                 " FM_CONFIG_FILENAME "\n");
-	printf ("   -v debugging mode              display debugging and status information\n");
-	printf ("   -s                             strict check mode\n");
-	printf ("   -d                             display configuration checksum information\n");
+	printf ("Usage: %s [-s] [-c config_file] [-v] [-d]\n", prog_name);
+	printf ("         or %s --help\n", prog_name);
+	printf ("\n");
+	printf ("   --help             show this help text\n");            
+	printf ("   -c config file     (default=" FM_CONFIG_FILENAME ")\n");
+	printf ("   -v                 display debugging and status information\n");
+	printf ("   -s                 strict check mode (validate multicast and VF settings)\n");
+	printf ("                      This option will point out inconsistencies or invalid\n");
+	printf ("                      settings in VF and multicast config.\n");
+	printf ("   -d                 display configuration checksum information\n");
+	printf ("\n");
 	// Note - the -e option is not presented to user since it is for embedded use only
+	exit(2);
+}
+
+void
+Usage_full (void)
+{
+	printf ("Usage: %s [-s] [-c config_file] [-v] [-d]\n", prog_name);
+	printf ("         or %s --help\n", prog_name);
+	printf ("\n");
+	printf ("   --help             show this help text\n");            
+	printf ("   -c config file     (default=" FM_CONFIG_FILENAME ")\n");
+	printf ("   -v                 display debugging and status information\n");
+	printf ("   -s                 strict check mode (validate multicast and VF settings)\n");
+	printf ("                      This option will point out inconsistencies or invalid\n");
+	printf ("                      settings in VF and multicast config.\n");
+	printf ("   -d                 display configuration checksum information\n");
+	printf ("\n");
+	printf ("%s parses and verifies the configuration file of a FM.\n",prog_name);
+	printf ("Displays debugging and status information.\n"); 
+	printf ("\n");
+	printf ("Examples:\n");
+	printf ("  %s\n", prog_name);
+	printf ("  %s -v\n", prog_name);
+	printf ("  %s -sv\n", prog_name);
+	// Note - the -e option is not presented to user since it is for embedded use only
+	exit(0);
 }
 
 int
 main (int argc, char *argv []) {
 	int		c;		// used to parse the command line
+	char		tmp[PATH_MAX+1];
+	char *		ptr;
+	int		index;
 	IXmlParserFlags_t parser_flags = IXML_PARSER_FLAG_NONE;
 	
 	debug       = FALSE;
 	checksum    = FALSE;
 	embedded    = FALSE;
-	strcpy (config_file, FM_CONFIG_FILENAME);
+	strncpy (config_file, FM_CONFIG_FILENAME, PATH_MAX);
+	strncpy (tmp, argv[0], PATH_MAX);
+	tmp[PATH_MAX] = 0;
+	ptr = strrchr(tmp, '/');
+	strncpy (prog_name, ptr ? ptr+1 : tmp, 25);
 	
-	while ((c = getopt (argc, argv, "c:vsde")) != -1) {
+	while ((c = getopt_long (argc, argv, "c:vsde", options, &index)) != -1) {
 		switch (c) {
+		case '$':
+			Usage_full ();
+			break;
 		// input config file
 		case 'c':
 			strncpy(config_file, optarg, sizeof(config_file));
@@ -127,13 +176,12 @@ main (int argc, char *argv []) {
 			embedded = TRUE;
 			break;
 		default:
+			fprintf(stderr, "invalid argument -%c\n", c);
 			Usage ();
-			exit (2);
 		}
 	}
 	if (optind < argc) {
-		Usage ();
-		exit (2);
+ 		Usage ();
 	}
 	
 	// Allocate memory for reading and parsing the config file.
