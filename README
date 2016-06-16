@@ -5,7 +5,7 @@ OPA Fabric Manager
 
   1. mkdir -p $HOME/rpmbuild/{SOURCES,RPMS,SRPMS}
   2. tar czf $HOME/rpmbuild/SOURCES/opa-fm.tar.gz --exclude-vcs .
-  3. rpmbuild -ba ./opafm.spec
+  3. rpmbuild -ba ./opa-fm.spec
 
   This will build the opa-fm RPM in $HOME/rpmbuild/RPMS(architecture)/
 

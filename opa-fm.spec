@@ -30,39 +30,26 @@
 #[ICS VERSION STRING: unknown]
 Name: opa-fm
 Version: 10.1.0.0
-Release: 145
+Release: 145%{?dist}
 Summary: Intel Omni-Path Fabric Management Software
 
-Group: System Environment/Daemons
-License: BSD
-Url: http://www.intel.com/
+License: GPLv2 or BSD 
+Url: https://github.com/01org/opa-fm
+# tarball created by:
+# git clone https://github.com/01org/opa-fm.git
+# cd opa-fm
+# tar czf opa-fm.tar.gz --exclude-vcs .
 Source0: %{name}.tar.gz
-BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 ExclusiveArch: x86_64
+# The Intel(R) OPA product line is only available on x86_64 platforms at this time.
 
-Requires: rdma
+Requires: rdma openssl
 
-#BuildRequires: libibverbs-devel >= 1.1-1, libibumad-devel, libibmad-devel
-AutoReq: no
-%if 0%{?rhel} || 0%{?fedora}
 BuildRequires: expat-devel, libibumad-devel, libibverbs-devel, libibmad-devel, openssl-devel
-Requires: expat, libibmad, libibumad, libibverbs, openssl
-%else
-Requires: libexpat1, libibmad5, libibumad, libibverbs1, openssl
-BuildRequires: libexpat-devel, libibumad-devel, libibverbs-devel, libibmad5-devel, libopenssl-devel
-%endif
 
-%if 0%{?suse_version} >= 1210 || 0%{?rhel} >= 7 || 0%{?fedora}
-BuildRequires: systemd %{?systemd_requires} %{?BuildRequires}
-Requires: systemd %{?systemd_requires}
-%else
+%if 0%{?rhel} && 0%{?rhel} < 7
 Requires(post): /sbin/chkconfig
 Requires(preun): /sbin/chkconfig
-%endif
-ExcludeArch: s390, s390x
-
-%if 0%{?suse_version} >= 1110
-%debug_package
 %endif
 
 %description
@@ -129,9 +116,6 @@ ln -s /opt/opafm/bin/fm_cmdall $RPM_BUILD_ROOT%{_sbindir}/opafmcmdall
 cd stage.rpm
 cp -t $RPM_BUILD_ROOT%{_mandir}/man8 %fm_mans
 
-%clean
-rm -rf $RPM_BUILD_ROOT
-
 %post
 if [ $1 = 1 ]; then
 	if [ $(command -v systemctl) ]; then
@@ -150,7 +134,6 @@ if [ $1 = 1 ] || [ $1 = 0 ]; then
 fi
 
 %files
-%defattr(-,root,root,-)
 %doc Esm/README 
 
 %if 0%{?rhel} && 0%{?rhel} < 7
@@ -169,7 +152,6 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Thu Oct 09 2014 Kaike Wan <kaike.wan@intel.com> - 10.0.0.0-177
-- Initial version 
-
+* Thu Jun 2 2016 Scott Breyer <scott.j.breyer@intel.com> - 10.1.0.0-145
+- Update to latest from build 10.1.0.0.145 (FM 10.1.0.0.145)
 
