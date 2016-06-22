@@ -2294,6 +2294,152 @@ sm_validate_predef_fields(Topology_t* topop, FabricData_t* pdtop, Node_t * cnp, 
 }
 
 
+static void
+sm_setup_routing_ctrl(Node_t *nodep)
+{
+	STL_NODE_INFO *nodeInfo = &nodep->nodeInfo;
+	uint64_t NodeGUID = nodeInfo->NodeGUID;
+	SmSPRoutingCtrl_t *guidData;
+	SmSPRoutingCtrl_t *defaultData = NULL;
+	SmSPRoutingCtrl_t *nodeData = NULL;
+	SmSPRoutingPort_t *ports;
+	uint16_t portCount;
+	uint16_t defaultCost = 0;
+	int NumPorts = nodeInfo->NumPorts;
+	Port_t *portp;
+	portMap_t pportMap[STL_MAX_PORTS/(sizeof(portMap_t)*8) + 1];
+	portMap_t vportMap[STL_MAX_PORTS/(sizeof(portMap_t)*8) + 1];
+	int i;
+	int pport;
+	int vport;
+	uint8_t *portOrder;
+	Status_t status;
+	uint16_t cost;
+
+	if (nodeInfo->NodeType != NI_TYPE_SWITCH) {
+		return;
+	}
+
+	if (nodep->portOrder) {
+		return;
+	}
+
+	for (guidData = sm_config.SPRoutingCtrl; guidData; guidData = guidData->next) {
+		if (!guidData->guid) {
+			defaultData = guidData;
+		} else if (guidData->guid == NodeGUID) {
+			nodeData = guidData;
+		}
+	}
+	guidData = nodeData ? nodeData : defaultData;
+	if (!guidData) {
+		// nothing to do
+		return;
+	}
+
+	if (nodeData) {
+		// look for a default cost within the node's entry
+		ports = nodeData->ports;
+		portCount = nodeData->portCount;
+		for (i = 0; i < portCount; i++, ports++) {
+			if (!ports->pport) {
+				defaultCost = ports->cost;
+				break;
+			}
+		}
+	}
+	if (!defaultCost && defaultData) {
+		// the node didn't have a default cost, look for a global one
+		ports = defaultData->ports;
+		portCount = defaultData->portCount;
+		for (i = 0; i < portCount; i++, ports++) {
+			if (!ports->pport) {
+				defaultCost = ports->cost;
+				break;
+			}
+		}
+	}
+
+	if (defaultCost) {
+		// pre-initialize cost to the default cost if there is one
+		for_all_ports(nodep, portp) {
+			if (portp->portData) {
+				portp->portData->routingCost = defaultCost;
+			}
+		}
+	}
+
+	status = vs_pool_alloc(&sm_pool, NumPorts*sizeof(*portOrder),
+						   (void *)&portOrder);
+	if (status != VSTATUS_OK) {
+		IB_LOG_ERROR_FMT(__func__, "can't malloc portOrder status=%d",
+						 status);
+		return;
+	}
+	nodep->portOrder = portOrder;
+
+	memcpy(pportMap, guidData->pportMap, sizeof(pportMap));
+	memcpy(vportMap, guidData->vportMap, sizeof(vportMap));
+
+	// process the node's entries
+	ports = guidData->ports;
+	portCount = guidData->portCount;
+	for (i = 0; i < portCount; i++, ports++) {
+		pport = ports->pport;
+		vport = ports->vport;
+		cost = ports->cost;
+		if (cost) {
+			portp = sm_get_port(nodep, pport);
+			if (portp && portp->portData) {
+				portp->portData->routingCost = cost;
+			}
+		}
+		if (vport && (vport <= NumPorts) && pport && (pport <= NumPorts)) {
+			portOrder[vport] = pport;
+		}
+	}
+
+	// add in port order entries from default if not already there
+	if (defaultData && nodeData) {
+		ports = defaultData->ports;
+		portCount = defaultData->portCount;
+		for (i = 0; i < portCount; i++, ports++) {
+			pport = ports->pport;
+			vport = ports->vport;
+			cost = ports->cost;
+			if (cost) {
+				portp = sm_get_port(nodep, pport);
+				if (portp && portp->portData) {
+					portp->portData->routingCost = cost;
+				}
+			}
+			if (portMapTest(pportMap, pport) || portMapTest(vportMap, vport)) {
+				continue;
+			}
+			if (vport && (vport <= NumPorts) && pport && (pport <= NumPorts)) {
+				portOrder[vport] = pport;
+				portMapSet(pportMap, pport);
+				portMapSet(vportMap, vport);
+			}
+		}
+	}
+
+	pport = 1;
+	for (vport = 1; vport <= NumPorts; vport++) {
+		if (!portMapTest(vportMap, vport)) {
+			while (pport <= NumPorts) {
+				if (!portMapTest(pportMap, pport)) {
+					portOrder[vport] = pport++;
+					break;
+				}
+				pport++;
+			}
+		}
+	}
+	return;
+}
+
+
 // the special case of cnp==NULL and cpp==NULL only occurs when SM is trying its
 // its own port, for all other nodes in fabric these will both be supplied
 Status_t
@@ -3253,6 +3399,9 @@ sm_setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t * cnp, Port_t * c
 
 		// initialize VFs for the node
 		smSetupNodeVFs(nodep);
+
+		// setup the routing control data
+		sm_setup_routing_ctrl(nodep);
 	}
 
 	nodep->aggregateEnable = sm_config.use_aggregates;

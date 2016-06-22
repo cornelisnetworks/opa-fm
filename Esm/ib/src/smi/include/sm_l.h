@@ -323,6 +323,7 @@ typedef	struct _PortData {
 	} changes;
 
 	void		*routingData; 	// Private data used by topology algorithm.
+	uint16_t	routingCost;
 	int32_t		initWireDepth;		// Initial wire depth to use for buffer calculations.
 } PortData_t;
 
@@ -369,6 +370,7 @@ typedef	struct _Node {
 	PORT		*pgft;		///< Port Group Forwarding Table
 	uint32_t 	pgftSize; 	///< amount of memory allocated for pgft; should track actual memory allocation, not highest entry in use
 	Port_t		*port;		// ports on this node
+	uint8_t		*portOrder;
 	bitset_t	activePorts;
 	bitset_t	initPorts;
 	bitset_t	vfMember;
@@ -1196,6 +1198,9 @@ void Switch_Enqueue_Type(Topology_t *, Node_t *, int, int);
 	if (NODEP->pgft)	{	\
 		sm_Node_release_pgft(NODEP);		\
 	}\
+	if (NODEP->portOrder)	{	\
+		vs_pool_free(&sm_pool, NODEP->portOrder);	\
+	}\
 	if (NODEP->nodeDescString)	{	\
 		vs_pool_free(&sm_pool, NODEP->nodeDescString);	\
 	}\
@@ -1517,7 +1522,7 @@ static __inline__ Lid_t sm_port_top_lid(Port_t * portp) {
 		(((Z) == STL_LINK_SPEED_12_5G) ? 12500000000ull : 25781250000ull)
 			 
 // Cost should be evenly divisable by (width * SpeedFactor)
-#define	SpeedWidth_to_Cost(X)	((X) ? 2400/(X) : 2400)
+#define	SpeedWidth_to_Cost(X)	(((X) && !sm_config.hypercube) ? 2400/(X) : 2400)
 
 static __inline__ uint8_t sm_GetLsf(STL_PORT_INFO *portInfo) {
 	return (Decode_SpeedFactor(portInfo->LinkSpeed.Active));
@@ -1535,7 +1540,7 @@ static __inline__ uint16_t sm_GetSpeed(PortData_t *portData) {
 }
 
 static __inline__ uint16_t sm_GetCost(PortData_t *portData) {
-	return (SpeedWidth_to_Cost(sm_GetSpeed(portData)));
+	return (portData->routingCost ? portData->routingCost : SpeedWidth_to_Cost(sm_GetSpeed(portData)));
 }
 
 static __inline__ char* sm_nodeDescString(Node_t *nodep) {

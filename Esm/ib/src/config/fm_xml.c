@@ -34,6 +34,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/stat.h>
 #include <sys/types.h>
 #include "if3.h"
+#include <inttypes.h>
 
 
 #ifndef __VXWORKS__
@@ -99,6 +100,8 @@ uint32_t scpInProcess = 0;
 #ifndef add_quotes
 #define add_quotes(x) stringize(x)
 #endif
+
+#define PORTS_ALLOC_UNIT 8
 
 #ifndef __VXWORKS__
 int af_licensed = 0;
@@ -1466,15 +1469,40 @@ void feShowConfig(FEXmlConfig_t *fep)
 	printf("XML - subnet_size %u\n", (unsigned int)fep->subnet_size);
 }
 
+void smFreeSPRoutingCtrl(SMXmlConfig_t *smp)
+{
+	SmSPRoutingCtrl_t *SPRoutingCtrl;
+
+	SPRoutingCtrl = smp->SPRoutingCtrl;
+	if (SPRoutingCtrl == (void *)~0ul) {
+		SPRoutingCtrl = NULL;
+	}
+	while (SPRoutingCtrl) {
+		int portsSize = ROUNDUP(SPRoutingCtrl->portCount, PORTS_ALLOC_UNIT);
+
+		if (portsSize) {
+			freeXmlMemory(SPRoutingCtrl->ports, portsSize*sizeof(*SPRoutingCtrl->ports),
+						  "SmSPRoutingPort_t *ports");
+		}
+		freeXmlMemory(SPRoutingCtrl, sizeof(SmSPRoutingCtrl_t), "SmSPRoutingCtrl_t *SPRoutingCtrl");
+		SPRoutingCtrl = SPRoutingCtrl->next;
+	}
+	smp->SPRoutingCtrl = NULL;
+}
+
 // Free SM configs
 void smFreeConfig(SMXmlConfig_t *smp)
 {
+	smFreeSPRoutingCtrl(smp);
 	freeXmlMemory(smp, sizeof(SMXmlConfig_t), "SMXmlConfig_t smFreeConfig()");
 }
 
 // Copy SM configs
 boolean smCopyConfig(SMXmlConfig_t *dst, SMXmlConfig_t *src)
 {
+	SmSPRoutingCtrl_t *SPRoutingCtrl;
+	SmSPRoutingCtrl_t **prev;
+
 	if (!src || !dst)
 		return 0;
 
@@ -1483,6 +1511,42 @@ boolean smCopyConfig(SMXmlConfig_t *dst, SMXmlConfig_t *src)
 
 	// Copy everything first, then handle the qmap
 	*dst = *src;
+
+	// Make a copy of the SPRoutingCtrl
+	SPRoutingCtrl = src->SPRoutingCtrl;
+	prev = &dst->SPRoutingCtrl;
+	if (SPRoutingCtrl == (void *)~0ul) {
+		SPRoutingCtrl = NULL;
+	}
+	while (SPRoutingCtrl) {
+		int portsSize = ROUNDUP(SPRoutingCtrl->portCount, PORTS_ALLOC_UNIT);
+		SmSPRoutingCtrl_t *dstSPRoutingCtrl;
+
+		dstSPRoutingCtrl = getXmlMemory(sizeof(*dstSPRoutingCtrl), "SmSPRoutingCtrl_t *dstSPRoutingCtrl");
+		if (!dstSPRoutingCtrl) {
+			fprintf(stderr, "%s: Memory limit exceeded for dstSPRoutingCtrl\n",
+					__FUNCTION__);
+			return FALSE;
+		}
+		memcpy(dstSPRoutingCtrl, SPRoutingCtrl, sizeof(*dstSPRoutingCtrl));
+		if (portsSize) {
+			SmSPRoutingPort_t *ports;
+
+			ports = getXmlMemory(portsSize*sizeof(*ports), "SmSPRoutingPort_t *ports");
+			if (!ports) {
+				fprintf(stderr, "%s: Memory limit exceeded for ports\n",
+						__FUNCTION__);
+				return FALSE;
+			}
+			memcpy(ports, SPRoutingCtrl->ports, portsSize*sizeof(*ports));
+			dstSPRoutingCtrl->ports = ports;
+		}
+		*prev = dstSPRoutingCtrl;
+		prev = &dstSPRoutingCtrl->next;
+
+		SPRoutingCtrl = SPRoutingCtrl->next;
+	}
+
 	return 1;
 }
 
@@ -1511,6 +1575,8 @@ void smClearConfig(SMXmlConfig_t *smp)
 		memset(&smp->dgRouting.dg[i], 0, sizeof(smp->dgRouting.dg[i]));
 	}
 
+	smFreeSPRoutingCtrl(smp);
+
 	// assume Sm is starting unless overridden or FM parent is not starting
 	smp->start = 1;
 }
@@ -1520,6 +1586,7 @@ void smInitConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 {
 	DGConfig_t *dg;
 	uint32_t i;
+	SmSPRoutingCtrl_t *SPRoutingCtrl;
 
 	if (!smp || !dplp || !mcp || !mlsp || !dgp)
 		return;
@@ -1559,6 +1626,7 @@ void smInitConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 	DEFAULT_AND_CKSUM_U32(smp->node_appearance_msg_thresh, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(smp->spine_first_routing, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(smp->shortestPathBalanced, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_U32(smp->hypercube, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_U32(smp->lid, 0x0, CKSUM_OVERALL_DISRUPT);
 
 	DEFAULT_U32(smp->lmc, 0x0);
@@ -1717,6 +1785,24 @@ void smInitConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 
 	for (i = 0; i < smp->dgRouting.dgCount; i++) {
 		CKSUM_STR(smp->dgRouting.dg[i].member, CKSUM_OVERALL_DISRUPT_CONSIST);
+	}
+
+	SPRoutingCtrl = smp->SPRoutingCtrl;
+	if (SPRoutingCtrl == (void *)~0ul) {
+		SPRoutingCtrl = NULL;
+		smp->SPRoutingCtrl = NULL;
+	}
+	while (SPRoutingCtrl) {
+		SmSPRoutingPort_t *ports = &SPRoutingCtrl->ports[i];
+		int portCount = SPRoutingCtrl->portCount;
+
+		CKSUM_DATA(SPRoutingCtrl->guid, CKSUM_OVERALL_DISRUPT_CONSIST);
+		for (i = 0; i < portCount; i++, ports++) {
+			CKSUM_DATA(ports->pport, CKSUM_OVERALL_DISRUPT_CONSIST);
+			CKSUM_DATA(ports->vport, CKSUM_OVERALL_DISRUPT_CONSIST);
+			CKSUM_DATA(ports->cost, CKSUM_OVERALL_DISRUPT_CONSIST);
+		}
+		SPRoutingCtrl = SPRoutingCtrl->next;
 	}
 
 #ifdef CONFIG_INCLUDE_DOR
@@ -1888,6 +1974,7 @@ void smShowConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 {
 	uint32_t i;
 	char     str[32];
+	SmSPRoutingCtrl_t *SPRoutingCtrl;
 
 	if (!smp || !dplp || !mcp || !mlsp)
 		return;
@@ -1922,6 +2009,7 @@ void smShowConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 	printf("XML - node_appearance_msg_thresh %u\n", (unsigned int)smp->node_appearance_msg_thresh);
 	printf("XML - spine_first_routing %u\n", (unsigned int)smp->spine_first_routing);
 	printf("XML - shortestPathBalanced %u\n", (unsigned int)smp->shortestPathBalanced);
+	printf("XML - hypercube %u\n", (unsigned int)smp->hypercube);
 	printf("XML - lid 0x%x\n", (unsigned int)smp->lid);
 	printf("XML - lmc 0x%x\n", (unsigned int)smp->lmc);
 	printf("XML - lmc_e0 0x%x\n", (unsigned int)smp->lmc_e0);
@@ -2028,6 +2116,17 @@ void smShowConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 	printf("XML - ftreeRouting.fis_on_same_tier %u\n", (unsigned int)smp->ftreeRouting.fis_on_same_tier);
 	printf("XML - ftreeRouting.coreSwitches %s\n", smp->ftreeRouting.coreSwitches.member);
 	printf("XML - ftreeRouting.routeLast %s\n", smp->ftreeRouting.routeLast.member);
+	SPRoutingCtrl = smp->SPRoutingCtrl;
+	while (SPRoutingCtrl) {
+		SmSPRoutingPort_t *ports = SPRoutingCtrl->ports;
+		int portCount = SPRoutingCtrl->portCount;
+
+		printf("XML - SPRoutingCtrl.guid = 0x016%"PRIx64", pPort, vPort, cost:", SPRoutingCtrl->guid);
+		for (i = 0; i < portCount; i++, ports++) {
+			printf("XML        %d %d %d\n", ports->pport, ports->vport, ports->cost);
+		}
+		SPRoutingCtrl = SPRoutingCtrl->next;
+	}
 	printf("XML - cableInfoPolicy %u\n", (unsigned int)smp->cableInfoPolicy);
 	printf("XML - terminateAfter %u\n", (unsigned int)smp->terminateAfter);
 	printf("XML - dumpCounters %s\n", smp->dumpCounters);
@@ -5874,6 +5973,127 @@ static IXML_FIELD SmDGRoutingFields[] = {
 	{ NULL }
 };
 
+static IXML_FIELD XmlSPRoutingPortFields[] = {
+	{ tag:"pPort", format:'u', IXML_FIELD_INFO(SmSPRoutingPort_t, pport) },
+	{ tag:"vPort", format:'u', IXML_FIELD_INFO(SmSPRoutingPort_t, vport) },
+	{ tag:"Cost", format:'u', IXML_FIELD_INFO(SmSPRoutingPort_t, cost) },
+	{ NULL }
+};
+
+static void XmlSPRoutingPortParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	SmSPRoutingPort_t *PortData = object;
+	uint8_t pport = PortData->pport;
+	uint8_t vport = PortData->vport;
+	uint16_t cost = PortData->cost;
+	SmSPRoutingCtrl_t *SPRoutingCtrl = parent;
+	portMap_t *pportMap = SPRoutingCtrl->pportMap;
+	portMap_t *vportMap = SPRoutingCtrl->vportMap;
+	SmSPRoutingPort_t *ports = SPRoutingCtrl->ports;
+	uint16_t portCount = SPRoutingCtrl->portCount;
+	uint16_t portsSize = ROUNDUP(portCount, PORTS_ALLOC_UNIT);
+
+	if (xml_parse_debug) {
+		fprintf(stdout, "%s %s instance %u common %u\n", __FUNCTION__,
+				field->tag, (unsigned int)instance, (unsigned int)common);
+	}
+
+	if (!valid) {
+		fprintf(stderr, "Error processing XML %s tag\n", field->tag);
+		return;
+	}
+
+	if (pport >= STL_MAX_PORTS) {
+		IXmlParserPrintError(state, "bad pPort %d", pport);
+		return;
+	}
+	if (vport >= STL_MAX_PORTS) {
+		IXmlParserPrintError(state, "bad vPort %d", vport);
+		return;
+	}
+
+	// check for duplicates
+
+	if (pport) {
+		if (portMapTest(pportMap, pport)) {
+		  IXmlParserPrintError(state, "pPort %d already specified", pport);
+			return;
+		}
+		portMapSet(pportMap, pport);
+	}
+
+	if (vport) {
+		if (portMapTest(vportMap, vport)) {
+		  IXmlParserPrintError(state, "vPort %d already specified", vport);
+			return;
+		}
+		portMapSet(vportMap, vport);
+	}
+
+	if (portCount >= portsSize) {
+		portsSize += PORTS_ALLOC_UNIT;
+		ports = getXmlMemory(portsSize*sizeof(*ports), "SmSPRoutingPort_t *ports");
+		if (!ports) {
+			PRINT_MEMORY_ERROR;
+			return;
+		}
+		if (portCount) {
+			memcpy(ports, SPRoutingCtrl->ports, portCount*sizeof(*ports));
+			freeXmlMemory(SPRoutingCtrl->ports, portCount*sizeof(*ports),
+						  "SmSPRoutingPort_t *ports");
+		}
+		SPRoutingCtrl->ports = ports;
+	}
+	ports += portCount;
+	ports->pport = pport;
+	ports->vport = vport;
+	ports->cost = cost;
+	SPRoutingCtrl->portCount++;
+};
+
+static IXML_FIELD XmlSPRoutingCtrlFields[] = {
+	{ tag:"SwitchGuid", format:'x', IXML_FIELD_INFO(SmSPRoutingCtrl_t, guid) },
+	{ tag:"PortData", format:'k', subfields:XmlSPRoutingPortFields, start_func:IXmlParserStartStruct, end_func:XmlSPRoutingPortParserEnd },
+	{ NULL }
+};
+
+static void XmlSPRoutingCtrlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	SmSPRoutingCtrl_t *XmlSPRoutingCtrl = object;
+	uint64_t guid = XmlSPRoutingCtrl->guid;
+	SMXmlConfig_t *smp = (SMXmlConfig_t*)parent;
+	SmSPRoutingCtrl_t **prev = &smp->SPRoutingCtrl;
+	SmSPRoutingCtrl_t *SPRoutingCtrl = smp->SPRoutingCtrl;
+
+	if (xml_parse_debug) {
+		fprintf(stdout, "%s %s instance %u common %u\n", __FUNCTION__,
+				field->tag, (unsigned int)instance, (unsigned int)common);
+	}
+
+	if (!valid) {
+		fprintf(stderr, "Error processing XML %s tag\n", field->tag);
+		return;
+	}
+
+	// see if we already have this GUID
+	while (SPRoutingCtrl) {
+		if (SPRoutingCtrl->guid == guid) {
+			IXmlParserPrintError(state, "guid 0x%016"PRIx64" already entered",
+								 guid);
+			return;
+		}
+		prev = &SPRoutingCtrl->next;
+		SPRoutingCtrl = *prev;
+	}
+	SPRoutingCtrl = getXmlMemory(sizeof(*SPRoutingCtrl), "SmSPRoutingCtrl_t *SPRoutingCtrl");
+	if (!SPRoutingCtrl) {
+		PRINT_MEMORY_ERROR;
+		return;
+	}
+	*SPRoutingCtrl = *XmlSPRoutingCtrl;
+	*prev = SPRoutingCtrl;
+}
+
 // "Sm/AdaptiveRouting" start tag
 static void* SmAdaptiveRoutingXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr)
 {
@@ -5981,6 +6201,7 @@ static IXML_FIELD SmFields[] = {
 	{ tag:"NodeAppearanceMsgThreshold", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, node_appearance_msg_thresh) },
 	{ tag:"SpineFirstRouting", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, spine_first_routing) },
 	{ tag:"ShortestPathBalanced", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, shortestPathBalanced) },
+	{ tag:"Hypercube", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, hypercube) },
 	{ tag:"PathSelection", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, path_selection), end_func:SmPathSelectionParserEnd },
 	{ tag:"QueryValidation", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, queryValidation) },
 	{ tag:"SmaBatchSize", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, sma_batch_size) },
@@ -6050,6 +6271,7 @@ static IXML_FIELD SmFields[] = {
 	{ tag:"AdaptiveRouting", format:'k', subfields:SmAdaptiveRoutingFields, start_func:SmAdaptiveRoutingXmlParserStart, end_func:SmAdaptiveRoutingXmlParserEnd },
 	{ tag:"FatTreeTopology", format:'k', subfields:SmFtreeRoutingFields, start_func:SmFtreeRoutingXmlParserStart, end_func:SmFtreeRoutingXmlParserEnd },
 	{ tag:"DGShortestPathTopology", format:'k', subfields:SmDGRoutingFields, start_func:SmDGRoutingXmlParserStart, end_func:SmDGRoutingXmlParserEnd },
+	{ tag:"SPRoutingCtrl", format:'k', size:sizeof(SmSPRoutingCtrl_t), subfields:XmlSPRoutingCtrlFields, start_func:IXmlParserStartStruct, end_func:XmlSPRoutingCtrlParserEnd },
 #ifdef CONFIG_INCLUDE_DOR
 	{ tag:"MeshTorusTopology", format:'k', subfields:SmDorRoutingFields, start_func:SmDorRoutingXmlParserStart, end_func:SmDorRoutingXmlParserEnd },
 #endif

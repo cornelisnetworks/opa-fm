@@ -942,6 +942,50 @@
     <!--            and improved SM performance on fat tree-like fabrics.  -->
     <RoutingAlgorithm>shortestpath</RoutingAlgorithm>
 
+    <!-- Hypercube - Toggle to follow hypercube DOR rules with             -->
+    <!-- shortestpath or dgshortestpath RoutingAlgorithm for hypercubes    -->
+    <!-- and meshes cabled in port-to-dimension order.                     -->
+    <Hypercube>0</Hypercube>
+
+    <!-- Example of defining parameters for controlling the (dg)shortest   -->
+    <!-- path routing algorithm.  The order that ports are processed on a  -->
+    <!-- switch during routing can be controlled via virtual port numbers. -->
+    <!-- pPort represents a physical port number for the SwitchGuid,       -->
+    <!-- whereas vPort represents a virtual port number.  The routing is   -->
+    <!-- setup in virtual port order, which by default is the same as      -->
+    <!-- physical port order.  Any physical ports not listed will get the  -->
+    <!-- next unused virtual port in increasing order.  In the example     -->
+    <!-- below, the ports on switch 0x00117501026480fd would be processed  -->
+    <!-- in the order 1 2 3 25 28 4 5 6 7 ...  If the SwitchGuid is not    -->
+    <!-- given, or has the value 0, then that defines a default ordering   -->
+    <!-- for all switches not explicitly listed.  Also, a cost can be      -->
+    <!-- associated with a pPort.  By default the cost is derived from the -->
+    <!-- port speed.  But an override can be installed by defining an      -->
+    <!-- explicit cost.  The shortest path is actually the shortest cost   -->
+    <!-- path.  If pPort is not specified, or is 0, then that specifies    -->
+    <!-- that the cost is associated with all ports for the SwitchGuid (or -->
+    <!-- for all ports if SwitchGuid is not specified, or is 0).           -->
+    <!--SPRoutingCtrl-->
+      <!--SwitchGuid>0x00117501026480fd</SwitchGuid-->
+      <!--PortData-->
+        <!--pPort>25</pPort-->
+        <!--vPort>4</vPort-->
+      <!--/PortData-->
+    <!--/SPRoutingCtrl-->
+    <!--SPRoutingCtrl-->
+      <!--SwitchGuid>0x00117501026480fd</SwitchGuid-->
+      <!--PortData-->
+        <!--pPort>28</pPort-->
+        <!--vPort>5</vPort-->
+        <!--Cost>2450</Cost-->
+      <!--/PortData-->
+    <!--/SPRoutingCtrl-->
+    <!--SPRoutingCtrl-->
+      <!--PortData-->
+        <!--Cost>2500</Cost-->
+      <!--/PortData-->
+    <!--/SPRoutingCtrl-->
+
     <!-- SpineFirstRouting - An option to avoid credit loops in complex    -->
     <!--            fabrics using Intel Switches.                          -->
     <!--            Given equal length routes, this option routes through  -->

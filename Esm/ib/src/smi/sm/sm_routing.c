@@ -214,7 +214,7 @@ sm_routing_alloc_floyds(Topology_t *topop)
 void
 sm_routing_init_floyds(Topology_t *topop)
 {
-	int i, j, k, ij, ik, ki, iNumNodes;
+	int i, j, k, ij, ik, iNumNodes;
 	Node_t *nodep, *neighborNodep;
 	Port_t *portp;
 
@@ -244,8 +244,7 @@ sm_routing_init_floyds(Topology_t *topop)
 				}
 
 				ik = Index(i, k);
-				ki = Index(k, i);
-				topop->cost[ik] = topop->cost[ki] = sm_GetCost(portp->portData);
+				topop->cost[ik] = sm_GetCost(portp->portData);
 			}
 		}
 	}
@@ -285,13 +284,12 @@ sm_routing_calc_floyds(int switches, unsigned short * cost)
 				continue;
 			}
 
-			for (j = i + 1, ij = iNumNodes + i + 1, kj = kNumNodes + i + 1;
-			     j < switches; ++j, ++ij, ++kj) {
+			for (j = 0, ij = iNumNodes, kj = kNumNodes;
+			     j < switches;
+				 ++j, ++ij, ++kj) {
 
 				if ((value = cost[ik] + cost[kj]) < cost[ij]) {
 					cost[ij] = value;
-					// Take advantage of the fact that cost array is symmetric
-					cost[Index(j, i)] = value;
 				}
 			}
 		}

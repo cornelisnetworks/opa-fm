@@ -230,8 +230,11 @@ _select_ports(Topology_t *topop, Node_t *switchp, int endIndex, SwitchportToNext
 	uint16_t best_lidsRouted = 0xffff;
 	uint32_t best_switchLidsRouted = 0xffffffff;
 	int      end_port = 0;
+	int      port;
 	Node_t   *next_nodep;
+	Node_t   *first_nodep = 0;
 	Port_t   *portp;
+	uint8_t  *portOrder = switchp->portOrder;
 	SpineFirstState_t sfstate;
 	SpineFirstResult_t sfres;
 
@@ -240,7 +243,8 @@ _select_ports(Topology_t *topop, Node_t *switchp, int endIndex, SwitchportToNext
 	best_cost = topop->cost[Index(i, j)];
 	_spine_first_reset(&sfstate);
 
-	for_all_physical_ports(switchp, portp) {
+	for (port = 0; port < switchp->nodeInfo.NumPorts; port++) {
+		portp = sm_get_port(switchp, portOrder ? portOrder[port] : port + 1);
 		if (!sm_valid_port(portp) || portp->state <= IB_PORT_DOWN)
 			continue;
 		next_nodep = sm_find_node(topop, portp->nodeno);
@@ -284,9 +288,13 @@ _select_ports(Topology_t *topop, Node_t *switchp, int endIndex, SwitchportToNext
 						best_speed = cur_speed;
 						best_lidsRouted = portp->portData->lidsRouted;
 						best_switchLidsRouted = next_nodep->numLidsRouted;
+						first_nodep = next_nodep;
 						end_port = 0;
 					}
 					else if (selectBest) {
+						if ((sm_config.hypercube) && (next_nodep != first_nodep)) {
+							break;
+						}
 						if (portp->portData->lidsRouted < best_lidsRouted) {
 							best_lidsRouted = portp->portData->lidsRouted;
 							best_switchLidsRouted = next_nodep->numLidsRouted;
