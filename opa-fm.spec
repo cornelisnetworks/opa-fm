@@ -41,9 +41,9 @@ Url: https://github.com/01org/opa-fm
 # tar czf opa-fm.tar.gz --exclude-vcs .
 Source0: %{name}.tar.gz
 ExclusiveArch: x86_64
-# The Intel(R) OPA product line is only available on x86_64 platforms at this time.
+# The Intel OPA product line is only available on x86_64 platforms at this time.
 
-Requires: rdma openssl
+Requires: rdma openssl%{?_isa}
 
 BuildRequires: expat-devel, libibumad-devel, libibverbs-devel, libibmad-devel, openssl-devel
 
@@ -61,9 +61,7 @@ Fabric Executive, and some fabric management tools.
 %setup -q -c
 
 %build
-if [ -d Esm ]; then
-	cd Esm
-fi
+cd Esm
 ./fmbuild -V %{version}.%{release} 
 
 %install
@@ -95,12 +93,7 @@ install -D stage.rpm/config_generate $RPM_BUILD_ROOT/opt/opafm/etc/config_genera
 install -D stage.rpm/opafm $RPM_BUILD_ROOT/opt/opafm/etc/opafm
 install -D stage.rpm/opafm.arch $RPM_BUILD_ROOT/opt/opafm/etc/opafm.arch
 install -D stage.rpm/opafm.info $RPM_BUILD_ROOT/opt/opafm/etc/opafm.info
-if [ -d Esm ]; then
-	sub_dir=Esm/
-else
-	sub_dir=
-fi
-install -D ${sub_dir}ib/src/linux/startup/opafm_src.xml $RPM_BUILD_ROOT/opt/opafm/etc/opafm_src.xml
+install -D Esm/ib/src/linux/startup/opafm_src.xml $RPM_BUILD_ROOT/opt/opafm/etc/opafm_src.xml
 
 install -D stage.rpm/opafm.xml $RPM_BUILD_ROOT/opt/opafm/etc/opafm.xml
 install -D stage.rpm/opaxmlextract $RPM_BUILD_ROOT/opt/opafm/etc/opaxmlextract
