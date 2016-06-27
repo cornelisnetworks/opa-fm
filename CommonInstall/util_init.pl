@@ -175,7 +175,7 @@ sub dot_version($)
 my $LIB_DIR = "/lib";
 my $UVP_LIB_DIR = "/lib";
 my $USRLOCALLIB_DIR = "/usr/local/lib";
-my $OPTIBALIB_DIR = "/opt/opa/lib";
+my $OPTIBALIB_DIR = "/usr/lib/opa-ff/lib";
 my $USRLIB_DIR = "/usr/lib";
 # if different from $LIB_DIR, where to remove libraries from past release
 my $OLD_LIB_DIR = "/lib";
@@ -191,7 +191,7 @@ sub set_libdir()
 		$UVP_CONF_FILE_SOURCE = "uvp.conf.64";
 		$DAT_CONF_FILE_SOURCE = "dat.conf.64";
 		$USRLOCALLIB_DIR = "/usr/local/lib64";
-		$OPTIBALIB_DIR = "/opt/opa/lib64";
+		$OPTIBALIB_DIR = "/usr/lib/opa-ff/lib64";
 		$USRLIB_DIR = "/usr/lib64";
 	}
 }

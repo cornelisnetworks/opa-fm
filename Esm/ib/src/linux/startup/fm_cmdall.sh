@@ -32,7 +32,7 @@
 
 CONFIG_DIR=/etc/sysconfig
 CONFIG_FILE=$CONFIG_DIR/opafm.xml
-IFS_FM_BASE=/opt/opafm # default
+IFS_FM_BASE=/usr/lib/opa-fm # default
 if [ -s $CONFIG_DIR/opa/opafm.info ]
 then
 	# get IFS_FM_BASE

@@ -2698,9 +2698,9 @@ sub install_opa_stack($$)
 
 	# Check $BASE_DIR directory ...exist 
 	check_config_dirs();
-	check_dir("/opt/opa");
+	check_dir("/usr/lib/opa-ff");
 
-	copy_systool_file("$srcdir/comp.pl", "/opt/opa/.comp_ofed_delta.pl");
+	copy_systool_file("$srcdir/comp.pl", "/usr/lib/opa-ff/.comp_ofed_delta.pl");
 
 	install_delta_comp('opa_stack', $install_list);
 
@@ -2794,8 +2794,8 @@ sub uninstall_opa_stack($$)
 	remove_udev_permissions;
 
 	system("rm -rf $ROOT$BASE_DIR/version_delta");
-	system("rm -rf $ROOT/opt/opa/.comp_delta.pl");
-	system "rmdir $ROOT/opt/opa 2>/dev/null";	# remove only if empty
+	system("rm -rf $ROOT/usr/lib/opa-ff/.comp_delta.pl");
+	system "rmdir $ROOT/usr/lib/opa-ff 2>/dev/null";	# remove only if empty
 	system "rmdir $ROOT$BASE_DIR 2>/dev/null";	# remove only if empty
 	system "rmdir $ROOT$OPA_CONFIG_DIR 2>/dev/null";	# remove only if empty
 
@@ -3777,9 +3777,9 @@ sub available_delta_mpisrc()
 sub installed_delta_mpisrc()
 {
 	return ((-e "$ROOT$BASE_DIR/version_delta"
-			&& file_glob("$ROOT/opt/opa/src/MPI/mvapich*.src.rpm") ne ""
-			&& file_glob("$ROOT/opt/opa/src/MPI/openmpi*.src.rpm") ne ""
-			&& file_glob("$ROOT/opt/opa/src/MPI/mpitests*.src.rpm") ne ""));
+			&& file_glob("$ROOT/usr/lib/opa-ff/src/MPI/mvapich*.src.rpm") ne ""
+			&& file_glob("$ROOT/usr/lib/opa-ff/src/MPI/openmpi*.src.rpm") ne ""
+			&& file_glob("$ROOT/usr/lib/opa-ff/src/MPI/mpitests*.src.rpm") ne ""));
 }
 
 # only called if installed_delta_mpisrc is true
@@ -3836,29 +3836,29 @@ sub install_delta_mpisrc($$)
 
 	print_install_banner_delta_comp('delta_mpisrc');
 	install_delta_comp('delta_mpisrc', $install_list);
-	check_dir("/opt/opa/src");
-	check_dir("/opt/opa/src/MPI");
+	check_dir("/usr/lib/opa-ff/src");
+	check_dir("/usr/lib/opa-ff/src/MPI");
 	# remove old versions (.src.rpm and built .rpm files too)
-	system "rm -rf $ROOT/opt/opa/src/MPI/mvapich[-_]*.rpm 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/mvapich2[-_]*.rpm 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/openmpi[-_]*.rpm 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/mpitests[-_]*.rpm 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/make.*.res 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/make.*.err 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/make.*.warn 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/.mpiinfo 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa-ff/src/MPI/mvapich[-_]*.rpm 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa-ff/src/MPI/mvapich2[-_]*.rpm 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa-ff/src/MPI/openmpi[-_]*.rpm 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa-ff/src/MPI/mpitests[-_]*.rpm 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa-ff/src/MPI/make.*.res 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa-ff/src/MPI/make.*.err 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa-ff/src/MPI/make.*.warn 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa-ff/src/MPI/.mpiinfo 2>/dev/null";
 
 	# install new versions
 	foreach my $srpm ( "mvapich2", "openmpi", "mpitests" ) {
 		my $srpmfile = file_glob("$srcdir/$SRPMS_SUBDIR/${srpm}-*.src.rpm");
 		if ( "$srpmfile" ne "" ) {
 			my $file = my_basename($srpmfile);
-			copy_data_file($srpmfile, "/opt/opa/src/MPI/$file");
+			copy_data_file($srpmfile, "/usr/lib/opa-ff/src/MPI/$file");
 		}
 	}
-	copy_systool_file("$srcdir/do_build", "/opt/opa/src/MPI/do_build");
-	copy_systool_file("$srcdir/do_mvapich2_build", "/opt/opa/src/MPI/do_mvapich2_build");
-	copy_systool_file("$srcdir/do_openmpi_build", "/opt/opa/src/MPI/do_openmpi_build");
+	copy_systool_file("$srcdir/do_build", "/usr/lib/opa-ff/src/MPI/do_build");
+	copy_systool_file("$srcdir/do_mvapich2_build", "/usr/lib/opa-ff/src/MPI/do_mvapich2_build");
+	copy_systool_file("$srcdir/do_openmpi_build", "/usr/lib/opa-ff/src/MPI/do_openmpi_build");
 
 	$ComponentWasInstalled{'delta_mpisrc'}=1;
 }
@@ -3878,21 +3878,21 @@ sub uninstall_delta_mpisrc($$)
 	print_uninstall_banner_delta_comp('delta_mpisrc');
 
 	# remove old versions (.src.rpm and built .rpm files too)
-	system "rm -rf $ROOT/opt/opa/src/MPI/mvapich2[-_]*.rpm 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/openmpi[-_]*.rpm 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/mpitests[-_]*.rpm 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/make.*.res 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/make.*.err 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/make.*.warn 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/.mpiinfo 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/do_build 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/do_mvapich2_build 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/do_openmpi_build 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/.mpiinfo 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa-ff/src/MPI/mvapich2[-_]*.rpm 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa-ff/src/MPI/openmpi[-_]*.rpm 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa-ff/src/MPI/mpitests[-_]*.rpm 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa-ff/src/MPI/make.*.res 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa-ff/src/MPI/make.*.err 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa-ff/src/MPI/make.*.warn 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa-ff/src/MPI/.mpiinfo 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa-ff/src/MPI/do_build 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa-ff/src/MPI/do_mvapich2_build 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa-ff/src/MPI/do_openmpi_build 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa-ff/src/MPI/.mpiinfo 2>/dev/null";
 
 	uninstall_delta_comp('delta_mpisrc', $install_list, $uninstalling_list, 'verbose');
-	system "rmdir $ROOT/opt/opa/src/MPI 2>/dev/null"; # remove only if empty
-	system "rmdir $ROOT/opt/opa/src 2>/dev/null"; # remove only if empty
+	system "rmdir $ROOT/usr/lib/opa-ff/src/MPI 2>/dev/null"; # remove only if empty
+	system "rmdir $ROOT/usr/lib/opa-ff/src 2>/dev/null"; # remove only if empty
 	$ComponentWasInstalled{'delta_mpisrc'}=0;
 }
 

@@ -32,9 +32,9 @@
 
 CONFIG_DIR=/etc/sysconfig
 CONFIG_FILE=$CONFIG_DIR/opafm.xml
-OPA_FM_BASE=/opt/opafm # default
+OPA_FM_BASE=/usr/lib/opa-fm # default
 GDB=/usr/bin/gdb
-SM_EXEC=/opt/opafm/runtime/sm 
+SM_EXEC=/usr/lib/opa-fm/runtime/sm 
 
 if [ -s $CONFIG_DIR/opa/opafm.info ]
 then

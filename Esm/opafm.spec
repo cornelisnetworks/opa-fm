@@ -82,8 +82,8 @@ fi
 %define fm_mans opafmcmd.8 opafmcmdall.8
 
 install -D -m 644 stage.rpm/opafm.service $RPM_BUILD_ROOT/usr/lib/systemd/system/opafm.service
-install -D -m 755 stage.rpm/opafmctrl $RPM_BUILD_ROOT/opt/opafm/bin/opafmctrl
-install -D -m 755 stage.rpm/opafmd $RPM_BUILD_ROOT/opt/opafm/bin/opafmd
+install -D -m 755 stage.rpm/opafmctrl $RPM_BUILD_ROOT/usr/lib/opa-fm/bin/opafmctrl
+install -D -m 755 stage.rpm/opafmd $RPM_BUILD_ROOT/usr/lib/opa-fm/bin/opafmd
 
 %if 0%{?rhel} && 0%{?rhel} < 7
 install -D -m 755 stage.rpm/opafm $RPM_BUILD_ROOT%{_sysconfdir}/init.d/opafm
@@ -92,39 +92,39 @@ install -D -m 755 stage.rpm/opafm $RPM_BUILD_ROOT%{_sysconfdir}/init.d/opafm
 install -D -m 644 stage.rpm/opafm.xml $RPM_BUILD_ROOT%{_sysconfdir}/sysconfig/opafm.xml
 install -D -m 755 stage.rpm/opafm.info $RPM_BUILD_ROOT%{_sysconfdir}/sysconfig/opa/opafm.info
 
-install -D stage.rpm/fm_capture $RPM_BUILD_ROOT/opt/opafm/bin/fm_capture
-install -D stage.rpm/fm_cmd $RPM_BUILD_ROOT/opt/opafm/bin/fm_cmd
-install -D stage.rpm/fm_cmdall $RPM_BUILD_ROOT/opt/opafm/bin/fm_cmdall
-install -D stage.rpm/smpoolsize $RPM_BUILD_ROOT/opt/opafm/bin/smpoolsize
+install -D stage.rpm/fm_capture $RPM_BUILD_ROOT/usr/lib/opa-fm/bin/fm_capture
+install -D stage.rpm/fm_cmd $RPM_BUILD_ROOT/usr/lib/opa-fm/bin/fm_cmd
+install -D stage.rpm/fm_cmdall $RPM_BUILD_ROOT/usr/lib/opa-fm/bin/fm_cmdall
+install -D stage.rpm/smpoolsize $RPM_BUILD_ROOT/usr/lib/opa-fm/bin/smpoolsize
 
-install -D stage.rpm/sm $RPM_BUILD_ROOT/opt/opafm/runtime/sm
-install -D stage.rpm/fe $RPM_BUILD_ROOT/opt/opafm/runtime/fe
+install -D stage.rpm/sm $RPM_BUILD_ROOT/usr/lib/opa-fm/runtime/sm
+install -D stage.rpm/fe $RPM_BUILD_ROOT/usr/lib/opa-fm/runtime/fe
 
-install -D stage.rpm/config_check $RPM_BUILD_ROOT/opt/opafm/etc/config_check
-install -D stage.rpm/config_convert $RPM_BUILD_ROOT/opt/opafm/etc/config_convert
-install -D stage.rpm/config_diff $RPM_BUILD_ROOT/opt/opafm/etc/config_diff
-install -D stage.rpm/config_generate $RPM_BUILD_ROOT/opt/opafm/etc/config_generate
-install -D stage.rpm/opafm $RPM_BUILD_ROOT/opt/opafm/etc/opafm
-install -D stage.rpm/opafm.arch $RPM_BUILD_ROOT/opt/opafm/etc/opafm.arch
-install -D stage.rpm/opafm.info $RPM_BUILD_ROOT/opt/opafm/etc/opafm.info
+install -D stage.rpm/config_check $RPM_BUILD_ROOT/usr/lib/opa-fm/etc/config_check
+install -D stage.rpm/config_convert $RPM_BUILD_ROOT/usr/lib/opa-fm/etc/config_convert
+install -D stage.rpm/config_diff $RPM_BUILD_ROOT/usr/lib/opa-fm/etc/config_diff
+install -D stage.rpm/config_generate $RPM_BUILD_ROOT/usr/lib/opa-fm/etc/config_generate
+install -D stage.rpm/opafm $RPM_BUILD_ROOT/usr/lib/opa-fm/etc/opafm
+install -D stage.rpm/opafm.arch $RPM_BUILD_ROOT/usr/lib/opa-fm/etc/opafm.arch
+install -D stage.rpm/opafm.info $RPM_BUILD_ROOT/usr/lib/opa-fm/etc/opafm.info
 if [ -d Esm ]; then
 	sub_dir=Esm/
 else
 	sub_dir=
 fi
-install -D ${sub_dir}ib/src/linux/startup/opafm_src.xml $RPM_BUILD_ROOT/opt/opafm/etc/opafm_src.xml
+install -D ${sub_dir}ib/src/linux/startup/opafm_src.xml $RPM_BUILD_ROOT/usr/lib/opa-fm/etc/opafm_src.xml
 
-install -D stage.rpm/opafm.xml $RPM_BUILD_ROOT/opt/opafm/etc/opafm.xml
-install -D stage.rpm/opaxmlextract $RPM_BUILD_ROOT/opt/opafm/etc/opaxmlextract
-install -D stage.rpm/opaxmlfilter $RPM_BUILD_ROOT/opt/opafm/etc/opaxmlfilter
+install -D stage.rpm/opafm.xml $RPM_BUILD_ROOT/usr/lib/opa-fm/etc/opafm.xml
+install -D stage.rpm/opaxmlextract $RPM_BUILD_ROOT/usr/lib/opa-fm/etc/opaxmlextract
+install -D stage.rpm/opaxmlfilter $RPM_BUILD_ROOT/usr/lib/opa-fm/etc/opaxmlfilter
 
-install -D stage.rpm/opa_ca_openssl.cnf-sample $RPM_BUILD_ROOT/opt/opafm/samples/opa_ca_openssl.cnf-sample
-install -D stage.rpm/opa_comp_openssl.cnf-sample $RPM_BUILD_ROOT/opt/opafm/samples/opa_comp_openssl.cnf-sample
+install -D stage.rpm/opa_ca_openssl.cnf-sample $RPM_BUILD_ROOT/usr/lib/opa-fm/samples/opa_ca_openssl.cnf-sample
+install -D stage.rpm/opa_comp_openssl.cnf-sample $RPM_BUILD_ROOT/usr/lib/opa-fm/samples/opa_comp_openssl.cnf-sample
 
 mkdir -p $RPM_BUILD_ROOT%{_sbindir}
 mkdir -p $RPM_BUILD_ROOT%{_mandir}/man8
-ln -s /opt/opafm/bin/fm_cmd $RPM_BUILD_ROOT%{_sbindir}/opafmcmd
-ln -s /opt/opafm/bin/fm_cmdall $RPM_BUILD_ROOT%{_sbindir}/opafmcmdall
+ln -s /usr/lib/opa-fm/bin/fm_cmd $RPM_BUILD_ROOT%{_sbindir}/opafmcmd
+ln -s /usr/lib/opa-fm/bin/fm_cmdall $RPM_BUILD_ROOT%{_sbindir}/opafmcmdall
 
 cd stage.rpm
 cp -t $RPM_BUILD_ROOT%{_mandir}/man8 %fm_mans
@@ -160,10 +160,10 @@ fi
 /usr/lib/systemd/system/opafm.service
 %config(noreplace) %{_sysconfdir}/sysconfig/opafm.xml
 %{_sysconfdir}/sysconfig/opa/opafm.info
-/opt/opafm/bin/*
-/opt/opafm/etc/*
-/opt/opafm/runtime/*
-/opt/opafm/samples/*
+/usr/lib/opa-fm/bin/*
+/usr/lib/opa-fm/etc/*
+/usr/lib/opa-fm/runtime/*
+/usr/lib/opa-fm/samples/*
 %{_sbindir}/opafmcmd
 %{_sbindir}/opafmcmdall
 %{_mandir}/man8/*

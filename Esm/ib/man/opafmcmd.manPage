@@ -99,7 +99,7 @@ Sets the SM log mode flags. 0/1 1=downgrade non-actionable, 0/2 2=logfile only.
 
 .sp
 smLogMask 
-Sets the SM log mask for a specific subsystem to the value given. For a list of subsystems and mask bit meanings, see the files /etc/sysconfig/opafm.xml or /opt/opafm/etc/opafm.xml.
+Sets the SM log mask for a specific subsystem to the value given. For a list of subsystems and mask bit meanings, see the files /etc/sysconfig/opafm.xml or /usr/lib/opa-fm/etc/opafm.xml.
 
 .RE
 
@@ -182,7 +182,7 @@ Sets the FE log mode flags. 0/1 1=downgrade non-actionable, 0/2 2=logfile only.
 
 .sp
 feLogMask 
-Sets the FE log mask for a specific subsystem to the value given. For a list of subsystems and mask bit meanings, see the files /etc/sysconfig/opafm.xml or /opt/opafm/etc/opafm.xml 
+Sets the FE log mask for a specific subsystem to the value given. For a list of subsystems and mask bit meanings, see the files /etc/sysconfig/opafm.xml or /usr/lib/opa-fm/etc/opafm.xml 
 
 .RE
 

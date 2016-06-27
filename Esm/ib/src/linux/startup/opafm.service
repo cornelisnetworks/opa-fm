@@ -36,8 +36,8 @@ After=rdma.service network.target
 [Service]
 User=root
 Type=forking
-ExecStart=/opt/opafm/bin/opafmd -D
-ExecStop=/opt/opafm/bin/opafmd halt
+ExecStart=/usr/lib/opa-fm/bin/opafmd -D
+ExecStop=/usr/lib/opa-fm/bin/opafmd halt
 ExecReload=/bin/kill -HUP $MAINPID
 TimeoutStopSec=2
 RestartSec=2

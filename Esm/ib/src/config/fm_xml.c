@@ -1192,7 +1192,7 @@ void pmInitConfig(PMXmlConfig_t *pmp, uint32_t instance, uint32_t ccc_method)
 	if (pmp->shortTermHistory.enable) {
 		DEFAULT_AND_CKSUM_U32(pmp->shortTermHistory.imagesPerComposite, 3, CKSUM_OVERALL_DISRUPT_CONSIST);
 		DEFAULT_AND_CKSUM_U32(pmp->shortTermHistory.maxDiskSpace, 1024, CKSUM_OVERALL_DISRUPT_CONSIST);
-		DEFAULT_AND_CKSUM_STR(pmp->shortTermHistory.StorageLocation, "/var/opt/opafm", CKSUM_OVERALL_DISRUPT);
+		DEFAULT_AND_CKSUM_STR(pmp->shortTermHistory.StorageLocation, "/var/lib/opa-fm", CKSUM_OVERALL_DISRUPT);
 		DEFAULT_AND_CKSUM_U32(pmp->shortTermHistory.totalHistory, 24, CKSUM_OVERALL_DISRUPT_CONSIST);
 		DEFAULT_AND_CKSUM_U8(pmp->shortTermHistory.compressionDivisions, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
 	}

@@ -17,7 +17,7 @@
 #define FM_MAX_INSTANCES 4
 
 #define FM_XML_CONFIG "/etc/sysconfig/opafm.xml"
-#define OPAXMLEXTRACT "/opt/opafm/etc/opaxmlextract"
+#define OPAXMLEXTRACT "/usr/lib/opa-fm/etc/opaxmlextract"
 #define OPAXMLEXTRACT_RESTART_PARAMS "-H -e Common.Shared.StartupRetries -e Common.Shared.StartupStableWait -e Common.Sm.StartupRetries -e Common.Sm.StartupStableWait -e Common.Fe.StartupRetries -e Common.Fe.StartupStableWait -e Fm.Shared.StartupRetries -e Fm.Shared.StartupStableWait -e Fm.Sm.StartupRetries -e Fm.Sm.StartupStableWait -e Fm.Fe.StartupRetries -e Fm.Fe.StartupStableWait -X"
 #define OPAXMLEXTRACT_INSTANCE_PARAMS "-H -e Fm.Shared.Start -e Fm.Sm.Start -e Fm.Fe.Start -X"
 #define OPAXMLEXTRACT_COMMON_PARAMS "-H -e Common.Sm.Start -e Common.Fe.Start -X"
@@ -424,7 +424,7 @@ int parseInput(char *buf){
  */
 int spawn(const unsigned int instance, const int component, int *pids){
 	int pid;
-	char prog[25], name[6];
+	char prog[64], name[6];
 	if (instance >= 4){
 		fprintf(stderr, "Invalid instance number.\n");
 		return -1;
@@ -439,7 +439,7 @@ int spawn(const unsigned int instance, const int component, int *pids){
 	}
 	switch(pid = fork()){
 	case 0:
-		sprintf(prog, "/opt/opafm/runtime/%s", componentToExecName(component));
+		sprintf(prog, "/usr/lib/opa-fm/runtime/%s", componentToExecName(component));
 		sprintf(name, "%s_%d", componentToExecName(component), instance);
 		execle(prog, prog, "-e", name, NULL, nullEnv);
 		return 0;
@@ -848,7 +848,7 @@ int main(int argc, char* argv[]) {
 			return 0;
 		}
 	} else {
-		char prog[] = "/opt/opafm/bin/opafmctrl";
+		char prog[] = "/usr/lib/opa-fm/bin/opafmctrl";
 		if(inst[0] != 0){
 			if(comp != NULL)
 				execle(prog, prog, cmd, "-i", inst, comp, NULL, nullEnv);	// Call opafmctl with instance number and component,

@@ -69,9 +69,9 @@ Usage_full()
 	echo "to two FM instances described by file1 and file2" >&2
 	echo " " >&2
 	echo "Examples:" >&2
-	echo "  $(basename $PROG_NAME) /etc/sysconfig/opafm.xml /opt/opafm/etc/opafm.xml" >&2
-	echo "  $(basename $PROG_NAME) -f /etc/sysconfig/opafm.xml /opt/opafm/etc/opafm.xml" >&2
-	echo "  $(basename $PROG_NAME) -d -uw /etc/sysconfig/opafm.xml /opt/opafm/etc/opafm.xml" >&2
+	echo "  $(basename $PROG_NAME) /etc/sysconfig/opafm.xml /usr/lib/opa-fm/etc/opafm.xml" >&2
+	echo "  $(basename $PROG_NAME) -f /etc/sysconfig/opafm.xml /usr/lib/opa-fm/etc/opafm.xml" >&2
+	echo "  $(basename $PROG_NAME) -d -uw /etc/sysconfig/opafm.xml /usr/lib/opa-fm/etc/opafm.xml" >&2
 	exit 0
 
 }

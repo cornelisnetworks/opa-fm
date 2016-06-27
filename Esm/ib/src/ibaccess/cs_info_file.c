@@ -35,7 +35,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define INFO_FILE "/etc/sysconfig/opa/opafm.info"
 static uint8_t		buffer [256];			// cleaned up read_buffer
-uint8_t		hfm_install_dir [256] = "/opt/opafm";	// base directory where everything is
+uint8_t		hfm_install_dir [256] = "/usr/lib/opa-fm";	// base directory where everything is
 
 static Status_t	read_line		(FILE *fd_config);
 

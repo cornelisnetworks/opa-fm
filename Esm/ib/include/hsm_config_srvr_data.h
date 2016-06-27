@@ -32,7 +32,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "hsm_config_srvr_api.h"
 
-#define HSM_FM_SCK_PREFIX	"/var/opt/opafm/"
+#define HSM_FM_SCK_PREFIX	"/var/lib/opa-fm/"
 #define HSM_FM_SCK_SM		"sm_"
 #define HSM_FM_SCK_PM		"pm_"
 #define HSM_FM_SCK_FE		"fe_"
