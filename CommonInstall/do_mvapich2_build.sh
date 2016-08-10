@@ -72,7 +72,7 @@ CheckPreReqs()
 			if [ $e -eq 0 ]; then
 				 echo
 			fi
-			echo "ERROR: Before re-compiling OpenMPI you must first install the ${PREREQ[$i]} package." >&2
+			echo "ERROR: Before re-compiling mvapich2 you must first install the ${PREREQ[$i]} package." >&2
 			e+=1;
 		fi
 		i=$((i+1))
@@ -284,7 +284,7 @@ then
 		choices+=("ts-psm")
 		PS3="Select MVAPICH2 Implementation (ts-psm recommended): "
 	fi
-	if rpm -qa|grep hfi1-psm >/dev/null 2>&1
+	if rpm -qa|grep libpsm2 >/dev/null 2>&1
 	then
 		choices+=("opa-psm")
 		PS3="Select MVAPICH2 Implementation (opa-psm recommended): "
@@ -334,7 +334,7 @@ case $interface in
 			# PSM indicated by qlc suffix so user can ID PSM vs verbs MPIs
 			mvapich2_path_suffix="-hfi"
 			mvapich2_rpm_suffix="_hfi"
-   			PREREQ+=("hfi1-psm")
+   			PREREQ+=("libpsm2")
 		else
 			# PSM indicated by qlc suffix so user can ID PSM vs verbs MPIs
 			mvapich2_path_suffix="-qlc"

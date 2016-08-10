@@ -432,7 +432,8 @@ typedef SMDBSync_t  *SMDBSyncp;         /* SM DBSYNC pointer type */
 // version 1 - initial creation of FM protocol version feature
 // version 2 - 10.0.1 releases and before
 // version 3 - 10.1 release
-#define     FM_PROTOCOL_VERSION    3
+// version 4 - 10.2 release
+#define     FM_PROTOCOL_VERSION    4
 
 typedef struct {
     uint32_t        protocolVersion;

@@ -93,7 +93,7 @@ extern void PrintDestInitSyslog(PrintDest_t *dest, int priority);
 #ifdef VXWORKS
 extern void PrintDestInitLog(PrintDest_t *dest);
 #endif
-extern void PrintFunc(PrintDest_t *dest, const char *format, ...);
+extern void PrintFunc(PrintDest_t *dest, const char *format, ...) __attribute__((format(printf,2,3)));
 
 ///////////////////////////////////////////////////////////////////////////////
 // some basic IB types

@@ -32,6 +32,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "topology.h"
 #include "topology_internal.h"
 #include <stl_convertfuncs.h>
+#include "stl_helper.h"
 
 // TBD - fix conflict with ib_utils_openib.h
 #define DBGPRINT(format, args...) if (g_verbose_file) { fprintf(g_verbose_file, format, ##args); }
@@ -2072,7 +2073,7 @@ fail:
    use PaClient if available, else issue direct PMA query
  */
 FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabricp,
-				Point *focus, boolean limitstats, boolean quiet)
+				Point *focus, boolean limitstats, boolean quiet, uint32 begin, uint32 end)
 {
 	FSTATUS status;
 	cl_map_item_t *p;
@@ -2154,51 +2155,77 @@ FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabric
 				continue;
 
 #ifdef PRODUCT_OPENIB_FF
+
 			/* use PaClient if available */
 			if (g_paclient_state == PACLIENT_OPERATIONAL)
 			{
-				STL_PORT_COUNTERS_DATA consolidatedPortCounters = {0};
-				STL_PA_IMAGE_ID_DATA imageIdQuery = {PACLIENT_IMAGE_CURRENT, 0};
-
 				if (!first_portp)
 					lid = portp->PortInfo.LID;
-				status = pa_client_get_port_stats(g_portHandle, imageIdQuery, lid, portp->PortNum,
-					NULL, &consolidatedPortCounters, NULL, 0, 1);
-				if (FSUCCESS == status)
-				{
-					PortStatusData.LinkErrorRecovery  = consolidatedPortCounters.linkErrorRecovery;
-					PortStatusData.LinkDowned  = consolidatedPortCounters.linkDowned;
-					PortStatusData.PortRcvErrors = consolidatedPortCounters.portRcvErrors;
-					PortStatusData.PortRcvRemotePhysicalErrors = consolidatedPortCounters.portRcvRemotePhysicalErrors;
-					PortStatusData.PortRcvSwitchRelayErrors = consolidatedPortCounters.portRcvSwitchRelayErrors;
-					PortStatusData.PortXmitDiscards = consolidatedPortCounters.portXmitDiscards;
-					PortStatusData.PortXmitConstraintErrors = consolidatedPortCounters.portXmitConstraintErrors;
-					PortStatusData.PortRcvConstraintErrors = consolidatedPortCounters.portRcvConstraintErrors;
-					PortStatusData.LocalLinkIntegrityErrors = consolidatedPortCounters.localLinkIntegrityErrors;
-					PortStatusData.ExcessiveBufferOverruns = consolidatedPortCounters.excessiveBufferOverruns;
-					PortStatusData.PortXmitData = consolidatedPortCounters.portXmitData;
-					PortStatusData.PortRcvData = consolidatedPortCounters.portRcvData;
-					PortStatusData.PortXmitPkts = consolidatedPortCounters.portXmitPkts;
-					PortStatusData.PortRcvPkts = consolidatedPortCounters.portRcvPkts;
-					PortStatusData.PortMulticastXmitPkts = consolidatedPortCounters.portMulticastXmitPkts;
-					PortStatusData.PortMulticastRcvPkts = consolidatedPortCounters.portMulticastRcvPkts;
-					PortStatusData.PortXmitWait = consolidatedPortCounters.portXmitWait;
-					PortStatusData.SwPortCongestion = consolidatedPortCounters.swPortCongestion;
-					PortStatusData.PortRcvFECN = consolidatedPortCounters.portRcvFECN;
-					PortStatusData.PortRcvBECN = consolidatedPortCounters.portRcvBECN;
-					PortStatusData.PortXmitTimeCong = consolidatedPortCounters.portXmitTimeCong;
-					PortStatusData.PortXmitWastedBW = consolidatedPortCounters.portXmitWastedBW;
-					PortStatusData.PortXmitWaitData = consolidatedPortCounters.portXmitWaitData;
-					PortStatusData.PortRcvBubble = consolidatedPortCounters.portRcvBubble;
-					PortStatusData.PortMarkFECN = consolidatedPortCounters.portMarkFECN;
-					PortStatusData.FMConfigErrors = consolidatedPortCounters.fmConfigErrors;
-					PortStatusData.UncorrectableErrors = consolidatedPortCounters.uncorrectableErrors;
-					PortStatusData.lq.AsReg8 = consolidatedPortCounters.lq.AsReg8;
+
+				status = FERROR;
+				//verify pa has necessary capabilities
+				STL_CLASS_PORT_INFO * portInfo;
+				if ((portInfo = iba_pa_classportinfo_response_query(g_portHandle))!= NULL){
+					STL_PA_CLASS_PORT_INFO_CAPABILITY_MASK paCap;
+					memcpy(&paCap, &portInfo->CapMask, sizeof(STL_PA_CLASS_PORT_INFO_CAPABILITY_MASK));
+					//if trying to query by time, check if feature available
+					if (begin || end){
+						if (!(paCap.s.IsAbsTimeQuerySupported)){
+							DBGPRINT("PA does not support time queries\n");
+							status = FERROR;
+						}else{
+							status = FSUCCESS;
+						}
+					}else {
+						status = FSUCCESS;
+					}
+					MemoryDeallocate(portInfo);
+				}else {
+						DBGPRINT("failed to determine PA capabilities\n");
+						status = FERROR;
+				}
+
+				if (status == FSUCCESS){
+					STL_PORT_COUNTERS_DATA portCounters1 = {0};
+					STL_PA_IMAGE_ID_DATA imageIdQuery1 = {0};
+
+					status = pa_client_get_port_stats(g_portHandle, imageIdQuery1, lid, portp->PortNum,
+							NULL, &portCounters1, NULL, 0, !(end || begin)); //last param is user_counters flag,
+					//if begin or end set we want raw
+					//counters
+					if (FSUCCESS == status){
+						if (begin && end){// need to perform another query
+							STL_PA_IMAGE_ID_DATA imageIdQuery2 = {0};
+
+							imageIdQuery2.imageNumber = PACLIENT_IMAGE_TIMED;
+							imageIdQuery2.imageTime.absoluteTime = begin; //we got counters for end first
+
+							STL_PORT_COUNTERS_DATA portCounters2 = {0};
+
+							status = pa_client_get_port_stats(g_portHandle, imageIdQuery2, lid, portp->PortNum,
+									NULL, &portCounters2, NULL, 0, 0);
+
+							if (FSUCCESS == status){
+								CounterSelectMask_t clearedCounters = DiffPACounters(&portCounters1, &portCounters2, &portCounters1);
+								if (clearedCounters.AsReg32){
+									char counterBuf[128];
+									FormatStlCounterSelectMask(counterBuf, clearedCounters);
+									fprintf(stderr, "Counters reset, reporting latest count: %s\n", counterBuf);
+								}
+								StlPortCountersToPortStatus(&portCounters1, &PortStatusData);
+							}
+						}else{
+							StlPortCountersToPortStatus(&portCounters1, &PortStatusData);
+						}
+					}
 				}
 			}
 #endif
 			/* issue direct PMA query */
 			else {
+				if (begin || end){
+					continue;
+				}
 				STL_PORT_STATUS_RSP PortStatus;
 
 				if (! PortHasPma(portp))
@@ -2840,7 +2867,7 @@ static FSTATUS GetAllPortVLInfoSA(struct oib_port *port,
 							(pPKTR_2->RID.LID == portp->EndPortLID) &&
 							(pPKTR_2->RID.PortNum == portp->PortNum); pPKTR_2++ )
 					{
-						uint32 ix_base = pPKTR->RID.Blocknum * NUM_PKEY_ELEMENTS_BLOCK;
+						uint32 ix_base = pPKTR_2->RID.Blocknum * NUM_PKEY_ELEMENTS_BLOCK;
 
 						for ( ix_2 = 0; (ix_2 < NUM_PKEY_ELEMENTS_BLOCK) &&
 								( (ix_base + ix_2) < pkey_cap); ix_2++, pPKEY++ )

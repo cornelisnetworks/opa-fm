@@ -165,10 +165,11 @@ sm_set_portPkey(Topology_t *topop, Node_t *nodep, Port_t *portp,
 
 			for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
 				pkey = 0;
-				if (bitset_test(&linkedPortp->portData->vfMember, vf) ||
-					bitset_test(&linkedPortp->portData->fullPKeyMember, vf)) {
+				uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
+				if (bitset_test(&linkedPortp->portData->vfMember, vfIdx) ||
+					bitset_test(&linkedPortp->portData->fullPKeyMember, vfIdx)) {
 					pkey = VirtualFabrics->v_fabric[vf].pkey;
-					if (bitset_test(&linkedPortp->portData->fullPKeyMember, vf)) {
+					if (bitset_test(&linkedPortp->portData->fullPKeyMember, vfIdx)) {
 						pkey |= FULL_MEMBER;
 					}
 				}
@@ -251,11 +252,11 @@ sm_set_portPkey(Topology_t *topop, Node_t *nodep, Port_t *portp,
 	} else {
 		for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
 			pkey = 0;
-
-			if (bitset_test(&portp->portData->vfMember, vf) ||
-				bitset_test(&portp->portData->fullPKeyMember, vf))  {
+			uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
+			if (bitset_test(&portp->portData->vfMember, vfIdx) ||
+				bitset_test(&portp->portData->fullPKeyMember, vfIdx))  {
 				pkey = VirtualFabrics->v_fabric[vf].pkey;
-				if (bitset_test(&portp->portData->fullPKeyMember, vf)) {
+				if (bitset_test(&portp->portData->fullPKeyMember, vfIdx)) {
 					pkey |= FULL_MEMBER;
 				}
 			}
@@ -836,6 +837,7 @@ smGetValidatedServiceIDVFs(Port_t* srcport, Port_t* dstport, uint16_t pkey, uint
 
 	for (vf = 0; vf < VirtualFabrics->number_of_vfs; vf++) {
 		srvIdInVF = 0;
+		uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
 		// Check for service ID	
 		if (smCheckServiceId(vf, serviceId, VirtualFabrics)) {
 			srvIdInVF = 1;
@@ -855,12 +857,12 @@ smGetValidatedServiceIDVFs(Port_t* srcport, Port_t* dstport, uint16_t pkey, uint
 
 		// One is full?
 		if (srcport != dstport &&
-			!bitset_test(&srcport->portData->fullPKeyMember, vf) &&
-			!bitset_test(&dstport->portData->fullPKeyMember, vf)) continue;
+			!bitset_test(&srcport->portData->fullPKeyMember, vfIdx) &&
+			!bitset_test(&dstport->portData->fullPKeyMember, vfIdx)) continue;
 
 		// Are both src and dst part of this VF?
-		if (!bitset_test(&srcport->portData->vfMember, vf)) continue;
-		if (!bitset_test(&dstport->portData->vfMember, vf)) continue;
+		if (!bitset_test(&srcport->portData->vfMember, vfIdx)) continue;
+		if (!bitset_test(&dstport->portData->vfMember, vfIdx)) continue;
 
 		// Is this the proper sl?
 		if ((reqSL < MAX_SLS) &&
@@ -880,17 +882,18 @@ smGetValidatedVFs(Port_t* srcport, Port_t* dstport, uint16_t pkey, uint8_t reqSL
 	VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
 
 	for (vf = 0; vf < VirtualFabrics->number_of_vfs; vf++) {
+		uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
 		// Is this the proper vf?
 		if ((pkey != 0) && (PKEY_VALUE(pkey) != PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey))) continue;
 
 		// One is full?
 		if (srcport != dstport &&
-			!bitset_test(&srcport->portData->fullPKeyMember, vf) &&
-			!bitset_test(&dstport->portData->fullPKeyMember, vf)) continue;
+			!bitset_test(&srcport->portData->fullPKeyMember, vfIdx) &&
+			!bitset_test(&dstport->portData->fullPKeyMember, vfIdx)) continue;
 
 		// Are both src and dst part of this VF?
-		if (!bitset_test(&srcport->portData->vfMember, vf)) continue;
-		if (!bitset_test(&dstport->portData->vfMember, vf)) continue;
+		if (!bitset_test(&srcport->portData->vfMember, vfIdx)) continue;
+		if (!bitset_test(&dstport->portData->vfMember, vfIdx)) continue;
 
 		// Is this the proper sl?
 		if ((reqSL < MAX_SLS) &&
@@ -1039,6 +1042,7 @@ smVFValidateMcGrpCreateParams(Port_t * joiner, Port_t * requestor,
 	// Loop over virtual fabrics
 	for (vf = 0; vf < VirtualFabrics->number_of_vfs; vf++) {
     	cl_map_item_t   *cl_map_item;
+		uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
 
 		// Continue if virtual fabric parameters don't match those in the mcMemberRecord.
 		mgidInVF = 0;
@@ -1065,16 +1069,16 @@ smVFValidateMcGrpCreateParams(Port_t * joiner, Port_t * requestor,
               // Check if SL for is in routing SLs - must match base SL on create
 		   || (mcMemberRec->SL != VirtualFabrics->v_fabric[vf].base_sl) 
 		      // Check to see if the joiner/creator port is a member of this VF
-		   || (!bitset_test(&joiner->portData->vfMember, vf))
+		   || (!bitset_test(&joiner->portData->vfMember, vfIdx))
 		      // Check to see if the (optional) requestor port is a member of this VF
 		   || (  (requestor != NULL)
-		      && !bitset_test(&requestor->portData->vfMember, vf)))
+		      && !bitset_test(&requestor->portData->vfMember, vfIdx)))
 		{
 			continue;
 		}
 
 		if (VirtualFabrics->v_fabric[vf].security &&
-		   !bitset_test(&joiner->portData->fullPKeyMember, vf)) {
+		   !bitset_test(&joiner->portData->fullPKeyMember, vfIdx)) {
 			// Joiner must be full member
 			continue;
 		}
@@ -1198,15 +1202,16 @@ smGetVfMaxMtu(Port_t *portp, Port_t *reqportp, STL_MCMEMBER_RECORD *mcmp, uint8_
 
 	for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
     	cl_map_item_t   *cl_map_item;
+		uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
 
 		if (PKEY_VALUE(mcmp->P_Key) != PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey)) continue;
 		if (mcmp->SL < VirtualFabrics->v_fabric[vf].base_sl) continue;
 		if (mcmp->SL > (VirtualFabrics->v_fabric[vf].base_sl + VirtualFabrics->v_fabric[vf].routing_sls - 1)) continue;
-		if (!bitset_test(&portp->portData->vfMember, vf)) continue;
-		if (!bitset_test(&reqportp->portData->vfMember, vf)) continue;
+		if (!bitset_test(&portp->portData->vfMember, vfIdx)) continue;
+		if (!bitset_test(&reqportp->portData->vfMember, vfIdx)) continue;
 
 		if (VirtualFabrics->v_fabric[vf].security &&
-		    !bitset_test(&portp->portData->fullPKeyMember, vf)) {
+		    !bitset_test(&portp->portData->fullPKeyMember, vfIdx)) {
 			// Create/joiner must be full member
 			continue;
 		}
@@ -1712,6 +1717,8 @@ smSetupNodeDGs(Node_t *nodep) {
 					bitset_set(&portp->portData->dgMember, dgIdx);				
 			}
 
+            		bitset_free(&dgsEvaluated);
+
 			// Update dgMember array
 			PortData_t *portDataPtr = portp->portData;
 			int numMemberships = 0;
@@ -1737,6 +1744,8 @@ smSetupNodeDGs(Node_t *nodep) {
 			}
 		}
 	}
+
+    	bitset_free(&dgNodeMemberBitset);
 }
 
 void smLogVFs() {

@@ -267,7 +267,7 @@ typedef struct _CONGESTION_WEIGHTS {
 static __inline
 void FormatPmFlags(char buf[80], uint32 pmFlags)
 {
-	sprintf(buf, "%s%s%s%s",
+	snprintf(buf, 80, "%s%s%s%s",
 				pmFlags & PM_CA_STATS ? "" : "CaPmaAvoid ",
 				pmFlags & PM_ENABLE_64BIT ? "Pma64Enable " : "" ,
 				pmFlags & PM_ENABLE_CA_VENDOR ? "PmaCaVendorEnable " : "",
@@ -277,7 +277,7 @@ void FormatPmFlags(char buf[80], uint32 pmFlags)
 static __inline
 void FormatPmFlags2(char buf[80], uint32 pmFlags)
 {
-	sprintf(buf, "%s%s",
+	snprintf(buf, 80, "%s%s",
 				pmFlags & PM_ENABLE_CA_VENDOR2 ? "PmaCaVendor2Enable " : "",
 				pmFlags & PM_ENABLE_SW_VENDOR2 ? "PmaSwVendor2Enable" : "");
 }

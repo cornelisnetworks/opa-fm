@@ -55,22 +55,6 @@ typedef struct _DGItem {
 } DGItem;
 
 /*
- * The set of quickmaps and ordered device groups associated with a topology 
- * structure.
- *
- * NOTA BENE: The deviceGroup[] array has one more member than the 
- * deviceGroupName[] or deviceGroupIndex[] arrays. This is to allow all
- * un-weighted LIDs to be routed correctly.
- */
-typedef struct	_DGTopology {
-	uint8_t			dgCount;
-	uint8_t			allGroup;
-	char			deviceGroupName[MAX_DGROUTING_ORDER][MAX_VFABRIC_NAME+1];
-	uint16_t		deviceGroupIndex[MAX_DGROUTING_ORDER];
-	cl_qmap_t		deviceGroup[MAX_DGROUTING_ORDER+1];
-} DGTopology;
-
-/*
  * Create a new DGTopology structure and associate it with the provided
  * topology structure. outContext is not used.
  */
@@ -143,7 +127,7 @@ dgmh_pre_process_discovery(Topology_t *topop, void **outContext)
  * Here we traverse the list of nodes in the topology and assign weights to their 
  * ports.
  */
-static Status_t
+Status_t
 dgmh_post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *context)
 {
 	Status_t status; 
@@ -692,6 +676,17 @@ dgmh_setup_switches_lrdr(Topology_t *topop, int rebalance, int routing_needed)
 }
 
 static Status_t
+dgmh_copy(struct _RoutingModule * dest, const struct _RoutingModule * src)
+{
+	memcpy(dest, src, sizeof(RoutingModule_t));
+
+	// Don't copy routing module data.  This will be recalculated.
+	dest->data = NULL;
+
+	return VSTATUS_OK;
+}
+
+Status_t
 dgmh_make_routing_module(RoutingModule_t *rm)
 {
 	// DG Routing is a "flavor" of shortestpath.
@@ -706,6 +701,7 @@ dgmh_make_routing_module(RoutingModule_t *rm)
 	rm->funcs.setup_switches_lrdr = dgmh_setup_switches_lrdr;
 	rm->funcs.calculate_lft = dgmh_calculate_lft;
 	rm->funcs.destroy = dgmh_destroy;
+	rm->copy = dgmh_copy;
 
 	if (sm_config.shortestPathBalanced) {
 		rm->funcs.init_switch_lfts = _init_switch_lfts_dg;

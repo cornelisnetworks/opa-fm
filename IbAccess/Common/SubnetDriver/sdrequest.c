@@ -30,8 +30,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
   \file sdrequest.h
 
-  $Revision: 1.6 $
-  $Date: 2016/04/06 10:49:29 $
+  $Revision$
+  $Date$
 
   \brief Routines for handling requests forwarded by the subnet manager
 */

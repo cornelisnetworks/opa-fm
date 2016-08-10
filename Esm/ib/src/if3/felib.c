@@ -1917,6 +1917,8 @@ if3_mngr_send_mad(IBhandle_t fd, SA_MAD *psa, uint32_t dataLength, uint8_t *buff
         return VSTATUS_ILLPARM; 
     }
     
+	*madRc = MAD_STATUS_SA_NO_RECORDS;
+
     // find the handle stuff
     rc = if3_mngr_locate_minfo(fd, &mi); 
     
@@ -2085,7 +2087,9 @@ if3_mngr_send_mad(IBhandle_t fd, SA_MAD *psa, uint32_t dataLength, uint8_t *buff
             }
             
             // get MAD status from the header
-            *madRc = imad.base.status; 
+			if (rc == VSTATUS_OK) {
+				*madRc = imad.base.status; 
+			}
             
             // set response status to no_records since rmpp returns zero length record with status OK 
             // in those cases
@@ -2809,6 +2813,8 @@ if3_dbsync_cmd_from_mngr (IBhandle_t fd, Mai_t *maip, uint8_t *buffer, uint32_t 
     // retain original length of the receive buffer    
     obufferLength = *bufferLength;
         
+	*madRc = MAD_STATUS_SA_NO_RECORDS;
+
     // find the handle stuff
     rc = if3_mngr_locate_minfo(fd, &mi); 
     
@@ -2892,7 +2898,9 @@ recv:
     memcpy(maip, &imad, sizeof(Mai_t)); 
 
     // get MAD status from the header
-    *madRc = imad.base.status; 
+	if (rc == VSTATUS_OK ) {
+		*madRc = imad.base.status; 
+	}
 
     // set response status to no_records since rmpp returns zero length record with status OK 
     // in those cases

@@ -253,7 +253,7 @@ sub rebuild_ramdisk()
 
 # Call dracut once only at the end of INSTALL
 END {
-	if ($CallDracut) {
+	if ($CallDracut && -d '/boot') {
 		my $cmd = "/usr/bin/dracut";
 		my $kver = `uname -r | xargs echo -n`;
 		my $tmpfile = "/tmp/initramfs-$kver.img";

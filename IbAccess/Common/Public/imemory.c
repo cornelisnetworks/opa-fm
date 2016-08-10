@@ -27,6 +27,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ** END_ICS_COPYRIGHT6   ****************************************/
 
+#if !defined(VXWORKS)
+#define _GNU_SOURCE
+#endif
+
 #include "imemory.h"
 #include "idebug.h"
 #include "itimer.h"
@@ -335,6 +339,166 @@ FSTATUS StringToUint64Bytes(uint64 *value, const char* str, char **endptr, int b
 	*value = temp;
 	return FSUCCESS;
 }
+
+#if !defined(VXWORKS)
+#define RELATIVE_TIME_STR_LEN 3
+                                                     // June 30th, 2015 11:59:59 PM
+													 // as represented by the format
+static const char * date_formats[] = {"%Y-%m-%d %T", // 2015-06-30 23:59:59
+                                      "%Y-%m-%d %R", // 2015-06-30 23:59
+                                      "%Y-%m-%d",    // 2015-06-30
+                                      "%m/%d/%Y %T", // 06/30/2015 23:59:59
+                                      "%m/%d/%Y %R", // 06/30/2015 23:59
+                                      "%m/%d/%Y",    // 06/30/2015
+                                      "%d.%m.%Y %T", // 30.06.2015 23:59:59
+                                      "%d.%m.%Y %R", // 30.06.2015 23:59
+                                      "%d.%m.%Y",    // 30.06.2015
+                                                     // %x, %X are locale specific
+                                      "%x %X",       // e.g. 30/06/15 23:59:59 or 30.06.2015 23.59.59, etc.
+                                      "%x",          // e.g. 30/06/15, 06/30/15, etc.
+                                      "%X",          // e.g. 23:59:59, 23.59.59, etc.
+                                      "%R"};         // 23:59
+static const char * time_units[] = {"seconds", "minutes", "hours", "days"};
+
+/**
+ * StringToDateTime - parse a string to return a date/time
+ *
+ * @param value  - will contain date as # of seconds since epoch if parsing successful
+ * @param str    - the string representation of the date to be parsed
+ *
+ * @return - FSTATUS indicating success or failure of parsing:
+ * 			 FSUCCESS - successful parsing
+ * 			 FINVALID_PARAMETER - str not valid date/time or not in valid format
+ * 			 FINVALID_SETTING - relative value out of range
+ * 			 FINSUFFICIENT_MEMORY - memory could not be allocated to parse string
+ * 			 FERROR - other error parsing string
+ */
+FSTATUS StringToDateTime(uint32 *value, const char* str){
+	int i, len;
+	char * return_str;
+	struct tm tm = {0};
+	uint32 seconds;
+	FSTATUS status;
+
+	//try to match input to one of known formats from above
+	len = sizeof(date_formats) / sizeof(const char *);
+	for (i = 0; i < len; ++i){
+		memset(&tm, 0, sizeof(struct tm));
+		return_str = strptime(str, date_formats[i], &tm);
+		// want to match an exact format, meaning strptime returns null byte
+		if (return_str != NULL && *return_str == '\0'){
+			break;
+		}
+	}
+
+	if (return_str != NULL && *return_str== '\0'){ // possible valid date entered
+		struct tm tm2;
+		time_t timer;
+		if (i >= len - 2){
+			// strptime matched against %X or %R, meaning we have a time
+			// but no information on the date. Fill in tm with today's date
+			time(&timer);   //get current time
+			struct tm * tmp;
+			tmp = localtime(&timer);
+			if (!tmp){ 
+				return FERROR;
+			}
+			tm.tm_year = tmp->tm_year;
+			tm.tm_mon = tmp->tm_mon;
+			tm.tm_mday = tmp->tm_mday;
+			tm.tm_wday = tmp->tm_wday;
+			tm.tm_yday = tmp->tm_yday;
+		}
+		// mktime will normalize fields of tm if they are outside their valid range,
+		// so make a copy before the mktime call and compare before and after. If the
+		// days of the month are not equal then the date enetered was not valid
+		memcpy(&tm2, &tm, sizeof(struct tm));
+		tm.tm_isdst = -1; //signal mktime to determine if daylight saving in effect
+		timer = mktime(&tm);
+		if (timer != -1){
+			//check if input time was a valid date, e.g. not 02/30/YYYY
+			if (tm.tm_mday != tm2.tm_mday){
+				return FINVALID_PARAMETER;
+			}else{
+				*value = (uint32) timer;
+				return FSUCCESS;
+			}
+		}
+	}else{ // relative time entered?
+		char *string, *saveptr, *token, *tokens[RELATIVE_TIME_STR_LEN];
+
+		string = strdup(str);
+		if (!string){
+			return FINSUFFICIENT_MEMORY;
+		}
+
+		//split string by space (" ")
+		token = strtok_r(string, " ", &saveptr);
+		i = 0;
+		while (token != NULL){
+			if (i >= RELATIVE_TIME_STR_LEN){
+				//too many tokens
+				free(string);
+				return FERROR;
+			}
+			tokens[i] = token;
+			++i;
+			token = strtok_r(NULL, " ", &saveptr);
+		}
+
+		//check if proper number of tokens
+		if (i != RELATIVE_TIME_STR_LEN){
+			free(string);
+			return FINVALID_PARAMETER;
+		}
+
+		//check if first token is a valid base 10 number
+		status = StringToUint32(&seconds, tokens[0], NULL, 10, TRUE);
+		if (FSUCCESS != status){
+			free(string);
+			return status;
+		}
+
+		//check if second token in accepted units of time
+		len = sizeof(time_units) / sizeof (const char *);
+		for (i = 0; i < len; ++i){
+			if (strcasecmp(time_units[i], tokens[1]) == 0 || strncasecmp(time_units[i], tokens[1], strlen(time_units[i]) - 1) == 0){
+				break;
+			}
+		}
+
+		//convert first token to seconds if necessary
+		if (i >= len){
+			// could not determine units
+			free(string);
+			return FERROR;
+		}
+
+		switch (i){
+		case 0:
+			break;
+		case 1: //convert from minutes to seconds
+			seconds = seconds * 60;
+			break;
+		case 2: //convert from hours to seconds
+			seconds = seconds * 60 * 60;
+			break;
+		case 3: //convert from days to seconds
+			seconds = seconds * 24 * 60 * 60;
+		}
+
+		//calculate absolute time to query for
+		time_t timer;
+		time(&timer);
+		*value = (uint32)timer - seconds;
+
+		free(string);
+		return FSUCCESS;
+	}
+
+	return FERROR;
+}
+#endif
 
 #if !defined(VXWORKS)
 #define MEMORY_ALLOCATE_PRIV(size, flags, tag) MemoryAllocatePriv(size, flags, tag)

@@ -1880,7 +1880,8 @@ get_hca_qos_stl_setup(Topology_t *topop, Node_t *nodep, Port_t *portp, Node_t *s
 	memset(qos.vlBandwidth, 0, sizeof(uint8_t)*MAX_VIRTUAL_LANES);
 
 	for (vf=0; vf<VirtualFabrics->number_of_vfs; vf++) {
-		if (bitset_test(&portp->portData->vfMember, vf)) {
+		uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
+		if (bitset_test(&portp->portData->vfMember, vfIdx)) {
 			for (sl=0; sl< VirtualFabrics->v_fabric[vf].routing_sls; sl++) {
 				isUsingSL[VirtualFabrics->v_fabric[vf].base_sl+sl] = 1;
 			}
@@ -3698,6 +3699,9 @@ _make_routing_module(RoutingModule_t * rm)
 	rm->funcs.post_process_discovery = _post_process_discovery;
 	rm->funcs.post_process_routing = _post_process_routing;
 	rm->funcs.post_process_routing_copy = _post_process_routing_copy;
+	rm->funcs.allocate_cost_matrix = sm_routing_alloc_cost_matrix;
+	rm->funcs.initialize_cost_matrix = sm_routing_init_floyds;
+ 	rm->funcs.calculate_cost_matrix = sm_routing_calc_floyds;
 	rm->funcs.setup_switches_lrdr = _setup_switches_lrdr;
 	rm->funcs.setup_xft = _setup_xft;
 	rm->funcs.get_port_group = _get_port_group;

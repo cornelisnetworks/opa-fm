@@ -183,7 +183,7 @@ sm_routing_setCurrentModule(Topology_t * topop, RoutingModule_t * rm)
 }
 
 Status_t
-sm_routing_alloc_floyds(Topology_t *topop)
+sm_routing_alloc_cost_matrix(Topology_t *topop)
 {
 	Status_t status;
 	size_t   bytesCost;
@@ -211,7 +211,7 @@ sm_routing_alloc_floyds(Topology_t *topop)
 	return VSTATUS_OK;
 }
 
-void
+Status_t
 sm_routing_init_floyds(Topology_t *topop)
 {
 	int i, j, k, ij, ik, ki, iNumNodes;
@@ -254,10 +254,11 @@ sm_routing_init_floyds(Topology_t *topop)
 	for (i = 0, ij = 0; i < topop->max_sws; i++, ij += topop->max_sws + 1) {
 		topop->cost[ij] = 0;
 	}
+	return VSTATUS_OK;
 }
 
-void
-sm_routing_calc_floyds(int switches, unsigned short * cost)
+Status_t
+sm_routing_calc_floyds(Topology_t *topop, int switches, unsigned short * cost)
 {
 	int i, j, k;
 	int ij, ik, kj, oldik;
@@ -274,7 +275,7 @@ sm_routing_calc_floyds(int switches, unsigned short * cost)
 	int curr_selection_sm_neighbor = 0;
 	uint8_t	old_root_exists = 0;
 	Node_t *nodep;
-	Node_t *sw = sm_topop->switch_head;
+	Node_t *sw = topop->switch_head;
 
 	for (k = 0, kNumNodes = 0; k < switches; k++, kNumNodes += switches) {
 		for (i = 0, iNumNodes = 0; i < switches; i++, iNumNodes += switches) {
@@ -406,7 +407,7 @@ sm_routing_calc_floyds(int switches, unsigned short * cost)
 	}
 
 	if (!sm_useIdealMcSpanningTreeRoot)
-		return;
+		return VSTATUS_OK;
 
 	/* Based on the calculations, select the MC Spanning Tree Root Switch */
 
@@ -414,7 +415,7 @@ sm_routing_calc_floyds(int switches, unsigned short * cost)
 	if (sm_mcSpanningTreeRootGuid) {
 		/* If we identified a root in a previous sweep or if we have just take over
 		 * from a master, does the old root still exist ?*/
-		if (sm_find_guid(sm_topop, sm_mcSpanningTreeRootGuid)) 
+		if (sm_find_guid(topop, sm_mcSpanningTreeRootGuid)) 
 			old_root_exists = 1;
 	}
 	
@@ -426,7 +427,7 @@ sm_routing_calc_floyds(int switches, unsigned short * cost)
 			}
 			if (vs_lock(&sm_mcSpanningTreeRootGuidLock) != VSTATUS_OK) {
 				IB_LOG_ERROR0("error in getting mcSpanningTreeRootGuidLock");
-				return;
+				return VSTATUS_OK;
 			}
 			sm_mcSpanningTreeRootGuid = leastTotalCostSwitchGuid; 
 	        (void)vs_unlock(&sm_mcSpanningTreeRootGuidLock);
@@ -449,7 +450,7 @@ sm_routing_calc_floyds(int switches, unsigned short * cost)
 					}
 					if (vs_lock(&sm_mcSpanningTreeRootGuidLock) != VSTATUS_OK) {
 						IB_LOG_ERROR0("error in getting mcSpanningTreeRootGuidLock");
-						return;
+						return VSTATUS_OK;
 					}
 					sm_mcSpanningTreeRootGuid = leastTotalCostSwitchGuid; 
 			        (void)vs_unlock(&sm_mcSpanningTreeRootGuidLock);
@@ -472,7 +473,7 @@ sm_routing_calc_floyds(int switches, unsigned short * cost)
 			}
 			if (vs_lock(&sm_mcSpanningTreeRootGuidLock) != VSTATUS_OK) {
 				IB_LOG_ERROR0("error in getting mcSpanningTreeRootGuidLock");
-				return;
+				return VSTATUS_OK;
 			}
 			sm_mcSpanningTreeRootGuid = leastWorstCostSwitchGuid;
 	        (void)vs_unlock(&sm_mcSpanningTreeRootGuidLock);
@@ -495,7 +496,7 @@ sm_routing_calc_floyds(int switches, unsigned short * cost)
 					}
 					if (vs_lock(&sm_mcSpanningTreeRootGuidLock) != VSTATUS_OK) {
 						IB_LOG_ERROR0("error in getting mcSpanningTreeRootGuidLock");
-						return;
+						return VSTATUS_OK;
 					}
 					sm_mcSpanningTreeRootGuid = leastWorstCostSwitchGuid;
 			        (void)vs_unlock(&sm_mcSpanningTreeRootGuidLock);
@@ -517,7 +518,7 @@ sm_routing_calc_floyds(int switches, unsigned short * cost)
 	if (smDebugPerf) {
 		int found = 0;
 
-		for_all_switch_nodes(sm_topop, nodep) {
+		for_all_switch_nodes(topop, nodep) {
 			if (sm_mcSpanningTreeRoot_useLeastTotalCost &&
 					(nodep->nodeInfo.NodeGUID == leastTotalCostSwitchGuid)) {
 				IB_LOG_INFINI_INFO_FMT(__func__,
@@ -555,10 +556,11 @@ sm_routing_calc_floyds(int switches, unsigned short * cost)
 				break;
 		}
 	}
+	return VSTATUS_OK;
 }
 
 Status_t
-sm_routing_copy_floyds(Topology_t *src_topop, Topology_t *dst_topop)
+sm_routing_copy_cost_matrix(Topology_t *src_topop, Topology_t *dst_topop)
 {
 	Status_t status;
 	size_t   bytesCost;
@@ -1385,5 +1387,9 @@ sm_routing_init(Topology_t * topop)
 		return status;
 
 	status = sm_dgmh_init(topop);
+	if (status != VSTATUS_OK)
+		return status;
+
+	status = sm_hypercube_init(topop);
 	return status;
 }

@@ -57,7 +57,7 @@ void PrintPortCounters(PrintDest_t *dest, int indent, const PORT_COUNTERS *pPort
 	PrintFunc(dest, "%*sPerformance: Transmit\n", indent, "");
 	PrintFunc(dest, "%*s    Xmit Data             %10u MB (%u Flits)\n",
 			indent, "",
- 			pPortCounters->PortXmitData/FLITS_PER_MB,
+			pPortCounters->PortXmitData/(uint32)FLITS_PER_MB,
 			pPortCounters->PortXmitData);
 	PrintFunc(dest, "%*s    Xmit Pkts             %10u\n",
 			indent, "",
@@ -66,7 +66,7 @@ void PrintPortCounters(PrintDest_t *dest, int indent, const PORT_COUNTERS *pPort
 			indent, "");
 	PrintFunc(dest, "%*s    Rcv Data              %10u MB (%u Flits)\n",
 			indent, "",
- 			pPortCounters->PortRcvData/FLITS_PER_MB,
+			pPortCounters->PortRcvData/(uint32)FLITS_PER_MB,
 			pPortCounters->PortRcvData);
 	PrintFunc(dest, "%*s    Rcv Pkts              %10u\n",
 			indent, "",

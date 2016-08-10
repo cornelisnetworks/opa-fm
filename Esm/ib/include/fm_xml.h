@@ -235,6 +235,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // VL15CreditRate range
 #define MAX_VL15_CREDIT_RATE				21
 
+// Max ports per switch, used in config definitions
+#define MAX_SWITCH_PORTS					255
+
 // out of memory error
 #define OUT_OF_MEMORY					"Memory limit has been exceeded parsing the XML configuration"
 #define OUT_OF_MEMORY_RETURN			"Memory limit has been exceeded parsing the XML configuration\n"
@@ -749,10 +752,45 @@ typedef struct _SmDGRouting_t {
 	XMLMember_t	dg[MAX_DGROUTING_ORDER];
 } SmDGRouting_t;
 
+/*
+ * Structures for Enhanced Routing Control for Hypercube Routing, per switch.
+ */
+typedef uint32_t portMap_t;
+
+static __inline__ void portMapSet(portMap_t *portMap, int port)
+{
+	portMap[port/(sizeof(portMap_t)*8)] |= (1u << port%(sizeof(portMap_t)*8));
+}
+
+static __inline__ portMap_t portMapTest(portMap_t *portMap, int port)
+{
+	return portMap[port/(sizeof(portMap_t)*8)] & (1u << port%(sizeof(portMap_t)*8));
+}
+
+typedef struct _SmSPRoutingPort {
+	uint8_t			pport;
+	uint8_t			vport;
+	uint16_t		cost;
+} SmSPRoutingPort_t;
+
+typedef struct _SmSPRoutingCtrl {
+	struct _SmSPRoutingCtrl	*next;
+	XMLMember_t		switches;			// one or more switches
+	portMap_t		pportMap[MAX_SWITCH_PORTS/(sizeof(portMap_t)*8) + 1];
+	portMap_t		vportMap[MAX_SWITCH_PORTS/(sizeof(portMap_t)*8) + 1];
+	SmSPRoutingPort_t *ports;
+	uint16_t		portCount;
+} SmSPRoutingCtrl_t;
+
+typedef struct _SmHypercubeRouting_t {
+	uint8_t 			debug;
+	SmDGRouting_t		deviceRouting;
+	SmSPRoutingCtrl_t	*enhancedRoutingCtrl;
+} SmHypercubeRouting_t;
+
 #ifdef CONFIG_INCLUDE_DOR
 #define MAX_TOROIDAL_DIMENSIONS 3
 #define MAX_DOR_DIMENSIONS 20
-#define MAX_DOR_ISL_PORTS  255
 #define DEFAULT_DOR_PORT_PAIR_WARN_THRESHOLD	5
 #define DEFAULT_UPDN_MC_SAME_SPANNING_TREE	1
 
@@ -771,7 +809,7 @@ typedef struct _SmDimension {
 	uint8_t				toroidal;
 	uint8_t				portCount;
 	uint8_t				created;
-	SmPortPair_t		portPair[MAX_DOR_ISL_PORTS];
+	SmPortPair_t		portPair[MAX_SWITCH_PORTS];
 } SmDimension_t;
 
 typedef struct _SmDorRouting {
@@ -943,6 +981,7 @@ typedef struct _SMXmlConfig {
 
 	SmFtreeRouting_t ftreeRouting;
 	SmDGRouting_t dgRouting;
+	SmHypercubeRouting_t hypercubeRouting;
 
 	char        name[MAX_VFABRIC_NAME + 1];
 	uint32_t	start;

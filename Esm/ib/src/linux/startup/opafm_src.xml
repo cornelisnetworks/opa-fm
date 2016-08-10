@@ -804,7 +804,8 @@
     <!-- values less than 8192 are treated as Megabytes -->
     <!-- This sets the linux core dump soft ulimit for the FM.  Hard ulimit -->
     <!-- for root user on system must be appropriately set to permit this. -->
-    <CoreDumpLimit>0</CoreDumpLimit>
+    <!-- Default CoreDumpLimit is 2 GB -->
+    <CoreDumpLimit>2G</CoreDumpLimit>
     <!-- Directory for Host FM core files -->
     <!-- Actual core filenames will be controlled by linux kernel config. -->
     <!-- The parent directory (/var/crash in default) must be pre-created. -->
@@ -930,6 +931,8 @@
     <!-- **************** Fabric Routing **************************** -->
     <!-- The following Routing Algorithms are supported -->
     <!-- shortestpath - pick shortest path and balance lids on ISLs -->
+    <!-- fattree -  A variation of shortestpath with better balancing      -->
+    <!--            and improved SM performance on fat tree-like fabrics.  -->
     <!-- dgshortestpath - A variation of shortestpath that uses the        -->
     <!--            RoutingOrder parameter to control the order in which   -->
     <!--            switch egress ports are assigned to LIDs being routed  -->
@@ -938,9 +941,11 @@
     <!--            nodes.                                                 -->
     <!--            See the <DGShortestPathTopology> section, below, for   -->
     <!--            more information.                                      -->
-    <!-- fattree -  A variation of shortestpath with better balancing      -->
-    <!--            and improved SM performance on fat tree-like fabrics.  -->
+    <!-- hypercube - A variation of dg shortest path for enhanced          -->
+    <!--             hypercube and mesh topologies cabled in               -->
+    <!--             port-to-dimension order.                              -->
     <RoutingAlgorithm>shortestpath</RoutingAlgorithm>
+
 
     <!-- SpineFirstRouting - An option to avoid credit loops in complex    -->
     <!--            fabrics using Intel Switches.                          -->
@@ -1002,6 +1007,58 @@
             <!-- <DeviceGroup>Storage</DeviceGroup> -->
         <!-- </RoutingOrder> -->
     </DGShortestPathTopology>
+
+    <!-- ********************* Hypercube Topology ************************ -->
+    <!-- Example of defining parameters for controlling the enhanced       -->
+    <!-- hypercube routing algorithm. When the RoutingAlgorithm is set to  -->
+    <!-- hypercube, this section is used to configure routing parameters.  -->
+    <!-- RoutingOrder is used to route using shortest path while           -->
+    <!-- controlling the order in which routes to end nodes are assigned.  -->
+    <!-- EnhancedRoutingControl can be used to control the order that      -->
+    <!-- ports are processed on a switch during routing through the use of -->
+    <!-- virtual port numbers.  pPort represents a physical port number    -->
+    <!-- for the Switch, whereas vPort represents a virtual number.  The   -->
+    <!-- routing is setup in virtual port order, which by default is the   -->
+    <!-- same as physical port order.  Any physical ports not listed will  -->
+    <!-- get the next unused virtual port in increasing order.  In the     -->
+    <!-- example below, the ports on switches in group SwitchDeviceGroup1  -->
+    <!-- would be processed in the order 1 2 3 25 28 4 5 6 7 ...  If the   -->
+    <!-- Switches device group is not included in the EnhancedRoutingCtl,  -->
+    <!-- that defines a default ordering for all switches not explicitly   -->
+    <!-- listed.  Also, a cost can be associated with a pPort.  By default -->
+    <!-- the cost is derived from the port speed.  But an override can be  -->
+    <!-- installed by defining an explicit cost.  The shortest path is     -->
+    <!-- actually the lowest cost path. If pPort is not specified, or      -->
+    <!-- is 0, then that specifies that the cost is associated with all    -->
+    <!-- ports for the Switches indicated in the device group (or for all  -->
+    <!-- ports if the Switches device group is not specified).             -->
+    <HypercubeTopology>
+        <!-- RoutingOrder lists the device groups in the order they should -->
+        <!-- be handled. Each device group must have been declared in the  -->
+        <!-- DeviceGroups section. -->
+        <!-- <RoutingOrder> -->
+            <!-- <DeviceGroup>Compute</DeviceGroup> -->
+            <!-- <DeviceGroup>All</DeviceGroup> -->
+            <!-- <DeviceGroup>Storage</DeviceGroup> -->
+        <!-- </RoutingOrder> -->
+        <!-- <EnhancedRoutingCtrl> -->
+            <!-- <Switches>SwitchDeviceGroup1</Switches> -->
+            <!-- <PortData> -->
+                <!-- <pPort>25</pPort> -->
+                <!-- <vPort>4</vPort> -->
+            <!-- </PortData> -->
+            <!-- <PortData> -->
+                <!-- <pPort>28</pPort> -->
+                <!-- <vPort>5</vPort> -->
+                <!-- <Cost>2450</Cost> -->
+            <!-- </PortData> -->
+        <!-- </EnhancedRoutingCtrl> -->
+        <!-- <EnhancedRoutingCtrl> -->
+            <!-- <PortData> -->
+                <!-- <Cost>2500</Cost> -->
+            <!-- </PortData> -->
+        <!-- </EnhancedRoutingCtrl> -->
+    </HypercubeTopology>
 
     <!-- **************** Pre-defined Topology Verification **************** -->
     <!-- The PreDefinedTopology section is used for verifying the layout of  -->
@@ -1245,7 +1302,8 @@
     <!--     overall Buffer memory that will be guaranteed to be shared -->
     <!--     among a port's VLs (provided that the port supports -->
     <!---    shared memory). If not specified, defaults to 0. -->
-    <!-- DedicatedVLMemMulti is an integer multiplier that can increase the -->
+    <!-- DedicatedVLMemMulti is an integer multiplier in the -->
+    <!--     range, 0 to 255 that can increase the -->
     <!--     amount of dedicated memory per VL.  It is specified in -->
     <!--     multiples of MTUs for that VL. -->
     <!--     If not specified, defaults to 1. -->
@@ -1528,7 +1586,8 @@
     <!-- **************** Fabric Sweep **************************** -->
     <!-- The SM sweeps immediately upon fabric changes based on traps from -->
     <!-- the switches.  Since traps can be lost, the SM also has a slow -->
-    <!-- periodic sweep at SweepInterval to verify fabric config. -->
+    <!-- periodic sweep at SweepInterval to verify fabric config. This -->
+    <!-- interval can be zero (do not sweep) or between 3 and 86400 seconds. -->
     <SweepInterval>300</SweepInterval> <!-- max seconds between sweeps -->                                             <!--SM_0_timer:dec-->
     <IgnoreTraps>0</IgnoreTraps> <!-- don't sweep nor log when traps occur -->
     <!-- The SM waits up to RespTimeout milliseconds for responses. -->
@@ -1889,8 +1948,8 @@
     <!-- LinkErrorRecovery errors must occur before the PMA will -->
     <!-- include them in the ErrorCounterSummary. -->
     <Resolution>
-        <LocalLinkIntegrity>8000000</LocalLinkIntegrity>
-        <LinkErrorRecovery>100000</LinkErrorRecovery>
+        <LocalLinkIntegrity>10000</LocalLinkIntegrity>
+        <LinkErrorRecovery>1024</LinkErrorRecovery>
     </Resolution>
 
     <!-- This controls when the PM clears PMA Error counters -->

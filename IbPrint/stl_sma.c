@@ -45,7 +45,7 @@ void PrintIntWithDots(PrintDest_t *dest, int indent, const char * name, uint64_t
 {
 	//            0123456789012345678901234567890123456789012345678901234567890  
     char pad[] = ".............................................................";
-    char dataFormat[] = "%*s%s%.*s : %#"PRIx64"\n";
+    char dataFormat[] = "%*s%s%.*s : 0x%"PRIx64"\n";
 	size_t maxDotColumn = 60;
 #ifndef __VXWORKS__
 	int padLen = maxDotColumn-strnlen((const char *)name, maxDotColumn);
@@ -61,7 +61,7 @@ void PrintIntWithDotsFull(PrintDest_t *dest, int indent, const char * name, uint
 {
 	//            0123456789012345678901234567890123456789012345678901234567890  
     char pad[] = ".............................................................";
-    char dataFormat[] = "%*s%s%.*s : %#018"PRIx64"\n"; //add padding for full width
+    char dataFormat[] = "%*s%s%.*s : 0x%018"PRIx64"\n"; //add padding for full width
 	size_t maxDotColumn = 60;
 #ifndef __VXWORKS__
 	int padLen = maxDotColumn-strnlen((const char *)name, maxDotColumn);
@@ -118,7 +118,7 @@ void PrintStlNodeDesc(PrintDest_t *dest, int indent, const STL_NODE_DESCRIPTION 
 #endif
         PrintFunc(dest, "%*s%.*s\n",
 			  indent, "",
-			  strlength,
+			  (int)strlength,
 			  pStlNodeDesc->NodeString);
     }
 }
@@ -1185,7 +1185,7 @@ void PrintStlHfiCongestionControlTab(PrintDest_t *dest, int indent, const STL_HF
             PrintFunc(dest, "%*sBlock %u:\n", indent+3, "", block + start);
             for (i = 0; i < STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES; ++i) {
                 const STL_HFI_CONGESTION_CONTROL_TABLE_ENTRY *cursor = &pHfiCongestionControl->CCT_Block_List[block].CCT_Entry_List[i];
-                PrintFunc(dest, "%*sEntry %u: Shift %u, Multiplier: %u\n", indent+4, "", i, 
+                PrintFunc(dest, "%*sEntry %u: Shift %u, Multiplier: %u\n", indent+4, "", ((block + start) * STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES) + i, 
                     cursor->s.CCT_Shift, cursor->s.CCT_Multiplier);
             }
         }
@@ -1554,7 +1554,7 @@ void PrintStlVLArbTable(PrintDest_t *dest, int indent, const STL_VLARB_TABLE *pV
     			PrintFunc(dest, "%*sVL%2u : ", indent, "", i);
     			for (j = 0; j < STL_MAX_VLS; ++j)
     				if ( pVLArbTable->Matrix[i] & 1<<j) PrintFunc(dest, "VL%2u ", j);
-    			PrintFunc(dest, "\n", "");
+				PrintFunc(dest, "\n");
     		}
     	}
     }
@@ -2392,8 +2392,7 @@ void PrintStlPortSummary(PrintDest_t *dest, int indent, const char* portName, co
 			PrintFunc(dest, "%*sLID: 0x%08x-0x%08x       SM LID: 0x%08x SL: %-2u\n",
 				indent, "", pPortInfo->LID,
 				pPortInfo->LID + (1<<pPortInfo->s1.LMC)-1,
-				pPortInfo->MasterSMLID,
-				pPortInfo->s1.LMC, pPortInfo->s2.MasterSMSL);
+				pPortInfo->MasterSMLID, pPortInfo->s2.MasterSMSL);
 		}
 	}
 	if (show_cable && cableInfoData) {

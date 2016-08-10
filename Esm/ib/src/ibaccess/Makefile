@@ -119,12 +119,11 @@ INCLUDE_SUBDIR		=
 CLOCAL	= $(CPIE)
 LOCALDEPLIBS = 
 
+PROJ_SM_DIR ?= $(TL_DIR)/Esm/ib
+
 # Include Make Rules definitions and rules
 ifneq "$(PROJ_SM_DIR)" ""
 include $(PROJ_SM_DIR)/Makerules.module
-else
-LOCAL_INCLUDE_DIRS=$(TL_DIR)/HSM_Inc/ib_include $(TL_DIR)/HSM_Inc/cs_include/smi_include
-include $(TL_DIR)/$(PROJ_FILE_DIR)/Makerules.project
 endif
 
 #=============================================================================#

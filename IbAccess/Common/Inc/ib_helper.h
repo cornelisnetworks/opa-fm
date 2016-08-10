@@ -1215,7 +1215,7 @@ uint8 UsecToRnrNakTimer(uint32 usec)
 static __inline
 void FormatCapabilityMask(char buf[80], IB_CAPABILITY_MASK cmask)
 {
-	sprintf(buf, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
+	snprintf(buf, 80, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
 		cmask.s.IsClientReregistrationSupported?"CR ": "",
 		cmask.s.IsLinkRoundTripLatencySupported?"LR ": "",
 		cmask.s.IsBootManagementSupported?"BT ": "",
@@ -1243,7 +1243,7 @@ void FormatCapabilityMask(char buf[80], IB_CAPABILITY_MASK cmask)
 static __inline
 void FormatInitType(char buf[80], IB_PORT_INIT_TYPE value)
 {
-	sprintf(buf, "%s%s%s%s",
+	snprintf(buf, 80, "%s%s%s%s",
 		value & PORT_INIT_TYPE_NOLOAD?"NL ": "",
 		value & PORT_INIT_TYPE_PRESERVE_CONTENT?"PC ": "",
 		value & PORT_INIT_TYPE_PRESERVE_PRESENCE?"PP ": "",

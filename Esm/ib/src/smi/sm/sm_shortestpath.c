@@ -43,6 +43,20 @@ typedef struct GuidCounter
 } GuidCounter_t;
 
 static int
+_compare_guids(const void * arg1, const void * arg2)
+{
+	SwitchportToNextGuid_t * sport1 = (SwitchportToNextGuid_t *)arg1;
+	SwitchportToNextGuid_t * sport2 = (SwitchportToNextGuid_t *)arg2;
+
+	if (sport1->guid < sport2->guid)
+		return -1;
+	else if (sport1->guid > sport2->guid)
+		return 1;
+	else
+		return 0;
+}
+
+static int
 _compare_lids_routed(const void * arg1, const void * arg2)
 {
 	SwitchportToNextGuid_t * sport1 = (SwitchportToNextGuid_t *)arg1;
@@ -149,7 +163,7 @@ _guid_cycle_sort(SwitchportToNextGuid_t *ports, int portCount, void *scratch, in
 	}
 	
 	// easy out scenarios: can't cycle [1,1,1,1] or [1,2,3,4]
-	if (uniqueGuids == 1 || uniqueGuids == portCount)
+	if (uniqueGuids <= 1 || uniqueGuids == portCount)
 		return;
 	
 	// sort the array.  to preserve existing sort order of remaining
@@ -366,7 +380,10 @@ _get_port_group(Topology_t *topop, Node_t *switchp, Node_t *nodep, uint8_t *port
 
 	memset(ordered_ports, 0, sizeof(SwitchportToNextGuid_t) * switchp->nodeInfo.NumPorts);
 
-	end_port = _select_ports(topop, switchp, j, ordered_ports, 0);
+	end_port = topop->routingModule->funcs.select_ports(topop, switchp, j, ordered_ports, 0);
+
+	qsort(ordered_ports, end_port, sizeof(SwitchportToNextGuid_t), _compare_guids);
+
 	for (i=0; i<end_port; i++) {
 		portnos[i] = ordered_ports[i].portp->index;
 	}
@@ -443,7 +460,7 @@ _setup_xft(Topology_t *topop, Node_t *switchp, Node_t *nodep, Port_t *orig_portp
 		memset(ordered_ports, 0, sizeof(SwitchportToNextGuid_t));
 
 		// select best port, _select_ports will return 1 or 0 (no path)
-		if ((end_port = _select_ports(topop, switchp, j, ordered_ports, 1)) == 0) {
+		if ((end_port = topop->routingModule->funcs.select_ports(topop, switchp, j, ordered_ports, 1)) == 0) {
 			IB_LOG_ERROR_FMT(__func__,
 				"Failed to find an outbound port on NodeGUID "FMT_U64" to NodeGUID "FMT_U64" Port %d",
 				switchp->nodeInfo.NodeGUID, nodep->nodeInfo.NodeGUID, orig_portp->index);
@@ -462,7 +479,7 @@ _setup_xft(Topology_t *topop, Node_t *switchp, Node_t *nodep, Port_t *orig_portp
 	} else { // lmc > 0
 		memset(ordered_ports, 0, sizeof(SwitchportToNextGuid_t) * switchp->nodeInfo.NumPorts);
 
-		end_port = _select_ports(topop, switchp, j, ordered_ports, 0);
+		end_port = topop->routingModule->funcs.select_ports(topop, switchp, j, ordered_ports, 0);
 		if (!end_port) {
 			IB_LOG_ERROR_FMT(__func__,
 				"Failed to find outbound ports on NodeGUID "FMT_U64" to NodeGUID "FMT_U64" Port %d",
@@ -537,7 +554,7 @@ _setup_pgs(struct _Topology *topop, struct _Node * srcSw, const struct _Node * d
 
 	memset(ordered_ports, 0, sizeof(SwitchportToNextGuid_t) * srcSw->nodeInfo.NumPorts);
 
-	int end_port = _select_ports(topop, srcSw, dstSw->swIdx, ordered_ports, 0);
+	int end_port = topop->routingModule->funcs.select_ports(topop, srcSw, dstSw->swIdx, ordered_ports, 0);
 	if (end_port <= 1) {
 		srcSw->switchInfo.PortGroupTop = 0;
 		return VSTATUS_OK;
@@ -686,10 +703,6 @@ _incr_trunk_count(Node_t* switchp, Port_t* swportp, int *trunkCnt, uint8_t *trun
 	for (i=0; i<cnt; i++) {
 		if (trunkGrpNode[i] == swportp->nodeno) {
 			trunkGrpCnt[i]++;
-			if (i != (cnt-1)) {
-				// non-contiguous set of ports in group
-				switchp->trunkGrouped = 0;
-			}
 			break;
 		}
 	}
@@ -1038,7 +1051,8 @@ _select_scvl_map(Topology_t *topop, Node_t *nodep,
         portp = (in_portp->portData->nodePtr->nodeInfo.NodeType != NI_TYPE_SWITCH) ? in_portp : out_portp;
 
         for (vf = 0; vf < MAX_VFABRICS; vf++) {
-            if (bitset_test(&portp->portData->vfMember, vf) == 0)
+            uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
+            if (bitset_test(&portp->portData->vfMember, vfIdx) == 0)
                 continue;  // not a member of VF
 
             bitset_set(&sm_linkSLsInuse, VirtualFabrics->v_fabric[vf].base_sl);
@@ -1116,6 +1130,7 @@ _select_vlvf_map(Topology_t *topop, Node_t *nodep, Port_t *portp, VlVfMap_t * vl
 
     Qos_t *qos = GetQos(portp->portData->vl1);
 
+    VirtualFabrics_t *VirtualFabrics = topop->vfs_ptr;
     Port_t *neighbor_portp = NULL; // Will make a parameter(?)
     bitset_t * vfmember = NULL;
     int vl, vf, idx, idx2;
@@ -1154,7 +1169,8 @@ _select_vlvf_map(Topology_t *topop, Node_t *nodep, Port_t *portp, VlVfMap_t * vl
         for (idx=0, idx2=0; idx<MAX_VFABRICS; idx++) {
             vf = qos->vlvf.vf[vl][idx];
             if (vf == -1) break;
-            if (bitset_test(vfmember, vf) != 0) {
+            uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
+            if (bitset_test(vfmember, vfIdx) != 0) {
                 vlvfmap->vf[vl][idx2++]=vf;
             }
         }
@@ -1442,10 +1458,14 @@ sm_shortestpath_make_routing_module(RoutingModule_t * rm)
 	rm->funcs.post_process_discovery = _post_process_discovery;
 	rm->funcs.post_process_routing = _post_process_routing;
 	rm->funcs.post_process_routing_copy = _post_process_routing_copy;
+	rm->funcs.allocate_cost_matrix = sm_routing_alloc_cost_matrix;
+	rm->funcs.initialize_cost_matrix = sm_routing_init_floyds;
+ 	rm->funcs.calculate_cost_matrix = sm_routing_calc_floyds;
 	rm->funcs.copy_lfts = sm_routing_copy_lfts;
 	rm->funcs.setup_switches_lrdr = _setup_switches_lrdr;
 	rm->funcs.get_port_group = _get_port_group;
 	rm->funcs.setup_xft = _setup_xft;
+	rm->funcs.select_ports = _select_ports;
 	rm->funcs.setup_pgs = _setup_pgs;
 	rm->funcs.select_slsc_map = _select_slsc_map;
 	rm->funcs.select_scsl_map = _select_scsl_map;

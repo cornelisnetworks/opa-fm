@@ -212,15 +212,18 @@ FSTATUS paGetGroupList(Pm_t *pm, PmGroupList_t *GroupList);
 
 // get group info - caller declares Pm_T and PmGroupInfo_t, and passes pointers
 FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo,
-    uint64 imageId, int32 offset, uint64 *returnImageId);
+	STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE_ID_DATA *returnImageId);
 
 // get group config - caller declares Pm_T and PmGroupConfig_t, and passes pointers
-FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConfig, uint64 imageId, int32 offset, uint64 *retImageId);
+FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConfig,
+	STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE_ID_DATA *returnImageId);
 
 // get port stats - caller declares Pm_T and PmCompositePortCounters_t
 //                  delta - 1 requests delta counters, 0 gets raw total
 //                  userCntrs - 1 requests PA user controled counters, 0 gets Pm Controlled Image Counters. if 1 delta and ofset must be 0
-FSTATUS paGetPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, PmCompositePortCounters_t *portCountersP, uint32 delta, uint32 userCntrs, uint64 imageId, int32 offset, uint32 *flagsp, uint64 *returnImageId);
+FSTATUS paGetPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, PmCompositePortCounters_t *portCountersP,
+	uint32 delta, uint32 userCntrs, STL_PA_IMAGE_ID_DATA imageId, uint32 *flagsp,
+	STL_PA_IMAGE_ID_DATA *returnImageId);
 
 // Clear Running totals for a port.  This simulates a PMA clear so
 // that tools like opareport can work against the Running totals
@@ -231,40 +234,45 @@ FSTATUS paClearPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum,
 // that tools like opareport can work against the Running totals
 FSTATUS paClearAllPortStats(Pm_t *pm, CounterSelectMask_t select);
 
-FSTATUS paFreezeFrameRenew(Pm_t *pm, uint64 imageId);
+FSTATUS paFreezeFrameRenew(Pm_t *pm, STL_PA_IMAGE_ID_DATA *imageId);
 
-FSTATUS paFreezeFrameRelease(Pm_t *pm, uint64 imageId);
+FSTATUS paFreezeFrameRelease(Pm_t *pm, STL_PA_IMAGE_ID_DATA *imageId);
 
-FSTATUS paFreezeFrameCreate(Pm_t *pm, uint64 imageId, int32 offset, uint64 *retImageId);
+FSTATUS paFreezeFrameCreate(Pm_t *pm, STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE_ID_DATA *retImageId);
 
-FSTATUS paFreezeFrameMove(Pm_t *pm, uint64 ffImageId, uint64 imageId, int32 offset, uint64 *retImageId);
+FSTATUS paFreezeFrameMove(Pm_t *pm, STL_PA_IMAGE_ID_DATA ffImageId, STL_PA_IMAGE_ID_DATA imageId,
+	STL_PA_IMAGE_ID_DATA *returnImageId);
 
 FSTATUS paGetFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPorts,
-    uint64 imageId, int32 offset, uint64 *returnImageId, uint32 select,
-    uint32 start, uint32 range);
-FSTATUS paGetImageInfo(Pm_t *pm, uint64 imageId, int32 offset, PmImageInfo_t *imageInfo, uint64 *retImageId);
+	STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE_ID_DATA *returnImageId, uint32 select,
+	uint32 start, uint32 range);
 
+FSTATUS paGetImageInfo(Pm_t *pm, STL_PA_IMAGE_ID_DATA imageId, PmImageInfo_t *imageInfo,
+	STL_PA_IMAGE_ID_DATA *returnImageId);
 
 // get vf list - caller declares Pm_T and PmGroupList_t, and passes pointers
 FSTATUS paGetVFList(Pm_t *pm, PmVFList_t *pmVFList, uint32 imageIndex);
 
 // get vf config - caller declares Pm_T and PmVFConfig_t, and passes pointers
-FSTATUS paGetVFConfig(Pm_t *pm, char *vfName, uint64 vfSid, PmVFConfig_t *pmVFConfig, uint64 imageId, int32 offset, uint64 *retImageId);
+FSTATUS paGetVFConfig(Pm_t *pm, char *vfName, uint64 vfSid, PmVFConfig_t *pmVFConfig,
+	STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE_ID_DATA *returnImageId);
 
 // get vf info - caller declares Pm_T and PmGroupInfo_t, and passes pointers
-FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, PmVFInfo_t *pmVFInfo, uint64 imageId,
-    int32 offset, uint64 *returnImageId);
+FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, PmVFInfo_t *pmVFInfo, STL_PA_IMAGE_ID_DATA imageId,
+		STL_PA_IMAGE_ID_DATA *returnImageId);
 
 // get vf port stats - caller declares Pm_T and PmCompositeVLCounters_t
 //                  delta - 1 requests delta counters, 0 gets raw total
 //                  userCntrs - 1 requests PA user controled counters, 0 gets Pm Controlled Image Counters. if 1 delta and ofset must be 0
-FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, char *vfName, PmCompositeVLCounters_t *vfPortCountersP, uint32 delta, uint32 userCntrs, uint64 imageId, int32 offset, uint32 *flagsp, uint64 *returnImageId);
+FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, char *vfName,
+	PmCompositeVLCounters_t *vfPortCountersP, uint32 delta, uint32 userCntrs,
+	STL_PA_IMAGE_ID_DATA imageId, uint32 *flagsp, STL_PA_IMAGE_ID_DATA *returnImageId);
 
 FSTATUS paClearVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, STLVlCounterSelectMask select, char *vfName);
 
 FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocusPorts,
-    uint64 imageId, int32 offset, uint64 *returnImageId, uint32 select,
-    uint32 start, uint32 range);
+	STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE_ID_DATA *returnImageId, uint32 select,
+	uint32 start, uint32 range);
 
 
 #ifdef __cplusplus

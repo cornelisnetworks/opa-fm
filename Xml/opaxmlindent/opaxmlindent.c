@@ -35,6 +35,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <unistd.h>
 #include <fnmatch.h>
 #include <ctype.h>
+#include <getopt.h>
 #define _GNU_SOURCE
 
 #include <ixml.h>
@@ -132,15 +133,18 @@ FSTATUS Xml2ParseInputFile(const char *input_file, void *context, IXML_FIELD *fi
 	return FSUCCESS;
 }
 
-void Usage(void)
+void Usage(int exitcode)
 {
 	fprintf(stderr, "Usage: opaxmlindent [-t|-k] [-i indent] [input_file]\n");
+	fprintf(stderr, "           or\n");
+	fprintf(stderr, "       opaxmlindent --help\n");
+	fprintf(stderr, "       --help - produce full help text\n");
 	fprintf(stderr, "       -t - trim leading and trailing whitespace in tag contents\n");
 	fprintf(stderr, "       -k - in tags with purely whitespace which contain newlines,\n");
 	fprintf(stderr, "            keep newlines as is (default is to format as an empty list)\n");
 	fprintf(stderr, "       -i indent - set indentation to use per level (default 4)\n");
 	fprintf(stderr, "       input_file - xml file to read.  default is stdin\n");
-	exit(2);
+	exit(exitcode);
 }
 
 int main(int argc, char **argv)
@@ -148,12 +152,16 @@ int main(int argc, char **argv)
 	IXmlOutputState_t output_state;
 	int exit_code = 0;
 	uint32 indent = 4;
+	const struct option longopts[] = {{"help", 0, 0, '$'},
+						{0, 0, 0, 0}};
 	char *filename = "-";	// default to stdin
 	IXML_FIELD *fields = UntrimmedFields;
 	int c;
 
-	while (-1 != (c = getopt(argc, argv, "tki:"))) {
+	while (-1 != (c = getopt_long(argc, argv, "tki:", longopts, NULL))) {
 		switch (c) {
+			case '$':
+				Usage(0);
 			case 't':
 				// TrimmedFields treats empty list as tag with no content
 				//fields = TrimmedFields;
@@ -162,25 +170,25 @@ int main(int argc, char **argv)
 			case 'i':
 				if (FSUCCESS != StringToUint32(&indent, optarg, NULL, 0, TRUE)) {
 					fprintf(stderr, "opaxmlindent: Invalid indent: %s\n", optarg);
-					Usage();
+					Usage(2);
 				}
 				break;
 			case 'k':
 				g_keep_newline = TRUE;
 				break;
 			default:
-				Usage();
-				break;
+				Usage(2);
 		}
 	}
 	if (g_trim && g_keep_newline) {
 		fprintf(stderr, "opaxmlindent: Can't use -k and -t together\n");
-		Usage();
+		Usage(2);
 	}
 	if (argc > optind)
 		filename = argv[optind++];
-	if (argc > optind)
-		Usage();
+	if (argc > optind) {
+		Usage(2);
+	}
 	if (FSUCCESS != IXmlOutputInit(&output_state, stdout, indent, IXML_OUTPUT_FLAG_NONE, NULL))
 		exit(1);
 	if (FSUCCESS != Xml2ParseInputFile(filename, &output_state, fields))

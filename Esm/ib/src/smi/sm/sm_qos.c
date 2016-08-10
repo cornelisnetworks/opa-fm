@@ -926,8 +926,9 @@ sm_initialize_Switch_SLSCMap(Topology_t * topop, Node_t * switchp,
     status = topop->routingModule->funcs.select_slsc_map(topop, switchp, swportp, swportp, slscmapp); 
     if (status != VSTATUS_OK) {
         IB_LOG_WARNRC("Failed to get SLSC "
-                      "map from routing algorithm; using default; rc:", 
+                      "map from routing algorithm; rc:", 
                       status);
+		return status;
     }
     
     // Compare the port's current SLSC map against what the topology says it
@@ -991,8 +992,9 @@ sm_initialize_Switch_SCSLMap(Topology_t * topop, Node_t * switchp,
     status = topop->routingModule->funcs.select_scsl_map(topop, switchp, swportp, swportp, scslmapp); 
     if (status != VSTATUS_OK) {
         IB_LOG_WARNRC("Failed to get SCSL "
-                      "map from routing algorithm; using default; rc:", 
+                      "map from routing algorithm; rc:", 
                       status);
+		return status;
     }
     
     // compare the port's current SCSL map against what the topology says it
@@ -1025,14 +1027,14 @@ sm_initialize_Switch_SCSLMap(Topology_t * topop, Node_t * switchp,
     return (status);
 }
 
-static Status_t
-sm_initialize_Switch_SCVLMaps(Topology_t * topop, Node_t * switchp)
+Status_t
+sm_initialize_Switch_SCVLMaps(Topology_t * topop, Node_t * switchp, Port_t *out_portp)
 {
     uint32_t amod = 0; 
     uint8_t synchModeGen1 = 1;
     Status_t status = VSTATUS_OK; 
     Node_t *neighborNodep; 
-    Port_t * out_portp,*neighborPortp, *swportp = NULL, *neighborSwPortp = NULL; 
+    Port_t *neighborPortp, *swportp = NULL, *neighborSwPortp = NULL; 
     STL_SCVLMAP scvlmap; 
 
     IB_ENTER(__func__, topop, switchp, 0, 0);
@@ -1050,137 +1052,146 @@ sm_initialize_Switch_SCVLMaps(Topology_t * topop, Node_t * switchp)
     // for every node/port combo, we need to setup the SC->VL_t and SC_->VL_nt
     // mapping.  According to Volume 1, Section 20.2.2.6.14 SCtoVLxMappingTable.
     
-    for_all_ports(switchp, out_portp) {
-        if (!sm_valid_port(out_portp) || out_portp->state <= IB_PORT_DOWN) 
-            continue; 
+	if (!sm_valid_port(out_portp) || out_portp->state <= IB_PORT_DOWN) {
+		status = VSTATUS_BAD;
+		goto fail;
+	}
+		
 
-        if ((neighborNodep = sm_find_node(topop, out_portp->nodeno)) == NULL || 
-            (neighborPortp = sm_find_node_port(topop, neighborNodep, out_portp->portno)) == NULL || 
-            !sm_valid_port(neighborPortp)) {
-            IB_LOG_WARN_FMT(__func__, 
-                            "Unable to get neighbor to node %s nodeGuid " FMT_U64
-                            " output port %d", sm_nodeDescString(switchp), 
-                            switchp->nodeInfo.NodeGUID, out_portp->index); 
-            status = VSTATUS_BAD;
-            goto fail;
-        }
+	if ((neighborNodep = sm_find_node(topop, out_portp->nodeno)) == NULL || 
+		(neighborPortp = sm_find_node_port(topop, neighborNodep, out_portp->portno)) == NULL || 
+		!sm_valid_port(neighborPortp)) {
+		IB_LOG_WARN_FMT(__func__, 
+						"Unable to get neighbor to node %s nodeGuid " FMT_U64
+						" output port %d", sm_nodeDescString(switchp), 
+						switchp->nodeInfo.NodeGUID, out_portp->index); 
+		status = VSTATUS_BAD;
+		goto fail;
+	}
 
-        if (neighborNodep->nodeInfo.NodeType == NI_TYPE_SWITCH) {
-            neighborSwPortp = sm_get_port(neighborNodep, 0);
-            if (!sm_valid_port(neighborSwPortp)) {
-                IB_LOG_WARN_FMT(__func__, 
-                    "Failed to get Port 0 of Switch " FMT_U64,
-                    neighborNodep->nodeInfo.NodeGUID);
-                status = VSTATUS_BAD;
-                goto fail;
-            }
-        }
+	if (neighborNodep->nodeInfo.NodeType == NI_TYPE_SWITCH) {
+		neighborSwPortp = sm_get_port(neighborNodep, 0);
+		if (!sm_valid_port(neighborSwPortp)) {
+			IB_LOG_WARN_FMT(__func__, 
+				"Failed to get Port 0 of Switch " FMT_U64,
+				neighborNodep->nodeInfo.NodeGUID);
+			status = VSTATUS_BAD;
+			goto fail;
+		}
+	}
 
-        if (!out_portp->portData->current.scvlt) {
-            IB_LOG_WARN_FMT(__func__,
-                "SCVLt for node %s nodeGuid "FMT_U64" port %d stale, will attempt update",
-                sm_nodeDescString(switchp), switchp->nodeInfo.NodeGUID, out_portp->index);
-        }
+	if (!out_portp->portData->current.scvlt) {
+		IB_LOG_WARN_FMT(__func__,
+			"SCVLt for node %s nodeGuid "FMT_U64" port %d stale, will attempt update",
+			sm_nodeDescString(switchp), switchp->nodeInfo.NodeGUID, out_portp->index);
+	}
 
-        if (!neighborPortp->portData->current.scvlnt) {
-            IB_LOG_WARN_FMT(__func__,
-                "SCVLnt for node %s nodeGuid "FMT_U64" port %d stale, will attempt update",
-                sm_nodeDescString(neighborNodep), neighborNodep->nodeInfo.NodeGUID, neighborPortp->index);
-        }
+	if ((out_portp->index > 0) &&
+		(!neighborPortp->portData->current.scvlnt)) {
+		IB_LOG_WARN_FMT(__func__,
+			"SCVLnt for node %s nodeGuid "FMT_U64" port %d stale, will attempt update",
+			sm_nodeDescString(neighborNodep), neighborNodep->nodeInfo.NodeGUID, neighborPortp->index);
+	}
 
-        // the SCtoVL_nt table must be configured consistently with the SCtoVL_t table at its neighbor. When the
-        // link state is Init the SM shall have the responsibility of updating both the SCtoVL_t table and the
-        // neighbor's SCtoVL_nt table ("synchronous" update). When the link state is Armed or Active, the SM
-        // shall update the SCtoVL_t table; and the SMAs of both ports shall have the responsibility of updating
-        // the neighbor's SCtoVL_nt table ("asynchronous" update of SCtoVL_t only).        
-        //
-        // section 9.7.14.3 of the STL spec, "Optional Mechanism for Changes While in LinkArmed or LinkActive"
-        // The mechanisms in this section are only available when the ports on both side of a link report
-        // IsAsyncSC2VLSupported. If either port reports it does not have this capability, the FM shall not
-        // attempt to perform the changes outlined in this section.
-        // It is anticipated that STL Gen1 will not support this capability.
-        synchModeGen1 = 1;
-        if (out_portp->state > IB_PORT_INIT || neighborPortp->state > IB_PORT_INIT) {
-            // when asynchronous mode is supported in Gen2 additional checks should
-            // be done against the IsAsyncSC2VLSupported field. 
-            synchModeGen1 = 0;
-        }
+	// the SCtoVL_nt table must be configured consistently with the SCtoVL_t table at its neighbor. When the
+	// link state is Init the SM shall have the responsibility of updating both the SCtoVL_t table and the
+	// neighbor's SCtoVL_nt table ("synchronous" update). When the link state is Armed or Active, the SM
+	// shall update the SCtoVL_t table; and the SMAs of both ports shall have the responsibility of updating
+	// the neighbor's SCtoVL_nt table ("asynchronous" update of SCtoVL_t only).        
+	//
+	// section 9.7.14.3 of the STL spec, "Optional Mechanism for Changes While in LinkArmed or LinkActive"
+	// The mechanisms in this section are only available when the ports on both side of a link report
+	// IsAsyncSC2VLSupported. If either port reports it does not have this capability, the FM shall not
+	// attempt to perform the changes outlined in this section.
+	// It is anticipated that STL Gen1 will not support this capability.
+	synchModeGen1 = 1;
+	if (out_portp->state > IB_PORT_INIT || neighborPortp->state > IB_PORT_INIT) {
+		// when asynchronous mode is supported in Gen2 additional checks should
+		// be done against the IsAsyncSC2VLSupported field. 
+		synchModeGen1 = 0;
+	}
 
-        //
-        // initialize the SC2VL_t map of the switch port
-        amod = (out_portp->state == IB_PORT_INIT) ? 1 << 24 : (1 << 24) | 1 << 12;   // 1 block, synch/asynch respectively
-        amod |= (uint32_t)out_portp->index;
+	//
+	// initialize the SC2VL_t map of the switch port
+	amod = ((out_portp->state == IB_PORT_INIT) || (out_portp->index == 0)) ? 
+			   1 << 24 : (1 << 24) | 1 << 12;   // 1 block, synch/asynch respectively
+	amod |= (uint32_t)out_portp->index;
 
-        STL_SCVLMAP * curScvl = &out_portp->portData->scvltMap;
+	STL_SCVLMAP * curScvl = &out_portp->portData->scvltMap;
 
-        status = topop->routingModule->funcs.select_scvl_map(topop, switchp, out_portp, neighborPortp, &scvlmap);
-        if (status != VSTATUS_OK) {
-            IB_LOG_WARNRC("Failed to get SCVL "
-                "map from routing algorithm; using default; rc:",
-                status); 
-            continue;
-        }
+	status = topop->routingModule->funcs.select_scvl_map(topop, switchp, out_portp, neighborPortp, &scvlmap);
+	if (status != VSTATUS_OK) {
+		IB_LOG_WARNRC("Failed to get SCVL "
+			"map from routing algorithm; using default; rc:",
+			status); 
+		status = VSTATUS_BAD;
+		goto fail;
+	}
 
-        // compare the port's current SCVL map against what the topology says it
-        // should be. If they're different, send the new one.
-        if (!out_portp->portData->current.scvlt ||
-            memcmp((void *)curScvl, (void *)&scvlmap, sizeof(scvlmap)) != 0) {
-            if (synchModeGen1) {
-                status = SM_Set_SCVLtMap_LR(fd_topology, amod, sm_lid, swportp->portData->lid, &scvlmap, sm_config.mkey); 
+	// compare the port's current SCVL map against what the topology says it
+	// should be. If they're different, send the new one.
+	if (!out_portp->portData->current.scvlt ||
+		memcmp((void *)curScvl, (void *)&scvlmap, sizeof(scvlmap)) != 0) {
+		if (synchModeGen1) {
+			status = SM_Set_SCVLtMap_LR(fd_topology, amod, sm_lid, swportp->portData->lid, &scvlmap, sm_config.mkey); 
 
-                if (status != VSTATUS_OK) {
-                    IB_LOG_WARN_FMT(__func__, 
-                                    "Failed to set SCVL_t Map for node %s nodeGuid " FMT_U64
-                                    " output port %d", sm_nodeDescString(switchp), 
-                                    switchp->nodeInfo.NodeGUID, out_portp->index);
-                }
-                out_portp->portData->current.scvlt = (status == VSTATUS_OK);
-            } else {
-                IB_LOG_WARN_FMT(__func__, 
-                                "Mismatch/Unable to set SCVL_t Map for node %s nodeGuid " FMT_U64
-                                " output port %d", sm_nodeDescString(switchp), 
-                                switchp->nodeInfo.NodeGUID, out_portp->index);
-            }
-        }
-        
-        // set SCVL_t Map for the port
-        out_portp->portData->scvltMap = scvlmap; 
+			out_portp->portData->current.scvlt = (status == VSTATUS_OK);
+			if (status != VSTATUS_OK) {
+				IB_LOG_WARN_FMT(__func__, 
+								"Failed to set SCVL_t Map for node %s nodeGuid " FMT_U64
+								" output port %d", sm_nodeDescString(switchp), 
+								switchp->nodeInfo.NodeGUID, out_portp->index);
+				goto fail;
+			}
+		} else {
+			IB_LOG_WARN_FMT(__func__, 
+							"Mismatch/Unable to set SCVL_t Map for node %s nodeGuid " FMT_U64
+							" output port %d", sm_nodeDescString(switchp), 
+							switchp->nodeInfo.NodeGUID, out_portp->index);
+		}
+	}
+	
+	// set SCVL_t Map for the port
+	out_portp->portData->scvltMap = scvlmap; 
 
-        //
-        // initialize the SCVL_nt map of the neighbor port.  When the link state is Armed or Active, the
-        // SMAs of both ports shall have the responsibility of updating the neighbor's SCtoVL_nt table
-        // ("asynchronous" update of SCtoVL_t only).
-        amod = (1 << 24) | neighborPortp->index;   // 1 block, sych update
+	//
+	// initialize the SCVL_nt map of the neighbor port.  When the link state is Armed or Active, the
+	// SMAs of both ports shall have the responsibility of updating the neighbor's SCtoVL_nt table
+	// ("asynchronous" update of SCtoVL_t only).
+	amod = (1 << 24) | neighborPortp->index;   // 1 block, sych update
 
-        STL_SCVLMAP * curScvlnt = &neighborPortp->portData->scvlntMap;
-        if (!neighborPortp->portData->current.scvlnt ||
-            memcmp((void *)curScvlnt, (void *)&scvlmap, sizeof(scvlmap)) != 0) {
-            if (synchModeGen1) {
-                status = SM_Set_SCVLntMap_LR(fd_topology,
-                                             amod,
-                                             sm_lid, 
-                                             (neighborNodep->nodeInfo.NodeType == NI_TYPE_SWITCH) ? neighborSwPortp->portData->lid : neighborPortp->portData->lid,
-                                             &scvlmap,
-                                             sm_config.mkey); 
-                
-                if (status != VSTATUS_OK) {
-                    IB_LOG_WARN_FMT(__func__, 
-                                    "Failed to set SCVL_nt Map for node %s nodeGuid " FMT_U64
-                                    " output port %d", sm_nodeDescString(neighborNodep), 
-                                    neighborNodep->nodeInfo.NodeGUID, neighborPortp->index);
-                }
-                neighborPortp->portData->current.scvlnt = (status == VSTATUS_OK);
-            } else {
-                IB_LOG_WARN_FMT(__func__, 
-                                "Mismatch/Unable to set SCVL_nt Map for node %s nodeGuid " FMT_U64
-                                " output port %d", sm_nodeDescString(neighborNodep), 
-                                neighborNodep->nodeInfo.NodeGUID, neighborPortp->index);
-            }
-        }
-        
-        // set SCVL_nt Map for the neighbor port
-        neighborPortp->portData->scvlntMap = scvlmap;
-    }
+	STL_SCVLMAP * curScvlnt = &neighborPortp->portData->scvlntMap;
+
+	// SCVLnt not supported on switch port 0
+	if ((out_portp->index > 0) &&
+		(!neighborPortp->portData->current.scvlnt ||
+		memcmp((void *)curScvlnt, (void *)&scvlmap, sizeof(scvlmap)) != 0)) {
+		if (synchModeGen1) {
+			status = SM_Set_SCVLntMap_LR(fd_topology,
+										 amod,
+										 sm_lid, 
+										 (neighborNodep->nodeInfo.NodeType == NI_TYPE_SWITCH) ? neighborSwPortp->portData->lid : neighborPortp->portData->lid,
+										 &scvlmap,
+										 sm_config.mkey); 
+			
+			neighborPortp->portData->current.scvlnt = (status == VSTATUS_OK);
+			if (status != VSTATUS_OK) {
+				IB_LOG_WARN_FMT(__func__, 
+								"Failed to set SCVL_nt Map for node %s nodeGuid " FMT_U64
+								" output port %d", sm_nodeDescString(neighborNodep), 
+								neighborNodep->nodeInfo.NodeGUID, neighborPortp->index);
+				goto fail;
+			}
+		} else {
+			IB_LOG_WARN_FMT(__func__, 
+							"Mismatch/Unable to set SCVL_nt Map for node %s nodeGuid " FMT_U64
+							" output port %d", sm_nodeDescString(neighborNodep), 
+							neighborNodep->nodeInfo.NodeGUID, neighborPortp->index);
+		}
+	}
+	
+	// set SCVL_nt Map for the neighbor port
+	neighborPortp->portData->scvlntMap = scvlmap;
 
 fail:
     IB_EXIT(__func__, 0); 
@@ -1224,8 +1235,9 @@ sm_initialize_Node_Port_SLSCMap(Topology_t * topop, Node_t * nodep, Port_t * out
     status = topop->routingModule->funcs.select_slsc_map(topop, nodep, out_portp, out_portp, slscmapp); 
     if (status != VSTATUS_OK) {
         IB_LOG_WARNRC("Failed to get SLSC "
-                      "map from routing algorithm; using default; rc:", 
+                      "map from routing algorithm; rc:", 
                       status);
+		return status;
     }
     
     // 
@@ -1302,8 +1314,9 @@ sm_initialize_Node_Port_SCSLMap(Topology_t * topop, Node_t * nodep, Port_t * in_
     if (status != VSTATUS_OK) {
         IB_LOG_WARNRC
            ("sm_initialize_Node_Port_SCSLMap: Failed to get SCSL "
-            "map from routing algorithm; using default; rc:", 
+            "map from routing algorithm; rc:", 
             status);
+		return status;
     }
 
     // 
@@ -1433,8 +1446,9 @@ sm_initialize_Node_Port_SCVLMaps(Topology_t * topop, Node_t * nodep, Port_t * in
     status = topop->routingModule->funcs.select_scvl_map(topop, nodep, in_portp, in_portp, &scvlmap); 
     if (status != VSTATUS_OK) {
         IB_LOG_WARNRC("Failed to get SCVL "
-                      "map from routing algorithm; using default; rc:", 
+                      "map from routing algorithm; rc:", 
                       status);
+		return status;
     }
 
     // 
@@ -1445,13 +1459,14 @@ sm_initialize_Node_Port_SCVLMaps(Topology_t * topop, Node_t * nodep, Port_t * in
         if (synchModeGen1) {
             status = SM_Set_SCVLtMap_LR(fd_topology, amod, sm_lid, in_portp->portData->lid, &scvlmap, sm_config.mkey); 
 
+            in_portp->portData->current.scvlt = (status == VSTATUS_OK);
             if (status != VSTATUS_OK) {
                 IB_LOG_WARN_FMT(__func__, 
                                 "Failed to set SCVL_t Map for node %s nodeGuid " FMT_U64
                                 " output port %d", sm_nodeDescString(nodep), 
                                 nodep->nodeInfo.NodeGUID, in_portp->index);
+				return status;
             }
-            in_portp->portData->current.scvlt = (status == VSTATUS_OK);
         } else {
             IB_LOG_WARN_FMT(__func__, 
                             "Mismatch/Unable to set SCVL_t Map for node %s nodeGuid " FMT_U64
@@ -1474,13 +1489,14 @@ sm_initialize_Node_Port_SCVLMaps(Topology_t * topop, Node_t * nodep, Port_t * in
                                          (neighborNodep->nodeInfo.NodeType == NI_TYPE_SWITCH) ? swportp->portData->lid : neighborPortp->portData->lid, 
                                          &scvlmap, sm_config.mkey); 
 
+            neighborPortp->portData->current.scvlnt = (status == VSTATUS_OK);
             if (status != VSTATUS_OK) {
                 IB_LOG_WARN_FMT(__func__, 
                                 "Failed to set SCVL_nt Map for neighbor node %s nodeGuid " FMT_U64
                                 " output port %d", sm_nodeDescString(neighborNodep), 
                                 neighborNodep->nodeInfo.NodeGUID, neighborPortp->index);
+				return status;
             }
-            neighborPortp->portData->current.scvlnt = (status == VSTATUS_OK);
         } else {
             IB_LOG_WARN_FMT(__func__, 
                             "Mismatch/Unable to set SCVL_nt Map for neighbor node %s nodeGuid " FMT_U64
@@ -1513,14 +1529,18 @@ sm_initialize_Node_SLMaps(Topology_t * topop, Node_t * nodep, Port_t * out_portp
 
     // initialize the SL2SC mapping table for the egress port
     status = sm_initialize_Node_Port_SLSCMap(sm_topop, nodep, out_portp, out_portp->portData->changes.slsc); 
+	if(status != VSTATUS_OK) 
+		return status;
     
     // initialize the SC2SL mapping table for the egress port
-    if (status == VSTATUS_OK) 
-        status = sm_initialize_Node_Port_SCSLMap(sm_topop, nodep, out_portp, out_portp->portData->changes.scsl); 
+	status = sm_initialize_Node_Port_SCSLMap(sm_topop, nodep, out_portp, out_portp->portData->changes.scsl); 
+	if(status != VSTATUS_OK) 
+		return status;
 
     // initialize the SC2VL* mapping tables for the egress port
-    if (status == VSTATUS_OK)
-        status = sm_initialize_Node_Port_SCVLMaps(sm_topop, nodep, out_portp); 
+    status = sm_initialize_Node_Port_SCVLMaps(sm_topop, nodep, out_portp); 
+	if(status != VSTATUS_OK) 
+		return status;
 
     Node_t * lastNode = NULL;
     status = sm_syncSmaChanges(topop, &lastNode);
@@ -1557,14 +1577,13 @@ sm_initialize_Switch_SLMaps(Topology_t * topop, Node_t * nodep)
 
     // initialize the SL2SC mapping table for all ports.
     status = sm_initialize_Switch_SLSCMap(sm_topop, nodep, swportp->portData->changes.slsc);
+	if(status != VSTATUS_OK)
+		return status;
 
     // initialize the SC2SL mapping table for all ports.
-    if (status == VSTATUS_OK) 
-        status = sm_initialize_Switch_SCSLMap(sm_topop, nodep, swportp->portData->changes.scsl);
-
-    // initialize the SC2VL* mapping tables for all ports.
-    if (status == VSTATUS_OK)
-        status = sm_initialize_Switch_SCVLMaps(sm_topop, nodep);
+    status = sm_initialize_Switch_SCSLMap(sm_topop, nodep, swportp->portData->changes.scsl);
+	if(status != VSTATUS_OK)
+		return status;
 
     Node_t * lastNode = NULL;
     status = sm_syncSmaChanges(topop, &lastNode);

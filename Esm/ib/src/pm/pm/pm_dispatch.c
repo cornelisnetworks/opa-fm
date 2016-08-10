@@ -497,7 +497,7 @@ static Status_t PmSendGetPortStatus(Pm_t *pm, PmDispatcherNode_t *dispnode,
 	// fill in rest of entry->mad.data as needed
 	p = (STL_PORT_STATUS_REQ *)entry->mad.data;
 	p->PortNumber = disppacket->DispPorts[0].pmportp->portNum;
-	p->VLSelectMask = disppacket->DispPorts[0].dispNodeSwPort->VLSelectMask;
+	p->VLSelectMask = disppacket->VLSelectMask;
 	memset(p->Reserved, 0, sizeof(p->Reserved));
 
 	IB_LOG_DEBUG1_FMT(__func__, "%.*s Guid "FMT_U64" LID 0x%x Port %d",
@@ -538,7 +538,7 @@ static Status_t PmSendGetDataPortCounters(Pm_t *pm, PmDispatcherNode_t *dispnode
     for (i = 0; i < disppacket->numPorts; i++) 
         setPortSelectMask(p->PortSelectMask, disppacket->DispPorts[i].pmportp->portNum, (boolean)(!i));
    
-	p->VLSelectMask = disppacket->DispPorts[0].dispNodeSwPort->VLSelectMask;
+	p->VLSelectMask = disppacket->VLSelectMask;
 
 	p->res.s.LocalLinkIntegrityResolution = StlResolutionToShift(pm_config.resolution.LocalLinkIntegrity, 8);
 	p->res.s.LinkErrorRecoveryResolution = StlResolutionToShift(pm_config.resolution.LinkErrorRecovery, 2);
@@ -582,7 +582,7 @@ static Status_t PmSendGetErrorPortCounters(Pm_t *pm, PmDispatcherNode_t *dispnod
     for (i = 0; i < disppacket->numPorts; i++) 
         setPortSelectMask(p->PortSelectMask, disppacket->DispPorts[i].pmportp->portNum, (boolean)(!i));
    
-	p->VLSelectMask = disppacket->DispPorts[0].dispNodeSwPort->VLSelectMask;
+	p->VLSelectMask = disppacket->VLSelectMask;
 
 	IB_LOG_DEBUG1_FMT(__func__, "%.*s Guid "FMT_U64" LID 0x%x PortSelectMask[3]: "FMT_U64" VLSelectMask 0x%08x",
 				sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
@@ -673,7 +673,7 @@ static void DispatchPacketCallback(cntxt_entry_t *entry, Status_t status, void *
 			} else {
 				BSWAP_STL_DATA_PORT_COUNTERS_RSP(dataPortCountersMad);
 				if ( (dataPortCountersMad->PortSelectMask[3] != disppacket->PortSelectMask[3]) ||
-					(dataPortCountersMad->VLSelectMask != disppacket->DispPorts[0].dispNodeSwPort->VLSelectMask) ) {
+					(dataPortCountersMad->VLSelectMask != disppacket->VLSelectMask) ) {
 					PmMadSelectWrongPacketQuery(entry, mad, disppacket, "Get(DataPortCounters)");
 					goto nextpacket;	// PacketDone called on Fail
 				} else {
@@ -699,7 +699,7 @@ static void DispatchPacketCallback(cntxt_entry_t *entry, Status_t status, void *
 		} else {
 			BSWAP_STL_ERROR_PORT_COUNTERS_RSP(errorPortCountersMad);
 			if ( (errorPortCountersMad->PortSelectMask[3] != disppacket->PortSelectMask[3]) ||
-				(errorPortCountersMad->VLSelectMask != disppacket->DispPorts[0].dispNodeSwPort->VLSelectMask) ) {
+				(errorPortCountersMad->VLSelectMask != disppacket->VLSelectMask) ) {
 				PmMadSelectWrongPacketQuery(entry, mad, disppacket, "Get(ErrorPortCounters)");
 				goto nextpacket;	// PacketDone called on Fail
 			} else {
@@ -853,6 +853,19 @@ int PmDispatcherSwitchPortClearCompare(const void *a, const void *b)
 
     return 0;
 }	// End of PmDispatcherSwitchPortClearCompare()
+
+// Compare function used by qsort() to sort DispPorts array in disppacket struct
+// return n < 0 for a < b
+//        n = 0 for a == b
+//        n > 0 for a > b
+int PmDispatcherPortNumCompare(const void *a, const void *b)
+{
+	// First Level Compare: NULL check -> Decending
+	PmDispatcherPort_t *A = (PmDispatcherPort_t *)a;
+	PmDispatcherPort_t *B = (PmDispatcherPort_t *)b;
+
+	return (A->pmportp->portNum - B->pmportp->portNum);
+}	// End of PmDispatcherPortNumCompare()
 
 // start processing of a node
 // returns OK if a node was dispatched, returns NOT_FOUND if none dispatched
@@ -1217,6 +1230,7 @@ int MergePortIntoPacket(Pm_t *pm, PmDispatcherNode_t *dispnode, PmPort_t *pmport
             disppacket->DispPorts[0].dispNodeSwPort->flags.s.IsDispatched = 1;
             disppacket->numPorts = 1;
             setPortSelectMask(disppacket->PortSelectMask, pmportp->portNum, TRUE);
+            disppacket->VLSelectMask = dispnode->info.nextPort->VLSelectMask;
             //--if packet is empty copy single packet and mark packet as full
 
             return PM_DISP_SW_MERGE_DONE;              
@@ -1234,8 +1248,8 @@ int MergePortIntoPacket(Pm_t *pm, PmDispatcherNode_t *dispnode, PmPort_t *pmport
 			}
             else {
                 //check to make sure port can be combined into packet. check for similar VL Mask.
-                if( ( dispnode->info.nextPort->VLSelectMask | disppacket->DispPorts[0].dispNodeSwPort->VLSelectMask) 
-                        == disppacket->DispPorts[0].dispNodeSwPort->VLSelectMask) {             
+                if( ( dispnode->info.nextPort->VLSelectMask | disppacket->VLSelectMask)
+                        == disppacket->VLSelectMask) {
                     disppacket->DispPorts[disppacket->numPorts].pmportp = pmportp;
                     disppacket->DispPorts[disppacket->numPorts].dispNodeSwPort = dispnode->info.nextPort;
                     disppacket->DispPorts[disppacket->numPorts].dispnode = dispnode;
@@ -1259,6 +1273,7 @@ int MergePortIntoPacket(Pm_t *pm, PmDispatcherNode_t *dispnode, PmPort_t *pmport
             disppacket->DispPorts[0].dispNodeSwPort->flags.s.IsDispatched = 1;
             disppacket->numPorts = 1;
 			setPortSelectMask(disppacket->PortSelectMask, pmportp->portNum, TRUE);
+			disppacket->VLSelectMask = dispnode->info.nextPort->VLSelectMask;
         }
         return PM_DISP_SW_MERGE_CONTINUE; 
     }
@@ -1324,6 +1339,11 @@ static Status_t DispatchPacketNextStep(Pm_t *pm, PmDispatcherNode_t *dispnode, P
 		return VSTATUS_NOT_FOUND;	// nothing else to do for this port        
     dispnode->info.numOutstandingPackets++;    
 
+	if (disppacket->numPorts > 1) {
+		// Sort DispPorts by Port Number, so that it will match response MAD order
+		qsort(disppacket->DispPorts, (size_t)disppacket->numPorts,
+			sizeof(PmDispatcherPort_t), PmDispatcherPortNumCompare);
+	}
     switch (dispnode->info.state) {
 	case PM_DISP_NODE_GET_DATACOUNTERS:
 		if ( dispnode->info.pmnodep->nodeType == STL_NODE_FI ) {

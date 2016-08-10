@@ -31,6 +31,8 @@
 #-----------------------------------------------------------------------------#
 # These rules build a Embedded Firmware image
 
+PRODUCT_HOME=$(TL_DIR)/$(notdir $(PRODUCT_DIR))
+
 ifdef TARGET_BSP
 # the start-group and end-group options cause the linker to loop through
 # all the libraries within the given group and resolve symbols until it can do
@@ -123,17 +125,17 @@ endif
 safeboot advboot:
 # don't checked NETF1 stuff for atom safe boot 
 ifeq "$(BUILD_TARGET)" "ATOM"
-	cd $(TL_DIR) && make clobber; 
-	cd $(TL_DIR) && make NO_NETF1_IP_STACK=TRUE includes; 
-	cd $(TL_DIR) && make BUILD_SAFEBOOT=yes NO_NETF1_IP_STACK=TRUE libs;
+	cd $(PRODUCT_HOME) && make clobber; 
+	cd $(PRODUCT_HOME) && make NO_NETF1_IP_STACK=TRUE includes; 
+	cd $(PRODUCT_HOME) && make BUILD_SAFEBOOT=yes NO_NETF1_IP_STACK=TRUE libs;
 	echo "here atom" $(OBJECTS) " " $(DEPLIBS_TARGETS) 
 	$(MAKE) NO_SSP=1 BUILD_SAFEBOOT=yes DEBUG_CODE="" ADVBOOT 
 else
 ifneq (,$(USE_NETF1_IP_STACK))
 ifeq "$(PRESERVE_BOOT_OBJECTS)" ""
-	cd $(TL_DIR) && make clobber; \
-	cd $(TL_DIR) && make NO_NETF1_IP_STACK=TRUE includes; \
-	cd $(TL_DIR) && make BUILD_SAFEBOOT=yes NO_NETF1_IP_STACK=TRUE libs
+	cd $(PRODUCT_HOME) && make clobber; \
+	cd $(PRODUCT_HOME) && make NO_NETF1_IP_STACK=TRUE includes; \
+	cd $(PRODUCT_HOME) && make BUILD_SAFEBOOT=yes NO_NETF1_IP_STACK=TRUE libs
 endif
 endif
 	$(MAKE) NO_SSP=1 BUILD_SAFEBOOT=yes DEBUG_CODE="" ADVBOOT 

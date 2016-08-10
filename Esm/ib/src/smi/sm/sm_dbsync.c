@@ -680,12 +680,18 @@ static Status_t processSMDBSyncGetSet(Mai_t *maip, uint8_t *msgbuf, uint32_t len
 				}
 			}
 			else if (syncFile.type == DBSYNC_PM_HIST_IMAGE) {
+#if CPU_LE
+				// Process STH files only on LE CPUs
 				if (putPMSweepImageData(syncFile.name, msgbuf + syncFile.length, syncFile.size) < 0) {
 					(void) dbSyncMngrReply (dbsyncfd_if3, maip, msgbuf, 0, VSTATUS_DROP);
 				} else {
 					/* return positive status */
 					(void)dbSyncMngrReply (dbsyncfd_if3, maip, msgbuf, 0, VSTATUS_OK);
 				}
+#else
+				/* Do not process DBSYNC_PM_HIST_IMAGE on BE CPUs, but return positive status */
+				(void)dbSyncMngrReply (dbsyncfd_if3, maip, msgbuf, 0, VSTATUS_OK);
+#endif	// End of #if CPU_LE
 			}
 			/* handle other file types here in the future */
 		}
@@ -1346,7 +1352,8 @@ static Status_t processGroupSync(Mai_t *maip, uint8_t *msgbuf, uint32_t reclen) 
         			for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
             			if ((PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey) == PKEY_VALUE(mcGroup->pKey)) &&
                 			(smVFValidateMcDefaultGroup(vf, vfmGid) == VSTATUS_OK)) {
-                			bitset_set(&mcGroup->vfMembers, vf);
+                			uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
+                			bitset_set(&mcGroup->vfMembers, vfIdx);
             			}
         			}
 				}
@@ -1422,7 +1429,8 @@ static Status_t processGroupSync(Mai_t *maip, uint8_t *msgbuf, uint32_t reclen) 
                     for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
                         if ((PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey) == PKEY_VALUE(mcGroup->pKey)) &&
                             (smVFValidateMcDefaultGroup(vf, vfmGid) == VSTATUS_OK)) {
-                            bitset_set(&mcGroup->vfMembers, vf);
+                            uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
+                            bitset_set(&mcGroup->vfMembers, vfIdx);
                         }
                     }
                 }

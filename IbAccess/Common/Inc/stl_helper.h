@@ -35,6 +35,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 #include "ib_helper.h"
 #include "iba/stl_sm.h"
+#include "iba/stl_pa.h"
 #if defined(VXWORKS)
 #include "private/stdioP.h" // pick up snprintf extern definition
 #endif
@@ -1104,7 +1105,7 @@ void FormatStlPreemptionLimit(char buf[6], uint8 limit)
 static __inline
 void FormatStlCapabilityMask(char buf[80], STL_CAPABILITY_MASK cmask)
 {
-	sprintf(buf, "%s%s%s%s%s%s%s",
+	snprintf(buf, 80, "%s%s%s%s%s%s%s",
 		cmask.s.IsCapabilityMaskNoticeSupported?"CN ": "",
 		cmask.s.IsVendorClassSupported?"VDR ": "",
 		cmask.s.IsDeviceManagementSupported?"DM ": "",
@@ -1181,7 +1182,7 @@ StlShiftToResolution(uint8 shift, uint8 add) {
 static __inline void
 FormatStlCounterSelectMask(char buf[128], CounterSelectMask_t mask) {
 
-	sprintf(buf, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
+	snprintf(buf, 128, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
 		(mask.s.PortXmitData                ? "TxD ": ""),
 		(mask.s.PortRcvData                 ? "RxD ": ""),
 		(mask.s.PortXmitPkts                ? "TxP ": ""),
@@ -1217,6 +1218,142 @@ StlIsPortInPortMask(const STL_PORTMASK* portSelectMask, uint8_t port)
 {
         uint64_t pmask = (uint64_t)(1) << (port % 64);
         return ((portSelectMask[3-(port/64)] & pmask) ? 1 : 0);
+}
+
+/**
+ * Compute difference of two sets of Port Counters
+ *
+ * @param data1 - pointer to later set of STL_PORT_COUNTERS_DATA counters
+ * @param data2 - pointer to earlier set of STL_PORT_COUNTERS_DATA counters
+ * @param result - pointer to where result of data1 - data2 will be stored
+ *
+ * Note: data1 should be >= data2. If this is not the case, result will be
+ *   	 value for data1
+*/
+static __inline CounterSelectMask_t DiffPACounters(STL_PORT_COUNTERS_DATA * data1, STL_PORT_COUNTERS_DATA * data2, STL_PORT_COUNTERS_DATA * result)
+{
+	CounterSelectMask_t mask = {0};
+
+#define GET_DELTA_COUNTER(cntr, name) do { \
+	if (data1->cntr < data2->cntr) { \
+		mask.s.name = 1; \
+		result->cntr = data1->cntr; \
+	} else { \
+		result->cntr = data1->cntr - data2->cntr; \
+	} } while (0)
+
+	GET_DELTA_COUNTER(linkErrorRecovery, LinkErrorRecovery);
+	GET_DELTA_COUNTER(linkDowned, LinkDowned);
+	GET_DELTA_COUNTER(portRcvErrors, PortRcvErrors);
+	GET_DELTA_COUNTER(portRcvRemotePhysicalErrors, PortRcvRemotePhysicalErrors);
+	GET_DELTA_COUNTER(portRcvSwitchRelayErrors, PortRcvSwitchRelayErrors);
+	GET_DELTA_COUNTER(portXmitDiscards, PortXmitDiscards);
+	GET_DELTA_COUNTER(portXmitConstraintErrors, PortXmitConstraintErrors);
+	GET_DELTA_COUNTER(portRcvConstraintErrors, PortRcvConstraintErrors);
+	GET_DELTA_COUNTER(localLinkIntegrityErrors, LocalLinkIntegrityErrors);
+	GET_DELTA_COUNTER(excessiveBufferOverruns, ExcessiveBufferOverruns);
+	GET_DELTA_COUNTER(portXmitData, PortXmitData);
+	GET_DELTA_COUNTER(portRcvData, PortRcvData);
+	GET_DELTA_COUNTER(portXmitPkts, PortXmitPkts);
+	GET_DELTA_COUNTER(portRcvPkts, PortRcvPkts);
+	GET_DELTA_COUNTER(portMulticastXmitPkts, PortMulticastXmitPkts);
+	GET_DELTA_COUNTER(portMulticastRcvPkts, PortMulticastRcvPkts);
+	GET_DELTA_COUNTER(portXmitWait, PortXmitWait);
+	GET_DELTA_COUNTER(swPortCongestion, SwPortCongestion);
+	GET_DELTA_COUNTER(portRcvFECN, PortRcvFECN);
+	GET_DELTA_COUNTER(portRcvBECN, PortRcvBECN);
+	GET_DELTA_COUNTER(portXmitTimeCong, PortXmitTimeCong);
+	GET_DELTA_COUNTER(portXmitWastedBW, PortXmitWastedBW);
+	GET_DELTA_COUNTER(portXmitWaitData, PortXmitWaitData);
+	GET_DELTA_COUNTER(portRcvBubble, PortRcvBubble);
+	GET_DELTA_COUNTER(portMarkFECN, PortMarkFECN);
+	GET_DELTA_COUNTER(fmConfigErrors, FMConfigErrors);
+	GET_DELTA_COUNTER(uncorrectableErrors, UncorrectableErrors);
+	result->lq.AsReg8 = MIN(data1->lq.AsReg8, data2->lq.AsReg8);
+
+#undef GET_DELTA_COUNTER
+	return mask;
+}
+
+/**
+ * Compute difference of two sets of VF Port Counters
+ *
+ * @param data1 - pointer to later set of STL_PA_VF_PORT_COUNTERS_DATA counters
+ * @param data2 - pointer to earlier set of STL_PA_VF_PORT_COUNTERS_DATA counters
+ * @param result - pointer to where result of data1 - data2 will be stored
+ *
+ * Note: data1 should be >= data2. If this is not the case, result will be
+ *   	 value for data1
+ */
+static __inline CounterSelectMask_t DiffPAVFCounters(STL_PA_VF_PORT_COUNTERS_DATA * data1, STL_PA_VF_PORT_COUNTERS_DATA * data2, STL_PA_VF_PORT_COUNTERS_DATA * result)
+{
+#define GET_DELTA_COUNTER(cntr, name) do { \
+	if (data1->cntr < data2->cntr) { \
+		mask.s.name = 1; \
+		result->cntr = data1->cntr; \
+	} else { \
+		result->cntr = data1->cntr - data2->cntr; \
+	} } while (0)
+
+	CounterSelectMask_t mask = {0};
+
+	GET_DELTA_COUNTER(portVFXmitDiscards, PortXmitDiscards);
+	GET_DELTA_COUNTER(portVFXmitData, PortXmitData);
+	GET_DELTA_COUNTER(portVFRcvData, PortRcvData);
+	GET_DELTA_COUNTER(portVFXmitPkts, PortXmitPkts);
+	GET_DELTA_COUNTER(portVFRcvPkts, PortRcvPkts);
+	GET_DELTA_COUNTER(portVFXmitWait, PortXmitWait);
+	GET_DELTA_COUNTER(swPortVFCongestion, SwPortCongestion);
+	GET_DELTA_COUNTER(portVFRcvFECN, PortRcvFECN);
+	GET_DELTA_COUNTER(portVFRcvBECN, PortRcvBECN);
+	GET_DELTA_COUNTER(portVFXmitTimeCong, PortXmitTimeCong);
+	GET_DELTA_COUNTER(portVFXmitWastedBW, PortXmitWastedBW);
+	GET_DELTA_COUNTER(portVFXmitWaitData, PortXmitWaitData);
+	GET_DELTA_COUNTER(portVFRcvBubble, PortRcvBubble);
+	GET_DELTA_COUNTER(portVFMarkFECN, PortMarkFECN);
+
+#undef GET_DELTA_COUNTER
+	return mask;
+}
+
+/**
+ * Copy data in a STL_PORT_COUNTERS_DATA variable into a STL_PortStatusData_t variable
+ *
+ * @param portCounters   - pointer to STL_PORT_COUNTERS_DATA variable from which to copy
+ * @param portStatusData - pointer to STL_PortStatusData_t variable to copy to
+ *
+ */
+static __inline void StlPortCountersToPortStatus(STL_PORT_COUNTERS_DATA *portCounters, STL_PORT_STATUS_RSP *portStatusData)
+{
+	portStatusData->LinkErrorRecovery  = portCounters->linkErrorRecovery;
+	portStatusData->LinkDowned  = portCounters->linkDowned;
+	portStatusData->PortRcvErrors = portCounters->portRcvErrors;
+	portStatusData->PortRcvRemotePhysicalErrors = portCounters->portRcvRemotePhysicalErrors;
+	portStatusData->PortRcvSwitchRelayErrors = portCounters->portRcvSwitchRelayErrors;
+	portStatusData->PortXmitDiscards = portCounters->portXmitDiscards;
+	portStatusData->PortXmitConstraintErrors = portCounters->portXmitConstraintErrors;
+	portStatusData->PortRcvConstraintErrors = portCounters->portRcvConstraintErrors;
+	portStatusData->LocalLinkIntegrityErrors = portCounters->localLinkIntegrityErrors;
+	portStatusData->ExcessiveBufferOverruns = portCounters->excessiveBufferOverruns;
+	portStatusData->PortXmitData = portCounters->portXmitData;
+	portStatusData->PortRcvData = portCounters->portRcvData;
+	portStatusData->PortXmitPkts = portCounters->portXmitPkts;
+	portStatusData->PortRcvPkts = portCounters->portRcvPkts;
+	portStatusData->PortMulticastXmitPkts = portCounters->portMulticastXmitPkts;
+	portStatusData->PortMulticastRcvPkts = portCounters->portMulticastRcvPkts;
+	portStatusData->PortXmitWait = portCounters->portXmitWait;
+	portStatusData->SwPortCongestion = portCounters->swPortCongestion;
+	portStatusData->PortRcvFECN = portCounters->portRcvFECN;
+	portStatusData->PortRcvBECN = portCounters->portRcvBECN;
+	portStatusData->PortXmitTimeCong = portCounters->portXmitTimeCong;
+	portStatusData->PortXmitWastedBW = portCounters->portXmitWastedBW;
+	portStatusData->PortXmitWaitData = portCounters->portXmitWaitData;
+	portStatusData->PortRcvBubble = portCounters->portRcvBubble;
+	portStatusData->PortMarkFECN = portCounters->portMarkFECN;
+	portStatusData->FMConfigErrors = portCounters->fmConfigErrors;
+	portStatusData->UncorrectableErrors = portCounters->uncorrectableErrors;
+	portStatusData->lq.AsReg8 = portCounters->lq.AsReg8;
+
 }
 
 #if !defined(ROUNDUP)

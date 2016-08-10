@@ -96,7 +96,7 @@ LOCALLIBS=
 LOCAL_LIB_DIRS=
 
 # Include Make Rules definitions and rules
-include $(TL_DIR)/$(PROJ_FILE_DIR)/Makerules.project                         
+include $(TL_DIR)/$(PROJ_FILE_DIR)/Makerules.project
 
 #=============================================================================#
 # Overrides:

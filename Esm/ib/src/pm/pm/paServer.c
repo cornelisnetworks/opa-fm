@@ -38,6 +38,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "pm_topology.h"
 #include "paAccess.h"
 #include <limits.h>
+#include <time.h>
 
 #undef LOCAL_MOD_ID
 #define LOCAL_MOD_ID VIEO_PA_MOD_ID
@@ -69,6 +70,7 @@ pa_getClassPortInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		records = 1;
 		response.BaseVersion			= STL_BASE_VERSION;
 		response.ClassVersion			= STL_PA_CLASS_VERSION;
+		response.CapMask			   |= STL_PA_CPI_CAPMASK_ABSTIMEQUERY;
 		response.u1.s.RespTimeValue		= pa_respTimeValue;
 
 		IB_LOG_DEBUG2_FMT(__func__, "Base Version:  0x%x", response.BaseVersion);
@@ -187,10 +189,8 @@ pa_getPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	STL_LID_32	nodeLid;
 	PORT		portNumber;
 	uint32_t	delta, userCntrs;
-	uint64_t	imageId;
-	int32_t		offset;
 	uint32_t	flags;
-	uint64_t	retImageId = 0;
+	STL_PA_IMAGE_ID_DATA retImageId = {0};
 	FSTATUS		status;
 	PmCompositePortCounters_t pmPortCounters = {0};
     STL_PORT_COUNTERS_DATA response = {0};
@@ -204,13 +204,11 @@ pa_getPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	portNumber 	= p->portNumber;
 	delta 		= p->flags & STL_PA_PC_FLAG_DELTA;
 	userCntrs 	= p->flags & STL_PA_PC_FLAG_USER_COUNTERS;
-	imageId 	= p->imageId.imageNumber;
-	offset 		= p->imageId.imageOffset;
 
-	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", imageId, offset);
+	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", p->imageId.imageNumber, p->imageId.imageOffset);
 	IB_LOG_DEBUG1_FMT(__func__, "LID: %u  Port Number: %u  Flags: 0x%x", nodeLid, portNumber, p->flags);
 
-	status = paGetPortStats(&g_pmSweepData, nodeLid, portNumber, &pmPortCounters, delta, userCntrs, imageId, offset, &flags, &retImageId);
+	status = paGetPortStats(&g_pmSweepData, nodeLid, portNumber, &pmPortCounters, delta, userCntrs, p->imageId, &flags, &retImageId);
 	if (status == FSUCCESS) {
             records = 1;
             response.nodeLid                     = nodeLid;
@@ -245,8 +243,8 @@ pa_getPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
             response.uncorrectableErrors         = pmPortCounters.UncorrectableErrors;
             response.lq.s.numLanesDown           = pmPortCounters.lq.s.NumLanesDown;
             response.lq.s.linkQualityIndicator   = pmPortCounters.lq.s.LinkQualityIndicator;
-            response.imageId.imageNumber         = retImageId;
-            response.imageId.imageOffset         = 0;
+            response.imageId = retImageId;
+            response.imageId.imageOffset = 0;
 
 		/* debug logging */
 		IB_LOG_DEBUG2_FMT(__func__, "%s Controlled Port Counters (%s) for node lid 0x%x, port number %u%s:", (userCntrs?"User":"PM"),
@@ -280,8 +278,18 @@ pa_getPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		IB_LOG_DEBUG2_FMT(__func__, "Errors: Num Lanes Down:     %10u", response.lq.s.numLanesDown);
 		IB_LOG_DEBUG2_FMT(__func__, "Errors: Link Qual Ind:      %10u", response.lq.s.linkQualityIndicator);
 
-		IB_LOG_DEBUG2_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d",
-						response.imageId.imageNumber, response.imageId.imageOffset);
+
+		time_t absTime = (time_t)response.imageId.imageTime.absoluteTime;
+		char buf[80];
+
+		if (absTime) {
+			snprintf(buf, sizeof(buf), " Time %s", ctime((const time_t *)&absTime));
+			if ((strlen(buf)>0) && (buf[strlen(buf)-1] == '\n'))
+				buf[strlen(buf)-1] = '\0';
+		}
+
+		IB_LOG_DEBUG2_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d%s",
+			response.imageId.imageNumber, response.imageId.imageOffset, buf);
 		/* end debug logging */
 
     	BSWAP_STL_PA_PORT_COUNTERS(&response);
@@ -298,7 +306,7 @@ pa_getPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
 		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// PA query parameter incorrect
 	} else if (status == FNOT_FOUND) {
-		if (retImageId == BAD_IMAGE_ID)
+		if (retImageId.imageNumber == BAD_IMAGE_ID)
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_IMAGE;			// PM image could not be found
 		else
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_PORT;			// PM Port Could not be found (unlikely)
@@ -599,9 +607,7 @@ pa_freezeImageResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	uint8_t		*data = pa_data;
 	uint32_t	records = 0;
 	uint32_t	attribOffset;
-	uint64		freezeImageNumber;
-	uint64_t	imageId;
-	int32_t		offset;
+	STL_PA_IMAGE_ID_DATA freezeImage = {0};
 	FSTATUS		status;
     STL_PA_IMAGE_ID_DATA response = {0};
 	STL_PA_IMAGE_ID_DATA *p = (STL_PA_IMAGE_ID_DATA *)&maip->data[STL_PA_DATA_OFFSET];
@@ -610,24 +616,32 @@ pa_freezeImageResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 
 	INCREMENT_PM_COUNTER(pmCounterPaRxFreezeImage);
 	BSWAP_STL_PA_IMAGE_ID(p);
-	imageId = p->imageNumber;
-	offset 	= p->imageOffset;
 
-	IB_LOG_DEBUG1_FMT(__func__, "Freezing ImageID: Number 0x%"PRIx64" Offset %d", imageId, offset);
+	IB_LOG_DEBUG1_FMT(__func__, "Freezing ImageID: Number 0x%"PRIx64" Offset %d", p->imageNumber,
+			                                                                      p->imageOffset);
 
-	status = paFreezeFrameCreate(&g_pmSweepData, imageId, offset, &freezeImageNumber);
+	status = paFreezeFrameCreate(&g_pmSweepData, *p, &freezeImage);
 	if (status == FSUCCESS) {
 		records = 1;
-		response.imageNumber = freezeImageNumber;
+		response = freezeImage;
 		response.imageOffset = 0;
 
-		IB_LOG_DEBUG2_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d frozen successfully",
-						  imageId, offset);
+		time_t absTime = (time_t)response.imageTime.absoluteTime;
+		char buf[80];
+
+		if (absTime) {
+			snprintf(buf, sizeof(buf), " Time %s", ctime((const time_t *)&absTime));
+			if ((strlen(buf)>0) && (buf[strlen(buf)-1] == '\n'))
+				buf[strlen(buf)-1] = '\0';
+		}
+
+		IB_LOG_DEBUG2_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d%s frozen successfully",
+			freezeImage.imageNumber, freezeImage.imageOffset, buf);
     	BSWAP_STL_PA_IMAGE_ID(&response);
     	memcpy(data, &response, sizeof(response));
 	} else {
-		IB_LOG_WARN_FMT(__func__, "Error freezing ImageID: Number 0x%"PRIx64" Offset %d  status %u",
-						  imageId, offset, status);
+		IB_LOG_WARN_FMT(__func__, "Error freezing ImageID: Number 0x%"PRIx64" Offset %d  status %s (%u)",
+			freezeImage.imageNumber, freezeImage.imageOffset, iba_fstatus_msg(status), status);
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 	}
 
@@ -671,8 +685,7 @@ pa_releaseImageResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	uint32_t	records = 0;
 	uint32_t	attribOffset;
 	FSTATUS		status;
-	uint64_t	imageId;
-	int32_t		offset;
+	STL_PA_IMAGE_ID_DATA imageId = {0};
     STL_PA_IMAGE_ID_DATA response = {0};
 	STL_PA_IMAGE_ID_DATA *p = (STL_PA_IMAGE_ID_DATA *)&maip->data[STL_PA_DATA_OFFSET];
 
@@ -680,26 +693,34 @@ pa_releaseImageResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 
 	INCREMENT_PM_COUNTER(pmCounterPaRxReleaseImage);
 	BSWAP_STL_PA_IMAGE_ID(p);
-	imageId = p->imageNumber;
-	offset 	= p->imageOffset;
+	imageId = *p;
 
 	/* ***** Error checks on imageNumber and imageOffset here **** */
 
-	IB_LOG_DEBUG1_FMT(__func__, "Releasing ImageID: Number 0x%"PRIx64" Offset %d", imageId, offset);
+	IB_LOG_DEBUG1_FMT(__func__, "Releasing ImageID: Number 0x%"PRIx64" Offset %d",
+		imageId.imageNumber, imageId.imageOffset);
 
-	status = paFreezeFrameRelease(&g_pmSweepData, imageId);
+	status = paFreezeFrameRelease(&g_pmSweepData, &imageId);
 	if (status == FSUCCESS) {
 		records = 1;
-		response.imageNumber = imageId;
-		response.imageOffset = offset;
+		response = imageId;
 
-		IB_LOG_DEBUG2_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d released successfully",
-						  imageId, offset);
+		time_t absTime = (time_t)response.imageTime.absoluteTime;
+		char buf[80];
+
+		if (absTime) {
+			snprintf(buf, sizeof(buf), " Time %s", ctime((const time_t *)&absTime));
+			if ((strlen(buf)>0) && (buf[strlen(buf)-1] == '\n'))
+				buf[strlen(buf)-1] = '\0';
+		}
+
+		IB_LOG_DEBUG2_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d%s released successfully",
+			imageId.imageNumber, imageId.imageOffset, buf);
     	BSWAP_STL_PA_IMAGE_ID(&response);
     	memcpy(data, &response, sizeof(response));
 	} else {
-		IB_LOG_WARN_FMT(__func__, "Error releasing ImageID: Number 0x%"PRIx64" Offset %d  status %u",
-						  imageId, offset, status);
+		IB_LOG_WARN_FMT(__func__, "Error releasing ImageID: Number 0x%"PRIx64" Offset %d  status %s (%u)",
+			imageId.imageNumber, imageId.imageOffset, iba_fstatus_msg(status), status);
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 	}
 
@@ -741,8 +762,7 @@ pa_renewImageResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	uint32_t	records = 0;
 	uint32_t	attribOffset;
 	FSTATUS		status;
-	uint64_t	imageId;
-	int32_t		offset;
+	STL_PA_IMAGE_ID_DATA imageId = {0};
     STL_PA_IMAGE_ID_DATA response = {0};
 	STL_PA_IMAGE_ID_DATA *p = (STL_PA_IMAGE_ID_DATA *)&maip->data[STL_PA_DATA_OFFSET];
 
@@ -750,25 +770,34 @@ pa_renewImageResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 
 	INCREMENT_PM_COUNTER(pmCounterPaRxRenewImage);
 	BSWAP_STL_PA_IMAGE_ID(p);
-	imageId = p->imageNumber;
-	offset 	= p->imageOffset;
+	imageId = *p;
 	/* ***** Error checks on imageNumber and imageOffset here **** */
 
-	IB_LOG_DEBUG1_FMT(__func__, "Renewing ImageID: Number 0x%"PRIx64" Offset %d", imageId, offset);
+	IB_LOG_DEBUG1_FMT(__func__, "Renewing ImageID: Number 0x%"PRIx64" Offset %d",
+		imageId.imageNumber, imageId.imageOffset);
 
-	status = paFreezeFrameRenew(&g_pmSweepData, imageId);
+	status = paFreezeFrameRenew(&g_pmSweepData, &imageId);
 	if (status == FSUCCESS) {
 		records = 1;
-		response.imageNumber = imageId;
-		response.imageOffset = offset;
+		response = imageId;
+		response.imageOffset = 0;
 
-		IB_LOG_DEBUG2_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d renewed successfully",
-						  imageId, offset);
+		time_t absTime = (time_t)response.imageTime.absoluteTime;
+		char buf[80];
+
+		if (absTime) {
+			snprintf(buf, sizeof(buf), " Time %s", ctime((const time_t *)&absTime));
+			if ((strlen(buf)>0) && (buf[strlen(buf)-1] == '\n'))
+				buf[strlen(buf)-1] = '\0';
+		}
+
+		IB_LOG_DEBUG2_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d%s renewed successfully",
+			imageId.imageNumber, imageId.imageOffset, buf);
     	BSWAP_STL_PA_IMAGE_ID(&response);
     	memcpy(data, &response, sizeof(response));
 	} else {
-		IB_LOG_WARN_FMT(__func__, "Error renewing ImageID: Number 0x%"PRIx64" Offset %d  status %u",
-						  imageId, offset, status);
+		IB_LOG_WARN_FMT(__func__, "Error renewing ImageID: Number 0x%"PRIx64" Offset %d  status %s (%u)",
+			imageId.imageNumber, imageId.imageOffset, iba_fstatus_msg(status), status);
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 	}
 
@@ -810,8 +839,7 @@ pa_moveFreezeImageResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	uint32_t	records = 0;
 	uint32_t	attribOffset;
 	FSTATUS		status;
-	uint64_t	imageIdOld, imageIdNew, retImageIdNew;
-	int32_t		offsetOld,  offsetNew;
+	STL_PA_IMAGE_ID_DATA retImageIdNew = {0};
     STL_MOVE_FREEZE_DATA response = {{0}};
 	STL_MOVE_FREEZE_DATA *p = (STL_MOVE_FREEZE_DATA *)&maip->data[STL_PA_DATA_OFFSET];
 
@@ -819,31 +847,29 @@ pa_moveFreezeImageResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 
 	INCREMENT_PM_COUNTER(pmCounterPaRxMoveFreezeFrame);
 	BSWAP_STL_PA_MOVE_FREEZE(p);
-	imageIdOld = p->oldFreezeImage.imageNumber;
-	offsetOld  = p->oldFreezeImage.imageOffset;
-	imageIdNew = p->newFreezeImage.imageNumber;
-	offsetNew  = p->newFreezeImage.imageOffset;
 
 	/* ***** Error checks on imageNumber and imageOffset here **** */
 
 	IB_LOG_DEBUG1_FMT(__func__, "Moving frozen ImageID: Number 0x%"PRIx64" Offset %d - to Offset %d",
-					  imageIdOld, offsetOld, offsetNew);
+					  p->oldFreezeImage.imageNumber, p->oldFreezeImage.imageOffset,
+					  p->newFreezeImage.imageOffset);
 
-	status = paFreezeFrameMove(&g_pmSweepData, imageIdOld, imageIdNew, offsetNew, &retImageIdNew);
+	status = paFreezeFrameMove(&g_pmSweepData, p->oldFreezeImage, p->newFreezeImage, &retImageIdNew);
 	if (status == FSUCCESS) {
 		records = 1;
-		response.oldFreezeImage.imageNumber = 0;
-		response.oldFreezeImage.imageOffset = 0;
-		response.newFreezeImage.imageNumber = retImageIdNew;
+		response.newFreezeImage = retImageIdNew;
 		response.newFreezeImage.imageOffset = 0;
 
+		response.oldFreezeImage.imageNumber = p->oldFreezeImage.imageNumber;
+		response.oldFreezeImage.imageOffset = 0;
+
 		IB_LOG_DEBUG2_FMT(__func__, " ImageID: Number 0x%"PRIx64" Offset %d moved successfully - to 0x%"PRIx64" ",
-						  imageIdOld, offsetOld, retImageIdNew);
-    	BSWAP_STL_PA_MOVE_FREEZE(&response);
-    	memcpy(data, &response, sizeof(response));
+						  p->oldFreezeImage.imageNumber, p->oldFreezeImage.imageOffset, retImageIdNew.imageNumber);
+		BSWAP_STL_PA_MOVE_FREEZE(&response);
+		memcpy(data, &response, sizeof(response));
 	} else {
-		IB_LOG_DEBUG2_FMT(__func__, "Error moving freeze ImageID: Number 0x%"PRIx64" Offset %d  status %u",
-						  imageIdOld, offsetOld, status);
+		IB_LOG_DEBUG2_FMT(__func__, "Error moving freeze ImageID: Number 0x%"PRIx64" Offset %d  status %s (%u)",
+						  p->oldFreezeImage.imageNumber, p->oldFreezeImage.imageOffset, iba_fstatus_msg(status), status);
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 	}
 
@@ -886,11 +912,9 @@ pa_getImageInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	uint8_t		*data = pa_data;
 	uint32_t	records = 0;
 	uint32_t	attribOffset;
-	uint64		retImageId = 0;
+	STL_PA_IMAGE_ID_DATA retImageId = {0};
 	int			i;
 	FSTATUS		status;
-	uint64_t	imageId;
-	int32_t		offset;
     STL_PA_IMAGE_INFO_DATA response = {{0}};
 	STL_PA_IMAGE_INFO_DATA *p = (STL_PA_IMAGE_INFO_DATA *)&maip->data[STL_PA_DATA_OFFSET];
 	PmImageInfo_t	imageInfo = {0};
@@ -899,16 +923,14 @@ pa_getImageInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 
 	INCREMENT_PM_COUNTER(pmCounterPaRxGetImageInfo);
 	BSWAP_STL_PA_IMAGE_INFO(p);
-	imageId = p->imageId.imageNumber;
-	offset 	= p->imageId.imageOffset;
 
 	IB_LOG_DEBUG1_FMT(__func__, "Getting Image config");
-	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", imageId, offset);
+	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", p->imageId.imageNumber, p->imageId.imageOffset);
 
-	status = paGetImageInfo(&g_pmSweepData, imageId, offset, &imageInfo, &retImageId);
+	status = paGetImageInfo(&g_pmSweepData, p->imageId, &imageInfo, &retImageId);
 	if (status == FSUCCESS) {
 		records = 1;
-		response.imageId.imageNumber     = retImageId;
+		response.imageId = retImageId;
 		response.imageId.imageOffset     = 0;
 		response.sweepStart              = imageInfo.sweepStart;
 		response.sweepDuration           = imageInfo.sweepDuration;
@@ -934,8 +956,17 @@ pa_getImageInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		}
 
 		/* debug logging */
-		IB_LOG_DEBUG2_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d",
-						response.imageId.imageNumber, response.imageId.imageOffset);
+		time_t absTime = (time_t)response.imageId.imageTime.absoluteTime;
+		char buf[80];
+
+		if (absTime) {
+			snprintf(buf, sizeof(buf), " Time %s", ctime((const time_t *)&absTime));
+			if ((strlen(buf)>0) && (buf[strlen(buf)-1] == '\n'))
+				buf[strlen(buf)-1] = '\0';
+		}
+
+		IB_LOG_DEBUG2_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d%s",
+			response.imageId.imageNumber, response.imageId.imageOffset, buf);
 		IB_LOG_DEBUG2_FMT(__func__, "  Sweep Start   %"PRIu64"     Sweep Duration %u",
 						response.sweepStart, response.sweepDuration);
 		IB_LOG_DEBUG2_FMT(__func__, "  HFI Ports     %u",
@@ -970,7 +1001,7 @@ pa_getImageInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	} else if (status == FINVALID_PARAMETER) {
 		maip->base.status = MAD_STATUS_BAD_FIELD;						// NULL pointer passed to function
 	} else if (status == FNOT_FOUND) {
-		if (retImageId == BAD_IMAGE_ID)
+		if (retImageId.imageNumber == BAD_IMAGE_ID)
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_IMAGE;			// Failed to access/find image
 		else
 			maip->base.status = STL_MAD_STATUS_STL_PA_UNAVAILABLE;		// Failed to acces PM
@@ -1004,9 +1035,7 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	uint32_t	records = 0;
 	uint32_t	attribOffset;
 	Status_t	vStatus;
-	uint64_t	imageId;
-	int32_t		offset;
-	uint64_t	retImageId = 0;
+	STL_PA_IMAGE_ID_DATA retImageId = {0};
 	FSTATUS		status;
 	PmGroupInfo_t groupInfo = {{0}};
 	char		logBuf[80];
@@ -1020,15 +1049,13 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 
 	INCREMENT_PM_COUNTER(pmCounterPaRxGetGrpInfo);
 	BSWAP_STL_PA_PM_GROUP_INFO(p, 1);
-	imageId = p->imageId.imageNumber;
-	offset 	= p->imageId.imageOffset;
 	strncpy(groupName, p->groupName, STL_PM_GROUPNAMELEN-1);
 	groupName[STL_PM_GROUPNAMELEN-1]=0;
 
-	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", imageId, offset);
+	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", p->imageId.imageNumber, p->imageId.imageOffset);
 	IB_LOG_DEBUG1_FMT(__func__, "Group: %.*s", sizeof(groupName), groupName);
 
-	status = paGetGroupInfo(&g_pmSweepData, groupName, &groupInfo, imageId, offset, &retImageId);
+	status = paGetGroupInfo(&g_pmSweepData, groupName, &groupInfo, p->imageId, &retImageId);
 	if (status == FSUCCESS) {
 		records = 1;
 		responseSize = records * sizeof(STL_PA_PM_GROUP_INFO_DATA);
@@ -1135,7 +1162,7 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		response[0].maxInternalMBps = StlStaticRateToMBps(response[0].maxInternalRate);
 		response[0].maxExternalMBps = StlStaticRateToMBps(response[0].maxExternalRate);
 
-		response[0].imageId.imageNumber = retImageId;
+		response[0].imageId = retImageId;
 		response[0].imageId.imageOffset = 0;
 
 		if (IB_LOG_IS_INTERESTED(VS_LOG_DEBUG2)) {
@@ -1281,8 +1308,16 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			IB_LOG_DEBUG2_FMT(__func__, "  Max Internal MBps %u", response[0].maxInternalMBps);
 			IB_LOG_DEBUG2_FMT(__func__, "  Max External MBps %u", response[0].maxExternalMBps);
 
-			IB_LOG_DEBUG2_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d",
-					response[0].imageId.imageNumber, response[0].imageId.imageOffset);
+			time_t absTime = (time_t)response[0].imageId.imageTime.absoluteTime;
+
+			if (absTime) {
+				snprintf(logBuf, sizeof(logBuf), " Time %s", ctime((const time_t *)&absTime));
+				if ((strlen(logBuf)>0) && (logBuf[strlen(logBuf)-1] == '\n'))
+					logBuf[strlen(logBuf)-1] = '\0';
+			}
+
+			IB_LOG_DEBUG2_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d%s",
+				response[0].imageId.imageNumber, response[0].imageId.imageOffset, logBuf);
 
 		} /* end debug logging */
     	BSWAP_STL_PA_PM_GROUP_INFO(&response[0], 0);
@@ -1300,7 +1335,7 @@ done:
 	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
 		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Impropper parameter passed to function
 	} else if (status == FNOT_FOUND) {
-		if (retImageId == BAD_IMAGE_ID)
+		if (retImageId.imageNumber == BAD_IMAGE_ID)
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_IMAGE;			// Failed to access/find image
 		else
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_GROUP;			// Failed to find Group
@@ -1339,11 +1374,9 @@ pa_getGroupConfigResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	uint8_t		*data = pa_data;
 	uint32_t	records = 0;
 	uint32_t	attribOffset;
-	uint64_t	retImageId = 0;
+	STL_PA_IMAGE_ID_DATA retImageId = {0};
 	FSTATUS		status;
 	Status_t	vStatus;
-	uint64_t	imageId;
-	int32_t		offset;
 	PmGroupConfig_t pmGroupConfig = {{0}};
 	STL_PA_PM_GROUP_CFG_RSP *response = NULL;
 	STL_PA_PM_GROUP_CFG_REQ *p = (STL_PA_PM_GROUP_CFG_REQ *)&maip->data[STL_PA_DATA_OFFSET];
@@ -1355,15 +1388,13 @@ pa_getGroupConfigResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	
 	INCREMENT_PM_COUNTER(pmCounterPaRxGetGrpCfg);
 	BSWAP_STL_PA_GROUP_CONFIG_REQ(p);
-	imageId = p->imageId.imageNumber;
-	offset 	= p->imageId.imageOffset;
 	strncpy(groupName, p->groupName, STL_PM_GROUPNAMELEN-1);
 	groupName[STL_PM_GROUPNAMELEN-1]=0;
 
-	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", imageId, offset);
+	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", p->imageId.imageNumber, p->imageId.imageOffset);
 	IB_LOG_DEBUG1_FMT(__func__, "Group: %.*s", sizeof(groupName), groupName);
 
-	status = paGetGroupConfig(&g_pmSweepData, groupName, &pmGroupConfig, imageId, offset, &retImageId);
+	status = paGetGroupConfig(&g_pmSweepData, groupName, &pmGroupConfig, p->imageId, &retImageId);
 	if (status == FSUCCESS) {
 		records = pmGroupConfig.NumPorts;
 		responseSize = pmGroupConfig.NumPorts * sizeof(STL_PA_PM_GROUP_CFG_RSP);
@@ -1382,8 +1413,17 @@ pa_getGroupConfigResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
     		response[i].portNumber			= pmGroupConfig.portList[i].portNum;
     		response[i].nodeGUID			= pmGroupConfig.portList[i].guid;
     		strncpy(response[i].nodeDesc, pmGroupConfig.portList[i].nodeDesc, sizeof(response[i].nodeDesc)-1);
-			response[i].imageId.imageNumber = retImageId;
+			response[i].imageId = retImageId;
 			response[i].imageId.imageOffset = 0;
+		}
+
+		time_t absTime = (time_t)retImageId.imageTime.absoluteTime;
+		char buf[80];
+
+		if (absTime) {
+			snprintf(buf, sizeof(buf), " Time %s", ctime((const time_t *)&absTime));
+			if ((strlen(buf)>0) && (buf[strlen(buf)-1] == '\n'))
+				buf[strlen(buf)-1] = '\0';
 		}
 
 		IB_LOG_DEBUG2_FMT(__func__, "Group name %.*s", sizeof(groupName), groupName);
@@ -1392,8 +1432,8 @@ pa_getGroupConfigResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			IB_LOG_DEBUG2_FMT(__func__, "  %d:LID:0x%08X Port:%u  Guid:0x%016"PRIx64"  NodeDesc: %.*s",
 					i+1, response[i].nodeLid, response[i].portNumber, response[i].nodeGUID,
 				   	sizeof(response[i].nodeDesc), response[i].nodeDesc);
-			IB_LOG_DEBUG2_FMT(__func__, "     ImageID: Number 0x%"PRIx64" Offset %d",
-					response[i].imageId.imageNumber, response[i].imageId.imageOffset);
+			IB_LOG_DEBUG2_FMT(__func__, "     ImageID: Number 0x%"PRIx64" Offset %d%s",
+				response[i].imageId.imageNumber, response[i].imageId.imageOffset, buf);
     		BSWAP_STL_PA_GROUP_CONFIG_RSP(&response[i]);
 		}
     	memcpy(data, response, responseSize);
@@ -1410,7 +1450,7 @@ done:
 	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
 		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Impropper parameter passed to function
 	} else if (status == FNOT_FOUND) {
-		if (retImageId == BAD_IMAGE_ID)
+		if (retImageId.imageNumber == BAD_IMAGE_ID)
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_IMAGE;			// Failed to access/find image
 		else
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_GROUP;			// Failed to find Group
@@ -1452,11 +1492,9 @@ pa_getFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	uint8_t		*data = pa_data;
 	uint32_t	records = 0;
 	uint32_t	attribOffset;
-	uint64_t	retImageId = 0;
+	STL_PA_IMAGE_ID_DATA retImageId = {0};
 	FSTATUS		status;
 	Status_t	vStatus;
-	uint64_t	imageId;
-	int32_t		offset;
 	uint32_t	select, start, range;
 	PmFocusPorts_t pmFocusPorts = {{0}};
 	STL_FOCUS_PORTS_RSP *response = NULL;
@@ -1469,8 +1507,6 @@ pa_getFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	
 	INCREMENT_PM_COUNTER(pmCounterPaRxGetFocusPorts);
 	BSWAP_STL_PA_FOCUS_PORTS_REQ(p);
-	imageId = p->imageId.imageNumber;
-	offset 	= p->imageId.imageOffset;
 	select  = p->select;
 	start   = p->start;
 	range   = p->range;
@@ -1478,12 +1514,12 @@ pa_getFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	strncpy(groupName, p->groupName, STL_PM_GROUPNAMELEN-1);
 	groupName[STL_PM_GROUPNAMELEN-1] = 0; 
 
-	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", imageId, offset);
+	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", p->imageId.imageNumber, p->imageId.imageOffset);
 	IB_LOG_DEBUG1_FMT(__func__, "Group: %.*s  Select: 0x%x  Start: %u  Range: %u",
 					  sizeof(groupName), groupName, select, start, range);
 
 	status = paGetFocusPorts(&g_pmSweepData, groupName, &pmFocusPorts,
-	    imageId, offset, &retImageId, select, start, range);
+	    p->imageId, &retImageId, select, start, range);
 
 	if (status == FSUCCESS) {
 		records = pmFocusPorts.NumPorts;
@@ -1514,8 +1550,17 @@ pa_getFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
     		response[i].neighborGuid		= pmFocusPorts.portList[i].neighborGuid;
     		strncpy(response[i].neighborNodeDesc, pmFocusPorts.portList[i].neighborNodeDesc,
 					sizeof(response[i].neighborNodeDesc)-1);
-			response[i].imageId.imageNumber = retImageId;
+			response[i].imageId = retImageId;
 			response[i].imageId.imageOffset = 0;
+		}
+
+		time_t absTime = (time_t)retImageId.imageTime.absoluteTime;
+		char buf[80];
+
+		if (absTime) {
+			snprintf(buf, sizeof(buf), " Time %s", ctime((const time_t *)&absTime));
+			if ((strlen(buf)>0) && (buf[strlen(buf)-1] == '\n'))
+				buf[strlen(buf)-1] = '\0';
 		}
 
 		IB_LOG_DEBUG2_FMT(__func__, "Group name %.*s", sizeof(groupName), groupName);
@@ -1534,8 +1579,8 @@ pa_getFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			IB_LOG_DEBUG2_FMT(__func__, "     Nbr Node Desc    %.*s Status: %s",
 				sizeof(response[i].neighborNodeDesc), response[i].neighborNodeDesc,
 				StlFocusFlagToText(response[i].neighborFlags));
-			IB_LOG_DEBUG2_FMT(__func__, "     ImageID: Number 0x%"PRIx64" Offset %d",
-					response[i].imageId.imageNumber, response[i].imageId.imageOffset);
+			IB_LOG_DEBUG2_FMT(__func__, "     ImageID: Number 0x%"PRIx64" Offset %d%s",
+				response[i].imageId.imageNumber, response[i].imageId.imageOffset, buf);
     		BSWAP_STL_PA_FOCUS_PORTS_RSP(&response[i]);
 		}
     	memcpy(data, response, responseSize);
@@ -1552,7 +1597,7 @@ done:
 	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
 		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Impropper parameter passed to function
 	} else if (status == FNOT_FOUND) {
-		if (retImageId == BAD_IMAGE_ID)
+		if (retImageId.imageNumber == BAD_IMAGE_ID)
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_IMAGE;			// Failed to access/find image
 		else
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_GROUP;			// Failed to find Group
@@ -1673,9 +1718,7 @@ pa_getVFInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	char		vfName[STL_PM_VFNAMELEN];
 	uint32_t	records = 0;
 	uint32_t	attribOffset;
-	uint64_t	retImageId = 0;
-	uint64_t	imageId;
-	int32_t		offset;
+	STL_PA_IMAGE_ID_DATA retImageId = {0};
 	FSTATUS		status;
 	Status_t	vStatus;
 	PmVFInfo_t	vfInfo;
@@ -1690,15 +1733,13 @@ pa_getVFInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	
 	INCREMENT_PM_COUNTER(pmCounterPaRxGetVFList);
 	BSWAP_STL_PA_VF_INFO(p, 1);
-	imageId = p->imageId.imageNumber;
-	offset 	= p->imageId.imageOffset;
 	strncpy(vfName, p->vfName, STL_PM_GROUPNAMELEN-1);
 	vfName[STL_PM_GROUPNAMELEN-1]=0;
 
-	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", imageId, offset);
+	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", p->imageId.imageNumber, p->imageId.imageOffset);
 	IB_LOG_DEBUG1_FMT(__func__, "VF: %.*s", sizeof(vfName), vfName);
 
-	status = paGetVFInfo(&g_pmSweepData, vfName, &vfInfo, imageId, offset,
+	status = paGetVFInfo(&g_pmSweepData, vfName, &vfInfo, p->imageId,
 	    &retImageId);
 	if (status == FSUCCESS) {
 		records = 1;
@@ -1751,7 +1792,7 @@ pa_getVFInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		response[0].maxInternalRate = vfInfo.MaxIntRate;
 		response[0].maxInternalMBps = StlStaticRateToMBps(response[0].maxInternalRate);
 
-		response[0].imageId.imageNumber = retImageId;
+		response[0].imageId = retImageId;
 		response[0].imageId.imageOffset = 0;
 
 		if (IB_LOG_IS_INTERESTED(VS_LOG_DEBUG2)) {
@@ -1819,8 +1860,17 @@ pa_getVFInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			IB_LOG_DEBUG2_FMT(__func__, "  Max Internal Rate %u", response[0].maxInternalRate);
 			IB_LOG_DEBUG2_FMT(__func__, "  Max Internal MBps %u", response[0].maxInternalMBps);
 
-			IB_LOG_DEBUG2_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d",
-							  response[0].imageId.imageNumber, response[0].imageId.imageOffset);
+
+			time_t absTime = (time_t)response[0].imageId.imageTime.absoluteTime;
+
+			if (absTime) {
+				snprintf(logBuf, sizeof(logBuf), " Time %s", ctime((const time_t *)&absTime));
+				if ((strlen(logBuf)>0) && (logBuf[strlen(logBuf)-1] == '\n'))
+					logBuf[strlen(logBuf)-1] = '\0';
+			}
+
+			IB_LOG_DEBUG2_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d%s",
+				response[0].imageId.imageNumber, response[0].imageId.imageOffset, logBuf);
 		} /* end debug logging */
 	
     	BSWAP_STL_PA_VF_INFO(&response[0], 0);
@@ -1838,7 +1888,7 @@ done:
 	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
 		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Impropper parameter passed to function
 	} else if (status == FNOT_FOUND) {
-		if (retImageId == BAD_IMAGE_ID)
+		if (retImageId.imageNumber == BAD_IMAGE_ID)
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_IMAGE;			// Failed to access/find image
 		else
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_VF;			// Failed to find VF
@@ -1876,9 +1926,7 @@ pa_getVFConfigResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	uint8_t		*data = pa_data;
 	uint32_t	records = 0;
 	uint32_t	attribOffset;
-	uint64_t	retImageId = 0;
-	uint64_t	imageId;
-	int32_t		offset;
+	STL_PA_IMAGE_ID_DATA retImageId = {0};
 	FSTATUS		status;
 	Status_t	vStatus;
 	PmVFConfig_t pmVFConfig = {{0}};
@@ -1892,15 +1940,13 @@ pa_getVFConfigResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	
 	INCREMENT_PM_COUNTER(pmCounterPaRxGetVFCfg);
 	BSWAP_STL_PA_VF_CFG_REQ(p);
-	imageId = p->imageId.imageNumber;
-	offset 	= p->imageId.imageOffset;
 	strncpy(vfName, p->vfName, STL_PM_VFNAMELEN-1);
 	vfName[STL_PM_VFNAMELEN-1]=0;
 
-	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", imageId, offset);
+	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", p->imageId.imageNumber, p->imageId.imageOffset);
 	IB_LOG_DEBUG1_FMT(__func__, "VF: %.*s", sizeof(vfName), vfName);
 
-	status = paGetVFConfig(&g_pmSweepData, vfName, 0, &pmVFConfig, imageId, offset, &retImageId);
+	status = paGetVFConfig(&g_pmSweepData, vfName, 0, &pmVFConfig, p->imageId, &retImageId);
 	if (status == FSUCCESS) {
 		records = pmVFConfig.NumPorts;
 		responseSize = pmVFConfig.NumPorts * sizeof(STL_PA_VF_CFG_RSP);
@@ -1919,8 +1965,17 @@ pa_getVFConfigResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
     		response[i].portNumber			= pmVFConfig.portList[i].portNum;
     		response[i].nodeGUID			= pmVFConfig.portList[i].guid;
     		strncpy(response[i].nodeDesc, pmVFConfig.portList[i].nodeDesc, sizeof(response[i].nodeDesc)-1);
-			response[i].imageId.imageNumber	= retImageId;
+			response[i].imageId	= retImageId;
 			response[i].imageId.imageOffset	= 0;
+		}
+
+		time_t absTime = (time_t)retImageId.imageTime.absoluteTime;
+		char buf[80];
+
+		if (absTime) {
+			snprintf(buf, sizeof(buf), " Time %s", ctime((const time_t *)&absTime));
+			if ((strlen(buf)>0) && (buf[strlen(buf)-1] == '\n'))
+				buf[strlen(buf)-1] = '\0';
 		}
 
 		IB_LOG_DEBUG2_FMT(__func__, "VF name %.*s", sizeof(vfName), vfName);
@@ -1929,8 +1984,8 @@ pa_getVFConfigResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			IB_LOG_DEBUG2_FMT(__func__, "  %d:LID:0x%08X Port:%u  Guid:0x%016"PRIx64"  NodeDesc: %.*s",
 					i+1, response[i].nodeLid, response[i].portNumber, response[i].nodeGUID,
 				   	sizeof(response[i].nodeDesc), response[i].nodeDesc);
-			IB_LOG_DEBUG2_FMT(__func__, "     ImageID: Number 0x%"PRIx64" Offset %d",
-					response[i].imageId.imageNumber, response[i].imageId.imageOffset);
+			IB_LOG_DEBUG2_FMT(__func__, "     ImageID: Number 0x%"PRIx64" Offset %d%s",
+				response[i].imageId.imageNumber, response[i].imageId.imageOffset, buf);
     		BSWAP_STL_PA_VF_CFG_RSP(&response[i]);
 		}
     	memcpy(data, response, responseSize);
@@ -1947,7 +2002,7 @@ done:
 	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
 		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Impropper parameter passed to function
 	} else if (status == FNOT_FOUND) {
-		if (retImageId == BAD_IMAGE_ID)
+		if (retImageId.imageNumber == BAD_IMAGE_ID)
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_IMAGE;			// Failed to access/find image
 		else
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_VF;			// Failed to find VF
@@ -1992,9 +2047,7 @@ pa_getVFPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	char		vfName[STL_PM_VFNAMELEN];
 	uint32_t	delta, userCntrs;
 	uint32		flags = 0;
-	uint64_t	retImageId = 0;
-	uint64_t	imageId;
-	int32_t		offset;
+	STL_PA_IMAGE_ID_DATA retImageId = {0};
 	STL_LID_32	nodeLid;
 	PORT		portNumber;
 	FSTATUS		status;
@@ -2008,19 +2061,17 @@ pa_getVFPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	BSWAP_STL_PA_VF_PORT_COUNTERS(p);
 	strncpy(vfName, p->vfName, STL_PM_VFNAMELEN-1);
 	vfName[STL_PM_VFNAMELEN-1]=0;
-	imageId 	= p->imageId.imageNumber;
-	offset 		= p->imageId.imageOffset;
 	nodeLid		= p->nodeLid;
 	portNumber	= p->portNumber;
 	delta 		= p->flags & STL_PA_PC_FLAG_DELTA;
 	userCntrs	= p->flags & STL_PA_PC_FLAG_USER_COUNTERS;
 
-	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", imageId, offset);
+	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", p->imageId.imageNumber, p->imageId.imageOffset);
 	IB_LOG_DEBUG1_FMT(__func__, "VF: %.*s  LID: 0x%x  port: %u  flags: 0x%x",
 					  sizeof(vfName), vfName, nodeLid, portNumber, p->flags);
 
 	status = paGetVFPortStats(&g_pmSweepData, nodeLid, portNumber, vfName, &pmVLPortCounters, delta,
-							  userCntrs, imageId, offset, &flags, &retImageId);
+							  userCntrs, p->imageId, &flags, &retImageId);
 	if (status == FSUCCESS) {
 		records = 1;
     	response.nodeLid						= nodeLid;
@@ -2040,7 +2091,8 @@ pa_getVFPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		response.portVFXmitWaitData				= pmVLPortCounters.PortVLXmitWaitData;
 		response.portVFRcvBubble				= pmVLPortCounters.PortVLRcvBubble;
 		response.portVFMarkFECN					= pmVLPortCounters.PortVLMarkFECN;
-    	response.imageId.imageNumber			= retImageId;
+    	response.imageId = retImageId;
+		response.imageId.imageOffset = 0;
 		strncpy(response.vfName, vfName, STL_PM_VFNAMELEN-1);
 
 		/* debug logging */
@@ -2067,8 +2119,17 @@ pa_getVFPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		IB_LOG_DEBUG2_FMT(__func__, " Rcv Bubble       %10"PRIu64" ", response.portVFRcvBubble);
 		IB_LOG_DEBUG2_FMT(__func__, " Mark FECN        %10"PRIu64" ", response.portVFMarkFECN);
 
-		IB_LOG_DEBUG2_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d",
-						  response.imageId.imageNumber, response.imageId.imageOffset);
+		time_t absTime = (time_t)response.imageId.imageTime.absoluteTime;
+		char buf[80];
+
+		if (absTime) {
+			snprintf(buf, sizeof(buf), " Time %s", ctime((const time_t *)&absTime));
+			if ((strlen(buf)>0) && (buf[strlen(buf)-1] == '\n'))
+				buf[strlen(buf)-1] = '\0';
+		}
+
+		IB_LOG_DEBUG2_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d%s",
+			response.imageId.imageNumber, response.imageId.imageOffset, buf);
 		/* end debug logging */
 
     	BSWAP_STL_PA_VF_PORT_COUNTERS(&response);
@@ -2085,7 +2146,7 @@ pa_getVFPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
 		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Impropper parameter passed to function
 	} else if (status == FNOT_FOUND) {
-		if (retImageId == BAD_IMAGE_ID)
+		if (retImageId.imageNumber == BAD_IMAGE_ID)
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_IMAGE;			// Failed to access/find image
 		else
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_VF;			// Failed to find VF
@@ -2196,11 +2257,9 @@ pa_getVFFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	uint8_t		*data = pa_data;
 	uint32_t	records = 0;
 	uint32_t	attribOffset;
-	uint64_t	retImageId = 0;
+	STL_PA_IMAGE_ID_DATA retImageId = {0};
 	FSTATUS		status;
 	Status_t	vStatus;
-	uint64_t	imageId;
-	int32_t		offset;
 	uint32_t	select, start, range;
 	PmVFFocusPorts_t pmVFFocusPorts = {{0}};
 	STL_PA_VF_FOCUS_PORTS_RSP *response = NULL;
@@ -2213,20 +2272,18 @@ pa_getVFFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	
 	INCREMENT_PM_COUNTER(pmCounterPaRxGetVFFocusPorts);
 	BSWAP_STL_PA_VF_FOCUS_PORTS_REQ(p);
-	imageId = p->imageId.imageNumber;
-	offset 	= p->imageId.imageOffset;
 	select	= p->select;
 	start	= p->start;
 	range	= p->range;
 	strncpy(vfName, p->vfName, STL_PM_VFNAMELEN-1);
 	vfName[STL_PM_VFNAMELEN-1]=0;
 
-	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", imageId, offset);
+	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", p->imageId.imageNumber, p->imageId.imageOffset);
 	IB_LOG_DEBUG1_FMT(__func__, "VF: %.*s  Select: 0x%x  Start: %u  Range: %u",
 					  sizeof(vfName), vfName, select, start, range);
 
-	status = paGetVFFocusPorts(&g_pmSweepData, vfName, &pmVFFocusPorts, 
-	    imageId, offset, &retImageId, select, start, range);
+	status = paGetVFFocusPorts(&g_pmSweepData, vfName, &pmVFFocusPorts,
+	    p->imageId, &retImageId, select, start, range);
 	if (status == FSUCCESS) {
 		records = pmVFFocusPorts.NumPorts;
 		responseSize = pmVFFocusPorts.NumPorts * sizeof(STL_PA_VF_FOCUS_PORTS_RSP);
@@ -2259,8 +2316,17 @@ pa_getVFFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
     		strncpy(response[i].neighborNodeDesc, pmVFFocusPorts.portList[i].neighborNodeDesc,
 					sizeof(response[i].neighborNodeDesc)-1);
 
-			response[i].imageId.imageNumber = retImageId;
+			response[i].imageId = retImageId;
 			response[i].imageId.imageOffset = 0;
+		}
+
+		time_t absTime = (time_t)retImageId.imageTime.absoluteTime;
+		char buf[80];
+
+		if (absTime) {
+			snprintf(buf, sizeof(buf), " Time %s", ctime((const time_t *)&absTime));
+			if ((strlen(buf)>0) && (buf[strlen(buf)-1] == '\n'))
+				buf[strlen(buf)-1] = '\0';
 		}
 
 		IB_LOG_DEBUG2_FMT(__func__, "VF name %.*s", sizeof(vfName), vfName);
@@ -2279,8 +2345,8 @@ pa_getVFFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			IB_LOG_DEBUG2_FMT(__func__, "     Nbr Node Desc    %.*s Status: %s",
 				sizeof(response[i].neighborNodeDesc), response[i].neighborNodeDesc,
 				StlFocusFlagToText(response[i].neighborFlags));
-			IB_LOG_DEBUG2_FMT(__func__, "     ImageID: Number 0x%"PRIx64" Offset %d",
-					response[i].imageId.imageNumber, response[i].imageId.imageOffset);
+			IB_LOG_DEBUG2_FMT(__func__, "     ImageID: Number 0x%"PRIx64" Offset %d%s",
+				response[i].imageId.imageNumber, response[i].imageId.imageOffset, buf);
 
     		BSWAP_STL_PA_VF_FOCUS_PORTS_RSP(&response[i]);
 		}
@@ -2298,7 +2364,7 @@ done:
 	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
 		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Impropper parameter passed to function
 	} else if (status == FNOT_FOUND) {
-		if (retImageId == BAD_IMAGE_ID)
+		if (retImageId.imageNumber == BAD_IMAGE_ID)
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_IMAGE;			// Failed to access/find image
 		else
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_VF;			// Failed to find VF

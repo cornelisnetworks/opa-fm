@@ -2395,11 +2395,12 @@ Status_t createMCastGroup(uint64_t* mgid, uint16_t pkey, uint8_t mtu, uint8_t ra
 	mcGroup = sm_find_multicast_gid(mGid);
 	if (mcGroup) {
 		if (VirtualFabrics) {
-        	for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
-           		if ((PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey) == PKEY_VALUE(pkey)) &&
-               		(smVFValidateMcDefaultGroup(vf, mgid) == VSTATUS_OK)) {
-               		bitset_set(&mcGroup->vfMembers, vf);
-           		}
+		for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
+			if ((PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey) == PKEY_VALUE(pkey)) &&
+				(smVFValidateMcDefaultGroup(vf, mgid) == VSTATUS_OK)) {
+				uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
+				bitset_set(&mcGroup->vfMembers, vfIdx);
+          		}
 			}
 		}
 		status = VSTATUS_OK;
@@ -2419,7 +2420,8 @@ Status_t createMCastGroup(uint64_t* mgid, uint16_t pkey, uint8_t mtu, uint8_t ra
 		for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
 			if ((PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey) == PKEY_VALUE(pkey)) &&
 				(smVFValidateMcDefaultGroup(vf, mgid) == VSTATUS_OK)) {
-				bitset_set(&mcGroup->vfMembers, vf);
+				uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
+				bitset_set(&mcGroup->vfMembers, vfIdx);
 			}
 		}
 	}

@@ -604,7 +604,7 @@ sm_validate_incoming_mad(Mai_t * out_mad, Mai_t * in_mad)
 				if (sm_topop->node_head) {
 					port = sm_get_port(sm_topop->node_head, sm_config.port);
 
-					for (i = 2; i < (in_mad->base.hopCount + 1); i++) {
+					for (i = 2; sm_valid_port(port) && i < (in_mad->base.hopCount + 1); i++) {
 						Port_t *lastPort = port;
 
 						port = sm_find_port(sm_topop, port->nodeno, in_dr->InitPath[i]);
@@ -2152,7 +2152,7 @@ sm_validate_predef_fields(Topology_t* topop, FabricData_t* pdtop, Node_t * cnp, 
 					topop->preDefLogCounts.totalLogCount++;
 				}
 
-				topop->preDefLogCounts.nodeDescWarn++;
+				topop->preDefLogCounts.nodeGuidWarn++;
 			}
 			else if(pdtCfg->fieldEnforcement.nodeGuid == FIELD_ENF_LEVEL_ENABLED) {
 				if(pdtCfg->logMessageThreshold != 0 && 
@@ -2163,7 +2163,7 @@ sm_validate_predef_fields(Topology_t* topop, FabricData_t* pdtop, Node_t * cnp, 
 					topop->preDefLogCounts.totalLogCount++;
 				}
 
-				topop->preDefLogCounts.nodeDescQuarantined++;
+				topop->preDefLogCounts.nodeGuidQuarantined++;
 				authentic = 0;
 			}
 
@@ -5334,12 +5334,19 @@ sm_set_node_port_states(Topology_t * topop, Node_t * nodep, Port_t * portp, uint
 	uint32_t numPackets = 1;
 	uint32_t numPSIs = 1;
 	uint32_t amod;
-	int i;
+	int i, portNum;
 	STL_PORT_STATE_INFO *portStateInfo = NULL;
 	uint16_t dlid;
 	uint32_t maxPSIsPerPacket = STL_MAX_PAYLOAD_SMP_DR / sizeof(STL_PORT_STATE_INFO);
 
 	IB_ENTER(__func__, topop, nodep, portStateToSet, 0);
+
+	// We want to save the port number in case it changes in the for_all_ports loop below
+	if (sm_valid_port(portp)) {
+		portNum = portp->index;
+        } else {
+		return VSTATUS_BAD;
+        }
 
 	// Get the dlid of the node we need to talk to
 	if (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH) {
@@ -5391,7 +5398,7 @@ sm_set_node_port_states(Topology_t * topop, Node_t * nodep, Port_t * portp, uint
 				amod = (maxPSIsPerPacket << 24) | (i * maxPSIsPerPacket);
 		} else {
 			// Node is an HFI, so we're doing this only for the port given as an arg
-			amod = ((numPSIs % maxPSIsPerPacket) << 24) | portp->index;
+			amod = ((numPSIs % maxPSIsPerPacket) << 24) | portNum;
 		}
 
 		if(path) {
@@ -8038,12 +8045,12 @@ sm_compactSwitchSpace(Topology_t * topop, bitset_t * switchbits)
 	Node_t *nodep;
 	int fidx, lidx, i, j, ij, ji, oldij;
 	uint16_t *cost = NULL;
-	size_t bytesCost;
-	size_t numNodesSqr;
-	size_t numSws;
+	size_t numSws = switchbits->nset_m;
+	size_t bytesCost = numSws * numSws * sizeof(uint16_t);
 
 	if (switchbits->nset_m == 0)
 		return;
+
 	if (switchbits->nset_m == topop->max_sws)
 		return;
 
@@ -8053,13 +8060,10 @@ sm_compactSwitchSpace(Topology_t * topop, bitset_t * switchbits)
 	}
 
 	/* Allocate space for the cost array. */
-	numSws = switchbits->nset_m;
-	numNodesSqr = numSws * numSws;
-	bytesCost = numNodesSqr * sizeof(uint16_t);
-
-	if (vs_pool_alloc(&sm_pool, bytesCost, (void *) &cost) != VSTATUS_OK) {
-		vs_pool_free(&sm_pool, (void *) &cost);
-		return;
+	if (topop->cost) {
+		if (vs_pool_alloc(&sm_pool, bytesCost, (void *) &cost) != VSTATUS_OK) {
+			return;
+		}
 	}
 
 	for (fidx = bitset_find_first_zero(switchbits); fidx >= 0;
@@ -8078,17 +8082,19 @@ sm_compactSwitchSpace(Topology_t * topop, bitset_t * switchbits)
 					bitset_set(switchbits, fidx);
 					bitset_clear(switchbits, lidx);
 
-					for (j = 0; j < lidx; j++) {
-						ij = Index(fidx, j);
-						ji = Index(j, fidx);
+					if (topop->cost) {
+						for (j = 0; j < lidx; j++) {
+							ij = Index(fidx, j);
+							ji = Index(j, fidx);
 
-						if (j == fidx) {
-							topop->cost[ij] = topop->cost[ji] = 0;
-							continue;
+							if (j == fidx) {
+								topop->cost[ij] = topop->cost[ji] = 0;
+								continue;
+							}
+
+							oldij = Index(lidx, j);
+							topop->cost[ij] = topop->cost[ji] = topop->cost[oldij];
 						}
-
-						oldij = Index(lidx, j);
-						topop->cost[ij] = topop->cost[ji] = topop->cost[oldij];
 					}
 					break;
 				}
@@ -8112,64 +8118,6 @@ sm_compactSwitchSpace(Topology_t * topop, bitset_t * switchbits)
 	topop->max_sws = switchbits->nset_m;
 
 	return;
-}
-
-void
-sm_log_topology(Topology_t * topop)
-{
-
-	Node_t *nodep = NULL;
-	Node_t *linkednodep = NULL;
-	Port_t *portp;
-	int i;
-	uint16_t lid;
-
-	if (sm_debug == 0) {
-		return;
-	}
-
-	for_all_nodes(topop, nodep) {
-		if (nodep->nodeInfo.NodeType != NI_TYPE_SWITCH)
-			continue;
-
-		IB_LOG_INFINI_INFO_FMT(__func__, "Switch Node %s : switch index= %d>>>>>>>>>>",
-							   sm_nodeDescString(nodep), nodep->swIdx);
-
-		bitset_info_log(&nodep->activePorts, "activePorts");
-		bitset_info_log(&nodep->initPorts, "initPorts");
-
-		for (i = bitset_find_first_one(&nodep->activePorts); i >= 0;
-			 i = bitset_find_next_one(&nodep->activePorts, i + 1)) {
-			portp = sm_get_port(nodep, i);
-			if (i == 0) {
-				IB_LOG_INFINI_INFO_FMT(__func__,
-									   "smport zero (state= %d), base lid= 0x%x", portp->state,
-									   portp->portData->lid);
-				continue;
-			}
-			IB_LOG_INFINI_INFO_FMT(__func__, "port index= %d: state= %d, nodeno= %d",
-								   i, portp->state, portp->nodeno);
-			if (portp->nodeno > 0) {
-				linkednodep = sm_find_node(topop, portp->nodeno);
-				if (linkednodep) {
-					IB_LOG_INFINI_INFO_FMT(__func__, "connected to node %s port %d",
-										   sm_nodeDescString(linkednodep), portp->portno);
-				}
-			}
-		}
-		for (lid = 0; lid <= topop->maxLid; lid++) {
-			if (nodep->lft[lid] == 0xff)
-				continue;
-			IB_LOG_INFINI_INFO_FMT(__func__, "lid  0x%x  port %d", lid,
-								   nodep->lft[lid]);
-		}
-		for_all_ports(nodep, portp) {
-			if (sm_valid_port(portp) && (portp->state > IB_PORT_DOWN)) {
-				IB_LOG_ERROR_FMT(__func__, "port %d lidsRouted= 0x%x", portp->index,
-								 portp->portData->lidsRouted);
-			}
-		}
-	}
 }
 
 Status_t

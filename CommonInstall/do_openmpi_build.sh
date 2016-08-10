@@ -282,7 +282,7 @@ fi
 
 if [ "$skip_prompt" != y -a "$Oflag" != y -a "$Qflag" != y ]
 then
-	if rpm -qa|grep hfi1-psm >/dev/null 2>&1
+	if rpm -qa|grep libpsm2 >/dev/null 2>&1
 	then
 		echo
 		get_yes_no "Build for Omnipath HFI PSM" "y"
@@ -304,7 +304,7 @@ then
 	interface=psm
 elif [ "$Oflag" = y ]
 then
-	PREREQ+=('hfi1-psm')
+	PREREQ+=('libpsm2')
 	
 	openmpi_conf_psm='--with-psm=/usr --with-psm2=/usr --disable-oshmem'
 	# PSM indicated by qlc suffix so user can ID PSM vs verbs MPIs

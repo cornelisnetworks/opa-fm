@@ -69,10 +69,12 @@ extern "C" {
 #define HIDDEN_VL15_VF	"HIDDEN_VL15_VF"
 
 // special ImageId of 0 is used to access live data
-// non-zero values are of the format below
-// This is an opaque format, the only user known ImageId is 0 to access
-// live data
-#define IMAGEID_LIVE_DATA			0	// 64 bit ImageId to access live data
+// -1 is used to request Images by time 
+// other non-zero values are of the format below
+// This is an opaque format, the only user known ImageIds are 0 to access
+// live data and -1 (0xffffffffffffffff) for images by time
+#define IMAGEID_LIVE_DATA			 0	// 64 bit ImageId to access live data
+#define IMAGEID_ABSOLUTE_TIME		-1	// 64 bit ImageID to request image by time
 
 // values for ImageId.s.type field, used to determine which table to look in
 #define IMAGEID_TYPE_ANY			0	// Matches any image ID type
@@ -646,6 +648,7 @@ typedef struct PmDispatcherPort_s {
 
 typedef struct PmDispatcherPacket_s {
 	uint64                      PortSelectMask[4];  // Ports in Packet
+	uint32                      VLSelectMask;
 	uint8                       numPorts;                
 	struct PmDispatcherNode_s  *dispnode;	        // setup once at boot
 	PmDispatcherPort_t         *DispPorts;         
@@ -767,8 +770,8 @@ typedef struct PmImage_s {
 #define PM_HISTORY_MAX_IMAGES_PER_COMPOSITE 60
 #define PM_HISTORY_MAX_SMS_PER_COMPOSITE 2
 #define PM_HISTORY_MAX_LOCATION_LEN 111
-#define PM_HISTORY_VERSION 6
-#define PM_HISTORY_VERSION_OLD 5 // Old version currently supported by PA
+#define PM_HISTORY_VERSION 7
+#define PM_HISTORY_VERSION_OLD 6 // Old version currently supported by PA
 #define PM_MAX_COMPRESSION_DIVISIONS 32
 #define PM_HISTORY_STHFILE_LEN 15 // the exact length of the filename, not full path
 
@@ -906,7 +909,7 @@ typedef struct PmCompositeGroups_s {
 
 typedef struct PmHistoryHeaderCommon_s {
 	uint32	historyVersion;			// Must remain fixed for all versions
-	uint32	reserved;
+	uint32	imageTime;
 	char 	filename[PM_HISTORY_FILENAME_LEN];
 	uint64	timestamp;
 	uint8	isCompressed;
@@ -973,6 +976,7 @@ typedef struct PmHistoryRecord_s {
 		cl_map_item_t	historyImageEntry;	// key is image ID
 		uint32 inx;
 	} historyImageEntries[PM_HISTORY_MAX_IMAGES_PER_COMPOSITE];
+	cl_map_item_t imageTimeEntry;
 } PmHistoryRecord_t;
 
 typedef struct _imageEntry PmHistoryImageEntry_t;
@@ -983,7 +987,9 @@ typedef struct PmShortTermHistory_s {
 	uint32	currentRecordIndex;
 	uint64	totalDiskUsage;
 	cl_qmap_t	historyImages;	// map of all short term history Records, keyed by image IDs
-	cl_map_item_t	historyImagesBase;	
+	cl_qmap_t   imageTimes;       // map of all short term history images, keyed by start time
+	cl_map_item_t	historyImagesBase;
+	cl_map_item_t	imageTimesBase;
 	uint32	totalHistoryRecords;
 	uint8	currentInstanceId;
 	PmCompositeImage_t *cachedComposite;
@@ -1345,11 +1351,13 @@ BSWAP_PM_HISTORY_HEADER_COMMON(PmHistoryHeaderCommon_t *Dest)
 	uint32 i;
 
 	BSWAP_PM_HISTORY_VERSION(&Dest->historyVersion);
+	Dest->imageTime = ntoh32(Dest->imageTime);
 	Dest->timestamp = ntoh64(Dest->timestamp);
 	Dest->imagesPerComposite = ntoh16(Dest->imagesPerComposite);
 	Dest->imageSweepInterval = ntoh32(Dest->imageSweepInterval);
 	for (i = 0; i < PM_HISTORY_MAX_IMAGES_PER_COMPOSITE; i++)
 		Dest->imageIDs[i] = ntoh64(Dest->imageIDs[i]);
+
 #endif
 }	// End of BSWAP_PM_HISTORY_HEADER_COMMON
 
@@ -1375,15 +1383,6 @@ BSWAP_PM_COMPOSITE_IMAGE_FLAT(PmCompositeImage_t *Dest, boolean hton, uint32 his
 #if CPU_LE
 	uint32 numNodes;
 	PmCompositeNode_t *cnodes = (PmCompositeNode_t *)&Dest->nodes;
-
-	if (history_version == PM_HISTORY_VERSION_OLD) {
-		// Adjust location of cnodes if reading old version
-		cnodes = (PmCompositeNode_t *)((size_t)cnodes
-			- (3 * (PM_MAX_GROUPS + 1) * 8)
-			- (1 * (MAX_VFABRICS) * 8) );
-		// Change in size is due to increase in size of PmUtilStats_t by 8 bytes from v5 to v6
-		//   There is 1 PmUtilStats_t per subgroup (Int, Send, Recv)
-	}
 
 	// Note that header is swapped independently
 	if (hton) {
@@ -1630,12 +1629,12 @@ void ComputeBuckets(Pm_t *pm, PmPortImage_t *portImage);
 
 void PmPrintExceededPort(PmPort_t *pmportp, uint32 index,
 				const char *statistic, uint32 threshold, uint32 value);
-void PmPrintExceededPortDetailsIntegrity(PmPortImage_t *portImage, PmPortImage_t *portImage2);
-void PmPrintExceededPortDetailsCongestion(PmPortImage_t *portImage, PmPortImage_t *portImage2);
-void PmPrintExceededPortDetailsSmaCongestion(PmPortImage_t *portImage, PmPortImage_t *portImage2);
-void PmPrintExceededPortDetailsBubble(PmPortImage_t *portImage, PmPortImage_t *portImage2);
-void PmPrintExceededPortDetailsSecurity(PmPortImage_t *portImage, PmPortImage_t *portImage2);
-void PmPrintExceededPortDetailsRouting(PmPortImage_t *portImage, PmPortImage_t *portImage2);
+void PmPrintExceededPortDetailsIntegrity(PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint32 lastImageIndex);
+void PmPrintExceededPortDetailsCongestion(PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint32 lastImageIndex);
+void PmPrintExceededPortDetailsSmaCongestion(PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint32 lastImageIndex);
+void PmPrintExceededPortDetailsBubble(PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint32 lastImageIndex);
+void PmPrintExceededPortDetailsSecurity(PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint32 lastImageIndex);
+void PmPrintExceededPortDetailsRouting(PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint32 lastImageIndex);
 void PmFinalizePortStats(Pm_t *pm, PmPort_t *portp, uint32 index);
 boolean PmTabulatePort(Pm_t *pm, PmPort_t *portp, uint32 index,
 			   			uint32 *counterSelect);

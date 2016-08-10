@@ -106,6 +106,7 @@ Status_t stl_sm_cca_configure_hfi(Node_t *nodep)
 	Status_t status;
 	Port_t *portp;
 	STL_HFI_CONGESTION_SETTING hfiCongSett = {0};
+	uint32_t dlid;
 
 	// Can be called for ESP0. Return if Switch port 0 has no congestion table capacity.
 	if ( (nodep->nodeInfo.NodeType==STL_NODE_SW) &&
@@ -125,7 +126,7 @@ Status_t stl_sm_cca_configure_hfi(Node_t *nodep)
 		/* Build the congestion control table for each end port. */
 		for_all_end_ports(nodep, portp) {
 
-			if (!(sm_valid_port(portp) && portp->state >= IB_PORT_DOWN)) continue;
+			if (!sm_valid_port(portp) || portp->state == IB_PORT_DOWN) continue;
 		
 			if ((status = vs_pool_alloc(&sm_pool, tableSize, (void *)&hfiCongCon)) != VSTATUS_OK) {
 				IB_LOG_ERROR_FMT(__func__,
@@ -137,6 +138,7 @@ Status_t stl_sm_cca_configure_hfi(Node_t *nodep)
 		
 			build_cca_congestion_control_table(nodep, portp, hfiCongCon, numBlocks);
 
+			dlid = portp->portData->lid;
 			// CCTI_Limit is max valid index = num valid entries-1
 			numBlocks = MIN(numBlocks, (hfiCongCon->CCTI_Limit + STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES) / STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES);
 			for(i = 0; i < numBlocks;){
@@ -146,8 +148,8 @@ Status_t stl_sm_cca_configure_hfi(Node_t *nodep)
 				payloadBlocks = numBlocks - i;  // Calculate how many blocks are left to be sent
 				payloadBlocks = MIN(payloadBlocks, maxBlocks);  // Limit the number of blocks to be sent
 				amod = payloadBlocks << 24 | i;
-				status = SM_Set_HfiCongestionControl(fd_topology, hfiCongCon->CCTI_Limit,
-													 payloadBlocks, amod, portp->path, &hfiCongCon->CCT_Block_List[i], sm_config.mkey);
+				status = SM_Set_HfiCongestionControl_LR(fd_topology, hfiCongCon->CCTI_Limit,
+													 payloadBlocks, amod, sm_lid, dlid, &hfiCongCon->CCT_Block_List[i], sm_config.mkey);
 				if(status != VSTATUS_OK)
 					break;
 				else
@@ -182,8 +184,14 @@ Status_t stl_sm_cca_configure_hfi(Node_t *nodep)
 	//FM code always updates each SL settings, we have not implemented a way to
 	//change settings on individual SLs, so Control_map bits always set. 
 	hfiCongSett.Control_Map = 0xffffffff;
+	
+	portp = sm_get_node_end_port(nodep);
+	if (!sm_valid_port(portp) || portp->state == IB_PORT_DOWN){
+		return VSTATUS_BAD;
+	}
 
-	status = SM_Set_HfiCongestionSetting(fd_topology, 0, nodep->path, &hfiCongSett, sm_config.mkey);
+	dlid = portp->portData->lid;
+	status = SM_Set_HfiCongestionSetting_LR(fd_topology, 0, sm_lid, dlid, &hfiCongSett, sm_config.mkey);
 	if (status != VSTATUS_OK) {
 		IB_LOG_ERROR_FMT(__func__,
 			"Failed to set HFI Congestion Setting Table for NodeGUID "FMT_U64" [%s]; rc: %d",
@@ -203,6 +211,8 @@ Status_t stl_sm_cca_configure_sw(Node_t *nodep)
 	STL_SWITCH_PORT_CONGESTION_SETTING * swPortSet;
 	const uint8_t port_count = nodep->nodeInfo.NumPorts + 1; // index 0 reserved for SWP0.
 	uint8_t i;
+	uint32_t dlid;
+	Port_t *portp;
 
 	if (nodep->switchInfo.u2.s.EnhancedPort0) 
 		stl_sm_cca_configure_hfi(nodep);
@@ -238,8 +248,14 @@ Status_t stl_sm_cca_configure_sw(Node_t *nodep)
 		setting.Control_Map = CC_SWITCH_CONTROL_MAP_CC_VALID;
 		setting.Threshold = 0;
 	}
+ 
+	portp = sm_get_port(nodep, 0);
+	if (!sm_valid_port(portp) || portp->state == IB_PORT_DOWN){
+		return VSTATUS_BAD;
+	}
 
-	status = SM_Set_SwitchCongestionSetting(fd_topology, 0, nodep->path, &setting, sm_config.mkey);
+	dlid = portp->portData->lid;
+	status = SM_Set_SwitchCongestionSetting_LR(fd_topology, 0, sm_lid, dlid, &setting, sm_config.mkey);
 	if (status != VSTATUS_OK) {
 		IB_LOG_ERROR_FMT(__func__,
 			"Failed to set switch Congestion Setting for NodeGUID "FMT_U64" [%s]; rc: %d",
@@ -258,7 +274,7 @@ Status_t stl_sm_cca_configure_sw(Node_t *nodep)
 		return VSTATUS_NOMEM;
 	}
 
-	status = SM_Get_SwitchPortCongestionSetting(fd_topology, ((uint32_t)port_count)<<24, nodep->path, swPortSet);
+	status = SM_Get_SwitchPortCongestionSetting_LR(fd_topology, ((uint32_t)port_count)<<24, sm_lid, dlid, swPortSet);
 	if (status != VSTATUS_OK) {
 		IB_LOG_ERROR_FMT(__func__,
 			"Failed to get Switch Port Congestion Settings for NodeGUID "FMT_U64" [%s]; rc %d",

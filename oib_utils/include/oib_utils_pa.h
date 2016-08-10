@@ -52,6 +52,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define PACLIENT_INVALID_PARAM  (-2)
 
 #define PACLIENT_IMAGE_CURRENT  0   // Most recent sweep image
+#define PACLIENT_IMAGE_TIMED   -1   // Image with particular time
 
 #define PACLIENT_SEL_ALL                0x00010000  // All ports in group
 #define PACLIENT_SEL_UTIL_HIGH          0x00020001  // Highest first
@@ -650,6 +651,7 @@ iba_pa_single_mad_clr_all_port_counters_response_query(
     IN struct oib_port  *port,
     IN uint32_t         select
     );
+
 
 /**
  *  Get the PM config data.

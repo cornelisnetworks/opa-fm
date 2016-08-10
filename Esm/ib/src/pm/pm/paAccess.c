@@ -87,7 +87,7 @@ static uint64 BuildHistoryImageId(Pm_t *pm, uint32 historyIndex)
 // given an Image Index, build an externally usable FreezeFrame ImageId
 // this will allow future reference to this image via freezeFrames[]
 static uint64 BuildFreezeFrameImageId(Pm_t *pm, uint32 freezeIndex,
-			  						 uint8 clientId)
+	uint8 clientId, uint32 *imageTime)
 {
 	ImageId_t id;
 
@@ -98,6 +98,8 @@ static uint64 BuildFreezeFrameImageId(Pm_t *pm, uint32 freezeIndex,
 	id.s.index = freezeIndex;
 	if (pm_config.shortTermHistory.enable)
 		id.s.instanceId = pm->ShortTermHistory.currentInstanceId;
+	if (imageTime)
+		*imageTime = (uint32)pm->Image[pm->freezeFrames[freezeIndex]].sweepStart;
 	//printf("build Freeze Frame ImageId: type=%u, client=%u sweep=%u index=%u Image=0x%llx\n", id.s.type, id.s.clientId, id.s.sweepNum, id.s.index, id.AsReg64);
 	return id.AsReg64;
 }
@@ -147,6 +149,75 @@ static FSTATUS ComputeHistory(Pm_t *pm, uint32 historyIndex, int32 offset,
 	*retImageId = BuildHistoryImageId(pm, index);
 	return FSUCCESS;
 }
+
+/**
+ *	GetIndexFromTime - Given a time input, find imageIndex for RAM image with matching sweepStart
+ *	                   time
+ *	
+ *	Inputs:
+ *		pm            - the pm
+ *		type          - (in-RAM)image type: ANY, HISTORY, or FREEZE_FRAME
+ *		requestTime   - time to find an image for 
+ *		imageIndex    - will be set to an index into list of Images if corresponding image found
+ *		returnImageId - will contain image information of image found (if any)
+ *		msg           - error message if unsuccessful
+ *		clientId      - client ID
+ *
+ *	on Error: 
+ *		set message to string describing failure
+ *		return error status 
+ *
+ */
+static FSTATUS GetIndexFromTime(Pm_t *pm, uint8 type, time_t requestTime, 
+		                        uint32 *imageIndex,
+								STL_PA_IMAGE_ID_DATA *returnImageId, 
+								const char **msg, uint8 *clientId)
+{
+	uint32 lastImageIndex = pm->history[pm->lastHistoryIndex];
+	int i;
+
+	if (pm->LastSweepIndex == PM_IMAGE_INDEX_INVALID
+		|| lastImageIndex == PM_IMAGE_INDEX_INVALID
+		|| pm->Image[lastImageIndex].state != PM_IMAGE_VALID) {
+		*msg = "Sweep Engine not ready";
+		return FUNAVAILABLE;
+	}
+
+	//validate requestTime
+	if (!requestTime){
+		*msg = "Invalid request time";
+		return FINVALID_PARAMETER;
+	}
+	
+	uint32 historyIndex = pm->lastHistoryIndex;
+	for (i = 0; i < pm_config.total_images; ++i){
+		if (FSUCCESS == ComputeHistory(pm, historyIndex, 0-i, pm->Image[lastImageIndex].sweepNum,
+					                   imageIndex, &returnImageId->imageNumber, 
+									   msg)){
+			//we have a valid imageIndex, get RAM image and look at 
+			//sweepStart time
+			PmImage_t *pmimagep = &pm->Image[*imageIndex];
+			(void)vs_rdlock(&pmimagep->imageLock);
+			if (pmimagep->state == PM_IMAGE_VALID
+				// Check request Time is between imageStart and the imageInterval
+				&& requestTime >= pmimagep->sweepStart
+				&& requestTime < (pmimagep->sweepStart + MAX(pmimagep->sweepDuration/1000000, pm->interval)) ) {
+
+				//build returnImageId, imageNumber set in ComputeHistory
+				returnImageId->imageTime.absoluteTime = requestTime;
+				returnImageId->imageOffset = 0;
+				
+				(void)vs_rwunlock(&pmimagep->imageLock);
+				return FSUCCESS;
+			}
+			(void)vs_rwunlock(&pmimagep->imageLock);
+		}
+	}
+
+	*msg = "No Image found matching request time";
+	return FNOT_FOUND;
+}
+
 
 // take an ImageId (could be Freeze or history/current) and resolve to a
 // imageIndex.  Validate the ImageId, index and the Image index points to are
@@ -272,6 +343,83 @@ FSTATUS CheckComposite(Pm_t *pm, uint64 imageId, PmCompositeImage_t *cimg) {
 }
 
 #endif
+
+/*
+ *Comparison function when requesting history records by time
+ * */
+int sweepTimeCompare(const uint64 map_key, const uint64 requestTime){
+	if (requestTime >= (map_key >> 32) + (map_key & 0xFFFFFFFF)) return -1;
+	else if (requestTime < map_key >> 32) return 1;
+	else return 0;
+}
+
+/************************************************************************************* 
+*   FindImageByTime - given a specific time, find the image with corresponding sweepStart
+*      (in-RAM or Short-Term History)
+*  
+*   Inputs:
+*       pm - the PM
+*       type - (in-RAM)image type: ANY, HISTORY, or FREEZE_FRAME
+*       requestTime - requested sweep start time
+*       imageIndex - if image is found in-RAM, this will be the image index
+*       retImageId - the image ID of the image which was found
+*       record - if the image was found in Short-Term History, this will be its record
+*       msg - error message
+*       clientId - client ID
+*       cimg - if the image is frozen, or the current composite, this will point to
+*   			that image
+*
+*   Returns:
+*   	FSUCCESS if success, FNOT_FOUND if not found
+*  
+*************************************************************************************/
+FSTATUS FindImageByTime(
+	Pm_t *pm, 
+	uint8 type, 
+	time_t requestTime, 
+	uint32 *imageIndex, 
+	STL_PA_IMAGE_ID_DATA *retImageId, 
+	PmHistoryRecord_t **record,
+	const char **msg, 
+	uint8 *clientId,
+	PmCompositeImage_t **cimg
+	)
+{
+	FSTATUS status;
+	
+	// CASE 1: Image with requested time in RAM
+	status = GetIndexFromTime(pm, type, requestTime, imageIndex, retImageId, msg, clientId);
+	if (FSUCCESS == status) return status;
+
+#ifndef __VXWORKS__
+	// CASE 2: Image with requested time in STH
+	if (!pm_config.shortTermHistory.enable) return status;
+
+	PmHistoryRecord_t *found;
+	cl_map_item_t *mi;
+	mi = cl_qmap_get_compare(&pm->ShortTermHistory.imageTimes, requestTime, sweepTimeCompare);
+
+	if (mi == cl_qmap_end(&pm->ShortTermHistory.imageTimes)) {
+		IB_LOG_ERROR_FMT(__func__, "Unable to find image Time: %d in record map", requestTime);
+		*msg = "Invalid history image time";
+		return FNOT_FOUND;
+	}
+
+	// find the parent record of the entries
+	found = PARENT_STRUCT(mi, PmHistoryRecord_t, imageTimeEntry);
+	if (!found) {
+		*msg = "Error looking up image Time no parent entries found";
+		return FNOT_FOUND;
+	}
+
+	*record = found;
+	status = FSUCCESS;
+
+#endif
+
+	return status;
+}
+
 /************************************************************************************* 
 *   FindImage - given and image ID and an offset, find the corresponding image
 *      (in-RAM or Short-Term History)
@@ -296,8 +444,7 @@ FSTATUS CheckComposite(Pm_t *pm, uint64 imageId, PmCompositeImage_t *cimg) {
 FSTATUS FindImage(
 	Pm_t *pm, 
 	uint8 type, 
-	uint64 imageId, 
-	int32 offset, 
+	STL_PA_IMAGE_ID_DATA imageId,
 	uint32 *imageIndex, 
 	uint64 *retImageId, 
 	PmHistoryRecord_t **record,
@@ -306,11 +453,26 @@ FSTATUS FindImage(
 	PmCompositeImage_t **cimg
 	)
 {
-	FSTATUS status;
+	FSTATUS status = FNOT_FOUND;
+	
+	STL_PA_IMAGE_ID_DATA id_data = {0};
 
-	// image ID in RAM, offset in RAM
-	status = GetIndexFromImageId(pm, type, imageId, offset, imageIndex, retImageId, msg, clientId);
-	if (status == FSUCCESS)	return status;
+	if (IMAGEID_ABSOLUTE_TIME == imageId.imageNumber){
+		status = FindImageByTime(pm, type, (time_t) imageId.imageTime.absoluteTime, imageIndex,
+				               &id_data, record, msg, clientId, cimg);
+		if (FSUCCESS == status)
+			*retImageId = id_data.imageNumber;
+		return status;
+	}
+
+	// only check the RAM Images if the requested instance ID matches the current instance
+	if(imageId.imageNumber == IMAGEID_LIVE_DATA || !pm_config.shortTermHistory.enable ||
+		(pm_config.shortTermHistory.enable && ((ImageId_t)imageId.imageNumber).s.instanceId == pm->ShortTermHistory.currentInstanceId))
+	{
+		// image ID in RAM, offset in RAM
+		status = GetIndexFromImageId(pm, type, imageId.imageNumber, imageId.imageOffset, imageIndex, retImageId, msg, clientId);
+		if (status == FSUCCESS)	return status;
+	}
 
 	if (!pm_config.shortTermHistory.enable)
 		return status;
@@ -318,8 +480,8 @@ FSTATUS FindImage(
 #ifndef __VXWORKS__
 	PmHistoryRecord_t *found;
 	ImageId_t histId;
-	if (imageId) {
-		histId.AsReg64 = imageId;
+	if (imageId.imageNumber) {
+		histId.AsReg64 = imageId.imageNumber;
 		histId.s.type = IMAGEID_TYPE_HISTORY;
 		histId.s.clientId = 0;
 		histId.s.index = 0;
@@ -332,15 +494,20 @@ FSTATUS FindImage(
 	int oneg = -1;	// maximum negative offset allowed
 	int opos = -1;	// maximum positive offset allowed
 	int tot = -1;	// total number of records in history
-
-	// image ID in RAM, offset negative into history
-	status = GetIndexFromImageId(pm, type, imageId, 0, imageIndex, retImageId, msg, clientId);
+    int32 offset = imageId.imageOffset;
+	// only check the RAM images if the requested instance ID matches the current instance
+	if(imageId.imageNumber == IMAGEID_LIVE_DATA ||
+		((ImageId_t)imageId.imageNumber).s.instanceId == pm->ShortTermHistory.currentInstanceId)
+	{
+		// image ID in RAM, offset negative into history
+		status = GetIndexFromImageId(pm, type, imageId.imageNumber, 0, imageIndex, retImageId, msg, clientId);
+	}
 	if (status == FSUCCESS && offset < 0) {
 	// offset needs to be adjusted to account for the overlap between history images and RAM images
 	// new offset should be: old offset - distance required to cover the rest of the RAM images + offset from 1st record to 1st 'uncovered' record
 		int32 r, t, i, c, o;
 		// r: offset from live to requested image ID
-		r = imageId != IMAGEID_LIVE_DATA ? histId.s.sweepNum - pm->NumSweeps : 0;
+		r = imageId.imageNumber != IMAGEID_LIVE_DATA ? histId.s.sweepNum - pm->NumSweeps : 0;
 		// t: current total number of RAM images
 		t = (int32)MIN(pm_config.total_images, pm->NumSweeps);
 		// i: images per composite
@@ -393,7 +560,7 @@ FSTATUS FindImage(
 			// look up the image Id in the history images map
 			mi = cl_qmap_get(&pm->ShortTermHistory.historyImages, histId.AsReg64);
 			if (mi == cl_qmap_end(&pm->ShortTermHistory.historyImages)) {
-				IB_LOG_ERROR_FMT(__func__, "Unable to find image ID: 0x"FMT_U64" in record map", imageId);
+				IB_LOG_ERROR_FMT(__func__, "Unable to find image ID: 0x"FMT_U64" in record map", imageId.imageNumber);
 				*msg = "Invalid history image ID";
 				return FNOT_FOUND;
 			}
@@ -588,9 +755,9 @@ done:
 *************************************************************************************/
 
 FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo,
-	uint64 imageId, int32 offset, uint64 *returnImageId)
+	STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE_ID_DATA *returnImageId)
 {
-	uint64				retImageId = 0;
+	STL_PA_IMAGE_ID_DATA retImageId = {0};
 	FSTATUS				status = FSUCCESS;
 	PmGroup_t			*pmGroupP = NULL;
 	PmGroupImage_t		pmGroupImage;
@@ -622,7 +789,7 @@ FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo,
 
 	// collect statistics from last sweep and populate pmGroupInfo
 	(void)vs_rdlock(&pm->stateLock);
-	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &cimg);
+	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, &imageIndex, &retImageId.imageNumber, &record, &msg, NULL, &cimg);
 
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
@@ -640,7 +807,7 @@ FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo,
 			}
 		}
 		// set the return ID
-		retImageId = cimg->header.common.imageIDs[0];
+		retImageId.imageNumber = cimg->header.common.imageIDs[0];
 		// composite is loaded, reconstitute so we can use it
 		status = PmReconstitute(&pm->ShortTermHistory, cimg);
 		if (record) PmFreeComposite(cimg);
@@ -680,6 +847,10 @@ FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo,
 		pmImageP = &pm->Image[imageIndex];
 		(void)vs_rdlock(&pmImageP->imageLock);
 	}
+
+	// Grab ImageTime from Pm Image
+	retImageId.imageTime.absoluteTime = (uint32)pmImageP->sweepStart;
+
 	(void)vs_rwunlock(&pm->stateLock);
 	memset(&pmGroupImage, 0, sizeof(PmGroupImage_t));
 	ClearGroupStats(&pmGroupImage);
@@ -782,7 +953,7 @@ done:
 	return(status);
 error:
 	(void)vs_rwunlock(&pm->stateLock);
-	*returnImageId = BAD_IMAGE_ID;
+	returnImageId->imageNumber = BAD_IMAGE_ID;
 	goto done;
 }
 
@@ -803,9 +974,10 @@ error:
 *
 *************************************************************************************/
 
-FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConfig, uint64 imageId, int32 offset, uint64 *returnImageId)
+FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConfig,
+	STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE_ID_DATA *returnImageId)
 {
-	uint64				retImageId = 0;
+	STL_PA_IMAGE_ID_DATA retImageId = {0};
 	PmGroup_t			*pmGroupP = NULL;
 	STL_LID_32			lid;
 	uint32				imageIndex;
@@ -838,7 +1010,7 @@ FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConf
 	// pmGroupP points to our group
 	// check all ports for membership in our group
 	(void)vs_rdlock(&pm->stateLock);
-	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &cimg);
+	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, &imageIndex, &retImageId.imageNumber, &record, &msg, NULL, &cimg);
 
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
@@ -855,7 +1027,7 @@ FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConf
 				goto error;
 			}
 		}
-		retImageId = cimg->header.common.imageIDs[0];
+		retImageId.imageNumber = cimg->header.common.imageIDs[0];
 		// composite is loaded, reconstitute so we can use it
 		status = PmReconstitute(&pm->ShortTermHistory, cimg);
 		if (record) PmFreeComposite(cimg);
@@ -892,6 +1064,10 @@ FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConf
 		pmimagep = &pm->Image[imageIndex];
 		(void)vs_rdlock(&pmimagep->imageLock);
 	}
+
+	// Grab ImageTime from Pm Image
+	retImageId.imageTime.absoluteTime = (uint32)pmimagep->sweepStart;
+
 	(void)vs_rwunlock(&pm->stateLock);
 	for (lid=1; lid<= pmimagep->maxLid; ++lid) {
 		uint8 portnum;
@@ -989,7 +1165,7 @@ done:
 	return(status);
 error:
 	(void)vs_rwunlock(&pm->stateLock);
-	*returnImageId = BAD_IMAGE_ID;
+	returnImageId->imageNumber = BAD_IMAGE_ID;
 	goto done;
 }
 
@@ -1012,9 +1188,11 @@ error:
 *
 *************************************************************************************/
 
-FSTATUS paGetPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, PmCompositePortCounters_t *portCountersP, uint32 delta, uint32 userCntrs, uint64 imageId, int32 offset, uint32 *flagsp, uint64 *returnImageId)
+FSTATUS paGetPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, PmCompositePortCounters_t *portCountersP,
+	uint32 delta, uint32 userCntrs, STL_PA_IMAGE_ID_DATA imageId, uint32 *flagsp,
+	STL_PA_IMAGE_ID_DATA *returnImageId)
 {
-	uint64				retImageId = 0, retImageId2 = 0;
+	STL_PA_IMAGE_ID_DATA retImageId = {0}, retImageId2 = {0};
 	FSTATUS				status = FSUCCESS;
 	PmPort_t			*pmPortP, *pmPortPreviousP = NULL;
 	PmPortImage_t		*pmPortImageP, *pmPortImagePreviousP = NULL;
@@ -1033,9 +1211,9 @@ FSTATUS paGetPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, PmCompositePortC
 		IB_LOG_WARN_FMT(__func__,  "Illegal LID parameter: must not be zero");
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	}
-	if (userCntrs && (delta || offset)) {
+	if (userCntrs && (delta || imageId.imageOffset)) {
 		IB_LOG_WARN_FMT(__func__,  "Illegal combination of parameters: Offset (%d) and delta(%d) must be zero if UserCounters(%d) flag is set",
-						offset, delta, userCntrs);
+						imageId.imageOffset, delta, userCntrs);
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	}
 
@@ -1073,7 +1251,7 @@ FSTATUS paGetPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, PmCompositePortC
 			(isUnexpectedClearUserCounters ? STL_PA_PC_FLAG_UNEXPECTED_CLEAR : 0);
 		goto done;
 	}
-	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &cimg);
+	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, &imageIndex, &retImageId.imageNumber, &record, &msg, NULL, &cimg);
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
@@ -1088,7 +1266,7 @@ FSTATUS paGetPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, PmCompositePortC
 					goto error;
 				}
 			}
-			retImageId = cimg->header.common.imageIDs[0];
+			retImageId.imageNumber = cimg->header.common.imageIDs[0];
 			status = PmReconstitute(&pm->ShortTermHistory, cimg);
 			if (record) PmFreeComposite(cimg);
 			if (status != FSUCCESS) {
@@ -1124,7 +1302,8 @@ FSTATUS paGetPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, PmCompositePortC
 			pmPortImageP = &pmPortImage;
 		}
 		
-		status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset-1, &imageIndexPrevious, &retImageId2, &record2, &msg, NULL, &cimg2);
+		imageId.imageOffset -= 1;
+		status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, &imageIndexPrevious, &retImageId2.imageNumber, &record2, &msg, NULL, &cimg2);
 		if (FSUCCESS != status) {
 			IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 			goto unlock;
@@ -1231,7 +1410,7 @@ done:
 	return(status);
 error:
 	(void)vs_rwunlock(&pm->stateLock);
-	*returnImageId = BAD_IMAGE_ID;
+	returnImageId->imageNumber = BAD_IMAGE_ID;
 	goto done;
 }
 
@@ -1417,12 +1596,12 @@ done:
 *
 *************************************************************************************/
 
-FSTATUS paFreezeFrameRenew(Pm_t *pm, uint64 imageId)
+FSTATUS paFreezeFrameRenew(Pm_t *pm, STL_PA_IMAGE_ID_DATA *imageId)
 {
 	FSTATUS				status = FSUCCESS;
-	uint32				imageIndex;
+	uint32				imageIndex = PM_IMAGE_INDEX_INVALID;
 	const char 			*msg;
-	uint64				retImageId;
+	STL_PA_IMAGE_ID_DATA retImageId = {0};
 	PmHistoryRecord_t	*record = NULL;
 	PmCompositeImage_t	*cimg = NULL;
 
@@ -1438,7 +1617,7 @@ FSTATUS paFreezeFrameRenew(Pm_t *pm, uint64 imageId)
 
 	(void)vs_rdlock(&pm->stateLock);
 	// just touching it will renew the image
-	status = FindImage(pm, IMAGEID_TYPE_FREEZE_FRAME, imageId, 0, &imageIndex, &retImageId, &record, &msg, NULL, &cimg);
+	status = FindImage(pm, IMAGEID_TYPE_FREEZE_FRAME, *imageId, &imageIndex, &retImageId.imageNumber, &record, &msg, NULL, &cimg);
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 	}
@@ -1446,6 +1625,11 @@ FSTATUS paFreezeFrameRenew(Pm_t *pm, uint64 imageId)
 	if (record || (cimg && cimg !=  pm->ShortTermHistory.cachedComposite)) // not in the cache, never found
 			IB_LOG_WARN_FMT(__func__, "Unable to access cached composite image: %s", msg);
 
+	if (cimg && cimg == pm->ShortTermHistory.cachedComposite) {
+		imageId->imageTime.absoluteTime = (uint32)cimg->sweepStart;
+	} else if (imageIndex != PM_IMAGE_INDEX_INVALID) {
+		imageId->imageTime.absoluteTime = (uint32)pm->Image[imageIndex].sweepStart;
+	}
 	(void)vs_rwunlock(&pm->stateLock);
 done:
 	AtomicDecrementVoid(&pm->refCount);
@@ -1465,12 +1649,12 @@ done:
 *
 *************************************************************************************/
 
-FSTATUS paFreezeFrameRelease(Pm_t *pm, uint64 imageId)
+FSTATUS paFreezeFrameRelease(Pm_t *pm, STL_PA_IMAGE_ID_DATA *imageId)
 {
 	FSTATUS				status = FSUCCESS;
 	uint32				imageIndex;
 	const char 			*msg;
-	uint64				retImageId;
+	STL_PA_IMAGE_ID_DATA retImageId = {0};
 	uint8				clientId;
 	PmHistoryRecord_t	*record = NULL;
 	PmCompositeImage_t	*cimg = NULL;
@@ -1486,7 +1670,7 @@ FSTATUS paFreezeFrameRelease(Pm_t *pm, uint64 imageId)
 	}
 
 	(void)vs_wrlock(&pm->stateLock);
-	status = FindImage(pm, IMAGEID_TYPE_FREEZE_FRAME, imageId, 0, &imageIndex, &retImageId, &record, &msg, &clientId, &cimg);
+	status = FindImage(pm, IMAGEID_TYPE_FREEZE_FRAME, *imageId, &imageIndex, &retImageId.imageNumber, &record, &msg, &clientId, &cimg);
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto unlock;
@@ -1494,15 +1678,21 @@ FSTATUS paFreezeFrameRelease(Pm_t *pm, uint64 imageId)
 
 	if (record || cimg) {
 		if (cimg && cimg == pm->ShortTermHistory.cachedComposite) {
+			imageId->imageTime.absoluteTime = (uint32)cimg->sweepStart;
 			PmFreeComposite(pm->ShortTermHistory.cachedComposite);
 			pm->ShortTermHistory.cachedComposite = NULL;
 			status = FSUCCESS;
 		} else {
-			IB_LOG_WARN_FMT(__func__, "Unable to access cached composite image: %s", msg);
+			IB_LOG_WARN_FMT(__func__, "Unable to find freeze frame: %s", msg);
+			status = FINVALID_PARAMETER;
 		}
 		goto unlock;
+	} else if (!(pm->Image[imageIndex].ffRefCount & ((uint64)1<<(uint64)clientId)) ) { /*not frozen*/
+		IB_LOG_ERROR_FMT(__func__, "Attempted to release freeze frame with no references");
+		status = FINVALID_PARAMETER;
+		goto unlock;
 	}
-
+	imageId->imageTime.absoluteTime = (uint32)pm->Image[imageIndex].sweepStart;
 	pm->Image[imageIndex].ffRefCount &= ~((uint64)1<<(uint64)clientId);	// release image
 
 unlock:
@@ -1568,7 +1758,7 @@ static uint8 getNextClientId(Pm_t *pm, uint32 imageIndex)
 *
 *************************************************************************************/
 
-FSTATUS paFreezeFrameCreate(Pm_t *pm, uint64 imageId, int32 offset, uint64 *retImageId)
+FSTATUS paFreezeFrameCreate(Pm_t *pm, STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE_ID_DATA *retImageId)
 {
 	FSTATUS				status = FSUCCESS;
 	uint32				imageIndex;
@@ -1588,22 +1778,22 @@ FSTATUS paFreezeFrameCreate(Pm_t *pm, uint64 imageId, int32 offset, uint64 *retI
 		goto done;
 	}
 	(void)vs_wrlock(&pm->stateLock);
-	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, retImageId, &record, &msg, NULL, &cimg);
+	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, &imageIndex, &retImageId->imageNumber, &record, &msg, NULL, &cimg);
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
 	}
 	if (record || cimg) {
-		*retImageId = imageId;
+		retImageId->imageNumber = imageId.imageNumber;
 		if (record) { // cache the disk image
 			status = PmFreezeComposite(pm, record);
 			if (status != FSUCCESS) {
 				IB_LOG_WARN_FMT(__func__, "Unable to freeze composite image: %s", FSTATUS_ToString(status));
 				goto error;
 			}
-			*retImageId = record->header.imageIDs[0];
+			retImageId->imageNumber = record->header.imageIDs[0];
 		} else if (cimg && pm->ShortTermHistory.cachedComposite) { // already frozen
-			*retImageId = pm->ShortTermHistory.cachedComposite->header.common.imageIDs[0];
+			retImageId->imageNumber = pm->ShortTermHistory.cachedComposite->header.common.imageIDs[0];
 		} else { // trying to freeze the current composite (unlikely but possible)
 			status = PmFreezeCurrent(pm);
 			if (status != FSUCCESS) {
@@ -1611,6 +1801,7 @@ FSTATUS paFreezeFrameCreate(Pm_t *pm, uint64 imageId, int32 offset, uint64 *retI
 				goto error;
 			}
 		}
+		retImageId->imageTime.absoluteTime = (uint32)pm->ShortTermHistory.cachedComposite->sweepStart;
 		(void)vs_rwunlock(&pm->stateLock);
 		goto done;
 	}
@@ -1630,7 +1821,7 @@ FSTATUS paFreezeFrameCreate(Pm_t *pm, uint64 imageId, int32 offset, uint64 *retI
 	}
 	pm->Image[imageIndex].nextClientId = (clientId+1) & 63;
 	pm->freezeFrames[freezeIndex] = imageIndex;
-	*retImageId = BuildFreezeFrameImageId(pm, freezeIndex, clientId);
+	retImageId->imageNumber = BuildFreezeFrameImageId(pm, freezeIndex, clientId, &retImageId->imageTime.absoluteTime);
 	(void)vs_rwunlock(&pm->stateLock);
 
 done:
@@ -1638,7 +1829,7 @@ done:
 	return(status);
 error:
 	(void)vs_rwunlock(&pm->stateLock);
-	*retImageId = BAD_IMAGE_ID;
+	retImageId->imageNumber = BAD_IMAGE_ID;
 	goto done;
 }
 
@@ -1648,9 +1839,8 @@ error:
 *
 *  Inputs:
 *     pm - pointer to Pm_t (the PM main data type)
-*     ffImageId - 64 bit opaque imageId for FF to release
-*     ImageId - 64 bit opaque imageId for image to FreezeFrame
-*     offset - offset relative to ImageId for image to FreezeFrame
+*     ffImageId - imageId containing information for FF to release (number)
+*     imageId - imageId containing information for image to FreezeFrame (number, offset)
 *
 *  Return:
 *     FSTATUS - FSUCCESS if OK
@@ -1658,15 +1848,16 @@ error:
 *
 *************************************************************************************/
 
-FSTATUS paFreezeFrameMove(Pm_t *pm, uint64 ffImageId, uint64 imageId, int32 offset, uint64 *returnImageId)
+FSTATUS paFreezeFrameMove(Pm_t *pm, STL_PA_IMAGE_ID_DATA ffImageId, STL_PA_IMAGE_ID_DATA imageId,
+	STL_PA_IMAGE_ID_DATA *returnImageId)
 {
 	FSTATUS				status = FSUCCESS;
-	uint32				ffImageIndex;
-	uint8				ffClientId;
-	uint32				imageIndex;
-	uint8				clientId;
+	uint32				ffImageIndex = 0;
+	uint8				ffClientId = 0;
+	uint32				imageIndex = 0;
+	uint8				clientId = 0;
 	const char 			*msg;
-	uint8				freezeIndex;
+	uint8				freezeIndex = 0;
 	boolean				oldIsComp = 0, newIsComp = 0;
 	PmHistoryRecord_t	*record = NULL;
 	PmCompositeImage_t	*cimg = NULL;
@@ -1682,17 +1873,22 @@ FSTATUS paFreezeFrameMove(Pm_t *pm, uint64 ffImageId, uint64 imageId, int32 offs
 	}
 
 	(void)vs_wrlock(&pm->stateLock);
-	status = FindImage(pm, IMAGEID_TYPE_ANY, ffImageId, 0, &ffImageIndex, returnImageId, &record, &msg, &ffClientId, &cimg);
+	status = FindImage(pm, IMAGEID_TYPE_FREEZE_FRAME, ffImageId, &ffImageIndex, &returnImageId->imageNumber, &record, &msg, &ffClientId, &cimg);
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get freeze frame index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
 	}
-	if (cimg && cimg == pm->ShortTermHistory.cachedComposite)
+	if (cimg && cimg == pm->ShortTermHistory.cachedComposite) {
 		oldIsComp = 1;
+	} else if (cimg && cimg != pm->ShortTermHistory.cachedComposite) {
+		IB_LOG_WARN_FMT(__func__, "Unable to find freeze frame for ImageID: %s", msg);
+		status = FINVALID_PARAMETER;
+		goto error;
+	}
 	
 	record = NULL;
 	cimg = NULL;
-	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, returnImageId, &record, &msg, NULL, &cimg);
+	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, &imageIndex, &returnImageId->imageNumber, &record, &msg, NULL, &cimg);
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
@@ -1719,7 +1915,7 @@ FSTATUS paFreezeFrameMove(Pm_t *pm, uint64 ffImageId, uint64 imageId, int32 offs
 			// we are last/only client using this image
 			// so we can simply use the same Freeze Frame Slot as old freeze
 			ImageId_t id;
-			id.AsReg64 = ffImageId;
+			id.AsReg64 = ffImageId.imageNumber;
 			freezeIndex = id.s.index;
 		} else {
 			// Find a empty Freeze Frame Slot
@@ -1735,8 +1931,12 @@ FSTATUS paFreezeFrameMove(Pm_t *pm, uint64 ffImageId, uint64 imageId, int32 offs
 		pm->Image[imageIndex].nextClientId = (clientId+1) & 63;
 		pm->freezeFrames[freezeIndex] = imageIndex;
 
-		*returnImageId = BuildFreezeFrameImageId(pm, freezeIndex, clientId);
-	} else *returnImageId = pm->ShortTermHistory.cachedComposite->header.common.imageIDs[0];
+		returnImageId->imageNumber = BuildFreezeFrameImageId(pm, freezeIndex, clientId,
+			&returnImageId->imageTime.absoluteTime);
+	} else {
+		returnImageId->imageNumber = pm->ShortTermHistory.cachedComposite->header.common.imageIDs[0];
+		returnImageId->imageTime.absoluteTime = (uint32)pm->ShortTermHistory.cachedComposite->sweepStart;
+	}
 	if (!oldIsComp) pm->Image[ffImageIndex].ffRefCount &= ~((uint64)1 << (uint64)ffClientId); // release old image
 	(void)vs_rwunlock(&pm->stateLock);
 done:
@@ -1744,7 +1944,7 @@ done:
 	return(status);
 error:
 	(void)vs_rwunlock(&pm->stateLock);
-	*returnImageId = BAD_IMAGE_ID;
+	returnImageId->imageNumber = BAD_IMAGE_ID;
 	goto done;
 
 }
@@ -2068,10 +2268,10 @@ FSTATUS addSortedPorts(PmFocusPorts_t *pmFocusPorts, sortInfo_t *sortInfo, uint3
 *************************************************************************************/
 
 FSTATUS paGetFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPorts,
-	uint64 imageId, int32 offset, uint64 *returnImageId, uint32 select,
+	STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE_ID_DATA *returnImageId, uint32 select,
 	uint32 start, uint32 range)
 {
-	uint64				retImageId = 0;
+	STL_PA_IMAGE_ID_DATA retImageId = {0};
 	PmGroup_t			*pmGroupP = NULL;
 	STL_LID_32			lid;
 	uint32				imageIndex;
@@ -2177,7 +2377,7 @@ FSTATUS paGetFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPorts,
 	// pmGroupP points to our group
 	// check all ports for membership in our group
 	(void)vs_rdlock(&pm->stateLock);
-	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &cimg);
+	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, &imageIndex, &retImageId.imageNumber, &record, &msg, NULL, &cimg);
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
@@ -2192,7 +2392,7 @@ FSTATUS paGetFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPorts,
 				goto error;
 			}
 		}
-		retImageId = cimg->header.common.imageIDs[0];
+		retImageId.imageNumber = cimg->header.common.imageIDs[0];
 		status = PmReconstitute(&pm->ShortTermHistory, cimg);
 		if (record) PmFreeComposite(cimg);
 		if (status != FSUCCESS) {
@@ -2228,6 +2428,10 @@ FSTATUS paGetFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPorts,
 		pmimagep = &pm->Image[imageIndex];
 		(void)vs_rdlock(&pmimagep->imageLock);
 	}
+
+	// Grab ImageTime from Pm Image
+	retImageId.imageTime.absoluteTime = (uint32)pmimagep->sweepStart;
+
 	(void)vs_rwunlock(&pm->stateLock);
 
 	for (lid=1; lid<= pmimagep->maxLid; ++lid) {
@@ -2280,14 +2484,15 @@ done:
 	return(status);
 error:
 	(void)vs_rwunlock(&pm->stateLock);
-	*returnImageId = BAD_IMAGE_ID;
+	returnImageId->imageNumber = BAD_IMAGE_ID;
 	goto done;
 }
 
-FSTATUS paGetImageInfo(Pm_t *pm, uint64 imageId, int32 offset, PmImageInfo_t *imageInfo, uint64 *returnImageId)
+FSTATUS paGetImageInfo(Pm_t *pm, STL_PA_IMAGE_ID_DATA imageId, PmImageInfo_t *imageInfo,
+	STL_PA_IMAGE_ID_DATA *returnImageId)
 {
 	FSTATUS				status = FSUCCESS;
-	uint64				retImageId = 0;
+	STL_PA_IMAGE_ID_DATA retImageId = {0};
 	uint32				imageIndex, imageInterval;
 	int					i;
 	const char 			*msg;
@@ -2307,7 +2512,7 @@ FSTATUS paGetImageInfo(Pm_t *pm, uint64 imageId, int32 offset, PmImageInfo_t *im
 	}
 
 	(void)vs_rdlock(&pm->stateLock);
-	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &cimg);
+	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, &imageIndex, &retImageId.imageNumber, &record, &msg, NULL, &cimg);
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
@@ -2323,7 +2528,7 @@ FSTATUS paGetImageInfo(Pm_t *pm, uint64 imageId, int32 offset, PmImageInfo_t *im
 			}
 		}
 		imageInterval = cimg->header.common.imageSweepInterval;
-		retImageId = cimg->header.common.imageIDs[0];
+		retImageId.imageNumber = cimg->header.common.imageIDs[0];
 		status = PmReconstitute(&pm->ShortTermHistory, cimg);
 		if (record) PmFreeComposite(cimg);
 		if (status != FSUCCESS) {
@@ -2333,8 +2538,11 @@ FSTATUS paGetImageInfo(Pm_t *pm, uint64 imageId, int32 offset, PmImageInfo_t *im
 		pmimagep = pm->ShortTermHistory.LoadedImage.img;
 	}  else {
 		pmimagep = &pm->Image[imageIndex];
-		imageInterval = pm->interval;
+		imageInterval = MAX(pm->interval, (pmimagep->sweepDuration/1000000));
 	}
+
+	// Grab ImageTime from Pm Image
+	retImageId.imageTime.absoluteTime = (uint32)pmimagep->sweepStart;
 
 	imageInfo->sweepStart				= pmimagep->sweepStart;
 	imageInfo->sweepDuration			= pmimagep->sweepDuration;
@@ -2379,7 +2587,7 @@ done:
 	return(status);
 error:
 	(void)vs_rwunlock(&pm->stateLock);
-	*returnImageId = BAD_IMAGE_ID;
+	returnImageId->imageNumber = BAD_IMAGE_ID;
 	goto done;
 }
 
@@ -2573,10 +2781,10 @@ done:
 	return(fStatus);
 }
 
-FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, PmVFInfo_t *pmVFInfo, uint64 imageId,
-    int32 offset, uint64 *returnImageId)
+FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, PmVFInfo_t *pmVFInfo, STL_PA_IMAGE_ID_DATA imageId,
+		STL_PA_IMAGE_ID_DATA *returnImageId)
 {
-	uint64				retImageId = 0;
+	STL_PA_IMAGE_ID_DATA retImageId = {0};
 	FSTATUS				status = FSUCCESS;
 	PmVF_t				*pmVFP = NULL;
 	PmVFImage_t			pmVFImage;
@@ -2604,7 +2812,7 @@ FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, PmVFInfo_t *pmVFInfo, uint64 imageId
 	}
 
 	(void)vs_rdlock(&pm->stateLock);
-	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &cimg);
+	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, &imageIndex, &retImageId.imageNumber, &record, &msg, NULL, &cimg);
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
@@ -2620,7 +2828,7 @@ FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, PmVFInfo_t *pmVFInfo, uint64 imageId
 				goto error;
 			}
 		}
-		retImageId = cimg->header.common.imageIDs[0];
+		retImageId.imageNumber = cimg->header.common.imageIDs[0];
 		// composite is loaded, reconstitute so we can use it
 		status = PmReconstitute(&pm->ShortTermHistory, cimg);
 		if (record) PmFreeComposite(cimg);
@@ -2658,6 +2866,10 @@ FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, PmVFInfo_t *pmVFInfo, uint64 imageId
 		pmImageP = &pm->Image[imageIndex];
 		(void)vs_rdlock(&pmImageP->imageLock);
 	}
+
+	// Grab ImageTime from Pm Image
+	retImageId.imageTime.absoluteTime = (uint32)pmImageP->sweepStart;
+
 	(void)vs_rwunlock(&pm->stateLock);
 	memset(&pmVFImage, 0, sizeof(PmVFImage_t));
 	ClearVFStats(&pmVFImage);
@@ -2716,13 +2928,14 @@ done:
 	return(status);
 error:
 	(void)vs_rwunlock(&pm->stateLock);
-	*returnImageId = BAD_IMAGE_ID;
+	returnImageId->imageNumber = BAD_IMAGE_ID;
 	goto done;
 }
 
-FSTATUS paGetVFConfig(Pm_t *pm, char *vfName, uint64 vfSid, PmVFConfig_t *pmVFConfig, uint64 imageId, int32 offset, uint64 *returnImageId)
+FSTATUS paGetVFConfig(Pm_t *pm, char *vfName, uint64 vfSid, PmVFConfig_t *pmVFConfig,
+	STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE_ID_DATA *returnImageId)
 {
-	uint64				retImageId = 0;
+	STL_PA_IMAGE_ID_DATA retImageId = {0};
 	PmVF_t				*pmVFP = NULL;
 	STL_LID_32			lid;
 	uint32				imageIndex;
@@ -2755,7 +2968,7 @@ FSTATUS paGetVFConfig(Pm_t *pm, char *vfName, uint64 vfSid, PmVFConfig_t *pmVFCo
 	// pmVFP points to our vf
 	// check all ports for membership in our group
 	(void)vs_rdlock(&pm->stateLock);
-	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &cimg);
+	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, &imageIndex, &retImageId.imageNumber, &record, &msg, NULL, &cimg);
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
@@ -2771,7 +2984,7 @@ FSTATUS paGetVFConfig(Pm_t *pm, char *vfName, uint64 vfSid, PmVFConfig_t *pmVFCo
 				goto error;
 			}
 		}
-		retImageId = cimg->header.common.imageIDs[0];
+		retImageId.imageNumber = cimg->header.common.imageIDs[0];
 		status = PmReconstitute(&pm->ShortTermHistory, cimg);
 		if (record) PmFreeComposite(cimg);
 		if (status != FSUCCESS) {
@@ -2807,6 +3020,9 @@ FSTATUS paGetVFConfig(Pm_t *pm, char *vfName, uint64 vfSid, PmVFConfig_t *pmVFCo
 		pmImageP = &pm->Image[imageIndex];
 		(void)vs_rdlock(&pmImageP->imageLock);
 	}
+
+	// Grab ImageTime from Pm Image
+	retImageId.imageTime.absoluteTime = (uint32)pmImageP->sweepStart;
 
 	(void)vs_rwunlock(&pm->stateLock);
 	for (lid=1; lid<= pmImageP->maxLid; ++lid) {
@@ -2904,13 +3120,15 @@ done:
 	return(status);
 error:
 	(void)vs_rwunlock(&pm->stateLock);
-	*returnImageId = BAD_IMAGE_ID;
+	returnImageId->imageNumber = BAD_IMAGE_ID;
 	goto done;
 }
 
-FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, char *vfName, PmCompositeVLCounters_t *vfPortCountersP, uint32 delta, uint32 userCntrs, uint64 imageId, int32 offset, uint32 *flagsp, uint64 *returnImageId)
+FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, char *vfName,
+	PmCompositeVLCounters_t *vfPortCountersP, uint32 delta, uint32 userCntrs,
+	STL_PA_IMAGE_ID_DATA imageId, uint32 *flagsp, STL_PA_IMAGE_ID_DATA *returnImageId)
 {
-	uint64				retImageId = 0, retImageId2 = 0;
+	STL_PA_IMAGE_ID_DATA retImageId = {0}, retImageId2 = {0}, prevImageId = {0};
 	FSTATUS				status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
 	PmPort_t			*pmPortP, *pmPortPreviousP = NULL;
 	PmPortImage_t		*pmPortImageP, *pmPortImagePreviousP = NULL;
@@ -2933,9 +3151,9 @@ FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, char *vfName, 
 	if (!pm || !vfPortCountersP) {
 		return(FINVALID_PARAMETER);
 	}
-	if (userCntrs && (delta || offset)) {
+	if (userCntrs && (delta || imageId.imageOffset)) {
 		IB_LOG_WARN_FMT(__func__,  "Illegal combination of parameters: Offset (%d) and delta(%d) must be zero if UserCounters(%d) flag is set",
-						offset, delta, userCntrs);
+						imageId.imageOffset, delta, userCntrs);
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	}
 	if (vfName[0] == '\0') {
@@ -3033,7 +3251,7 @@ FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, char *vfName, 
 		goto done;
 	}
 
-	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &cimg);
+	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, &imageIndex, &retImageId.imageNumber, &record, &msg, NULL, &cimg);
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
@@ -3048,7 +3266,7 @@ FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, char *vfName, 
 				goto error;
 			}
 		}
-		retImageId = cimg->header.common.imageIDs[0];
+		retImageId.imageNumber = cimg->header.common.imageIDs[0];
 		status = PmReconstitute(&pm->ShortTermHistory, cimg);
 		if (record) PmFreeComposite(cimg);
 		if (status != FSUCCESS) {
@@ -3090,6 +3308,9 @@ FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, char *vfName, 
 		(void)vs_rdlock(&pmImageP->imageLock);
 	}
 
+	// Grab ImageTime from Pm Image
+	retImageId.imageTime.absoluteTime = (uint32)pmImageP->sweepStart;
+
 	pmPortP = pm_find_port(pmImageP, lid, portNum);
 	if (! pmPortP) {
 		IB_LOG_WARN_FMT(__func__, "Port not found: Lid 0x%x Port %u", lid, portNum);
@@ -3110,8 +3331,10 @@ FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, char *vfName, 
 			memcpy(&pmPortImage, pmPortImageP, sizeof(PmPortImage_t));
 			pmPortImageP = &pmPortImage;
 		}
-		
-		status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset-1, &imageIndexPrevious, &retImageId2, &record2, &msg, NULL, &cimg2);
+
+		prevImageId.imageNumber = imageId.imageNumber;
+		prevImageId.imageOffset = imageId.imageOffset-1;
+		status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, &imageIndexPrevious, &retImageId2.imageNumber, &record2, &msg, NULL, &cimg2);
 		if (FSUCCESS != status) {
 			IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 			goto unlock;
@@ -3199,7 +3422,7 @@ FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, char *vfName, 
 		if (VlSelectMaskShared & VFVlSelectMask) {
 			*flagsp |= STL_PA_PC_FLAG_SHARED_VL;
 		}
-		IB_LOG_DEBUG3_FMT(__func__, "Delta: Offset=%d: %s=%u %s=0x%x %s=0x%x %s=0x%x", offset-1,
+		IB_LOG_DEBUG3_FMT(__func__, "Delta: Offset=%d: %s=%u %s=0x%x %s=0x%x %s=0x%x", prevImageId.imageOffset,
 						  "vlMapsFound", vlMapsFound, "VFVlSelectMask", VFVlSelectMask,
 						  "VlSelectMask", VlSelectMask, "VlSelectMaskShared", VlSelectMaskShared);
 	}
@@ -3245,7 +3468,7 @@ FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, char *vfName, 
 	if (VlSelectMaskShared & VFVlSelectMask) {
 		*flagsp |= STL_PA_PC_FLAG_SHARED_VL;
 	}
-	IB_LOG_DEBUG3_FMT(__func__, "%s: Offset=%d: %s=%u %s=0x%x %s=0x%x %s=0x%x", (delta?"Delta":"Raw"), offset,
+	IB_LOG_DEBUG3_FMT(__func__, "%s: Offset=%d: %s=%u %s=0x%x %s=0x%x %s=0x%x", (delta?"Delta":"Raw"), imageId.imageOffset,
 					  "vlMapsFound", vlMapsFound, "VFVlSelectMask", VFVlSelectMask,
 					  "VlSelectMask", VlSelectMask, "VlSelectMaskShared", VlSelectMaskShared);
 
@@ -3287,7 +3510,7 @@ done:
 	return(status);
 error:
 	(void)vs_rwunlock(&pm->stateLock);
-	*returnImageId = BAD_IMAGE_ID;
+	returnImageId->imageNumber = BAD_IMAGE_ID;
 	goto done;
 }
 
@@ -3411,10 +3634,10 @@ FSTATUS addVFSortedPorts(PmVFFocusPorts_t *pmVFFocusPorts, sortInfo_t *sortInfo,
 }
 
 FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocusPorts,
-	uint64 imageId, int32 offset, uint64 *returnImageId, uint32 select,
+	STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE_ID_DATA *returnImageId, uint32 select,
 	uint32 start, uint32 range)
 {
-	uint64				retImageId = 0;
+	STL_PA_IMAGE_ID_DATA retImageId = {0};
 	PmVF_t				*pmVFP = NULL;
 	STL_LID_32			lid;
 	uint32				imageIndex;
@@ -3518,7 +3741,7 @@ FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocusPor
 	}
 
 	(void)vs_rdlock(&pm->stateLock);
-	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, offset, &imageIndex, &retImageId, &record, &msg, NULL, &cimg);
+	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, &imageIndex, &retImageId.imageNumber, &record, &msg, NULL, &cimg);
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
@@ -3533,7 +3756,7 @@ FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocusPor
 				goto error;
 			}
 		}
-		retImageId = cimg->header.common.imageIDs[0];
+		retImageId.imageNumber = cimg->header.common.imageIDs[0];
 		status = PmReconstitute(&pm->ShortTermHistory, cimg);
 		if (record) PmFreeComposite(cimg);
 		if (status != FSUCCESS) {
@@ -3568,6 +3791,9 @@ FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocusPor
 		pmimagep = &pm->Image[imageIndex];
 		(void)vs_rdlock(&pmimagep->imageLock);
 	}
+
+	// Grab ImageTime from Pm Image
+	retImageId.imageTime.absoluteTime = (uint32)pmimagep->sweepStart;
 
 	(void)vs_rwunlock(&pm->stateLock);
 	for (lid = 1; lid <= pmimagep->maxLid; ++lid) {
@@ -3620,7 +3846,7 @@ done:
 	return(status);
 error:
 	(void)vs_rwunlock(&pm->stateLock);
-	*returnImageId = BAD_IMAGE_ID;
+	returnImageId->imageNumber = BAD_IMAGE_ID;
 	goto done;
 }
 
@@ -3647,7 +3873,7 @@ static void appendFreezeFrameDetails(uint8_t *buffer, uint32_t *index)
 	}
 	for (freezeIndex = 0; freezeIndex < pm_config.freeze_frame_images; freezeIndex ++) {
 		if (pm->freezeFrames[freezeIndex] != PM_IMAGE_INDEX_INVALID) {
-			ffImageId = BuildFreezeFrameImageId(pm, freezeIndex, 0 /*client id */);
+			ffImageId = BuildFreezeFrameImageId(pm, freezeIndex, 0 /*client id */, NULL);
 			memcpy(&buffer[*index], &ffImageId, sizeof(uint64_t));
 			*index += sizeof(uint64_t);
 			IB_LOG_VERBOSE_FMT(__func__, "Appending freeze frame id =0x%lx", ffImageId);
@@ -4212,9 +4438,9 @@ FSTATUS putPMSweepImageDataR(uint8_t *p_img_in, uint32_t len_img_in) {
 	// check the version
 	history_version = cimg_in->header.common.historyVersion;
 	BSWAP_PM_HISTORY_VERSION(&history_version);
-	if (history_version != PM_HISTORY_VERSION && history_version != PM_HISTORY_VERSION_OLD) {
-		IB_LOG_INFO_FMT(__func__, "Received image buffer version (v%u) does not match current supported versions: v%u & v%u",
-			history_version, PM_HISTORY_VERSION, PM_HISTORY_VERSION_OLD);
+	if (history_version != PM_HISTORY_VERSION) {
+		IB_LOG_INFO_FMT(__func__, "Received image buffer version (v%u) does not match current version: v%u",
+			history_version, PM_HISTORY_VERSION);
         return FINVALID_PARAMETER;
 	}
 
@@ -4328,6 +4554,8 @@ FSTATUS putPMSweepImageDataR(uint8_t *p_img_in, uint32_t len_img_in) {
 		pmimagep->sweepNum = sweep_num;
 		pmimagep->state = PM_IMAGE_VALID;
 
+#if CPU_LE
+		// Process STH files only on LE CPUs
 #ifndef __VXWORKS__
 		if (pm_config.shortTermHistory.enable && !isFirstImg) {
 			// compound the image that was just created into the current composite image
@@ -4341,6 +4569,7 @@ FSTATUS putPMSweepImageDataR(uint8_t *p_img_in, uint32_t len_img_in) {
 		}
 
 #endif
+#endif	// End of #if CPU_LE
 
 		// find next free Image to use, skip FreezeFrame images
 		do {

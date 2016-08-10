@@ -30,8 +30,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
   \file report.h
 
-  $Revision: 1.18 $
-  $Date: 2016/04/06 10:49:29 $
+  $Revision$
+  $Date$
 
   \brief Routines to handle reports for trap events
 */

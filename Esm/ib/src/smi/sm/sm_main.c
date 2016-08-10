@@ -734,7 +734,7 @@ void sm_resolve_pkeys_for_vfs(VirtualFabrics_t *VirtualFabrics) {
 		if (VirtualFabrics->v_fabric[vf].apps.select_sa) {
 			if (PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey) != DEFAULT_PKEY) {
 				IB_LOG_ERROR_FMT_VF( VirtualFabrics->v_fabric[vf].name, "sm_resolve_pkeys_for_vfs",
-					"VFabric has application SA selected, bad PKey configured 0x%x, must use Default PKey.", VirtualFabrics->v_fabric[vf].pkey);
+					"VFabric has application SA selected, bad PKey configured 0x%x, must use Mgmt PKey.", VirtualFabrics->v_fabric[vf].pkey);
 			} else {
 				sm_masterSmSl = VirtualFabrics->v_fabric[vf].base_sl;
 			}
@@ -742,13 +742,13 @@ void sm_resolve_pkeys_for_vfs(VirtualFabrics_t *VirtualFabrics) {
 		if (smCheckServiceId(vf, PM_SERVICE_ID, VirtualFabrics)) {
 			if (PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey) != DEFAULT_PKEY) {
 				IB_LOG_ERROR_FMT_VF( VirtualFabrics->v_fabric[vf].name, "sm_resolve_pkeys_for_vfs",
-					"VFabric has application PA selected, bad PKey configured 0x%x, must use Default PKey.", VirtualFabrics->v_fabric[vf].pkey);
+					"VFabric has application PA selected, bad PKey configured 0x%x, must use Mgmt PKey.", VirtualFabrics->v_fabric[vf].pkey);
 			}
 		}
 		if (VirtualFabrics->v_fabric[vf].apps.select_pm) {
 			if (PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey) != DEFAULT_PKEY) {
 				IB_LOG_ERROR_FMT_VF( VirtualFabrics->v_fabric[vf].name, "sm_resolve_pkeys_for_vfs",
-					"VFabric has application PM selected, bad PKey configured 0x%x, must use Default PKey.", VirtualFabrics->v_fabric[vf].pkey);
+					"VFabric has application PM selected, bad PKey configured 0x%x, must use Mgmt PKey.", VirtualFabrics->v_fabric[vf].pkey);
 			} else sm_masterPmSl = VirtualFabrics->v_fabric[vf].base_sl;
 		}
 

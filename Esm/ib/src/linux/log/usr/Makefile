@@ -113,17 +113,14 @@ INCLUDE_SUBDIR		=
 CLOCAL	= -DUSER_EXIT_ENABLED -DLINUX_USR_REL $(CPIE)
 LOCALDEPLIBS = 
 
+PROJ_SM_DIR ?= $(TL_DIR)/Esm/ib
+
 # pick up vslog.c
 # Include Make Rules definitions and rules
 ifneq "$(PROJ_SM_DIR)" ""
 LOCAL_INCLUDE_DIRS=$(MOD_DIR)/src/linux/log/include
 VPATH=$(MOD_DIR)/src/linux/log/common
 include $(PROJ_SM_DIR)/Makerules.module
-else
-LOCAL_INCLUDE_DIRS=$(TL_DIR)/HSM_Lib/log_library/include $(TL_DIR)/HSM_Inc/ib_include \
-					$(TL_DIR)/HSM_Inc/cs_include/smi_include
-VPATH=$(TL_DIR)/HSM_Lib/log_library/common
-include $(TL_DIR)/$(PROJ_FILE_DIR)/Makerules.project
 endif
 
 #=============================================================================#

@@ -27,7 +27,7 @@
 # 
 # END_ICS_COPYRIGHT8   ****************************************
 
-# $Id: Makefile,v 1.6 2015/01/26 20:07:17 mwheinz Exp $
+# $Id$
 
 include $(shell GetBuildRoot)/ib/rules/master.cf
 

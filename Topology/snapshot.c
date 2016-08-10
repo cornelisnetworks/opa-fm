@@ -630,6 +630,163 @@ void SCtoSCMapXmlOutput(IXmlOutputState_t *state, const char *tag, void *data)
 }	// End of SCtoSCMapXmlOutput
 
 /****************************************************************************/
+/* PortData SCtoVLx Input/Output functions */
+
+static void *SCtoVLxMapXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr, ScvlEnum_t scvlx)
+{
+	PortData *portp = (PortData *)parent; // parent points to PortData
+	NodeData *nodep = (NodeData *)portp->nodep;
+	QOSData *pQOS = portp->pQOS;
+
+	if (scvlx == Enum_SCVLnt && nodep->NodeInfo.NodeType == STL_NODE_SW && portp->PortNum == 0) {
+		IXmlParserPrintError(state, "SCtoVLtMap not valid for Switch port 0");
+		return (NULL);
+	}
+
+	if (scvlx == Enum_SCVLr && !portp->PortInfo.CapabilityMask3.s.IsVLrSupported) {
+		IXmlParserPrintError(state, "SCtoVLrMap not supported");
+		return (NULL);
+	}
+
+	if (!pQOS) {
+		if (!(pQOS = portp->pQOS = (QOSData*)MemoryAllocate2AndClear(
+			sizeof(QOSData), IBA_MEM_FLAG_PREMPTABLE, MYTAG ))) {
+			IXmlParserPrintError(state, "Unable to allocate memory");
+			return (NULL);
+		}
+	}
+
+	return (&pQOS->SC2VLMaps[scvlx]);
+
+} // End of SCtoVLxMapXmlParserStart
+
+static void *SCtoVLtMapXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr)
+{
+	return SCtoVLxMapXmlParserStart(state, parent, attr, Enum_SCVLt);
+}
+
+static void *SCtoVLntMapXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr)
+{
+	return SCtoVLxMapXmlParserStart(state, parent, attr, Enum_SCVLnt);
+}
+
+static void SCtoVLxMapXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	// parent points to PortData
+	if (!valid)
+		goto failvalidate;
+	return;
+
+failvalidate:
+	PortDataFreeQOSData(IXmlParserGetContext(state), (PortData *)parent);
+	return;
+} // End of SCtoVLxMapXmlParserEnd
+
+static void *SCtoVLxMapXmlParserStartVLx(IXmlParserState_t *state, void *parent, const char **attr)
+{
+	STL_SCVLMAP *pSCVL = (STL_SCVLMAP *)parent; // parent points to STL_SCVLMAP
+	uint8 sc;
+
+	if (!attr || !attr[0] || (0 != strcmp(attr[0], "SC"))) {
+		IXmlParserPrintError(state, "Missing SC attribute for SCtoVLMAp.VL");
+		return (NULL);
+	}
+
+	if (StringToUint8(&sc, attr[1], NULL, 0, TRUE) != FSUCCESS) {
+		IXmlParserPrintError(state, "Invalid SC attribute in SCtoVLMap.VL SC: %s", attr[1]);
+		return (NULL);
+	}
+	if (sc >= STL_MAX_SCS) {
+		IXmlParserPrintError(state, "SC attribute Out-of-Range in SCtoVLMap.VL SC: %s", attr[1]);
+		return (NULL);
+	}
+
+	return &(pSCVL->SCVLMap[sc]);
+} // End of SCtoVLxMapXmlParserStartVLx
+
+static void SCtoVLxMapXmlParserEndVLx(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	STL_SCVLMAP *pSCVL = (STL_SCVLMAP *)parent; // parent points to STL_SCVLMAP
+	STL_VL *pVL = (STL_VL*)object; // object points to specific VLs entry
+	uint8 sc = pVL - pSCVL->SCVLMap;
+	uint8 vl;
+
+	if (!valid)
+		goto failvalidate;
+
+	if (!content || !len) {
+		IXmlParserPrintError(state, "No VL Value in SCtoVLMap.VL for SC %u", sc);
+		return;
+	}
+
+	if (StringToUint8(&vl, content, NULL, 0, TRUE) != FSUCCESS) {
+		IXmlParserPrintError(state, "Invalid VL Value in SCtoVLMap.VL for SC: %u VL: %s", sc, content);
+		return;
+	}
+
+	if (vl >= STL_MAX_VLS) {
+		IXmlParserPrintError(state, "VL Out-of-range in SCtoVLMap.VL for SC: %u VL: %u", sc, vl);
+		return;
+	}
+
+	pVL->VL = vl;
+
+	return;
+
+failvalidate:
+	// SCtoVLMapXmlParserEnd will free as needed
+	return;
+}
+
+IXML_FIELD SCtoVLtMapVLtFields[] = {
+	{ tag:"VLt", format:'k', start_func:SCtoVLxMapXmlParserStartVLx, end_func:SCtoVLxMapXmlParserEndVLx },
+	{ NULL }
+};
+
+IXML_FIELD SCtoVLntMapVLntFields[] = {
+	{ tag:"VLnt", format:'k', start_func:SCtoVLxMapXmlParserStartVLx, end_func:SCtoVLxMapXmlParserEndVLx },
+	{ NULL }
+};
+
+static void SCtoVLxMapXmlOutputSCAttr(IXmlOutputState_t *state, void *data)
+{
+	IXmlOutputPrint(state, " SC=\"%u\"", *(uint8 *)data);
+}
+
+void SCtoVLxMapXmlOutput(IXmlOutputState_t *state, const char *tag, void *data, ScvlEnum_t scvlx)
+{
+	PortData *portp = (PortData *)data; // data points to PortData
+	NodeData *nodep = portp->nodep;
+	STL_SCVLMAP *pSCVL = &(portp->pQOS->SC2VLMaps[scvlx]);
+	uint8 sc;
+	char *vlname = "VL";
+	switch (scvlx) {
+		case Enum_SCVLr: vlname = "VLr";
+		break;
+		case Enum_SCVLt: vlname = "VLt";
+		break;
+		case Enum_SCVLnt: vlname = "VLnt";
+		break;
+	}
+
+	// SC2VLnt doesn't apply to switch port 0
+	ASSERT(!(scvlx == Enum_SCVLnt && nodep->NodeInfo.NodeType == STL_NODE_SW && portp->PortNum == 0));
+	ASSERT(!(scvlx == Enum_SCVLr && !portp->PortInfo.CapabilityMask3.s.IsVLrSupported));
+
+	IXmlOutputStartTag(state, tag);
+
+	for(sc = 0; sc < STL_MAX_SCS; sc++)
+	{
+		IXmlOutputStartAttrTag(state, vlname, &sc, SCtoVLxMapXmlOutputSCAttr);
+		IXmlOutputPrint(state, "%u", pSCVL->SCVLMap[sc].VL);
+		IXmlOutputEndTag(state, vlname);
+	}
+
+	IXmlOutputEndTag(state, tag);
+
+} // End of SCtoVLxMapXmlOutput
+
+/****************************************************************************/
 /* PortData VLArbitration Weight Input/Output functions */
 
 static void *VLArbXmlParserStartWeight(IXmlParserState_t *state, void *parent, const char **attr)
@@ -1601,6 +1758,24 @@ static void PortDataXmlOutputSCtoSCMap(IXmlOutputState_t *state, const char *tag
 
 }	// End of PortDataXmlOutputSCtoSLMap
 
+static void PortDataXmlOutputSCtoVLxMap(IXmlOutputState_t *state, const char *tag, void *data, ScvlEnum_t scvlx)
+{
+	if( ((PortData*)data)->nodep && ((PortData*)data)->pQOS)
+		SCtoVLxMapXmlOutput(state, tag, data, scvlx);
+}
+
+static void PortDataXmlOutputSCtoVLtMap(IXmlOutputState_t *state, const char *tag, void *data)
+{
+	PortDataXmlOutputSCtoVLxMap(state, tag, data, Enum_SCVLt);
+}
+
+static void PortDataXmlOutputSCtoVLntMap(IXmlOutputState_t *state, const char *tag, void *data)
+{
+	if( !(((PortData*)data)->nodep->NodeInfo.NodeType == STL_NODE_SW &&
+			((PortData*)data)->PortNum == 0))
+		PortDataXmlOutputSCtoVLxMap(state, tag, data, Enum_SCVLnt);
+}
+
 /** =========================================================================
  * Buffer Control Table I/O functions
  */
@@ -1928,6 +2103,8 @@ static IXML_FIELD PortDataFields[] = {
 	{ tag:"SLtoSCMap", format:'k', format_func:PortDataXmlOutputSLtoSCMap, subfields:SLtoSCMapSCFields, start_func:SLtoSCMapXmlParserStart, end_func:SLtoSCMapXmlParserEnd }, // structure
 	{ tag:"SCtoSLMap", format:'k', format_func:PortDataXmlOutputSCtoSLMap, subfields:SCtoSLMapSLFields, start_func:SCtoSLMapXmlParserStart, end_func:SCtoSLMapXmlParserEnd }, // structure
 	{ tag:"SCtoSCMap", format:'k', format_func:PortDataXmlOutputSCtoSCMap, subfields:SCtoSCMapOutPortFields, start_func:SCtoSCMapXmlParserStart, end_func:SCtoSCMapXmlParserEnd }, // structure
+	{ tag:"SCtoVLtMap", format:'k', format_func:PortDataXmlOutputSCtoVLtMap, subfields:SCtoVLtMapVLtFields, start_func:SCtoVLtMapXmlParserStart, end_func:SCtoVLxMapXmlParserEnd }, // structure
+	{ tag:"SCtoVLntMap", format:'k', format_func:PortDataXmlOutputSCtoVLntMap, subfields:SCtoVLntMapVLntFields, start_func:SCtoVLntMapXmlParserStart, end_func:SCtoVLxMapXmlParserEnd }, // structure
 	{ tag:"BufferControlTable", format:'k', format_func:PortDataXmlOutputBCT, subfields:BufferControlTableFields, start_func:BCTXmlParserStart }, // structure
 	{ tag:"VLArbitrationLow", format:'k', format_func:PortDataXmlOutputVLArbLow, subfields:VLArbFields, start_func:VLArbLowXmlParserStart, end_func:VLArbLowXmlParserEnd }, // structure
 	{ tag:"VLArbitrationHigh", format:'k', format_func:PortDataXmlOutputVLArbHigh, subfields:VLArbFields, start_func:VLArbHighXmlParserStart, end_func:VLArbHighXmlParserEnd }, // structure

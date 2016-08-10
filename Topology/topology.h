@@ -862,7 +862,7 @@ extern FSTATUS GetPaths(struct oib_port *port, PortData *portp1, PortData *portp
 extern FSTATUS GetTraceRoute(struct oib_port *port, IB_PATH_RECORD *pathp,
 							 PQUERY_RESULT_VALUES *ppQueryResults);
 extern FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabricp,
-			   	Point *focus, boolean limitstats, boolean quiet);
+			   	Point *focus, boolean limitstats, boolean quiet, uint32 begin, uint32 end);
 extern FSTATUS GetAllFDBs( EUI64 portGuid, FabricData_t *fabricp, Point *focus,
 				int quiet );
 extern FSTATUS GetAllPortVLInfo(EUI64 portGuid, FabricData_t *fabricp, Point *focus, int quiet);
