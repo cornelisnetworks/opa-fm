@@ -48,7 +48,6 @@ typedef struct clListSearchData_s {
 } clListSearchData_t; 
 
 #ifndef __VXWORKS__
-
 typedef struct clThreadContext_s {
    FabricData_t *fabricp; 
    clGraphData_t *graphp; 
@@ -61,7 +60,8 @@ typedef struct clThreadContext_s {
    uint8 threadExit; 
    uint64_t sTime, eTime; 
    FSTATUS threadStatus;
-   ValidateCLTimeGetCallback_t timeGetCallback; 
+   ValidateCLTimeGetCallback_t timeGetCallback;
+   uint32 usedSLs; 
 } clThreadContext_t; 
 
 pthread_mutex_t g_cl_lock; 
@@ -137,6 +137,13 @@ FSTATUS InitFabricData(FabricData_t *fabricp, FabricFlags_t flags)
 	cl_qmap_init(&fabricp->AllIOCs, NULL);
 #endif
 	cl_qmap_init(&fabricp->AllSMs, NULL);
+
+    // MC routes related structures
+    	QListInitState(&fabricp->AllMcMembers);
+     	if (!QListInit(&fabricp->AllMcMembers)) {
+        	fprintf(stderr, "%s: Unable to initialize List of mcast Members\n", g_Top_cmdname);
+        	goto fail;
+     	}
 
         // credit-loop related lists
         cl_qmap_init(&fabricp->map_guid_to_ib_device, NULL); 
@@ -271,6 +278,94 @@ boolean isInternalLink(PortData *portp)
 			&& (portp->nodep->NodeInfo.SystemImageGUID
 				|| portp->nodep->NodeInfo.NodeGUID
 					== neighbor->nodep->NodeInfo.NodeGUID));
+}
+
+// Determine if portp and its neighbor are an Inter-switch Link
+boolean isISLink(PortData *portp)
+{
+	PortData *neighbor = portp->neighbor;
+
+	return (neighbor
+			&& portp->nodep->NodeInfo.NodeType == STL_NODE_SW
+			&& neighbor->nodep->NodeInfo.NodeType == STL_NODE_SW);
+}
+
+// Determine if portp or its neighbor is an FI
+boolean isFILink(PortData *portp)
+{
+	PortData *neighbor = portp->neighbor;
+
+	return (neighbor
+			&& (portp->nodep->NodeInfo.NodeType == STL_NODE_FI
+				|| neighbor->nodep->NodeInfo.NodeType == STL_NODE_FI));
+}
+
+// The routines below are primarily for use when classifying ExpectedLinks
+// which did not resolve properly.  So we want them to be a little loose
+// and select a link which is expected to be of the given type based on input
+// or where the port resolved for either side is connected to a real link of
+// the given type.
+
+// Due to this more inclusive definition, oriented toward verification,
+// isExternal is not the same as ! isInternal
+// Given this definition both isExternal and isInternal could be true for
+// the same resolved or vaguely defined link, such as when the elinkp
+// has not specified if its internal or external (default is ! internal)
+// and the elink is resolved to two disconnected ports where one is an internal
+// link and the other is an external link.
+// Note: Currently there is no use case for an isInternalExpectedLink function
+// and given the defaulting behavior of elinkp->internal such a function would
+// not be implementable under this inclusive definition.
+//
+// Similarly isISExpectedLink is not the same as ! isFIExpectedLink
+// isIS will include a link where expected link or either resolved real link
+// have at least 1 switch to switch link, even if other expected or real links
+// are FI links.  Similarly isFIExpectedLink will match any link where an FI is
+// expected on either side or is found on either side of a resolved real link.
+// As such the case of an expected link which is SW-SW which matches two
+// unrelated ports where one port is part of a FI-SW link and the other is
+// part of a SW-SW link, will return true for both functions.
+// Note portselp*->NodeType is optional (default NONE) and can resolve a port
+// without matching NodeType.  So it is even possible for an expected link
+// of SW-SW to resolve to a FI-SW link (verify reports will report the
+// incorrect node types as part of fully verifying the link)
+
+// Determine if elinkp is an external link within a single system.
+boolean isExternalExpectedLink(ExpectedLink *elinkp)
+{
+	return (
+			// elinkp was specified as external (or Internal not specified)
+			(! elinkp->internal)
+			// either real port resolved to the elinkp is an external link
+			|| (elinkp->portp1 && ! isInternalLink(elinkp->portp1))
+			|| (elinkp->portp2 && ! isInternalLink(elinkp->portp2))
+		);
+}
+
+// Determine if elinkp is an inter-switch link
+boolean isISExpectedLink(ExpectedLink *elinkp)
+{
+	return (
+			// elinkp was expicitly specified as an ISL
+			((elinkp->portselp1 && elinkp->portselp1->NodeType == STL_NODE_SW)
+			 && (elinkp->portselp2 && elinkp->portselp2->NodeType == STL_NODE_SW))
+			// either real port resolved to the elinkp is an ISL link
+			|| (elinkp->portp1 && isISLink(elinkp->portp1))
+			|| (elinkp->portp2 && isISLink(elinkp->portp2))
+		);
+}
+
+// Determine if elinkp is an FI link
+boolean isFIExpectedLink(ExpectedLink *elinkp)
+{
+	return (
+			// either side of elinkp was specified as an FI
+			(elinkp->portselp1 && elinkp->portselp1->NodeType == STL_NODE_FI)
+			|| (elinkp->portselp2 && elinkp->portselp2->NodeType == STL_NODE_FI)
+			// either real port resolved to a link including an FI
+			|| (elinkp->portp1 && isFILink(elinkp->portp1))
+			|| (elinkp->portp2 && isFILink(elinkp->portp2))
+		);
 }
 
 // count the number of armed/active links in the node
@@ -824,6 +919,85 @@ fail:
 	return NULL;
 }
 
+
+#ifdef PRODUCT_OPENIB_FF
+
+
+McMemberData *FabricDataAddMCGroup(FabricData_t *fabricp, struct oib_port *port, int quiet, IB_MCMEMBER_RECORD *pMCGRecord,
+		boolean *new_nodep, FILE *verbose_file)
+{
+	FSTATUS  status;
+	McMemberData *mcmemberp = (McMemberData*)MemoryAllocate2AndClear(sizeof(McMemberData), IBA_MEM_FLAG_PREMPTABLE, MYTAG);
+	boolean new_node = TRUE;
+
+	if (! mcmemberp) {
+		fprintf(stderr, "%s: Unable to allocate memory\n", g_Top_cmdname);
+		return NULL;
+	}
+
+
+	mcmemberp->MemberInfo = *pMCGRecord;
+	mcmemberp->MGID = pMCGRecord->RID.MGID;
+	mcmemberp->MLID = pMCGRecord->MLID;
+
+
+	ListItemInitState(&mcmemberp->McMembersEntry);
+	QListSetObj(&mcmemberp->McMembersEntry,mcmemberp);
+
+    // init LIST of PortGids to NULL just in case
+	QListInitState(&mcmemberp->AllMcGroupMembers);
+	if ( !QListInit(&mcmemberp->AllMcGroupMembers)) {
+ 		fprintf(stderr, "%s: Unable to initialize MCGroup member list\n", g_Top_cmdname);
+  		return NULL;
+	}
+
+    // search members of the group using opasaquery -o mcmember -m nodep->MLID
+	// and add them to the list of group members
+
+	status = GetAllMCGroupMember(mcmemberp, port, quiet, verbose_file);
+
+	if (status != FSUCCESS) {
+     		fprintf(stderr, "%s: Unable to get MCGroup member list\n", g_Top_cmdname);
+		if (status == FINSUFFICIENT_MEMORY)
+			fprintf(stderr,"%s: Insufficient memory to allocate MC Group member\n",g_Top_cmdname);
+		return NULL;
+	}
+
+	LIST_ITEM *p;
+	boolean found = FALSE;
+	p=QListHead(&fabricp->AllMcMembers);
+
+	// insert everything in the fabric structure ordered by MGID
+	while (!found && p != NULL) {
+		McMemberData *pMCM = (McMemberData *)QListObj(p);
+		if ( pMCM->MGID.AsReg64s.H > mcmemberp->MGID.AsReg64s.H)
+			p = QListNext(&fabricp->AllMcMembers, p);
+		else if (pMCM->MGID.AsReg64s.H == mcmemberp->MGID.AsReg64s.H) {
+			if (pMCM->MGID.AsReg64s.L > mcmemberp->MGID.AsReg64s.L)
+			  p = QListNext(&fabricp->AllMcMembers, p);
+	 		else {
+ 	     // insert mcmember element
+ 	  			QListInsertNext(&fabricp->AllMcMembers,p, &mcmemberp->McMembersEntry);
+  	  			found = TRUE;
+  	 	 	}
+		}	
+		else {
+			QListInsertNext(&fabricp->AllMcMembers,p, &mcmemberp->McMembersEntry);
+			found = TRUE;
+    		}
+    	} // end while
+
+	if ( !found)
+		QListInsertTail(&fabricp->AllMcMembers, &mcmemberp->McMembersEntry);
+
+	if (new_nodep)
+		*new_nodep = new_node;
+	return mcmemberp;
+}
+
+#endif
+
+
 FSTATUS FabricDataAddLink(FabricData_t *fabricp, PortData *p1, PortData *p2)
 {
 	// The Link Records will be reported in both directions
@@ -888,6 +1062,12 @@ FSTATUS FabricDataAddLink(FabricData_t *fabricp, PortData *p1, PortData *p2)
 	++(fabricp->LinkCount);
 	if (! isInternalLink(p1))
 		++(fabricp->ExtLinkCount);
+	if (isFILink(p1))
+		++(fabricp->FILinkCount);
+	if (isISLink(p1))
+		++(fabricp->ISLinkCount);
+	if (! isInternalLink(p1)&& isISLink(p1))
+		++(fabricp->ExtISLinkCount);
 
 	return FSUCCESS;
 
@@ -944,6 +1124,12 @@ FSTATUS FabricDataRemoveLink(FabricData_t *fabricp, PortData *p1)
 	--(fabricp->LinkCount);
 	if (! isInternalLink(p1))
 		--(fabricp->ExtLinkCount);
+	if (isFILink(p1))
+		--(fabricp->FILinkCount);
+	if (isISLink(p1))
+		--(fabricp->ISLinkCount);
+	if (! isInternalLink(p1)&& isISLink(p1))
+		--(fabricp->ExtISLinkCount);
 	p1->rate = 0;
 	p1->neighbor = NULL;
 	p1->from = 0;
@@ -1258,6 +1444,37 @@ void SMDataFreeAll(FabricData_t *fabricp)
 	}
 }
 
+void MCMemberFree(FabricData_t *fabricp, McMemberData *mcmemberp)
+{
+	LIST_ITEM *p;
+
+	for (p=QListHead(&mcmemberp->AllMcGroupMembers); p != NULL;) {
+		LIST_ITEM *nextp = QListNext(&mcmemberp->AllMcGroupMembers, p);
+		McGroupData *nodegp = (McGroupData *)QListObj(p);
+		if (ListItemIsInAList(&nodegp->AllMcGMembersEntry))
+			QListRemoveItem(&mcmemberp->AllMcGroupMembers, &nodegp->AllMcGMembersEntry);
+		MemoryDeallocate (nodegp);
+		p = nextp;
+	}
+	QListRemoveItem(&fabricp->AllMcMembers, &mcmemberp->McMembersEntry);
+	MemoryDeallocate (mcmemberp);
+}
+
+
+
+void MCDataFreeAll(FabricData_t *fabricp)
+{	LIST_ITEM *p;
+
+	// free all link data
+	for (p=QListHead(&fabricp->AllMcMembers); p != NULL;) {
+		LIST_ITEM *nextp = QListNext(&fabricp->AllMcMembers, p);
+		MCMemberFree(fabricp, (McMemberData *)QListObj(p));
+		p = nextp;
+	}
+}
+
+
+
 
 void CableDataFree(CableData *cablep)
 {
@@ -1484,9 +1701,10 @@ static char* ib_connection_source_to_str(FabricData_t *fabricp, clConnData_t *co
       return NULL; 
    device2p = PARENT_STRUCT(mi, clDeviceData_t, AllDevicesEntry); 
    
-   snprintf(str, 2*NODE_DESCRIPTION_ARRAY_SIZE+10, "%s:%d to %s:%d", 
+   snprintf(str, 2*NODE_DESCRIPTION_ARRAY_SIZE+10, "%s:%d to %s:%d VL:%d", 
            device1p->nodep->NodeDesc.NodeString, connp->FromPortNum, 
-           device2p->nodep->NodeDesc.NodeString, connp->ToPortNum); 
+           device2p->nodep->NodeDesc.NodeString, connp->ToPortNum,
+           connp->VL.VL); 
    return str;
 }
 
@@ -1517,7 +1735,7 @@ static clArcData_t* CLGraphFindIdArc(clGraphData_t *graphp, uint32 arcId)
    return NULL;
 }
 
-static void CLGraphDataFree(clGraphData_t *graphp, void *context) 
+void CLGraphDataFree(clGraphData_t *graphp, void *context) 
 { 
    #define DEF_MAX_FREE_ENTRY   5000
    int i; 
@@ -1555,8 +1773,13 @@ static void CLGraphDataFree(clGraphData_t *graphp, void *context)
    // free all vertices associated with the graph
    if (graphp->Vertices) {
       for (i = 0; i < graphp->NumVertices; i++) {
-         if (graphp->Vertices[i]) 
+         if (graphp->Vertices[i]) {
+            if (graphp->Vertices[i]->Inbound)
+               MemoryDeallocate(graphp->Vertices[i]->Inbound);
+            if (graphp->Vertices[i]->Outbound)
+               MemoryDeallocate(graphp->Vertices[i]->Outbound);
             MemoryDeallocate(graphp->Vertices[i]);
+         }
          if (graphp->NumVertices >= DEF_MAX_FREE_ENTRY) {
             if (i % PROGRESS_FREQ == 0 || i == 0) {
                if (!cp->quiet) 
@@ -1575,7 +1798,7 @@ static void CLGraphDataFree(clGraphData_t *graphp, void *context)
 static void CLDeviceDataFreeAll(FabricData_t *fabricp, void *context) 
 {
    #define DEF_MAX_FREE_DEV   5000
-   int i; 
+   int i, j; 
    cl_map_item_t * mi,*ri; 
    uint32 deviceCount = 0, deviceListCount, routeCount = 0;
 // uint32 routeListCount;
@@ -1594,8 +1817,10 @@ static void CLDeviceDataFreeAll(FabricData_t *fabricp, void *context)
          cl_qmap_remove_item(&fabricp->map_guid_to_ib_device, &ccDevicep->AllDevicesEntry); 
          // free all connections associated with the device
          for (i = 0; i < CREDIT_LOOP_DEVICE_MAX_CONNECTIONS; i++) {
-            if (ccDevicep->Connections[i]) 
-               MemoryDeallocate(ccDevicep->Connections[i]);
+            for (j = 0; j < STL_MAX_VLS; j++) {
+               if (ccDevicep->Connections[i][j]) 
+                  MemoryDeallocate(ccDevicep->Connections[i][j]);
+            }
          }
          
 //       routeListCount = cl_qmap_count(&ccDevicep->map_dlid_to_route);
@@ -1759,6 +1984,8 @@ static int CLGraphDataAddVertex(clGraphData_t *graphp, clConnData_t *ccConnp, in
             if (verbose >= 4) 
                printf("Adding vector Id %d\n", ccVertexp->Id); 
             return ccVertexp->Id;
+         } else {
+            MemoryDeallocate(ccVertexp);
          }
       }
    }
@@ -1960,7 +2187,8 @@ static void* CLFabricDataBuildRouteGraphThread(void *context)
    LIST_ITEM *dstHcaLstp;
    LIST_ITEM *srcHcaLstp; 
    uint32 thrdId = ((clThreadContext_t *)context)->threadId; 
-   ValidateCLTimeGetCallback_t timeGetCallback = ((clThreadContext_t *)context)->timeGetCallback; 
+   ValidateCLTimeGetCallback_t timeGetCallback = ((clThreadContext_t *)context)->timeGetCallback;
+   uint32 usedSLs = ((clThreadContext_t*)context)->usedSLs; 
    
    //PYTHON: for src_hfi in fabric.hfis :
    for (srcHcaLstp = ((clThreadContext_t *)context)->srcHcaList;
@@ -1979,119 +2207,151 @@ static void* CLFabricDataBuildRouteGraphThread(void *context)
          clDeviceData_t *dst_hfip = (clDeviceData_t *)QListObj(dstHcaLstp); 
          
          if (srcHcaLstp != dstHcaLstp) {
-            uint32 links; 
-            uint16 slid, dlid; 
-            int this_vertex_id; 
-            uint32 previous_vertex_id = 0;              //PYTHON: previous_vertex_id = None
-            clDeviceData_t *hfip = src_hfip;            //PYTHON: hfi = src_hfip;
-            clConnData_t *this_connection = NULL; 
-            clConnData_t *previous_connection = NULL;  //PYTHON: previous_connection = None
-            
-            //PYTHON: slid = src_hfi.lid
-            //PYTHON: dlid = dst_hfi.lid
-            //PYTHON: links = 0
-            slid = src_hfip->Lid; 
-            dlid = dst_hfip->Lid; 
-            links = 0; 
-            if (verbose >= 4) 
-               printf("[%d]Build route from %s to %s (SLID 0x%04x to DLID 0x%04x):\n", 
-                      (int)thrdId, src_hfip->nodep->NodeDesc.NodeString, dst_hfip->nodep->NodeDesc.NodeString, slid, dlid); 
-            
-            // get global lock
-            pthread_mutex_lock(&g_cl_lock); 
-            
-            //PYTHON: while hfi != dst_hfi :
-            while (hfip != dst_hfip) {
-               cl_map_item_t *mi; 
-               PortData *portp = NULL; 
-               clRouteData_t *ccRoutep = NULL; 
-               
-               //PYTHON: if dlid in hfi.routes :
-               mi = cl_qmap_get(&hfip->map_dlid_to_route, dlid); 
-               if (mi != cl_qmap_end(&hfip->map_dlid_to_route)) 
-                  ccRoutep = PARENT_STRUCT(mi, clRouteData_t, AllRoutesEntry); 
-               
-               if (ccRoutep) {
-                  //PYTHON: port = hfi.routes[dlid]
-                  portp = ccRoutep->portp; 
-                  if (verbose >= 4) 
-                     printf("  [%d] GUID 0x%016"PRIx64": use port %3.3u\n", (int)thrdId, hfip->nodep->NodeInfo.NodeGUID, portp->PortNum);
-               } else {
-                  if (verbose >= 4) 
-                     printf("  [%d] GUID 0x%016"PRIx64": no route to DLID 0x%04x\n", (int)thrdId, hfip->nodep->NodeInfo.NodeGUID, dlid); 
-                  break;
-               }
-               
-               //PYTHON: this_connection = hfi.connections[port]
-               this_connection = hfip->Connections[portp->PortNum]; 
-               
-               //PYTHON: graph.add_vertex(this_connection)
-               if (-1 == (this_vertex_id = CLGraphDataAddVertex(&fabricp->Graph, this_connection, verbose))) {
-                  break; 
-               }
-               //PYTHON: if previous_connection :
-               if (previous_connection) {
-                  //PYTHON: graph.add_arc(previous_vertex_id, this_vertex_id)
-                  if (-1 == CLGraphDataAddArc(&fabricp->Graph, previous_vertex_id, this_vertex_id, verbose)) {
-                     status = FERROR; 
-                     break;
+            uint8 sl;
+            for (sl = 0; sl < STL_MAX_SLS; sl++) { // loop over SLs
+               if (usedSLs != 0) {
+                  if (!((usedSLs >> sl) & 1)) {
+                     continue;
                   }
+               } else {
+                  if (sl != 0) continue;
                }
-               
-               //PYTHON: guid = this_connection.guid2
-               //PYTHON: hfi = fabric.map_guid_to_ib_device[guid]
-               if (!(hfip = CLFindGuidDevice(fabricp, this_connection->ToDeviceGUID))) {
-                  fprintf(stderr, "[%d] Error, no device found for GUID 0x%016"PRIx64" to DLID 0x%04x\n", (int)thrdId, this_connection->ToDeviceGUID, dlid); 
-                  status = FERROR; 
-                  break;
-               }
-               
-               //PYTHON: links += 1
-               //PYTHON: previous_connection = this_connection
-               //PYTHON: previous_vertex_id = this_vertex_id
-               links++; 
-               previous_connection = this_connection; 
-               previous_vertex_id = this_vertex_id;
-            } // end while loop
+               uint32 links; 
+               uint16 slid, dlid; 
+               int this_vertex_id; 
+               uint32 previous_vertex_id = 0;              //PYTHON: previous_vertex_id = None
+               clDeviceData_t *hfip = src_hfip;            //PYTHON: hfi = src_hfip;
+               clConnData_t *this_connection = NULL; 
+               clConnData_t *previous_connection = NULL;  //PYTHON: previous_connection = None
             
-            // release global lock
-            pthread_mutex_unlock(&g_cl_lock); 
-            
-            //PYTHON: if hfi == dst_hfi :
-            if (hfip == dst_hfip) {
-               //PYTHON: present_routes += 1
-               //PYTHON: hops = links - 1
-               present_routes++; 
-               hops = links - 1; 
-               
+               //PYTHON: slid = src_hfi.lid
+               //PYTHON: dlid = dst_hfi.lid
+               //PYTHON: links = 0
+               slid = src_hfip->Lid; 
+               dlid = dst_hfip->Lid; 
+               links = 0; 
                if (verbose >= 4) 
-                  printf("  [%d] %d links traversed, %d hops\n", (int)thrdId, links, hops); 
-               
+                  printf("[%d]Build route from %s to %s (SLID 0x%04x to DLID 0x%04x):\n", 
+                         (int)thrdId, src_hfip->nodep->NodeDesc.NodeString, dst_hfip->nodep->NodeDesc.NodeString, slid, dlid); 
+            
                // get global lock
                pthread_mutex_lock(&g_cl_lock); 
+            
+               //PYTHON: while hfi != dst_hfi :
+               while (hfip != dst_hfip) {
+                  cl_map_item_t *mi; 
+                  PortData *portp = NULL; 
+                  clRouteData_t *ccRoutep = NULL; 
+                  uint8 sc = 0;
+                  //PYTHON: if dlid in hfi.routes :
+                  mi = cl_qmap_get(&hfip->map_dlid_to_route, dlid); 
+                  if (mi != cl_qmap_end(&hfip->map_dlid_to_route)) 
+                     ccRoutep = PARENT_STRUCT(mi, clRouteData_t, AllRoutesEntry); 
                
-               if (!CLGetDynamicArray((void **)&hops_histogram, &hops_histogram_length, sizeof(uint32), hops, verbose)) {
-                  //PYTHON: if hops in hops_histogram
-                  //CJKING: if (CLListUint32Find(hops, hops_histogram, hops_histogram_entries, verbose))
-                  if (CLListUint32Find(&hopsHistogramLstMap, hops)) 
-                     hops_histogram[hops]++;    //PYTHON: hops_histogram[hops] += 1
-                  else {
-                     //CJKING: Add entry to search list for hops_histogram array 
-                     if (!CLListUint32Add(&hopsHistogramLstMap, hops)) 
-                        hops_histogram[hops] = 1;  //PYTHON: histogram[hops] = 1
-                     else {
+                  if (ccRoutep) {
+                     //PYTHON: port = hfi.routes[dlid]
+                     portp = ccRoutep->portp; 
+                     if (verbose >= 4) 
+                        printf("  [%d] GUID 0x%016"PRIx64": use port %3.3u\n", (int)thrdId, hfip->nodep->NodeInfo.NodeGUID, portp->PortNum);
+                  } else {
+                     if (verbose >= 4) 
+                        printf("  [%d] GUID 0x%016"PRIx64": no route to DLID 0x%04x\n", (int)thrdId, hfip->nodep->NodeInfo.NodeGUID, dlid); 
+                     break;
+                  }
+                  // look up the sc
+                  if (usedSLs && portp->pQOS && portp->pQOS->SL2SCMap)
+                     sc = portp->pQOS->SL2SCMap->SLSCMap[sl].SC;
+                  if (previous_connection && usedSLs) {
+                  // SC to SC transition
+                     if (!hfip->nodep) {
+                        fprintf(stderr, "[%d] Error, no node data found for GUID 0x%016"PRIx64"\n", (int)thrdId, previous_connection->ToDeviceGUID);
+                        status = FERROR;
+                        break;
+                     }
+                     if (hfip->nodep->NodeInfo.NodeType == STL_NODE_SW) {
+                        mi = cl_qmap_get(&hfip->nodep->Ports, previous_connection->ToPortNum);
+                        if (mi == cl_qmap_end(&hfip->nodep->Ports)) {
+                           fprintf(stderr, "[%d] Error, unable to find port %d for GUID 0x%016"PRIx64"\n", (int)thrdId, previous_connection->ToPortNum, previous_connection->ToDeviceGUID);
+                           status = FERROR;
+                           break;
+                        }
+                        PortData *prev_port = PARENT_STRUCT(mi, PortData, NodePortsEntry);
+                        if (prev_port && prev_port->pQOS && prev_port->pQOS->SC2SCMap) {
+                           sc = prev_port->pQOS->SC2SCMap[portp->PortNum].SCSCMap[sc].SC;
+                        }
+                     }
+                  }
+                  //PYTHON: this_connection = hfi.connections[port]
+                  this_connection = hfip->Connections[portp->PortNum][sc];
+               
+                  //PYTHON: graph.add_vertex(this_connection)
+                  if (-1 == (this_vertex_id = CLGraphDataAddVertex(&fabricp->Graph, this_connection, verbose))) {
+                     break; 
+                  }
+                  //PYTHON: if previous_connection :
+                  if (previous_connection) {
+                     //PYTHON: graph.add_arc(previous_vertex_id, this_vertex_id)
+                     if (-1 == CLGraphDataAddArc(&fabricp->Graph, previous_vertex_id, this_vertex_id, verbose)) {
                         status = FERROR; 
-                        pthread_mutex_unlock(&g_cl_lock); 
                         break;
                      }
                   }
-                  hops_histogram_entries = MAX(hops_histogram_entries, hops);
-               }
                
+                  //PYTHON: guid = this_connection.guid2
+                  //PYTHON: hfi = fabric.map_guid_to_ib_device[guid]
+                  if (!(hfip = CLFindGuidDevice(fabricp, this_connection->ToDeviceGUID))) {
+                     fprintf(stderr, "[%d] Error, no device found for GUID 0x%016"PRIx64" to DLID 0x%04x\n", (int)thrdId, this_connection->ToDeviceGUID, dlid); 
+                     status = FERROR; 
+                     break;
+                  }
+               
+                  //PYTHON: links += 1
+                  //PYTHON: previous_connection = this_connection
+                  //PYTHON: previous_vertex_id = this_vertex_id
+                  links++; 
+                  previous_connection = this_connection; 
+                  previous_vertex_id = this_vertex_id;
+               } // end while loop
+            
                // release global lock
-               pthread_mutex_unlock(&g_cl_lock);
-            } else {
-               missing_routes += 1;    //PYTHON: missing_routes += 1
+               pthread_mutex_unlock(&g_cl_lock); 
+            
+               //PYTHON: if hfi == dst_hfi :
+               if (hfip == dst_hfip) {
+                  //PYTHON: present_routes += 1
+                  //PYTHON: hops = links - 1
+                  present_routes++; 
+                  hops = links - 1; 
+               
+                  if (verbose >= 4) 
+                     printf("  [%d] %d links traversed, %d hops\n", (int)thrdId, links, hops); 
+               
+                  // get global lock
+                  pthread_mutex_lock(&g_cl_lock); 
+               
+                  if (!CLGetDynamicArray((void **)&hops_histogram, &hops_histogram_length, sizeof(uint32), hops, verbose)) {
+                     //PYTHON: if hops in hops_histogram
+                     //CJKING: if (CLListUint32Find(hops, hops_histogram, hops_histogram_entries, verbose))
+                     if (CLListUint32Find(&hopsHistogramLstMap, hops)) 
+                        hops_histogram[hops]++;    //PYTHON: hops_histogram[hops] += 1
+                     else {
+                        //CJKING: Add entry to search list for hops_histogram array 
+                        if (!CLListUint32Add(&hopsHistogramLstMap, hops)) 
+                           hops_histogram[hops] = 1;  //PYTHON: histogram[hops] = 1
+                        else {
+                           status = FERROR; 
+                           pthread_mutex_unlock(&g_cl_lock); 
+                           break;
+                        }
+                     }
+                     hops_histogram_entries = MAX(hops_histogram_entries, hops);
+                  }
+               
+                  // release global lock
+                  pthread_mutex_unlock(&g_cl_lock);
+                  } else {
+                  missing_routes += 1;    //PYTHON: missing_routes += 1
+               }
             }
          }
       }
@@ -2488,7 +2748,7 @@ NodeData* CLDataAddDevice(FabricData_t *fabricp, NodeData *nodep, uint16 lid, in
 }
 
 //PYTHON: def add_connection (fabric, guid1, port1, guid2, port2, rate) :
-FSTATUS CLDataAddConnection(FabricData_t *fabricp, PortData *portp1, PortData *portp2, clConnPathData_t *pathInfo, int verbose) 
+FSTATUS CLDataAddConnection(FabricData_t *fabricp, PortData *portp1, PortData *portp2, clConnPathData_t *pathInfo, uint8 sc, int verbose) 
 { 
    FSTATUS status = FSUCCESS; 
    cl_map_item_t *mi; 
@@ -2510,7 +2770,7 @@ FSTATUS CLDataAddConnection(FabricData_t *fabricp, PortData *portp1, PortData *p
    }
    
    //PYTHON: connection = ib_device1.connections.get(port1)
-   ccConnp = ccDevicep->Connections[portp1->PortNum]; 
+   ccConnp = ccDevicep->Connections[portp1->PortNum][sc]; 
    if (ccConnp) {
       //PYTHON: if connection.guid1 != guid1 or connection.port1 != port1 or
       //PYTHON:    connection.guid2 != guid2 or connection.port2 != port2 or
@@ -2525,7 +2785,7 @@ FSTATUS CLDataAddConnection(FabricData_t *fabricp, PortData *portp1, PortData *p
       }
    } else {
       //PYTHON: ib_device1.connections[port1] = IbConnection(fabric, guid1, port1, guid2, port2, rate)
-      ccConnp = ccDevicep->Connections[portp1->PortNum] = 
+      ccConnp = ccDevicep->Connections[portp1->PortNum][sc] = 
          (clConnData_t *)MemoryAllocate2AndClear(sizeof(clConnData_t), IBA_MEM_FLAG_PREMPTABLE, MYTAG); 
       
       if (!ccConnp) {
@@ -2538,7 +2798,9 @@ FSTATUS CLDataAddConnection(FabricData_t *fabricp, PortData *portp1, PortData *p
          ccConnp->FromPortNum = portp1->PortNum; 
          ccConnp->ToDeviceGUID = portp2->nodep->NodeInfo.NodeGUID;           // GUID of the HFI, TFI, switch
          ccConnp->ToPortNum = portp2->PortNum; 
-         ccConnp->PathInfo = *pathInfo; 
+         ccConnp->PathInfo = *pathInfo;
+         if (portp1->pQOS)
+            ccConnp->VL = portp1->pQOS->SC2VLMaps[Enum_SCVLt].SCVLMap[sc];
          
          if (verbose >= 4) 
             printf("Add connection 0x%016"PRIx64":%3.3u to 0x%016"PRIx64":%3.3u at rate %s\n", 
@@ -2623,7 +2885,7 @@ void CLGraphDataSummary(clGraphData_t *graphp, const char *name, ValidateCLDataS
    callback(graphp, name, context);
 }
 
-FSTATUS CLFabricDataBuildRouteGraph(FabricData_t *fabricp,  ValidateCLRouteSummaryCallback_t routeSummaryCallback, ValidateCLTimeGetCallback_t timeGetCallback, void *context) 
+FSTATUS CLFabricDataBuildRouteGraph(FabricData_t *fabricp,  ValidateCLRouteSummaryCallback_t routeSummaryCallback, ValidateCLTimeGetCallback_t timeGetCallback, void *context, uint32 usedSLs) 
 { 
    FSTATUS status = FSUCCESS; 
    uint32 i = 0, l = 0, t, threadsActive = 0; 
@@ -2668,6 +2930,7 @@ FSTATUS CLFabricDataBuildRouteGraph(FabricData_t *fabricp,  ValidateCLRouteSumma
       threadContexts[0].threadId = 0; 
       threadContexts[0].srcHcaListLength = QListCount(&fabricp->FIs);
       threadContexts[0].timeGetCallback = timeGetCallback; 
+      threadContexts[0].usedSLs = usedSLs;
       threadsActive++; 
       pthread_create(&threadId, NULL, CLFabricDataBuildRouteGraphThread, &threadContexts[0]);
    } else {
@@ -2685,7 +2948,8 @@ FSTATUS CLFabricDataBuildRouteGraph(FabricData_t *fabricp,  ValidateCLRouteSumma
             threadContexts[i].quiet = cp->quiet; 
             threadContexts[i].threadId = i; 
             threadContexts[i].srcHcaListLength = maxHcaListEntry;
-            threadContexts[i].timeGetCallback = timeGetCallback; 
+            threadContexts[i].timeGetCallback = timeGetCallback;
+            threadContexts[i].usedSLs = usedSLs;
             threadsActive++; 
             pthread_create(&threadId, NULL, CLFabricDataBuildRouteGraphThread, &threadContexts[i++]);
          }
@@ -2698,6 +2962,7 @@ FSTATUS CLFabricDataBuildRouteGraph(FabricData_t *fabricp,  ValidateCLRouteSumma
       threadContexts[i].threadId = i; 
       threadContexts[i].srcHcaListLength = maxHcaListEntry + (QListCount(&fabricp->FIs) % CL_MAX_THREADS);
       threadContexts[i].timeGetCallback = timeGetCallback;
+      threadContexts[i].usedSLs = usedSLs;
       threadsActive++; 
       pthread_create(&threadId, NULL, CLFabricDataBuildRouteGraphThread, &threadContexts[i]);
    }

@@ -169,7 +169,7 @@ sub Get_IP_Addr_Netmask($$)
 	if ( "$ipaddr" eq "dhcp" ) {
 		return "";
 	}
-	$default_netmask = `/opt/opa/tools/opaipcalc --netmask $ipaddr`;
+	$default_netmask = `/usr/lib/opa/tools/opaipcalc --netmask $ipaddr`;
 	$default_netmask =~ s/NETMASK=//;
 	$default_netmask =~ s/\n//;
 	$_ = $ipaddr;		# setup for translate & other cmds
@@ -318,7 +318,7 @@ sub Build_ifcfg($$$)
 			system $SysCmd;
 
 			# append the network
-			$temp = `/opt/opa/tools/opaipcalc --network $ipaddr $netmask`;
+			$temp = `/usr/lib/opa/tools/opaipcalc --network $ipaddr $netmask`;
 			chomp($temp);
 			$temp =~ s/NETWORK=//;
 			$SysCmd = "echo \"NETWORK=\'$temp\'\" >> $target";
@@ -326,7 +326,7 @@ sub Build_ifcfg($$$)
 			system $SysCmd;
 
 			# append the broadcast
-			$temp = `/opt/opa/tools/opaipcalc --broadcast $ipaddr $netmask`;
+			$temp = `/usr/lib/opa/tools/opaipcalc --broadcast $ipaddr $netmask`;
 			chomp($temp);
 			$temp =~ s/BROADCAST=//;
 			$SysCmd = "echo \"BROADCAST=\'$temp\'\" >> $target";
@@ -383,7 +383,7 @@ sub Build_ifcfg($$$)
 			system $SysCmd;
 
 			# append the network,broadcast
-			$SysCmd = "/opt/opa/tools/opaipcalc --network --broadcast $ipaddr $netmask >> $target";
+			$SysCmd = "/usr/lib/opa/tools/opaipcalc --network --broadcast $ipaddr $netmask >> $target";
 			DebugPrint("cmd '$SysCmd'\n");
 			system $SysCmd;
 

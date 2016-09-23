@@ -69,11 +69,11 @@
 ifeq "$(RELEASE_TAG)" ""
 MODULEVERSION=$(shell $(PATCH_ENG_VERSION))
 RPM_REL=$(shell echo $(MODULEVERSION)|cut -d"." -f1-2)
-RPM_VER=$(shell echo $(MODULEVERSION).999.999|cut -d"." -f3)
+RPM_VER=$(shell echo $(MODULEVERSION).999.999|cut -d"." -f3)$(shell rpm --eval %{?dist})
 else
 MODULEVERSION=$(shell $(CONVERT_RELEASETAG) $(RELEASE_TAG))
 RPM_REL=$(shell echo $(MODULEVERSION)|cut -d"." -f1-4)
-RPM_VER=$(shell echo $(MODULEVERSION).999.999.999.999|cut -d"." -f5)
+RPM_VER=$(shell echo $(MODULEVERSION).999.999.999.999|cut -d"." -f5)$(shell rpm --eval %{?dist})
 endif
 RPM_NAME=opafm
 

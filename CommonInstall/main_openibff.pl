@@ -250,7 +250,7 @@ sub Usage
 		printf STDERR "       -i comp - install the given component with default options\n";
 		printf STDERR "            can appear more than once on command line\n";
 #		printf STDERR "       -f - skip HCA firmware upgrade during install\n";
-		#printf STDERR "       -l - skip creating/removing symlinks to /usr/local from /opt/opa\n";
+		#printf STDERR "       -l - skip creating/removing symlinks to /usr/local from /usr/lib/opa\n";
 		printf STDERR "       --without-depcheck - disable check of OS dependencies\n";
 		printf STDERR "       --force - force install even if distos don't match\n";
 		printf STDERR "                 Use of this option can result in undefined behaviors\n";

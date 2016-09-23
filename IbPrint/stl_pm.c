@@ -252,32 +252,29 @@ void PrintStlPortStatusRspSummary(PrintDest_t *dest, int indent, const STL_PORT_
 
 void PrintStlClearPortStatus(PrintDest_t *dest, int indent, const STL_CLEAR_PORT_STATUS *pStlClearPortStatus)
 {
-    if (pStlClearPortStatus->PortSelectMask[0]) {
-    	PrintFunc(dest, "%*s Port Select Mask   0x%016llx %016llx %016llx %016llx\n",
-    		indent, "",
-    		pStlClearPortStatus->PortSelectMask[0],
-    		pStlClearPortStatus->PortSelectMask[1],
-    		pStlClearPortStatus->PortSelectMask[2],
-    		pStlClearPortStatus->PortSelectMask[3]);
-    }
-    else if (pStlClearPortStatus->PortSelectMask[1]) {
-    	PrintFunc(dest, "%*s Port Select Mask   0x%016llx %016llx %016llx\n",
-    		indent, "",
-    		pStlClearPortStatus->PortSelectMask[1],
-    		pStlClearPortStatus->PortSelectMask[2],
-    		pStlClearPortStatus->PortSelectMask[3]);
-    }
-    else if (pStlClearPortStatus->PortSelectMask[2]) {
-    	PrintFunc(dest, "%*s Port Select Mask   0x%016llx %016llx\n",
-    		indent, "",
-    		pStlClearPortStatus->PortSelectMask[2],
-    		pStlClearPortStatus->PortSelectMask[3]);
-    }
-    else {
-    	PrintFunc(dest, "%*s Port Select Mask   0x%016llx\n",
-    		indent, "",
-    		pStlClearPortStatus->PortSelectMask[3]);
-    }
+	if (pStlClearPortStatus->PortSelectMask[0]) {
+		PrintFunc(dest, "%*s Port Select Mask   0x%016"PRIx64" %016"PRIx64" %016"PRIx64" %016"PRIx64"\n",
+			indent, "",
+			pStlClearPortStatus->PortSelectMask[0],
+			pStlClearPortStatus->PortSelectMask[1],
+			pStlClearPortStatus->PortSelectMask[2],
+			pStlClearPortStatus->PortSelectMask[3]);
+	} else if (pStlClearPortStatus->PortSelectMask[1]) {
+		PrintFunc(dest, "%*s Port Select Mask   0x%016"PRIx64" %016"PRIx64" %016"PRIx64"\n",
+			indent, "",
+			pStlClearPortStatus->PortSelectMask[1],
+			pStlClearPortStatus->PortSelectMask[2],
+			pStlClearPortStatus->PortSelectMask[3]);
+	} else if (pStlClearPortStatus->PortSelectMask[2]) {
+		PrintFunc(dest, "%*s Port Select Mask   0x%016"PRIx64" %016"PRIx64"\n",
+			indent, "",
+			pStlClearPortStatus->PortSelectMask[2],
+			pStlClearPortStatus->PortSelectMask[3]);
+	} else {
+		PrintFunc(dest, "%*s Port Select Mask   0x%016"PRIx64"\n",
+			indent, "",
+			pStlClearPortStatus->PortSelectMask[3]);
+	}
 	PrintFunc(dest, "%*s Counter Sel Mask   0x%08x\n",
 		indent, "",
 		pStlClearPortStatus->CounterSelectMask.AsReg32);
@@ -288,41 +285,38 @@ void PrintStlDataPortCountersRsp(PrintDest_t *dest, int indent, const STL_DATA_P
 	int i, j, ii, jj;
 	struct _port_dpctrs *port;
 
-    if (pStlDataPortCountersRsp->PortSelectMask[0]) {
-    	PrintFunc(dest, "%*s Port Select Mask   0x%016llx %016llx %016llx %016llx\n",
-    		indent, "",
-    		pStlDataPortCountersRsp->PortSelectMask[0],
-    		pStlDataPortCountersRsp->PortSelectMask[1],
-    		pStlDataPortCountersRsp->PortSelectMask[2],
-    		pStlDataPortCountersRsp->PortSelectMask[3]);
-    }
-    else if (pStlDataPortCountersRsp->PortSelectMask[1]) {
-    	PrintFunc(dest, "%*s Port Select Mask   0x%016llx %016llx %016llx\n",
-    		indent, "",
-    		pStlDataPortCountersRsp->PortSelectMask[1],
-    		pStlDataPortCountersRsp->PortSelectMask[2],
-    		pStlDataPortCountersRsp->PortSelectMask[3]);
-    }
-    else if (pStlDataPortCountersRsp->PortSelectMask[2]) {
-    	PrintFunc(dest, "%*s Port Select Mask   0x%016llx %016llx\n",
-    		indent, "",
-    		pStlDataPortCountersRsp->PortSelectMask[2],
-    		pStlDataPortCountersRsp->PortSelectMask[3]);
-    }
-    else {
-    	PrintFunc(dest, "%*s Port Select Mask   0x%016llx\n",
-    		indent, "",
-    		pStlDataPortCountersRsp->PortSelectMask[3]);
-    }
+	if (pStlDataPortCountersRsp->PortSelectMask[0]) {
+		PrintFunc(dest, "%*s Port Select Mask   0x%016"PRIx64" %016"PRIx64" %016"PRIx64" %016"PRIx64"\n",
+			indent, "",
+			pStlDataPortCountersRsp->PortSelectMask[0],
+			pStlDataPortCountersRsp->PortSelectMask[1],
+			pStlDataPortCountersRsp->PortSelectMask[2],
+			pStlDataPortCountersRsp->PortSelectMask[3]);
+	} else if (pStlDataPortCountersRsp->PortSelectMask[1]) {
+		PrintFunc(dest, "%*s Port Select Mask   0x%016"PRIx64" %016"PRIx64" %016"PRIx64"\n",
+			indent, "",
+			pStlDataPortCountersRsp->PortSelectMask[1],
+			pStlDataPortCountersRsp->PortSelectMask[2],
+			pStlDataPortCountersRsp->PortSelectMask[3]);
+	} else if (pStlDataPortCountersRsp->PortSelectMask[2]) {
+		PrintFunc(dest, "%*s Port Select Mask   0x%016"PRIx64" %016"PRIx64"\n",
+			indent, "",
+			pStlDataPortCountersRsp->PortSelectMask[2],
+			pStlDataPortCountersRsp->PortSelectMask[3]);
+	} else {
+		PrintFunc(dest, "%*s Port Select Mask   0x%016"PRIx64"\n",
+			indent, "",
+			pStlDataPortCountersRsp->PortSelectMask[3]);
+	}
 	PrintFunc(dest, "%*s VL Select Mask     0x%08x\n",
 		indent, "",
 		pStlDataPortCountersRsp->VLSelectMask);
-	PrintFunc(dest, "%*s LocalLinkIntegrity Resolution %20"PRIu64"\n",
+	PrintFunc(dest, "%*s LocalLinkIntegrity Resolution %20u\n",
 		indent, "",
-		StlShiftToResolution(pStlDataPortCountersRsp->res.s.LocalLinkIntegrityResolution, 8));
-	PrintFunc(dest, "%*s LinkErrorRecovery Resolution  %20"PRIu64"\n",
+		StlShiftToResolution(pStlDataPortCountersRsp->res.s.LocalLinkIntegrityResolution, RES_ADDER_LLI));
+	PrintFunc(dest, "%*s LinkErrorRecovery Resolution  %20u\n",
 		indent, "",
-		StlShiftToResolution(pStlDataPortCountersRsp->res.s.LinkErrorRecoveryResolution, 2));
+		StlShiftToResolution(pStlDataPortCountersRsp->res.s.LinkErrorRecoveryResolution, RES_ADDER_LER));
 
 
 	/* Count the bits in the mask and process the ports in succession */
@@ -461,32 +455,29 @@ void PrintStlErrorPortCountersRsp(PrintDest_t *dest, int indent, const STL_ERROR
 	uint8  vlCount;
 	struct _port_epctrs *ePort;
 
-    if (pStlErrorPortCountersRsp->PortSelectMask[0]) {
-    	PrintFunc(dest, "%*s Port Select Mask   0x%016llx %016llx %016llx %016llx\n",
-    		indent, "",
-    		pStlErrorPortCountersRsp->PortSelectMask[0],
-    		pStlErrorPortCountersRsp->PortSelectMask[1],
-    		pStlErrorPortCountersRsp->PortSelectMask[2],
-    		pStlErrorPortCountersRsp->PortSelectMask[3]); p=0;
-    }
-    else if (pStlErrorPortCountersRsp->PortSelectMask[1]) {
-    	PrintFunc(dest, "%*s Port Select Mask   0x%016llx %016llx %016llx\n",
-    		indent, "",
-    		pStlErrorPortCountersRsp->PortSelectMask[1],
-    		pStlErrorPortCountersRsp->PortSelectMask[2],
-    		pStlErrorPortCountersRsp->PortSelectMask[3]); p=1;
-    }
-    else if (pStlErrorPortCountersRsp->PortSelectMask[2]) {
-    	PrintFunc(dest, "%*s Port Select Mask   0x%016llx %016llx\n",
-    		indent, "",
-    		pStlErrorPortCountersRsp->PortSelectMask[2],
-    		pStlErrorPortCountersRsp->PortSelectMask[3]); p=2;
-    }
-    else {
-    	PrintFunc(dest, "%*s Port Select Mask   0x%016llx\n",
-    		indent, "",
-    		pStlErrorPortCountersRsp->PortSelectMask[3]); p=3;
-    }
+	if (pStlErrorPortCountersRsp->PortSelectMask[0]) {
+		PrintFunc(dest, "%*s Port Select Mask   0x%016"PRIx64" %016"PRIx64" %016"PRIx64" %016"PRIx64"\n",
+			indent, "",
+			pStlErrorPortCountersRsp->PortSelectMask[0],
+			pStlErrorPortCountersRsp->PortSelectMask[1],
+			pStlErrorPortCountersRsp->PortSelectMask[2],
+			pStlErrorPortCountersRsp->PortSelectMask[3]); p = 0;
+	} else if (pStlErrorPortCountersRsp->PortSelectMask[1]) {
+		PrintFunc(dest, "%*s Port Select Mask   0x%016"PRIx64" %016"PRIx64" %016"PRIx64"\n",
+			indent, "",
+			pStlErrorPortCountersRsp->PortSelectMask[1],
+			pStlErrorPortCountersRsp->PortSelectMask[2],
+			pStlErrorPortCountersRsp->PortSelectMask[3]); p = 1;
+	} else if (pStlErrorPortCountersRsp->PortSelectMask[2]) {
+		PrintFunc(dest, "%*s Port Select Mask   0x%016"PRIx64" %016"PRIx64"\n",
+			indent, "",
+			pStlErrorPortCountersRsp->PortSelectMask[2],
+			pStlErrorPortCountersRsp->PortSelectMask[3]); p = 2;
+	} else {
+		PrintFunc(dest, "%*s Port Select Mask   0x%016"PRIx64"\n",
+			indent, "",
+			pStlErrorPortCountersRsp->PortSelectMask[3]); p = 3;
+	}
 	PrintFunc(dest, "%*s VL Select Mask     0x%08x\n",
 		indent, "",
 		pStlErrorPortCountersRsp->VLSelectMask);
@@ -508,29 +499,29 @@ void PrintStlErrorPortCountersRsp(PrintDest_t *dest, int indent, const STL_ERROR
 						indent+4, "", ePort->UncorrectableErrors);
 				PrintFunc(dest, "%*s   Link Downed             %10u\n",
 						indent+4, "", ePort->LinkDowned);
-				PrintFunc(dest, "%*s   Rcv Errors              %10llu\n",
+				PrintFunc(dest, "%*s   Rcv Errors              %10"PRIu64"\n",
 						indent+4, "", ePort->PortRcvErrors);
-				PrintFunc(dest, "%*s   Exc. Buffer Overrun     %10llu\n",
+				PrintFunc(dest, "%*s   Exc. Buffer Overrun     %10"PRIu64"\n",
 						indent+4, "", ePort->ExcessiveBufferOverruns);
-				PrintFunc(dest, "%*s   FM Config Errors        %10llu\n",
+				PrintFunc(dest, "%*s   FM Config Errors        %10"PRIu64"\n",
 						indent+4, "", ePort->FMConfigErrors);
 				PrintFunc(dest, "%*s   Link Error Recovery     %10u\n",
 						indent+4, "", ePort->LinkErrorRecovery);
-				PrintFunc(dest, "%*s   Local Link Integrity    %10llu\n",
+				PrintFunc(dest, "%*s   Local Link Integrity    %10"PRIu64"\n",
 						indent+4, "", ePort->LocalLinkIntegrityErrors);
-				PrintFunc(dest, "%*s   Rcv Rmt Phys. Errors    %10llu\n",
+				PrintFunc(dest, "%*s   Rcv Rmt Phys. Errors    %10"PRIu64"\n",
 						indent+4, "", ePort->PortRcvRemotePhysicalErrors);
 				PrintFunc(dest, "%*s    Security Errors: \n",
 						indent, "");
-				PrintFunc(dest, "%*s   Xmit Constraint Errors  %10llu\n",
+				PrintFunc(dest, "%*s   Xmit Constraint Errors  %10"PRIu64"\n",
 						indent+4, "", ePort->PortXmitConstraintErrors);
-				PrintFunc(dest, "%*s   Rcv Constraint Errors   %10llu\n",
+				PrintFunc(dest, "%*s   Rcv Constraint Errors   %10"PRIu64"\n",
 						indent+4, "", ePort->PortRcvConstraintErrors);
 				PrintFunc(dest, "%*s    Routing and Other Errors: \n",
 						indent, "");
-				PrintFunc(dest, "%*s   Rcv Switch Relay        %10llu\n",
+				PrintFunc(dest, "%*s   Rcv Switch Relay        %10"PRIu64"\n",
 						indent+4, "", ePort->PortRcvSwitchRelayErrors);
-				PrintFunc(dest, "%*s   Xmit Discards           %10llu\n",
+				PrintFunc(dest, "%*s   Xmit Discards           %10"PRIu64"\n",
 						indent+4, "", ePort->PortXmitDiscards);
 				/* Count the bits in the mask and process the VLs in succession */
 				/* Assume that even though VL numbers may not be contiguous, that entries */
@@ -540,7 +531,7 @@ void PrintStlErrorPortCountersRsp(PrintDest_t *dest, int indent, const STL_ERROR
 					if (vlSelectMask & (uint32)1) {
 						PrintFunc(dest, "%*s     VL Number     %d\n",
 							indent+4, "", ii);
-						PrintFunc(dest, "%*s     Xmit Discards         %10llu\n",
+						PrintFunc(dest, "%*s     Xmit Discards         %10"PRIu64"\n",
 							indent+8, "", ePort->VLs[vlCount++].PortVLXmitDiscards);
 					}
 				}
@@ -564,32 +555,29 @@ void PrintStlErrorInfoRsp(PrintDest_t *dest, int indent, const STL_ERROR_INFO_RS
 	char *pBuf;
 	char displayBuf[256];
 
-    if (pStlErrorInfoRsp->PortSelectMask[0]) {
-    	PrintFunc(dest, "%*s Port Select Mask   0x%016llx %016llx %016llx %016llx\n",
-    		indent, "",
-    		pStlErrorInfoRsp->PortSelectMask[0],
-    		pStlErrorInfoRsp->PortSelectMask[1],
-    		pStlErrorInfoRsp->PortSelectMask[2],
-    		pStlErrorInfoRsp->PortSelectMask[3]);
-    }
-    else if (pStlErrorInfoRsp->PortSelectMask[1]) {
-    	PrintFunc(dest, "%*s Port Select Mask   0x%016llx %016llx %016llx\n",
-    		indent, "",
-    		pStlErrorInfoRsp->PortSelectMask[1],
-    		pStlErrorInfoRsp->PortSelectMask[2],
-    		pStlErrorInfoRsp->PortSelectMask[3]);
-    }
-    else if (pStlErrorInfoRsp->PortSelectMask[2]) {
-    	PrintFunc(dest, "%*s Port Select Mask   0x%016llx %016llx\n",
-    		indent, "",
-    		pStlErrorInfoRsp->PortSelectMask[2],
-    		pStlErrorInfoRsp->PortSelectMask[3]);
-    }
-    else {
-    	PrintFunc(dest, "%*s Port Select Mask   0x%016llx\n",
-    		indent, "",
-    		pStlErrorInfoRsp->PortSelectMask[3]);
-    }
+	if (pStlErrorInfoRsp->PortSelectMask[0]) {
+		PrintFunc(dest, "%*s Port Select Mask   0x%016"PRIx64" %016"PRIx64" %016"PRIx64" %016"PRIx64"\n",
+			indent, "",
+			pStlErrorInfoRsp->PortSelectMask[0],
+			pStlErrorInfoRsp->PortSelectMask[1],
+			pStlErrorInfoRsp->PortSelectMask[2],
+			pStlErrorInfoRsp->PortSelectMask[3]);
+	} else if (pStlErrorInfoRsp->PortSelectMask[1]) {
+		PrintFunc(dest, "%*s Port Select Mask   0x%016"PRIx64" %016"PRIx64" %016"PRIx64"\n",
+			indent, "",
+			pStlErrorInfoRsp->PortSelectMask[1],
+			pStlErrorInfoRsp->PortSelectMask[2],
+			pStlErrorInfoRsp->PortSelectMask[3]);
+	} else if (pStlErrorInfoRsp->PortSelectMask[2]) {
+		PrintFunc(dest, "%*s Port Select Mask   0x%016"PRIx64" %016"PRIx64"\n",
+			indent, "",
+			pStlErrorInfoRsp->PortSelectMask[2],
+			pStlErrorInfoRsp->PortSelectMask[3]);
+	} else {
+		PrintFunc(dest, "%*s Port Select Mask   0x%016"PRIx64"\n",
+			indent, "",
+			pStlErrorInfoRsp->PortSelectMask[3]);
+	}
 	PrintFunc(dest, "%*s Error Select Mask  0x%08x\n",
 		indent, "",
 		pStlErrorInfoRsp->ErrorInfoSelectMask.AsReg32);
@@ -600,7 +588,7 @@ void PrintStlErrorInfoRsp(PrintDest_t *dest, int indent, const STL_ERROR_INFO_RS
 	for (i = 3; i >= 0; i--) {
 		for (j = 0, k = 0; j < 64; j++) {
 			if ((pStlErrorInfoRsp->PortSelectMask[i] >> j) & (uint64)1) {
- 				PrintFunc(dest, "%*s    Port Number     %u\n",
+				PrintFunc(dest, "%*s    Port Number     %u\n",
 					indent, "",
 					pStlErrorInfoRsp->Port[k].PortNumber);
 				if (pStlErrorInfoRsp->Port[k].UncorrectableErrorInfo.s.Status) {
@@ -625,9 +613,9 @@ void PrintStlErrorInfoRsp(PrintDest_t *dest, int indent, const STL_ERROR_INFO_RS
 						PortRcvErrorInfoToText(pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.s.ErrorCode),
 						pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.s.ErrorCode);
 
-					if ((pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.s.ErrorCode == RCVERRORINFO1 ) ||
-					    ((pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.s.ErrorCode >= RCVERRORINFO4) &&
-					    (pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.s.ErrorCode <= RCVERRORINFO12))) {
+					if ((pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.s.ErrorCode == RCVERRORINFO1) ||
+						((pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.s.ErrorCode >= RCVERRORINFO4) &&
+							(pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.s.ErrorCode <= RCVERRORINFO12))) {
 						pBuf = displayBuf;
 						for (ii = 0, pChar = (uint8 *)pStlErrorInfoRsp->Port[k].PortRcvErrorInfo.ErrorInfo.EI1to12.PacketFlit1; ii < 8; ii++) {
 							sprintf(pBuf, "0x%02x ", *pChar++);
@@ -697,33 +685,33 @@ void PrintStlErrorInfoRsp(PrintDest_t *dest, int indent, const STL_ERROR_INFO_RS
 						FMConfigErrorInfoToText(pStlErrorInfoRsp->Port[k].FMConfigErrorInfo.s.ErrorCode),
 						pStlErrorInfoRsp->Port[k].FMConfigErrorInfo.s.ErrorCode);
 					switch (pStlErrorInfoRsp->Port[k].FMConfigErrorInfo.s.ErrorCode) {
-						case 0:
-						case 1:
-						case 2:
-							PrintFunc(dest, "%*s        VL:               %u\n",
-								indent+4, "",
-								pStlErrorInfoRsp->Port[k].FMConfigErrorInfo.ErrorInfo.EI0to2.VL);
-							break;
-						case 3:
-						case 4:
-						case 5:
-							PrintFunc(dest, "%*s        Distance:         %u\n",
-								indent+4, "",
-								pStlErrorInfoRsp->Port[k].FMConfigErrorInfo.ErrorInfo.EI3to5.Distance);
-							break;
-						case 6:
-							PrintFunc(dest, "%*s        Bad Flit Bits:    0x%010x\n",
-								indent+4, "",
-								pStlErrorInfoRsp->Port[k].FMConfigErrorInfo.ErrorInfo.EI6.BadFlitBits);
-							break;
-						case 7:
-							PrintFunc(dest, "%*s        SC:               %u\n",
-								indent+4, "",
-								pStlErrorInfoRsp->Port[k].FMConfigErrorInfo.ErrorInfo.EI7.SC);
-							break;
-						default:
-							/* bad error code */
-							break;
+					case 0:
+					case 1:
+					case 2:
+						PrintFunc(dest, "%*s        VL:               %u\n",
+							indent+4, "",
+							pStlErrorInfoRsp->Port[k].FMConfigErrorInfo.ErrorInfo.EI0to2.VL);
+						break;
+					case 3:
+					case 4:
+					case 5:
+						PrintFunc(dest, "%*s        Distance:         %u\n",
+							indent+4, "",
+							pStlErrorInfoRsp->Port[k].FMConfigErrorInfo.ErrorInfo.EI3to5.Distance);
+						break;
+					case 6:
+						PrintFunc(dest, "%*s        Bad Flit Bits:    0x%010x\n",
+							indent+4, "",
+							pStlErrorInfoRsp->Port[k].FMConfigErrorInfo.ErrorInfo.EI6.BadFlitBits);
+						break;
+					case 7:
+						PrintFunc(dest, "%*s        SC:               %u\n",
+							indent+4, "",
+							pStlErrorInfoRsp->Port[k].FMConfigErrorInfo.ErrorInfo.EI7.SC);
+						break;
+					default:
+						/* bad error code */
+						break;
 					}
 				} else {
 					PrintFunc(dest, "%*s    FM Config Error Info  %s\n",
@@ -739,27 +727,27 @@ void PrintStlErrorInfoRsp(PrintDest_t *dest, int indent, const STL_ERROR_INFO_RS
 						PortRcvSwitchRelayErrorInfoToText(pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.s.ErrorCode),
 						pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.s.ErrorCode);
 					switch (pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.s.ErrorCode) {
-						case 0:
-							PrintFunc(dest, "%*s        DLID:             0x%010x\n",
-								indent+4, "",
-								pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.ErrorInfo.EI0.DLID);
-							break;
-						case 2:
-							PrintFunc(dest, "%*s        Egress Port Num:  %u\n",
-								indent+4, "",
-								pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.ErrorInfo.EI2.EgressPortNum);
-							break;
-						case 3:
-							PrintFunc(dest, "%*s        Egress Port Num:  %u\n",
-								indent+4, "",
-								pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.ErrorInfo.EI3.EgressPortNum);
-							PrintFunc(dest, "%*s        SC:               %u\n",
-								indent+4, "",
-								pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.ErrorInfo.EI3.SC);
-							break;
-						default:
-							/* bad error code */
-							break;
+					case 0:
+						PrintFunc(dest, "%*s        DLID:             0x%010x\n",
+							indent+4, "",
+							pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.ErrorInfo.EI0.DLID);
+						break;
+					case 2:
+						PrintFunc(dest, "%*s        Egress Port Num:  %u\n",
+							indent+4, "",
+							pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.ErrorInfo.EI2.EgressPortNum);
+						break;
+					case 3:
+						PrintFunc(dest, "%*s        Egress Port Num:  %u\n",
+							indent+4, "",
+							pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.ErrorInfo.EI3.EgressPortNum);
+						PrintFunc(dest, "%*s        SC:               %u\n",
+							indent+4, "",
+							pStlErrorInfoRsp->Port[k].PortRcvSwitchRelayErrorInfo.ErrorInfo.EI3.SC);
+						break;
+					default:
+						/* bad error code */
+						break;
 					}
 				} else {
 					PrintFunc(dest, "%*s    Rcv Sw Rel Info       %s\n",

@@ -416,13 +416,13 @@ ib_recv_sma(IBhandle_t handle, Mai_t *mai, uint64_t timeout)
 	   // if too small we can't deal with it and must discard it
 	   if (buf) 
 		   free(buf); 
-	   IB_LOG_ERROR_FMT(__func__, "bad size: %u status: %s", len, iba_fstatus_msg(status)); 
+	   IB_LOG_ERROR_FMT(__func__, "bad size: %lu status: %s", (unsigned long)len, iba_fstatus_msg(status));
 	   goto retry; 
    }
 #ifdef DEBUG
    else if (len > sizeof(MAD_COMMON) + STL_MAD_PAYLOAD_SIZE) {
 	   // unexpected, we'll ignore the extra bytes of payload
-	   IB_LOG_INFO_FMT(__func__, "large size: %u status: %s", len, iba_fstatus_msg(status)); 
+	   IB_LOG_INFO_FMT(__func__, "large size: %lu status: %s", (unsigned long)len, iba_fstatus_msg(status));
    }
 #endif
    

@@ -42,13 +42,13 @@ void DisplayPm(Pm_t *pm)
 	uint64 size = 0;
 
 	vs_pool_size(&pm_pool, &size);
-	if (size > 0x280000000ull) { // if greater than 10GB show in GB
+	if (size > (uint64)0x280000000ull) { // if greater than 10GB show in GB
 		IB_LOG_INFO_FMT(__func__,
 			"PM Sweep: %u Memory Used: %"PRIu64" GB (%"PRIu64" MB)",
-			pm->NumSweeps, size/0x40000000ull, size/0x100000ull);
+			pm->NumSweeps, (uint64)(size/0x40000000ull), (uint64)(size/0x100000ull));
 	} else {
 		IB_LOG_INFO_FMT(__func__,
 			"PM Sweep: %u Memory Used: %"PRIu64" MB (%"PRIu64" KB)",
-			pm->NumSweeps, size/0x100000ull, size/0x400ull);
+			pm->NumSweeps, (uint64)(size/0x100000ull), (uint64)(size/0x400ull));
 	}
 }

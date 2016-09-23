@@ -1132,7 +1132,7 @@ sa_send_multi(Mai_t *maip, sa_cntxt_t *sa_cntxt ) {
         samad.header.u.tf.rmppRespTime = 0x1F; // no time provided
         samad.header.offset = sa_cntxt->attribLen / 8; // setup attribute offset for RMPP xfer
         if (saDebugRmpp) {
-            IB_LOG_INFINI_INFO_FMT( "sa_send_multi", 
+            IB_LOG_INFINI_INFO_FMT(__func__,
                    "Lid[0x%x] STARTING RMPP %s with TID="FMT_U64", CHKSUM[%d]",
                    (int)sa_cntxt->lid, sa_getMethodText((int)sa_cntxt->method), 
                    sa_cntxt->tid, sa_cntxt->chkSum);
@@ -1145,7 +1145,7 @@ sa_send_multi(Mai_t *maip, sa_cntxt_t *sa_cntxt ) {
          */
        if (saresp.header.rmppType == RMPP_TYPE_NOT && (saresp.header.u.tf.rmppFlags & RMPP_FLAGS_ACTIVE)) {
             // invalid RMPP type
-            IB_LOG_WARN_FMT( "sa_send_multi", 
+            IB_LOG_WARN_FMT(__func__,
                    "ABORTING - RMPP protocol error; RmppType is NULL in %s[%s] from Lid[%d] for TID="FMT_U64,
                    sa_getMethodText((int)sa_cntxt->method), sa_getAidName(maip->base.aid), (int)sa_cntxt->lid, sa_cntxt->tid);
 			INCREMENT_COUNTER(smCounterRmppStatusAbortBadType);
@@ -1156,12 +1156,12 @@ sa_send_multi(Mai_t *maip, sa_cntxt_t *sa_cntxt ) {
 			INCREMENT_COUNTER(smCounterRmppStatusAbortUnsupportedVersion);
             sendAbort = 1;
             samad.header.rmppStatus = RMPP_STATUS_ABORT_UNSUPPORTED_VERSION;
-            IB_LOG_WARN_FMT( "sa_send_multi", 
+            IB_LOG_WARN_FMT(__func__,
                    "ABORTING - Unsupported Version %d in %s[%s] request from LID[0x%x], TID["FMT_U64"]",
                    saresp.header.rmppVersion, sa_getMethodText((int)sa_cntxt->method), sa_getAidName(maip->base.aid), (int)sa_cntxt->lid, sa_cntxt->tid);
        } else if (!(saresp.header.u.tf.rmppFlags & RMPP_FLAGS_ACTIVE)) {
            /* invalid RMPP type */
-           IB_LOG_WARN_FMT( "sa_send_multi", 
+           IB_LOG_WARN_FMT(__func__,
                   "RMPP protocol error, RMPPFlags.Active bit is NULL in %s[%s] from LID[0x%x] for TID["FMT_U64"]",
                   sa_getMethodText((int)sa_cntxt->method), sa_getAidName(maip->base.aid), (int)sa_cntxt->lid, sa_cntxt->tid);
 			INCREMENT_COUNTER(smCounterRmppStatusAbortBadType);
@@ -1209,7 +1209,7 @@ sa_send_multi(Mai_t *maip, sa_cntxt_t *sa_cntxt ) {
                 if (saresp.header.segNum == sa_cntxt->segTotal) {
                     /* we are done */
                     if (saDebugRmpp) {
-                        IB_LOG_INFINI_INFO_FMT( "sa_send_multi",
+                        IB_LOG_INFINI_INFO_FMT(__func__,
                                " Received seg %d ACK, %s[%s] transaction from LID[0x%x], TID["FMT_U64"] has completed",
                                saresp.header.segNum, sa_getMethodText((int)sa_cntxt->method), sa_getAidName(sa_cntxt->mad.base.aid),
                                sa_cntxt->lid, sa_cntxt->tid);
@@ -1222,7 +1222,7 @@ sa_send_multi(Mai_t *maip, sa_cntxt_t *sa_cntxt ) {
                     if (saresp.header.u.tf.rmppRespTime && saresp.header.u.tf.rmppRespTime != 0x1f) {
                         sa_cntxt->RespTimeout = 4ull * ( (2*(1<<sm_config.sa_packet_lifetime_n2)) + (1<<saresp.header.u.tf.rmppRespTime) );
                         if (saDebugRmpp) {
-                            IB_LOG_INFINI_INFO_FMT( "sa_send_multi",
+                            IB_LOG_INFINI_INFO_FMT(__func__,
                                    "LID[0x%x] set RespTimeValue (%d usec) in ACK of seg %d for %s[%s], TID["FMT_U64"]",
                                    sa_cntxt->lid, (int)sa_cntxt->RespTimeout, saresp.header.segNum, 
                                    sa_getMethodText((int)sa_cntxt->method), sa_getAidName((int)sa_cntxt->mad.base.aid),
@@ -1234,17 +1234,17 @@ sa_send_multi(Mai_t *maip, sa_cntxt_t *sa_cntxt ) {
 		} else if (saresp.header.rmppType == RMPP_TYPE_STOP || saresp.header.rmppType == RMPP_TYPE_ABORT) {
             /* got a STOP or ABORT */
             if (saDebugPerf || saDebugRmpp) {
-                IB_LOG_INFINI_INFO_FMT( "sa_send_multi",
-                       "STOP/ABORT received for %s[%s] from LID[0x%x], status code = %x, for TID["FMT_U64"]",
-                       sa_getMethodText((int)sa_cntxt->method), sa_getAidName((int)maip->base.aid),
-                        sa_cntxt->lid, saresp.header.rmppStatus);
+                IB_LOG_INFINI_INFO_FMT(__func__,
+					"STOP/ABORT received for %s[%s] from LID[0x%x], status code = %x, for TID["FMT_U64"]",
+					sa_getMethodText((int)sa_cntxt->method), sa_getAidName((int)maip->base.aid),
+					sa_cntxt->lid, saresp.header.rmppStatus, sa_cntxt->tid);
             }
             sa_cntxt_release( sa_cntxt );
-            IB_EXIT( "sa_send_multi", VSTATUS_OK );
+            IB_EXIT(__func__, VSTATUS_OK );
             return VSTATUS_OK ;
 		} else {
             /* invalid RmppType received */
-            IB_LOG_WARN_FMT( "sa_send_multi",
+            IB_LOG_WARN_FMT(__func__,
                    "ABORT - Invalid rmppType %d received for %s[%s] from LID[0x%x] for TID["FMT_U64"]",
                    saresp.header.rmppType, sa_getMethodText((int)sa_cntxt->method), sa_getAidName((int)maip->base.aid),
                    sa_cntxt->lid, sa_cntxt->tid);
@@ -1277,7 +1277,7 @@ sa_send_multi(Mai_t *maip, sa_cntxt_t *sa_cntxt ) {
 			INCREMENT_COUNTER(smCounterSaRmppTxRetries);
 			sa_cntxt->NS = sa_cntxt->WF;            // reset Next packet segment to send
 			if (saDebugRmpp) {
-				IB_LOG_INFINI_INFO_FMT( "sa_send_multi",
+				IB_LOG_INFINI_INFO_FMT(__func__,
 				       "Timed out waiting for ACK of seg %d of %s[%s] from LID[0x%x], TID["FMT_U64"], retry #%d",
 				       (int)sa_cntxt->WL, sa_getMethodText((int)sa_cntxt->method), sa_getAidName((int)sa_cntxt->mad.base.aid),
 				       sa_cntxt->lid, sa_cntxt->tid, sa_cntxt->retries);
@@ -1290,7 +1290,7 @@ sa_send_multi(Mai_t *maip, sa_cntxt_t *sa_cntxt ) {
         if (saDebugPerf || saDebugRmpp) {
             vs_time_get (&tnow);
             delta = tnow-sa_cntxt->mad.intime;
-            IB_LOG_INFINI_INFO_FMT( "sa_send_multi", 
+            IB_LOG_INFINI_INFO_FMT(__func__,
                    "%s[%s] RMPP [CHKSUM=%d] TRANSACTION from LID[0x%x], TID["FMT_U64"] has completed in %d.%.3d seconds (%"CS64"d usecs)",
                    sa_getMethodText((int)sa_cntxt->method), sa_getAidName(sa_cntxt->mad.base.aid), 
                    sa_cntxt->chkSum, sa_cntxt->lid, sa_cntxt->tid,
@@ -1303,14 +1303,14 @@ sa_send_multi(Mai_t *maip, sa_cntxt_t *sa_cntxt ) {
                 chkSum += sa_cntxt->data[i];
             }
             if (chkSum != sa_cntxt->chkSum) {
-                IB_LOG_ERROR_FMT( "sa_send_multi", 
+                IB_LOG_ERROR_FMT(__func__,
                        "CHECKSUM FAILED [%d vs %d] for completeted %s[%s] RMPP TRANSACTION from LID[0x%x], TID["FMT_U64"]",
                        chkSum, sa_cntxt->chkSum, sa_getMethodText((int)sa_cntxt->method), sa_getAidName(sa_cntxt->mad.base.aid), 
                        sa_cntxt->lid, sa_cntxt->tid);
             }
         }
         if (releaseContext) sa_cntxt_release( sa_cntxt );
-		IB_EXIT( "sa_send_multi", VSTATUS_OK );
+		IB_EXIT(__func__, VSTATUS_OK );
 		return VSTATUS_OK ;
 	}
 
@@ -1401,12 +1401,12 @@ sa_send_multi(Mai_t *maip, sa_cntxt_t *sa_cntxt ) {
 		}
 
 		if (status != VSTATUS_OK) {
-            IB_LOG_ERROR_FMT( "sa_send_multi", 
+            IB_LOG_ERROR_FMT(__func__,
                    "mai_send error [%d] while processing %s[%s] request from LID[0x%x], TID["FMT_U64"]",
                    status, sa_getMethodText((int)sa_cntxt->method), sa_getAidName(maip->base.aid), 
                    sa_cntxt->lid, sa_cntxt->tid);
             if (releaseContext) sa_cntxt_release( sa_cntxt );
-			IB_EXIT( "sa_send_multi", VSTATUS_OK );
+			IB_EXIT(__func__, VSTATUS_OK );
 			return VSTATUS_OK ;
 		}
 	}
@@ -1424,10 +1424,10 @@ sa_send_multi(Mai_t *maip, sa_cntxt_t *sa_cntxt ) {
 		BSWAPCOPY_STL_SA_MAD(&samad, (STL_SA_MAD*)maip->data, STL_SA_DATA_LEN);
 
 		if ((status = mai_send(fd, maip)) != VSTATUS_OK)
-            IB_LOG_ERROR_FMT( "sa_send_multi", 
-                   "error[%d] from mai_send while sending ABORT of [%s] request to LID[0x%x], TID["FMT_U64"]",
-                   status, sa_getMethodText((int)sa_cntxt->method), sa_getAidName(maip->base.aid), 
-                   sa_cntxt->lid, maip->base.tid);
+            IB_LOG_ERROR_FMT(__func__,
+				"error[%d] from mai_send while sending ABORT of %s[%s] request to LID[0x%x], TID["FMT_U64"]",
+				status, sa_getMethodText((int)sa_cntxt->method), sa_getAidName(maip->base.aid),
+				sa_cntxt->lid, maip->base.tid);
         /*
          * We are done with this RMPP xfer.  Release the context here if 
          * in flight transaction (maip not NULL) or let sa_cntxt_age do it 

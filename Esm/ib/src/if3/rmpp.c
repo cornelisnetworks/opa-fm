@@ -79,7 +79,7 @@ extern void if3_set_rmpp_minfo(ManagerInfo_t *mi);
         info->rmpp_cntxt_nfree++;        \
 		SET_RMPP_PEAK_COUNTER(rmppMaxContextsFree, info->rmpp_cntxt_nfree); \
     } else {                      \
-		IB_LOG_ERROR_FMT(__func__, "rmpp_cntxt_nfree already at max:", info->rmpp_cntxt_nfree);\
+		IB_LOG_ERROR_FMT(__func__, "rmpp_cntxt_nfree already at max: %d", info->rmpp_cntxt_nfree);\
     }\
 }
 
@@ -96,7 +96,7 @@ extern void if3_set_rmpp_minfo(ManagerInfo_t *mi);
         info->rmpp_cntxt_nalloc++;        \
 		SET_RMPP_PEAK_COUNTER(rmppMaxContextsInUse, info->rmpp_cntxt_nalloc); \
     } else {                      \
-		IB_LOG_ERROR_FMT(__func__, "rmpp_cntxt_nalloc already at max:", info->rmpp_cntxt_nalloc);\
+		IB_LOG_ERROR_FMT(__func__, "rmpp_cntxt_nalloc already at max: %d", info->rmpp_cntxt_nalloc);\
     }\
 }
 
@@ -329,8 +329,10 @@ rmpp_cntxt_free_data(rmpp_cntxt_t *cntxt)
          vs_pool_free(info->rmpp_pool, cntxt->data); 
       } else {
          IB_LOG_WARN_FMT(__func__, 
-                         "Free failed, invalid pool received in %s[%s] request from LID [0x%x], TID ["FMT_U64"]!", 
-                         info->rmpp_get_method_text((int)cntxt->method), cntxt->lid, cntxt->tid); 
+             "Free failed, invalid pool received in %s[%s] request from LID [0x%x], TID ["FMT_U64"]!",
+             info->rmpp_get_method_text((int)cntxt->method),
+             info->rmpp_get_aid_name((int)cntxt->mad.base.mclass, (int)cntxt->mad.base.aid),
+             cntxt->lid, cntxt->tid);
          IB_EXIT(__func__, VSTATUS_BAD); 
          return (VSTATUS_BAD);
       }
@@ -622,7 +624,7 @@ rmpp_send_single(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
    } else if (rmpp_cntxt->len != 0) {
       if (rmpp_cntxt->len > sizeof(mad.data)) {
          // caller should have checked this, just to be safe
-         IB_LOG_ERROR_FMT(__func__, "mad.data=%d len=%d LEN=%d", sizeof(mad.data), rmpp_cntxt->len, IB_SA_DATA_LEN); 
+         IB_LOG_ERROR_FMT(__func__, "mad.data=%"PRISZT" len=%d LEN=%d", sizeof(mad.data), rmpp_cntxt->len, IB_SA_DATA_LEN); 
          IB_EXIT(__func__, VSTATUS_OK); 
          return (VSTATUS_OK);
       }
@@ -795,9 +797,8 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
                 /* silently discard the packet */
                 if (if3DebugRmpp) {
                     IB_LOG_INFINI_INFO_FMT(__func__,
-                       "rmpp_send_multi", "LID[0x%x] sent ACK for seg %d which is less than Window First (%d) for TID: "FMT_U64, 
-                       rmpp_cntxt->lid, (int)resp.header.segNum, (int)rmpp_cntxt->WF, 
-                       rmpp_cntxt->tid);
+                        "LID[0x%x] sent ACK for seg %d which is less than Window First (%d) for TID: "FMT_U64,
+                        rmpp_cntxt->lid, (int)resp.header.segNum, (int)rmpp_cntxt->WF, rmpp_cntxt->tid);
                 }
             } else if (resp.header.segNum > rmpp_cntxt->WL) {
                 /* ABORT the transaction with S2B status */
@@ -805,9 +806,8 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
                 sendAbort = 1; 
                 mad.header.rmppStatus = RMPP_STATUS_ABORT_SEGNUM_TOOBIG; 
                 IB_LOG_INFINI_INFO_FMT(__func__,
-                   "rmpp_send_multi", "ABORT - LID[0x%x] sent invalid seg %d in ACK, should be <= than %d, ABORTING TID:"FMT_U64, 
-                   rmpp_cntxt->lid, (int)resp.header.segNum, (int)rmpp_cntxt->WL, 
-                   rmpp_cntxt->tid);
+                    "ABORT - LID[0x%x] sent invalid seg %d in ACK, should be <= than %d, ABORTING TID:"FMT_U64,
+                    rmpp_cntxt->lid, (int)resp.header.segNum, (int)rmpp_cntxt->WL, rmpp_cntxt->tid);
             } else if (resp.header.length < rmpp_cntxt->WL /*|| resp.header.length > rmpp_cntxt->segTotal*/) {
                 /* length is NewWindowLast (NWL) in ACK packet */
                 /* ABORT transaction with W2S status */
@@ -820,8 +820,8 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
                     mad.header.rmppStatus = RMPP_STATUS_ABORT_UNSPECIFIED;
                 }
                 IB_LOG_INFINI_INFO_FMT(__func__,
-                   "rmpp_send_multi", "ABORT - LID[0x%x] sent invalid NWL %d in ACK, should be >=%d and <=%d, ABORTING TID:"FMT_U64, 
-                   rmpp_cntxt->lid, (int)resp.header.length, (int)rmpp_cntxt->WL, rmpp_cntxt->segTotal, rmpp_cntxt->tid);
+                    "ABORT - LID[0x%x] sent invalid NWL %d in ACK, should be >=%d and <=%d, ABORTING TID:"FMT_U64,
+                    rmpp_cntxt->lid, (int)resp.header.length, (int)rmpp_cntxt->WL, rmpp_cntxt->segTotal, rmpp_cntxt->tid);
             } else if (resp.header.segNum >= rmpp_cntxt->last_ack) {
                 rmpp_cntxt->last_ack = resp.header.segNum; 
                 rmpp_cntxt->retries = 0;  /* reset the retry count  after receipt of ack */
@@ -854,10 +854,11 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
         } else if (resp.header.rmppType == RMPP_TYPE_STOP || resp.header.rmppType == RMPP_TYPE_ABORT) {
             /* got a STOP or ABORT */
             if (if3DebugRmpp) {
-                IB_LOG_INFINI_INFO_FMT(__func__, 
-                                       "STOP/ABORT received for %s[%s] from LID[0x%x], status code = %x, for TID["FMT_U64"]", 
-                                       info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), 
-                                       rmpp_cntxt->lid, resp.header.rmppStatus);
+                IB_LOG_INFINI_INFO_FMT(__func__,
+                    "STOP/ABORT received for %s[%s] from LID[0x%x], status code = %x, for TID["FMT_U64"]",
+                    info->rmpp_get_method_text((int)rmpp_cntxt->method),
+                    info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid),
+                    rmpp_cntxt->lid, resp.header.rmppStatus, rmpp_cntxt->tid);
             }
             rmpp_cntxt_release(rmpp_cntxt); 
             IB_EXIT(__func__, VSTATUS_OK); 
@@ -882,8 +883,10 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
         if (rmpp_cntxt->retries > rmppMaxRetries) {
             if (if3DebugRmpp) {
                 IB_LOG_INFINI_INFO_FMT(__func__,
-                   "rmpp_send_multi", "ABORT - MAX RETRIES EXHAUSTED; no ACK for seg %d of %s[%s] request from LID[0x%X], TID = "FMT_U64, 
-                   (int)rmpp_cntxt->WL, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)rmpp_cntxt->mad.base.mclass, (int)rmpp_cntxt->mad.base.aid), rmpp_cntxt->lid, rmpp_cntxt->tid);
+                    "ABORT - MAX RETRIES EXHAUSTED; no ACK for seg %d of %s[%s] request from LID[0x%X], TID["FMT_U64"]",
+                    (int)rmpp_cntxt->WL, info->rmpp_get_method_text((int)rmpp_cntxt->method),
+                    info->rmpp_get_aid_name((int)rmpp_cntxt->mad.base.mclass, (int)rmpp_cntxt->mad.base.aid),
+                    rmpp_cntxt->lid, rmpp_cntxt->tid);
             }
             /* ABORT transaction with too many retries status */
             //INCREMENT_COUNTER(smCounterRmppStatusAbortTooManyRetries);
@@ -1005,9 +1008,8 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
                              sa_data_size); 
         
         if (if3DebugRmpp) {
-            IB_LOG_INFINI_INFO_FMT(__func__,
-               "rmpp_send_multi", "sending fragment %d of %d segments, len %d to LID[0x%x] for TID = "FMT_U64, 
-               (int)mad.header.segNum, rmpp_cntxt->segTotal, (int)mad.header.length, (int)rmpp_cntxt->lid, 
+            IB_LOG_INFINI_INFO_FMT(__func__, "sending fragment %d of %d segments, len %d to LID[0x%x] for TID["FMT_U64"]",
+               (int)mad.header.segNum, rmpp_cntxt->segTotal, (int)mad.header.length, (int)rmpp_cntxt->lid,
                rmpp_cntxt->tid);
         }
         /* increment NS */
@@ -1043,10 +1045,11 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
         (void)BSWAPCOPY_STL_SA_MAD_HEADER((STL_SA_MAD_HEADER *)&mad, (STL_SA_MAD_HEADER *)maip->data);
         
         if ((status = mai_send(rmpp_cntxt->sendFd, maip)) != VSTATUS_OK) 
-            IB_LOG_ERROR_FMT(__func__, 
-                             "error[%d] from mai_send while sending ABORT of [%s] request to LID[0x%x], TID["FMT_U64"]", 
-                             status, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), 
-                             rmpp_cntxt->lid, maip->base.tid); 
+            IB_LOG_ERROR_FMT(__func__,
+                "error[%d] from mai_send while sending ABORT of %s[%s] request to LID[0x%x], TID["FMT_U64"]",
+                status, info->rmpp_get_method_text((int)rmpp_cntxt->method),
+                info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid),
+                rmpp_cntxt->lid, maip->base.tid);
         /*
            * We are done with this RMPP xfer.  Release the context here if 
            * in flight transaction (maip not NULL) or let sa_cntxt_age do it 
@@ -1848,7 +1851,7 @@ rmpp_create_filters(rmpp_user_info_t *info, IBhandle_t *fd, IBhandle_t *fh_req_g
    
    // create the filters that would allow us to recieve RMPP related requests on the handle
    if (*fd <= 0)
-       IB_LOG_ERROR_FMT(__func__, "invalid handle %d", *fd );
+       IB_LOG_ERROR_FMT(__func__, "invalid handle %"PRIdN, *fd );
    else {
       // creation of filters is optional; these filters are not necessary
       // for threads not interested in receiving MAD requests (i.e., FE) 
@@ -2897,11 +2900,11 @@ rmpp_receive_response(int usrId, ManagerInfo_t *mi, Mai_t *maip, uint8_t *buffer
     if (mi->cpi.respTimeValue == 0) {
         timeout = RC_MAD_TIMEOUT; 
         if (if3DebugRmpp) 
-            IB_LOG_INFINI_INFO_FMT(__func__, "Using default RC_MAD_TIMEOUT = %d", timeout);
+            IB_LOG_INFINI_INFO_FMT(__func__, "Using default RC_MAD_TIMEOUT = %"PRId64, timeout);
     } else {
         timeout = ((1 << mi->cpi.respTimeValue) * 4ull) + mi->SubnetTO; 
         if (if3DebugRmpp) {
-            IB_LOG_INFINI_INFO_FMT(__func__, "used RespTimeValue=%d, SubnetTO=%d to calculate timeout=%"CS64u, 
+            IB_LOG_INFINI_INFO_FMT(__func__, "used RespTimeValue=%d, SubnetTO=%d to calculate timeout=%"PRId64,
                                    (int)mi->cpi.respTimeValue, (int)mi->SubnetTO, timeout);
         }
     }
@@ -3041,9 +3044,9 @@ rmpp_receive_response(int usrId, ManagerInfo_t *mi, Mai_t *maip, uint8_t *buffer
 
                 rmpp_cntxt_release(rmpp_cntxt);
             } else {
-                IB_LOG_ERROR_FMT(__func__, "Invalid RMPP cntxt_get return code:", cntxGetStatus);
+                IB_LOG_ERROR_FMT(__func__, "Invalid RMPP cntxt_get return code: %s",
+                    rmpp_context_get_totext(cntxGetStatus));
             }
-            
         }
     }
     

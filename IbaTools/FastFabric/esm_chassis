@@ -1,0 +1,11 @@
+# [ICS VERSION STRING: unknown]
+# This file lists the TCP/IP names of the Intel Internally Managed
+# Switches running an Embedded Subnet Manager (ESM) in the cluster.
+#
+# If Ethernet is being used for the management network, specify
+# the name corresponding to the ethernet IP address of the chassis.
+# This file will be used by FastFabric to indicate which chassis should be
+# operated on by various fastfabric menus and CLI commands.
+#
+# The opagenesmchassis tool can be used to query the SM and generate a list of
+# Internally Managed switches running ESMs.

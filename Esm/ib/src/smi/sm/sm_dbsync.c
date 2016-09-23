@@ -585,10 +585,10 @@ static Status_t processSMDBSyncGetSet(Mai_t *maip, uint8_t *msgbuf, uint32_t len
             (void)BSWAPCOPY_SM_DBSYNC_DATA(&smrecp->dbsync, (SMDBSyncp)msgbuf);
             /* send the sync capability of standby SM */
 			status = dbSyncMngrReply (dbsyncfd_if3, maip, msgbuf, SMDBSYNC_NSIZE, VSTATUS_OK);
-			IB_LOG_INFO_FMT(__func__, 
-							"sent sync settings of [version %lu, informTimeLastSync=%"CS64"ld, groupTimeLastSync=%lu, serviceTimeLastSync=%lu]",
-							smrecp->dbsync.version, smrecp->dbsync.informTimeLastSync, smrecp->dbsync.groupTimeLastSync, 
-							smrecp->dbsync.serviceTimeLastSync);
+			IB_LOG_INFO_FMT(__func__,
+				"sent sync settings of [version %u, informTimeLastSync=%u, groupTimeLastSync=%u, serviceTimeLastSync=%u]",
+				smrecp->dbsync.version, smrecp->dbsync.informTimeLastSync, smrecp->dbsync.groupTimeLastSync,
+				smrecp->dbsync.serviceTimeLastSync);
 		} else {
             /* return error */
             (void) dbSyncMngrReply (dbsyncfd_if3, maip, msgbuf, 0, VSTATUS_DROP);
@@ -616,9 +616,9 @@ static Status_t processSMDBSyncGetSet(Mai_t *maip, uint8_t *msgbuf, uint32_t len
             /* send the sync capability of standby SM */
                 status = dbSyncMngrReply (dbsyncfd_if3, maip, msgbuf, SMDBSYNC_CCC_NSIZE, VSTATUS_OK);
                 IB_LOG_INFO_FMT(__func__,
-                        "sent sync settings of [version %lu, informTimeLastSync=%"CS64"ld, groupTimeLastSync=%lu, serviceTimeLastSync=%lu]",
-                        smrecp->dbsync.version, smrecp->dbsync.informTimeLastSync, smrecp->dbsync.groupTimeLastSync, 
-                        smrecp->dbsync.serviceTimeLastSync);
+					"sent sync settings of [version %u, informTimeLastSync=%u, groupTimeLastSync=%u, serviceTimeLastSync=%u]",
+					smrecp->dbsync.version, smrecp->dbsync.informTimeLastSync, smrecp->dbsync.groupTimeLastSync,
+					smrecp->dbsync.serviceTimeLastSync);
         } else {
             /* return error */
             (void) dbSyncMngrReply (dbsyncfd_if3, maip, msgbuf, 0, VSTATUS_DROP);
@@ -638,10 +638,10 @@ static Status_t processSMDBSyncGetSet(Mai_t *maip, uint8_t *msgbuf, uint32_t len
             (void) dbSyncMngrReply (dbsyncfd_if3, maip, msgbuf, 0, VSTATUS_DROP);
         } else {
             (void)BSWAPCOPY_SM_DBSYNC_DATA((SMDBSyncp)msgbuf, &smSyncCap);
-            IB_LOG_INFO_FMT(__func__, 
-                        "Got sync settings of [version %lu, INFORM=%lu, GROUP=%lu, SERVICE=%lu]",
-                        smSyncCap.version, smSyncCap.informTimeLastSync, smSyncCap.groupTimeLastSync, 
-                        smSyncCap.serviceTimeLastSync);
+            IB_LOG_INFO_FMT(__func__,
+				"Got sync settings of [version %u, INFORM=%u, GROUP=%u, SERVICE=%u]",
+				smSyncCap.version, smSyncCap.informTimeLastSync, smSyncCap.groupTimeLastSync,
+				smSyncCap.serviceTimeLastSync);
                 /* update our SM's sync capability and settings in SM table */
                 if ((status = sm_dbsync_upSmDbsync(reckey, &smSyncCap)) != VSTATUS_OK) {
                     IB_LOG_WARN_FMT(__func__,
@@ -680,12 +680,18 @@ static Status_t processSMDBSyncGetSet(Mai_t *maip, uint8_t *msgbuf, uint32_t len
 				}
 			}
 			else if (syncFile.type == DBSYNC_PM_HIST_IMAGE) {
+#if CPU_LE
+				// Process STH files only on LE CPUs
 				if (putPMSweepImageData(syncFile.name, msgbuf + syncFile.length, syncFile.size) < 0) {
 					(void) dbSyncMngrReply (dbsyncfd_if3, maip, msgbuf, 0, VSTATUS_DROP);
 				} else {
 					/* return positive status */
 					(void)dbSyncMngrReply (dbsyncfd_if3, maip, msgbuf, 0, VSTATUS_OK);
 				}
+#else
+				/* Do not process DBSYNC_PM_HIST_IMAGE on BE CPUs, but return positive status */
+				(void)dbSyncMngrReply (dbsyncfd_if3, maip, msgbuf, 0, VSTATUS_OK);
+#endif	// End of #if CPU_LE
 			}
 			/* handle other file types here in the future */
 		}
@@ -878,9 +884,9 @@ static Status_t processInformSync(Mai_t *maip, uint8_t *msgbuf, uint32_t reclen)
         IB_EXIT(__func__, VSTATUS_NXIO);
         return VSTATUS_NXIO;
     }
-    IB_LOG_INFO_FMT(__func__, 
-           "Processing sync of INFORM records with (%d) bytes of data (%d records) \n", 
-           reclen, reclen / (sizeof(STL_INFORM_INFO_RECORD) + sizeof(skey)));
+    IB_LOG_INFO_FMT(__func__,
+		"Processing sync of INFORM records with (%d) bytes of data (%d records) \n",
+		reclen, (int)(reclen / (sizeof(STL_INFORM_INFO_RECORD) + sizeof(skey))));
     BSWAPCOPY_SM_DBSYNC_RECORD_CNT((uint32_t*)&msgbuf[bufidx],&numRecs);
     bufidx += sizeof(numRecs);
     if (maip->base.amod == DBSYNC_AMOD_SET) {
@@ -1077,9 +1083,9 @@ static Status_t dbsync_setSMDBGroup(SMSyncReq_t *syncReqp) {
 			grpSync.filler = 0;
             /* make sure we're not over running the out buf */
             if ( ((buff+sizeof(McGroupSync_t)) - msgbuf) > buflen) {
-                IB_LOG_WARN_FMT(__func__, 
-                        "size of group records sync buffer (%d) larger than output buffer(%d)! Increase subnet size",
-                        (buff-msgbuf), buflen);
+                IB_LOG_WARN_FMT(__func__,
+					"size of group records sync buffer (%d) larger than output buffer(%d)! Increase subnet size",
+					(int)(buff-msgbuf), buflen);
                 status = VSTATUS_NOMEM;
                 vs_unlock(&sm_McGroups_lock);
                 IB_EXIT(__func__, status);
@@ -1097,9 +1103,9 @@ static Status_t dbsync_setSMDBGroup(SMSyncReq_t *syncReqp) {
                 memcpy((void *)&membSync.member, (void *)&mcmp->record, sizeof(STL_MCMEMBER_RECORD));
                 /* make sure we're not over running the out buf */
                 if ( ((buff+sizeof(STL_MCMEMBER_SYNCDB)) - msgbuf) > buflen) {
-                    IB_LOG_WARN_FMT(__func__, 
-                            "size of group records sync buffer (%d) larger than output buffer(%d)! Increase subnet size",
-                            (buff-msgbuf), buflen);
+                    IB_LOG_WARN_FMT(__func__,
+						"size of group records sync buffer (%d) larger than output buffer(%d)! Increase subnet size",
+						(int)(buff-msgbuf), buflen);
                     status = VSTATUS_NOMEM;
                     vs_unlock(&sm_McGroups_lock);
                     IB_EXIT(__func__, status);
@@ -1346,7 +1352,8 @@ static Status_t processGroupSync(Mai_t *maip, uint8_t *msgbuf, uint32_t reclen) 
         			for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
             			if ((PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey) == PKEY_VALUE(mcGroup->pKey)) &&
                 			(smVFValidateMcDefaultGroup(vf, vfmGid) == VSTATUS_OK)) {
-                			bitset_set(&mcGroup->vfMembers, vf);
+                			uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
+                			bitset_set(&mcGroup->vfMembers, vfIdx);
             			}
         			}
 				}
@@ -1422,7 +1429,8 @@ static Status_t processGroupSync(Mai_t *maip, uint8_t *msgbuf, uint32_t reclen) 
                     for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
                         if ((PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey) == PKEY_VALUE(mcGroup->pKey)) &&
                             (smVFValidateMcDefaultGroup(vf, vfmGid) == VSTATUS_OK)) {
-                            bitset_set(&mcGroup->vfMembers, vf);
+                            uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
+                            bitset_set(&mcGroup->vfMembers, vfIdx);
                         }
                     }
                 }
@@ -1642,9 +1650,9 @@ static Status_t processServiceSync(Mai_t *maip, uint8_t *msgbuf, uint32_t reclen
         IB_EXIT(__func__, VSTATUS_NXIO);
         return VSTATUS_NXIO;
     }
-    IB_LOG_INFO_FMT(__func__, 
-           "Processing sync of SERVICE records with (%d) bytes of data (%d records)\n", 
-           reclen, reclen/sizeof(STL_SERVICE_RECORD));
+    IB_LOG_INFO_FMT(__func__,
+		"Processing sync of SERVICE records with (%d) bytes of data (%d records)\n",
+		reclen, (int)(reclen/sizeof(STL_SERVICE_RECORD)));
     BSWAPCOPY_SM_DBSYNC_RECORD_CNT((uint32_t*)&msgbuf[bufidx],&numRecs);
     bufidx += sizeof(numRecs);
     if (maip->base.amod == DBSYNC_AMOD_SET) {
@@ -1888,8 +1896,9 @@ static Status_t processMCRootSync(Mai_t *maip, uint8_t *msgbuf, uint32_t reclen)
     IB_ENTER(__func__, maip, 0, 0, 0);
 
 	if (reclen > 0 && ((reclen % sizeof(uint64_t)) != 0)) {
-        IB_LOG_ERROR_FMT(__func__, "Expecting %d bytes of data, received %d bytes instead", 
-                sizeof(uint64_t), reclen);
+        IB_LOG_ERROR_FMT(__func__,
+			"Expecting %"PRISZT" bytes of data, received %d bytes instead",
+			sizeof(uint64_t), reclen);
         (void) dbSyncMngrReply (dbsyncfd_if3, maip, msgbuf, 0, VSTATUS_DROP);
         IB_EXIT(__func__, VSTATUS_NXIO);
         return VSTATUS_NXIO;
@@ -2244,7 +2253,7 @@ void sm_dbsync(uint32_t argc, uint8_t ** argv) {
             /* set for 3 retry on 1/3 second interval */
             (void)if3_timeout_retry(dbsyncfd_if3, if3timeout_retry_time, if3_timeout_retry_count);
             if (smDebugPerf) 
-                IB_LOG_INFINI_INFO_FMT(__func__, "dbsyncfd_if3 = %d", dbsyncfd_if3);
+                IB_LOG_INFINI_INFO_FMT(__func__, "dbsyncfd_if3 = %"PRIdN, dbsyncfd_if3);
         }
     }
 

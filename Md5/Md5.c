@@ -28,10 +28,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ** END_ICS_COPYRIGHT7   ****************************************/
 
 /*!
- @file    $Source: /cvs/ics/Md5/Md5.c,v $
- $Name: ALL_EMB_ATOM_ALL_10_1-BRANCH_10_1_0_0_145 $
- $Revision: 1.4 $
- $Date: 2016/04/06 10:49:38 $
+ @file    $Source$
+ $Name$
+ $Revision$
+ $Date$
  @brief   Md5 API
  */
 

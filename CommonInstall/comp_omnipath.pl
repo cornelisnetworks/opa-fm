@@ -75,7 +75,7 @@ sub install_generic_mpi
     #    rpm_install("$srcdir/OtherMPIs", "user", "$mpifullname");
     #}
     check_dir ("/opt/iba");
-    copy_systool_file ("$srcdir/comp.pl", "/opt/opa/.comp_$mpifullname.pl");
+    copy_systool_file ("$srcdir/comp.pl", "/usr/lib/opa/.comp_$mpifullname.pl");
     
     $ComponentWasInstalled{$mpifullname} = 1;
 }
@@ -86,7 +86,7 @@ sub installed_generic_mpi
     my $compiler = $_[1];
     my $mpifullname = "$mpiname"."_$compiler"."_hfi";
 
-    return ( -e "$ROOT/opt/opa/.comp_$mpifullname.pl"
+    return ( -e "$ROOT/usr/lib/opa/.comp_$mpifullname.pl"
 		   	|| rpm_is_installed ($mpifullname, "user") );
 }
 
@@ -126,8 +126,8 @@ sub uninstall_generic_mpi
 	}
     }
     
-    system ("rm -rf $ROOT/opt/opa/.comp_$mpifullname.pl");
-    system ("rmdir $ROOT/opt/opa 2>/dev/null"); # remove only if empty
+    system ("rm -rf $ROOT/usr/lib/opa/.comp_$mpifullname.pl");
+    system ("rmdir $ROOT/usr/lib/opa 2>/dev/null"); # remove only if empty
     $ComponentWasInstalled{$mpifullname} = 0;
 }
 

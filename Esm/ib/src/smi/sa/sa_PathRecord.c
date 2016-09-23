@@ -142,8 +142,9 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 //  Verify the size of the data received for the request
 //
 	if ( maip->datasize-sizeof(SA_MAD_HDR) < sizeof(IB_PATH_RECORD) ) {
-		IB_LOG_ERROR_FMT("sa_PathRecord",
-						 "invalid MAD length; size of IB_PATH_RECORD[%lu], datasize[%d]", sizeof(IB_PATH_RECORD), maip->datasize-sizeof(SA_MAD_HDR));
+		IB_LOG_ERROR_FMT(__func__,
+			"invalid MAD length; size of IB_PATH_RECORD[%"PRISZT"], datasize[%d]",
+			sizeof(IB_PATH_RECORD), (int)(maip->datasize-sizeof(SA_MAD_HDR)));
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 		IB_EXIT("sa_PathRecord", MAD_STATUS_SA_REQ_INVALID);
 		return (MAD_STATUS_SA_REQ_INVALID);
@@ -622,12 +623,11 @@ sa_FillPathRecord (uint32_t* records, Port_t *src_portp, uint32_t slid,
 		} else {
 			/* compute the PLT based on hopCount */
 			if (saDebugRmpp) {
-                IB_LOG_INFINI_INFO_FMT( "sa_PathRecord_Set",
-                       "hopCount from SGID "FMT_GID", LID 0x%x to DGID "FMT_GID", LID 0x%x is %d", 
-                       pathRecord.SGID.Type.Global.SubnetPrefix, pathRecord.SGID.Type.Global.InterfaceID, 
-                       (int)src_portp->portData->lid, 
-                       pathRecord.DGID.Type.Global.SubnetPrefix, pathRecord.DGID.Type.Global.InterfaceID, 
-                       (int)src_portp->portData->lid, (int)dst_portp->portData->lid, (int)hopCount);
+				IB_LOG_INFINI_INFO_FMT(__func__,
+					"hopCount from SGID "FMT_GID", LID 0x%x to DGID "FMT_GID", LID 0x%x is %u",
+					pathRecord.SGID.Type.Global.SubnetPrefix, pathRecord.SGID.Type.Global.InterfaceID, src_portp->portData->lid,
+					pathRecord.DGID.Type.Global.SubnetPrefix, pathRecord.DGID.Type.Global.InterfaceID, dst_portp->portData->lid,
+					hopCount);
             }
 			if (hopCount < 8) {
 				pathRecord.PktLifeTime = sa_dynamicPlt[hopCount];
@@ -789,14 +789,16 @@ sa_PathRecord_Set(uint32_t* records, uint32_t numPath, Port_t *src_portp, uint32
 			++hopCount;
 			if (!sm_valid_port(last_portp) || last_portp->portData->lid > next_nodep->switchInfo.LinearFDBTop) {
                 if (!sm_valid_port(last_portp)) {
-                    IB_LOG_ERROR_FMT("sa_PathRecord_Set",
-                           "Cannot find last port to port "FMT_U64" from port "FMT_U64": switch %s (guid "FMT_U64") LFTTop [0x%x]",
-                           dst_portp->portData->guid, src_portp->portData->guid, sm_nodeDescString(next_nodep), next_nodep->switchInfo.LinearFDBTop);
+					IB_LOG_ERROR_FMT(__func__,
+						"Cannot find last port to port "FMT_U64" from port "FMT_U64": switch %s (guid "FMT_U64") LFTTop [0x%x]",
+						dst_portp->portData->guid, src_portp->portData->guid, sm_nodeDescString(next_nodep),
+						next_nodep->nodeInfo.NodeGUID, next_nodep->switchInfo.LinearFDBTop);
                 } else {
                     /* PR#105641 - SAR crash */
-					IB_LOG_WARN_FMT("sa_PathRecord_Set",
-                           "Cannot find path to port "FMT_U64" from port "FMT_U64": Lid [0x%x] is greater than switch %s (guid "FMT_U64") LFTTop [0x%x]",
-                           dst_portp->portData->guid, src_portp->portData->guid, last_portp->portData->lid, sm_nodeDescString(next_nodep), next_nodep->switchInfo.LinearFDBTop);
+					IB_LOG_WARN_FMT(__func__,
+						"Cannot find path to port "FMT_U64" from port "FMT_U64": Lid [0x%x] is greater than switch %s (guid "FMT_U64") LFTTop [0x%x]",
+						dst_portp->portData->guid, src_portp->portData->guid, last_portp->portData->lid,
+						sm_nodeDescString(next_nodep), next_nodep->nodeInfo.NodeGUID, next_nodep->switchInfo.LinearFDBTop);
                 }
 				status = VSTATUS_BAD;
 				goto done_PathRecordSet;

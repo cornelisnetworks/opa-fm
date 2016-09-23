@@ -528,7 +528,8 @@ sa_Trap(Mai_t *maip) {
 
 	if (sm_config.IgnoreTraps) {
 		// filter out all traps
-
+		sm_get_lid_info(desc, notice.IssuerLID);
+		IB_LOG_WARN_FMT(__func__, "Dropping trap recieved from %s", desc);
 	/*
 	 *	If it is a port state change or capabilitymask change, I must signal for a sweep
 	 */

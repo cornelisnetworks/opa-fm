@@ -116,12 +116,12 @@ sub install_ibdev
 	# remove samples installed in old location
 	remove_installed_files "/usr/local/src/iba_samples";
 	# Copy all ib sample applications
-	check_dir("/opt/opa/src");
-	check_dir("/opt/opa/src/iba_samples");
-	copy_all_data_files("$srcdir/iba_samples", "/opt/opa/src/iba_samples");
-	system "cd $ROOT/opt/opa/src/iba_samples; find . -type d| while read dir; do mv \$dir/Makefile.sample \$dir/Makefile 2>/dev/null; done 2>/dev/null";
-	system "cd $srcdir/iba_samples; find . | sed -e 's/Makefile.sample/Makefile/' > $ROOT/opt/opa/src/iba_samples/.files 2>/dev/null";
-	system "cd $srcdir/iba_samples; find * -maxdepth 1 -type d > $ROOT/opt/opa/src/iba_samples/.dirs 2>/dev/null";
+	check_dir("/usr/lib/opa/src");
+	check_dir("/usr/lib/opa/src/iba_samples");
+	copy_all_data_files("$srcdir/iba_samples", "/usr/lib/opa/src/iba_samples");
+	system "cd $ROOT/usr/lib/opa/src/iba_samples; find . -type d| while read dir; do mv \$dir/Makefile.sample \$dir/Makefile 2>/dev/null; done 2>/dev/null";
+	system "cd $srcdir/iba_samples; find . | sed -e 's/Makefile.sample/Makefile/' > $ROOT/usr/lib/opa/src/iba_samples/.files 2>/dev/null";
+	system "cd $srcdir/iba_samples; find * -maxdepth 1 -type d > $ROOT/usr/lib/opa/src/iba_samples/.dirs 2>/dev/null";
 	$ComponentWasInstalled{'ibdev'}=1;
 }
 
@@ -148,9 +148,9 @@ sub uninstall_ibdev
 	system "rm -rf $ROOT/usr/include/ipoib_export.h";
 	# remove iba_samples we installed or user compiled, however do not remove
 	# any logs or other files the user may have created
-	remove_installed_files "/opt/opa/src/iba_samples";
-	system "rmdir $ROOT/opt/opa/src 2>/dev/null";
-	system "rmdir $ROOT/opt/opa 2>/dev/null";
+	remove_installed_files "/usr/lib/opa/src/iba_samples";
+	system "rmdir $ROOT/usr/lib/opa/src 2>/dev/null";
+	system "rmdir $ROOT/usr/lib/opa 2>/dev/null";
 	remove_installed_files "/usr/local/src/iba_samples";
 	$ComponentWasInstalled{'ibdev'}=0;
 }

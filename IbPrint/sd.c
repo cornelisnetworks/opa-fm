@@ -85,7 +85,7 @@ void PrintQueryResultValue(PrintDest_t *dest, int indent, PrintDest_t *dbgDest,
 		
 		/* There should never be more than 1 ClassPortInfo in the results. */
 		if (p->NumClassPortInfo)
-			PrintStlClassPortInfo(dest, indent, &p->ClassPortInfo);
+			PrintStlClassPortInfo(dest, indent, &p->ClassPortInfo, MCLASS_SUBN_ADM);
 		break;
 		}
 	case OutputTypeStlFabricInfoRecord:

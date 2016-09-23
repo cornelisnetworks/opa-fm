@@ -1,0 +1,234 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+
+# [ICS VERSION STRING: unknown]
+
+#=============================================================================#
+# Test Suite Description:
+#-----------------------------------------------------------------------------#
+## configure
+## -------
+## configure all chassis
+#=============================================================================#
+
+# manditory setup
+log_user 0;	# disable detailed logging to stdout
+
+# uncomment the following to debug the test
+#strace 20
+#log_user 1
+#exp_internal 1
+#cmd_trace on
+#strace 4
+
+set install_exit_code 0
+
+proc suite_setup {} {
+	# example of conditional setup
+	#test_execute {load populate} {
+		#do some installation or configuration stuff
+	#}
+}
+
+proc case_setup {} {
+# setup to do at start of each test case
+# Usage:
+#	pass as argument to start_suite
+# Arguments:
+#	None
+# This procedure will be run at the start of every test case
+# It provides an opportunity for uniform cleanup/setup for each test case
+
+}
+
+proc case_cleanup { failed } {
+# cleanup to do after each test case
+# Usage:
+#	pass as argument to start_suite
+# Arguments:
+#	failed - set to 1 if test case failed in which case additional
+#		information/files may be desired in test_tmp
+#		set to 0 if test case passed
+# This procedure will be run at the end of every test case
+# It provides an opportunity for uniform cleanup after each test case
+	global env
+
+	test_execute {} {
+		if { $failed } {
+			global chassis
+			# could put cleanup here
+			target_chassis_admin_sh_exit
+		}
+	}
+}
+
+array set ch_config_link_crc {
+0 "16b"
+1 "14b_or_16b"
+2 "48b_or_16b"
+3 "48b_or_14b_or_16b"
+4 "per_lane_or_16b"
+5 "per_lane_or_14b_or_16b"
+6 "per_lane_or_48b_or_16b"
+7 "per_lane_or_48b_or_14b_or_16b"
+-1 "no change"
+}
+
+array set ch_config_linkwidths {
+1 1X
+2 2X
+3 1X/2X
+4 3X
+5 1X/3X
+6 2X/3X
+7 1X/2X/3X
+8 4X
+9 1X/4X
+10 2X/4X
+11 1X/2X/4X
+12 3X/4X
+13 1X/3X/4X
+14 2X/3X/4X
+15 1X/2X/3X/4X
+0 "no change"
+}
+
+proc ch_get_array_entry { arrayname key } {
+
+variable $arrayname
+
+upvar #0 $arrayname myarray
+
+if {![info exists myarray($key)]} {
+	return "Invalid Input: $key"
+} else {
+	return $myarray($key)
+}
+
+}
+
+proc ch_get_ip { ip } {
+
+if { [string equal "$ip" "0.0.0.0"] == 0 } {
+	return $ip
+} else {
+	return "not being set"
+}
+
+}
+
+proc ch_get_syslog_facility { facility } {
+
+if { [string equal "$facility" "-1"] == 0 } {
+	return $facility
+} else {
+	return "not being set"
+}
+
+}
+
+proc ch_get_syslog_port { port } {
+
+if { [string equal "$port" "-1"] == 0 } {
+	return $port
+} else {
+	return "not being set"
+}
+
+}
+
+proc ch_get_tzoffset { offset } {
+
+if { [string equal "$offset" "100"] == 0 } {
+	return $offset
+} else {
+	return "not being set"
+}
+
+}
+
+proc ch_get_dst { start end } {
+
+if { [string equal "$start" "0 0 0"] == 0 } {
+	return "<$start>/<$end>"
+} else {
+	return "not being set"
+}
+
+}
+
+proc ch_get_setname { setname } {
+
+if { [string equal "$setname" "y"] == 0 } {
+	return "not being set"
+} else {
+	return "being set to match chassis Ethernet name"
+}
+
+}
+
+test_suite "configure" "configure" "configure all chassis:
+SYSLOG_SERVER:    [ch_get_ip $env(SYSLOG_SERVER)]
+SYSLOG_PORT:      [ch_get_syslog_port $env(SYSLOG_PORT)]
+SYSLOG_FACILITY:  [ch_get_syslog_facility $env(SYSLOG_FACILITY)]
+NTP_SERVER:       [ch_get_ip $env(NTP_SERVER)]
+TZ_OFFSET:        [ch_get_tzoffset $env(TZ_OFFSET)]
+DST START/END:    [ch_get_dst $env(DST_START) $env(DST_END)]
+LINKWIDTH:        [ch_get_array_entry ch_config_linkwidths $env(LINKWIDTH_SETTING)]
+NODEDESC:         [ch_get_setname $env(SET_NAME)]
+LINKCRCMODE:	  [ch_get_array_entry ch_config_link_crc $env(LINKCRCMODE)]
+File: /usr/lib/opa/tools/chassis_configure.exp" suite_setup noop {
+	global chassis
+
+	# Global Initializations for Test Suite:
+	# --------------------------------------
+
+	# ADD ANY GLOBAL INITIALIZATION HERE, SUCH AS:
+	# set env(MY_ENV_VAR) value
+	# also validate the environment
+	# if the environment is bad call fail_suite "information" abort_now
+	# abort_now should be 0 if it is safe to proceed and simply ignore all
+	# test_case calls.  it should be 1 if that is not possible.
+
+	# Procedures used to support Test Suite:
+	# --------------------------------------
+
+	# The actual test cases:
+	# ----------------------
+
+	parallel chassis $env(CFG_CHASSIS) {
+		set chassis [chassis_strip_slots "$chassis"]
+		local_sh
+		send_unix_cmd "grep $chassis $env(CFG_CFGTEMPDIR)/.chassisSetup.out | grep IP_Addr"
+		set out [expect_list 60 { ": [0-9.]+" } ]
+		regexp {([0-9.]+)} $out c chassisIP
+		local_sh_exit
+		test_case_chassis_configure $chassis $chassisIP
+	}
+}

@@ -62,7 +62,7 @@
 ##  instead of an ftp.
 ##
 ##  SCPSERVER - host to get packages from via SCP. Takes the form:
-##	"server" or "user@server:. Defaults to "phcvs2@phlsvlogin01"
+##	"server" or "user@server:. Defaults to "phcvs2@phlsvlogin02"
 ##
 ##  SCPTOP - root directory to get SCP files from. Takes the form:
 ##  "directory". Defaults to "/nfs/site/proj/stlbuilds".
@@ -102,7 +102,7 @@ shift 3
 # See documentation above.
 export FTPSERVER=${FTPSERVER:-"ftp:ftp@kop-sds-ftp"}
 export SCPTOP=${SCPTOP:-"/nfs/site/proj/stlbuilds"}
-export SCPSERVER=${SCPSERVER:-"phcvs2@phlsvlogin01"}:$SCPTOP
+export SCPSERVER=${SCPSERVER:-"phcvs2@phlsvlogin02"}:$SCPTOP
 
 # ftp_get_files is defined in newer versions of devtools
 if ! type ftp_get_files > /dev/null 2>/dev/null

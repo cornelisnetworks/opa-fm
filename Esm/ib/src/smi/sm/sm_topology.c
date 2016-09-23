@@ -164,7 +164,7 @@ Status_t topology_dump(void);
 Status_t topology_loopTest(void);
 Status_t topology_verification(void);
 
-Status_t topology_setup_routing_floyds(void);
+Status_t topology_setup_routing_cost_matrix(void);
 Status_t topology_sm_port_init_failure(void);
 Status_t topology_setup_switches_LR_DR(void);
 Status_t topology_update_cableinfo(void);
@@ -282,7 +282,7 @@ extern char* printSwitchLft(int nodeIdx, int useNew, int haveLock, int buffer);
 extern  cs_Queue_ptr    sm_async_rcv_resp_queue;
 
 VirtualFabrics_t *previousVfPtr;
-VirtualFabrics_t *updatedVirtualFabrics;
+extern VirtualFabrics_t *updatedVirtualFabrics;
 
 #ifndef __VXWORKS__
 extern 	uint32_t 		xml_trace;
@@ -535,6 +535,8 @@ static Status_t UpdateHoq(Node_t * nodep, Port_t * curPort, boolean * updHoq)
     uint16_t pctBandwidth[STL_MAX_VLS]; // low table bandwidth only
     uint32_t preemptibleVLs = 0;
 
+    Qos_t *qos = GetQos(curPort->portData->vl1);
+
     memset(maxHoqVals, 0, sizeof(maxHoqVals));
     memset(pctBandwidth, 0, sizeof(pctBandwidth));
 
@@ -576,8 +578,8 @@ static Status_t UpdateHoq(Node_t * nodep, Port_t * curPort, boolean * updHoq)
             if (VirtualFabrics->v_fabric[vf].hoqlife_vf > maxHoqVals[vl])
                 maxHoqVals[vl] = VirtualFabrics->v_fabric[vf].hoqlife_vf;
 
-            // Determine the aggregate bandwidth per VL
-            pctBandwidth[vl] += sm_VfBandwidthAllocated[vf];
+            // Assign bandwidth only to active VLs.
+            pctBandwidth[vl] = qos->vlBandwidth[vl];
 
             // get a bitmask of preemptible VLs.
             preemptibleVLs |= curPort->portData->curArb.vlarbMatrix[vl];
@@ -977,6 +979,7 @@ topology_main(uint32_t argc, uint8_t ** argv)
 					if (previousVfPtr) {
 						//release old vfs_ptr
 						releaseVirtualFabricsConfig(previousVfPtr);
+						updatedVirtualFabrics = NULL;
 						previousVfPtr = NULL;
 					}
 
@@ -1076,8 +1079,7 @@ topology_main(uint32_t argc, uint8_t ** argv)
 					smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_SM_SHUTDOWN,
 						getMyCsmNodeId(), NULL, 
 						"Terminating SM after %d sweeps.", topology_passcount);
-					sm_control_shutdown(NULL);
-					exit(0);
+					IB_FATAL_ERROR_NODUMP("Terminating SM.");
 				} else if ( (topology_passcount > 1) && ( haveDelta )) {
 
 					if (sweepNodeAppearanceInfoMsgCount != 0) {
@@ -1238,20 +1240,20 @@ topology_initialize(void)
 		InitFabricData(&preDefTopology, FF_LIDARRAY);
 
 #ifndef __VXWORKS__
-		Xml2ParseTopology(sm_config.preDefTopo.topologyFilename, 1, &preDefTopology);
+		parseStatus = Xml2ParseTopology(sm_config.preDefTopo.topologyFilename, 1, &preDefTopology);
 #else
 		XML_Memory_Handling_Suite memsuite;
 		memsuite.malloc_fcn = &getParserMemory;
 		memsuite.realloc_fcn = &reallocParserMemory;
 		memsuite.free_fcn = &freeParserMemory;
 
-		Xml2ParseTopology(sm_config.preDefTopo.topologyFilename, 1, &preDefTopology, &memsuite);
+		parseStatus = Xml2ParseTopology(sm_config.preDefTopo.topologyFilename, 1, &preDefTopology, &memsuite);
 #endif
 
 		if(parseStatus != FSUCCESS) {
 			IB_LOG_ERROR_FMT(__func__, "Pre Defined Topology: Failed parsing pre-defined topology input file: %s", sm_config.preDefTopo.topologyFilename);
-			IB_LOG_ERROR0("Pre Defined Topology: Disabling pre-defined topology usage due to previous errors.");
-			sm_config.preDefTopo.enabled = 0;
+			IB_FATAL_ERROR_NODUMP("Pre Defined Topology: terminating FM due to previous errors.");
+			return VSTATUS_BAD;
 		} else {
 			int topologyFileValid = 1;
 
@@ -1283,8 +1285,8 @@ topology_initialize(void)
 						SmPreDefFieldEnfToText(sm_config.preDefTopo.fieldEnforcement.undefinedLink));
 				vs_log_output_message(buf, FALSE);
 			} else {
-				IB_LOG_ERROR0("Pre Defined Topology: Disabling pre-defined topology usage due to previous errors.");
-				sm_config.preDefTopo.enabled = 0;
+				IB_FATAL_ERROR_NODUMP("Pre Defined Topology: terminating FM due to previous errors.");
+				return VSTATUS_BAD;
 			}
 		}
 	}
@@ -1496,7 +1498,6 @@ topology_discovery(void)
 	//update the new topology's virtual fabrics ptr and save off the old ptr to be deleted later
 	if (updatedVirtualFabrics) {
 		sm_newTopology.vfs_ptr = updatedVirtualFabrics;
-		updatedVirtualFabrics = NULL;
 		previousVfPtr = old_topology.vfs_ptr;
 	}
 	else {
@@ -1635,9 +1636,19 @@ unlock_bail:
 		return(VSTATUS_BAD);
     }
 
-	// is the SM bit set?  if not, our port went away.
-	// reinitialize and resweep
-	if (!(portp->portData->portInfo.CapabilityMask.AsReg32 & PI_CM_IS_SM)) {
+	// is the SM bit set?  If not, our port went away, reinitialize.
+	// If we are an HFI, our neighbor is a switch, and MgmtAllowed is not set, reinitialize.
+	if (!(portp->portData->portInfo.CapabilityMask.AsReg32 & PI_CM_IS_SM) || 
+		(nodep->nodeInfo.NodeType == NI_TYPE_CA &&
+		portp->portData->portInfo.PortNeighborMode.NeighborNodeType == STL_NEIGH_NODE_TYPE_SW &&
+		!portp->portData->portInfo.PortNeighborMode.MgmtAllowed)) {
+
+		if (!(portp->portData->portInfo.CapabilityMask.AsReg32 & PI_CM_IS_SM)) {
+			IB_LOG_ERROR0("SM bit not set in capability mask");
+		} else {
+			IB_LOG_ERROR0("MgmtAllowed bit not set in neighbor node.");
+		}
+
 		do {
 			if (topology_main_exit == 1) {
 #ifdef __VXWORKS__
@@ -1652,7 +1663,6 @@ unlock_bail:
 			(void)vs_rwunlock(&old_topology_lock);
 		} while (status != VSTATUS_OK);
 		sm_topop->routingModule->funcs.post_process_discovery(sm_topop, VSTATUS_BAD, routingContext);
-		IB_LOG_ERROR0("SM bit not set in capability mask");
 		if (portp->portData->portInfo.PortStates.s.PortState == IB_PORT_DOWN) {
 			IB_LOG_ERROR0("SM port state is down");
 		}
@@ -2274,7 +2284,7 @@ Status_t topology_setup_switches_LR_DR()
 		IB_LOG_INFINI_INFOX("STARTING ; MAXLID=", sm_topop->maxLid);
 	}
 
-	status = topology_setup_routing_floyds();
+	status = topology_setup_routing_cost_matrix();
 	
 	if (status == VSTATUS_KNOWN)	{
 		routing_needed = 0;	/* Known topology i.e no changes in topology, old lft data was copied. No new LFT programing required */
@@ -2330,6 +2340,7 @@ Status_t topology_setup_switches_LR_DR()
 				sm_topop->switch_head->nodeInfo.NodeGUID, status);
 		if (sm_topop->deltaLidBlocks_init) {
 			bitset_free(&sm_topop->deltaLidBlocks);
+			sm_topop->deltaLidBlocks_init=0;
 		}
 		return status;
 	}
@@ -2345,6 +2356,7 @@ Status_t topology_setup_switches_LR_DR()
 					sm_topop->switch_head->nodeInfo.NodeGUID, status);
 			if (sm_topop->deltaLidBlocks_init) {
 				bitset_free(&sm_topop->deltaLidBlocks);
+				sm_topop->deltaLidBlocks_init=0;
 			}
 			return status;
 		}
@@ -2359,6 +2371,7 @@ Status_t topology_setup_switches_LR_DR()
 					sm_topop->switch_head->nodeInfo.NodeGUID, status);
 			if (sm_topop->deltaLidBlocks_init) {
 				bitset_free(&sm_topop->deltaLidBlocks);
+				sm_topop->deltaLidBlocks_init=0;
 			}
 			return status;
 		}		
@@ -2370,6 +2383,7 @@ Status_t topology_setup_switches_LR_DR()
 
 	if (sm_topop->deltaLidBlocks_init) {
 		bitset_free(&sm_topop->deltaLidBlocks);
+		sm_topop->deltaLidBlocks_init=0;
 	}
 
 	if (smDebugPerf) {
@@ -2774,7 +2788,7 @@ topology_assignments(void)
 					++topo_abandon_count <= sm_config.topo_abandon_threshold) {
 					return(status);
 				}
-				// sm_request_resweep(0, 0, "Error programming fabric SC tables");
+				// sm_request_resweep(0, 0, "Error programming fabric SC tables")
 			}
 
             // Setup vlarb for each port on switch
@@ -2782,6 +2796,34 @@ topology_assignments(void)
                 if (!sm_valid_port(portp) || portp->state <= IB_PORT_DOWN) {
                     continue; 
                 }
+
+				// initialize the SC2VL* mapping tables for all ports.
+				if ((status = sm_initialize_Switch_SCVLMaps(sm_topop, nodep, portp)) != VSTATUS_OK) {
+                    if (topology_main_exit == 1) {
+#ifdef __VXWORKS__
+                        ESM_LOG_ESMINFO("topology_assignments: SM has been stopped", 0);
+#endif
+                        IB_EXIT(__func__, VSTATUS_OK);
+                        return(VSTATUS_OK);
+                    }
+
+                    if (++topo_errors > sm_config.topo_errors_threshold &&
+                        ++topo_abandon_count <= sm_config.topo_abandon_threshold) {
+                        return(status);
+                    }
+
+                    portp->state = IB_PORT_DOWN; 
+                    DECR_PORT_COUNT(sm_topop, nodep); 
+                    topology_changed = 1;   /* indicates a fabric change has been detected */
+                    IB_LOG_ERROR_FMT(__func__, 
+                                     "Failed to init SCVL map (setting port down) on node %s nodeGuid "
+                                     FMT_U64 " node index %d port index %d", 
+                                     sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, 
+                                     nodep->index, portp->index);
+					continue;
+
+				}
+
 
                 if ((status = sm_initialize_VLArbitration(sm_topop, nodep, portp)) != VSTATUS_OK) {
                     if (topology_main_exit == 1) {
@@ -2941,7 +2983,7 @@ topology_assignments(void)
 	return(VSTATUS_OK);
 }
 
-Status_t topology_setup_routing_floyds(void)
+Status_t topology_setup_routing_cost_matrix(void)
 {
 	Status_t	status = VSTATUS_OK;
 	uint64_t	sTime, eTime;
@@ -2958,7 +3000,7 @@ Status_t topology_setup_routing_floyds(void)
 
 	if (smDebugPerf) {
         vs_time_get(&sTime);
-		IB_LOG_INFINI_INFO("START topology_setup_routing_floyds for nodes=", sm_topop->num_nodes);
+		IB_LOG_INFINI_INFO("START topology_setup_routing_cost_matrix for nodes=", sm_topop->num_nodes);
 		IB_LOG_INFINI_INFO("topology_changed=", topology_changed);
 		bitset_info_log(&old_switchesInUse, "old_switchesInUse");
 		bitset_info_log(&new_switchesInUse, "new_switchesInUse");
@@ -2979,7 +3021,7 @@ Status_t topology_setup_routing_floyds(void)
 
 		if (smDebugPerf) IB_LOG_INFINI_INFO0("Calculating topology paths");
 
-		status = sm_routing_alloc_floyds(sm_topop);
+		sm_topop->routingModule->funcs.allocate_cost_matrix(sm_topop);
 		if (status != VSTATUS_OK) {
 			IB_LOG_ERRORRC("failed to allocate cost data; rc:", status);
 			IB_EXIT(__func__, status);
@@ -2988,25 +3030,25 @@ Status_t topology_setup_routing_floyds(void)
     
     	if (smDebugPerf) {
     		vs_time_get(&eTime);
-    		IB_LOG_INFINI_INFO("END topology_setup_routing_floyds/setup init path array;"
+			IB_LOG_INFINI_INFO("END topology_setup_routing_cost_matrix/setup init path array;"
 								" elapsed time(usecs)=", (int)(eTime-sTime));
     		vs_time_get(&sTime);
     	}
  
-		sm_routing_init_floyds(sm_topop);
+		sm_topop->routingModule->funcs.initialize_cost_matrix(sm_topop);
 
     	if (smDebugPerf) {
     		vs_time_get(&eTime);
-        		IB_LOG_INFINI_INFO("END topology_setup_routing_floyds/setup initial cost/path arrays;"
+			IB_LOG_INFINI_INFO("END topology_setup_routing_cost_matrix/setup initial cost/path arrays;"
 									" elapsed time(usecs)=", (int)(eTime-sTime));
     		vs_time_get(&sTime);
     	}
         
-		sm_routing_calc_floyds(sm_topop->max_sws, sm_topop->cost);
+		sm_topop->routingModule->funcs.calculate_cost_matrix(sm_topop, sm_topop->max_sws, sm_topop->cost);
 
     	if (smDebugPerf) {
     		vs_time_get(&eTime);
-        		IB_LOG_INFINI_INFO("END topology_setup_routing_floyds/calculation of cost and path arrays;"
+			IB_LOG_INFINI_INFO("END topology_setup_routing_cost_matrix/calculation of cost and path arrays;"
 									" elapsed time(usec)=", (int)(eTime-sTime));
         }
 
@@ -3018,7 +3060,7 @@ Status_t topology_setup_routing_floyds(void)
     
     } else if (old_topology.num_sws) {
         /* no topology change, just copy over the old data */
-		status = sm_routing_copy_floyds(&old_topology, sm_topop);
+		status = sm_routing_copy_cost_matrix(&old_topology, sm_topop);
 		if (status != VSTATUS_OK) {
 			IB_LOG_ERRORRC("failed to copy cost data; rc:", status);
 			IB_EXIT(__func__, status);
@@ -3042,7 +3084,7 @@ Status_t topology_setup_routing_floyds(void)
 
 			if (smDebugPerf) {
 				vs_time_get(&eTime);
-				IB_LOG_INFINI_INFO("END topology_setup_routing_floyds/copy over cost, path"
+				IB_LOG_INFINI_INFO("END topology_setup_routing_cost_matrix/copy over cost, path"
 					", and lft arrays; elapsed time(usec)=",
 					(int)(eTime-sTime));
 			}
@@ -3245,13 +3287,19 @@ topology_activate(void)
 		for_all_nodes(sm_topop, nodep) {
 			for_all_ports(nodep, portp) {
 				if (sm_valid_port(portp) && portp->state == IB_PORT_INIT) {
-					status = sm_activate_port(sm_topop, nodep, portp);
-					if (status != VSTATUS_OK) {
-						IB_LOG_ERROR_FMT(__func__, "TT(ta): can't ARM node %s nodeGuid "FMT_U64" node index %d port index %d",
-						       sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, nodep->index, portp->index);
-						sm_enable_port_led(nodep, portp, TRUE);
-					} else {
-						bitset_clear(&nodep->initPorts, portp->index);
+					// If port's neighbor is DOWN then do not arm on this sweep.
+					// This will handle the case where sm interally records a port as down to prevent
+					// activation.
+					Port_t *con_portp = sm_find_port(sm_topop, portp->nodeno, portp->portno);
+					if (sm_valid_port(con_portp) && con_portp->state != IB_PORT_DOWN) {
+						status = sm_activate_port(sm_topop, nodep, portp);
+						if (status != VSTATUS_OK) {
+							IB_LOG_ERROR_FMT(__func__, "TT(ta): can't ARM node %s nodeGuid "FMT_U64" node index %d port index %d",
+								   sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, nodep->index, portp->index);
+							sm_enable_port_led(nodep, portp, TRUE);
+						} else {
+							bitset_clear(&nodep->initPorts, portp->index);
+						}
 					}
 				} else if(sm_valid_port(portp) && portp->state == IB_PORT_DOWN && portp->portData->linkPolicyViolation) {
 					//port marked down administratively for link policy violation but real port state
@@ -3704,7 +3752,6 @@ topology_verification(void)
 
 							if(portStateInfo != NULL) {
 								vs_pool_free(&sm_pool, portStateInfo);
-								portStateInfo = NULL;
 							}
 
 							continue;
@@ -4751,7 +4798,14 @@ Status_t topology_congestion(void)
 		}
 
 		if (sm_config.congestion.enable) {
-			status = SM_Get_CongestionInfo(fd_topology, 0, nodep->path, &nodep->congestionInfo);
+			Port_t *portp;
+			uint32 dlid;
+			portp = sm_get_node_end_port(nodep);
+			if (!sm_valid_port(portp) || portp->state == IB_PORT_DOWN){
+				continue;
+			}
+			dlid = portp->portData->lid;
+			status = SM_Get_CongestionInfo_LR(fd_topology, 0, sm_lid, dlid, &nodep->congestionInfo);
 			if (status != VSTATUS_OK) {
 				IB_LOG_ERROR_FMT(__func__,
 					"Failed to get Congestion Info for NodeGUID "FMT_U64" [%s]; rc: %d",
@@ -4767,7 +4821,7 @@ Status_t topology_congestion(void)
 			status = stl_sm_cca_configure_hfi(nodep);
 
 		if (status != VSTATUS_OK)
-			IB_LOG_ERROR_FMT(__func__, "Failed to configure CCA for NodeGuid "FMT_U64" [%s]; rc: %d",
+			IB_LOG_INFO_FMT(__func__, "Failed to configure CCA for NodeGuid "FMT_U64" [%s]; rc: %d",
 				nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep), status);
 	}
 

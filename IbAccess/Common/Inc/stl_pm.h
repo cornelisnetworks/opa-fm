@@ -93,7 +93,27 @@ extern "C" {
 		  } \
 		}
 
-
+static __inline void
+StlPmClassPortInfoCapMask(char buf[80], uint16 cmask)
+{
+	if (!cmask) {
+		snprintf(buf, 80, "-");
+	} else {
+		snprintf(buf, 80, "%s%s%s",
+			(cmask & STL_CLASS_PORT_CAPMASK_TRAP) ? "Trap " : "",
+			(cmask & STL_CLASS_PORT_CAPMASK_NOTICE) ? "Notice " : "",
+			(cmask & STL_CLASS_PORT_CAPMASK_CM2) ? "CapMask2 " : "");
+	}
+}
+static __inline void
+StlPmClassPortInfoCapMask2(char buf[80], uint32 cmask)
+{
+	if (!cmask) {
+		snprintf(buf, 80, "-");
+	} else {
+		buf[0] = '\0';
+	}
+}
 /* MAD structure definitions */
 
 /* STL Port Counters - small request, large response */

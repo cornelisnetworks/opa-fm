@@ -326,7 +326,7 @@ sub copy_shlib($$$)
 
 sub symlink_usrlocal_shlib($$$)
 {
-	# a /opt/opa path w/o suffix (eg. a previous dest for copy_shlib)
+	# a /usr/lib/opa path w/o suffix (eg. a previous dest for copy_shlib)
 	my($src) = shift();
 	my($libbase) = shift();
 	my($version) = shift();

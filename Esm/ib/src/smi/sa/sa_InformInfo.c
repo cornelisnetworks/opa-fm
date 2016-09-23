@@ -268,10 +268,9 @@ sa_InformInfo(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 		if (informInfo.Type == NOTICE_TYPE_SECURITY && sm_smInfo.SM_Key
 			&& samad.header.smKey != sm_smInfo.SM_Key) {
 			maip->base.status = MAD_STATUS_SA_REQ_INVALID;
-			IB_LOG_WARN_FMT("sa_InformInfo",
-							"Subscription for security trap not from trusted source[lid=0x%.4X], smkey=0x%X, returning status 0x%.4X",
-							maip->addrInfo.slid, samad.header.smKey,
-							maip->base.status);
+			IB_LOG_WARN_FMT(__func__,
+				"Subscription for security trap not from trusted source[lid=0x%.4X], smkey=0x%"PRIX64", returning status 0x%.4X",
+				maip->addrInfo.slid, samad.header.smKey, maip->base.status);
 			status = VSTATUS_BAD;
 		} else {
 			status = sa_InformInfo_Subscribe(maip, &informInfo,

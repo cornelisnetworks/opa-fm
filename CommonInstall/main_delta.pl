@@ -379,7 +379,7 @@ my %ComponentInfo_rhel72 = (
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
-	"hfi1_uefi" => { Name => "UEFI Binaries",
+	"hfi1_uefi" => { Name => "Pre-Boot Components",
 					  DefaultInstall => $State_DoNotInstall,
 					  SrcDir => ".", DriverSubdir => "",
 					  PreReq => " opa_stack ", CoReq => "",
@@ -516,7 +516,7 @@ sub Usage
 		#printf STDERR "               or\n";
 		#printf STDERR "Usage: $0 [-r root] [-v|-vv] [-a|-n|-U|-u|-s|-i comp|-e comp] [-E comp] [-D comp] [-l] [--user_configure_options 'options'] [--kernel_configure_options 'options'] [--prefix dir] [--without-depcheck] [--rebuild] [--force] [--answer keyword=value] [--debug]\n";
 		#printf STDERR "Usage: $0 [-r root] [-v|-vv] [-a|-n|-U|-u|-s|-i comp|-e comp|-E comp|-D comp] [--user_configure_options 'options'] [--kernel_configure_options 'options'] [--prefix dir] [--without-depcheck] [--rebuild] [--force] [--answer=value]\n";
-		printf STDERR "Usage: $0 [-r root] [-v|-vv] [-a|-n|-U|-u|-s|-O|-N|-i comp|-e comp|-E comp|-D comp] [--user_configure_options 'options'] [--kernel_configure_options 'options'] [--prefix dir] [--without-depcheck] [--rebuild] [--force] [--answer=value]\n";
+		printf STDERR "Usage: $0 [-r root] [-v|-vv] -R osver -B osver [-a|-n|-U|-u|-s|-O|-N|-i comp|-e comp|-E comp|-D comp] [--user_configure_options 'options'] [--kernel_configure_options 'options'] [--prefix dir] [--without-depcheck] [--rebuild] [--force] [--answer=value]\n";
 	} else {
 		printf STDERR "Usage: $0 [-r root] [-v|-vv] [-u|-s|-e comp] [-E comp] [-D comp] [--answer=value]\n";
 		printf STDERR "          [--user_queries|--no_user_queries]\n";
@@ -533,7 +533,7 @@ sub Usage
 		printf STDERR "            default options and no change to autostart options\n";
 		printf STDERR "       -i comp - install the given component with default options\n";
 		printf STDERR "            can appear more than once on command line\n";
-		#printf STDERR "       -l - skip creating/removing symlinks to /usr/local from /opt/opa\n";
+		#printf STDERR "       -l - skip creating/removing symlinks to /usr/local from /usr/lib/opa\n";
 		printf STDERR "       --user_configure_options 'options' - specify additional OFA build\n";
 		printf STDERR "             options for user space srpms.  Causes rebuild of all user srpms\n";
 		printf STDERR "       --kernel_configure_options 'options' - specify additional OFA build\n";
@@ -548,10 +548,10 @@ sub Usage
 		printf STDERR "       -N - Use new default rpm config file\n";
 		# --debug, -B, -t and -d options are purposely not documented
 		#printf STDERR "       --debug - build a debug version of modules\n";
-		#printf STDERR "       -B osver - run build for all components targetting kernel osver\n";
+		printf STDERR "       -B osver - run build for all components targetting kernel osver\n";
 		#printf STDERR "       -t - temp area for use by builds, only valid with -B\n";
 		#printf STDERR "       -d - enable build debugging assists, only valid with -B\n";
-		#printf STDERR "       -R osver - force install for kernel osver rather than running kernel.\n";
+		printf STDERR "       -R osver - force install for kernel osver rather than running kernel.\n";
 	}
 	printf STDERR "       -u - uninstall all ULPs and drivers with default options\n";
 	printf STDERR "       -s - enable autostart for all installed drivers\n";

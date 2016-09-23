@@ -43,6 +43,20 @@ typedef struct GuidCounter
 } GuidCounter_t;
 
 static int
+_compare_guids(const void * arg1, const void * arg2)
+{
+	SwitchportToNextGuid_t * sport1 = (SwitchportToNextGuid_t *)arg1;
+	SwitchportToNextGuid_t * sport2 = (SwitchportToNextGuid_t *)arg2;
+
+	if (sport1->guid < sport2->guid)
+		return -1;
+	else if (sport1->guid > sport2->guid)
+		return 1;
+	else
+		return 0;
+}
+
+static int
 _compare_lids_routed(const void * arg1, const void * arg2)
 {
 	SwitchportToNextGuid_t * sport1 = (SwitchportToNextGuid_t *)arg1;
@@ -149,7 +163,7 @@ _guid_cycle_sort(SwitchportToNextGuid_t *ports, int portCount, void *scratch, in
 	}
 	
 	// easy out scenarios: can't cycle [1,1,1,1] or [1,2,3,4]
-	if (uniqueGuids == 1 || uniqueGuids == portCount)
+	if (uniqueGuids <= 1 || uniqueGuids == portCount)
 		return;
 	
 	// sort the array.  to preserve existing sort order of remaining
@@ -366,7 +380,10 @@ _get_port_group(Topology_t *topop, Node_t *switchp, Node_t *nodep, uint8_t *port
 
 	memset(ordered_ports, 0, sizeof(SwitchportToNextGuid_t) * switchp->nodeInfo.NumPorts);
 
-	end_port = _select_ports(topop, switchp, j, ordered_ports, 0);
+	end_port = topop->routingModule->funcs.select_ports(topop, switchp, j, ordered_ports, 0);
+
+	qsort(ordered_ports, end_port, sizeof(SwitchportToNextGuid_t), _compare_guids);
+
 	for (i=0; i<end_port; i++) {
 		portnos[i] = ordered_ports[i].portp->index;
 	}
@@ -415,8 +432,8 @@ _setup_xft(Topology_t *topop, Node_t *switchp, Node_t *nodep, Port_t *orig_portp
 		} else {
 			Node_t *ntp = orig_portp->portData->nodePtr;
 			IB_LOG_ERROR_FMT(__func__,
-				"Failed to find neighbor node "FMT_U64" from NodeGUID "FMT_U64" Port %d",
-				orig_portp->nodeno, ntp->nodeInfo.NodeGUID, orig_portp->index);
+				"Failed to find neighbor node %u, "FMT_U64" from NodeGUID "FMT_U64" Port %d",
+				orig_portp->nodeno, ntp->nodeInfo.NodeGUID, nodep->nodeInfo.NodeGUID, orig_portp->index);
 			j = -1;
 			return VSTATUS_BAD;
 		}
@@ -443,7 +460,7 @@ _setup_xft(Topology_t *topop, Node_t *switchp, Node_t *nodep, Port_t *orig_portp
 		memset(ordered_ports, 0, sizeof(SwitchportToNextGuid_t));
 
 		// select best port, _select_ports will return 1 or 0 (no path)
-		if ((end_port = _select_ports(topop, switchp, j, ordered_ports, 1)) == 0) {
+		if ((end_port = topop->routingModule->funcs.select_ports(topop, switchp, j, ordered_ports, 1)) == 0) {
 			IB_LOG_ERROR_FMT(__func__,
 				"Failed to find an outbound port on NodeGUID "FMT_U64" to NodeGUID "FMT_U64" Port %d",
 				switchp->nodeInfo.NodeGUID, nodep->nodeInfo.NodeGUID, orig_portp->index);
@@ -462,7 +479,7 @@ _setup_xft(Topology_t *topop, Node_t *switchp, Node_t *nodep, Port_t *orig_portp
 	} else { // lmc > 0
 		memset(ordered_ports, 0, sizeof(SwitchportToNextGuid_t) * switchp->nodeInfo.NumPorts);
 
-		end_port = _select_ports(topop, switchp, j, ordered_ports, 0);
+		end_port = topop->routingModule->funcs.select_ports(topop, switchp, j, ordered_ports, 0);
 		if (!end_port) {
 			IB_LOG_ERROR_FMT(__func__,
 				"Failed to find outbound ports on NodeGUID "FMT_U64" to NodeGUID "FMT_U64" Port %d",
@@ -537,7 +554,7 @@ _setup_pgs(struct _Topology *topop, struct _Node * srcSw, const struct _Node * d
 
 	memset(ordered_ports, 0, sizeof(SwitchportToNextGuid_t) * srcSw->nodeInfo.NumPorts);
 
-	int end_port = _select_ports(topop, srcSw, dstSw->swIdx, ordered_ports, 0);
+	int end_port = topop->routingModule->funcs.select_ports(topop, srcSw, dstSw->swIdx, ordered_ports, 0);
 	if (end_port <= 1) {
 		srcSw->switchInfo.PortGroupTop = 0;
 		return VSTATUS_OK;
@@ -666,6 +683,12 @@ _is_core(Node_t* switchp) {
 	Port_t* portp;
 	int dgIdx = smGetDgIdx(sm_config.ftreeRouting.coreSwitches.member);
 
+	if (dgIdx < 0) {
+		IB_LOG_WARN_FMT(__func__, "FatTreeTopology has undefined CoreSwitches device group%s",
+						sm_config.ftreeRouting.coreSwitches.member);
+		return 0;
+	}
+
 	// get switch cport
 	portp = sm_get_port(switchp, 0);
 	if (!sm_valid_port(portp) || portp->state <= IB_PORT_DOWN)
@@ -686,10 +709,6 @@ _incr_trunk_count(Node_t* switchp, Port_t* swportp, int *trunkCnt, uint8_t *trun
 	for (i=0; i<cnt; i++) {
 		if (trunkGrpNode[i] == swportp->nodeno) {
 			trunkGrpCnt[i]++;
-			if (i != (cnt-1)) {
-				// non-contiguous set of ports in group
-				switchp->trunkGrouped = 0;
-			}
 			break;
 		}
 	}
@@ -937,298 +956,70 @@ _post_process_routing_copy(Topology_t *src_topop, Topology_t *dst_topop, int *re
 }
 
 static Status_t
-_select_slsc_map(Topology_t *topop, Node_t *nodep,
-	Port_t *in_portp, Port_t *out_portp, STL_SLSCMAP *outSlscMap)
+_select_scsc_map(Topology_t *topop, Node_t *switchp, int getSecondary, int *numBlocks, STL_SCSC_MULTISET** scscmap)
 {
-    uint8_t sl, vf; 
-    STL_SLSCMAP slsc;
+	int i;
+	Port_t * portp = NULL;
+	STL_SCSC_MULTISET *scsc=NULL;
+	int portToSet = 0;
+	int needsSet = 0;
 
-	bitset_clear_all(&sm_linkSLsInuse);
+	*numBlocks = 0;
 
-	VirtualFabrics_t *VirtualFabrics = topop->vfs_ptr;
-
-	// the current VF implementation sets up generic SL2SC mappings, based on the
-	// IB legacy SL2VL mapping (SC is VL).  In order to generate unique SL2SC
-	// map for this ingress port, filter the SLs based on this port's VF memberships.
-    for (vf = 0; vf < MAX_VFABRICS; vf++) {
-        bitset_set(&sm_linkSLsInuse, VirtualFabrics->v_fabric_all[vf].base_sl);
-    }
-
-	if (bitset_nset(&sm_linkSLsInuse) == 0)
-		return VSTATUS_BAD;
-
-	//
-    // construct SLSC mapping table
-	memset(&slsc, 0, sizeof(slsc));
-
-    // populate the SL2SC map table with entries from the baseline SL2SC
-    // map table, based on SLs associated with this port.
-    for (sl = 0; sl < STL_MAX_SLS; sl++) {
-		if (!bitset_test(&sm_linkSLsInuse, sl))
-            slsc.SLSCMap[sl].SC = 15;   // mark as invalid
-        else
-            slsc.SLSCMap[sl].SC = sm_SLtoSC[sl];
-    }
-
-	memcpy(outSlscMap, &slsc, sizeof(STL_SLSCMAP));
-	return VSTATUS_OK;
-}
-
-static Status_t
-_select_scsl_map(Topology_t *topop, Node_t *nodep,
-	Port_t *in_portp, Port_t *out_portp, STL_SCSLMAP *outScslMap)
-{
-    uint8_t sl, sc, vf; 
-    STL_SCSLMAP scsl;
-
-	bitset_clear_all(&sm_linkSLsInuse);
-
-	VirtualFabrics_t *VirtualFabrics = topop->vfs_ptr;
-
-    for (vf = 0; vf < MAX_VFABRICS; vf++) {
-        bitset_set(&sm_linkSLsInuse, VirtualFabrics->v_fabric_all[vf].base_sl);
-    }
-
-	if (bitset_nset(&sm_linkSLsInuse) == 0)
-		return VSTATUS_BAD;
-
-	//
-    // construct SLSC mapping table
-	memset(&scsl, 0, sizeof(scsl));
-
-    // populate the SC2SL map table with entries from the baseline SC2SL
-    // map table, based on SLs associated with this port.
-    for (sc = 0; sc < STL_MAX_SCS; sc++) {
-        sl = sm_SCtoSL[sc];
-		if (!bitset_test(&sm_linkSLsInuse, sl))
-            scsl.SCSLMap[sc].SL = 15;   // mark as invalid
-        else
-            scsl.SCSLMap[sc].SL = sl;
-    }
-
-	memcpy(outScslMap, &scsl, sizeof(STL_SCSLMAP));
-	return VSTATUS_OK;
-}
-
-static Status_t
-_select_scvl_map(Topology_t *topop, Node_t *nodep,
-    Port_t *in_portp, Port_t *out_portp, STL_SCVLMAP *outScvlMap)
-{
-#ifdef USE_FIXED_SCVL_MAPS
-    // No more filtering. Just copy the full scvl map.
-	Qos_t *qos = GetQos(out_portp->portData->vl1);
-    memcpy(outScvlMap, &qos->scvl, sizeof(STL_SCVLMAP));
-#else
-    STL_SCVLMAP scvl;
-	Qos_t *qos = GetQos(out_portp->portData->vl1);
-    int sc, sl, vf;
-	VirtualFabrics_t *VirtualFabrics = topop->vfs_ptr;
-
-    if (in_portp->portData->nodePtr->nodeInfo.NodeType == NI_TYPE_SWITCH &&
-        out_portp->portData->nodePtr->nodeInfo.NodeType == NI_TYPE_SWITCH) {
-        // for ISL 1:1 mapping, so use default QoS map
-        memcpy(outScvlMap, &qos->scvl, sizeof(STL_SCVLMAP));
-    } else {
-        Port_t *portp;
-
-        bitset_clear_all(&sm_linkSLsInuse);
-
-        // filtering based on VF membership via the HFI port, because VF
-        // membership for switches is always zero. 
-        portp = (in_portp->portData->nodePtr->nodeInfo.NodeType != NI_TYPE_SWITCH) ? in_portp : out_portp;
-
-        for (vf = 0; vf < MAX_VFABRICS; vf++) {
-            if (bitset_test(&portp->portData->vfMember, vf) == 0)
-                continue;  // not a member of VF
-
-            bitset_set(&sm_linkSLsInuse, VirtualFabrics->v_fabric[vf].base_sl);
-            //IB_LOG_INFINI_INFO_FMT(__func__, "Member VF %s, base_sl=%d,rt_sls=%d, rt_scs=%d", 
-            //                       VirtualFabrics->v_fabric[vf].name, VirtualFabrics->v_fabric[vf].base_sl, 
-            //                       VirtualFabrics->v_fabric[vf].routing_sls, VirtualFabrics->v_fabric[vf].routing_scs);
-        }
-
-        if (bitset_nset(&sm_linkSLsInuse) == 0)
-            return VSTATUS_BAD;
-
-        // construct SC2VL from the baseline QoS SL2SC/SL2VL mapping table, which has
-        // already been setup to address the generic expansion, contraction,
-        // and conservation mapping of SL2SC/SL2VL. 
-        memset(&scvl, 0, sizeof(scvl));
-
-        for (sc = 0; sc < STL_MAX_SCS; sc++) {
-            sl = sm_SCtoSL[sc];
-            if (!bitset_test(&sm_linkSLsInuse, sl))
-                scvl.SCVLMap[sc].VL = 15;   // mark as invalid
-            else
-                scvl.SCVLMap[sc].VL = qos->scvl.SCVLMap[sc].VL;
-        }
-
-        memcpy(outScvlMap, &scvl, sizeof(STL_SCVLMAP));
-    }
-#endif
-
-    return VSTATUS_OK;
-}
-
-static Status_t
-_select_vlvf_map(Topology_t *topop, Node_t *nodep, Port_t *portp, VlVfMap_t * vlvfmap)
-{
-    // Each VL can map to 0 to 32 possible VFs.  If VL-VF unused, set to -1
-
-    // IMPLEMENTATION NOTES - 12/5/2013 - ASB
-    // This code is potentially called per port, and should therefore be optimized.
-    //   [and not re-evaluated for every port if it yeilds the same result]
-    // There are several optimization opportunities:
-    //
-    // UNIFORM SL-VL MAPPING (Implemented):
-    //   For initial implementation in STL G1, only "legacy" SL-VL was done.
-    //   This implies that SC-SC is 1-1, and SC-VL is also 1-1
-    //    (or SC-VL is constant throughout the fabric)
-    //   No SC-VL Expansion Mapping, Contraction Mapping, or Conservation mapping
-    //   Thus, there is a single VL-VF map for the entire fabric.
-    //   Evaluate once, and copy all other times.
-    //
-    // VARYING SC-SC or SL-SC / UNIFORM SC-VL MAPPING  (Not implemented)
-    //   Here, SC-VL is 1-1 or is constant throughout fabric
-    //   No SC-VL Expansion Mapping, Contraction Mapping, or Conservation mapping
-    //   However, the SC may be remapped as it moves through a switch.
-    //   This may be inconsequential if the SC change results with the same
-    //   VL-VF assignments.
-    //   Create a limited subset of VL-VF maps as needed, and copy all other times.
-    //
-    // VARYING SC-SC or SL-SC / VARYING SC-VL MAPPING  (Not implemented)
-    //   Same as above, except the SC-VL map may vary due to implementation
-    //   of Expansion Mapping, Contraction Mapping, or Conservation mapping
-    //   Although such mapping may vary from port to port, however, there may
-    //   exist a limited subset of SC-VL mappings, and therefore, a limited
-    //   subset of VL-VF.
-    //   Create a limited subset of VL-VF maps as needed, and copy all other times.
-    //
-    // OTHER OPTIMIZATION OPPORTUNITIES MAY EXIST IN THE ROUTING ALGS THEMSELVES.
-    //
-    // WORST CASE: Evaluate VL-VF for every port. Options:
-    //   1. Obtain SL-SC maps and SC-VL maps from topology route algorithms
-    //   2. Obtain SL-SC maps and SC-VL maps from topology function pointers
-    //   3. Obtain SL-SC maps and SC-VL maps from Port Data structure
-    //       - requires such maps to be initialized BEFORE this fn is called.
-    //       - currently SC-VL map is not available in Port Data.
-    //
-
-    Qos_t *qos = GetQos(portp->portData->vl1);
-
-    Port_t *neighbor_portp = NULL; // Will make a parameter(?)
-    bitset_t * vfmember = NULL;
-    int vl, vf, idx, idx2;
-
-    // Need neighbor node / port for switches.
-    if (portp->portData->nodePtr->nodeInfo.NodeType == NI_TYPE_SWITCH) {
-        if (neighbor_portp==NULL) {
-            neighbor_portp=sm_find_port(topop, portp->nodeno, portp->portno);
-        }
-
-        if (neighbor_portp!=NULL) {
-            if (neighbor_portp->portData->nodePtr->nodeInfo.NodeType == NI_TYPE_SWITCH) {
-                memcpy (vlvfmap, &qos->vlvf, sizeof(qos->vlvf));
-                return VSTATUS_OK; // We are done. No filtering for switch
-            } else {
-                vfmember = &neighbor_portp->portData->vfMember;
-            }
-        } else {
-            // Null port encountered.  Should never happen.
-            memset (vlvfmap, -1, sizeof(*vlvfmap));
-            return VSTATUS_BAD;
-        }
-    } else {
-        // HFI - use the ports vf member data.
-        vfmember = &portp->portData->vfMember;
-    }
-
-    // Default to an empty map.
-    memset (vlvfmap, -1, sizeof(*vlvfmap));
-
-    // Should be at least a member of default VF..
-    if (bitset_nset(vfmember)==0)
-        return VSTATUS_BAD;
-
-    for (vl=0; vl<STL_MAX_VLS; vl++) {
-        for (idx=0, idx2=0; idx<MAX_VFABRICS; idx++) {
-            vf = qos->vlvf.vf[vl][idx];
-            if (vf == -1) break;
-            if (bitset_test(vfmember, vf) != 0) {
-                vlvfmap->vf[vl][idx2++]=vf;
-            }
-        }
-    }
-
-    //char bfr[256];
-    //char * tmp = bfr;
-    //tmp+=sprintf(tmp, "Node: %s, Port: %d\n", nodep->nodeDesc.NodeString, portp->index);
-    //for (vl=0; vl<STL_MAX_VLS; vl++) {
-    //  tmp+=sprintf(tmp, "VL[%d]: ", vl);
-    //  for (idx=0, idx2=0; idx<MAX_VFABRICS; idx++) {
-    //        if (vlvfmap->vf[vl][idx]==-1) break;
-    //      tmp+=sprintf(tmp, "%d ", vlvfmap->vf[vl][idx]);
-    //    }
-    //    if (vlvfmap->vf[vl][0]!=-1) printf("%s\n", bfr);
-    //  tmp=bfr;
-    //}
-
-    return VSTATUS_OK;
-}
-
-static Status_t
-_fill_stl_vlarb_table(Topology_t *topop, Node_t *nodep, Port_t *portp, struct _PortDataVLArb * arbp)
-{
-	uint8_t		numVls;
-	int 		i, j, vf;
-    Qos_t *    qos = GetQos(portp->portData->vl1);
-	VirtualFabrics_t *VirtualFabrics = topop->vfs_ptr;
-
-	if (portp->portData->qosHfiFilter) {
-		// filtered by hca vf membership, vlarb already setup on slvl mapping call
+	if (getSecondary) 
 		return VSTATUS_OK;
+
+	if (vs_pool_alloc(&sm_pool, sizeof(STL_SCSC_MULTISET), (void *) &scsc) != VSTATUS_OK) {
+		return VSTATUS_BAD;
 	}
 
-	numVls = portp->portData->vl1;
-	memset(arbp, 0, sizeof(*arbp));
+	memset(scsc, 0, sizeof(STL_SCSC_MULTISET));
 
-	if (!VirtualFabrics || !VirtualFabrics->qosEnabled || numVls == 1) {
-		sm_FillVlarbTableDefault(portp, arbp);
-		return VSTATUS_OK;
+	// TBD: Fattree is simple 1:1 mapping.
+	// leaving in as test vehicle but may remove later.
+	for (i=0; i<STL_MAX_SCS; i++) {
+		scsc->SCSCMap.SCSCMap[i].SC = i;
 	}
 
-	if (portp->portData->portInfo.FlitControl.Interleave.s.MaxNestLevelTxEnabled!=0) {
-		VlVfMap_t  vlvfmap;
-		uint8_t    vlRank[STL_MAX_VLS];
-		// Determine the max rank of a VL
-		memset(vlRank, 0, sizeof(vlRank));
-		topop->routingModule->funcs.select_vlvf_map(topop, nodep, portp, &vlvfmap);
+	for_all_physical_ports(switchp, portp) {
+		if (!sm_valid_port(portp) || portp->state <= IB_PORT_DOWN) continue;
+		if (!portp->portData->scscMap) {
+			// unexpected error
+			(void) vs_pool_free(&sm_pool, scsc);
+			return VSTATUS_BAD;
+		}
 
-		for (i=0; i<STL_MAX_VLS; i++) {
-			for (j=0;j<MAX_VFABRICS; j++) {
-				vf=vlvfmap.vf[i][j];
-				if (vf==-1) break;
-				if (i >= numVls || i==15) {
-					IB_LOG_WARN("Unexpected VF:: Mapping: VL=", i);
+		needsSet = !portp->portData->current.scsc ||  sm_config.forceAttributeRewrite;
+		if (!needsSet) {
+			for (i=1; i<=switchp->nodeInfo.NumPorts; i++) {
+				if (memcmp((void *)&scsc->SCSCMap, (void *)&portp->portData->scscMap[i-1], sizeof(STL_SCSCMAP)) != 0) {
+					needsSet = 1;
 					break;
 				}
-				vlRank[i] = MAX(vlRank[i], VirtualFabrics->v_fabric[vf].preempt_rank); 
 			}
 		}
 
-		// Iterate through all the VLs, creating the preemption matrix.
-		// Note - possibly move this to Qos_t and determine once and done.
-		for (i = 0; i < numVls; i++ ) {
-			for (j = 0; j < numVls; j++) {
-				if ( (vlRank[j]!=0) && (vlRank[i]!=0) && (vlRank[i]>vlRank[j]) ) {
-					arbp->vlarbMatrix[i] |= 1 << j;
-				}
-			}
+		if (needsSet) {
+			StlAddPortToPortMask(scsc->IngressPortMask, portp->index);
+			portToSet = 1;
 		}
 	}
+	
+	if (portToSet) {
+		// Set entire table for any ingress port needing a set
+		for (i=1; i<=switchp->nodeInfo.NumPorts; i++)
+			StlAddPortToPortMask(scsc->EgressPortMask, i);
 
-	return QosFillStlVlarbTable(topop, nodep, portp, qos, arbp);
+		*numBlocks = 1;
+		*scscmap = scsc;
+
+	} else {
+		(void) vs_pool_free(&sm_pool, scsc);
+	}
+
+	return VSTATUS_OK;
 }
+
 
 static Status_t
 _select_updn_path_lids
@@ -1239,50 +1030,6 @@ _select_updn_path_lids
 	, uint16_t *outDstLid
 	)
 {
-	return VSTATUS_OK;
-}
-
-static Status_t
-_select_path_lids
-	( Topology_t *topop
-	, Port_t *srcPortp, uint16_t slid
-	, Port_t *dstPortp, uint16_t dlid
-	, uint16_t *outSrcLids, uint8_t *outSrcLen
-	, uint16_t *outDstLids, uint8_t *outDstLen
-	)
-{
-	int i;
-	int srcLids, dstLids;
-
-	srcLids = 1 << srcPortp->portData->lmc;
-	dstLids = 1 << dstPortp->portData->lmc;
-
-	if (slid == PERMISSIVE_LID && dlid == PERMISSIVE_LID) {
-		*outSrcLen = srcLids;
-		for (i = 0; i < srcLids; ++i)
-			outSrcLids[i] = srcPortp->portData->lid + i;
-		*outDstLen = dstLids;
-		for (i = 0; i < dstLids; ++i)
-			outDstLids[i] = dstPortp->portData->lid + i;
-	} else if (slid == PERMISSIVE_LID) {
-		*outSrcLen = srcLids;
-		for (i = 0; i < srcLids; ++i)
-			outSrcLids[i] = srcPortp->portData->lid + i;
-		*outDstLen = 1;
-		outDstLids[0] = dlid;
-	} else if (dlid == PERMISSIVE_LID) {
-		*outSrcLen = 1;
-		outSrcLids[0] = slid;
-		*outDstLen = dstLids;
-		for (i = 0; i < dstLids; ++i)
-			outDstLids[i] = dstPortp->portData->lid + i;
-	} else {
-		*outSrcLen = 1;
-		outSrcLids[0] = slid;
-		*outDstLen = 1;
-		outDstLids[0] = dlid;
-	}
-
 	return VSTATUS_OK;
 }
 
@@ -1310,6 +1057,45 @@ static int _check_switch_path_change(Topology_t * oldtp, Topology_t * newtp, Nod
 	 */
 	if (topology_cost_path_changes)
 		return 1;
+
+	return 0;
+}
+
+static boolean
+_handle_fabric_change(Topology_t *topop, Node_t *oldSwitchp, Node_t *switchp)
+{
+	Port_t* portp = NULL;
+	int port;
+
+	for (port= bitset_find_first_one(&switchp->initPorts); port >=0;
+		 port= bitset_find_next_one(&switchp->initPorts, port+1)) {
+
+		portp = sm_get_port(switchp, port);
+		if (!sm_valid_port(portp)) continue;
+
+		if (portp->portData->isIsl)
+			// New ISL coming up
+			return 1;
+
+		portp = sm_get_port(oldSwitchp, port);
+		if (!sm_valid_port(portp) || portp->portData->isIsl)
+			// Moved from switch port to HFI
+			return 1;
+	}
+
+	if (!bitset_equal(&oldSwitchp->activePorts, &switchp->activePorts)) {
+		for (port= bitset_find_first_one(&oldSwitchp->activePorts); port >=0;
+			 port= bitset_find_next_one(&oldSwitchp->activePorts, port+1)) {
+			if (bitset_test(&switchp->activePorts, port)) continue;
+
+			portp = sm_get_port(oldSwitchp, port);
+			if (!sm_valid_port(portp)) continue;
+
+			if (portp->portData->isIsl)
+				// Lost an ISL
+				return 1;
+		}
+	}
 
 	return 0;
 }
@@ -1442,23 +1228,29 @@ sm_shortestpath_make_routing_module(RoutingModule_t * rm)
 	rm->funcs.post_process_discovery = _post_process_discovery;
 	rm->funcs.post_process_routing = _post_process_routing;
 	rm->funcs.post_process_routing_copy = _post_process_routing_copy;
+	rm->funcs.allocate_cost_matrix = sm_routing_alloc_cost_matrix;
+	rm->funcs.initialize_cost_matrix = sm_routing_init_floyds;
+ 	rm->funcs.calculate_cost_matrix = sm_routing_calc_floyds;
 	rm->funcs.copy_lfts = sm_routing_copy_lfts;
 	rm->funcs.setup_switches_lrdr = _setup_switches_lrdr;
 	rm->funcs.get_port_group = _get_port_group;
 	rm->funcs.setup_xft = _setup_xft;
+	rm->funcs.select_ports = _select_ports;
 	rm->funcs.setup_pgs = _setup_pgs;
-	rm->funcs.select_slsc_map = _select_slsc_map;
-	rm->funcs.select_scsl_map = _select_scsl_map;
-	rm->funcs.select_scvl_map = _select_scvl_map;
-	rm->funcs.select_vlvf_map = _select_vlvf_map;
-	rm->funcs.fill_stl_vlarb_table = _fill_stl_vlarb_table;
-	rm->funcs.select_path_lids = _select_path_lids;
+	rm->funcs.select_slsc_map = sm_select_slsc_map;
+	rm->funcs.select_scsl_map = sm_select_scsl_map;
+	rm->funcs.select_scsc_map = _select_scsc_map;
+	rm->funcs.select_scvl_map = sm_select_scvl_map;
+	rm->funcs.select_vlvf_map = sm_select_vlvf_map;
+	rm->funcs.fill_stl_vlarb_table = sm_fill_stl_vlarb_table;
+	rm->funcs.select_path_lids = sm_select_path_lids;
 	rm->funcs.select_updn_path_lids = _select_updn_path_lids;
 	rm->funcs.get_sl_for_path = _get_sl_for_path;
 	rm->funcs.process_swIdx_change = process_swIdx_change;
 	rm->funcs.check_switch_path_change = _check_switch_path_change;
 	rm->funcs.needs_lft_recalc = _needs_lft_recalc;
 	rm->funcs.can_send_partial_lft = _can_send_partial_lft_sp;
+	rm->funcs.handle_fabric_change = _handle_fabric_change;
 	rm->funcs.destroy = _destroy;
     rm->load = _load;
     rm->unload = _unload;

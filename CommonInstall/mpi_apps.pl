@@ -67,23 +67,23 @@ sub install_shmem_apps($)
 	uninstall_shmem_apps;
 
 	# Copy all shmem sample applications
-	check_dir("/opt/opa/src");
-	check_dir("/opt/opa/src/shmem_apps");
+	check_dir("/usr/lib/opa/src");
+	check_dir("/usr/lib/opa/src/shmem_apps");
 	if ( -e "$srcdir/shmem/shmem_apps/shmem_apps.tgz" )
 	{
-		system("tar xfvz $srcdir/shmem/shmem_apps/shmem_apps.tgz --directory $ROOT/opt/opa/src/shmem_apps > $ROOT/opt/opa/src/shmem_apps/.files");
+		system("tar xfvz $srcdir/shmem/shmem_apps/shmem_apps.tgz --directory $ROOT/usr/lib/opa/src/shmem_apps > $ROOT/usr/lib/opa/src/shmem_apps/.files");
 	}
 	# allow all users to read the files so they can copy and use
-	system("chmod -R ugo+r $ROOT/opt/opa/src/shmem_apps");
-	system("find $ROOT/opt/opa/src/shmem_apps -type d|xargs chmod ugo+x");
+	system("chmod -R ugo+r $ROOT/usr/lib/opa/src/shmem_apps");
+	system("find $ROOT/usr/lib/opa/src/shmem_apps -type d|xargs chmod ugo+x");
 }
 
 sub uninstall_shmem_apps()
 {
 	# remove shmem_apps we installed or user compiled, however do not remove
 	# any logs or other files the user may have created
-	remove_shmem_apps "/opt/opa/src/shmem_apps";
-	system "rmdir $ROOT/opt/opa/src 2>/dev/null";	# remove only if empty
-	system "rmdir $ROOT/opt/opa 2>/dev/null";	# remove only if empty
+	remove_shmem_apps "/usr/lib/opa/src/shmem_apps";
+	system "rmdir $ROOT/usr/lib/opa/src 2>/dev/null";	# remove only if empty
+	system "rmdir $ROOT/usr/lib/opa 2>/dev/null";	# remove only if empty
 }
 

@@ -72,7 +72,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * Environment:
  *	All
  *
- * $Revision: 1.15 $
+ * $Revision$
  */
 
 

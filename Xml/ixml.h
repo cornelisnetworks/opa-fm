@@ -73,7 +73,7 @@ typedef void (*IXML_END_TAG_FUNC)(struct IXmlParserState *state,
 
 typedef struct _IXML_FIELD {
 	const char *tag;		/* tag name in XML file or "*" */
-	char format;		/* format for tag, see below for choices */
+	char format;			/* format for tag, see below for choices */
 	int offset;				/* offset in C structure for tag's value */
 	int size;				/* size of field in C structure */
 	IXML_FORMAT_FIELD_FUNC format_func;	/* custom function to format output */
@@ -331,7 +331,7 @@ extern void IXmlOutputOptionalStruct(IXmlOutputState_t *state, const char *tag, 
 /* XML Parser declarations */
 /* these structures should not be directly used by callers */
 typedef struct IXmlParserStackEntry {
-	const char *tag;
+	char *tag;				// locally allocated copy
 	const IXML_FIELD *field;
 	const IXML_FIELD *subfields;
 	void *object;

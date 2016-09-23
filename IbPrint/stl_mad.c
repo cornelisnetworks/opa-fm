@@ -78,26 +78,39 @@ void PrintStlAggregateMember(PrintDest_t *dest, int indent, const STL_AGGREGATE 
 	PrintFunc(dest, "%*sModifier: 0x%02x\n", indent+2, "", aggr->AttributeModifier);
 }
 
-void PrintStlClassPortInfo(PrintDest_t *dest, int indent, const STL_CLASS_PORT_INFO *pClassPortInfo)
+void PrintStlClassPortInfo(PrintDest_t *dest, int indent, const STL_CLASS_PORT_INFO *pClassPortInfo, uint8 MgmtClass)
 {
 	char tbuf[8];
 	char cbuf[80];
+	char c2buf[80];
 	PrintFunc(dest, "%*sBaseVersion: %d ClassVersion: %d\n",
 				indent, "", pClassPortInfo->BaseVersion,
 				pClassPortInfo->ClassVersion);
 	FormatTimeoutMult(tbuf, pClassPortInfo->u1.s.RespTimeValue);
-	sprintf(cbuf, "%s%s%s",
-			(pClassPortInfo->CapMask & CLASS_PORT_CAPMASK_TRAP)?"Trap ":"",
-			(pClassPortInfo->CapMask & CLASS_PORT_CAPMASK_NOTICE)?"Notice ":"",
-			 pClassPortInfo->CapMask?"":"-");
+	switch (MgmtClass) {
+	case MCLASS_SUBN_ADM: /* SA */
+		StlSaClassPortInfoCapMask(cbuf, pClassPortInfo->CapMask);
+		StlSaClassPortInfoCapMask2(c2buf, pClassPortInfo->u1.s.CapMask2);
+		break;
+	case MCLASS_PERF: /* PM */
+		StlPmClassPortInfoCapMask(cbuf, pClassPortInfo->CapMask);
+		StlPmClassPortInfoCapMask2(c2buf, pClassPortInfo->u1.s.CapMask2);
+		break;
+	case MCLASS_VFI_PM: /* PA */
+		StlPaClassPortInfoCapMask(cbuf, pClassPortInfo->CapMask);
+		StlPaClassPortInfoCapMask2(c2buf, pClassPortInfo->u1.s.CapMask2);
+		break;
+	default:
+		StlCommonClassPortInfoCapMask(cbuf, pClassPortInfo->CapMask);
+		StlCommonClassPortInfoCapMask2(c2buf, pClassPortInfo->u1.s.CapMask2);
+		break;
+	}
 	PrintFunc(dest, "%*sRespTime: %s Capability: 0x%04x: %s\n",
 				indent, "", tbuf,
 				pClassPortInfo->CapMask, cbuf);
-	cbuf[0] = pClassPortInfo->u1.s.CapMask2?'\0':'-';
-	cbuf[1] = '\0';
 	PrintFunc(dest, "%*sCapability2: 0x%07x: %s\n",
 				indent, "",
-				pClassPortInfo->u1.s.CapMask2, cbuf);
+				pClassPortInfo->u1.s.CapMask2, c2buf);
 
 	PrintFunc(dest, "%*sRedirect: LID: 0x%04x GID: 0x%016"PRIx64":0x%016"PRIx64"\n",
 				indent, "",

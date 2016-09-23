@@ -38,7 +38,7 @@ use strict;
 # ==========================================================================
 # Fast Fabric installation
 
-my $FF_CONF_FILE = "/opt/opa/tools/opafastfabric.conf";
+my $FF_CONF_FILE = "/usr/lib/opa/tools/opafastfabric.conf";
 my $FF_TLS_CONF_FILE = "/etc/sysconfig/opa/opaff.xml";
 sub available_fastfabric
 {
@@ -118,20 +118,20 @@ sub install_fastfabric
 		LogPrint "Installing $ComponentInfo{'fastfabric'}{'Name'} $version $DBG_FREE for $CUR_DISTRO_VENDOR $CUR_VENDOR_VER\n";
 	check_config_dirs();
 	if ( -e "$srcdir/comp.pl" ) {
-		check_dir("/opt/opa");
-		copy_systool_file("$srcdir/comp.pl", "/opt/opa/.comp_fastfabric.pl");
+		check_dir("/usr/lib/opa");
+		copy_systool_file("$srcdir/comp.pl", "/usr/lib/opa/.comp_fastfabric.pl");
 	}
 
 	my $rpmfile = rpm_resolve("$srcdir/RPMS/*/", "any", "opa-fastfabric");
 	rpm_run_install($rpmfile, "any", " -U ");
 
-	check_dir("/opt/opa/tools");
-	check_dir("/opt/opa/samples");
-	system "chmod ug+x $ROOT/opt/opa/samples/hostverify.sh";
-	system "rm -f $ROOT/opt/opa/samples/nodeverify.sh";
+	check_dir("/usr/lib/opa/tools");
+	check_dir("/usr/lib/opa/samples");
+	system "chmod ug+x $ROOT/usr/lib/opa/samples/hostverify.sh";
+	system "rm -f $ROOT/usr/lib/opa/samples/nodeverify.sh";
 
 	check_rpm_config_file("$FF_TLS_CONF_FILE");
-	printf("Default opaff.xml can be found in '/opt/opa/samples/opaff.xml-sample'\n");
+	printf("Default opaff.xml can be found in '/usr/lib/opa/samples/opaff.xml-sample'\n");
 	check_rpm_config_file("$CONFIG_DIR/opa/opamon.conf");
 	check_rpm_config_file("$CONFIG_DIR/opa/opafastfabric.conf");
 	check_rpm_config_file("$CONFIG_DIR/opa/allhosts");
@@ -139,7 +139,7 @@ sub install_fastfabric
 	check_rpm_config_file("$CONFIG_DIR/opa/hosts");
 	check_rpm_config_file("$CONFIG_DIR/opa/ports");
 	check_rpm_config_file("$CONFIG_DIR/opa/switches");
-	check_rpm_config_file("/opt/opa/tools/osid_wrapper");
+	check_rpm_config_file("/usr/lib/opa/tools/osid_wrapper");
 
 	#install_conf_file("$ComponentInfo{'fastfabric'}{'Name'}", "$FF_TLS_CONF_FILE", "$srcdir/fastfabric/tools/tls");
 	#remove_conf_file("$ComponentInfo{'fastfabric'}{'Name'}", "$OPA_CONFIG_DIR/iba_stat.conf");
@@ -179,11 +179,11 @@ sub uninstall_fastfabric
 
 	# remove samples we installed (or user compiled), however do not remove
 	# any logs or other files the user may have created
-	remove_installed_files "/opt/opa/samples";
-	system "rmdir $ROOT/opt/opa/samples 2>/dev/null";	# remove only if empty
+	remove_installed_files "/usr/lib/opa/samples";
+	system "rmdir $ROOT/usr/lib/opa/samples 2>/dev/null";	# remove only if empty
 
-	system("rm -rf $ROOT/opt/opa/.comp_fastfabric.pl");
-	system "rmdir $ROOT/opt/opa 2>/dev/null";	# remove only if empty
+	system("rm -rf $ROOT/usr/lib/opa/.comp_fastfabric.pl");
+	system "rmdir $ROOT/usr/lib/opa 2>/dev/null";	# remove only if empty
 	system "rmdir $ROOT$BASE_DIR 2>/dev/null";	# remove only if empty
 	system "rmdir $ROOT$OPA_CONFIG_DIR 2>/dev/null";	# remove only if empty
 	$ComponentWasInstalled{'fastfabric'}=0;

@@ -1,0 +1,263 @@
+#!/bin/bash
+# [ICS VERSION STRING: unknown]
+# This is a bash sourced config file which defines variables used in
+# fast fabric tools.  Command line arguments will override these settings.
+# Assignments should be scripted such that this file does not override
+# exported environment settings, as shown in the defaults below
+
+if [ "$CONFIG_DIR" = "" ]
+then
+	if [ -d /etc/sysconfig ]
+	then
+		CONFIG_DIR=/etc/sysconfig
+	else
+		CONFIG_DIR=/etc
+	fi
+	export CONFIG_DIR
+fi
+
+# Override default location for HOSTS_FILE
+export HOSTS_FILE=${HOSTS_FILE:-$CONFIG_DIR/opa/hosts}
+
+# Override default location for CHASSIS_FILE
+export CHASSIS_FILE=${CHASSIS_FILE:-$CONFIG_DIR/opa/chassis}
+
+# Override default location for ESM_CHASSIS_FILE
+export ESM_CHASSIS_FILE=${ESM_CHASSIS_FILE:-$CONFIG_DIR/opa/esm_chassis}
+
+# Override default location for OPASWITCHES_FILE
+export OPASWITCHES_FILE=${OPASWITCHES_FILE:-$CONFIG_DIR/opa/switches}
+
+# Override default location for PORTS_FILE
+export PORTS_FILE=${PORTS_FILE:-$CONFIG_DIR/opa/ports}
+
+# Default suffix for IPoIB host names
+# the special value "NONE" is used to indicate a value of ""
+# this value can be used in ff_host_basename_to_ipoib and ff_host_basename
+# below to convert between IPoIB and Ethernet hostnames
+export FF_IPOIB_SUFFIX=${FF_IPOIB_SUFFIX:--opa}
+# Alternatively a IPoIB prefix can be provided, commented out
+# examples in ff_host_basename and ff_host_basename can be enabled if desired
+export FF_IPOIB_PREFIX=${FF_IPOIB_PREFIX:-opa-}
+
+# Default management host
+export MGMT_HOST=${MGMT_HOST:-localhost}
+
+
+# The shell functions below are only defined if no existing function/command
+# with given name, hence allowing use of shell functions or creation of a
+# command for this operation
+
+# shell Function to convert a basic hostname into an IPoIB hostname
+# if FF_IPOIB_SUFFIX is "", this should return $1 unmodified
+# such that commands can be used with -i "" to skip IPoIB operations
+# (special value of NONE will be converted to "" before this is called)
+if ! type ff_host_basename_to_ipoib >/dev/null 2>/dev/null
+then
+	function ff_host_basename_to_ipoib()
+	{
+		# $1 = hostname provided
+		echo "$1$FF_IPOIB_SUFFIX"
+		# comment out line above and uncomment line below if using prefixes
+		#echo "$FF_IPOIB_PREFIX$1"
+	}
+fi
+
+# shell Function to convert a hostname into a basic hostname
+# (eg. remove IPoIB suffix, etc) should match result of "hostname -s" on host
+# if FF_IPOIB_SUFFIX is "", this should return $1 unmodified
+# such that commands can be used with -i "" to skip IPoIB operations
+# (special value of NONE will be converted to "" before this is called)
+if ! type ff_host_basename >/dev/null 2>/dev/null
+then
+	function ff_host_basename()
+	{
+		# $1 = hostname provided (could be ethernet or IPoIB name)
+		echo "$1"|sed -e "s/$FF_IPOIB_SUFFIX\$//"
+		# comment out line above and uncomment line below if using prefixes
+		#echo "$1"|sed -e "s/^$FF_IPOIB_PREFIX//"
+	}
+fi
+
+# input to opahostadmin configipoib indicating which mode to
+# use for IP configuration of ipoib interface, valid values are one of
+# static, dhcp, auto
+# for auto, if not found in resolver, will configure static, otherwise uses dhcp
+export FF_IPOIB_CONFIG=${FF_IPOIB_CONFIG:-static}
+
+# IP netmask for IPoIB subnet [-m option], only used for static
+# if "" default will be determined based on class of IP address [A, B, C]
+export FF_IPOIB_NETMASK=${FF_IPOIB_NETMASK:-}
+
+# IPOIB Connected Mode. Legal values are "yes" (connected) and "no" (datagram).
+export FF_IPOIB_CONNECTED=${FF_IPOIB_CONNECTED:-yes}
+
+# Maximum parallel processes for opahostadmin, opachassisadmin, opaswitchadmin
+# and -p option on other commands
+# set to 1 to avoid parallel execution
+# 1000 is a reasonable default. If a larger number is needed, it is recommended
+# consideration is given to ulimit -u, memory consumption by many scp/ssh sessions,
+# and the total number of TCP connections the system can handle.
+export FF_MAX_PARALLEL=${FF_MAX_PARALLEL:-1000}
+
+# If the systems are slow for some reason, this can be used to provide a
+# multiplier for all timeouts in opahostadmin, opachassisadmin, opaswitchadmin
+export FF_TIMEOUT_MULT=${FF_TIMEOUT_MULT:-2}
+
+# where to put result files from FastFabric runs of
+# opahostadmin, opachassisadmin, opaswitchadmin
+#export FF_RESULT_DIR=${FF_RESULT_DIR:-.}
+export FF_RESULT_DIR=${FF_RESULT_DIR:-$HOME}
+
+# IntelOPA product to install during opahostadmin load and upgrade
+export FF_PRODUCT=${FF_PRODUCT:-IntelOPA-Basic.`cat /usr/lib/opa/tools/osid_wrapper`}
+
+# IntelOPA product version to install during opahostadmin load and upgrade
+export FF_PRODUCT_VERSION=${FF_PRODUCT_VERSION:-`cat /etc/sysconfig/opa/version_wrapper 2>/dev/null`}
+
+# IntelOPA packages to install during opahostadmin load [-P option]
+#export FF_PACKAGES=${FF_PACKAGES:-oftools ipoib mpi pgas}
+#export FF_PACKAGES=${FF_PACKAGES:-oftools ipoib psm_mpi pgas}
+export FF_PACKAGES=${FF_PACKAGES:-oftools ipoib psm_mpi}
+
+# Additional INSTALL options during opahostadmin load [-I option]
+#export FF_INSTALL_OPTIONS=${FF_INSTALL_OPTIONS:- -E ibacm}
+export FF_INSTALL_OPTIONS=${FF_INSTALL_OPTIONS:- }
+
+# Additional INSTALL options during opahostadmin upgrade [-U option]
+#export FF_UPGRADE_OPTIONS=${FF_UPGRADE_OPTIONS:- -E ibacm}
+export FF_UPGRADE_OPTIONS=${FF_UPGRADE_OPTIONS:- }
+
+# where to upload server specific files to during opauploadall, opacaptureall
+# [-d option]
+export UPLOADS_DIR=${UPLOADS_DIR:-./uploads}
+
+# where to download server specific files from during opadownloadall
+# [-d option]
+export DOWNLOADS_DIR=${DOWNLOADS_DIR:-./downloads}
+
+# where to save history and baselines for cluster analysis and health checks
+# [-d option]
+export FF_ANALYSIS_DIR=${FF_ANALYSIS_DIR:-/var/usr/lib/opa/analysis}
+
+# topology input file(s) to use for opafabricanalysis, opaallanalysis and
+# opareports operations.  The %P marker will be replaced with the
+# local HFI port/fabric selection string (for example 0:0 or 1:2) for
+# the fabric being selected (see PORTS_FILE for more information)
+# if this file is not found, or the value of this parameter is "NONE"
+# no topology input file will be used
+export FF_TOPOLOGY_FILE=${FF_TOPOLOGY_FILE:-$CONFIG_DIR/opa/topology.%P.xml}
+
+# How to login to host systems during opahostadmin
+# At this time only ssh is supported.
+# Note: at present opacmdall and opascpall always assume password-less ssh/scp
+export FF_LOGIN_METHOD=${FF_LOGIN_METHOD:-ssh}
+
+# initial user name (cannot be root if CFG_LOGIN_METHOD=telnet)
+export FF_USERNAME=${FF_USERNAME:-root}
+
+# password for FF_USERNAME (not needed if password-less ssh configured)
+export FF_PASSWORD=${FF_PASSWORD:-}
+
+# if FF_USERNAME is not root, what is the root password needed when
+# suing to root
+export FF_ROOTPASS=${FF_ROOTPASS:=}
+
+# How to login to chassis
+# can be ssh or telnet
+export FF_CHASSIS_LOGIN_METHOD=${FF_CHASSIS_LOGIN_METHOD:-ssh}
+
+# password for admin (not needed if password-less ssh configured)
+export FF_CHASSIS_ADMIN_PASSWORD=${FF_CHASSIS_ADMIN_PASSWORD:-adminpass}
+
+#base device number for IPoIB devices - IPoIB devices in the systems will
+# be named "ib($FF_IPOIB_BASE_DEV_NUM) ib($FF_IPOIB_BASE_DEV_NUM+1) ..."
+# On Silvertstorm stack it will be "ib1 ib2 ...."
+# On OFED stack it will be "ib0 ib1 ..."
+export FF_IPOIB_BASE_DEV_NUM=${FF_IPOIB_BASE_DEV_NUM:-0}
+
+# shell Function to return the base IPoIB device number for this stack type.
+# For Silverstorm stack installations this function should return 1, for
+# OFED stack installations this should return 0.
+if ! type ff_ipoib_base_dev_num >/dev/null 2>/dev/null
+then
+	function ff_ipoib_base_dev_num()
+	{
+		# No arguments to this function
+        # $host is supplied as an arguemnt when this function is called
+        # but it is ignored here. This is a hack to limit the number of
+		# changes required.
+		echo "$FF_IPOIB_BASE_DEV_NUM"
+	}
+fi
+
+# options for opareport during opafabricanalysis health check
+# alternative would be to use "-i seconds" instead of -C
+# depending on fabric design, more strict link speed checks, such as
+# -o slowconfiglinks or -o slowconnlinks may be appropriate
+export FF_FABRIC_HEALTH=${FF_FABRIC_HEALTH:- -s -C -o errors -o slowlinks}
+
+# list of CLI commands to issue during opachassisanalysis
+export FF_CHASSIS_CMDS=${FF_CHASSIS_CMDS:-showAllConfig}
+
+# single CLI command to issue to check overall health during opachassisanalysis
+# hwCheck is prefered, but is not supported on older chassis FW
+export FF_CHASSIS_HEALTH=${FF_CHASSIS_HEALTH:-hwCheck}
+
+# list of CLI commands to issue during opaesmanalysis
+export FF_ESM_CMDS=${FF_ESM_CMDS:-smConfig}
+
+# list of analysis to perform during opaallanalysis
+# pick appropriate type of SM to analyze
+#export FF_ALL_ANALYSIS=${FF_ALL_ANALYSIS:-fabric chassis hostsm esm}
+export FF_ALL_ANALYSIS=${FF_ALL_ANALYSIS:-fabric chassis}
+
+# command to perform text files for baseline vs latest snapshot during
+# fabric health analysis commands
+#export FF_DIFF_CMD=${FF_DIFF_CMD:-diff}
+export FF_DIFF_CMD=${FF_DIFF_CMD:-diff -C 1}
+
+# location to find fastfabric mpi_apps for use by assorted fastfabric tools
+# As needed they can be copied to a global filesystem and adjust this variable
+# This MUST be a absolute path which exists on all nodes
+export FF_MPI_APPS_DIR=${FF_MPI_APPS_DIR:-/usr/lib/opa/src/mpi_apps}
+
+# env variables to set within each rank of MPI runs done by fastfabric directly
+# alternatively the /usr/lib/opa/src/mpi_apps/ofed.*.param files can be edited
+# with appropriate values.
+# example of PSM selection of vFabric by PKEY/SL
+#export FF_MPI_ENV=${FF_MPI_ENV:-PSM_PKEY=0xffff IPATH_SL=0 PSM_MTU=2048}
+# example of PSM selection of path and vFabric by query to dist_sa
+#export FF_MPI_ENV=${FF_MPI_ENV:-PSM_PATH_REC=opp PSM_IB_SERVICE_ID=0x1000117500000000}
+# example of PSM selection of path and vFabric by default query to dist_sa
+#export FF_MPI_ENV=${FF_MPI_ENV:-PSM_PATH_REC=opp}
+export FF_MPI_ENV=${FF_MPI_ENV:-}
+
+# configuration of arguments for MPI performance deviation testing
+# via /usr/lib/opa/src/mpi_apps/deviation/deviation
+# The defaults should work for most fabrics.  This can be made stricter
+# and/or specific to the fabric by using arguments such as -h hostname
+# -bwthres and -latthres.  Samples are provided for various topologies.
+# See run_deviation or the user's guide for more
+# information.
+#export FF_DEVIATION_ARGS=${FF_DEVIATION_ARGS:--bwtol 20 -lattol 50 -c -v}
+#export FF_DEVIATION_ARGS=${FF_DEVIATION_ARGS:--bwtol 20 -lattol 50 -c -h hostname}
+export FF_DEVIATION_ARGS=${FF_DEVIATION_ARGS:--bwtol 20 -lattol 50 -c}
+# 1 hop fabric, 100g links, x16 Hosts
+#export FF_DEVIATION_ARGS==${FF_DEVIATION_ARGS:--bwthres 12000 -latthres 1.07 -c}
+# 3 hop fabric, 100g links, x16 Hosts
+#export FF_DEVIATION_ARGS==${FF_DEVIATION_ARGS:--bwthres 12000 -latthres 1.35 -c}
+# 5 hop fabric, 100g links, x16 Hosts
+#export FF_DEVIATION_ARGS==${FF_DEVIATION_ARGS:--bwthres 12000 -latthres 1.63 -c}
+
+# location to find fastfabric shmem_apps for use by assorted fastfabric tools
+# As needed they can be copied to a global filesystem and adjust this variable
+# This MUST be a absolute path which exists on all nodes
+export FF_SHMEM_APPS_DIR=${FF_SHMEM_APPS_DIR:-/usr/lib/opa/src/shmem_apps}
+
+#Serialize output of operations running in parallel
+export FF_SERIALIZE_OUTPUT=${FF_SERIALIZE_OUTPUT:-yes}
+
+# Directory name for location of hostverify.sh script and output target directory
+# on each host used by opaverifyhosts 
+export FF_HOSTVERIFY_DIR=${FF_HOSTVERIFY_DIR:-/root}

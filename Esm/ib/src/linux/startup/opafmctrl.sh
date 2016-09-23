@@ -204,7 +204,7 @@ get_config()
 		# get IFS_FM_BASE
 		. $CONFIG_DIR/opa/opafm.info
 	else
-		IFS_FM_BASE=/opt/opafm
+		IFS_FM_BASE=/usr/lib/opa-fm
 		if [ "$quiet" != y ]
 		then
 			echo "Error: $CONFIG_DIR/opa/opafm.info not found" >&2

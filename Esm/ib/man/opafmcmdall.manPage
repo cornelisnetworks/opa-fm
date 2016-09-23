@@ -13,9 +13,7 @@ opafmcmdall
 .NL
 
 .PP
-The behavior is similar to opafmcmd issuing the command to the FM instances listed in the options. Default sends the command to all instances of the FM. See 
-\fIopafmcmd\fR
-for more details.
+Executes a command to all instances of the Fabric Manager (FM) listed in the options. The behavior is similar to opafmcmd.
 .SH Syntax
 .NL
 opafmcmdall [-i \fIfm\(ulinstance\fR] \fIcmd\fR[ \fIargs\fR]
@@ -25,17 +23,17 @@ opafmcmdall [-i \fIfm\(ulinstance\fR] \fIcmd\fR[ \fIargs\fR]
 .TP 10
 --help 
 .NL
-Produces complete help text.
+Produces full help text.
 
 .TP 10
 -i \fIfm\(ulinstance\fR 
 .NL
-FM instance number to act on. You can enter multiple -i options. Range = 0 to 7. Default = all instances.
+Specifies the number of the FM instance to act on. Range = 0 to 7. Default = 0.
 
 .TP 10
- \fIcmd [args]\fR 
+cmd [ \fIargs\fR] 
 .NL
-Command and optional arguments.
+Specifies the commands and arguments (if applicable) to be run. Values include:
 
 .RS
 .TP 10
@@ -43,6 +41,7 @@ Command and optional arguments.
 .sp
 smForceSweep 
 Makes the Subnet Manager (SM) sweep now.
+
 .RE
 
 .RS
@@ -60,6 +59,7 @@ Restores the normal priority of the SM, if it is currently elevated.
 .sp
 smShowCounters 
 Gets statistics and performance counters from the SM.
+
 .RE
 
 .RS
@@ -68,6 +68,7 @@ Gets statistics and performance counters from the SM.
 .sp
 smResetCounters 
 Resets SM statistics and performance counters.
+
 .RE
 
 .RS
@@ -76,6 +77,7 @@ Resets SM statistics and performance counters.
 .sp
 smStateDump 
 Dumps internal SM state into specified directory.
+
 .RE
 
 .RS
@@ -83,7 +85,28 @@ Dumps internal SM state into specified directory.
 
 .sp
 smLogLevel 
-Sets the SM logging level. Values include: 0=NONE+, 1=WARN+, 2=NOTICE+, 3=INFO+, 4=VERBOSE+, 5=DEBUG2+, 6=DEBUG4+, 7=TRACE+
+Sets the SM logging level. Values include:
+.RS
+
+.IP \(bu
+0=NONE+
+.IP \(bu
+1=WARN+
+.IP \(bu
+2=NOTICE+
+.IP \(bu
+3=INFO+
+.IP \(bu
+4=VERBOSE+
+.IP \(bu
+5=DEBUG2+
+.IP \(bu
+6=DEBUG4+
+.IP \(bu
+7=TRACE+
+
+.RE
+
 
 .RE
 
@@ -92,7 +115,16 @@ Sets the SM logging level. Values include: 0=NONE+, 1=WARN+, 2=NOTICE+, 3=INFO+,
 
 .sp
 smLogMode 
-Sets the SM log mode flags. 0/1 1=downgrade non-actionable, 0/2 2=logfile only.
+Sets the SM log mode flags. Values include:
+.RS
+
+.IP \(bu
+0/1 1=downgrade non-actionable
+.IP \(bu
+0/2 2=logfile only
+
+.RE
+
 
 .RE
 
@@ -101,7 +133,7 @@ Sets the SM log mode flags. 0/1 1=downgrade non-actionable, 0/2 2=logfile only.
 
 .sp
 smLogMask 
-Sets the SM log mask for a specific subsystem to the value given. For a list of subsystems and mask bit meanings, see the files /etc/sysconfig/opafm.xml or /opt/opafm/etc/opafm.xml.
+Sets the SM log mask for a specific subsystem to the value given. For a list of subsystems and mask bit meanings, see the files /etc/sysconfig/opafm.xml or /usr/lib/opa-fm/etc/opafm.xml.
 
 .RE
 
@@ -111,6 +143,7 @@ Sets the SM log mask for a specific subsystem to the value given. For a list of 
 .sp
 smPerfDebug 
 Toggles performance debug output for SM.
+
 .RE
 
 .RS
@@ -119,6 +152,7 @@ Toggles performance debug output for SM.
 .sp
 saPerfDebug 
 Toggles performance debug output for Subnet Administration (SA).
+
 .RE
 
 .RS
@@ -127,6 +161,7 @@ Toggles performance debug output for Subnet Administration (SA).
 .sp
 saRmppDebug 
 Toggles Reliable Message Passing Protocol (RMPP) debug output for SA.
+
 .RE
 
 .RS
@@ -135,6 +170,7 @@ Toggles Reliable Message Passing Protocol (RMPP) debug output for SA.
 .sp
 pmShowCounters 
 Gets statistics and performance counters for the Performance Manager (PM).
+
 .RE
 
 .RS
@@ -143,6 +179,7 @@ Gets statistics and performance counters for the Performance Manager (PM).
 .sp
 pmResetCounters 
 Resets statistics and performance counters for the PM.
+
 .RE
 
 .RS
@@ -151,6 +188,7 @@ Resets statistics and performance counters for the PM.
 .sp
 pmDebug 
 Toggles debug output for PM.
+
 .RE
 
 .RS
@@ -159,6 +197,7 @@ Toggles debug output for PM.
 .sp
 pmRmppDebug 
 Toggles RMPP debug output for PM.
+
 .RE
 
 .RS
@@ -166,7 +205,28 @@ Toggles RMPP debug output for PM.
 
 .sp
 feLogLevel 
-Sets the Fabric Executive (FE) logging level. Values include: 0=NONE+, 1=WARN+, 2=NOTICE+, 3=INFO+, 4=VERBOSE+, 5=DEBUG2+, 6=DEBUG4+, 7=TRACE+
+Sets the Fabric Executive (FE) logging level. Values include:
+.RS
+
+.IP \(bu
+0=NONE+
+.IP \(bu
+1=WARN+
+.IP \(bu
+2=NOTICE+
+.IP \(bu
+3=INFO+
+.IP \(bu
+4=VERBOSE+
+.IP \(bu
+5=DEBUG2+
+.IP \(bu
+6=DEBUG4+
+.IP \(bu
+7=TRACE+
+
+.RE
+
 
 .RE
 
@@ -175,7 +235,16 @@ Sets the Fabric Executive (FE) logging level. Values include: 0=NONE+, 1=WARN+, 
 
 .sp
 feLogMode 
-Sets the FE log mode flags. 0/1 1=downgrade non-actionable, 0/2 2=logfile only.
+Sets the FE log mode flags.
+.RS
+
+.IP \(bu
+0/1 1=downgrade non-actionable
+.IP \(bu
+0/2 2=logfile only
+
+.RE
+
 
 .RE
 
@@ -184,7 +253,7 @@ Sets the FE log mode flags. 0/1 1=downgrade non-actionable, 0/2 2=logfile only.
 
 .sp
 feLogMask 
-Sets the FE log mask for a specific subsystem to the value given. For a list of subsystems and mask bit meanings, see the files /etc/sysconfig/opafm.xml or /opt/opafm/etc/opafm.xml 
+Sets the FE log mask for a specific subsystem to the value given. For a list of subsystems and mask bit meanings, see the files /etc/sysconfig/opafm.xml or /usr/lib/opa-fm/etc/opafm.xml 
 
 .RE
 
@@ -194,6 +263,7 @@ Sets the FE log mask for a specific subsystem to the value given. For a list of 
 .sp
 feDebug 
 Toggles debug output for FE.
+
 .RE
 
 .RS
@@ -202,6 +272,7 @@ Toggles debug output for FE.
 .sp
 feRmppDebug 
 Toggles RMPP debug output for FE.
+
 .RE
 
 .RS
@@ -210,6 +281,7 @@ Toggles RMPP debug output for FE.
 .sp
 smLooptestStart 
 Starts loop test in normal mode. Specify the number of 256 byte packets. Default = 0.
+
 .RE
 
 .RS
@@ -218,6 +290,7 @@ Starts loop test in normal mode. Specify the number of 256 byte packets. Default
 .sp
 smLooptestFastModeStart 
 Starts loop test in fast mode. Specify the number of 256 byte packets. Default = 5.
+
 .RE
 
 .RS
@@ -226,6 +299,7 @@ Starts loop test in fast mode. Specify the number of 256 byte packets. Default =
 .sp
 smLooptestStop 
 Stops loop test. Returns switch LFTs back to normal.
+
 .RE
 
 .RS
@@ -251,7 +325,16 @@ Enter the switch node index to inject loop packets. Default = 0.
 
 .sp
 smLooptestInjectEachSweep 
-Enter 1 to inject packets each sweep. Enter 0 to stop injecting each sweep.
+Sets whether to inject or stop injecting packets each sweep.
+.RS
+
+.IP \(bu
+Enter 1 to inject packets each sweep.
+.IP \(bu
+Enter 0 to stop injecting each sweep.
+
+.RE
+
 
 .RE
 
@@ -332,7 +415,16 @@ Displays or modifies Adaptive Routing setting for SM. If no arguments are entere
 
 .sp
 smForceAttributeRewrite 
-Sets rewriting of all attributes upon resweeping. Enter 0 to Disable. Enter 1 to Enable.
+Sets rewriting of all attributes upon resweeping.
+.RS
+
+.IP \(bu
+Enter 0 to Disable.
+.IP \(bu
+Enter 1 to Enable.
+
+.RE
+
 
 .RE
 
@@ -341,7 +433,7 @@ Sets rewriting of all attributes upon resweeping. Enter 0 to Disable. Enter 1 to
 
 .sp
 smSkipAttrWrite 
-Bitmask of attributes to be skipped (not written) during sweeps. Enter -help for list of options.
+Specifies the bitmask of attributes to be skipped (not written) during sweeps. Enter -help for list of options.
 
 .RE
 
@@ -371,6 +463,6 @@ opafmcmdall smForceSweep
 .br
 
 .br
-opafmcmdall #8217#8211;i 2 -i 4 smLogLevel 3
+opafmcmdall -i 2 -i 4 smLogLevel 3
 .br
 # sends command to only FM2 and FM4

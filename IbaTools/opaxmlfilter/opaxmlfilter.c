@@ -36,6 +36,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <fnmatch.h>
 #include <ctype.h>
 #include <fnmatch.h>
+#include <getopt.h>
 #define _GNU_SOURCE
 
 #include <ixml.h>
@@ -171,10 +172,13 @@ FSTATUS Xml2ParseInputFile(const char *input_file, void *context, IXML_FIELD *fi
 	return FSUCCESS;
 }
 
-void Usage(void)
+void Usage(int exitcode)
 {
 	fprintf(stderr, "Usage: opaxmlfilter [-t|-k] [-l] [-i indent] [-s element] [-P param_file]\n");
 	fprintf(stderr, "                       [input_file]\n");
+	fprintf(stderr, "           or\n");
+	fprintf(stderr, "       opaxmlfilter --help\n");
+	fprintf(stderr, "       --help - produce full help text\n");
 	fprintf(stderr, "       -t - trim leading and trailing whitespace in tag contents\n");
 	fprintf(stderr, "       -k - in tags with purely whitespace which contain newlines,\n");
 	fprintf(stderr, "            keep newlines as is (default is to format as an empty list)\n");
@@ -187,7 +191,7 @@ void Usage(void)
 
 	fprintf(stderr, "       -P param_file - read command parameters from param_file\n"); 
 	fprintf(stderr, "       input_file - xml file to read.  default is stdin\n");
-	exit(2);
+	exit(exitcode);
 }
 
 static void addElement(const char *element)
@@ -201,7 +205,7 @@ static void addElement(const char *element)
 
 	if (! element || ! (len = strlen(element))) {
 		fprintf(stderr, "opaxmlfilter: Missing element.\n");
-		Usage();
+		Usage(2);
 	}
 
 	len += 3;	// allow for \0 and possible wildcards
@@ -221,12 +225,17 @@ int main(int argc, char **argv)
 	IXmlOutputState_t output_state;
 	int exit_code = 0;
 	uint32 indent = 4;
+	const char *opts="tkli:s:";
+	const struct option longopts[] = {{"help", 0, 0, '$'},
+						{0, 0, 0, 0}};
 	char *filename = "-";	// default to stdin
 	IXML_FIELD *fields = UntrimmedFields;
 	int c;
 
-	while (-1 != (c = getopt(argc, argv, "tkli:s:"))) {
+	while (-1 != (c = getopt_long(argc, argv, opts, longopts, NULL))) {
 		switch (c) {
+			case '$':
+				Usage(0);
 			case 't':
 				// TrimmedFields treats empty list as tag with no content
 				//fields = TrimmedFields;
@@ -235,7 +244,7 @@ int main(int argc, char **argv)
 			case 'i':
 				if (FSUCCESS != StringToUint32(&indent, optarg, NULL, 0, TRUE)) {
 					fprintf(stderr, "opaxmlfilter: Invalid indent: %s\n", optarg);
-					Usage();
+					Usage(2);
 				}
 				break;
 			case 'k':
@@ -248,18 +257,17 @@ int main(int argc, char **argv)
 				addElement(optarg);
 				break;
 			default:
-				Usage();
-				break;
+				Usage(2);
 		}
 	}
 	if (g_trim && g_keep_newline) {
 		fprintf(stderr, "opaxmlfilter: Can't use -k and -t together\n");
-		Usage();
+		Usage(2);
 	}
 	if (argc > optind)
 		filename = argv[optind++];
 	if (argc > optind)
-		Usage();
+		Usage(2);
 	if (FSUCCESS != IXmlOutputInit(&output_state, stdout, indent, IXML_OUTPUT_FLAG_NONE, NULL))
 		exit(1);
 	if (FSUCCESS != Xml2ParseInputFile(filename, &output_state, fields))

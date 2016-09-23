@@ -69,7 +69,8 @@ uint8_t		checksum;				// checksum mode - default is FALSE
 uint8_t		embedded;				// is it called internally ?- default is FALSE
 char		config_file [PATH_MAX+1]; // location and name of the config file
 Pool_t		startup_pool;			// a generic pool for malloc'ing memory
-char 		prog_name[25];
+#define		PROG_NAME_MAX 25
+char 		prog_name[PROG_NAME_MAX+1];
 
 // XML configuration data structure
 FMXmlCompositeConfig_t *xml_config = NULL;
@@ -151,7 +152,8 @@ main (int argc, char *argv []) {
 	strncpy (tmp, argv[0], PATH_MAX);
 	tmp[PATH_MAX] = 0;
 	ptr = strrchr(tmp, '/');
-	strncpy (prog_name, ptr ? ptr+1 : tmp, 25);
+	strncpy (prog_name, ptr ? ptr+1 : tmp, PROG_NAME_MAX);
+	prog_name[PROG_NAME_MAX]=0;
 	
 	while ((c = getopt_long (argc, argv, "c:vsde", options, &index)) != -1) {
 		switch (c) {

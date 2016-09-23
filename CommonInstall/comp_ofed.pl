@@ -2631,9 +2631,9 @@ sub install_opa_stack($$)
 
 	# Check $BASE_DIR directory ...exist 
 	check_config_dirs();
-	check_dir("/opt/opa");
+	check_dir("/usr/lib/opa");
 
-	copy_systool_file("$srcdir/comp.pl", "/opt/opa/.comp_ofed.pl");
+	copy_systool_file("$srcdir/comp.pl", "/usr/lib/opa/.comp_ofed.pl");
 
 	install_ofed_comp('opa_stack', $install_list);
 
@@ -2732,8 +2732,8 @@ sub uninstall_opa_stack($$)
 	remove_udev_permissions;
 
 	system("rm -rf $ROOT$BASE_DIR/version_ofed");
-	system("rm -rf $ROOT/opt/opa/.comp_ofed.pl");
-	system "rmdir $ROOT/opt/opa 2>/dev/null";	# remove only if empty
+	system("rm -rf $ROOT/usr/lib/opa/.comp_ofed.pl");
+	system "rmdir $ROOT/usr/lib/opa 2>/dev/null";	# remove only if empty
 	system "rmdir $ROOT$BASE_DIR 2>/dev/null";	# remove only if empty
 	system "rmdir $ROOT$OPA_CONFIG_DIR 2>/dev/null";	# remove only if empty
 	if (0 != uninstall_old_stacks(0)) {
@@ -3995,9 +3995,9 @@ sub available_ofed_mpisrc()
 sub installed_ofed_mpisrc()
 {
 	return ((-e "$ROOT$BASE_DIR/version_ofed"
-			&& file_glob("$ROOT/opt/opa/src/MPI/mvapich*.src.rpm") ne ""
-			&& file_glob("$ROOT/opt/opa/src/MPI/openmpi*.src.rpm") ne ""
-			&& file_glob("$ROOT/opt/opa/src/MPI/mpitests*.src.rpm") ne ""));
+			&& file_glob("$ROOT/usr/lib/opa/src/MPI/mvapich*.src.rpm") ne ""
+			&& file_glob("$ROOT/usr/lib/opa/src/MPI/openmpi*.src.rpm") ne ""
+			&& file_glob("$ROOT/usr/lib/opa/src/MPI/mpitests*.src.rpm") ne ""));
 }
 
 # only called if installed_ofed_mpisrc is true
@@ -4054,29 +4054,29 @@ sub install_ofed_mpisrc($$)
 
 	print_install_banner_ofed_comp('ofed_mpisrc');
 	install_ofed_comp('ofed_mpisrc', $install_list);
-	check_dir("/opt/opa/src");
-	check_dir("/opt/opa/src/MPI");
+	check_dir("/usr/lib/opa/src");
+	check_dir("/usr/lib/opa/src/MPI");
 	# remove old versions (.src.rpm and built .rpm files too)
-	system "rm -rf $ROOT/opt/opa/src/MPI/mvapich[-_]*.rpm 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/mvapich2[-_]*.rpm 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/openmpi[-_]*.rpm 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/mpitests[-_]*.rpm 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/make.*.res 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/make.*.err 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/make.*.warn 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/.mpiinfo 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa/src/MPI/mvapich[-_]*.rpm 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa/src/MPI/mvapich2[-_]*.rpm 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa/src/MPI/openmpi[-_]*.rpm 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa/src/MPI/mpitests[-_]*.rpm 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa/src/MPI/make.*.res 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa/src/MPI/make.*.err 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa/src/MPI/make.*.warn 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa/src/MPI/.mpiinfo 2>/dev/null";
 
 	# install new versions
 	foreach my $srpm ( "mvapich2", "openmpi", "mpitests" ) {
 		my $srpmfile = file_glob("$srcdir/$SRPMS_SUBDIR/${srpm}-*.src.rpm");
 		if ( "$srpmfile" ne "" ) {
 			my $file = my_basename($srpmfile);
-			copy_data_file($srpmfile, "/opt/opa/src/MPI/$file");
+			copy_data_file($srpmfile, "/usr/lib/opa/src/MPI/$file");
 		}
 	}
-	copy_systool_file("$srcdir/do_build", "/opt/opa/src/MPI/do_build");
-	copy_systool_file("$srcdir/do_mvapich2_build", "/opt/opa/src/MPI/do_mvapich2_build");
-	copy_systool_file("$srcdir/do_openmpi_build", "/opt/opa/src/MPI/do_openmpi_build");
+	copy_systool_file("$srcdir/do_build", "/usr/lib/opa/src/MPI/do_build");
+	copy_systool_file("$srcdir/do_mvapich2_build", "/usr/lib/opa/src/MPI/do_mvapich2_build");
+	copy_systool_file("$srcdir/do_openmpi_build", "/usr/lib/opa/src/MPI/do_openmpi_build");
 
 	$ComponentWasInstalled{'ofed_mpisrc'}=1;
 }
@@ -4096,21 +4096,21 @@ sub uninstall_ofed_mpisrc($$)
 	print_uninstall_banner_ofed_comp('ofed_mpisrc');
 
 	# remove old versions (.src.rpm and built .rpm files too)
-	system "rm -rf $ROOT/opt/opa/src/MPI/mvapich2[-_]*.rpm 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/openmpi[-_]*.rpm 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/mpitests[-_]*.rpm 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/make.*.res 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/make.*.err 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/make.*.warn 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/.mpiinfo 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/do_build 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/do_mvapich2_build 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/do_openmpi_build 2>/dev/null";
-	system "rm -rf $ROOT/opt/opa/src/MPI/.mpiinfo 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa/src/MPI/mvapich2[-_]*.rpm 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa/src/MPI/openmpi[-_]*.rpm 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa/src/MPI/mpitests[-_]*.rpm 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa/src/MPI/make.*.res 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa/src/MPI/make.*.err 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa/src/MPI/make.*.warn 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa/src/MPI/.mpiinfo 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa/src/MPI/do_build 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa/src/MPI/do_mvapich2_build 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa/src/MPI/do_openmpi_build 2>/dev/null";
+	system "rm -rf $ROOT/usr/lib/opa/src/MPI/.mpiinfo 2>/dev/null";
 
 	uninstall_ofed_comp('ofed_mpisrc', $install_list, $uninstalling_list, 'verbose');
-	system "rmdir $ROOT/opt/opa/src/MPI 2>/dev/null"; # remove only if empty
-	system "rmdir $ROOT/opt/opa/src 2>/dev/null"; # remove only if empty
+	system "rmdir $ROOT/usr/lib/opa/src/MPI 2>/dev/null"; # remove only if empty
+	system "rmdir $ROOT/usr/lib/opa/src 2>/dev/null"; # remove only if empty
 	$ComponentWasInstalled{'ofed_mpisrc'}=0;
 }
 

@@ -165,10 +165,11 @@ sm_set_portPkey(Topology_t *topop, Node_t *nodep, Port_t *portp,
 
 			for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
 				pkey = 0;
-				if (bitset_test(&linkedPortp->portData->vfMember, vf) ||
-					bitset_test(&linkedPortp->portData->fullPKeyMember, vf)) {
+				uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
+				if (bitset_test(&linkedPortp->portData->vfMember, vfIdx) ||
+					bitset_test(&linkedPortp->portData->fullPKeyMember, vfIdx)) {
 					pkey = VirtualFabrics->v_fabric[vf].pkey;
-					if (bitset_test(&linkedPortp->portData->fullPKeyMember, vf)) {
+					if (bitset_test(&linkedPortp->portData->fullPKeyMember, vfIdx)) {
 						pkey |= FULL_MEMBER;
 					}
 				}
@@ -251,11 +252,11 @@ sm_set_portPkey(Topology_t *topop, Node_t *nodep, Port_t *portp,
 	} else {
 		for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
 			pkey = 0;
-
-			if (bitset_test(&portp->portData->vfMember, vf) ||
-				bitset_test(&portp->portData->fullPKeyMember, vf))  {
+			uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
+			if (bitset_test(&portp->portData->vfMember, vfIdx) ||
+				bitset_test(&portp->portData->fullPKeyMember, vfIdx))  {
 				pkey = VirtualFabrics->v_fabric[vf].pkey;
-				if (bitset_test(&portp->portData->fullPKeyMember, vf)) {
+				if (bitset_test(&portp->portData->fullPKeyMember, vfIdx)) {
 					pkey |= FULL_MEMBER;
 				}
 			}
@@ -409,8 +410,8 @@ sm_set_portPkey(Topology_t *topop, Node_t *nodep, Port_t *portp,
 			portp->portData->num_pkeys = pkeyCap;
 		}
 		IB_LOG_DEBUG1_FMT(__func__,
-               "Node %s ["FMT_U64":%d] partition cap = %d, pkey = 0x%x", 
-               sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index, pkeyCap, portp->portData->pPKey[0]);
+			"Node %s ["FMT_U64":%d] partition cap = %d, pkey = 0x%x",
+			sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index, pkeyCap, portp->portData->pPKey[0].AsReg16);
 
 		for (pkeys = 0; pkeys < pkeyCap; pkeys += 32, ++amod) {
             uint32_t attrmod;
@@ -836,6 +837,7 @@ smGetValidatedServiceIDVFs(Port_t* srcport, Port_t* dstport, uint16_t pkey, uint
 
 	for (vf = 0; vf < VirtualFabrics->number_of_vfs; vf++) {
 		srvIdInVF = 0;
+		uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
 		// Check for service ID	
 		if (smCheckServiceId(vf, serviceId, VirtualFabrics)) {
 			srvIdInVF = 1;
@@ -855,12 +857,12 @@ smGetValidatedServiceIDVFs(Port_t* srcport, Port_t* dstport, uint16_t pkey, uint
 
 		// One is full?
 		if (srcport != dstport &&
-			!bitset_test(&srcport->portData->fullPKeyMember, vf) &&
-			!bitset_test(&dstport->portData->fullPKeyMember, vf)) continue;
+			!bitset_test(&srcport->portData->fullPKeyMember, vfIdx) &&
+			!bitset_test(&dstport->portData->fullPKeyMember, vfIdx)) continue;
 
 		// Are both src and dst part of this VF?
-		if (!bitset_test(&srcport->portData->vfMember, vf)) continue;
-		if (!bitset_test(&dstport->portData->vfMember, vf)) continue;
+		if (!bitset_test(&srcport->portData->vfMember, vfIdx)) continue;
+		if (!bitset_test(&dstport->portData->vfMember, vfIdx)) continue;
 
 		// Is this the proper sl?
 		if ((reqSL < MAX_SLS) &&
@@ -880,17 +882,18 @@ smGetValidatedVFs(Port_t* srcport, Port_t* dstport, uint16_t pkey, uint8_t reqSL
 	VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
 
 	for (vf = 0; vf < VirtualFabrics->number_of_vfs; vf++) {
+		uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
 		// Is this the proper vf?
 		if ((pkey != 0) && (PKEY_VALUE(pkey) != PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey))) continue;
 
 		// One is full?
 		if (srcport != dstport &&
-			!bitset_test(&srcport->portData->fullPKeyMember, vf) &&
-			!bitset_test(&dstport->portData->fullPKeyMember, vf)) continue;
+			!bitset_test(&srcport->portData->fullPKeyMember, vfIdx) &&
+			!bitset_test(&dstport->portData->fullPKeyMember, vfIdx)) continue;
 
 		// Are both src and dst part of this VF?
-		if (!bitset_test(&srcport->portData->vfMember, vf)) continue;
-		if (!bitset_test(&dstport->portData->vfMember, vf)) continue;
+		if (!bitset_test(&srcport->portData->vfMember, vfIdx)) continue;
+		if (!bitset_test(&dstport->portData->vfMember, vfIdx)) continue;
 
 		// Is this the proper sl?
 		if ((reqSL < MAX_SLS) &&
@@ -1039,6 +1042,7 @@ smVFValidateMcGrpCreateParams(Port_t * joiner, Port_t * requestor,
 	// Loop over virtual fabrics
 	for (vf = 0; vf < VirtualFabrics->number_of_vfs; vf++) {
     	cl_map_item_t   *cl_map_item;
+		uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
 
 		// Continue if virtual fabric parameters don't match those in the mcMemberRecord.
 		mgidInVF = 0;
@@ -1062,19 +1066,21 @@ smVFValidateMcGrpCreateParams(Port_t * joiner, Port_t * requestor,
 		}
 		if (  // McGroup Pkey matches VF Pkey
 		   (PKEY_VALUE(mcMemberRec->P_Key) != PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey))
-              // Check if SL for is in routing SLs - must match base SL on create
-		   || (mcMemberRec->SL != VirtualFabrics->v_fabric[vf].base_sl) 
+              // Check if SL matches the base_sl (no mcast_isolate)
+		   || (!VirtualFabrics->v_fabric[vf].mcast_isolate && (mcMemberRec->SL != VirtualFabrics->v_fabric[vf].base_sl)) 
+              // Check if the SL matches the mcast_sl (mcast_isolate is true)
+		   || (VirtualFabrics->v_fabric[vf].mcast_isolate && (mcMemberRec->SL != VirtualFabrics->v_fabric[vf].mcast_sl))
 		      // Check to see if the joiner/creator port is a member of this VF
-		   || (!bitset_test(&joiner->portData->vfMember, vf))
+		   || (!bitset_test(&joiner->portData->vfMember, vfIdx))
 		      // Check to see if the (optional) requestor port is a member of this VF
 		   || (  (requestor != NULL)
-		      && !bitset_test(&requestor->portData->vfMember, vf)))
+		      && !bitset_test(&requestor->portData->vfMember, vfIdx)))
 		{
 			continue;
 		}
 
 		if (VirtualFabrics->v_fabric[vf].security &&
-		   !bitset_test(&joiner->portData->fullPKeyMember, vf)) {
+		   !bitset_test(&joiner->portData->fullPKeyMember, vfIdx)) {
 			// Joiner must be full member
 			continue;
 		}
@@ -1164,6 +1170,9 @@ int smGetSLVF(uint8_t sl, VirtualFabrics_t *VirtualFabrics) {
 		if ((VirtualFabrics->v_fabric_all[vf].base_sl <= sl) &&
 			((VirtualFabrics->v_fabric_all[vf].base_sl + VirtualFabrics->v_fabric_all[vf].routing_sls) > sl)) {
 			return vf;
+		} else if (VirtualFabrics->v_fabric_all[vf].mcast_isolate &&
+			VirtualFabrics->v_fabric_all[vf].mcast_sl == sl) {
+			return vf;
 		}
 	}
     return -1;
@@ -1198,15 +1207,16 @@ smGetVfMaxMtu(Port_t *portp, Port_t *reqportp, STL_MCMEMBER_RECORD *mcmp, uint8_
 
 	for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
     	cl_map_item_t   *cl_map_item;
+		uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
 
 		if (PKEY_VALUE(mcmp->P_Key) != PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey)) continue;
 		if (mcmp->SL < VirtualFabrics->v_fabric[vf].base_sl) continue;
 		if (mcmp->SL > (VirtualFabrics->v_fabric[vf].base_sl + VirtualFabrics->v_fabric[vf].routing_sls - 1)) continue;
-		if (!bitset_test(&portp->portData->vfMember, vf)) continue;
-		if (!bitset_test(&reqportp->portData->vfMember, vf)) continue;
+		if (!bitset_test(&portp->portData->vfMember, vfIdx)) continue;
+		if (!bitset_test(&reqportp->portData->vfMember, vfIdx)) continue;
 
 		if (VirtualFabrics->v_fabric[vf].security &&
-		    !bitset_test(&portp->portData->fullPKeyMember, vf)) {
+		    !bitset_test(&portp->portData->fullPKeyMember, vfIdx)) {
 			// Create/joiner must be full member
 			continue;
 		}
@@ -1712,6 +1722,8 @@ smSetupNodeDGs(Node_t *nodep) {
 					bitset_set(&portp->portData->dgMember, dgIdx);				
 			}
 
+            		bitset_free(&dgsEvaluated);
+
 			// Update dgMember array
 			PortData_t *portDataPtr = portp->portData;
 			int numMemberships = 0;
@@ -1737,6 +1749,8 @@ smSetupNodeDGs(Node_t *nodep) {
 			}
 		}
 	}
+
+    	bitset_free(&dgNodeMemberBitset);
 }
 
 void smLogVFs() {
@@ -1783,7 +1797,7 @@ void smLogVFs() {
 		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "preemptionRank= %d  hoqLife= %d",
 				VirtualFabrics->v_fabric[vf].preempt_rank, VirtualFabrics->v_fabric[vf].hoqlife_vf);
 
-		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "VF APPs:", 0);
+		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "VF APPs:");
 		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tselect_sa= %d, select_unmatched_sid= %d, select_unmatched_mgid= %d, select_pm= %d",
 				VirtualFabrics->v_fabric[vf].apps.select_sa,
 				VirtualFabrics->v_fabric[vf].apps.select_unmatched_sid,
@@ -1805,8 +1819,8 @@ void smLogVFs() {
 			IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tmgid " FMT_GID "", mgidp->mgid[0], mgidp->mgid[1]);
 		}
 
-		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "VF Full Members:", 0);
-		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tselect_all=%d, select_self= %d, select_all_sm=%d, select_swe0=%d, select_hfi_direct_connect=%0",
+		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "VF Full Members:");
+		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tselect_all=%d, select_self= %d, select_all_sm=%d, select_swe0=%d, select_hfi_direct_connect=%d",
 				VirtualFabrics->v_fabric[vf].full_members.select_all, VirtualFabrics->v_fabric[vf].full_members.select_self,
 				VirtualFabrics->v_fabric[vf].full_members.select_all_sm, VirtualFabrics->v_fabric[vf].full_members.select_swe0,
 				VirtualFabrics->v_fabric[vf].full_members.select_hfi_direct_connect);
@@ -1837,7 +1851,7 @@ void smLogVFs() {
 */
 
 		if (VirtualFabrics->v_fabric[vf].security) {	
-			IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "VF Limited Members:", 0);
+			IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "VF Limited Members:");
 			IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tselect_all= %d, select_self= %d, select_all_sm= %d, select_swe0= %d, select_hfi_direct_connect=%d",
 				VirtualFabrics->v_fabric[vf].limited_members.select_all, VirtualFabrics->v_fabric[vf].limited_members.select_self,
 				VirtualFabrics->v_fabric[vf].limited_members.select_all_sm, VirtualFabrics->v_fabric[vf].limited_members.select_swe0, 
@@ -1869,7 +1883,7 @@ void smLogVFs() {
 		}
 		for (mcastGrpp = VirtualFabrics->v_fabric[vf].default_group; mcastGrpp; 
 			 mcastGrpp = mcastGrpp->next_default_group) {
-			IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "MC Default Group:", 0);
+			IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "MC Default Group:");
 			IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tmc_create=%d, mc_pkey= 0x%x, mc_mtu_int=%d, mc_rate_int=%d",
 					mcastGrpp->def_mc_create, mcastGrpp->def_mc_pkey, mcastGrpp->def_mc_mtu_int, mcastGrpp->def_mc_rate_int);
 			IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tmc_sl=0x%x, mc_qkey= 0x%x, mc_fl=%d, mc_tc=%d",

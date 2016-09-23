@@ -28,7 +28,7 @@
 # 
 # END_ICS_COPYRIGHT8
 
-FM_CMD="/opt/opafm/bin/fm_cmd"
+FM_CMD="/usr/lib/opa-fm/bin/fm_cmd"
 
 cmd=(
 	"smPerfDebug 100"

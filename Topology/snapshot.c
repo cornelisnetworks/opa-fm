@@ -630,6 +630,163 @@ void SCtoSCMapXmlOutput(IXmlOutputState_t *state, const char *tag, void *data)
 }	// End of SCtoSCMapXmlOutput
 
 /****************************************************************************/
+/* PortData SCtoVLx Input/Output functions */
+
+static void *SCtoVLxMapXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr, ScvlEnum_t scvlx)
+{
+	PortData *portp = (PortData *)parent; // parent points to PortData
+	NodeData *nodep = (NodeData *)portp->nodep;
+	QOSData *pQOS = portp->pQOS;
+
+	if (scvlx == Enum_SCVLnt && nodep->NodeInfo.NodeType == STL_NODE_SW && portp->PortNum == 0) {
+		IXmlParserPrintError(state, "SCtoVLtMap not valid for Switch port 0");
+		return (NULL);
+	}
+
+	if (scvlx == Enum_SCVLr && !portp->PortInfo.CapabilityMask3.s.IsVLrSupported) {
+		IXmlParserPrintError(state, "SCtoVLrMap not supported");
+		return (NULL);
+	}
+
+	if (!pQOS) {
+		if (!(pQOS = portp->pQOS = (QOSData*)MemoryAllocate2AndClear(
+			sizeof(QOSData), IBA_MEM_FLAG_PREMPTABLE, MYTAG ))) {
+			IXmlParserPrintError(state, "Unable to allocate memory");
+			return (NULL);
+		}
+	}
+
+	return (&pQOS->SC2VLMaps[scvlx]);
+
+} // End of SCtoVLxMapXmlParserStart
+
+static void *SCtoVLtMapXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr)
+{
+	return SCtoVLxMapXmlParserStart(state, parent, attr, Enum_SCVLt);
+}
+
+static void *SCtoVLntMapXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr)
+{
+	return SCtoVLxMapXmlParserStart(state, parent, attr, Enum_SCVLnt);
+}
+
+static void SCtoVLxMapXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	// parent points to PortData
+	if (!valid)
+		goto failvalidate;
+	return;
+
+failvalidate:
+	PortDataFreeQOSData(IXmlParserGetContext(state), (PortData *)parent);
+	return;
+} // End of SCtoVLxMapXmlParserEnd
+
+static void *SCtoVLxMapXmlParserStartVLx(IXmlParserState_t *state, void *parent, const char **attr)
+{
+	STL_SCVLMAP *pSCVL = (STL_SCVLMAP *)parent; // parent points to STL_SCVLMAP
+	uint8 sc;
+
+	if (!attr || !attr[0] || (0 != strcmp(attr[0], "SC"))) {
+		IXmlParserPrintError(state, "Missing SC attribute for SCtoVLMAp.VL");
+		return (NULL);
+	}
+
+	if (StringToUint8(&sc, attr[1], NULL, 0, TRUE) != FSUCCESS) {
+		IXmlParserPrintError(state, "Invalid SC attribute in SCtoVLMap.VL SC: %s", attr[1]);
+		return (NULL);
+	}
+	if (sc >= STL_MAX_SCS) {
+		IXmlParserPrintError(state, "SC attribute Out-of-Range in SCtoVLMap.VL SC: %s", attr[1]);
+		return (NULL);
+	}
+
+	return &(pSCVL->SCVLMap[sc]);
+} // End of SCtoVLxMapXmlParserStartVLx
+
+static void SCtoVLxMapXmlParserEndVLx(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	STL_SCVLMAP *pSCVL = (STL_SCVLMAP *)parent; // parent points to STL_SCVLMAP
+	STL_VL *pVL = (STL_VL*)object; // object points to specific VLs entry
+	uint8 sc = pVL - pSCVL->SCVLMap;
+	uint8 vl;
+
+	if (!valid)
+		goto failvalidate;
+
+	if (!content || !len) {
+		IXmlParserPrintError(state, "No VL Value in SCtoVLMap.VL for SC %u", sc);
+		return;
+	}
+
+	if (StringToUint8(&vl, content, NULL, 0, TRUE) != FSUCCESS) {
+		IXmlParserPrintError(state, "Invalid VL Value in SCtoVLMap.VL for SC: %u VL: %s", sc, content);
+		return;
+	}
+
+	if (vl >= STL_MAX_VLS) {
+		IXmlParserPrintError(state, "VL Out-of-range in SCtoVLMap.VL for SC: %u VL: %u", sc, vl);
+		return;
+	}
+
+	pVL->VL = vl;
+
+	return;
+
+failvalidate:
+	// SCtoVLMapXmlParserEnd will free as needed
+	return;
+}
+
+IXML_FIELD SCtoVLtMapVLtFields[] = {
+	{ tag:"VLt", format:'k', start_func:SCtoVLxMapXmlParserStartVLx, end_func:SCtoVLxMapXmlParserEndVLx },
+	{ NULL }
+};
+
+IXML_FIELD SCtoVLntMapVLntFields[] = {
+	{ tag:"VLnt", format:'k', start_func:SCtoVLxMapXmlParserStartVLx, end_func:SCtoVLxMapXmlParserEndVLx },
+	{ NULL }
+};
+
+static void SCtoVLxMapXmlOutputSCAttr(IXmlOutputState_t *state, void *data)
+{
+	IXmlOutputPrint(state, " SC=\"%u\"", *(uint8 *)data);
+}
+
+void SCtoVLxMapXmlOutput(IXmlOutputState_t *state, const char *tag, void *data, ScvlEnum_t scvlx)
+{
+	PortData *portp = (PortData *)data; // data points to PortData
+	NodeData *nodep = portp->nodep;
+	STL_SCVLMAP *pSCVL = &(portp->pQOS->SC2VLMaps[scvlx]);
+	uint8 sc;
+	char *vlname = "VL";
+	switch (scvlx) {
+		case Enum_SCVLr: vlname = "VLr";
+		break;
+		case Enum_SCVLt: vlname = "VLt";
+		break;
+		case Enum_SCVLnt: vlname = "VLnt";
+		break;
+	}
+
+	// SC2VLnt doesn't apply to switch port 0
+	ASSERT(!(scvlx == Enum_SCVLnt && nodep->NodeInfo.NodeType == STL_NODE_SW && portp->PortNum == 0));
+	ASSERT(!(scvlx == Enum_SCVLr && !portp->PortInfo.CapabilityMask3.s.IsVLrSupported));
+
+	IXmlOutputStartTag(state, tag);
+
+	for(sc = 0; sc < STL_MAX_SCS; sc++)
+	{
+		IXmlOutputStartAttrTag(state, vlname, &sc, SCtoVLxMapXmlOutputSCAttr);
+		IXmlOutputPrint(state, "%u", pSCVL->SCVLMap[sc].VL);
+		IXmlOutputEndTag(state, vlname);
+	}
+
+	IXmlOutputEndTag(state, tag);
+
+} // End of SCtoVLxMapXmlOutput
+
+/****************************************************************************/
 /* PortData VLArbitration Weight Input/Output functions */
 
 static void *VLArbXmlParserStartWeight(IXmlParserState_t *state, void *parent, const char **attr)
@@ -1601,6 +1758,24 @@ static void PortDataXmlOutputSCtoSCMap(IXmlOutputState_t *state, const char *tag
 
 }	// End of PortDataXmlOutputSCtoSLMap
 
+static void PortDataXmlOutputSCtoVLxMap(IXmlOutputState_t *state, const char *tag, void *data, ScvlEnum_t scvlx)
+{
+	if( ((PortData*)data)->nodep && ((PortData*)data)->pQOS)
+		SCtoVLxMapXmlOutput(state, tag, data, scvlx);
+}
+
+static void PortDataXmlOutputSCtoVLtMap(IXmlOutputState_t *state, const char *tag, void *data)
+{
+	PortDataXmlOutputSCtoVLxMap(state, tag, data, Enum_SCVLt);
+}
+
+static void PortDataXmlOutputSCtoVLntMap(IXmlOutputState_t *state, const char *tag, void *data)
+{
+	if( !(((PortData*)data)->nodep->NodeInfo.NodeType == STL_NODE_SW &&
+			((PortData*)data)->PortNum == 0))
+		PortDataXmlOutputSCtoVLxMap(state, tag, data, Enum_SCVLnt);
+}
+
 /** =========================================================================
  * Buffer Control Table I/O functions
  */
@@ -1847,6 +2022,262 @@ static void PortDataXmlOutputCableInfo(IXmlOutputState_t *state, const char *tag
 }
 
 /** =========================================================================
+ * MCast member Info definitions
+ *
+ */
+// parse Rate_Int into a uint8 field and validate value
+void IXmlParserEndIBRate_Int(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	uint16 value;
+
+	if (IXmlParseUint16(state, content, len, &value)) {
+		if (value != IB_STATIC_RATE_14G && value != IB_STATIC_RATE_25G
+			&& value != IB_STATIC_RATE_40G && value != IB_STATIC_RATE_80G
+			&& value != IB_STATIC_RATE_56G && value != IB_STATIC_RATE_100G ) {
+			IXmlParserPrintError(state, "Invalid Rate: %u  Must be (12.5g, 25g, 37.5g, 50g, 75g, 100g): %u, %u, %u, %u, %u, %u", value,
+					IB_STATIC_RATE_14G, IB_STATIC_RATE_25G,
+					IB_STATIC_RATE_40G, IB_STATIC_RATE_56G,
+					IB_STATIC_RATE_80G, IB_STATIC_RATE_100G);
+		} else {
+
+			if (IXmlParseUint16(state, content, len, &value))
+				((McMemberData *)object)->MemberInfo.Rate = value;
+		}
+	}
+}
+
+static void McMGIDXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	McMemberData *mcmemberp = (McMemberData *)object;
+
+	uint64 mgid[2];
+
+	if (FSUCCESS != StringToGid(&mgid[0], &mgid[1], content, NULL, TRUE)) {
+		IXmlParserPrintError(state, "Illegal MGID found in hex string %s\n", content);
+		return;
+	}
+
+	mcmemberp->MGID.AsReg64s.H=mgid[0];
+	mcmemberp->MGID.AsReg64s.L=mgid[1];
+
+	return;
+}
+
+static void *McPortGIDXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr)
+{
+	uint64 pgid[2];
+
+	McGroupData *mcgmemberp = (McGroupData*)MemoryAllocate2AndClear(sizeof(McGroupData), IBA_MEM_FLAG_PREMPTABLE, MYTAG);
+
+	if (!mcgmemberp) {
+		IXmlParserPrintError(state, "Unable to allocate memory");
+		return NULL;
+	}
+		
+	if ( (!attr | !attr[0]) || (0 != strcmp(attr[0], "id"))) {
+		IXmlParserPrintError(state, "Missing PortGID id");
+		MemoryDeallocate(mcgmemberp);
+		return NULL;
+	}
+
+	// basic initialization of the MCG structure
+	ListItemInitState(&mcgmemberp->AllMcGMembersEntry);
+	QListSetObj(&mcgmemberp->AllMcGMembersEntry,mcgmemberp);
+
+	if (FSUCCESS != StringToGid(&pgid[0], &pgid[1], attr[1], NULL, TRUE)) {
+		IXmlParserPrintError(state, "Illegal PortGID found in hex string %s\n", attr[1]);
+		MemoryDeallocate(mcgmemberp);
+		return NULL;
+	}
+	mcgmemberp->PortGID.AsReg64s.H=pgid[0];
+	mcgmemberp->PortGID.AsReg64s.L=pgid[1];
+
+	return mcgmemberp;
+
+}
+
+static void McPortGIDXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	McGroupData *mcgmemberp = (McGroupData*)object;
+	McMemberData *mcmemberp = (McMemberData *)parent;
+
+	if (! valid) {	// missing mandatory fields
+		MemoryDeallocate(mcgmemberp);
+		return;
+	}
+
+	QListInsertTail(&mcmemberp->AllMcGroupMembers, &mcgmemberp->AllMcGMembersEntry);
+
+	if ((mcgmemberp->PortGID.AsReg64s.H !=0) && (mcgmemberp->PortGID.AsReg64s.L!=0))
+		mcmemberp->NumOfMembers++;
+	return;
+}
+
+static void MCMtuXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	uint16 value;
+
+	if (IXmlParseUint16(state, content, len, &value))
+			((McMemberData *)object)->MemberInfo.Mtu = GetMtuFromBytes(value);
+}
+
+static void PktLifeTimeXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	uint8 value;
+
+	if (IXmlParseUint8(state, content, len, &value))
+		((McMemberData *)object)->MemberInfo.PktLifeTime = value;
+}
+
+static void SLXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	uint32 value;
+
+	if (IXmlParseUint32(state, content, len, &value))
+		((McMemberData *)object)->MemberInfo.u1.s.SL = value;
+}
+
+static void HopLimitXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid){
+	uint32 value;
+
+	if (IXmlParseUint32(state, content, len, &value))
+		((McMemberData *)object)->MemberInfo.u1.s.HopLimit = value;
+}
+
+static void FlowLabelXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	uint32 value;
+
+	if (IXmlParseUint32(state, content, len, &value))
+		((McMemberData *)object)->MemberInfo.u1.s.FlowLabel = value;
+}
+
+// remembering that uppercase means mandatory field.
+
+static IXML_FIELD MCDataFields[] = {
+	{ tag:"MGID", format:'k', format_func:IXmlOutputGID, end_func: McMGIDXmlParserEnd },
+	{ tag:"MLID", format:'h', IXML_FIELD_INFO(McMemberData, MLID) },
+	{ tag:"P_Key", format:'h', IXML_FIELD_INFO(McMemberData, MemberInfo.P_Key), format_func:IXmlOutputPKey},
+	{ tag:"Rate_Int", format:'k', format_func:IXmlOutputNoop, end_func: IXmlParserEndIBRate_Int },  // input str output both
+	{ tag:"Mtu", format: 'h', format_func:IXmlOutputOptionalMtu, end_func:MCMtuXmlParserEnd },
+	{ tag:"PktLifeTime_Int", format:'h', format_func: IXmlOutputNoop, end_func:PktLifeTimeXmlParserEnd },
+	{ tag:"Q_Key", format:'h', IXML_FIELD_INFO(McMemberData, MemberInfo.Q_Key) },
+	{ tag:"SL", format:'h', format_func: IXmlOutputNoop, end_func: SLXmlParserEnd },
+	{ tag:"HopLimit", format:'h', format_func: IXmlOutputNoop, end_func: HopLimitXmlParserEnd },
+	{ tag:"FlowLabel", format:'h', format_func: IXmlOutputNoop, end_func: FlowLabelXmlParserEnd },
+	{ tag:"TClass", format:'h', IXML_FIELD_INFO(McMemberData, MemberInfo.TClass) },
+	{ tag:"PortGID", format:'k', IXML_FIELD_INFO(McGroupData, PortGID),start_func:McPortGIDXmlParserStart, end_func:McPortGIDXmlParserEnd },
+	{ NULL }
+};
+
+
+static void *McMemberXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr)
+{
+	McMemberData *mcmemberp = (McMemberData*)MemoryAllocate2AndClear(sizeof(McMemberData), IBA_MEM_FLAG_PREMPTABLE, MYTAG);
+
+
+	if (! mcmemberp) {
+		IXmlParserPrintError(state, "Unable to allocate memory");
+		return NULL;
+	}
+
+	if ( (!attr | !attr[0]) || (0 != strcmp(attr[0], "id"))) {
+		IXmlParserPrintError(state, "Missing MGID id");
+		MemoryDeallocate(mcmemberp);
+		return NULL;
+	}
+
+	// basic initialization of the MC structure
+	ListItemInitState(&mcmemberp->McMembersEntry);
+	QListSetObj(&mcmemberp->McMembersEntry,mcmemberp);
+
+    // init LIST of PortGids to NULL just in case
+	QListInitState(&mcmemberp->AllMcGroupMembers);
+	if ( !QListInit(&mcmemberp->AllMcGroupMembers)) {
+		IXmlParserPrintError(state, "Unable to initialize MCGroup member list");
+		MemoryDeallocate(mcmemberp);
+	    return NULL;
+	}
+	//init number of member counters for groups and group members
+	mcmemberp->NumOfMembers = 0;
+	return mcmemberp;
+}
+
+static void McMemberXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	McMemberData *mcmemberp = (McMemberData*)object;
+	FabricData_t *fabricp = IXmlParserGetContext(state);
+
+	if (! valid) {	// missing mandatory fields
+		MemoryDeallocate(mcmemberp);
+		return;
+	}
+
+	 McGroupData *pMCGH = (McGroupData *)QListObj(QListHead(&mcmemberp->AllMcGroupMembers));
+	if ((pMCGH->PortGID.AsReg64s.H !=0) && (pMCGH->PortGID.AsReg64s.L!=0))
+		fabricp->NumOfMcGroups ++;
+
+	// insert mcmember in the fabric structure
+	QListInsertTail(&fabricp->AllMcMembers, &mcmemberp->McMembersEntry);
+
+    	return;
+}
+
+static void GIDXmlOutput(IXmlOutputState_t *state, void *data)
+{
+	IXmlOutputPrint(state, " id=\"0x%016"PRIx64":0x%016"PRIx64"\"",
+			((IB_GID*)data)->AsReg64s.H,
+			((IB_GID*)data)->AsReg64s.L);
+}
+
+static void McMemberGDataXmlFormatAttr(IXmlOutputState_t *state, void *data)
+{
+	McGroupData *pMcGroupRecord = (McGroupData *) data;
+
+	IXmlOutputStartAttrTag(state, "PortGID", &pMcGroupRecord->PortGID, GIDXmlOutput);
+	IXmlOutputEndTag(state,"PortGID");
+}
+
+static void McGroupDataXmlFormatAttr(IXmlOutputState_t *state, void *data)
+{
+	McMemberData *pMcMemberRecord = (McMemberData *)data;
+	
+	IXmlOutputGID(state, "MGID", &pMcMemberRecord->MGID );
+	IXmlOutputHexPad16(state, "MLID", pMcMemberRecord->MLID);
+	IXmlOutputPKey(state, "P_Key", &pMcMemberRecord->MemberInfo.P_Key);
+	IXmlOutputUint(state, "Mtu", GetBytesFromMtu(pMcMemberRecord->MemberInfo.Mtu));
+	IXmlOutputRateValue(state, "Rate", pMcMemberRecord->MemberInfo.Rate);
+	IXmlOutputHex(state, "PktLifeTime_Int", pMcMemberRecord->MemberInfo.PktLifeTime );
+	IXmlOutputHexPad32(state, "Q_Key", pMcMemberRecord->MemberInfo.Q_Key);
+	IXmlOutputHex(state, "SL", pMcMemberRecord->MemberInfo.u1.s.SL);
+	IXmlOutputHex(state, "HopLimit", pMcMemberRecord->MemberInfo.u1.s.HopLimit);
+	IXmlOutputHex(state, "FlowLabel", pMcMemberRecord->MemberInfo.u1.s.FlowLabel);
+	IXmlOutputHexPad8(state, "TClass", pMcMemberRecord->MemberInfo.TClass);
+
+
+}
+
+static void McMemberXmlOutput(IXmlOutputState_t *state, const char *tag, void *data)
+{
+	McMemberData *pMcMemberRecord = (McMemberData *)data;
+	LIST_ITEM	*p;
+
+		IXmlOutputStartAttrTag(state, tag, &pMcMemberRecord->MGID, GIDXmlOutput);
+		McGroupDataXmlFormatAttr(state, data);
+		for (p=QListHead(&pMcMemberRecord->AllMcGroupMembers); p != NULL; p = QListNext(&pMcMemberRecord->AllMcGroupMembers, p)) {
+			McGroupData *mcgmemberp = (McGroupData *)QListObj(p);
+			McMemberGDataXmlFormatAttr(state, mcgmemberp);
+		}
+		IXmlOutputEndTag(state,tag);
+}
+
+
+static IXML_FIELD MulticastFields[] = {
+	{ tag:"MulticastGroup", format:'k', subfields:MCDataFields, start_func:McMemberXmlParserStart, end_func:McMemberXmlParserEnd }, // structure
+	{ NULL }
+};
+
+/** =========================================================================
  * PortData definitions
  */
 static IXML_FIELD PortDataFields[] = {
@@ -1928,6 +2359,8 @@ static IXML_FIELD PortDataFields[] = {
 	{ tag:"SLtoSCMap", format:'k', format_func:PortDataXmlOutputSLtoSCMap, subfields:SLtoSCMapSCFields, start_func:SLtoSCMapXmlParserStart, end_func:SLtoSCMapXmlParserEnd }, // structure
 	{ tag:"SCtoSLMap", format:'k', format_func:PortDataXmlOutputSCtoSLMap, subfields:SCtoSLMapSLFields, start_func:SCtoSLMapXmlParserStart, end_func:SCtoSLMapXmlParserEnd }, // structure
 	{ tag:"SCtoSCMap", format:'k', format_func:PortDataXmlOutputSCtoSCMap, subfields:SCtoSCMapOutPortFields, start_func:SCtoSCMapXmlParserStart, end_func:SCtoSCMapXmlParserEnd }, // structure
+	{ tag:"SCtoVLtMap", format:'k', format_func:PortDataXmlOutputSCtoVLtMap, subfields:SCtoVLtMapVLtFields, start_func:SCtoVLtMapXmlParserStart, end_func:SCtoVLxMapXmlParserEnd }, // structure
+	{ tag:"SCtoVLntMap", format:'k', format_func:PortDataXmlOutputSCtoVLntMap, subfields:SCtoVLntMapVLntFields, start_func:SCtoVLntMapXmlParserStart, end_func:SCtoVLxMapXmlParserEnd }, // structure
 	{ tag:"BufferControlTable", format:'k', format_func:PortDataXmlOutputBCT, subfields:BufferControlTableFields, start_func:BCTXmlParserStart }, // structure
 	{ tag:"VLArbitrationLow", format:'k', format_func:PortDataXmlOutputVLArbLow, subfields:VLArbFields, start_func:VLArbLowXmlParserStart, end_func:VLArbLowXmlParserEnd }, // structure
 	{ tag:"VLArbitrationHigh", format:'k', format_func:PortDataXmlOutputVLArbHigh, subfields:VLArbFields, start_func:VLArbHighXmlParserStart, end_func:VLArbHighXmlParserEnd }, // structure
@@ -3301,6 +3734,7 @@ static IXML_FIELD LinkFields[] = {
 };
 
 
+
 static void LinkXmlOutput(IXmlOutputState_t *state, const char *tag, void *data)
 {
 	IXmlOutputStruct(state, tag,  (PortData*)data, PortDataXmlFormatAttr, LinkFields);
@@ -3370,6 +3804,12 @@ static void LinkXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, 
 	++(fabricp->LinkCount);
 	if (! isInternalLink(p1))
 		++(fabricp->ExtLinkCount);
+	if (isFILink(p1))
+		++(fabricp->FILinkCount);
+	if (isISLink(p1))
+		++(fabricp->ISLinkCount);
+	if (! isInternalLink(p1)&& isISLink(p1))
+		++(fabricp->ExtISLinkCount);
 
 badport:
 invalid:
@@ -3391,6 +3831,8 @@ static IXML_FIELD SnapshotFields[] = {
 	{ tag:"Nodes", format:'K', subfields:NodesFields }, // list
 	{ tag:"SMs", format:'K', subfields:SMsFields }, // list
 	{ tag:"Links", format:'K', subfields:LinksFields }, // list
+	{ tag:"McMembers", format:'k', subfields:MulticastFields }, // list
+
 	{ NULL }
 };
 
@@ -3456,6 +3898,7 @@ static void SnapshotXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *fie
 		// This free's everything we built while parsing, leaving empty lists
 		SMDataFreeAll(fabricp);
 		NodeDataFreeAll(fabricp);
+		MCDataFreeAll(fabricp);
 		fabricp->LinkCount = 0;
 		fabricp->ExtLinkCount = 0;
 	}
@@ -3535,6 +3978,17 @@ static void Xml2PrintAll(IXmlOutputState_t *state, const char *tag, void *data)
 			LinkXmlOutput(state, "Link", portp);
 		}
 		IXmlOutputEndTag(state, "Links");
+	}
+
+	{
+		LIST_ITEM *p;
+
+		IXmlOutputStartAttrTag(state, "McMembers", NULL, NULL);
+		for (p=QListHead(&fabricp->AllMcMembers); p != NULL; p = QListNext(&fabricp->AllMcMembers, p)) {
+			McMemberData *mcmemberp = (McMemberData *)QListObj(p);
+			McMemberXmlOutput(state, "MulticastGroup", mcmemberp);
+		}
+		IXmlOutputEndTag(state, "McMembers");
 	}
 
 	IXmlOutputEndTag(state, tag);

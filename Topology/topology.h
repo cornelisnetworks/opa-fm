@@ -144,7 +144,7 @@ typedef struct PortData_s {
 // additional information about cable for a link, from topology input
 // we limit sizes to make output formatting easier
 #define CABLE_LENGTH_STRLEN 10
-#define CABLE_LABEL_STRLEN 20
+#define CABLE_LABEL_STRLEN 57
 #define CABLE_DETAILS_STRLEN 64
 typedef struct CableData_s {
 	char *length;	// user specified length
@@ -315,6 +315,21 @@ typedef struct NodeData_s {
 	} CongestionLog;
 } NodeData;
 
+typedef struct McGroupsData_s {
+	LIST_ITEM	AllMcGMembersEntry;
+	IB_GID		PortGID;
+	PortData	*pPort;
+} McGroupData;
+
+typedef struct McMemberData_s {
+	LIST_ITEM		McMembersEntry;
+	QUICK_LIST		AllMcGroupMembers;
+	int				NumOfMembers;
+	IB_MCMEMBER_RECORD	MemberInfo;
+	IB_GID			MGID;
+	uint16			MLID;
+} McMemberData;
+
 typedef struct clConnPathData_s {
    IB_PATH_RECORD    path; 
 } clConnPathData_t; 
@@ -326,6 +341,7 @@ typedef struct clConnData_s {
    uint64           ToDeviceGUID;        // GUID of the HFI, TFI, switch
    uint8            ToPortNum; 
    uint32   Rate;                // active rate for this port
+   STL_VL           VL;
    clConnPathData_t PathInfo;
 } clConnData_t; 
 
@@ -337,7 +353,7 @@ typedef struct clDeviceData_s {
    LIST_ITEM       AllDeviceTypesEntry; 
    uint16          Lid; 
    NodeData        *nodep; 
-   clConnData_t    *Connections[CREDIT_LOOP_DEVICE_MAX_CONNECTIONS];       // 36 port switch + 1 for port zero
+   clConnData_t    *Connections[CREDIT_LOOP_DEVICE_MAX_CONNECTIONS][STL_MAX_SCS];       // 36 port switch + 1 for port zero
    cl_qmap_t       map_dlid_to_route;
 } clDeviceData_t; 
 
@@ -476,9 +492,17 @@ typedef struct FabricData_s {
 	cl_qmap_t AllIOCs;		// items are IocData, key is Ioc Guid
 #endif
 	cl_qmap_t AllSMs;		// items are SMData, key is PortGuid
+
+	//	Multicast  related structures
+	QUICK_LIST   	AllMcMembers;	// items are MCMembers, Key is MGID
+	uint32	 	NumOfMcGroups;
+
 	MasterSMData_t	MasterSMData;	// Master SM data
 	uint32 LinkCount;		// number of links in fabric
 	uint32 ExtLinkCount;	// number of external links in fabric
+	uint32 FILinkCount;		// number of FI links in fabric
+	uint32 ISLinkCount;		// number of inter-switch links in fabric
+	uint32 ExtISLinkCount;	// number of external inter-switch links in fabric
 
         // additional information for credit loop
         uint32 ConnectionCount;                         
@@ -595,8 +619,25 @@ extern PortSelector* GetPortSelector(PortData *portp);
 // system.  Note that some 3rd party products report SystemImageGuid of 0 in
 // which case we can only consider links between the same node as internal links
 extern boolean isInternalLink(PortData *portp);
+// Determine if portp and its neighbor are an Inter-switch Link
+extern boolean isISLink(PortData *portp);
+// Determine if portp or its neighbor is an FI
+extern boolean isFILink(PortData *portp);
+// Determine if elinkp is an external link within a single system.
+// To make sure verification is thorough, this will return true when
+// either the expected or resolved link(s) are external or when the
+// expected link is not specific as to whether it is internal or external.
+extern boolean isExternalExpectedLink(ExpectedLink *elinkp);
+// Determine if elinkp is an inter-switch link
+// To make sure verification is thorough, this will return true when
+// either the expected or resolved link(s) are SW-SW
+extern boolean isISExpectedLink(ExpectedLink *elinkp);
+// Determine if elinkp is an FI link
+// To make sure verification is thorough, this will return true when
+// either the expected or resolved link(s) include an FI
+extern boolean isFIExpectedLink(ExpectedLink *elinkp);
 // count the number of armed/active links in the node
-uint32 CountInitializedPorts(FabricData_t *fabricp, NodeData *nodep);
+extern uint32 CountInitializedPorts(FabricData_t *fabricp, NodeData *nodep);
 extern FSTATUS NodeDataAllocateSwitchData(FabricData_t *fabricp, NodeData *nodep,
 				uint32 LinearFDBSize, uint32 MulticastFDBSize);
 
@@ -667,6 +708,12 @@ extern PortData* NodeDataAddPort(FabricData_t *fabricp, NodeData *nodep, EUI64 g
 extern FSTATUS NodeDataSetSwitchInfo(NodeData *nodep, STL_SWITCHINFO_RECORD *pSwitchInfo);
 extern NodeData *FabricDataAddNode(FabricData_t *fabricp, STL_NODE_RECORD *pNodeRecord, boolean *new_nodep);
 
+extern McMemberData *FabricDataAddMCGroup(FabricData_t *fabricp, struct oib_port *port, int quiet, IB_MCMEMBER_RECORD *pMCGRecord,
+		boolean *new_nodep, FILE *verbose_file);
+
+extern FSTATUS GetAllMCGroups(EUI64 portGuid, FabricData_t *fabricp, Point *focus, int quiet);
+extern FSTATUS GetAllMCGroupMember(McMemberData *mcmemberp,struct oib_port *portp,int quiet, FILE *g_verbose_file);
+
 extern boolean SupportsVendorPortCounters(NodeData *nodep,
                                         IB_CLASS_PORT_INFO *classPortInfop);
 extern boolean SupportsVendorPortCounters2(NodeData *nodep,
@@ -693,10 +740,11 @@ extern void PortDataSetPortInfo(FabricData_t *fabricp, PortData *portp, STL_PORT
 extern void DestroyFabricData(FabricData_t *fabricp);
 
 extern NodeData * CLDataAddDevice(FabricData_t *fabricp, NodeData *nodep, uint16 lid, int verbose);
-extern FSTATUS CLDataAddConnection(FabricData_t *fabricp, PortData *portp1, PortData *portp2, clConnPathData_t *pathInfo, int verbose);
+extern FSTATUS CLDataAddConnection(FabricData_t *fabricp, PortData *portp1, PortData *portp2, clConnPathData_t *pathInfo, uint8 sc, int verbose);
 extern FSTATUS CLDataAddRoute(FabricData_t *fabricp, uint16 slid, uint16 dlid, PortData *sportp, int verbose);
 extern clGraphData_t * CLGraphDataSplit(clGraphData_t *graphp, int verbose);
 extern FSTATUS CLFabricDataDestroy(FabricData_t *fabricp, void *context);
+extern void CLGraphDataFree(clGraphData_t *graphp, void *context);
 extern FSTATUS CLDijkstraFindDistancesAndRoutes(clGraphData_t *graphp, clDijkstraDistancesAndRoutes_t *respData, int verbose);
 extern void CLDijkstraFreeDistancesAndRoutes(clDijkstraDistancesAndRoutes_t *drp);
 
@@ -862,15 +910,16 @@ extern FSTATUS GetPaths(struct oib_port *port, PortData *portp1, PortData *portp
 extern FSTATUS GetTraceRoute(struct oib_port *port, IB_PATH_RECORD *pathp,
 							 PQUERY_RESULT_VALUES *ppQueryResults);
 extern FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabricp,
-			   	Point *focus, boolean limitstats, boolean quiet);
+			   	Point *focus, boolean limitstats, boolean quiet, uint32 begin, uint32 end);
 extern FSTATUS GetAllFDBs( EUI64 portGuid, FabricData_t *fabricp, Point *focus,
 				int quiet );
-extern FSTATUS GetAllPortVLInfo(EUI64 portGuid, FabricData_t *fabricp, Point *focus, int quiet);
+extern FSTATUS GetAllPortVLInfo(EUI64 portGuid, FabricData_t *fabricp, Point *focus, int quieti, int *use_scsc);
 extern PQUERY_RESULT_VALUES GetAllVFInfo(struct oib_port *port, FabricData_t *fabricp, 
 										 Point *focus, int quiet);
 extern PQUERY_RESULT_VALUES GetAllQuarantinedNodes(struct oib_port *port, FabricData_t *fabricp,
 													Point *focus, int quiet);
 extern FSTATUS GetAllBCTs(EUI64 portGuid, FabricData_t *fabricp, Point *focus, int quiet);
+extern FSTATUS GetAllMCGroups(EUI64 portGuid, FabricData_t *fabricp, Point *focus, int quiet);
 
 // port 0 gets a bit as well as ports 1-NumPorts
 // this returns Entry size in sizeof(PORTMASK) units
@@ -918,7 +967,7 @@ typedef FSTATUS (RouteCallback_t)(PortData *entryPortp, PortData *exitPortp,
 // FNOT_FOUND - unable to find starting port
 // FNOT_DONE - unable to trace route, dlid is a dead end
 extern FSTATUS WalkRoutePort(FabricData_t *fabricp,
-			   		PortData *portp, IB_LID dlid,
+			   		PortData *portp, IB_LID dlid, uint8 SL,
 			  		RouteCallback_t *callback, void *context);
 // walk by slid to dlid
 extern FSTATUS WalkRoute(FabricData_t *fabricp, IB_LID slid, IB_LID dlid,
@@ -972,7 +1021,7 @@ extern FSTATUS ReportCARoutes(FabricData_t *fabricp,
 
 // callback used to indicate that an incomplete route exists between p1 and p2
 typedef void (*ValidateCallback_t)(PortData *portp1, PortData *portp2,
-			   		IB_LID dlid, boolean isBaseLid, void *context);
+			   		IB_LID dlid, boolean isBaseLid, uint8 sl, void *context);
 
 // callback used to indicate a port along an incomplete route
 typedef void (*ValidateCallback2_t)(PortData *portp, void *context);
@@ -981,14 +1030,16 @@ typedef void (*ValidateCallback2_t)(PortData *portp, void *context);
 extern FSTATUS ValidateRoutes(FabricData_t *fabricp,
 			   		PortData *portp1, PortData *portp2,
 					uint32 *totalPaths, uint32 *badPaths,
+					uint32 usedSLs,
 				   	ValidateCallback_t callback, void *context,
 				   	ValidateCallback2_t callback2, void *context2);
 // validate all the routes between all LIDs
 // exclude loopback routes
-extern FSTATUS ValidateAllRoutes(FabricData_t *fabricp,
+extern FSTATUS ValidateAllRoutes(FabricData_t *fabricp, EUI64 portGuid,
 					uint32 *totalPaths, uint32 *badPaths,
 				   	ValidateCallback_t callback, void *context,
-				   	ValidateCallback2_t callback2, void *context2);
+				   	ValidateCallback2_t callback2, void *context2,
+					uint8 useSCSC);
 
 typedef void (*ValidateCLRouteCallback_t)(PortData *portp1, PortData *portp2, void *context); 
 
@@ -1019,14 +1070,16 @@ extern FSTATUS ValidateAllCreditLoopRoutes(FabricData_t *fabricp, EUI64 portGuid
                                            ValidateCLPathSummaryCallback_t pathSummaryCallback,
                                            ValidateCLTimeGetCallback_t timeGetCallback,
                                            void *context, 
-                                           uint8 snapshotInFile); 
+                                           uint8 snapshotInFile,
+                                           uint8 useSCSC); 
 extern void CLFabricSummary(FabricData_t *fabricp, const char *name, ValidateCLFabricSummaryCallback_t callback,
 			    uint32 totalPaths, uint32 totalBadPaths, void *context);
 extern void CLGraphDataSummary(clGraphData_t *graphp, const char *name, ValidateCLDataSummaryCallback_t callback, void *context);
 extern FSTATUS CLFabricDataBuildRouteGraph(FabricData_t *fabricp,
                                            ValidateCLRouteSummaryCallback_t routeSummaryCallback,
                                            ValidateCLTimeGetCallback_t timeGetCallback,
-                                           void *context);
+                                           void *context,
+                                           uint32 usedSLs);
 extern void CLGraphDataPrune(clGraphData_t *graphp, ValidateCLTimeGetCallback_t timeGetCallback, int verbose);
 extern void CLDijkstraFindCycles(FabricData_t *fabricp,
                                  clGraphData_t *graphp,

@@ -1,0 +1,11 @@
+<SslSecurityParameters>
+<SslSecurityEnabled>0</SslSecurityEnabled>
+<SslSecurityDir>/usr/local/ssl/opafm</SslSecurityDir>
+<SslSecurityFFCertificate>ff_cert.pem</SslSecurityFFCertificate>
+<SslSecurityFFPrivateKey>ff_key.pem</SslSecurityFFPrivateKey>
+<SslSecurityFFCaCertificate>ff_ca_cert.pem</SslSecurityFFCaCertificate>
+<SslSecurityFFCertChainDepth>1</SslSecurityFFCertChainDepth>
+<SslSecurityFFDHParameters>ff_dh_parms.pem</SslSecurityFFDHParameters>
+<SslSecurityFFCaCRLEnabled>0</SslSecurityFFCaCRLEnabled>
+<SslSecurityFFCaCRL>ff_ca_crl.pem</SslSecurityFFCaCRL>
+</SslSecurityParameters>

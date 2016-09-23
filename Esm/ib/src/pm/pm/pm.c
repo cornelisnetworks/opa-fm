@@ -70,6 +70,9 @@ extern void mai_umadt_read_kill(void);
 
 #ifdef __VXWORKS__
 #include <stdio.h>
+
+extern STATUS esm_getPartitionActualSize(size_t *mbytes);
+extern STATUS esm_getPartitionSize(size_t *mbytes);
 #endif
 
 // XML configuration data structure
@@ -545,6 +548,8 @@ pm_compute_pool_size(void)
 
     // calculate pool size for legacy support
 #ifdef __VXWORKS__
+    size_t mbytes1, mbytes2;
+
 	// add a couple pages and 10% to allow for inefficiency in allocator
 	g_pmPoolSize = ((PM_MAX_DATA_LEN + 2*PAGE_SIZE)*11)/10;
 #else
@@ -592,13 +597,16 @@ pm_compute_pool_size(void)
 			;
 
 #ifdef __VXWORKS__
+	// if the default ESM memory partition requirements are meant, then
 	// keep it simple and just double image memory pool usage
-    g_pmPoolSize += (pmImagePoolSize * 2);
+    esm_getPartitionActualSize(&mbytes1);
+    esm_getPartitionSize(&mbytes2);
+    g_pmPoolSize += (pmImagePoolSize * ((mbytes1 >= mbytes2) ? 2 : 1));
 #else
     g_pmPoolSize += pmImagePoolSize;
 #endif
 
-	if (pm_config.shortTermHistory.enable && pm_config.sweep_interval) {
+	if (pm_config.shortTermHistory.enable) {
 		// PM Short Term History storage
 		// Allocate space for all history records
 		// check that imagesPerComposite isn't 0
@@ -1008,13 +1016,15 @@ pm_main()
 #endif
 
       if (hpma > 0) (void) mai_close(hpma);
-      if (pm_fd > 0) if3_mngr_close_cnx_fe(pm_fd, TRUE);
 
       // deregister the pm if necessary
       if (isRegistered) {
           (void)vfi_mngr_unregister(pm_fd, vfi_mclass, VFI_DEFAULT_GUID, &pmServRer,
                                     VFI_SVRREC_GID | VFI_SVREC_NAME | VFI_SVRREC_ID);
       }
+
+      if (pm_fd > 0) if3_mngr_close_cnx_fe(pm_fd, TRUE);
+
       pm_fd = -1;
       hpma = -1;
       fh = -1;

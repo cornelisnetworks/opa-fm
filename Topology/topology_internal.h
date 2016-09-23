@@ -63,6 +63,8 @@ extern void NodeDataFree(FabricData_t *fabricp, NodeData *nodep);
 extern void NodeDataFreeAll(FabricData_t *fabricp);
 extern void SMDataFree(FabricData_t *fabricp, SMData *smp);
 extern void SMDataFreeAll(FabricData_t *fabricp);
+extern void MCDataFreeAll(FabricData_t *fabricp);
+extern void MCMemberFree(FabricData_t *fabricp, McMemberData *mcmemberp);
 
 extern void CableDataFree(CableData *cablep);
 extern void PortSelectorFree(PortSelector *portselp);

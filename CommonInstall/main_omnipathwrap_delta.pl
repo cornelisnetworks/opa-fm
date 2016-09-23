@@ -55,10 +55,8 @@ $FirstIPoIBInterface=0; # first device is ib0
 
 my @OmniPathAllComponents = ( "mvapich2_gcc_hfi",
 		   			"mvapich2_intel_hfi",
-					"mvapich2_pgi_hfi",
 					"openmpi_gcc_hfi",
 				   	"openmpi_intel_hfi",
-					"openmpi_pgi_hfi",
  					);
 
 # these are now gone, list them so they get uninstalled
@@ -185,7 +183,7 @@ my %ComponentInfo_other = (
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob("./IntelOPA-Tools*.*"),
 					  DriverSubdir => "",
-					  PreReq => " opa_stack ibacm ", CoReq => " opa_stack ",
+					  PreReq => " opa_stack ", CoReq => " opa_stack ",
 					  Hidden => 0, Disabled => 0,
 					  HasStart => 1, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => " opa_stack ", # TBD
@@ -281,16 +279,6 @@ my %ComponentInfo_other = (
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
-	"mvapich2_pgi_hfi" =>	{ Name => "MVAPICH2 (hfi,PGI)",
-					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob ("./OFED_MPIS.*"),
-					  DriverSubdir => "",
-					  PreReq => " opa_stack intel_hfi mpi_selector ", CoReq => "",
-					  Hidden => 0, Disabled => 0,
-					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
-					  StartPreReq => "",
-					  StartComponents => [ ],
-					},
 	"mvapich2_intel_hfi" =>	{ Name => "MVAPICH2 (hfi,Intel)",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob ("./OFED_MPIS.*"),
@@ -302,16 +290,6 @@ my %ComponentInfo_other = (
 					  StartComponents => [ ],
 					},
 	"openmpi_gcc_hfi" =>	{ Name => "OpenMPI (hfi,gcc)",
-					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob ("./OFED_MPIS.*"),
-					  DriverSubdir => "",
-					  PreReq => " opa_stack intel_hfi mpi_selector ", CoReq => "",
-					  Hidden => 0, Disabled => 0,
-					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
-					  StartPreReq => "",
-					  StartComponents => [ ],
-					},
-	"openmpi_pgi_hfi" =>	{ Name => "OpenMPI (hfi,PGI)",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob ("./OFED_MPIS.*"),
 					  DriverSubdir => "",
@@ -424,7 +402,7 @@ my %ComponentInfo_rhel72 = (
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob("./IntelOPA-Tools*.*"),
 					  DriverSubdir => "",
-					  PreReq => " opa_stack ibacm ", CoReq => " opa_stack ",
+					  PreReq => " opa_stack ", CoReq => " opa_stack ",
 					  Hidden => 0, Disabled => 0,
 					  HasStart => 1, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => " opa_stack ", # TBD
@@ -520,16 +498,6 @@ my %ComponentInfo_rhel72 = (
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
-	"mvapich2_pgi_hfi" =>	{ Name => "MVAPICH2 (hfi,PGI)",
-					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob ("./OFED_MPIS.*"),
-					  DriverSubdir => "",
-					  PreReq => " opa_stack intel_hfi mpi_selector ", CoReq => "",
-					  Hidden => 0, Disabled => 0,
-					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
-					  StartPreReq => "",
-					  StartComponents => [ ],
-					},
 	"mvapich2_intel_hfi" =>	{ Name => "MVAPICH2 (hfi,Intel)",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob ("./OFED_MPIS.*"),
@@ -541,16 +509,6 @@ my %ComponentInfo_rhel72 = (
 					  StartComponents => [ ],
 					},
 	"openmpi_gcc_hfi" =>	{ Name => "OpenMPI (hfi,gcc)",
-					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob ("./OFED_MPIS.*"),
-					  DriverSubdir => "",
-					  PreReq => " opa_stack intel_hfi mpi_selector ", CoReq => "",
-					  Hidden => 0, Disabled => 0,
-					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
-					  StartPreReq => "",
-					  StartComponents => [ ],
-					},
-	"openmpi_pgi_hfi" =>	{ Name => "OpenMPI (hfi,PGI)",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob ("./OFED_MPIS.*"),
 					  DriverSubdir => "",
@@ -601,7 +559,7 @@ my %ComponentInfo_rhel72 = (
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
-	"hfi1_uefi" =>		{ Name => "UEFI Binaries",
+	"hfi1_uefi" =>		{ Name => "Pre-Boot Components",
 					  DefaultInstall => $State_DoNotInstall,
 					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
 					  DriverSubdir => "",
@@ -632,10 +590,8 @@ my %ComponentInfo_rhel72 = (
 				"mvapich2" => 0,
 				"openmpi" => 0,
 				"mvapich2_gcc_hfi" => 0,
-	   			"mvapich2_pgi_hfi" => 0,
 				"mvapich2_intel_hfi" => 0,
 				"openmpi_gcc_hfi" => 0,
-	   			"openmpi_pgi_hfi" => 0,
 				"openmpi_intel_hfi" => 0,
 				"delta_mpisrc" => 0,
 				"opafm" => 0,
@@ -739,16 +695,16 @@ sub source_comp
 			LogPrint "Loaded $ComponentInfo{$comp}{'Name'} script: $ComponentInfo{$comp}{'SrcDir'}/comp.pl\n";
 		}
 		#eval "available_$comp";
-	} elsif ( -e "$ROOT/opt/opa/.comp_$comp.pl" ) {
+	} elsif ( -e "$ROOT/usr/lib/opa/.comp_$comp.pl" ) {
 		# source the installed file, mainly to aid uninstall
-		#print "$ROOT/opt/opa/.comp_$comp.pl\n"; sleep 10;
-		eval `cat "$ROOT/opt/opa/.comp_$comp.pl"`;
+		#print "$ROOT/usr/lib/opa/.comp_$comp.pl\n"; sleep 10;
+		eval `cat "$ROOT/usr/lib/opa/.comp_$comp.pl"`;
 		if ( "$@" ne "" ) {
 			NormalPrint "$@\n";
-			NormalPrint "Warning: Ignoring Corrupted $ComponentInfo{$comp}{'Name'} script: $ROOT/opt/opa/.comp_$comp.pl\n";
+			NormalPrint "Warning: Ignoring Corrupted $ComponentInfo{$comp}{'Name'} script: $ROOT/usr/lib/opa/.comp_$comp.pl\n";
 			HitKeyCont;
 		} else {
-			LogPrint "Loaded $ComponentInfo{$comp}{'Name'} script: $ROOT/opt/opa/.comp_$comp.pl\n";
+			LogPrint "Loaded $ComponentInfo{$comp}{'Name'} script: $ROOT/usr/lib/opa/.comp_$comp.pl\n";
 		}
 	} else {
 		# component not available and not installed
@@ -797,7 +753,7 @@ sub Usage
 		#printf STDERR "               or\n";
 		#printf STDERR "Usage: $0 [-r root] [-v|-vv] [-a|-n|-U|-F|-u|-s|-i comp|-e comp] [-E comp] [-D comp] [-f] [--fwupdate asneeded|always] [-l] [--user_configure_options 'options'] [--kernel_configure_options 'options'] [--prefix dir] [--without-depcheck] [--rebuild] [--force] [--answer keyword=value] [--debug]\n";
 		#printf STDERR "Usage: $0 [-r root] [-v|-vv] [-a|-n|-U|-F|-u|-s|-i comp|-e comp] [-E comp] [-D comp] [-f] [--fwupdate asneeded|always] [--user_configure_options 'options'] [--kernel_configure_options 'options'] [--prefix dir] [--without-depcheck] [--rebuild] [--force] [--answer keyword=value]\n";
-		printf STDERR "Usage: $0 [-r root] [-v|-vv] [-a|-n|-U|-u|-s|-O|-N|-i comp|-e comp] [-E comp] [-D comp] [--user_configure_options 'options'] [--kernel_configure_options 'options'] [--prefix dir] [--without-depcheck] [--rebuild] [--force] [--answer keyword=value]\n";
+		printf STDERR "Usage: $0 [-r root] [-v|-vv] -R osver -B osver [-a|-n|-U|-u|-s|-O|-N|-i comp|-e comp] [-E comp] [-D comp] [--user-space] [--user_configure_options 'options'] [--kernel_configure_options 'options'] [--prefix dir] [--without-depcheck] [--rebuild] [--force] [--answer keyword=value]\n";
 	} else {
 #		printf STDERR "Usage: $0 [-r root] [-v|-vv] [-F|-u|-s|-e comp] [-E comp] [-D comp]\n";
 #		printf STDERR "          [--fwupdate asneeded|always] [--user_queries|--no_user_queries] [--answer keyword=value]\n";
@@ -817,7 +773,8 @@ sub Usage
 		printf STDERR "       -i comp - install the given component with default options\n";
 		printf STDERR "            can appear more than once on command line\n";
 #		printf STDERR "       -f - skip HCA firmware upgrade during install\n";
-		#printf STDERR "       -l - skip creating/removing symlinks to /usr/local from /opt/opa\n";
+		printf STDERR "       --user-space - Skip kernel space components during installation\n";
+		#printf STDERR "       -l - skip creating/removing symlinks to /usr/local from /usr/lib/opa\n";
 		printf STDERR "       --user_configure_options 'options' - specify additional OFA build\n";
 		printf STDERR "             options for user space srpms.  Causes rebuild of all user srpms\n";
 		printf STDERR "       --kernel_configure_options 'options' - specify additional OFA build\n";
@@ -830,12 +787,12 @@ sub Usage
 		printf STDERR "                 Use of this option can result in undefined behaviors\n";
 		printf STDERR "       -O - Keep current modified rpm config file\n";
 		printf STDERR "       -N - Use new default rpm config file\n";
-		# --debug, -B, -t and -d options are purposely not documented
+		# --debug, -t and -d options are purposely not documented
 		#printf STDERR "       --debug - build a debug version of modules\n";
-		#printf STDERR "       -B osver - run build for all components targetting kernel osver\n";
+		printf STDERR "       -B osver - run build for all components targetting kernel osver\n";
 		#printf STDERR "       -t - temp area for use by builds, only valid with -B\n";
 		#printf STDERR "       -d - enable build debugging assists, only valid with -B\n";
-		#printf STDERR "       -R osver - force install for kernel osver rather than running kernel.\n";
+		printf STDERR "       -R osver - force install for kernel osver rather than running kernel.\n";
 	}
 #	printf STDERR "       -F - upgrade HCA Firmware with default options\n";
 #	printf STDERR "       --fwupdate asneeded|always - select fw update auto update mode\n";
@@ -894,15 +851,14 @@ sub translate_comp
 	if ("$arg" eq "opadev")			{ return ( "opa_stack_dev" );
 	} elsif ("$arg" eq "opa")		{ return ( "oftools",
 		"mvapich2_gcc_hfi", "openmpi_gcc_hfi", "mvapich2_intel_hfi",
-		"openmpi_intel_hfi", "mvapich2_pgi_hfi", "openmpi_pgi_hfi" );
-	} elsif ("$arg" eq "fastfabric"){ return ( "fastfabric" );	# unexpected
+		"openmpi_intel_hfi");
 	} elsif ("$arg" eq "ipoib")		{ return ( "delta_ipoib" );
 	} elsif ("$arg" eq "mpi")		{ return ( "mvapich2", "openmpi", 
 		"mvapich2_gcc_hfi", "openmpi_gcc_hfi", "mvapich2_intel_hfi", 
-		"openmpi_intel_hfi", "mvapich2_pgi_hfi", "openmpi_pgi_hfi" );
+		"openmpi_intel_hfi");
 	} elsif ("$arg" eq "psm_mpi")	{ return ( "mvapich2_gcc_hfi",
 		"openmpi_gcc_hfi", "mvapich2_intel_hfi", 
-		"openmpi_intel_hfi", "mvapich2_pgi_hfi", "openmpi_pgi_hfi" );
+		"openmpi_intel_hfi");
 	} elsif ("$arg" eq "verbs_mpi")	{ return ( "mvapich2", "openmpi" );
 	} elsif ("$arg" eq "pgas")		{ return ( "gasnet", "openshmem" );
 	} elsif ("$arg" eq "mpisrc")	{ return ( "delta_mpisrc" );
@@ -1116,6 +1072,8 @@ sub process_args
 				$setanswer=1;
 			} elsif ( "$arg" eq "--without-depcheck" ) {
 				$rpm_check_dependencies=0;
+			} elsif ( "$arg" eq "--user-space" ) {
+				$skip_kernel = 1;
 			} elsif ( "$arg" eq "--force" ) {
 				$Force_Install=1;
 			} elsif ( "$arg" eq "-C" ) {

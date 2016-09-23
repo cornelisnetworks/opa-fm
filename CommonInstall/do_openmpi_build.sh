@@ -116,7 +116,7 @@ Usage()
 	echo "            Default is '/'" >&2
 	echo "" >&2
 	echo "The RPMs built during this process will be installed on this system" >&2
-	echo "they can also be found in /opt/opa/src/MPI" >&2
+	echo "they can also be found in /usr/lib/opa/src/MPI" >&2
 	exit 2
 }
 
@@ -205,10 +205,10 @@ then
 fi
 if [ "$iflag" = n ]
 then
-	cd /opt/opa/src/MPI
+	cd /usr/lib/opa/src/MPI
 	if [ $? != 0 ]
 	then
-		echo "ERROR: Unable to cd to /opt/opa/src/MPI" >&2
+		echo "ERROR: Unable to cd to /usr/lib/opa/src/MPI" >&2
 		exit 1
 	fi
 fi
@@ -282,7 +282,7 @@ fi
 
 if [ "$skip_prompt" != y -a "$Oflag" != y -a "$Qflag" != y ]
 then
-	if rpm -qa|grep hfi1-psm >/dev/null 2>&1
+	if rpm -qa|grep libpsm2 >/dev/null 2>&1
 	then
 		echo
 		get_yes_no "Build for Omnipath HFI PSM" "y"
@@ -304,7 +304,7 @@ then
 	interface=psm
 elif [ "$Oflag" = y ]
 then
-	PREREQ+=('hfi1-psm')
+	PREREQ+=('libpsm2')
 	
 	openmpi_conf_psm='--with-psm=/usr --with-psm2=/usr --disable-oshmem'
 	# PSM indicated by qlc suffix so user can ID PSM vs verbs MPIs
@@ -350,11 +350,11 @@ logfile=make.openmpi.$interface.$compiler
 	BUILD_DIR=${BUILD_DIR:-/var/tmp/Intel-openmpi}
 	BUILD_ROOT="$BUILD_DIR/build";
 	RPM_DIR="$BUILD_DIR/OFEDRPMS";
-	DESTDIR=/opt/opa/src/MPI
+	DESTDIR=/usr/lib/opa/src/MPI
 	if [ "$iflag" = n ]
 	then
-		openmpi_srpm=/opt/opa/src/MPI/openmpi-*.src.rpm
-		mpitests_srpm=/opt/opa/src/MPI/mpitests-*.src.rpm
+		openmpi_srpm=/usr/lib/opa/src/MPI/openmpi-*.src.rpm
+		mpitests_srpm=/usr/lib/opa/src/MPI/mpitests-*.src.rpm
 	else
 		openmpi_srpm=./SRPMS/openmpi-*.src.rpm
 		mpitests_srpm=./SRPMS/mpitests-*.src.rpm
@@ -393,10 +393,10 @@ logfile=make.openmpi.$interface.$compiler
 	echo "=========================================================="
 	if [ "$iflag" = n ]
 	then
-		echo "MPICH_PREFIX='$MPICH_PREFIX'"> /opt/opa/src/MPI/.mpiinfo
-		#echo "MPI_RUNTIME='$MPICH_PREFIX/bin $MPICH_PREFIX/lib* $MPICH_PREFIX/etc $MPICH_PREFIX/share $MPICH_PREFIX/tests'">> /opt/opa/src/MPI/.mpiinfo
-		echo "MPI_RPMS='openmpi_$compiler$openmpi_rpm_suffix-$openmpi_fullversion.$target_cpu.rpm mpitests_openmpi_$compiler$openmpi_rpm_suffix-$mpitests_fullversion.$target_cpu.rpm'">> /opt/opa/src/MPI/.mpiinfo
-		chmod +x /opt/opa/src/MPI/.mpiinfo
+		echo "MPICH_PREFIX='$MPICH_PREFIX'"> /usr/lib/opa/src/MPI/.mpiinfo
+		#echo "MPI_RUNTIME='$MPICH_PREFIX/bin $MPICH_PREFIX/lib* $MPICH_PREFIX/etc $MPICH_PREFIX/share $MPICH_PREFIX/tests'">> /usr/lib/opa/src/MPI/.mpiinfo
+		echo "MPI_RPMS='openmpi_$compiler$openmpi_rpm_suffix-$openmpi_fullversion.$target_cpu.rpm mpitests_openmpi_$compiler$openmpi_rpm_suffix-$mpitests_fullversion.$target_cpu.rpm'">> /usr/lib/opa/src/MPI/.mpiinfo
+		chmod +x /usr/lib/opa/src/MPI/.mpiinfo
 	fi
 
 	echo

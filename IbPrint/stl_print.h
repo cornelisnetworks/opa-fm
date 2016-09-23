@@ -63,7 +63,7 @@ extern "C" {
 void PrintStlLid(PrintDest_t *dest, int indent, uint32_t lid, int printLineByLine);
 
 // General classPortInfo
-void PrintStlClassPortInfo(PrintDest_t *dest, int indent, const STL_CLASS_PORT_INFO *pClassPortInfo);
+void PrintStlClassPortInfo(PrintDest_t *dest, int indent, const STL_CLASS_PORT_INFO *pClassPortInfo, uint8 MgmtClass);
 
 // SM/SMA
 void PrintStlLedInfo(PrintDest_t *dest, int indent, const STL_LED_INFO *pLedInfo, EUI64 portGuid, int printLineByLine);

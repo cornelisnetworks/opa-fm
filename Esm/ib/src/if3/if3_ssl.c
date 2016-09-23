@@ -645,7 +645,7 @@ void * if3_ssl_accept(void *context, int clientfd)
                 result = SSL_get_verify_result(session); 
                 if (result != X509_V_OK) {
                     status = VSTATUS_MISMATCH;
-                    IB_LOG_ERROR_FMT(__func__, "Verification of client certificate failed: err %d", result);
+                    IB_LOG_ERROR_FMT(__func__, "Verification of client certificate failed: err %ld", result);
                 }
             }
 

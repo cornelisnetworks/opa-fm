@@ -499,7 +499,7 @@ void IXmlOutputVLsValue(IXmlOutputState_t *state, const char* tag, uint8 value)
 {
 	char buf[8];
 
-	sprintf(buf, "%u+1", value);
+	(void)snprintf(buf, sizeof(buf), "%u+1", value);
 	IXmlOutputStrUint(state, tag, buf, value);
 }
 
@@ -1014,7 +1014,10 @@ IXML_FIELD SwitchInfoFields[] = {
 	{ tag:"LifeTimeValue_Int", format:'K', format_func:IXmlOutputNoop, end_func:SwitchInfoXmlParserEndLifeTimeValue }, // input only bitfield
 	{ tag:"PortStateChange", format:'K', format_func:SwitchInfoXmlOutputPortStateChange, end_func:SwitchInfoXmlParserEndPortStateChange }, // bitfield
 	{ tag:"PartitionEnforcementCap", format:'U', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.PartitionEnforcementCap) },
-	{ tag:"CapabilityMask", format:'X', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.u2.AsReg8) },
+	{ tag:"U2", format:'X', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.u2.AsReg8) },
+	{ tag:"CapabilityMask", format:'X', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.CapabilityMask) },
+	{ tag:"RoutingModeSupported", format:'X', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.RoutingMode.Supported) },
+	{ tag:"RoutingModeEnabled", format:'X', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.RoutingMode.Enabled) },
 	{ tag:"PortGroupCap", format:'U', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.PortGroupCap) },
 	{ tag:"PortGroupTop", format:'U', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.PortGroupTop) },
 	{ tag:"AdaptiveRouting", format:'x', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.AdaptiveRouting.AsReg16) },

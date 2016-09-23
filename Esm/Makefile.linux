@@ -63,6 +63,7 @@ DIRS			+= \
 				$(TL_DIR)/IbPrint \
 				$(TL_DIR)/IbaTools/opaxmlextract \
 				$(TL_DIR)/IbaTools/opaxmlfilter \
+				$(TL_DIR)/IbaTools/FastFabric \
 				$(PWD)/ib
 				#$(TL_DIR)/Km \
 

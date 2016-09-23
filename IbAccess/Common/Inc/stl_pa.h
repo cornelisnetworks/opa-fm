@@ -60,6 +60,43 @@ extern "C" {
 #define STL_PM_ERR_GRAN_PERCENT 25  /* granularity of error buckets */
 #define STL_PM_ERR_BUCKETS ((100 / STL_PM_ERR_GRAN_PERCENT) + 1) // extra bucket is for those over threshold
 
+/* ClassPortInfo Capability bits */
+
+typedef STL_FIELDUNION3(STL_PA_CLASS_PORT_INFO_CAPABILITY_MASK, 16,
+		Reserved1: 					7,     	/* start of class dependent bits */
+		IsAbsTimeQuerySupported:	1,		/* RO - PA supports queries */
+											/* w/ absoluteTime in Image ID */
+		Reserved2: 					8);		/* class independent bits*/
+
+/*
+ *PA capability mask defines
+ */
+#define STL_PA_CPI_CAPMASK_ABSTIMEQUERY 0x0100
+
+static __inline void
+StlPaClassPortInfoCapMask(char buf[80], uint16 cmask)
+{
+	if (!cmask) {
+		snprintf(buf, 80, "-");
+	} else {
+		snprintf(buf, 80, "%s%s%s%s",
+			(cmask & STL_CLASS_PORT_CAPMASK_TRAP) ? "Trap " : "",
+			(cmask & STL_CLASS_PORT_CAPMASK_NOTICE) ? "Notice " : "",
+			(cmask & STL_CLASS_PORT_CAPMASK_CM2) ? "CapMask2 " : "",
+			/* Class Specific */
+			(cmask & STL_PA_CPI_CAPMASK_ABSTIMEQUERY) ? "AbsTime " : "");
+	}
+}
+static __inline void
+StlPaClassPortInfoCapMask2(char buf[80], uint32 cmask)
+{
+	if (!cmask) {
+		snprintf(buf, 80, "-");
+	} else {
+		buf[0] = '\0';
+	}
+}
+
 typedef struct _STL_PA_Group_List {
 	char					groupName[STL_PM_GROUPNAMELEN];	// \0 terminated - actual number indicated by numGroups
 } PACK_SUFFIX STL_PA_GROUP_LIST;
@@ -67,7 +104,10 @@ typedef struct _STL_PA_Group_List {
 typedef struct _STL_PA_Image_ID_Data {
 	uint64					imageNumber;
 	int32					imageOffset;
-	uint32					reserved;
+	union {
+		uint32				absoluteTime;
+		int32				timeOffset;
+	} PACK_SUFFIX imageTime;
 } PACK_SUFFIX STL_PA_IMAGE_ID_DATA;
 
 /* Utilization statistical summary */
@@ -264,7 +304,7 @@ typedef struct _STL_CONGESTION_WEIGHTS {
 static __inline
 void StlFormatPmFlags(char buf[80], uint32 pmFlags)
 {
-	sprintf(buf, "%s=%s %s=%s %s=%s %s=%s",
+	snprintf(buf, 80, "%s=%s %s=%s %s=%s %s=%s",
 			"ProcessHFICntrs", pmFlags & STL_PM_PROCESS_HFI_COUNTERS ? "On" : "Off",
 			"ProcessVLCntrs",  pmFlags & STL_PM_PROCESS_VL_COUNTERS ? "On" : "Off",
 			"ClrDataCntrs",    pmFlags & STL_PM_PROCESS_CLR_DATA_COUNTERS ? "On" : "Off",
@@ -274,7 +314,7 @@ void StlFormatPmFlags(char buf[80], uint32 pmFlags)
 static __inline
 void StlFormatPmFlags2(char buf[80], uint32 pmFlags)
 {
-	sprintf(buf, "%s=%s %s=%s",
+	snprintf(buf, 80, "%s=%s %s=%s",
 			"Clr32bitErrCntrs", pmFlags & STL_PM_PROCESS_CLR_32BIT_COUNTERS ? "On" : "Off",
 			"Clr8bitErrCntrs",  pmFlags & STL_PM_PROCESS_CLR_8BIT_COUNTERS ? "On" : "Off");
 }
@@ -723,6 +763,7 @@ BSWAP_STL_PA_IMAGE_ID(STL_PA_IMAGE_ID_DATA *pRecord)
 #if CPU_LE
 	pRecord->imageNumber						= ntoh64(pRecord->imageNumber);
 	pRecord->imageOffset						= ntoh32(pRecord->imageOffset);
+	pRecord->imageTime.absoluteTime				= ntoh32(pRecord->imageTime.absoluteTime);
 #endif /* CPU_LE */
 }
 

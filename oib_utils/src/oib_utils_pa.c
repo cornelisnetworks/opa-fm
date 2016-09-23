@@ -1064,6 +1064,7 @@ iba_pa_single_mad_port_counters_response_query(
 
     p->imageId.imageNumber = image_id->imageNumber;
     p->imageId.imageOffset = image_id->imageOffset;
+	p->imageId.imageTime.absoluteTime = image_id->imageTime.absoluteTime;
 	memset(p->reserved, 0, sizeof(p->reserved));
 	memset(p->reserved2, 0, sizeof(p->reserved2));
 	p->lq.s.reserved = 0;
@@ -1461,7 +1462,7 @@ iba_pa_single_mad_freeze_image_response_query(
     p = (STL_PA_IMAGE_ID_DATA *)request_data;
     p->imageNumber = hton64(image_id->imageNumber);
     p->imageOffset = hton32(image_id->imageOffset);
-
+	p->imageTime.absoluteTime = hton32(image_id->imageTime.absoluteTime);
     DBGPRINT("Sending Get Single Record request\n");
 
     // submit request
@@ -1558,6 +1559,7 @@ iba_pa_single_mad_release_image_response_query(
     p = (STL_PA_IMAGE_ID_DATA *)request_data;
     p->imageNumber = hton64(image_id->imageNumber);
     p->imageOffset = hton32(image_id->imageOffset);
+	p->imageTime.absoluteTime = hton32(image_id->imageTime.absoluteTime);
 
     DBGPRINT("Sending Get Single Record request\n");
 
@@ -1655,6 +1657,7 @@ iba_pa_single_mad_renew_image_response_query(
     p = (STL_PA_IMAGE_ID_DATA *)request_data;
     p->imageNumber = hton64(image_id->imageNumber);
     p->imageOffset = hton32(image_id->imageOffset);
+	p->imageTime.absoluteTime = hton32(image_id->imageTime.absoluteTime);
 
     DBGPRINT("Sending Get Single Record request\n");
 
@@ -1851,6 +1854,7 @@ iba_pa_multi_mad_get_image_info_response_query (
     p = (STL_PA_IMAGE_INFO_DATA *)request_data;
     p->imageId.imageNumber = hton64(image_info->imageId.imageNumber);
     p->imageId.imageOffset = hton32(image_info->imageId.imageOffset);
+	p->imageId.imageTime.absoluteTime = hton32(image_info->imageId.imageTime.absoluteTime);
 	p->reserved = 0;
 
     DBGPRINT("Sending Get Single Record request\n");
@@ -2087,9 +2091,10 @@ iba_pa_multi_mad_group_stats_response_query(
     }
     
     p = (STL_PA_PM_GROUP_INFO_DATA *)request_data;
-    strcpy(p->groupName, group_name);
+    snprintf(p->groupName, sizeof(p->groupName), "%s", group_name);
     p->imageId.imageNumber = image_id->imageNumber;
     p->imageId.imageOffset = image_id->imageOffset;
+	p->imageId.imageTime.absoluteTime = image_id->imageTime.absoluteTime;
 	BSWAP_STL_PA_PM_GROUP_INFO(p, 1);
     
     // process the command.
@@ -2220,10 +2225,11 @@ iba_pa_multi_mad_group_config_response_query(
     }
     
     p = (STL_PA_PM_GROUP_CFG_REQ *)request_data;
-    strcpy(p->groupName, group_name);
+    snprintf(p->groupName, sizeof(p->groupName), "%s", group_name);
 
     p->imageId.imageNumber = hton64(image_id->imageNumber);
     p->imageId.imageOffset = hton32(image_id->imageOffset);
+	p->imageId.imageTime.absoluteTime = hton32(image_id->imageTime.absoluteTime);
     
     // process the command.
     switch (query->OutputType) 
@@ -2359,14 +2365,15 @@ iba_pa_multi_mad_focus_ports_response_query (
     }
     
     p = (STL_FOCUS_PORTS_REQ *)request_data;
-    strcpy(p->groupName, group_name);
+    snprintf(p->groupName, sizeof(p->groupName), "%s", group_name);
     p->select = hton32(select);
     p->start = hton32(start);
     p->range = hton32(range);
 
     p->imageId.imageNumber = hton64(image_id->imageNumber);
     p->imageId.imageOffset = hton32(image_id->imageOffset);
-    
+	p->imageId.imageTime.absoluteTime = hton32(image_id->imageTime.absoluteTime);
+
     // process the command.
     switch (query->OutputType) 
     {
@@ -2609,9 +2616,10 @@ iba_pa_multi_mad_vf_info_response_query(
     }
     
     p = (STL_PA_VF_INFO_DATA *)request_data;
-    strcpy(p->vfName, vf_name);
+    snprintf(p->vfName, sizeof(p->vfName), "%s", vf_name);
     p->imageId.imageNumber = image_id->imageNumber;
     p->imageId.imageOffset = image_id->imageOffset;
+	p->imageId.imageTime.absoluteTime = image_id->imageTime.absoluteTime;
 	BSWAP_STL_PA_VF_INFO(p, 1);
     
     // process the command.
@@ -2726,11 +2734,12 @@ iba_pa_multi_mad_vf_config_response_query(
     }
     
     p = (STL_PA_VF_CFG_REQ *)request_data;
-    strcpy(p->vfName, vf_name);
+    snprintf(p->vfName, sizeof(p->vfName), "%s", vf_name);
 
     p->imageId.imageNumber = hton64(image_id->imageNumber);
     p->imageId.imageOffset = hton32(image_id->imageOffset);
-    
+    p->imageId.imageTime.absoluteTime = hton32(image_id->imageTime.absoluteTime);
+
     // process the command.
     switch (query->OutputType) 
     {
@@ -2834,10 +2843,11 @@ iba_pa_single_mad_vf_port_counters_response_query(
     p->portNumber = port_number;
     p->flags =  (delta_flag ? STL_PA_PC_FLAG_DELTA : 0) |
                 (user_cntrs_flag ? STL_PA_PC_FLAG_USER_COUNTERS : 0);
-	strcpy(p->vfName, vfName);
+	snprintf(p->vfName, sizeof(p->vfName), "%s", vfName);
 
     p->imageId.imageNumber = image_id->imageNumber;
     p->imageId.imageOffset = image_id->imageOffset;
+	p->imageId.imageTime.absoluteTime = image_id->imageTime.absoluteTime;
 	memset(p->reserved, 0, sizeof(p->reserved));
 	p->reserved1 = 0;
     BSWAP_STL_PA_VF_PORT_COUNTERS(p);
@@ -2933,7 +2943,7 @@ iba_pa_single_mad_clr_vf_port_counters_response_query(
     p->nodeLid = hton32(node_lid);
     p->portNumber = port_number;
     p->vfCounterSelectMask.AsReg32 = hton32(select);
-	strcpy(p->vfName, vfName);
+	snprintf(p->vfName, sizeof(p->vfName), "%s", vfName);
 	memset(p->reserved, 0, sizeof(p->reserved));
 	p->reserved2 = 0;
 
@@ -3042,14 +3052,14 @@ iba_pa_multi_mad_vf_focus_ports_response_query (
     }
     
     p = (STL_PA_VF_FOCUS_PORTS_REQ *)request_data;
-    strcpy(p->vfName, vf_name);
+    snprintf(p->vfName, sizeof(p->vfName), "%s", vf_name);
     p->select = hton32(select);
     p->start = hton32(start);
     p->range = hton32(range);
 
     p->imageId.imageNumber = hton64(image_id->imageNumber);
     p->imageId.imageOffset = hton32(image_id->imageOffset);
-    
+	p->imageId.imageTime.absoluteTime = hton32(image_id->imageTime.absoluteTime);
     // process the command.
     switch (query->OutputType) 
     {

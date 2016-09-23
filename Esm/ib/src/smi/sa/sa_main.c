@@ -328,20 +328,23 @@ sa_main(void) {
     //	Fill in my ClassPortInfo_t and add it to the database.
     //
 	(void)memset((void *)&saClassPortInfo, 0, sizeof(STL_CLASS_PORT_INFO));
-	saClassPortInfo.BaseVersion 	= STL_BASE_VERSION; //MAD_BVERSION;
-	saClassPortInfo.ClassVersion	= STL_SA_CLASS_VERSION; //SA_MAD_CVERSION;
-	saClassPortInfo.CapMask			= SA_CAPABILITY_MULTICAST_SUPPORT |
-									  SA_CAPABILITY_MULTIPATH_SUPPORT |
-									  SA_CAPABILITY_PORTINFO_CAPMASK_MATCH |
-									  SA_CAPABILITY_PA_SERVICES_SUPPORT;
-	saClassPortInfo.u1.s.CapMask2 	= SA_CAPABILITY2_QOS_SUPPORT |
-									  SA_CAPABILITY2_MFTTOP_SUPPORT |
-									  SA_CAPABILITY2_FULL_PORTINFO |
-									  SA_CAPABILITY2_EXT_SUPPORT;
+	saClassPortInfo.BaseVersion = STL_BASE_VERSION; //MAD_BVERSION;
+	saClassPortInfo.ClassVersion = STL_SA_CLASS_VERSION; //SA_MAD_CVERSION;
+	saClassPortInfo.CapMask =
+		STL_CLASS_PORT_CAPMASK_CM2 |
+		STL_SA_CAPABILITY_MULTICAST_SUPPORT |
+		STL_SA_CAPABILITY_MULTIPATH_SUPPORT |
+		STL_SA_CAPABILITY_PORTINFO_CAPMASK_MATCH |
+		STL_SA_CAPABILITY_PA_SERVICES_SUPPORT;
+	saClassPortInfo.u1.s.CapMask2 =
+		STL_SA_CAPABILITY2_QOS_SUPPORT |
+		STL_SA_CAPABILITY2_MFTTOP_SUPPORT |
+		STL_SA_CAPABILITY2_FULL_PORTINFO |
+		STL_SA_CAPABILITY2_EXT_SUPPORT;
 	saClassPortInfo.u1.s.RespTimeValue = sm_config.sa_resp_time_n2;
 	saClassPortInfo.u3.s.RedirectQP = 1;
 	saClassPortInfo.u5.s.TrapHopLimit = 0xff;
-	saClassPortInfo.u5.s.TrapQP 	= 1;
+	saClassPortInfo.u5.s.TrapQP = 1;
 
     //
     //	Init Sa Groups table and Set up the default Multicast group if one is set.

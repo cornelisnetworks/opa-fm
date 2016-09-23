@@ -61,7 +61,7 @@ sub disable_autostart2_opafm()
 
 sub start_opafm
 {
-	start_utility($ComponentInfo{'opafm'}{'Name'}, "/opt/opafm/runtime", "sm", "opafm");
+	start_utility($ComponentInfo{'opafm'}{'Name'}, "/usr/lib/opa-fm/runtime", "sm", "opafm");
 }
 
 sub stop_opafm
@@ -158,8 +158,8 @@ sub install_opafm
 	}
 
 	check_rpm_config_file("$CONFIG_DIR/opafm.xml");
-	check_dir("/opt/opa");
-	copy_systool_file("$srcdir/comp.pl", "/opt/opa/.comp_opafm.pl");
+	check_dir("/usr/lib/opa");
+	copy_systool_file("$srcdir/comp.pl", "/usr/lib/opa/.comp_opafm.pl");
 
 	if ($fm_start) {
 		enable_autostart("opafm");
@@ -185,9 +185,9 @@ sub uninstall_opafm
 	NormalPrint("Uninstalling $ComponentInfo{'opafm'}{'Name'}...\n");
 
 	rpm_uninstall_list("any", "verbose", ( "opa-fm", "opa-fm-debuginfo") );
-	system("rm -rf $ROOT/opt/opa/.comp_opafm.pl");
+	system("rm -rf $ROOT/usr/lib/opa/.comp_opafm.pl");
 	system("rmdir -p $ROOT/opt/iba/fm_tools 2>/dev/null");  # remove only if empty
-	system("rm -rf $ROOT/opt/opafm");
+	system("rm -rf $ROOT/usr/lib/opa-fm");
 	$ComponentWasInstalled{'opafm'}=0;
 }
 

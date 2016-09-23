@@ -111,7 +111,7 @@ int main(int argc, char *argv[])
 	}
 
 	outbase = basename(argv[1]);
-	sprintf(outfname, ".%s", outbase);
+	snprintf(outfname, sizeof outfname, ".%s", outbase);
 	if ((fp_out = fopen(outfname, "w")) == NULL)
 	{
 		fprintf(stderr, "Error opening file <%s> for output: %s\n",
@@ -121,7 +121,7 @@ int main(int argc, char *argv[])
 
 	while (fgets(inbuf, BUFSIZE, fp_in) != NULL)
 	{
-		strcpy(outbuf, inbuf);
+		snprintf(outbuf, sizeof outbuf, "%s", inbuf);
 		FIND_BAD_STRING(ip, outbuf);
 		while (ip)
 		{

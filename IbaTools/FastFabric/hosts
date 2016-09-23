@@ -1,0 +1,8 @@
+# [ICS VERSION STRING: unknown]
+# This file lists the TCP/IP names of the hosts in the cluster.
+# EXCEPT FOR THE NODE RUNNING FASTFABRIC
+#
+# If Ethernet is being used for the management network, specify
+# the hostname corresponding to the ethernet IP address.
+# This file will be used by FastFabric to indicate which hosts should be
+# operated on by various fastfabric menus and CLI commands.

@@ -534,7 +534,7 @@ pa_send_single(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		} else if (pa_cntxt->len != 0 ) {
 			if (pa_cntxt->len > sizeof(pamad.data)) {
 				// caller should have checked this, just to be safe
-				IB_LOG_ERROR_FMT( __func__,  "Packet size=%d Buffer size=%d Expected=%d", sizeof(pamad.data), pa_cntxt->len, STL_SA_DATA_LEN);
+				IB_LOG_ERROR_FMT( __func__,  "Packet size=%"PRISZT" Buffer size=%u Expected=%u", sizeof(pamad.data), pa_cntxt->len, (uint32)STL_SA_DATA_LEN);
 				IB_EXIT(__func__, VSTATUS_OK);
 				return(VSTATUS_OK);
 			}
@@ -752,9 +752,9 @@ pa_send_multi(Mai_t *maip, pa_cntxt_t *pa_cntxt)
             /* got a STOP or ABORT */
             if (pm_config.debug_rmpp) {
                 IB_LOG_INFINI_INFO_FMT(__func__,
-                       "STOP/ABORT received for %s[%s] from LID[0x%x], status code = %x, for TID["FMT_U64"]",
-                       pa_getMethodText((int)pa_cntxt->method), pa_getAidName((int)maip->base.aid),
-                        pa_cntxt->lid, paresp.header.rmppStatus);
+					"STOP/ABORT received for %s[%s] from LID[0x%x], status code = %x, for TID["FMT_U64"]",
+					pa_getMethodText((int)pa_cntxt->method), pa_getAidName((int)maip->base.aid),
+					pa_cntxt->lid, paresp.header.rmppStatus, pa_cntxt->tid);
             }
             pa_cntxt_release( pa_cntxt );
             IB_EXIT(__func__, VSTATUS_OK );
@@ -925,10 +925,10 @@ pa_send_multi(Mai_t *maip, pa_cntxt_t *pa_cntxt)
 		BSWAPCOPY_STL_SA_MAD(&pamad, (STL_SA_MAD*)(maip->data), STL_SA_DATA_LEN);
 
 		if ((status = mai_send(fd, maip)) != VSTATUS_OK)
-            IB_LOG_ERROR_FMT(__func__, 
-                   "error[%d] from mai_send while sending ABORT of [%s] request to LID[0x%x], TID["FMT_U64"]",
-                   status, pa_getMethodText((int)pa_cntxt->method), pa_getAidName(maip->base.aid), 
-                   pa_cntxt->lid, maip->base.tid);
+            IB_LOG_ERROR_FMT(__func__,
+				"error[%d] from mai_send while sending ABORT of %s[%s] request to LID[0x%x], TID["FMT_U64"]",
+				status, pa_getMethodText((int)pa_cntxt->method), pa_getAidName(maip->base.aid),
+				pa_cntxt->lid, maip->base.tid);
         /*
          * We are done with this RMPP xfer.  Release the context here if 
          * in flight transaction (maip not NULL) or let pa_cntxt_age do it 

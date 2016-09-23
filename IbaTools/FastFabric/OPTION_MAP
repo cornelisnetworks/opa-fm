@@ -1,0 +1,291 @@
+List of command line options used in various Fast Fabric tools
+--help			provide full help text, otherwise brief help of common options
+-a 			show all hosts (opacheckload)
+-a			clear all performance stats for all ports
+-a 			ip address of node running FE
+-a action		Action for specified chassis firmware upgrade (push, select, run)
+-a 'sguid ..;dguid..'   query by a list of port guids
+-b			Take a baseline without a health check
+-b date_time	begin time for performance stats interval query
+-c			clobber previous result files before run
+-c			copy files before run (opaverifyhosts)
+-c			focus select value
+-c crc			new CRC enabled (opaportconfig)
+-c char			concatentation character
+-c file			config file for error analysis or thresholds
+-d 			display configuration checksum information (opafmconfigcheck)
+-d			delta flag for port counters query (0 or 1)
+-d dir			upload or download directory (or UPLOADS_DIR or DOWNLOADS_DIR)
+				or analysis directory tree (FF_ANALYSIS_DIR)
+-d detail		detail level for report
+-d name			query by node name/description or vf name
+-d delimiter		delimiter output between names and values
+-e			evaluate health only, default is compare/check mode
+-e			output mtu & rate as eunm values (opagenvf)
+-e flag			32 bit selection flag for clearing port counters
+-e element		name of XML element to extract, name of header XML element to end
+-e date_time	end time for performance stats interval query
+-f 			delta flag for portCounters query (0 or 1)
+-f value		focus select value for getting focus ports
+-f hostfile		hosts to act on (or HOSTS_FILE)
+-g 			group name for groupInfo query
+-g			display in line by line format (default is summary) (opainfo)
+-g guid			query by port guid
+-g element		name of XML element to generate
+-h 			host name of node running FE
+-h element		name of XML element in which to enclose generated XML elements
+-h hosts		hosts to act on (or HOSTS)
+-h hfi			HFI to use
+-i ipoib_suffix		suffix to convert ethernet to IPoIB
+-i seconds		Obtain performance stats over interval seconds
+-i vfindex		query a specific vfindex
+-i level		output indent level (0-15)
+-j time			begin time in opa[pa|fe]query pa queries
+-k			kill any previous jobs (opaverifyhosts)
+-k			in XML tags with newlines, keep newlines as is
+-k pkey			query a specific pkey
+-l 			list files but dont create archive (oparchive)
+-l			add comments with line numbers after each XML end tag
+-l lid			query a specific lid
+-m 			access fabric information directly from SMA
+-m netmask		netmask for configuring IPoIB
+-m marker		marker for end of cmd output in opacmdall
+-m gid			query by multicast gid
+-m port			port in destination device to query
+-n numprocs		number of processes per node for cabletests, number of hosts 
+   			       for opacheckload
+-n guid			query by node guid
+-n image_number		64 bit image number
+-n mask			port mask in hex (ports 31-0)
+-o output_file		write data to output file
+-o directory		output directory
+-p 			run command in parallel
+-p port			port to use
+-p ports		list of HFI ports to use (or PORTS)
+-p guid			query by port guid
+-q 			quiet mode
+-q time     end time in opa[pa|fe]query pa queries
+-r			size of window for focus ports list
+-r			recursive download/upload of directories
+-r 			reverse output (least busy hosts) (opachassisanalysis)
+-r seconds		repeat to keep port down for seconds (opaportconfig)
+-r release		release to load on servers
+-s			save history of analysis failures
+-s			get performance stats for all ports
+-s			strict check mode (opafmconfigcheck)
+-s			update/resolved switches switch names using topology xml
+-s			specify a service level (default 0)
+-s guid			query by system image guid
+-s element		name of XML element to suppress extraction
+-s file			secondary topology CSV input file
+-s flag			32 bit select flag for clearing port counters
+-s speed		new link speeds enabled (opaportconfig)
+-t 			optimized recursive copy of directories using TAR
+-t 			trim leading and trailing whitespace in XML tag contents
+-t portsfile		list of local hfi ports used (or PORTS_FILE)
+-t type			query by node type
+-t file			primary topology CSV input file
+-u user			user code for host operation (default is root)
+-u upload_file		destination filename to upload to (opaverifyhosts)
+-u gid			query by port gid
+-v			verbose mode
+-v			show version
+-v level		verbose level (0-8)
+-v debugging mode	display debugging and status information (opafmconfigcheck)
+-w			start window for focus ports
+-w mask			32 bit virtual lane select mask
+-w width		new link widths enabled (opaportconfig)
+-x 			output in xml
+-x			exclude libs, kernel, module samples (oparchive)
+-x snapshot_suffix  	suffix for snapshot file created (opalinkanalysis)
+-x gid			specify a source gid for query
+-y time		image time in opa[pa|fe]query pa queries
+-z			do not get port info first, clear port attributes (opaportconfig)
+
+-A			skip "active" test (opafindgood)
+-A			force clear of hw error counters (opacabletest)
+-A			get PortInfo for down switch ports direct from SMA
+-A 'sgid ...;dgid ...'  query by list of gids
+-B 'sguid ...;dguid ...' query by list of port guids
+-C			perform operation on chassis (default is hosts)
+-C			clear error counters, clear performance counters 
+-D point		Destination for trace route
+-D detail		detail level for opacapture
+-E 			ESM FE
+-E esmchassis		eSM chassis to act on (or ESM_CHASSIS)
+-F chassisfile		chassis to act on (or CHASSIS_FILE)
+-F focus		focus option for report
+-G esmchassisfile	eSM chassis to act on (or ESM_CHASSIS_FILE)
+-G 'gid gid'		query by a pair of gids
+-H 			only include permanent hardware data
+-H			do not output element name header record
+-H chassis		chassis to act on (or CHASSIS)
+-I 			issue query in legacy Inifiband format
+-I install_opts		install options for server install
+-I fm_bootstate		fmconfig and fmcontrol install options
+-K			do not clean temporary files
+-K mkey			SM M-Key (used in selected commands)
+-L 			limit operation to specified focus
+-L opaswitches		node list file for inband operations on switches (or OPASWITCHES_FILE)
+-L lid			set PortInfo.LID = lid (opaportconfig)
+-L SL			query by service level
+-L nodefile		File with switches in cluster (default /etc/sysconfig/opa/switches)
+-M 			access performance stats directly from PMA
+-M			inage offset (pa query)
+-M host			Connected mgmt host from which queries can be initiated
+-N 			omit node and IOC names
+-N			port number for portCounters query
+-N opaswitches		node list for inband operations on switches (or OPASWITCHES)
+-N nodes		list of nodes to execute against
+-O			image offset (groupInfo, groupConfig, portCounters)
+-O			override, bypass version checks and force upgrade
+-P 			skip ping of host
+-P			output hostname/chassis name as line prefix for opacmdall
+-P			include data persistent across reboots
+-P 'guid guid'		query by a pair of port guids
+-P port_number		port number for portCounters query
+-P state		new port physical state (opaportconfig)
+-P file			Read command parameters from command file (opaxml)
+-P packages		packages to load for server or chassis upgrade
+-R			configure remote hosts only (skips localhost in opasetupssh)
+-R			skip "running/ssh" test 
+-R			do not attempt to get routes (opadisablehosts, opagenswitches)
+-R path			filesystem path to search (oparchive)
+-Q 			skip "quarantine" test (opafindgood)
+-Q			do not include focus description in report
+-S			securely prompt for chassis admin password
+-S 			start of window for focus ports (should be 0)
+-S point		source for trace route
+-S serviceid		query a specific service id
+-S state		new port state (opaportconfig)
+-T product		IntelOPA product type to install
+-T timelimit		timelimit for opacmdall operations and tools using opacmdall
+-T file			name of topology file input/output file or SSL/TLS parameters XML file
+-U			only perform connect (for opasetupssh)
+-U			omit unexpected devices (opalinkanalysis)
+-U			user controlled counters flag for portCounters query
+-U upgrade_opts		upgrade options for server upgrade
+-V			VF name for vfInfo query
+-V			verbose output
+-X file			input file to use
+
+Output Type Descriptions used by Fast Fabric tools - note that individual tools
+may not support all output types.
+   all		      - comp, nodes, ious, links, extlinks, slowconnlinks, errors reports
+   bfrctrl            - list of buffer control tables
+   brcomps	      - Brief summary of all systems and SMs in fabric
+   brnodes	      - brief summary of all nodes and SMs in fabric
+   cableinfo          - list of Cable Info records
+   classportinfo      - list of port info records
+   clearerrorinfo     - clears the error info
+   clearportstatus    - clears the port status
+   clrAllPortCounters - clear all port counters in a fabric
+   clrPortCounters    - clear port counters of a fabric port
+   clrVfPortCounters  - clear VF port counters of a fabric port
+   conginfo           - list of Congestion Info Records
+   comps	      - Summary of all systems & SMs in fabric
+   desc               - list of node descriptions/names
+   errors	      - summary of links whose errors exceed counts in config file
+   extislinks	      - summary of all inter-switch links external to system
+   extlinks	      - summary of all links external to system
+   fabricinfo	      - summary of fabric devices
+   focusPorts	      - get sorted list of ports
+   freezeImage	      - creates a freeze frame for image ID
+   groupConfig	      - configuration of a PA group
+   groupInfo	      - summary of statistics of a PA group
+   groupList	      - List of PA groups
+   getdatacounters    - list of data counters
+   geterrorcounters   - list of error counters
+   geterrorinfo       - list of error info
+   getportstatus      - list of port status records
+   hficongcon         - list of HFI Congesting Control Settings
+   hficongset         - list of HFI Congestion Settings
+   filinks	      		- summary of all FI links
+   ibnodeinfo         - list of IB generic node data records (opasmaquery)
+   imageInfo	      - get information about a PA image
+   inform             - list of inform info records
+   ious		      - summary of all IO units in fabric
+   islinks	      		- summary of all inter-switch links
+   lid                - list of lids
+   lids		      - summary of all LIDs in fabric
+   linear	      - summary of linear fowarding database (FDB) for each switch
+   linfdb             - list of switch linear FDB records
+   link               - list of link records
+   links	      - summary of all links
+   mcast	      - summary of multicast FDB for each switch
+   mcfdb              - list of switch multicast FDB records
+   mcmember           - list of multicast member records
+   misconfiglinks     - summary of links configured to run slower than supported
+   misoconnlinks      - summary of links connected with mismatched speed potential
+   moveFreeze	      - move freeze frame from image ID to new image ID
+   node               - list of node records
+   nodes	      - summary of all nodes types and SMs in fabric
+   nodeaggr           - aggregate query returning list of node info and description records
+   nodedesc           - list of node description records
+   nodeguid           - list of node guids
+   nodeinfo           - list of node info records
+   none		      - no report (useful if just want to clear stats)
+   otherports	      - summary of ports not connected to this fabric
+   paclassPortInfo    - class port info
+   path               - list of path records
+   pathusage	      - summary of number of FI to FI paths routed through each switch port
+   pkey               - list of P-Key table records
+   pmConfig	      - retrieve PM configuration information
+   portCounters	      - port counters for a fabric port
+   portgroup          - list of AR Port Group records
+   portgroups	      - summary of adaptive routing port groups for each switch
+   portgroupfdb       - list of AR Port Group FWD records
+   portguid           - list of port guids
+   portinfo           - list of port info records
+   portusage	      - summary of ports referenced in linear FDB for each switch
+   pstateinfo         - list of switch port state info records
+   quarantine         - list of quarantined nodes
+   quarantinednodes   - summary of quarantined nodes
+   ranfdb             - list of switch random FDB records
+   releaseImage	      - release freeze frame for image ID
+   renewImage	      - renew lease for freeze frame for image ID
+   route	      - trace route between -S and -D points
+   saclassPortInfo    - class port info
+   scsc		      - list of SC to SC mapping table records
+   scsl               - list of SC to SL mapping table records
+   scvlnt             - list of SC to VLnt table records
+   scvlt              - list of SC to VLt table records
+   service            - list of service records
+   slsc               - list of SL to SC mapping table records
+   slowconfiglinks    - summary of links configured to run slower than supported
+   slowconnlinks      - summary of links connected with mismatched speed potential
+   slowlinks	      - summary of links running slower than expected
+   sminfo             - list of SM info records
+   snapshot	      - output fabric state for later use as snapshot input
+   swaggr             - aggregate query returning list of node info and switch info records
+   swconglog          - list of switch congestion log records
+   swcongset          - list of Switch Congestion Settings
+   swinfo             - list of switch info records
+   swportcong         - list of switch congestion settings
+   systemguid         - list of system image guids
+   topology	      - output topology of fabric for later use as topology input
+   trace              - list of trace records
+   treepathusage      - analysis of number of FI to FI paths routed through each switch port for fat tree
+   validatecreditloops	- validate topology configuration of fabric to identify credit loops
+   validatepgs	      - validate all port groups in fabric
+   validateroute      - validate all routes in fabric
+   validateroutes     - validate all routes in fabric
+   verifyall	      - verifyfis, verifysws, verifysms, verifylinks reports
+   verifyextislinks	  - compare fabric external inter-switch links to supplied topology
+   verifyextlinks     - compare fabric links to supplied topology (external links only)
+   verifyfis	      - compare fabric FIs to supplied topology
+   verifyfilinks	      - compare fabric FI links to supplied topology
+   verifyislinks	  - compare fabric inter-switch links to supplied topology
+   verifylinks	      - compare fabric links to supplied topology
+   verifynodes	      - verifyfis and verifysws reports
+   verifysms	      - compare fabric SMs to supplied topology
+   verifysws	      - compare fabric switches to supplied topology
+   vfConfig	      - configuration for a virtual fabric
+   vfFocusPorts	      - get sorted list of virtual fabric ports
+   vfinfo             - summary of vFabric information
+   vlList	      - list of virtual fabrics
+   vfmember	      - summary of vFabric membership information
+   vfPortCounters     - port counters for a fabric port
+   vfinfocsv          - list of vFabrics in CSV format
+   vfinfocsv2         - list of vFabrics in CSV format with enums
+   vlarb              - list of VL arbitration table records

@@ -136,8 +136,9 @@ GetCableInfoRecord(Mai_t *maip, uint32_t *records)
 //  Verify the size of the data received for the request
 //
 	if ( maip->datasize-sizeof(STL_SA_MAD_HEADER) < sizeof(STL_CABLE_INFO_RECORD) ) {
-		IB_LOG_ERROR_FMT("GetCableInfoRecord",
-						 "invalid MAD length; size of STL_CABLE_INFO_RECORD[%lu], datasize[%d]", sizeof(STL_CABLE_INFO_RECORD), maip->datasize-sizeof(STL_SA_MAD_HEADER));
+		IB_LOG_ERROR_FMT(__func__,
+			"invalid MAD length; size of STL_CABLE_INFO_RECORD[%"PRISZT"], datasize[%d]",
+			sizeof(STL_CABLE_INFO_RECORD), (int)(maip->datasize-sizeof(STL_SA_MAD_HEADER)));
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 		IB_EXIT("GetCableInfoRecord", MAD_STATUS_SA_REQ_INVALID);
 		return (MAD_STATUS_SA_REQ_INVALID);

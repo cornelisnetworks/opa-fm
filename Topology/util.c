@@ -50,12 +50,10 @@ void ProgressPrint(boolean newline, const char *format, ...)
 	va_list args;
 	static char buffer[LINE_LEN];
 	static int first_progress = 1;	// has 1st progress been output yet
-	int cnt;
 
 	va_start(args, format);
-	cnt = vsnprintf(buffer, sizeof(buffer), format, args);
+	(void)vsnprintf(buffer, sizeof(buffer), format, args);
 	va_end(args);
-	DEBUG_ASSERT(cnt <= sizeof(buffer)-1);	/* make sure message fits */
 	if (first_progress) {
 		first_progress = 0;
 	} else {
@@ -82,7 +80,7 @@ const char* Top_truncate_str(const char *name)
 	} else {
 		static char buf[LINE_LEN-19];
 	
-		sprintf(buf, "...%s", name+len-(LINE_LEN-23));
+		(void)snprintf(buf, sizeof buf, "...%s", name+len-(LINE_LEN-23));
 		return buf;
 	}
 }

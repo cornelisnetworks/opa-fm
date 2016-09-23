@@ -44,10 +44,18 @@ typedef uint16		STL_LID_16;			/* Can replace IB_LID */
 typedef uint32		STL_LID_20;			/* Indicates intended max LID size */
 typedef uint32		STL_LID_24;			/* Indicates intended max LID size */
 typedef uint32		STL_LID_32;			/* Max LID size */
+typedef uint32		STL_LID;			/* Max LID size */
 
 #define STL_MAX_SLS			32			/* Max number of SLs */
 #define STL_MAX_SCS			32			/* Max number of SCs */
 #define STL_MAX_VLS			32			/* Max number of VLs */
+
+#define MAX_STL2_PORTS      64
+
+typedef uint64		STL_PORTMASK;		/* Port mask element */
+
+#define STL_MAX_PORTMASK				256/(sizeof(STL_PORTMASK)*8)	/* Max Ports in select */
+#define STL_PORT_SELECTMASK_SIZE		(sizeof(STL_PORTMASK)*STL_MAX_PORTMASK)
 
 /* -------------------------------------------------------------------------- */
 /* LID's */

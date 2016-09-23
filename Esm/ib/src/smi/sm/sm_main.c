@@ -157,11 +157,24 @@ uint64_t	sm_mcDosInterval;
 uint32_t	sm_mcast_mlid_table_cap = 0;
 uint16_t	sm_masterSmSl = 0;
 uint16_t	sm_masterPmSl = 0;
+
+//			VF, SL, SC, VL mapping info. The relationship of VFs, SLs, SCs and
+//			VLs is defined as:
+//
+//			   n   1    1   m    p   1
+//			VF <---> SL <---> SC <---> VL
+//
+//			Each SL will be mapped to at least one SC. In the case where
+//			an SL is mapped to more than one SC, this entry will correspond 
+//			to the base SC, leaving the mapping of the SL to base SC + 1, 
+//			base SC + 2, etc..
 uint8_t		sm_SLtoSC[STL_MAX_SLS];
 uint8_t		sm_SCtoSL[STL_MAX_SCS];
+
 bitset_t	sm_linkSLsInuse;
+//			The % of bandwidth allocated to each SL. SLs can have multiple
+//			SCs, so an SC's bandwidth is SL bandwidth / #  of SCs per SL.
 uint8_t		sm_SlBandwidthAllocated[STL_MAX_SLS];
-uint8_t     sm_VfBandwidthAllocated[MAX_VFABRICS];
 
 uint32_t	sm_lid_lo = 1;
 uint32_t	sm_lid_hi = UNICAST_LID_MAX;
@@ -525,20 +538,19 @@ void sm_set_skip_attribute_write(char * datap){
 
 
 #ifdef CONFIG_INCLUDE_DOR
-void sm_process_dor_info(SmDorRouting_t *dorCfg) {
+void sm_process_dor_info(VirtualFabrics_t *VirtualFabrics, SmDorRouting_t *dorCfg) {
 
-	int d,p;
-	int warned = 0, toroidal_count = 0;
+	int d,p,vf;
 	smDorRouting = *dorCfg;
 
 	if (smDorRouting.dimensionCount == 0) {
 		IB_LOG_ERROR_FMT(__func__,
-						 "Routing algorithm configured as dor-updown but no dimensions have been specified in the configuration.");
+						 "Routing algorithm configured as dor but no dimensions have been specified in the configuration.");
 		IB_FATAL_ERROR("Please specify required dimensions in the configuration. Exiting");
 	}
 
 	if (smDorRouting.dimensionCount > SM_DOR_MAX_DIMENSIONS) {
-		IB_LOG_ERROR_FMT(__func__, "Number of dimensions configured is %d but dor-updown algorithm supports only %d dimensions.",
+		IB_LOG_ERROR_FMT(__func__, "Number of dimensions configured is %d but dor algorithm supports only %d dimensions.",
 						smDorRouting.dimensionCount, SM_DOR_MAX_DIMENSIONS);
 		IB_FATAL_ERROR("Please reconfigure with correct number of dimensions. Exiting");
 	}
@@ -546,38 +558,30 @@ void sm_process_dor_info(SmDorRouting_t *dorCfg) {
 	if (smDorRouting.warn_threshold > SM_DOR_MAX_WARN_THRESHOLD) {
 		IB_LOG_WARN_FMT(__func__,
 			 "MeshTorusTopology WarnThreshold of %d is higher than max suported %d. Defaulting to %d.",
-			 smDorRouting.warn_threshold, smDorRouting.warn_threshold);
+			 smDorRouting.warn_threshold, SM_DOR_MAX_WARN_THRESHOLD, SM_DOR_MAX_WARN_THRESHOLD);
 		smDorRouting.warn_threshold = SM_DOR_MAX_WARN_THRESHOLD;
 	}
 
-	if (smDorRouting.debug)
-		IB_LOG_INFINI_INFO_FMT(__func__, "DorTopology %s NumberOfDimensions %d maxQos %d routingSCs %d",
+	if (smDorRouting.debug) {
+		IB_LOG_INFINI_INFO_FMT(__func__, "DorTopology %s NumberOfDimensions %d routingSCs %d",
 				(smDorRouting.topology == DOR_MESH)?"mesh":((smDorRouting.topology == DOR_TORUS)? "torus":"partial torus"), 
-				smDorRouting.dimensionCount, smDorRouting.maxQos, smDorRouting.routingSCs);
+				smDorRouting.dimensionCount, smDorRouting.routingSCs);
 
-	for (d=0; d<smDorRouting.dimensionCount; d++) {
-		if (smDorRouting.dimension[d].toroidal)
-			toroidal_count++;
-
-		if ((toroidal_count > SM_DOR_MAX_TOROIDAL_DIMENSIONS) && smDorRouting.dimension[d].toroidal) {
-			if (!warned) {
-				IB_LOG_WARN0("Too many toroidal dimesions found. Only 4 dimesions can be toroidal to ensure cycle free routing.");
-				IB_LOG_WARN0("Only the first 4 toroidal dimensions will be routed as toroidal and the rest will be forced to be non-toroidal.");
-				warned = 1;
-			}
-			smDorRouting.dimension[d].toroidal = 0;
-		}
-
-		if (!smDorRouting.debug)
-			continue;
-
-   	   	IB_LOG_INFINI_INFO_FMT(__func__, "DorDimension %d is %s", 
+		for (d=0; d<smDorRouting.dimensionCount; d++) {
+   	   		IB_LOG_INFINI_INFO_FMT(__func__, "DorDimension %d is %s", 
 				d, smDorRouting.dimension[d].toroidal?"toroidal":"not toroidal");
 
-		for (p=0; p<smDorRouting.dimension[d].portCount; p++) {
-        	IB_LOG_INFINI_INFO_FMT(__func__, "DorDimension %d PortPair %d,%d", d,
-				smDorRouting.dimension[d].portPair[p].port1, smDorRouting.dimension[d].portPair[p].port2);
+			for (p=0; p<smDorRouting.dimension[d].portCount; p++)
+        		IB_LOG_INFINI_INFO_FMT(__func__, "DorDimension %d PortPair %d,%d", d,
+					smDorRouting.dimension[d].portPair[p].port1, smDorRouting.dimension[d].portPair[p].port2);
 		}
+	}
+
+	for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
+		VirtualFabrics->v_fabric_all[vf].routing_scs = smDorRouting.routingSCs;
+	}
+	for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
+		VirtualFabrics->v_fabric[vf].routing_scs = smDorRouting.routingSCs;
 	}
 }
 #endif
@@ -592,9 +596,6 @@ uint8_t sm_error_check_vfs(VirtualFabrics_t *VirtualFabrics) {
 
     // Check for errors - If an error exists, remove All QOS features.
 
-	// MWHEINZ FIXME
-	// Should there be a topology specific function for checking vfs errors?
-
     if (vfInfo.totalSLsNeeded > vfInfo.maxSLs) {
         IB_LOG_ERROR_FMT(__func__, "VFs require too many SLs (%d>%d).  Please reconfigure. Disabling QoS.",vfInfo.totalSLsNeeded, vfInfo.maxSLs);
         qosError = 1;
@@ -604,9 +605,6 @@ uint8_t sm_error_check_vfs(VirtualFabrics_t *VirtualFabrics) {
         IB_LOG_ERROR_FMT(__func__, "VF Routing require too many SCs (%d>%d).  Please reconfigure. Disabling QoS.",vfInfo.totalSCsNeeded, STL_MAX_SCS-1);
         qosError = 1;
     }
-
-    if (vfInfo.activeSLs > vfInfo.totalVFwithConfiguredBW)
-        vfInfo.distributedBandwidth = (100 - vfInfo.totalConfiguredBandwidth) / (vfInfo.activeSLs - vfInfo.totalVFwithConfiguredBW);
 
 	return qosError;
 }
@@ -620,6 +618,11 @@ void sm_printf_vf_debug(VirtualFabrics_t *VirtualFabrics) {
             VirtualFabrics->v_fabric[vf].base_sl, VirtualFabrics->v_fabric[vf].base_sc,
             VirtualFabrics->v_fabric[vf].routing_scs,
             VirtualFabrics->v_fabric[vf].qos_enable, VirtualFabrics->v_fabric[vf].priority);
+        if (VirtualFabrics->v_fabric[vf].mcast_isolate) {
+            IB_LOG_INFINI_INFO_FMT_VF(VirtualFabrics->v_fabric[vf].name, "",
+                "MCast SL:%d MCast SC:%d",
+                VirtualFabrics->v_fabric[vf].mcast_sl, VirtualFabrics->v_fabric[vf].mcast_sc);
+        }
     }
 
     if (sm_config.sm_debug_vf)
@@ -734,7 +737,7 @@ void sm_resolve_pkeys_for_vfs(VirtualFabrics_t *VirtualFabrics) {
 		if (VirtualFabrics->v_fabric[vf].apps.select_sa) {
 			if (PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey) != DEFAULT_PKEY) {
 				IB_LOG_ERROR_FMT_VF( VirtualFabrics->v_fabric[vf].name, "sm_resolve_pkeys_for_vfs",
-					"VFabric has application SA selected, bad PKey configured 0x%x, must use Default PKey.", VirtualFabrics->v_fabric[vf].pkey);
+					"VFabric has application SA selected, bad PKey configured 0x%x, must use Mgmt PKey.", VirtualFabrics->v_fabric[vf].pkey);
 			} else {
 				sm_masterSmSl = VirtualFabrics->v_fabric[vf].base_sl;
 			}
@@ -742,13 +745,13 @@ void sm_resolve_pkeys_for_vfs(VirtualFabrics_t *VirtualFabrics) {
 		if (smCheckServiceId(vf, PM_SERVICE_ID, VirtualFabrics)) {
 			if (PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey) != DEFAULT_PKEY) {
 				IB_LOG_ERROR_FMT_VF( VirtualFabrics->v_fabric[vf].name, "sm_resolve_pkeys_for_vfs",
-					"VFabric has application PA selected, bad PKey configured 0x%x, must use Default PKey.", VirtualFabrics->v_fabric[vf].pkey);
+					"VFabric has application PA selected, bad PKey configured 0x%x, must use Mgmt PKey.", VirtualFabrics->v_fabric[vf].pkey);
 			}
 		}
 		if (VirtualFabrics->v_fabric[vf].apps.select_pm) {
 			if (PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey) != DEFAULT_PKEY) {
 				IB_LOG_ERROR_FMT_VF( VirtualFabrics->v_fabric[vf].name, "sm_resolve_pkeys_for_vfs",
-					"VFabric has application PM selected, bad PKey configured 0x%x, must use Default PKey.", VirtualFabrics->v_fabric[vf].pkey);
+					"VFabric has application PM selected, bad PKey configured 0x%x, must use Mgmt PKey.", VirtualFabrics->v_fabric[vf].pkey);
 			} else sm_masterPmSl = VirtualFabrics->v_fabric[vf].base_sl;
 		}
 
@@ -763,8 +766,8 @@ void sm_resolve_pkeys_for_vfs(VirtualFabrics_t *VirtualFabrics) {
 				}
 
 				if (PKEY_VALUE(mcastGrpp->def_mc_pkey) != PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey)) {
-					IB_LOG_ERROR_FMT_VF( VirtualFabrics->v_fabric[vf].name, "sm_resolve_pkeys_for_vfs",
-							"MulticastGroup configuration error, mismatch on pkey. Disabling Default Group", 0);
+					IB_LOG_ERROR_FMT_VF( VirtualFabrics->v_fabric[vf].name, __func__,
+						"MulticastGroup configuration error, mismatch on pkey. Disabling Default Group");
 					mcastGrpp->def_mc_create = 0;
 				}
 
@@ -795,7 +798,12 @@ void sm_resolve_pkeys_for_vfs(VirtualFabrics_t *VirtualFabrics) {
 					}
 				}
 
-				if (mcastGrpp->def_mc_sl == UNDEFINED_XML8) {
+				if (VirtualFabrics->v_fabric[vf].mcast_isolate) {
+					// If multicast isolation is enabled, ignore the specified
+					// default (if any) because the FM does not allow setting
+					// the multicast SL of a VF at this time.
+					mcastGrpp->def_mc_sl = VirtualFabrics->v_fabric[vf].mcast_sl;
+				} else if (mcastGrpp->def_mc_sl == UNDEFINED_XML8) {
 					mcastGrpp->def_mc_sl = VirtualFabrics->v_fabric[vf].base_sl;
 
 				} else if (mcastGrpp->def_mc_sl != VirtualFabrics->v_fabric[vf].base_sl) {
@@ -833,10 +841,12 @@ void sm_init_vf_info(void) {
 	vfInfo.activeVFsNoQos = 0;
 	vfInfo.totalVFsQos = 0;
 	vfInfo.activeVFsQos = 0;
+	vfInfo.totalVFsMC = 0;
+	vfInfo.activeVFsMC = 0;
 	vfInfo.totalSCsNeeded = 0;
 	vfInfo.numHighPriority = 0;
 	vfInfo.totalConfiguredBandwidth = 0;
-	vfInfo.totalVFwithConfiguredBW = 0;
+	vfInfo.totalSLwithConfiguredBW = 0;
 	vfInfo.defaultRoutingSCs = 1;
 	vfInfo.totalSLsNeeded = 0;
 	vfInfo.distributedBandwidth = 0;
@@ -844,23 +854,6 @@ void sm_init_vf_info(void) {
 	vfInfo.maxSLs = MAX_SLS; // Limited to IB SLs, later increase to STL SLs
 
     memset(sm_SlBandwidthAllocated, 0, sizeof(sm_SlBandwidthAllocated));
-    memset(sm_VfBandwidthAllocated, 0, sizeof(sm_VfBandwidthAllocated));
-
-    // FIXME: Setting this (above) to 0, or otherwise changing it while running 
-    // affects bufercontrol and SLL. (also affects DOR)
-    // I think there are multiple ways of addressing this, but the easiest, and using the layered approach is
-    // to stuff these in the VFInfo, let the VF setup routines do what they do, and then
-    // copy the results back. 
-    // Then we could really see what is what...
-    // Maybe do that with all these globals:
-    // sm_SlBandwidthAllocated - isolated to VF init, and DOR
-    // sm_VfBandwidthAllocated - VF Init, Bfrctrl, SLL
-    // sm_linkSLsInuse - VF Init, and used as a temporary variable in sm_shortestpath (S/B fixed!)
-    // sm_SLtoSC - VF Init, slsc maps [s/b copied to qos maps, then this would be VF Only]
-    // sm_SCtoSL - VF Init, slsc maps [s/b copied to qos maps, then this would be VF Only]
-    // sm_SCsInUse - VF Init only
-    // sm_HighPrioritySCs - VF Init only.
-    // sm_LowPrioritySCs - VF Init only.
 
     memset(sm_SLtoSC, 15, sizeof(sm_SLtoSC));
     memset(sm_SCtoSL, 0xff, sizeof(sm_SCtoSL));
@@ -877,30 +870,44 @@ void sm_free_vf_mem(void) {
 	bitset_free(&vfInfo.freePkeys);
 }
 
-void sm_update_bw(VirtualFabrics_t *VirtualFabrics) {
-
+static Status_t
+sm_update_bw(VirtualFabrics_t *VirtualFabrics)
+{
     int vf;
+	uint32_t nonQosMcBandwidth = 0;
+	uint32_t nonQosBandwidth = vfInfo.distributedBandwidth;
 
     if (!VirtualFabrics || (VirtualFabrics->number_of_vfs_all == 0))  {
-        return;
+        return VSTATUS_OK;
     }
 
 	IB_LOG_INFINI_INFO_FMT("", "VF Bandwidth Allocations :");
 
+	if (VirtualFabrics->active_mc_vfs > 0) {
+		// MCBW = BW * (# MC VFs)/(# MC VFs + # non-QOS VFs)
+		nonQosMcBandwidth = (vfInfo.distributedBandwidth*VirtualFabrics->active_mc_vfs)/(VirtualFabrics->active_non_qos_vfs+VirtualFabrics->active_mc_vfs);
+		if (nonQosMcBandwidth < 1) nonQosMcBandwidth = 1;
+		nonQosBandwidth = vfInfo.distributedBandwidth - nonQosMcBandwidth;
+		if (nonQosBandwidth < 1) nonQosBandwidth = 1;
+	}
+
+	IB_LOG_INFINI_INFO_FMT(__func__,"Non-QOS routing BW = %u, Non-QOS MC BW = %u",
+		nonQosBandwidth, nonQosMcBandwidth);
+
     // Assign / Update BW
     for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
+		VF_t *vfallp = &(VirtualFabrics->v_fabric_all[vf]);
+		if (!vfallp->standby) {
 
-		if (!VirtualFabrics->v_fabric_all[vf].standby) {
-
-			if (VirtualFabrics->v_fabric_all[vf].qos_enable) {
-				if (VirtualFabrics->v_fabric_all[vf].priority) {
-					IB_LOG_INFINI_INFO_FMT_VF(VirtualFabrics->v_fabric_all[vf].name, "",
+			if (vfallp->qos_enable) {
+				if (vfallp->priority) {
+					IB_LOG_INFINI_INFO_FMT_VF(vfallp->name, "",
 											  "High Priority VF; HP VFs don't participate in BW allocations");
 				}
 				else {
 					// Assign unconfigured BW for QOS fabrics (each VF gets a distribution)
-					if (VirtualFabrics->v_fabric_all[vf].percent_bandwidth == UNDEFINED_XML8) {
-						VirtualFabrics->v_fabric_all[vf].percent_bandwidth = vfInfo.distributedBandwidth;
+					if (vfallp->percent_bandwidth == UNDEFINED_XML8) {
+						vfallp->percent_bandwidth = vfInfo.distributedBandwidth;
 					}
 					IB_LOG_INFINI_INFO_FMT_VF(VirtualFabrics->v_fabric_all[vf].name, "",
 											  "BW:%d%%", VirtualFabrics->v_fabric_all[vf].percent_bandwidth);
@@ -908,32 +915,62 @@ void sm_update_bw(VirtualFabrics_t *VirtualFabrics) {
 
 			} else {
 				// Assign unconfigured BW for non-QOS fabrics (All non QOS share a distribution)
-				VirtualFabrics->v_fabric_all[vf].percent_bandwidth = vfInfo.distributedBandwidth;
+				vfallp->percent_bandwidth = vfInfo.distributedBandwidth;
 
 				IB_LOG_INFINI_INFO_FMT_VF(VirtualFabrics->v_fabric_all[vf].name, "",
-										  "Sharing %d%% BW among remaining VFs", VirtualFabrics->v_fabric_all[vf].percent_bandwidth);
+										  "Sharing %d%% BW among remaining VFs", vfallp->percent_bandwidth);
 			}
 		}
 		else {
-			VirtualFabrics->v_fabric_all[vf].percent_bandwidth = 0;
+			vfallp->percent_bandwidth = 0;
 		}
 
 		// If none of the cases above, means that percent bandwidth was user defined for the VF (QOS)
 		//  OR the VF was High Priority (also QOS)
 
-		sm_SlBandwidthAllocated[VirtualFabrics->v_fabric_all[vf].base_sl] = VirtualFabrics->v_fabric_all[vf].percent_bandwidth;
-		sm_VfBandwidthAllocated[vf] = VirtualFabrics->v_fabric_all[vf].percent_bandwidth;
-
-		// Override for high priority to have 100% for VF/Bfr Alloc considerations
-		if (VirtualFabrics->v_fabric_all[vf].priority==1) sm_VfBandwidthAllocated[vf] = 100;
+		// Divide the allocated bandwidths between the routing SLs
+		// and multicast isolation SLs.
+		if (!vfallp->mcast_isolate && vfallp->qos_enable) {
+			// QOS case: Routing SL and no MC SL. Assign all BW to routing SL.
+			sm_SlBandwidthAllocated[vfallp->base_sl] = vfallp->percent_bandwidth;
+			IB_LOG_INFINI_INFO_FMT(__func__,"Case 0: SL BW = %u",
+				sm_SlBandwidthAllocated[vfallp->base_sl]);
+		} else if (vfallp->mcast_isolate && vfallp->qos_enable) {
+			// QOS case: Divide the bandwidth between the routing and MC SLs.
+			sm_SlBandwidthAllocated[vfallp->base_sl] = 
+				vfallp->percent_bandwidth - vfallp->percent_bandwidth/2;
+			sm_SlBandwidthAllocated[vfallp->mcast_sl] = vfallp->percent_bandwidth/2;
+			IB_LOG_INFINI_INFO_FMT(__func__,"Case 1: SL BW = %u, MC BW = %u",
+				sm_SlBandwidthAllocated[vfallp->base_sl],
+				sm_SlBandwidthAllocated[vfallp->mcast_sl]);
+		} else if (vfallp->mcast_isolate) {
+			// Non-QOS case: Divide the bandwidth between the shared routing and MC SLs.
+			sm_SlBandwidthAllocated[vfallp->base_sl] = nonQosBandwidth;
+			sm_SlBandwidthAllocated[vfallp->mcast_sl] = nonQosMcBandwidth;
+			IB_LOG_INFINI_INFO_FMT(__func__,"Case 2: SL BW = %u, MC BW = %u",
+				sm_SlBandwidthAllocated[vfallp->base_sl],
+				sm_SlBandwidthAllocated[vfallp->mcast_sl]);
+		} else if (VirtualFabrics->active_mc_vfs) {
+			// Non-QOS case: VF shares the non-QOS SL but doesn't have a MC SL.
+			// But we can't assign all BW to the routing SL because the MC SL exists.
+			sm_SlBandwidthAllocated[vfallp->base_sl] = nonQosBandwidth;
+			IB_LOG_INFINI_INFO_FMT(__func__,"Case 3: SL BW = %u",
+				sm_SlBandwidthAllocated[vfallp->base_sl]);
+		} else {
+			// Non-QOS case: VF shares the non-QOS SL and there are no non-QOS
+			// MC VFs.
+			sm_SlBandwidthAllocated[vfallp->base_sl] = vfallp->percent_bandwidth;
+			IB_LOG_INFINI_INFO_FMT(__func__,"Case 4: SL BW = %u",
+				sm_SlBandwidthAllocated[vfallp->base_sl]);
+		}
 
 		//update active list
 		int activeVfIdx;
-		if (!VirtualFabrics->v_fabric_all[vf].standby) {
-			activeVfIdx = findVfIdxInActiveList(&VirtualFabrics->v_fabric_all[vf], VirtualFabrics, TRUE);
+		if (!vfallp->standby) {
+			activeVfIdx = findVfIdxInActiveList(vfallp, VirtualFabrics, TRUE);
 
 			if (activeVfIdx != -1) 
-				VirtualFabrics->v_fabric[activeVfIdx].percent_bandwidth = VirtualFabrics->v_fabric_all[vf].percent_bandwidth;
+				VirtualFabrics->v_fabric[activeVfIdx].percent_bandwidth = vfallp->percent_bandwidth;
 		}
 
 
@@ -944,18 +981,19 @@ void sm_update_bw(VirtualFabrics_t *VirtualFabrics) {
 		//find the VF name in the global vf_config
 		for (vfIdx=0; vfIdx<vf_config.number_of_vfs; ++vfIdx) {
 			vfp = vf_config.vf[vfIdx];
-			if (strncmp(&vfp->name[0], &VirtualFabrics->v_fabric_all[vf].name[0], MAX_VFABRIC_NAME+1) == 0) {
+			if (strncmp(vfp->name, vfallp->name, MAX_VFABRIC_NAME+1) == 0) {
 				vfToProcess = vfIdx;
 				break;
 			}
 		}
 
 		if (vfToProcess != -1) {
-			vf_config.vf[vfToProcess]->percent_bandwidth = VirtualFabrics->v_fabric_all[vf].percent_bandwidth;
+			vf_config.vf[vfToProcess]->percent_bandwidth = vfallp->percent_bandwidth;
 		}
 
     } //end loop on all VFs
 
+	return VSTATUS_OK;
 }
 
 void sm_assign_scs_to_sls(VirtualFabrics_t *VirtualFabrics) {
@@ -969,7 +1007,6 @@ void sm_assign_scs_to_sls(VirtualFabrics_t *VirtualFabrics) {
     }
 
     for (sc=0, vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
-
         // Assign the SC when a new SL is encountered.
         if (!bitset_test(&usedSLs, VirtualFabrics->v_fabric[vf].base_sl) ) {
             bitset_set(&usedSLs, VirtualFabrics->v_fabric[vf].base_sl);
@@ -1003,27 +1040,37 @@ void sm_assign_scs_to_sls(VirtualFabrics_t *VirtualFabrics) {
 }
 
 
-void sm_assign_scs_to_sls_FixedMap(VirtualFabrics_t *VirtualFabrics) {
+static Status_t
+sm_assign_scs_to_sls_FixedMap(VirtualFabrics_t *VirtualFabrics)
+{
 
     // Assign SCs to SLs
-    sm_setup_SC2VLFixedMap(sm_config.min_supported_vls, VirtualFabrics);
+    Status_t status = sm_setup_SC2VLFixedMap(sm_config.min_supported_vls, VirtualFabrics);
 
     sm_printf_vf_debug(VirtualFabrics);
 
+	return status;
 }
 
-void sm_assign_base_sls(VirtualFabrics_t *VirtualFabrics) {
+static Status_t
+sm_assign_sls(VirtualFabrics_t *VirtualFabrics)
+{
 
-    int base_sl;
     int qosSL = -1;
+    int qosMCSL = -1;
 	int vf;
+	Status_t ret = VSTATUS_BAD;
     bitset_t usedSLs;
 
     if (!VirtualFabrics || (VirtualFabrics->number_of_vfs == 0) || (VirtualFabrics->number_of_vfs_all == 0) )  {
-        return;
+        return ret;
     }
 
     bitset_init(&sm_pool, &usedSLs, vfInfo.maxSLs);
+
+	// This will be used later to calculate the bandwidth for the shared multicast isolation SL.
+	VirtualFabrics->active_mc_vfs = 0;
+	VirtualFabrics->active_non_qos_vfs = 0;
 
     // Assign user specified SLs first.
     for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
@@ -1040,11 +1087,14 @@ void sm_assign_base_sls(VirtualFabrics_t *VirtualFabrics) {
         }
     }
 
-    // Now assign the unspecified base SLs. (Which includes the conflict resolution from above)
+    // Now assign the unspecified base SLs (Which includes the conflict 
+    // resolution from above) and the multicast SLs, if needed.
     // Assign SLs in the order they appear in the config file.
     // [This provides a predicable output for users.]
     for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++){
+        // NOTA BENE: This code assumes that routing_sls is always 1...
         if (VirtualFabrics->v_fabric_all[vf].base_sl == UNDEFINED_XML8) {
+            uint8_t base_sl;
             if (VirtualFabrics->v_fabric_all[vf].qos_enable){
                 base_sl = bitset_find_first_zero(&usedSLs);
                 VirtualFabrics->v_fabric_all[vf].base_sl = base_sl;
@@ -1058,6 +1108,31 @@ void sm_assign_base_sls(VirtualFabrics_t *VirtualFabrics) {
                 VirtualFabrics->v_fabric_all[vf].base_sl = qosSL;
             }
         }
+        // Assign the multicast SL if it is needed.
+        // The user isn't permitted to specify the multicast SL,
+        // so we don't have to check for that.
+        if (VirtualFabrics->v_fabric_all[vf].mcast_isolate) {
+            uint8_t mcast_sl;
+            if (VirtualFabrics->v_fabric_all[vf].qos_enable){
+                mcast_sl = bitset_find_first_zero(&usedSLs);
+                VirtualFabrics->v_fabric_all[vf].mcast_sl = mcast_sl;
+                bitset_set(&usedSLs, mcast_sl);
+            } else {
+                // Assign the non-qos multicast SL if not assigned yet.
+                if (qosMCSL == -1) {
+                    qosMCSL = bitset_find_first_zero(&usedSLs);
+                    VirtualFabrics->v_fabric_all[vf].mcast_sl = qosMCSL;
+                	bitset_set(&usedSLs, qosMCSL);
+                }
+                VirtualFabrics->v_fabric_all[vf].mcast_sl = qosMCSL;
+            }
+        }
+        if (sm_config.sm_debug_vf) {
+		    IB_LOG_INFINI_INFO_FMT(__func__,
+                "VF %u has base_sl %u and mcast_sl %u",
+			    vf, VirtualFabrics->v_fabric_all[vf].base_sl,
+			    VirtualFabrics->v_fabric_all[vf].mcast_sl);
+        }
     }
 
 	// Assign SLs to the active VF list
@@ -1068,25 +1143,38 @@ void sm_assign_base_sls(VirtualFabrics_t *VirtualFabrics) {
 		if (!VirtualFabrics->v_fabric_all[vf].standby) {
 			activeVfIdx = findVfIdxInActiveList(&VirtualFabrics->v_fabric_all[vf], VirtualFabrics, TRUE);
 
-			if (activeVfIdx != -1) 
+			if (activeVfIdx != -1) {
 				VirtualFabrics->v_fabric[activeVfIdx].base_sl = VirtualFabrics->v_fabric_all[vf].base_sl;
+				VirtualFabrics->v_fabric[activeVfIdx].mcast_isolate = VirtualFabrics->v_fabric_all[vf].mcast_isolate;
+				if (!VirtualFabrics->v_fabric[activeVfIdx].qos_enable) {
+					VirtualFabrics->active_non_qos_vfs++;
+					if (VirtualFabrics->v_fabric[activeVfIdx].mcast_isolate) {
+						VirtualFabrics->active_mc_vfs++;
+					}
+				}
+				VirtualFabrics->v_fabric[activeVfIdx].mcast_sl = VirtualFabrics->v_fabric_all[vf].mcast_sl;
+			}
 		}
 	}
 
+    IB_LOG_INFINI_INFO_FMT(__func__, "%d active VF(s), %d standby VF(s) requires %d SLs and %d SCs for operation.",
+        VirtualFabrics->number_of_vfs, 
+        VirtualFabrics->number_of_vfs_all-VirtualFabrics->number_of_vfs, 
+        vfInfo.totalSLsNeeded, vfInfo.totalSCsNeeded); 
+    IB_LOG_INFINI_INFO_FMT(__func__, "%d active VF(s) share the non-QOS SL, %d active VF(s) share the non-QOS MC SL.",
+        VirtualFabrics->active_non_qos_vfs, VirtualFabrics->active_mc_vfs);
+
+	ret = VSTATUS_OK;
+
 	bitset_free(&usedSLs);
-
-    IB_LOG_INFINI_INFO_FMT(__func__, "%d active VF(s), %d standby VF(s) requires %d SLs and %d SCs for operation",
-						   VirtualFabrics->number_of_vfs, VirtualFabrics->number_of_vfs_all-VirtualFabrics->number_of_vfs, 
-						   vfInfo.totalSLsNeeded, vfInfo.totalSCsNeeded);
-
-#ifdef CONFIG_INCLUDE_DOR
-    smDorRouting.scsNeeded = vfInfo.totalSCsNeeded;
-#endif
+	return ret;
 }
 
 void sm_process_vf_qos_params(VirtualFabrics_t *VirtualFabrics) {
 
 	int vf;
+	int noQosVF = 0;
+	int noQosMCVF = 0;
 	VF_t* vfp;
 
     if (!VirtualFabrics || (VirtualFabrics->number_of_vfs_all == 0))  {
@@ -1096,6 +1184,7 @@ void sm_process_vf_qos_params(VirtualFabrics_t *VirtualFabrics) {
     VirtualFabrics->securityEnabled = 0;
     VirtualFabrics->qosEnabled = 0;
 
+	// NOTA BENE: This loop assumes routing_sls == 1.
     for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
 
 		vfp = &VirtualFabrics->v_fabric_all[vf];
@@ -1171,6 +1260,31 @@ void sm_process_vf_qos_params(VirtualFabrics_t *VirtualFabrics) {
 			//set percent_bandwidth to 0 for non QoS VF
             VirtualFabrics->v_fabric_all[vf].percent_bandwidth = 0;
 
+			if (VirtualFabrics->v_fabric_all[vf].mcast_isolate) {
+				vfInfo.totalVFsMC++;
+
+				if (!VirtualFabrics->v_fabric_all[vf].standby)
+					vfInfo.activeVFsMC++;
+			}
+
+			// Non-QOS VFs all share a single routing SL and one set
+			// of routing SCs.
+			if (!noQosVF) {
+				noQosVF = 1;
+				vfInfo.totalSCsNeeded += vfInfo.defaultRoutingSCs;
+				vfInfo.totalSLsNeeded++;
+				vfInfo.activeSLs++;
+            }
+			// Multicast isolation requires an extra SL and SC but these can 
+			// be shared by all non-QOS VFs.
+			if (!noQosMCVF && vfp->mcast_isolate) {
+				noQosMCVF = 1;
+				vfInfo.totalSLsNeeded++;
+				vfInfo.totalSCsNeeded++;
+				if (!vfp->standby) {
+					vfInfo.activeSLs++;
+				}
+			}
         } //end if !vfp->qos_enabled
 		else {
 
@@ -1181,7 +1295,24 @@ void sm_process_vf_qos_params(VirtualFabrics_t *VirtualFabrics) {
 			if (!VirtualFabrics->v_fabric_all[vf].standby)
 				vfInfo.activeVFsQos++;	
 
+            vfInfo.totalSLsNeeded++;
             vfInfo.totalSCsNeeded += vfp->routing_scs;
+
+			if (!vfp->standby) {
+				vfInfo.activeSLs++;
+			}
+
+			// multicast isolation requires an extra SL and SC
+			// for each VF that uses it.
+			if (vfp->mcast_isolate) {
+				vfInfo.totalVFsMC++;
+				vfInfo.totalSLsNeeded++;
+				vfInfo.totalSCsNeeded++;
+				if (!vfp->standby) {
+					vfInfo.activeVFsMC++;
+					vfInfo.activeSLs++;
+				}
+			}
 
             // Check for invalid SL request.
             if ((vfp->base_sl != UNDEFINED_XML8) &&
@@ -1210,7 +1341,10 @@ void sm_process_vf_qos_params(VirtualFabrics_t *VirtualFabrics) {
             if (vfp->percent_bandwidth != UNDEFINED_XML8) {
 				if (!vfp->standby) {
 					vfInfo.totalConfiguredBandwidth += vfp->percent_bandwidth;
-					vfInfo.totalVFwithConfiguredBW++;
+					vfInfo.totalSLwithConfiguredBW++;
+					if (vfp->mcast_isolate) {
+						vfInfo.totalSLwithConfiguredBW++;
+					}
 				}
             }
         } //end vfp->qos_enable
@@ -1226,24 +1360,32 @@ void sm_process_vf_qos_params(VirtualFabrics_t *VirtualFabrics) {
 				VirtualFabrics->v_fabric[activeVfIdx].flowControlDisable = VirtualFabrics->v_fabric_all[vf].flowControlDisable;
 				VirtualFabrics->v_fabric[activeVfIdx].base_sl = VirtualFabrics->v_fabric_all[vf].base_sl;
 				VirtualFabrics->v_fabric[activeVfIdx].priority = VirtualFabrics->v_fabric_all[vf].priority;
+				VirtualFabrics->v_fabric[activeVfIdx].mcast_isolate = VirtualFabrics->v_fabric_all[vf].mcast_isolate;
 			}
 		}
 
     } //end loop on all VFs
 
-	//Set activeSLs parameter
-	vfInfo.activeSLs = vfInfo.activeVFsQos;
+    if (vfInfo.activeSLs > vfInfo.totalSLwithConfiguredBW)
+        vfInfo.distributedBandwidth = (100 - vfInfo.totalConfiguredBandwidth) / (vfInfo.activeSLs - vfInfo.totalSLwithConfiguredBW);
 
-    // Add another "set" of SCs / SLs for the group of "No QOS" VFs.
-	vfInfo.totalSLsNeeded = vfInfo.totalVFsQos;
-    if (vfInfo.totalVFsNoQos){
-        vfInfo.totalSCsNeeded += vfInfo.defaultRoutingSCs;
-        vfInfo.totalSLsNeeded++;
-		vfInfo.activeSLs++;
-    }
+    if (sm_config.sm_debug_vf) {
+		IB_LOG_INFINI_INFO_FMT(__func__,"Total VFs: %u non-QOS, %u QOS, %u MC",
+			vfInfo.totalVFsNoQos, vfInfo.totalVFsQos, vfInfo.totalVFsMC);
+		IB_LOG_INFINI_INFO_FMT(__func__,"Active VFs: %u non-QOS, %u QOS, %u MC",
+			vfInfo.activeVFsNoQos, vfInfo.activeVFsQos, vfInfo.activeVFsMC);
+		IB_LOG_INFINI_INFO_FMT(__func__,"Total SLs: %u, Active SLs: %u, Total SCs: %u",
+			vfInfo.totalSLsNeeded, vfInfo.activeSLs, vfInfo.totalSCsNeeded);
+		IB_LOG_INFINI_INFO_FMT(__func__,"Total Configured Bandwidth: %u over %u SLs",
+			vfInfo.totalConfiguredBandwidth, vfInfo.totalSLwithConfiguredBW);
+		IB_LOG_INFINI_INFO_FMT(__func__,"Distributed Bandwidth: %u",
+			vfInfo.distributedBandwidth);
+	}
 }
 
-void sm_process_vf_info(VirtualFabrics_t *VirtualFabrics) {
+static Status_t
+sm_process_vf_info(VirtualFabrics_t *VirtualFabrics)
+{
 
 	//allocate memory used for processing VFs -- only do once, memory cleared on sm_shutdown
 	sm_allocate_mem_vfs();
@@ -1259,7 +1401,7 @@ void sm_process_vf_info(VirtualFabrics_t *VirtualFabrics) {
 
     if (!VirtualFabrics || (VirtualFabrics->number_of_vfs == 0))  {
         sm_masterSmSl = 0;
-        return;
+        return VSTATUS_OK;
     }
 
 	sm_process_vf_qos_params(VirtualFabrics);
@@ -1272,11 +1414,13 @@ void sm_process_vf_info(VirtualFabrics_t *VirtualFabrics) {
         VirtualFabrics->qosEnabled = 0;
         vfInfo.totalVFsQos = 0;
         vfInfo.activeVFsQos = 0;
+        vfInfo.totalVFsMC = 0;
+        vfInfo.activeVFsMC = 0;
         vfInfo.totalSLsNeeded = 1;
         vfInfo.totalVFsNoQos = VirtualFabrics->number_of_vfs;
         vfInfo.activeVFsNoQos = VirtualFabrics->number_of_vfs;
         vfInfo.totalSCsNeeded = vfInfo.defaultRoutingSCs;
-        vfInfo.totalVFwithConfiguredBW = 0;
+        vfInfo.totalSLwithConfiguredBW = 0;
         vfInfo.distributedBandwidth = 100;
         vfInfo.numHighPriority = 0;
 
@@ -1285,13 +1429,12 @@ void sm_process_vf_info(VirtualFabrics_t *VirtualFabrics) {
             VirtualFabrics->v_fabric[vf].qos_enable = 0;
             VirtualFabrics->v_fabric[vf].priority = 0;
             VirtualFabrics->v_fabric[vf].base_sl = 0;
+            VirtualFabrics->v_fabric[vf].mcast_isolate = 0;
             VirtualFabrics->v_fabric[vf].flowControlDisable = 0;
-#ifdef CONFIG_INCLUDE_DOR
             VirtualFabrics->v_fabric[vf].updown_only = 0;
-#endif
             VirtualFabrics->v_fabric[vf].preempt_rank = 0;
-            VirtualFabrics->v_fabric[vf].routing_scs = vfInfo.defaultRoutingSCs;
-            VirtualFabrics->v_fabric[vf].routing_sls = vfInfo.defaultRoutingSCs;
+            VirtualFabrics->v_fabric[vf].routing_scs = 1;
+            VirtualFabrics->v_fabric[vf].routing_sls = 1;
         }
 
         for (vf=0; vf<VirtualFabrics->number_of_vfs_all; vf++) {
@@ -1299,28 +1442,32 @@ void sm_process_vf_info(VirtualFabrics_t *VirtualFabrics) {
             VirtualFabrics->v_fabric_all[vf].qos_enable = 0;
             VirtualFabrics->v_fabric_all[vf].priority = 0;
             VirtualFabrics->v_fabric_all[vf].base_sl = 0;
+            VirtualFabrics->v_fabric_all[vf].mcast_isolate = 0;
             VirtualFabrics->v_fabric_all[vf].flowControlDisable = 0;
-#ifdef CONFIG_INCLUDE_DOR
             VirtualFabrics->v_fabric_all[vf].updown_only = 0;
-#endif
             VirtualFabrics->v_fabric_all[vf].preempt_rank = 0;
-            VirtualFabrics->v_fabric_all[vf].routing_scs = vfInfo.defaultRoutingSCs;
-            VirtualFabrics->v_fabric_all[vf].routing_sls = vfInfo.defaultRoutingSCs;
+            VirtualFabrics->v_fabric_all[vf].routing_scs = 1;
+            VirtualFabrics->v_fabric_all[vf].routing_sls = 1;
         }
     }
 
-	sm_assign_base_sls(VirtualFabrics);
+    Status_t s;
+    if ((s = sm_assign_sls(VirtualFabrics)) != VSTATUS_OK)
+        return s;
 
-	sm_update_bw(VirtualFabrics);
+    if ((s = sm_update_bw(VirtualFabrics)) != VSTATUS_OK)
+        return s;
 
-	// setup SL mappings based on new config data
 #ifdef USE_FIXED_SCVL_MAPS
-	sm_assign_scs_to_sls_FixedMap(VirtualFabrics);
+		s = sm_assign_scs_to_sls_FixedMap(VirtualFabrics);
 #else
-	sm_assign_scs_to_sls(VirtualFabrics);
-#endif 
+		s = sm_assign_scs_to_sls(VirtualFabrics);
+#endif
 
-	sm_resolve_pkeys_for_vfs(VirtualFabrics);
+    if (s == VSTATUS_OK)
+	    sm_resolve_pkeys_for_vfs(VirtualFabrics);
+
+    return s;
 }
 
 // Parse the XML configuration
@@ -1508,6 +1655,12 @@ Status_t sm_parse_xml_config(void) {
 	if (sm_config.debug_jm) {
 		IB_LOG_INFINI_INFO0("SM: Enabling Job Management debug");
 		ib_instrumentJmMads = 1;
+	}
+#endif
+
+#ifdef CONFIG_INCLUDE_DOR
+	if (strncmp(sm_config.routing_algorithm, "dor", 32) == 0) {
+		sm_process_dor_info(initialVfPtr, &sm_config.smDorRouting);
 	}
 #endif
 
@@ -2049,7 +2202,8 @@ sm_main(void) {
 		return status;
 	}
 
-	sm_process_vf_info(initialVfPtr);
+	if ((status = sm_process_vf_info(initialVfPtr)) != VSTATUS_OK)
+		return status;
 
 	//Set VirtualFabrics* in the topology_t structure
 	old_topology.vfs_ptr = initialVfPtr;
@@ -2621,13 +2775,24 @@ smApplyLogLevelChange(FMXmlCompositeConfig_t *xml_config){
 
 }
 
-void
+static Status_t
 smApplyVfChanges(FMXmlCompositeConfig_t *xml_config, VirtualFabrics_t *newVirtualFabrics){
 
-	sm_assign_base_sls(newVirtualFabrics);
-	sm_update_bw(newVirtualFabrics);
-	sm_assign_scs_to_sls_FixedMap(newVirtualFabrics);
-	sm_resolve_pkeys_for_vfs(newVirtualFabrics);
+	Status_t s = VSTATUS_OK;
+	if ((s = sm_assign_sls(newVirtualFabrics)) != VSTATUS_OK)
+		IB_LOG_WARN_FMT(__func__, "Non-OK status %d returned by sm_assign_sls()", s);
+	if ((s = sm_update_bw(newVirtualFabrics)) != VSTATUS_OK)
+		return s;
+
+#ifdef USE_FIXED_SCVL_MAPS
+		s = sm_assign_scs_to_sls_FixedMap(newVirtualFabrics);
+#else
+		s = sm_assign_scs_to_sls(newVirtualFabrics);
+#endif
+
+    if (s == VSTATUS_OK)
+	    sm_resolve_pkeys_for_vfs(newVirtualFabrics);
+	return s;
 }
 
 void
@@ -2637,7 +2802,7 @@ smLogLevelOverride(void){
 
 void
 smProcessReconfigureRequest(void){
-
+	Status_t s = VSTATUS_OK;
 	FMXmlCompositeConfig_t *new_xml_config;
 	VirtualFabrics_t *oldVirtualFabrics = NULL;
 	VirtualFabrics_t *newVirtualFabrics;
@@ -2699,6 +2864,7 @@ smProcessReconfigureRequest(void){
 				else {
 
 					boolean vfChangesInvalid = FALSE;
+					uint32_t savedVfConsistencyChecksum;
 
 					if (vfChangesDetected(new_xml_config, newVirtualFabrics, oldVirtualFabrics)) {
 #ifdef USE_FIXED_SCVL_MAPS
@@ -2738,13 +2904,18 @@ smProcessReconfigureRequest(void){
 						}
 						updatedVirtualFabrics = newVirtualFabrics;
 
-						smApplyVfChanges(new_xml_config, updatedVirtualFabrics);
+						s = smApplyVfChanges(new_xml_config, updatedVirtualFabrics);
+
+						if (s != VSTATUS_OK)
+							IB_FATAL_ERROR("smApplyVfChanges() failed");
+
+						savedVfConsistencyChecksum = updatedVirtualFabrics->consistency_checksum;
 
 						// Allow sweeps to run
 						(void)vs_unlock(&new_topology_lock);
 
 						/* Update our consistency checksums */
-    					sm_dbsync_checksums(updatedVirtualFabrics->consistency_checksum,
+    					sm_dbsync_checksums(savedVfConsistencyChecksum,
                        						new_xml_config->fm_instance[sm_instance]->sm_config.consistency_checksum,
                        						new_xml_config->fm_instance[sm_instance]->pm_config.consistency_checksum, 
                        						new_xml_config->fm_instance[sm_instance]->fe_config.consistency_checksum);

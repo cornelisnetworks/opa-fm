@@ -54,18 +54,14 @@ int unix_serv_listen(char *name)
 	struct	sockaddr_un socketaddr;
 	char *dname, *namecpy = strdup(name);
 
-	if((fd = socket(AF_UNIX,SOCK_STREAM,0)) < 0)
-	{
-		return(-HSM_COM_SOCK_ERR);
-	}
-
-	unlink(name);
-	
 	//check strdup call completed successfully 
 	if (!namecpy)
 	{
-		return (-HSM_COM_NO_MEM);
+		fd = -HSM_COM_NO_MEM;
+		goto error;
 	}
+	
+	unlink(name);
 	
 	//ensure socket directory exists
 	dname = dirname(namecpy);
@@ -73,10 +69,16 @@ int unix_serv_listen(char *name)
 	{
 		if (errno != EEXIST)
 		{
-			return (-HSM_COM_PATH_ERR);
+			fd = -HSM_COM_PATH_ERR;
+			goto error;
 		}
 	}
-	free(namecpy);
+
+	if((fd = socket(AF_UNIX,SOCK_STREAM,0)) < 0)
+	{
+		fd = -HSM_COM_SOCK_ERR;
+		goto error;
+	}
 
 	memset(&socketaddr,0,sizeof(socketaddr));
 
@@ -87,15 +89,21 @@ int unix_serv_listen(char *name)
 
 	if(bind(fd,(struct sockaddr*)&socketaddr,len) < 0)
 	{
-		return(-HSM_COM_BIND_ERR);
+		close(fd);
+		fd = -HSM_COM_BIND_ERR;
+		goto error;
 	}
 
 	if(listen(fd,5) < 0)
 	{
-		return(-HSM_COM_LISTEN_ERR);
+		close(fd);
+		fd = -HSM_COM_LISTEN_ERR;
+		goto error;
 	}
 
 	
+error:
+	if (namecpy) free(namecpy);
 	return fd;
 }
 

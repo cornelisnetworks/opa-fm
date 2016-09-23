@@ -1,0 +1,230 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+
+# [ICS VERSION STRING: @(#) ./fastfabric/tools/configipoib.exp 0mwhe.20150409 [04/09/15 10:26]
+
+source "/usr/lib/opa/tools/ff_function.exp"
+
+#=============================================================================#
+# Test Suite Description:
+#-----------------------------------------------------------------------------#
+## configipoib
+## -------
+## configure IPoIB ifcfg file based on /etc/hosts
+#=============================================================================#
+
+# manditory setup
+log_user 0;	# disable detailed logging to stdout
+
+# uncomment the following to debug the test
+#strace 20
+#log_user 1
+#exp_internal 1
+#cmd_trace on
+#strace 4
+
+set install_exit_code 0
+
+proc suite_setup {} {
+	# example of conditional setup
+	#test_execute {load populate} {
+		#do some installation or configuration stuff
+	#}
+}
+
+proc case_setup {} {
+# setup to do at start of each test case
+# Usage:
+#	pass as argument to start_suite
+# Arguments:
+#	None
+# This procedure will be run at the start of every test case
+# It provides an opportunity for uniform cleanup/setup for each test case
+
+}
+
+proc case_cleanup { failed } {
+# cleanup to do after each test case
+# Usage:
+#	pass as argument to start_suite
+# Arguments:
+#	failed - set to 1 if test case failed in which case additional
+#		information/files may be desired in test_tmp
+#		set to 0 if test case passed
+# This procedure will be run at the end of every test case
+# It provides an opportunity for uniform cleanup after each test case
+	global env
+
+	test_execute {} {
+		if { $failed } {
+			global host
+			# could put cleanup here
+		}
+	}
+}
+
+test_suite "configipoib" "configure IPoIB" "Configure IPoIB based on /etc/hosts
+creates ifcfg-ib<x> file
+File: /usr/lib/opa/tools/configipoib.exp" suite_setup noop {
+	global host
+
+	# Global Initializations for Test Suite:
+	# --------------------------------------
+
+	# ADD ANY GLOBAL INITIALIZATION HERE, SUCH AS:
+	# set env(MY_ENV_VAR) value
+	# also validate the environment
+	# if the environment is bad call fail_suite "information" abort_now
+	# abort_now should be 0 if it is safe to proceed and simply ignore all
+	# test_case calls.  it should be 1 if that is not possible.
+
+	# Procedures used to support Test Suite:
+	# --------------------------------------
+
+	# The actual test cases:
+	# ----------------------
+
+	if { [ info exists env(FF_IPOIB_CONFIG) ] && "$env(FF_IPOIB_CONFIG)" != "" } {
+	set mode $env(FF_IPOIB_CONFIG)
+	} else {
+	set mode "static"
+	log_message "FF_IPOIB_CONFIG not found /etc/sysconfig/opa/opafastfabric.conf Defaulting to static"
+	}
+	
+	
+	if { ![ string equal "$mode" "auto"] && ![ string equal "$mode" "static"] && ![string equal "$mode" "dhcp"]  } {
+		fail_test "Bad value FF_IPOIB_CONFIG=$mode in /etc/sysconfig/opa/opafastfabric.conf it should be one of auto/static/dhcp "
+	}
+	
+	# Suites are structured so that if all tests are run, at completion
+	# host is left running the set of drivers specified in the config file
+	parallel host $env(CFG_HOSTS) {
+		set ipoib_name "[ ff_host_to_ipoib $host]"
+		set ipoib_base_dev_num "[ ff_ipoib_base_dev_num $host]"
+
+		test_case "$host.config" "config ipoib on $host" "Configure $host IPoIB
+File: /usr/lib/opa/tools/configipoib.exp" case_setup case_cleanup {
+			global env
+			upvar host host
+			upvar number number
+			upvar disk disk
+			upvar mode mode
+			upvar ipoib_name ipoib_name
+			upvar ipoib_base_dev_num ipoib_base_dev_num
+			upvar inic_name inic_name
+
+			# These two variables have the same purpose but different enumerated 
+			# values. ipoib_mode is used for SLES ipoib_cm is used for RHEL.
+			set ipoib_mode "datagram"
+			set ipoib_cm "no"
+			set ipoib_mtu ""
+
+			target_root_sh $host
+
+			if { [ string equal "$mode" "auto"] || [ string equal "$mode" "static"]  } {
+				# try resolver 1st, then revert to lookup in /etc/hosts
+				unix_cmd 60 "" "tmp=`host $ipoib_name 2>/dev/null|sed -e 's/^.*has address //'|grep '^\[0-9\]'`
+if \[ \"\$tmp\" = '' \]
+then
+	tmp=`egrep '\[\[:space:\]\]$ipoib_name\[\[:space:\]\]|\[\[:space:\]\]$ipoib_name\$' /etc/hosts|grep -v localhost|tr ' ' '\\t'|cut -f1`
+fi"					
+				if { [ string equal "$mode" "auto"] } {
+					unix_cmd 60 "" {[ "$tmp" = '' ]}
+					if { 0 ==  [ get_exit_status 60 ]  } {
+						set mode "dhcp"
+					} else {
+						set mode "static"
+					}
+				}
+			}
+
+			if { [ info exists env(CFG_IPOIB_CONNECTED) ] && [ string equal -nocase "$env(CFG_IPOIB_CONNECTED)" "yes" ]} {
+				set ipoib_mode "connected"
+				set ipoib_cm "yes"
+				set ipoib_mtu "\nMTU=65520"
+			}
+
+			if { [ string equal "$mode" "static"] } {
+				# verify we have found an IP address for $host's $ipoib_name
+				unix_cmd 60 0 {if [ -x /usr/lib/opa/tools/opaipcalc ]; then opaipcalc=/usr/lib/opa/tools/opaipcalc; else opaipcalc=/sbin/opaipcalc; fi }
+				unix_cmd 60 0 "echo \"IPADDR=\$tmp\"; \[ \"\$tmp\" != '' \]"
+				if { [ info exists env(CFG_IPOIB_NETMASK) ] && "$env(CFG_IPOIB_NETMASK)" != "" } {
+					unix_cmd 60 0 "mask='$env(CFG_IPOIB_NETMASK)'"
+				} else {
+					unix_cmd 60 0 "mask=`\$opaipcalc --netmask \$tmp`"
+					unix_cmd 60 0 "mask=`echo \"\$mask\"|sed -e 's/NETMASK=//'`"
+				}
+				unix_cmd 60 0 "echo \"NETMASK=\$mask\"; \[ \"\$mask\" != '' \]"
+				unix_cmd 60 0 "network=`\$opaipcalc --network \$tmp \$mask`"
+				unix_cmd 60 0 "echo \"\$network\"; \[ \"\$network\" != '' \]"
+				unix_cmd 60 0 "broadcast=`\$opaipcalc --broadcast \$tmp \$mask`"
+				unix_cmd 60 0 "echo \"\$broadcast\"; \[ \"\$broadcast\" != '' \]"
+				unix_cmd 60 0 "echo \"IPOIB_MODE=\$ipoib_mode\""
+                        	unix_cmd 60 0 "bproto_ip_mask_info=\"BOOTPROTO=static
+IPADDR=\$tmp
+NETMASK=\$mask
+\$network
+\$broadcast\""
+			
+			} elseif { [ string equal "$mode" "dhcp"] } {
+				unix_cmd 60 0 "bproto_ip_mask_info=\"BOOTPROTO=dhcp\"" 
+			} else {
+			
+				fail_test "Bad value FF_IPOIB_CONFIG=$mode in /etc/sysconfig/opa/opafastfabric.conf it should be one of auto/static/dhcp "
+			}
+
+			set os_type [ exec uname -s ]
+			
+			send_unix_cmd "if \[ -d /etc/sysconfig/network-scripts \]; then 
+cat > /etc/sysconfig/network-scripts/ifcfg-ib$ipoib_base_dev_num <<!
+# IPoIB Integration test configuration for $host
+DEVICE=ib$ipoib_base_dev_num
+TYPE=Infiniband
+\$bproto_ip_mask_info
+ONBOOT=yes
+NM_CONTROLLED=no
+CONNECTED_MODE=$ipoib_cm$ipoib_mtu
+!
+else 
+cat > /etc/sysconfig/network/ifcfg-ib$ipoib_base_dev_num <<!
+# IPoIB Integration test configuration for $host
+\$bproto_ip_mask_info
+STARTMODE='hotplug'
+REMOTE_IPADDR=''
+WIRELESS='no'
+NM_CONTROLLED='no'
+IPOIB_MODE=$ipoib_mode$ipoib_mtu
+!
+fi; echo DONE
+"
+			expect_list 60 { "echo DONE" "DONE" } { "bad ip" "expected" }
+			check_exit_status 60 0
+		}
+	}
+}

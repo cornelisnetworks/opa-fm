@@ -640,16 +640,18 @@ int oib_open_port_by_num (struct oib_port **port, int hfiNum, uint8_t port_num)
 	
     fstatus = oib_get_portguid(hfiNum, port_num, NULL, NULL, NULL, NULL, &attrib,
 			       &ca_count, &port_count, name, &num, NULL);
-    if (fstatus != FSUCCESS) {
-	    if (fstatus != FNOT_FOUND ||
+	if (fstatus != FSUCCESS) {
+		if (fstatus != FNOT_FOUND ||
 		(ca_count == 0 || port_count == 0) ||
 		hfiNum > ca_count || port_num > port_count) {
-		    return (EIO);
-	    }
-	    /* no active port was found for wildcard ca/port.
-	     * return EAGAIN so caller could query specific port/ca
-	     */
-	    return (EAGAIN);
+			ret_code=EIO;
+			goto done;
+		}
+		/* no active port was found for wildcard ca/port.
+		 * return EAGAIN so caller could query specific port/ca
+		 */
+		ret_code=EAGAIN;
+		goto done;
 	}
 
 	ret_code = oib_open_port(port, name, num);
@@ -659,8 +661,11 @@ int oib_open_port_by_num (struct oib_port **port, int hfiNum, uint8_t port_num)
 	{
 		(*port)->local_gid = attrib->GIDTable[0];
 	}
-
-	return ret_code;
+	
+	done:
+		if (attrib)
+			MemoryDeallocate(attrib);
+		return ret_code;
 }
 
 /** ========================================================================= */

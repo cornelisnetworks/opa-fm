@@ -68,8 +68,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "bspcommon/h/sysPrintf.h"
 
 #define CS64	"ll"
-#define LogVal_t int32_t
-#define LogVal64_t int64_t
+#define LogVal_t uint32_t
+#define LogVal64_t uint64_t
 
 #else
 
@@ -81,14 +81,14 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #if __WORDSIZE == 64
 #define CS64	"l"
-#define LogVal_t int64_t
-#define LogVal64_t int64_t
-#define LOG_PTR(x)		((int64_t)(x))
+#define LogVal_t uint64_t
+#define LogVal64_t uint64_t
+#define LOG_PTR(x)		((uint64_t)(x))
 #elif __WORDSIZE == 32
 #define CS64	"L"
-#define LogVal_t int32_t
-#define LogVal64_t int64_t
-#define LOG_PTR(x)		((int32_t)(x))
+#define LogVal_t uint32_t
+#define LogVal64_t uint64_t
+#define LOG_PTR(x)		((uint32_t)(x))
 #else
 #error "__WORDSIZE not 64 nor 32"
 #endif
@@ -285,21 +285,21 @@ extern uint32_t cs_log_masks[VIEO_LAST_MOD_ID+1];
 #define IB_LOG_MOD_FMT0(sev, modid, p1) \
 	IB_LOG_MOD_FMT_DATA(sev, modid, "%s%s%s%s%s", p1, 0)
 #define IB_LOG_FMTU(sev, p1, p2) \
-	IB_LOG_FMT_DATA(sev, "%s%s%s%s%s %"CS64"u", p1, (LogVal64_t)(LogVal_t)p2)
+	IB_LOG_FMT_DATA(sev, "%s%s%s%s%s %"CS64u, p1, (LogVal64_t)p2)
 #define IB_LOG_MOD_FMTU(sev, modid, p1, p2) \
-	IB_LOG_MOD_FMT_DATA(sev, modid, "%s%s%s%s%s %"CS64"u", p1, (LogVal64_t)(LogVal_t)p2)
+	IB_LOG_MOD_FMT_DATA(sev, modid, "%s%s%s%s%s %"CS64u, p1, (LogVal64_t)p2)
 #define IB_LOG_FMTX(sev, p1, p2) \
-	IB_LOG_FMT_DATA(sev, "%s%s%s%s%s 0x%"CS64"x", p1, (LogVal64_t)(LogVal_t)p2)
+	IB_LOG_FMT_DATA(sev, "%s%s%s%s%s 0x%"CS64x, p1, (LogVal64_t)p2)
 #define IB_LOG_MOD_FMTX(sev, modid, p1, p2) \
-	IB_LOG_MOD_FMT_DATA(sev, modid, "%s%s%s%s%s 0x%"CS64"x", p1, (LogVal64_t)(LogVal_t)p2)
+	IB_LOG_MOD_FMT_DATA(sev, modid, "%s%s%s%s%s 0x%"CS64x, p1, (LogVal64_t)p2)
 #define IB_LOG_FMTLX(sev, p1, p2) \
-	IB_LOG_FMT_DATA(sev, "%s%s%s%s%s 0x%"CS64"x", p1, (LogVal64_t)p2)
+	IB_LOG_FMT_DATA(sev, "%s%s%s%s%s 0x%"CS64x, p1, (LogVal64_t)p2)
 #define IB_LOG_MOD_FMTLX(sev, modid, p1, p2) \
-	IB_LOG_MOD_FMT_DATA(sev, modid, "%s%s%s%s%s 0x%"CS64"x", p1, (LogVal64_t)p2)
+	IB_LOG_MOD_FMT_DATA(sev, modid, "%s%s%s%s%s 0x%"CS64x, p1, (LogVal64_t)p2)
 #define IB_LOG_FMT64(sev, p1, p2) \
-	IB_LOG_FMT_DATA(sev, "%s%s%s%s%s %"CS64"u", p1, (LogVal64_t)p2)
+	IB_LOG_FMT_DATA(sev, "%s%s%s%s%s %"CS64u, p1, (LogVal64_t)p2)
 #define IB_LOG_MOD_FMT64(sev, modid, p1, p2) \
-	IB_LOG_MOD_FMT_DATA(sev, modid, "%s%s%s%s%s %"CS64"u", p1, (LogVal64_t)p2)
+	IB_LOG_MOD_FMT_DATA(sev, modid, "%s%s%s%s%s %"CS64u, p1, (LogVal64_t)p2)
 #define IB_LOG_FMTSTR(sev, p1, p2) \
 	IB_LOG_FMT_DATA(sev, "%s%s%s%s%s %s", p1, LOG_PTR(p2))
 #define IB_LOG_MOD_FMTSTR(sev, modid, p1, p2) \
@@ -325,21 +325,21 @@ extern uint32_t cs_log_masks[VIEO_LAST_MOD_ID+1];
 #define IB_LOG_MOD_FMT0(sev, modid, p1) \
 	IB_LOG_MOD_FMT(sev, modid, "%s", p1)
 #define IB_LOG_FMTU(sev, p1, p2) \
-	IB_LOG_FMT(sev, "%s %"CS64"u", p1, (LogVal64_t)(LogVal_t)p2)
+	IB_LOG_FMT(sev, "%s %"CS64u, p1, (LogVal64_t)p2)
 #define IB_LOG_MOD_FMTU(sev, modid, p1, p2) \
-	IB_LOG_MOD_FMT(sev, modid, "%s %"CS64"u", p1, (LogVal64_t)(LogVal_t)p2)
+	IB_LOG_MOD_FMT(sev, modid, "%s %"CS64u, p1, (LogVal64_t)p2)
 #define IB_LOG_FMTX(sev,p1, p2) \
-	IB_LOG_FMT(sev, "%s 0x%"CS64"x", p1, (LogVal64_t)(LogVal_t)p2)
+	IB_LOG_FMT(sev, "%s 0x%"CS64x, p1, (LogVal64_t)p2)
 #define IB_LOG_MOD_FMTX(sev,modid,p1, p2) \
-	IB_LOG_MOD_FMT(sev, modid, "%s 0x%"CS64"x", p1, (LogVal64_t)(LogVal_t)p2)
+	IB_LOG_MOD_FMT(sev, modid, "%s 0x%"CS64x, p1, (LogVal64_t)p2)
 #define IB_LOG_FMTLX(sev, p1, p2) \
-	IB_LOG_FMT(sev, "%s 0x%"CS64"x", p1, (LogVal64_t)p2)
+	IB_LOG_FMT(sev, "%s 0x%"CS64x, p1, (LogVal64_t)p2)
 #define IB_LOG_MOD_FMTLX(sev, modid, p1, p2) \
-	IB_LOG_MOD_FMT(sev, modid, "%s 0x%"CS64"x", p1, (LogVal64_t)p2)
+	IB_LOG_MOD_FMT(sev, modid, "%s 0x%"CS64x, p1, (LogVal64_t)p2)
 #define IB_LOG_FMT64(sev, p1, p2) \
-	IB_LOG_FMT(sev, "%s %"CS64"u", p1, (LogVal64_t)p2)
+	IB_LOG_FMT(sev, "%s %"CS64u, p1, (LogVal64_t)p2)
 #define IB_LOG_MOD_FMT64(sev, modid, p1, p2) \
-	IB_LOG_MOD_FMT(sev, modid, "%s %"CS64"u", p1, (LogVal64_t)p2)
+	IB_LOG_MOD_FMT(sev, modid, "%s %"CS64u, p1, (LogVal64_t)p2)
 #define IB_LOG_FMTSTR(sev, p1, p2) \
 	IB_LOG_FMT(sev, "%s %s", p1, p2)
 #define IB_LOG_MOD_FMTSTR(sev, modid, p1, p2) \
@@ -938,82 +938,83 @@ extern uint32_t cs_log_masks[VIEO_LAST_MOD_ID+1];
 // but will require callers to use LOG_PTR macro
 #define IB_MOD_ENTER(modid, p1,p2,p3,p4,p5) 					\
 	do { if (IB_LOG_IS_INTERESTED_MOD(VS_LOG_ENTER, modid) && ! vs_log_filter() ) \
-		LOG_DEBUG5(MOD_ESM, "SM Enter: %s%s %llu %llu %llu %llu %llu", \
+		LOG_DEBUG5(MOD_ESM, "SM Enter: %s%s %llu %llu %llu %llu", \
 			LOG_PTR(cs_log_get_module_prefix(modid)),LOG_PTR(p1), \
-			LOG_ARG((LogVal_t)p2), LOG_ARG((LogVal_t)p3), \
-		 	LOG_ARG((LogVal_t)p4), LOG_ARG((LogVal_t)p5)); \
+			LOG_ARG((LogVal64_t)p2), LOG_ARG((LogVal64_t)p3), \
+			LOG_ARG((LogVal64_t)p4), LOG_ARG((LogVal64_t)p5)); \
 	} while (0)
 #define IB_LOG_MOD_ARGS1(modid, p1) 					\
 	do { if (IB_LOG_IS_INTERESTED_MOD(VS_LOG_ENTER, modid) && ! vs_log_filter() ) \
 		LOG_DEBUG5(MOD_ESM, "SM Args: %s %llu", \
 			LOG_PTR(cs_log_get_module_prefix(modid)), \
-			LOG_ARG((LogVal_t)p1), 0, 0, 0, 0); \
+			LOG_ARG((LogVal64_t)p1), 0, 0, 0, 0); \
 	} while (0)
 #define IB_LOG_MOD_ARGS2(modid, p1,p2) 					\
 	do { if (IB_LOG_IS_INTERESTED_MOD(VS_LOG_ENTER, modid) && ! vs_log_filter() ) \
 		LOG_DEBUG5(MOD_ESM, "SM Args: %s %llu %llu", \
 			LOG_PTR(cs_log_get_module_prefix(modid)), \
-			LOG_ARG((LogVal_t)p1), LOG_ARG((LogVal_t)p2), 0, 0, 0); \
+			LOG_ARG((LogVal64_t)p1), LOG_ARG((LogVal64_t)p2), 0, 0, 0); \
 	} while (0)
 #define IB_LOG_MOD_ARGS3(modid, p1,p2,p3) 					\
 	do { if (IB_LOG_IS_INTERESTED_MOD(VS_LOG_ENTER, modid) && ! vs_log_filter() ) \
 		LOG_DEBUG5(MOD_ESM, "SM Args: %s %llu %llu %llu", \
 			LOG_PTR(cs_log_get_module_prefix(modid)), \
-			LOG_ARG((LogVal_t)p1), LOG_ARG((LogVal_t)p2), \
-			LOG_ARG((LogVal_t)p3), 0, 0); \
+			LOG_ARG((LogVal64_t)p1), LOG_ARG((LogVal64_t)p2), \
+			LOG_ARG((LogVal64_t)p3), 0, 0); \
 	} while (0)
 #define IB_LOG_MOD_ARGS4(modid, p1,p2,p3,p4) 					\
 	do { if (IB_LOG_IS_INTERESTED_MOD(VS_LOG_ENTER, modid) && ! vs_log_filter() ) \
 		LOG_DEBUG5(MOD_ESM, "SM Args: %s %llu %llu %llu %llu", \
 			LOG_PTR(cs_log_get_module_prefix(modid)), \
-			LOG_ARG((LogVal_t)p1), LOG_ARG((LogVal_t)p2), \
-			LOG_ARG((LogVal_t)p3), LOG_ARG((LogVal_t)p4), 0); \
+			LOG_ARG((LogVal64_t)p1), LOG_ARG((LogVal64_t)p2), \
+			LOG_ARG((LogVal64_t)p3), LOG_ARG((LogVal64_t)p4), 0); \
 	} while (0)
 #define IB_LOG_MOD_ARGS5(modid, p1,p2,p3,p4,p5) 					\
 	do { if (IB_LOG_IS_INTERESTED_MOD(VS_LOG_ENTER, modid) && ! vs_log_filter() ) \
 		LOG_DEBUG5(MOD_ESM, "SM Args: %s %llu %llu %llu %llu %llu", \
 			LOG_PTR(cs_log_get_module_prefix(modid)), \
-			LOG_ARG((LogVal_t)p1), LOG_ARG((LogVal_t)p2), \
-			LOG_ARG((LogVal_t)p3), LOG_ARG((LogVal_t)p4), \
-			LOG_ARG((LogVal_t)p5)); \
+			LOG_ARG((LogVal64_t)p1), LOG_ARG((LogVal64_t)p2), \
+			LOG_ARG((LogVal64_t)p3), LOG_ARG((LogVal64_t)p4), \
+			LOG_ARG((LogVal64_t)p5)); \
 	} while (0)
 #else
 #define IB_MOD_ENTER(modid,p1,p2,p3,p4,p5) 					\
 		do { if (IB_LOG_IS_INTERESTED_MOD(VS_LOG_ENTER, modid) ) \
 			vs_log_output(VS_LOG_ENTER, modid, __func__, NULL, \
-				   	"%s %"CS64u" %"CS64u" %"CS64u" %"CS64u" %"CS64u, \
-				   	p1, (LogVal_t)p2, (LogVal_t)p3, (LogVal_t)p4, \
-				   	(LogVal_t)p5); \
-	   	} while (0)
+					"%s %"CS64u" %"CS64u" %"CS64u" %"CS64u, \
+					p1, (LogVal64_t)p2, (LogVal64_t)p3, (LogVal64_t)p4, \
+					(LogVal64_t)p5); \
+		} while (0)
 #define IB_LOG_MOD_ARGS1(modid, p1) 					\
 		do { if (IB_LOG_IS_INTERESTED_MOD(VS_LOG_ENTER, modid) ) \
 			vs_log_output(VS_LOG_ARGS, modid, __func__, NULL, \
-				   	"%"CS64u, (LogVal_t)p1); \
-	   	} while (0)
+					"%"CS64u, (LogVal64_t)p1); \
+		} while (0)
 #define IB_LOG_MOD_ARGS2(modid, p1,p2) 					\
 		do { if (IB_LOG_IS_INTERESTED_MOD(VS_LOG_ENTER, modid) ) \
 			vs_log_output(VS_LOG_ARGS, modid, __func__, NULL, \
-				   	"%"CS64u" %"CS64u, (LogVal_t)p1, (LogVal_t)p2); \
-	   	} while (0)
+					"%"CS64u" %"CS64u, (LogVal64_t)p1, (LogVal64_t)p2); \
+		} while (0)
 #define IB_LOG_MOD_ARGS3(modid, p1,p2,p3) 					\
 		do { if (IB_LOG_IS_INTERESTED_MOD(VS_LOG_ENTER, modid) ) \
 			vs_log_output(VS_LOG_ARGS, modid, __func__, NULL, \
-				   	"%"CS64u" %"CS64u" %"CS64u, \
-				   	(LogVal_t)p1, (LogVal_t)p2, (LogVal_t)p3); \
-	   	} while (0)
+					"%"CS64u" %"CS64u" %"CS64u, \
+					(LogVal64_t)p1, (LogVal64_t)p2, (LogVal64_t)p3); \
+		} while (0)
 #define IB_LOG_MOD_ARGS4(modid, p1,p2,p3,p4) 					\
 		do { if (IB_LOG_IS_INTERESTED_MOD(VS_LOG_ENTER, modid) ) \
 			vs_log_output(VS_LOG_ARGS, modid, __func__, NULL, \
-				   	"%"CS64u" %"CS64u" %"CS64u" %"CS64u, \
-				   	(LogVal_t)p1, (LogVal_t)p2, (LogVal_t)p3, (LogVal_t)p4); \
-	   	} while (0)
+					"%"CS64u" %"CS64u" %"CS64u" %"CS64u, \
+					(LogVal64_t)p1, (LogVal64_t)p2, (LogVal64_t)p3, \
+					(LogVal64_t)p4); \
+		} while (0)
 #define IB_LOG_MOD_ARGS5(modid, p1,p2,p3,p4,p5) 					\
 		do { if (IB_LOG_IS_INTERESTED_MOD(VS_LOG_ENTER, modid) ) \
 			vs_log_output(VS_LOG_ARGS, modid, __func__, NULL, \
-				   	"%"CS64u" %"CS64u" %"CS64u" %"CS64u" %"CS64u, \
-				   	(LogVal_t)p1, (LogVal_t)p2, (LogVal_t)p3, (LogVal_t)p4, \
-				   	(LogVal_t)p5); \
-	   	} while (0)
+					"%"CS64u" %"CS64u" %"CS64u" %"CS64u" %"CS64u, \
+					(LogVal64_t)p1, (LogVal64_t)p2, (LogVal64_t)p3, \
+					(LogVal64_t)p4, (LogVal64_t)p5); \
+		} while (0)
 #endif
 #endif
 
@@ -1143,7 +1144,7 @@ vs_log_output(uint32_t sev, /* severity */
 		const char *function, /* optional function name */
 		const char *vf,	/* optional vFabric name */
 		const char *format, ...
-		);
+		) __attribute__((format(printf,5,6)));
 
 FILE* vs_log_get_logfile_fd(void);
 

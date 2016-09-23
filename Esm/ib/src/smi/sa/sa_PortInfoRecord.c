@@ -268,8 +268,9 @@ sa_PortInfoRecord_GetTable(Mai_t *maip, uint32_t *records) {
 //  Verify the size of the data received for the request
 //
 	if ( maip->datasize-sizeof(STL_SA_MAD_HEADER) < sizeof(STL_PORTINFO_RECORD) ) {
-		IB_LOG_ERROR_FMT("sa_PortInfoRecord_GetTable",
-						 "invalid MAD length; size of STL_PORTINFO_RECORD[%lu], datasize[%d]", sizeof(STL_PORTINFO_RECORD), maip->datasize-sizeof(STL_SA_MAD_HEADER));
+		IB_LOG_ERROR_FMT(__func__,
+			"invalid MAD length; size of STL_PORTINFO_RECORD[%"PRISZT"], datasize[%d]",
+			sizeof(STL_PORTINFO_RECORD), (int)(maip->datasize - sizeof(STL_SA_MAD_HEADER)));
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 		IB_EXIT("sa_PortInfoRecord_GetTable", MAD_STATUS_SA_REQ_INVALID);
 		return (MAD_STATUS_SA_REQ_INVALID);
@@ -418,7 +419,8 @@ sa_IbPortInfoRecord_GetTable(Mai_t *maip, uint32_t *records) {
     // verify the size of the data received for the request
 	if (maip->datasize-sizeof(STL_SA_MAD_HEADER) < sizeof(IB_PORTINFO_RECORD)) {
 		IB_LOG_ERROR_FMT(__func__,
-						 "invalid MAD length; size of IB_PORTINFO_RECORD[%lu], datasize[%d]", sizeof(IB_PORTINFO_RECORD), maip->datasize-sizeof(STL_SA_MAD_HEADER));
+			"invalid MAD length; size of IB_PORTINFO_RECORD[%"PRISZT"], datasize[%d]",
+			sizeof(IB_PORTINFO_RECORD), (int)(maip->datasize - sizeof(STL_SA_MAD_HEADER)));
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 		IB_EXIT(__func__, MAD_STATUS_SA_REQ_INVALID);
 		return (MAD_STATUS_SA_REQ_INVALID);

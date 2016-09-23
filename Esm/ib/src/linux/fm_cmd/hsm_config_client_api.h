@@ -52,10 +52,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OPTIONAL
 #endif /* #ifndef OPTIONAL */
 
-#ifndef uint64_t
-#define uint64_t unsigned long long
-#endif
-
 
 
 typedef struct _fm_config_conx_hdl	*p_fm_config_conx_hdlt;

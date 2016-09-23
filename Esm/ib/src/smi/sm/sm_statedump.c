@@ -121,7 +121,7 @@ static Status_t dumpStructure(void * ptr, size_t size, FILE * file,
 		if (fwrite(ptr, size, 1, file) != 1)
 		{
 			IB_LOG_ERROR_FMT(__func__, "Write of structure at address %p "
-			       " (size = %d0 failed: %s", ptr, size,  strerror(errno));
+			       " (size = %"PRISZT" failed: %s", ptr, size, strerror(errno));
 			return VSTATUS_BAD;
 		}
 

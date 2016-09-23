@@ -21,7 +21,7 @@
   ghost@aladdin.com
 
  */
-/*$Id: Md5_Deutsch.h,v 1.1.1.1 2002/02/09 06:08:34 pkelsey Exp $ */
+/*$Id$ */
 /*
   Independent implementation of MD5 (RFC 1321).
 

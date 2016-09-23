@@ -72,7 +72,7 @@ CheckPreReqs()
 			if [ $e -eq 0 ]; then
 				 echo
 			fi
-			echo "ERROR: Before re-compiling OpenMPI you must first install the ${PREREQ[$i]} package." >&2
+			echo "ERROR: Before re-compiling mvapich2 you must first install the ${PREREQ[$i]} package." >&2
 			e+=1;
 		fi
 		i=$((i+1))
@@ -116,7 +116,7 @@ Usage()
 	echo "            Default is '/'" >&2
 	echo "" >&2
 	echo "The RPMs built during this process will be installed on this system" >&2
-	echo "they can also be found in /opt/opa/src/MPI" >&2
+	echo "they can also be found in /usr/lib/opa/src/MPI" >&2
 	exit 2
 }
 
@@ -208,10 +208,10 @@ then
 fi
 if [ "$iflag" = n ]
 then
-	cd /opt/opa/src/MPI
+	cd /usr/lib/opa/src/MPI
 	if [ $? != 0 ]
 	then
-		echo "ERROR: Unable to cd to /opt/opa/src/MPI" >&2
+		echo "ERROR: Unable to cd to /usr/lib/opa/src/MPI" >&2
 		exit 1
 	fi
 fi
@@ -284,7 +284,7 @@ then
 		choices+=("ts-psm")
 		PS3="Select MVAPICH2 Implementation (ts-psm recommended): "
 	fi
-	if rpm -qa|grep hfi1-psm >/dev/null 2>&1
+	if rpm -qa|grep libpsm2 >/dev/null 2>&1
 	then
 		choices+=("opa-psm")
 		PS3="Select MVAPICH2 Implementation (opa-psm recommended): "
@@ -334,7 +334,7 @@ case $interface in
 			# PSM indicated by qlc suffix so user can ID PSM vs verbs MPIs
 			mvapich2_path_suffix="-hfi"
 			mvapich2_rpm_suffix="_hfi"
-   			PREREQ+=("hfi1-psm")
+   			PREREQ+=("libpsm2")
 		else
 			# PSM indicated by qlc suffix so user can ID PSM vs verbs MPIs
 			mvapich2_path_suffix="-qlc"
@@ -413,11 +413,11 @@ logfile=make.mvapich2.$interface.$compiler
 	BUILD_DIR=${BUILD_DIR:-/var/tmp/Intel-mvapich2}
 	BUILD_ROOT="$BUILD_DIR/build";
 	RPM_DIR="$BUILD_DIR/OFEDRPMS";
-	DESTDIR=/opt/opa/src/MPI
+	DESTDIR=/usr/lib/opa/src/MPI
 	if [ "$iflag" = n ]
 	then
-	    mvapich2_srpm=/opt/opa/src/MPI/mvapich2-*.src.rpm
-	    mpitests_srpm=/opt/opa/src/MPI/mpitests-*.src.rpm
+	    mvapich2_srpm=/usr/lib/opa/src/MPI/mvapich2-*.src.rpm
+	    mpitests_srpm=/usr/lib/opa/src/MPI/mpitests-*.src.rpm
 	else
 	    mvapich2_srpm=./SRPMS/mvapich2-*.src.rpm
 	    mpitests_srpm=./SRPMS/mpitests-*.src.rpm
@@ -456,10 +456,10 @@ logfile=make.mvapich2.$interface.$compiler
 	echo "=========================================================="
 	if [ "$iflag" = n ]
 	then
-		echo "MPICH_PREFIX='$MPICH_PREFIX'"> /opt/opa/src/MPI/.mpiinfo
-		#echo "MPI_RUNTIME='$MPICH_PREFIX/bin $MPICH_PREFIX/lib $MPICH_PREFIX/tests'">> /opt/opa/src/MPI/.mpiinfo
-		echo "MPI_RPMS='mvapich2_$compiler$mvapich2_rpm_suffix-$mvapich2_fullversion.$target_cpu.rpm mpitests_mvapich2_$compiler$mvapich2_rpm_suffix-$mpitests_fullversion.$target_cpu.rpm'">> /opt/opa/src/MPI/.mpiinfo
-		chmod +x /opt/opa/src/MPI/.mpiinfo
+		echo "MPICH_PREFIX='$MPICH_PREFIX'"> /usr/lib/opa/src/MPI/.mpiinfo
+		#echo "MPI_RUNTIME='$MPICH_PREFIX/bin $MPICH_PREFIX/lib $MPICH_PREFIX/tests'">> /usr/lib/opa/src/MPI/.mpiinfo
+		echo "MPI_RPMS='mvapich2_$compiler$mvapich2_rpm_suffix-$mvapich2_fullversion.$target_cpu.rpm mpitests_mvapich2_$compiler$mvapich2_rpm_suffix-$mpitests_fullversion.$target_cpu.rpm'">> /usr/lib/opa/src/MPI/.mpiinfo
+		chmod +x /usr/lib/opa/src/MPI/.mpiinfo
 	fi
 
 	echo

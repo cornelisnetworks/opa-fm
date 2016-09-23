@@ -151,9 +151,8 @@ static void PmFailPacketQuery(cntxt_entry_t *entry, PmDispatcherPacket_t *disppa
 static void PmNodeMadFail(Mai_t *mad, PmNode_t *pmnodep, const char* message)
 {
 	IB_LOG_INFO_FMT(__func__, "PMA response for %s with bad status: 0x%x From %.*s Guid "FMT_U64" LID 0x%x",
-				message, mad->base.status,
-				sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
-			   	pmnodep->guid, pmnodep->dlid);
+		message, mad->base.status, (int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
+		pmnodep->guid, pmnodep->dlid);
 }
 
 static void PmMadFailNodeQuery(cntxt_entry_t *entry, Mai_t *mad, PmDispatcherNode_t *dispnode,
@@ -169,9 +168,8 @@ static void PmPacketMadFail(Mai_t *mad, PmDispatcherPacket_t *disppacket, const 
 	PmNode_t *pmnodep = disppacket->dispnode->info.pmnodep;
 
 	IB_LOG_INFO_FMT(__func__, "PMA response for %s with bad status: 0x%x From %.*s Guid "FMT_U64" LID 0x%x Ports %u",
-				message, mad->base.status,
-				sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
-			   	pmnodep->guid, pmnodep->dlid, (mad->base.amod >> 24) & 0xFF);
+		message, mad->base.status, (int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
+		pmnodep->guid, pmnodep->dlid, (mad->base.amod >> 24) & 0xFF);
 #endif
 }
 
@@ -185,9 +183,8 @@ static void PmMadFailPacketQuery(cntxt_entry_t *entry, Mai_t *mad, PmDispatcherP
 static void PmNodeMadAttrWrong(Mai_t *mad, PmNode_t *pmnodep, const char* message)
 {
 	IB_LOG_INFO_FMT(__func__, "PMA response for %s with wrong Attr: 0x%x From %.*s Guid "FMT_U64" LID 0x%x",
-				message, mad->base.aid,
-				sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
-			   	pmnodep->guid, pmnodep->dlid);
+		message, mad->base.aid, (int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
+		pmnodep->guid, pmnodep->dlid);
 }
 
 static void PmMadAttrWrongNodeQuery(cntxt_entry_t *entry, Mai_t *mad, PmDispatcherNode_t *dispnode,
@@ -200,9 +197,8 @@ static void PmMadAttrWrongNodeQuery(cntxt_entry_t *entry, Mai_t *mad, PmDispatch
 static void PmNodeMadSelectWrong(Mai_t *mad, PmNode_t *pmnodep, const char* message)
 {
 	IB_LOG_INFO_FMT(__func__, "PMA response for %s with wrong Port/VL Select From %.*s Guid "FMT_U64" LID 0x%x",
-				message, 
-				sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
-			   	pmnodep->guid, pmnodep->dlid);
+		message, (int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
+		pmnodep->guid, pmnodep->dlid);
 }
 
 static void PmMadAttrWrongPacketQuery(cntxt_entry_t *entry, Mai_t *mad, PmDispatcherPacket_t *disppacket,
@@ -231,8 +227,8 @@ static void PmCopyPortStatus(STL_PORT_STATUS_RSP *madp, PmDispatcherPacket_t * d
 	PmNode_t *pmnodep = pmportp->pmnodep;
 
 	IB_LOG_INFO_FMT(__func__, "%.*s Guid "FMT_U64" LID 0x%x Port %u",
-				sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
-			   	pmnodep->guid, pmnodep->dlid, pmportp->portNum);
+		(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
+		pmnodep->guid, pmnodep->dlid, pmportp->portNum);
 #endif
 
 	size_counters = (size_t)&madp->UncorrectableErrors - (size_t)&madp->PortXmitData + 1;
@@ -264,7 +260,7 @@ static void PmCopyDataPortCounters(STL_DATA_PORT_COUNTERS_RSP *madp, PmDispatche
 	PmNode_t *pmnodep = dispnode->info.pmnodep;
 
 	IB_LOG_INFO_FMT(__func__, "%.*s Guid "FMT_U64" LID 0x%x PortSelectMask[3] "FMT_U64" VLSelectMask 0x%08x",
-		sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
+		(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
 		pmnodep->guid, pmnodep->dlid,
 		madp->PortSelectMask[3], madp->VLSelectMask);
 #endif
@@ -321,7 +317,7 @@ static void PmCopyErrorPortCounters(STL_ERROR_PORT_COUNTERS_RSP *madp, PmDispatc
 	PmNode_t *pmnodep = disppacket->dispnode->info.pmnodep;
 
 	IB_LOG_INFO_FMT(__func__, "%.*s Guid "FMT_U64" LID 0x%x PortSelectMask[3] "FMT_U64" VLSelectMask 0x%08x",
-		sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
+		(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
 		pmnodep->guid, pmnodep->dlid,
 		madp->PortSelectMask[3], madp->VLSelectMask);
 #endif
@@ -413,8 +409,8 @@ static Status_t PmSendGetClassPortInfo(Pm_t *pm, PmDispatcherNode_t *dispnode)
 	// fill in rest of entry->mad.data as needed
 
 	IB_LOG_DEBUG1_FMT(__func__,"%.*s Guid "FMT_U64" LID 0x%x",
-				sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
-			   	pmnodep->guid, pmnodep->dlid);
+		(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
+		pmnodep->guid, pmnodep->dlid);
 
 	cs_cntxt_set_callback(entry, DispatchNodeCallback, dispnode);
 	if (VSTATUS_OK ==  PmDispatcherSend(pm, entry))
@@ -465,9 +461,8 @@ static Status_t PmSendClearPortStatus(Pm_t *pm, PmDispatcherNode_t *dispnode,
 	p->CounterSelectMask.AsReg32 = disppacket->DispPorts[0].pPortImage->clearSelectMask.AsReg32;
 
 	IB_LOG_DEBUG1_FMT(__func__, "%.*s Guid "FMT_U64" LID 0x%x PortSelectMask[3] "FMT_U64" SelMask 0x%04x",
-				sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
-				pmnodep->guid, pmnodep->dlid, 
-				p->PortSelectMask[3], p->CounterSelectMask.AsReg32);
+		(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
+		pmnodep->guid, pmnodep->dlid, p->PortSelectMask[3], p->CounterSelectMask.AsReg32);
 
 	BSWAP_STL_CLEAR_PORT_STATUS_REQ(p);
 	cs_cntxt_set_callback(entry, DispatchPacketCallback, disppacket);
@@ -497,12 +492,12 @@ static Status_t PmSendGetPortStatus(Pm_t *pm, PmDispatcherNode_t *dispnode,
 	// fill in rest of entry->mad.data as needed
 	p = (STL_PORT_STATUS_REQ *)entry->mad.data;
 	p->PortNumber = disppacket->DispPorts[0].pmportp->portNum;
-	p->VLSelectMask = disppacket->DispPorts[0].dispNodeSwPort->VLSelectMask;
+	p->VLSelectMask = disppacket->VLSelectMask;
 	memset(p->Reserved, 0, sizeof(p->Reserved));
 
 	IB_LOG_DEBUG1_FMT(__func__, "%.*s Guid "FMT_U64" LID 0x%x Port %d",
-				sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
-				pmnodep->guid, pmnodep->dlid, disppacket->DispPorts[0].pmportp->portNum);
+		(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
+		pmnodep->guid, pmnodep->dlid, disppacket->DispPorts[0].pmportp->portNum);
 
 	BSWAP_STL_PORT_STATUS_REQ(p);
 	cs_cntxt_set_callback(entry, DispatchPacketCallback, disppacket);
@@ -538,13 +533,13 @@ static Status_t PmSendGetDataPortCounters(Pm_t *pm, PmDispatcherNode_t *dispnode
     for (i = 0; i < disppacket->numPorts; i++) 
         setPortSelectMask(p->PortSelectMask, disppacket->DispPorts[i].pmportp->portNum, (boolean)(!i));
    
-	p->VLSelectMask = disppacket->DispPorts[0].dispNodeSwPort->VLSelectMask;
+	p->VLSelectMask = disppacket->VLSelectMask;
 
 	p->res.s.LocalLinkIntegrityResolution = StlResolutionToShift(pm_config.resolution.LocalLinkIntegrity, 8);
 	p->res.s.LinkErrorRecoveryResolution = StlResolutionToShift(pm_config.resolution.LinkErrorRecovery, 2);
 
 	IB_LOG_DEBUG1_FMT(__func__, "%.*s Guid "FMT_U64" LID 0x%x PortSelectMask[3]: "FMT_U64" ",
-		sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
+		(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
 		pmnodep->guid, pmnodep->dlid, p->PortSelectMask[3]);
 
 	BSWAP_STL_DATA_PORT_COUNTERS_REQ(p);
@@ -582,11 +577,11 @@ static Status_t PmSendGetErrorPortCounters(Pm_t *pm, PmDispatcherNode_t *dispnod
     for (i = 0; i < disppacket->numPorts; i++) 
         setPortSelectMask(p->PortSelectMask, disppacket->DispPorts[i].pmportp->portNum, (boolean)(!i));
    
-	p->VLSelectMask = disppacket->DispPorts[0].dispNodeSwPort->VLSelectMask;
+	p->VLSelectMask = disppacket->VLSelectMask;
 
 	IB_LOG_DEBUG1_FMT(__func__, "%.*s Guid "FMT_U64" LID 0x%x PortSelectMask[3]: "FMT_U64" VLSelectMask 0x%08x",
-				sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
-			   	pmnodep->guid, pmnodep->dlid, p->PortSelectMask[3], p->VLSelectMask );
+		(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
+		pmnodep->guid, pmnodep->dlid, p->PortSelectMask[3], p->VLSelectMask );
 
 	BSWAP_STL_ERROR_PORT_COUNTERS_REQ(p);
 	cs_cntxt_set_callback(entry, DispatchPacketCallback, disppacket);
@@ -603,9 +598,9 @@ static void DispatchPacketDone(Pm_t *pm, PmDispatcherPacket_t *disppacket)
 	PmDispatcherNode_t *dispnode = disppacket->dispnode;
 
 	IB_LOG_DEBUG3_FMT(__func__,"%.*s Guid "FMT_U64" LID 0x%x",
-				sizeof(dispnode->info.pmnodep->nodeDesc.NodeString),
-			   	dispnode->info.pmnodep->nodeDesc.NodeString,
-			   	dispnode->info.pmnodep->guid, dispnode->info.pmnodep->dlid);
+		(int)sizeof(dispnode->info.pmnodep->nodeDesc.NodeString),
+		dispnode->info.pmnodep->nodeDesc.NodeString,
+		dispnode->info.pmnodep->guid, dispnode->info.pmnodep->dlid);
 
 	DEBUG_ASSERT(dispnode->info.state != PM_DISP_NODE_DONE);
 	// if dispport->failed,
@@ -633,7 +628,7 @@ static void DispatchPacketCallback(cntxt_entry_t *entry, Status_t status, void *
 	STL_CLEAR_PORT_STATUS *clearPortStatusMad;
 
 	IB_LOG_DEBUG3_FMT( __func__,"%.*s Guid "FMT_U64" LID 0x%x NodeState %u Ports %u PortSelectMask[3] "FMT_U64" ",
-		sizeof(dispnode->info.pmnodep->nodeDesc.NodeString), dispnode->info.pmnodep->nodeDesc.NodeString,
+		(int)sizeof(dispnode->info.pmnodep->nodeDesc.NodeString), dispnode->info.pmnodep->nodeDesc.NodeString,
 		dispnode->info.pmnodep->guid, dispnode->info.pmnodep->dlid, dispnode->info.state,
 		disppacket->numPorts, disppacket->PortSelectMask[3] );
 
@@ -673,7 +668,7 @@ static void DispatchPacketCallback(cntxt_entry_t *entry, Status_t status, void *
 			} else {
 				BSWAP_STL_DATA_PORT_COUNTERS_RSP(dataPortCountersMad);
 				if ( (dataPortCountersMad->PortSelectMask[3] != disppacket->PortSelectMask[3]) ||
-					(dataPortCountersMad->VLSelectMask != disppacket->DispPorts[0].dispNodeSwPort->VLSelectMask) ) {
+					(dataPortCountersMad->VLSelectMask != disppacket->VLSelectMask) ) {
 					PmMadSelectWrongPacketQuery(entry, mad, disppacket, "Get(DataPortCounters)");
 					goto nextpacket;	// PacketDone called on Fail
 				} else {
@@ -699,7 +694,7 @@ static void DispatchPacketCallback(cntxt_entry_t *entry, Status_t status, void *
 		} else {
 			BSWAP_STL_ERROR_PORT_COUNTERS_RSP(errorPortCountersMad);
 			if ( (errorPortCountersMad->PortSelectMask[3] != disppacket->PortSelectMask[3]) ||
-				(errorPortCountersMad->VLSelectMask != disppacket->DispPorts[0].dispNodeSwPort->VLSelectMask) ) {
+				(errorPortCountersMad->VLSelectMask != disppacket->VLSelectMask) ) {
 				PmMadSelectWrongPacketQuery(entry, mad, disppacket, "Get(ErrorPortCounters)");
 				goto nextpacket;	// PacketDone called on Fail
 			} else {
@@ -854,12 +849,25 @@ int PmDispatcherSwitchPortClearCompare(const void *a, const void *b)
     return 0;
 }	// End of PmDispatcherSwitchPortClearCompare()
 
+// Compare function used by qsort() to sort DispPorts array in disppacket struct
+// return n < 0 for a < b
+//        n = 0 for a == b
+//        n > 0 for a > b
+int PmDispatcherPortNumCompare(const void *a, const void *b)
+{
+	// First Level Compare: NULL check -> Decending
+	PmDispatcherPort_t *A = (PmDispatcherPort_t *)a;
+	PmDispatcherPort_t *B = (PmDispatcherPort_t *)b;
+
+	return (A->pmportp->portNum - B->pmportp->portNum);
+}	// End of PmDispatcherPortNumCompare()
+
 // start processing of a node
 // returns OK if a node was dispatched, returns NOT_FOUND if none dispatched
 static Status_t DispatchNode(Pm_t *pm, PmNode_t *pmnodep, PmDispatcherNode_t *dispnode)
 {
 	IB_LOG_DEBUG3_FMT(__func__,"%.*s Guid "FMT_U64" LID 0x%x",
-		sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
+		(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
 		pmnodep->guid, pmnodep->dlid);
 
 	memset(&dispnode->info, 0, sizeof(dispnode->info));
@@ -884,9 +892,9 @@ static Status_t DispatchNodeNextStep(Pm_t *pm, PmNode_t *pmnodep, PmDispatcherNo
 	uint32 clearCounterSelect;
 	PmPort_t *pmportp;
 
-	IB_LOG_DEBUG3_FMT(__func__,"%.*s Guid "FMT_U64" LID 0x%x NodeState %u ",
-	sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
-	pmnodep->guid, pmnodep->dlid, dispnode->info.state);
+	IB_LOG_DEBUG3_FMT(__func__,"%.*s Guid "FMT_U64" LID 0x%x NodeState %u",
+		(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
+		pmnodep->guid, pmnodep->dlid, dispnode->info.state);
 
 	switch (dispnode->info.state) {
 	case PM_DISP_NODE_NONE:
@@ -902,7 +910,7 @@ static Status_t DispatchNodeNextStep(Pm_t *pm, PmNode_t *pmnodep, PmDispatcherNo
         status = vs_pool_alloc(&pm_pool, size, (void *)&dispnode->info.activePorts);
         if (status != VSTATUS_OK || !dispnode->info.activePorts) {
             IB_LOG_ERROR_FMT(__func__, "PM: Failed to allocate Dispatcher activePorts for Node:%.*s status:%u",
-                sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString, status );
+                (int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString, status );
             return VSTATUS_NOT_FOUND;
         }
         memset(dispnode->info.activePorts, 0, size);
@@ -944,7 +952,7 @@ static Status_t DispatchNodeNextStep(Pm_t *pm, PmNode_t *pmnodep, PmDispatcherNo
 
 		for (i = 0; i < dispnode->info.numPorts; i++)
 			IB_LOG_DEBUG4_FMT( __func__,"%.*s Post-qsort: activePorts[%d]: numVLs %u portNum %u flags 0x%02x VLSelect 0x%08x", 
-				sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString, i,
+				(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString, i,
 				dispnode->info.activePorts[i].NumVLs, dispnode->info.activePorts[i].portNum, 
 				dispnode->info.activePorts[i].flags.AsReg8, dispnode->info.activePorts[i].VLSelectMask);
         
@@ -962,7 +970,7 @@ static Status_t DispatchNodeNextStep(Pm_t *pm, PmNode_t *pmnodep, PmDispatcherNo
 				// Initialize activePorts[] for ErrorPortCounters
 				if (!dispnode->info.activePorts) {
 					IB_LOG_ERROR_FMT(__func__, "PM: No Dispatcher activePorts for Node:%.*s",
-						sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString );
+						(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString );
 					return VSTATUS_NOT_FOUND;
 				}
 				// Sort activePorts[], ordering by number of VLs and VLSelectMask;
@@ -1008,7 +1016,7 @@ static Status_t DispatchNodeNextStep(Pm_t *pm, PmNode_t *pmnodep, PmDispatcherNo
 			// Initialize activePorts[] for ClearPortCounters
 			if (!dispnode->info.activePorts) {
 				IB_LOG_ERROR_FMT(__func__, "PM: No Dispatcher activePorts for Node:%.*s",
-					sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString );
+					(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString );
 				return VSTATUS_NOT_FOUND;
 			}
 			// Sort activePorts[]
@@ -1052,9 +1060,9 @@ static uint8 DispatcherStartSweepAllPorts(Pm_t *pm, PmDispatcherNode_t *dispnode
 #ifndef VIEO_TRACE_DISABLED
 	PmNode_t *pmnodep = dispnode->info.pmnodep;
 
-	IB_LOG_DEBUG3_FMT(__func__,"%.*s Guid "FMT_U64" LID 0x%x NodeState %u ",
-	sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
-	pmnodep->guid, pmnodep->dlid, dispnode->info.state);
+	IB_LOG_DEBUG3_FMT(__func__,"%.*s Guid "FMT_U64" LID 0x%x NodeState %u",
+		(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
+		pmnodep->guid, pmnodep->dlid, dispnode->info.state);
 #endif
 
     for (slot = 0; slot < pm_config.PmaBatchSize; ) {
@@ -1069,7 +1077,7 @@ static uint8 DispatcherStartSweepAllPorts(Pm_t *pm, PmDispatcherNode_t *dispnode
 			break;
 		default:
 			IB_LOG_ERROR_FMT(__func__, "PM: Unknown Return Status (%u) from DispatchNextPacket() Node:%.*s", status,
-				sizeof(dispnode->info.pmnodep->nodeDesc.NodeString), dispnode->info.pmnodep->nodeDesc.NodeString);
+				(int)sizeof(dispnode->info.pmnodep->nodeDesc.NodeString), dispnode->info.pmnodep->nodeDesc.NodeString);
 		}
     }
 
@@ -1090,7 +1098,7 @@ static Status_t DispatchNextPacket(Pm_t *pm, PmDispatcherNode_t *dispnode, PmDis
 	}
       
 	IB_LOG_DEBUG3_FMT(__func__,"%.*s Guid "FMT_U64" LID 0x%x Node State %u",
-		sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
+		(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
 		pmnodep->guid, pmnodep->dlid, dispnode->info.state);
 
 	dispnode->info.nextPort = dispnode->info.activePorts; //reset pointer to the top to grab and skipped over ports
@@ -1153,7 +1161,7 @@ int MergePortIntoPacket(Pm_t *pm, PmDispatcherNode_t *dispnode, PmPort_t *pmport
 	PmPort_t *pmFirstPort;
 
 	IB_LOG_DEBUG3_FMT(__func__,"%.*s Guid "FMT_U64" LID 0x%x Node State %u PortSelectMask[3] "FMT_U64" ",
-		sizeof(dispnode->info.pmnodep->nodeDesc.NodeString), dispnode->info.pmnodep->nodeDesc.NodeString,
+		(int)sizeof(dispnode->info.pmnodep->nodeDesc.NodeString), dispnode->info.pmnodep->nodeDesc.NodeString,
 		dispnode->info.pmnodep->guid, dispnode->info.pmnodep->dlid, 
 		dispnode->info.state, disppacket->PortSelectMask[3]);
 
@@ -1217,6 +1225,7 @@ int MergePortIntoPacket(Pm_t *pm, PmDispatcherNode_t *dispnode, PmPort_t *pmport
             disppacket->DispPorts[0].dispNodeSwPort->flags.s.IsDispatched = 1;
             disppacket->numPorts = 1;
             setPortSelectMask(disppacket->PortSelectMask, pmportp->portNum, TRUE);
+            disppacket->VLSelectMask = dispnode->info.nextPort->VLSelectMask;
             //--if packet is empty copy single packet and mark packet as full
 
             return PM_DISP_SW_MERGE_DONE;              
@@ -1234,8 +1243,8 @@ int MergePortIntoPacket(Pm_t *pm, PmDispatcherNode_t *dispnode, PmPort_t *pmport
 			}
             else {
                 //check to make sure port can be combined into packet. check for similar VL Mask.
-                if( ( dispnode->info.nextPort->VLSelectMask | disppacket->DispPorts[0].dispNodeSwPort->VLSelectMask) 
-                        == disppacket->DispPorts[0].dispNodeSwPort->VLSelectMask) {             
+                if( ( dispnode->info.nextPort->VLSelectMask | disppacket->VLSelectMask)
+                        == disppacket->VLSelectMask) {
                     disppacket->DispPorts[disppacket->numPorts].pmportp = pmportp;
                     disppacket->DispPorts[disppacket->numPorts].dispNodeSwPort = dispnode->info.nextPort;
                     disppacket->DispPorts[disppacket->numPorts].dispnode = dispnode;
@@ -1259,6 +1268,7 @@ int MergePortIntoPacket(Pm_t *pm, PmDispatcherNode_t *dispnode, PmPort_t *pmport
             disppacket->DispPorts[0].dispNodeSwPort->flags.s.IsDispatched = 1;
             disppacket->numPorts = 1;
 			setPortSelectMask(disppacket->PortSelectMask, pmportp->portNum, TRUE);
+			disppacket->VLSelectMask = dispnode->info.nextPort->VLSelectMask;
         }
         return PM_DISP_SW_MERGE_CONTINUE; 
     }
@@ -1314,7 +1324,7 @@ size_t CalculatePortInPacket(PmDispatcherNode_t *dispnode, PmDispatcherPacket_t 
 static Status_t DispatchPacketNextStep(Pm_t *pm, PmDispatcherNode_t *dispnode, PmDispatcherPacket_t *disppacket)
 {
 	IB_LOG_DEBUG3_FMT(__func__,"%.*s Guid "FMT_U64" LID 0x%x Node State %u PortSelectMask[3] "FMT_U64" ",
-		sizeof(dispnode->info.pmnodep->nodeDesc.NodeString),
+		(int)sizeof(dispnode->info.pmnodep->nodeDesc.NodeString),
 		dispnode->info.pmnodep->nodeDesc.NodeString,
 		dispnode->info.pmnodep->guid, dispnode->info.pmnodep->dlid,
 		dispnode->info.state, disppacket->PortSelectMask[3]);
@@ -1324,6 +1334,11 @@ static Status_t DispatchPacketNextStep(Pm_t *pm, PmDispatcherNode_t *dispnode, P
 		return VSTATUS_NOT_FOUND;	// nothing else to do for this port        
     dispnode->info.numOutstandingPackets++;    
 
+	if (disppacket->numPorts > 1) {
+		// Sort DispPorts by Port Number, so that it will match response MAD order
+		qsort(disppacket->DispPorts, (size_t)disppacket->numPorts,
+			sizeof(PmDispatcherPort_t), PmDispatcherPortNumCompare);
+	}
     switch (dispnode->info.state) {
 	case PM_DISP_NODE_GET_DATACOUNTERS:
 		if ( dispnode->info.pmnodep->nodeType == STL_NODE_FI ) {
@@ -1355,7 +1370,7 @@ static void DispatchNodeCallback(cntxt_entry_t *entry, Status_t status, void *da
 	PmNode_t *pmnodep = dispnode->info.pmnodep;
 
 	IB_LOG_DEBUG3_FMT(__func__,"%.*s Guid "FMT_U64" LID 0x%x Node State %u ",
-		sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
+		(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
 		pmnodep->guid, pmnodep->dlid, dispnode->info.state);
 
 	switch (dispnode->info.state) {
@@ -1396,9 +1411,9 @@ nextnode:
 static void DispatchNodeDone(Pm_t *pm, PmDispatcherNode_t *dispnode)
 {
 	IB_LOG_DEBUG3_FMT(__func__,"%.*s Guid "FMT_U64" LID 0x%x",
-				sizeof(dispnode->info.pmnodep->nodeDesc.NodeString),
-			   	dispnode->info.pmnodep->nodeDesc.NodeString,
-			   	dispnode->info.pmnodep->guid, dispnode->info.pmnodep->dlid);
+		(int)sizeof(dispnode->info.pmnodep->nodeDesc.NodeString),
+		dispnode->info.pmnodep->nodeDesc.NodeString,
+		dispnode->info.pmnodep->guid, dispnode->info.pmnodep->dlid);
 
 	DEBUG_ASSERT(dispnode->info.state != PM_DISP_NODE_DONE);
 	// we handle this once when all ports done, hence we will only increment

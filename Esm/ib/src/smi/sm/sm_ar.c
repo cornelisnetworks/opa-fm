@@ -55,7 +55,7 @@ void LogPortGroupTable(Node_t *switchp)
 	   	sm_nodeDescString(switchp), switchp->nodeInfo.NodeGUID);
 
     for (i=0; i<switchp->pgtLen; ++i) {
-		IB_LOG_INFINI_INFO_FMT(__func__, "PortGroup[%03u] = %llx", 
+		IB_LOG_INFINI_INFO_FMT(__func__, "PortGroup[%03u] = %"PRIx64,
        		i, switchp->pgt[i]);
     }
 }

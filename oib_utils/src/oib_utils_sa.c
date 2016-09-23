@@ -2333,7 +2333,7 @@ FSTATUS oib_query_sa(struct oib_port *port,
 			memset(pVFR->rsvd7, 0, sizeof(pVFR->rsvd7));
 
 			BSWAP_STL_VFINFO_RECORD(pVFR);
-			MAD_SET_ATTRIB_ID(&mad, SA_ATTRIB_VFABRIC_RECORD);
+			MAD_SET_ATTRIB_ID(&mad, STL_SA_ATTR_VF_INFO_RECORD);
 
 			fstatus = sa_query_common(&mad, &pRsp, sizeof(STL_VFINFO_RECORD), &pQR, port);
 			if (fstatus != FSUCCESS) break;

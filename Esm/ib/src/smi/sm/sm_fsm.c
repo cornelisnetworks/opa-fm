@@ -424,9 +424,10 @@ sm_fsm_standby(Mai_t *maip, char *nodename)
 	}
 
     if (maip->base.status > MAD_STATUS_OK) {
-        IB_LOG_WARN_FMT(__func__,
-               "[%] SM received invalid AMOD[%d] from SM node %s, LID [0x%x], portguid ["FMT_U64"], TID="FMT_U64,
-               sm_getStateText(sm_smInfo.u.s.SMStateCurrent), maip->base.amod, nodename, maip->addrInfo.slid, theirSmInfo.PortGUID, maip->base.tid);
+		IB_LOG_WARN_FMT(__func__,
+			"[%s] SM received invalid AMOD[%d] from SM node %s, LID [0x%x], portguid ["FMT_U64"], TID="FMT_U64,
+			sm_getStateText(sm_smInfo.u.s.SMStateCurrent), maip->base.amod, nodename,
+			maip->addrInfo.slid, theirSmInfo.PortGUID, maip->base.tid);
     } else {
         IB_LOG_INFINI_INFO_FMT(__func__, 
                "SM in [%s] state after processing %s smInfo control from SM node %s, LID [0x%x], portguid ["FMT_U64"], TID="FMT_U64,
@@ -523,9 +524,10 @@ sm_fsm_notactive(Mai_t *maip, char *nodename)
 		break;
 	default:
 		maip->base.status = MAD_STATUS_BAD_ATTR;
-        IB_LOG_WARN_FMT(__func__, 
-               "[%s] SM received invalid transition request %u from SM node %s, LID [0x%x], portguid ["FMT_U64"], TID="FMT_U64,
-               sm_getStateText(sm_smInfo.u.s.SMStateCurrent), maip->base.amod, getAmod(maip->base.amod), nodename, maip->addrInfo.slid, theirSmInfo.PortGUID, maip->base.tid);
+		IB_LOG_WARN_FMT(__func__,
+			"[%s] SM received invalid transition request %s (%u) from SM node %s, LID [0x%x], portguid ["FMT_U64"], TID="FMT_U64,
+			sm_getStateText(sm_smInfo.u.s.SMStateCurrent), getAmod(maip->base.amod), maip->base.amod,
+			nodename, maip->addrInfo.slid, theirSmInfo.PortGUID, maip->base.tid);
 		break;
 	}
     

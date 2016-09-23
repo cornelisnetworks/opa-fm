@@ -495,7 +495,7 @@ sub Usage
 		printf STDERR "            default options and no change to autostart options\n";
 		printf STDERR "       -i comp - install the given component with default options\n";
 		printf STDERR "            can appear more than once on command line\n";
-		#printf STDERR "       -l - skip creating/removing symlinks to /usr/local from /opt/opa\n";
+		#printf STDERR "       -l - skip creating/removing symlinks to /usr/local from /usr/lib/opa\n";
 		printf STDERR "       --user_configure_options 'options' - specify additional OFED build\n";
 		printf STDERR "             options for user space srpms.  Causes rebuild of all user srpms\n";
 		printf STDERR "       --kernel_configure_options 'options' - specify additional OFED build\n";

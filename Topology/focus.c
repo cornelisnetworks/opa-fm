@@ -760,34 +760,15 @@ static FSTATUS ParseRatePoint(FabricData_t *fabricp, char *arg, Point *pPoint, c
 
 static FSTATUS ParseLedPoint(FabricData_t *fabricp, char *arg, Point *pPoint, char **pp)
 {
-	char *p;
-	char State[3+1];	// active is largest valid state name
 	FSTATUS status;
 	int len;
 	boolean ledon;
 
 	ASSERT(pPoint->Type == POINT_TYPE_NONE);
-	p = strchr(arg, ':');
-	if (p) {
-		if (p == arg) {
-			fprintf(stderr, "%s: Invalid Port State format: '%s'\n",
-						   	g_Top_cmdname, arg);
-			return FINVALID_PARAMETER;
-		}
-		if (p - arg > sizeof(State)-1) {
-			fprintf(stderr, "%s: Invalid Port State: %.*s\n",
-						   	g_Top_cmdname, (int)(p-arg), arg);
-			return FINVALID_PARAMETER;
-		}
-		len = (int)(p-arg);
-		strncpy(State, arg, len);
-		State[len] = '\0';
-		*pp = p;
-		arg = State;
-	} else {
-		len = strlen(arg);
-		*pp = arg + len;
-	}
+
+	len = strlen(arg);
+	*pp = arg + len;
+
 	if (strncasecmp(arg, "off", len) == 0)
 		ledon = FALSE;
 	else if (strncasecmp(arg, "on", len) == 0)

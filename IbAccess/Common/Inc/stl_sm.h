@@ -1267,6 +1267,27 @@ typedef struct {
 #define STL_NUM_SCSC_BLOCKS_PER_LID_SMP ((uint8_t)(STL_MAX_PAYLOAD_SMP_LR / sizeof(STL_SCSCMAP)))
 
 /*
+ * SC_TO_SC MultiSet
+ *
+ * Attribute Modifier as: NNNN NNNN 0000 0000 0000 0000 0000 0000
+ *						N:	Number of Multi-Set Blocks
+ *
+ * This attribute is not applicable to HFIs.
+ *
+ * Each block contains 32 bytes of SC->SC data, 1 byte per SC and ingress/egress port masks
+ */
+
+typedef struct {
+	STL_PORTMASK    IngressPortMask[STL_MAX_PORTMASK];
+	STL_PORTMASK    EgressPortMask[STL_MAX_PORTMASK];
+	STL_SCSCMAP		SCSCMap;				/* RW/HSPE */
+											/*    -SPE: POD: SCn_to_SCn (1-to-1) */
+} PACK_SUFFIX STL_SCSC_MULTISET;
+
+#define STL_NUM_SCSC_MULTI_BLOCKS_PER_DRSMP ((uint8_t)(STL_MAX_PAYLOAD_SMP_DR / sizeof(STL_SCSC_MULTISET)))
+#define STL_NUM_SCSC_MULTI_BLOCKS_PER_LRSMP ((uint8_t)(STL_MAX_PAYLOAD_SMP_LR / sizeof(STL_SCSC_MULTISET)))
+
+/*
  * SC_TO_SL Mapping table
  *
  * Attribute Modifier as: 0 (not used)
@@ -1391,7 +1412,7 @@ typedef struct {
  * 2-dimensional array of blocks[2**20][4].
  */
 
-typedef uint64  STL_PORTMASK;			/* Port mask element (MFT and PGFT */
+//typedef uint64  STL_PORTMASK;			/* Port mask element (MFT and PGFT */
 
 #define STL_NUM_MFT_ELEMENTS_BLOCK	8	/* Num elements per block */
 #define STL_NUM_MFT_POSITIONS_MASK	4	/* Num positions per 256-bit port mask */

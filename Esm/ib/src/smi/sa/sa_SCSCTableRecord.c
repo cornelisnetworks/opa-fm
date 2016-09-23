@@ -102,8 +102,8 @@ sa_SCSCTableRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 
 Status_t
 sa_SCSCTableRecord_Set(uint8_t *slp, Node_t *nodep, Port_t *in_portp, Port_t *out_portp, Lid_t lid) {
-    int i;
 	STL_SC_MAPPING_TABLE_RECORD scSCTableRecord;
+	int i;
 
 	IB_ENTER("sa_SCSCTableRecord_Set", slp, nodep, in_portp, out_portp);
 
@@ -118,12 +118,16 @@ sa_SCSCTableRecord_Set(uint8_t *slp, Node_t *nodep, Port_t *in_portp, Port_t *ou
 	memset((char *)&scSCTableRecord, 0, sizeof(scSCTableRecord));
 
 	scSCTableRecord.RID.LID = lid;
-    if ((nodep->nodeInfo.NodeType == NI_TYPE_SWITCH) && (in_portp->index>0)) {
+    if ((nodep->nodeInfo.NodeType == NI_TYPE_SWITCH) && (in_portp->index>0) && (out_portp->index>0)) {
         scSCTableRecord.RID.InputPort = in_portp->index; 
         scSCTableRecord.RID.OutputPort = out_portp->index;
-        // Hard coded for POD Values as these are not touched or fetched by SM at this time.
-        // [They are hard-coded for the unity fn.]
-        for (i=0; i<STL_MAX_SCS; i++) scSCTableRecord.Map[i].SC=i;
+		if (in_portp->portData->scscMap) {
+        	memcpy(&scSCTableRecord.Map, &in_portp->portData->scscMap[out_portp->index-1], sizeof(scSCTableRecord.Map));
+		} else {
+			// Hard coded for POD Values as these are not touched or fetched by SM in PRR
+			// [They are hard-coded for the unity fn.]
+			for (i=0; i<STL_MAX_SCS; i++) scSCTableRecord.Map[i].SC=i;
+		}
     } else {
         IB_LOG_ERROR_FMT( "sa_SCSCTableRecord_Set",
                "Invalid call for non-swith or port 0 for Node Guid["FMT_U64"], %s",
@@ -150,8 +154,8 @@ sa_SCSCTableRecord_GetTable(Mai_t *maip, uint32_t *records) {
 	bool_t		checkLid;
 	bool_t		checkInPort;
 	bool_t		checkOutPort;
-    Lid_t       lid = 0;
-	uint16_t	portLid=0;
+	Lid_t		lid = 0;
+	Lid_t		portLid=0;
 	uint16_t	inPort=0;
 	uint16_t	outPort=0;
 
@@ -165,8 +169,9 @@ sa_SCSCTableRecord_GetTable(Mai_t *maip, uint32_t *records) {
 //  Verify the size of the data received for the request
 //
 	if ( maip->datasize-sizeof(STL_SA_MAD_HEADER) < sizeof(STL_SC_MAPPING_TABLE_RECORD) ) {
-		IB_LOG_ERROR_FMT("sa_SCSCTableRecord_GetTable",
-						 "invalid MAD length; size of STL_SC_MAPPING_TABLE_RECORD[%lu], datasize[%d]", sizeof(STL_SC_MAPPING_TABLE_RECORD), maip->datasize-sizeof(STL_SA_MAD_HEADER));
+		IB_LOG_ERROR_FMT(__func__,
+			"invalid MAD length; size of STL_SC_MAPPING_TABLE_RECORD[%"PRISZT"], datasize[%d]",
+			sizeof(STL_SC_MAPPING_TABLE_RECORD), (int)(maip->datasize-sizeof(STL_SA_MAD_HEADER)));
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 		IB_EXIT("sa_SCSCTableRecord_GetTable", MAD_STATUS_SA_REQ_INVALID);
 		return (MAD_STATUS_SA_REQ_INVALID);

@@ -556,16 +556,16 @@ sub source_comp
 			LogPrint "Loaded $ComponentInfo{$comp}{'Name'} script: $ComponentInfo{$comp}{'SrcDir'}/comp.pl\n";
 		}
 		#eval "available_$comp";
-	} elsif ( -e "$ROOT/opt/opa/.comp_$comp.pl" ) {
+	} elsif ( -e "$ROOT/usr/lib/opa/.comp_$comp.pl" ) {
 		# source the installed file, mainly to aid uninstall
-		#print "$ROOT/opt/opa/.comp_$comp.pl\n"; sleep 10;
-		eval `cat "$ROOT/opt/opa/.comp_$comp.pl"`;
+		#print "$ROOT/usr/lib/opa/.comp_$comp.pl\n"; sleep 10;
+		eval `cat "$ROOT/usr/lib/opa/.comp_$comp.pl"`;
 		if ( "$@" ne "" ) {
 			NormalPrint "$@\n";
-			NormalPrint "Warning: Ignoring Corrupted $ComponentInfo{$comp}{'Name'} script: $ROOT/opt/opa/.comp_$comp.pl\n";
+			NormalPrint "Warning: Ignoring Corrupted $ComponentInfo{$comp}{'Name'} script: $ROOT/usr/lib/opa/.comp_$comp.pl\n";
 			HitKeyCont;
 		} else {
-			LogPrint "Loaded $ComponentInfo{$comp}{'Name'} script: $ROOT/opt/opa/.comp_$comp.pl\n";
+			LogPrint "Loaded $ComponentInfo{$comp}{'Name'} script: $ROOT/usr/lib/opa/.comp_$comp.pl\n";
 		}
 	} else {
 		# component not available and not installed
@@ -632,7 +632,7 @@ sub Usage
 		printf STDERR "       -i comp - install the given component with default options\n";
 		printf STDERR "            can appear more than once on command line\n";
 #		printf STDERR "       -f - skip HCA firmware upgrade during install\n";
-		#printf STDERR "       -l - skip creating/removing symlinks to /usr/local from /opt/opa\n";
+		#printf STDERR "       -l - skip creating/removing symlinks to /usr/local from /usr/lib/opa\n";
 		printf STDERR "       --user_configure_options 'options' - specify additional OFA build\n";
 		printf STDERR "             options for user space srpms.  Causes rebuild of all user srpms\n";
 		printf STDERR "       --kernel_configure_options 'options' - specify additional OFA build\n";

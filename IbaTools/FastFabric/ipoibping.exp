@@ -1,0 +1,126 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+
+# [ICS VERSION STRING: unknown]
+
+source /usr/lib/opa/tools/ibtools.exp
+source "/usr/lib/opa/tools/ff_function.exp"
+
+#=============================================================================#
+# Test Suite Description:
+#-----------------------------------------------------------------------------#
+## ipoibping
+## -------
+## IPoIB ping test to each host
+#=============================================================================#
+
+# manditory setup
+log_user 0;	# disable detailed logging to stdout
+
+# uncomment the following to debug the test
+#strace 20
+#log_user 1
+#exp_internal 1
+#cmd_trace on
+#strace 4
+
+proc suite_setup {} {
+	# example of conditional setup
+	#test_execute {load populate} {
+		#do some installation or configuration stuff
+	#}
+}
+
+proc case_setup {} {
+# setup to do at start of each test case
+# Usage:
+#	pass as argument to start_suite
+# Arguments:
+#	None
+# This procedure will be run at the start of every test case
+# It provides an opportunity for uniform cleanup/setup for each test case
+
+	#upvar 2 host host
+
+	#host_save_log $host
+}
+
+proc case_cleanup { failed } {
+# cleanup to do after each test case
+# Usage:
+#	pass as argument to start_suite
+# Arguments:
+#	failed - set to 1 if test case failed in which case additional
+#		information/files may be desired in test_tmp
+#		set to 0 if test case passed
+# This procedure will be run at the end of every test case
+# It provides an opportunity for uniform cleanup after each test case
+	global env
+
+	test_execute {} {
+		if { $failed || [ test_save_temp ] } {
+			# save any logs/results from system(s) under test
+			#upvar host host
+			#host_check_log $host "qipoib"
+		}
+	}
+}
+
+test_suite "ipoibping" "ipoib ping" "Ping test to each host via IPoIB
+File: /usr/lib/opa/tools/ipoibping.exp" suite_setup noop {
+
+	# Global Initializations for Test Suite:
+	# --------------------------------------
+
+	# ADD ANY GLOBAL INITIALIZATION HERE, SUCH AS:
+	# set env(MY_ENV_VAR) value
+	# also validate the environment
+	# if the environment is bad call fail_suite "information" abort_now
+	# abort_now should be 0 if it is safe to proceed and simply ignore all
+	# test_case calls.  it should be 1 if that is not possible.
+
+	# Procedures used to support Test Suite:
+	# --------------------------------------
+
+	# The actual test cases:
+	# ----------------------
+
+	# use fast fabric conversion function to get IPoIB addresses of hosts
+	set ipoib_hosts {}
+	foreach host $env(CFG_HOSTS) {
+		lappend ipoib_hosts "[ff_host_to_ipoib $host]"
+	}
+
+	# prevent test_case_ping1 from modifying host name
+	set env(CFG_IPOIB_SUFFIX) ""
+
+	# ping from localhost to each remote host, "" ipoib_suffix since
+	# we already translated host names
+	test_case_ping1 localhost $ipoib_hosts "IPoIB" "" "$env(CFG_IPOIB_MTU)" 1
+}

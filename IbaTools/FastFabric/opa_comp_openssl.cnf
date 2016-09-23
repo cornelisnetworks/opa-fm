@@ -1,0 +1,83 @@
+#
+# Intel OPA FM/FF Component OpenSSL example configuration file.
+# This is mostly being used for generation of certificate requests.
+#
+
+# This definition stops the following lines choking if HOME isn't
+# defined.
+HOME			= .
+RANDFILE		= $ENV::HOME/.rnd
+
+# Extra OBJECT IDENTIFIER info:
+#oid_file		= $ENV::HOME/.oid
+##oid_section		= new_oids
+
+# To use this configuration file with the "-extfile" option of the
+# "openssl x509" utility, name here the section containing the
+# X.509v3 extensions to use:
+# extensions		= 
+# (Alternatively, use a configuration file that has only
+# X.509v3 extensions in its main [= default] section.)
+
+[ req ]
+default_bits		= 2048
+default_md		= sha256
+distinguished_name	= opa_comp_distinguished_name
+attributes		= req_attributes
+prompt              		= no
+
+# Passwords for private keys if not present they will be prompted for
+# input_password = secret
+# output_password = secret
+
+# This sets a mask for permitted string types. There are several options. 
+# default: PrintableString, T61String, BMPString.
+# pkix	 : PrintableString, BMPString (PKIX recommendation before 2004)
+# utf8only: only UTF8Strings (PKIX recommendation after 2004).
+# nombstr : PrintableString, T61String (no BMPStrings or UTF8Strings).
+# MASK:XXXX a literal mask value.
+# WARNING: ancient versions of Netscape crash on BMPStrings or UTF8Strings.
+string_mask = utf8only
+
+req_extensions = v3_req # The extensions to add to a certificate request
+
+[ opa_comp_distinguished_name ]
+countryName			= US
+#countryName_default		= US
+#countryName_min		= 2
+#countryName_max		= 2
+
+stateOrProvinceName		= Pennsylvania
+#stateOrProvinceName_default	= Default Province
+
+localityName			= King of Prussia
+#localityName_default		= Default City
+
+organizationName		= OPA A0 Sample Corporation
+#organizationName_default	= Default Company Ltd
+
+organizationalUnitName		= OPA A0 Sample Division
+#organizationalUnitName_default	=
+
+commonName			= phkpstl023.ph.intel.com
+#commonName_max			= 64
+
+emailAddress			= root@phkpstl023.ph.intel.com
+#emailAddress_max		= 64
+
+# SET-ex3			= SET extension number 3
+
+[ req_attributes ]
+#challengePassword		= A challenge password
+#challengePassword_min		= 4
+#challengePassword_max		= 20
+
+unstructuredName		= An optional company name
+
+[ v3_req ]
+
+# Extensions to add to a certificate request
+
+basicConstraints        = CA:FALSE
+keyUsage                = nonRepudiation, digitalSignature, keyEncipherment
+####################################################################

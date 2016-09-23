@@ -44,6 +44,7 @@ use strict;
 my $suffix_64bit = "";	# suffix for rpm name for 64 bit rpms
 
 my $rpm_check_dependencies = 1;	# can be set to 0 to disable rpm_check_os_prereqs
+my $skip_kernel = 0; # can be set to 1 by --user-space argument
 
 sub rpm_query_param($);
 # TBD or
@@ -193,6 +194,10 @@ sub rpm_is_installed($$)
 						# "any"- checks if any variation of package is installed
 	my $rc;
 	my $cpu;
+
+	if ($skip_kernel && "$mode" ne "user" && "$mode" ne "any") {
+               return 1;
+	}
 
 	( $mode, $cpu ) = rpm_adjust_mode_cpu($package, $mode);
 	if ("$mode" eq "any" ) {
@@ -552,6 +557,12 @@ sub rpm_run_install($$$)
 	my $chrootcmd="";
 	my $Uoption= 0;
 
+	if ($skip_kernel && "$mode" ne "user" && "$mode" ne "any") {
+		return;
+	} elsif ($skip_kernel && $rpmfile =~ /\/hfi1-firmware/) {
+		return;
+	}
+
 	# We require whitespace around -U so its not mistaken for filenames or other
 	# multi-letter options
 	if ($options =~ / -U /) {
@@ -751,6 +762,12 @@ sub rpm_install($$$)
 	my $RPMS_SUBDIR = "RPMS";
 	my $prefix=$OFED_prefix;
 
+	if ($skip_kernel && "$mode" ne "user" && "$mode" ne "any") {
+		return;
+	} elsif ($skip_kernel && $rpmfile =~ /\/hfi1-firmware/) {
+		return;
+	}
+
 RPM_RES:
 
 	$rpmfile = rpm_resolve($rpmdir, $mode, $package);
@@ -795,6 +812,12 @@ sub rpm_install_with_options($$$$)
 	my $RPM_DIR="$build_temp/DELTARPMS";
 	my $RPMS_SUBDIR = "RPMS";
 	my $prefix=$OFED_prefix;
+
+	if ($skip_kernel && "$mode" ne "user" && "$mode" ne "any") {
+		return;
+	} elsif ($skip_kernel && $rpmfile =~ /\/hfi1-firmware/) {
+		return;
+	}
 
 RPM_RES:
 

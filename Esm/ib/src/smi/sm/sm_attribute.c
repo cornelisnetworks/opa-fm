@@ -111,6 +111,11 @@ SM_Get_NodeInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_NODE_INFO *nip)
    status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_NODE_INFO, amod, path, buffer, &bufferLength); 
    if (status == VSTATUS_OK) {
       BSWAP_STL_NODE_INFO((STL_NODE_INFO *)buffer); 
+
+      // Fail out if node reports no ports.
+      if(!((STL_NODE_INFO *)buffer)->NumPorts)
+          return VSTATUS_REJECT;
+
       memcpy(nip, buffer, sizeof(STL_NODE_INFO)); 
       
       if (sm_config.sm_debug_lid_assign) {
@@ -987,6 +992,28 @@ SM_Set_SCVLntMap_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, 
 }
 
 Status_t
+SM_Set_SCSC_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_SCSCMAP *scscp, uint64_t mkey) {
+	Status_t status;
+	uint8_t numBlocks = amod >> 24; 
+	uint32_t bufferLength = sizeof(STL_SCSCMAP)*numBlocks; 
+	uint8_t buffer[bufferLength];
+	int i;
+
+	INCREMENT_COUNTER(smCounterSetSC2SCMappingTable);
+
+	for (i=0; i<numBlocks; i++) {
+		memcpy((void*)&((STL_SCSCMAP*)buffer)[i], scscp, sizeof(STL_SCSCMAP));
+		(void)BSWAP_STL_SCSCMAP(&((STL_SCSCMAP*)buffer)[i]);
+	}   
+
+	sm_topop->slid = slid;
+	sm_topop->dlid = dlid;
+	status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_SC_MAPPING_TABLE, amod, NULL, buffer, &bufferLength, mkey);
+
+	return(status);
+}
+
+Status_t
 SM_Set_LFT(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_LINEAR_FORWARDING_TABLE *lftp, uint64_t mkey, int use_lr_dr_mix) {
 	Status_t status;
     uint32_t bufferLength = sizeof(STL_LINEAR_FORWARDING_TABLE); 
@@ -1273,6 +1300,25 @@ SM_Set_PortGroupFwdTable(IBhandle_t fd, uint32_t amod, uint8_t *path,
 }
 
 Status_t
+SM_Get_CongestionInfo_LR(IBhandle_t fd, uint32_t amod, uint32 slid, uint32 dlid, STL_CONGESTION_INFO * congestionInfo) {
+	uint32_t	bufferLength = sizeof(STL_CONGESTION_INFO);
+	uint8_t		buffer[bufferLength];
+	Status_t	status;
+
+	INCREMENT_COUNTER(smCounterGetCongestionInfo);
+
+	sm_topop->slid = slid;
+	sm_topop->dlid = dlid;
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_CONGESTION_INFO, amod, NULL, buffer, &bufferLength);
+	if (status == VSTATUS_OK) {
+		BSWAP_STL_CONGESTION_INFO((STL_CONGESTION_INFO*)buffer);
+		memcpy(congestionInfo, buffer, bufferLength);
+	}
+
+	return(status);
+}
+
+Status_t
 SM_Get_CongestionInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_CONGESTION_INFO * congestionInfo) {
 	uint32_t	bufferLength = sizeof(STL_CONGESTION_INFO);
 	uint8_t		buffer[bufferLength];
@@ -1307,6 +1353,32 @@ SM_Get_HfiCongestionSetting(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_HFI
 }
 
 Status_t
+SM_Set_HfiCongestionSetting_LR(IBhandle_t fd, uint32_t amod, uint32 slid, uint32 dlid, STL_HFI_CONGESTION_SETTING *hfics, uint64_t mkey) {
+	uint32_t	bufferLength = sizeof(STL_HFI_CONGESTION_SETTING);
+	uint8_t		buffer[bufferLength];
+	Status_t 	status;
+	
+	INCREMENT_COUNTER(smCounterSetHfiCongestionSetting);
+
+    memcpy(buffer, hfics, sizeof(STL_HFI_CONGESTION_SETTING));
+    BSWAP_STL_HFI_CONGESTION_SETTING((STL_HFI_CONGESTION_SETTING *)buffer);
+
+    sm_topop->slid = slid;
+    sm_topop->dlid = dlid;
+    if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_CONG) {
+        status = VSTATUS_OK;
+    } else {
+        status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_HFI_CONGESTION_SETTING, amod, NULL, buffer, &bufferLength, mkey);
+    }
+    if (status == VSTATUS_OK) {
+        BSWAP_STL_HFI_CONGESTION_SETTING((STL_HFI_CONGESTION_SETTING *)buffer);
+        memcpy(hfics, buffer, sizeof(STL_HFI_CONGESTION_SETTING));
+    }
+
+	return(status);
+}
+
+Status_t
 SM_Set_HfiCongestionSetting(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_HFI_CONGESTION_SETTING *hfics, uint64_t mkey) {
 	uint32_t	bufferLength = sizeof(STL_HFI_CONGESTION_SETTING);
 	uint8_t		buffer[bufferLength];
@@ -1329,7 +1401,6 @@ SM_Set_HfiCongestionSetting(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_HFI
 
 	return(status);
 }
-
 
 Status_t
 SM_Get_HfiCongestionControl(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_HFI_CONGESTION_CONTROL_TABLE *hficct) {
@@ -1367,6 +1438,32 @@ SM_Set_HfiCongestionControl(IBhandle_t fd, uint16 CCTI_Limit, const uint8_t numB
     status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_HFI_CONGESTION_CONTROL_TABLE, amod, path, buffer, &bufferLength, mkey);
 
 	return(status);
+}
+
+Status_t
+SM_Set_HfiCongestionControl_LR(IBhandle_t fd, uint16 CCTI_Limit, const uint8_t numBlocks, uint32_t amod, uint32 slid ,uint32 dlid, STL_HFI_CONGESTION_CONTROL_TABLE_BLOCK *hficct, uint64_t mkey) {
+    Status_t	status = VSTATUS_OK;
+    uint32_t    bufferLength = MIN(STL_MAD_PAYLOAD_SIZE, sizeof(STL_HFI_CONGESTION_CONTROL_TABLE) + ((numBlocks-1) * sizeof(STL_HFI_CONGESTION_CONTROL_TABLE_BLOCK)));
+	uint8_t     buffer[bufferLength];
+
+    STL_HFI_CONGESTION_CONTROL_TABLE *ptr = NULL;
+
+    memset(buffer, 0, bufferLength);
+    ptr = (STL_HFI_CONGESTION_CONTROL_TABLE *)buffer;
+    INCREMENT_COUNTER(smCounterSetHfiCongestionControl);
+    ptr->CCTI_Limit = CCTI_Limit;
+    memcpy(ptr->CCT_Block_List, hficct, sizeof(STL_HFI_CONGESTION_CONTROL_TABLE_BLOCK) * numBlocks);
+    BSWAP_STL_HFI_CONGESTION_CONTROL_TABLE(ptr, numBlocks);
+	
+    sm_topop->slid = slid;
+    sm_topop->dlid = dlid;
+	if(sm_config.skipAttributeWrite & SM_SKIP_WRITE_CONG) {
+		status = VSTATUS_OK;
+	} else {
+	    status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_HFI_CONGESTION_CONTROL_TABLE, amod, NULL, buffer, &bufferLength, mkey);
+	}
+
+    return(status);
 }
 
 Status_t
@@ -1413,6 +1510,33 @@ SM_Set_SwitchCongestionSetting(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_
 }
 
 Status_t
+SM_Set_SwitchCongestionSetting_LR(IBhandle_t fd, uint32_t amod, uint32 slid, uint32 dlid, STL_SWITCH_CONGESTION_SETTING *swcs, uint64_t mkey) {
+	uint32_t	bufferLength = sizeof(STL_SWITCH_CONGESTION_SETTING);
+	uint8_t		buffer[bufferLength];
+	Status_t status;
+
+	INCREMENT_COUNTER(smCounterSetSwitchCongestionSetting);
+
+	memcpy(buffer, swcs, sizeof(STL_SWITCH_CONGESTION_SETTING));
+	ZERO_RSVD_STL_SWITCH_CONGESTION_SETTING((STL_SWITCH_CONGESTION_SETTING*)buffer);
+	BSWAP_STL_SWITCH_CONGESTION_SETTING((STL_SWITCH_CONGESTION_SETTING*)buffer);
+
+	sm_topop->slid = slid;
+	sm_topop->dlid = dlid;
+	if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_CONG) {
+		status = VSTATUS_OK;
+	} else {
+		status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SWITCH_CONGESTION_SETTING, amod, NULL, buffer, &bufferLength, mkey);
+	}
+	if (status == VSTATUS_OK) {
+		BSWAP_STL_SWITCH_CONGESTION_SETTING((STL_SWITCH_CONGESTION_SETTING*)buffer);
+		memcpy(swcs, buffer, sizeof(STL_SWITCH_CONGESTION_SETTING));
+	}
+
+	return(status);
+}
+
+Status_t
 SM_Get_SwitchPortCongestionSetting(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SWITCH_PORT_CONGESTION_SETTING *swpcs) {
 	const uint8_t count = (amod>>24) & 0xff;
 	uint32_t	bufferLength = sizeof(STL_SWITCH_PORT_CONGESTION_SETTING_ELEMENT) * count;
@@ -1429,6 +1553,28 @@ SM_Get_SwitchPortCongestionSetting(IBhandle_t fd, uint32_t amod, uint8_t *path, 
 
 	return(status);
 }
+
+Status_t
+SM_Get_SwitchPortCongestionSetting_LR(IBhandle_t fd, uint32_t amod, uint32 slid, uint32 dlid, STL_SWITCH_PORT_CONGESTION_SETTING *swpcs) {
+	const uint8_t count = (amod>>24) & 0xff;
+	uint32_t	bufferLength = sizeof(STL_SWITCH_PORT_CONGESTION_SETTING_ELEMENT) * count;
+	uint8_t		buffer[bufferLength];
+	Status_t	status;
+
+	INCREMENT_COUNTER(smCounterGetSwitchPortCongestionSetting);
+
+
+	sm_topop->slid = slid;
+	sm_topop->dlid = dlid;
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SWITCH_PORT_CONGESTION_SETTING, amod, NULL, buffer, &bufferLength);
+	if (status == VSTATUS_OK) {
+		BSWAP_STL_SWITCH_PORT_CONGESTION_SETTING((STL_SWITCH_PORT_CONGESTION_SETTING*)buffer, count);
+		memcpy(swpcs, buffer, bufferLength);
+	}
+
+	return(status);
+}
+
 
 Status_t
 SM_Set_BufferControlTable_LR(IBhandle_t fd, uint32_t amod, uint32_t slid, uint32_t dlid, STL_BUFFER_CONTROL_TABLE pbct[], uint64_t mkey, uint32_t *madStatus)

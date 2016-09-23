@@ -29,4 +29,4 @@
 
 #[ICS VERSION STRING: unknown]
 # Base location of IFS Fabric Manager.
-IFS_FM_BASE=/opt/opafm
+IFS_FM_BASE=/usr/lib/opa-fm

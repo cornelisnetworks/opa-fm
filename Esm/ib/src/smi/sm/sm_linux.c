@@ -647,7 +647,7 @@ main(int argc, char *argv[]) {
 			sscanf(optarg, "%256s", sm_config_filename);
 			break;
 		case '?':
-			IB_LOG_ERROR("invalid command line parameter specified:", optopt);
+			IB_LOG_ERROR_FMT(__func__, "invalid command line parameter specified: %d", optopt);
 			exit(2);
 		default:
 			break;

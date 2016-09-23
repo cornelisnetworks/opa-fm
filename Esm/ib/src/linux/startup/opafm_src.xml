@@ -202,7 +202,7 @@
       <!-- MGID = 0xff154001PPPP00RR:MM00000000000000 -->
       <!-- where  P=PKey, R=Rate and M=MTU -->
       <!-- Rate: 9 (75gb), 12 (50gb), 15 (25gb), 16 (100gb) -->
-      <!-- MTU: 4 (2K), 5 (2K) -->
+      <!-- MTU: 4 (2K), 5 (4K) -->
       <MGIDMasked>0xff15400100000000:0*0xffffffff0000ff00:0x00ffffffffffffff</MGIDMasked>
     </Application>
 
@@ -804,7 +804,8 @@
     <!-- values less than 8192 are treated as Megabytes -->
     <!-- This sets the linux core dump soft ulimit for the FM.  Hard ulimit -->
     <!-- for root user on system must be appropriately set to permit this. -->
-    <CoreDumpLimit>0</CoreDumpLimit>
+    <!-- Default CoreDumpLimit is 2 GB -->
+    <CoreDumpLimit>2G</CoreDumpLimit>
     <!-- Directory for Host FM core files -->
     <!-- Actual core filenames will be controlled by linux kernel config. -->
     <!-- The parent directory (/var/crash in default) must be pre-created. -->
@@ -930,6 +931,8 @@
     <!-- **************** Fabric Routing **************************** -->
     <!-- The following Routing Algorithms are supported -->
     <!-- shortestpath - pick shortest path and balance lids on ISLs -->
+    <!-- fattree -  A variation of shortestpath with better balancing      -->
+    <!--            and improved SM performance on fat tree-like fabrics.  -->
     <!-- dgshortestpath - A variation of shortestpath that uses the        -->
     <!--            RoutingOrder parameter to control the order in which   -->
     <!--            switch egress ports are assigned to LIDs being routed  -->
@@ -938,8 +941,9 @@
     <!--            nodes.                                                 -->
     <!--            See the <DGShortestPathTopology> section, below, for   -->
     <!--            more information.                                      -->
-    <!-- fattree -  A variation of shortestpath with better balancing      -->
-    <!--            and improved SM performance on fat tree-like fabrics.  -->
+    <!-- hypercube - A variation of dg shortest path for enhanced          -->
+    <!--             hypercube and mesh topologies cabled in               -->
+    <!--             port-to-dimension order.                              -->
     <RoutingAlgorithm>shortestpath</RoutingAlgorithm>
 
     <!-- SpineFirstRouting - An option to avoid credit loops in complex    -->
@@ -1002,6 +1006,56 @@
             <!-- <DeviceGroup>Storage</DeviceGroup> -->
         <!-- </RoutingOrder> -->
     </DGShortestPathTopology>
+
+    <!-- ********************* Hypercube Topology ************************ -->
+    <!-- Example of defining parameters for controlling the enhanced       -->
+    <!-- hypercube routing algorithm. When the RoutingAlgorithm is set to  -->
+    <!-- hypercube, this section is used to configure routing parameters.  -->
+    <!-- RoutingOrder is used to route using shortest path while           -->
+    <!-- controlling the order in which routes to end nodes are assigned.  -->
+    <!-- EnhancedRoutingControl can be used to control the order that      -->
+    <!-- ports are processed on a switch during routing through the use of -->
+    <!-- virtual port numbers.  pPort represents a physical port number    -->
+    <!-- for the Switch, whereas vPort represents a virtual number.  The   -->
+    <!-- routing is setup in virtual port order, which by default is the   -->
+    <!-- same as physical port order.  Any physical ports not listed will  -->
+    <!-- get the next unused virtual port in increasing order.  In the     -->
+    <!-- example below, the ports on switches in group SwitchDeviceGroup1  -->
+    <!-- would be processed in the order 1 2 3 25 28 4 5 6 7 ...  If the   -->
+    <!-- Switches device group is not included in the EnhancedRoutingCtl,  -->
+    <!-- that defines a default ordering for all switches not explicitly   -->
+    <!-- listed.  Also, a cost can be associated with a pPort.  By default -->
+    <!-- the cost is defined with a base cost of 10.  But an override can  -->
+    <!-- be installed by defining an explicit cost.  The shortest path is  -->
+    <!-- actually the lowest cost path. If pPort is not specified, or      -->
+    <!-- is 0, then that specifies that the cost is associated with all    -->
+    <!-- ports for the Switches indicated in the device group (or for all  -->
+    <!-- ports if the Switches device group is not specified).             -->
+    <HypercubeTopology>
+        <!-- <EnhancedRoutingCtrl> -->
+            <!-- <Switches>SwitchDeviceGroup1</Switches> -->
+            <!-- <PortData> -->
+                <!-- <pPort>25</pPort> -->
+                <!-- <vPort>4</vPort> -->
+            <!-- </PortData> -->
+            <!-- <PortData> -->
+                <!-- <pPort>28</pPort> -->
+                <!-- <vPort>5</vPort> -->
+                <!-- <Cost>11</Cost> -->
+            <!-- </PortData> -->
+        <!-- </EnhancedRoutingCtrl> -->
+        <!-- <EnhancedRoutingCtrl> -->
+            <!-- <PortData> -->
+                <!-- <Cost>12</Cost> -->
+            <!-- </PortData> -->
+        <!-- </EnhancedRoutingCtrl> -->
+
+        <!-- Nodes may be specified for exclusion from initial round-robin -->
+        <!-- to give better route balancing of remaining nodes.  This may  -->
+        <!-- This may be useful to initially balance across compute nodes  -->
+        <!-- and then to balance over I/O nodes.                           -->
+        <!-- <RouteLast>hfi_device_group</RouteLast>                       -->
+    </HypercubeTopology>
 
     <!-- **************** Pre-defined Topology Verification **************** -->
     <!-- The PreDefinedTopology section is used for verifying the layout of  -->
@@ -1245,7 +1299,8 @@
     <!--     overall Buffer memory that will be guaranteed to be shared -->
     <!--     among a port's VLs (provided that the port supports -->
     <!---    shared memory). If not specified, defaults to 0. -->
-    <!-- DedicatedVLMemMulti is an integer multiplier that can increase the -->
+    <!-- DedicatedVLMemMulti is an integer multiplier in the -->
+    <!--     range, 0 to 255 that can increase the -->
     <!--     amount of dedicated memory per VL.  It is specified in -->
     <!--     multiples of MTUs for that VL. -->
     <!--     If not specified, defaults to 1. -->
@@ -1528,7 +1583,8 @@
     <!-- **************** Fabric Sweep **************************** -->
     <!-- The SM sweeps immediately upon fabric changes based on traps from -->
     <!-- the switches.  Since traps can be lost, the SM also has a slow -->
-    <!-- periodic sweep at SweepInterval to verify fabric config. -->
+    <!-- periodic sweep at SweepInterval to verify fabric config. This -->
+    <!-- interval can be zero (do not sweep) or between 3 and 86400 seconds. -->
     <SweepInterval>300</SweepInterval> <!-- max seconds between sweeps -->                                             <!--SM_0_timer:dec-->
     <IgnoreTraps>0</IgnoreTraps> <!-- don't sweep nor log when traps occur -->
     <!-- The SM waits up to RespTimeout milliseconds for responses. -->
@@ -1729,10 +1785,6 @@
     <!-- resweep. Can be used to force devices out of a bad state.   -->
     <ForceAttributeRewrite>0</ForceAttributeRewrite>
 
-    <!-- Enables fabric activation optimization to reduce packet counts -->
-    <!-- during fabric bring up. 0-Disable, 1-Switches only, 2-All devices -->
-    <SwitchCascadeActivateEnable>0</SwitchCascadeActivateEnable>
-
     <!-- Number of times to retry activation upon detecting an armed port -->
     <!-- with a non-armed/active neighbor. -->
     <NeighborNormalRetries>10</NeighborNormalRetries>
@@ -1800,9 +1852,7 @@
     <ServiceLease>60</ServiceLease> <!-- ServiceRecord lease with SA seconds -->                                       <!--PM_0_timer:dec-->
 
     <!-- The PM constantly sweeps and computes fabric statistics -->
-    <!-- If the SweepInterval is set to 0, the PM will not perform sweeps -->
-    <!-- But instead if queried it will do an immediate PMA operation -->
-    <!-- Tools such as opatop require PM SweepInterval be non-zero -->
+    <!-- The SweepInterval must be between 1 and 43200 seconds -->
     <SweepInterval>10</SweepInterval> <!-- time between sweeps in seconds -->                                          <!--PM_0_SweepInterval:dec-->
 
     <!-- The PM has a PA which supports client queries from tools such as -->
@@ -1889,8 +1939,8 @@
     <!-- LinkErrorRecovery errors must occur before the PMA will -->
     <!-- include them in the ErrorCounterSummary. -->
     <Resolution>
-        <LocalLinkIntegrity>8000000</LocalLinkIntegrity>
-        <LinkErrorRecovery>100000</LinkErrorRecovery>
+        <LocalLinkIntegrity>10000</LocalLinkIntegrity>
+        <LinkErrorRecovery>1024</LinkErrorRecovery>
     </Resolution>
 
     <!-- This controls when the PM clears PMA Error counters -->
@@ -1960,7 +2010,7 @@
     <!--    must not exceed 32 -->
     <ShortTermHistory>
         <Enable>1</Enable>
-        <!-- <StorageLocation>/var/opt/opafm/pahistory</StorageLocation> --> <!-- must be absolute path -->
+        <!-- <StorageLocation>/var/lib/opa-fm/pahistory</StorageLocation> --> <!-- must be absolute path -->
         <TotalHistory>24</TotalHistory> <!-- in hours -->
         <ImagesPerComposite>3</ImagesPerComposite>
         <MaxDiskSpace>1024</MaxDiskSpace> <!-- in MiB -->
@@ -2074,7 +2124,7 @@
     <!-- ESM does not support Start via XML configuration. Use CLI commands -->
     <!-- <Start>1</Start> -->                                                                                          <!--#PM_0_start:dec==1-->
     <ShortTermHistory>
-        <StorageLocation>/var/opt/opafm/pm0_pahistory</StorageLocation> <!-- must be absolute path -->
+        <StorageLocation>/var/lib/opa-fm/pm0_pahistory</StorageLocation> <!-- must be absolute path -->
     </ShortTermHistory>
   </Pm>
 </Fm>
@@ -2208,7 +2258,7 @@
     <!-- <TotalImages>10</TotalImages> --> <!-- total images for history and freeze -->                                <!--#PM_1_TotalImages:dec-->
     <!-- <FreezeFrameImages>5</FreezeFrameImages> --> <!-- max unique frozen images -->                                <!--#PM_1_FreezeFrameImages:dec-->
     <ShortTermHistory>
-        <StorageLocation>/var/opt/opafm/pm1_pahistory</StorageLocation> <!-- must be absolute path -->
+        <StorageLocation>/var/lib/opa-fm/pm1_pahistory</StorageLocation> <!-- must be absolute path -->
     </ShortTermHistory>
     <!-- <Debug>0</Debug> -->                                                                                          <!--#PM_1_debug:dec-->
     <!-- <LogLevel>2</LogLevel> -->                                                                                    <!--#PM_1_log_level:dec-->
@@ -2361,7 +2411,7 @@
     <!-- <TotalImages>10</TotalImages> --> <!-- total images for history and freeze -->                                <!--#PM_2_TotalImages:dec-->
     <!-- <FreezeFrameImages>5</FreezeFrameImages> --> <!-- max unique frozen images -->                                <!--#PM_2_FreezeFrameImages:dec-->
     <ShortTermHistory>
-        <StorageLocation>/var/opt/opafm/pm2_pahistory</StorageLocation> <!-- must be absolute path -->
+        <StorageLocation>/var/lib/opa-fm/pm2_pahistory</StorageLocation> <!-- must be absolute path -->
     </ShortTermHistory>
     <!-- <Debug>0</Debug> -->                                                                                          <!--#PM_2_debug:dec-->
     <!-- <LogLevel>2</LogLevel> -->                                                                                    <!--#PM_2_log_level:dec-->
@@ -2514,7 +2564,7 @@
     <!-- <TotalImages>10</TotalImages> --> <!-- total images for history and freeze -->                                <!--#PM_3_TotalImages:dec-->
     <!-- <FreezeFrameImages>5</FreezeFrameImages> --> <!-- max unique frozen images -->                                <!--#PM_3_FreezeFrameImages:dec-->
     <ShortTermHistory>
-        <StorageLocation>/var/opt/opafm/pm3_pahistory</StorageLocation> <!-- must be absolute path -->
+        <StorageLocation>/var/lib/opa-fm/pm3_pahistory</StorageLocation> <!-- must be absolute path -->
     </ShortTermHistory>
     <!-- <Debug>0</Debug> -->                                                                                          <!--#PM_3_debug:dec-->
     <!-- <LogLevel>2</LogLevel> -->                                                                                    <!--#PM_3_log_level:dec-->

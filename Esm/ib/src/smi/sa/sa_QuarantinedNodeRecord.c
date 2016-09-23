@@ -102,8 +102,9 @@ static Status_t sa_QuarantinedNodeRecord_GetTable(Mai_t *maip, uint32_t *records
 //  Verify the size of the data received for the request
 //
 	if ( maip->datasize-sizeof(STL_SA_MAD_HEADER) < sizeof(STL_QUARANTINED_NODE_RECORD) ) {
-		IB_LOG_ERROR_FMT("sa_QuarantinedNodeRecord_GetTable",
-						 "invalid MAD length; size of STL_QUARANTINED_NODE_RECORD[%lu], datasize[%d]", sizeof(STL_QUARANTINED_NODE_RECORD), maip->datasize-sizeof(STL_SA_MAD_HEADER));
+		IB_LOG_ERROR_FMT(__func__,
+			"invalid MAD length; size of STL_QUARANTINED_NODE_RECORD[%"PRISZT"], datasize[%d]",
+			sizeof(STL_QUARANTINED_NODE_RECORD), (int)(maip->datasize-sizeof(STL_SA_MAD_HEADER)));
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 		IB_EXIT("sa_QuarantinedNodeRecord_GetTable", MAD_STATUS_SA_REQ_INVALID);
 		return (MAD_STATUS_SA_REQ_INVALID);

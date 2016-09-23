@@ -338,8 +338,23 @@ void IXmlOutputPrintStrLen(IXmlOutputState_t *state, const char* value, int len)
 			IXmlOutputPrint(state, "&apos;");
 		else if (*value == '"')
 			IXmlOutputPrint(state, "&quot;");
-		else if (*value != '\n' && iscntrl(*value))
-			IXmlOutputPrint(state, "&#x%x;", (unsigned)(unsigned char)*value);
+		else if (*value != '\n' && iscntrl(*value)) {
+			//table in asciitab.h indiciates character codes permitted in XML strings
+			//Only 3 control characters below 0x1f are permitted:
+			//0x9 (BT_S), 0xa (BT_LRF), and 0xd (BT_CR)
+			if ((unsigned char)*value <= 0x08
+				|| ((unsigned char)*value >= 0x0b
+						 && (unsigned char)*value <= 0x0c)
+				|| ((unsigned char)*value >= 0x0e
+						 && (unsigned char)*value <= 0x1f)) {
+				// characters which XML does not permit in character fields
+				IXmlOutputPrint(state, "!");
+			} else {
+				IXmlOutputPrint(state, "&#x%x;", (unsigned)(unsigned char)*value);
+			}
+		} else if ((unsigned char)*value > 0x7f)
+			// permitted but generate 2 characters back after parsing, so omit
+			IXmlOutputPrint(state, "!");
 		else
 			fputc((int)(unsigned)(unsigned char)*value, state->file);
 	}
@@ -650,11 +665,11 @@ void IXmlParserPrintError(IXmlParserState_t *state, const char *format, ...)
 	vsnprintf(buf, sizeof(buf), format, args);
 	va_end(args);
 
-	if (state->current.field && state->current.field->tag)
+	if (state->current.tag)
 		snprintf(buf2, sizeof(buf2),
 					"Parse error at line %"PRIu64" in tag '%s': %s",
 					(uint64)XML_GetCurrentLineNumber(state->parser),
-					state->current.field->tag, buf);
+					state->current.tag, buf);
 	else
 		snprintf(buf2, sizeof(buf2), "Parse error at line %"PRIu64": %s",
 					(uint64)XML_GetCurrentLineNumber(state->parser), buf);
@@ -701,7 +716,7 @@ void IXmlParserPrintWarning(IXmlParserState_t *state, const char *format, ...)
 	snprintf(buf2, sizeof(buf2),
 				   	"Parse warning at line %"PRIu64" in tag '%s': %s",
 					(uint64)XML_GetCurrentLineNumber(state->parser),
-					state->current.field->tag, buf);
+					state->current.tag, buf);
 	(state->printWarning)(buf2);
 	// future: could use XML_GetInputContext to get line which failed and
 	// use offset into line to display line with a ^ underit
@@ -713,12 +728,15 @@ static void IXmlParserPush(IXmlParserState_t *state)
 	ASSERT(state->stack.sp < STACK_DEPTH-1);
 	state->stack.entries[state->stack.sp] = state->current;
 	state->stack.sp++;
+	state->current.tag = NULL;	// be paranoid and ensure no double reference
 }
 
 static void IXmlParserPop(IXmlParserState_t *state)
 {
 	ASSERT(state->stack.sp >= 1);
 	state->stack.sp--;
+	if (state->current.tag)
+		free(state->current.tag);
 	state->current = state->stack.entries[state->stack.sp];
 }
 
@@ -1225,7 +1243,6 @@ IXmlParserEndTag(void *data, const char *el)
 {
 	IXmlParserState_t *state = (IXmlParserState_t *) data;
 
-	state->current.tag = el;	// must reinitialize, content parse could free
 	// for c, p, s, t and w formats we keep leading and trailing spaces
 	// we know we output these tags without any extra spaces
 	// if tag had child tags, we also discard whitespace
@@ -1296,19 +1313,25 @@ IXmlParserRawStart(void *data, const char *el, const char **attr) {
 	if (! state->skip && state->current.subfields) {
 		for (i=0,p=state->current.subfields; p->tag; p++,i++) {
 			if (strcmp(el, p->tag) == 0 || strcmp("*", p->tag) == 0) {
+				char *tagname;
 				if (i < 64)
 					state->current.fields_found |= (uint64)(1<<i);
 				state->current.tags_found++;
 #if DEBUG_IXML_PARSER
 				printf("tags_found=%u fields_found=0x%"PRIx64"\n", state->current.tags_found, state->current.fields_found);
 #endif
+				tagname = strdup(el);
+				if (! tagname) {
+					IXmlParserPrintError(state, "Unable to allocate memory");
+					return;
+				}
 				IXmlParserPush(state);
-				state->current.tag = el;
+				state->current.tag = tagname;
 				state->current.field = p;
 				state->current.subfields = p->subfields;
 				state->current.fields_found = 0;
 				state->current.tags_found = 0;
-				IXmlParserStartTag(state, el, attr);   /* rest of start handling */
+				IXmlParserStartTag(state, state->current.tag, attr);   /* rest of start handling */
 				break;
 			}
 		}
@@ -1389,6 +1412,7 @@ IXmlParserInit(IXmlParserState_t *state, IXmlParserFlags_t flags, const IXML_FIE
 	state->depth = 1;
 	state->content = NULL;
 	state->len = 0;
+	state->current.tag = NULL;
 	state->current.field = NULL;
 	state->current.subfields = subfields;
 	state->current.object = object;
@@ -1467,7 +1491,7 @@ IXmlParserDestroy(IXmlParserState_t *state) {
 	// unwind any "open" tags in progress
 	while (state->depth > 1) {
 		if (state->current.field)
-			IXmlParserRawEnd(state, state->current.field->tag);
+			IXmlParserRawEnd(state, state->current.tag);	// also pops stack
 		else {
 			state->depth--;
 
@@ -1481,6 +1505,9 @@ IXmlParserDestroy(IXmlParserState_t *state) {
 	XML_ParserFree(state->parser);
 	state->parser = NULL;	// make sure not used by mistake after destroy
 	state->context = NULL;	// make sure not used by mistake after destroy
+	if (state->current.tag)
+		free(state->current.tag);
+	state->current.tag = NULL;	// make sure not used by mistake after destroy
 }
 
 #ifndef VXWORKS

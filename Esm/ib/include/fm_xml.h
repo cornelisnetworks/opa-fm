@@ -60,6 +60,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define DEFAULT_SUBNET_SIZE					100		    // XML default subnet size
 #endif // __VXWORKS__
 
+// Enable DOR config
+#define CONFIG_INCLUDE_DOR
 
 // Key PM config parameter defaults and ranges
 #define PM_DEFAULT_TOTAL_IMAGES	10			// for Image[] and history[]
@@ -234,6 +236,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // VL15CreditRate range
 #define MAX_VL15_CREDIT_RATE				21
+
+// Max ports per switch, used in config definitions
+#define MAX_SWITCH_PORTS					255
 
 // out of memory error
 #define OUT_OF_MEMORY					"Memory limit has been exceeded parsing the XML configuration"
@@ -569,11 +574,14 @@ typedef struct _VFabric {
 	uint8_t			qos_enable;						// defaults to 0 if undefined
 	uint8_t			base_sl;						// base SL assigned to VF - 0xff if undefined
 	uint8_t			base_sc;						// base SC assigned to VF
-#ifdef CONFIG_INCLUDE_DOR
 	uint8_t			updown_only;					//
-#endif
-	int8_t			routing_sls;					// number of SLs in this VF - SM only
-	int8_t			routing_scs;					// number of SCs in this VF - SM only
+
+	uint8_t			mcast_isolate;					// Used when multicast must be
+	uint8_t			mcast_sl;						// independent of other 
+	uint8_t			mcast_sc;						// traffic.
+
+	uint8_t			routing_sls;					// number of SLs in this VF - SM only
+	uint8_t			routing_scs;					// number of SCs in this VF - SM only
 	uint8_t			flowControlDisable;				// 0=default, 1=request disable of reliable link level flow control
 	uint8_t			percent_bandwidth;				// 1-100% - 0xff if undefined
 	uint8_t			priority;						// 0=low, 1=high defaulting to 0 if undefined
@@ -599,6 +607,8 @@ typedef struct _SMVirtualFabricsInternal {
 	uint8_t			qosEnabled;						// setup by SM
 	VF_t			v_fabric[MAX_ENABLED_VFABRICS];	// array of active Virtual Fabrics
 	VF_t			v_fabric_all[MAX_ENABLED_VFABRICS];// array of active/standby Virtual Fabrics
+	uint8_t			active_non_qos_vfs;				// # of active VFs sharing the non-QOS routing SL.
+	uint8_t			active_mc_vfs;					// # of active VFs sharing the non-QOS multicast isolation SL.
 	uint32_t		consistency_checksum;
 	uint32_t		disruptive_checksum;
 	uint32_t		overall_checksum;
@@ -749,10 +759,45 @@ typedef struct _SmDGRouting_t {
 	XMLMember_t	dg[MAX_DGROUTING_ORDER];
 } SmDGRouting_t;
 
+/*
+ * Structures for Enhanced Routing Control for Hypercube Routing, per switch.
+ */
+typedef uint32_t portMap_t;
+
+static __inline__ void portMapSet(portMap_t *portMap, int port)
+{
+	portMap[port/(sizeof(portMap_t)*8)] |= (1u << port%(sizeof(portMap_t)*8));
+}
+
+static __inline__ portMap_t portMapTest(portMap_t *portMap, int port)
+{
+	return portMap[port/(sizeof(portMap_t)*8)] & (1u << port%(sizeof(portMap_t)*8));
+}
+
+typedef struct _SmSPRoutingPort {
+	uint8_t			pport;
+	uint8_t			vport;
+	uint16_t		cost;
+} SmSPRoutingPort_t;
+
+typedef struct _SmSPRoutingCtrl {
+	struct _SmSPRoutingCtrl	*next;
+	XMLMember_t		switches;			// one or more switches
+	portMap_t		pportMap[MAX_SWITCH_PORTS/(sizeof(portMap_t)*8) + 1];
+	portMap_t		vportMap[MAX_SWITCH_PORTS/(sizeof(portMap_t)*8) + 1];
+	SmSPRoutingPort_t *ports;
+	uint16_t		portCount;
+} SmSPRoutingCtrl_t;
+
+typedef struct _SmHypercubeRouting_t {
+	uint8_t 			debug;
+	XMLMember_t			routeLast;				// device group indicating HFIs that should be routed last.
+	SmSPRoutingCtrl_t	*enhancedRoutingCtrl;
+} SmHypercubeRouting_t;
+
 #ifdef CONFIG_INCLUDE_DOR
-#define MAX_TOROIDAL_DIMENSIONS 3
+#define MAX_TOROIDAL_DIMENSIONS 6
 #define MAX_DOR_DIMENSIONS 20
-#define MAX_DOR_ISL_PORTS  255
 #define DEFAULT_DOR_PORT_PAIR_WARN_THRESHOLD	5
 #define DEFAULT_UPDN_MC_SAME_SPANNING_TREE	1
 
@@ -771,7 +816,7 @@ typedef struct _SmDimension {
 	uint8_t				toroidal;
 	uint8_t				portCount;
 	uint8_t				created;
-	SmPortPair_t		portPair[MAX_DOR_ISL_PORTS];
+	SmPortPair_t		portPair[MAX_SWITCH_PORTS];
 } SmDimension_t;
 
 typedef struct _SmDorRouting {
@@ -782,10 +827,8 @@ typedef struct _SmDorRouting {
 	uint8_t				debug;
 	uint32_t			warn_threshold;
 	uint32_t			updn_mc_same_spanning_tree;
-	uint8_t				maxQos;
 	uint8_t				routingSCs;
-	uint8_t				shareScOnDisruption;
-	uint8_t				scsNeeded;
+	uint8_t				useUpDownOnDisruption;
 	DorTop_t			topology;
 } SmDorRouting_t;
 #endif
@@ -825,6 +868,8 @@ typedef struct _SMXmlConfig {
 	uint32_t	config_consistency_check_level;
 	uint32_t	config_consistency_check_method;
 
+	uint32_t	startup_retries;
+	uint32_t	startup_stable_wait;
     uint64_t    sm_key;
     uint64_t    mkey;  
     uint64_t    timer;  
@@ -943,6 +988,7 @@ typedef struct _SMXmlConfig {
 
 	SmFtreeRouting_t ftreeRouting;
 	SmDGRouting_t dgRouting;
+	SmHypercubeRouting_t hypercubeRouting;
 
 	char        name[MAX_VFABRIC_NAME + 1];
 	uint32_t	start;
@@ -1123,6 +1169,8 @@ typedef struct _PMXmlConfig {
 typedef struct _FEXmlConfig {
 	uint32_t	subnet_size;
 	uint32_t	config_consistency_check_method;
+	uint32_t	startup_retries;
+	uint32_t	startup_stable_wait;
 
 	uint32_t 	manager_check_rate;
     uint32_t   	login;
@@ -1164,6 +1212,8 @@ typedef struct _FEXmlConfig {
 typedef struct _FMXmlConfig {
 	uint64_t	subnet_prefix;
     uint32_t	subnet_size;
+	uint32_t	startup_retries;
+	uint32_t	startup_stable_wait;
 	uint32_t	config_consistency_check_level;
 	uint32_t	config_consistency_check_method;
     uint32_t    SslSecurityEnabled;

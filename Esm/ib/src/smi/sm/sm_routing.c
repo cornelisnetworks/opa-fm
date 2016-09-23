@@ -183,7 +183,7 @@ sm_routing_setCurrentModule(Topology_t * topop, RoutingModule_t * rm)
 }
 
 Status_t
-sm_routing_alloc_floyds(Topology_t *topop)
+sm_routing_alloc_cost_matrix(Topology_t *topop)
 {
 	Status_t status;
 	size_t   bytesCost;
@@ -211,7 +211,7 @@ sm_routing_alloc_floyds(Topology_t *topop)
 	return VSTATUS_OK;
 }
 
-void
+Status_t
 sm_routing_init_floyds(Topology_t *topop)
 {
 	int i, j, k, ij, ik, ki, iNumNodes;
@@ -254,10 +254,11 @@ sm_routing_init_floyds(Topology_t *topop)
 	for (i = 0, ij = 0; i < topop->max_sws; i++, ij += topop->max_sws + 1) {
 		topop->cost[ij] = 0;
 	}
+	return VSTATUS_OK;
 }
 
-void
-sm_routing_calc_floyds(int switches, unsigned short * cost)
+Status_t
+sm_routing_calc_floyds(Topology_t *topop, int switches, unsigned short * cost)
 {
 	int i, j, k;
 	int ij, ik, kj, oldik;
@@ -274,7 +275,7 @@ sm_routing_calc_floyds(int switches, unsigned short * cost)
 	int curr_selection_sm_neighbor = 0;
 	uint8_t	old_root_exists = 0;
 	Node_t *nodep;
-	Node_t *sw = sm_topop->switch_head;
+	Node_t *sw = topop->switch_head;
 
 	for (k = 0, kNumNodes = 0; k < switches; k++, kNumNodes += switches) {
 		for (i = 0, iNumNodes = 0; i < switches; i++, iNumNodes += switches) {
@@ -302,9 +303,10 @@ sm_routing_calc_floyds(int switches, unsigned short * cost)
 	}
 
 	/* All floyd costs are fully computed now and can be analyzed */
-	for (k = 0; k < switches; k++) {
+	while(sw) {
 		total_cost = 0;
 		max_cost = 0;
+		k = sw->swIdx;
 		for (i = 0, iNumNodes = 0, oldiNumNodes = 0; i < switches;
 			 i++, iNumNodes += switches, oldiNumNodes += old_topology.max_sws) {
 
@@ -400,13 +402,13 @@ sm_routing_calc_floyds(int switches, unsigned short * cost)
 				}
 			}
 
-			if (sw)
-				sw = sw->type_next;
 		}
+		if (sw)
+			sw = sw->type_next;
 	}
 
 	if (!sm_useIdealMcSpanningTreeRoot)
-		return;
+		return VSTATUS_OK;
 
 	/* Based on the calculations, select the MC Spanning Tree Root Switch */
 
@@ -414,7 +416,7 @@ sm_routing_calc_floyds(int switches, unsigned short * cost)
 	if (sm_mcSpanningTreeRootGuid) {
 		/* If we identified a root in a previous sweep or if we have just take over
 		 * from a master, does the old root still exist ?*/
-		if (sm_find_guid(sm_topop, sm_mcSpanningTreeRootGuid)) 
+		if (sm_find_guid(topop, sm_mcSpanningTreeRootGuid)) 
 			old_root_exists = 1;
 	}
 	
@@ -426,7 +428,7 @@ sm_routing_calc_floyds(int switches, unsigned short * cost)
 			}
 			if (vs_lock(&sm_mcSpanningTreeRootGuidLock) != VSTATUS_OK) {
 				IB_LOG_ERROR0("error in getting mcSpanningTreeRootGuidLock");
-				return;
+				return VSTATUS_OK;
 			}
 			sm_mcSpanningTreeRootGuid = leastTotalCostSwitchGuid; 
 	        (void)vs_unlock(&sm_mcSpanningTreeRootGuidLock);
@@ -449,7 +451,7 @@ sm_routing_calc_floyds(int switches, unsigned short * cost)
 					}
 					if (vs_lock(&sm_mcSpanningTreeRootGuidLock) != VSTATUS_OK) {
 						IB_LOG_ERROR0("error in getting mcSpanningTreeRootGuidLock");
-						return;
+						return VSTATUS_OK;
 					}
 					sm_mcSpanningTreeRootGuid = leastTotalCostSwitchGuid; 
 			        (void)vs_unlock(&sm_mcSpanningTreeRootGuidLock);
@@ -472,7 +474,7 @@ sm_routing_calc_floyds(int switches, unsigned short * cost)
 			}
 			if (vs_lock(&sm_mcSpanningTreeRootGuidLock) != VSTATUS_OK) {
 				IB_LOG_ERROR0("error in getting mcSpanningTreeRootGuidLock");
-				return;
+				return VSTATUS_OK;
 			}
 			sm_mcSpanningTreeRootGuid = leastWorstCostSwitchGuid;
 	        (void)vs_unlock(&sm_mcSpanningTreeRootGuidLock);
@@ -495,7 +497,7 @@ sm_routing_calc_floyds(int switches, unsigned short * cost)
 					}
 					if (vs_lock(&sm_mcSpanningTreeRootGuidLock) != VSTATUS_OK) {
 						IB_LOG_ERROR0("error in getting mcSpanningTreeRootGuidLock");
-						return;
+						return VSTATUS_OK;
 					}
 					sm_mcSpanningTreeRootGuid = leastWorstCostSwitchGuid;
 			        (void)vs_unlock(&sm_mcSpanningTreeRootGuidLock);
@@ -517,7 +519,7 @@ sm_routing_calc_floyds(int switches, unsigned short * cost)
 	if (smDebugPerf) {
 		int found = 0;
 
-		for_all_switch_nodes(sm_topop, nodep) {
+		for_all_switch_nodes(topop, nodep) {
 			if (sm_mcSpanningTreeRoot_useLeastTotalCost &&
 					(nodep->nodeInfo.NodeGUID == leastTotalCostSwitchGuid)) {
 				IB_LOG_INFINI_INFO_FMT(__func__,
@@ -536,9 +538,8 @@ sm_routing_calc_floyds(int switches, unsigned short * cost)
 
 			if (nodep->nodeInfo.NodeGUID == sm_mcSpanningTreeRootGuid) {
 				IB_LOG_INFINI_INFO_FMT(__func__,
-						 "Current Multicast Spanning Tree Root is %s Guid "FMT_U64,
-						 sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, currRootTotalCost,
-						 currRootWorstCaseCost);
+					"Current Multicast Spanning Tree Root is %s Guid "FMT_U64,
+					sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID);
 				if (currRootTotalCost) {
 					IB_LOG_INFINI_INFO_FMT(__func__,
 						 "Current Spanning Tree Root Total cost is %d ", currRootTotalCost);
@@ -555,10 +556,11 @@ sm_routing_calc_floyds(int switches, unsigned short * cost)
 				break;
 		}
 	}
+	return VSTATUS_OK;
 }
 
 Status_t
-sm_routing_copy_floyds(Topology_t *src_topop, Topology_t *dst_topop)
+sm_routing_copy_cost_matrix(Topology_t *src_topop, Topology_t *dst_topop)
 {
 	Status_t status;
 	size_t   bytesCost;
@@ -604,10 +606,12 @@ sm_routing_copy_lfts(Topology_t *src_topop, Topology_t *dst_topop)
 
 		if (  nodep->initPorts.nset_m
 		   || !bitset_equal(&nodep->activePorts, &oldNodep->activePorts)) {
-			// Active ports changed or moved, recalculate LFTs for this switch.
-			// IB_LOG_INFINI_INFO_FMT(__func__, "Full LFT on port change for switch %s", sm_nodeDescString(nodep));
-			status = sm_setup_lft(dst_topop, nodep);
-			continue;
+			// Active ports changed or moved, recalculate LFTs for this switch if change involved ISL.
+			if (dst_topop->routingModule->funcs.handle_fabric_change(dst_topop, oldNodep, nodep)) {
+				// IB_LOG_INFINI_INFO_FMT(__func__, "Full LFT on port change for switch %s", sm_nodeDescString(nodep));
+				status = sm_setup_lft(dst_topop, nodep);
+				continue;
+			}
 		}
 
 		// PR-119954: This PR identified a memory leak that resulted in code in sm_routing_route_old_switch() being executed when 
@@ -616,8 +620,8 @@ sm_routing_copy_lfts(Topology_t *src_topop, Topology_t *dst_topop)
 		//			  code is not expected to be executed when node->lft is not zero, the following code has been added to 
 		//			  free the lft if node->lft is found to be non NULL.  This will insure that no memory leak can occur.
 		if (nodep->lft) {
-			IB_LOG_INFINI_INFO_FMT(__func__, "new lft - switch %s nodep %p nodep->index %ld nodep->lft %p", 
-														  sm_nodeDescString(nodep),   nodep,   nodep->index,    nodep->lft);
+			IB_LOG_INFINI_INFO_FMT(__func__, "new lft - switch %s nodep %p nodep->index %u nodep->lft %p",
+				sm_nodeDescString(nodep), nodep, nodep->index, nodep->lft);
 			vs_pool_free(&sm_pool, nodep->lft);
 			nodep->lft = NULL;
 		}
@@ -760,15 +764,17 @@ sm_routing_route_old_switch(Topology_t *src_topop, Topology_t *dst_topop, Node_t
 	if (  nodep->initPorts.nset_m
 	   || !bitset_equal(&nodep->activePorts, &oldNodep->activePorts)) {
 		// Active ports changed or moved, recalculate LFTs for this switch.
-		if (dst_topop->routingModule->funcs.needs_lft_recalc(dst_topop, nodep)) {
-			status = sm_setup_lft(dst_topop, nodep);
-		} else {
-			IB_LOG_INFINI_INFO_FMT(__func__,
-				"Full LFT send switch with Port Change %s", sm_nodeDescString(nodep));
-			status = sm_send_lft(dst_topop, nodep); 
+		if (dst_topop->routingModule->funcs.handle_fabric_change(dst_topop, oldNodep, nodep)) {
+			if (dst_topop->routingModule->funcs.needs_lft_recalc(dst_topop, nodep)) {
+				status = sm_setup_lft(dst_topop, nodep);
+			} else {
+				IB_LOG_INFINI_INFO_FMT(__func__,
+					"Full LFT send switch with Port Change %s", sm_nodeDescString(nodep));
+				status = sm_send_lft(dst_topop, nodep); 
+			}
+			//IB_LOG_INFINI_INFO_FMT(__func__, "Full route calc for switch with added/removed link %s", sm_nodeDescString(nodep));
+			return status;
 		}
-		//IB_LOG_INFINI_INFO_FMT(__func__, "Full route calc for switch with added/removed link %s", sm_nodeDescString(nodep));
-		return status;
 	}
 
 	// Why do we use sm_topop here instead of src_topop or dst_topop?
@@ -783,8 +789,8 @@ sm_routing_route_old_switch(Topology_t *src_topop, Topology_t *dst_topop, Node_t
 	//  		  when nodep->lft points to an lft.  Although this should no longer happen, the following code is added to prevent a memory leak
 	// 			  by freeing the lft, if node->lft is found to be non NULL.
 	if (nodep->lft) {
-		IB_LOG_INFINI_INFO_FMT(__func__, "new lft - switch %s nodep %p nodep->index %ld nodep->lft %p", 
-																sm_nodeDescString(nodep),   nodep,   nodep->index,    nodep->lft);
+		IB_LOG_INFINI_INFO_FMT(__func__, "new lft - switch %s nodep %p nodep->index %u nodep->lft %p",
+			sm_nodeDescString(nodep), nodep, nodep->index, nodep->lft);
 		vs_pool_free(&sm_pool, nodep->lft);
 		nodep->lft = NULL;
 	}
@@ -1385,5 +1391,15 @@ sm_routing_init(Topology_t * topop)
 		return status;
 
 	status = sm_dgmh_init(topop);
+	if (status != VSTATUS_OK)
+		return status;
+
+#ifdef CONFIG_INCLUDE_DOR
+	status = sm_dor_init(topop);
+	if (status != VSTATUS_OK)
+		return status;
+#endif
+
+	status = sm_hypercube_init(topop);
 	return status;
 }

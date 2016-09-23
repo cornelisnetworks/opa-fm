@@ -1,0 +1,226 @@
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+
+# [ICS VERSION STRING: unknown]
+
+source "/usr/lib/opa/tools/ff_function.exp"
+
+#=============================================================================#
+# Test Suite Description:
+#-----------------------------------------------------------------------------#
+## mpiperf
+## -------
+## quick MPI performance verification between each pair of hosts
+#=============================================================================#
+
+# manditory setup
+log_user 0;	# disable detailed logging to stdout
+
+# uncomment the following to debug the test
+#strace 20
+#log_user 1
+#exp_internal 1
+#cmd_trace on
+#strace 4
+
+proc suite_setup {} {
+	# example of conditional setup
+	#test_execute {load populate} {
+		#do some installation or configuration stuff
+	#}
+
+	global env
+	global standbySMs
+	global masterSM
+	global hostNodes
+	global cleanupHost
+	
+	# Initialize variables
+	set masterSM "undefined"
+	set standbySMs {}
+	set cleanupHost {}
+	set expRet undefined
+	
+	# Insure there are sufficient hosts to run the test
+	set nHost 2
+	set nStandby [expr {$nHost - 1}]
+	set hostNodes "$env(CFG_HOSTS)"
+	show_message "Found hosts: $hostNodes"
+	if {[llength $hostNodes] < $nHost } {
+		fail_suite "There is not enough hosts in this system to run this test\n Number of host: [llength $hostNodes]\n Required host: $nHost"
+	}
+	
+	# Clean the opafm files, then get the Master and Standby SMs
+	iv_clean_opafm_files
+	getMaster [lindex $hostNodes 0] masterSM
+	getStandbys [lindex $hostNodes 0] standbySMs
+
+	# Startup Standby SMs if there are not a sufficient number started already
+	if {[llength $standbySMs] < $nStandby} {
+		# Add the Master to the Standby list
+		set dStandby ""
+		dict lappend dStandby $masterSM 1
+
+		# Add the current Standby SMs to the Standby list
+		foreach standby $standbySMs {
+			dict lappend dStandby $standby 1
+        }
+
+		# Start additional Standby SMs
+		set count [llength $standbySMs]
+		foreach host $hostNodes {
+			# If this host does not have an SM started, then start one
+			if {[dict exists $dStandby $host] == 0} {
+				show_message "Starting Standby SM on $host"
+				target_root_sh $host
+					send_unix_cmd "fminit.py --expect --restart"
+					expect_list 20 {"fminit.py: success"} {"fminit.py: failure"}
+				target_root_sh_exit
+				lappend cleanupHost $host
+				incr count 1
+			}
+			
+			# Break out of foreach loop if we have enough Standby SMs
+			if {$count == $nStandby} {break}
+		}
+		show_message "Going to sleep for 30s"
+		sleep 30
+	}
+
+	# Get new Master and Standby SM lists
+	getMaster [lindex $hostNodes 0] masterSM
+    show_message "Master SM is $masterSM"
+
+	getStandbys [lindex $hostNodes 0] standbySMs
+    foreach standby $standbySMs {show_message "Standby SM is $standby"}
+
+}
+
+proc suite_cleanup { failed } {
+
+	global cleanupHost
+
+	# If there are SMs left running, stop them
+	if {[llength $cleanupHost] != 0} {
+		foreach host $cleanupHost {
+			show_message "Stopping SM on $host..."
+			target_root_sh $host
+				send_unix_cmd "fminit.py --expect --stop"
+				expect_list 20 {"fminit.py: success"} {"fminit.py: failure"}
+			target_root_sh_exit
+        }
+	}
+}
+
+proc case_setup {} {
+# setup to do at start of each test case
+# Usage:
+#	pass as argument to start_suite
+# Arguments:
+#	None
+# This procedure will be run at the start of every test case
+# It provides an opportunity for uniform cleanup/setup for each test case
+# It provides an opportunity for uniform cleanup/setup for each test case
+	noop
+}
+
+proc case_cleanup { failed } {
+# cleanup to do after each test case
+# Usage:
+#	pass as argument to start_suite
+# Arguments:
+#	failed - set to 1 if test case failed in which case additional
+#		information/files may be desired in test_tmp
+#		set to 0 if test case passed
+# This procedure will be run at the end of every test case
+# It provides an opportunity for uniform cleanup after each test case
+	global env
+
+	test_execute {} {
+		if { $failed || [ test_save_temp ] } {
+			# save any logs/results from system(s) under test
+			#upvar host host
+			#host_check_log $host "qmpi"
+		}
+	}
+}
+
+test_suite "mpiperf" "mpi lat/bw" "Quick tests of mpi lat/bw between each pair
+of hosts
+File: /usr/lib/opa/tools/mpiperf.exp" suite_setup noop {
+	global env
+
+	# Global Initializations for Test Suite:
+	# --------------------------------------
+
+	# ADD ANY GLOBAL INITIALIZATION HERE, SUCH AS:
+	# set env(MY_ENV_VAR) value
+	# also validate the environment
+	# if the environment is bad call fail_suite "information" abort_now
+	# abort_now should be 0 if it is safe to proceed and simply ignore all
+	# test_case calls.  it should be 1 if that is not possible.
+
+	# Procedures used to support Test Suite:
+	# --------------------------------------
+
+	# The actual test cases:
+	# ----------------------
+
+	set full 0
+	# compute host_pairs by taking each pair of hosts from CFG_HOSTS
+	# 1 to 2, 3 to 4, etc.  Thus each hosts bus speed and Ib connect is
+	# verified once
+	set host_pairs {}
+	set num_hosts [llength $env(CFG_HOSTS)]
+	if { $num_hosts < 2 } {
+		fail_suite "Need at least 2 hosts for MPI"
+	}
+
+	for { set i 0 } { $i < [ expr $num_hosts -1] } { incr i 2 } {
+		set host1 [lindex $env(CFG_HOSTS) $i]
+		set host2 [lindex $env(CFG_HOSTS) [ expr $i + 1]]
+		lappend host_pairs "[ff_host_to_ipoib $host1] [ff_host_to_ipoib $host2]"
+	}
+	if { $num_hosts > 1 && $num_hosts % 2 == 1 } {
+		# odd number, for last pair check last 2 hosts
+		set host1 [lindex $env(CFG_HOSTS) [expr $num_hosts -2] ]
+		set host2 [lindex $env(CFG_HOSTS) [expr $num_hosts -1] ]
+		lappend host_pairs "[ff_host_to_ipoib $host1] [ff_host_to_ipoib $host2]"
+	}
+
+	# prevent build_mpi_hosts/test_case_run_mpi_app from modifying host name
+	set env(CFG_IPOIB_SUFFIX) ""
+
+	set mpitype [determine_mpitype "$env(FF_MPI_APPS_DIR)"]
+
+	foreach pair $host_pairs {
+		test_case_run_mpi_app $mpitype default localhost $pair 60 "$env(FF_MPI_APPS_DIR)/latency" "latency" "100000 0" 1
+		test_case_run_mpi_app $mpitype default localhost $pair 60 "$env(FF_MPI_APPS_DIR)/bandwidth" "bw" "100 1000000" 1
+	}
+}

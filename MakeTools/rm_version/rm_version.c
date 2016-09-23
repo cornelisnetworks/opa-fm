@@ -28,9 +28,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ** END_ICS_COPYRIGHT7   ****************************************/
 /*!
  @file    $Source: /cvs/ics/MakeTools/rm_version/rm_version.c,v $
- $Name: ALL_EMB_ATOM_ALL_10_1-BRANCH_10_1_0_0_145 $
- $Revision: 1.6 $
- $Date: 2016/04/06 10:49:31 $
+ $Name:  $
+ $Revision: 1.5 $
+ $Date: 2015/01/22 18:04:00 $
  @brief   Program to remove version strings appended at end of file by prep
  */
 

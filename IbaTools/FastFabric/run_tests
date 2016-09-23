@@ -1,0 +1,843 @@
+#!/bin/bash
+# BEGIN_ICS_COPYRIGHT8 ****************************************
+# 
+# Copyright (c) 2015, Intel Corporation
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of Intel Corporation nor the names of its contributors
+#       may be used to endorse or promote products derived from this software
+#       without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+# END_ICS_COPYRIGHT8   ****************************************
+
+#[ICS VERSION STRING: unknown]
+
+check_act()
+{
+	if [ x"$2" = xa ]
+	then
+		out=`opacmdall -C -H "$chassis" "fwVersion $slota"`
+	elif [ x"$2" = xb ]
+	then
+		out=`opacmdall -C -H "$chassis" "fwVersion $slotb"`
+	else
+		out=`opacmdall -C -H "$chassis" "fwVersion $slot"`
+	fi
+	fw=`echo "$out"|grep 'Firmware Version:'|sed -e 's/.*Firmware Version:[ 	]*\([a-zA-Z0-9_.-]*\).*/\1/'`
+	if [ "$fw" != "$1" ]
+	then
+		echo "FAILED: unexpected running fw version: $fw, expected: $1, out=$out" >> test.log
+	else
+		echo "OK: act fw version: $fw, expected: $1" >> test.log
+	fi
+}
+
+check_pri()
+{
+	if [ x"$2" = xa ]
+	then
+		out=`opacmdall -C -H "$chassis" "bootQuery $slota"`
+	elif [ x"$2" = xb ]
+	then
+		out=`opacmdall -C -H "$chassis" "bootQuery $slotb"`
+	else
+		out=`opacmdall -C -H "$chassis" "bootQuery $slot"`
+	fi
+	fw=`echo "$out"|grep 'version:'|sed -e 's/.*version:[ 	]*\([a-zA-Z0-9_.-]*\).*/\1/'`
+	if [ "$fw" != "$1" ]
+	then
+		echo "FAILED: unexpected pri fw version: $fw, expected: $1, out=$out" >> test.log
+	else
+		echo "OK: pri fw version: $fw, expected: $1" >> test.log
+	fi
+}
+	
+check_alt()
+{
+	if [ x"$2" = xa ]
+	then
+		out=`opacmdall -C -H "$chassis" "bootQuery $slota -alternate"`
+	elif [ x"$2" = xb ]
+	then
+		out=`opacmdall -C -H "$chassis" "bootQuery $slotb -alternate"`
+	else
+		out=`opacmdall -C -H "$chassis" "bootQuery $slot -alternate"`
+	fi
+	fw=`echo "$out"|grep 'version:'|sed -e 's/.*version:[ 	]*\([a-zA-Z0-9_.-]*\).*/\1/'`
+	if [ "$fw" != "$1" ]
+	then
+		echo "FAILED: unexpected alt fw version: $fw, expected: $1, out=$out" >> test.log
+	else
+		echo "OK: alt fw version: $fw, expected: $1" >> test.log
+	fi
+}
+
+set_fw_ver()
+{
+#cat > /sbin/opafirmware <<EOF
+#if [ x"\$1" = x"--showVersion" ]
+#then
+#	/root/opafirmware --showVersion "\$2"
+#else
+#	echo "$2"
+#fi
+#EOF
+	> /dev/null
+}
+
+set_fw_ver1()
+{
+	set_fw_ver $fw1_ver "$card_type"
+	> /dev/null
+}
+set_fw_ver2()
+{
+	set_fw_ver $fw2_ver "$card_type"
+	> /dev/null
+}
+
+set_fw_ver3()
+{
+	set_fw_ver $fw3_ver "$card_type"
+	> /dev/null
+}
+set_fw_verbad()
+{
+	set_fw_ver 3.1.0.0.29 "VEx"
+	> /dev/null
+}
+
+set -x
+rm -f test.log test.res
+rm -rf test_tmp*
+rm -rf save_tmp
+
+
+test1()
+{
+	echo "/////////////////////////////////////////" >> test.log
+	echo "pre-test setup - run $fw1" >> test.log
+	set_fw_ver1
+	opachassisadmin -H "$chassis" -P $fw1 -a run upgrade
+	echo "/////////////////////////////////////////" >> test.log
+	echo "pre-test setup - push $fw2 to alt" >> test.log
+	set_fw_ver2
+	opachassisadmin -H "$chassis" -P $fw2 -a push upgrade
+
+
+	echo "/////////////////////////////////////////" >> test.log
+	echo "firmware already on card and primary/active" >> test.log
+
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, don't select, no push ">> test.log
+	echo "now running $fw1 pri, $fw2 alt" >> test.log
+	check_act $fw1_ver
+	check_pri $fw1_ver
+	check_alt $fw2_ver
+	set_fw_ver1
+	opachassisadmin -H "$chassis" -P $fw1 upgrade
+
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, don't select, no push ">> test.log
+	echo "now running $fw1 pri, $fw2 alt" >> test.log
+	check_act $fw1_ver
+	check_pri $fw1_ver
+	check_alt $fw2_ver
+	set_fw_ver1
+	opachassisadmin -H "$chassis" -P $fw1 -a push upgrade
+
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, no need to select" >> test.log
+	echo "now running $fw1 pri, $fw2 alt" >> test.log
+	check_act $fw1_ver
+	check_pri $fw1_ver
+	check_alt $fw2_ver
+	set_fw_ver1
+	opachassisadmin -H "$chassis" -P $fw1 -a select upgrade
+
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, no need to reboot" >> test.log
+	echo "now running $fw1 pri, $fw2 alt" >> test.log
+	set_fw_ver1
+	check_act $fw1_ver
+	check_pri $fw1_ver
+	check_alt $fw2_ver
+	opachassisadmin -H "$chassis" -P $fw1 -a run upgrade
+	check_act $fw1_ver
+	check_pri $fw1_ver
+	check_alt $fw2_ver
+}
+
+
+test2()
+{
+	echo "/////////////////////////////////////////" >> test.log
+	echo "pre-test setup - run $fw2" >> test.log
+	set_fw_ver2
+	opachassisadmin -H "$chassis" -P $fw2 -a run upgrade
+	echo "/////////////////////////////////////////" >> test.log
+	echo "pre-test setup - push $fw1 to alt" >> test.log
+	set_fw_ver1
+	opachassisadmin -H "$chassis" -P $fw1 -a push upgrade
+
+
+	echo "/////////////////////////////////////////" >> test.log
+	echo "firmware already on card and alternate/ not active" >> test.log
+
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, no need to push" >> test.log
+	echo "now running $fw2 pri, $fw1 alt" >> test.log
+	check_act $fw2_ver
+	check_pri $fw2_ver
+	check_alt $fw1_ver
+	set_fw_ver1
+	opachassisadmin -H "$chassis" -P $fw1 upgrade
+
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, no need to push" >> test.log
+	echo "now running $fw2 pri, $fw1 alt" >> test.log
+	check_act $fw2_ver
+	check_pri $fw2_ver
+	check_alt $fw1_ver
+	set_fw_ver1
+	opachassisadmin -H "$chassis" -P $fw1 -a push upgrade
+
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, but need to select and reboot" >> test.log
+	echo "now running $fw2 pri, $fw1 alt" >> test.log
+	check_act $fw2_ver
+	check_pri $fw2_ver
+	check_alt $fw1_ver
+	set_fw_ver1
+	opachassisadmin -H "$chassis" -P $fw1 -a run upgrade
+
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, but need to select" >> test.log
+	echo "now running $fw1 pri, $fw2 alt" >> test.log
+	check_act $fw1_ver
+	check_pri $fw1_ver
+	check_alt $fw2_ver
+	set_fw_ver2
+	opachassisadmin -H "$chassis" -P $fw2 -a select upgrade
+	check_act $fw1_ver
+	check_pri $fw2_ver
+	check_alt $fw1_ver
+}
+
+test3()
+{
+	echo "/////////////////////////////////////////" >> test.log
+	echo "pre-test setup - run $fw1" >> test.log
+	set_fw_ver1
+	opachassisadmin -H "$chassis" -P $fw1 -a run upgrade
+	echo "/////////////////////////////////////////" >> test.log
+	echo "pre-test setup - push $fw2 and select" >> test.log
+	set_fw_ver2
+	opachassisadmin -H "$chassis" -P $fw2 -a select upgrade
+
+	echo "/////////////////////////////////////////" >> test.log
+	echo "firmware already on card and alternate but active" >> test.log
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, no need to push" >> test.log
+	echo "now running $fw1 alt, $fw2 pri" >> test.log
+	check_act $fw1_ver
+	check_pri $fw2_ver
+	check_alt $fw1_ver
+	set_fw_ver1
+	opachassisadmin -H "$chassis" -P $fw1 -a push upgrade
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, no need to push" >> test.log
+	echo "now running $fw1 alt, $fw2 pri" >> test.log
+	check_act $fw1_ver
+	check_pri $fw2_ver
+	check_alt $fw1_ver
+	set_fw_ver1
+	opachassisadmin -H "$chassis" -P $fw1 upgrade
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, but need to select" >> test.log
+	echo "now running $fw1 alt, $fw2 pri" >> test.log
+	check_act $fw1_ver
+	check_pri $fw2_ver
+	check_alt $fw1_ver
+	set_fw_ver1
+	opachassisadmin -H "$chassis" -P $fw1 -a select upgrade
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, but need to select" >> test.log
+	echo "now running $fw1 pri, $fw2 alt" >> test.log
+	check_act $fw1_ver
+	check_pri $fw1_ver
+	check_alt $fw2_ver
+	set_fw_ver2
+	opachassisadmin -H "$chassis" -P $fw2 -a select upgrade
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, but need to select and reboot" >> test.log
+	echo "now running $fw1 alt, $fw2 pri" >> test.log
+	check_act $fw1_ver
+	check_pri $fw2_ver
+	check_alt $fw1_ver
+	set_fw_ver2
+	opachassisadmin -H "$chassis" -P $fw2 -a run upgrade
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, but need to select and reboot" >> test.log
+	echo "now running $fw1 alt, $fw2 pri" >> test.log
+	check_act $fw2_ver
+	check_pri $fw2_ver
+	check_alt $fw1_ver
+	set_fw_ver1
+	opachassisadmin -H "$chassis" -P $fw1 -a run upgrade
+	check_act $fw1_ver
+	check_pri $fw1_ver
+	check_alt $fw2_ver
+}
+
+test4()
+{
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "Wrong card type" >> test.log
+	echo "now running $fw1 pri, $fw2 alt" >> test.log
+	check_act $fw1_ver
+	check_pri $fw1_ver
+	check_alt $fw2_ver
+	set_fw_verbad
+	opachassisadmin -H "$chassis" -P $badfw -a run upgrade
+	check_act $fw1_ver
+	check_pri $fw1_ver
+	check_alt $fw2_ver
+}
+
+test5()
+{
+	echo "/////////////////////////////////////////" >> test.log
+	echo "pre-test setup - run $fw1" >> test.log
+	set_fw_ver1
+	opachassisadmin -H "$chassis" -P $fw1 -a run upgrade
+	echo "/////////////////////////////////////////" >> test.log
+	echo "pre-test setup - push $fw2" >> test.log
+	set_fw_ver2
+	opachassisadmin -H "$chassis" -P $fw2 -a push upgrade
+
+	echo "/////////////////////////////////////////" >> test.log
+	echo "firmware not on card" >> test.log
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "need to push" >> test.log
+	echo "now running $fw1 pri, $fw2 alt" >> test.log
+	check_act $fw1_ver
+	check_pri $fw1_ver
+	check_alt $fw2_ver
+	set_fw_ver3
+	opachassisadmin -H "$chassis" -P $fw3 -a push upgrade
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "need to push" >> test.log
+	echo "now running $fw1 pri, $fw3 alt" >> test.log
+	check_act $fw1_ver
+	check_pri $fw1_ver
+	check_alt $fw3_ver
+	set_fw_ver2
+	opachassisadmin -H "$chassis" -P $fw2 upgrade
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "need to push and select" >> test.log
+	echo "now running $fw1 pri, $fw2 alt" >> test.log
+	check_act $fw1_ver
+	check_pri $fw1_ver
+	check_alt $fw2_ver
+	set_fw_ver3
+	opachassisadmin -H "$chassis" -P $fw3 -a select upgrade
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "need to push and select" >> test.log
+	echo "now running $fw1 alt, $fw3 pri" >> test.log
+	check_act $fw1_ver
+	check_pri $fw3_ver
+	check_alt $fw1_ver
+	set_fw_ver2
+	opachassisadmin -H "$chassis" -P $fw2 -a select upgrade
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "need to push" >> test.log
+	echo "now running $fw1 alt, $fw2 pri" >> test.log
+	check_act $fw1_ver
+	check_pri $fw2_ver
+	check_alt $fw1_ver
+	set_fw_ver3
+	opachassisadmin -H "$chassis" -P $fw3 -a push upgrade
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "need to push and activate" >> test.log
+	echo "now running $fw1 pri, $fw3 alt" >> test.log	# TBD what to expect
+	check_act $fw1_ver
+	check_pri $fw3_ver
+	check_alt $fw1_ver
+	set_fw_ver2
+	opachassisadmin -H "$chassis" -P $fw2 -a run upgrade
+	check_act $fw2_ver
+	check_pri $fw2_ver
+	check_alt $fw1_ver
+}
+
+test1m()
+{
+	echo "/////////////////////////////////////////" >> test.log
+	echo "pre-test setup - run $fw1 in $slota" >> test.log
+	set_fw_ver1
+	opachassisadmin -H "$chassis:$slota" -P $fw1 -a run upgrade
+	echo "pre-test setup - run $fw2 in $slotb" >> test.log
+	set_fw_ver2
+	opachassisadmin -H "$chassis:$slotb" -P $fw2 -a run upgrade
+	echo "/////////////////////////////////////////" >> test.log
+	echo "pre-test setup - push $fw2 to alt in $slota" >> test.log
+	set_fw_ver2
+	opachassisadmin -H "$chassis:$slota" -P $fw2 -a push upgrade
+	echo "pre-test setup - push $fw1 to alt in $slotb" >> test.log
+	set_fw_ver1
+	opachassisadmin -H "$chassis:$slotb" -P $fw1 -a push upgrade
+
+
+	echo "/////////////////////////////////////////" >> test.log
+	echo "firmware already on card and primary/active" >> test.log
+
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, don't select, no push ">> test.log
+	echo "now $slota running $fw1 pri, $fw2 alt" >> test.log
+	check_act $fw1_ver a
+	check_pri $fw1_ver a
+	check_alt $fw2_ver a
+	echo "now $slotb running $fw2 pri, $fw1 alt" >> test.log
+	check_act $fw2_ver b
+	check_pri $fw2_ver b
+	check_alt $fw1_ver b
+	set_fw_ver1
+	opachassisadmin -H "$chassis" -P $fw1 upgrade
+
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, don't select, no push ">> test.log
+	echo "now $slota running $fw1 pri, $fw2 alt" >> test.log
+	check_act $fw1_ver a
+	check_pri $fw1_ver a
+	check_alt $fw2_ver a
+	echo "now $slotb running $fw2 pri, $fw1 alt" >> test.log
+	check_act $fw2_ver b
+	check_pri $fw2_ver b
+	check_alt $fw1_ver b
+	set_fw_ver1
+	opachassisadmin -H "$chassis" -P $fw1 -a push upgrade
+
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, no need to select (on $slota, select $slotb)" >> test.log
+	echo "now $slota running $fw1 pri, $fw2 alt" >> test.log
+	check_act $fw1_ver a
+	check_pri $fw1_ver a
+	check_alt $fw2_ver a
+	echo "now $slotb running $fw2 pri, $fw1 alt" >> test.log
+	check_act $fw2_ver b
+	check_pri $fw2_ver b
+	check_alt $fw1_ver b
+	set_fw_ver1
+	opachassisadmin -H "$chassis" -P $fw1 -a select upgrade
+
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, no need to reboot $slota, reboot $slotb" >> test.log
+	echo "now $slota running $fw1 pri, $fw2 alt" >> test.log
+	check_act $fw1_ver a
+	check_pri $fw1_ver a
+	check_alt $fw2_ver a
+	echo "now $slotb running $fw2 alt, $fw1 pri" >> test.log
+	check_act $fw2_ver b
+	check_pri $fw1_ver b
+	check_alt $fw2_ver b
+	set_fw_ver1
+	opachassisadmin -H "$chassis" -P $fw1 -a run upgrade
+	check_act $fw1_ver a
+	check_pri $fw1_ver a
+	check_alt $fw2_ver a
+	check_act $fw1_ver b
+	check_pri $fw1_ver b
+	check_alt $fw2_ver b
+}
+
+
+test2m()
+{
+	echo "/////////////////////////////////////////" >> test.log
+	echo "pre-test setup - run $fw2 in $slota" >> test.log
+	set_fw_ver2
+	opachassisadmin -H "$chassis:$slota" -P $fw2 -a run upgrade
+	echo "pre-test setup - run $fw1 in $slotb" >> test.log
+	set_fw_ver1
+	opachassisadmin -H "$chassis:$slotb" -P $fw1 -a run upgrade
+	echo "/////////////////////////////////////////" >> test.log
+	echo "pre-test setup - push $fw1 to alt in $slota" >> test.log
+	set_fw_ver1
+	opachassisadmin -H "$chassis:$slota" -P $fw1 -a push upgrade
+	echo "pre-test setup - push $fw2 to alt in $slotb" >> test.log
+	set_fw_ver2
+	opachassisadmin -H "$chassis:$slotb" -P $fw2 -a push upgrade
+
+
+	echo "/////////////////////////////////////////" >> test.log
+	echo "firmware already on card and alternate/ not active" >> test.log
+
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, no need to push" >> test.log
+	echo "now $slota running $fw2 pri, $fw1 alt" >> test.log
+	check_act $fw2_ver a
+	check_pri $fw2_ver a
+	check_alt $fw1_ver a
+	echo "now $slotb running $fw1 pri, $fw2 alt" >> test.log
+	check_act $fw1_ver b
+	check_pri $fw1_ver b
+	check_alt $fw2_ver b
+	set_fw_ver1
+	opachassisadmin -H "$chassis" -P $fw1 upgrade
+
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, no need to push" >> test.log
+	echo "now $slota running $fw2 pri, $fw1 alt" >> test.log
+	check_act $fw2_ver a
+	check_pri $fw2_ver a
+	check_alt $fw1_ver a
+	echo "now $slotb running $fw1 pri, $fw2 alt" >> test.log
+	check_act $fw1_ver b
+	check_pri $fw1_ver b
+	check_alt $fw2_ver b
+	set_fw_ver1
+	opachassisadmin -H "$chassis" -P $fw1 -a push upgrade
+
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, but need to select and reboot ($slota only)" >> test.log
+	echo "now $slota running $fw2 pri, $fw1 alt" >> test.log
+	check_act $fw2_ver a
+	check_pri $fw2_ver a
+	check_alt $fw1_ver a
+	echo "now $slotb running $fw1 pri, $fw2 alt" >> test.log
+	check_act $fw1_ver b
+	check_pri $fw1_ver b
+	check_alt $fw2_ver b
+	set_fw_ver1
+	opachassisadmin -H "$chassis" -P $fw1 -a run upgrade
+
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, but need to select" >> test.log
+	echo "now $slota/$slotb running $fw1 pri, $fw2 alt" >> test.log
+	check_act $fw1_ver a
+	check_pri $fw1_ver a
+	check_alt $fw2_ver a
+	check_act $fw1_ver b
+	check_pri $fw1_ver b
+	check_alt $fw2_ver b
+	set_fw_ver2
+	opachassisadmin -H "$chassis" -P $fw2 -a select upgrade
+	check_act $fw1_ver a
+	check_pri $fw2_ver a
+	check_alt $fw1_ver a
+	check_act $fw1_ver b
+	check_pri $fw2_ver b
+	check_alt $fw1_ver b
+}
+
+test3m()
+{
+	echo "/////////////////////////////////////////" >> test.log
+	echo "pre-test setup - run $fw1 in $slota" >> test.log
+	set_fw_ver1
+	opachassisadmin -H "$chassis:$slota" -P $fw1 -a run upgrade
+	echo "pre-test setup - run $fw2 in $slotb" >> test.log
+	set_fw_ver2
+	opachassisadmin -H "$chassis:$slotb" -P $fw2 -a run upgrade
+	echo "/////////////////////////////////////////" >> test.log
+	echo "pre-test setup - push $fw2 in $slota and select" >> test.log
+	set_fw_ver2
+	opachassisadmin -H "$chassis:$slota" -P $fw2 -a select upgrade
+	echo "pre-test setup - push $fw1 in $slota and select" >> test.log
+	set_fw_ver1
+	opachassisadmin -H "$chassis:$slotb" -P $fw1 -a select upgrade
+
+	echo "/////////////////////////////////////////" >> test.log
+	echo "firmware already on card and alternate but active" >> test.log
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, no need to push" >> test.log
+	echo "now $slota running $fw1 alt, $fw2 pri" >> test.log
+	check_act $fw1_ver a
+	check_pri $fw2_ver a
+	check_alt $fw1_ver a
+	echo "now $slotb running $fw2 alt, $fw1 pri" >> test.log
+	check_act $fw2_ver b
+	check_pri $fw1_ver b
+	check_alt $fw2_ver b
+	set_fw_ver1
+	opachassisadmin -H "$chassis" -P $fw1 -a push upgrade
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, no need to push" >> test.log
+	echo "now $slota running $fw1 alt, $fw2 pri" >> test.log
+	check_act $fw1_ver a
+	check_pri $fw2_ver a
+	check_alt $fw1_ver a
+	echo "now $slotb running $fw2 alt, $fw1 pri" >> test.log
+	check_act $fw2_ver b
+	check_pri $fw1_ver b
+	check_alt $fw2_ver b
+	set_fw_ver1
+	opachassisadmin -H "$chassis" -P $fw1 upgrade
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, but need to select" >> test.log
+	echo "now $slota running $fw1 alt, $fw2 pri" >> test.log
+	check_act $fw1_ver a
+	check_pri $fw2_ver a
+	check_alt $fw1_ver a
+	echo "now $slotb running $fw2 alt, $fw1 pri" >> test.log
+	check_act $fw2_ver b
+	check_pri $fw1_ver b
+	check_alt $fw2_ver b
+	set_fw_ver1
+	opachassisadmin -H "$chassis" -P $fw1 -a select upgrade
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, but need to select" >> test.log
+	echo "now $slota running $fw1 pri, $fw2 alt" >> test.log
+	check_act $fw1_ver a
+	check_pri $fw1_ver a
+	check_alt $fw2_ver a
+	echo "now $slotb running $fw2 alt, $fw2 pri" >> test.log
+	check_act $fw2_ver b
+	check_pri $fw1_ver b
+	check_alt $fw2_ver b
+	set_fw_ver2
+	opachassisadmin -H "$chassis" -P $fw2 -a select upgrade
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, but need to select and reboot" >> test.log
+	echo "now $slota running $fw1 alt, $fw2 pri" >> test.log
+	check_act $fw1_ver a
+	check_pri $fw2_ver a
+	check_alt $fw1_ver a
+	echo "now $slotb running $fw2 pri, $fw2 alt" >> test.log
+	check_act $fw2_ver b
+	check_pri $fw2_ver b
+	check_alt $fw1_ver b
+	set_fw_ver2
+	opachassisadmin -H "$chassis" -P $fw2 -a run upgrade
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "already on chassis, but need to select and reboot" >> test.log
+	echo "now $slota/$slotb running $fw1 alt, $fw2 pri" >> test.log
+	check_act $fw2_ver a
+	check_pri $fw2_ver a
+	check_alt $fw1_ver a
+	check_act $fw2_ver b
+	check_pri $fw2_ver b
+	check_alt $fw1_ver b
+	set_fw_ver1
+	opachassisadmin -H "$chassis" -P $fw1 -a run upgrade
+	check_act $fw1_ver a
+	check_pri $fw1_ver a
+	check_alt $fw2_ver a
+	check_act $fw1_ver b
+	check_pri $fw1_ver b
+	check_alt $fw2_ver b
+}
+
+test4m()
+{
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "Wrong card type" >> test.log
+	echo "now running $fw1 pri, $fw2 alt" >> test.log
+	check_act $fw1_ver a
+	check_pri $fw1_ver a
+	check_alt $fw2_ver a
+	check_act $fw1_ver b
+	check_pri $fw1_ver b
+	check_alt $fw2_ver b
+	set_fw_verbad
+	opachassisadmin -H "$chassis" -P $badfw -a run upgrade
+	check_act $fw1_ver a
+	check_pri $fw1_ver a
+	check_alt $fw2_ver a
+	check_act $fw1_ver b
+	check_pri $fw1_ver b
+	check_alt $fw2_ver b
+}
+
+test5m()
+{
+	echo "/////////////////////////////////////////" >> test.log
+	echo "pre-test setup - run $fw1 on $slota" >> test.log
+	set_fw_ver1
+	opachassisadmin -H "$chassis:$slota" -P $fw1 -a run upgrade
+	echo "pre-test setup - run $fw2 on $slotb" >> test.log
+	set_fw_ver2
+	opachassisadmin -H "$chassis:$slotb" -P $fw2 -a run upgrade
+	echo "/////////////////////////////////////////" >> test.log
+	echo "pre-test setup - push $fw2 on $slota" >> test.log
+	set_fw_ver2
+	opachassisadmin -H "$chassis:$slota" -P $fw2 -a push upgrade
+	echo "pre-test setup - push $fw1 on $slotb" >> test.log
+	set_fw_ver1
+	opachassisadmin -H "$chassis:$slotb" -P $fw1 -a push upgrade
+
+	echo "/////////////////////////////////////////" >> test.log
+	echo "firmware not on card" >> test.log
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "need to push" >> test.log
+	echo "now $slota running $fw1 pri, $fw2 alt" >> test.log
+	check_act $fw1_ver a
+	check_pri $fw1_ver a
+	check_alt $fw2_ver a
+	echo "now $slotb running $fw2 pri, $fw1 alt" >> test.log
+	check_act $fw2_ver b
+	check_pri $fw2_ver b
+	check_alt $fw1_ver b
+	set_fw_ver3
+	opachassisadmin -H "$chassis" -P $fw3 -a push upgrade
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "need to push" >> test.log
+	echo "now $slota running $fw1 pri, $fw3 alt" >> test.log
+	check_act $fw1_ver a
+	check_pri $fw1_ver a
+	check_alt $fw3_ver a
+	echo "now $slotb running $fw2 pri, $fw3 alt" >> test.log
+	check_act $fw2_ver b
+	check_pri $fw2_ver b
+	check_alt $fw3_ver b
+	set_fw_ver2
+	opachassisadmin -H "$chassis" -P $fw2 upgrade
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "need to push and select" >> test.log
+	echo "now $slota running $fw1 pri, $fw2 alt" >> test.log
+	check_act $fw1_ver a
+	check_pri $fw1_ver a
+	check_alt $fw2_ver a
+	echo "now $slota running $fw2 pri, $fw1 alt" >> test.log
+	check_act $fw2_ver b
+	check_pri $fw2_ver b
+	check_alt $fw3_ver b
+	set_fw_ver3
+	opachassisadmin -H "$chassis" -P $fw3 -a select upgrade
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "need to push and select" >> test.log
+	echo "now $slota running $fw1 alt, $fw3 pri" >> test.log
+	check_act $fw1_ver a
+	check_pri $fw3_ver a
+	check_alt $fw1_ver a
+	echo "now $slotb running $fw2 alt, $fw3 pri" >> test.log
+	check_act $fw2_ver b
+	check_pri $fw3_ver b
+	check_alt $fw2_ver b
+	set_fw_ver2
+	opachassisadmin -H "$chassis" -P $fw2 -a select upgrade
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "need to push" >> test.log
+	echo "now $slota running $fw1 alt, $fw2 pri" >> test.log
+	check_act $fw1_ver a
+	check_pri $fw2_ver a
+	check_alt $fw1_ver a
+	echo "now $slotb running $fw2 pri, $fw1 alt" >> test.log
+	check_act $fw2_ver b
+	check_pri $fw2_ver b
+	check_alt $fw3_ver b
+	set_fw_ver3
+	opachassisadmin -H "$chassis" -P $fw3 -a push upgrade
+	echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" >> test.log
+	echo "need to push and activate" >> test.log
+	echo "now $slota running $fw1 pri, $fw3 alt" >> test.log	# TBD what to expect
+	check_act $fw1_ver a
+	check_pri $fw3_ver a
+	check_alt $fw1_ver a
+	echo "now $slotb running $fw2 pri, $fw3 alt" >> test.log	# TBD what to expect
+	check_act $fw2_ver b
+	check_pri $fw2_ver b
+	check_alt $fw3_ver b
+	set_fw_ver2
+	opachassisadmin -H "$chassis" -P $fw2 -a run upgrade
+	check_act $fw2_ver a
+	check_pri $fw2_ver a
+	check_alt $fw1_ver a
+	check_act $fw2_ver b
+	check_pri $fw2_ver b
+	check_alt $fw3_ver b
+}
+
+# this makes log a little easier to read, we only do 1 chassis per test anyway
+export FF_MAX_PARALLEL=0
+
+# these tests can be used for single slot chassis (9024, I2K, I3K)
+# or to test 1 card type in a multi-slot chassis
+
+# Single slot chassis tests
+#========================================================
+#firmware files to push, 3 similar versions with different numbers
+fw1=embfw/3_1_1_0_10S1/InfinIO9000.t3.pkg
+fw2=embfw/3_1_1_0_10S2/InfinIO9000.t3.pkg
+fw3=embfw/3_1_1_0_10S3/InfinIO9000.t3.pkg
+fw1_ver=3.1.1.0.10S1
+fw2_ver=3.1.1.0.10S2
+fw3_ver=3.1.1.0.10S3
+badfw=embfw/3_1_0_0_29/VEx.pcix.pkg
+
+
+# simple switch
+chassis=i9k112
+card_type="InfinIO9000.t3"
+slot=0
+test1
+test2
+test3
+test4
+test5
+
+# simple switch, specific slot
+chassis="i9k112:101"
+card_type="InfinIO9000.t3"
+slot=0
+test1
+test2
+test3
+test4
+test5
+
+# simple switch, management slot
+chassis="i9k112:0"
+card_type="InfinIO9000.t3"
+slot=0
+test1
+test2
+test3
+test4
+test5
+
+# multi-slot chassis tests
+#========================================================
+
+#firmware files to push, 3 similar versions with different numbers
+fw1=embfw/3_1_1_0_10S1/VEx.pcix.pkg
+fw2=embfw/3_1_1_0_10S2/VEx.pcix.pkg
+fw3=embfw/3_1_1_0_10S3/VEx.pcix.pkg
+fw1_ver=3.1.1.0.10S1
+fw2_ver=3.1.1.0.10S2
+fw3_ver=3.1.1.0.10S3
+badfw=embfw/3_1_0_0_29/InfinIO2000.mc1125.pkg
+
+# pick 2 slots which have the same card type
+# VEx cards in hobbiton
+chassis=hobbiton
+slota=1
+slotb=3
+card_type="VEx.pcix"
+
+# these tests are strictly for multi-slot chassis and test mixed
+# firmware versions prior to operation
+test1m
+test2m
+test3m
+test4m
+test5m

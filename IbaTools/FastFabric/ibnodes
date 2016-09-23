@@ -1,0 +1,21 @@
+# [ICS VERSION STRING: unknown]
+# This file lists all the Intel Externally Managed Switches
+#
+# specify one line per switch of the form guid,nodeDesc,distance
+#  guid - node guid of the switch
+#  nodeDesc - optional node description which should be programmed into
+#      the switch by FastFabric.  It is recommended to supply a unique
+#      nodeDesc for each switch to simplify management of the cluster.
+#  distance - optional relative distance of the switch from the FastFabric node
+#      this is used by reboot operations to first operate on switches furthest
+#      from the FastFabric node.
+#      Nodes without a distance specified will be treated as furthest.
+# For fabrics with multiple IB subnets, the local hfi and port to use may be
+# specified as: guid:hfi:port,nodeDesc,distance.
+# See the FastFabric Manual for more info
+#
+# The opagenswitches tool can be used to query the SM and generate a list of
+# Externally Managed switches in the proper form for this file.
+#
+# for example:
+# 0x00066a00e300299f,SwitchA1,2

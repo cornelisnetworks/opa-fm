@@ -146,6 +146,51 @@ extern "C" {
 /* Subnet Administration MAD status values */
 #define STL_MAD_STATUS_STL_SA_UNAVAILABLE	    0x0100  // SA unavailable
 
+/*
+ * SA capability mask defines
+ */
+#define STL_SA_CAPABILITY_MULTICAST_SUPPORT      0x0200
+#define STL_SA_CAPABILITY_MULTIPATH_SUPPORT      0x0400
+#define STL_SA_CAPABILITY_PORTINFO_CAPMASK_MATCH 0x2000
+#define STL_SA_CAPABILITY_PA_SERVICES_SUPPORT    0x8000
+
+#define STL_SA_CAPABILITY2_QOS_SUPPORT           0x0002
+#define STL_SA_CAPABILITY2_MFTTOP_SUPPORT        0x0008
+#define STL_SA_CAPABILITY2_FULL_PORTINFO         0x0040
+#define STL_SA_CAPABILITY2_EXT_SUPPORT           0x0080
+
+static __inline void
+StlSaClassPortInfoCapMask(char buf[80], uint16 cmask)
+{
+	if (!cmask) {
+		snprintf(buf, 80, "-");
+	} else {
+		snprintf(buf, 80, "%s%s%s%s%s%s%s",
+			(cmask & STL_CLASS_PORT_CAPMASK_TRAP) ? "Trap " : "",
+			(cmask & STL_CLASS_PORT_CAPMASK_NOTICE) ? "Notice " : "",
+			(cmask & STL_CLASS_PORT_CAPMASK_CM2) ? "CapMask2 " : "",
+			/* Class Specific */
+			(cmask & STL_SA_CAPABILITY_MULTICAST_SUPPORT) ? "MultiCast " : "",
+			(cmask & STL_SA_CAPABILITY_MULTIPATH_SUPPORT) ? "MultiPath " : "",
+			(cmask & STL_SA_CAPABILITY_PORTINFO_CAPMASK_MATCH) ? "PortInfoMask " : "",
+			(cmask & STL_SA_CAPABILITY_PA_SERVICES_SUPPORT) ? "PartService " : "");
+	}
+}
+static __inline void
+StlSaClassPortInfoCapMask2(char buf[80], uint32 cmask)
+{
+	if (!cmask) {
+		snprintf(buf, 80, "-");
+	} else {
+		snprintf(buf, 80, "%s%s%s%s",
+			(cmask & STL_SA_CAPABILITY2_QOS_SUPPORT) ? "QoS " : "",
+			(cmask & STL_SA_CAPABILITY2_MFTTOP_SUPPORT) ? "MFTTop " : "",
+			(cmask & STL_SA_CAPABILITY2_FULL_PORTINFO) ? "FullPortInfo " : "",
+			(cmask & STL_SA_CAPABILITY2_EXT_SUPPORT) ? "ExtSpeed " : "");
+	}
+}
+
+
 // Replaces old Vieo macro that converts a single GID argument into two arguments
 // that can be used in a print statement.
 #define STLGIDPRINTARGS(GID) ntoh64((GID).Type.Global.SubnetPrefix), \

@@ -21,7 +21,7 @@
   ghost@aladdin.com
 
  */
-/*$Id: Md5_Deutsch.c,v 1.2 2002/06/27 05:12:17 jnewell Exp $ */
+/*$Id$ */
 /*
   Independent implementation of MD5 (RFC 1321).
 

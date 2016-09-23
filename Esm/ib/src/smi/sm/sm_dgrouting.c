@@ -55,22 +55,6 @@ typedef struct _DGItem {
 } DGItem;
 
 /*
- * The set of quickmaps and ordered device groups associated with a topology 
- * structure.
- *
- * NOTA BENE: The deviceGroup[] array has one more member than the 
- * deviceGroupName[] or deviceGroupIndex[] arrays. This is to allow all
- * un-weighted LIDs to be routed correctly.
- */
-typedef struct	_DGTopology {
-	uint8_t			dgCount;
-	uint8_t			allGroup;
-	char			deviceGroupName[MAX_DGROUTING_ORDER][MAX_VFABRIC_NAME+1];
-	uint16_t		deviceGroupIndex[MAX_DGROUTING_ORDER];
-	cl_qmap_t		deviceGroup[MAX_DGROUTING_ORDER+1];
-} DGTopology;
-
-/*
  * Create a new DGTopology structure and associate it with the provided
  * topology structure. outContext is not used.
  */
@@ -79,7 +63,7 @@ dgmh_pre_process_discovery(Topology_t *topop, void **outContext)
 {
 	Status_t status; 
 	DGTopology *dgp;
-	int i, allFound;
+	int i, allFound, dgIndex;
 
 	IB_LOG_INFO_FMT(__func__, "Initializing DGShortestPath.");
 
@@ -110,7 +94,12 @@ dgmh_pre_process_discovery(Topology_t *topop, void **outContext)
 		strncpy(dgp->deviceGroupName[i],sm_config.dgRouting.dg[i].member,
 			MAX_VFABRIC_NAME);
 		dgp->deviceGroupName[i][MAX_VFABRIC_NAME]=0;
-		dgp->deviceGroupIndex[i] = smGetDgIdx(dgp->deviceGroupName[i]);
+		if ((dgIndex = smGetDgIdx(dgp->deviceGroupName[i])) < 0) {
+			IB_LOG_ERROR_FMT(__func__, "DGMinHopTopology has undefined RoutingOrder DeviceGroup %s",
+							dgp->deviceGroupName[i]);
+			return VSTATUS_BAD;
+		}
+		dgp->deviceGroupIndex[i] = dgIndex;
 		if (dg_config.dg[dgp->deviceGroupIndex[i]]->select_all && !allFound) {
 			// The first group we find that has select_all set is our
 			// "All" group and is handled specially.
@@ -143,7 +132,7 @@ dgmh_pre_process_discovery(Topology_t *topop, void **outContext)
  * Here we traverse the list of nodes in the topology and assign weights to their 
  * ports.
  */
-static Status_t
+Status_t
 dgmh_post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *context)
 {
 	Status_t status; 
@@ -153,6 +142,12 @@ dgmh_post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *c
 	uint32_t 	i, start, end;
 	
 	IB_LOG_INFO_FMT(__func__, "Initializing DGShortestPath.");
+
+	VirtualFabrics_t *VirtualFabrics = topop->vfs_ptr;
+
+	if (VirtualFabrics && VirtualFabrics->qosEnabled) {
+		topop->qosEnforced = 1;
+	}
 
 	// Examine every node in the fabric.
 	for (qp = cl_qmap_head(nodeMap); qp != cl_qmap_end(nodeMap);
@@ -244,12 +239,12 @@ dgmh_post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *c
 	}
 
 	for (i=0; i<dgp->dgCount; i++) {
-		IB_LOG_INFO_FMT(__func__, "Assigned %u LIDs to Group \"%s\"",
+		IB_LOG_INFO_FMT(__func__, "Assigned %"PRISZT" LIDs to Group \"%s\"",
 			cl_qmap_count(&(dgp->deviceGroup[i])), dgp->deviceGroupName[i]);
 	}
 
 	if (dgp->allGroup >= dgp->dgCount) {
-		IB_LOG_INFO_FMT(__func__, "Assigned %u LIDs to Default Group",
+		IB_LOG_INFO_FMT(__func__, "Assigned %"PRISZT" LIDs to Default Group",
 			cl_qmap_count(&(dgp->deviceGroup[dgp->allGroup])));
 	}
 	
@@ -692,6 +687,17 @@ dgmh_setup_switches_lrdr(Topology_t *topop, int rebalance, int routing_needed)
 }
 
 static Status_t
+dgmh_copy(struct _RoutingModule * dest, const struct _RoutingModule * src)
+{
+	memcpy(dest, src, sizeof(RoutingModule_t));
+
+	// Don't copy routing module data.  This will be recalculated.
+	dest->data = NULL;
+
+	return VSTATUS_OK;
+}
+
+Status_t
 dgmh_make_routing_module(RoutingModule_t *rm)
 {
 	// DG Routing is a "flavor" of shortestpath.
@@ -706,6 +712,7 @@ dgmh_make_routing_module(RoutingModule_t *rm)
 	rm->funcs.setup_switches_lrdr = dgmh_setup_switches_lrdr;
 	rm->funcs.calculate_lft = dgmh_calculate_lft;
 	rm->funcs.destroy = dgmh_destroy;
+	rm->copy = dgmh_copy;
 
 	if (sm_config.shortestPathBalanced) {
 		rm->funcs.init_switch_lfts = _init_switch_lfts_dg;

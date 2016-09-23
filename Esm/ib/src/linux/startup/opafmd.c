@@ -1,3 +1,5 @@
+#include <ctype.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -10,40 +12,34 @@
 #include <ctype.h>
 #include <pthread.h>
 #include <errno.h>
+#include <fm_xml.h>
 
+#define OPAFMD_PIPE "/var/run/opafmd"
+
+#define NO_SUCH_COMPONENT 0
 #define SM_COMPONENT 1
 #define FE_COMPONENT 2
-#define FM_NUM_COMPONENTS 2
+#define FM_NUM_COMPONENTS 3
 #define FM_MAX_INSTANCES 4
 
 #define FM_XML_CONFIG "/etc/sysconfig/opafm.xml"
-#define OPAXMLEXTRACT "/opt/opafm/etc/opaxmlextract"
-#define OPAXMLEXTRACT_RESTART_PARAMS "-H -e Common.Shared.StartupRetries -e Common.Shared.StartupStableWait -e Common.Sm.StartupRetries -e Common.Sm.StartupStableWait -e Common.Fe.StartupRetries -e Common.Fe.StartupStableWait -e Fm.Shared.StartupRetries -e Fm.Shared.StartupStableWait -e Fm.Sm.StartupRetries -e Fm.Sm.StartupStableWait -e Fm.Fe.StartupRetries -e Fm.Fe.StartupStableWait -X"
-#define OPAXMLEXTRACT_INSTANCE_PARAMS "-H -e Fm.Shared.Start -e Fm.Sm.Start -e Fm.Fe.Start -X"
-#define OPAXMLEXTRACT_COMMON_PARAMS "-H -e Common.Sm.Start -e Common.Fe.Start -X"
 
 extern char *optarg;
 extern int optind;
 
 struct thread_data {
-	pthread_t thread_id;
 	int component;
 	int instance;
-	int *pid;
 };
 
 struct restartCounter_t {
 	struct componentCounter_t {
 		time_t lastUpdate;
 		unsigned int counter;
-	} components[2];
+	} components[FM_NUM_COMPONENTS];
 };
 
 struct daemonConfig_t {
-	struct globalConfig_t {
-		unsigned int defaultFmMaxRestarts[FM_NUM_COMPONENTS];
-		unsigned int defaultFmRestartGracePeriod[FM_NUM_COMPONENTS];
-	} global;
 	struct instanceConfig_t {
 		int enabled;
 		struct componentConfig_t {
@@ -53,10 +49,6 @@ struct daemonConfig_t {
 		} component[FM_NUM_COMPONENTS];
 	} instance[FM_MAX_INSTANCES];
 } config = {
-	{				//config.global
-		{5},		//config.global.defaultFmMaxRestart
-		{10*60}		//config.global.defaultFmRestartGracePeriod
-	},
 	{				//config.instance[*]
 		{
 			0,		//config.instance[*].enabled
@@ -71,6 +63,7 @@ int smPID[FM_MAX_INSTANCES] = {0};
 int fePID[FM_MAX_INSTANCES] = {0};
 struct restartCounter_t instanceRestarts[FM_MAX_INSTANCES] = {};
 int doStop = 0;
+int fd = -1;
 
 const char *componentToString(const unsigned int component);
 const char *componentToExecName(const unsigned int component);
@@ -78,13 +71,11 @@ int *componentToPIDArray(const unsigned int component);
 void reloadSMs(void);
 void Usage(int err);
 int checkRestarts(const unsigned int instance, const unsigned int component);
-void sig_handler(int signo);
+void sig_handler(int signo, siginfo_t *siginfo, void *context);
 int parseInput(char *buf);
-int spawn(const unsigned int instance, const int component, int *pids);
-int pkill(const unsigned int instance, const int component, int *pid);
+int spawn(const unsigned int instance, const int component);
+int pkill(const unsigned int instance, const int component);
 void updateInstances(void);
-void parseRestartConfig(FILE *fd);
-void parseInstanceConfig(FILE *fd, int isCommon);
 int loadConfig(void);
 int daemon_main(void);
 void *kill_thread(void *arg);
@@ -177,18 +168,18 @@ void Usage(int err){
  *  	   otherwise
  */
 int checkRestarts(const unsigned int instance, const unsigned int component){
-	struct componentCounter_t *count = &instanceRestarts[instance].components[component - 1];
-	int retryTimeout = config.instance[instance].component[component - 1].retryTimeout;
-	int maxRetries = config.instance[instance].component[component - 1].maxRetries;
+	struct componentCounter_t *count = &instanceRestarts[instance].components[component];
+	int retryTimeout = config.instance[instance].component[component].retryTimeout;
+	int maxRetries = config.instance[instance].component[component].maxRetries;
 	time_t now = time(NULL);
 
-	if ((now - count->lastUpdate) > (retryTimeout ? retryTimeout : config.global.defaultFmRestartGracePeriod[component - 1])){
+	if ((now - count->lastUpdate) > retryTimeout){
 		count->counter = 1;
 	} else {
 		count->counter += 1;
 	}
 	count->lastUpdate = (1 > 0 ? now : count->lastUpdate);
-	return count->counter > (maxRetries ? maxRetries : config.global.defaultFmMaxRestarts[component - 1]) ? 1 : 0;
+	return count->counter > maxRetries;
 }
 
 /**
@@ -196,49 +187,29 @@ int checkRestarts(const unsigned int instance, const unsigned int component){
  * SIGCHLD. 
  * 
  * @param signo Caught signal
+ * @param siginfo Signal information, ignored.
+ * @param context Stack frame where signal occured, ignored.
  */
-void sig_handler(int signo){
-	int i = 0, pid = 0, stat = 0;
-	unsigned int instance = 0, component = 0;
+void sig_handler(int signo, siginfo_t *siginfo, void *context) {
+	char *val = NULL;
+	int ret;
+
+	if(doStop || fd < 0)
+		return;
 	if(signo == SIGTERM){
-		doStop = 1;
+		val = "sig_term\n";
 	} else if (signo == SIGHUP){
-		loadConfig();
-		updateInstances();
-		reloadSMs();
+		val = "sig_hup\n";
 	} else if (signo == SIGCHLD){
-		if(doStop)
-			return;
-		pid = wait(&stat);
-		if (pid == 0 || stat == 0)
-			return;
-		for(i = 0; i < 4; ++i){
-			if(smPID[i] == pid){
-				component = SM_COMPONENT;
-				instance = i;
-				break;
-			} else if (fePID[i] == pid){
-				component = FE_COMPONENT;
-				instance = i;
-				break;
-			}
-		}
-		if(component == 0){
-			return; //Failed to find child in PID table, bad signal or aborted child.
-		}
-		if(checkRestarts(instance, component)){
-			//Component has failed 5 times.
-			doStop = 2;
-			return;
-		}
-		if (pkill(instance, component, &((componentToPIDArray(component))[instance])) == 0){
-			spawn(instance, component, componentToPIDArray(component));
-		} else {
-			//Failed to kill child. Might be a zombie.
-			doStop = 3;
+		val = "sig_chld\n";
+	}
+	if (val) {
+		ret = write(fd, val, strlen(val));
+		if (ret != strlen(val)) {
+			doStop = 1;
 		}
 	}
-	return;   /// add file
+	return;
 }
 
 /**
@@ -250,7 +221,8 @@ void sig_handler(int signo){
  */
 void *kill_thread(void *arg){
 	struct thread_data *data = arg;
-	pkill(data->instance, data->component, data->pid);
+	pkill(data->instance, data->component);
+	free(data);
 	return NULL;
 }
 
@@ -267,43 +239,73 @@ void *kill_thread(void *arg){
 int parseInput(char *buf){
 	char *token;
 	int i, c;
-	struct thread_data *threads = NULL;
-	pthread_attr_t attr;
+	struct thread_data *thread = NULL;
+	pthread_t thread_id[FM_MAX_INSTANCES*FM_NUM_COMPONENTS];
 	token = strtok(buf, " ");
 	if(token == NULL){
 		fprintf(stderr, "Received invalid input. Ignoring.\n");
 		return 0;
 	}
-	if(strncmp(token, "stop", 4) == 0){
+	if(strncmp(token, "sig_chld", 8) == 0){
+		int i = 0, pid = 0, stat = 0;
+		unsigned int instance = 0, component = 0;
+		while ((pid = waitpid(-1, &stat, WNOHANG)) > 0) {
+			for(i = 0; i < FM_MAX_INSTANCES; ++i){
+				if(smPID[i] == pid){
+					component = SM_COMPONENT;
+					instance = i;
+					break;
+				} else if (fePID[i] == pid){
+					component = FE_COMPONENT;
+					instance = i;
+					break;
+				}
+			}
+			if(component == 0){
+				continue;
+			}
+			if(checkRestarts(instance, component)){
+				//Component has failed too many times
+				doStop = 2;
+				return 0;
+			}
+			if (pkill(instance, component) == 0){
+				spawn(instance, component);
+			} else {
+				//Failed to kill child. Might be a zombie.
+				doStop = 3;
+				return 0;
+			}
+		}
+	} else if(!strncmp(token, "stop", 4) || !strncmp(token, "sig_term", 8)){
 		token = strtok(NULL, " ");
 		if(token == NULL) token = "a";
 		switch(token[0]){
 		case '0':	// Kill both SM and FE for this instance number.
+			doStop = 2;
 			token = strtok(NULL, " ");
 			if(token == NULL){
 				fprintf(stderr, "Received invalid input. Ignoring.\n");
 				return 0;
 			}
 			i = atoi((const char*)token);
-			if(i >= 4 || i < 0){
+			if(i >= FM_MAX_INSTANCES || i < 0){
 				fprintf(stderr, "Received invalid input. Ignoring.\n");
 				return 0;
 			}
-			threads = calloc(FM_NUM_COMPONENTS, sizeof(struct thread_data));
-			if(threads == NULL){
-				fprintf(stderr, "Failed to allocate thread struct.\n");
-				return 0;
+			for(c = FM_NUM_COMPONENTS - 1; c >= 1; --c){
+				thread = calloc(1, sizeof(struct thread_data));
+				if(thread == NULL){
+					fprintf(stderr, "Failed to allocate thread struct.\n");
+					return 0;
+				}
+				thread->instance = i;
+				thread->component = c;
+				pthread_create(&thread_id[c], NULL, &kill_thread, thread);
 			}
-			pthread_attr_init(&attr);
-			pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-			for(c = 0; c < FM_NUM_COMPONENTS; ++c){
-				threads[c].instance = i;
-				threads[c].component = c + 1;
-				threads[c].pid = &((componentToPIDArray(c + 1))[i]);
-				pthread_create(&threads[c].thread_id, &attr, &kill_thread, &threads[c]);
+			for(c = 1; c < FM_NUM_COMPONENTS; ++c){
+				pthread_join(thread_id[c], NULL);
 			}
-			pthread_attr_destroy(&attr);
-			free(threads);
 			break;
 		case '1':	// SM and FE are treated the same so this prevents code redundancy
 		case '2':
@@ -314,26 +316,27 @@ int parseInput(char *buf){
 				return 0;
 			}
 			i = atoi((const char*)token);
-			pkill(i, c, componentToPIDArray(c));
+			pkill(i, c);
 			break;
 		case 'a':	// Kill all running instances.
-			threads = calloc(FM_MAX_INSTANCES * FM_NUM_COMPONENTS, sizeof(struct thread_data));
-			if(threads == NULL){
-				fprintf(stderr, "Failed to allocate thread struct.\n");
-				return 0;
-			}
-			pthread_attr_init(&attr);
-			pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+			doStop = 1;
 			for(i = 0; i < FM_MAX_INSTANCES; ++i){
-				for(c = 0; c < FM_NUM_COMPONENTS; ++c){
-					threads[(i * FM_NUM_COMPONENTS) + c].instance = i;
-					threads[(i * FM_NUM_COMPONENTS) + c].component = c + 1;
-					threads[(i * FM_NUM_COMPONENTS) + c].pid = &((componentToPIDArray(c + 1))[i]);
-					pthread_create(&threads[(i * FM_NUM_COMPONENTS) + c].thread_id, &attr, &kill_thread, &threads[(i * FM_NUM_COMPONENTS) + c]);
+				for(c = 1; c < FM_NUM_COMPONENTS; ++c){
+					thread = calloc(1, sizeof(struct thread_data));
+					if(thread == NULL){
+						fprintf(stderr, "Failed to allocate thread struct.\n");
+						return 0;
+					}
+					thread->instance = i;
+					thread->component = c;
+					pthread_create(&thread_id[c], NULL, &kill_thread, thread);
 				}
 			}
-			pthread_attr_destroy(&attr);
-			free(threads);
+			for(i = 0; i < FM_MAX_INSTANCES; ++i){
+				for(c = 1; c < FM_NUM_COMPONENTS; ++c){
+        	                        pthread_join(thread_id[i*FM_NUM_COMPONENTS+c], NULL);
+                	        }
+			}
 			return 1;
 		default:
 			fprintf(stderr, "Unknown component value. (%d)\n", token[0]);
@@ -354,8 +357,12 @@ int parseInput(char *buf){
 				return 0;
 			}
 			i = atoi((const char*)token);
-			spawn(i, SM_COMPONENT, smPID);
-			spawn(i, FE_COMPONENT, fePID);
+			if(i > FM_MAX_INSTANCES){	//Adding additional instance check here to avoid duplicate error messages
+				fprintf(stderr, "Received invalid instance number %d. Ignoring.\n", i);
+				return 0;
+			}
+			spawn(i, SM_COMPONENT);
+			spawn(i, FE_COMPONENT);
 			break;
 		case '1':
 		case '2':
@@ -366,13 +373,16 @@ int parseInput(char *buf){
 				return 0;
 			}
 			i = atoi((const char*)token);
-			spawn(i, c, componentToPIDArray(c));
+			spawn(i, c);
 			break;
 		default:
 			fprintf(stderr, "Unknown component value.\n");
 		}
-	}
-	if(strncmp(token, "restart", 7) == 0){
+	} else if(strncmp(token, "sig_hup", 7) == 0){
+		loadConfig();
+		updateInstances();
+		reloadSMs();
+	} else if(strncmp(token, "restart", 7) == 0){
 		token = strtok(NULL, " ");
 		if(token == NULL){
 			fprintf(stderr, "Received invalid input. Ignoring.\n");
@@ -386,10 +396,14 @@ int parseInput(char *buf){
 				return 0;
 			}
 			i = atoi((const char*)token);
-			if(pkill(i, SM_COMPONENT, smPID) == 0)
-				spawn(i, SM_COMPONENT, smPID);
-			if(pkill(i, FE_COMPONENT, fePID) == 0)
-				spawn(i, FE_COMPONENT, fePID);
+                        if(i > FM_MAX_INSTANCES){	//Adding additional instance check here to avoid duplicate error messages
+                                fprintf(stderr, "Received invalid instance number %d. Ignoring.\n", i);
+                                return 0;
+                        }
+			if(pkill(i, SM_COMPONENT) == 0)
+				spawn(i, SM_COMPONENT);
+			if(pkill(i, FE_COMPONENT) == 0)
+				spawn(i, FE_COMPONENT);
 			break;
 		case '1':
 		case '2':
@@ -400,8 +414,8 @@ int parseInput(char *buf){
 				return 0;
 			}
 			i = atoi((const char*)token);
-			if(pkill(i, c, componentToPIDArray(c)) == 0)
-				spawn(i, c, componentToPIDArray(c));
+			if(pkill(i, c) == 0)
+				spawn(i, c);
 			break;
 		default:
 			fprintf(stderr, "Unknown component value.\n");
@@ -416,41 +430,49 @@ int parseInput(char *buf){
  * @param instance Instance number the component belongs to 
  * @param component Integer representation of the component 
  *  				(1 = SM, 2 = FE)
- * @param pids Pointer to list of active PIDs. This function 
- *  		   will assign pids[instance] to the newly spawned
- *  		   PID.
- * 
  * @return int PID spawned or -1 if an error has occurred
  */
-int spawn(const unsigned int instance, const int component, int *pids){
+int spawn(const unsigned int instance, const int component){
+	sigset_t mask;
+	int *pids;
 	int pid;
-	char prog[25], name[6];
-	if (instance >= 4){
+	char prog[32], name[32];
+	if (instance >= FM_MAX_INSTANCES){
 		fprintf(stderr, "Invalid instance number.\n");
+		return -1;
+	}
+	if ((pids = componentToPIDArray(component)) == NULL){
+		fprintf(stderr, "spawn: Invalid component number %d.\n", component);
 		return -1;
 	}
 	if (pids[instance] != 0 && kill(pids[instance], 0) == 0){
 		fprintf(stderr, "Instance %d of %s is already running.\n", instance, componentToString(component));
 		return -1;
 	}
-	if (!config.instance[instance].component[component - 1].enabled){
+	if (!config.instance[instance].component[component].enabled){
 		fprintf(stderr, "Instance %d of %s is not enabled. Please enable instance in %s\n", instance, componentToString(component), FM_XML_CONFIG);
 		return -1;
 	}
 	switch(pid = fork()){
 	case 0:
-		sprintf(prog, "/opt/opafm/runtime/%s", componentToExecName(component));
+		sigemptyset(&mask);
+		sigaddset(&mask,SIGTERM);
+		sigaddset(&mask,SIGCHLD);
+		sigaddset(&mask,SIGHUP);
+		sigprocmask(SIG_UNBLOCK, &mask, NULL);
+		sprintf(prog, "/usr/lib/opa-fm/runtime/%s", componentToExecName(component));
 		sprintf(name, "%s_%d", componentToExecName(component), instance);
 		execle(prog, prog, "-e", name, NULL, nullEnv);
-		return 0;
+		break;
 	case -1:
 		fprintf(stderr, "Failed to start %s for instance %d.\n", componentToString(component), instance);
-		return -1;
+		break;
 	default:
 		fprintf(stdout, "Started instance %d of %s.\n", instance, componentToString(component));
 		if(pid > 0) pids[instance] = pid;
-		return pid;
+		break;
 	}
+	return pid;
 }
 
 /**
@@ -459,103 +481,44 @@ int spawn(const unsigned int instance, const int component, int *pids){
  * @param instance Instance number the component belongs to
  * @param component Integer representation of the component 
  *  				(1 = SM, 2 = FE)
- * @param pid Pointer to the active PID to kill. This function 
- *  		   will assign pid to 0 if process was properly
- *  		   terminated.
- * 
  * @return int Returns 0 if process was properly terminated, 
  *  	   otherwise -1 on error.
  */
-int pkill(const unsigned int instance, const int component, int *pid){
+int pkill(const unsigned int instance, const int component){
+	int *pids;
+	int pid;
 	int status;
-	if(instance >= 4){
+	int ret;
+	if(instance >= FM_MAX_INSTANCES){
 		fprintf(stderr, "Invalid instance number.\n");
 		return -1;
 	}
-	if(*pid != 0 && kill(*pid, 0) == 0){
-		kill(*pid, SIGTERM);								// Here we send a SIGTERM to the PID specified.
-		sleep(component == SM_COMPONENT ? 3 : 1); 			// Wait 3 seconds for SM to die from SIGTERM, only 1 sec for FE
-		waitpid((pid_t)*pid, &status, WUNTRACED | WNOHANG);	// Reap the children if they're already dead. Because zombies are bad, mmkay.
-		if(!WIFEXITED(status) && kill(*pid, 0) == 0){		// Checks for insubordinate children
-			kill(*pid, SIGKILL);							// Order a hit on them
-			sleep(component == SM_COMPONENT ? 3 : 1);		// Allow 1-3 seconds for murder
-			waitpid((pid_t)*pid, &status, WUNTRACED | WNOHANG);	// Reap
-			if(!WIFEXITED(status) && kill(*pid, 0) == 0){		// Report all survivors
+	if((pids = componentToPIDArray(component)) == NULL){
+		fprintf(stderr, "pkill: Invalid component number %d.\n", component);
+		return -1;
+	}
+	pid = pids[instance];
+	if(!pid) return 0;
+	if(kill(pid, 0) == 0){
+		kill(pid, SIGTERM);							// Here we send a SIGTERM to the PID specified.
+		sleep(component == SM_COMPONENT ? 3 : 1); 				// Wait 3 seconds for SM to die from SIGTERM, only 1 sec for FE
+		ret = waitpid((pid_t)pid, &status, WUNTRACED | WNOHANG);		// Reap the children if they're already dead. Because zombies are bad, mmkay.
+		if(!ret){								// Checks for insubordinate children
+			kill(pid, SIGKILL);						// Order a hit on them
+			sleep(component == SM_COMPONENT ? 3 : 1);			// Allow 1-3 seconds for murder
+			ret = waitpid((pid_t)pid, &status, WUNTRACED | WNOHANG);	// Reap
+			if(!ret){							// Report all survivors
 				fprintf(stderr, "Failed to kill %s from instance %d\n", componentToString(component), instance);
 				return -1;
 			}
 		}
-		*pid = 0;	// Reset PID to 0 if process terminated successfully
-		instanceRestarts[instance].components[component - 1].lastUpdate = 0;	// Make sure to reset restart timer to prevent manual stop/restart from counting against component
+		instanceRestarts[instance].components[component].lastUpdate = 0;	// Make sure to reset restart timer to prevent manual stop/restart from counting against component
 		fprintf(stdout, "Stopped instance %d of %s.\n", instance, componentToString(component));
-		return 0;
-	} else if (*pid != 0) {
-		*pid = 0;	//PID not running or doesn't exist.
-	}
-	fprintf(stderr, "Instance %d of %s not running.\n", instance, componentToString(component));
-	return 0;
-}
-
-/**
- * Parse extracted XML config values for instance parameters
- * 
- * @param pd IO stream to extracted XML values.
- */
-void parseInstanceConfig(FILE *pd, int isCommon){
-	char buf[512] = {0};
-	char *token = NULL;
-	int val = 0, inst = 0, comp = 0;
-	if(isCommon){
-		while(fscanf(pd, "%s", buf) > 0){
-			token = strtok(buf, ";");
-                        if (token == NULL)
-                                break;
-                        val = atoi(token);
-			switch (token - buf){
-			case 0:
-				config.instance[0].component[SM_COMPONENT - 1].enabled = val;
-				config.instance[1].component[SM_COMPONENT - 1].enabled = val;
-				config.instance[2].component[SM_COMPONENT - 1].enabled = val;
-				config.instance[3].component[SM_COMPONENT - 1].enabled = val;
-				token = strtok(NULL, ";");
-				break;
-                        case 1:
-				config.instance[0].component[FE_COMPONENT - 1].enabled = val;
-				config.instance[1].component[FE_COMPONENT - 1].enabled = val;
-				config.instance[2].component[FE_COMPONENT - 1].enabled = val;
-				config.instance[3].component[FE_COMPONENT - 1].enabled = val;
-				token = strtok(NULL, ";");
-				break;
-			}
-		}
 	} else {
-		while(fscanf(pd, "%s", buf) > 0){
-			token = strtok(buf, ";");
-			if (token == NULL)
-				break;
-			val = atoi(token);
-			switch (val){
-			case 0:
-				config.instance[inst].enabled = 0;
-				break;
-			case 1:
-				config.instance[inst].enabled = 1;
-				token = strtok(NULL, ";");
-				if (token == NULL){
-					break;
-				} else {
- 					val = atoi(token);
-					comp = (token - buf) - 2;
- 					config.instance[inst].component[comp++].enabled = val;
-					while ((token = strtok(NULL, ";")) != NULL){
-						val = atoi(token);
-						config.instance[inst].component[comp++].enabled = val;
-					}
- 				}
- 			}
-			++inst;
- 		}
+		fprintf(stderr, "Instance %d of %s not running.\n", instance, componentToString(component));
 	}
+	pids[instance] = 0;	// PID not running or doesn't exist
+	return 0;
 }
 
 /**
@@ -565,98 +528,20 @@ void updateInstances(void) {
 	int inst, comp;
 	for (inst = 0; inst < FM_MAX_INSTANCES; ++inst){
 		if (config.instance[inst].enabled){
-			for (comp = 1; comp < FM_NUM_COMPONENTS + 1; ++comp){
-				if (config.instance[inst].component[comp - 1].enabled){
+			for (comp = 1; comp < FM_NUM_COMPONENTS; ++comp){
+				if (config.instance[inst].component[comp].enabled){
 					if (!(componentToPIDArray(comp))[inst])
-						spawn(inst, comp, componentToPIDArray(comp));
+						spawn(inst, comp);
 				} else {
 					if ((componentToPIDArray(comp))[inst])
-						pkill(inst, comp, &((componentToPIDArray(comp))[inst]));
+						pkill(inst, comp);
 				}
 			}
 		} else {
-			for (comp = 1; comp < FM_NUM_COMPONENTS + 1; ++comp){
+			for (comp = 1; comp < FM_NUM_COMPONENTS; ++comp){
 				if ((componentToPIDArray(comp))[inst])
-					pkill(inst, comp, &((componentToPIDArray(comp))[inst]));
+					pkill(inst, comp);
 			}
-		}
-	}
-}
-
-/**
- * Parse extracted XML config values for automatic restart 
- * parameters. 
- *
- * @param pd IO stream to extracted XML values.
- */
-void parseRestartConfig(FILE *pd){
-	char buf[512] = {0};
-	char *token = NULL;
-	int cnt = 0, instSm = 0, instFe = 0, val = 0;
-	while(fscanf(pd, "%s", buf) > 0){
-		token = strtok(buf, ";");
-		if (token == NULL)
-			break;
-		cnt = token - buf;
-		switch(cnt){ //The following case statements are based on the number of leading ';'
-		case 0://Common.Shared.StartupRetries & Common.Shared.StartupStableWait
-			val = atoi(token);
-			config.global.defaultFmMaxRestarts[0] = val;
-			config.global.defaultFmMaxRestarts[1] = val;
-			token = strtok(NULL, ";");
-			if (token == NULL)
-				break;
-			val = atoi(token);
-			config.global.defaultFmRestartGracePeriod[0] = val * 60;
-			config.global.defaultFmRestartGracePeriod[1] = val * 60;
-			break;
-		case 2://Common.Sm.StartupRetries & Common.Sm.StartupStableWait
-			val = atoi(token);
-			config.global.defaultFmMaxRestarts[0] = val;
-			token = strtok(NULL, ";");
-			if (token == NULL)
-				break;
-			val = atoi(token);
-			config.global.defaultFmRestartGracePeriod[0] = val * 60;
-			break;
-		case 4://Common.Fe.StartupRetries & Common.Fe.StartupStableWait
-			val = atoi(token);
-			config.global.defaultFmMaxRestarts[1] = val;
-			token = strtok(NULL, ";");
-			if (token == NULL)
-				break;
-			val = atoi(token);
-			config.global.defaultFmRestartGracePeriod[1] = val * 60;
-			break;
-		case 6://Fm.Shared.StartupRetries & Fm.Shared.StartupStableWait
-			val = atoi(token);
-			config.instance[instSm].component[0].maxRetries = val;
-			config.instance[instFe].component[1].maxRetries = val;
-			token = strtok(NULL, ";");
-			if (token == NULL)
-				break;
-			val = atoi(token);
-			config.instance[instSm].component[0].retryTimeout = val * 60;
-			config.instance[instFe].component[1].retryTimeout = val * 60;
-			break;
-		case 8://Fm.Sm.StartupRetries & Fm.Sm.StartupStableWait
-			val = atoi(token);
-			config.instance[instSm].component[0].maxRetries = val;
-			token = strtok(NULL, ";");
-			if (token == NULL)
-				break;
-			val = atoi(token);
-			config.instance[instSm++].component[0].retryTimeout = val * 60;
-			break;
-		case 10://Fm.Fe.StartupRetries & Fm.Fe.StartupStableWait
-			val = atoi(token);
-			config.instance[instFe].component[1].maxRetries = val;
-			token = strtok(NULL, ";");
-			if (token == NULL)
-				break;
-			val = atoi(token);
-			config.instance[instFe++].component[1].retryTimeout = val * 60;
-			break;
 		}
 	}
 }
@@ -667,32 +552,30 @@ void parseRestartConfig(FILE *pd){
  * @return int 0 on success.
  */
 int loadConfig(void){
-	char buf[512] = {0};
-	FILE *pd = NULL;
-	snprintf(buf, 512, "%s %s %s", OPAXMLEXTRACT, OPAXMLEXTRACT_RESTART_PARAMS, FM_XML_CONFIG);
-	pd = popen(buf, "r");
-	if(!pd) {
+	FMXmlCompositeConfig_t *xml_config = NULL;
+	int i;
+
+	xml_config = parseFmConfig(FM_XML_CONFIG, IXML_PARSER_FLAG_NONE, /* instance does not matter for startup */ 0, /* full parse */ 1, /* embedded */ 0);
+	if (!xml_config) {
+		fprintf(stdout, "Could not open or there was a parse error while reading configuration file ('%s')\n", FM_XML_CONFIG);
 		return -1;
-	} else {
-		parseRestartConfig(pd);
-		pclose(pd);
 	}
-	snprintf(buf, 512, "%s %s %s", OPAXMLEXTRACT, OPAXMLEXTRACT_COMMON_PARAMS, FM_XML_CONFIG);
-	pd = popen(buf, "r");
-	if(!pd) {
-		return -1;
-	} else {
-		parseInstanceConfig(pd, 1);
-		pclose(pd);
+
+	for (i = 0; i < FM_MAX_INSTANCES; i++) {
+		if (!xml_config->fm_instance[i]) {
+			config.instance[i].enabled = 0;
+		} else {
+			config.instance[i].enabled = xml_config->fm_instance[i]->fm_config.start;
+			config.instance[i].component[SM_COMPONENT].enabled = xml_config->fm_instance[i]->sm_config.start;
+			config.instance[i].component[SM_COMPONENT].maxRetries = xml_config->fm_instance[i]->sm_config.startup_retries;
+			config.instance[i].component[SM_COMPONENT].retryTimeout = xml_config->fm_instance[i]->sm_config.startup_stable_wait * 60;
+			config.instance[i].component[FE_COMPONENT].enabled = xml_config->fm_instance[i]->fe_config.start;
+			config.instance[i].component[FE_COMPONENT].maxRetries = xml_config->fm_instance[i]->fe_config.startup_retries;
+			config.instance[i].component[FE_COMPONENT].retryTimeout = xml_config->fm_instance[i]->fe_config.startup_stable_wait * 60;
+		}
 	}
-        snprintf(buf, 512, "%s %s %s", OPAXMLEXTRACT, OPAXMLEXTRACT_INSTANCE_PARAMS, FM_XML_CONFIG);
-        pd = popen(buf, "r");
-        if(!pd) {
-                return -1;
-        } else {
-		parseInstanceConfig(pd, 0);
-                pclose(pd);
-        }
+
+	releaseXmlConfig(xml_config, /* full */ 1);
 	return 0;
 }
 
@@ -705,57 +588,79 @@ int loadConfig(void){
  * @return int Returns negative integer on error.
  */
 int daemon_main(){
-	int fd, stop = 0;
-	char *pipe = "/var/run/opafmd";
 	char buf[128] = {0};
+	FILE *fp;
 	struct sigaction act;
+	sigset_t mask;
 
+	sigemptyset(&mask);
+ 	sigaddset(&mask,SIGTERM);
+ 	sigaddset(&mask,SIGCHLD);
+ 	sigaddset(&mask,SIGHUP);
+ 
+	setlinebuf(stdout);
+ 
 	bzero(&act, sizeof(act));
-	act.sa_handler = sig_handler;
+ 	act.sa_sigaction = sig_handler;
+ 	act.sa_mask = mask;
+ 	act.sa_flags = SA_NOCLDSTOP|SA_SIGINFO;
+	
 	sigaction(SIGTERM, &act, NULL);
 	sigaction(SIGCHLD, &act, NULL);
 	sigaction(SIGHUP, &act, NULL);
 
-
-
 	if(loadConfig()){
-		fprintf(stderr, "Failed to load conf, continuing with defaults.");
+		fprintf(stderr, "Failed to load conf, continuing with defaults.\n");
 	}
 	updateInstances();
 
-	unlink(pipe); // cleanup any bad states
-	if (mkfifo(pipe, 0660) == -1){
+	unlink(OPAFMD_PIPE); // cleanup any bad states
+	if (mkfifo(OPAFMD_PIPE, 0660) == -1){
 		fprintf(stderr, "Failed to create pipe: %s\n", strerror(errno));
 		return(-1);
 	}
-	if((fd = open(pipe, O_RDWR)) == -1){
+	if((fd = open(OPAFMD_PIPE, O_RDWR)) == -1){
 		fprintf(stderr, "Failed to open pipe for reading: %s\n", strerror(errno));
-		unlink(pipe); // cleanup any bad states
+		unlink(OPAFMD_PIPE); // cleanup any bad states
+		return(-2);
+        }
+	if((fp = fdopen(fd, "r")) == NULL){
+		fprintf(stderr, "Failed to open pipe for reading: %s\n", strerror(errno));
+		unlink(OPAFMD_PIPE); // cleanup any bad states
 		return(-2);
 	}
+	sigprocmask(SIG_BLOCK, &mask, NULL);
 
-
-	while(!doStop && !stop){
-		if (read(fd,buf,127) != 0){
-				stop = parseInput(buf);
-		}
+	while(!doStop){
+		char *s;
+ 		sigprocmask(SIG_UNBLOCK, &mask, NULL);
+ 		s = fgets(buf, 127, fp);
+ 		sigprocmask(SIG_BLOCK, &mask, NULL);
+ 		if (s != NULL) {
+ 			parseInput(buf);
+ 		}
 	}
-	close(fd);
-	doStop = -((doStop | stop) - 1);	// Use doStop value as return value. Allows systemd to show daemon status on failure.
-	unlink(pipe);			// Destroy pipe
+	sigprocmask(SIG_UNBLOCK, &mask, NULL);
+
+	fclose(fp);
+	doStop = -(doStop - 1);	// Use doStop value as return value. Allows systemd to show daemon status on failure.
+	unlink(OPAFMD_PIPE);			// Destroy pipe
 	pthread_exit(&doStop);	// Allows any running background threads to terminate properly.
 }
 
 int main(int argc, char* argv[]) {
-	char opts[] = "Di:";
+	char opts[] = "dDi:";
 	char c;
-	int isDaemon = 0, res = 0;
+	int isDebug = 0, isDaemon = 0, res = 0;
 	char *cmd = NULL, *comp = NULL, inst[2] = {0};
 	progName = argv[0];
 	if(argc < 2)
 		Usage(-1);
 	while((c = getopt(argc, argv, opts)) != -1) {
 		switch (c) {
+		case 'd':
+			isDebug = 1;
+			// fall through
 		case 'D':
 			isDaemon = 1;
 			break;
@@ -815,12 +720,12 @@ int main(int argc, char* argv[]) {
 				fprintf(stderr, "Unknown parameter %s\n", arg);
 				Usage(-1);
 			} else {
-				    int fd;
-				    if((fd = open("/var/run/opafmd", O_WRONLY|O_NONBLOCK)) == -1){
-					  fprintf(stderr, "Failed to open pipe to daemon: %s\nMake sure daemon is running and you have permission to speak with it.\n", strerror(errno));
-					  exit(-2);
-				    }
-				res = write(fd, "stop", 4);	// write stop command without parameters to named pipe to kill it softly. With our words.
+				int fd;
+				if((fd = open(OPAFMD_PIPE, O_WRONLY|O_NONBLOCK)) == -1){
+					// Daemon is already stopped
+					exit(0);
+				}
+				res = write(fd, "stop\n", 5);	// write stop command without parameters to named pipe to kill it softly. With our words.
 				if(res <= 0){
 					//Something went wrong while writing to pipe.
 					fprintf(stderr, "Failed to send stop command to daemon: %s\n", strerror(errno));
@@ -836,6 +741,10 @@ int main(int argc, char* argv[]) {
 		}
 	}
 	if(isDaemon){
+		if (isDebug) {
+			// don't fork if debug
+			return daemon_main();
+		}
 		// Here we fork the daemon and if successful...
 		switch(fork()){
 		case 0:
@@ -848,7 +757,7 @@ int main(int argc, char* argv[]) {
 			return 0;
 		}
 	} else {
-		char prog[] = "/opt/opafm/bin/opafmctrl";
+		char prog[] = "/usr/lib/opa-fm/bin/opafmctrl";
 		if(inst[0] != 0){
 			if(comp != NULL)
 				execle(prog, prog, cmd, "-i", inst, comp, NULL, nullEnv);	// Call opafmctl with instance number and component,

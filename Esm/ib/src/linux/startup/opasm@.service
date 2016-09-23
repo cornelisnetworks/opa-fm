@@ -36,7 +36,7 @@ After=network.target
 [Service]
 User=root
 Type=forking
-ExecStart=/opt/opafm/runtime/sm -D -e sm_%I
+ExecStart=/usr/lib/opa-fm/runtime/sm -D -e sm_%I
 ExecReload=/bin/kill -HUP $MAINPID
 RestartSec=2
 

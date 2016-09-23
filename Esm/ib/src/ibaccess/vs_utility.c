@@ -151,41 +151,41 @@ void vs_init_coredump_settings(const char* mgr, const char* limit, const char *d
 	rlimit.rlim_max = RLIM_SAVED_MAX;
 	if (0 != vs_getCoreDumpLimit(limit, &rlimit.rlim_cur)) {
 		// parser should have already validated, but just to be safe
-		sprintf(buf, "%s: Disabling CoreDumps: Invalid CoreDumpLimit: '%s'",
+		snprintf(buf, sizeof(buf), "%s: Disabling CoreDumps: Invalid CoreDumpLimit: '%s'",
 				mgr, limit);
 		vs_log_output_message(buf, FALSE);
 		rlimit.rlim_cur = 0; limit = "0";
 	} else if (rlimit.rlim_cur == 0) {
-		sprintf(buf, "%s: Disabling CoreDumps: CoreDumpLimit: %s", mgr, limit);
+		snprintf(buf, sizeof(buf), "%s: Disabling CoreDumps: CoreDumpLimit: %s", mgr, limit);
 		vs_log_output_message(buf, FALSE);
 	} else if (strlen(dir) == 0 || 0 == strcmp(dir, "/dev/null")) {
-		sprintf(buf, "%s: Disabling CoreDumps: No CoreDumpDir", mgr);
+		snprintf(buf, sizeof(buf), "%s: Disabling CoreDumps: No CoreDumpDir", mgr);
 		vs_log_output_message(buf, FALSE);
 		rlimit.rlim_cur = 0; limit = "0";
 	} else {
 		if (-1 == stat(dir, &statbuf)) {
 			if (mkdir(dir, 0644) != 0) {
-				sprintf(buf, "%s: Disabling CoreDumps: Unable to create CoreDumpDir: '%s' %m", mgr, dir);
+				snprintf(buf, sizeof(buf), "%s: Disabling CoreDumps: Unable to create CoreDumpDir: '%s' %m", mgr, dir);
 				vs_log_output_message(buf, FALSE);
 				rlimit.rlim_cur = 0; limit = "0";
 			}
 		} else if (! S_ISDIR(statbuf.st_mode)) {
-			sprintf(buf, "%s: Disabling CoreDumps: CoreDumpDir is not a directory: '%s'", mgr, dir);
+			snprintf(buf, sizeof(buf), "%s: Disabling CoreDumps: CoreDumpDir is not a directory: '%s'", mgr, dir);
 			vs_log_output_message(buf, FALSE);
 			rlimit.rlim_cur = 0; limit = "0";
 		}
 		if (0 != chdir(dir)) {
-			sprintf(buf, "%s: Disabling CoreDumps: Unable to cd CoreDumpDir: '%s' %m", mgr, dir);
+			snprintf(buf, sizeof(buf), "%s: Disabling CoreDumps: Unable to cd CoreDumpDir: '%s' %m", mgr, dir);
 			vs_log_output_message(buf, FALSE);
 			rlimit.rlim_cur = 0; limit = "0";
 		}
 	}
 	if (setrlimit(RLIMIT_CORE, &rlimit) != 0) {
-		sprintf(buf, "%s: Unable to change CoreDumpLimit to '%s' %m", mgr, limit);
+		snprintf(buf, sizeof(buf), "%s: Unable to change CoreDumpLimit to '%s' %m", mgr, limit);
 		vs_log_output_message(buf, FALSE);
 	}
 	if (rlimit.rlim_cur) {
-		sprintf(buf, "%s: Enabling CoreDumps to %s up to %s bytes", mgr, dir, limit);
+		snprintf(buf, sizeof(buf), "%s: Enabling CoreDumps to %s up to %s bytes", mgr, dir, limit);
 		vs_log_output_message(buf, FALSE);
 	}
 }

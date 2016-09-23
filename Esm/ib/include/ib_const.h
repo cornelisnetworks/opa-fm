@@ -122,6 +122,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define	BM_MIN_SWEEPRATE	30	/* 30 Seconds */
 #define	BM_MAX_SWEEPRATE	86400	/* 24 Hours */
 
+#define	PM_MIN_SWEEPRATE    1       /* 1 Second */
+#define	PM_MAX_SWEEPRATE    43200   /* 12 Hours */
+
 /* the multi path defs are from sm_l.h */
 // FIXME
 #define SM_NO_MULTI_PATH	0

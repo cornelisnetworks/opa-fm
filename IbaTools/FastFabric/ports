@@ -1,0 +1,10 @@
+# [ICS VERSION STRING: unknown]
+# This file defines the local HFI ports to use to access the fabric(s)
+#
+# specify one line per HFI port of the form hfi:port such as:
+#      0:0 = 1st active port in system
+#      0:y = port y within system
+#      x:0 = 1st active port on HFI x
+#      x:y = HFI x, port y
+# The first HFI in the system is 1.  The first port on an HFI is 1.
+0:0

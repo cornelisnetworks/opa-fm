@@ -32,6 +32,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ib_types.h"
 #include "sm_l.h"
 #include "sa_l.h"
+#include "sm_dor.h"
 
 /* Idea of sm_UpDnBaseLid is to be able to control if Up/Dn Lid is the base lid. 
  * Currently it is required that sm_UpDnBaseLid be 1 i.e. Up/Dn Lid is the base lid,
@@ -52,7 +53,8 @@ static uint32_t	sm_UpDnBaseLid = 1;
 // to take into account the change in switch indices (done in  process_swIdx_change),
 // the bit map space isn't reallocated, so any index calculations should be based
 //on the old count of switches when the closure was computed
-#define	DorBitMapsIndex(X, Y)	(((X) * (sm_topop->routing.data.dor.closure_max_sws)) + (Y))
+
+#define	DorBitMapsIndex(X, Y)	(((X) * (((DorTopology_t *)(sm_topop->routingModule->data))->closure_max_sws)) + (Y))
 
 typedef struct _detected_dim {
 	uint8_t		dim;
@@ -69,6 +71,8 @@ typedef struct _detected_dim {
 uint8_t *port_pair_warnings;
 #define PORT_PAIR_WARN_IDX(X, Y)	(((X) * PORT_PAIR_WARN_ARR_SIZE) + (Y))
 
+#define SM_DOR_MAX_TOROIDAL_DIMENSIONS 6
+
 uint8_t incorrect_ca_warnings = 0;
 uint8_t invalid_isl_found = 0;
 //===========================================================================//
@@ -79,8 +83,9 @@ static int
 _coord_to_string(Topology_t *topop, int8_t *c, char *str)
 {
 	uint8_t i, l, n = 0;
+	DorTopology_t	*dorTop = (DorTopology_t *)topop->routingModule->data;
 
-	l = MIN(topop->routing.data.dor.numDimensions, SM_DOR_MAX_DIMENSIONS);
+	l = MIN(dorTop->numDimensions, SM_DOR_MAX_DIMENSIONS);
 	n += sprintf(str, "(");
 	for (i = 0; i < l; ++i) {
 		n += sprintf(str + n, "%d", c[i]);
@@ -99,9 +104,9 @@ _dump_node_coordinates(Topology_t *topop)
 
 	for_all_switch_nodes(topop, nodep) {
 		memset((void *)c, 0, sizeof(c));
-		_coord_to_string(topop, nodep->routing.dor->coords, c);
+		_coord_to_string(topop, ((DorNode_t*)nodep->routingData)->coords, c);
 		IB_LOG_INFINI_INFO_FMT(__func__,
-		       "NodeGUID "FMT_U64" [%s]: %s\n",
+		       "NodeGUID "FMT_U64" [%s]: %s",
 		       nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep), c);
 	}
 }
@@ -131,9 +136,11 @@ _find_dimension_difference(Node_t *nodep, Node_t *neighborNodep,
 	uint8_t *dimension, int8_t *direction)
 {
 	int i, diff;
+	DorNode_t *dnodep = (DorNode_t*)nodep->routingData;
+	DorNode_t *ndnodep = (DorNode_t*)neighborNodep->routingData;
 
-	for (i = 0; i < SM_DOR_MAX_DIMENSIONS; ++i) {
-		diff = neighborNodep->routing.dor->coords[i] - nodep->routing.dor->coords[i];
+	for (i = 0; i < SM_DOR_MAX_DIMENSIONS; i++) {
+		diff = ndnodep->coords[i] - dnodep->coords[i];
 		if (diff != 0) {
 			*dimension = i;
 			if (diff == 1)       // forward edge
@@ -181,6 +188,7 @@ typedef struct _DorDimension {
 	uint8_t ingressPort;
 	uint8_t dimension;
 	int8_t direction;
+	uint8_t hyperlink;
 	cl_map_obj_t portObj;
 } DorDimension_t;
 
@@ -207,21 +215,25 @@ _create_dimension(DorDiscoveryState_t *state, uint8_t p, uint8_t q, DorDimension
 	dim->ingressPort = q;
 	dim->dimension = state->nextDimension;
 	dim->direction = 1;
+	dim->hyperlink = (p==q);
 	state->dimensionMap[p] = dim;
 
 	*outDim = dim;
 
-	// add reverse direction
-	status = vs_pool_alloc(&sm_pool, sizeof(*dim), (void *)&dim);
-	if (status != VSTATUS_OK) {
-		IB_LOG_ERRORRC("Failed to allocate dimension data structure; rc:", status);
-		return status;
-	}
+	if (p != q) {
+		// add reverse direction, unless it's a hyperlink
+		status = vs_pool_alloc(&sm_pool, sizeof(*dim), (void *)&dim);
+		if (status != VSTATUS_OK) {
+			IB_LOG_ERRORRC("Failed to allocate dimension data structure; rc:", status);
+			return status;
+		}
 
-	dim->ingressPort = p;
-	dim->dimension = state->nextDimension;
-	dim->direction = -1;
-	state->dimensionMap[q] = dim;
+		dim->ingressPort = p;
+		dim->dimension = state->nextDimension;
+		dim->direction = -1;
+		dim->hyperlink = 0;
+		state->dimensionMap[q] = dim;
+	}
 
 	++state->nextDimension;
 	if (state->nextDimension > SM_DOR_MAX_DIMENSIONS) {
@@ -248,21 +260,25 @@ _extend_dimension(DorDiscoveryState_t *state, uint8_t p, uint8_t q,
 	dim->ingressPort = q;
 	dim->dimension = dimension;
 	dim->direction = direction;
+	dim->hyperlink = (p==q);
 	state->dimensionMap[p] = dim;
 
 	*outDim = dim;
 
-	status = vs_pool_alloc(&sm_pool, sizeof(*dim), (void *)&dim);
-	if (status != VSTATUS_OK) {
-		IB_LOG_ERRORRC("Failed to allocate dimension data structure; rc:", status);
-		return status;
+	if (p != q) {
+		// add reverse direction, unless it's a hyperlink
+		status = vs_pool_alloc(&sm_pool, sizeof(*dim), (void *)&dim);
+		if (status != VSTATUS_OK) {
+			IB_LOG_ERRORRC("Failed to allocate dimension data structure; rc:", status);
+			return status;
+		}
+
+		dim->ingressPort = p;
+		dim->dimension = dimension;
+		dim->direction = -direction;
+		dim->hyperlink = 0;
+		state->dimensionMap[q] = dim;
 	}
-
-	dim->ingressPort = p;
-	dim->dimension = dimension;
-	dim->direction = -direction;
-	state->dimensionMap[q] = dim;
-
 	return VSTATUS_OK;
 }
 
@@ -290,14 +306,15 @@ _lookup_dimension(DorDiscoveryState_t *state, uint8_t p, uint8_t q, DorDimension
 static int
 _mark_toroidal_dimension(DorDiscoveryState_t *state, Topology_t *topop, uint8_t dimension)
 {
-	if (topop->routing.data.dor.numToroidal > SM_DOR_MAX_TOROIDAL_DIMENSIONS) {
+	DorTopology_t	*dorTop = (DorTopology_t *)topop->routingModule->data;
+
+	if (dorTop->numToroidal > SM_DOR_MAX_TOROIDAL_DIMENSIONS) {
 		state->toroidalOverflow = 1;
 		return 0;
 	}
 
-	topop->routing.data.dor.toroidal[dimension] = 1;
-	topop->routing.data.dor.toroidalMap[dimension] =
-		topop->routing.data.dor.toroidal_count++;
+	dorTop->toroidal[dimension] = 1;
+	dorTop->toroidalMap[dimension] = dorTop->toroidal_count++;
 
 	return 1;
 }
@@ -438,6 +455,7 @@ _propagate_coord_through_port(DorDiscoveryState_t *state,
 	uint8_t dimension;
 	int8_t direction = 0;
 	int config_dim;
+	DorTopology_t	*dorTop = (DorTopology_t *)topop->routingModule->data;
 
 	neighborNodep = sm_find_node(topop, portp->nodeno);
 	if (neighborNodep == NULL) {
@@ -452,12 +470,12 @@ _propagate_coord_through_port(DorDiscoveryState_t *state,
 	if (portp->portData->vl0 < state->scsAvailable)
 		state->scsAvailable = portp->portData->vl0;
 
-	if (state->scsAvailable < topop->routing.data.dor.minReqScs) {
+	if (state->scsAvailable < dorTop->minReqScs) {
 		IB_LOG_ERROR_FMT(__func__,
-		       "NodeGUID "FMT_U64" [%s] Port %d has only %d SC(s). "
-		       "Minimum required SCs for ISLs for given DOR configuration is %d.",
-		       nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep), portp->index, state->scsAvailable,
-		       topop->routing.data.dor.minReqScs);
+				"NodeGUID "FMT_U64" [%s] Port %d has only %d SC(s). "
+				"Minimum required SCs for ISLs for given DOR configuration is %d.",
+				nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep), portp->index,
+				state->scsAvailable, dorTop->minReqScs);
 		return VSTATUS_BAD;
 	}
 
@@ -469,7 +487,7 @@ _propagate_coord_through_port(DorDiscoveryState_t *state,
 		break;
 	case UPDN_LOOKUP_RVAL_NOTFOUND:
 		// new port mapping found; add it to the list of known mappings
-		if (neighborNodep->routing.dor != NULL) {
+		if (neighborNodep->routingData != NULL) {
 			// we've seen this node before; not a new dimension, but
 			// instead a redundant link
 			_find_dimension_difference(nodep, neighborNodep, &dimension, &direction);
@@ -551,56 +569,52 @@ _propagate_coord_through_port(DorDiscoveryState_t *state,
 	}
 
 	// init node if this is the first time we've seen it
-	if (neighborNodep->routing.dor == NULL) {
-		status = vs_pool_alloc(&sm_pool, sizeof(DorNode_t),
-			(void *)&neighborNodep->routing.dor);
+	DorNode_t *neighborDorNode = NULL;
+	DorNode_t *dorNode = (DorNode_t*)nodep->routingData;
+	if (neighborNodep->routingData == NULL) {
+		status = vs_pool_alloc(&sm_pool, sizeof(DorNode_t), &neighborNodep->routingData);
 		if (status != VSTATUS_OK) {
 			IB_LOG_ERRORRC("Failed to allocate storage for DOR node structure; rc:", status);
-			neighborNodep->routing.dor = NULL;
+			neighborNodep->routingData = NULL;
 			return status;
 		}
-		memset((void *)neighborNodep->routing.dor, 0, sizeof(DorNode_t));
-		neighborNodep->routing.dor->node = neighborNodep;
-
-		// update neighbor pointers for every link we find
-		if (dim->direction > 0) {
-			if (nodep->routing.dor->right[dim->dimension] != NULL);
-			neighborNodep->routing.dor->left[dim->dimension] = nodep->routing.dor;
-		} else {
-			nodep->routing.dor->left[dim->dimension] = neighborNodep->routing.dor;
-			neighborNodep->routing.dor->right[dim->dimension] = nodep->routing.dor;
-		}
+		neighborDorNode = (DorNode_t*)neighborNodep->routingData;
+		memset(neighborNodep->routingData, 0, sizeof(DorNode_t));
+		neighborDorNode->node = neighborNodep;
 
 		// copy over existing coordinates and increment the dimension
 		// we traveled along
-		memcpy((void *)neighborNodep->routing.dor->coords,
-		       (void *)nodep->routing.dor->coords,
-		       sizeof(nodep->routing.dor->coords));
-		neighborNodep->routing.dor->coords[dim->dimension] += dim->direction;
+		memcpy((void *)neighborDorNode->coords, (void *)dorNode->coords, sizeof(dorNode->coords));
+		neighborDorNode->coords[dim->dimension] += dim->direction;
 
-		if (neighborNodep->routing.dor->coords[dim->dimension]
-		      < topop->routing.data.dor.coordMinimums[dim->dimension])
-			topop->routing.data.dor.coordMinimums[dim->dimension] =
-				neighborNodep->routing.dor->coords[dim->dimension];
-		else if (neighborNodep->routing.dor->coords[dim->dimension]
-		           > topop->routing.data.dor.coordMaximums[dim->dimension])
-			topop->routing.data.dor.coordMaximums[dim->dimension] =
-				neighborNodep->routing.dor->coords[dim->dimension];
+		if (neighborDorNode->coords[dim->dimension] < dorTop->coordMinimums[dim->dimension])
+			dorTop->coordMinimums[dim->dimension] = neighborDorNode->coords[dim->dimension];
+
+		else if (neighborDorNode->coords[dim->dimension] > dorTop->coordMaximums[dim->dimension])
+			dorTop->coordMaximums[dim->dimension] = neighborDorNode->coords[dim->dimension];
+
 	} else {
 		// the neighbor has an existing coordinate, check for a wrap-around edge
-		if (dim->direction > 0) {
-			if (  nodep->routing.dor->coords[dim->dimension]
-			        == topop->routing.data.dor.coordMaximums[dim->dimension]
-			   && neighborNodep->routing.dor->coords[dim->dimension]
-			        == topop->routing.data.dor.coordMinimums[dim->dimension]) {
+		neighborDorNode = (DorNode_t*)neighborNodep->routingData;
+		if (dim->hyperlink) {
+			if (is_configured_toroidal(portp->index, portp->portno)) {
+				IB_LOG_WARN_FMT(__func__, "Hyperlink configured as toroidal between "
+	 					        "NodeGUID "FMT_U64" [%s] Port %d and NodeGUID "FMT_U64" [%s] Port %d"
+								" ingoring config, it cannot be toroidal",
+				 		        nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep), portp->index,
+	               			    neighborNodep->nodeInfo.NodeGUID, sm_nodeDescString(neighborNodep), portp->portno);
+			}
+		} else if (dim->direction > 0) {
+			if (dorNode->coords[dim->dimension] == dorTop->coordMaximums[dim->dimension] &&
+			    neighborDorNode->coords[dim->dimension] == dorTop->coordMinimums[dim->dimension]) {
 				if (is_configured_toroidal(portp->index, portp->portno)) {
 					if (smDorRouting.debug) {
 						IB_LOG_INFINI_INFO_FMT(__func__,
 						       "Found toroidal link for dimension %d in (direction %d, coord bounds [%d, %d]) between "
 						       "NodeGUID "FMT_U64" [%s] Port %d and NodeGUID "FMT_U64" [%s] Port %d",
 						       dim->dimension, dim->direction,
-					    	   topop->routing.data.dor.coordMinimums[dim->dimension],
-						       topop->routing.data.dor.coordMaximums[dim->dimension],
+					    	   dorTop->coordMinimums[dim->dimension],
+						       dorTop->coordMaximums[dim->dimension],
 						       nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep), portp->index,
 						       neighborNodep->nodeInfo.NodeGUID, sm_nodeDescString(neighborNodep), portp->portno);
 					}
@@ -614,7 +628,7 @@ _propagate_coord_through_port(DorDiscoveryState_t *state,
 					}
 					disable_isl_ports(topop, nodep, portp, neighborNodep);
 				}
-			} else if ((neighborNodep->routing.dor->coords[dim->dimension] - nodep->routing.dor->coords[dim->dimension]) > 1) {
+			} else if ((neighborDorNode->coords[dim->dimension] - dorNode->coords[dim->dimension]) > 1) {
 				/* This is a wrap around link that is not between the maximum and minimum co-ordinates */
 				IB_LOG_WARN_FMT(__func__, "Disabling wrap around link between "
 	 					        "NodeGUID "FMT_U64" [%s] Port %d and NodeGUID "FMT_U64" [%s] Port %d"
@@ -625,18 +639,16 @@ _propagate_coord_through_port(DorDiscoveryState_t *state,
 				disable_isl_ports(topop, nodep, portp, neighborNodep);
 			}
 		} else {
-			if (  nodep->routing.dor->coords[dim->dimension]
-			        == topop->routing.data.dor.coordMinimums[dim->dimension]
-			   && neighborNodep->routing.dor->coords[dim->dimension]
-			        == topop->routing.data.dor.coordMaximums[dim->dimension]) {
+			if (dorNode->coords[dim->dimension] == dorTop->coordMinimums[dim->dimension] &&
+			    neighborDorNode->coords[dim->dimension] == dorTop->coordMaximums[dim->dimension]) {
 				if (is_configured_toroidal(portp->index, portp->portno)) {
 					if (smDorRouting.debug) {
 						IB_LOG_INFINI_INFO_FMT(__func__,
 						       "Found toroidal link for dimension %d in (direction %d, coord bounds [%d, %d]) between "
 						       "NodeGUID "FMT_U64" [%s] Port %d and NodeGUID "FMT_U64" [%s] Port %d",
 						       dim->dimension, dim->direction,
-					    	   topop->routing.data.dor.coordMinimums[dim->dimension],
-						       topop->routing.data.dor.coordMaximums[dim->dimension],
+					    	   dorTop->coordMinimums[dim->dimension],
+						       dorTop->coordMaximums[dim->dimension],
 						       nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep), portp->index,
 						       neighborNodep->nodeInfo.NodeGUID, sm_nodeDescString(neighborNodep), portp->portno);
 					}
@@ -650,7 +662,7 @@ _propagate_coord_through_port(DorDiscoveryState_t *state,
 					}
 					disable_isl_ports(topop, nodep, portp, neighborNodep);
 				}
-			} else if ((nodep->routing.dor->coords[dim->dimension] - neighborNodep->routing.dor->coords[dim->dimension]) > 1) {
+			} else if ((dorNode->coords[dim->dimension] - neighborDorNode->coords[dim->dimension]) > 1) {
 				/* This is a wrap around link that is not between the maximum and minimum co-ordinates */
 				IB_LOG_WARN_FMT(__func__, "Disabling wrap around link between "
 	 					        "NodeGUID "FMT_U64" [%s] Port %d and NodeGUID "FMT_U64" [%s] Port %d"
@@ -663,12 +675,21 @@ _propagate_coord_through_port(DorDiscoveryState_t *state,
 	}
 
 	// update neighbor pointers for every link we find
-	if (dim->direction > 0) {
-		nodep->routing.dor->right[dim->dimension] = neighborNodep->routing.dor;
-		neighborNodep->routing.dor->left[dim->dimension] = nodep->routing.dor;
+	if (dim->hyperlink) {
+		_find_dimension_difference(nodep, neighborNodep, &dimension, &direction);
+		if (direction > 0) {
+			dorNode->right[dim->dimension] = neighborDorNode;
+			neighborDorNode->left[dim->dimension] = dorNode;
+		} else {
+			dorNode->left[dim->dimension] = neighborDorNode;
+			neighborDorNode->right[dim->dimension] = dorNode;
+		}
+	} else if (dim->direction > 0) {
+		dorNode->right[dim->dimension] = neighborDorNode;
+		neighborDorNode->left[dim->dimension] = dorNode;
 	} else {
-		nodep->routing.dor->left[dim->dimension] = neighborNodep->routing.dor;
-		neighborNodep->routing.dor->right[dim->dimension] = nodep->routing.dor;
+		dorNode->left[dim->dimension] = neighborDorNode;
+		neighborDorNode->right[dim->dimension] = dorNode;
 	}
 
 	return VSTATUS_OK;
@@ -754,7 +775,7 @@ _copy_ideal_tree_to_updn_tree(UpdnSpanningTree_t *tree, McSpanningTree_t *mcST)
 		return VSTATUS_BAD;
 	
 	if (tree->numNodes < mcST->num_nodes) {
-		IB_LOG_INFINI_INFO_FMT(__func__, "Cannot copy Updn tree numNodes (%d) < mcST numNodes (%d)",
+		IB_LOG_INFINI_INFO_FMT(__func__, "Cannot copy Updn tree numNodes (%"PRISZT") < mcST numNodes (%d)",
 			tree->numNodes, mcST->num_nodes);
 		return VSTATUS_BAD;
 	}
@@ -965,26 +986,32 @@ _calc_updn_closure(Topology_t *topop)
 	UpdnSpanningNode_t *n1, *n2, *p1, *p2;
 	uint16_t cost = 0, cost1 = 0, cost2 = 0;
 	Port_t *portp;
+	DorTopology_t	*dorTop = (DorTopology_t *)topop->routingModule->data;
 
 	tree = &updn_spanning_tree;
 
 	memset((void *)tree, 0, sizeof(*tree));
 
-	status = _build_updn_spanning_tree(topop, tree);
-	if (status != VSTATUS_OK) {
-		IB_LOG_ERRORRC("Failed to build Up/Down spanning tree; rc:", status);
-		return status;
+	if (((DorTopology_t*)topop->routingModule->data)->alternateRouting) {
+		status = _build_updn_spanning_tree(topop, tree);
+		if (status != VSTATUS_OK) {
+			IB_LOG_ERRORRC("Failed to build Up/Down spanning tree; rc:", status);
+			return status;
+		}
 	}
 
 	s = (sizeof(uint32_t) * topop->max_sws * topop->max_sws / 32) + 1;
-	status = vs_pool_alloc(&sm_pool, s,
-		(void *)&topop->routing.data.dor.updnDownstream);
+	status = vs_pool_alloc(&sm_pool, s, (void *)&dorTop->updnDownstream);
 	if (status != VSTATUS_OK) {
 		IB_LOG_ERRORRC("Failed to allocate memory for Up/Down closure array; rc:", status);
 		_free_spanning_tree(tree);
 		return status;
 	}
-	memset((void *)topop->routing.data.dor.updnDownstream, 0, s);
+	memset((void *)dorTop->updnDownstream, 0, s);
+
+	if (!tree->nodes) {
+		return VSTATUS_OK;
+	}
 
 	// mark each node as downstream of all ancestors
 	for (i = 0; i < tree->numNodes; ++i) {
@@ -994,7 +1021,7 @@ _calc_updn_closure(Topology_t *topop)
 		prev = curr;
 		while (parent != NULL) {
 			ij = DorBitMapsIndex(parent->nodep->swIdx, curr->nodep->swIdx);
-			topop->routing.data.dor.updnDownstream[ij >> 5] |= 1 << (ij & 0x1f);
+			dorTop->updnDownstream[ij >> 5] |= 1 << (ij & 0x1f);
 			/* While calculating DOR closure, floyd costs are set to infinity if there
 			 * is no DOR closure. Set the cost from curr to all its parents in the Up/Dn
 			 * spanning tree if the cost is infinity.
@@ -1043,7 +1070,7 @@ _calc_updn_closure(Topology_t *topop)
 				}
 
 				ij = DorBitMapsIndex(p1->nodep->swIdx, n2->nodep->swIdx);
-				if ((topop->routing.data.dor.updnDownstream[ij >> 5] & (1 << (ij & 0x1f)))) {
+				if ((dorTop->updnDownstream[ij >> 5] & (1 << (ij & 0x1f)))) {
 					break;
 				}
 				prev = p1;
@@ -1082,21 +1109,21 @@ static Status_t
 _copy_updn_closure(Topology_t *src_topop, Topology_t *dst_topop)
 {
 	Status_t status;
-	size_t s, max_sws = src_topop->routing.data.dor.closure_max_sws;
+	DorTopology_t	*dorTopSrc = (DorTopology_t *)src_topop->routingModule->data;
+	DorTopology_t	*dorTopDst = (DorTopology_t *)dst_topop->routingModule->data;
+	size_t s, max_sws = dorTopSrc->closure_max_sws;
 
 //	s = (sizeof(uint32_t) * dst_topop->max_sws * dst_topop->max_sws / 32) + 1;
-	dst_topop->routing.data.dor.closure_max_sws= max_sws;
+	dorTopDst->closure_max_sws= max_sws;
 	s = (sizeof(uint32_t) * max_sws * max_sws / 32) + 1;
 	status = vs_pool_alloc(&sm_pool, s,
-		(void *)&dst_topop->routing.data.dor.updnDownstream);
+		(void *)&dorTopDst->updnDownstream);
 	if (status != VSTATUS_OK) {
 		IB_LOG_ERRORRC("Failed to allocate memory for up/down closure array; rc:", status);
 		return status;
 	}
 
-	memcpy((void *)dst_topop->routing.data.dor.updnDownstream,
-	       (void *)src_topop->routing.data.dor.updnDownstream,
-	       s);
+	memcpy((void *)dorTopDst->updnDownstream, (void *)dorTopSrc->updnDownstream, s);
 
 	return VSTATUS_OK;
 }
@@ -1104,6 +1131,7 @@ void _prune_conn_swlist(Topology_t *topop, Node_t *nodep, SwitchList_t **conn_sw
 {
 	SwitchList_t *csw = *conn_swlist, *prev_csw;
 	int ij, include, isDownstream;
+	DorTopology_t	*dorTop = (DorTopology_t *)topop->routingModule->data;
 
 	*tail = NULL;
 
@@ -1115,13 +1143,13 @@ void _prune_conn_swlist(Topology_t *topop, Node_t *nodep, SwitchList_t **conn_sw
 		include = 0;
 		/* check if csw->switchp is parent of nodep*/
 		ij = DorBitMapsIndex(nodep->swIdx, csw->switchp->swIdx);
-		isDownstream = (topop->routing.data.dor.updnDownstream[ij >> 5] & (1 << (ij & 0x1f)));
+		isDownstream = (dorTop->updnDownstream[ij >> 5] & (1 << (ij & 0x1f)));
 		if (isDownstream) {
 			include = 1;
 		} else {
 			/* check if csw->switchp is child of nodep*/
 			ij = DorBitMapsIndex(csw->switchp->swIdx, nodep->swIdx);
-			isDownstream = (topop->routing.data.dor.updnDownstream[ij >> 5] & (1 << (ij & 0x1f)));
+			isDownstream = (dorTop->updnDownstream[ij >> 5] & (1 << (ij & 0x1f)));
 			if (isDownstream) {
 				include = 1;
 			}
@@ -1245,36 +1273,39 @@ _step_to(Topology_t *topop, Node_t *src, Node_t *dst)
 {
 	int i, si = -1, di = -1;
 	DorNode_t *dnp;
+	DorNode_t *srcDnp = (DorNode_t*)src->routingData;
+	DorNode_t *dstDnp = (DorNode_t*)dst->routingData;
+	DorTopology_t	*dorTop = (DorTopology_t *)topop->routingModule->data;
 
 	// travel along the first dimension that the source
 	// does not currently share with the destination
-	for (i = 0; i < topop->routing.data.dor.numDimensions; ++i) {
-		si = src->routing.dor->coords[i];
-		di = dst->routing.dor->coords[i];
+	for (i = 0; i < dorTop->numDimensions; ++i) {
+		si = srcDnp->coords[i];
+		di = dstDnp->coords[i];
 		if (si < di) {
 			// source has smaller index; would normally go right
-			if (  topop->routing.data.dor.toroidal[i] && src->routing.dor->left[i]
-			   && si + topop->routing.data.dor.dimensionLength[i] - di < di - si) {
+			if (dorTop->toroidal[i] && srcDnp->left[i] &&
+			    si + dorTop->dimensionLength[i] - di < di - si) {
 				// topology is toroidal and crossing over the boundary
 				// is quicker, so go left instead
-				dnp = src->routing.dor->left[i];
+				dnp = srcDnp->left[i];
 				return dnp == NULL ? NULL : dnp->node;
 			} else {
 				// not toroidal or toroidal link is down, or normal route; go right
-				dnp = src->routing.dor->right[i];
+				dnp = srcDnp->right[i];
 				return dnp == NULL ? NULL : dnp->node;
 			}
 		} else if (si > di) {
 			// source has larger index; would normally go left
-			if (  topop->routing.data.dor.toroidal[i] && src->routing.dor->right[i]
-			   && di - si + topop->routing.data.dor.dimensionLength[i] < si - di) {
+			if (dorTop->toroidal[i] && srcDnp->right[i] &&
+			    di - si + dorTop->dimensionLength[i] < si - di) {
 				// topology is toroidal and crossing over the boundary
 				// is quicker, so go right instead
-				dnp = src->routing.dor->right[i];
+				dnp = srcDnp->right[i];
 				return dnp == NULL ? NULL : dnp->node;
 			} else {
 				// not toroidal or toroidal link is down, or normal route; go left
-				dnp = src->routing.dor->left[i];
+				dnp = srcDnp->left[i];
 				return dnp == NULL ? NULL : dnp->node;
 			}
 		}
@@ -1294,6 +1325,10 @@ _is_path_realizable(Topology_t *topop, Node_t *src, Node_t *dst)
 {
 	Node_t *n;
 	int step = 0, dim = -1, i;
+	DorTopology_t	*dorTop = (DorTopology_t *)topop->routingModule->data;
+	DorNode_t *srcDnp = (DorNode_t*)src->routingData;
+	DorNode_t *dstDnp = (DorNode_t*)dst->routingData;
+	DorNode_t *nDnp = NULL;
 
 	if (src == dst) return 1;
 
@@ -1304,9 +1339,11 @@ _is_path_realizable(Topology_t *topop, Node_t *src, Node_t *dst)
 		if (n == NULL)
 			return 0;
 
+		nDnp = (DorNode_t*)n->routingData;
+
 		/* find the dimension on which we are traveling and count the number of steps */
-		for (i = 0; i < topop->routing.data.dor.numDimensions; ++i) {
-			if (n->routing.dor->coords[i] == dst->routing.dor->coords[i]) {
+		for (i = 0; i < dorTop->numDimensions; ++i) {
+			if (nDnp->coords[i] == dstDnp->coords[i]) {
 				if (i == dim) {
 					step = 0;
 					dim = -1;
@@ -1322,11 +1359,11 @@ _is_path_realizable(Topology_t *topop, Node_t *src, Node_t *dst)
 					return 0;
 			}
 		
-			if (n->routing.dor->coords[i] != src->routing.dor->coords[i]) {
+			if (nDnp->coords[i] != srcDnp->coords[i]) {
 				dim = i;
 				step++;
 				/* If we have taken more steps than the length of the dimension, then we are looping */
-				if (step > topop->routing.data.dor.dimensionLength[i]) {
+				if (step > dorTop->dimensionLength[i]) {
 					return 0;
 				}
 				break;
@@ -1338,25 +1375,26 @@ _is_path_realizable(Topology_t *topop, Node_t *src, Node_t *dst)
 	return 1;
 }
 
+// TBD: is the following required?
 // Here I'm defining the toroidal-ness of a path along a given dimension
 // to hold if that path would cross the wrap-around edge of the mesh.
 //
-static int
+static __inline__ int
 _is_path_toroidal_in_dimension(Topology_t *topop, Node_t *srcNodep, Node_t *dstNodep, int dimension)
 {
 	int cs, cd, toroidal;
+	DorTopology_t	*dorTop = (DorTopology_t *)topop->routingModule->data;
 
 	// can't be toroidal unless this dimension is wired as such
-	if (!topop->routing.data.dor.toroidal[dimension])
+	if (!dorTop->toroidal[dimension])
 		return 0;
 	
-	cs = srcNodep->routing.dor->coords[dimension];
-	cd = dstNodep->routing.dor->coords[dimension];
+	cs = ((DorNode_t*)(srcNodep->routingData))->coords[dimension];
+	cd = ((DorNode_t*)(dstNodep->routingData))->coords[dimension];
 
 	// not toroidal if the path would not take use over the wrap-around edge
-	if (  cs == cd
-	   || (cs < cd && cd - cs <= (topop->routing.data.dor.dimensionLength[dimension] + cs - cd))
-	   || (cs > cd && cs - cd <= (topop->routing.data.dor.dimensionLength[dimension] + cd - cs)))
+	if (cs == cd || (cs < cd && cd - cs <= (dorTop->dimensionLength[dimension] + cs - cd)) ||
+	    (cs > cd && cs - cd <= (dorTop->dimensionLength[dimension] + cd - cs)))
 		toroidal = 0;
 	else
 		toroidal = 1;
@@ -1381,25 +1419,26 @@ _calc_dor_closure(Topology_t *topop)
 	int ij;
 	size_t s;
 	Node_t *ni, *nj;
+	DorTopology_t	*dorTop = (DorTopology_t *)topop->routingModule->data;
 
 	s = (sizeof(uint32_t) * topop->max_sws * topop->max_sws / 32) + 1;
-	topop->routing.data.dor.dorClosureSize = s;
-	status = vs_pool_alloc(&sm_pool, s, (void *)&topop->routing.data.dor.dorClosure);
+	dorTop->dorClosureSize = s;
+	status = vs_pool_alloc(&sm_pool, s, (void *)&dorTop->dorClosure);
 	if (status != VSTATUS_OK) {
 		IB_LOG_ERRORRC("Failed to allocate memory for DOR closure array; rc:", status);
 		return status;
 	}
-	memset((void *)topop->routing.data.dor.dorClosure, 0, s);
+	memset((void *)dorTop->dorClosure, 0, s);
 
 	for_all_switch_nodes(topop, ni) {
 		for_all_switch_nodes(topop, nj) {
 			if (ni == nj || _is_path_realizable(topop, ni, nj)) {
 				if (smDorRouting.debug)
 					IB_LOG_VERBOSE_FMT(__func__,
-					       "Path from %d [%s] to self is realizable\n",
+					       "Path from %d [%s] to self is realizable",
 					       ni->swIdx, sm_nodeDescString(ni));
 				ij = DorBitMapsIndex(ni->swIdx, nj->swIdx);
-				topop->routing.data.dor.dorClosure[ij >> 5] |= 1 << (ij & 0x1f);
+				dorTop->dorClosure[ij >> 5] |= 1 << (ij & 0x1f);
 			} else {
 				 /* Set floyd cost to Infinity for this pair as there is no DOR closure */
 				 /* The cost will be set later on based on the Up/Dn spanning tree calculation */
@@ -1409,7 +1448,7 @@ _calc_dor_closure(Topology_t *topop)
 
 				if (smDorRouting.debug)
 					IB_LOG_INFINI_INFO_FMT(__func__,
-					       "Path from %d [%s] to %d [%s] is NOT realizable\n",\
+					       "Path from %d [%s] to %d [%s] is NOT realizable",\
 					       ni->swIdx, sm_nodeDescString(ni), nj->swIdx, sm_nodeDescString(nj));
 			}
 		}
@@ -1422,431 +1461,42 @@ static Status_t
 _copy_dor_closure(Topology_t *src_topop, Topology_t *dst_topop)
 {
 	Status_t status;
-	size_t s, max_sws = src_topop->routing.data.dor.closure_max_sws;;
+	DorTopology_t	*dorTopSrc = (DorTopology_t *)src_topop->routingModule->data;
+	DorTopology_t	*dorTopDst = (DorTopology_t *)dst_topop->routingModule->data;
+	size_t s, max_sws = dorTopSrc->closure_max_sws;
 
-	dst_topop->routing.data.dor.closure_max_sws= max_sws;
+	dorTopDst->closure_max_sws= max_sws;
 	s = (sizeof(uint32_t) * max_sws * max_sws / 32) + 1;
-	status = vs_pool_alloc(&sm_pool, s, (void *)&dst_topop->routing.data.dor.dorClosure);
+	status = vs_pool_alloc(&sm_pool, s, (void *)&dorTopDst->dorClosure);
 	if (status != VSTATUS_OK) {
 		IB_LOG_ERRORRC("Failed to allocate memory for DOR closure array; rc:", status);
 		return status;
 	}
 
-	memcpy((void *)dst_topop->routing.data.dor.dorClosure,
-	       (void *)src_topop->routing.data.dor.dorClosure,
-	       s);
+	memcpy((void *)dorTopDst->dorClosure, (void *)dorTopSrc->dorClosure, s);
 
 	return VSTATUS_OK;
 }
 
-//===========================================================================//
-// SLSC TABLES
-//
-
-static __inline__ int
-_halfway_low(Topology_t *topop, uint8_t dimension)
+static __inline__ boolean
+isDatelineSwitch(Topology_t *topop, Node_t *switchp, uint8_t dimension)
 {
-	uint8_t len = topop->routing.data.dor.dimensionLength[dimension];
-
-	if (len % 2)
-		return topop->routing.data.dor.coordMinimums[dimension] + len / 2;
-	else
-		return topop->routing.data.dor.coordMinimums[dimension] + len / 2;
+	return (((DorTopology_t *)topop->routingModule->data)->toroidal[dimension] &&
+			((DorNode_t*)switchp->routingData)->coords[dimension] == 0);
 }
 
-static __inline__ int
-_halfway_high(Topology_t *topop, uint8_t dimension)
-{
-	uint8_t len = topop->routing.data.dor.dimensionLength[dimension];
-
-	if (len % 2)
-		return topop->routing.data.dor.coordMinimums[dimension] + len / 2;
-	else
-		return topop->routing.data.dor.coordMinimums[dimension] + len / 2 + 1;
-}
-
-// Although the SLSC maps table defines 32 SLs, for now it will adhere to the
-// IB SLVL maps table that uses upto 16 SLs.
-//
-// All SLSC maps are statically allocated to save space.
-// If alternate routing is enabled, SL 0 and SC 0 are for
-// Up/Dn. SL 1 onwards and SC 1 and SC 2 are for DOR.
-//
-// Index legend:
-//         0: default map for no toroidal dimensions
-//    1 -  5: maps for 1 toroidal dimension
-//    6 - 10: maps for 2 toroidal dimensions
-//   11 - 15: maps for 3 toroidal dimensions
-//   16 - 20: maps for 4 toroidal dimensions
-static uint8_t _slsc_maps[21][STL_MAX_SLS] =
-{
-	// 0d default
-	{ 0x0, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-	  0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-	  0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 },
-	// 1d default
-	{ 0x0, 0x1, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0,
-	  0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-	  0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 },
-	// 1d dim 0
-	{ 0x0, 0x1, 0x2, 0x0, 0x0, 0x0, 0x0, 0x0,
-	  0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-      0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-	  0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 },
-	// 1d dim 1 (a spacer for now)
-	{ 0x0, 0x1, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0,
-	  0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-      0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-	  0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 },
-	// 1d dim 2 (a spacer for now)
-	{ 0x0, 0x1, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0,
-	  0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-	  0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 },
-	// 1d dim 3 (a spacer for now)
-	{ 0x0, 0x1, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-	  0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-      0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 },
-	// 2d default
-	{ 0x0, 0x1, 0x1, 0x1, 0x1, 0x0, 0x0, 0x0,
-	  0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-      0x0, 0x0, 0x0, 0x0,
-	  0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 },
-	// 2d dim 0
-	{ 0x0, 0x1, 0x2, 0x1, 0x2, 0x0, 0x0, 0x0,
-	  0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-      0x0, 0x0, 0x0, 0x0, 0x0,
-	  0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 },
-	// 2d dim 1
-	{ 0x0, 0x1, 0x1, 0x2, 0x2, 0x0, 0x0, 0x0,
-	  0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 },
-	// 2d dim 2 (a spacer for now)
-	{ 0x0, 0x1, 0x1, 0x1, 0x1, 0x0, 0x0, 0x0,
-	  0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-      0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-	  0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 },
-	// 2d dim 3 (a spacer for now)
-	{ 0x0, 0x1, 0x1, 0x1, 0x1, 0x0, 0x0, 0x0,
-	  0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-      0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-	  0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 },
-	// 3d default
-	{ 0x0, 0x1, 0x1, 0x1, 0x1, 0x1, 0x1, 0x1,
-	  0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-      0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-      0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 },
-	// 3d dim 0
-	{ 0x0, 0x1, 0x2, 0x1, 0x2, 0x1, 0x2, 0x1,
-	  0x2, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-      0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-      0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 },
-	// 3d dim 1
-	{ 0x0, 0x1, 0x1, 0x2, 0x2, 0x1, 0x1, 0x2,
-	  0x2, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-      0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 },
-	// 3d dim 2
-	{ 0x0, 0x1, 0x1, 0x1, 0x1, 0x2, 0x2, 0x2,
-	  0x2, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-      0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 },
-	// 3d dim 3 (a spacer for now)
-	{ 0x0, 0x1, 0x1, 0x1, 0x1, 0x1, 0x1, 0x1,
-	  0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-      0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-      0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 },
-	// For now in 4d, we will use the IB SL2VL map model that uses upto 16 SLs
-    // for cycle free routing, and uses no  VLs for alternate routing 4d default
-	{ 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-	  0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-	  0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 },
-	// 4d dim 0
-	{ 0x0, 0x1, 0x0, 0x1, 0x0, 0x1, 0x0, 0x1,
-	  0x0, 0x1, 0x0, 0x1, 0x0, 0x1, 0x0, 0x1,
-      0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-      0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 },
-	// 4d dim 1
-	{ 0x0, 0x0, 0x1, 0x1, 0x0, 0x0, 0x1, 0x1,
-	  0x0, 0x0, 0x1, 0x1, 0x0, 0x0, 0x1, 0x1,
-      0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-      0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 },
-	// 4d dim 2
-	{ 0x0, 0x0, 0x0, 0x0, 0x1, 0x1, 0x1, 0x1,
-	  0x0, 0x0, 0x0, 0x0, 0x1, 0x1, 0x1, 0x1,
-      0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-      0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 },
-	// 4d dim 3
-	{ 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-	  0x1, 0x1, 0x1, 0x1, 0x1, 0x1, 0x1, 0x1,
-      0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-      0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 }
-};
-
-Qos_t	dor_qos;
-
-// dor_slsc[0]  - HFIs
-// dor_slsc[1]  - Mesh, Torus/default
-// dor_slsc[2]  - HFIs, Torus/dim0 over meridian
-// dor_slsc[3]  - HFIs, Torus/dim1 over meridian
-// dor_slsc[4]  - HFIs, Torus/dim2 over meridian
-// dor_slsc[5]  - HFIs, Torus/dim3 over meridian
-STL_SLSCMAP dor_slsc[6];
-
-static void
-setSlscEntry(uint8_t numToroidal, uint8_t base_sl, uint8_t base_sc, uint8_t sc0, uint8_t sc1, uint8_t sc2)
-{
-
-	// 1d torus
-	dor_slsc[0].SLSCMap[base_sl].SC = base_sc;
-	dor_slsc[0].SLSCMap[base_sl+1].SC = base_sc;
-	dor_slsc[0].SLSCMap[base_sl+2].SC = base_sc;
-
-	dor_slsc[1].SLSCMap[base_sl].SC = sc0;
-	dor_slsc[1].SLSCMap[base_sl+1].SC = sc1;
-	dor_slsc[1].SLSCMap[base_sl+2].SC = sc1;
-
-	dor_slsc[2].SLSCMap[base_sl].SC = sc0;
-	dor_slsc[2].SLSCMap[base_sl+1].SC = sc1;
-	dor_slsc[2].SLSCMap[base_sl+2].SC = sc2;
-			
-	if (numToroidal >= 2) {
-		// 2d torus
-		dor_slsc[0].SLSCMap[base_sl+3].SC = base_sc;
-		dor_slsc[0].SLSCMap[base_sl+4].SC = base_sc;
-
-		dor_slsc[1].SLSCMap[base_sl+3].SC = sc1;
-		dor_slsc[1].SLSCMap[base_sl+4].SC = sc1;
-
-		dor_slsc[2].SLSCMap[base_sl+3].SC = sc1;
-		dor_slsc[2].SLSCMap[base_sl+4].SC = sc2;
-
-		dor_slsc[3].SLSCMap[base_sl].SC = sc0;
-		dor_slsc[3].SLSCMap[base_sl+1].SC = sc1;
-		dor_slsc[3].SLSCMap[base_sl+2].SC = sc1;
-		dor_slsc[3].SLSCMap[base_sl+3].SC = sc2;
-		dor_slsc[3].SLSCMap[base_sl+4].SC = sc2;
-	}
-
-	if (numToroidal == 3) {
-		// 3d torus
-		dor_slsc[0].SLSCMap[base_sl+5].SC = base_sc;
-		dor_slsc[0].SLSCMap[base_sl+6].SC = base_sc;
-		dor_slsc[0].SLSCMap[base_sl+7].SC = base_sc;
-		dor_slsc[0].SLSCMap[base_sl+8].SC = base_sc;
-
-		dor_slsc[1].SLSCMap[base_sl+5].SC = sc1;
-		dor_slsc[1].SLSCMap[base_sl+6].SC = sc1;
-		dor_slsc[1].SLSCMap[base_sl+7].SC = sc1;
-		dor_slsc[1].SLSCMap[base_sl+8].SC = sc1;
-
-		dor_slsc[2].SLSCMap[base_sl+5].SC = sc1;
-		dor_slsc[2].SLSCMap[base_sl+6].SC = sc2;
-		dor_slsc[2].SLSCMap[base_sl+7].SC = sc1;
-		dor_slsc[2].SLSCMap[base_sl+8].SC = sc2;
-
-		dor_slsc[3].SLSCMap[base_sl+5].SC = sc1;
-		dor_slsc[3].SLSCMap[base_sl+6].SC = sc1;
-		dor_slsc[3].SLSCMap[base_sl+7].SC = sc1;
-		dor_slsc[3].SLSCMap[base_sl+8].SC = sc2;
-
-		dor_slsc[4].SLSCMap[base_sl].SC = sc0;
-		dor_slsc[4].SLSCMap[base_sl+1].SC = sc1;
-		dor_slsc[4].SLSCMap[base_sl+2].SC = sc1;
-		dor_slsc[4].SLSCMap[base_sl+3].SC = sc1;
-		dor_slsc[4].SLSCMap[base_sl+4].SC = sc1;
-		dor_slsc[4].SLSCMap[base_sl+5].SC = sc2;
-		dor_slsc[4].SLSCMap[base_sl+6].SC = sc2;
-		dor_slsc[4].SLSCMap[base_sl+7].SC = sc2;
-		dor_slsc[4].SLSCMap[base_sl+8].SC = sc2;
-	}
-}
-
-static void
-setup_slscmap(Topology_t *topop, uint8_t vlsInUse) {
-	int d;
-	int next_sc=0, base_sc=0, sc0=0,sc1,sc2, vf, sc, i;
-	static uint8_t initComplete=0;
-	uint8_t	configErr=0;
-	uint8_t nonQosProcessed=0;
-	uint8_t numscs;
-	VirtualFabrics_t *VirtualFabrics = topop->vfs_ptr;
-
-	if (!VirtualFabrics->qosEnabled) {
-		topop->qosEnforced = 0;
-		memset(&dor_slsc[0], 0, sizeof(STL_SLSCMAP));
-		if (!topop->routing.data.dor.numToroidal) {
-			memcpy(&dor_slsc[1], _slsc_maps[0], sizeof(STL_SLSCMAP));
-		} else if (topop->routing.data.dor.numToroidal <= SM_DOR_MAX_TOROIDAL_DIMENSIONS) {
-			for (d=1; d<6; d++) {
-				memcpy(&dor_slsc[d], _slsc_maps[5 * (topop->routing.data.dor.numToroidal - 1) + d], sizeof(STL_SLSCMAP));
-			}
-		} else {
-			configErr=1;
-			goto done;
-		}
-		return;
-	}
-
-    // Note, for the initial STL drops the number of SCs utilized is the
-    // IB limit of 16 VLs
-	numscs = vlsInUse;
-
-	if (!initComplete) {
-		dor_qos.dimensions = 0xff;
-		dor_qos.numVLs = 0;
-		if (!bitset_init(&sm_pool, &dor_qos.lowPriorityVLs, MAX_VIRTUAL_LANES) ||
-			!bitset_init(&sm_pool, &dor_qos.highPriorityVLs, MAX_VIRTUAL_LANES)) {
-			IB_FATAL_ERROR("setup_slscmap: No memory for slsc setup, exiting.");
-		}
-		initComplete = 1;
-	}
-
-	if (smDorRouting.debug) {
-		IB_LOG_INFINI_INFO_FMT(__func__, "numToroidal= %d, dimension= %d, routingSCs= %d, shareScOnDisruption=%d",
-						topop->routing.data.dor.numToroidal, smDorRouting.dimensionCount,
-						smDorRouting.routingSCs, smDorRouting.shareScOnDisruption);
-	}
-
-	if ((dor_qos.dimensions == topop->routing.data.dor.numToroidal) &&
-		(dor_qos.numVLs == numscs)) {
-		// skip setup if nothing has changed.
-		topop->qosEnforced = dor_qos.qosEnforced;
-		return;
-	}
-
-	memset(dor_slsc[0].SLSCMap, 15, sizeof(STL_SLSCMAP));
-	memset(dor_slsc[1].SLSCMap, 15, sizeof(STL_SLSCMAP));
-	memset(dor_slsc[2].SLSCMap, 15, sizeof(STL_SLSCMAP));
-	memset(dor_slsc[3].SLSCMap, 15, sizeof(STL_SLSCMAP));
-	for (i=0; i<4; i++) dor_slsc[i].SLSCMap[0].SC = 0; 	// Set SL0 to valid value 
-
-	if (topop->routing.data.dor.numToroidal > SM_DOR_MAX_TOROIDAL_DIMENSIONS) {
-		IB_LOG_WARN_FMT(__func__, "Mesh/Torus topology QoS not supported on %dD Torus", topop->routing.data.dor.numToroidal);
-		configErr = 1;
-	}
-
-	if (numscs < smDorRouting.scsNeeded) {
-		IB_LOG_WARN_FMT(__func__, "Mesh/Torus topology QoS compromised by insufficient Switch SCs (SCs Available = %d, SCs Required = %d)",
-						numscs, smDorRouting.scsNeeded);
-		configErr = 1;
-
-	} else if ((topop->routing.data.dor.numToroidal != smDorRouting.numToroidal) ||
-			   (topop->routing.data.dor.numToroidal && (smDorRouting.topology == DOR_MESH))) {
-
-		if (topop->routing.data.dor.numToroidal && (smDorRouting.topology == DOR_MESH)) {
-			IB_LOG_ERROR_FMT(__func__, "Mesh/Torus topology configuration indicates mesh, but actual topology is %d-d torus, QoS conflict",
-								smDorRouting.dimensionCount);
-			configErr = 1;
-		} else if (!topop->routing.data.dor.numToroidal && (smDorRouting.topology != DOR_MESH)) {
-			IB_LOG_WARN_FMT(__func__, "Mesh/Torus topology configuration indicates %d-d torus but actual topology is a mesh. QoS still operational",
-						smDorRouting.dimensionCount);
-		} else if (topop->routing.data.dor.numToroidal > smDorRouting.numToroidal) {
-			IB_LOG_ERROR_FMT(__func__, "Mesh/Torus topology configuration indicates %d-d torus but actual topology is a %d-torus, QoS conflict",
-						smDorRouting.dimensionCount, topop->routing.data.dor.numToroidal);
-			configErr = 1;
-		} else if (topop->routing.data.dor.numToroidal) {
-			IB_LOG_WARN_FMT(__func__, "Mesh/Torus topology configuration indicates %d-d torus but actual topology is a %d-d torus, QoS still operational",
-						smDorRouting.dimensionCount, topop->routing.data.dor.numToroidal);
-
-		}
-	}
-
-	if (configErr) goto done;
-
-	Qos_t* qos = GetQos(vlsInUse);
-
-	bitset_copy(&dor_qos.lowPriorityVLs, &qos->lowPriorityVLs);
-	bitset_copy(&dor_qos.highPriorityVLs, &qos->highPriorityVLs);
-	dor_qos.numVLs = qos->numVLs;
-	dor_qos.dimensions = topop->routing.data.dor.numToroidal;
-	memcpy(dor_qos.vlBandwidth, qos->vlBandwidth, sizeof(uint8_t)*MAX_VIRTUAL_LANES);
-
-	for (vf=0; vf<VirtualFabrics->number_of_vfs; vf++) {
-		if (!VirtualFabrics->v_fabric[vf].qos_enable) {
-			if (nonQosProcessed) continue;
-			nonQosProcessed = 1;
-		}
-
-        // FIXME - verify new mappings (SL::SC)
-		//base_sc = qos.slsc.SLSCMap[VirtualFabrics->v_fabric[vf].base_sl].SC;
-
-		if (VirtualFabrics->v_fabric[vf].updown_only) {
-			for (i=0; i<5; i++) {
-				dor_slsc[i].SLSCMap[VirtualFabrics->v_fabric[vf].base_sl].SC = base_sc;
-			}
-			continue;
-		}
-
-        // FIXME - verify new mappings (SL::SC)
-		//next_sc = qos.slsc.SLSCMap[VirtualFabrics->v_fabric[vf].base_sl+1].SC;
-
-		if (!topop->routing.data.dor.numToroidal) {
-			dor_slsc[0].SLSCMap[VirtualFabrics->v_fabric[vf].base_sl].SC = base_sc;
-			dor_slsc[0].SLSCMap[VirtualFabrics->v_fabric[vf].base_sl+1].SC = base_sc;
-	
-			dor_slsc[1].SLSCMap[VirtualFabrics->v_fabric[vf].base_sl].SC = base_sc;
-			dor_slsc[1].SLSCMap[VirtualFabrics->v_fabric[vf].base_sl+1].SC = next_sc;
-
-		} else {
-			sc1 = base_sc;
-			sc2 = next_sc;
-            // FIXME - verify new mappings (SL::SC)
-			//sc0 = qos.slsc.SLSCMap[VirtualFabrics->v_fabric[vf].base_sl+2].SC;
-			setSlscEntry(topop->routing.data.dor.numToroidal, VirtualFabrics->v_fabric[vf].base_sl, base_sc, sc0, sc1, sc2);
-		}
-	}
-	dor_qos.qosEnforced = 1;
-
-done:	
-	if (configErr) {
-		dor_qos.qosEnforced = 0;
-		for (vf=0; vf<VirtualFabrics->number_of_vfs; vf++) {
-			if (VirtualFabrics->v_fabric[vf].updown_only) {
-				for (i=0; i<5; i++) {
-					dor_slsc[i].SLSCMap[VirtualFabrics->v_fabric[vf].base_sl].SC = 0;
-				}
-				continue;
-			}
-			setSlscEntry(topop->routing.data.dor.numToroidal, VirtualFabrics->v_fabric[vf].base_sl, 0, 0, 1, 2);
-		}
-
-	} else if (smDorRouting.debug) {
-		bitset_info_log(&dor_qos.highPriorityVLs, "highPriorityVLs");
-		bitset_info_log(&dor_qos.lowPriorityVLs, "lowPriorityVLs");
-		for (sc=0;sc<15;sc++) {
-			IB_LOG_INFINI_INFO_FMT(__func__, "sc %d bandwidth %d",
-									sc, dor_qos.vlBandwidth[sc]);
-		}
-
-		for (d=0; d<4; d++) {
-			IB_LOG_INFINI_INFO_FMT(__func__,
-				"slsc%d= 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x", dor_qos.numVLs,
-				dor_slsc[d].SLSCMap[0].SC, dor_slsc[d].SLSCMap[1].SC, dor_slsc[d].SLSCMap[2].SC, dor_slsc[d].SLSCMap[3].SC,
-				dor_slsc[d].SLSCMap[4].SC, dor_slsc[d].SLSCMap[5].SC, dor_slsc[d].SLSCMap[6].SC, dor_slsc[d].SLSCMap[7].SC);
-	
-			IB_LOG_INFINI_INFO_FMT(__func__,
-				"\t\t  0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x",
-				dor_slsc[d].SLSCMap[8].SC,  dor_slsc[d].SLSCMap[9].SC,  dor_slsc[d].SLSCMap[10].SC, dor_slsc[d].SLSCMap[11].SC,
-				dor_slsc[d].SLSCMap[12].SC, dor_slsc[d].SLSCMap[13].SC, dor_slsc[d].SLSCMap[14].SC, dor_slsc[d].SLSCMap[15].SC);
-		}
-	}
-	topop->qosEnforced = dor_qos.qosEnforced;
-}
-
-static void
-get_hca_qos_stl_setup(Topology_t *topop, Node_t *nodep, Port_t *portp, Node_t *switchp, Port_t *swportp, STL_SLSCMAP *slscmap) {
-	int			sl, vf, vl;
-	int			numscs = portp->portData->vl1;
+// TBD: is the following needed.
+static __inline__ void
+get_hca_qos_stl_setup(Topology_t *topop, Node_t *nodep, Port_t *portp, Node_t *switchp, Port_t *swportp) {
+	int			vf;
+	int			numVls = portp->portData->vl1;
 	Qos_t		qos;
 	STL_VLARB_TABLE_ELEMENT *vlblockp;
-	int			slscNotInUse=15;
-	int			maxLow = numscs-1;
-	int			minOldSL = 0xff, minOldSC = 0xff;
-    uint8_t		isUsingSL[MAX_SLS] = { 0 };
 	VirtualFabrics_t *VirtualFabrics = topop->vfs_ptr;
 
-	qos.numVLs = numscs;
+	qos.numVLs = numVls;
 
-	if (numscs < 2) {
-		memset(slscmap, 0, sizeof(STL_SLSCMAP));
-
+	if (numVls < 2) {
 		struct _PortDataVLArb * arbp;
 		if (switchp) {
 			arbp = sm_port_getNewArb(swportp);
@@ -1858,20 +1508,13 @@ get_hca_qos_stl_setup(Topology_t *topop, Node_t *nodep, Port_t *portp, Node_t *s
 			portp->portData->qosHfiFilter = 1;
 		}
 
-		memset(arbp->vlarbLow, 0, sizeof(arbp->vlarbLow));
-		memset(arbp->vlarbHigh, 0, sizeof(arbp->vlarbHigh));
-		memset(arbp->vlarbPre, 0, sizeof(arbp->vlarbPre));
-		memset(arbp->vlarbMatrix, 0, sizeof(arbp->vlarbMatrix));
+		memset(arbp, 0, sizeof(*arbp));
 
 		vlblockp = arbp->vlarbLow;
 		vlblockp[0].Weight = 255;
 		return;
 	}
 
-    // FIXME --- FD3 Patch cjking:  Need to understand the impact of 0xff
-    // value for SCs.  This maybe a trigger for the upper level DOR code
-    // FIXME - verify new mappings (SL::SC)
-	//memset(&qos.slsc, 0xff, sizeof(STL_SLSCMAP));
 	if (!bitset_init(&sm_pool, &qos.highPriorityVLs, MAX_VIRTUAL_LANES) ||
 		!bitset_init(&sm_pool, &qos.lowPriorityVLs, MAX_VIRTUAL_LANES)) {
 		IB_FATAL_ERROR("get_hca_qos_setup: No memory for slvl setup, exiting.");
@@ -1880,59 +1523,14 @@ get_hca_qos_stl_setup(Topology_t *topop, Node_t *nodep, Port_t *portp, Node_t *s
 	memset(qos.vlBandwidth, 0, sizeof(uint8_t)*MAX_VIRTUAL_LANES);
 
 	for (vf=0; vf<VirtualFabrics->number_of_vfs; vf++) {
-		if (bitset_test(&portp->portData->vfMember, vf)) {
-			for (sl=0; sl< VirtualFabrics->v_fabric[vf].routing_sls; sl++) {
-				isUsingSL[VirtualFabrics->v_fabric[vf].base_sl+sl] = 1;
-			}
-
+		uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
+		if (bitset_test(&portp->portData->vfMember, vfIdx)) {
 			if (VirtualFabrics->v_fabric[vf].priority == 1) {
-				for (sl=0; sl<VirtualFabrics->v_fabric[vf].routing_sls; sl++) {
-                    // FIXME - verify new mappings (SL::SC)
-					//qos.slsc.SLSCMap[VirtualFabrics->v_fabric[vf].base_sl+sl].SC = numscs-1;
-				}
-				bitset_set(&qos.highPriorityVLs, numscs-1);
-				if (numscs > 1) maxLow = numscs-2;
+				bitset_set(&qos.highPriorityVLs, numVls-1);
 			}
 		}
-	}
-
-	for (sl=0; sl<MAX_SLS; sl++) {
-		if ((dor_slsc[0].SLSCMap[sl].SC == 15) ||
-			!isUsingSL[sl]) {
-            // FIXME - verify new mappings (SL::SC)
-			//qos.slsc.SLSCMap[sl].SC = slscNotInUse;
-		}
-	}
-
-	vl=0;	
-	while (1) {
-		// find unassigned min
-		minOldSC = 0xff;
-		for (sl=0; sl<MAX_SLS; sl++) {
-            // FIXME - verify new mappings (SL::SC)
-			//if (qos.slsc.SLSCMap[sl].SC != 0xff) continue;
-			if (dor_slsc[0].SLSCMap[sl].SC < minOldSC) {
-				minOldSC = dor_slsc[0].SLSCMap[sl].SC;
-				minOldSL = sl;
-			}
-		}
-		if (minOldSC == 0xff) break;
-		
-		for (sl=minOldSL; sl<MAX_SLS; sl++) {
-			if (dor_slsc[0].SLSCMap[minOldSL].SC != dor_slsc[0].SLSCMap[sl].SC) break;
-            // FIXME - verify new mappings (SL::SC)
-			//qos.slsc.SLSCMap[sl].SC = vl;
-		}
-
-		bitset_set(&qos.lowPriorityVLs, vl);
- 		qos.vlBandwidth[vl] += sm_SlBandwidthAllocated[minOldSL];
-
-		if (vl < maxLow) vl++;
 	}
 	
-    // FIXME - verify new mappings (SL::SC)
-	//memcpy (slscmap, &qos.slsc, sizeof(STL_SLSCMAP));
-
 	if (switchp) {
 		swportp->portData->qosHfiFilter = 1;
 		QosFillStlVlarbTable(topop, switchp, swportp, &qos, sm_port_getNewArb(swportp));
@@ -1945,292 +1543,289 @@ get_hca_qos_stl_setup(Topology_t *topop, Node_t *nodep, Port_t *portp, Node_t *s
 	bitset_free(&qos.lowPriorityVLs);
 }
 
-static void
-_select_slsc_map_hca_default(Topology_t *topop, Node_t *nodep, Port_t *portp, Node_t* switchp, Port_t* swportp, STL_SLSCMAP *outSlscMap)
-{
-	int		sl;
-	int		numscs = portp->portData->vl1;
-
-	if (topop->qosEnforced &&
- 		(numscs < smDorRouting.scsNeeded)) {
-
-		get_hca_qos_stl_setup(topop, nodep, portp, switchp, swportp, outSlscMap);
-
-	} else {
-		memcpy(outSlscMap, &dor_slsc[0], sizeof(STL_SLSCMAP));
-	}
-}
-
-static void
-_select_slsc_map_switch_default(Topology_t *topop, uint8_t vl1, STL_SLSCMAP *outSlscMap)
-{
-	if (vl1 < 2) {
-		memset(outSlscMap, 0, sizeof(STL_SLSCMAP));
-    
-	} else {
-		memcpy(outSlscMap, &dor_slsc[1], sizeof(STL_SLSCMAP));
-	}
-}
-
-static void
-_select_slsc_map(Topology_t *topop, uint8_t vl1, uint8_t dimension, STL_SLSCMAP *outSlscMap)
-{
-	if (vl1 < 2) {
-		memset(outSlscMap, 0, sizeof(STL_SLSCMAP));
-    
-	} else {
-		if (topop->routing.data.dor.numToroidal == 0) {
-			memcpy(outSlscMap, &dor_slsc[1], sizeof(STL_SLSCMAP));
-		} else {
-			memcpy(outSlscMap, &dor_slsc[1 + topop->routing.data.dor.toroidalMap[dimension] + 1], sizeof(STL_SLSCMAP));;
-		}
-	}
-}
-
 static Status_t
-_generate_slsc_map(Topology_t *topop, Node_t *nodep,
-	Port_t *in_portp, Port_t *out_portp, STL_SLSCMAP *outSlscMap)
+_generate_scsc_map(Topology_t *topop, Node_t *switchp, int getSecondary, int *numBlocks, STL_SCSC_MULTISET** scscmap)
 {
-	uint8_t dimension;
-	int8_t direction = 0;
-	Node_t *neighborNodep;
-	Port_t *neighborPortp;
-	uint8_t	vl1;
+	int i,j, dimension, p1, p2;
+	Port_t * ingressPortp = NULL;
+	Port_t * egressPortp = NULL;
 
-	vl1 = out_portp->portData->vl1;
+	STL_SCSC_MULTISET *scsc=NULL;
+	STL_SCSCMAP scscNoChg;
+	STL_SCSCMAP	scscPlus1;
+	STL_SCSCMAP	scsc0;
+	STL_SCSCMAP	scscBadTurn;
 
-	if (nodep->nodeInfo.NodeType != NI_TYPE_SWITCH
-	   || !topop->routing.data.dor.cycleFreeRouting) {
-		/* If we have only one SC, then make sure all SLs map to SC 0.
-		 * Its possible that FIs have only one SC while ISLs have more than 1.
-		 * In which case, we need to make sure that for paths that use other SLs
-		 * for the FI, the SC is still SC 0. 
-		 * If ISLs have only one SC, then we will not have cycleFreeRouting or
-		 * alternate routing and we will end upcoming here.
-	   	 */
-		if (nodep->nodeInfo.NodeType != NI_TYPE_SWITCH) {
-			_select_slsc_map_hca_default(topop, nodep, out_portp, NULL, NULL, outSlscMap);
+	uint8_t	portDim[switchp->nodeInfo.NumPorts+1];
+	uint8_t	portPos[switchp->nodeInfo.NumPorts+1];
 
-		} else if (vl1 < out_portp->portData->vl0) {
-			// Negotiated down, use hca setup
-			neighborNodep = sm_find_node(topop, out_portp->nodeno);
-			if (neighborNodep == NULL) {
-				IB_LOG_ERROR("Failed to lookup neighbor node in topology nodeno:", out_portp->nodeno);
-				memset(outSlscMap, 0, sizeof(STL_SLSCMAP));
-				return VSTATUS_BAD;
-			}
+	DorTopology_t *dorTop = (DorTopology_t *)topop->routingModule->data;
 
-			if (neighborNodep->nodeInfo.NodeType != NI_TYPE_SWITCH) {
-				neighborPortp = sm_find_node_port(topop, neighborNodep, out_portp->portno);
-				if (sm_valid_port(neighborPortp) ) {
-					_select_slsc_map_hca_default(topop, neighborNodep, neighborPortp, nodep, out_portp, outSlscMap);
-				} else {
-					memset(outSlscMap, 0, sizeof(STL_SLSCMAP));
-				}
-				return VSTATUS_OK;
-			}
+	int portToSet = 0;
+	int needsSet = 0;
 
-			_select_slsc_map_switch_default(topop, vl1, outSlscMap);
+	boolean datelineSwitch;
 
-		} else {
-			_select_slsc_map_switch_default(topop, vl1, outSlscMap);
-		}
+	int changeDimBlk, crossMeridianBlk, sameDimBlk, illegalTurn;
+	int curBlock = 0;
+
+	*numBlocks = 0;
+
+	if (getSecondary) 
 		return VSTATUS_OK;
+
+	memset(portDim, 0xff, sizeof(uint8_t)*(switchp->nodeInfo.NumPorts+1));
+	memset(portPos, 0, sizeof(uint8_t)*(switchp->nodeInfo.NumPorts+1));
+
+	// Setup illegal turn to drop
+	memset(&scscBadTurn, 15, sizeof(scscBadTurn));
+
+	// Setup 1:1 mapping
+	memset(&scscNoChg, 15, sizeof(scscNoChg));
+	for (i=0; i<STL_MAX_SCS; i++) {
+		if (bitset_test(&sm_linkSLsInuse, sm_SCtoSL[i]))
+			scscNoChg.SCSCMap[i].SC = i;
 	}
 
-	neighborNodep = sm_find_node(topop, out_portp->nodeno);
-	if (neighborNodep == NULL) {
-		IB_LOG_ERROR("Failed to lookup neighbor node in topology nodeno:", out_portp->nodeno);
-		memset(outSlscMap, 0, sizeof(STL_SLSCMAP));
-		return VSTATUS_BAD;
-	}
-
-	if (neighborNodep->nodeInfo.NodeType != NI_TYPE_SWITCH) {
-		if (vl1 < out_portp->portData->vl0) {
-			// Negotiated down, use hca setup
-			neighborPortp = sm_find_node_port(topop, neighborNodep, out_portp->portno);
-			if (sm_valid_port(neighborPortp) ) {
-				_select_slsc_map_hca_default(topop, neighborNodep, neighborPortp, nodep, out_portp, outSlscMap);
-			} else {
-				memset(outSlscMap, 0, sizeof(STL_SLSCMAP));
-			}
-		} else {
-			_select_slsc_map_switch_default(topop, vl1, outSlscMap);
-		}
-		return VSTATUS_OK;
-	}
-
-	_find_dimension_difference(nodep, neighborNodep, &dimension, &direction);
-	if (!topop->routing.data.dor.toroidal[dimension]) {
-		_select_slsc_map_switch_default(topop, vl1, outSlscMap);
-		return VSTATUS_OK;
-	}
-
-	if (  direction == 1
-	   && neighborNodep->routing.dor->coords[dimension]
-	        < _halfway_low(topop, dimension)) {
-		_select_slsc_map(topop, vl1, dimension, outSlscMap);
-	} else if (  direction == -1
-	        && neighborNodep->routing.dor->coords[dimension]
-	             > _halfway_high(topop, dimension)) {
-		_select_slsc_map(topop, vl1, dimension, outSlscMap);
-	} else {
-		_select_slsc_map_switch_default(topop, vl1, outSlscMap);
-	}
-	return VSTATUS_OK;
-}
-
-static Status_t
-_generate_scsl_map(Topology_t *topop, Node_t *nodep,
-	Port_t *in_portp, Port_t *out_portp, STL_SCSLMAP *outScslMap)
-{
-    IB_LOG_ERROR0("Not implemented yet"); 
-	return VSTATUS_NOSUPPORT;
-}
-
-
-static Status_t
-_select_scvl_map(Topology_t *topop, Node_t *nodep,
-	Port_t *in_portp, Port_t *out_portp, STL_SCVLMAP *outScvlMap)
-{
-    // Fill in SCVL map.
-    // Currently using a 1:1 map, e.g. SC0 maps to VL0, SC1 to VL1...
-    // In STL1, the number of SCs in use will be limited to number of 
-    //   VLs supported by the port pair / link.
-    // So the same default map can be used for each QOS type.
-    // In furture implementatons, SC2VL_t and SC2VL_r maps may have 
-    //   varying numbers of SC vs VLs.
-    //   [Expansion Mapping, Contraction Mapping, or Conservation mapping]
-
-    static uint8_t scvl_default[] = {
-        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
-        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
-        0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f };
-
-    memcpy(outScvlMap, &scvl_default, sizeof(scvl_default));
-	return VSTATUS_OK;
-}
-
-static Status_t 
-_select_vlvf_map(Topology_t *topop, Node_t *nodep, Port_t *portp, VlVfMap_t * vlvfmap)
-{
-    // Each VL can map to 0 to 32 possible VFs.  If VL-VF unused, set to -1
-    // See implementation notes in shortest path algorithm.
-    // For now- implemented the worst-case, least optimized scenario.
-
-    uint8_t vf, sl, sc, vl, slMax, i;
-    Status_t status = VSTATUS_OK;
-    STL_SLSCMAP slscmap; 
-    STL_SCVLMAP scvlmap; 
-	VirtualFabrics_t *VirtualFabrics = topop->vfs_ptr;
-
-    // Default to no VF per VL
-    memset(vlvfmap,-1, sizeof(VlVfMap_t));
-
-    if (VirtualFabrics->number_of_vfs >= MAX_VFABRICS) {
-        IB_LOG_ERROR("Unexpected number of VFs", VirtualFabrics->number_of_vfs);
-		return VSTATUS_BAD;
-    }
-
-    status = topop->routingModule->funcs.select_slsc_map(topop, nodep, portp, portp, &slscmap);
-    if (status != VSTATUS_OK) {
-        IB_LOG_ERRORRC("Failed to get SLSC - rc:",status);
-        return status;
-    }
-
-    status = topop->routingModule->funcs.select_scvl_map(topop, nodep, portp, portp, &scvlmap);
-    if (status != VSTATUS_OK) {
-        IB_LOG_ERRORRC("Failed to get SCVL - rc:",status);
-        return status;
-    }
-
-    // Looping through the VFs, find the SL's in use, then find SC for SLs, then VLs for SCs
-	for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
-        sl = VirtualFabrics->v_fabric[vf].base_sl;
-        slMax = sl + VirtualFabrics->v_fabric[vf].routing_sls;
-        for (;sl < slMax; sl++) {
-            sc = slscmap.SLSCMap[sl].SC; 
-            if (sc==15) continue; // This sc is unused for this port.
-            if (sc >=STL_MAX_SCS) {
-                IB_LOG_WARN("Unexpected SL:SC Mapping: SC=", sc);
-                continue;
-            }
-            vl = scvlmap.SCVLMap[sc].VL;
-            if (vl >= STL_MAX_VLS) {
-                IB_LOG_WARN("Unexpected SC:VL Mapping: VL=", vl);
-                continue;
-            }
-
-            for (i=0; i<MAX_VFABRICS; i++) {
-                if (vlvfmap->vf[vl][i] == vf) break; // No dup vfs
-                if (vlvfmap->vf[vl][i] == -1) {
-                    vlvfmap->vf[vl][i] = vf; 
-                    break;
-                }
-            }
-        }
-	}
-    return status;
-}
-
-//===========================================================================//
-// VL ARBITRATION
-//
-// Here we just add the 2 DOR SCs and the 1 Up/Down SC with equal weight.
-// One per QoS group.
-//
-static Status_t
-_fill_stl_vlarb_table(Topology_t *topop, Node_t *nodep, Port_t *portp, struct _PortDataVLArb * arbp)
-{
-	int			currentSc, numScs;
-
-	if (portp->portData->qosHfiFilter) {
-		// Use vlarb setup during filtering of HFI by vf for slvl setup.
-		return VSTATUS_OK;
-	}
-
-    numScs = portp->portData->vl1;
-	if (!topop->qosEnforced) {
-		if (nodep->nodeInfo.NodeType == NI_TYPE_CA) {
-			numScs = 1;
-		} else {
-			if (numScs > 3)
-				numScs = 3;
-			if ((numScs > 2) && !topop->routing.data.dor.cycleFreeRouting)
-				--numScs;
-			if ((numScs > 2) && !topop->routing.data.dor.alternateRouting)
-				--numScs;
-		}
-
-		memset(arbp, 0, sizeof(*arbp));
-		STL_VLARB_TABLE_ELEMENT * vlblockp = arbp->vlarbLow;
-
-		for (currentSc = 0; currentSc < numScs; currentSc++) {
-			vlblockp[currentSc].s.VL = currentSc;
-			vlblockp[currentSc].Weight = 255;
-		}
-		return VSTATUS_OK;
-	}
-
-#error DOR-specific code removed from FillHighRR().  This function must implement this in some fashion if this code is to be used again
-#if 0
-		if ((smDorRouting.routingSCs != 2)
-			|| (vlweight != weight * (qos->vlBandwidth[currentVl] / weightMultiplier)))
+	// Setup mapping for moving back to first SC mapped to SL
+	memset(&scsc0, 15, sizeof(scsc0));
+	for (i=0; i<STL_MAX_SCS; i++) {
+		if ((i==15) || (sm_SCtoSL[i] == 15)) {
 			continue;
+		}
+		if (bitset_test(&sm_linkSLsInuse, sm_SCtoSL[i])) {
+			scsc0.SCSCMap[i].SC = sm_SLtoSC[sm_SCtoSL[i]];
+		}
+	}
 
-		if (currentEntry >= portp->portData->portInfo.VL.ArbitrationHighCap)
-			break;
-		vlblockp[currentEntry].s.VL = currentVl;
-		vlweight = weight * (qos->vlBandwidth[currentVl] / weightMultiplier);
-		if (!vlweight)
-			vlweight = weight;
-		vlblockp[currentEntry++].Weight = vlweight;
+	if (!smDorRouting.routingSCs) {
+		if (vs_pool_alloc(&sm_pool, sizeof(STL_SCSC_MULTISET), (void *) &scsc) != VSTATUS_OK)
+			return VSTATUS_BAD;
 
-		currentVl = bitset_find_next_one(vlsInUse, currentVl + 1);
-#endif
+		memset(scsc, 0, sizeof(STL_SCSC_MULTISET));
+	} else {
+		// TBD refine later? Acquiring worst case size.
+		if (smDorRouting.debug) 
+			IB_LOG_INFINI_INFO_FMT(__func__, "Switch [%s] has %d ISLs", sm_nodeDescString(switchp), switchp->numISLs);
+		if (vs_pool_alloc(&sm_pool, sizeof(STL_SCSC_MULTISET)*switchp->numISLs*switchp->numISLs+2, (void *) &scsc) != VSTATUS_OK)
+			return VSTATUS_BAD;
+		memset(scsc, 0, sizeof(STL_SCSC_MULTISET)*switchp->numISLs*switchp->numISLs+2);
+	}
 
-	return QosFillStlVlarbTable(topop, nodep, portp, &dor_qos, arbp);
+	// SC2SC - no change
+	// HFI -> All - toroidal
+	// All -> All - mesh
+	for_all_physical_ports(switchp, ingressPortp) {
+		if (!sm_valid_port(ingressPortp) || ingressPortp->state <= IB_PORT_DOWN) continue;
+
+		if (!ingressPortp->portData->scscMap) {
+			// unexpected error
+			(void) vs_pool_free(&sm_pool, scsc);
+			return VSTATUS_BAD;
+		}
+
+		if (ingressPortp->portData->isIsl && smDorRouting.routingSCs > 1) continue;
+
+		needsSet = !ingressPortp->portData->current.scsc ||  sm_config.forceAttributeRewrite;
+		if (!needsSet) {
+			for (i=1; i<=switchp->nodeInfo.NumPorts; i++) {
+				if (memcmp((void *)&scscNoChg, (void *)&ingressPortp->portData->scscMap[i-1], sizeof(STL_SCSCMAP)) != 0) {
+					needsSet = 1;
+					break;
+				}
+			}
+		}
+		if (needsSet) {
+			StlAddPortToPortMask(scsc[curBlock].IngressPortMask, ingressPortp->index);
+			portToSet = 1;
+		}
+	}
+	
+	if (portToSet) {
+		// To all ports
+		for (i=1; i<=switchp->nodeInfo.NumPorts; i++)
+			StlAddPortToPortMask(scsc[curBlock].EgressPortMask, i);
+
+		scsc[curBlock].SCSCMap = scscNoChg;
+		curBlock++;
+	}
+
+	// Is this a mesh?
+	if (smDorRouting.routingSCs == 1) 
+		goto done;
+
+	// Any ISL -> HFI: SCSC0 (works for PRR, APR?)
+	portToSet = 0;
+	for_all_physical_ports(switchp, ingressPortp) {
+		if (!sm_valid_port(ingressPortp) || ingressPortp->state <= IB_PORT_DOWN) continue;
+
+		if (!ingressPortp->portData->isIsl) continue;
+
+		portDim[ingressPortp->index] = get_configured_dimension_for_port(ingressPortp->index);
+		portPos[ingressPortp->index] = get_configured_port_pos_in_dim(portDim[ingressPortp->index], ingressPortp->index);
+
+		for_all_physical_ports(switchp, egressPortp) {
+			if (!sm_valid_port(egressPortp)) continue;
+
+			if (egressPortp->portData->isIsl) continue;
+
+			if (!ingressPortp->portData->current.scsc ||  sm_config.forceAttributeRewrite ||
+				(memcmp((void *)&scsc0, (void *)&ingressPortp->portData->scscMap[egressPortp->index-1], sizeof(STL_SCSCMAP)) != 0)) {
+
+				StlAddPortToPortMask(scsc[curBlock].IngressPortMask, ingressPortp->index);
+				StlAddPortToPortMask(scsc[curBlock].EgressPortMask, egressPortp->index);
+				portToSet = 1;
+			}
+		}
+	}
+	
+	if (portToSet) {
+		scsc[curBlock].SCSCMap = scsc0;
+		curBlock++;
+	}
+
+	// Setup mapping to increment to next SC in group
+	memset(&scscPlus1, 15, sizeof(scscPlus1));
+	for (i=0; i<STL_MAX_SCS; i++) {
+		if (i==15) continue;
+		if (!bitset_test(&sm_linkSLsInuse, sm_SCtoSL[i])) continue;
+		// Set 1:1
+		scscPlus1.SCSCMap[i].SC = i;
+		for (j=i+1; j<STL_MAX_SCS; j++) {
+			if (j==15) continue;
+			if (sm_SCtoSL[i] == sm_SCtoSL[j]) {
+				// next SC which is mapped to this SL
+				scscPlus1.SCSCMap[i].SC = j;
+				break;
+			}
+		}
+	}
+
+	for (dimension=0; dimension<dorTop->numDimensions; dimension++) {
+		datelineSwitch = isDatelineSwitch(topop, switchp, dimension);
+		changeDimBlk = illegalTurn = crossMeridianBlk = sameDimBlk = -1;
+		int lastPos = -1;
+		for (p1=1; p1<=switchp->nodeInfo.NumPorts; p1++) {
+			if (portDim[p1] != dimension) continue;
+
+			if (lastPos == -1 || (datelineSwitch && lastPos != portPos[p1])) {
+				// Can group if in same direction, otherwise need to check if dateline is crossed.
+				crossMeridianBlk = sameDimBlk = -1;
+				lastPos = portPos[p1];
+			}
+
+			ingressPortp = sm_get_port(switchp, p1);
+			if (!sm_valid_port(ingressPortp)) continue;
+
+			// Setup scsc for illegal turn (to lower dimension)
+			for (p2=1; p2<=switchp->nodeInfo.NumPorts; p2++) {
+				if (portDim[p2] == 0xff) continue; // HFI
+				if (portDim[p2] >= dimension) continue;
+
+				if (!ingressPortp->portData->current.scsc ||  sm_config.forceAttributeRewrite ||
+					(memcmp((void *)&scscBadTurn, (void *)&ingressPortp->portData->scscMap[p2-1], sizeof(STL_SCSCMAP)) != 0)) {
+					if (illegalTurn == -1) {
+						illegalTurn = curBlock;
+						scsc[illegalTurn].SCSCMap = scscBadTurn;
+						curBlock++;
+					}
+					StlAddPortToPortMask(scsc[illegalTurn].IngressPortMask, p1);
+					StlAddPortToPortMask(scsc[illegalTurn].EgressPortMask, p2);
+				}
+			}
+
+			// Setup scsc for change in direction (to higher dimension) to drop back to SL/SC map
+			for (p2=1; p2<=switchp->nodeInfo.NumPorts; p2++) {
+				if (portDim[p2] == 0xff) continue; // HFI
+				if (portDim[p2] <= dimension) continue;
+
+				if (!ingressPortp->portData->current.scsc ||  sm_config.forceAttributeRewrite ||
+					(memcmp((void *)&scsc0, (void *)&ingressPortp->portData->scscMap[p2-1], sizeof(STL_SCSCMAP)) != 0)) {
+
+					if (changeDimBlk == -1) {
+						changeDimBlk = curBlock;
+						scsc[changeDimBlk].SCSCMap = scsc0;
+						curBlock++;
+					}
+					StlAddPortToPortMask(scsc[changeDimBlk].IngressPortMask, p1);
+					StlAddPortToPortMask(scsc[changeDimBlk].EgressPortMask, p2);
+				}
+			}
+
+			// Setup scsc for same dimension
+			for (p2=1; p2<=switchp->nodeInfo.NumPorts; p2++) {
+				// Is port in our dimension
+				if (portDim[p2] != dimension) continue;
+
+				if ((portPos[p1] != portPos[p2]) && datelineSwitch) {
+					// isl -> port in same dim across meridian
+					// SCx->SCx+1
+					if (!ingressPortp->portData->current.scsc ||  sm_config.forceAttributeRewrite ||
+						(memcmp((void *)&scscPlus1, (void *)&ingressPortp->portData->scscMap[p2-1], sizeof(STL_SCSCMAP)) != 0)) {
+
+						if (crossMeridianBlk == -1) {
+							crossMeridianBlk = curBlock;
+							scsc[crossMeridianBlk].SCSCMap = scscPlus1;
+							curBlock++;
+						}
+	
+						StlAddPortToPortMask(scsc[crossMeridianBlk].IngressPortMask, ingressPortp->index);
+						StlAddPortToPortMask(scsc[crossMeridianBlk].EgressPortMask, p2);
+					}
+					if (smDorRouting.debug)
+						IB_LOG_INFINI_INFO_FMT(__func__, "Dateline %s (%d->%d)", sm_nodeDescString(switchp), ingressPortp->index, p2);
+
+				} else {
+					// isl -> port in same dim no cross
+					if (!ingressPortp->portData->current.scsc ||  sm_config.forceAttributeRewrite ||
+						(memcmp((void *)&scscNoChg, (void *)&ingressPortp->portData->scscMap[p2-1], sizeof(STL_SCSCMAP)) != 0)) {
+
+						if (sameDimBlk == -1) {
+							sameDimBlk = curBlock;
+							scsc[sameDimBlk].SCSCMap = scscNoChg;
+							curBlock++;
+						}
+						StlAddPortToPortMask(scsc[sameDimBlk].IngressPortMask, ingressPortp->index);
+						StlAddPortToPortMask(scsc[sameDimBlk].EgressPortMask, p2);
+					}
+				}
+			}
+		}
+	}
+	
+done:
+	if (curBlock == 0) {
+		(void) vs_pool_free(&sm_pool, scsc);
+		scsc = NULL;
+	}
+
+	if (smDorRouting.debug) {
+		IB_LOG_INFINI_INFO_FMT(__func__,
+				   "Switch with NodeGUID "FMT_U64" [%s] has %d scsc multiset blocks",
+				   switchp->nodeInfo.NodeGUID, sm_nodeDescString(switchp), curBlock);
+
+		for (i=0;i<curBlock;i++) {
+			STL_SC *scscmap = scsc[i].SCSCMap.SCSCMap;
+			char	iports[80];
+			char	eports[80];
+			FormatStlPortMask(iports, scsc[i].IngressPortMask, switchp->nodeInfo.NumPorts, 80);
+			FormatStlPortMask(eports, scsc[i].EgressPortMask, switchp->nodeInfo.NumPorts, 80);
+			
+			IB_LOG_INFINI_INFO_FMT(__func__,
+			   "SCSC[%d] %s ingress %s egress %s "
+				"%d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d",
+			   	i, sm_nodeDescString(switchp), iports, eports,
+				scscmap[0].SC, scscmap[1].SC, scscmap[2].SC, scscmap[3].SC, scscmap[4].SC, scscmap[5].SC, scscmap[6].SC, scscmap[7].SC,
+				scscmap[8].SC, scscmap[9].SC, scscmap[10].SC, scscmap[11].SC, scscmap[12].SC, scscmap[13].SC, scscmap[14].SC, scscmap[15].SC,
+				scscmap[16].SC, scscmap[17].SC, scscmap[18].SC, scscmap[19].SC, scscmap[20].SC, scscmap[21].SC, scscmap[22].SC, scscmap[23].SC,
+				scscmap[24].SC, scscmap[25].SC, scscmap[26].SC, scscmap[27].SC, scscmap[28].SC, scscmap[29].SC, scscmap[30].SC, scscmap[31].SC);
+		}
+	}
+
+	*scscmap = scsc;
+	*numBlocks = curBlock;
+
+	return VSTATUS_OK;
 }
 
 //===========================================================================//
@@ -2265,26 +1860,23 @@ _get_outbound_port_dor(Topology_t *topop, Node_t *switchp, Node_t *endNodep,
 	int lidsRoutedInc = ((endNodep->nodeInfo.NodeType != NI_TYPE_SWITCH) ? 1 : 0);
 	int offset;
 	SwitchportToNextGuid_t *orderedPorts = (SwitchportToNextGuid_t *)topop->pad;
-	int dor_lid_offset = 0;
 
-	if (topop->routing.data.dor.alternateRouting && endPortp->portData->lmc > 0) {
+	if (((DorTopology_t*)topop->routingModule->data)->alternateRouting && endPortp->portData->lmc > 0) {
 		numLids--;		//leave one lid for updn programming
 		if (sm_UpDnBaseLid) {
 			//leave base lid for updn programming
 			portnos++;		
-			dor_lid_offset = 1;
 		}
 	}
 
 	memset((void*)portnos, 0xff, sizeof(uint8_t) * numLids);
 
-	if (topop->routing.data.dor.alternateRouting && endPortp->portData->lmc == 0) {
+	if (((DorTopology_t*)topop->routingModule->data)->alternateRouting && endPortp->portData->lmc == 0) {
 		/* Both Up/Dn and DOR are not possible for this port, as end port has LMC of 0*/
 		/* Default to using Up/Dn */
 		/* Switch port 0 can have an LMC of 0 even if LMC is enabled */
 		goto end;
 	}
-
 
 	endSwitchp = _get_switch(topop, endNodep, endPortp);
 	if (endSwitchp == NULL) {
@@ -2308,9 +1900,9 @@ _get_outbound_port_dor(Topology_t *topop, Node_t *switchp, Node_t *endNodep,
 		return VSTATUS_BAD;
 	} else {
 		if (smDorRouting.debug)
-			IB_LOG_VERBOSE_FMT(__func__,
-			       "Found neighbor NodeGUID "FMT_U64" [%s]",
-			       switchp->nodeInfo.NodeGUID, sm_nodeDescString(switchp));
+			IB_LOG_INFINI_INFO_FMT(__func__,
+			       "[%s]: Found neighbor NodeGUID "FMT_U64" [%s]",
+			       sm_nodeDescString(switchp), neighborNodep->nodeInfo.NodeGUID, sm_nodeDescString(neighborNodep));
 	}
 
 	if (endPortp->portData->lmc == 0) {
@@ -2353,6 +1945,7 @@ _get_outbound_port_dor(Topology_t *topop, Node_t *switchp, Node_t *endNodep,
 				orderedPorts[endPort].portp = portp;
 				orderedPorts[endPort].guid = nodep->nodeInfo.NodeGUID;
 				orderedPorts[endPort].sysGuid = nodep->nodeInfo.SystemImageGUID;
+				orderedPorts[endPort].nextSwp = nodep;
 				++endPort;
 			}
 		}
@@ -2362,7 +1955,7 @@ _get_outbound_port_dor(Topology_t *topop, Node_t *switchp, Node_t *endNodep,
 			      _compare_lids_routed);
 			if (endPort > numLids) endPort = numLids;
 
-			offset = sm_balance_base_lids(topop, orderedPorts, endPort);
+			offset = sm_balance_base_lids(orderedPorts, endPort);
 			
 			for (i = 0; i < numLids; i++) {
 				j = (i + offset) % endPort;
@@ -2397,6 +1990,7 @@ _get_outbound_port_updn(Topology_t *topop, Node_t *switchp, Node_t *endNodep,
 //	uint16_t updnLid = endPortp->portData->lmc ? numLids - 1 : 0;
 	uint16_t updnLid;
 	uint8_t endSwitchFound = 0;
+	DorTopology_t	*dorTop = (DorTopology_t *)topop->routingModule->data;
 
 	if (sm_UpDnBaseLid) {
 		updnLid = 0;
@@ -2427,7 +2021,7 @@ _get_outbound_port_updn(Topology_t *topop, Node_t *switchp, Node_t *endNodep,
 	}
 
 	ij = DorBitMapsIndex(switchp->swIdx, endSwitchp->swIdx);
-	wantDownstream = topop->routing.data.dor.updnDownstream[ij >> 5] & (1 << (ij & 0x1f));
+	wantDownstream = dorTop->updnDownstream[ij >> 5] & (1 << (ij & 0x1f));
 	if (wantDownstream)
 		wantDownstream = 1;
 
@@ -2446,7 +2040,7 @@ _get_outbound_port_updn(Topology_t *topop, Node_t *switchp, Node_t *endNodep,
 				continue;
 			}
 			ij = DorBitMapsIndex(switchp->swIdx, nodep->swIdx);
-			isDownstream = (topop->routing.data.dor.updnDownstream[ij >> 5] & (1 << (ij & 0x1f)));
+			isDownstream = (dorTop->updnDownstream[ij >> 5] & (1 << (ij & 0x1f)));
 			if (isDownstream)
 				isDownstream = 1;
 			if (wantDownstream != isDownstream) {
@@ -2455,14 +2049,14 @@ _get_outbound_port_updn(Topology_t *topop, Node_t *switchp, Node_t *endNodep,
 				/* end switch is down stream to switchp  and nodep is also down stream to switchp*/
 				/* check if endSwitchp is down stream to nodep */
 				ij = DorBitMapsIndex(nodep->swIdx, endSwitchp->swIdx);
-				isDownstream = (topop->routing.data.dor.updnDownstream[ij >> 5] & (1 << (ij & 0x1f)));
+				isDownstream = (dorTop->updnDownstream[ij >> 5] & (1 << (ij & 0x1f)));
 				if (!isDownstream)
 					continue;	//though nodep is down stream to switchp, it does not lead towards the end switch
 								// check for other down stream switches of switchp
 			} else if (!wantDownstream) {
 				/* We have to go upstream. consider nodep only if it is upstream to switchp*/
 				ij = DorBitMapsIndex(nodep->swIdx, switchp->swIdx);
-				isDownstream = (topop->routing.data.dor.updnDownstream[ij >> 5] & (1 << (ij & 0x1f)));
+				isDownstream = (dorTop->updnDownstream[ij >> 5] & (1 << (ij & 0x1f)));
 				if (!isDownstream) {
 					continue;
 				}
@@ -2510,10 +2104,162 @@ end:
 	return VSTATUS_OK;
 }
 
+static Status_t
+_setup_pgs(struct _Topology *topop, struct _Node * srcSw, const struct _Node * dstSw)
+{
+	SwitchportToNextGuid_t * orderedPorts = (SwitchportToNextGuid_t*) topop->pad;
+	int ij, endPort = 0;
+	Node_t* neighborNodep = NULL;
+	Node_t* nodep = NULL;
+	Port_t*	portp = NULL;
+	uint16_t curSpeed = 0;
+	uint16_t bestSpeed = 0;
+
+	DorTopology_t	*dorTop = (DorTopology_t *)topop->routingModule->data;
+
+	if (!srcSw || !dstSw) {
+		IB_LOG_ERROR_FMT(__func__, "Invalid source or destination pointer.");
+		return VSTATUS_BAD;
+	}
+
+	if (srcSw->nodeInfo.NodeType != NI_TYPE_SWITCH) {
+		IB_LOG_ERROR_FMT(__func__, "%s (0x%"PRIx64") is not a switch.",
+			srcSw->nodeDesc.NodeString,
+			srcSw->nodeInfo.NodeGUID);
+		return VSTATUS_BAD;
+	}
+
+	// Optimization. Don't waste time if AR is turned off, if
+	// the destination isn't a switch or if source == dest.
+	if (dstSw->nodeInfo.NodeType != NI_TYPE_SWITCH ||
+        srcSw->swIdx == dstSw->swIdx ||
+		!sm_adaptiveRouting.enable || !srcSw->arSupport) {
+		return VSTATUS_OK;
+	}
+
+	// If port0 isn't valid, we can't finish the calculations.
+	if (!sm_valid_port(&dstSw->port[0])) {
+		IB_LOG_ERROR_FMT(__func__, "%s (0x%"PRIx64") does not have valid port0 data.",
+			srcSw->nodeDesc.NodeString,
+			srcSw->nodeInfo.NodeGUID);
+		return VSTATUS_BAD;
+	}
+
+	memset(orderedPorts, 0, sizeof(SwitchportToNextGuid_t) * srcSw->nodeInfo.NumPorts);
+
+	if (!dorTop->alternateRouting) {
+		ij = DorBitMapsIndex(srcSw->swIdx, dstSw->swIdx);
+		if ((dorTop->dorClosure[ij >> 5] & (1 << (ij & 0x1f)))) {
+			neighborNodep = _step_to(topop, srcSw, (Node_t*)dstSw);
+			if (neighborNodep == NULL) {
+				IB_LOG_NOTICE_FMT(__func__,
+		       		"Failed to find neighbor in path from NodeGUID "FMT_U64" [%s] to NodeGUID "FMT_U64" [%s]",
+		       		srcSw->nodeInfo.NodeGUID, sm_nodeDescString(srcSw), dstSw->nodeInfo.NodeGUID, dstSw->nodeDesc.NodeString);
+				return VSTATUS_BAD;
+			} else {
+				if (smDorRouting.debug)
+					IB_LOG_INFINI_INFO_FMT(__func__,
+			       		"Found neighbor NodeGUID "FMT_U64" [%s]",
+			       		srcSw->nodeInfo.NodeGUID, sm_nodeDescString(srcSw));
+			}
+		
+			for_all_physical_ports(srcSw, portp) {
+				if (!sm_valid_port(portp) || portp->state <= IB_PORT_DOWN) continue;
+				if ((nodep = sm_find_node(topop, portp->nodeno)) == NULL) continue;
+				if (nodep != neighborNodep) continue;
+				curSpeed = sm_GetSpeed(portp->portData);
+				if (curSpeed >= bestSpeed) {
+					if (curSpeed > bestSpeed) {
+						bestSpeed = curSpeed;
+						endPort = 0;
+					}
+					orderedPorts[endPort].portp = portp;
+					orderedPorts[endPort].guid = nodep->nodeInfo.NodeGUID;
+					orderedPorts[endPort].sysGuid = nodep->nodeInfo.SystemImageGUID;
+					++endPort;
+				}
+			}
+		}
+	}	
+
+	if (endPort <= 1) {
+		srcSw->switchInfo.PortGroupTop = 0;
+		return VSTATUS_OK;
+	}
+
+	STL_PORTMASK pgMask = 0;
+	int i;
+	for (i = 0; i < endPort; ++i) {
+		if (orderedPorts[i].portp->index == 0 ||
+			orderedPorts[i].portp->index > sizeof(pgMask)*8) {
+			continue;
+		}
+
+		// Cast is necessary to prevent compiler from interpreting '1' as a signed
+		// int32, converting it to an int64, then or'ing
+		pgMask |= (((uint64)1) << (orderedPorts[i].portp->index - 1));
+	}
+
+	uint8_t pgid;
+
+	// This just adds PGs to the PGT until all entries
+	// are exhausted; it doesn't do anything to ensure that the PGs added are optimal or better than others
+	int rc = sm_Push_Port_Group(srcSw->pgt, pgMask, &pgid, &srcSw->pgtLen, srcSw->switchInfo.PortGroupCap);
+
+	if (rc >= 0) {
+		srcSw->arChange |= (rc > 0);
+		srcSw->switchInfo.PortGroupTop = srcSw->pgtLen; //MAX(srcSw->switchInfo.PortGroupTop, srcSw->pgtLen);
+
+		//PGFT is independent of LFT with LMC, though it's supposed to re-use the LMC data
+		PORT * pgft = sm_Node_get_pgft_wr(srcSw);
+		uint32_t pgftLen = sm_Node_get_pgft_size(srcSw);
+
+		if (!pgft) {
+			IB_LOG_ERROR_FMT(__func__, "Failed to acquire memory for PGFT");
+			return VSTATUS_BAD;
+		}
+
+		// Add every lid of dstSw to srSw's pgft.
+		// (assuming the lid is < the pgftLen)
+		STL_LID_32 portLid = 0;
+		for_all_port_lids(&dstSw->port[0], portLid) {
+			if (portLid < pgftLen) {
+			srcSw->arChange |= (pgft[portLid] != pgid);
+			pgft[portLid] = pgid;
+		}
+		}
+
+		// iterate through the end nodes attached to dstSw,
+		// adding their LIDs to the pgft.
+		// (assuming the lid is < the pgftLen)
+		Port_t * edgePort = NULL;
+		for_all_physical_ports(dstSw, edgePort) {
+			if (!sm_valid_port(edgePort) || edgePort->state <= IB_PORT_DOWN)
+				continue;
+			Node_t * endNode = NULL;
+			Port_t * endPort = sm_find_neighbor_node_and_port(topop, edgePort, &endNode);
+
+			if (!endNode || endNode->nodeInfo.NodeType != NI_TYPE_CA)
+				continue;
+			if (!endPort || !sm_valid_port(endPort))
+				continue;
+
+			for_all_port_lids(endPort, portLid) {
+				if (portLid < pgftLen) {
+					srcSw->arChange |= (pgft[portLid] != pgid);
+					pgft[portLid] = pgid;
+				}
+			}
+		}
+	}
+
+	return VSTATUS_OK;
+}
+
 static int
 _get_port_group(Topology_t *topop, Node_t *switchp, Node_t *endNodep, uint8_t *portnos)
 {		
-//#warning MWHEINZ FIXME - this function is a no-op and is never called.
+	// unused in DOR
 	return 0;
 }
 
@@ -2524,6 +2270,7 @@ _setup_xft(Topology_t *topop, Node_t *switchp, Node_t *endNodep,
 	Status_t status;
 	int ij;
 	Node_t *endSwitchp;
+	DorTopology_t	*dorTop= (DorTopology_t *)topop->routingModule->data;
 
 	endSwitchp = _get_switch(topop, endNodep, endPortp);
 	if (endSwitchp == NULL) {
@@ -2536,36 +2283,37 @@ _setup_xft(Topology_t *topop, Node_t *switchp, Node_t *endNodep,
 	memset(portnos, 0xff, (1 << endPortp->portData->lmc) * sizeof(uint8_t));
 
 	//Setup the DOR route
-	if (!topop->routing.data.dor.alternateRouting || endPortp->portData->lmc > 0) {
+	if (!dorTop->alternateRouting || endPortp->portData->lmc > 0) {
 		ij = DorBitMapsIndex(switchp->swIdx, endSwitchp->swIdx);
-		if ((topop->routing.data.dor.dorClosure[ij >> 5] & (1 << (ij & 0x1f)))) {
+		if ((dorTop->dorClosure[ij >> 5] & (1 << (ij & 0x1f)))) {
 			status = _get_outbound_port_dor(topop, switchp, endNodep, endPortp, portnos);
 			if (smDorRouting.debug)
-				IB_LOG_VERBOSE_FMT(__func__,
+				IB_LOG_INFINI_INFO_FMT(__func__,
 				       "Routing SW "FMT_U64" [%s] to DLID 0x%04x via DOR: EgressPort %d",
-				       switchp->nodeInfo.NodeGUID, sm_nodeDescString(switchp), endPortp->portData->lid, portnos[0]);
+				       switchp->nodeInfo.NodeGUID, sm_nodeDescString(switchp), endPortp->portData->lid, portnos[dorTop->alternateRouting?1:0]);
 			if (status != VSTATUS_OK) {
 				/* Fill portnos with 0xff. If alternate routing is enabled, 
 				 * _get_outbound_port_updn will overwrite the 0xff for the port number
 				 * corresponding to the updn lid
 				 */
 				memset(portnos, 0xff, (1 << endPortp->portData->lmc) * sizeof(uint8_t));
-				if (!topop->routing.data.dor.alternateRouting)
+				if (!dorTop->alternateRouting)
 					return status;
 			}
 		}
 	}
+
 	//If alternate routing is possible, setup the UpDn route
-	if (topop->routing.data.dor.alternateRouting) {
+	if (dorTop->alternateRouting) {
 		status = _get_outbound_port_updn(topop, switchp, endNodep, endPortp, portnos);
 		if (smDorRouting.debug)
-			IB_LOG_VERBOSE_FMT(__func__,
+			IB_LOG_INFINI_INFO_FMT(__func__,
 			       "Routing SW "FMT_U64" [%s] to DLID 0x%04x via Up/Down: EgressPort %d",
 			       switchp->nodeInfo.NodeGUID, sm_nodeDescString(switchp), endPortp->portData->lid, portnos[0]);
 		return status;
 	}
-	//Both routes are not possible
-	return VSTATUS_BAD;
+
+	return VSTATUS_OK;
 }
 
 //===========================================================================//
@@ -2577,7 +2325,16 @@ _pre_process_discovery(Topology_t *topop, void **outContext)
 {
 	Status_t status;
 	DorDiscoveryState_t *state;
+	DorTopology_t	*dorTop;
 	int i;
+
+	status = vs_pool_alloc(&sm_pool, sizeof(DorTopology_t), &topop->routingModule->data);
+	if (status != VSTATUS_OK) {
+		IB_LOG_ERRORRC("Failed to allocate routingModule data; rc:", status);
+		return status;
+	}
+	dorTop = (DorTopology_t*)topop->routingModule->data;
+	memset(dorTop, 0, sizeof(DorTopology_t));
 
 	status = vs_pool_alloc(&sm_pool, sizeof(DorDiscoveryState_t),
 		(void *)&state);
@@ -2595,15 +2352,15 @@ _pre_process_discovery(Topology_t *topop, void **outContext)
 
 	for (i = 0; i < smDorRouting.dimensionCount; i++) {
 		if (smDorRouting.dimension[i].toroidal) {
-			topop->routing.data.dor.numToroidal++;
+			dorTop->numToroidal++;
 		}
 		smDorRouting.dimension[i].created = 0;
 	}
 
-	if (topop->routing.data.dor.numToroidal) {
-		topop->routing.data.dor.minReqScs = 4;
+	if (dorTop->numToroidal) {
+		dorTop->minReqScs = 4;
 	} else {
-		topop->routing.data.dor.minReqScs = 2;
+		dorTop->minReqScs = 2;
 	}
 
 	status = vs_pool_alloc(&sm_pool, (PORT_PAIR_WARN_ARR_SIZE * PORT_PAIR_WARN_ARR_SIZE), (void *)&port_pair_warnings);
@@ -2945,24 +2702,21 @@ static Status_t
 _discover_node_port(Topology_t *topop, Node_t *nodep, Port_t *portp, void *context)
 {
 	Status_t status;
-	DorNode_t *dnodep = nodep->routing.dor;
 
-	if (dnodep == NULL) {
+	if (nodep->routingData == NULL) {
 		// should only apply to the first node, since propagation will
 		// take care of the rest
-		status = vs_pool_alloc(&sm_pool, sizeof(*dnodep), (void *)&dnodep);
+		status = vs_pool_alloc(&sm_pool, sizeof(DorNode_t), &nodep->routingData);
 		if (status != VSTATUS_OK) {
 			IB_LOG_ERRORRC("_discover_node: Failed to allocate storage for DOR node structure; rc:", status);
 			return status;
 		}
-		memset((void *)dnodep, 0, sizeof(*dnodep));
+		memset(nodep->routingData, 0, sizeof(DorNode_t));
 
-		dnodep->node = nodep;
-		nodep->routing.dor = dnodep;
+		((DorNode_t*)nodep->routingData)->node = nodep;
 	}
 
-	return _propagate_coord_through_port((DorDiscoveryState_t *)context,
-		topop, nodep, portp);
+	return _propagate_coord_through_port((DorDiscoveryState_t *)context, topop, nodep, portp);
 }
 
 static Status_t
@@ -2970,10 +2724,17 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 {
 	int i, j, idx, general_warning = 0, specific_warning = 0;
 	DorDiscoveryState_t *state = (DorDiscoveryState_t *)context;
+	DorTopology_t	*dorTop = (DorTopology_t *)topop->routingModule->data;
+	VirtualFabrics_t *VirtualFabrics = topop->vfs_ptr;
+
+	if (VirtualFabrics && VirtualFabrics->qosEnabled) {
+		topop->qosEnforced = 1;
+	}
 
 	/* Even in the case where discovery did not go well, display warnings which might be useful
 	 * to understand what was wrong with the fabric.
 	 */
+
 	if (incorrect_ca_warnings) {
 		IB_LOG_WARN0("HFIs were found connected to switch ports specified as PortPairs in MeshTorusTopology dimensions.");
 	}
@@ -3019,12 +2780,12 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 		return VSTATUS_OK;
 	}
 
-	topop->routing.data.dor.numDimensions = state->nextDimension;
+	dorTop->numDimensions = state->nextDimension;
 
-	if (topop->routing.data.dor.numDimensions < smDorRouting.dimensionCount) {
-		if (topop->routing.data.dor.numDimensions)
+	if (dorTop->numDimensions < smDorRouting.dimensionCount) {
+		if (dorTop->numDimensions)
 			IB_LOG_WARN_FMT(__func__, "Only %d of the %d configured dimensions discovered",
-							topop->routing.data.dor.numDimensions, smDorRouting.dimensionCount);
+							dorTop->numDimensions, smDorRouting.dimensionCount);
 		else
 			IB_LOG_WARN_FMT(__func__, "No dimensions discovered ! (%d dimensions were configured)",
 							smDorRouting.dimensionCount);
@@ -3034,82 +2795,77 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 			IB_LOG_WARN_FMT(__func__, "Dimension containing port pair %d %d not found",
 							smDorRouting.dimension[i].portPair[0].port1, smDorRouting.dimension[i].portPair[0].port2);
 		}
-	} else 	if (topop->routing.data.dor.numDimensions > smDorRouting.dimensionCount) {
+	} else 	if (dorTop->numDimensions > smDorRouting.dimensionCount) {
 		IB_LOG_WARN_FMT(__func__, "Fabric programming inconsistency ! %d dimensions found but only %d dimensions were configured",
-							topop->routing.data.dor.numDimensions, smDorRouting.dimensionCount);
+							dorTop->numDimensions, smDorRouting.dimensionCount);
 	}
 
 
 	if (smDorRouting.debug)
 		IB_LOG_INFINI_INFO_FMT(__func__,
 		       "Number of dimensions: %d\n",
-		       topop->routing.data.dor.numDimensions);
+		       dorTop->numDimensions);
 
-	for (i = 0; i < topop->routing.data.dor.numDimensions; ++i) {
-		topop->routing.data.dor.dimensionLength[i] =
-			topop->routing.data.dor.coordMaximums[i] - topop->routing.data.dor.coordMinimums[i] + 1;
+	for (i = 0; i < dorTop->numDimensions; ++i) {
+		dorTop->dimensionLength[i] =
+			dorTop->coordMaximums[i] - dorTop->coordMinimums[i] + 1;
 
 		if (smDorRouting.debug)
 			IB_LOG_INFINI_INFO_FMT(__func__,
 			       "Dimension %d: length %d [%s]\n",
-			       i, topop->routing.data.dor.dimensionLength[i],
-			       topop->routing.data.dor.toroidal[i] ? "toroidal" : "not toroidal");
+			       i, dorTop->dimensionLength[i],
+			       dorTop->toroidal[i] ? "toroidal" : "not toroidal");
 	}
 
 	if (state->toroidalOverflow)
 		IB_LOG_WARN_FMT(__func__,
 		       "Too many toroidal dimensions found. Only the first 4 will be routed cycle-free");
 
-	if (topop->routing.data.dor.numToroidal == 0) {
-		topop->routing.data.dor.cycleFreeRouting = 0;
+	if (dorTop->numToroidal == 0) {
+		dorTop->cycleFreeRouting = 0;
 	} else if (state->scsAvailable < 2) {
 		IB_LOG_WARN("not enough SCs available to route cycle-free SCs:",
 		            state->scsAvailable);
-		topop->routing.data.dor.cycleFreeRouting = 0;
-	} else if (topop->routing.data.dor.numToroidal > 4) {
-		IB_LOG_WARN0("not enough SLs available to route cycle-free");
-		topop->routing.data.dor.cycleFreeRouting = 0;
+		dorTop->cycleFreeRouting = 0;
 	} else {
 		if (smDorRouting.debug)
 			IB_LOG_INFINI_INFO_FMT(__func__,
 			       "Routing with credit loop avoidance (%d SCs available)",
 			       MIN(1 << (state->scsAvailable - 1), 15));
-		topop->routing.data.dor.cycleFreeRouting = 1;
+		dorTop->cycleFreeRouting = 1;
 	}
 
-	if (!topop->routing.data.dor.cycleFreeRouting) {
+	if (!smDorRouting.useUpDownOnDisruption) {
+		dorTop->alternateRouting = 0;
+
+	} else if (!dorTop->cycleFreeRouting) {
 		// no cycle-free routing, so the only condition is that
 		// there be more than 1 SC available
 		if (state->scsAvailable < 2) {
 			IB_LOG_WARN("not enough SCs available on the fabric to route around mesh failures SCs:",
 			            state->scsAvailable);
-			topop->routing.data.dor.alternateRouting = 0;
+			dorTop->alternateRouting = 0;
 		} else {
 			if (smDorRouting.debug)
 				IB_LOG_INFINI_INFO_FMT(__func__,
 				       "Routing with alternate fabric (%d SCs available)",
 				       MIN(1 << (state->scsAvailable - 1), 15));
-			topop->routing.data.dor.alternateRouting = 1;
+			dorTop->alternateRouting = 1;
 		}
 	} else {
 		// cycle-free routing... check SC space
 		if (state->scsAvailable < 2) {
 			IB_LOG_WARN("not enough SCs available on the fabric to route around mesh failures SCs:",
 			            state->scsAvailable);
-			topop->routing.data.dor.alternateRouting = 0;
-		} else if (topop->routing.data.dor.numToroidal > 3) {
-			IB_LOG_WARN0("not enough SLs available on the fabric to route around mesh failures");
-			topop->routing.data.dor.alternateRouting = 0;
+			dorTop->alternateRouting = 0;
 		} else {
 			if (smDorRouting.debug)
 				IB_LOG_INFINI_INFO_FMT(__func__,
 				       "Routing with alternate fabric (%d SCs available)",
 				       MIN(1 << (state->scsAvailable - 1), 15));
-			topop->routing.data.dor.alternateRouting = 1;
+			dorTop->alternateRouting = 1;
 		}
 	}
-
-	setup_slscmap(topop, state->scsAvailable);
 
 	for (i = 0; i < 256; ++i)
 		if (state->dimensionMap[i] != NULL) {
@@ -3127,7 +2883,8 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 static Status_t
 _setup_switches_lrdr(Topology_t *topop, int rebalance, int routing_needed)
 {
-	if (smDorRouting.updn_mc_same_spanning_tree && sm_useIdealMcSpanningTreeRoot) {
+	if (((DorTopology_t*)topop->routingModule->data)->alternateRouting &&
+		smDorRouting.updn_mc_same_spanning_tree && sm_useIdealMcSpanningTreeRoot) {
 		/* In this case, the spanning tree root is not next to the SM and hence
 		 * the default order of setting up switches in the order they have been
 		 * discovered will not work for mixed LR-DR programming. Hence initialize
@@ -3140,11 +2897,12 @@ _setup_switches_lrdr(Topology_t *topop, int rebalance, int routing_needed)
 }
 
 static Status_t
-_post_process_routing(Topology_t *topop, Topology_t * old_topop)
+_post_process_routing(Topology_t *topop, Topology_t * old_topop, int *rebalance)
 {
 	Status_t status;
+	DorTopology_t	*dorTop = (DorTopology_t *)topop->routingModule->data;
 
-	topop->routing.data.dor.closure_max_sws = topop->max_sws;
+	dorTop->closure_max_sws = topop->max_sws;
 
 	if (topop->max_sws == 0)
 		return VSTATUS_OK;	/* HSM connected back to back with a host*/
@@ -3168,9 +2926,9 @@ _post_process_routing(Topology_t *topop, Topology_t * old_topop)
 	}
 
 	if ((topology_passcount >= 1) &&
-		((old_topop->routing.data.dor.dorClosureSize != topop->routing.data.dor.dorClosureSize) ||
-		 (memcmp(old_topop->routing.data.dor.dorClosure, topop->routing.data.dor.dorClosure,
-				topop->routing.data.dor.dorClosureSize)))) {
+		((((DorTopology_t *)old_topop->routingModule->data)->dorClosureSize != dorTop->dorClosureSize) ||
+		 (memcmp(((DorTopology_t *)old_topop->routingModule->data)->dorClosure, dorTop->dorClosure,
+				dorTop->dorClosureSize)))) {
 		/* PR 115155. There is a change in DOR closure which means DOR paths and
 		 * LIDs previously in use might not work any more. Also previously
 		 * unavailable DOR paths might be available now. Force setting of
@@ -3184,7 +2942,7 @@ _post_process_routing(Topology_t *topop, Topology_t * old_topop)
 }
 
 static Status_t
-_post_process_routing_copy(Topology_t *src_topop, Topology_t *dst_topop)
+_post_process_routing_copy(Topology_t *src_topop, Topology_t *dst_topop, int *rebalance)
 {
 	Status_t status;
 
@@ -3212,11 +2970,10 @@ _select_updn_path_lids
 	, uint16_t *outDstLid
 	)
 {
-	int srcLids, dstLids;
+	STL_LID srcLids, dstLids;
 
-	if (!topop->routing.data.dor.alternateRouting) {
-		return VSTATUS_BAD;
-	}
+	if (!((DorTopology_t*)topop->routingModule->data)->alternateRouting)
+		return VSTATUS_OK;
 
 	srcLids = 1 << srcPortp->portData->lmc;
 	dstLids = 1 << dstPortp->portData->lmc;
@@ -3243,9 +3000,10 @@ _select_path_lids
 	int i, j, ij;
 	Node_t *srcSwitchp, *dstSwitchp;
 	int updn, invalid;
-	int srcLids, dstLids;
-	int srcUpDnLid, dstUpDnLid, dor_lid_offset = 0;
+	STL_LID srcLids, dstLids;
+	STL_LID srcUpDnLid, dstUpDnLid, dor_lid_offset = 0;
 	uint32_t closure;
+	DorTopology_t	*dorTop = (DorTopology_t*)topop->routingModule->data;
 
 	srcSwitchp = _get_switch(topop, srcPortp->portData->nodePtr, srcPortp);
 	dstSwitchp = _get_switch(topop, dstPortp->portData->nodePtr, dstPortp);
@@ -3255,13 +3013,16 @@ _select_path_lids
 		return VSTATUS_OK;
 	}
 
-
 	ij = DorBitMapsIndex(srcSwitchp->swIdx, dstSwitchp->swIdx);
-	closure = topop->routing.data.dor.dorClosure[ij >> 5] & (1 << (ij & 0x1f));
+	closure = dorTop->dorClosure[ij >> 5] & (1 << (ij & 0x1f));
 	if (closure) {
 		/* check if reverse path also has dor closure*/
 		ij = DorBitMapsIndex(dstSwitchp->swIdx, srcSwitchp->swIdx);
-		closure = topop->routing.data.dor.dorClosure[ij >> 5] & (1 << (ij & 0x1f));
+		closure = dorTop->dorClosure[ij >> 5] & (1 << (ij & 0x1f));
+	}
+
+	if (closure && !dorTop->alternateRouting) {
+		return sm_select_path_lids(topop, srcPortp, slid, dstPortp, dlid, outSrcLids, outSrcLen, outDstLids, outDstLen);
 	}
 
 	srcLids = 1 << srcPortp->portData->lmc;
@@ -3279,7 +3040,7 @@ _select_path_lids
 
 	// determine if we're selecting an updn path
 	invalid = 0;
-	if (!topop->routing.data.dor.alternateRouting) {
+	if (!dorTop->alternateRouting) {
 		// updn not enabled; must be dor
 		updn = 0;
 	} else {
@@ -3294,15 +3055,15 @@ _select_path_lids
 			dor_lid_offset = 0;
 		}
 
-		if (slid == PERMISSIVE_LID && dlid == PERMISSIVE_LID) {
+		if (slid == STL_LID_PERMISSIVE && dlid == STL_LID_PERMISSIVE) {
 			// both lids are permissive; use dor closure to determine
 			updn = closure ? 0 : 1;
 		} else if (srcPortp->portData->lmc == 0 || dstPortp->portData->lmc == 0) {
 			// one of the ports doesn't support lmc... must use updn
 			updn = 1;
-		} else if (  (  slid == PERMISSIVE_LID
+		} else if (  (  slid == STL_LID_PERMISSIVE
 		             || slid == srcUpDnLid)
-		          && (  dlid == PERMISSIVE_LID
+		          && (  dlid == STL_LID_PERMISSIVE
 		             || dlid == dstUpDnLid)) {
 			// both lids are updn lids or one is updn and one is permissive.
 			// use updn
@@ -3333,8 +3094,8 @@ _select_path_lids
 	} else {
 		// alternate routing isn't enabled, or they specified permissive lids
 		// and closure exists, or they specified a dor lid
-		if (slid == PERMISSIVE_LID) {
-			*outSrcLen = topop->routing.data.dor.alternateRouting
+		if (slid == STL_LID_PERMISSIVE) {
+			*outSrcLen = dorTop->alternateRouting
 			          	? srcLids - 1 : srcLids;
 			for (i = 0, j = dor_lid_offset; i < *outSrcLen; ++i, j++)
 				outSrcLids[i] = srcPortp->portData->lid + j;
@@ -3342,8 +3103,8 @@ _select_path_lids
 			*outSrcLen = 1;
 			*outSrcLids = slid;
 		}
-		if (dlid == PERMISSIVE_LID) {
-			*outDstLen = topop->routing.data.dor.alternateRouting
+		if (dlid == STL_LID_PERMISSIVE) {
+			*outDstLen = dorTop->alternateRouting
 			          ? dstLids - 1 : dstLids;
 			for (i = 0, j = dor_lid_offset; i < *outDstLen; ++i, j++)
 				outDstLids[i] = dstPortp->portData->lid + j;
@@ -3355,28 +3116,17 @@ _select_path_lids
 	return VSTATUS_OK;
 }
 
-// Expressing a binary number as a set of permutations of boolean
-// values where each bit represents whether the path would cross
-// the wrap-around edge in that dimension, then the SL is simply
-// the final decimal representation of the permutation cooresponding
-// to the given path (+ 1, if we have alternate routing, in which case
-// SL 0 is for Up/Dn).
-//
-// Note that this means we can only support 4d tori (or > 4d partial
-// tori), as that would require 2^4 = 16 SLs.
-//
 static int
 _get_sl_for_path(Topology_t *topop, Node_t *srcNodep, Port_t *srcPortp, uint32_t slid,
                  Node_t *dstNodep, Port_t *dstPortp, uint32_t dlid)
 {
-	int d, p = 0;
 	int sl = 0;
 	int ij;
 	uint32_t closure;
 	Node_t *srcSwitchp, *dstSwitchp;
+	DorTopology_t	*dorTop = (DorTopology_t*)topop->routingModule->data;
 
-	if (  !topop->routing.data.dor.cycleFreeRouting
-	   && !topop->routing.data.dor.alternateRouting)
+	if (!dorTop->cycleFreeRouting && !dorTop->alternateRouting)
 		goto end;
 
 	srcSwitchp = _get_switch(topop, srcNodep, srcPortp);
@@ -3386,24 +3136,24 @@ _get_sl_for_path(Topology_t *topop, Node_t *srcNodep, Port_t *srcPortp, uint32_t
 		goto end;
 
 	if (smDorRouting.debug)
-		IB_LOG_VERBOSE_FMT(__func__,
+		IB_LOG_INFINI_INFO_FMT(__func__,
 		       "Path is between SwitchGUID "FMT_U64" [%s] SwIdx %d to SwitchGUID "FMT_U64" [%s] SwIdx %d\n",
 		       srcSwitchp->nodeInfo.NodeGUID, sm_nodeDescString(srcSwitchp), srcSwitchp->swIdx,
 		       dstSwitchp->nodeInfo.NodeGUID, sm_nodeDescString(dstSwitchp), dstSwitchp->swIdx);
 
 	// route on the backup SC if there's no DOR path between the two nodes
 	ij = DorBitMapsIndex(srcSwitchp->swIdx, dstSwitchp->swIdx);
-	closure = topop->routing.data.dor.dorClosure[ij >> 5] & (1 << (ij & 0x1f));
+	closure = dorTop->dorClosure[ij >> 5] & (1 << (ij & 0x1f));
 	if (closure) {
 		/* check DOR closure on reverse path too*/
 		ij = DorBitMapsIndex(dstSwitchp->swIdx, srcSwitchp->swIdx);
-		closure = topop->routing.data.dor.dorClosure[ij >> 5] & (1 << (ij & 0x1f));
+		closure = dorTop->dorClosure[ij >> 5] & (1 << (ij & 0x1f));
 	}
 
-	if (closure && topop->routing.data.dor.alternateRouting) {
-			/* if either of the ports have an LMC of 0 or the slid/dlid are up/dn lid
-			 * then can't use DOR and have to use only Up/Dn
-			 */
+	if (closure && dorTop->alternateRouting) {
+			// if either of the ports have an LMC of 0 or the slid/dlid are up/dn lid
+			// then can't use DOR and have to use only Up/Dn
+
 		if ((srcPortp->portData->lmc == 0) || (dstPortp->portData->lmc == 0)) {
 				closure = 0;
 		} else if (sm_UpDnBaseLid) {
@@ -3416,35 +3166,14 @@ _get_sl_for_path(Topology_t *topop, Node_t *srcNodep, Port_t *srcPortp, uint32_t
 		}
 	}
 
-	if (!closure) {
+	if (closure && dorTop->alternateRouting) {
 		// but only if the alternate route is enabled for use
-		if (topop->routing.data.dor.alternateRouting)
-			sl = 0;
-	} else if (topop->routing.data.dor.cycleFreeRouting) {
-		// it's DOR and we're routing cycle-free. compute the SL from the path
-		for ( d = 0
-		    ; d < topop->routing.data.dor.numDimensions
-		    ; ++d) {
-			if (_is_path_toroidal_in_dimension(topop, srcSwitchp, dstSwitchp, d)) {
-				if (!p)
-					p = 1;
-				else
-					p = p << 1;
-				sl |= p;
-			}
-		}
-		if (topop->routing.data.dor.alternateRouting)
-			sl++;	//sl 0 is for Up/Dn Lid
-	} else {
-		/* closure exists but no cycle free routing. Can probably use sl 0 or 1.
-		 * Since Up/Dn uses SL 0, SL 1 might be a better choice.
-		 */
 		sl = 1;
 	}
 
 end:
 	if (smDorRouting.debug)
-		IB_LOG_VERBOSE_FMT(__func__,
+		IB_LOG_INFINI_INFO_FMT(__func__,
 		       "SL for path from NodeGUID "FMT_U64" [%s] to NodeGUID "FMT_U64" [%s]: %d\n",
 		       srcNodep->nodeInfo.NodeGUID, sm_nodeDescString(srcNodep),
 		       dstNodep->nodeInfo.NodeGUID, sm_nodeDescString(dstNodep), sl);
@@ -3458,8 +3187,9 @@ end:
 static Status_t _process_swIdx_change(Topology_t * topop, int old_idx, int new_idx, int last_idx)
 {
 	int i, ij, ji, oldij, oldji;
+	DorTopology_t	*dorTop = (DorTopology_t *)topop->routingModule->data;
 
-	if (topop->routing.data.dor.dorClosure == NULL && topop->routing.data.dor.updnDownstream == NULL)
+	if (dorTop->dorClosure == NULL && dorTop->updnDownstream == NULL)
 		return VSTATUS_OK;
 
 	for (i = 0; i < last_idx; i++) {
@@ -3473,39 +3203,39 @@ static Status_t _process_swIdx_change(Topology_t * topop, int old_idx, int new_i
 			oldij = oldji = DorBitMapsIndex(old_idx, old_idx);
 		}
 
-		if (topop->routing.data.dor.dorClosure != NULL) {
-			if (topop->routing.data.dor.dorClosure[oldij >> 5] & (1 << (oldij & 0x1f))) {
-				topop->routing.data.dor.dorClosure[ij >> 5] |= 1 << (ij & 0x1f);
+		if (dorTop->dorClosure != NULL) {
+			if (dorTop->dorClosure[oldij >> 5] & (1 << (oldij & 0x1f))) {
+				dorTop->dorClosure[ij >> 5] |= 1 << (ij & 0x1f);
 				//reset old index value to 0 as it is no longer valid
-				topop->routing.data.dor.dorClosure[oldij >> 5] &= ~((uint32_t)(1 << (ij & 0x1f)));
+				dorTop->dorClosure[oldij >> 5] &= ~((uint32_t)(1 << (ij & 0x1f)));
 			} else {
-				topop->routing.data.dor.dorClosure[ij >> 5] &=  ~((uint32_t)(1 << (ij & 0x1f)));
+				dorTop->dorClosure[ij >> 5] &=  ~((uint32_t)(1 << (ij & 0x1f)));
 			}
 
-			if (topop->routing.data.dor.dorClosure[oldji >> 5] & (1 << (oldji & 0x1f))) {
-				topop->routing.data.dor.dorClosure[ji >> 5] |= 1 << (ji & 0x1f);
+			if (dorTop->dorClosure[oldji >> 5] & (1 << (oldji & 0x1f))) {
+				dorTop->dorClosure[ji >> 5] |= 1 << (ji & 0x1f);
 				//reset old index value to 0
-				topop->routing.data.dor.dorClosure[oldji >> 5] &= ~((uint32_t)(1 << (ji & 0x1f)));
+				dorTop->dorClosure[oldji >> 5] &= ~((uint32_t)(1 << (ji & 0x1f)));
 			} else {
-				topop->routing.data.dor.dorClosure[ji >> 5] &=  ~((uint32_t)(1 << (ji & 0x1f)));
+				dorTop->dorClosure[ji >> 5] &=  ~((uint32_t)(1 << (ji & 0x1f)));
 			}
 		}
 
-		if (topop->routing.data.dor.updnDownstream != NULL) {
-			if (topop->routing.data.dor.updnDownstream[oldij >> 5] & (1 << (oldij & 0x1f))) {
-				topop->routing.data.dor.updnDownstream[ij >> 5] |= 1 << (ij & 0x1f);
+		if (dorTop->updnDownstream != NULL) {
+			if (dorTop->updnDownstream[oldij >> 5] & (1 << (oldij & 0x1f))) {
+				dorTop->updnDownstream[ij >> 5] |= 1 << (ij & 0x1f);
 				//reset old index value to 0
-				topop->routing.data.dor.updnDownstream[oldij >> 5] &= ~((uint32_t)(1 << (ij & 0x1f)));
+				dorTop->updnDownstream[oldij >> 5] &= ~((uint32_t)(1 << (ij & 0x1f)));
 			} else {
-				topop->routing.data.dor.updnDownstream[ij >> 5] &=  ~((uint32_t)(1 << (ij & 0x1f)));
+				dorTop->updnDownstream[ij >> 5] &=  ~((uint32_t)(1 << (ij & 0x1f)));
 			}
 
-			if (topop->routing.data.dor.updnDownstream[oldji >> 5] & (1 << (oldji & 0x1f))) {
-				topop->routing.data.dor.updnDownstream[ji >> 5] |= 1 << (ji & 0x1f);
+			if (dorTop->updnDownstream[oldji >> 5] & (1 << (oldji & 0x1f))) {
+				dorTop->updnDownstream[ji >> 5] |= 1 << (ji & 0x1f);
 				//reset old index value to 0
-				topop->routing.data.dor.updnDownstream[oldji >> 5] &= ~((uint32_t)(1 << (ji & 0x1f)));
+				dorTop->updnDownstream[oldji >> 5] &= ~((uint32_t)(1 << (ji & 0x1f)));
 			} else {
-				topop->routing.data.dor.updnDownstream[ji >> 5] &= ~((uint32_t)(1 << (ji & 0x1f)));
+				dorTop->updnDownstream[ji >> 5] &= ~((uint32_t)(1 << (ji & 0x1f)));
 			}
 		}
 
@@ -3518,8 +3248,10 @@ static Status_t _process_swIdx_change(Topology_t * topop, int old_idx, int new_i
 static int check_closure_changes(Topology_t * oldtp, Topology_t * newtp, Node_t *switchp,
 								 int check_dor_closure, int check_updn_closure)
 {
-	int oldnumsws = oldtp->routing.data.dor.closure_max_sws;
-	int numsws = newtp->routing.data.dor.closure_max_sws;
+	DorTopology_t	*oldDorTop = (DorTopology_t *)oldtp->routingModule->data;
+	DorTopology_t	*newDorTop = (DorTopology_t *)newtp->routingModule->data;
+	int oldnumsws = oldDorTop->closure_max_sws;
+	int numsws = newDorTop->closure_max_sws;
 	int i, j, ij, oldij, ji, oldji;
 	uint32_t new_closure, old_closure;
 
@@ -3532,8 +3264,8 @@ static int check_closure_changes(Topology_t * oldtp, Topology_t * newtp, Node_t 
 
 		if (check_dor_closure) {
 			//dor closure
-			new_closure = newtp->routing.data.dor.dorClosure[ij >> 5] & (1 << (ij & 0x1f));
-			old_closure = oldtp->routing.data.dor.dorClosure[oldij >> 5] & (1 << (oldij & 0x1f));
+			new_closure = newDorTop->dorClosure[ij >> 5] & (1 << (ij & 0x1f));
+			old_closure = oldDorTop->dorClosure[oldij >> 5] & (1 << (oldij & 0x1f));
 
 			if (new_closure)
 				new_closure = 1;
@@ -3545,8 +3277,8 @@ static int check_closure_changes(Topology_t * oldtp, Topology_t * newtp, Node_t 
 				return 1;	
 
 			//check ji
-			new_closure = newtp->routing.data.dor.dorClosure[ji >> 5] & (1 << (ji & 0x1f));
-			old_closure = oldtp->routing.data.dor.dorClosure[oldji >> 5] & (1 << (oldji & 0x1f));
+			new_closure = newDorTop->dorClosure[ji >> 5] & (1 << (ji & 0x1f));
+			old_closure = oldDorTop->dorClosure[oldji >> 5] & (1 << (oldji & 0x1f));
 
 			if (new_closure)
 				new_closure = 1;
@@ -3560,8 +3292,8 @@ static int check_closure_changes(Topology_t * oldtp, Topology_t * newtp, Node_t 
 		}
 
 		if (check_updn_closure) {
-			new_closure = newtp->routing.data.dor.updnDownstream[ij >> 5] & (1 << (ij & 0x1f));
-			old_closure = oldtp->routing.data.dor.updnDownstream[oldij >> 5] & (1 << (oldij & 0x1f));
+			new_closure = newDorTop->updnDownstream[ij >> 5] & (1 << (ij & 0x1f));
+			old_closure = oldDorTop->updnDownstream[oldij >> 5] & (1 << (oldij & 0x1f));
 
 			if (new_closure)
 				new_closure = 1;
@@ -3573,8 +3305,8 @@ static int check_closure_changes(Topology_t * oldtp, Topology_t * newtp, Node_t 
 				return 1;
 
 			//check ji
-			new_closure = newtp->routing.data.dor.updnDownstream[ji >> 5] & (1 << (ji & 0x1f));
-			old_closure = oldtp->routing.data.dor.updnDownstream[oldji >> 5] & (1 << (oldji & 0x1f));
+			new_closure = newDorTop->updnDownstream[ji >> 5] & (1 << (ji & 0x1f));
+			old_closure = oldDorTop->updnDownstream[oldji >> 5] & (1 << (oldji & 0x1f));
 
 			if (new_closure)
 				new_closure = 1;
@@ -3597,11 +3329,13 @@ static int _check_switch_path_change(Topology_t * oldtp, Topology_t * newtp, Nod
 	Port_t *portp;
 	int check_dor_closure = 1;
 	int check_updn_closure = 1;
+	DorTopology_t *newDorTop = (DorTopology_t *)newtp->routingModule->data;
+	DorTopology_t *oldDorTop = (DorTopology_t *)oldtp->routingModule->data;
 
-	if (newtp->routing.data.dor.dorClosure == NULL  || oldtp->routing.data.dor.dorClosure == NULL)
+	if (newDorTop->dorClosure == NULL  || oldDorTop->dorClosure == NULL)
 		check_dor_closure = 0;
 
-	if (newtp->routing.data.dor.updnDownstream == NULL || oldtp->routing.data.dor.updnDownstream == NULL)
+	if (newDorTop->updnDownstream == NULL || oldDorTop->updnDownstream == NULL)
 		check_updn_closure = 0;
 
 	if (!check_dor_closure && !check_updn_closure)
@@ -3650,15 +3384,20 @@ _needs_lft_recalc(Topology_t * topop, Node_t * nodep)
 static void
 _destroy(Topology_t *topop)
 {
-	if (topop->routing.data.dor.dorClosure != NULL) {
-		vs_pool_free(&sm_pool, (void *)topop->routing.data.dor.dorClosure);
-		topop->routing.data.dor.dorClosure = NULL;
+	DorTopology_t	*dorTop = (DorTopology_t *)topop->routingModule->data;
+
+	if (dorTop->dorClosure != NULL) {
+		vs_pool_free(&sm_pool, (void *)dorTop->dorClosure);
+		dorTop->dorClosure = NULL;
 	}
 
-	if (topop->routing.data.dor.updnDownstream != NULL) {
-		vs_pool_free(&sm_pool, (void *)topop->routing.data.dor.updnDownstream);
-		topop->routing.data.dor.updnDownstream = NULL;
+	if (dorTop->updnDownstream != NULL) {
+		vs_pool_free(&sm_pool, (void *)dorTop->updnDownstream);
+		dorTop->updnDownstream = NULL;
 	}
+
+	vs_pool_free(&sm_pool, (void *)dorTop);
+	topop->routingModule->data = NULL;
 }
 
 static Status_t
@@ -3679,11 +3418,15 @@ _release(RoutingModule_t * rm)
 	return VSTATUS_OK;
 }
 
-
 static Status_t
 _copy(struct _RoutingModule * dest, const struct _RoutingModule * src)
 {
     memcpy(dest, src, sizeof(RoutingModule_t));
+
+	// Don't copy routing module data.  This will be setup and compared
+	// against old data.
+	dest->data = NULL;
+
 	return VSTATUS_OK;
 }
 
@@ -3691,21 +3434,27 @@ _copy(struct _RoutingModule * dest, const struct _RoutingModule * src)
 static Status_t
 _make_routing_module(RoutingModule_t * rm)
 {
-	rm->name = "dor-updown";
+	rm->name = "dor";
 	rm->funcs.pre_process_discovery = _pre_process_discovery;
 	rm->funcs.discover_node = _discover_node;
 	rm->funcs.discover_node_port = _discover_node_port;
 	rm->funcs.post_process_discovery = _post_process_discovery;
 	rm->funcs.post_process_routing = _post_process_routing;
 	rm->funcs.post_process_routing_copy = _post_process_routing_copy;
+	rm->funcs.allocate_cost_matrix = sm_routing_alloc_cost_matrix;
+	rm->funcs.initialize_cost_matrix = sm_routing_init_floyds;
+ 	rm->funcs.calculate_cost_matrix = sm_routing_calc_floyds;
 	rm->funcs.setup_switches_lrdr = _setup_switches_lrdr;
-	rm->funcs.setup_xft = _setup_xft;
+	rm->funcs.setup_pgs = _setup_pgs;
 	rm->funcs.get_port_group = _get_port_group;
-	rm->funcs.select_slsc_map = _generate_slsc_map;
-	rm->funcs.select_scsl_map = _generate_scsl_map;
-	rm->funcs.select_scvl_map = _select_scvl_map;
-	rm->funcs.select_vlvf_map = _select_vlvf_map;
-	rm->funcs.fill_stl_vlarb_table = _fill_stl_vlarb_table;
+	rm->funcs.setup_xft = _setup_xft;
+	rm->funcs.copy_lfts = sm_routing_copy_lfts;
+	rm->funcs.select_slsc_map = sm_select_slsc_map;
+	rm->funcs.select_scsl_map = sm_select_scsl_map;
+	rm->funcs.select_scsc_map = _generate_scsc_map;
+	rm->funcs.select_scvl_map = sm_select_scvl_map;
+	rm->funcs.select_vlvf_map = sm_select_vlvf_map;
+	rm->funcs.fill_stl_vlarb_table = sm_fill_stl_vlarb_table;
 	rm->funcs.select_path_lids = _select_path_lids;
 	rm->funcs.select_updn_path_lids = _select_updn_path_lids;
 	rm->funcs.get_sl_for_path = _get_sl_for_path;
@@ -3713,10 +3462,10 @@ _make_routing_module(RoutingModule_t * rm)
 	rm->funcs.check_switch_path_change = _check_switch_path_change;
 	rm->funcs.needs_lft_recalc = _needs_lft_recalc;
 	rm->funcs.destroy = _destroy;
-    rm->load = _load;
-    rm->unload = _unload;
-    rm->release = _release;
-    rm->copy = _copy;
+	rm->load = _load;
+	rm->unload = _unload;
+	rm->release = _release;
+	rm->copy = _copy;
 
 	return VSTATUS_OK;
 }
@@ -3724,6 +3473,6 @@ _make_routing_module(RoutingModule_t * rm)
 Status_t
 sm_dor_init(Topology_t *topop)
 {
-	return sm_routing_addModuleFac("dor-updown", _make_routing_module);
+	return sm_routing_addModuleFac("dor", _make_routing_module);
 }
 

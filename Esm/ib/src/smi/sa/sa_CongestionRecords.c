@@ -337,8 +337,9 @@ sa_CongInfoRecord_GetTable(Mai_t *maip, uint32_t *records) {
 //  Verify the size of the data received for the request
 //
 	if ( maip->datasize-sizeof(STL_SA_MAD_HEADER) < sizeof(STL_CONGESTION_INFO_RECORD) ) {
-		IB_LOG_ERROR_FMT("sa_CongInfoRecord_GetTable",
-						 "invalid MAD length; size of STL_CONGESTION_INFO_RECORD[%lu], datasize[%d]", sizeof(STL_CONGESTION_INFO_RECORD), maip->datasize-sizeof(STL_SA_MAD_HEADER));
+		IB_LOG_ERROR_FMT(__func__,
+			"invalid MAD length; size of STL_CONGESTION_INFO_RECORD[%"PRISZT"], datasize[%d]",
+			sizeof(STL_CONGESTION_INFO_RECORD), (int)(maip->datasize-sizeof(STL_SA_MAD_HEADER)));
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 		IB_EXIT("sa_CongInfoRecord_GetTable", MAD_STATUS_SA_REQ_INVALID);
 		return (MAD_STATUS_SA_REQ_INVALID);
@@ -432,8 +433,9 @@ sa_SwitchCongRecord_GetTable(Mai_t *maip, uint32_t *records) {
 //  Verify the size of the data received for the request
 //
 	if ( maip->datasize-sizeof(STL_SA_MAD_HEADER) < sizeof(STL_SWITCH_CONGESTION_SETTING_RECORD) ) {
-		IB_LOG_ERROR_FMT("sa_SwitchCongRecord_GetTable",
-						 "invalid MAD length; size of STL_SWITCH_CONGESTION_SETTING_RECORD[%lu], datasize[%d]", sizeof(STL_SWITCH_CONGESTION_SETTING_RECORD), maip->datasize-sizeof(STL_SA_MAD_HEADER));
+		IB_LOG_ERROR_FMT(__func__,
+			"invalid MAD length; size of STL_SWITCH_CONGESTION_SETTING_RECORD[%"PRISZT"], datasize[%d]",
+			sizeof(STL_SWITCH_CONGESTION_SETTING_RECORD), (int)(maip->datasize-sizeof(STL_SA_MAD_HEADER)));
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 		IB_EXIT("sa_SwitchCongRecord_GetTable", MAD_STATUS_SA_REQ_INVALID);
 		return (MAD_STATUS_SA_REQ_INVALID);
@@ -522,8 +524,8 @@ sa_SwitchPortCongRecord_GetTable(Mai_t *maip, uint32_t *records) {
 	// Verify the size of the data received for the request.
 	if (maip->datasize-sizeof(STL_SA_MAD_HEADER) < sizeof(STL_SWITCH_PORT_CONGESTION_SETTING_RECORD) ) {
 		IB_LOG_ERROR_FMT(__func__,
-						 "invalid MAD length; size of STL_SWITCH_PORT_CONGESTION_SETTING_RECORD[%lu], datasize[%d]", 
-						sizeof(STL_SWITCH_PORT_CONGESTION_SETTING_RECORD), maip->datasize-sizeof(STL_SA_MAD_HEADER));
+			"invalid MAD length; size of STL_SWITCH_PORT_CONGESTION_SETTING_RECORD[%"PRISZT"], datasize[%d]",
+			sizeof(STL_SWITCH_PORT_CONGESTION_SETTING_RECORD), (int)(maip->datasize-sizeof(STL_SA_MAD_HEADER)));
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 		IB_EXIT(__func__, MAD_STATUS_SA_REQ_INVALID);
 		return (MAD_STATUS_SA_REQ_INVALID);
@@ -606,8 +608,9 @@ sa_HFICongRecord_GetTable(Mai_t *maip, uint32_t *records) {
 //  Verify the size of the data received for the request
 //
 	if ( maip->datasize-sizeof(STL_SA_MAD_HEADER) < sizeof(STL_HFI_CONGESTION_SETTING_RECORD) ) {
-		IB_LOG_ERROR_FMT("sa_HFICongRecord_GetTable",
-						 "invalid MAD length; size of STL_HFI_CONGESTION_SETTING_RECORD[%lu], datasize[%d]", sizeof(STL_HFI_CONGESTION_SETTING_RECORD), maip->datasize-sizeof(STL_SA_MAD_HEADER));
+		IB_LOG_ERROR_FMT(__func__,
+			"invalid MAD length; size of STL_HFI_CONGESTION_SETTING_RECORD[%"PRISZT"], datasize[%d]",
+			sizeof(STL_HFI_CONGESTION_SETTING_RECORD), (int)(maip->datasize-sizeof(STL_SA_MAD_HEADER)));
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 		IB_EXIT("sa_HFICongRecord_GetTable", MAD_STATUS_SA_REQ_INVALID);
 		return (MAD_STATUS_SA_REQ_INVALID);
@@ -710,8 +713,9 @@ sa_HFICongCtrlRecord_GetTable(Mai_t *maip, uint32_t *records) {
 //  Verify the size of the data received for the request
 //
 	if ( maip->datasize-sizeof(STL_SA_MAD_HEADER) < sizeof(STL_HFI_CONGESTION_CONTROL_TABLE_RECORD) ) {
-		IB_LOG_ERROR_FMT("sa_HFICongCtrlRecord_GetTable",
-						 "invalid MAD length; size of STL_HFI_CONGESTION_CONTROL_TABLE_RECORD[%lu], datasize[%d]", sizeof(STL_HFI_CONGESTION_CONTROL_TABLE_RECORD), maip->datasize-sizeof(STL_SA_MAD_HEADER));
+		IB_LOG_ERROR_FMT(__func__,
+			"invalid MAD length; size of STL_HFI_CONGESTION_CONTROL_TABLE_RECORD[%"PRISZT"], datasize[%d]",
+			sizeof(STL_HFI_CONGESTION_CONTROL_TABLE_RECORD), (int)(maip->datasize-sizeof(STL_SA_MAD_HEADER)));
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 		IB_EXIT("sa_HFICongCtrlRecord_GetTable", MAD_STATUS_SA_REQ_INVALID);
 		return (MAD_STATUS_SA_REQ_INVALID);
@@ -749,7 +753,7 @@ sa_HFICongCtrlRecord_GetTable(Mai_t *maip, uint32_t *records) {
             numBlocks = pPort->portData->hfiCongCon->CCTI_Limit/STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES;
             if (checkBlock && blockNum>numBlocks) {
                 maip->base.status = MAD_STATUS_SA_REQ_INVALID;
-                IB_LOG_ERROR_FMT( "sa_HFICongCtrlRecord_GetTable", "Requested block does not exist", blockNum);
+                IB_LOG_ERROR_FMT(__func__, "Requested block (%u) does not exist", blockNum);
                 goto done;
             }
             memset(&record, 0, sizeof(record));

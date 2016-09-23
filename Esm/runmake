@@ -204,20 +204,20 @@ else
 	RPM_VER=`echo ${MODULEVERSION}.999.999.999.999|cut -d"." -f5`
 fi
 export MKRPM_REL=${RPM_REL}
-export MKRPM_VER=${RPM_VER}
+export MKRPM_VER=${RPM_VER}`rpm --eval %{?dist}`
 
 # Copy the spec file for editing.
-cp opafm.spec.base opafm.spec
+cp opa-fm.spec.base opa-fm.spec
 
 # Repair the spec file
-sed -i "s/^Version:.*/Version: ${RPM_REL}/g" opafm.spec
-sed -i "s/^Release:.*/Release: ${RPM_VER}/g" opafm.spec
+sed -i "s/^Version:.*/Version: ${RPM_REL}/g" opa-fm.spec
+sed -i "s/^Release:.*/Release: ${RPM_VER}%{?dist}/g" opa-fm.spec
 if [ -d IbAccess ] ; then 
-	sed -i "s/^%doc Esm\/README/%doc README/g" opafm.spec; 
+	sed -i "s/^%doc Esm\/README/%doc README/g" opa-fm.spec; 
 fi;
 
 # Pass command-line arguments to rpmbuild 
-sed -i "s/^\.\/fmbuild.*/\.\/fmbuild -V \%{version}\.\%{release} $args/g" opafm.spec
+sed -i "s/^\.\/fmbuild.*/\.\/fmbuild -V \%{version}\.\%{release} $args/g" opa-fm.spec
 
 # Pass env variables to rpmbuild. In integration build,
 # Most of the rpmbuild environment variables remains the same except
@@ -239,9 +239,9 @@ then
 	#rm -rf rpmbuild
 	mkdir -p rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 	tar -czf rpmbuild/SOURCES/opa-fm.tar.gz -T Esm/tar_inc_srcs_all --exclude-vcs -X Esm/tar_exc_pattern 
-	cp Esm/opafm.spec rpmbuild/SPECS/
+	cp Esm/opa-fm.spec rpmbuild/SPECS/
 	cd rpmbuild
-	rpmbuild -ba --define "_topdir $(pwd)" SPECS/opafm.spec
+	rpmbuild -ba --define "_topdir $(pwd)" SPECS/opa-fm.spec
 	cd ../Esm
 	make final_package
 	cp ../rpmbuild/BUILD/opa-fm-${RPM_REL}/packaged_files .
@@ -250,9 +250,9 @@ else
 	#rm -rf rpmbuild
 	mkdir -p rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 	tar -czf rpmbuild/SOURCES/opa-fm.tar.gz -T tar_inc_srcs_host --exclude-vcs -X tar_exc_pattern
-	cp opafm.spec rpmbuild/SPECS/
+	cp opa-fm.spec rpmbuild/SPECS/
 	cd rpmbuild
-	rpmbuild -ba --define "_topdir $(pwd)" SPECS/opafm.spec
+	rpmbuild -ba --define "_topdir $(pwd)" SPECS/opa-fm.spec
 	cd ../
 	make final_package
 	cp rpmbuild/BUILD/opa-fm-${RPM_REL}/packaged_files .

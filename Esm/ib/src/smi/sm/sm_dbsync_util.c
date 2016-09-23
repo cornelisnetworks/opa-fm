@@ -778,7 +778,7 @@ Status_t sm_dbsync_configCheck(SmRecKey_t recKey, SMDBCCCSyncp smSyncSetting) {
 
 				if (mismatchDetected) {
 					IB_LOG_WARN_FMT(__func__,
-									"config_diff tool can be used to show differences in the configuration files that could be causing the checksum mismatches");
+									"opafmconfigdiff tool can be used to show differences in the configuration files that could be causing the checksum mismatches");
 				}
 
 				if (deactivateSM) {

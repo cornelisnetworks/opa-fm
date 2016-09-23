@@ -32,23 +32,23 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "topology.h"
 #include "topology_internal.h"
 #include <stl_convertfuncs.h>
-
-// TBD - fix conflict with ib_utils_openib.h
-#define DBGPRINT(format, args...) if (g_verbose_file) { fprintf(g_verbose_file, format, ##args); }
+#include "stl_helper.h"
 #include <limits.h>
 #include <math.h>
 #include <time.h>
 #include <oib_utils_sa.h>
 #include <oib_utils_pa.h>
 
+#ifdef DBGPRINT
+#undef DBGPRINT
+#endif
+#define DBGPRINT(format, args...) if (g_verbose_file) {fflush(stdout); fprintf(stderr, format, ##args); }
+
+
 static int	g_skipswitchinfo= 0;	// workaround for open SM
-
 static int	g_paclient_state = PACLIENT_UNKNOWN;	// PaClient/PaServer communications
-static FILE 			*g_verbose_file = NULL;	// file for verbose output
-
-
+static FILE *g_verbose_file = NULL;	// file for verbose output
 static struct oib_port *g_portHandle = NULL;
-
 
 
 /* get path from our portGuid to destination portp
@@ -138,6 +138,9 @@ fail:
 	goto done;
 
 }
+
+
+
 
 /* get path records between 2 ports
  * caller must oib_free_query_result_buffer(*ppQueryResults);
@@ -1598,8 +1601,10 @@ static FSTATUS GetNodeIous(struct oib_port *port,
 	}
 
 	status = DmGetIouInfo(port, portp->pathp, &ioup->IouInfo);
-	if (FSUCCESS != status)
+	if (FSUCCESS != status) {
+		MemoryDeallocate(ioup);
 		goto done;
+	}
 	ListItemInitState(&ioup->AllIOUsEntry);
 	QListSetObj(&ioup->AllIOUsEntry, ioup);
 	ioup->nodep = nodep;
@@ -1795,6 +1800,220 @@ FSTATUS GetAllCables(struct oib_port *port,
 		if (fabricp->flags & FF_DOWNPORTINFO) {
 			fstatus = GetAllCablesDirect(port, fabricp, TRUE, quiet);
 		}
+	}
+
+	return fstatus;
+}
+/* query all multicast groups Records on fabric connected to given HFI port
+ * and put results into fabricp->AllMcMembers
+ */
+
+FSTATUS GetAllMCGroupMember(McMemberData *mcmemberp,
+				struct oib_port *portp,
+				int quiet,
+				FILE *g_verbose_file)
+{
+
+	QUERY				 query;
+	FSTATUS 			 status;
+	PQUERY_RESULT_VALUES pQueryResults = NULL;
+
+	memset(&query, 0, sizeof(query));	// initialize reserved fields
+	query.InputType 	= InputTypeMcGid;
+	query.InputValue.Gid.AsReg64s.H= mcmemberp->MGID.AsReg64s.H;
+	query.InputValue.Gid.AsReg64s.L= mcmemberp->MGID.AsReg64s.L;
+	query.OutputType 	=  OutputTypeMcMemberRecord;
+
+	DBGPRINT("Query: Input=%s, Output=%s\n",
+				   		iba_sd_query_input_type_msg(query.InputType),
+					   	iba_sd_query_result_type_msg(query.OutputType));
+
+	// this call is synchronous
+	status = oib_query_sa(portp, &query, &pQueryResults);
+
+	if (! pQueryResults) {
+		fprintf(stderr, "%*sSA McmemberRecord query Failed: %s\n", 0, "", iba_fstatus_msg(status));
+		status = FERROR;
+		// oib_query_sa will have allocated a result buffer
+		// we must free the buffer when we are done with it
+		if (pQueryResults)
+			oib_free_query_result_buffer(pQueryResults);
+		return status;
+	} else if (pQueryResults->Status != FSUCCESS) {
+		fprintf(stderr, "%*sSA McMemberRecord query Failed: %s MadStatus 0x%x: %s\n", 0, "",
+				iba_fstatus_msg(pQueryResults->Status),
+			   	pQueryResults->MadStatus, iba_sd_mad_status_msg(pQueryResults->MadStatus));
+		status = FERROR;
+		// oib_query_sa will have allocated a result buffer
+		// we must free the buffer when we are done with it
+		if (pQueryResults)
+			oib_free_query_result_buffer(pQueryResults);
+		return status;
+	} else if (pQueryResults->ResultDataSize == 0) {
+		fprintf(stderr, "%*sNo multicast group Records Returned\n", 0, "");
+		//release result buffer
+		if (pQueryResults)
+			oib_free_query_result_buffer(pQueryResults);
+		status = FUNAVAILABLE;
+		return status;
+
+	} else {
+
+		MCMEMBER_RECORD_RESULTS  *pIbMCRR = (MCMEMBER_RECORD_RESULTS*)pQueryResults->QueryResult;
+
+		DBGPRINT("MadStatus 0x%x: %s\n", pQueryResults->MadStatus,
+					   				iba_sd_mad_status_msg(pQueryResults->MadStatus));
+		DBGPRINT("%d Bytes Returned\n", pQueryResults->ResultDataSize);
+
+		mcmemberp->NumOfMembers=pIbMCRR->NumMcMemberRecords;
+
+		int i;
+		for (i=0; i<pIbMCRR->NumMcMemberRecords; ++i) {
+
+			McGroupData *nodegp = (McGroupData*)MemoryAllocate2AndClear(sizeof(McGroupData), IBA_MEM_FLAG_PREMPTABLE, MYTAG);	
+			if (!nodegp) 
+				return  FINSUFFICIENT_MEMORY;
+
+			nodegp->PortGID = pIbMCRR->McMemberRecords[i].RID.PortGID;
+
+			if ((nodegp->PortGID.AsReg64s.H == 0) && (nodegp->PortGID.AsReg64s.L ==0 ))
+				mcmemberp->NumOfMembers--; // do count as valid member if PortGID is zero
+			QListSetObj(&nodegp->AllMcGMembersEntry, nodegp);
+
+		    LIST_ITEM *p;
+		    boolean found = FALSE;
+		    p=QListHead(&mcmemberp->AllMcGroupMembers);
+		   // insert everything in the fabric structure ordered by PortGID
+		     while (!found && (p != NULL)) {
+		       	McGroupData *pMGM = (McGroupData *)QListObj(p);
+		       	if ( pMGM->PortGID.AsReg64s.H > nodegp->PortGID.AsReg64s.H)
+		       		  p = QListNext(&mcmemberp->AllMcGroupMembers, p);
+		       	else if (pMGM->PortGID.AsReg64s.H == nodegp->PortGID.AsReg64s.H) {
+		       		  	  if (pMGM->PortGID.AsReg64s.L > nodegp->PortGID.AsReg64s.L)
+		       			  		  p = QListNext(&mcmemberp->AllMcGroupMembers, p);
+		       		  	  else {
+		    		  	  	     // insert mc-group-member element
+		    		  	  	  		  QListInsertNext(&mcmemberp->AllMcGroupMembers,p, &nodegp->AllMcGMembersEntry);
+		    		  	  	  		  found = TRUE;
+		       		  	  }
+		       	}
+		    	else {
+		    		  QListInsertNext(&mcmemberp->AllMcGroupMembers,p, &nodegp->AllMcGMembersEntry);
+			  	  	  found = TRUE;
+		    	}
+
+		     } // end while
+		     if (!found)
+		    	   QListInsertTail(&mcmemberp->AllMcGroupMembers, &nodegp->AllMcGMembersEntry);
+
+		} // for end
+
+	} // end else
+	status = FSUCCESS;
+	return status;
+}
+
+FSTATUS GetMCGroups(struct oib_port *port,
+			EUI64 portGuid,
+			FabricData_t *fabricp,
+			int quiet, FILE *m_verbose_file)
+{
+
+	QUERY				 query;
+	FSTATUS 			 status;
+	PQUERY_RESULT_VALUES pQueryResults = NULL;
+
+	memset(&query, 0, sizeof(query));	// initialize reserved fields
+	query.InputType 	= InputTypeNoInput;
+	query.OutputType 	=  OutputTypeMcMemberRecord;
+
+
+
+	DBGPRINT("Query: Input=%s, Output=%s\n",
+				   		iba_sd_query_input_type_msg(query.InputType),
+					   	iba_sd_query_result_type_msg(query.OutputType));
+
+	// this call is synchronous
+	status = oib_query_sa(port, &query, &pQueryResults);
+
+	if (! pQueryResults) {
+		fprintf(stderr, "%*sSA McmemberRecord query Failed: %s\n", 0, "", iba_fstatus_msg(status));
+		status = FERROR;
+		// oib_query_sa will have allocated a result buffer
+		// we must free the buffer when we are done with it
+		if (pQueryResults)
+			oib_free_query_result_buffer(pQueryResults);
+		return status;
+	} else if (pQueryResults->Status != FSUCCESS) {
+		fprintf(stderr, "%*sSA McMemberRecord query Failed: %s MadStatus 0x%x: %s\n", 0, "",
+				iba_fstatus_msg(pQueryResults->Status),
+			   	pQueryResults->MadStatus, iba_sd_mad_status_msg(pQueryResults->MadStatus));
+		status = FERROR;
+		// oib_query_sa will have allocated a result buffer
+		// we must free the buffer when we are done with it
+		if (pQueryResults)
+			oib_free_query_result_buffer(pQueryResults);
+		return status;
+	} else if (pQueryResults->ResultDataSize == 0) {
+		fprintf(stderr, "%*sNo multicast group Records Returned\n", 0, "");
+		//release result buffer
+		if (pQueryResults)
+			oib_free_query_result_buffer(pQueryResults);
+		status = FUNAVAILABLE;
+		return status;
+	} else { //// add different mcmember record whether is stl or the older version
+		MCMEMBER_RECORD_RESULTS *pIbMCRR = (MCMEMBER_RECORD_RESULTS*)pQueryResults->QueryResult;
+		DBGPRINT("MadStatus 0x%x: %s\n", pQueryResults->MadStatus,
+					   				iba_sd_mad_status_msg(pQueryResults->MadStatus));
+		DBGPRINT("%d Bytes Returned\n", pQueryResults->ResultDataSize);
+
+
+		fabricp->NumOfMcGroups = pIbMCRR->NumMcMemberRecords;
+
+		int i;
+		for (i=0; i< pIbMCRR->NumMcMemberRecords; ++i)
+		{
+			McMemberData	*mcmemberp;
+			boolean 	new_node;
+
+			if (i%PROGRESS_FREQ == 0)
+				if (! quiet) ProgressPrint(FALSE, "Processed %6d of %6d McGroups...", i, pIbMCRR->NumMcMemberRecords);
+
+
+			mcmemberp = FabricDataAddMCGroup(fabricp, port, quiet, &pIbMCRR->McMemberRecords[i], &new_node, m_verbose_file);
+			if (!mcmemberp) {
+				// oib_query_sa will have allocated a result buffer
+				// we must free the buffer when we are done with it
+				if (pQueryResults)
+					oib_free_query_result_buffer(pQueryResults);
+				return FERROR;
+			}
+
+			 McGroupData *pMCGH = (McGroupData *)QListObj(QListHead(&mcmemberp->AllMcGroupMembers));
+			if ((pMCGH->PortGID.AsReg64s.H ==0) && (pMCGH->PortGID.AsReg64s.L==0))
+				fabricp->NumOfMcGroups--;
+		} // for end
+
+	} // end else
+	if (! quiet) ProgressPrint(TRUE, "Done Getting All MC Records");
+
+	return FSUCCESS;
+
+}
+
+
+
+FSTATUS GetAllMCGroups(EUI64 portGuid, FabricData_t *fabricp, Point *focus, int quiet)
+{
+	struct oib_port *oib_port_session = NULL;
+	FSTATUS fstatus = FSUCCESS;
+
+	fstatus = oib_open_port_by_guid(&oib_port_session, portGuid);
+	if (fstatus != FSUCCESS)
+		fprintf(stderr, "%s: Unable to open fabric interface.\n", g_Top_cmdname);
+	else  {
+		fstatus = GetMCGroups(oib_port_session, portGuid, fabricp, quiet, g_verbose_file);
+		oib_close_port(oib_port_session);
 	}
 
 	return fstatus;
@@ -2072,7 +2291,7 @@ fail:
    use PaClient if available, else issue direct PMA query
  */
 FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabricp,
-				Point *focus, boolean limitstats, boolean quiet)
+				Point *focus, boolean limitstats, boolean quiet, uint32 begin, uint32 end)
 {
 	FSTATUS status;
 	cl_map_item_t *p;
@@ -2154,51 +2373,77 @@ FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabric
 				continue;
 
 #ifdef PRODUCT_OPENIB_FF
+
 			/* use PaClient if available */
 			if (g_paclient_state == PACLIENT_OPERATIONAL)
 			{
-				STL_PORT_COUNTERS_DATA consolidatedPortCounters = {0};
-				STL_PA_IMAGE_ID_DATA imageIdQuery = {PACLIENT_IMAGE_CURRENT, 0};
-
 				if (!first_portp)
 					lid = portp->PortInfo.LID;
-				status = pa_client_get_port_stats(g_portHandle, imageIdQuery, lid, portp->PortNum,
-					NULL, &consolidatedPortCounters, NULL, 0, 1);
-				if (FSUCCESS == status)
-				{
-					PortStatusData.LinkErrorRecovery  = consolidatedPortCounters.linkErrorRecovery;
-					PortStatusData.LinkDowned  = consolidatedPortCounters.linkDowned;
-					PortStatusData.PortRcvErrors = consolidatedPortCounters.portRcvErrors;
-					PortStatusData.PortRcvRemotePhysicalErrors = consolidatedPortCounters.portRcvRemotePhysicalErrors;
-					PortStatusData.PortRcvSwitchRelayErrors = consolidatedPortCounters.portRcvSwitchRelayErrors;
-					PortStatusData.PortXmitDiscards = consolidatedPortCounters.portXmitDiscards;
-					PortStatusData.PortXmitConstraintErrors = consolidatedPortCounters.portXmitConstraintErrors;
-					PortStatusData.PortRcvConstraintErrors = consolidatedPortCounters.portRcvConstraintErrors;
-					PortStatusData.LocalLinkIntegrityErrors = consolidatedPortCounters.localLinkIntegrityErrors;
-					PortStatusData.ExcessiveBufferOverruns = consolidatedPortCounters.excessiveBufferOverruns;
-					PortStatusData.PortXmitData = consolidatedPortCounters.portXmitData;
-					PortStatusData.PortRcvData = consolidatedPortCounters.portRcvData;
-					PortStatusData.PortXmitPkts = consolidatedPortCounters.portXmitPkts;
-					PortStatusData.PortRcvPkts = consolidatedPortCounters.portRcvPkts;
-					PortStatusData.PortMulticastXmitPkts = consolidatedPortCounters.portMulticastXmitPkts;
-					PortStatusData.PortMulticastRcvPkts = consolidatedPortCounters.portMulticastRcvPkts;
-					PortStatusData.PortXmitWait = consolidatedPortCounters.portXmitWait;
-					PortStatusData.SwPortCongestion = consolidatedPortCounters.swPortCongestion;
-					PortStatusData.PortRcvFECN = consolidatedPortCounters.portRcvFECN;
-					PortStatusData.PortRcvBECN = consolidatedPortCounters.portRcvBECN;
-					PortStatusData.PortXmitTimeCong = consolidatedPortCounters.portXmitTimeCong;
-					PortStatusData.PortXmitWastedBW = consolidatedPortCounters.portXmitWastedBW;
-					PortStatusData.PortXmitWaitData = consolidatedPortCounters.portXmitWaitData;
-					PortStatusData.PortRcvBubble = consolidatedPortCounters.portRcvBubble;
-					PortStatusData.PortMarkFECN = consolidatedPortCounters.portMarkFECN;
-					PortStatusData.FMConfigErrors = consolidatedPortCounters.fmConfigErrors;
-					PortStatusData.UncorrectableErrors = consolidatedPortCounters.uncorrectableErrors;
-					PortStatusData.lq.AsReg8 = consolidatedPortCounters.lq.AsReg8;
+
+				status = FERROR;
+				//verify pa has necessary capabilities
+				STL_CLASS_PORT_INFO * portInfo;
+				if ((portInfo = iba_pa_classportinfo_response_query(g_portHandle))!= NULL){
+					STL_PA_CLASS_PORT_INFO_CAPABILITY_MASK paCap;
+					memcpy(&paCap, &portInfo->CapMask, sizeof(STL_PA_CLASS_PORT_INFO_CAPABILITY_MASK));
+					//if trying to query by time, check if feature available
+					if (begin || end){
+						if (!(paCap.s.IsAbsTimeQuerySupported)){
+							DBGPRINT("PA does not support time queries\n");
+							status = FERROR;
+						}else{
+							status = FSUCCESS;
+						}
+					}else {
+						status = FSUCCESS;
+					}
+					MemoryDeallocate(portInfo);
+				}else {
+						DBGPRINT("failed to determine PA capabilities\n");
+						status = FERROR;
+				}
+
+				if (status == FSUCCESS){
+					STL_PORT_COUNTERS_DATA portCounters1 = {0};
+					STL_PA_IMAGE_ID_DATA imageIdQuery1 = {0};
+
+					status = pa_client_get_port_stats(g_portHandle, imageIdQuery1, lid, portp->PortNum,
+							NULL, &portCounters1, NULL, 0, !(end || begin)); //last param is user_counters flag,
+					//if begin or end set we want raw
+					//counters
+					if (FSUCCESS == status){
+						if (begin && end){// need to perform another query
+							STL_PA_IMAGE_ID_DATA imageIdQuery2 = {0};
+
+							imageIdQuery2.imageNumber = PACLIENT_IMAGE_TIMED;
+							imageIdQuery2.imageTime.absoluteTime = begin; //we got counters for end first
+
+							STL_PORT_COUNTERS_DATA portCounters2 = {0};
+
+							status = pa_client_get_port_stats(g_portHandle, imageIdQuery2, lid, portp->PortNum,
+									NULL, &portCounters2, NULL, 0, 0);
+
+							if (FSUCCESS == status){
+								CounterSelectMask_t clearedCounters = DiffPACounters(&portCounters1, &portCounters2, &portCounters1);
+								if (clearedCounters.AsReg32){
+									char counterBuf[128];
+									FormatStlCounterSelectMask(counterBuf, clearedCounters);
+									fprintf(stderr, "Counters reset, reporting latest count: %s\n", counterBuf);
+								}
+								StlPortCountersToPortStatus(&portCounters1, &PortStatusData);
+							}
+						}else{
+							StlPortCountersToPortStatus(&portCounters1, &PortStatusData);
+						}
+					}
 				}
 			}
 #endif
 			/* issue direct PMA query */
 			else {
+				if (begin || end){
+					continue;
+				}
 				STL_PORT_STATUS_RSP PortStatus;
 
 				if (! PortHasPma(portp))
@@ -2363,6 +2608,52 @@ PQUERY_RESULT_VALUES GetAllVFInfo(struct oib_port *port,
 
 }	// End of GetAllVFInfo
 
+void copySCSCTable(int *ix_rec_scsc, STL_SCSCMAP *pQOSSCSC, STL_SC_MAPPING_TABLE_RECORD_RESULTS *pSCSCRR, STL_SC_MAPPING_TABLE_RECORD **pSCSCR_2, PortData *portp)
+{
+	for ( ; ((*ix_rec_scsc) < pSCSCRR->NumSCSCTableRecords) &&
+	    ((*pSCSCR_2)->RID.LID == portp->EndPortLID) &&
+		((*pSCSCR_2)->RID.InputPort == portp->PortNum);
+		(*ix_rec_scsc)++, (*pSCSCR_2)++ )
+	{
+		uint8 out_port;
+		out_port = (*pSCSCR_2)->RID.OutputPort;
+		memcpy(&(pQOSSCSC[out_port].SCSCMap), &((*pSCSCR_2)->Map), sizeof(STL_SCSCMAP));
+	}
+}
+
+void copyVLArbTable(int *ix_rec_vla, STL_VLARB_TABLE *pQOSVLARB, STL_VLARBTABLE_RECORD_RESULTS *pVLATRR, STL_VLARBTABLE_RECORD **pVLATR_2, PortData *portp)
+{
+	int ix, ix_2;
+	for ( ix = 0; ((*ix_rec_vla) < pVLATRR->NumVLArbTableRecords) &&
+	    (ix < STL_VLARB_NUM_SECTIONS) &&
+	    ((*pVLATR_2)->RID.LID == portp->EndPortLID) &&
+	    ((*pVLATR_2)->RID.OutputPortNum == portp->PortNum);
+	    (*ix_rec_vla)++, (*pVLATR_2)++ )
+	{
+		for (ix_2 = 0; ix_2 < VLARB_TABLE_LENGTH; ix_2++)
+		{
+			pQOSVLARB[ix].Elements[ix_2] = (*pVLATR_2)->VLArbTable.Elements[ix_2];
+		}
+	}
+}
+
+void copyPKeyTable(int *ix_rec_pk, STL_PKEY_ELEMENT **pPKEY, STL_PKEYTABLE_RECORD_RESULTS *pPKTRR, STL_P_KEY_TABLE_RECORD **pPKTR_2, PortData *portp, uint16 pkey_cap)
+{
+	int ix;
+	for ( ; ((*ix_rec_pk) < pPKTRR->NumPKeyTableRecords) &&
+	    ((*pPKTR_2)->RID.LID == portp->EndPortLID) &&
+	    ((*pPKTR_2)->RID.PortNum == portp->PortNum);
+	    (*pPKTR_2)++, (*ix_rec_pk)++)
+	{
+		uint32 ix_base = (*pPKTR_2)->RID.Blocknum *NUM_PKEY_ELEMENTS_BLOCK;
+		for (ix = 0; (ix < NUM_PKEY_ELEMENTS_BLOCK) &&
+		    ( (ix_base + ix) < pkey_cap); ix++, (*pPKEY)++ )
+		{
+			(*pPKEY)->AsReg16 = (*pPKTR_2)->PKeyTblData.PartitionTableBlock[ix].AsReg16;
+		}
+	}
+}
+
 // TBD - should we do whole fabric queries (which will be large responses)
 // or per port queries
 /* query all Port VL info from SA
@@ -2370,10 +2661,13 @@ PQUERY_RESULT_VALUES GetAllVFInfo(struct oib_port *port,
 static FSTATUS GetAllPortVLInfoSA(struct oib_port *port,
 								  FabricData_t *fabricp, 
 								  Point *focus, 
-								  int quiet)
+								  int quiet,
+								  int *use_scsc)
 {
 	FSTATUS	status = FSUCCESS;
-	int ix, ix_2, ix_node, ix_port, ix_rec;
+	int ix_node, ix_port;
+	int ix_rec_scsc = 0, ix_rec_slsc = 0, ix_rec_scsl = 0, ix_rec_scvlt = 0,
+		ix_rec_scvlnt = 0, ix_rec_vla = 0, ix_rec_pk = 0;
 
 	cl_map_item_t *p, *p2;
 	NodeData *nodep;
@@ -2683,6 +2977,14 @@ static FSTATUS GetAllPortVLInfoSA(struct oib_port *port,
 		iba_sd_mad_status_msg(pQueryResultsPKey->MadStatus));
 	DBGPRINT("%d Bytes Returned\n", pQueryResultsPKey->ResultDataSize);
 
+	STL_SCSCMAP basescsc;
+	uint8 i;
+	int found_scsc =0;
+	for (i = 0; i < STL_MAX_SCS; i++) {
+		basescsc.SCSCMap[i].SC = i;
+		basescsc.SCSCMap[i].Reserved = 0;
+	}
+
 	for ( p = cl_qmap_head(&fabricp->AllNodes), ix_node = 0; p != cl_qmap_end(&fabricp->AllNodes);
 			p = cl_qmap_next(p), ix_node++ )
 	{
@@ -2713,107 +3015,134 @@ static FSTATUS GetAllPortVLInfoSA(struct oib_port *port,
 
 			if (nodep->NodeInfo.NodeType == STL_NODE_SW && portp->PortNum) {
 				// switch external ports have SC2SC tables
-				for ( ix_rec = 0, pQOSSCSC = portp->pQOS->SC2SCMap, pSCSCR_2 = pSCSCR;
-					(ix_rec < pSCSCRR->NumSCSCTableRecords) && pSCSCR_2;
-					ix_rec++, pSCSCR_2++ )
+				pQOSSCSC = portp->pQOS->SC2SCMap;
+				if ( (pSCSCR_2) && (pSCSCR_2->RID.LID == portp->EndPortLID) && (pSCSCR_2->RID.InputPort == portp->PortNum) )
 				{
-					if ( (pSCSCR_2->RID.LID == portp->EndPortLID) &&
-							(pSCSCR_2->RID.InputPort == portp->PortNum) )
+					copySCSCTable(&ix_rec_scsc, pQOSSCSC, pSCSCRR, &pSCSCR_2, portp);
+				} else {
+					for ( ix_rec_scsc = 0, pSCSCR_2 = pSCSCR;
+						(ix_rec_scsc < pSCSCRR->NumSCSCTableRecords) && pSCSCR_2;
+						ix_rec_scsc++, pSCSCR_2++ )
 					{
-						// assume all the records for a given port are
-						// contiguous
-						// Add SCSC Table data to PortData
-						for ( ; (ix_rec < pSCSCRR->NumSCSCTableRecords) &&
-								(pSCSCR_2->RID.LID == portp->EndPortLID) &&
-								(pSCSCR_2->RID.InputPort == portp->PortNum);
-								ix_rec++, pSCSCR_2++ )
+						if ( (pSCSCR_2->RID.LID == portp->EndPortLID) &&
+							(pSCSCR_2->RID.InputPort == portp->PortNum) )
 						{
-							uint8 out_port;
-							out_port = pSCSCR_2->RID.OutputPort;
-							//Copy the map to the QOSData
-							memcpy(&(pQOSSCSC[out_port].SCSCMap), &(pSCSCR_2->Map), sizeof(STL_SCSCMAP));
+							// assume all the records for a given port are
+							// contiguous
+							// Add SCSC Table data to PortData
+							copySCSCTable(&ix_rec_scsc, pQOSSCSC, pSCSCRR, &pSCSCR_2, portp);
+							// check for SCSC transitions if needed
+							if ((*use_scsc) && (!found_scsc) && (memcmp(&(pSCSCR_2->Map), &(basescsc), sizeof(STL_SCSCMAP))!=0))
+								found_scsc = 1;
+							break;
 						}
-
-						break;
 					}
 
 				}	// End of for ( ix_rec = 0, pQOSSCSC = portp->pQOS->SC2SCMap
 			} else {
 				// HFIs and switch port 0 have SL2SC and SC2SL tables
 				// Find first SLSC record
-				for ( ix_rec = 0, pQOSSLSC = portp->pQOS-> SL2SCMap, pSLSCR_2 = pSLSCR;
-				  	(ix_rec < pSLSCRR->NumSLSCTableRecords) && pSLSCR_2;
-				  	ix_rec++, pSLSCR_2++ ) 
+				pQOSSLSC = portp->pQOS->SL2SCMap;
+				if ( pSLSCR_2 && pSLSCR_2->RID.LID == portp->EndPortLID)
 				{
-					if ( pSLSCR_2->RID.LID == portp->EndPortLID)
+					memcpy(pQOSSLSC, &(pSLSCR_2->SLSCMap), sizeof(STL_SLSCMAP));
+					pSLSCR_2++;
+				} else {
+					for ( ix_rec_slsc = 0, pSLSCR_2 = pSLSCR;
+					  	(ix_rec_slsc < pSLSCRR->NumSLSCTableRecords) && pSLSCR_2;
+					  	ix_rec_slsc++, pSLSCR_2++ ) 
 					{
-						// Add SLSC Table data to PortData
-						memcpy(pQOSSLSC, &(pSLSCR_2->SLSCMap), sizeof(STL_SLSCMAP));
-						break;
+						if ( pSLSCR_2->RID.LID == portp->EndPortLID)
+						{
+							// Add SLSC Table data to PortData
+							memcpy(pQOSSLSC, &(pSLSCR_2->SLSCMap), sizeof(STL_SLSCMAP));
+							pSLSCR_2++;
+							break;
+						}
 					}
 				}
 				// Find first SCSL record
-				for ( ix_rec = 0, pQOSSCSL = portp->pQOS-> SC2SLMap, pSCSLR_2 = pSCSLR;
-				  	(ix_rec < pSCSLRR->NumSCSLTableRecords) && pSCSLR_2;
-				  	ix_rec++, pSCSLR_2++ ) 
+				pQOSSCSL = portp->pQOS->SC2SLMap;
+				if (pSCSLR_2 && pSCSLR_2->RID.LID == portp->EndPortLID)
 				{
-					if ( pSCSLR_2->RID.LID == portp->EndPortLID)
+					memcpy(pQOSSCSL, &(pSCSLR_2->SCSLMap), sizeof(STL_SCSLMAP));
+					pSCSLR_2++;
+				} else {
+					for ( ix_rec_scsl = 0, pSCSLR_2 = pSCSLR;
+					  	(ix_rec_scsl < pSCSLRR->NumSCSLTableRecords) && pSCSLR_2;
+					  	ix_rec_scsl++, pSCSLR_2++ ) 
 					{
-						// Add SCSL Table data to PortData
-						memcpy(pQOSSCSL, &(pSCSLR_2->SCSLMap), sizeof(STL_SCSLMAP));
-						break;
+						if ( pSCSLR_2->RID.LID == portp->EndPortLID)
+						{
+							// Add SCSL Table data to PortData
+							memcpy(pQOSSCSL, &(pSCSLR_2->SCSLMap), sizeof(STL_SCSLMAP));
+							pSCSLR_2++;
+							break;
+						}
 					}
 				}
 			}
 
 			// Process SCVL Table Data
 			// Find first SCVLt record
-			for ( ix_rec = 0, pQOSSCVLt = portp->pQOS->SC2VLMaps, pSCVLtR_2 = pSCVLtR;
-				  (ix_rec < pSCVLtRR->NumSCVLtTableRecords) && pSCVLtR_2;
-				  ix_rec++, pSCVLtR_2++ ) 
+			pQOSSCVLt = portp->pQOS->SC2VLMaps;
+			if ( pSCVLtR_2 && (pSCVLtR_2->RID.LID == portp->EndPortLID) &&
+				(pSCVLtR_2->RID.Port == portp->PortNum) )
 			{
-				if ( (pSCVLtR_2->RID.LID == portp->EndPortLID) &&
-					 (pSCVLtR_2->RID.Port == portp->PortNum) ) 
+				memcpy(&(pQOSSCVLt[Enum_SCVLt].SCVLMap), &(pSCVLtR_2->SCVLMap), sizeof(STL_SCVLMAP));
+				pSCVLtR_2++;
+			} else {
+				for ( ix_rec_scvlt = 0, pSCVLtR_2 = pSCVLtR;
+					  (ix_rec_scvlt < pSCVLtRR->NumSCVLtTableRecords) && pSCVLtR_2;
+					  ix_rec_scvlt++, pSCVLtR_2++ ) 
 				{
-					// Add SCVLt Table data to PortData
-					memcpy(&(pQOSSCVLt[Enum_SCVLt].SCVLMap), &(pSCVLtR_2->SCVLMap), sizeof(STL_SCVLMAP));
-					break;
+					if ( (pSCVLtR_2->RID.LID == portp->EndPortLID) &&
+						 (pSCVLtR_2->RID.Port == portp->PortNum) ) 
+					{
+						// Add SCVLt Table data to PortData
+						memcpy(&(pQOSSCVLt[Enum_SCVLt].SCVLMap), &(pSCVLtR_2->SCVLMap), sizeof(STL_SCVLMAP));
+						pSCVLtR_2++;
+						break;
+					}
 				}
 			}
 			// SCVLnt
-			for ( ix_rec = 0, pQOSSCVLnt = portp->pQOS->SC2VLMaps, pSCVLntR_2 = pSCVLntR;
-				  (ix_rec < pSCVLntRR->NumSCVLntTableRecords) && pSCVLntR_2;
-				  ix_rec++, pSCVLntR_2++) {
-				if ( (pSCVLntR_2->RID.LID == portp->EndPortLID) &&
-					 (pSCVLntR_2->RID.Port == portp->PortNum)) {
-					// Add SCVLnt table data to PortData
-					memcpy(&(pQOSSCVLnt[Enum_SCVLnt].SCVLMap), &(pSCVLntR_2->SCVLMap), sizeof(STL_SCVLMAP));
-					break;
+			pQOSSCVLnt = portp->pQOS->SC2VLMaps;
+			if ( pSCVLntR_2 && (pSCVLntR_2->RID.LID == portp->EndPortLID) &&
+				(pSCVLntR_2->RID.Port == portp->PortNum) )
+			{
+				memcpy(&(pQOSSCVLnt[Enum_SCVLnt].SCVLMap), &(pSCVLntR_2->SCVLMap), sizeof(STL_SCVLMAP));
+				pSCVLntR_2++;
+			} else {
+				for ( ix_rec_scvlnt = 0, pQOSSCVLnt = portp->pQOS->SC2VLMaps, pSCVLntR_2 = pSCVLntR;
+					  (ix_rec_scvlnt < pSCVLntRR->NumSCVLntTableRecords) && pSCVLntR_2;
+					  ix_rec_scvlnt++, pSCVLntR_2++) {
+					if ( (pSCVLntR_2->RID.LID == portp->EndPortLID) &&
+						 (pSCVLntR_2->RID.Port == portp->PortNum)) {
+						// Add SCVLnt table data to PortData
+						memcpy(&(pQOSSCVLnt[Enum_SCVLnt].SCVLMap), &(pSCVLntR_2->SCVLMap), sizeof(STL_SCVLMAP));
+						pSCVLntR_2++;
+						break;
+					}
 				}
 			}
 
 			// Process VL Arb Table data
 			// Find first VL Arb record
-			for ( ix_rec = 0, pQOSVLARB = portp->pQOS->VLArbTable, pVLATR_2 = pVLATR;
-					(ix_rec < pVLATRR->NumVLArbTableRecords) && pVLATR_2;
-					ix_rec++, pVLATR_2++ )
+			pQOSVLARB = portp->pQOS->VLArbTable;
+			if ( pVLATR_2 && (pVLATR_2->RID.LID == portp->EndPortLID) &&
+				(pVLATR_2->RID.OutputPortNum == portp->PortNum) )
 			{
-				if ( (pVLATR_2->RID.LID == portp->EndPortLID) &&
-						(pVLATR_2->RID.OutputPortNum == portp->PortNum) )
+				copyVLArbTable(&ix_rec_vla, pQOSVLARB, pVLATRR, &pVLATR_2, portp);
+			} else {
+				for ( ix_rec_vla = 0, pQOSVLARB = portp->pQOS->VLArbTable, pVLATR_2 = pVLATR;
+					(ix_rec_vla < pVLATRR->NumVLArbTableRecords) && pVLATR_2;
+					ix_rec_vla++, pVLATR_2++ )
 				{
-					// Add VL Arb Table data to PortData
-					for ( ix = 0; (ix_rec < pVLATRR->NumVLArbTableRecords) &&
-							(ix < STL_VLARB_NUM_SECTIONS) &&
-							(pVLATR_2->RID.LID == portp->EndPortLID) &&
-							(pVLATR_2->RID.OutputPortNum == portp->PortNum);
-							ix_rec++, ix++, pVLATR_2++ )
+					if ( (pVLATR_2->RID.LID == portp->EndPortLID) &&
+						(pVLATR_2->RID.OutputPortNum == portp->PortNum) )
 					{
-						// Copy over all the elements. Works even if its actually the preempt matrix
-						for (ix_2 = 0; ix_2 < VLARB_TABLE_LENGTH; ix_2++)
-						{
-							pQOSVLARB[ix].Elements[ix_2] = pVLATR_2->VLArbTable.Elements[ix_2];
-						}	// End of for (ix_2 = 0; ix_2 < VLARB_TABLE_LENGTH
-
+						copyVLArbTable(&ix_rec_vla, pQOSVLARB, pVLATRR, &pVLATR_2, portp);
 					}	// End of for ( ix = 0; (ix_rec <
 
 					break;
@@ -2827,30 +3156,23 @@ static FSTATUS GetAllPortVLInfoSA(struct oib_port *port,
 			pkey_cap = PortPartitionTableSize(portp);
 
 			// Find P_Key record
-			for ( ix_rec = 0, pPKEY = portp->pPartitionTable, pPKTR_2 = pPKTR;
-					(ix_rec < pPKTRR->NumPKeyTableRecords) && pPKTR_2;
-					ix_rec++, pPKTR_2++ )
+			pPKEY = portp->pPartitionTable;
+			if ( pPKTR_2 && (pPKTR_2->RID.LID == portp->EndPortLID) &&
+				(pPKTR_2->RID.PortNum == portp->PortNum) )
 			{
-				if ( (pPKTR_2->RID.LID == portp->EndPortLID) &&
+				copyPKeyTable(&ix_rec_pk, &pPKEY, pPKTRR, &pPKTR_2, portp, pkey_cap);
+			} else {
+				for ( ix_rec_pk = 0, pPKTR_2 = pPKTR;
+					(ix_rec_pk < pPKTRR->NumPKeyTableRecords) && pPKTR_2;
+					ix_rec_pk++, pPKTR_2++ )
+				{
+					if ( (pPKTR_2->RID.LID == portp->EndPortLID) &&
 						(pPKTR_2->RID.PortNum == portp->PortNum) )
 
-				{
-					// Add P_Key data to PortData
-					for ( ; (ix_rec < pPKTRR->NumPKeyTableRecords) &&
-							(pPKTR_2->RID.LID == portp->EndPortLID) &&
-							(pPKTR_2->RID.PortNum == portp->PortNum); pPKTR_2++ )
 					{
-						uint32 ix_base = pPKTR->RID.Blocknum * NUM_PKEY_ELEMENTS_BLOCK;
-
-						for ( ix_2 = 0; (ix_2 < NUM_PKEY_ELEMENTS_BLOCK) &&
-								( (ix_base + ix_2) < pkey_cap); ix_2++, pPKEY++ )
-						{
-							pPKEY->AsReg16 = pPKTR_2->PKeyTblData.PartitionTableBlock[ix_2].AsReg16;
-						}	// End of for ( ix_2 = 0; (ix_2 < NUM_PKEY_ELEMENTS_BLOCK
-
+						copyPKeyTable(&ix_rec_pk, &pPKEY, pPKTRR, &pPKTR_2, portp, pkey_cap);
+						break;
 					}	// End of for ( ; (ix_rec < pPKTRR->NumPKeyTableRecords
-
-					break;
 				}
 
 			}	// End of for ( ix_rec = 0, pPKEY = portp->pPartitionTable
@@ -2860,6 +3182,7 @@ static FSTATUS GetAllPortVLInfoSA(struct oib_port *port,
 	}	// End of for ( p=cl_qmap_head(&fabricp->AllNodes)
 
 	fabricp->flags |= FF_QOSDATA;
+	(*use_scsc) &= found_scsc;
 
 done:
 	// Free query results buffers
@@ -2891,7 +3214,8 @@ fail:
 static FSTATUS GetAllPortVLInfoDirect(struct oib_port *port,
 									  FabricData_t *fabricp, 
 									  Point *focus, 
-									  int quiet)
+									  int quiet,
+									  int *use_scsc)
 {
 	FSTATUS	status = FSUCCESS;
 	int ix_node, ix_port, block;
@@ -2906,6 +3230,14 @@ static FSTATUS GetAllPortVLInfoDirect(struct oib_port *port,
 	uint8 out_port;
 
 	if (! quiet) ProgressPrint(TRUE, "Getting All Port VL Tables...");
+
+	STL_SCSCMAP basescsc;
+	int found_scsc = 0;
+	uint8 i;
+	for (i = 0; i < STL_MAX_SCS; i++) {
+		basescsc.SCSCMap[i].SC = i;
+		basescsc.SCSCMap[i].Reserved = 0;
+	}
 
 	for ( p = cl_qmap_head(&fabricp->AllNodes), ix_node = 0; p != cl_qmap_end(&fabricp->AllNodes);
 			p = cl_qmap_next(p), ix_node++ )
@@ -2963,6 +3295,9 @@ static FSTATUS GetAllPortVLInfoDirect(struct oib_port *port,
 					} else {
 						// Copy the SCSC map to the QOS data
 						memcpy(&(pQOSSCSC[out_port].SCSCMap), &SCSCMap, sizeof(STL_SCSCMAP));
+						// check for SCSC transitions if needed
+						if((*use_scsc) && (!found_scsc) && (memcmp(&(pQOSSCSC[out_port].SCSCMap), &(basescsc), sizeof(STL_SCSCMAP))!=0))
+							found_scsc = 1;
 					}
 				}
 			} else {
@@ -3089,6 +3424,7 @@ static FSTATUS GetAllPortVLInfoDirect(struct oib_port *port,
 	}	// End of for ( p=cl_qmap_head(&fabricp->AllNodes)
 
 	fabricp->flags |= FF_QOSDATA;
+	(*use_scsc) &= found_scsc;
 
 	if (! quiet) ProgressPrint(TRUE, "Done Getting All Port VL Tables");
 	return (status);
@@ -3097,7 +3433,7 @@ static FSTATUS GetAllPortVLInfoDirect(struct oib_port *port,
 
 /* query all Port VL info
  */
-FSTATUS GetAllPortVLInfo(EUI64 portGuid, FabricData_t *fabricp, Point *focus, int quiet)
+FSTATUS GetAllPortVLInfo(EUI64 portGuid, FabricData_t *fabricp, Point *focus, int quiet, int *use_scsc)
 {
 	struct oib_port *oib_port_session = NULL;
 	FSTATUS fstatus = FSUCCESS;
@@ -3108,9 +3444,9 @@ FSTATUS GetAllPortVLInfo(EUI64 portGuid, FabricData_t *fabricp, Point *focus, in
 				g_Top_cmdname);
 	} else {
 		if (fabricp->flags & FF_SMADIRECT) {
-			fstatus = GetAllPortVLInfoDirect(oib_port_session, fabricp, focus, quiet);
+			fstatus = GetAllPortVLInfoDirect(oib_port_session, fabricp, focus, quiet, use_scsc);
 		} else {
-			fstatus = GetAllPortVLInfoSA(oib_port_session, fabricp, focus, quiet);
+			fstatus = GetAllPortVLInfoSA(oib_port_session, fabricp, focus, quiet, use_scsc);
 		}
 		oib_close_port(oib_port_session);
 	}

@@ -69,6 +69,35 @@ typedef MAD STL_MAD;
 #define STL_MCLASS_ATTRIB_ID_INFORM_INFO		0x0003
 
 /*
+ * Common ClassPortInfo Capability Bits
+ */
+#define STL_CLASS_PORT_CAPMASK_TRAP             0x0001 /* Can generate traps */
+#define STL_CLASS_PORT_CAPMASK_NOTICE           0x0002 /* Implements Get/Set Notice */
+#define STL_CLASS_PORT_CAPMASK_CM2              0x0004 /* Implements Additional Class Specific Capabilities (CapMask2) */
+
+static __inline void
+StlCommonClassPortInfoCapMask(char buf[80], uint16 cmask)
+{
+	if (!cmask) {
+		snprintf(buf, 80, "-");
+	} else {
+		snprintf(buf, 80, "%s%s%s",
+			(cmask & STL_CLASS_PORT_CAPMASK_TRAP) ? "Trap " : "",
+			(cmask & STL_CLASS_PORT_CAPMASK_NOTICE) ? "Notice " : "",
+			(cmask & STL_CLASS_PORT_CAPMASK_CM2) ? "CapMask2 " : "");
+	}
+}
+static __inline void
+StlCommonClassPortInfoCapMask2(char buf[80], uint32 cmask)
+{
+	if (!cmask) {
+		snprintf(buf, 80, "-");
+	} else {
+		buf[0] = '\0';
+	}
+}
+
+/*
  * Class Port Info: 
  * 
  * This attribute is needed only for use in fabrics that need long LIDs or 

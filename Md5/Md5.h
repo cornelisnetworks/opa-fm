@@ -30,10 +30,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef MD5_H_INCLUDED
 #define MD5_H_INCLUDED
 /*!
- @file    $Source: /cvs/ics/Md5/Md5.h,v $
- $Name: ALL_EMB_ATOM_ALL_10_1-BRANCH_10_1_0_0_145 $
- $Revision: 1.5 $
- $Date: 2016/04/06 10:49:38 $
+ @file    $Source$
+ $Name$
+ $Revision$
+ $Date$
  @brief   Md5 API
  */
 

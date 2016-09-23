@@ -72,7 +72,7 @@ void
 MemoryDisplayUsage( int method, uint32 minSize, uint32 minTick );
 
 /* Turn on memory allocation tracking in debug builds if not already turned on. */
-#if defined( IB_DEBUG )
+#if defined( IB_DEBUG ) && 0 /* disable memory tracker on debug builds.  Too disruptive */
 	#ifndef MEM_TRACK_ON
 		#define MEM_TRACK_ON
 	#endif /* MEM_TRACK_ON */
@@ -291,6 +291,20 @@ FSTATUS StringToGid(uint64 *hValue, uint64 *lValue, const char* str, char **endp
 // (K==KB, etc)
 // converted to an absolute number of bytes
 FSTATUS StringToUint64Bytes(uint64 *value, const char* str, char **endptr, int base, boolean skip_trail_whitespace);
+/**
+ * StringToDateTime - parse a string to return a date/time
+ *
+ * @param value  - will contain date as # of seconds since epoch if parsing successful
+ * @param str    - the string representation of the date to be parsed
+ *
+ * @return - FSTATUS indicating success or failure of parsing:
+ * 			 FSUCCESS - successful parsing
+ * 			 FINVALID_PARAMETER - str not valid date/time or not in valid format
+ * 			 FINVALID_SETTING - relative value out of range
+ * 			 FINSUFFICIENT_MEMORY - memory could not be allocated to parse string
+ * 			 FERROR - other error parsing string
+ */
+FSTATUS StringToDateTime(uint32 *value, const char * str);
 
 #if defined(VXWORKS)
 /* internal private functions not for general use, these are supplied

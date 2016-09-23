@@ -48,7 +48,7 @@ check_default()
 {
 	diff /etc/sysconfig/opafm.xml-sample /etc/sysconfig/opafm.xml
 	[ $? != 0 ] && echo "FAIL: installed does not match sample"
-	diff /etc/sysconfig/opafm.xml-sample /opt/opafm/etc/opafm.xml
+	diff /etc/sysconfig/opafm.xml-sample /usr/lib/opa-fm/etc/opafm.xml
 	[ $? != 0 ] && echo "FAIL: sample does not match default"
 }
 
@@ -56,7 +56,7 @@ check_nodefault()
 {
 	diff /etc/sysconfig/opafm.xml-sample /etc/sysconfig/opafm.xml
 	[ $? != 0 ] || echo "FAIL: installed should not match sample"
-	diff /etc/sysconfig/opafm.xml-sample /opt/opafm/etc/opafm.xml
+	diff /etc/sysconfig/opafm.xml-sample /usr/lib/opa-fm/etc/opafm.xml
 	[ $? != 0 ] && echo "FAIL: sample does not match default"
 }
 
@@ -89,7 +89,7 @@ check_norpmnew
 echo "========================================================================="
 echo "Install with iview_fm.config matching 4.4 version"
 rm_config
-cp /opt/opafm/etc/iview_fm.config.4x /etc/sysconfig/iview_fm.config
+cp /usr/lib/opa-fm/etc/iview_fm.config.4x /etc/sysconfig/iview_fm.config
 ./INSTALL -a
 check_default
 check_iview
@@ -98,7 +98,7 @@ check_norpmnew
 echo "========================================================================="
 echo "Install with iview_fm.config matching 4.3 version"
 rm_config
-cp /opt/opafm/etc/iview_fm.config.4.3 /etc/sysconfig/iview_fm.config
+cp /usr/lib/opa-fm/etc/iview_fm.config.4.3 /etc/sysconfig/iview_fm.config
 ./INSTALL -a
 check_default
 check_iview
@@ -107,7 +107,7 @@ check_norpmnew
 echo "========================================================================="
 echo "Install with iview_fm.config matching 4.3.1 version"
 rm_config
-cp /opt/opafm/etc/iview_fm.config.4.3.1 /etc/sysconfig/iview_fm.config
+cp /usr/lib/opa-fm/etc/iview_fm.config.4.3.1 /etc/sysconfig/iview_fm.config
 ./INSTALL -a
 check_default
 check_iview
@@ -116,7 +116,7 @@ check_norpmnew
 echo "========================================================================="
 echo "Install with iview_fm.config matching 4.2.1.2.1 version"
 rm_config
-cp /opt/opafm/etc/iview_fm.config.4.2.1.2.1 /etc/sysconfig/iview_fm.config
+cp /usr/lib/opa-fm/etc/iview_fm.config.4.2.1.2.1 /etc/sysconfig/iview_fm.config
 ./INSTALL -a
 check_default
 check_iview
@@ -125,7 +125,7 @@ check_norpmnew
 echo "========================================================================="
 echo "Install with opafm.xml matching 4.4 version"
 rm_config
-cp /opt/opafm/etc/opafm.xml /etc/sysconfig/opafm.xml
+cp /usr/lib/opa-fm/etc/opafm.xml /etc/sysconfig/opafm.xml
 ./INSTALL -a
 check_default
 check_noiview
@@ -134,7 +134,7 @@ check_norpmnew
 echo "========================================================================="
 echo "Install with opafm.xml matching sample but not 4.4 version (eg. upgrade)"
 rm_config
-cp /opt/opafm/etc/opafm.xml /etc/sysconfig/opafm.xml
+cp /usr/lib/opa-fm/etc/opafm.xml /etc/sysconfig/opafm.xml
 echo "<!-- extra line -->" >> /etc/sysconfig/opafm.xml
 cp /etc/sysconfig/opafm.xml /etc/sysconfig/opafm.xml-sample
 ./INSTALL -a
@@ -145,7 +145,7 @@ check_norpmnew
 echo "========================================================================="
 echo "Install with modified opafm.xml"
 rm_config
-cp /opt/opafm/etc/opafm.xml /etc/sysconfig/opafm.xml
+cp /usr/lib/opa-fm/etc/opafm.xml /etc/sysconfig/opafm.xml
 echo "<!-- extra line -->" >> /etc/sysconfig/opafm.xml
 ./INSTALL -a
 check_nodefault
@@ -155,7 +155,7 @@ check_norpmnew
 echo "========================================================================="
 echo "Install with modified iview_fm.config"
 rm_config
-cp /opt/opafm/etc/iview_fm.config.4x /etc/sysconfig/iview_fm.config
+cp /usr/lib/opa-fm/etc/iview_fm.config.4x /etc/sysconfig/iview_fm.config
 echo "#extra line" >> /etc/sysconfig/iview_fm.config
 ./INSTALL -a
 check_nodefault

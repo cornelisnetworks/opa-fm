@@ -88,7 +88,17 @@ typedef enum {
 	ContextExist = 3,           // general duplicate request
     ContextExistGetMulti = 4    // existing getMult request
 } rmpp_context_get_t;
-
+static __inline char *
+rmpp_context_get_totext(rmpp_context_get_t status)
+{
+	switch (status) {
+	case ContextAllocated: return "Allocated";
+	case ContextNotAvailable: return "NotAvailable";
+	case ContextExist: return "Exist";
+	case ContextExistGetMulti: return "ExistGetMulti";
+	default: return "Unknown";
+	}
+}
 
 extern uint32_t rmpp_sma_spoofing_check_get(void);
 extern void rmpp_sma_spoofing_check_set(uint32_t value);
