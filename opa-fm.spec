@@ -153,6 +153,6 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Thu Jun 2 2016 Anton Bodner <anton.bodner@intel.com> - 10.3.0.0-56
+* Fri Sep 23 2016 Anton Bodner <anton.bodner@intel.com> - 10.3.0.0-56
 - Update to latest from build 10.3.0.0.58 (FM 10.3.0.0.56)
 
