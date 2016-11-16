@@ -2456,7 +2456,7 @@ QUERY:
 			if ( $query ) {
 				goto QUERY;
 			}
-			$FabricChassisPackages="$all_packages";
+			$FabricChassisPackages="$packages";
 			$parallel=1;
 			print "After push, the firmware may be optionally selected or booted\n";
 			if (GetYesNo("Would you like to run the firmware now?", "n") ) {
@@ -2490,7 +2490,7 @@ QUERY:
 		}
 	} until (GetYesNo("Are you sure you want to proceed?", "n") );
 	if ( "$action" ne "skip" ) {
-		my $pathnames=expand_pathnames($FabricChassisPackages);
+		my $pathnames=expand_pathnames($all_packages);
 		if ( $parallel ) {
 			return run_fabric_cmd("$BIN_DIR/opachassisadmin $Sopt -F $FabricChassisFile -P '$pathnames' -a $action upgrade");
 		} else {
@@ -3103,7 +3103,7 @@ sub ext_mgmt_sw_fwpush
 			print "The following firmware files will be used:\n";
 			$all_packages =~ s/^/    /mg;
 			print "$all_packages";
-			$FabricExtMgmtSwPackages="$all_packages";
+			$FabricExtMgmtSwPackages="$packages";
 			$parallel=1;
 			print "After upgrade, the switch may be optionally rebooted\n";
 			if (GetYesNo("Would you like to reboot the switch after the update?", "n") ) {
@@ -3142,7 +3142,7 @@ sub ext_mgmt_sw_fwpush
 		}
 	} until (GetYesNo("Are you sure you want to proceed?", "n") );
 	if ( "$action" ne "skip" ) {
-		my $pathnames=expand_pathnames($FabricExtMgmtSwPackages);
+		my $pathnames=expand_pathnames($all_packages);
 		if ( $parallel ) {
 			return run_fabric_cmd("$BIN_DIR/opaswitchadmin $Oopt -L $FabricExtMgmtSwFile -P '$pathnames' -a $action upgrade");
 		} else {

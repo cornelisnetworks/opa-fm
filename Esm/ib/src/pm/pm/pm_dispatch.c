@@ -1287,37 +1287,30 @@ nomerge:
 
 size_t CalculatePortInPacket(PmDispatcherNode_t *dispnode, PmDispatcherPacket_t *disppacket)
 {
-    uint8   NumVLs = 0;
+	uint8   NumVLs = 0;
 
 	switch (dispnode->info.state) {
 	case PM_DISP_NODE_NONE:                      return(-1);
 	case PM_DISP_NODE_CLASS_INFO:                return(-1);
 	case PM_DISP_NODE_GET_DATACOUNTERS:
-		if (pm_config.process_vl_counters){
-			if (disppacket->numPorts){
-				NumVLs = disppacket->DispPorts[0].dispNodeSwPort->NumVLs;
-			}
-			else {
-				NumVLs = dispnode->info.nextPort->NumVLs;
-			}
-		}   
-		if (dispnode->info.pmnodep->nodeType == STL_NODE_SW) 
-			return( sizeof(struct _port_dpctrs)+(NumVLs-1)*sizeof(struct _vls_dpctrs) );
+		if (pm_config.process_vl_counters) {
+			if (!disppacket->numVLs)
+				disppacket->numVLs = dispnode->info.nextPort->NumVLs;
+			NumVLs = disppacket->numVLs;
+		}
+		if (dispnode->info.pmnodep->nodeType == STL_NODE_SW)
+			return(sizeof(struct _port_dpctrs) + (NumVLs - 1) * sizeof(struct _vls_dpctrs));
 		else
-			return( sizeof(STL_PORT_STATUS_RSP)+(NumVLs-1)*sizeof(struct _vls_pctrs) );
+			return(sizeof(STL_PORT_STATUS_RSP) + (NumVLs - 1) * sizeof(struct _vls_pctrs));
 	case PM_DISP_NODE_GET_ERRORCOUNTERS:
-        if (pm_config.process_vl_counters){
-            if (disppacket->numPorts){
-                NumVLs = disppacket->DispPorts[0].dispNodeSwPort->NumVLs;
-            }
-            else {
-                NumVLs = dispnode->info.nextPort->NumVLs;
-            }
-        }        
-        return( sizeof(struct _port_epctrs)+(NumVLs-1)*sizeof(struct _vls_epctrs) );
+		if (pm_config.process_vl_counters) {
+			if (!disppacket->numVLs)
+				disppacket->numVLs = dispnode->info.nextPort->NumVLs;
+			NumVLs = disppacket->numVLs;
+		}
+		return(sizeof(struct _port_epctrs) + (NumVLs - 1) * sizeof(struct _vls_epctrs));
 	case PM_DISP_NODE_CLR_PORT_STATUS:           return(0);
 	case PM_DISP_NODE_DONE:                      return(-1);
-
 	}
 	return(-1);
 }

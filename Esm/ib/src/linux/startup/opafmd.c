@@ -329,7 +329,7 @@ int parseInput(char *buf){
 					}
 					thread->instance = i;
 					thread->component = c;
-					pthread_create(&thread_id[c], NULL, &kill_thread, thread);
+					pthread_create(&thread_id[i*FM_NUM_COMPONENTS+c], NULL, &kill_thread, thread);
 				}
 			}
 			for(i = 0; i < FM_MAX_INSTANCES; ++i){

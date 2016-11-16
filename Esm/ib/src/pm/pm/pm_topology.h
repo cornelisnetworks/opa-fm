@@ -649,7 +649,8 @@ typedef struct PmDispatcherPort_s {
 typedef struct PmDispatcherPacket_s {
 	uint64                      PortSelectMask[4];  // Ports in Packet
 	uint32                      VLSelectMask;
-	uint8                       numPorts;                
+	uint8                       numPorts;
+	uint8                       numVLs;
 	struct PmDispatcherNode_s  *dispnode;	        // setup once at boot
 	PmDispatcherPort_t         *DispPorts;         
 } PmDispatcherPacket_t;

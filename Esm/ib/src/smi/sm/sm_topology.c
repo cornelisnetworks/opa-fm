@@ -1636,40 +1636,61 @@ unlock_bail:
 		return(VSTATUS_BAD);
     }
 
-	// is the SM bit set?  If not, our port went away, reinitialize.
-	// If we are an HFI, our neighbor is a switch, and MgmtAllowed is not set, reinitialize.
-	if (!(portp->portData->portInfo.CapabilityMask.AsReg32 & PI_CM_IS_SM) || 
-		(nodep->nodeInfo.NodeType == NI_TYPE_CA &&
-		portp->portData->portInfo.PortNeighborMode.NeighborNodeType == STL_NEIGH_NODE_TYPE_SW &&
-		!portp->portData->portInfo.PortNeighborMode.MgmtAllowed)) {
-
-		if (!(portp->portData->portInfo.CapabilityMask.AsReg32 & PI_CM_IS_SM)) {
-			IB_LOG_ERROR0("SM bit not set in capability mask");
-		} else {
-			IB_LOG_ERROR0("MgmtAllowed bit not set in neighbor node.");
-		}
-
-		do {
-			if (topology_main_exit == 1) {
-#ifdef __VXWORKS__
-				ESM_LOG_ESMINFO("topology_discovery: SM has been stopped", 0);
-				IB_EXIT(__func__, VSTATUS_OK);
-#endif
-				return VSTATUS_OK;
-			}
-			status = vs_wrlock(&old_topology_lock);
-			if (status != VSTATUS_OK) continue;
-			status = topology_initialize();
-			(void)vs_rwunlock(&old_topology_lock);
-		} while (status != VSTATUS_OK);
-		sm_topop->routingModule->funcs.post_process_discovery(sm_topop, VSTATUS_BAD, routingContext);
-		if (portp->portData->portInfo.PortStates.s.PortState == IB_PORT_DOWN) {
-			IB_LOG_ERROR0("SM port state is down");
-		}
-		return VSTATUS_BAD;
-	}
-
 	(void)memset((void *)portp->path, 0, 64);
+
+	// Make sure we still have permission to send SMAs.
+	do {
+		STL_PARTITION_TABLE pkeyTable = {{{0}}};
+
+		if(topology_main_exit) {
+#ifdef __VXWORKS__
+			ESM_LOG_ESMINFO("Topology Task exiting OK.", 0);
+#endif
+			return(VSTATUS_BAD);
+		}
+
+        // Don't check the pkey table till we are in at least INIT state,
+        // because the pkeys might change during LNI.
+		status = SM_Get_PortInfo(fd_topology, (1<<24) | STL_SM_CONF_START_ATTR_MOD, portp->path, &(portp->portData->portInfo));
+
+		if (status != VSTATUS_OK) {
+			IB_LOG_ERRORRC("Can't get local PortInfo, status:", status);
+			vs_thread_sleep(5 * VTIMER_1S);
+			continue;
+		} else if (portp->portData->portInfo.PortStates.s.PortState < IB_PORT_INIT) {
+			IB_LOG_WARN_FMT(__func__, "Local port is not yet in INIT.");
+			status = VSTATUS_BAD;
+			vs_thread_sleep(5 * VTIMER_1S);
+			continue;
+		}
+
+		status = SM_Get_PKeyTable(fd_topology, 1<<24, portp->path, &pkeyTable, 0);
+
+		if 	((status != VSTATUS_OK) ||
+			(pkeyTable.PartitionTableBlock[STL_DEFAULT_FM_PKEY_IDX].AsReg16 !=
+			 STL_DEFAULT_FM_PKEY)) {
+
+			if (status != VSTATUS_OK) {
+				IB_LOG_ERRORRC("Could not retrieve local PKey table. Status: ", status);
+				vs_thread_sleep(5 * VTIMER_1S);
+				continue;
+			}
+
+			// Force the pkey.
+			IB_LOG_ERROR_FMT(__func__,
+				"FM Pkey 0x%x not present in the local Pkey table.",
+				STL_DEFAULT_FM_PKEY);
+
+			// For 10.3 only. For 10.4 we need to rework how
+			// re-initialization of the local port is handled.
+			IB_LOG_WARN_FMT(__func__,
+				"Setting FM Pkey 0x%x in the local Pkey table.",
+				STL_DEFAULT_FM_PKEY);
+			status = sm_set_local_port_pkey(&nodep->nodeInfo);
+		}
+	} while (status != VSTATUS_OK);
+
+	IB_LOG_INFO_FMT(__func__, "Local Port and PKey are okay.");
 
     /* 
      * add ourselves to the SM list during first sweep

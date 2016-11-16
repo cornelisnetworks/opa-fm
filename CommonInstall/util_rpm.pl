@@ -320,7 +320,7 @@ sub rpm_check_os_prereqs_internal($$@)
 				# TBD - openSUSE has libstdc++42
 				# TBD - openSUSE11.2 has libstdc++44
 			} elsif ("$package" eq "libstdc++" && "$CUR_DISTRO_VENDOR" eq 'SuSE'
-					&& ("$CUR_VENDOR_VER" eq 'ES12' || "$CUR_VENDOR_VER" eq 'ES121')) {
+					&& ("$CUR_VENDOR_VER" eq 'ES12' || "$CUR_VENDOR_VER" eq 'ES121' || "$CUR_VENDOR_VER" eq 'ES122')) {
 				$package="libstdc++6";
 		 	} elsif ("$package" eq "libstdc++-devel" && "$CUR_DISTRO_VENDOR" eq 'SuSE'
 					&& "$CUR_VENDOR_VER" eq 'ES11') {
@@ -720,8 +720,13 @@ sub rpm_resolve($$$)
 	} else {
 		my $osver = rpm_tr_os_version("$mode");	# OS version
 		# we expect 1 match, ignore all other filenames returned
-		DebugPrint("Checking for Kernel Rpm: $rpmdir/${package}-[0-9]*.[0-9][0-9].${osver}-[0-9]*.${cpu}.rpm\n");
-		$rpmfile = file_glob("$rpmdir/${package}-[0-9]*.[0-9][0-9].${osver}-[0-9]*.${cpu}.rpm");
+		if ( "$CUR_VENDOR_VER" eq 'ES122' ) {
+			DebugPrint("Checking for Kernel Rpm: $rpmdir/${package}-${osver}_k*.${cpu}.rpm\n");
+			$rpmfile = file_glob("$rpmdir/${package}-${osver}_k*.${cpu}.rpm");
+		} else {
+			DebugPrint("Checking for Kernel Rpm: $rpmdir/${package}-[0-9]*.[0-9][0-9].${osver}-[0-9]*.${cpu}.rpm\n");
+			$rpmfile = file_glob("$rpmdir/${package}-[0-9]*.[0-9][0-9].${osver}-[0-9]*.${cpu}.rpm");
+		}
 		if ( "$rpmfile" eq "" || ! -e "$rpmfile" ) {
 			DebugPrint("Checking for Kernel Rpm: $rpmdir/${package}-${osver}-[0-9]*.${cpu}.rpm\n");
 			$rpmfile = file_glob("$rpmdir/${package}-${osver}-[0-9]*.${cpu}.rpm");
