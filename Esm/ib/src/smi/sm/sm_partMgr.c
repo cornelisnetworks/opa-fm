@@ -823,10 +823,6 @@ smVFValidateVfServiceId(int vf, uint64_t serviceId)
 //     for each VF in bitmask
 //         routing.select_path_lids(....,vf)
 //             [lids returned could be controled by vf.SecondaryRouteOnly]
-//         for all lid pairs (lid iterator)
-//            PathRecord_Set
-//                get_sl_for_path (updown result from select_path_lids can influence SL returned)
-//
 
 Status_t
 smGetValidatedServiceIDVFs(Port_t* srcport, Port_t* dstport, uint16_t pkey, uint8_t reqSL, uint64_t serviceId, bitset_t* vfs) {
@@ -1784,13 +1780,8 @@ void smLogVFs() {
 				VirtualFabrics->v_fabric[vf].max_mtu_int, VirtualFabrics->v_fabric[vf].max_rate_int,
 				VirtualFabrics->v_fabric[vf].pkt_lifetime_mult);
 		
-#ifdef CONFIG_INCLUDE_DOR
-		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "baseSL= 0x%x  routingSLs= %d SecondaryRouteOnly= %d",
-				VirtualFabrics->v_fabric[vf].base_sl, VirtualFabrics->v_fabric[vf].routing_sls, VirtualFabrics->v_fabric[vf].updown_only);
-#else
 		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "baseSL= 0x%x  routingSLs= %d",
 				VirtualFabrics->v_fabric[vf].base_sl, VirtualFabrics->v_fabric[vf].routing_sls);
-#endif
 
 		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "bandwidthPercent= %d  priority= %d",
 				VirtualFabrics->v_fabric[vf].percent_bandwidth, VirtualFabrics->v_fabric[vf].priority);

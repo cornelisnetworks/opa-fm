@@ -346,10 +346,6 @@ sub Build_ifcfg($$$)
 		DebugPrint("cmd '$SysCmd'\n");
 		system $SysCmd;
 
-		$SysCmd = "echo \"NM_CONTROLLED='no'\" >> $target";
-		DebugPrint("cmd '$SysCmd'\n");
-		system $SysCmd;
-
 		# SLES11 and newer have IPOIB_MODE option in ifcfg
 		$SysCmd = "echo \"IPOIB_MODE='connected'\" >> $target";
 		DebugPrint("cmd '$SysCmd'\n");
@@ -394,10 +390,6 @@ sub Build_ifcfg($$$)
 		}
 
 		$SysCmd = "echo ONBOOT=yes >> $target";
-		DebugPrint("cmd '$SysCmd'\n");
-		system $SysCmd;
-
-		$SysCmd = "echo NM_CONTROLLED=no >> $target";
 		DebugPrint("cmd '$SysCmd'\n");
 		system $SysCmd;
 

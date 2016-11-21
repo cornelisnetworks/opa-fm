@@ -50,9 +50,8 @@ Usage_full()
 	echo "   List all the link errors in the fabric:" >&2
 	echo "      ${cmd}" >&2
 	echo >&2
-	echo "   List all the link errors related to a switch named " >&2
-	echo "   \"OmniPth00117501ffffffff\":" >&2
-	echo "      ${cmd} -F \"node:OmniPth00117501ffffffff\"" >&2
+	echo "   List all the link errors related to a switch named \"coresw1\":" >&2
+	echo "      ${cmd} -F \"node:coresw1\"" >&2
 	echo >&2
 	echo "   List all the link errors for end-nodes:" >&2
 	echo "      ${cmd} -F \"nodetype:FI\"" >&2

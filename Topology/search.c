@@ -39,6 +39,17 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // Functions to search the topology
 
+
+// The search routines involving Points tend to limit the search to the
+// specific objects indicated by find_flag and expect later caller use of
+// Compare functions to invoke the necessary Compare functions to cover the
+// fabric vs expected objects of interest.  One exception is the comparison
+// for Details and Cable information which is only available in topology.xml
+// In this case, the fabric seach will check the resolved expected object
+// This permits the majority of fabric related operations, such as opareport,
+// to make use of Details and Cable information from topology.xml while
+// only considering fabric objects.
+
 // search for the PortData corresponding to the given node and port number
 PortData * FindNodePort(NodeData *nodep, uint8 port)
 {
@@ -105,6 +116,179 @@ PortData * FindPortGuid(FabricData_t *fabricp, EUI64 guid)
 	return NULL;
 }
 
+// search for the PortData, ExpectedNode, ExpectedSM and ExpectedLink
+// corresponding to the given port guid
+// and update the point with all those which match
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindPortGuidPoint(FabricData_t *fabricp, EUI64 guid, Point *pPoint, uint8 find_flag, int silent)
+{
+	FSTATUS status;
+
+	ASSERT(! PointValid(pPoint));
+	ASSERT(guid);
+	if (0 == find_flag)
+		return FINVALID_OPERATION;
+	if (find_flag & FIND_FLAG_FABRIC) {
+		pPoint->u.portp = FindPortGuid(fabricp, guid);
+		if (pPoint->u.portp)
+			pPoint->Type = POINT_TYPE_PORT;
+	}
+	if (find_flag & FIND_FLAG_ENODE) {
+		EUI64 nodeGUID = PortGUIDtoNodeGUID(guid);
+		LIST_ITEM *p;
+		QUICK_LIST *pList = &fabricp->ExpectedFIs;
+		// while there should be no duplicates, be safe and assume there might
+		while (pList != NULL) {
+			for (p=QListHead(pList); p != NULL; p = QListNext(pList, p)) {
+				ExpectedNode *enodep = (ExpectedNode *)QListObj(p);
+				if (enodep->NodeGUID == nodeGUID)
+				{
+					status = PointEnodeListAppend(pPoint, POINT_ENODE_TYPE_NODE_LIST, enodep);
+					if (FSUCCESS != status)
+						return status;
+				}
+			}
+			if (pList == &fabricp->ExpectedFIs)
+				pList = &fabricp->ExpectedSWs;
+			else
+				pList = NULL;
+		}
+	}
+	if (find_flag & FIND_FLAG_ESM) {
+		LIST_ITEM *p;
+		// while there should be no duplicates, be safe and assume there might
+		for (p=QListHead(&fabricp->ExpectedSMs); p != NULL; p = QListNext(&fabricp->ExpectedSMs, p)) {
+			ExpectedSM *esmp = (ExpectedSM *)QListObj(p);
+			if (esmp->PortGUID == guid)
+			{
+				status = PointEsmListAppend(pPoint, POINT_ESM_TYPE_SM_LIST, esmp);
+				if (FSUCCESS != status)
+					return status;
+			}
+		}
+	}
+	if (find_flag & FIND_FLAG_ELINK) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->ExpectedLinks); p != NULL; p = QListNext(&fabricp->ExpectedLinks, p)) {
+			ExpectedLink *elinkp = (ExpectedLink *)QListObj(p);
+			if ((elinkp->portselp1 && elinkp->portselp1->PortGUID == guid)
+				|| (elinkp->portselp2 && elinkp->portselp2->PortGUID == guid))
+			{
+				status = PointElinkListAppend(pPoint, POINT_ELINK_TYPE_LINK_LIST, elinkp);
+				if (FSUCCESS != status)
+					return status;
+			}
+		}
+	}
+	if (! PointValid(pPoint)) {
+		if(!silent)
+			fprintf(stderr, "%s: Port GUID Not Found: 0x%016"PRIx64"\n", g_Top_cmdname, guid);
+		return FNOT_FOUND;
+	}
+	PointCompress(pPoint);
+	return FSUCCESS;
+}
+
+// search for the PortData, ExpectedNode, ExpectedSM and ExpectedLink
+// corresponding to the given GID
+// and update the point with all those which match
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindGidPoint(FabricData_t *fabricp, IB_GID gid, Point *pPoint, uint8 find_flag, int silent)
+{
+	FSTATUS status;
+
+	ASSERT(! PointValid(pPoint));
+	ASSERT(gid.AsReg64s.H && gid.AsReg64s.L);
+	if (0 == (find_flag & (FIND_FLAG_FABRIC|FIND_FLAG_ENODE|FIND_FLAG_ESM|FIND_FLAG_ELINK)))
+		return FINVALID_OPERATION;
+	if (find_flag & FIND_FLAG_FABRIC) {
+		pPoint->u.portp = FindPortGuid(fabricp, gid.Type.Global.InterfaceID);
+		if (pPoint->u.portp &&
+			pPoint->u.portp->PortInfo.SubnetPrefix
+				== gid.Type.Global.SubnetPrefix) {
+			pPoint->Type = POINT_TYPE_PORT;
+		}
+	}
+	if (find_flag & FIND_FLAG_ENODE) {
+		EUI64 nodeGUID = PortGUIDtoNodeGUID(gid.Type.Global.InterfaceID);
+		LIST_ITEM *p;
+		QUICK_LIST *pList = &fabricp->ExpectedFIs;
+		// while there should be no duplicates, be safe and assume there might
+		while (pList != NULL) {
+			for (p=QListHead(pList); p != NULL; p = QListNext(pList, p)) {
+				ExpectedNode *enodep = (ExpectedNode *)QListObj(p);
+				if (enodep->NodeGUID == nodeGUID)
+				{
+					status = PointEnodeListAppend(pPoint, POINT_ENODE_TYPE_NODE_LIST, enodep);
+					if (FSUCCESS != status)
+						return status;
+				}
+			}
+			if (pList == &fabricp->ExpectedFIs)
+				pList = &fabricp->ExpectedSWs;
+			else
+				pList = NULL;
+		}
+	}
+	if (find_flag & FIND_FLAG_ESM) {
+		LIST_ITEM *p;
+		// while there should be no duplicates, be safe and assume there might
+		for (p=QListHead(&fabricp->ExpectedSMs); p != NULL; p = QListNext(&fabricp->ExpectedSMs, p)) {
+			ExpectedSM *esmp = (ExpectedSM *)QListObj(p);
+			/* we should also check SubnetPrefix, but its not in ExpectedSM,
+			 * so just check PortGuid
+			 */
+			if (esmp->PortGUID == gid.Type.Global.InterfaceID)
+			{
+				status = PointEsmListAppend(pPoint, POINT_ESM_TYPE_SM_LIST, esmp);
+				if (FSUCCESS != status)
+					return status;
+			}
+		}
+	}
+	if (find_flag & FIND_FLAG_ELINK) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->ExpectedLinks); p != NULL; p = QListNext(&fabricp->ExpectedLinks, p)) {
+			ExpectedLink *elinkp = (ExpectedLink *)QListObj(p);
+			/* we should also check SubnetPrefix, but its not in ExpectedLink,
+			 * so just check PortGuid
+			 */
+			if ((elinkp->portselp1 && elinkp->portselp1->PortGUID == gid.Type.Global.InterfaceID)
+				|| (elinkp->portselp2 && elinkp->portselp2->PortGUID == gid.Type.Global.InterfaceID))
+			{
+				status = PointElinkListAppend(pPoint, POINT_ELINK_TYPE_LINK_LIST, elinkp);
+				if (FSUCCESS != status)
+					return status;
+			}
+		}
+	}
+	if (! PointValid(pPoint)) {
+		if(!silent) {
+			fprintf(stderr, "%s: GID Not Found: 0x%016"PRIx64":0x%016"PRIx64"\n",
+					g_Top_cmdname, 
+					gid.Type.Global.SubnetPrefix, gid.Type.Global.InterfaceID);
+		}
+		if ((find_flag & FIND_FLAG_FABRIC) && pPoint->u.portp
+				&& pPoint->u.portp->PortInfo.SubnetPrefix
+					!= gid.Type.Global.SubnetPrefix) {
+			if (! silent) {
+				fprintf(stderr, "%s: Subnet Prefix: 0x%016"PRIx64" does not match selected port: 0x%016"PRIx64"\n",
+						g_Top_cmdname, gid.Type.Global.SubnetPrefix, 
+						pPoint->u.portp->PortInfo.SubnetPrefix);
+			}
+			pPoint->u.portp = NULL;
+			pPoint->Type = POINT_TYPE_NONE;
+		}
+		return FNOT_FOUND;
+	}
+	PointCompress(pPoint);
+	return FSUCCESS;
+}
+
 // search for the NodeData corresponding to the given node Guid
 NodeData * FindNodeGuid(const FabricData_t *fabricp, EUI64 guid)
 {
@@ -116,24 +300,158 @@ NodeData * FindNodeGuid(const FabricData_t *fabricp, EUI64 guid)
 	return PARENT_STRUCT(mi, NodeData, AllNodesEntry);
 }
 
-// search for the NodeData corresponding to the given node name
-FSTATUS FindNodeName(FabricData_t *fabricp, char *name, Point *pPoint, int silent)
+// search for the NodeData, ExpectedNode, ExpectedSM and ExpectedLink
+// corresponding to the given node guid
+// and update the point with all those which match
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindNodeGuidPoint(FabricData_t *fabricp, EUI64 guid, Point *pPoint, uint8 find_flag, int silent)
 {
-	cl_map_item_t *p;
 	FSTATUS status;
 
-	ASSERT(pPoint->Type == POINT_TYPE_NONE);
-	for (p=cl_qmap_head(&fabricp->AllNodes); p != cl_qmap_end(&fabricp->AllNodes); p = cl_qmap_next(p)) {
-		NodeData *nodep = PARENT_STRUCT(p, NodeData, AllNodesEntry);
-		if (strncmp((char*)nodep->NodeDesc.NodeString,
-					name, STL_NODE_DESCRIPTION_ARRAY_SIZE) == 0)
-		{
-			status = PointListAppend(pPoint, POINT_TYPE_NODE_LIST, nodep);
-			if (FSUCCESS != status)
-				return status;
+	ASSERT(! PointValid(pPoint));
+	ASSERT(guid);
+	if (0 == find_flag)
+		return FINVALID_OPERATION;
+	if (find_flag & FIND_FLAG_FABRIC) {
+		pPoint->u.nodep = FindNodeGuid(fabricp, guid);
+		if (pPoint->u.nodep)
+			pPoint->Type = POINT_TYPE_NODE;
+	}
+	if (find_flag & FIND_FLAG_ENODE) {
+		LIST_ITEM *p;
+		QUICK_LIST *pList = &fabricp->ExpectedFIs;
+		// while there should be no duplicates, be safe and assume there might
+		while (pList != NULL) {
+			for (p=QListHead(pList); p != NULL; p = QListNext(pList, p)) {
+				ExpectedNode *enodep = (ExpectedNode *)QListObj(p);
+				if (enodep->NodeGUID == guid)
+				{
+					status = PointEnodeListAppend(pPoint, POINT_ENODE_TYPE_NODE_LIST, enodep);
+					if (FSUCCESS != status)
+						return status;
+				}
+			}
+			if (pList == &fabricp->ExpectedFIs)
+				pList = &fabricp->ExpectedSWs;
+			else
+				pList = NULL;
 		}
 	}
-	if (pPoint->Type == POINT_TYPE_NONE) {
+	if (find_flag & FIND_FLAG_ESM) {
+		LIST_ITEM *p;
+		// if an SM runs on multiple ports of a device, could validly be
+		// multiple matches of the same NodeGUID
+		for (p=QListHead(&fabricp->ExpectedSMs); p != NULL; p = QListNext(&fabricp->ExpectedSMs, p)) {
+			ExpectedSM *esmp = (ExpectedSM *)QListObj(p);
+			if (esmp->NodeGUID == guid)
+			{
+				status = PointEsmListAppend(pPoint, POINT_ESM_TYPE_SM_LIST, esmp);
+				if (FSUCCESS != status)
+					return status;
+			}
+		}
+	}
+	if (find_flag & FIND_FLAG_ELINK) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->ExpectedLinks); p != NULL; p = QListNext(&fabricp->ExpectedLinks, p)) {
+			ExpectedLink *elinkp = (ExpectedLink *)QListObj(p);
+			if ((elinkp->portselp1 && elinkp->portselp1->NodeGUID == guid)
+				|| (elinkp->portselp2 && elinkp->portselp2->NodeGUID == guid))
+			{
+				status = PointElinkListAppend(pPoint, POINT_ELINK_TYPE_LINK_LIST, elinkp);
+				if (FSUCCESS != status)
+					return status;
+			}
+		}
+	}
+	if (! PointValid(pPoint)) {
+		if(!silent)
+			fprintf(stderr, "%s: Node GUID Not Found: 0x%016"PRIx64"\n", g_Top_cmdname, guid);
+		return FNOT_FOUND;
+	}
+	PointCompress(pPoint);
+	return FSUCCESS;
+}
+
+// search for the NodeData, ExpectedNode, ExpectedSM and ExpectedLink
+// corresponding to the given node name
+// and update the point with all those which match
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindNodeNamePoint(FabricData_t *fabricp, char *name, Point *pPoint, uint8 find_flag, int silent)
+{
+	FSTATUS status;
+
+	ASSERT(! PointValid(pPoint));
+	if (0 == find_flag)
+		return FINVALID_OPERATION;
+	if (find_flag & FIND_FLAG_FABRIC) {
+		cl_map_item_t *p;
+		for (p=cl_qmap_head(&fabricp->AllNodes); p != cl_qmap_end(&fabricp->AllNodes); p = cl_qmap_next(p)) {
+			NodeData *nodep = PARENT_STRUCT(p, NodeData, AllNodesEntry);
+			if (strncmp((char*)nodep->NodeDesc.NodeString,
+						name, STL_NODE_DESCRIPTION_ARRAY_SIZE) == 0)
+			{
+				status = PointListAppend(pPoint, POINT_TYPE_NODE_LIST, nodep);
+				if (FSUCCESS != status)
+					return status;
+			}
+		}
+	}
+	if (find_flag & FIND_FLAG_ENODE) {
+		LIST_ITEM *p;
+		QUICK_LIST *pList = &fabricp->ExpectedFIs;
+		while (pList != NULL) {
+			for (p=QListHead(pList); p != NULL; p = QListNext(pList, p)) {
+				ExpectedNode *enodep = (ExpectedNode *)QListObj(p);
+				if (enodep->NodeDesc && strncmp(enodep->NodeDesc,
+							name, STL_NODE_DESCRIPTION_ARRAY_SIZE) == 0)
+				{
+					status = PointEnodeListAppend(pPoint, POINT_ENODE_TYPE_NODE_LIST, enodep);
+					if (FSUCCESS != status)
+						return status;
+				}
+			}
+			if (pList == &fabricp->ExpectedFIs)
+				pList = &fabricp->ExpectedSWs;
+			else
+				pList = NULL;
+		}
+	}
+	if (find_flag & FIND_FLAG_ESM) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->ExpectedSMs); p != NULL; p = QListNext(&fabricp->ExpectedSMs, p)) {
+			ExpectedSM *esmp = (ExpectedSM *)QListObj(p);
+			if (esmp->NodeDesc && strncmp(esmp->NodeDesc,
+						name, STL_NODE_DESCRIPTION_ARRAY_SIZE) == 0)
+			{
+				status = PointEsmListAppend(pPoint, POINT_ESM_TYPE_SM_LIST, esmp);
+				if (FSUCCESS != status)
+					return status;
+			}
+		}
+	}
+	if (find_flag & FIND_FLAG_ELINK) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->ExpectedLinks); p != NULL; p = QListNext(&fabricp->ExpectedLinks, p)) {
+			ExpectedLink *elinkp = (ExpectedLink *)QListObj(p);
+			if ((elinkp->portselp1 && elinkp->portselp1->NodeDesc
+					&& strncmp(elinkp->portselp1->NodeDesc,
+						name, STL_NODE_DESCRIPTION_ARRAY_SIZE) == 0)
+				|| (elinkp->portselp2 && elinkp->portselp2->NodeDesc
+					&& strncmp(elinkp->portselp2->NodeDesc,
+						name, STL_NODE_DESCRIPTION_ARRAY_SIZE) == 0))
+			{
+				status = PointElinkListAppend(pPoint, POINT_ELINK_TYPE_LINK_LIST, elinkp);
+				if (FSUCCESS != status)
+					return status;
+			}
+		}
+	}
+	if (! PointValid(pPoint)) {
 		if(!silent)
 			fprintf(stderr, "%s: Node name Not Found: %s\n", g_Top_cmdname, name);
 		return FNOT_FOUND;
@@ -143,29 +461,85 @@ FSTATUS FindNodeName(FabricData_t *fabricp, char *name, Point *pPoint, int silen
 }
 
 #ifndef __VXWORKS__
-// search for the NodeData corresponding to the given node name pattern
-FSTATUS FindNodeNamePat(FabricData_t *fabricp, char *pattern, Point *pPoint)
+// search for the NodeData, ExpectedNode and ExpectedSM
+// corresponding to the given node name pattern
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindNodeNamePatPoint(FabricData_t *fabricp, char *pattern, Point *pPoint, uint8 find_flag)
 {
-	cl_map_item_t *p;
 	FSTATUS status;
+	char Name[STL_NODE_DESCRIPTION_ARRAY_SIZE+1];
 
-	ASSERT(pPoint->Type == POINT_TYPE_NONE);
-	for (p=cl_qmap_head(&fabricp->AllNodes); p != cl_qmap_end(&fabricp->AllNodes); p = cl_qmap_next(p)) {
-		NodeData *nodep = PARENT_STRUCT(p, NodeData, AllNodesEntry);
-		char Name[STL_NODE_DESCRIPTION_ARRAY_SIZE+1];
+	ASSERT(! PointValid(pPoint));
+	if (0 == find_flag)
+		return FINVALID_OPERATION;
+	if (find_flag & FIND_FLAG_FABRIC) {
+		cl_map_item_t *p;
+		for (p=cl_qmap_head(&fabricp->AllNodes); p != cl_qmap_end(&fabricp->AllNodes); p = cl_qmap_next(p)) {
+			NodeData *nodep = PARENT_STRUCT(p, NodeData, AllNodesEntry);
 
-		strncpy(Name, (char*)nodep->NodeDesc.NodeString, STL_NODE_DESCRIPTION_ARRAY_SIZE);
-		Name[STL_NODE_DESCRIPTION_ARRAY_SIZE] = '\0';
-		if (fnmatch(pattern, Name, 0) == 0)
-		{
-			status = PointListAppend(pPoint, POINT_TYPE_NODE_LIST, nodep);
-			if (FSUCCESS != status)
-				return status;
+			strncpy(Name, (char*)nodep->NodeDesc.NodeString, STL_NODE_DESCRIPTION_ARRAY_SIZE);
+			Name[STL_NODE_DESCRIPTION_ARRAY_SIZE] = '\0';
+			if (fnmatch(pattern, Name, 0) == 0)
+			{
+				status = PointListAppend(pPoint, POINT_TYPE_NODE_LIST, nodep);
+				if (FSUCCESS != status)
+					return status;
+			}
 		}
 	}
-	if (pPoint->Type == POINT_TYPE_NONE) {
+	if (find_flag & FIND_FLAG_ENODE) {
+		LIST_ITEM *p;
+		QUICK_LIST *pList = &fabricp->ExpectedFIs;
+		while (pList != NULL) {
+			for (p=QListHead(pList); p != NULL; p = QListNext(pList, p)) {
+				ExpectedNode *enodep = (ExpectedNode *)QListObj(p);
+				if (enodep->NodeDesc
+					&& 0 == fnmatch(pattern, enodep->NodeDesc, 0))
+				{
+					status = PointEnodeListAppend(pPoint, POINT_ENODE_TYPE_NODE_LIST, enodep);
+					if (FSUCCESS != status)
+						return status;
+				}
+			}
+			if (pList == &fabricp->ExpectedFIs)
+				pList = &fabricp->ExpectedSWs;
+			else
+				pList = NULL;
+		}
+	}
+	if (find_flag & FIND_FLAG_ESM) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->ExpectedSMs); p != NULL; p = QListNext(&fabricp->ExpectedSMs, p)) {
+			ExpectedSM *esmp = (ExpectedSM *)QListObj(p);
+			if (esmp->NodeDesc
+				&& 0 == fnmatch(pattern, esmp->NodeDesc, 0))
+			{
+				status = PointEsmListAppend(pPoint, POINT_ESM_TYPE_SM_LIST, esmp);
+				if (FSUCCESS != status)
+					return status;
+			}
+		}
+	}
+	if (find_flag & FIND_FLAG_ELINK) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->ExpectedLinks); p != NULL; p = QListNext(&fabricp->ExpectedLinks, p)) {
+			ExpectedLink *elinkp = (ExpectedLink *)QListObj(p);
+			if ((elinkp->portselp1 && elinkp->portselp1->NodeDesc
+					&& 0 == fnmatch(pattern, elinkp->portselp1->NodeDesc, 0))
+				|| (elinkp->portselp2 && elinkp->portselp2->NodeDesc
+					&& 0 == fnmatch(pattern, elinkp->portselp2->NodeDesc, 0)))
+			{
+				status = PointElinkListAppend(pPoint, POINT_ELINK_TYPE_LINK_LIST, elinkp);
+				if (FSUCCESS != status)
+					return status;
+			}
+		}
+	}
+	if (! PointValid(pPoint)) {
 		fprintf(stderr, "%s: Node name pattern Not Found: %s\n",
-					   	g_Top_cmdname, pattern);
+						g_Top_cmdname, pattern);
 		return FNOT_FOUND;
 	}
 	PointCompress(pPoint);
@@ -173,26 +547,55 @@ FSTATUS FindNodeNamePat(FabricData_t *fabricp, char *pattern, Point *pPoint)
 }
 
 // search for nodes whose ExpectedNode has the given node details
-FSTATUS FindNodeDetailsPat(FabricData_t *fabricp, const char* pattern, Point *pPoint)
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindNodeDetailsPatPoint(FabricData_t *fabricp, const char* pattern, Point *pPoint, uint8 find_flag)
 {
-	cl_map_item_t *p;
 	FSTATUS status;
 
-	ASSERT(pPoint->Type == POINT_TYPE_NONE);
-	for (p=cl_qmap_head(&fabricp->AllNodes); p != cl_qmap_end(&fabricp->AllNodes); p = cl_qmap_next(p)) {
-		NodeData *nodep = PARENT_STRUCT(p, NodeData, AllNodesEntry);
-		if (! nodep->enodep || ! nodep->enodep->details)
-			continue;	// no node details information
-		if (fnmatch(pattern, nodep->enodep->details, 0) == 0)
-		{
-			status = PointListAppend(pPoint, POINT_TYPE_NODE_LIST, nodep);
-			if (FSUCCESS != status)
-				return status;
+	ASSERT(! PointValid(pPoint));
+	if (0 == (find_flag & (FIND_FLAG_FABRIC|FIND_FLAG_ENODE)))
+		return FINVALID_OPERATION;
+	if (find_flag & FIND_FLAG_FABRIC) {
+		cl_map_item_t *p;
+		for (p=cl_qmap_head(&fabricp->AllNodes); p != cl_qmap_end(&fabricp->AllNodes); p = cl_qmap_next(p)) {
+			NodeData *nodep = PARENT_STRUCT(p, NodeData, AllNodesEntry);
+			if (nodep->enodep && nodep->enodep->details
+				&& fnmatch(pattern, nodep->enodep->details, 0) == 0)
+			{
+				status = PointListAppend(pPoint, POINT_TYPE_NODE_LIST, nodep);
+				if (FSUCCESS != status)
+					return status;
+			}
 		}
 	}
-	if (pPoint->Type == POINT_TYPE_NONE) {
+	if (find_flag & FIND_FLAG_ENODE) {
+		LIST_ITEM *p;
+		QUICK_LIST *pList = &fabricp->ExpectedFIs;
+		while (pList != NULL) {
+			for (p=QListHead(pList); p != NULL; p = QListNext(pList, p)) {
+				ExpectedNode *enodep = (ExpectedNode *)QListObj(p);
+				if (enodep->details
+					&& fnmatch(pattern, enodep->details, 0) == 0)
+				{
+					status = PointEnodeListAppend(pPoint, POINT_ENODE_TYPE_NODE_LIST, enodep);
+					if (FSUCCESS != status)
+						return status;
+				}
+			}
+			if (pList == &fabricp->ExpectedFIs)
+				pList = &fabricp->ExpectedSWs;
+			else
+				pList = NULL;
+		}
+	}
+
+	// N/A for FIND_FLAG_ESM and FIND_FLAG_ELINK
+
+	if (! PointValid(pPoint)) {
 		fprintf(stderr, "%s: Node Details Not Found: %s\n",
-					   	g_Top_cmdname, pattern);
+						g_Top_cmdname, pattern);
 		return FNOT_FOUND;
 	}
 	PointCompress(pPoint);
@@ -201,24 +604,75 @@ FSTATUS FindNodeDetailsPat(FabricData_t *fabricp, const char* pattern, Point *pP
 #endif
 
 // search for the NodeData corresponding to the given node type
-FSTATUS FindNodeType(FabricData_t *fabricp, NODE_TYPE type, Point *pPoint)
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindNodeTypePoint(FabricData_t *fabricp, NODE_TYPE type, Point *pPoint, uint8 find_flag)
 {
-	cl_map_item_t *p;
 	FSTATUS status;
 
-	ASSERT(pPoint->Type == POINT_TYPE_NONE);
-	for (p=cl_qmap_head(&fabricp->AllNodes); p != cl_qmap_end(&fabricp->AllNodes); p = cl_qmap_next(p)) {
-		NodeData *nodep = PARENT_STRUCT(p, NodeData, AllNodesEntry);
-		if (nodep->NodeInfo.NodeType == type)
-		{
-			status = PointListAppend(pPoint, POINT_TYPE_NODE_LIST, nodep);
-			if (FSUCCESS != status)
-				return status;
+	ASSERT(! PointValid(pPoint));
+	if (0 == find_flag)
+		return FINVALID_OPERATION;
+	if (find_flag & FIND_FLAG_FABRIC) {
+		cl_map_item_t *p;
+		for (p=cl_qmap_head(&fabricp->AllNodes); p != cl_qmap_end(&fabricp->AllNodes); p = cl_qmap_next(p)) {
+			NodeData *nodep = PARENT_STRUCT(p, NodeData, AllNodesEntry);
+			if (nodep->NodeInfo.NodeType == type)
+			{
+				status = PointListAppend(pPoint, POINT_TYPE_NODE_LIST, nodep);
+				if (FSUCCESS != status)
+					return status;
+			}
 		}
 	}
-	if (pPoint->Type == POINT_TYPE_NONE) {
+	if (find_flag & FIND_FLAG_ENODE) {
+		LIST_ITEM *p;
+		QUICK_LIST *pList = &fabricp->ExpectedFIs;
+		while (pList != NULL) {
+			for (p=QListHead(pList); p != NULL; p = QListNext(pList, p)) {
+				ExpectedNode *enodep = (ExpectedNode *)QListObj(p);
+				if (enodep->NodeType == type)
+				{
+					status = PointEnodeListAppend(pPoint, POINT_ENODE_TYPE_NODE_LIST, enodep);
+					if (FSUCCESS != status)
+						return status;
+				}
+			}
+			if (pList == &fabricp->ExpectedFIs)
+				pList = &fabricp->ExpectedSWs;
+			else
+				pList = NULL;
+		}
+	}
+	if (find_flag & FIND_FLAG_ESM) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->ExpectedSMs); p != NULL; p = QListNext(&fabricp->ExpectedSMs, p)) {
+			ExpectedSM *esmp = (ExpectedSM *)QListObj(p);
+			if (esmp->NodeType == type)
+			{
+				status = PointEsmListAppend(pPoint, POINT_ESM_TYPE_SM_LIST, esmp);
+				if (FSUCCESS != status)
+					return status;
+			}
+		}
+	}
+	if (find_flag & FIND_FLAG_ELINK) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->ExpectedLinks); p != NULL; p = QListNext(&fabricp->ExpectedLinks, p)) {
+			ExpectedLink *elinkp = (ExpectedLink *)QListObj(p);
+			if ( (elinkp->portselp1 && elinkp->portselp1->NodeType == type)
+				|| (elinkp->portselp2 && elinkp->portselp2->NodeType == type))
+			{
+				status = PointElinkListAppend(pPoint, POINT_ELINK_TYPE_LINK_LIST, elinkp);
+				if (FSUCCESS != status)
+					return status;
+			}
+		}
+	}
+	if (! PointValid(pPoint)) {
 		fprintf(stderr, "%s: No nodes of type %s found\n",
-					   	g_Top_cmdname, StlNodeTypeToText(type));
+						g_Top_cmdname, StlNodeTypeToText(type));
 		return FNOT_FOUND;
 	}
 	PointCompress(pPoint);
@@ -227,23 +681,33 @@ FSTATUS FindNodeType(FabricData_t *fabricp, NODE_TYPE type, Point *pPoint)
 
 #if !defined(VXWORKS) || defined(BUILD_DMC)
 // search for the Ioc corresponding to the given ioc name
-FSTATUS FindIocName(FabricData_t *fabricp, char *name, Point *pPoint)
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindIocNamePoint(FabricData_t *fabricp, char *name, Point *pPoint, uint8 find_flag)
 {
-	cl_map_item_t *p;
 	FSTATUS status;
 
-	ASSERT(pPoint->Type == POINT_TYPE_NONE);
-	for (p=cl_qmap_head(&fabricp->AllIOCs); p != cl_qmap_end(&fabricp->AllIOCs); p = cl_qmap_next(p)) {
-		IocData *iocp = PARENT_STRUCT(p, IocData, AllIOCsEntry);
+	ASSERT(! PointValid(pPoint));
+	if (0 == (find_flag & FIND_FLAG_FABRIC))
+		return FINVALID_OPERATION;
+	if (find_flag & FIND_FLAG_FABRIC) {
+		cl_map_item_t *p;
+		for (p=cl_qmap_head(&fabricp->AllIOCs); p != cl_qmap_end(&fabricp->AllIOCs); p = cl_qmap_next(p)) {
+			IocData *iocp = PARENT_STRUCT(p, IocData, AllIOCsEntry);
 
-		if (strncmp((char*)iocp->IocProfile.IDString, name, IOC_IDSTRING_SIZE) == 0)
-		{
-			status = PointListAppend(pPoint, POINT_TYPE_IOC_LIST, iocp);
-			if (FSUCCESS != status)
-				return status;
+			if (strncmp((char*)iocp->IocProfile.IDString, name, IOC_IDSTRING_SIZE) == 0)
+			{
+				status = PointListAppend(pPoint, POINT_TYPE_IOC_LIST, iocp);
+				if (FSUCCESS != status)
+					return status;
+			}
 		}
 	}
-	if (pPoint->Type == POINT_TYPE_NONE) {
+
+	// N/A for FIND_FLAG_ENODE, FIND_FLAG_ESM and FIND_FLAG_ELINK
+	
+	if (! PointValid(pPoint)) {
 		fprintf(stderr, "%s: IOC name Not Found: %s\n", g_Top_cmdname, name);
 		return FNOT_FOUND;
 	}
@@ -253,28 +717,38 @@ FSTATUS FindIocName(FabricData_t *fabricp, char *name, Point *pPoint)
 
 #ifndef __VXWORKS__
 // search for the Ioc corresponding to the given ioc name pattern
-FSTATUS FindIocNamePat(FabricData_t *fabricp, char *pattern, Point *pPoint)
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindIocNamePatPoint(FabricData_t *fabricp, char *pattern, Point *pPoint, uint8 find_flag)
 {
-	cl_map_item_t *p;
 	FSTATUS status;
 
-	ASSERT(pPoint->Type == POINT_TYPE_NONE);
-	for (p=cl_qmap_head(&fabricp->AllIOCs); p != cl_qmap_end(&fabricp->AllIOCs); p = cl_qmap_next(p)) {
-		IocData *iocp = PARENT_STRUCT(p, IocData, AllIOCsEntry);
-		char Name[IOC_IDSTRING_SIZE+1];
+	ASSERT(! PointValid(pPoint));
+	if (0 == (find_flag & FIND_FLAG_FABRIC))
+		return FINVALID_OPERATION;
+	if (find_flag & FIND_FLAG_FABRIC) {
+		cl_map_item_t *p;
+		for (p=cl_qmap_head(&fabricp->AllIOCs); p != cl_qmap_end(&fabricp->AllIOCs); p = cl_qmap_next(p)) {
+			IocData *iocp = PARENT_STRUCT(p, IocData, AllIOCsEntry);
+			char Name[IOC_IDSTRING_SIZE+1];
 
-		strncpy(Name, (char*)iocp->IocProfile.IDString, IOC_IDSTRING_SIZE);
-		Name[IOC_IDSTRING_SIZE] = '\0';
-		if (fnmatch(pattern, Name, 0) == 0)
-		{
-			status = PointListAppend(pPoint, POINT_TYPE_IOC_LIST, iocp);
-			if (FSUCCESS != status)
-				return status;
+			strncpy(Name, (char*)iocp->IocProfile.IDString, IOC_IDSTRING_SIZE);
+			Name[IOC_IDSTRING_SIZE] = '\0';
+			if (fnmatch(pattern, Name, 0) == 0)
+			{
+				status = PointListAppend(pPoint, POINT_TYPE_IOC_LIST, iocp);
+				if (FSUCCESS != status)
+					return status;
+			}
 		}
 	}
-	if (pPoint->Type == POINT_TYPE_NONE) {
+
+	// N/A for FIND_FLAG_ENODE, FIND_FLAG_ESM and FIND_FLAG_ELINK
+
+	if (! PointValid(pPoint)) {
 		fprintf(stderr, "%s: IOC name pattern Not Found: %s\n",
-					   	g_Top_cmdname, pattern);
+						g_Top_cmdname, pattern);
 		return FNOT_FOUND;
 	}
 	PointCompress(pPoint);
@@ -318,24 +792,34 @@ const char * GetIocTypeName(IocType type)
 }
 
 // search for the Ioc corresponding to the given ioc type
-FSTATUS FindIocType(FabricData_t *fabricp, IocType type, Point *pPoint)
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindIocTypePoint(FabricData_t *fabricp, IocType type, Point *pPoint, uint8 find_flag)
 {
-	cl_map_item_t *p;
 	FSTATUS status;
 
-	ASSERT(pPoint->Type == POINT_TYPE_NONE);
-	for (p=cl_qmap_head(&fabricp->AllIOCs); p != cl_qmap_end(&fabricp->AllIOCs); p = cl_qmap_next(p)) {
-		IocData *iocp = PARENT_STRUCT(p, IocData, AllIOCsEntry);
-		if (type == GetIocType(iocp))
-		{
-			status = PointListAppend(pPoint, POINT_TYPE_IOC_LIST, iocp);
-			if (FSUCCESS != status)
-				return status;
-		} 
+	ASSERT(! PointValid(pPoint));
+	if (0 == (find_flag & FIND_FLAG_FABRIC))
+		return FINVALID_OPERATION;
+	if (find_flag & FIND_FLAG_FABRIC) {
+		cl_map_item_t *p;
+		for (p=cl_qmap_head(&fabricp->AllIOCs); p != cl_qmap_end(&fabricp->AllIOCs); p = cl_qmap_next(p)) {
+			IocData *iocp = PARENT_STRUCT(p, IocData, AllIOCsEntry);
+			if (type == GetIocType(iocp))
+			{
+				status = PointListAppend(pPoint, POINT_TYPE_IOC_LIST, iocp);
+				if (FSUCCESS != status)
+					return status;
+			} 
+		}
 	}
-	if (pPoint->Type == POINT_TYPE_NONE) {
+
+	// N/A for FIND_FLAG_ENODE, FIND_FLAG_ESM and FIND_FLAG_ELINK
+
+	if (! PointValid(pPoint)) {
 		fprintf(stderr, "%s: IOC type Not Found: %s\n",
-					   	g_Top_cmdname, GetIocTypeName(type));
+						g_Top_cmdname, GetIocTypeName(type));
 		return FNOT_FOUND;
 	}
 	PointCompress(pPoint);
@@ -366,27 +850,50 @@ SystemData * FindSystemGuid(FabricData_t *fabricp, EUI64 guid)
 }
 
 // search for the PortData corresponding to the given port rate
-FSTATUS FindRate(FabricData_t *fabricp, uint32 rate, Point *pPoint)
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindRatePoint(FabricData_t *fabricp, uint32 rate, Point *pPoint, uint8 find_flag)
 {
-	LIST_ITEM *p;
 	FSTATUS status;
 
-	ASSERT(pPoint->Type == POINT_TYPE_NONE);
-	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
-		PortData *portp = (PortData *)QListObj(p);
+	ASSERT(! PointValid(pPoint));
+	ASSERT(rate);
+	if (0 == (find_flag & (FIND_FLAG_FABRIC|FIND_FLAG_ELINK)))
+		return FINVALID_OPERATION;
+	if (find_flag & FIND_FLAG_FABRIC) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+			PortData *portp = (PortData *)QListObj(p);
 
-		/* omit switch port 0, rate is often odd */
-		if (portp->PortNum == 0)
-			continue;
-		if (portp->rate == rate) {
-			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
-			if (FSUCCESS != status)
-				return status;
+			/* omit switch port 0, rate is often odd */
+			if (portp->PortNum == 0)
+				continue;
+			if (portp->rate == rate) {
+				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+				if (FSUCCESS != status)
+					return status;
+			}
 		}
 	}
-	if (pPoint->Type == POINT_TYPE_NONE) {
+
+	// N/A for FIND_FLAG_ENODE and FIND_FLAG_ESM
+
+	if (find_flag & FIND_FLAG_ELINK) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->ExpectedLinks); p != NULL; p = QListNext(&fabricp->ExpectedLinks, p)) {
+			ExpectedLink *elinkp = (ExpectedLink *)QListObj(p);
+			if (elinkp->expected_rate == rate)
+			{
+				status = PointElinkListAppend(pPoint, POINT_ELINK_TYPE_LINK_LIST, elinkp);
+				if (FSUCCESS != status)
+					return status;
+			}
+		}
+	}
+	if (! PointValid(pPoint)) {
 		fprintf(stderr, "%s: Rate Not Found: %s\n",
-					   	g_Top_cmdname, StlStaticRateToText(rate));
+						g_Top_cmdname, StlStaticRateToText(rate));
 		return FNOT_FOUND;
 	}
 	PointCompress(pPoint);
@@ -395,27 +902,37 @@ FSTATUS FindRate(FabricData_t *fabricp, uint32 rate, Point *pPoint)
 
 
 // search for the PortData corresponding to the given LED state
-FSTATUS FindLedState(FabricData_t *fabricp, uint8 state, Point *pPoint)
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindLedStatePoint(FabricData_t *fabricp, uint8 state, Point *pPoint, uint8 find_flag)
 {
-	LIST_ITEM *p;
 	FSTATUS status;
 
-	ASSERT(pPoint->Type == POINT_TYPE_NONE);
-	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
-		PortData *portp = (PortData *)QListObj(p);
+	ASSERT(! PointValid(pPoint));
+	if (0 == (find_flag & FIND_FLAG_FABRIC))
+		return FINVALID_OPERATION;
+	if (find_flag & FIND_FLAG_FABRIC) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+			PortData *portp = (PortData *)QListObj(p);
 
-		if ( 	(state == 1 &&
-				portp->PortInfo.PortStates.s.LEDEnabled == 1 )
-			|| (state == 0 &&
-				portp->PortInfo.PortStates.s.LEDEnabled == 0 ) ) {
-			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
-			if (FSUCCESS != status)
-				return status;
+			if (   (state == 1 &&
+					portp->PortInfo.PortStates.s.LEDEnabled == 1 )
+				|| (state == 0 &&
+					portp->PortInfo.PortStates.s.LEDEnabled == 0 ) ) {
+				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+				if (FSUCCESS != status)
+					return status;
+			}
 		}
 	}
-	if (pPoint->Type == POINT_TYPE_NONE) {
+
+	// N/A for FIND_FLAG_ENODE, FIND_FLAG_ESM and FIND_FLAG_ELINK
+
+	if (! PointValid(pPoint)) {
 		fprintf(stderr, "%s: LED State Not Found: %d\n",
-					   	g_Top_cmdname,
+						g_Top_cmdname,
 						state);
 		return FNOT_FOUND;
 	} 
@@ -423,36 +940,43 @@ FSTATUS FindLedState(FabricData_t *fabricp, uint8 state, Point *pPoint)
 	return FSUCCESS;
 }
 
-
-
-
 // search for the PortData corresponding to the given port state
-FSTATUS FindPortState(FabricData_t *fabricp, uint8 state, Point *pPoint)
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindPortStatePoint(FabricData_t *fabricp, uint8 state, Point *pPoint, uint8 find_flag)
 {
-	LIST_ITEM *p;
 	FSTATUS status;
 
-	ASSERT(pPoint->Type == POINT_TYPE_NONE);
-	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
-		PortData *portp = (PortData *)QListObj(p);
+	ASSERT(! PointValid(pPoint));
+	if (0 == (find_flag & FIND_FLAG_FABRIC))
+		return FINVALID_OPERATION;
+	if (find_flag & FIND_FLAG_FABRIC) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+			PortData *portp = (PortData *)QListObj(p);
 
-		///* omit switch port 0, state can be odd */
-		//if (portp->PortNum == 0)
-		//	continue;
-		if ((state == PORT_STATE_SEARCH_NOTACTIVE
-				&& portp->PortInfo.PortStates.s.PortState != IB_PORT_ACTIVE)
-			|| (state == PORT_STATE_SEARCH_INITARMED
-				&& (portp->PortInfo.PortStates.s.PortState == IB_PORT_INIT
-					|| portp->PortInfo.PortStates.s.PortState == IB_PORT_ARMED))
-			|| (portp->PortInfo.PortStates.s.PortState == state)) {
-			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
-			if (FSUCCESS != status)
-				return status;
+			///* omit switch port 0, state can be odd */
+			//if (portp->PortNum == 0)
+			//	continue;
+			if ((state == PORT_STATE_SEARCH_NOTACTIVE
+					&& portp->PortInfo.PortStates.s.PortState != IB_PORT_ACTIVE)
+				|| (state == PORT_STATE_SEARCH_INITARMED
+					&& (portp->PortInfo.PortStates.s.PortState == IB_PORT_INIT
+						|| portp->PortInfo.PortStates.s.PortState == IB_PORT_ARMED))
+				|| (portp->PortInfo.PortStates.s.PortState == state)) {
+				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+				if (FSUCCESS != status)
+					return status;
+			}
 		}
 	}
-	if (pPoint->Type == POINT_TYPE_NONE) {
+
+	// N/A for FIND_FLAG_ENODE, FIND_FLAG_ESM and FIND_FLAG_ELINK
+
+	if (! PointValid(pPoint)) {
 		fprintf(stderr, "%s: Port State Not Found: %s\n",
-					   	g_Top_cmdname,
+						g_Top_cmdname,
 							 (state==PORT_STATE_SEARCH_NOTACTIVE)?"Not Active":
 							 (state==PORT_STATE_SEARCH_INITARMED)?"Init Armed":
 													StlPortStateToText(state));
@@ -463,27 +987,37 @@ FSTATUS FindPortState(FabricData_t *fabricp, uint8 state, Point *pPoint)
 }
 
 // search for the PortData corresponding to the given port phys state
-FSTATUS FindPortPhysState(FabricData_t *fabricp, IB_PORT_PHYS_STATE physstate, Point *pPoint)
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindPortPhysStatePoint(FabricData_t *fabricp, IB_PORT_PHYS_STATE physstate, Point *pPoint, uint8 find_flag)
 {
-	LIST_ITEM *p;
 	FSTATUS status;
 
-	ASSERT(pPoint->Type == POINT_TYPE_NONE);
-	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
-		PortData *portp = (PortData *)QListObj(p);
+	ASSERT(! PointValid(pPoint));
+	if (0 == (find_flag & FIND_FLAG_FABRIC))
+		return FINVALID_OPERATION;
+	if (find_flag & FIND_FLAG_FABRIC) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+			PortData *portp = (PortData *)QListObj(p);
 
-		///* omit switch port 0, state can be odd */
-		//if (portp->PortNum == 0)
-		//	continue;
-		if (portp->PortInfo.PortStates.s.PortPhysicalState == physstate) {
-			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
-			if (FSUCCESS != status)
-				return status;
+			///* omit switch port 0, state can be odd */
+			//if (portp->PortNum == 0)
+			//	continue;
+			if (portp->PortInfo.PortStates.s.PortPhysicalState == physstate) {
+				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+				if (FSUCCESS != status)
+					return status;
+			}
 		}
 	}
-	if (pPoint->Type == POINT_TYPE_NONE) {
+
+	// N/A for FIND_FLAG_ENODE, FIND_FLAG_ESM and FIND_FLAG_ELINK
+
+	if (! PointValid(pPoint)) {
 		fprintf(stderr, "%s: Port Phys State Not Found: %s\n",
-					   	g_Top_cmdname, StlPortPhysStateToText(physstate));
+						g_Top_cmdname, StlPortPhysStateToText(physstate));
 		return FNOT_FOUND;
 	}
 	PointCompress(pPoint);
@@ -492,27 +1026,51 @@ FSTATUS FindPortPhysState(FabricData_t *fabricp, IB_PORT_PHYS_STATE physstate, P
 
 #ifndef __VXWORKS__
 // search for ports whose ExpectedLink has the given cable label
-FSTATUS FindCableLabelPat(FabricData_t *fabricp, const char* pattern, Point *pPoint)
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindCableLabelPatPoint(FabricData_t *fabricp, const char* pattern, Point *pPoint, uint8 find_flag)
 {
-	LIST_ITEM *p;
 	FSTATUS status;
 
-	ASSERT(pPoint->Type == POINT_TYPE_NONE);
-	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
-		PortData *portp = (PortData *)QListObj(p);
+	ASSERT(! PointValid(pPoint));
+	if (0 == (find_flag & (FIND_FLAG_FABRIC|FIND_FLAG_ELINK)))
+		return FINVALID_OPERATION;
+	if (find_flag & FIND_FLAG_FABRIC) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+			PortData *portp = (PortData *)QListObj(p);
 
-		if (! portp->elinkp || ! portp->elinkp->CableData.label)
-			continue;	// no cable information
-		if (fnmatch(pattern, portp->elinkp->CableData.label, 0) == 0)
-		{
-			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
-			if (FSUCCESS != status)
-				return status;
+			if (! portp->elinkp || ! portp->elinkp->CableData.label)
+				continue;	// no cable information
+			if (fnmatch(pattern, portp->elinkp->CableData.label, 0) == 0)
+			{
+				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+				if (FSUCCESS != status)
+					return status;
+			}
 		}
 	}
-	if (pPoint->Type == POINT_TYPE_NONE) {
+
+	// N/A for FIND_FLAG_ENODE and FIND_FLAG_ESM
+	if (find_flag & FIND_FLAG_ELINK) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->ExpectedLinks); p != NULL; p = QListNext(&fabricp->ExpectedLinks, p)) {
+			ExpectedLink *elinkp = (ExpectedLink *)QListObj(p);
+			if (! elinkp->CableData.label)
+				continue;	// no cable information
+			if (fnmatch(pattern, elinkp->CableData.label, 0) == 0)
+			{
+				status = PointElinkListAppend(pPoint, POINT_ELINK_TYPE_LINK_LIST, elinkp);
+				if (FSUCCESS != status)
+					return status;
+			}
+		}
+	}
+
+	if (! PointValid(pPoint)) {
 		fprintf(stderr, "%s: Cable Label Not Found: %s\n",
-					   	g_Top_cmdname, pattern);
+						g_Top_cmdname, pattern);
 		return FNOT_FOUND;
 	}
 	PointCompress(pPoint);
@@ -520,27 +1078,51 @@ FSTATUS FindCableLabelPat(FabricData_t *fabricp, const char* pattern, Point *pPo
 }
 
 // search for ports whose ExpectedLink has the given cable length
-FSTATUS FindCableLenPat(FabricData_t *fabricp, const char* pattern, Point *pPoint)
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindCableLenPatPoint(FabricData_t *fabricp, const char* pattern, Point *pPoint, uint8 find_flag)
 {
-	LIST_ITEM *p;
 	FSTATUS status;
 
-	ASSERT(pPoint->Type == POINT_TYPE_NONE);
-	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
-		PortData *portp = (PortData *)QListObj(p);
+	ASSERT(! PointValid(pPoint));
+	if (0 == (find_flag & (FIND_FLAG_FABRIC|FIND_FLAG_ELINK)))
+		return FINVALID_OPERATION;
+	if (find_flag & FIND_FLAG_FABRIC) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+			PortData *portp = (PortData *)QListObj(p);
 
-		if (! portp->elinkp || ! portp->elinkp->CableData.length)
-			continue;	// no cable information
-		if (fnmatch(pattern, portp->elinkp->CableData.length, 0) == 0)
-		{
-			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
-			if (FSUCCESS != status)
-				return status;
+			if (! portp->elinkp || ! portp->elinkp->CableData.length)
+				continue;	// no cable information
+			if (fnmatch(pattern, portp->elinkp->CableData.length, 0) == 0)
+			{
+				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+				if (FSUCCESS != status)
+					return status;
+			}
 		}
 	}
-	if (pPoint->Type == POINT_TYPE_NONE) {
+
+	// N/A for FIND_FLAG_ENODE and FIND_FLAG_ESM
+
+	if (find_flag & FIND_FLAG_ELINK) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->ExpectedLinks); p != NULL; p = QListNext(&fabricp->ExpectedLinks, p)) {
+			ExpectedLink *elinkp = (ExpectedLink *)QListObj(p);
+			if (! elinkp->CableData.length)
+				continue;	// no cable information
+			if (fnmatch(pattern, elinkp->CableData.length, 0) == 0)
+			{
+				status = PointElinkListAppend(pPoint, POINT_ELINK_TYPE_LINK_LIST, elinkp);
+				if (FSUCCESS != status)
+					return status;
+			}
+		}
+	}
+	if (! PointValid(pPoint)) {
 		fprintf(stderr, "%s: Cable Length Not Found: %s\n",
-					   	g_Top_cmdname, pattern);
+						g_Top_cmdname, pattern);
 		return FNOT_FOUND;
 	}
 	PointCompress(pPoint);
@@ -548,27 +1130,49 @@ FSTATUS FindCableLenPat(FabricData_t *fabricp, const char* pattern, Point *pPoin
 }
 
 // search for ports whose ExpectedLink has the given cable details
-FSTATUS FindCableDetailsPat(FabricData_t *fabricp, const char* pattern, Point *pPoint)
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindCableDetailsPatPoint(FabricData_t *fabricp, const char* pattern, Point *pPoint, uint8 find_flag)
 {
-	LIST_ITEM *p;
 	FSTATUS status;
 
-	ASSERT(pPoint->Type == POINT_TYPE_NONE);
-	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
-		PortData *portp = (PortData *)QListObj(p);
+	ASSERT(! PointValid(pPoint));
+	if (0 == (find_flag & (FIND_FLAG_FABRIC|FIND_FLAG_ELINK)))
+		return FINVALID_OPERATION;
+	if (find_flag & FIND_FLAG_FABRIC) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+			PortData *portp = (PortData *)QListObj(p);
 
-		if (! portp->elinkp || ! portp->elinkp->CableData.details)
-			continue;	// no cable information
-		if (fnmatch(pattern, portp->elinkp->CableData.details, 0) == 0)
-		{
-			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
-			if (FSUCCESS != status)
-				return status;
+			if (portp->elinkp && portp->elinkp->CableData.details
+				&& fnmatch(pattern, portp->elinkp->CableData.details, 0) == 0)
+			{
+				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+				if (FSUCCESS != status)
+					return status;
+			}
 		}
 	}
-	if (pPoint->Type == POINT_TYPE_NONE) {
+
+	// N/A for FIND_FLAG_ENODE and FIND_FLAG_ESM
+
+	if (find_flag & FIND_FLAG_ELINK) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->ExpectedLinks); p != NULL; p = QListNext(&fabricp->ExpectedLinks, p)) {
+			ExpectedLink *elinkp = (ExpectedLink *)QListObj(p);
+			if (elinkp->CableData.details
+				&& fnmatch(pattern, elinkp->CableData.details, 0) == 0)
+			{
+				status = PointElinkListAppend(pPoint, POINT_ELINK_TYPE_LINK_LIST, elinkp);
+				if (FSUCCESS != status)
+					return status;
+			}
+		}
+	}
+	if (! PointValid(pPoint)) {
 		fprintf(stderr, "%s: Cable Details Not Found: %s\n",
-					   	g_Top_cmdname, pattern);
+						g_Top_cmdname, pattern);
 		return FNOT_FOUND;
 	}
 	PointCompress(pPoint);
@@ -576,60 +1180,73 @@ FSTATUS FindCableDetailsPat(FabricData_t *fabricp, const char* pattern, Point *p
 }
 
 // search for ports whose CABLE_INFO has the given length
-FSTATUS FindCabinfLenPat(FabricData_t *fabricp, const char* pattern, Point *pPoint)
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindCabinfLenPatPoint(FabricData_t *fabricp, const char* pattern, Point *pPoint, uint8 find_flag)
 {
-	LIST_ITEM *p;
 	FSTATUS status;
 	uint32 n_pattern = 0;
-	uint8 xmit_tech;
-	STL_CABLE_INFO_STD *pCableInfo;
 
-	ASSERT(pPoint->Type == POINT_TYPE_NONE);
+	ASSERT(! PointValid(pPoint));
+	if (0 == (find_flag & FIND_FLAG_FABRIC))
+		return FINVALID_OPERATION;
 	if ((sscanf(pattern, "%3u", &n_pattern) != 1) || (n_pattern > 255))
 	{
 		fprintf(stderr, "%s: Invalid CABLE_INFO length Pattern: %s\n",
 			g_Top_cmdname, pattern);
 		return FNOT_FOUND;
 	}
-	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
-		PortData *portp = (PortData *)QListObj(p);
+	if (find_flag & FIND_FLAG_FABRIC) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+			PortData *portp = (PortData *)QListObj(p);
+			STL_CABLE_INFO_STD *pCableInfo;
+			uint8 xmit_tech;
 
-		pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
-		if (! pCableInfo)
-			continue;
-		xmit_tech = pCableInfo->dev_tech.s.xmit_tech;
-		if ( ( ( (xmit_tech <= STL_CIB_STD_TXTECH_1490_DFB) &&
-				(xmit_tech != STL_CIB_STD_TXTECH_OTHER) &&
-				(pCableInfo->connector == STL_CIB_STD_CONNECTOR_NO_SEP) ) ||
-				(xmit_tech >= STL_CIB_STD_TXTECH_CU_UNEQ) ) &&
-				(pCableInfo->len_om4 == (uint8)n_pattern) )
-		{
-			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
-			if (FSUCCESS != status)
-				return status;
+			pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
+			if (! pCableInfo)
+				continue;
+			xmit_tech = pCableInfo->dev_tech.s.xmit_tech;
+			if ( ( ( (xmit_tech <= STL_CIB_STD_TXTECH_1490_DFB) &&
+					(xmit_tech != STL_CIB_STD_TXTECH_OTHER) &&
+					(pCableInfo->connector == STL_CIB_STD_CONNECTOR_NO_SEP) ) ||
+					(xmit_tech >= STL_CIB_STD_TXTECH_CU_UNEQ) ) &&
+					(pCableInfo->len_om4 == (uint8)n_pattern) )
+			{
+				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+				if (FSUCCESS != status)
+					return status;
+			}
 		}
 	}
-	if (pPoint->Type == POINT_TYPE_NONE) {
+
+	// N/A for FIND_FLAG_ENODE, FIND_FLAG_ESM and FIND_FLAG_ELINK
+
+	if (! PointValid(pPoint)) {
 		fprintf(stderr, "%s: CABLE_INFO length Not Found: %u\n",
-					   	g_Top_cmdname, n_pattern);
+						g_Top_cmdname, n_pattern);
 		return FNOT_FOUND;
 	}
 	PointCompress(pPoint);
 	return FSUCCESS;
 
-}	// End of FindCabinfLenPat()
+}	// End of FindCabinfLenPatPoint()
 
 // search for ports whose CABLE_INFO has the given vendor name
-FSTATUS FindCabinfVendNamePat(FabricData_t *fabricp, const char* pattern, Point *pPoint)
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindCabinfVendNamePatPoint(FabricData_t *fabricp, const char* pattern, Point *pPoint, uint8 find_flag)
 {
-	LIST_ITEM *p;
 	FSTATUS status;
 	uint32 len_pattern;
 	STL_CABLE_INFO_STD *pCableInfo;
 	char bf_pattern[sizeof(pCableInfo->vendor_name) + 1];
-	char tempStr[sizeof(pCableInfo->vendor_name) + 1];
 
-	ASSERT(pPoint->Type == POINT_TYPE_NONE);
+	ASSERT(! PointValid(pPoint));
+	if (0 == (find_flag & FIND_FLAG_FABRIC))
+		return FINVALID_OPERATION;
 	len_pattern = strnlen(pattern, sizeof(pCableInfo->vendor_name));
 	memset (bf_pattern, ' ', sizeof(bf_pattern));
 	memcpy (bf_pattern, pattern, len_pattern);
@@ -638,42 +1255,52 @@ FSTATUS FindCabinfVendNamePat(FabricData_t *fabricp, const char* pattern, Point 
 	else
 		bf_pattern[len_pattern] = '\0';
 
-	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
-		PortData *portp = (PortData *)QListObj(p);
+	if (find_flag & FIND_FLAG_FABRIC) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+			PortData *portp = (PortData *)QListObj(p);
+			char tempStr[sizeof(pCableInfo->vendor_name) + 1];
 
-		pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
-		if (! pCableInfo)
-			continue;
-		memcpy(tempStr, pCableInfo->vendor_name, sizeof(pCableInfo->vendor_name));
-		tempStr[sizeof(pCableInfo->vendor_name)] = '\0';
-		if (fnmatch(bf_pattern, (const char *)tempStr, 0) == 0)
-		{
-			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
-			if (FSUCCESS != status)
-				return status;
+			pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
+			if (! pCableInfo)
+				continue;
+			memcpy(tempStr, pCableInfo->vendor_name, sizeof(pCableInfo->vendor_name));
+			tempStr[sizeof(pCableInfo->vendor_name)] = '\0';
+			if (fnmatch(bf_pattern, (const char *)tempStr, 0) == 0)
+			{
+				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+				if (FSUCCESS != status)
+					return status;
+			}
 		}
 	}
-	if (pPoint->Type == POINT_TYPE_NONE) {
+
+	// N/A for FIND_FLAG_ENODE, FIND_FLAG_ESM and FIND_FLAG_ELINK
+
+	if (! PointValid(pPoint)) {
 		fprintf(stderr, "%s: CABLE_INFO vendor name Not Found: %s\n",
-					   	g_Top_cmdname, pattern);
+						g_Top_cmdname, pattern);
 		return FNOT_FOUND;
 	}
 	PointCompress(pPoint);
 	return FSUCCESS;
 
-}	// End of FindCabinfVendNamePat()
+}	// End of FindCabinfVendNamePatPoint()
 
 // search for ports whose CABLE_INFO has the given vendor part number
-FSTATUS FindCabinfVendPNPat(FabricData_t *fabricp, const char* pattern, Point *pPoint)
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindCabinfVendPNPatPoint(FabricData_t *fabricp, const char* pattern, Point *pPoint, uint8 find_flag)
 {
-	LIST_ITEM *p;
 	FSTATUS status;
 	uint32 len_pattern;
 	STL_CABLE_INFO_STD *pCableInfo;
 	char bf_pattern[sizeof(pCableInfo->vendor_pn) + 1];
-	char tempStr[sizeof(pCableInfo->vendor_pn) + 1];
 
-	ASSERT(pPoint->Type == POINT_TYPE_NONE);
+	ASSERT(! PointValid(pPoint));
+	if (0 == (find_flag & FIND_FLAG_FABRIC))
+		return FINVALID_OPERATION;
 	len_pattern = strnlen(pattern, sizeof(pCableInfo->vendor_pn));
 	memset (bf_pattern, ' ', sizeof(bf_pattern));
 	memcpy (bf_pattern, pattern, len_pattern);
@@ -682,42 +1309,52 @@ FSTATUS FindCabinfVendPNPat(FabricData_t *fabricp, const char* pattern, Point *p
 	else
 		bf_pattern[len_pattern] = '\0';
 
-	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
-		PortData *portp = (PortData *)QListObj(p);
+	if (find_flag & FIND_FLAG_FABRIC) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+			PortData *portp = (PortData *)QListObj(p);
+			char tempStr[sizeof(pCableInfo->vendor_pn) + 1];
 
-		pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
-		if (! pCableInfo)
-			continue;
-		memcpy(tempStr, pCableInfo->vendor_pn, sizeof(pCableInfo->vendor_pn));
-		tempStr[sizeof(pCableInfo->vendor_pn)] = '\0';
-		if (fnmatch(bf_pattern, (const char *)tempStr, 0) == 0)
-		{
-			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
-			if (FSUCCESS != status)
-				return status;
+			pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
+			if (! pCableInfo)
+				continue;
+			memcpy(tempStr, pCableInfo->vendor_pn, sizeof(pCableInfo->vendor_pn));
+			tempStr[sizeof(pCableInfo->vendor_pn)] = '\0';
+			if (fnmatch(bf_pattern, (const char *)tempStr, 0) == 0)
+			{
+				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+				if (FSUCCESS != status)
+					return status;
+			}
 		}
 	}
-	if (pPoint->Type == POINT_TYPE_NONE) {
+
+	// N/A for FIND_FLAG_ENODE, FIND_FLAG_ESM and FIND_FLAG_ELINK
+
+	if (! PointValid(pPoint)) {
 		fprintf(stderr, "%s: CABLE_INFO vendor PN Not Found: %s\n",
-					   	g_Top_cmdname, pattern);
+						g_Top_cmdname, pattern);
 		return FNOT_FOUND;
 	}
 	PointCompress(pPoint);
 	return FSUCCESS;
 
-}	// End of FindCabinfVendPNPat()
+}	// End of FindCabinfVendPNPatPoint()
 
 // search for ports whose CABLE_INFO has the given vendor rev
-FSTATUS FindCabinfVendRevPat(FabricData_t *fabricp, const char* pattern, Point *pPoint)
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindCabinfVendRevPatPoint(FabricData_t *fabricp, const char* pattern, Point *pPoint, uint8 find_flag)
 {
-	LIST_ITEM *p;
 	FSTATUS status;
 	uint32 len_pattern;
 	STL_CABLE_INFO_STD *pCableInfo;
 	char bf_pattern[sizeof(pCableInfo->vendor_rev) + 1];
-	char tempStr[sizeof(pCableInfo->vendor_rev) + 1];
 
-	ASSERT(pPoint->Type == POINT_TYPE_NONE);
+	ASSERT(! PointValid(pPoint));
+	if (0 == (find_flag & FIND_FLAG_FABRIC))
+		return FINVALID_OPERATION;
 	len_pattern = strnlen(pattern, sizeof(pCableInfo->vendor_rev));
 	memset (bf_pattern, ' ', sizeof(bf_pattern));
 	memcpy (bf_pattern, pattern, len_pattern);
@@ -726,42 +1363,52 @@ FSTATUS FindCabinfVendRevPat(FabricData_t *fabricp, const char* pattern, Point *
 	else
 		bf_pattern[len_pattern] = '\0';
 
-	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
-		PortData *portp = (PortData *)QListObj(p);
+	if (find_flag & FIND_FLAG_FABRIC) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+			PortData *portp = (PortData *)QListObj(p);
+			char tempStr[sizeof(pCableInfo->vendor_rev) + 1];
 
-		pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
-		if (! pCableInfo)
-			continue;
-		memcpy(tempStr, pCableInfo->vendor_rev, sizeof(pCableInfo->vendor_rev));
-		tempStr[sizeof(pCableInfo->vendor_rev)] = '\0';
-		if (fnmatch(bf_pattern, (const char *)tempStr, 0) == 0)
-		{
-			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
-			if (FSUCCESS != status)
-				return status;
+			pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
+			if (! pCableInfo)
+				continue;
+			memcpy(tempStr, pCableInfo->vendor_rev, sizeof(pCableInfo->vendor_rev));
+			tempStr[sizeof(pCableInfo->vendor_rev)] = '\0';
+			if (fnmatch(bf_pattern, (const char *)tempStr, 0) == 0)
+			{
+				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+				if (FSUCCESS != status)
+					return status;
+			}
 		}
 	}
-	if (pPoint->Type == POINT_TYPE_NONE) {
+
+	// N/A for FIND_FLAG_ENODE, FIND_FLAG_ESM and FIND_FLAG_ELINK
+
+	if (! PointValid(pPoint)) {
 		fprintf(stderr, "%s: CABLE_INFO vendor rev Not Found: %s\n",
-					   	g_Top_cmdname, pattern);
+						g_Top_cmdname, pattern);
 		return FNOT_FOUND;
 	}
 	PointCompress(pPoint);
 	return FSUCCESS;
 
-}	// End of FindCabinfVendRevPat()
+}	// End of FindCabinfVendRevPatPoint()
 
 // search for ports whose CABLE_INFO has the given vendor serial number
-FSTATUS FindCabinfVendSNPat(FabricData_t *fabricp, const char* pattern, Point *pPoint)
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindCabinfVendSNPatPoint(FabricData_t *fabricp, const char* pattern, Point *pPoint, uint8 find_flag)
 {
-	LIST_ITEM *p;
 	FSTATUS status;
 	uint32 len_pattern;
 	STL_CABLE_INFO_STD *pCableInfo;
 	char bf_pattern[sizeof(pCableInfo->vendor_sn) + 1];
-	char tempStr[sizeof(pCableInfo->vendor_sn) + 1];
 
-	ASSERT(pPoint->Type == POINT_TYPE_NONE);
+	ASSERT(! PointValid(pPoint));
+	if (0 == (find_flag & FIND_FLAG_FABRIC))
+		return FINVALID_OPERATION;
 	len_pattern = strnlen(pattern, sizeof(pCableInfo->vendor_sn));
 	memset (bf_pattern, ' ', sizeof(bf_pattern));
 	memcpy (bf_pattern, pattern, len_pattern);
@@ -770,82 +1417,97 @@ FSTATUS FindCabinfVendSNPat(FabricData_t *fabricp, const char* pattern, Point *p
 	else
 		bf_pattern[len_pattern] = '\0';
 
-	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
-		PortData *portp = (PortData *)QListObj(p);
+	if (find_flag & FIND_FLAG_FABRIC) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+			PortData *portp = (PortData *)QListObj(p);
+			char tempStr[sizeof(pCableInfo->vendor_sn) + 1];
 
-		pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
-		if (! pCableInfo)
-			continue;
-		memcpy(tempStr, pCableInfo->vendor_sn, sizeof(pCableInfo->vendor_sn));
-		tempStr[sizeof(pCableInfo->vendor_sn)] = '\0';
-		if (fnmatch(bf_pattern, (const char *)tempStr, 0) == 0)
-		{
-			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
-			if (FSUCCESS != status)
-				return status;
+			pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
+			if (! pCableInfo)
+				continue;
+			memcpy(tempStr, pCableInfo->vendor_sn, sizeof(pCableInfo->vendor_sn));
+			tempStr[sizeof(pCableInfo->vendor_sn)] = '\0';
+			if (fnmatch(bf_pattern, (const char *)tempStr, 0) == 0)
+			{
+				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+				if (FSUCCESS != status)
+					return status;
+			}
 		}
 	}
-	if (pPoint->Type == POINT_TYPE_NONE) {
+
+	// N/A for FIND_FLAG_ENODE, FIND_FLAG_ESM and FIND_FLAG_ELINK
+
+	if (! PointValid(pPoint)) {
 		fprintf(stderr, "%s: CABLE_INFO vendor SN Not Found: %s\n",
-					   	g_Top_cmdname, pattern);
+						g_Top_cmdname, pattern);
 		return FNOT_FOUND;
 	}
 	PointCompress(pPoint);
 	return FSUCCESS;
 
-}	// End of FindCabinfVendSNPat()
+}	// End of FindCabinfVendSNPatPoint()
 
 // search for the PortData corresponding to the given cable type
-FSTATUS FindCabinfCableType(FabricData_t *fabricp, char *pattern, Point *pPoint)
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindCabinfCableTypePoint(FabricData_t *fabricp, char *pattern, Point *pPoint, uint8 find_flag)
 {
-	LIST_ITEM *p;
 	FSTATUS status;
-	uint8 xmit_tech;
-	STL_CABLE_INFO_STD *pCableInfo;
 	int len;
 
 	len = strlen(pattern);
 
-	ASSERT(pPoint->Type == POINT_TYPE_NONE);
-	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
-		PortData *portp = (PortData *)QListObj(p);
+	ASSERT(! PointValid(pPoint));
+	if (0 == (find_flag & FIND_FLAG_FABRIC))
+		return FINVALID_OPERATION;
+	if (find_flag & FIND_FLAG_FABRIC) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+			PortData *portp = (PortData *)QListObj(p);
+			STL_CABLE_INFO_STD *pCableInfo;
+			uint8 xmit_tech;
 
-		/* omit switch port 0, no cable connected to port0 */
-		if (portp->PortNum == 0)
-			continue;
-		pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
-		if (! pCableInfo)
-			continue;
-		xmit_tech = pCableInfo->dev_tech.s.xmit_tech;
-		if (strncmp(pattern, "optical", len) == 0) // this includes AOL and Optical Transceiver
-			if (xmit_tech <= STL_CIB_STD_TXTECH_1490_DFB && (xmit_tech >= STL_CIB_STD_TXTECH_850_VCSEL)
-					&& (xmit_tech != STL_CIB_STD_TXTECH_OTHER)) {
-			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
-			if (FSUCCESS != status)
-				return status;
-		}
-		if (strncmp(pattern, "unknown", len) == 0)
-			if (xmit_tech == STL_CIB_STD_TXTECH_OTHER) {
+			/* omit switch port 0, no cable connected to port0 */
+			if (portp->PortNum == 0)
+				continue;
+			pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
+			if (! pCableInfo)
+				continue;
+			xmit_tech = pCableInfo->dev_tech.s.xmit_tech;
+			if (strncmp(pattern, "optical", len) == 0) // this includes AOL and Optical Transceiver
+				if (xmit_tech <= STL_CIB_STD_TXTECH_1490_DFB && (xmit_tech >= STL_CIB_STD_TXTECH_850_VCSEL)
+						&& (xmit_tech != STL_CIB_STD_TXTECH_OTHER)) {
 				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
 				if (FSUCCESS != status)
 					return status;
+			}
+			if (strncmp(pattern, "unknown", len) == 0)
+				if (xmit_tech == STL_CIB_STD_TXTECH_OTHER) {
+					status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+					if (FSUCCESS != status)
+						return status;
+			}
+			if (strncmp(pattern, "passive_copper", len) == 0)
+				if (xmit_tech == STL_CIB_STD_TXTECH_CU_UNEQ || (xmit_tech == STL_CIB_STD_TXTECH_CU_PASSIVEQ)) {
+				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+				if (FSUCCESS != status)
+					return status;
+			}
+			if (strncmp(pattern, "active_copper", len) == 0)
+				if (xmit_tech <= STL_CIB_STD_TXTECH_CU_LINACTEQ && (xmit_tech >= STL_CIB_STD_TXTECH_CU_NFELIMACTEQ)) {
+				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+				if (FSUCCESS != status)
+					return status;
+			}
 		}
-		if (strncmp(pattern, "passive_copper", len) == 0)
-			if (xmit_tech == STL_CIB_STD_TXTECH_CU_UNEQ || (xmit_tech == STL_CIB_STD_TXTECH_CU_PASSIVEQ)) {
-			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
-			if (FSUCCESS != status)
-				return status;
-		}
-		if (strncmp(pattern, "active_copper", len) == 0)
-			if (xmit_tech <= STL_CIB_STD_TXTECH_CU_LINACTEQ && (xmit_tech >= STL_CIB_STD_TXTECH_CU_NFELIMACTEQ)) {
-			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
-			if (FSUCCESS != status)
-				return status;
-		}
-
 	}
 
-	if (pPoint->Type == POINT_TYPE_NONE) {
+	// N/A for FIND_FLAG_ENODE, FIND_FLAG_ESM and FIND_FLAG_ELINK
+
+	if (! PointValid(pPoint)) {
 		fprintf(stderr, "%s: CABLE_INFO: No %s cables found\n",
 						g_Top_cmdname, pattern);
 		return FNOT_FOUND;
@@ -853,28 +1515,49 @@ FSTATUS FindCabinfCableType(FabricData_t *fabricp, char *pattern, Point *pPoint)
 	PointCompress(pPoint);
 	return FSUCCESS;
 
-} // End of  FindCabinfCableType()
+} // End of FindCabinfCableTypePoint()
 
 // search for ports whose ExpectedLink has the given link details
-FSTATUS FindLinkDetailsPat(FabricData_t *fabricp, const char* pattern, Point *pPoint)
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindLinkDetailsPatPoint(FabricData_t *fabricp, const char* pattern, Point *pPoint, uint8 find_flag)
 {
-	LIST_ITEM *p;
 	FSTATUS status;	
-	ASSERT(pPoint->Type == POINT_TYPE_NONE);
-	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
-		PortData *portp = (PortData *)QListObj(p);
-		if (! portp->elinkp || ! portp->elinkp->details)
-			continue;	// no link information
-		if (fnmatch(pattern, portp->elinkp->details, 0) == 0)
-		{
-			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
-			if (FSUCCESS != status)
-				return status;
+	ASSERT(! PointValid(pPoint));
+	if (0 == (find_flag & (FIND_FLAG_FABRIC|FIND_FLAG_ELINK)))
+		return FINVALID_OPERATION;
+	if (find_flag & FIND_FLAG_FABRIC) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+			PortData *portp = (PortData *)QListObj(p);
+			if (portp->elinkp && portp->elinkp->details
+				&& fnmatch(pattern, portp->elinkp->details, 0) == 0)
+			{
+				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+				if (FSUCCESS != status)
+					return status;
+			}
 		}
 	}
-	if (pPoint->Type == POINT_TYPE_NONE) {
+
+	// N/A for FIND_FLAG_ENODE and FIND_FLAG_ESM
+
+	if (find_flag & FIND_FLAG_ELINK) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->ExpectedLinks); p != NULL; p = QListNext(&fabricp->ExpectedLinks, p)) {
+			ExpectedLink *elinkp = (ExpectedLink *)QListObj(p);
+			if (elinkp->details && fnmatch(pattern, elinkp->details, 0) == 0)
+			{
+				status = PointElinkListAppend(pPoint, POINT_ELINK_TYPE_LINK_LIST, elinkp);
+				if (FSUCCESS != status)
+					return status;
+			}
+		}
+	}
+	if (! PointValid(pPoint)) {
 		fprintf(stderr, "%s: Link Details Not Found: %s\n",
-					   	g_Top_cmdname, pattern);
+						g_Top_cmdname, pattern);
 		return FNOT_FOUND;
 	}
 	PointCompress(pPoint);
@@ -882,28 +1565,52 @@ FSTATUS FindLinkDetailsPat(FabricData_t *fabricp, const char* pattern, Point *pP
 }
 
 // search for ports whose ExpectedLink has the given port details
-FSTATUS FindPortDetailsPat(FabricData_t *fabricp, const char* pattern, Point *pPoint)
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindPortDetailsPatPoint(FabricData_t *fabricp, const char* pattern, Point *pPoint, uint8 find_flag)
 {
-	LIST_ITEM *p;
 	FSTATUS status;
 
-	ASSERT(pPoint->Type == POINT_TYPE_NONE);
-	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
-		PortData *portp = (PortData *)QListObj(p);
-		PortSelector *portselp = GetPortSelector(portp);
+	ASSERT(! PointValid(pPoint));
+	if (0 == (find_flag & (FIND_FLAG_FABRIC|FIND_FLAG_ELINK)))
+		return FINVALID_OPERATION;
+	if (find_flag & FIND_FLAG_FABRIC) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+			PortData *portp = (PortData *)QListObj(p);
+			PortSelector *portselp = GetPortSelector(portp);
 
-		if (! portselp || ! portselp->details)
-			continue;	// no port details information
-		if (fnmatch(pattern, portselp->details, 0) == 0)
-		{
-			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
-			if (FSUCCESS != status)
-				return status;
+			if (portselp && portselp->details
+				&& fnmatch(pattern, portselp->details, 0) == 0)
+			{
+				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+				if (FSUCCESS != status)
+					return status;
+			}
 		}
 	}
-	if (pPoint->Type == POINT_TYPE_NONE) {
+
+	// N/A for FIND_FLAG_ENODE and FIND_FLAG_ESM
+
+	if (find_flag & FIND_FLAG_ELINK) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->ExpectedLinks); p != NULL; p = QListNext(&fabricp->ExpectedLinks, p)) {
+			ExpectedLink *elinkp = (ExpectedLink *)QListObj(p);
+			if ((elinkp->portselp1 && elinkp->portselp1->details
+					&& fnmatch(pattern, elinkp->portselp1->details, 0) == 0)
+				|| (elinkp->portselp2 && elinkp->portselp2->details
+					&& fnmatch(pattern, elinkp->portselp2->details, 0) == 0))
+			{
+				status = PointElinkListAppend(pPoint, POINT_ELINK_TYPE_LINK_LIST, elinkp);
+				if (FSUCCESS != status)
+					return status;
+			}
+		}
+	}
+	if (! PointValid(pPoint)) {
 		fprintf(stderr, "%s: Port Details Not Found: %s\n",
-					   	g_Top_cmdname, pattern);
+						g_Top_cmdname, pattern);
 		return FNOT_FOUND;
 	}
 	PointCompress(pPoint);
@@ -911,28 +1618,51 @@ FSTATUS FindPortDetailsPat(FabricData_t *fabricp, const char* pattern, Point *pP
 }
 #endif
 
-// search for the PortData corresponding to the given port MTU
-FSTATUS FindMtu(FabricData_t *fabricp, IB_MTU mtu, uint8 vl_num, Point *pPoint)
+// search for the PortData corresponding to the given port MTU capability
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindMtuPoint(FabricData_t *fabricp, IB_MTU mtu, Point *pPoint, uint8 find_flag)
 {
-	LIST_ITEM *p;
 	FSTATUS status;
 
-	ASSERT(pPoint->Type == POINT_TYPE_NONE);
-	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
-		PortData *portp = (PortData *)QListObj(p);
+	ASSERT(! PointValid(pPoint));
+	ASSERT(mtu);
+	if (0 == (find_flag & (FIND_FLAG_FABRIC|FIND_FLAG_ELINK)))
+		return FINVALID_OPERATION;
+	if (find_flag & FIND_FLAG_FABRIC) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+			PortData *portp = (PortData *)QListObj(p);
 
-		/* omit switch port 0, mtu is often odd */
-		if (portp->PortNum == 0)
-			continue;
-		if(MIN(portp->PortInfo.MTU.Cap, portp->neighbor->PortInfo.MTU.Cap) == mtu){
-			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
-  			if (FSUCCESS != status)
-  				return status;
+			/* omit switch port 0, mtu is often odd */
+			if (portp->PortNum == 0)
+				continue;
+			if(MIN(portp->PortInfo.MTU.Cap, portp->neighbor->PortInfo.MTU.Cap) == mtu){
+				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+				if (FSUCCESS != status)
+					return status;
+			}
 		}
 	}
-	if (pPoint->Type == POINT_TYPE_NONE) {
+
+	// N/A for FIND_FLAG_ENODE and FIND_FLAG_ESM
+
+	if (find_flag & FIND_FLAG_ELINK) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->ExpectedLinks); p != NULL; p = QListNext(&fabricp->ExpectedLinks, p)) {
+			ExpectedLink *elinkp = (ExpectedLink *)QListObj(p);
+			if(elinkp->expected_mtu == mtu)
+			{
+				status = PointElinkListAppend(pPoint, POINT_ELINK_TYPE_LINK_LIST, elinkp);
+				if (FSUCCESS != status)
+					return status;
+			}
+		}
+	}
+	if (! PointValid(pPoint)) {
 		fprintf(stderr, "%s: MTU Not Found: %s\n",
-					   	g_Top_cmdname, IbMTUToText(mtu));
+						g_Top_cmdname, IbMTUToText(mtu));
 		return FNOT_FOUND;
 	}
 	PointCompress(pPoint);
@@ -954,26 +1684,53 @@ PortData * FindMasterSm(FabricData_t *fabricp)
 
 #ifndef __VXWORKS__
 // search for SMData whose ExpectedSM has the given SM details
-FSTATUS FindSmDetailsPat(FabricData_t *fabricp, const char* pattern, Point *pPoint)
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindSmDetailsPatPoint(FabricData_t *fabricp, const char* pattern, Point *pPoint, uint8 find_flag)
 {
-	cl_map_item_t *p;
 	FSTATUS status;
 
-	ASSERT(pPoint->Type == POINT_TYPE_NONE);
-	for (p=cl_qmap_head(&fabricp->AllSMs); p != cl_qmap_end(&fabricp->AllSMs); p = cl_qmap_next(p)) {
-		SMData *smp = PARENT_STRUCT(p, SMData, AllSMsEntry);
-		if (! smp->esmp || ! smp->esmp->details)
-			continue;	// no node details information
-		if (fnmatch(pattern, smp->esmp->details, 0) == 0)
-		{
-			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, smp->portp);
-			if (FSUCCESS != status)
-				return status;
+	ASSERT(! PointValid(pPoint));
+	if (0 == (find_flag & (FIND_FLAG_FABRIC|FIND_FLAG_ESM)))
+		return FINVALID_OPERATION;
+	if (find_flag & FIND_FLAG_FABRIC) {
+		cl_map_item_t *p;
+		for (p=cl_qmap_head(&fabricp->AllSMs); p != cl_qmap_end(&fabricp->AllSMs); p = cl_qmap_next(p)) {
+			SMData *smp = PARENT_STRUCT(p, SMData, AllSMsEntry);
+			if (! smp->esmp || ! smp->esmp->details)
+				continue;	// no SM details information
+			if (fnmatch(pattern, smp->esmp->details, 0) == 0)
+			{
+				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, smp->portp);
+				if (FSUCCESS != status)
+					return status;
+			}
 		}
 	}
-	if (pPoint->Type == POINT_TYPE_NONE) {
+
+	// N/A for FIND_FLAG_ENODE
+
+	if (find_flag & FIND_FLAG_ESM) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->ExpectedSMs); p != NULL; p = QListNext(&fabricp->ExpectedSMs, p)) {
+			ExpectedSM *esmp = (ExpectedSM *)QListObj(p);
+			if (! esmp->details)
+				continue;	// no SM details information
+			if (fnmatch(pattern, esmp->details, 0) == 0)
+			{
+				status = PointEsmListAppend(pPoint, POINT_ESM_TYPE_SM_LIST, esmp);
+				if (FSUCCESS != status)
+					return status;
+			}
+		}
+	}
+
+	// N/A for FIND_FLAG_ELINK
+
+	if (! PointValid(pPoint)) {
 		fprintf(stderr, "%s: SM Details Not Found: %s\n",
-					   	g_Top_cmdname, pattern);
+						g_Top_cmdname, pattern);
 		return FNOT_FOUND;
 	}
 	PointCompress(pPoint);
@@ -1022,30 +1779,31 @@ PortData *FindNodeGuidPort(FabricData_t *fabricp, EUI64 nodeguid, uint8 port)
 }
 
 // Search through the ExpectedFIs and ExpectedSWs for an ExpectedNode with the given nodeGuid
+// If more than 1 happens to match (duplicates in input), returns 1st found
 ExpectedNode* FindExpectedNodeByNodeGuid(FabricData_t *fabricp, EUI64 nodeGuid) {
-	LIST_ITEM *it;
+	LIST_ITEM *p;
 
 	if(fabricp == NULL)
 		return NULL;
 
 	// First check through the FIs
 	if(QListHead(&fabricp->ExpectedFIs) != NULL) {
-		for(it = QListHead(&fabricp->ExpectedFIs); it != NULL; it = QListNext(&fabricp->ExpectedFIs, it)) {
-			ExpectedNode* eNode = PARENT_STRUCT(it, ExpectedNode, ExpectedNodesEntry);
+		for(p = QListHead(&fabricp->ExpectedFIs); p != NULL; p = QListNext(&fabricp->ExpectedFIs, p)) {
+			ExpectedNode* enodep = PARENT_STRUCT(p, ExpectedNode, ExpectedNodesEntry);
 
-			if(eNode->NodeGUID == nodeGuid)
-				return eNode;
+			if(enodep->NodeGUID == nodeGuid)
+				return enodep;
 		}
 		
 	}
 
-	// Check through switches if it wasn't a CA
+	// Check through switches if it wasn't a FI
 	if(QListHead(&fabricp->ExpectedSWs) != NULL) {
-		for(it = QListHead(&fabricp->ExpectedSWs); it != NULL; it = QListNext(&fabricp->ExpectedSWs, it)) {
-			ExpectedNode* eNode = PARENT_STRUCT(it, ExpectedNode, ExpectedNodesEntry);
+		for(p = QListHead(&fabricp->ExpectedSWs); p != NULL; p = QListNext(&fabricp->ExpectedSWs, p)) {
+			ExpectedNode* enodep = PARENT_STRUCT(p, ExpectedNode, ExpectedNodesEntry);
 
-			if(eNode->NodeGUID == nodeGuid)
-				return eNode;
+			if(enodep->NodeGUID == nodeGuid)
+				return enodep;
 		}
 		
 	}
@@ -1055,132 +1813,123 @@ ExpectedNode* FindExpectedNodeByNodeGuid(FabricData_t *fabricp, EUI64 nodeGuid) 
 
 // Search for the ExpectedLink by one side of the link with nodeGuid & portNum. 
 // (OPTIONAL) Side is which portsel in the ExpectedLink that was the one given.
-ExpectedLink* FindExpectedLinkByOneSide(FabricData_t *fabricp, EUI64 nodeGuid, uint8 portNum, uint8* side) {
-	LIST_ITEM *it;
+// If more than 1 happens to match (duplicates in input), returns 1st found
+ExpectedLink* FindExpectedLinkByOneSide(FabricData_t *fabricp, EUI64 nodeGuid, uint8 portNum, uint8* side)
+{
+	LIST_ITEM *p;
 
 	if(fabricp == NULL || QListHead(&fabricp->ExpectedLinks) == NULL)
 		return NULL;
 
-	for(it = QListHead(&fabricp->ExpectedLinks); it != NULL; it = QListNext(&fabricp->ExpectedLinks, it)) {
-		ExpectedLink* foundLink = PARENT_STRUCT(it, ExpectedLink, ExpectedLinksEntry);
-		if(foundLink->portselp1 == NULL || foundLink->portselp2 == NULL)
+	for(p = QListHead(&fabricp->ExpectedLinks); p != NULL; p = QListNext(&fabricp->ExpectedLinks, p)) {
+		ExpectedLink* elinkp = PARENT_STRUCT(p, ExpectedLink, ExpectedLinksEntry);
+		if(elinkp->portselp1 == NULL || elinkp->portselp2 == NULL)
 			continue;
 
-		if(foundLink->portselp1->NodeGUID == nodeGuid && foundLink->portselp1->PortNum == portNum) {
+		if(elinkp->portselp1->NodeGUID == nodeGuid && elinkp->portselp1->PortNum == portNum) {
 			if(side)
 				*side = 1;
 
-			return foundLink;
-		} else if (foundLink->portselp2->NodeGUID == nodeGuid && foundLink->portselp2->PortNum == portNum) {
+			return elinkp;
+		} else if (elinkp->portselp2->NodeGUID == nodeGuid && elinkp->portselp2->PortNum == portNum) {
 			if(side)
 				*side = 2;
 			
-			return foundLink;
+			return elinkp;
 		}
 	}
 	
 	return NULL;
 }
 
-// Search for the ExpectedLink by matching the two nodeGuids on either end of the link
-ExpectedLink* FindExpectedLinkByNodeGuid(FabricData_t *fabricp, EUI64 nodeGuid1, EUI64 nodeGuid2) {
-	LIST_ITEM *it;
-
-	if(fabricp == NULL || QListHead(&fabricp->ExpectedLinks) == NULL)
-		return NULL;
-
-	for(it = QListHead(&fabricp->ExpectedLinks); it != NULL; it = QListNext(&fabricp->ExpectedLinks, it)) {
-		ExpectedLink* foundLink = PARENT_STRUCT(it, ExpectedLink, ExpectedLinksEntry);
-		if(foundLink->portselp1 == NULL || foundLink->portselp2 == NULL)
-			continue;
-
-		if((foundLink->portselp1->NodeGUID == nodeGuid1 && foundLink->portselp2->NodeGUID == nodeGuid2) ||
-			(foundLink->portselp1->NodeGUID == nodeGuid2 && foundLink->portselp2->NodeGUID == nodeGuid1))
-			return foundLink;
-	}
-
-	return NULL;
-}
-
-// Search for the ExpectedLink by matching the two portGuids on either end of the link
-ExpectedLink* FindExpectedLinkByPortGuid(FabricData_t *fabricp, EUI64 portGuid1, EUI64 portGuid2) {
-	LIST_ITEM *it;
-
-	if(fabricp == NULL || QListHead(&fabricp->ExpectedLinks) == NULL)
-		return NULL;
-
-	for(it = QListHead(&fabricp->ExpectedLinks); it != NULL; it = QListNext(&fabricp->ExpectedLinks, it)) {
-		ExpectedLink* foundLink = PARENT_STRUCT(it, ExpectedLink, ExpectedLinksEntry);
-		if(foundLink->portselp1 == NULL || foundLink->portselp2 == NULL)
-			continue;
-
-		if((foundLink->portselp1->PortGUID == portGuid1 && foundLink->portselp2->PortGUID == portGuid2) ||
-			(foundLink->portselp1->PortGUID == portGuid2 && foundLink->portselp2->PortGUID == portGuid1))
-			return foundLink;
-	}
-
-	return NULL;
-}
-
-// Search for the ExpectedLink by matching the two nodeDescs on either end of the link
-ExpectedLink* FindExpectedLinkByNodeDesc(FabricData_t *fabricp, char* nodeDesc1, char* nodeDesc2) {
-	LIST_ITEM *it;
-
-	if(fabricp == NULL || QListHead(&fabricp->ExpectedLinks) == NULL || nodeDesc1 == NULL || nodeDesc2 == NULL)
-		return NULL;
-
-	for(it = QListHead(&fabricp->ExpectedLinks); it != NULL; it = QListNext(&fabricp->ExpectedLinks, it)) {
-		ExpectedLink* foundLink = PARENT_STRUCT(it, ExpectedLink, ExpectedLinksEntry);
-		if(foundLink->portselp1 == NULL || foundLink->portselp2 == NULL ||
-			foundLink->portselp1->NodeDesc == NULL || foundLink->portselp2->NodeDesc == NULL)
-			continue;
-
-		if((strncmp(foundLink->portselp1->NodeDesc, nodeDesc1, STL_NODE_DESCRIPTION_ARRAY_SIZE) &&
-			strncmp(foundLink->portselp2->NodeDesc, nodeDesc2, STL_NODE_DESCRIPTION_ARRAY_SIZE)) ||
-			(strncmp(foundLink->portselp1->NodeDesc, nodeDesc2, STL_NODE_DESCRIPTION_ARRAY_SIZE) &&
-			strncmp(foundLink->portselp2->NodeDesc, nodeDesc1, STL_NODE_DESCRIPTION_ARRAY_SIZE)))
-			return foundLink;
-	}
-
-	return NULL;
-}
-
-FSTATUS FindLinkQuality(FabricData_t *fabricp, uint16 quality, LinkQualityCompare comp, Point *pPoint)
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindLinkQualityPoint(FabricData_t *fabricp, uint16 quality, LinkQualityCompare comp, Point *pPoint, uint8 find_flag)
 {
-	LIST_ITEM *p;
 	FSTATUS status;
 
-	ASSERT(pPoint->Type == POINT_TYPE_NONE);
-	for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
-		PortData *portp = (PortData *)QListObj(p);
+	ASSERT(! PointValid(pPoint));
+	if (0 == (find_flag & FIND_FLAG_FABRIC))
+		return FINVALID_OPERATION;
+	if (find_flag & FIND_FLAG_FABRIC) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+			PortData *portp = (PortData *)QListObj(p);
 
-		boolean match = FALSE;
-		if (!portp->pPortStatus)
-			continue;
-		switch (comp) {
-		case QUAL_EQ:
-			match = (uint16)(portp->pPortStatus->lq.s.LinkQualityIndicator) == quality;
-			break;
-		case QUAL_GE:
-			match = (uint16)(portp->pPortStatus->lq.s.LinkQualityIndicator) >= quality;
-			break;
-		case QUAL_LE:
-			match = (uint16)(portp->pPortStatus->lq.s.LinkQualityIndicator) <= quality;
-			break;
-		default:
-			break;
-		}
-		if (match) {
-			status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
-			if (FSUCCESS != status) 
-				return status;
+			boolean match = FALSE;
+			if (!portp->pPortStatus)
+				continue;
+			switch (comp) {
+			case QUAL_EQ:
+				match = (uint16)(portp->pPortStatus->lq.s.LinkQualityIndicator) == quality;
+				break;
+			case QUAL_GE:
+				match = (uint16)(portp->pPortStatus->lq.s.LinkQualityIndicator) >= quality;
+				break;
+			case QUAL_LE:
+				match = (uint16)(portp->pPortStatus->lq.s.LinkQualityIndicator) <= quality;
+				break;
+			default:
+				break;
+			}
+			if (match) {
+				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+				if (FSUCCESS != status) 
+					return status;
+			}
 		}
 	}
-	if (pPoint->Type == POINT_TYPE_NONE) {
+
+	// N/A for FIND_FLAG_ENODE, FIND_FLAG_ESM and FIND_FLAG_ELINK
+
+	if (! PointValid(pPoint)) {
 		fprintf(stderr, "%s: Link Quality Not Found: %d\n",
 						g_Top_cmdname, quality);
 		return FNOT_FOUND;
 	}
 	PointCompress(pPoint);
 	return FSUCCESS;
+}
+
+// Search through the ExpectedSMs for matching portGuid
+// FNOT_FOUND - no instances found
+// FINVALID_PARAMETER - input parameter not valid
+// FSUCCESS - when a match is found
+FSTATUS FindExpectedSMByPortGuid(FabricData_t *fabricp, EUI64 portGuid) {
+	LIST_ITEM *p;
+
+	if(fabricp == NULL)
+		return FINVALID_PARAMETER;
+
+	// check through the SMs
+	if(QListHead(&fabricp->ExpectedSMs) != NULL) {
+		for(p = QListHead(&fabricp->ExpectedSMs); p != NULL; p = QListNext(&fabricp->ExpectedSMs, p)) {
+			ExpectedSM *esmp = (ExpectedSM *)QListObj(p);
+			if (esmp->PortGUID == portGuid)
+				return FSUCCESS;
+		}
+	}
+	return FNOT_FOUND;
+}
+
+// Search through the ExpectedSMs for matching nodeGuid
+// FNOT_FOUND - no instances found
+// FINVALID_PARAMETER - input parameter not valid
+// FSUCCESS - when a match is found
+FSTATUS FindExpectedSMByNodeGuid(FabricData_t *fabricp, EUI64 nodeGuid) {
+	LIST_ITEM *p;
+
+	if(fabricp == NULL)
+		return FINVALID_PARAMETER;
+
+	// check through the SMs
+	if(QListHead(&fabricp->ExpectedSMs) != NULL) {
+		for(p = QListHead(&fabricp->ExpectedSMs); p != NULL; p = QListNext(&fabricp->ExpectedSMs, p)) {
+			ExpectedSM *esmp = (ExpectedSM *)QListObj(p);
+			if (esmp->NodeGUID == nodeGuid)
+				return FSUCCESS;
+		}
+	}
+	return FNOT_FOUND;
 }

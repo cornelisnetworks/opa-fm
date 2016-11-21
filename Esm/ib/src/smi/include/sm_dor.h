@@ -43,8 +43,34 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define	_SM_DOR_H_
 
 
-#define SM_UPDN_MC_SAME_SPANNING_TREE	1   /* controls default behavior of whether updn and multicast have same spanning tree */
+#define SM_DOR_MAX_TOROIDAL_DIMENSIONS 6
 
+// DorBitMaps are indexed by ij using switch indexes.
+//
+// When switches disappear from the fabric and sm_compactSwitchSpace() runs
+// it changes switch indices and the max switch count. This compaction is
+// done after the closure bit maps were allocated and set based on
+// the old max switch count. Though the closure bit maps are altered
+// to take into account the change in switch indices (done in  process_swIdx_change),
+// the bit map space isn't reallocated, so any index calculations should be based
+// on the old count of switches when the closure was computed
+
+#define	DorBitMapsIndex(X,Y)	(((X) * (((DorTopology_t *)(sm_topop->routingModule->data))->closure_max_sws)) + (Y))
+
+static __inline__ void ijSet(uint32* ijBitmap, int ij) {
+	ijBitmap[ij >> 5] |= 1 << (ij & 0x1f);
+}
+
+static __inline__ void ijClear(uint32* ijBitmap, int ij) {
+	ijBitmap[ij >> 5] &= ~((uint32_t)(1 << (ij & 0x1f)));
+}
+
+static __inline__ int ijTest(uint32* ijBitmap, int ij) {
+	return ((ijBitmap[ij >> 5] & (1 << (ij & 0x1f))) ? 1 : 0);
+}
+
+// DOR Topology Information
+//
 typedef struct  _DorTopology {
 	// mesh sizing
 	uint8_t numDimensions;
@@ -53,10 +79,6 @@ typedef struct  _DorTopology {
 	// contiguous within these bounds
 	int8_t coordMaximums[SM_DOR_MAX_DIMENSIONS];
 	int8_t coordMinimums[SM_DOR_MAX_DIMENSIONS];
-	// true if cycle-free routing is enabled
-	uint8_t cycleFreeRouting;
-	// true if the alternate VL for routing around switch failures is enabled
-	uint8_t alternateRouting;
 	// for each dimension, true if toroidal
 	uint8_t toroidal[SM_DOR_MAX_DIMENSIONS];
 	// the configured number of toroidal dimensions
@@ -71,20 +93,67 @@ typedef struct  _DorTopology {
 	// flat 2d bitfield indexed on switch indices marking whether
 	// the cycle-free DOR path is realizable between nodes
 	size_t dorClosureSize;
-	uint32_t *dorClosure;
-	// flat 2d bitfield indexed on switch indices marking whether
-	// j is downstream of i for a given (i, j) pair using up/down
-	// routing (basically directional closure)
-	uint32_t *updnDownstream;
+	uint32_t *dorLeft;
+	uint32_t *dorRight;
 	uint32_t closure_max_sws;   //the switch count when the closures were computed
 } DorTopology_t;
 
 
 typedef struct _DorNode {
-	int8_t coords[SM_DOR_MAX_DIMENSIONS];
-	Node_t *node;
-	struct _DorNode *left[SM_DOR_MAX_DIMENSIONS];
-	struct _DorNode *right[SM_DOR_MAX_DIMENSIONS];
+	int8_t			coords[SM_DOR_MAX_DIMENSIONS];
+	Node_t			*node;
+	int				multipleBrokenDims;
+	struct _DorNode	*left[SM_DOR_MAX_DIMENSIONS];
+	struct _DorNode	*right[SM_DOR_MAX_DIMENSIONS];
 } DorNode_t;
+
+typedef enum {
+	DorAny   = 0,
+	DorLeft  = 1,
+	DorRight = 2,
+} DorDirection;
+
+static __inline__ int dorClosure(DorTopology_t* dorTop, int i, int j) {
+	int ij = DorBitMapsIndex(i, j);
+	if (i == j) return 1;
+	return (ijTest(dorTop->dorLeft, ij) || ijTest(dorTop->dorRight, ij));
+}
+
+//===========================================================================//
+// DOR COORDINATE ASSIGNMENT
+//
+typedef struct _detected_dim {
+	uint8_t			dim;
+	uint64_t		neighbor_nodeGuid;
+	uint8_t			port;
+	uint8_t			neighbor_port;
+	int				pos;
+	Node_t			*neighbor_nodep;
+} detected_dim_t;
+
+#define PORT_PAIR_WARN_ARR_SIZE		40
+#define PORT_PAIR_WARN_IDX(X,Y)		(((X) * PORT_PAIR_WARN_ARR_SIZE) + (Y))
+
+typedef enum {
+	DIM_LOOKUP_RVAL_FOUND,
+	DIM_LOOKUP_RVAL_NOTFOUND,
+	DIM_LOOKUP_RVAL_INVALID
+} DimLookupRval_t;
+
+typedef struct _DorDimension {
+	uint8_t			ingressPort;
+	uint8_t			dimension;
+	int8_t			direction;
+	uint8_t			hyperlink;
+	cl_map_obj_t	portObj;
+} DorDimension_t;
+
+typedef struct _DorDiscoveryState {
+	uint8_t			nextDimension;
+	uint8_t			toroidalOverflow;
+	uint8_t			scsAvailable; // min of SC support of all fabric ISLs
+	DorDimension_t	*dimensionMap[256]; // indexed by egress port
+} DorDiscoveryState_t;
+
 
 #endif

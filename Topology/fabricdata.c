@@ -111,6 +111,11 @@ FSTATUS InitFabricData(FabricData_t *fabricp, FabricFlags_t flags)
 		fprintf(stderr, "%s: Unable to initialize List\n", g_Top_cmdname);
 		goto fail;
 	}
+	QListInitState(&fabricp->AllVFs);
+	if (! QListInit(&fabricp->AllVFs)) {
+		fprintf(stderr, "%s: Unable to initialize List\n", g_Top_cmdname);
+		goto fail;
+	}
 #if !defined(VXWORKS) || defined(BUILD_DMC)
 	QListInitState(&fabricp->AllIOUs);
 	if (! QListInit(&fabricp->AllIOUs)) {
@@ -138,12 +143,12 @@ FSTATUS InitFabricData(FabricData_t *fabricp, FabricFlags_t flags)
 #endif
 	cl_qmap_init(&fabricp->AllSMs, NULL);
 
-    // MC routes related structures
-    	QListInitState(&fabricp->AllMcMembers);
-     	if (!QListInit(&fabricp->AllMcMembers)) {
-        	fprintf(stderr, "%s: Unable to initialize List of mcast Members\n", g_Top_cmdname);
-        	goto fail;
-     	}
+	// MC routes related structures
+	QListInitState(&fabricp->AllMcGroups);
+	if (!QListInit(&fabricp->AllMcGroups)) {
+		fprintf(stderr, "%s: Unable to initialize List of mcast Members\n", g_Top_cmdname);
+	goto fail;
+	}
 
         // credit-loop related lists
         cl_qmap_init(&fabricp->map_guid_to_ib_device, NULL); 
@@ -921,78 +926,68 @@ fail:
 
 
 #ifdef PRODUCT_OPENIB_FF
-
-
-McMemberData *FabricDataAddMCGroup(FabricData_t *fabricp, struct oib_port *port, int quiet, IB_MCMEMBER_RECORD *pMCGRecord,
+McGroupData *FabricDataAddMCGroup(FabricData_t *fabricp, struct oib_port *port, int quiet, IB_MCMEMBER_RECORD *pMCGRecord,
 		boolean *new_nodep, FILE *verbose_file)
 {
 	FSTATUS  status;
-	McMemberData *mcmemberp = (McMemberData*)MemoryAllocate2AndClear(sizeof(McMemberData), IBA_MEM_FLAG_PREMPTABLE, MYTAG);
 	boolean new_node = TRUE;
+	McGroupData *mcgroupp = (McGroupData*)MemoryAllocate2AndClear(sizeof(McGroupData), IBA_MEM_FLAG_PREMPTABLE, MYTAG);
 
-	if (! mcmemberp) {
+	if (! mcgroupp) {
 		fprintf(stderr, "%s: Unable to allocate memory\n", g_Top_cmdname);
 		return NULL;
 	}
 
-
-	mcmemberp->MemberInfo = *pMCGRecord;
-	mcmemberp->MGID = pMCGRecord->RID.MGID;
-	mcmemberp->MLID = pMCGRecord->MLID;
-
-
-	ListItemInitState(&mcmemberp->McMembersEntry);
-	QListSetObj(&mcmemberp->McMembersEntry,mcmemberp);
-
-    // init LIST of PortGids to NULL just in case
-	QListInitState(&mcmemberp->AllMcGroupMembers);
-	if ( !QListInit(&mcmemberp->AllMcGroupMembers)) {
- 		fprintf(stderr, "%s: Unable to initialize MCGroup member list\n", g_Top_cmdname);
-  		return NULL;
-	}
-
-    // search members of the group using opasaquery -o mcmember -m nodep->MLID
-	// and add them to the list of group members
-
-	status = GetAllMCGroupMember(mcmemberp, port, quiet, verbose_file);
-
-	if (status != FSUCCESS) {
-     		fprintf(stderr, "%s: Unable to get MCGroup member list\n", g_Top_cmdname);
-		if (status == FINSUFFICIENT_MEMORY)
-			fprintf(stderr,"%s: Insufficient memory to allocate MC Group member\n",g_Top_cmdname);
+	// init list of McGroupMembers
+	QListInitState(&mcgroupp->AllMcGroupMembers);
+	if ( !QListInit(&mcgroupp->AllMcGroupMembers)) {
+		fprintf(stderr, "%s: Unable to initialize MCGroup member list\n", g_Top_cmdname);
 		return NULL;
 	}
 
+	mcgroupp->MGID = pMCGRecord->RID.MGID;
+	mcgroupp->MLID = pMCGRecord->MLID;
+
+	ListItemInitState(&mcgroupp->AllMcGMembersEntry);
+	QListSetObj(&mcgroupp->AllMcGMembersEntry,mcgroupp);
+
+	// search members of the group using opasaquery -o mcmember -m nodep->MLID
+	// and add them to the list of group members
+
+
+	status = GetAllMCGroupMember(fabricp, mcgroupp, port, quiet, verbose_file);
+
+	// add group to fabric
+
+	if (status != FSUCCESS) {
+		fprintf(stderr, "%s: Unable to get MCGroup member list\n", g_Top_cmdname);
+	if (status == FINSUFFICIENT_MEMORY)
+		fprintf(stderr, "%s: Insufficient memory to allocate MC Group member\n", g_Top_cmdname);
+		return NULL;
+	}
+
+	// this part will change. Needs to be ordered by MLID
 	LIST_ITEM *p;
 	boolean found = FALSE;
-	p=QListHead(&fabricp->AllMcMembers);
+	p=QListHead(&fabricp->AllMcGroups);
 
-	// insert everything in the fabric structure ordered by MGID
+	// insert everything in the fabric structure ordered by MLID
 	while (!found && p != NULL) {
-		McMemberData *pMCM = (McMemberData *)QListObj(p);
-		if ( pMCM->MGID.AsReg64s.H > mcmemberp->MGID.AsReg64s.H)
-			p = QListNext(&fabricp->AllMcMembers, p);
-		else if (pMCM->MGID.AsReg64s.H == mcmemberp->MGID.AsReg64s.H) {
-			if (pMCM->MGID.AsReg64s.L > mcmemberp->MGID.AsReg64s.L)
-			  p = QListNext(&fabricp->AllMcMembers, p);
-	 		else {
- 	     // insert mcmember element
- 	  			QListInsertNext(&fabricp->AllMcMembers,p, &mcmemberp->McMembersEntry);
-  	  			found = TRUE;
-  	 	 	}
-		}	
+		McGroupData *pMCG = (McGroupData *)QListObj(p);
+		if ( pMCG->MLID > mcgroupp->MLID)
+			p = QListNext(&fabricp->AllMcGroups, p);
 		else {
-			QListInsertNext(&fabricp->AllMcMembers,p, &mcmemberp->McMembersEntry);
+			// insert mcgroup element
+			QListInsertNext(&fabricp->AllMcGroups,p, &mcgroupp->AllMcGMembersEntry);
 			found = TRUE;
-    		}
-    	} // end while
-
+		 	}
+		} // end while
 	if ( !found)
-		QListInsertTail(&fabricp->AllMcMembers, &mcmemberp->McMembersEntry);
+		QListInsertTail(&fabricp->AllMcGroups, &mcgroupp->AllMcGMembersEntry);
 
 	if (new_nodep)
 		*new_nodep = new_node;
-	return mcmemberp;
+	return mcgroupp;
 }
 
 #endif
@@ -1444,37 +1439,39 @@ void SMDataFreeAll(FabricData_t *fabricp)
 	}
 }
 
-void MCMemberFree(FabricData_t *fabricp, McMemberData *mcmemberp)
+void MCGroupFree(FabricData_t *fabricp, McGroupData *mcgroupp)
 {
 	LIST_ITEM *p;
 
-	for (p=QListHead(&mcmemberp->AllMcGroupMembers); p != NULL;) {
-		LIST_ITEM *nextp = QListNext(&mcmemberp->AllMcGroupMembers, p);
-		McGroupData *nodegp = (McGroupData *)QListObj(p);
-		if (ListItemIsInAList(&nodegp->AllMcGMembersEntry))
-			QListRemoveItem(&mcmemberp->AllMcGroupMembers, &nodegp->AllMcGMembersEntry);
-		MemoryDeallocate (nodegp);
-		p = nextp;
+	while (!QListIsEmpty(&mcgroupp->AllMcGroupMembers)){
+		p = QListTail(&mcgroupp->AllMcGroupMembers);
+		McGroupData *group = (McGroupData *)QListObj(p);
+		QListRemoveTail(&mcgroupp->AllMcGroupMembers);
+		MemoryDeallocate(group);
 	}
-	QListRemoveItem(&fabricp->AllMcMembers, &mcmemberp->McMembersEntry);
-	MemoryDeallocate (mcmemberp);
+	QListRemoveItem(&fabricp->AllMcGroups, &mcgroupp->AllMcGMembersEntry);
+	MemoryDeallocate (mcgroupp);
 }
-
-
 
 void MCDataFreeAll(FabricData_t *fabricp)
 {	LIST_ITEM *p;
 
 	// free all link data
-	for (p=QListHead(&fabricp->AllMcMembers); p != NULL;) {
-		LIST_ITEM *nextp = QListNext(&fabricp->AllMcMembers, p);
-		MCMemberFree(fabricp, (McMemberData *)QListObj(p));
-		p = nextp;
+	while (!QListIsEmpty(&fabricp->AllMcGroups)) {
+		p=QListTail(&fabricp->AllMcGroups);
+		MCGroupFree(fabricp, (McGroupData *)QListObj(p));
 	}
 }
 
-
-
+void VFDataFreeAll(FabricData_t *fabricp)
+{
+	LIST_ITEM *i;
+	for (i = QListHead(&fabricp->AllVFs); i;) {
+		LIST_ITEM *next = QListNext(&fabricp->AllVFs, i);
+		MemoryDeallocate(QListObj(i));
+		i = next;
+	}
+}
 
 void CableDataFree(CableData *cablep)
 {
@@ -1594,6 +1591,7 @@ void DestroyFabricData(FabricData_t *fabricp)
 
 	SMDataFreeAll(fabricp); // SMs
 	NodeDataFreeAll(fabricp);	// Nodes, Ports, IOUs, Systems
+	VFDataFreeAll(fabricp);
 
 	if ((fabricp->flags & FF_LIDARRAY) && fabricp->u.LidMap)
 		MemoryDeallocate(fabricp->u.LidMap);
@@ -1767,7 +1765,7 @@ void CLGraphDataFree(clGraphData_t *graphp, void *context)
    }
 
    // clear line used to display progress report
-   if (arcListCount >= DEF_MAX_FREE_ENTRY)
+   if (!cp->quiet && arcListCount >= DEF_MAX_FREE_ENTRY)
       ProgressPrint(TRUE, "Done Deallocating All Arcs");
    
    // free all vertices associated with the graph
@@ -1789,7 +1787,7 @@ void CLGraphDataFree(clGraphData_t *graphp, void *context)
       }
 
       // clear line used to display progress report
-      if (graphp->NumVertices >= DEF_MAX_FREE_ENTRY)
+      if (!cp->quiet && graphp->NumVertices >= DEF_MAX_FREE_ENTRY)
          ProgressPrint(TRUE, "Done Deallocating All Vertices");
       MemoryDeallocate(graphp->Vertices);
    }
@@ -1858,7 +1856,7 @@ static void CLDeviceDataFreeAll(FabricData_t *fabricp, void *context)
    }
 
    // clear line used to display progress report
-   if (deviceListCount >= DEF_MAX_FREE_DEV)
+   if (!cp->quiet && deviceListCount >= DEF_MAX_FREE_DEV)
       ProgressPrint(TRUE, "Done Deallocating All Routes");
 }
 
@@ -2223,6 +2221,7 @@ static void* CLFabricDataBuildRouteGraphThread(void *context)
                clDeviceData_t *hfip = src_hfip;            //PYTHON: hfi = src_hfip;
                clConnData_t *this_connection = NULL; 
                clConnData_t *previous_connection = NULL;  //PYTHON: previous_connection = None
+               uint8 sc = 0, previous_sc = 0;
             
                //PYTHON: slid = src_hfi.lid
                //PYTHON: dlid = dst_hfi.lid
@@ -2242,7 +2241,6 @@ static void* CLFabricDataBuildRouteGraphThread(void *context)
                   cl_map_item_t *mi; 
                   PortData *portp = NULL; 
                   clRouteData_t *ccRoutep = NULL; 
-                  uint8 sc = 0;
                   //PYTHON: if dlid in hfi.routes :
                   mi = cl_qmap_get(&hfip->map_dlid_to_route, dlid); 
                   if (mi != cl_qmap_end(&hfip->map_dlid_to_route)) 
@@ -2259,31 +2257,40 @@ static void* CLFabricDataBuildRouteGraphThread(void *context)
                      break;
                   }
                   // look up the sc
-                  if (usedSLs && portp->pQOS && portp->pQOS->SL2SCMap)
-                     sc = portp->pQOS->SL2SCMap->SLSCMap[sl].SC;
-                  if (previous_connection && usedSLs) {
-                  // SC to SC transition
-                     if (!hfip->nodep) {
-                        fprintf(stderr, "[%d] Error, no node data found for GUID 0x%016"PRIx64"\n", (int)thrdId, previous_connection->ToDeviceGUID);
-                        status = FERROR;
-                        break;
-                     }
-                     if (hfip->nodep->NodeInfo.NodeType == STL_NODE_SW) {
-                        mi = cl_qmap_get(&hfip->nodep->Ports, previous_connection->ToPortNum);
-                        if (mi == cl_qmap_end(&hfip->nodep->Ports)) {
-                           fprintf(stderr, "[%d] Error, unable to find port %d for GUID 0x%016"PRIx64"\n", (int)thrdId, previous_connection->ToPortNum, previous_connection->ToDeviceGUID);
+                  if (usedSLs) {
+                     // if this is the 1st hop, use the SL2SC table
+                     if (hfip == src_hfip) {
+                        if (portp->pQOS && portp->pQOS->SL2SCMap) {
+                           sc = portp->pQOS->SL2SCMap->SLSCMap[sl].SC;
+                        }
+                     } else if (previous_connection) {
+                     // SC to SC' transition
+                        if (!hfip->nodep) {
+                           fprintf(stderr, "[%d] Error, no node data found for GUID 0x%016"PRIx64"\n", (int)thrdId, previous_connection->ToDeviceGUID);
                            status = FERROR;
                            break;
                         }
-                        PortData *prev_port = PARENT_STRUCT(mi, PortData, NodePortsEntry);
-                        if (prev_port && prev_port->pQOS && prev_port->pQOS->SC2SCMap) {
-                           sc = prev_port->pQOS->SC2SCMap[portp->PortNum].SCSCMap[sc].SC;
+                        if (hfip->nodep->NodeInfo.NodeType == STL_NODE_SW) { // should always be a switch
+                           mi = cl_qmap_get(&hfip->nodep->Ports, previous_connection->ToPortNum);
+                           if (mi == cl_qmap_end(&hfip->nodep->Ports)) {
+                              fprintf(stderr, "[%d] Error, unable to find port %d for GUID 0x%016"PRIx64"\n", (int)thrdId, previous_connection->ToPortNum, previous_connection->ToDeviceGUID);
+                              status = FERROR;
+                              break;
+                           }
+                           PortData *prev_port = PARENT_STRUCT(mi, PortData, NodePortsEntry);
+                           if (prev_port && prev_port->pQOS && prev_port->pQOS->SC2SCMap) {
+                              sc = prev_port->pQOS->SC2SCMap[portp->PortNum].SCSCMap[previous_sc].SC;
+                           }
                         }
                      }
                   }
                   //PYTHON: this_connection = hfi.connections[port]
                   this_connection = hfip->Connections[portp->PortNum][sc];
-               
+                  if (!this_connection){ // no connection found for this port/vl, broken route
+                     fprintf(stderr, "[%d] Warning, broken route for GUID 0x%016"PRIx64" port %3.3u\n", (int)thrdId, hfip->nodep->NodeInfo.NodeGUID, portp->PortNum);
+                     break;
+                  }
+ 
                   //PYTHON: graph.add_vertex(this_connection)
                   if (-1 == (this_vertex_id = CLGraphDataAddVertex(&fabricp->Graph, this_connection, verbose))) {
                      break; 
@@ -2311,6 +2318,7 @@ static void* CLFabricDataBuildRouteGraphThread(void *context)
                   links++; 
                   previous_connection = this_connection; 
                   previous_vertex_id = this_vertex_id;
+                  previous_sc = sc;
                } // end while loop
             
                // release global lock
@@ -2673,7 +2681,7 @@ fail:
 }
 
 //PYTHON: def add_device (fabric, guid, lid, hfi, name) :
-NodeData* CLDataAddDevice(FabricData_t *fabricp, NodeData *nodep, uint16 lid, int verbose) 
+NodeData* CLDataAddDevice(FabricData_t *fabricp, NodeData *nodep, uint16 lid, int verbose, int quiet) 
 { 
    cl_map_item_t *mi; 
    clDeviceData_t *ccDevicep; 
@@ -2734,8 +2742,8 @@ NodeData* CLDataAddDevice(FabricData_t *fabricp, NodeData *nodep, uint16 lid, in
             QListInsertTail(&fabricp->FIs, &ccDevicep->AllDeviceTypesEntry);       //PYTHON: fabric.hfis.append(device)
          else 
             QListInsertTail(&fabricp->Switches, &ccDevicep->AllDeviceTypesEntry);   //PYTHON: fabric.switches.append(device)
-         if (verbose >= 4) 
-            printf("Add %s %s with GUID 0x%016"PRIx64" and LID 0x%04x\n", 
+         if (verbose >= 4 && !quiet) 
+            ProgressPrint(TRUE, "Add %s %s with GUID 0x%016"PRIx64" and LID 0x%04x", 
                    StlNodeTypeToText(nodep->NodeInfo.NodeType), 
                    (char *)nodep->NodeDesc.NodeString, 
                    nodep->NodeInfo.NodeGUID, 
@@ -2748,7 +2756,7 @@ NodeData* CLDataAddDevice(FabricData_t *fabricp, NodeData *nodep, uint16 lid, in
 }
 
 //PYTHON: def add_connection (fabric, guid1, port1, guid2, port2, rate) :
-FSTATUS CLDataAddConnection(FabricData_t *fabricp, PortData *portp1, PortData *portp2, clConnPathData_t *pathInfo, uint8 sc, int verbose) 
+FSTATUS CLDataAddConnection(FabricData_t *fabricp, PortData *portp1, PortData *portp2, clConnPathData_t *pathInfo, uint8 sc, int verbose, int quiet) 
 { 
    FSTATUS status = FSUCCESS; 
    cl_map_item_t *mi; 
@@ -2802,8 +2810,8 @@ FSTATUS CLDataAddConnection(FabricData_t *fabricp, PortData *portp1, PortData *p
          if (portp1->pQOS)
             ccConnp->VL = portp1->pQOS->SC2VLMaps[Enum_SCVLt].SCVLMap[sc];
          
-         if (verbose >= 4) 
-            printf("Add connection 0x%016"PRIx64":%3.3u to 0x%016"PRIx64":%3.3u at rate %s\n", 
+         if (verbose >= 4 && !quiet) 
+            ProgressPrint(TRUE, "Add connection 0x%016"PRIx64":%3.3u to 0x%016"PRIx64":%3.3u at rate %s", 
                    portp1->nodep->NodeInfo.NodeGUID, portp1->PortNum, portp2->nodep->NodeInfo.NodeGUID, 
                    portp2->PortNum, StlStaticRateToText(portp1->rate));
       }
@@ -2813,7 +2821,7 @@ FSTATUS CLDataAddConnection(FabricData_t *fabricp, PortData *portp1, PortData *p
 }
 
 //PYTHON: add_route(fabric, slid, dlid, route_sguid, route_sport)
-FSTATUS CLDataAddRoute(FabricData_t *fabricp, uint16 slid, uint16 dlid, PortData *sportp, int verbose) 
+FSTATUS CLDataAddRoute(FabricData_t *fabricp, uint16 slid, uint16 dlid, PortData *sportp, int verbose, int quiet) 
 { 
    FSTATUS status = FSUCCESS; 
    cl_map_item_t *mi; 
@@ -2860,8 +2868,8 @@ FSTATUS CLDataAddRoute(FabricData_t *fabricp, uint16 slid, uint16 dlid, PortData
          } else {
             //PYTHON: fabric.routes += 1
             fabricp->RouteCount++; 
-            if (verbose >= 4) 
-               printf("Add route SLID 0x%04x to DLID 0x%04x at GUID 0x%016"PRIx64" using port %3.3u\n", 
+            if (verbose >= 4 && !quiet) 
+               ProgressPrint(TRUE, "Add route SLID 0x%04x to DLID 0x%04x at GUID 0x%016"PRIx64" using port %3.3u", 
                       slid, dlid, sportp->nodep->NodeInfo.NodeGUID, sportp->PortNum);
          }
       }
@@ -2980,7 +2988,8 @@ FSTATUS CLFabricDataBuildRouteGraph(FabricData_t *fabricp,  ValidateCLRouteSumma
    }
 
    // clear line used to display progress report
-   ProgressPrint(TRUE, "Done Building Graphical Layout of All Routes");
+   if (!cp->quiet)
+      ProgressPrint(TRUE, "Done Building Graphical Layout of All Routes");
    
    if (!xmlFmt && verbose >= 3) {
       timeGetCallback(&eTime, &g_cl_lock); 
@@ -3036,14 +3045,14 @@ clGraphData_t* CLGraphDataSplit(clGraphData_t *graphp, int verbose)
    return newGraphp;
 }
 
-void CLGraphDataPrune(clGraphData_t *graphp, ValidateCLTimeGetCallback_t timeGetCallback, int verbose) 
+void CLGraphDataPrune(clGraphData_t *graphp, ValidateCLTimeGetCallback_t timeGetCallback, int verbose, int quiet) 
 { 
    uint32 ii, vv, progress = 1, round = 0; 
    uint64_t sTime = 0, eTime = 0; 
    
-   if (verbose >= 3) {
+   if (verbose >= 3 && !quiet) {
       timeGetCallback(&sTime, &g_cl_lock); 
-      printf("START pruning of graphical layout of all the routes\n");
+      ProgressPrint(TRUE, "START pruning of graphical layout of all the routes");
    }
    
    //PYTHON: progress = 1;
@@ -3062,8 +3071,8 @@ void CLGraphDataPrune(clGraphData_t *graphp, ValidateCLTimeGetCallback_t timeGet
                //PYTHON: for arc_id in vertexp->inbound :
                for (ii = 0; ii < vertexp->InboundCount; ii++) {
                   if (vertexp->Inbound[ii] >= 0) {
-                     if (verbose >= 4) 
-                        printf("Remove arc id %d since vertex id %d is pure sink\n", 
+                     if (verbose >= 4 && !quiet) 
+                        ProgressPrint(TRUE, "Remove arc id %d since vertex id %d is pure sink", 
                                vertexp->Inbound[ii], vertexp->Id); 
                      //PYTHON: self.del_arc(arc_id);
                      CLGraphDataDelArc(graphp, vertexp->Inbound[ii]); 
@@ -3078,8 +3087,8 @@ void CLGraphDataPrune(clGraphData_t *graphp, ValidateCLTimeGetCallback_t timeGet
                //PYTHON: for arc_id in vertex.outbound :
                for (ii = 0; ii < vertexp->OutboundCount; ii++) {
                   if (vertexp->Outbound[ii] >= 0) {
-                     if (verbose >= 4) 
-                        printf("Remove arc id %d since vertex id %d is pure source\n", 
+                     if (verbose >= 4 && !quiet) 
+                        ProgressPrint(TRUE, "Remove arc id %d since vertex id %d is pure source", 
                                vertexp->Outbound[ii], vertexp->Id); 
                      //PYTHON: self.del_arc(arc_id);
                      CLGraphDataDelArc(graphp, vertexp->Outbound[ii]); 
@@ -3093,13 +3102,13 @@ void CLGraphDataPrune(clGraphData_t *graphp, ValidateCLTimeGetCallback_t timeGet
       
       //PYTHON: round += 1
       round++; 
-      if (verbose >= 4) 
-         printf("Graph pruning round %d : deleted %d arcs\n", round, progress);
+      if (verbose >= 4 && !quiet) 
+         ProgressPrint(TRUE, "Graph pruning round %d : deleted %d arcs", round, progress);
    }
    
-   if (verbose >= 3) {
+   if (verbose >= 3 && !quiet) {
       timeGetCallback(&eTime, &g_cl_lock); 
-      printf("END pruning of graphical layout of all the routes; elapsed time(usec)=%d, (sec)=%d\n", 
+      ProgressPrint(TRUE, "END pruning of graphical layout of all the routes; elapsed time(usec)=%d, (sec)=%d", 
              (int)(eTime - sTime), ((int)(eTime - sTime)) / CL_TIME_DIVISOR);
    }
 }
@@ -3118,7 +3127,7 @@ FSTATUS CLDijkstraFindDistancesAndRoutes(clGraphData_t *graphp, clDijkstraDistan
 { 
    FSTATUS status = FERROR; 
    int c; 
-   uint32 nRows = 1000, nCols = 1000;      // default for now
+   uint32 nRows, nCols;
    uint32 ii, jj, d, current = 0; 
    uint32 next, numVertices, maxDistance; 
    uint32 **distances = NULL,**routes = NULL; 
@@ -3129,8 +3138,10 @@ FSTATUS CLDijkstraFindDistancesAndRoutes(clGraphData_t *graphp, clDijkstraDistan
    
    // allocate persistant multidimensional arrays and temporary buffers
    if (!graphp || !respData) 
-      return FINVALID_PARAMETER; 
-   else if (!(distances    = (uint32 **)CLDijkstraAllocArray(nRows, nCols, sizeof(uint32))) ||  //PYTHON: distances = {}
+      return FINVALID_PARAMETER;
+   nRows = graphp->VerticesLength;
+   nCols = graphp->VerticesLength; 
+   if (!(distances    = (uint32 **)CLDijkstraAllocArray(nRows, nCols, sizeof(uint32))) ||  //PYTHON: distances = {}
             !(routes       = (uint32 **)CLDijkstraAllocArray(nRows, nCols, sizeof(uint32))) ||  //PYTHON: routes = {}
             !(dist         = MemoryAllocate2AndClear(nCols * sizeof(uint32), IBA_MEM_FLAG_PREMPTABLE, MYTAG)) || 
             !(route        = MemoryAllocate2AndClear(nCols * sizeof(uint32), IBA_MEM_FLAG_PREMPTABLE, MYTAG)) || 

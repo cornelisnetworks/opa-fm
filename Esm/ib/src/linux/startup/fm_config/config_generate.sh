@@ -223,9 +223,23 @@ enable_instance()
 
 	fm_enabled[$instance]=1
 	echo "SM_${instance}_start=yes" >> $TEMP
-	echo "PM_${instance}_start=yes" >> $TEMP
-	echo "BM_${instance}_start=yes" >> $TEMP
-	echo "FE_${instance}_start=yes" >> $TEMP
+
+	enable_default=y
+	get_yes_no "Should PM instance $instance (${fm_device[$instance]}) be enabled" $enable_default
+	if [ "$ans" -eq 1 ]
+	then
+		echo "  Enabling Start of PM instance $instance"
+		echo "PM_${instance}_start=yes" >> $TEMP
+	fi
+
+	enable_default=n
+	get_yes_no "Should FE instance $instance (${fm_device[$instance]}) be enabled" $enable_default
+	if [ "$ans" -eq 1 ]
+	then
+		echo "  Enabling Start of FE instance $instance"
+		echo "FE_${instance}_start=yes" >> $TEMP
+	fi
+
 }
 
 set_instance_priority()
@@ -235,8 +249,8 @@ set_instance_priority()
 	priority=$2
 
 	echo "SM_${instance}_priority=$priority" >> $TEMP
-	echo "PM_${instance}_priority=$priority" >> $TEMP
-	echo "BM_${instance}_priority=$priority" >> $TEMP
+	#echo "PM_${instance}_priority=$priority" >> $TEMP
+	#echo "BM_${instance}_priority=$priority" >> $TEMP
 	#echo "FE_${instance}_priority=$priority" >> $TEMP
 }
 
@@ -371,14 +385,17 @@ else
 	for instance in 0 1 2 3
 	do
 		get_yes_no "Should FM instance $instance (${fm_device[$instance]}) be enabled" $default
-		default=n	# only default to instance 0 enabled
+
 		if [ "$ans" -eq 1 ]
 		then
-			echo "  Enabling Start of FM instance $instance SM, PM, BM and FE"
+			echo "  Enabling Start of SM instance $instance"
 			enable_instance $instance
 			instances="$instances $instance"
 			num_instances=$(($num_instances + 1))
 		fi
+
+		default=n	# only default to instance 0 enabled
+
 	done
 fi
 
@@ -480,14 +497,14 @@ then
 	fi
 	if [ $ans -eq 1 ]
 	then
-		get_yes_no "Will this FM be the preferrred primary" "y"
+		get_yes_no "Will this FM be the preferred primary" "y"
 		if [ $ans -eq 1 ]
 		then
 			set_instance_priority 0 8 # sets for all instances
-			echo "  Setting Priority of SM, PM, BM and FE to 8"
+			echo "  Setting Priority of SM and PM to 8"
 		else
 			set_instance_priority 0 1 # sets for all instances
-			echo "  Setting Priority of SM, PM, BM and FE to 1"
+			echo "  Setting Priority of SM and PM to 1"
 		fi
 	else
 		for instance in $instances
@@ -495,10 +512,10 @@ then
 			get_yes_no "Will FM instance $instance (${fm_name[$instance]}) (${fm_device[$instance]}) be the preferred primary" "y"
 			if [ $ans -eq 1 ]
 			then
-				echo "  Setting Priority of FM instance $instance SM, PM, BM and FE to 8"
+				echo "  Setting Priority of FM instance $instance SM and PM to 8"
 				set_instance_priority $instance 8 # sets for all instances
 			else
-				echo "  Setting Priority of FM instance $instance SM, PM, BM and FE to 1"
+				echo "  Setting Priority of FM instance $instance SM and PM to 1"
 				set_instance_priority $instance 1 # sets for all instances
 			fi
 		done
@@ -515,9 +532,9 @@ if [ $ans -eq 1 ]
 then
 	echo "SM_0_elevated_priority=14" >> $TEMP # sets for all instances
 	echo "PM_0_elevated_priority=14" >> $TEMP # sets for all instances
-	echo "BM_0_elevated_priority=14" >> $TEMP # sets for all instances
+	#echo "BM_0_elevated_priority=14" >> $TEMP # sets for all instances
 	#echo "FE_0_elevated_priority=14" >> $TEMP # sets for all instances
-	echo "  Setting ElevatedPriority of SM, PM, and BM to 14"
+	echo "  Setting ElevatedPriority of SM and PM to 14"
 fi
 
 print_separator
@@ -638,6 +655,15 @@ then
 	#fi
 	echo "  Setting Pm.FreezeFrameImages to $ans"
 	echo "PM_0_FreezeFrameImages=$ans" >> $TEMP # sets for all instances
+
+fi
+
+print_separator
+get_yes_no "Should SslSecurityEnable be enabled" "y"
+if [ "$ans" -eq 0 ]
+then
+	echo "  Setting SslSecurityEnable to 0"
+	echo "FE_0_ssl_security_enable=0" >> $TEMP
 fi
 
 print_separator

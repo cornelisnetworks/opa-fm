@@ -13,6 +13,7 @@
 #include <pthread.h>
 #include <errno.h>
 #include <fm_xml.h>
+#include <oib_utils.h>
 
 #define OPAFMD_PIPE "/var/run/opafmd"
 
@@ -79,6 +80,15 @@ void updateInstances(void);
 int loadConfig(void);
 int daemon_main(void);
 void *kill_thread(void *arg);
+
+extern FSTATUS oib_get_hfi_from_portguid(IN uint64_t portGuid,
+                                         OUT char *pCaName,
+                                         OUT int * caNum,
+                                         OUT int * portNum,
+                                         OUT uint64_t * pPrefix,
+                                         OUT uint16_t * pSMLid,
+                                         OUT uint8_t * pSMSL,
+										 OUT uint8_t * pPortState);
 
 /**
  * Returns string representation of component.
@@ -264,9 +274,15 @@ int parseInput(char *buf){
 			if(component == 0){
 				continue;
 			}
+			fprintf(stderr, "%s component of instance %d has terminated with exit code %d\n", componentToString(component), instance, stat);
+			if(stat == 0 || stat == 1){ //Skip restarting these components if expected (return 0) or user error (return 1)
+				if(stat == 1)
+					fprintf(stderr, "Check opafm.xml config for invalid settings.\n");
+				return 0;
+			}
 			if(checkRestarts(instance, component)){
 				//Component has failed too many times
-				doStop = 2;
+				doStop = 3;
 				return 0;
 			}
 			if (pkill(instance, component) == 0){
@@ -282,7 +298,7 @@ int parseInput(char *buf){
 		if(token == NULL) token = "a";
 		switch(token[0]){
 		case '0':	// Kill both SM and FE for this instance number.
-			doStop = 2;
+			doStop = 1;
 			token = strtok(NULL, " ");
 			if(token == NULL){
 				fprintf(stderr, "Received invalid input. Ignoring.\n");
@@ -553,7 +569,14 @@ void updateInstances(void) {
  */
 int loadConfig(void){
 	FMXmlCompositeConfig_t *xml_config = NULL;
-	int i;
+	int i, j, hfi, port;
+
+	char      name[UMAD_CA_NAME_LEN];
+	uint64_t guid;
+	uint64_t  prefix;
+	uint16    sm_lid;
+	uint8     sm_sl;
+	uint8     port_state;
 
 	xml_config = parseFmConfig(FM_XML_CONFIG, IXML_PARSER_FLAG_NONE, /* instance does not matter for startup */ 0, /* full parse */ 1, /* embedded */ 0);
 	if (!xml_config) {
@@ -575,6 +598,48 @@ int loadConfig(void){
 		}
 	}
 
+	struct { // Struct created to make the if tree below more readable.
+		uint32 hfi;
+		uint32 port;
+		uint64 guid;
+	} selected_device[FM_MAX_INSTANCES] = {{0}};
+
+	for (i = 0; i < FM_MAX_INSTANCES; ++i) {
+		selected_device[i].hfi = xml_config->fm_instance[i]->fm_config.hca;
+		selected_device[i].port = xml_config->fm_instance[i]->fm_config.port;
+		selected_device[i].guid = xml_config->fm_instance[i]->fm_config.port_guid;
+		if (xml_config->fm_instance[i]->fm_config.start) {
+			// To make sure we don't miss mismatched guid and hfi/port configs, we want to fill in missing info
+			if (selected_device[i].guid && oib_get_hfi_from_portguid(selected_device[i].guid, name, &hfi, &port, &prefix, &sm_lid, &sm_sl, &port_state) == VSTATUS_OK) {
+				selected_device[i].hfi = hfi;
+				selected_device[i].port = port;
+			} else if (selected_device[i].port &&
+					   oib_get_portguid(selected_device[i].hfi, selected_device[i].port, NULL, NULL, &guid, NULL, NULL, NULL, NULL, NULL, NULL, NULL) == VSTATUS_OK) {
+				selected_device[i].guid = guid;
+			}
+			if (!selected_device[i].guid || !selected_device[i].port) {
+				fprintf(stderr, "Invalid config detected! Coundn't find device for instance %d!.\n", i);
+				releaseXmlConfig(xml_config, /* full */ 1);
+				return 1;
+			}
+		}
+	}
+
+	for (i = 0; i < FM_MAX_INSTANCES; ++i) {
+		if (xml_config->fm_instance[i]->fm_config.start) { // only compare enabled instances
+			for (j = i + 1; j < FM_MAX_INSTANCES; ++j) {
+				if (xml_config->fm_instance[j]->fm_config.start && // against other enabled instances
+					((selected_device[i].hfi == selected_device[j].hfi &&
+					selected_device[i].port == selected_device[j].port) ||
+					selected_device[i].guid == selected_device[j].guid)) {
+						fprintf(stderr, "Invalid config detected! Same HFI detected for multiple enabled FM instances.\n");
+						releaseXmlConfig(xml_config, /* full */ 1);
+						return 1;
+				}
+			}
+		}
+	}
+
 	releaseXmlConfig(xml_config, /* full */ 1);
 	return 0;
 }
@@ -592,6 +657,7 @@ int daemon_main(){
 	FILE *fp;
 	struct sigaction act;
 	sigset_t mask;
+	int res = 0;
 
 	sigemptyset(&mask);
  	sigaddset(&mask,SIGTERM);
@@ -609,7 +675,8 @@ int daemon_main(){
 	sigaction(SIGCHLD, &act, NULL);
 	sigaction(SIGHUP, &act, NULL);
 
-	if(loadConfig()){
+	if((res = loadConfig()) != 0){
+		if (res == 1) return res;
 		fprintf(stderr, "Failed to load conf, continuing with defaults.\n");
 	}
 	updateInstances();
@@ -617,17 +684,17 @@ int daemon_main(){
 	unlink(OPAFMD_PIPE); // cleanup any bad states
 	if (mkfifo(OPAFMD_PIPE, 0660) == -1){
 		fprintf(stderr, "Failed to create pipe: %s\n", strerror(errno));
-		return(-1);
+		return(2);
 	}
 	if((fd = open(OPAFMD_PIPE, O_RDWR)) == -1){
 		fprintf(stderr, "Failed to open pipe for reading: %s\n", strerror(errno));
 		unlink(OPAFMD_PIPE); // cleanup any bad states
-		return(-2);
+		return(2);
         }
 	if((fp = fdopen(fd, "r")) == NULL){
 		fprintf(stderr, "Failed to open pipe for reading: %s\n", strerror(errno));
 		unlink(OPAFMD_PIPE); // cleanup any bad states
-		return(-2);
+		return(2);
 	}
 	sigprocmask(SIG_BLOCK, &mask, NULL);
 
@@ -655,7 +722,7 @@ int main(int argc, char* argv[]) {
 	char *cmd = NULL, *comp = NULL, inst[2] = {0};
 	progName = argv[0];
 	if(argc < 2)
-		Usage(-1);
+		Usage(1);
 	while((c = getopt(argc, argv, opts)) != -1) {
 		switch (c) {
 		case 'd':
@@ -678,7 +745,7 @@ int main(int argc, char* argv[]) {
 	}
 	if(optind < argc && isDaemon){
 		fprintf(stderr, "Cannot start daemon with additional arguments.\n");
-		Usage(-2);
+		Usage(1);
 	}
 	while (optind < argc) {
 		char *arg = argv[optind++];
@@ -696,13 +763,13 @@ int main(int argc, char* argv[]) {
 				break;
 			default:
 				fprintf(stderr, "Unknown parameter %s\n", arg);
-				Usage(-1);
+				Usage(1);
 			}
 			break;
 		case 'r':
 			if (strcmp(arg, "restart")) {
 				fprintf(stderr, "Unknown parameter %s\n", arg);
-				Usage(-1);
+				Usage(1);
 			} else {
 				cmd = "restart";
 			}
@@ -710,7 +777,7 @@ int main(int argc, char* argv[]) {
 		case 'f':
 			if (strcmp(arg, "fe")) {
 				fprintf(stderr, "Unknown parameter %s\n", arg);
-				Usage(-1);
+				Usage(1);
 			} else {
 				comp = "fe";
 			}
@@ -718,7 +785,7 @@ int main(int argc, char* argv[]) {
 		case 'h':
 			if (strcmp(arg, "halt")){
 				fprintf(stderr, "Unknown parameter %s\n", arg);
-				Usage(-1);
+				Usage(1);
 			} else {
 				int fd;
 				if((fd = open(OPAFMD_PIPE, O_WRONLY|O_NONBLOCK)) == -1){
@@ -730,14 +797,19 @@ int main(int argc, char* argv[]) {
 					//Something went wrong while writing to pipe.
 					fprintf(stderr, "Failed to send stop command to daemon: %s\n", strerror(errno));
 					close(fd);
-					exit(-2);
+					exit(2);
 				}
 				close(fd);
+
+				// Wait until the pipe stops existing.
+				while (access(OPAFMD_PIPE, F_OK) != -1) {
+					usleep(100000);
+				}
 				exit(0);
 			}
 		default:
 			fprintf(stderr, "Unknown parameter %s\n", arg);
-			Usage(-1);
+			Usage(1);
 		}
 	}
 	if(isDaemon){
@@ -752,7 +824,7 @@ int main(int argc, char* argv[]) {
 			return daemon_main();
 		case -1:
 			fprintf(stderr, "Failed to fork.\n");
-			return -1;
+			return 2;
 		default:
 			return 0;
 		}

@@ -458,10 +458,10 @@ struct _port_error_info {
 		union {
 			uint8	AsReg8;
 			struct {
-				uint8	VL;
+				uint8	Distance;
 			} EI0to2; 					/* error code 0-2 */
 			struct {
-				uint8	Distance;
+				uint8	VL;
 			} EI3to5; 					/* error code 3-5 */
 			struct {
 				uint8	BadFlitBits;	/* bits [63:56] of bad packet */

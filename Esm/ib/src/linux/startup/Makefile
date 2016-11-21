@@ -113,7 +113,7 @@ INCLUDE_SUBDIR		=
 #LOCAL_LIB_DIRS	= User library directories for libpaths [Empty]
 
 CLOCAL	=  $(CPIE)
-LOCALDEPLIBS = cs ibaccess public config vslogu Xml expat Md5
+LOCALDEPLIBS = cs ibaccess public config vslogu Xml expat Md5 oib_utils ibumad ibverbs
 LOCALLIBS = pthread rt
 
 # Include Make Rules definitions and rules

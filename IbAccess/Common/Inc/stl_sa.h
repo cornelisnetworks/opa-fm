@@ -2031,7 +2031,7 @@ typedef struct {
 	struct {
 		uint32			LID;
 		uint8			Port;
-	} RID;
+	} PACK_SUFFIX RID;
 	
 	uint8				Reserved[3];
 	
@@ -2093,7 +2093,7 @@ typedef struct {	/* all fields are RW */
 	struct {
 		uint32			LID;
 		uint16			BlockNum;
-	} RID;
+	} PACK_SUFFIX RID;
 	uint16				reserved;				
 	STL_HFI_CONGESTION_CONTROL_TABLE HFICongestionControlTable;
 } PACK_SUFFIX STL_HFI_CONGESTION_CONTROL_TABLE_RECORD;
@@ -2127,7 +2127,7 @@ typedef struct {
 	struct {
 		uint32			LID;
 		uint8			Port;			/* for switch or HFI: port numnber */
-	} RID;
+	} PACK_SUFFIX RID;
 
 	uint8				Reserved[3];
 
@@ -2211,7 +2211,7 @@ typedef struct {
 	struct {
 		uint32			LID;
 		uint8			Port;
-	} RID;
+	} PACK_SUFFIX RID;
 
 	uint8				Reserved[3];
 

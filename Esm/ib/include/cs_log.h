@@ -390,7 +390,7 @@ extern uint32_t cs_log_masks[VIEO_LAST_MOD_ID+1];
 #define IB_FATAL_ERROR_NODUMP(p1) do {						\
 	smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_SM_SHUTDOWN, NULL, NULL, p1); \
 	vs_log_output(VS_LOG_FATAL, LOCAL_MOD_ID, __func__, NULL, "%s", p1); \
-    exit(1); \
+    exit(2); \
 } while (0)
 #define IB_FATAL_ERROR(p1) do {						\
 	smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_SM_SHUTDOWN, NULL, NULL, p1); \
@@ -1179,5 +1179,26 @@ vs_log_output_memory(uint32_t sev, /* severity */
 // fatal abort with core dump
 void vs_fatal_error(uint8_t *string);
 #endif
+
+//
+// IB_*_NOREPEAT(lastMst, msgNum, [argument list]) 
+//
+// Prevent the same error from coming out over and over by tracking the
+// previous error that was logged. Functions using these macros should locally
+// declare an (optionally static) unsigned variable to track the last message
+// sent and clear that variable before returning successfully. In addition, 
+// each invocation of IB_WARN_NOREPEAT and IB_ERROR_NOREPEAT in that function should 
+// be assigned a unique msgNum.
+#define IB_WARN_NOREPEAT(lastMsg, msgNum, fmt...) \
+	if (lastMsg != msgNum) { \
+		cs_log(VS_LOG_WARN,__func__, ## fmt); \
+		lastMsg = msgNum; \
+	}
+
+#define IB_ERROR_NOREPEAT(lastMsg, msgNum, fmt...) \
+	if (lastMsg != msgNum) { \
+		cs_log(VS_LOG_ERROR,__func__, ## fmt); \
+		lastMsg = msgNum; \
+	}
 
 #endif /*__VIEO_VS_LOG__*/

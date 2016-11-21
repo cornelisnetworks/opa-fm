@@ -1674,6 +1674,89 @@ IXML_FIELD PortDataHoQLifeXmlFields[] = {
 	{ NULL }
 };
 
+static void PortDataXmlOutputNeighborMTUAttr(IXmlOutputState_t *state, void *data)
+{
+	IXmlOutputPrint(state, " VL=\"%02u\"", *(uint8_t *)data);
+}
+
+static void PortDataXmlOutputNeighborMTU(IXmlOutputState_t *state, const char *tag, void *data)
+{
+	PortData * portp = (PortData *)data;
+	STL_VL_TO_MTU * table = portp->PortInfo.NeighborMTU;
+	uint8_t len = sizeof(portp->PortInfo.NeighborMTU) / sizeof(portp->PortInfo.NeighborMTU[0]);
+	uint8_t i;
+
+	for(i = 0; i < len; i++)
+	{
+		IXmlOutputStartAttrTag(state, "NeighborMTU", &i, PortDataXmlOutputNeighborMTUAttr);
+		IXmlOutputPrint(state, "0x%02x", table[i].AsReg8);
+		IXmlOutputEndTag( state, "NeighborMTU");
+	}
+}
+
+static void * PortDataXmlParserStartNeighborMtu(IXmlParserState_t *state, void *parent, const char **attr)
+{
+	PortData * portp = (PortData *)parent;
+	uint8_t len = sizeof(portp->PortInfo.NeighborMTU) / sizeof(portp->PortInfo.NeighborMTU[0]);
+	uint8_t i = 0;
+	if (!attr || !attr[0] || 0 != strcmp(attr[0], "VL")) {
+		IXmlParserPrintError(state, "Missing VL attribute for delay element");
+		return NULL;
+	}
+	if (FSUCCESS != StringToUint8(&i, attr[1], NULL, 0, TRUE)) {
+		IXmlParserPrintError(state, "Invalid VL in Neighbor MTU element: index:%s", attr[1]);
+		return NULL;
+	}
+	if (i >= len) {
+		IXmlParserPrintError(state, "VL value is out of range: index:%u len:%u", i, len);
+		return NULL;
+	}
+	return (void *)(portp->PortInfo.NeighborMTU + i);
+}
+
+static void PortDataXmlParserEndNeighborMtu(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	uint8_t value;
+	if (IXmlParseUint8(state, content, len, &value))
+		((STL_VL_TO_MTU *)object)->AsReg8 = value;
+}
+
+IXML_FIELD FlitControlPreemptionXmlFields[] = {
+	{ tag:"MinInitial", format:'U', IXML_FIELD_INFO(PortData, PortInfo.FlitControl.Preemption.MinInitial) },
+	{ tag:"MinTail", format:'U', IXML_FIELD_INFO(PortData, PortInfo.FlitControl.Preemption.MinTail) },
+	{ tag:"LargePktLimit", format:'U', IXML_FIELD_INFO(PortData, PortInfo.FlitControl.Preemption.LargePktLimit) },
+	{ tag:"SmallPktLimit", format:'U', IXML_FIELD_INFO(PortData, PortInfo.FlitControl.Preemption.SmallPktLimit) },
+	{ tag:"MaxSmallPktLimit", format:'U', IXML_FIELD_INFO(PortData, PortInfo.FlitControl.Preemption.MaxSmallPktLimit) },
+	{ tag:"PreemptionLimit", format:'U', IXML_FIELD_INFO(PortData, PortInfo.FlitControl.Preemption.PreemptionLimit) },
+	{ NULL }
+};
+
+static void FlitControlXmlOutputPreemption(IXmlOutputState_t *state, const char *tag, void *data)
+{
+	IXmlOutputStruct(state, tag, data, NULL, FlitControlPreemptionXmlFields);
+}
+
+static void * FlitControlXmlParserStartPreemption(IXmlParserState_t *state, void *parent, const char **attr)
+{
+	return parent;
+}
+
+IXML_FIELD PortDataFlitControlXmlFields[] = {
+	{ tag:"Interleave", format:'H', IXML_FIELD_INFO(PortData, PortInfo.FlitControl.Interleave.AsReg16) },
+	{ tag:"Preemption", format:'K', format_func:FlitControlXmlOutputPreemption, subfields:FlitControlPreemptionXmlFields, start_func:FlitControlXmlParserStartPreemption, end_func:IXmlParserEndNoop },
+	{ NULL }
+};
+
+static void PortDataXmlOutputFlitControl(IXmlOutputState_t *state, const char *tag, void *data)
+{
+	IXmlOutputStruct(state, tag, data, NULL, PortDataFlitControlXmlFields);
+}
+
+static void * PortDataXmlParserStartFlitControl(IXmlParserState_t *state, void *parent, const char **attr)
+{
+	return parent;
+}
+
 /* bitfields needs special handling: P_KeyEnforcementInbound */
 static void PortDataXmlOutputP_KeyEnforcementInbound(IXmlOutputState_t *state, const char *tag, void *data)
 {
@@ -2041,15 +2124,14 @@ void IXmlParserEndIBRate_Int(IXmlParserState_t *state, const IXML_FIELD *field, 
 		} else {
 
 			if (IXmlParseUint16(state, content, len, &value))
-				((McMemberData *)object)->MemberInfo.Rate = value;
+				((McGroupData *)object)->GroupInfo.Rate = value;
 		}
 	}
 }
 
 static void McMGIDXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
 {
-	McMemberData *mcmemberp = (McMemberData *)object;
-
+	McGroupData *mcgmemberp = (McGroupData*)object;
 	uint64 mgid[2];
 
 	if (FSUCCESS != StringToGid(&mgid[0], &mgid[1], content, NULL, TRUE)) {
@@ -2057,59 +2139,9 @@ static void McMGIDXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field
 		return;
 	}
 
-	mcmemberp->MGID.AsReg64s.H=mgid[0];
-	mcmemberp->MGID.AsReg64s.L=mgid[1];
+	mcgmemberp->MGID.AsReg64s.H=mgid[0];
+	mcgmemberp->MGID.AsReg64s.L=mgid[1];
 
-	return;
-}
-
-static void *McPortGIDXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr)
-{
-	uint64 pgid[2];
-
-	McGroupData *mcgmemberp = (McGroupData*)MemoryAllocate2AndClear(sizeof(McGroupData), IBA_MEM_FLAG_PREMPTABLE, MYTAG);
-
-	if (!mcgmemberp) {
-		IXmlParserPrintError(state, "Unable to allocate memory");
-		return NULL;
-	}
-		
-	if ( (!attr | !attr[0]) || (0 != strcmp(attr[0], "id"))) {
-		IXmlParserPrintError(state, "Missing PortGID id");
-		MemoryDeallocate(mcgmemberp);
-		return NULL;
-	}
-
-	// basic initialization of the MCG structure
-	ListItemInitState(&mcgmemberp->AllMcGMembersEntry);
-	QListSetObj(&mcgmemberp->AllMcGMembersEntry,mcgmemberp);
-
-	if (FSUCCESS != StringToGid(&pgid[0], &pgid[1], attr[1], NULL, TRUE)) {
-		IXmlParserPrintError(state, "Illegal PortGID found in hex string %s\n", attr[1]);
-		MemoryDeallocate(mcgmemberp);
-		return NULL;
-	}
-	mcgmemberp->PortGID.AsReg64s.H=pgid[0];
-	mcgmemberp->PortGID.AsReg64s.L=pgid[1];
-
-	return mcgmemberp;
-
-}
-
-static void McPortGIDXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
-{
-	McGroupData *mcgmemberp = (McGroupData*)object;
-	McMemberData *mcmemberp = (McMemberData *)parent;
-
-	if (! valid) {	// missing mandatory fields
-		MemoryDeallocate(mcgmemberp);
-		return;
-	}
-
-	QListInsertTail(&mcmemberp->AllMcGroupMembers, &mcgmemberp->AllMcGMembersEntry);
-
-	if ((mcgmemberp->PortGID.AsReg64s.H !=0) && (mcgmemberp->PortGID.AsReg64s.L!=0))
-		mcmemberp->NumOfMembers++;
 	return;
 }
 
@@ -2118,7 +2150,7 @@ static void MCMtuXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field,
 	uint16 value;
 
 	if (IXmlParseUint16(state, content, len, &value))
-			((McMemberData *)object)->MemberInfo.Mtu = GetMtuFromBytes(value);
+			((McGroupData *)object)->GroupInfo.Mtu = GetMtuFromBytes(value);
 }
 
 static void PktLifeTimeXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
@@ -2126,7 +2158,7 @@ static void PktLifeTimeXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *
 	uint8 value;
 
 	if (IXmlParseUint8(state, content, len, &value))
-		((McMemberData *)object)->MemberInfo.PktLifeTime = value;
+		((McGroupData *)object)->GroupInfo.PktLifeTime = value;
 }
 
 static void SLXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
@@ -2134,14 +2166,14 @@ static void SLXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, vo
 	uint32 value;
 
 	if (IXmlParseUint32(state, content, len, &value))
-		((McMemberData *)object)->MemberInfo.u1.s.SL = value;
+		((McGroupData *)object)->GroupInfo.u1.s.SL = value;
 }
 
 static void HopLimitXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid){
 	uint32 value;
 
 	if (IXmlParseUint32(state, content, len, &value))
-		((McMemberData *)object)->MemberInfo.u1.s.HopLimit = value;
+		((McGroupData *)object)->GroupInfo.u1.s.HopLimit = value;
 }
 
 static void FlowLabelXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
@@ -2149,78 +2181,161 @@ static void FlowLabelXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *fi
 	uint32 value;
 
 	if (IXmlParseUint32(state, content, len, &value))
-		((McMemberData *)object)->MemberInfo.u1.s.FlowLabel = value;
+		((McGroupData *)object)->GroupInfo.u1.s.FlowLabel = value;
 }
 
-// remembering that uppercase means mandatory field.
-
-static IXML_FIELD MCDataFields[] = {
-	{ tag:"MGID", format:'k', format_func:IXmlOutputGID, end_func: McMGIDXmlParserEnd },
-	{ tag:"MLID", format:'h', IXML_FIELD_INFO(McMemberData, MLID) },
-	{ tag:"P_Key", format:'h', IXML_FIELD_INFO(McMemberData, MemberInfo.P_Key), format_func:IXmlOutputPKey},
-	{ tag:"Rate_Int", format:'k', format_func:IXmlOutputNoop, end_func: IXmlParserEndIBRate_Int },  // input str output both
-	{ tag:"Mtu", format: 'h', format_func:IXmlOutputOptionalMtu, end_func:MCMtuXmlParserEnd },
-	{ tag:"PktLifeTime_Int", format:'h', format_func: IXmlOutputNoop, end_func:PktLifeTimeXmlParserEnd },
-	{ tag:"Q_Key", format:'h', IXML_FIELD_INFO(McMemberData, MemberInfo.Q_Key) },
-	{ tag:"SL", format:'h', format_func: IXmlOutputNoop, end_func: SLXmlParserEnd },
-	{ tag:"HopLimit", format:'h', format_func: IXmlOutputNoop, end_func: HopLimitXmlParserEnd },
-	{ tag:"FlowLabel", format:'h', format_func: IXmlOutputNoop, end_func: FlowLabelXmlParserEnd },
-	{ tag:"TClass", format:'h', IXML_FIELD_INFO(McMemberData, MemberInfo.TClass) },
-	{ tag:"PortGID", format:'k', IXML_FIELD_INFO(McGroupData, PortGID),start_func:McPortGIDXmlParserStart, end_func:McPortGIDXmlParserEnd },
-	{ NULL }
-};
-
-
-static void *McMemberXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr)
+static void *McPortGIDXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr)
 {
 	McMemberData *mcmemberp = (McMemberData*)MemoryAllocate2AndClear(sizeof(McMemberData), IBA_MEM_FLAG_PREMPTABLE, MYTAG);
 
-
-	if (! mcmemberp) {
+	if (!mcmemberp) {
 		IXmlParserPrintError(state, "Unable to allocate memory");
 		return NULL;
 	}
 
 	if ( (!attr | !attr[0]) || (0 != strcmp(attr[0], "id"))) {
-		IXmlParserPrintError(state, "Missing MGID id");
+		IXmlParserPrintError(state, "Missing PortGID id");
 		MemoryDeallocate(mcmemberp);
 		return NULL;
 	}
 
-	// basic initialization of the MC structure
+	// basic initialization of the MCG structure
 	ListItemInitState(&mcmemberp->McMembersEntry);
-	QListSetObj(&mcmemberp->McMembersEntry,mcmemberp);
+	QListSetObj(&mcmemberp->McMembersEntry, mcmemberp);
 
-    // init LIST of PortGids to NULL just in case
-	QListInitState(&mcmemberp->AllMcGroupMembers);
-	if ( !QListInit(&mcmemberp->AllMcGroupMembers)) {
-		IXmlParserPrintError(state, "Unable to initialize MCGroup member list");
-		MemoryDeallocate(mcmemberp);
-	    return NULL;
-	}
-	//init number of member counters for groups and group members
-	mcmemberp->NumOfMembers = 0;
 	return mcmemberp;
 }
 
-static void McMemberXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+static void McPortGIDXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	McGroupData *mcgmemberp = (McGroupData*)parent;
+	McMemberData *mcmemberp = (McMemberData *)object;
+
+	mcmemberp->MemberInfo.RID.MGID = mcgmemberp->MGID;
+	mcmemberp->MemberInfo.MLID = mcgmemberp->MLID;
+	mcmemberp->MemberInfo.P_Key = mcgmemberp->GroupInfo.P_Key;
+	mcmemberp->MemberInfo.Mtu = mcgmemberp->GroupInfo.Mtu;
+	mcmemberp->MemberInfo.Rate = mcgmemberp->GroupInfo.Rate;
+	mcmemberp->MemberInfo.PktLifeTime = mcgmemberp->GroupInfo.PktLifeTime;
+	mcmemberp->MemberInfo.Q_Key = mcgmemberp->GroupInfo.Q_Key;
+	mcmemberp->MemberInfo.u1.s.SL = mcgmemberp->GroupInfo.u1.s.SL;
+	mcmemberp->MemberInfo.u1.s.HopLimit = mcgmemberp->GroupInfo.u1.s.HopLimit;
+	mcmemberp->MemberInfo.u1.s.FlowLabel = mcgmemberp->GroupInfo.u1.s.FlowLabel;
+	mcmemberp->MemberInfo.TClass = mcgmemberp->GroupInfo.TClass;
+
+	// insert mcmember in the groups structure
+	QListInsertTail(&mcgmemberp->AllMcGroupMembers, &mcmemberp->McMembersEntry);
+
+	if ((mcmemberp->MemberInfo.RID.PortGID.AsReg64s.H !=0) && (mcmemberp->MemberInfo.RID.PortGID.AsReg64s.L!=0))
+		mcgmemberp->NumOfMembers++;
+
+	return;
+}
+
+static void McPGIDXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
 {
 	McMemberData *mcmemberp = (McMemberData*)object;
-	FabricData_t *fabricp = IXmlParserGetContext(state);
+	uint64 pgid[2];
 
 	if (! valid) {	// missing mandatory fields
 		MemoryDeallocate(mcmemberp);
 		return;
 	}
 
-	 McGroupData *pMCGH = (McGroupData *)QListObj(QListHead(&mcmemberp->AllMcGroupMembers));
-	if ((pMCGH->PortGID.AsReg64s.H !=0) && (pMCGH->PortGID.AsReg64s.L!=0))
+	if (FSUCCESS != StringToGid(&pgid[0], &pgid[1], content, NULL, TRUE)) {
+		IXmlParserPrintError(state, "Illegal PortGID found in hex string %s\n", content);
+		return;
+	}
+
+	mcmemberp->MemberInfo.RID.PortGID.AsReg64s.H=pgid[0];
+	mcmemberp->MemberInfo.RID.PortGID.AsReg64s.L=pgid[1];
+
+
+	return;
+}
+static void McMembershipXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	McMemberData *mcmemberp = (McMemberData*)object;
+
+	if (! valid) {	// missing mandatory fields
+		MemoryDeallocate(mcmemberp);
+		return;
+	}
+
+	if (strcmp(content,"Full")==0) {
+		mcmemberp->MemberInfo.JoinFullMember=1;
+		mcmemberp->MemberInfo.JoinNonMember=0;
+		mcmemberp->MemberInfo.JoinSendOnlyMember=0;
+	}
+	else if (strcmp(content,"Non")==0) {
+		mcmemberp->MemberInfo.JoinFullMember=0;
+		mcmemberp->MemberInfo.JoinNonMember=1;
+		mcmemberp->MemberInfo.JoinSendOnlyMember=0;
+	}
+	else if (strcmp(content,"SendOnly")==0) {
+		mcmemberp->MemberInfo.JoinFullMember=0;
+		mcmemberp->MemberInfo.JoinNonMember=0;
+		mcmemberp->MemberInfo.JoinSendOnlyMember=1;
+	}
+	else { // if no info, all members are init as Full
+		mcmemberp->MemberInfo.JoinFullMember=1;
+		mcmemberp->MemberInfo.JoinNonMember=0;
+		mcmemberp->MemberInfo.JoinSendOnlyMember=0;
+	}
+	return;
+}
+
+static void *McGMemberXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr)
+{
+	McGroupData *mcgmemberp = (McGroupData*)MemoryAllocate2AndClear(sizeof(McGroupData), IBA_MEM_FLAG_PREMPTABLE, MYTAG);
+
+	if (! mcgmemberp) {
+		IXmlParserPrintError(state, "Unable to allocate memory");
+		return NULL;
+	}
+
+	if ( (!attr | !attr[0]) || (0 != strcmp(attr[0], "id"))) {
+		IXmlParserPrintError(state, "Missing MGID id");
+		MemoryDeallocate(mcgmemberp);
+		return NULL;
+	}
+	ListItemInitState(&mcgmemberp->AllMcGMembersEntry);
+	QListSetObj(&mcgmemberp->AllMcGMembersEntry, mcgmemberp);
+
+	// init LIST of Group members to NULL
+	QListInitState(&mcgmemberp->AllMcGroupMembers);
+	if ( !QListInit(&mcgmemberp->AllMcGroupMembers)) {
+		IXmlParserPrintError(state, "Unable to initialize MCGroup member list");
+		MemoryDeallocate(mcgmemberp);
+		return NULL;
+	}
+
+	//init number of member counters for groups and group members
+	mcgmemberp->NumOfMembers = 0;
+	return mcgmemberp;
+}
+
+static void McGMemberXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, 
+	void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	McGroupData *mcgmemberp = (McGroupData*)object;
+	FabricData_t *fabricp = IXmlParserGetContext(state);
+
+	if (!valid) {	// missing mandatory fields
+		MemoryDeallocate(mcgmemberp);
+		return;
+	}
+
+	 McMemberData *pMCH = (McMemberData *)QListObj(QListHead(&mcgmemberp->AllMcGroupMembers));
+	 //fill McMemberData with info from group
+	if ((pMCH->MemberInfo.RID.PortGID.AsReg64s.H !=0) && (pMCH->MemberInfo.RID.PortGID.AsReg64s.L!=0)) {
 		fabricp->NumOfMcGroups ++;
+	}
 
 	// insert mcmember in the fabric structure
-	QListInsertTail(&fabricp->AllMcMembers, &mcmemberp->McMembersEntry);
+	QListInsertTail(&fabricp->AllMcGroups, &mcgmemberp->AllMcGMembersEntry);
 
-    	return;
+	return;
 }
 
 static void GIDXmlOutput(IXmlOutputState_t *state, void *data)
@@ -2230,50 +2345,82 @@ static void GIDXmlOutput(IXmlOutputState_t *state, void *data)
 			((IB_GID*)data)->AsReg64s.L);
 }
 
-static void McMemberGDataXmlFormatAttr(IXmlOutputState_t *state, void *data)
-{
-	McGroupData *pMcGroupRecord = (McGroupData *) data;
-
-	IXmlOutputStartAttrTag(state, "PortGID", &pMcGroupRecord->PortGID, GIDXmlOutput);
-	IXmlOutputEndTag(state,"PortGID");
-}
-
-static void McGroupDataXmlFormatAttr(IXmlOutputState_t *state, void *data)
+static void McMembershipXmlOutput(IXmlOutputState_t *state, const char* tag, void *data)
 {
 	McMemberData *pMcMemberRecord = (McMemberData *)data;
-	
-	IXmlOutputGID(state, "MGID", &pMcMemberRecord->MGID );
-	IXmlOutputHexPad16(state, "MLID", pMcMemberRecord->MLID);
-	IXmlOutputPKey(state, "P_Key", &pMcMemberRecord->MemberInfo.P_Key);
-	IXmlOutputUint(state, "Mtu", GetBytesFromMtu(pMcMemberRecord->MemberInfo.Mtu));
-	IXmlOutputRateValue(state, "Rate", pMcMemberRecord->MemberInfo.Rate);
-	IXmlOutputHex(state, "PktLifeTime_Int", pMcMemberRecord->MemberInfo.PktLifeTime );
-	IXmlOutputHexPad32(state, "Q_Key", pMcMemberRecord->MemberInfo.Q_Key);
-	IXmlOutputHex(state, "SL", pMcMemberRecord->MemberInfo.u1.s.SL);
-	IXmlOutputHex(state, "HopLimit", pMcMemberRecord->MemberInfo.u1.s.HopLimit);
-	IXmlOutputHex(state, "FlowLabel", pMcMemberRecord->MemberInfo.u1.s.FlowLabel);
-	IXmlOutputHexPad8(state, "TClass", pMcMemberRecord->MemberInfo.TClass);
 
+	IXmlOutputStartTag(state, tag);
 
+	if (pMcMemberRecord->MemberInfo.JoinFullMember)
+		IXmlOutputPrint(state, "Full");
+	if (pMcMemberRecord->MemberInfo.JoinNonMember)
+		IXmlOutputPrint(state, "Non");
+	if (pMcMemberRecord->MemberInfo.JoinSendOnlyMember)
+		IXmlOutputPrint(state, "Sendonly");
+
+	IXmlOutputEndTag(state, tag);
 }
 
-static void McMemberXmlOutput(IXmlOutputState_t *state, const char *tag, void *data)
+static void McGroupDataXmlOutput(IXmlOutputState_t *state, McGroupData *pMcGroupRecord)
 {
-	McMemberData *pMcMemberRecord = (McMemberData *)data;
-	LIST_ITEM	*p;
-
-		IXmlOutputStartAttrTag(state, tag, &pMcMemberRecord->MGID, GIDXmlOutput);
-		McGroupDataXmlFormatAttr(state, data);
-		for (p=QListHead(&pMcMemberRecord->AllMcGroupMembers); p != NULL; p = QListNext(&pMcMemberRecord->AllMcGroupMembers, p)) {
-			McGroupData *mcgmemberp = (McGroupData *)QListObj(p);
-			McMemberGDataXmlFormatAttr(state, mcgmemberp);
-		}
-		IXmlOutputEndTag(state,tag);
+	IXmlOutputGID(state, "MGID", &pMcGroupRecord->MGID );
+	IXmlOutputHexPad16(state, "MLID", pMcGroupRecord->MLID);
+	IXmlOutputPKey(state, "P_Key", &pMcGroupRecord->GroupInfo.P_Key);
+	IXmlOutputUint(state, "Mtu", GetBytesFromMtu(pMcGroupRecord->GroupInfo.Mtu));
+	IXmlOutputRateValue(state, "Rate", pMcGroupRecord->GroupInfo.Rate);
+	IXmlOutputHex(state, "PktLifeTime_Int", pMcGroupRecord->GroupInfo.PktLifeTime );
+	IXmlOutputHexPad32(state, "Q_Key", pMcGroupRecord->GroupInfo.Q_Key);
+	IXmlOutputHex(state, "SL", pMcGroupRecord->GroupInfo.u1.s.SL);
+	IXmlOutputHex(state, "HopLimit", pMcGroupRecord->GroupInfo.u1.s.HopLimit);
+	IXmlOutputHex(state, "FlowLabel", pMcGroupRecord->GroupInfo.u1.s.FlowLabel);
+	IXmlOutputHexPad8(state, "TClass", pMcGroupRecord->GroupInfo.TClass);
 }
 
+static void McGroupMemberXmlOutput(IXmlOutputState_t *state, const char *tag, void *data)
+{
+	McGroupData *pMcGroupRecord = (McGroupData *)data;
+	McMemberData *mcmemberp;
+	LIST_ITEM *p;
+
+	IXmlOutputStartAttrTag(state, tag, &pMcGroupRecord->MGID, GIDXmlOutput);
+	p=QListHead(&pMcGroupRecord->AllMcGroupMembers);
+	McGroupDataXmlOutput(state, pMcGroupRecord);
+
+	for (p=QListHead(&pMcGroupRecord->AllMcGroupMembers); p != NULL; p = QListNext(&pMcGroupRecord->AllMcGroupMembers, p)) {
+		mcmemberp = (McMemberData *)QListObj(p);
+		IXmlOutputStartAttrTag(state, "PortGID", &mcmemberp->MemberInfo.RID.PortGID, GIDXmlOutput);
+		IXmlOutputGID(state,"PGID",&mcmemberp->MemberInfo.RID.PortGID );
+		McMembershipXmlOutput(state, "Membership", mcmemberp);
+		IXmlOutputEndTag(state,"PortGID");
+	}
+	IXmlOutputEndTag(state,tag);
+}
+
+
+static IXML_FIELD GMemberFields[] = {
+		{ tag:"PGID", format:'k', format_func: IXmlOutputGID ,end_func:McPGIDXmlParserEnd },
+		{ tag:"Membership", format:'k', format_func: McMembershipXmlOutput, end_func:McMembershipXmlParserEnd },
+		{ NULL},
+};
+
+static IXML_FIELD McGroupFields[] = {
+	{ tag:"MGID", format:'k', format_func:IXmlOutputGID, end_func: McMGIDXmlParserEnd },
+	{ tag:"MLID", format:'h', IXML_FIELD_INFO(McGroupData, MLID) },
+	{ tag:"P_Key", format:'h', IXML_FIELD_INFO(McGroupData, GroupInfo.P_Key), format_func:IXmlOutputPKey},
+	{ tag:"Rate_Int", format:'k', format_func:IXmlOutputNoop, end_func: IXmlParserEndIBRate_Int },  // input str output both
+	{ tag:"Mtu", format: 'h', format_func:IXmlOutputOptionalMtu, end_func:MCMtuXmlParserEnd },
+	{ tag:"PktLifeTime_Int", format:'h', format_func: IXmlOutputNoop, end_func:PktLifeTimeXmlParserEnd },
+	{ tag:"Q_Key", format:'h', IXML_FIELD_INFO(McGroupData, GroupInfo.Q_Key) },
+	{ tag:"SL", format:'h', format_func: IXmlOutputNoop, end_func: SLXmlParserEnd },
+	{ tag:"HopLimit", format:'h', format_func: IXmlOutputNoop, end_func: HopLimitXmlParserEnd },
+	{ tag:"FlowLabel", format:'h', format_func: IXmlOutputNoop, end_func: FlowLabelXmlParserEnd },
+	{ tag:"TClass", format:'h', IXML_FIELD_INFO(McGroupData, GroupInfo.TClass) },
+	{ tag:"PortGID", format:'k', format_func: IXmlOutputGID, subfields:GMemberFields, start_func:McPortGIDXmlParserStart, end_func:McPortGIDXmlParserEnd },
+	{ NULL }
+};
 
 static IXML_FIELD MulticastFields[] = {
-	{ tag:"MulticastGroup", format:'k', subfields:MCDataFields, start_func:McMemberXmlParserStart, end_func:McMemberXmlParserEnd }, // structure
+	{ tag:"MulticastGroup", format:'k', subfields:McGroupFields, start_func:McGMemberXmlParserStart, end_func:McGMemberXmlParserEnd }, // structure
 	{ NULL }
 };
 
@@ -2338,6 +2485,8 @@ static IXML_FIELD PortDataFields[] = {
 	{ tag:"VLArbHighLimit", format:'U', IXML_FIELD_INFO(PortData, PortInfo.VL.HighLimit) },
 	{ tag:"VLArbHighCap", format:'U', IXML_FIELD_INFO(PortData, PortInfo.VL.ArbitrationHighCap) },
 	{ tag:"VLArbLowCap", format:'U', IXML_FIELD_INFO(PortData, PortInfo.VL.ArbitrationLowCap) },
+	{ tag:"VLPreemptingLimit", format:'u', IXML_FIELD_INFO(PortData, PortInfo.VL.PreemptingLimit) },
+	{ tag:"VLPreemptCap", format:'u', IXML_FIELD_INFO(PortData, PortInfo.VL.PreemptCap) },
 	{ tag:"VLStalls", format:'K', format_func:PortDataXmlOutputVLStalls, subfields:PortDataVLStallXmlFields },
 	{ tag:"VLFlowControlDisabledMask", format:'H', IXML_FIELD_INFO(PortData,PortInfo.FlowControlMask) },
 	{ tag:"HoQLifes", format:'K', format_func:PortDataXmlOutputHoQLifes, subfields:PortDataHoQLifeXmlFields },
@@ -2369,6 +2518,16 @@ static IXML_FIELD PortDataFields[] = {
 	{ tag:"PKeyTable", format:'k', format_func:PortDataXmlOutputPKeyTable, subfields:PKeyTableFields, start_func:PKeyTableXmlParserStart, end_func:PKeyTableXmlParserEnd }, // structure
 	{ tag:"PortStatus", format:'k', size:sizeof(STL_PortStatusData_t), format_func:PortDataXmlOutputPortStatusData, subfields:PortStatusDataFields, start_func:IXmlParserStartStruct, end_func:PortStatusDataXmlParserEnd }, // structure
 	{ tag:"CableInfo", format:'k', size:128, format_func:PortDataXmlOutputCableInfo, subfields:(IXML_FIELD*)CableInfoFields, start_func:CableInfoXmlParserStart}, 
+	{ tag:"LocalPortNum", format:'u', IXML_FIELD_INFO(PortData, PortInfo.LocalPortNum) },
+	{ tag:"PortStates", format:'h', IXML_FIELD_INFO(PortData, PortInfo.PortStates.AsReg32) },
+	{ tag:"SMTrapQP", format:'h', IXML_FIELD_INFO(PortData, PortInfo.SM_TrapQP.AsReg32) },
+	{ tag:"SAQP", format:'h', IXML_FIELD_INFO(PortData, PortInfo.SA_QP.AsReg32) },
+	{ tag:"PortNeighborMode", format:'h', IXML_FIELD_INFO(PortData, PortInfo.PortNeighborMode) },
+	{ tag:"PortMode", format:'h', IXML_FIELD_INFO(PortData, PortInfo.PortMode.AsReg16) },
+	{ tag:"PortErrorAction", format:'h', IXML_FIELD_INFO(PortData, PortInfo.PortErrorAction.AsReg32) },
+	{ tag:"FlitControl", format:'k', format_func:PortDataXmlOutputFlitControl, subfields:PortDataFlitControlXmlFields, start_func:PortDataXmlParserStartFlitControl, end_func:IXmlParserEndNoop },
+	{ tag:"NeighborNodeGUID", format:'h', IXML_FIELD_INFO(PortData, PortInfo.NeighborNodeGUID) },
+	{ tag:"NeighborMTU", format:'k', format_func:PortDataXmlOutputNeighborMTU, start_func:PortDataXmlParserStartNeighborMtu, end_func:PortDataXmlParserEndNeighborMtu },
 	{ NULL }
 };
 
@@ -3824,6 +3983,161 @@ static IXML_FIELD LinksFields[] = {
 };
 
 /****************************************************************************/
+/* Virtual Fabrics Input/Output functions */
+
+static void VFInfoXmlOutputSelectFlags(IXmlOutputState_t *state, const char *tag, void *data) {
+	IXmlOutputUint(state, tag, ((STL_VFINFO_RECORD *)data)->s1.selectFlags);
+}
+static void VFInfoXmlParserEndSelectFlags(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid) {
+	uint8 value;
+	if (IXmlParseUint8(state, content, len, &value))
+		((STL_VFINFO_RECORD *)object)->s1.selectFlags = value;
+}
+
+static void VFInfoXmlOutputSL(IXmlOutputState_t *state, const char *tag, void *data) {
+	IXmlOutputUint(state, tag, ((STL_VFINFO_RECORD *)data)->s1.sl);
+}
+static void VFInfoXmlParserEndSL(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid) {
+	uint8 value;
+	if (IXmlParseUint8(state, content, len, &value))
+		((STL_VFINFO_RECORD *)object)->s1.sl = value;
+}
+
+static void VFInfoXmlOutputMTUSpecified(IXmlOutputState_t *state, const char *tag, void *data) {
+	IXmlOutputUint(state, tag, ((STL_VFINFO_RECORD *)data)->s1.mtuSpecified);
+}
+static void VFInfoXmlParserEndMTUSpecified(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid) {
+	uint8 value;
+	if (IXmlParseUint8(state, content, len, &value))
+		((STL_VFINFO_RECORD *)object)->s1.mtuSpecified = value;
+}
+
+static void VFInfoXmlOutputMTU(IXmlOutputState_t *state, const char *tag, void *data) {
+	IXmlOutputUint(state, tag, ((STL_VFINFO_RECORD *)data)->s1.mtu);
+}
+static void VFInfoXmlParserEndMTU(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid) {
+	uint8 value;
+	if (IXmlParseUint8(state, content, len, &value))
+		((STL_VFINFO_RECORD *)object)->s1.mtu = value;
+}
+
+static void VFInfoXmlOutputRateSpecified(IXmlOutputState_t *state, const char *tag, void *data) {
+	IXmlOutputUint(state, tag, ((STL_VFINFO_RECORD *)data)->s1.rateSpecified);
+}
+static void VFInfoXmlParserEndRateSpecified(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid) {
+	uint8 value;
+	if (IXmlParseUint8(state, content, len, &value))
+		((STL_VFINFO_RECORD *)object)->s1.rateSpecified = value;
+}
+
+static void VFInfoXmlOutputRate(IXmlOutputState_t *state, const char *tag, void *data) {
+	IXmlOutputUint(state, tag, ((STL_VFINFO_RECORD *)data)->s1.rate);
+}
+static void VFInfoXmlParserEndRate(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid) {
+	uint8 value;
+	if (IXmlParseUint8(state, content, len, &value))
+		((STL_VFINFO_RECORD *)object)->s1.rate = value;
+}
+
+static void VFInfoXmlOutputPacketLifeSpecified(IXmlOutputState_t *state, const char *tag, void *data) {
+	IXmlOutputUint(state, tag, ((STL_VFINFO_RECORD *)data)->s1.pktLifeSpecified);
+}
+static void VFInfoXmlParserEndPacketLifeSpecified(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid) {
+	uint8 value;
+	if (IXmlParseUint8(state, content, len, &value))
+		((STL_VFINFO_RECORD *)object)->s1.pktLifeSpecified = value;
+}
+
+static void VFInfoXmlOutputPacketLifeTimeInc(IXmlOutputState_t *state, const char *tag, void *data) {
+	IXmlOutputUint(state, tag, ((STL_VFINFO_RECORD *)data)->s1.pktLifeTimeInc);
+}
+static void VFInfoXmlParserEndPacketLifeTimeInc(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid) {
+	uint8 value;
+	if (IXmlParseUint8(state, content, len, &value))
+		((STL_VFINFO_RECORD *)object)->s1.pktLifeTimeInc = value;
+}
+
+static void VFInfoXmlOutputPriority(IXmlOutputState_t *state, const char *tag, void *data) {
+	IXmlOutputUint(state, tag, ((STL_VFINFO_RECORD *)data)->priority);
+}
+static void VFInfoXmlParserEndPriority(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid) {
+	uint8 value;
+	if (IXmlParseUint8(state, content, len, &value))
+		((STL_VFINFO_RECORD *)object)->priority = value;
+}
+
+static void VFInfoXmlOutputPreemptionRank(IXmlOutputState_t *state, const char *tag, void *data) {
+	IXmlOutputUint(state, tag, ((STL_VFINFO_RECORD *)data)->preemptionRank);
+}
+static void VFInfoXmlParserEndPreemptionRank(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid) {
+	uint8 value;
+	if (IXmlParseUint8(state, content, len, &value))
+		((STL_VFINFO_RECORD *)object)->preemptionRank = value;
+}
+
+static void VFInfoXmlOutputHoqLife(IXmlOutputState_t *state, const char *tag, void *data) {
+	IXmlOutputUint(state, tag, ((STL_VFINFO_RECORD *)data)->hoqLife);
+}
+static void VFInfoXmlParserEndHoqLife(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid) {
+	uint8 value;
+	if (IXmlParseUint8(state, content, len, &value))
+		((STL_VFINFO_RECORD *)object)->hoqLife = value;
+}
+
+static IXML_FIELD VFFields[] = {
+	{ tag:"Index", format:'U', IXML_FIELD_INFO(STL_VFINFO_RECORD, vfIndex) },
+	{ tag:"PKey", format:'u', IXML_FIELD_INFO(STL_VFINFO_RECORD, pKey) },
+	{ tag:"Name", format:'S', IXML_FIELD_INFO(STL_VFINFO_RECORD, vfName) },
+	{ tag:"ServiceID", format:'h', IXML_FIELD_INFO(STL_VFINFO_RECORD, ServiceID) },
+	{ tag:"MGIDHigh", format:'h', IXML_FIELD_INFO(STL_VFINFO_RECORD, MGID.AsReg64s.H) },
+	{ tag:"MGIDLow", format:'h', IXML_FIELD_INFO(STL_VFINFO_RECORD, MGID.AsReg64s.L) },
+	{ tag:"SelectFlags", format:'k', format_func:VFInfoXmlOutputSelectFlags, end_func:VFInfoXmlParserEndSelectFlags },
+	{ tag:"SL", format:'k', format_func:VFInfoXmlOutputSL, end_func:VFInfoXmlParserEndSL },
+	{ tag:"MTUSpecified", format:'k', format_func:VFInfoXmlOutputMTUSpecified, end_func:VFInfoXmlParserEndMTUSpecified },
+	{ tag:"MTU", format:'k', format_func:VFInfoXmlOutputMTU, end_func:VFInfoXmlParserEndMTU },
+	{ tag:"RateSpecified", format:'k', format_func:VFInfoXmlOutputRateSpecified, end_func:VFInfoXmlParserEndRateSpecified },
+	{ tag:"Rate", format:'k', format_func:VFInfoXmlOutputRate, end_func:VFInfoXmlParserEndRate },
+	{ tag:"PacketLifeSpecified", format:'k', format_func:VFInfoXmlOutputPacketLifeSpecified, end_func:VFInfoXmlParserEndPacketLifeSpecified },
+	{ tag:"PacketLifeTimeInc", format:'k', format_func:VFInfoXmlOutputPacketLifeTimeInc, end_func:VFInfoXmlParserEndPacketLifeTimeInc },
+	{ tag:"OptionFlags", format:'h', IXML_FIELD_INFO(STL_VFINFO_RECORD, optionFlags) },
+	{ tag:"BandwidthPercent", format:'u', IXML_FIELD_INFO(STL_VFINFO_RECORD, bandwidthPercent) },
+	{ tag:"Priority", format:'k', format_func:VFInfoXmlOutputPriority, end_func:VFInfoXmlParserEndPriority },
+	{ tag:"PreemptionRank", format:'k', format_func:VFInfoXmlOutputPreemptionRank, end_func:VFInfoXmlParserEndPreemptionRank },
+	{ tag:"HOQLife", format:'k', format_func:VFInfoXmlOutputHoqLife, end_func:VFInfoXmlParserEndHoqLife },
+	{ NULL }
+};
+
+static void *VFDataXmlParserStartVF(IXmlParserState_t *state, void *parent, const char **attr)
+{
+	VFData_t *vf = MemoryAllocate2AndClear(sizeof(VFData_t), IBA_MEM_FLAG_PREMPTABLE, MYTAG);
+	if (!vf) {
+		IXmlParserPrintError(state, "Unable to allocate memory");
+		return NULL;
+	}
+
+	return &vf->record;
+}
+
+static void VFDataXmlParserEndVF(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	FabricData_t *fabricp = IXmlParserGetContext(state);
+	STL_VFINFO_RECORD *vfinfo = object;
+	VFData_t *vf = PARENT_STRUCT(vfinfo, VFData_t, record);
+
+	if (valid) {
+		QListSetObj(&vf->AllVFsEntry, vf);
+		QListInsertTail(&fabricp->AllVFs, &vf->AllVFsEntry);
+	} else if (vf) {
+		MemoryDeallocate(vf);
+	}
+}
+
+static IXML_FIELD VFsFields[] = {
+	{ tag:"VF", format:'K', subfields:VFFields, start_func:VFDataXmlParserStartVF, end_func:VFDataXmlParserEndVF },
+	{ NULL }
+};
+
+/****************************************************************************/
 /* Overall Serialization Input/Output functions */
 
 /* only used for input parsing */
@@ -3832,7 +4146,7 @@ static IXML_FIELD SnapshotFields[] = {
 	{ tag:"SMs", format:'K', subfields:SMsFields }, // list
 	{ tag:"Links", format:'K', subfields:LinksFields }, // list
 	{ tag:"McMembers", format:'k', subfields:MulticastFields }, // list
-
+	{ tag:"VirtualFabrics", format:'k', subfields:VFsFields },
 	{ NULL }
 };
 
@@ -3899,6 +4213,7 @@ static void SnapshotXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *fie
 		SMDataFreeAll(fabricp);
 		NodeDataFreeAll(fabricp);
 		MCDataFreeAll(fabricp);
+		VFDataFreeAll(fabricp);
 		fabricp->LinkCount = 0;
 		fabricp->ExtLinkCount = 0;
 	}
@@ -3984,11 +4299,22 @@ static void Xml2PrintAll(IXmlOutputState_t *state, const char *tag, void *data)
 		LIST_ITEM *p;
 
 		IXmlOutputStartAttrTag(state, "McMembers", NULL, NULL);
-		for (p=QListHead(&fabricp->AllMcMembers); p != NULL; p = QListNext(&fabricp->AllMcMembers, p)) {
-			McMemberData *mcmemberp = (McMemberData *)QListObj(p);
-			McMemberXmlOutput(state, "MulticastGroup", mcmemberp);
+		for (p=QListHead(&fabricp->AllMcGroups); p != NULL; p = QListNext(&fabricp->AllMcGroups, p)) {
+			McGroupData *mcgroupp = (McGroupData *)QListObj(p);
+			McGroupMemberXmlOutput(state, "MulticastGroup", mcgroupp);
 		}
 		IXmlOutputEndTag(state, "McMembers");
+	}
+
+	{
+		LIST_ITEM *p;
+
+		IXmlOutputStartTag(state, "VirtualFabrics");
+		for (p=QListHead(&fabricp->AllVFs); p != NULL; p = QListNext(&fabricp->AllVFs, p)) {
+			VFData_t *vf = (VFData_t *)QListObj(p);
+			IXmlOutputStruct(state, "VF", &vf->record, NULL, VFFields);
+		}
+		IXmlOutputEndTag(state, "VirtualFabrics");
 	}
 
 	IXmlOutputEndTag(state, tag);

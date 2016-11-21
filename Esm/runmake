@@ -219,6 +219,9 @@ fi;
 # Pass command-line arguments to rpmbuild 
 sed -i "s/^\.\/fmbuild.*/\.\/fmbuild -V \%{version}\.\%{release} $args/g" opa-fm.spec
 
+# update distro dependencies
+./update_opa-fm_spec.sh
+
 # Pass env variables to rpmbuild. In integration build,
 # Most of the rpmbuild environment variables remains the same except
 # a few (like TL_DIR). However, when the SRPM is built on another

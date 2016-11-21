@@ -130,8 +130,6 @@ void sm_spanning_tree_resetGlobals(void) {
    If filter_mtu_rate is not set, the SM does not consider mtu and rate of ISLs. It will consider
    any ISL that is atleast in INIT state.
 
-   This function is called with filter_mtu_set = 0 from sm_dor code to construct the updn spanning tree
-   and by that time mtu, rates are not fully set and links are still in INIT.
 */
 
 Status_t sm_ideal_spanning_tree(McSpanningTree_t *mcST, int filter_mtu_rate, int32_t mtu, int32_t rate, int num_nodes, int *complete)

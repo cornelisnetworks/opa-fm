@@ -51,8 +51,8 @@ Usage_full()
 	echo "   List all the links in the fabric:" >&2
 	echo "      ${cmd}" >&2
 	echo >&2
-	echo "   List all the links to a switch named \"OmniPth00117501ffffffff\":" >&2
-	echo "      ${cmd} -F \"node:OmniPth00117501ffffffff\"" >&2
+	echo "   List all the links to a switch named \"coresw1\":" >&2
+	echo "      ${cmd} -F \"node:coresw1\"" >&2
 	echo >&2
 	echo "   List all the links to end-nodes:" >&2
 	echo "      ${cmd} -F \"nodetype:FI\"" >&2

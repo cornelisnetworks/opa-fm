@@ -45,6 +45,34 @@ extern "C" {
 #endif
 
 /*
+ * STL defines an algorithmic relationship between NodeGUID and PortGUID
+ * Bit 32-34 of the NodeGUID always has 1
+ * Bit 32-34 of the PortGUID has 1 for switch port 0, or the HFI port number
+ * These bits should never be 0
+ * These functions help translate from one to the other
+ */
+#define PORTGUID_PNUM_MASK 0x7ull	// bit field mask
+#define PORTGUID_PNUM_SHIFT 32		// low bit number
+
+static __inline EUI64 PortGUIDtoNodeGUID(EUI64 portGUID)
+{
+	return ((portGUID & ~(PORTGUID_PNUM_MASK << PORTGUID_PNUM_SHIFT))
+				| (1ull << PORTGUID_PNUM_SHIFT));
+}
+
+static __inline EUI64 NodeGUIDtoPortGUID(EUI64 nodeGUID, uint8 portnum)
+{
+	// assume portnum is valid, in which case it can't be zero for HFIs
+	// and can only be zero for switches
+	// hence avoiding the need for a NodeType argument to this function
+	if (portnum)
+		return ((nodeGUID & ~(PORTGUID_PNUM_MASK << PORTGUID_PNUM_SHIFT))
+				 | ((EUI64)portnum << PORTGUID_PNUM_SHIFT));	// HFI port
+	else
+		return nodeGUID;	// switch port 0
+}
+
+/*
  * Convert STL_PORT_STATE to a constant string
  */
 static __inline const char *
@@ -1123,6 +1151,17 @@ StlNodeTypeToText(NODE_TYPE type)
 		(type == STL_NODE_SW)?"SW": "??";
 }
 
+
+static __inline uint8 StlNeighNodeTypeToNodeType(NODE_TYPE type)
+{
+
+	if(type==STL_NEIGH_NODE_TYPE_HFI)
+		return STL_NODE_FI;
+	else
+		return STL_NODE_SW;
+
+}
+
 static __inline const char*
 StlLinkQualToText(uint8 linkQual)
 {
@@ -1413,7 +1452,8 @@ static __inline CounterSelectMask_t DiffPACounters(STL_PORT_COUNTERS_DATA * data
 	GET_DELTA_COUNTER(portMarkFECN, PortMarkFECN);
 	GET_DELTA_COUNTER(fmConfigErrors, FMConfigErrors);
 	GET_DELTA_COUNTER(uncorrectableErrors, UncorrectableErrors);
-	result->lq.AsReg8 = MIN(data1->lq.AsReg8, data2->lq.AsReg8);
+	result->lq.s.numLanesDown = MAX(data1->lq.s.numLanesDown, data2->lq.s.numLanesDown);
+	result->lq.s.linkQualityIndicator = MIN(data1->lq.s.linkQualityIndicator, data2->lq.s.linkQualityIndicator);
 
 #undef GET_DELTA_COUNTER
 	return mask;

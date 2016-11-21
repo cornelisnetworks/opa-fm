@@ -71,7 +71,7 @@ struct oib_port;
 // Selection indicies for SCVL* tables
 typedef enum { Enum_SCVLt, Enum_SCVLnt, Enum_SCVLr } ScvlEnum_t;
 
-// selection of PortState for  FindPortState, includes all of IB_PORT_STATE
+// selection of PortState for FindPortStatePoint, includes all of IB_PORT_STATE
 // plus these additional special searches
 #define PORT_STATE_SEARCH_NOTACTIVE (IB_PORT_STATE_MAX+1)	// != active
 #define PORT_STATE_SEARCH_INITARMED (IB_PORT_STATE_MAX+2)	// init or armed
@@ -193,6 +193,7 @@ typedef struct ExpectedNode_s {
 	uint8 NodeType;					// 0 if not specified
 	char *NodeDesc;					// NULL if not specified
 	char *details;					// user description of node
+	void *context;					// application specific field
 } ExpectedNode;
 
 #define SM_DETAILS_STRLEN 64
@@ -315,19 +316,23 @@ typedef struct NodeData_s {
 	} CongestionLog;
 } NodeData;
 
-typedef struct McGroupsData_s {
+typedef struct McGroupData_s {
 	LIST_ITEM	AllMcGMembersEntry;
-	IB_GID		PortGID;
-	PortData	*pPort;
+	QUICK_LIST	AllMcGroupMembers;
+	int 	NumOfMembers;
+	IB_LID		MLID;
+	IB_GID		MGID;
+	IB_MCMEMBER_RECORD	GroupInfo;	//although this is a IB-MCMEMBER-type record,
+									//it only has few more fields than the Member alone
+									//so as suggested by TR, this should be used instead
+									//of a group only set of fields.
+									//fields corresponding to individual members should not be used.
 } McGroupData;
 
 typedef struct McMemberData_s {
 	LIST_ITEM		McMembersEntry;
-	QUICK_LIST		AllMcGroupMembers;
-	int				NumOfMembers;
 	IB_MCMEMBER_RECORD	MemberInfo;
-	IB_GID			MGID;
-	uint16			MLID;
+	PortData		*pPort;
 } McMemberData;
 
 typedef struct clConnPathData_s {
@@ -454,6 +459,11 @@ typedef struct MasterSMData_s {
 	uint8	version;			// SM Version
 } MasterSMData_t;
 
+typedef struct {
+	LIST_ITEM AllVFsEntry;
+	STL_VFINFO_RECORD record;
+} VFData_t;
+
 typedef enum {
 	FF_NONE				=0,
 	FF_STATS			=0x000000001,	// PortCounters fetched
@@ -487,6 +497,7 @@ typedef struct FabricData_s {
 	QUICK_LIST AllPorts;	// sorted by NodeGUID+PortNum
 	QUICK_LIST AllFIs;		// sorted by NodeGUID
 	QUICK_LIST AllSWs;		// sorted by NodeGUID
+	QUICK_LIST AllVFs;		// list of VFData_t
 #if !defined(VXWORKS) || defined(BUILD_DMC)
 	QUICK_LIST AllIOUs;		// sorted by NodeGUID
 	cl_qmap_t AllIOCs;		// items are IocData, key is Ioc Guid
@@ -494,7 +505,7 @@ typedef struct FabricData_s {
 	cl_qmap_t AllSMs;		// items are SMData, key is PortGuid
 
 	//	Multicast  related structures
-	QUICK_LIST   	AllMcMembers;	// items are MCMembers, Key is MGID
+	QUICK_LIST   	AllMcGroups;	// items are MCMembers, Key is MGID
 	uint32	 	NumOfMcGroups;
 
 	MasterSMData_t	MasterSMData;	// Master SM data
@@ -546,7 +557,8 @@ typedef struct Top_FreeCallbacks_s {
 	FabricDataFreeCallback	*pFabricDataFreeCallback;
 } Top_FreeCallbacks;
 
-/* struct Point_s identifies a particular point in the fabric.
+/* struct Point_s identifies a particular point in the fabric and
+ * topology.xml.
  * Used for trace route and other "focused" reports
  * Presently coded in C, but a good candidate for a C++ abstract class
  * with a subclass for each point type
@@ -563,8 +575,30 @@ typedef enum {
 #endif
 	POINT_TYPE_SYSTEM,
 } PointType;
+
+typedef enum {
+	POINT_ENODE_TYPE_NONE,
+	POINT_ENODE_TYPE_NODE,
+	POINT_ENODE_TYPE_NODE_LIST,
+} PointEnodeType;
+
+typedef enum {
+	POINT_ESM_TYPE_NONE,
+	POINT_ESM_TYPE_SM,
+	POINT_ESM_TYPE_SM_LIST,
+} PointEsmType;
+
+typedef enum {
+	POINT_ELINK_TYPE_NONE,
+	POINT_ELINK_TYPE_LINK,
+	POINT_ELINK_TYPE_LINK_LIST,
+} PointElinkType;
+
+
 typedef struct Point_s {
-	PointType	Type;
+
+	/* object(s) matched in the fabric */
+	PointType	Type;	/* if POINT_TYPE_NONE, u undefined */
 	union {
 		PortData	*portp;
 		NodeData	*nodep;
@@ -576,6 +610,27 @@ typedef struct Point_s {
 		DLIST		portList;
 		DLIST		iocList;
 	} u;
+
+	/* ExpectedNode(s) matched in topology file */
+	PointEnodeType	EnodeType;	/* if POINT_ENODE_TYPE_NONE, u2 undefined */
+	union {
+		ExpectedNode	*enodep;
+		DLIST			enodeList;
+	} u2;
+
+	/* ExpectedSM(s) matched in topology file */
+	PointEsmType	EsmType;	/* if POINT_ESM_TYPE_NONE, u3 undefined */
+	union {
+		ExpectedSM	*esmp;
+		DLIST		esmList;
+	} u3;
+
+	/* ExpectedLink(s) matched in topology file */
+	PointElinkType	ElinkType;	/* if POINT_ELINK_TYPE_NONE, u4 undefined */
+	union {
+		ExpectedLink	*elinkp;
+		DLIST			elinkList;
+	} u4;
 } Point;
 
 #if !defined(VXWORKS) || defined(BUILD_DMC)
@@ -708,11 +763,11 @@ extern PortData* NodeDataAddPort(FabricData_t *fabricp, NodeData *nodep, EUI64 g
 extern FSTATUS NodeDataSetSwitchInfo(NodeData *nodep, STL_SWITCHINFO_RECORD *pSwitchInfo);
 extern NodeData *FabricDataAddNode(FabricData_t *fabricp, STL_NODE_RECORD *pNodeRecord, boolean *new_nodep);
 
-extern McMemberData *FabricDataAddMCGroup(FabricData_t *fabricp, struct oib_port *port, int quiet, IB_MCMEMBER_RECORD *pMCGRecord,
+extern McGroupData *FabricDataAddMCGroup(FabricData_t *fabricp, struct oib_port *port, int quiet, IB_MCMEMBER_RECORD *pMCGRecord,
 		boolean *new_nodep, FILE *verbose_file);
 
 extern FSTATUS GetAllMCGroups(EUI64 portGuid, FabricData_t *fabricp, Point *focus, int quiet);
-extern FSTATUS GetAllMCGroupMember(McMemberData *mcmemberp,struct oib_port *portp,int quiet, FILE *g_verbose_file);
+extern FSTATUS GetAllMCGroupMember(FabricData_t *fabricp, McGroupData *mcgroupp, struct oib_port *portp,int quiet, FILE *g_verbose_file);
 
 extern boolean SupportsVendorPortCounters(NodeData *nodep,
                                         IB_CLASS_PORT_INFO *classPortInfop);
@@ -739,9 +794,9 @@ extern void PortDataSetPortInfo(FabricData_t *fabricp, PortData *portp, STL_PORT
 
 extern void DestroyFabricData(FabricData_t *fabricp);
 
-extern NodeData * CLDataAddDevice(FabricData_t *fabricp, NodeData *nodep, uint16 lid, int verbose);
-extern FSTATUS CLDataAddConnection(FabricData_t *fabricp, PortData *portp1, PortData *portp2, clConnPathData_t *pathInfo, uint8 sc, int verbose);
-extern FSTATUS CLDataAddRoute(FabricData_t *fabricp, uint16 slid, uint16 dlid, PortData *sportp, int verbose);
+extern NodeData * CLDataAddDevice(FabricData_t *fabricp, NodeData *nodep, uint16 lid, int verbose, int quiet);
+extern FSTATUS CLDataAddConnection(FabricData_t *fabricp, PortData *portp1, PortData *portp2, clConnPathData_t *pathInfo, uint8 sc, int verbose, int quiet);
+extern FSTATUS CLDataAddRoute(FabricData_t *fabricp, uint16 slid, uint16 dlid, PortData *sportp, int verbose, int quiet);
 extern clGraphData_t * CLGraphDataSplit(clGraphData_t *graphp, int verbose);
 extern FSTATUS CLFabricDataDestroy(FabricData_t *fabricp, void *context);
 extern void CLGraphDataFree(clGraphData_t *graphp, void *context);
@@ -749,43 +804,62 @@ extern FSTATUS CLDijkstraFindDistancesAndRoutes(clGraphData_t *graphp, clDijkstr
 extern void CLDijkstraFreeDistancesAndRoutes(clDijkstraDistancesAndRoutes_t *drp);
 
 // search routines (Topology/search.c)
+// For functions which generate Points, indicate what is needed
+#define FIND_FLAG_FABRIC	0x01	/* find in live fabric */
+#define FIND_FLAG_ENODE		0x02	/* find in ExpectedNodes */
+#define FIND_FLAG_ESM		0x04	/* find in ExpectedSMs */
+#define FIND_FLAG_ELINK		0x08	/* find in ExpectedLinks */
+
+// The search routines involving Points tend to limit the search to the
+// specific objects indicated by find_flag and expect later caller use of
+// Compare functions to invoke the necessary Compare functions to cover the
+// fabric vs expected objects of interest.  One exception is the comparison
+// for Details and Cable information which is only available in topology.xml
+// In this case, the fabric seach will check the resolved expected object
+// This permits the majority of fabric related operations, such as opareport,
+// to make use of Details and Cable information from topology.xml while
+// only considering fabric objects.
+
 // search for the PortData corresponding to the given node and port number
 extern PortData * FindNodePort(NodeData *nodep, uint8 port);
 // search for the PortData corresponding to the given lid
 extern PortData * FindLid(FabricData_t* fabricp, uint16 lid);
 // search for the PortData corresponding to the given port Guid
 extern PortData * FindPortGuid(FabricData_t* fabricp, EUI64 guid);
+extern FSTATUS FindPortGuidPoint(FabricData_t *fabricp, EUI64 guid, Point *pPoint, uint8 find_flag, int silent);
+extern FSTATUS FindGidPoint(FabricData_t *fabricp, IB_GID gid, Point *pPoint, uint8 find_flag, int silent);
 // search for the NodeData corresponding to the given node Guid
 extern NodeData * FindNodeGuid(const FabricData_t* fabricp, EUI64 guid);
-extern FSTATUS FindNodeName(FabricData_t* fabricp, char *name, Point *pPoint, int silent);
-extern FSTATUS FindNodeNamePat(FabricData_t* fabricp, char *pattern, Point *pPoint);
-extern FSTATUS FindNodeDetailsPat(FabricData_t* fabricp, const char* pattern, Point *pPoint);
-extern FSTATUS FindNodeType(FabricData_t* fabricp, NODE_TYPE type, Point *pPoint);
+extern FSTATUS FindNodeGuidPoint(FabricData_t *fabricp, EUI64 guid, Point *pPoint, uint8 find_flag, int silent);
+extern FSTATUS FindNodeNamePoint(FabricData_t* fabricp, char *name, Point *pPoint, uint8 find_flag, int silent);
+extern FSTATUS FindNodeNamePatPoint(FabricData_t* fabricp, char *pattern, Point *pPoint, uint8 find_flag);
+extern FSTATUS FindNodeDetailsPatPoint(FabricData_t* fabricp, const char* pattern, Point *pPoint, uint8 find_flag);
+extern FSTATUS FindNodeTypePoint(FabricData_t* fabricp, NODE_TYPE type, Point *pPoint, uint8 find_flag);
 #if !defined(VXWORKS) || defined(BUILD_DMC)
-extern FSTATUS FindIocName(FabricData_t* fabricp, char *name, Point *pPoint);
-extern FSTATUS FindIocNamePat(FabricData_t* fabricp, char *pattern, Point *pPoint);
-extern FSTATUS FindIocType(FabricData_t* fabricp, IocType type, Point *pPoint);
+extern FSTATUS FindIocNamePoint(FabricData_t* fabricp, char *name, Point *pPoint, uint8 find_flag);
+extern FSTATUS FindIocNamePatPoint(FabricData_t* fabricp, char *pattern, Point *pPoint, uint8 find_flag);
+extern FSTATUS FindIocTypePoint(FabricData_t* fabricp, IocType type, Point *pPoint, uint8 find_flag);
 extern IocData * FindIocGuid(FabricData_t* fabricp, EUI64 guid);
 #endif
 extern SystemData * FindSystemGuid(FabricData_t* fabricp, EUI64 guid);
-extern FSTATUS FindRate(FabricData_t* fabricp, uint32 rate, Point *pPoint);
-extern FSTATUS FindPortState(FabricData_t* fabricp, uint8 state, Point *pPoint);
-extern FSTATUS FindLedState(FabricData_t* fabricp, uint8 state, Point *pPoint);
-extern FSTATUS FindPortPhysState(FabricData_t* fabricp, IB_PORT_PHYS_STATE state, Point *pPoint);
-extern FSTATUS FindCableLabelPat(FabricData_t* fabricp, const char* pattern, Point *pPoint);
-extern FSTATUS FindCableLenPat(FabricData_t* fabricp, const char* pattern, Point *pPoint);
-extern FSTATUS FindCableDetailsPat(FabricData_t* fabricp, const char* pattern, Point *pPoint);
-extern FSTATUS FindCabinfLenPat(FabricData_t *fabricp, const char* pattern, Point *pPoint);
-extern FSTATUS FindCabinfVendNamePat(FabricData_t *fabricp, const char* pattern, Point *pPoint);
-extern FSTATUS FindCabinfVendPNPat(FabricData_t *fabricp, const char* pattern, Point *pPoint);
-extern FSTATUS FindCabinfVendRevPat(FabricData_t *fabricp, const char* pattern, Point *pPoint);
-extern FSTATUS FindCabinfVendSNPat(FabricData_t *fabricp, const char* pattern, Point *pPoint);
-extern FSTATUS FindCabinfCableType(FabricData_t *fabricp, char *cablearg, Point *pPoint);
-extern FSTATUS FindLinkDetailsPat(FabricData_t* fabricp, const char* pattern, Point *pPoint);
-extern FSTATUS FindPortDetailsPat(FabricData_t* fabricp, const char* pattern, Point *pPoint);
-extern FSTATUS FindMtu(FabricData_t* fabricp, IB_MTU mtu, uint8 vl_num, Point *pPoint);
+extern FSTATUS FindRatePoint(FabricData_t* fabricp, uint32 rate, Point *pPoint, uint8 find_flag);
+extern FSTATUS FindPortStatePoint(FabricData_t* fabricp, uint8 state, Point *pPoint, uint8 find_flag);
+extern FSTATUS FindLedStatePoint(FabricData_t* fabricp, uint8 state, Point *pPoint, uint8 find_flag);
+extern FSTATUS FindPortPhysStatePoint(FabricData_t* fabricp, IB_PORT_PHYS_STATE state, Point *pPoint, uint8 find_flag);
+extern FSTATUS FindCableLabelPatPoint(FabricData_t* fabricp, const char* pattern, Point *pPoint, uint8 find_flag);
+extern FSTATUS FindCableLenPatPoint(FabricData_t* fabricp, const char* pattern, Point *pPoint, uint8 find_flag);
+extern FSTATUS FindCableDetailsPatPoint(FabricData_t* fabricp, const char* pattern, Point *pPoint, uint8 find_flag);
+extern FSTATUS FindCabinfLenPatPoint(FabricData_t *fabricp, const char* pattern, Point *pPoint, uint8 find_flag);
+extern FSTATUS FindCabinfVendNamePatPoint(FabricData_t *fabricp, const char* pattern, Point *pPoint, uint8 find_flag);
+extern FSTATUS FindCabinfVendPNPatPoint(FabricData_t *fabricp, const char* pattern, Point *pPoint, uint8 find_flag);
+extern FSTATUS FindCabinfVendRevPatPoint(FabricData_t *fabricp, const char* pattern, Point *pPoint, uint8 find_flag);
+extern FSTATUS FindCabinfVendSNPatPoint(FabricData_t *fabricp, const char* pattern, Point *pPoint, uint8 find_flag);
+extern FSTATUS FindCabinfCableTypePoint(FabricData_t *fabricp, char *cablearg, Point *pPoint, uint8 find_flag);
+extern FSTATUS FindLinkDetailsPatPoint(FabricData_t* fabricp, const char* pattern, Point *pPoint, uint8 find_flag);
+extern FSTATUS FindPortDetailsPatPoint(FabricData_t* fabricp, const char* pattern, Point *pPoint, uint8 find_flag);
+extern FSTATUS FindMtuPoint(FabricData_t* fabricp, IB_MTU mtu, Point *pPoint, uint8 find_flag);
 extern PortData * FindMasterSm(FabricData_t* fabricp);
-extern FSTATUS FindSmDetailsPat(FabricData_t *fabricp,const char* pattern, Point *pPoint);
+extern FSTATUS FindSmDetailsPatPoint(FabricData_t *fabricp,const char* pattern, Point *pPoint, uint8 find_flag);
 // search for the SMData corresponding to the given PortGuid
 extern SMData * FindSMPort(FabricData_t *fabricp,EUI64 PortGUID);
 // search for the PortData corresponding to the given lid and port number
@@ -793,12 +867,11 @@ extern SMData * FindSMPort(FabricData_t *fabricp,EUI64 PortGUID);
 // For Switches, lid will identify the switch and port is used to select port
 extern PortData * FindLidPort(FabricData_t *fabricp,uint16 lid, uint8 port);
 extern PortData * FindNodeGuidPort(FabricData_t *fabricp,EUI64 nodeguid, uint8 port);
-extern ExpectedNode* FindExpectedNodeByNodeGuid(FabricData_t* fabricp, EUI64 nodeGuid);
+extern ExpectedNode* FindExpectedNodeByNodeGuid(FabricData_t *fabricp, EUI64 nodeGuid);
 extern ExpectedLink* FindExpectedLinkByOneSide(FabricData_t* fabricp, EUI64 nodeGuid, uint8 portNum, uint8* side);
-extern ExpectedLink* FindExpectedLinkByNodeGuid(FabricData_t* fabricp, EUI64 nodeGuid1, EUI64 nodeGuid2);
-extern ExpectedLink* FindExpectedLinkByPortGuid(FabricData_t* fabricp, EUI64 portGuid1, EUI64 portGuid2);
-extern ExpectedLink* FindExpectedLinkByNodeDesc(FabricData_t* fabricp, char* nodeDesc1, char* nodeDesc2);
-extern FSTATUS FindLinkQuality(FabricData_t *fabricp, uint16 quality, LinkQualityCompare comp, Point *pPoint);
+extern FSTATUS FindLinkQualityPoint(FabricData_t *fabricp, uint16 quality, LinkQualityCompare comp, Point *pPoint, uint8 find_flag);
+extern FSTATUS FindExpectedSMByPortGuid(FabricData_t *fabricp, EUI64 portGuid);
+extern FSTATUS FindExpectedSMByNodeGuid(FabricData_t *fabricp, EUI64 nodeGuid);
 
 // mad queries to PMA and DMA (from Topology/mad.c)
 extern FSTATUS InitMad(EUI64 portguid, FILE *verbose_file);
@@ -823,28 +896,68 @@ extern FSTATUS DmGetServiceEntries(struct oib_port *port, IB_PATH_RECORD *pathp,
 
 // POINT routines (from Topology/point.c)
 extern void PointInit(Point *point);
+extern void PointFabricDestroy(Point *point);
+extern void PointEnodeDestroy(Point *point);
+extern void PointEsmDestroy(Point *point);
+extern void PointElinkDestroy(Point *point);
 extern void PointDestroy(Point *point);
+extern boolean PointValid(Point *point);
+extern FSTATUS PointFabricCopy(Point *dest, Point *src);
+extern FSTATUS PointEnodeCopy(Point *dest, Point *src);
+extern FSTATUS PointEsmCopy(Point *dest, Point *src);
+extern FSTATUS PointElinkCopy(Point *dest, Point *src);
 extern FSTATUS PointCopy(Point *dest, Point *src);
 extern FSTATUS PointListAppend(Point *point, PointType type, void *object);
+extern FSTATUS PointEnodeListAppend(Point *point, PointEnodeType type, void *object);
+extern FSTATUS PointEsmListAppend(Point *point, PointEsmType type, void *object);
+extern FSTATUS PointElinkListAppend(Point *point, PointElinkType type, void *object);
+extern void PointFabricCompress(Point *point);
+extern void PointEnodeCompress(Point *point);
+extern void PointEsmCompress(Point *point);
+extern void PointElinkCompress(Point *point);
 extern void PointCompress(Point *point);
 extern FSTATUS PointListAppendUniquePort(Point *point, PortData *portp);
+/* These compare functions will compare the supplied object to the
+ * specific relevant portion of the point.  Callers who wish to consider
+ * both expected and fabric objects should call all the relevant routines
+ * for the fabric and linked expected objects
+ * This approach provides greater flexibility for callers, and removes the need
+ * for the Point construction and parsing routines to check all the linked
+ * fabric and expected objects.
+ */
+
 /* compare the supplied port to the given point
  * this is used to identify focus for reports
- * POINT_TYPE_NONE will report TRUE for all ports
+ * if ! PointValid will report TRUE for all ports
  */
 extern boolean ComparePortPoint(PortData *portp, Point *point);
 /* compare the supplied node to the given point
  * this is used to identify focus for reports
- * POINT_TYPE_NONE will report TRUE for all nodes
+ * if ! PointValid will report TRUE for all nodes
  */
 extern boolean CompareNodePoint(NodeData *nodep, Point *point);
+/* compare the supplied ExpectedNode to the given point
+ * this is used to identify focus for reports
+ * if !PointValid will report TRUE for all ExpectedNodes
+ */
+extern boolean CompareExpectedNodePoint(ExpectedNode *enodep, Point *point);
+/* compare the supplied ExpectedSM to the given point
+ * this is used to identify focus for reports
+ * if !PointValid will report TRUE for all ExpectedSMs
+ */
+extern boolean CompareExpectedSMPoint(ExpectedSM *esmp, Point *point);
+/* compare the supplied ExpectedLink to the given point
+ * this is used to identify focus for reports
+ * if !PointValid will report TRUE for all ExpectedLinks
+ */
+extern boolean CompareExpectedLinkPoint(ExpectedLink *elinkp, Point *point);
 #if !defined(VXWORKS) || defined(BUILD_DMC)
 extern boolean CompareIouPoint(IouData *ioup, Point *point);
 extern boolean CompareIocPoint(IocData *iocp, Point *point);
 #endif
 /* compare the supplied SM to the given point
  * this is used to identify focus for reports
- * POINT_TYPE_NONE will report TRUE for all SMs
+ * if ! PointValid will report TRUE for all SMs
  */
 extern boolean CompareSmPoint(SMData *smp, Point *point);
 extern boolean CompareSystemPoint(SystemData *systemp, Point *point);
@@ -853,7 +966,7 @@ extern boolean CompareSystemPoint(SystemData *systemp, Point *point);
  * into arg just after prefix, otherwise return NULL
  */
 extern char* ComparePrefix(char *arg, const char *prefix);
-extern FSTATUS ParsePoint(FabricData_t *fabricp, char* arg, Point* pPoint, char **pp);
+extern FSTATUS ParsePoint(FabricData_t *fabricp, char* arg, Point* pPoint, uint8 find_flag, char **pp);
 
 // snapshot input/output routines (from Topology/snapshot.c)
 extern void Xml2PrintSnapshot(FILE *file, SnapshotOutputInfo_t *info);
@@ -914,8 +1027,6 @@ extern FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t 
 extern FSTATUS GetAllFDBs( EUI64 portGuid, FabricData_t *fabricp, Point *focus,
 				int quiet );
 extern FSTATUS GetAllPortVLInfo(EUI64 portGuid, FabricData_t *fabricp, Point *focus, int quieti, int *use_scsc);
-extern PQUERY_RESULT_VALUES GetAllVFInfo(struct oib_port *port, FabricData_t *fabricp, 
-										 Point *focus, int quiet);
 extern PQUERY_RESULT_VALUES GetAllQuarantinedNodes(struct oib_port *port, FabricData_t *fabricp,
 													Point *focus, int quiet);
 extern FSTATUS GetAllBCTs(EUI64 portGuid, FabricData_t *fabricp, Point *focus, int quiet);
@@ -935,7 +1046,7 @@ extern FSTATUS ClearAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_
 			   	uint32 *fail_node_countp, uint32 *fail_port_countp);
 
 extern void XmlPrintHex64(const char *tag, uint64 value, int indent);
-extern FSTATUS ParseFocusPoint(EUI64 portGuid, FabricData_t *fabricp, char* arg, Point* pPoint, char **pp, boolean allow_route);
+extern FSTATUS ParseFocusPoint(EUI64 portGuid, FabricData_t *fabricp, char* arg, Point* pPoint, uint8 find_flag, char **pp, boolean allow_route);
 
 // utility routines (from Topology/util.c)
 extern void Top_setcmdname(const char *name);	// for error messages
@@ -959,7 +1070,7 @@ extern const char* Top_truncate_str(const char *name);
 // The above approach parallels how TraceRoute records are reported by the
 // SM, so if desired a callback could buil a SM TraceRoute style response
 // for use in other routines.
-typedef FSTATUS (RouteCallback_t)(PortData *entryPortp, PortData *exitPortp,
+typedef FSTATUS (RouteCallback_t)(PortData *entryPortp, PortData *exitPortp, uint8 vl,
 			   						void *context);
 
 // returns status of callback (if not FSUCCESS)
@@ -1024,7 +1135,7 @@ typedef void (*ValidateCallback_t)(PortData *portp1, PortData *portp2,
 			   		IB_LID dlid, boolean isBaseLid, uint8 sl, void *context);
 
 // callback used to indicate a port along an incomplete route
-typedef void (*ValidateCallback2_t)(PortData *portp, void *context);
+typedef void (*ValidateCallback2_t)(PortData *portp, uint8 vl, void *context);
 
 // validate all routes from portp1 to portp2
 extern FSTATUS ValidateRoutes(FabricData_t *fabricp,
@@ -1080,7 +1191,7 @@ extern FSTATUS CLFabricDataBuildRouteGraph(FabricData_t *fabricp,
                                            ValidateCLTimeGetCallback_t timeGetCallback,
                                            void *context,
                                            uint32 usedSLs);
-extern void CLGraphDataPrune(clGraphData_t *graphp, ValidateCLTimeGetCallback_t timeGetCallback, int verbose);
+extern void CLGraphDataPrune(clGraphData_t *graphp, ValidateCLTimeGetCallback_t timeGetCallback, int verbose, int quiet);
 extern void CLDijkstraFindCycles(FabricData_t *fabricp,
                                  clGraphData_t *graphp,
                                  clDijkstraDistancesAndRoutes_t *drp,

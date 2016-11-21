@@ -100,8 +100,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define MAX_STACK_INTS   (4096/4)
 #define MAX_ARGS         10
 #define MAX_ARG_SIZE     30
+#define NUM_JOIN_THREADS 2
 
-  
 typedef struct thread_info {
     Thread_t      thread;
     uint32_t          status;
@@ -1880,6 +1880,172 @@ void test_thread_kill_1(void)
     IB_LOG_INFO ("vs_thread_kill:1 TOTAL PASSED", total_passes);
     IB_LOG_INFO ("vs_thread_kill:1 TOTAL FAILED", total_fails);
     IB_LOG_INFO ("vs_thread_kill:1 TEST COMPLETE", (uint32_t) 0U);
+
+    return;
+}
+
+/*
+** Thread join test function
+*/
+static void
+thr_join_test(uint32_t argc, uint8_t *argv[])
+{
+    uint32_t    idx;
+
+    /* Argv[0] == thread test index */
+    if (argc < 1)
+    {
+        IB_LOG_ERROR ("Internal test errror, no arguments", 0);
+        return;
+    }
+
+    if (!argv[0])
+    {
+        IB_LOG_ERROR ("Internal test errror, thread value not passed index", 0);
+        return;
+    }
+    idx = my_atou(argv[0]);
+
+    thr[idx].exit_status = THR_TEST_PASSED;
+
+    (void) vs_thread_exit(&thr[idx].thread);
+}
+
+static Status_t
+vs_thread_join_1a (void)
+{
+    static const char passed[] = "vs_thread_join:1:1.a PASSED";
+    static const char failed[] = "vs_thread_join:1:1.a FAILED";
+    static unsigned char name[] = "join_1a";
+    Status_t       status;
+
+    thr[0].status = 0;
+    thr[0].exit_status = THR_TEST_FAILED;
+    thr[0].name   = (Threadname_t) -1;
+
+    /*
+    ** Create good parameters.
+    */
+    snprintf((char *)thr[0].args[0], sizeof(int), "%d", 0);
+    thr[0].argc = 1;
+    thr[0].argv[0] = thr[0].args[0];
+
+    thr[0].stack_size = MAX_STACK_SIZE;
+
+    status = vs_thread_create (&thr[0].thread,
+                                   name,
+                                   thr_join_test,
+                                   thr[0].argc,
+                                   thr[0].argv,
+                                   thr[0].stack_size);
+    if (status != VSTATUS_OK)
+    {
+        IB_LOG_ERROR ("thread creation failed unexpectedly", status);
+    }
+
+    // wait for the thread to complete
+    status = vs_thread_join(&thr[0].thread, NULL);
+    if (status)
+    {
+        thr[0].exit_status = THR_TEST_FAILED;
+        IB_LOG_ERROR0("Failed to join compression thread");
+    }
+
+    if (thr[0].exit_status == THR_TEST_PASSED)
+    {
+        status = VSTATUS_OK;
+        IB_LOG_INFO (passed, (uint32_t) 0U);
+    }
+    else
+    {
+        IB_LOG_ERROR ("vs_thread_join failed; expected", THR_TEST_FAILED);
+        IB_LOG_ERROR ("vs_thread_join failed; actual", thr[0].exit_status);
+        IB_LOG_ERROR (failed, (uint32_t) 0U);
+        status = VSTATUS_BAD;
+    }
+    return status;
+}
+
+static Status_t
+vs_thread_join_2a (void)
+{
+    static const char passed[] = "vs_thread_join:1:2.a PASSED";
+    static const char failed[] = "vs_thread_join:1:2.a FAILED";
+    static unsigned char name[VS_NAME_MAX]= "";
+    int index;
+    Status_t status;
+    int pass_counter = 0;
+
+    /* create 2 threads to test thread_join */
+    for (index = 0; index < NUM_JOIN_THREADS; index++)
+    {
+        thr[index].status = 0;
+        thr[index].status_value = 0;
+        thr[index].exit_status = THR_TEST_FAILED;
+        thr[index].name   = (Threadname_t) -1;
+
+        snprintf((char *)thr[index].args[0], sizeof(int), "%d", index);
+        thr[index].argc = 1;
+        thr[index].argv[index] = thr[index].args[0];
+
+        thr[index].stack_size = MAX_STACK_SIZE;
+
+        snprintf((char *)name, VS_NAME_MAX, "join_2a_%d", index);
+
+        status = vs_thread_create (&thr[index].thread,
+                                   name,
+                                   thr_join_test,
+                                   thr[index].argc,
+                                   thr[index].argv,
+                                   thr[index].stack_size);
+
+        if (status != VSTATUS_OK)
+        {
+            IB_LOG_ERROR ("thread creation failed unexpectedly", status);
+        }
+    }
+
+    // wait for all the threads to complete
+    for (index = 0; index < NUM_JOIN_THREADS; index++)
+    {
+        status = vs_thread_join(&thr[index].thread, NULL);
+        if (status)
+        {
+            thr[index].exit_status = THR_TEST_FAILED;
+            IB_LOG_ERROR0("Failed to join compression thread");
+        }
+
+        if (thr[index].exit_status == THR_TEST_PASSED)
+        {
+            pass_counter++;
+
+        }
+    }
+
+    if( pass_counter == NUM_JOIN_THREADS)
+    {
+        status = VSTATUS_OK;
+        IB_LOG_INFO (passed, (uint32_t) 0U);
+    }
+    else
+    {
+        status = VSTATUS_BAD;
+        IB_LOG_ERROR (failed, (uint32_t) 0U);
+    }
+    return status;
+}
+
+void test_thread_join_1(void)
+{
+    uint32_t total_passes = (uint32_t) 0U;
+    uint32_t total_fails = (uint32_t) 0U;
+
+    IB_LOG_INFO ("vs_thread_join:1 TEST STARTED", (uint32_t) 0U);
+    DOATEST (vs_thread_join_1a, total_passes, total_fails);
+    DOATEST (vs_thread_join_2a, total_passes, total_fails);
+    IB_LOG_INFO ("vs_thread_join:1 TOTAL PASSED", total_passes);
+    IB_LOG_INFO ("vs_thread_join:1 TOTAL FAILED", total_fails);
+    IB_LOG_INFO ("vs_thread_join:1 TEST COMPLETE", (uint32_t) 0U);
 
     return;
 }

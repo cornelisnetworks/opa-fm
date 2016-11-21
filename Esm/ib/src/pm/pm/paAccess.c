@@ -1384,7 +1384,8 @@ FSTATUS paGetPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, PmCompositePortC
 		GET_DELTA_PORTCOUNTERS(UncorrectableErrors);
 #undef GET_DELTA_PORTCOUNTERS
 		portCountersP->lq.s.NumLanesDown = pmPortImageP->StlPortCounters.lq.s.NumLanesDown;
-		portCountersP->lq.s.LinkQualityIndicator = pmPortImageP->StlPortCounters.lq.s.LinkQualityIndicator;
+		portCountersP->lq.s.LinkQualityIndicator = MIN(pmPortImageP->StlPortCounters.lq.s.LinkQualityIndicator,
+		                                           pmPortImagePreviousP->StlPortCounters.lq.s.LinkQualityIndicator);
 		*flagsp = STL_PA_PC_FLAG_DELTA|(pmPortImageP->u.s.UnexpectedClear?STL_PA_PC_FLAG_UNEXPECTED_CLEAR:0);
 	} else {
 		*flagsp = (pmPortImageP->u.s.UnexpectedClear?STL_PA_PC_FLAG_UNEXPECTED_CLEAR:0);
@@ -2229,7 +2230,7 @@ FSTATUS addSortedPorts(PmFocusPorts_t *pmFocusPorts, sortInfo_t *sortInfo, uint3
 		pmFocusPorts->portList[portCount].guid = (uint64_t)(listp->portp->pmnodep->guid);
 		strncpy(pmFocusPorts->portList[portCount].nodeDesc, (char *)listp->portp->pmnodep->nodeDesc.NodeString,
 			sizeof(pmFocusPorts->portList[portCount].nodeDesc)-1);
-		if (listp->portNum != 0) {
+		if (listp->portNum != 0 && listp->neighborPortp != NULL) {
 			pmFocusPorts->portList[portCount].neighborFlags = listp->neighborFlags;
 			pmFocusPorts->portList[portCount].neighborLid = listp->neighborPortp->pmnodep->Image[imageIndex].lid;
 			pmFocusPorts->portList[portCount].neighborPortNum = listp->neighborPortp->portNum;
@@ -3286,6 +3287,7 @@ FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, char *vfName,
 				status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
 				goto error;
 			}
+			imageIndex = 0; // STH always uses imageIndex 0
 			if (!pmVFP->Image[imageIndex].isActive) {
 				IB_LOG_WARN_FMT(__func__, "VF %.*s not active", (int)sizeof(pmVFP->Name), pmVFP->Name);
 				status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
@@ -3610,7 +3612,7 @@ FSTATUS addVFSortedPorts(PmVFFocusPorts_t *pmVFFocusPorts, sortInfo_t *sortInfo,
 		pmVFFocusPorts->portList[portCount].guid = (uint64_t)(listp->portp->pmnodep->guid);
 		strncpy(pmVFFocusPorts->portList[portCount].nodeDesc, (char *)listp->portp->pmnodep->nodeDesc.NodeString,
 			sizeof(pmVFFocusPorts->portList[portCount].nodeDesc)-1);
-		if (listp->portNum != 0) {
+		if (listp->portNum != 0 && listp->neighborPortp != NULL) {
 			pmVFFocusPorts->portList[portCount].neighborFlags = listp->neighborFlags;
 			pmVFFocusPorts->portList[portCount].neighborLid = listp->neighborPortp->pmnodep->Image[imageIndex].lid;
 			pmVFFocusPorts->portList[portCount].neighborPortNum = listp->neighborPortp->portNum;

@@ -97,6 +97,9 @@ impl_vs_thread_kill (Thread_t *thr);
 extern void
 impl_vs_thread_sleep (uint64_t sleep_time);
 
+extern Status_t
+impl_vs_thread_join(Thread_t *thr,
+                          void **value_ptr);
 
 /**********************************************************************
 *
@@ -544,4 +547,51 @@ vs_thread_sleep (uint64_t sleep_time)
 
     IB_EXIT (function, VSTATUS_OK);
     return;
+}
+
+/**********************************************************************
+*
+* FUNCTION
+*    vs_thread_join
+*
+* DESCRIPTION
+*   Wait for the specified thread to exit.
+*
+* INPUTS
+*
+* OUTPUTS
+*      Status_t - On success VSTATUS_OK is returned, otherwise
+*      the cause of the error.
+*
+*
+* HISTORY
+*
+*   NAME    DATE        REMARKS
+*   SR     10/24/16    Initial creation of function.
+**********************************************************************/
+Status_t
+vs_thread_join (Thread_t *handle, void **value_ptr)
+{
+    Status_t     status;
+
+    IB_ENTER (function, (unint) handle, (unint) value_ptr, (uint32_t) 0U,
+              (uint32_t) 0U);
+
+    /*
+    ** Verify required pointer arguments.
+    */
+    if (handle == 0)
+    {
+        IB_LOG_ERROR0 ("handle parameter is null");
+        IB_EXIT (function, VSTATUS_ILLPARM);
+        return VSTATUS_ILLPARM;
+    }
+
+    /*
+    ** Invoke environment specific implmentation and return status.
+    */
+    status = impl_vs_thread_join(handle, value_ptr);
+
+    IB_EXIT (function, status);
+    return status;
 }

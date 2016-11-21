@@ -73,6 +73,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define PM_ENGINE_STACK_SIZE (256 * 1024)
 #define PM_ASYNC_RCV_STACK_SIZE (256 * 1024)
 #define PM_DBSYNC_THREAD_STACK_SIZE (256 * 1024)
+#define PM_COMPRESS_THREAD_STACK_SIZE (4 * 1024)
 #endif
 
 extern uint16_t sm_masterPmSl;
@@ -91,6 +92,14 @@ CounterSelectMask_t LinkDownIgnoreMask;
 Thread_t g_pmAsyncRcvThread;
 boolean g_pmAsyncRcvThreadRunning = FALSE;
 Sema_t g_pmAsyncRcvSema;	// indicates AsyncRcvThread is ready
+
+// Max Compress/Decompress threads possible
+#define PM_MAX_NUM_COMPRESSION_DIVISIONS 32
+#define PM_HALF_SECOND ((uint64_t) 500000U)
+
+// Compress/Decompress thread ids.
+Thread_t g_pmCompressThreads[PM_MAX_NUM_COMPRESSION_DIVISIONS + 1];
+Thread_t g_pmDecompressThreads[PM_MAX_NUM_COMPRESSION_DIVISIONS + 1];
 
 // default Thresholds
 ErrorSummary_t g_pmThresholds = {
@@ -870,7 +879,7 @@ void update_pmport(Pm_t *pm, PmPort_t *pmportp, Node_t *nodep, Port_t *portp)
 	neigh_nodep = sm_find_node(&old_topology, portp->nodeno);
 	if (neigh_nodep && portp->portno) {	// port 0 can't be a neighbor
 		neigh_portp = sm_get_port(neigh_nodep, portp->portno);
-		if (sm_valid_port(neigh_portp)) {
+		if (sm_valid_port(neigh_portp) && sm_port_active(neigh_portp)) {
 			if (neigh_nodep->nodeInfo.NodeType == STL_NODE_SW) {
 				pmportp->neighbor_lid = sm_get_port(neigh_nodep, 0)->portData->lid;
 			} else {
@@ -1532,7 +1541,6 @@ static FSTATUS pm_copy_topology(Pm_t *pm)
 		}
 
 		//Update Active VFs
-		(void)vs_rdlock(&old_topology_lock);
 		VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
 		pm->numVFs = 0;
 		pm->numVFsActive = 0;
@@ -1566,8 +1574,6 @@ static FSTATUS pm_copy_topology(Pm_t *pm)
 			IB_LOG_WARN_FMT(__func__, "PM VF list Active count does not match SM VF list: SM count: %u PM count: %u",
 							VirtualFabrics->number_of_vfs, pm->numVFsActive);
 		}
-		(void)vs_unlock(&old_topology_lock);
-
 
 		// copy all the ports which are in the new SM topology
 		// we will handle ports which have disappeared below
@@ -1734,21 +1740,40 @@ FSTATUS decompressData(unsigned char *input_data, size_t input_size, unsigned ch
 }
 
 struct decompress_args {
+	int thread_index;
 	unsigned char *input_data;
 	size_t input_size;
 	unsigned char *output_data;
 	size_t output_size;
 };
 
-void *threadDecompress(void *args) {
+void threadDecompress(uint32_t argc, uint8_t **argv) {
 	FSTATUS ret; 
+	int id;
+
+	if (argc != 5)
+	{
+		IB_LOG_ERROR ("Internal errror, invalid arguments", argc);
+		return;
+	}
+
+	id =  ((struct decompress_args*)argv)->thread_index;
+
 	ret = decompressData(
-	  ((struct decompress_args*)args)->input_data,
-	  ((struct decompress_args*)args)->input_size,
-	  ((struct decompress_args*)args)->output_data,
-	  ((struct decompress_args*)args)->output_size
+	  ((struct decompress_args*)argv)->input_data,
+	  ((struct decompress_args*)argv)->input_size,
+	  ((struct decompress_args*)argv)->output_data,
+	  ((struct decompress_args*)argv)->output_size
 	  );
-	pthread_exit(&ret);
+
+	if(ret != FSUCCESS)
+	{
+		IB_LOG_ERROR ("PM decompress thread did not decompress ID:", id);
+		return;
+	}
+
+	vs_thread_exit(&g_pmDecompressThreads[id]);
+	return;
 }
 
 /************************************************************************************* 
@@ -1774,6 +1799,9 @@ void *threadDecompress(void *args) {
 *  
 *************************************************************************************/
 FSTATUS decompressAndReassemble(unsigned char *input_data, size_t input_size, uint8 divs, uint64 *input_sizes, unsigned char *output_data, size_t output_size) {
+	uint32_t argc;
+	unsigned char name[VS_NAME_MAX] = "";
+
 	// first check divs, make sure it isn't over the max
 	if (divs > PM_MAX_COMPRESSION_DIVISIONS) {
 		IB_LOG_ERROR_FMT(NULL, "Unable to decompress, invalid number of divisions: %d", divs);
@@ -1806,29 +1834,31 @@ FSTATUS decompressAndReassemble(unsigned char *input_data, size_t input_size, ui
 		return FERROR;
 	}
 	// in parallel: call decompress on each piece
-	pthread_attr_t attr;
-	pthread_t threads[divs];
 	struct decompress_args args[divs];
 	int ret;
 
-	pthread_attr_init(&attr);
-	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 	for (i = 0; i < divs; i++) {
+		//vthread_create does not accept thread_index = 0
+		args[i].thread_index = i+1;
 		args[i].input_data = input_pieces[i];
 		args[i].input_size = (size_t)input_sizes[i];
 		args[i].output_data = output_data + (i * len);
 		args[i].output_size = MIN(len, output_size - (i * len));
 
-		ret = pthread_create(&threads[i], &attr, threadDecompress, &args[i]);
-		if (ret) IB_LOG_ERROR0("Failed to create decompression thread");
-	}
-	pthread_attr_destroy(&attr);
+		//argument count is 5
+		argc = 5;
+		snprintf((char *)name,VS_NAME_MAX, "DecompressThr%d", i );
 
-	// wait for all threads to complete
-	for (i = 0; i < divs; i++) {
-		ret = pthread_join(threads[i], NULL);
-		if (ret) IB_LOG_ERROR0("Failed to join compression thread");
+		ret = vs_thread_create(&g_pmDecompressThreads[args[i].thread_index], name, threadDecompress, argc ,(uint8_t **)&args[i], PM_COMPRESS_THREAD_STACK_SIZE);
+		if (ret!= VSTATUS_OK) IB_LOG_ERROR0("Failed to create decompression thread");
 	}
+
+	// wait for all of the threads to complete
+	for (i = 0; i < divs; i++) {
+		ret = vs_thread_join(&g_pmDecompressThreads[args[i].thread_index], NULL);
+		if (ret) IB_LOG_ERROR0("Failed to join Decompression thread");
+	}
+
 	return FSUCCESS;
 }
 
@@ -1896,21 +1926,38 @@ static FSTATUS compressData(unsigned char *input_data, size_t input_size, unsign
 
 // data needed for the compress thread
 struct compress_args {
+	int thread_index;
 	unsigned char *input_data;
 	size_t input_size;
 	unsigned char **output_data;
 	size_t *output_size;
 };
 
-void *threadCompress(void *args) {
+void threadCompress(uint32_t argc, uint8_t **argv) {
 	FSTATUS ret; 
+	int id;
+
+	if (argc != 5) // the check avoids variable not used warning
+	{
+		IB_LOG_ERROR ("Internal errror, invalid arguments", 0);
+		return;
+	}
+
+	id = ((struct compress_args*)argv)->thread_index;
+
 	ret = compressData(
-	   ((struct compress_args*)args)->input_data,
-	   ((struct compress_args*)args)->input_size,
-	   ((struct compress_args*)args)->output_data,
-	   ((struct compress_args*)args)->output_size
+	   ((struct compress_args*)argv)->input_data,
+	   ((struct compress_args*)argv)->input_size,
+	   ((struct compress_args*)argv)->output_data,
+	   ((struct compress_args*)argv)->output_size
 	   );
-	pthread_exit(&ret);
+	if(ret != FSUCCESS)
+	{
+		IB_LOG_ERROR ("PM compress thread did not compress ID:", id);
+		return;
+	}
+	vs_thread_exit(&g_pmCompressThreads[id]);
+	return;
 }
 
 /************************************************************************************* 
@@ -1932,6 +1979,9 @@ void *threadCompress(void *args) {
  
 *************************************************************************************/ 
 FSTATUS divideAndCompress(unsigned char *input_data, size_t input_size, unsigned char **compressed_divisions, size_t *compressed_lengths) {
+	uint32_t argc;
+	unsigned char name[VS_NAME_MAX] = "";
+
 	if (pm_config.shortTermHistory.compressionDivisions == 0) {
 		// really this shouldn't be possible, but better to be safe
 		IB_LOG_ERROR0("Invalid compression divisions, must not be 0");
@@ -1945,29 +1995,30 @@ FSTATUS divideAndCompress(unsigned char *input_data, size_t input_size, unsigned
 	int i;
 
 	// in parallel: call compressData on each division
-	pthread_attr_t attr;
-	pthread_t threads[pm_config.shortTermHistory.compressionDivisions];
 	struct compress_args args[pm_config.shortTermHistory.compressionDivisions];
 	int ret;
 
-	pthread_attr_init(&attr);
-	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 	for (i = 0; i < pm_config.shortTermHistory.compressionDivisions; i++) {
+		//vthread_create does not accept thread_index = 0
+		args[i].thread_index = i+1;
 		args[i].input_data = input_data + (i * len);
 		args[i].input_size = MIN(len, input_size - (i * len));
 		args[i].output_data = &compressed_divisions[i];
 		args[i].output_size = &compressed_lengths[i];
 
-		ret = pthread_create(&threads[i], &attr, threadCompress, &args[i]);
-		if (ret) IB_LOG_ERROR0("Failed to create compression thread");
+		//argument count is 5
+		argc = 5;
+		snprintf((char *)name,VS_NAME_MAX, "CompressThr%d", i );
+		ret = vs_thread_create(&g_pmCompressThreads[args[i].thread_index], name, threadCompress, argc ,(uint8_t **)&args[i], PM_COMPRESS_THREAD_STACK_SIZE);
+		if (ret!= VSTATUS_OK) IB_LOG_ERROR0("Failed to create compression thread");
 	}
-	pthread_attr_destroy(&attr);
 
 	// wait for all of the threads to complete
 	for (i = 0; i < pm_config.shortTermHistory.compressionDivisions; i++) {
-		ret = pthread_join(threads[i], NULL);
+		ret = vs_thread_join(&g_pmCompressThreads[args[i].thread_index], NULL);
 		if (ret) IB_LOG_ERROR0("Failed to join compression thread");
 	}
+
 
 	return FSUCCESS;
 }
@@ -2547,17 +2598,28 @@ static void compoundGroup(PmGroup_t *group, PmCompositeGroup_t *cgroup, uint64 i
 
 }
 
-/************************************************************************************* 
+/*************************************************************************************
+ *	compoundPort
+ *
+ *
+ ************************************************************************************/
+static void compoundPort (PmPort_t *port, PmCompositePort_t *cport, uint32 imageIndex)
+{
+	cport->stlPortCounters.lq.s.LinkQualityIndicator = MIN(cport->stlPortCounters.lq.s.LinkQualityIndicator,
+		                     port->Image[imageIndex].StlPortCounters.lq.s.LinkQualityIndicator);
+}
+
+/*************************************************************************************
 *   compoundImage - Compound the data from an image into an existing composite
-*  
+*
 *   Inputs:
 *   	pm - the PM
 *   	imageIndex - the index of the image to compound
 *   	cimg - the composite image
-*  
+*
 *   Returns:
 *   	Status - FSUCCESS if okay
-* 
+*
 *   Note: cimg needs to have already been created (with PmCreateComposite)
 *************************************************************************************/
 FSTATUS compoundImage(Pm_t *pm, uint32 imageIndex, PmCompositeImage_t *cimg) {
@@ -2571,7 +2633,9 @@ FSTATUS compoundImage(Pm_t *pm, uint32 imageIndex, PmCompositeImage_t *cimg) {
 	cimg->header.common.imageIDs[cimg->header.common.imagesPerComposite] = buildShortTermHistoryImageId(pm, imageIndex);
 	cimg->header.common.imageSweepInterval += MAX(pm_config.sweep_interval, (img->sweepDuration/1000000));
 
-	cimg->sweepDuration += img->sweepDuration;
+	//store average sweep duration
+	cimg->sweepDuration = (cimg->sweepDuration * cimg->header.common.imagesPerComposite + img->sweepDuration)
+		                 /(cimg->header.common.imagesPerComposite + 1);
 
 	// groups
 	compoundGroup(pm->AllPorts, &(cimg->allPortsGroup), imageIndex);
@@ -2600,6 +2664,26 @@ FSTATUS compoundImage(Pm_t *pm, uint32 imageIndex, PmCompositeImage_t *cimg) {
 		combineUtilStats(&(cVF->intUtil), &(VF->Image[pm->history[imageIndex]].IntUtil));
 		combineErrStats(&(cVF->intErr), &(VF->Image[pm->history[imageIndex]].IntErr));
 	}
+
+	// Nodes/Ports
+	STL_LID_32 lid;
+	int j;
+	for (lid = 1; lid <= MIN(cimg->maxLid, img->maxLid); ++lid){
+		PmCompositeNode_t *cnode = cimg->nodes[lid];
+		PmNode_t *node = img->LidMap[lid];
+
+		if (!node || !cnode || (cnode->guid != node->guid)) continue;
+
+		for (j = 0; j < cnode->numPorts; ++j){
+			PmCompositePort_t *cport = cnode->ports[j];
+			PmPort_t *port = node->nodeType == STL_NODE_SW ? node->up.swPorts[j] : node->up.caPortp;
+
+			if (!port || !cport) continue;
+
+			compoundPort(port, cport, imageIndex);
+		}
+	}
+
 	// increment the number of images in this composite
 	cimg->header.common.imagesPerComposite++;
 	return FSUCCESS;
@@ -2607,10 +2691,10 @@ FSTATUS compoundImage(Pm_t *pm, uint32 imageIndex, PmCompositeImage_t *cimg) {
 
 /************************************************************************************* 
     clearLoadedImage - Clear out the image that is currently loaded in short term history
- 
+
     Inputs:
     	sth - Short Term History
- 
+
 *************************************************************************************/ 
 void clearLoadedImage(PmShortTermHistory_t *sth) {
 	int i;
@@ -4072,6 +4156,10 @@ Status_t PmInitHistory(Pm_t *pm) {
 
 	// calculate now many composite files there will be
 	pm->ShortTermHistory.totalHistoryRecords = (3600*pm_config.shortTermHistory.totalHistory)/(pm_config.shortTermHistory.imagesPerComposite*pm_config.sweep_interval);
+	if (pm->ShortTermHistory.totalHistoryRecords < 1) {
+		IB_LOG_ERROR0("Invalid PM Short-Term History configuration: 'totalHistory' must be greater than 'imagesPerComposite' * 'SweepInterval'");
+		return VSTATUS_ILLPARM;
+	}
 	cl_qmap_init(&pm->ShortTermHistory.historyImages, NULL);
 
 	// initialize map of sweep times to records

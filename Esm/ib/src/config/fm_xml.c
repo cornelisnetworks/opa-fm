@@ -1722,6 +1722,7 @@ void smInitConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 	DEFAULT_AND_CKSUM_U32(smp->sm_debug_perf, 0, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_U32(smp->sa_debug_perf, 0, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_U32(smp->sm_debug_vf, 0, CKSUM_OVERALL_DISRUPT);
+	DEFAULT_AND_CKSUM_U32(smp->sm_debug_routing, 0, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_U32(smp->sm_debug_lid_assign, 0, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_U32(smp->debug_jm, 0, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_U32(smp->sa_rmpp_checksum, 0, CKSUM_OVERALL_DISRUPT);
@@ -1832,13 +1833,11 @@ void smInitConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 		// If using dor, checksum the smDorRouting config.
 		CKSUM_DATA(smp->smDorRouting.dimensionCount, CKSUM_OVERALL_DISRUPT_CONSIST);
 		CKSUM_DATA(smp->smDorRouting.numToroidal, CKSUM_OVERALL_DISRUPT_CONSIST);
-		//CKSUM_DATA(smp->smDorRouting.updownOnly, CKSUM_OVERALL_DISRUPT_CONSIST); // Set by SM
 		CKSUM_DATA(smp->smDorRouting.dimension, CKSUM_OVERALL_DISRUPT_CONSIST);
+		CKSUM_DATA(smp->smDorRouting.escapeVLs, CKSUM_OVERALL_DISRUPT_CONSIST);
 		CKSUM_DATA(smp->smDorRouting.debug, CKSUM_OVERALL_DISRUPT);
 		CKSUM_DATA(smp->smDorRouting.warn_threshold, CKSUM_OVERALL_DISRUPT);
-		CKSUM_DATA(smp->smDorRouting.updn_mc_same_spanning_tree, CKSUM_OVERALL_DISRUPT_CONSIST);
 		CKSUM_DATA(smp->smDorRouting.routingSCs, CKSUM_OVERALL_DISRUPT_CONSIST);
-		CKSUM_DATA(smp->smDorRouting.useUpDownOnDisruption, CKSUM_OVERALL_DISRUPT_CONSIST);
 		CKSUM_DATA(smp->smDorRouting.topology, CKSUM_OVERALL_DISRUPT_CONSIST);
 	}
 #endif
@@ -2070,6 +2069,7 @@ void smShowConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 	printf("XML - sm_debug_perf %u\n", (unsigned int)smp->sm_debug_perf);
 	printf("XML - sa_debug_perf %u\n", (unsigned int)smp->sa_debug_perf);
 	printf("XML - sm_debug_vf %u\n", (unsigned int)smp->sm_debug_vf);
+	printf("XML - sm_debug_routing %u\n", (unsigned int)smp->sm_debug_routing);
 	printf("XML - sm_debug_lid_assign %u\n", (unsigned int)smp->sm_debug_lid_assign);
 	printf("XML - debug_jm %u\n", (unsigned int)smp->debug_jm);
 	printf("XML - sa_rmpp_checksum %u\n", (unsigned int)smp->sa_rmpp_checksum);
@@ -3199,7 +3199,6 @@ void checksumOneVirtualFabricsConfig(VF_t *vfp, SMXmlConfig_t *smp)
 	CKSUM_DATA(vfp->qos_enable, CKSUM_OVERALL_DISRUPT_CONSIST);
 	CKSUM_DATA(vfp->base_sl, CKSUM_OVERALL_DISRUPT_CONSIST);
 	CKSUM_DATA(vfp->base_sc, CKSUM_OVERALL_DISRUPT_CONSIST);
-	CKSUM_DATA(vfp->updown_only, CKSUM_OVERALL_DISRUPT_CONSIST);
 	CKSUM_DATA(vfp->mcast_isolate, CKSUM_OVERALL_DISRUPT_CONSIST);
 	CKSUM_DATA(vfp->mcast_sl, CKSUM_OVERALL_DISRUPT_CONSIST);
 	CKSUM_DATA(vfp->mcast_sc, CKSUM_OVERALL_DISRUPT_CONSIST);
@@ -3500,7 +3499,6 @@ addDefaultVirtualFabric(uint32_t fm, FMXmlCompositeConfig_t *config, VFXmlConfig
     vfp->qos_enable = 0;
     vfp->base_sl = UNDEFINED_XML8;
     vfp->flowControlDisable = UNDEFINED_XML8;
-    vfp->updown_only = 0;
     vfp->percent_bandwidth = UNDEFINED_XML8;
     // uint8_t      absolute_bandwidth;
     vfp->priority = 0;
@@ -4018,7 +4016,6 @@ VirtualFabrics_t* renderVirtualFabricsConfig(uint32_t fm, FMXmlCompositeConfig_t
 
 		vfip->routing_scs = 1; 
 		vfip->routing_sls = 1;
-		vfip->updown_only = vfp->updown_only;
 
 		vfip->percent_bandwidth = vfp->percent_bandwidth;
 		if (vfp->qos_enable && 
@@ -5758,10 +5755,8 @@ static void* SmDorRoutingXmlParserStart(IXmlParserState_t *state, void *parent, 
 
 	dor->warn_threshold = DEFAULT_DOR_PORT_PAIR_WARN_THRESHOLD;
 
-	dor->updn_mc_same_spanning_tree = DEFAULT_UPDN_MC_SAME_SPANNING_TREE;
-
 	// Set default for following.
-	dor->useUpDownOnDisruption = UNDEFINED_XML8;
+	dor->escapeVLs = DEFAULT_ESCAPE_VLS_IN_USE;
 
 	return dor;	
 }
@@ -5802,6 +5797,9 @@ static void SmDorRoutingXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD 
 			nonToroidalEdges = 1;
 		}
 
+		if (dor->dimension[dim].length == 0) 
+			IXmlParserPrintError(state, "The length of the dimension must be specified");
+
 		// Verify no overlap for port pairs
 		for (port=0; port<dor->dimension[dim].portCount; port++) {
 			if (dor->dimension[dim].toroidal && dor->dimension[dim].portPair[port].port1 == dor->dimension[dim].portPair[port].port2) {
@@ -5837,13 +5835,11 @@ static void SmDorRoutingXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD 
 		dor->topology = DOR_MESH;
 	}
 
-	if (dor->useUpDownOnDisruption == 0xff) dor->useUpDownOnDisruption = 0;
-
 	if (dor->topology == DOR_MESH) {
-		dor->routingSCs = 1;
+		dor->routingSCs = dor->escapeVLs ? 2 : 1;
 
 	} else {
-		dor->routingSCs = 2;
+		dor->routingSCs = dor->escapeVLs ? 4 : 2;
 	}
 
 	smp->smDorRouting = *dor;
@@ -5853,16 +5849,16 @@ static void SmDorRoutingXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD 
 
 static IXML_FIELD SmDimensionFields[] = {
 	{ tag:"Toroidal", format:'u', IXML_FIELD_INFO(SmDimension_t, toroidal) },
+	{ tag:"Length", format:'u', IXML_FIELD_INFO(SmDimension_t, length) },
 	{ tag:"PortPair", format:'s', end_func:SmPortPairEnd },
 	{ NULL }
 };
 
 static IXML_FIELD SmDorRoutingFields[] = {
 	{ tag:"Debug", format:'u', IXML_FIELD_INFO(SmDorRouting_t, debug) },
-	{ tag:"UseUpDownOnDisruption", format:'u', IXML_FIELD_INFO(SmDorRouting_t, useUpDownOnDisruption) },
+	{ tag:"UseEscapeVLs", format:'u', IXML_FIELD_INFO(SmDorRouting_t, escapeVLs) },
 	{ tag:"Dimension", format:'k', subfields:SmDimensionFields, start_func:SmDimensionStart },
 	{ tag:"WarnThreshold", format:'u', IXML_FIELD_INFO(SmDorRouting_t, warn_threshold) },
-	{ tag:"UpDownMcastSameSpanningTree", format:'u', IXML_FIELD_INFO(SmDorRouting_t, updn_mc_same_spanning_tree) },
 	{ NULL }
 };
 #endif
@@ -6386,6 +6382,7 @@ static IXML_FIELD SmFields[] = {
 	{ tag:"MeshTorusTopology", format:'k', subfields:SmDorRoutingFields, start_func:SmDorRoutingXmlParserStart, end_func:SmDorRoutingXmlParserEnd },
 #endif
 	{ tag:"DebugVf", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, sm_debug_vf) },
+	{ tag:"DebugRouting", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, sm_debug_routing) },
 	{ tag:"DebugLidAssign", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, sm_debug_lid_assign) },
 	{ tag:"NoReplyIfBusy", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, NoReplyIfBusy) },
 	{ tag:"LftMultiblock", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, lft_multi_block) },
@@ -7994,9 +7991,6 @@ static IXML_FIELD VfFields[] = {
 	{ tag:"Security", format:'u', IXML_FIELD_INFO(VFConfig_t, security) },
 	{ tag:"BaseSL", format:'u', IXML_FIELD_INFO(VFConfig_t, base_sl) },
 	{ tag:"FlowControlDisable", format:'u', IXML_FIELD_INFO(VFConfig_t, flowControlDisable) },
-#ifdef CONFIG_INCLUDE_DOR
-	{ tag:"SecondaryRouteOnly", format:'u', IXML_FIELD_INFO(VFConfig_t, updown_only) },
-#endif
 	{ tag:"QOS", format:'u', IXML_FIELD_INFO(VFConfig_t, qos_enable) },
 	{ tag:"Bandwidth", format:'k', IXML_FIELD_INFO(VFConfig_t, percent_bandwidth), end_func:PercentU8XmlParserEnd },
 	{ tag:"HighPriority", format:'u', IXML_FIELD_INFO(VFConfig_t, priority) },
@@ -8095,19 +8089,6 @@ static void VfXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, vo
 		freeXmlMemory(vfp, sizeof(VFConfig_t), "VFConfig_t VfXmlParserEnd");
 		return;
 	}
-
-#ifdef CONFIG_INCLUDE_DOR
-	// updown checks
-	if (vfp->updown_only == UNDEFINED_XML8)
-		vfp->updown_only = 0;
-	else if (vfp->updown_only > 1) {
-		IXmlParserPrintError(state, "SecondaryRouteOnly must be 0=no 1=yes");
-		freeXmlMemory(vfp, sizeof(VFConfig_t), "VFConfig_t VfXmlParserEnd");
-		return;
-	}
-
-	vfp->updown_only = 0; //SecondaryRouteOnly for DOR; DOR currently not supported
-#endif
 
 	// validate BaseSL
 	if (vfp->base_sl != UNDEFINED_XML8 && vfp->base_sl > 15) {
@@ -9157,9 +9138,6 @@ void printXmlDebug(FMXmlCompositeConfig_t *config, uint32_t fm)
 		fprintf(stdout, "VF %u qos_enable %u\n", i, test->v_fabric[i].qos_enable);
 		fprintf(stdout, "VF %u flowControlDisable %u\n", i, test->v_fabric[i].flowControlDisable);
 		fprintf(stdout, "VF %u base_sl %u\n", i, test->v_fabric[i].base_sl);
-#ifdef CONFIG_INCLUDE_DOR
-		fprintf(stdout, "VF %u updown_only %u\n", i, test->v_fabric[i].updown_only);
-#endif
 		fprintf(stdout, "VF %u percent_bandwidth %u\n", i, test->v_fabric[i].percent_bandwidth);
 		fprintf(stdout, "VF %u priority %u\n", i, test->v_fabric[i].priority);
 		fprintf(stdout, "VF %u pkt_lifetime_mult %u\n", i, test->v_fabric[i].pkt_lifetime_mult);

@@ -1383,11 +1383,11 @@ FSTATUS oib_send_mad2(struct oib_port *port, uint8_t *send_mad, size_t send_size
                DBGPRINT("... using 0x7fff found at index %d\n", pkey_idx);
             }
         } else {
-            // Previously, this code would try to find the limited managment pkey 
+            // Previously, this code would try to find the limited management pkey 
             //   if it could not find the requested pkey, and use that pkey instead.
             // This would often "work" because all nodes should have the limited
-            //   managment pkey, but b/c it was a limited member, this would result
-            //   in potential timeouts - especially where the full managment pkey was
+            //   management pkey, but b/c it was a limited member, this would result
+            //   in potential timeouts - especially where the full management pkey was
             //   required.
             // Changed this code fail immediately without retrying a new pkey.
             OUTPUT_ERROR("Failed to find requested pkey:0x%x, class 0x%x aid:0x%x \n",

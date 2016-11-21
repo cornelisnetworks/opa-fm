@@ -28,10 +28,12 @@ Produces full help text.
 .TP 10
 -i \fIfm\(ulinstance\fR 
 .NL
-Specifies the number of the FM instance to act on. Range = 0 to 7. Default = 0.
+Specifies the number of the FM instance to act on.
 
+.IP
+Range = 0 to 7. Default = 0.
 .TP 10
-cmd [ \fIargs\fR] 
+cmd [args] 
 .NL
 Specifies the commands and arguments (if applicable) to be run. Values include:
 

@@ -688,16 +688,16 @@ void PrintStlErrorInfoRsp(PrintDest_t *dest, int indent, const STL_ERROR_INFO_RS
 					case 0:
 					case 1:
 					case 2:
-						PrintFunc(dest, "%*s        VL:               %u\n",
+						PrintFunc(dest, "%*s        Distance:         %u\n",
 							indent+4, "",
-							pStlErrorInfoRsp->Port[k].FMConfigErrorInfo.ErrorInfo.EI0to2.VL);
+							pStlErrorInfoRsp->Port[k].FMConfigErrorInfo.ErrorInfo.EI0to2.Distance);
 						break;
 					case 3:
 					case 4:
 					case 5:
-						PrintFunc(dest, "%*s        Distance:         %u\n",
+						PrintFunc(dest, "%*s        VL:               %u\n",
 							indent+4, "",
-							pStlErrorInfoRsp->Port[k].FMConfigErrorInfo.ErrorInfo.EI3to5.Distance);
+							pStlErrorInfoRsp->Port[k].FMConfigErrorInfo.ErrorInfo.EI3to5.VL);
 						break;
 					case 6:
 						PrintFunc(dest, "%*s        Bad Flit Bits:    0x%010x\n",

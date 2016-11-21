@@ -300,6 +300,12 @@ extern Status_t vs_thread_exit (Thread_t * handle);
 */
 extern void vs_thread_sleep (uint64_t sleep_time);
 
+/*
+** Wait for the specified thread to exit.
+*/
+extern Status_t
+vs_thread_join (Thread_t *handle, void **value_ptr);
+
 /*=== Threads ===*/
 
 /*=== Pool Services ===*/

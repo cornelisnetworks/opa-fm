@@ -671,9 +671,6 @@ sa_PathRecord_Set(uint32_t* records, uint32_t numPath, Port_t *src_portp, uint32
 	int				vf, vf2;
 	uint16_t		slid_iter, dlid_iter;
 	lid_iterator_t	iter;
-#ifdef CONFIG_INCLUDE_DOR
-	uint16_t		updnSlid, updnDlid;
-#endif
 	uint8_t			srcLidLen, dstLidLen;
 	bitset_t		vfs;
 	Status_t		status=VSTATUS_OK;
@@ -845,7 +842,7 @@ sa_PathRecord_Set(uint32_t* records, uint32_t numPath, Port_t *src_portp, uint32
 			src_portp, slid, dst_portp, dlid,
 			srcLids, &srcLidLen, dstLids, &dstLidLen);
 
-	// Check if valid (query with mixed LIDs dor/updn will fail).
+	// Check if valid
 	if ((srcLidLen == 0) && (dstLidLen == 0)) {
 		goto done_PathRecordSet;
 	}
@@ -876,12 +873,6 @@ sa_PathRecord_Set(uint32_t* records, uint32_t numPath, Port_t *src_portp, uint32
 
 			if (PKEY_VALUE(pkey) != PKEY_VALUE(VirtualFabrics->v_fabric[vf2].pkey)) continue;
 
-#ifdef CONFIG_INCLUDE_DOR
-			//SecondaryRouteOnly
-			if (VirtualFabrics->v_fabric[vf].updown_only !=
-				VirtualFabrics->v_fabric[vf2].updown_only) continue;
-#endif
-
 			if (sl != VirtualFabrics->v_fabric[vf2].base_sl) continue;
 
            	if (VirtualFabrics->v_fabric[vf2].max_mtu_int < vfMtu) {
@@ -899,37 +890,6 @@ sa_PathRecord_Set(uint32_t* records, uint32_t numPath, Port_t *src_portp, uint32
 			bitset_clear(&vfs, vf2);
 		}
 
-#ifdef CONFIG_INCLUDE_DOR
-		//
-		// This is a secondary route only VF
-		//
-		//SecondaryRouteOnly
-		if (VirtualFabrics->v_fabric[vf].updown_only) {
-			if (old_topology.routingModule->funcs.select_updn_path_lids(&old_topology,
-							src_portp, dst_portp, &updnSlid, &updnDlid) != VSTATUS_OK) {
-				// No secondary routing
-				continue;
-			}
-			sa_FillPathRecord(records, src_portp, updnSlid, dst_portp, updnDlid,
-							pkey, vfMtu, vfRate, lifeMult, hopCount, serviceId, sl);
-			if ((*records) >= sa_max_path_records) {
-            	IB_LOG_WARN("sa_PathRecord_Set: too many records:", (*records));
-            	goto done_PathRecordSet;
-        	}
-			if (numPath && (*records) >= numPath) {
-				goto done_PathRecordSet;
-			}
-			continue;
-		}
-
-		//
-		// Not a seconadary route only VF.  Adjust the SL.
-		//
-#endif
-		sl += old_topology.routingModule->funcs.get_sl_for_path(&old_topology,
-				src_portp->portData->nodePtr, src_portp, srcLids[0],
-				dst_portp->portData->nodePtr, dst_portp, dstLids[0]);
-	
 		//
 		//	Iterate over lid pairs (multiple pairs for lmc > 0).
 		//	
@@ -1022,13 +982,13 @@ sa_PathRecord_Interop(IB_PATH_RECORD *prp, uint64_t mask) {	// JSY - interop fix
 		selector = prp->MtuSelector;
 		if (selector < PR_MAX && (mask & PR_COMPONENTMASK_MTU)) {
 			value = prp->Mtu;
-			if (value == 0 || value > IB_MTU_4096) {
+			if (value == 0 || value > STL_MTU_MAX) {
 				IB_LOG_WARN("sa_PathRecord_Interop: invalid specified MTU value:", value);
 				IB_EXIT("sa_PathRecord_Interop", VSTATUS_BAD);
 				return(VSTATUS_BAD);
-			} else if (value == IB_MTU_4096) {
+			} else if (value == STL_MTU_MAX) {
 				if (selector == PR_GT) {
-					IB_LOG_WARN("sa_PathRecord_Interop: invalid selector with 4K MTU value:", selector);
+					IB_LOG_WARN("sa_PathRecord_Interop: invalid selector with 10K MTU value:", selector);
 					IB_EXIT("sa_PathRecord_Interop", VSTATUS_BAD);
 					return(VSTATUS_BAD);
 				}

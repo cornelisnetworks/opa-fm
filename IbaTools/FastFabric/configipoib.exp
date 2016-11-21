@@ -208,7 +208,6 @@ DEVICE=ib$ipoib_base_dev_num
 TYPE=Infiniband
 \$bproto_ip_mask_info
 ONBOOT=yes
-NM_CONTROLLED=no
 CONNECTED_MODE=$ipoib_cm$ipoib_mtu
 !
 else 
@@ -218,7 +217,6 @@ cat > /etc/sysconfig/network/ifcfg-ib$ipoib_base_dev_num <<!
 STARTMODE='hotplug'
 REMOTE_IPADDR=''
 WIRELESS='no'
-NM_CONTROLLED='no'
 IPOIB_MODE=$ipoib_mode$ipoib_mtu
 !
 fi; echo DONE

@@ -540,6 +540,10 @@ hypercube_routing_calc_floyds(Topology_t *topop, int switches, unsigned short * 
 	Node_t *nodep;
 	Node_t *sw = topop->switch_head;
 
+	if (topology_passcount == 0 || switches < old_topology.max_sws) {
+		topology_cost_path_changes = 1;
+	}
+
 	for (k = 0, kNumNodes = 0; k < switches; k++, kNumNodes += switches) {
 		for (i = 0, iNumNodes = 0; i < switches; i++, iNumNodes += switches) {
 
@@ -587,20 +591,12 @@ hypercube_routing_calc_floyds(Topology_t *topop, int switches, unsigned short * 
 				}
 			}
 
-			if (topology_passcount == 0)
-				continue;
-
 			/* PR 115770. If there is any switch cost/path change (including removal of switches),
 			 * set topology_cost_path_changes which will force full LFT reprogramming for all switches.
 			 */
 
 			if (topology_cost_path_changes)
 				continue;
-
-			if (switches < old_topology.max_sws) {
-				topology_cost_path_changes = 1;
-				continue;
-			}
 
 			if ((k >= old_topology.max_sws) || (i >= old_topology.max_sws))
 				continue;
@@ -952,9 +948,9 @@ hypercube_calculate_all_lfts(Topology_t * topop)
 							i++;
 
 							if (sm_config.hypercubeRouting.debug) 
-								IB_LOG_INFINI_INFO_FMT(__func__, "Switch %s to %s lid 0x%x outport %d (of %d) tierIndex %d uplinkTrunk %d", 
+								IB_LOG_INFINI_INFO_FMT(__func__, "Switch %s to %s lid 0x%x outport %d (of %d)", 
 									sm_nodeDescString(switchp), sm_nodeDescString(nodep), currentLid,
-									switchp->lft[currentLid], numPorts, switchp->tierIndex, switchp->uplinkTrunkCnt);
+									switchp->lft[currentLid], numPorts);
 
 							incr_lids_routed(topop, switchp, switchp->lft[currentLid]);
 						}
@@ -993,11 +989,12 @@ hypercube_init_switch_lfts(Topology_t * topop, int * routing_needed, int * rebal
 	if (topop != sm_topop)
 		return VSTATUS_BAD;
 
-	if (*routing_needed) {
+	if (topology_cost_path_changes || *rebalance) {
 		// A topology change was indicated.  Re-calculate lfts with big hammer (rebalance).
 		// If not, copy and delta updates handled by main topology method.
 		s = hypercube_calculate_all_lfts(topop);
 		*rebalance = 1;
+		routing_recalculated = 1;
 	}
 
 	return s;
@@ -1075,9 +1072,9 @@ hypercube_calculate_lft(Topology_t * topop, Node_t * switchp)
 						i++;
 
 						if (sm_config.hypercubeRouting.debug) 
-							IB_LOG_INFINI_INFO_FMT(__func__, "Switch %s to %s lid 0x%x outport %d (of %d) tierIndex %d uplinkTrunk %d", 
+							IB_LOG_INFINI_INFO_FMT(__func__, "Switch %s to %s lid 0x%x outport %d (of %d)", 
 								sm_nodeDescString(switchp), sm_nodeDescString(nodep), currentLid,
-								switchp->lft[currentLid], numPorts, switchp->tierIndex, switchp->uplinkTrunkCnt);
+								switchp->lft[currentLid], numPorts);
 
 						incr_lids_routed(topop, switchp, switchp->lft[currentLid]);
 					}

@@ -39,6 +39,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 void PointInit(Point *point)
 {
 	point->Type = POINT_TYPE_NONE;
+	point->EnodeType = POINT_ENODE_TYPE_NONE;
+	point->EsmType = POINT_ESM_TYPE_NONE;
+	point->ElinkType = POINT_ELINK_TYPE_NONE;
 }
 
 /* initialize a non-list point */
@@ -80,6 +83,69 @@ static void PointInitSimple(Point *point, PointType type, void *object)
 	}
 }
 
+/* initialize a non-list ExpectedNode point */
+static void PointInitEnodeSimple(Point *point, PointEnodeType type, void *object)
+{
+	point->EnodeType = type;
+
+	switch (type) {
+	case POINT_ENODE_TYPE_NONE:
+		ASSERT(object == NULL);
+		return;
+	case POINT_ENODE_TYPE_NODE:
+		ASSERT(object);
+		point->u2.enodep = (ExpectedNode*)object;
+		return;
+	case POINT_ENODE_TYPE_NODE_LIST:
+	default:
+		ASSERT(0);
+		point->EnodeType = POINT_ENODE_TYPE_NONE;
+		return;
+	}
+}
+
+/* initialize a non-list ExpectedSM point */
+static void PointInitEsmSimple(Point *point, PointEsmType type, void *object)
+{
+	point->EsmType = type;
+
+	switch (type) {
+	case POINT_ESM_TYPE_NONE:
+		ASSERT(object == NULL);
+		return;
+	case POINT_ESM_TYPE_SM:
+		ASSERT(object);
+		point->u3.esmp = (ExpectedSM*)object;
+		return;
+	case POINT_ESM_TYPE_SM_LIST:
+	default:
+		ASSERT(0);
+		point->EsmType = POINT_ESM_TYPE_NONE;
+		return;
+	}
+}
+
+/* initialize a non-list ExpectedLink point */
+static void PointInitElinkSimple(Point *point, PointElinkType type, void *object)
+{
+	point->ElinkType = type;
+
+	switch (type) {
+	case POINT_ELINK_TYPE_NONE:
+		ASSERT(object == NULL);
+		return;
+	case POINT_ELINK_TYPE_LINK:
+		ASSERT(object);
+		point->u4.elinkp = (ExpectedLink*)object;
+		return;
+	case POINT_ELINK_TYPE_LINK_LIST:
+	default:
+		ASSERT(0);
+		point->ElinkType = POINT_ELINK_TYPE_NONE;
+		return;
+	}
+}
+
 /* initialize a list point - sets it as an empty list */
 static FSTATUS PointInitList(Point *point, PointType type)
 {
@@ -111,7 +177,76 @@ static FSTATUS PointInitList(Point *point, PointType type)
 	return FSUCCESS;
 }
 
-void PointDestroy(Point *point)
+/* initialize an ExpectedNode list point - sets it as an empty list */
+static FSTATUS PointInitEnodeList(Point *point, PointEnodeType type)
+{
+	DLIST *pList;
+
+	point->EnodeType = POINT_ENODE_TYPE_NONE;
+	switch (type) {
+	case POINT_ENODE_TYPE_NODE_LIST:
+		pList = &point->u2.enodeList;
+		break;
+	default:
+		ASSERT(0);
+		return FINVALID_OPERATION;
+	}
+	ListInitState(pList);
+	if (! ListInit(pList, MIN_LIST_ITEMS)) {
+		fprintf(stderr, "%s: unable to allocate memory\n", g_Top_cmdname);
+		return FINSUFFICIENT_MEMORY;
+	}
+	point->EnodeType = type;
+	return FSUCCESS;
+}
+
+/* initialize an ExpectedSM list point - sets it as an empty list */
+static FSTATUS PointInitEsmList(Point *point, PointEsmType type)
+{
+	DLIST *pList;
+
+	point->EsmType = POINT_ESM_TYPE_NONE;
+	switch (type) {
+	case POINT_ESM_TYPE_SM_LIST:
+		pList = &point->u3.esmList;
+		break;
+	default:
+		ASSERT(0);
+		return FINVALID_OPERATION;
+	}
+	ListInitState(pList);
+	if (! ListInit(pList, MIN_LIST_ITEMS)) {
+		fprintf(stderr, "%s: unable to allocate memory\n", g_Top_cmdname);
+		return FINSUFFICIENT_MEMORY;
+	}
+	point->EsmType = type;
+	return FSUCCESS;
+}
+
+/* initialize an ExpectedLink list point - sets it as an empty list */
+static FSTATUS PointInitElinkList(Point *point, PointElinkType type)
+{
+	DLIST *pList;
+
+	point->ElinkType = POINT_ELINK_TYPE_NONE;
+	switch (type) {
+	case POINT_ELINK_TYPE_LINK_LIST:
+		pList = &point->u4.elinkList;
+		break;
+	default:
+		ASSERT(0);
+		return FINVALID_OPERATION;
+	}
+	ListInitState(pList);
+	if (! ListInit(pList, MIN_LIST_ITEMS)) {
+		fprintf(stderr, "%s: unable to allocate memory\n", g_Top_cmdname);
+		return FINSUFFICIENT_MEMORY;
+	}
+	point->ElinkType = type;
+	return FSUCCESS;
+}
+
+void PointFabricDestroy(Point *point)
 {
 	switch (point->Type) {
 	case POINT_TYPE_PORT_LIST:
@@ -131,6 +266,62 @@ void PointDestroy(Point *point)
 	point->Type = POINT_TYPE_NONE;
 }
 
+void PointEnodeDestroy(Point *point)
+{
+	switch (point->EnodeType) {
+	case POINT_ENODE_TYPE_NODE_LIST:
+		ListDestroy(&point->u2.enodeList);
+		break;
+	default:
+		break;
+	}
+	point->EnodeType = POINT_ENODE_TYPE_NONE;
+}
+
+void PointEsmDestroy(Point *point)
+{
+	switch (point->EsmType) {
+	case POINT_ESM_TYPE_SM_LIST:
+		ListDestroy(&point->u3.esmList);
+		break;
+	default:
+		break;
+	}
+	point->EsmType = POINT_ESM_TYPE_NONE;
+}
+
+void PointElinkDestroy(Point *point)
+{
+	switch (point->ElinkType) {
+	case POINT_ELINK_TYPE_LINK_LIST:
+		ListDestroy(&point->u4.elinkList);
+		break;
+	default:
+		break;
+	}
+	point->ElinkType = POINT_ELINK_TYPE_NONE;
+}
+
+void PointDestroy(Point *point)
+{
+	PointFabricDestroy(point);
+	PointEnodeDestroy(point);
+	PointEsmDestroy(point);
+	PointElinkDestroy(point);
+}
+
+/* is the point valid (eg. successfully parsed and/or populated)
+ * PointInit and PointDestroy will return a point to an invalid state
+ * PointParseFocus if sucessful will leave a point in a valid state
+ */
+boolean PointValid(Point *point)
+{
+	return (point->Type != POINT_TYPE_NONE
+			|| point->EnodeType != POINT_ENODE_TYPE_NONE
+			|| point->EsmType != POINT_ESM_TYPE_NONE
+			|| point->ElinkType != POINT_ELINK_TYPE_NONE);
+}
+
 /* append object to the list
  * if this is the 1st insert to a "None" Point, it will initialize the
  * list and set the point type.
@@ -143,8 +334,10 @@ FSTATUS PointListAppend(Point *point, PointType type, void *object)
 
 	if (point->Type == POINT_TYPE_NONE) {
 		status = PointInitList(point, type);
-		if (FSUCCESS != status)
+		if (FSUCCESS != status) {
+			PointDestroy(point);
 			return status;
+		}
 	} else if (type != point->Type) {
 		ASSERT(0);
 		PointDestroy(point);
@@ -164,6 +357,7 @@ FSTATUS PointListAppend(Point *point, PointType type, void *object)
 #endif
 	default:
 		ASSERT(0);
+		PointDestroy(point);
 		return FINVALID_OPERATION;
 	}
 	if (! ListInsertTail(pList, object)) {
@@ -174,14 +368,134 @@ FSTATUS PointListAppend(Point *point, PointType type, void *object)
 	return FSUCCESS;
 }
 
-FSTATUS PointCopy(Point *dest, Point *src)
+/* append object to the ExpectedNode list
+ * if this is the 1st insert to a "None" Point, it will initialize the
+ * list and set the point enode type.
+ * Failures imply a caller bug or a failure to allocate memory
+ * On failure, the point is destroyed by this routine
+ */
+FSTATUS PointEnodeListAppend(Point *point, PointEnodeType type, void *object)
+{
+	FSTATUS status;
+	DLIST *pList;
+
+	if (point->EnodeType == POINT_ENODE_TYPE_NONE) {
+		status = PointInitEnodeList(point, type);
+		if (FSUCCESS != status) {
+			PointDestroy(point);
+			return status;
+		}
+	} else if (type != point->EnodeType) {
+		ASSERT(0);
+		PointDestroy(point);
+		return FINVALID_OPERATION;
+	}
+	switch (type) {
+	case POINT_ENODE_TYPE_NODE_LIST:
+		pList = &point->u2.enodeList;
+		break;
+	default:
+		ASSERT(0);
+		PointDestroy(point);
+		return FINVALID_OPERATION;
+	}
+	if (! ListInsertTail(pList, object)) {
+		fprintf(stderr, "%s: unable to allocate memory\n", g_Top_cmdname);
+		PointDestroy(point);
+		return FINSUFFICIENT_MEMORY;
+	}
+	return FSUCCESS;
+}
+
+/* append object to the ExpectedSM list
+ * if this is the 1st insert to a "None" Point, it will initialize the
+ * list and set the point enode type.
+ * Failures imply a caller bug or a failure to allocate memory
+ * On failure, the point is destroyed by this routine
+ */
+FSTATUS PointEsmListAppend(Point *point, PointEsmType type, void *object)
+{
+	FSTATUS status;
+	DLIST *pList;
+
+	if (point->EsmType == POINT_ESM_TYPE_NONE) {
+		status = PointInitEsmList(point, type);
+		if (FSUCCESS != status) {
+			PointDestroy(point);
+			return status;
+		}
+	} else if (type != point->EsmType) {
+		ASSERT(0);
+		PointDestroy(point);
+		return FINVALID_OPERATION;
+	}
+	switch (type) {
+	case POINT_ESM_TYPE_SM_LIST:
+		pList = &point->u3.esmList;
+		break;
+	default:
+		ASSERT(0);
+		PointDestroy(point);
+		return FINVALID_OPERATION;
+	}
+	if (! ListInsertTail(pList, object)) {
+		fprintf(stderr, "%s: unable to allocate memory\n", g_Top_cmdname);
+		PointDestroy(point);
+		return FINSUFFICIENT_MEMORY;
+	}
+	return FSUCCESS;
+}
+
+/* append object to the ExpectedLink list
+ * if this is the 1st insert to a "None" Point, it will initialize the
+ * list and set the point enode type.
+ * Failures imply a caller bug or a failure to allocate memory
+ * On failure, the point is destroyed by this routine
+ */
+FSTATUS PointElinkListAppend(Point *point, PointElinkType type, void *object)
+{
+	FSTATUS status;
+	DLIST *pList;
+
+	if (point->ElinkType == POINT_ELINK_TYPE_NONE) {
+		status = PointInitElinkList(point, type);
+		if (FSUCCESS != status) {
+			PointDestroy(point);
+			return status;
+		}
+	} else if (type != point->ElinkType) {
+		ASSERT(0);
+		PointDestroy(point);
+		return FINVALID_OPERATION;
+	}
+	switch (type) {
+	case POINT_ELINK_TYPE_LINK_LIST:
+		pList = &point->u4.elinkList;
+		break;
+	default:
+		ASSERT(0);
+		PointDestroy(point);
+		return FINVALID_OPERATION;
+	}
+	if (! ListInsertTail(pList, object)) {
+		fprintf(stderr, "%s: unable to allocate memory\n", g_Top_cmdname);
+		PointDestroy(point);
+		return FINSUFFICIENT_MEMORY;
+	}
+	return FSUCCESS;
+}
+
+/* Failures imply a caller bug or a failure to allocate memory */
+/* On failure will Destroy the whole dest point leaving it !PointValid */
+FSTATUS PointFabricCopy(Point *dest, Point *src)
 {
 	FSTATUS status;
 	LIST_ITERATOR i;
 	DLIST *pSrcList;
 
-	PointDestroy(dest);
+	PointFabricDestroy(dest);
 
+	pSrcList = NULL;
 	switch (src->Type) {
 	case POINT_TYPE_PORT:
 	case POINT_TYPE_NODE:
@@ -191,7 +505,7 @@ FSTATUS PointCopy(Point *dest, Point *src)
 	case POINT_TYPE_SYSTEM:
 	default:
 		*dest = *src;
-		return FSUCCESS;
+		break;
 	case POINT_TYPE_PORT_LIST:
 		pSrcList = &src->u.portList;
 		break;
@@ -204,22 +518,149 @@ FSTATUS PointCopy(Point *dest, Point *src)
 		break;
 #endif
 	}
-
-	for (i=ListHead(pSrcList); i != NULL; i = ListNext(pSrcList, i)) {
-		status = PointListAppend(dest, src->Type, ListObj(i));
-		if (FSUCCESS != status)
-			return status;
+	if (pSrcList) {
+		for (i=ListHead(pSrcList); i != NULL; i = ListNext(pSrcList, i)) {
+			/* on failure Append will Destroy the whole point */
+			status = PointListAppend(dest, src->Type, ListObj(i));
+			if (FSUCCESS != status)
+				return status;
+		}
 	}
 	return FSUCCESS;
 }
 
+
+/* Failures imply a caller bug or a failure to allocate memory */
+/* On failure will Destroy the whole dest point leaving it !PointValid */
+FSTATUS PointEnodeCopy(Point *dest, Point *src)
+{
+	FSTATUS status;
+	LIST_ITERATOR i;
+	DLIST *pSrcList;
+
+	PointEnodeDestroy(dest);
+	pSrcList = NULL;
+	switch (src->EnodeType) {
+	case POINT_ENODE_TYPE_NONE:
+	case POINT_ENODE_TYPE_NODE:
+		*dest = *src;
+		break;
+	case POINT_ENODE_TYPE_NODE_LIST:
+		pSrcList = &src->u2.enodeList;
+		break;
+	}
+
+	if (pSrcList) {
+		for (i=ListHead(pSrcList); i != NULL; i = ListNext(pSrcList, i)) {
+			/* on failure Append will Destroy the whole point */
+			status = PointEnodeListAppend(dest, src->EnodeType, ListObj(i));
+			if (FSUCCESS != status)
+				return status;
+		}
+	}
+	return FSUCCESS;
+}
+
+/* Failures imply a caller bug or a failure to allocate memory */
+/* On failure will Destroy the whole dest point leaving it !PointValid */
+FSTATUS PointEsmCopy(Point *dest, Point *src)
+{
+	FSTATUS status;
+	LIST_ITERATOR i;
+	DLIST *pSrcList;
+
+	PointEsmDestroy(dest);
+	pSrcList = NULL;
+	switch (src->EsmType) {
+	case POINT_ESM_TYPE_NONE:
+	case POINT_ESM_TYPE_SM:
+		*dest = *src;
+		break;
+	case POINT_ESM_TYPE_SM_LIST:
+		pSrcList = &src->u3.esmList;
+		break;
+	}
+
+	if (pSrcList) {
+		for (i=ListHead(pSrcList); i != NULL; i = ListNext(pSrcList, i)) {
+			/* on failure Append will Destroy the whole point */
+			status = PointEsmListAppend(dest, src->EsmType, ListObj(i));
+			if (FSUCCESS != status)
+				return status;
+		}
+	}
+	return FSUCCESS;
+}
+
+/* Failures imply a caller bug or a failure to allocate memory */
+/* On failure will Destroy the whole dest point leaving it !PointValid */
+FSTATUS PointElinkCopy(Point *dest, Point *src)
+{
+	FSTATUS status;
+	LIST_ITERATOR i;
+	DLIST *pSrcList;
+
+	PointElinkDestroy(dest);
+	pSrcList = NULL;
+	switch (src->ElinkType) {
+	case POINT_ELINK_TYPE_NONE:
+	case POINT_ELINK_TYPE_LINK:
+		*dest = *src;
+		break;
+	case POINT_ELINK_TYPE_LINK_LIST:
+		pSrcList = &src->u4.elinkList;
+		break;
+	}
+
+	if (pSrcList) {
+		for (i=ListHead(pSrcList); i != NULL; i = ListNext(pSrcList, i)) {
+			/* on failure Append will Destroy the whole point */
+			status = PointElinkListAppend(dest, src->ElinkType, ListObj(i));
+			if (FSUCCESS != status)
+				return status;
+		}
+	}
+	return FSUCCESS;
+}
+
+/* Failures imply a caller bug or a failure to allocate memory */
+/* On failure will Destroy the whole dest point leaving it !PointValid */
+FSTATUS PointCopy(Point *dest, Point *src)
+{
+	FSTATUS status;
+
+	status = PointFabricCopy(dest, src);
+	if (FSUCCESS != status)
+		return status;
+	status = PointEnodeCopy(dest, src);
+	if (FSUCCESS != status)
+		return status;
+	status = PointEsmCopy(dest, src);
+	if (FSUCCESS != status)
+		return status;
+	return PointElinkCopy(dest, src);
+}
+
+/* These compare functions will compare the supplied object to the
+ * specific relevant portion of the point.  Callers who wish to consider
+ * both expected and fabric objects should call all the relevant routines
+ * for the fabric and linked expected objects
+ * This approach provides greater flexibility for callers, and removes the need
+ * for the Point construction and parsing routines to check all the linked
+ * fabric and expected objects.
+ */
+
 /* compare the supplied port to the given point
  * this is used to identify focus for reports
- * POINT_TYPE_NONE will report TRUE for all ports
+ * if !PointValid will report TRUE for all ports
  */
 boolean ComparePortPoint(PortData *portp, Point *point)
 {
+	if (!PointValid(point))
+		return TRUE;
 	switch (point->Type) {
+	case POINT_TYPE_NONE:
+		return FALSE;
 	case POINT_TYPE_PORT:
 		return (portp == point->u.portp);
 	case POINT_TYPE_PORT_LIST:
@@ -266,18 +707,21 @@ boolean ComparePortPoint(PortData *portp, Point *point)
 #endif
 	case POINT_TYPE_SYSTEM:
 		return (portp->nodep->systemp == point->u.systemp);
-	default:
-		return TRUE;
 	}
+	return TRUE;	// should not get here
 }
 
 /* compare the supplied node to the given point
  * this is used to identify focus for reports
- * POINT_TYPE_NONE will report TRUE for all nodes
+ * if !PointValid will report TRUE for all nodes
  */
 boolean CompareNodePoint(NodeData *nodep, Point *point)
 {
+	if (!PointValid(point))
+		return TRUE;
 	switch (point->Type) {
+	case POINT_TYPE_NONE:
+		return FALSE;
 	case POINT_TYPE_PORT:
 		return (nodep == point->u.portp->nodep);
 	case POINT_TYPE_PORT_LIST:
@@ -324,103 +768,33 @@ boolean CompareNodePoint(NodeData *nodep, Point *point)
 #endif
 	case POINT_TYPE_SYSTEM:
 		return (nodep->systemp == point->u.systemp);
-	default:
-		return TRUE;
 	}
+	return TRUE;	// should not get here
 }
 
 #if !defined(VXWORKS) || defined(BUILD_DMC)
 /* compare the supplied iou to the given point
  * this is used to identify focus for reports
- * POINT_TYPE_NONE will report TRUE for all ious
+ * if !PointValid will report TRUE for all ious
  */
 boolean CompareIouPoint(IouData *ioup, Point *point)
 {
-	switch (point->Type) {
-	case POINT_TYPE_PORT:
-		return (ioup->nodep == point->u.portp->nodep);
-	case POINT_TYPE_PORT_LIST:
-		{
-		LIST_ITERATOR i;
-		DLIST *pList = &point->u.portList;
-
-		for (i=ListHead(pList); i != NULL; i = ListNext(pList, i)) {
-			PortData *portp = (PortData*)ListObj(i);
-			if (ioup->nodep == portp->nodep)
-				return TRUE;
-		}
-		}
-		return FALSE;
-	case POINT_TYPE_NODE:
-		return (ioup->nodep == point->u.nodep);
-	case POINT_TYPE_NODE_LIST:
-		{
-		LIST_ITERATOR i;
-		DLIST *pList = &point->u.nodeList;
-
-		for (i=ListHead(pList); i != NULL; i = ListNext(pList, i)) {
-			NodeData *nodep = (NodeData*)ListObj(i);
-			if (ioup->nodep == nodep)
-				return TRUE;
-		}
-		}
-		return FALSE;
-	case POINT_TYPE_IOC:
-		return (ioup == point->u.iocp->ioup);
-	case POINT_TYPE_IOC_LIST:
-		{
-		LIST_ITERATOR i;
-		DLIST *pList = &point->u.nodeList;
-
-		for (i=ListHead(pList); i != NULL; i = ListNext(pList, i)) {
-			IocData *iocp = (IocData*)ListObj(i);
-			if (ioup == iocp->ioup)
-				return TRUE;
-		}
-		}
-		return FALSE;
-	case POINT_TYPE_SYSTEM:
-		return (ioup->nodep->systemp == point->u.systemp);
-	default:
-		return TRUE;
-	}
+	/* each IOU is associated with a single node, and a given node is
+	 * associated with 0 or 1 IOUs.  So we can simply use a Node compare
+	 * for all point->Type values, even if the point is an IOC or IOC_LIST
+	 */
+	return CompareNodePoint(ioup->nodep, point);
 }
 
 /* compare the supplied ioc to the given point
  * this is used to identify focus for reports
- * POINT_TYPE_NONE will report TRUE for all iocs
+ * if !PointValid will report TRUE for all iocs
  */
 boolean CompareIocPoint(IocData *iocp, Point *point)
 {
+	if (!PointValid(point))
+		return TRUE;
 	switch (point->Type) {
-	case POINT_TYPE_PORT:
-		return (iocp->ioup->nodep == point->u.portp->nodep);
-	case POINT_TYPE_PORT_LIST:
-		{
-		LIST_ITERATOR i;
-		DLIST *pList = &point->u.portList;
-
-		for (i=ListHead(pList); i != NULL; i = ListNext(pList, i)) {
-			PortData *portp = (PortData*)ListObj(i);
-			if (iocp->ioup->nodep == portp->nodep)
-				return TRUE;
-		}
-		}
-		return FALSE;
-	case POINT_TYPE_NODE:
-		return (iocp->ioup->nodep == point->u.nodep);
-	case POINT_TYPE_NODE_LIST:
-		{
-		LIST_ITERATOR i;
-		DLIST *pList = &point->u.nodeList;
-
-		for (i=ListHead(pList); i != NULL; i = ListNext(pList, i)) {
-			NodeData *nodep = (NodeData*)ListObj(i);
-			if (iocp->ioup->nodep == nodep)
-				return TRUE;
-		}
-		}
-		return FALSE;
 	case POINT_TYPE_IOC:
 		return (iocp == point->u.iocp);
 	case POINT_TYPE_IOC_LIST:
@@ -435,79 +809,32 @@ boolean CompareIocPoint(IocData *iocp, Point *point)
 		}
 		}
 		return FALSE;
-	case POINT_TYPE_SYSTEM:
-		return (iocp->ioup->nodep->systemp == point->u.systemp);
 	default:
-		return TRUE;
+		return CompareNodePoint(iocp->ioup->nodep, point);
 	}
 }
 #endif
 
 /* compare the supplied SM to the given point
  * this is used to identify focus for reports
- * POINT_TYPE_NONE will report TRUE for all SMs
+ * if !PointValid will report TRUE for all SMs
  */
 boolean CompareSmPoint(SMData *smp, Point *point)
 {
-	switch (point->Type) {
-	case POINT_TYPE_PORT:
-		return (smp->portp == point->u.portp);
-	case POINT_TYPE_PORT_LIST:
-		{
-		LIST_ITERATOR i;
-		DLIST *pList = &point->u.portList;
-
-		for (i=ListHead(pList); i != NULL; i = ListNext(pList, i)) {
-			PortData *portp = (PortData*)ListObj(i);
-			if (smp->portp == portp)
-				return TRUE;
-		}
-		}
-		return FALSE;
-	case POINT_TYPE_NODE:
-		return (smp->portp->nodep == point->u.nodep);
-	case POINT_TYPE_NODE_LIST:
-		{
-		LIST_ITERATOR i;
-		DLIST *pList = &point->u.nodeList;
-
-		for (i=ListHead(pList); i != NULL; i = ListNext(pList, i)) {
-			NodeData *nodep = (NodeData*)ListObj(i);
-			if (smp->portp->nodep == nodep)
-				return TRUE;
-		}
-		}
-		return FALSE;
-#if !defined(VXWORKS) || defined(BUILD_DMC)
-	case POINT_TYPE_IOC:
-		return (smp->portp->nodep == point->u.iocp->ioup->nodep);
-	case POINT_TYPE_IOC_LIST:
-		{
-		LIST_ITERATOR i;
-		DLIST *pList = &point->u.nodeList;
-
-		for (i=ListHead(pList); i != NULL; i = ListNext(pList, i)) {
-			IocData *iocp = (IocData*)ListObj(i);
-			if (smp->portp->nodep == iocp->ioup->nodep)
-				return TRUE;
-		}
-		}
-		return FALSE;
-#endif
-	case POINT_TYPE_SYSTEM:
-		return (smp->portp->nodep->systemp == point->u.systemp);
-	default:
-		return TRUE;
-	}
+	return ComparePortPoint(smp->portp, point);
 }
 
 /* compare the supplied system to the given point
  * this is used to identify focus for reports
- * POINT_TYPE_NONE will report TRUE for all systems
+ * if !PointValid will report TRUE for all systems
  */
 boolean CompareSystemPoint(SystemData *systemp, Point *point)
 {
+	if (!PointValid(point))
+		return TRUE;
 	switch (point->Type) {
+	case POINT_TYPE_NONE:
+		return FALSE;
 	case POINT_TYPE_PORT:
 		return (systemp == point->u.portp->nodep->systemp);
 	case POINT_TYPE_PORT_LIST:
@@ -554,9 +881,95 @@ boolean CompareSystemPoint(SystemData *systemp, Point *point)
 #endif
 	case POINT_TYPE_SYSTEM:
 		return (systemp == point->u.systemp);
-	default:
-		return TRUE;
 	}
+	return TRUE;	// should not get here
+}
+
+/* compare the supplied ExpectedNode to the given point
+ * this is used to identify focus for reports
+ * if !PointValid will report TRUE for all ExpectedNodes
+ */
+boolean CompareExpectedNodePoint(ExpectedNode *enodep, Point *point)
+{
+	if (!PointValid(point))
+		return TRUE;
+	switch (point->EnodeType) {
+	case POINT_ENODE_TYPE_NONE:
+		return FALSE;
+	case POINT_ENODE_TYPE_NODE:
+		return (enodep == point->u2.enodep);
+	case POINT_ENODE_TYPE_NODE_LIST:
+		{
+		LIST_ITERATOR i;
+		DLIST *pList = &point->u2.enodeList;
+
+		for (i=ListHead(pList); i != NULL; i = ListNext(pList, i)) {
+			ExpectedNode *enodep2 = (ExpectedNode*)ListObj(i);
+			if (enodep == enodep2)
+				return TRUE;
+		}
+		}
+		return FALSE;
+	}
+	return TRUE;	// should not get here
+}
+
+/* compare the supplied ExpectedSM to the given point
+ * this is used to identify focus for reports
+ * if !PointValid will report TRUE for all ExpectedSM
+ */
+boolean CompareExpectedSMPoint(ExpectedSM *esmp, Point *point)
+{
+	if (!PointValid(point))
+		return TRUE;
+	switch (point->EsmType) {
+	case POINT_ESM_TYPE_NONE:
+		return FALSE;
+	case POINT_ESM_TYPE_SM:
+		return (esmp == point->u3.esmp);
+	case POINT_ESM_TYPE_SM_LIST:
+		{
+		LIST_ITERATOR i;
+		DLIST *pList = &point->u3.esmList;
+
+		for (i=ListHead(pList); i != NULL; i = ListNext(pList, i)) {
+			ExpectedSM *esmp2 = (ExpectedSM*)ListObj(i);
+			if (esmp == esmp2)
+				return TRUE;
+		}
+		}
+		return FALSE;
+	}
+	return TRUE;	// should not get here
+}
+
+/* compare the supplied ExpectedLink to the given point
+ * this is used to identify focus for reports
+ * if !PointValid will report TRUE for all ExpectedLink
+ */
+boolean CompareExpectedLinkPoint(ExpectedLink *elinkp, Point *point)
+{
+	if (!PointValid(point))
+		return TRUE;
+	switch (point->ElinkType) {
+	case POINT_ELINK_TYPE_NONE:
+		return FALSE;
+	case POINT_ELINK_TYPE_LINK:
+		return (elinkp == point->u4.elinkp);
+	case POINT_ELINK_TYPE_LINK_LIST:
+		{
+		LIST_ITERATOR i;
+		DLIST *pList = &point->u4.elinkList;
+
+		for (i=ListHead(pList); i != NULL; i = ListNext(pList, i)) {
+			ExpectedLink *elinkp2 = (ExpectedLink*)ListObj(i);
+			if (elinkp == elinkp2)
+				return TRUE;
+		}
+		}
+		return FALSE;
+	}
+	return TRUE;	// should not get here
 }
 
 /* append the given port to the PORT_LIST point, if its already
@@ -573,9 +986,11 @@ FSTATUS PointListAppendUniquePort(Point *point, PortData *portp)
  * This looks for lists which consist of a single entry or
  * lists which include all the components of a higher level type
  */
-void PointCompress(Point *point)
+void PointFabricCompress(Point *point)
 {
 	switch (point->Type) {
+	case POINT_TYPE_NONE:
+		break;
 	case POINT_TYPE_PORT:
 		break;
 	case POINT_TYPE_PORT_LIST:
@@ -589,7 +1004,7 @@ void PointCompress(Point *point)
 		portp = (PortData*)ListObj(head);
 		if (ListCount(&point->u.portList) == 1) {
 			/* degenerate case, simplify as a single port */
-			PointDestroy(point);
+			PointFabricDestroy(point);
 			PointInitSimple(point, POINT_TYPE_PORT, portp);
 		} else if (ListCount(&point->u.portList) == cl_qmap_count(&portp->nodep->Ports)) {
 			/* maybe we can consolidate to a single node */
@@ -602,15 +1017,46 @@ void PointCompress(Point *point)
 			}
 			if (portp) {
 				/* degenerate case, simplify as a single node */
-				PointDestroy(point);
+				PointFabricDestroy(point);
 				PointInitSimple(point, POINT_TYPE_NODE, portp->nodep);
 			}
+#if 0
+		} else {
+			// the likelihood of this is low for port oriented searches
+			// and it would present just the system image guide in the summary
+			// and may be less obvious to the user than a list of ports
+			/* maybe we can consolidate to a single system */
+			LIST_ITERATOR i;
+			DLIST *pList = &point->u.portList;
+
+			for (i=ListHead(pList); portp && i != NULL; i = ListNext(pList, i)) {
+				if (portp->nodep->systemp != ((PortData*)ListObj(i))->nodep->systemp)
+					portp = NULL;	/* not in same system, flag for below */
+			}
+			if (portp) {
+				/* all ports are in same system. is it a complete list? */
+				/* count ports in the system */
+				uint32 count = 0;
+				cl_map_item_t *p;
+
+				for (p=cl_qmap_head(&portp->nodep->systemp->Nodes); p != cl_qmap_end(&portp->nodep->systemp->Nodes); p = cl_qmap_next(p)) {
+					NodeData *nodep = PARENT_STRUCT(p, NodeData, SystemNodesEntry);
+					count += cl_qmap_count(&nodep->Ports);
+				}
+				if (ListCount(&point->u.portList) != count)
+					portp = NULL;	/* incomplete list, flag for below */
+			}
+			if (portp) {
+				/* degenerate case, simplify as a single system */
+				PointFabricDestroy(point);
+				PointInitSimple(point, POINT_TYPE_SYSTEM, portp->nodep->systemp);
+			}
+#endif
 		}
-		// TBD see if we can simplify to a single system, eg. all Ports in all Nodes of System
 		break;
 		}
 	case POINT_TYPE_NODE:
-		return;
+		break;
 	case POINT_TYPE_NODE_LIST:
 		{
 		NodeData *nodep;
@@ -621,7 +1067,7 @@ void PointCompress(Point *point)
 		nodep = (NodeData*)ListObj(head);
 		if (ListCount(&point->u.nodeList) == 1) {
 			/* degenerate case, simplify as a single node */
-			PointDestroy(point);
+			PointFabricDestroy(point);
 			PointInitSimple(point, POINT_TYPE_NODE, nodep);
 		} else if (ListCount(&point->u.nodeList) == cl_qmap_count(&nodep->systemp->Nodes)) {
 			/* maybe we can consolidate to a single system */
@@ -634,7 +1080,7 @@ void PointCompress(Point *point)
 			}
 			if (nodep) {
 				/* degenerate case, simplify as a single system */
-				PointDestroy(point);
+				PointFabricDestroy(point);
 				PointInitSimple(point, POINT_TYPE_SYSTEM, nodep->systemp);
 			}
 		}
@@ -653,7 +1099,7 @@ void PointCompress(Point *point)
 		iocp = (IocData*)ListObj(head);
 		if (ListCount(&point->u.iocList) == 1) {
 			/* degenerate case, simplify as a single IOC */
-			PointDestroy(point);
+			PointFabricDestroy(point);
 			PointInitSimple(point, POINT_TYPE_IOC, iocp);
 		} else if (ListCount(&point->u.iocList) == QListCount(&iocp->ioup->Iocs)) {
 			/* maybe we can consolidate to a single node */
@@ -666,16 +1112,140 @@ void PointCompress(Point *point)
 			}
 			if (iocp) {
 				/* degenerate case, simplify as a single node */
-				PointDestroy(point);
+				PointFabricDestroy(point);
 				PointInitSimple(point, POINT_TYPE_NODE, iocp->ioup->nodep);
 			}
+#if 0
+		} else {
+			// the likelihood of this is low for ioc oriented searches
+			// and it would present just the system image guide in the summary
+			// and may be less obvious to the user than a list of iocs
+			/* maybe we can consolidate to a single system */
+			LIST_ITERATOR i;
+			DLIST *pList = &point->u.iocList;
+
+			for (i=ListHead(pList); iocp && i != NULL; i = ListNext(pList, i)) {
+				if (iocp->ioup->nodep->systemp != ((IocData*)ListObj(i))->ioup->nodep->systemp)
+					iocp = NULL;	/* not in same system, flag for below */
+			}
+			if (iocp) {
+				/* all IOCs are in same system. is it a complete list? */
+				/* count IOCs in the system */
+				uint32 count = 0;
+				cl_map_item_t *p;
+
+				for (p=cl_qmap_head(&iocp->ioup->nodep->systemp->Nodes); p != cl_qmap_end(&iocp->ioup->nodep->systemp->Nodes); p = cl_qmap_next(p)) {
+					NodeData *nodep = PARENT_STRUCT(p, NodeData, SystemNodesEntry);
+					if (nodep->ioup)
+						count += QListCount(&nodep->ioup->Iocs);
+				}
+				if (ListCount(&point->u.iocList) != count)
+					iocp = NULL;	/* incomplete list, flag for below */
+			}
+			if (iocp) {
+				/* degenerate case, simplify as a single system */
+				PointFabricDestroy(point);
+				PointInitSimple(point, POINT_TYPE_SYSTEM, iocp->ioup->nodep->systemp);
+			}
+#endif
 		}
 		break;
 		}
 #endif
 	case POINT_TYPE_SYSTEM:
 		break;
-	default:
-		break;
 	}
+}
+
+/* If possible compress a point into a simpler format
+ * This looks for lists which consist of a single entry
+ */
+void PointEnodeCompress(Point *point)
+{
+	switch (point->EnodeType) {
+	case POINT_ENODE_TYPE_NONE:
+		break;
+	case POINT_ENODE_TYPE_NODE:
+		break;
+	case POINT_ENODE_TYPE_NODE_LIST:
+		{
+		ASSERT(ListCount(&point->u2.enodeList) >= 1);
+		if (ListCount(&point->u2.enodeList) == 1) {
+			/* degenerate case, simplify as a single ExpectedNode */
+			LIST_ITERATOR head = ListHead(&point->u2.enodeList);
+			ExpectedNode *enodep;
+			ASSERT(head);
+			enodep = (ExpectedNode*)ListObj(head);
+			PointEnodeDestroy(point);
+			PointInitEnodeSimple(point, POINT_ENODE_TYPE_NODE, enodep);
+		}
+		break;
+		}
+	}
+}
+
+/* If possible compress a point into a simpler format
+ * This looks for lists which consist of a single entry
+ */
+void PointEsmCompress(Point *point)
+{
+	switch (point->EsmType) {
+	case POINT_ESM_TYPE_NONE:
+		break;
+	case POINT_ESM_TYPE_SM:
+		break;
+	case POINT_ESM_TYPE_SM_LIST:
+		{
+		ASSERT(ListCount(&point->u3.esmList) >= 1);
+		if (ListCount(&point->u3.esmList) == 1) {
+			/* degenerate case, simplify as a single ExpectedSM */
+			LIST_ITERATOR head = ListHead(&point->u3.esmList);
+			ExpectedSM *esmp;
+			ASSERT(head);
+			esmp = (ExpectedSM*)ListObj(head);
+			PointEsmDestroy(point);
+			PointInitEsmSimple(point, POINT_ESM_TYPE_SM, esmp);
+		}
+		break;
+		}
+	}
+}
+
+/* If possible compress a point into a simpler format
+ * This looks for lists which consist of a single entry
+ */
+void PointElinkCompress(Point *point)
+{
+	switch (point->ElinkType) {
+	case POINT_ELINK_TYPE_NONE:
+		break;
+	case POINT_ELINK_TYPE_LINK:
+		break;
+	case POINT_ELINK_TYPE_LINK_LIST:
+		{
+		ASSERT(ListCount(&point->u4.elinkList) >= 1);
+		if (ListCount(&point->u4.elinkList) == 1) {
+			/* degenerate case, simplify as a single ExpectedLink */
+			LIST_ITERATOR head = ListHead(&point->u4.elinkList);
+			ExpectedLink *elinkp;
+			ASSERT(head);
+			elinkp = (ExpectedLink*)ListObj(head);
+			PointElinkDestroy(point);
+			PointInitElinkSimple(point, POINT_ELINK_TYPE_LINK, elinkp);
+		}
+		break;
+		}
+	}
+}
+
+/* If possible compress a point into a simpler format
+ * This looks for lists which consist of a single entry or
+ * lists which include all the components of a higher level type
+ */
+void PointCompress(Point *point)
+{
+	PointFabricCompress(point);
+	PointEnodeCompress(point);
+	PointEsmCompress(point);
+	PointElinkCompress(point);
 }

@@ -44,6 +44,8 @@ extern void
 test_thread_sleep_1 (void);
 extern void
 test_thread_kill_1 (void);
+extern void
+test_thread_join_1 (void);
 
 void  generic_sleep(uint64_t usecs)
 {
@@ -64,5 +66,6 @@ int main (void)
     test_thread_groupname_1 ();
     test_thread_sleep_1 ();
     test_thread_kill_1 ();
+    test_thread_join_1 ();
     return 0;
 }

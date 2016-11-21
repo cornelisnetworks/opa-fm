@@ -152,6 +152,7 @@ extern int topology_changed;  /* indicates a change in the topology during disco
 extern int topology_changed_count;  /* how many times has topology changed */
 extern int topology_switch_port_changes;  /* indicates there are switches with switch port change flag set */
 extern int topology_cost_path_changes;
+extern int routing_recalculated; /* indicates all routing tables have been recalculated this sweep */
 extern uint8_t topology_set_client_reregistration; //flag to force sm_activate_port() to set the client rereg bit
 extern uint32_t topology_port_bounce_log_num; /* Number of times a log message has been generated about a port bounce this sweep*/
 extern bitset_t old_switchesInUse;
@@ -428,6 +429,7 @@ typedef	struct _Node {
 	uint8_t		edgeSwitch:1;  		// switch has HFIs attached
 	uint8_t		trunkGrouped:1;		// ports in fat tree trunk are grouped by contiguous port numbers
 	uint8_t		skipBalance:1;  
+	uint8_t		routingRecalculated:1;  // routing has been recalculated during this sweep
 	uint8_t		nodeDescChgTrap:1;  
 	uint8_t		mcSpanningChkDone:1; //indicates switch has been checked as part of spanning tree construction
 	//uint8_t		pmFlags;		// PM flag - TBD how many bits needed
@@ -559,7 +561,7 @@ typedef struct _RoutingFuncs {
 		@param [optional, out] portnos 
 		@return VSTATUS_OK on success, something else if srcSw and dstSw aren't switches or if other bad stuff happens.
 	*/
-	Status_t (*setup_pgs)(struct _Topology *topop, struct _Node * srcSw, const struct _Node * dstSw);
+	Status_t (*setup_pgs)(struct _Topology *topop, struct _Node * srcSw, struct _Node * dstSw);
 
 	int (*get_port_group)(struct _Topology *, struct _Node *, struct _Node *, uint8_t *);
 	Status_t (*select_slsc_map)(struct _Topology *, struct _Node *, struct _Port *, struct _Port *, STL_SLSCMAP *);
@@ -570,8 +572,6 @@ typedef struct _RoutingFuncs {
 
 	Status_t (*fill_stl_vlarb_table)(struct _Topology *, struct _Node *, struct _Port *, struct _PortDataVLArb * arb);
 	Status_t (*select_path_lids)(struct _Topology *, struct _Port *, uint16_t, struct _Port *, uint16_t, uint16_t[], uint8_t *, uint16_t[], uint8_t *);
-	Status_t (*select_updn_path_lids)(struct _Topology *, struct _Port *, struct _Port *, uint16_t*, uint16_t*);
-	int (*get_sl_for_path)(struct _Topology *, struct _Node *, struct _Port *, uint32_t, struct _Node *, struct _Port *, uint32_t);
 	Status_t (*process_swIdx_change) (struct _Topology *, int old_idx, int new_idx, int last_idx);
 
 	int (*check_switch_path_change) (struct _Topology *, struct _Topology *, struct _Node *);
@@ -693,7 +693,7 @@ typedef	struct _Topology {
 	uint32_t	lmc;		// the global LMC
 	uint32_t	num_nodes;	// count of how many nodes have been found
 	uint32_t	num_sws;	// count of how many switch chips have been found
-	uint32_t	max_sws;	// count of how many switch chips have been found
+	uint32_t	max_sws;	// size of the switch index space (including sparseness)
 	uint32_t    num_ports;	// num of live ports in fabric (init state or better)
     uint32_t    num_endports; // num end ports (init state or better)
 	uint32_t	num_quarantined_nodes;	// count of how many nodes have been found
@@ -1201,7 +1201,7 @@ void Switch_Enqueue_Type(Topology_t *, Node_t *, int, int);
 	} 																	\
 }
 
-#define	Node_Delete(NODEP) {							\
+#define	Node_Delete(TOPOP, NODEP) {							\
 	Status_t	local_status;						\
 										\
 	if (NODEP->mft) { \
@@ -1239,7 +1239,7 @@ void Switch_Enqueue_Type(Topology_t *, Node_t *, int, int);
 	bitset_free(&NODEP->initPorts);						\
 	bitset_free(&NODEP->vfMember);						\
 	bitset_free(&NODEP->fullPKeyMember);				\
-    sm_node_free_port(NODEP);   \
+	sm_node_free_port(TOPOP, NODEP);   \
 	sm_node_release_changes((NODEP));   \
 	local_status = vs_pool_free(&sm_pool, (void *)NODEP);			\
 	if (local_status != VSTATUS_OK) {					\
@@ -1608,157 +1608,7 @@ static __inline__ int sm_stl_appliance(uint64 nodeGuid) {
     return appliance;
 }
 
-#define PORTGUID_PNUM_MASK 0x7ull
-#define PORTGUID_PNUM_SHIFT 32
-static __inline__ int sm_stl_authentic_node(Topology_t *tp, Node_t *cnp, Port_t *cpp,
-                                            STL_NODE_INFO *neighborInfo, STL_PORT_INFO *neighborPI,
-											uint32* quarantineReasons) {
-    int authentic = 1;
-	uint64 expectedPortGuid;
 
-	if(quarantineReasons == NULL){
-		return 0;
-	}
-
-    //Verify node MTU not less than 2048
-    if (neighborPI) {
-        if (neighborPI->MTU.Cap < IB_MTU_2048) {
-			*quarantineReasons |= STL_QUARANTINE_REASON_SMALL_MTU_SIZE;
-            authentic = 0;
-            return (authentic);
-        }
-#ifdef USE_FIXED_SCVL_MAPS
-        // Verify port supports min number required VLs
-		// This test against LocalPortNum should likely be against NeighborPortNum instead, but as this code is
-		// only called when communicating directly across the LocalPortNum link to this node, the point is moot
-        if ( (neighborInfo->NodeType != NI_TYPE_SWITCH) ||
-             ((neighborInfo->NodeType == NI_TYPE_SWITCH) && (neighborPI->LocalPortNum!=0)) ) {
-            if (neighborPI->VL.s2.Cap < sm_config.min_supported_vls) {
-				*quarantineReasons |= STL_QUARANTINE_REASON_VL_COUNT;
-                authentic = 0;
-                return (authentic);
-            }
-        }
-#endif
-	}
-
-    if (sm_config.sma_spoofing_check) {
-        if (cnp && cpp && neighborInfo) {
-            // LNI neighbor related fields only supported on external switch
-            // ports and enhanced switch ports
-            if (sm_stl_port(cpp) && 
-                (
-                    (cpp->index > 0 && cnp->nodeInfo.NodeType == NI_TYPE_SWITCH) || 
-                    (cpp->index == 0 && cnp->nodeInfo.NodeType == NI_TYPE_SWITCH && cnp->switchInfo.u2.s.EnhancedPort0)
-                )) {
-                switch (neighborInfo->NodeType) {
-                case NI_TYPE_SWITCH:
-                    if ((sm_config.neighborFWAuthenEnable && cpp->portData->portInfo.PortNeighborMode.NeighborFWAuthenBypass != 0) ||
-                        cpp->portData->portInfo.NeighborNodeGUID != neighborInfo->NodeGUID ||
-                        cpp->portData->portInfo.PortNeighborMode.NeighborNodeType != STL_NEIGH_NODE_TYPE_SW ||
-						cpp->portData->portInfo.NeighborPortNum != neighborInfo->u1.s.LocalPortNum ||
-						(neighborPI != NULL && cpp->portData->portInfo.NeighborPortNum != neighborPI->LocalPortNum)) {
-                        authentic = 0;
-						*quarantineReasons |= STL_QUARANTINE_REASON_SPOOF_GENERIC;
-                    }
-                    break;
-
-                case NI_TYPE_CA:
-                    expectedPortGuid = cpp->portData->portInfo.NeighborNodeGUID & ~(PORTGUID_PNUM_MASK << PORTGUID_PNUM_SHIFT);
-                    expectedPortGuid |= ((uint64)cpp->portData->portInfo.NeighborPortNum) << PORTGUID_PNUM_SHIFT;
-                    // for Gen-1 the HFI is never trusted, no need to check the
-                    // portInfo.PortNeighborMode.NeighborFWAuthenBypass field 
-                    if (cpp->portData->portInfo.NeighborNodeGUID != neighborInfo->NodeGUID ||
-                        cpp->portData->portInfo.PortNeighborMode.NeighborNodeType != STL_NEIGH_NODE_TYPE_HFI  ||
-                        expectedPortGuid != neighborInfo->PortGUID ||
-						cpp->portData->portInfo.NeighborPortNum != neighborInfo->u1.s.LocalPortNum ||
-						(neighborPI != NULL && cpp->portData->portInfo.NeighborPortNum != neighborPI->LocalPortNum)) {
-                        authentic = 0;
-						*quarantineReasons |= STL_QUARANTINE_REASON_SPOOF_GENERIC;
-                    }
-                    break;
-
-                default:
-					authentic = 0;
-					*quarantineReasons |= STL_QUARANTINE_REASON_SPOOF_GENERIC;
-                    break;
-                }
-
-				// neighbor node is an appliance, so ignore security violation
-				if (!authentic && sm_stl_appliance(cpp->portData->portInfo.NeighborNodeGUID)) {
-					authentic = 1;
-					// Unclear the generic spoof flag so we don't report predef violations as spoofing when using an appliance
-					*quarantineReasons &= ~STL_QUARANTINE_REASON_SPOOF_GENERIC;
-				}
-            }
-        }
-    }
-
-	return (authentic);
-}
-
-static __inline__ void sm_stl_quarantine_node(Topology_t *tp, Node_t *cnp, Port_t *cpp, Node_t *qnp, uint32 quarantineReasons, STL_EXPECTED_NODE_INFO* expNodeInfo, const STL_PORT_INFO *pQPI) {
-    QuarantinedNode_t * qnodep;
-
-    // allocate memory for quarantined node list entry
-    if (vs_pool_alloc(&sm_pool, sizeof(QuarantinedNode_t), (void *)&qnodep)) {
-        IB_LOG_WARN0("sm_setup_node: No memory for quarantined node entry"); 
-    } else {
-        // add to SM/SA repository quarantined link list used by the SA
-        memset(qnodep, 0, sizeof(QuarantinedNode_t));
-        qnodep->authenticNode = cnp;
-        qnodep->authenticNodePort = cpp;
-        qnodep->quarantinedNode = qnp;
-		qnodep->quarantineReasons = quarantineReasons;
-		memcpy(&qnodep->expNodeInfo, expNodeInfo, sizeof(STL_EXPECTED_NODE_INFO));
-        Node_Enqueue(tp, qnodep, quarantined_node_head, quarantined_node_tail);
-    }
-
-	if (cpp)	
-		cpp->portData->neighborQuarantined = 1;
-
-    // add to SM/SA repository quarantined map used by the SM
-    qnp->index = tp->num_quarantined_nodes++;
-    if (cpp && cl_qmap_insert(tp->quarantinedNodeMap,
-                       cpp->portData->portInfo.NeighborNodeGUID, // nodeGUID may be falsified, check with neighbor.
-                       &qnp->mapQuarantinedObj.item) == &qnp->mapQuarantinedObj.item) {
-        cl_qmap_set_obj(&qnp->mapQuarantinedObj, qnp);
-    }
-
-	if (pQPI) {
-		// Temporarily log an error until users become familar with this limitation (VL or MTU).
-		if (quarantineReasons & STL_QUARANTINE_REASON_VL_COUNT) {
-			IB_LOG_ERROR_FMT(__func__, "Node:%s guid:"FMT_U64" type:%s port:%d. Supported VLs(%d) too small(needs => %d). Quarantined.",
-			sm_nodeDescString(qnp), qnp->nodeInfo.NodeGUID, StlNodeTypeToText(qnp->nodeInfo.NodeType), pQPI->LocalPortNum,
-			pQPI->VL.s2.Cap, sm_config.min_supported_vls);
-			return;
-		}
-		if (quarantineReasons & STL_QUARANTINE_REASON_SMALL_MTU_SIZE) {
-			IB_LOG_ERROR_FMT(__func__, "Node:%s guid:"FMT_U64" type:%s port:%d. Supported MTU(%s) too small(needs => 2048). Quarantined.",
-			sm_nodeDescString(qnp), qnp->nodeInfo.NodeGUID, StlNodeTypeToText(qnp->nodeInfo.NodeType), pQPI->LocalPortNum,
-			IbMTUToText(pQPI->MTU.Cap));
-			return;
-		}
-	}
-
-	if (cpp) {
-		IB_LOG_ERROR_FMT(__func__, "Neighbor of %s %s [%s] guid "FMT_U64" on port %d could not be authenticated (node reports to "
-						"be a %s with NodeDesc [%s] and guid "FMT_U64" on port %d - but actual guid is "FMT_U64", on port %d)",
-						StlNodeTypeToText(cnp->nodeInfo.NodeType), (cnp == tp->node_head) ? "SM node" : "node",
-						sm_nodeDescString(cnp), cnp->nodeInfo.NodeGUID, cpp->index,
-						StlNodeTypeToText(qnp->nodeInfo.NodeType),
-						sm_nodeDescString(qnp), qnp->nodeInfo.NodeGUID,
-						qnp->nodeInfo.u1.s.LocalPortNum,
-						cpp->portData->portInfo.NeighborNodeGUID,
-						cpp->portData->portInfo.NeighborPortNum);
-		IB_LOG_ERROR_FMT(__func__, "Authentication expected from the neighbor guid "FMT_U64" neighbor node type %s",
-						cpp->portData->portInfo.NeighborNodeGUID,
-						OpaNeighborNodeTypeToText(cpp->portData->portInfo.PortNeighborMode.NeighborNodeType));
-	} else {
-		// Yes, the SM can fail authentication. (Failure in validation of pre-defined topology).
-		IB_LOG_ERROR_FMT(__func__, "SM's port failed authentication.");
-	}
-}
 
 // --------------------------------------------------------------------------- //
 
@@ -2139,9 +1989,6 @@ Status_t	sm_setup_lft(Topology_t *, Node_t *);
 Status_t	sm_send_lft(Topology_t *, Node_t *);
 Status_t	sm_setup_lft_deltas(Topology_t *, Topology_t *, Node_t *);
 Status_t	sm_send_partial_lft(Topology_t *, Node_t *, bitset_t *);
-Status_t	sm_copy_balanced_lfts(Topology_t *);
-Status_t	sm_calculate_balanced_lfts_systematic(Topology_t *);
-Status_t	sm_calculate_balanced_lft_deltas(Topology_t *);
 Status_t	sm_calculate_all_lfts(Topology_t *);
 Status_t	sm_dr_init(Mai_t *, uint32_t, uint32_t, uint32_t, uint64_t, uint8_t *);
 Status_t	sm_lr_init(Mai_t *, uint32_t, uint32_t, uint32_t, uint64_t, uint16_t, uint16_t);
@@ -2262,21 +2109,28 @@ uint8_t		is_switch_on_list(SwitchList_t *swlist_head, Node_t *switchp);
 Status_t    sm_set_linkinit_reason(Node_t *nodep, Port_t *portp, uint8_t initReason);
 Status_t	sm_verifyPortSpeedAndWidth(Topology_t *topop, Node_t *nodep, Port_t *portp);
 Status_t    sm_enable_port_led(Node_t *nodep, Port_t *portp, boolean enabled);
+void		sm_mark_link_down(Topology_t *topop, Port_t *portp);
+
+
 //
 // sm_routing.c prototypes
 //
 
-Status_t sm_routing_alloc_cost_matrix(Topology_t *topop);
-Status_t sm_routing_init_floyds(Topology_t *);
-Status_t sm_routing_calc_floyds(Topology_t *, int, unsigned short *);
-Status_t sm_routing_copy_cost_matrix(Topology_t *src_topop, Topology_t *dst_topop);
-Status_t sm_routing_copy_lfts(Topology_t *oldtp, Topology_t *newtp);
-Status_t sm_routing_prep_new_switch(Topology_t *topop, Node_t *nodep, int, uint8_t *path);
-Status_t sm_routing_route_switch_LR(Topology_t *topop, SwitchList_t *swlist, int rebalance);
-Status_t sm_routing_route_new_switch_LR(Topology_t *topop, SwitchList_t *swlist, int rebalance);
-Status_t sm_routing_route_old_switch(Topology_t *src_topop, Topology_t *dst_topop, Node_t *nodep);
-int      sm_balance_base_lids(SwitchportToNextGuid_t *ordered_ports, int olen);
-Status_t sm_routing_init(Topology_t * topop);
+Status_t	sm_routing_alloc_cost_matrix(Topology_t *topop);
+Status_t	sm_routing_init_floyds(Topology_t *);
+Status_t	sm_routing_calc_floyds(Topology_t *, int, unsigned short *);
+Status_t	sm_routing_copy_cost_matrix(Topology_t *src_topop, Topology_t *dst_topop);
+Status_t	sm_routing_copy_lfts(Topology_t *oldtp, Topology_t *newtp);
+Status_t	sm_routing_prep_new_switch(Topology_t *topop, Node_t *nodep, int, uint8_t *path);
+Status_t	sm_routing_route_switch_LR(Topology_t *topop, SwitchList_t *swlist, int rebalance);
+Status_t	sm_routing_route_new_switch_LR(Topology_t *topop, SwitchList_t *swlist, int rebalance);
+Status_t	sm_routing_route_old_switch(Topology_t *src_topop, Topology_t *dst_topop, Node_t *nodep);
+int     	sm_balance_base_lids(SwitchportToNextGuid_t *ordered_ports, int olen);
+Status_t	sm_routing_init(Topology_t * topop);
+Status_t	sm_copy_balanced_lfts(Topology_t *);
+Status_t	sm_calculate_balanced_lfts_systematic(Topology_t *);
+Status_t	sm_calculate_balanced_lft_deltas(Topology_t *);
+Status_t	sm_calculate_balanced_lft(Topology_t *topop, Node_t *switchp);
 
 //
 // sm_shortestpath.c prototypes
@@ -2693,8 +2547,8 @@ void		smSetAdaptiveRouting(uint32_t);
 void        smPauseResumeSweeps(boolean);
 void		smProcessReconfigureRequest(void);
 PortData_t *sm_alloc_port(Topology_t *topop, Node_t *nodep, uint32_t portIndex, int *bytes);
-void        sm_free_port(Port_t * portp);
-void        sm_node_free_port(Node_t *nodep);
+void        sm_free_port(Topology_t *topop, Port_t * portp);
+void        sm_node_free_port(Topology_t *topop, Node_t *nodep);
 Status_t    sm_build_node_array(Topology_t *topop);
 Status_t    sm_clearIsSM(void);
 void        sm_clean_vfdg_memory(void);

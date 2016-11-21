@@ -493,11 +493,12 @@ _init_switch_lfts_dg(Topology_t * topop, int * routing_needed, int * rebalance)
 	if (topop != sm_topop)
 		return VSTATUS_BAD;
 
-	if (*routing_needed) {
+	if (topology_cost_path_changes || *rebalance) {
 		// A topology change was indicated.  Re-calculate lfts with big hammer (rebalance).
 		// If not, copy and delta updates handled by main topology method.
 		s = dgmh_calculate_all_lfts(topop);
 		*rebalance = 1;
+		routing_recalculated = 1;
 	}
 
 	return s;
@@ -728,7 +729,6 @@ dgmh_make_routing_module(RoutingModule_t *rm)
 Status_t
 sm_dgmh_init(Topology_t *topop)
 {
-	
 	return sm_routing_addModuleFac("dgshortestpath", dgmh_make_routing_module);
 }
 

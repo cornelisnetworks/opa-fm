@@ -663,3 +663,48 @@ impl_vs_thread_start (void *impl)
     return 0;
 }
 
+/**********************************************************************
+*
+* FUNCTION
+*    impl_vs_thread_join
+*
+* DESCRIPTION
+*    Linux user space specific implementation of the vs_thread_join()
+*    API. This routine is called by the vs_thread_join() API.
+*
+* INPUTS
+*
+* OUTPUTS
+*      Status_t - On success VSTATUS_OK is returned, otherwise
+*      the cause of the error.
+*
+*
+* HISTORY
+*
+*   NAME    DATE        REMARKS
+*   SR     10/24/16    Initial creation of function.
+**********************************************************************/
+Status_t
+impl_vs_thread_join (Thread_t *handle, void **value_ptr)
+{
+    static const char function[] = "impl_vs_thread_join";
+    Status_t status;
+    Implpriv_Thread_t *impl;
+
+    IB_ENTER (function, (unint)handle, (unint) value_ptr, (uint32_t) 0U,
+              (uint32_t) 0U);
+
+    impl = (Implpriv_Thread_t *)handle->opaque;
+
+    if (!impl)
+    {
+        IB_LOG_ERROR0("Internal logic error, no create data");
+        IB_EXIT (function, VSTATUS_ILLPARM);
+        return -1;
+    }
+
+    status = pthread_join(impl->thread, NULL);
+
+    IB_EXIT (function, status);
+    return status;
+}

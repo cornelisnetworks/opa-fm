@@ -33,7 +33,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 static Status_t
-_setup_pgs(struct _Topology *topop, struct _Node * srcSw, const struct _Node * dstSw);
+_setup_pgs(struct _Topology *topop, struct _Node * srcSw, struct _Node * dstSw);
 
 typedef struct GuidCounter
 {
@@ -520,7 +520,7 @@ _setup_xft(Topology_t *topop, Node_t *switchp, Node_t *nodep, Port_t *orig_portp
 }
 
 static Status_t
-_setup_pgs(struct _Topology *topop, struct _Node * srcSw, const struct _Node * dstSw)
+_setup_pgs(struct _Topology *topop, struct _Node * srcSw, struct _Node * dstSw)
 {
 	SwitchportToNextGuid_t * ordered_ports = (SwitchportToNextGuid_t*) topop->pad;
 
@@ -966,7 +966,7 @@ _select_scsc_map(Topology_t *topop, Node_t *switchp, int getSecondary, int *numB
 
 	*numBlocks = 0;
 
-	if (getSecondary) 
+	if ((topology_passcount && !topology_switch_port_changes) || getSecondary) 
 		return VSTATUS_OK;
 
 	if (vs_pool_alloc(&sm_pool, sizeof(STL_SCSC_MULTISET), (void *) &scsc) != VSTATUS_OK) {
@@ -1020,26 +1020,6 @@ _select_scsc_map(Topology_t *topop, Node_t *switchp, int getSecondary, int *numB
 	return VSTATUS_OK;
 }
 
-
-static Status_t
-_select_updn_path_lids
-	( Topology_t *topop
-	, Port_t *srcPortp
-	, Port_t *dstPortp
-	, uint16_t *outSrcLid
-	, uint16_t *outDstLid
-	)
-{
-	return VSTATUS_OK;
-}
-
-static int
-_get_sl_for_path(Topology_t *topop, Node_t *srcNodep, Port_t *srcPortp, uint32_t slid,
-                 Node_t *dstNodep, Port_t *dstPortp, uint32_t dlid)
-{
-	return 0;
-}
-
 static Status_t process_swIdx_change(Topology_t * topop, int old_idx, int new_idx, int last_idx)
 {
 	return VSTATUS_OK;
@@ -1077,10 +1057,13 @@ _handle_fabric_change(Topology_t *topop, Node_t *oldSwitchp, Node_t *switchp)
 			// New ISL coming up
 			return 1;
 
-		portp = sm_get_port(oldSwitchp, port);
-		if (!sm_valid_port(portp) || portp->portData->isIsl)
-			// Moved from switch port to HFI
-			return 1;
+		if (bitset_test(&oldSwitchp->activePorts, port)) {
+			// If it was active, check to see if it was an ISL
+			portp = sm_get_port(oldSwitchp, port);
+			if (!sm_valid_port(portp) || portp->portData->isIsl)
+				// Moved from switch port to HFI
+				return 1;
+		}
 	}
 
 	if (!bitset_equal(&oldSwitchp->activePorts, &switchp->activePorts)) {
@@ -1109,16 +1092,17 @@ _copy_lfts_ft(Topology_t * src, Topology_t * dest)
 static Status_t
 _init_switch_lfts_ft(Topology_t * topop, int * routing_needed, int * rebalance)
 {
-	Status_t s;
+	Status_t s = VSTATUS_OK;
 
 	// Only work on sm_topop/sm_newTopology for now
 	if (topop != sm_topop)
 		return VSTATUS_BAD;
 
-	if (*routing_needed) {
+	if (topology_cost_path_changes || *rebalance) {
 		// A topology change was indicated.  Re-calculate lfts with big hammer (rebalance).
 		s = sm_calculate_balanced_lfts_systematic(topop);
 		*rebalance = 1;
+		routing_recalculated = 1;
 
 	} else if (	new_endnodesInUse.nset_m ||
 					old_topology.num_endports != topop->num_endports) {
@@ -1134,7 +1118,8 @@ _init_switch_lfts_ft(Topology_t * topop, int * routing_needed, int * rebalance)
 
 		s = sm_calculate_balanced_lft_deltas(topop);
 		*routing_needed = 1;
-	} else {
+
+	} else if (!*routing_needed) {
 		s = sm_copy_balanced_lfts(topop);
 	}
 
@@ -1150,11 +1135,12 @@ _init_switch_lfts_sp(Topology_t * topop, int * routing_needed, int * rebalance)
 	if (topop != sm_topop)
 		return VSTATUS_BAD;
 
-	if (*routing_needed) {
+	if (topology_cost_path_changes || *rebalance) {
 		// A topology change was indicated.  Re-calculate lfts with big hammer (rebalance).
 		// If not, copy and delta updates handled by main topology method.
 		s = sm_calculate_all_lfts(topop);
 		*rebalance = 1;
+		routing_recalculated = 1;
 	}
 
 	return s;
@@ -1163,13 +1149,7 @@ _init_switch_lfts_sp(Topology_t * topop, int * routing_needed, int * rebalance)
 static boolean
 _needs_lft_recalc(Topology_t * topop, Node_t * nodep)
 {
-	if (sm_config.shortestPathBalanced) {
-		// For balanced shortest path, LFTs are calculated in bulk in
-		// init_switch_lfts method.
-		return 0;
-	}
-
-	return (topop->routingModule->alg != SM_ROUTE_ALG_FATTREE);
+    return !routing_recalculated && !nodep->routingRecalculated;
 }
 
 static boolean
@@ -1244,8 +1224,6 @@ sm_shortestpath_make_routing_module(RoutingModule_t * rm)
 	rm->funcs.select_vlvf_map = sm_select_vlvf_map;
 	rm->funcs.fill_stl_vlarb_table = sm_fill_stl_vlarb_table;
 	rm->funcs.select_path_lids = sm_select_path_lids;
-	rm->funcs.select_updn_path_lids = _select_updn_path_lids;
-	rm->funcs.get_sl_for_path = _get_sl_for_path;
 	rm->funcs.process_swIdx_change = process_swIdx_change;
 	rm->funcs.check_switch_path_change = _check_switch_path_change;
 	rm->funcs.needs_lft_recalc = _needs_lft_recalc;
@@ -1275,6 +1253,7 @@ _make_fattree(RoutingModule_t * rm)
 		rm->name = "fattree";
 		rm->funcs.copy_lfts = _copy_lfts_ft;
 		rm->funcs.init_switch_lfts = _init_switch_lfts_ft;
+		rm->funcs.calculate_lft = sm_calculate_balanced_lft;
 		rm->funcs.can_send_partial_lft = _can_send_partial_lft_ft;
 		rm->alg = SM_ROUTE_ALG_FATTREE;
 	}

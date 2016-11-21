@@ -140,6 +140,7 @@ int oldSmActiveCount = 0;
 void dump_cost_array(uint16_t *);
 void showSmParms(void);
 
+Status_t topology_load_predef(void);
 Status_t topology_initialize(void);
 Status_t topology_discovery(void);
 Status_t topology_transition(void);
@@ -173,6 +174,7 @@ Status_t topology_update_cableinfo(void);
 typedef	Status_t  (*TFunc_t)(void);
 
 TFunc_t	topology_functions[] = {
+	topology_initialize,	// Initialize the local port.
 	topology_discovery,			// Initial exploration of the fabric
 	topology_transition,		// Determine if this SM should be MASTER or STANDBY.
 	topology_userexit,			// NOOP!
@@ -242,6 +244,7 @@ int		topology_cost_path_changes = 0;
 uint8_t topology_set_client_reregistration = 0;
 int		topology_changed_count = 0;
 uint32_t	topology_passcount = 0ull;
+int		routing_recalculated = 0;
 int     smSendOutMFTs = 0;              /* send mft changes to switches flag */
 sm_dispatch_t sm_asyncDispatch;
 uint32_t topology_port_bounce_log_num = 0; // Number of times we have logged a port bounce this sweep
@@ -769,13 +772,12 @@ topology_main(uint32_t argc, uint8_t ** argv)
 	(void)vs_thread_name(&sm_threads[SM_THREAD_TOPOLOGY].name);
 
 //
-//	Do the one time initialization needed for topology discovery.  Note that
-//	topology_initialize will not return until it is successful.
+//	Load pre-defined topology.
 //
 	(void)vs_lock(&new_topology_lock);
 	(void)vs_wrlock(&old_topology_lock);
 
-	status = topology_initialize();
+	status = topology_load_predef();
 
 	if (status == VSTATUS_OK) {
 		status = sm_routing_init(sm_topop);
@@ -855,6 +857,7 @@ topology_main(uint32_t argc, uint8_t ** argv)
         topology_changed = 0;
 		topology_switch_port_changes = 0;
 		topology_cost_path_changes = 0;
+		routing_recalculated = 0;
         status = VSTATUS_OK;
         topologSemCount = -1;
         topology_resweep = 0;
@@ -908,6 +911,8 @@ topology_main(uint32_t argc, uint8_t ** argv)
 
 			if (!sweepsPaused) {
 				char tempStr[256];
+				int prev_topo_errors = topo_errors;
+				int prev_topo_abandon_count = topo_abandon_count;
 
 				snprintf(tempStr, 256, "TT: DISCOVERY CYCLE START - REASON: %s\n", sweep_reasons[sm_resweep_reason]);
 #if !defined(__VXWORKS__)
@@ -925,6 +930,19 @@ topology_main(uint32_t argc, uint8_t ** argv)
 				for (i = 0; topology_functions[i] != NULL; i++) {
 					status = (topology_functions[i])();
 					if (status != VSTATUS_OK) {
+						// catch-all for any error condition that did not adjust the global topology
+						// error counter or topology abandonment counter  
+						if (topo_errors == prev_topo_errors)
+						   topo_errors++;
+						if (topo_abandon_count == prev_topo_abandon_count)
+						   topo_abandon_count++;
+						if (topo_errors > sm_config.topo_errors_threshold &&
+						   topo_abandon_count > sm_config.topo_abandon_threshold) {
+						   // abandonment threshold exceeded, so ignore error conditions and
+						   // continue the sweep of the entire fabric
+						   continue;
+						}
+
 						/*
 						 * PR# 101511
 						 * new topology is most likely incomplete.  This can be caused when a
@@ -1217,21 +1235,8 @@ topology_uninitialize(void)
 #endif
 
 Status_t
-topology_initialize(void)
+topology_load_predef(void)
 {
-	uint8_t path[64];
-	boolean portdown_warned = FALSE;
-
-#if defined(CAL_IBACCESS)
-	uint32_t mask;
-#endif
-	Status_t status;
-	STL_PORT_INFO portInfo;
-	STL_NODE_INFO nodeInfo;
-	STL_PORT_INFO neighborPortInfo;
-	STL_NODE_INFO neighborNodeInfo;
-	STL_SWITCH_INFO switchInfo;
-
 	IB_ENTER(__func__, 0, 0, 0, 0);
 
 	// If the pre-defined topology feature has been enabled, load and parse the file. (HSM only!)
@@ -1291,211 +1296,208 @@ topology_initialize(void)
 		}
 	}
 
-//
-//	According to C14-63, we need to wait until our port state is at least 
-//	in the "initialize" state.
-//
-    // Reset direct connect flag -
-    // This covers cases where the cable is removed from a direct connect hfi
-    // and then is re-inserted into a switch.
-    sm_hfi_direct_connect = FALSE; 
+	IB_EXIT(__func__, VSTATUS_OK);
+	return VSTATUS_OK;
+}
+
+static int
+verify_admin_membership(Port_t *portp)
+{
+	int vfi, dg;
+	VFConfig_t *vfp;
+	int okay = 0;
+
+	(void)vs_rdlock(&old_topology_lock);
+	if (old_topology.vfs_ptr) {
+
+		// Find the Admin VF.
+		for (vfi=0; 
+			vfi < old_topology.vfs_ptr->number_of_vfs &&
+			((old_topology.vfs_ptr->v_fabric[vfi].pkey & ~0x8000) != STL_DEFAULT_PKEY);
+			vfi++) {
+			// Empty body. Work is done in the conditional.
+		}
+
+		if (vfi >= old_topology.vfs_ptr->number_of_vfs) {
+			(void)vs_rwunlock(&old_topology_lock);
+			IB_LOG_ERROR_FMT(__func__,"Could not identify the Admin VF.");
+			goto done;
+		}
+
+		vfp = vf_config.vf[vfi];
+		IB_LOG_INFO_FMT(__func__,"\"%s\" is the admin VF.", vfp->name);
+
+		for (dg=0; dg < vfp->number_of_full_members; dg++) {
+			int dgIdx = smGetDgIdx(vfp->full_member[dg].member);
+			if (dgIdx != -1) {
+				if(isDgMember(dgIdx,portp->portData)) {
+					okay=1;
+					break;
+				}
+			}
+		}
+
+		if (!okay) {
+			IB_LOG_ERROR_FMT(__func__,
+				"SM's port is not a full member of the \"%s\" VF.",
+				vfp->name);
+		} else {
+			IB_LOG_INFO_FMT(__func__,
+				"SM's port is a full member of the \"%s\" fabric via the"
+				"\"%s\" group.",
+				vfp->name,
+				vfp->full_member[dg].member);
+		}
+	} else {
+		IB_LOG_ERROR_FMT(__func__,"Unabled to validate SM's membership in Admin VF.");
+	}
+
+done:
+	(void)vs_rwunlock(&old_topology_lock);
+	return okay;
+}
+
+Status_t
+topology_initialize(void)
+{
+	uint8_t path[64] = { 0 };
+
+	// Used by the IB_*_NOREPEAT macros. Declared static in case the function
+	// gets called multiple times in a single sweep.
+	static uint8_t lastMsg = 0;
+
+#if defined(CAL_IBACCESS)
+	uint32_t mask;
+#endif
+	Status_t status;
+	STL_PORT_INFO portInfo;
+	STL_NODE_INFO nodeInfo;
+	Port_t *portp;
+	Node_t *nodep;
+
+	IB_ENTER(__func__, 0, 0, 0, 0);
+
+
+	//
+	// Loop until we've successfully talked to the local port. In general, if
+	// we fail to get a MAD, or if a status check fails, wait a few seconds
+	// and re-start the loop.
+	//
 	do {
+		// Reset the path back to our local port.
+		memset(path,0, sizeof(path));
+
+		// Stop if we've been externally terminated.
 		if(topology_main_exit) {
 #ifdef __VXWORKS__
 			ESM_LOG_ESMINFO("Topology Task exiting OK.", 0);
 #endif
 			return(VSTATUS_BAD);
 		}
-		(void)memset((void *)path, 0, 64);
 
-        // get PortInfo record of the local port
-		status = SM_Get_PortInfo(fd_topology, (1<<24) | STL_SM_CONF_START_ATTR_MOD, path, &portInfo);
-			
+		// get PortInfo record of the local port
+		status = SM_Get_PortInfo(fd_topology, (1<<24) | STL_SM_CONF_START_ATTR_MOD,
+			path, &portInfo);
+
 		if (status != VSTATUS_OK) {
-			IB_LOG_ERRORRC("can't get PortInfo, sleeping rc:", status);
+			IB_WARN_NOREPEAT(lastMsg,1,"can't get PortInfo, sleeping rc: %u", status);
 			vs_thread_sleep(5 * VTIMER_1S);
 			continue;
 		}
 
-        // get NodeInfo record of the local port
-    	status = SM_Get_NodeInfo(fd_topology, 0, path, &nodeInfo);
-		if (status != VSTATUS_OK) {
-			IB_LOG_ERRORRC("can't get NodeInfo, sleeping rc:", status);
-			vs_thread_sleep(5 * VTIMER_1S);
-			continue;
-		}
-
-		if ((sm_config.port != 0) && (portInfo.PortStates.s.PortState < IB_PORT_INIT)) {
-			if (!portdown_warned) {
-				IB_LOG_WARN0("HFI Port is DOWN.");
-				IB_LOG_WARN_FMT(__func__,"Waiting for port (portnum=%d) to reach state INIT (portstate=%s)...", 
-						sm_config.port, IbPortStateToText(portInfo.PortStates.s.PortState));
-				portdown_warned=TRUE;
-			}
+		if (portInfo.PortStates.s.PortState < IB_PORT_INIT) {
+			// Wait until the port is at least in INIT because the LNI process
+			// may change the local pkey table and other port information.
+			//
+			// Note that we use the portdown_warned flag to prevent the log
+			// from being flooded with warnings.
+			IB_WARN_NOREPEAT(lastMsg,2,"Waiting for port (portnum=%d)"
+				" to reach state INIT (portstate=%s)...",
+				sm_config.port,
+				IbPortStateToText(portInfo.PortStates.s.PortState));
 			vs_thread_sleep(5 * VTIMER_1S);
 			status = VSTATUS_BAD;
 			continue;
-		} 
-			// validate the privilege level of the local SM
-        switch (nodeInfo.NodeType) {
-        case NI_TYPE_SWITCH:
-            // get SwitchInfo record of the local switch
-            status = SM_Get_SwitchInfo(fd_topology, 0, path, &switchInfo);
-            if (status != VSTATUS_OK) {
-                IB_LOG_ERRORRC("can't get local SwitchInfo, sleeping rc:", status);
-                vs_thread_sleep(5 * VTIMER_1S);
-                continue;
-            }
+		}
 
-            if (!switchInfo.u2.s.EnhancedPort0) {
-                status = VSTATUS_MISMATCH;
-                IB_LOG_ERRORRC("MgmtAllowed not enabled for the local Embedded SM, sleeping rc:", status);
-                vs_thread_sleep(5 * VTIMER_1S);
-                continue;
-            }
+		// Get NodeInfo record of the local port.
+		status = SM_Get_NodeInfo(fd_topology, 0, path, &nodeInfo);
+		if (status != VSTATUS_OK) {
+			IB_WARN_NOREPEAT(lastMsg,3, "can't get NodeInfo, sleeping rc: %u", status);
+			vs_thread_sleep(5 * VTIMER_1S);
+			continue;
+		}
 
-			// set PKey table of the local Enhanced Port 0
-			status = sm_set_local_port_pkey(&nodeInfo);
+		//
+		// Verify that the port has MgmtAllowed authority.
+		//
+		if (nodeInfo.NodeType == NI_TYPE_SWITCH) {
+			// get SwitchInfo record of the local switch
+			STL_SWITCH_INFO switchInfo;
+			status = SM_Get_SwitchInfo(fd_topology, 0, path, &switchInfo);
 			if (status != VSTATUS_OK) {
-				IB_LOG_ERRORRC("can't set PKey table, sleeping rc:", status);
+				IB_WARN_NOREPEAT(lastMsg,4,"can't get local SwitchInfo, sleeping rc: %u", status);
 				vs_thread_sleep(5 * VTIMER_1S);
 				continue;
 			}
-            break;
 
-        case NI_TYPE_CA:
-            {
-                // set PKey table of the local HSM port
-                status = sm_set_local_port_pkey(&nodeInfo);
-                if (status != VSTATUS_OK) {
-                    IB_LOG_ERRORRC("can't set PKey table, sleeping rc:", status);
-                    vs_thread_sleep(5 * VTIMER_1S);
-                    continue;
-                }
+			if (!switchInfo.u2.s.EnhancedPort0) {
+				status = VSTATUS_MISMATCH;
+				IB_WARN_NOREPEAT(lastMsg,5, "MgmtAllowed not enabled for the local "
+					"Embedded SM, sleeping rc: %u", status);
+				vs_thread_sleep(5 * VTIMER_1S);
+				continue;
+			}
 
-                // get NodeInfo record of the neighbor to determine whether this
-                // may be a back-to-back setup
-                path[0]++;                          // element zero is path length
-                path[path[0]] = sm_config.port;		// add this port to the end
-                status = SM_Get_NodeInfo(fd_topology, 0, path, &neighborNodeInfo);
-
-                if (status != VSTATUS_OK) {
-                    IB_LOG_ERRORRC("can't get neighbor NodeInfo, sleeping rc:", status);
-                    if((portInfo.PortNeighborMode.NeighborNodeType == STL_NEIGH_NODE_TYPE_SW) &&  (!portInfo.PortNeighborMode.MgmtAllowed)){
-                        IB_LOG_ERROR0("Host SM's port is connected to switch port, mgmtAllowed not set");
-                    }
-                    vs_thread_sleep(5 * VTIMER_1S);
-                    continue;
-                }
-
-                switch (neighborNodeInfo.NodeType) {
-                case NI_TYPE_CA:
-                    IB_LOG_INFINI_INFO0("Host SM's port is connected to another HFI port");
-                    sm_hfi_direct_connect = TRUE;
-                    break;
-
-				// We need to explicitly test MgmtAllowed from our neighbor to properly
-				// support internal simulation and diagnostic tools
-                case NI_TYPE_SWITCH:
-                    // Get the port info of the switch port connected to ours.
-                    status = SM_Get_PortInfo(fd_topology, (1<<24) | neighborNodeInfo.u1.s.LocalPortNum | STL_SM_CONF_START_ATTR_MOD, path, &neighborPortInfo);
-
-                    if (status != VSTATUS_OK) {
-                        IB_LOG_ERRORRC("can't get neighbor PortInfo, sleeping rc:", status);
-                        vs_thread_sleep(5 * VTIMER_1S);
-                        continue;
-                    }
-
-                    // Its an error if mgmt allowed is not set.
-                    if (!neighborPortInfo.PortNeighborMode.MgmtAllowed) {
-                        status = VSTATUS_MISMATCH;
-                        IB_LOG_ERROR0("Host SM's port is connected to switch port, mgmtAllowed not set");
-                        vs_thread_sleep(5 * VTIMER_1S);
-                        continue;
-                    }
-                    break;
-
-                default:
-                    status = VSTATUS_NOSUPPORT;
-                    IB_LOG_ERRORRC("Host SM's port is connected to unsupported node type, sleeping rc:", status);
-                    vs_thread_sleep(5 * VTIMER_1S);
-                    continue;
-                }
-            }
-            break;
-
-        default:
-            status = VSTATUS_NOSUPPORT;
-            IB_LOG_ERRORRC("Node type not supported for the local SM, sleeping rc:", status);
-            vs_thread_sleep(5 * VTIMER_1S);
-            break;
-        }
-
-
-#if defined(IB_STACK_OPENIB)
-        status = ib_enable_is_sm();
-		if (status != VSTATUS_OK) {
-			IB_LOG_ERRORRC("can't set isSM, sleeping rc:", status);
+		} else if (nodeInfo.NodeType == NI_TYPE_CA) {
+			if (portInfo.PortNeighborMode.NeighborNodeType ==
+				STL_NEIGH_NODE_TYPE_HFI) {
+				// Back to back configuration.
+				sm_hfi_direct_connect = TRUE;
+				IB_LOG_INFO_FMT(__func__,"Host SM's port is connected to an "
+					"hfi port.");
+			} else if (portInfo.PortNeighborMode.NeighborNodeType ==
+				STL_NEIGH_NODE_TYPE_SW) {
+				// Normal fabric configuration.
+				sm_hfi_direct_connect = FALSE;
+				if (!portInfo.PortNeighborMode.MgmtAllowed) {
+					IB_WARN_NOREPEAT(lastMsg,6,"Host SM's port is connected to a"
+						" switch port but MgmtAllowed is not set. sleeping rc: %u",
+						VSTATUS_BAD);
+					vs_thread_sleep(5 * VTIMER_1S);
+					status = VSTATUS_BAD;
+					continue;
+				} else {
+					IB_LOG_INFO_FMT(__func__,"Host SM's port is connected to a "
+						"switch port.");
+				}
+			} else {
+				IB_ERROR_NOREPEAT(lastMsg,7,"SM's port is connected to an"
+						" unknown type of node (NeighborNodeType = %d)",
+						portInfo.PortNeighborMode.NeighborNodeType);
+				vs_thread_sleep(5 * VTIMER_1S);
+				status = VSTATUS_BAD;
+				continue;
+			}
+		} else {
+			status = VSTATUS_MISMATCH;
+			IB_WARN_NOREPEAT(lastMsg,8, "SM is running on an unknown node type. sleeping rc: %u",
+				status);
 			vs_thread_sleep(5 * VTIMER_1S);
 			continue;
 		}
-#elif defined(CAL_IBACCESS)
-		mask = portInfo.CapabilityMask.AsReg32;
-		#if 0
-        /* we set/clear the isSm capability mask when we register/unregister with the Ism SM class */
-		status = sm_get_CapabilityMask(fd_topology, sm_config.port, &mask);
-		if (status != VSTATUS_OK) {
-			IB_LOG_ERRORRC("can't get isSM, sleeping rc:", status);
-			vs_thread_sleep(5 * VTIMER_1S);
-			continue;
-		}
-		#endif
-		mask |= PI_CM_IS_SM;
-		status = sm_set_CapabilityMask(fd_topology, sm_config.port, mask);
-		if (status != VSTATUS_OK) {
-			IB_LOG_ERRORRC("can't set isSM, sleeping rc:", status);
-			vs_thread_sleep(5 * VTIMER_1S);
-			continue;
-		}
-#endif
 	} while (status != VSTATUS_OK);
 
-//
-//	Initialize the interlock.
-//
-	topology_wakeup_time = 0ull;
-
-	IB_EXIT(__func__, VSTATUS_OK);
-	return(VSTATUS_OK);
-}
-
-Status_t
-topology_discovery(void)
-{
-	int		i;
-	int		start_port;
-	int		end_port;
-	int		temp_lmc;
-	uint8_t		path[72];
-	uint8_t		*bufp;
-	Node_t		*nodep;
-	Port_t		*portp, *neighborPortp = NULL;
-	Status_t	status;
-    STL_SMINFO_RECORD sminforec={{0}, 0};
-    uint64_t    sTime, eTime;
-	void *routingContext;
-
-	IB_ENTER(__func__, 0, 0, 0, 0);
-
-	bufp = sm_topop->pad;
-	sm_topop->num_ports = sm_topop->num_sws = sm_topop->max_sws = sm_topop->num_endports = 0;
-
-//
-//	Clear the new topology.
-//
+	//
+	// Clear and initialize the new topology structure.
+	// Note that our caller must hold the new topology lock.
+	//
 	(void)memset((void *)&sm_newTopology, 0, sizeof(Topology_t));
 
-	//update the new topology's virtual fabrics ptr and save off the old ptr to be deleted later
+	//
+	// Update the new topology's virtual fabrics ptr and save off the old ptr
+	// to be deleted later
+	//
 	if (updatedVirtualFabrics) {
 		sm_newTopology.vfs_ptr = updatedVirtualFabrics;
 		previousVfPtr = old_topology.vfs_ptr;
@@ -1510,32 +1512,28 @@ topology_discovery(void)
 	bitset_clear_all(&new_switchesInUse);
 	bitset_clear_all(&new_endnodesInUse);
 
-	// JPG - Initialize the quick maps that store the sorted GUID lists
+	// Initialize the quick maps that store the sorted GUID lists
 	status = vs_pool_alloc(&sm_pool, sizeof(cl_qmap_t), (void *)&sm_newTopology.nodeIdMap);
 	if (status != VSTATUS_OK) {
-		IB_LOG_ERROR0("can't malloc node Id map");
-		IB_EXIT(__func__, status);
+		IB_ERROR_NOREPEAT(lastMsg,9,"can't malloc node Id map: %u", status);
 		return(status);
 	}
 	
 	status = vs_pool_alloc(&sm_pool, sizeof(cl_qmap_t), (void *)&sm_newTopology.nodeMap);
 	if (status != VSTATUS_OK) {
-		IB_LOG_ERROR0("can't malloc node map");
-		IB_EXIT(__func__, status);
+		IB_ERROR_NOREPEAT(lastMsg,10,"can't malloc node map: %u", status);
 		return(status);
 	}
 	
 	status = vs_pool_alloc(&sm_pool, sizeof(cl_qmap_t), (void *)&sm_newTopology.portMap);
 	if (status != VSTATUS_OK) {
-		IB_LOG_ERROR0("can't malloc port map");
-		IB_EXIT(__func__, status);
+		IB_ERROR_NOREPEAT(lastMsg,11,"can't malloc port map: %u", status);
 		return(status);
 	}
 	
 	status = vs_pool_alloc(&sm_pool, sizeof(cl_qmap_t), (void *)&sm_newTopology.quarantinedNodeMap);
 	if (status != VSTATUS_OK) {
-		IB_LOG_ERROR0("can't malloc node map");
-		IB_EXIT(__func__, status);
+		IB_ERROR_NOREPEAT(lastMsg,12,"can't malloc node map: %u", status);
 		return(status);
 	}
 
@@ -1574,8 +1572,119 @@ unlock_bail:
 
 	vs_rwunlock(&old_topology_lock);
 	if (status != VSTATUS_OK) {
+		IB_ERROR_NOREPEAT(lastMsg,13,"Failed to initialize routing module. Sleeping rc: %u", status);
 		return status;
 	}
+
+	(void)memset((void *)path, 0, sizeof(path));
+	status = sm_setup_node(sm_topop, &preDefTopology, NULL, NULL,
+		path, sm_topop->pad);
+	if (status != VSTATUS_OK) {
+		IB_ERROR_NOREPEAT(lastMsg,14, "Can't set up my local node, sleeping rc: %u", status);
+		return status;
+	}
+
+	nodep = sm_topop->node_head;
+	if (!nodep) {
+		IB_ERROR_NOREPEAT(lastMsg,15,"Local node has not been initialized, sleeping rc: %u", status);
+		return VSTATUS_BAD;
+	}
+	if (!sm_valid_port((portp = sm_get_port(nodep,sm_config.port)))) {
+		IB_ERROR_NOREPEAT(lastMsg,16,"Failed to get a valid SM port, sleeping rc: %u", VSTATUS_BAD);
+		return(VSTATUS_BAD);
+    }
+
+	//
+	// Validate our Admin VF membership. We could not do this until after
+	// sm_setup_node() had been run on our local node.
+	//
+	if (!verify_admin_membership(portp)) {
+		IB_ERROR_NOREPEAT(lastMsg,16,"SM port is not a full member of the admin VF, "
+			"sleeping rc: %u", VSTATUS_BAD);
+		vs_thread_sleep(5 * VTIMER_1S);
+		return VSTATUS_BAD;
+	}
+
+	//
+	// Always set the pkey here. In the B2B case it isn't set in LNI,
+	// in the switch case, the pkey is set in LNI but might have been
+	// cleared by another SM after LNI but before we started.
+	//
+	status = sm_set_local_port_pkey(&nodeInfo);
+	if (status != VSTATUS_OK) {
+		IB_ERROR_NOREPEAT(lastMsg,17, "can't set PKey table, sleeping rc: %u", status);
+		return status;
+	}
+
+	//
+	// Verify we can talk to our neighbor.
+	// Note that there's no equivalent check for the ESM because switch port 0
+	// doesn't have a neighbor.
+	//
+	if (nodeInfo.NodeType == NI_TYPE_CA) {
+		STL_NODE_INFO neighborNodeInfo;
+		// Build a 1 hop DR path.
+		path[0]++;
+		path[path[0]] = sm_config.port;
+
+		// Verify we can talk to our neighbor.
+		status = SM_Get_NodeInfo(fd_topology, 0, path, &neighborNodeInfo);
+		if (status != VSTATUS_OK) {
+			IB_ERROR_NOREPEAT(lastMsg,18, "Can't get neighbor NodeInfo, sleeping rc: %u", status);
+			return status;
+		}
+	}
+
+	// Announce that we are an SM. Note that this is safe to do on each sweep.
+#if defined(IB_STACK_OPENIB)
+	status = ib_enable_is_sm();
+	if (status != VSTATUS_OK) {
+		IB_ERROR_NOREPEAT(lastMsg,19, "Can't set isSM, sleeping rc: %u", status);
+		return status;
+	}
+#elif defined(CAL_IBACCESS)
+	mask = portInfo.CapabilityMask.AsReg32 | PI_CM_IS_SM;
+	status = sm_set_CapabilityMask(fd_topology, sm_config.port, mask);
+	if (status != VSTATUS_OK) {
+		IB_ERROR_NOREPEAT(lastMsg,19, "can't set isSM, sleeping rc: %u", status);
+		return status;
+	}
+#endif
+
+	// Rather than get the port info again, just to get the updated capmask,
+	// let's just set the bit in the capmask we've already got:
+	portp->portData->capmask |= PI_CM_IS_SM;
+
+	topology_wakeup_time = 0ull;
+
+	// We've completed successfully, clear the IB_*_ONCE tracking.
+	lastMsg = 0;
+
+	IB_EXIT(__func__, VSTATUS_OK);
+	return(VSTATUS_OK);
+}
+
+Status_t
+topology_discovery(void)
+{
+	int		i;
+	int		start_port;
+	int		end_port;
+	int		temp_lmc;
+	uint8_t		path[72];
+	uint8_t		*bufp;
+	Node_t		*nodep;
+	Port_t		*portp, *neighborPortp = NULL;
+	Status_t	status;
+    STL_SMINFO_RECORD sminforec={{0}, 0};
+    uint64_t    sTime, eTime;
+	void *routingContext;
+
+
+	IB_ENTER(__func__, 0, 0, 0, 0);
+
+	bufp = sm_topop->pad;
+	sm_topop->num_ports = sm_topop->num_sws = sm_topop->max_sws = sm_topop->num_endports = 0;
 
 	if (sm_topop->routingModule == NULL) {
 		RoutingModule_t * newMod = NULL;
@@ -1609,99 +1718,20 @@ unlock_bail:
 		return status;
 	}
 
-//
-//	Find out about the Node that I am on.  The SM will stay here until it can
-//	successfully determine the characteristics of its node/port.  In particular,
-//	if the CAL or underlying HW goes out to lunch, the SM will be stuck at this
-//	piece of code.
-//
-	(void)memset((void *)path, 0, 72);
-	while ((status = sm_setup_node(sm_topop, &preDefTopology, NULL, NULL, path, bufp)) != VSTATUS_OK) {
-		if(topology_main_exit == 1){
-#ifdef __VXWORKS__
-			ESM_LOG_ESMINFO("topology_discovery: SM has been stopped", 0);
-            IB_EXIT(__func__, VSTATUS_OK);
-#endif
-            return(VSTATUS_OK);
-		}
-		IB_LOG_ERRORRC("can't set up my port, sleeping rc:", status);
-		vs_thread_sleep(5 * VTIMER_1S);
-	}
-
+	//
+	//	Find out about the Node that I am on.
+	//
 	nodep = sm_topop->node_head;
+	if (!nodep) {
+		IB_LOG_ERROR_FMT(__func__,"Local node has not been initialized.");
+		return VSTATUS_BAD;
+	}
 	if (!sm_valid_port((portp = sm_get_port(nodep,sm_config.port)))) {
 		IB_LOG_ERROR0("failed to get SM port");
 		sm_topop->routingModule->funcs.post_process_discovery(sm_topop, VSTATUS_BAD, routingContext);
-		IB_EXIT(__func__, VSTATUS_BAD);
-		return(VSTATUS_BAD);
+		return VSTATUS_BAD;
     }
 
-	(void)memset((void *)portp->path, 0, 64);
-
-	// Make sure we still have permission to send SMAs.
-	do {
-		STL_PARTITION_TABLE pkeyTable = {{{0}}};
-
-		if(topology_main_exit) {
-#ifdef __VXWORKS__
-			ESM_LOG_ESMINFO("Topology Task exiting OK.", 0);
-#endif
-			return(VSTATUS_BAD);
-		}
-
-        // Don't check the pkey table till we are in at least INIT state,
-        // because the pkeys might change during LNI.
-		status = SM_Get_PortInfo(fd_topology, (1<<24) | STL_SM_CONF_START_ATTR_MOD, portp->path, &(portp->portData->portInfo));
-
-		if (status != VSTATUS_OK) {
-			IB_LOG_ERRORRC("Can't get local PortInfo, status:", status);
-			vs_thread_sleep(5 * VTIMER_1S);
-			continue;
-		} else if (portp->portData->portInfo.PortStates.s.PortState < IB_PORT_INIT) {
-			IB_LOG_WARN_FMT(__func__, "Local port is not yet in INIT.");
-			status = VSTATUS_BAD;
-			vs_thread_sleep(5 * VTIMER_1S);
-			continue;
-		}
-
-		status = SM_Get_PKeyTable(fd_topology, 1<<24, portp->path, &pkeyTable, 0);
-
-		if 	((status != VSTATUS_OK) ||
-			(pkeyTable.PartitionTableBlock[STL_DEFAULT_FM_PKEY_IDX].AsReg16 !=
-			 STL_DEFAULT_FM_PKEY)) {
-
-			if (status != VSTATUS_OK) {
-				IB_LOG_ERRORRC("Could not retrieve local PKey table. Status: ", status);
-				vs_thread_sleep(5 * VTIMER_1S);
-				continue;
-			}
-
-			// Force the pkey.
-			IB_LOG_ERROR_FMT(__func__,
-				"FM Pkey 0x%x not present in the local Pkey table.",
-				STL_DEFAULT_FM_PKEY);
-
-			// For 10.3 only. For 10.4 we need to rework how
-			// re-initialization of the local port is handled.
-			IB_LOG_WARN_FMT(__func__,
-				"Setting FM Pkey 0x%x in the local Pkey table.",
-				STL_DEFAULT_FM_PKEY);
-			status = sm_set_local_port_pkey(&nodep->nodeInfo);
-		}
-	} while (status != VSTATUS_OK);
-
-	IB_LOG_INFO_FMT(__func__, "Local Port and PKey are okay.");
-
-    /* 
-     * add ourselves to the SM list during first sweep
-     */
-    if (!topology_passcount) {
-        sminforec.RID.LID = sm_lid;
-        memcpy((void *)&sminforec.SMInfo, (void *)&sm_smInfo, sizeof(sminforec.SMInfo));
-        (void) sm_dbsync_addSm(sm_topop->node_head, portp, &sminforec);
-    }
-
-	
 	vs_time_get(&sm_newTopology.sweepStartTime);
 
 //
@@ -1711,6 +1741,9 @@ unlock_bail:
         vs_time_get(&sTime);
         IB_LOG_INFINI_INFO0("START directed route exploration of fabric");
     }
+
+	// Note that the node list can grow while we are inside this loop, so
+	// we are guaranteed to loop over all new and existing nodes in the fabric.
 	for_all_nodes(sm_topop, nodep) {
 		if ((nodep != sm_topop->node_head) && (nodep->nodeInfo.NodeType != NI_TYPE_SWITCH)) {
 			continue;
@@ -1753,6 +1786,7 @@ unlock_bail:
 			return status;
 		}
 
+		// Add all the neighbors of this node to the list of nodes.
 		for (i = start_port; i <= end_port; i++) {
 			if ((portp = sm_get_port(nodep,i)) == NULL || portp->state <= IB_PORT_DOWN) {
 				continue;
@@ -1791,8 +1825,7 @@ unlock_bail:
 					" unable to setup port[%d] of node %s, nodeGuid "FMT_U64
 					", ignoring port!", portp->index, sm_nodeDescString(nodep),
 					nodep->nodeInfo.NodeGUID);
-				portp->state = IB_PORT_DOWN;
-				DECR_PORT_COUNT(sm_topop, nodep);
+				sm_mark_link_down(sm_topop, portp);
 				topology_changed = 1;	/* indicates a fabric change has been detected */
 
 #ifndef __VXWORKS__
@@ -1904,9 +1937,23 @@ unlock_bail:
 		}
 	}
 
+    /* 
+     * add ourselves to the SM list during first sweep
+     */
+    if (!topology_passcount) {
+        sminforec.RID.LID = sm_lid;
+        memcpy((void *)&sminforec.SMInfo, (void *)&sm_smInfo, sizeof(sminforec.SMInfo));
+        if (!sm_valid_port((portp = sm_get_port(sm_topop->node_head,sm_config.port)))) {
+            IB_LOG_ERROR0("failed to get SM port");
+            IB_EXIT(__func__, VSTATUS_BAD);
+            return(VSTATUS_BAD);
+        }
+
+        (void) sm_dbsync_addSm(sm_topop->node_head, portp, &sminforec);
+    }
+	
 	// discovery went well, build the node array
 	status = sm_build_node_array(sm_topop);
-	sm_topop->max_sws = bitset_find_last_one(&new_switchesInUse)+1;
 	if (status != VSTATUS_OK)
 		IB_LOG_INFINI_INFORC("failed to build node array: node lookup optimization is disabled for this sweep. rc:", status);
 
@@ -2229,12 +2276,7 @@ topology_resolve(void)
 				topology_changed = 1;
 				if (sm_set_lid(nodep, portp, temp_lmc) == RESERVED_LID) {
 					IB_LOG_ERROR0("no more LID space");
-					portp->state = IB_PORT_DOWN;
-                    DECR_PORT_COUNT(sm_topop, nodep);
-
-					Port_t *neigh = sm_find_port(sm_topop, portp->nodeno, portp->portno);
-					if (sm_valid_port(neigh))
-						neigh->state = IB_PORT_DOWN;
+					sm_mark_link_down(&sm_newTopology, portp);
 				}
 			}
 		}
@@ -2316,8 +2358,10 @@ Status_t topology_setup_switches_LR_DR()
 		routing_needed = 1;
 	}
 
-	if (sm_config.force_rebalance || rebalance || sm_config.forceAttributeRewrite)
+	if (sm_config.force_rebalance || rebalance || sm_config.forceAttributeRewrite) {
 		routing_needed = 1;
+		rebalance = 1;
+	}
 
 	/* First initialize and assign LID to the SM port so that SM can send/recv LR SMPs*/
 	portp = sm_get_port(sm_topop->node_head, sm_config.port);
@@ -2350,6 +2394,7 @@ Status_t topology_setup_switches_LR_DR()
 	}
 
 	/* First program the root switch*/
+	/* RMW - TBD - this will write entry switch LRDR even in case of loss/gain of remote ISL */
 	if (!bitset_test(&old_switchesInUse, sm_topop->switch_head->swIdx) || routing_needed)
 		route_root_switch = 1;
 	else
@@ -2451,8 +2496,7 @@ static Status_t buffer_control_assignments(void)
 						++topo_abandon_count <= sm_config.topo_abandon_threshold) {
 					goto exit;
 			    }
-			    portp->state = IB_PORT_DOWN;
-			    DECR_PORT_COUNT(sm_topop, nodep);
+			    sm_mark_link_down(sm_topop, portp);
 			    topology_changed = 1;   /* indicates a fabric change has been detected */
 			    IB_LOG_ERROR_FMT(__func__,
 			           "Failed to init Buffer Control (setting port down) on node %s nodeGuid "FMT_U64" node index %d port index %d",
@@ -2735,9 +2779,7 @@ topology_assignments(void)
                             return(status);
                         }
                     }
-					/* MWHEINZ - FIXME - I suspect this can cause problems if the port state isn't really down. */
-					portp->state = IB_PORT_DOWN;
-                    DECR_PORT_COUNT(sm_topop, nodep);
+                    sm_mark_link_down(sm_topop, portp);
                     topology_changed = 1;   /* indicates a fabric change has been detected */
 					IB_LOG_ERROR_FMT(__func__,
 					       "Marking port[%d] of node[%d] %s guid "FMT_U64" DOWN in the topology",
@@ -2833,8 +2875,7 @@ topology_assignments(void)
                         return(status);
                     }
 
-                    portp->state = IB_PORT_DOWN; 
-                    DECR_PORT_COUNT(sm_topop, nodep); 
+                    sm_mark_link_down(sm_topop, portp);
                     topology_changed = 1;   /* indicates a fabric change has been detected */
                     IB_LOG_ERROR_FMT(__func__, 
                                      "Failed to init SCVL map (setting port down) on node %s nodeGuid "
@@ -2860,8 +2901,7 @@ topology_assignments(void)
                         return(status);
                     }
 
-                    portp->state = IB_PORT_DOWN; 
-                    DECR_PORT_COUNT(sm_topop, nodep); 
+                    sm_mark_link_down(sm_topop, portp);
                     topology_changed = 1;   /* indicates a fabric change has been detected */
                     IB_LOG_ERROR_FMT(__func__, 
                                      "Failed to init VL Arb (setting port down) on node %s nodeGuid "
@@ -2943,8 +2983,7 @@ topology_assignments(void)
                         ++topo_abandon_count <= sm_config.topo_abandon_threshold) {
                         return(status);
                     }
-					portp->state = IB_PORT_DOWN;
-                    DECR_PORT_COUNT(sm_topop, nodep);
+                    sm_mark_link_down(sm_topop, portp);
                     topology_changed = 1;   /* indicates a fabric change has been detected */
 					IB_LOG_ERROR_FMT(__func__,
 					       "Failed to init SL2SC/SC2SL Map (setting port down) on node %s nodeGuid "FMT_U64" node index %d port index %d",
@@ -2965,8 +3004,7 @@ topology_assignments(void)
                         ++topo_abandon_count <= sm_config.topo_abandon_threshold) {
                         return(status);
                     }
-                    portp->state = IB_PORT_DOWN;
-                    DECR_PORT_COUNT(sm_topop, nodep);
+                    sm_mark_link_down(sm_topop, portp);
                     topology_changed = 1;   /* indicates a fabric change has been detected */
                     IB_LOG_ERROR_FMT(__func__,
                            "Failed to init VL Arb (setting port down) on node %s nodeGuid "FMT_U64" node index %d port index %d",
@@ -3948,6 +3986,31 @@ topology_saveLdr(Topology_t * topo, uint64_t guid, Port_t * port)
 	cl_qmap_insert(topo->ldrCache, (long int)&t->key, &t->mapItem);
 }
 
+void
+topology_log_isl_change(Topology_t *old_topo, Node_t *nodep, Port_t *portp, SmCsmMsgCondition_t condition, char *detail)
+{
+	Port_t *linkedToPortp = NULL;
+	SmCsmNodeId_t csmNode, csmConnectedNode;
+
+	if (portp->portData->pLid == 0xC000) {
+		smCsmFormatNodeId(&csmNode, (uint8_t *)sm_nodeDescString(nodep), portp->index, nodep->nodeInfo.NodeGUID);
+
+		if (  (linkedToPortp = sm_find_port(old_topo, portp->nodeno, portp->portno)) != NULL
+			 && sm_valid_port(linkedToPortp)) {
+			smCsmFormatNodeId(&csmConnectedNode, (uint8_t *)sm_nodeDescString(linkedToPortp->portData->nodePtr),
+												linkedToPortp->index, (linkedToPortp->portData->nodePtr)->nodeInfo.NodeGUID);
+			smCsmLogMessage(CSM_SEV_NOTICE, condition, &csmNode, &csmConnectedNode, detail);
+		} else {
+			smCsmLogMessage(CSM_SEV_NOTICE, condition, &csmNode, NULL, detail);
+		}
+	} else {
+		if (  (linkedToPortp = sm_find_port(old_topo, portp->nodeno, portp->portno)) != NULL
+			 && sm_valid_port(linkedToPortp)) {
+			linkedToPortp->portData->pLid = 0xC000;
+		}
+	}
+}
+
 //
 //	Find what changed between the two fabrics
 //	Send GID In/out service traps
@@ -3961,11 +4024,11 @@ topology_changes(Topology_t *old_topo, Topology_t *new_topo)
 	Node_t		*oldNodep	    = NULL;
 	Port_t		*newPortp	    = NULL;
 	Node_t		*newNodep	    = NULL;
-	Port_t		*linkedToPortp	= NULL;
 	STL_NOTICE	notice;
 	uint8_t     *oldChanges     = old_topo->pad;
 	uint8_t		*newChanges     = new_topo->pad;
-	SmCsmNodeId_t csmOldNode, csmConnectedNode;
+	const char detailAppearance[]   	= "inter-switch link appeared";
+	const char detailDisappearance[]	= "inter-switch link disappeared";
 
 	IB_ENTER(__func__, 0, 0, 0, 0);
 
@@ -4034,26 +4097,20 @@ topology_changes(Topology_t *old_topo, Topology_t *new_topo)
 				 */
 				for_all_ports(oldNodep, oldPortp) {
 					newPortp = sm_get_port(newNodep, oldPortp->index);
-					if (sm_valid_port(oldPortp) && sm_valid_port(newPortp)
-						&& (oldPortp->state > IB_PORT_INIT) && (newPortp->state <= IB_PORT_INIT)) {
-						if (oldPortp->portData->pLid == 0xC000) {
-							smCsmFormatNodeId(&csmOldNode, (uint8_t *)sm_nodeDescString(oldNodep), oldPortp->index, oldNodep->nodeInfo.NodeGUID);
-			
-							if (  (linkedToPortp = sm_find_port(old_topo, oldPortp->nodeno, oldPortp->portno)) != NULL
-								 && sm_valid_port(linkedToPortp)) {
-								smCsmFormatNodeId(&csmConnectedNode, (uint8_t *)sm_nodeDescString(linkedToPortp->portData->nodePtr),
-																	linkedToPortp->index, (linkedToPortp->portData->nodePtr)->nodeInfo.NodeGUID);
-								smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_DISAPPEARANCE, &csmOldNode, &csmConnectedNode,
-																"inter-switch link disappeared");
-							} else {
-								smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_DISAPPEARANCE, &csmOldNode, NULL,
-																"inter-switch link disappeared");
-							}
-						} else {
-							if (  (linkedToPortp = sm_find_port(old_topo, oldPortp->nodeno, oldPortp->portno)) != NULL
-								 && sm_valid_port(linkedToPortp)) {
-								linkedToPortp->portData->pLid = 0xC000;
-							}
+
+					if (sm_valid_port(oldPortp) && sm_valid_port(newPortp)) {
+						// typically depending on frequency the port might be either intermittenly unstable or flapping
+						if ((oldPortp->state > IB_PORT_INIT) && (newPortp->state <= IB_PORT_INIT)) {
+							(void)topology_log_isl_change(old_topo, oldNodep, oldPortp, CSM_COND_DISAPPEARANCE, (char *)detailDisappearance);
+						} else if ((newPortp->state > IB_PORT_INIT) && (oldPortp->state <= IB_PORT_INIT)) {
+							(void)topology_log_isl_change(new_topo, newNodep, newPortp, CSM_COND_APPEARANCE, (char *)detailAppearance);
+						}
+					} else {
+						// typically the port has either been DISABLED or ENABLED
+						if (sm_valid_port(oldPortp) && (oldPortp->state > IB_PORT_INIT)) {
+							(void)topology_log_isl_change(old_topo, oldNodep, oldPortp, CSM_COND_DISAPPEARANCE, (char *)detailDisappearance);
+						} else if (sm_valid_port(newPortp) && (newPortp->state > IB_PORT_INIT)) {
+							(void)topology_log_isl_change(new_topo, newNodep, newPortp, CSM_COND_APPEARANCE, (char *)detailAppearance);
 						}
 					}
 				}
@@ -4555,7 +4612,7 @@ topology_free_topology(Topology_t * topop)
 
 	while ((nodep = topop->node_head) != NULL) {
 		topop->node_head = nodep->next;
-		Node_Delete(nodep);
+		Node_Delete(topop, nodep);
 	}
 
 	if (topop->cost != NULL) {

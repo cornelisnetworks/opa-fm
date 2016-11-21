@@ -804,8 +804,8 @@
     <!-- values less than 8192 are treated as Megabytes -->
     <!-- This sets the linux core dump soft ulimit for the FM.  Hard ulimit -->
     <!-- for root user on system must be appropriately set to permit this. -->
-    <!-- Default CoreDumpLimit is 2 GB -->
-    <CoreDumpLimit>2G</CoreDumpLimit>
+    <!-- Default CoreDumpLimit is 10 GB -->
+    <CoreDumpLimit>10G</CoreDumpLimit>
     <!-- Directory for Host FM core files -->
     <!-- Actual core filenames will be controlled by linux kernel config. -->
     <!-- The parent directory (/var/crash in default) must be pre-created. -->
@@ -860,7 +860,7 @@
 
 
     <!-- OpenSSL FE network security parameters  -->
-    <SslSecurityEnable>1</SslSecurityEnable>
+    <SslSecurityEnable>1</SslSecurityEnable>                                                                           <!--FE_0_ssl_security_enable:dec==1-->
     <SslSecurityDir>/usr/local/ssl/opafm</SslSecurityDir>
     <SslSecurityFmCertificate>fm_cert.pem</SslSecurityFmCertificate>
     <SslSecurityFmPrivateKey>fm_key.pem</SslSecurityFmPrivateKey>
@@ -1006,6 +1006,57 @@
             <!-- <DeviceGroup>Storage</DeviceGroup> -->
         <!-- </RoutingOrder> -->
     </DGShortestPathTopology>
+
+    <!-- **************** Mesh/Torus Topology **************************** -->
+    <!-- When the RoutingAlgorithm is set to dor, the following section is -->
+    <!-- to configure Mesh/Torus parameters.                               -->
+    <!-- MeshTorusTopology:                                                -->
+    <!--    To properly handle fabric disruptions or installation mistakes -->
+    <!--    the SM needs to understand which switch ports will be used for -->
+    <!--    ISLs and which dimension each ISL is associated with.          -->
+    <!--    The fabric must be constructed with all ISL connections in a   -->
+    <!--    given dimension using consistent port numbers on each switch.  -->
+    <!--    Also each dimension may be toroidal or non-toroidal.           -->
+    <!--    For non-toroidal dimensions, the extra switch ports on the     -->
+    <!--    edges of the mesh may be used for additional CAs.  If the      -->
+    <!--    non-toroidal dimension is of length 2, the same port can be    -->
+    <!--    used on either end of the link.                                -->
+    <!--    The following Policies and Controls can be specified:          -->
+    <!--    Dimension:                                                     -->
+    <!--        Port pair:  <PortPair>i,j</PortPair>                       -->
+    <!--              The ports on neighbor switches which will be         -->
+    <!--              connected for ISLs in a given dimension.  There      -->
+    <!--              should be 1 or more port pairs per dimension.        -->
+    <!--              List one port pair per neighbor switch ISL           -->
+    <!--        Toroidal:   <Toroidal>1</Toroidal>                         -->
+    <!--           Indicates that the dimension is toroidal (closed loop)  -->
+    <!--        Length:     <Length>n</Length>                             -->
+    <!--           Indicates that the dimension is of length n.            -->
+    <!--        WarnThreshold:                                             -->
+    <!--              Maximum number of warnings to be logged for each     -->
+    <!--              set of invalid ISL connections found.  ISL           -->
+    <!--              connections which are in conflict with the           -->
+    <!--              Dimensions and PortPair definitions specified in the -->
+    <!--              MeshTorusTopology are considered invalid and will be -->
+    <!--              logged and ignored.                                  -->
+    <!--              Default value is 5. Max value is 255.                -->
+ 
+    <!-- Example of 2D (4x4) Torus with two ISLs in each dimension.        -->
+    <!-- <MeshTorusTopology> -->
+      <!-- <Dimension> -->
+         <!-- <PortPair>1,2</PortPair> -->
+         <!-- <PortPair>3,4</PortPair> -->
+         <!-- <Toroidal>1</Toroidal> -->
+         <!-- <Length>4</Length> -->
+      <!-- </Dimension> -->
+      <!-- <Dimension> -->
+         <!-- <PortPair>5,6</PortPair> -->
+         <!-- <PortPair>7,8</PortPair> -->
+         <!-- <Toroidal>1</Toroidal> -->
+         <!-- <Length>4</Length> -->
+      <!-- </Dimension> -->
+      <!-- <WarnThreshold>5</WarnThreshold> -->
+    <!-- </MeshTorusTopology> -->
 
     <!-- ********************* Hypercube Topology ************************ -->
     <!-- Example of defining parameters for controlling the enhanced       -->
@@ -1686,14 +1737,54 @@
         <!-- <Appliance05>0x001175010157e518</Appliance05> -->
     </SmAppliances>
 
+    <!-- Force the resetting of all attributes (including LFTs) on a -->
+    <!-- resweep. Can be used to force devices out of a bad state.   -->
+    <ForceAttributeRewrite>0</ForceAttributeRewrite>
+
+    <!-- Number of times to retry activation upon detecting an armed port -->
+    <!-- with a non-armed/active neighbor. -->
+    <NeighborNormalRetries>10</NeighborNormalRetries>
+
+    <!-- Number of port bounce events to log before suppressing the rest. -->
+    <!-- 0 - No Limit, Any other number specifies exact number per sweep. -->
+    <PortBounceLogLimit>0</PortBounceLogLimit>
+    
     <!-- Overrides of the Common.Shared parameters if desired -->
     <!-- <Priority>0</Priority> --> <!-- 0 to 15, higher wins -->                                                      <!--#SM_0_priority:dec-->
     <!-- <ElevatedPriority>0</ElevatedPriority> --> <!-- 0 to 15, higher wins -->                                      <!--#SM_0_elevated_priority:dec-->
     <!-- <LogLevel>2</LogLevel> -->                                                                                    <!--#SM_0_log_level:dec-->
     <!-- <LogFile></LogFile> -->                                                                                       <!--#SM_0_log_file-->
     <!-- <SyslogFacility>Local6</SyslogFacility> -->
+	
+    <!-- Alternative to use of LogLevel.  Use of LogLevel recommended. -->
+    <!-- for each subsystem there can be a LogMask.  The mask selects -->
+    <!-- severities of log messages to enable: --> 
+    <!-- 0x1=fatal, 0x2=actionable error, 0x4=actionable warning, -->
+    <!-- 0x8=actionable notice, 0x10=actionable info, 0x20=error, 0x40=warn, -->
+    <!-- 0x80=notice, 0x100=progress, 0x200=info, 0x400=verbose, 0x800=data, -->
+    <!-- 0x1000=debug1, 0x2000=debug2, 0x4000=debug3, 0x8000=debug4 -->
+    <!-- 0x10000=func call, 0x20000=func args, 0x40000=func exit, -->
+    <!-- For Host SM, the Linux syslog service will need to have an -->
+    <!-- appropriate level of logging enabled. -->
+    <!-- For ESM corresponding Chassis Logging must also be enabled -->
+    <!-- and Sm config applies to all managers. -->
+    <!-- <CS_LogMask>0x00000000</CS_LogMask> -->
+    <!-- <MAI_LogMask>0x000001ff</MAI_LogMask> -->
+    <!-- <CAL_LogMask>0x000001ff</CAL_LogMask> -->
+    <!-- <DVR_LogMask>0x000001ff</DVR_LogMask> -->
+    <!-- <IF3_LogMask>0x000001ff</IF3_LogMask> -->
+    <!-- <SM_LogMask>0x000001ff</SM_LogMask> -->
+    <!-- <SA_LogMask>0x000001ff</SA_LogMask> -->
+    <!-- <PM_LogMask>0x000001ff</PM_LogMask> -->
+    <!-- <PA_LogMask>0x000001ff</PA_LogMask> -->
+    <!-- <FE_LogMask>0x000001ff</FE_LogMask> -->
+    <!-- <APP_LogMask>0x000001ff</APP_LogMask> -->
 
-    <!-- Additional parameters for debug/development use -->
+    <!-- ********************************************************************** -->	
+    <!-- ***********Additional parameters for debug/development use************ -->
+    <!-- ********************************************************************** -->    
+    <!-- Default values are shown below -->
+	
     <!-- <LoopTestOn>0</LoopTestOn> --> <!-- cable loop test -->                                                       <!--SM_0_loop_test_on:dec^=-->
     <!-- <LoopTestFastMode>0</LoopTestFastMode> -->
     <!-- <LoopTestPackets>5</LoopTestPackets> --> <!-- inject count -->                                                <!--SM_0_loop_test_packets:dec^=-->
@@ -1739,31 +1830,6 @@
     <!-- Default bitmask is UnsupportedVLMarker | BadCtrlDist | BadTailDist | BadHeadDist | BadVLMarker -->
     <!-- <DefaultPortErrorAction>0x172000</DefaultPortErrorAction> -->
 
-    <!-- Alternative to use of LogLevel.  Use of LogLevel recommended. -->
-    <!-- for each subsystem there can be a LogMask.  The mask selects -->
-    <!-- severities of log messages to enable: --> 
-    <!-- 0x1=fatal, 0x2=actionable error, 0x4=actionable warning, -->
-    <!-- 0x8=actionable notice, 0x10=actionable info, 0x20=error, 0x40=warn, -->
-    <!-- 0x80=notice, 0x100=progress, 0x200=info, 0x400=verbose, 0x800=data, -->
-    <!-- 0x1000=debug1, 0x2000=debug2, 0x4000=debug3, 0x8000=debug4 -->
-    <!-- 0x10000=func call, 0x20000=func args, 0x40000=func exit, -->
-    <!-- For Host SM, the Linux syslog service will need to have an -->
-    <!-- appropriate level of logging enabled. -->
-    <!-- For ESM corresponding Chassis Logging must also be enabled -->
-    <!-- and Sm config applies to all managers. -->
-    <!-- <CS_LogMask>0x00000000</CS_LogMask> -->
-    <!-- <MAI_LogMask>0x000001ff</MAI_LogMask> -->
-    <!-- <CAL_LogMask>0x000001ff</CAL_LogMask> -->
-    <!-- <DVR_LogMask>0x000001ff</DVR_LogMask> -->
-    <!-- <IF3_LogMask>0x000001ff</IF3_LogMask> -->
-    <!-- <SM_LogMask>0x000001ff</SM_LogMask> -->
-    <!-- <SA_LogMask>0x000001ff</SA_LogMask> -->
-    <!-- <PM_LogMask>0x000001ff</PM_LogMask> -->
-    <!-- <PA_LogMask>0x000001ff</PA_LogMask> -->
-    <!-- <FE_LogMask>0x000001ff</FE_LogMask> -->
-    <!-- <APP_LogMask>0x000001ff</APP_LogMask> -->
-
-    <!-- Debug Only: Skip Write. -->
     <!-- A bitmask for SM to skip the writing of specified attributes -->
     <!-- <SkipAttributeWrite>0x1d74</SkipAttributeWrite> -->
 
@@ -1772,6 +1838,7 @@
     <!-- <ScMultiblock>29</ScMultiblock> --> <!-- SC tables per MAD packet -->
     <!-- <UseAggregateMADs>1</UseAggregateMADs> --> <!-- Enable aggregate MADs -->
     <!-- <OptimizedPortInfo>1</OptimizedPortInfo> --> <!-- Enable aggregate/multiblock portinfo -->
+	
     <!-- Cable Info Caching Policy -->
     <!-- The SM can be configured to collect Cable Info data and make -->
     <!-- that data available via Cable Info SA queries.               -->
@@ -1780,18 +1847,8 @@
     <!-- means that the SM assumes that it is only necessary to query -->
     <!-- one end of each cable in the fabric. -->
     <!-- <CableInfoPolicy>ByLink</CableInfoPolicy> -->
-
-    <!-- Force the resetting of all attributes (including LFTs) on a -->
-    <!-- resweep. Can be used to force devices out of a bad state.   -->
-    <ForceAttributeRewrite>0</ForceAttributeRewrite>
-
-    <!-- Number of times to retry activation upon detecting an armed port -->
-    <!-- with a non-armed/active neighbor. -->
-    <NeighborNormalRetries>10</NeighborNormalRetries>
-
-    <!-- Number of port bounce events to log before suppressing the rest. -->
-    <!-- 0 - No Limit, Any other number specifies exact number per sweep. -->
-    <PortBounceLogLimit>0</PortBounceLogLimit>
+    <!-- ********************************************************************** --> 
+    
   </Sm>
 
   <!-- Common FE (Fabric Executive) attributes -->
@@ -2113,7 +2170,7 @@
     <TcpPort>3245</TcpPort>  <!-- TCP socket to listen for FV on -->                                                   <!--FE_0_listen-->
     <!-- Overrides of the Common.Shared, Common.Fe or Fm.Shared parameters -->
     <!-- See Common.Fe for more information about enabling the FE -->
-    <!-- <Start>1</Start> -->                                                                                          <!--#FE_0_start:dec==1-->
+    <!-- <Start>0</Start> -->                                                                                          <!--#FE_0_start:dec==0-->
     <!-- <StartupRetries>5</StartupRetries> -->
     <!-- <StartupStableWait>10</StartupStableWait> -->
   </Fe>

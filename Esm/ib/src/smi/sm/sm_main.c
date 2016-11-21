@@ -568,8 +568,9 @@ void sm_process_dor_info(VirtualFabrics_t *VirtualFabrics, SmDorRouting_t *dorCf
 				smDorRouting.dimensionCount, smDorRouting.routingSCs);
 
 		for (d=0; d<smDorRouting.dimensionCount; d++) {
-   	   		IB_LOG_INFINI_INFO_FMT(__func__, "DorDimension %d is %s", 
-				d, smDorRouting.dimension[d].toroidal?"toroidal":"not toroidal");
+   	   		IB_LOG_INFINI_INFO_FMT(__func__, "DorDimension %d is %s length is %d", 
+				d, smDorRouting.dimension[d].toroidal?"toroidal":"not toroidal",
+				smDorRouting.dimension[d].length);
 
 			for (p=0; p<smDorRouting.dimension[d].portCount; p++)
         		IB_LOG_INFINI_INFO_FMT(__func__, "DorDimension %d PortPair %d,%d", d,
@@ -1431,7 +1432,6 @@ sm_process_vf_info(VirtualFabrics_t *VirtualFabrics)
             VirtualFabrics->v_fabric[vf].base_sl = 0;
             VirtualFabrics->v_fabric[vf].mcast_isolate = 0;
             VirtualFabrics->v_fabric[vf].flowControlDisable = 0;
-            VirtualFabrics->v_fabric[vf].updown_only = 0;
             VirtualFabrics->v_fabric[vf].preempt_rank = 0;
             VirtualFabrics->v_fabric[vf].routing_scs = 1;
             VirtualFabrics->v_fabric[vf].routing_sls = 1;
@@ -1444,7 +1444,6 @@ sm_process_vf_info(VirtualFabrics_t *VirtualFabrics)
             VirtualFabrics->v_fabric_all[vf].base_sl = 0;
             VirtualFabrics->v_fabric_all[vf].mcast_isolate = 0;
             VirtualFabrics->v_fabric_all[vf].flowControlDisable = 0;
-            VirtualFabrics->v_fabric_all[vf].updown_only = 0;
             VirtualFabrics->v_fabric_all[vf].preempt_rank = 0;
             VirtualFabrics->v_fabric_all[vf].routing_scs = 1;
             VirtualFabrics->v_fabric_all[vf].routing_sls = 1;

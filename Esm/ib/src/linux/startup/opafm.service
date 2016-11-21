@@ -39,9 +39,8 @@ Type=forking
 ExecStart=/usr/lib/opa-fm/bin/opafmd -D
 ExecStop=/usr/lib/opa-fm/bin/opafmd halt
 ExecReload=/bin/kill -HUP $MAINPID
-TimeoutStopSec=2
+TimeoutStopSec=30
 RestartSec=2
-ExecStopPost=/usr/bin/sleep 5
 
 [Install]
 WantedBy=multi-user.target

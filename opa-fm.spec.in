@@ -29,8 +29,8 @@
 
 #[ICS VERSION STRING: unknown]
 Name: opa-fm
-Version: 10.3.0.0
-Release: 67%{?dist}
+Version: 10.4.0.0
+Release: 59%{?dist}
 Summary: Intel Omni-Path Fabric Management Software
 
 License: GPLv2 or BSD
@@ -38,19 +38,20 @@ Url: https://github.com/01org/opa-fm
 # tarball created by:
 # git clone https://github.com/01org/opa-fm.git
 # cd opa-fm
-# tar czf opa-fm.tar.gz --exclude-vcs .
+# tar czf opa-fm.tar.gz --exclude-cvs .
 Source0: %{name}.tar.gz
 ExclusiveArch: x86_64
 # The Intel OPA product line is only available on x86_64 platforms at this time.
 
-Requires: rdma openssl
+Requires: rdma
 
-BuildRequires: expat-devel, libibumad-devel, libibverbs-devel, libibmad-devel, openssl-devel
+#BuildRequires: libibverbs-devel >= 1.1-1, libibumad-devel, libibmad-devel
+BuildRequires: __RPM_BLDRQ1
 
-%if 0%{?rhel} && 0%{?rhel} < 7
-Requires(post): /sbin/chkconfig
-Requires(preun): /sbin/chkconfig
-%endif
+__RPM_BLDRQ2
+__RPM_RQ1
+
+__RPM_DEBUG
 
 %description
 The %{name} contains Intel Omni-Path fabric management applications. This 
@@ -64,7 +65,7 @@ Fabric Executive, and some fabric management tools.
 if [ -d Esm ]; then
 	cd Esm
 fi
-./fmbuild -V %{version}.%{release} 
+./fmbuild -V %{version}.%{release}
 
 %install
 %define fm_mans opafmcmd.8 opafmcmdall.8
@@ -73,9 +74,7 @@ install -D -m 644 stage.rpm/opafm.service $RPM_BUILD_ROOT/usr/lib/systemd/system
 install -D -m 755 stage.rpm/opafmctrl $RPM_BUILD_ROOT/usr/lib/opa-fm/bin/opafmctrl
 install -D -m 755 stage.rpm/opafmd $RPM_BUILD_ROOT/usr/lib/opa-fm/bin/opafmd
 
-%if 0%{?rhel} && 0%{?rhel} < 7
-install -D -m 755 stage.rpm/opafm $RPM_BUILD_ROOT%{_sysconfdir}/init.d/opafm
-%endif
+__RPM_INS
 
 install -D -m 644 stage.rpm/opafm.xml $RPM_BUILD_ROOT%{_sysconfdir}/sysconfig/opafm.xml
 install -D -m 755 stage.rpm/opafm.info $RPM_BUILD_ROOT%{_sysconfdir}/sysconfig/opa/opafm.info
@@ -137,9 +136,7 @@ fi
 %files
 %doc Esm/README 
 
-%if 0%{?rhel} && 0%{?rhel} < 7
-%{_sysconfdir}/init.d/opafm
-%endif
+__RPM_SYSCONF
 
 /usr/lib/systemd/system/opafm.service
 %config(noreplace) %{_sysconfdir}/sysconfig/opafm.xml
@@ -153,6 +150,7 @@ fi
 %{_mandir}/man8/*
 
 %changelog
-* Fri Sep 23 2016 Anton Bodner <anton.bodner@intel.com> - 10.3.0.0-56
-- Update to latest from build 10.3.0.0.58 (FM 10.3.0.0.56)
+* Thu Oct 09 2014 Kaike Wan <kaike.wan@intel.com> - 10.0.0.0-177
+- Initial version 
+
 

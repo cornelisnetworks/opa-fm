@@ -44,6 +44,7 @@ DIRS			= \
 				$(shell ls -d opafirmware 2>/dev/null)  \
 				$(shell ls -d opamon 2>/dev/null) \
 				$(shell ls -d opareport 2>/dev/null) \
+				$(shell ls -d opa2rm 2>/dev/null) \
 				$(shell ls -d opaxmlextract 2>/dev/null) \
 				$(shell ls -d opaxmlfilter 2>/dev/null) \
 				$(shell ls -d opaxmlgenerate 2>/dev/null) \

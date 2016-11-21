@@ -433,9 +433,6 @@ typedef struct 	_VFConfig {
 	uint8_t			qos_enable;
 	uint8_t			base_sl;
 	uint8_t			flowControlDisable;
-#ifdef CONFIG_INCLUDE_DOR
-	uint8_t			updown_only;
-#endif
 	uint8_t			percent_bandwidth;
 	// uint8_t		absolute_bandwidth;
 	uint8_t			priority;
@@ -574,7 +571,6 @@ typedef struct _VFabric {
 	uint8_t			qos_enable;						// defaults to 0 if undefined
 	uint8_t			base_sl;						// base SL assigned to VF - 0xff if undefined
 	uint8_t			base_sc;						// base SC assigned to VF
-	uint8_t			updown_only;					//
 
 	uint8_t			mcast_isolate;					// Used when multicast must be
 	uint8_t			mcast_sl;						// independent of other 
@@ -800,6 +796,7 @@ typedef struct _SmHypercubeRouting_t {
 #define MAX_DOR_DIMENSIONS 20
 #define DEFAULT_DOR_PORT_PAIR_WARN_THRESHOLD	5
 #define DEFAULT_UPDN_MC_SAME_SPANNING_TREE	1
+#define DEFAULT_ESCAPE_VLS_IN_USE	1
 
 typedef enum {
 	DOR_MESH,
@@ -814,22 +811,21 @@ typedef struct _SmPortPair {
 
 typedef struct _SmDimension {
 	uint8_t				toroidal;
+	uint8_t				length;
 	uint8_t				portCount;
 	uint8_t				created;
 	SmPortPair_t		portPair[MAX_SWITCH_PORTS];
 } SmDimension_t;
 
 typedef struct _SmDorRouting {
+	uint8_t				debug;
 	uint8_t				dimensionCount;
 	uint8_t				numToroidal;
-	uint8_t				updownOnly;				// setup by SM
-	SmDimension_t		dimension[MAX_DOR_DIMENSIONS];
-	uint8_t				debug;
-	uint32_t			warn_threshold;
-	uint32_t			updn_mc_same_spanning_tree;
 	uint8_t				routingSCs;
-	uint8_t				useUpDownOnDisruption;
+	uint32_t			warn_threshold;
+	SmDimension_t		dimension[MAX_DOR_DIMENSIONS];
 	DorTop_t			topology;
+	uint8_t				escapeVLs;
 } SmDorRouting_t;
 #endif
 
@@ -1003,6 +999,7 @@ typedef struct _SMXmlConfig {
 	uint32_t	sm_debug_perf;
 	uint32_t	sa_debug_perf;
 	uint32_t	sm_debug_vf;
+	uint32_t	sm_debug_routing;
  	uint32_t	sm_debug_lid_assign;
 	uint32_t	trap_log_suppress_trigger_interval;
 	uint32_t	debug_jm;

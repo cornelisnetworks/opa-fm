@@ -1849,7 +1849,7 @@ void PrintStlCableInfo(PrintDest_t *dest, int indent, const uint8_t *cableInfoDa
 				PrintIntWithDots(dest, indent, "OM3 Length Cap Supported by Module", StlCableInfoOM3Length(cableInfo.len_om3));
 				PrintIntWithDots(dest, indent, "OM4 Length Cap Supported by Module", StlCableInfoOM4Length(cableInfo.len_om4, cableLenValid));
 			}
-			PrintIntWithDots( dest, indent, "Max Temp C", cableInfo.max_case_temp);
+
 			if (activeCable) {
 				StlCableInfoBitRateToText(cableInfo.bit_rate_low, cableInfo.bit_rate_high, tempBuf);
 				PrintStrWithDots(dest, indent, "Speed Sup", tempBuf);
@@ -1858,6 +1858,11 @@ void PrintStlCableInfo(PrintDest_t *dest, int indent, const uint8_t *cableInfoDa
 				break;
 
 			// Build VERBOSE output line-by-line
+			if (cableInfo.max_case_temp == 0)
+				PrintStrWithDots(dest, indent, "Supported Max Temp: not indicated", "");
+			else
+				PrintIntWithDots( dest, indent, "Supported Max Temp C", cableInfo.max_case_temp);
+
 			PrintStrWithDots(dest, indent, "TX SI CDR", StlCableInfoCDRToText(cableInfo.ext_ident.s.tx_cdr_supp, cableInfo.rxtx_opt_cdrsquel.s.tx_cdr_ctrl));
 			PrintStrWithDots(dest, indent, "TX Inp EQ Fixed-Prog Cap", cableInfo.rxtx_opt_equemp.s.tx_inpeq_fixpro_cap ? "Y" : "N");
 			PrintStrWithDots(dest, indent, "TX Inp EQ Auto-Adaptive Cap", cableInfo.rxtx_opt_equemp.s.tx_inpeq_autadp_cap ? "Y" : "N");
@@ -1914,15 +1919,6 @@ void PrintStlCableInfo(PrintDest_t *dest, int indent, const uint8_t *cableInfoDa
 			// Build line 3 of SUMMARY output on one line (68 chars)
 			memset(tempBuf, ' ', sizeof(tempBuf));
 			i = 6;
-			strcpy(&tempBuf[i], "OPA Cert? ");
-			i = 16;
-			tempBuf[i] = (IsStlCableInfoCableCertified(cableInfo.opa_cert_cable) ? 'Y' : 'N');
-			i = 19;
-			strcpy(&tempBuf[i], "OPA Rates: ");
-			i = 30;
-			strcpy(&tempBuf[i], StlCableInfoOpaCertifiedRateToText(cableInfo.opa_cert_data_rate));
-			tempBuf[i + strlen(&tempBuf[i])] = ' ';
-			i = 56;
 			sprintf(&tempBuf[i], "OUI 0x%02X%02X%02X", cableInfo.vendor_oui[0], cableInfo.vendor_oui[1], cableInfo.vendor_oui[2]);
 			PrintFunc(dest, "%*s%s\n", indent, "", tempBuf);
 			if (detail == CABLEINFO_DETAIL_SUMMARY)
@@ -1940,19 +1936,23 @@ void PrintStlCableInfo(PrintDest_t *dest, int indent, const uint8_t *cableInfoDa
 					StlCableInfoOM2Length(cableInfo.len_om2), StlCableInfoOM3Length(cableInfo.len_om3),
 					StlCableInfoOM4Length(cableInfo.len_om4, cableLenValid));
 			}
+
 			if (activeCable) {
 				StlCableInfoBitRateToText(cableInfo.bit_rate_low, cableInfo.bit_rate_high, tempBuf);
-				PrintFunc(dest, "%*sMax Temp: %u C Speed Sup: %s\n", indent+6, "", cableInfo.max_case_temp, tempBuf);
+				PrintFunc(dest, "Speed Sup: %s\n", tempBuf);
 			}
-			else {
-				PrintFunc(dest, "%*sMax Temp: %u C\n", indent+6, "", cableInfo.max_case_temp);
-			}
+
 			if (detail == CABLEINFO_DETAIL_BRIEF)
 				break;
-
 			// Build VERBOSE output without dots (68 chars)
+
+			if (cableInfo.max_case_temp == 0)
+				PrintFunc(dest, "%*sSupported Max Temp: not indicated\n ", indent+6, "");
+			else
+				PrintFunc(dest, "%*sSupported Max Temp: %u C\n ", indent+6, "", cableInfo.max_case_temp);
+
 			PrintFunc(dest, "%*sTX SI: CDR: %s EQ: Fixed Cap: %s Auto Cap: %s Squelch En: %s\n",
-				indent+6, "", StlCableInfoCDRToText(cableInfo.ext_ident.s.tx_cdr_supp, cableInfo.rxtx_opt_cdrsquel.s.tx_cdr_ctrl),
+				indent+5, "", StlCableInfoCDRToText(cableInfo.ext_ident.s.tx_cdr_supp, cableInfo.rxtx_opt_cdrsquel.s.tx_cdr_ctrl),
 				cableInfo.rxtx_opt_equemp.s.tx_inpeq_fixpro_cap ? "Y" : "N",
 				cableInfo.rxtx_opt_equemp.s.tx_inpeq_autadp_cap ? "Y" : "N",
 				cableInfo.rxtx_opt_cdrsquel.s.tx_squel ? "Y" : "N");
@@ -1960,7 +1960,7 @@ void PrintStlCableInfo(PrintDest_t *dest, int indent, const uint8_t *cableInfoDa
 				indent+6, "", StlCableInfoCDRToText(cableInfo.ext_ident.s.rx_cdr_supp, cableInfo.rxtx_opt_cdrsquel.s.rx_cdr_ctrl),
 				cableInfo.rxtx_opt_equemp.s.rx_outemp_fixpro_cap ? "Y" : "N",
 				cableInfo.rxtx_opt_equemp.s.rx_outamp_fixpro_cap ? "Y" : "N");
-			break;
+		break;
 		}
 
 	case CABLEINFO_DETAIL_ALL:
@@ -1994,7 +1994,10 @@ void PrintStlCableInfo(PrintDest_t *dest, int indent, const uint8_t *cableInfoDa
 			memcpy(tempStr, cableInfo.vendor_rev, sizeof(cableInfo.vendor_rev));
 			tempStr[sizeof(cableInfo.vendor_rev)] = '\0';
 			PrintStrWithDots(dest, indent, "VendorRev", tempStr);
-			PrintIntWithDots(dest, indent, "MaxCaseTemp C", cableInfo.max_case_temp);
+			if (cableInfo.max_case_temp == 0)
+				PrintStrWithDots(dest, indent, "MaxCaseTemp: not indicated", "");
+			else
+				PrintIntWithDots(dest, indent, "MaxCaseTemp C", cableInfo.max_case_temp);
 			PrintIntWithDots(dest, indent, "CC_BASE", cableInfo.cc_base);
 			PrintIntWithDots(dest, indent, "TxInpEqAutoAdp", cableInfo.rxtx_opt_equemp.s.tx_inpeq_autadp_cap);
 			PrintIntWithDots(dest, indent, "TxInpEqFixProg", cableInfo.rxtx_opt_equemp.s.tx_inpeq_fixpro_cap);
@@ -2046,7 +2049,10 @@ void PrintStlCableInfo(PrintDest_t *dest, int indent, const uint8_t *cableInfoDa
 			memcpy(tempStr, cableInfo.vendor_rev, sizeof(cableInfo.vendor_rev));
 			tempStr[sizeof(cableInfo.vendor_rev)] = '\0';
 			PrintFunc(dest, "%*sVendorRev: %s\n", indent+4, "", tempStr); 
-			PrintFunc(dest, "%*sMaxCaseTemp: %u C\n", indent+4, "", cableInfo.max_case_temp);
+			if (cableInfo.max_case_temp == 0)
+				PrintFunc(dest, "%*sMaxCaseTemp: not indicated\n", indent+4, "");
+			else
+				PrintFunc(dest, "%*sMaxCaseTemp: %u C\n", indent+4, "", cableInfo.max_case_temp);
 			PrintFunc(dest, "%*sCC_BASE: 0x%x\n", indent+4, "", cableInfo.cc_base);
 			PrintFunc(dest, "%*sTxInpEqAutoAdp: %s\n", indent+4, "", cableInfo.rxtx_opt_equemp.s.tx_inpeq_autadp_cap ? "True" : "False" );
 			PrintFunc(dest, "%*sTxInpEqFixProg: %s\n", indent+4, "", cableInfo.rxtx_opt_equemp.s.tx_inpeq_fixpro_cap ? "True" : "False" );

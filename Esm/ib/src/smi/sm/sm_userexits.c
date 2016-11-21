@@ -212,8 +212,8 @@ loopTest_userexit_updateLft(Topology_t *topop, Node_t *cnp) {
     //
     // update lft to include loop paths for loop test
     //
-	if (smDebugPerf) {
-		IB_LOG_INFO_FMT(__func__,
+	if (smDebugPerf || sm_config.sm_debug_routing) {
+		IB_LOG_INFINI_INFO_FMT(__func__,
 			   "updating LFT for node[%d:"FMT_U64"], topo->switch_head index=%d.....", 
 			   cnp->index, cnp->nodeInfo.NodeGUID, topop->switch_head->index);
 	}

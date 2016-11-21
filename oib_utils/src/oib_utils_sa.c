@@ -1486,23 +1486,28 @@ FSTATUS oib_query_sa(struct oib_port *port,
 		}
 		break;
 
-    case OutputTypePortGuid:         
+    case OutputTypePortGuid:
 		{
 			GUID_RESULTS        *pGR;
 			EUI64               *pGuid;
-			STL_NODE_RECORD      *pNR;
+			IB_NODE_RECORD      *pNR;
+
+			MAD_SET_VERSION_INFO(&mad,
+								 IB_BASE_VERSION,
+								 MCLASS_SUBN_ADM,
+								 IB_SUBN_ADM_CLASS_VERSION);
 
 			if (fillInIbNodeRecord(&mad, pQuery) != FSUCCESS) break;
 
-			fstatus = sa_query_common(&mad, &pRsp, sizeof (STL_NODE_RECORD), &pQR, port);
+			fstatus = sa_query_common(&mad, &pRsp, sizeof (IB_NODE_RECORD), &pQR, port);
 			if (fstatus != FSUCCESS) break;
 
 			// Translate the data.
 			pGR   = (GUID_RESULTS*)pQR->QueryResult;
 			pGuid = pGR->Guids;
 			for (i=0; i< pGR->NumGuids; i++, pGuid++) {
-				pNR = ((STL_NODE_RECORD*)(GET_RESULT_OFFSET(pRsp, i)));
-				*pGuid = ntoh64(pNR->NodeInfo.PortGUID);
+				pNR = ((IB_NODE_RECORD*)(GET_RESULT_OFFSET(pRsp, i)));
+				*pGuid = ntoh64(pNR->NodeInfoData.PortGUID);
 			}
 		}
 		break;
@@ -2767,7 +2772,7 @@ FSTATUS oib_query_sa(struct oib_port *port,
 done:
 	// Common place to print error for PKEY mismatch
 	if (fstatus == FPROTECTION) {
-		fprintf(stderr, "Unable to send query, requires full/limited managment PKEY\n");
+		fprintf(stderr, "Unable to send query, requires full management PKEY\n");
 	}
 	if (pRsp!=NULL) {
 		free (pRsp);

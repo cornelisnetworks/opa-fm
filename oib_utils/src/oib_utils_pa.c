@@ -823,7 +823,7 @@ pa_query_common (
 			port->mad_status = MAD_STATUS_INVALID_ATTRIB;
         if (fstatus==FPROTECTION) {
             // PKEY lookup error. 
-            OUTPUT_ERROR("Query PA failed: requires full managment node. Status:(%u)\n",  (unsigned int)fstatus);
+            OUTPUT_ERROR("Query PA failed: requires full management node. Status:(%u)\n",  (unsigned int)fstatus);
         }
         goto done;
     }
@@ -3207,7 +3207,7 @@ iba_pa_query_master_pm_lid(
                         if ((status != FSUCCESS) || (query_path_results == NULL) || (query_path_results->ResultDataSize == 0)) 
                         {
                             status = FERROR;
-                            OUTPUT_ERROR("Error, failed to get path record (status=0x%x) query_path_esults=%p: %s\n",
+                            OUTPUT_ERROR("Error, failed to get path record (status=0x%x) query_path_results=%p: %s\n",
                                     (unsigned int)status, (void *)query_path_results, FSTATUS_MSG(status));
                             break;
                         } 

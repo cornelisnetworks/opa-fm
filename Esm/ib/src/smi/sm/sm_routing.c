@@ -137,6 +137,7 @@ sm_routing_makeModule(const char * name, RoutingModule_t ** module)
 	if ((s = vs_pool_alloc(&sm_pool, sizeof(RoutingModule_t), (void*)module)) != VSTATUS_OK) {
 		return s;
 	}
+	memset(*module, 0, sizeof(RoutingModule_t));
 
 	return fac(*module);
 }
@@ -277,6 +278,10 @@ sm_routing_calc_floyds(Topology_t *topop, int switches, unsigned short * cost)
 	Node_t *nodep;
 	Node_t *sw = topop->switch_head;
 
+	if (switches < old_topology.max_sws || topology_passcount == 0) {
+		topology_cost_path_changes = 1;
+	}
+
 	for (k = 0, kNumNodes = 0; k < switches; k++, kNumNodes += switches) {
 		for (i = 0, iNumNodes = 0; i < switches; i++, iNumNodes += switches) {
 
@@ -326,20 +331,12 @@ sm_routing_calc_floyds(Topology_t *topop, int switches, unsigned short * cost)
 				}
 			}
 			
-			if (topology_passcount == 0)
-				continue;
-
 			/* PR 115770. If there is any switch cost/path change (including removal of switches),
 			 * set topology_cost_path_changes which will force full LFT reprogramming for all switches.
 			 */
 
 			if (topology_cost_path_changes)
 				continue;
-
-			if (switches < old_topology.max_sws) {
-				topology_cost_path_changes = 1;
-				continue;
-			}
 
 			if ((k >= old_topology.max_sws) || (i >= old_topology.max_sws))
 				continue;
@@ -586,7 +583,7 @@ sm_routing_copy_lfts(Topology_t *src_topop, Topology_t *dst_topop)
 {
 	Status_t status;
 	Node_t   *nodep, *oldNodep;
-	int      lftLength;
+	int		lftLength;
 
 	for_all_switch_nodes(dst_topop, nodep) {
 
@@ -599,7 +596,11 @@ sm_routing_copy_lfts(Topology_t *src_topop, Topology_t *dst_topop)
 		oldNodep = sm_find_guid(src_topop, nodep->nodeInfo.NodeGUID);
 		if (  oldNodep == NULL || oldNodep->lft == NULL
 		   || nodep->switchInfo.LinearFDBTop != oldNodep->switchInfo.LinearFDBTop) {
-			// IB_LOG_INFINI_INFO_FMT(__func__, "Full LFT for switch %s on old node checks", sm_nodeDescString(nodep));
+			// Top will differ if loop test enabled since last sweep.
+			// TBD: could have just had a new HFI added, in which case this is heavy handed.
+			//      Check for esmLoopTest?
+			if (sm_config.sm_debug_routing)
+				IB_LOG_INFINI_INFO_FMT(__func__, "Full LFT for switch %s on old node checks", sm_nodeDescString(nodep));
 			status = sm_setup_lft(dst_topop, nodep);
 			continue;
 		}
@@ -608,7 +609,8 @@ sm_routing_copy_lfts(Topology_t *src_topop, Topology_t *dst_topop)
 		   || !bitset_equal(&nodep->activePorts, &oldNodep->activePorts)) {
 			// Active ports changed or moved, recalculate LFTs for this switch if change involved ISL.
 			if (dst_topop->routingModule->funcs.handle_fabric_change(dst_topop, oldNodep, nodep)) {
-				// IB_LOG_INFINI_INFO_FMT(__func__, "Full LFT on port change for switch %s", sm_nodeDescString(nodep));
+				if (sm_config.sm_debug_routing)
+					IB_LOG_INFINI_INFO_FMT(__func__, "Full LFT on port change for switch %s", sm_nodeDescString(nodep));
 				status = sm_setup_lft(dst_topop, nodep);
 				continue;
 			}
@@ -619,19 +621,22 @@ sm_routing_copy_lfts(Topology_t *src_topop, Topology_t *dst_topop)
 		//			  freeing the already allocated lft.  The following is similar code.  While the following
 		//			  code is not expected to be executed when node->lft is not zero, the following code has been added to 
 		//			  free the lft if node->lft is found to be non NULL.  This will insure that no memory leak can occur.
+
 		if (nodep->lft) {
-			IB_LOG_INFINI_INFO_FMT(__func__, "new lft - switch %s nodep %p nodep->index %u nodep->lft %p",
-				sm_nodeDescString(nodep), nodep, nodep->index, nodep->lft);
+			if (sm_config.sm_debug_routing)
+				IB_LOG_INFINI_INFO_FMT(__func__, "new lft - switch %s nodep %p nodep->index %u nodep->lft %p",
+						sm_nodeDescString(nodep), nodep, nodep->index, nodep->lft);
 			vs_pool_free(&sm_pool, nodep->lft);
 			nodep->lft = NULL;
 		}
+
 		lftLength = sizeof(PORT) * ROUNDUP(nodep->switchInfo.LinearFDBTop+1,MAX_LFT_ELEMENTS_BLOCK);
 		if ((status = vs_pool_alloc(&sm_pool, lftLength, (void *)&nodep->lft)) != VSTATUS_OK) {
 			IB_FATAL_ERROR("sm_routing_copy_lfts: CAN'T ALLOCATE SPACE FOR NODE'S LFT;  OUT OF MEMORY IN SM MEMORY POOL!  TOO MANY NODES!!");
 			return status;
 		}
-
 		memcpy((void *)nodep->lft, (void *)oldNodep->lft, lftLength);
+
 		if (nodep->arSupport) {
 			if (nodep->pgt && oldNodep->pgt) {
 				memcpy((void *)nodep->pgt, (void *)oldNodep->pgt, sizeof(STL_PORTMASK)*(nodep->switchInfo.PortGroupCap));
@@ -647,7 +652,9 @@ sm_routing_copy_lfts(Topology_t *src_topop, Topology_t *dst_topop)
 		if (  new_endnodesInUse.nset_m
 		   || src_topop->num_endports != dst_topop->num_endports) {
 			// End node change, calculate deltas LFT changes to switch.
-			// IB_LOG_INFINI_INFO_FMT(__func__, "Delta route calc for additional endports for switch %s", sm_nodeDescString(nodep));
+			if (sm_config.sm_debug_routing)
+				IB_LOG_INFINI_INFO_FMT(__func__, "Delta route calc for additional endports for switch %s",
+						sm_nodeDescString(nodep));
 			status = sm_setup_lft_deltas(src_topop, dst_topop, nodep);
 		}
 	}
@@ -686,8 +693,9 @@ sm_routing_prep_new_switch(Topology_t *topop, Node_t *nodep, int use_lr_dr_mix, 
 	}
 
 	/* setup LFT blocks for the SM LID and the switch's own LID*/
-	//IB_LOG_INFINI_INFO_FMT(__func__,
-	//		 "writing minimal lft for switch "FMT_U64, nodep->nodeInfo.NodeGUID);
+	if (sm_config.sm_debug_routing)
+		IB_LOG_INFINI_INFO_FMT(__func__,
+			 "writing minimal lft for switch "FMT_U64, nodep->nodeInfo.NodeGUID);
 	status = sm_write_minimal_lft_blocks(sm_topop, nodep, use_lr_dr_mix, path);
 
 	return status;
@@ -708,7 +716,8 @@ sm_routing_route_new_switch_LR(Topology_t *topop, SwitchList_t *swlist, int reba
 					status = sm_setup_lft(topop, nodep);
 			}
 	} else {
-		// IB_LOG_INFINI_INFO0("Setting up full lfts for swlist");
+		if (sm_config.sm_debug_routing)
+			IB_LOG_INFINI_INFO0("Setting up full lfts for swlist");
 
 	 	if ((status = sm_write_full_lfts_by_block_LR(topop, swlist, rebalance)) != VSTATUS_OK) {
 			IB_LOG_INFINI_INFO_FMT(__func__, "Error in writing full lfts");
@@ -723,7 +732,7 @@ sm_routing_route_old_switch(Topology_t *src_topop, Topology_t *dst_topop, Node_t
 {
 	Status_t status;
 	Node_t   *oldNodep;
-	int      lftLength;
+	size_t   lftLength;
 
 	if (nodep->switchInfo.LinearFDBCap == 0) {
 		IB_LOG_ERROR_FMT(__func__, "switch doesn't support lft %s",
@@ -738,24 +747,32 @@ sm_routing_route_old_switch(Topology_t *src_topop, Topology_t *dst_topop, Node_t
 	}
 
 	if (dst_topop->routingModule->funcs.check_switch_path_change(src_topop, dst_topop, nodep)) {
-		//IB_LOG_INFINI_INFO_FMT(__func__, "Full route calc for switch with path change %s", sm_nodeDescString(nodep));
+		if (sm_config.sm_debug_routing)
+			IB_LOG_INFINI_INFO_FMT(__func__, "Full route calc for switch with path change %s",
+			sm_nodeDescString(nodep));
+
 		if (dst_topop->routingModule->funcs.needs_lft_recalc(dst_topop, nodep)) {
 			status = sm_setup_lft(dst_topop, nodep);
 		} else {
-			IB_LOG_INFINI_INFO_FMT(__func__,
-				"Full LFT send switch with path change %s", sm_nodeDescString(nodep));
+			if (sm_config.sm_debug_routing)
+				IB_LOG_INFINI_INFO_FMT(__func__,
+					"Full LFT send switch with path change %s", sm_nodeDescString(nodep));
 			status = sm_send_lft(dst_topop, nodep); 
 		}
 		return status;
 	}
 
 	oldNodep = sm_find_guid(src_topop, nodep->nodeInfo.NodeGUID);
-	if (!oldNodep || !oldNodep->lft) {
+	if (!oldNodep || !oldNodep->lft ||
+		(esmLoopTestOn &&
+		 nodep->switchInfo.LinearFDBTop != oldNodep->switchInfo.LinearFDBTop)) {
+		// Top will differ if loop test enabled since last sweep.
 		if (dst_topop->routingModule->funcs.needs_lft_recalc(dst_topop, nodep)) {
 			status = sm_setup_lft(dst_topop, nodep);
 		} else {
-			IB_LOG_INFINI_INFO_FMT(__func__,
-				"Full LFT send switch with no old data %s", sm_nodeDescString(nodep));
+			if (sm_config.sm_debug_routing)
+				IB_LOG_INFINI_INFO_FMT(__func__,
+					"Full LFT send switch with no old data %s", sm_nodeDescString(nodep));
 			status = sm_send_lft(dst_topop, nodep);
 		}
 		return status;
@@ -768,17 +785,18 @@ sm_routing_route_old_switch(Topology_t *src_topop, Topology_t *dst_topop, Node_t
 			if (dst_topop->routingModule->funcs.needs_lft_recalc(dst_topop, nodep)) {
 				status = sm_setup_lft(dst_topop, nodep);
 			} else {
-				IB_LOG_INFINI_INFO_FMT(__func__,
-					"Full LFT send switch with Port Change %s", sm_nodeDescString(nodep));
 				status = sm_send_lft(dst_topop, nodep); 
 			}
-			//IB_LOG_INFINI_INFO_FMT(__func__, "Full route calc for switch with added/removed link %s", sm_nodeDescString(nodep));
+			if (sm_config.sm_debug_routing)
+				IB_LOG_INFINI_INFO_FMT(__func__, "Full route calc for switch with added/removed link %s",
+					sm_nodeDescString(nodep));
 			return status;
 		}
 	}
 
-	// Why do we use sm_topop here instead of src_topop or dst_topop?
-	if (sm_topop->routingModule->funcs.can_send_partial_lft()) {
+	if ((new_endnodesInUse.nset_m ||
+		 src_topop->num_endports != dst_topop->num_endports) &&
+		dst_topop->routingModule->funcs.can_send_partial_lft()) {
 		IB_LOG_INFO_FMT(__func__, "Partial LFT send - switch %s", sm_nodeDescString(nodep));
 		sm_send_partial_lft(sm_topop, nodep, &sm_topop->deltaLidBlocks);
 		return VSTATUS_OK;
@@ -788,15 +806,12 @@ sm_routing_route_old_switch(Topology_t *src_topop, Topology_t *dst_topop, Node_t
 	//  		  a lft that was already allocated.  A fix was made to topology_setup_switches_LR_DR() so that this code should never execute
 	//  		  when nodep->lft points to an lft.  Although this should no longer happen, the following code is added to prevent a memory leak
 	// 			  by freeing the lft, if node->lft is found to be non NULL.
-	if (nodep->lft) {
-		IB_LOG_INFINI_INFO_FMT(__func__, "new lft - switch %s nodep %p nodep->index %u nodep->lft %p",
-			sm_nodeDescString(nodep), nodep, nodep->index, nodep->lft);
-		vs_pool_free(&sm_pool, nodep->lft);
-		nodep->lft = NULL;
-	}
+	if (nodep->lft && sm_config.sm_debug_routing)
+			IB_LOG_INFINI_INFO_FMT(__func__, "new lft - switch %s nodep %p nodep->index %u nodep->lft %p",
+				sm_nodeDescString(nodep), nodep, nodep->index, nodep->lft);
+
 	// Just additions, adjust LFT blocks with removed or new lids.
-	lftLength = sizeof(PORT) * ROUNDUP(nodep->switchInfo.LinearFDBTop+1,MAX_LFT_ELEMENTS_BLOCK);
-	if ((status = vs_pool_alloc(&sm_pool, lftLength, (void *)&nodep->lft)) != VSTATUS_OK) {
+	if ((status = sm_Node_init_lft(nodep, &lftLength)) != VSTATUS_OK) {
 		IB_FATAL_ERROR("sm_routing_route_old_switch: CAN'T ALLOCATE SPACE FOR NODE'S LFT;  OUT OF MEMORY IN SM MEMORY POOL!  TOO MANY NODES!!");
 		return VSTATUS_NOMEM;	/*calling function can use this value to abort programming old switches*/
 	}
@@ -804,8 +819,6 @@ sm_routing_route_old_switch(Topology_t *src_topop, Topology_t *dst_topop, Node_t
 	if (nodep->switchInfo.LinearFDBTop > oldNodep->switchInfo.LinearFDBTop) {
 		memcpy((void *)nodep->lft, (void *)oldNodep->lft, 
 			sizeof(PORT) * (oldNodep->switchInfo.LinearFDBTop + 1));
-		memset((void *)&(nodep->lft[oldNodep->switchInfo.LinearFDBTop + 1]), 
-			0xff, lftLength - oldNodep->switchInfo.LinearFDBTop);
 	} else {
 		memcpy((void *)nodep->lft, (void *)oldNodep->lft, 
 			sizeof(PORT) * (nodep->switchInfo.LinearFDBTop + 1));
@@ -821,9 +834,14 @@ sm_routing_route_old_switch(Topology_t *src_topop, Topology_t *dst_topop, Node_t
 		sm_Node_copy_pgft(nodep, oldNodep);
 	}
 
-	//IB_LOG_INFINI_INFO_FMT(__func__, "Delta route calc for switch with same paths %s", sm_nodeDescString(nodep));
-	return sm_setup_lft_deltas(src_topop, dst_topop, nodep);
-
+	if (new_endnodesInUse.nset_m ||
+	    src_topop->num_endports != dst_topop->num_endports) {
+		if (sm_config.sm_debug_routing)
+			IB_LOG_INFINI_INFO_FMT(__func__, "Delta route calc for switch with same paths %s",
+									sm_nodeDescString(nodep));
+		return sm_setup_lft_deltas(src_topop, dst_topop, nodep);
+	}
+	return VSTATUS_OK;
 }
 
 Status_t sm_routing_route_switch_LR(Topology_t *topop, SwitchList_t *swlist, int rebalance)
@@ -855,7 +873,8 @@ Status_t sm_routing_route_switch_LR(Topology_t *topop, SwitchList_t *swlist, int
 	for_switch_list_switches(swlist, sw) {
 		if (!bitset_test(&old_switchesInUse, sw->switchp->swIdx))
 			continue;
-		//IB_LOG_INFINI_INFO_FMT(__func__, "routing old switch "FMT_U64, nodep->nodeInfo.NodeGUID);
+		if (sm_config.sm_debug_routing)
+			IB_LOG_INFINI_INFO_FMT(__func__, "routing old switch "FMT_U64, sw->switchp->nodeInfo.NodeGUID);
 		status = sm_routing_route_old_switch(&old_topology, topop, sw->switchp);
 		if (status != VSTATUS_OK)
 			break;
@@ -1092,9 +1111,160 @@ Status_t sm_calculate_balanced_lfts_systematic(Topology_t *topop)
 	return VSTATUS_OK;
 }
 
+Status_t sm_calculate_balanced_lft(Topology_t *topop, Node_t *switchp)
+{
+	Node_t *nodep, *toSwitchp;
+	Port_t *portp, *swPortp, *toSwitchPortp;
+	Status_t status;
+	uint8_t portGroup[128];
+	int upDestCount = 0;
+	int downDestCount = 0;
+	int currentLid, numPorts, i;
+	int r, routingIterations;
+	int ht, hfiTierEnd=0;
+	int isUp = 1;
+
+	if (!Is_Switch_Queued(topop, switchp)) {
+		// Switch may not be added to tier switch group when no FIs in down path.
+		// If so, doesn't matter if it is balanced.
+		return sm_calculate_lft(topop, switchp);
+	}
+
+	if (sm_config.ftreeRouting.debug) 
+		IB_LOG_INFINI_INFO_FMT(__func__, "Switch %s", sm_nodeDescString(switchp));
+
+	// If we can't guarantee that all HFIs/FIs are on the same tier,
+	// balancing the LFTs is more complicated.
+	if (!sm_config.ftreeRouting.fis_on_same_tier) {
+		hfiTierEnd = sm_config.ftreeRouting.tierCount-1;
+	}
+
+	status = sm_Node_init_lft(switchp, NULL);
+	if (status != VSTATUS_OK) {
+		IB_LOG_ERROR_FMT(__func__, "Failed to allocate space for LFT.");
+		return status;
+	}
+
+	// if route last is indicated, balance over those HFIs on a second pass
+	routingIterations = (strlen(sm_config.ftreeRouting.routeLast.member) == 0) ? 1 : 2;
+
+	for (r=0; r<routingIterations; ++r) {
+		// hfiTierEnd will be set to zero when config indicates all 
+		// HFIs are on same the same tier.  If not, we need to visit 
+		// all tiers since HFIs may be attached anywhere.
+		for (ht=0; ht<=hfiTierEnd; ht++) {
+			// Iterate over all switches on the FI/HFI tier.
+			for_all_tier_switches(topop, toSwitchp, ht) {
+				// If this switch has no FI/HFIs, skip it.
+				if (!toSwitchp->edgeSwitch) continue;
+
+				if ((r==1) && !toSwitchp->skipBalance) {
+					// Second pass, done with this switch's attached HFIs.
+					continue;
+				}
+
+				if (switchp == toSwitchp) {
+					// handle direct attach - build LFT entries for 
+					// FI/HFIs attached to this switch.
+					numPorts = 0;
+				} else {
+					// get a list of valid egress parts from switchp to toSwitchp.
+					numPorts = topop->routingModule->funcs.get_port_group(topop, switchp, toSwitchp, portGroup);
+					if (!numPorts) continue;
+
+					// portGroup will all be up or down per spine first routing.
+					swPortp = sm_get_port(switchp, portGroup[0]);
+
+					isUp = (swPortp && swPortp->portData->uplink);
+				}
+
+				for_all_physical_ports(toSwitchp, toSwitchPortp) {
+					if (!sm_valid_port(toSwitchPortp) || toSwitchPortp->state <= IB_PORT_DOWN) continue;
+
+					// If the node connected to this port isn't a FI or is
+					// part of the skip balance list, skip to the next port.
+					// It will be setup on second pass.
+					nodep = sm_find_node(topop, toSwitchPortp->nodeno);
+					if (!nodep) continue;
+					if (nodep->nodeInfo.NodeType != NI_TYPE_CA) continue;
+					if ((r==0) && nodep->skipBalance) {
+						toSwitchp->skipBalance = 1;
+						continue;
+					}
+
+					for_all_end_ports(nodep, portp) {
+						if (!sm_valid_port(portp) || portp->state <= IB_PORT_DOWN) continue;
+
+						i = 0;
+						for_all_port_lids(portp, currentLid) {
+							// Handle the case where switchp == toSwitchp. 
+							// In this case, the target LID(s) are directly
+							// connected to the local switchp port.
+							if (!numPorts) {
+								switchp->lft[currentLid] = toSwitchPortp->index;
+								continue;
+							}
+
+							if (isUp) {
+								switchp->lft[currentLid] = portGroup[(i+upDestCount + switchp->tierIndex*switchp->uplinkTrunkCnt) % numPorts];
+							} else {
+ 									switchp->lft[currentLid] = portGroup[(i+downDestCount + switchp->tierIndex) % numPorts];
+							}
+
+							if (sm_config.ftreeRouting.debug) 
+								IB_LOG_INFINI_INFO_FMT(__func__, "Switch %s to %s lid 0x%x outport %d (of %d) tierIndex %d uplinkTrunk %d", 
+									sm_nodeDescString(switchp), sm_nodeDescString(nodep), currentLid,
+									switchp->lft[currentLid], numPorts, switchp->tierIndex, switchp->uplinkTrunkCnt);
+
+							incr_lids_routed(topop, switchp, switchp->lft[currentLid]);
+
+							// Disperse lmc lids to different upstream switches
+							if (isUp && (switchp->uplinkTrunkCnt > 1) && switchp->trunkGrouped) {
+								// Uplink trunk group is "grouped" ports:
+								// that is, port 1-4 to same switch, 5-8 next switch, etc.
+								i += switchp->uplinkTrunkCnt;
+								if ((i % numPorts) == 0) {
+									// add one so we don't use the same port
+									i++;
+								}
+							} else {
+								// If uplink trunk group, it has staggered ports:
+								// that is, ports 1,5,9,13 to same switch, ports 2,6,10,14
+								// to next switch, etc.
+								i++;
+							}
+						}
+						if (isUp) {
+							upDestCount += 1;
+						} else {
+							downDestCount += 1;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Setup switch to switch routing
+	for_all_switch_nodes(topop, nodep) {
+		for_all_end_ports(nodep, portp) {
+			if (!sm_valid_port(portp) || portp->state <= IB_PORT_DOWN) continue;
+			topop->routingModule->funcs.setup_xft(topop, switchp, nodep, portp, portGroup);
+			for_all_port_lids(portp, currentLid) {
+				switchp->lft[currentLid] = portGroup[currentLid - portp->portData->lid];
+			}
+		}
+		if (topop->routingModule->funcs.setup_pgs) {
+			status = topop->routingModule->funcs.setup_pgs(topop, switchp, nodep);
+		}
+	}
+
+	return VSTATUS_OK;
+}
+
 Status_t sm_copy_balanced_lfts(Topology_t *topop)
 {
-	int			lftLength;
+	size_t		lftLength;
 	Node_t		*switchp, *oldnodep;
 	Port_t		*portp, *oldportp;
 	Status_t	status=VSTATUS_OK;
@@ -1106,37 +1276,38 @@ Status_t sm_copy_balanced_lfts(Topology_t *topop)
 	}
 
 	for_all_switch_nodes(topop, switchp) {
-		lftLength = sizeof(PORT) * ROUNDUP(switchp->switchInfo.LinearFDBTop+1, MAX_LFT_ELEMENTS_BLOCK);
-		if ((status = vs_pool_alloc(&sm_pool, lftLength, (void *)&switchp->lft)) != VSTATUS_OK) {
-			IB_FATAL_ERROR("sm_copy_balanced_lfts: CAN'T ALLOCATE SPACE FOR NODE'S LFT;  OUT OF MEMORY IN SM MEMORY POOL!  TOO MANY NODES!!");
-			return VSTATUS_NOMEM;	/*calling function can use this value to abort programming old switches*/
-		}
-
 		oldnodep = switchp->old;
 		if (!oldnodep) {
-			// shouldn't get here
+			oldnodep = sm_find_guid(&old_topology, switchp->nodeInfo.NodeGUID);
+		}
+
+		if (!oldnodep || !oldnodep->lft) {
+			// Shouldn't get here
+			if (sm_config.sm_debug_routing)
+				IB_LOG_INFINI_INFO_FMT(__func__, "Full LFT for switch %s on old node checks",
+							sm_nodeDescString(switchp));
+			status = sm_setup_lft(topop, switchp);
 			continue;
 		}
-		
+
+		status = sm_Node_init_lft(switchp, &lftLength);
+		if (status != VSTATUS_OK) {
+			IB_LOG_ERROR_FMT(__func__, "Failed to allocate space for LFT.");
+			return status;
+		}
+
 		switchp->numLidsRouted = oldnodep->numLidsRouted;
 
 		// Don't copy the portgroups if the switch-switch linkage may have changed.
+		// TBD - what if only a new HFI linked to switch.
 		boolean copyPgs = (!switchp->initPorts.nset_m && bitset_equal(&switchp->activePorts, &oldnodep->activePorts));
 
 		if (switchp->switchInfo.LinearFDBTop > oldnodep->switchInfo.LinearFDBTop) {
 			memcpy((void *)switchp->lft, (void *)oldnodep->lft, 
 				sizeof(uint8_t) * (oldnodep->switchInfo.LinearFDBTop + 1));
-			if (oldnodep->switchInfo.LinearFDBTop < lftLength) {
-				memset((void *)&(switchp->lft[oldnodep->switchInfo.LinearFDBTop + 1]), 
-					0xff, lftLength - oldnodep->switchInfo.LinearFDBTop - 1);
-			}
 		} else {
 			memcpy((void *)switchp->lft, (void *)oldnodep->lft, 
 				sizeof(uint8_t) * (switchp->switchInfo.LinearFDBTop + 1));
-			if (switchp->switchInfo.LinearFDBTop < lftLength) {
-				memset((void *)&(switchp->lft[switchp->switchInfo.LinearFDBTop + 1]), 
-					0xff, lftLength - switchp->switchInfo.LinearFDBTop - 1);
-			}
 		}
 
 		if (copyPgs) {
@@ -1245,9 +1416,9 @@ Status_t sm_calculate_balanced_lft_deltas(Topology_t *topop)
 				if (curBlock != lid/LFTABLE_LIST_COUNT) {
 					// Set lft block num
 					curBlock = lid/LFTABLE_LIST_COUNT;
-					// if (!bitset_test(&topop->deltaLidBlocks, curBlock))
-					//  	IB_LOG_INFINI_INFO_FMT(__func__,
-					//			"Setting curBlock %d due to delete of lid 0x%x", curBlock, lid);
+					if (sm_config.sm_debug_routing && !bitset_test(&topop->deltaLidBlocks, curBlock))
+						IB_LOG_INFINI_INFO_FMT(__func__,
+								"Setting curBlock %d due to delete of lid 0x%x", curBlock, lid);
 
 					bitset_set(&topop->deltaLidBlocks, curBlock);
 				}
@@ -1269,9 +1440,9 @@ Status_t sm_calculate_balanced_lft_deltas(Topology_t *topop)
 		if (curBlock != lid/LFTABLE_LIST_COUNT) {
 			// Set lft block num
 			curBlock = lid/LFTABLE_LIST_COUNT;
-			// if (!bitset_test(&topop->deltaLidBlocks, curBlock))
-			//		 IB_LOG_INFINI_INFO_FMT(__func__,
-			//			"Setting curBlock %d due to ADD of lid 0x%x", curBlock, lid);
+			if (sm_config.sm_debug_routing && !bitset_test(&topop->deltaLidBlocks, curBlock))
+				 IB_LOG_INFINI_INFO_FMT(__func__,
+						"Setting curBlock %d due to ADD of lid 0x%x", curBlock, lid);
 			bitset_set(&topop->deltaLidBlocks, curBlock);
 		}
 
