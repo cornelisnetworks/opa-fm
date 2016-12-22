@@ -3838,7 +3838,8 @@ sm_node_updateFromTopo(Node_t * nodep, Topology_t * oldTopop, Topology_t * curTo
 
 	if ((topology_passcount >= 1) && 
 		(!sm_config.forceAttributeRewrite || (sm_config.forceAttributeRewrite == skipWrite)) && 
-		(old_topology.qosEnforced == curTopop->qosEnforced) && 
+		old_topology.vfs_ptr && curTopop->vfs_ptr &&
+		(old_topology.vfs_ptr->qosEnabled == curTopop->vfs_ptr->qosEnabled) && 
 		!nodep->initPorts.nset_m && bitset_test(&old_switchesInUse, nodep->swIdx)) {
 		if (nodep->oldExists) {
 			Node_t * oldNodep = nodep->old;

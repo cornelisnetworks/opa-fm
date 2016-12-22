@@ -71,6 +71,14 @@ static __inline__ int ijTest(uint32* ijBitmap, int ij) {
 
 // DOR Topology Information
 //
+typedef struct _DorNode {
+	int8_t			coords[SM_DOR_MAX_DIMENSIONS];
+	Node_t			*node;
+	int			multipleBrokenDims;
+	struct _DorNode *left[SM_DOR_MAX_DIMENSIONS];
+	struct _DorNode *right[SM_DOR_MAX_DIMENSIONS];
+} DorNode_t;
+
 typedef struct  _DorTopology {
 	// mesh sizing
 	uint8_t numDimensions;
@@ -95,17 +103,10 @@ typedef struct  _DorTopology {
 	size_t dorClosureSize;
 	uint32_t *dorLeft;
 	uint32_t *dorRight;
+	uint32_t *dorBroken;
 	uint32_t closure_max_sws;   //the switch count when the closures were computed
+	DorNode_t *datelineSwitch;
 } DorTopology_t;
-
-
-typedef struct _DorNode {
-	int8_t			coords[SM_DOR_MAX_DIMENSIONS];
-	Node_t			*node;
-	int				multipleBrokenDims;
-	struct _DorNode	*left[SM_DOR_MAX_DIMENSIONS];
-	struct _DorNode	*right[SM_DOR_MAX_DIMENSIONS];
-} DorNode_t;
 
 typedef enum {
 	DorAny   = 0,

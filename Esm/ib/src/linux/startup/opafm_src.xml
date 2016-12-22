@@ -328,8 +328,6 @@
     <!-- the following ways in the DeviceGroup section:                      -->
     <!-- All Devices: <Select>All</Select>                                   -->
     <!-- This FM Instance's Port: <Select>Self</Select>                      -->
-    <!-- All SMs: <Select>AllSMs</Select>                                    -->
-    <!--        All ports which report IsSM Capability mask, including Self  -->
     <!-- All HFIs directly connected: <Select>HFIDirectConnect</Select>      -->
     <!--        Both HFI ports which are directly connected to each other    -->
     <!--        with no switch. A typical back to back configuration         -->
@@ -341,7 +339,7 @@
     <!--        All Switch Port 0 with Enhanced Port 0 in Capability Mask.   -->
     <!--        By definition will also include all Embedded SMs.            -->
     <!-- The values above are case insensitive:                              -->
-    <!--      All, Self, AllSMs, SWE0, HFIDirectConnect, TFIs                -->
+    <!--      All, Self, SWE0, HFIDirectConnect, TFIs                -->
     <!-- The above can be combined as desired in the same DeviceGroup.       -->
 
     <!-- In addition, a DeviceGroup can include another DeviceGroup via:     -->
@@ -389,12 +387,6 @@
       <Name>AllEndNodes</Name>
       <IncludeGroup>AllFIs</IncludeGroup>
       <IncludeGroup>AllSWE0s</IncludeGroup>
-    </DeviceGroup>
-
-    <!-- All ports with IsSM Capability (e.g. running an SM) -->
-    <DeviceGroup>
-      <Name>AllSMs</Name>
-      <Select>AllSMs</Select>
     </DeviceGroup>
 
     <!-- Both ports in an HFI connected to HFI configuration -->

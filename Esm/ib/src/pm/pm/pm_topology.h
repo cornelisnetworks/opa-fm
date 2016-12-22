@@ -166,7 +166,7 @@ typedef struct _vls_pctrs PmCompositeVLCounters_t;
 
 
 typedef struct PmCompositeVfvlmap_s {
-	uint32	vl;
+	uint32	vlmask;
 	uint8   VF; //index into vf array
 	uint8	Reserved[3];
 } PmCompositeVfvlmap_t;
@@ -453,7 +453,7 @@ typedef	struct PmNodeImage_s PmNodeImage_t;
 
 typedef struct _vfmap {
 	PmVF_t *pVF;
-	uint32 vl;
+	uint32 vlmask;
 } vfmap_t;
 
 // This tracks Switch, FI and router ports
@@ -771,8 +771,8 @@ typedef struct PmImage_s {
 #define PM_HISTORY_MAX_IMAGES_PER_COMPOSITE 60
 #define PM_HISTORY_MAX_SMS_PER_COMPOSITE 2
 #define PM_HISTORY_MAX_LOCATION_LEN 111
-#define PM_HISTORY_VERSION 7
-#define PM_HISTORY_VERSION_OLD 6 // Old version currently supported by PA
+#define PM_HISTORY_VERSION 8
+#define PM_HISTORY_VERSION_OLD 7 // Old version currently supported by PA
 #define PM_MAX_COMPRESSION_DIVISIONS 32
 #define PM_HISTORY_STHFILE_LEN 15 // the exact length of the filename, not full path
 
@@ -1169,7 +1169,7 @@ BSWAP_PM_COMPOSITE_VFVLMAP(PmCompositeVfvlmap_t *Dest, uint32 numVFs)
 	uint32 i;
 
 	for (i = 0; i < numVFs; i++) {
-		Dest[i].vl = ntoh32(Dest[i].vl);
+		Dest[i].vlmask = ntoh32(Dest[i].vlmask);
 	}
 #endif
 }	// End of BSWAP_PM_COMPOSITE_VFVLMAP

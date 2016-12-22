@@ -429,4 +429,16 @@ FSTATUS oib_get_portguid(
 		uint64_t            *pRetGIDPrefix
 		);
 
+/*
+ *  Get MAD status code from most recent PA operation
+ *
+ * @param port                    Local port to operate on. 
+ * 
+ * @return 
+ *   The corresponding status code.
+ */
+uint16_t
+oib_get_mad_status(
+    IN struct oib_port              *port
+    );
 #endif /* __OIB_UTILS_H__ */

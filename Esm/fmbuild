@@ -28,8 +28,17 @@
 # 
 # END_ICS_COPYRIGHT8   ****************************************
 
+# This is the main build script used with the FM src rpm's %build operation
+
 # Import the build environment
 . build.env
+
+export BUILD_PLATFORM="LINUX"
+
+source ../MakeTools/funcs-ext.sh
+
+settarget x86_64
+settl
 
 # This is a user level file to build the basic project
 # One must run target and setver before invoking this script.
@@ -51,6 +60,12 @@ esac
 
 export BUILD_CONFIG=${BUILD_CONFIG:-"debug"}
 export PRODUCT=${PRODUCT:-HSM}
+
+# for HSM the kernel rev is not important.  We simply use the kernel rev
+# of the running kernel.  While BUILD_TARGET_OS_VERSION is needed by Makerules
+# it will have no impact on what is actually built for HSM
+export BUILD_TARGET_OS_VERSION=${BUILD_TARGET_OS_VERSION:-`uname -r`}
+setver $BUILD_TARGET_OS_VENDOR $BUILD_TARGET_OS_VERSION
 
 set -x
 {

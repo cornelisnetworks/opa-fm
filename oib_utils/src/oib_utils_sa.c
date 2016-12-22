@@ -1407,7 +1407,7 @@ FSTATUS oib_query_sa(struct oib_port *port,
 
 			if (fillInIbNodeRecord(&mad, pQuery) != FSUCCESS) break;
 
-			fstatus = sa_query_common(&mad, &pRsp, sizeof (NODE_DESCRIPTION), &pQR, port);
+			fstatus = sa_query_common(&mad, &pRsp, sizeof (IB_NODE_RECORD), &pQR, port);
 			if (fstatus != FSUCCESS) break;
 
 			// Translate the data.
@@ -1418,6 +1418,8 @@ FSTATUS oib_query_sa(struct oib_port *port,
 				memcpy (pND, &pNR->NodeDescData.NodeString[0], NODE_DESCRIPTION_ARRAY_SIZE);
 			}
 		}
+		break;
+
 	case OutputTypeStlNodeDesc:
 		{
 			STL_NODEDESC_RESULTS    *pNDR;

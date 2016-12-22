@@ -31,6 +31,15 @@
 # Override default funcs.sh functions from $ICSBIN.
 
 #Following taken from funcs.sh
+# These are included here to permit rpm builds by customers without needing
+# our devtools (which includes funcs.sh)
+# to aid tracking, if a change is needed for any of these functions
+# move the given function toward the bottom of the script after the
+# "END TAKEN FROM FUNCS.SH" line and then make the necessary edits
+# this way it will be clear which functions should track devtools and which
+# represent possibly product or generation specific adjustments
+# This way this script will also have only 1 copy of each function and
+# hence will avoid confusion to others reading it
 
 #---------------------------------------------------------------------------
 # Function:	toupper
@@ -166,104 +175,6 @@ function isAllEmb()
 } # end function
 
 #---------------------------------------------------------------------------
-# Function:	showenv
-# In Script:	funcs.sh
-# Arguments:	none
-# Description:	show the ics cde environment settings
-# Uses:         
-#       None
-#---------------------------------------------------------------------------
-function showenv()
-{
-    local SMP
-
-    printf "ICS CDE Environment Settings:\n\n"
-
-    if [[ "$BUILD_TARGET" == "" || "$1" == "-h" ]]; then
-        local TARGET_COMMENT="[use: target] "
-    fi      
-    if [[ "$BUILD_UNIT_TEST" == "" || "$1" == "-h" ]]; then
-        local UNIT_TEST_COMMENT="[use: settest|setnotest] "
-    fi
-    if [[ "$BUILD_CONFIG" == "" || "$1" == "-h" ]]; then
-        local CONFIG_COMMENT="[use: setdbg|setrel command] "
-    fi
-    if [[ "$BUILD_TARGET_OS_VERSION" == "" || "$1" == "-h" ]]; then
-        local OS_COMMENT="[use: setver] [user: export BUILD_SMP=(0|1|2)] "
-    fi    	
-    if [ "$BUILD_SMP" == "1" ]; then
-        SMP="SMP"
-    elif [ "$BUILD_SMP" == "2" ]; then
-        SMP="Enterprise"
-    else
-        SMP=""
-    fi
-    
-    echo "Build Target       : $TARGET_COMMENT$BUILD_TARGET"
-    echo "Build Target OS    : $TARGET_COMMENT$OS_COMMENT$BUILD_TARGET_OS $BUILD_TARGET_OS_VERSION $SMP"
-    echo "Build Platform     : $TARGET_COMMENT$BUILD_PLATFORM"
-    echo "Build Target Tools : $TARGET_COMMENT$BUILD_TARGET_TOOLCHAIN"
-    echo "Build Unit Test    : $UNIT_TEST_COMMENT$BUILD_UNIT_TEST"
-    echo "Build Configuration: $CONFIG_COMMENT$BUILD_CONFIG"
-    
-    if [ "$BUILD_TARGET_OS" == "VXWORKS" ]; then
-        if [[ "$BUILD_TMS" == "" || "$1" == "-h" ]]; then
-            local TMS_COMMENT="[use: export BUILD_TMS=(yes|no)] "
-        fi
-        if [[ "$TGT_SUBDIR_NAME" == "" || "$1" == "-h" ]]; then
-            local SUBDIR_COMMENT="[use: export TGT_SUBDIR_NAME=(target|tmsTarget)] "
-        fi
-        if [[ "$EVAL_HARDWARE" == "" || "$1" == "-h" ]]; then
-            local EVAL_COMMENT="[use: export EVAL_HARDWARE=(yes|no)] "
-        fi
-        if [[ "$NO_SSP" == "" || "$1" == "-h" ]]; then
-            local SSP_COMMENT="[use: export NO_SSP=(1|0)] "
-        fi		
-        if [[ "$STOP_ON_ERROR" == "" || "$1" == "-h" ]]; then
-            local STOP_ON_ERROR_COMMENT="[use: export STOP_ON_ERROR=(yes|no)] "
-        fi
-        if [[ "$TARGET_BSP" == "" || "$1" == "-h" ]]; then
-            local BSP_COMMENT="[use: setbsp (`cat $TL_DIR/SUPPORTED_TARGET_BSPS 2> /dev/null`)] "
-        fi         	    	
-        if [[ "$WIND_BASE" == "" || "$1" == "-h" ]]; then
-            local WIND_BASE_COMMENT="[use: target | setwindbase] "
-        fi                
-        local CARD_TYPE_COMMENT
-        if isAllEmb; then
-            if [[ "$CARD_TYPE" == "" || "$1" == "-h" ]]; then
-                    CARD_TYPE_COMMENT="[use: setct] "
-            fi	    
-        else
-            if [[ "$CARD_TYPE" != "" || "$1" == "-h" ]]; then
-                    CARD_TYPE_COMMENT="[ALL_EMB only, use: resetct] "
-            else
-                    CARD_TYPE_COMMENT="[ALL_EMB only] "
-            fi
-        fi
-        if [[ "$WEB_STANDALONE" == "" || "$1" == "-h" ]]; then
-            local WEB_STANDALONE_COMMENT="[use: export WEB_STANDALONE=(1|0)] "
-        fi 
-                                       
-        echo   "Build TMS          : $TMS_COMMENT$BUILD_TMS"
-        echo   "Build Target Subdir: $SUBDIR_COMMENT$TGT_SUBDIR_NAME"
-        echo   "EVAL HARDWARE      : $EVAL_COMMENT$EVAL_HARDWARE"		
-        echo   "NO SSP             : $SSP_COMMENT$NO_SSP"	    
-        echo   "STOP ON ERROR      : $STOP_ON_ERROR_COMMENT$STOP_ON_ERROR"       
-        echo   "Target BSP         : $BSP_COMMENT$TARGET_BSP"      
-        echo   "Tornado Base       : $WIND_BASE_COMMENT$WIND_BASE"
-        echo   "Card Type          : $CARD_TYPE_COMMENT$CARD_TYPE"
-        echo   "Web Standalone     : $WEB_STANDALONE_COMMENT$WEB_STANDALONE"
-    fi
-
-    if [[ "$TL_DIR" == "" || "$1" == "-h" ]]; then
-       local TL_DIR_COMMENT="[use: target] "
-    fi 
-    
-    echo   "Top Level Directory: $TL_DIR_COMMENT$TL_DIR"
-
-} # end function        
-
-#---------------------------------------------------------------------------
 # Function:	setbsp
 # In Script:	funcs.sh
 # Arguments:	none
@@ -328,6 +239,24 @@ function setbsp()
 } # end function
 
 #---------------------------------------------------------------------------
+# Function:	resetct
+# In Script:	funcs.sh
+# Arguments:	none
+# Description:	clear card type for ALL_EMB builds
+# Uses:
+#	None
+#---------------------------------------------------------------------------
+function resetct()
+{
+    unset CARD_TYPE
+    unset PROJ_FILE_DIR
+	if [ "$TL_DIR" != "" ]; then
+		rm -f $TL_DIR/.defaultCT
+	fi
+    echo "CARD_TYPE has been reset"
+}
+
+#---------------------------------------------------------------------------
 # Function:	targetos
 # In Script:	funcs.sh
 # Arguments:	1 = target operating system
@@ -386,14 +315,19 @@ function targetos()
 
 
 
+################################################################################
 ####END TAKEN FROM FUNCS.SH
+################################################################################
+
+
+
 # NOTE: This function changes often when environment variables are added
 #       to display to end users.
 #---------------------------------------------------------------------------
 # Function:	showenv
-# In Script:	showenv
+# In Script:	funcs-ext.sh
 # Arguments:	none
-# Description:	show the ics cde environment settings
+# Description:	show the intel cde environment settings
 # Uses:         
 #       None
 #---------------------------------------------------------------------------
@@ -401,7 +335,7 @@ function showenv()
 {
     local SMP
 
-    printf "ICS CDE Environment Settings:\n\n"
+    printf "Intel CDE Environment Settings:\n\n"
 
     if [[ "$BUILD_TARGET" == "" || "$1" == "-h" ]]; then
         local TARGET_COMMENT="[use: target] "
@@ -478,24 +412,33 @@ function showenv()
         if [[ "$OFED_STACK_PREFIX" == "" || "$1" == "-h" ]]; then
             local OFED_STACK_PREFIX_COMMENT="[use: export OFED_STACK_PREFIX=/dir] "
         fi
-        if [[ "$BUILD_ULPS" == "" || "$1" == "-h" ]]; then
-            local BUILD_ULPS_COMMENT="[use: setulps 'ulp list'] "
-        fi
-        if [[ "$BUILD_SKIP_ULPS" == "" || "$1" == "-h" ]]; then
-            local BUILD_SKIP_ULPS_COMMENT="[use: setskipulps 'ulp list'] "
-        fi
+        #if [[ "$BUILD_ULPS" == "" || "$1" == "-h" ]]; then
+        #    local BUILD_ULPS_COMMENT="[use: setulps 'ulp list'] "
+        #fi
+        #if [[ "$BUILD_SKIP_ULPS" == "" || "$1" == "-h" ]]; then
+        #    local BUILD_SKIP_ULPS_COMMENT="[use: setskipulps 'ulp list'] "
+        #fi
         echo   "OFED Stack Prefix  : $OFED_STACK_PREFIX_COMMENT$OFED_STACK_PREFIX"
-        echo   "Build ULPs         : $BUILD_ULPS_COMMENT$BUILD_ULPS"
-        echo   "Build Skip ULPs    : $BUILD_SKIP_ULPS_COMMENT$BUILD_SKIP_ULPS"
+        #echo   "Build ULPs         : $BUILD_ULPS_COMMENT$BUILD_ULPS"
+        #echo   "Build Skip ULPs    : $BUILD_SKIP_ULPS_COMMENT$BUILD_SKIP_ULPS"
     fi
 
     if [[ "$TL_DIR" == "" || "$1" == "-h" ]]; then
        local TL_DIR_COMMENT="[use: target] "
     fi 
-    
     echo   "Top Level Directory: $TL_DIR_COMMENT$TL_DIR"
 
-} # end function
+    if [[ "$PROJ_FILE_DIR" == "" || "$1" == "-h" ]]; then
+        local PROJ_FILE_DIR_COMMENT="[use: export PROJ_FILE_DIR as needed] "
+    fi      
+    echo   "Proj File Dir      : $PROJ_FILE_DIR_COMMENT$PROJ_FILE_DIR"
+
+    if [[ "$PRODUCT" == "" || "$1" == "-h" ]]; then
+        local PRODUCT_COMMENT="[use: export PRODUCT as needed] "
+    fi      
+    echo   "Product            : $PRODUCT_COMMENT$PRODUCT"
+
+} # end function        
 
 setbsp ()
 {
@@ -549,66 +492,6 @@ setbsp ()
         fi;
     fi
 }
-
-# NOTE: This function changes often when environment variables are added
-#       to display to end users.
-# 
-#---------------------------------------------------------------------------
-# Function:	targetos
-# In Script:	funcs.sh
-# Arguments:	1 = target operating system
-# Description:	specify target operating system for make to build for
-# Uses:
-#	sets BUILD_TARGET_OS
-#---------------------------------------------------------------------------
-function targetos()
-{
-    local targetOsType=`toupper $1`
-
-    if   [ `getBuildPlatform` == "CYGWIN" ]; then
-
-	case $targetOsType in
-	VXWORKS)
-	    export BUILD_TARGET_OS=VXWORKS
-	    ;;
-	WIN32)
-	    export BUILD_TARGET_OS=WIN32
-	    ;;
-	CYGWIN)
-	    export BUILD_TARGET_OS=CYGWIN
-	    ;;	
-	*)
-	    printf "Usage: targetos [cygwin|vxworks|win32]\n\n"
-	    return
-	    ;;
-	esac
-    elif   [ `getBuildPlatform` == "Darwin" ]; then
-    	case $targetOsType in
-	DARWIN)
-	    export BUILD_TARGET_OS=DARWIN
-	    ;;
-	*)
-	    printf "Usage: targetos [darwin]\n\n"
-	    return
-	    ;;
-	esac
-    else
-    	case $targetOsType in
-	VXWORKS)
-	    export BUILD_TARGET_OS=VXWORKS
-	    ;;
-	LINUX)
-	    export BUILD_TARGET_OS=LINUX
-	    ;;
-	*)
-	    printf "Usage: targetos [linux]\n\n"
-	    return
-	    ;;
-	esac
-    fi
-    
-    echo "Build target operating system set to $BUILD_TARGET_OS"
-} # end function                      
 
 function settarget()
 {
@@ -816,7 +699,7 @@ function settarget()
 #       target support.
 #---------------------------------------------------------------------------
 # Function:	os_vendor
-# In Script:	funcs.sh
+# In Script:	funcs-ext.sh
 # Arguments:	none
 # Description:	determine the os vendor based on build system
 #---------------------------------------------------------------------------
@@ -857,7 +740,7 @@ function os_vendor()
 #       target support.
 #---------------------------------------------------------------------------
 # Function:	os_vendor_version
-# In Script:	funcs.sh
+# In Script:	funcs-ext.sh
 # Arguments:	1 = os_vendor
 # Description:	determine the os vendor release level based on build system
 #---------------------------------------------------------------------------
@@ -905,14 +788,14 @@ function os_vendor_version()
 			rval="ES"`cat /etc/redhat-release | cut -d' ' -f7 | cut -d. -f1`
 			major=`cat /etc/redhat-release | cut -d' ' -f7 | cut -d. -f1`
 			minor=`cat /etc/redhat-release | cut -d' ' -f7 | cut -d. -f2`
-			if [ $major -ge 7 -a $minor -ne 0 ]
+			if [ \( $major -ge 7 -a $minor -ne 0 \) -o \( $major -eq 6 -a $minor -ge 7 \) ]
 			then
 				rval=$rval$minor
 			fi
 		elif grep -qi centos /etc/redhat-release
 		then
 			# CentOS 
-			rval="ES"`cat /etc/redhat-release | sed -r 's/^.+([[:digit:]])\.([[:digit:]]).+$/\1/'`
+			rval="ES"`cat /etc/redhat-release | sed -r 's/^.+([[:digit:]])\.([[:digit:]]).+$/\1\2/'`
 		elif grep -qi scientific /etc/redhat-release
 		then
 			# Scientific Linux.
@@ -943,7 +826,7 @@ function os_vendor_version()
 #       target support.
 #---------------------------------------------------------------------------
 # Function:	os_identifier
-# In Script:	funcs.sh
+# In Script:	funcs-ext.sh
 # Arguments:	None
 # Description:	generate concise ID for targer/vendor/major version
 # Uses:
@@ -968,7 +851,7 @@ function set_os_identifier()
 #       target support.
 #---------------------------------------------------------------------------
 # Function:	target
-# In Script:	funcs.sh
+# In Script:	funcs-ext.sh
 # Arguments:	1 = target platform
 #               2 = bsp [optional] on cygwin build platform only
 # Description:	specify target platform for make to build for
@@ -1260,7 +1143,7 @@ settools()
 
 #---------------------------------------------------------------------------
 # Function:	getosversions
-# In Script:	funcs.sh
+# In Script:	funcs-ext.sh
 # Arguments:	none
 # Description:	returns relevant os version
 # Uses:
@@ -1290,7 +1173,7 @@ function getosversions()
 
 #---------------------------------------------------------------------------
 # Function:	computebuild26
-# In Script:	funcs.sh
+# In Script:	funcs-ext.sh
 # Arguments:	None
 # Description:	Set BUILD_26 for LINUX
 # Uses: BUILD_TARGET_OS, BUILD_TARGET_OS_VERSION
@@ -1312,7 +1195,7 @@ function computebuild26()
 
 #---------------------------------------------------------------------------
 # Function:	setver
-# In Script:	funcs.sh
+# In Script:	funcs-ext.sh
 # Arguments:	$1 [optional], set the os version at the command line.
 # Description:	Set the BUILD_TARGET_OS_VERSION for the os, and arch.
 # Uses:

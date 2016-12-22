@@ -70,7 +70,8 @@ typedef enum {
     DBSYNC_AID_GROUP,
     DBSYNC_AID_SERVICE,
     DBSYNC_AID_INFORM,
-    DBSYNC_AID_MCROOT
+    DBSYNC_AID_MCROOT,
+    DBSYNC_AID_DATELINE
 } DBSyncAid_t;              /* Attribute ID (or cmd) to send */
 
 typedef enum {
@@ -113,7 +114,8 @@ typedef enum {
     DBSYNC_DATATYPE_GROUP, 
     DBSYNC_DATATYPE_SERVICE,
     DBSYNC_DATATYPE_MCROOT,
-	DBSYNC_DATATYPE_FILE
+	DBSYNC_DATATYPE_FILE,
+	DBSYNC_DATATYPE_DATELINE_GUID
 } DBSyncDatTyp_t;
 
 /*
@@ -214,6 +216,11 @@ BSWAPCOPY_SM_DBSYNC_DATA(SMDBSyncp Src, SMDBSyncp Dest)
     Dest->mcrootSyncFailCount = ntoh32(Dest->mcrootSyncFailCount);
     Dest->mcrootTimeSyncFail = ntoh32(Dest->mcrootTimeSyncFail);
     Dest->mcrootTimeLastSync = ntoh32(Dest->mcrootTimeLastSync);
+
+    Dest->datelineGuidSyncStatus = ntoh32(Dest->datelineGuidSyncStatus);
+    Dest->datelineGuidSyncFailCount = ntoh32(Dest->datelineGuidSyncFailCount);
+    Dest->datelineGuidTimeSyncFail = ntoh32(Dest->datelineGuidTimeSyncFail);
+    Dest->datelineGuidTimeLastSync = ntoh32(Dest->datelineGuidTimeLastSync);
 }
 
 static __inline
@@ -329,6 +336,7 @@ Status_t    sm_dbsync_syncInform(DBSyncType_t, SubscriberKeyp, STL_INFORM_INFO_R
 Status_t    sm_dbsync_syncGroup(DBSyncType_t, IB_GID*);
 Status_t	sm_dbsync_syncMCRoot(DBSyncType_t synctype);
 Status_t	sm_dbsync_syncFile(DBSyncType_t synctype, SMDBSyncFile_t*);
+Status_t	sm_dbsync_syncDatelineSwitchGUID(DBSyncType_t);
 void        sm_dbsync_showSms(void);
 void		sm_dbsync_standbyHello(SmRecKey_t);
 void		sm_dbsync_standbyCheck(void);

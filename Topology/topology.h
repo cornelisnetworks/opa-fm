@@ -691,6 +691,25 @@ extern boolean isISExpectedLink(ExpectedLink *elinkp);
 // To make sure verification is thorough, this will return true when
 // either the expected or resolved link(s) include an FI
 extern boolean isFIExpectedLink(ExpectedLink *elinkp);
+extern void PortDataFreePartitionTable(FabricData_t *fabricp, PortData *portp);
+extern FSTATUS PortDataAllocatePartitionTable(FabricData_t *fabricp, PortData *portp);
+// capacity of Partition Table for the given port
+extern uint16 PortPartitionTableSize(PortData *portp);
+// Lookup PKey
+// ignores the Full/Limited bit, only checks low 15 bits for a match
+// returns index of pkey in overall table or -1 if not found
+// if the Partition Table for the port is not available, returns -1
+extern int FindPKey(PortData *portp, uint16 pkey);
+// Determine if the given port is a member of the given vFabric
+// We don't really have all the right data here, especially if the FM has
+// combined multiple vFabrics into the same SL and PKey
+// but for most cases, we can safely conclude that if the port has the SL and
+// PKey configured it is a member of the vFabric.
+// This function will return FALSE if QoS data or SL2SCMap is not available
+// or if the port is not Armed/Active.
+// Given the current FM implementation (and the dependency on SL2SCMap), this
+// routine will return FALSE if invoked for non-endpoints
+extern boolean isVFMember(PortData *portp, VFData_t *pVFData);
 // count the number of armed/active links in the node
 extern uint32 CountInitializedPorts(FabricData_t *fabricp, NodeData *nodep);
 extern FSTATUS NodeDataAllocateSwitchData(FabricData_t *fabricp, NodeData *nodep,

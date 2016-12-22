@@ -306,7 +306,7 @@ elif [ "$Oflag" = y ]
 then
 	PREREQ+=('libpsm2')
 	
-	openmpi_conf_psm='--with-psm=/usr --with-psm2=/usr --disable-oshmem'
+	openmpi_conf_psm='--with-psm=/usr --with-psm2=/usr --disable-oshmem --with-libfabric'
 	# PSM indicated by qlc suffix so user can ID PSM vs verbs MPIs
 	openmpi_path_suffix="-hfi"
 	openmpi_rpm_suffix="_hfi"

@@ -143,12 +143,6 @@ dgmh_post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *c
 	
 	IB_LOG_INFO_FMT(__func__, "Initializing DGShortestPath.");
 
-	VirtualFabrics_t *VirtualFabrics = topop->vfs_ptr;
-
-	if (VirtualFabrics && VirtualFabrics->qosEnabled) {
-		topop->qosEnforced = 1;
-	}
-
 	// Examine every node in the fabric.
 	for (qp = cl_qmap_head(nodeMap); qp != cl_qmap_end(nodeMap);
 		qp = cl_qmap_next(qp)) {

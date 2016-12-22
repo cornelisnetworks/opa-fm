@@ -3120,9 +3120,8 @@ sub available_opa_stack_dev()
 
 sub installed_opa_stack_dev()
 {
-	return ((rpm_is_installed("libibverbs-devel", "user")
-			&& -e "$ROOT$BASE_DIR/version_ofed")
-			|| installed_ibdev);
+	return (rpm_is_installed("libibverbs-devel", "user")
+			&& -e "$ROOT$BASE_DIR/version_ofed");
 }
 
 # only called if installed_opa_stack_dev is true
@@ -3131,7 +3130,7 @@ sub installed_version_opa_stack_dev()
 	if ( -e "$ROOT$BASE_DIR/version_ofed" ) {
 		return `cat $ROOT$BASE_DIR/version_ofed`;
 	} else {
-		return installed_version_ibdev;
+		return "";
 	}
 }
 
@@ -3192,10 +3191,6 @@ sub uninstall_opa_stack_dev($$)
 	print_uninstall_banner_ofed_comp('opa_stack_dev');
 	uninstall_ofed_comp('opa_stack_dev', $install_list, $uninstalling_list, 'verbose');
 	$ComponentWasInstalled{'opa_stack_dev'}=0;
-	if (installed_ibdev) {
-		print_separator;
-		uninstall_ibdev("", " ibdev ");
-	}
 }
 
 # ==========================================================================

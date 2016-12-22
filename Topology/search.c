@@ -1903,12 +1903,10 @@ FSTATUS FindExpectedSMByPortGuid(FabricData_t *fabricp, EUI64 portGuid) {
 		return FINVALID_PARAMETER;
 
 	// check through the SMs
-	if(QListHead(&fabricp->ExpectedSMs) != NULL) {
-		for(p = QListHead(&fabricp->ExpectedSMs); p != NULL; p = QListNext(&fabricp->ExpectedSMs, p)) {
-			ExpectedSM *esmp = (ExpectedSM *)QListObj(p);
-			if (esmp->PortGUID == portGuid)
-				return FSUCCESS;
-		}
+	for(p = QListHead(&fabricp->ExpectedSMs); p != NULL; p = QListNext(&fabricp->ExpectedSMs, p)) {
+		ExpectedSM *esmp = (ExpectedSM *)QListObj(p);
+		if (esmp->PortGUID == portGuid)
+			return FSUCCESS;
 	}
 	return FNOT_FOUND;
 }
@@ -1924,12 +1922,10 @@ FSTATUS FindExpectedSMByNodeGuid(FabricData_t *fabricp, EUI64 nodeGuid) {
 		return FINVALID_PARAMETER;
 
 	// check through the SMs
-	if(QListHead(&fabricp->ExpectedSMs) != NULL) {
-		for(p = QListHead(&fabricp->ExpectedSMs); p != NULL; p = QListNext(&fabricp->ExpectedSMs, p)) {
-			ExpectedSM *esmp = (ExpectedSM *)QListObj(p);
-			if (esmp->NodeGUID == nodeGuid)
-				return FSUCCESS;
-		}
+	for(p = QListHead(&fabricp->ExpectedSMs); p != NULL; p = QListNext(&fabricp->ExpectedSMs, p)) {
+		ExpectedSM *esmp = (ExpectedSM *)QListObj(p);
+		if (esmp->NodeGUID == nodeGuid)
+			return FSUCCESS;
 	}
 	return FNOT_FOUND;
 }

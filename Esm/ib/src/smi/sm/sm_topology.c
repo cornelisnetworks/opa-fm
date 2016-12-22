@@ -1578,7 +1578,7 @@ unlock_bail:
 
 	(void)memset((void *)path, 0, sizeof(path));
 	status = sm_setup_node(sm_topop, &preDefTopology, NULL, NULL,
-		path, sm_topop->pad);
+		path);
 	if (status != VSTATUS_OK) {
 		IB_ERROR_NOREPEAT(lastMsg,14, "Can't set up my local node, sleeping rc: %u", status);
 		return status;
@@ -1654,6 +1654,7 @@ unlock_bail:
 	// Rather than get the port info again, just to get the updated capmask,
 	// let's just set the bit in the capmask we've already got:
 	portp->portData->capmask |= PI_CM_IS_SM;
+	portp->portData->portInfo.CapabilityMask.AsReg32 |= PI_CM_IS_SM;
 
 	topology_wakeup_time = 0ull;
 
@@ -1672,7 +1673,6 @@ topology_discovery(void)
 	int		end_port;
 	int		temp_lmc;
 	uint8_t		path[72];
-	uint8_t		*bufp;
 	Node_t		*nodep;
 	Port_t		*portp, *neighborPortp = NULL;
 	Status_t	status;
@@ -1682,9 +1682,6 @@ topology_discovery(void)
 
 
 	IB_ENTER(__func__, 0, 0, 0, 0);
-
-	bufp = sm_topop->pad;
-	sm_topop->num_ports = sm_topop->num_sws = sm_topop->max_sws = sm_topop->num_endports = 0;
 
 	if (sm_topop->routingModule == NULL) {
 		RoutingModule_t * newMod = NULL;
@@ -1793,7 +1790,7 @@ topology_discovery(void)
 			}
 			if (portp->nodeno == -1 || portp->portno == -1) {
 				path[path[0]] = portp->index;		// Add this port to the end
-				status = sm_setup_node(sm_topop, &preDefTopology, nodep, portp, path, bufp);
+				status = sm_setup_node(sm_topop, &preDefTopology, nodep, portp, path);
 			} else {
 				// PR 110535 Don't loop back to node that has already been discovered.
 				status = VSTATUS_OK;
@@ -2823,7 +2820,7 @@ topology_assignments(void)
 				Port_t *neigh = sm_find_port(sm_topop, smaportp->nodeno, smaportp->portno);
 
 				IB_LOG_WARN_FMT(__func__,
-					"Non-OK status returned on updating node attatched to %s port %d via SMA:"
+					"Non-OK status returned on updating node attached to %s port %d via SMA:"
 					"  Node %s, nodeGuid "FMT_U64", port %d, status %d",
 					sm_valid_port(neigh) ? sm_nodeDescString(neigh->portData->nodePtr) : "???", 
 					neigh ? neigh->index : -1, sm_nodeDescString(nodep), 
@@ -3917,7 +3914,7 @@ topology_multicast(void)
     }
 #endif
 
-	sm_build_spanning_trees();
+	sm_topop->routingModule->funcs.build_spanning_trees();
 
     /*
      * Setup the MFTs of the switches.

@@ -92,6 +92,8 @@ my @delta_components_other = (
 
 my @delta_components_rhel72 = ( @delta_components_other );
 
+my @delta_components_rhel67 = ( @delta_components_other );
+
 my @delta_components_rhel70 = (
 				"opa_stack", 		# Kernel drivers.
 				"ibacm", 		# OFA IB communication manager assistant.
@@ -353,6 +355,18 @@ my %opa_stack_dev_rhel70_comp_info = (
                                         },
 );
 
+my %opa_stack_dev_rhel67_comp_info = (
+	'opa_stack_dev' => {
+					KernelRpms => [ "ifs-kernel-updates-devel" ],
+					UserRpms =>	  [ "ibacm-devel",
+						            "libibumad-devel", "libibumad-static"
+								  ],
+					DebugRpms =>  [  ],
+					Drivers => "", 	# none
+					StartupScript => "",
+					StartupParams => [ ],
+					},
+);
 
 my %opa_stack_dev_rhel72_comp_info = (
 	'opa_stack_dev' => {
@@ -461,6 +475,24 @@ my %opa_stack_other_comp_info = (
 					},
 );
 
+my %opa_stack_rhel67_comp_info = (
+	'opa_stack' => {
+					KernelRpms => [ "ifs-kernel-updates" ], # special case
+					UserRpms =>	  [ "opa-scripts",
+								"libibumad",
+								"srptools",
+								"libibmad",
+								"infiniband-diags",
+								  ],
+					DebugRpms =>  [ "libibumad-debuginfo",
+									"srptools-debuginfo",
+								  ],
+					Drivers => "", 
+					StartupScript => "opa",
+					StartupParams => [ "ARPTABLE_TUNING" ],
+					},
+);
+
 my %opa_stack_rhel72_comp_info = (
 	'opa_stack' => {
 					KernelRpms => [ "kmod-ifs-kernel-updates" ], # special case
@@ -543,6 +575,24 @@ my %delta_comp_info_other = (
 	%gasnet_comp_info,
 	%openshmem_comp_info,
 	%opa_stack_dev_comp_info,
+	%delta_mpisrc_comp_info,
+	%mpiRest_comp_info,
+	%hfi1_uefi_comp_info,
+	%delta_debug_comp_info,
+);
+
+my %delta_comp_info_rhel67 = (
+	%opa_stack_rhel67_comp_info,
+	%ibacm_comp_info,
+	%intel_hfi_comp_info,
+	%ib_wfr_lite_comp_info,
+	%delta_ipoib_comp_info,
+	%mpi_selector_comp_info,
+	%mvapich2_comp_info,
+	%openmpi_comp_info,
+	%gasnet_comp_info,
+	%openshmem_comp_info,
+	%opa_stack_dev_rhel67_comp_info,
 	%delta_mpisrc_comp_info,
 	%mpiRest_comp_info,
 	%hfi1_uefi_comp_info,
@@ -651,6 +701,7 @@ my %delta_kernel_ib_options = (
 my @delta_kernel_srpms_other = ( 'compat-rdma' );
 my @delta_kernel_srpms_rhel72 = ( 'kmod-ifs-kernel-updates' );
 my @delta_kernel_srpms_rhel70 = ( 'compat-rdma' );
+my @delta_kernel_srpms_rhel67 = ( 'ifs-kernel-updates' );
 my @delta_kernel_srpms_sles = ( 'compat-rdma' );
 my @delta_kernel_srpms_sles12_sp2 = ( 'ifs-kernel-updates-kmp-default' );
 my @delta_kernel_srpms_rhel73 = ( 'kmod-ifs-kernel-updates' );
@@ -659,6 +710,12 @@ my @delta_kernel_srpms = ( );
 # all user space srpms
 # these are in the order we must build/process them to meet basic dependencies
 my @delta_user_srpms_other = (
+		"opa-scripts", "libibumad", "ibacm", "mpi-selector",
+		"libhfi1", "libpsm2", "hfi1-diagtools-sw", "hfidiags", "hfi1-firmware", "hfi1-firmware_debug",
+ 		"mvapich2", "openmpi", "gasnet", "openshmem", "openshmem-test-suite",
+		"shmem-benchmarks", "srptools", "libibmad", "infiniband-diags", "hfi1_uefi"
+);
+my @delta_user_srpms_rhel67 = (
 		"opa-scripts", "libibumad", "ibacm", "mpi-selector",
 		"libhfi1", "libpsm2", "hfi1-diagtools-sw", "hfidiags", "hfi1-firmware", "hfi1-firmware_debug",
  		"mvapich2", "openmpi", "gasnet", "openshmem", "openshmem-test-suite",
@@ -964,8 +1021,42 @@ my %kmod_ifs_kernel_updates_srpm_info = (
 					},
 );
 
+my %ifs_kernel_updates_rhel67_srpm_info = (
+        "ifs-kernel-updates" =>        { Available => "",
+                                        Builds => "ifs-kernel-updates ifs-kernel-updates-devel",
+                                        PostReq => "ifs-kernel-updates-devel",
+                                        PartOf => "", # filled in at runtime
+                                        BuildPrereq => [],
+                                        },
+);
+
 my %delta_srpm_info_other = (
 	%compat_rdma_srpm_info,
+	%hfi1_psm_srpm_info,
+	%libhfi1_srpm_info,
+	%hfi1_diagtools_sw_srpm_info,
+	%hfidiags_srpm_info,
+	%hfi1_firmware_srpm_info,
+	%hfi1_firmware_debug_srpm_info,
+	%ib_wfr_lite_srpm_info,
+	%opa_scripts_srpm_info,
+	%libibumad_srpm_info,
+	%ibacm_srpm_info,
+	%mpi_selector_srpm_info,
+	%mvapich2_srpm_info,
+	%openmpi_srpm_info,
+	%gasnet_srpm_info,
+	%openshmem_srpm_info,
+	%openshmem_test_suite_srpm_info,
+	%shmem_benchmarks_srpm_info,
+	%srptools_srpm_info,
+	%libibmad_srpm_info,
+	%infiniband_diags_srpm_info,
+	%hfi1_uefi_srpm_info,
+);
+
+my %delta_srpm_info_rhel67 = (
+	%ifs_kernel_updates_rhel67_srpm_info,
 	%hfi1_psm_srpm_info,
 	%libhfi1_srpm_info,
 	%hfi1_diagtools_sw_srpm_info,
@@ -1175,6 +1266,12 @@ sub init_delta_rpm_info($)
 		@delta_kernel_srpms = ( @delta_kernel_srpms_rhel70 );
 		@delta_user_srpms = ( @delta_user_srpms_rhel70 );
 		%delta_srpm_info = ( %delta_srpm_info_rhel70 );
+	} elsif ( "$CUR_VENDOR_VER" eq "ES67" ) {
+		@delta_components = ( @delta_components_rhel67 );
+		%delta_comp_info = ( %delta_comp_info_rhel67 );
+		@delta_kernel_srpms = ( @delta_kernel_srpms_rhel67 );
+		@delta_user_srpms = ( @delta_user_srpms_rhel67 );
+		%delta_srpm_info = ( %delta_srpm_info_rhel67 );
 	} else {
 		@delta_components = ( @delta_components_other );
 		%delta_comp_info = ( %delta_comp_info_other );
@@ -1327,6 +1424,11 @@ sub delta_rpm_install_list($$$@)
 						next if ( $skip_kernelib);
 						$ret = 1;
 					}
+				} elsif ( "$CUR_VENDOR_VER" eq "ES67" ) {
+					if ( " $package " =~ / ifs-kernel-updates / ) {
+                                                next if ( $skip_kernelib);
+                                                $ret = 1;
+                                        }
 				} else {
 					if ( " $package " =~ / compat-rdma / ) {
 						next if ( $skip_kernelib);
@@ -2599,7 +2701,11 @@ sub available_opa_stack()
 sub installed_delta_opa_stack()
 {
 	my $driver_subdir=$ComponentInfo{'opa_stack'}{'DriverSubdir'};
-	if ( "$CUR_VENDOR_VER" eq "ES72" || "$CUR_VENDOR_VER" eq "ES73" ) {
+	if ( "$CUR_VENDOR_VER" eq "ES67" ) {
+		return ( -e "$ROOT$BASE_DIR/version_delta" 
+				&& rpm_is_installed("libibumad", "user")
+				&& rpm_is_installed("ifs-kernel-updates", $CUR_OS_VER));
+	} elsif ( "$CUR_VENDOR_VER" eq "ES72" || "$CUR_VENDOR_VER" eq "ES73" ) {
 		return ( -e "$ROOT$BASE_DIR/version_delta"
 				&& rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
 	} elsif ( "$CUR_VENDOR_VER" eq 'ES122' ) {
@@ -2747,6 +2853,9 @@ sub install_opa_stack($$)
 	check_rpm_config_file("/etc/logrotate.d/srp_daemon");
 	check_rpm_config_file("/etc/rsyslog.d/srp_daemon.conf");
 
+	# Start rdma on run level 235 on RHEL67
+	run_rdma_on_startup();
+
 	need_reboot();
 	$ComponentWasInstalled{'opa_stack'}=1;
 }
@@ -2867,7 +2976,11 @@ sub available_intel_hfi()
 sub installed_intel_hfi()
 {
     my $driver_subdir=$ComponentInfo{'intel_hfi'}{'DriverSubdir'};
-    if ( "$CUR_VENDOR_VER" eq "ES72" || "$CUR_VENDOR_VER" eq "ES73" ) {
+    if ( "$CUR_VENDOR_VER" eq "ES67" ) {
+	return ( -e "$ROOT$BASE_DIR/version_delta"
+			&& rpm_is_installed("libhfi1", "user")
+                        && rpm_is_installed("ifs-kernel-updates", $CUR_OS_VER));
+    } elsif ( "$CUR_VENDOR_VER" eq "ES72" || "$CUR_VENDOR_VER" eq "ES73" ) {
         return (rpm_is_installed("libhfi1", "user")
                         && -e "$ROOT$BASE_DIR/version_delta"
                         && rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
@@ -3111,9 +3224,8 @@ sub available_opa_stack_dev()
 
 sub installed_opa_stack_dev()
 {
-	return ((rpm_is_installed("libibumad-devel", "user")
-			&& -e "$ROOT$BASE_DIR/version_delta")
-			|| installed_ibdev);
+	return (rpm_is_installed("libibumad-devel", "user")
+			&& -e "$ROOT$BASE_DIR/version_delta");
 }
 
 # only called if installed_opa_stack_dev is true
@@ -3122,7 +3234,7 @@ sub installed_version_opa_stack_dev()
 	if ( -e "$ROOT$BASE_DIR/version_delta" ) {
 		return `cat $ROOT$BASE_DIR/version_delta`;
 	} else {
-		return installed_version_ibdev;
+		return "";
 	}
 }
 
@@ -3183,10 +3295,6 @@ sub uninstall_opa_stack_dev($$)
 	print_uninstall_banner_delta_comp('opa_stack_dev');
 	uninstall_delta_comp('opa_stack_dev', $install_list, $uninstalling_list, 'verbose');
 	$ComponentWasInstalled{'opa_stack_dev'}=0;
-	if (installed_ibdev) {
-		print_separator;
-		uninstall_ibdev("", " ibdev ");
-	}
 }
 
 # ==========================================================================
@@ -3228,7 +3336,10 @@ sub available_delta_ipoib()
 sub installed_delta_ipoib()
 {
 	my $driver_subdir=$ComponentInfo{'delta_ipoib'}{'DriverSubdir'};
-	if ( "$CUR_VENDOR_VER" eq "ES72" || "$CUR_VENDOR_VER" eq "ES73" ) {
+	if ( "$CUR_VENDOR_VER" eq "ES67" ) {
+                return (( -e "$ROOT$BASE_DIR/version_delta"
+				&& rpm_is_installed("ifs-kernel-updates", $CUR_OS_VER)));
+	} elsif ( "$CUR_VENDOR_VER" eq "ES72" || "$CUR_VENDOR_VER" eq "ES73" ) {
 		return ((-e "$ROOT$BASE_DIR/version_delta"
 				&& rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER)));
 	} elsif ( "$CUR_VENDOR_VER" eq "ES122" ) {

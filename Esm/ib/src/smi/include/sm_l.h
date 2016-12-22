@@ -586,6 +586,11 @@ typedef struct _RoutingFuncs {
 	boolean (*can_send_partial_lft)(void);
 
 	/**
+		Override the building of the multicast spanning trees.
+	*/
+	void (*build_spanning_trees)(void);
+
+	/**
  		Used to determine if local switch change requires routing change.
  	*/
 	boolean (*handle_fabric_change)(struct _Topology *, struct _Node *, struct _Node *);
@@ -1714,6 +1719,10 @@ extern  Lock_t      sm_McGroups_lock;
 
 extern uint64_t sm_mcSpanningTreeRootGuid;
 extern Lock_t sm_mcSpanningTreeRootGuidLock;
+/************ DOR Globals ***************************************/
+extern Lock_t sm_datelineSwitchGUIDLock;
+extern uint64_t sm_datelineSwitchGUID;
+
 /************ dynamic update of switch config parms *************/
 extern uint8_t sa_dynamicPlt[];
 
@@ -1849,19 +1858,21 @@ typedef	struct _McNode {
 	int32_t		index;		// node index
 	int32_t		nodeno;		// closest node in the tree
 	int32_t		portno;		// port on closest node
+	int32_t		height; 	// Distance from the root. 
 	struct _McNode *parent; // parent in spanning tree
 	Lid_t		mft_mlid_init;
 } McNode_t;
 
 typedef	struct _McSpanningTree {
-	int		num_nodes;
+	int32_t		num_nodes;
 	McNode_t	*nodes;
-	Lid_t	first_mlid;
+	Lid_t		first_mlid;
+	uint32_t	reserved; 	// Padding to make the size a multiple of 8 bytes
 } McSpanningTree_t;
 
 typedef struct McSpaningTrees {
 	McSpanningTree_t	*spanningTree;
-	uint8_t				copy;	
+	uint8_t				copy;	// Is this a shallow copy of another tree?
 } McSpanningTrees_t;
 
 typedef	struct _VfInfo {
@@ -2011,7 +2022,7 @@ Status_t    sm_set_stl_attribute_async_dispatch_lr(IBhandle_t, uint32_t, uint32_
 Status_t sm_send_stl_request(IBhandle_t fd, uint32_t method, uint32_t aid, uint32_t amod, uint8_t *path, uint8_t *buffer, uint32_t *bufferLength, uint64_t mkey, uint32_t *madStatus);
 Status_t    sm_send_request_impl(IBhandle_t, uint32_t, uint32_t, uint32_t, uint8_t *, uint8_t *, uint32_t, uint64_t, cntxt_callback_t, void *, int);
 Status_t    sm_send_stl_request_impl(IBhandle_t, uint32_t, uint32_t, uint32_t, uint8_t *, uint32_t, uint8_t *, uint32_t *, uint32_t, uint64_t, cntxt_callback_t, void *, int, uint32_t *);
-Status_t	sm_setup_node(Topology_t *, FabricData_t *, Node_t *, Port_t *, uint8_t *, uint8_t *);
+Status_t	sm_setup_node(Topology_t *, FabricData_t *, Node_t *, Port_t *, uint8_t *);
 int 		sm_find_cached_node_port(Node_t *cnp, Port_t *cpp, Node_t **nodep, Port_t **portp);
 int 		sm_find_cached_neighbor(Node_t *cnp, Port_t *cpp, Node_t **nodep, Port_t **portp);
 int			sm_check_node_cache(Node_t *cnp, Port_t *cpp, Node_t **nodep, Port_t **portp);

@@ -91,6 +91,8 @@ set_os_identifier
 if [ -e Version ]
 then
 	export RELEASE_TAG=`cat Version`G
+else
+	export RELEASE_TAG=${RELEASE_TAG:-`patch_engineer_version|cut -d"." -f1`}
 fi
 export BUILD_ULPS=${BUILD_ULPS:-all}
 export BUILD_SKIP_ULPS=${BUILD_SKIP_ULPS:-none}

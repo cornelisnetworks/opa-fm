@@ -93,8 +93,8 @@ sa_SwitchInfoRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
         default:                                                                     
                 maip->base.status = MAD_STATUS_BAD_METHOD;                           
                 (void)sa_send_reply(maip, sa_cntxt);                                 
-                IB_LOG_WARN("sa_PortInfoRecord: invalid METHOD:", maip->base.method);
-                IB_EXIT("sa_PortInfoRecord", VSTATUS_OK);                            
+                IB_LOG_WARN("sa_SwitchInfoRecord: invalid METHOD:", maip->base.method);
+                IB_EXIT("sa_SwitchInfoRecord", VSTATUS_OK);                            
                 return VSTATUS_OK;                                                   
                 break;                                                               
 	}

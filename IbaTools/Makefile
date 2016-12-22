@@ -55,6 +55,7 @@ DIRS			= \
 				$(shell ls -d opagenswitches 2>/dev/null) \
 				$(shell ls -d opagenesmchassis 2>/dev/null) \
 				$(shell ls -d opasmaquery 2>/dev/null) \
+				$(shell ls -d opapaextract 2>/dev/null) \
 				$(shell ls -d opatop 2>/dev/null) \
 				$(shell ls -d chassis_setup 2>/dev/null) \
 				$(shell ls -d switch_setup 2>/dev/null) \

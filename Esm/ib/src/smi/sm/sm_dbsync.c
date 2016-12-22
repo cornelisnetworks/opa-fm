@@ -1930,6 +1930,109 @@ static Status_t processMCRootSync(Mai_t *maip, uint8_t *msgbuf, uint32_t reclen)
 	return status;
 }
 
+/*
+ * sync dateline switch GUID with a standby SM
+ */
+static Status_t dbsync_setSMDBDatelineSwitchGUID(SMSyncReq_t *syncReqp) {
+	Status_t	status=VSTATUS_OK;
+	uint8_t *	buff;
+	uint32_t	outlen=0;
+	uint32_t	resp_status=0;
+	uint64_t	datelineGUID;
+
+	IB_ENTER(__func__, syncReqp, 0, 0, 0);
+
+	if (syncReqp->portguid && (syncReqp->standbyLid >= UNICAST_LID_MIN && syncReqp->standbyLid <= UNICAST_LID_MAX)) {
+		if (vs_lock(&sm_datelineSwitchGUIDLock) != VSTATUS_OK) {
+			IB_LOG_WARN_FMT(__func__, "Failed to get lock for Dateline Switch GUID");
+			return VSTATUS_BAD;
+		}
+		outlen = sizeof(sm_datelineSwitchGUID);
+
+		/* make sure data will fit in output buffer */
+		if (outlen > buflen) {
+			IB_LOG_ERROR("size of Dateline Switch GUID too big! Increase subnet size. message size:", outlen);
+			status = VSTATUS_NOMEM;
+			(void)vs_unlock(&sm_datelineSwitchGUIDLock);
+			IB_EXIT(__func__, status);
+			return status;
+		}
+		buff = msgbuf;
+		datelineGUID = hton64(sm_datelineSwitchGUID);
+		memcpy(buff, &datelineGUID, sizeof(datelineGUID));
+		(void)vs_unlock(&sm_datelineSwitchGUIDLock);
+
+		/* send the record to the standby SM */
+		if (if3_set_dlid(dbsyncfd_if3, syncReqp->standbyLid)) {
+			IB_LOG_ERROR("can't set destination lid on management info handle=", dbsyncfd_if3);
+		} else {
+			if ((status = dbSyncCmdToMgr(dbsyncfd_if3, DBSYNC_AID_DATELINE, DBSYNC_AMOD_SET,
+					msgbuf, outlen, msgbuf, &outlen, &resp_status)) != VSTATUS_OK) {
+				IB_LOG_WARN_FMT(__func__,
+					"DBSYNC SET of Dateline Switch GUID with SM at portGUID "FMT_U64", LID=[0x%x] Failed (rc=%d)",
+					syncReqp->portguid, syncReqp->standbyLid, status);
+			} else if (resp_status != 0) {
+				status=VSTATUS_BAD;
+				IB_LOG_WARN_FMT(__func__,
+					"Full sync of Dateline Switch GUID with SM at portGUID "FMT_U64", LID=[0x%x] returned mad status 0x%x",
+					syncReqp->portguid, syncReqp->standbyLid, resp_status);
+			} else {
+				/* successfully sync'd to standby SM */
+				IB_LOG_INFO_FMT(__func__,
+					"Full sync of Dateline Switch GUID "FMT_U64" with SM at portGuid "FMT_U64", LID=[0x%x] was successful",
+					sm_datelineSwitchGUID, syncReqp->portguid, syncReqp->standbyLid);
+			}
+		}
+	} else {
+		status = VSTATUS_BAD;
+		IB_LOG_ERROR_FMT(__func__,
+			"NULL portGuid "FMT_U64" or bad LID=[0x%x] for standby SM",
+			syncReqp->portguid, syncReqp->standbyLid);
+	}
+	IB_EXIT(__func__, 0);
+	return status;
+}
+
+static Status_t processDatelineSwitchGUIDSync(Mai_t *maip, uint8_t *msgbuf, uint32_t reclen) {
+	Status_t	status=VSTATUS_OK;
+	uint64_t	datelineGUID;
+
+	IB_ENTER(__func__, maip, 0, 0, 0);
+
+	if (reclen > 0 && ((reclen %sizeof(uint64_t)) != 0)) {
+		IB_LOG_ERROR_FMT(__func__,
+			"Expecting %"PRISZT" bytes of data, received %d bytes instead",
+			sizeof(uint64_t), reclen);
+		(void) dbSyncMngrReply(dbsyncfd_if3, maip, msgbuf, 0, VSTATUS_DROP);
+		IB_EXIT(__func__, VSTATUS_NXIO);
+		return VSTATUS_NXIO;
+	} else if (reclen > buflen) {
+		IB_LOG_ERROR_FMT(__func__,
+			"Received length (%d bytes) greater than allocated (%d bytes), PLEASE INCREASE THE FABRIC SUPPORTED END PORT COUNT",
+			SMDBSYNC_NSIZE, buflen);
+		(void)dbSyncMngrReply(dbsyncfd_if3, maip, msgbuf, 0, VSTATUS_DROP);
+		IB_EXIT(__func__, VSTATUS_NXIO);
+		return VSTATUS_NXIO;
+	}
+	IB_LOG_INFO_FMT(__func__, "Processing sync of Dateline Switch GUID with (%d) bytes\n", reclen);
+
+	if (maip->base.amod == DBSYNC_AMOD_SET) {
+		if (vs_lock(&sm_datelineSwitchGUIDLock) != VSTATUS_OK) return VSTATUS_BAD;
+		memcpy(&datelineGUID, msgbuf, sizeof(datelineGUID));
+		sm_datelineSwitchGUID = ntoh64(datelineGUID);
+		if (smDebugPerf) {
+			IB_LOG_INFINI_INFO_FMT(__func__, "Standby rcvd Dateline Switch GUID as "FMT_U64, sm_datelineSwitchGUID);
+		}
+		vs_unlock(&sm_datelineSwitchGUIDLock);
+		(void) dbSyncMngrReply(dbsyncfd_if3, maip, msgbuf, 0, VSTATUS_OK);
+	} else {
+		IB_LOG_WARN_FMT(__func__,
+			"Invalid Dateline Switch GUID amod [%d] received; should be 2=SET", maip->base.amod);
+		(void) dbSyncMngrReply(dbsyncfd_if3, maip, msgbuf, 0, VSTATUS_DROP);
+	}
+	return status;
+		
+}
 
 /*
  * process db sync requests from the SM, PM, and SA
@@ -2029,7 +2132,16 @@ static void dbsync_procReqQ(void) {
 	                            (void) sm_dbsync_upSmDbsyncStat(syncReqp->portguid, DBSYNC_DATATYPE_MCROOT, DBSYNC_STAT_FAILURE);
 							} else {
                             	(void) sm_dbsync_upSmDbsyncStat(syncReqp->portguid, DBSYNC_DATATYPE_MCROOT, DBSYNC_STAT_SYNCHRONIZED);
+				if ((status = dbsync_setSMDBDatelineSwitchGUID(syncReqp))) {
+					IB_LOG_WARN_FMT(__func__,
+						"failed to sync (full) Dateline Switch GUID with SM at portGuid "FMT_U64", LID=[0x%x]",
+						syncReqp->portguid, syncReqp->standbyLid);
+					/* update the sync status of this SM node */
+						(void) sm_dbsync_upSmDbsyncStat(syncReqp->portguid, DBSYNC_DATATYPE_DATELINE_GUID, DBSYNC_STAT_FAILURE);
+							} else {
+						(void) sm_dbsync_upSmDbsyncStat(syncReqp->portguid, DBSYNC_DATATYPE_DATELINE_GUID, DBSYNC_STAT_SYNCHRONIZED);
 							}
+				}
                         }
                     }
                 }
@@ -2117,6 +2229,24 @@ static void dbsync_procReqQ(void) {
                     }
                 }
 				break;
+            case DBSYNC_DATATYPE_DATELINE_GUID:
+				if ((status = dbsync_setSMDBDatelineSwitchGUID(syncReqp))) {
+			IB_LOG_WARN_FMT(__func__,
+				"failed to sync (full) Dateline Switch GUID with SM at portGUID "FMT_U64", LID=[0x%x]",
+				syncReqp->portguid, syncReqp->standbyLid);
+		}
+		/* update the sync status of this SM node */
+		(void) sm_dbsync_upSmDbsyncStat(syncReqp->portguid, DBSYNC_DATATYPE_DATELINE_GUID,
+						(status != VSTATUS_OK) ? DBSYNC_STAT_FAILURE:DBSYNC_STAT_SYNCHRONIZED);
+		if (status == VSTATUS_OK) {
+			/* update the sync status of the remote SM */
+			if (dbsync_setSMDBSync(syncReqp)) {
+				IB_LOG_WARN_FMT(__func__,
+					"failed to SET current sync capability of SM at portGUID "FMT_U64", LID=[0x%x]",
+					syncReqp->portguid, syncReqp->standbyLid);
+			}
+		}
+			break;
             default:
                 IB_LOG_ERROR_FMT(__func__, 
                         "dbsync received invalid sync data type of %d (should be 1=all, thu 4=service)", 
@@ -2339,6 +2469,9 @@ void sm_dbsync(uint32_t argc, uint8_t ** argv) {
                         break;
                     case DBSYNC_AID_MCROOT:
                         status = processMCRootSync(&mad, msgbuf, msglen);
+                        break;
+                   case DBSYNC_AID_DATELINE:
+                        status = processDatelineSwitchGUIDSync(&mad, msgbuf, msglen);
                         break;
                     default:
                         IB_LOG_ERRORX("dbsync received invalid command AID of ", mad.base.aid);

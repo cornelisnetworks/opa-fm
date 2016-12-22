@@ -1835,6 +1835,7 @@ void smInitConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 		CKSUM_DATA(smp->smDorRouting.numToroidal, CKSUM_OVERALL_DISRUPT_CONSIST);
 		CKSUM_DATA(smp->smDorRouting.dimension, CKSUM_OVERALL_DISRUPT_CONSIST);
 		CKSUM_DATA(smp->smDorRouting.escapeVLs, CKSUM_OVERALL_DISRUPT_CONSIST);
+		CKSUM_DATA(smp->smDorRouting.faultRegions, CKSUM_OVERALL_DISRUPT_CONSIST);
 		CKSUM_DATA(smp->smDorRouting.debug, CKSUM_OVERALL_DISRUPT);
 		CKSUM_DATA(smp->smDorRouting.warn_threshold, CKSUM_OVERALL_DISRUPT);
 		CKSUM_DATA(smp->smDorRouting.routingSCs, CKSUM_OVERALL_DISRUPT_CONSIST);
@@ -1972,7 +1973,6 @@ void smInitConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 		}
 		CKSUM_DATA(dg->select_all, CKSUM_OVERALL_DISRUPT_CONSIST);
 		CKSUM_DATA(dg->select_self, CKSUM_OVERALL_DISRUPT_CONSIST);
-		CKSUM_DATA(dg->select_all_sm, CKSUM_OVERALL_DISRUPT_CONSIST);
 		CKSUM_DATA(dg->select_hfi_direct_connect, CKSUM_OVERALL_DISRUPT_CONSIST);
 		CKSUM_DATA(dg->select_swe0, CKSUM_OVERALL_DISRUPT_CONSIST);
 		CKSUM_DATA(dg->select_all_mgmt_allowed, CKSUM_OVERALL_DISRUPT_CONSIST);
@@ -2620,7 +2620,6 @@ static DGConfig_t* getGroupObject(void)
 	// default flags
 	dgp->select_all = 0;
 	dgp->select_self = 0;
-	dgp->select_all_sm = 0;
 	dgp->select_hfi_direct_connect = 0;
 	dgp->select_swe0 = 0;
 	dgp->select_all_mgmt_allowed = 0;
@@ -3235,7 +3234,6 @@ void checksumOneVirtualFabricsConfig(VF_t *vfp, SMXmlConfig_t *smp)
 
 	CKSUM_DATA(vfp->full_members.select_all, CKSUM_OVERALL_DISRUPT_CONSIST);
 	CKSUM_DATA(vfp->full_members.select_self, CKSUM_OVERALL_DISRUPT_CONSIST);
-	CKSUM_DATA(vfp->full_members.select_all_sm, CKSUM_OVERALL_DISRUPT_CONSIST);
 	CKSUM_DATA(vfp->full_members.select_hfi_direct_connect, CKSUM_OVERALL_DISRUPT_CONSIST);
 	CKSUM_DATA(vfp->full_members.select_swe0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	CKSUM_DATA(vfp->full_members.select_all_mgmt_allowed, CKSUM_OVERALL_DISRUPT_CONSIST);
@@ -3258,7 +3256,6 @@ void checksumOneVirtualFabricsConfig(VF_t *vfp, SMXmlConfig_t *smp)
 
 	CKSUM_DATA(vfp->limited_members.select_all, CKSUM_OVERALL_DISRUPT_CONSIST);
 	CKSUM_DATA(vfp->limited_members.select_self, CKSUM_OVERALL_DISRUPT_CONSIST);
-	CKSUM_DATA(vfp->limited_members.select_all_sm, CKSUM_OVERALL_DISRUPT_CONSIST);
 	CKSUM_DATA(vfp->limited_members.select_hfi_direct_connect, CKSUM_OVERALL_DISRUPT_CONSIST);
 	CKSUM_DATA(vfp->limited_members.select_swe0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	CKSUM_DATA(vfp->limited_members.select_all_mgmt_allowed, CKSUM_OVERALL_DISRUPT_CONSIST);
@@ -4365,7 +4362,6 @@ VirtualFabrics_t* renderVirtualFabricsConfig(uint32_t fm, FMXmlCompositeConfig_t
 		for (group_list_index = 0; group_list_index < full_groups_in_list; group_list_index++) {
 			vfip->full_members.select_all |= group_list[group_list_index]->select_all;
 			vfip->full_members.select_self |= group_list[group_list_index]->select_self;
-			vfip->full_members.select_all_sm |= group_list[group_list_index]->select_all_sm;
 			vfip->full_members.select_hfi_direct_connect |= group_list[group_list_index]->select_hfi_direct_connect;
 			vfip->full_members.select_swe0 |= group_list[group_list_index]->select_swe0;
 			vfip->full_members.select_all_mgmt_allowed |= group_list[group_list_index]->select_all_mgmt_allowed;
@@ -4453,7 +4449,6 @@ VirtualFabrics_t* renderVirtualFabricsConfig(uint32_t fm, FMXmlCompositeConfig_t
 		for (group_list_index = 0; group_list_index < limited_groups_in_list; group_list_index++) {
 			vfip->limited_members.select_all |= group_list[group_list_index]->select_all;
 			vfip->limited_members.select_self |= group_list[group_list_index]->select_self;
-			vfip->limited_members.select_all_sm |= group_list[group_list_index]->select_all_sm;
 			vfip->limited_members.select_hfi_direct_connect |= group_list[group_list_index]->select_hfi_direct_connect;
 			vfip->limited_members.select_swe0 |= group_list[group_list_index]->select_swe0;
 			vfip->limited_members.select_all_mgmt_allowed |= group_list[group_list_index]->select_all_mgmt_allowed;
@@ -5757,6 +5752,7 @@ static void* SmDorRoutingXmlParserStart(IXmlParserState_t *state, void *parent, 
 
 	// Set default for following.
 	dor->escapeVLs = DEFAULT_ESCAPE_VLS_IN_USE;
+	dor->faultRegions = DEFAULT_FAULT_REGIONS_VLS_IN_USE;
 
 	return dor;	
 }
@@ -5837,7 +5833,6 @@ static void SmDorRoutingXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD 
 
 	if (dor->topology == DOR_MESH) {
 		dor->routingSCs = dor->escapeVLs ? 2 : 1;
-
 	} else {
 		dor->routingSCs = dor->escapeVLs ? 4 : 2;
 	}
@@ -5857,6 +5852,7 @@ static IXML_FIELD SmDimensionFields[] = {
 static IXML_FIELD SmDorRoutingFields[] = {
 	{ tag:"Debug", format:'u', IXML_FIELD_INFO(SmDorRouting_t, debug) },
 	{ tag:"UseEscapeVLs", format:'u', IXML_FIELD_INFO(SmDorRouting_t, escapeVLs) },
+	{ tag:"UseFaultRegions", format:'u', IXML_FIELD_INFO(SmDorRouting_t, faultRegions) },
 	{ tag:"Dimension", format:'k', subfields:SmDimensionFields, start_func:SmDimensionStart },
 	{ tag:"WarnThreshold", format:'u', IXML_FIELD_INFO(SmDorRouting_t, warn_threshold) },
 	{ NULL }
@@ -7609,9 +7605,10 @@ static void VfGroupSelectEnd(IXmlParserState_t *state, const IXML_FIELD *field, 
 		dgp->select_all |= 1;
 	else if (strcasecmp(content, "Self") == 0)
 		dgp->select_self |= 1;
-	else if (strcasecmp(content, "AllSMs") == 0)
-		dgp->select_all_sm |= 1;
-	else if (strcasecmp(content, "HFIDirectConnect") == 0)
+	else if (strcasecmp(content, "AllSMs") == 0) {
+		fprintf(stderr, "Warning: AllSMs select tag is deprecated; selecting AllMgmtAllowed instead\n");
+		dgp->select_all_mgmt_allowed |= 1;
+	} else if (strcasecmp(content, "HFIDirectConnect") == 0)
 		dgp->select_hfi_direct_connect |= 1;
 	else if (strcasecmp(content, "SWE0") == 0)
 		dgp->select_swe0 |= 1;
@@ -9178,7 +9175,6 @@ void printXmlDebug(FMXmlCompositeConfig_t *config, uint32_t fm)
 		
 		fprintf(stdout, "VF %u full_member select_all %u\n", i, test->v_fabric[i].full_members.select_all);
 		fprintf(stdout, "VF %u full_member select_self %u\n", i, test->v_fabric[i].full_members.select_self);
-		fprintf(stdout, "VF %u full_member select_all_sm %u\n", i, test->v_fabric[i].full_members.select_all_sm);
 		fprintf(stdout, "VF %u full_member select_hfi_direct_connect %u\n", i, test->v_fabric[i].full_members.select_hfi_direct_connect);
 		fprintf(stdout, "VF %u full_member select_swe0 %u\n", i, test->v_fabric[i].full_members.select_swe0);
 		fprintf(stdout, "VF %u full_member select_all_mgmt_allowed %u\n", i, test->v_fabric[i].full_members.select_all_mgmt_allowed);
@@ -9224,7 +9220,6 @@ void printXmlDebug(FMXmlCompositeConfig_t *config, uint32_t fm)
 
 		fprintf(stdout, "VF %u limited_member select_all %u\n", i, test->v_fabric[i].limited_members.select_all);
 		fprintf(stdout, "VF %u limited_member select_self %u\n", i, test->v_fabric[i].limited_members.select_self);
-		fprintf(stdout, "VF %u limited_member select_all_sm %u\n", i, test->v_fabric[i].limited_members.select_all_sm);
 		fprintf(stdout, "VF %u limited_member select_hfi_direct_connect %u\n", i, test->v_fabric[i].limited_members.select_hfi_direct_connect);
 		fprintf(stdout, "VF %u limited_member select_all_mgmt_allowed %u\n", i, test->v_fabric[i].limited_members.select_all_mgmt_allowed);
 		fprintf(stdout, "VF %u limited_member select_all_tfis %u\n", i, test->v_fabric[i].limited_members.select_all_tfis);

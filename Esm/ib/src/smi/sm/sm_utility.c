@@ -2143,8 +2143,7 @@ int sm_validate_predef_sm_field(Topology_t* topop, FabricData_t* pdtop, STL_NODE
 	status = FindExpectedSMByNodeGuid(pdtop, nodeInfo->NodeGUID);
 	if(status != FSUCCESS) {
 		if(pdtCfg->fieldEnforcement.nodeGuid == FIELD_ENF_LEVEL_WARN) {
-			if(pdtCfg->logMessageThreshold != 0 &&
-					topop->preDefLogCounts.totalLogCount < pdtCfg->logMessageThreshold) {
+			if(topop->preDefLogCounts.totalLogCount < pdtCfg->logMessageThreshold) {
 				IB_LOG_WARN_FMT(__func__, "Pre-Defined Topology: %s (NodeGUID: " FMT_U64") was not found in input file (Warn).",
 							(char*) nodeDesc->NodeString, nodeInfo->NodeGUID);
 				topop->preDefLogCounts.totalLogCount++;
@@ -2152,8 +2151,7 @@ int sm_validate_predef_sm_field(Topology_t* topop, FabricData_t* pdtop, STL_NODE
 			topop->preDefLogCounts.nodeGuidWarn++;
 		}
 		else if(pdtCfg->fieldEnforcement.nodeGuid == FIELD_ENF_LEVEL_ENABLED) {
-			if(pdtCfg->logMessageThreshold != 0 &&
-					topop->preDefLogCounts.totalLogCount < pdtCfg->logMessageThreshold) {
+			if(topop->preDefLogCounts.totalLogCount < pdtCfg->logMessageThreshold) {
 				IB_LOG_ERROR_FMT(__func__, "Pre-Defined Topology: %s (NodeGUID: " FMT_U64") was not found in input file (Quarantined).",
 							(char*) nodeDesc->NodeString, nodeInfo->NodeGUID);
 				topop->preDefLogCounts.totalLogCount++;
@@ -2162,8 +2160,7 @@ int sm_validate_predef_sm_field(Topology_t* topop, FabricData_t* pdtop, STL_NODE
 			authentic = 0;
 		}
 		// If we have hit our log threshold, spit out a final message but then stop logging
-		if(pdtCfg->logMessageThreshold != 0 &&
-				topop->preDefLogCounts.totalLogCount == pdtCfg->logMessageThreshold) {
+		if(topop->preDefLogCounts.totalLogCount == pdtCfg->logMessageThreshold) {
 			IB_LOG_WARN_FMT(__func__, "Pre-Defined Topology: Log message threshold of %d messages per sweep has been reached. Suppressing further topology mismatch information.", 
 							pdtCfg->logMessageThreshold);
 			topop->preDefLogCounts.totalLogCount++;
@@ -2173,8 +2170,7 @@ int sm_validate_predef_sm_field(Topology_t* topop, FabricData_t* pdtop, STL_NODE
 	status = FindExpectedSMByPortGuid(pdtop, nodeInfo->PortGUID);
 	if(status != FSUCCESS) {
 		if(pdtCfg->fieldEnforcement.portGuid == FIELD_ENF_LEVEL_WARN) {
-			if(pdtCfg->logMessageThreshold != 0 &&
-					topop->preDefLogCounts.totalLogCount < pdtCfg->logMessageThreshold) {
+			if(topop->preDefLogCounts.totalLogCount < pdtCfg->logMessageThreshold) {
 				IB_LOG_WARN_FMT(__func__, "Pre-Defined Topology: %s (PortGUID: "FMT_U64") was not found in input file (Warn).",
 							(char*) nodeDesc->NodeString, nodeInfo->PortGUID);
 				topop->preDefLogCounts.totalLogCount++;
@@ -2182,8 +2178,7 @@ int sm_validate_predef_sm_field(Topology_t* topop, FabricData_t* pdtop, STL_NODE
 			topop->preDefLogCounts.portGuidWarn++;
 		}
 		else if(pdtCfg->fieldEnforcement.portGuid == FIELD_ENF_LEVEL_ENABLED) {
-			if(pdtCfg->logMessageThreshold != 0 &&
-					topop->preDefLogCounts.totalLogCount < pdtCfg->logMessageThreshold) {
+			if(topop->preDefLogCounts.totalLogCount < pdtCfg->logMessageThreshold) {
 				IB_LOG_ERROR_FMT(__func__, "Pre-Defined Topology: %s (PortGUID: "FMT_U64") was not found in input file (Quarantined).",
 							(char*) nodeDesc->NodeString, nodeInfo->PortGUID);
 				topop->preDefLogCounts.totalLogCount++;
@@ -2192,8 +2187,7 @@ int sm_validate_predef_sm_field(Topology_t* topop, FabricData_t* pdtop, STL_NODE
 			authentic = 0;
 		}
 		// If we have hit our log threshold, spit out a final message but then stop logging
-		if(pdtCfg->logMessageThreshold != 0 &&
-				topop->preDefLogCounts.totalLogCount == pdtCfg->logMessageThreshold) {
+		if(topop->preDefLogCounts.totalLogCount == pdtCfg->logMessageThreshold) {
 			IB_LOG_WARN_FMT(__func__, "Pre-Defined Topology: Log message threshold of %d messages per sweep has been reached. Suppressing further topology mismatch information.", 
 							pdtCfg->logMessageThreshold);
 			topop->preDefLogCounts.totalLogCount++;
@@ -2210,6 +2204,7 @@ sm_validate_predef_fields(Topology_t* topop, FabricData_t* pdtop, Node_t * cnp, 
 {
 	int authentic = 1;
 	ExpectedLink* validationLink;
+	PortSelector* validationPort;
 	uint8_t linkSide;
 	uint32_t logQuarantineReasons = 0x00000000;
 	SmPreDefTopoXmlConfig_t *pdtCfg = &sm_config.preDefTopo;
@@ -2269,6 +2264,13 @@ sm_validate_predef_fields(Topology_t* topop, FabricData_t* pdtop, Node_t * cnp, 
 		}
 	}
 
+	//Found a potential match, now verify it is connected to correct PortNum on other side
+	if(validationLink) {
+		validationPort = linkSide == 1 ? validationLink->portselp2 : validationLink->portselp1;
+		if(validationPort->PortNum != nodeInfo->u1.s.LocalPortNum)
+			validationLink = NULL;
+	}
+
 	if (validationLink == NULL) {
 		if(pdtCfg->fieldEnforcement.undefinedLink == FIELD_ENF_LEVEL_DISABLED)
 			return authentic;
@@ -2285,7 +2287,6 @@ sm_validate_predef_fields(Topology_t* topop, FabricData_t* pdtop, Node_t * cnp, 
 		return authentic;
 	}
 
-	PortSelector* validationPort = linkSide == 1 ? validationLink->portselp2 : validationLink->portselp1;
 
 	// NodeGUID Validation
 	if(pdtCfg->fieldEnforcement.nodeGuid != FIELD_ENF_LEVEL_DISABLED && nodeInfo->NodeGUID != validationPort->NodeGUID) {
@@ -2500,10 +2501,16 @@ static void sm_stl_quarantine_node(Topology_t *tp, Node_t *cnp, Port_t *cpp, Nod
 }
 
 
-// the special case of cnp==NULL and cpp==NULL only occurs when SM is trying its
+// Examine the neighbor of the current node & port and add it to the topology.
+//
+// The special case of cnp==NULL and cpp==NULL only occurs when SM is trying its
 // its own port, for all other nodes in fabric these will both be supplied
+//
+// cnp = current node.
+// cpp = current port.
+// path = DR path to current node
 Status_t
-sm_setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t * cnp, Port_t * cpp, uint8_t * path, uint8_t * bufp)
+sm_setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t * cnp, Port_t * cpp, uint8_t * path)
 {
 	int i, portBytes;
 	int new_node;
@@ -2668,9 +2675,11 @@ sm_setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t * cnp, Port_t * c
 								cnp->nodeInfo.NodeGUID, sm_nodeDescString(cnp),
 								status);
 			}
-			// Should we quarantine anyway???
+			IB_EXIT(__func__, VSTATUS_BAD);
+			return (VSTATUS_BAD);
 		} else conPIp = &conPortInfo;
 
+		//
 		// authenticate the node in order to determine whether to allow the
 		// node to be part of the fabric.
 		authenticNode = sm_stl_authentic_node(topop, cnp, cpp, &nodeInfo, conPIp, &quarantineReasons);
@@ -3143,7 +3152,7 @@ sm_setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t * cnp, Port_t * c
 			portp->portData->initWireDepth = -1;
 		}
 
-			/* 
+		/* 
 		 * Note: Only attempt to put the port GUID in the tree if it is non-zero (CA ports and switch port 0)
 		 * Check for FI based SM port being inserted in the map twice (SM node = tp->node_head)
 		 * This is to get around a quickmap abort when a duplicate portGuid is inserted in map
@@ -3244,6 +3253,29 @@ sm_setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t * cnp, Port_t * c
 					goto cleanup_down_ports;
 				}
 			}
+
+			// There can be a race condition where the state of local port of the
+			// connected node doesn't match its neighbor's because of the time
+			// that elapsed between getting the neighbor's info and getting this
+			// info. This can lead to inconsistencies programming the fabric.
+			// If this happens, mark the link as down, we'll fix it in the next
+			// sweep.
+			if (cpp && cpp->portno == portp->index &&
+				((cpp->state == IB_PORT_ACTIVE && 
+				portInfo.PortStates.s.PortState <= IB_PORT_INIT) ||
+				(cpp->state <= IB_PORT_INIT && 
+				portInfo.PortStates.s.PortState == IB_PORT_ACTIVE))) {
+				IB_LOG_INFINI_INFO_FMT(__func__, "Port states mismatched for"
+					" port[%d] of Node "FMT_U64 ":%s, connected to port[%d]"
+					" of Node "FMT_U64 ":%s.", cpp->index, cnp->nodeInfo.NodeGUID,
+					sm_nodeDescString(cnp), portNumber, nodeInfo.NodeGUID,
+					nodeDesc.NodeString);
+				// topology_discovery() will mark the link down
+				//sm_mark_link_down(topop, cpp);
+				sm_request_resweep(0, 0, SM_SWEEP_REASON_ROUTING_FAIL);
+				IB_EXIT(__func__, VSTATUS_BAD);
+				return (VSTATUS_BAD);
+			}
 		}
 
 		if (portInfo.DiagCode.s.UniversalDiagCode != 0) {
@@ -3302,12 +3334,17 @@ sm_setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t * cnp, Port_t * c
 				// Copy wire depth from old port data.
 				portp->portData->initWireDepth = oldportp->portData->initWireDepth;
 
-				if(nodep->nodeInfo.NodeType == NI_TYPE_CA && portp->portData->lid != oldportp->portData->lid) {
-					IB_LOG_WARN_FMT(__func__,
-									"Node %s (GUID: " FMT_U64 ") attempted to change LID on port %d from 0x%x to 0x%x. Resetting to previous LID.",
-									sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID,
-									portp->index, oldportp->portData->lid, portp->portData->lid);
-
+				if(nodep->nodeInfo.NodeType == NI_TYPE_CA && 
+					portp->portData->lid != oldportp->portData->lid) {
+					/* Don't warn about ports that merely bounced since the last sweep. */
+					if (portp->state > IB_PORT_INIT || portp->portData->lid != 0) {
+						IB_LOG_WARN_FMT(__func__,
+							"Node %s (GUID: " FMT_U64 ") attempted to change"
+							" LID on port %d from 0x%x to 0x%x."
+							" Resetting to previous LID.",
+							sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID,
+							portp->index, oldportp->portData->lid, portp->portData->lid);
+					}
 					portp->portData->lid = oldportp->portData->lid;
 					portp->portData->dirty.portInfo=1;
 				}

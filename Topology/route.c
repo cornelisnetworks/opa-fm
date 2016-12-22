@@ -1305,6 +1305,7 @@ FSTATUS ValidateAllCreditLoopRoutes(FabricData_t *fabricp, EUI64 portGuid,
                (void)CLDijkstraFreeDistancesAndRoutes(&dijkstraInfo); 
                //PYTHON: split_graph = pruned_graph.split()
                CLGraphDataFree(graphp, cp);
+               MemoryDeallocate(graphp); // graphp was allocated by CLGraphDataSplit
                graphp = CLGraphDataSplit(&fabricp->Graph, detail);
             }
             count += 1;
@@ -1315,6 +1316,7 @@ FSTATUS ValidateAllCreditLoopRoutes(FabricData_t *fabricp, EUI64 portGuid,
       }
       
       // free all credit loop related data
+      if (graphp) MemoryDeallocate(graphp);
       if (CLFabricDataDestroy(fabricp, cp)) 
          fprintf(stderr, "Warning, failed to deallocate route credit loop data\n");
    }

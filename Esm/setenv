@@ -31,7 +31,10 @@
 # Simple script to setup environment for a build for current OS version/type
 . $ICSBIN/funcs.sh
 settl
-. $TL_DIR/MakeTools/setenv
 
 export PATH="$PATH:$TL_DIR/ib/rules"
 export BUILD_WITH_STACK=${BUILD_WITH_STACK:-"OPENIB"}
+export PRODUCT=${PRODUCT:-HSM}
+export PROJ_FILE_DIR=${PROJ_FILE_DIR:-Esm}
+
+. $TL_DIR/MakeTools/setenv

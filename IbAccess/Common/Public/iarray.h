@@ -1053,6 +1053,43 @@ ArrayFindFromEnd(
 	IN	void* const			Context );
 
 
+///////////////////////////////////////////////////////////////////////////////
+// ArrayFindFromIndex
+// 
+// Description:
+//	This function calls the specified function for each item in the array, 
+//	starting from the given index of the array, until the callback function 
+//	returns TRUE or every item was processed.  
+// 
+//	The called function has the form:
+//		boolean FindFunc( uint32 Index, void *pElement, void *Context );
+//	where:
+//		Index = index of this element
+//		pElement = pointer to the element at this location in the array
+//		Context = user supplied context
+// 
+// Inputs:
+//	pArray		- pointer to array to iterate through
+//	pfnCallback	- callback called for each non-NULL element
+//	Context		- context to pass to callback function
+//	Index		- index to start from
+// 
+// Outputs:
+//	None.
+// 
+// Returns:
+//	Index value where execution stopped.  If the callback function never
+//	returned TRUE, then the return value = the size of the array.
+// 
+///////////////////////////////////////////////////////////////////////////////
+uint32 
+ArrayFindFromIndex(
+	IN	const ARRAY* const	pArray, 
+	IN	ARR_FIND_FUNC		pfnCallback,
+	IN	void* const			Context,
+	IN	const uint32	Index
+ );
+
 #ifdef __cplusplus
 }	/* extern "C" */
 #endif

@@ -106,7 +106,7 @@ sa_ClassPortInfo(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 			sa_cntxt_data( sa_cntxt, &myCPI.ib_version, attribOffset);
 			sa_cntxt->attribLen = attribOffset;
 			maip->base.status = MAD_STATUS_OK;
-		} else if (maip->base.cversion >= STL_SM_CLASS_VERSION) {
+		} else if (maip->base.cversion == STL_SM_CLASS_VERSION) {
 			myCPI.stl_version = saClassPortInfo;
 			BSWAP_STL_CLASS_PORT_INFO(&myCPI.stl_version);
 
@@ -117,7 +117,7 @@ sa_ClassPortInfo(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 			sa_cntxt->attribLen = attribOffset;
 		maip->base.status = MAD_STATUS_OK;
 		} else {
-			maip->base.status = MAD_STATUS_BAD_METHOD;
+			maip->base.status = MAD_STATUS_BAD_CLASS;
 		}
 	} else {
 		maip->base.status = MAD_STATUS_BAD_METHOD;

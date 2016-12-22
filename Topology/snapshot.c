@@ -1127,7 +1127,6 @@ void VLArbPreemptMatrixXmlOutput(IXmlOutputState_t *state, const char *tag, void
 static void *PKeyTableXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr)
 {
 	PortData *portp = (PortData *)parent;	// parent points to PortData
-	NodeData *nodep = portp->nodep;
 	STL_PKEY_ELEMENT *pPartitionTable;
 	uint32 num_pkeys;
 
@@ -1135,17 +1134,7 @@ static void *PKeyTableXmlParserStart(IXmlParserState_t *state, void *parent, con
 		IXmlParserPrintError(state, "PKeyTable improperly allocated");
 		return (NULL);
 	}
-
-	if ( (nodep->NodeInfo.NodeType == STL_NODE_SW) &&
-			portp->PortNum ) {
-		if (!nodep->pSwitchInfo)
-			// guess the limits, haven't seen SwitchInfo yet
-			num_pkeys = nodep->NodeInfo.PartitionCap;
-		else
-			num_pkeys = nodep->pSwitchInfo->SwitchInfoData.PartitionEnforcementCap;
-	} else {
-		num_pkeys = nodep->NodeInfo.PartitionCap;
-	}
+	num_pkeys = PortPartitionTableSize(portp);
 
 	if ( !( pPartitionTable = portp->pPartitionTable = (STL_PKEY_ELEMENT *)MemoryAllocate2AndClear(
 			sizeof(STL_PKEY_ELEMENT) * num_pkeys, IBA_MEM_FLAG_PREMPTABLE, MYTAG ) ) ) {
@@ -1216,22 +1205,24 @@ IXML_FIELD PKeyTableFields[] = {
 
 void PKeyTableXmlOutput(IXmlOutputState_t *state, const char *tag, void *data)
 {
-	int ix, ix_capacity;
+	int ix, last=0;
 	PortData *portp = (PortData *)data;	// data points to PortData
-	NodeData *nodep = portp->nodep;
 	STL_PKEY_ELEMENT *pPKey = portp->pPartitionTable;
+	int ix_capacity = PortPartitionTableSize(portp);
 
 	IXmlOutputStartTag(state, tag);
 
-	if ((ix_capacity = nodep->NodeInfo.PartitionCap))
+	// find the last non-zero pkey in the table
+	// we will output all pkeys, even if zero, up to the last
+	// so that we properly retain the pkey indexes
+	for (ix = 0; ix < ix_capacity; ix++)
 	{
-		for (ix = 0; ix < ix_capacity; ix++)
-		{
-			// Always output pkey entries 0,1,2; their placement is
-			// important to OFA.  Otherwise, skip empty slots
-			if (ix < 3 || pPKey[ix].AsReg16 & 0x7FFF)
-				IXmlOutputHexPad16(state, "PKey", pPKey[ix].AsReg16);
-		}
+		if (pPKey[ix].AsReg16 & 0x7FFF)
+			last = ix;
+	}
+	for (ix = 0; ix <= last; ix++)
+	{
+		IXmlOutputHexPad16(state, "PKey", pPKey[ix].AsReg16);
 	}
 
 	IXmlOutputEndTag(state, tag);

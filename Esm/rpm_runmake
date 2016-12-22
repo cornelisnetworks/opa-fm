@@ -28,9 +28,13 @@
 # 
 # END_ICS_COPYRIGHT8   ****************************************
 ##
-## runmake
+## rpm_runmake
 ## -----------
 ## Perform a full build
+## This is used within the FM src rpm by the fmbuild script
+## and for in-place builds its invoked directly by runmake
+## When this is invoked, the current directory will be the TL_DIR for
+## the source tree of FM
 ##
 ## Usage:
 ##	rpm_runmake [-V 'module_version'] [-B 'build_config'] [-n]
@@ -61,24 +65,9 @@
 ##	script ignores BUILD_CONFIG.  As such the BuildOptions file
 ##	or the -B argument completely control BUILD_CONFIG for this product.
 
-export BUILD_PLATFORM="LINUX"
-
-if [ -d IbAccess ]
-then
-. MakeTools/funcs-ext.sh
-else
-. ../MakeTools/funcs-ext.sh
-fi
-
-settarget x86_64
-settl
-
 # A given release will be targeted for a specific version of ofed
 # however we allow build.config to override if needed
 export OFED_STACK_PREFIX=${OFED_STACK_PREFIX:-/usr}
-
-# typically exported by build.config
-export BUILD_WITH_STACK=${BUILD_WITH_STACK:-OPENIB}
 
 Usage()
 {
@@ -94,25 +83,26 @@ showbuild()
 {
 	# output summary of what we are building to stdout
 	echo "Building for $SUBPRODUCT $BUILD_TARGET $BUILD_CONFIG $(date)..."
-}
-
-fix_version()
-{
-	# translate underscores and dashes to dots
-	echo "$1"|tr '_-' '..'
+	#echo "Building for $BUILD_TARGET_OS $BUILD_TARGET $BUILD_TARGET_OS_VERSION $BUILD_CONFIG $(date)..."
 }
 
 build_config=
 rerun=n
 Cflag=n
+inplace=n
+rpm=y
 module_version=
-while getopts V:B:rCnS param
+while getopts V:B:riRCnS param
 do
 	case $param in
 	r)
 		rerun=y;;
 	B)
 		build_config="$OPTARG";;
+	i)	
+		inplace=y;;
+	R)	
+		rpm=n;;
 	C)
 		Cflag=y;;
 	n)
@@ -130,16 +120,10 @@ then
 		Usage
 fi
 
-# for HSM the kernel rev is not important.  We simply use the kernel rev
-# of the running kernel.  While BUILD_TARGET_OS_VERSION is needed by Makerules
-# it will have no impact on what is actually built for HSM
-export BUILD_TARGET_OS_VERSION=${BUILD_TARGET_OS_VERSION:-`uname -r`}
-setver $BUILD_TARGET_OS_VENDOR $BUILD_TARGET_OS_VERSION
-
 if [ -z "$build_config" ]
 then
 	# default to release build
-	setrel
+	export BUILD_CONFIG-release
 elif [ "$build_config" != debug -a "$build_config" != release ]
 then
 	Usage
@@ -147,13 +131,7 @@ else
 	export BUILD_CONFIG="$build_config"
 fi
 
-# This is used to build a HSM from an ALL_EMB checkout  
-THISDIR=`basename $PWD`
-if [ $THISDIR = Esm ]; then
-	export PROJ_FILE_DIR=Esm
-else
-	export PROJ_FILE_DIR=.
-fi
+export PROJ_FILE_DIR=Esm
 
 if [ "$BUILD_WITH_STACK" = "OPENIB" ]
 then
@@ -162,31 +140,36 @@ then
 		echo "$0: ERROR: OFED stack not found: $OFED_STACK_PREFIX" >&2
 		exit 1
 	fi
+	echo "Stack to build for: $BUILD_WITH_STACK ($OFED_STACK_PREFIX)"
+else
+	echo "Stack to build for: $BUILD_WITH_STACK"
 fi
 
 if [ "$nflag" = "y" ]
 then
-	if [ "$BUILD_WITH_STACK" = "OPENIB" ]
-	then
-		echo "Stack to build for: $BUILD_WITH_STACK ($OFED_STACK_PREFIX)"
-	else
-		echo "Stack to build for: $BUILD_WITH_STACK"
-	fi
 	exit 0
 fi
 
-# The following does not make much sense since we start the build
-# from scratch every time. However, in the future, if we decide
-# to support incremental build, just uncomment it.
-# clean up from prior build when rebuilding
-#if [ "$rerun" = y -a "$Cflag" != y ]
-if [ ]
+# when inplace developer builds have been done, the src rpm will include
+# prebuilt code.  if the -C option is not specified
+# clobber any such files if they are present (indicated by builtinplace file).
+# The clobber allows a src.rpm packaged with an in-place build to still
+# generate normally when -C not given.
+# No need to check rerun flag because for rpms we always start fresh from what
+# was inside the src rpm and for runmake we can test built* to decide if the
+# clobber is needed
+clobber_arg=
+if [ "$Cflag" != y ]
 then
 	# force full rebuild
-	export REMOVE_DEPENDS=yes
-	clobber_arg="clobber clobber_stage clobber_release"
-else
-	clobber_arg=
+	if [ -e $TL_DIR/builtinplace.$PRODUCT.$BUILD_CONFIG \
+		-o  -e $TL_DIR/builtinclude.$PRODUCT.$BUILD_CONFIG \
+		-o  -e $TL_DIR/builtlibs.$PRODUCT.$BUILD_CONFIG \
+		-o  -e $TL_DIR/builtbin.$PRODUCT.$BUILD_CONFIG ]
+	then
+		export REMOVE_DEPENDS=yes
+		clobber_arg="clobber clobber_stage clobber_release"
+	fi
 fi
 rm -rf packaged_files dist_files
 
@@ -202,4 +185,6 @@ echo "=============================================================="
 
 echo "Preping Files for $BUILD_TARGET_OS $BUILD_TARGET $(date)..."
 # run prep and package once at end
+# TBD - move package into outer final_package step and remove from here
+# consolidate Makefile accordingly to have one package target
 make prepfiles package

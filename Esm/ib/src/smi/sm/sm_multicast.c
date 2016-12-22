@@ -321,6 +321,7 @@ sm_spanning_tree(int32_t mtu, int32_t rate, int *complete) {
 
     /*
      * Count the nodes.
+     * MWHEINZ FIXME: Why aren't we using the data in the topology structure?
      */
 	num_nodes = 0;
 	for_all_switch_nodes(sm_topop, nodep) {
@@ -329,6 +330,7 @@ sm_spanning_tree(int32_t mtu, int32_t rate, int *complete) {
 
     /*
      * Allocate space for the nodes.
+     * MWHEINZ FIXME: What's up with the 32 bytes of padding?
      */
 	bytes = 32 + sizeof(McSpanningTree_t) + (num_nodes * sizeof(McNode_t));
 	if (vs_pool_alloc(&sm_pool, bytes, (void **)&address) != VSTATUS_OK) {

@@ -1504,15 +1504,6 @@ smEvaluatePortDG(Node_t* nodep, Port_t* portp, int dgIdxToEvaluate, bitset_t* dg
 			}
 		}
 
-		//check select_all_sm
-		if (!isDgMember) {
-			if (dgp->select_all_sm) {
-				if ((portp->portData->capmask & PI_CM_IS_SM) != 0) {
-					isDgMember = TRUE;
-				}
-			}
-		}
-
 		//check select_hfi_direct_connect
 		if (!isDgMember) {
 			if (dgp->select_hfi_direct_connect) {
@@ -1811,9 +1802,9 @@ void smLogVFs() {
 		}
 
 		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "VF Full Members:");
-		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tselect_all=%d, select_self= %d, select_all_sm=%d, select_swe0=%d, select_hfi_direct_connect=%d",
+		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tselect_all=%d, select_self= %d, select_swe0=%d, select_hfi_direct_connect=%d",
 				VirtualFabrics->v_fabric[vf].full_members.select_all, VirtualFabrics->v_fabric[vf].full_members.select_self,
-				VirtualFabrics->v_fabric[vf].full_members.select_all_sm, VirtualFabrics->v_fabric[vf].full_members.select_swe0,
+				VirtualFabrics->v_fabric[vf].full_members.select_swe0,
 				VirtualFabrics->v_fabric[vf].full_members.select_hfi_direct_connect);
 		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tnode_type_fi=%d, node_type_sw= %d,",
 				VirtualFabrics->v_fabric[vf].full_members.node_type_fi, VirtualFabrics->v_fabric[vf].full_members.node_type_sw);
@@ -1843,9 +1834,9 @@ void smLogVFs() {
 
 		if (VirtualFabrics->v_fabric[vf].security) {	
 			IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "VF Limited Members:");
-			IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tselect_all= %d, select_self= %d, select_all_sm= %d, select_swe0= %d, select_hfi_direct_connect=%d",
+			IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tselect_all= %d, select_self= %d, select_swe0= %d, select_hfi_direct_connect=%d",
 				VirtualFabrics->v_fabric[vf].limited_members.select_all, VirtualFabrics->v_fabric[vf].limited_members.select_self,
-				VirtualFabrics->v_fabric[vf].limited_members.select_all_sm, VirtualFabrics->v_fabric[vf].limited_members.select_swe0, 
+				VirtualFabrics->v_fabric[vf].limited_members.select_swe0, 
 				VirtualFabrics->v_fabric[vf].limited_members.select_hfi_direct_connect);
 
 			IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tnode_type_fi= %d, node_type_sw= %d",

@@ -152,15 +152,28 @@ char *sa_getMethodText(int method) {
 Status_t
 sa_validate_mad(Mai_t *maip) {
     Status_t	rc = VSTATUS_OK;
-
 	IB_ENTER("sa_validate_mad", maip, 0, 0, 0);
 
-    if (maip->base.cversion != SA_MAD_CVERSION && 
+    if (maip->base.bversion != IB_BASE_VERSION && 
+		maip->base.bversion != STL_BASE_VERSION) {
+        IB_LOG_WARN_FMT( "sa_validate_mad",
+               "Invalid SA Base Version %d received in %s[%s] request from LID [0x%x], TID ["FMT_U64"], ignoring request!",
+               maip->base.bversion, sa_getMethodText((int)maip->base.method), sa_getAidName((int)maip->base.aid), maip->addrInfo.slid, maip->base.tid);
+	rc = VSTATUS_BAD;
+    } else if (maip->base.cversion != SA_MAD_CVERSION && 
 		maip->base.cversion != STL_SA_CLASS_VERSION) {
         IB_LOG_WARN_FMT( "sa_validate_mad",
                "Invalid SA Class Version %d received in %s[%s] request from LID [0x%x], TID ["FMT_U64"], ignoring request!",
                maip->base.cversion, sa_getMethodText((int)maip->base.method), sa_getAidName((int)maip->base.aid), maip->addrInfo.slid, maip->base.tid);
-		rc = VSTATUS_BAD;
+	rc = VSTATUS_BAD;
+    } else if (maip->base.bversion == IB_BASE_VERSION &&
+                maip->base.cversion == STL_SA_CLASS_VERSION) {
+        IB_LOG_WARN_FMT( "sa_validate_mad",
+               "Invalid SA Base Version %d - Class Version %d received in %s[%s] request from LID [0x%x], TID ["FMT_U64"], ignoring request!",
+               maip->base.bversion, maip->base.cversion,
+               sa_getMethodText((int)maip->base.method), sa_getAidName((int)maip->base.aid),
+               maip->addrInfo.slid, maip->base.tid);
+        rc = VSTATUS_BAD;
     } else {
         /*  Drop unsupported MADs */
     	switch (maip->base.method) {
@@ -172,8 +185,8 @@ sa_validate_mad(Mai_t *maip) {
                        "Unsupported or invalid %s[%s] request from LID [0x%x], TID["FMT_U64"]", 
                        sa_getMethodText((int)maip->base.method), sa_getAidName((int)maip->base.aid), maip->addrInfo.slid, maip->base.tid);
             }
-    		IB_EXIT("sa_validate_mad", VSTATUS_OK);
-    		rc = VSTATUS_BAD;
+    	    IB_EXIT("sa_validate_mad", VSTATUS_OK);
+    	    rc = VSTATUS_BAD;
             break;
         default:
             break;
@@ -181,7 +194,7 @@ sa_validate_mad(Mai_t *maip) {
     }
 
     IB_EXIT("sa_validate_mad", rc);
-	return(rc);
+    return(rc);
 }
 
 //

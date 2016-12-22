@@ -315,7 +315,7 @@ void PmPrintExceededPort(PmPort_t *pmportp, uint32 index,
 	PmPort_t *pmportp2 = pmportp->Image[index].neighbor;
 
 	if (pmportp2) {
-		IB_LOG_WARN_FMT(__func__, "%s of %u Exceeded Threshold of %u. %.*s Guid "FMT_U64" LID 0x%x Port %u"
+		IB_LOG_WARN_FMT(NULL, "%s of %u Exceeded Threshold of %u. %.*s Guid "FMT_U64" LID 0x%x Port %u"
 			"  Neighbor: %.*s Guid "FMT_U64" LID 0x%x Port %u",
 			statistic, value, threshold,
 			(int)sizeof(pmportp->pmnodep->nodeDesc.NodeString), pmportp->pmnodep->nodeDesc.NodeString,
@@ -323,7 +323,7 @@ void PmPrintExceededPort(PmPort_t *pmportp, uint32 index,
 			(int)sizeof(pmportp2->pmnodep->nodeDesc.NodeString), pmportp2->pmnodep->nodeDesc.NodeString,
 			pmportp2->pmnodep->guid, pmportp2->pmnodep->Image[index].lid, pmportp2->portNum);
 	} else {
-		IB_LOG_WARN_FMT(__func__, "%s of %u Exceeded Threshold of %u. %.*s Guid "FMT_U64" LID 0x%x Port %u",
+		IB_LOG_WARN_FMT(NULL, "%s of %u Exceeded Threshold of %u. %.*s Guid "FMT_U64" LID 0x%x Port %u",
 			statistic, value, threshold,
 			(int)sizeof(pmportp->pmnodep->nodeDesc.NodeString), pmportp->pmnodep->nodeDesc.NodeString,
 			pmportp->pmnodep->guid, pmportp->pmnodep->Image[index].lid, pmportp->portNum);
@@ -361,20 +361,69 @@ void PmPrintExceededPortDetailsIntegrity(PmPort_t *pmportp, PmPort_t *pmportneig
 		portImageNeighborPrev = (pmportneighborp ? &pmportneighborp->Image[lastImageIndex] : NULL);
 	}
 
-	IB_LOG_WARN_FMT(__func__, "LocalLinkIntegrityErrors=%"PRIu64", PortRcvErrors=%"PRIu64", LinkErrorRecovery=%u, ",
-		GET_DELTA_COUNTER(LocalLinkIntegrityErrors),
-		GET_DELTA_COUNTER(PortRcvErrors),
-		GET_DELTA_COUNTER(LinkErrorRecovery));
-	IB_LOG_WARN_FMT(__func__, "LinkDowned=%u, LinkQualityIndicator=%u (%s), LinkWidthDowngrade.Tx=%ux Rx=%ux",
-		GET_DELTA_COUNTER(LinkDowned),
-		portImage->StlPortCounters.lq.s.LinkQualityIndicator,
-		StlLinkQualToText(portImage->StlPortCounters.lq.s.LinkQualityIndicator),
-		StlLinkWidthToInt(portImage->u.s.txActiveWidth),
-		StlLinkWidthToInt(portImage->u.s.rxActiveWidth));
-	IB_LOG_WARN_FMT(__func__, "UncorrectableErrors=%u, FMConfigErrors=%"PRIu64", neighbor ExcessiveBufferOverruns=%"PRIu64" ",
-		GET_DELTA_COUNTER(UncorrectableErrors),
-		GET_DELTA_COUNTER(FMConfigErrors),
-		GET_NEIGHBOR_DELTA_COUNTER(ExcessiveBufferOverruns));
+	char message[256] = {0};
+	char * logMessage = message;
+	int buffSpace = sizeof(message);
+
+	uint64 LocalLinkIntegrityErrors = GET_DELTA_COUNTER(LocalLinkIntegrityErrors);
+	uint64 PortRcvErrors            = GET_DELTA_COUNTER(PortRcvErrors);
+	uint32 LinkErrorRecovery        = GET_DELTA_COUNTER(LinkErrorRecovery);
+	uint32 LinkDowned               = GET_DELTA_COUNTER(LinkDowned);
+	uint8  LinkQualityIndicator     = portImage->StlPortCounters.lq.s.LinkQualityIndicator;
+	uint32 LwdTx                    = StlLinkWidthToInt(portImage->u.s.txActiveWidth);
+	uint32 LwdRx                    = StlLinkWidthToInt(portImage->u.s.rxActiveWidth);
+	uint8  UncorrectableErrors      = GET_DELTA_COUNTER(UncorrectableErrors);
+	uint64 FMConfigErrors           = GET_DELTA_COUNTER(FMConfigErrors);
+	uint64 ExcessiveBufferOverruns  = GET_NEIGHBOR_DELTA_COUNTER(ExcessiveBufferOverruns);
+
+	//for each counter, determine if it contributed to error condition
+	if (LocalLinkIntegrityErrors && pm_config.integrityWeights.LocalLinkIntegrityErrors) {
+		snprintf(logMessage, buffSpace, "LLI=%"PRIu64" ", LocalLinkIntegrityErrors);
+		buffSpace -= strlen(logMessage);
+		logMessage += strlen(logMessage);
+	}
+	if (PortRcvErrors && pm_config.integrityWeights.PortRcvErrors) {
+		snprintf(logMessage, buffSpace, "RxE=%"PRIu64" ", PortRcvErrors);
+		buffSpace -= strlen(logMessage);
+		logMessage += strlen(logMessage);
+	}
+	if (LinkErrorRecovery && pm_config.integrityWeights.LinkErrorRecovery) {
+		snprintf(logMessage, buffSpace, "LER=%u ", LinkErrorRecovery);
+		buffSpace -= strlen(logMessage);
+		logMessage += strlen(logMessage);
+	}
+	if (LinkDowned && pm_config.integrityWeights.LinkDowned) {
+		snprintf(logMessage, buffSpace, "LD=%u ", LinkDowned);
+		buffSpace -= strlen(logMessage);
+		logMessage += strlen(logMessage);
+	}
+	if (LinkQualityIndicator < STL_LINKQUALITY_EXCELLENT && pm_config.integrityWeights.LinkQualityIndicator) {
+		snprintf(logMessage, buffSpace, "LQI=%u ", LinkQualityIndicator);
+		buffSpace -= strlen(logMessage);
+		logMessage += strlen(logMessage);
+	}
+	if ((LwdTx < StlLinkWidthToInt(STL_LINK_WIDTH_4X) || LwdRx < StlLinkWidthToInt(STL_LINK_WIDTH_4X)) && pm_config.integrityWeights.LinkWidthDowngrade) {
+		snprintf(logMessage, buffSpace, "LWD.Tx=%ux Rx=%ux ", LwdTx, LwdRx);
+		buffSpace -= strlen(logMessage);
+		logMessage += strlen(logMessage);
+	}
+	if (UncorrectableErrors && pm_config.integrityWeights.UncorrectableErrors) {
+		snprintf(logMessage, buffSpace, "Unc=%u ", UncorrectableErrors);
+		buffSpace -= strlen(logMessage);
+		logMessage += strlen(logMessage);
+	}
+	if (FMConfigErrors && pm_config.integrityWeights.FMConfigErrors) {
+		snprintf(logMessage, buffSpace, "FMC=%"PRIu64" ", FMConfigErrors);
+		buffSpace -= strlen(logMessage);
+		logMessage += strlen(logMessage);
+	}
+	if (ExcessiveBufferOverruns && pm_config.integrityWeights.ExcessiveBufferOverruns) {
+		snprintf(logMessage, buffSpace, "neighbor EBO=%"PRIu64" ", ExcessiveBufferOverruns);
+		buffSpace -= strlen(logMessage);
+		logMessage += strlen(logMessage);
+	}
+
+	IB_LOG_WARN_FMT(NULL, message);
 }
 void PmPrintExceededPortDetailsCongestion(PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint32 lastImageIndex)
 {
@@ -382,6 +431,10 @@ void PmPrintExceededPortDetailsCongestion(PmPort_t *pmportp, PmPort_t *pmportnei
 	PmPortImage_t *portImageNeighbor = (pmportneighborp ? &pmportneighborp->Image[imageIndex] : NULL);
 	PmPortImage_t *portImagePrev = NULL;
 	PmPortImage_t *portImageNeighborPrev = NULL;
+
+	char message[256] = {0};
+	char * logMessage = message;
+	int buffSpace = sizeof(message);
 
 	if (lastImageIndex != PM_IMAGE_INDEX_INVALID) {
 		portImagePrev = &pmportp->Image[lastImageIndex];
@@ -422,15 +475,38 @@ void PmPrintExceededPortDetailsCongestion(PmPort_t *pmportp, PmPort_t *pmportnei
 	uint32 MarkFECNPct = (uint32)(DeltaXmitPkts ?
 		(DeltaMarkFECN * 1000) / (DeltaXmitPkts) : 0);
 
-	IB_LOG_WARN_FMT(__func__, "XmitWait=%"PRIu64", CongDiscards=%"PRIu64", neighbor RcvFECN=%"PRIu64", ",
-		DeltaXmitWait, DeltaSwPortCong, DeltaRcvFECN_N);
-	IB_LOG_WARN_FMT(__func__, "RcvBECN=%"PRIu64", XmitTimeCong=%"PRIu64", MarkFECN=%"PRIu64"",
-		DeltaRcvBECN, DeltaXmitTimeCong, DeltaMarkFECN);
+	if (DeltaXmitWait && pm_config.congestionWeights.PortXmitWait){
+		snprintf(logMessage, buffSpace, "TxW=%"PRIu64" TxWPct=%u ", DeltaXmitWait, XmitWaitPct);
+		buffSpace -= strlen(logMessage);
+		logMessage += strlen(logMessage);
+	}
+	if (DeltaSwPortCong && pm_config.congestionWeights.SwPortCongestion){
+		snprintf(logMessage, buffSpace, "CD=%"PRIu64" ", DeltaSwPortCong);
+		buffSpace -= strlen(logMessage);
+		logMessage += strlen(logMessage);
+	}
+	if (DeltaRcvBECN && pm_config.congestionWeights.PortRcvBECN){
+		snprintf(logMessage, buffSpace, "RxB=%"PRIu64" RxBPct=%u ", DeltaRcvBECN, RcvBECNPct);
+		buffSpace -= strlen(logMessage);
+		logMessage += strlen(logMessage);
+	}
+	if (DeltaXmitTimeCong && pm_config.congestionWeights.PortXmitTimeCong){
+		snprintf(logMessage, buffSpace, "TxTC=%"PRIu64" TxTCPct=%u ", DeltaXmitTimeCong, XmitTimeCongPct);
+		buffSpace -= strlen(logMessage);
+		logMessage += strlen(logMessage);
+	}
+	if (DeltaMarkFECN && pm_config.congestionWeights.PortMarkFECN){
+		snprintf(logMessage, buffSpace, "MkF=%"PRIu64" MkFPct=%u ", DeltaMarkFECN, MarkFECNPct);
+		buffSpace -= strlen(logMessage);
+		logMessage += strlen(logMessage);
+	}
+	if (DeltaRcvFECN_N && pm_config.congestionWeights.PortRcvFECN){
+		snprintf(logMessage, buffSpace, "neighbor RxF=%"PRIu64" neighbor RxFPct=%u ", DeltaRcvFECN_N, RcvFECNPct);
+		buffSpace -= strlen(logMessage);
+		logMessage += strlen(logMessage);
+	}
 
-	IB_LOG_WARN_FMT(__func__, "XmitWaitPct=%u, CongDiscards=%"PRIu64", neighbor RcvFECNPct=%u, ",
-		XmitWaitPct, DeltaSwPortCong, RcvFECNPct);
-	IB_LOG_WARN_FMT(__func__, "RcvBECNPct=%u, XmitTimeCongPct=%u, MarkFECNPct=%u",
-		RcvBECNPct, XmitTimeCongPct, MarkFECNPct);
+	IB_LOG_WARN_FMT(NULL, message);
 }
 void PmPrintExceededPortDetailsSmaCongestion(PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint32 lastImageIndex)
 {
@@ -438,6 +514,10 @@ void PmPrintExceededPortDetailsSmaCongestion(PmPort_t *pmportp, PmPort_t *pmport
 	PmPortImage_t *portImageNeighbor = (pmportneighborp ? &pmportneighborp->Image[imageIndex] : NULL);
 	PmPortImage_t *portImagePrev = NULL;
 	PmPortImage_t *portImageNeighborPrev = NULL;
+
+	char message[256] = {0};
+	char * logMessage = message;
+	int buffSpace = sizeof(message);
 
 	if (lastImageIndex != PM_IMAGE_INDEX_INVALID) {
 		portImagePrev = &pmportp->Image[lastImageIndex];
@@ -468,15 +548,38 @@ void PmPrintExceededPortDetailsSmaCongestion(PmPort_t *pmportp, PmPort_t *pmport
 	uint32 VLMarkFECNPct = (uint32)(DeltaVLXmitPkts ?
 		(DeltaVLMarkFECN * 1000) / (DeltaVLXmitPkts) : 0);
 
-	IB_LOG_WARN_FMT(__func__, "VLXmitWait[15]=%"PRIu64", VLCongDiscards[15]=%"PRIu64", neighbor VLRcvFECN[15]=%"PRIu64", ",
-		DeltaVLXmitWait, DeltaVLSwPortCong, DeltaVLRcvFECN_N);
-	IB_LOG_WARN_FMT(__func__, "VLRcvBECN[15]=%"PRIu64", VLXmitTimeCong[15]=%"PRIu64", VLMarkFECN[15]=%"PRIu64" ",
-		DeltaVLRcvBECN, DeltaVLXmitTimeCong, DeltaVLMarkFECN);
+	if (DeltaVLXmitWait && pm_config.congestionWeights.PortXmitWait){
+		snprintf(logMessage, buffSpace, "VLTxW[15]=%"PRIu64" VLTxWPct[15]=%u ", DeltaVLXmitWait, VLXmitWaitPct);
+		buffSpace -= strlen(logMessage);
+		logMessage += strlen(logMessage);
+	}
+	if (DeltaVLSwPortCong && pm_config.congestionWeights.SwPortCongestion){
+		snprintf(logMessage, buffSpace, "VLCD[15]=%"PRIu64" ", DeltaVLSwPortCong);
+		buffSpace -= strlen(logMessage);
+		logMessage += strlen(logMessage);
+	}
+	if (DeltaVLRcvBECN && pm_config.congestionWeights.PortRcvBECN){
+		snprintf(logMessage, buffSpace, "VLRxB[15]=%"PRIu64" VLRxBPct[15]=%u ", DeltaVLRcvBECN, VLRcvBECNPct);
+		buffSpace -= strlen(logMessage);
+		logMessage += strlen(logMessage);
+	}
+	if (DeltaVLXmitTimeCong && pm_config.congestionWeights.PortXmitTimeCong){
+		snprintf(logMessage, buffSpace, "VLTxTC[15]=%"PRIu64" VLTxTCPct[15]=%u ", DeltaVLXmitTimeCong, VLXmitTimeCongPct);
+		buffSpace -= strlen(logMessage);
+		logMessage += strlen(logMessage);
+	}
+	if (DeltaVLMarkFECN && pm_config.congestionWeights.PortMarkFECN){
+		snprintf(logMessage, buffSpace, "VLMkF[15]=%"PRIu64" VLMkFPct[15]=%u ", DeltaVLMarkFECN, VLMarkFECNPct);
+		buffSpace -= strlen(logMessage);
+		logMessage += strlen(logMessage);
+	}
+	if (DeltaVLRcvFECN_N && pm_config.congestionWeights.PortRcvFECN){
+		snprintf(logMessage, buffSpace, "neighbor VLRxF[15]=%"PRIu64" neighbor VLRxFPct[15]=%u ", DeltaVLRcvFECN_N, VLRcvFECNPct);
+		buffSpace -= strlen(logMessage);
+		logMessage += strlen(logMessage);
+	}
 
-	IB_LOG_WARN_FMT(__func__, "VLXmitWaitPct[15]=%u, VLCongDiscards[15]=%"PRIu64", neighbor VLRcvFECNPct[15]=%u, ",
-		VLXmitWaitPct, DeltaVLSwPortCong, VLRcvFECNPct);
-	IB_LOG_WARN_FMT(__func__, "VLRcvBECNPct[15]=%u, VLXmitTimeCongPct[15]=%u, VLMarkFECNPct[15]=%u",
-		VLRcvBECNPct, VLXmitTimeCongPct, VLMarkFECNPct);
+	IB_LOG_WARN_FMT(NULL, message);
 }
 void PmPrintExceededPortDetailsBubble(PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint32 lastImageIndex)
 {
@@ -503,11 +606,8 @@ void PmPrintExceededPortDetailsBubble(PmPort_t *pmportp, PmPort_t *pmportneighbo
 	uint32 RcvBubblePct = (uint32)(DeltaRcvBubble_N ?
 		(DeltaRcvBubble_N * 10000) / (DeltaRcvData_N + DeltaRcvBubble_N): 0);
 
-	IB_LOG_WARN_FMT(__func__, "XmitWastedBW=%"PRIu64", XmitWaitData=%"PRIu64", neighbor RcvBubble=%"PRIu64" ",
-		DeltaXmitWastedBW, DeltaXmitWaitData, DeltaRcvBubble_N);
-
-	IB_LOG_WARN_FMT(__func__, "XmitBubblePct=%u, neighbor RcvBubblePct=%u",
-		XmitBubblePct, RcvBubblePct);
+	IB_LOG_WARN_FMT(NULL, "WBW=%"PRIu64", TxWD=%"PRIu64", TxBbPct=%u, neighbor RxBb=%"PRIu64" neighbor RxBbPct=%u ",
+		DeltaXmitWastedBW, DeltaXmitWaitData, XmitBubblePct, DeltaRcvBubble_N, RcvBubblePct);
 }
 void PmPrintExceededPortDetailsSecurity(PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint32 lastImageIndex)
 {
@@ -521,7 +621,7 @@ void PmPrintExceededPortDetailsSecurity(PmPort_t *pmportp, PmPort_t *pmportneigh
 		portImageNeighborPrev = (pmportneighborp ? &pmportneighborp->Image[lastImageIndex] : NULL);
 	}
 
-	IB_LOG_WARN_FMT(__func__, "XmitConstraintErrors=%"PRIu64", neighbor RcvConstraintErrors=%"PRIu64" ",
+	IB_LOG_WARN_FMT(NULL, "TxCE=%"PRIu64", neighbor RxCE=%"PRIu64" ",
 		GET_DELTA_COUNTER(PortXmitConstraintErrors),
 		GET_NEIGHBOR_DELTA_COUNTER(PortRcvConstraintErrors));
 }
@@ -537,7 +637,7 @@ void PmPrintExceededPortDetailsRouting(PmPort_t *pmportp, PmPort_t *pmportneighb
 		/*portImageNeighborPrev = (pmportneighborp ? &pmportneighborp->Image[lastImageIndex] : NULL); */
 	}
 
-	IB_LOG_WARN_FMT(__func__, "RcvSwitchRelayErrors=%"PRIu64" ",
+	IB_LOG_WARN_FMT(NULL, "RxSR=%"PRIu64" ",
 		GET_DELTA_COUNTER(PortRcvSwitchRelayErrors));
 }
 #undef GET_DELTA_COUNTER
@@ -558,12 +658,12 @@ static void PmUnexpectedClear(Pm_t *pm, PmPort_t *pmportp, uint32 imageIndex,
 	if (pmimagep->FailedNodes + pmimagep->FailedPorts
 				   	+ pmimagep->UnexpectedClearPorts < pm_config.SweepErrorsLogThreshold)
 	{
-		IB_LOG_WARN_FMT(__func__, "Unexpected counter clear for %.*s Guid "FMT_U64" LID 0x%x Port %u%s (Mask 0x%08x: %s)",
+		IB_LOG_WARN_FMT(NULL, "Unexpected counter clear for %.*s Guid "FMT_U64" LID 0x%x Port %u%s (Mask 0x%08x: %s)",
 			(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
 			pmnodep->guid, pmnodep->Image[imageIndex].lid, pmportp->portNum, detail,
 			unexpectedClear.AsReg32, CounterNameBuffer);
 	} else {
-		IB_LOG_INFO_FMT(__func__, "Unexpected counter clear for %.*s Guid "FMT_U64" LID 0x%x Port %u%s (Mask 0x%08x: %s)",
+		IB_LOG_INFO_FMT(NULL, "Unexpected counter clear for %.*s Guid "FMT_U64" LID 0x%x Port %u%s (Mask 0x%08x: %s)",
 			(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
 			pmnodep->guid, pmnodep->Image[imageIndex].lid, pmportp->portNum, detail,
 			unexpectedClear.AsReg32, CounterNameBuffer);
@@ -824,7 +924,7 @@ void PmFinalizePortStats(Pm_t *pm, PmPort_t *pmportp, uint32 index)
 		for (i = 0; i < portImage->numVFs; i++) {
 			int j;
 			for (j = 0; j < MAX_PM_VLS; j++) {
-				if (portImage->vfvlmap[i].vl == j) {
+				if (portImage->vfvlmap[i].vlmask & (1 << j)) {
 					// Utilization
 					UPDATE_MAX(portImage->VFSendMBps[i],
                                             (uint32)(DeltaVLCounters[j].PortVLXmitData / FLITS_PER_MB / pm->interval));
@@ -900,7 +1000,7 @@ void PmFinalizePortStats(Pm_t *pm, PmPort_t *pmportp, uint32 index)
 			for (i = 0; i < portImageNeighbor->numVFs; i++) {
 				int j;
 				for (j = 0; j < MAX_PM_VLS; j++) {
-					if (portImageNeighbor->vfvlmap[i].vl == j) {
+					if (portImageNeighbor->vfvlmap[i].vlmask & (1 << j)) {
 						// Utilization
 						UPDATE_MAX(portImageNeighbor->VFSendMBps[i],
                                                     (uint32)(DeltaVLCounters[j].PortVLRcvData / FLITS_PER_MB / pm->interval) );
@@ -1277,35 +1377,38 @@ FSTATUS PmClearPortRunningVFCounters(PmPort_t *pmportp,
 	PmCompositeVLCounters_t *pVLRunning;
 	PmPortImage_t *portImage = &pmportp->Image[g_pmSweepData.SweepIndex];
 	int vl = 0;
-	int i;
-	FSTATUS status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
 	boolean useHiddenVF = !strcmp(HIDDEN_VL15_VF, vfName);
+	int i = (useHiddenVF ? -1 : 0);
+	FSTATUS status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
 
 	pVLRunning = &pmportp->StlVLPortCountersTotal[0];
 
 #define CLEAR_SELECTED(counter) \
 	do { if (select.s.counter) pVLRunning[vl].counter = 0; } while (0)
 
-	for (i = 0; i < MAX_VFABRICS; i++) {
-		if ((useHiddenVF && !i) || (portImage->vfvlmap[i].pVF && !strcmp(portImage->vfvlmap[i].pVF->Name, vfName)) ) {
-			vl = useHiddenVF ? 15 : portImage->vfvlmap[i].vl;
-			CLEAR_SELECTED(PortVLXmitData);
-			CLEAR_SELECTED(PortVLRcvData);
-			CLEAR_SELECTED(PortVLXmitPkts);
-			CLEAR_SELECTED(PortVLRcvPkts);
-			CLEAR_SELECTED(PortVLXmitDiscards);
-			CLEAR_SELECTED(SwPortVLCongestion);
-			CLEAR_SELECTED(PortVLXmitWait);
-			CLEAR_SELECTED(PortVLRcvFECN);
-			CLEAR_SELECTED(PortVLRcvBECN);
-			CLEAR_SELECTED(PortVLXmitTimeCong);
-			CLEAR_SELECTED(PortVLXmitWastedBW);
-			CLEAR_SELECTED(PortVLXmitWaitData);
-			CLEAR_SELECTED(PortVLRcvBubble);
-			CLEAR_SELECTED(PortVLMarkFECN);
-			status = FSUCCESS;
+	for (; i < (int)portImage->numVFs; i++) {
+		if ((i == -1) || (portImage->vfvlmap[i].pVF && !strcmp(portImage->vfvlmap[i].pVF->Name, vfName)) ) {
+			uint32 vlmask = (i == -1) ? 0x8000 : portImage->vfvlmap[i].vlmask;
+			for (vl = 0; vl < MAX_PM_VLS && vlmask; vl++, vlmask >>= 1) {
+				if ((vlmask & 0x1) == 0) continue;
+				CLEAR_SELECTED(PortVLXmitData);
+				CLEAR_SELECTED(PortVLRcvData);
+				CLEAR_SELECTED(PortVLXmitPkts);
+				CLEAR_SELECTED(PortVLRcvPkts);
+				CLEAR_SELECTED(PortVLXmitDiscards);
+				CLEAR_SELECTED(SwPortVLCongestion);
+				CLEAR_SELECTED(PortVLXmitWait);
+				CLEAR_SELECTED(PortVLRcvFECN);
+				CLEAR_SELECTED(PortVLRcvBECN);
+				CLEAR_SELECTED(PortVLXmitTimeCong);
+				CLEAR_SELECTED(PortVLXmitWastedBW);
+				CLEAR_SELECTED(PortVLXmitWaitData);
+				CLEAR_SELECTED(PortVLRcvBubble);
+				CLEAR_SELECTED(PortVLMarkFECN);
+				status = FSUCCESS;
+			}
+			break;
 		}
-		if (useHiddenVF) break;
 	}
 #undef CLEAR_SELECTED
 	return status;

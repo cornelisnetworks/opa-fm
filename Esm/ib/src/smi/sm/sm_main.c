@@ -2258,6 +2258,12 @@ sm_main(void) {
 	if (status != VSTATUS_OK) {
 		IB_FATAL_ERROR("can't initialize Multicast Spanning Tree Guid lock");
 	}
+
+	status = vs_lock_init(&sm_datelineSwitchGUIDLock, VLOCK_FREE, VLOCK_THREAD);
+	if (status != VSTATUS_OK) {
+		IB_FATAL_ERROR("can't initialize Dateline Switch GUID lock");
+	}
+
     //
     //	Initialize the MAI subsystem.
     //
@@ -3052,6 +3058,8 @@ sm_cleanGlobals(uint8_t stop){
 
 	sm_mcSpanningTreeRootGuid = 0;
 	sm_mcRootCostDeltaThreshold = DEFAULT_MCROOT_COST_IMPROVEMENT_PERCENTAGE;
+
+	sm_datelineSwitchGUID = 0;
 
 	sm_lmc_0_freeLid_hint = 0;
 	sm_lmc_e0_freeLid_hint = 0;

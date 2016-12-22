@@ -605,7 +605,9 @@ int loadConfig(void){
 	} selected_device[FM_MAX_INSTANCES] = {{0}};
 
 	for (i = 0; i < FM_MAX_INSTANCES; ++i) {
-		selected_device[i].hfi = xml_config->fm_instance[i]->fm_config.hca;
+		// +1 for hfi, as both oib_get_hfi_from_portguid and oib_get_portguid assumes 1 based hfi value,
+		// and xml_config->fm_instance[i]->fm_config gives zero based hfi
+		selected_device[i].hfi = xml_config->fm_instance[i]->fm_config.hca+1;
 		selected_device[i].port = xml_config->fm_instance[i]->fm_config.port;
 		selected_device[i].guid = xml_config->fm_instance[i]->fm_config.port_guid;
 		if (xml_config->fm_instance[i]->fm_config.start) {

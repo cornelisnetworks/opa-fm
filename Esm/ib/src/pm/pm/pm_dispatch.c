@@ -535,8 +535,8 @@ static Status_t PmSendGetDataPortCounters(Pm_t *pm, PmDispatcherNode_t *dispnode
    
 	p->VLSelectMask = disppacket->VLSelectMask;
 
-	p->res.s.LocalLinkIntegrityResolution = StlResolutionToShift(pm_config.resolution.LocalLinkIntegrity, 8);
-	p->res.s.LinkErrorRecoveryResolution = StlResolutionToShift(pm_config.resolution.LinkErrorRecovery, 2);
+	p->res.s.LocalLinkIntegrityResolution = StlResolutionToShift(pm_config.resolution.LocalLinkIntegrity, RES_ADDER_LLI);
+	p->res.s.LinkErrorRecoveryResolution = StlResolutionToShift(pm_config.resolution.LinkErrorRecovery, RES_ADDER_LER);
 
 	IB_LOG_DEBUG1_FMT(__func__, "%.*s Guid "FMT_U64" LID 0x%x PortSelectMask[3]: "FMT_U64" ",
 		(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,

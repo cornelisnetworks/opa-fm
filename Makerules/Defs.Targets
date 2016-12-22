@@ -37,6 +37,6 @@ DEPLIBS_TARGETS	= $(notdir $(foreach lib,$(PROJDEPLIBS) $(MODDEPLIBS) $(LOCALDEP
 PREPROCESSED_FILES = $(CFILES:.c=$(PRE_SUFFIX)) $(CCFILES:.cpp=$(PRE_SUFFIX)) 
 
 # markers for includes, libs, and bins being built
-INC_FILE = .includes.$(BUILT_SUFFIX)
-LIB_FILE = .libraries.$(BUILT_SUFFIX)
-BIN_FILE = .binaries.$(BUILT_SUFFIX)
+INC_FILE = .includes$(BUILT_SUFFIX)
+LIB_FILE = .libraries$(BUILT_SUFFIX)
+BIN_FILE = .binaries$(BUILT_SUFFIX)

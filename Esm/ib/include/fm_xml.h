@@ -368,7 +368,6 @@ typedef struct  _DGConfig {
 	// Select
 	uint8_t			select_all;
 	uint8_t			select_self;
-	uint8_t			select_all_sm;
 	uint8_t			select_swe0;
 	uint8_t			select_all_mgmt_allowed;
 	uint8_t			select_hfi_direct_connect;
@@ -527,7 +526,6 @@ typedef struct _VFMem {
 	// aggregate settings from group and included groups 
 	uint8_t			select_all;						// boolean select all - defaults to 0
 	uint8_t			select_self;					// boolean select self - defaults to 0
-	uint8_t			select_all_sm;					// boolean select all SM's - defaults to 0
 	uint8_t			select_hfi_direct_connect;		// boolean select all nodes in b2b (hfi direct connect)
 	uint8_t			select_swe0;					// boolean select SWE0 - defaults to 0
 	uint8_t			select_all_mgmt_allowed; 		// boolean select all mgmt allowed - defaults to 0
@@ -796,7 +794,8 @@ typedef struct _SmHypercubeRouting_t {
 #define MAX_DOR_DIMENSIONS 20
 #define DEFAULT_DOR_PORT_PAIR_WARN_THRESHOLD	5
 #define DEFAULT_UPDN_MC_SAME_SPANNING_TREE	1
-#define DEFAULT_ESCAPE_VLS_IN_USE	1
+#define DEFAULT_ESCAPE_VLS_IN_USE			1
+#define DEFAULT_FAULT_REGIONS_VLS_IN_USE	1
 
 typedef enum {
 	DOR_MESH,
@@ -826,6 +825,7 @@ typedef struct _SmDorRouting {
 	SmDimension_t		dimension[MAX_DOR_DIMENSIONS];
 	DorTop_t			topology;
 	uint8_t				escapeVLs;
+	uint8_t				faultRegions;
 } SmDorRouting_t;
 #endif
 

@@ -425,6 +425,10 @@ typedef struct {
     uint32_t        mcrootTimeSyncFail;    /* time of last MC Root sync attempt failure */
     uint32_t        mcrootTimeLastSync;    /* time of last sync of services; 0=un-initialized */
 
+    uint32_t        datelineGuidSyncStatus;   /*0=un-initialized, 1=in progress, 2=synchronized, 3=failure */
+    uint32_t        datelineGuidSyncFailCount;/* count of consecutive sync attempt failures for Dateline Switch GUID records */
+    uint32_t        datelineGuidTimeSyncFail; /* time of last Dateline Switch GUID sync attempt failure */
+    uint32_t        datelineGuidTimeLastSync; /* time of last sync of services; 0=un-initialized */
 } SMDBSync_t;
 typedef SMDBSync_t  *SMDBSyncp;         /* SM DBSYNC pointer type */
 

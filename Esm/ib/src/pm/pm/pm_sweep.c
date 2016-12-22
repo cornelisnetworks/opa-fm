@@ -811,37 +811,42 @@ void clear_pmport(Pm_t *pm, PmPort_t *pmportp)
 
 void update_pm_vfvlmap(Pm_t *pm, PmPortImage_t *portImage, VlVfMap_t *vlvfmap)
 {
-	int vl;
-	int vfi;
-	int i;
+	int vl, vfi, i;
 	int vfIndex = 0;
 	VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
 
 	portImage->numVFs = 0;
-	portImage->vlSelectMask = 1<<15;
+	memset(&portImage->vfvlmap, 0, sizeof(vfmap_t) * MAX_VFABRICS);
+	portImage->vlSelectMask = 1 << 15;
 
-	for (vl=0; vl < STL_MAX_VLS; vl++) {
+	for (vl = 0; vl < STL_MAX_VLS; vl++) {
 		/* loop and add VFs - may be duplicates if VF is using more than 1 vl on this port */
-		for (vfi=0; vfi<MAX_VFABRICS; vfi++) {
+		for (vfi = 0; vfi < MAX_VFABRICS; vfi++) {
 			int vf = vlvfmap->vf[vl][vfi];
-			if (vf != -1) {
-				//now loop through PmVF_t to find a name match, and set pointer in
-				// vfmap[vfIndex] to point to it, and set vl
-				for (i=0; i<pm->numVFs; i++){
-					PmVF_t *vfp = pm->VFs[i];
-					if(!strcmp(VirtualFabrics->v_fabric[vf].name, vfp->Name)) {
-						portImage->vfvlmap[vfIndex].pVF = vfp;			
-						portImage->vfvlmap[vfIndex].vl = vl;
-						portImage->vlSelectMask |= (1<<vl);
-						vfIndex++;
-						portImage->numVFs++;
-						break;
-					}
+			if (vf == -1) continue;
+
+			// now loop through PmVF_t to find a name match, and set pointer in
+			// vfmap[vfIndex] to point to it, and set vl
+			for (i = 0; i < pm->numVFs; i++) {
+				PmVF_t *vfp = pm->VFs[i];
+				if (strcmp(VirtualFabrics->v_fabric[vf].name, vfp->Name) != 0) continue;
+
+				// Find if VF is already in Port
+				for (vfIndex = 0; vfIndex < portImage->numVFs; vfIndex++)
+					if (portImage->vfvlmap[vfIndex].pVF == vfp) break;
+
+				// If new VF update Pointer and VF Count
+				if (portImage->vfvlmap[vfIndex].pVF != vfp) {
+					DEBUG_ASSERT(portImage->vfvlmap[vfIndex].pVF == NULL);
+					portImage->vfvlmap[vfIndex].pVF = vfp;
+					portImage->numVFs++;
 				}
+				// Update VLMasks (perVL or for the whole port)
+				portImage->vfvlmap[vfIndex].vlmask |= (1 << vl);
+				portImage->vlSelectMask |= (1 << vl);
 			}
 		}
 	}
-	
 	return;
 }
 
@@ -2039,7 +2044,7 @@ FSTATUS divideAndCompress(unsigned char *input_data, size_t input_size, unsigned
 *************************************************************************************/
 FSTATUS rebuildComposite(PmCompositeImage_t *cimg, unsigned char *data, uint32 history_version) {
 	unsigned char *loc = data;
-	int i, j;
+	int i, j, k;
 
 	if (history_version == PM_HISTORY_VERSION || history_version == PM_HISTORY_VERSION_OLD) {
 		// Copy everything except for the node pointer at the end of the struct
@@ -2074,6 +2079,13 @@ FSTATUS rebuildComposite(PmCompositeImage_t *cimg, unsigned char *data, uint32 h
 					return FINSUFFICIENT_MEMORY;
 				}
 				memcpy(cimg->nodes[i]->ports[j], loc, sizeof(PmCompositePort_t));
+				if (history_version == PM_HISTORY_VERSION_OLD) {
+					for (k = 0; k < cimg->nodes[i]->ports[j]->numVFs; k++) {
+						// Convert OLD version vl to vlmask
+						cimg->nodes[i]->ports[j]->compVfVlmap[k].vlmask =
+							(1 << cimg->nodes[i]->ports[j]->compVfVlmap[k].vlmask);
+					}
+				}
 				loc += sizeof(PmCompositePort_t);
 			}
 		} else {
@@ -2086,6 +2098,13 @@ FSTATUS rebuildComposite(PmCompositeImage_t *cimg, unsigned char *data, uint32 h
 				return FINSUFFICIENT_MEMORY;
 			}
 			memcpy(cimg->nodes[i]->ports[0], loc, sizeof(PmCompositePort_t));
+			if (history_version == PM_HISTORY_VERSION_OLD) {
+				for (k = 0; k < cimg->nodes[i]->ports[0]->numVFs; k++) {
+					// Convert OLD version vl to vlmask
+					cimg->nodes[i]->ports[0]->compVfVlmap[k].vlmask =
+						(1 << cimg->nodes[i]->ports[0]->compVfVlmap[k].vlmask);
+				}
+			}
 			loc += sizeof(PmCompositePort_t);
 		}
 	}
@@ -2279,7 +2298,7 @@ static PmCompositePort_t *createCompositePort(PmPort_t *port, PmCompositeImage_t
 		// use -1 to indicated no assignment
 		cport->compVfVlmap[x].VF = -1;
 		PmVF_t *VF = port->Image[imageIndex].vfvlmap[x].pVF;
-		uint32 vl = port->Image[imageIndex].vfvlmap[x].vl;
+		uint32 vlmask = port->Image[imageIndex].vfvlmap[x].vlmask;
 		if (!VF) {
 			continue;
 		}
@@ -2289,7 +2308,7 @@ static PmCompositePort_t *createCompositePort(PmPort_t *port, PmCompositeImage_t
 			// if the VF names match, then assign the index
 			if (strcmp(cVF.name, VF->Name) == 0) {
 				cport->compVfVlmap[x].VF = y;
-				cport->compVfVlmap[x].vl = vl;
+				cport->compVfVlmap[x].vlmask = vlmask;
 				break;
 			}
 		}
@@ -2852,7 +2871,7 @@ PmPort_t *PmReconstitutePortImage(PmShortTermHistory_t *sth, PmCompositePort_t *
 	for (i=0; i<MAX_VFABRICS; i++) {	
 		sthVFidx = cport->compVfVlmap[i].VF;
 		if(sthVFidx != (uint8) -1) { //No VF
-			pmportp->Image[0].vfvlmap[i].vl = cport->compVfVlmap[i].vl;
+			pmportp->Image[0].vfvlmap[i].vlmask = cport->compVfVlmap[i].vlmask;
 			pmportp->Image[0].vfvlmap[i].pVF = sth->LoadedImage.VFs[sthVFidx];
 		}
 		else {
@@ -3982,7 +4001,7 @@ static Status_t PmLoadHistory(Pm_t *pm, boolean master) {
 					}
 
 					// check the version
-					if (((PmHistoryHeaderCommon_t *)bf_header)->historyVersion != PM_HISTORY_VERSION&&
+					if (((PmHistoryHeaderCommon_t *)bf_header)->historyVersion != PM_HISTORY_VERSION &&
 						((PmHistoryHeaderCommon_t *)bf_header)->historyVersion != PM_HISTORY_VERSION_OLD) {
 						// found history file with invalid version
 						ret = vs_pool_alloc(&pm_pool, (sizeof(char) * PM_HISTORY_FILENAME_LEN), (void *)&(pm->ShortTermHistory.invalidFiles[ii]));
@@ -4027,7 +4046,7 @@ static Status_t PmLoadHistory(Pm_t *pm, boolean master) {
 							}
 							rec->historyImageEntries[x].inx = x;
 						}
-						if (rec->header.historyVersion == PM_HISTORY_VERSION && rec->header.imageTime !=0 ){ //don't add files without time information included
+						if (rec->header.imageTime != 0){ //don't add files without time information included
 							cl_map_item_t *mi;
 							mi = cl_qmap_get(&pm->ShortTermHistory.imageTimes, (uint64_t)rec->header.imageTime << 32 | rec->header.imageSweepInterval);
 							if (mi == cl_qmap_end(&pm->ShortTermHistory.imageTimes)){

@@ -752,12 +752,6 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 
 	memset(trunkGrpCnt,0,sizeof(trunkGrpCnt));
 
-	VirtualFabrics_t *VirtualFabrics = topop->vfs_ptr;
-
-	if (VirtualFabrics && VirtualFabrics->qosEnabled) {
-		topop->qosEnforced = 1;
-	}
-
 	if (topop->routingModule->alg != SM_ROUTE_ALG_FATTREE) {
 		return VSTATUS_OK;
 	}
@@ -1229,6 +1223,7 @@ sm_shortestpath_make_routing_module(RoutingModule_t * rm)
 	rm->funcs.needs_lft_recalc = _needs_lft_recalc;
 	rm->funcs.can_send_partial_lft = _can_send_partial_lft_sp;
 	rm->funcs.handle_fabric_change = _handle_fabric_change;
+	rm->funcs.build_spanning_trees = sm_build_spanning_trees;
 	rm->funcs.destroy = _destroy;
     rm->load = _load;
     rm->unload = _unload;

@@ -3125,11 +3125,79 @@ error:
 	goto done;
 }
 
+FSTATUS GetVfPortCounters(PmCompositeVLCounters_t *vfPortCountersP, const PmVF_t *pmVFP, boolean useHiddenVF,
+	const PmPortImage_t *pmPortImageP, PmCompositeVLCounters_t *vlPortCountersP, uint32 *flagsp)
+{
+	uint32 SingleVLBit, vl;
+	uint32 VlSelectMask = 0, VlSelectMaskShared = 0, VFVlSelectMask = 0;
+	// Start at -1 if using HiddenVF
+	int i = (useHiddenVF ? -1 : 0);
+	FSTATUS status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
+
+	// Iterate through All VFs in Port
+	for (; i < (int)pmPortImageP->numVFs; i++) {
+		uint32 vlmask = (i == -1 ? 0x8000 : pmPortImageP->vfvlmap[i].vlmask);
+
+		// Iterate through All VLs within each VF
+		for (vl = 0; vl < STL_MAX_VLS && (vlmask >> vl); vl++) {
+			SingleVLBit = 1 << vl;
+
+			// Skip unassigned VLs (0) in VF
+			if ((vlmask & SingleVLBit) == 0) continue;
+
+			// If using Hidden VF only enter when i == -1 (one time for one vl[15])
+			// OR is VF pointer matches argument
+			if ((i == -1) || (pmPortImageP->vfvlmap[i].pVF == pmVFP)) {
+
+				// Keep track of VLs within this VF
+				VFVlSelectMask |= SingleVLBit;
+
+				vfPortCountersP->PortVLXmitData     += vlPortCountersP[vl].PortVLXmitData;
+				vfPortCountersP->PortVLRcvData      += vlPortCountersP[vl].PortVLRcvData;
+				vfPortCountersP->PortVLXmitPkts     += vlPortCountersP[vl].PortVLXmitPkts;
+				vfPortCountersP->PortVLRcvPkts      += vlPortCountersP[vl].PortVLRcvPkts;
+				vfPortCountersP->PortVLXmitWait     += vlPortCountersP[vl].PortVLXmitWait;
+				vfPortCountersP->SwPortVLCongestion += vlPortCountersP[vl].SwPortVLCongestion;
+				vfPortCountersP->PortVLRcvFECN      += vlPortCountersP[vl].PortVLRcvFECN;
+				vfPortCountersP->PortVLRcvBECN      += vlPortCountersP[vl].PortVLRcvBECN;
+				vfPortCountersP->PortVLXmitTimeCong += vlPortCountersP[vl].PortVLXmitTimeCong;
+				vfPortCountersP->PortVLXmitWastedBW += vlPortCountersP[vl].PortVLXmitWastedBW;
+				vfPortCountersP->PortVLXmitWaitData += vlPortCountersP[vl].PortVLXmitWaitData;
+				vfPortCountersP->PortVLRcvBubble    += vlPortCountersP[vl].PortVLRcvBubble;
+				vfPortCountersP->PortVLMarkFECN     += vlPortCountersP[vl].PortVLMarkFECN;
+				vfPortCountersP->PortVLXmitDiscards += vlPortCountersP[vl].PortVLXmitDiscards;
+
+				status = FSUCCESS;
+			}
+
+			// If VL bit is already set in Port's VLMask
+			if (VlSelectMask & SingleVLBit) {
+				// Add bit to indicate this VL is shared between 2 or more VFs
+				VlSelectMaskShared |= SingleVLBit;
+			} else {
+				// If bit is not already set, set it
+				VlSelectMask |= SingleVLBit;
+			}
+		}
+	}
+	// If one of the VLs in the shared mask is one of the VLs in the VF indicate
+	//  this data is shared with at least one other VF
+	if (VlSelectMaskShared & VFVlSelectMask) {
+		*flagsp |= STL_PA_PC_FLAG_SHARED_VL;
+	}
+
+	IB_LOG_DEBUG3_FMT(__func__,
+		"vfName: %s, useHiddenVF: %s; Port's VLMask: 0x%08x; Port's Shared VLMask: 0x%08x; VF's VLMask: 0x%08x; Status: 0x%x",
+		(pmVFP ? pmVFP->Name : (useHiddenVF ? HIDDEN_VL15_VF : "(NULL)")), useHiddenVF ? "True" : "False",
+		VlSelectMask, VlSelectMaskShared, VFVlSelectMask, status);
+
+	return status;
+}
 FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, char *vfName,
 	PmCompositeVLCounters_t *vfPortCountersP, uint32 delta, uint32 userCntrs,
 	STL_PA_IMAGE_ID_DATA imageId, uint32 *flagsp, STL_PA_IMAGE_ID_DATA *returnImageId)
 {
-	STL_PA_IMAGE_ID_DATA retImageId = {0}, retImageId2 = {0}, prevImageId = {0};
+	STL_PA_IMAGE_ID_DATA retImageId = {0}, retImageId2 = {0};
 	FSTATUS				status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
 	PmPort_t			*pmPortP, *pmPortPreviousP = NULL;
 	PmPortImage_t		*pmPortImageP, *pmPortImagePreviousP = NULL;
@@ -3139,13 +3207,9 @@ FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, char *vfName,
 	uint32				imageIndex, imageIndexPrevious;
 	boolean				sth = 0, sth2 = 0;
 	PmVF_t				*pmVFP = NULL;
-	uint32				vl = 0;
-	uint16				vlMapsFound = 0;
 	int					i;
 	boolean				useHiddenVF = !strcmp(HIDDEN_VL15_VF, vfName);
 	PmCompositeVLCounters_t vfPortCountersPrevious = { 0 };
-	uint32	VFVlSelectMask = 0, VlSelectMask = 0,
-			VlSelectMaskShared = 0, SingleVLBit = 0;
 	PmHistoryRecord_t	*record = NULL, *record2 = NULL;
 	PmCompositeImage_t	*cimg = NULL, *cimg2 = NULL;
 
@@ -3180,11 +3244,18 @@ FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, char *vfName,
 		imageIndex = pm->LastSweepIndex;
 		if (pm->LastSweepIndex == PM_IMAGE_INDEX_INVALID) {
 			IB_LOG_WARN_FMT(__func__, "Unable to Get PortStats: PM has not completed a sweep.");
-			(void)vs_rwunlock(&pm->stateLock);
 			status = FUNAVAILABLE | STL_MAD_STATUS_STL_PA_UNAVAILABLE;
-			goto done;
+			goto error;
 		}
 		pmImageP = &pm->Image[imageIndex];
+		if (!useHiddenVF) {
+			status = LocateVF(pm, vfName, &pmVFP, 1, imageIndex);
+			if (status != FSUCCESS) {
+				IB_LOG_WARN_FMT(__func__, "VF %.*s not Found: %s", (int)sizeof(vfName), vfName, FSTATUS_ToString(status));
+				status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
+				goto error;
+			}
+		}
 		(void)vs_rdlock(&pmImageP->imageLock);
 
 		pmPortP = pm_find_port(pmImageP, lid, portNum);
@@ -3205,47 +3276,10 @@ FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, char *vfName,
 		(void)vs_rwunlock(&pm->stateLock);
 		// for Running totals, Live Data only, no offset
 		(void)vs_rdlock(&pm->totalsLock);
-		for (i = 0; i < MAX_VFABRICS; i++) {
-			vl = pmPortImageP->vfvlmap[i].vl;
-			SingleVLBit =  1 << vl;
-			if ( (useHiddenVF && !i) || (pmPortImageP->vfvlmap[i].pVF && !strcmp(pmPortImageP->vfvlmap[i].pVF->Name, vfName)) ) {
-				if (useHiddenVF) {
-					vl=15;
-					SingleVLBit = 0x8000;
-				}
-				vlMapsFound++;
-				VFVlSelectMask |= SingleVLBit;
 
-				vfPortCountersP->PortVLXmitData     += pmPortP->StlVLPortCountersTotal[vl].PortVLXmitData;
-				vfPortCountersP->PortVLRcvData      += pmPortP->StlVLPortCountersTotal[vl].PortVLRcvData;
-				vfPortCountersP->PortVLXmitPkts     += pmPortP->StlVLPortCountersTotal[vl].PortVLXmitPkts;
-				vfPortCountersP->PortVLRcvPkts      += pmPortP->StlVLPortCountersTotal[vl].PortVLRcvPkts;
-				vfPortCountersP->PortVLXmitWait     += pmPortP->StlVLPortCountersTotal[vl].PortVLXmitWait;
-				vfPortCountersP->SwPortVLCongestion += pmPortP->StlVLPortCountersTotal[vl].SwPortVLCongestion;
-				vfPortCountersP->PortVLRcvFECN      += pmPortP->StlVLPortCountersTotal[vl].PortVLRcvFECN;
-				vfPortCountersP->PortVLRcvBECN      += pmPortP->StlVLPortCountersTotal[vl].PortVLRcvBECN;
-				vfPortCountersP->PortVLXmitTimeCong += pmPortP->StlVLPortCountersTotal[vl].PortVLXmitTimeCong;
-				vfPortCountersP->PortVLXmitWastedBW += pmPortP->StlVLPortCountersTotal[vl].PortVLXmitWastedBW;
-				vfPortCountersP->PortVLXmitWaitData += pmPortP->StlVLPortCountersTotal[vl].PortVLXmitWaitData;
-				vfPortCountersP->PortVLRcvBubble    += pmPortP->StlVLPortCountersTotal[vl].PortVLRcvBubble;
-				vfPortCountersP->PortVLMarkFECN     += pmPortP->StlVLPortCountersTotal[vl].PortVLMarkFECN;
-				vfPortCountersP->PortVLXmitDiscards += pmPortP->StlVLPortCountersTotal[vl].PortVLXmitDiscards;
+		// Get VF PortCounters From User Controlled Counters
+		status = GetVfPortCounters(vfPortCountersP, pmVFP, useHiddenVF, pmPortImageP, pmPortP->StlVLPortCountersTotal, flagsp);
 
-				status = FSUCCESS;
-			}
-			if (VlSelectMask & SingleVLBit) {
-				VlSelectMaskShared |= SingleVLBit;
-			}
-			else {
-				VlSelectMask |= SingleVLBit;
-			}
-		}
-		if (VlSelectMaskShared & VFVlSelectMask) {
-			*flagsp |= STL_PA_PC_FLAG_SHARED_VL;
-		}
-		IB_LOG_DEBUG3_FMT(__func__, "%s: %s=%u %s=0x%x %s=0x%x %s=0x%x", "User",
-				  "vlMapsFound", vlMapsFound, "VFVlSelectMask", VFVlSelectMask,
-				  "VlSelectMask", VlSelectMask, "VlSelectMaskShared", VlSelectMaskShared);
 		(void)vs_rwunlock(&pm->totalsLock);
 		(void)vs_rwunlock(&pmImageP->imageLock);
 		*flagsp |= (isUnexpectedClearUserCounters ? STL_PA_PC_FLAG_UNEXPECTED_CLEAR : 0);
@@ -3334,8 +3368,6 @@ FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, char *vfName,
 			pmPortImageP = &pmPortImage;
 		}
 
-		prevImageId.imageNumber = imageId.imageNumber;
-		prevImageId.imageOffset = imageId.imageOffset-1;
 		status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, &imageIndexPrevious, &retImageId2.imageNumber, &record2, &msg, NULL, &cimg2);
 		if (FSUCCESS != status) {
 			IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
@@ -3385,94 +3417,22 @@ FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, char *vfName,
 			goto unlock;
 		}
 		memset(&vfPortCountersPrevious, 0, sizeof(PmCompositeVLCounters_t));
-		// Calculate previous VF Counters
-		for (i = 0; i < MAX_VFABRICS; i++) {
-			vl = pmPortImagePreviousP->vfvlmap[i].vl;
-			SingleVLBit =  1 << vl;
-			if ( (useHiddenVF && !i) || (pmPortImagePreviousP->vfvlmap[i].pVF && !strcmp(pmPortImagePreviousP->vfvlmap[i].pVF->Name, vfName)) ) {
-				if (useHiddenVF) {
-					vl=15;
-					SingleVLBit = 0x8000;
-				}
-				vlMapsFound++;
-				VFVlSelectMask |= SingleVLBit;
-
-				vfPortCountersPrevious.PortVLXmitData     += pmPortImagePreviousP->StlVLPortCounters[vl].PortVLXmitData;
-				vfPortCountersPrevious.PortVLRcvData      += pmPortImagePreviousP->StlVLPortCounters[vl].PortVLRcvData;
-				vfPortCountersPrevious.PortVLXmitPkts     += pmPortImagePreviousP->StlVLPortCounters[vl].PortVLXmitPkts;
-				vfPortCountersPrevious.PortVLRcvPkts      += pmPortImagePreviousP->StlVLPortCounters[vl].PortVLRcvPkts;
-				vfPortCountersPrevious.PortVLXmitWait     += pmPortImagePreviousP->StlVLPortCounters[vl].PortVLXmitWait;
-				vfPortCountersPrevious.SwPortVLCongestion += pmPortImagePreviousP->StlVLPortCounters[vl].SwPortVLCongestion;
-				vfPortCountersPrevious.PortVLRcvFECN      += pmPortImagePreviousP->StlVLPortCounters[vl].PortVLRcvFECN;
-				vfPortCountersPrevious.PortVLRcvBECN      += pmPortImagePreviousP->StlVLPortCounters[vl].PortVLRcvBECN;
-				vfPortCountersPrevious.PortVLXmitTimeCong += pmPortImagePreviousP->StlVLPortCounters[vl].PortVLXmitTimeCong;
-				vfPortCountersPrevious.PortVLXmitWastedBW += pmPortImagePreviousP->StlVLPortCounters[vl].PortVLXmitWastedBW;
-				vfPortCountersPrevious.PortVLXmitWaitData += pmPortImagePreviousP->StlVLPortCounters[vl].PortVLXmitWaitData;
-				vfPortCountersPrevious.PortVLRcvBubble    += pmPortImagePreviousP->StlVLPortCounters[vl].PortVLRcvBubble;
-				vfPortCountersPrevious.PortVLMarkFECN     += pmPortImagePreviousP->StlVLPortCounters[vl].PortVLMarkFECN;
-				vfPortCountersPrevious.PortVLXmitDiscards += pmPortImagePreviousP->StlVLPortCounters[vl].PortVLXmitDiscards;
-
-				status = FSUCCESS;
-			}
-			if (VlSelectMask & SingleVLBit) {
-				VlSelectMaskShared |= SingleVLBit;
-			}
-			else {
-				VlSelectMask |= SingleVLBit;
-			}
+		// Get VF PortCounters From Previous Image's PmImage Counters
+		status = GetVfPortCounters(&vfPortCountersPrevious, pmVFP, useHiddenVF, pmPortImagePreviousP,
+			pmPortImagePreviousP->StlVLPortCounters, flagsp);
+		if (status != FSUCCESS) {
+			IB_LOG_WARN_FMT(__func__, "VF not found in port of previous image: Lid 0x%x Port %u", lid, portNum);
+			goto unlock;
 		}
-		if (VlSelectMaskShared & VFVlSelectMask) {
-			*flagsp |= STL_PA_PC_FLAG_SHARED_VL;
-		}
-		IB_LOG_DEBUG3_FMT(__func__, "Delta: Offset=%d: %s=%u %s=0x%x %s=0x%x %s=0x%x", prevImageId.imageOffset,
-						  "vlMapsFound", vlMapsFound, "VFVlSelectMask", VFVlSelectMask,
-						  "VlSelectMask", VlSelectMask, "VlSelectMaskShared", VlSelectMaskShared);
+	}
+
+	// Get VF PortCounters From Current Image's PmImage Counters
+	status = GetVfPortCounters(vfPortCountersP, pmVFP, useHiddenVF, pmPortImageP,
+		pmPortImageP->StlVLPortCounters, flagsp);
+	if (status != FSUCCESS) {
+		goto unlock;
 	}
 	(void)vs_rwunlock(&pm->stateLock);
-
-	vlMapsFound = VFVlSelectMask = VlSelectMask = VlSelectMaskShared = 0;
-	// Calculate previous VF Counters
-	for (i = 0; i < MAX_VFABRICS; i++) {
-		vl = pmPortImageP->vfvlmap[i].vl;
-		SingleVLBit =  1 << vl;
-		if ( (useHiddenVF && !i) || (pmPortImageP->vfvlmap[i].pVF && !strcmp(pmPortImageP->vfvlmap[i].pVF->Name, vfName)) ) {
-			if (useHiddenVF) {
-				vl=15;
-				SingleVLBit = 0x8000;
-			}
-			vlMapsFound++;
-			VFVlSelectMask |= SingleVLBit;
-
-			vfPortCountersP->PortVLXmitData     += pmPortImageP->StlVLPortCounters[vl].PortVLXmitData;
-			vfPortCountersP->PortVLRcvData      += pmPortImageP->StlVLPortCounters[vl].PortVLRcvData;
-			vfPortCountersP->PortVLXmitPkts     += pmPortImageP->StlVLPortCounters[vl].PortVLXmitPkts;
-			vfPortCountersP->PortVLRcvPkts      += pmPortImageP->StlVLPortCounters[vl].PortVLRcvPkts;
-			vfPortCountersP->PortVLXmitWait     += pmPortImageP->StlVLPortCounters[vl].PortVLXmitWait;
-			vfPortCountersP->SwPortVLCongestion += pmPortImageP->StlVLPortCounters[vl].SwPortVLCongestion;
-			vfPortCountersP->PortVLRcvFECN      += pmPortImageP->StlVLPortCounters[vl].PortVLRcvFECN;
-			vfPortCountersP->PortVLRcvBECN      += pmPortImageP->StlVLPortCounters[vl].PortVLRcvBECN;
-			vfPortCountersP->PortVLXmitTimeCong += pmPortImageP->StlVLPortCounters[vl].PortVLXmitTimeCong;
-			vfPortCountersP->PortVLXmitWastedBW += pmPortImageP->StlVLPortCounters[vl].PortVLXmitWastedBW;
-			vfPortCountersP->PortVLXmitWaitData += pmPortImageP->StlVLPortCounters[vl].PortVLXmitWaitData;
-			vfPortCountersP->PortVLRcvBubble    += pmPortImageP->StlVLPortCounters[vl].PortVLRcvBubble;
-			vfPortCountersP->PortVLMarkFECN     += pmPortImageP->StlVLPortCounters[vl].PortVLMarkFECN;
-			vfPortCountersP->PortVLXmitDiscards += pmPortImageP->StlVLPortCounters[vl].PortVLXmitDiscards;
-
-			status = FSUCCESS;
-		}
-		if (VlSelectMask & SingleVLBit) {
-			VlSelectMaskShared |= SingleVLBit;
-		}
-		else {
-			VlSelectMask |= SingleVLBit;
-		}
-	}
-	if (VlSelectMaskShared & VFVlSelectMask) {
-		*flagsp |= STL_PA_PC_FLAG_SHARED_VL;
-	}
-	IB_LOG_DEBUG3_FMT(__func__, "%s: Offset=%d: %s=%u %s=0x%x %s=0x%x %s=0x%x", (delta?"Delta":"Raw"), imageId.imageOffset,
-					  "vlMapsFound", vlMapsFound, "VFVlSelectMask", VFVlSelectMask,
-					  "VlSelectMask", VlSelectMask, "VlSelectMaskShared", VlSelectMaskShared);
 
 	if (delta) {
 #define GET_DELTA_VFPORTCOUNTERS(cntr, pcntr) \
@@ -3510,6 +3470,7 @@ unlock:
 done:
 	AtomicDecrementVoid(&pm->refCount);
 	return(status);
+
 error:
 	(void)vs_rwunlock(&pm->stateLock);
 	returnImageId->imageNumber = BAD_IMAGE_ID;
@@ -3878,14 +3839,14 @@ static void appendFreezeFrameDetails(uint8_t *buffer, uint32_t *index)
 			ffImageId = BuildFreezeFrameImageId(pm, freezeIndex, 0 /*client id */, NULL);
 			memcpy(&buffer[*index], &ffImageId, sizeof(uint64_t));
 			*index += sizeof(uint64_t);
-			IB_LOG_VERBOSE_FMT(__func__, "Appending freeze frame id =0x%lx", ffImageId);
+			IB_LOG_VERBOSELX("Appending freeze frame id", ffImageId);
 		}
 	}
 	if (pm_config.shortTermHistory.enable && pm->ShortTermHistory.cachedComposite) {
 		ffImageId = pm->ShortTermHistory.cachedComposite->header.common.imageIDs[0];
 		memcpy(&buffer[*index], &ffImageId, sizeof(uint64_t));
 		*index += sizeof(uint64_t);
-		IB_LOG_VERBOSE_FMT(__func__, "Appending Hist freeze frame id =0x%lx", ffImageId);
+		IB_LOG_VERBOSELX("Appending Hist freeze frame id", ffImageId);
 	}
 	return;
 }
@@ -4156,7 +4117,7 @@ FSTATUS CopyPortToPmImage(Pm_t *pm, PmNode_t *pmnodep, PmPort_t **pmportpp, PmPo
 		if (!sthportimgp->vfvlmap[i].pVF) continue;
 		ret = FindPmVF(pm, &pmportimgp->vfvlmap[j].pVF, sthportimgp->vfvlmap[i].pVF);
 		if (ret == FSUCCESS) {
-			pmportimgp->vfvlmap[j].vl = sthportimgp->vfvlmap[i].vl;
+			pmportimgp->vfvlmap[j].vlmask = sthportimgp->vfvlmap[i].vlmask;
 			j++;
 		} else if (ret == FNOT_FOUND) {
 			IB_LOG_ERROR_FMT(__func__, "Virtual Fabric not found: %s", sthportimgp->vfvlmap[i].pVF->Name);

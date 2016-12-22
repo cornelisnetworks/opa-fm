@@ -30,7 +30,7 @@
 #[ICS VERSION STRING: unknown]
 Name: opa-fm
 Version: 10.4.0.0
-Release: 59%{?dist}
+Release: 91%{?dist}
 Summary: Intel Omni-Path Fabric Management Software
 
 License: GPLv2 or BSD
@@ -62,9 +62,7 @@ Fabric Executive, and some fabric management tools.
 %setup -q -c
 
 %build
-if [ -d Esm ]; then
-	cd Esm
-fi
+cd Esm
 ./fmbuild -V %{version}.%{release}
 
 %install

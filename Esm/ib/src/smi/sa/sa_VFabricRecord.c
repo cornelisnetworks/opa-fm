@@ -146,7 +146,7 @@ sa_VFabric_Set(uint8_t *vfrp, uint8_t vf, STL_SA_MAD *samad, uint64_t serviceId,
 		vfRecord.optionFlags |= STL_VFINFO_REC_OPT_SECURITY;
 	}
 
-	if (old_topology.qosEnforced &&
+	if (VirtualFabrics->qosEnabled &&
 		VirtualFabrics->v_fabric[vf].qos_enable) {
 		vfRecord.optionFlags |= STL_VFINFO_REC_OPT_QOS;
 	}

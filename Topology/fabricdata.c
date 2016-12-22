@@ -373,6 +373,57 @@ boolean isFIExpectedLink(ExpectedLink *elinkp)
 		);
 }
 
+// Lookup PKey
+// ignores the Full/Limited bit, only checks low 15 bits for a match
+// returns index of pkey in overall table or -1 if not found
+// if the Partition Table for the port is not available, returns -1
+int FindPKey(PortData *portp, uint16 pkey)
+{
+	uint16 ix, ix_capacity;
+	STL_PKEY_ELEMENT *pPartitionTable = portp->pPartitionTable;
+
+	if (! pPartitionTable)
+		return -1;
+	ix_capacity = PortPartitionTableSize(portp);
+	for (ix = 0; ix < ix_capacity; ix++)
+	{
+		if ((pPartitionTable[ix].AsReg16 & 0x7FFF) == (pkey & 0x7FFF))
+			return ix;
+	}
+	return -1;
+}
+
+// Determine if the given port is a member of the given vFabric
+// We don't really have all the right data here, especially if the FM has
+// combined multiple vFabrics into the same SL and PKey
+// but for most cases, we can safely conclude that if the port has the SL and
+// PKey configured it is a member of the vFabric.
+// This function will return FALSE if QoS data or SL2SCMap is not available
+// or if the port is not Armed/Active.
+// Given the current FM implementation (and the dependency on SL2SCMap), this
+// routine will return FALSE if invoked for non-endpoints
+boolean isVFMember(PortData *portp, VFData_t *pVFData) 
+{
+	STL_VFINFO_RECORD *pR = &pVFData->record;
+	uint8 sl = pR->s1.sl;
+
+	// VF only valid if port initialized
+	if (! IsPortInitialized(portp->PortInfo.PortStates))
+		return FALSE;
+	// there is no saquery to find out if a port is a member of a vfabric
+	// so a port is assumed to be a member of a vfabric if:
+	//	for the base SL of the vfabric, that port has an SC assigned (SC!=15)
+	//	and the port has the VF's pkey
+
+	if (! portp->pQOS || ! portp->pQOS->SL2SCMap)
+		return FALSE;
+
+	if (portp->pQOS->SL2SCMap->SLSCMap[sl].SC==15)
+		return FALSE;
+
+	return (-1 != FindPKey(portp, pR->pKey));
+}
+
 // count the number of armed/active links in the node
 uint32 CountInitializedPorts(FabricData_t *fabricp, NodeData *nodep)
 {
@@ -674,16 +725,19 @@ FSTATUS PortDataAllocateAllBufCtrlTable(FabricData_t *fabricp)
 
 uint16 PortPartitionTableSize(PortData *portp)
 {
-	if (portp->nodep->NodeInfo.NodeType == STL_NODE_SW
-		&& portp->PortNum) {
-		if (! portp->nodep->pSwitchInfo) {
-			// guess the limits, SM doesn't support SwitchInfo
-			return portp->nodep->NodeInfo.PartitionCap;
+	NodeData *nodep = portp->nodep;
+	if (nodep->NodeInfo.NodeType == STL_NODE_SW && portp->PortNum) {
+		// Switch External Ports table size is defined in SwitchInfo
+		if (! nodep->pSwitchInfo) {
+			// guess the limits, we don't have SwitchInfo
+			// or we haven't yet read it from the snapshot while parsing
+			return nodep->NodeInfo.PartitionCap;
 		} else {
-			return portp->nodep->pSwitchInfo->SwitchInfoData.PartitionEnforcementCap;
+			return nodep->pSwitchInfo->SwitchInfoData.PartitionEnforcementCap;
 		}
 	} else {
-		return portp->nodep->NodeInfo.PartitionCap;
+		// Switch Port 0 and FI table size is defined by NodeInfo
+		return nodep->NodeInfo.PartitionCap;
 	}
 }
 

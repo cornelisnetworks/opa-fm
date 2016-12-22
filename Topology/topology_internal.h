@@ -46,9 +46,6 @@ extern "C" {
 extern const char *g_Top_cmdname;
 extern Top_FreeCallbacks g_Top_FreeCallbacks;
 
-extern void PortDataFreePartitionTable(FabricData_t *fabricp, PortData *portp);
-extern uint16 PortPartitionTableSize(PortData *portp);
-extern FSTATUS PortDataAllocatePartitionTable(FabricData_t *fabricp, PortData *portp);
 extern void PortDataFree(FabricData_t *fabricp, PortData *portp);
 extern FSTATUS AllLidsAdd(FabricData_t *fabricp, PortData *portp, boolean force);
 extern void AllLidsRemove(FabricData_t *fabricp, PortData *portp);
