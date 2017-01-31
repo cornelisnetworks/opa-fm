@@ -41,10 +41,12 @@ use strict;
 
 my $MODULE_CONF_FILE = "/etc/modules.conf";
 my $MODULE_CONF_DIST_FILE;
+my $DRACUT_EXE_FILE = "/usr/bin/dracut";
 if (substr($CUR_OS_VER,0,3) eq "2.6")
 {
 	$MODULE_CONF_FILE = "/etc/modprobe.conf";
 	$MODULE_CONF_DIST_FILE = "/etc/modprobe.conf.dist";
+	$DRACUT_EXE_FILE = "/sbin/dracut";
 }
 if (-f "$(MODULE_CONF_FILE).local")
 {
@@ -118,6 +120,16 @@ sub disable_distro_ofed()
 			}
 		}
 		close(MDIST);
+	}
+}
+
+# Start rdma on run level 235 on RHEL67
+sub run_rdma_on_startup()
+{
+	if (-e "/etc/redhat-release") {
+		if (6.7 ==  `cat \"/etc/redhat-release\" | grep -o [0-9]\.[0-9]`) {
+			system ("chkconfig --level 235 rdma on");
+		}
 	}
 }
 
@@ -254,7 +266,7 @@ sub rebuild_ramdisk()
 # Call dracut once only at the end of INSTALL
 END {
 	if ($CallDracut && -d '/boot') {
-		my $cmd = "/usr/bin/dracut";
+		my $cmd = $DRACUT_EXE_FILE;
 		my $kver = `uname -r | xargs echo -n`;
 		my $tmpfile = "/tmp/initramfs-$kver.img";
 
@@ -353,7 +365,17 @@ sub set_opairqbalance()
 		my ($new_args) = $original_args;
 		$new_args =~ s/--hintpolicy=[a-z]*//;
 		$new_args =~ s/-h [a-z]*//;
-		$new_args = "$new_args --hintpolicy=exact";
+
+		# In RHEL6.7 systems, irqbalance throws error if IRQBALANCE_ARGS
+		# starts with a space character.
+		# Swap the args to avoid leading space character when ${new_args} is empty
+		if (-e "/etc/redhat-release" &&
+			6 ==  `cat \"/etc/redhat-release\" | grep -o [0-9]\.[0-9] | cut -d\. -f1`) {
+			$new_args = "--hintpolicy=exact ${new_args}";
+		}
+		else {
+			$new_args = "$new_args --hintpolicy=exact";
+		}
 
 		if ($original_line eq "") {
 			# If there were no arguments in the existing file, just append.
@@ -385,5 +407,11 @@ sub set_opairqbalance()
 	}
 
 	# Make sure irqbalance is enabled and started.
-	`systemctl enable irqbalance; systemctl restart irqbalance`
+	if (substr($CUR_OS_VER,0,3) eq "2.6") {
+                `/sbin/chkconfig irqbalance on; service irqbalance restart`
+        }
+        else {
+                `systemctl enable irqbalance; systemctl restart irqbalance`
+        }
+
 }

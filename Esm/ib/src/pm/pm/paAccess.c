@@ -2229,7 +2229,7 @@ FSTATUS addSortedPorts(PmFocusPorts_t *pmFocusPorts, sortInfo_t *sortInfo, uint3
 		pmFocusPorts->portList[portCount].guid = (uint64_t)(listp->portp->pmnodep->guid);
 		strncpy(pmFocusPorts->portList[portCount].nodeDesc, (char *)listp->portp->pmnodep->nodeDesc.NodeString,
 			sizeof(pmFocusPorts->portList[portCount].nodeDesc)-1);
-		if (listp->portNum != 0) {
+		if (listp->portNum != 0 && listp->neighborPortp != NULL) {
 			pmFocusPorts->portList[portCount].neighborFlags = listp->neighborFlags;
 			pmFocusPorts->portList[portCount].neighborLid = listp->neighborPortp->pmnodep->Image[imageIndex].lid;
 			pmFocusPorts->portList[portCount].neighborPortNum = listp->neighborPortp->portNum;
@@ -3610,7 +3610,7 @@ FSTATUS addVFSortedPorts(PmVFFocusPorts_t *pmVFFocusPorts, sortInfo_t *sortInfo,
 		pmVFFocusPorts->portList[portCount].guid = (uint64_t)(listp->portp->pmnodep->guid);
 		strncpy(pmVFFocusPorts->portList[portCount].nodeDesc, (char *)listp->portp->pmnodep->nodeDesc.NodeString,
 			sizeof(pmVFFocusPorts->portList[portCount].nodeDesc)-1);
-		if (listp->portNum != 0) {
+		if (listp->portNum != 0 && listp->neighborPortp != NULL) {
 			pmVFFocusPorts->portList[portCount].neighborFlags = listp->neighborFlags;
 			pmVFFocusPorts->portList[portCount].neighborLid = listp->neighborPortp->pmnodep->Image[imageIndex].lid;
 			pmVFFocusPorts->portList[portCount].neighborPortNum = listp->neighborPortp->portNum;

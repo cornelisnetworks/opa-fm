@@ -905,14 +905,14 @@ function os_vendor_version()
 			rval="ES"`cat /etc/redhat-release | cut -d' ' -f7 | cut -d. -f1`
 			major=`cat /etc/redhat-release | cut -d' ' -f7 | cut -d. -f1`
 			minor=`cat /etc/redhat-release | cut -d' ' -f7 | cut -d. -f2`
-			if [ $major -ge 7 -a $minor -ne 0 ]
+			if [ \( $major -ge 7 -a $minor -ne 0 \) -o \( $major -eq 6 -a $minor -ge 7 \) ]
 			then
 				rval=$rval$minor
 			fi
 		elif grep -qi centos /etc/redhat-release
 		then
 			# CentOS 
-			rval="ES"`cat /etc/redhat-release | sed -r 's/^.+([[:digit:]])\.([[:digit:]]).+$/\1/'`
+			rval="ES"`cat /etc/redhat-release | sed -r 's/^.+([[:digit:]])\.([[:digit:]]).+$/\1\2/'`
 		elif grep -qi scientific /etc/redhat-release
 		then
 			# Scientific Linux.

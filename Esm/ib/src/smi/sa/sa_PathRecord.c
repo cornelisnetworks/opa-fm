@@ -1022,13 +1022,13 @@ sa_PathRecord_Interop(IB_PATH_RECORD *prp, uint64_t mask) {	// JSY - interop fix
 		selector = prp->MtuSelector;
 		if (selector < PR_MAX && (mask & PR_COMPONENTMASK_MTU)) {
 			value = prp->Mtu;
-			if (value == 0 || value > IB_MTU_4096) {
+			if (value == 0 || value > STL_MTU_MAX) {
 				IB_LOG_WARN("sa_PathRecord_Interop: invalid specified MTU value:", value);
 				IB_EXIT("sa_PathRecord_Interop", VSTATUS_BAD);
 				return(VSTATUS_BAD);
-			} else if (value == IB_MTU_4096) {
+			} else if (value == STL_MTU_MAX) {
 				if (selector == PR_GT) {
-					IB_LOG_WARN("sa_PathRecord_Interop: invalid selector with 4K MTU value:", selector);
+					IB_LOG_WARN("sa_PathRecord_Interop: invalid selector with 10K MTU value:", selector);
 					IB_EXIT("sa_PathRecord_Interop", VSTATUS_BAD);
 					return(VSTATUS_BAD);
 				}

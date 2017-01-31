@@ -4,8 +4,9 @@ OPA Fabric Manager
 * To build the RPM and SRPM:
 
   1. mkdir -p $HOME/rpmbuild/{SOURCES,RPMS,SRPMS}
-  2. tar czf $HOME/rpmbuild/SOURCES/opa-fm.tar.gz --exclude-vcs .
-  3. rpmbuild -ba ./opa-fm.spec
+  2. ./Esm/update_opa-fm_spec.sh opa-fm.spec.in opa-fm.spec
+  3. tar czf $HOME/rpmbuild/SOURCES/opa-fm.tar.gz --exclude-vcs .
+  4. rpmbuild -ba ./opa-fm.spec
 
   This will build the opa-fm RPM in $HOME/rpmbuild/RPMS(architecture)/
 

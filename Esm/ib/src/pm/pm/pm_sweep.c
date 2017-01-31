@@ -870,7 +870,7 @@ void update_pmport(Pm_t *pm, PmPort_t *pmportp, Node_t *nodep, Port_t *portp)
 	neigh_nodep = sm_find_node(&old_topology, portp->nodeno);
 	if (neigh_nodep && portp->portno) {	// port 0 can't be a neighbor
 		neigh_portp = sm_get_port(neigh_nodep, portp->portno);
-		if (sm_valid_port(neigh_portp)) {
+		if (sm_valid_port(neigh_portp) && sm_port_active(neigh_portp)) {
 			if (neigh_nodep->nodeInfo.NodeType == STL_NODE_SW) {
 				pmportp->neighbor_lid = sm_get_port(neigh_nodep, 0)->portData->lid;
 			} else {

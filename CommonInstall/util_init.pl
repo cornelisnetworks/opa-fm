@@ -240,7 +240,7 @@ sub os_vendor_version($)
 			# to the left of the decimal point.
 			$rval = `cat /etc/redhat-release`;
 			$rval =~ m/(\d+).(\d+)/;
-			$rval="ES".$1;
+			$rval="ES".$1.$2;
 		} elsif (!system("grep -qi Scientific /etc/redhat-release")) {
 			# Find a number of the form "#.#" and output the portion
 			# to the left of the decimal point.
@@ -253,7 +253,8 @@ sub os_vendor_version($)
 			$rval=`cat /etc/redhat-release | cut -d' ' -f7 | cut -d'.' -f1`;
 			$mn=`cat /etc/redhat-release | cut -d' ' -f7 | cut -d'.' -f2`;
 			chop($rval);
-			if (($rval >= 7) && ($mn > 0)){
+			if ( (($rval >= 7) && ($mn > 0)) ||
+				(($rval == 6) && ($mn >= 7)) ) {
 				chomp($mn);
 				$rval=join "","ES","$rval","$mn";
 			} else {
