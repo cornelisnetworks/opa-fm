@@ -30,7 +30,7 @@
 #[ICS VERSION STRING: unknown]
 Name: opa-fm
 Version: 10.3.1.0
-Release: 5%{?dist}
+Release: 6%{?dist}
 Summary: Intel Omni-Path Fabric Management Software
 
 License: GPLv2 or BSD
@@ -67,70 +67,13 @@ fi
 ./fmbuild -V %{version}.%{release} 
 
 %install
-%define fm_mans opafmcmd.8 opafmcmdall.8
-
-install -D -m 644 stage.rpm/opafm.service $RPM_BUILD_ROOT/usr/lib/systemd/system/opafm.service
-install -D -m 755 stage.rpm/opafmctrl $RPM_BUILD_ROOT/usr/lib/opa-fm/bin/opafmctrl
-install -D -m 755 stage.rpm/opafmd $RPM_BUILD_ROOT/usr/lib/opa-fm/bin/opafmd
-
-__RPM_INS
-
-install -D -m 644 stage.rpm/opafm.xml $RPM_BUILD_ROOT%{_sysconfdir}/sysconfig/opafm.xml
-install -D -m 755 stage.rpm/opafm.info $RPM_BUILD_ROOT%{_sysconfdir}/sysconfig/opa/opafm.info
-
-install -D stage.rpm/fm_capture $RPM_BUILD_ROOT/usr/lib/opa-fm/bin/fm_capture
-install -D stage.rpm/fm_cmd $RPM_BUILD_ROOT/usr/lib/opa-fm/bin/fm_cmd
-install -D stage.rpm/fm_cmdall $RPM_BUILD_ROOT/usr/lib/opa-fm/bin/fm_cmdall
-install -D stage.rpm/smpoolsize $RPM_BUILD_ROOT/usr/lib/opa-fm/bin/smpoolsize
-
-install -D stage.rpm/sm $RPM_BUILD_ROOT/usr/lib/opa-fm/runtime/sm
-install -D stage.rpm/fe $RPM_BUILD_ROOT/usr/lib/opa-fm/runtime/fe
-
-install -D stage.rpm/config_check $RPM_BUILD_ROOT/usr/lib/opa-fm/etc/config_check
-install -D stage.rpm/config_convert $RPM_BUILD_ROOT/usr/lib/opa-fm/etc/config_convert
-install -D stage.rpm/config_diff $RPM_BUILD_ROOT/usr/lib/opa-fm/etc/config_diff
-install -D stage.rpm/config_generate $RPM_BUILD_ROOT/usr/lib/opa-fm/etc/config_generate
-install -D stage.rpm/opafm $RPM_BUILD_ROOT/usr/lib/opa-fm/etc/opafm
-install -D stage.rpm/opafm.arch $RPM_BUILD_ROOT/usr/lib/opa-fm/etc/opafm.arch
-install -D stage.rpm/opafm.info $RPM_BUILD_ROOT/usr/lib/opa-fm/etc/opafm.info
-if [ -d Esm ]; then
-	sub_dir=Esm/
-else
-	sub_dir=
-fi
-install -D ${sub_dir}ib/src/linux/startup/opafm_src.xml $RPM_BUILD_ROOT/usr/lib/opa-fm/etc/opafm_src.xml
-
-install -D stage.rpm/opafm.xml $RPM_BUILD_ROOT/usr/lib/opa-fm/etc/opafm.xml
-install -D stage.rpm/opaxmlextract $RPM_BUILD_ROOT/usr/lib/opa-fm/etc/opaxmlextract
-install -D stage.rpm/opaxmlfilter $RPM_BUILD_ROOT/usr/lib/opa-fm/etc/opaxmlfilter
-
-install -D stage.rpm/opa_ca_openssl.cnf-sample $RPM_BUILD_ROOT/usr/lib/opa-fm/samples/opa_ca_openssl.cnf-sample
-install -D stage.rpm/opa_comp_openssl.cnf-sample $RPM_BUILD_ROOT/usr/lib/opa-fm/samples/opa_comp_openssl.cnf-sample
-
-mkdir -p $RPM_BUILD_ROOT%{_sbindir}
-mkdir -p $RPM_BUILD_ROOT%{_mandir}/man8
-ln -s /usr/lib/opa-fm/bin/fm_cmd $RPM_BUILD_ROOT%{_sbindir}/opafmcmd
-ln -s /usr/lib/opa-fm/bin/fm_cmdall $RPM_BUILD_ROOT%{_sbindir}/opafmcmdall
-
-cd stage.rpm
-cp -t $RPM_BUILD_ROOT%{_mandir}/man8 %fm_mans
+BUILDDIR=%{_builddir} DESTDIR=%{buildroot} LIBDIR=%{_libdir} RPM_INS=n ./Esm/fm_install.sh
 
 %post
-if [ $1 = 1 ]; then
-	if [ $(command -v systemctl) ]; then
-		/bin/systemctl daemon-reload >/dev/null 2>&1 || :
-	else
-		/sbin/chkconfig --add opafm
-	fi
-fi
+/bin/systemctl daemon-reload >/dev/null 2>&1 || :
+
 %preun
-if [ $1 = 1 ] || [ $1 = 0 ]; then
-	if [ $(command -v systemctl) ]; then
-		systemctl stop opafm.service >/dev/null 2>&1 || :
-	else
-		/sbin/chkconfig --del opafm
-	fi
-fi
+systemctl stop opafm.service >/dev/null 2>&1 || :
 
 %files
 %doc Esm/README 
@@ -149,6 +92,8 @@ __RPM_SYSCONF
 %{_mandir}/man8/*
 
 %changelog
+* Fri Feb 23 2017 Scott Breyer <scott.j.breyer@intel.com> - 10.3.1.0-6
+- Updates for spec file cleanup for 10.3.1.0.6
+
 * Fri Sep 23 2016 Anton Bodner <anton.bodner@intel.com> - 10.3.0.0-56
 - Update to latest from build 10.3.0.0.58 (FM 10.3.0.0.56)
-
