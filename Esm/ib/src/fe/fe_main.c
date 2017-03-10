@@ -51,7 +51,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "if3.h"
 #include "ib_sa.h"
 #ifndef __VXWORKS__
-#include "cs_info_file.h"
 #endif
 
 #include <fm_xml.h>

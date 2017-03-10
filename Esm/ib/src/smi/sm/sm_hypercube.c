@@ -304,7 +304,7 @@ _setup_routing_ctrl(Node_t *nodep)
 			dgIdx = smGetDgIdx(routeCtrlData->switches.member);
 			if (dgIdx < 0) {
 				IB_LOG_WARN_FMT(__func__, "HypercubeTopology has undefined EnhancedRoutingCtrl Switches group %s",
-								routeCtrlData->switches.member);
+											routeCtrlData->switches.member);
 				continue;
 			}
 			if (sm_valid_port(portp) &&
@@ -517,11 +517,12 @@ hypercube_routing_init_floyds(Topology_t *topop)
 	for (i = 0, ij = 0; i < topop->max_sws; i++, ij += topop->max_sws + 1) {
 		topop->cost[ij] = 0;
 	}
+
 	return VSTATUS_OK;
 }
 
 Status_t
-hypercube_routing_calc_floyds(Topology_t *topop, int switches, unsigned short * cost)
+hypercube_routing_calc_floyds(Topology_t *topop, int switches, unsigned short * cost, SmPathPortmask_t * path)
 {
 	int i, j, k;
 	int ij, ik, kj, oldik;
@@ -540,7 +541,7 @@ hypercube_routing_calc_floyds(Topology_t *topop, int switches, unsigned short * 
 	Node_t *nodep;
 	Node_t *sw = topop->switch_head;
 
-	if (topology_passcount == 0 || switches < old_topology.max_sws) {
+	if (topology_passcount == 0 || switches != old_topology.max_sws) {
 		topology_cost_path_changes = 1;
 	}
 
@@ -554,12 +555,16 @@ hypercube_routing_calc_floyds(Topology_t *topop, int switches, unsigned short * 
 			}
 
 			for (j = 0, ij = iNumNodes, kj = kNumNodes;
-			     j < switches;
+				 j < switches;
 				 ++j, ++ij, ++kj) {
 
 				if ((value = cost[ik] + cost[kj]) < cost[ij]) {
 					cost[ij] = value;
-				}
+					path[ij] = path[ik];
+					
+				} else if (value == cost[ij]) {
+					sm_path_portmask_merge(path + ij, path + ik);
+				} 
 			}
 		}
 
@@ -569,9 +574,10 @@ hypercube_routing_calc_floyds(Topology_t *topop, int switches, unsigned short * 
 	}
 
 	/* All floyd costs are fully computed now and can be analyzed */
-	for (k = 0; k < switches; k++) {
+	while(sw) {
 		total_cost = 0;
 		max_cost = 0;
+		k = sw->swIdx;
 		for (i = 0, iNumNodes = 0, oldiNumNodes = 0; i < switches;
 			 i++, iNumNodes += switches, oldiNumNodes += old_topology.max_sws) {
 
@@ -587,10 +593,10 @@ hypercube_routing_calc_floyds(Topology_t *topop, int switches, unsigned short * 
 					total_cost += cost[Index(k, i)];
 				} else if (sm_mcSpanningTreeRoot_useLeastWorstCaseCost) {
 					if (cost[Index(k, i)] > max_cost)
-						max_cost = cost[Index(k, i)];
+						max_cost = cost[Index(k, i)];	
 				}
 			}
-
+			
 			/* PR 115770. If there is any switch cost/path change (including removal of switches),
 			 * set topology_cost_path_changes which will force full LFT reprogramming for all switches.
 			 */
@@ -658,10 +664,8 @@ hypercube_routing_calc_floyds(Topology_t *topop, int switches, unsigned short * 
 
 				}
 			}
-
-			if (sw)
-				sw = sw->type_next;
 		}
+		sw = sw->type_next;
 	}
 
 	if (!sm_useIdealMcSpanningTreeRoot)
@@ -673,10 +677,10 @@ hypercube_routing_calc_floyds(Topology_t *topop, int switches, unsigned short * 
 	if (sm_mcSpanningTreeRootGuid) {
 		/* If we identified a root in a previous sweep or if we have just take over
 		 * from a master, does the old root still exist ?*/
-		if (sm_find_guid(topop, sm_mcSpanningTreeRootGuid))
+		if (sm_find_guid(topop, sm_mcSpanningTreeRootGuid)) 
 			old_root_exists = 1;
 	}
-
+	
 	if (sm_mcSpanningTreeRoot_useLeastTotalCost) {
 		if (!old_root_exists) {
 			if (smDebugPerf && sm_mcSpanningTreeRootGuid) {
@@ -687,7 +691,7 @@ hypercube_routing_calc_floyds(Topology_t *topop, int switches, unsigned short * 
 				IB_LOG_ERROR0("error in getting mcSpanningTreeRootGuidLock");
 				return VSTATUS_OK;
 			}
-			sm_mcSpanningTreeRootGuid = leastTotalCostSwitchGuid;
+			sm_mcSpanningTreeRootGuid = leastTotalCostSwitchGuid; 
 	        (void)vs_unlock(&sm_mcSpanningTreeRootGuidLock);
 			currRootTotalCost = leastTotalCost;
 			if (smDebugPerf) {
@@ -710,7 +714,7 @@ hypercube_routing_calc_floyds(Topology_t *topop, int switches, unsigned short * 
 						IB_LOG_ERROR0("error in getting mcSpanningTreeRootGuidLock");
 						return VSTATUS_OK;
 					}
-					sm_mcSpanningTreeRootGuid = leastTotalCostSwitchGuid;
+					sm_mcSpanningTreeRootGuid = leastTotalCostSwitchGuid; 
 			        (void)vs_unlock(&sm_mcSpanningTreeRootGuidLock);
 					currRootTotalCost = leastTotalCost;
 				} else if (smDebugPerf) {
@@ -719,7 +723,7 @@ hypercube_routing_calc_floyds(Topology_t *topop, int switches, unsigned short * 
 					 "Delta of Current root cost %d new least total cost %d below threshold value of %d%%",
 					 currRootTotalCost, leastTotalCost, sm_mcRootCostDeltaThreshold);
 				}
-			}
+			} 
 		}
 	}
 
@@ -765,7 +769,7 @@ hypercube_routing_calc_floyds(Topology_t *topop, int switches, unsigned short * 
 					 "Delta of Current root cost %d new least worst case cost %d below threshold value of %d%%",
 					 currRootWorstCaseCost, leastWorstCaseCost, sm_mcRootCostDeltaThreshold);
 				}
-			}
+			} 
 		}
 	}
 
@@ -783,7 +787,7 @@ hypercube_routing_calc_floyds(Topology_t *topop, int switches, unsigned short * 
 						 leastTotalCost, sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID);
 				found++;
 			}
-
+		
 			if (sm_mcSpanningTreeRoot_useLeastWorstCaseCost &&
 					(nodep->nodeInfo.NodeGUID == leastWorstCostSwitchGuid)) {
 				IB_LOG_INFINI_INFO_FMT(__func__,
@@ -947,11 +951,6 @@ hypercube_calculate_all_lfts(Topology_t * topop)
 							switchp->lft[currentLid] = portGroup[i%numPorts];
 							i++;
 
-							if (sm_config.hypercubeRouting.debug) 
-								IB_LOG_INFINI_INFO_FMT(__func__, "Switch %s to %s lid 0x%x outport %d (of %d)", 
-									sm_nodeDescString(switchp), sm_nodeDescString(nodep), currentLid,
-									switchp->lft[currentLid], numPorts);
-
 							incr_lids_routed(topop, switchp, switchp->lft[currentLid]);
 						}
 					}
@@ -1009,6 +1008,9 @@ hypercube_calculate_lft(Topology_t * topop, Node_t * switchp)
 	int i, currentLid, numPorts;
 	uint8_t portGroup[256];
 	int routingIterations, r;
+
+	if (sm_config.sm_debug_routing)
+		IB_LOG_INFINI_INFO_FMT(__func__, "switch %s", switchp->nodeDesc.NodeString);
 
 	status = sm_Node_init_lft(switchp, NULL);
 	if (status != VSTATUS_OK) {
@@ -1071,11 +1073,6 @@ hypercube_calculate_lft(Topology_t * topop, Node_t * switchp)
 						switchp->lft[currentLid] = portGroup[i%numPorts];
 						i++;
 
-						if (sm_config.hypercubeRouting.debug) 
-							IB_LOG_INFINI_INFO_FMT(__func__, "Switch %s to %s lid 0x%x outport %d (of %d)", 
-								sm_nodeDescString(switchp), sm_nodeDescString(nodep), currentLid,
-								switchp->lft[currentLid], numPorts);
-
 						incr_lids_routed(topop, switchp, switchp->lft[currentLid]);
 					}
 				}
@@ -1095,31 +1092,30 @@ hypercube_calculate_lft(Topology_t * topop, Node_t * switchp)
 			status = topop->routingModule->funcs.setup_pgs(topop, switchp, nodep);
 		}
 	}
+
+	switchp->routingRecalculated = 1;
+
 	return status;
 }
 
 Status_t
 sm_hypercube_make_routing_module(RoutingModule_t * rm)
 {
-	sm_shortestpath_make_routing_module(rm);
-
 	rm->name = "hypercube";
 	rm->funcs.post_process_discovery = hypercube_post_process_discovery;
 	rm->funcs.initialize_cost_matrix = hypercube_routing_init_floyds;
 	rm->funcs.calculate_cost_matrix = hypercube_routing_calc_floyds;
 	rm->funcs.setup_xft = hypercube_setup_xft;
 	rm->funcs.select_ports = hypercube_select_ports;
-	rm->funcs.calculate_lft = hypercube_calculate_lft;
-	rm->funcs.init_switch_lfts = hypercube_init_switch_lfts;
+	rm->funcs.calculate_routes = hypercube_calculate_lft;
+	rm->funcs.init_switch_routing = hypercube_init_switch_lfts;
 	rm->funcs.get_port_group = hypercube_get_port_group;
-
-	rm->alg = SM_ROUTE_ALG_HYPERCUBE;
 
 	return VSTATUS_OK;
 }
 
 Status_t
-sm_hypercube_init(Topology_t *topop)
+sm_hypercube_init(void)
 {
 	Status_t s;
 	s = sm_routing_addModuleFac("hypercube", sm_hypercube_make_routing_module);

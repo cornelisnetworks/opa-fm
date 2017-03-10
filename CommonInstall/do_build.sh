@@ -61,7 +61,7 @@ Usage()
 	echo "            Default is '/'" >&2
 	echo "" >&2
 	echo "The RPMs built during this process will be installed on this system" >&2
-	echo "they can also be found in /usr/lib/opa/src/MPI" >&2
+	echo "they can also be found in /usr/src/opa/MPI" >&2
 	exit 2
 }
 
@@ -85,10 +85,10 @@ then
 	echo "You must be 'root' to run this program" >&2
 	exit 1
 fi
-cd /usr/lib/opa/src/MPI
+cd /usr/src/opa/MPI
 if [ $? != 0 ]
 then
-	echo "Unable to cd to /usr/lib/opa/src/MPI" >&2
+	echo "Unable to cd to /usr/src/opa/MPI" >&2
 	exit 1
 fi
 

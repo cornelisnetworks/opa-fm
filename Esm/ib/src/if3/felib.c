@@ -1271,11 +1271,7 @@ open_mngr_cnx(uint32_t dev, uint32_t port,
     
     if (mode == 1) {
         // query SA for location of manager
-#ifdef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
         IB_SERVICE_RECORD sr; 
-#else
-        STL_SERVICE_RECORD sr; 
-#endif
         uint32_t count; 
         uint16_t sl; 
         
@@ -2939,11 +2935,7 @@ if3_mngr_register_sa (IBhandle_t fd, uint8_t * servName, uint64_t servID, uint32
 
 	uint32_t rc;
 	ManagerInfo_t *mi;
-#ifdef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
 	IB_SERVICE_RECORD serviceFound;
-#else
-	STL_SERVICE_RECORD serviceFound;
-#endif
 	uint32_t count;
 
 	IB_ENTER(__func__, fd, servName, servID, option);

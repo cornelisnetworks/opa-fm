@@ -289,6 +289,23 @@ int bitset_find_next_zero(bitset_t *bitset, unsigned bit) {
 	return -1;
 }
 
+int bitset_find_last_zero(bitset_t *bitset) {
+	int i_word;
+	int i_bit;
+
+	if (bitset && bitset->bits_m) {
+		for (i_word = bitset->nwords_m-1; i_word >= 0; i_word--) {
+			if (bitset->bits_m[i_word] == 0) return i_word * 32 + 31;
+			for (i_bit=31; i_bit >= 0; i_bit--) {
+				if ((bitset->bits_m[i_word] & (1<<i_bit)) == 0) {
+					return i_word*32 + i_bit;
+				}
+			}
+		}
+	}
+	return -1;
+}
+
 size_t bitset_nbits(bitset_t *bitset) {
 	return bitset->nbits_m;
 }

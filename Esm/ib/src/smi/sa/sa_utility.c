@@ -344,10 +344,6 @@ sa_process_mad(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
     case SA_TRACE_RECORD:
 		(void)sa_TraceRecord(maip, sa_cntxt);
 		break;
-    case SA_MULTIPATH_RECORD:
-		sa_cntxt->processFunc = sa_MultiPathRecord;
-		(void)sa_process_getmulti(maip, sa_cntxt);
-		break;
 	case STL_SA_ATTR_VF_INFO_RECORD:
     case SA_VFABRIC_RECORD:
 		(void)sa_VFabricRecord(maip, sa_cntxt);
@@ -2405,7 +2401,7 @@ Status_t sa_SetDefBcGrp(void) {
 		return VSTATUS_OK;
 	}
 
-	for (vf= 0; vf < VirtualFabrics->number_of_vfs; vf++) {
+	for (vf= 0; vf < VirtualFabrics->number_of_vfs && vf < MAX_VFABRICS; vf++) {
 		for (mcastGrpp = VirtualFabrics->v_fabric[vf].default_group; mcastGrpp;
 			 mcastGrpp = mcastGrpp->next_default_group) {
 			if (mcastGrpp->def_mc_create) {

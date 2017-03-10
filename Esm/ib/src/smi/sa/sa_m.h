@@ -157,60 +157,49 @@ FieldMask_t	IbPortInfoRecordFieldMask[] = {
 	{     0,     0 },
 };
 
-#if 0
-// No longer supported.
-FieldMask_t	SLVLTableRecordFieldMask[] = {
-	{     0,    16 },
-	{    16,     8 },
-	{    24,     8 },
-	{    32,    32 },
-	{    64,     4 },
-	{    68,     4 },
-	{    72,     4 },
-	{    76,     4 },
-	{    80,     4 },
-	{    84,     4 },
-	{    88,     4 },
-	{    92,     4 },
-	{    96,     4 },
-	{   100,     4 },
-	{   104,     4 },
-	{   108,     4 },
-	{   112,     4 },
-	{   116,     4 },
-	{   120,     4 },
-	{   124,     4 },
-	{     0,     0 },
-};
-#endif
-
 FieldMask_t	StlSwitchInfoRecordFieldMask[] = {
 	{     0,    32 },	// RID LID
 	{    32,    32 },	// Reserved
 	{    64,    32 },	// LinearFDBCap
-	{    96,    32 },	// RandomFDBCap
+	{    96,    32 },	// Reserved
 	{   128,    32 },	// MulticastFDBCap
 	{   160,    32 },	// LinearFDBTop
+	{   160,    32 },	// Reserved
 	{   192,    32 },	// MulticastFDBTop
 	{   224,    32 },	// CollectiveCap
 	{   256,    32 },	// CollectiveTop
 	{   288,    32 },	// Reserved
-	{   320,   128 },	// IPAddrPrimary
-	{   448,   128 },	// IPAddrSecondary
-	{   576,     8 },	// DefaultPort
-	{   584,     8 },	// Default MC Primary Port
-	{   592,     8 },	// Default MC Not Primary Port
-	{   600,     8 },	// STL Lifetimevalue
-	{   608,    16 },	// LidsPerPort
+	{   320,   128 },	// IPAddrPrimary (v6)
+	{   448,    32 },	// IPAddrSecondary (v4)
+	{   544,    16 },	// Reserved
+	{   560,    16 },	// Reserved
+	{   576,    16 },	// Reserved
+	{   592,     8 },	// Reserved
+	{   605,     1 },	// Port State Change
+	{   600,     5 },	// Lifetime
 	{   624,    16 },	// PartitionEnforcementCap
-	{   640,    16 },	// Reserved
+	{   640,     8 },	// PortGroupCap
+	{   648,     8 },	// PortGroupTop
 	{   656,     8 },	// RoutingMode Supported
 	{   664,     8 },	// RoutingMode Enabled
-	{   672,     8 },	// bitfield
-	{   680,     8 },	// MultiCollectMask
-	{   688,     8 },	// AdaptiveRouting
-	{   696,    16 },	// SwitchCapabilityMask
-	{   712,    16 },	// CollectiveMask
+	{   672,     1 },	// Reserved
+	{   673,     1 },	// Reserved
+	{   674,     1 },	// Reserved
+	{   675,     1 },	// Reserved
+	{   676,     1 },	// EP0
+	{   677,     3 },	// Reserved
+	{   680,     2 },	// Reserved
+	{   682,     3 },	// CollMask
+	{   685,     3 },	// MultiCollectMask
+	{   696,     1 },	// AR Lost Only
+	{   689,     1 },	// AR Pause
+	{   688,     1 },	// AR Enable
+	{   690,     3 },	// AR Algorithm
+	{   693,     3 },	// AR Frequency
+	{   697,     3 },	// AR Threshold
+	{   700,     4 },	// Reserved
+	{   704,    16 },	// Capability Mask
+	{   720,    16 },	// Collectives
 	{   000,    00 },
 };
 
@@ -297,25 +286,6 @@ FieldMask_t	StlLinkRecordFieldMask[] = {
 	{    48,    16 },	// Reserved
 	{    64,    32 },	// To LID
 };
-
-#if 0
-// No longer supported.
-FieldMask_t	GuidInfoRecordFieldMask[] = {
-	{     0,    16 },
-	{    16,     8 },
-	{    24,     8 },
-	{    32,    32 },
-	{    64,    64 },
-	{   128,    64 },
-	{   192,    64 },
-	{   256,    64 },
-	{   320,    64 },
-	{   384,    64 },
-	{   448,    64 },
-	{   512,    64 },
-	{     0,     0 },
-};
-#endif 
 
 FieldMask_t	StlServiceRecordFieldMask[] = {
 	{   000,    64 },	// Service ID
@@ -410,30 +380,30 @@ FieldMask_t	StlPKeyTableFieldMask[] = {
 };
 
 FieldMask_t	PathRecordFieldMask[] = {
-	{     0,    32 },
-	{    32,    32 },
-	{    64,   128 },
-	{   192,   128 },
-	{   320,    16 },
-	{   336,    16 },
-	{   352,     1 },
-	{   353,     3 },
-	{   356,    20 },
-	{   376,     8 },
-	{   384,     8 },
-	{   392,     1 },
-	{   393,     7 },
-	{   400,    16 },
-	{   416,    12 },
-	{   428,     4 },
-	{   432,     2 },
-	{   434,     6 },
-	{   440,     2 },
-	{   442,     6 },
-	{   448,     2 },
-	{   450,     6 },
-	{   456,     8 },
-	{   464,    48 },
+	{     0,    32 }, // ServiceID
+	{    32,    32 }, // ServiceID
+	{    64,   128 }, // DGID
+	{   192,   128 }, // SGID
+	{   320,    16 }, // DLID
+	{   336,    16 }, // SLID
+	{   352,     1 }, // RawTraffic
+	{   353,     3 }, // Reserved
+	{   356,    20 }, // FlowLabel
+	{   376,     8 }, // HopLimit
+	{   384,     8 }, // TClass 
+	{   392,     1 }, // Reversible
+	{   393,     7 }, // NumbPath
+	{   400,    16 }, // P_Key
+	{   416,    12 }, // COMP_QOS_CLASS (QosType + Reserved2 + QosPriority)
+	{   428,     4 }, // SL
+	{   432,     2 }, // MtuSelector
+	{   434,     6 }, // Mtu
+	{   440,     2 }, // RateSelector
+	{   442,     6 }, // Rate
+	{   448,     2 }, // PktLifeTimeSelector
+	{   450,     6 }, // PktLifeTime
+	{   456,     8 }, // Preference
+	{   464,    48 }, // Reserved2
 	{     0,     0 },
 };
 
@@ -462,10 +432,11 @@ FieldMask_t	StlMcMemberRecordFieldMask[] = {
 	{   356,    19 },	// Reserved
 	{   376,     8 },	// Hop Limit
 	{   384,     4 },	// Scope
-	{   388,     4 },	// Join State
+	{   388,     1 },	// Reserved
+	{   389,     3 },	// Join State
 	{   392,     1 },	// Proxy Join
-	{   393,     7 },	// Reserved
-	{   400,    16 },	// Reserved
+//	{   393,     7 },	// Reserved (no component mask)
+//	{   400,    16 },	// Reserved (no component mask)
 	{   416,    32 },	// MLID
 	{     0,     0 },
 };
@@ -516,24 +487,7 @@ FieldMask_t	StlVfInfoRecordFieldMask[] = {
 	{    64,   512 },	// VFName
 	{   576,    64 },	// ServiceID
 	{   640,   128 },	// MGID
-	{   768,     5 },	// SL
-	{   773,     3 },	// Select Flags
-	{   776,     6 },	// MTU
-	{   782,     2 },	// MTU Specif.
-	{   784,     6 },	// Rate
-	{   790,     2 },	// Rate Specif.
-	{   792,     3 },	// PktLifeTimeInc
-	{   795,     4 },	// Reserved
-	{   799,     1 },       // PktLifeTime Specif.
-	{   800,     8 },	// Option flags
-	{   808,     8 },	// Bandwidth Percentage
-	{   816,     1 },	// Priority
-	{   817,     7 },	// Reserved
-	{   824,     8 },	// Routing SLs
-	{   832,     1 },	// Reserved
-	{   833,     7 },	// Preemption Rank
-	{   840,     3 },	// Reserved
-	{   843,     5 },	// HOQ Life
-	{   848,   176 },	// Reserved
-	{     0,     0 },
+	{   768,     2 },	// Select Flags
+	{   771,     5 },	// SL
+	{     0,     0 },	// No other fields are searchable at this time.
 };

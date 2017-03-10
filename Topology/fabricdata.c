@@ -227,6 +227,11 @@ fail:
 void BuildFabricDataLists(FabricData_t *fabricp)
 {
 	cl_map_item_t *p;
+	boolean AllPortsIsEmpty = TRUE;
+
+	//this list may be already filled when parsing Port definitions 
+	if (!QListIsEmpty(&fabricp->AllPorts))
+		AllPortsIsEmpty = FALSE;
 
 	// this list is sorted/keyed by NodeGUID
 	for (p=cl_qmap_head(&fabricp->AllNodes); p != cl_qmap_end(&fabricp->AllNodes); p = cl_qmap_next(p)) {
@@ -250,10 +255,13 @@ void BuildFabricDataLists(FabricData_t *fabricp)
 			QListInsertTail(&fabricp->AllIOUs, &nodep->ioup->AllIOUsEntry);
 		}
 #endif
+		//if it is empty, safe to do it here
+		if (AllPortsIsEmpty) {
 		// this list is sorted/keyed by PortNum
-		for (q=cl_qmap_head(&nodep->Ports); q != cl_qmap_end(&nodep->Ports); q = cl_qmap_next(q)) {
-			PortData *portp = PARENT_STRUCT(q, PortData, NodePortsEntry);
-			QListInsertTail(&fabricp->AllPorts, &portp->AllPortsEntry);
+			for (q=cl_qmap_head(&nodep->Ports); q != cl_qmap_end(&nodep->Ports); q = cl_qmap_next(q)) {
+				PortData *portp = PARENT_STRUCT(q, PortData, NodePortsEntry);
+				QListInsertTail(&fabricp->AllPorts, &portp->AllPortsEntry);
+			}
 		}
 	}
 }
@@ -443,8 +451,15 @@ void PortDataFreeQOSData(FabricData_t *fabricp, PortData *portp)
 	if (portp->pQOS) {
 		QOSData *pQOS = portp->pQOS;
 
-		if (pQOS->SC2SCMap)
-			MemoryDeallocate(pQOS->SC2SCMap);
+		LIST_ITEM *p;
+		while (!QListIsEmpty(&pQOS->SC2SCMapList)) {
+			p = QListTail(&pQOS->SC2SCMapList);
+			PortMaskSC2SCMap *pSC2SC = (PortMaskSC2SCMap *)QListObj(p);
+			QListRemoveTail(&pQOS->SC2SCMapList);
+			MemoryDeallocate(pSC2SC->SC2SCMap);
+			pSC2SC->SC2SCMap = NULL;
+			MemoryDeallocate(pSC2SC);
+		}
 		if (pQOS->SL2SCMap)
 			MemoryDeallocate(pQOS->SL2SCMap);
 		if (pQOS->SC2SLMap)
@@ -570,6 +585,84 @@ FSTATUS AllLidsAdd(FabricData_t *fabricp, PortData *portp, boolean force)
 	}
 }
 
+STL_SCSCMAP * QOSDataLookupSCSCMap(PortData *portp, uint8_t outport) {
+	LIST_ITEM *p;
+	PortMaskSC2SCMap *pSC2SC;
+	QOSData *pQOS = portp->pQOS;
+
+	if (!pQOS)
+		return NULL;
+
+	for (p = QListHead(&pQOS->SC2SCMapList); p != NULL; p = QListNext(&pQOS->SC2SCMapList, p)) {
+		pSC2SC = (PortMaskSC2SCMap *)QListObj(p);
+
+		if (StlIsPortInPortMask(pSC2SC->outports, outport))
+			return (pSC2SC->SC2SCMap);
+	}
+	return NULL;
+}
+
+// Add a SCSC table to QOS data
+// If a matching SCSC table already exists, add egress to its port mask
+// Otherwise, create a new entry in the SCSCMap list for this table
+void QOSDataAddSCSCMap(PortData *portp, uint8_t outport, const STL_SCSCMAP *pSCSC) {
+	LIST_ITEM *p;
+	QOSData *pQOS = portp->pQOS;
+	PortMaskSC2SCMap *pSC2SC2;
+	PortMaskSC2SCMap *pEmptySC2SC2 = NULL;
+	int entryFound = 0;
+
+	if (!pQOS)
+		return;
+
+	for (p = QListHead(&pQOS->SC2SCMapList); p != NULL; p = QListNext(&pQOS->SC2SCMapList, p)) {
+		pSC2SC2 = (PortMaskSC2SCMap *)QListObj(p);
+
+		if (!memcmp(pSC2SC2->SC2SCMap, pSCSC, sizeof(STL_SCSCMAP))) {
+			StlAddPortToPortMask(pSC2SC2->outports, outport);
+			entryFound = 1;
+		} else if (StlIsPortInPortMask(pSC2SC2->outports, outport)) {
+			// the maps don't match but the port does, remove & replace with new map
+			StlClearPortInPortMask(pSC2SC2->outports, outport);
+			if (StlNumPortsSetInPortMask(pSC2SC2->outports, portp->nodep->NodeInfo.NumPorts) ==0) {
+				pEmptySC2SC2 = pSC2SC2;
+			}
+		}
+	}
+
+	if (entryFound) {
+		if(pEmptySC2SC2) {
+			QListRemoveItem(&pQOS->SC2SCMapList, &pEmptySC2SC2->SC2SCMapListEntry);
+		}
+		return;
+	}
+
+	pSC2SC2 = pEmptySC2SC2;
+	if (!pSC2SC2) {
+		// never found a matching map, create a new one
+		pSC2SC2 = (PortMaskSC2SCMap *)MemoryAllocate2AndClear(sizeof(PortMaskSC2SCMap), IBA_MEM_FLAG_PREMPTABLE, MYTAG);
+		if (!pSC2SC2) {
+			// memory error
+			fprintf(stderr, "%s: Unable to allocate memory\n", g_Top_cmdname);
+			return;
+		}
+
+		ListItemInitState(&pSC2SC2->SC2SCMapListEntry);
+		QListSetObj(&pSC2SC2->SC2SCMapListEntry, pSC2SC2);
+
+		pSC2SC2->SC2SCMap = (STL_SCSCMAP *)MemoryAllocate2AndClear(sizeof(STL_SCSCMAP), IBA_MEM_FLAG_PREMPTABLE, MYTAG);
+		if (!pSC2SC2->SC2SCMap) {
+			// memory error
+			fprintf(stderr, "%s: Unable to allocate memory\n", g_Top_cmdname);
+			return;
+		}
+		QListInsertTail(&pQOS->SC2SCMapList, &pSC2SC2->SC2SCMapListEntry);
+	}
+
+	memcpy(pSC2SC2->SC2SCMap, pSCSC, sizeof(STL_SCSCMAP));
+	StlAddPortToPortMask(pSC2SC2->outports, outport);
+}
+
 // Set new Port Info based on a Set(PortInfo).  For use by fabric simulator
 // assumes pInfo already validated and any Noop fields filled in with correct
 // values.
@@ -652,10 +745,9 @@ FSTATUS PortDataAllocateQOSData(FabricData_t *fabricp, PortData *portp)
 	pQOS = portp->pQOS;
 	if (portp->nodep->NodeInfo.NodeType == STL_NODE_SW && portp->PortNum) {
 		// external switch ports get SC2SC map
-		uint8 SC2SCMapSize = portp->nodep->NodeInfo.NumPorts+1;
-		pQOS->SC2SCMap = (STL_SCSCMAP *)MemoryAllocate2AndClear(sizeof(STL_SLSCMAP)*SC2SCMapSize, IBA_MEM_FLAG_PREMPTABLE, MYTAG);
-		if (! pQOS->SC2SCMap) {
-			fprintf(stderr, "%s: Unable to allocate memory\n", g_Top_cmdname);
+		QListInitState(&pQOS->SC2SCMapList);
+		if (!QListInit(&pQOS->SC2SCMapList)) {
+			fprintf(stderr, "%s: Unable to initialize SC2SCMaps member list\n", g_Top_cmdname);
 			goto fail;
 		}
 	} else {
@@ -996,9 +1088,17 @@ McGroupData *FabricDataAddMCGroup(FabricData_t *fabricp, struct oib_port *port, 
 	QListInitState(&mcgroupp->AllMcGroupMembers);
 	if ( !QListInit(&mcgroupp->AllMcGroupMembers)) {
 		fprintf(stderr, "%s: Unable to initialize MCGroup member list\n", g_Top_cmdname);
+		MemoryDeallocate(mcgroupp);
 		return NULL;
 	}
 
+	// init list of switches in a group
+	QListInitState(&mcgroupp->EdgeSwitchesInGroup);
+	if ( !QListInit(&mcgroupp->EdgeSwitchesInGroup)) {
+		fprintf(stderr, "%s: Unable to initialize list of Switches in a MC group\n", g_Top_cmdname);
+		MemoryDeallocate(mcgroupp);
+		return NULL;
+	}
 	mcgroupp->MGID = pMCGRecord->RID.MGID;
 	mcgroupp->MLID = pMCGRecord->MLID;
 
@@ -1007,17 +1107,14 @@ McGroupData *FabricDataAddMCGroup(FabricData_t *fabricp, struct oib_port *port, 
 
 	// search members of the group using opasaquery -o mcmember -m nodep->MLID
 	// and add them to the list of group members
-
-
 	status = GetAllMCGroupMember(fabricp, mcgroupp, port, quiet, verbose_file);
-
-	// add group to fabric
 
 	if (status != FSUCCESS) {
 		fprintf(stderr, "%s: Unable to get MCGroup member list\n", g_Top_cmdname);
-	if (status == FINSUFFICIENT_MEMORY)
-		fprintf(stderr, "%s: Insufficient memory to allocate MC Group member\n", g_Top_cmdname);
-		return NULL;
+		MemoryDeallocate(mcgroupp);
+		if (status == FINSUFFICIENT_MEMORY)
+			fprintf(stderr, "%s: Insufficient memory to allocate MC Member\n", g_Top_cmdname);
+			return NULL;
 	}
 
 	// this part will change. Needs to be ordered by MLID
@@ -1046,6 +1143,37 @@ McGroupData *FabricDataAddMCGroup(FabricData_t *fabricp, struct oib_port *port, 
 
 #endif
 
+
+FSTATUS AddEdgeSwitchToGroup(FabricData_t *fabricp, McGroupData *mcgroupp, NodeData *groupswitch, uint8 SWentryport)
+{
+	LIST_ITEM *p;
+	boolean found;
+	FSTATUS status;
+
+	// this linear insertion needs to be optimized
+	found = FALSE;
+	p=QListHead(&mcgroupp->EdgeSwitchesInGroup);
+	while (!found && (p != NULL)) {
+		McEdgeSwitchData *pSW = (McEdgeSwitchData *)QListObj(p);
+		if	(pSW->NodeGUID == groupswitch->NodeInfo.NodeGUID)
+			found = TRUE;
+		else
+			p = QListNext(&mcgroupp->EdgeSwitchesInGroup, p);
+	}
+	if (!found) {
+			McEdgeSwitchData *mcsw = (McEdgeSwitchData*)MemoryAllocate2AndClear(sizeof(McEdgeSwitchData), IBA_MEM_FLAG_PREMPTABLE, MYTAG);
+			if (! mcsw) {
+				status = FINSUFFICIENT_MEMORY;
+				return status;
+			}
+			mcsw->NodeGUID = groupswitch->NodeInfo.NodeGUID;
+			mcsw->pPort = FindPortGuid(fabricp, groupswitch->NodeInfo.NodeGUID );
+			mcsw->EntryPort = SWentryport;
+			QListSetObj(&mcsw->McEdgeSwitchEntry, mcsw);
+			QListInsertTail(&mcgroupp->EdgeSwitchesInGroup, &mcsw->McEdgeSwitchEntry);
+	}
+	return FSUCCESS;
+}
 
 FSTATUS FabricDataAddLink(FabricData_t *fabricp, PortData *p1, PortData *p2)
 {
@@ -1338,8 +1466,9 @@ FSTATUS NodeDataSwitchResizeFDB(NodeData * nodep, uint32 newLfdbSize, uint32 new
 		}
 
 		// Port Group Forwarding table same as Linear FDB but capped
-		// for early STL1 HW at 8kb.
-		newPgdbSize = MIN(newLfdbSize, DEFAULT_MAX_PGFT_LID+1);
+		// at PortGroupFDBCap (for early STL1 HW hardcoded cap of 8kb)
+		newPgdbSize = MIN(newLfdbSize,
+					  switchInfo->PortGroupFDBCap ? switchInfo->PortGroupFDBCap : DEFAULT_MAX_PGFT_LID+1);
 		newPgdb = (STL_PORT_GROUP_FORWARDING_TABLE*) MemoryAllocate2AndClear(
 			ROUNDUP(newPgdbSize, NUM_PGFT_ELEMENTS_BLOCK), IBA_MEM_FLAG_PREMPTABLE, MYTAG);
 
@@ -1385,6 +1514,7 @@ FSTATUS NodeDataSwitchResizeFDB(NodeData * nodep, uint32 newLfdbSize, uint32 new
 	if (newPgdb) {
 		STL_PORT_GROUP_FORWARDING_TABLE * oldPgdb = nodep->switchp->PortGroupFDB;
 		nodep->switchp->PortGroupFDB = newPgdb;
+		nodep->switchp->PortGroupFDBSize = newPgdbSize;
 		MemoryDeallocate(oldPgdb);
 	}
 
@@ -1497,22 +1627,22 @@ void MCGroupFree(FabricData_t *fabricp, McGroupData *mcgroupp)
 {
 	LIST_ITEM *p;
 
-	while (!QListIsEmpty(&mcgroupp->AllMcGroupMembers)){
+	while (!QListIsEmpty(&mcgroupp->AllMcGroupMembers)) {
 		p = QListTail(&mcgroupp->AllMcGroupMembers);
 		McGroupData *group = (McGroupData *)QListObj(p);
 		QListRemoveTail(&mcgroupp->AllMcGroupMembers);
 		MemoryDeallocate(group);
 	}
 	QListRemoveItem(&fabricp->AllMcGroups, &mcgroupp->AllMcGMembersEntry);
-	MemoryDeallocate (mcgroupp);
+	MemoryDeallocate(mcgroupp);
 }
 
 void MCDataFreeAll(FabricData_t *fabricp)
 {	LIST_ITEM *p;
 
-	// free all link data
+// free all link data
 	while (!QListIsEmpty(&fabricp->AllMcGroups)) {
-		p=QListTail(&fabricp->AllMcGroups);
+		p = QListTail(&fabricp->AllMcGroups);
 		MCGroupFree(fabricp, (McGroupData *)QListObj(p));
 	}
 }
@@ -2332,8 +2462,11 @@ static void* CLFabricDataBuildRouteGraphThread(void *context)
                               break;
                            }
                            PortData *prev_port = PARENT_STRUCT(mi, PortData, NodePortsEntry);
-                           if (prev_port && prev_port->pQOS && prev_port->pQOS->SC2SCMap) {
-                              sc = prev_port->pQOS->SC2SCMap[portp->PortNum].SCSCMap[previous_sc].SC;
+                           if (prev_port && prev_port->pQOS && !(QListIsEmpty(&prev_port->pQOS->SC2SCMapList))){
+                             STL_SCSCMAP *pSCSC = QOSDataLookupSCSCMap(prev_port, portp->PortNum);
+                             if (pSCSC) {
+                                 sc = pSCSC->SCSCMap[previous_sc].SC;
+                              }
                            }
                         }
                      }

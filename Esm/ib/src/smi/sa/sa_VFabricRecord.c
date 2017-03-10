@@ -135,9 +135,9 @@ sa_VFabric_Set(uint8_t *vfrp, uint8_t vf, STL_SA_MAD *samad, uint64_t serviceId,
 	vfRecord.s1.pktLifeTimeInc = VirtualFabrics->v_fabric[vf].pkt_lifetime_mult;
 	vfRecord.s1.pktLifeSpecified = VirtualFabrics->v_fabric[vf].pkt_lifetime_specified;
 	vfRecord.s1.sl = VirtualFabrics->v_fabric[vf].base_sl;
-	vfRecord.bandwidthPercent = VirtualFabrics->v_fabric[vf].percent_bandwidth;
+	vfRecord.bandwidthPercent = 0;
 	vfRecord.priority = VirtualFabrics->v_fabric[vf].priority;
-	vfRecord.routingSLs = VirtualFabrics->v_fabric[vf].routing_sls;
+	vfRecord.routingSLs = 1;
 	vfRecord.preemptionRank = VirtualFabrics->v_fabric[vf].preempt_rank;
 	vfRecord.hoqLife = VirtualFabrics->v_fabric[vf].hoqlife_vf;
 	vfRecord.optionFlags = 0;
@@ -149,6 +149,8 @@ sa_VFabric_Set(uint8_t *vfrp, uint8_t vf, STL_SA_MAD *samad, uint64_t serviceId,
 	if (VirtualFabrics->qosEnabled &&
 		VirtualFabrics->v_fabric[vf].qos_enable) {
 		vfRecord.optionFlags |= STL_VFINFO_REC_OPT_QOS;
+		if (!VirtualFabrics->v_fabric[vf].priority)
+			vfRecord.bandwidthPercent = VirtualFabrics->v_fabric[vf].percent_bandwidth;
 	}
 
 	if (VirtualFabrics->v_fabric[vf].flowControlDisable) {
@@ -234,7 +236,7 @@ sa_VFabric_GetTable(Mai_t *maip, uint32_t *records) {
 	if (smValidatePortPKey(DEFAULT_PKEY, reqPortp))
 		reqInFullDefault=1;
 
-	for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
+	for (vf=0; vf < VirtualFabrics->number_of_vfs && vf < MAX_VFABRICS; vf++) {
 
 		if ((samad.header.mask & STL_VFINFO_REC_COMP_PKEY) && 
 			(PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey) != PKEY_VALUE(vFabricRecord.pKey))) continue;
@@ -356,7 +358,7 @@ void showStlVFabrics(void) {
      
 	(void)vs_rdlock(&old_topology_lock);
 
-	for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
+	for (vf=0; vf < VirtualFabrics->number_of_vfs && vf < MAX_VFABRICS; vf++) {
 		sa_VFabric_Set((uint8_t *)&vFabricRecord, vf, NULL, 0, mGid);
 
         if (vf) PrintSeparator(&dest);

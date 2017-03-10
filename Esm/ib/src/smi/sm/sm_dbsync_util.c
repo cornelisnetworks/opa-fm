@@ -737,55 +737,46 @@ Status_t sm_dbsync_configCheck(SmRecKey_t recKey, SMDBCCCSyncp smSyncSetting) {
 				smrecp->syncCapability = DBSYNC_CAP_NOTSUPPORTED;
 				sm_dbsync_disableStandbySm(smrecp, condition); 
 			} else {
-				if (smSyncSetting->smVfChecksum != 0 && smRecords.ourChecksums.smVfChecksum != 0) {
-					if (smSyncSetting->smVfChecksum != smRecords.ourChecksums.smVfChecksum) {
+				if (smSyncSetting->smVfChecksum != smRecords.ourChecksums.smVfChecksum) {
 
-						IB_LOG_WARN_FMT(__func__,
-							"SM at %s, portGuid="FMT_U64" has a different enabled Virtual Fabric configuration consistency checksum [%u] from us [%u]",
-							smrecp->nodeDescString, recKey, smSyncSetting->smVfChecksum, smRecords.ourChecksums.smVfChecksum);
+					IB_LOG_WARN_FMT(__func__,
+						"SM at %s, portGuid="FMT_U64" has a different enabled Virtual Fabric configuration consistency checksum [%u] from us [%u]",
+						smrecp->nodeDescString, recKey, smSyncSetting->smVfChecksum, smRecords.ourChecksums.smVfChecksum);
 
-						mismatchDetected = 1;
-						deactivateSM = 1;
-						condition = CSM_COND_STANDBY_SM_VF_DEACTIVATION;
-						smrecp->syncCapability = DBSYNC_CAP_NOTSUPPORTED;
-					}
+					mismatchDetected = 1;
+					deactivateSM = 1;
+					condition = CSM_COND_STANDBY_SM_VF_DEACTIVATION;
+					smrecp->syncCapability = DBSYNC_CAP_NOTSUPPORTED;
 				}
 
-				if (smSyncSetting->smConfigChecksum != 0 && smRecords.ourChecksums.smConfigChecksum != 0) {
-					if (smSyncSetting->smConfigChecksum != smRecords.ourChecksums.smConfigChecksum) {
+				if (smSyncSetting->smConfigChecksum != smRecords.ourChecksums.smConfigChecksum) {
 
-						IB_LOG_WARN_FMT(__func__,
-							"SM at %s, portGuid="FMT_U64" has a different SM configuration consistency checksum [%u] from us [%u]",
-							smrecp->nodeDescString, recKey, smSyncSetting->smConfigChecksum, smRecords.ourChecksums.smConfigChecksum);
+					IB_LOG_WARN_FMT(__func__,
+						"SM at %s, portGuid="FMT_U64" has a different SM configuration consistency checksum [%u] from us [%u]",
+						smrecp->nodeDescString, recKey, smSyncSetting->smConfigChecksum, smRecords.ourChecksums.smConfigChecksum);
 
-						mismatchDetected = 1;
-						deactivateSM = 1;
-						condition = CSM_COND_STANDBY_SM_DEACTIVATION;
-						smrecp->syncCapability = DBSYNC_CAP_NOTSUPPORTED;
-					}
+					mismatchDetected = 1;
+					deactivateSM = 1;
+					condition = CSM_COND_STANDBY_SM_DEACTIVATION;
+					smrecp->syncCapability = DBSYNC_CAP_NOTSUPPORTED;
 				}
-				if (smSyncSetting->pmConfigChecksum != 0 && smRecords.ourChecksums.pmConfigChecksum != 0) {
-					if (smSyncSetting->pmConfigChecksum != smRecords.ourChecksums.pmConfigChecksum) {
+				if (smSyncSetting->pmConfigChecksum != smRecords.ourChecksums.pmConfigChecksum) {
 
+					IB_LOG_WARN_FMT(__func__,
+						"SM at %s, portGuid="FMT_U64" detected a different PM configuration consistency checksum [%u] from us [%u]",
+						smrecp->nodeDescString, recKey, smSyncSetting->pmConfigChecksum, smRecords.ourChecksums.pmConfigChecksum);
 
-						IB_LOG_WARN_FMT(__func__,
-							"SM at %s, portGuid="FMT_U64" detected a different PM configuration consistency checksum [%u] from us [%u]",
-							smrecp->nodeDescString, recKey, smSyncSetting->pmConfigChecksum, smRecords.ourChecksums.pmConfigChecksum);
-
-						mismatchDetected = 1;
-						deactivateSM = 1;
-						condition = CSM_COND_SECONDARY_PM_DEACTIVATION;
-						smrecp->syncCapability = DBSYNC_CAP_NOTSUPPORTED;
-					}
+					mismatchDetected = 1;
+					deactivateSM = 1;
+					condition = CSM_COND_SECONDARY_PM_DEACTIVATION;
+					smrecp->syncCapability = DBSYNC_CAP_NOTSUPPORTED;
 				}
-				if (smSyncSetting->feConfigChecksum != 0 && smRecords.ourChecksums.feConfigChecksum != 0) {
-					if (smSyncSetting->feConfigChecksum != smRecords.ourChecksums.feConfigChecksum) {
-						IB_LOG_WARN_FMT(__func__,
-							"SM at %s, portGuid="FMT_U64" detected a different FE configuration consistency checksum [%u] from us [%u]",
-							smrecp->nodeDescString, recKey, smSyncSetting->feConfigChecksum, smRecords.ourChecksums.feConfigChecksum);
+				if (smSyncSetting->feConfigChecksum != smRecords.ourChecksums.feConfigChecksum) {
+					IB_LOG_WARN_FMT(__func__,
+						"SM at %s, portGuid="FMT_U64" detected a different FE configuration consistency checksum [%u] from us [%u]",
+						smrecp->nodeDescString, recKey, smSyncSetting->feConfigChecksum, smRecords.ourChecksums.feConfigChecksum);
 
-						mismatchDetected = 1;
-					}
+					mismatchDetected = 1;
 				}
 
 				if (mismatchDetected) {

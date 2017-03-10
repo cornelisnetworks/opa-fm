@@ -118,7 +118,8 @@ Status_t
 sm_set_portPkey(Topology_t *topop, Node_t *nodep, Port_t *portp,
 				Node_t *linkedNodep, Port_t *linkedPortp,
 				uint8_t *path, uint8_t *enforcePkey,
-				uint16_t	*vlHighLimit, int use_lr_dr_mix) {
+				uint16_t	*vlHighLimit, int use_lr_dr_mix)
+{
 
 	uint32_t    amod;
 	Status_t	status=VSTATUS_OK;
@@ -714,7 +715,7 @@ smValidatePortPKey2Way(uint16_t pkey, Port_t* port1p, Port_t* port2p)
 }
 
 uint16_t
-smGetRequestPkeyIndex(uint8_t pkeyIndex,  Lid_t slid) {
+smGetRequestPkeyIndex(uint8_t pkeyIndex,  STL_LID slid) {
 	Port_t*		reqPortp;
 	Port_t*		smPortp;
 	uint16_t	pkey;
@@ -806,7 +807,7 @@ smVFValidateVfServiceId(int vf, uint64_t serviceId)
 	if (!VirtualFabrics->v_fabric[vf].apps.select_unmatched_sid)
 		return VSTATUS_BAD;
 
-	for (vf2 = 0; vf2 < VirtualFabrics->number_of_vfs; vf2++) {
+	for (vf2 = 0; vf2 < VirtualFabrics->number_of_vfs && vf2 < MAX_VFABRICS; vf2++) {
 		if (smCheckServiceId(vf2, serviceId, VirtualFabrics))
 			// app found in another VF
 			return VSTATUS_BAD;
@@ -825,13 +826,13 @@ smVFValidateVfServiceId(int vf, uint64_t serviceId)
 //             [lids returned could be controled by vf.SecondaryRouteOnly]
 
 Status_t
-smGetValidatedServiceIDVFs(Port_t* srcport, Port_t* dstport, uint16_t pkey, uint8_t reqSL, uint64_t serviceId, bitset_t* vfs) {
+smGetValidatedServiceIDVFs(Port_t* srcport, Port_t* dstport, uint16_t pkey, uint8_t reqSL, uint8_t respSL, uint64_t serviceId, bitset_t* vfs) {
 	int			vf;
 	uint8_t		appFound=0;
 	uint8_t		srvIdInVF=0;
 	VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
 
-	for (vf = 0; vf < VirtualFabrics->number_of_vfs; vf++) {
+	for (vf = 0; vf < VirtualFabrics->number_of_vfs && vf < MAX_VFABRICS; vf++) {
 		srvIdInVF = 0;
 		uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
 		// Check for service ID	
@@ -860,11 +861,11 @@ smGetValidatedServiceIDVFs(Port_t* srcport, Port_t* dstport, uint16_t pkey, uint
 		if (!bitset_test(&srcport->portData->vfMember, vfIdx)) continue;
 		if (!bitset_test(&dstport->portData->vfMember, vfIdx)) continue;
 
-		// Is this the proper sl?
-		if ((reqSL < MAX_SLS) &&
-			((reqSL < VirtualFabrics->v_fabric[vf].base_sl) ||
-			 (reqSL > (VirtualFabrics->v_fabric[vf].base_sl + VirtualFabrics->v_fabric[vf].routing_sls-1)))) continue;
-
+		// Are these the proper sls?
+		if ((reqSL < STL_MAX_SLS) &&
+			(reqSL != VirtualFabrics->v_fabric[vf].base_sl)) continue;
+		if ((respSL < STL_MAX_SLS) &&
+			(respSL != VirtualFabrics->v_fabric[vf].resp_sl)) continue;
 		bitset_set(vfs, vf);
 	}
 
@@ -873,7 +874,8 @@ smGetValidatedServiceIDVFs(Port_t* srcport, Port_t* dstport, uint16_t pkey, uint
 
 
 Status_t
-smGetValidatedVFs(Port_t* srcport, Port_t* dstport, uint16_t pkey, uint8_t reqSL, bitset_t* vfs) {
+smGetValidatedVFs(Port_t* srcport, Port_t* dstport, uint16_t pkey, uint8_t reqSL, uint8_t respSL, bitset_t* vfs) {
+	// TODO consolidate with smGetValidatedServiceIDVFs()
 	int			vf;
 	VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
 
@@ -891,10 +893,11 @@ smGetValidatedVFs(Port_t* srcport, Port_t* dstport, uint16_t pkey, uint8_t reqSL
 		if (!bitset_test(&srcport->portData->vfMember, vfIdx)) continue;
 		if (!bitset_test(&dstport->portData->vfMember, vfIdx)) continue;
 
-		// Is this the proper sl?
-		if ((reqSL < MAX_SLS) &&
-			((reqSL < VirtualFabrics->v_fabric[vf].base_sl) ||
-			 (reqSL > (VirtualFabrics->v_fabric[vf].base_sl + VirtualFabrics->v_fabric[vf].routing_sls-1)))) continue;
+		// Are these the proper sls?
+		if ((reqSL < STL_MAX_SLS) &&
+			(reqSL != VirtualFabrics->v_fabric[vf].base_sl)) continue;
+		if ((respSL < STL_MAX_SLS) &&
+			(respSL != VirtualFabrics->v_fabric[vf].resp_sl)) continue;
 
 		bitset_set(vfs, vf);
 	}
@@ -957,7 +960,7 @@ smVFValidateVfMGid(int vf, uint64_t mGid[2])
 	if (!VirtualFabrics->v_fabric[vf].apps.select_unmatched_mgid)
 		return VSTATUS_BAD;
 
-	for (vf2 = 0; vf2 < VirtualFabrics->number_of_vfs; vf2++) {
+	for (vf2 = 0; vf2 < VirtualFabrics->number_of_vfs && vf2 < MAX_VFABRICS; vf2++) {
 		if (smCheckMGid(vf2, mGid))
 			// mgid found in another VF
 			return VSTATUS_BAD;
@@ -1037,16 +1040,17 @@ smVFValidateMcGrpCreateParams(Port_t * joiner, Port_t * requestor,
 
 	// Loop over virtual fabrics
 	for (vf = 0; vf < VirtualFabrics->number_of_vfs; vf++) {
-    	cl_map_item_t   *cl_map_item;
-		uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
+    	cl_map_item_t   *it;
+		VF_t *vfp = &VirtualFabrics->v_fabric[vf];
+		uint32 vfIdx=vfp->index;
 
 		// Continue if virtual fabric parameters don't match those in the mcMemberRecord.
 		mgidInVF = 0;
 
-    	for (cl_map_item = cl_qmap_head(&VirtualFabrics->v_fabric[vf].apps.mgidMap);
-        	cl_map_item != cl_qmap_end(&VirtualFabrics->v_fabric[vf].apps.mgidMap);
-        	cl_map_item = cl_qmap_next(cl_map_item)) {
-        	app = XML_QMAP_VOID_CAST cl_qmap_key(cl_map_item);
+    	for (it = cl_qmap_head(&vfp->apps.mgidMap);
+        	it != cl_qmap_end(&vfp->apps.mgidMap);
+        	it = cl_qmap_next(it)) {
+        	app = XML_QMAP_VOID_CAST cl_qmap_key(it);
 
 			//printf("Request MGID: "FMT_GID"\n\tApp.mgid: "FMT_GID
 			//        "\n\tApp.mgid_last: "FMT_GID"\n\tApp.mgid_mask: "FMT_GID"\n\n",
@@ -1060,35 +1064,34 @@ smVFValidateMcGrpCreateParams(Port_t * joiner, Port_t * requestor,
 			}
 
 		}
+
 		if (  // McGroup Pkey matches VF Pkey
-		   (PKEY_VALUE(mcMemberRec->P_Key) != PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey))
-              // Check if SL matches the base_sl (no mcast_isolate)
-		   || (!VirtualFabrics->v_fabric[vf].mcast_isolate && (mcMemberRec->SL != VirtualFabrics->v_fabric[vf].base_sl)) 
-              // Check if the SL matches the mcast_sl (mcast_isolate is true)
-		   || (VirtualFabrics->v_fabric[vf].mcast_isolate && (mcMemberRec->SL != VirtualFabrics->v_fabric[vf].mcast_sl))
+		   (PKEY_VALUE(mcMemberRec->P_Key) != PKEY_VALUE(vfp->pkey))
 		      // Check to see if the joiner/creator port is a member of this VF
 		   || (!bitset_test(&joiner->portData->vfMember, vfIdx))
 		      // Check to see if the (optional) requestor port is a member of this VF
-		   || (  (requestor != NULL)
-		      && !bitset_test(&requestor->portData->vfMember, vfIdx)))
-		{
+		   || (requestor != NULL && !bitset_test(&requestor->portData->vfMember, vfIdx))) {
 			continue;
 		}
 
-		if (VirtualFabrics->v_fabric[vf].security &&
+		if ((vfp->mcast_sl != UNDEFINED_XML8 && mcMemberRec->SL != vfp->mcast_sl) ||
+			(vfp->mcast_sl == UNDEFINED_XML8 && mcMemberRec->SL != vfp->base_sl))
+			continue;
+
+		if (vfp->security &&
 		   !bitset_test(&joiner->portData->fullPKeyMember, vfIdx)) {
 			// Joiner must be full member
 			continue;
 		}
 
-		if (mcMemberRec->Mtu > VirtualFabrics->v_fabric[vf].max_mtu_int) continue;
-		if (linkrate_gt(mcMemberRec->Rate, VirtualFabrics->v_fabric[vf].max_rate_int)) continue;
+		if (mcMemberRec->Mtu > vfp->max_mtu_int) continue;
+		if (linkrate_gt(mcMemberRec->Rate, vfp->max_rate_int)) continue;
 
 		if (mgidInVF) {
 			foundMatch = VSTATUS_OK;
 		}
 
-		if (VirtualFabrics->v_fabric[vf].apps.select_unmatched_mgid) {
+		if (vfp->apps.select_unmatched_mgid) {
 			bitset_set(&unmatchedAll, vf);
 		}
 	}
@@ -1119,6 +1122,8 @@ smVFValidateMcDefaultGroup(int vf, uint64_t* mGid) {
     cl_map_item_t   *cl_map_item;
 	VFAppMgid_t	*app;
 	VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
+
+	if (vf < 0 || vf >= MAX_VFABRICS) return VSTATUS_BAD;
 
 	if (!VirtualFabrics) return VSTATUS_OK;
 
@@ -1159,21 +1164,6 @@ char* smGetVfName(uint16_t pKey) {
     return name;
 }   
 
-int smGetSLVF(uint8_t sl, VirtualFabrics_t *VirtualFabrics) {
-	int vf;
-
-	for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
-		if ((VirtualFabrics->v_fabric_all[vf].base_sl <= sl) &&
-			((VirtualFabrics->v_fabric_all[vf].base_sl + VirtualFabrics->v_fabric_all[vf].routing_sls) > sl)) {
-			return vf;
-		} else if (VirtualFabrics->v_fabric_all[vf].mcast_isolate &&
-			VirtualFabrics->v_fabric_all[vf].mcast_sl == sl) {
-			return vf;
-		}
-	}
-    return -1;
-}
-
  
 void
 smGetVfMaxMtu(Port_t *portp, Port_t *reqportp, STL_MCMEMBER_RECORD *mcmp, uint8_t *maxMtu, uint8_t *maxRate) {
@@ -1206,8 +1196,8 @@ smGetVfMaxMtu(Port_t *portp, Port_t *reqportp, STL_MCMEMBER_RECORD *mcmp, uint8_
 		uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
 
 		if (PKEY_VALUE(mcmp->P_Key) != PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey)) continue;
-		if (mcmp->SL < VirtualFabrics->v_fabric[vf].base_sl) continue;
-		if (mcmp->SL > (VirtualFabrics->v_fabric[vf].base_sl + VirtualFabrics->v_fabric[vf].routing_sls - 1)) continue;
+		if (!((mcmp->SL == VirtualFabrics->v_fabric[vf].base_sl) ||
+			(mcmp->SL == VirtualFabrics->v_fabric[vf].resp_sl))) continue;
 		if (!bitset_test(&portp->portData->vfMember, vfIdx)) continue;
 		if (!bitset_test(&reqportp->portData->vfMember, vfIdx)) continue;
 
@@ -1355,37 +1345,15 @@ smEvaluateNodeDG(Node_t* nodep, int dgIdxToEvaluate, PortRangeInfo_t* portInfo) 
 	}
 
 	//check "SystemImageGUID" definition section
-	if (!isDgMember) {
-		if (dgp->number_of_system_image_guids > 0) {
-
-			XmlGuid_t* sysImgGuidPtr = dgp->system_image_guid;
-
-			while (sysImgGuidPtr != NULL) {
-				//check SystemImageGUID against all the system image guids specified in this device group
-				if (sysImgGuidPtr->guid == nodep->nodeInfo.SystemImageGUID) {
-					isDgMember = TRUE;
-					break;
-				}
-				sysImgGuidPtr = sysImgGuidPtr->next;
-			}
-		}
+	if (!isDgMember && (dgp->number_of_system_image_guids > 0)) {
+		isDgMember = (cl_qmap_get(&dgp->system_image_guid, nodep->nodeInfo.SystemImageGUID) != 
+			cl_qmap_end(&dgp->system_image_guid));
 	}
 	  
 	//check "NodeGUID" definition section
-	if (!isDgMember) {
-		if (dgp->number_of_node_guids > 0) {
-
-			XmlGuid_t* nodeGuidPtr = dgp->node_guid;
-
-			while (nodeGuidPtr != NULL) {
-				//check NodeGUID against all the NodeGUIDS specified in this device group
-				if (nodeGuidPtr->guid == nodep->nodeInfo.NodeGUID) {
-					isDgMember = TRUE;
-					break;
-				}
-				nodeGuidPtr = nodeGuidPtr->next;
-			}				
-		}
+	if (!isDgMember && (dgp->number_of_node_guids > 0)) {
+		isDgMember = (cl_qmap_get(&dgp->node_guid, nodep->nodeInfo.NodeGUID) !=
+			cl_qmap_end(&dgp->node_guid));
 	}
 
 	//check "NodeDesc" definition section
@@ -1507,7 +1475,7 @@ smEvaluatePortDG(Node_t* nodep, Port_t* portp, int dgIdxToEvaluate, bitset_t* dg
 		//check select_hfi_direct_connect
 		if (!isDgMember) {
 			if (dgp->select_hfi_direct_connect) {
-				if (sm_hfi_direct_connect != 0) {
+				if (sm_hfi_direct_connect != 0 && sm_topop->num_sws == 0) { // fabric sim check
 					isDgMember = TRUE;
 				}
 			}
@@ -1536,21 +1504,9 @@ smEvaluatePortDG(Node_t* nodep, Port_t* portp, int dgIdxToEvaluate, bitset_t* dg
 		}
 
 		//check "PortGUID" definition section
-		if (!isDgMember) {
-			if (dgp->number_of_port_guids > 0) {
-
-				XmlGuid_t* portGuidPtr = dgp->port_guid;
-
-				while (portGuidPtr != NULL) {
-
-					if (portGuidPtr->guid == portp->portData->guid) {
-						isDgMember = TRUE;
-						break;
-					}
-
-					portGuidPtr = portGuidPtr->next;
-				}
-			}
+		if (!isDgMember && (dgp->number_of_port_guids > 0)) {
+			isDgMember = (cl_qmap_get(&dgp->port_guid, portp->portData->guid) != 
+				cl_qmap_end(&dgp->port_guid));
 		}
 
 		if (isDgMember)
@@ -1771,9 +1727,6 @@ void smLogVFs() {
 				VirtualFabrics->v_fabric[vf].max_mtu_int, VirtualFabrics->v_fabric[vf].max_rate_int,
 				VirtualFabrics->v_fabric[vf].pkt_lifetime_mult);
 		
-		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "baseSL= 0x%x  routingSLs= %d",
-				VirtualFabrics->v_fabric[vf].base_sl, VirtualFabrics->v_fabric[vf].routing_sls);
-
 		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "bandwidthPercent= %d  priority= %d",
 				VirtualFabrics->v_fabric[vf].percent_bandwidth, VirtualFabrics->v_fabric[vf].priority);
 		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "preemptionRank= %d  hoqLife= %d",

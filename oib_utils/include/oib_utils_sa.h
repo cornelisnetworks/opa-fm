@@ -90,7 +90,7 @@ FSTATUS oib_sa_unregister_trap(struct oib_port *port, uint16_t trap_num);
  * @return   0 if success, else error code 
  */ 
 FSTATUS oib_sa_get_event(struct oib_port *port, void *target_buf,
-						 int buf_size, int *bytes_written);
+						 size_t buf_size, int *bytes_written);
 
 /**
  * Set the buffer counts for QP creation.

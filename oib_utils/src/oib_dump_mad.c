@@ -218,7 +218,6 @@ const char *stl_attribute_str(uint8_t BaseVersion, uint8_t class, be16_t attr)
 		case STL_SA_ATTR_MULTIPATH_LID_RECORD:			return("MultipathLIDRecord");
 		case STL_SA_ATTR_CABLE_INFO_RECORD:				return("CableInfoRecord");
 		case STL_SA_ATTR_VF_INFO_RECORD:				return("VFInfoRecord");
-		case STL_SA_ATTR_PORT_STATE_INFO_RECORD:		return("PortStateInfoRecord");
 		case STL_SA_ATTR_PORTGROUP_TABLE_RECORD:		return("PortGroupTableRecord");
 		case STL_SA_ATTR_BUFF_CTRL_TAB_RECORD:			return("BufferCtrlTableRecord");
 		case STL_SA_ATTR_FABRICINFO_RECORD:				return("FabricInfoRecord");

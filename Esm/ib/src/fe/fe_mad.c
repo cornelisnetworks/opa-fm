@@ -327,7 +327,6 @@ uint32_t fe_sa_passthrough(uint8_t *netbuf, FE_ConnList *connList, IBhandle_t fd
 	case STL_SA_ATTR_MULTIPATH_LID_RECORD:
 	case STL_SA_ATTR_CABLE_INFO_RECORD:
 	case STL_SA_ATTR_VF_INFO_RECORD:
-	case STL_SA_ATTR_PORT_STATE_INFO_RECORD:
 	case STL_SA_ATTR_PORTGROUP_TABLE_RECORD:
 	case STL_SA_ATTR_BUFF_CTRL_TAB_RECORD:
 	case STL_SA_ATTR_FABRICINFO_RECORD:
@@ -369,7 +368,10 @@ uint32_t fe_sa_passthrough(uint8_t *netbuf, FE_ConnList *connList, IBhandle_t fd
 		if(fd_sa == INVALID_HANDLE ||
            (rc = if3_mngr_send_passthru_mad(fd_sa, saMad, messageHeader->Length, &returnMait, returnBuffer, &returnSize, &returnStatus, NULL, NULL)) != VSTATUS_OK){
             returnStatus = (rc == VSTATUS_TIMEOUT) ? STL_MAD_STATUS_STL_SA_UNAVAILABLE : MAD_STATUS_BUSY;
-			IB_LOG_ERROR_FMT(__func__, "Sending request to manager failed. Mad error code: %x", returnStatus);
+            if (returnStatus == STL_MAD_STATUS_STL_SA_UNAVAILABLE)
+            	IB_LOG_ERROR_FMT(__func__, "Sending request to SA failed. Mad error code: (%x) SA Unavailable", returnStatus);
+            else
+            	IB_LOG_ERROR_FMT(__func__, "Sending request to SA failed. Mad error code: (%x) Busy", returnStatus);
             /* Mad was not sent, so use generic Mad status error */
             (void)fe_passthrough_send_failure_response(netbuf, connList, fd_sa, (uint16)returnStatus);
             return FE_NO_COMPLETE;
@@ -448,12 +450,15 @@ uint32_t fe_pa_passthrough(uint8_t* netbuf, FE_ConnList* connList, IBhandle_t fd
 
 	/* Send our mad and receive the response */
 	if(fd_sa == INVALID_HANDLE ||
-       (rc = if3_mngr_send_passthru_mad(fd_sa, saMad, dataLength, &returnMait, returnBuffer, &returnSize, &returnStatus, NULL, NULL)) != VSTATUS_OK){
-        returnStatus = (rc == VSTATUS_TIMEOUT) ? STL_MAD_STATUS_STL_PA_UNAVAILABLE : MAD_STATUS_BUSY;
-        IB_LOG_ERROR_FMT(__func__, "Sending request to manager failed. Mad error code: %x", returnStatus);
-        /* Mad was not sent, so use generic Mad status error */
-        (void)fe_passthrough_send_failure_response(netbuf, connList, fd_sa, (uint16)returnStatus);
-        return FE_NO_COMPLETE;
+		(rc = if3_mngr_send_passthru_mad(fd_sa, saMad, dataLength, &returnMait, returnBuffer, &returnSize, &returnStatus, NULL, NULL)) != VSTATUS_OK){
+		returnStatus = (rc == VSTATUS_TIMEOUT) ? STL_MAD_STATUS_STL_PA_UNAVAILABLE : MAD_STATUS_BUSY;
+		if (returnStatus == STL_MAD_STATUS_STL_PA_UNAVAILABLE)
+			IB_LOG_ERROR_FMT(__func__, "Sending request to performance manager failed. Mad error code: (%x) PA Unavailable", returnStatus);
+		else
+			IB_LOG_ERROR_FMT(__func__, "Sending request to performance manager failed. Mad error code: (%x) Busy", returnStatus);
+		/* Mad was not sent, so use generic Mad status error */
+		(void)fe_passthrough_send_failure_response(netbuf, connList, fd_sa, (uint16)returnStatus);
+		return FE_NO_COMPLETE;
 	}
 
     /* If the returnSize is greater than the size of our buffer, bail */

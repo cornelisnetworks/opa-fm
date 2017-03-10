@@ -1,12 +1,12 @@
 .\" .\" *********************************************************************
 .\" .\" *                                                                   *
-.\" .\" *             Copyright 2015-2016, Intel Corporation                *
+.\" .\" *             Copyright 2015-2017, Intel Corporation                *
 .\" .\" *                                                                   *
 .\" .\" *                       All Rights Reserved.                        *
 .\" .\" *                                                                   *
 .\" .\" *********************************************************************
 
-.TH opafmcmd 8 "Intel Corporation" "Copyright(C) 2015\-2016" "Master map: IFSFFCLIRG (Man Page)" 
+.TH opafmcmd 8 "Intel Corporation" "Copyright(C) 2015\-2017" "Master map: IFSFFCLIRG (Man Page)" 
 .SH NAME
 opafmcmd
 
@@ -135,7 +135,7 @@ Sets the SM log mode flags. Values include:
 
 .sp
 smLogMask 
-Sets the SM log mask for a specific subsystem to the value given. For a list of subsystems and mask bit meanings, see the files /etc/sysconfig/opafm.xml or /usr/lib/opa-fm/etc/opafm.xml.
+Sets the SM log mask for a specific subsystem to the value given. For a list of subsystems and mask bit meanings, see the files /etc/opa-fm/opafm.xml or /usr/share/opa-fm/opafm.xml.
 
 .RE
 
@@ -255,7 +255,7 @@ Sets the FE log mode flags.
 
 .sp
 feLogMask 
-Sets the FE log mask for a specific subsystem to the value given. For a list of subsystems and mask bit meanings, see the files /etc/sysconfig/opafm.xml or /usr/lib/opa-fm/etc/opafm.xml 
+Sets the FE log mask for a specific subsystem to the value given. For a list of subsystems and mask bit meanings, see the files /etc/opa-fm/opafm.xml or /usr/share/opa-fm/opafm.xml 
 
 .RE
 

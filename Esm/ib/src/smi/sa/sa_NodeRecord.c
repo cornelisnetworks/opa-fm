@@ -181,7 +181,7 @@ sa_NodeRecord_Set(uint8_t * cp, Node_t * nodep, Port_t * portp)
 		   sizeof(nodeRecord.NodeDesc));
 	nodeRecord.NodeDesc.NodeString[STL_NODE_DESCRIPTION_ARRAY_SIZE-1]=0;
 	nodeRecord.NodeInfo = nodep->nodeInfo;
-	nodeRecord.NodeInfo.u1.s.LocalPortNum = portp->index;
+	nodeRecord.NodeInfo.u1.s.LocalPortNum = nodep->nodeInfo.u1.s.LocalPortNum;
 
 	if (nodep->nodeInfo.NodeType != NI_TYPE_SWITCH) {
 		nodeRecord.NodeInfo.PortGUID = portp->portData->guid;

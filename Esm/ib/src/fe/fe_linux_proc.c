@@ -37,7 +37,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "hsm_config_srvr_api.h"
 #include "hsm_config_srvr_data.h"
 #include "fm_xml.h"
-#include "cs_info_file.h"
 #include "if3.h"
 #include "mal_g.h"
 #include <oib_utils.h>
@@ -606,13 +605,6 @@ int main(int argc, char *argv[]){
 
         }
     }
-
-    /*
-     * Get the environment variables before applying the command line overrides.
-     * If this fails, we still continue because we have default values that we 
-     * can us.
-     */
-	(void)read_info_file();
 
 	// initialize memory pool for FE XML parsing
 	status = initFeXmlMemoryPool();

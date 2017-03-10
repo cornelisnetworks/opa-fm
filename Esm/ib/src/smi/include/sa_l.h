@@ -376,7 +376,6 @@ extern	Status_t	sa_LFTableRecord(Mai_t *, sa_cntxt_t* );
 extern	Status_t	sa_LinkRecord(Mai_t *, sa_cntxt_t* );
 extern	Status_t	sa_McMemberRecord(Mai_t *, sa_cntxt_t* );
 extern	Status_t	sa_MFTableRecord(Mai_t *, sa_cntxt_t* );
-extern	Status_t	sa_MultiPathRecord(Mai_t *, sa_cntxt_t* );
 extern	Status_t	sa_NodeRecord(Mai_t *, sa_cntxt_t* );
 extern	Status_t	sa_PartitionRecord(Mai_t *, sa_cntxt_t* );
 extern	Status_t	sa_PathRecord(Mai_t *, sa_cntxt_t* );

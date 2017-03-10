@@ -7,5 +7,5 @@
 # This file will be used by FastFabric to indicate which hosts should be
 # operated on by various fastfabric menus and CLI commands.
 
-include /etc/sysconfig/opa/hosts
+include /etc/opa/hosts
 # add line below with TCP/IP name of FastFabric host (eg. this host)

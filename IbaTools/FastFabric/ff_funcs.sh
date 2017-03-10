@@ -34,12 +34,7 @@
 
 if [ "$CONFIG_DIR" = "" ]
 then
-	if [ -d /etc/sysconfig ]
-	then
-		CONFIG_DIR=/etc/sysconfig
-	else
-		CONFIG_DIR=/etc
-	fi
+	CONFIG_DIR=/etc
 	export CONFIG_DIR
 fi
 

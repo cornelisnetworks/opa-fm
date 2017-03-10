@@ -39,7 +39,7 @@ use strict;
 # ========================================================================
 # Basic configuration files
 
-my $CONFIG_DIR = "/etc/sysconfig"; # general driver config
+my $CONFIG_DIR = "/etc"; # general driver config
 my $OFED_CONFIG_DIR = "/etc/infiniband"; # general driver config
 my $OFED_CONFIG = "$OFED_CONFIG_DIR/openib.conf";
 my $OPA_CONFIG_DIR = "/etc/rdma"; 
@@ -87,9 +87,27 @@ sub check_keep_config($$$)
 }
 
 # This subroutine is used to check if we should keep a modified rpm config file
-sub check_rpm_config_file($)
+# Optional second parameter used to check if a file exist in a previous (now deprecated)
+# file location.
+sub check_rpm_config_file($;$)
 {
 	my($config) = shift();
+	my($old_config_dir) = shift();
+	my($file_name) = basename($config);
+
+	if ( $old_config_dir ne "" && !$Default_RpmConfigUseNew) {
+		if ( -e "$old_config_dir/$file_name") {
+			if ($Default_RpmConfigKeepOld || GetYesNo ("$file_name found in old file path $old_config_dir, move to new location?", "y")) {
+				system "mv -f $old_config_dir/$file_name $config";
+				return;
+			}
+		} elsif ( -e "$old_config_dir/$file_name.rpmsave") {
+			if ($Default_RpmConfigKeepOld || GetYesNo ("$file_name.rpmsave found in old file path $old_config_dir, move to new location?", "y")) {
+				system "mv -f $old_config_dir/$file_name.rpmsave $config";
+				return;
+			}
+		}
+	}
 
 	if ( -e "$config.rpmsave") {
 		if ($Default_RpmConfigKeepOld) {

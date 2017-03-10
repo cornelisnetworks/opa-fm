@@ -1238,7 +1238,7 @@ StlGetFirstPortInPortMask(const STL_PORTMASK* portSelectMask)
 	uint64_t pmask;
 	int i;
 
-	for (i=0; i <= MAX_STL2_PORTS; i++) {
+	for (i=0; i <= MAX_STL_PORTS; i++) {
 		pmask = (uint64_t)(1) << (i % 64);
 		if (portSelectMask[3-(i/64)] & pmask) 
 			return i;
@@ -1252,7 +1252,7 @@ StlGetNextUnusedPortInPortMask(const STL_PORTMASK* portSelectMask, const uint8_t
 	uint64_t pmask;
 	int i;
 
-	for (i=port+1; i <= MAX_STL2_PORTS; i++) {
+	for (i=port+1; i <= MAX_STL_PORTS; i++) {
 		pmask = (uint64_t)(1) << (i % 64);
 		if ((portSelectMask[3-(i/64)] & pmask) == 0)
 			return i;
@@ -1335,6 +1335,46 @@ void FormatStlPortMask(char *buf, const STL_PORTMASK *portSelectMask, uint8_t nu
 		buf[buflen - 1] = '\0'; // ran out of space, cap it off
 }
 
+static __inline
+FSTATUS StringToStlPortMask(STL_PORTMASK *portSelectMask, const char *buf)
+{
+	const char *pbuf = buf;
+	unsigned int lhs, rhs, i, j;
+	uint8 p;
+	char newString[80];
+	const char delimiter = '-';
+	char currChar;
+	memset(newString, 0, sizeof(newString));
+
+	// cut "ports:" off buf if necessary
+	if (strncmp(buf, "ports: ", 7) == 0) pbuf += 7;
+
+	for(i=0; i < strlen(pbuf)+1; i++) {
+		currChar = pbuf[i];
+		if(currChar == ',' || currChar == '\0') {
+			if(!newString[0]) continue;
+			if (strchr(newString, delimiter)) {
+			// for (lhs-rhs), add port to portmask
+				if(sscanf(newString, "%u-%u", &lhs, &rhs) != 2)
+					return FINVALID_PARAMETER;
+				if (lhs > MAX_STL_PORTS || rhs > MAX_STL_PORTS || lhs >= rhs)
+					return FINVALID_PARAMETER;
+				for (j=lhs; j<=rhs; j++)
+					StlAddPortToPortMask(portSelectMask, j);
+			} else {
+				if(FSUCCESS != StringToUint8(&p, newString, NULL, 0, TRUE) || p > MAX_STL_PORTS)
+					return FINVALID_PARAMETER;
+				StlAddPortToPortMask(portSelectMask, p);
+			}
+			memset(newString, 0, sizeof(newString));
+		}
+		else
+			strncat(newString, &currChar, 1);
+	}
+
+	return FSUCCESS;
+}
+
 /* convert Neighbor node Type to text */
 static __inline const char*
 OpaNeighborNodeTypeToText(uint8 ntype)
@@ -1367,6 +1407,23 @@ StlShiftToResolution(uint8 shift, uint8 add) {
 // res = 2^(shift + add)
 	if (shift) return (uint32)1<<(shift + add);
 	else return 0;
+}
+
+static __inline const char*
+StlVlarbSecToText (uint8 sec) {
+	switch (sec) {
+		case STL_VLARB_LOW_ELEMENTS:
+			return "Low";
+		case STL_VLARB_HIGH_ELEMENTS:
+			return "High";
+		case STL_VLARB_PREEMPT_ELEMENTS:
+			return "Preempt";
+		case STL_VLARB_PREEMPT_MATRIX:
+			return "Preempt Matrix";
+		default:
+			DEBUG_ASSERT(0);
+			return "Unknown";
+	}
 }
 
 static __inline void

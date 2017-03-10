@@ -46,7 +46,7 @@ CFILES			= \
 				  sa_main.c sa_utility.c sa_db.c sa_userexits.c		\
 		  		  sa_ClassPortInfo.c sa_InformInfo.c	\
 		  		  sa_InformRecord.c sa_LFTableRecord.c sa_LinkRecord.c		\
-		  		  sa_McMemberRecord.c sa_MFTableRecord.c sa_MultiPathRecord.c \
+		  		  sa_McMemberRecord.c sa_MFTableRecord.c \
 		  		  sa_NodeRecord.c sa_PartitionRecord.c					\
 		  		  sa_PathRecord.c sa_PortInfoRecord.c sa_SLSCTableRecord.c \
 		  		  sa_SMInfoRecord.c sa_ServiceRecord.c sa_SwitchInfoRecord.c \

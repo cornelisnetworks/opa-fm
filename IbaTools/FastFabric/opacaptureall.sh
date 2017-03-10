@@ -32,9 +32,9 @@
 # perform an opacapture on all hosts/chassis and upload to this host
 
 # optional override of defaults
-if [ -f /etc/sysconfig/opa/opafastfabric.conf ]
+if [ -f /etc/opa/opafastfabric.conf ]
 then
-	. /etc/sysconfig/opa/opafastfabric.conf
+	. /etc/opa/opafastfabric.conf
 fi
 
 . /usr/lib/opa/tools/opafastfabric.conf.def
@@ -59,7 +59,7 @@ Usage_full()
 	echo "   -h hosts - list of hosts to perform capture of" >&2
 	echo "   -H chassis - list of chassis to perform capture of" >&2
 	echo "   -t portsfile - file with list of local HFI ports used to access" >&2
-	echo "           fabric(s) for switch access, default is /etc/sysconfig/opa/ports" >&2
+	echo "           fabric(s) for switch access, default is /etc/opa/ports" >&2
 	echo "   -d upload_dir - directory to upload to, default is uploads" >&2
 	echo "   -S - securely prompt for password for admin on chassis" >&2
 	echo "   -D detail_level - level of detail passed to host opacapture" >&2

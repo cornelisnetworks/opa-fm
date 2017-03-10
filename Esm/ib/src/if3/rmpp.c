@@ -52,7 +52,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <unistd.h>
 #include <pthread.h>
 #include <string.h>
-#include "cs_info_file.h"
 #endif
 
 #ifdef __VXWORKS__

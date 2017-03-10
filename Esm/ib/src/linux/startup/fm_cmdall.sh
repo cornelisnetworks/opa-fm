@@ -30,17 +30,9 @@
 
 # [ICS VERSION STRING: unknown]
 
-CONFIG_DIR=/etc/sysconfig
-CONFIG_FILE=$CONFIG_DIR/opafm.xml
+CONFIG_DIR=/etc
+CONFIG_FILE=$CONFIG_DIR/opa-fm/opafm.xml
 IFS_FM_BASE=/usr/lib/opa-fm # default
-if [ -s $CONFIG_DIR/opa/opafm.info ]
-then
-	# get IFS_FM_BASE
-	. $CONFIG_DIR/opa/opafm.info
-else
-	echo "Error: $CONFIG_DIR/opa/opafm.info not found: using $IFS_FM_BASE" >&2
-fi
-
 
 PROGNAME=`basename $0`
 

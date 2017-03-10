@@ -57,7 +57,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "hsm_config_srvr_api.h"
 #include "hsm_config_srvr_data.h"
 #include <fm_xml.h>
-#include "cs_info_file.h"
 #include "sm_l.h"
 #include "pm_counters.h"
 #include "pm_topology.h"

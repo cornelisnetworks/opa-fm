@@ -1003,7 +1003,101 @@ FSTATUS Xml2ParseTopology(const char *input_file, int quiet, FabricData_t *fabri
 	if (tags_found != 1 || fields_found != 1) {
 		fprintf(stderr, "Warning: potentially inaccurate input '%s': found %u recognized top level tags, expected 1\n", filename, tags_found);
 	}
+	if (! quiet) ProgressPrint(TRUE, "Done Parsing");
 	return FSUCCESS;
 }
 
 #endif
+
+// indicate if the given enodep matches the portselp
+// if provided NodeDesc, NodeGuid and NodeType must match
+// if neither NodeDesc nor NodeGuid is provided, returns FALSE
+static boolean MatchExpectedNode(ExpectedNode *enodep, PortSelector *portselp)
+{
+	boolean match = FALSE;
+	if (enodep->NodeDesc && portselp->NodeDesc) {
+		match = (0 == strcmp(enodep->NodeDesc, portselp->NodeDesc));
+		if (enodep->NodeGUID && portselp->NodeGUID) {
+			match &= (enodep->NodeGUID == portselp->NodeGUID);
+		}
+	} else if (enodep->NodeGUID && portselp->NodeGUID) {
+		match = (enodep->NodeGUID == portselp->NodeGUID);
+	}
+	if (enodep->NodeType && portselp->NodeType)
+		match &= (enodep->NodeType == portselp->NodeType);
+	return match;
+}
+
+// This routine takes the ExpectedLinks and attempts to resolve each
+// against a pair of ExpectedNodes, then fills in ExpectedLinks.enodep1, enodep2
+// By design this does not look at the NodeData (that is already handled on
+// parsing and generates ExpectedLinks.portp1,portp2).  Hence this is useful to
+// help build the graph for applications which only use the topology file.
+// Given the limited information in ExpectedNodes, the matching is based on
+// NodeDesc and/or NodeGUID matching as well as NodeType.
+void ResolveExpectedLinks(FabricData_t *fabricp, int quiet)
+{
+	LIST_ITEM *q;
+	LIST_ITEM *p;
+	uint32 input_checked = 0;
+	uint32 resolved = 0;
+	uint32 bad_input = 0;
+	uint32 ix = 0;
+
+	if (! quiet) ProgressPrint(TRUE, "Resolving Links...");
+	for (q=QListHead(&fabricp->ExpectedLinks); q != NULL; q = QListNext(&fabricp->ExpectedLinks, q)) {
+		ExpectedLink *elinkp = (ExpectedLink *)QListObj(q);
+		uint32 ends = 0;	// # ends of a link we have found enodep for
+
+		if (! quiet && (ix++ % PROGRESS_FREQ) == 0) {
+			ProgressPrint(FALSE, "Resolved %6d of %6d Links...",
+				ix, QListCount(&fabricp->ExpectedLinks));
+		}
+
+		if (! elinkp->portselp1 || ! elinkp->portselp2) {
+			fprintf(stderr, "Skipping Link, incomplete\n");
+			bad_input++;
+			continue;
+		}
+		if ((! elinkp->portselp1->NodeDesc && ! elinkp->portselp1->NodeGUID)
+			|| (! elinkp->portselp2->NodeDesc && ! elinkp->portselp2->NodeGUID)) {
+			fprintf(stderr, "Skipping Link, unspecified NodeDesc and NodeGUID\n");
+			bad_input++;
+			continue;
+		}
+		input_checked++;
+		// find enodep for both ends of link
+		for (p=QListHead(&fabricp->ExpectedSWs); ends < 2 && p != NULL; p = QListNext(&fabricp->ExpectedSWs, p)) {
+			ExpectedNode *enodep = (ExpectedNode *)QListObj(p);
+
+			if (! elinkp->enodep1 && MatchExpectedNode(enodep, elinkp->portselp1)) {
+				elinkp->enodep1 = enodep;
+				ends++;
+			}
+			if (! elinkp->enodep2 && MatchExpectedNode(enodep, elinkp->portselp2)) {
+				elinkp->enodep2 = enodep;
+				ends++;
+			}
+		}
+		for (p=QListHead(&fabricp->ExpectedFIs); ends < 2 && p != NULL; p = QListNext(&fabricp->ExpectedFIs, p)) {
+			ExpectedNode *enodep = (ExpectedNode *)QListObj(p);
+
+			if (! elinkp->enodep1 && MatchExpectedNode(enodep, elinkp->portselp1)) {
+				elinkp->enodep1 = enodep;
+				ends++;
+			}
+			if (! elinkp->enodep2 && MatchExpectedNode(enodep, elinkp->portselp2)) {
+				elinkp->enodep2 = enodep;
+				ends++;
+			}
+		}
+		if (ends >= 2)
+			resolved++;
+	}
+	if (! quiet) ProgressPrint(TRUE, "Done Resolving Links");
+	if (! quiet || bad_input)
+		fprintf(stderr, "%u of %u Input Links Checked, %u Resolved, %u Bad Input Skipped\n",
+				input_checked, QListCount(&fabricp->ExpectedLinks),
+				resolved, bad_input);
+	return;
+}

@@ -47,7 +47,7 @@ my $State_DoNotAutoInstall = 4;	# valid only in DefaultInstall, must explicitly 
 
 sub component_start_prompts();
 sub disable_components(@);
-
+my %comp_prereq_hash;
 # indicate if given state reflects a component which will be on the system
 # after processing the present menu selections
 # states:

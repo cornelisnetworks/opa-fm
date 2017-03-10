@@ -54,7 +54,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "hsm_config_srvr_api.h"
 #include "hsm_config_srvr_data.h"
 #include <fm_xml.h>
-#include "cs_info_file.h"
 #include "if3.h"
 #include "cs_queue.h"
 #include "mal_g.h"

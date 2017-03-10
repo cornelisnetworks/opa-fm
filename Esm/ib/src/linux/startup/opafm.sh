@@ -34,7 +34,7 @@
 #
 # chkconfig: - 80 20
 # description: IFS InfiniBand Fabric Manager
-# config: /etc/sysconfig/opafm.xml
+# config: /etc/opa-fm/opafm.xml
 # pidfile: /var/lock/subsys/opafm
 ### BEGIN INIT INFO
 # Provides:       opafm
@@ -81,8 +81,8 @@ elif [ -s /etc/rc.status ]; then
 fi
 
 # pull in sysconfig settings                                                                  
-if [ -f /etc/sysconfig/opafm.env ]; then
-    . /etc/sysconfig/opafm.env
+if [ -f /etc/opafm.env ]; then
+    . /etc/opafm.env
 fi
 
 my_rc_status_all=0
@@ -94,8 +94,8 @@ temp=$(mktemp "/tmp/ifsfmXXXXX")
 trap "rm -f $temp; exit 1" 1 2 3 9
 trap "rm -f $temp" EXIT
 
-CONFIG_DIR=/etc/sysconfig
-CONFIG_FILE=$CONFIG_DIR/opafm.xml	# opafm.info can override
+CONFIG_DIR=/etc
+CONFIG_FILE=$CONFIG_DIR/opa-fm/opafm.xml	# opafm.info can override
 MAX_INSTANCE=7	# largest instance number, for when config file bad
 
 cmd=$1
@@ -220,26 +220,14 @@ get_config()
 	# Common.x.Start is overall setting, then Fm.X.Start can override
 
 	init_config
-	
-	if [ -s $CONFIG_DIR/opa/opafm.info ]
-	then
-		# get IFS_FM_BASE
-		. $CONFIG_DIR/opa/opafm.info
-	else
-		IFS_FM_BASE=/usr/lib/opa-fm
-		if [ "$quiet" != y ]
-		then
-			echo "Error: $CONFIG_DIR/opa/opafm.info not found" >&2
-		fi
-		invalid_config
-		return
-	fi
+	IFS_FM_BASE=/usr/lib/opa-fm
+
 	if [ "$CONFIG_FILE" != $CONFIG_DIR/opafm.xml ]
 	then
 		Xopt="-X $CONFIG_FILE"
 	fi
 
-	$IFS_FM_BASE/etc/config_check -c $CONFIG_FILE
+	$IFS_FM_BASE/bin/config_check -c $CONFIG_FILE
 	if [ $? != 0 ]
 	then
 		[ "$quiet" != y ] && echo "Error: $CONFIG_FILE Invalid" >&2
@@ -249,7 +237,7 @@ get_config()
 
 	i=-1
 	export IFS=\;
-	EXTRACT_CMD="$IFS_FM_BASE/etc/opaxmlextract -H -e Common.Sm.Start -e Common.Fe.Start -e Fm.Shared.Name -e Fm.Shared.Start -e Fm.Sm.Start -e Fm.Fe.Start"
+	EXTRACT_CMD="$IFS_FM_BASE/bin/opaxmlextract -H -e Common.Sm.Start -e Common.Fe.Start -e Fm.Shared.Name -e Fm.Shared.Start -e Fm.Sm.Start -e Fm.Fe.Start"
 	if [ "$quiet" != y ]
 	then
 		eval $EXTRACT_CMD < $CONFIG_FILE > $temp

@@ -78,7 +78,7 @@ my $OPTIBALIB_DIR;
 my $OWNER;
 my $GROUP;
 
-$SYS_CONFIG_DIR="/etc/sysconfig";
+$SYS_CONFIG_DIR="/etc";
 $OPA_CONFIG_DIR = "$SYS_CONFIG_DIR/opa";
 $LIB_DIR = "/lib";
 $USRLOCALLIB_DIR = "/usr/local/lib";
@@ -730,11 +730,11 @@ sub installed_shmem
 sub installed_mpisrc
 {
 	#return (-e "$ROOT/usr/local/src/InfiniServMPI/.mpisrc" ||
-	#	-e "$ROOT/usr/lib/opa/src/InfiniServMPI/.mpisrc");
+	#	-e "$ROOT/usr/src/opa/InfiniServMPI/.mpisrc");
 	if ( "$IB_STACK_TYPE" eq "IBACCESS" ) {
-		return (-e "$ROOT/usr/lib/opa/src/InfiniServMPI/mpich/do_build");
+		return (-e "$ROOT/usr/src/opa/InfiniServMPI/mpich/do_build");
 	} else {
-		return (-e "$ROOT/usr/lib/opa/src/MPI/do_build");
+		return (-e "$ROOT/usr/src/opa/MPI/do_build");
 	}
 }
 
@@ -1143,7 +1143,8 @@ sub fabricsetup_configipoib
 }
 sub fabricsetup_buildmpi
 {
-	my $mpi_apps_dir = read_ffconfig_param("FF_MPI_APPS_DIR");
+	my $mpi_apps_dir = "/usr/src/opa/mpi_apps";
+	my $build_dir = read_ffconfig_param("FF_MPI_APPS_DIR");
 	if (! -e "$mpi_apps_dir/Makefile") {
 		print "$mpi_apps_dir: not found\n";
 		print "FF_MPI_APPS_DIR parameter must point to location of mpi_apps to build\n";
@@ -1215,14 +1216,19 @@ sub fabricsetup_buildmpi
 		if ( "$mode" ne "build" ) {
 			return 0;
 		}
+		if ( -e "$build_dir/.filelist" ) {
+			run_fabric_cmd("cd $build_dir; rm -rf `cat .filelist`", "skip_prompt");
+		}
+		run_fabric_cmd("mkdir -p $build_dir; cp -r -p $mpi_apps_dir/. $build_dir", "skip_prompt");
+		run_fabric_cmd("cd $mpi_apps_dir; find . -mindepth 1 > $build_dir/.filelist", "skip_prompt");
 		if (!installed_mpidev()){
 			print "Package opa-mpi-apps not installed. Only building subset of MPI Apps\n";
 			HitKeyCont;
-			if (run_fabric_cmd("cd $mpi_apps_dir; MPICH_PREFIX=$mpich_prefix make clobber opa-base")) {
+			if (run_fabric_cmd("cd $build_dir; MPICH_PREFIX=$mpich_prefix make clobber opa-base")) {
 				return 1;
 			}
 		} else{
-			if (run_fabric_cmd("cd $mpi_apps_dir; MPICH_PREFIX=$mpich_prefix make clobber quick")) {
+			if (run_fabric_cmd("cd $build_dir; MPICH_PREFIX=$mpich_prefix make clobber quick")) {
 				return 1;
 			}
 		}
@@ -1230,7 +1236,7 @@ sub fabricsetup_buildmpi
 	if (! valid_config_file("Host File", $FabricSetupHostsFile) ) {
 		return 1;
 	}
-	my $fabric_cmd="$BIN_DIR/opascpall -t -p -f $FabricSetupHostsFile $mpi_apps_dir $mpi_apps_dir";
+	my $fabric_cmd="$BIN_DIR/opascpall -t -p -f $FabricSetupHostsFile $build_dir $build_dir";
 	if (GetYesNo("About to run: $fabric_cmd\nAre you sure you want to proceed?","n") ) {
         return run_fabric_cmd("$fabric_cmd");
 	}
@@ -1239,7 +1245,8 @@ sub fabricsetup_buildmpi
 
 sub fabricsetup_buildshmem
 {
-	my $shmem_apps_dir = read_ffconfig_param("FF_SHMEM_APPS_DIR");
+	my $shmem_apps_dir = "/usr/src/opa/shmem_apps";
+	my $build_dir = read_ffconfig_param("FF_SHMEM_APPS_DIR");
 	# makes sure fastfabric installed, it provides shmem_apps
 	if ( ! installed_shmem() ) {
 		printf("$ComponentName{shmem} not installed on this system\n");
@@ -1323,17 +1330,22 @@ sub fabricsetup_buildshmem
 	if ( "$mode" eq "cancel" ) {
 		return;
 	}
-	if ( "$mode" eq "prefix" ) {
-		run_fabric_cmd("cd $shmem_apps_dir; echo $mpich_prefix > .prefix", "skip_prompt");
+	if ( -e "$build_dir/.filelist" ) {
+		run_fabric_cmd("cd $build_dir; rm -rf `cat .filelist`", "skip_prompt");
 	}
-	if (run_fabric_cmd("cd $shmem_apps_dir; make clobber quick")) {
+	run_fabric_cmd("mkdir -p $build_dir; cp -r -p $shmem_apps_dir/. $build_dir", "skip_prompt");
+	run_fabric_cmd("cd $shmem_apps_dir; find . -mindepth 1 > $build_dir/.filelist", "skip_prompt");
+	if ( "$mode" eq "prefix" ) {
+		run_fabric_cmd("cd $build_dir; echo $mpich_prefix > .prefix", "skip_prompt");
+	}
+	if (run_fabric_cmd("cd $build_dir; make clobber quick")) {
 		return 1;
 	}
 	if (! valid_config_file("Host File", $FabricSetupHostsFile) ) {
 		return 1;
 	}
 	# do in two steps so user can see results of build before scp starts
-	return run_fabric_cmd("$BIN_DIR/opascpall -t -p -f $FabricSetupHostsFile $shmem_apps_dir $shmem_apps_dir");
+	return run_fabric_cmd("$BIN_DIR/opascpall -t -p -f $FabricSetupHostsFile $build_dir $build_dir");
 }
 sub fabricsetup_buildapps
 {
@@ -1370,7 +1382,7 @@ sub fabricsetup_rebuildmpi
 		return;
 	}
 	if ( "$IB_STACK_TYPE" eq "IBACCESS" ) {
-		if (run_fabric_cmd("cd $ROOT/usr/lib/opa/src/InfiniServMPI/mpich; ./do_build")) {
+		if (run_fabric_cmd("cd $ROOT/usr/src/opa/InfiniServMPI/mpich; ./do_build")) {
 			return 1;
 		}
 		if (! valid_config_file("Host File", $FabricSetupHostsFile) ) {
@@ -1380,7 +1392,7 @@ sub fabricsetup_rebuildmpi
 		# do in two steps so user can see results of build before scp starts
 		return run_fabric_cmd("$BIN_DIR/opascpall -r -p -f $FabricSetupHostsFile $USRLOCALLIB_DIR/libtvmpich* $USRLOCALLIB_DIR/shared $USRLOCALLIB_DIR");
 	} else {	# OFED
-		if (run_fabric_cmd("cd $ROOT/usr/lib/opa/src/MPI; ./do_build")) {
+		if (run_fabric_cmd("cd $ROOT/usr/src/opa/MPI; ./do_build")) {
 			return 1;
 		}
 		if (! valid_config_file("Host File", $FabricSetupHostsFile) ) {
@@ -1388,11 +1400,11 @@ sub fabricsetup_rebuildmpi
 		}
 		# do in two steps so user can see results of build before scp starts
 		# determine where MPI was built and copy needed files to all nodes
-		my $mpich_prefix= read_simple_config_param("$ROOT/usr/lib/opa/src/MPI/.mpiinfo", "MPICH_PREFIX");
+		my $mpich_prefix= read_simple_config_param("$ROOT/usr/src/opa/MPI/.mpiinfo", "MPICH_PREFIX");
 		# instead of copy, copy the actual rpms and install them
 		#return run_fabric_cmd("$BIN_DIR/opascpall -t -p -f $FabricSetupHostsFile $mpich_prefix $mpich_prefix");
-		my $mpi_rpms= read_simple_config_param("$ROOT/usr/lib/opa/src/MPI/.mpiinfo", "MPI_RPMS");
-		if (run_fabric_cmd("cd /usr/lib/opa/src/MPI && $BIN_DIR/opascpall -p -f $FabricSetupHostsFile $mpi_rpms /var/tmp")) {
+		my $mpi_rpms= read_simple_config_param("$ROOT/usr/src/opa/MPI/.mpiinfo", "MPI_RPMS");
+		if (run_fabric_cmd("cd /usr/src/opa/MPI && $BIN_DIR/opascpall -p -f $FabricSetupHostsFile $mpi_rpms /var/tmp")) {
 			return 1;
 		}
 		# need force for reinstall case
@@ -1619,7 +1631,7 @@ sub fabricadmin_singlehost
 	my $verifyhosts_opts="-c"; # Always copy the hostverify.sh file.
 	my $verifyhosts_tests="";
 	my $result_dir = read_ffconfig_param("FF_RESULT_DIR");
-	my $hostverify_sample = "/usr/lib/opa/samples/hostverify.sh";
+	my $hostverify_sample = "/usr/share/opa/samples/hostverify.sh";
 	my $hostverify = read_ffconfig_param("FF_HOSTVERIFY_DIR") . "/hostverify.sh";
 	my $hostverify_res = "hostverify.res";
 	my $inp;
@@ -1878,7 +1890,7 @@ sub fabricadmin_health
 }
 sub fabricadmin_cabletest
 {
-	my $IFS_FM_BASE= read_simple_config_param("$ROOT/etc/sysconfig/opa/opafm.info", "IFS_FM_BASE");
+	my $IFS_FM_BASE="/usr/lib/opa-fm";
 	my $rundir="$IFS_FM_BASE/bin";
 	my $cabletest_opts = "";
 	my $cabletest_file = "";
@@ -2536,8 +2548,8 @@ sub chassis_fmconfig
 	if ( -e "/usr/lib/opa/fm_tools" ) {
 		$tooldir="/usr/lib/opa/fm_tools";
 	} else {
-		my $IFS_FM_BASE= read_simple_config_param("$ROOT/etc/sysconfig/opa/opafm.info", "IFS_FM_BASE");
-		$tooldir="$IFS_FM_BASE/etc";
+		my $IFS_FM_BASE="/usr/lib/opa-fm";
+		$tooldir="$IFS_FM_BASE/bin";
 	}
 	my $can_generate=( -e "$tooldir/config_generate");
 	do {

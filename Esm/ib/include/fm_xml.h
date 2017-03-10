@@ -60,9 +60,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define DEFAULT_SUBNET_SIZE					100		    // XML default subnet size
 #endif // __VXWORKS__
 
-// Enable DOR config
-#define CONFIG_INCLUDE_DOR
-
 // Key PM config parameter defaults and ranges
 #define PM_DEFAULT_TOTAL_IMAGES	10			// for Image[] and history[]
 #define PM_MIN_TOTAL_IMAGES	3				// for Image[] and history[]
@@ -354,11 +351,11 @@ typedef struct _RegExp {
 typedef struct  _DGConfig {
 	char			name[MAX_VFABRIC_NAME + 1];
 	uint32_t		number_of_system_image_guids;
-	XmlGuid_t		*system_image_guid;
+	cl_qmap_t		system_image_guid;
 	uint32_t		number_of_node_guids;
-	XmlGuid_t		*node_guid;
+	cl_qmap_t		node_guid;
 	uint32_t		number_of_port_guids;
-	XmlGuid_t		*port_guid;
+	cl_qmap_t		port_guid;
 	uint32_t		number_of_node_descriptions;
 	XmlNode_t		*node_description;
 	RegExp_t		*reg_expr; // setup by SM
@@ -431,6 +428,8 @@ typedef struct 	_VFConfig {
 	uint32_t		security;
 	uint8_t			qos_enable;
 	uint8_t			base_sl;
+	uint8_t			resp_sl;
+	uint8_t			mcast_sl;
 	uint8_t			flowControlDisable;
 	uint8_t			percent_bandwidth;
 	// uint8_t		absolute_bandwidth;
@@ -568,14 +567,10 @@ typedef struct _VFabric {
 	uint8_t			max_rate_specified;				// set by SM for use in queries
 	uint8_t			qos_enable;						// defaults to 0 if undefined
 	uint8_t			base_sl;						// base SL assigned to VF - 0xff if undefined
-	uint8_t			base_sc;						// base SC assigned to VF
-
-	uint8_t			mcast_isolate;					// Used when multicast must be
-	uint8_t			mcast_sl;						// independent of other 
-	uint8_t			mcast_sc;						// traffic.
-
-	uint8_t			routing_sls;					// number of SLs in this VF - SM only
-	uint8_t			routing_scs;					// number of SCs in this VF - SM only
+	uint8_t			requires_resp_sl;
+	uint8_t			resp_sl;
+	uint8_t			contains_mcast;					// Contains one or more MGIDs
+	uint8_t			mcast_sl;					// Multicast SL, required by some routing algorithms
 	uint8_t			flowControlDisable;				// 0=default, 1=request disable of reliable link level flow control
 	uint8_t			percent_bandwidth;				// 1-100% - 0xff if undefined
 	uint8_t			priority;						// 0=low, 1=high defaulting to 0 if undefined
@@ -601,8 +596,6 @@ typedef struct _SMVirtualFabricsInternal {
 	uint8_t			qosEnabled;						// setup by SM
 	VF_t			v_fabric[MAX_ENABLED_VFABRICS];	// array of active Virtual Fabrics
 	VF_t			v_fabric_all[MAX_ENABLED_VFABRICS];// array of active/standby Virtual Fabrics
-	uint8_t			active_non_qos_vfs;				// # of active VFs sharing the non-QOS routing SL.
-	uint8_t			active_mc_vfs;					// # of active VFs sharing the non-QOS multicast isolation SL.
 	uint32_t		consistency_checksum;
 	uint32_t		disruptive_checksum;
 	uint32_t		overall_checksum;
@@ -784,18 +777,17 @@ typedef struct _SmSPRoutingCtrl {
 } SmSPRoutingCtrl_t;
 
 typedef struct _SmHypercubeRouting_t {
-	uint8_t 			debug;
-	XMLMember_t			routeLast;				// device group indicating HFIs that should be routed last.
+	uint8_t				debug;
+	XMLMember_t			routeLast;		// device group indicating HFIs that should be routed last.
 	SmSPRoutingCtrl_t	*enhancedRoutingCtrl;
 } SmHypercubeRouting_t;
 
-#ifdef CONFIG_INCLUDE_DOR
 #define MAX_TOROIDAL_DIMENSIONS 6
 #define MAX_DOR_DIMENSIONS 20
 #define DEFAULT_DOR_PORT_PAIR_WARN_THRESHOLD	5
 #define DEFAULT_UPDN_MC_SAME_SPANNING_TREE	1
 #define DEFAULT_ESCAPE_VLS_IN_USE			1
-#define DEFAULT_FAULT_REGIONS_VLS_IN_USE	1
+#define DEFAULT_FAULT_REGIONS_IN_USE	1
 
 typedef enum {
 	DOR_MESH,
@@ -826,8 +818,8 @@ typedef struct _SmDorRouting {
 	DorTop_t			topology;
 	uint8_t				escapeVLs;
 	uint8_t				faultRegions;
+	XMLMember_t			routeLast;				// device group indicating HFIs that should be routed last.
 } SmDorRouting_t;
-#endif
 
 #define MAX_SM_APPLIANCES       5
 typedef struct _SmAppliancesXmlConfig {
@@ -918,9 +910,8 @@ typedef struct _SMXmlConfig {
 
 	SmCongestionXmlConfig_t congestion;
 
-#ifdef CONFIG_INCLUDE_DOR
 	SmDorRouting_t smDorRouting;
-#endif
+
 	SmAdaptiveRoutingXmlConfig_t adaptiveRouting;
 
 	uint32_t	sma_spoofing_check;	// used to enable/disable usage of SMA security checking
@@ -1006,8 +997,8 @@ typedef struct _SMXmlConfig {
 
     uint32_t	priority;
     uint32_t	elevated_priority;
-	char		CoreDumpLimit[STRING_SIZE];
-	char		CoreDumpDir[FILENAME_SIZE];
+	char		CoreDumpLimit[STRING_SIZE]; // inherited from Common FM setting
+	char		CoreDumpDir[FILENAME_SIZE]; // inherited from Common FM setting
     uint32_t	debug;
     uint32_t	debug_rmpp;
     uint32_t    log_level; 
@@ -1148,8 +1139,6 @@ typedef struct _PMXmlConfig {
 
     uint32_t   	priority;
     uint32_t   	elevated_priority;
-	char		CoreDumpLimit[STRING_SIZE];
-	char		CoreDumpDir[FILENAME_SIZE];
     uint32_t   	debug;
     uint32_t	debug_rmpp;
     uint32_t    log_level; 
@@ -1272,12 +1261,14 @@ typedef struct _XmlDebug {
 typedef struct _FMXmlCompositeConfig {
 	FMXmlInstance_t			*fm_instance_common;
 	FMXmlInstance_t			*fm_instance[MAX_INSTANCES];
+	int						num_instances;
 	XmlDebug_t				xmlDebug;
 } FMXmlCompositeConfig_t;
 
 extern FMXmlCompositeConfig_t* parseFmConfig(char *filename, uint32_t flags, uint32_t fm, uint32_t full, uint32_t embedded);
 extern void releaseXmlConfig(FMXmlCompositeConfig_t *config, uint32_t full);
 extern VirtualFabrics_t* renderVirtualFabricsConfig(uint32_t fm, FMXmlCompositeConfig_t *config, SMXmlConfig_t *smp, char *error);
+extern boolean applyVirtualFabricRules(VirtualFabrics_t *vfsip, IXmlParserPrintMessage printError, IXmlParserPrintMessage printWarning);
 extern void releaseVirtualFabricsConfig(VirtualFabrics_t *vfsip);
 extern void initXmlPoolGetCallback(void *function);
 extern void initXmlPoolFreeCallback(void *function);

@@ -34,9 +34,9 @@
 # it uses opareport to gather the information from the SM
 
 # optional override of defaults
-if [ -f /etc/sysconfig/opa/opafastfabric.conf ]
+if [ -f /etc/opa/opafastfabric.conf ]
 then
-	. /etc/sysconfig/opa/opafastfabric.conf
+	. /etc/opa/opafastfabric.conf
 fi
 
 . /usr/lib/opa/tools/opafastfabric.conf.def

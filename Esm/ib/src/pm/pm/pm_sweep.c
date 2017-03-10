@@ -349,25 +349,66 @@ char* my_itoa(char *output_buff, int num){
 	return output_buff;
 }
 
+int hist_filter (const struct dirent *d) {
+	// used by scandir to filter for .hist and .zhist files
+	char *c = strchr(d->d_name, '.');
+	if (c && (!strcmp(c, ".hist") || !strcmp(c, ".zhist"))) {
+			return 1;
+	}
+	return 0;
+}
+
+#ifndef __VXWORKS__
 /* Create a file snapshot that contains the list of history image files to be sent to smLid Standby SM */
 /* File list name contains smLid to make it unique. Each file in the file list contains full path (latest to oldest sorted using file name). */
 int createHistFileListForSM(char *histPath, uint16 smLid, char *fileList)
 {
-	char cmd[300];
 	char suff[20];
-	char filename[120];
-    
-	if (!histPath || !fileList) {
+	struct dirent **d;
+	int n, ret = 0;
+
+	if (!histPath || !fileList)
 		return -1;
+
+	snprintf(fileList, 120, "smLid%s", my_itoa(suff, smLid));
+
+	n = scandir(histPath, &d, hist_filter, alphasort);
+
+	if (n < 0) {
+		ret = -1;
+	} else {
+		const size_t MAX_PATH = PM_HISTORY_FILENAME_LEN + 1 + 256;
+		char path[MAX_PATH];
+		FILE *fp;
+
+		snprintf(path, MAX_PATH, "%s/%s", histPath, fileList);
+
+		if ( !(fp = fopen(path, "w")) ) {
+			ret = -1;
+		} else {
+			while (n--) {
+				if ( fprintf(fp, "%s\n", d[n]->d_name) < 0) {
+					ret = -1;
+					break;
+				}
+				free(d[n]);
+				d[n] = NULL;
+			}
+			fclose(fp);
+		}
 	}
-	snprintf(filename, 120, "smLid%s", my_itoa(suff, smLid));
-	sprintf(cmd, "cd %s;rm -rf %s; for i in `ls -vr %s/*.*hist`;do echo $i >> %s; done", histPath, filename, histPath, filename);
-	if (system(cmd) < 0) {
-		return -1;
+
+	if (d) {
+		int i;
+
+		for (i = 0; i < n; i++)
+			if (d[i]) free(d[i]);
+		free(d);
 	}
-	strcpy(fileList, filename);
-	return 0;
+
+	return ret;
 }
+#endif
 
 uint32 getSweepNumFromHistIndex(Pm_t *pm, uint32 lastHistoryIndex)
 {
@@ -436,6 +477,7 @@ static void PmDbsyncStatusFlagsUpdate(Pm_t *pm)
 				IB_LOG_VERBOSE_FMT(__func__, "Synced up RAM images %d.", PmDbsyncSmInfo_p->SMs[smIndex].numRImagesForSync);
 				PmDbsyncSmInfo_p->SMs[smIndex].rImgPmDbsyncNeeded = FALSE; /* RAM resident images are synced up */
 
+				#ifndef __VXWORKS__
 				/* If short term history feature is enabled, initialize histImgListFile and histImgFileIndex here. */
 				if (isShortTermHistoryEnabled() && !PmDbsyncSmInfo_p->SMs[smIndex].histImgFileIndex) {
 					PmDbsyncSmInfo_p->SMs[smIndex].histPmDbsyncNeeded = TRUE;
@@ -447,6 +489,7 @@ static void PmDbsyncStatusFlagsUpdate(Pm_t *pm)
 					IB_LOG_VERBOSE_FMT(__func__, "Hist image list file created %s.", PmDbsyncSmInfo_p->SMs[smIndex].histImgListFile);
 					PmDbsyncSmInfo_p->SMs[smIndex].histImgFileIndex = 0;
 				}
+				#endif
 			}
 		}
 	}
@@ -827,7 +870,7 @@ void update_pm_vfvlmap(Pm_t *pm, PmPortImage_t *portImage, VlVfMap_t *vlvfmap)
 
 			// now loop through PmVF_t to find a name match, and set pointer in
 			// vfmap[vfIndex] to point to it, and set vl
-			for (i = 0; i < pm->numVFs; i++) {
+			for (i = 0; i < pm->numVFs && i < MAX_VFABRICS; i++) {
 				PmVF_t *vfp = pm->VFs[i];
 				if (strcmp(VirtualFabrics->v_fabric[vf].name, vfp->Name) != 0) continue;
 
@@ -2867,15 +2910,17 @@ PmPort_t *PmReconstitutePortImage(PmShortTermHistory_t *sth, PmCompositePort_t *
 			pmportp->Image[0].Groups[i] = NULL;
 		}
 	}
-	int sthVFidx;
-	for (i=0; i<MAX_VFABRICS; i++) {	
+	uint8 sthVFidx;
+	for (i=0; i<MAX_VFABRICS; i++) {
 		sthVFidx = cport->compVfVlmap[i].VF;
-		if(sthVFidx != (uint8) -1) { //No VF
+		if (sthVFidx == (uint8) -1) {
+			pmportp->Image[0].vfvlmap[i].pVF =  NULL;
+		} else if (sthVFidx >= MAX_VFABRICS) {
+			IB_LOG_ERROR_FMT(__func__,"Invalid VF index %d",sthVFidx);
+			pmportp->Image[0].vfvlmap[i].pVF =  NULL;
+		} else {
 			pmportp->Image[0].vfvlmap[i].vlmask = cport->compVfVlmap[i].vlmask;
 			pmportp->Image[0].vfvlmap[i].pVF = sth->LoadedImage.VFs[sthVFidx];
-		}
-		else {
-			pmportp->Image[0].vfvlmap[i].pVF =  NULL;
 		}
 	}
 
@@ -3899,15 +3944,6 @@ store_file:
 	rec->index = cindex;
 
 	return ret;
-}
-
-int hist_filter (const struct dirent *d) {
-	// used by scandir to filter for .hist and .zhist files
-	char *c = strchr(d->d_name, '.');
-	if (c && (!strcmp(c, ".hist") || !strcmp(c, ".zhist"))) {
-			return 1;
-	}
-	return 0;
 }
 
 /************************************************************************************* 

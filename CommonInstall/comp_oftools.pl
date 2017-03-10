@@ -121,7 +121,7 @@ sub install_oftools
 		copy_systool_file("$srcdir/comp.pl", "/usr/lib/opa/.comp_oftools.pl");
 	}
 	check_dir("/usr/lib/opa/tools");
-	check_dir("/usr/lib/opa/samples");
+	check_dir("/usr/share/opa/samples");
 
 	my $rpmfile = rpm_resolve("$srcdir/RPMS/*/", "any", "opa-basic-tools");
 	rpm_run_install($rpmfile, "any", " -U ");
@@ -174,3 +174,7 @@ sub uninstall_oftools
 	$ComponentWasInstalled{'oftools'}=0;
 }
 
+sub check_os_prereqs_oftools
+{
+	return rpm_check_os_prereqs("oftools", "user");
+}

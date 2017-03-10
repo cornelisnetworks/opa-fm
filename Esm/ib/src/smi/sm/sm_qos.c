@@ -49,7 +49,26 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ib_status.h"
 #include "sm_l.h"
 
-extern VfInfo_t vfInfo;			// Needed to understand the # of SCs per SL.
+//			VF, SL, SC, VL mapping: 
+//
+//			The relationship of VFs, SLs, SCs and VLs is defined as
+//
+//			   n [1-3]  1   m    1   1
+//			VF <---> SL <---> SC <---> VL
+//
+//			Each VF will be mapped to between 1 and 3 SLs. An SL can be shared
+//			by any number of VFs.
+//
+//			Each SL will be mapped to at least one SC. An SC can be mapped to
+//			only one SL.
+//
+//			Each SC will be mapped to 1 VL and each VL is mapped to 1 SC.
+//
+//			In the case where an SL is mapped to more than one SC, this entry
+//			will correspond to the base SC, leaving the mapping of the SL to
+//			base SC + 1, base SC + 2, etc..
+uint8_t	sm_SLtoSC[STL_MAX_SLS];
+uint8_t	sm_SCtoSL[STL_MAX_SCS];
 
 /**
   Copy back the results from an aggregate response into the topology, performing byte swapping as necessary.
@@ -119,7 +138,11 @@ static void
 setWeightMultiplier(Qos_t * qos);
 
 // The following is for uniform qos
-Qos_t sm_Qos[STL_MAX_VLS] = {{0}};
+static Qos_t *sm_Qos = NULL;
+
+static Qos_t* AllocQos(void);
+static void FreeQos(Qos_t* qos);
+Qos_t* GetQos(uint8_t vl);
 
 int sm_check_node_cache_valid(Node_t *);
 
@@ -154,27 +177,296 @@ static Status_t
 	return sm_setSmaChanged(topop, nodep, 0);
 }
 
+static Status_t PopulateSCtoSL(RoutingModule_t *rm, const Qos_t * qos,
+	VirtualFabrics_t *VirtualFabrics, uint8_t *SLtoSC, uint8_t *SCtoSL);
+static void SetupQos(RoutingModule_t *rm, Qos_t * qos,
+	VirtualFabrics_t *VirtualFabrics, const uint8_t *SLtoSC);
+static void SetupQos1VL(RoutingModule_t *rm, Qos_t * qos,
+	VirtualFabrics_t *VirtualFabrics);
+
 static void
-sm_roundVLBandwidths(Qos_t * qos)
+sm_printf_vf_debug(VirtualFabrics_t *vfs)
 {
-    int vl;
-    // The following rounds the bandwidth to steps of 5
-    for (vl= 0; vl < qos->numVLs; vl++) {
-        if (qos->vlBandwidth[vl]) {
-            if (qos->vlBandwidth[vl] % 5) {
-                if (qos->vlBandwidth[vl] % 5 > 2) {
-                    qos->vlBandwidth[vl] += (5 - (qos->vlBandwidth[vl] % 5));
-                } else {
-                    qos->vlBandwidth[vl] -= (qos->vlBandwidth[vl] % 5);
-                    if (!qos->vlBandwidth[vl])
-                        qos->vlBandwidth[vl] = 5;
-                }
-            }
-        }
+    int vf;
+    for (vf=0; vf<vfs->number_of_vfs; vf++) {
+        IB_LOG_INFINI_INFO_FMT_VF(vfs->v_fabric[vf].name, "",
+            "Base SL:%d Resp SL:%d Requires Resp SL:%d Multicast SL:%d QOS:%d HP:%d",
+            vfs->v_fabric[vf].base_sl, vfs->v_fabric[vf].resp_sl,
+            vfs->v_fabric[vf].requires_resp_sl, vfs->v_fabric[vf].mcast_sl,
+            vfs->v_fabric[vf].qos_enable, vfs->v_fabric[vf].priority);
     }
-	setWeightMultiplier(qos);
+
+    if (sm_config.sm_debug_vf)
+    {
+        // TODO do this for all (maybe just 2,4,8,9) VLs
+        // TODO do in a loop
+        // Dump SC to SL
+        IB_LOG_INFINI_INFO_FMT(__func__, "SCSL = 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
+                               sm_SCtoSL[0], sm_SCtoSL[1], sm_SCtoSL[2], sm_SCtoSL[3],
+                               sm_SCtoSL[4], sm_SCtoSL[5], sm_SCtoSL[6], sm_SCtoSL[7]);
+
+        IB_LOG_INFINI_INFO_FMT(__func__, "       0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
+                               sm_SCtoSL[8], sm_SCtoSL[9], sm_SCtoSL[10], sm_SCtoSL[11],
+                               sm_SCtoSL[12], sm_SCtoSL[13], sm_SCtoSL[14], sm_SCtoSL[15]);
+
+        IB_LOG_INFINI_INFO_FMT(__func__, "       0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
+                               sm_SCtoSL[16], sm_SCtoSL[17], sm_SCtoSL[18], sm_SCtoSL[19],
+                               sm_SCtoSL[20], sm_SCtoSL[21], sm_SCtoSL[22], sm_SCtoSL[23]);
+
+        IB_LOG_INFINI_INFO_FMT(__func__, "       0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
+                               sm_SCtoSL[24], sm_SCtoSL[25], sm_SCtoSL[26], sm_SCtoSL[27],
+                               sm_SCtoSL[28], sm_SCtoSL[29], sm_SCtoSL[30], sm_SCtoSL[31]);
+
+        // Dump SL to SC
+        IB_LOG_INFINI_INFO_FMT(__func__, "SLSC = 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
+                               sm_SLtoSC[0], sm_SLtoSC[1], sm_SLtoSC[2], sm_SLtoSC[3],
+                               sm_SLtoSC[4], sm_SLtoSC[5], sm_SLtoSC[6], sm_SLtoSC[7]);
+
+        IB_LOG_INFINI_INFO_FMT(__func__, "       0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
+                               sm_SLtoSC[8], sm_SLtoSC[9], sm_SLtoSC[10], sm_SLtoSC[11],
+                               sm_SLtoSC[12], sm_SLtoSC[13], sm_SLtoSC[14], sm_SLtoSC[15]);
+
+        IB_LOG_INFINI_INFO_FMT(__func__, "       0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
+                               sm_SLtoSC[16], sm_SLtoSC[17], sm_SLtoSC[18], sm_SLtoSC[19],
+                               sm_SLtoSC[20], sm_SLtoSC[21], sm_SLtoSC[22], sm_SLtoSC[23]);
+
+        IB_LOG_INFINI_INFO_FMT(__func__, "       0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
+                               sm_SLtoSC[24], sm_SLtoSC[25], sm_SLtoSC[26], sm_SLtoSC[27],
+                               sm_SLtoSC[28], sm_SLtoSC[29], sm_SLtoSC[30], sm_SLtoSC[31]);
+
+    }
 }
 
+Status_t
+sm_update_bw(RoutingModule_t *rm, VirtualFabrics_t *vfs)
+{
+	int bwInUse = 0;
+	int nonQosVfs = 0;
+	int qosNoBwVfs = 0;
+	int vf;
+
+	if (!vfs || (vfs->number_of_vfs_all == 0))  {
+		return VSTATUS_OK;
+	}
+
+	IB_LOG_INFINI_INFO_FMT("", "VF Bandwidth Allocations :");
+
+	// Total up allocated BW (of active VFs)
+	for (vf = 0; vf < vfs->number_of_vfs; vf++) {
+		VF_t *vfp = &vfs->v_fabric[vf];
+		if (vfp->qos_enable) {
+			if (!vfp->priority) {
+				if (vfp->percent_bandwidth == UNDEFINED_XML8) {
+					qosNoBwVfs++;
+				} else {
+					bwInUse += vfp->percent_bandwidth;
+				}
+			}
+		} else {
+			nonQosVfs++;
+		}
+	}
+
+	// One share for all nonQos VFs combined (minimum of 5% BW)
+	// and one share for each Qos VF without bandwidth (minimum of 1% BW)
+	int freeBw = 100 - bwInUse;
+	int neededFreeBw = (nonQosVfs?5:0) + qosNoBwVfs;
+	int shareSz = 0;
+	int nonQosShareSz = 0;
+
+	if (freeBw) {
+		IB_LOG_INFINI_INFO_FMT("", "Unallocated BW is %d%%.", freeBw);
+	}
+	if (freeBw < neededFreeBw) {
+		IB_LOG_ERROR_FMT(__func__, "Not enough free bandwidth for"
+			" bandwidth-unconfigured VFs");
+		return VSTATUS_BAD;
+	}
+	if (nonQosVfs || qosNoBwVfs) {
+		if (!nonQosVfs) {
+			shareSz = freeBw / qosNoBwVfs;
+		} else {
+			shareSz = freeBw / (qosNoBwVfs + 1); // +1 for nonQosVfs
+			nonQosShareSz = freeBw - (shareSz * qosNoBwVfs);
+			if (nonQosShareSz < 5) {
+				// NonQos are supposed to share at least 5%
+				nonQosShareSz = 5;
+				// qosNoBwVfs must be !0, or nonQosShareSz would have been >= 5%
+				// however, for code safety we coerce it to be at least 1.
+				shareSz = (freeBw - nonQosShareSz) / (qosNoBwVfs?qosNoBwVfs:1);
+			}
+			freeBw -= nonQosShareSz;
+		}
+		if (qosNoBwVfs == 1) {
+			IB_LOG_INFINI_INFO_FMT("", "Assigning %d%%"
+				" BW to BW-unconfigured VF.", freeBw);
+		} else if (qosNoBwVfs > 1) {
+			IB_LOG_INFINI_INFO_FMT("", "Dividing %d%%"
+				" BW across %d bandwidth-unconfigured VFs (%d%% per VF).",
+				freeBw, qosNoBwVfs, shareSz);
+		}
+		if (nonQosVfs == 1) {
+			IB_LOG_INFINI_INFO_FMT("", "Allocating %d%%"
+				" BW for non QoS VF.",
+				nonQosShareSz);
+		} else if (nonQosVfs > 1) {
+			IB_LOG_INFINI_INFO_FMT("", "Sharing %d%%"
+				" BW among %d non QoS VFs.",
+				nonQosShareSz, nonQosVfs);
+		}
+	}
+
+	for (vf = 0; vf < vfs->number_of_vfs; vf++) {
+		VF_t *vfp = &vfs->v_fabric[vf];
+
+		if (vfp->qos_enable) {
+			if (vfp->priority) continue;
+			if (vfp->percent_bandwidth == UNDEFINED_XML8) {
+				vfp->percent_bandwidth = shareSz;
+				freeBw -= shareSz;
+				qosNoBwVfs--;
+				if (qosNoBwVfs)
+					shareSz = freeBw / qosNoBwVfs;
+				else
+					shareSz = 0;
+			}
+		} else {
+			// Store bandwitdth shared by all nonQos VFs
+			vfp->percent_bandwidth = nonQosShareSz;
+		}
+	}
+	// Report VFs with bandwidth allocated, and total up allocated BW
+	for (vf = 0; vf < vfs->number_of_vfs; vf++) {
+		VF_t *vfp = &vfs->v_fabric[vf];
+		char SLs[256] = { 0 };
+
+		if (vfp->resp_sl != vfp->base_sl) {
+			if (vfp->mcast_sl != vfp->base_sl) {
+				snprintf(SLs,sizeof(SLs),"between BaseSL %d, RespSL %d, and MulticastSL %d",
+					vfp->base_sl, vfp->resp_sl, vfp->mcast_sl);
+			} else {
+				snprintf(SLs,sizeof(SLs),"between BaseSL %d, and RespSL %d",
+					vfp->base_sl, vfp->resp_sl);
+			}
+		} else if (vfp->mcast_sl != vfp->base_sl) {
+			snprintf(SLs,sizeof(SLs),"between BaseSL %d, and MulticastSL %d",
+				vfp->base_sl, vfp->mcast_sl);
+		} else {
+			snprintf(SLs,sizeof(SLs),"on BaseSL %d", vfp->base_sl);
+		}
+		if (vfp->qos_enable) {
+			if (vfp->priority) {
+				IB_LOG_INFINI_INFO_FMT_VF(vfp->name, "",
+					"High Priority VF; HP VFs don't participate in Bandwidth limits.");
+			} else {
+				if (vfp->percent_bandwidth == UNDEFINED_XML8) {
+					vfp->percent_bandwidth = shareSz;
+				}
+				IB_LOG_INFINI_INFO_FMT_VF(vfp->name, "",
+					"QoS VF; Assigned %d%% Bandwidth %s",vfp->percent_bandwidth,SLs);
+			}
+		} else {
+			IB_LOG_INFINI_INFO_FMT_VF(vfp->name, "",
+				"Non QoS VF; Sharing %d%% Bandwidth %s",nonQosShareSz,SLs);
+		}
+
+		//update active list
+		int activeVfIdx = findVfIdxInActiveList(vfp, vfs, TRUE);
+		if (activeVfIdx != -1)
+			vfs->v_fabric[activeVfIdx].percent_bandwidth = vfp->percent_bandwidth;
+	}
+	return VSTATUS_OK;
+}
+
+Status_t
+sm_assign_scs_to_sls_FixedMap(RoutingModule_t *rm, VirtualFabrics_t *vfs)
+{
+    Status_t ret = VSTATUS_BAD;
+	uint8_t SLtoSC[STL_MAX_SLS];
+	uint8_t SCtoSL[STL_MAX_SCS];
+	Qos_t *qos = NULL;
+	int i;
+
+	if (rm->funcs.min_vls() > rm->funcs.max_vls()) {
+		IB_LOG_ERROR_FMT(__func__, "Configuration cannot be mapped. MinSupportedVLs (%d) cannot exceed MaxSupportedVLs (%d).",
+			rm->funcs.min_vls(),rm->funcs.max_vls());
+		return ret;
+	}
+
+	qos = AllocQos();
+
+    memset(SLtoSC, 15, sizeof(SLtoSC));
+    memset(SCtoSL, 0xff, sizeof(SCtoSL));
+
+	for (i = 1; i <= rm->funcs.max_vls(); i++) {
+    	sm_fill_SCVLMap(&qos[i]);
+	}
+
+	// Only perform SC to SL assignment on minimum supported VLs
+	ret = PopulateSCtoSL(rm, &qos[rm->funcs.min_vls()], vfs, SLtoSC, SCtoSL);
+    if (ret != VSTATUS_OK) {
+		FreeQos(qos);
+    	return ret;
+    }
+
+	// 1 VL is a special case, always set it up
+    SetupQos1VL(rm, &qos[1], vfs);
+
+	// Set Qos for all supported number of VLs
+	for (i = rm->funcs.min_vls(); i <= rm->funcs.max_vls(); i++) {
+    	SetupQos(rm, &qos[i], vfs, SLtoSC);
+	}
+
+    memcpy(sm_SLtoSC, SLtoSC, sizeof(SLtoSC));
+    memcpy(sm_SCtoSL, SCtoSL, sizeof(SCtoSL));
+
+	Qos_t * tmpQos = sm_Qos;
+	sm_Qos = qos;
+
+	FreeQos(tmpQos);
+
+    sm_printf_vf_debug(vfs);
+    return ret;
+}
+
+/*
+ * Used to round VL bandwidths up/off to nearest multiple of 5. This is
+ * for VLArb SMAs. All this does is set the weightMultiplier in the
+ * origQos. It does not change the bw values in the origQos.
+ */
+static void
+sm_roundVLBandwidths(Qos_t * origQos)
+{
+	int bwTotal;
+	int vl;
+	Qos_t qos;
+
+	memcpy(&qos, origQos, sizeof(Qos_t));
+
+	bwTotal = 0;
+	for (vl = 0; vl < qos.activeVLs; vl++) {
+		bwTotal += qos.vlBandwidth.bw[vl];
+		assert(bwTotal <= 100);
+	}
+
+	// The following rounds the bandwidth to steps of 5
+	for (vl= 0; vl < qos.activeVLs; vl++) {
+		if (qos.vlBandwidth.bw[vl]) {
+			if (qos.vlBandwidth.bw[vl] % 5) {
+				if (qos.vlBandwidth.bw[vl] % 5 > 2) {
+					qos.vlBandwidth.bw[vl] += (5 - (qos.vlBandwidth.bw[vl] % 5));
+				} else {
+					qos.vlBandwidth.bw[vl] -= (qos.vlBandwidth.bw[vl] % 5);
+					if (!qos.vlBandwidth.bw[vl])
+						qos.vlBandwidth.bw[vl] = 5;
+				}
+			}
+		}
+	}
+
+	setWeightMultiplier(&qos);
+	origQos->weightMultiplier = qos.weightMultiplier;
+}
 
 static void
 sm_DbgPrintQOS(Qos_t * qos)
@@ -183,7 +475,6 @@ sm_DbgPrintQOS(Qos_t * qos)
     {
         bitset_info_log(&qos->lowPriorityVLs, "lowPriorityVLs");
         bitset_info_log(&qos->highPriorityVLs, "highPriorityVLs");
-        bitset_info_log(&qos->mcVLs, "mcVLs");
         IB_LOG_INFINI_INFO_FMT( __func__,
                                 "SCVL%2d = 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x", qos->numVLs,
                                qos->scvl.SCVLMap[0].VL, qos->scvl.SCVLMap[1].VL, qos->scvl.SCVLMap[2].VL,
@@ -213,941 +504,367 @@ sm_DbgPrintQOS(Qos_t * qos)
         for (vl = bitset_find_first_one(&qos->lowPriorityVLs); vl > -1;
              vl = bitset_find_next_one(&qos->lowPriorityVLs, vl+ 1)) {
             IB_LOG_INFINI_INFO_FMT( __func__, "lowPriority VL%d has bandwidth %d", vl,
-                                   qos->vlBandwidth[vl]);
-            totalBw += qos->vlBandwidth[vl];
+                                   qos->vlBandwidth.bw[vl]);
+            totalBw += qos->vlBandwidth.bw[vl];
         }
         IB_LOG_INFINI_INFO_FMT( __func__, "lowPriority has total bandwidth %d", totalBw);
-        totalBw = 0;
-        for (vl = bitset_find_first_one(&qos->highPriorityVLs); vl > -1;
-             vl = bitset_find_next_one(&qos->highPriorityVLs, vl+ 1)) {
-            IB_LOG_INFINI_INFO_FMT( __func__, "highPriority VL%d has bandwidth %d", vl,
-                                   qos->vlBandwidth[vl]);
-            totalBw += qos->vlBandwidth[vl];
-        }
-        IB_LOG_INFINI_INFO_FMT( __func__, "highPriority has total bandwidth %d", totalBw);
-        totalBw = 0;
-        for (vl = bitset_find_first_one(&qos->mcVLs); vl > -1;
-             vl = bitset_find_next_one(&qos->mcVLs, vl+ 1)) {
-            IB_LOG_INFINI_INFO_FMT( __func__, "multicast VL%d has bandwidth %d", vl,
-                                   qos->vlBandwidth[vl]);
-            totalBw += qos->vlBandwidth[vl];
-        }
-        IB_LOG_INFINI_INFO_FMT( __func__, "Multicast has total bandwidth %d", totalBw);
     }
 }
-
 
 static void
-scvlAssign(int startVL, int endVL, bitset_t * SCs, Qos_t * qos, int high, VirtualFabrics_t *VirtualFabrics)
+AddVfToVl(Qos_t *qos, int vl, int vf)
 {
-	int		vl, sc;
-	int		numVls = endVL-startVL;
-    int		numSCs = SCs->nset_m;
-    bitset_t * prioVL = (high==1) ? &qos->highPriorityVLs : &qos->lowPriorityVLs;
+	int i;
 
-    if ( (numVls >= numSCs) || (numVls==1) ) {
-        // 1::1 assignment, including 1 VL to 1 SC. 
-        // OR all SCs globbed together on 1 VL (regardless of any other criteria)
-        // Note: Revisit for DOR (all SCs assigned to 1 VL is bad for DOR)
-        vl=startVL;
-        for (sc = bitset_find_first_one(SCs); sc > -1; sc = bitset_find_next_one(SCs, sc + 1)) {
-            qos->scvl.SCVLMap[sc].VL = vl;
-            qos->vlBandwidth[vl] += sm_SlBandwidthAllocated[sm_SCtoSL[sc]]; 
-            bitset_set(prioVL, vl);
-            if(numVls!=1) vl++;
-        }
-    } else {
-        // Number of SCs > VLs, and numVls > 1, need to oversubscribe.
-        // We can group SCs (SLs/VFs) to VLs with "similar" preemption ranks.
-        //   - any SC with zero rank (non-preemptible) can be grouped together
-        //   - any SC with "adjacent", non-zero rank can be grouped together
-        // Note: Revisit for DOR as this fn does not consider DOR routing pairs
-        //       and will possibly contract DOR pairs to the same VL
-
-        // To determine adjecency, sort the SLs by preemption rank.
-        // Count the number of zero-rank SLs in the same loop.
-        uint8_t pos[STL_MAX_SCS]; 
-        memset(pos, 0xff, sizeof(pos));
-        int numZeroSCs = 0, vf, i;
-        for (i = 0; i < STL_MAX_SCS; i++) {
-            int rank = 0xff;
-            for (sc = bitset_find_first_one(SCs); sc > -1; sc = bitset_find_next_one(SCs, sc + 1)) {
-                // Attempting to find the VF associated with this SC.
-                // Generally, each VF will be assigned its own unique SL/SC.
-                // HOWEVER, if QOS is disabled, then it is possible that multiple VFs
-                //   can be assiged to the SAME SL/SC.
-                // BUT - this is ok as the VF characteristics are the same
-                //   (or similar enough) for the considerations here.
-                vf=smGetSLVF(sm_SCtoSL[sc], VirtualFabrics);// sm_SCtoSL[sc]; 
-                if ((vf!=-1) && (rank > VirtualFabrics->v_fabric[vf].preempt_rank)) {
-                    rank = VirtualFabrics->v_fabric[vf].preempt_rank;
-                    pos[i]=sc;
-                    if (rank==0) numZeroSCs++;
-                }
-            }
-            bitset_clear(SCs, pos[i]); // Remove lowest rank SC.
-            if (SCs->nset_m==0) break; // no more SCs.
-        }
-
-        // Now that we know the number of rank-zero SCs, 
-        //  determine the number of rank-zero VLs that we should use. 
-        int numZeroVls = (numZeroSCs * numVls) / numSCs; 
-        if ((numZeroVls==0) && (numZeroSCs>0)) numZeroVls++; 
-
-        // Update the number of non-zero SCs / VLs 
-        numSCs -= numZeroSCs;
-        numVls -= numZeroVls;
-
-        i=0; vl = startVL; sc = pos[0];
-
-        // Allocate the zero rank SCs to VLs
-        int SCsForThisVL;
-        int SCsperVl = (numZeroVls ? numZeroSCs/numZeroVls : 0);
-        int extraSCs = (numZeroVls ? numZeroSCs%numZeroVls : 0);
-        while ((numZeroVls--) && (sc!=0xff)) {
-			if (sc >= STL_MAX_SCS) {
-				IB_LOG_ERROR_FMT(__func__, "Allocate zero rank: SC >= STL_MAX_SCS: sc:%d, i:%d",sc,i);
-				break;
-			}
-			if (vl >= STL_MAX_VLS) {
-				IB_LOG_ERROR_FMT(__func__, "Allocate zero rank: VL >= STL_MAX_VLS: vl:%d",vl);
-				break;
-			}
-            bitset_set(prioVL, vl);
-            SCsForThisVL = SCsperVl + ((extraSCs-- > 0) ? 1 : 0);
-            while ((SCsForThisVL--) && (sc!=0xff)) {
-                qos->scvl.SCVLMap[sc].VL = vl;
-                qos->vlBandwidth[vl] += sm_SlBandwidthAllocated[sm_SCtoSL[sc]];
-				i++;
-				if (i >= STL_MAX_SCS) {
-					IB_LOG_ERROR_FMT(__func__, "Allocate zero rank: index >= STL_MAX_SCS: i:%d",i);
-					break;
-				}
-                sc=pos[i];
-				if (sc >= STL_MAX_SCS) {
-					IB_LOG_ERROR_FMT(__func__, "Allocate zero rank: SC >= STL_MAX_SCS: sc:%d, i:%d",sc,i);
-					break;
-				}
-            }
-            vl++;
-        }
-
-        // Allocate the non-zero rank SCs to VLs
-        SCsperVl = (numVls ? numSCs/numVls : 0);
-        extraSCs = (numVls ? numSCs%numVls : 0);
-        while ((numVls--) && (sc!=0xff)) {
-			if (sc >= STL_MAX_SCS) {
-				IB_LOG_ERROR_FMT(__func__, "Allocat non-zero rank: SC >= STL_MAX_SCS: sc:%d, i:%d",sc,i);
-				break;
-			}
-			if (vl >= STL_MAX_VLS) {
-				IB_LOG_ERROR_FMT(__func__, "Allocate zero rank: VL >= STL_MAX_VLS: vl:%d",vl);
-				break;
-			}
-            bitset_set(prioVL, vl);
-            SCsForThisVL = SCsperVl + ((extraSCs-- > 0) ? 1 : 0);
-            while ((SCsForThisVL--) && (sc!=0xff)){
-                qos->scvl.SCVLMap[sc].VL = vl;
-                qos->vlBandwidth[vl] += sm_SlBandwidthAllocated[sm_SCtoSL[sc]];
-				i++;
-				if (i >= STL_MAX_SCS) {
-					IB_LOG_ERROR_FMT(__func__, "Allocate non-zero rank: index >= STL_MAX_SCS: i:%d",i);
-					break;
-				}
-                sc=pos[i];
-				if (sc >= STL_MAX_SCS) {
-					IB_LOG_ERROR_FMT(__func__, "Allocate non-zero rank: SC >= STL_MAX_SCS: sc:%d, i:%d",sc,i);
-					break;
-				}
-            }
-            vl++;
-        }
-    }
+	for (i=0; i<MAX_VFABRICS; i++) {
+		if (qos->vlvf.vf[vl][i] == vf) break; // No dup vfs
+		if (qos->vlvf.vf[vl][i] == -1) {
+			qos->vlvf.vf[vl][i] = vf;
+			break;
+		}
+	}
+	return;
 }
 
-// Assign SC/VL pairs to SLs, assuming a fixed map.
-//
-// Note that this function may clear the contents of bitset SLs.
-//
-// Note that in this function we assume that SCs and VLs are already mapped
-// to each other in a fixed, immutable, manner. The reason for taking this
-// approach is that the WFR has a known limitation that the SC/VL maps cannot
-// be changed once the HFI moves from INIT to ARMED or ACTIVE states. Thus,
-// any changes to these maps would require every port in the fabric to be
-// bounced. This would be hugely expensive in lost time on the cluster if
-// every change to the FM configuration required the fabric to be stopped
-// and restarted.
+/*
+ * Maps SCs to SLs. Requires that the SC to VL map is sequential.
+ * (i.e., that if SC0 maps to VL0, then SC1 to VL1 and so on) In addition,
+ * the function prohibits oversubscribing VLs.
+ */
 static Status_t
-slscFixedAssign(int startVL, int endVL, bitset_t * SLs, Qos_t * qos, int type, VirtualFabrics_t *VirtualFabrics)
+PopulateSCtoSL(RoutingModule_t *rm, const Qos_t * qos,
+	VirtualFabrics_t *VirtualFabrics, uint8_t *SLtoSC, uint8_t *SCtoSL)
 {
-    Status_t ret = VSTATUS_BAD;
-    int     i, vl, sl;
-    int     numVls = endVL-startVL;
-    int     numSLs = SLs->nset_m;
-    int     routingSCs = vfInfo.defaultRoutingSCs; 
-    int     numSCs = numSLs * routingSCs;
-    int     scOffset;
+	// Populate the SLtoSC and SCtoSL
+	int sc, sl, vl, vf, numSCs;
+	bitset_t mappedSLs;
+	bitset_t freeVLs;
+	Status_t ret = VSTATUS_BAD;
 
-    bitset_t * prioVL = NULL;
-    switch (type) {
-        case 0:
-            prioVL = &qos->lowPriorityVLs; 
-            break; 
-        case 1:
-            prioVL = &qos->highPriorityVLs; 
-            break;
-        case 2:
-            prioVL = &qos->mcVLs; 
-            // Multicast SLs only get one SC.
-            numSCs = numSLs;
-            routingSCs = 1; 
-            break;
-        default:
-            // This is a coding error. Abort.
-            IB_FATAL_ERROR("slscFixedAssign: Invalid QOS map type.");
-            return ret; // Put here to make Klocworks happy.
-    }
+	if (!bitset_init(&sm_pool, &mappedSLs, STL_MAX_SLS)
+	||  !bitset_init(&sm_pool, &freeVLs, qos->activeVLs)) {
+		IB_FATAL_ERROR("PopulateSCtoSL: No memory for QoS setup, exiting.");
+	}
 
-    if (sm_config.sm_debug_vf) 
-        IB_LOG_INFINI_INFO_FMT(__func__,"startVL = %d, endVL = %d, numSls = %d, numVls = %d, numSCs = %d", 
-            startVL, endVL, numSLs, numVls, numSCs);
-    if (routingSCs > numVls) {
-        IB_LOG_ERROR_FMT(__func__, 
-            "The number of VLs required (%d) for all SLs exceeds the number of VLs available (%d).", 
-            routingSCs, numVls);
-        goto bail;
-    } else if ( (numVls >= numSCs) || (numVls==1) ) {
-        // 1::1 assignment, including 1 VL to 1 SC.
-        // OR all SLs globbed together on 1 VL (regardless of any other criteria)
-        // Note that in the case where multiple SCs are mapped to one SL, numVLs must
-        // not be one!
-        if (sm_config.sm_debug_vf) IB_LOG_INFINI_INFO_FMT(__func__,"(numVls >= numSCs) || (numVls==1)");
-        vl=startVL;
-        scOffset=0;
-        for (sl = bitset_find_first_one(SLs); sl > -1; sl = bitset_find_next_one(SLs, sl + 1)) {
-            if ((vl>=STL_MAX_VLS) || (sl>=STL_MAX_VLS) || (vl+scOffset>=STL_MAX_SCS)){
-                IB_LOG_ERROR_FMT(__func__,
-                    "1:1 Indices out of range: vl:%d, sl:%d, sc:%d", vl, sl, vl+scOffset);
-                goto bail;
-            }
+	// Mark all VLs as free, except VL15, which is reserved for SMA traffic.
+	bitset_set_all(&freeVLs);
+	if (qos->activeVLs > 15)
+		bitset_clear(&freeVLs, 15);
 
-            sm_SLtoSC[sl] = vl+scOffset; // SC::VL is 1::1 in fixed maps!
-            for (i=0; i<routingSCs; i++) {
-                if ((vl>=STL_MAX_VLS) || (sl>=STL_MAX_VLS) || (vl+scOffset>=STL_MAX_SCS)){
-                    IB_LOG_ERROR_FMT(__func__,
-                        "1:1 Indices out of range: vl:%d, sl:%d, sc:%d", vl, sl, vl+scOffset);
-                    goto bail;
-                }
-                sm_SCtoSL[vl+scOffset] = sl;
-                if (sm_config.sm_debug_vf) IB_LOG_INFINI_INFO_FMT(__func__, "sl = %d, sc = %d", sl, vl + scOffset);
-                //For standby VFs, sm_main::sm_update_bw will set sm_SlBandwidthAllocated[sl] to 0
-                //therefore, qos->vlBandwidth[vl] will only represent active VF bandwidths
-                qos->vlBandwidth[vl] += sm_SlBandwidthAllocated[sl]/routingSCs;
+	// Assign SCs to SLs. Must map all VFs (not just active)
+	for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
+		VF_t *vfp = &VirtualFabrics->v_fabric_all[vf];
+		int sl_i, vl_i;
 
-                bitset_set(prioVL, vl);
+		for (sl_i = 0; sl_i < 3; sl_i++) {
+			boolean mc_sl = 0;
 
-                if(numVls==1) scOffset += qos->numVLs;
-                else vl++;
-
-                if ((vl+scOffset) == 15) scOffset += qos->numVLs;
-            }
-        }
-    } else {
-        if (sm_config.sm_debug_vf) IB_LOG_INFINI_INFO_FMT(__func__,"oversubscribed.");
-        // Number of SLs > VLs, and numVls > 1, need to oversubscribe.
-        // We can group SLs (SLs/VFs) to VLs with "similar" preemption ranks.
-        //   - any SL with zero rank (non-preemptible) can be grouped together
-        //   - any SL with "adjacent", non-zero rank can be grouped together
-
-        // To determine adjacency, selection sort the SLs by preemption rank.
-        // And count the number of zero-rank SLs in the same loop.
-        uint8_t pos[STL_MAX_SLS];
-        memset(pos, 0xff, sizeof(pos));
-        int numZeroSLs = 0, numZeroSCs = 0, vf, i;
-        int scOffsetForVL[STL_MAX_VLS] = {0};
-        for (i = 0; i < STL_MAX_SLS; i++) {
-            int rank = 0xff;
-            for (sl = bitset_find_first_one(SLs); sl > -1; sl = bitset_find_next_one(SLs, sl + 1)) {
-                // Find the first VF associated with this SL.
-                // Generally, a VF will be assigned its own unique SL.
-                // HOWEVER, if QOS is disabled, then it is possible that multiple VFs
-                //   can be assiged to the SAME SL.
-                // BUT - this is ok as the VF characteristics are the same
-                //   (or similar enough) for the considerations here.
-                vf=smGetSLVF(sl, VirtualFabrics);
-                if ((vf!=-1) && (rank > VirtualFabrics->v_fabric[vf].preempt_rank)) {
-                    rank = VirtualFabrics->v_fabric[vf].preempt_rank;
-                    pos[i]=sl;
-                    if (rank==0) { numZeroSLs++; numZeroSCs+=routingSCs; }
-                }
-            }
-            bitset_clear(SLs, pos[i]); // Remove lowest rank SL.
-            if (SLs->nset_m==0) break; // no more SLs.
-        }
-
-        // Now that we know the number of rank-zero SCs,
-        // determine the number of rank-zero VLs that we should use.
-        // Basically, we're reserving a proportion of the # of VLs that
-        // are available based on the ratio of Zero SCs to all SCs.
-        int numZeroVls = (numZeroSCs * numVls) / numSCs;
-
-        // numZeroVls must be a multiple of routingSCs.
-        if ((routingSCs>1) && (numZeroVls%routingSCs > 0)) 
-            numZeroVls = (numZeroVls/routingSCs)*routingSCs+routingSCs;
-        if ((numZeroVls==0) && (numZeroSCs>0)) numZeroVls=routingSCs;
-
-        // Update the number of non-zero SLs / VLs
-        numSLs -= numZeroSLs;
-        numVls -= numZeroVls;
-        numSCs -= (numZeroSLs*routingSCs);
-
-        if ((numSLs > 0) && (numVls < routingSCs)) {
-            IB_LOG_ERROR_FMT(__func__, 
-                "The number of VLs required (%d) for pre-emptible SLs exceeds the number of VLs available (%d).", 
-                routingSCs, numVls);
-            goto bail;
-        }
-
-        // Allocate the zero rank SCs to VLs, while making our best effort to evenly spread
-        // bandwidth usage across VLs
-
-        //first do an in-place sort of rank 0 SLs bringing biggest BW users 
-        //to front of the list. List is small so use selection sort for code
-        //simplicity
-        for(i=0; i<numZeroSLs-1; i++) {
-            int largestIdx = i, largestBW = sm_SlBandwidthAllocated[pos[i]];;
-            int j;
-            for(j=i+1; j<numZeroSLs; j++) {
-                sl = pos[j];
-                if(sm_SlBandwidthAllocated[sl] > largestBW) {
-                    largestBW = sm_SlBandwidthAllocated[sl];
-                    largestIdx = j;
-                }
-            }
-			if(i != largestIdx) {
-                int temp;
-                temp            = pos[i];
-                pos[i]          = pos[largestIdx];
-                pos[largestIdx] = temp;
+			// Map base_sl, resp_sl, and mcast_sl.
+			//
+			// If the specified sl is already mapped, skip over it.
+			// That situation will arise when there are multiple non-QOS
+			// VFs in the configuration, or if resp_sl (or mcast_sl)
+			// points to the same SL as base_sl.
+			//
+			switch (sl_i) {
+				default:
+				case 0: sl = vfp->base_sl; mc_sl = 0; break;
+				case 1: sl = vfp->resp_sl; mc_sl = 0; break;
+				case 2: sl = vfp->mcast_sl; mc_sl = 1; break;
 			}
-        }
 
-        i = 0; sl = pos[i]; 
-        while((numZeroSLs--) && (sl!=0xff)) {
-            int leastUsedVlBw = 0xffff; 
-            int leastUsedVl = startVL;
-            int j, sc;
-
-            //find vl with least bandwidth assigned and map this SL to it
-            //Note that when routingSCs>1 we assume all vls in a group
-            //have the bandwidth usage.
-            for(vl = startVL; vl < startVL+numZeroVls; vl+=routingSCs) {
-                if(qos->vlBandwidth[vl] < leastUsedVlBw) {
-                    leastUsedVlBw = qos->vlBandwidth[vl];
-                    leastUsedVl = vl;
-                }
-            }
-
-            //Note that when routingSCs>1 we use the same offset for all SCs
-            //in a group.
-            sc = leastUsedVl + scOffsetForVL[leastUsedVl];
-
-            // This can leave SCs adjacent to SC15 unused, but the restrictions
-            // required by the SC::VL fixed map and the directionality of 
-            // complex routing algorithms such as DOR leave us no choice.
-            if((sc<=15) && (sc+routingSCs>15)) {
-                if (sm_config.sm_debug_vf) IB_LOG_INFINI_INFO_FMT(__func__, "bumping scOffset.");
-                scOffsetForVL[leastUsedVl] += qos->numVLs;
-				sc = leastUsedVl + scOffsetForVL[leastUsedVl];
+			if (bitset_test(&mappedSLs, sl)) {
+				continue;
 			}
-            if ((leastUsedVl>=STL_MAX_VLS) || (sl>=STL_MAX_VLS) || (i>=STL_MAX_SLS) || (sc>=STL_MAX_SCS)){
-                IB_LOG_ERROR_FMT(__func__,
-                        "No preempt indices out of range: vl:%d, sl:%d, rank:%d, sc:%d", vl, sl, i, sc);
-                goto bail;
-            }
+			bitset_set(&mappedSLs, sl);
 
-            // SL::SC is 1::N in fixed map. The SLtoSC map points to the first SC in the set
-            // mapped to the SL, but the SCtoSL map shows all SCs that point to the SL.
-            sm_SLtoSC[sl] = sc; 
-            for(j=0; j<routingSCs; j++) {
-            	bitset_set(prioVL, leastUsedVl+j);
-            	qos->vlBandwidth[leastUsedVl+j] += sm_SlBandwidthAllocated[sl]/routingSCs;
-            	sm_SCtoSL[sc+j] = sl;
-                if (sm_config.sm_debug_vf) IB_LOG_INFINI_INFO_FMT(__func__, "sl = %d, sc = %d", sl, sc + j);
-            }
-            i++;
-            if (i>=STL_MAX_SLS) {
-                 IB_LOG_ERROR_FMT(__func__,
-                       "No preempt indices out of range: vl:%d, sl:%d, rank:%d, sc:%d", vl, sl, i, sc);
-                 goto bail;
-            }
-            sl = pos[i];
-            scOffsetForVL[leastUsedVl] += qos->numVLs;
-        }
-	
-        if (routingSCs == 1 && numSLs > 0) {
-            // Allocate the non-zero rank SLs to VLs
-            vl = startVL+numZeroVls;
-            int SLsForThisVL;
-            int SLsperVl = (numVls ? numSLs/numVls : 0);
-            int extraSLs = (numVls ? numSLs%numVls : 0);
-            while ((numVls--) && (sl!=0xff)) {
-                bitset_set(prioVL, vl);
-                SLsForThisVL = SLsperVl + ((extraSLs-- > 0) ? 1 : 0);
-                scOffset = 0;
-                while ((SLsForThisVL--) && (sl!=0xff)){
-                    if ((vl+scOffset) == 15) scOffset += qos->numVLs;
-                    if ((vl>=STL_MAX_VLS) || (sl>=STL_MAX_VLS) || (i>=STL_MAX_SLS) || (vl+scOffset>=STL_MAX_SCS)){
-                        IB_LOG_ERROR_FMT(__func__,
-                             "Preempt indices out of range: vl:%d, sl:%d, rank:%d, sc:%d", 
-                             vl, sl, i, vl+scOffset);
-                        goto bail;
-                    }
-                    qos->vlBandwidth[vl] += sm_SlBandwidthAllocated[sl];
-                    sm_SLtoSC[sl] = vl+scOffset; // SC::VL is 1::1 in fixed maps!
-                    sm_SCtoSL[vl+scOffset] = sl;
+			// Returns the # of VLs the routing module requires to route
+			// this SL. In theory this could be different for every SL.
+			numSCs = rm->funcs.num_routing_scs(sl, mc_sl);
 
-                    i++;
-                    if (i>=STL_MAX_SLS) {
-                        IB_LOG_ERROR_FMT(__func__,
-                             "Preempt indices out of range: vl:%d, sl:%d, rank:%d, sc:%d", 
-                             vl, sl, i, vl+scOffset);
-                        goto bail;
-                    }
-                    sl=pos[i];
-                    scOffset += qos->numVLs;
-                }
-                vl++;
-            }
-        } else if (numSLs > 0) {
-            // Allocate the non-zero rank SLs to VLs in groups.
-            if (sm_config.sm_debug_vf) IB_LOG_INFINI_INFO_FMT(__func__,"Processing pre-emptible SLs.");
-            sl = pos[i]; 
-            while((numSLs--) && (sl!=0xff)) {
-                int leastUsedVlBw = 0xffff; 
-                int leastUsedVl = startVL;
-                int j, sc;
+			for (vl = bitset_find_first_one(&freeVLs);
+				 vl != -1;
+				 vl = bitset_find_next_one(&freeVLs, vl + 1)) {
 
-                //find vl with least bandwidth assigned and map this SL to it
-                for(vl = startVL+numZeroVls; vl < endVL; vl+=routingSCs) {
-                    if(qos->vlBandwidth[vl] < leastUsedVlBw) {
-                        leastUsedVlBw = qos->vlBandwidth[vl];
-                        leastUsedVl = vl;
-                    }
-                }
+				// Find the lowest numbered SC that is mapped to this VL.
+				// We have a weird problem that we are not guaranteed that
+				// the first #numVL SC entries are mapped to the first 
+				// #numVL VLs, so we do a brute-force search.
+				for (sc = 0; sc <= (STL_MAX_SCS - numSCs); sc++) {
+					if (qos->scvl.SCVLMap[sc].VL == vl) break;
+				}
 
-                //Note that when routingSCs>1 we use the same offset for all SCs
-                //in a group.
-                sc = leastUsedVl + scOffsetForVL[leastUsedVl];
-                if((sc<=15) && (sc+routingSCs>15)) {
-                    if (sm_config.sm_debug_vf) IB_LOG_INFINI_INFO_FMT(__func__, "bumping scOffset.");
-                    scOffsetForVL[leastUsedVl] += qos->numVLs;
-                    sc = leastUsedVl + scOffsetForVL[leastUsedVl];
-                }
-                if ((leastUsedVl>=STL_MAX_VLS) || (sl>=STL_MAX_VLS) || (i>=STL_MAX_SLS) || (sc>=STL_MAX_SCS)){
-                    IB_LOG_ERROR_FMT(__func__,
-                         "Preempt indices out of range: vl:%d, sl:%d, rank:%d, sc:%d", vl, sl, i, sc);
-                    goto bail;
-                }
+				if (sc >= (STL_MAX_SCS - numSCs)) {
+					// This vl isn't mapped to an SC
+					// Take it out of the free list, and find the next one
+					bitset_clear(&freeVLs, vl);
+					continue;
+				}
+				// Make sure we have #numSCs sequential SCs mapped to #numSCs
+				// sequential free VLs. As above, we can't guarantee a unique
+				// SC2VL mapping, so we have to check it here. The requirement
+				// that the VLs be sequential is a hardware limitation.
+				for (vl_i = 0; vl_i < numSCs; vl_i++) {
+					if ((qos->scvl.SCVLMap[sc + vl_i].VL != vl + vl_i)
+						|| (!bitset_test(&freeVLs, vl + vl_i))) {
+						break;
+					}
+				}
+				if (vl_i != numSCs) {
+					// Not enough consecutive SCs/VLs, keep looking
+					continue;
+				}
+				// Found a set of SC/VLs that work
+				break;
+			}
+			if (vl == -1) {
+				IB_LOG_ERROR_FMT(__func__, "Configuration cannot be mapped. Requires more than %d VLs.",qos->activeVLs);
+				goto fail;
+			}
 
-                sm_SLtoSC[sl] = sc; // SC::VL is 1::1 in fixed maps!
-                for(j=0; j<routingSCs; j++) {
-                    bitset_set(prioVL, leastUsedVl+j);
-                    qos->vlBandwidth[leastUsedVl+j] += sm_SlBandwidthAllocated[sl]/routingSCs;
-                    sm_SCtoSL[sc+j] = sl;
-                    if (sm_config.sm_debug_vf) IB_LOG_INFINI_INFO_FMT(__func__, "sl = %d, sc = %d", sl, sc+j);
-                }
-                i++;
-                if (i>=STL_MAX_SLS) {
-                    IB_LOG_ERROR_FMT(__func__,
-                         "Preempt indices out of range: vl:%d, sl:%d, rank:%d, sc:%d", vl, sl, i, sc);
-                    goto bail;
-                }
-                sl = pos[i];
-                scOffsetForVL[leastUsedVl] += qos->numVLs;
-            }
-        }
-    }
+			// The SL to SC map records the first of numSCs mapped to the SL,
+			// we assume the others are adjacent. However, the reverse SC to SL
+			// map explicitly shows all SC to SL mappings.
+			for (vl_i = 0; vl_i < numSCs; vl_i++) {
+				bitset_clear(&freeVLs, vl + vl_i);
+				SCtoSL[sc + vl_i] = sl;
+			}
+			SLtoSC[sl] = sc;
+		}
+	}
+	ret = VSTATUS_OK;
 
-    ret = VSTATUS_OK;
-bail:
+fail:
+	bitset_free(&freeVLs);
+	bitset_free(&mappedSLs);
+
     return ret;
 }
 
-
 static void
-AllocateVL(uint8_t numVLs, Qos_t * qos, VirtualFabrics_t *VirtualFabrics) 
+DivideBwUp(RoutingModule_t *rm, Qos_t *qos, int bw, int base_sl, int resp_sl,
+	int mcast_sl, const uint8_t *SLtoSC)
 {
-	//Dynamic reconfiguration won't work if this non fixed mapping is used; 
-	//need to reassess changes that are necessary
+	int sl, vl, i = 0;
+	int num_scs, num_vls = 0;
+	int bw_part = 0;
 
-    int sc, vf, i;
-	int startVL=0;
-    int minRqVl;
-
-    bitset_t	scsInUse;
-    bitset_t	highPrioritySCs;
-    bitset_t	lowPrioritySCs;
-
-	if (!bitset_init(&sm_pool, &qos->highPriorityVLs, STL_MAX_VLS) ||
-		!bitset_init(&sm_pool, &qos->lowPriorityVLs, STL_MAX_VLS)  ||
-	    !bitset_init(&sm_pool, &scsInUse, STL_MAX_SCS)             ||
-        !bitset_init(&sm_pool, &highPrioritySCs, STL_MAX_SCS)      ||
-		!bitset_init(&sm_pool, &lowPrioritySCs, STL_MAX_SCS)) {
-		IB_FATAL_ERROR("AllocateVL: No memory for SCs setup, exiting.");
+	// Tally up the number of VLs to divide the bandwidth into.
+	// It's okay for num_vls to refer to dupes - but to avoid rounding
+	// errors in integer division, we ignore resp_sl and mcast_sl if they
+	// refer to the same SL as base_sp.
+	num_vls = rm->funcs.num_routing_scs(base_sl, 0);
+	if (resp_sl != base_sl) {
+		num_vls += rm->funcs.num_routing_scs(resp_sl, 0); 
+	}
+	if (mcast_sl != base_sl && mcast_sl != resp_sl) {
+		num_vls += rm->funcs.num_routing_scs(mcast_sl, 1); 
 	}
 
-	qos->numVLs = numVLs;
+	// Now we know the total # of shares, allocate the bw. Again,
+	// it's okay if the same SL is processed multiple times, but
+	// we also want to minimize rounding errors.
+	for (i = 2; i >= 0; i--) {
+		if (i == 0) {
+			sl = base_sl;
+		} else if (i == 1) {
+			sl = resp_sl;
+			if (sl == base_sl) continue;
+		} else {
+			sl = mcast_sl;
+			if ((sl == base_sl) || (sl == resp_sl)) continue;
+		}
 
-    for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
-        sc=VirtualFabrics->v_fabric[vf].base_sc;
-        for (i=0; i<VirtualFabrics->v_fabric[vf].routing_scs; i++, sc++) {
-            if (sc==15) sc++; // skip the invalid SC
-            bitset_set(&scsInUse, sc);
-            if (VirtualFabrics->v_fabric[vf].priority==1) {
-                bitset_set(&highPrioritySCs, sc);
-            } else {
-                bitset_set(&lowPrioritySCs, sc);
-            }
-        }
-    }
+		num_scs = rm->funcs.num_routing_scs(sl, (i==2));
 
-	if (sm_config.sm_debug_vf) {
-        bitset_info_log(&scsInUse, "scsInUse");
-        bitset_info_log(&highPrioritySCs, "highPrioritySCs");
-        bitset_info_log(&lowPrioritySCs, "lowPrioritySCs");
-    }
-
-    // Setup minimum required VL
-    minRqVl=1;
-    
-    // If have both high and low, min required is doubled.
-    if ((highPrioritySCs.nset_m!=0) &&
-        (lowPrioritySCs.nset_m!=0)) {
-        minRqVl*=2;
-    }
-
-    // With less than required VLs, cannot assign high and low prio VFs
-    // to different VLs. Assign all to low.
-	if (numVLs < minRqVl) {
-        scvlAssign(startVL, numVLs, &scsInUse, qos, 0, VirtualFabrics);
-        goto done;
+		// Note the interesting effect of this loop - by doing the division
+		// repeatedly we make sure we use all the assigned bandwidth, possibly
+		// not evenly. For example, if we are dividing 30% of bandwidth over
+		// 8 VLs, the first VL will be assigned 30/8 = 3%, the next will get
+		// 27/7 = 3%, 24/6 = 4%, 20/5 = 4%, 16/4 = 4%, 12/3 = 4%, 8/2 = 4%,
+		// 4/1 = 4%
+		// 
+		// Note the assumption that SCs are assigned to SLs in a contiguous
+		// block.
+		int j;
+		for (j=0; j<num_scs; j++) {
+			vl = qos->scvl.SCVLMap[SLtoSC[sl]+j].VL;
+			bw_part = bw / num_vls;
+			bw -= bw_part;
+			qos->vlBandwidth.bw[vl] += bw_part;
+			num_vls--;
+		}
 	}
-
-    // If we have low and no high, assign all VLs to low.
-    if ((highPrioritySCs.nset_m==0) &&
-        (lowPrioritySCs.nset_m!=0)) {
-        scvlAssign(startVL, numVLs, &lowPrioritySCs, qos, 0, VirtualFabrics);
-        goto done;
-    }
-
-    // If we have no low and high, assign all VLs to high.
-    if ((highPrioritySCs.nset_m!=0) &&
-        (lowPrioritySCs.nset_m==0)) {
-        scvlAssign(startVL, numVLs, &highPrioritySCs, qos, 1, VirtualFabrics);
-        goto done;
-    }
-
-    // We have a mix of high and low.  Assign Low reserving some VLs for high.
-    scvlAssign(startVL, numVLs-(minRqVl/2), &lowPrioritySCs, qos, 0, VirtualFabrics);
-
-    startVL = bitset_find_next_zero(&qos->lowPriorityVLs, startVL+1);
-
-    scvlAssign(startVL, numVLs, &highPrioritySCs, qos, 1, VirtualFabrics);
-
-done: 
-
-	bitset_free(&scsInUse);        
-	bitset_free(&highPrioritySCs); 
-	bitset_free(&lowPrioritySCs);  
-
-	sm_roundVLBandwidths(qos);
-	sm_DbgPrintQOS(qos);
 }
 
-
-// Note that in this function we assume that SCs and VLs are already mapped
-// to each other in a fixed, immutable, manner. The reason for taking this
-// approach is that the WFR has a known limitation that the SC/VL maps cannot
-// be changed once the HFI moves from INIT to ARMED or ACTIVE states. Thus,
-// any changes to these maps would require every port in the fabric to be
-// bounced. This would be hugely expensive in lost time on the cluster if
-// every change to the FM configuration required the fabric to be stopped
-// and restarted.
-static Status_t
-AllocateSCsForFixedMap(uint8_t numVLs, Qos_t * qos, VirtualFabrics_t *VirtualFabrics)
+static void
+SetupQos(RoutingModule_t *rm, Qos_t * qos, VirtualFabrics_t *VirtualFabrics, const uint8_t *SLtoSC)
 {
-    // Assign SCs to SLs for Fixed mapping.
-    int sl, vl, vf;
-    bitset_t usedSLs;
-    bitset_t highPrioritySLs;
-    bitset_t lowPrioritySLs;
-    bitset_t mcSLs;
-    Status_t ret = VSTATUS_BAD;
-    int mcastVLs = 0;
-    int routingSCs = vfInfo.defaultRoutingSCs;
+	// Assign SCs to SLs for Fixed mapping.
+	int sl, sc, vl, vf, numSCs;
+	boolean mcast_sl = 0;
 
-    qos->numVLs = numVLs;
+	memset(&qos->vlvf, -1, sizeof(qos->vlvf));
+	for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
+		VF_t *vfp = &VirtualFabrics->v_fabric[vf];
+		int i;
 
-    if (!bitset_init(&sm_pool, &usedSLs, STL_MAX_SLS) ||
-        !bitset_init(&sm_pool, &highPrioritySLs, STL_MAX_SLS) ||
-        !bitset_init(&sm_pool, &lowPrioritySLs, STL_MAX_SLS)  ||
-        !bitset_init(&sm_pool, &mcSLs, STL_MAX_SLS)  ||
-        !bitset_init(&sm_pool, &qos->mcVLs, STL_MAX_VLS) ||
-        !bitset_init(&sm_pool, &qos->highPriorityVLs, STL_MAX_VLS) ||
-        !bitset_init(&sm_pool, &qos->lowPriorityVLs, STL_MAX_VLS)) {
-        IB_FATAL_ERROR("AllocateSCsForFixedMap: No memory for QoS setup, exiting.");
-    }
+		for (i = 0; i < 3; i++) {
+			if (i == 0) {
+				sl = vfp->base_sl; mcast_sl = 0;
+			} else if (i == 1) {
+				sl = vfp->resp_sl; mcast_sl = 0;
+				if (sl == vfp->base_sl) continue;
+			} else {
+				sl = vfp->mcast_sl; mcast_sl = 1;
+				if (sl == vfp->base_sl || sl == vfp->resp_sl) continue;
+			}
 
-    if (numVLs == 0) {
-        // Logic error - cannot call with number of VLs = 0
-        IB_FATAL_ERROR("AllocateSCsForFixedMap: Num VLs cannot be 0.");
-    } else if (routingSCs > numVLs) {
-        IB_LOG_ERROR_FMT(__func__, "Cannot map SCs to VLs. The number of SCs required for each VF exceeds the number of VLs.");
-        goto done;
-    } else if (routingSCs > 1) {
-        // For some topologies, multicast traffic has to be isolated on its
-        // own VLs. Reserve between 1 and routingSCs VLs for multicast traffic.
-        mcastVLs = (numVLs % routingSCs);
-        if (mcastVLs == 0) {
-            mcastVLs = routingSCs;
-        } 
-        if (mcastVLs >= numVLs) {
-            IB_LOG_ERROR_FMT(__func__,"Not enough VLs to isolate multicast traffic.");
-            goto done;
-        }
-        numVLs -= mcastVLs;
-    }
+			assert(sl >= 0 && sl < STL_MAX_SLS);
 
-    // Assign SCs to SLs: Consider High / LOW priority, and preemption.
-    //
-    // Using the "FIXED MAP IMPLEMENTATION"
-    // This means - FIXED SC::VL, FIXED number of VLs per port, FIXED for the cluster
-    // No link that has less VLs than the "FIXED" number is active.
+			numSCs = rm->funcs.num_routing_scs(sl, mcast_sl);
+			sc = SLtoSC[sl];
 
-    // Create lists of SL assignments [all, high, low]
-    for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
-        sl = VirtualFabrics->v_fabric_all[vf].base_sl;
-        bitset_set(&usedSLs, sl);
-        if (VirtualFabrics->v_fabric_all[vf].priority==1) {
-            bitset_set(&highPrioritySLs, sl);
-        } else {
-            bitset_set(&lowPrioritySLs, sl);
-        }
-        if (VirtualFabrics->v_fabric_all[vf].mcast_isolate) {
-            sl = VirtualFabrics->v_fabric_all[vf].mcast_sl;
-            bitset_set(&usedSLs, sl);
-            bitset_set(&mcSLs, sl);
-        }
-    }
+        	assert(sc >= 0 && (sc + numSCs) <= STL_MAX_SCS);
 
-    if (sm_config.sm_debug_vf) {
-        bitset_info_log(&usedSLs, "usedSLs");
-        bitset_info_log(&highPrioritySLs, "highPrioritySLs");
-        bitset_info_log(&lowPrioritySLs, "lowPrioritySLs");
-        bitset_info_log(&mcSLs, "mcSLs");
-    }
+			int j;
+			for (j = 0; j < numSCs; j++) {
+				vl = qos->scvl.SCVLMap[sc + j].VL;
+				if (vl == 15 || vl >= qos->numVLs) {
+					IB_LOG_WARN_FMT(__func__, "Unexpected SC:VL Mapping:"
+						"SL=%02d SC=%02d VL=%02d", sl, sc+j, vl);
+					continue;
+				}
 
-    if (mcSLs.nset_m == 0) {
-        // We don't need any multicast VLs. Give them back.
-        numVLs+=mcastVLs;
-    }
+				if (vfp->priority) {
+					bitset_set(&qos->highPriorityVLs, vl);
+					qos->vlBandwidth.highPriority[vl] = 1;
+				} else {
+					bitset_set(&qos->lowPriorityVLs, vl);
+				}
+				AddVfToVl(qos, vl, vf);
+			}
+		}
+	}
 
-    // Check for oversubscription...
-    // With fixed SC::VL map, a VL can only be oversubscribed 
-    // by an SC so many times... 
-    
-    // Given the fixed N::1 mapping of SCs to VLs, this is the maximum number
-    // of SCs that can be mapped to a single VL without going off the end of
-    // the SC table.
-    int maxSubscription = (STL_MAX_SCS-1) / numVLs; 
+	int nonQosBw = 0;
+	int nonQos_base_sl = -1, nonQos_resp_sl = -1, nonQos_mcast_sl = -1;
+	for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
+		VF_t *vfp = &VirtualFabrics->v_fabric[vf];
 
-    // Note the assumption that all SLs will require the same # of SCs.
-    // routingSCs has the max # of SCs per SL across all
-    // VFs. We need to treat that as constant across all SLs because
-    // for direction-oriented routings overlapping mappings will cause
-    // credit loops.
-    int numHPSCs = highPrioritySLs.nset_m * routingSCs;
-    int numLPSCs = lowPrioritySLs.nset_m * routingSCs;
-    int numMCSCs = mcSLs.nset_m; // Only one SC per multicast SL.
+		if (vfp->qos_enable) {
+			if (vfp->priority) continue;
 
-    if ((numHPSCs!=0) && (numLPSCs!=0) && (numVLs!=1)) {
-        // When calculating the number of low priority VLs we need to reserve
-        // at least one set of VLs for high priority.
-        int numLPVLs = ((numLPSCs <= numVLs - routingSCs) ? numLPSCs : numVLs - routingSCs);
-        int numHPVLs = numVLs - numLPVLs;
-        // Verify that we don't need more HP VLs than we can map. 
-        if ((numHPSCs/numHPVLs) > maxSubscription) {
-            IB_LOG_ERROR_FMT(__func__,
-                "Oversubscribed VLs, too many HP/LP VFs. Reduce HP or LP VFs. HPSCs:%d, LPSCs:%d, VLs:%d",
-                numLPSCs, numHPSCs, numVLs);
-            goto done;
-        }
-    } else if (numMCSCs > maxSubscription) {
-        IB_LOG_ERROR_FMT(__func__,
-            "Oversubscribed VLs, too many multicast VFs. Multicast SCs:%d, Multicast VLs:%d",
-            numMCSCs, mcastVLs);
-        goto done;
-    }
+			// Qos LowPriority
+			DivideBwUp(rm, qos, vfp->percent_bandwidth, vfp->base_sl,
+				vfp->resp_sl, vfp->mcast_sl, SLtoSC);
+		} else {
+			// NonQos only gets bandwidth once.
+			nonQosBw = vfp->percent_bandwidth;
+			nonQos_base_sl = vfp->base_sl;
+			if (vfp->resp_sl != vfp->base_sl) {
+				nonQos_resp_sl = vfp->resp_sl;
+			}
+			if (vfp->mcast_sl != vfp->base_sl) {
+				nonQos_mcast_sl = vfp->mcast_sl;
+			}
+		}
+	}
+	// Add in the nonQosBw last
+	if (nonQosBw) {
+		if (nonQos_resp_sl == -1) nonQos_resp_sl = nonQos_base_sl;
+		if (nonQos_mcast_sl == -1) nonQos_mcast_sl = nonQos_base_sl;
+		DivideBwUp(rm, qos, nonQosBw, nonQos_base_sl, nonQos_resp_sl,
+			nonQos_mcast_sl, SLtoSC);
+	}
 
-    // In the degenerate case we have to map all SCs to the same VL.
-    if (numVLs == 1) {
-        ret = slscFixedAssign(0, numVLs, &usedSLs, qos, 0, VirtualFabrics);
-        goto done;
-    }
-
-    if (numMCSCs > 0) {
-		// Assign multicast SLs to the high VLs.
-        ret = slscFixedAssign(numVLs, numVLs+mcastVLs, &mcSLs, qos, 2, VirtualFabrics);
-        if (ret != VSTATUS_OK) goto done;
-    }
-
-    // If we have low and no high, assign all VLs to low.
-    if ((numHPSCs==0) && (numLPSCs!=0)) {
-        ret = slscFixedAssign(0, numVLs, &lowPrioritySLs, qos, 0, VirtualFabrics);
-        goto done;
-    }
-
-    // If we have no low and high, assign all VLs to high.
-    if ((numHPSCs!=0) && (numLPSCs==0)) {
-        ret = slscFixedAssign(0, numVLs, &highPrioritySLs, qos, 1, VirtualFabrics);
-        goto done;
-    }
-
-    // We have a mix of high and low.  Assign low priority SLs reserving 1 
-    // set for high.
-    ret = slscFixedAssign(0, numVLs-routingSCs, &lowPrioritySLs, qos, 0, VirtualFabrics);
-	// Use remaining VLs for the high priority SLs.
-    if (ret == VSTATUS_OK) {
-        vl = bitset_find_next_zero(&qos->lowPriorityVLs, 1);
-        ret = slscFixedAssign(vl, numVLs, &highPrioritySLs, qos, 1, VirtualFabrics);
-    }
-
-done:
-
-    bitset_free(&usedSLs);
-    bitset_free(&highPrioritySLs);
-    bitset_free(&lowPrioritySLs);
-    bitset_free(&mcSLs);
-
-    sm_roundVLBandwidths(qos);
     sm_DbgPrintQOS(qos);
-
-    return ret;
 }
 
+// Special QOS level where all non-SMA traffic goes over VL0.
 static void
-AllocateSCsForFixedMapFor1VL(Qos_t * qos, VirtualFabrics_t *VirtualFabrics)
+SetupQos1VL(RoutingModule_t *rm, Qos_t * qos, VirtualFabrics_t *VirtualFabrics)
 {
-    // Assign SCs to SLs for Fixed mapping.
-    int sl, vf;
-    bitset_t usedSLs;
+    int vf;
 
-    if (!bitset_init(&sm_pool, &usedSLs, STL_MAX_SLS) ||
-        !bitset_init(&sm_pool, &qos->highPriorityVLs, STL_MAX_VLS) ||
-        !bitset_init(&sm_pool, &qos->mcVLs, STL_MAX_VLS) ||
-        !bitset_init(&sm_pool, &qos->lowPriorityVLs, STL_MAX_VLS)) {
-        IB_FATAL_ERROR("AllocateSCsForFixedMap: No memory for QoS setup, exiting.");
-    }
-
-    qos->numVLs = 1;
     bitset_set(&qos->lowPriorityVLs, 0);
 
-    for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
-        sl = VirtualFabrics->v_fabric_all[vf].base_sl;
-        if (bitset_test(&usedSLs, sl)==0) {
-            bitset_set(&usedSLs, sl); 
+    memset(&qos->vlvf, -1, sizeof(qos->vlvf));
+    for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
+		AddVfToVl(qos, 0, vf);
+	}
+	qos->vlBandwidth.bw[0] = 100;
 
-			//Only update qos->vlBandwidth if this VF is active
-			if (!VirtualFabrics->v_fabric_all[vf].standby)
-				qos->vlBandwidth[0] += sm_SlBandwidthAllocated[sl];
-        }
-    }
-
-    bitset_free(&usedSLs);
-
-    sm_roundVLBandwidths(qos);
     sm_DbgPrintQOS(qos);
 }
 
 static void
-setup_vlvfmap(Qos_t * qos, VirtualFabrics_t *VirtualFabrics)
+free_vlarbList(Qos_t *qos) {
+	VlarbList_t *nextVlarb;		// Cached STL1 data
+
+	while (qos->vlarbList) {
+		nextVlarb = qos->vlarbList->next;
+    	vs_pool_free(&sm_pool, qos->vlarbList);
+		qos->vlarbList = nextVlarb;
+	}
+}
+
+static Qos_t*
+AllocQos(void)
 {
-    uint8_t vf, sc, vl, i, j;
+	Qos_t *qos = NULL;
+	int i, j;
 
-    // Default to no VF per VL
-    memset(&qos->vlvf, -1, sizeof(qos->vlvf));
+	vs_pool_alloc(&sm_pool, sizeof(Qos_t) * (STL_MAX_VLS + 1), (void*)&qos);
+	if (!qos)
+		IB_FATAL_ERROR("AllocQos: No memory for QoS structures, exiting.");
 
-    if (VirtualFabrics->number_of_vfs_all > MAX_VFABRICS) {
-        IB_LOG_ERROR("Unexpected number of VFs", VirtualFabrics->number_of_vfs_all);
-        return;
-    }
+	for (i=1; i<=STL_MAX_VLS; i++) {
+		memset(&qos[i], 0, sizeof(qos[i]));
+		qos[i].numVLs = i;
+		if (!bitset_init(&sm_pool, &qos[i].highPriorityVLs, STL_MAX_VLS)
+		|| !bitset_init(&sm_pool, &qos[i].lowPriorityVLs, STL_MAX_VLS)) {
+			IB_FATAL_ERROR("AllocQos: No memory for QoS structures, exiting.");
+		}
+		for (j=0; j< STL_MAX_SCS; j++) {
+			qos[i].scvl.SCVLMap[j].VL=15; // Invalid VL
+		}
+	}
+	return qos;
+}
 
-    // Looping through the VFs, looking up SCs to VLs
-    for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
-        sc = VirtualFabrics->v_fabric_all[vf].base_sc;
-        for (j=0; j < VirtualFabrics->v_fabric_all[vf].routing_scs; j++, sc++) {
-            if (sc==15) sc++; // skip the invalid SC
-            vl = qos->scvl.SCVLMap[sc].VL;
-            if ((vl==15) || (vl >= STL_MAX_VLS)) {
-                IB_LOG_WARN("Unexpected SC:VL Mapping: VL=", vl);
-                IB_LOG_WARN("Unexpected SC:VL Mapping: SC=", sc);
-                continue;
-            }
+static void
+FreeQos(Qos_t* qos)
+{
+	int i;
 
-            // Assign next available vl-vf
-            for (i=0; i<MAX_VFABRICS; i++) {
-                if (qos->vlvf.vf[vl][i] == vf) break; // No dup vfs
-                if (qos->vlvf.vf[vl][i] == -1) {
-                    qos->vlvf.vf[vl][i] = vf;
-                    break;
-                }
-            }
-        }
-        if (VirtualFabrics->v_fabric_all[vf].mcast_isolate) {
-            sc = VirtualFabrics->v_fabric_all[vf].mcast_sc;
-            vl = qos->scvl.SCVLMap[sc].VL;
-            if ((vl==15) || (vl >= STL_MAX_VLS)) {
-                IB_LOG_WARN("Unexpected SC:VL Mapping: VL=", vl);
-                IB_LOG_WARN("Unexpected SC:VL Mapping: SC=", sc);
-                continue;
-            }
+	if (!qos) return;
 
-            // Assign next available vl-vf
-            for (i=0; i<MAX_VFABRICS; i++) {
-                if (qos->vlvf.vf[vl][i] == vf) break; // No dup vfs
-                if (qos->vlvf.vf[vl][i] == -1) {
-                    qos->vlvf.vf[vl][i] = vf;
-                    break;
-                }
-            }
-        }
-    }
+	for (i=1; i<=STL_MAX_VLS; i++) {
+		bitset_free(&qos[i].highPriorityVLs);
+		bitset_free(&qos[i].lowPriorityVLs);
+		free_vlarbList(&qos[i]);
+	}
+	(void) vs_pool_free(&sm_pool, qos);
 
-    // Debug code... 
-    if (sm_config.sm_debug_vf) {
-        IB_LOG_INFINI_INFO_FMT(__func__,"Num VLs: %d\n",qos->numVLs);
-        for (vl=0; vl<STL_MAX_VLS;vl++) {
-            char buffer[256];
-            if (qos->vlvf.vf[vl][0] != -1) {
-                int p = 0, i = 0;
-                int len = sizeof(buffer);
-                p = snprintf(buffer,len,"VL %2d", vl);
-                len -= p;
-
-                while (qos->vlvf.vf[vl][i] != -1 && len > 0) {
-                    p += snprintf(buffer+p, len, ": %2d", qos->vlvf.vf[vl][i]);
-                    len -= p;
-                    i++;
-                }
-                IB_LOG_INFINI_INFO_FMT(__func__,buffer);
-            }
-        }
-    }
+	return;
 }
 
 void
-sm_setup_SC2VL(VirtualFabrics_t *VirtualFabrics)
+sm_destroy_qos(void)
 {
-	//Dynamic reconfiguration won't work if this non fixed mapping is used; 
-	//need to reassess changes that are necessary
-
-    int i,j;
-    for (i=1; i<STL_MAX_VLS; i++) {
-        memset(&sm_Qos[i], 0, sizeof(sm_Qos[i]));
-        for (j=0; j< STL_MAX_SCS; j++) {
-            sm_Qos[i].scvl.SCVLMap[j].VL=15; // Invalid VL
-        }
-        AllocateVL(i, &sm_Qos[i], VirtualFabrics);
-        setup_vlvfmap(&sm_Qos[i], VirtualFabrics);
-    }
+	FreeQos(sm_Qos);
+	sm_Qos = NULL;
 }
-
-
-Status_t
-sm_setup_SC2VLFixedMap(int numMandatoryVLs, VirtualFabrics_t *VirtualFabrics)
-{
-	Status_t ret = VSTATUS_BAD;
-    int i, j;
-    for (i=1; i<STL_MAX_VLS; i++) {
-        memset(&sm_Qos[i], 0, sizeof(sm_Qos[i]));
-        for (j=0; j< STL_MAX_SCS; j++) {
-            sm_Qos[i].scvl.SCVLMap[j].VL=15; // Invalid VL
-        }
-    }
-
-    // Setup 1::1 standard SC::VL map for min required VLs
-    for (i=0, j=0; i < STL_MAX_SCS; i++,j++) {
-        if (j==numMandatoryVLs) j=0;
-        if (i==15) continue;
-        sm_Qos[numMandatoryVLs].scvl.SCVLMap[i].VL = j; 
-    }
-
-    // Setup the single supported QOS for the required number of VLs
-    ret = AllocateSCsForFixedMap(numMandatoryVLs, &sm_Qos[numMandatoryVLs], VirtualFabrics);
-    if (ret != VSTATUS_OK)
-        return ret;
-
-    // Setup the base SCs in VF.
-    // This needs to be done before setting the VLVF maps.
-    for (i=0; i < VirtualFabrics->number_of_vfs_all; i++) {
-        // Note - assumes routing SCs are contiguous, beginning with
-        // the base_sc.
-        VirtualFabrics->v_fabric_all[i].base_sc =
-            sm_SLtoSC[VirtualFabrics->v_fabric_all[i].base_sl];
-
-        if (VirtualFabrics->v_fabric_all[i].mcast_isolate) {
-            VirtualFabrics->v_fabric_all[i].mcast_sc =
-            sm_SLtoSC[VirtualFabrics->v_fabric_all[i].mcast_sl];
-        }
-        //Update base_sc if this VF is active
-        uint32_t idxToUpdate;
-        if (!VirtualFabrics->v_fabric_all[i].standby) {
-            idxToUpdate = findVfIdxInActiveList(&VirtualFabrics->v_fabric_all[i], VirtualFabrics, TRUE);
-            if (idxToUpdate != -1) {
-                VirtualFabrics->v_fabric[idxToUpdate].base_sc = 
-                    VirtualFabrics->v_fabric_all[i].base_sc;
-                if (VirtualFabrics->v_fabric[idxToUpdate].mcast_isolate) {
-                    VirtualFabrics->v_fabric[idxToUpdate].mcast_sc =
-                        VirtualFabrics->v_fabric_all[i].mcast_sc;
-                }
-            }
-        }
-    }
-
-    setup_vlvfmap(&sm_Qos[numMandatoryVLs], VirtualFabrics);
-
-    // Because of ESP0 - we must also setup QOS struct for 1 VL
-    // Setup VL=1 QOS map.
-    for (j=0; j < STL_MAX_SCS; j++) {
-        if (j==15) continue;
-        sm_Qos[1].scvl.SCVLMap[j].VL = 0; 
-    }
-    AllocateSCsForFixedMapFor1VL(&sm_Qos[1], VirtualFabrics);
-    setup_vlvfmap(&sm_Qos[1], VirtualFabrics);
-    return ret;
-}
-
 
 Qos_t*
-GetQos(uint8_t vl) {
-#ifdef USE_FIXED_SCVL_MAPS
-
-    // ESP0 still has only 1 VL. Must support this.
-    if (vl==1) {
-        return &sm_Qos[1];
-    }
-    if (vl!=sm_config.min_supported_vls) {
-        IB_LOG_ERROR("Unexpected number of VLs:", vl);
-    }
-	return &sm_Qos[sm_config.min_supported_vls];
-#else
-    // Range of data VLs is 1 - 31
-    if ((vl>=1) && (vl<STL_MAX_VLS)) {
-        return &sm_Qos[vl];
-    }
+GetQos(uint8_t vl)
+{
+	// Range of data VLs is 1 - 31
+	if ((vl>=1) && (vl<STL_MAX_VLS)) {
+		return &sm_Qos[vl];
+	}
 	return &sm_Qos[1];
-#endif 
 }
 
 static Status_t
@@ -1185,9 +902,9 @@ sm_initialize_Switch_SLSCMap(Topology_t * topop, Node_t * switchp,
     status = topop->routingModule->funcs.select_slsc_map(topop, switchp, swportp, swportp, slscmapp); 
     if (status != VSTATUS_OK) {
         IB_LOG_WARNRC("Failed to get SLSC "
-                      "map from routing algorithm; rc:", 
+                      "map from routing algorithm;  rc:", 
                       status);
-		return status;
+        return status;
     }
     
     // Compare the port's current SLSC map against what the topology says it
@@ -1221,7 +938,71 @@ sm_initialize_Switch_SLSCMap(Topology_t * topop, Node_t * switchp,
     return (status);
 }
 
-// Backported from Gen2. Note that Gen1 does not actually support MultiSet.
+static Status_t
+sm_initialize_Switch_SCSLMap(Topology_t * topop, Node_t * switchp,
+    STL_SCSLMAP * scslmapp)
+{
+    Status_t status = VSTATUS_OK;
+    Port_t *swportp; 
+    
+    IB_ENTER(__func__, topop, switchp, 0, 0); 
+    
+    //
+    // For switches this table is only used for traffic from switch port 0    
+    swportp = sm_get_port(switchp, 0); 
+    if (!sm_valid_port(swportp)) {
+        IB_LOG_WARN_FMT(__func__, 
+                        "Failed to get Port 0 of Switch " FMT_U64, 
+                        switchp->nodeInfo.NodeGUID); 
+        IB_EXIT(__func__, 1); 
+        return VSTATUS_BAD;
+    }
+
+    if (!swportp->portData->current.scsl) {
+        IB_LOG_WARN_FMT(__func__,
+          "SCSL for node %s nodeGuid "FMT_U64" port %d is not current",
+          sm_nodeDescString(switchp), switchp->nodeInfo.NodeGUID, swportp->index);
+    }
+    STL_SCSLMAP * curScsl = &swportp->portData->scslMap;
+
+    status = topop->routingModule->funcs.select_scsl_map(topop, switchp, swportp, swportp, scslmapp); 
+    if (status != VSTATUS_OK) {
+        IB_LOG_WARNRC("Failed to get SCSL "
+                      "map from routing algorithm; rc:", 
+                      status);
+        return status;
+    }
+    
+    // compare the port's current SCSL map against what the topology says it
+    // should be. If they're different, send the new one.
+    if (!swportp->portData->current.scsl ||
+        memcmp((void *)curScsl, (void *)scslmapp, sizeof(*scslmapp)) != 0 || sm_config.forceAttributeRewrite) {
+
+#if DO_INLINE_SET
+        status = SM_Set_SCSLMap_LR(fd_topology, amod, sm_lid, 
+                                   swportp->portData->lid, scslmapp, sm_config.mkey); 
+        
+        if (status != VSTATUS_OK) {
+            IB_LOG_WARN_FMT(__func__, 
+                            "Failed to set SCSL Map for switch node %s nodeGuid " FMT_U64, 
+                            sm_nodeDescString(switchp), switchp->nodeInfo.NodeGUID); 
+            switchp->slscChange = 1;
+        }
+        swportp->portData->current.scsl = (status == VSTATUS_OK);
+#else
+        swportp->portData->dirty.scsl = 1;
+        sm_markSmaChanged(topop, switchp);
+#endif
+    }
+
+#if DO_INLINE_SET
+    swportp->portData->scslMap = *scslmapp; 
+#endif
+
+    IB_EXIT(__func__, 0); 
+    return (status);
+}
+
 static Status_t
 WriteGen1SCSC(Topology_t * topop, Node_t * switchp, STL_LID dlid,  int numScscBlocks, STL_SCSC_MULTISET *scsc)
 {
@@ -1331,7 +1112,6 @@ WriteGen1SCSC(Topology_t * topop, Node_t * switchp, STL_LID dlid,  int numScscBl
 	return VSTATUS_OK;
 }
 
-// Backported from Gen2. Note that Gen1 does not actually support MultiSet.
 static Status_t
 sm_initialize_Switch_SCSCMap(Topology_t * topop, Node_t * switchp)
 {
@@ -1339,6 +1119,8 @@ sm_initialize_Switch_SCSCMap(Topology_t * topop, Node_t * switchp)
 	STL_LID	dlid;
 	STL_SCSC_MULTISET *scsc=NULL;
 	int	numBlocks=0;
+	int s;
+	int setCnt = 1;
 
 	/* Note: If node was previously non-responding. Don't bother going any further. */
 	if (switchp->nonRespCount) {
@@ -1361,101 +1143,39 @@ sm_initialize_Switch_SCSCMap(Topology_t * topop, Node_t * switchp)
 	}
 	dlid = swportp->portData->lid;
 
-	status = topop->routingModule->funcs.select_scsc_map(topop, switchp, 0, &numBlocks, &scsc);
-	if (status != VSTATUS_OK) {
-		IB_LOG_WARN_FMT(__func__, "Unable to setup SCSC map for switch %s nodeGuid " FMT_U64,
-						sm_nodeDescString(switchp), switchp->nodeInfo.NodeGUID);
-		return VSTATUS_BAD;
+	// Second loop handles secondary SCSC tables (doesn't apply to fattree)
+	for (s=0; s<setCnt; s++) {
+		status = topop->routingModule->funcs.select_scsc_map(topop, switchp, s, &numBlocks, &scsc);
+		if (status != VSTATUS_OK) {
+			IB_LOG_WARN_FMT(__func__, "Unable to setup SCSC map for switch %s nodeGuid " FMT_U64,
+							sm_nodeDescString(switchp), switchp->nodeInfo.NodeGUID);
+			return VSTATUS_BAD;
+		}
+
+		if (numBlocks == 0) {
+			continue;
+		}
+
+		// Use STL1 SMP format
+		status = WriteGen1SCSC(topop, switchp, dlid, numBlocks, scsc);
+	
+		(void) vs_pool_free(&sm_pool, scsc);
 	}
-
-	if (numBlocks == 0) {
-		return VSTATUS_OK;
-	}
-
-	// Use STL1 SMP format
-	status = WriteGen1SCSC(topop, switchp, dlid, numBlocks, scsc);
-
-	(void) vs_pool_free(&sm_pool, scsc);
 
 	return status;
 }
 
 static Status_t
-sm_initialize_Switch_SCSLMap(Topology_t * topop, Node_t * switchp,
-    STL_SCSLMAP * scslmapp)
-{
-    Status_t status = VSTATUS_OK;
-    Port_t *swportp; 
-    
-    IB_ENTER(__func__, topop, switchp, 0, 0); 
-    
-    //
-    // For switches this table is only used for traffic from switch port 0    
-    swportp = sm_get_port(switchp, 0); 
-    if (!sm_valid_port(swportp)) {
-        IB_LOG_WARN_FMT(__func__, 
-                        "Failed to get Port 0 of Switch " FMT_U64, 
-                        switchp->nodeInfo.NodeGUID); 
-        IB_EXIT(__func__, 1); 
-        return VSTATUS_BAD;
-    }
-
-    if (!swportp->portData->current.scsl) {
-        IB_LOG_WARN_FMT(__func__,
-          "SCSL for node %s nodeGuid "FMT_U64" port %d is not current",
-          sm_nodeDescString(switchp), switchp->nodeInfo.NodeGUID, swportp->index);
-    }
-    STL_SCSLMAP * curScsl = &swportp->portData->scslMap;
-
-    status = topop->routingModule->funcs.select_scsl_map(topop, switchp, swportp, swportp, scslmapp); 
-    if (status != VSTATUS_OK) {
-        IB_LOG_WARNRC("Failed to get SCSL "
-                      "map from routing algorithm; rc:", 
-                      status);
-		return status;
-    }
-    
-    // compare the port's current SCSL map against what the topology says it
-    // should be. If they're different, send the new one.
-    if (!swportp->portData->current.scsl ||
-        memcmp((void *)curScsl, (void *)scslmapp, sizeof(*scslmapp)) != 0 || sm_config.forceAttributeRewrite) {
-
-#if DO_INLINE_SET
-        status = SM_Set_SCSLMap_LR(fd_topology, amod, sm_lid, 
-                                   swportp->portData->lid, scslmapp, sm_config.mkey); 
-        
-        if (status != VSTATUS_OK) {
-            IB_LOG_WARN_FMT(__func__, 
-                            "Failed to set SCSL Map for switch node %s nodeGuid " FMT_U64, 
-                            sm_nodeDescString(switchp), switchp->nodeInfo.NodeGUID); 
-            switchp->slscChange = 1;
-        }
-        swportp->portData->current.scsl = (status == VSTATUS_OK);
-#else
-        swportp->portData->dirty.scsl = 1;
-        sm_markSmaChanged(topop, switchp);
-#endif
-    }
-
-#if DO_INLINE_SET
-    swportp->portData->scslMap = *scslmapp; 
-#endif
-
-	(void)sm_initialize_Switch_SCSCMap(topop, switchp);
-
-    IB_EXIT(__func__, 0); 
-    return (status);
-}
-
-Status_t
-sm_initialize_Switch_SCVLMaps(Topology_t * topop, Node_t * switchp, Port_t *out_portp)
+sm_initialize_Switch_SCVLMaps(Topology_t * topop, Node_t * switchp)
 {
     uint32_t amod = 0; 
     uint8_t synchModeGen1 = 1;
     Status_t status = VSTATUS_OK; 
-    Node_t *neighborNodep; 
-    Port_t *neighborPortp, *swportp = NULL, *neighborSwPortp = NULL; 
+    Node_t *neighborNodep = NULL; 
+    Port_t * out_portp,*neighborPortp, *swportp = NULL, *neighborSwPortp = NULL; 
     STL_SCVLMAP scvlmap; 
+    int sentSCVLt = 0;
+    int doAll = switchp->uniformVL;
 
     IB_ENTER(__func__, topop, switchp, 0, 0);
 
@@ -1468,150 +1188,252 @@ sm_initialize_Switch_SCVLMaps(Topology_t * topop, Node_t * switchp, Port_t *out_
         goto fail;
     }
 
+    // for every switch, we need to setup the SC->VL_r mapping.  This is
+    // shared across ports. 
+    if (swportp->portData->portInfo.CapabilityMask3.s.IsVLrSupported) {
+        amod = (1 << 24) | (1 << 8) | 0;   // 1 block, all ingress & cport
+
+        STL_SCVLMAP * curScvl = &swportp->portData->scvlrMap;
+
+        status = topop->routingModule->funcs.select_scvlr_map(topop, switchp->vlCap, &scvlmap);
+        if (status != VSTATUS_OK) {
+            IB_LOG_WARNRC("sm_initialize_Switch_SCVLMaps: Failed to get SCVL "
+                    "map from routing algorithm; rc:",
+                    status); 
+            return status;
+        }
+
+        // Compare the port's current SCVL map against what the topology says it
+        // should be.  This is a switch-wide setting so just check cport.   
+        // If they're different, send the new one.
+        if (!swportp->portData->current.scvlr ||
+
+            memcmp((void *)curScvl, (void *)&scvlmap, sizeof(scvlmap)) != 0) {
+    		int interleaveEnabled = 0;
+    		uint8_t sc;
+
+            // Verify that change is okay
+            for (sc=0; sc<STL_MAX_SCS; sc++) {
+                if (sc == 15) {
+                    if (scvlmap.SCVLMap[sc].VL != 15) {
+                        IB_LOG_ERROR_FMT(__func__, "SC15 mapped to VL%d, should be mapped to VL15",
+                                        scvlmap.SCVLMap[sc].VL);
+                        return VSTATUS_BAD;
+                    }
+                    continue;
+                }
+                if (curScvl->SCVLMap[sc].VL != scvlmap.SCVLMap[sc].VL &&
+                    curScvl->SCVLMap[sc].VL != 15 &&
+                    scvlmap.SCVLMap[sc].VL != 15) {
+                    // changing an sc2vl mapping (not just enable/disable)
+
+                    for_all_physical_ports(switchp, out_portp) {
+                        // check to see an any active ports are using interleaving
+                        if (!sm_valid_port(out_portp) || out_portp->state <= IB_PORT_DOWN) continue;
+                        if ((out_portp->state > IB_PORT_INIT) &&
+                            sm_IsInterleaveEnabled(&out_portp->portData->portInfo)) {
+                            interleaveEnabled = 1;
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+
+            if (interleaveEnabled) {
+                IB_LOG_WARN_FMT(__func__, 
+                                "Mismatch/Unable to set SCVL_r Map for node %s nodeGuid " FMT_U64,
+                                sm_nodeDescString(switchp), switchp->nodeInfo.NodeGUID);
+            } else {
+
+                status = SM_Set_SCVLrMap_LR(fd_topology, amod, sm_lid, swportp->portData->lid, &scvlmap, sm_config.mkey); 
+
+                if (status != VSTATUS_OK) {
+                   IB_LOG_WARN_FMT("sm_initialize_Switch_SCVLMaps", 
+                                   "Failed to set SCVL_r Map for node %s nodeGuid " FMT_U64
+                                   " output port %d", sm_nodeDescString(switchp), 
+                                   switchp->nodeInfo.NodeGUID, swportp->index);
+                }
+                swportp->portData->current.scvlr = (status == VSTATUS_OK);
+                swportp->portData->scvlrMap = scvlmap;
+
+                // set SCVL_r Map for the switch
+                for_all_ports(switchp, out_portp) {
+                    if (!sm_valid_port(out_portp) || out_portp->state <= IB_PORT_DOWN) 
+                       continue; 
+                    out_portp->portData->scvlrMap = scvlmap; 
+                    out_portp->portData->current.scvlr = (status == VSTATUS_OK);
+                }
+            }
+        }
+    }
+
+    sm_initialize_Switch_SCSCMap(topop, switchp);
+
     // 
     // for every node/port combo, we need to setup the SC->VL_t and SC_->VL_nt
     // mapping.  According to Volume 1, Section 20.2.2.6.14 SCtoVLxMappingTable.
+    //
+    if (doAll) {
+        // switch supports scvl multiset, check to see if all ports need to be updated.
+        for_all_physical_ports(switchp, out_portp) {
+            if (!sm_valid_port(out_portp) || out_portp->state <= IB_PORT_DOWN) continue;
+            if (out_portp->state > IB_PORT_INIT) {
+                doAll = 0;
+                break;
+            }
+        }
+    }
     
-	if (!sm_valid_port(out_portp) || out_portp->state <= IB_PORT_DOWN) {
-		status = VSTATUS_BAD;
-		goto fail;
-	}
-		
+    for_all_ports(switchp, out_portp) {
+        if (!sm_valid_port(out_portp) || out_portp->state <= IB_PORT_DOWN) 
+            continue; 
 
-	if ((neighborNodep = sm_find_node(topop, out_portp->nodeno)) == NULL || 
-		(neighborPortp = sm_find_node_port(topop, neighborNodep, out_portp->portno)) == NULL || 
-		!sm_valid_port(neighborPortp)) {
-		IB_LOG_WARN_FMT(__func__, 
-						"Unable to get neighbor to node %s nodeGuid " FMT_U64
-						" output port %d", sm_nodeDescString(switchp), 
-						switchp->nodeInfo.NodeGUID, out_portp->index); 
-		status = VSTATUS_BAD;
-		goto fail;
-	}
+        if ((neighborNodep = sm_find_node(topop, out_portp->nodeno)) == NULL || 
+            (neighborPortp = sm_find_node_port(topop, neighborNodep, out_portp->portno)) == NULL || 
+            !sm_valid_port(neighborPortp)) {
+            IB_LOG_WARN_FMT(__func__, 
+                            "Unable to get neighbor to node %s nodeGuid " FMT_U64
+                            " output port %d", sm_nodeDescString(switchp), 
+                            switchp->nodeInfo.NodeGUID, out_portp->index); 
+            status = VSTATUS_BAD;
+            goto fail;
+        }
 
-	if (neighborNodep->nodeInfo.NodeType == NI_TYPE_SWITCH) {
-		neighborSwPortp = sm_get_port(neighborNodep, 0);
-		if (!sm_valid_port(neighborSwPortp)) {
-			IB_LOG_WARN_FMT(__func__, 
-				"Failed to get Port 0 of Switch " FMT_U64,
-				neighborNodep->nodeInfo.NodeGUID);
-			status = VSTATUS_BAD;
-			goto fail;
-		}
-	}
+        if (neighborNodep->nodeInfo.NodeType == NI_TYPE_SWITCH) {
+            neighborSwPortp = sm_get_port(neighborNodep, 0);
+            if (!sm_valid_port(neighborSwPortp)) {
+                IB_LOG_WARN_FMT(__func__, 
+                    "Failed to get Port 0 of Switch " FMT_U64,
+                    neighborNodep->nodeInfo.NodeGUID);
+                status = VSTATUS_BAD;
+                goto fail;
+            }
+        }
 
-	if (!out_portp->portData->current.scvlt) {
-		IB_LOG_WARN_FMT(__func__,
-			"SCVLt for node %s nodeGuid "FMT_U64" port %d stale, will attempt update",
-			sm_nodeDescString(switchp), switchp->nodeInfo.NodeGUID, out_portp->index);
-	}
+        if (!out_portp->portData->current.scvlt) {
+            IB_LOG_WARN_FMT(__func__,
+                "SCVLt for node %s nodeGuid "FMT_U64" port %d stale, will attempt update",
+                sm_nodeDescString(switchp), switchp->nodeInfo.NodeGUID, out_portp->index);
+        }
 
-	if ((out_portp->index > 0) &&
-		(!neighborPortp->portData->current.scvlnt)) {
-		IB_LOG_WARN_FMT(__func__,
-			"SCVLnt for node %s nodeGuid "FMT_U64" port %d stale, will attempt update",
-			sm_nodeDescString(neighborNodep), neighborNodep->nodeInfo.NodeGUID, neighborPortp->index);
-	}
+        if ((out_portp->index > 0) &&
+            !neighborPortp->portData->current.scvlnt) {
+            IB_LOG_WARN_FMT(__func__,
+                "SCVLnt for node %s nodeGuid "FMT_U64" port %d stale, will attempt update",
+                sm_nodeDescString(neighborNodep), neighborNodep->nodeInfo.NodeGUID, neighborPortp->index);
+        }
 
-	// the SCtoVL_nt table must be configured consistently with the SCtoVL_t table at its neighbor. When the
-	// link state is Init the SM shall have the responsibility of updating both the SCtoVL_t table and the
-	// neighbor's SCtoVL_nt table ("synchronous" update). When the link state is Armed or Active, the SM
-	// shall update the SCtoVL_t table; and the SMAs of both ports shall have the responsibility of updating
-	// the neighbor's SCtoVL_nt table ("asynchronous" update of SCtoVL_t only).        
-	//
-	// section 9.7.14.3 of the STL spec, "Optional Mechanism for Changes While in LinkArmed or LinkActive"
-	// The mechanisms in this section are only available when the ports on both side of a link report
-	// IsAsyncSC2VLSupported. If either port reports it does not have this capability, the FM shall not
-	// attempt to perform the changes outlined in this section.
-	// It is anticipated that STL Gen1 will not support this capability.
-	synchModeGen1 = 1;
-	if (out_portp->state > IB_PORT_INIT || neighborPortp->state > IB_PORT_INIT) {
-		// when asynchronous mode is supported in Gen2 additional checks should
-		// be done against the IsAsyncSC2VLSupported field. 
-		synchModeGen1 = 0;
-	}
+        // the SCtoVL_nt table must be configured consistently with the SCtoVL_t table at its neighbor. When the
+        // the SCtoVL_nt table must be configured consistently with the SCtoVL_t table at its neighbor. When the
+        // link state is Init the SM shall have the responsibility of updating both the SCtoVL_t table and the
+        // neighbor's SCtoVL_nt table ("synchronous" update). When the link state is Armed or Active, the SM
+        // shall update the SCtoVL_t table; and the SMAs of both ports shall have the responsibility of updating
+        // the neighbor's SCtoVL_nt table ("asynchronous" update of SCtoVL_t only).        
+        //
+        // section 9.7.14.3 of the STL spec, "Optional Mechanism for Changes While in LinkArmed or LinkActive"
+        // The mechanisms in this section are only available when the ports on both side of a link report
+        // IsAsyncSC2VLSupported. If either port reports it does not have this capability, the FM shall not
+        // attempt to perform the changes outlined in this section.
+        // It is anticipated that STL Gen1 will not support this capability.
+        synchModeGen1 = 1;
+        if (out_portp->state > IB_PORT_INIT ||
+           (neighborPortp->state > IB_PORT_INIT)) {
+            // when asynchronous mode is supported in Gen2 additional checks should
+            // be done against the IsAsyncSC2VLSupported field. 
+            synchModeGen1 = 0;
+        }
 
-	//
-	// initialize the SC2VL_t map of the switch port
-	amod = ((out_portp->state == IB_PORT_INIT) || (out_portp->index == 0)) ? 
-			   1 << 24 : (1 << 24) | 1 << 12;   // 1 block, synch/asynch respectively
-	amod |= (uint32_t)out_portp->index;
+        // initialize the SC2VL_t map of the switch port
 
-	STL_SCVLMAP * curScvl = &out_portp->portData->scvltMap;
+        STL_SCVLMAP * curScvl = &out_portp->portData->scvltMap;
 
-	status = topop->routingModule->funcs.select_scvl_map(topop, switchp, out_portp, neighborPortp, &scvlmap);
-	if (status != VSTATUS_OK) {
-		IB_LOG_WARNRC("Failed to get SCVL "
-			"map from routing algorithm; using default; rc:",
-			status); 
-		status = VSTATUS_BAD;
-		goto fail;
-	}
+        if (!doAll || !sentSCVLt) {
+            status = topop->routingModule->funcs.select_scvl_map(topop, switchp, out_portp, neighborPortp, &scvlmap);
+            if (status != VSTATUS_OK) {
+                IB_LOG_WARNRC("Failed to get SCVL "
+                            "map from routing algorithm; rc:", status);
+                goto fail;
+            }
+        }
 
-	// compare the port's current SCVL map against what the topology says it
-	// should be. If they're different, send the new one.
-	if (!out_portp->portData->current.scvlt ||
-		memcmp((void *)curScvl, (void *)&scvlmap, sizeof(scvlmap)) != 0) {
-		if (synchModeGen1) {
-			status = SM_Set_SCVLtMap_LR(fd_topology, amod, sm_lid, swportp->portData->lid, &scvlmap, sm_config.mkey); 
+        // compare the port's current SCVL map against what the topology says it
+        // should be. If they're different, send the new one.
+        if (!out_portp->portData->current.scvlt ||
+            memcmp((void *)curScvl, (void *)&scvlmap, sizeof(scvlmap)) != 0) {
+            if (synchModeGen1) {
+                if (!doAll || !sentSCVLt) {
+                    amod = ((out_portp->state == IB_PORT_INIT) || (out_portp->index == 0)) ?
+                                1 << 24 : (1 << 24) | 1 << 12;   // 1 block, synch/asynch respectively
+                    amod |= (uint32_t)out_portp->index;
+                    if (doAll && (out_portp->index > 0))
+                        amod |= (1 << 8);
 
-			out_portp->portData->current.scvlt = (status == VSTATUS_OK);
-			if (status != VSTATUS_OK) {
-				IB_LOG_WARN_FMT(__func__, 
-								"Failed to set SCVL_t Map for node %s nodeGuid " FMT_U64
-								" output port %d", sm_nodeDescString(switchp), 
-								switchp->nodeInfo.NodeGUID, out_portp->index);
-				goto fail;
-			}
-		} else {
-			IB_LOG_WARN_FMT(__func__, 
-							"Mismatch/Unable to set SCVL_t Map for node %s nodeGuid " FMT_U64
-							" output port %d", sm_nodeDescString(switchp), 
-							switchp->nodeInfo.NodeGUID, out_portp->index);
-		}
-	}
-	
-	// set SCVL_t Map for the port
-	out_portp->portData->scvltMap = scvlmap; 
+                    status = SM_Set_SCVLtMap_LR(fd_topology, amod, sm_lid, swportp->portData->lid, &scvlmap, sm_config.mkey); 
 
-	//
-	// initialize the SCVL_nt map of the neighbor port.  When the link state is Armed or Active, the
-	// SMAs of both ports shall have the responsibility of updating the neighbor's SCtoVL_nt table
-	// ("asynchronous" update of SCtoVL_t only).
-	amod = (1 << 24) | neighborPortp->index;   // 1 block, sych update
+                    out_portp->portData->current.scvlt = (status == VSTATUS_OK);
+                    if (status != VSTATUS_OK) {
+                        IB_LOG_WARN_FMT(__func__, 
+                                    "Failed to set SCVL_t Map for node %s nodeGuid " FMT_U64
+                                    " output port %d", sm_nodeDescString(switchp), 
+                                    switchp->nodeInfo.NodeGUID, out_portp->index);
+                        goto fail;
+                    }
+                    if (out_portp->index > 0)
+                        sentSCVLt = 1;
+                } else {
+                    out_portp->portData->current.scvlt = (status == VSTATUS_OK);
+                }
+            } else {
+                IB_LOG_WARN_FMT(__func__, 
+                                "Mismatch/Unable to set SCVL_t Map for node %s nodeGuid " FMT_U64
+                                " output port %d", sm_nodeDescString(switchp), 
+                                switchp->nodeInfo.NodeGUID, out_portp->index);
+            }
+        }
+        
+        // set SCVL_t Map for the port
+        out_portp->portData->scvltMap = scvlmap; 
 
-	STL_SCVLMAP * curScvlnt = &neighborPortp->portData->scvlntMap;
+        //
+        // initialize the SCVL_nt map of the neighbor port.  When the link state is Armed or Active, the
+        // SMAs of both ports shall have the responsibility of updating the neighbor's SCtoVL_nt table
+        // ("asynchronous" update of SCtoVL_t only).
+        amod = (1 << 24) | neighborPortp->index;   // 1 block, sych update
 
-	// SCVLnt not supported on switch port 0
-	if ((out_portp->index > 0) &&
-		(!neighborPortp->portData->current.scvlnt ||
-		memcmp((void *)curScvlnt, (void *)&scvlmap, sizeof(scvlmap)) != 0)) {
-		if (synchModeGen1) {
-			status = SM_Set_SCVLntMap_LR(fd_topology,
-										 amod,
-										 sm_lid, 
-										 (neighborNodep->nodeInfo.NodeType == NI_TYPE_SWITCH) ? neighborSwPortp->portData->lid : neighborPortp->portData->lid,
-										 &scvlmap,
-										 sm_config.mkey); 
-			
-			neighborPortp->portData->current.scvlnt = (status == VSTATUS_OK);
-			if (status != VSTATUS_OK) {
-				IB_LOG_WARN_FMT(__func__, 
-								"Failed to set SCVL_nt Map for node %s nodeGuid " FMT_U64
-								" output port %d", sm_nodeDescString(neighborNodep), 
-								neighborNodep->nodeInfo.NodeGUID, neighborPortp->index);
-				goto fail;
-			}
-		} else {
-			IB_LOG_WARN_FMT(__func__, 
-							"Mismatch/Unable to set SCVL_nt Map for node %s nodeGuid " FMT_U64
-							" output port %d", sm_nodeDescString(neighborNodep), 
-							neighborNodep->nodeInfo.NodeGUID, neighborPortp->index);
-		}
-	}
-	
-	// set SCVL_nt Map for the neighbor port
-	neighborPortp->portData->scvlntMap = scvlmap;
+		STL_SCVLMAP * curScvlnt = &neighborPortp->portData->scvlntMap;
+
+        // SCVLnt not supported on switch port 0
+        if ((out_portp->index > 0) &&
+            (!neighborPortp->portData->current.scvlnt ||
+            memcmp((void *)curScvlnt, (void *)&scvlmap, sizeof(scvlmap)) != 0)) {
+            if (synchModeGen1) {
+                status = SM_Set_SCVLntMap_LR(fd_topology,
+                                             amod,
+                                             sm_lid, 
+                                             (neighborNodep->nodeInfo.NodeType == NI_TYPE_SWITCH) ? neighborSwPortp->portData->lid : neighborPortp->portData->lid,
+                                             &scvlmap,
+                                             sm_config.mkey); 
+                
+                neighborPortp->portData->current.scvlnt = (status == VSTATUS_OK);
+                if (status != VSTATUS_OK) {
+                    IB_LOG_WARN_FMT(__func__, 
+                                    "Failed to set SCVL_nt Map for node %s nodeGuid " FMT_U64
+                                    " output port %d", sm_nodeDescString(neighborNodep), 
+                                    neighborNodep->nodeInfo.NodeGUID, neighborPortp->index);
+                    goto fail;
+                }
+            } else {
+                IB_LOG_WARN_FMT(__func__, 
+                                "Neighbor Mismatch/Unable to set SCVL_nt Map for node %s nodeGuid " FMT_U64
+                                " output port %d", sm_nodeDescString(neighborNodep), 
+                                neighborNodep->nodeInfo.NodeGUID, neighborPortp->index);
+            }
+        }
+        
+        // set SCVL_nt Map for the neighbor port
+        neighborPortp->portData->scvlntMap = scvlmap;
+    }
 
 fail:
     IB_EXIT(__func__, 0); 
@@ -1621,12 +1443,9 @@ fail:
 static Status_t
 sm_initialize_Node_Port_SLSCMap(Topology_t * topop, Node_t * nodep, Port_t * out_portp, STL_SLSCMAP * slscmapp)
 { 
-//  uint8_t *path;
     Status_t status = VSTATUS_OK; 
     
     IB_ENTER(__func__, topop, nodep, out_portp, 0); 
-    
-//  path = PathToPort(nodep, out_portp);
     
     // 
     // for every node/port combo, we need to setup the SL->SC mapping.
@@ -1657,7 +1476,7 @@ sm_initialize_Node_Port_SLSCMap(Topology_t * topop, Node_t * nodep, Port_t * out
         IB_LOG_WARNRC("Failed to get SLSC "
                       "map from routing algorithm; rc:", 
                       status);
-		return status;
+        return status;
     }
     
     // 
@@ -1824,6 +1643,36 @@ sm_initialize_Node_Port_SCVLMaps(Topology_t * topop, Node_t * nodep, Port_t * in
         }
     }
 
+    if (in_portp->portData->portInfo.CapabilityMask3.s.IsVLrSupported) {
+        amod = (1 << 24) | in_portp->index;
+
+        STL_SCVLMAP * curScvl = &in_portp->portData->scvlrMap;
+
+        status = topop->routingModule->funcs.select_scvlr_map(topop, in_portp->portData->vl0, &scvlmap);
+        if (status != VSTATUS_OK) {
+            IB_LOG_WARNRC("sm_initialize_Switch_SCVLMaps: Failed to get SCVL "
+                    "map from routing algorithm; rc:",
+                    status); 
+            return status;
+        }
+
+        // Compare the port's current SCVL map against what the topology says it
+        // should be.  If they're different, send the new one.
+        if (!in_portp->portData->current.scvlr ||
+            memcmp((void *)curScvl, (void *)&scvlmap, sizeof(scvlmap)) != 0) {
+            status = SM_Set_SCVLrMap_LR(fd_topology, amod, sm_lid, in_portp->portData->lid, &scvlmap, sm_config.mkey); 
+
+            if (status != VSTATUS_OK) {
+               IB_LOG_WARN_FMT("sm_initialize_Switch_SCVLMaps", 
+                               "Failed to set SCVL_r Map for node %s nodeGuid " FMT_U64
+                               " port %d", sm_nodeDescString(nodep), 
+                               nodep->nodeInfo.NodeGUID, in_portp->index);
+            }
+            in_portp->portData->current.scvlr = (status == VSTATUS_OK);
+            in_portp->portData->scvlrMap = scvlmap; 
+        }
+    }
+
     if (!in_portp->portData->current.scvlt) {
         IB_LOG_WARN_FMT(__func__,
             "SCVLt for node %s nodeGuid "FMT_U64" port %d stale, will attempt update",
@@ -1866,9 +1715,8 @@ sm_initialize_Node_Port_SCVLMaps(Topology_t * topop, Node_t * nodep, Port_t * in
     status = topop->routingModule->funcs.select_scvl_map(topop, nodep, in_portp, in_portp, &scvlmap); 
     if (status != VSTATUS_OK) {
         IB_LOG_WARNRC("Failed to get SCVL "
-                      "map from routing algorithm; rc:", 
+                      "map from routing algorithm; using default; rc:", 
                       status);
-		return status;
     }
 
     // 
@@ -2005,6 +1853,11 @@ sm_initialize_Switch_SLMaps(Topology_t * topop, Node_t * nodep)
 	if(status != VSTATUS_OK)
 		return status;
 
+	// initialize the SC2VL* mapping tables for all ports.
+	status = sm_initialize_Switch_SCVLMaps(sm_topop, nodep);
+	if(status != VSTATUS_OK)
+		return status;
+
     Node_t * lastNode = NULL;
     status = sm_syncSmaChanges(topop, &lastNode);
 
@@ -2050,7 +1903,7 @@ sm_node_syncSma_aggregate(Topology_t * topop, Node_t * nodep, Port_t * smaportp)
 	Status_t s = VSTATUS_OK;
 	STL_AGGREGATE * aggrBuffer = NULL;
 
-	STL_LID_32 destLid;
+	STL_LID destLid;
 
 	if (!sm_valid_port(smaportp))
 		return VSTATUS_BAD;
@@ -2143,7 +1996,7 @@ sm_node_syncSma_solo(Topology_t * topop, Node_t * nodep, Port_t * smaportp)
 {
 	Status_t status = VSTATUS_OK;
 
-	STL_LID_32 destLid;
+	STL_LID destLid;
 
 	if (!sm_valid_port(smaportp))
 		return VSTATUS_BAD;
@@ -2278,6 +2131,7 @@ sm_node_handleGetRespAggr(Node_t * nodep, Port_t * smaportp, STL_AGGREGATE * agg
 				break;
 			case STL_MCLASS_ATTRIB_ID_SC_VLT_MAPPING_TABLE:
 			case STL_MCLASS_ATTRIB_ID_SC_VLNT_MAPPING_TABLE:
+			case STL_MCLASS_ATTRIB_ID_SC_VLR_MAPPING_TABLE:
 				s = sm_aggregateToScvl(nodep, aggr);
 				break;
 			case STL_MCLASS_ATTRIB_ID_VL_ARBITRATION:
@@ -2363,6 +2217,11 @@ sm_aggregateToScvl(Node_t * nodep, STL_AGGREGATE * aggr)
 					portp->portData->current.scvlnt = 1;
 
 					break;
+				case STL_MCLASS_ATTRIB_ID_SC_VLR_MAPPING_TABLE:
+					memcpy(&portp->portData->scvlrMap, &((STL_SCVLMAP*)aggr->Data)[j], sizeof(STL_SCVLMAP));
+					portp->portData->current.scvlr = 1;
+
+					break;
 			}
 		}
 	}
@@ -2402,16 +2261,16 @@ sm_aggregateToVlarb(Node_t * nodep, STL_AGGREGATE * aggr)
 		size_t cpySize = 0;
 		switch (section) {
 			case STL_VLARB_LOW_ELEMENTS:
-				dest = (uint8_t*)arbp->vlarbLow;
-				cpySize = sizeof(arbp->vlarbLow);
+				dest = (uint8_t*)arbp->vlarb.vlarbLow;
+				cpySize = sizeof(arbp->vlarb.vlarbLow);
 				break;
 			case STL_VLARB_HIGH_ELEMENTS:
-				dest = (uint8_t*)arbp->vlarbHigh;
-				cpySize = sizeof(arbp->vlarbHigh);
+				dest = (uint8_t*)arbp->vlarb.vlarbHigh;
+				cpySize = sizeof(arbp->vlarb.vlarbHigh);
 				break;
 			case STL_VLARB_PREEMPT_ELEMENTS:
-				dest = (uint8_t*)arbp->vlarbPre;
-				cpySize = sizeof(arbp->vlarbPre);
+				dest = (uint8_t*)arbp->vlarb.vlarbPre;
+				cpySize = sizeof(arbp->vlarb.vlarbPre);
 				break;
 			case STL_VLARB_PREEMPT_MATRIX:
 				dest = (uint8_t*)arbp->vlarbMatrix;
@@ -2444,15 +2303,100 @@ sm_aggregateToVlarb(Node_t * nodep, STL_AGGREGATE * aggr)
 	return VSTATUS_OK;
 }
 
+static Status_t
+WriteVLArbTables(Node_t* nodep, Port_t* portp,  STL_LID dlid, PortDataVLArb* arbp)
+{
+	uint32_t amod;
+	uint16_t numPorts = 1;
+	uint32_t dataSize = 0;
+	Status_t status = VSTATUS_OK;
+
+	// 
+	// High priority table.
+	// 
+	if (!portp->portData->current.vlarbHigh || !portp->portData->current.vlarbLow || !portp->portData->current.vlarbMatrix) {
+		IB_LOG_WARN_FMT(__func__,
+			"VLArb information is not current on node %s nodeGUID "FMT_U64" port %d",
+			sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index);
+	}
+
+	amod = (numPorts << 24) | (STL_VLARB_HIGH_ELEMENTS << 16) | portp->index;
+
+	dataSize = MIN(portp->portData->portInfo.VL.ArbitrationHighCap * sizeof(STL_VLARB_TABLE_ELEMENT), sizeof(portp->portData->curArb.vlarb.vlarbHigh));
+	if (!portp->portData->current.vlarbHigh ||
+		memcmp(portp->portData->curArb.vlarb.vlarbHigh, arbp->vlarb.vlarbHigh,
+			dataSize) != 0 || sm_config.forceAttributeRewrite) {
+		status = SM_Set_VLArbitration_LR(fd_topology, amod, sm_lid, dlid, (STL_VLARB_TABLE *)arbp->vlarb.vlarbHigh, sizeof(arbp->vlarb.vlarbHigh), sm_config.mkey);
+	
+		if (status != VSTATUS_OK) {
+			IB_LOG_ERROR_FMT(__func__,
+							 "SET of VL Arbitration high priority table has failed for node %s guid "
+							 FMT_U64 " status=%d", sm_nodeDescString(nodep),
+							 nodep->nodeInfo.NodeGUID, status);
+		}
+		portp->portData->current.vlarbHigh = (status == VSTATUS_OK);
+	}
+
+	memcpy(portp->portData->curArb.vlarb.vlarbHigh, arbp->vlarb.vlarbHigh, dataSize);
+
+	/* 
+	 *  Low priority table.
+	 */
+	amod = (numPorts << 24) | (STL_VLARB_LOW_ELEMENTS << 16) | portp->index;
+
+	dataSize = MIN(portp->portData->portInfo.VL.ArbitrationLowCap * sizeof(STL_VLARB_TABLE_ELEMENT), sizeof(portp->portData->curArb.vlarb.vlarbLow));
+	if (!portp->portData->current.vlarbLow ||
+		memcmp(portp->portData->curArb.vlarb.vlarbLow, arbp->vlarb.vlarbLow,
+			dataSize) != 0 || sm_config.forceAttributeRewrite) {
+			status = SM_Set_VLArbitration_LR(fd_topology, amod, sm_lid, dlid, (STL_VLARB_TABLE*) arbp->vlarb.vlarbLow, sizeof(arbp->vlarb.vlarbLow), sm_config.mkey);
+
+		if (status != VSTATUS_OK) {
+			IB_LOG_ERROR_FMT(__func__,
+							 "SET of VL Arbitration low priority table has failed for node %s guid "
+							 FMT_U64 " status=%d", sm_nodeDescString(nodep),
+							 nodep->nodeInfo.NodeGUID, status);
+		}
+		portp->portData->current.vlarbLow = (status == VSTATUS_OK);
+	}
+
+	memcpy(portp->portData->curArb.vlarb.vlarbLow, arbp->vlarb.vlarbLow, dataSize);
+
+	/* 
+	 *  Preemption table - we never set this, but we should retain what the device has stored
+	 *  for SA queries. Therefore do not overwrite what's in curArb.vlarb.vlarbPre.
+	 */
+
+	/* 
+	 *  Preemption Matrix.
+	 */
+	if (sm_IsInterleaveEnabled(&portp->portData->portInfo)) {
+		amod = (numPorts << 24) | (STL_VLARB_PREEMPT_MATRIX << 16) | portp->index;
+
+		if (!portp->portData->current.vlarbMatrix ||
+			memcmp(portp->portData->curArb.vlarbMatrix, arbp->vlarbMatrix,
+				sizeof(portp->portData->curArb.vlarbMatrix)) != 0 || sm_config.forceAttributeRewrite) {
+			status = SM_Set_VLArbitration_LR(fd_topology, amod, sm_lid, dlid, (STL_VLARB_TABLE*) arbp->vlarbMatrix, sizeof(arbp->vlarbMatrix), sm_config.mkey);
+			
+			if (status != VSTATUS_OK) {
+				IB_LOG_ERROR_FMT(__func__,
+								 "SET of VL Arbitration Matrix has failed for node %s guid "
+								 FMT_U64 " status=%d", sm_nodeDescString(nodep),
+								 nodep->nodeInfo.NodeGUID, status);
+			}
+			portp->portData->current.vlarbMatrix = (status == VSTATUS_OK);
+		}
+
+		memcpy(portp->portData->curArb.vlarbMatrix, arbp->vlarbMatrix, sizeof(arbp->vlarbMatrix));
+	}
+
+	return status;
+}
+
 Status_t
 sm_initialize_VLArbitration(Topology_t * topop, Node_t * nodep, Port_t * portp)
 {
-//  uint8_t *path;
-	uint32_t amod;
 	Status_t status = VSTATUS_OK;
-	uint16_t dlid, numPorts = 1;
-	uint32_t dataSize = 0;
-
+	STL_LID dlid=0;
 	IB_ENTER(__func__, topop, nodep, portp, 0);
 
 	/* Note: If node was previously non-responding. Don't bother going any further. */
@@ -2477,8 +2421,6 @@ sm_initialize_VLArbitration(Topology_t * topop, Node_t * nodep, Port_t * portp)
 		return (VSTATUS_OK);
 	}
                                     
-//  path = PathToPort(nodep, portp);
-
 	if (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH) {
 		Port_t *swportp;
 		swportp = sm_get_port(nodep, 0);
@@ -2500,87 +2442,10 @@ sm_initialize_VLArbitration(Topology_t * topop, Node_t * nodep, Port_t * portp)
 	if (status != VSTATUS_OK) {
 		IB_LOG_WARNRC("Failed to get VL Arbitration "
 			"data from routing algorithm; using default; rc:", status);
-
-		sm_FillVlarbTableDefault(portp, arbp);
+		sm_FillVlarbTableDefault(arbp, portp->portData->vl1);
 	}
 
-	// 
-	// High priority table.
-	// 
-	if (!portp->portData->current.vlarbHigh || !portp->portData->current.vlarbLow || !portp->portData->current.vlarbMatrix) {
-		IB_LOG_WARN_FMT(__func__,
-			"VLArb information is not current on node %s nodeGUID "FMT_U64" port %d",
-			sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index);
-	}
-
-	amod = (numPorts << 24) | (STL_VLARB_HIGH_ELEMENTS << 16) | portp->index;
-
-	dataSize = MIN(portp->portData->portInfo.VL.ArbitrationHighCap * sizeof(STL_VLARB_TABLE_ELEMENT), sizeof(portp->portData->curArb.vlarbHigh));
-	if (!portp->portData->current.vlarbHigh ||
-		memcmp(portp->portData->curArb.vlarbHigh, arbp->vlarbHigh,
-			dataSize) != 0 || sm_config.forceAttributeRewrite) {
-		status = SM_Set_VLArbitration_LR(fd_topology, amod, sm_lid, dlid, (STL_VLARB_TABLE *)arbp->vlarbHigh, sizeof(arbp->vlarbHigh), sm_config.mkey);
-	
-		if (status != VSTATUS_OK) {
-			IB_LOG_ERROR_FMT(__func__,
-							 "SET of VL Arbitration high priority table has failed for node %s guid "
-							 FMT_U64 " status=%d", sm_nodeDescString(nodep),
-							 nodep->nodeInfo.NodeGUID, status);
-		}
-		portp->portData->current.vlarbHigh = (status == VSTATUS_OK);
-	}
-
-	memcpy(portp->portData->curArb.vlarbHigh, arbp->vlarbHigh, dataSize);
-
-	/* 
-	 *  Low priority table.
-	 */
-	amod = (numPorts << 24) | (STL_VLARB_LOW_ELEMENTS << 16) | portp->index;
-
-	dataSize = MIN(portp->portData->portInfo.VL.ArbitrationLowCap * sizeof(STL_VLARB_TABLE_ELEMENT), sizeof(portp->portData->curArb.vlarbLow));
-	if (!portp->portData->current.vlarbLow ||
-		memcmp(portp->portData->curArb.vlarbLow, arbp->vlarbLow,
-			dataSize) != 0 || sm_config.forceAttributeRewrite) {
-			status = SM_Set_VLArbitration_LR(fd_topology, amod, sm_lid, dlid, (STL_VLARB_TABLE*) arbp->vlarbLow, sizeof(arbp->vlarbLow), sm_config.mkey);
-
-		if (status != VSTATUS_OK) {
-			IB_LOG_ERROR_FMT(__func__,
-							 "SET of VL Arbitration low priority table has failed for node %s guid "
-							 FMT_U64 " status=%d", sm_nodeDescString(nodep),
-							 nodep->nodeInfo.NodeGUID, status);
-		}
-		portp->portData->current.vlarbLow = (status == VSTATUS_OK);
-	}
-
-	memcpy(portp->portData->curArb.vlarbLow, arbp->vlarbLow, dataSize);
-
-	/* 
-	 *  Preemption table - we never set this, but we should retain what the device has stored
-	 *  for SA queries. Therefore do not overwrite what's in curArb.vlarbPre.
-	 */
-
-	/* 
-	 *  Preemption Matrix.
-	 */
-	if (portp->portData->portInfo.FlitControl.Interleave.s.MaxNestLevelTxEnabled != 0) {
-		amod = (numPorts << 24) | (STL_VLARB_PREEMPT_MATRIX << 16) | portp->index;
-
-		if (!portp->portData->current.vlarbMatrix ||
-			memcmp(portp->portData->curArb.vlarbMatrix, arbp->vlarbMatrix,
-				sizeof(portp->portData->curArb.vlarbMatrix)) != 0 || sm_config.forceAttributeRewrite) {
-			status = SM_Set_VLArbitration_LR(fd_topology, amod, sm_lid, dlid, (STL_VLARB_TABLE*) arbp->vlarbMatrix, sizeof(arbp->vlarbMatrix), sm_config.mkey);
-			
-			if (status != VSTATUS_OK) {
-				IB_LOG_ERROR_FMT(__func__,
-								 "SET of VL Arbitration Matrix has failed for node %s guid "
-								 FMT_U64 " status=%d", sm_nodeDescString(nodep),
-								 nodep->nodeInfo.NodeGUID, status);
-			}
-			portp->portData->current.vlarbMatrix = (status == VSTATUS_OK);
-		}
-
-		memcpy(portp->portData->curArb.vlarbMatrix, arbp->vlarbMatrix, sizeof(arbp->vlarbMatrix));
-	}
+	status = WriteVLArbTables(nodep, portp, dlid, arbp);
 
 	// Whether things succeeded or not, have no use for newArb anymore
 	sm_port_releaseNewArb(portp);
@@ -2601,38 +2466,22 @@ setWeightMultiplier(Qos_t * qos)
 	int currentVl;
 	int currentVlBw;
 	uint8_t minBandwidth = 0xff;
-	uint8_t maxBandwidth = 0;
 	int tbase = 1;
-	bitset_t vlsInUse;
-
-	// Combine the low priority VLs with multicast isolated VLs.
-	if (!bitset_init(&sm_pool, &vlsInUse, STL_MAX_VLS)) {
-		IB_FATAL_ERROR("setWeightMultiplier: No memory for QoS setup, exiting.");
-	}
-
-	bitset_copy(&vlsInUse,&qos->lowPriorityVLs);
-	for (currentVl = bitset_find_first_one(&qos->mcVLs); currentVl >= 0;
-					currentVl = bitset_find_next_one(&qos->mcVLs, currentVl + 1)) {
-		bitset_set(&vlsInUse,currentVl);
-	}
-
+	bitset_t* vlsInUse = &qos->lowPriorityVLs;
 
 	// set default
 	qos->weightMultiplier = 100;
 
-	if (vlsInUse.nset_m <= 1) {
+	if (vlsInUse->nset_m <= 1) {
 		return;
 	}
 
-	for (currentVl = bitset_find_first_one(&vlsInUse); currentVl > -1;
-					currentVl = bitset_find_next_one(&vlsInUse, currentVl + 1)) {
-		if (qos->vlBandwidth[currentVl] > 0) {
-			currentVlBw = qos->vlBandwidth[currentVl];
+	for (currentVl = bitset_find_first_one(vlsInUse); currentVl > -1;
+		 currentVl = bitset_find_next_one(vlsInUse, currentVl + 1)) {
+		if (qos->vlBandwidth.bw[currentVl] > 0) {
+			currentVlBw = qos->vlBandwidth.bw[currentVl];
 			if (minBandwidth > currentVlBw) {
 				minBandwidth = currentVlBw;
-			}
-			if (maxBandwidth < currentVlBw) {
-				maxBandwidth = currentVlBw;
 			}
 			if ((currentVlBw % 10) > 2)
 				// not base 10 (may be rounded down)
@@ -2643,11 +2492,11 @@ setWeightMultiplier(Qos_t * qos)
 	if (tbase) {
 		// base 10 fits in table without adjustments
 		if ((minBandwidth != 100) &&
-						(minBandwidth != 50)) {
-			for (currentVl = bitset_find_first_one(&vlsInUse); currentVl > -1;
-							currentVl = bitset_find_next_one(&vlsInUse, currentVl + 1)) {
-				if (qos->vlBandwidth[currentVl] > 0) {
-					currentVlBw = qos->vlBandwidth[currentVl];
+			(minBandwidth != 50)) {
+			for (currentVl = bitset_find_first_one(vlsInUse); currentVl > -1;
+			 	currentVl = bitset_find_next_one(vlsInUse, currentVl + 1)) {
+				if (qos->vlBandwidth.bw[currentVl] > 0) {
+					currentVlBw = qos->vlBandwidth.bw[currentVl];
 					if (currentVlBw % minBandwidth) {
 						minBandwidth = 10;
 						break;
@@ -2656,17 +2505,16 @@ setWeightMultiplier(Qos_t * qos)
 			}
 		}
 		qos->weightMultiplier = minBandwidth;
-		bitset_free(&vlsInUse);
 		return;
 	}
 
 	if (minBandwidth > 5) {
 		// 5% doesn't fit into table as neatly as 10% increments
 		// Make sure we have lowest bw instead of returning 5
-		for (currentVl = bitset_find_first_one(&vlsInUse); currentVl > -1;
-						currentVl = bitset_find_next_one(&vlsInUse, currentVl + 1)) {
-			if (qos->vlBandwidth[currentVl] > 0) {
-				currentVlBw = qos->vlBandwidth[currentVl];
+		for (currentVl = bitset_find_first_one(vlsInUse); currentVl > -1;
+			 currentVl = bitset_find_next_one(vlsInUse, currentVl + 1)) {
+			if (qos->vlBandwidth.bw[currentVl] > 0) {
+				currentVlBw = qos->vlBandwidth.bw[currentVl];
 				if (currentVlBw % minBandwidth) {
 					// not neatly devisable, start at 5%
 					minBandwidth = 5;
@@ -2678,8 +2526,8 @@ setWeightMultiplier(Qos_t * qos)
 		minBandwidth = 5;
 
 	qos->weightMultiplier = minBandwidth;
-	bitset_free(&vlsInUse);
 }
+
 // This method sets a VLARB entry.
 //
 // twoSlicesPerSlot:
@@ -2715,8 +2563,8 @@ SetVlarbEntry(STL_VLARB_TABLE_ELEMENT * vlblockp, uint8_t vl, int* entry,
 			*totalSlots = *totalSlots-1;
 		} else {
 			// 10% slot, decrement by two since slices are 5%
-			if (weight*2 > 255) {
-				vlblockp[*entry].Weight = 255;
+			if (weight*2 > 254) {
+				vlblockp[*entry].Weight = 254;
 			} else {
 				vlblockp[*entry].Weight = weight*2;
 			}
@@ -2752,21 +2600,32 @@ FillLowRR(Node_t * nodep, Port_t * portp, STL_VLARB_TABLE_ELEMENT * vlblockp, Qo
 	int bwRequiresTwoSlicesPerSlot = 0;
 	bitset_t vlsInUse;
 	bitset_t highbwVLs;
+	VlarbList_t *mtuVlarbs = NULL;
+
+	// Check to see if we have already calculated the VLARB table for this MTU value.
+	for (mtuVlarbs = qos->vlarbList; mtuVlarbs; mtuVlarbs = mtuVlarbs->next) {
+		if ((mtuVlarbs->mtu == portp->portData->maxVlMtu) &&
+			(mtuVlarbs->cap == portp->portData->portInfo.VL.ArbitrationLowCap)) {
+			break;
+		}
+	}
+	if (mtuVlarbs) {
+		memcpy(vlblockp, mtuVlarbs->vlarbLow, sizeof(STL_VLARB_TABLE_ELEMENT) * portp->portData->portInfo.VL.ArbitrationLowCap);
+		return;
+	}
+
+	// Nothing cached, fill the table.
+	sm_roundVLBandwidths(qos);
 
 	if (!bitset_init(&sm_pool, &highbwVLs, STL_MAX_VLS)) {
-		IB_FATAL_ERROR("QosFillVlarbTable: No memory for QoS setup, exiting.");
+		IB_FATAL_ERROR_NODUMP("FillLowRR: No memory for QoS setup, exiting.");
 	}
 
 	if (!bitset_init(&sm_pool, &vlsInUse, STL_MAX_VLS)) {
-		IB_FATAL_ERROR("QosFillVlarbTable: No memory for QoS setup, exiting.");
+		IB_FATAL_ERROR_NODUMP("FillLowRR: No memory for QoS setup, exiting.");
 	}
 
-	// Combine the low priority VLs with multicast isolated VLs.
 	bitset_copy(&vlsInUse, &qos->lowPriorityVLs);
-	for (currentVl = bitset_find_first_one(&qos->mcVLs); currentVl >= 0;
-		 currentVl = bitset_find_next_one(&qos->mcVLs, currentVl + 1)) {
-			bitset_set(&vlsInUse,currentVl);
-	}
 
 	if ((qos->weightMultiplier == 5) &&
 		(portp->portData->portInfo.VL.ArbitrationLowCap < 20)) {
@@ -2779,22 +2638,22 @@ FillLowRR(Node_t * nodep, Port_t * portp, STL_VLARB_TABLE_ELEMENT * vlblockp, Qo
 	for (currentVl = bitset_find_first_one(&vlsInUse); currentVl >= 0;
 		 currentVl = bitset_find_next_one(&vlsInUse, currentVl + 1)) {
 
-		vlSlices[currentVl] = qos->vlBandwidth[currentVl] / qos->weightMultiplier;
-		if ((qos->vlBandwidth[currentVl] - (vlSlices[currentVl] * qos->weightMultiplier)) >=
-			(qos->weightMultiplier / 2)) {
+		vlSlices[currentVl] = qos->vlBandwidth.bw[currentVl] / qos->weightMultiplier;
+		if (((qos->vlBandwidth.bw[currentVl] - (vlSlices[currentVl] * qos->weightMultiplier)) * 2) >=
+			qos->weightMultiplier) {
 			vlSlices[currentVl] += 1;
 		}
 		if (vlSlices[currentVl] <= 0)
 			vlSlices[currentVl] = 1;
 
 		// interleave large bw group so not duplicated at end of table.  
-		if (qos->vlBandwidth[currentVl] > highbw) {
+		if (qos->vlBandwidth.bw[currentVl] > highbw) {
 			if (highbw >= 0) {
 				bitset_clear_all(&highbwVLs);
 			}
-			highbw = qos->vlBandwidth[currentVl];
+			highbw = qos->vlBandwidth.bw[currentVl];
 			bitset_set(&highbwVLs, currentVl);
-		} else if (qos->vlBandwidth[currentVl] == highbw) {
+		} else if (qos->vlBandwidth.bw[currentVl] == highbw) {
 			bitset_set(&highbwVLs, currentVl);
 		}
 
@@ -2810,17 +2669,50 @@ FillLowRR(Node_t * nodep, Port_t * portp, STL_VLARB_TABLE_ELEMENT * vlblockp, Qo
 		totalSlots += vlSlots[currentVl];
 	}
 
-	if (totalSlices > portp->portData->portInfo.VL.ArbitrationLowCap) {
-		if ((totalSlices / 2) > portp->portData->portInfo.VL.ArbitrationLowCap) {
-			// Unexpected device (less than 16 vlarb entries) and BW configured with
-			// too small of an increment.  Disable BW and log a warning.  Will allow
-			// config to run, but QoS BW disbled on this device port.
-            IB_LOG_WARN_FMT(__func__,
+	if (bwRequiresTwoSlicesPerSlot && totalSlots > portp->portData->portInfo.VL.ArbitrationLowCap) {
+		// Handle oddball case where 1 VL has > 92% (10 slots) and
+		// 7 other VLs share the remaining bandwidth (7 slots).
+		// and
+		// Handle oddball case where 2 VLs share > 95% (11 slots) and
+		// 6 other VLs share the remaining bandwidth (6 slots).
+		int bestChoice = -1;
+
+		for (currentVl = bitset_find_first_one(&vlsInUse); currentVl >= 0;
+		 	currentVl = bitset_find_next_one(&vlsInUse, currentVl + 1)) {
+			// Find the VL with the fewest slots, but more than 1
+			if (vlSlots[currentVl] > 1) {
+				if (bestChoice < 0 || vlSlots[currentVl] < vlSlots[bestChoice]) {
+					bestChoice = currentVl;
+				}
+			}
+		}
+		if (bestChoice >= 0) {
+			int newSlices;
+
+			// bestChoice is forced to lose 1 slice worth of bandwidth
+			totalSlots--;
+			vlSlots[bestChoice]--;
+
+			// Remove old bestChoice slices from totalSlices
+			// Calculate new bestChoice slices
+			// Add new bestChoice slices back to totalSlices
+			totalSlices -= vlSlices[bestChoice];
+			newSlices = vlSlots[bestChoice] * 2;
+			vlSlices[bestChoice] = newSlices;
+			totalSlices += vlSlices[bestChoice];
+		}
+	}
+	// If totalSlots is still more than ArbitrarionLowCap, then we
+	// must have encountered a small ArbirtrationLowCap (less than 16)
+	if (totalSlots > portp->portData->portInfo.VL.ArbitrationLowCap) {
+		// Unexpected device (less than 16 vlarb entries) and BW configured with
+		// too small of an increment.  Disable BW and log a warning.  Will allow
+		// config to run, but QoS BW disbled on this device port.
+           IB_LOG_WARN_FMT(__func__,
 				"Disabling QoS BW allocation for node %s guid "
 				FMT_U64", VLARB table is too small for this configuration",
 				sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID);
-			bwFitsInTable = 0;
-		}
+		bwFitsInTable = 0;
 	}
 
 	for (i = bitset_find_first_one(&highbwVLs); i>=0; 
@@ -2832,7 +2724,6 @@ FillLowRR(Node_t * nodep, Port_t * portp, STL_VLARB_TABLE_ELEMENT * vlblockp, Qo
 	currentEntry = 0;
 
 	while (currentEntry < portp->portData->portInfo.VL.ArbitrationLowCap) {
-
 		for (i = bitset_find_first_one(&highbwVLs); i>=0; 
 		 	 i = bitset_find_next_one(&highbwVLs, i+1)) {
 
@@ -2886,30 +2777,41 @@ FillLowRR(Node_t * nodep, Port_t * portp, STL_VLARB_TABLE_ELEMENT * vlblockp, Qo
 
 	bitset_free(&vlsInUse);
 	bitset_free(&highbwVLs);
+
+	// Cache for next port
+	// DEBUG_ASSERT(!qos->vlarbList);
+	vs_pool_alloc(&sm_pool, sizeof(VlarbList_t), (void*)&mtuVlarbs);
+	if (mtuVlarbs) {
+		memcpy(mtuVlarbs->vlarbLow, vlblockp, sizeof(STL_VLARB_TABLE_ELEMENT) * portp->portData->portInfo.VL.ArbitrationLowCap);
+		mtuVlarbs->mtu = portp->portData->maxVlMtu;
+		mtuVlarbs->cap = portp->portData->portInfo.VL.ArbitrationLowCap;
+		mtuVlarbs->next = qos->vlarbList;
+		qos->vlarbList = mtuVlarbs;
+	}
 }
 
 Status_t
-QosFillStlVlarbTable(Topology_t * topop, Node_t * nodep, Port_t * portp, Qos_t * qos, struct _PortDataVLArb * arbp)
+QosFillVlarbTable(Topology_t * topop, Node_t * nodep, Port_t * portp, Qos_t * qos, struct _PortDataVLArb * arbp)
 {
-
 	int currentVl;
 	STL_VLARB_TABLE_ELEMENT *vlblockp;
 	uint8_t currentEntry;
 	int weight = 0;
 
-	memset(arbp->vlarbLow, 0, sizeof(arbp->vlarbLow));
-	memset(arbp->vlarbHigh, 0, sizeof(arbp->vlarbHigh));
-	memset(arbp->vlarbPre, 0, sizeof(arbp->vlarbPre));
+	memset(arbp->vlarb.vlarbLow, 0, sizeof(arbp->vlarb.vlarbLow));
+	memset(arbp->vlarb.vlarbHigh, 0, sizeof(arbp->vlarb.vlarbHigh));
+	memset(arbp->vlarb.vlarbPre, 0, sizeof(arbp->vlarb.vlarbPre));
 
 	weight = Decode_MTU_To_Int(portp->portData->maxVlMtu) / 64;
 
 	// Setup high priority table.
 	// No bandwidth associated with high priority.
-	if (qos->highPriorityVLs.nset_m) {
-		vlblockp = arbp->vlarbHigh;
+	if (bitset_nset(&qos->highPriorityVLs)) {
+		vlblockp = arbp->vlarb.vlarbHigh;
 		currentVl = bitset_find_first_one(&qos->highPriorityVLs);
 
-		for (currentEntry = 0; currentEntry < portp->portData->portInfo.VL.ArbitrationHighCap;
+		for (currentEntry = 0;
+			 currentEntry < portp->portData->portInfo.VL.ArbitrationHighCap;
 			 currentEntry++) {
 			if (currentVl < 0)
 				break;
@@ -2923,11 +2825,257 @@ QosFillStlVlarbTable(Topology_t * topop, Node_t * nodep, Port_t * portp, Qos_t *
 
 	// Setup low priority BW table
 	if (qos->lowPriorityVLs.nset_m) {
-		vlblockp = arbp->vlarbLow;
+		vlblockp = arbp->vlarb.vlarbLow;
 		FillLowRR(nodep, portp, vlblockp, qos, weight);
 	}
 
 	return VSTATUS_OK;
+}
+
+Status_t
+QosFillStlVlarbTable(Topology_t * topop, Node_t * nodep, Port_t * portp, Qos_t * qos, struct _PortDataVLArb * arbp)
+{
+	// Use the previous IB init logic for now
+	return QosFillVlarbTable(topop, nodep, portp, qos, arbp);
+}
+
+/*
+ * Print BW info about all VFs associated with all VL bits set in vlSet
+ * Output is CSV-ish with tuples; not necessarily easy to machine-parse
+ * but not impossible either
+ *
+ * VLs,<VLSet>[,SCs,<SCSet>,SLs,<SLSet>],VFs,{<VFSet>}
+ *
+ * Where:
+ * 	VLSet :
+ * 		VL
+ * 		VL,VLSet
+ *
+ * 	SCSet :
+ * 		SC
+ * 		SC,SCSet
+ *
+ * 	SLSet :
+ * 		SL
+ * 		SL,SLSet
+ *
+ * 	VFSet :
+ * 		VFDetails
+ * 		VFDetails,VFSet
+ *
+ * 	VFDetails :
+ * 		<Name> (<VFModifiers>)
+ *
+ *	VFModifiers :
+ *		<SLTypeSet>,[<QoSModifiers>]
+ *
+ * 	SLTypeSet :
+ * 		req
+ * 		resp
+ * 		req,resp
+ *
+ * 	QoSModifiers :
+ * 		noqos | hiprio
+ */
+#define checked_snprintf(BUF_PTR,BUF_SIZE,...) \
+	{ \
+		int SNPRINTF_PR_COUNT = snprintf((BUF_PTR),(BUF_SIZE), __VA_ARGS__); \
+		DEBUG_ASSERT(SNPRINTF_PR_COUNT < (BUF_SIZE)); \
+		(BUF_SIZE) -= SNPRINTF_PR_COUNT; \
+		(BUF_PTR) += SNPRINTF_PR_COUNT; \
+	}
+
+static void
+DbgSprintVLVFBwInfo(Topology_t *topop, char *buf, int bufSize, Qos_t* qos,
+	VirtualFabrics_t *vfs, STL_SLSCMAP *slsc, uint32_t vlSet)
+{
+	VF_t *vfSet[MAX_VFABRICS] = {0};
+	uint32_t slSet = 0;
+	uint32_t scSet = 0;
+
+	DEBUG_ASSERT(vlSet);
+	checked_snprintf(buf, bufSize, "VLs,{");
+
+	// O(n^3) FTW!
+	int i, j;
+	for (i = 0; (vlSet >> i) != 0 &&  i < qos->activeVLs; ++i) {
+		if (((vlSet >> i) & 0x1) == 0)
+			continue;
+
+		if (*(buf - 1) != '{')
+			checked_snprintf(buf, bufSize, ",");
+		checked_snprintf(buf, bufSize, "%d", i);
+		for (j = 0; j < MAX_VFABRICS; ++j) {
+			uint8_t sl_i;
+			int vfIdx = qos->vlvf.vf[i][j];
+			if (vfIdx == -1)
+				break;
+
+			VF_t *vf = &vfs->v_fabric[vfIdx];
+
+			for (sl_i = 0; sl_i < 3; sl_i++) {
+				uint8_t sl, sc, high_sc;
+				boolean mc_sl = 0;
+
+				switch (sl_i) {
+					default:
+					case 0:
+						sl = vf->base_sl; mc_sl = 0;
+						break;
+					case 1:
+						sl = vf->resp_sl; mc_sl = 0;
+						if (sl == vf->base_sl) continue;
+						break;
+					case 2:
+						sl = vf->mcast_sl; mc_sl = 1;
+						if (sl == vf->base_sl) continue;
+						break;
+				}
+
+				sc = slsc->SLSCMap[sl].SC;
+				high_sc = sc + topop->routingModule->funcs.num_routing_scs(sl, mc_sl);
+				while (sc < high_sc) {
+					if (qos->scvl.SCVLMap[sc].VL == i) {
+						slSet |= (1 << sl);
+						scSet |= (1 << sc);
+						break;
+					}
+					sc++;
+				}
+			}
+
+			int k;
+			for (k = 0; k < MAX_VFABRICS; ++k) {
+				if (vfSet[k] == vf)
+					break;
+				if (vfSet[k] == NULL) {
+					vfSet[k] = vf;
+					break;
+				}
+			}
+			DEBUG_ASSERT(k < MAX_VFABRICS);
+		}
+	}
+
+	checked_snprintf(buf, bufSize, "},SCs,{");
+	for (i = 0; scSet >> i != 0 && i < STL_MAX_SCS; ++i) {
+		if (((scSet >> i) & 0x1) == 0)
+			continue;
+		if (*(buf - 1) != '{')
+			checked_snprintf(buf, bufSize, ",");
+		checked_snprintf(buf, bufSize, "%d", i);
+	}
+
+	checked_snprintf(buf, bufSize, "},SLs,{");
+	for (i = 0; (slSet >> i) != 0 && i < STL_MAX_SLS; ++i) {
+		if (((slSet >> i) & 0x1) == 0)
+			continue;
+		if (*(buf - 1) != '{')
+			checked_snprintf(buf, bufSize, ",");
+		checked_snprintf(buf, bufSize, "%d", i);
+	}
+
+	checked_snprintf(buf, bufSize, "},VFs,{");
+	for (i = 0; i < MAX_VFABRICS; ++i) {
+		VF_t *vf = vfSet[i];
+		if (!vf)
+			break;
+
+		if (*(buf - 1) != '{')
+			checked_snprintf(buf, bufSize, ",");
+		checked_snprintf(buf, bufSize, "%s (", vf->name);
+
+		if (slSet != 0) {
+			int hasBase = 0;
+			if ((slSet >> vf->base_sl) & 0x1) {
+				hasBase = 1;
+				checked_snprintf(buf, bufSize, "base");
+			}
+
+			if (vf->base_sl != vf->resp_sl && ((slSet >> vf->resp_sl) & 0x1)) {
+				if (hasBase) {
+					checked_snprintf(buf, bufSize, ",");
+				}
+				checked_snprintf(buf, bufSize, "resp");
+			}
+
+			if (vf->base_sl != vf->mcast_sl && ((slSet >> vf->mcast_sl) & 0x1)) {
+				if (hasBase) {
+					checked_snprintf(buf, bufSize, ",");
+				}
+				checked_snprintf(buf, bufSize, "mcast");
+			}
+
+			if (!vf->qos_enable) {
+				checked_snprintf(buf, bufSize, ",noqos");
+			} else if (vf->priority) {
+				checked_snprintf(buf, bufSize, ",hiprio");
+			} else {
+				checked_snprintf(buf, bufSize, ",lowprio");
+			}
+		}
+		checked_snprintf(buf, bufSize, ")");
+
+	}
+
+	checked_snprintf(buf, bufSize, "}");
+}
+#undef checked_snprintf
+
+static void
+PrintVLVFBwInfo(Topology_t *topop, Node_t *nodep, Port_t *portp, Qos_t *qos,
+	VirtualFabrics_t *vfs, PortDataVLArb *arbp)
+{
+	STL_SLSCMAP *dbgSlsc;
+	int i, j;
+
+	if (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH) {
+		Port_t *swp0 = sm_get_port(nodep, 0);
+		dbgSlsc = &swp0->portData->slscMap;
+	} else {
+		dbgSlsc = &portp->portData->slscMap;
+	}
+
+	STL_VLARB_TABLE_ELEMENT *tbl[3] = { arbp->vlarb.vlarbLow,
+		arbp->vlarb.vlarbHigh, arbp->vlarb.vlarbPre };
+	int tblSize[3] = { STL_MAX_LOW_CAP, STL_MAX_LOW_CAP, STL_MAX_PREEMPT_CAP };
+
+	for (i = 0; i < 3; ++i) {
+		uint32_t vlSet = 0;
+		uint32_t vlBw[STL_MAX_VLS] = {0};
+		uint32_t totalBw = 0;
+
+		for (j = 0; j < tblSize[i]; ++j) {
+			uint8_t vl = tbl[i][j].s.VL;
+			if (vl == 15 || tbl[i][j].Weight == 0)
+				continue;
+
+			vlSet |= (1 << vl);
+			vlBw[vl] += tbl[i][j].Weight;
+			totalBw += tbl[i][j].Weight;
+		}
+
+		if (totalBw == 0)
+			continue;
+
+		for (j = 0; j < STL_MAX_VLS; ++j) {
+			char buf[1024] = "";
+			int bufSize = sizeof(buf);
+
+			if ((vlSet >> j) == 0)
+				break;
+
+			if (((vlSet >> j) & 0x1) == 0)
+				continue;
+
+			DbgSprintVLVFBwInfo(topop, buf, bufSize, qos, vfs,
+				dbgSlsc, (1 << j)); // one VL at a time
+			IB_LOG_DEBUG1_FMT(NULL, "Node,%s,Port,%d,VlArbTbl,%s,BwPct,%d,%s",
+				sm_nodeDescString(nodep), portp->index,
+				StlVlarbSecToText(STL_VLARB_LOW_ELEMENTS + i),
+				(vlBw[j]*100)/totalBw, buf);
+		}
+	}
 }
 
 #if 0
@@ -3171,12 +3319,12 @@ sm_initialize_Port_BfrCtrl(Topology_t * topop, Node_t * nodep, Port_t * portp,
     int32_t     wd;
     int32_t     au;
     bool_t      shmem;
-	int16_t     bw[STL_MAX_VLS];
+    int16_t     bw[STL_MAX_VLS];
     uint8_t     mtu[STL_MAX_VLS];
     int         vf, vl, i;
-	VlVfMap_t   vlvfmap;
-	VirtualFabrics_t *VirtualFabrics = topop->vfs_ptr;
-    Qos_t       *qos = GetQos(portp->portData->vl1);
+    VlVfMap_t   vlvfmap;
+    VlBwMap_t   vlbwmap;
+    VirtualFabrics_t *VirtualFabrics = topop->vfs_ptr;
     
     // Find the neighbor port (Get neighbors recv buffer size and allocation units)
     neighborPort = sm_find_neighbor_node_and_port(topop, portp, &neighborNode);
@@ -3185,6 +3333,7 @@ sm_initialize_Port_BfrCtrl(Topology_t * topop, Node_t * nodep, Port_t * portp,
                          "Unable to find neighbor port for node %s guid "
                          FMT_U64 " Port number=%d", sm_nodeDescString(nodep),
                          nodep->nodeInfo.NodeGUID, portp->index);
+
         return (VSTATUS_BAD);
     }
 
@@ -3280,20 +3429,29 @@ sm_initialize_Port_BfrCtrl(Topology_t * topop, Node_t * nodep, Port_t * portp,
 
 
     // Setup BW and MTU per VL based on this ports VL membership in VFs
-	topop->routingModule->funcs.select_vlvf_map(topop, nodep, portp, &vlvfmap);
+    topop->routingModule->funcs.select_vlvf_map(topop, nodep, portp, &vlvfmap);
+    topop->routingModule->funcs.select_vlbw_map(topop, nodep, portp, &vlbwmap);
 
-	// Evaluate MTU and QOS for this VL.
+    // Evaluate MTU and QOS for this VL.
     for (vl=0;vl<STL_MAX_VLS;vl++) {
         mtu[vl]=0;
         bw[vl]=0;
+
+        // If VL has no VFs associated with it, VL is not in use
+        if (vlvfmap.vf[vl][0] < 0) continue;
+
         for(i=0;i<MAX_VFABRICS;i++) {
-            vf=vlvfmap.vf[vl][i];
+            vf = vlvfmap.vf[vl][i];
             if ((vf<0) || (vf>=MAX_VFABRICS)) break; // Done list.
 
-			mtu[vl] = MAX(mtu[vl], VirtualFabrics->v_fabric[vf].max_mtu_int);
+            mtu[vl] = MAX(mtu[vl], VirtualFabrics->v_fabric[vf].max_mtu_int);
         }
-		bw[vl]  = qos->vlBandwidth[vl];
-		mtu[vl] = MIN(mtu[vl], portp->portData->maxVlMtu);
+        if (vlbwmap.highPriority[vl]) {
+            bw[vl] = 100;
+        } else {
+            bw[vl] = MAX(vlbwmap.bw[vl], 1);
+        }
+        mtu[vl] = MIN(mtu[vl], portp->portData->maxVlMtu);
     }
 
     // Setup the buffer control map.
@@ -3306,9 +3464,9 @@ sm_initialize_Port_BfrCtrl(Topology_t * topop, Node_t * nodep, Port_t * portp,
 
     //printf("Node Description: %s, port:%d wd:%d TxD: %d\n", 
     //        sm_nodeDescString(nodep),
-    //		portp->index,
-    //		(portp->portData->portInfo.ReplayDepth.WireDepth * BYTES_PER_LTP),
-    //	    (portp->portData->portInfo.ReplayDepth.BufferDepth *BYTES_PER_LTP));
+    //      portp->index,
+    //      (portp->portData->portInfo.ReplayDepth.WireDepth * BYTES_PER_LTP),
+    //      (portp->portData->portInfo.ReplayDepth.BufferDepth *BYTES_PER_LTP));
     //dumpit(rxMemSize, bw, mtu, wd, au, bct);
 
     return VSTATUS_OK;
@@ -3397,7 +3555,7 @@ sm_node_updateFromSma_aggregate(IBhandle_t fd, uint16_t slid, Node_t * nodep, Po
     size_t reqMem =
         (sizeof(STL_AGGREGATE) + sizeof(STL_SLSCMAP)) +
         (sizeof(STL_AGGREGATE) + sizeof(STL_SCSLMAP)) +
-        2 * stl_ReqAggrSegMem(numPorts, sizeof(STL_SCVLMAP)) + // 2 * -> SCVLt and SCVLnt
+        3 * stl_ReqAggrSegMem(numPorts, sizeof(STL_SCVLMAP)) + // 3 * -> SCVLt and SCVLnt and SCVLr
 
         // Not optimal; in the worst case, can do 2 VLArb blocks/segment
         4 * (numPorts * (sizeof(STL_AGGREGATE) + sizeof(STL_VLARB_TABLE))); // vlarbLow, vlarbHigh, and preempt matrix/table use the same wire-size structure even though they are not the same size
@@ -3430,6 +3588,7 @@ sm_node_updateFromSma_aggregate(IBhandle_t fd, uint16_t slid, Node_t * nodep, Po
     Port_t * portp = NULL;
     boolean getScvlt = FALSE;
     boolean getScvlnt = FALSE;
+    boolean getScvlr = FALSE;
     boolean getVlarbLow = FALSE;
     boolean getVlarbHigh = FALSE;
 	boolean getVlarbPre = FALSE;
@@ -3444,15 +3603,18 @@ sm_node_updateFromSma_aggregate(IBhandle_t fd, uint16_t slid, Node_t * nodep, Po
 
             getScvlt |= !portp->portData->current.scvlt;
             getScvlnt |= !portp->portData->current.scvlnt;
+			getScvlr |= (!portp->portData->current.scvlr && portp->portData->portInfo.CapabilityMask3.s.IsVLrSupported);
 
             if (portp->portData->vl0 > 1) {
-                getVlarbLow |= !portp->portData->current.vlarbLow;
                 getVlarbHigh |= !portp->portData->current.vlarbHigh;
+                getVlarbLow |= !portp->portData->current.vlarbLow;
                 getVlarbPre |=  !portp->portData->current.vlarbPre;
                 getVlarbMatrix |= !portp->portData->current.vlarbMatrix;
             }
 
-            if (getScvlt && getScvlnt && getVlarbLow && getVlarbHigh && getVlarbPre && getVlarbMatrix)
+            if (getScvlt && getScvlnt && 
+                (getScvlr || !portp->portData->portInfo.CapabilityMask3.s.IsVLrSupported) &&
+                (getVlarbLow && getVlarbHigh && getVlarbPre && getVlarbMatrix))
                 break;
         }
     }
@@ -3485,6 +3647,24 @@ sm_node_updateFromSma_aggregate(IBhandle_t fd, uint16_t slid, Node_t * nodep, Po
             uint8 blkCount = (segsReq > (i + 1)? portsPerSeg : numPorts % portsPerSeg);
 
             segHdr->AttributeID = STL_MCLASS_ATTRIB_ID_SC_VLNT_MAPPING_TABLE;
+            segHdr->Result.s.Error = 0;
+            segHdr->Result.s.RequestLength = (blkCount * sizeof(STL_SCVLMAP) + 7)/8;
+            segHdr->AttributeModifier = (blkCount << 24) | port;
+            segHdr = STL_AGGREGATE_NEXT(segHdr);
+        }
+    }
+
+    if (getScvlr) {
+        // Copypasta from above getScvlt code FTW
+        // Get(SCVLr)
+        size_t i;
+        size_t portsPerSeg = STL_MAX_PAYLOAD_AGGREGATE/sizeof(STL_SCVLMAP);
+        size_t segsReq = stl_ReqAggrSegCount(numPorts, sizeof(STL_SCVLMAP));
+        for (i = 0; i < segsReq; ++i) {
+            uint8 port = (i * portsPerSeg) + startPort;
+            uint8 blkCount = (segsReq > (i + 1)? portsPerSeg : numPorts % portsPerSeg);
+
+            segHdr->AttributeID = STL_MCLASS_ATTRIB_ID_SC_VLR_MAPPING_TABLE;
             segHdr->Result.s.Error = 0;
             segHdr->Result.s.RequestLength = (blkCount * sizeof(STL_SCVLMAP) + 7)/8;
             segHdr->AttributeModifier = (blkCount << 24) | port;
@@ -3590,11 +3770,13 @@ bail:
     return s;
 }
 
+// NOTE:  Why is this done every sweep?
+// 
 static Status_t
 sm_node_updateFromSma_solo(IBhandle_t fd, uint16_t slid, Node_t * nodep, Port_t * smaportp)
 {
     uint32_t amod;
-    Status_t s;
+    Status_t s = VSTATUS_OK;
     uint8 buffer[STL_MAX_PAYLOAD_SMP_LR];
     uint8 startPort, numPorts;
 
@@ -3619,7 +3801,6 @@ sm_node_updateFromSma_solo(IBhandle_t fd, uint16_t slid, Node_t * nodep, Port_t 
     }
 
     uint16_t dlid = smaportp->portData->lid;
-    s = VSTATUS_OK;
 
     if (!smaportp->portData->current.slsc) {
 
@@ -3646,6 +3827,7 @@ sm_node_updateFromSma_solo(IBhandle_t fd, uint16_t slid, Node_t * nodep, Port_t 
 
     boolean getScvlt = FALSE;
     boolean getScvlnt = FALSE;
+    boolean getScvlr = FALSE;
     boolean getVlarbLow = FALSE;
     boolean getVlarbHigh = FALSE;
 	boolean getVlarbPre = FALSE;
@@ -3662,15 +3844,19 @@ sm_node_updateFromSma_solo(IBhandle_t fd, uint16_t slid, Node_t * nodep, Port_t 
 
             getScvlt |= !portp->portData->current.scvlt;
             getScvlnt |= !portp->portData->current.scvlnt;
+			getScvlr |= (!portp->portData->current.scvlr && portp->portData->portInfo.CapabilityMask3.s.IsVLrSupported);
 
             if (portp->portData->vl0 > 1) {
-                getVlarbLow |= !portp->portData->current.vlarbLow;
                 getVlarbHigh |= !portp->portData->current.vlarbHigh;
+                getVlarbLow |= !portp->portData->current.vlarbLow;
                 getVlarbPre |=  !portp->portData->current.vlarbPre;
                 getVlarbMatrix |= !portp->portData->current.vlarbMatrix;
             }
 
-            if (getScvlt && getScvlnt && getVlarbLow && getVlarbHigh && getVlarbPre && getVlarbMatrix)
+            if (getScvlt && getScvlnt && 
+                (getScvlr || !portp->portData->portInfo.CapabilityMask3.s.IsVLrSupported) &&
+                (getVlarbLow && getVlarbHigh && getVlarbPre && getVlarbMatrix) &&
+                (getVlarbMatrix || nodep->nodeInfo.NodeType == NI_TYPE_SWITCH))
                 break;
         }
     }
@@ -3725,12 +3911,38 @@ sm_node_updateFromSma_solo(IBhandle_t fd, uint16_t slid, Node_t * nodep, Port_t 
         }
     }
 
+    if (getScvlr) {
+        // Get(SCVLr) - fallback code so get ports individually
+        uint8 i;
+        for (i = 0; i < numPorts; ++i) {
+            portp = sm_get_port(nodep, i + startPort);
+            if (!sm_valid_port(portp) || (portp->state <= IB_PORT_DOWN))
+                continue;
+
+            amod = (1 << 24) | portp->index;
+
+            s = SM_Get_SCVLrMap_LR(fd, amod, slid, dlid, (STL_SCVLMAP*)buffer);
+
+            if (s != VSTATUS_OK) {
+                IB_LOG_ERROR_FMT(__func__,
+                    "Failed to get SCVLr for nodeGUID 0x"FMT_U64", port %d",
+                    nodep->nodeInfo.NodeGUID, portp->index);
+                //TODO: should continue but make sure non-zero status is returned
+            }
+            else {
+                portp->portData->current.scvlr = 1;
+                portp->portData->scvlrMap = *((STL_SCVLMAP*)buffer);
+            }
+        }
+    }
+
     const int SEC_COUNT = 4;
     boolean getVlarb[] = { getVlarbHigh, getVlarbLow, getVlarbPre, getVlarbMatrix };
     uint8_t vlarbSec[] = { STL_VLARB_HIGH_ELEMENTS, STL_VLARB_LOW_ELEMENTS, STL_VLARB_PREEMPT_ELEMENTS, STL_VLARB_PREEMPT_MATRIX };
 
     int i;
     for (i = 0; i < SEC_COUNT; ++i) {
+
         if (!getVlarb[i])
             continue;
 
@@ -3771,40 +3983,30 @@ sm_node_updateFromSma_solo(IBhandle_t fd, uint16_t slid, Node_t * nodep, Port_t 
             size_t cpySize = 0;
             switch (vlarbSec[i]) {
                 case STL_VLARB_LOW_ELEMENTS:
-                    dest = (uint8_t*)arbp->vlarbLow;
-                    cpySize = sizeof(arbp->vlarbLow);
+                    dest = (uint8_t*)arbp->vlarb.vlarbLow;
+                    cpySize = sizeof(arbp->vlarb.vlarbLow);
+                    portp->portData->current.vlarbLow = 1;
                     break;
                 case STL_VLARB_HIGH_ELEMENTS:
-                    dest = (uint8_t*)arbp->vlarbHigh;
-                    cpySize = sizeof(arbp->vlarbHigh);
+                    dest = (uint8_t*)arbp->vlarb.vlarbHigh;
+                    cpySize = sizeof(arbp->vlarb.vlarbHigh);
+                    portp->portData->current.vlarbHigh = 1;
                     break;
                 case STL_VLARB_PREEMPT_ELEMENTS:
-                    dest = (uint8_t*)arbp->vlarbPre;
-                    cpySize = sizeof(arbp->vlarbPre);
+                    dest = (uint8_t*)arbp->vlarb.vlarbPre;
+                    cpySize = sizeof(arbp->vlarb.vlarbPre);
+                    portp->portData->current.vlarbPre = 1;
                     break;
                 case STL_VLARB_PREEMPT_MATRIX:
                     dest = (uint8_t*)arbp->vlarbMatrix;
                     cpySize = sizeof(arbp->vlarbMatrix);
+                    portp->portData->current.vlarbMatrix = 1;
                     break;
                 default:
                     return VSTATUS_BAD;
             }
 
             memcpy(dest, ((uint8_t*)buffer) + (j%blksPerMad)*blkSize, cpySize);
-            switch (vlarbSec[i]) {
-                case STL_VLARB_LOW_ELEMENTS:
-                    portp->portData->current.vlarbLow = 1;
-                    break;
-                case STL_VLARB_HIGH_ELEMENTS:
-                    portp->portData->current.vlarbHigh = 1;
-                    break;
-                case STL_VLARB_PREEMPT_ELEMENTS:
-                    portp->portData->current.vlarbPre = 1;
-                    break;
-                case STL_VLARB_PREEMPT_MATRIX:
-                    portp->portData->current.vlarbMatrix = 1;
-                    break;
-            }
         }
     }
 
@@ -3817,7 +4019,7 @@ sm_node_updateFromTopo(Node_t * nodep, Topology_t * oldTopop, Topology_t * curTo
 	Port_t * portp;
 
 	if (nodep->nodeInfo.NodeType != NI_TYPE_SWITCH)
-		return VSTATUS_OK;
+	 	return VSTATUS_OK;
 
 	if (&old_topology != oldTopop)
 		return VSTATUS_BAD; // only support copying from old_topology now
@@ -3827,26 +4029,27 @@ sm_node_updateFromTopo(Node_t * nodep, Topology_t * oldTopop, Topology_t * curTo
 	// If we have a valid topology, and we believe that nothing has
 	// changed, iterate through the ports copying data from the old topo to
 	// the new one.
-	//
 	uint32_t skipWrite = (sm_config.skipAttributeWrite & (SM_SKIP_WRITE_MAPS | SM_SKIP_WRITE_VLARB) ? 1 : 0); 
 
 	for_all_physical_ports(nodep, portp) {
 		if (!sm_valid_port(portp)) continue;
-		if (vs_pool_alloc(&sm_pool, sizeof(STL_SCSCMAP)*nodep->nodeInfo.NumPorts, (void*)&portp->portData->scscMap) != VSTATUS_OK)
-			return VSTATUS_BAD;
+		if (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH) {
+			if (vs_pool_alloc(&sm_pool, sizeof(STL_SCSCMAP)*nodep->nodeInfo.NumPorts, (void*)&portp->portData->scscMap) != VSTATUS_OK)
+				return VSTATUS_BAD;
+		}
 	}
 
 	if ((topology_passcount >= 1) && 
 		(!sm_config.forceAttributeRewrite || (sm_config.forceAttributeRewrite == skipWrite)) && 
 		old_topology.vfs_ptr && curTopop->vfs_ptr &&
-		(old_topology.vfs_ptr->qosEnabled == curTopop->vfs_ptr->qosEnabled) && 
-		!nodep->initPorts.nset_m && bitset_test(&old_switchesInUse, nodep->swIdx)) {
+		(old_topology.vfs_ptr->qosEnabled == curTopop->vfs_ptr->qosEnabled)) {
+
 		if (nodep->oldExists) {
 			Node_t * oldNodep = nodep->old;
 			if (oldNodep && !oldNodep->slscChange) {
 				// Already programmed, copy the mappings and return.
 				for_all_ports(nodep, portp) {
-					if (!sm_valid_port(portp) || portp->state <= IB_PORT_DOWN) 
+					if (!sm_valid_port(portp) || portp->state < IB_PORT_ACTIVE) 
 						continue; 
 					
 					Port_t * oldPortp = sm_get_port(oldNodep, portp->index); 
@@ -3864,19 +4067,21 @@ sm_node_updateFromTopo(Node_t * nodep, Topology_t * oldTopop, Topology_t * curTo
 					portp->portData->current.scvlt = 1;
 					portp->portData->scvlntMap = oldPortp->portData->scvlntMap; 
 					portp->portData->current.scvlnt = 1;
+					portp->portData->scvlrMap = oldPortp->portData->scvlrMap; 
+					portp->portData->current.scvlr = 1;
 
-					if (portp->portData->scscMap && oldPortp->portData->scscMap) {
+					if (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH && portp->portData->scscMap && oldPortp->portData->scscMap) {
 						memcpy(portp->portData->scscMap, oldPortp->portData->scscMap, sizeof(STL_SCSCMAP)*nodep->nodeInfo.NumPorts);
 						portp->portData->current.scsc = 1;
 					}
 
 					//
 					// Copy vlarb
-					memcpy(portp->portData->curArb.vlarbLow, oldPortp->portData->curArb.vlarbLow, sizeof(portp->portData->curArb.vlarbLow)); 
+					memcpy(portp->portData->curArb.vlarb.vlarbLow, oldPortp->portData->curArb.vlarb.vlarbLow, sizeof(portp->portData->curArb.vlarb.vlarbLow)); 
 					portp->portData->current.vlarbLow = 1;
-					memcpy(portp->portData->curArb.vlarbHigh, oldPortp->portData->curArb.vlarbHigh, sizeof(portp->portData->curArb.vlarbHigh)); 
+					memcpy(portp->portData->curArb.vlarb.vlarbHigh, oldPortp->portData->curArb.vlarb.vlarbHigh, sizeof(portp->portData->curArb.vlarb.vlarbHigh)); 
 					portp->portData->current.vlarbHigh = 1;
-					memcpy(portp->portData->curArb.vlarbPre, oldPortp->portData->curArb.vlarbPre, sizeof(portp->portData->curArb.vlarbPre)); 
+					memcpy(portp->portData->curArb.vlarb.vlarbPre, oldPortp->portData->curArb.vlarb.vlarbPre, sizeof(portp->portData->curArb.vlarb.vlarbPre)); 
 					portp->portData->current.vlarbPre = 1;
 					memcpy(portp->portData->curArb.vlarbMatrix, oldPortp->portData->curArb.vlarbMatrix, sizeof(portp->portData->curArb.vlarbMatrix));
 					portp->portData->current.vlarbMatrix = 1;
@@ -3889,33 +4094,31 @@ sm_node_updateFromTopo(Node_t * nodep, Topology_t * oldTopop, Topology_t * curTo
 }
 
 void
-sm_FillVlarbTableDefault(Port_t * portp, struct _PortDataVLArb * arb)
+sm_FillVlarbTableDefault(PortDataVLArb * arb, uint8_t numVls)
 {
-	uint8_t numVls = portp->portData->vl1;
-
 	int i, currentVl;
 	// One entry per data VL, one credit per entry, fill the rest with (15,0)
 	for (i = currentVl = 0; i < numVls && currentVl < STL_MAX_LOW_CAP; currentVl++, i++) {
 		if (currentVl == 15) currentVl++; // Skip VL15.
 		
-		arb->vlarbLow[i].s.VL = currentVl;
-		arb->vlarbLow[i].Weight = 1;
+		arb->vlarb.vlarbLow[i].s.VL = currentVl;
+		arb->vlarb.vlarbLow[i].Weight = 1;
 	}
 	for (; i< STL_MAX_LOW_CAP; i++) {
-		arb->vlarbLow[i].s.VL = 15;
-		arb->vlarbLow[i].Weight = 0;
+		arb->vlarb.vlarbLow[i].s.VL = 15;
+		arb->vlarb.vlarbLow[i].Weight = 0;
 	}
 
 	// Filling high table with (15,0)
 	for (i = 0; i < STL_MAX_LOW_CAP; i++) {
-		arb->vlarbHigh[i].s.VL = 15;
-		arb->vlarbHigh[i].Weight = 0;
+		arb->vlarb.vlarbHigh[i].s.VL = 15;
+		arb->vlarb.vlarbHigh[i].Weight = 0;
 	}
 
 	// Filling pre-empt table with (15,0).
 	for (i = 0; i < STL_MAX_PREEMPT_CAP; i++) {
-		arb->vlarbPre[i].s.VL = 15;
-		arb->vlarbPre[i].Weight = 0;
+		arb->vlarb.vlarbPre[i].s.VL = 15;
+		arb->vlarb.vlarbPre[i].Weight = 0;
 	}
 
 	memset(arb->vlarbMatrix, 0, sizeof(arb->vlarbMatrix));
@@ -3972,27 +4175,29 @@ sm_select_vlvf_map(Topology_t *topop, Node_t *nodep, Port_t *portp, VlVfMap_t * 
     bitset_t * vfmember = NULL;
     int vl, vf, idx, idx2;
 
-    // Need neighbor node / port for switches.
-    if (portp->portData->nodePtr->nodeInfo.NodeType == NI_TYPE_SWITCH) {
+	if (portp->portData->isIsl) {
+        memcpy (vlvfmap, &qos->vlvf, sizeof(qos->vlvf));
+        return VSTATUS_OK; // We are done. No filtering for switch
+	}
+
+    if (portp->portData->nodePtr->nodeInfo.NodeType == NI_TYPE_CA) {
+        // HFI - use the ports vf member data.
+        vfmember = &portp->portData->vfMember;
+
+    } else {
+    	// Need neighbor node / port for switches.
         if (neighbor_portp==NULL) {
             neighbor_portp=sm_find_port(topop, portp->nodeno, portp->portno);
         }
 
         if (neighbor_portp!=NULL) {
-            if (neighbor_portp->portData->nodePtr->nodeInfo.NodeType == NI_TYPE_SWITCH) {
-                memcpy (vlvfmap, &qos->vlvf, sizeof(qos->vlvf));
-                return VSTATUS_OK; // We are done. No filtering for switch
-            } else {
-                vfmember = &neighbor_portp->portData->vfMember;
-            }
+           vfmember = &neighbor_portp->portData->vfMember;
+
         } else {
             // Null port encountered.  Should never happen.
             memset (vlvfmap, -1, sizeof(*vlvfmap));
             return VSTATUS_BAD;
         }
-    } else {
-        // HFI - use the ports vf member data.
-        vfmember = &portp->portData->vfMember;
     }
 
     // Default to an empty map.
@@ -4002,11 +4207,13 @@ sm_select_vlvf_map(Topology_t *topop, Node_t *nodep, Port_t *portp, VlVfMap_t * 
     if (bitset_nset(vfmember)==0)
         return VSTATUS_BAD;
 
+    // The vlvf.vf table contains only active VF indexes
     for (vl=0; vl<STL_MAX_VLS; vl++) {
         for (idx=0, idx2=0; idx<MAX_VFABRICS; idx++) {
             vf = qos->vlvf.vf[vl][idx];
             if (vf == -1) break;
             uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
+            // port vfmember bitset contains all VF indexes (not just active)
             if (bitset_test(vfmember, vfIdx) != 0) {
                 vlvfmap->vf[vl][idx2++]=vf;
             }
@@ -4029,99 +4236,120 @@ sm_select_vlvf_map(Topology_t *topop, Node_t *nodep, Port_t *portp, VlVfMap_t * 
     return VSTATUS_OK;
 }
 
+
 Status_t
-sm_fill_stl_vlarb_table(Topology_t *topop, Node_t *nodep, Port_t *portp, struct _PortDataVLArb * arbp)
+sm_fill_stl_vlarb_table(Topology_t *topop, Node_t *nodep, Port_t *portp, PortDataVLArb* arbp)
 {
 	uint8_t		numVls;
 	int 		i, j, vf;
-    Qos_t *    qos = GetQos(portp->portData->vl1);
+    Qos_t *    qos;
 	VirtualFabrics_t *VirtualFabrics = topop->vfs_ptr;
+	Status_t	status = VSTATUS_OK;
+	uint8_t		vlRank[STL_MAX_VLS];
 
-	if (portp->portData->qosHfiFilter) {
+	if (portp && portp->portData->qosHfiFilter) {
 		// filtered by hca vf membership, vlarb already setup on slvl mapping call
 		return VSTATUS_OK;
 	}
 
-	numVls = portp->portData->vl1;
+	if (portp) {
+		numVls = portp->portData->vl1;
+	} else {
+		numVls = nodep->vlCap;
+	}
+
+
+ 	qos = GetQos(numVls);
+
 	memset(arbp, 0, sizeof(*arbp));
 
-	if (!VirtualFabrics || !VirtualFabrics->qosEnabled || numVls == 1) {
-		sm_FillVlarbTableDefault(portp, arbp);
+	if (!VirtualFabrics) {
+		sm_FillVlarbTableDefault(arbp, numVls);
 		return VSTATUS_OK;
 	}
 
-	if (portp->portData->portInfo.FlitControl.Interleave.s.MaxNestLevelTxEnabled!=0) {
-		VlVfMap_t  vlvfmap;
-		uint8_t    vlRank[STL_MAX_VLS];
-		// Determine the max rank of a VL
-		memset(vlRank, 0, sizeof(vlRank));
+	VlVfMap_t  vlvfmap;
+	if (portp) {
 		topop->routingModule->funcs.select_vlvf_map(topop, nodep, portp, &vlvfmap);
+	} else {
+		// Internal table (INQ/subswitch)
+		vlvfmap = qos->vlvf;
+	}
 
-		for (i=0; i<STL_MAX_VLS; i++) {
-			for (j=0;j<MAX_VFABRICS; j++) {
-				vf=vlvfmap.vf[i][j];
-				if (vf==-1) break;
-				if (i >= numVls || i==15) {
-					IB_LOG_WARN("Unexpected VF:: Mapping: VL=", i);
-					break;
-				}
-				vlRank[i] = MAX(vlRank[i], VirtualFabrics->v_fabric[vf].preempt_rank); 
-			}
+	// Generate Preemption Matrix
+	// Note - possibly move this to Qos_t and determine once and done.
+	memset(vlRank, 0, sizeof(vlRank));
+	// Determine the max each VL
+	for (i=0; i<STL_MAX_VLS; i++) {
+		// All VFs on a single VL have the same preemption rank
+		vf=vlvfmap.vf[i][0];
+		if (vf==-1) break;
+		if (i >= numVls || i==15) {
+			IB_LOG_WARN("Unexpected VF:: Mapping: VL=", i);
+			break;
 		}
-
-		// Iterate through all the VLs, creating the preemption matrix.
-		// Note - possibly move this to Qos_t and determine once and done.
-		for (i = 0; i < numVls; i++ ) {
-			for (j = 0; j < numVls; j++) {
-				if ( (vlRank[j]!=0) && (vlRank[i]!=0) && (vlRank[i]>vlRank[j]) ) {
-					arbp->vlarbMatrix[i] |= 1 << j;
-				}
+		vlRank[i] = VirtualFabrics->v_fabric[vf].preempt_rank; 
+	}
+	// Iterate through all the VLs, creating the preemption matrix.
+	for (i = 0; i < numVls; i++ ) {
+		for (j = 0; j < numVls; j++) {
+			if ( (vlRank[j]!=0) && (vlRank[i]!=0) && (vlRank[i]>vlRank[j]) ) {
+				arbp->vlarbMatrix[i] |= 1 << j;
 			}
 		}
 	}
 
-	return QosFillStlVlarbTable(topop, nodep, portp, qos, arbp);
+	if (portp) {
+		status = QosFillStlVlarbTable(topop, nodep, portp, qos, arbp);
+	} else {
+		IB_LOG_ERROR_FMT(__func__,"portp is null. Unable to fill vlarb table.");
+		return VSTATUS_BAD;
+	}
+
+	if (IB_LOG_IS_INTERESTED(VS_LOG_DEBUG1) && status == VSTATUS_OK &&
+		portp && nodep->nodeInfo.NodeType == NI_TYPE_CA) {
+		// This debug output doesn't handle SC->SC' mappings,
+		// so skip switches entirely for now
+		PrintVLVFBwInfo(topop, nodep, portp, qos, VirtualFabrics, arbp);
+	}
+
+	return status;
 }
 
 Status_t
 sm_select_slsc_map(Topology_t *topop, Node_t *nodep,
 	Port_t *in_portp, Port_t *out_portp, STL_SLSCMAP *outSlscMap)
 {
-    uint8_t sl, vf; 
-    STL_SLSCMAP slsc;
+	uint8_t sl, vf; 
+	STL_SLSCMAP slsc;
 
 	bitset_clear_all(&sm_linkSLsInuse);
 
 	VirtualFabrics_t *VirtualFabrics = topop->vfs_ptr;
 
-	// the current VF implementation sets up generic SL2SC mappings, based on the
-	// IB legacy SL2VL mapping (SC is VL).  In order to generate unique SL2SC
-	// map for this ingress port, filter the SLs based on this port's VF memberships.
-    for (vf = 0; vf < MAX_VFABRICS; vf++) {
+	// In order to generate unique SL2SC map for this egress port,
+	// filter the SLs based on this port's VF memberships.
+	for (vf = 0; vf < VirtualFabrics->number_of_vfs; vf++) {
 		uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
 		if (bitset_test(&out_portp->portData->vfMember, vfIdx)) {
-			bitset_set(&sm_linkSLsInuse, VirtualFabrics->v_fabric_all[vf].base_sl);
-			if (VirtualFabrics->v_fabric_all[vf].mcast_isolate) {
-				bitset_set(&sm_linkSLsInuse, VirtualFabrics->v_fabric_all[vf].mcast_sl);
-			}
+			bitset_set(&sm_linkSLsInuse, VirtualFabrics->v_fabric[vf].base_sl);
+			bitset_set(&sm_linkSLsInuse, VirtualFabrics->v_fabric[vf].resp_sl);
+			bitset_set(&sm_linkSLsInuse, VirtualFabrics->v_fabric[vf].mcast_sl);
 		}
-    }
+	}
 
 	if (bitset_nset(&sm_linkSLsInuse) == 0)
 		return VSTATUS_BAD;
 
-	//
-    // construct SLSC mapping table
-	memset(&slsc, 0, sizeof(slsc));
+	// SLSC default mappings
+	memset(&slsc, 15, sizeof(slsc));
 
-    // populate the SL2SC map table with entries from the baseline SL2SC
-    // map table, based on SLs associated with this port.
-    for (sl = 0; sl < STL_MAX_SLS; sl++) {
-		if (!bitset_test(&sm_linkSLsInuse, sl))
-            slsc.SLSCMap[sl].SC = 15;   // mark as invalid
-        else
-            slsc.SLSCMap[sl].SC = sm_SLtoSC[sl];
-    }
+	// populate the SL2SC map table with entries from the baseline SL2SC
+	// map table, based on SLs associated with this port.
+	for (sl = 0; sl < STL_MAX_SLS; sl++) {
+		if (bitset_test(&sm_linkSLsInuse, sl))
+			slsc.SLSCMap[sl].SC = sm_SLtoSC[sl];
+	}
 
 	memcpy(outSlscMap, &slsc, sizeof(STL_SLSCMAP));
 	return VSTATUS_OK;
@@ -4131,99 +4359,78 @@ Status_t
 sm_select_scsl_map(Topology_t *topop, Node_t *nodep,
 	Port_t *in_portp, Port_t *out_portp, STL_SCSLMAP *outScslMap)
 {
-    uint8_t sl, sc, vf; 
-    STL_SCSLMAP scsl;
+	uint8_t sl, sc, vf; 
+	STL_SCSLMAP scsl;
 
 	bitset_clear_all(&sm_linkSLsInuse);
 
 	VirtualFabrics_t *VirtualFabrics = topop->vfs_ptr;
 
-    for (vf = 0; vf < MAX_VFABRICS; vf++) {
-        bitset_set(&sm_linkSLsInuse, VirtualFabrics->v_fabric_all[vf].base_sl);
-		if (VirtualFabrics->v_fabric_all[vf].mcast_isolate) {
+	for (vf = 0; vf < MAX_VFABRICS; vf++) {
+		bitset_set(&sm_linkSLsInuse, VirtualFabrics->v_fabric_all[vf].base_sl);
+		if (VirtualFabrics->v_fabric_all[vf].base_sl != VirtualFabrics->v_fabric_all[vf].resp_sl)
+			bitset_set(&sm_linkSLsInuse, VirtualFabrics->v_fabric_all[vf].resp_sl);
+		if (VirtualFabrics->v_fabric_all[vf].base_sl != VirtualFabrics->v_fabric_all[vf].mcast_sl)
 			bitset_set(&sm_linkSLsInuse, VirtualFabrics->v_fabric_all[vf].mcast_sl);
-		}
-    }
+	}
 
 	if (bitset_nset(&sm_linkSLsInuse) == 0)
 		return VSTATUS_BAD;
 
 	//
-    // construct SLSC mapping table
+	// construct SLSC mapping table
 	memset(&scsl, 0, sizeof(scsl));
 
-    // populate the SC2SL map table with entries from the baseline SC2SL
-    // map table, based on SLs associated with this port.
-    for (sc = 0; sc < STL_MAX_SCS; sc++) {
-        sl = sm_SCtoSL[sc];
-		if (!bitset_test(&sm_linkSLsInuse, sl))
-            scsl.SCSLMap[sc].SL = 15;   // mark as invalid
-        else
-            scsl.SCSLMap[sc].SL = sl;
-    }
+	// populate the SC2SL map table with entries from the baseline SC2SL
+	// map table, based on SLs associated with this port.
+	for (sc = 0; sc < STL_MAX_SCS; sc++) {
+		sl = sm_SCtoSL[sc];
+		if (!bitset_test(&sm_linkSLsInuse, sl)) {
+			// No actual way to mark an ingress SC as invalid in SCVL table
+			// but set to SL15 anyway
+			scsl.SCSLMap[sc].SL = 15;
+		} else
+			scsl.SCSLMap[sc].SL = sl;
+	}
 
 	memcpy(outScslMap, &scsl, sizeof(STL_SCSLMAP));
 	return VSTATUS_OK;
 }
 
 Status_t
-sm_select_scvl_map(Topology_t *topop, Node_t *nodep,
-    Port_t *in_portp, Port_t *out_portp, STL_SCVLMAP *outScvlMap)
+sm_select_scvlr_map(Topology_t *topop, uint8_t vlCap, STL_SCVLMAP *outScvlMap)
 {
-#ifdef USE_FIXED_SCVL_MAPS
-    // No more filtering. Just copy the full scvl map.
-	Qos_t *qos = GetQos(out_portp->portData->vl1);
-    memcpy(outScvlMap, &qos->scvl, sizeof(STL_SCVLMAP));
-#else
-    STL_SCVLMAP scvl;
-	Qos_t *qos = GetQos(out_portp->portData->vl1);
-    int sc, sl, vf;
+	int sc, sl, vf;
+	int found=0;
+	Qos_t *qos = GetQos(vlCap);
+
+	memcpy(outScvlMap, &qos->scvl, sizeof(STL_SCVLMAP));
+
+	bitset_clear_all(&sm_linkSLsInuse);
+
 	VirtualFabrics_t *VirtualFabrics = topop->vfs_ptr;
 
-    if (in_portp->portData->nodePtr->nodeInfo.NodeType == NI_TYPE_SWITCH &&
-        out_portp->portData->nodePtr->nodeInfo.NodeType == NI_TYPE_SWITCH) {
-        // for ISL 1:1 mapping, so use default QoS map
-        memcpy(outScvlMap, &qos->scvl, sizeof(STL_SCVLMAP));
-    } else {
-        Port_t *portp;
+	// In order to generate unique SL2SC map for this egress port, 
+	// filter the SLs based on this port's VF memberships.
+	for (vf = 0; vf < MAX_VFABRICS; vf++) {
+		// Find all the SLs. Can't just use sm_linkSLsInuse, because it's used as a scratch variable
+		bitset_set(&sm_linkSLsInuse, VirtualFabrics->v_fabric_all[vf].base_sl);
+		bitset_set(&sm_linkSLsInuse, VirtualFabrics->v_fabric_all[vf].resp_sl);
+		bitset_set(&sm_linkSLsInuse, VirtualFabrics->v_fabric_all[vf].mcast_sl);
+	}
 
-        bitset_clear_all(&sm_linkSLsInuse);
-
-        // filtering based on VF membership via the HFI port, because VF
-        // membership for switches is always zero. 
-        portp = (in_portp->portData->nodePtr->nodeInfo.NodeType != NI_TYPE_SWITCH) ? in_portp : out_portp;
-
-        for (vf = 0; vf < MAX_VFABRICS; vf++) {
-            uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
-            if (bitset_test(&portp->portData->vfMember, vfIdx) == 0)
-                continue;  // not a member of VF
-
-            bitset_set(&sm_linkSLsInuse, VirtualFabrics->v_fabric[vf].base_sl);
-            //IB_LOG_INFINI_INFO_FMT(__func__, "Member VF %s, base_sl=%d,rt_sls=%d, rt_scs=%d", 
-            //                       VirtualFabrics->v_fabric[vf].name, VirtualFabrics->v_fabric[vf].base_sl, 
-            //                       VirtualFabrics->v_fabric[vf].routing_sls, VirtualFabrics->v_fabric[vf].routing_scs);
-        }
-
-        if (bitset_nset(&sm_linkSLsInuse) == 0)
-            return VSTATUS_BAD;
-
-        // construct SC2VL from the baseline QoS SL2SC/SL2VL mapping table, which has
-        // already been setup to address the generic expansion, contraction,
-        // and conservation mapping of SL2SC/SL2VL. 
-        memset(&scvl, 0, sizeof(scvl));
-
-        for (sc = 0; sc < STL_MAX_SCS; sc++) {
-            sl = sm_SCtoSL[sc];
-            if (!bitset_test(&sm_linkSLsInuse, sl))
-                scvl.SCVLMap[sc].VL = 15;   // mark as invalid
-            else
-                scvl.SCVLMap[sc].VL = qos->scvl.SCVLMap[sc].VL;
-        }
-
-        memcpy(outScvlMap, &scvl, sizeof(STL_SCVLMAP));
-    }
-#endif
-    return VSTATUS_OK;
+	for (sc=0; sc < STL_MAX_SCS; sc++) {
+		found = 0;
+		for (sl= bitset_find_first_one(&sm_linkSLsInuse); sl >=0;
+		 	 sl= bitset_find_next_one(&sm_linkSLsInuse, sl+1)) {
+			if (sm_SLtoSC[sl] == sc) {
+				found = 1;
+				break;
+			}
+		}
+		if (!found) {
+			outScvlMap->SCVLMap[sc].VL = 15;
+		}
+	}
+	return VSTATUS_OK;
 }
-
-

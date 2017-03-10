@@ -244,18 +244,19 @@ GetPortGroupRecord(Mai_t *maip, uint32_t *records)
 
 	// FIXME: make a common function, then optimize checkLid similar to
 	// SLSCTableRecord
-    for_all_switch_nodes(&old_topology, nodep) {
-        port0Lid = (sm_get_port(nodep, 0))->portData->lid;
-        if (checkLid && (port0Lid != lid)) continue;
-        if (nodep->switchInfo.PortGroupCap == 0) continue;
-        if (nodep->switchInfo.CapabilityMask.s.IsAdaptiveRoutingSupported==0) continue;
-		if (nodep->switchInfo.AdaptiveRouting.s.Enable==0) continue;
+	for_all_switch_nodes(&old_topology, nodep) {
+		port0Lid = (sm_get_port(nodep, 0))->portData->lid;
+		if (checkLid && (port0Lid != lid)) continue;
+		if (nodep->switchInfo.PortGroupCap == 0) continue;
+		if (nodep->switchInfo.CapabilityMask.s.IsAdaptiveRoutingSupported == 0) continue;
+		if (nodep->switchInfo.AdaptiveRouting.s.Enable == 0) continue;
+		if (nodep->switchInfo.PortGroupTop == 0) continue;
 
-        if (nodep->pgt==0) {
-            maip->base.status = MAD_STATUS_SA_REQ_INVALID;
-            IB_LOG_ERROR_FMT("GetPortGroupRecord","PG Table uninitialized. LID:%d",(int)port0Lid);
-            goto done; // Need to unlock topology db.
-        }
+		if (nodep->pgt == 0) {
+			maip->base.status = MAD_STATUS_SA_REQ_INVALID;
+			IB_LOG_ERROR_FMT("GetPortGroupRecord", "PG Table uninitialized. LID:%d", (int)port0Lid);
+			goto done; // Need to unlock topology db.
+		}
 
         endBlock = (nodep->switchInfo.PortGroupTop+7)/STL_PGTB_NUM_ENTRIES_PER_BLOCK-1;
         blkIdx = checkBlock ? blockNum : 0;

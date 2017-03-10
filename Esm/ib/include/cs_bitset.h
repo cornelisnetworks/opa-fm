@@ -111,6 +111,9 @@ int bitset_find_first_zero(bitset_t *);
 /* Find the next zero bit past the given bit */
 int bitset_find_next_zero(bitset_t *, unsigned bit);
 
+/* Returns -1 if not found */
+int bitset_find_last_zero(bitset_t *);
+
 /* Return the number of bits in the bitset */
 size_t bitset_nbits(bitset_t *);
 

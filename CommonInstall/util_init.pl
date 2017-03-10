@@ -45,6 +45,7 @@ use Cwd;
 my $exit_code=0;
 
 my $Force_Install = 0;# force option used to force install on unsupported distro
+my $GPU_Install = 0;
 
 # some options specific to OFED builds
 my $OFED_force_rebuild=0;
@@ -56,10 +57,10 @@ my $OFED_debug = 0;	# if 1 build a debug version of modules
 my $CUR_OS_VER = `uname -r`;
 chomp $CUR_OS_VER;
 # firmware and data files
-my $OLD_BASE_DIR = "/etc/sysconfig/opa";
-my $BASE_DIR = "/etc/sysconfig/opa";
+my $OLD_BASE_DIR = "/etc/opa";
+my $BASE_DIR = "/etc/opa";
 # iba editable config scripts
-my $OPA_CONFIG_DIR = "/etc/sysconfig/opa";
+my $OPA_CONFIG_DIR = "/etc/opa";
 
 my $UVP_CONF_FILE = "$BASE_DIR/uvp.conf";
 my $UVP_CONF_FILE_SOURCE = "uvp.conf";

@@ -7,12 +7,7 @@
 
 if [ "$CONFIG_DIR" = "" ]
 then
-	if [ -d /etc/sysconfig ]
-	then
-		CONFIG_DIR=/etc/sysconfig
-	else
-		CONFIG_DIR=/etc
-	fi
+	CONFIG_DIR=/etc
 	export CONFIG_DIR
 fi
 
@@ -113,7 +108,7 @@ export FF_RESULT_DIR=${FF_RESULT_DIR:-$HOME}
 export FF_PRODUCT=${FF_PRODUCT:-IntelOPA-Basic.`cat /usr/lib/opa/tools/osid_wrapper`}
 
 # IntelOPA product version to install during opahostadmin load and upgrade
-export FF_PRODUCT_VERSION=${FF_PRODUCT_VERSION:-`cat /etc/sysconfig/opa/version_wrapper 2>/dev/null`}
+export FF_PRODUCT_VERSION=${FF_PRODUCT_VERSION:-`cat /etc/opa/version_wrapper 2>/dev/null`}
 
 # IntelOPA packages to install during opahostadmin load [-P option]
 #export FF_PACKAGES=${FF_PACKAGES:-oftools ipoib mpi pgas}
@@ -220,10 +215,10 @@ export FF_DIFF_CMD=${FF_DIFF_CMD:-diff -C 1}
 # location to find fastfabric mpi_apps for use by assorted fastfabric tools
 # As needed they can be copied to a global filesystem and adjust this variable
 # This MUST be a absolute path which exists on all nodes
-export FF_MPI_APPS_DIR=${FF_MPI_APPS_DIR:-/usr/lib/opa/src/mpi_apps}
+export FF_MPI_APPS_DIR=${FF_MPI_APPS_DIR:-$HOME/mpi_apps}
 
 # env variables to set within each rank of MPI runs done by fastfabric directly
-# alternatively the /usr/lib/opa/src/mpi_apps/ofed.*.param files can be edited
+# alternatively the /usr/src/opa/mpi_apps/ofed.*.param files can be edited
 # with appropriate values.
 # example of PSM selection of vFabric by PKEY/SL
 #export FF_MPI_ENV=${FF_MPI_ENV:-PSM_PKEY=0xffff IPATH_SL=0 PSM_MTU=2048}
@@ -234,7 +229,7 @@ export FF_MPI_APPS_DIR=${FF_MPI_APPS_DIR:-/usr/lib/opa/src/mpi_apps}
 export FF_MPI_ENV=${FF_MPI_ENV:-}
 
 # configuration of arguments for MPI performance deviation testing
-# via /usr/lib/opa/src/mpi_apps/deviation/deviation
+# via /usr/src/opa/mpi_apps/deviation/deviation
 # The defaults should work for most fabrics.  This can be made stricter
 # and/or specific to the fabric by using arguments such as -h hostname
 # -bwthres and -latthres.  Samples are provided for various topologies.
@@ -253,7 +248,7 @@ export FF_DEVIATION_ARGS=${FF_DEVIATION_ARGS:--bwtol 20 -lattol 50 -c}
 # location to find fastfabric shmem_apps for use by assorted fastfabric tools
 # As needed they can be copied to a global filesystem and adjust this variable
 # This MUST be a absolute path which exists on all nodes
-export FF_SHMEM_APPS_DIR=${FF_SHMEM_APPS_DIR:-/usr/lib/opa/src/shmem_apps}
+export FF_SHMEM_APPS_DIR=${FF_SHMEM_APPS_DIR:-$HOME/shmem_apps}
 
 #Serialize output of operations running in parallel
 export FF_SERIALIZE_OUTPUT=${FF_SERIALIZE_OUTPUT:-yes}

@@ -1,12 +1,5 @@
 #!/bin/bash
 
-if [ ! -f /etc/os-release ]
-then
-	echo No such file /etc/os-release
-	echo Pleae contact Intel support
-	exit 1
-fi
-
 id=$(grep ^ID= /etc/os-release | cut -f2 -d\")
 versionid=$(grep ^VERSION_ID= /etc/os-release | cut -f2 -d\")
 
@@ -32,7 +25,6 @@ then
 	then
 		sed -i "s/__RPM_BLDRQ2/BuildRequires: systemd %{?systemd_requires} %{?BuildRequires}/g" $to
 		sed -i "s/__RPM_RQ1/Requires: systemd %{?systemd_requires}/g" $to
-		sed -i "/__RPM_INS/,+1d" $to
 		sed -i "/__RPM_SYSCONF/,+1d" $to
 	else
 		sed -i "s/__RPM_BLDRQ2/Requires(post): \/sbin\/chkconfig/g" $to
@@ -41,9 +33,7 @@ then
 		sed -i "s/__RPM_SYSCONF/%{_sysconfdir}\/init.d\/opafm/g" $to
 	fi
 	sed -i "/__RPM_DEBUG/,+1d" $to
-fi
-
-if [ "$id" = "sles" ]
+elif [ "$id" = "sles" ]
 then
 	sed -i "s/__RPM_BLDRQ1/libexpat-devel, libibumad-devel, libibverbs-devel, libibmad-devel, openssl-devel/g" $to
 	st=$(echo "$versionid >= 12.1" | bc)
@@ -64,6 +54,28 @@ then
 	fi
 	sed -i "/__RPM_INS/,+1d" $to
 	sed -i "/__RPM_SYSCONF/,+1d" $to
+else
+	echo ERROR: Unsupported distribution: $id $versionid
+	exit 1
 fi
 
 exit 0
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -54,88 +54,6 @@ proc suite_setup {} {
 	#test_execute {load populate} {
 		#do some installation or configuration stuff
 	#}
-
-	global env
-	global standbySMs
-	global masterSM
-	global hostNodes
-	global cleanupHost
-	
-	# Initialize variables
-	set masterSM "undefined"
-	set standbySMs {}
-	set cleanupHost {}
-	set expRet undefined
-	
-	# Insure there are sufficient hosts to run the test
-	set nHost 2
-	set nStandby [expr {$nHost - 1}]
-	set hostNodes "$env(CFG_HOSTS)"
-	show_message "Found hosts: $hostNodes"
-	if {[llength $hostNodes] < $nHost } {
-		fail_suite "There is not enough hosts in this system to run this test\n Number of host: [llength $hostNodes]\n Required host: $nHost"
-	}
-	
-	# Clean the opafm files, then get the Master and Standby SMs
-	iv_clean_opafm_files
-	getMaster [lindex $hostNodes 0] masterSM
-	getStandbys [lindex $hostNodes 0] standbySMs
-
-	# Startup Standby SMs if there are not a sufficient number started already
-	if {[llength $standbySMs] < $nStandby} {
-		# Add the Master to the Standby list
-		set dStandby ""
-		dict lappend dStandby $masterSM 1
-
-		# Add the current Standby SMs to the Standby list
-		foreach standby $standbySMs {
-			dict lappend dStandby $standby 1
-        }
-
-		# Start additional Standby SMs
-		set count [llength $standbySMs]
-		foreach host $hostNodes {
-			# If this host does not have an SM started, then start one
-			if {[dict exists $dStandby $host] == 0} {
-				show_message "Starting Standby SM on $host"
-				target_root_sh $host
-					send_unix_cmd "fminit.py --expect --restart"
-					expect_list 20 {"fminit.py: success"} {"fminit.py: failure"}
-				target_root_sh_exit
-				lappend cleanupHost $host
-				incr count 1
-			}
-			
-			# Break out of foreach loop if we have enough Standby SMs
-			if {$count == $nStandby} {break}
-		}
-		show_message "Going to sleep for 30s"
-		sleep 30
-	}
-
-	# Get new Master and Standby SM lists
-	getMaster [lindex $hostNodes 0] masterSM
-    show_message "Master SM is $masterSM"
-
-	getStandbys [lindex $hostNodes 0] standbySMs
-    foreach standby $standbySMs {show_message "Standby SM is $standby"}
-
-}
-
-proc suite_cleanup { failed } {
-
-	global cleanupHost
-
-	# If there are SMs left running, stop them
-	if {[llength $cleanupHost] != 0} {
-		foreach host $cleanupHost {
-			show_message "Stopping SM on $host..."
-			target_root_sh $host
-				send_unix_cmd "fminit.py --expect --stop"
-				expect_list 20 {"fminit.py: success"} {"fminit.py: failure"}
-			target_root_sh_exit
-        }
-	}
 }
 
 proc case_setup {} {
@@ -146,8 +64,10 @@ proc case_setup {} {
 #	None
 # This procedure will be run at the start of every test case
 # It provides an opportunity for uniform cleanup/setup for each test case
-# It provides an opportunity for uniform cleanup/setup for each test case
-	noop
+
+	#upvar 2 host host
+
+	#host_save_log $host
 }
 
 proc case_cleanup { failed } {

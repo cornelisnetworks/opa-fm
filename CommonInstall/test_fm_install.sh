@@ -41,22 +41,22 @@
 
 rm_config()
 {
-	rm -f /etc/sysconfig/iview_fm.config /etc/sysconfig/*rpmnew /etc/sysconfig/opafm.xml
+	rm -f /etc/sysconfig/iview_fm.config /etc/sysconfig/*rpmnew /etc/opa-fm/opafm.xml
 }
 
 check_default()
 {
-	diff /etc/sysconfig/opafm.xml-sample /etc/sysconfig/opafm.xml
+	diff /etc/opa-fm/opafm.xml-sample /etc/opa-fm/opafm.xml
 	[ $? != 0 ] && echo "FAIL: installed does not match sample"
-	diff /etc/sysconfig/opafm.xml-sample /usr/lib/opa-fm/etc/opafm.xml
+	diff /etc/opa-fm/opafm.xml-sample /usr/share/opa-fm/opafm.xml
 	[ $? != 0 ] && echo "FAIL: sample does not match default"
 }
 
 check_nodefault()
 {
-	diff /etc/sysconfig/opafm.xml-sample /etc/sysconfig/opafm.xml
+	diff /etc/opa-fm/opafm.xml-sample /etc/opa-fm/opafm.xml
 	[ $? != 0 ] || echo "FAIL: installed should not match sample"
-	diff /etc/sysconfig/opafm.xml-sample /usr/lib/opa-fm/etc/opafm.xml
+	diff /etc/opa-fm/opafm.xml-sample /usr/share/opa-fm/opafm.xml
 	[ $? != 0 ] && echo "FAIL: sample does not match default"
 }
 
@@ -125,7 +125,7 @@ check_norpmnew
 echo "========================================================================="
 echo "Install with opafm.xml matching 4.4 version"
 rm_config
-cp /usr/lib/opa-fm/etc/opafm.xml /etc/sysconfig/opafm.xml
+cp /usr/share/opa-fm/opafm.xml /etc/opa-fm/opafm.xml
 ./INSTALL -a
 check_default
 check_noiview
@@ -134,9 +134,9 @@ check_norpmnew
 echo "========================================================================="
 echo "Install with opafm.xml matching sample but not 4.4 version (eg. upgrade)"
 rm_config
-cp /usr/lib/opa-fm/etc/opafm.xml /etc/sysconfig/opafm.xml
-echo "<!-- extra line -->" >> /etc/sysconfig/opafm.xml
-cp /etc/sysconfig/opafm.xml /etc/sysconfig/opafm.xml-sample
+cp /usr/share/opa-fm/opafm.xml /etc/opa-fm/opafm.xml
+echo "<!-- extra line -->" >> /etc/opa-fm/opafm.xml
+cp /etc/opa-fm/opafm.xml /etc/opa-fm/opafm.xml-sample
 ./INSTALL -a
 check_default
 check_noiview
@@ -145,8 +145,8 @@ check_norpmnew
 echo "========================================================================="
 echo "Install with modified opafm.xml"
 rm_config
-cp /usr/lib/opa-fm/etc/opafm.xml /etc/sysconfig/opafm.xml
-echo "<!-- extra line -->" >> /etc/sysconfig/opafm.xml
+cp /usr/share/opa-fm/opafm.xml /etc/opa-fm/opafm.xml
+echo "<!-- extra line -->" >> /etc/opa-fm/opafm.xml
 ./INSTALL -a
 check_nodefault
 check_noiview

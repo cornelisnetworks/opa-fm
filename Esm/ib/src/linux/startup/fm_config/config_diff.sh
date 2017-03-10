@@ -69,9 +69,9 @@ Usage_full()
 	echo "to two FM instances described by file1 and file2" >&2
 	echo " " >&2
 	echo "Examples:" >&2
-	echo "  $(basename $PROG_NAME) /etc/sysconfig/opafm.xml /usr/lib/opa-fm/etc/opafm.xml" >&2
-	echo "  $(basename $PROG_NAME) -f /etc/sysconfig/opafm.xml /usr/lib/opa-fm/etc/opafm.xml" >&2
-	echo "  $(basename $PROG_NAME) -d -uw /etc/sysconfig/opafm.xml /usr/lib/opa-fm/etc/opafm.xml" >&2
+	echo "  $(basename $PROG_NAME) /etc/opa-fm/opafm.xml /usr/share/opa-fm/opafm.xml" >&2
+	echo "  $(basename $PROG_NAME) -f /etc/opa-fm/opafm.xml /usr/share/opa-fm/opafm.xml" >&2
+	echo "  $(basename $PROG_NAME) -d -uw /etc/opa-fm/opafm.xml /usr/share/opa-fm/opafm.xml" >&2
 	exit 0
 
 }
@@ -83,14 +83,8 @@ then
     Usage_full
 fi
 
-if [ ! -f /etc/sysconfig/opa/opafm.info ]
-then
-	echo "config_diff: IFS FM not installed" >&2
-	exit 1
-else
-	. /etc/sysconfig/opa/opafm.info # get IFS_FM_BASE
-	tooldir=$IFS_FM_BASE/etc
-fi
+IFS_FM_BASE=/usr/lib/opa-fm
+tooldir=$IFS_FM_BASE/bin
 
 if [ x"$1" = "x--help" ]
 then

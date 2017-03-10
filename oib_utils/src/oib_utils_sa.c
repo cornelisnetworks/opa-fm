@@ -2668,7 +2668,7 @@ FSTATUS oib_query_sa(struct oib_port *port,
 			// Default values.
 			mad.SaHdr.ComponentMask |= STL_CIR_COMP_LEN | STL_CIR_COMP_ADDR;
 			pCIR->Length = STL_CABLE_INFO_PAGESZ - 1;
-			pCIR->u1.s.Address = STL_CIB_STD_START_ADDR;
+			pCIR->u1.s.Address = STL_CIB_STD_HIGH_PAGE_ADDR;
 
 			BSWAP_STL_CABLE_INFO_RECORD(pCIR);
 			MAD_SET_ATTRIB_ID(&mad, STL_SA_ATTR_CABLE_INFO_RECORD);

@@ -869,25 +869,27 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 				goto done;
 			}
 
-            /* MGID does not exist; must be a CREATE request or its an ERROR */
-            if ((samad.header.mask & STL_MCMEMBER_COMPONENTMASK_OK_CREATE) != STL_MCMEMBER_COMPONENTMASK_OK_CREATE) {
+			/* MGID does not exist; must be a CREATE request or its an ERROR */
+			if ((samad.header.mask & STL_MCMEMBER_COMPONENTMASK_OK_CREATE) != STL_MCMEMBER_COMPONENTMASK_OK_CREATE) {
 
-                if ((samad.header.mask & STL_MCMEMBER_COMPONENTMASK_OK_JOIN) == STL_MCMEMBER_COMPONENTMASK_OK_JOIN) {
-                    maip->base.status = MAD_STATUS_SA_REQ_INVALID;
-                    IB_LOG_ERROR_FMT_VF(  vfp,"sa_McMemberRecord_Set", 
-                           "MGID "FMT_GID" does not exist; Failing JOIN "
-                           "request from %s Port %d, PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
-                           mGid[0], mGid[1], req_nodeName, req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
-                    goto done;
-                } else {
-                    maip->base.status = MAD_STATUS_SA_REQ_INSUFFICIENT_COMPONENTS;
-                    IB_LOG_ERROR_FMT_VF(  vfp, __func__,
+				if ((samad.header.mask & STL_MCMEMBER_COMPONENTMASK_OK_JOIN) == STL_MCMEMBER_COMPONENTMASK_OK_JOIN) {
+					/* no MGID - must be create or ERROR */
+					maip->base.status = MAD_STATUS_SA_REQ_INVALID;
+					IB_LOG_ERROR_FMT_VF(  vfp,"sa_McMemberRecord_Set", 
+						"MGID "FMT_GID" does not exist; Failing JOIN "
+						"request from %s Port %d, PortGUID "FMT_U64", LID 0x%.4X, returning status: Invalid SA Request (0x%.4X) "
+						"May need to pre-create the group in opafm.xml. Only Full-members can CREATE/JOIN when MGID does not exist",
+						mGid[0], mGid[1], req_nodeName, req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
+					goto done;
+				} else {
+					maip->base.status = MAD_STATUS_SA_REQ_INSUFFICIENT_COMPONENTS;
+					IB_LOG_ERROR_FMT_VF(  vfp, __func__,
 						"Component mask ("FMT_U64") does not have bits required to create ("FMT_U64") a group for new MGID"
 						" of "FMT_GID" for request from %s Port %d, PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
 						samad.header.mask, (uint64)(STL_MCMEMBER_COMPONENTMASK_OK_CREATE), mGid[0], mGid[1], req_nodeName,
 						req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
-                    goto done;
-                }
+					goto done;
+				}
 			}
 
 			if (!(mcmp->JoinFullMember)) {
@@ -973,6 +975,7 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 			mcMember->state = STL_MCMRECORD_GETJOINSTATE(mcmp);
 			mcMember->proxy = (maip->addrInfo.slid == portp->portData->lid) ? 0 : 1;// JSY - check LMC aliasing
 		} else {
+
             /*
              * Valid MGID specified is in group table already
              * see if we can join requester
@@ -2417,7 +2420,7 @@ Status_t createMCastGroup(uint64_t* mgid, uint16_t pkey, uint8_t mtu, uint8_t ra
 	McMember_Create(mcGroup, mcMember);
 
 	if (VirtualFabrics) {
-		for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
+		for (vf=0; vf < VirtualFabrics->number_of_vfs && vf < MAX_VFABRICS; vf++) {
 			if ((PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey) == PKEY_VALUE(pkey)) &&
 				(smVFValidateMcDefaultGroup(vf, mgid) == VSTATUS_OK)) {
 				uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;

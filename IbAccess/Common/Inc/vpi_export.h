@@ -802,7 +802,11 @@ IBA_API VPI_CREATESPECIALQP iba_create_special_qp;
 
 typedef FSTATUS (VPI_ATTACHQPTOMULTICASTGROUP2)(
 	IN IB_HANDLE QpHandle,
+#if INCLUDE_16B
+	IN STL_LID McgDestLid,
+#else
 	IN IB_LID McgDestLid,
+#endif
 	IN IB_GID McgGID
 	);
 IBA_API VPI_ATTACHQPTOMULTICASTGROUP2 iba_attach_qp_to_mcgroup;
@@ -827,7 +831,11 @@ IBA_API VPI_ATTACHQPTOMULTICASTGROUP2 iba_attach_qp_to_mcgroup;
 
 typedef FSTATUS (VPI_DETACHQPFROMMULTICASTGROUP2)(
 	IN IB_HANDLE QpHandle,
+#if INCLUDE_16B
+	IN STL_LID McgDestLid,
+#else
 	IN IB_LID McgDestLid,
+#endif
 	IN IB_GID McgGID
 	);
 IBA_API VPI_DETACHQPFROMMULTICASTGROUP2 iba_detach_qp_from_mcgroup;

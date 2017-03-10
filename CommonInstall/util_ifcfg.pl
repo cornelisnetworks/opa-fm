@@ -359,6 +359,10 @@ sub Build_ifcfg($$$)
 		DebugPrint("cmd '$SysCmd'\n");
 		system $SysCmd;
 
+		$SysCmd = "echo \"TYPE=\'InfiniBand\'\" >> $target";
+                DebugPrint("cmd '$SysCmd'\n");
+                system $SysCmd;
+
 		if ( "$ipaddr" eq "dhcp" ) {
 			$SysCmd = "echo BOOTPROTO=dhcp >> $target";
 			DebugPrint("cmd '$SysCmd'\n");

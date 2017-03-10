@@ -3852,8 +3852,10 @@ static void appendFreezeFrameDetails(uint8_t *buffer, uint32_t *index)
 }
 
 // return Master PM Sweep History image file data copied into memory pointed to by buffer 
-int getPMHistFileData(char *filename, uint32_t histindex, uint8_t *buffer, uint32_t bufflen, uint32_t *filelen)
+int getPMHistFileData(char *histPath, char *filename, uint32_t histindex, uint8_t *buffer, uint32_t bufflen, uint32_t *filelen)
 {
+    const size_t MAX_PATH = PM_HISTORY_FILENAME_LEN + 1 + 256;
+    char path[MAX_PATH];
     uint32_t      index=0, nextByte = 0;
     FILE          *file;
 
@@ -3864,7 +3866,9 @@ int getPMHistFileData(char *filename, uint32_t histindex, uint8_t *buffer, uint3
         IB_LOG_VERBOSE_FMT(__func__, "Missing hist filename.");
         return -1;
     }
-    file = fopen(filename, "r" );
+
+    snprintf(path, MAX_PATH, "%s/%s", histPath, filename);
+    file = fopen(path, "r" );
     if (!file) {
         IB_LOG_ERROR("Error opening PA history image file! rc:",0x0020);
         return -1;
@@ -3888,6 +3892,8 @@ int getPMHistFileData(char *filename, uint32_t histindex, uint8_t *buffer, uint3
 // return latest Master PM Sweep Image Data copied into memory pointed to by buffer 
 int getPMSweepImageData(char *filename, uint32_t histindex, uint8_t isCompressed, uint8_t *buffer, uint32_t bufflen, uint32_t *filelen)
 {
+	extern Pm_t g_pmSweepData;
+	Pm_t	*pm=&g_pmSweepData;
 	uint32_t	index=0;
 
 	if (!buffer || !filelen) 
@@ -3898,12 +3904,9 @@ int getPMSweepImageData(char *filename, uint32_t histindex, uint8_t isCompressed
 	}
 
 	if (filename[0] != '\0') {
-		return getPMHistFileData(filename, histindex, buffer, bufflen, filelen);
+		return getPMHistFileData(pm->ShortTermHistory.filepath, filename, histindex, buffer, bufflen, filelen);
 	}
 	else { /* file name not specified */
-		extern Pm_t g_pmSweepData;
-		Pm_t	*pm=&g_pmSweepData;
-
 		if (pm->history[histindex] == PM_IMAGE_INDEX_INVALID) {
 			return -1;
 		}

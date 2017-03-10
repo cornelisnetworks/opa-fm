@@ -478,7 +478,8 @@ typedef union {
 typedef struct {
 	uint32  LinearFDBCap;	  	/* RO Number of entries supported in the */
 								/* Linear Unicast Forwarding Database */
-	uint32  Reserved20;		
+	uint32  PortGroupFDBCap;	/* RO Number of entries supported in the */
+								/* Port Group Forwarding Database */
 	uint32  MulticastFDBCap;	/* RO Number of entries supported in the */
 								/*  Multicast Forwarding Database */
 	STL_LID_32  LinearFDBTop;		/* RW Indicates the top of the Linear */
@@ -1512,8 +1513,9 @@ typedef struct {
 
 // These are for PortType Standard, uses of these can assume START and END
 // will be on and STL_CABLE_INFO_DATA_SIZE boundary
-#define STL_CIB_STD_START_ADDR		128
-#define STL_CIB_STD_END_ADDR		(STL_CIB_STD_START_ADDR+STL_CABLE_INFO_PAGESZ-1)
+#define STL_CIB_STD_LOW_PAGE_ADDR		0
+#define STL_CIB_STD_HIGH_PAGE_ADDR		128
+#define STL_CIB_STD_END_ADDR		(STL_CIB_STD_HIGH_PAGE_ADDR+STL_CABLE_INFO_PAGESZ-1)
 #define STL_CIB_STD_LEN				(STL_CABLE_INFO_PAGESZ)
 
 #define STL_CIB_STD_MAX_STRING			16		// Max ASCII string in STD CableInfo field
@@ -2477,6 +2479,7 @@ BSWAP_STL_SWITCH_INFO(STL_SWITCH_INFO *Dest)
 {
 #if CPU_LE
 	Dest->LinearFDBCap = ntoh32(Dest->LinearFDBCap);
+	Dest->PortGroupFDBCap = ntoh32(Dest->PortGroupFDBCap);
 	Dest->MulticastFDBCap = ntoh32(Dest->MulticastFDBCap);
 	Dest->LinearFDBTop = ntoh32(Dest->LinearFDBTop);
 	Dest->MulticastFDBTop = ntoh32(Dest->MulticastFDBTop);
@@ -2493,7 +2496,6 @@ static __inline
 void
 ZERO_RSVD_STL_SWITCH_INFO(STL_SWITCH_INFO * Dest)
 {
-	Dest->Reserved20 = 0;
 	Dest->Reserved = 0;
 	Dest->Reserved21 = 0;
 	Dest->Reserved22 = 0;

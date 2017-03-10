@@ -1018,6 +1018,7 @@ IXML_FIELD SwitchInfoFields[] = {
 	{ tag:"CapabilityMask", format:'X', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.CapabilityMask) },
 	{ tag:"RoutingModeSupported", format:'X', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.RoutingMode.Supported) },
 	{ tag:"RoutingModeEnabled", format:'X', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.RoutingMode.Enabled) },
+	{ tag:"PortGroupFDBCap", format:'U', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.PortGroupFDBCap) },
 	{ tag:"PortGroupCap", format:'U', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.PortGroupCap) },
 	{ tag:"PortGroupTop", format:'U', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.PortGroupTop) },
 	{ tag:"AdaptiveRouting", format:'x', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.AdaptiveRouting.AsReg16) },

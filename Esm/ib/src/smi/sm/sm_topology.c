@@ -133,6 +133,9 @@ extern inline void prefetcht0(const void *x) {
 
 #define PREFETCH PREFETCH_T0
 
+// time after arming when we're in the idle flit propagation window
+#define IDLE_FLIT_PROPAGATION_TIME (50 * VTIMER_1_MILLISEC)
+
 int isSweeping = 0;
 int	activateInProgress = 0;
 int	forceRebalanceNextSweep = 0;
@@ -153,7 +156,6 @@ Status_t topology_TrapUp(STL_NOTICE * noticep, Topology_t *, Topology_t *, Node_
 Status_t topology_TrapDown(STL_NOTICE * noticep, Topology_t *, Topology_t *, Node_t *, Port_t *);
 Status_t topology_copy(void);
 Status_t topology_release_saved_topology(void);
-void topology_force_client_reregistration(Topology_t *sm_topop);
 Status_t topology_multicast(void);
 Status_t topology_clearNew(void);
 Status_t topology_cache_build(void);
@@ -163,7 +165,6 @@ Status_t topology_db(void);
 Status_t topology_fe(void);
 Status_t topology_dump(void);
 Status_t topology_loopTest(void);
-Status_t topology_verification(void);
 
 Status_t topology_setup_routing_cost_matrix(void);
 Status_t topology_sm_port_init_failure(void);
@@ -174,7 +175,7 @@ Status_t topology_update_cableinfo(void);
 typedef	Status_t  (*TFunc_t)(void);
 
 TFunc_t	topology_functions[] = {
-	topology_initialize,	// Initialize the local port.
+	topology_initialize,		// Initialize the local port.
 	topology_discovery,			// Initial exploration of the fabric
 	topology_transition,		// Determine if this SM should be MASTER or STANDBY.
 	topology_userexit,			// NOOP!
@@ -184,7 +185,6 @@ TFunc_t	topology_functions[] = {
 	topology_activate,			// Bring all links to active.
     sm_dbsync_upsmlist,			// Update our list of SMs in the fabric
     topology_multicast,			// Build MFTs
-	topology_verification, 		// Verify fabric activation if cascade activation enabled
 	topology_cache_build,		// Builds caches that are used by the SA. 
     topology_loopTest,			// Embedded only. Injects packets into fabric.
 	NULL
@@ -308,7 +308,8 @@ GetStr_SpeedSupport(STL_PORT_INFO *portInfo, char *buf, size_t len)
 /*
  * clean up the SA tables when we transition to Standby state
  */
-static void clearSaTables(void) {
+static void clearSaTables(void)
+{
     /*
      * clear everything if transitioning from master to standby or less
     */
@@ -517,6 +518,27 @@ boolean sm_eq_Preempt(const struct Preemption_t * a, const struct Preemption_t *
 }
 
 //----------------------------------------------------------------------------
+// API for interacting with topology_activate()'s retry logic.
+
+typedef struct ActivationRetry {
+	uint8_t attempts;
+	uint32_t failures;
+} ActivationRetry_t;
+
+uint8_t
+activation_retry_attempts(pActivationRetry_t retry)
+{
+	return retry ? retry->attempts : 0;
+}
+
+void
+activation_retry_inc_failures(pActivationRetry_t retry)
+{
+	if (retry)
+		++ retry->failures;
+}
+
+//----------------------------------------------------------------------------
 
 /**
     Update the and head of queue lifetime limit (HLL) values on
@@ -528,20 +550,18 @@ boolean sm_eq_Preempt(const struct Preemption_t * a, const struct Preemption_t *
 
 	@return VSTATUS_OK on success or something else on error.
 */
+
 static Status_t UpdateHoq(Node_t * nodep, Port_t * curPort, boolean * updHoq)
 {
     VlVfMap_t vlvfmap;
+    VlBwMap_t vlbwmap;
     Status_t status = VSTATUS_OK;
 
     uint32_t maxHoqVals[STL_MAX_VLS];
 
-    uint16_t pctBandwidth[STL_MAX_VLS]; // low table bandwidth only
     uint32_t preemptibleVLs = 0;
 
-    Qos_t *qos = GetQos(curPort->portData->vl1);
-
     memset(maxHoqVals, 0, sizeof(maxHoqVals));
-    memset(pctBandwidth, 0, sizeof(pctBandwidth));
 
     // Default VL15 to SM instance values.
     maxHoqVals[15] = sm_config.hoqlife_n2;
@@ -555,12 +575,21 @@ static Status_t UpdateHoq(Node_t * nodep, Port_t * curPort, boolean * updHoq)
         return status;
     }
 
+    status = sm_topop->routingModule->funcs.select_vlbw_map(sm_topop, nodep, curPort, &vlbwmap);
+    if (status != VSTATUS_OK) {
+        IB_LOG_ERROR_FMT(__func__,
+          "Unable to acquire VF-BW map for node %s guid "FMT_U64", port %d, status = %d",
+          sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, curPort->index, status);
+        return status;
+    }
+
+
     // Bitfields of active VLs (based on VF) for this port
     bitset_t isVlActive;
     bitset_init(&sm_pool, &isVlActive, STL_MAX_VLS);
     bitset_set(&isVlActive, 15);
 
-	VirtualFabrics_t *VirtualFabrics = sm_topop->vfs_ptr;
+	VirtualFabrics_t *vfs = sm_topop->vfs_ptr;
     int vl;
     uint8_t numVls = (curPort->portData->vl1 <= 15 ? curPort->portData->vl1 : curPort->portData->vl1+1);
     for (vl = 0; vl < MAX(numVls, 16); vl++) {
@@ -571,18 +600,17 @@ static Status_t UpdateHoq(Node_t * nodep, Port_t * curPort, boolean * updHoq)
 
         uint8_t vfIdx;
 
+        if (vlvfmap.vf[vl][0] != -1)
+            bitset_set(&isVlActive, vl);
+
         // find the max HoQ lifetime for each VL on the port
-        for (vfIdx  = 0; vfIdx < VirtualFabrics->number_of_vfs; ++vfIdx) {
+        for (vfIdx  = 0; vfIdx < vfs->number_of_vfs; ++vfIdx) {
             if (vlvfmap.vf[vl][vfIdx] == -1) break; // Done list.
 
             uint8_t vf = vlvfmap.vf[vl][vfIdx];
-            bitset_set(&isVlActive, vl);
 
-            if (VirtualFabrics->v_fabric[vf].hoqlife_vf > maxHoqVals[vl])
-                maxHoqVals[vl] = VirtualFabrics->v_fabric[vf].hoqlife_vf;
-
-            // Assign bandwidth only to active VLs.
-            pctBandwidth[vl] = qos->vlBandwidth[vl];
+            if (vfs->v_fabric[vf].hoqlife_vf > maxHoqVals[vl])
+                maxHoqVals[vl] = vfs->v_fabric[vf].hoqlife_vf;
 
             // get a bitmask of preemptible VLs.
             preemptibleVLs |= curPort->portData->curArb.vlarbMatrix[vl];
@@ -595,8 +623,8 @@ static Status_t UpdateHoq(Node_t * nodep, Port_t * curPort, boolean * updHoq)
 
     uint8_t idx;
     for (idx=0; idx<STL_MAX_LOW_CAP; idx++) {
-        if (curPort->portData->curArb.vlarbHigh[idx].Weight > 0) {
-            bitset_set(&isVlHigh, curPort->portData->curArb.vlarbHigh[idx].s.VL);
+        if (curPort->portData->curArb.vlarb.vlarbHigh[idx].Weight > 0) {
+            bitset_set(&isVlHigh, curPort->portData->curArb.vlarb.vlarbHigh[idx].s.VL);
         }
     }
 
@@ -622,7 +650,7 @@ static Status_t UpdateHoq(Node_t * nodep, Port_t * curPort, boolean * updHoq)
 
             // Increment to next timer value under specific conditions.
             if (vl != 15 && maxHoqVals[vl] < IB_LIFETIME_MAX) {
-                incrTimeouts = (!bitset_test(&isVlHigh, vl) && (bitset_nset(&isVlHigh) > 0 || pctBandwidth[vl] < 25)) ||
+                incrTimeouts = (!bitset_test(&isVlHigh, vl) && (bitset_nset(&isVlHigh) > 0 || vlbwmap.bw[vl] < 25)) ||
                     (curPort->portData->portInfo.FlitControl.Preemption.PreemptionLimit == STL_PORT_PREEMPTION_LIMIT_NONE &&
                     ((1<<vl) & preemptibleVLs)!=0);
             }
@@ -751,13 +779,13 @@ topology_main(uint32_t argc, uint8_t ** argv)
 	int		i;
     int     topologSemCount=0;
 	uint64_t	now, temp64;
-	Status_t	status;
+	Status_t	status = VSTATUS_OK;
     int     newTopologyValid = 1;   // PR# 101511 - make sure we don't try to use an incomplete new topology
     int     sweepStartPacketCount=0;
 	int		oldSmCount = 0, newSmActiveCount = 0, oldSwitchCount = 0, oldHfiCount = 0, oldEndPortCount = 0, oldTotalPorts = 0;
 	int		force;
 #ifdef __VXWORKS__
-    uint8_t shutdown=0;
+	uint8_t shutdown=0;
 #endif
 
 	IB_ENTER(__func__, 0, 0, 0, 0);
@@ -780,7 +808,7 @@ topology_main(uint32_t argc, uint8_t ** argv)
 	status = topology_load_predef();
 
 	if (status == VSTATUS_OK) {
-		status = sm_routing_init(sm_topop);
+		status = sm_routing_init();
 		if (status) {
 			IB_LOG_ERRORRC("Failed to initialize routing algorithm; rc:", status);
 		}
@@ -986,13 +1014,6 @@ topology_main(uint32_t argc, uint8_t ** argv)
 					sm_clearSwitchPortChange(&sm_newTopology);
 
 					(void)topology_copy();
-
-					/* after the copy old topology is the current topology */
-					if (old_topology.force_client_reregistration) {
-						IB_LOG_VERBOSE_FMT(__func__,
-										   "Forcing setting of client reregistration bit for all ports");
-						topology_force_client_reregistration(&old_topology);
-					}
 
 					if (previousVfPtr) {
 						//release old vfs_ptr
@@ -1684,30 +1705,27 @@ topology_discovery(void)
 	IB_ENTER(__func__, 0, 0, 0, 0);
 
 	if (sm_topop->routingModule == NULL) {
-		RoutingModule_t * newMod = NULL;
-
-		if ((status = sm_routing_makeModule(sm_config.routing_algorithm, &newMod)) != VSTATUS_OK) {
-			IB_LOG_ERROR_FMT(__func__,
-				"Failed to instantiate routing module \"%s\"; loading dummy module.",
-				sm_config.routing_algorithm);
-
-			if ((status = sm_routing_makeModule("dummyModule", &newMod)) != VSTATUS_OK) {
-				IB_LOG_ERROR_FMT(__func__, "Failed to instantiate dummy module");
-				return status;
-			}
+		status = vs_wrlock(&old_topology_lock);
+		if (status != VSTATUS_OK) {
+			IB_LOG_ERROR_FMT(__func__, "Failed to acquire old_topology_lock");
+			return status;
 		}
 
-		if (newMod == NULL) {
-			return VSTATUS_BAD;
+		status = sm_routing_makeCopy(&sm_topop->routingModule,
+			old_topology.routingModule);
+
+		if (status != VSTATUS_OK)
+			IB_LOG_ERROR_FMT(__func__, "Failed to copy prior routing module data");
+
+		Status_t unlockStatus = vs_rwunlock(&old_topology_lock);
+		if (unlockStatus != VSTATUS_OK) {
+			IB_LOG_ERROR_FMT(__func__, "Error on unlocking old_topology_lock");
+			return unlockStatus;
 		}
 
-		sm_routing_setCurrentModule(sm_topop, newMod);
-	}
-
-	if (sm_topop->routingModule == NULL) {
-		IB_LOG_ERROR_FMT(__func__, "sm_topop->routingModule is NULL; cannot do any useful work");
-		return VSTATUS_BAD;
-	}
+		if (status != VSTATUS_OK)
+			return status;
+	}    
 
 	status = sm_topop->routingModule->funcs.pre_process_discovery(sm_topop, &routingContext);
 	if (status != VSTATUS_OK) {
@@ -1742,17 +1760,16 @@ topology_discovery(void)
 	// Note that the node list can grow while we are inside this loop, so
 	// we are guaranteed to loop over all new and existing nodes in the fabric.
 	for_all_nodes(sm_topop, nodep) {
-		if ((nodep != sm_topop->node_head) && (nodep->nodeInfo.NodeType != NI_TYPE_SWITCH)) {
-			continue;
+
+		status = sm_topop->routingModule->funcs.discover_node(sm_topop, nodep, routingContext);
+		if (status != VSTATUS_OK) {
+			IB_LOG_ERRORRC("Failed to process 'discover node' routing hook; rc:", status);
+			sm_topop->routingModule->funcs.post_process_discovery(sm_topop, status, routingContext);
+			return status;
 		}
 
-		if (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH) {
-			status = sm_topop->routingModule->funcs.discover_node(sm_topop, nodep, routingContext);
-			if (status != VSTATUS_OK) {
-				IB_LOG_ERRORRC("Failed to process 'discover node' routing hook; rc:", status);
-				sm_topop->routingModule->funcs.post_process_discovery(sm_topop, status, routingContext);
-				return status;
-			}
+		if ((nodep != sm_topop->node_head) && (nodep->nodeInfo.NodeType != NI_TYPE_SWITCH)) {
+			continue;
 		}
 
 		if (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH) {
@@ -2379,8 +2396,8 @@ Status_t topology_setup_switches_LR_DR()
 	if (sm_topop->num_sws == 0)
 		return VSTATUS_OK;
 
-	if (sm_topop->routingModule->funcs.init_switch_lfts) {
-		status = sm_topop->routingModule->funcs.init_switch_lfts(sm_topop, &routing_needed, &rebalance);
+	if (sm_topop->routingModule->funcs.init_switch_routing) {
+		status = sm_topop->routingModule->funcs.init_switch_routing(sm_topop, &routing_needed, &rebalance);
 
 		if (status != VSTATUS_OK) {
 			IB_LOG_ERROR_FMT(__func__,
@@ -2790,6 +2807,7 @@ topology_assignments(void)
 					} else if (vlInUse != portp->portData->vl1) {
 						nodep->uniformVL = 0;
 					}
+					nodep->vlCap = MAX(nodep->vlCap, portp->portData->vl0);
 				}
 			}
 		}
@@ -2857,34 +2875,7 @@ topology_assignments(void)
                     continue; 
                 }
 
-				// initialize the SC2VL* mapping tables for all ports.
-				if ((status = sm_initialize_Switch_SCVLMaps(sm_topop, nodep, portp)) != VSTATUS_OK) {
-                    if (topology_main_exit == 1) {
-#ifdef __VXWORKS__
-                        ESM_LOG_ESMINFO("topology_assignments: SM has been stopped", 0);
-#endif
-                        IB_EXIT(__func__, VSTATUS_OK);
-                        return(VSTATUS_OK);
-                    }
-
-                    if (++topo_errors > sm_config.topo_errors_threshold &&
-                        ++topo_abandon_count <= sm_config.topo_abandon_threshold) {
-                        return(status);
-                    }
-
-                    sm_mark_link_down(sm_topop, portp);
-                    topology_changed = 1;   /* indicates a fabric change has been detected */
-                    IB_LOG_ERROR_FMT(__func__, 
-                                     "Failed to init SCVL map (setting port down) on node %s nodeGuid "
-                                     FMT_U64 " node index %d port index %d", 
-                                     sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, 
-                                     nodep->index, portp->index);
-					continue;
-
-				}
-
-
-                if ((status = sm_initialize_VLArbitration(sm_topop, nodep, portp)) != VSTATUS_OK) {
+				if ((status = sm_initialize_VLArbitration(sm_topop, nodep, portp)) != VSTATUS_OK) {
                     if (topology_main_exit == 1) {
 #ifdef __VXWORKS__
                         ESM_LOG_ESMINFO("topology_assignments: SM has been stopped", 0);
@@ -2905,9 +2896,8 @@ topology_assignments(void)
                                      FMT_U64 " node index %d port index %d", 
                                      sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, 
                                      nodep->index, portp->index);
-                }
+				}
             }
-
 
 			// Do HOQLife initialization
 			uint8_t port;
@@ -3044,9 +3034,11 @@ Status_t topology_setup_routing_cost_matrix(void)
 	Status_t	status = VSTATUS_OK;
 	uint64_t	sTime, eTime;
 	int			newSwitchesInFabric=0;
-	int			rebalance = forceRebalanceNextSweep;
+	int			rebalance;
 
 	IB_ENTER(__func__, 0, 0, 0, 0);
+
+	rebalance = forceRebalanceNextSweep || sm_config.force_rebalance || sm_config.forceAttributeRewrite;
 
     /* If we aren't the master SM, then we go no further.*/
 	if (sm_state != SM_STATE_MASTER) {
@@ -3077,7 +3069,7 @@ Status_t topology_setup_routing_cost_matrix(void)
 
 		if (smDebugPerf) IB_LOG_INFINI_INFO0("Calculating topology paths");
 
-		sm_topop->routingModule->funcs.allocate_cost_matrix(sm_topop);
+		status = sm_topop->routingModule->funcs.allocate_cost_matrix(sm_topop);
 		if (status != VSTATUS_OK) {
 			IB_LOG_ERRORRC("failed to allocate cost data; rc:", status);
 			IB_EXIT(__func__, status);
@@ -3100,7 +3092,7 @@ Status_t topology_setup_routing_cost_matrix(void)
     		vs_time_get(&sTime);
     	}
         
-		sm_topop->routingModule->funcs.calculate_cost_matrix(sm_topop, sm_topop->max_sws, sm_topop->cost);
+		sm_topop->routingModule->funcs.calculate_cost_matrix(sm_topop, sm_topop->max_sws, sm_topop->cost, sm_topop->path);
 
     	if (smDebugPerf) {
     		vs_time_get(&eTime);
@@ -3130,7 +3122,7 @@ Status_t topology_setup_routing_cost_matrix(void)
 		}
 
 		if (!rebalance) {
-			status = sm_topop->routingModule->funcs.copy_lfts(&old_topology, sm_topop);
+			status = sm_topop->routingModule->funcs.copy_routing(&old_topology, sm_topop);
 
 			if (status != VSTATUS_OK) {
 				IB_LOG_ERRORRC("failed to copy LFTs; rc:", status);
@@ -3148,8 +3140,10 @@ Status_t topology_setup_routing_cost_matrix(void)
     } else {
         // this is the odd case where HFM is the only thing in fabric
 		// (it has it's port down)
-        sm_topop->bytes = 0;
+        sm_topop->bytesCost = 0;
+        sm_topop->bytesPath = 0;
         sm_topop->cost = NULL;
+        sm_topop->path = NULL;
         if (!sm_newTopology.num_ports) {
             IB_LOG_WARN0("Host SM's port is down, re-starting sweep");
 			sm_request_resweep(0, 0, SM_SWEEP_REASON_LOCAL_PORT_FAIL);
@@ -3222,41 +3216,6 @@ topology_adaptiverouting(void)
 }
 
 Status_t
-topology_attempt_port_activation(Topology_t * topop, Node_t * nodep, Port_t * portp, uint8_t activationSweepCount, uint32_t * neighborNormalFailure) {
-	Status_t status;
-
-	IB_ENTER(__func__, topop, nodep, portp, activationSweepCount);
-
-	status = sm_activate_port(sm_topop, nodep, portp);
-	if (status != VSTATUS_OK) {
-			IB_LOG_ERROR_FMT(__func__,
-						"(ta): can't ACTIVE node %s nodeGuid "FMT_U64" node index %d port index %d",
-						 sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, nodep->index, portp->index);
-		sm_enable_port_led(nodep, portp, TRUE);
-	}
-
-	if(portp->state != IB_PORT_ACTIVE && portp->portData->portInfo.PortStates.s.NeighborNormal != 1) {
-		*neighborNormalFailure += 1;
-
-		// If we are on the last activation sweep and this port still failed to activate, log it
-		if(activationSweepCount == sm_config.neighborNormalRetries) {
-			IB_LOG_ERROR_FMT(__func__,
-							"Port will not go active for node %s nodeGuid " FMT_U64
-							" port %d, %d retries", sm_nodeDescString(nodep),
-							nodep->nodeInfo.NodeGUID, portp->index, activationSweepCount);
-			
-			// limit resweeps, if a device consistently can't be activated, it may
-			// have a HW or config issue
-			if (++portp->portData->numFailedActivate <= ACTIVATE_RETRY_LIMIT)
-				sm_request_resweep(1, 1, SM_SWEEP_REASON_ACTIVATE_FAIL);
-		}
-	}
-
-	IB_EXIT(__func__, status);
-	return status;
-}
-
-Status_t
 topology_update_cableinfo(void) {
 	Status_t status = VSTATUS_OK;
 	Node_t* nodep;
@@ -3310,11 +3269,8 @@ topology_activate(void)
 {
 	Port_t		*portp;
 	Node_t		*nodep;
-	Status_t	status;
-    uint64_t    sTime, iTime, eTime;
-	uint32_t 	neighborNormalFailure = 0;
-	uint32_t 	activationSweepCount = 0;
-
+	uint64_t    sTime, iTime, eTime;
+	ActivationRetry_t retry = {0};
 
 	IB_ENTER(__func__, 0, 0, 0, 0);
 
@@ -3326,381 +3282,92 @@ topology_activate(void)
 		return(VSTATUS_BAD);
 	}
 
-    /* we are about to activate new nodes so mark us as sweeping now */
-    activateInProgress = 1;
+	/* we are about to activate new nodes so mark us as sweeping now */
+	activateInProgress = 1;
 	topology_port_bounce_log_num = 0;
 
-	switch(sm_config.switchCascadeActivateEnable) {
-	case SCAE_DISABLED:
-	{
-	    if (smDebugPerf) {
-	        vs_time_get(&sTime);
-	        IB_LOG_INFINI_INFO0("START topology_activate - START ARM ports");
-	    }
-	
-		// Transition all of the ports in the 'INIT' state to the 'ARMED' state.
-		//
-		for_all_nodes(sm_topop, nodep) {
-			for_all_ports(nodep, portp) {
-				if (sm_valid_port(portp) && portp->state == IB_PORT_INIT) {
-					// If port's neighbor is DOWN then do not arm on this sweep.
-					// This will handle the case where sm interally records a port as down to prevent
-					// activation.
-					Port_t *con_portp = sm_find_port(sm_topop, portp->nodeno, portp->portno);
-					if (sm_valid_port(con_portp) && con_portp->state != IB_PORT_DOWN) {
-						status = sm_activate_port(sm_topop, nodep, portp);
-						if (status != VSTATUS_OK) {
-							IB_LOG_ERROR_FMT(__func__, "TT(ta): can't ARM node %s nodeGuid "FMT_U64" node index %d port index %d",
-								   sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, nodep->index, portp->index);
-							sm_enable_port_led(nodep, portp, TRUE);
-						} else {
-							bitset_clear(&nodep->initPorts, portp->index);
-						}
-					}
-				} else if(sm_valid_port(portp) && portp->state == IB_PORT_DOWN && portp->portData->linkPolicyViolation) {
-					//port marked down administratively for link policy violation but real port state
-					//should still be in init, so set linkInitReason here 
-					sm_set_linkinit_reason(nodep, portp, STL_LINKINIT_OUTSIDE_POLICY);
-					sm_enable_port_led(nodep, portp, TRUE);
-				}
-			}
-			if (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH) {
-				// clear any pause state on switch doing adaptive routing
-				if (nodep->arSupport && nodep->switchInfo.AdaptiveRouting.s.Pause && !nodep->arDenyUnpause) {
-					// Setup was successful, clear pause
-					sm_SetARPause(nodep, 0) ;
-				}
-			}
-		}
-	    if (smDebugPerf) {
-	        vs_time_get(&iTime);
-	        IB_LOG_INFINI_INFO("topology_activate - END ARM ports/START ACTIVATE ports; elapsed time(usecs)=", 
-	                           (int)(iTime-sTime));
-	    }
-	
-		//
-		//	Transition all of the ports in the 'ARMED' state to the 'ACTIVE' state.
-		//  We also need to support client reregistration (c14-12.2.1) during first sweep
-		//  and for new nodes in fabric
-		//
-		do {
-			neighborNormalFailure = 0;
+	if (smDebugPerf) {
+		vs_time_get(&sTime);
+		IB_LOG_INFINI_INFO_FMT(__func__, "START ARM ports");
+	}
 
-			for_all_nodes(sm_topop, nodep) {
-				for_all_ports(nodep, portp) {
-					if (sm_valid_port(portp)) {
-						if ((portp->state == IB_PORT_ARMED) || (portp->state == IB_PORT_ACTIVE && activationSweepCount == 0)) {
-							status = topology_attempt_port_activation(sm_topop, nodep, portp, activationSweepCount, &neighborNormalFailure);
-						}
-					}
-				}
-			}
+	// Transition ports from INIT to ARMED per DN0567
+	for_all_ca_nodes(sm_topop, nodep)
+		sm_arm_node(sm_topop, nodep);
+	for_all_switch_nodes(sm_topop, nodep)
+		sm_arm_node(sm_topop, nodep);
 
-			// If this isn't our first activation sweep, sleep for a little bit (with a max of 1 second)
-			if(neighborNormalFailure && activationSweepCount != 0)
-				vs_thread_sleep(MIN(VTIMER_10_MILLISEC * (1 << activationSweepCount), VTIMER_1S));
+	if (smDebugPerf) {
+		vs_time_get(&iTime);
+		IB_LOG_INFINI_INFO_FMT(__func__, "END ARM ports; elapsed time(usecs)=%"PRIu64, iTime - sTime);
+	}
 
-			activationSweepCount += 1;
-		} while (neighborNormalFailure != 0 && activationSweepCount <= sm_config.neighborNormalRetries);
+	// sending of armed idle flits can be delayed by several millis, preventing
+	// activation due to NeighborNormal not being set.  simply wait out the
+	// expected propagation time to avoid spamming the log with failures due
+	// to expected conditions, and to avoid complicating the code with edge
+	// cases.  for sweeps proportional to this time, performance isn't critical,
+	// and for significantly longer sweeps, this delay is a non-issue
+	vs_thread_sleep(IDLE_FLIT_PROPAGATION_TIME);
 
-		if(neighborNormalFailure) {
-			IB_LOG_ERROR_FMT(__func__, "%d ports failed to go active due to NeighborNormal never being set", neighborNormalFailure);
+	if (smDebugPerf) {
+		// update activation phase start time to not include delay
+		vs_time_get(&iTime);
+		IB_LOG_INFINI_INFO_FMT(__func__, "START ACTIVATE ports");
+	}
+
+	// Transition ports from ARMED to ACTIVE per DN0567.
+	// Retry with backoff in the presence of NeighborNormal-induced failures.
+	do {
+		retry.failures = 0;
+
+		switch (sm_config.switchCascadeActivateEnable) {
+			case SCAE_DISABLED:
+				// failsafe activation: activate ports serially via Set(PortInfo)
+				// only. activate HFIs first to allow traffic flow a bit sooner
+				sm_activate_all_hfi_first_safe(sm_topop, &retry);
+				break;
+			case SCAE_SW_ONLY:
+				// only switches will cascade, as HFI activation should be paced.
+				// activate HFIs first to allow traffic flow a bit sooner and
+				// switches will implicitly cascade as a result
+				sm_activate_all_hfi_first(sm_topop, &retry);
+				break;
+			case SCAE_ALL:
+				// all ports will cascade: do switches first for faster overall
+				// cascade at scale, relying on activating switches to implicitly
+				// activate hfis
+				sm_activate_all_switch_first(sm_topop, &retry);
+				break;
 		}
 
-		// And update CableInfo for the ports who are still alive
-		topology_update_cableinfo();
+		if (sm_debug && (retry.failures || retry.attempts))
+			IB_LOG_WARN_FMT(__func__, "%u ports failed to go active on attempt %u", retry.failures, retry.attempts);
 
-	    if (smDebugPerf) {
-	        vs_time_get(&eTime);
-	        IB_LOG_INFINI_INFO("topology_activate - END ACTIVATE ports; elapsed time(usecs)=", (int)(eTime-iTime));
-	        IB_LOG_INFINI_INFO("END topology_activate; elapsed time(usecs)=", (int)(eTime-sTime));
-	    }
+		if (retry.failures)
+			vs_thread_sleep(MIN(VTIMER_10_MILLISEC * (1 << retry.attempts), VTIMER_1S));
 
-		break;
-	} // End SCAE_DISABLED
+	} while (retry.failures && ++retry.attempts <= sm_config.neighborNormalRetries);
 
-	case SCAE_SW_ONLY:
-	{
-	    if (smDebugPerf) {
-	        vs_time_get(&sTime);
-	        IB_LOG_INFINI_INFO0("START topology_activate - START ARM ports");
-	    }
-	
-		// Transition all of the ports in the 'INIT' state to the 'ARMED' state.
-		for_all_nodes(sm_topop, nodep) {
-			for_all_ports(nodep, portp) {
-				if (sm_valid_port(portp) && portp->state == IB_PORT_INIT) {
-					status = sm_activate_port(sm_topop, nodep, portp);
-					if (status != VSTATUS_OK) {
-						IB_LOG_ERROR_FMT(__func__, "TT(ta): can't ARM node %s nodeGuid "FMT_U64" node index %d port index %d",
-						       sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, nodep->index, portp->index);
-						sm_enable_port_led(nodep, portp, TRUE);
-					} else {
-						bitset_clear(&nodep->initPorts, portp->index);
-					}
-				} else if(sm_valid_port(portp) && portp->state == IB_PORT_DOWN && portp->portData->linkPolicyViolation) {
-					//port marked down administratively for link policy violation but real port state
-					//should still be in init, so set linkInitReason here 
-					sm_set_linkinit_reason(nodep, portp, STL_LINKINIT_OUTSIDE_POLICY);
-					sm_enable_port_led(nodep, portp, TRUE);
-				}
-			}
-			if (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH) {
-				// clear any pause state on switch doing adaptive routing
-				if (nodep->arSupport && nodep->switchInfo.AdaptiveRouting.s.Pause && !nodep->arDenyUnpause) {
-					// Setup was successful, clear pause
-					sm_SetARPause(nodep, 0) ;
-				}
-			}
-		}
-		
-	    if (smDebugPerf) {
-	        vs_time_get(&iTime);
-	        IB_LOG_INFINI_INFO("topology_activate - END ARM ports/START ACTIVATE ports; elapsed time(usecs)=", 
-	                           (int)(iTime-sTime));
-	    }
+	if (retry.failures) {
+		IB_LOG_ERROR_FMT(__func__, "%d ports failed to go active due to NeighborNormal never being set", retry.failures);
+	}
 
-		do {
-			neighborNormalFailure = 0;
+	if (smDebugPerf) {
+		vs_time_get(&eTime);
+		IB_LOG_INFINI_INFO_FMT(__func__, "END ACTIVATE ports; elapsed time(usecs)=%"PRIu64, eTime - iTime);
+		IB_LOG_INFINI_INFO_FMT(__func__, "START CABLEINFO");
+		iTime = eTime;
+	}
 
-			// Transition all switches from 'ARMED' to 'ACTIVE', utilizing the cascade activate for switches
-			for_all_switch_nodes(sm_topop, nodep) {
-				int i;
-				STL_PORT_STATE_INFO *portStateInfo = NULL;
-				int psiFailed = 0;
-				portp = sm_get_port(nodep, 0);
+	// And update CableInfo for the ports who are still alive
+	topology_update_cableinfo();
 
-				if(sm_valid_port(portp)) {
-					// Try and activate all ports on the switch as long as this is the first activation sweep
-					if(activationSweepCount == 0) {
-						status = sm_set_node_port_states(sm_topop, nodep, portp, NULL, &portStateInfo, IB_PORT_ACTIVE);
-						if(status != VSTATUS_OK){
-							IB_LOG_ERROR_FMT(__func__, "Failed to set PortStateInfo for switch node %s nodeGuid " FMT_U64 " status = %d",
-									sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, status);
-
-							if(portStateInfo != NULL) {
-								vs_pool_free(&sm_pool, portStateInfo);
-								portStateInfo = NULL;
-							}
-
-							psiFailed = 1;
-						}
-					}
-
-					// Check the responses and manually bring up any ports that need to be activated
-					for(i = 0; i <= nodep->nodeInfo.NumPorts; i++) {
-						portp = sm_get_port(nodep, i);
-
-						if(sm_valid_port(portp) && portp->state == IB_PORT_ARMED) {
-							// If the Set(PortStateInfo) was successful, perform our activation off of it.
-							if(!psiFailed && activationSweepCount == 0) {
-								if(portStateInfo[i].PortStates.s.PortState == IB_PORT_ACTIVE) {
-									portp->state = portp->portData->portInfo.PortStates.s.PortState = IB_PORT_ACTIVE;
-									continue;
-								} else if(portStateInfo[i].PortStates.s.PortState == IB_PORT_ARMED && portStateInfo[i].PortStates.s.NeighborNormal != 1) {
-									neighborNormalFailure += 1;
-								} else {
-									// Port probably went down, mark it as such and pick it up on the next sweep
-									portp->state = portp->portData->portInfo.PortStates.s.PortState = portStateInfo[i].PortStates.s.PortState;
-								}
-							}
-							// Otherwise try and activate the port normally
-							else {
-								status = topology_attempt_port_activation(sm_topop, nodep, portp, activationSweepCount, &neighborNormalFailure);
-							}
-						}
-					}
-
-					if(portStateInfo != NULL) {
-						vs_pool_free(&sm_pool, portStateInfo);
-						portStateInfo = NULL;
-					}
-				}
-			}
-
-			// Bring all the HFIs to active
-			for_all_ca_nodes(sm_topop, nodep) {
-				for_all_ports(nodep, portp) {
-					if (sm_valid_port(portp)) { 
-						if ((portp->state == IB_PORT_ARMED) || (portp->state == IB_PORT_ACTIVE && activationSweepCount == 0)) {
-							status = topology_attempt_port_activation(sm_topop, nodep, portp, activationSweepCount, &neighborNormalFailure);
-						}
-					}
-				}
-			}
-
-			// If this isn't our first activation sweep and we need to try again, sleep for a little bit (with a max of 1 second)
-			if(neighborNormalFailure && activationSweepCount != 0)
-				vs_thread_sleep(MIN(VTIMER_10_MILLISEC * (1 << activationSweepCount), VTIMER_1S));
-
-			activationSweepCount += 1;
-		} while (neighborNormalFailure != 0 && activationSweepCount <= sm_config.neighborNormalRetries);
-
-		if(neighborNormalFailure) {
-			IB_LOG_ERROR_FMT(__func__, "%d ports failed to go active due to NeighborNormal never being set", neighborNormalFailure);
-		}
-
-		// And update CableInfo for the ports who are still alive
-		topology_update_cableinfo();
-
-	    if (smDebugPerf) {
-	        vs_time_get(&eTime);
-	        IB_LOG_INFINI_INFO("topology_activate - END ACTIVATE ports; elapsed time(usecs)=", (int)(eTime-iTime));
-	        IB_LOG_INFINI_INFO("END topology_activate; elapsed time(usecs)=", (int)(eTime-sTime));
-	    }
-
-		break;
-	} // End SCAE_SW_ONLY
-
-	case SCAE_ALL:
-	{
-		uint8_t firstSwitchActivated = 0;
-		
-	    if (smDebugPerf) {
-	        vs_time_get(&sTime);
-	        IB_LOG_INFINI_INFO0("START topology_activate - START ARM ports");
-	    }
-	
-		// Transition all of the ports in the 'INIT' state to the 'ARMED' state.
-		for_all_nodes(sm_topop, nodep) {
-			for_all_ports(nodep, portp) {
-				if (sm_valid_port(portp) && portp->state == IB_PORT_INIT) {
-					status = sm_activate_port(sm_topop, nodep, portp);
-					if (status != VSTATUS_OK) {
-						IB_LOG_ERROR_FMT(__func__, "TT(ta): can't ARM node %s nodeGuid "FMT_U64" node index %d port index %d",
-						       sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, nodep->index, portp->index);
-						sm_enable_port_led(nodep, portp, TRUE);
-					} else {
-						bitset_clear(&nodep->initPorts, portp->index);
-					}
-				} else if(sm_valid_port(portp) && portp->state == IB_PORT_DOWN && portp->portData->linkPolicyViolation) {
-					//port marked down administratively for link policy violation but real port state
-					//should still be in init, so set linkInitReason here 
-					sm_set_linkinit_reason(nodep, portp, STL_LINKINIT_OUTSIDE_POLICY);
-					sm_enable_port_led(nodep, portp, TRUE);
-				}
-			}
-			if (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH) {
-				// clear any pause state on switch doing adaptive routing
-				if (nodep->arSupport && nodep->switchInfo.AdaptiveRouting.s.Pause && !nodep->arDenyUnpause) {
-					// Setup was successful, clear pause
-					sm_SetARPause(nodep, 0) ;
-				}
-			}
-		}
-
-	    if (smDebugPerf) {
-	        vs_time_get(&iTime);
-	        IB_LOG_INFINI_INFO("topology_activate - END ARM ports/START ACTIVATE ports; elapsed time(usecs)=", 
-	                           (int)(iTime-sTime));
-	    }
-
-		// Do a verified activation of the SM's port first. Baaaaaad bad things happen if this doesn't activate.
-		nodep = sm_topop->node_head;
-		if(sm_valid_port((portp = sm_get_port(nodep, sm_config.port)))) {
-			STL_PORT_STATE_INFO *portStateInfo = NULL;
-			status = sm_set_node_port_states(sm_topop, nodep, portp, NULL, &portStateInfo, IB_PORT_ACTIVE);
-			if(status != VSTATUS_OK || portStateInfo[0].PortStates.s.PortState != IB_PORT_ACTIVE) {
-				// Port didn't take our Set(PortStateInfo), manually bring it up...
-				status = sm_activate_port(sm_topop, nodep, portp);
-				if (status != VSTATUS_OK) {
-					IB_LOG_ERROR_FMT(__func__, "TT(ta): can't activate SM's port (node %s nodeGuid "FMT_U64" node index %d port index %d)",
-					       sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, nodep->index, portp->index);
-					sm_enable_port_led(nodep, portp, TRUE);
-				}
-			}
-
-			if(portStateInfo != NULL)
-				vs_pool_free(&sm_pool, portStateInfo);
-		}
-
-		// Cascade activate the fabric
-		for_all_switch_nodes(sm_topop, nodep) {
-			// Start the cascade by activating the first switch we find
-			if(!firstSwitchActivated) {
-				STL_PORT_STATE_INFO *portStateInfo = NULL;
-				portp = sm_get_port(nodep, 0);
-				
-				if(sm_valid_port(portp)) {
-					status = sm_set_node_port_states(sm_topop, nodep, portp, NULL, &portStateInfo, IB_PORT_ACTIVE);
-
-					if(status == VSTATUS_OK) {
-						vs_pool_free(&sm_pool, portStateInfo);
-						firstSwitchActivated = 1;
-					} else {
-						IB_LOG_ERROR_FMT(__func__, "Failed to set PortStateInfo for switch node %s nodeGuid " FMT_U64 " status = %d",
-								sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, status);
-						if(portStateInfo != NULL) {
-							vs_pool_free(&sm_pool, portStateInfo);
-						}
-					}
-					continue;
-				}
-			}
-
-			// Handle any potential pockets in the fabric by activating any devices
-			// on the other side of an active switch port
-			for_all_ports(nodep, portp) {
-				if(sm_valid_port(portp)) {
-					if(topology_passcount < 1) {
-						if(portp->state == IB_PORT_ACTIVE) {
-							STL_PORT_STATE_INFO *portStateInfo = NULL;
-							Node_t * neighNode = NULL;
-							Port_t * neighPort = NULL;
-							neighPort = sm_find_neighbor_node_and_port(sm_topop, portp, &neighNode);
-
-							if (!neighNode) {
-								status = VSTATUS_BAD;
-								IB_LOG_ERROR_FMT(__func__, "Failed to set PortStateInfo. neighNode = NULL for port " FMT_U64,
-										portp->portData->guid);
-							} else {
-								status = sm_set_node_port_states(sm_topop, neighNode, 
-									neighPort, NULL, &portStateInfo, IB_PORT_ACTIVE);
-
-								if(status == VSTATUS_OK) {
-									vs_pool_free(&sm_pool, portStateInfo);
-								} else {
-									IB_LOG_ERROR_FMT(__func__, "Failed to set PortStateInfo for switch node %s nodeGuid " FMT_U64 "status = %d",
-											sm_nodeDescString(neighNode), neighNode->nodeInfo.NodeGUID, status);
-									if(portStateInfo != NULL) {
-										vs_pool_free(&sm_pool, portStateInfo);
-									}
-								}
-							}
-						}
-					} else {
-						if(portp->state == IB_PORT_ARMED) {
-							uint32_t amod;
-							uint16_t dlid;
-							STL_PORT_STATE_INFO *portStateInfo = NULL;
-
-							dlid = portp->portData->lid;
-							amod = (1<<24) | portp->index;
-
-							status = vs_pool_alloc(&sm_pool, sizeof(STL_PORT_STATE_INFO), (void*) &portStateInfo);
-							if(status != VSTATUS_OK) {
-								IB_LOG_ERROR_FMT(__func__, "can't malloc portStateInfo status=%d", status);
-								continue;
-							}
-							memset(portStateInfo, 0, sizeof(STL_PORT_STATE_INFO));
-							portStateInfo[0].PortStates.s.PortState = IB_PORT_ACTIVE;
-							status = SM_Set_PortStateInfo_LR(fd_topology, amod, sm_lid, dlid, portStateInfo, sm_config.mkey);
-
-							if(status != VSTATUS_OK) {
-								IB_LOG_WARN_FMT(__func__, "Cannot set PORT_STATE_INFO for node %s nodeGuid " FMT_U64 " status=%d", 
-										sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, status);
-							}
-
-							vs_pool_free(&sm_pool, portStateInfo);
-						}
-					}
-				}
-			}
-		}
-
-
-	} // End SCAE_ALL
-	} // End switch
+	if (smDebugPerf) {
+		vs_time_get(&eTime);
+		IB_LOG_INFINI_INFO_FMT(__func__, "END CABLEINFO; elapsed time(usecs)=%"PRIu64, eTime - iTime);
+		IB_LOG_INFINI_INFO_FMT(__func__, "END topology_activate; elapsed time(usecs)=%"PRIu64, eTime - sTime);
+	}
 
 	//Make sure LinkInitReason is set correctly for all quarantined nodes
 	//that we are not activating
@@ -3734,135 +3401,15 @@ topology_activate(void)
 		}
 	}
 
-
-	IB_EXIT(__func__, VSTATUS_OK);
-	return(VSTATUS_OK);
-}
-
-Status_t
-topology_verification(void)
-{
-	Status_t status = VSTATUS_OK;
-	Node_t* nodep;
-	Port_t* portp;
-	uint32_t neighborNormalFailure = 0;
-	uint32_t activationSweepCount = 0;
-
-	if(sm_config.switchCascadeActivateEnable == SCAE_ALL) {
-		do {
-			neighborNormalFailure = 0;
-
-			// Check the status of all switches first to make sure they've gone active
-			// before doing the same for HFIs
-			for_all_switch_nodes(sm_topop, nodep) {
-				int i;
-				STL_PORT_STATE_INFO *portStateInfo = NULL;
-				portp = sm_get_port(nodep, 0);
-
-				if(sm_valid_port(portp)) {
-					// Get the port states of all ports on the switch
-					status = sm_get_node_port_states(sm_topop, nodep, portp, NULL, &portStateInfo);
-					if(status != VSTATUS_OK){
-						IB_LOG_ERROR_FMT(__func__, "Failed to get PortStateInfo for switch node %s nodeGuid " FMT_U64 " status = %d",
-								sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, status);
-
-						if(portStateInfo != NULL) {
-							vs_pool_free(&sm_pool, portStateInfo);
-						}
-
-						continue;
-					}
-
-					// Check the responses and manually bring up any ports that need to be activated
-					for(i = 0; i <= nodep->nodeInfo.NumPorts; i++) {
-						portp = sm_get_port(nodep, i);
-
-						if(sm_valid_port(portp) && portp->state == IB_PORT_ARMED) {
-							if(portStateInfo[i].PortStates.s.PortState == IB_PORT_ACTIVE) {
-								portp->state = portp->portData->portInfo.PortStates.s.PortState = IB_PORT_ACTIVE;
-								continue;
-							} else if(portStateInfo[i].PortStates.s.PortState == IB_PORT_ARMED) {
-								status = topology_attempt_port_activation(sm_topop, nodep, portp, activationSweepCount, &neighborNormalFailure);
-							} else {
-								// Port probably went down, mark it as such and pick it up on the next sweep
-								portp->state = portp->portData->portInfo.PortStates.s.PortState = portStateInfo[i].PortStates.s.PortState;
-							}
-						}
-					}
-
-					vs_pool_free(&sm_pool, portStateInfo);
-				}
-			}
-
-			// Now check the HFIs
-			for_all_ca_nodes(sm_topop, nodep) {
-				for_all_ports(nodep, portp) {
-					if(sm_valid_port(portp)) {
-						STL_PORT_STATE_INFO *portStateInfo = NULL;
-
-						// Get the port states of all ports on the switch
-						status = sm_get_node_port_states(sm_topop, nodep, portp, NULL, &portStateInfo);
-						if(status != VSTATUS_OK){
-							IB_LOG_ERROR_FMT(__func__, "Failed to get PortStateInfo for switch node %s nodeGuid " FMT_U64 " status = %d",
-									sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, status);
-
-							if(portStateInfo != NULL) {
-								vs_pool_free(&sm_pool, portStateInfo);
-							}
-
-							continue;
-						}
-
-
-						if(portp->state == IB_PORT_ARMED) {
-							if(portStateInfo[0].PortStates.s.PortState == IB_PORT_ACTIVE) {
-								portp->state = portp->portData->portInfo.PortStates.s.PortState = IB_PORT_ACTIVE;
-							} else if(portStateInfo[0].PortStates.s.PortState == IB_PORT_ARMED) {
-								status = topology_attempt_port_activation(sm_topop, nodep, portp, activationSweepCount, &neighborNormalFailure);
-							} else {
-								// Port probably went down, mark it as such and pick it up on the next sweep
-								portp->state = portp->portData->portInfo.PortStates.s.PortState = portStateInfo[0].PortStates.s.PortState;
-							}
-						}
-
-						vs_pool_free(&sm_pool, portStateInfo);
-					}
-				}
-			}
-
-			// If this isn't our first activation sweep, sleep for a little bit (with a max of 1 second)
-			if(activationSweepCount != 0)
-				vs_thread_sleep(MIN(VTIMER_10_MILLISEC * (1 << activationSweepCount), VTIMER_1S));
-
-			activationSweepCount += 1;
-		} while (neighborNormalFailure != 0 && activationSweepCount <= sm_config.neighborNormalRetries);
-
-		if(neighborNormalFailure) {
-			IB_LOG_ERROR_FMT(__func__, "%d ports failed to go active due to NeighborNormal never being set", neighborNormalFailure);
-		}
-
-		// And update CableInfo for the ports who are still alive
-		topology_update_cableinfo();
-	} // End if SCAE_ALL
-
-	// Sync all the individual port states back to the Node_t as the SA relies on them
-	for_all_nodes(sm_topop, nodep) {
-		if(nodep->portStateInfo == NULL)
-			continue;
-		for_all_ports(nodep, portp) {
-			nodep->portStateInfo[portp->index].PortStates.s.PortState = portp->state;
-		}
-	}
-
 	// Print out a pre-defined topology verification summary message (if feature is enabled)
 	if(sm_config.preDefTopo.enabled) {
-		char buf[140];
-		sprintf(buf, "SM: Pre-Defined Topology: Warning Counts: NodeDesc: %d, NodeGUID: %d, PortGUID: %d, Undefined Link: %d",
+		char buf[255];
+		snprintf(buf, sizeof(buf), "SM: Pre-Defined Topology: Warning Counts: NodeDesc: %d, NodeGUID: %d, PortGUID: %d, Undefined Link: %d",
 				sm_topop->preDefLogCounts.nodeDescWarn, sm_topop->preDefLogCounts.nodeGuidWarn,
 				sm_topop->preDefLogCounts.portGuidWarn, sm_topop->preDefLogCounts.undefinedLinkWarn);
 		vs_log_output_message(buf, FALSE);
 
-		sprintf(buf, "SM: Pre-Defined Topology: Quarantine Counts: NodeDesc: %d, NodeGUID: %d, PortGUID: %d, Undefined Link: %d",
+		snprintf(buf, sizeof(buf), "SM: Pre-Defined Topology: Quarantine Counts: NodeDesc: %d, NodeGUID: %d, PortGUID: %d, Undefined Link: %d",
 				sm_topop->preDefLogCounts.nodeDescQuarantined, 
 				sm_topop->preDefLogCounts.nodeGuidQuarantined,
 				sm_topop->preDefLogCounts.portGuidQuarantined, 
@@ -3870,7 +3417,8 @@ topology_verification(void)
 		vs_log_output_message(buf, FALSE);
 	}
 
-	return status;
+	IB_EXIT(__func__, VSTATUS_OK);
+	return(VSTATUS_OK);
 }
 
 Status_t
@@ -4629,10 +4177,6 @@ topology_free_topology(Topology_t * topop)
 		(void)vs_pool_free(&sm_pool, (void *)loopPath);
 	}
 	
-	if (topop->routingModule != NULL) {
-		sm_routing_freeModule(&topop->routingModule, topop);
-	}
-
 	if (topop->ldrCache) {
 		cl_map_item_t *it;
 		for (it = cl_qmap_head(topop->ldrCache);
@@ -4671,6 +4215,9 @@ topology_release_saved_topology(void)
 
 		vs_rwunlock(&old_topology_lock);
 	}
+
+	if (save_topology.routingModule != NULL)
+		sm_routing_freeModule(&save_topology.routingModule);
 
 	topology_free_topology(&save_topology);
 
@@ -4737,42 +4284,14 @@ topology_clearNew(void)
 		vs_rwunlock(&old_topology_lock);
 	}
 
+	if (sm_newTopology.routingModule)
+		sm_routing_freeModule(&sm_newTopology.routingModule);
+
 	topology_free_topology(&sm_newTopology);
 
 	IB_EXIT(__func__, 0);
 	return(VSTATUS_OK);
 }
-
-void topology_force_client_reregistration(Topology_t *sm_topop)
-{
-	Node_t *nodep;
-	Port_t *portp;
-	Status_t status;
-
-	(void)vs_rdlock(&old_topology_lock);
-
-	topology_set_client_reregistration = 1; //will cause sm_activate_port to set the client re-reg bit
-
-	for_all_nodes(sm_topop, nodep) {
-		for_all_ports(nodep, portp) {
-            if (sm_valid_port(portp)) {
-                if (portp->state == IB_PORT_ACTIVE) {
-                    status = sm_activate_port(sm_topop, nodep, portp);
-                    if (status != VSTATUS_OK) {
-                        IB_LOG_INFINI_INFO_FMT(__func__,
-					       "cannot set CLIENT_REREGISTER for node %s nodeGuid "FMT_U64" node index %d port index %d",
-                               sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, nodep->index, portp->index);
-                    }
-                }
-            }
-		}
-	}
-
-	topology_set_client_reregistration = 0;
-
-	(void)vs_rwunlock(&old_topology_lock);
-}
-
 
 // This is called from under the sm_newTopology lock and only modifies the
 // "build" cache, which is the cached data for the new topology.

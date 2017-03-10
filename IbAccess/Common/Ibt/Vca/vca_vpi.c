@@ -628,7 +628,11 @@ iba_create_special_qp(
 FSTATUS
 iba_attach_qp_to_mcgroup(
 	IN IB_HANDLE QpHandle,
+#if INCLUDE_16B
+	IN STL_LID McgDestLid,
+#else
 	IN IB_LID McgDestLid,
+#endif
 	IN IB_GID McgGID
 	)
 {
@@ -640,7 +644,11 @@ iba_attach_qp_to_mcgroup(
 FSTATUS
 iba_detach_qp_from_mcgroup(
 	IN IB_HANDLE QpHandle,
+#if INCLUDE_16B
+	IN STL_LID McgDestLid,
+#else
 	IN IB_LID McgDestLid,
+#endif
 	IN IB_GID McgGID
 	)
 {

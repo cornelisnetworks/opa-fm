@@ -213,11 +213,7 @@ sub need_reinstall_openmpi_gcc_hfi
 # has proper dependent rpms installed.
 sub check_os_prereqs_openmpi_gcc_hfi
 {
-	if (lc($CUR_DISTRO_VENDOR) eq "suse") {
-		return rpm_check_os_prereqs("openmpi_gcc_hfi", "user", ( "libstdc++", "libpsm_infinipath1", "opensm-libs3" ));
-	} else {
-		return rpm_check_os_prereqs("openmpi_pgi_hfi", "user", ( "libstdc++",  "infinipath-psm" ));
-	}
+	return rpm_check_os_prereqs("openmpi_gcc_hfi", "user");
 }
 
 # called for all components before they are installed.  Use
@@ -338,12 +334,7 @@ sub need_reinstall_openmpi_intel_hfi
 # has proper dependent rpms installed.
 sub check_os_prereqs_openmpi_intel_hfi
 {
-	# we allow this to install even if intel compiler runtime not available
-	if (lc($CUR_DISTRO_VENDOR) eq "suse") {
-		return rpm_check_os_prereqs("openmpi_gcc_hfi", "user", ( "libstdc++", "libpsm_infinipath1", "opensm-libs3" ));
-	} else {
-		return rpm_check_os_prereqs("openmpi_pgi_hfi", "user", ( "libstdc++",  "infinipath-psm" ));
-	}
+	return rpm_check_os_prereqs("openmpi_intel_hfi", "user");
 }
 
 # called for all components before they are installed.  Use
@@ -464,12 +455,7 @@ sub need_reinstall_openmpi_pgi_hfi
 # has proper dependent rpms installed.
 sub check_os_prereqs_openmpi_pgi_hfi
 {
-	# we allow this to install even if pgi compiler runtime not available
-	if (lc($CUR_DISTRO_VENDOR) eq "suse") {
-		return rpm_check_os_prereqs("openmpi_gcc_hfi", "user", ( "libstdc++", "libpsm_infinipath1", "opensm-libs3" ));
-	} else {
-		return rpm_check_os_prereqs("openmpi_pgi_hfi", "user", ( "libstdc++",  "infinipath-psm" ));
-	}
+	return rpm_check_os_prereqs("openmpi_pgi_hfi", "user");
 }
 
 # called for all components before they are installed.  Use
@@ -590,7 +576,7 @@ sub need_reinstall_mvapich2_gcc_hfi
 # has proper dependent rpms installed.
 sub check_os_prereqs_mvapich2_gcc_hfi
 {
-	return rpm_check_os_prereqs("mvapich2_gcc_hfi", "user", ( "sysfsutils", "libstdc++"));
+	return rpm_check_os_prereqs("mvapich2_gcc_hfi", "user");
 }                              
 
 # called for all components before they are installed.  Use
@@ -712,7 +698,7 @@ sub need_reinstall_mvapich2_intel_hfi
 sub check_os_prereqs_mvapich2_intel_hfi
 {
 	# we allow this to install even if intel compiler runtime not available
-	return rpm_check_os_prereqs("mvapich2_intel_hfi", "user", ( "sysfsutils", "libstdc++"));
+	return rpm_check_os_prereqs("mvapich2_intel_hfi", "user");
 }                              
 
 # called for all components before they are installed.  Use
@@ -834,7 +820,7 @@ sub need_reinstall_mvapich2_pgi_hfi
 sub check_os_prereqs_mvapich2_pgi_hfi
 {
 	# we allow this to install even if pgi compiler runtime not available
-	return rpm_check_os_prereqs("mvapich2_pgi_hfi", "user", ( "sysfsutils", "libstdc++"));
+	return rpm_check_os_prereqs("mvapich2_pgi_hfi", "user");
 }                              
 
 # called for all components before they are installed.  Use
@@ -872,3 +858,127 @@ sub uninstall_mvapich2_pgi_hfi
 {
     uninstall_generic_mpi("$_[0]", "$_[1]", "mvapich2", "pgi");
 }
+
+
+
+#############################################################################
+###
+#+##    OpenMPI GCC CUDA
+#
+# immediately stops or starts given component, only
+# called if HasStart
+sub start_openmpi_gcc_cuda_hfi
+{
+}
+
+# is component X available on the install media (use of this
+# allows for optional components in packaging or limited availability if a
+# component isn't available on some OS/CPU combos)
+sub stop_openmpi_gcc_cuda_hfi
+{
+}
+
+# is component X available on the install media (use of this
+# allows for optional components in packaging or limited availability if a
+# component isn't available on some OS/CPU combos)
+sub available_openmpi_gcc_cuda_hfi
+{
+    my $srcdir = $ComponentInfo{'openmpi_gcc_cuda_hfi'}{'SrcDir'};
+    return rpm_exists ("$srcdir", "user", "openmpi_gcc_cuda_hfi");
+}
+
+# is component X presently installed on the system.  This is
+# a quick check, not a "verify"
+sub installed_openmpi_gcc_cuda_hfi
+{
+    return  installed_generic_mpi("openmpi", "gcc_cuda");
+}
+
+# what is the version installed on system.  Only
+# called if installed_X is true.  versions are short strings displayed and
+# logged, no operations are done (eg. only compare for equality)
+sub installed_version_openmpi_gcc_cuda_hfi
+{
+    return rpm_query_version_release_pkg ("openmpi_gcc_cuda_hfi");
+}
+
+# only called if available_X.  Indicates version on
+# media.  Will be compared with installed_version_X to determine if
+# present installation is up to date.  Should return exact same format for
+# version string so comparison of equality is possible.
+sub media_version_openmpi_gcc_cuda_hfi
+{
+    my $srcdir = $ComponentInfo{'openmpi_gcc_cuda_hfi'}{'SrcDir'};
+    my $rpm = rpm_resolve ("$srcdir", "user", "openmpi_gcc_cuda_hfi");
+    return rpm_query_version_release ($rpm);
+}
+
+# used to build/rebuild component on local system (if
+# supported).  We support this for many items in comp_ofed.pl
+# Other components (like SM) are
+# not available in source and hence do not support this and simply
+# implement a noop.
+sub build_openmpi_gcc_cuda_hfi
+{
+    my $osver = $_[0];
+    my $debug = $_[1];
+    my $build_temp = $_[2];
+    my $force = $_[3];
+
+    return 0;
+}
+
+# does this need to be reinstalled.  Mainly used for
+# ofed due to subtle changes such as install prefix or kernel options
+# which may force a reinstall.  You'll find this is a noop in most others.
+sub need_reinstall_openmpi_gcc_cuda_hfi
+{
+    my $install_list = shift ();
+    my $installing_list = shift ();
+
+    return "no";
+}
+
+# called for all components before they are installed.  Use to verify OS
+# has proper dependent rpms installed.
+sub check_os_prereqs_openmpi_gcc_cuda_hfi
+{
+       return rpm_check_os_prereqs("openmpi_gcc_cuda_hfi", "user");
+}
+
+# called for all components before they are installed.  Use
+# to build things if needed, etc.
+sub preinstall_openmpi_gcc_cuda_hfi
+{
+    my $install_list = $_[0];
+    my $installing_list = $_[1];
+
+    my $full = "";
+    my $rc;
+
+    return 0;
+}
+
+# installs component.  also handles reinstall on top of
+# existing installation and upgrade.
+sub install_openmpi_gcc_cuda_hfi
+{
+    install_generic_mpi("$_[0]", "$_[1]", "openmpi", "gcc_cuda");
+}
+
+# called after all components are installed.
+sub postinstall_openmpi_gcc_cuda_hfi
+{
+    my $install_list = $_[0];     # total that will be installed when done
+    my $installing_list = $_[1];  # what items are being installed/reinstalled
+}
+
+# uninstalls component.  May be called even if component is
+# partially or not installed at all in which case should do its best to
+# get rid or what might remain of component from a previously aborted
+# uninstall or failed install
+sub uninstall_openmpi_gcc_cuda_hfi
+{
+    uninstall_generic_mpi("$_[0]", "$_[1]", "openmpi", "gcc_cuda");
+}
+

@@ -64,7 +64,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "if3.h"
 
 #ifndef __VXWORKS__
-#include "cs_info_file.h"
 #include <oib_utils.h>
 #endif
 
@@ -127,7 +126,7 @@ Sema_t		sa_sema;
 Lock_t		sa_lock;
 
 LidMap_t	* lidmap = NULL;
-cl_qmap_t	* sm_GuidToLidMap;
+cl_qmap_t	* sm_GuidToLidMap = NULL;
 
 size_t	g_smPoolSize;
 
@@ -158,23 +157,9 @@ uint32_t	sm_mcast_mlid_table_cap = 0;
 uint16_t	sm_masterSmSl = 0;
 uint16_t	sm_masterPmSl = 0;
 
-//			VF, SL, SC, VL mapping info. The relationship of VFs, SLs, SCs and
-//			VLs is defined as:
-//
-//			   n   1    1   m    p   1
-//			VF <---> SL <---> SC <---> VL
-//
-//			Each SL will be mapped to at least one SC. In the case where
-//			an SL is mapped to more than one SC, this entry will correspond 
-//			to the base SC, leaving the mapping of the SL to base SC + 1, 
-//			base SC + 2, etc..
-uint8_t		sm_SLtoSC[STL_MAX_SLS];
-uint8_t		sm_SCtoSL[STL_MAX_SCS];
-
 bitset_t	sm_linkSLsInuse;
 //			The % of bandwidth allocated to each SL. SLs can have multiple
 //			SCs, so an SC's bandwidth is SL bandwidth / #  of SCs per SL.
-uint8_t		sm_SlBandwidthAllocated[STL_MAX_SLS];
 
 uint32_t	sm_lid_lo = 1;
 uint32_t	sm_lid_hi = UNICAST_LID_MAX;
@@ -208,8 +193,9 @@ uint32_t	sm_mcRootCostDeltaThreshold = DEFAULT_MCROOT_COST_IMPROVEMENT_PERCENTAG
 
 boolean     sweepsPaused = 0;
 
+int			sm_QosConfigChange = 0;
+
 SmAdaptiveRouting_t sm_adaptiveRouting;
-VfInfo_t vfInfo;
 
 // XML configuration data structure
 #ifdef __VXWORKS__
@@ -259,9 +245,13 @@ uint32_t	sm_consistency_checksum;
 // looptest control
 uint32_t sm_looptest_disabled_ar = 0;
 
-#ifdef CONFIG_INCLUDE_DOR
+/*
+ * Routing module instance used in the main thread. A copy of
+ * this instance is used for the first sweep of the SM.
+ */
+static RoutingModule_t *sm_main_routingModule = NULL;
+
 SmDorRouting_t smDorRouting;
-#endif
 
 // pointer to Virtual Fabric configuration info
 VirtualFabrics_t *initialVfPtr  = NULL;
@@ -288,7 +278,7 @@ Lock_t		handover_sent_lock;
 
 /* flag to indicate if we have triggered a sweep for handover from async thread (sm_fsm.c) */
 uint32_t triggered_handover=0;
-/* flag to indicate if we have sent a handover handover from the topology thread (sm_topology.c) */
+/* flag to indicate if we have sent a handover from the topology thread (sm_topology.c) */
 uint32_t handover_sent=0;
 
 
@@ -332,6 +322,10 @@ void sm_init_mcast_mgid_mask_table(void)
 				sm_mls_config.mcastMlid[i].mcastGrpMGidLimitValueConvert.value);
 			continue;
 		}
+
+		// Gid_t helpers read in network byte order
+		BSWAP_IB_GID(&mask);
+		BSWAP_IB_GID(&value);
 
 		/* grab the limit */
 		maximum = 0xFFFF & sm_mls_config.mcastMlid[i].mcastGrpMGidLimitMax;
@@ -476,7 +470,7 @@ void sm_init_log_setting(void){
 void sm_set_log_level(uint32_t log_level)
 {
 	sm_log_level = log_level;
-	sprintf(msgbuf, "Setting SM LogLevel to %u", (unsigned)sm_log_level);
+	snprintf(msgbuf, sizeof(msgbuf), "Setting SM LogLevel to %u", (unsigned)sm_log_level);
 	vs_log_output_message(msgbuf, FALSE);
 	cs_log_set_log_masks(sm_log_level, sm_config.syslog_mode, sm_log_masks);
 	sm_init_log_setting();
@@ -490,7 +484,7 @@ uint32_t sm_get_log_level(void)
 void sm_set_log_mode(uint32_t log_mode)
 {
 	sm_config.syslog_mode = log_mode;
-	sprintf(msgbuf, "Setting SM LogMode to %u", (unsigned)sm_config.syslog_mode);
+	snprintf(msgbuf, sizeof(msgbuf), "Setting SM LogMode to %u", (unsigned)sm_config.syslog_mode);
 	vs_log_output_message(msgbuf, FALSE);
 	cs_log_set_log_masks(sm_log_level, sm_config.syslog_mode, sm_log_masks);
 	sm_init_log_setting();
@@ -504,10 +498,10 @@ uint32_t sm_get_log_mode(void)
 void sm_set_log_mask(const char* mod, uint32_t mask)
 {
 	if (! cs_log_get_module_id(mod)) {
-		sprintf(msgbuf, "Requested setting SM LogMask for invalid subsystem: %s", mod);
+		snprintf(msgbuf, sizeof(msgbuf), "Requested setting SM LogMask for invalid subsystem: %s", mod);
 		vs_log_output_message(msgbuf, FALSE);
 	} else {
-		sprintf(msgbuf, "Setting SM %s_LogMask to 0x%x", mod, (unsigned)mask);
+		snprintf(msgbuf, sizeof(msgbuf), "Setting SM %s_LogMask to 0x%x", mod, (unsigned)mask);
 		vs_log_output_message(msgbuf, FALSE);
 		cs_log_set_log_mask(mod, mask, sm_log_masks);
 		sm_init_log_setting();
@@ -536,23 +530,26 @@ void sm_set_skip_attribute_write(char * datap){
 	IB_LOG_INFINI_INFO_FMT(__func__, "Setting skip attribute write to 0x%x", tmp);
 }
 
+void sm_free_vf_mem(void) {
+	bitset_free(&sm_linkSLsInuse);
+}
 
-#ifdef CONFIG_INCLUDE_DOR
 void sm_process_dor_info(VirtualFabrics_t *VirtualFabrics, SmDorRouting_t *dorCfg) {
 
-	int d,p,vf;
+	int d,p;
 	smDorRouting = *dorCfg;
+	int toroidal_count = 0;
 
 	if (smDorRouting.dimensionCount == 0) {
 		IB_LOG_ERROR_FMT(__func__,
 						 "Routing algorithm configured as dor but no dimensions have been specified in the configuration.");
-		IB_FATAL_ERROR("Please specify required dimensions in the configuration. Exiting");
+		IB_FATAL_ERROR_NODUMP("Please specify required dimensions in the configuration. Exiting");
 	}
 
 	if (smDorRouting.dimensionCount > SM_DOR_MAX_DIMENSIONS) {
 		IB_LOG_ERROR_FMT(__func__, "Number of dimensions configured is %d but dor algorithm supports only %d dimensions.",
 						smDorRouting.dimensionCount, SM_DOR_MAX_DIMENSIONS);
-		IB_FATAL_ERROR("Please reconfigure with correct number of dimensions. Exiting");
+		IB_FATAL_ERROR_NODUMP("Please reconfigure with correct number of dimensions. Exiting");
 	}
 
 	if (smDorRouting.warn_threshold > SM_DOR_MAX_WARN_THRESHOLD) {
@@ -561,124 +558,76 @@ void sm_process_dor_info(VirtualFabrics_t *VirtualFabrics, SmDorRouting_t *dorCf
 			 smDorRouting.warn_threshold, SM_DOR_MAX_WARN_THRESHOLD, SM_DOR_MAX_WARN_THRESHOLD);
 		smDorRouting.warn_threshold = SM_DOR_MAX_WARN_THRESHOLD;
 	}
-
 	if (smDorRouting.debug) {
 		IB_LOG_INFINI_INFO_FMT(__func__, "DorTopology %s NumberOfDimensions %d routingSCs %d",
 				(smDorRouting.topology == DOR_MESH)?"mesh":((smDorRouting.topology == DOR_TORUS)? "torus":"partial torus"), 
 				smDorRouting.dimensionCount, smDorRouting.routingSCs);
 
 		for (d=0; d<smDorRouting.dimensionCount; d++) {
-   	   		IB_LOG_INFINI_INFO_FMT(__func__, "DorDimension %d is %s length is %d", 
-				d, smDorRouting.dimension[d].toroidal?"toroidal":"not toroidal",
-				smDorRouting.dimension[d].length);
+			if (smDorRouting.dimension[d].toroidal)
+				toroidal_count++;
 
-			for (p=0; p<smDorRouting.dimension[d].portCount; p++)
-        		IB_LOG_INFINI_INFO_FMT(__func__, "DorDimension %d PortPair %d,%d", d,
+   	   		IB_LOG_INFINI_INFO_FMT(__func__, "DorDimension %d is %s", 
+				d, smDorRouting.dimension[d].toroidal?"toroidal":"not toroidal");
+
+			for (p=0; p<smDorRouting.dimension[d].portCount; p++) {
+				IB_LOG_INFINI_INFO_FMT(__func__, "DorDimension %d PortPair %d,%d", d,
 					smDorRouting.dimension[d].portPair[p].port1, smDorRouting.dimension[d].portPair[p].port2);
+			}
 		}
+		IB_LOG_INFINI_INFO_FMT(__func__, "Total toroidal dimensions %d", toroidal_count);
 	}
+}
+
+static Status_t
+sm_resolve_pkeys_for_vfs(VirtualFabrics_t *VirtualFabrics)
+{
+	int				vf, vf2;
+	int				defaultPkey=0;
+	VFDg_t*			mcastGrpp;
+	VFAppMgid_t*	mgidp;
+	uint8_t			logMcRateChange, logMcMtuChange;
+	bitset_t		freePkeys;
+
+	if (!VirtualFabrics || (VirtualFabrics->number_of_vfs == 0))  {
+		return VSTATUS_OK;
+	}
+
+	// Only deal with 32 pkeys. We can't use more than 32 pkeys
+	// (hardware limit, 32 VF limit).
+	if (!bitset_init(&sm_pool, &freePkeys, SM_PKEYS+1)) {
+		IB_LOG_ERROR_FMT(__func__, "Out of memory.");
+		return VSTATUS_NOMEM;
+	}
+	bitset_set_all(&freePkeys);
+	bitset_clear(&freePkeys, 0);
 
 	for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
-		VirtualFabrics->v_fabric_all[vf].routing_scs = smDorRouting.routingSCs;
-	}
-	for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
-		VirtualFabrics->v_fabric[vf].routing_scs = smDorRouting.routingSCs;
-	}
-}
-#endif
+		VF_t *vfp = &VirtualFabrics->v_fabric_all[vf];
 
-uint8_t sm_error_check_vfs(VirtualFabrics_t *VirtualFabrics) {
+		VFDg_t*		 mcastGrpp;
 
-	uint8_t qosError=0;
+		if (PKEY_VALUE(vfp->pkey) < SM_PKEYS) {
+			bitset_clear(&freePkeys, PKEY_VALUE(vfp->pkey));
+		}
 
-    if (!VirtualFabrics || (VirtualFabrics->number_of_vfs == 0))  {
-        return VSTATUS_BAD;
-    }
+		for (mcastGrpp = vfp->default_group; mcastGrpp;
+			 mcastGrpp = mcastGrpp->next_default_group) {
+			if (mcastGrpp->def_mc_create &&
+				(PKEY_VALUE(mcastGrpp->def_mc_pkey) < SM_PKEYS)) {
+				bitset_clear(&freePkeys, PKEY_VALUE(vfp->pkey));
+			}
+		}
 
-    // Check for errors - If an error exists, remove All QOS features.
+		if (vfp->security)
+			VirtualFabrics->securityEnabled = 1;
 
-    if (vfInfo.totalSLsNeeded > vfInfo.maxSLs) {
-        IB_LOG_ERROR_FMT(__func__, "VFs require too many SLs (%d>%d).  Please reconfigure. Disabling QoS.",vfInfo.totalSLsNeeded, vfInfo.maxSLs);
-        qosError = 1;
-    }
+		if (vfp->qos_enable)
+			VirtualFabrics->qosEnabled = 1;
 
-    if (vfInfo.totalSCsNeeded > (STL_MAX_SCS-1)) {
-        IB_LOG_ERROR_FMT(__func__, "VF Routing require too many SCs (%d>%d).  Please reconfigure. Disabling QoS.",vfInfo.totalSCsNeeded, STL_MAX_SCS-1);
-        qosError = 1;
-    }
-
-	return qosError;
-}
-
-void sm_printf_vf_debug(VirtualFabrics_t *VirtualFabrics) {
-
-    int vf;
-    for (vf=0; vf<VirtualFabrics->number_of_vfs; vf++) {
-        IB_LOG_INFINI_INFO_FMT_VF(VirtualFabrics->v_fabric[vf].name, "",
-            "Base SL:%d Base SC:%d NumScs:%d QOS:%d HP:%d",
-            VirtualFabrics->v_fabric[vf].base_sl, VirtualFabrics->v_fabric[vf].base_sc,
-            VirtualFabrics->v_fabric[vf].routing_scs,
-            VirtualFabrics->v_fabric[vf].qos_enable, VirtualFabrics->v_fabric[vf].priority);
-        if (VirtualFabrics->v_fabric[vf].mcast_isolate) {
-            IB_LOG_INFINI_INFO_FMT_VF(VirtualFabrics->v_fabric[vf].name, "",
-                "MCast SL:%d MCast SC:%d",
-                VirtualFabrics->v_fabric[vf].mcast_sl, VirtualFabrics->v_fabric[vf].mcast_sc);
-        }
-    }
-
-    if (sm_config.sm_debug_vf)
-    {
-        // Dump SC to SL
-        IB_LOG_INFINI_INFO_FMT(__func__, "SCSL = 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
-                               sm_SCtoSL[0], sm_SCtoSL[1], sm_SCtoSL[2], sm_SCtoSL[3],
-                               sm_SCtoSL[4], sm_SCtoSL[5], sm_SCtoSL[6], sm_SCtoSL[7]);
-
-        IB_LOG_INFINI_INFO_FMT(__func__, "       0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
-                               sm_SCtoSL[8], sm_SCtoSL[9], sm_SCtoSL[10], sm_SCtoSL[11],
-                               sm_SCtoSL[12], sm_SCtoSL[13], sm_SCtoSL[14], sm_SCtoSL[15]);
-
-        IB_LOG_INFINI_INFO_FMT(__func__, "       0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
-                               sm_SCtoSL[16], sm_SCtoSL[17], sm_SCtoSL[18], sm_SCtoSL[19],
-                               sm_SCtoSL[20], sm_SCtoSL[21], sm_SCtoSL[22], sm_SCtoSL[23]);
-
-        IB_LOG_INFINI_INFO_FMT(__func__, "       0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
-                               sm_SCtoSL[24], sm_SCtoSL[25], sm_SCtoSL[26], sm_SCtoSL[27],
-                               sm_SCtoSL[28], sm_SCtoSL[29], sm_SCtoSL[30], sm_SCtoSL[31]);
-
-        // Dump SL to SC
-        IB_LOG_INFINI_INFO_FMT(__func__, "SLSC = 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
-                               sm_SLtoSC[0], sm_SLtoSC[1], sm_SLtoSC[2], sm_SLtoSC[3],
-                               sm_SLtoSC[4], sm_SLtoSC[5], sm_SLtoSC[6], sm_SLtoSC[7]);
-
-        IB_LOG_INFINI_INFO_FMT(__func__, "       0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
-                               sm_SLtoSC[8], sm_SLtoSC[9], sm_SLtoSC[10], sm_SLtoSC[11],
-                               sm_SLtoSC[12], sm_SLtoSC[13], sm_SLtoSC[14], sm_SLtoSC[15]);
-
-        IB_LOG_INFINI_INFO_FMT(__func__, "       0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
-                               sm_SLtoSC[16], sm_SLtoSC[17], sm_SLtoSC[18], sm_SLtoSC[19],
-                               sm_SLtoSC[20], sm_SLtoSC[21], sm_SLtoSC[22], sm_SLtoSC[23]);
-
-        IB_LOG_INFINI_INFO_FMT(__func__, "       0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
-                               sm_SLtoSC[24], sm_SLtoSC[25], sm_SLtoSC[26], sm_SLtoSC[27],
-                               sm_SLtoSC[28], sm_SLtoSC[29], sm_SLtoSC[30], sm_SLtoSC[31]);
-
-    }
-}
-
-void sm_resolve_pkeys_for_vfs(VirtualFabrics_t *VirtualFabrics) {
-
-	int           vf, vf2;
-    int           defaultPkey=0;
-    VFDg_t*       mcastGrpp;
-    VFAppMgid_t*  mgidp;
-    uint8_t       logMcRateChange, logMcMtuChange;
-
-    if (!VirtualFabrics || (VirtualFabrics->number_of_vfs == 0))  {
-        return;
-    }
-
-    // Prior code dealing with PKEYs
-	for (vf=0; vf<VirtualFabrics->number_of_vfs; vf++) {
+	} //end loop on all VFs
+	// Prior code dealing with PKEYs
+	for (vf=0; vf<VirtualFabrics->number_of_vfs && vf<MAX_VFABRICS; vf++) {
 
 		// Check if pkey is defined.
 		if ((VirtualFabrics->v_fabric[vf].pkey == UNDEFINED_PKEY) ||
@@ -702,26 +651,31 @@ void sm_resolve_pkeys_for_vfs(VirtualFabrics_t *VirtualFabrics) {
 
 				} else if (VirtualFabrics->v_fabric[vf].security) {
 					// Assign unique pkey.
-					VirtualFabrics->v_fabric[vf].pkey = bitset_find_first_one(&vfInfo.freePkeys);
-					bitset_clear(&vfInfo.freePkeys, VirtualFabrics->v_fabric[vf].pkey);
-	
+					VirtualFabrics->v_fabric[vf].pkey = bitset_find_first_one(&freePkeys);
+					bitset_clear(&freePkeys, VirtualFabrics->v_fabric[vf].pkey);
 				} else {
 					if (defaultPkey == 0) {
-						defaultPkey = bitset_find_first_one(&vfInfo.freePkeys);
-						bitset_clear(&vfInfo.freePkeys, defaultPkey);
+						defaultPkey = bitset_find_first_one(&freePkeys);
+						if (defaultPkey < 0) {
+							IB_LOG_ERROR_FMT_VF(VirtualFabrics->v_fabric[vf].name,
+								__func__,
+								"Unable to allocate pkey to vf. Pkey table full.");
+							return VSTATUS_BAD;
+						}
+						bitset_clear(&freePkeys, defaultPkey);
 					}
 					VirtualFabrics->v_fabric[vf].pkey = defaultPkey;
 				}
 			}
 
-        	IB_LOG_INFINI_INFO_FMT_VF( VirtualFabrics->v_fabric[vf].name, "sm_resolve_pkeys_for_vfs",
+			IB_LOG_INFINI_INFO_FMT_VF( VirtualFabrics->v_fabric[vf].name, "sm_resolve_pkeys_for_vfs",
 					"VFabric has undefined pkey. Assigning pkey 0x%x.", VirtualFabrics->v_fabric[vf].pkey);
 
 		} else if (!VirtualFabrics->v_fabric[vf].security) {
 			for (vf2=0; vf2<VirtualFabrics->number_of_vfs; vf2++) {
 				if (vf==vf2) continue;
 				if ((VirtualFabrics->v_fabric[vf].pkey == VirtualFabrics->v_fabric[vf2].pkey) && VirtualFabrics->v_fabric[vf2].security) {
-        			IB_LOG_INFINI_INFO_FMT_VF( VirtualFabrics->v_fabric[vf].name, "sm_resolve_pkeys_for_vfs", "VFabric has security disabled. VFabric %s has same PKey with security enabled. Enabling security.", 
+					IB_LOG_INFINI_INFO_FMT_VF( VirtualFabrics->v_fabric[vf].name, "sm_resolve_pkeys_for_vfs", "VFabric has security disabled. VFabric %s has same PKey with security enabled. Enabling security.", 
  						VirtualFabrics->v_fabric[vf2].name);
 					VirtualFabrics->v_fabric[vf].security = 1;
 					break;
@@ -773,11 +727,11 @@ void sm_resolve_pkeys_for_vfs(VirtualFabrics_t *VirtualFabrics) {
 				}
 
 				if (mcastGrpp->def_mc_rate_int >= UNDEFINED_XML8) {
-					mcastGrpp->def_mc_rate_int = linkrate_gt(IB_STATIC_RATE_100G, VirtualFabrics->v_fabric[vf].max_rate_int) ?
-														VirtualFabrics->v_fabric[vf].max_rate_int : IB_STATIC_RATE_100G;
+					mcastGrpp->def_mc_rate_int = linkrate_gt(IB_STATIC_RATE_25G, VirtualFabrics->v_fabric[vf].max_rate_int) ?
+														VirtualFabrics->v_fabric[vf].max_rate_int : IB_STATIC_RATE_25G;
 				} else if (linkrate_gt(mcastGrpp->def_mc_rate_int, VirtualFabrics->v_fabric[vf].max_rate_int)) {
-					mcastGrpp->def_mc_rate_int = linkrate_gt(IB_STATIC_RATE_100G, VirtualFabrics->v_fabric[vf].max_rate_int) ?
-														VirtualFabrics->v_fabric[vf].max_rate_int : IB_STATIC_RATE_100G;
+					mcastGrpp->def_mc_rate_int = linkrate_gt(IB_STATIC_RATE_25G, VirtualFabrics->v_fabric[vf].max_rate_int) ?
+														VirtualFabrics->v_fabric[vf].max_rate_int : IB_STATIC_RATE_25G;
 					if (logMcRateChange) {
 						logMcRateChange = 0;
 						IB_LOG_WARN_FMT_VF( VirtualFabrics->v_fabric[vf].name, "sm_resolve_pkeys_for_vfs",
@@ -799,18 +753,13 @@ void sm_resolve_pkeys_for_vfs(VirtualFabrics_t *VirtualFabrics) {
 					}
 				}
 
-				if (VirtualFabrics->v_fabric[vf].mcast_isolate) {
-					// If multicast isolation is enabled, ignore the specified
-					// default (if any) because the FM does not allow setting
-					// the multicast SL of a VF at this time.
+				if (mcastGrpp->def_mc_sl == UNDEFINED_XML8) {
 					mcastGrpp->def_mc_sl = VirtualFabrics->v_fabric[vf].mcast_sl;
-				} else if (mcastGrpp->def_mc_sl == UNDEFINED_XML8) {
-					mcastGrpp->def_mc_sl = VirtualFabrics->v_fabric[vf].base_sl;
 
-				} else if (mcastGrpp->def_mc_sl != VirtualFabrics->v_fabric[vf].base_sl) {
+				} else if (mcastGrpp->def_mc_sl != VirtualFabrics->v_fabric[vf].mcast_sl) {
 					IB_LOG_ERROR_FMT_VF(VirtualFabrics->v_fabric[vf].name,
-							"sm_resolve_pkeys_for_vfs", "MulticastGroup configuration error, SL must match BaseSL %d (configured SL %d), disabling Default Group",
-							VirtualFabrics->v_fabric[vf].base_sl, mcastGrpp->def_mc_sl);
+							"sm_resolve_pkeys_for_vfs", "MulticastGroup configuration error, SL must match SL %d (configured SL %d), disabling Default Group",
+							VirtualFabrics->v_fabric[vf].mcast_sl, mcastGrpp->def_mc_sl);
 					mcastGrpp->def_mc_create = 0;
 				}
 
@@ -828,570 +777,40 @@ void sm_resolve_pkeys_for_vfs(VirtualFabrics_t *VirtualFabrics) {
 			}
 		}
 	}
-}
-
-void sm_allocate_mem_vfs(void) {
-	vfInfo.maxSLs = MAX_SLS; // Limited to IB SLs, later increase to STL SLs
-
-    bitset_init(&sm_pool, &sm_linkSLsInuse, STL_MAX_SLS);
-    bitset_init(&sm_pool, &vfInfo.freePkeys, SM_PKEYS+1);
-}
-
-void sm_init_vf_info(void) {
-	vfInfo.totalVFsNoQos = 0;
-	vfInfo.activeVFsNoQos = 0;
-	vfInfo.totalVFsQos = 0;
-	vfInfo.activeVFsQos = 0;
-	vfInfo.totalVFsMC = 0;
-	vfInfo.activeVFsMC = 0;
-	vfInfo.totalSCsNeeded = 0;
-	vfInfo.numHighPriority = 0;
-	vfInfo.totalConfiguredBandwidth = 0;
-	vfInfo.totalSLwithConfiguredBW = 0;
-	vfInfo.defaultRoutingSCs = 1;
-	vfInfo.totalSLsNeeded = 0;
-	vfInfo.distributedBandwidth = 0;
-	vfInfo.numHighPriority = 0;
-	vfInfo.maxSLs = MAX_SLS; // Limited to IB SLs, later increase to STL SLs
-
-    memset(sm_SlBandwidthAllocated, 0, sizeof(sm_SlBandwidthAllocated));
-
-    memset(sm_SLtoSC, 15, sizeof(sm_SLtoSC));
-    memset(sm_SCtoSL, 0xff, sizeof(sm_SCtoSL));
-
-    bitset_set_all(&vfInfo.freePkeys);
-    bitset_clear(&vfInfo.freePkeys, 0);
-
-	//clear SLs in use
-    bitset_clear_all(&sm_linkSLsInuse);
-}
-
-void sm_free_vf_mem(void) {
-	bitset_free(&sm_linkSLsInuse);
-	bitset_free(&vfInfo.freePkeys);
-}
-
-static Status_t
-sm_update_bw(VirtualFabrics_t *VirtualFabrics)
-{
-    int vf;
-	uint32_t nonQosMcBandwidth = 0;
-	uint32_t nonQosBandwidth = vfInfo.distributedBandwidth;
-
-    if (!VirtualFabrics || (VirtualFabrics->number_of_vfs_all == 0))  {
-        return VSTATUS_OK;
-    }
-
-	IB_LOG_INFINI_INFO_FMT("", "VF Bandwidth Allocations :");
-
-	if (VirtualFabrics->active_mc_vfs > 0) {
-		// MCBW = BW * (# MC VFs)/(# MC VFs + # non-QOS VFs)
-		nonQosMcBandwidth = (vfInfo.distributedBandwidth*VirtualFabrics->active_mc_vfs)/(VirtualFabrics->active_non_qos_vfs+VirtualFabrics->active_mc_vfs);
-		if (nonQosMcBandwidth < 1) nonQosMcBandwidth = 1;
-		nonQosBandwidth = vfInfo.distributedBandwidth - nonQosMcBandwidth;
-		if (nonQosBandwidth < 1) nonQosBandwidth = 1;
-	}
-
-	IB_LOG_INFINI_INFO_FMT(__func__,"Non-QOS routing BW = %u, Non-QOS MC BW = %u",
-		nonQosBandwidth, nonQosMcBandwidth);
-
-    // Assign / Update BW
-    for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
-		VF_t *vfallp = &(VirtualFabrics->v_fabric_all[vf]);
-		if (!vfallp->standby) {
-
-			if (vfallp->qos_enable) {
-				if (vfallp->priority) {
-					IB_LOG_INFINI_INFO_FMT_VF(vfallp->name, "",
-											  "High Priority VF; HP VFs don't participate in BW allocations");
-				}
-				else {
-					// Assign unconfigured BW for QOS fabrics (each VF gets a distribution)
-					if (vfallp->percent_bandwidth == UNDEFINED_XML8) {
-						vfallp->percent_bandwidth = vfInfo.distributedBandwidth;
-					}
-					IB_LOG_INFINI_INFO_FMT_VF(VirtualFabrics->v_fabric_all[vf].name, "",
-											  "BW:%d%%", VirtualFabrics->v_fabric_all[vf].percent_bandwidth);
-				}
-
-			} else {
-				// Assign unconfigured BW for non-QOS fabrics (All non QOS share a distribution)
-				vfallp->percent_bandwidth = vfInfo.distributedBandwidth;
-
-				IB_LOG_INFINI_INFO_FMT_VF(VirtualFabrics->v_fabric_all[vf].name, "",
-										  "Sharing %d%% BW among remaining VFs", vfallp->percent_bandwidth);
-			}
-		}
-		else {
-			vfallp->percent_bandwidth = 0;
-		}
-
-		// If none of the cases above, means that percent bandwidth was user defined for the VF (QOS)
-		//  OR the VF was High Priority (also QOS)
-
-		// Divide the allocated bandwidths between the routing SLs
-		// and multicast isolation SLs.
-		if (!vfallp->mcast_isolate && vfallp->qos_enable) {
-			// QOS case: Routing SL and no MC SL. Assign all BW to routing SL.
-			sm_SlBandwidthAllocated[vfallp->base_sl] = vfallp->percent_bandwidth;
-			IB_LOG_INFINI_INFO_FMT(__func__,"Case 0: SL BW = %u",
-				sm_SlBandwidthAllocated[vfallp->base_sl]);
-		} else if (vfallp->mcast_isolate && vfallp->qos_enable) {
-			// QOS case: Divide the bandwidth between the routing and MC SLs.
-			sm_SlBandwidthAllocated[vfallp->base_sl] = 
-				vfallp->percent_bandwidth - vfallp->percent_bandwidth/2;
-			sm_SlBandwidthAllocated[vfallp->mcast_sl] = vfallp->percent_bandwidth/2;
-			IB_LOG_INFINI_INFO_FMT(__func__,"Case 1: SL BW = %u, MC BW = %u",
-				sm_SlBandwidthAllocated[vfallp->base_sl],
-				sm_SlBandwidthAllocated[vfallp->mcast_sl]);
-		} else if (vfallp->mcast_isolate) {
-			// Non-QOS case: Divide the bandwidth between the shared routing and MC SLs.
-			sm_SlBandwidthAllocated[vfallp->base_sl] = nonQosBandwidth;
-			sm_SlBandwidthAllocated[vfallp->mcast_sl] = nonQosMcBandwidth;
-			IB_LOG_INFINI_INFO_FMT(__func__,"Case 2: SL BW = %u, MC BW = %u",
-				sm_SlBandwidthAllocated[vfallp->base_sl],
-				sm_SlBandwidthAllocated[vfallp->mcast_sl]);
-		} else if (VirtualFabrics->active_mc_vfs) {
-			// Non-QOS case: VF shares the non-QOS SL but doesn't have a MC SL.
-			// But we can't assign all BW to the routing SL because the MC SL exists.
-			sm_SlBandwidthAllocated[vfallp->base_sl] = nonQosBandwidth;
-			IB_LOG_INFINI_INFO_FMT(__func__,"Case 3: SL BW = %u",
-				sm_SlBandwidthAllocated[vfallp->base_sl]);
-		} else {
-			// Non-QOS case: VF shares the non-QOS SL and there are no non-QOS
-			// MC VFs.
-			sm_SlBandwidthAllocated[vfallp->base_sl] = vfallp->percent_bandwidth;
-			IB_LOG_INFINI_INFO_FMT(__func__,"Case 4: SL BW = %u",
-				sm_SlBandwidthAllocated[vfallp->base_sl]);
-		}
-
-		//update active list
-		int activeVfIdx;
-		if (!vfallp->standby) {
-			activeVfIdx = findVfIdxInActiveList(vfallp, VirtualFabrics, TRUE);
-
-			if (activeVfIdx != -1) 
-				VirtualFabrics->v_fabric[activeVfIdx].percent_bandwidth = vfallp->percent_bandwidth;
-		}
-
-
-		//Update BWs in vf config
-		int vfIdx=0;
-		int vfToProcess = -1;
-		VFConfig_t* vfp;
-		//find the VF name in the global vf_config
-		for (vfIdx=0; vfIdx<vf_config.number_of_vfs; ++vfIdx) {
-			vfp = vf_config.vf[vfIdx];
-			if (strncmp(vfp->name, vfallp->name, MAX_VFABRIC_NAME+1) == 0) {
-				vfToProcess = vfIdx;
-				break;
-			}
-		}
-
-		if (vfToProcess != -1) {
-			vf_config.vf[vfToProcess]->percent_bandwidth = vfallp->percent_bandwidth;
-		}
-
-    } //end loop on all VFs
-
+	bitset_free(&freePkeys);
 	return VSTATUS_OK;
 }
 
-void sm_assign_scs_to_sls(VirtualFabrics_t *VirtualFabrics) {
-
-    // Assign SCs to SLs
-    int sc, i, vf;
-    bitset_t usedSLs;
-
-    if (!bitset_init(&sm_pool, &usedSLs, STL_MAX_SLS)) {
-        IB_FATAL_ERROR("sm_assign_scs_to_sls_normal: No memory for SLs setup, exiting.");
-    }
-
-    for (sc=0, vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
-        // Assign the SC when a new SL is encountered.
-        if (!bitset_test(&usedSLs, VirtualFabrics->v_fabric[vf].base_sl) ) {
-            bitset_set(&usedSLs, VirtualFabrics->v_fabric[vf].base_sl);
-
-            for (i=0; i < VirtualFabrics->v_fabric[vf].routing_scs; i++, sc++) {
-                if (sc == 15) sc++; // Skip invalid SC
-                if (i==0) {
-                    VirtualFabrics->v_fabric[vf].base_sc = sc;
-                    sm_SLtoSC[VirtualFabrics->v_fabric[vf].base_sl] = sc;
-                }
-                if (sc>=STL_MAX_SCS) {
-                    IB_LOG_ERROR_FMT(__func__, "%s - Base SL:%d, Base SC:%d, Route Scs: %d. Exceeding number of SCs (%d)",
-                                      VirtualFabrics->v_fabric[vf].name, VirtualFabrics->v_fabric[vf].base_sl,
-                                      VirtualFabrics->v_fabric[vf].base_sc, VirtualFabrics->v_fabric[vf].routing_scs, sc);
-                    continue;
-                }
-
-                sm_SCtoSL[sc] = VirtualFabrics->v_fabric[vf].base_sl;
-            }
-        } else {
-            // This SL has already been assigned an SC; copy it to this VF
-            VirtualFabrics->v_fabric[vf].base_sc = sm_SLtoSC[VirtualFabrics->v_fabric[vf].base_sl];
-        }
-    }
-
-    bitset_free(&usedSLs);
-
-    sm_setup_SC2VL(VirtualFabrics);
-
-    sm_printf_vf_debug(VirtualFabrics);
-}
-
-
 static Status_t
-sm_assign_scs_to_sls_FixedMap(VirtualFabrics_t *VirtualFabrics)
+sm_assign_qos_params(VirtualFabrics_t *VirtualFabrics)
 {
+	DEBUG_ASSERT(sm_main_routingModule != NULL);
 
-    // Assign SCs to SLs
-    Status_t status = sm_setup_SC2VLFixedMap(sm_config.min_supported_vls, VirtualFabrics);
+	/* Assign SLs */
+	if (sm_main_routingModule->funcs.assign_sls)
+		if (sm_main_routingModule->funcs.assign_sls(sm_main_routingModule, VirtualFabrics) != VSTATUS_OK)
+			return VSTATUS_BAD;
 
-    sm_printf_vf_debug(VirtualFabrics);
+	/* Update BW */
+	if (sm_main_routingModule->funcs.update_bw)
+		if (sm_main_routingModule->funcs.update_bw(sm_main_routingModule, VirtualFabrics) != VSTATUS_OK)
+			return VSTATUS_BAD;
 
-	return status;
-}
+	/* Assign SCs to SLs */
+	if (sm_main_routingModule->funcs.assign_scs_to_sls)
+		if (sm_main_routingModule->funcs.assign_scs_to_sls(sm_main_routingModule, VirtualFabrics) != VSTATUS_OK)
+			return VSTATUS_BAD;
 
-static Status_t
-sm_assign_sls(VirtualFabrics_t *VirtualFabrics)
-{
-
-    int qosSL = -1;
-    int qosMCSL = -1;
-	int vf;
-	Status_t ret = VSTATUS_BAD;
-    bitset_t usedSLs;
-
-    if (!VirtualFabrics || (VirtualFabrics->number_of_vfs == 0) || (VirtualFabrics->number_of_vfs_all == 0) )  {
-        return ret;
-    }
-
-    bitset_init(&sm_pool, &usedSLs, vfInfo.maxSLs);
-
-	// This will be used later to calculate the bandwidth for the shared multicast isolation SL.
-	VirtualFabrics->active_mc_vfs = 0;
-	VirtualFabrics->active_non_qos_vfs = 0;
-
-    // Assign user specified SLs first.
-    for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
-        if (!VirtualFabrics->v_fabric_all[vf].qos_enable) continue;
-        if (VirtualFabrics->v_fabric_all[vf].base_sl != UNDEFINED_XML8) {
-            if (bitset_test(&usedSLs, (unsigned)VirtualFabrics->v_fabric_all[vf].base_sl) ) {
-                IB_LOG_WARN_FMT(__func__,
-                    "VFabric %s (QOS) Ignoring requested base SL %d, as that sl is already assigned to a different vFabric.",
-                    VirtualFabrics->v_fabric_all[vf].name, (unsigned)VirtualFabrics->v_fabric_all[vf].base_sl);
-                VirtualFabrics->v_fabric_all[vf].base_sl = UNDEFINED_XML8;
-            } else {
-                bitset_set(&usedSLs, VirtualFabrics->v_fabric_all[vf].base_sl);
-            }
-        }
-    }
-
-    // Now assign the unspecified base SLs (Which includes the conflict 
-    // resolution from above) and the multicast SLs, if needed.
-    // Assign SLs in the order they appear in the config file.
-    // [This provides a predicable output for users.]
-    for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++){
-        // NOTA BENE: This code assumes that routing_sls is always 1...
-        if (VirtualFabrics->v_fabric_all[vf].base_sl == UNDEFINED_XML8) {
-            uint8_t base_sl;
-            if (VirtualFabrics->v_fabric_all[vf].qos_enable){
-                base_sl = bitset_find_first_zero(&usedSLs);
-                VirtualFabrics->v_fabric_all[vf].base_sl = base_sl;
-                bitset_set(&usedSLs, base_sl);
-            } else {
-                // Assign the non-qos SL if not assigned yet.
-                if (qosSL == -1) {
-                    qosSL = bitset_find_first_zero(&usedSLs);
-                    bitset_set(&usedSLs, qosSL);
-                }
-                VirtualFabrics->v_fabric_all[vf].base_sl = qosSL;
-            }
-        }
-        // Assign the multicast SL if it is needed.
-        // The user isn't permitted to specify the multicast SL,
-        // so we don't have to check for that.
-        if (VirtualFabrics->v_fabric_all[vf].mcast_isolate) {
-            uint8_t mcast_sl;
-            if (VirtualFabrics->v_fabric_all[vf].qos_enable){
-                mcast_sl = bitset_find_first_zero(&usedSLs);
-                VirtualFabrics->v_fabric_all[vf].mcast_sl = mcast_sl;
-                bitset_set(&usedSLs, mcast_sl);
-            } else {
-                // Assign the non-qos multicast SL if not assigned yet.
-                if (qosMCSL == -1) {
-                    qosMCSL = bitset_find_first_zero(&usedSLs);
-                    VirtualFabrics->v_fabric_all[vf].mcast_sl = qosMCSL;
-                	bitset_set(&usedSLs, qosMCSL);
-                }
-                VirtualFabrics->v_fabric_all[vf].mcast_sl = qosMCSL;
-            }
-        }
-        if (sm_config.sm_debug_vf) {
-		    IB_LOG_INFINI_INFO_FMT(__func__,
-                "VF %u has base_sl %u and mcast_sl %u",
-			    vf, VirtualFabrics->v_fabric_all[vf].base_sl,
-			    VirtualFabrics->v_fabric_all[vf].mcast_sl);
-        }
-    }
-
-	// Assign SLs to the active VF list
-	uint32_t activeVfIdx;
-
-	for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++){
-
-		if (!VirtualFabrics->v_fabric_all[vf].standby) {
-			activeVfIdx = findVfIdxInActiveList(&VirtualFabrics->v_fabric_all[vf], VirtualFabrics, TRUE);
-
-			if (activeVfIdx != -1) {
-				VirtualFabrics->v_fabric[activeVfIdx].base_sl = VirtualFabrics->v_fabric_all[vf].base_sl;
-				VirtualFabrics->v_fabric[activeVfIdx].mcast_isolate = VirtualFabrics->v_fabric_all[vf].mcast_isolate;
-				if (!VirtualFabrics->v_fabric[activeVfIdx].qos_enable) {
-					VirtualFabrics->active_non_qos_vfs++;
-					if (VirtualFabrics->v_fabric[activeVfIdx].mcast_isolate) {
-						VirtualFabrics->active_mc_vfs++;
-					}
-				}
-				VirtualFabrics->v_fabric[activeVfIdx].mcast_sl = VirtualFabrics->v_fabric_all[vf].mcast_sl;
-			}
-		}
-	}
-
-    IB_LOG_INFINI_INFO_FMT(__func__, "%d active VF(s), %d standby VF(s) requires %d SLs and %d SCs for operation.",
-        VirtualFabrics->number_of_vfs, 
-        VirtualFabrics->number_of_vfs_all-VirtualFabrics->number_of_vfs, 
-        vfInfo.totalSLsNeeded, vfInfo.totalSCsNeeded); 
-    IB_LOG_INFINI_INFO_FMT(__func__, "%d active VF(s) share the non-QOS SL, %d active VF(s) share the non-QOS MC SL.",
-        VirtualFabrics->active_non_qos_vfs, VirtualFabrics->active_mc_vfs);
-
-	ret = VSTATUS_OK;
-
-	bitset_free(&usedSLs);
-	return ret;
-}
-
-void sm_process_vf_qos_params(VirtualFabrics_t *VirtualFabrics) {
-
-	int vf;
-	int noQosVF = 0;
-	int noQosMCVF = 0;
-	VF_t* vfp;
-
-    if (!VirtualFabrics || (VirtualFabrics->number_of_vfs_all == 0))  {
-        return;
-    }
-
-    VirtualFabrics->securityEnabled = 0;
-    VirtualFabrics->qosEnabled = 0;
-
-	// NOTA BENE: This loop assumes routing_sls == 1.
-    for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
-
-		vfp = &VirtualFabrics->v_fabric_all[vf];
-
-		VFDg_t*         mcastGrpp;
-
-		vfInfo.defaultRoutingSCs = MAX(vfInfo.defaultRoutingSCs, vfp->routing_scs);
-
-		if (PKEY_VALUE(vfp->pkey) < SM_PKEYS) {
-			bitset_clear(&vfInfo.freePkeys, PKEY_VALUE(vfp->pkey));
-		}
-
-		for (mcastGrpp = vfp->default_group; mcastGrpp;
-			 mcastGrpp = mcastGrpp->next_default_group) {
-			if (mcastGrpp->def_mc_create &&
-				(PKEY_VALUE(mcastGrpp->def_mc_pkey) < SM_PKEYS)) {
-				bitset_clear(&vfInfo.freePkeys, PKEY_VALUE(vfp->pkey));
-			}
-		}
-
-		if (vfp->security) {
-			VirtualFabrics->securityEnabled = 1;
-		}
-
-        if (!VirtualFabrics->v_fabric_all[vf].qos_enable) {
-
-            vfInfo.totalVFsNoQos++;
-
-			if (!VirtualFabrics->v_fabric_all[vf].standby)
-				vfInfo.activeVFsNoQos++;
-
-			// Check for invalid configurations when QOS is disabled.
-
-			// By design, we are requiring QOS to be enabled for preemption
-			if (vfp->preempt_rank != 0) {
-				IB_LOG_WARN_FMT(__func__,
-								"vFabric %s Ignoring requested preempt rank, as QoS not enabled for this vFabric.",
-								vfp->name);
-				vfp->preempt_rank = 0;
-			}
-
-			// By design, we are requiring QoS to be enabled before user is allowed to disable the reliable link level flow control
-			if (vfp->flowControlDisable) {
-				IB_LOG_WARN_FMT(__func__,
-								"vFabric %s Ignoring requested flowControlDisable, as QoS not enabled for this vFabric.",
-								vfp->name);
-				vfp->flowControlDisable = 0;
-			}
-
-			// By design, we require QOS to be enabled to specifiy a specific SL
-			if (vfp->base_sl != UNDEFINED_XML8) {
-				IB_LOG_WARN_FMT(__func__,
-								"vFabric %s Ignoring requested SL, as QoS not enabled for this vFabric.",
-								vfp->name);
-				vfp->base_sl = UNDEFINED_XML8;
-			}
-
-			// By design, QOS must be enabled for high priority to be effective.
-			if (vfp->priority == 1) {
-				IB_LOG_WARN_FMT(__func__,
-								"vFabric %s Ignoring requested Priority setting, as QoS not enabled for this vFabric.",
-								vfp->name);
-				vfp->priority = 0;
-			}
-
-			// Alert the user that user specified BW is ignored if no QOS
-			if (vfp->percent_bandwidth != UNDEFINED_XML8) {
-				IB_LOG_WARN_FMT(__func__,
-								"vFabric %s Ignoring requested BW setting, as QOS not enabled for this vFabric.",
-								vfp->name);
-			}
-
-			//set percent_bandwidth to 0 for non QoS VF
-            VirtualFabrics->v_fabric_all[vf].percent_bandwidth = 0;
-
-			if (VirtualFabrics->v_fabric_all[vf].mcast_isolate) {
-				vfInfo.totalVFsMC++;
-
-				if (!VirtualFabrics->v_fabric_all[vf].standby)
-					vfInfo.activeVFsMC++;
-			}
-
-			// Non-QOS VFs all share a single routing SL and one set
-			// of routing SCs.
-			if (!noQosVF) {
-				noQosVF = 1;
-				vfInfo.totalSCsNeeded += vfInfo.defaultRoutingSCs;
-				vfInfo.totalSLsNeeded++;
-				vfInfo.activeSLs++;
-            }
-			// Multicast isolation requires an extra SL and SC but these can 
-			// be shared by all non-QOS VFs.
-			if (!noQosMCVF && vfp->mcast_isolate) {
-				noQosMCVF = 1;
-				vfInfo.totalSLsNeeded++;
-				vfInfo.totalSCsNeeded++;
-				if (!vfp->standby) {
-					vfInfo.activeSLs++;
-				}
-			}
-        } //end if !vfp->qos_enabled
-		else {
-
-            VirtualFabrics->qosEnabled = 1;
-
-            vfInfo.totalVFsQos++;
-
-			if (!VirtualFabrics->v_fabric_all[vf].standby)
-				vfInfo.activeVFsQos++;	
-
-            vfInfo.totalSLsNeeded++;
-            vfInfo.totalSCsNeeded += vfp->routing_scs;
-
-			if (!vfp->standby) {
-				vfInfo.activeSLs++;
-			}
-
-			// multicast isolation requires an extra SL and SC
-			// for each VF that uses it.
-			if (vfp->mcast_isolate) {
-				vfInfo.totalVFsMC++;
-				vfInfo.totalSLsNeeded++;
-				vfInfo.totalSCsNeeded++;
-				if (!vfp->standby) {
-					vfInfo.activeVFsMC++;
-					vfInfo.activeSLs++;
-				}
-			}
-
-            // Check for invalid SL request.
-            if ((vfp->base_sl != UNDEFINED_XML8) &&
-                (vfp->base_sl > (vfInfo.maxSLs-1))) {
-                IB_LOG_WARN_FMT(__func__,
-                    "vFabric %s Ignoring requested SL setting, as SL is invalid(%d).",
-                    vfp->name, vfp->base_sl);
-                vfp->base_sl = UNDEFINED_XML8;
-            }
-
-            // No BW gets allocated for High Priority VFs, so set to 0,
-            //  and this counts as a "configured" BW.
-            if (vfp->priority == 1) {
-                if (vfp->percent_bandwidth != UNDEFINED_XML8) {
-                    IB_LOG_WARN_FMT(__func__,
-                        "vFabric %s Ignoring requested BW setting, as VF is high priority.",
-                        vfp->name);
-                }
-                vfp->percent_bandwidth = 0;
-
-                // Count number of high priority VFs
-                vfInfo.numHighPriority++;
-            }
-
-            // Total configured BW allocations (does not include High Priority VFs)
-            if (vfp->percent_bandwidth != UNDEFINED_XML8) {
-				if (!vfp->standby) {
-					vfInfo.totalConfiguredBandwidth += vfp->percent_bandwidth;
-					vfInfo.totalSLwithConfiguredBW++;
-					if (vfp->mcast_isolate) {
-						vfInfo.totalSLwithConfiguredBW++;
-					}
-				}
-            }
-        } //end vfp->qos_enable
-
-		//update active list
-		int activeVfIdx;
-		if (!VirtualFabrics->v_fabric_all[vf].standby) {
-			activeVfIdx = findVfIdxInActiveList(&VirtualFabrics->v_fabric_all[vf], VirtualFabrics, TRUE);
-
-			if (activeVfIdx != -1) {
-				VirtualFabrics->v_fabric[activeVfIdx].percent_bandwidth = VirtualFabrics->v_fabric_all[vf].percent_bandwidth;
-				VirtualFabrics->v_fabric[activeVfIdx].preempt_rank = VirtualFabrics->v_fabric_all[vf].preempt_rank;
-				VirtualFabrics->v_fabric[activeVfIdx].flowControlDisable = VirtualFabrics->v_fabric_all[vf].flowControlDisable;
-				VirtualFabrics->v_fabric[activeVfIdx].base_sl = VirtualFabrics->v_fabric_all[vf].base_sl;
-				VirtualFabrics->v_fabric[activeVfIdx].priority = VirtualFabrics->v_fabric_all[vf].priority;
-				VirtualFabrics->v_fabric[activeVfIdx].mcast_isolate = VirtualFabrics->v_fabric_all[vf].mcast_isolate;
-			}
-		}
-
-    } //end loop on all VFs
-
-    if (vfInfo.activeSLs > vfInfo.totalSLwithConfiguredBW)
-        vfInfo.distributedBandwidth = (100 - vfInfo.totalConfiguredBandwidth) / (vfInfo.activeSLs - vfInfo.totalSLwithConfiguredBW);
-
-    if (sm_config.sm_debug_vf) {
-		IB_LOG_INFINI_INFO_FMT(__func__,"Total VFs: %u non-QOS, %u QOS, %u MC",
-			vfInfo.totalVFsNoQos, vfInfo.totalVFsQos, vfInfo.totalVFsMC);
-		IB_LOG_INFINI_INFO_FMT(__func__,"Active VFs: %u non-QOS, %u QOS, %u MC",
-			vfInfo.activeVFsNoQos, vfInfo.activeVFsQos, vfInfo.activeVFsMC);
-		IB_LOG_INFINI_INFO_FMT(__func__,"Total SLs: %u, Active SLs: %u, Total SCs: %u",
-			vfInfo.totalSLsNeeded, vfInfo.activeSLs, vfInfo.totalSCsNeeded);
-		IB_LOG_INFINI_INFO_FMT(__func__,"Total Configured Bandwidth: %u over %u SLs",
-			vfInfo.totalConfiguredBandwidth, vfInfo.totalSLwithConfiguredBW);
-		IB_LOG_INFINI_INFO_FMT(__func__,"Distributed Bandwidth: %u",
-			vfInfo.distributedBandwidth);
-	}
+	return VSTATUS_OK;
 }
 
 static Status_t
 sm_process_vf_info(VirtualFabrics_t *VirtualFabrics)
 {
-
-	//allocate memory used for processing VFs -- only do once, memory cleared on sm_shutdown
-	sm_allocate_mem_vfs();
-
-	sm_init_vf_info();
+	if (!bitset_init(&sm_pool, &sm_linkSLsInuse, STL_MAX_SLS)) {
+		IB_LOG_ERROR_FMT(__func__, "Out of memory.");
+		return VSTATUS_NOMEM;
+	}
 
     // In IB each default PKey entry was setup to be a full member.  In STL
     // the default PKey entry is a limited member.
@@ -1405,68 +824,20 @@ sm_process_vf_info(VirtualFabrics_t *VirtualFabrics)
         return VSTATUS_OK;
     }
 
-	sm_process_vf_qos_params(VirtualFabrics);
+    if (sm_assign_qos_params(VirtualFabrics) != VSTATUS_OK)
+        return VSTATUS_BAD;
 
-	boolean qosError = FALSE;
-	qosError = sm_error_check_vfs(VirtualFabrics);
+    return sm_resolve_pkeys_for_vfs(VirtualFabrics);
+}
 
-	if (qosError) {
-		int vf;
-        VirtualFabrics->qosEnabled = 0;
-        vfInfo.totalVFsQos = 0;
-        vfInfo.activeVFsQos = 0;
-        vfInfo.totalVFsMC = 0;
-        vfInfo.activeVFsMC = 0;
-        vfInfo.totalSLsNeeded = 1;
-        vfInfo.totalVFsNoQos = VirtualFabrics->number_of_vfs;
-        vfInfo.activeVFsNoQos = VirtualFabrics->number_of_vfs;
-        vfInfo.totalSCsNeeded = vfInfo.defaultRoutingSCs;
-        vfInfo.totalSLwithConfiguredBW = 0;
-        vfInfo.distributedBandwidth = 100;
-        vfInfo.numHighPriority = 0;
+static void print_error(const char *msg)
+{
+			IB_LOG_ERROR_FMT("sm_parse_xml_config", "%s", msg);
+}
 
-        for (vf=0; vf<VirtualFabrics->number_of_vfs; vf++) {
-            VirtualFabrics->v_fabric[vf].percent_bandwidth = 0;
-            VirtualFabrics->v_fabric[vf].qos_enable = 0;
-            VirtualFabrics->v_fabric[vf].priority = 0;
-            VirtualFabrics->v_fabric[vf].base_sl = 0;
-            VirtualFabrics->v_fabric[vf].mcast_isolate = 0;
-            VirtualFabrics->v_fabric[vf].flowControlDisable = 0;
-            VirtualFabrics->v_fabric[vf].preempt_rank = 0;
-            VirtualFabrics->v_fabric[vf].routing_scs = 1;
-            VirtualFabrics->v_fabric[vf].routing_sls = 1;
-        }
-
-        for (vf=0; vf<VirtualFabrics->number_of_vfs_all; vf++) {
-            VirtualFabrics->v_fabric_all[vf].percent_bandwidth = 0;
-            VirtualFabrics->v_fabric_all[vf].qos_enable = 0;
-            VirtualFabrics->v_fabric_all[vf].priority = 0;
-            VirtualFabrics->v_fabric_all[vf].base_sl = 0;
-            VirtualFabrics->v_fabric_all[vf].mcast_isolate = 0;
-            VirtualFabrics->v_fabric_all[vf].flowControlDisable = 0;
-            VirtualFabrics->v_fabric_all[vf].preempt_rank = 0;
-            VirtualFabrics->v_fabric_all[vf].routing_scs = 1;
-            VirtualFabrics->v_fabric_all[vf].routing_sls = 1;
-        }
-    }
-
-    Status_t s;
-    if ((s = sm_assign_sls(VirtualFabrics)) != VSTATUS_OK)
-        return s;
-
-    if ((s = sm_update_bw(VirtualFabrics)) != VSTATUS_OK)
-        return s;
-
-#ifdef USE_FIXED_SCVL_MAPS
-		s = sm_assign_scs_to_sls_FixedMap(VirtualFabrics);
-#else
-		s = sm_assign_scs_to_sls(VirtualFabrics);
-#endif
-
-    if (s == VSTATUS_OK)
-	    sm_resolve_pkeys_for_vfs(VirtualFabrics);
-
-    return s;
+static void print_warning(const char *msg)
+{
+			IB_LOG_WARN_FMT("sm_parse_xml_config", "%s", msg);
 }
 
 // Parse the XML configuration
@@ -1489,7 +860,7 @@ Status_t sm_parse_xml_config(void) {
 	// for now it's a fatal error if we can not parse correctly
 	xml_config = parseFmConfig(sm_config_filename, IXML_PARSER_FLAG_NONE, sm_instance, /* full parse */ 0, /* embedded */ 0);
 	if (!xml_config || !xml_config->fm_instance[sm_instance]) {
-		IB_FATAL_ERROR_NODUMP("SM: unable to read configuration file");
+		IB_FATAL_ERROR_NODUMP("SM: Error encountered reading configuration file");
 		return(VSTATUS_BAD);
 	}
 #endif // __VXWORKS__
@@ -1511,7 +882,6 @@ Status_t sm_parse_xml_config(void) {
 	sm_mls_config = xml_config->fm_instance[sm_instance]->sm_mls_config;
 	sm_mdg_config = xml_config->fm_instance[sm_instance]->sm_mdg_config;
 #endif
-
 	// use globals for debug since the extent into the MAI subsystem
 	sm_debug = sm_config.debug;
 	smDebugPerf = sm_config.sm_debug_perf;
@@ -1575,6 +945,10 @@ Status_t sm_parse_xml_config(void) {
 
 	// get the configuration for Virtual Fabrics
 	initialVfPtr = renderVirtualFabricsConfig(sm_instance, xml_config, &sm_config, NULL);
+	if (!initialVfPtr || !applyVirtualFabricRules(initialVfPtr, print_error, print_warning)) {
+		IB_FATAL_ERROR_NODUMP("SM: Virtual Fabric configuration is invalid.");
+		return(VSTATUS_BAD);
+	}
 
 	/* mcast table config */
 	sm_init_mcast_mgid_mask_table();
@@ -1657,18 +1031,16 @@ Status_t sm_parse_xml_config(void) {
 	}
 #endif
 
-#ifdef CONFIG_INCLUDE_DOR
-	if (strncmp(sm_config.routing_algorithm, "dor", 32) == 0) {
-		sm_process_dor_info(initialVfPtr, &sm_config.smDorRouting);
-	}
-#endif
-
 	// do we need to disable adaptive routing if loop test is on
 	if (esmLoopTestOn && !esmLoopTestAllowAdaptiveRouting)
 		adaptiveRoutingDisable = 1;
 	else
 		adaptiveRoutingDisable = 0;
 	
+	if (strncmp(sm_config.routing_algorithm, "dor", 32) == 0) {
+		sm_process_dor_info(initialVfPtr, &sm_config.smDorRouting);
+	}
+
 	// Is Adaptive Routing Enabled
 	if (sm_config.adaptiveRouting.enable && !adaptiveRoutingDisable) {
 		sm_adaptiveRouting.enable = sm_config.adaptiveRouting.enable;
@@ -1797,7 +1169,7 @@ initSmXmlMemoryPool(void) {
     memset(&sm_xml_pool, 0, sizeof(sm_xml_pool));
 	status = vs_pool_create(&sm_xml_pool, 0, (uint8_t *)"sm_xml_pool", NULL, sm_xml_bytes);
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("sm_main: can't create SM XML pool, ABORTING SM START");
+		IB_FATAL_ERROR_NODUMP("sm_main: can't create SM XML pool, ABORTING SM START");
         memset(&sm_xml_pool, 0, sizeof(sm_xml_pool));
         return status;
 	}
@@ -1844,7 +1216,7 @@ handleVfDgMemory(void) {
 
 	//copy xml_config memory to dg_config, and vf_config
 	if (copyDgVfInfo(xml_config->fm_instance[sm_instance], &dg_config, &vf_config)) {
-		IB_FATAL_ERROR("can't copy VF DG configuration");
+		IB_FATAL_ERROR_NODUMP("can't copy VF DG configuration");
 		status = VSTATUS_NOMEM;
 	}
 
@@ -1872,7 +1244,7 @@ sm_initialize_sm_pool(void) {
     memset(&sm_pool, 0, sizeof(sm_pool));
 	status = vs_pool_create(&sm_pool, 0, (uint8_t *)"sm_pool", NULL, g_smPoolSize);
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't create SM pool, ABORTING SM START");
+		IB_FATAL_ERROR_NODUMP("can't create SM pool, ABORTING SM START");
         memset(&sm_pool,0,sizeof(sm_pool));
         return status;
 	}
@@ -2037,11 +1409,11 @@ sm_main(void) {
 //	Check for authorization and licenses.
 //
 	if (authorization_userexit() != VSTATUS_OK) {
-		IB_FATAL_ERROR("authorization failed");
+		IB_FATAL_ERROR_NODUMP("authorization failed");
 	}
 
 	if (license_userexit() != VSTATUS_OK) {
-		IB_FATAL_ERROR("license failed");
+		IB_FATAL_ERROR_NODUMP("license failed");
 	}
 
     (void) sm_spanning_tree_resetGlobals();
@@ -2051,13 +1423,11 @@ sm_main(void) {
 //
 #ifndef __VXWORKS__
 
-	(void)read_info_file();
-
     // get PM related XML configuration parameters so we know if it should
 	// be started
     status = pm_initialize_config();
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't retrieve PM XML configuration");
+		IB_FATAL_ERROR_NODUMP("can't retrieve PM XML configuration");
 		return status;
     }
     startPM = pm_config.start;
@@ -2066,7 +1436,7 @@ sm_main(void) {
 	// be started
     status = fe_initialize_config(xml_config, sm_instance);
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't retrieve FE XML configuration");
+		IB_FATAL_ERROR_NODUMP("can't retrieve FE XML configuration");
 		return status;
     }
 
@@ -2201,6 +1571,33 @@ sm_main(void) {
 		return status;
 	}
 
+	if ((status = sm_routing_init() != VSTATUS_OK))
+		return status;
+
+	if ((status = sm_routing_makeModule(sm_config.routing_algorithm,
+		&sm_main_routingModule)) != VSTATUS_OK) {
+
+		if (sm_main_routingModule)
+			sm_routing_freeModule(&sm_main_routingModule);
+
+		IB_LOG_ERROR_FMT(__func__,
+			"Failed to instantiate routing module \"%s\".", sm_config.routing_algorithm);
+		return status;
+	}
+
+	if (sm_main_routingModule == NULL) {
+		IB_LOG_ERROR_FMT(__func__, "Failed to instantiate routing module");
+		return VSTATUS_BAD;
+	}
+
+	status = sm_routing_makeCopy(&old_topology.routingModule,
+		sm_main_routingModule);
+
+	if (status != VSTATUS_OK) {
+		IB_LOG_ERROR_FMT(__func__, "Failed to copy main thread routing module");
+		return status;
+	}
+
 	if ((status = sm_process_vf_info(initialVfPtr)) != VSTATUS_OK)
 		return status;
 
@@ -2212,15 +1609,15 @@ sm_main(void) {
 //	Initialize the semaphores.
 //
 	if ((status = cs_sema_create(&topology_sema, 0)) != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't initialize topology semaphore");
+		IB_FATAL_ERROR_NODUMP("can't initialize topology semaphore");
 	}
 
 	if ((status = cs_sema_create(&topology_rcv_sema, 0)) != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't initialize topology receive semaphore");
+		IB_FATAL_ERROR_NODUMP("can't initialize topology receive semaphore");
 	}
 
 	if ((status = cs_sema_create(&sa_sema, 0)) != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't initialize sa semaphore");
+		IB_FATAL_ERROR_NODUMP("can't initialize sa semaphore");
 	}
 
     //
@@ -2228,27 +1625,27 @@ sm_main(void) {
     //
 	status = vs_lock_init(&old_topology_lock, VLOCK_FREE, VLOCK_RWTHREAD);
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't initialize old_topology lock");
+		IB_FATAL_ERROR_NODUMP("can't initialize old_topology lock");
 	}
 
 	status = vs_lock_init(&new_topology_lock, VLOCK_FREE, VLOCK_THREAD);
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't initialize new_topology lock");
+		IB_FATAL_ERROR_NODUMP("can't initialize new_topology lock");
 	}
 
 	status = vs_lock_init(&tid_lock, VLOCK_FREE, VLOCK_THREAD);
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't initialize tid lock");
+		IB_FATAL_ERROR_NODUMP("can't initialize tid lock");
 	}
 
 	status = vs_lock_init(&sa_lock, VLOCK_FREE, VLOCK_THREAD);
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't initialize sa lock");
+		IB_FATAL_ERROR_NODUMP("can't initialize sa lock");
 	}
 
 	status = vs_lock_init(&handover_sent_lock, VLOCK_FREE, VLOCK_THREAD);
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't initialize handover_sent lock");
+		IB_FATAL_ERROR_NODUMP("can't initialize handover_sent lock");
 	}
 
 	triggered_handover= 0;
@@ -2256,12 +1653,12 @@ sm_main(void) {
 
 	status = vs_lock_init(&sm_mcSpanningTreeRootGuidLock, VLOCK_FREE, VLOCK_THREAD);
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't initialize Multicast Spanning Tree Guid lock");
+		IB_FATAL_ERROR_NODUMP("can't initialize Multicast Spanning Tree Guid lock");
 	}
 
 	status = vs_lock_init(&sm_datelineSwitchGUIDLock, VLOCK_FREE, VLOCK_THREAD);
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't initialize Dateline Switch GUID lock");
+		IB_FATAL_ERROR_NODUMP("can't initialize Dateline Switch GUID lock");
 	}
 
     //
@@ -2272,10 +1669,10 @@ sm_main(void) {
 
 	status = ib_init_devport(&sm_config.hca, &sm_config.port, &sm_config.port_guid);
 	if (status != VSTATUS_OK)
-		IB_FATAL_ERROR("sm_main: Failed to bind to device; terminating");
+		IB_FATAL_ERROR_NODUMP("sm_main: Failed to bind to device; terminating");
 	sm_portguid = sm_config.port_guid;
 	if (ib_register_sm((int)sa_max_cntxt+32) != VSTATUS_OK)
-		IB_FATAL_ERROR("sm_main: Failed to register management classes; terminating");
+		IB_FATAL_ERROR_NODUMP("sm_main: Failed to register management classes; terminating");
 #ifndef __VXWORKS__
 	{
 		char buf[140];
@@ -2291,48 +1688,48 @@ sm_main(void) {
     //
 	// used by the SA for new queries
 	if ((status = mai_open(1, sm_config.hca, sm_config.port, &fd_sa)) != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't open fd_sa");
+		IB_FATAL_ERROR_NODUMP("can't open fd_sa");
 	}
 
 	// used by the SA to handle RMPP responses and acks
 	if ((status = mai_open(1, sm_config.hca, sm_config.port, &fd_sa_w)) != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't open fd_sa_w");
+		IB_FATAL_ERROR_NODUMP("can't open fd_sa_w");
 	}
 
 	// used by the notice async context to handle SA reports (notices)
 	if ((status = mai_open(1, sm_config.hca, sm_config.port, &fd_saTrap)) != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't open fd_saTrap");
+		IB_FATAL_ERROR_NODUMP("can't open fd_saTrap");
 	}
 
 	// used by the async thread to catch traps and SMInfo requests
 	if ((status = mai_open(0, sm_config.hca, sm_config.port, &fd_async)) != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't open fd_async");
+		IB_FATAL_ERROR_NODUMP("can't open fd_async");
 	}
 
 	// used by the fsm (via async thread) for SMInfo and PortInfo GETs
 	if ((status = mai_open(0, sm_config.hca, sm_config.port, &fd_sminfo)) != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't open fd_sminfo");
+		IB_FATAL_ERROR_NODUMP("can't open fd_sminfo");
 	}
 
 	// used for config consistency in the dbsync thread
 	if ((status = mai_open(0, sm_config.hca, sm_config.port, &fd_dbsync)) != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't open fd_dbsync");
+		IB_FATAL_ERROR_NODUMP("can't open fd_dbsync");
 	}
 
 	// used by the topology thread for sweep SMPs
 	if ((status = mai_open(0, sm_config.hca, sm_config.port, &fd_topology)) != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't open fd_topology");
+		IB_FATAL_ERROR_NODUMP("can't open fd_topology");
 	}
 
 	// used by the topology rcv thread for the async context
 	// (async LFT, MFT, and GuidInfo)
 	if ((status = mai_open(0, sm_config.hca, sm_config.port, &fd_atopology)) != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't open fd_atopology");
+		IB_FATAL_ERROR_NODUMP("can't open fd_atopology");
 	}
 
 	// used to transmit loop packets
 	if ((status = mai_open(1, sm_config.hca, sm_config.port, &fd_loopTest)) != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't open fd_loopTest");
+		IB_FATAL_ERROR_NODUMP("can't open fd_loopTest");
 	}
 
 	IB_LOG_INFO("fd_sa", fd_sa);
@@ -2368,7 +1765,7 @@ sm_main(void) {
     // Initialize the SA data structures
     //
     if (sa_main()) {
-		IB_FATAL_ERROR("can't initialize SA data structures");
+		IB_FATAL_ERROR_NODUMP("can't initialize SA data structures");
 		return(VSTATUS_BAD);
 	}
 
@@ -2382,12 +1779,14 @@ sm_main(void) {
     */
     (void)sm_dbsync_init();
 
+#if 0
 	// initialize job management
 	status = sm_jm_init_job_table();
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("Failed to initialize Job Management data structures");
+		IB_FATAL_ERROR_NODUMP("Failed to initialize Job Management data structures");
 		return VSTATUS_BAD;
 	}
+#endif
    
     // Initialize the SSL/TLS network security interface
     if (sm_config.SslSecurityEnabled) 
@@ -2405,7 +1804,7 @@ sm_main(void) {
 
 	status = sm_start_thread(&sm_threads[SM_THREAD_SA_READER]);
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't create SA reader thread");
+		IB_FATAL_ERROR_NODUMP("can't create SA reader thread");
 		return(VSTATUS_BAD);
 	}
 
@@ -2421,7 +1820,7 @@ sm_main(void) {
 
 	status = sm_start_thread(&sm_threads[SM_THREAD_SA_WRITER]);
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't create SA writer thread");
+		IB_FATAL_ERROR_NODUMP("can't create SA writer thread");
 		return(VSTATUS_BAD);
 	}
 
@@ -2437,7 +1836,7 @@ sm_main(void) {
 
 	status = sm_start_thread(&sm_threads[SM_THREAD_TOPOLOGY]);
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't create TOPOLOGY thread");
+		IB_FATAL_ERROR_NODUMP("can't create TOPOLOGY thread");
 		return(VSTATUS_BAD);
 	}
 
@@ -2453,7 +1852,7 @@ sm_main(void) {
 
 	status = sm_start_thread(&sm_threads[SM_THREAD_ASYNC]);
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't create ASYNC thread");
+		IB_FATAL_ERROR_NODUMP("can't create ASYNC thread");
 		return(VSTATUS_BAD);
 	}
 
@@ -2469,7 +1868,7 @@ sm_main(void) {
 
 	status = sm_start_thread(&sm_threads[SM_THREAD_TOP_RCV]);
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't create SM topology async receive thread");
+		IB_FATAL_ERROR_NODUMP("can't create SM topology async receive thread");
 		return(VSTATUS_BAD);
 	}
 
@@ -2485,7 +1884,7 @@ sm_main(void) {
 
 	status = sm_start_thread(&sm_threads[SM_THREAD_DBSYNC]);
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't create SM db sync thread");
+		IB_FATAL_ERROR_NODUMP("can't create SM db sync thread");
 		return(VSTATUS_BAD);
 	}
 
@@ -2501,7 +1900,7 @@ sm_main(void) {
     
     	status = sm_start_thread(&sm_threads[SM_THREAD_PM]);
     	if (status != VSTATUS_OK) {
-    		IB_FATAL_ERROR("can't create Performance Manager thread");
+    		IB_FATAL_ERROR_NODUMP("can't create Performance Manager thread");
     		return(VSTATUS_BAD);
     	}
     }
@@ -2515,7 +1914,7 @@ sm_main(void) {
     
     	status = sm_start_thread(&sm_threads[SM_THREAD_FE]);
     	if (status != VSTATUS_OK) {
-    		IB_FATAL_ERROR("can't create Fabric Executive thread");
+    		IB_FATAL_ERROR_NODUMP("can't create Fabric Executive thread");
     		return(VSTATUS_BAD);
     	}
     }
@@ -2562,7 +1961,11 @@ sm_main(void) {
 	VirtualFabrics_t *VirtualFabricsToRelease = old_topology.vfs_ptr;
 	releaseVirtualFabricsConfig(VirtualFabricsToRelease);
 
-#endif
+	sm_routing_freeModule(&sm_main_routingModule);
+
+	if (old_topology.routingModule)
+		sm_routing_freeModule(&old_topology.routingModule);
+#endif /* #ifdef __VXWORKS__ */
 
 	IB_EXIT(__func__, VSTATUS_OK);
 	return(VSTATUS_OK);
@@ -2631,6 +2034,7 @@ void smForceRebalanceToggle(void)
 	if (sm_config.force_rebalance) {
 		IB_LOG_INFINI_INFO0("Turning OFF ForceRebalance");
 		sm_config.force_rebalance = 0;
+		forceRebalanceNextSweep = 0;
 	} else {
 		IB_LOG_INFINI_INFO0("Turning ON ForceRebalance");
 		IB_LOG_INFINI_INFO0("will rebalance static routes on next sweep");
@@ -2707,59 +2111,6 @@ void smPauseResumeSweeps(boolean pauseSweeps) {
 	}
 }
 
-boolean
-vfChangesDetected(FMXmlCompositeConfig_t *xml_config, VirtualFabrics_t *newVirtualFabrics, VirtualFabrics_t *oldVirtualFabrics){
-
-	boolean vfsChanged = FALSE;
-
-	if ( (oldVirtualFabrics) && (newVirtualFabrics) ) {
-
-		//check number of vfs; if it changed activeStandbyVfsChanged=TRUE
-		if (oldVirtualFabrics->number_of_vfs != newVirtualFabrics->number_of_vfs) {
-			vfsChanged = TRUE;
-		}
-		else {
-			//loop on all VFs and check for differences
-			int vf;
-			VF_t* newVfp;
-			VF_t* oldVfp;
-			
-			for (vf=0; vf < oldVirtualFabrics->number_of_vfs; vf++) {
-				oldVfp = &oldVirtualFabrics->v_fabric[vf];
-				newVfp = &newVirtualFabrics->v_fabric[vf];
-
-				//Optimize: Can probably optimize this; if activeStandby changed, just break out of loop?
-				//If changing active/standby list is going to have to do the same logic as what
-				//we do when BW is updated, then just break the loop and go to work
-
-				if ( (!strncmp(&oldVfp->name[0], &newVfp->name[0], MAX_VFABRIC_NAME+1) == 0) || 
-					 (oldVfp->percent_bandwidth != newVfp->percent_bandwidth) ) {
-
-					//if names are different, that means there were active/standby VF changes
-					vfsChanged = TRUE;
-					break;
-				}
-			}
-		}
-	}
-	return vfsChanged;
-
-}
-
-boolean
-preProcessVfChanges(VirtualFabrics_t *newVirtualFabrics) {
-
-	boolean processingError = FALSE;
-
-	sm_init_vf_info();
-
-	sm_process_vf_qos_params(newVirtualFabrics);
-
-	processingError = sm_error_check_vfs(newVirtualFabrics);
-
-	return processingError;
-}
-
 void
 smApplyLogLevelChange(FMXmlCompositeConfig_t *xml_config){
 	uint32_t currentLogLevel=sm_config.log_level;
@@ -2782,22 +2133,12 @@ smApplyLogLevelChange(FMXmlCompositeConfig_t *xml_config){
 
 static Status_t
 smApplyVfChanges(FMXmlCompositeConfig_t *xml_config, VirtualFabrics_t *newVirtualFabrics){
+	sm_QosConfigChange = 1;
+	if (sm_assign_qos_params(newVirtualFabrics) != VSTATUS_OK)
+		return VSTATUS_BAD;
 
-	Status_t s = VSTATUS_OK;
-	if ((s = sm_assign_sls(newVirtualFabrics)) != VSTATUS_OK)
-		IB_LOG_WARN_FMT(__func__, "Non-OK status %d returned by sm_assign_sls()", s);
-	if ((s = sm_update_bw(newVirtualFabrics)) != VSTATUS_OK)
-		return s;
-
-#ifdef USE_FIXED_SCVL_MAPS
-		s = sm_assign_scs_to_sls_FixedMap(newVirtualFabrics);
-#else
-		s = sm_assign_scs_to_sls(newVirtualFabrics);
-#endif
-
-    if (s == VSTATUS_OK)
-	    sm_resolve_pkeys_for_vfs(newVirtualFabrics);
-	return s;
+	sm_resolve_pkeys_for_vfs(newVirtualFabrics);
+	return VSTATUS_OK;
 }
 
 void
@@ -2844,7 +2185,12 @@ smProcessReconfigureRequest(void){
 		boolean configChanged = FALSE;
 
 		newVirtualFabrics = renderVirtualFabricsConfig(sm_instance, new_xml_config, &new_xml_config->fm_instance[sm_instance]->sm_config, NULL);
-
+		if (newVirtualFabrics) {
+			if (!applyVirtualFabricRules(newVirtualFabrics, print_error, print_warning)) {
+				releaseVirtualFabricsConfig(newVirtualFabrics);
+				newVirtualFabrics = NULL;
+			}
+		}
 		if (newVirtualFabrics != NULL) {
 
 			(void)vs_rdlock(&old_topology_lock);
@@ -2865,104 +2211,80 @@ smProcessReconfigureRequest(void){
 
 					(void)vs_rwunlock(&old_topology_lock);
 					releaseVirtualFabricsConfig(newVirtualFabrics);
-				}
-				else {
+				} else {
 
-					boolean vfChangesInvalid = FALSE;
 					uint32_t savedVfConsistencyChecksum;
 
-					if (vfChangesDetected(new_xml_config, newVirtualFabrics, oldVirtualFabrics)) {
-#ifdef USE_FIXED_SCVL_MAPS
-						vfChangesInvalid = preProcessVfChanges(newVirtualFabrics);
-#else
-						//warn user that VF changes can't be applied if they aren't using fixed SCVL maps
-						IB_LOG_WARN0("SM: VF changes can't be applied when not using fixed SCVL maps");
-
-						vfChangesInvalid = TRUE;
-#endif 
-					}
 					(void)vs_rwunlock(&old_topology_lock);
 
+					smApplyLogLevelChange(new_xml_config);
 
-					if (vfChangesInvalid) {
+					// Lock out any sweeps
+					(void)vs_lock(&new_topology_lock);
 
-						IB_LOG_WARN0("SM: Error processing reconfigure request; VF changes determined to be invalid; reconfiguration request being ignored");
-
-						//reset vf info (not sure if anyone else would be using this stuff after a reconfiguration request is ignored, but reset to be save)
-						sm_init_vf_info();
-
-						releaseVirtualFabricsConfig(newVirtualFabrics);
+					// If we have an updated Virtual Fabric, that means
+					// no sweep has occurred since the last reconfigure
+					// (possibly because we are a standby). Ditch the
+					// previous reconfigure update, and switch to the
+					// current value.
+					if (updatedVirtualFabrics) {
+						releaseVirtualFabricsConfig(updatedVirtualFabrics);
 					}
-					else {
-						smApplyLogLevelChange(new_xml_config);
+					updatedVirtualFabrics = newVirtualFabrics;
 
-						// Lock out any sweeps
-						(void)vs_lock(&new_topology_lock);
+					s = smApplyVfChanges(new_xml_config, updatedVirtualFabrics);
+					if (s != VSTATUS_OK)
+						IB_FATAL_ERROR_NODUMP("smApplyVfChanges() failed");
 
-						// If we have an updated Virtual Fabric, that means
-						// no sweep has occurred since the last reconfigure
-						// (possibly because we are a standby). Ditch the
-						// previous reconfigure update, and switch to the
-						// current value.
-						if (updatedVirtualFabrics) {
-							releaseVirtualFabricsConfig(updatedVirtualFabrics);
-						}
-						updatedVirtualFabrics = newVirtualFabrics;
+					savedVfConsistencyChecksum = updatedVirtualFabrics->consistency_checksum;
 
-						s = smApplyVfChanges(new_xml_config, updatedVirtualFabrics);
+					// Allow sweeps to run
+					(void)vs_unlock(&new_topology_lock);
 
-						if (s != VSTATUS_OK)
-							IB_FATAL_ERROR("smApplyVfChanges() failed");
+					/* Update our consistency checksums */
+    				sm_dbsync_checksums(savedVfConsistencyChecksum,
+                       					new_xml_config->fm_instance[sm_instance]->sm_config.consistency_checksum,
+                       					new_xml_config->fm_instance[sm_instance]->pm_config.consistency_checksum,
+                       					new_xml_config->fm_instance[sm_instance]->fe_config.consistency_checksum
+                                        );
+					sm_config.overall_checksum = new_xml_config->fm_instance[sm_instance]->sm_config.overall_checksum;
+		 			pm_config.overall_checksum = new_xml_config->fm_instance[sm_instance]->pm_config.overall_checksum;
 
-						savedVfConsistencyChecksum = updatedVirtualFabrics->consistency_checksum;
+					if (sm_state == SM_STATE_MASTER) {
+   						SmRecKeyp       smreckeyp;
+   						SmRecp          smrecp;
+   						CS_HashTableItr_t itr;
+						Status_t status;
 
-						// Allow sweeps to run
-						(void)vs_unlock(&new_topology_lock);
-
-						/* Update our consistency checksums */
-    					sm_dbsync_checksums(savedVfConsistencyChecksum,
-                       						new_xml_config->fm_instance[sm_instance]->sm_config.consistency_checksum,
-                       						new_xml_config->fm_instance[sm_instance]->pm_config.consistency_checksum, 
-                       						new_xml_config->fm_instance[sm_instance]->fe_config.consistency_checksum);
-						sm_config.overall_checksum = new_xml_config->fm_instance[sm_instance]->sm_config.overall_checksum;
-			 			pm_config.overall_checksum = new_xml_config->fm_instance[sm_instance]->pm_config.overall_checksum;
-
-						if (sm_state == SM_STATE_MASTER) {
-    						SmRecKeyp       smreckeyp;
-    						SmRecp          smrecp;
-    						CS_HashTableItr_t itr;
-							Status_t status;
-
-							/*
-							 * Notify all standby SMs to reread their configuration.
-							 */
-    						/* lock out service record hash table */
-    						if ((status = vs_lock(&smRecords.smLock)) != VSTATUS_OK) {
-        						IB_LOG_ERRORRC("Can't lock SM Record table, rc:", status);
-    						} else {
-								if (cs_hashtable_count(smRecords.smMap) > 1) {
-           							cs_hashtable_iterator(smRecords.smMap, &itr);
-           							do {
-                						smrecp = cs_hashtable_iterator_value(&itr);
-                						smreckeyp = cs_hashtable_iterator_key(&itr);
-                						if (smrecp->portguid == sm_smInfo.PortGUID) {
-											/* Skip us */
-											continue;
-                						} else if (smrecp->smInfoRec.SMInfo.u.s.SMStateCurrent <= SM_STATE_STANDBY) {
-    										IB_LOG_INFINI_INFO_FMT(__func__,
-                                            	"SM: Forwarding reconfiguration request to standby SM at Lid 0x%x, portGuid "FMT_U64,
-                                   				smrecp->lid, *smreckeyp);
-                            				(void) sm_dbsync_queueMsg(DBSYNC_TYPE_RECONFIG, DBSYNC_DATATYPE_NONE, smrecp->lid, smrecp->portguid, smrecp->isEmbedded, NULL);
-                						}
-        							} while (cs_hashtable_iterator_advance(&itr));
-								}
-    							vs_unlock(&smRecords.smLock);
+						/*
+						 * Notify all standby SMs to reread their configuration.
+						 */
+   						/* lock out service record hash table */
+   						if ((status = vs_lock(&smRecords.smLock)) != VSTATUS_OK) {
+       						IB_LOG_ERRORRC("Can't lock SM Record table, rc:", status);
+   						} else {
+							if (cs_hashtable_count(smRecords.smMap) > 1) {
+          						cs_hashtable_iterator(smRecords.smMap, &itr);
+          						do {
+               						smrecp = cs_hashtable_iterator_value(&itr);
+                					smreckeyp = cs_hashtable_iterator_key(&itr);
+                					if (smrecp->portguid == sm_smInfo.PortGUID) {
+										/* Skip us */
+										continue;
+                					} else if (smrecp->smInfoRec.SMInfo.u.s.SMStateCurrent <= SM_STATE_STANDBY) {
+    									IB_LOG_INFINI_INFO_FMT(__func__,
+                                           	"SM: Forwarding reconfiguration request to standby SM at Lid 0x%x, portGuid "FMT_U64,
+                                   			smrecp->lid, *smreckeyp);
+                            			(void) sm_dbsync_queueMsg(DBSYNC_TYPE_RECONFIG, DBSYNC_DATATYPE_NONE, smrecp->lid, smrecp->portguid, smrecp->isEmbedded, NULL);
+                					}
+        						} while (cs_hashtable_iterator_advance(&itr));
 							}
-							// After a reconfiguration, force a resweep
-							sm_trigger_sweep(SM_SWEEP_REASON_RECONFIG);
+    						vs_unlock(&smRecords.smLock);
 						}
-    					IB_LOG_INFINI_INFO0("SM: Reconfiguration completed successfully");
+						// After a reconfiguration, force a resweep
+						sm_trigger_sweep(SM_SWEEP_REASON_RECONFIG);
 					}
+    				IB_LOG_INFINI_INFO0("SM: Reconfiguration completed successfully");
 				}
 			}
 			else {
@@ -2985,7 +2307,7 @@ smProcessReconfigureRequest(void){
 	releaseXmlConfig(new_xml_config, /* full */ 1);
 	new_xml_config = NULL;
 
-	IB_EXIT(__func__, VSTATUS_OK);
+	IB_EXIT(__func__, s);
 }
 
 
@@ -2998,9 +2320,12 @@ sm_shutdown(void){
 	async_main_kill();
     topology_rcv_kill();
     sm_dbsync_kill();
+#if 0
 	sm_jm_destroy_job_table();
+#endif
 	sm_clean_vfdg_memory();
 	sm_free_vf_mem();
+	sm_destroy_qos();
 
 #ifdef __VXWORKS__
 	/* Release VF config only after the threads are stopped as the
@@ -3008,6 +2333,10 @@ sm_shutdown(void){
 	 */
 	VirtualFabrics_t *VirtualFabricsToRelease = old_topology.vfs_ptr;
 	releaseVirtualFabricsConfig(VirtualFabricsToRelease);
+	sm_routing_freeModule(&sm_main_routingModule);
+	
+	if (old_topology.routingModule)
+		sm_routing_freeModule(&old_topology.routingModule);
 #endif
 }
 

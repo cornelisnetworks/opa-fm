@@ -114,12 +114,12 @@ File: /usr/lib/opa/tools/configipoib.exp" suite_setup noop {
 	set mode $env(FF_IPOIB_CONFIG)
 	} else {
 	set mode "static"
-	log_message "FF_IPOIB_CONFIG not found /etc/sysconfig/opa/opafastfabric.conf Defaulting to static"
+	log_message "FF_IPOIB_CONFIG not found /etc/opa/opafastfabric.conf Defaulting to static"
 	}
 	
 	
 	if { ![ string equal "$mode" "auto"] && ![ string equal "$mode" "static"] && ![string equal "$mode" "dhcp"]  } {
-		fail_test "Bad value FF_IPOIB_CONFIG=$mode in /etc/sysconfig/opa/opafastfabric.conf it should be one of auto/static/dhcp "
+		fail_test "Bad value FF_IPOIB_CONFIG=$mode in /etc/opa/opafastfabric.conf it should be one of auto/static/dhcp "
 	}
 	
 	# Suites are structured so that if all tests are run, at completion
@@ -196,7 +196,7 @@ NETMASK=\$mask
 				unix_cmd 60 0 "bproto_ip_mask_info=\"BOOTPROTO=dhcp\"" 
 			} else {
 			
-				fail_test "Bad value FF_IPOIB_CONFIG=$mode in /etc/sysconfig/opa/opafastfabric.conf it should be one of auto/static/dhcp "
+				fail_test "Bad value FF_IPOIB_CONFIG=$mode in /etc/opa/opafastfabric.conf it should be one of auto/static/dhcp "
 			}
 
 			set os_type [ exec uname -s ]

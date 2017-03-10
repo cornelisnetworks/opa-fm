@@ -39,7 +39,7 @@ use strict;
 # Fast Fabric installation
 
 my $FF_CONF_FILE = "/usr/lib/opa/tools/opafastfabric.conf";
-my $FF_TLS_CONF_FILE = "/etc/sysconfig/opa/opaff.xml";
+my $FF_TLS_CONF_FILE = "/etc/opa/opaff.xml";
 sub available_fastfabric
 {
 	my $srcdir=$ComponentInfo{'fastfabric'}{'SrcDir'};
@@ -90,11 +90,7 @@ sub need_reinstall_fastfabric($$)
 
 sub check_os_prereqs_fastfabric
 {	
-	if ("$CUR_DISTRO_VENDOR" eq 'redhat') {
-		return rpm_check_os_prereqs("fastfabric", "user", ( "tcl 8.4", "expect", "atlas" ));
-	} else {
-		return rpm_check_os_prereqs("fastfabric", "user", ( "tcl 8.4", "expect" ));
-	}
+	return rpm_check_os_prereqs("fastfabric", "user");
 }
 
 sub preinstall_fastfabric
@@ -111,6 +107,7 @@ sub install_fastfabric
 	my $installing_list = $_[1];	# what items are being installed/reinstalled
 
 	my $srcdir=$ComponentInfo{'fastfabric'}{'SrcDir'};
+	my $depricated_dir = "/etc/sysconfig/opa";
 
 	my $version=media_version_fastfabric();
 	chomp $version;
@@ -126,19 +123,19 @@ sub install_fastfabric
 	rpm_run_install($rpmfile, "any", " -U ");
 
 	check_dir("/usr/lib/opa/tools");
-	check_dir("/usr/lib/opa/samples");
-	system "chmod ug+x $ROOT/usr/lib/opa/samples/hostverify.sh";
-	system "rm -f $ROOT/usr/lib/opa/samples/nodeverify.sh";
+	check_dir("/usr/share/opa/samples");
+	system "chmod ug+x $ROOT/usr/share/opa/samples/hostverify.sh";
+	system "rm -f $ROOT/usr/share/opa/samples/nodeverify.sh";
 
 	check_rpm_config_file("$FF_TLS_CONF_FILE");
-	printf("Default opaff.xml can be found in '/usr/lib/opa/samples/opaff.xml-sample'\n");
-	check_rpm_config_file("$CONFIG_DIR/opa/opamon.conf");
-	check_rpm_config_file("$CONFIG_DIR/opa/opafastfabric.conf");
-	check_rpm_config_file("$CONFIG_DIR/opa/allhosts");
-	check_rpm_config_file("$CONFIG_DIR/opa/chassis");
-	check_rpm_config_file("$CONFIG_DIR/opa/hosts");
-	check_rpm_config_file("$CONFIG_DIR/opa/ports");
-	check_rpm_config_file("$CONFIG_DIR/opa/switches");
+	printf("Default opaff.xml can be found in '/usr/share/opa/samples/opaff.xml-sample'\n");
+	check_rpm_config_file("$CONFIG_DIR/opa/opamon.conf", $depricated_dir);
+	check_rpm_config_file("$CONFIG_DIR/opa/opafastfabric.conf", $depricated_dir);
+	check_rpm_config_file("$CONFIG_DIR/opa/allhosts", $depricated_dir);
+	check_rpm_config_file("$CONFIG_DIR/opa/chassis", $depricated_dir);
+	check_rpm_config_file("$CONFIG_DIR/opa/hosts", $depricated_dir);
+	check_rpm_config_file("$CONFIG_DIR/opa/ports", $depricated_dir);
+	check_rpm_config_file("$CONFIG_DIR/opa/switches", $depricated_dir);
 	check_rpm_config_file("/usr/lib/opa/tools/osid_wrapper");
 
 	#install_conf_file("$ComponentInfo{'fastfabric'}{'Name'}", "$FF_TLS_CONF_FILE", "$srcdir/fastfabric/tools/tls");
@@ -179,8 +176,8 @@ sub uninstall_fastfabric
 
 	# remove samples we installed (or user compiled), however do not remove
 	# any logs or other files the user may have created
-	remove_installed_files "/usr/lib/opa/samples";
-	system "rmdir $ROOT/usr/lib/opa/samples 2>/dev/null";	# remove only if empty
+	remove_installed_files "/usr/share/opa/samples";
+	system "rmdir $ROOT/usr/share/opa/samples 2>/dev/null";	# remove only if empty
 
 	system("rm -rf $ROOT/usr/lib/opa/.comp_fastfabric.pl");
 	system "rmdir $ROOT/usr/lib/opa 2>/dev/null";	# remove only if empty

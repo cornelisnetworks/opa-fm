@@ -833,11 +833,14 @@ void IXmlParserSetField(IXmlParserState_t *state, const IXML_FIELD *field)
 boolean IXmlIsWhitespace(const XML_Char *str, boolean *hasNewline)
 {
 	*hasNewline = FALSE;
-	for (;*str;str++) {
-		if (! isspace(*str))
-			return FALSE;
-		if (*str == '\n' || *str == '\r')
-			*hasNewline = TRUE;
+	// str is NULL when tag is empty (has subfields but no text)
+	if (str != NULL) {
+		for (;*str;str++) {
+			if (! isspace(*str))
+				return FALSE;
+			if (*str == '\n' || *str == '\r')
+				*hasNewline = TRUE;
+		}
 	}
 	return TRUE;
 }

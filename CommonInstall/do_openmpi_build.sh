@@ -96,6 +96,7 @@ Usage()
 	echo "            if omitted, will be prompted for each option" >&2
 	echo "       -Q - build the MPI targeted for the PSM API." >&2
 	echo "       -O - build the MPI targeted for the Omnipath HFI PSM API." >&2
+	echo "       -C - build the MPI targeted for the Omnipath HFI PSM with CUDA." >&2
 	echo "       config_opt - a compiler selection option (gcc, pathscale, pgi or intel)" >&2
 	echo "             if config_opt is not specified, the user will be prompted" >&2
 	echo "             based on compilers found on this system" >&2
@@ -116,7 +117,7 @@ Usage()
 	echo "            Default is '/'" >&2
 	echo "" >&2
 	echo "The RPMs built during this process will be installed on this system" >&2
-	echo "they can also be found in /usr/lib/opa/src/MPI" >&2
+	echo "they can also be found in /usr/src/opa/MPI" >&2
 	exit 2
 }
 
@@ -182,12 +183,14 @@ skip_prompt=n
 iflag=n	# undocumented option, build in context of install
 Qflag=n
 Oflag=n
-while getopts "idQO" o
+Cflag=n
+while getopts "idQOC" o
 do
 	case "$o" in
 	i) iflag=y;;
 	Q) Qflag=y;;
 	O) Oflag=y;;
+	C) Cflag=y;;
 	d) skip_prompt=y;;
 	*) Usage;;
 	esac
@@ -205,10 +208,10 @@ then
 fi
 if [ "$iflag" = n ]
 then
-	cd /usr/lib/opa/src/MPI
+	cd /usr/src/opa/MPI
 	if [ $? != 0 ]
 	then
-		echo "ERROR: Unable to cd to /usr/lib/opa/src/MPI" >&2
+		echo "ERROR: Unable to cd to /usr/src/opa/MPI" >&2
 		exit 1
 	fi
 fi
@@ -267,7 +270,7 @@ fi
 
 # now get openmpi options. Note that you can't build for
 # TrueScale and Omnipath at the same time.
-if [ "$skip_prompt" != y -a "$Qflag" != y -a "$Oflag" != y ]
+if [ "$skip_prompt" != y -a "$Qflag" != y -a "$Oflag" != y  -a "$Cflag" != y ]
 then
 	if rpm -qa|grep infinipath-devel >/dev/null 2>&1
 	then
@@ -280,7 +283,7 @@ then
 	fi
 fi
 
-if [ "$skip_prompt" != y -a "$Oflag" != y -a "$Qflag" != y ]
+if [ "$skip_prompt" != y -a "$Oflag" != y -a "$Qflag" != y -a "$Cflag" != y ]
 then
 	if rpm -qa|grep libpsm2 >/dev/null 2>&1
 	then
@@ -289,6 +292,19 @@ then
 		if [ "$ans" = 1 ]
 		then
 			Oflag=y
+		fi
+	fi
+fi
+
+if [ "$skip_prompt" != y -a "$Oflag" != y -a "$Qflag" != y -a "$Cflag" != y ]
+then
+	if rpm -qa|grep libpsm2 >/dev/null 2>&1
+	then
+		echo
+		get_yes_no "Build for Omnipath HFI PSM with Cuda" "y"
+		if [ "$ans" = 1 ]
+		then
+			Cflag=y
 		fi
 	fi
 fi
@@ -306,10 +322,19 @@ elif [ "$Oflag" = y ]
 then
 	PREREQ+=('libpsm2')
 	
-	openmpi_conf_psm='--with-psm=/usr --with-psm2=/usr --disable-oshmem --with-libfabric'
+	openmpi_conf_psm='--with-psm=/usr --with-psm2=/usr --disable-oshmem'
 	# PSM indicated by qlc suffix so user can ID PSM vs verbs MPIs
 	openmpi_path_suffix="-hfi"
 	openmpi_rpm_suffix="_hfi"
+	interface=psm
+elif [ "$Cflag" = y ]
+then
+	PREREQ+=('libpsm2' 'cuda')
+	
+	openmpi_conf_psm='--with-psm=/usr --with-psm2=/usr --disable-oshmem --with-cuda=/usr/local/cuda'
+	# PSM indicated by qlc suffix so user can ID PSM vs verbs MPIs
+	openmpi_path_suffix="-cuda-hfi"
+	openmpi_rpm_suffix="_cuda_hfi"
 	interface=psm
 else
 	# The openmpi configure script complains about enable-mca-no-build
@@ -350,11 +375,11 @@ logfile=make.openmpi.$interface.$compiler
 	BUILD_DIR=${BUILD_DIR:-/var/tmp/Intel-openmpi}
 	BUILD_ROOT="$BUILD_DIR/build";
 	RPM_DIR="$BUILD_DIR/OFEDRPMS";
-	DESTDIR=/usr/lib/opa/src/MPI
+	DESTDIR=/usr/src/opa/MPI
 	if [ "$iflag" = n ]
 	then
-		openmpi_srpm=/usr/lib/opa/src/MPI/openmpi-*.src.rpm
-		mpitests_srpm=/usr/lib/opa/src/MPI/mpitests-*.src.rpm
+		openmpi_srpm=/usr/src/opa/MPI/openmpi-*.src.rpm
+		mpitests_srpm=/usr/src/opa/MPI/mpitests-*.src.rpm
 	else
 		openmpi_srpm=./SRPMS/openmpi-*.src.rpm
 		mpitests_srpm=./SRPMS/mpitests-*.src.rpm
@@ -393,10 +418,10 @@ logfile=make.openmpi.$interface.$compiler
 	echo "=========================================================="
 	if [ "$iflag" = n ]
 	then
-		echo "MPICH_PREFIX='$MPICH_PREFIX'"> /usr/lib/opa/src/MPI/.mpiinfo
-		#echo "MPI_RUNTIME='$MPICH_PREFIX/bin $MPICH_PREFIX/lib* $MPICH_PREFIX/etc $MPICH_PREFIX/share $MPICH_PREFIX/tests'">> /usr/lib/opa/src/MPI/.mpiinfo
-		echo "MPI_RPMS='openmpi_$compiler$openmpi_rpm_suffix-$openmpi_fullversion.$target_cpu.rpm mpitests_openmpi_$compiler$openmpi_rpm_suffix-$mpitests_fullversion.$target_cpu.rpm'">> /usr/lib/opa/src/MPI/.mpiinfo
-		chmod +x /usr/lib/opa/src/MPI/.mpiinfo
+		echo "MPICH_PREFIX='$MPICH_PREFIX'"> /usr/src/opa/MPI/.mpiinfo
+		#echo "MPI_RUNTIME='$MPICH_PREFIX/bin $MPICH_PREFIX/lib* $MPICH_PREFIX/etc $MPICH_PREFIX/share $MPICH_PREFIX/tests'">> /usr/src/opa/MPI/.mpiinfo
+		echo "MPI_RPMS='openmpi_$compiler$openmpi_rpm_suffix-$openmpi_fullversion.$target_cpu.rpm mpitests_openmpi_$compiler$openmpi_rpm_suffix-$mpitests_fullversion.$target_cpu.rpm'">> /usr/src/opa/MPI/.mpiinfo
+		chmod +x /usr/src/opa/MPI/.mpiinfo
 	fi
 
 	echo
@@ -655,7 +680,7 @@ egrep 'warning:' $logfile.res |sort -u |
 #egrep 'error:|Error | Stop' $logfile.res| sort -u |
 #	egrep -v 'error: this file was generated for autoconf 2.61.' > $logfile.err
 egrep 'error:|Error | Stop' $logfile.res| sort -u |
-	egrep -v 'configure: error: no BPatch.h found; check path for Dyninst package|configure: error: no papi.h found; check path for PAPI package|configure: error: no vtf3.h found; check path for VTF3 package|configure: error: MPI Correctness Checking support cannot be built inside Open MPI|configure: error: no bmi.h found; check path for BMI package first...|configure: error: no ctool/ctool.h found; check path for CTool package first...|configure: error: no cuda.h found; check path for CUDA Toolkit first...|configure: error: no cuda_runtime_api.h found; check path for CUDA Toolkit first...|configure: error: no cupti.h found; check path for CUPTI package first...|configure: error: no f2c.h found; check path for CLAPACK package first...|configure: error: no jvmti.h found; check path for JVMTI package first...|configure: error: no libcpc.h found; check path for CPC package first...|configure: error: no tau_instrumentor found; check path for PDToolkit first...|configure: error: no unimci-config found; check path for UniMCI package first...|"Error code:|"Unknown error:|strerror_r' > $logfile.err
+	egrep -v 'configure: error: no BPatch.h found; check path for Dyninst package|configure: error: no papi.h found; check path for PAPI package|configure: error: no vtf3.h found; check path for VTF3 package|configure: error: MPI Correctness Checking support cannot be built inside Open MPI|configure: error: no bmi.h found; check path for BMI package first...|configure: error: no ctool/ctool.h found; check path for CTool package first...|configure: error: no cuda.h found; check path for CUDA Toolkit first...|configure: error: no cuda_runtime_api.h found; check path for CUDA Toolkit first...|configure: error: no cupti.h found; check path for CUPTI package first...|configure: error: no f2c.h found; check path for CLAPACK package first...|configure: error: no jvmti.h found; check path for JVMTI package first...|configure: error: no libcpc.h found; check path for CPC package first...|configure: error: no tau_instrumentor found; check path for PDToolkit first...|configure: error: no unimci-config found; check path for UniMCI package first...|"Error code:|"Unknown error:|strerror_r|configure: error: CUPTI API version could not be determined...' > $logfile.err
 
 if [ -s $logfile.err ]
 then

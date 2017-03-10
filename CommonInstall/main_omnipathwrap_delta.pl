@@ -71,21 +71,21 @@ my @Components_rhel72 = ( "opa_stack", "ibacm", "mpi_selector", "intel_hfi",
 	   	"oftools", "opa_stack_dev", "fastfabric",
 		"delta_ipoib", "opafm",
 	   	@OmniPathAllComponents,
-		"gasnet", "openshmem",
+		"openmpi_gcc_cuda_hfi", "gasnet", "openshmem",
 	   	"mvapich2", "openmpi",
 	   	"delta_mpisrc", "hfi1_uefi", "delta_debug", );
 my @Components_sles12_sp2 = ( "opa_stack", "mpi_selector", "intel_hfi",
 	   	"oftools", "opa_stack_dev", "fastfabric",
 		"delta_ipoib", "opafm",
 	   	@OmniPathAllComponents,
-		"gasnet", "openshmem",
+		"openmpi_gcc_cuda_hfi", "gasnet", "openshmem",
 	   	"mvapich2", "openmpi",
 	   	"delta_mpisrc", "hfi1_uefi", "delta_debug", );
 my @Components_rhel73 = ( "opa_stack", "mpi_selector", "intel_hfi",
 	   	"oftools", "opa_stack_dev", "fastfabric",
 		"delta_ipoib", "opafm",
 	   	@OmniPathAllComponents,
-		"gasnet", "openshmem",
+		"openmpi_gcc_cuda_hfi",	"gasnet", "openshmem",
 	   	"mvapich2", "openmpi",
 	   	"delta_mpisrc", "hfi1_uefi", "delta_debug", );
 @Components = ( );
@@ -383,7 +383,7 @@ my %ComponentInfo_rhel72 = (
 	"opa_stack" =>	{ Name => "OFA OPA Stack",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
-					  DriverSubdir => "updates",
+					  DriverSubdir => "extra/ifs-kernel-updates",
 					  PreReq => "", CoReq => " oftools ",
  						# TBD - HasFirmware - FW update
 					  Hidden => 0, Disabled => 0,
@@ -502,6 +502,16 @@ my %ComponentInfo_rhel72 = (
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
+ 	"openmpi_gcc_cuda_hfi" =>{ Name => "OpenMPI (cuda,gcc)",
+                                         DefaultInstall => $State_Install,
+                                         SrcDir => file_glob ("./OFED_MPIS.*"),
+                                         DriverSubdir => "",
+                                         PreReq => " opa_stack intel_hfi mpi_selector ", CoReq => "",
+                                         Hidden => 0, Disabled => 0,
+                                         HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+                                         StartPreReq => "",
+                                         StartComponents => [ ],
+					},
 	"mvapich2_gcc_hfi" =>	{ Name => "MVAPICH2 (hfi,gcc)",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob ("./OFED_MPIS.*"),
@@ -603,7 +613,7 @@ my %ComponentInfo_sles12_sp2 = (
 	"opa_stack" =>	{ Name => "OFA OPA Stack",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
-					  DriverSubdir => "updates",
+					  DriverSubdir => "updates/ifs-kernel-updates",
 					  PreReq => "", CoReq => " oftools ",
  						# TBD - HasFirmware - FW update
 					  Hidden => 0, Disabled => 0,
@@ -711,6 +721,16 @@ my %ComponentInfo_sles12_sp2 = (
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
 					  StartComponents => [ ],
+					},
+	"openmpi_gcc_cuda_hfi" =>{ Name => "OpenMPI (cuda,gcc)",
+                                         DefaultInstall => $State_Install,
+                                         SrcDir => file_glob ("./OFED_MPIS.*"),
+                                         DriverSubdir => "",
+                                         PreReq => " opa_stack intel_hfi mpi_selector ", CoReq => "",
+                                         Hidden => 0, Disabled => 0,
+                                         HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+                                         StartPreReq => "",
+                                         StartComponents => [ ],
 					},
 	"mvapich2_gcc_hfi" =>	{ Name => "MVAPICH2 (hfi,gcc)",
 					  DefaultInstall => $State_Install,
@@ -812,7 +832,7 @@ my %ComponentInfo_rhel73 = (
 	"opa_stack" =>	{ Name => "OFA OPA Stack",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
-					  DriverSubdir => "updates",
+					  DriverSubdir => "extra/ifs-kernel-updates",
 					  PreReq => "", CoReq => " oftools ",
  						# TBD - HasFirmware - FW update
 					  Hidden => 0, Disabled => 0,
@@ -920,6 +940,16 @@ my %ComponentInfo_rhel73 = (
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
 					  StartComponents => [ ],
+					},
+	"openmpi_gcc_cuda_hfi" =>{ Name => "OpenMPI (cuda,gcc)",
+                                         DefaultInstall => $State_Install,
+                                         SrcDir => file_glob ("./OFED_MPIS.*"),
+                                         DriverSubdir => "",
+                                         PreReq => " opa_stack intel_hfi mpi_selector ", CoReq => "",
+                                         Hidden => 0, Disabled => 0,
+                                         HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+                                         StartPreReq => "",
+                                         StartComponents => [ ],
 					},
 	"mvapich2_gcc_hfi" =>	{ Name => "MVAPICH2 (hfi,gcc)",
 					  DefaultInstall => $State_Install,
@@ -1025,6 +1055,7 @@ my %ComponentInfo_rhel73 = (
 				"mvapich2_gcc_hfi" => 0,
 				"mvapich2_intel_hfi" => 0,
 				"openmpi_gcc_hfi" => 0,
+				"openmpi_gcc_cuda_hfi" => 0,
 				"openmpi_intel_hfi" => 0,
 				"delta_mpisrc" => 0,
 				"opafm" => 0,
@@ -1248,6 +1279,7 @@ sub Usage
 	printf STDERR "            can appear with -D or more than once on command line\n";
 	printf STDERR "       -D comp - disable autostart of given component\n";
 	printf STDERR "            can appear with -E or more than once on command line\n";
+	printf STDERR "       -G - install GPU Direct components\n";
 	printf STDERR "       -v - verbose logging\n";
 	printf STDERR "       -vv - very verbose debug logging\n";
 	printf STDERR "       -C - output list of supported components\n";
@@ -1515,6 +1547,8 @@ sub process_args
 				$skip_kernel = 1;
 			} elsif ( "$arg" eq "--force" ) {
 				$Force_Install=1;
+			} elsif ( "$arg" eq "-G" ) {
+				$GPU_Install=1;
 			} elsif ( "$arg" eq "-C" ) {
 				ShowComponents;
 				exit(0);
@@ -1709,144 +1743,6 @@ START:
 	@INSTALL_CHOICES = ( $inp );
 }
 
-my @prereq_components_rhel72 = (
-                                "libibmad",
-                                "libibumad",
-                                "libibumad-devel",
-                                "libibverbs",
-                                "librdmacm",
-                                "libibcm",
-                                "qperf",
-                                "perftest",
-                                "rdma",
-                                "infinipath-psm",
-                                "expat",
-                                "elfutils-libelf-devel",
-                                "libstdc++-devel",
-                                "gcc-gfortran",
-                                "atlas",
-                                "tcl",
-                                "expect",
-                                "tcsh",
-                                "sysfsutils",
-                                "pciutils",
-                                "bc",
-                                "rpm-build",
-                                "redhat-rpm-config",
-                                "kernel-devel",
-);
-
-my @prereq_components_rhel73 = (
-                                "libibmad",
-                                "libibumad",
-                                "libibumad-devel",
-                                "libibverbs",
-                                "librdmacm",
-                                "libibcm",
-                                "qperf",
-                                "perftest",
-                                "rdma",
-                                "infinipath-psm",
-                                "libhfi1",
-                                "expat",
-                                "elfutils-libelf-devel",
-                                "libstdc++-devel",
-                                "gcc-gfortran",
-                                "atlas",
-                                "tcl",
-                                "expect",
-                                "tcsh",
-                                "sysfsutils",
-                                "pciutils",
-                                "bc",
-                                "rpm-build",
-                                "redhat-rpm-config",
-                                "kernel-devel",
-);
-
-my @prereq_components_sles12 = (
-                                "libibverbs1",
-                                "librdmacm1",
-                                "libibcm1",
-                                "qperf",
-                                "perftest",
-                                "rdma",
-                                "opensm-libs3",
-                                "libpsm_infinipath1",
-                                "libexpat1",
-                                "libelf-devel",
-                                "gcc-fortran",
-                                "libudev-devel",
-                                "bc",
-                                "rpm-build",
-                                "kernel-devel",
-);
-
-my @prereq_components_sles12_sp2 = (
-                                "libibmad5",
-                                "libibumad3",
-                                "libibumad-devel",
-                                "libibverbs1",
-                                "librdmacm1",
-                                "libibcm1",
-                                "ibacm",
-                                "qperf",
-                                "perftest",
-                                "rdma",
-                                "opensm-devel",
-                                "opensm-libs3",
-                                "libpsm_infinipath1",
-                                "libhfi1verbs-rdmav2",
-                                "libexpat1",
-                                "libelf-devel",
-                                "gcc-fortran",
-                                "libudev-devel",
-                                "bc",
-                                "rpm-build",
-                                "kernel-devel",
-);
-
-my @prereq_components = ( );
-my $prereq_abort = 0;
-
-sub check_installation
-{
-        my $package = shift;
-        my $checkval;
-        $checkval = `rpm -q $package | grep 'not installed'`;
-        if ($checkval eq '') {
-        } else {
-                $prereq_abort = 1;
-                NormalPrint ("$checkval");
-        }
-}
-
-sub verify_install_prereq
-{
-	#Check Prerequisites for supported distributions only
-        if ("$CUR_DISTRO_VENDOR" eq 'SuSE'
-                && ("$CUR_VENDOR_VER" eq 'ES12' || "$CUR_VENDOR_VER" eq 'ES121')) {
-                @prereq_components = ( @prereq_components_sles12 );
-        } elsif ("$CUR_DISTRO_VENDOR" eq 'SuSE'
-                && "$CUR_VENDOR_VER" eq 'ES122') {
-                @prereq_components = ( @prereq_components_sles12_sp2 );
-        } elsif ( "$CUR_VENDOR_VER" eq "ES73" ) {
-                @prereq_components = ( @prereq_components_rhel73 );
-        } elsif ( "$CUR_VENDOR_VER" eq "ES72" ) {
-                @prereq_components = ( @prereq_components_rhel72 );
-        } else {
-                return
-        }
-
-        foreach (@prereq_components){
-                check_installation( $_ );
-        }
-
-        if ($prereq_abort == "1"){
-                Abort "Please install prerequisite package";
-        }
-}
-
 determine_os_version;
 init_components;
 
@@ -1869,7 +1765,6 @@ if ( ! $Default_Build ) {
 	if ($allow_install) {
 		verify_distrib_files;
 	}
-	verify_install_prereq
 }
 
 foreach my $comp ( @OmniPathAllComponents )

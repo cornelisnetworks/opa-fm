@@ -32,9 +32,9 @@
 # perform installation verification on hosts in a cluster
 
 # optional override of defaults
-if [ -f /etc/sysconfig/opa/opafastfabric.conf ]
+if [ -f /etc/opa/opafastfabric.conf ]
 then
-	. /etc/sysconfig/opa/opafastfabric.conf
+	. /etc/opa/opafastfabric.conf
 fi
 
 . /usr/lib/opa/tools/opafastfabric.conf.def
@@ -211,7 +211,7 @@ Usage_opaswitchadmin_full()
 	echo "                   .emfw file in directory tree will be used." >&2
 	echo "                   shell wildcards may also be used within quotes." >&2
 	echo "  -t portsfile - file with list of local HFI ports used to access" >&2
-	echo "           fabric(s) for switch access, default is /etc/sysconfig/opa/ports" >&2
+	echo "           fabric(s) for switch access, default is /etc/opa/ports" >&2
 	echo "  -p ports - list of local HFI ports used to access fabric(s) for switch access" >&2
 	echo "           default is 1st active port" >&2
 	echo "           This is specified as hfi:port" >&2
@@ -431,9 +431,9 @@ then
 fi
 
 # default to install wrapper version
-if [ -e /etc/sysconfig/opa/version_wrapper ]
+if [ -e /etc/opa/version_wrapper ]
 then
-	CFG_RELEASE=`cat /etc/sysconfig/opa/version_wrapper 2>/dev/null`;
+	CFG_RELEASE=`cat /etc/opa/version_wrapper 2>/dev/null`;
 fi
 if [ x"$CFG_RELEASE" = x ]
 then

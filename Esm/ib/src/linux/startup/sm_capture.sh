@@ -30,20 +30,12 @@
 
 # [ICS VERSION STRING: unknown]
 
-CONFIG_DIR=/etc/sysconfig
-CONFIG_FILE=$CONFIG_DIR/opafm.xml
+CONFIG_DIR=/etc
+CONFIG_FILE=$CONFIG_DIR/opa-fm/opafm.xml
 OPA_FM_BASE=/usr/lib/opa-fm # default
 GDB=/usr/bin/gdb
 SM_EXEC=/usr/lib/opa-fm/runtime/sm
-
-if [ -s $CONFIG_DIR/opa/opafm.info ]
-then
-	# get OPA_FM_BASE
-	. $CONFIG_DIR/opa/opafm.info
-else
-	echo "Error: $CONFIG_DIR/opa/opafm.info not found: using $OPA_FM_BASE" >&2
-fi
-
+IFS_FM_BASE=/usr/lib/opa-fm
 
 PROGNAME="$0"
 dirName="smdump-"`date '+%d%b%y%H%M%S'`
@@ -135,7 +127,7 @@ cp $CONFIG_FILE $dumpLocation
 echo "Copying FM core dumps..."
 did_default=n
 did_core_copy=n
-for dir in /var/crash/opafm $($OPA_FM_BASE/etc/opaxmlextract -H -e CoreDumpDir < $CONFIG_FILE 2>/dev/null|sort -u)
+for dir in /var/crash/opafm $($OPA_FM_BASE/bin/opaxmlextract -H -e CoreDumpDir < $CONFIG_FILE 2>/dev/null|sort -u)
 do
 	if [ -d $dir ]
 	then

@@ -32,9 +32,9 @@
 # copy a file to all hosts
 
 # optional override of defaults
-if [ -f /etc/sysconfig/opa/opafastfabric.conf ]
+if [ -f /etc/opa/opafastfabric.conf ]
 then
-	. /etc/sysconfig/opa/opafastfabric.conf
+	. /etc/opa/opafastfabric.conf
 fi
 
 . /usr/lib/opa/tools/opafastfabric.conf.def
@@ -73,7 +73,7 @@ Usage_full()
 	echo "   FF_MAX_PARALLEL - when -p option is used, maximum concurrent operations" >&2
 	echo "example:">&2
 	echo "   opascpall MPI-PMB /root/MPI-PMB" >&2
-	echo "   opascpall -t -p /usr/lib/opa/src/mpi_apps /usr/lib/opa/src/mpi_apps" >&2
+	echo "   opascpall -t -p /usr/src/opa/mpi_apps /usr/src/opa/mpi_apps" >&2
 	echo "   opascpall a b c /root/tools/" >&2
 	echo "   opascpall -h 'arwen elrond' a b c /root/tools" >&2
 	echo "   HOSTS='arwen elrond' opascpall a b c /root/tools" >&2
@@ -102,7 +102,7 @@ Usage()
 	echo "   dest_dir - destination for copy.  If omitted current directory name is used" >&2
 	echo "example:">&2
 	echo "   opascpall MPI-PMB /root/MPI-PMB" >&2
-	echo "   opascpall -t -p /usr/lib/opa/src/mpi_apps /usr/lib/opa/src/mpi_apps" >&2
+	echo "   opascpall -t -p /usr/src/opa/mpi_apps /usr/src/opa/mpi_apps" >&2
 	echo "   opascpall a b c /root/tools/" >&2
 	echo "user@ syntax cannot be used in filenames specified" >&2
 	echo "To copy from hosts in the cluster to this host, use opauploadall" >&2

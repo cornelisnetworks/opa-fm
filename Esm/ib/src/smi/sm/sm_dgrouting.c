@@ -32,7 +32,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * Device Group/Min Hop Routing (dgmh) Functions
  *
  * DGMH is a minhop/shortestpath routing algorithm that inherits much of its 
- * functionality from sm_shortestpath.c. It deviates from that algorithm by 
+ * functionality from sm_routing_funcs.c. It deviates from that algorithm by 
  * allowing the administrator to specify the order in which LIDs are assigned
  * to switch egress ports. Depending on the layout of a fabric this can 
  * improve the static balancing of the overall traffic load of the fabric.
@@ -248,10 +248,10 @@ dgmh_post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *c
 /*
  * Destroy any DG data associated with an old topology.
  */
-static void
-dgmh_destroy(Topology_t *topop)
+static Status_t
+dgmh_destroy(RoutingModule_t *rm)
 {
-	DGTopology *dgp = (DGTopology*)topop->routingModule->data;
+	DGTopology *dgp = (DGTopology*)rm->data;
 	int i;
 
 	IB_LOG_DEBUG4_FMT(__func__, "dgp = %p", dgp);
@@ -277,15 +277,15 @@ dgmh_destroy(Topology_t *topop)
 		IB_LOG_DEBUG4_FMT(__func__, "Freeing DGTopology structure.");
 	
 		vs_pool_free(&sm_pool,dgp);
-	} else {
-		IB_LOG_ERROR_FMT(__func__, "Error: attempted double free.");
 	}
 
-	topop->routingModule->data = NULL;
+	rm->data = NULL;
+
+	return VSTATUS_OK;
 }
 
 /*
- * The core function of dgrouting. The shortestpath version builds an LFT
+ * The core function of dgrouting. The default version builds an LFT
  * by traversing the list of nodes in the order they were discovered.
  *
  * By contrast, the dgmh version breaks that list up into sub groups,
@@ -303,6 +303,9 @@ dgmh_calculate_lft(Topology_t * topop, Node_t * switchp)
 	
 	uint16_t portLid;
 	uint8_t xftPorts[256];
+
+	if (sm_config.sm_debug_routing)
+		IB_LOG_INFINI_INFO_FMT(__func__, "switch %s", switchp->nodeDesc.NodeString);
 
 	status = sm_Node_init_lft(switchp, NULL);
 	if (status != VSTATUS_OK) {
@@ -376,11 +379,13 @@ dgmh_calculate_lft(Topology_t * topop, Node_t * switchp)
 		}
 	}
 
+	switchp->routingRecalculated = 1;
+
 	return status;
 }
 
 /*
- * A core function of dgrouting. The shortestpath version builds an LFT
+ * A core function of dgrouting. The default version builds an LFT
  * by traversing the list of nodes in the order they were discovered.
  *
  * By contrast, the dgmh version breaks that list up into sub groups,
@@ -672,13 +677,10 @@ dgmh_post_process_routing_copy(Topology_t *src_topop, Topology_t *dst_topop, int
 static Status_t
 dgmh_setup_switches_lrdr(Topology_t *topop, int rebalance, int routing_needed)
 {
-	// coerce both rebalance and routing needed if either is true.
-	// This is done because in all likelyhood a node changed device groups
-	// which, for us, means the xFTs may have changed.
 	IB_LOG_DEBUG4_FMT(__func__, "Rebalance = %d, Routing Needed = %d",
 		rebalance, routing_needed);
-	return	sm_setup_switches_lrdr_wave_discovery_order(topop, 
-		rebalance | routing_needed, routing_needed | rebalance);
+	return	sm_setup_switches_lrdr_wave_discovery_order(topop, rebalance,
+		routing_needed);
 }
 
 static Status_t
@@ -695,33 +697,28 @@ dgmh_copy(struct _RoutingModule * dest, const struct _RoutingModule * src)
 Status_t
 dgmh_make_routing_module(RoutingModule_t *rm)
 {
-	// DG Routing is a "flavor" of shortestpath.
-	sm_shortestpath_make_routing_module(rm);
-
-	// Initialize functions which are different from shortestpath.
+	// Initialize functions which are different from defaults.
 	rm->name = "dgshortestpath";
 	rm->funcs.pre_process_discovery = dgmh_pre_process_discovery;
 	rm->funcs.post_process_discovery = dgmh_post_process_discovery;
 	rm->funcs.post_process_routing = dgmh_post_process_routing;
 	rm->funcs.post_process_routing_copy = dgmh_post_process_routing_copy;
 	rm->funcs.setup_switches_lrdr = dgmh_setup_switches_lrdr;
-	rm->funcs.calculate_lft = dgmh_calculate_lft;
-	rm->funcs.destroy = dgmh_destroy;
+	rm->funcs.calculate_routes = dgmh_calculate_lft;
+	rm->release = dgmh_destroy;
 	rm->copy = dgmh_copy;
 
 	if (sm_config.shortestPathBalanced) {
-		rm->funcs.init_switch_lfts = _init_switch_lfts_dg;
+		rm->funcs.init_switch_routing = _init_switch_lfts_dg;
 	}
 
 	rm->data = NULL;
-
-	rm->alg = SM_ROUTE_ALG_DGROUTING;
 
 	return VSTATUS_OK;
 }
 
 Status_t
-sm_dgmh_init(Topology_t *topop)
+sm_dgmh_init(void)
 {
 	return sm_routing_addModuleFac("dgshortestpath", dgmh_make_routing_module);
 }

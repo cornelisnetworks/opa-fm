@@ -174,12 +174,17 @@ sa_create_template_mask(uint16_t type, uint64_t componentMask) {
 			//	Fill out partial first byte.
 			//
 			if ((offset%8) != 0) {
-				bits = (length < 8) ? 0xff >> (8-length) : 0xff;
-				bits <<= (offset%8);
+				// number of masked bits in the first byte
+				uint8_t len = MIN(8 - offset%8, length);
+				
+				// mask of bits in first byte
+				// shift right to reduce to len bits, then left to align to field offset
+				bits = (0xff >> (8 - len)) << (8 - len - offset%8);
+
 				if ((offset/8) < sizeof(template_mask)) template_mask[offset/8] |= bits;
 
-				length -= (8 - (offset%8));
-				offset += (8 - (offset%8));
+				length -= len;
+				offset += len;
 			}
 
 			//

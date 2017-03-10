@@ -157,7 +157,7 @@ sub install_opafm
 		rpm_run_install($rpmfile, "user", " -U ");
 	}
 
-	check_rpm_config_file("$CONFIG_DIR/opafm.xml");
+	check_rpm_config_file("$CONFIG_DIR/opa-fm/opafm.xml", "/etc/sysconfig");
 	check_dir("/usr/lib/opa");
 	copy_systool_file("$srcdir/comp.pl", "/usr/lib/opa/.comp_opafm.pl");
 
@@ -189,5 +189,10 @@ sub uninstall_opafm
 	system("rmdir -p $ROOT/opt/iba/fm_tools 2>/dev/null");  # remove only if empty
 	system("rm -rf $ROOT/usr/lib/opa-fm");
 	$ComponentWasInstalled{'opafm'}=0;
+}
+
+sub check_os_prereqs_opafm
+{
+	return rpm_check_os_prereqs("opafm", "user");
 }
 

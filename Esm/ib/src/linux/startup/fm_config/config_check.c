@@ -51,7 +51,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <linux/limits.h>
 #include "cs_g.h"
 #include <fm_xml.h>
-//#include "cs_info_file.h"
 
 #ifndef FALSE
 #define FALSE 0
@@ -62,7 +61,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endif
 
 #define MAX_INSTANCES 8
-#define FM_CONFIG_FILENAME "/etc/sysconfig/opafm.xml"
+#define FM_CONFIG_FILENAME "/etc/opa-fm/opafm.xml"
 
 uint8_t		debug;					// debugging mode - default is FALSE
 uint8_t		checksum;				// checksum mode - default is FALSE
@@ -71,6 +70,8 @@ char		config_file [PATH_MAX+1]; // location and name of the config file
 Pool_t		startup_pool;			// a generic pool for malloc'ing memory
 #define		PROG_NAME_MAX 25
 char 		prog_name[PROG_NAME_MAX+1];
+
+int instance = 0;
 
 // XML configuration data structure
 FMXmlCompositeConfig_t *xml_config = NULL;
@@ -82,52 +83,55 @@ FEXmlConfig_t *fep;
 void		Usage		(void);
 Status_t	alloc_mem		(void);
 void		free_mem		(void);
-void		check_multicast_VFs (void);
+void		check_multicast_VFs (int num_instances, VirtualFabrics_t **vf_configs);
 void		print_startup_information		(void);
-void		print_checksum_information		(void);
+void		print_checksum_information (int num_instances, VirtualFabrics_t **vf_configs);
 void* getXmlParserMemory(uint32_t size, char* info);
 void freeXmlParserMemory(void *address, uint32_t size, char* info);
 
 //command line options
 struct option options[]={
-    { "help", no_argument, NULL, '$'},
-    {0}
+	{"help", no_argument, NULL, '$'},
+	{0}
 };
 
 void
 Usage (void)
 {
-	printf ("Usage: %s [-s] [-c config_file] [-v] [-d]\n", prog_name);
-	printf ("         or %s --help\n", prog_name);
+	printf ("Usage %s [-s] [-c config_file] [-v] [-d]\n", prog_name);
+	printf ("        or %s --help\n",prog_name);
 	printf ("\n");
-	printf ("   --help             show this help text\n");            
-	printf ("   -c config file     (default=" FM_CONFIG_FILENAME ")\n");
-	printf ("   -v                 display debugging and status information\n");
-	printf ("   -s                 strict check mode (validate multicast and VF settings)\n");
-	printf ("                      This option will point out inconsistencies or invalid\n");
-	printf ("                      settings in VF and multicast config.\n");
-	printf ("   -d                 display configuration checksum information\n");
+	printf ("   -c config file    (default=" FM_CONFIG_FILENAME ")\n");
+	printf ("   -v                display debugging and status information\n");
+	printf ("   -s                strict check mode (validate multicast and VF settings)\n");
+	printf ("                     This option will point out inconsistencies or\n"); 
+	printf ("                     invalid settings in VF and multicast config.\n");
+	printf ("   -d                display configuration checksum information\n");
 	printf ("\n");
+	printf ("Examples:\n");
+	printf ("  %s\n", prog_name);
+	printf ("  %s -v\n", prog_name);
+	printf ("  %s -sv\n", prog_name);
 	// Note - the -e option is not presented to user since it is for embedded use only
 	exit(2);
 }
 
+
 void
 Usage_full (void)
 {
-	printf ("Usage: %s [-s] [-c config_file] [-v] [-d]\n", prog_name);
-	printf ("         or %s --help\n", prog_name);
+	printf ("Usage %s [-s] [-c config_file] [-v] [-d]\n", prog_name);
+	printf ("        or %s --help\n",prog_name);
 	printf ("\n");
-	printf ("   --help             show this help text\n");            
-	printf ("   -c config file     (default=" FM_CONFIG_FILENAME ")\n");
-	printf ("   -v                 display debugging and status information\n");
-	printf ("   -s                 strict check mode (validate multicast and VF settings)\n");
-	printf ("                      This option will point out inconsistencies or invalid\n");
-	printf ("                      settings in VF and multicast config.\n");
-	printf ("   -d                 display configuration checksum information\n");
+	printf ("   -c config file    (default=" FM_CONFIG_FILENAME ")\n");
+	printf ("   -v                display debugging and status information\n");
+	printf ("   -s                strict check mode (validate multicast and VF settings)\n");
+	printf ("                     This is option will point out inconsistencies or\n"); 
+	printf ("                     invalid settings in VF and multicast config.\n");
+	printf ("   -d                display configuration checksum information\n");
 	printf ("\n");
-	printf ("%s parses and verifies the configuration file of a FM.\n",prog_name);
-	printf ("Displays debugging and status information.\n"); 
+	printf (" %s parses and verifies the configuration file of a FM.\n", prog_name);
+	printf ("Displays debugging and status information.\n");
 	printf ("\n");
 	printf ("Examples:\n");
 	printf ("  %s\n", prog_name);
@@ -137,12 +141,24 @@ Usage_full (void)
 	exit(0);
 }
 
+static void print_warn(const char *msg)
+{
+	fprintf(stdout, "FM Instance %d: WARNING: %s",instance,msg);
+}
+
+static void print_error(const char *msg)
+{
+	fprintf(stdout, "FM Instance %d: ERROR: %s",instance,msg);
+}
+
+ 
 int
 main (int argc, char *argv []) {
 	int		c;		// used to parse the command line
-	char		tmp[PATH_MAX+1];
+	char 		tmp[PATH_MAX+1];
 	char *		ptr;
 	int		index;
+	int ret = 0;
 	IXmlParserFlags_t parser_flags = IXML_PARSER_FLAG_NONE;
 	
 	debug       = FALSE;
@@ -155,6 +171,8 @@ main (int argc, char *argv []) {
 	strncpy (prog_name, ptr ? ptr+1 : tmp, PROG_NAME_MAX);
 	prog_name[PROG_NAME_MAX]=0;
 	
+	VirtualFabrics_t *vf_configs[MAX_INSTANCES] = { NULL };
+
 	while ((c = getopt_long (argc, argv, "c:vsde", options, &index)) != -1) {
 		switch (c) {
 		case '$':
@@ -183,7 +201,7 @@ main (int argc, char *argv []) {
 		}
 	}
 	if (optind < argc) {
- 		Usage ();
+		Usage ();
 	}
 	
 	// Allocate memory for reading and parsing the config file.
@@ -203,11 +221,22 @@ main (int argc, char *argv []) {
 	xml_config = parseFmConfig(config_file, parser_flags, /* instance does not matter for startup */ 0, /* full parse */ 1, /* embedded */ embedded);
 	if (!xml_config) {
 		fprintf(stdout, "Could not open or there was a parse error while reading configuration file ('%s')\n", config_file);
-		exit(1);
+		ret = 1;
+		goto failed;
+	}
+
+	for (instance = 0; instance < xml_config->num_instances; instance++) {
+		vf_configs[instance] = renderVirtualFabricsConfig(instance, xml_config, &xml_config->fm_instance[instance]->sm_config, NULL);
+		if (vf_configs[instance] == NULL) {
+			fprintf(stdout, "Failed to allocate virtual fabrics config for instance %d.\n",instance);
+			ret = 1;
+			goto failed;
+		}
+		ret |= !applyVirtualFabricRules(vf_configs[instance], print_error, print_warn);
 	}
 
 	if (parser_flags & IXML_PARSER_FLAG_STRICT) {
-		check_multicast_VFs();
+		check_multicast_VFs(xml_config->num_instances, vf_configs);
 	}
 
 	if (debug) {
@@ -216,10 +245,17 @@ main (int argc, char *argv []) {
 	}
 
 	if (checksum)
-		print_checksum_information();
+		print_checksum_information(xml_config->num_instances, vf_configs);
 
+failed:
 	// if we have an XML config then release it
 	if (xml_config != NULL) {
+		for (instance = 0; instance < xml_config->num_instances; instance++) {
+			if (vf_configs[instance]) {
+				releaseVirtualFabricsConfig(vf_configs[instance]);
+				vf_configs[instance] = NULL;
+			}
+		}
 		releaseXmlConfig(xml_config, /* full */ 1);
 		xml_config = NULL;
 	}
@@ -227,7 +263,7 @@ main (int argc, char *argv []) {
 	//	Delete a pool of memory to work with.
 	free_mem ();
 
-	exit(0);
+	exit(ret);
 }
 
 // get memory for XML parser
@@ -318,11 +354,10 @@ free_mem (void) {
 //------------------------------------------------------------------------------//
 
 void
-check_multicast_VFs (void) {
+check_multicast_VFs (int num_instances, VirtualFabrics_t **vf_configs) {
 	uint16_t	i;
-	VirtualFabrics_t *vf_config;
 
-	for (i = 0; i < MAX_INSTANCES; i++)
+	for (i = 0; i < num_instances; i++)
 	{
 		FMXmlInstance_t *fmip = xml_config->fm_instance[i];
 		smp = &xml_config->fm_instance[i]->sm_config;
@@ -334,36 +369,30 @@ check_multicast_VFs (void) {
 		if (!fmp->start)
 			continue;
 
-		vf_config = renderVirtualFabricsConfig(i, xml_config, smp, NULL);
-		if (vf_config != NULL) {
-			for (j=0; j< fmip->sm_mdg_config.number_of_groups; ++j) {
-				SMMcastDefGrp_t *mdgp = &fmip->sm_mdg_config.group[j];
-				if (! mdgp->def_mc_create)
-					continue;
-				if (strlen(mdgp->virtual_fabric)) {
-					if (! findVfPointer(vf_config, mdgp->virtual_fabric)) {
-						fprintf(stdout,"Warning: FM instance %u (%s) MulticastGroup Ignored\n    references undefined VirtualFabric: %s\n",
-					   	i, fmp->fm_name, mdgp->virtual_fabric);
-					}
-				}
-				if (mdgp->def_mc_pkey != 0xffffffff) {
-					uint32_t vf;
-					int match = 0;
-					for (vf=0; vf < vf_config->number_of_vfs; vf++) {
-						if (PKEY_VALUE(vf_config->v_fabric[vf].pkey) == PKEY_VALUE(mdgp->def_mc_pkey)) {
-							match=1;
-							break;
-						}
-					}
-					if (! match) {
-						fprintf(stdout,"Warning: FM instance %u (%s) MulticastGroup Ignored\n    references undefined VirtualFabric PKey: 0x%x\n",
-					   	i, fmp->fm_name, mdgp->def_mc_pkey);
-					}
+		for (j=0; j< fmip->sm_mdg_config.number_of_groups; ++j) {
+			SMMcastDefGrp_t *mdgp = &fmip->sm_mdg_config.group[j];
+			if (! mdgp->def_mc_create)
+				continue;
+			if (strlen(mdgp->virtual_fabric)) {
+				if (! findVfPointer(vf_configs[i], mdgp->virtual_fabric)) {
+					fprintf(stdout,"Warning: FM instance %u (%s) MulticastGroup Ignored\n    references undefined VirtualFabric: %s\n",
+				   	i, fmp->fm_name, mdgp->virtual_fabric);
 				}
 			}
-			releaseVirtualFabricsConfig(vf_config);
-		} else {
-			fprintf(stderr, "Error: Failed to allocate virtual fabrics config.\n");
+			if (mdgp->def_mc_pkey != 0xffffffff) {
+				uint32_t vf;
+				int match = 0;
+				for (vf=0; vf < vf_configs[i]->number_of_vfs; vf++) {
+					if (PKEY_VALUE(vf_configs[i]->v_fabric[vf].pkey) == PKEY_VALUE(mdgp->def_mc_pkey)) {
+						match=1;
+						break;
+					}
+				}
+				if (! match) {
+					fprintf(stdout,"Warning: FM instance %u (%s) MulticastGroup Ignored\n    references undefined VirtualFabric PKey: 0x%x\n",
+				   	i, fmp->fm_name, mdgp->def_mc_pkey);
+				}
+			}
 		}
 	}
 }
@@ -384,7 +413,8 @@ print_startup_information (void) {
 
 	for (i = 0; i < MAX_INSTANCES; i++)
 	{
-		fmp = &xml_config->fm_instance[i]->fm_config;;
+		if (!xml_config->fm_instance[i]) continue;
+		fmp = &xml_config->fm_instance[i]->fm_config;
 		smp = &xml_config->fm_instance[i]->sm_config;
 		pmp = &xml_config->fm_instance[i]->pm_config;
 		fep = &xml_config->fm_instance[i]->fe_config;
@@ -430,33 +460,26 @@ print_startup_information (void) {
 //------------------------------------------------------------------------------//
 
 void
-print_checksum_information (void) {
-	VirtualFabrics_t *vf_config;
+print_checksum_information (int num_instances, VirtualFabrics_t **vf_configs) {
 	uint16_t	i;
 	uint16_t	v;
 
 	fprintf(stdout,"\n");
-	for (i = 0; i < MAX_INSTANCES; i++) {
+	for (i = 0; i < num_instances; i++) {
 
 		fmp = &xml_config->fm_instance[i]->fm_config;;
 		smp = &xml_config->fm_instance[i]->sm_config;
 		pmp = &xml_config->fm_instance[i]->pm_config;
 		fep = &xml_config->fm_instance[i]->fe_config;
-		vf_config = renderVirtualFabricsConfig(i, xml_config, smp, NULL);
 
 		fprintf(stdout,"FM instance %u\n", i);
 		fprintf(stdout, "   SM overall checksum %8u    consistency checksum %8u\n", smp->overall_checksum, smp->consistency_checksum);
 		fprintf(stdout, "   PM overall checksum %8u    consistency checksum %8u\n", pmp->overall_checksum, pmp->consistency_checksum);
 		fprintf(stdout, "   FE overall checksum %8u    consistency checksum %8u\n", fep->overall_checksum, fep->consistency_checksum);
 
-		if (vf_config) {
-			fprintf(stdout, "   VF database consistency checksum %8u\n", vf_config->consistency_checksum);
-			for (v = 0; v < vf_config->number_of_vfs; v++) 
-				fprintf(stdout, "       VF %s consistency checksum %8u\n", vf_config->v_fabric[v].name, vf_config->v_fabric[v].consistency_checksum);
-		}
+		fprintf(stdout, "   VF database consistency checksum %8u\n", vf_configs[i]->consistency_checksum);
+		for (v = 0; v < vf_configs[i]->number_of_vfs; v++) 
+			fprintf(stdout, "       VF %s consistency checksum %8u\n", vf_configs[i]->v_fabric[v].name, vf_configs[i]->v_fabric[v].consistency_checksum);
 		fprintf(stdout,"\n");
-
-		if (vf_config)
-			releaseVirtualFabricsConfig(vf_config);
 	}
 }

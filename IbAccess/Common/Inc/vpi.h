@@ -165,7 +165,11 @@ typedef struct _GLOBALROUTE_INFO {
  */
 typedef struct _IB_ADDRESS_VECTOR {
 	EUI64		PortGUID;		/* Used only on CreateAV, ModifyAV, QueryAV */
+#if INCLUDE_16B
+	STL_LID		DestLID;		/* Destination's LID */
+#else
 	IB_LID		DestLID;		/* Destination's LID */
+#endif
 	IB_PATHBITS	PathBits;		/* Combines with the base SrcLID to indicate */
 								/* SrcLID for pkts */
 	IB_SL		ServiceLevel;
@@ -823,7 +827,13 @@ typedef union _IB_SEND_OPTIONS {
 		uint16		SolicitedEvent:		1;	/* Generate solicited event at */
 											/* destination. N/A for RdmaRead */
 											/* nor Atomics */
+#if INCLUDE_16B
+		uint16		IsMAD:				1;	/* mad requests */
+		uint16		SendFMH:			1;	/* Use 16b and FM Header for mad requests */
+		uint16		Reserved2:			6;	/* Must be zero */
+#else
 		uint16		Reserved2:			8;	/* Must be zero */
+#endif
 	} s;
 } IB_SEND_OPTIONS;
 
@@ -890,7 +900,11 @@ typedef struct _IB_WORK_REQ {
 		} SendRD;			/* Send, RdmaRead, RdmaWrite */
 		struct _IB_SEND_RAWD {
 			uint32		QPNumber;	/* Dest QP number */
+#if INCLUDE_16B
+			STL_LID		DestLID;	/* Destination's Base LID */
+#else
 			IB_LID		DestLID;	/* Destination's Base LID */
+#endif
 			IB_PATHBITS	PathBits;	/* Combines with the base SrcLID to */
 									/* determine SrcLID for pkts. */
 			IB_SL		ServiceLevel;	/* For dest */
@@ -973,7 +987,11 @@ struct _IB_ATOMIC_RD2 {
 /* Send for Raw QP */
 struct _IB_SEND_RAWD2 {
 	uint32					QPNumber;	/* Dest QP number */
+#if INCLUDE_16B
+	STL_LID					DestLID;	/* Destination's Base LID */
+#else
 	IB_LID					DestLID;	/* Destination's Base LID */
+#endif
 	IB_PATHBITS				PathBits;	/* Combines with the base SrcLID to */
 										/* determine SrcLID for pkts. */
 	IB_SL					ServiceLevel;	/* For dest */
@@ -1265,7 +1283,11 @@ typedef struct _IB_WORK_COMPLETION {
 			IB_RECV_FLAGS	Flags;
 			uint32		ImmediateData;
 			uint32		SrcQPNumber;
+#if INCLUDE_16B
+			STL_LID		SrcLID;
+#else
 			IB_LID		SrcLID;
+#endif
 			IB_P_KEY	PkeyIndex;		/* GSI only */
 			IB_SL		ServiceLevel;
 			IB_PATHBITS	DestPathBits;
@@ -1275,7 +1297,11 @@ typedef struct _IB_WORK_COMPLETION {
 			uint32			ImmediateData;
 			uint32			SrcQPNumber;
 			uint32			DestEECNumber;	/* Dest EE Context number */
+#if INCLUDE_16B
+			STL_LID			SrcLID;
+#else
 			IB_LID			SrcLID;
+#endif
 			IB_SL			ServiceLevel;
 			uint8			FreedResourceCount;
 		} RecvRD;

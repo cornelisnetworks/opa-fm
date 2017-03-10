@@ -109,9 +109,6 @@ BuildRecordGID(VFI_SERVICE_RECORD * srp, ManagerInfo_t * mi)
 {
 	srp->RID.ServiceGID.Type.Global.SubnetPrefix = mi->gidPrefix;
 	srp->RID.ServiceGID.Type.Global.InterfaceID = mi->guid.guid[(int)(mi->vfi_guid)];
-#ifndef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
-	srp->RID.Reserved = 0;
-#endif
 	srp->Reserved = 0;
 }
 
@@ -217,20 +214,12 @@ vfi_MngrDelService(ManagerInfo_t * mi, VFI_SERVICE_RECORD * service, uint32_t ma
     
     // initialize the commom mad header fields of the SA MAD
     MAD_SET_METHOD_TYPE(&mad, SUBN_ADM_DELETE); 
-#ifdef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
     MAD_SET_VERSION_INFO(&mad, IB_BASE_VERSION, MCLASS_SUBN_ADM, IB_SUBN_ADM_CLASS_VERSION); 
-#else
-    MAD_SET_VERSION_INFO(&mad, STL_BASE_VERSION, MCLASS_SUBN_ADM, STL_SA_CLASS_VERSION); 
-#endif
     MAD_SET_ATTRIB_ID(&mad, SA_ATTRIB_SERVICE_RECORD); 
     
     // initialize SA MAD payload
-#ifdef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
     memcpy(mad.Data, service, sizeof(IB_SERVICE_RECORD));
     (void)BSWAP_IB_SERVICE_RECORD((IB_SERVICE_RECORD *)mad.Data); 
-#else
-    (void)BSWAPCOPY_STL_SERVICE_RECORD(service, (STL_SERVICE_RECORD *)mad.Data);
-#endif
     
     if ((status = if3_mngr_send_mad(mi->fdr, &mad, sizeof(service), 
                                buffer,
@@ -291,12 +280,8 @@ one_sr_callback(CBTxRxData_t *data, void *context)
 
 	// first segment?  strip off the first SR and store the rest
 	if (c->cnt) {
-#ifdef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
         memcpy(c->sr, data->data, sizeof(IB_SERVICE_RECORD));
         (void)BSWAP_IB_SERVICE_RECORD(c->sr); 
-#else
-        (void)BSWAPCOPY_STL_SERVICE_RECORD((STL_SERVICE_RECORD *)data->data, c->sr); 
-#endif
 
 		c->status = VSTATUS_OK;
 		c->cnt--;
@@ -321,12 +306,8 @@ one_sr_callback(CBTxRxData_t *data, void *context)
 	while (remaining + ready >= recordSize) {
 		memcpy(c->data + ready, data->data + offset, recordSize - ready);
 
-#ifdef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
         memcpy(&sr, c->data, sizeof(IB_SERVICE_RECORD));
         (void)BSWAP_IB_SERVICE_RECORD(&sr); 
-#else
-        (void)BSWAPCOPY_STL_SERVICE_RECORD((STL_SERVICE_RECORD *)c->data, &sr);
-#endif
 
 		if (c->cmp(c->sr, &sr) > 0)
 			memcpy(c->sr, &sr, sizeof(sr));
@@ -348,11 +329,7 @@ vfi_MngrQueryService(ManagerInfo_t * mi, VFI_SERVICE_RECORD * service,
 
 {
     Status_t        status; 
-#ifdef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
     SA_MAD mad;
-#else
-    STL_SA_MAD mad;
-#endif
     uint32_t bufferLength = sizeof(VFI_SERVICE_RECORD), madRc; 
     VFI_SERVICE_RECORD insr;
     cb_ctx_t        cb;
@@ -367,11 +344,7 @@ vfi_MngrQueryService(ManagerInfo_t * mi, VFI_SERVICE_RECORD * service,
     
     // initialize the commom mad header fields of the SA MAD
     MAD_SET_METHOD_TYPE(&mad, SUBN_ADM_GETTABLE); 
-#ifdef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
     MAD_SET_VERSION_INFO(&mad, IB_BASE_VERSION, MCLASS_SUBN_ADM, IB_SUBN_ADM_CLASS_VERSION); 
-#else
-    MAD_SET_VERSION_INFO(&mad, STL_BASE_VERSION, MCLASS_SUBN_ADM, STL_SA_CLASS_VERSION); 
-#endif
     MAD_SET_ATTRIB_ID(&mad, SA_ATTRIB_SERVICE_RECORD); 
     
     // initialize callback context
@@ -382,12 +355,8 @@ vfi_MngrQueryService(ManagerInfo_t * mi, VFI_SERVICE_RECORD * service,
 	cb.dlen = 0; 
     
     // initialize SA MAD payload
-#ifdef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
     memcpy(mad.Data, service, sizeof(IB_SERVICE_RECORD));
     (void)BSWAP_IB_SERVICE_RECORD((IB_SERVICE_RECORD *)mad.Data);
-#else
-    (void)BSWAPCOPY_STL_SERVICE_RECORD(service, (STL_SERVICE_RECORD *)mad.Data);
-#endif
     
     // send request to SA and wait for result
     if ((status = if3_mngr_send_mad(mi->fdr,
@@ -618,20 +587,12 @@ vfi_mngr_register(IBhandle_t fd, uint8_t mclass, int gididx,
     
     // initialize the commom mad header fields of the SA MAD
     MAD_SET_METHOD_TYPE(&mad, SUBN_ADM_SET); 
-#ifdef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
     MAD_SET_VERSION_INFO(&mad, IB_BASE_VERSION, MCLASS_SUBN_ADM, IB_SUBN_ADM_CLASS_VERSION); 
-#else
-    MAD_SET_VERSION_INFO(&mad, STL_BASE_VERSION, MCLASS_SUBN_ADM, STL_SA_CLASS_VERSION); 
-#endif
     MAD_SET_ATTRIB_ID(&mad, SA_ATTRIB_SERVICE_RECORD); 
     
     // initialize SA MAD payload
-#ifdef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
     memcpy(mad.Data, &servRec, sizeof(IB_SERVICE_RECORD));
     (void)BSWAP_IB_SERVICE_RECORD((IB_SERVICE_RECORD *)mad.Data); 
-#else
-    (void)BSWAPCOPY_STL_SERVICE_RECORD(&servRec, (STL_SERVICE_RECORD *)mad.Data); 
-#endif
     
     // send service record to SA and wait for result
     if ((status = if3_mngr_send_mad(mi->fdr, &mad, sizeof(servRec), 

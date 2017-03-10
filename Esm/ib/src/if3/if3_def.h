@@ -113,13 +113,8 @@ Status_t if3_recv(ManagerInfo_t * mi, Mai_t * t, uint64_t timeout);
 Status_t if3_mngr_get_port_guid(ManagerInfo_t * fp);
 Status_t if3_mngr_reg_service(IBhandle_t fd, uint8_t * servName, uint64_t servID);
 Status_t if3_mngr_del_service(IBhandle_t fd, uint8_t * servName, uint64_t servID, uint32_t mode);
-#ifdef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
 Status_t if3_mngr_query_service(IBhandle_t fd, uint8_t * servName, uint64_t servID, uint32_t mode, IB_SERVICE_RECORD * serviceFoundp, uint32_t * count);
 Status_t if3_mngr_query_srv_path(IBhandle_t fd, IB_SERVICE_RECORD * srp, Lid_t * lid, uint16_t * sl);
-#else
-Status_t if3_mngr_query_service(IBhandle_t fd, uint8_t * servName, uint64_t servID, uint32_t mode, STL_SERVICE_RECORD * serviceFoundp, uint32_t * count);
-Status_t if3_mngr_query_srv_path(IBhandle_t fd, STL_SERVICE_RECORD * srp, Lid_t * lid, uint16_t * sl);
-#endif
 
 Status_t if3_mngr_register_sa(IBhandle_t fd, uint8_t *servName, uint64_t servID, uint32_t option);
 Status_t if3_mngr_deregister_sa(IBhandle_t fd);

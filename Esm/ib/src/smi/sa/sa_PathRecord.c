@@ -63,9 +63,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sa_l.h"
 #include "fm_xml.h"
 
-Status_t	sa_PathRecord_Set(uint32_t*, uint32_t, Port_t*, uint32_t, Port_t*, uint32_t, PKey_t, uint64_t, uint8_t, uint8_t);
-void        sa_GroupPathRecord_Set(Port_t *src_portp, McGroup_t *group);
-Status_t	sa_PathRecord_Wildcard(Port_t *, uint32_t, uint32_t *, PKey_t, uint8_t, Node_t*, uint64_t, uint8_t);
+Status_t	sa_PathRecord_Set(uint8_t*, uint32_t*, uint32_t, Port_t*, uint32_t, Port_t*, uint32_t, PKey_t, uint64_t, uint8_t, uint8_t);
+void        sa_GroupPathRecord_Set(uint8_t*, uint32_t*, Port_t *, McGroup_t *);
+Status_t	sa_PathRecord_Wildcard(uint8_t*, Port_t *, uint32_t, uint32_t *, PKey_t, uint8_t, Node_t*, uint64_t, uint8_t);
 Status_t	sa_PathRecord_Interop(IB_PATH_RECORD *, uint64_t);
 IB_GID		nullGid={.Raw={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}};
 
@@ -76,6 +76,34 @@ static uint16_t srcLids[128];
 static uint16_t dstLids[128];
 
 static uint8_t serviceIdCheck;
+
+static Status_t
+create_ib_mask(Mai_t *maip, IB_SA_MAD *samad) {
+	// exclude special cases from generic mask comparison
+	uint64 templateMask = samad->SaHdr.ComponentMask & (~(uint64)
+		// ibta defines reversible == 0 to mean "need not be reversible" rather than "must not be reversible"
+		( IB_PATH_RECORD_COMP_REVERSIBLE
+		// query-only field that limits rather than matches the number of responses
+		| IB_PATH_RECORD_COMP_NUMBPATH
+		// selectable fields have special behavior rather than direct match
+		| IB_PATH_RECORD_COMP_MTUSELECTOR
+		| IB_PATH_RECORD_COMP_MTU
+		| IB_PATH_RECORD_COMP_RATESELECTOR
+		| IB_PATH_RECORD_COMP_RATE
+		| IB_PATH_RECORD_COMP_PKTLIFESELECTOR
+		| IB_PATH_RECORD_COMP_PKTLIFE
+		// exclude fields that are manually checked as part of the code flow
+		| IB_PATH_RECORD_COMP_SGID
+		| IB_PATH_RECORD_COMP_DGID
+		| IB_PATH_RECORD_COMP_SLID
+		| IB_PATH_RECORD_COMP_DLID
+		| IB_PATH_RECORD_COMP_PKEY
+		| IB_PATH_RECORD_COMP_SERVICEID
+		| IB_PATH_RECORD_COMP_SL // equivalent to STL's SL Base
+		));
+
+	return sa_create_template_mask(maip->base.aid, templateMask);
+}
 
 Status_t
 sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
@@ -95,6 +123,7 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 	Node_t*		reqNodep;
 	uint64_t	serviceId=0;
 	uint8_t		sl=0xff;
+	Status_t	status;
 
 	// init to permissive lid to represent wildcarded lid
 	uint32_t    slid = PERMISSIVE_LID, dlid = PERMISSIVE_LID;
@@ -154,6 +183,10 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 	memcpy(prp,samad.Data,sizeof(IB_PATH_RECORD));
 	BSWAP_IB_PATH_RECORD(prp);
 
+	if ((status = create_ib_mask(maip, &samad)) != VSTATUS_OK) {
+		IB_LOG_WARNRC("sa_PathRecord: failed to create IB template mask, rc:", status);
+		goto reply_PathRecord;
+	}
 
 //
 //	JSY - this is a quick cut-through check for temporarily static fields.
@@ -325,7 +358,7 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 //	Check for Bus-walk operation.
 //
 	if ((samad.SaHdr.ComponentMask & PR_COMPONENTMASK_NO_DST) == 0) {
-		if (sa_PathRecord_Wildcard(src_portp, slid, &records, pkey, prp->NumbPath, reqNodep, serviceId, sl) != VSTATUS_OK) {
+		if (sa_PathRecord_Wildcard(samad.Data, src_portp, slid, &records, pkey, prp->NumbPath, reqNodep, serviceId, sl) != VSTATUS_OK) {
             maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
 		}
 		goto reply_PathRecord;
@@ -441,7 +474,7 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 			goto reply_PathRecord;
         }
 
-		(void)sa_PathRecord_Set(&records, prp->NumbPath, src_portp, slid, dst_portp, dlid,
+		(void)sa_PathRecord_Set(samad.Data, &records, prp->NumbPath, src_portp, slid, dst_portp, dlid,
 							pkey, serviceId, serviceIdCheck, sl);
 
 		if (saDebugRmpp && (records == 0)) {
@@ -453,15 +486,17 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 	} else if (src_portp != NULL && dstIsGroup) {
         // path request from node to multicast group
         // just make sure port is active and a member of the group
-        if (sm_find_multicast_member(mcastGroup, *((IB_GID*)src_portp->portData->gid)) == NULL) {
+        IB_GID gid;
+        memcpy(gid.Raw, src_portp->portData->gid, sizeof(IB_GID));
+        BSWAP_IB_GID(&gid);
+        if (sm_find_multicast_member(mcastGroup, gid) == NULL) {
             //maip->base.status = MAD_STATUS_SA_REQ_INVALID_GID;
             IB_LOG_ERROR_FMT( "sa_PathRecord",
                    "port LID 0x%x (port guid "FMT_U64") not a member of multicast group "FMT_GID,
                    src_portp->portData->lid, src_portp->portData->guid, prefix, guid);
             goto reply_PathRecord;
         }
-        sa_GroupPathRecord_Set(src_portp, mcastGroup);
-        records++;
+        sa_GroupPathRecord_Set(samad.Data, &records, src_portp, mcastGroup);
     }
 
 //
@@ -500,7 +535,7 @@ reply_PathRecord:
 }
 
 Status_t
-sa_PathRecord_Wildcard(Port_t *src_portp, uint32_t slid, uint32_t *records, PKey_t pkey, uint8_t numPath,
+sa_PathRecord_Wildcard(uint8_t *query, Port_t *src_portp, uint32_t slid, uint32_t *records, PKey_t pkey, uint8_t numPath,
 						Node_t *reqNodep, uint64_t serviceId, uint8_t sl) {
 	Node_t		*dst_nodep;
 	Port_t		*dst_portp;
@@ -523,7 +558,7 @@ sa_PathRecord_Wildcard(Port_t *src_portp, uint32_t slid, uint32_t *records, PKey
             // So reset the local path count for each dst port.
 			pathCount = (*records);
 
-			if ((status = sa_PathRecord_Set(records, pathCount+numPath, src_portp, slid, dst_portp, PERMISSIVE_LID,
+			if ((status = sa_PathRecord_Set(query, records, pathCount+numPath, src_portp, slid, dst_portp, PERMISSIVE_LID,
 								pkey, serviceId, serviceIdCheck, sl)) == VSTATUS_OK) {
                	if ((*records) > sa_max_path_records) {
                  	*records = 0;
@@ -544,7 +579,7 @@ sa_PathRecord_Wildcard(Port_t *src_portp, uint32_t slid, uint32_t *records, PKey
 }
 
 void
-sa_GroupPathRecord_Set(Port_t *src_portp, McGroup_t *group) {
+sa_GroupPathRecord_Set(uint8_t *query, uint32_t *records, Port_t *src_portp, McGroup_t *group) {
 	IB_PATH_RECORD	pathRecord;
 
 	IB_ENTER("sa_GroupPathRecord_Set", src_portp, group, 0, 0);
@@ -557,6 +592,7 @@ sa_GroupPathRecord_Set(Port_t *src_portp, McGroup_t *group) {
     //	order and should not be swapped.
     //
 	(void)memset((void *)&pathRecord, 0, sizeof(IB_PATH_RECORD));
+	(void)memcpy((void *)pathRecord.DGID.Raw, group->mGid.Raw, 16); // group gids are host order
 	pathRecord.DLID = group->mLid;
 	pathRecord.SLID = src_portp->portData->lid;
 	pathRecord.u1.s.RawTraffic = 0;
@@ -575,14 +611,22 @@ sa_GroupPathRecord_Set(Port_t *src_portp, McGroup_t *group) {
     pathRecord.PktLifeTime = group->life; 
 	pathRecord.Preference = 0;
 	BSWAP_IB_PATH_RECORD(&pathRecord);
-	(void)memcpy((void *)pathRecord.DGID.Raw, group->mGid.Raw, 16);
-	(void)memcpy((void *)pathRecord.SGID.Raw, src_portp->portData->gid, 16);
+	(void)memcpy((void *)pathRecord.SGID.Raw, src_portp->portData->gid, 16); // port gids are network order
+
+	if (sa_template_test_noinc(query, (uint8_t *)&pathRecord, sizeof(IB_PATH_RECORD)) != VSTATUS_OK) {
+		IB_EXIT(__func__, 0);
+		return;
+	}
+
 	memcpy(sa_data,&pathRecord,sizeof(IB_PATH_RECORD));
+	(*records)++;
+
+	IB_EXIT(__func__, 0);
 } // end sa_GroupPathRecord_Set
 
 
-void
-sa_FillPathRecord (uint32_t* records, Port_t *src_portp, uint32_t slid, 
+static void
+sa_FillPathRecord (uint8_t *query, uint32_t* records, Port_t *src_portp, uint32_t slid, 
 				Port_t *dst_portp, uint32_t dlid, PKey_t pkey,
 				uint8_t mtu, uint8_t rate, uint8_t lifeMult,
 				uint32_t hopCount, uint64_t serviceId, uint8_t sl) {
@@ -649,13 +693,17 @@ sa_FillPathRecord (uint32_t* records, Port_t *src_portp, uint32_t slid,
 	BSWAP_IB_PATH_RECORD(&pathRecord);
 	(void)memcpy((void *)&pathRecord.DGID, dst_portp->portData->gid, 16);
 	(void)memcpy((void *)&pathRecord.SGID, src_portp->portData->gid, 16);
+
+	if (sa_template_test_noinc(query, (uint8_t *)&pathRecord, sizeof(IB_PATH_RECORD)) != VSTATUS_OK)
+		return;
+
 	memcpy(cp + (*records)*sizeof(IB_PATH_RECORD),&pathRecord,sizeof(IB_PATH_RECORD));
 	(*records)++;
 }
 
 
 Status_t
-sa_PathRecord_Set(uint32_t* records, uint32_t numPath, Port_t *src_portp, uint32_t slid,
+sa_PathRecord_Set(uint8_t *query, uint32_t* records, uint32_t numPath, Port_t *src_portp, uint32_t slid,
 				Port_t *dst_portp, uint32_t dlid, PKey_t pkey, 
 				uint64_t serviceId, uint8_t serviceIdChk, uint8_t sl) {
 
@@ -687,9 +735,9 @@ sa_PathRecord_Set(uint32_t* records, uint32_t numPath, Port_t *src_portp, uint32
 	}
 
 	if (serviceIdChk) {
-		smGetValidatedServiceIDVFs(src_portp, dst_portp, pkey, sl, serviceId, &vfs);
+		smGetValidatedServiceIDVFs(src_portp, dst_portp, pkey, sl, sl, serviceId, &vfs);
 	} else {
-		smGetValidatedVFs(src_portp, dst_portp, pkey, sl, &vfs);
+		smGetValidatedVFs(src_portp, dst_portp, pkey, sl, sl, &vfs);
 	}
 	
 	if (vfs.nset_m == 0) {
@@ -900,7 +948,7 @@ sa_PathRecord_Set(uint32_t* records, uint32_t numPath, Port_t *src_portp, uint32
 				! lid_iterator_done(&iter);
 				lid_iterator_next(&iter, &slid_iter, &dlid_iter)) {
 	
-				sa_FillPathRecord(records, src_portp, slid_iter, dst_portp, dlid_iter, 
+				sa_FillPathRecord(query, records, src_portp, slid_iter, dst_portp, dlid_iter, 
 								pkey, vfMtu, vfRate, lifeMult, hopCount, serviceId, sl);
 				if ((*records) >= sa_max_path_records) {
             		IB_LOG_WARN("sa_PathRecord_Set: too many records:", (*records));
@@ -917,7 +965,7 @@ sa_PathRecord_Set(uint32_t* records, uint32_t numPath, Port_t *src_portp, uint32
 					sm_config.path_selection, &slid_iter);
 				! lid_iterator_done1(&iter);
 				lid_iterator_next1(&iter, &slid_iter)) {
-				sa_FillPathRecord(records, src_portp, slid_iter, dst_portp, dlid, 
+				sa_FillPathRecord(query, records, src_portp, slid_iter, dst_portp, dlid, 
 								pkey, vfMtu, vfRate, lifeMult, hopCount, serviceId, sl);
 				if ((*records) >= sa_max_path_records) {
             		IB_LOG_WARN("sa_PathRecord_Set: too many records:", (*records));
@@ -934,7 +982,7 @@ sa_PathRecord_Set(uint32_t* records, uint32_t numPath, Port_t *src_portp, uint32
 					sm_config.path_selection, &dlid_iter);
 				! lid_iterator_done1(&iter);
 				lid_iterator_next1(&iter, &dlid_iter)) {
-				sa_FillPathRecord(records, src_portp, slid, dst_portp, dlid_iter, 
+				sa_FillPathRecord(query, records, src_portp, slid, dst_portp, dlid_iter, 
 								pkey, vfMtu, vfRate, lifeMult, hopCount, serviceId, sl);
 				if ((*records) >= sa_max_path_records) {
             		IB_LOG_WARN("sa_PathRecord_Set: too many records:", (*records));
@@ -946,7 +994,7 @@ sa_PathRecord_Set(uint32_t* records, uint32_t numPath, Port_t *src_portp, uint32
 			}
 	
 		} else {  // LID to LID
-			sa_FillPathRecord(records, src_portp, slid, dst_portp, dlid,
+			sa_FillPathRecord(query, records, src_portp, slid, dst_portp, dlid,
 						pkey, vfMtu, vfRate, lifeMult, hopCount, serviceId, sl);
 			if ((*records) >= sa_max_path_records) {
             	IB_LOG_WARN("sa_PathRecord_Set: too many records:", (*records));

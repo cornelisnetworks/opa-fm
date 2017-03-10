@@ -279,7 +279,7 @@ my %ComponentInfo_rhel72 = (
 					},
 	"opa_stack" =>	{ Name => "OFA OPA Stack",
 					  DefaultInstall => $State_Install,
-					  SrcDir => ".", DriverSubdir => "updates",
+					  SrcDir => ".", DriverSubdir => "extra/ifs-kernel-updates",
 					  PreReq => "", CoReq => "",
  						# TBD - HasFirmware - FW update
 					  Hidden => 0, Disabled => 0,
@@ -411,7 +411,7 @@ my %ComponentInfo_sles12_sp2 = (
 					},
 	"opa_stack" =>	{ Name => "OFA OPA Stack",
 					  DefaultInstall => $State_Install,
-					  SrcDir => ".", DriverSubdir => "updates",
+					  SrcDir => ".", DriverSubdir => "updates/ifs-kernel-updates",
 					  PreReq => "", CoReq => "",
  						# TBD - HasFirmware - FW update
 					  Hidden => 0, Disabled => 0,

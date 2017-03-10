@@ -120,7 +120,7 @@ static __inline__ int getPrevMTU(int mtu) {
 
 
 
-#define MAX_VFABRICS		32
+#define MAX_VFABRICS		MAX_ENABLED_VFABRICS
 #define MAX_DEVGROUPS		32
 #define DEFAULT_DEVGROUP_ID 0xffff
 #define DEFAULT_PKEY		0x7fff
@@ -183,7 +183,7 @@ extern  cs_Queue_ptr sm_async_rcv_resp_queue;
 //  Loop test path structure
 //
 typedef struct _LoopPath {
-    uint32_t    lid;        // lid assigned to the path
+    STL_LID     lid;        // lid assigned to the path
     uint16_t    startNodeno;// node number of start/end of loop in topology
     // path from SM node to loop node and loop from node back to itself
     uint16_t    nodeIdx[64];// index of node (node number) in topology
@@ -218,6 +218,16 @@ typedef struct {
 	int port2[MAX_NODE_DESC_ENTRIES];
 } PortRangeInfo_t;
 
+typedef struct {
+	STL_VLARB_TABLE_ELEMENT  vlarbLow[STL_MAX_LOW_CAP];
+	STL_VLARB_TABLE_ELEMENT  vlarbHigh[STL_MAX_LOW_CAP];
+	STL_VLARB_TABLE_ELEMENT  vlarbPre[STL_MAX_PREEMPT_CAP];
+} VlarbTableData;
+
+typedef struct _PortDataVLArb {
+	uint32				vlarbMatrix[STL_MAX_VLS];
+	VlarbTableData		vlarb;
+} PortDataVLArb;
 
 //
 //	Per Port structure.
@@ -225,22 +235,23 @@ typedef struct {
 typedef	struct _PortData {
 	uint64_t	guid;		// port GUID
 	uint64_t	gidPrefix;	// Gid Prefix
-	uint8_t		gid[16];	// Gid
+	uint8_t		gid[16];	// Gid (network byte order)
 	uint32_t	capmask;	// capacity mask
 // lid, lmc and vl could be much smaller fields, lid=16bits, lmc=3, vls=3 bits
-	uint32_t	lid;		// base lid
+	STL_LID		lid;		// base lid
 	uint8_t		lmc;		// LMC for this port
 	uint8_t		vl0;		// VLs supported
 	uint8_t		vl1;		// VLs actual
 	uint8_t		mtuSupported:4;		// MTUs supported
     uint8_t		maxVlMtu:4;   // Largest mtu of VLs/VFs on this port.
     uint8_t     rate;       // static rate of link (speed*width)
+	uint16_t    portSpeed;  // calculated portSpeed used in cost (stored due to high usage)
     uint8_t     lsf;        // calculated link speed data rate factor used in cost
 	uint8_t		guidCap;	// # of GUIDs
 	uint8_t		numFailedActivate;	// how many times has sm_activate_port
    							// failed to activate this port
 	uint32_t	flags;		// local flags
-	Lid_t	pLid;		// Persistent lid
+	STL_LID		pLid;		// Persistent lid
 	STL_PKEY_ELEMENT pPKey[SM_PKEYS];// Persistent PKeys
 	uint16_t	num_pkeys;	// Persistent number of PKeys
 	uint64_t	trapWindowStartTime;//timestamp of last trap within the thresholdWindow
@@ -255,19 +266,14 @@ typedef	struct _PortData {
 	uint64_t	mcDeleteStartTime;
 	STL_PORT_INFO	portInfo;	// PortInfo (for SA)
 
-	struct _PortDataVLArb {
-		STL_VLARB_TABLE_ELEMENT  vlarbLow[STL_MAX_LOW_CAP];
-		STL_VLARB_TABLE_ELEMENT  vlarbHigh[STL_MAX_LOW_CAP];
-		STL_VLARB_TABLE_ELEMENT  vlarbPre[STL_MAX_PREEMPT_CAP];
-		uint32                   vlarbMatrix[STL_MAX_VLS];
-	} curArb; ///< Current values on SMA
+	PortDataVLArb	curArb;		// Current values on SMA
+	PortDataVLArb	*newArb;	// Not yet set on SMA
 
-	struct _PortDataVLArb * newArb; ///< Not yet set on SMA
-
-    STL_SLSCMAP slscMap;        // SL2SC mapping table
-    STL_SCSLMAP scslMap;        // SC2SL mapping table
-    STL_SCVLMAP scvltMap;
-    STL_SCVLMAP scvlntMap;
+	STL_SLSCMAP slscMap;		// SL2SC mapping table
+	STL_SCSLMAP scslMap;		// SC2SL mapping table
+	STL_SCVLMAP scvltMap;
+	STL_SCVLMAP scvlntMap;
+	STL_SCVLMAP scvlrMap;
 	STL_SCSCMAP *scscMap;
 	STL_BUFFER_CONTROL_TABLE bufCtrlTable;
 	STL_HFI_CONGESTION_CONTROL_TABLE *hfiCongCon; // HFI Port or EH SWP 0 only.
@@ -276,14 +282,15 @@ typedef	struct _PortData {
 	bitset_t	dgMember;		// Bitset indicating the index values of all device groups.
 	uint16_t	dgMemberList[MAX_DEVGROUPS]; // Indices of the 1st 32 device groups. Used by PM.
 	bitset_t	fullPKeyMember;
-	uint16_t	lidsRouted; 	// Number of lids routed through this port
-	uint16_t	baseLidsRouted; // Number of base lids routed through this port
+	uint16_t		lidsRouted; 	// Number of lids routed through this port
+	uint16_t		baseLidsRouted; // Number of base lids routed through this port
 
 	/* Flags*/
 	uint8_t		qosHfiFilter:1;
 	uint8_t		isIsl:1;		// Switch port is linked to another switch
 	uint8_t		uplink:1;		// Uplink port in fat tree
 	uint8_t		downlink:1;		// Downlink port in fat tree
+	uint8_t		reregisterPending:1;	// True if we need to send a PortInfo with ClientReregister
 
 	uint8_t		inLoopCount;	//number of times this port has been included in a loop as part of loop test
 
@@ -310,11 +317,13 @@ typedef	struct _PortData {
 		uint8_t scsl:1;
 		uint8_t scvlt:1;
 		uint8_t scvlnt:1;
+		uint8_t scvlr:1;
 		uint8_t scsc:1;
 		uint8_t vlarbLow:1;
 		uint8_t vlarbHigh:1;
 		uint8_t vlarbPre:1;
 		uint8_t vlarbMatrix:1;
+		uint8_t	pkeys:1;
 	} current;
 
 	struct {
@@ -387,12 +396,13 @@ typedef	struct _Node {
 	uint8_t     asyncReqsOutstanding; // number of async requests on the wire
 	uint8_t		portsInInit; 
 	uint8_t		activeVLs; 
+	uint8_t		vlCap;			// capability of switch internal
 	uint8_t		numISLs; 
 	uint8_t		tier; 			// tier switch resides on in fat tree
 	uint16_t	tierIndex;		// switch index within it's tier
 	uint8_t		uplinkTrunkCnt; // number of uplink ports in trunk group
-	uint16_t	numLidsRouted;	// used to build balanced LFTs.
-	uint16_t	numBaseLidsRouted;	// used to build balanced LFTs when LMC enabled.
+	uint16_t		numLidsRouted;	// used to build balanced LFTs.
+	uint16_t		numBaseLidsRouted;	// used to build balanced LFTs when LMC enabled.
 	char*		nodeDescString;	// Only used when nodeDesc is 64 chars (not null terminated).
 	cl_map_obj_t	mapObj;		// Quickmap item to sort on guids
 	cl_map_obj_t	nodeIdMapObj;	// Quickmap item to sort on guids
@@ -429,7 +439,7 @@ typedef	struct _Node {
 	uint8_t		edgeSwitch:1;  		// switch has HFIs attached
 	uint8_t		trunkGrouped:1;		// ports in fat tree trunk are grouped by contiguous port numbers
 	uint8_t		skipBalance:1;  
-	uint8_t		routingRecalculated:1;  // routing has been recalculated during this sweep
+	uint8_t		routingRecalculated:1; // routing has been recalculated during this sweep
 	uint8_t		nodeDescChgTrap:1;  
 	uint8_t		mcSpanningChkDone:1; //indicates switch has been checked as part of spanning tree construction
 	//uint8_t		pmFlags;		// PM flag - TBD how many bits needed
@@ -471,26 +481,83 @@ typedef struct	_DGTopology {
 } DGTopology;
 
 //
+// Path Matrix Port Masks
+//
+
+/**
+	Path matrix portmask array length in units of 64 bits.
+	Separate from STL_MAX_PORTMASK to limit the size of path matrix.
+ */
+#define SM_PATH_MAX_PORTMASK ((MAX_STL_PORTS + 63) / 64)
+
+/**
+	Fixed-size portmask used by the path matrix.
+
+	Local path helpers interpret ports as 1-255 and 0 as not found,
+	unlike stl_helper which encodes 0-254 (with 255 as not found).
+	This allows 64 port switches to be encoded in a single uint64.
+ */
+typedef struct _SmPathPortmask {
+	uint64_t masks[SM_PATH_MAX_PORTMASK];
+} SmPathPortmask_t;
+
+#define SM_PATH_PORTMASK_EMPTY ((SmPathPortmask_t){{0}})
+
+static __inline__ void sm_path_portmask_set(SmPathPortmask_t * ports, int port) {
+	assert(0 < port && port <= MAX_STL_PORTS);
+	ports->masks[(port - 1) / 64] |= (uint64_t)1 << ((port - 1) % 64);
+}
+
+static __inline__ void sm_path_portmask_clear(SmPathPortmask_t * ports, int port) {
+	assert(0 < port && port <= MAX_STL_PORTS);
+	ports->masks[(port - 1) / 64] &= ~((uint64_t)1 << ((port - 1) % 64));
+}
+
+static __inline__ void sm_path_portmask_merge(SmPathPortmask_t * dst, SmPathPortmask_t * src) {
+	int i;
+	for (i = 0; i < SM_PATH_MAX_PORTMASK; ++i)
+		dst->masks[i] |= src->masks[i];
+}
+
+static __inline__ int sm_path_portmask_pop_first(SmPathPortmask_t * ports) {
+	int i, base, bit;
+	for (i = base = 0; i < SM_PATH_MAX_PORTMASK; ++i, base += 64) {
+		bit = __builtin_ffsll(ports->masks[i]);
+		if (bit) {
+			ports->masks[i] ^= (uint64_t)1 << (bit - 1);
+			return base + bit;
+		}
+	}
+	return 0;
+}
+
+/**
+	The array offset to the i-th block of destination switches.
+ */
+#define SM_PATH_OFFSET(I, NumSwitches) ((I) * (NumSwitches))
+
+/**
+	The span of switches and ports for the i-th source switch in bytes.
+ */
+#define SM_PATH_SWITCH_SPAN(NumSwitches) ((NumSwitches) * sizeof(SmPathPortmask_t))
+
+/**
+	The size of the path matrix in bytes.
+ */
+#define SM_PATH_SIZE(NumSwitches) ((NumSwitches) * SM_PATH_SWITCH_SPAN(NumSwitches))
+
+//
 // Routing structures
 //
 
-#ifdef CONFIG_INCLUDE_DOR
 #define SM_DOR_MAX_DIMENSIONS 6
 #define SM_DOR_MAX_WARN_THRESHOLD 255	/*size of warning counter in sm_dor.c is 1 byte*/
-#endif
-
-typedef enum {
-	SM_ROUTE_ALG_SHORTESTPATH,
-	SM_ROUTE_ALG_FATTREE,
-	SM_ROUTE_ALG_DOR,
-	SM_ROUTE_ALG_DGROUTING,
-	SM_ROUTE_ALG_HYPERCUBE
-} RouteAlg_t;
 
 struct _Topology;
 struct _VlVfMap;
+struct _VlBwMap;
 struct Qos;
-struct _VfInfo;
+struct _RoutingModule;
 struct SwitchportToNextGuid;
 
 typedef struct _RoutingFuncs {
@@ -512,16 +579,16 @@ typedef struct _RoutingFuncs {
 	// to calculate routes.
 	Status_t (*allocate_cost_matrix)(struct _Topology *);
 	Status_t (*initialize_cost_matrix)(struct _Topology *);
-	Status_t (*calculate_cost_matrix)(struct _Topology *, int switches, unsigned short * cost);
+	Status_t (*calculate_cost_matrix)(struct _Topology *, int switches, unsigned short * cost, SmPathPortmask_t *);
 
 	/**
 		Copy xFT from src to dest where src is assumed to be a predecessor of dest.
 
-		See @fn sm_routing_copy_lfts() for a typical implementation.
+		See @fn sm_routing_func_copy_routing_lfts() for a typical implementation.
 
 		@return VSTATUS_OK if no problems occurred, non-OK otherwise.
 	*/
-	Status_t (*copy_lfts)(struct _Topology * src, struct _Topology * dest);
+	Status_t (*copy_routing)(struct _Topology * src, struct _Topology * dest);
 
 	/**
 		Perform routing algorithm/topology-specific xFT (LFT, MFT, PGT, PGFT) initialization for switches.  Implementation should do initialization necessary for SM to send LID-routed to any switch.
@@ -533,12 +600,12 @@ typedef struct _RoutingFuncs {
 
 		@return VSTATUS_OK on success, non-OK to indicate a fatal error.
 	*/
-	Status_t (*init_switch_lfts)(struct _Topology * topop, int * routing_needed, int * rebalance);
+	Status_t (*init_switch_routing)(struct _Topology * topop, int * routing_needed, int * rebalance);
 	Status_t (*setup_switches_lrdr)(struct _Topology *, int, int);
 
-	// Optionally override this function to change the order in which lfts are built.
+	// Optionally override this function to change the order in which routing tables are built.
 	// Leave null to accept the default function.
-	Status_t (*calculate_lft)(struct _Topology *, struct _Node *);
+	Status_t (*calculate_routes)(struct _Topology *, struct _Node *);
 
 	/**
 		@param switchp the destination switch
@@ -569,21 +636,37 @@ typedef struct _RoutingFuncs {
 	Status_t (*select_scsc_map)(struct _Topology *, struct _Node *, int , int *, STL_SCSC_MULTISET** scscmap);
 	Status_t (*select_scvl_map)(struct _Topology *, struct _Node *, struct _Port *, struct _Port *, STL_SCVLMAP *);
 	Status_t (*select_vlvf_map)(struct _Topology *, struct _Node *, struct _Port *, struct _VlVfMap *);
-
+	Status_t (*select_vlbw_map)(struct _Topology *, struct _Node *, struct _Port*, struct _VlBwMap *);
+	Status_t (*select_scvlr_map)(struct _Topology *, uint8_t, STL_SCVLMAP *);
 	Status_t (*fill_stl_vlarb_table)(struct _Topology *, struct _Node *, struct _Port *, struct _PortDataVLArb * arb);
 	Status_t (*select_path_lids)(struct _Topology *, struct _Port *, uint16_t, struct _Port *, uint16_t, uint16_t[], uint8_t *, uint16_t[], uint8_t *);
 	Status_t (*process_swIdx_change) (struct _Topology *, int old_idx, int new_idx, int last_idx);
 
+	/**
+ 		Used to determine if fabric change requires fabric routing reprogramming.
+ 	*/
 	int (*check_switch_path_change) (struct _Topology *, struct _Topology *, struct _Node *);
 
 	/**
-		Predicate function to determine if any LFT recalculation is required.
+		Predicate function to determine if any routing recalculation is required.
 
 		Implementation should return zero if no recalculation is required, non-zero otherwise.
 	*/
-	boolean (*needs_lft_recalc)(struct _Topology * topop, Node_t * nodep);
+	boolean (*needs_routing_recalc)(struct _Topology * topop, Node_t * nodep);
 
-	boolean (*can_send_partial_lft)(void);
+	boolean (*can_send_partial_routes)(void);
+
+	/**
+ 		Used by sm_routing_func_select_ports to determine spine first routing
+ 	*/
+	boolean (*do_spine_check)(struct _Topology *topop, Node_t *switchp);
+
+	/** 
+ 		Differ by write of LFT or HFT
+	*/
+	Status_t (*write_minimal_routes)(struct _Topology *, struct _Node *, int, uint8_t *);
+	Status_t (*write_full_routes_LR)(struct _Topology *, struct _SwitchList *, int);
+	Status_t (*route_old_switch)(struct _Topology *, struct _Topology *, struct _Node *);
 
 	/**
 		Override the building of the multicast spanning trees.
@@ -594,27 +677,60 @@ typedef struct _RoutingFuncs {
  		Used to determine if local switch change requires routing change.
  	*/
 	boolean (*handle_fabric_change)(struct _Topology *, struct _Node *, struct _Node *);
-	void (*destroy)(struct _Topology *);
+
+	/**
+		QOS functions
+	*/
+
+	/**
+		Implementation should assign/adjust bandwidth on virtual fabrics objects in
+		@c VirtualFabrics->v_fabric_all. Unassigned bandwidth indicated by
+		@c VF_t.percent_bandwidth == UNDEFINED_XML8.
+	*/
+	Status_t (*update_bw)(struct _RoutingModule *rm, VirtualFabrics_t *VirtualFabrics);
+
+	/**
+		Compute global SLSC mppings. Only applicable to implementations
+		that use a single SLSC map for all SLSC-eligible ports.
+	*/
+	Status_t (*assign_scs_to_sls)(struct _RoutingModule *rm, VirtualFabrics_t *VirtualFabrics);
+
+	/**
+		Assign SLs to VF_t objects in @c VirtualFabrics.
+	*/
+	Status_t (*assign_sls)(struct _RoutingModule *rm, VirtualFabrics_t *VirtualFabrics);
+
+	/**
+		Does this routing algorithm require multicast isolation
+	*/
+	boolean (*mcast_isolation_required)(void);
+
+	/**
+		Minimum number of vls supported by routing algorithm
+		Note: 1 vl is always supported, even though min_vls may return more than 1
+	*/
+	int (*min_vls)(void);
+
+	/**
+		Maximum number of vls supported by routing algorithm
+	*/
+	int (*max_vls)(void);
+
+	/**
+		Number of routing SCs required by SL. mc_sl should be true if SL is for
+		multicast, false otherwise.
+	*/
+	int (*num_routing_scs)(int sl, boolean mc_sl);
+
 } RoutingFuncs_t;
 
 typedef struct _RoutingModule {
 	const char * name;
 
-	/// Optional algorithm subtype; useful for code shared across multiple implementations.
-	uint16_t alg;
-
 	RoutingFuncs_t funcs;
 
 	// Private data used by topology algorithm.
 	void	*data;
-
-	/// Called when module is set as current
-	Status_t (*load)(struct _RoutingModule *);
-
-	/**
-		Called when module is unset as current.
-	*/
-	Status_t (*unload)(struct _RoutingModule *);
 
 	/**
 		Initialize new instance @c dest to be a copy of @c src.  Implementation is responsible for all fields in @c dest.  If no implementation is provided, caller should do a memcpy(dest, src, size).
@@ -628,7 +744,7 @@ typedef struct _RoutingModule {
 	Status_t (*copy)(struct _RoutingModule * dest, const struct _RoutingModule * src);
 
 	/**
-		Called when module is released , usually at end of sweep (see @fn topology_release_saved_topology() and @fn topology_clearNew()) or when a  module is unloaded (see @fn sm_routing_setCurrentModule()).
+		Called when module is released , usually at end of sweep (see @fn topology_release_saved_topology() and @fn topology_clearNew()) or when a  module is unloaded.
 		Note that release() can be called without unload() being called.
 
 		Implementation is responsible for lifetime of fields of @c rm but not lifetime of @c rm itself.
@@ -658,25 +774,21 @@ Status_t sm_routing_addModuleFac(const char * name, routing_mod_factory fac);
 Status_t sm_routing_makeModule(const char * name, RoutingModule_t ** module);
 
 /**
-	Free routing module memory.  Prefer this to direct vs_pool_free() since internal memory management details may change.
+	Allocate and initialize routing module instance as copy of @srcMod.
+	Does copy of @c srcMod using @c srcMod->copy if @c srcMod->copy is non-NULL.
+	Does memcpy(*newMod, srcMod) otherwise.
+
+	@param newMod [out] Location to store pointer to newly-allocated module.
+*/
+Status_t sm_routing_makeCopy(RoutingModule_t **newMod, RoutingModule_t *srcMod);
+/**
+	Free routing module memory. Prefer this to direct vs_pool_free() since internal memory management details may change.
 
 	@param module [out] If @c *module is freed, @c *module will be set to NULL.
-	@param topop [optional] If provided and (*module)->funcs.destroy is defined, call (*module)->funcs.destroy(topop).
 
 	@return VSTATUS_ILLPARM if either @c module or @c *module is NULL.  VSTATUS_OK otherwise.
 */
-Status_t sm_routing_freeModule(RoutingModule_t ** module, struct _Topology * topop);
-
-RoutingModule_t * sm_routing_getCurrentModule(struct _Topology * topop);
-
-/**
-	Set current routing module in use.  Calls RoutingModule_t::unload() of current routing module if not NULL.
-
-	@c rm does not need to be part of the routing module collection (@fn sm_routing_addModule(), @fn sm_routing_eraseModule(), @fn sm_routing_findModule()).  @fn sm_routing_eraseModule() however will fail on trying to erase the current routing module.
-
-	@param rm NULL is permissible; will unload current module but not load another.  rm == topop->routingModule is implementation-dependent but will probably have undesired results.
-*/
-void sm_routing_setCurrentModule(struct _Topology * topop, RoutingModule_t * rm);
+Status_t sm_routing_freeModule(RoutingModule_t ** module);
 
 typedef struct _PreDefTopoLogCounts {
 	uint32_t 	totalLogCount;
@@ -694,7 +806,7 @@ typedef struct _PreDefTopoLogCounts {
 //	Per Topology structure.
 //
 typedef	struct _Topology {
-	uint32_t	lid;		// the last lid used
+	STL_LID		lid;		// the last lid used
 	uint32_t	lmc;		// the global LMC
 	uint32_t	num_nodes;	// count of how many nodes have been found
 	uint32_t	num_sws;	// count of how many switch chips have been found
@@ -705,10 +817,10 @@ typedef	struct _Topology {
 	uint32_t	nodeno;		// node index of new node
 	uint32_t	portno;		// port index of new node
 	uint32_t	state;		// SM state
-	uint32_t	maxLid;		// maximum Lid assigned
+	STL_LID		maxLid;		// maximum Lid assigned
 
-	uint16_t	*cost;		// array for path resolution
-
+	uint16_t         *cost; // array for path resolution
+	SmPathPortmask_t *path; // array for path resolution (next-hop matrix, each entry is a portmask of best next hops)
 	Node_t		*node_head;	// linked list of nodes
 	Node_t		*node_tail;	// ditto
 	Node_t		*ca_head;	// linked list ofFI nodes
@@ -720,12 +832,13 @@ typedef	struct _Topology {
     Node_t      *tier_head[MAX_TIER]; // array of linked lists of switches indexed by tier
     Node_t      *tier_tail[MAX_TIER]; // ditto
 
-	uint32_t	bytes;		// cost/path array length
+	size_t		bytesCost;		// cost/path array length
+	size_t		bytesPath;
 	uint8_t		sm_path[72];	// DR path to SM (STANDBY mode only)
 	uint32_t	sm_count;	// actCount of master SM (STANDBY mode only)
     uint64_t    sm_key;    // the smKey of the master SM (STANDBY mode only)
-	Lid_t		slid;		// Source lid for next send
-	Lid_t		dlid;		// Destination lid for next send
+	STL_LID		slid;		// Source lid for next send
+	STL_LID		dlid;		// Destination lid for next send
     uint16_t    numSm;      // number of SMs in fabric
     //uint16_t    numMasterSms; // number of master SMs in fabric
     //TopologySm_t smRecs[SM_MAX_SUPPORTED]; // list of SMs in topology
@@ -744,8 +857,6 @@ typedef	struct _Topology {
 	uint8_t		maxISLMtu;		// Maximum ISL MTU value seen in the fabric
 	uint8_t		maxISLRate;		// Maximum ISL rate value seen in the fabric
 	uint8_t		qosEnforced; // QoS is being enforced based on fabric parameters
-	//forces setting of client rereg bit for all ports at end of sweep
-	uint8_t		force_client_reregistration;
 
 	/// Allocated in sm_routing_makeModule(), freed in either topology_release_saved_topology() and/or topology_clearNew()
 	RoutingModule_t * routingModule;
@@ -802,7 +913,7 @@ typedef	struct {
 //
 typedef	struct _McMember {
 	struct _McMember	*next;
-	Lid_t			slid;
+	STL_LID			slid;
 	uint8_t			proxy;
 	uint8_t			state;
 	uint64_t		nodeGuid;
@@ -827,7 +938,7 @@ typedef	struct _McGroup {
 	uint32_t		members_full;
 	uint32_t		qKey;
 	uint16_t		pKey;
-	Lid_t			mLid;
+	STL_LID			mLid;
 	uint8_t			mtu;
 	uint8_t			rate;
 	uint8_t			life;
@@ -982,18 +1093,35 @@ typedef struct _VlVfMap
     int8_t       vf[STL_MAX_VLS][MAX_VFABRICS];
 } VlVfMap_t;
 
+typedef struct _VlBwMap
+{
+    uint8_t       bw[STL_MAX_VLS];
+    uint8_t       highPriority[STL_MAX_VLS];
+} VlBwMap_t;
+
+//
+// Use for vlarb/bw setup
+//
+typedef struct _VlarbList
+{
+	uint8_t				cap;		// Low BW cap
+	uint8_t				mtu;		// MTU of this port 
+    STL_VLARB_TABLE_ELEMENT vlarbLow[STL_MAX_LOW_CAP];  // vlarb bw table
+	struct _VlarbList	*next;
+} VlarbList_t;
+
 typedef struct Qos
-{	
-	int			numVLs;
-	STL_SCVLMAP scvl; 
+{
+	uint8_t		numVLs;
+	uint8_t		activeVLs;
+	STL_SCVLMAP	scvl;  /* scvlr = scvl */
 	bitset_t	highPriorityVLs;
 	bitset_t	lowPriorityVLs;
-	bitset_t	mcVLs;
-	uint8_t		dimensions;			// used for dor only
-	uint8_t		vlBandwidth[STL_MAX_VLS];
-	uint8_t		weightMultiplier;
-	uint8_t		qosEnforced;
-    VlVfMap_t   vlvf;
+	uint8_t		dimensions;		// used for dor only
+	VlBwMap_t	vlBandwidth;
+	uint8_t		weightMultiplier;	// used for STL1 vlarb
+	VlVfMap_t	vlvf;
+	VlarbList_t	*vlarbList;		// Used to cache common vlarb bw data
 } Qos_t;
 
 typedef enum {
@@ -1025,6 +1153,20 @@ static __inline__ void setResweepReason(SweepReason_t reason) {
 	if (sm_resweep_reason == SM_SWEEP_REASON_UNDETERMINED)
 		sm_resweep_reason = reason;
 }
+
+//
+// API for interacting with topology_activate()'s retry logic.
+//
+
+typedef struct ActivationRetry * pActivationRetry_t;
+
+// returns the number of attempts made so far
+// 0 = initial, 1 = 1st retry, etc.
+uint8_t activation_retry_attempts(pActivationRetry_t);
+
+// increments the failure count for the current attempt
+void activation_retry_inc_failures(pActivationRetry_t);
+
 //
 //    IEEE defined OUIs
 //
@@ -1135,7 +1277,7 @@ void Switch_Enqueue_Type(Topology_t *, Node_t *, int, int);
 		if (strlen(nodeDescStr) == ND_LEN) {							\
 			local_status = vs_pool_alloc(&sm_pool, ND_LEN+1, (void *)&NODEP->nodeDescString);	\
 			if (local_status != VSTATUS_OK) {							\
-                IB_FATAL_ERROR("Can't allocate space for node's mft"); 	\
+                IB_FATAL_ERROR("Can't allocate space for node's description"); 	\
 			}															\
 			memcpy((void *)NODEP->nodeDescString, nodeDescStr, ND_LEN+1);	\
 		}																\
@@ -1324,7 +1466,7 @@ static __inline__ int Is_Switch_Queued(Topology_t *tp, Node_t *nodep) {
 	return 0;
 }
 
-static __inline__ Lid_t sm_port_top_lid(Port_t * portp) {
+static __inline__ STL_LID sm_port_top_lid(Port_t * portp) {
 	return ((!portp) ? 0 : portp->portData->lid + (1 << portp->portData->lmc) - 1);
 }
 
@@ -1600,10 +1742,15 @@ static __inline__ int sm_stl_port(Port_t *portp) {
     return (portp->portData->portInfo.PortLinkMode.s.Active & STL_PORT_LINK_MODE_STL);
 }
 
+static __inline__ int sm_IsInterleaveEnabled(STL_PORT_INFO *portInfo) {
+	return(portInfo->PortMode.s.IsVLMarkerEnabled ||
+		portInfo->FlitControl.Interleave.s.MaxNestLevelTxEnabled);
+}
+
 static __inline__ int sm_stl_appliance(uint64 nodeGuid) { 
     int i, appliance = 0; 
-    
-    if (sm_config.appliances.enable) {
+
+    if (sm_config.appliances.enable && nodeGuid) {
         for (i = 0; i < MAX_SM_APPLIANCES; i++) {
             if (sm_config.appliances.guids[i] == nodeGuid)
                 appliance = 1;
@@ -1613,7 +1760,10 @@ static __inline__ int sm_stl_appliance(uint64 nodeGuid) {
     return appliance;
 }
 
-
+static __inline__ int sm_is_scae_allowed(Node_t * nodep) {
+	return sm_config.switchCascadeActivateEnable == SCAE_ALL
+		|| (sm_config.switchCascadeActivateEnable == SCAE_SW_ONLY && nodep->nodeInfo.NodeType == STL_NODE_SW);
+}
 
 // --------------------------------------------------------------------------- //
 
@@ -1630,12 +1780,12 @@ extern SMMcastDefGrpCfg_t	sm_mdg_config;
 
 extern 	uint32_t 	sm_def_mc_group;
 extern  uint8_t		sm_env[32];
-extern	uint32_t	sm_lid;
-extern	uint32_t	sm_lmc_0_freeLid_hint;
-extern	uint32_t	sm_lmc_e0_freeLid_hint;
-extern	uint32_t	sm_lmc_freeLid_hint;
-extern	uint32_t	sm_lid_lo;
-extern	uint32_t	sm_lid_hi;
+extern	STL_LID 	sm_lid;
+extern	STL_LID 	sm_lmc_0_freeLid_hint;
+extern	STL_LID 	sm_lmc_e0_freeLid_hint;
+extern	STL_LID 	sm_lmc_freeLid_hint;
+extern	STL_LID 	sm_lid_lo;
+extern	STL_LID 	sm_lid_hi;
 extern	uint32_t	sm_state;
 extern  uint32_t	sm_prevState;
 extern  int			sm_saw_another_sm;
@@ -1694,18 +1844,15 @@ extern  uint32_t    smDebugDynamicAlloc; // control SM/SA memory allocation mess
 extern  uint32_t    sm_trapThreshold; // threshold of traps/min for port auto-disable
 extern  uint32_t	sm_trapThreshold_minCount; //minimum number of traps to validate sm_trapThreshold
 extern  uint64_t    sm_trapThresholdWindow; // time window for observing traps in milliseconds
-extern	uint32_t	sm_mcast_mlid_table_cap;
+extern	STL_LID 	sm_mcast_mlid_table_cap;
 
 extern	uint16_t    sm_masterSmSl;
-extern	uint8_t		sm_SlBandwidthAllocated[STL_MAX_SLS];
-extern	uint8_t		sm_SLtoSC[STL_MAX_SLS];
-extern	uint8_t		sm_SCtoSL[STL_MAX_SCS];
 extern  bitset_t	sm_linkSLsInuse;
+extern	int			sm_QosConfigChange;
 
 extern SmAdaptiveRouting_t sm_adaptiveRouting;
-#ifdef CONFIG_INCLUDE_DOR
+
 extern SmDorRouting_t smDorRouting;
-#endif
 
 extern uint32_t	sm_useIdealMcSpanningTreeRoot;
 extern uint32_t	sm_mcSpanningTreeRoot_useLeastWorstCaseCost;
@@ -1789,7 +1936,9 @@ Status_t	SM_Get_SCVLntMap(IBhandle_t, uint32_t, uint8_t *, STL_SCVLMAP *);
 Status_t	SM_Get_SCVLntMap_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, STL_SCVLMAP *scvlp);
 Status_t	SM_Set_SCVLntMap(IBhandle_t, uint32_t, uint8_t *, STL_SCVLMAP *, uint64_t);
 Status_t	SM_Set_SCVLntMap_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, STL_SCVLMAP *scvlp, uint64_t mkey);
-Status_t SM_Set_SCSC_LR(IBhandle_t, uint32_t, STL_LID, STL_LID, STL_SCSCMAP *, uint64_t);
+Status_t	SM_Get_SCVLrMap_LR(IBhandle_t, uint32_t, STL_LID, STL_LID, STL_SCVLMAP *);
+Status_t	SM_Set_SCVLrMap_LR(IBhandle_t, uint32_t, STL_LID, STL_LID, STL_SCVLMAP *, uint64_t);
+Status_t	SM_Set_SCSC_LR(IBhandle_t, uint32_t, STL_LID, STL_LID, STL_SCSCMAP *, uint64_t);
 Status_t	SM_Set_LFT(IBhandle_t, uint32_t, uint8_t *, STL_LINEAR_FORWARDING_TABLE *, uint64_t, int);
 Status_t	SM_Set_LFT_Dispatch_DR(IBhandle_t, uint32_t, uint8_t *, STL_LINEAR_FORWARDING_TABLE *, uint16_t, uint64_t, Node_t *, sm_dispatch_t *);
 Status_t	SM_Set_LFT_Dispatch_LR(IBhandle_t, uint32_t, uint16_t, uint16_t, STL_LINEAR_FORWARDING_TABLE *,uint16_t, uint64_t, Node_t *, sm_dispatch_t *);
@@ -1802,10 +1951,10 @@ Status_t	SM_Set_PortGroup(IBhandle_t fd, uint32_t amod, uint8_t *path, uint16_t 
 Status_t	SM_Get_PortGroupFwdTable(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_PORT_GROUP_FORWARDING_TABLE *pp, uint8_t blocks);
 Status_t	SM_Set_PortGroupFwdTable(IBhandle_t fd, uint32_t amod, uint8_t *path, uint16_t slid, uint16_t dlid, STL_PORT_GROUP_FORWARDING_TABLE *pp, uint8_t blocks, uint64_t mkey);
 Status_t    SM_Get_BufferControlTable(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_BUFFER_CONTROL_TABLE pbct[]);
-Status_t    SM_Set_BufferControlTable_LR(IBhandle_t fd, uint32_t amod, uint32_t slid, uint32_t dlid, STL_BUFFER_CONTROL_TABLE pbct[], uint64_t mkey, uint32_t* madStatus);
+Status_t    SM_Set_BufferControlTable_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_BUFFER_CONTROL_TABLE pbct[], uint64_t mkey, uint32_t* madStatus);
 Status_t    SM_Set_BufferControlTable(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_BUFFER_CONTROL_TABLE pbct[], uint64_t mkey, uint32_t* madStatus);
 Status_t	SM_Get_CongestionInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_CONGESTION_INFO * congestionInfo);
-Status_t    SM_Get_CongestionInfo_LR(IBhandle_t fd, uint32_t amod, uint32 slid, uint32 dlid, STL_CONGESTION_INFO * congestionInfo);
+Status_t	SM_Get_CongestionInfo_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_CONGESTION_INFO * congestionInfo);
 Status_t	SM_Get_HfiCongestionSetting(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_HFI_CONGESTION_SETTING *hfics);
 Status_t	SM_Set_HfiCongestionSetting(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_HFI_CONGESTION_SETTING *hfics, uint64_t mkey);
 Status_t	SM_Get_HfiCongestionControl(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_HFI_CONGESTION_CONTROL_TABLE *hficct);
@@ -1813,10 +1962,10 @@ Status_t	SM_Set_HfiCongestionControl(IBhandle_t fd, uint16 CCTI_Limit, const uin
 Status_t	SM_Get_SwitchCongestionSetting(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SWITCH_CONGESTION_SETTING *swcs);
 Status_t	SM_Set_SwitchCongestionSetting(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SWITCH_CONGESTION_SETTING *swcs, uint64_t mkey);
 Status_t	SM_Get_SwitchPortCongestionSetting(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SWITCH_PORT_CONGESTION_SETTING *swpcs);
-Status_t	SM_Set_HfiCongestionSetting_LR(IBhandle_t fd, uint32_t amod, uint32 slid, uint32 dlid, STL_HFI_CONGESTION_SETTING *hfics, uint64_t mkey);
-Status_t	SM_Set_HfiCongestionControl_LR(IBhandle_t fd, uint16 CCTI_Limit, const uint8_t numBlocks, uint32_t amod, uint32 slid ,uint32 dlid, STL_HFI_CONGESTION_CONTROL_TABLE_BLOCK *hficct, uint64_t mkey);
-Status_t	SM_Set_SwitchCongestionSetting_LR(IBhandle_t fd, uint32_t amod, uint32 slid, uint32 dlid, STL_SWITCH_CONGESTION_SETTING *swcs, uint64_t mkey);
-Status_t	SM_Get_SwitchPortCongestionSetting_LR(IBhandle_t fd, uint32_t amod, uint32 slid, uint32 dlid, STL_SWITCH_PORT_CONGESTION_SETTING *swpcs);
+Status_t	SM_Set_HfiCongestionSetting_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_HFI_CONGESTION_SETTING *hfics, uint64_t mkey);
+Status_t	SM_Set_HfiCongestionControl_LR(IBhandle_t fd, uint16 CCTI_Limit, const uint8_t numBlocks, uint32_t amod, STL_LID slid ,STL_LID dlid, STL_HFI_CONGESTION_CONTROL_TABLE_BLOCK *hficct, uint64_t mkey);
+Status_t	SM_Set_SwitchCongestionSetting_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_SWITCH_CONGESTION_SETTING *swcs, uint64_t mkey);
+Status_t	SM_Get_SwitchPortCongestionSetting_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_SWITCH_PORT_CONGESTION_SETTING *swpcs);
 
 
 Status_t SM_Set_LedInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_LED_INFO *li, uint64_t mkey);
@@ -1858,15 +2007,15 @@ typedef	struct _McNode {
 	int32_t		index;		// node index
 	int32_t		nodeno;		// closest node in the tree
 	int32_t		portno;		// port on closest node
-	int32_t		height; 	// Distance from the root. 
+	int32_t		height; 	// distance from the root. 
 	struct _McNode *parent; // parent in spanning tree
-	Lid_t		mft_mlid_init;
+	STL_LID		mft_mlid_init;
 } McNode_t;
 
 typedef	struct _McSpanningTree {
 	int32_t		num_nodes;
 	McNode_t	*nodes;
-	Lid_t		first_mlid;
+	STL_LID		first_mlid;
 	uint32_t	reserved; 	// Padding to make the size a multiple of 8 bytes
 } McSpanningTree_t;
 
@@ -1874,28 +2023,6 @@ typedef struct McSpaningTrees {
 	McSpanningTree_t	*spanningTree;
 	uint8_t				copy;	// Is this a shallow copy of another tree?
 } McSpanningTrees_t;
-
-typedef	struct _VfInfo {
-    uint32_t totalVFsNoQos;
-    uint32_t activeVFsNoQos;
-    uint32_t totalVFsQos;
-    uint32_t activeVFsQos;
-    uint32_t totalSLsNeeded;
-    uint32_t activeSLs;
-    int      numHighPriority;
-    uint32_t totalConfiguredBandwidth;
-    uint32_t totalSLwithConfiguredBW;
-    int      defaultRoutingSCs;
-    uint32_t totalSCsNeeded;
-    uint32_t distributedBandwidth;
-    bitset_t freePkeys;
-    int      maxSLs;
-
-    // only used if one or more VFs are using mcast isolation
-    uint32_t totalVFsMC; 
-    uint32_t activeVFsMC;
-
-} VfInfo_t;
 
 //
 //	Externs.
@@ -1924,7 +2051,7 @@ extern uint64_t sm_mcSpanningTreeRootGuid;
 //	Prototypes.
 //
 const char *sm_getStateText (uint32_t state);
-Status_t	sa_Get_PKeys(Lid_t, uint16_t *, uint32_t *);
+Status_t	sa_Get_PKeys(STL_LID, uint16_t *, uint32_t *);
 Status_t	sa_Compare_PKeys(STL_PKEY_ELEMENT *, STL_PKEY_ELEMENT *);
 Status_t	sa_Compare_Node_PKeys(Node_t *, Node_t *);
 Status_t    sa_Compare_Port_PKeys(Port_t *port1, Port_t *port2);
@@ -1962,21 +2089,23 @@ extern	Status_t state_event_mad(Mai_t *);
 extern	Status_t state_event_timeout(void);
 
 //
-// sm_qos 
+// sm_qos
 //
 void		sm_setup_SC2VL(VirtualFabrics_t *);
-Status_t	sm_setup_SC2VLFixedMap(int, VirtualFabrics_t *);
-Qos_t*		GetQos(uint8_t);
 
 Status_t 	QosFillVlarbTable(Topology_t *, Node_t *, Port_t *, Qos_t *, struct _PortDataVLArb *);
-Status_t 	QosFillStlVlarbTable(Topology_t *, Node_t *, Port_t *, Qos_t *, struct _PortDataVLArb *);
+Status_t 	QosFillVlarbTable(Topology_t *, Node_t *, Port_t *, Qos_t *, struct _PortDataVLArb *);
+Status_t	QosFillBwVlarbTable(Qos_t*, uint8_t, PortDataVLArb *, VlVfMap_t*);
 
-void sm_FillVlarbTableDefault(Port_t * portp, struct _PortDataVLArb * arb);
+void sm_FillVlarbTableDefault(struct _PortDataVLArb * arb, uint8_t numVLs);
 Status_t sm_select_vlvf_map(Topology_t *, Node_t *, Port_t *, VlVfMap_t *);
+Status_t sm_select_vlbw_map(Topology_t *, Node_t *, Port_t *, VlBwMap_t *);
 Status_t sm_fill_stl_vlarb_table(Topology_t *, Node_t *, Port_t *, struct _PortDataVLArb *);
 Status_t sm_select_slsc_map(Topology_t *, Node_t *, Port_t *, Port_t *, STL_SLSCMAP *);
 Status_t sm_select_scsl_map(Topology_t *, Node_t *, Port_t *, Port_t *, STL_SCSLMAP *);
+Status_t sm_select_scvlr_map(Topology_t *, uint8_t, STL_SCVLMAP *);
 Status_t sm_select_scvl_map(Topology_t *, Node_t *, Port_t *, Port_t *, STL_SCVLMAP *);
+void sm_destroy_qos(void);
 
 //
 // sm_topology_rcv.c prototypes
@@ -2055,7 +2184,6 @@ sm_node_updateFields(IBhandle_t fd, uint16_t slid, Node_t * nodep, Port_t * smap
 
 Status_t	sm_initialize_Node_SLMaps(Topology_t *, Node_t *, Port_t *);
 Status_t	sm_initialize_Switch_SLMaps(Topology_t *, Node_t *);
-Status_t	sm_initialize_Switch_SCVLMaps(Topology_t * topop, Node_t * switchp, Port_t *out_portp);
 Status_t	sm_initialize_Port_BfrCtrl(Topology_t * topop, Node_t * nodep, Port_t * out_portp, STL_BUFFER_CONTROL_TABLE *bct);
 
 /**
@@ -2068,8 +2196,7 @@ Status_t	sm_initialize_Port_BfrCtrl(Topology_t * topop, Node_t * nodep, Port_t *
 Status_t sm_update_cableinfo(Topology_t *, Node_t *, Port_t * portp);
 
 Status_t 	sm_get_node_port_states(Topology_t *, Node_t *, Port_t *, uint8_t *, STL_PORT_STATE_INFO **);
-Status_t 	sm_set_node_port_states(Topology_t *, Node_t *, Port_t *, uint8_t *, STL_PORT_STATE_INFO **, uint32_t);
-Status_t	sm_activate_port(Topology_t *, Node_t *, Port_t *);
+Status_t 	sm_set_node_port_states(Topology_t *, Node_t *, Port_t *, uint8_t *, uint32_t, uint32_t, STL_PORT_STATE_INFO **);
 Status_t	sm_disable_port(Topology_t *, Node_t *, Port_t *);
 Status_t	sm_bounce_port(Topology_t *, Node_t *, Port_t *);
 Status_t	sm_bounce_link(Topology_t *, Node_t *, Port_t *);
@@ -2089,11 +2216,11 @@ Port_t	 	*sm_find_port(Topology_t *, int32_t, int32_t);
 Port_t		*sm_find_port_guid(Topology_t *, uint64_t);
 Port_t      *sm_find_port_peer(Topology_t *topop, uint64_t node_guid, int32_t port_no);
 Port_t		*sm_find_active_port_guid(Topology_t *, uint64_t);
-Port_t		*sm_find_port_lid(Topology_t *, Lid_t);
-Port_t		*sm_find_active_port_lid(Topology_t *, Lid_t);
-Port_t		*sm_find_node_and_port_lid(Topology_t *, Lid_t, Node_t **);
+Port_t		*sm_find_port_lid(Topology_t *, STL_LID);
+Port_t		*sm_find_active_port_lid(Topology_t *, STL_LID);
+Port_t		*sm_find_node_and_port_lid(Topology_t *, STL_LID, Node_t **);
 Port_t		*sm_find_neighbor_node_and_port(Topology_t *, Port_t *, Node_t **);
-Status_t	sm_find_node_and_port_pair_lid(Topology_t *, Lid_t, uint32_t, Node_t **, Port_t **, Port_t **, Node_t **, Port_t **, Port_t **);
+Status_t	sm_find_node_and_port_pair_lid(Topology_t *, STL_LID, uint32_t, Node_t **, Port_t **, Port_t **, Node_t **, Port_t **, Port_t **);
 void  		sm_dump_node_map(Topology_t *topop);
 int			sm_check_lid(Node_t *nodep, Port_t * portp, uint8_t newLmc);
 int			sm_set_lid(Node_t *nodep, Port_t * portp, uint8_t lmc);
@@ -2122,54 +2249,108 @@ Status_t	sm_verifyPortSpeedAndWidth(Topology_t *topop, Node_t *nodep, Port_t *po
 Status_t    sm_enable_port_led(Node_t *nodep, Port_t *portp, boolean enabled);
 void		sm_mark_link_down(Topology_t *topop, Port_t *portp);
 
+//
+// sm_activate.c prototypes
+//
+
+void sm_arm_node(Topology_t *, Node_t *);
+void sm_activate_all_hfi_first_safe(Topology_t *, pActivationRetry_t);
+void sm_activate_all_hfi_first(Topology_t *, pActivationRetry_t);
+void sm_activate_all_switch_first(Topology_t *, pActivationRetry_t);
 
 //
 // sm_routing.c prototypes
 //
+Status_t sm_routing_copy_cost_matrix(Topology_t *src_topop, Topology_t *dst_topop);
+Status_t sm_routing_prep_new_switch(Topology_t *topop, Node_t *nodep, int, uint8_t *path);
+Status_t sm_routing_route_switch_LR(Topology_t *topop, SwitchList_t *swlist, int rebalance);
+Status_t sm_routing_route_new_switch_LR(Topology_t *topop, SwitchList_t *swlist, int rebalance);
+Status_t sm_routing_route_old_switch(Topology_t *src_topop, Topology_t *dst_topop, Node_t *nodep);
+int      sm_balance_base_lids(SwitchportToNextGuid_t *ordered_ports, int olen);
+Status_t sm_routing_init(void);
 
-Status_t	sm_routing_alloc_cost_matrix(Topology_t *topop);
-Status_t	sm_routing_init_floyds(Topology_t *);
-Status_t	sm_routing_calc_floyds(Topology_t *, int, unsigned short *);
-Status_t	sm_routing_copy_cost_matrix(Topology_t *src_topop, Topology_t *dst_topop);
-Status_t	sm_routing_copy_lfts(Topology_t *oldtp, Topology_t *newtp);
-Status_t	sm_routing_prep_new_switch(Topology_t *topop, Node_t *nodep, int, uint8_t *path);
-Status_t	sm_routing_route_switch_LR(Topology_t *topop, SwitchList_t *swlist, int rebalance);
-Status_t	sm_routing_route_new_switch_LR(Topology_t *topop, SwitchList_t *swlist, int rebalance);
-Status_t	sm_routing_route_old_switch(Topology_t *src_topop, Topology_t *dst_topop, Node_t *nodep);
-int     	sm_balance_base_lids(SwitchportToNextGuid_t *ordered_ports, int olen);
-Status_t	sm_routing_init(Topology_t * topop);
-Status_t	sm_copy_balanced_lfts(Topology_t *);
-Status_t	sm_calculate_balanced_lfts_systematic(Topology_t *);
-Status_t	sm_calculate_balanced_lft_deltas(Topology_t *);
-Status_t	sm_calculate_balanced_lft(Topology_t *topop, Node_t *switchp);
+//
+// sm_routing_funcs.c prototypes
+//
+extern Status_t sm_routing_func_pre_process_discovery_noop(Topology_t *topop, void **outContext);
+extern Status_t sm_routing_func_discover_node_noop(Topology_t *topop, Node_t *nodep, void *context);
+extern Status_t sm_routing_func_discover_node_port_noop(Topology_t *topop, Node_t *nodep, Port_t *portp, void *context);
+extern Status_t sm_routing_func_post_process_discovery_noop(Topology_t *topop, Status_t discoveryStatus, void *context);
+extern Status_t sm_routing_func_post_process_routing_noop(Topology_t *topop, Topology_t *old_topop, int *rebalance);
+extern Status_t sm_routing_func_post_process_routing_copy_noop(Topology_t *src_topop, Topology_t *dst_topop, int *rebalance);
+extern Status_t sm_routing_func_alloc_cost_matrix_floyds(Topology_t *topop);
+extern Status_t sm_routing_func_init_cost_matrix_floyds(Topology_t *topop);
+extern Status_t sm_routing_func_calc_cost_matrix_floyds(Topology_t * topop, int switches, unsigned short * cost, SmPathPortmask_t * path);
+extern Status_t sm_routing_func_copy_routing_noop(Topology_t *src_topop, Topology_t *dst_topop);
+extern Status_t sm_routing_func_copy_routing_lfts(Topology_t *src_topop, Topology_t *dst_topop);
+extern Status_t sm_routing_func_init_switch_routing_lfts(Topology_t * topop, int * routing_needed, int * rebalance);
+extern Status_t sm_routing_func_setup_switches_lrdr_wave_discovery_order(Topology_t * topop, int rebalance, int routing_needed);
+extern Status_t sm_routing_func_calculate_lft(Topology_t * topop, Node_t * switchp);
+extern Status_t sm_routing_func_setup_xft(Topology_t *topop, Node_t *switchp, Node_t *nodep, Port_t *orig_portp, uint8_t *portnos);
+extern int sm_routing_func_select_ports(Topology_t *topop, Node_t *switchp, int endIndex, SwitchportToNextGuid_t *ordered_ports, boolean selectBest);
+extern Status_t sm_routing_func_setup_pgs(struct _Topology *topop, struct _Node * srcSw, struct _Node * dstSw);
+extern int sm_routing_func_get_port_group(Topology_t *topop, Node_t *switchp, Node_t *nodep, uint8_t *portnos);
+extern Status_t sm_routing_func_select_slsc_map(Topology_t *topop, Node_t *nodep, Port_t *in_portp, Port_t *out_portp, STL_SLSCMAP *outSlscMap);
+extern Status_t sm_routing_func_select_scsl_map(Topology_t *topop, Node_t *nodep, Port_t *in_portp, Port_t *out_portp, STL_SCSLMAP *outScslMap);
+extern Status_t sm_routing_func_select_scsc_map(Topology_t *topop, Node_t *switchp, int getSecondary, int *numBlocks, STL_SCSC_MULTISET** scscmap);
+extern Status_t sm_routing_func_select_scvl_map_fixedmap(Topology_t *topop, Node_t *nodep, Port_t *in_portp, Port_t *out_portp, STL_SCVLMAP *outScvlMap);
+extern Status_t sm_routing_func_select_vlvf_map(Topology_t *topop, Node_t *nodep, Port_t *portp, VlVfMap_t * vlvfmap);
+extern Status_t sm_routing_func_select_vlbw_map(Topology_t *topop, Node_t *nodep, Port_t *portp, VlBwMap_t * vlvfmap);
+extern Status_t sm_routing_func_select_scvlr_map(Topology_t *topop, uint8_t vlCap, STL_SCVLMAP *outScvlMap);
+extern Status_t sm_routing_func_fill_stl_vlarb_table(Topology_t *topop, Node_t *nodep, Port_t *portp, PortDataVLArb* arbp);
+extern Status_t sm_routing_func_select_path_lids(Topology_t *topop, Port_t *srcPortp, uint16_t slid, Port_t *dstPortp, uint16_t dlid, uint16_t *outSrcLids, uint8_t *outSrcLen, uint16_t *outDstLids, uint8_t *outDstLen);
+extern Status_t sm_routing_func_process_swIdx_change_noop(Topology_t * topop, int old_idx, int new_idx, int last_idx);
+extern int sm_routing_func_check_switch_path_change(Topology_t * oldtp, Topology_t * newtp, Node_t *switchp);
+extern boolean sm_routing_func_needs_routing_recalc_false(Topology_t * topop, Node_t * nodep);
+extern boolean sm_routing_func_needs_routing_recalc_true(Topology_t * topop, Node_t * nodep);
+extern boolean sm_routing_func_needs_lft_recalc(Topology_t * topop, Node_t * nodep);
+extern boolean sm_routing_func_can_send_partial_routes_true(void);
+extern boolean sm_routing_func_can_send_partial_routes_false(void);
+extern boolean sm_routing_func_do_spine_check(Topology_t * topop, Node_t * switchp);
+extern Status_t sm_routing_func_write_minimal_lft_blocks(Topology_t * topop, Node_t * switchp, int use_lr_dr_mix, uint8_t * path);
+extern Status_t sm_routing_func_write_full_lfts_LR(Topology_t * topop, SwitchList_t * swlist, int rebalance);
+extern Status_t sm_routing_func_route_old_switch(Topology_t *src_topop, Topology_t *dst_topop, Node_t *nodep);
+extern boolean sm_routing_func_handle_fabric_change(Topology_t *topop, Node_t *oldSwitchp, Node_t *switchp);
+extern Status_t sm_routing_func_update_bw(RoutingModule_t *rm, VirtualFabrics_t *VirtualFabrics);
+extern Status_t sm_routing_func_assign_scs_to_sls_fixedmap(RoutingModule_t *rm, VirtualFabrics_t *VirtualFabrics);
+extern Status_t sm_routing_func_assign_sls(RoutingModule_t *rm, VirtualFabrics_t *VirtualFabrics);
+extern boolean sm_routing_func_mcast_isolation_is_required(void);
+extern boolean sm_routing_func_mcast_isolation_not_required(void);
+extern int sm_routing_func_min_vls(void);
+extern int sm_routing_func_max_vls(void);
+extern int sm_routing_func_one_routing_scs(int sl, boolean mc_sl);
 
 //
 // sm_shortestpath.c prototypes
 //
 
-Status_t sm_shortestpath_init(Topology_t *);
-Status_t sm_shortestpath_make_routing_module(RoutingModule_t *rm);
+Status_t sm_shortestpath_init(void);
+
+//
+// sm_fattree.c prototypes
+//
+
+Status_t sm_fattree_init(void);
+
+// sm_qos.c prototypes
+void sm_cong_exch_copy(void);
 
 //
 // sm_dgmh.c prototypes
 //
 
-Status_t sm_dgmh_init(Topology_t *);
-Status_t dgmh_make_routing_module(RoutingModule_t *rm);
-Status_t dgmh_post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *context);
+Status_t sm_dgmh_init(void);
 
 //
 // sm_hypercube.c prototypes
 //
 
-Status_t sm_hypercube_init(Topology_t *);
+Status_t sm_hypercube_init(void);
 
-#ifdef CONFIG_INCLUDE_DOR
 //
 // sm_dor.c prototypes
 //
-Status_t sm_dor_init(Topology_t *);
-#endif
+Status_t sm_dor_init(void);
 
 //
 // sm_dispatch.c prototypes
@@ -2200,7 +2381,7 @@ Status_t    sm_set_local_port_pkey(STL_NODE_INFO *nodeInfop);
 uint16_t	getDefaultPKey(void);
 uint16_t	getPKey(uint8_t);		 // getPKey is needed for esm (sm mib).
 
-uint16_t	smGetRequestPkeyIndex(uint8_t,  Lid_t);
+uint16_t	smGetRequestPkeyIndex(uint8_t,  STL_LID);
 uint16_t	smGetCommonPKey(Port_t*,  Port_t*);
 int 		smValidatePortPKey(uint16_t, Port_t*);
 int			smValidatePortPKey2Way(uint16_t, Port_t*, Port_t*);
@@ -2210,8 +2391,8 @@ void		smGetVfMaxMtu(Port_t*, Port_t*, STL_MCMEMBER_RECORD*, uint8_t*, uint8_t*);
 // validate serviceId for VF.  Also covers the unmatchedSid option
 Status_t	smVFValidateVfServiceId(int vf, uint64_t serviceId);
 Status_t	smVFValidateVfMGid(int vf, uint64_t mGid[2]);
-Status_t	smGetValidatedServiceIDVFs(Port_t*, Port_t*, uint16_t, uint8_t, uint64_t, bitset_t*);
-Status_t	smGetValidatedVFs(Port_t*, Port_t*, uint16_t, uint8_t, bitset_t*);
+Status_t	smGetValidatedServiceIDVFs(Port_t*, Port_t*, uint16_t, uint8_t, uint8_t, uint64_t, bitset_t*);
+Status_t	smGetValidatedVFs(Port_t*, Port_t*, uint16_t, uint8_t, uint8_t, bitset_t*);
 Status_t	smVFValidateMcGrpCreateParams(Port_t * joiner, Port_t * requestor,
                                           STL_MCMEMBER_RECORD * mcMemberRec, bitset_t * vfMembers);
 Status_t	smVFValidateMcDefaultGroup(int, uint64_t*);
@@ -2222,7 +2403,6 @@ boolean     smEvaluateNodeDG(Node_t* nodep, int dgIdxToEvaluate, PortRangeInfo_t
 boolean     smEvaluatePortDG(Node_t* nodep, Port_t* portp, int dgIdxToEvaluate, bitset_t* dgMemberForPort, bitset_t* dgsEvaluated);
 void		smLogVFs(void);
 char*		smGetVfName(uint16_t);
-int			smGetSLVF(uint8_t, VirtualFabrics_t *VirtualFabrics);	
 
 //
 // sm_ar.c prototypes
@@ -2245,7 +2425,7 @@ extern IB_GID nullGid;
 // mLid usage structure
 //
 typedef struct {
-	Lid_t lid;
+	STL_LID lid;
 	uint16_t usageCount;
 } LidUsage_t;
 
@@ -2343,18 +2523,18 @@ void		sm_build_spanning_trees(void);
 void		sm_spanning_tree_resetGlobals(void);
 Status_t	sm_multicast_add_group_class(IB_GID mask, IB_GID value, uint16_t maxLids);
 Status_t	sm_multicast_set_default_group_class(uint16_t maxLids);
-Status_t	sm_multicast_sync_lid(IB_GID mGid, PKey_t pKey, uint8_t mtu, uint8_t rate, Lid_t lid);
+Status_t	sm_multicast_sync_lid(IB_GID mGid, PKey_t pKey, uint8_t mtu, uint8_t rate, STL_LID lid);
 Status_t    sm_multicast_check_sync_consistancy(McGroupClass_t * groupClass, PKey_t pKey,
-                                                uint8_t mtu, uint8_t rate, Lid_t lid);
-Lid_t		sm_multicast_get_max_lid(void);
+                                                uint8_t mtu, uint8_t rate, STL_LID lid);
+STL_LID		sm_multicast_get_max_lid(void);
 Status_t	sm_multicast_gid_check(IB_GID);
 Status_t	sm_multicast_gid_assign(uint32_t, IB_GID);
 Status_t	sm_multicast_gid_valid(uint8_t, IB_GID);
 Status_t	sm_calculate_mfts(void);
 Status_t	sm_set_all_mft(int, Topology_t *);
-void        sm_multicast_switch_mft_copy(void);
+void		sm_multicast_switch_mft_copy(void);
 McGroup_t	*sm_find_multicast_gid(IB_GID);
-Status_t	sm_multicast_assign_lid(IB_GID mGid, PKey_t pKey, uint8_t mtu, uint8_t rate, Lid_t * lid);
+Status_t	sm_multicast_assign_lid(IB_GID mGid, PKey_t pKey, uint8_t mtu, uint8_t rate, STL_LID * lid);
 Status_t	sm_multicast_decommision_group(McGroup_t * group);
 McGroup_t	*sm_find_next_multicast_gid(IB_GID);
 McMember_t	*sm_find_multicast_member(McGroup_t *, IB_GID);
@@ -2615,6 +2795,10 @@ struct _PortDataVLArb * sm_port_getNewArb(Port_t * portp);
 	Release portp->portData->newArb if allocated.
 */
 void sm_port_releaseNewArb(Port_t * portp);
+
+#define SCVLMAP_BASE		8
+#define SCVLMAP_MAX_INDEX	32
+extern void sm_fill_SCVLMap(Qos_t *qos);
 
 #endif	// _SM_L_H_
 

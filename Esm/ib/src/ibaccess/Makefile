@@ -43,7 +43,6 @@ EXECUTABLE		= # Sm$(EXE_SUFFIX)
 DIRS			= 
 # C files (.c)
 CFILES			= \
-		  		  cs_info_file.c \
 		  		  cs_mad_openib.c \
 		  		  vs_evt.c 	\
 		  		  vs_lck.c 	\

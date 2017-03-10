@@ -129,7 +129,7 @@ List of command line options used in various Fast Fabric tools
 -L opaswitches		node list file for inband operations on switches (or OPASWITCHES_FILE)
 -L lid			set PortInfo.LID = lid (opaportconfig)
 -L SL			query by service level
--L nodefile		File with switches in cluster (default /etc/sysconfig/opa/switches)
+-L nodefile		File with switches in cluster (default /etc/opa/switches)
 -M 			access performance stats directly from PMA
 -M			inage offset (pa query)
 -M host			Connected mgmt host from which queries can be initiated

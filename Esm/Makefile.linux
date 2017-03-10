@@ -107,6 +107,19 @@ INSTALL_SOURCES	= \
  				$(TL_DIR)/CommonInstall/main_qlgc_fm.pl
 COMP_SOURCES = $(TL_DIR)/CommonInstall/comp_qlgc_fm.pl
 
+ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES72"
+        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL72.pl
+endif
+ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES73"
+        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL72.pl
+endif
+ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES121"
+        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_SLES121.pl
+endif
+ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES122"
+        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_SLES122.pl
+endif
+
 # Source files to include in DSP File
 DSP_SOURCES		= $(INCLUDE_TARGETS) $(SOURCES) $(MISC_FILES) \
 				  $(RSCFILES) $(DEFFILE) $(MAKEFILE) Makerules.project 
@@ -183,7 +196,7 @@ INSTALL.pl: $(INSTALL_SOURCES)
 	chmod +x INSTALL.pl
 
 comp.pl: $(COMP_SOURCES)
-	 cat $(COMP_SOURCES) > comp.pl
+	 cat $(PREREQ_SOURCE) $(COMP_SOURCES) > comp.pl
 	 chmod +x comp.pl
 
 # install for includes, libs and cmds phases

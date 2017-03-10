@@ -23,7 +23,7 @@
 #define FM_NUM_COMPONENTS 3
 #define FM_MAX_INSTANCES 4
 
-#define FM_XML_CONFIG "/etc/sysconfig/opafm.xml"
+#define FM_XML_CONFIG "/etc/opa-fm/opafm.xml"
 
 extern char *optarg;
 extern int optind;

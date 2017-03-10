@@ -178,7 +178,7 @@ GetCableInfoRecord(Mai_t *maip, uint32_t *records)
 
 	// Cable info query is expected to query specific addresses / length
 	// Check here for these expected values.
-	if ((addr<STL_CIB_STD_START_ADDR) ||
+	if ((addr<STL_CIB_STD_HIGH_PAGE_ADDR) ||
         (addr>STL_CIB_STD_END_ADDR)   ||
         (len >= STL_CABLE_INFO_PAGESZ) || 
         ((addr+len) > STL_CIB_STD_END_ADDR)) {
@@ -211,7 +211,7 @@ GetCableInfoRecord(Mai_t *maip, uint32_t *records)
 					record.u1.s.Address = addr + offset;
 					record.Length = MIN(len - offset, STL_CABLE_INFO_MAXLEN);
 					record.u1.s.PortType = pPort->portData->portInfo.PortPhyConfig.s.PortType;
-					bfrIdx = addr - STL_CIB_STD_START_ADDR + offset;
+					bfrIdx = addr - STL_CIB_STD_HIGH_PAGE_ADDR + offset;
 					memcpy(record.Data, &pPort->portData->cableInfo->buffer[bfrIdx], record.Length + 1); 
 					BSWAPCOPY_STL_CABLE_INFO_RECORD(&record, (STL_CABLE_INFO_RECORD*)data);
 					(void)sa_template_test_mask(samad.header.mask, samad.data, &data, sizeof(STL_CABLE_INFO_RECORD), bytes, records);
@@ -244,7 +244,7 @@ GetCableInfoRecord(Mai_t *maip, uint32_t *records)
 					record.u1.s.Address = addr + offset;
 					record.Length = MIN(len - offset, STL_CABLE_INFO_MAXLEN);
 					record.u1.s.PortType = pPort->portData->portInfo.PortPhyConfig.s.PortType;
-					bfrIdx = addr - STL_CIB_STD_START_ADDR + offset;
+					bfrIdx = addr - STL_CIB_STD_HIGH_PAGE_ADDR + offset;
 					memcpy(record.Data, &pPort->portData->cableInfo->buffer[bfrIdx], record.Length + 1);
 					BSWAPCOPY_STL_CABLE_INFO_RECORD(&record, (STL_CABLE_INFO_RECORD*)data);
 					(void)sa_template_test_mask(samad.header.mask, samad.data, &data, sizeof(STL_CABLE_INFO_RECORD), bytes, records);

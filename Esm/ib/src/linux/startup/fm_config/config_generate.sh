@@ -41,15 +41,9 @@ Usage()
 	exit 2
 }
 
-if [ ! -f /etc/sysconfig/opa/opafm.info ]
-then
-	echo "config_generate: IFS FM not installed" >&2
-	exit 1
-else
-
-	. /etc/sysconfig/opa/opafm.info # get IFS_FM_BASE
-	tooldir=$IFS_FM_BASE/etc
-fi
+IFS_FM_BASE=/usr/lib/opa-fm
+tooldir=$IFS_FM_BASE/bin
+refdir=/usr/share/opa-fm
 
 esm=n
 while getopts e param
@@ -667,17 +661,17 @@ then
 fi
 
 print_separator
-$tooldir/config_convert $TEMP $tooldir/opafm_src.xml > $dest_file
+$tooldir/config_convert $TEMP $refdir/opafm_src.xml > $dest_file
 echo "Generated $dest_file"
 if [ "$esm" = y ]
 then
 	echo "To activate this configuration, $dest_file must be transfered to"
 	echo "the chassis and the FM must be restarted."
 	echo "The fastfabric TUI provides an easy way to do this."
-elif [ "$dest_file" != "/etc/sysconfig/opafm.xml" ]
+elif [ "$dest_file" != "/etc/opa-fm/opafm.xml" ]
 then
 	echo "To activate this configuration, $dest_file must be copied to"
-	echo "/etc/sysconfig/opafm.xml and the FM must be restarted."
+	echo "/etc/opa-fm/opafm.xml and the FM must be restarted."
 else
 	echo "To activate this configuration, the FM must be restarted."
 fi

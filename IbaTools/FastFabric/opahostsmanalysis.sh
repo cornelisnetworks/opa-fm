@@ -32,9 +32,9 @@
 # Analyze host SM for errors and/or changes relative to baseline
 
 # optional override of defaults
-if [ -f /etc/sysconfig/opa/opafastfabric.conf ]
+if [ -f /etc/opa/opafastfabric.conf ]
 then
-	. /etc/sysconfig/opa/opafastfabric.conf
+	. /etc/opa/opafastfabric.conf
 fi
 
 . /usr/lib/opa/tools/opafastfabric.conf.def
@@ -109,7 +109,7 @@ fi
 #-----------------------------------------------------------------
 # newer versions of the SM (which support XML config)
 # 
-SM_CONFIG_FILE=/etc/sysconfig/opafm.xml
+SM_CONFIG_FILE=/etc/opa-fm/opafm.xml
 
 baseline_dir="$FF_ANALYSIS_DIR/baseline"
 latest_dir="$FF_ANALYSIS_DIR/latest"

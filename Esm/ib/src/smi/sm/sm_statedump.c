@@ -164,7 +164,7 @@ Status_t dumpTopologyStruct(const char * dumpDir, FILE * mapFile)
 
 	printf("Dumping topology.cost\n");
 	if (VSTATUS_OK != (rc = dumpStructure(old_topology.cost,
-	                                      old_topology.bytes, topoFile,
+	                                      old_topology.bytesCost, topoFile,
 	                                      TOPO_FNAME, mapFile)))
 		goto bail;
 

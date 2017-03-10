@@ -257,8 +257,6 @@
       <Select>UnmatchedServiceID</Select>
       <Select>UnmatchedMGID</Select>
     </Application>
-
-
   </Applications>
 
   <!-- Various Groups of Ports/Nodes which may be used in Virtual Fabrics    -->
@@ -345,10 +343,8 @@
     <!-- In addition, a DeviceGroup can include another DeviceGroup via:     -->
     <!-- <IncludeGroup>mygroup</IncludeGroup>                                -->
     <!-- This will include all the Devices in the given DeviceGroup.         -->
-    <!-- Loops (including the parent DeviceGroup) are not allowed.           -->
     <!-- It is valid to have more than 1 specification match the same device -->
     <!-- in which case the device is only included in the DeviceGroup once.  -->
-    <!-- There is a nesting limit of 32.                                     -->
 
     <!-- Some predefined DeviceGroups follow.  These are also a good set     -->
     <!-- of examples to cut/paste to make other site specific DeviceGroups:  -->
@@ -517,7 +513,7 @@
     <!--        The value can also be stated as Unlimited.                   -->
     <!--        If not specified the default MaxRate will be Unlimited.      -->
     <!-- Active/Standby: <Standby>0</Standby>                                -->
-    <!--        A Virual Fabric in Standby cannot pass traffic.              -->
+    <!--        A Virtual Fabric in Standby cannot pass traffic.             -->
     <!--        The active/standby state of a Virtual Fabric can be          -->
     <!--        changed dynamically (without restarting the FM).             -->
     <!--        Defaults to active (0).                                      -->
@@ -536,7 +532,7 @@
     <!--        When priority is set to High, any bandwidth allocation is    -->
     <!--        ignored for this Virtual Fabric.                             -->
     <!-- Bandwidth Allocation: <Bandwidth>100%</Bandwidth>                   -->
-    <!--        1-100%   This is the minimum percentage of bandwidth which   -->
+    <!--        0-100%   This is the minimum percentage of bandwidth which   -->
     <!--        should be given to this Virtual Fabric relative to other low -->
     <!--        priority Virtual Fabrics.  When there is no contention, this -->
     <!--        Virtual Fabric could get more than this amount.              -->
@@ -561,6 +557,12 @@
     <!-- Base Service Level: <BaseSL>0</BaseSL>                              -->
     <!--        Allows a specific SL (0-15) to be used for the VF.           -->
     <!--        SM selects value if unspecified                              -->
+    <!-- Multicast Service Level: <MulticastSL>2</MulticastSL>               -->
+    <!--        Service level used by Multicast traffic for routing          -->
+    <!--        algorithms that require Multicast isolation. Valid           -->
+    <!--        range is 0-15. Must not be the same as the BaseSL            -->
+    <!--        in any VF. User-specified MulticastSL is ignored if the      -->
+    <!--        routing algorithm cannot use Multicast traffic isolation.    -->
     <!-- FlowControlDisable: <FlowControlDisable>0</FlowControlDisable>      -->
     <!--        By default, the fabric uses link level flow control.         -->
     <!--        When link layer flow control has been disabled, packets will -->
@@ -920,9 +922,9 @@
     <MasterPingMaxFail>3</MasterPingMaxFail>                                                                           <!--SM_0_master_ping_max_fail:dec-->
     <DbSyncInterval>15</DbSyncInterval> <!-- in minutes, 0-> off -->                                                   <!--SM_0_dbsync_interval:dec-->
 
-    <!-- **************** Fabric Routing **************************** -->
-    <!-- The following Routing Algorithms are supported -->
-    <!-- shortestpath - pick shortest path and balance lids on ISLs -->
+    <!-- ********************* Fabric Routing **************************** -->
+    <!-- The following Routing Algorithms are supported                    -->
+    <!-- shortestpath - pick shortest path and balance lids on ISLs        -->
     <!-- fattree -  A variation of shortestpath with better balancing      -->
     <!--            and improved SM performance on fat tree-like fabrics.  -->
     <!-- dgshortestpath - A variation of shortestpath that uses the        -->
@@ -933,9 +935,13 @@
     <!--            nodes.                                                 -->
     <!--            See the <DGShortestPathTopology> section, below, for   -->
     <!--            more information.                                      -->
+    <!-- dor -      Dimension ordered routing for use with mesh and torus  -->
+    <!--            topologies cabled in port-to-dimension order.          -->
+    <!--            See the <MeshTorusTopology> section below for more     -->
+    <!--            information. (Intel Technical Preview)                 -->
     <!-- hypercube - A variation of dg shortest path for enhanced          -->
-    <!--             hypercube and mesh topologies cabled in               -->
-    <!--             port-to-dimension order.                              -->
+    <!--            hypercube and mesh topologies cabled in                -->
+    <!--            port-to-dimension order. (Supported via 3rd parties)   -->
     <RoutingAlgorithm>shortestpath</RoutingAlgorithm>
 
     <!-- SpineFirstRouting - An option to avoid credit loops in complex    -->
@@ -946,10 +952,22 @@
     <!--            instead of spines.                                     -->
     <SpineFirstRouting>1</SpineFirstRouting>                                                                           <!--SM_0_spine_first_routing:dec-->
 
+    <!-- LID Mask Control: The LMC parameter provides a method for assigning multiple -->
+    <!-- LIDs to a single physical port, allowing the SM to configure the fabric with -->
+    <!-- multiple routes between each end node port, it further helps applications to -->
+    <!-- load balance traffic. This permits selected applications (such as MPIs using -->
+    <!-- Intel(R) PSM) to optimize performance and/or resiliency by using dispersive  -->
+    <!-- routing. Default 0 assigns 1 LID per HFI. LMC is used for Failover/Redundant -->
+    <!-- Routing and for Dispersive Routing. -->
     <Lmc>0</Lmc>  <!-- assign 2^lmc LIDs to all FIs (Lmc can be 0-7) -->                                               <!--SM_0_lmc:dec-->
+    <!-- LID Mask Control for Switch Port 0: Lmc for LID assignment to Switches with  -->
+    <!-- an Enhanced Port 0 capability. LmcE0 and Lmc can be used for Failover/Redundant -->
+    <!-- Routing especially when in-band ULPs (such as IPoIB) are run on enhanced port 0 -->
+    <!-- of switch. LmcE0 cannot be used to enable/control Dispersive Routing, as its -->
+    <!-- applicable only to hosts -->
     <LmcE0>0</LmcE0>  <!-- assign 2^lmce0 LIDs to all Enhanced SW port 0 -->                                           <!--SM_0_lmc_e0:dec-->
 
-    <ForceRebalance>0</ForceRebalance>  
+    <ForceRebalance>0</ForceRebalance>
     <!-- Toggle to force rebalancing routing every change -->
 
     <!-- **************** Fat Tree Topology **************************** -->
@@ -974,7 +992,7 @@
       <!-- <CoreSwitches>core_device_group</CoreSwitches> -->
       <!-- Nodes may be specified for exclusion from initial round-robin -->
       <!-- to give better route balancing of remaining nodes. -->
-      <!-- This may be useful in assymmetric fat trees or to -->
+      <!-- This may be useful in asymmetric fat trees or to -->
       <!-- initially balance across compute nodes in the tree. -->
       <!-- <RouteLast>hfi_device_group</RouteLast>  -->
     </FatTreeTopology>
@@ -1024,15 +1042,21 @@
     <!--           Indicates that the dimension is toroidal (closed loop)  -->
     <!--        Length:     <Length>n</Length>                             -->
     <!--           Indicates that the dimension is of length n.            -->
-    <!--        WarnThreshold:                                             -->
-    <!--              Maximum number of warnings to be logged for each     -->
-    <!--              set of invalid ISL connections found.  ISL           -->
-    <!--              connections which are in conflict with the           -->
-    <!--              Dimensions and PortPair definitions specified in the -->
-    <!--              MeshTorusTopology are considered invalid and will be -->
-    <!--              logged and ignored.                                  -->
-    <!--              Default value is 5. Max value is 255.                -->
- 
+    <!--    RouteLast:                                                     -->
+    <!--        Nodes may be specified for exclusion from initial routing  -->
+    <!--        to give better route balancing of remaining nodes. This    -->
+    <!--        may be useful for balancing first across compute nodes     -->
+    <!--        followed by I/O nodes to achieve diversity of routing      -->
+    <!--        within these groups of devices as well as the fabric       -->
+    <!--        overrall.                                                  -->
+    <!--    WarnThreshold:                                                 -->
+    <!--        Maximum number of warnings to be logged for each set of    -->
+    <!--        invalid ISL connections found.  ISL connections which are  -->
+    <!--        in conflict with the Dimensions and PortPair definitions   -->
+    <!--        specified in the MeshTorusTopology are considered invalid  -->
+    <!--        and will be logged and ignored.                            -->
+    <!--        Default value is 5. Max value is 255.                      -->
+
     <!-- Example of 2D (4x4) Torus with two ISLs in each dimension.        -->
     <!-- <MeshTorusTopology> -->
       <!-- <Dimension> -->
@@ -1047,6 +1071,7 @@
          <!-- <Toroidal>1</Toroidal> -->
          <!-- <Length>4</Length> -->
       <!-- </Dimension> -->
+      <!-- <RouteLast>hfi_device_group</RouteLast>  -->
       <!-- <WarnThreshold>5</WarnThreshold> -->
     <!-- </MeshTorusTopology> -->
 
@@ -1095,8 +1120,8 @@
 
         <!-- Nodes may be specified for exclusion from initial round-robin -->
         <!-- to give better route balancing of remaining nodes.  This may  -->
-        <!-- This may be useful to initially balance across compute nodes  -->
-        <!-- and then to balance over I/O nodes.                           -->
+        <!-- be useful to initially balance across compute nodes and then  -->
+        <!-- over I/O nodes.                                               -->
         <!-- <RouteLast>hfi_device_group</RouteLast>                       -->
     </HypercubeTopology>
 
@@ -1227,12 +1252,12 @@
       <!--        Alternatively a <PKey> may be specified.  -->
       <!--        If neither is specified, the MGID will be created for all -->
       <!--        Virtual Fabrics which contain the MGID as an Application -->
-      <!-- Static Rate: <Rate>100g</Rate> specified in natural format -->
+      <!-- Static Rate: <Rate>25g</Rate> specified in natural format -->
       <!--        e.g. one of '25g', '50g', '75g' or '100g'  -->
       <!-- MTU: <MTU>2048</MTU> specified in natural format -->
       <!--        e.g. one of '2048', '4096', '8192' or '10240' -->
       <!-- Service Level: <SL>0</SL> -->
-      <!--        SL can be specified, but must match the BaseSL of the -->
+      <!--        SL can be specified, but must match the MulticastSL of the -->
       <!--        associated VirtualFabric.  -->
       <!-- QKey: <QKey>0x0</QKey> -->
       <!-- Flow Label: <FlowLabel>0x0</FlowLabel> -->
@@ -1514,6 +1539,9 @@
     </CongestionControl>
 
     <!-- Configures support for AdaptiveRouting in Switches -->
+    <!-- Adaptive Routing monitors the performance of the possible paths between -->
+    <!-- fabric endpoints and periodically rebalances the routes to reduce -->
+    <!-- congestion and achieve a more balanced packet load -->
     <AdaptiveRouting>
       <!-- 1 = Enable, 0 = Disable -->
       <Enable>0</Enable>                                                                                               <!--SM_0_ar_enable:dec-->
@@ -1535,6 +1563,8 @@
       <!-- 7, 6, 5, 4 correspond to 55%, 60%, 65%, and 70%, respectively. -->
       <!-- 3, 2, 1 correspond to 80%, 90%, and 100%, respectively. -->
       <!-- 0 means "Use firmware default" -->
+      <!-- Higher Percentage means higher congestion is required before Adaptive -->
+      <!-- routing takes control. Higher Percentage is less sensitive, less adaptive. -->
       <Threshold>1</Threshold>
     </AdaptiveRouting>
 
@@ -1547,11 +1577,6 @@
     <!-- Setting NoReplyIfBusy to 1 results in no response being returned. -->
     <!-- The default is 0, in which case the busy status will be returned. -->
     <NoReplyIfBusy>0</NoReplyIfBusy>
-
-    <!-- Minimum Supported VLs -->
-    <!-- Any port that does not support this minimum number of VLs will -->
-    <!-- be quarantined. Valid values are 1-8. The default value is 8. -->
-    <MinSupportedVLs>8</MinSupportedVLs>
 
     <!-- Packet Lifetime Settings -->
     <!-- These control the PktLifetime reported in PathRecord queries. -->
@@ -1674,7 +1699,7 @@
 
     <!-- Multicast join/create/deletes result in a SM sweeps. -->
     <!-- A pathological node can cause a denial of service attack by  -->
-    <!-- execessive creates and deletes of multicast groups.  The -->
+    <!-- excessive creates and deletes of multicast groups.  The -->
     <!-- following limits the number of multicast Set/Delete sequences -->
     <!-- that a node can issue before the SM takes action to quiet  -->
     <!-- the node. --> 
@@ -1733,6 +1758,10 @@
     <!-- resweep. Can be used to force devices out of a bad state.   -->
     <ForceAttributeRewrite>0</ForceAttributeRewrite>
 
+    <!-- Enables fabric activation optimization to reduce packet counts -->
+    <!-- during fabric bring up. 0-Disable, 1-Switches only, 2-All devices -->
+    <SwitchCascadeActivateEnable>0</SwitchCascadeActivateEnable>
+
     <!-- Number of times to retry activation upon detecting an armed port -->
     <!-- with a non-armed/active neighbor. -->
     <NeighborNormalRetries>10</NeighborNormalRetries>
@@ -1785,7 +1814,7 @@
     <!-- <DynamicPortAlloc>1</DynamicPortAlloc> -->                                                                    <!--SM_0_dynamic_port_alloc:dec-->
     <!-- <CheckMftResponses>1</CheckMftResponses> -->
     <!-- <MonitorStandby>1</MonitorStandby> -->
-    <!-- <UseCachedNodeData>1</UseCachedNodeData> -->
+    <!-- <UseCachedNodeData>0</UseCachedNodeData> -->
     <!-- If traps are received from the same port with in the below interval -->
     <!-- (in seconds) logging of traps from that port will be suppressed. -->
     <!-- Log suppression is disabled if set to 0. -->
@@ -2153,7 +2182,7 @@
 
     <PreDefinedTopology>
         <Enable>0</Enable>
-        <TopologyFilename>/etc/sysconfig/opa/topology.0:0.xml</TopologyFilename>
+        <TopologyFilename>/etc/opa/topology.0:0.xml</TopologyFilename>
     </PreDefinedTopology>
   </Sm>
 
@@ -2222,8 +2251,6 @@
       <!-- <MLIDTableCap>1024</MLIDTableCap> -->                                                                       <!--#SM_1_mcastMLidTableCap:dec-->
       <!-- Additional Instance Specific MLIDShare settings -->
       <!-- Additional Instance Specific MulticastGroup settings -->
-      <MulticastGroup>
-      </MulticastGroup>
     </Multicast>
     <!-- <SmKey>0x0</SmKey> -->                                                                                        <!--#SM_1_key:hex-->
     <!-- <MKey>0x0</MKey> -->                                                                                          <!--#SM_1_Mkey:hex-->
@@ -2279,7 +2306,7 @@
 
     <PreDefinedTopology>
       <Enable>0</Enable>
-      <TopologyFilename>/etc/sysconfig/opa/topology.1:2.xml</TopologyFilename>
+      <TopologyFilename>/etc/opa/topology.1:2.xml</TopologyFilename>
     </PreDefinedTopology>
   </Sm>
 
@@ -2366,16 +2393,6 @@
       <!-- <MLIDTableCap>1024</MLIDTableCap> -->                                                                       <!--#SM_2_mcastMLidTableCap:dec-->
       <!-- Additional Instance Specific MLIDShare settings -->
       <!-- Additional Instance Specific MulticastGroup settings -->
-      <MulticastGroup>
-        <!-- <Create>1</Create> -->                                                                                    <!--#SM_2_def_mc_create:dec^=-->
-        <!-- <PKey>0x7fff</PKey> -->                                                                                   <!--#SM_2_def_mc_pkey:hex-->
-        <!-- <MTU>2048</MTU> -->                                                                                       <!--#SM_2_def_mc_mtu:mtu^=-->
-        <!-- <Rate>100g</Rate> -->                                                                                     <!--#SM_2_def_mc_rate-->
-        <!-- <SL>0</SL> -->                                                                                            <!--#SM_2_def_mc_sl:dec-->
-        <!-- <QKey>0x0</QKey> -->                                                                                      <!--#SM_2_def_mc_qkey:hex^=-->
-        <!-- <FlowLabel>0x0</FlowLabel> -->                                                                            <!--#SM_2_def_mc_fl:hex^=-->
-        <!-- <TClass>0x0</TClass> -->                                                                                  <!--#SM_2_def_mc_tc:hex^=-->
-      </MulticastGroup>
     </Multicast>
     <!-- <SmKey>0x0</SmKey> -->                                                                                        <!--#SM_2_key:hex-->
     <!-- <MKey>0x0</MKey> -->                                                                                          <!--#SM_2_Mkey:hex-->
@@ -2432,7 +2449,7 @@
 
     <PreDefinedTopology>
       <Enable>0</Enable>
-      <TopologyFilename>/etc/sysconfig/opa/topology.2:1.xml</TopologyFilename>
+      <TopologyFilename>/etc/opa/topology.2:1.xml</TopologyFilename>
     </PreDefinedTopology>
   </Sm>
 
@@ -2519,16 +2536,6 @@
       <!-- <MLIDTableCap>1024</MLIDTableCap> -->                                                                       <!--#SM_3_mcastMLidTableCap:dec-->
       <!-- Additional Instance Specific MLIDShare settings -->
       <!-- Additional Instance Specific MulticastGroup settings -->
-      <MulticastGroup>
-        <!-- <Create>1</Create> -->                                                                                    <!--#SM_3_def_mc_create:dec^=-->
-        <!-- <PKey>0x7fff</PKey> -->                                                                                   <!--#SM_3_def_mc_pkey:hex-->
-        <!-- <MTU>2048</MTU> -->                                                                                       <!--#SM_3_def_mc_mtu:mtu^=-->
-        <!-- <Rate>100g</Rate> -->                                                                                     <!--#SM_3_def_mc_rate-->
-        <!-- <SL>0</SL> -->                                                                                            <!--#SM_3_def_mc_sl:dec-->
-        <!-- <QKey>0x0</QKey> -->                                                                                      <!--#SM_3_def_mc_qkey:hex^=-->
-        <!-- <FlowLabel>0x0</FlowLabel> -->                                                                            <!--#SM_3_def_mc_fl:hex^=-->
-        <!-- <TClass>0x0</TClass> -->                                                                                  <!--#SM_3_def_mc_tc:hex^=-->
-      </MulticastGroup>
     </Multicast>
     <!-- <SmKey>0x0</SmKey> -->                                                                                        <!--#SM_3_key:hex-->
     <!-- <MKey>0x0</MKey> -->                                                                                          <!--#SM_3_Mkey:hex-->
@@ -2585,7 +2592,7 @@
 
     <PreDefinedTopology>
       <Enable>0</Enable>
-      <TopologyFilename>/etc/sysconfig/opa/topology.2:2.xml</TopologyFilename>
+      <TopologyFilename>/etc/opa/topology.2:2.xml</TopologyFilename>
     </PreDefinedTopology>
   </Sm>
 

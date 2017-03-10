@@ -1086,7 +1086,7 @@ static FSTATUS GetAllBCTSA(struct oib_port *port,
 	PQUERY_RESULT_VALUES pQueryResults = NULL;
 	FSTATUS status = FSUCCESS;
 
-	if (! quiet) ProgressPrint(TRUE, "Getting All Buffer Control Tables...");
+	if (! quiet) ProgressPrint(FALSE, "Getting All Buffer Control Tables...");
 
 	/* Query all BCT records... */
 	memset(&query, 0, sizeof(query));
@@ -1337,7 +1337,7 @@ static FSTATUS GetAllDownPortsDirect(struct oib_port *port,
 
 	int num_nodes = cl_qmap_count(&fabricp->AllNodes);
 
-	if (! quiet) ProgressPrint(FALSE, "Getting All Down Switch Ports...");
+	if (! quiet) ProgressPrint(TRUE, "Getting All Down Switch Ports...");
 	for ( p=cl_qmap_head(&fabricp->AllNodes), ix_node = 0; p != cl_qmap_end(&fabricp->AllNodes);
 			p = cl_qmap_next(p), ix_node++ )
 	{
@@ -1636,7 +1636,7 @@ static FSTATUS GetPortCableInfoDirect(struct oib_port *port,
 	if (! IsCableInfoAvailable(&portp->PortInfo))
 		return FSUCCESS;
 
-	for (addr = STL_CIB_STD_START_ADDR, data=cableInfo;
+	for (addr = STL_CIB_STD_HIGH_PAGE_ADDR, data=cableInfo;
 		 addr + STL_CABLE_INFO_MAXLEN <= STL_CIB_STD_END_ADDR; addr += STL_CABLE_INFO_DATA_SIZE, data += STL_CABLE_INFO_DATA_SIZE)
 	{
 		status = SmaGetCableInfo(port, portp->nodep, portp->EndPortLID, portp->PortNum, addr, STL_CABLE_INFO_MAXLEN, data);
@@ -1669,7 +1669,7 @@ static FSTATUS GetAllCablesDirect(struct oib_port *port,
 	int ix_node;
 	int numNodes = cl_qmap_count(&fabricp->AllNodes);
 
-	if (! quiet) ProgressPrint(TRUE, "Getting All Cable Info ...");
+	if (! quiet) ProgressPrint(TRUE, "Getting All Cable Info...");
 
 	for ( p = cl_qmap_head(&fabricp->AllNodes), ix_node = 0; p != cl_qmap_end(&fabricp->AllNodes);
 			p = cl_qmap_next(p), ix_node++ )
@@ -1752,7 +1752,7 @@ static FSTATUS GetAllCablesSA(struct oib_port *port,
 				continue;
 			}
 			
-			if (pCableInfoRecord->u1.s.Address < STL_CIB_STD_START_ADDR
+			if (pCableInfoRecord->u1.s.Address < STL_CIB_STD_HIGH_PAGE_ADDR
 				|| pCableInfoRecord->u1.s.Address > STL_CIB_STD_END_ADDR) {
 				fprintf(stderr, "%s: Cable Info Data Address 0x%x is outside of utilities range on node with"
 						" Lid 0x%x Port %u: Ignoring\n", 
@@ -1767,11 +1767,11 @@ static FSTATUS GetAllCablesSA(struct oib_port *port,
 			}
 
 			memcpy(portp->pCableInfoData
-						+ pCableInfoRecord->u1.s.Address-STL_CIB_STD_START_ADDR,
+						+ pCableInfoRecord->u1.s.Address-STL_CIB_STD_HIGH_PAGE_ADDR,
 					pCableInfoRecord->Data, 
 					MIN(sizeof(pCableInfoRecord->Data),
 						MIN(pCableInfoRecord->Length + 1,
-							 STL_CIB_STD_LEN - (pCableInfoRecord->u1.s.Address-STL_CIB_STD_START_ADDR))));
+							 STL_CIB_STD_LEN - (pCableInfoRecord->u1.s.Address-STL_CIB_STD_HIGH_PAGE_ADDR))));
 		}
 	}
 	status = FSUCCESS;
@@ -1805,6 +1805,7 @@ FSTATUS GetAllCables(struct oib_port *port,
 
 	return fstatus;
 }
+
 /* query all multicast groups Records on fabric connected to given HFI port
  * for a given MGID and put results into AllMcGroupMember.
  */
@@ -1813,8 +1814,8 @@ FSTATUS GetAllMCGroupMember(FabricData_t *fabricp, McGroupData *mcgroupp, struct
 				int quiet, FILE *g_verbose_file)
 {
 
-	QUERY				 query;
-	FSTATUS 			 status;
+	QUERY query;
+	FSTATUS status;
 	PQUERY_RESULT_VALUES pQueryResults = NULL;
 	LIST_ITEM *p;
 
@@ -1836,8 +1837,6 @@ FSTATUS GetAllMCGroupMember(FabricData_t *fabricp, McGroupData *mcgroupp, struct
 		status = FERROR;
 		// oib_query_sa will have allocated a result buffer
 		// we must free the buffer when we are done with it
-		if (pQueryResults)
-			oib_free_query_result_buffer(pQueryResults);
 		return status;
 	} else if (pQueryResults->Status != FSUCCESS) {
 		fprintf(stderr, "%*sSA McMemberRecord query Failed: %s MadStatus 0x%x: %s\n", 0, "",
@@ -1883,6 +1882,12 @@ FSTATUS GetAllMCGroupMember(FabricData_t *fabricp, McGroupData *mcgroupp, struct
 			mcmemberp->MemberInfo.RID.PortGID = pIbMCRR->McMemberRecords[i].RID.PortGID;
 			mcmemberp->pPort = FindPortGuid(fabricp, pIbMCRR->McMemberRecords[i].RID.PortGID.AsReg64s.L );
 
+			if (mcmemberp->pPort !=NULL)
+				if (mcmemberp->pPort->neighbor->nodep->NodeInfo.NodeType == STL_NODE_SW) {
+					NodeData *groupswitch = mcmemberp->pPort->neighbor->nodep;
+					uint16 switchentryport = mcmemberp->pPort->neighbor->PortNum ;
+					AddEdgeSwitchToGroup(fabricp, mcgroupp, groupswitch, switchentryport );
+				}
 			if ((mcmemberp->MemberInfo.RID.PortGID.AsReg64s.H == 0) && (mcmemberp->MemberInfo.RID.PortGID.AsReg64s.L ==0 ))
 				mcgroupp->NumOfMembers--; // do count as valid member if PortGID is zero
 			QListSetObj(&mcmemberp->McMembersEntry, mcmemberp);
@@ -1917,15 +1922,7 @@ FSTATUS GetAllMCGroupMember(FabricData_t *fabricp, McGroupData *mcgroupp, struct
 		p=QListHead(&mcgroupp->AllMcGroupMembers);
 
 		McMemberData *pmcmem = (McMemberData *)QListObj(p);
-		mcgroupp->GroupInfo.Q_Key = pmcmem->MemberInfo.Q_Key;
-		mcgroupp->GroupInfo.P_Key = pmcmem->MemberInfo.P_Key;
-		mcgroupp->GroupInfo.Mtu = pmcmem->MemberInfo.Mtu;
-		mcgroupp->GroupInfo.Rate = pmcmem->MemberInfo.Rate;
-		mcgroupp->GroupInfo.PktLifeTime = pmcmem->MemberInfo.PktLifeTime;
-		mcgroupp->GroupInfo.u1.s.SL = pmcmem->MemberInfo.u1.s.SL;
-		mcgroupp->GroupInfo.u1.s.FlowLabel = pmcmem->MemberInfo.u1.s.FlowLabel;
-		mcgroupp->GroupInfo.u1.s.HopLimit = pmcmem->MemberInfo.u1.s.HopLimit;
-		mcgroupp->GroupInfo.TClass = pmcmem->MemberInfo.TClass;
+		mcgroupp->GroupInfo = pmcmem->MemberInfo;
 
 	} // end else
 	status = FSUCCESS;
@@ -1947,6 +1944,7 @@ FSTATUS GetMCGroups(struct oib_port *port,
 	query.OutputType 	=  OutputTypeMcMemberRecord;
 
 
+	if (! quiet) ProgressPrint(TRUE, "Getting All MC Records...");
 
 	DBGPRINT("Query: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(query.InputType),
@@ -1995,7 +1993,7 @@ FSTATUS GetMCGroups(struct oib_port *port,
 			boolean 	new_node;
 
 			if (i%PROGRESS_FREQ == 0)
-				if (! quiet) ProgressPrint(FALSE, "Processed %6d of %6d McGroups...", i, pIbMCRR->NumMcMemberRecords);
+				if (! quiet) ProgressPrint(FALSE, "Processed %6d of %6d MC Records...", i, pIbMCRR->NumMcMemberRecords);
 
 			//collect member information for each McRecord, create the corresponding group and add it to the fabric structure
 			mcgroupp = FabricDataAddMCGroup(fabricp, port, quiet, &pIbMCRR->McMemberRecords[i], &new_node, m_verbose_file);
@@ -2577,7 +2575,7 @@ static FSTATUS GetAllVFs(struct oib_port *port, EUI64 portGuid, FabricData_t *fa
 	STL_VFINFO_RECORD * pinfo;
 	int i;
 
-	if (! quiet) ProgressPrint(TRUE, "Getting vFabric Records...");
+	if (! quiet) ProgressPrint(FALSE, "Getting vFabric Records...");
 
 	memset(&query, 0, sizeof(query));	// initialize reserved fields
 	query.InputType = InputTypeNoInput;
@@ -2630,22 +2628,23 @@ static FSTATUS GetAllVFs(struct oib_port *port, EUI64 portGuid, FabricData_t *fa
 	}
 
 	status = FSUCCESS;
+	if (! quiet) ProgressPrint(TRUE, "Done Getting vFabric Records");
 
 free:
 	oib_free_query_result_buffer(pQueryResults);
 	return status;
 }
 
-void copySCSCTable(int *ix_rec_scsc, STL_SCSCMAP *pQOSSCSC, STL_SC_MAPPING_TABLE_RECORD_RESULTS *pSCSCRR, STL_SC_MAPPING_TABLE_RECORD **pSCSCR_2, PortData *portp)
+void copySCSCTable(int *ix_rec_scsc, STL_SC_MAPPING_TABLE_RECORD_RESULTS *pSCSCRR, STL_SC_MAPPING_TABLE_RECORD **pSCSCR_2, PortData *portp)
 {
 	for ( ; ((*ix_rec_scsc) < pSCSCRR->NumSCSCTableRecords) &&
 	    ((*pSCSCR_2)->RID.LID == portp->EndPortLID) &&
 		((*pSCSCR_2)->RID.InputPort == portp->PortNum);
 		(*ix_rec_scsc)++, (*pSCSCR_2)++ )
 	{
-		uint8 out_port;
-		out_port = (*pSCSCR_2)->RID.OutputPort;
-		memcpy(&(pQOSSCSC[out_port].SCSCMap), &((*pSCSCR_2)->Map), sizeof(STL_SCSCMAP));
+		uint8 outport;
+		outport = (*pSCSCR_2)->RID.OutputPort;
+		QOSDataAddSCSCMap(portp, outport, (STL_SCSCMAP *)&((*pSCSCR_2)->Map));
 	}
 }
 
@@ -2702,7 +2701,6 @@ static FSTATUS GetAllPortVLInfoSA(struct oib_port *port,
 	PortData *portp;
 	STL_SLSCMAP *pQOSSLSC;
 	STL_SCSLMAP *pQOSSCSL;
-	STL_SCSCMAP *pQOSSCSC;
 	STL_SCVLMAP *pQOSSCVLt;
 	STL_SCVLMAP *pQOSSCVLnt;
 	STL_VLARB_TABLE *pQOSVLARB;
@@ -3042,10 +3040,9 @@ static FSTATUS GetAllPortVLInfoSA(struct oib_port *port,
 
 			if (nodep->NodeInfo.NodeType == STL_NODE_SW && portp->PortNum) {
 				// switch external ports have SC2SC tables
-				pQOSSCSC = portp->pQOS->SC2SCMap;
 				if ( (pSCSCR_2) && (pSCSCR_2->RID.LID == portp->EndPortLID) && (pSCSCR_2->RID.InputPort == portp->PortNum) )
 				{
-					copySCSCTable(&ix_rec_scsc, pQOSSCSC, pSCSCRR, &pSCSCR_2, portp);
+					copySCSCTable(&ix_rec_scsc, pSCSCRR, &pSCSCR_2, portp);
 				} else {
 					for ( ix_rec_scsc = 0, pSCSCR_2 = pSCSCR;
 						(ix_rec_scsc < pSCSCRR->NumSCSCTableRecords) && pSCSCR_2;
@@ -3057,7 +3054,7 @@ static FSTATUS GetAllPortVLInfoSA(struct oib_port *port,
 							// assume all the records for a given port are
 							// contiguous
 							// Add SCSC Table data to PortData
-							copySCSCTable(&ix_rec_scsc, pQOSSCSC, pSCSCRR, &pSCSCR_2, portp);
+							copySCSCTable(&ix_rec_scsc, pSCSCRR, &pSCSCR_2, portp);
 							// check for SCSC transitions if needed
 							if ((*use_scsc) && (!found_scsc) && (memcmp(&(pSCSCR_2->Map), &(basescsc), sizeof(STL_SCSCMAP))!=0))
 								found_scsc = 1;
@@ -3295,10 +3292,8 @@ static FSTATUS GetAllPortVLInfoDirect(struct oib_port *port,
 			if (nodep->NodeInfo.NodeType == STL_NODE_SW && portp->PortNum) {
 				// switch external ports have SC2SC tables
 				cl_map_item_t *p3;
-				STL_SCSCMAP *pQOSSCSC;
 
 				in_port = portp->PortNum;
-				pQOSSCSC = portp->pQOS->SC2SCMap;
 				// just visit active ports
 				for ( p3 = cl_qmap_head(&nodep->Ports);
 							p3 != cl_qmap_end(&nodep->Ports);
@@ -3319,9 +3314,9 @@ static FSTATUS GetAllPortVLInfoDirect(struct oib_port *port,
 							(char*)nodep->NodeDesc.NodeString, iba_fstatus_msg(status));
 					} else {
 						// Copy the SCSC map to the QOS data
-						memcpy(&(pQOSSCSC[out_port].SCSCMap), &SCSCMap, sizeof(STL_SCSCMAP));
+						QOSDataAddSCSCMap(portp, out_port, &SCSCMap);
 						// check for SCSC transitions if needed
-						if((*use_scsc) && (!found_scsc) && (memcmp(&(pQOSSCSC[out_port].SCSCMap), &(basescsc), sizeof(STL_SCSCMAP))!=0))
+						if((*use_scsc) && (!found_scsc) && (memcmp(&SCSCMap, &(basescsc), sizeof(STL_SCSCMAP))!=0))
 							found_scsc = 1;
 					}
 				}
@@ -3663,7 +3658,10 @@ static FSTATUS GetAllFDBsSA(struct oib_port *port, FabricData_t *fabricp, Point 
 						iba_sd_mad_status_msg(pQueryResultsPGFT->MadStatus));
 					DBGPRINT("%d Bytes Returned\n", pQueryResultsPGFT->ResultDataSize);
 					pgftSize = pPGFTRR->NumRecords * MAX_LFT_ELEMENTS_BLOCK;
-					if (pgftSize < MIN(linearFDBSize, DEFAULT_MAX_PGFT_LID + 1) && pgftSize != 0) {
+					uint32 pgftCap = nodep->pSwitchInfo->SwitchInfoData.PortGroupFDBCap ?
+										nodep->pSwitchInfo->SwitchInfoData.PortGroupFDBCap :
+										DEFAULT_MAX_PGFT_LID + 1;
+					if (pgftSize < MIN(linearFDBSize, pgftCap) && pgftSize != 0) {
 						fprintf(stderr, "%*sIncorrect # of PGFT Records Returned "
 							"(LFT(%d) versus PGFT(%d)\n",
 							0, "", linearFDBSize, pgftSize);
@@ -3741,8 +3739,11 @@ static FSTATUS GetAllFDBsSA(struct oib_port *port, FabricData_t *fabricp, Point 
 
 			if ((status == FSUCCESS) && pgftSize) {
 				STL_PORT_GROUP_FORWARDING_TABLE_RECORD *pPGFTR;
-				unsigned int pgfdbsize = ROUNDUP(MIN(nodep->switchp->LinearFDBSize, DEFAULT_MAX_PGFT_LID+1),
-						NUM_PGFT_ELEMENTS_BLOCK)/NUM_PGFT_ELEMENTS_BLOCK;
+				unsigned int pgfdbcap = nodep->pSwitchInfo->SwitchInfoData.PortGroupFDBCap ?
+											nodep->pSwitchInfo->SwitchInfoData.PortGroupFDBCap :
+											DEFAULT_MAX_PGFT_LID+1;
+				unsigned int pgfdbsize = ROUNDUP(MIN(nodep->switchp->LinearFDBSize, pgfdbcap),
+								NUM_PGFT_ELEMENTS_BLOCK)/NUM_PGFT_ELEMENTS_BLOCK;
 
 				// Don't core dump if you received more data than you expected.
 				pgfdbsize=MIN(pgfdbsize, pPGFTRR->NumRecords);
@@ -4146,7 +4147,7 @@ PQUERY_RESULT_VALUES GetAllQuarantinedNodes(struct oib_port *port,
 	query.InputType 	= InputTypeNoInput;
 	query.OutputType 	= OutputTypeStlQuarantinedNodeRecord;
 
-	if (! quiet) ProgressPrint(TRUE, "Getting All Quarantined Node Records...");
+	if (! quiet) ProgressPrint(FALSE, "Getting All Quarantined Node Records...");
 	DBGPRINT("Query: Input=%s, Output=%s\n",
 				   		iba_sd_query_input_type_msg(query.InputType),
 					   	iba_sd_query_result_type_msg(query.OutputType));

@@ -566,7 +566,7 @@ pa_getPmConfigResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		IB_LOG_DEBUG2_FMT(__func__, "   FMConfigErrors            %u", response.integrityWeights.FMConfigErrors);
 		IB_LOG_DEBUG2_FMT(__func__, "   LinkQualityIndicator      %u", response.integrityWeights.LinkQualityIndicator);
 		IB_LOG_DEBUG2_FMT(__func__, "   LinkWidthDowngrade        %u", response.integrityWeights.LinkWidthDowngrade);
-		IB_LOG_DEBUG2_FMT(__func__, "Error thresholds:");
+		IB_LOG_DEBUG2_FMT(__func__, "Category thresholds:");
 		IB_LOG_DEBUG2_FMT(__func__, "   Integrity:                %u", response.errorThresholds.integrityErrors);
 		IB_LOG_DEBUG2_FMT(__func__, "   Congestion:               %u", response.errorThresholds.congestionErrors);
 		IB_LOG_DEBUG2_FMT(__func__, "   SmaCongestion:            %u", response.errorThresholds.smaCongestionErrors);
@@ -1214,39 +1214,39 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 				response[0].recvUtilStats.minKPps, response[0].recvUtilStats.avgKPps);
 			IB_LOG_DEBUG2_FMT(__func__, "  Failed PMA Queries: %u    Failures in PM Topology: %u",
 				response[0].recvUtilStats.pmaFailedPorts, response[0].recvUtilStats.topoFailedPorts);
-			IB_LOG_DEBUG2_FMT(__func__, "Internal Error Summary:");
+			IB_LOG_DEBUG2_FMT(__func__, "Internal Category Summary:");
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Err Integrity       Max %10u Buckets: ", response[0].internalErrors.errorMaximums.integrityErrors);
+			p1 += sprintf(p1, "  Ctg Integrity       Max %10u Buckets: ", response[0].internalErrors.errorMaximums.integrityErrors);
 			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
 				p1 += sprintf(p1, " %4d", response[0].internalErrors.ports[i].integrityErrors);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Err Congestion      Max %10u Buckets: ", response[0].internalErrors.errorMaximums.congestionErrors);
+			p1 += sprintf(p1, "  Ctg Congestion      Max %10u Buckets: ", response[0].internalErrors.errorMaximums.congestionErrors);
 			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
 				p1 += sprintf(p1, " %4d", response[0].internalErrors.ports[i].congestionErrors);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Err SmaCongestion   Max %10u Buckets: ", response[0].internalErrors.errorMaximums.smaCongestionErrors);
+			p1 += sprintf(p1, "  Ctg SmaCongestion   Max %10u Buckets: ", response[0].internalErrors.errorMaximums.smaCongestionErrors);
 			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
 				p1 += sprintf(p1, " %4d", response[0].internalErrors.ports[i].smaCongestionErrors);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Err Bubble          Max %10u Buckets: ", response[0].internalErrors.errorMaximums.bubbleErrors);
+			p1 += sprintf(p1, "  Ctg Bubble          Max %10u Buckets: ", response[0].internalErrors.errorMaximums.bubbleErrors);
 			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
 				p1 += sprintf(p1, " %4d", response[0].internalErrors.ports[i].bubbleErrors);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Err Security        Max %10u Buckets: ", response[0].internalErrors.errorMaximums.securityErrors);
+			p1 += sprintf(p1, "  Ctg Security        Max %10u Buckets: ", response[0].internalErrors.errorMaximums.securityErrors);
 			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
 				p1 += sprintf(p1, " %4d", response[0].internalErrors.ports[i].securityErrors);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Err Routing         Max %10u Buckets: ", response[0].internalErrors.errorMaximums.routingErrors);
+			p1 += sprintf(p1, "  Ctg Routing         Max %10u Buckets: ", response[0].internalErrors.errorMaximums.routingErrors);
 			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
 				p1 += sprintf(p1, " %4d", response[0].internalErrors.ports[i].routingErrors);
 			}
@@ -1257,39 +1257,39 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			IB_LOG_DEBUG2_FMT(__func__,"    Discards: %3u.%1u%%",
 							  response[0].internalErrors.errorMaximums.discardsPct10 / 10,
 							  response[0].internalErrors.errorMaximums.discardsPct10 % 10);
-			IB_LOG_DEBUG2_FMT(__func__, "External Error Summary:");
+			IB_LOG_DEBUG2_FMT(__func__, "External Category Summary:");
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Err Integrity       Max %10u Buckets: ", response[0].externalErrors.errorMaximums.integrityErrors);
+			p1 += sprintf(p1, "  Ctg Integrity       Max %10u Buckets: ", response[0].externalErrors.errorMaximums.integrityErrors);
 			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
 				p1 += sprintf(p1, " %4d", response[0].externalErrors.ports[i].integrityErrors);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Err Congestion      Max %10u Buckets: ", response[0].externalErrors.errorMaximums.congestionErrors);
+			p1 += sprintf(p1, "  Ctg Congestion      Max %10u Buckets: ", response[0].externalErrors.errorMaximums.congestionErrors);
 			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
 				p1 += sprintf(p1, " %4d", response[0].externalErrors.ports[i].congestionErrors);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Err SmaCongestion   Max %10u Buckets: ", response[0].externalErrors.errorMaximums.smaCongestionErrors);
+			p1 += sprintf(p1, "  Ctg SmaCongestion   Max %10u Buckets: ", response[0].externalErrors.errorMaximums.smaCongestionErrors);
 			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
 				p1 += sprintf(p1, " %4d", response[0].externalErrors.ports[i].smaCongestionErrors);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Err Bubble          Max %10u Buckets: ", response[0].externalErrors.errorMaximums.bubbleErrors);
+			p1 += sprintf(p1, "  Ctg Bubble          Max %10u Buckets: ", response[0].externalErrors.errorMaximums.bubbleErrors);
 			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
 				p1 += sprintf(p1, " %4d", response[0].externalErrors.ports[i].bubbleErrors);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Err Security        Max %10u Buckets: ", response[0].externalErrors.errorMaximums.securityErrors);
+			p1 += sprintf(p1, "  Ctg Security        Max %10u Buckets: ", response[0].externalErrors.errorMaximums.securityErrors);
 			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
 				p1 += sprintf(p1, " %4d", response[0].externalErrors.ports[i].securityErrors);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Err Routing         Max %10u Buckets: ", response[0].externalErrors.errorMaximums.routingErrors);
+			p1 += sprintf(p1, "  Ctg Routing         Max %10u Buckets: ", response[0].externalErrors.errorMaximums.routingErrors);
 			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
 				p1 += sprintf(p1, " %4d", response[0].externalErrors.ports[i].routingErrors);
 			}
@@ -1813,39 +1813,39 @@ pa_getVFInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 				response[0].internalUtilStats.minKPps, response[0].internalUtilStats.avgKPps);
 			IB_LOG_DEBUG2_FMT(__func__, "  Failed PMA Queries: %u    Failures in PM Topology: %u",
 				response[0].internalUtilStats.pmaFailedPorts, response[0].internalUtilStats.topoFailedPorts);
-			IB_LOG_DEBUG2_FMT(__func__, "Internal Error Summary:");
+			IB_LOG_DEBUG2_FMT(__func__, "Internal Category Summary:");
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Err Integrity       Max %10u Buckets: ", response[0].internalErrors.errorMaximums.integrityErrors);
+			p1 += sprintf(p1, "  Ctg Integrity       Max %10u Buckets: ", response[0].internalErrors.errorMaximums.integrityErrors);
 			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
 				p1 += sprintf(p1, " %4d", response[0].internalErrors.ports[i].integrityErrors);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Err Congestion      Max %10u Buckets: ", response[0].internalErrors.errorMaximums.congestionErrors);
+			p1 += sprintf(p1, "  Ctg Congestion      Max %10u Buckets: ", response[0].internalErrors.errorMaximums.congestionErrors);
 			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
 				p1 += sprintf(p1, " %4d", response[0].internalErrors.ports[i].congestionErrors);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Err SmaCongestion   Max %10u Buckets: ", response[0].internalErrors.errorMaximums.smaCongestionErrors);
+			p1 += sprintf(p1, "  Ctg SmaCongestion   Max %10u Buckets: ", response[0].internalErrors.errorMaximums.smaCongestionErrors);
 			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
 				p1 += sprintf(p1, " %4d", response[0].internalErrors.ports[i].smaCongestionErrors);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Err Bubble          Max %10u Buckets: ", response[0].internalErrors.errorMaximums.bubbleErrors);
+			p1 += sprintf(p1, "  Ctg Bubble          Max %10u Buckets: ", response[0].internalErrors.errorMaximums.bubbleErrors);
 			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
 				p1 += sprintf(p1, " %4d", response[0].internalErrors.ports[i].bubbleErrors);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Err Security        Max %10u Buckets: ", response[0].internalErrors.errorMaximums.securityErrors);
+			p1 += sprintf(p1, "  Ctg Security        Max %10u Buckets: ", response[0].internalErrors.errorMaximums.securityErrors);
 			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
 				p1 += sprintf(p1, " %4d", response[0].internalErrors.ports[i].securityErrors);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Err Routing         Max %10u Buckets: ", response[0].internalErrors.errorMaximums.routingErrors);
+			p1 += sprintf(p1, "  Ctg Routing         Max %10u Buckets: ", response[0].internalErrors.errorMaximums.routingErrors);
 			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
 				p1 += sprintf(p1, " %4d", response[0].internalErrors.ports[i].routingErrors);
 			}

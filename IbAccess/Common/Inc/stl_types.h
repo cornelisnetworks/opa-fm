@@ -50,7 +50,7 @@ typedef uint32		STL_LID;			/* Max LID size */
 #define STL_MAX_SCS			32			/* Max number of SCs */
 #define STL_MAX_VLS			32			/* Max number of VLs */
 
-#define MAX_STL2_PORTS      64
+#define MAX_STL_PORTS		64
 
 typedef uint64		STL_PORTMASK;		/* Port mask element */
 
@@ -61,6 +61,7 @@ typedef uint64		STL_PORTMASK;		/* Port mask element */
 /* LID's */
 
 #define	STL_LID_PERMISSIVE			0xffffffffU
+#define	STL_LID_MCAST_OFFSET_MASK		0x00003fffU /*use to calculate multicast offset and count */
 
 
 #include "iba/public/ipackon.h"

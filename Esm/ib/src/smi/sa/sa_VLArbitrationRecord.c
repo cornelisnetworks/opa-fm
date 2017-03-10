@@ -157,13 +157,13 @@ sa_VLArbitrationRecord_Set(uint8_t *vlarbp, Node_t *nodep, Port_t *portp, int in
 	vlArbRecord.RID.BlockNum = ind;
     switch (ind) {
         case STL_VLARB_LOW_ELEMENTS:
-            memcpy(vlArbRecord.VLArbTable.Elements, portp->portData->curArb.vlarbLow, sizeof(portp->portData->curArb.vlarbLow));
+            memcpy(vlArbRecord.VLArbTable.Elements, portp->portData->curArb.vlarb.vlarbLow, sizeof(portp->portData->curArb.vlarb.vlarbLow));
             break;
         case STL_VLARB_HIGH_ELEMENTS:
-            memcpy(vlArbRecord.VLArbTable.Elements, portp->portData->curArb.vlarbHigh, sizeof(portp->portData->curArb.vlarbHigh));
+            memcpy(vlArbRecord.VLArbTable.Elements, portp->portData->curArb.vlarb.vlarbHigh, sizeof(portp->portData->curArb.vlarb.vlarbHigh));
             break;
         case STL_VLARB_PREEMPT_ELEMENTS:
-            memcpy(vlArbRecord.VLArbTable.Elements, portp->portData->curArb.vlarbPre, sizeof(portp->portData->curArb.vlarbPre));
+            memcpy(vlArbRecord.VLArbTable.Elements, portp->portData->curArb.vlarb.vlarbPre, sizeof(portp->portData->curArb.vlarb.vlarbPre));
             break;
         case STL_VLARB_PREEMPT_MATRIX:
             memcpy(vlArbRecord.VLArbTable.Matrix, portp->portData->curArb.vlarbMatrix, sizeof(portp->portData->curArb.vlarbMatrix));

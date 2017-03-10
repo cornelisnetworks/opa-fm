@@ -167,7 +167,6 @@ sa_ServiceRecord(Mai_t *maip, sa_cntxt_t *sa_cntxt) {
 
 	IB_ENTER("sa_ServiceRecord", maip, 0, 0, 0);
 
-#ifdef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
 	// disable STL ServiceRecord, support only IB ServiceRecord for now
 	if (maip->base.cversion != SA_MAD_CVERSION) {
 		maip->base.status = MAD_STATUS_BAD_CLASS;
@@ -177,7 +176,6 @@ sa_ServiceRecord(Mai_t *maip, sa_cntxt_t *sa_cntxt) {
 		IB_EXIT("sa_ServiceRecord", VSTATUS_OK);
 		return (VSTATUS_OK);
 	}
-#endif
 
 //
 //	Assume failure.

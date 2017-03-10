@@ -61,7 +61,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <unistd.h>
 #include <pthread.h>
 #include <string.h>
-#include "cs_info_file.h"
 
 extern int pm_conf_server_init(void);
 int pm_conf_server_init(void);
@@ -126,11 +125,7 @@ int             pm_inconsistency_posted = FALSE;
 extern Status_t vfi_GetPortGuid(ManagerInfo_t * fp, uint32_t gididx);
 
 #define SID_ASCII_FORMAT "%02x%02x%02x%02x%02x%02x%02x%02x"
-#ifdef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
 static IB_SERVICE_RECORD  pmServRer;
-#else
-static STL_SERVICE_RECORD  pmServRer;
-#endif
 #ifndef __VXWORKS__
 static char msgbuf[256];
 #endif
@@ -316,11 +311,7 @@ void pm_parse_xml_config(void) {
  * Build Service Record
  */
 static void
-#ifdef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
 BuildRecord(IB_SERVICE_RECORD * srp, uint8_t * servName, uint64_t servID,
-#else
-BuildRecord(STL_SERVICE_RECORD * srp, uint8_t * servName, uint64_t servID,
-#endif
             uint16_t flags, uint32_t lease, uint8_t pmVersion, uint8_t pmState)
 {
 
@@ -328,9 +319,6 @@ BuildRecord(STL_SERVICE_RECORD * srp, uint8_t * servName, uint64_t servID,
     srp->ServiceData16[0] = flags;
     strncpy((void *)srp->ServiceName, (void *)servName, sizeof(srp->ServiceName));
     srp->RID.ServiceID = servID;
-#ifndef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
-	srp->RID.Reserved = 0;
-#endif
     //SidToAscii((srp->id), servID);
 
 	// encode PM version and state into first bytes of data8
@@ -359,11 +347,7 @@ BuildRecord(STL_SERVICE_RECORD * srp, uint8_t * servName, uint64_t servID,
  * registered with the SA
  */
 static int
-#ifdef NO_STL_SERVICE_RECORD      // SA shouldn't support STL Service Record
 select_master_compare(IB_SERVICE_RECORD *sr1, IB_SERVICE_RECORD *sr2)
-#else
-select_master_compare(STL_SERVICE_RECORD *sr1, STL_SERVICE_RECORD *sr2)
-#endif
 {
     unsigned i;
 
@@ -668,7 +652,6 @@ pm_main()
 		vs_log_output_message("Performance Manager starting up.", TRUE);
 
 #ifndef __VXWORKS__
-	(void)sm_isValidCoreDumpConfigSettings(VIEO_PM_MOD_ID, pm_config.CoreDumpLimit, pm_config.CoreDumpDir);
     if (!pm_nodaemon) {
         int	ret_value;
         IB_LOG_INFO("Trying daemon, pm_nodaemon =", pm_nodaemon);
