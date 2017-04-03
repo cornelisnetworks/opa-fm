@@ -233,7 +233,8 @@ static DH * if3_ssl_tmp_dh_callback(SSL *ssl, int is_export, int keylength)
 static int if3_ssl_x509_verify_callback(int ok, X509_STORE_CTX *ctx)
 {
     if (!ok) {
-        char *str = (char *)X509_verify_cert_error_string(ctx->error);
+		int errorcode = X509_STORE_CTX_get_error(ctx);
+        char *str = (char *)X509_verify_cert_error_string(errorcode);
         IB_LOG_ERROR_FMT(__func__, "Peer certificate failed CRL verification: %s", str);
     }
 
