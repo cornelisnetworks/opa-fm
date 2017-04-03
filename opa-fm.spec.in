@@ -30,7 +30,7 @@
 #[ICS VERSION STRING: unknown]
 Name: opa-fm
 Version: 10.3.1.0
-Release: 6%{?dist}
+Release: 7%{?dist}
 Summary: Intel Omni-Path Fabric Management Software
 
 License: GPLv2 or BSD
@@ -49,6 +49,7 @@ BuildRequires: __RPM_BLDRQ1
 
 __RPM_BLDRQ2
 __RPM_RQ1
+__RPM_RQ2
 
 __RPM_DEBUG
 
@@ -68,6 +69,7 @@ fi
 
 %install
 BUILDDIR=%{_builddir} DESTDIR=%{buildroot} LIBDIR=%{_libdir} RPM_INS=n ./Esm/fm_install.sh
+mkdir -p %{buildroot}/%{_localstatedir}/usr/lib/opa-fm/
 
 %post
 /bin/systemctl daemon-reload >/dev/null 2>&1 || :
@@ -90,6 +92,7 @@ __RPM_SYSCONF
 %{_sbindir}/opafmcmd
 %{_sbindir}/opafmcmdall
 %{_mandir}/man8/*
+%{_localstatedir}/usr/lib/opa-fm/
 
 %changelog
 * Fri Feb 23 2017 Scott Breyer <scott.j.breyer@intel.com> - 10.3.1.0-6

@@ -113,7 +113,8 @@ static DH * fe_ssl_tmp_dh_callback(SSL *ssl, int is_export, int keylength)
 static int fe_ssl_x509_verify_callback(int ok, X509_STORE_CTX *ctx)
 {
     if (!ok) {
-        char *str = (char *)X509_verify_cert_error_string(ctx->error);
+		int errorcode = X509_STORE_CTX_get_error(ctx);
+        char *str = (char *)X509_verify_cert_error_string(errorcode);
         fprintf(stderr, "%s: Peer certificate failed CRL verification: %s\n", __func__, str);
     }
 

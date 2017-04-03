@@ -64,4 +64,6 @@ then
 	sed -i "/__RPM_SYSCONF/,+1d" $to
 fi
 
+sed -i "s/__RPM_RQ2/Requires: libhfi1/g" $to
+
 exit 0
