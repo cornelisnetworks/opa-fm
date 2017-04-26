@@ -435,6 +435,13 @@ sub rpm_check_os_prereqs($$)
         DebugPrint "Checking prereqs for $comp\n";
         foreach (@rpm_list){
                 DebugPrint "Checking installation of $_\n";
+		#Don't check dependencies for kernel RPMS if their installation is skipped
+		if($skip_kernel == 1){
+                	if( "$_" =~ /kernel/ || "$_" =~ /kmod/ || "$_" eq "pciutils" ) {
+				DebugPrint("Skipping check for $_ \n");
+				next;
+			}
+		}
                 if(!rpm_is_installed($_, $mode)){
                         NormalPrint("--> $comp requires $_ \n");
                         $prereq_check = 1;

@@ -1882,12 +1882,13 @@ FSTATUS GetAllMCGroupMember(FabricData_t *fabricp, McGroupData *mcgroupp, struct
 			mcmemberp->MemberInfo.RID.PortGID = pIbMCRR->McMemberRecords[i].RID.PortGID;
 			mcmemberp->pPort = FindPortGuid(fabricp, pIbMCRR->McMemberRecords[i].RID.PortGID.AsReg64s.L );
 
-			if (mcmemberp->pPort !=NULL)
+			if (mcmemberp->pPort && mcmemberp->pPort->neighbor) {
 				if (mcmemberp->pPort->neighbor->nodep->NodeInfo.NodeType == STL_NODE_SW) {
 					NodeData *groupswitch = mcmemberp->pPort->neighbor->nodep;
 					uint16 switchentryport = mcmemberp->pPort->neighbor->PortNum ;
 					AddEdgeSwitchToGroup(fabricp, mcgroupp, groupswitch, switchentryport );
 				}
+			}
 			if ((mcmemberp->MemberInfo.RID.PortGID.AsReg64s.H == 0) && (mcmemberp->MemberInfo.RID.PortGID.AsReg64s.L ==0 ))
 				mcgroupp->NumOfMembers--; // do count as valid member if PortGID is zero
 			QListSetObj(&mcmemberp->McMembersEntry, mcmemberp);
@@ -2513,6 +2514,9 @@ FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabric
 					PortStatusData.LinkDowned  = PortStatus.LinkDowned;
 					PortStatusData.UncorrectableErrors = PortStatus.UncorrectableErrors;
 					PortStatusData.lq = PortStatus.lq;
+					PortStatusData.lq.AsReg8 |= ((portp->PortInfo.LinkWidthDowngrade.RxActive < portp->PortInfo.LinkWidth.Active ?
+						StlLinkWidthToInt(portp->PortInfo.LinkWidth.Active) -
+						StlLinkWidthToInt(portp->PortInfo.LinkWidthDowngrade.RxActive) : 0) << 4);
 				}
 			}
 

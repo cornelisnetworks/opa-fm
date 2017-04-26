@@ -1428,7 +1428,7 @@ sub delta_rpm_install_list($$$@)
 			if ( "$delta_rpm_info{$package}{'Mode'}" eq "kernel" ) {
 				if ( "$CUR_VENDOR_VER" eq "ES72" || "$CUR_VENDOR_VER" eq "ES73" || "$CUR_VENDOR_VER" eq "ES122" ) {
 					if ( $package =~ /ifs-kernel-updates/ ) {
-						if ($GPU_Install == 1 ){
+						if ( $GPU_Install == 1 ) {
                                                         $rpmdir_t=$rpmdir."/CUDA";
                                                 }
 						next if ( $skip_kernelib);
@@ -1445,13 +1445,16 @@ sub delta_rpm_install_list($$$@)
 						$ret = 1;
 					}
 				}
-				rpm_install_with_options($rpmdir, $osver, $package, " -U --nodeps ");
+				rpm_install_with_options($rpmdir_t, $osver, $package, " -U --nodeps ");
 			} else {
-				if ( "$CUR_VENDOR_VER" eq "ES72" || "$CUR_VENDOR_VER" eq "ES73" || "$CUR_VENDOR_VER" eq "ES122" ) {
-                                        if ( $package =~ /libpsm/ ) {
-                                                if ($GPU_Install == 1 ){
+				if ( $GPU_Install == 1 ) {
+                                        if ( -d $rpmdir."/CUDA" ) {
+                                                if ( $package =~ /libpsm/ || $package =~ /ifs-kernel-updates/) {
                                                         $rpmdir_t=$rpmdir."/CUDA";
                                                 }
+                                        } else {
+                                                NormalPrint("CUDA specific packages do not exist\n");
+                                                exit 0;
                                         }
                                 }
 				rpm_install_with_options($rpmdir_t, "user", $package, " -U --nodeps ");
@@ -1588,8 +1591,23 @@ sub delta_srpm_file($$)
 {
 	my $srcdir = shift();
 	my $globname = shift(); # in $srcdir
+	my $result;
 
-	my $result = file_glob("$srcdir/$SRPMS_SUBDIR/$globname");
+        if ( $GPU_Install == 1 ) {
+                if ( -d $srcdir."/SRPMS/CUDA" ) {
+                        if ("$globname" eq "libpsm2*.src.rpm") {
+                                $result = file_glob("$srcdir/$SRPMS_SUBDIR/CUDA/$globname");
+                        } elsif ("$globname" eq "ifs-kernel-updates*.src.rpm"){
+                                $result = file_glob("$srcdir/$SRPMS_SUBDIR/CUDA/$globname");
+                        }
+                } else {
+                        NormalPrint("CUDA specific SRPMs do not exist\n");
+                        exit 0;
+                }
+        } else {
+                $result = file_glob("$srcdir/$SRPMS_SUBDIR/$globname");
+        }
+
 	$result =~ s|^$srcdir/||;
 	return $result;
 }
@@ -2657,9 +2675,12 @@ sub install_kernel_ib($$)
 	}
 
 	$rpmdir_t = $rpmdir;
-        if ( "$CUR_VENDOR_VER" eq "ES72" || "$CUR_VENDOR_VER" eq "ES73" || "$CUR_VENDOR_VER" eq "ES122" ) {
-                if ($GPU_Install == 1 ){
+	if ( $GPU_Install == 1 ) {
+                if ( -d $rpmdir."/CUDA" ) {
                         $rpmdir_t=$rpmdir."/CUDA";
+                } else {
+                        NormalPrint("CUDA specific packages do not exist\n");
+                        exit 0;
                 }
         }
 
@@ -3110,6 +3131,11 @@ sub uninstall_intel_hfi($$)
     $ComponentWasInstalled{'intel_hfi'}=0;
     remove_blacklist('hfi1');
     rebuild_ramdisk();
+}
+
+sub check_os_prereqs_intel_hfi
+{
+        return rpm_check_os_prereqs("intel_hfi", "any");
 }
 
 # ==========================================================================

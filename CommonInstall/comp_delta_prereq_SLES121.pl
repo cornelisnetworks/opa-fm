@@ -77,7 +77,6 @@ my @intel_hfi_prereq = (
 			"bash",
 			"glibc",
 			"libgcc_s1",
-			"libhfi1",
 			"libibverbs1",
 			"libncurses5",
 			"libuuid1",

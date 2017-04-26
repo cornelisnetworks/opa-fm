@@ -2388,12 +2388,14 @@ static void McGMemberXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *fi
 		//fill McMemberData with info from group
 		if ((pMCH->MemberInfo.RID.PortGID.AsReg64s.H !=0) || (pMCH->MemberInfo.RID.PortGID.AsReg64s.L!=0)) {
 			// add switches that belong to this group
-			if (pMCH->pPort->neighbor->nodep->NodeInfo.NodeType == STL_NODE_SW) {
-				NodeData *groupswitch = pMCH->pPort->neighbor->nodep;
-				uint8 switchentryport = pMCH->pPort->neighbor->PortNum ;
-				if (FSUCCESS !=XMLAddEdgeSwitchToGroup(fabricp, mcgmemberp, groupswitch, switchentryport)){
-					IXmlParserPrintError(state, "No switch found for MC Group\n");
-					return;
+			if (pMCH->pPort && pMCH->pPort->neighbor) {
+				if (pMCH->pPort->neighbor->nodep->NodeInfo.NodeType == STL_NODE_SW) {
+					NodeData *groupswitch = pMCH->pPort->neighbor->nodep;
+					uint8 switchentryport = pMCH->pPort->neighbor->PortNum ;
+					if (FSUCCESS !=XMLAddEdgeSwitchToGroup(fabricp, mcgmemberp, groupswitch, switchentryport)){
+						IXmlParserPrintError(state, "No switch found for MC Group\n");
+						return;
+					}
 				}
 			}
 		}

@@ -62,6 +62,7 @@ $comp_prereq_hash{'mpi_selector_prereq'} = \@mpi_selector_prereq;
 
 my @intel_hfi_prereq = (
                     "bash",
+		    "libhfi1",
                     "glibc",
                     "libgcc",
                     "libuuid",
