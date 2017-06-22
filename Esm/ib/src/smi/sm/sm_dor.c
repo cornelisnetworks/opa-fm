@@ -391,12 +391,16 @@ _missing_switch_check(Topology_t *topop) {
 	}
 }
 
+static int is_configured_toroidal(int p1, int p2);
+static int _mark_toroidal_dimension(DorDiscoveryState_t *state, DorTopology_t *dorTop, uint8_t dimension);
+
 //===========================================================================//
 // DOR COORDINATE ASSIGNMENT
 //
 
 static Status_t
-_create_dimension(DorDiscoveryState_t *state, uint8_t p, uint8_t q, DorDimension_t **outDim)
+_create_dimension(DorDiscoveryState_t *state, int configDim, DorTopology_t *dorTop, DorNode_t* dorNodep, 
+					int8_t p, uint8_t q, DorDimension_t **outDim)
 {
 	Status_t status;
 	DorDimension_t *dim;
@@ -430,6 +434,34 @@ _create_dimension(DorDiscoveryState_t *state, uint8_t p, uint8_t q, DorDimension
 		return VSTATUS_BAD;
 	}
 
+	//check if this dimension is configured as toroidal
+	if (is_configured_toroidal(p, q)) {
+		_mark_toroidal_dimension(state, dorTop, index);
+	}
+
+	dorTop->dimensionLength[index] = smDorRouting.dimension[index].length;
+
+	dorTop->coordMinimums[index] = !dorTop->toroidal[index] ? 0 : (0 -
+										(dorTop->dimensionLength[index] / 2) +
+										(dorTop->dimensionLength[index]%2 ? 0 : 1));
+
+	dorTop->coordMaximums[index] = !dorTop->toroidal[index] ?
+										(dorTop->dimensionLength[index] - 1) :
+										(dorTop->dimensionLength[index] / 2);
+
+	// check direction
+	int nextCoord = dorNodep->coords[index] + direction;
+	if (nextCoord > dorTop->coordMaximums[index])
+		direction = -1;
+	else if (nextCoord < dorTop->coordMinimums[index])
+		direction = 1;
+
+	if (smDorRouting.debug)
+		IB_LOG_INFINI_INFO_FMT(__func__,
+				"Dimension %d length %d coordMinimum %d coordMaximum %d",
+				index, dorTop->dimensionLength[index],
+				dorTop->coordMinimums[index], dorTop->coordMaximums[index]);
+
 	dim->ingressPort = q;
 	dim->dimension = index;
 	dim->direction = direction;
@@ -458,6 +490,9 @@ _create_dimension(DorDiscoveryState_t *state, uint8_t p, uint8_t q, DorDimension
 		IB_LOG_ERROR("Maximum number of DOR dimensions exceeded; invalid topology. limit:", SM_DOR_MAX_DIMENSIONS);
 		return VSTATUS_BAD;
 	}
+
+	// mark config information that the dimension has been created
+	smDorRouting.dimension[configDim].created = 1;
 
 	return VSTATUS_OK;
 }
@@ -516,10 +551,8 @@ _lookup_dimension(DorDiscoveryState_t *state, uint8_t p, uint8_t q, DorDimension
 // Returns 0 if we've maxed on the number of toroidal dimensions
 // available.  1 if we successfully marked it.
 static int
-_mark_toroidal_dimension(DorDiscoveryState_t *state, Topology_t *topop, uint8_t dimension)
+_mark_toroidal_dimension(DorDiscoveryState_t *state, DorTopology_t *dorTop, uint8_t dimension)
 {
-	DorTopology_t	*dorTop = (DorTopology_t *)topop->routingModule->data;
-
 	if (dorTop->numToroidal > SM_DOR_MAX_TOROIDAL_DIMENSIONS) {
 		state->toroidalOverflow = 1;
 		return 0;
@@ -730,7 +763,7 @@ _propagate_coord_through_port(DorDiscoveryState_t *state,
 			}
 
 			// never seen before; new dimemsion
-			status = _create_dimension(state, portp->index, portp->portno, &dim);
+			status = _create_dimension(state, config_dim, dorTop, (DorNode_t*)nodep->routingData, portp->index, portp->portno, &dim);
 			if (status != VSTATUS_OK) {
 				IB_LOG_ERROR_FMT(__func__,
 				       "Failed to create dimension in map between "
@@ -739,33 +772,6 @@ _propagate_coord_through_port(DorDiscoveryState_t *state,
 				       neighborNodep->nodeInfo.NodeGUID, sm_nodeDescString(neighborNodep), portp->portno,
 				       status);
 				return status;
-			}
-
-			//check if this dimension is configured as toroidal
-			if (is_configured_toroidal(portp->index, portp->portno)) {
-				_mark_toroidal_dimension(state, topop, dim->dimension);
-			}
-
-			dorTop->dimensionLength[dim->dimension] = smDorRouting.dimension[dim->dimension].length;
-
-			dorTop->coordMinimums[dim->dimension] = !dorTop->toroidal[dim->dimension] ? 0 : (0 -
-										(dorTop->dimensionLength[dim->dimension] / 2) +
-										(dorTop->dimensionLength[dim->dimension]%2 ? 0 : 1));
-
-			dorTop->coordMaximums[dim->dimension] = !dorTop->toroidal[dim->dimension] ?
-										(dorTop->dimensionLength[dim->dimension] - 1) :
-										(dorTop->dimensionLength[dim->dimension] / 2);
-
-			if (smDorRouting.debug)
-				IB_LOG_INFINI_INFO_FMT(__func__,
-						"Dimension %d length %d coordMinimum %d coordMaximum %d",
-						dim->dimension, dorTop->dimensionLength[dim->dimension],
-						dorTop->coordMinimums[dim->dimension], dorTop->coordMaximums[dim->dimension]);
-
-			//mark config information that the dimension has been created
-			config_dim = get_configured_dimension(portp->index, portp->portno);
-			if (config_dim >= 0) {
-				smDorRouting.dimension[config_dim].created = 1;
 			}
 		}
 		break;
@@ -815,6 +821,7 @@ _propagate_coord_through_port(DorDiscoveryState_t *state,
 				neighborDorNode->coords[dim->dimension] -= dorTop->dimensionLength[dim->dimension];
 			else if (neighborDorNode->coords[dim->dimension] < dorTop->coordMinimums[dim->dimension])
 				neighborDorNode->coords[dim->dimension] += dorTop->dimensionLength[dim->dimension];
+
 		} else {
 			neighborDorNode->coords[dim->dimension] += dim->direction;
 

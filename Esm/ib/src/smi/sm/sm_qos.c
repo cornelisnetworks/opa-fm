@@ -1019,6 +1019,7 @@ WriteGen1SCSC(Topology_t * topop, Node_t * switchp, STL_LID dlid,  int numScscBl
 		while (StlNumPortsSetInPortMask(scsc[b].EgressPortMask, switchp->nodeInfo.NumPorts)) {
 			if (StlTestAndClearPortInPortMask(scsc[b].EgressPortMask, switchp->nodeInfo.NumPorts)) {
 				// B=1, all Egress
+				egress = switchp->nodeInfo.NumPorts;
 				for (e=switchp->nodeInfo.NumPorts-1; e>0; e--) {
 					if (!StlTestAndClearPortInPortMask(scsc[b].EgressPortMask, e))
 						break;
@@ -1093,7 +1094,6 @@ WriteGen1SCSC(Topology_t * topop, Node_t * switchp, STL_LID dlid,  int numScscBl
 				if (status != VSTATUS_OK) {
 					IB_LOG_WARN_FMT(__func__, "Failed to set SCSC Map for switch %s nodeGuid " FMT_U64,
 									sm_nodeDescString(switchp), switchp->nodeInfo.NodeGUID);
-					return status;
 	
 				} else {
 					// update cached data on success
