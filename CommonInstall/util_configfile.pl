@@ -86,6 +86,26 @@ sub check_keep_config($$$)
 	return $KeepConfig{"$ROOT$configFile"};
 }
 
+# This is to update the old path when upgrading from 10.3 to newer version
+sub replace_old_path_in($)
+{
+	my $filename = shift();
+	open(FILE, "<$filename") || die "\nUnable to locate $filename\n";
+	my @lines = <FILE>;
+	close(FILE);
+
+	# Replace /etc/sysconfig/opa/ with /etc/opa/
+	my @newlines;
+	foreach(@lines) {
+		$_ =~ s/\/etc\/sysconfig\/opa\//\/etc\/opa\//g;
+		push(@newlines,$_);
+	}
+
+	open(FILE, ">$filename") || die "\nUnable to locate $filename\n";
+	print FILE @newlines;
+	close(FILE);
+}
+
 # This subroutine is used to check if we should keep a modified rpm config file
 # Optional second parameter used to check if a file exist in a previous (now deprecated)
 # file location.
@@ -98,11 +118,15 @@ sub check_rpm_config_file($;$)
 	if ( $old_config_dir ne "" && !$Default_RpmConfigUseNew) {
 		if ( -e "$old_config_dir/$file_name") {
 			if ($Default_RpmConfigKeepOld || GetYesNo ("$file_name found in old file path $old_config_dir, move to new location?", "y")) {
+				# This is to update the old path when upgrading from 10.3 to newer version
+				replace_old_path_in ("$old_config_dir/$file_name");
 				system "mv -f $old_config_dir/$file_name $config";
 				return;
 			}
 		} elsif ( -e "$old_config_dir/$file_name.rpmsave") {
 			if ($Default_RpmConfigKeepOld || GetYesNo ("$file_name.rpmsave found in old file path $old_config_dir, move to new location?", "y")) {
+				# This is to update the old path when upgrading from 10.3 to newer version
+				replace_old_path_in ("$old_config_dir/$file_name.rpmsave");
 				system "mv -f $old_config_dir/$file_name.rpmsave $config";
 				return;
 			}
@@ -582,45 +606,66 @@ sub read_opa_conf_param($$)
 	}
 	return read_simple_config_param($config_file, $parameter);
 }
+# Function to setup environment variable. used to setup environment variables for RPM post install
+# configuration
+sub setup_env($$)
+{
+        my ($env_type) = shift();  # environment variable
+        my ($env_value) = shift(); # value to be set
+        $ENV{$env_type}="$env_value";
+}
 
-sub prompt_conf_param($$$$)
+sub prompt_conf_param($$$$;$)
 {
 	my $parameter=shift();
 	my $parameterDesc=shift();
 	my $default=shift();
 	my $conf=shift();
+	my $OPA_INSTALL_ENV=shift();
 
 	my $prompt;
 	my $value;
+	my $env_value;
+
 	if ("$parameterDesc" eq "") {
 		$prompt="$parameter";
 	} else {
 		$prompt="$parameterDesc ($parameter)";
 	}
 	if (GetYesNo("Enable $prompt?", $default) == 1) {
-		$value="yes"
+		$value="yes";
+		$env_value=1;
 	} else {
-		$value="no"
+		$value="no";
+		$env_value=0;
 	}
-	change_conf_param($parameter, $value, $conf);
+        # some configuation parameter are configured directly, some are by RPM. for RPM we will setup env variable.
+        if ( $OPA_INSTALL_ENV == "OPA_SRPHA_ENABLE" || $OPA_INSTALL_ENV == "OPA_RENICE_IB_MAD" || $OPA_INSTALL_ENV == "OPA_SET_IPOIB_CM" ) {
+            change_conf_param($parameter, $value, $conf);
+        } else {
+            # setup env variable, RPM installation will configure these
+           setup_env("$OPA_INSTALL_ENV", $env_value);
+        }
 }
 
-sub prompt_openib_conf_param($$$)
+sub prompt_openib_conf_param($$$;$)
 {
 	my $parameter=shift();
 	my $parameterDesc=shift();
 	my $default=shift();
+	my $OPA_INSTALL_ENV=shift();
 
 	prompt_conf_param($parameter, $parameterDesc, $default, 
-		"$ROOT/$OFED_CONFIG");
+		"$ROOT/$OFED_CONFIG", $OPA_INSTALL_ENV);
 }
 
-sub prompt_opa_conf_param($$$)
+sub prompt_opa_conf_param($$$;$)
 {
 	my $parameter=shift();
 	my $parameterDesc=shift();
 	my $default=shift();
+	my $OPA_INSTALL_ENV=shift();
 
 	prompt_conf_param($parameter, $parameterDesc, $default, 
-		"$ROOT/$OPA_CONFIG");
+		"$ROOT/$OPA_CONFIG", $OPA_INSTALL_ENV);
 }

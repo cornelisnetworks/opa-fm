@@ -200,7 +200,6 @@ typedef	struct {
 #define	SA_INFORMINFO		0x0003	// Subscription information
 #define	SA_NODE_RECORD		0x0011	// NodeInfo record
 #define	SA_PORTINFO_RECORD	0x0012	// PortInfo record
-#define	SA_SLVLMAPPING_RECORD	0x0013	// SLVLmapping record
 #define	SA_SWITCH_RECORD	0x0014	// SwitchInfo record
 #define	SA_LFT_RECORD		0x0015	// LFT record
 #define	SA_RFT_RECORD		0x0016	// RFT record

@@ -337,17 +337,17 @@ fi
 
 if [ ! -f ~/.ssh/id_rsa.pub -o ! -f ~/.ssh/id_rsa ]
 then
-	ssh-keygen -t rsa -f ~/.ssh/id_rsa
+	ssh-keygen -P "" -t rsa -f ~/.ssh/id_rsa
 fi
 if [ ! -f .ssh/id_dsa.pub -o ! -f .ssh/id_dsa ]
 then
-	ssh-keygen -t dsa -f ~/.ssh/id_dsa
+	ssh-keygen -P "" -t dsa -f ~/.ssh/id_dsa
 fi
 # recreate public key in Reflection format for ssh2
 if [ ! -f .ssh2/ssh2_id_dsa.pub ]
 then
 	# older distros may not support this, ignore error
-	ssh-keygen -O ~/.ssh/id_dsa.pub -o ~/.ssh2/ssh2_id_dsa.pub 2>/dev/null
+	ssh-keygen -P "" -O ~/.ssh/id_dsa.pub -o ~/.ssh2/ssh2_id_dsa.pub 2>/dev/null
 fi
 
 # send command to the host and handle any password prompt if user supplied secure password
@@ -368,6 +368,11 @@ expect {
 		interact
 		wait
 	}
+{assphrase for key} {
+		puts stdout \"\nError: PassPhrase not supported. Remove PassPhrase\"
+		flush stdout
+		exit
+        }
 {continue connecting} { exp_send \"yes\\r\"
 		exp_continue
 	}
@@ -390,6 +395,11 @@ expect {
 		interact
 		wait
 	}
+{assphrase for key} {
+		puts stdout \"\nError: PassPhrase not supported. Remove PassPhrase\"
+		flush stdout
+		exit
+        }
 {continue connecting} { exp_send \"yes\\r\"
 		exp_continue
 	}
@@ -452,8 +462,21 @@ process_host()
 			run_host_cmd $copycmd $user@$bracket$thost$close_bracket:/tmp/perm_ssh /tmp/perm_ssh.$user.$thost
 			run_host_cmd $copycmd $user@$bracket$thost$close_bracket:/tmp/perm_ssh2 /tmp/perm_ssh2.$user.$thost
 			run_host_cmd $shellcmd -l $user $thost "rm -f /tmp/perm_ssh /tmp/perm_ssh2"
-			permission_ssh=$(cat /tmp/perm_ssh.$user.$thost)
-			permission_ssh2=$(cat /tmp/perm_ssh2.$user.$thost)
+
+			if [ -f /tmp/perm_ssh.$user.$thost ]
+			then
+				permission_ssh=$(cat /tmp/perm_ssh.$user.$thost)
+			else
+				echo "Warning: /tmp/perm_ssh.$user.$thost: No such File."
+			fi
+
+			if [ -f /tmp/perm_ssh2.$user.$thost ]
+			then
+				permission_ssh2=$(cat /tmp/perm_ssh2.$user.$thost)
+			else
+				echo "Warning: /tmp/perm_ssh2.$user.$thost: No such File."
+			fi
+
 			if [ "$permission_ssh" -ne 700 -o "$permission_ssh2" -ne 700 ]; then
 				run_host_cmd $shellcmd -l $user $thost chmod 700 '~/.ssh' '~/.ssh2'
 				echo "Warning: $user@$thost:~/.ssh, ~/.ssh2 dir permissions are $permission_ssh/$permission_ssh2. Changed to 700.."
@@ -475,7 +498,7 @@ process_host()
 				run_host_cmd $copycmd ~/.ssh2/ssh2_id_dsa.pub $user@$thost:.ssh2/$ihost.$myuser.ssh2_id_dsa.pub
 			else
 				# older distros may not support this, ignore error
-				run_host_cmd $shellcmd -l $user $thost "ssh-keygen -O ~/.ssh/$ihost.$myuser.id_dsa.pub -o ~/.ssh2/$ihost.$myuser.ssh2_id_dsa.pub 2>/dev/null"
+				run_host_cmd $shellcmd -l $user $thost "ssh-keygen -P "" -O ~/.ssh/$ihost.$myuser.id_dsa.pub -o ~/.ssh2/$ihost.$myuser.ssh2_id_dsa.pub 2>/dev/null"
 			fi
 			run_host_cmd $shellcmd -l $user $thost "test -f ~/.ssh2/$ihost.$myuser.ssh2_id_dsa.pub && ! grep '^Key $ihost.$myuser.ssh2_id_dsa.pub\$' ~/.ssh2/authorization >/dev/null 2>&1 && echo 'Key $ihost.$myuser.ssh2_id_dsa.pub' >> .ssh2/authorization"
 

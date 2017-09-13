@@ -202,6 +202,9 @@ include $(TL_DIR)/Makerules/Maketargets.install
 # install for stage phase
 ifeq "$(IB_STACK)" "OPENIB"
 STAGE::
+ifeq "$(PRODUCT)" "OPENIB_FF"
+	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_OPAMGT_DIR) $(INCLUDE_TARGETS)
+endif
 else
 include $(TL_DIR)/Makerules/Maketargets.stage
 endif

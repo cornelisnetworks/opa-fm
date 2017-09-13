@@ -282,107 +282,141 @@ PrintStlInformInfoRecord(PrintDest_t * dest, int indent,
 	PrintStlInformInfo(dest, indent, &pInformInfoRecord->InformInfoData);
 }
 
-
-void PrintStlVfInfoRecord(PrintDest_t *dest, int indent, const STL_VFINFO_RECORD *pVfInfo)
+void PrintStlVfInfoRecord_detail(PrintDest_t *dest, int indent, int detail,
+	const STL_VFINFO_RECORD *pVfInfo, int showQueryParams)
 {
 	char buf[8];
-	char buf2[8];
+	char slStr[40];
 
 	PrintFunc(dest,"%*svFabric Index: %d   Name: %s \n",
 				indent, "",
 				pVfInfo->vfIndex,
 				pVfInfo->vfName);
-	PrintFunc(dest,"%*sServiceId: 0x%016"PRIx64"  MGID: 0x%016"PRIx64":0x%016"PRIx64"\n",
-				indent, "", pVfInfo->ServiceID,
-				pVfInfo->MGID.AsReg64s.H,
-				pVfInfo->MGID.AsReg64s.L);
 
-	// FormatTimeoutMult(buf, pVfInfo->s1.pktLifeTimeInc);
-	snprintf(buf, 8, "%d", 1<<pVfInfo->s1.pktLifeTimeInc);
-	buf[7]=0;
-	if ((pVfInfo->routingSLs > 1) && 
-		(pVfInfo->routingSLs+pVfInfo->s1.sl <=16)) {
-		sprintf(buf2, "%d-%d", pVfInfo->s1.sl, pVfInfo->s1.sl+pVfInfo->routingSLs-1);
-	} else {
-		sprintf(buf2, "%d", pVfInfo->s1.sl);
-	}
-	PrintFunc(dest,"%*sPKey: 0x%x   SL: %s  Select: 0x%x%s %s%s  PktLifeTimeMult: %s \n",
-				indent, "",
-				pVfInfo->pKey,
-				buf2,
-				pVfInfo->s1.selectFlags,
-				pVfInfo->s1.selectFlags? ":" : "",
-				(pVfInfo->s1.selectFlags&VEND_PKEY_SEL) ? "PKEY " : "",
-				(pVfInfo->s1.selectFlags&VEND_SL_SEL) ? "SL ": "",
-				pVfInfo->s1.pktLifeSpecified? buf: "unspecified");
+	int remChars = sizeof(slStr);
+	char *slStrPtr = slStr;
+	int ret;
 
-	if (pVfInfo->s1.mtuSpecified) {
-		PrintFunc(dest,"%*sMaxMtu: %5s  ",
-				indent, "",
-				IbMTUToText(pVfInfo->s1.mtu));
-	} else {
-		PrintFunc(dest,"%*sMaxMtu: unlimited  ",
-				indent, "");
+	ret = snprintf(slStrPtr, remChars, "%d", pVfInfo->s1.slBase);
+	if (ret > 0 && ret <= remChars) {
+		remChars -= ret;
+		slStrPtr += ret;
 	}
 
-	PrintFunc(dest,"%*sMaxRate: %s   ",
-				indent, "",
-				pVfInfo->s1.rateSpecified ? IbStaticRateToText(pVfInfo->s1.rate) : "unlimited");
+	if (pVfInfo->slMulticastSpecified) {
+		ret = snprintf(slStrPtr, remChars, " McastSL: %d", pVfInfo->slMulticast);
+		if (ret > 0 && ret <= remChars) {
+			remChars -= ret;
+			slStrPtr += ret;
+		}
+	}
 
-	PrintFunc(dest,"%*sOptions: 0x%02x%s %s%s%s\n",
-				indent, "", 
-				pVfInfo->optionFlags,
-				pVfInfo->optionFlags? ":" : "",
-				(pVfInfo->optionFlags&OPT_VF_SECURITY) ? "Security " : "",
-				(pVfInfo->optionFlags&OPT_VF_QOS) ? "QoS " : "",
-				(pVfInfo->optionFlags&OPT_VF_FLOW_DISABLE) ? "FlowCtrlDisable" : "");
+	if (detail > 1) {
+		if (showQueryParams != 0) {
+			PrintFunc(dest,"%*sServiceId: 0x%016"PRIx64"  MGID: 0x%016"PRIx64":0x%016"PRIx64"\n",
+							indent, "", pVfInfo->ServiceID,
+							pVfInfo->MGID.AsReg64s.H,
+							pVfInfo->MGID.AsReg64s.L);
+		}
 
-	FormatTimeoutMult(buf, pVfInfo->hoqLife);
-	if (pVfInfo->optionFlags&OPT_VF_QOS) {
-		if (pVfInfo->priority) {
-			if (pVfInfo->bandwidthPercent) {
-				PrintFunc(dest,"%*sQOS: Bandwidth: %3d%%  Priority: %s  PreemptionRank: %u  HoQLife: %s\n",
-					indent, "", pVfInfo->bandwidthPercent, "high", pVfInfo->preemptionRank, buf);
+		// FormatTimeoutMult(buf, pVfInfo->s1.pktLifeTimeInc);
+		snprintf(buf, 8, "%d", 1<<pVfInfo->s1.pktLifeTimeInc);
+		buf[7]=0; // snprintf() always '\0' terminates the string; why do this?
+
+		PrintFunc(dest,"%*sPKey: 0x%x   SL: %s  Select: 0x%x%s %s%s  PktLifeTimeMult: %s \n",
+					indent, "",
+					pVfInfo->pKey,
+					slStr,
+					pVfInfo->s1.selectFlags,
+					pVfInfo->s1.selectFlags? ":" : "",
+					(pVfInfo->s1.selectFlags&VEND_PKEY_SEL) ? "PKEY " : "",
+					(pVfInfo->s1.selectFlags&VEND_SL_SEL) ? "SL ": "",
+					pVfInfo->s1.pktLifeSpecified? buf: "unspecified");
+
+		if (pVfInfo->s1.mtuSpecified) {
+			PrintFunc(dest,"%*sMaxMtu: %5s  ",
+					indent, "",
+					IbMTUToText(pVfInfo->s1.mtu));
+		} else
+			PrintFunc(dest,"%*sMaxMtu: unlimited  ", indent, "");
+
+
+		PrintFunc(dest,"%*sMaxRate: %s   ", indent, "",
+					pVfInfo->s1.rateSpecified ? IbStaticRateToText(pVfInfo->s1.rate) : "unlimited");
+
+		PrintFunc(dest, "%*sOptions: 0x%02x%s %s%s%s\n", indent, "",
+					pVfInfo->optionFlags,
+					pVfInfo->optionFlags? ":" : "",
+					(pVfInfo->optionFlags&OPT_VF_SECURITY) ? "Security " : "",
+					(pVfInfo->optionFlags&OPT_VF_QOS) ? "QoS " : "",
+					(pVfInfo->optionFlags&OPT_VF_FLOW_DISABLE) ? "FlowCtrlDisable" : "");
+
+		FormatTimeoutMult(buf, pVfInfo->hoqLife);
+
+		if (pVfInfo->optionFlags&OPT_VF_QOS) {
+			if (pVfInfo->priority) {
+				if (pVfInfo->bandwidthPercent) {
+					PrintFunc(dest,"%*sQOS: Bandwidth: %3d%%  Priority: %s  PreemptionRank: %u  HoQLife: %s\n",
+						indent, "", pVfInfo->bandwidthPercent, "high", pVfInfo->preemptionRank, buf);
+				} else {
+					PrintFunc(dest,"%*sQOS: HighPriority  PreemptionRank: %u  HoQLife: %s\n", indent, "", pVfInfo->preemptionRank, buf);
+				}
 			} else {
-				PrintFunc(dest,"%*sQOS: HighPriority  PreemptionRank: %u  HoQLife: %s\n", indent, "", pVfInfo->preemptionRank, buf);
+				PrintFunc(dest,"%*sQOS: Bandwidth: %3d%%  PreemptionRank: %u  HoQLife: %s\n",
+					indent, "", pVfInfo->bandwidthPercent, pVfInfo->preemptionRank, buf);
 			}
 		} else {
-			PrintFunc(dest,"%*sQOS: Bandwidth: %3d%%  PreemptionRank: %u  HoQLife: %s\n",
-				indent, "", pVfInfo->bandwidthPercent, pVfInfo->preemptionRank, buf);
+			PrintFunc(dest,"%*sQOS: Disabled  PreemptionRank: %u  HoQLife: %s\n",
+					indent, "", pVfInfo->preemptionRank, buf);
 		}
 	} else {
-		PrintFunc(dest,"%*sQOS: Disabled  PreemptionRank: %u  HoQLife: %s\n",
-				indent, "", pVfInfo->preemptionRank, buf);
+		PrintFunc(dest, "%*sPKey:0x%x %s\n", indent, "", pVfInfo->pKey, slStr);
 	}
 }
 
+void PrintStlVfInfoRecord(PrintDest_t *dest, int indent, const STL_VFINFO_RECORD *pVfInfo)
+{
+	PrintStlVfInfoRecord_detail(dest, indent, 255, pVfInfo, 1);
+}
 
 // output VFINFO in a delimited format for easy parsing in shell scripts
 void PrintStlVfInfoRecordCSV(PrintDest_t *dest, int indent, const STL_VFINFO_RECORD *pVfInfo)
 {
-	PrintFunc(dest,"%*s%s:%d:0x%x:%d:%s:%s:0x%x\n",
+	char mcastSl[4] = "";
+
+	if (pVfInfo->slMulticastSpecified)
+		snprintf(mcastSl, sizeof(mcastSl), "%d", pVfInfo->slMulticast);
+
+	PrintFunc(dest,"%*s%s:%d:0x%x:%d:%s:%s:0x%x::%s\n",
 				indent, "",
 				pVfInfo->vfName,
 				pVfInfo->vfIndex,
 				pVfInfo->pKey,
-				pVfInfo->s1.sl,
+				pVfInfo->s1.slBase,
 				(pVfInfo->s1.mtuSpecified)? IbMTUToText(pVfInfo->s1.mtu):"unlimited",
 				pVfInfo->s1.rateSpecified ? IbStaticRateToText(pVfInfo->s1.rate) : "unlimited",
-			    pVfInfo->optionFlags);
+			    pVfInfo->optionFlags,
+				mcastSl);
 }
 
 // output VFINFO in a delimited format for easy parsing in shell scripts
 void PrintStlVfInfoRecordCSV2(PrintDest_t *dest, int indent, const STL_VFINFO_RECORD *pVfInfo)
 {
-	PrintFunc(dest,"%*s%s:%d:0x%x:%d:%d:%d:0x%x\n",
+	char mcastSl[4] = "";
+
+	if (pVfInfo->slMulticastSpecified)
+		snprintf(mcastSl, sizeof(mcastSl), "%d", pVfInfo->slMulticast);
+
+	PrintFunc(dest,"%*s%s:%d:0x%x:%d:%d:%d:0x%x::%s\n",
 				indent, "",
 				pVfInfo->vfName,
 				pVfInfo->vfIndex,
 				pVfInfo->pKey,
-				pVfInfo->s1.sl,
+				pVfInfo->s1.slBase,
 				(pVfInfo->s1.mtuSpecified)? pVfInfo->s1.mtu:0,
 				pVfInfo->s1.rateSpecified ? pVfInfo->s1.rate:0,
-				pVfInfo->optionFlags);
+				pVfInfo->optionFlags,
+				mcastSl);
 }
 
 void PrintStlTraceRecord(PrintDest_t *dest, int indent, const STL_TRACE_RECORD *pTraceRecord)

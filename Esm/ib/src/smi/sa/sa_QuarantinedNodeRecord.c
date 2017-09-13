@@ -48,29 +48,39 @@ Status_t sa_QuarantinedNodeRecord(Mai_t *maip, sa_cntxt_t *sa_cntxt)
 	// Assume failure
 	records = 0;
 
-	// We only support GetTable.
+	// Check Method
 	if (maip->base.method == SA_CM_GETTABLE) {
 		INCREMENT_COUNTER(smCounterSaRxGetTblQuarantinedNodeRecord);
 	} else {
-		// Generate an error response and return.
 		maip->base.status = MAD_STATUS_BAD_METHOD;
-		(void) sa_send_reply(maip, sa_cntxt);
-		IB_LOG_WARN("sa_QuarantinedNodeRecord: invalid METHOD:", maip->base.method);
-		IB_EXIT("sa_QuarantinedNodeRecord", VSTATUS_OK);
+		IB_LOG_WARN_FMT(__func__, "invalid Method: %s (%u)",
+			cs_getMethodText(maip->base.method), maip->base.method);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
 		return VSTATUS_OK;
 	}
 
-	// Do the search. Note that we don't support IB records of this type
-	if (maip->base.cversion == STL_SA_CLASS_VERSION) 
-		sa_QuarantinedNodeRecord_GetTable(maip, &records);
+	// Check Base and Class Version
+	if (maip->base.bversion == STL_BASE_VERSION && maip->base.cversion == STL_SA_CLASS_VERSION) {
+		(void)sa_QuarantinedNodeRecord_GetTable(maip, &records);
+	} else {
+		maip->base.status = MAD_STATUS_BAD_CLASS;
+		IB_LOG_WARN_FMT(__func__, "invalid Base and/or Class Versions: Base %u, Class %u",
+			maip->base.bversion, maip->base.cversion);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
+	}
 
 	// Determine reply status
-	if (maip->base.status != MAD_STATUS_OK) 
-	{
+	if (maip->base.status != MAD_STATUS_OK) {
 		records = 0;
-	} else if (records == 0) 
-	{
+	} else if (records == 0) {
 		maip->base.status = MAD_STATUS_SA_NO_RECORDS;
+	} else if ((maip->base.method == SA_CM_GET) && (records != 1)) {
+		IB_LOG_WARN("sa_QuarantinedNodeRecord: too many records for SA_CM_GET:", records);
+		records = 0;
+		maip->base.status = MAD_STATUS_SA_TOO_MANY_RECS;
 	}
 
 	attribOffset = sizeof(STL_QUARANTINED_NODE_RECORD) + Calculate_Padding(sizeof(STL_QUARANTINED_NODE_RECORD));

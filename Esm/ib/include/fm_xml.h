@@ -160,7 +160,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define SM_TRAP_LOG_SUPPRESS_TRIGGER_INTERVAL   30      /*in seconds*/
 
 // Preemption Default Values
-#define SM_PREEMPT_SMALL_PACKET_MIN 64
+#define SM_PREEMPT_SMALL_PACKET_MIN 32
 #define SM_PREEMPT_SMALL_PACKET_MAX 8192
 #define SM_PREEMPT_SMALL_PACKET_DEF 256
 #define SM_PREEMPT_SMALL_PACKET_INC 32
@@ -172,7 +172,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define SM_PREEMPT_LIMIT_MIN 256    // Note 0 is a valid value, but effectively turns off preemption
 #define SM_PREEMPT_LIMIT_MAX 65024  // This is the max without being infinite
-#define SM_PREEMPT_LIMIT_INF 65280  // This is the magical infinite value... no limit.
+#define SM_PREEMPT_LIMIT_INF 65280  // This is the magical infinite value. SM_PREEMPT_LIMIT_INF / SM_PREEMPT_LIMIT_INC = 0xff.
 #define SM_PREEMPT_LIMIT_DEF 4096
 #define SM_PREEMPT_LIMIT_INC 256
 
@@ -195,10 +195,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // this define will turn on memory debugging for XML and VF parsing
 //#define XML_MEMORY
-
-// if we ever support the Advanced Features License again remove the comment in front of the define
-// removed for 6.0 (10A) release
-//#define AF_LICENSE
 
 // Max number on FM instances - ESM only requires one instance and will be
 // adjusted for in the parser
@@ -810,6 +806,7 @@ typedef struct _SmDimension {
 
 typedef struct _SmDorRouting {
 	uint8_t				debug;
+	uint8_t				overlayMCast;
 	uint8_t				dimensionCount;
 	uint8_t				numToroidal;
 	uint8_t				routingSCs;

@@ -1,0 +1,7 @@
+This directory contains sample applications built using the opamgt API
+
+Use 'make' to build all examples
+Use 'make <app>' to just build a single application where <app> is one
+	of the sources in this directory without a '.c' suffix, e.g. saquery
+
+Use 'make clean' to remove all compiled applications

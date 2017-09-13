@@ -198,6 +198,9 @@ typedef	uint32_t	Status_t;
 #define VSTATUS_INVALID_ITERATOR      (105)     // resolver iterator invalid
 #define VSTATUS_INVALID_MAGIC         (106)     // magic number not correct for structure
 #define VSTATUS_BADPAGESIZE           (107)     // invalid memory page size specified
+#define VSTATUS_UNRECOVERABLE         (108)     // a variant of BAD that indicates to the
+                                                //   caller that recovery (within a context)
+                                                //   should not be attempted
 #define VSTATUS_ITERATOR_OUT_OF_DATE     (119)   // data referred by
                                                 // iterator updated or deleted.
 #define VSTATUS_INSUFFICIENT_PERMISSION  (120)  // client has insufficient

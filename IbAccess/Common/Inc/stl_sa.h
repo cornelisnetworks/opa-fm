@@ -54,8 +54,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * 
  * (4)	In this document, attributes are listed in the same order they appear
  *		in the IB spec. Where a new attribute is added, it is added after
- *		the existing attribute it was modeled after. For example, the VL2VL and
- *		VL2pVL records are listed after the SL2VL record.
+ *		the existing attribute it was modeled after.
  *
  * (5)	The use of "Jumbo" (>256 byte) MADs are only used when needed. For
  *		table-based MADs, RMPP is the preferred solution.
@@ -1495,6 +1494,7 @@ BSWAP_STL_TRACE_RECORD(STL_TRACE_RECORD  *Dest)
 {
 #if CPU_LE
 	Dest->IDGeneration = ntoh16(Dest->IDGeneration);
+	Dest->NodeID = ntoh64(Dest->NodeID);
 	Dest->ChassisID = ntoh64(Dest->ChassisID);
 	Dest->EntryPortID = ntoh64(Dest->EntryPortID);
 	Dest->ExitPortID = ntoh64(Dest->ExitPortID);
@@ -1706,45 +1706,6 @@ typedef struct {
 
 
 /*
- * LinkSpeedWidthPairsRecord
- *
- * Support for this attribute is optional; not implemented in IFS.
- *
- * STL Differences:
- *
- * 		Widened Speed attributes to 16 bits to match STL requirements.
- * 		Added additional speed elements.
- * 		Added reserved field to preserve word alignment.
- */
-typedef struct {
-	uint8		NumTables;
-	uint8		PortMask[32];
-	uint8		Reserved;
-	
-	uint16		Speed_SDR;
-	uint16		Speed_DDR;
-	uint16		Speed_QDR;
-	
-	uint16		Speed_FDR;
-	uint16		Speed_EDR;
-	uint16		Speed_Rsvd1;
-	uint16		Speed_Rsvd2;
-	
-} PACK_SUFFIX STL_LINK_SPEED_WIDTH_PAIRS_TABLE_ELEMENT;
- 
-typedef struct {
-	struct {
-		uint32	LID;
-	} PACK_SUFFIX RID;
-	
-	uint32		Reserved;
-	
-	STL_LINK_SPEED_WIDTH_PAIRS_TABLE_ELEMENT PairsTable[0]; 
-} PACK_SUFFIX STL_LINK_SPEED_WIDTH_PAIRS_TABLE_RECORD;
-
-
-
-/*
  * CableInfoRecord
  *
  * STL Differences:
@@ -1823,7 +1784,7 @@ typedef struct {
 		IB_BITFIELD3(uint8,
 				selectFlags:2, 	/* 1 bit to indicate SL in queries, 1 bit for pkey */
 				rsvd2:1,
-				sl:5);			/* service level - 5 bits */
+				slBase:5);		/* service level - 5 bits */
 		IB_BITFIELD3(uint8,
 				mtuSpecified:1,	/* mtu specified for VF - 1 bit */
 				rsvd3:1,    
@@ -1833,7 +1794,7 @@ typedef struct {
 				rateSpecified:1, /* rate specified for VF - 1 bit */
 				rsvd4:1,
 				rate:6);		/* max rate assigned to VF - 6 bits */
-						
+
 		IB_BITFIELD3(uint8,
 				pktLifeSpecified:1, /* pkt life time specified for VF - 1 bit */
 				rsvd5:4,
@@ -1844,20 +1805,30 @@ typedef struct {
 	uint8		bandwidthPercent;	/* bandwidth percentage, 8 bits */
 
 	IB_BITFIELD2(uint8,
-				rsvd6:7,	
+				rsvd6:7,
 				priority:1);		/* priority, 1 bit */
 
-	uint8		routingSLs;
+	uint8		routingSLs; /* Always 1 */
 
 	IB_BITFIELD2(uint8,
-				rsvd8:1,	
+				rsvd7:1,
 				preemptionRank:7);
 	
 	IB_BITFIELD2(uint8,
-				rsvd9:3,	
+				rsvd8:3,
 				hoqLife:5);
-	
-	uint8		rsvd7[22];
+
+	IB_BITFIELD3(uint8,
+				slResponseSpecified:1, /* slResponse field is set - 1 bit */
+				rsvd9:2,
+				slResponse:5); /* service level - 5 bits */
+
+	IB_BITFIELD3(uint8,
+				slMulticastSpecified:1, /* slMulticast field is set - 1 bit */
+				rsvd10:2,
+				slMulticast:5); /* service level - 5 bits */
+
+	uint8		rsvd11[20];
 
 } PACK_SUFFIX STL_VFINFO_RECORD;
 

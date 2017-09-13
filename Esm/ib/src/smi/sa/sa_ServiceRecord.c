@@ -163,30 +163,39 @@ void sa_ServiceRecClear(void) {
 
 Status_t
 sa_ServiceRecord(Mai_t *maip, sa_cntxt_t *sa_cntxt) {
-	uint32_t		records;
+	uint32_t	records;
+	uint16_t	attribOffset;
+	uint16_t	rec_sz;
 
 	IB_ENTER("sa_ServiceRecord", maip, 0, 0, 0);
-
-	// disable STL ServiceRecord, support only IB ServiceRecord for now
-	if (maip->base.cversion != SA_MAD_CVERSION) {
-		maip->base.status = MAD_STATUS_BAD_CLASS;
-		(void) sa_send_reply(maip, sa_cntxt);
-		IB_LOG_WARN("sa_ServiceRecord: invalid CLASS:",
-					maip->base.cversion);
-		IB_EXIT("sa_ServiceRecord", VSTATUS_OK);
-		return (VSTATUS_OK);
-	}
 
 //
 //	Assume failure.
 //
 	records = 0;
 
-//
-//	Call the user exit for authorization.
-//
-	if (servicerecord_userexit(maip) != VSTATUS_OK) {
-		goto reply_ServiceRecord;
+	// Check Base and Class Version
+	if (maip->base.bversion == STL_BASE_VERSION && maip->base.cversion == STL_SA_CLASS_VERSION) {
+#ifdef NO_STL_SERVICE_OUTPUT     // SA shouldn't support STL Service Record
+		maip->base.status = MAD_STATUS_BAD_CLASS;
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_LOG_WARN_FMT(__func__, "invalid Base and/or Class Versions: Base %u, Class %u",
+			maip->base.bversion, maip->base.cversion);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
+#else
+		rec_sz = sizeof(STL_SERVICE_RECORD);
+#endif
+	} else if (maip->base.bversion == IB_BASE_VERSION && maip->base.cversion == SA_MAD_CVERSION) {
+		rec_sz = sizeof(IB_SERVICE_RECORD);
+	} else {
+		// Generate an error response and return.
+		maip->base.status = MAD_STATUS_BAD_CLASS;
+		IB_LOG_WARN_FMT(__func__, "invalid Base and/or Class Versions: Base %u, Class %u",
+			maip->base.bversion, maip->base.cversion);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
 	}
 
 //
@@ -224,19 +233,18 @@ sa_ServiceRecord(Mai_t *maip, sa_cntxt_t *sa_cntxt) {
 			(void)sa_IbServiceRecord_Delete(maip, &records);
 		}
 		break;
-	default:                                                                     
-		maip->base.status = MAD_STATUS_BAD_METHOD;                           
-		(void)sa_send_reply(maip, sa_cntxt);                                 
+	default:
+		maip->base.status = MAD_STATUS_BAD_METHOD;
+		(void)sa_send_reply(maip, sa_cntxt);
 		IB_LOG_WARN("sa_ServiceRecord: invalid METHOD:", maip->base.method);
-		IB_EXIT("sa_ServiceRecord", VSTATUS_OK);                            
-		return VSTATUS_OK;                                                   
-		break;                                                               
+		IB_EXIT("sa_ServiceRecord", VSTATUS_OK);
+		return VSTATUS_OK;
+		break;
 	}
 
 //
 //	Determine reply status
 //
-reply_ServiceRecord:
 	if (maip->base.status != MAD_STATUS_OK) {
 		records = 0;
 	} else if (records == 0) {
@@ -247,16 +255,16 @@ reply_ServiceRecord:
 		maip->base.status = MAD_STATUS_SA_TOO_MANY_RECS;
 	}
 
-	if (maip->base.cversion == STL_SA_CLASS_VERSION) {
-		/* setup attribute offset for possible RMPP transfer */
-		sa_cntxt->attribLen = sizeof(STL_SERVICE_RECORD);
-		sa_cntxt_data( sa_cntxt, sa_data, records * sizeof(STL_SERVICE_RECORD) );
-	} else {
-		/* setup attribute offset for possible RMPP transfer */
-		sa_cntxt->attribLen = sizeof(IB_SERVICE_RECORD);
-		sa_cntxt_data( sa_cntxt, sa_data, records * sizeof(IB_SERVICE_RECORD) );
-	}
-	sa_send_reply( maip, sa_cntxt );
+//
+//	Call the user exit for authorization.
+//
+	(void)servicerecord_userexit(maip);
+
+	attribOffset = rec_sz + Calculate_Padding(rec_sz);
+	sa_cntxt->attribLen = attribOffset;
+
+	sa_cntxt_data(sa_cntxt, sa_data, records * attribOffset);
+	sa_send_reply(maip, sa_cntxt);
 
 	IB_EXIT("sa_ServiceRecord", VSTATUS_OK);
 	return(VSTATUS_OK);

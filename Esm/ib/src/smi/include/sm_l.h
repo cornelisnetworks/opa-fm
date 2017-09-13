@@ -324,6 +324,7 @@ typedef	struct _PortData {
 		uint8_t vlarbPre:1;
 		uint8_t vlarbMatrix:1;
 		uint8_t	pkeys:1;
+		uint8_t bfrctrl:1;
 	} current;
 
 	struct {
@@ -1681,27 +1682,6 @@ static __inline__ Port_t * sm_get_node_end_port(Node_t *nodep) {
 	((((SP)->nodeno == (DN)->index) && ((SP)->portno == (DP)->index)) &&		\
 	(((DP)->nodeno == (SN)->index) && ((DP)->portno == (SP)->index)))
 
-// --------------------------------------------------------------------------- //
-
-#define	Decode_MTU_To_Int(Z)   \
-	( (Z) == 1) ?  256 :       \
-	(((Z) == 2) ?  512 :       \
-	(((Z) == 3) ? 1024 :       \
-	(((Z) == 4) ? 2048 :       \
-	(((Z) == 5) ? 4096 :       \
-	(((Z) == 6) ? 8192 :       \
-	(((Z) == 7) ? 10240 : 0))))))
-
-// --------------------------------------------------------------------------- //
-
-#define	Decode_MTU(Z)	 ((Z) == 1) ? "256" :	\
-			(((Z) == 2) ? "512" :	\
-			(((Z) == 3) ? " 1k" :	\
-			(((Z) == 4) ? " 2k" :	\
-			(((Z) == 5) ? " 4k" :	\
-			(((Z) == 6) ? " 8k" :   \
-			(((Z) == 7) ? " 10k" : "---"))))))
-
 // Converts a rate into a "speed factor" used in cost calculations.
 // factor ~= rate * 64/66 * 2.
 // Currently only handles 12.5 and 25G 
@@ -1815,6 +1795,10 @@ extern	Lock_t		handover_sent_lock;
 extern	uint32_t	handover_sent;
 extern	uint32_t	triggered_handover;
 
+#ifdef __LINUX__
+extern Lock_t linux_shutdown_lock; // a RW Thread Lock
+#endif
+
 extern	Topology_t	old_topology;
 extern	Topology_t	sm_newTopology;
 extern  Topology_t  *sm_topop;
@@ -1838,7 +1822,6 @@ extern	uint64_t	topology_wakeup_time;
 extern  Lock_t		sa_lock;
 extern uint32_t     sm_debug;
 extern  uint32_t    smDebugPerf;  // control SM/SA performance messages; default off in ESM
-extern  uint32_t    smSLVLAllPorts;  // control whether SLVL is set on all ports (excludes switch ports if disabled)
 extern  uint32_t    smFabricDiscoveryNeeded;
 extern  uint32_t    smDebugDynamicAlloc; // control SM/SA memory allocation messages; default off in ESM
 extern  uint32_t    sm_trapThreshold; // threshold of traps/min for port auto-disable
@@ -1891,6 +1874,17 @@ extern int    	esmLoopTestMinISLRedundancy;
 //
 //#define	MAD_RETRIES		4     // moved to "ib/include/ib_const.h"
 
+static __inline__ void block_sm_exit(void) {
+	#ifdef __LINUX__
+	vs_rdlock(&linux_shutdown_lock);
+	#endif
+}
+
+static __inline__ void unblock_sm_exit(void) {
+	#ifdef __LINUX__
+	vs_rwunlock(&linux_shutdown_lock);
+	#endif
+}
 //
 //	Convenience macros for Get(*) and Set(*)
 //
@@ -2208,7 +2202,7 @@ Node_t		*sm_find_guid(Topology_t *, uint64_t);
 Node_t      *sm_find_quarantined_guid(Topology_t *topop, uint64_t guid);
 Node_t		*sm_find_next_guid(Topology_t *, uint64_t);
 Node_t	 	*sm_find_node(Topology_t *, int32_t);
-Node_t		*sm_find_node_by_path(Topology_t *, uint8_t *);
+Node_t		*sm_find_node_by_path(Topology_t *, Node_t *, uint8_t *);
 Port_t      *sm_find_node_port(Topology_t *, Node_t *, int32_t);
 Node_t	 	*sm_find_switch(Topology_t *, uint16_t);
 Node_t	 	*sm_find_port_node(Topology_t *, Port_t *);
@@ -2777,14 +2771,9 @@ extern void sm_set_skip_attribute_write(char * datap);
 */
 boolean sm_eq_XmitQ(const struct XmitQ_s * a, const struct XmitQ_s * b, uint8 actVlCount);
 
-boolean sm_eq_Preempt(const struct Preemption_t * a, const struct Preemption_t * b, boolean doRemap);
-
 int sm_evalPreemptLargePkt(int cfgLarge, Node_t * nodep);
 int sm_evalPreemptSmallPkt(int cfgSmall, Node_t * nodep);
 int sm_evalPreemptLimit(int cfgLimit, Node_t * nodep);
-
-// @return 1 if port is expected to squeeze preemption fields into smaller preemption registers, 0 otherwise
-boolean sm_uses_PreemptRemap(const Port_t * port);
 
 /**
 	Alloc portp->portData->newArb on demand and return pointer or null if !sm_port_valid(portp)
@@ -2795,10 +2784,6 @@ struct _PortDataVLArb * sm_port_getNewArb(Port_t * portp);
 	Release portp->portData->newArb if allocated.
 */
 void sm_port_releaseNewArb(Port_t * portp);
-
-#define SCVLMAP_BASE		8
-#define SCVLMAP_MAX_INDEX	32
-extern void sm_fill_SCVLMap(Qos_t *qos);
 
 #endif	// _SM_L_H_
 

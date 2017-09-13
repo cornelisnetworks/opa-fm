@@ -83,6 +83,135 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OutputTypeStlClassPortInfo			(OutputTypeStlBase+35)
 #define OutputTypeStlFabricInfoRecord		(OutputTypeStlBase+36)
 
+typedef union _OMGT_QUERY_INPUT_VALUE
+{
+	union _IbNodeRecord {
+		IB_LID Lid; /* InputType */
+		EUI64  PortGUID; /* InputType */
+		EUI64  NodeGUID; /* InputType */
+		EUI64  SystemImageGUID; /* InputType */
+		NODE_TYPE NodeType; /* InputType */
+		char NodeDesc[STL_NODE_DESCRIPTION_ARRAY_SIZE]; /* InputType */
+	} IbNodeRecord; /* OutputType */
+	union _IbNodeRecord NodeRecord; /* OutputType */
+	union _LidOnly {
+		IB_LID Lid; /* InputType */
+	} IbPortInfoRecord; /* OutputType */
+	union _LidOnly PortInfoRecord; /* OutputType */
+	union _LidOnly LinkRecord; /* OutputType */
+	union _LidOnly SwitchInfoRecord; /* OutputType */
+	union _IbPathRecord {
+		IB_GID SourceGid; /* InputType SourceGid */
+		struct {
+			uint8 SourceGuidCount; /* number of Source GUIDs in GuidList */
+			uint8 DestGuidCount; /* number of Dest GUIDs in GuidList */
+			EUI64 GuidList[MULTIPATH_GID_LIMIT]; /* Src GUIDs, followed by Dest GUIDs */
+			EUI64 SharedSubnetPrefix;
+		} PortGuidList; /* InputType */
+		struct {
+			uint8 SourceGidCount; /* number of Source GIDs in GidList */
+			uint8 DestGidCount; /* number of Dest GIDs in GidList */
+			IB_GID GidList[MULTIPATH_GID_LIMIT]; /* Src GIDs, followed by Dest GIDs */
+		} GidList; /* InputType */
+		struct {
+			uint64 ComponentMask;
+			IB_MULTIPATH_RECORD MultiPathRecord;
+			/* Gids below allows up to 8 SGID and/or DGID in MultiPathRecord.GIDList */
+			/* do not use Gids field directly, instead use */
+			/* MultiPathRecord.GIDList[0-7] */
+			IB_GID Gids[MULTIPATH_GID_LIMIT-1];
+		} MultiPathRecord; /* InputType */
+		struct {
+			IB_GID SourceGid;
+			uint16 PKey;
+		} PKey; /* InputType */
+		struct {
+			IB_GID SourceGid;
+			uint8 SL;
+		} SL; /*  InputType */
+		struct {
+			IB_GID SourceGid;
+			uint64 ServiceId;
+		} ServiceId; /* InputType */
+		struct {
+			EUI64 SharedSubnetPrefix;
+			EUI64 SourcePortGuid;
+			EUI64 DestPortGuid;
+		} PortGuidPair, PortGuid; /* InputType */
+		struct {
+			IB_GID SourceGid;
+			IB_GID DestGid;
+		} GidPair, PortGid; /* InputType */
+		struct {
+			IB_GID SourceGid;
+			IB_LID DLid;
+		} Lid; /* InputType */
+		struct {
+			uint64 ComponentMask;
+			IB_PATH_RECORD PathRecord;
+		} PathRecord;
+	} IbPathRecord; /* OutputType */
+	union _IbPathRecord TraceRecord; /* OutputType */
+	union _IbServiceRecord {
+		IB_GID ServiceGid; /* InputType */
+	} IbServiceRecord; /* OutputType */
+#ifndef NO_STL_SERVICE_OUTPUT
+	union _StlServiceRecord {
+		IB_LID Lid; /* InputType */
+		IB_GID ServiceGid; /* InputType */
+	} StlServiceRecord; /* OutputType */
+#endif
+	union _IbMcMemberRecord {
+		IB_GID PortGid; /* InputType */
+		IB_GID McGid; /* InputType */
+		IB_LID Lid; /* InputType */
+		uint16 PKey; /* InputType */
+	} IbMcMemberRecord; /* OutputType */
+#ifndef NO_STL_MCMEMBER_OUTPUT
+	union _IbMcMemberRecord StlMcMemberRecord; /* OutputType */
+#endif
+	union _IbInforInfoRecord {
+		IB_GID SubscriberGID;
+	} IbInformInfoRecord;
+	union _StlInforInfoRecord {
+		IB_LID SubscriberLID;
+	} StlInformInfoRecord;
+	union _LidOnly ScScTableRecord;
+	union _LidOnly SlScTableRecord;
+	union _LidOnly ScSlTableRecord;
+	union _LidOnly ScVlxTableRecord;
+	union _LidOnly VlArbTableRecord;
+	union _LidOnly PKeyTableRecord;
+	union _LidOnly LinFdbTableRecord;
+	union _LidOnly McFdbTableRecord;
+	union _VfInfoRecord {
+		uint16 PKey;
+		IB_LID Lid;
+		uint8 SL;
+		uint64 ServiceId;
+		IB_GID McGid;
+		uint16 vfIndex;
+		char vfName[STL_NODE_DESCRIPTION_ARRAY_SIZE];
+	} VfInfoRecord;
+	union _LidOnly CongInfoRecord;
+	union _LidOnly SwCongRecord;
+	union _LidOnly SwPortCongRecord;
+	union _LidOnly HFICongRecord;
+	union _LidOnly HFICongCtrlRecord;
+	union _LidOnly BufCtrlTableRecord;
+	union _LidOnly CableInfoRecord;
+	union _LidOnly PortGroupRecord;
+	union _LidOnly PortGroupFwdRecord;
+} OMGT_QUERY_INPUT_VALUE;
+
+typedef struct _OMGT_QUERY  {
+    QUERY_INPUT_TYPE InputType;     /* Type of input (i.e. query based on) */
+    QUERY_RESULT_TYPE OutputType;   /* Type of output (i.e. info requested) */
+    OMGT_QUERY_INPUT_VALUE InputValue;   /* input record selection value input query */
+} OMGT_QUERY, *POMGT_QUERY;
+
+
+
 typedef struct {
 	uint32							NumClassPortInfo;	/* Should always be 1 or 0 */
 	STL_CLASS_PORT_INFO				ClassPortInfo;		/* Should never have more than 1 */

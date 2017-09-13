@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -21,8 +21,8 @@ DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
 SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ** END_ICS_COPYRIGHT2   ****************************************/
@@ -40,323 +40,85 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 extern "C" {
 #endif
 
-
 typedef	struct _SPIN_LOCK
 {
-        /* No publically accessible members.  */
+	/* No publically accessible members.  */
 	pthread_mutex_t		sp_lock;
 } SPIN_LOCK;
 
 typedef	struct _SPIN_RW_LOCK
 {
-        /* No publically accessible members.  */
-	/*pthread_rwlock_t		rw_lock;	// only available for UNIX98 */
+	/* No publically accessible members.  */
 	pthread_mutex_t		rw_lock;
 } SPIN_RW_LOCK;
 
-#if defined(__IA64__) || defined(__ia64)
-
 typedef uint32 ATOMIC_UINT;
 
-static inline uint32 AtomicRead (IN const volatile ATOMIC_UINT *pValue) 
+static inline uint32 AtomicRead(const volatile ATOMIC_UINT *pValue) 
 {
 	return *pValue;
 }
 
-static inline void AtomicWrite (IN volatile ATOMIC_UINT *pValue,
-									IN uint32 newValue)
+static inline void AtomicWrite(volatile ATOMIC_UINT *pValue,
+							uint32 newValue)
 {
 	*pValue = newValue;
 }
 
-static inline uint32 AtomicExchange(IN volatile ATOMIC_UINT *pValue,
-										uint32 newValue)
+static inline ATOMIC_UINT AtomicExchange(volatile ATOMIC_UINT *pValue,
+										 uint32 newValue)
 {
-	uint64 result;
-
-	__asm__ __volatile ("xchg4 %0=[%1],%2" : "=r" (result)
-				    : "r" (pValue), "r" (newValue) : "memory");
-	return (uint32)result;
-}
-#define InterlockedExchange AtomicExchange	/* depricated */
-
-static inline boolean AtomicCompareStore(IN volatile ATOMIC_UINT *pValue,
-						uint32 oldValue, uint32 newValue)
-{
-    uint64 o = oldValue;
-	uint64 r;
-    __asm__ __volatile__ ("mov ar.ccv=%0;;" :: "rO"(o));
-    __asm__ __volatile__ ("cmpxchg4.acq %0=[%1],%2,ar.ccv"
-                      : "=r"(r) : "r"(pValue), "r"(newValue) : "memory");
-	return r == oldValue;
+	return __sync_lock_test_and_set(pValue,newValue);
 }
 
-static inline uint32 AtomicAdd (IN ATOMIC_UINT *pValue, uint32 add) 
+static inline boolean AtomicCompareStore(volatile ATOMIC_UINT *pValue,
+										 ATOMIC_UINT oldValue,
+										 ATOMIC_UINT newValue)
 {
-    uint32 oldValue, newValue;
-
-    do {
-        oldValue = *pValue;
-        newValue = oldValue + add;
-    } while (! AtomicCompareStore(pValue, oldValue, newValue));
-    return newValue;
+	return __sync_bool_compare_and_swap(pValue, oldValue, newValue);
 }
 
-static inline void AtomicAddVoid (IN ATOMIC_UINT *pValue, uint32 add) 
+static inline ATOMIC_UINT AtomicAdd(ATOMIC_UINT *pValue,
+									ATOMIC_UINT add) 
+{
+	return __sync_add_and_fetch(pValue, add);
+}
+
+static inline void AtomicAddVoid(ATOMIC_UINT *pValue, ATOMIC_UINT add) 
 {
 	(void)AtomicAdd(pValue, add);
 }
 
-static inline uint32 AtomicSubtract (IN ATOMIC_UINT *pValue, uint32 sub) 
+static inline ATOMIC_UINT AtomicSubtract(ATOMIC_UINT *pValue,
+										 ATOMIC_UINT sub) 
 {
-    uint32 oldValue, newValue;
-
-    do {
-        oldValue = *pValue;
-        newValue = oldValue - sub;
-    } while (! AtomicCompareStore(pValue, oldValue, newValue));
-    return newValue;
+    return __sync_sub_and_fetch(pValue, sub);
 }
 
-static inline void AtomicSubtractVoid (IN ATOMIC_UINT *pValue, uint32 sub) 
+static inline void AtomicSubtractVoid(ATOMIC_UINT *pValue, uint32 sub) 
 {
 	(void)AtomicSubtract(pValue, sub);
 }
 
-static inline uint32 AtomicIncrement (IN ATOMIC_UINT *pValue) 
+static inline ATOMIC_UINT AtomicIncrement(ATOMIC_UINT *pValue) 
 {
 	return AtomicAdd(pValue, 1);
 }
 
-static inline void AtomicIncrementVoid (IN ATOMIC_UINT *pValue) 
+static inline void AtomicIncrementVoid(ATOMIC_UINT *pValue) 
 {
 	AtomicAddVoid(pValue, 1);
 }
 
-static inline uint32 AtomicDecrement (IN ATOMIC_UINT *pValue)
+static inline ATOMIC_UINT AtomicDecrement(ATOMIC_UINT *pValue)
 {
 	return AtomicSubtract(pValue, 1);
 }
 
-static inline void AtomicDecrementVoid (IN ATOMIC_UINT *pValue) 
+static inline void AtomicDecrementVoid(ATOMIC_UINT *pValue) 
 {
 	AtomicSubtractVoid(pValue, 1);
 }
-
-#elif defined(__IA32__) || defined(__X86_64__) || defined(__i386) || defined(__x86_64)
-typedef uint32 ATOMIC_UINT;
-
-static inline uint32 AtomicRead (IN const volatile ATOMIC_UINT *pValue) 
-{
-	/* these processors natively do 32 bits read atomically */
-	return *pValue;
-}
-
-static inline void AtomicWrite (IN volatile ATOMIC_UINT *pValue, IN uint32 newValue)
-{
-	/* these processors natively do 32 bits writes atomically */
-	*pValue = newValue;
-}
-
-static inline uint32 AtomicExchange(IN volatile ATOMIC_UINT *pValue, uint32 newValue)
-{
-	__asm__ __volatile__("xchgl %0,%1"
-				:"=r" (newValue)
-				:"m" (*pValue), "0" (newValue)
-				:"memory");
-	return newValue;
-}
-
-static inline uint32 AtomicCompareStore(IN volatile ATOMIC_UINT *pValue,
-					uint32 oldValue, uint32 newValue)
-{
-		uint32 prev;
-
-		__asm__ __volatile__("lock; cmpxchgl %1,%2"
-				     : "=a"(prev)
-				     : "q"(newValue), "m"(*pValue), "0"(oldValue)
-				     : "memory");
-		return prev == oldValue;
-}
-
-static inline uint32 AtomicAdd (IN ATOMIC_UINT *pValue, uint32 add) 
-{
-	uint32 oldValue, newValue;
-
-	do {
-		oldValue = AtomicRead(pValue);
-		newValue = oldValue + add;
-	} while (! AtomicCompareStore(pValue, oldValue, newValue));
-	/* return post increment value */
-	return newValue;
-}
-
-static inline void AtomicAddVoid (IN ATOMIC_UINT *pValue, uint32 add) 
-{
-	(void)AtomicAdd(pValue, add);
-}
-
-static inline uint32 AtomicSubtract (IN ATOMIC_UINT *pValue, uint32 sub) 
-{
-	uint32 oldValue, newValue;
-
-	do {
-		oldValue = AtomicRead(pValue);
-		newValue = oldValue - sub;
-	} while (! AtomicCompareStore(pValue, oldValue, newValue));
-	/* return post increment value */
-	return newValue;
-}
-
-static inline void AtomicSubtractVoid (IN ATOMIC_UINT *pValue, uint32 sub) 
-{
-	(void)AtomicSubtract(pValue, sub);
-}
-
-static inline uint32 AtomicIncrement (IN ATOMIC_UINT *pValue) 
-{
-	return AtomicAdd(pValue, 1);
-}
-
-static inline void AtomicIncrementVoid (IN volatile ATOMIC_UINT *pValue) 
-{
-	__asm__ __volatile__(
-		"lock ;incl %0"
-		: "=m" (*pValue)
-		: "m" (*pValue));
-}
-
-static inline uint32 AtomicDecrement (IN ATOMIC_UINT *pValue) 
-{
-	return AtomicSubtract(pValue, 1);
-}
-
-static inline void AtomicDecrementVoid (IN volatile ATOMIC_UINT *pValue)
-{
-    __asm__ __volatile__(
-        "lock ; decl %0"
-        :"=m" (*pValue)
-        :"m" (*pValue));	
-}
-
-#elif defined(__ppc__) || defined(__PPC__)
-typedef uint32 ATOMIC_UINT;
-
-static inline uint32 AtomicRead (IN const volatile ATOMIC_UINT *pValue) 
-{
-	return *pValue;	/* this is atomic on PPC */
-}
-
-static inline void AtomicWrite (IN volatile ATOMIC_UINT *pValue,
-								IN uint32 newValue)
-{
-	*pValue = newValue;	/* this is atomic on PPC */
-}
-
-static inline uint32 AtomicAdd (IN volatile ATOMIC_UINT *pValue, uint32 add) 
-{
-	uint32 t;
-
-	__asm__ __volatile__(
-"1:	lwarx	%0,0,%2\n\
-	add	%0,%1,%0\n\
-	stwcx.	%0,0,%2\n\
-	bne-	1b\n\
-	isync"
-	: "=&r" (t)
-	: "r" (add), "r" (pValue)
-	: "cc", "memory");
-
-	return t;
-}
-
-static inline void AtomicAddVoid (IN ATOMIC_UINT *pValue, uint32 add) 
-{
-	(void)AtomicAdd(pValue, add);
-}
-
-static inline uint32 AtomicSubtract (IN volatile ATOMIC_UINT *pValue,
-									uint32 sub)
-{
-	int t;
-
-	__asm__ __volatile__(
-"1:	lwarx	%0,0,%2\n\
-	subf	%0,%1,%0\n\
-	stwcx.	%0,0,%2\n\
-	bne-	1b\n\
-	isync"
-	: "=&r" (t)
-	: "r" (sub), "r" (pValue)
-	: "cc", "memory");
-
-	return (uint32)t;
-}
-
-static inline void AtomicSubtractVoid (IN ATOMIC_UINT *pValue, uint32 sub)
-{
-	(void)AtomicSubtract(pValue, sub);
-}
-
-static inline uint32 AtomicIncrement (IN ATOMIC_UINT *pValue) 
-{
-	return AtomicAdd(pValue, 1);
-}
-
-static inline void AtomicIncrementVoid (IN ATOMIC_UINT *pValue) 
-{
-	(void)AtomicAdd(pValue, 1);
-}
-static inline uint32 AtomicDecrement (IN ATOMIC_UINT *pValue)
-{
-	return AtomicSubtract(pValue, 1);
-}
-
-static inline void AtomicDecrementVoid (IN ATOMIC_UINT *pValue)
-{
-	(void)AtomicSubtract(pValue, 1);
-}
-
-static inline uint32 AtomicExchange(IN volatile ATOMIC_UINT *pValue,
-									uint32 newValue)
-{
-	unsigned long oldValue;
-
-	__asm__ __volatile__ ("\n\
-1:	lwarx	%0,0,%2 \n\
-	stwcx.	%3,0,%2 \n\
-	bne-	1b"
-	: "=&r" (oldValue), "=m" (*(volatile uint32 *)pValue)
-	: "r" (pValue), "r" (newValue), "m" (*(volatile uint32 *)pValue)
-	: "cc", "memory");
-
-	return (uint32)oldValue;
-}
-#define InterlockedExchange AtomicExchange	/* depricated */
-
-static inline boolean AtomicCompareStore(IN volatile ATOMIC_UINT *pValue,
-						 uint32 oldValue, uint32 newValue)
-{
-	uint32 prev;
-
-	__asm__ __volatile__ ("\n\
-1:	lwarx	%0,0,%2 \n\
-	cmpw	0,%0,%3 \n\
-	bne	2f \n\
-	stwcx.	%4,0,%2 \n\
-	bne-	1b\n\
-	sync\n\
-2:"
-	: "=&r" (prev), "=m" (*pValue)
-	: "r" (pValue), "r" (oldValue), "r" (newValue), "m" (*pValue)
-	: "cc", "memory");
-
-	return prev == oldValue;
-}
-
-#else
-#error "Unsupported processor type"
-#endif
 
 /* for user mode barriers we always use the SMP safe versions */
 #if defined(__i386__) || defined(__i686__) || defined(__IA32__)

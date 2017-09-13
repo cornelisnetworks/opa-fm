@@ -61,11 +61,8 @@ sub installed_oftools
 # only called if installed_oftools is true
 sub installed_version_oftools
 {
-	if ( -e "$ROOT$BASE_DIR/version_ff" ) {
-		return `cat $ROOT$BASE_DIR/version_ff`;
-	} else {
-		return "";
-	}
+	my $version = rpm_query_version_release_pkg("opa-basic-tools");
+	return dot_version("$version");
 }
 
 # only called if available_oftools is true
@@ -116,10 +113,6 @@ sub install_oftools
 	# Check $BASE_DIR directory ...exist 
 	check_config_dirs();
 
-	if ( -e "$srcdir/comp.pl" ) {
-		check_dir("/usr/lib/opa");
-		copy_systool_file("$srcdir/comp.pl", "/usr/lib/opa/.comp_oftools.pl");
-	}
 	check_dir("/usr/lib/opa/tools");
 	check_dir("/usr/share/opa/samples");
 
@@ -129,9 +122,6 @@ sub install_oftools
 	$rpmfile = rpm_resolve("$srcdir/RPMS/*/", "any", "opa-address-resolution");
 	rpm_run_install($rpmfile, "any", " -U ");
 	check_rpm_config_file("/etc/rdma/dsap.conf");
-
-	# we copy version file here for both fastfabric and oftools
-	copy_data_file("$srcdir/version", "$BASE_DIR/version_ff");
 
 	## Install OPA_SA_DB library, headers.
 	check_dir("/usr/include/infiniband");

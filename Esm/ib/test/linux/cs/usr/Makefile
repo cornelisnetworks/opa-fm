@@ -125,7 +125,7 @@ INCLUDE_SUBDIR		=
 #LOCAL_LIB_DIRS	= User library directories for libpaths [Empty]
 
 CLOCAL	= 
-LOCALDEPLIBS = cs ibaccess mai public vslogu cstest oib_utils
+LOCALDEPLIBS = cs ibaccess mai public vslogu cstest opamgt-priv
 LOCALLIBS = pthread $(OPENIB_USER_LIBS) rt
 
 # Include Make Rules definitions and rules

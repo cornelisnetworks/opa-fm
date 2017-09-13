@@ -143,24 +143,6 @@ void PrintTraceRecord(PrintDest_t *dest, int indent, const IB_TRACE_RECORD *pTra
            indent, "", pTraceRecord->EntryPort, pTraceRecord->ExitPort);
 }
 
-void PrintSLVLMapRecord(PrintDest_t *dest, int indent, const IB_SLVLMAP_RECORD *pSLVLMapRecord)
-{
-	PrintFunc(dest, "%*sLID: 0x%04x InputPort: %3u OutputPort: %3u\n",
-				indent, "",
-				pSLVLMapRecord->RID.s.LID, pSLVLMapRecord->RID.s.InputPortNum,
-				pSLVLMapRecord->RID.s.OutputPortNum);
-	PrintSLVLMap(dest, indent, &pSLVLMapRecord->SLVLMapData);
-}
-
-void PrintSLVLMapRecord2(PrintDest_t *dest, int indent, const IB_SLVLMAP_RECORD *pSLVLMapRecord)
-{
-	PrintFunc(dest, "%*sLID: 0x%04x InputPort: %3u OutputPort: %3u\n",
-				indent, "",
-				pSLVLMapRecord->RID.s.LID, pSLVLMapRecord->RID.s.InputPortNum,
-				pSLVLMapRecord->RID.s.OutputPortNum);
-	PrintSLVLMap2(dest, indent, NULL, &pSLVLMapRecord->SLVLMapData, TRUE);
-}
-
 void PrintSwitchInfoRecord(PrintDest_t *dest, int indent, const IB_SWITCHINFO_RECORD *pSwitchInfoRecord)
 {
 	PrintSwitchInfo(dest, indent, &pSwitchInfoRecord->SwitchInfoData,
@@ -380,7 +362,6 @@ void PrintVfInfo(PrintDest_t *dest, int indent, const VEND_VFINFO_RECORD *pVfInf
 
 	// FormatTimeoutMult(buf, pVfInfo->s1.pktLifeTimeInc);
 	snprintf(buf, sizeof(buf), "%d", 1<<pVfInfo->s1.pktLifeTimeInc);
-	buf[sizeof(buf)-1]=0;
 	if ((pVfInfo->routingSLs > 1) && 
 		(pVfInfo->routingSLs+pVfInfo->s1.sl <=16)) {
 		sprintf(buf2, "%d-%d", pVfInfo->s1.sl, pVfInfo->s1.sl+pVfInfo->routingSLs-1);

@@ -227,7 +227,7 @@ void PrintMad(PrintDest_t *dest, int indent, const MAD *pMad)
 // TBD void PrintNotice(PrintDest_t *dest, int indent, const NOTICE *pNotice)
 // TBD also trap 64-67 details
 //
-// TBD fix oib_utils to dump mads using IbPrint
+// TBD fix opamgt to dump mads using IbPrint
 // add a raw hex dump to IbPrint
 // add a MAD dump to IbPrint, decode mad header and output in correct format
 // for all but SA and PA RMPP mads.

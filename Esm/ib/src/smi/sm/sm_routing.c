@@ -268,6 +268,7 @@ sm_routing_route_old_switch(Topology_t *src_topop, Topology_t *dst_topop, Node_t
 {
 	Status_t status;
 	Node_t   *oldNodep;
+	Port_t   *oldPortp, *portp;
 	size_t   lftLength;
 
 	if (nodep->switchInfo.LinearFDBCap == 0) {
@@ -325,6 +326,17 @@ sm_routing_route_old_switch(Topology_t *src_topop, Topology_t *dst_topop, Node_t
 				status = sm_send_lft(dst_topop, nodep);
 			}
 			return status;
+		}
+	}
+
+	// Recover lidsRouted
+	nodep->numLidsRouted = oldNodep->numLidsRouted;
+	for_all_ports(nodep, portp) {
+		if (sm_valid_port(portp)) {
+			oldPortp = sm_get_port(oldNodep, portp->index);
+			if (sm_valid_port(oldPortp)) {
+				portp->portData->lidsRouted = oldPortp->portData->lidsRouted;
+			}
 		}
 	}
 
@@ -572,6 +584,7 @@ sm_calculate_all_lfts(Topology_t * topop)
 			}
 	    }
 	}
+
 	return VSTATUS_OK;
 }
 

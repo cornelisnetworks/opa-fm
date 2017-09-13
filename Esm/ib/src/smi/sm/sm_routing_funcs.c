@@ -31,6 +31,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "ib_types.h"
 #include "sm_l.h"
+#include "sm_qos.h"
 #include "sa_l.h"
 #include "sm_dbsync.h"
 #include "fm_xml.h"
@@ -350,7 +351,6 @@ _handle_unassigned_sl(VF_t *vfp, uint8_t *sl, bitset_t *usedSLs, int *noqos, boo
 // The following functions are defined in sm_qos.c. They are
 // particular to default implementation and so not exposed
 // in sm_l.h
-extern Qos_t* GetQos(uint8_t vl);
 extern Status_t sm_update_bw(RoutingModule_t *rm, VirtualFabrics_t *VirtualFabrics);
 extern Status_t sm_assign_scs_to_sls_FixedMap(RoutingModule_t *rm, VirtualFabrics_t *VirtualFabrics);
 
@@ -476,7 +476,7 @@ sm_routing_func_init_cost_matrix_floyds(Topology_t *topop)
 
 				ik = Index(i, k);
 				ki = Index(k, i);
-				topop->cost[ik] = topop->cost[ki] = sm_GetCost(portp->portData);
+				topop->cost[ik] = topop->cost[ki] = MIN(topop->cost[ik], sm_GetCost(portp->portData));
 
 				sm_path_portmask_set(topop->path + ik, portp->index);
 				sm_path_portmask_set(topop->path + ki, portp->portno);
@@ -867,6 +867,23 @@ sm_routing_func_copy_routing_lfts(Topology_t *src_topop, Topology_t *dst_topop)
 		}
 
 		memcpy((void *)nodep->lft, (void *)oldNodep->lft, lftLength);
+
+		// Recover lidsRouted
+		if (nodep->oldExists) {
+			Node_t *oldnodep = nodep->old;
+			if (oldnodep) {
+				Port_t *portp, *oldportp;
+				nodep->numLidsRouted = oldnodep->numLidsRouted;
+				for_all_ports(nodep, portp) {
+					if (sm_valid_port(portp)) {
+						oldportp = sm_get_port(oldnodep, portp->index);
+						if (sm_valid_port(oldportp)) {
+							portp->portData->lidsRouted = oldportp->portData->lidsRouted;
+						}
+					}
+				}
+			}
+		}
 
 		if (nodep->arSupport) {
 			if (nodep->pgt && oldNodep->pgt) {
@@ -1346,7 +1363,7 @@ sm_routing_func_select_scsc_map(Topology_t *topop, Node_t *switchp, int getSecon
 
 	*numBlocks = 0;
 
-	if ((topology_passcount && !topology_switch_port_changes) || getSecondary) 
+	if ((topology_passcount && !topology_switch_port_changes && !sm_config.forceAttributeRewrite) || getSecondary)
 		return VSTATUS_OK;
 
 	if (vs_pool_alloc(&sm_pool, sizeof(STL_SCSC_MULTISET), (void *) &scsc) != VSTATUS_OK) {
@@ -1404,7 +1421,7 @@ Status_t
 sm_routing_func_select_scvl_map_fixedmap(Topology_t *topop, Node_t *nodep,
     Port_t *in_portp, Port_t *out_portp, STL_SCVLMAP *outScvlMap)
 {
-    Qos_t *qos = GetQos(out_portp->portData->vl1);
+    Qos_t *qos = sm_get_qos(out_portp->portData->vl1);
 
     memcpy(outScvlMap, &qos->scvl, sizeof(STL_SCVLMAP));
     return VSTATUS_OK;
@@ -1419,7 +1436,7 @@ sm_routing_func_select_vlvf_map(Topology_t *topop, Node_t *nodep, Port_t *portp,
 Status_t
 sm_routing_func_select_vlbw_map(Topology_t *topop, Node_t *nodep, Port_t *portp, VlBwMap_t * vlbwmap)
 {
-    Qos_t *qos = GetQos(portp->portData->vl1);
+    Qos_t *qos = sm_get_qos(portp->portData->vl1);
 
     memcpy(vlbwmap, &qos->vlBandwidth, sizeof(VlBwMap_t));
     return VSTATUS_OK;

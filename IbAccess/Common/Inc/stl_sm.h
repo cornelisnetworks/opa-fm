@@ -868,7 +868,7 @@ typedef struct {
 
 	STL_PORT_STATES  PortStates;		/* Port states */
 
-	STL_FIELDUNION2(PortPhyConfig,8,
+	STL_FIELDUNION2(PortPhysConfig,8,
 			Reserved:4,				/* Reserved */
 			PortType:4);            /* RO/HS-- PORT_TYPE */
 
@@ -1861,6 +1861,10 @@ typedef struct {
 		
 } PACK_SUFFIX STL_BUFFER_CONTROL_TABLE;
 
+// NOTE: STL_BUFFER_CONTROL_TABLE is NOT 8 byte aligned. When doing multiblock queries, each block
+// *MUST* be rounded to the nearest 8 byte boundary, or PRR will reject any SMA request for more than
+// one block. In the future we may just want to pad out the structure, for now the following macros should
+// be used when working with BCT blocks inside of SMAs.
 #define STL_BFRCTRLTAB_PAD_SIZE ((sizeof(STL_BUFFER_CONTROL_TABLE)+7)&~0x7)
 #define STL_NUM_BFRCTLTAB_BLOCKS_PER_DRSMP ((uint8_t)(STL_MAX_PAYLOAD_SMP_DR / STL_BFRCTRLTAB_PAD_SIZE))
 #define STL_NUM_BFRCTLTAB_BLOCKS_PER_LID_SMP ((uint8_t)(STL_MAX_PAYLOAD_SMP_LR / STL_BFRCTRLTAB_PAD_SIZE))
@@ -2307,7 +2311,7 @@ typedef struct {
 // USER ADVICE: Be careful with casting and using the macros below:
 // There exist two versions of stl_get_smp_data:
 //  1: Uses Mai_t* input parmaeter to be used with MAI API (a macro)
-//  2: Uses STL_SMP* input parameter to be used with oib utils API (Tools)
+//  2: Uses STL_SMP* input parameter to be used with opamgt API (Tools)
 #define STL_GET_SMP_DATA(MAIP)  ((maip->base.mclass == MAD_CV_SUBN_DR) ?  \
        ((DRStlSmp_t *)(maip->data))->SMPData : ((LRStlSmp_t *)(maip->data))->SMPData)
 
@@ -2593,7 +2597,7 @@ ZERO_RSVD_STL_PORT_INFO(STL_PORT_INFO * Dest)
 {
 	Dest->VL.s2.Reserved = 0;
 	Dest->PortStates.s.Reserved = 0;
-	Dest->PortPhyConfig.s.Reserved = 0;
+	Dest->PortPhysConfig.s.Reserved = 0;
 	Dest->MultiCollectMask.Reserved = 0;
 	Dest->s1.Reserved = 0;
 	Dest->s3.Reserved20 = 0;

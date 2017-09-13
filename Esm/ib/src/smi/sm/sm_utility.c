@@ -220,8 +220,17 @@ char * smGetNodeString(uint8_t *path, uint16_t lid, Node_t *node, Port_t *port,
 				buffLen -= strlen(buffptr);
 				buffptr += strlen(buffptr);
 			}
-			if (!node && sm_topop)
-				node = sm_find_node_by_path(sm_topop, path);
+			if (!node && sm_topop) {
+				if (lid == 0 || lid == PERMISSIVE_LID) {
+					// pure DR: resolve path normally
+					node = sm_find_node_by_path(sm_topop, NULL, path);
+				} else {
+					// mixed LR-DR: find node at beginning of DR path via LID
+					sm_find_node_and_port_lid(sm_topop, lid, &node);
+					if (node)
+						node = sm_find_node_by_path(sm_topop, node, path);
+				}
+			}
 		}
 		snprintf(buffptr, buffLen, "]");
 		buffLen -= strlen(buffptr);
@@ -2878,7 +2887,7 @@ sm_setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t * cnp, Port_t * c
 			// get the node description from this attacker node, for it too may
 			// have been spoofed
 			if (SM_Get_NodeDesc(fd_topology, 0, path, &nodeDesc) != VSTATUS_OK)
-				strcpy((char *) nodeDesc.NodeString, "Not Available");
+				cs_strlcpy((char *) nodeDesc.NodeString, "Not Available", STL_NODE_DESCRIPTION_ARRAY_SIZE);
 
 			// create new node as a placeholder for the attacker node
 			Node_Create(topop, attackerNodep, nodeInfo, nodeInfo.NodeType,
@@ -3440,8 +3449,10 @@ sm_setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t * cnp, Port_t * c
 
 
 		if (portInfo.PortStates.s.PortState == IB_PORT_INIT) {
-			if (mark_new_endnode(nodep) != VSTATUS_OK)
-				topology_changed = 1;
+			if (nodep->nodeInfo.NodeType != NI_TYPE_SWITCH) {
+				if (mark_new_endnode(nodep) != VSTATUS_OK)
+					topology_changed = 1;
+			}
 				
 			// Update this port's list of LinkDownReasons if there is a new one
 			if(portInfo.LinkDownReason != STL_LINKDOWN_REASON_NONE ||
@@ -3584,8 +3595,6 @@ sm_setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t * cnp, Port_t * c
 		start_port = 1;
 	}
 
-	status = sm_get_buffer_control_tables(fd_topology, nodep, start_port, end_port);
-
 	if (new_node == 1) {
 		// initialize DGs for the node
 		smSetupNodeDGs(nodep);
@@ -3721,10 +3730,9 @@ sm_find_node(Topology_t * topop, int32_t nodeno)
 
 
 Node_t *
-sm_find_node_by_path(Topology_t * topop, uint8_t * path)
+sm_find_node_by_path(Topology_t * topop, Node_t * head, uint8_t * path)
 {
 	uint8_t pathIndex;
-	int32_t nextNodeNumber;
         Node_t *node_ptr;
         
 	IB_ENTER(__func__, topop, path, 0, 0);
@@ -3738,24 +3746,19 @@ sm_find_node_by_path(Topology_t * topop, uint8_t * path)
 		return NULL;
 	}
        
-	node_ptr = topop->node_head;
+	node_ptr = head ? head : topop->node_head;
 	if (!node_ptr) {
 		IB_EXIT(__func__, NULL);
 		return NULL;
 	}
 	for (pathIndex=1; pathIndex<=path[0]; pathIndex++) {
-		nextNodeNumber = node_ptr->port[ path[pathIndex] ].nodeno;
-		if (nextNodeNumber < 0 || nextNodeNumber >= topop->num_nodes) {
+		Port_t * portp = sm_get_port(node_ptr, path[pathIndex]);
+		if (!portp) {
 			IB_EXIT(__func__, NULL);
 			return NULL;
 		}
-		if (!topop->nodeArray) {
-			IB_EXIT(__func__, NULL);
-			return NULL;
-		}
-		if (topop->nodeArray[nextNodeNumber]) {
-			node_ptr = topop->nodeArray[nextNodeNumber];
-		} else {
+		node_ptr = sm_find_node(topop, portp->nodeno);
+		if (!node_ptr) {
 			IB_EXIT(__func__, NULL);
 			return NULL;
 		}
@@ -4626,19 +4629,23 @@ sm_initialize_port(Topology_t * topop, Node_t * nodep, Port_t * portp, int use_l
 				new_portp->portData->portInfo.FlitControl.Interleave.s.MaxNestLevelRxSupported);
 
 		if (portInfo.FlitControl.Interleave.s.MaxNestLevelTxEnabled != 0) {
-			portInfo.FlitControl.Preemption.MinInitial = SM_PREEMPT_HEAD_DEF / SM_PREEMPT_HEAD_INC;
-			portInfo.FlitControl.Preemption.MinTail = SM_PREEMPT_TAIL_DEF / SM_PREEMPT_TAIL_INC;
-			portInfo.FlitControl.Preemption.LargePktLimit =
-			    sm_evalPreemptLargePkt(sm_config.preemption.large_packet, nodep);
-			portInfo.FlitControl.Preemption.SmallPktLimit =
-			    sm_evalPreemptSmallPkt(sm_config.preemption.small_packet, nodep);
-			portInfo.FlitControl.Preemption.PreemptionLimit =
-			    sm_evalPreemptLimit(sm_config.preemption.preempt_limit, nodep);
+			if (portp->state < IB_PORT_ARMED) {
+				// Only set Preemption settings if port is not up.
+				// The hardware is allowed to return different values than we set.
+				// We don't want to get stuck every sweep trying to set a value the
+				// hardware will never allow.
+				// Don't have to set needSet. Port is not up. Of course it needs set.
+				portInfo.FlitControl.Preemption.MinInitial = SM_PREEMPT_HEAD_DEF / SM_PREEMPT_HEAD_INC;
+				portInfo.FlitControl.Preemption.MinTail = SM_PREEMPT_TAIL_DEF / SM_PREEMPT_TAIL_INC;
 
-			if (!sm_eq_Preempt(&portInfo.FlitControl.Preemption, 
-					&portp->portData->portInfo.FlitControl.Preemption, 1)) {
-				needSet = 1;
-			}
+				portInfo.FlitControl.Preemption.LargePktLimit =
+			    	sm_evalPreemptLargePkt(sm_config.preemption.large_packet, nodep);
+				portInfo.FlitControl.Preemption.SmallPktLimit =
+			    	MIN(sm_evalPreemptSmallPkt(sm_config.preemption.small_packet, nodep),
+			    	    portInfo.FlitControl.Preemption.MaxSmallPktLimit);
+				portInfo.FlitControl.Preemption.PreemptionLimit =
+			    	sm_evalPreemptLimit(sm_config.preemption.preempt_limit, nodep);
+ 			}
 		}
 
 		if (portp->portData->portInfo.FlitControl.Interleave.s.MaxNestLevelTxEnabled !=
@@ -4901,7 +4908,6 @@ sm_initialize_port(Topology_t * topop, Node_t * nodep, Port_t * portp, int use_l
 
 	if (needSet == 1 || sm_config.forceAttributeRewrite) {
 		amod = portp->index;
-		struct Preemption_t preemptVals = portInfo.FlitControl.Preemption;
 		status = SM_Set_PortInfo(fd_topology, (1 << 24) | amod, path, &portInfo,
 								 (portp->portData->portInfo.M_Key ==
 								  0) ? sm_config.mkey : portp->portData->portInfo.M_Key,
@@ -4917,19 +4923,8 @@ sm_initialize_port(Topology_t * topop, Node_t * nodep, Port_t * portp, int use_l
 
 		portp->portData->dirty.portInfo=0;
 
-		// Don't check preempt values if preempt is disabled.
-		if (portInfo.FlitControl.Interleave.s.MaxNestLevelTxEnabled != 0) {
-			if (!sm_eq_Preempt
-				(&preemptVals, &portInfo.FlitControl.Preemption, sm_uses_PreemptRemap(portp))) {
-					IB_LOG_ERROR_FMT(__func__,
-						"FlitControl.Preemption requested/response value mismatch for "
-						"node %s nodeGuid " FMT_U64
-						" port %d.  Failed to set portinfo for node",
-						sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index);
-				IB_EXIT(__func__, VSTATUS_BAD);
-				return VSTATUS_BAD;
-			}
-		}
+		/* Don't check preempt values, hardware can round off. */
+
 		/* 
 		 *  update the STL_PORT_INFO for SA queries. Set returns back actual settings (Get)
 		 */
@@ -5056,7 +5051,7 @@ sm_prep_switch_layer_LR_DR(Topology_t * topop, Node_t * nodep, SwitchList_t * sw
 	parent_lid = swportp->portData->lid;
 
 	for_switch_list_switches(swlist_head, sw) {
-		if ((!bitset_test(&old_switchesInUse, sw->switchp->swIdx) || sm_config.force_rebalance || rebalance) ||
+		if ((!bitset_test(&old_switchesInUse, sw->switchp->swIdx) || rebalance) ||
 			(sw->switchp->old &&
 			 (sw->switchp->initPorts.nset_m ||
 			  !bitset_equal(&sw->switchp->activePorts, &sw->switchp->old->activePorts)) &&
@@ -6651,7 +6646,10 @@ Status_t sm_Node_init_lft(Node_t * switchp, size_t * outSize)
 {
 	if (switchp->nodeInfo.NodeType != NI_TYPE_SWITCH ||
 		switchp->switchInfo.LinearFDBCap == 0) {
-		return VSTATUS_OK;
+		// If we are in sm_Node_init_lft, and the node
+		// is not a switch, or if it is a switch with
+		// no LFT, then the node is bad.
+		return VSTATUS_BAD;
 	}
 
 	if (switchp->lft) {
@@ -7012,8 +7010,8 @@ sm_setup_lft_deltas(Topology_t * oldtp, Topology_t * newtp, Node_t * cnp)
 {
 
 	uint16_t currentLid, curBlock;
-	Node_t *nodep, *oldnodep;
-	Port_t *portp, *oldportp, *portInUse;
+	Node_t *nodep;
+	Port_t *portp, *portInUse;
 	Status_t status;
 	uint8_t xftPorts[128];
 	bitset_t lidBlocks;
@@ -7025,20 +7023,6 @@ sm_setup_lft_deltas(Topology_t * oldtp, Topology_t * newtp, Node_t * cnp)
 	if (!optSend) {
 		IB_LOG_INFINI_INFO("Can't allocate space for lidblock map, size= ",
 						   newtp->maxLid / LFTABLE_LIST_COUNT + 1);
-	}
-
-	if (cnp->oldExists) {
-		oldnodep = cnp->old;
-		if (oldnodep) {
-			for_all_ports(cnp, portp) {
-				if (sm_valid_port(portp) && (portp->state > IB_PORT_DOWN)) {
-					oldportp = sm_get_port(oldnodep, portp->index);
-					if (oldportp && sm_valid_port(oldportp)) {
-						portp->portData->lidsRouted = oldportp->portData->lidsRouted;
-					}
-				}
-			}
-		}
 	}
 
 	curBlock = 0xffff;
@@ -8595,10 +8579,10 @@ sm_getLogConfigSettings(uint32_t * logLevel, uint32_t * logMode,
 		memcpy(log_masks, sm_log_masks, sizeof(sm_log_masks));
 
 	if (logFile)
-		strcpy(logFile, sm_config.log_file);
+		cs_strlcpy(logFile, sm_config.log_file, LOGFILE_SIZE);
 
 	if (syslogFacility)
-		strcpy(syslogFacility, sm_config.syslog_facility);
+		cs_strlcpy(syslogFacility, sm_config.syslog_facility, STRING_SIZE);
 }
 #endif
 
@@ -8744,7 +8728,7 @@ boolean
 sm_Port_t_IsCableInfoSupported(Port_t * port)
 {
 	return sm_valid_port(port) && port->index > 0 &&
-		port->portData->portInfo.PortPhyConfig.s.PortType == STL_PORT_TYPE_STANDARD &&
+		port->portData->portInfo.PortPhysConfig.s.PortType == STL_PORT_TYPE_STANDARD &&
 		port->portData->cableInfo != (CableInfo_t *) & dummy_ciNotSupported;
 }
 
@@ -9707,4 +9691,3 @@ sm_mark_link_down(Topology_t *topop, Port_t *portp)
 		}
 	}
 }
-

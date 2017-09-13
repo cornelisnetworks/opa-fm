@@ -529,12 +529,12 @@ pa_getPmConfigResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		response.integrityWeights.LinkQualityIndicator     = g_pmSweepData.integrityWeights.LinkQualityIndicator;
 		response.integrityWeights.LinkWidthDowngrade       = g_pmSweepData.integrityWeights.LinkWidthDowngrade;
 
-		response.errorThresholds.integrityErrors		  	= g_pmSweepData.Thresholds.Integrity;
-		response.errorThresholds.congestionErrors		  	= g_pmSweepData.Thresholds.Congestion;
-		response.errorThresholds.smaCongestionErrors	  	= g_pmSweepData.Thresholds.SmaCongestion;
-		response.errorThresholds.bubbleErrors			  	= g_pmSweepData.Thresholds.Bubble;
-		response.errorThresholds.securityErrors			  	= g_pmSweepData.Thresholds.Security;
-		response.errorThresholds.routingErrors			  	= g_pmSweepData.Thresholds.Routing;
+		response.categoryThresholds.integrityErrors		  	= g_pmSweepData.Thresholds.Integrity;
+		response.categoryThresholds.congestion		  	= g_pmSweepData.Thresholds.Congestion;
+		response.categoryThresholds.smaCongestion	  	= g_pmSweepData.Thresholds.SmaCongestion;
+		response.categoryThresholds.bubble			  	= g_pmSweepData.Thresholds.Bubble;
+		response.categoryThresholds.securityErrors			  	= g_pmSweepData.Thresholds.Security;
+		response.categoryThresholds.routingErrors			  	= g_pmSweepData.Thresholds.Routing;
 
 		IB_LOG_DEBUG2_FMT(__func__, "Sweep interval:     %u", response.sweepInterval);
 		IB_LOG_DEBUG2_FMT(__func__, "Max Clients:        %u", response.maxClients);
@@ -567,12 +567,12 @@ pa_getPmConfigResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		IB_LOG_DEBUG2_FMT(__func__, "   LinkQualityIndicator      %u", response.integrityWeights.LinkQualityIndicator);
 		IB_LOG_DEBUG2_FMT(__func__, "   LinkWidthDowngrade        %u", response.integrityWeights.LinkWidthDowngrade);
 		IB_LOG_DEBUG2_FMT(__func__, "Category thresholds:");
-		IB_LOG_DEBUG2_FMT(__func__, "   Integrity:                %u", response.errorThresholds.integrityErrors);
-		IB_LOG_DEBUG2_FMT(__func__, "   Congestion:               %u", response.errorThresholds.congestionErrors);
-		IB_LOG_DEBUG2_FMT(__func__, "   SmaCongestion:            %u", response.errorThresholds.smaCongestionErrors);
-		IB_LOG_DEBUG2_FMT(__func__, "   Bubble:                   %u", response.errorThresholds.bubbleErrors);
-		IB_LOG_DEBUG2_FMT(__func__, "   Security:                 %u", response.errorThresholds.securityErrors);
-		IB_LOG_DEBUG2_FMT(__func__, "   Routing:                  %u", response.errorThresholds.routingErrors);
+		IB_LOG_DEBUG2_FMT(__func__, "   Integrity:                %u", response.categoryThresholds.integrityErrors);
+		IB_LOG_DEBUG2_FMT(__func__, "   Congestion:               %u", response.categoryThresholds.congestion);
+		IB_LOG_DEBUG2_FMT(__func__, "   SmaCongestion:            %u", response.categoryThresholds.smaCongestion);
+		IB_LOG_DEBUG2_FMT(__func__, "   Bubble:                   %u", response.categoryThresholds.bubble);
+		IB_LOG_DEBUG2_FMT(__func__, "   Security:                 %u", response.categoryThresholds.securityErrors);
+		IB_LOG_DEBUG2_FMT(__func__, "   Routing:                  %u", response.categoryThresholds.routingErrors);
 
 		BSWAP_STL_PA_PM_CFG(&response);
 		memcpy(data, &response, sizeof(response));
@@ -939,8 +939,8 @@ pa_getImageInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		response.numSwitchPorts          = imageInfo.numSwitchPorts;
 		response.numLinks                = imageInfo.numLinks;
 		response.numSMs                  = imageInfo.numSMs;
-		response.numFailedNodes          = imageInfo.numFailedNodes;
-		response.numFailedPorts          = imageInfo.numFailedPorts;
+		response.numNoRespNodes          = imageInfo.numNoRespNodes;
+		response.numNoRespPorts          = imageInfo.numNoRespPorts;
 		response.numSkippedNodes         = imageInfo.numSkippedNodes;
 		response.numSkippedPorts         = imageInfo.numSkippedPorts;
 		response.numUnexpectedClearPorts = imageInfo.numUnexpectedClearPorts;
@@ -974,10 +974,10 @@ pa_getImageInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		IB_LOG_DEBUG2_FMT(__func__, "  Switch Nodes  %u", response.numSwitchNodes);
 		IB_LOG_DEBUG2_FMT(__func__, "  Switch Ports  %u      SMs            %u",
 						response.numSwitchPorts, response.numSMs);
-		IB_LOG_DEBUG2_FMT(__func__, "  Links         %u      Failed Nodes   %u",
-						response.numLinks, response.numFailedNodes);
-		IB_LOG_DEBUG2_FMT(__func__, "  Failed Ports  %u      Skipped Nodes  %u",
-						response.numFailedPorts, response.numSkippedNodes);
+		IB_LOG_DEBUG2_FMT(__func__, "  Links         %u      NoResp Nodes   %u",
+						response.numLinks, response.numNoRespNodes);
+		IB_LOG_DEBUG2_FMT(__func__, "  NoResp Ports  %u      Skipped Nodes  %u",
+						response.numNoRespPorts, response.numSkippedNodes);
 		IB_LOG_DEBUG2_FMT(__func__, "  Skipped Ports %u", response.numSkippedPorts);
 		IB_LOG_DEBUG2_FMT(__func__, "  Unexpected Clear Ports %u", response.numUnexpectedClearPorts);
 		IB_LOG_DEBUG2_FMT(__func__, "  Image Interval %u sec", response.imageInterval);
@@ -1084,8 +1084,8 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		response[0].internalUtilStats.avgKPps					= groupInfo.IntUtil.AvgKPps;
 		response[0].internalUtilStats.minKPps					= groupInfo.IntUtil.MinKPps;
 		response[0].internalUtilStats.maxKPps					= groupInfo.IntUtil.MaxKPps;
-		response[0].internalUtilStats.pmaFailedPorts			= groupInfo.IntUtil.pmaFailedPorts;
-		response[0].internalUtilStats.topoFailedPorts			= groupInfo.IntUtil.topoFailedPorts;
+		response[0].internalUtilStats.pmaNoRespPorts			= groupInfo.IntUtil.pmaNoRespPorts;
+		response[0].internalUtilStats.topoIncompPorts			= groupInfo.IntUtil.topoIncompPorts;
 
 		response[0].sendUtilStats.totalMBps						= groupInfo.SendUtil.TotMBps;
 		response[0].sendUtilStats.totalKPps						= groupInfo.SendUtil.TotKPps;
@@ -1099,8 +1099,8 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		response[0].sendUtilStats.avgKPps						= groupInfo.SendUtil.AvgKPps;
 		response[0].sendUtilStats.minKPps						= groupInfo.SendUtil.MinKPps;
 		response[0].sendUtilStats.maxKPps						= groupInfo.SendUtil.MaxKPps;
-		response[0].sendUtilStats.pmaFailedPorts				= groupInfo.SendUtil.pmaFailedPorts;
-		response[0].sendUtilStats.topoFailedPorts				= groupInfo.SendUtil.topoFailedPorts;
+		response[0].sendUtilStats.pmaNoRespPorts				= groupInfo.SendUtil.pmaNoRespPorts;
+		response[0].sendUtilStats.topoIncompPorts				= groupInfo.SendUtil.topoIncompPorts;
 
 		response[0].recvUtilStats.totalMBps						= groupInfo.RecvUtil.TotMBps;
 		response[0].recvUtilStats.totalKPps						= groupInfo.RecvUtil.TotKPps;
@@ -1114,46 +1114,46 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		response[0].recvUtilStats.avgKPps						= groupInfo.RecvUtil.AvgKPps;
 		response[0].recvUtilStats.minKPps						= groupInfo.RecvUtil.MinKPps;
 		response[0].recvUtilStats.maxKPps						= groupInfo.RecvUtil.MaxKPps;
-		response[0].recvUtilStats.pmaFailedPorts				= groupInfo.RecvUtil.pmaFailedPorts;
-		response[0].recvUtilStats.topoFailedPorts				= groupInfo.RecvUtil.topoFailedPorts;
+		response[0].recvUtilStats.pmaNoRespPorts				= groupInfo.RecvUtil.pmaNoRespPorts;
+		response[0].recvUtilStats.topoIncompPorts				= groupInfo.RecvUtil.topoIncompPorts;
 
 		/* Internal Error */
-		response[0].internalErrors.errorMaximums.integrityErrors		= groupInfo.IntErr.Max.Integrity;
-		response[0].internalErrors.errorMaximums.congestionErrors		= groupInfo.IntErr.Max.Congestion;
-		response[0].internalErrors.errorMaximums.smaCongestionErrors 	= groupInfo.IntErr.Max.SmaCongestion;
-		response[0].internalErrors.errorMaximums.bubbleErrors			= groupInfo.IntErr.Max.Bubble;
-		response[0].internalErrors.errorMaximums.securityErrors			= groupInfo.IntErr.Max.Security;
-		response[0].internalErrors.errorMaximums.routingErrors			= groupInfo.IntErr.Max.Routing;
+		response[0].internalCategoryStats.categoryMaximums.integrityErrors		= groupInfo.IntErr.Max.Integrity;
+		response[0].internalCategoryStats.categoryMaximums.congestion		= groupInfo.IntErr.Max.Congestion;
+		response[0].internalCategoryStats.categoryMaximums.smaCongestion 	= groupInfo.IntErr.Max.SmaCongestion;
+		response[0].internalCategoryStats.categoryMaximums.bubble			= groupInfo.IntErr.Max.Bubble;
+		response[0].internalCategoryStats.categoryMaximums.securityErrors			= groupInfo.IntErr.Max.Security;
+		response[0].internalCategoryStats.categoryMaximums.routingErrors			= groupInfo.IntErr.Max.Routing;
 
-		response[0].internalErrors.errorMaximums.utilizationPct10 = groupInfo.IntErr.Max.UtilizationPct10;
-		response[0].internalErrors.errorMaximums.discardsPct10    = groupInfo.IntErr.Max.DiscardsPct10;
+		response[0].internalCategoryStats.categoryMaximums.utilizationPct10 = groupInfo.IntErr.Max.UtilizationPct10;
+		response[0].internalCategoryStats.categoryMaximums.discardsPct10    = groupInfo.IntErr.Max.DiscardsPct10;
 
-		for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
-			response[0].internalErrors.ports[i].integrityErrors		= groupInfo.IntErr.Ports[i].Integrity;
-			response[0].internalErrors.ports[i].congestionErrors	= groupInfo.IntErr.Ports[i].Congestion;
-			response[0].internalErrors.ports[i].smaCongestionErrors	= groupInfo.IntErr.Ports[i].SmaCongestion;
-			response[0].internalErrors.ports[i].bubbleErrors		= groupInfo.IntErr.Ports[i].Bubble;
-			response[0].internalErrors.ports[i].securityErrors		= groupInfo.IntErr.Ports[i].Security;
-			response[0].internalErrors.ports[i].routingErrors		= groupInfo.IntErr.Ports[i].Routing;
+		for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++) {
+			response[0].internalCategoryStats.ports[i].integrityErrors		= groupInfo.IntErr.Ports[i].Integrity;
+			response[0].internalCategoryStats.ports[i].congestion	= groupInfo.IntErr.Ports[i].Congestion;
+			response[0].internalCategoryStats.ports[i].smaCongestion	= groupInfo.IntErr.Ports[i].SmaCongestion;
+			response[0].internalCategoryStats.ports[i].bubble		= groupInfo.IntErr.Ports[i].Bubble;
+			response[0].internalCategoryStats.ports[i].securityErrors		= groupInfo.IntErr.Ports[i].Security;
+			response[0].internalCategoryStats.ports[i].routingErrors		= groupInfo.IntErr.Ports[i].Routing;
 		}
 		/* External Errors */
-		response[0].externalErrors.errorMaximums.integrityErrors     = groupInfo.ExtErr.Max.Integrity;
-		response[0].externalErrors.errorMaximums.congestionErrors    = groupInfo.ExtErr.Max.Congestion;
-		response[0].externalErrors.errorMaximums.smaCongestionErrors = groupInfo.ExtErr.Max.SmaCongestion;
-		response[0].externalErrors.errorMaximums.bubbleErrors        = groupInfo.ExtErr.Max.Bubble;
-		response[0].externalErrors.errorMaximums.securityErrors      = groupInfo.ExtErr.Max.Security;
-		response[0].externalErrors.errorMaximums.routingErrors       = groupInfo.ExtErr.Max.Routing;
+		response[0].externalCategoryStats.categoryMaximums.integrityErrors     = groupInfo.ExtErr.Max.Integrity;
+		response[0].externalCategoryStats.categoryMaximums.congestion    = groupInfo.ExtErr.Max.Congestion;
+		response[0].externalCategoryStats.categoryMaximums.smaCongestion = groupInfo.ExtErr.Max.SmaCongestion;
+		response[0].externalCategoryStats.categoryMaximums.bubble        = groupInfo.ExtErr.Max.Bubble;
+		response[0].externalCategoryStats.categoryMaximums.securityErrors      = groupInfo.ExtErr.Max.Security;
+		response[0].externalCategoryStats.categoryMaximums.routingErrors       = groupInfo.ExtErr.Max.Routing;
 
-		response[0].externalErrors.errorMaximums.utilizationPct10 = groupInfo.ExtErr.Max.UtilizationPct10;
-		response[0].externalErrors.errorMaximums.discardsPct10    = groupInfo.ExtErr.Max.DiscardsPct10;
+		response[0].externalCategoryStats.categoryMaximums.utilizationPct10 = groupInfo.ExtErr.Max.UtilizationPct10;
+		response[0].externalCategoryStats.categoryMaximums.discardsPct10    = groupInfo.ExtErr.Max.DiscardsPct10;
 
-		for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
-			response[0].externalErrors.ports[i].integrityErrors		= groupInfo.ExtErr.Ports[i].Integrity;
-			response[0].externalErrors.ports[i].congestionErrors	= groupInfo.ExtErr.Ports[i].Congestion;
-			response[0].externalErrors.ports[i].smaCongestionErrors	= groupInfo.ExtErr.Ports[i].SmaCongestion;
-			response[0].externalErrors.ports[i].bubbleErrors		= groupInfo.ExtErr.Ports[i].Bubble;
-			response[0].externalErrors.ports[i].securityErrors		= groupInfo.ExtErr.Ports[i].Security;
-			response[0].externalErrors.ports[i].routingErrors		= groupInfo.ExtErr.Ports[i].Routing;
+		for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++) {
+			response[0].externalCategoryStats.ports[i].integrityErrors		= groupInfo.ExtErr.Ports[i].Integrity;
+			response[0].externalCategoryStats.ports[i].congestion	= groupInfo.ExtErr.Ports[i].Congestion;
+			response[0].externalCategoryStats.ports[i].smaCongestion	= groupInfo.ExtErr.Ports[i].SmaCongestion;
+			response[0].externalCategoryStats.ports[i].bubble		= groupInfo.ExtErr.Ports[i].Bubble;
+			response[0].externalCategoryStats.ports[i].securityErrors		= groupInfo.ExtErr.Ports[i].Security;
+			response[0].externalCategoryStats.ports[i].routingErrors		= groupInfo.ExtErr.Ports[i].Routing;
 		}
 		response[0].minInternalRate = groupInfo.MinIntRate;
 		response[0].maxInternalRate = groupInfo.MaxIntRate;
@@ -1182,8 +1182,8 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			IB_LOG_DEBUG2_FMT(__func__, "  Pkts: Tot %6"PRIu64" Max %6u Min %6u Avg %6u KP/s",
 				response[0].internalUtilStats.totalKPps, response[0].internalUtilStats.maxKPps,
 				response[0].internalUtilStats.minKPps, response[0].internalUtilStats.avgKPps);
-			IB_LOG_DEBUG2_FMT(__func__, "  Failed PMA Queries: %u    Failures in PM Topology: %u",
-				response[0].internalUtilStats.pmaFailedPorts, response[0].internalUtilStats.topoFailedPorts);
+			IB_LOG_DEBUG2_FMT(__func__, "  NoResp Ports PMA: %u    NoResp Ports Topology: %u",
+				response[0].internalUtilStats.pmaNoRespPorts, response[0].internalUtilStats.topoIncompPorts);
 			IB_LOG_DEBUG2_FMT(__func__, "Send utilization statistics:");
 			IB_LOG_DEBUG2_FMT(__func__, "  Util: Tot %6"PRIu64" Max %6u Min %6u Avg %6u MB/s",
 				response[0].sendUtilStats.totalMBps, response[0].sendUtilStats.maxMBps,
@@ -1197,8 +1197,8 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			IB_LOG_DEBUG2_FMT(__func__, "  Pkts: Tot %6"PRIu64" Max %6u Min %6u Avg %6u KP/s",
 				response[0].sendUtilStats.totalKPps, response[0].sendUtilStats.maxKPps,
 				response[0].sendUtilStats.minKPps, response[0].sendUtilStats.avgKPps);
-			IB_LOG_DEBUG2_FMT(__func__, "  Failed PMA Queries: %u    Failures in PM Topology: %u",
-				response[0].sendUtilStats.pmaFailedPorts, response[0].sendUtilStats.topoFailedPorts);
+			IB_LOG_DEBUG2_FMT(__func__, "  NoResp Ports PMA: %u    NoResp Ports Topology: %u",
+				response[0].sendUtilStats.pmaNoRespPorts, response[0].sendUtilStats.topoIncompPorts);
 			IB_LOG_DEBUG2_FMT(__func__, "Receive utilization statistics:");
 			IB_LOG_DEBUG2_FMT(__func__, "  Util: Tot %6"PRIu64" Max %6u Min %6u Avg %6u MB/s",
 				response[0].recvUtilStats.totalMBps, response[0].recvUtilStats.maxMBps,
@@ -1212,95 +1212,95 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			IB_LOG_DEBUG2_FMT(__func__, "  Pkts: Tot %6"PRIu64" Max %6u Min %6u Avg %6u KP/s",
 				response[0].recvUtilStats.totalKPps, response[0].recvUtilStats.maxKPps,
 				response[0].recvUtilStats.minKPps, response[0].recvUtilStats.avgKPps);
-			IB_LOG_DEBUG2_FMT(__func__, "  Failed PMA Queries: %u    Failures in PM Topology: %u",
-				response[0].recvUtilStats.pmaFailedPorts, response[0].recvUtilStats.topoFailedPorts);
+			IB_LOG_DEBUG2_FMT(__func__, "  NoResp Ports PMA: %u    NoResp Ports Topology: %u",
+				response[0].recvUtilStats.pmaNoRespPorts, response[0].recvUtilStats.topoIncompPorts);
 			IB_LOG_DEBUG2_FMT(__func__, "Internal Category Summary:");
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Ctg Integrity       Max %10u Buckets: ", response[0].internalErrors.errorMaximums.integrityErrors);
-			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
-				p1 += sprintf(p1, " %4d", response[0].internalErrors.ports[i].integrityErrors);
+			p1 += sprintf(p1, "  Ctg Integrity       Max %10u Buckets: ", response[0].internalCategoryStats.categoryMaximums.integrityErrors);
+			for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++) {
+				p1 += sprintf(p1, " %4d", response[0].internalCategoryStats.ports[i].integrityErrors);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Ctg Congestion      Max %10u Buckets: ", response[0].internalErrors.errorMaximums.congestionErrors);
-			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
-				p1 += sprintf(p1, " %4d", response[0].internalErrors.ports[i].congestionErrors);
+			p1 += sprintf(p1, "  Ctg Congestion      Max %10u Buckets: ", response[0].internalCategoryStats.categoryMaximums.congestion);
+			for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++) {
+				p1 += sprintf(p1, " %4d", response[0].internalCategoryStats.ports[i].congestion);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Ctg SmaCongestion   Max %10u Buckets: ", response[0].internalErrors.errorMaximums.smaCongestionErrors);
-			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
-				p1 += sprintf(p1, " %4d", response[0].internalErrors.ports[i].smaCongestionErrors);
+			p1 += sprintf(p1, "  Ctg SmaCongestion   Max %10u Buckets: ", response[0].internalCategoryStats.categoryMaximums.smaCongestion);
+			for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++) {
+				p1 += sprintf(p1, " %4d", response[0].internalCategoryStats.ports[i].smaCongestion);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Ctg Bubble          Max %10u Buckets: ", response[0].internalErrors.errorMaximums.bubbleErrors);
-			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
-				p1 += sprintf(p1, " %4d", response[0].internalErrors.ports[i].bubbleErrors);
+			p1 += sprintf(p1, "  Ctg Bubble          Max %10u Buckets: ", response[0].internalCategoryStats.categoryMaximums.bubble);
+			for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++) {
+				p1 += sprintf(p1, " %4d", response[0].internalCategoryStats.ports[i].bubble);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Ctg Security        Max %10u Buckets: ", response[0].internalErrors.errorMaximums.securityErrors);
-			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
-				p1 += sprintf(p1, " %4d", response[0].internalErrors.ports[i].securityErrors);
+			p1 += sprintf(p1, "  Ctg Security        Max %10u Buckets: ", response[0].internalCategoryStats.categoryMaximums.securityErrors);
+			for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++) {
+				p1 += sprintf(p1, " %4d", response[0].internalCategoryStats.ports[i].securityErrors);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Ctg Routing         Max %10u Buckets: ", response[0].internalErrors.errorMaximums.routingErrors);
-			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
-				p1 += sprintf(p1, " %4d", response[0].internalErrors.ports[i].routingErrors);
+			p1 += sprintf(p1, "  Ctg Routing         Max %10u Buckets: ", response[0].internalCategoryStats.categoryMaximums.routingErrors);
+			for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++) {
+				p1 += sprintf(p1, " %4d", response[0].internalCategoryStats.ports[i].routingErrors);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			IB_LOG_DEBUG2_FMT(__func__,"    Utilization: %3u.%1u%%",
-							  response[0].internalErrors.errorMaximums.utilizationPct10 / 10,
-							  response[0].internalErrors.errorMaximums.utilizationPct10 % 10);
+							  response[0].internalCategoryStats.categoryMaximums.utilizationPct10 / 10,
+							  response[0].internalCategoryStats.categoryMaximums.utilizationPct10 % 10);
 			IB_LOG_DEBUG2_FMT(__func__,"    Discards: %3u.%1u%%",
-							  response[0].internalErrors.errorMaximums.discardsPct10 / 10,
-							  response[0].internalErrors.errorMaximums.discardsPct10 % 10);
+							  response[0].internalCategoryStats.categoryMaximums.discardsPct10 / 10,
+							  response[0].internalCategoryStats.categoryMaximums.discardsPct10 % 10);
 			IB_LOG_DEBUG2_FMT(__func__, "External Category Summary:");
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Ctg Integrity       Max %10u Buckets: ", response[0].externalErrors.errorMaximums.integrityErrors);
-			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
-				p1 += sprintf(p1, " %4d", response[0].externalErrors.ports[i].integrityErrors);
+			p1 += sprintf(p1, "  Ctg Integrity       Max %10u Buckets: ", response[0].externalCategoryStats.categoryMaximums.integrityErrors);
+			for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++) {
+				p1 += sprintf(p1, " %4d", response[0].externalCategoryStats.ports[i].integrityErrors);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Ctg Congestion      Max %10u Buckets: ", response[0].externalErrors.errorMaximums.congestionErrors);
-			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
-				p1 += sprintf(p1, " %4d", response[0].externalErrors.ports[i].congestionErrors);
+			p1 += sprintf(p1, "  Ctg Congestion      Max %10u Buckets: ", response[0].externalCategoryStats.categoryMaximums.congestion);
+			for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++) {
+				p1 += sprintf(p1, " %4d", response[0].externalCategoryStats.ports[i].congestion);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Ctg SmaCongestion   Max %10u Buckets: ", response[0].externalErrors.errorMaximums.smaCongestionErrors);
-			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
-				p1 += sprintf(p1, " %4d", response[0].externalErrors.ports[i].smaCongestionErrors);
+			p1 += sprintf(p1, "  Ctg SmaCongestion   Max %10u Buckets: ", response[0].externalCategoryStats.categoryMaximums.smaCongestion);
+			for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++) {
+				p1 += sprintf(p1, " %4d", response[0].externalCategoryStats.ports[i].smaCongestion);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Ctg Bubble          Max %10u Buckets: ", response[0].externalErrors.errorMaximums.bubbleErrors);
-			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
-				p1 += sprintf(p1, " %4d", response[0].externalErrors.ports[i].bubbleErrors);
+			p1 += sprintf(p1, "  Ctg Bubble          Max %10u Buckets: ", response[0].externalCategoryStats.categoryMaximums.bubble);
+			for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++) {
+				p1 += sprintf(p1, " %4d", response[0].externalCategoryStats.ports[i].bubble);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Ctg Security        Max %10u Buckets: ", response[0].externalErrors.errorMaximums.securityErrors);
-			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
-				p1 += sprintf(p1, " %4d", response[0].externalErrors.ports[i].securityErrors);
+			p1 += sprintf(p1, "  Ctg Security        Max %10u Buckets: ", response[0].externalCategoryStats.categoryMaximums.securityErrors);
+			for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++) {
+				p1 += sprintf(p1, " %4d", response[0].externalCategoryStats.ports[i].securityErrors);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Ctg Routing         Max %10u Buckets: ", response[0].externalErrors.errorMaximums.routingErrors);
-			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
-				p1 += sprintf(p1, " %4d", response[0].externalErrors.ports[i].routingErrors);
+			p1 += sprintf(p1, "  Ctg Routing         Max %10u Buckets: ", response[0].externalCategoryStats.categoryMaximums.routingErrors);
+			for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++) {
+				p1 += sprintf(p1, " %4d", response[0].externalCategoryStats.ports[i].routingErrors);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 
 			IB_LOG_DEBUG2_FMT(__func__,"    Utilization: %3u.%1u%%",
-							  response[0].externalErrors.errorMaximums.utilizationPct10 / 10,
-							  response[0].externalErrors.errorMaximums.utilizationPct10 % 10);
+							  response[0].externalCategoryStats.categoryMaximums.utilizationPct10 / 10,
+							  response[0].externalCategoryStats.categoryMaximums.utilizationPct10 % 10);
 			IB_LOG_DEBUG2_FMT(__func__,"    Discards: %3u.%1u%%",
-							  response[0].externalErrors.errorMaximums.discardsPct10 / 10,
-							  response[0].externalErrors.errorMaximums.discardsPct10 % 10);
+							  response[0].externalCategoryStats.categoryMaximums.discardsPct10 / 10,
+							  response[0].externalCategoryStats.categoryMaximums.discardsPct10 % 10);
 
 			IB_LOG_DEBUG2_FMT(__func__, "  Min Internal Rate %u", response[0].minInternalRate);
 			IB_LOG_DEBUG2_FMT(__func__, "  Max Internal Rate %u", response[0].maxInternalRate);
@@ -1538,13 +1538,13 @@ pa_getFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		for (i = 0; i < pmFocusPorts.NumPorts; i++) {
     		response[i].nodeLid				= pmFocusPorts.portList[i].lid;
     		response[i].portNumber			= pmFocusPorts.portList[i].portNum;
-			response[i].localFlags          = pmFocusPorts.portList[i].localFlags;
+			response[i].localStatus			= pmFocusPorts.portList[i].localStatus;
     		response[i].rate				= pmFocusPorts.portList[i].rate;
-    		response[i].mtu					= pmFocusPorts.portList[i].mtu;
+			response[i].maxVlMtu					= pmFocusPorts.portList[i].mtu;
     		response[i].value				= pmFocusPorts.portList[i].value;
     		response[i].nodeGUID			= pmFocusPorts.portList[i].guid;
     		strncpy(response[i].nodeDesc, pmFocusPorts.portList[i].nodeDesc, sizeof(response[i].nodeDesc)-1);
-			response[i].neighborFlags       = pmFocusPorts.portList[i].neighborFlags;
+			response[i].neighborStatus 		= pmFocusPorts.portList[i].neighborStatus;
     		response[i].neighborLid 		= pmFocusPorts.portList[i].neighborLid;
     		response[i].neighborPortNumber	= pmFocusPorts.portList[i].neighborPortNum;
     		response[i].neighborValue		= pmFocusPorts.portList[i].neighborValue;
@@ -1572,14 +1572,14 @@ pa_getFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			IB_LOG_DEBUG2_FMT(__func__, "     nodeGUID 0x%"PRIx64" ", response[i].nodeGUID);
 			IB_LOG_DEBUG2_FMT(__func__, "     Node Description %.*s Status: %s",
 				(int)sizeof(response[i].nodeDesc), response[i].nodeDesc,
-				StlFocusFlagToText(response[i].localFlags));
+				StlFocusStatusToText(response[i].localStatus));
 			IB_LOG_DEBUG2_FMT(__func__, "     nLID:0x%08X nPort:%u nValue:%"PRId64" ",
 					response[i].neighborLid, response[i].neighborPortNumber, response[i].neighborValue);
-			IB_LOG_DEBUG2_FMT(__func__, "     rate:%u mtu:%u", response[i].rate, response[i].mtu);
+			IB_LOG_DEBUG2_FMT(__func__, "     rate:%u mtu:%u", response[i].rate, response[i].maxVlMtu);
 			IB_LOG_DEBUG2_FMT(__func__, "     nGUID 0x%"PRIx64" ", response[i].neighborGuid);
 			IB_LOG_DEBUG2_FMT(__func__, "     Nbr Node Desc    %.*s Status: %s",
 				(int)sizeof(response[i].neighborNodeDesc), response[i].neighborNodeDesc,
-				StlFocusFlagToText(response[i].neighborFlags));
+				StlFocusStatusToText(response[i].neighborStatus));
 			IB_LOG_DEBUG2_FMT(__func__, "     ImageID: Number 0x%"PRIx64" Offset %d%s",
 				response[i].imageId.imageNumber, response[i].imageId.imageOffset, buf);
     		BSWAP_STL_PA_FOCUS_PORTS_RSP(&response[i]);
@@ -1768,26 +1768,26 @@ pa_getVFInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		response[0].internalUtilStats.avgKPps							= vfInfo.IntUtil.AvgKPps;
 		response[0].internalUtilStats.minKPps							= vfInfo.IntUtil.MinKPps;
 		response[0].internalUtilStats.maxKPps							= vfInfo.IntUtil.MaxKPps;
-		response[0].internalUtilStats.pmaFailedPorts					= vfInfo.IntUtil.pmaFailedPorts;
-		response[0].internalUtilStats.topoFailedPorts					= vfInfo.IntUtil.topoFailedPorts;
+		response[0].internalUtilStats.pmaNoRespPorts					= vfInfo.IntUtil.pmaNoRespPorts;
+		response[0].internalUtilStats.topoIncompPorts					= vfInfo.IntUtil.topoIncompPorts;
 
-		response[0].internalErrors.errorMaximums.integrityErrors		= vfInfo.IntErr.Max.Integrity;
-		response[0].internalErrors.errorMaximums.congestionErrors		= vfInfo.IntErr.Max.Congestion;
-		response[0].internalErrors.errorMaximums.smaCongestionErrors 	= vfInfo.IntErr.Max.SmaCongestion;
-		response[0].internalErrors.errorMaximums.bubbleErrors	   	 	= vfInfo.IntErr.Max.Bubble;
-		response[0].internalErrors.errorMaximums.securityErrors   	 	= vfInfo.IntErr.Max.Security;
-		response[0].internalErrors.errorMaximums.routingErrors	   	 	= vfInfo.IntErr.Max.Routing;
+		response[0].internalCategoryStats.categoryMaximums.integrityErrors		= vfInfo.IntErr.Max.Integrity;
+		response[0].internalCategoryStats.categoryMaximums.congestion		= vfInfo.IntErr.Max.Congestion;
+		response[0].internalCategoryStats.categoryMaximums.smaCongestion 	= vfInfo.IntErr.Max.SmaCongestion;
+		response[0].internalCategoryStats.categoryMaximums.bubble	   	 	= vfInfo.IntErr.Max.Bubble;
+		response[0].internalCategoryStats.categoryMaximums.securityErrors   	 	= vfInfo.IntErr.Max.Security;
+		response[0].internalCategoryStats.categoryMaximums.routingErrors	   	 	= vfInfo.IntErr.Max.Routing;
 
-		response[0].internalErrors.errorMaximums.utilizationPct10 = vfInfo.IntErr.Max.UtilizationPct10;
-		response[0].internalErrors.errorMaximums.discardsPct10    = vfInfo.IntErr.Max.DiscardsPct10;
+		response[0].internalCategoryStats.categoryMaximums.utilizationPct10 = vfInfo.IntErr.Max.UtilizationPct10;
+		response[0].internalCategoryStats.categoryMaximums.discardsPct10    = vfInfo.IntErr.Max.DiscardsPct10;
 
-		for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
-			response[0].internalErrors.ports[i].integrityErrors		= vfInfo.IntErr.Ports[i].Integrity;
-			response[0].internalErrors.ports[i].congestionErrors		= vfInfo.IntErr.Ports[i].Congestion;
-			response[0].internalErrors.ports[i].smaCongestionErrors	= vfInfo.IntErr.Ports[i].SmaCongestion;
-			response[0].internalErrors.ports[i].bubbleErrors			= vfInfo.IntErr.Ports[i].Bubble;
-			response[0].internalErrors.ports[i].securityErrors			= vfInfo.IntErr.Ports[i].Security;
-			response[0].internalErrors.ports[i].routingErrors			= vfInfo.IntErr.Ports[i].Routing;
+		for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++) {
+			response[0].internalCategoryStats.ports[i].integrityErrors		= vfInfo.IntErr.Ports[i].Integrity;
+			response[0].internalCategoryStats.ports[i].congestion		= vfInfo.IntErr.Ports[i].Congestion;
+			response[0].internalCategoryStats.ports[i].smaCongestion	= vfInfo.IntErr.Ports[i].SmaCongestion;
+			response[0].internalCategoryStats.ports[i].bubble			= vfInfo.IntErr.Ports[i].Bubble;
+			response[0].internalCategoryStats.ports[i].securityErrors			= vfInfo.IntErr.Ports[i].Security;
+			response[0].internalCategoryStats.ports[i].routingErrors			= vfInfo.IntErr.Ports[i].Routing;
 		}
 		response[0].minInternalRate = vfInfo.MinIntRate;
 		response[0].maxInternalRate = vfInfo.MaxIntRate;
@@ -1811,51 +1811,51 @@ pa_getVFInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			IB_LOG_DEBUG2_FMT(__func__, "  Pkts: Tot %6"PRIu64" Max %6u Min %6u Avg %6u KP/s",
 				response[0].internalUtilStats.totalKPps, response[0].internalUtilStats.maxKPps,
 				response[0].internalUtilStats.minKPps, response[0].internalUtilStats.avgKPps);
-			IB_LOG_DEBUG2_FMT(__func__, "  Failed PMA Queries: %u    Failures in PM Topology: %u",
-				response[0].internalUtilStats.pmaFailedPorts, response[0].internalUtilStats.topoFailedPorts);
+			IB_LOG_DEBUG2_FMT(__func__, "  NoResp Ports PMA: %u    NoResp Ports Topology: %u",
+				response[0].internalUtilStats.pmaNoRespPorts, response[0].internalUtilStats.topoIncompPorts);
 			IB_LOG_DEBUG2_FMT(__func__, "Internal Category Summary:");
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Ctg Integrity       Max %10u Buckets: ", response[0].internalErrors.errorMaximums.integrityErrors);
-			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
-				p1 += sprintf(p1, " %4d", response[0].internalErrors.ports[i].integrityErrors);
+			p1 += sprintf(p1, "  Ctg Integrity       Max %10u Buckets: ", response[0].internalCategoryStats.categoryMaximums.integrityErrors);
+			for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++) {
+				p1 += sprintf(p1, " %4d", response[0].internalCategoryStats.ports[i].integrityErrors);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Ctg Congestion      Max %10u Buckets: ", response[0].internalErrors.errorMaximums.congestionErrors);
-			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
-				p1 += sprintf(p1, " %4d", response[0].internalErrors.ports[i].congestionErrors);
+			p1 += sprintf(p1, "  Ctg Congestion      Max %10u Buckets: ", response[0].internalCategoryStats.categoryMaximums.congestion);
+			for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++) {
+				p1 += sprintf(p1, " %4d", response[0].internalCategoryStats.ports[i].congestion);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Ctg SmaCongestion   Max %10u Buckets: ", response[0].internalErrors.errorMaximums.smaCongestionErrors);
-			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
-				p1 += sprintf(p1, " %4d", response[0].internalErrors.ports[i].smaCongestionErrors);
+			p1 += sprintf(p1, "  Ctg SmaCongestion   Max %10u Buckets: ", response[0].internalCategoryStats.categoryMaximums.smaCongestion);
+			for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++) {
+				p1 += sprintf(p1, " %4d", response[0].internalCategoryStats.ports[i].smaCongestion);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Ctg Bubble          Max %10u Buckets: ", response[0].internalErrors.errorMaximums.bubbleErrors);
-			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
-				p1 += sprintf(p1, " %4d", response[0].internalErrors.ports[i].bubbleErrors);
+			p1 += sprintf(p1, "  Ctg Bubble          Max %10u Buckets: ", response[0].internalCategoryStats.categoryMaximums.bubble);
+			for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++) {
+				p1 += sprintf(p1, " %4d", response[0].internalCategoryStats.ports[i].bubble);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Ctg Security        Max %10u Buckets: ", response[0].internalErrors.errorMaximums.securityErrors);
-			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
-				p1 += sprintf(p1, " %4d", response[0].internalErrors.ports[i].securityErrors);
+			p1 += sprintf(p1, "  Ctg Security        Max %10u Buckets: ", response[0].internalCategoryStats.categoryMaximums.securityErrors);
+			for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++) {
+				p1 += sprintf(p1, " %4d", response[0].internalCategoryStats.ports[i].securityErrors);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			p1 = logBuf;
-			p1 += sprintf(p1, "  Ctg Routing         Max %10u Buckets: ", response[0].internalErrors.errorMaximums.routingErrors);
-			for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
-				p1 += sprintf(p1, " %4d", response[0].internalErrors.ports[i].routingErrors);
+			p1 += sprintf(p1, "  Ctg Routing         Max %10u Buckets: ", response[0].internalCategoryStats.categoryMaximums.routingErrors);
+			for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++) {
+				p1 += sprintf(p1, " %4d", response[0].internalCategoryStats.ports[i].routingErrors);
 			}
 			IB_LOG_DEBUG2_FMT(__func__, "%.*s", (int)sizeof(logBuf), logBuf);
 			IB_LOG_DEBUG2_FMT(__func__,"    Utilization: %3u.%1u%%",
-							  response[0].internalErrors.errorMaximums.utilizationPct10 / 10,
-							  response[0].internalErrors.errorMaximums.utilizationPct10 % 10);
+							  response[0].internalCategoryStats.categoryMaximums.utilizationPct10 / 10,
+							  response[0].internalCategoryStats.categoryMaximums.utilizationPct10 % 10);
 			IB_LOG_DEBUG2_FMT(__func__,"    Discards: %3u.%1u%%",
-							  response[0].internalErrors.errorMaximums.discardsPct10 / 10,
-							  response[0].internalErrors.errorMaximums.discardsPct10 % 10);
+							  response[0].internalCategoryStats.categoryMaximums.discardsPct10 / 10,
+							  response[0].internalCategoryStats.categoryMaximums.discardsPct10 % 10);
 
 			IB_LOG_DEBUG2_FMT(__func__, "  Min Internal Rate %u", response[0].minInternalRate);
 			IB_LOG_DEBUG2_FMT(__func__, "  Max Internal Rate %u", response[0].maxInternalRate);
@@ -2301,15 +2301,15 @@ pa_getVFFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		for (i = 0; i < pmVFFocusPorts.NumPorts; i++) {
     		response[i].nodeLid				= pmVFFocusPorts.portList[i].lid;
     		response[i].portNumber			= pmVFFocusPorts.portList[i].portNum;
-			response[i].localFlags          = pmVFFocusPorts.portList[i].localFlags;
+			response[i].localStatus			= pmVFFocusPorts.portList[i].localStatus;
     		response[i].rate				= pmVFFocusPorts.portList[i].rate;
-    		response[i].mtu					= pmVFFocusPorts.portList[i].mtu;
+			response[i].maxVlMtu					= pmVFFocusPorts.portList[i].mtu;
     		response[i].value				= pmVFFocusPorts.portList[i].value;
     		response[i].nodeGUID			= pmVFFocusPorts.portList[i].guid;
     		strncpy(response[i].nodeDesc, pmVFFocusPorts.portList[i].nodeDesc,
 					sizeof(response[i].nodeDesc)-1);
 
-			response[i].neighborFlags       = pmVFFocusPorts.portList[i].neighborFlags;
+			response[i].neighborStatus 		= pmVFFocusPorts.portList[i].neighborStatus;
     		response[i].neighborLid 		= pmVFFocusPorts.portList[i].neighborLid;
     		response[i].neighborPortNumber 	= pmVFFocusPorts.portList[i].neighborPortNum;
     		response[i].neighborValue 		= pmVFFocusPorts.portList[i].neighborValue;
@@ -2338,14 +2338,14 @@ pa_getVFFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			IB_LOG_DEBUG2_FMT(__func__, "     nodeGUID 0x%"PRIx64" ", response[i].nodeGUID);
 			IB_LOG_DEBUG2_FMT(__func__, "     Node Description %.*s Status: %s",
 				(int)sizeof(response[i].nodeDesc), response[i].nodeDesc,
-				StlFocusFlagToText(response[i].localFlags));
+				StlFocusStatusToText(response[i].localStatus));
 			IB_LOG_DEBUG2_FMT(__func__, "     nLID:0x%08X nPort:%u nValue:%"PRId64" ",
 					response[i].neighborLid, response[i].neighborPortNumber, response[i].neighborValue);
-			IB_LOG_DEBUG2_FMT(__func__, "     rate:%u mtu:%u", response[i].rate, response[i].mtu);
+			IB_LOG_DEBUG2_FMT(__func__, "     rate:%u mtu:%u", response[i].rate, response[i].maxVlMtu);
 			IB_LOG_DEBUG2_FMT(__func__, "     nGUID 0x%"PRIx64" ", response[i].neighborGuid);
 			IB_LOG_DEBUG2_FMT(__func__, "     Nbr Node Desc    %.*s Status: %s",
 				(int)sizeof(response[i].neighborNodeDesc), response[i].neighborNodeDesc,
-				StlFocusFlagToText(response[i].neighborFlags));
+				StlFocusStatusToText(response[i].neighborStatus));
 			IB_LOG_DEBUG2_FMT(__func__, "     ImageID: Number 0x%"PRIx64" Offset %d%s",
 				response[i].imageId.imageNumber, response[i].imageId.imageOffset, buf);
 

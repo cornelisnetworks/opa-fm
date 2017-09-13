@@ -82,23 +82,54 @@ invalid:
 /* PortSelector Input/Output functions */
 
 // for use in error messages, returns pointer to static string
-static char *FormatPortSelector(PortSelector *portselp)
+// Beware, can't call this more than twice in a single function argument list
+// (such as printf)
+// This is also not thread safe
+static const char *FormatPortSelector(PortSelector *portselp)
 {
-	static char format[256];
+	static char format1[256];
+	static char format2[256];
+	static int f_num = 0;
 	int offset = 0;
+	char *format;
 
+	// This trick allows us to alternate which static char we use and return
+	// hence two calls in the same function argument list (eg. printf) work
+	// correctly
+	if (f_num) {
+		format=format2;
+		f_num=0;
+	} else {
+		format=format1;
+		f_num=1;
+	}
+
+	if (! portselp) {
+		offset += sprintf(&format[offset], "%*sunspecified", offset?1:0, "");
+		return format;
+	}
 	if (portselp->NodeDesc) {
-		offset += sprintf(&format[offset], "NodeDesc: %s\n", portselp->NodeDesc);
+		offset += sprintf(&format[offset], "%*sNodeDesc: %s", offset?1:0, "", portselp->NodeDesc);
 	}
 	if (portselp->NodeGUID) {
-		offset += sprintf(&format[offset], "NodeGUID: 0x%016"PRIx64"\n", portselp->NodeGUID);
-	}
-	if (portselp->PortGUID) {
-		offset += sprintf(&format[offset], "PortGUID: 0x%016"PRIx64"\n", portselp->PortGUID);
+		offset += sprintf(&format[offset], "%*sNodeGUID: 0x%016"PRIx64, offset?1:0, "", portselp->NodeGUID);
 	}
 	if (portselp->gotPortNum) {
-		offset += sprintf(&format[offset], "PortNum: %u\n", portselp->PortNum);
+		offset += sprintf(&format[offset], "%*sPortNum: %u", offset?1:0, "", portselp->PortNum);
 	}
+	if (portselp->PortGUID) {
+		offset += sprintf(&format[offset], "%*sPortGUID: 0x%016"PRIx64, offset?1:0, "", portselp->PortGUID);
+	}
+	if (portselp->NodeType) {
+		offset += sprintf(&format[offset], "%*sNodeType: %s", offset?1:0, "",
+			StlNodeTypeToText(portselp->NodeType));
+	}
+	if (portselp->details) {
+		offset += sprintf(&format[offset], "%*sPortDetails: %s", offset?1:0, "",
+			portselp->details);
+	}
+	if (! offset)
+		offset += sprintf(&format[offset], "%*sunspecified", offset?1:0, "");
 	return format;
 }
 
@@ -115,8 +146,12 @@ static void PortSelectorXmlParserEndPortNum(IXmlParserState_t *state, const IXML
 	uint8 value;
 	
 	if (IXmlParseUint8(state, content, len, &value)) {
-		((PortSelector *)object)->PortNum = value;
-		((PortSelector *)object)->gotPortNum = 1;
+		if (value > 254) {
+			IXmlParserPrintError(state, "PortNum must be in range [0,254]");
+		} else {
+			((PortSelector *)object)->PortNum = value;
+			((PortSelector *)object)->gotPortNum = 1;
+		}
 	}
 }
 
@@ -262,6 +297,7 @@ static void PortSelectorXmlOutput(IXmlOutputState_t *state, const char *tag, voi
 	IXmlOutputOptionalStruct(state, tag, (PortSelector*)data, PortSelectorXmlFormatAttr, PortSelectorFields);
 }
 
+
 static void PortSelectorXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
 {
 	PortSelector *portselp = (PortSelector*)object;
@@ -328,6 +364,8 @@ static void *LinkXmlParserStart(IXmlParserState_t *state, void *parent, const ch
 
 	ListItemInitState(&elinkp->ExpectedLinksEntry);
 	QListSetObj(&elinkp->ExpectedLinksEntry, elinkp);
+
+	elinkp->lineno = (uint64)XML_GetCurrentLineNumber(state->parser);
 
 	return elinkp;
 }
@@ -511,11 +549,100 @@ invalid:
 	return;
 }
 
-
 /****************************************************************************/
 /* Node Input/Output functions */
 
+// for use in error messages, returns pointer to static string
+// Beware, can't call this more than twice in a single function argument list
+// (such as printf)
+// This is also not thread safe
+static const char *FormatExpectedNode(ExpectedNode *enodep)
+{
+	static char format1[256];
+	static char format2[256];
+	static int f_num = 0;
+	int offset = 0;
+	char *format;
+
+	// This trick allows us to alternate which static char we use and return
+	// hence two calls in the same function argument list (eg. printf) work
+	// correctly
+	if (f_num) {
+		format=format2;
+		f_num=0;
+	} else {
+		format=format1;
+		f_num=1;
+	}
+
+
+	if (! enodep) {
+		offset += sprintf(&format[offset], "%*sunspecified", offset?1:0, "");
+		return format;
+	}
+	if (enodep->NodeDesc) {
+		offset += sprintf(&format[offset], "%*sNodeDesc: %s", offset?1:0, "", enodep->NodeDesc);
+	}
+	if (enodep->NodeGUID) {
+		offset += sprintf(&format[offset], "%*sNodeGUID: 0x%016"PRIx64, offset?1:0, "", enodep->NodeGUID);
+	}
+	if (enodep->NodeType) {
+		offset += sprintf(&format[offset], "%*sNodeType: %s", offset?1:0, "",
+			StlNodeTypeToText(enodep->NodeType));
+	}
+	if (enodep->details) {
+		offset += sprintf(&format[offset], "%*sNodeDetails: %s", offset?1:0, "",
+			enodep->details);
+	}
+	if (! offset)
+		offset += sprintf(&format[offset], "%*sunspecified", offset?1:0, "");
+	return format;
+}
+
 /* <Node> fields */
+
+// check enodep->ports size and grow as needed to accomidate adding portNum
+static FSTATUS ExpectedNodePrepareSize(ExpectedNode *enodep, uint8 portNum)
+{
+	if ((portNum + 1) > enodep->portsSize) {
+		int allocCount = MAX((enodep->portsSize == 0 ? 1 : 2 * enodep->portsSize),
+			portNum + 1);
+		ExpectedPort **newMem = MemoryAllocate2AndClear(allocCount * sizeof(ExpectedPort*),
+			IBA_MEM_FLAG_PREMPTABLE, MYTAG);
+		if (!newMem) {
+			return FINSUFFICIENT_MEMORY;
+		}
+
+		if (enodep->ports) {
+			memcpy(newMem, enodep->ports, enodep->portsSize * sizeof(ExpectedPort*));
+			MemoryDeallocate(enodep->ports);
+		}
+		enodep->ports = newMem;
+		enodep->portsSize = allocCount;
+	}
+	return FSUCCESS;
+}
+
+static FSTATUS ExpectedNodeAddPort(ExpectedNode *enodep, ExpectedPort *eportp)
+{
+	if (FSUCCESS != ExpectedNodePrepareSize(enodep, eportp->PortNum))
+		return FINSUFFICIENT_MEMORY;
+
+	if (enodep->ports[eportp->PortNum] != NULL)
+		return FDUPLICATE;
+
+	enodep->ports[eportp->PortNum] = eportp;
+	return FSUCCESS;
+}
+
+static ExpectedPort *ExpectedNodeGetPort(ExpectedNode *enodep, uint8 portNum)
+{
+	if(portNum >= enodep->portsSize)
+		return NULL;
+	else
+		return enodep->ports[portNum];
+}
+
 static IXML_FIELD ExpectedNodeFields[] = {
 	{ tag:"NodeGUID", format:'h', IXML_FIELD_INFO(ExpectedNode, NodeGUID) },
 	{ tag:"NodeDesc", format:'p', IXML_P_FIELD_INFO(ExpectedNode, NodeDesc, STL_NODE_DESCRIPTION_ARRAY_SIZE) },
@@ -539,6 +666,8 @@ static void *ExpectedNodeXmlParserStart(IXmlParserState_t *state, void *parent, 
 
 	ListItemInitState(&enodep->ExpectedNodesEntry);
 	QListSetObj(&enodep->ExpectedNodesEntry, enodep);
+
+	enodep->lineno = (uint64)XML_GetCurrentLineNumber(state->parser);
 
 	return enodep;
 }
@@ -580,20 +709,29 @@ static void ResolveNode(FabricData_t *fabricp, ExpectedNode *enodep)
 	}
 }
 	
-static void ExpectedCAXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+static void ExpectedFIXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
 {
 	ExpectedNode *enodep = (ExpectedNode*)object;
 	FabricData_t *fabricp = IXmlParserGetContext(state);
+
 
 	enodep->NodeType = STL_NODE_FI;
 	if (! valid)
 		goto invalid;
 	ResolveNode(fabricp, enodep);
 	QListInsertTail(&fabricp->ExpectedFIs, &enodep->ExpectedNodesEntry);
+
+
+	if(enodep->NodeGUID) {
+		//Attempts to insert duplicates will not be detected here. Duplicates can be detected later if topology
+		//file validation is enabled
+		cl_qmap_insert(&fabricp->ExpectedNodeGuidMap, enodep->NodeGUID, &enodep->ExpectedNodeGuidMapEntry);
+	}
+
 	return;
 
 invalid:
-	ExpectedNodeFree(enodep, &fabricp->ExpectedFIs);
+	ExpectedNodeFree(fabricp, enodep, &fabricp->ExpectedFIs);
 	return;
 }
 
@@ -607,15 +745,21 @@ static void ExpectedSWXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *f
 		goto invalid;
 	ResolveNode(fabricp, enodep);
 	QListInsertTail(&fabricp->ExpectedSWs, &enodep->ExpectedNodesEntry);
+	
+	if(enodep->NodeGUID) {
+		//Attempts to insert duplicates will not be detected here. Duplicates can be detected later if topology
+		//file validation is enabled
+		cl_qmap_insert(&fabricp->ExpectedNodeGuidMap, enodep->NodeGUID, &enodep->ExpectedNodeGuidMapEntry);
+	}
 	return;
 
 invalid:
-	ExpectedNodeFree(enodep, &fabricp->ExpectedSWs);
+	ExpectedNodeFree(fabricp, enodep, &fabricp->ExpectedSWs);
 	return;
 }
 
 static IXML_FIELD FIsFields[] = {
-	{ tag:"Node", format:'k', format_func: ExpectedNodeXmlOutput, subfields:ExpectedNodeFields, start_func:ExpectedNodeXmlParserStart, end_func:ExpectedCAXmlParserEnd }, // structure
+	{ tag:"Node", format:'k', format_func: ExpectedNodeXmlOutput, subfields:ExpectedNodeFields, start_func:ExpectedNodeXmlParserStart, end_func:ExpectedFIXmlParserEnd }, // structure
 	{ NULL }
 };
 
@@ -883,8 +1027,8 @@ static void TopologyXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *fie
 invalid:
 	// free parsed data
 	ExpectedLinkFreeAll(fabricp);
-	ExpectedNodesFreeAll(&fabricp->ExpectedFIs);
-	ExpectedNodesFreeAll(&fabricp->ExpectedSWs);
+	ExpectedNodesFreeAll(fabricp, &fabricp->ExpectedFIs);
+	ExpectedNodesFreeAll(fabricp, &fabricp->ExpectedSWs);
 	ExpectedSMsFreeAll(fabricp);
 }
 
@@ -946,151 +1090,235 @@ fail:
 	return;
 }
 
-#ifndef __VXWORKS__
-
-FSTATUS Xml2ParseTopology(const char *input_file, int quiet, FabricData_t *fabricp)
+static FSTATUS TopologyValidateLinkPort(FabricData_t *fabricp, ExpectedLink *elinkp, PortSelector *portselp, TopoVal_t validation)
 {
-	unsigned tags_found, fields_found;
-	const char *filename=input_file;
+	ExpectedNode *enodep;
 
-	if(fabricp == NULL || fabricp->AllNodes.state != CL_INITIALIZED) {
-		if (!quiet) ProgressPrint(TRUE, "Error: input FabricData_t was null or uninitialized!");
+	if(!portselp){
+		// only 1 side will be found, we'll show that side
+		fprintf(stderr, "Topology file line %"PRIu64": incomplete link specification, only 1 port provided: %s\n", elinkp->lineno,
+				elinkp->portselp1?
+					FormatPortSelector(elinkp->portselp1)
+					: elinkp->portselp2?
+						FormatPortSelector(elinkp->portselp2)
+						:""
+				);
+		return FINVALID_PARAMETER;
+	}
+
+	if(portselp->NodeGUID) {
+		enodep = FindExpectedNodeByNodeGuid(fabricp, portselp->NodeGUID);
+		if(!enodep){
+			fprintf(stderr, "Topology file line %"PRIu64": No node found with matching NodeGUID for link port: %s\n", elinkp->lineno, FormatPortSelector(portselp));
+			return FNOT_FOUND;	
+		} 
+		if(portselp->NodeDesc){
+			if(enodep->NodeDesc && strcmp(portselp->NodeDesc, enodep->NodeDesc) != 0) {	
+				fprintf(stderr, "Topology file line %"PRIu64": Node GUIDs match, but inconsistent NodeDesc for Node: %.*s link port: %s\n",
+					elinkp->lineno, NODE_DESCRIPTION_ARRAY_SIZE, enodep->NodeDesc, FormatPortSelector(portselp));
+				return FERROR;
+			}
+		}		
+	} else if (portselp->NodeDesc) {
+		enodep = FindExpectedNodeByNodeDesc(fabricp,portselp->NodeDesc, portselp->NodeType);
+		if(!enodep){
+			fprintf(stderr, "Topology file line %"PRIu64": No node found with matching NodeDesc for link port: %s\n",
+				elinkp->lineno, FormatPortSelector(portselp));
+			return FNOT_FOUND;
+		}
+	} else {
+		fprintf(stderr, "Topology file line %"PRIu64": Link port specification with no NodeGUID or NodeDesc: %s; other side of link: %s\n",
+			elinkp->lineno, FormatPortSelector(portselp),
+			elinkp->portselp1 == portselp?
+				FormatPortSelector(elinkp->portselp2)
+				: FormatPortSelector(elinkp->portselp1));
+		return FINVALID_PARAMETER;
+	}
+
+	if ((enodep->NodeType && portselp->NodeType)
+		 && enodep->NodeType != portselp->NodeType) {
+		fprintf(stderr, "Topology file line %"PRIu64": Nodes match but inconsistent NodeType for Node: %s link port: %s\n",
+				elinkp->lineno, StlNodeTypeToText(portselp->NodeType),
+				FormatPortSelector(portselp));
 		return FERROR;
 	}
 
-	if (strcmp(input_file, "-") == 0) {
-		if (! quiet) ProgressPrint(TRUE, "Parsing stdin...");
-		filename = "stdin";
-		if (FSUCCESS != IXmlParseFile(stdin, "stdin", IXML_PARSER_FLAG_NONE, TopLevelFields, NULL, fabricp, NULL, NULL, &tags_found, &fields_found)) {
-			return FERROR;
+	// It is valid to omit the port number.  On strict validation this
+	// is unacceptable, but on looser validation it is ok
+	if (! portselp->gotPortNum) {
+		if (TOPOVAL_STRICT == validation) {
+			fprintf(stderr, "Topology file line %"PRIu64": Link port specification with no PortNum: %s\n", elinkp->lineno, FormatPortSelector(portselp));
+			return FINVALID_PARAMETER;
 		}
 	} else {
-		if (! quiet) ProgressPrint(TRUE, "Parsing %s...", Top_truncate_str(input_file));
-		if (FSUCCESS != IXmlParseInputFile(input_file, IXML_PARSER_FLAG_NONE, TopLevelFields, NULL, fabricp, NULL, NULL, &tags_found, &fields_found)) {
-			return FERROR;
+		//	store a pointer to the ExpectedLink in the ExpectedNode to allow
+		//	for constant time lookup later
+		ExpectedPort *eportp = ExpectedNodeGetPort(enodep, portselp->PortNum);
+		if (NULL == eportp) {
+			// did not have port in enode yet, we'll add it here
+			eportp = (ExpectedPort*)MemoryAllocate2AndClear(sizeof(ExpectedPort), IBA_MEM_FLAG_PREMPTABLE, MYTAG);
+			if (NULL == eportp)
+				goto unable2add;
+			eportp->PortNum = portselp->PortNum;
+			if (FSUCCESS != ExpectedNodeAddPort(enodep, eportp)) {
+				MemoryDeallocate(eportp);
+				// Can't be FDUPLICATE, so must be out of memory
+				goto unable2add;
+			}
 		}
+		// found a matching port on enodep
+		if(enodep->ports[portselp->PortNum]->elinkp != NULL) {
+			fprintf(stderr, "Topology file line %"PRIu64": More than one link to port %u on Node: %s\n", elinkp->lineno, portselp->PortNum, FormatExpectedNode(enodep));
+			return FDUPLICATE;
+		}
+		enodep->ports[portselp->PortNum]->elinkp = elinkp;
 	}
-	if (tags_found != 1 || fields_found != 1) {
-		fprintf(stderr, "Warning: potentially inaccurate input '%s': found %u recognized top level tags, expected 1\n", filename, tags_found);
-	}
+	portselp->enodep = enodep;
+
 	return FSUCCESS;
+
+unable2add:
+	fprintf(stderr, "Topology file line %"PRIu64": Unable to add port %u on Node: %s\n", elinkp->lineno, portselp->PortNum, FormatExpectedNode(enodep));
+	return FINSUFFICIENT_MEMORY;
 }
 
-#else
 
-FSTATUS Xml2ParseTopology(const char *input_file, int quiet, FabricData_t *fabricp, XML_Memory_Handling_Suite* memsuite)
+//Do graph search over ExpectedNodes for a given root note, 
+//and mark all found as "connected" to the graph
+void TopologyValidateLinkHelper(ExpectedNode *enodep)
 {
-	unsigned tags_found, fields_found;
-	const char *filename=input_file;
+	int i;
+	if(!enodep)
+		return;
+	if(enodep->connected)
+		return; //already processsed this node
+	enodep->connected = 1;
 
-	if(fabricp == NULL || fabricp->AllNodes.state != CL_INITIALIZED) {
-		if (!quiet) ProgressPrint(TRUE, "Error: input FabricData_t was null or uninitialized!");
+	//recurse on all nodes with links from this node
+	for(i=0; i<enodep->portsSize; i++){
+		if(enodep->ports[i] && enodep->ports[i]->elinkp){
+			TopologyValidateLinkHelper(enodep->ports[i]->elinkp->portselp1->enodep);	
+			TopologyValidateLinkHelper(enodep->ports[i]->elinkp->portselp2->enodep);
+		}
+	}
+
+	return;
+}
+
+
+FSTATUS TopologyValidateNoLinksDisjoint(FabricData_t *fabricp) 
+{
+	FSTATUS status = FSUCCESS;
+	LIST_ITEM *it;
+	//Algorithm:
+	//1) Pick any node N in ExpectedSWs
+	//2) Do a graph search from N 
+	//	2a)For each unique node found mark it as found
+	//3) Iterate over all nodes in ExpectedSWs and ExpectedSWs
+	//		and if any were not found they are disjoint
+	
+
+	ExpectedNode* erootnodep = PARENT_STRUCT(QListHead(&fabricp->ExpectedSWs), ExpectedNode, ExpectedNodesEntry);
+
+	//Handle b2b case
+	if(!erootnodep){
+		erootnodep = PARENT_STRUCT(QListHead(&fabricp->ExpectedFIs), ExpectedNode, ExpectedNodesEntry);
+		if(!erootnodep)
+			return FSUCCESS;
+	}
+
+	// if we happen to pick a erootnodep which is disconnected from rest of
+	// fabric, we will report everything else as disjoint from it
+	TopologyValidateLinkHelper(erootnodep);
+
+	for(it = QListHead(&fabricp->ExpectedSWs); it != NULL; it = QListNext(&fabricp->ExpectedSWs, it)) {
+		ExpectedNode *enodep = PARENT_STRUCT(it, ExpectedNode, ExpectedNodesEntry);
+		if(!enodep->connected){
+			fprintf(stderr, "Switch: %s is disjoint from Node: %s\n",
+				FormatExpectedNode(enodep), FormatExpectedNode(erootnodep));
+			status = FERROR;
+		}
+	}
+
+	for(it = QListHead(&fabricp->ExpectedFIs); it != NULL; it = QListNext(&fabricp->ExpectedFIs, it)) {
+		ExpectedNode *enodep = PARENT_STRUCT(it, ExpectedNode, ExpectedNodesEntry);
+		if(!enodep->connected){
+			fprintf(stderr, "FI: %s is disjoint from Node: %s\n",
+				FormatExpectedNode(enodep), FormatExpectedNode(erootnodep));
+			status = FERROR;
+		}
+	}
+
+	return status;
+}
+
+static FSTATUS TopologyValidate(FabricData_t *fabricp, int quiet, TopoVal_t validation)
+{
+	FSTATUS status = FSUCCESS;
+	LIST_ITEM *it;
+	int ix=0;
+	int resolved = 0;
+	int bad_input = 0;
+	int input_checked = 0;
+
+	//make sure input file contains at least one link
+	if(QListHead(&fabricp->ExpectedLinks) == NULL) {
+		fprintf(stderr, "Topology file does not have link definitions\n");
 		return FERROR;
 	}
 
-	if (strcmp(input_file, "-") == 0) {
-		if (! quiet) ProgressPrint(TRUE, "Parsing stdin...");
-		filename = "stdin";
-		if (FSUCCESS != IXmlParseFile(stdin, "stdin", IXML_PARSER_FLAG_NONE, TopLevelFields, NULL, fabricp, NULL, NULL, &tags_found, &fields_found, memsuite)) {
-			return FERROR;
-		}
-	} else {
-		if (! quiet) ProgressPrint(TRUE, "Parsing %s...", Top_truncate_str(input_file));
-		if (FSUCCESS != IXmlParseInputFile(input_file, IXML_PARSER_FLAG_NONE, TopLevelFields, NULL, fabricp, NULL, NULL, &tags_found, &fields_found, memsuite)) {
-			return FERROR;
-		}
-	}
-	if (tags_found != 1 || fields_found != 1) {
-		fprintf(stderr, "Warning: potentially inaccurate input '%s': found %u recognized top level tags, expected 1\n", filename, tags_found);
-	}
-	if (! quiet) ProgressPrint(TRUE, "Done Parsing");
-	return FSUCCESS;
-}
-
-#endif
-
-// indicate if the given enodep matches the portselp
-// if provided NodeDesc, NodeGuid and NodeType must match
-// if neither NodeDesc nor NodeGuid is provided, returns FALSE
-static boolean MatchExpectedNode(ExpectedNode *enodep, PortSelector *portselp)
-{
-	boolean match = FALSE;
-	if (enodep->NodeDesc && portselp->NodeDesc) {
-		match = (0 == strcmp(enodep->NodeDesc, portselp->NodeDesc));
-		if (enodep->NodeGUID && portselp->NodeGUID) {
-			match &= (enodep->NodeGUID == portselp->NodeGUID);
-		}
-	} else if (enodep->NodeGUID && portselp->NodeGUID) {
-		match = (enodep->NodeGUID == portselp->NodeGUID);
-	}
-	if (enodep->NodeType && portselp->NodeType)
-		match &= (enodep->NodeType == portselp->NodeType);
-	return match;
-}
-
-// This routine takes the ExpectedLinks and attempts to resolve each
-// against a pair of ExpectedNodes, then fills in ExpectedLinks.enodep1, enodep2
-// By design this does not look at the NodeData (that is already handled on
-// parsing and generates ExpectedLinks.portp1,portp2).  Hence this is useful to
-// help build the graph for applications which only use the topology file.
-// Given the limited information in ExpectedNodes, the matching is based on
-// NodeDesc and/or NodeGUID matching as well as NodeType.
-void ResolveExpectedLinks(FabricData_t *fabricp, int quiet)
-{
-	LIST_ITEM *q;
-	LIST_ITEM *p;
-	uint32 input_checked = 0;
-	uint32 resolved = 0;
-	uint32 bad_input = 0;
-	uint32 ix = 0;
-
-	if (! quiet) ProgressPrint(TRUE, "Resolving Links...");
-	for (q=QListHead(&fabricp->ExpectedLinks); q != NULL; q = QListNext(&fabricp->ExpectedLinks, q)) {
-		ExpectedLink *elinkp = (ExpectedLink *)QListObj(q);
-		uint32 ends = 0;	// # ends of a link we have found enodep for
+	//Validate each link has a matching node entry, and ensure
+	//node descriptions and port numbers match
+	//This also validates that there is not more than one link to a given
+	//(Node,Port) pair
+	//Each (ExpectedNode,port) pair that matches a link will have a pointer
+	//to that link stored in its ExpectedPort struct, and a pointer to the
+	//node stored in the ExpectedLink portselp
+	if (! quiet) ProgressPrint(TRUE, "Resolving Links against Nodes...");
+	for(it = QListHead(&fabricp->ExpectedLinks); it != NULL; it = QListNext(&fabricp->ExpectedLinks, it)) {
+		ExpectedLink* elinkp = PARENT_STRUCT(it, ExpectedLink, ExpectedLinksEntry);
+		int ends = 0;
+		int bad_end = 0;
 
 		if (! quiet && (ix++ % PROGRESS_FREQ) == 0) {
 			ProgressPrint(FALSE, "Resolved %6d of %6d Links...",
 				ix, QListCount(&fabricp->ExpectedLinks));
 		}
-
-		if (! elinkp->portselp1 || ! elinkp->portselp2) {
-			fprintf(stderr, "Skipping Link, incomplete\n");
+		if (! elinkp->portselp1 && ! elinkp->portselp2) {
+			fprintf(stderr, "Topology file line %"PRIu64": empty link specification\n", elinkp->lineno);
 			bad_input++;
 			continue;
 		}
-		if ((! elinkp->portselp1->NodeDesc && ! elinkp->portselp1->NodeGUID)
-			|| (! elinkp->portselp2->NodeDesc && ! elinkp->portselp2->NodeGUID)) {
-			fprintf(stderr, "Skipping Link, unspecified NodeDesc and NodeGUID\n");
+		switch (TopologyValidateLinkPort(fabricp, elinkp, elinkp->portselp1, validation)) {
+		case FSUCCESS:
+			ends++;
+			break;
+		case FINVALID_PARAMETER:
+			if (TOPOVAL_SOMEWHAT_STRICT <= validation)
+				status = FERROR;
+			bad_end++;
+			break;
+		default:
+			status = FERROR;
+			break;
+		}
+		switch (TopologyValidateLinkPort(fabricp, elinkp, elinkp->portselp2, validation)) {
+		case FSUCCESS:
+			ends++;
+			break;
+		case FINVALID_PARAMETER:
+			bad_end++;
+			if (TOPOVAL_SOMEWHAT_STRICT <= validation)
+				status = FERROR;
+			break;
+		default:
+			status = FERROR;
+			break;
+		}
+		if (bad_end)
 			bad_input++;
-			continue;
-		}
-		input_checked++;
-		// find enodep for both ends of link
-		for (p=QListHead(&fabricp->ExpectedSWs); ends < 2 && p != NULL; p = QListNext(&fabricp->ExpectedSWs, p)) {
-			ExpectedNode *enodep = (ExpectedNode *)QListObj(p);
-
-			if (! elinkp->enodep1 && MatchExpectedNode(enodep, elinkp->portselp1)) {
-				elinkp->enodep1 = enodep;
-				ends++;
-			}
-			if (! elinkp->enodep2 && MatchExpectedNode(enodep, elinkp->portselp2)) {
-				elinkp->enodep2 = enodep;
-				ends++;
-			}
-		}
-		for (p=QListHead(&fabricp->ExpectedFIs); ends < 2 && p != NULL; p = QListNext(&fabricp->ExpectedFIs, p)) {
-			ExpectedNode *enodep = (ExpectedNode *)QListObj(p);
-
-			if (! elinkp->enodep1 && MatchExpectedNode(enodep, elinkp->portselp1)) {
-				elinkp->enodep1 = enodep;
-				ends++;
-			}
-			if (! elinkp->enodep2 && MatchExpectedNode(enodep, elinkp->portselp2)) {
-				elinkp->enodep2 = enodep;
-				ends++;
-			}
-		}
+		else
+			input_checked++;
 		if (ends >= 2)
 			resolved++;
 	}
@@ -1099,5 +1327,58 @@ void ResolveExpectedLinks(FabricData_t *fabricp, int quiet)
 		fprintf(stderr, "%u of %u Input Links Checked, %u Resolved, %u Bad Input Skipped\n",
 				input_checked, QListCount(&fabricp->ExpectedLinks),
 				resolved, bad_input);
-	return;
+
+	// If successful to this point, Validate all nodes are reachable
+	if(FSUCCESS == status && TOPOVAL_SOMEWHAT_STRICT <= validation) {
+		if(TopologyValidateNoLinksDisjoint(fabricp) != FSUCCESS)
+			status = FERROR;
+	}
+
+	if (TOPOVAL_SOMEWHAT_STRICT <= validation)
+		return status;
+	else
+		return FSUCCESS;
+}
+
+FSTATUS Xml2ParseTopology(const char *input_file, int quiet, FabricData_t *fabricp,
+#ifdef __VXWORKS__
+	XML_Memory_Handling_Suite* memsuite,
+#endif
+	TopoVal_t validation)
+{
+	unsigned tags_found, fields_found;
+	const char *filename=input_file;
+
+	if(fabricp == NULL || fabricp->AllNodes.state != CL_INITIALIZED) {
+		if (!quiet) ProgressPrint(TRUE, "Error: input FabricData_t was null or uninitialized!");
+		return FERROR;
+	}
+
+	if (strcmp(input_file, "-") == 0) {
+		if (! quiet) ProgressPrint(TRUE, "Parsing stdin...");
+		filename = "stdin";
+		if (FSUCCESS != IXmlParseFile(stdin, "stdin", IXML_PARSER_FLAG_NONE, TopLevelFields, NULL, fabricp, NULL, NULL, &tags_found, &fields_found
+#ifdef __VXWORKS__
+																	, memsuite
+#endif
+																			)) {
+			return FERROR;
+		}
+	} else {
+		if (! quiet) ProgressPrint(TRUE, "Parsing %s...", Top_truncate_str(input_file));
+		if (FSUCCESS != IXmlParseInputFile(input_file, IXML_PARSER_FLAG_NONE, TopLevelFields, NULL, fabricp, NULL, NULL, &tags_found, &fields_found
+#ifdef __VXWORKS__
+																	, memsuite
+#endif
+																			)) {
+			return FERROR;
+		}
+	}
+	if (tags_found != 1 || fields_found != 1) {
+		fprintf(stderr, "Warning: potentially inaccurate input '%s': found %u recognized top level tags, expected 1\n", filename, tags_found);
+	}
+	if(TOPOVAL_NONE != validation)
+		return TopologyValidate(fabricp, quiet, validation);
+	else
+		return FSUCCESS;
 }

@@ -167,6 +167,7 @@ void PrintStlPortInfo(PrintDest_t *dest, int indent, const STL_PORT_INFO *pPortI
 	if (printLineByLine) {
 		PrintIntWithDots(dest, indent, "LID", (uint32)pPortInfo->LID);
 		PrintIntWithDots(dest, indent, "FlowControlMask", (uint32)pPortInfo->FlowControlMask);
+		PrintIntWithDots(dest, indent, "VL.PreemptCap", (uint32)pPortInfo->VL.PreemptCap);
 		PrintIntWithDots(dest, indent, "VL.s2.Cap", (uint32)pPortInfo->VL.s2.Cap);
 		PrintIntWithDots(dest, indent, "VL.HighLimit", (uint32)pPortInfo->VL.HighLimit);
 		PrintIntWithDots(dest, indent, "VL.PreemptingLimit", (uint32)pPortInfo->VL.PreemptingLimit);
@@ -180,8 +181,8 @@ void PrintStlPortInfo(PrintDest_t *dest, int indent, const STL_PORT_INFO *pPortI
 		PrintIntWithDots(dest, indent, "PortStates.s.PortPhysicalState", (uint32)pPortInfo->PortStates.s.PortPhysicalState);
 		PrintIntWithDots(dest, indent, "PortStates.s.PortState", (uint32)pPortInfo->PortStates.s.PortState);
 		PrintIntWithDots(dest, indent, "PortStates.s.LEDEnabled", (uint32)pPortInfo->PortStates.s.LEDEnabled);
-		PrintIntWithDots(dest, indent, "PortPhyConfig.AsReg8", pPortInfo->PortPhyConfig.AsReg8);
-		PrintIntWithDots(dest, indent, "PortPhyConfig.s.PortType", pPortInfo->PortPhyConfig.s.PortType);
+		PrintIntWithDots(dest, indent, "PortPhysConfig.AsReg8", pPortInfo->PortPhysConfig.AsReg8);
+		PrintIntWithDots(dest, indent, "PortPhysConfig.s.PortType", pPortInfo->PortPhysConfig.s.PortType);
 		PrintIntWithDots(dest, indent, "MultiCollectMask.CollectiveMask", (uint32)pPortInfo->MultiCollectMask.CollectiveMask);
 		PrintIntWithDots(dest, indent, "MultiCollectMask.MulticastMask", (uint32)pPortInfo->MultiCollectMask.MulticastMask);
 		PrintIntWithDots(dest, indent, "s1.M_KeyProtectBits", (uint32)pPortInfo->s1.M_KeyProtectBits);
@@ -241,8 +242,10 @@ void PrintStlPortInfo(PrintDest_t *dest, int indent, const STL_PORT_INFO *pPortI
 		PrintIntWithDots(dest, indent, "FlitControl.Interleave.s.DistanceEnabled", (uint32)pPortInfo->FlitControl.Interleave.s.DistanceEnabled);
 		PrintIntWithDots(dest, indent, "FlitControl.Interleave.s.MaxNestLevelTxEnabled", (uint32)pPortInfo->FlitControl.Interleave.s.MaxNestLevelTxEnabled);
 		PrintIntWithDots(dest, indent, "FlitControl.Interleave.s.MaxNestLevelRxSupported", (uint32)pPortInfo->FlitControl.Interleave.s.MaxNestLevelRxSupported);
-		PrintIntWithDots(dest, indent, "FlitControl.Preemption.MinInitial", (uint32)pPortInfo->FlitControl.Preemption.MinInitial);
-		PrintIntWithDots(dest, indent, "FlitControl.Preemption.MinTail", (uint32)pPortInfo->FlitControl.Preemption.MinTail);
+		// Convert Flits to bytes and display in decimal
+		PrintIntWithDotsDec(dest, indent, "FlitControl.Preemption.MinInitial", (uint32)(pPortInfo->FlitControl.Preemption.MinInitial * BYTES_PER_FLIT));
+		// Convert Flits to bytes and display in decimal
+		PrintIntWithDotsDec(dest, indent, "FlitControl.Preemption.MinTail", (uint32)(pPortInfo->FlitControl.Preemption.MinTail * BYTES_PER_FLIT));
 		PrintIntWithDots(dest, indent, "FlitControl.Preemption.LargePktLimit", (uint32)pPortInfo->FlitControl.Preemption.LargePktLimit);
 		PrintIntWithDots(dest, indent, "FlitControl.Preemption.SmallPktLimit", (uint32)pPortInfo->FlitControl.Preemption.SmallPktLimit);
 		PrintIntWithDots(dest, indent, "FlitControl.Preemption.MaxSmallPktLimit", (uint32)pPortInfo->FlitControl.Preemption.MaxSmallPktLimit);
@@ -402,7 +405,7 @@ void PrintStlPortInfo(PrintDest_t *dest, int indent, const STL_PORT_INFO *pPortI
 		FormatTimeoutMult(tempBuf, pPortInfo->Resp.TimeValue);
 		FormatTimeoutMult(tempBuf2, pPortInfo->Subnet.Timeout);
         PrintFunc(dest,"%*sPortType: %-22s LimtRsp/Subnet:   %s,%s\n",
-            indent, "",  StlPortTypeToText(pPortInfo->PortPhyConfig.s.PortType), tempBuf, tempBuf2);
+            indent, "",  StlPortTypeToText(pPortInfo->PortPhysConfig.s.PortType), tempBuf, tempBuf2);
 		PrintFunc(dest, "%*sM_KEY:    0x%016"PRIx64"     Lease:   %5u s  Protect: %s\n",
 			indent, "", pPortInfo->M_Key, pPortInfo->M_KeyLeasePeriod,
 			IbMKeyProtectToText(pPortInfo->s1.M_KeyProtectBits));
@@ -471,8 +474,8 @@ void PrintStlPortInfo(PrintDest_t *dest, int indent, const STL_PORT_INFO *pPortI
 
 		PrintFunc(dest, "%*sVLs Active:    %d+1\n",
 			indent, "", pPortInfo->s4.OperationalVL);
-		PrintFunc(dest, "%*sVL: Cap %d+1   HighLimit 0x%04x   PreemptLimit 0x%04x\n",
-			indent, "", pPortInfo->VL.s2.Cap,
+		PrintFunc(dest, "%*sVL: PreemptCap %d   Cap %d+1   HighLimit 0x%04x   PreemptLimit 0x%04x\n",
+			indent, "", pPortInfo->VL.PreemptCap, pPortInfo->VL.s2.Cap,
 				pPortInfo->VL.HighLimit, pPortInfo->VL.PreemptingLimit);
 		PrintFunc(dest, "%*sVLFlowControlDisabledMask: 0x%08x   ArbHighCap: %d  ArbLowCap: %d\n", 
 				  indent, "", pPortInfo->FlowControlMask, 
@@ -513,10 +516,11 @@ void PrintStlPortInfo(PrintDest_t *dest, int indent, const STL_PORT_INFO *pPortI
 			indent, "",
 			pPortInfo->FlitControl.Interleave.s.MaxNestLevelTxEnabled,
 			pPortInfo->FlitControl.Interleave.s.MaxNestLevelRxSupported);
-		PrintFunc(dest, "%*sFlitCtrlPreemption MinInitial: 0x%04x MinTail: 0x%04x LargePktLim: 0x%02x\n",
+		// Convert Flits to bytes and display in decimal
+		PrintFunc(dest, "%*sFlitCtrlPreemption MinInitial: %"PRIu64" MinTail: %"PRIu64" LargePktLim: 0x%02x\n",
 			indent, "",
-			pPortInfo->FlitControl.Preemption.MinInitial,
-			pPortInfo->FlitControl.Preemption.MinTail,
+			(uint64_t)(pPortInfo->FlitControl.Preemption.MinInitial * BYTES_PER_FLIT),
+			(uint64_t)(pPortInfo->FlitControl.Preemption.MinTail * BYTES_PER_FLIT),
 			pPortInfo->FlitControl.Preemption.LargePktLimit);
 		PrintFunc(dest, "%*s  SmallPktLimit: 0x%02x MaxSmallPktLimit 0x%02x PreemptionLimit: 0x%02x\n",
 			indent, "",
@@ -2221,7 +2225,7 @@ void PrintStlPortSummary(PrintDest_t *dest, int indent, const char* portName, co
 		show_address = 0;
 		show_perf = 0;
 
-		if (pPortInfo->PortPhyConfig.s.PortType == STL_PORT_TYPE_STANDARD
+		if (pPortInfo->PortPhysConfig.s.PortType == STL_PORT_TYPE_STANDARD
 			&& pPortInfo->PortStates.s.OfflineDisabledReason != STL_OFFDIS_REASON_LOCAL_MEDIA_NOT_INSTALLED
 			&& pPortInfo->PortStates.s.OfflineDisabledReason != STL_OFFDIS_REASON_SWITCH_MGMT
 			&& pPortInfo->PortStates.s.OfflineDisabledReason != STL_OFFDIS_REASON_SMA_DISABLED) {
@@ -2238,7 +2242,7 @@ void PrintStlPortSummary(PrintDest_t *dest, int indent, const char* portName, co
 			show_mgmt = 0;	// omit for HFI to HFI link, and switch port 0
 							// Mgmt is uncertain til armed
 		show_address = 0;
-		if (pPortInfo->PortPhyConfig.s.PortType == STL_PORT_TYPE_STANDARD)
+		if (pPortInfo->PortPhysConfig.s.PortType == STL_PORT_TYPE_STANDARD)
 			show_cable = 1;
 		show_perf = 1;
 		break;
@@ -2247,7 +2251,7 @@ void PrintStlPortSummary(PrintDest_t *dest, int indent, const char* portName, co
 		show_rate = SHOW_RATE_ACT;
 		show_mgmt = 1;	// once Armed, pkey reflects MgmtAllowed or in Admin VF
 		show_address = 1;
-		if (pPortInfo->PortPhyConfig.s.PortType == STL_PORT_TYPE_STANDARD)
+		if (pPortInfo->PortPhysConfig.s.PortType == STL_PORT_TYPE_STANDARD)
 			show_cable = 1;
 		show_perf = 1;
 		break;
@@ -2445,7 +2449,7 @@ void PrintStlPortSummary(PrintDest_t *dest, int indent, const char* portName, co
 		}
 	}
 	if (show_cable && cableInfoData) {
-		PrintStlCableInfo(dest, indent, cableInfoData, addr, len, pPortInfo->PortPhyConfig.s.PortType, detail, printLineByLine);
+		PrintStlCableInfo(dest, indent, cableInfoData, addr, len, pPortInfo->PortPhysConfig.s.PortType, detail, printLineByLine);
 	}
 	if (show_perf && pPortStatusRsp) {
 		PrintStlPortStatusRspSummary(dest, indent, pPortStatusRsp, printLineByLine);

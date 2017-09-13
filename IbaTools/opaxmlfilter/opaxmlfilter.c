@@ -174,8 +174,7 @@ FSTATUS Xml2ParseInputFile(const char *input_file, void *context, IXML_FIELD *fi
 
 void Usage(int exitcode)
 {
-	fprintf(stderr, "Usage: opaxmlfilter [-t|-k] [-l] [-i indent] [-s element] [-P param_file]\n");
-	fprintf(stderr, "                       [input_file]\n");
+	fprintf(stderr, "Usage: opaxmlfilter [-t|-k] [-l] [-i indent] [-s element] [input_file]\n");
 	fprintf(stderr, "           or\n");
 	fprintf(stderr, "       opaxmlfilter --help\n");
 	fprintf(stderr, "       --help - produce full help text\n");
@@ -187,9 +186,8 @@ void Usage(int exitcode)
 	fprintf(stderr, "            since original line numbers will be available\n");
 	fprintf(stderr, "       -i indent - set indentation to use per level (default 4)\n");
 	fprintf(stderr, "       -s element - name of XML element to suppress\n");
-	fprintf(stderr, "                    can be used multiple times, order does not matter\n");
+	fprintf(stderr, "                    can be used multiple times (max 100), order does not matter\n");
 
-	fprintf(stderr, "       -P param_file - read command parameters from param_file\n"); 
 	fprintf(stderr, "       input_file - xml file to read.  default is stdin\n");
 	exit(exitcode);
 }

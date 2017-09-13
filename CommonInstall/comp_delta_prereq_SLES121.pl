@@ -48,6 +48,7 @@ my @opa_stack_prereq = (
 			"libglib-2_0-0",
 			"libibverbs1",
 			"libudev1",
+			"libudev-devel",
 			"opensm-libs3",
 			"pciutils",
 			"perl",
@@ -55,6 +56,7 @@ my @opa_stack_prereq = (
 			"rdma",
 			"systemd",
 			"kernel-devel",
+			"libibcm1",
 );
 $comp_prereq_hash{'opa_stack_prereq'} = \@opa_stack_prereq;
 
@@ -83,6 +85,7 @@ my @intel_hfi_prereq = (
 			"libuuid-devel",
 			"python-base",
 			"udev",
+			"irqbalance",
 );
 $comp_prereq_hash{'intel_hfi_prereq'} = \@intel_hfi_prereq;
 
@@ -105,6 +108,7 @@ my @openmpi_gcc_hfi_prereq = (
                     "pkg-config",
                     "libgcc_s1",
                     "libgfortran3",
+		    "gcc-fortran",
                     "libgomp1",
                     "libibverbs1",
                     "libquadmath0",
@@ -112,6 +116,7 @@ my @openmpi_gcc_hfi_prereq = (
                     "libstdc++6",
                     "libz1",
                     "opensm-libs3",
+		    "opensm-devel",
                     "libz1",
 );
 $comp_prereq_hash{'openmpi_gcc_hfi_prereq'} = \@openmpi_gcc_hfi_prereq;
@@ -137,6 +142,7 @@ my @openmpi_prereq = (
                     "pkg-config",
                     "libgcc_s1",
                     "libgfortran3",
+		    "gcc-fortran",
                     "libgomp1",
                     "libibverbs1",
                     "libquadmath0",
@@ -144,6 +150,7 @@ my @openmpi_prereq = (
                     "libstdc++6",
                     "libz1",
                     "opensm-libs3",
+		    "opensm-devel",
 );
 $comp_prereq_hash{'openmpi_prereq'} = \@openmpi_prereq;
 

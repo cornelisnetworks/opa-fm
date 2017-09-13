@@ -91,6 +91,7 @@ FSTATUS InitFabricData(FabricData_t *fabricp, FabricFlags_t flags)
 	}
 	fabricp->flags = flags & (FF_LIDARRAY|FF_PMADIRECT|FF_SMADIRECT|FF_DOWNPORTINFO);
 	cl_qmap_init(&fabricp->AllSystems, NULL);
+	cl_qmap_init(&fabricp->ExpectedNodeGuidMap, NULL);
 	QListInitState(&fabricp->AllPorts);
 	if (! QListInit(&fabricp->AllPorts)) {
 		fprintf(stderr, "%s: Unable to initialize List\n", g_Top_cmdname);
@@ -147,7 +148,7 @@ FSTATUS InitFabricData(FabricData_t *fabricp, FabricFlags_t flags)
 	QListInitState(&fabricp->AllMcGroups);
 	if (!QListInit(&fabricp->AllMcGroups)) {
 		fprintf(stderr, "%s: Unable to initialize List of mcast Members\n", g_Top_cmdname);
-	goto fail;
+		goto fail;
 	}
 
         // credit-loop related lists
@@ -413,7 +414,9 @@ int FindPKey(PortData *portp, uint16 pkey)
 boolean isVFMember(PortData *portp, VFData_t *pVFData) 
 {
 	STL_VFINFO_RECORD *pR = &pVFData->record;
-	uint8 sl = pR->s1.sl;
+	uint8 sl = pR->s1.slBase;
+	uint8 slResp = (pR->slResponseSpecified? pR->slResponse: sl);
+	uint8 slMcast = (pR->slMulticastSpecified? pR->slMulticast: sl);
 
 	// VF only valid if port initialized
 	if (! IsPortInitialized(portp->PortInfo.PortStates))
@@ -426,7 +429,9 @@ boolean isVFMember(PortData *portp, VFData_t *pVFData)
 	if (! portp->pQOS || ! portp->pQOS->SL2SCMap)
 		return FALSE;
 
-	if (portp->pQOS->SL2SCMap->SLSCMap[sl].SC==15)
+	if (portp->pQOS->SL2SCMap->SLSCMap[sl].SC == 15 &&
+		portp->pQOS->SL2SCMap->SLSCMap[slResp].SC == 15 &&
+		portp->pQOS->SL2SCMap->SLSCMap[slMcast].SC == 15)
 		return FALSE;
 
 	return (-1 != FindPKey(portp, pR->pKey));
@@ -1072,7 +1077,7 @@ fail:
 
 
 #ifdef PRODUCT_OPENIB_FF
-McGroupData *FabricDataAddMCGroup(FabricData_t *fabricp, struct oib_port *port, int quiet, IB_MCMEMBER_RECORD *pMCGRecord,
+McGroupData *FabricDataAddMCGroup(FabricData_t *fabricp, struct omgt_port *port, int quiet, IB_MCMEMBER_RECORD *pMCGRecord,
 		boolean *new_nodep, FILE *verbose_file)
 {
 	FSTATUS  status;
@@ -1710,28 +1715,38 @@ void ExpectedLinkFreeAll(FabricData_t *fabricp)
 }
 
 // remove Expected Node from lists and free it
-void ExpectedNodeFree(ExpectedNode *enodep, QUICK_LIST *listp)
+void ExpectedNodeFree(FabricData_t *fabricp, ExpectedNode *enodep, QUICK_LIST *listp)
 {
 	if (enodep->nodep && enodep->nodep->enodep == enodep)
 		enodep->nodep->enodep = NULL;
 	if (ListItemIsInAList(&enodep->ExpectedNodesEntry))
 		QListRemoveItem(listp, &enodep->ExpectedNodesEntry);
+	if (enodep->NodeGUID)
+		cl_qmap_remove(&fabricp->ExpectedNodeGuidMap, enodep->NodeGUID);
 	if (enodep->NodeDesc)
 		MemoryDeallocate(enodep->NodeDesc);
 	if (enodep->details)
 		MemoryDeallocate(enodep->details);
+	if (enodep->ports) {
+		int i;
+		for (i = 0; i < enodep->portsSize; ++i) {
+			if (enodep->ports[i])
+				MemoryDeallocate(enodep->ports[i]);
+		}
+		MemoryDeallocate(enodep->ports);
+	}
 	MemoryDeallocate(enodep);
 }
 
-// remove all Expected Nodes from lists and free them
-void ExpectedNodesFreeAll(QUICK_LIST *listp)
+// remove all Expected Nodes from lists and maps and free them
+void ExpectedNodesFreeAll(FabricData_t *fabricp, QUICK_LIST *listp)
 {
 	LIST_ITEM *p;
 
 	// free all link data
 	for (p=QListHead(listp); p != NULL;) {
 		LIST_ITEM *nextp = QListNext(listp, p);
-		ExpectedNodeFree((ExpectedNode *)QListObj(p), listp);
+		ExpectedNodeFree(fabricp, (ExpectedNode *)QListObj(p), listp);
 		p = nextp;
 	}
 }
@@ -1769,8 +1784,8 @@ void DestroyFabricData(FabricData_t *fabricp)
 		(*g_Top_FreeCallbacks.pFabricDataFreeCallback)(fabricp);
 
 	ExpectedLinkFreeAll(fabricp);	// ExpectedLinks
-	ExpectedNodesFreeAll(&fabricp->ExpectedFIs);	// ExpectedFIs
-	ExpectedNodesFreeAll(&fabricp->ExpectedSWs);	// ExpectedSWs
+	ExpectedNodesFreeAll(fabricp, &fabricp->ExpectedFIs);	// ExpectedFIs
+	ExpectedNodesFreeAll(fabricp, &fabricp->ExpectedSWs);	// ExpectedSWs
 	ExpectedSMsFreeAll(fabricp);	// ExpectedSMs
 
 	SMDataFreeAll(fabricp); // SMs

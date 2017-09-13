@@ -1608,8 +1608,7 @@ invalid:
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 		pa_cntxt_data(pa_cntxt, pa_data, 0);
 		(void)pa_send_reply(maip, pa_cntxt);
-        IB_EXIT(__func__, VSTATUS_OK);
-        return(VSTATUS_OK);
+		goto release;
 	}
 
     // switch to pa writer mai handle for sending out remainder of rmpp responses
@@ -1629,6 +1628,7 @@ invalid:
     }
 
     // this may not necessarily release context based on if someone else has reserved it
+release:
 	pa_cntxt_release(pa_cntxt);
 
 	IB_EXIT(__func__, VSTATUS_OK);

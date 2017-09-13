@@ -83,64 +83,88 @@ void ClearVFStats(PmVFImage_t *vfImage)
 
 // The Update routines take a portSweep argument to reduce overhead
 // by letting caller index the PortSweepData once and pass pointer
-static void UpdateUtilStats(PmUtilStats_t *utilp, PmPortImage_t *portImage)
+static void UpdateUtilStats(PmUtilStats_t *utilp, Pm_t *pm, uint32 imageIndex, PmPort_t *port, uint32 imageInterval)
 {
-	utilp->TotMBps += portImage->SendMBps;
-	utilp->TotKPps += portImage->SendKPps;
+	uint32 SendMBps = computeSendMBps(pm, imageIndex, port, (void *)&imageInterval);
+	uint32 SendKPkts = computeSendKPkts(pm, imageIndex, port, (void *)&imageInterval);
+	uint8 utilBucket = 0;
+	if (port != NULL) {
+		uint32 rxRate = PmCalculateRate(port->Image[imageIndex].u.s.activeSpeed, port->Image[imageIndex].u.s.rxActiveWidth);
+		utilBucket = ComputeUtilBucket(SendMBps, s_StaticRateToMBps[rxRate]);
+	}
 
-	utilp->BwPorts[portImage->UtilBucket]++;
+	utilp->TotMBps += SendMBps;
+	utilp->TotKPps += SendKPkts;
 
-	UPDATE_MAX(utilp->MaxMBps, portImage->SendMBps);
-	UPDATE_MIN(utilp->MinMBps, portImage->SendMBps);
+	utilp->BwPorts[utilBucket]++;
 
-	UPDATE_MAX(utilp->MaxKPps, portImage->SendKPps);
-	UPDATE_MIN(utilp->MinKPps, portImage->SendKPps);
+	UPDATE_MAX(utilp->MaxMBps, SendMBps);
+	UPDATE_MIN(utilp->MinMBps, SendMBps);
+
+	UPDATE_MAX(utilp->MaxKPps, SendKPkts);
+	UPDATE_MIN(utilp->MinKPps, SendKPkts);
 }
 
 // called when both ports in a link are in the given group
-static void UpdateErrStatsInGroup(PmErrStats_t *errp, PmPortImage_t *portImage)
+static void UpdateErrStatsInGroup(PmErrStats_t *errp, Pm_t *pm, uint32 imageIndex, PmPort_t *port,
+	ErrorSummary_t *thresholds, IntegrityWeights_t *iWeights, CongestionWeights_t *cWeights, uint32 imageInterval)
 {
-#define UPDATE_MAX_ERROR(stat) do { \
-		UPDATE_MAX(errp->Max.stat, portImage->Errors.stat); \
+	BucketMask_t buckets = {0};
+
+#define UPDATE_MAX_ERROR(stat, data) do { \
+		uint32 val = compute##stat(pm, imageIndex, port, data); \
+		UPDATE_MAX(errp->Max.stat, val); \
 	} while (0)
-#define UPDATE_ERROR(stat) do { \
-		UPDATE_MAX(errp->Max.stat, portImage->Errors.stat); \
-		errp->Ports[portImage->stat##Bucket].stat++; \
+#define UPDATE_ERROR(stat, data) do { \
+		uint32 val = compute##stat(pm, imageIndex, port, data); \
+		buckets.s.stat##Bucket = ComputeErrBucket(val, thresholds->stat); \
+		UPDATE_MAX(errp->Max.stat, val); \
+		errp->Ports[buckets.s.stat##Bucket].stat++; \
 	} while (0)
-	UPDATE_ERROR(Integrity);
-	UPDATE_ERROR(Congestion);
-	UPDATE_ERROR(SmaCongestion);
-	UPDATE_ERROR(Bubble);
-	UPDATE_ERROR(Security);
-	UPDATE_ERROR(Routing);
-	UPDATE_MAX_ERROR(DiscardsPct10);
-	UPDATE_MAX_ERROR(UtilizationPct10);
+	UPDATE_ERROR(Integrity, iWeights);
+	UPDATE_ERROR(Congestion, cWeights);
+	UPDATE_ERROR(SmaCongestion, cWeights);
+	UPDATE_ERROR(Bubble, NULL);
+	UPDATE_ERROR(Security, NULL);
+	UPDATE_ERROR(Routing, NULL);
+	UPDATE_MAX_ERROR(DiscardsPct10, (void *)&imageInterval);
+	UPDATE_MAX_ERROR(UtilizationPct10, (void *)&imageInterval);
 #undef UPDATE_ERROR
 #undef UPDATE_MAX_ERROR
 }
 
 // called when only one of ports in a link are in the given group
-static void UpdateErrStatsExtGroup(PmErrStats_t *errp,
-			   	PmPortImage_t *portImage, PmPortImage_t *portImage2)
+static void UpdateErrStatsExtGroup(PmErrStats_t *errp, Pm_t *pm, uint32 imageIndex, PmPort_t *port,
+	ErrorSummary_t *thresholds, IntegrityWeights_t *iWeights, CongestionWeights_t *cWeights, uint32 imageInterval)
 {
+	PmPort_t *port2 = port->Image[imageIndex].neighbor;
+	BucketMask_t buckets = {0};
+	BucketMask_t buckets2 = {0};
+
 	// for between-group counters we use the worst of the 2 ports
-#define UPDATE_MAX_ERROR(stat) do { \
-		UPDATE_MAX(errp->Max.stat, portImage->Errors.stat); \
-		UPDATE_MAX(errp->Max.stat, portImage2->Errors.stat); \
+#define UPDATE_MAX_ERROR(stat, data) do { \
+		uint32 val = compute##stat(pm, imageIndex, port, data); \
+		uint32 val2 = compute##stat(pm, imageIndex, port2, data); \
+		UPDATE_MAX(errp->Max.stat, val); \
+		UPDATE_MAX(errp->Max.stat, val2); \
 	} while (0)
-#define UPDATE_ERROR(stat) do { \
-		UPDATE_MAX(errp->Max.stat, portImage->Errors.stat); \
-		UPDATE_MAX(errp->Max.stat, portImage2->Errors.stat); \
-		errp->Ports[MAX(portImage->stat##Bucket, portImage2->stat##Bucket)].stat++; \
+#define UPDATE_ERROR(stat, data) do { \
+		uint32 val = compute##stat(pm, imageIndex, port, data); \
+		uint32 val2 = compute##stat(pm, imageIndex, port2, data); \
+		buckets.s.stat##Bucket = ComputeErrBucket(val, thresholds->stat); \
+		buckets2.s.stat##Bucket = ComputeErrBucket(val2, thresholds->stat); \
+		UPDATE_MAX(errp->Max.stat, val); \
+		UPDATE_MAX(errp->Max.stat, val2); \
+		errp->Ports[MAX(buckets.s.stat##Bucket, buckets2.s.stat##Bucket)].stat++; \
 	} while (0)
-	UPDATE_ERROR(Integrity);
-	UPDATE_ERROR(Congestion);
-	UPDATE_ERROR(SmaCongestion);
-	UPDATE_ERROR(Bubble);
-	UPDATE_ERROR(Security);
-	UPDATE_ERROR(Routing);
-	UPDATE_MAX_ERROR(DiscardsPct10);
-	UPDATE_MAX_ERROR(UtilizationPct10);
+	UPDATE_ERROR(Integrity, iWeights);
+	UPDATE_ERROR(Congestion, cWeights);
+	UPDATE_ERROR(SmaCongestion, cWeights);
+	UPDATE_ERROR(Bubble, NULL);
+	UPDATE_ERROR(Security, NULL);
+	UPDATE_ERROR(Routing, NULL);
+	UPDATE_MAX_ERROR(DiscardsPct10, (void *)&imageInterval);
+	UPDATE_MAX_ERROR(UtilizationPct10, (void *)&imageInterval);
 #undef UPDATE_ERROR
 #undef UPDATE_MAX_ERROR
 }
@@ -168,12 +192,13 @@ uint32_t PmCalculateRate(uint32_t speed, uint32_t width) {
 }
 
 // update stats for a port whose neighbor is also in the group
-void UpdateInGroupStats(Pm_t *pm, PmGroupImage_t *groupImage,
-				PmPortImage_t *portImage)
+void UpdateInGroupStats(Pm_t *pm, uint32 imageIndex, PmPort_t *port, PmGroupImage_t *groupImage, uint32 imageInterval)
 {
-	UpdateUtilStats(&groupImage->IntUtil, portImage);
-	UpdateErrStatsInGroup(&groupImage->IntErr, portImage);
-	uint32 rxRate = PmCalculateRate(portImage->u.s.activeSpeed, portImage->u.s.rxActiveWidth);
+	UpdateUtilStats(&groupImage->IntUtil, pm, imageIndex, port, imageInterval);
+	UpdateErrStatsInGroup(&groupImage->IntErr, pm, imageIndex, port, &pm->Thresholds,
+		&pm->integrityWeights, &pm->congestionWeights, imageInterval);
+
+	uint32 rxRate = PmCalculateRate(port->Image[imageIndex].u.s.activeSpeed, port->Image[imageIndex].u.s.rxActiveWidth);
 	if (s_StaticRateToMBps[rxRate] >= s_StaticRateToMBps[groupImage->MaxIntRate])
 		groupImage->MaxIntRate = rxRate;
 	if (s_StaticRateToMBps[rxRate] <= s_StaticRateToMBps[groupImage->MinIntRate])
@@ -181,16 +206,19 @@ void UpdateInGroupStats(Pm_t *pm, PmGroupImage_t *groupImage,
 }
 
 // update stats for a port whose neighbor is not also in the group
-void UpdateExtGroupStats(Pm_t *pm, PmGroupImage_t *groupImage,
-			   	PmPortImage_t *portImage, PmPortImage_t *portImage2)
+void UpdateExtGroupStats(Pm_t *pm, uint32 imageIndex, PmPort_t *port, PmGroupImage_t *groupImage, uint32 imageInterval)
 {
-	ASSERT(portImage2); // only ports with neighbors could be Ext
+	PmPort_t *port2 = port->Image[imageIndex].neighbor;
+
 	// our stats are what portp Sent
-	UpdateUtilStats(&groupImage->SendUtil, portImage);
+	UpdateUtilStats(&groupImage->SendUtil, pm, imageIndex, port, imageInterval);
 	// neighbor's stats are what it sent (and portp received)
-	UpdateUtilStats(&groupImage->RecvUtil, portImage2);
-	UpdateErrStatsExtGroup(&groupImage->ExtErr, portImage, portImage2);
-	uint32 rxRate = PmCalculateRate(portImage->u.s.activeSpeed, portImage->u.s.rxActiveWidth);
+	UpdateUtilStats(&groupImage->RecvUtil, pm, imageIndex, port2, imageInterval);
+
+	UpdateErrStatsExtGroup(&groupImage->ExtErr, pm, imageIndex, port, &pm->Thresholds,
+		&pm->integrityWeights, &pm->congestionWeights, imageInterval);
+
+	uint32 rxRate = PmCalculateRate(port->Image[imageIndex].u.s.activeSpeed, port->Image[imageIndex].u.s.rxActiveWidth);
 	if (s_StaticRateToMBps[rxRate] >= s_StaticRateToMBps[groupImage->MaxExtRate])
 		groupImage->MaxExtRate = rxRate;
 	if (s_StaticRateToMBps[rxRate] <= s_StaticRateToMBps[groupImage->MinExtRate])
@@ -198,12 +226,13 @@ void UpdateExtGroupStats(Pm_t *pm, PmGroupImage_t *groupImage,
 }
 
 // update stats for a port whose neighbor is also in the group
-void UpdateVFStats(Pm_t *pm, PmVFImage_t *vfImage,
-				PmPortImage_t *portImage)
+void UpdateVFStats(Pm_t *pm, uint32 imageIndex, PmPort_t *port, PmVFImage_t *vfImage, uint32 imageInterval)
 {
-	UpdateUtilStats(&vfImage->IntUtil, portImage);
-	UpdateErrStatsInGroup(&vfImage->IntErr, portImage);
-	uint32 rxRate = PmCalculateRate(portImage->u.s.activeSpeed, portImage->u.s.rxActiveWidth);
+	UpdateUtilStats(&vfImage->IntUtil, pm, imageIndex, port, imageInterval);
+	UpdateErrStatsInGroup(&vfImage->IntErr, pm, imageIndex, port, &pm->Thresholds,
+		&pm->integrityWeights, &pm->congestionWeights, imageInterval);
+
+	uint32 rxRate = PmCalculateRate(port->Image[imageIndex].u.s.activeSpeed, port->Image[imageIndex].u.s.rxActiveWidth);
 	if (s_StaticRateToMBps[rxRate] >= s_StaticRateToMBps[vfImage->MaxIntRate])
 		vfImage->MaxIntRate = rxRate;
 	if (s_StaticRateToMBps[rxRate] <= s_StaticRateToMBps[vfImage->MinIntRate])
@@ -254,61 +283,6 @@ void FinalizeVFStats(PmVFImage_t *vfImage)
 	}
 }
 
-// given a MBps transfer rate and a theoretical maxMBps, compute
-// the utilization bucket number from 0 to PM_UTIL_BUCKETS-1
-static __inline uint8 ComputeUtilBucket(uint32 SendMBps, uint32 maxMBps)
-{
-	// MaxMBps at 120g (QDR 12x) is 11444, so no risk of uint32 overflow
-	if (maxMBps) {
-		// directly compute bucket to reduce overflow chances
-		uint8 utilBucket = (SendMBps * PM_UTIL_BUCKETS) / maxMBps;
-		if (utilBucket >= PM_UTIL_BUCKETS)
-			return PM_UTIL_BUCKETS-1;
-		else
-			return utilBucket;
-	} else {
-		return 0;
-	}
-}
-
-// given a error count and a threshold, compute
-// the err bucket number from 0 to PM_ERR_BUCKETS-1
-static __inline uint8 ComputeErrBucket(uint32 errCnt, uint32 errThreshold)
-{
-	uint8 errBucket;
-
-	// directly compute bucket to reduce overflow chances
-	if (! errThreshold)	// ignore class of errors
-		return 0;
-	errBucket = (errCnt * (PM_ERR_BUCKETS-1)) / errThreshold;
-	if (errBucket >= PM_ERR_BUCKETS)
-		 return PM_ERR_BUCKETS-1;
-	else
-		 return errBucket;
-}
-
-void ComputeBuckets(Pm_t *pm, PmPortImage_t *portImage)
-{
-#define COMPUTE_ERR_BUCKET(stat) do { \
-		portImage->stat##Bucket = ComputeErrBucket( portImage->Errors.stat, \
-				   							pm->Thresholds.stat); \
-	} while (0)
-
-	if (! portImage->u.s.bucketComputed) {
-		uint32 rate = PmCalculateRate(portImage->u.s.activeSpeed, portImage->u.s.rxActiveWidth);
-		portImage->UtilBucket = ComputeUtilBucket(portImage->SendMBps,
-				   					s_StaticRateToMBps[rate]);
-		COMPUTE_ERR_BUCKET(Integrity);
-		COMPUTE_ERR_BUCKET(Congestion);
-		COMPUTE_ERR_BUCKET(SmaCongestion);
-		COMPUTE_ERR_BUCKET(Bubble);
-		COMPUTE_ERR_BUCKET(Security);
-		COMPUTE_ERR_BUCKET(Routing);
-		portImage->u.s.bucketComputed = 1;
-	}
-#undef COMPUTE_ERR_BUCKET
-}
-
 void PmPrintExceededPort(PmPort_t *pmportp, uint32 index,
 				const char *statistic, uint32 threshold, uint32 value)
 {
@@ -331,35 +305,18 @@ void PmPrintExceededPort(PmPort_t *pmportp, uint32 index,
 }
 
 #define GET_DELTA_COUNTER(cntr) \
-	(portImage->StlPortCounters.cntr - (portImagePrev ? \
-		(portImagePrev->clearSelectMask.s.cntr ? 0 : \
-			portImagePrev->StlPortCounters.cntr) : 0))
-#define GET_NEIGHBOR_DELTA_COUNTER(cntr) (portImageNeighbor ? \
-	(portImageNeighbor->StlPortCounters.cntr - \
-		(portImageNeighborPrev ? \
-			(portImageNeighborPrev->clearSelectMask.s.cntr ? 0 : \
-				portImageNeighborPrev->StlPortCounters.cntr) : 0)) : 0)
-#define GET_DELTA_VLCOUNTER(vlcntr, vl, cntr) \
-	(portImage->StlVLPortCounters[vl].vlcntr - (portImagePrev ? \
-		(portImagePrev->clearSelectMask.s.cntr ? 0 : \
-			portImagePrev->StlVLPortCounters[vl].vlcntr) : 0))
-#define GET_NEIGHBOR_DELTA_VLCOUNTER(vlcntr, vl, cntr) \
-	(portImageNeighbor ? (portImageNeighbor->StlVLPortCounters[vl].vlcntr - \
-		(portImageNeighborPrev ? \
-			(portImageNeighborPrev->clearSelectMask.s.cntr ? 0 : \
-				portImageNeighborPrev->StlVLPortCounters[vl].vlcntr) : 0)) : 0)
+	(portImage->DeltaStlPortCounters.cntr)
+#define GET_NEIGHBOR_DELTA_COUNTER(cntr) \
+	(portImageNeighbor ? portImageNeighbor->DeltaStlPortCounters.cntr : 0)
+#define GET_DELTA_VLCOUNTER(vlcntr, vl) \
+	(portImage->DeltaStlVLPortCounters[vl].vlcntr)
+#define GET_NEIGHBOR_DELTA_VLCOUNTER(vlcntr, vl) \
+	(portImageNeighbor ? portImageNeighbor->DeltaStlVLPortCounters[vl].vlcntr : 0)
 
 void PmPrintExceededPortDetailsIntegrity(PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint32 lastImageIndex)
 {
 	PmPortImage_t *portImage = &pmportp->Image[imageIndex];
 	PmPortImage_t *portImageNeighbor = (pmportneighborp ? &pmportneighborp->Image[imageIndex] : NULL);
-	PmPortImage_t *portImagePrev = NULL;
-	PmPortImage_t *portImageNeighborPrev = NULL;
-
-	if (lastImageIndex != PM_IMAGE_INDEX_INVALID) {
-		portImagePrev = &pmportp->Image[lastImageIndex];
-		portImageNeighborPrev = (pmportneighborp ? &pmportneighborp->Image[lastImageIndex] : NULL);
-	}
 
 	char message[256] = {0};
 	char * logMessage = message;
@@ -429,17 +386,10 @@ void PmPrintExceededPortDetailsCongestion(PmPort_t *pmportp, PmPort_t *pmportnei
 {
 	PmPortImage_t *portImage = &pmportp->Image[imageIndex];
 	PmPortImage_t *portImageNeighbor = (pmportneighborp ? &pmportneighborp->Image[imageIndex] : NULL);
-	PmPortImage_t *portImagePrev = NULL;
-	PmPortImage_t *portImageNeighborPrev = NULL;
 
 	char message[256] = {0};
 	char * logMessage = message;
 	int buffSpace = sizeof(message);
-
-	if (lastImageIndex != PM_IMAGE_INDEX_INVALID) {
-		portImagePrev = &pmportp->Image[lastImageIndex];
-		portImageNeighborPrev = (pmportneighborp ? &pmportneighborp->Image[lastImageIndex] : NULL);
-	}
 
 	uint64 DeltaXmitData = GET_DELTA_COUNTER(PortXmitData);
 	uint64 DeltaXmitPkts = GET_DELTA_COUNTER(PortXmitPkts);
@@ -456,8 +406,8 @@ void PmPrintExceededPortDetailsCongestion(PmPort_t *pmportp, PmPort_t *pmportnei
 	if (pm_config.process_vl_counters && DeltaXmitWait) {
 		uint64 MaxDeltaVLXmitWait = 0;
 		uint32 NumVLs, VLSelectMask, i;
-		for (i = 0, NumVLs = 0, VLSelectMask = portImage->vlSelectMask; i < MAX_PM_VLS && VLSelectMask; i++, VLSelectMask >>= 1) {
-			UPDATE_MAX(MaxDeltaVLXmitWait, GET_DELTA_VLCOUNTER(PortVLXmitWait, i, PortXmitWait));
+		for (i = 0, NumVLs = 0, VLSelectMask = portImage->vlSelectMask; i < STL_MAX_VLS && VLSelectMask; i++, VLSelectMask >>= 1) {
+			UPDATE_MAX(MaxDeltaVLXmitWait, GET_DELTA_VLCOUNTER(PortVLXmitWait, vl_to_idx(i)));
 			NumVLs += (VLSelectMask & 0x1);
 		}
 		DeltaXmitWait = (MaxDeltaVLXmitWait * MaxDeltaVLXmitWait * NumVLs) / DeltaXmitWait;
@@ -512,29 +462,22 @@ void PmPrintExceededPortDetailsSmaCongestion(PmPort_t *pmportp, PmPort_t *pmport
 {
 	PmPortImage_t *portImage = &pmportp->Image[imageIndex];
 	PmPortImage_t *portImageNeighbor = (pmportneighborp ? &pmportneighborp->Image[imageIndex] : NULL);
-	PmPortImage_t *portImagePrev = NULL;
-	PmPortImage_t *portImageNeighborPrev = NULL;
 
 	char message[256] = {0};
 	char * logMessage = message;
 	int buffSpace = sizeof(message);
 
-	if (lastImageIndex != PM_IMAGE_INDEX_INVALID) {
-		portImagePrev = &pmportp->Image[lastImageIndex];
-		portImageNeighborPrev = (pmportneighborp ? &pmportneighborp->Image[lastImageIndex] : NULL);
-	}
+	uint64 DeltaVLXmitData = GET_DELTA_VLCOUNTER(PortVLXmitData, PM_VL15);
+	uint64 DeltaVLXmitPkts = GET_DELTA_VLCOUNTER(PortVLXmitPkts, PM_VL15);
+	uint64 DeltaVLRcvPkts = GET_DELTA_VLCOUNTER(PortVLRcvPkts, PM_VL15);
+	uint64 DeltaVLXmitPkts_N = GET_NEIGHBOR_DELTA_VLCOUNTER(PortVLXmitPkts, PM_VL15);
 
-	uint64 DeltaVLXmitData = GET_DELTA_VLCOUNTER(PortVLXmitData, 15, PortXmitData);
-	uint64 DeltaVLXmitPkts = GET_DELTA_VLCOUNTER(PortVLXmitPkts, 15, PortXmitPkts);
-	uint64 DeltaVLRcvPkts = GET_DELTA_VLCOUNTER(PortVLRcvPkts, 15, PortRcvPkts);
-	uint64 DeltaVLXmitPkts_N = GET_NEIGHBOR_DELTA_VLCOUNTER(PortVLXmitPkts, 15, PortXmitPkts);
-
-	uint64 DeltaVLXmitWait = GET_DELTA_VLCOUNTER(PortVLXmitWait, 15, PortXmitWait);
-	uint64 DeltaVLXmitTimeCong = GET_DELTA_VLCOUNTER(PortVLXmitTimeCong, 15, PortXmitTimeCong);
-	uint64 DeltaVLRcvBECN = GET_DELTA_VLCOUNTER(PortVLRcvBECN, 15, PortRcvBECN);
-	uint64 DeltaVLMarkFECN = GET_DELTA_VLCOUNTER(PortVLMarkFECN, 15, PortMarkFECN);
-	uint64 DeltaVLRcvFECN_N = GET_NEIGHBOR_DELTA_VLCOUNTER(PortVLRcvFECN, 15, PortRcvFECN);
-	uint64 DeltaVLSwPortCong = GET_DELTA_VLCOUNTER(SwPortVLCongestion, 15, SwPortCongestion);
+	uint64 DeltaVLXmitWait = GET_DELTA_VLCOUNTER(PortVLXmitWait, PM_VL15);
+	uint64 DeltaVLXmitTimeCong = GET_DELTA_VLCOUNTER(PortVLXmitTimeCong, PM_VL15);
+	uint64 DeltaVLRcvBECN = GET_DELTA_VLCOUNTER(PortVLRcvBECN, PM_VL15);
+	uint64 DeltaVLMarkFECN = GET_DELTA_VLCOUNTER(PortVLMarkFECN, PM_VL15);
+	uint64 DeltaVLRcvFECN_N = GET_NEIGHBOR_DELTA_VLCOUNTER(PortVLRcvFECN, PM_VL15);
+	uint64 DeltaVLSwPortCong = GET_DELTA_VLCOUNTER(SwPortVLCongestion, PM_VL15);
 
 	uint32 VLXmitWaitPct = (uint32)(DeltaVLXmitWait ?
 		(DeltaVLXmitWait * 10000) / (DeltaVLXmitWait + DeltaVLXmitData) : 0);
@@ -585,13 +528,6 @@ void PmPrintExceededPortDetailsBubble(PmPort_t *pmportp, PmPort_t *pmportneighbo
 {
 	PmPortImage_t *portImage = &pmportp->Image[imageIndex];
 	PmPortImage_t *portImageNeighbor = (pmportneighborp ? &pmportneighborp->Image[imageIndex] : NULL);
-	PmPortImage_t *portImagePrev = NULL;
-	PmPortImage_t *portImageNeighborPrev = NULL;
-
-	if (lastImageIndex != PM_IMAGE_INDEX_INVALID) {
-		portImagePrev = &pmportp->Image[lastImageIndex];
-		portImageNeighborPrev = (pmportneighborp ? &pmportneighborp->Image[lastImageIndex] : NULL);
-	}
 
 	uint64 DeltaXmitData = GET_DELTA_COUNTER(PortXmitData);
 	uint64 DeltaRcvData_N = GET_NEIGHBOR_DELTA_COUNTER(PortRcvData);
@@ -613,13 +549,6 @@ void PmPrintExceededPortDetailsSecurity(PmPort_t *pmportp, PmPort_t *pmportneigh
 {
 	PmPortImage_t *portImage = &pmportp->Image[imageIndex];
 	PmPortImage_t *portImageNeighbor = (pmportneighborp ? &pmportneighborp->Image[imageIndex] : NULL);
-	PmPortImage_t *portImagePrev = NULL;
-	PmPortImage_t *portImageNeighborPrev = NULL;
-
-	if (lastImageIndex != PM_IMAGE_INDEX_INVALID) {
-		portImagePrev = &pmportp->Image[lastImageIndex];
-		portImageNeighborPrev = (pmportneighborp ? &pmportneighborp->Image[lastImageIndex] : NULL);
-	}
 
 	IB_LOG_WARN_FMT(NULL, "TxCE=%"PRIu64", neighbor RxCE=%"PRIu64" ",
 		GET_DELTA_COUNTER(PortXmitConstraintErrors),
@@ -629,13 +558,6 @@ void PmPrintExceededPortDetailsRouting(PmPort_t *pmportp, PmPort_t *pmportneighb
 {
 	PmPortImage_t *portImage = &pmportp->Image[imageIndex];
 	/*PmPortImage_t *portImageNeighbor = (pmportneighborp ? &pmportneighborp->Image[imageIndex] : NULL); */
-	PmPortImage_t *portImagePrev = NULL;
-	/*PmPortImage_t *portImageNeighborPrev = NULL; */
-
-	if (lastImageIndex != PM_IMAGE_INDEX_INVALID) {
-		portImagePrev = &pmportp->Image[lastImageIndex];
-		/*portImageNeighborPrev = (pmportneighborp ? &pmportneighborp->Image[lastImageIndex] : NULL); */
-	}
 
 	IB_LOG_WARN_FMT(NULL, "RxSR=%"PRIu64" ",
 		GET_DELTA_COUNTER(PortRcvSwitchRelayErrors));
@@ -655,7 +577,7 @@ static void PmUnexpectedClear(Pm_t *pm, PmPort_t *pmportp, uint32 imageIndex,
 	char CounterNameBuffer[128];
 	FormatStlCounterSelectMask(CounterNameBuffer, unexpectedClear);
 
-	if (pmimagep->FailedNodes + pmimagep->FailedPorts
+	if (pmimagep->NoRespNodes + pmimagep->NoRespPorts
 				   	+ pmimagep->UnexpectedClearPorts < pm_config.SweepErrorsLogThreshold)
 	{
 		IB_LOG_WARN_FMT(NULL, "Unexpected counter clear for %.*s Guid "FMT_U64" LID 0x%x Port %u%s (Mask 0x%08x: %s)",
@@ -705,41 +627,44 @@ void PmFinalizePortStats(Pm_t *pm, PmPort_t *pmportp, uint32 index)
 	// Counter Select Mask of Counter cleared by the PM during LastSweep
 	CounterSelectMask_t prevPortClrSelMask = portImagePrev->clearSelectMask;
 
-	// Neighbor's Current PortImage
-	PmPortImage_t *portImageNeighbor = (portImage->neighbor ? &portImage->neighbor->Image[index] : NULL);
-
 	// Delta's used for Category Calulations and Running Counters
-	PmCompositePortCounters_t DeltaPortCounters = {0};
-	PmCompositeVLCounters_t DeltaVLCounters[MAX_PM_VLS] = {{0}};
+	PmCompositePortCounters_t *pDeltaPortCounters = &portImage->DeltaStlPortCounters;
+	PmCompositeVLCounters_t *pDeltaVLCounters = &portImage->DeltaStlVLPortCounters[0];
 
 	CounterSelectMask_t unexpectedClear = {0};
-	uint64 maxPortVLXmitWait = 0;
-	uint32 DeltaLinkQualityIndicator = 0;
 
 	IB_LOG_DEBUG3_FMT(__func__, "%.*s Guid "FMT_U64" LID 0x%x Port %u",
 		(int)sizeof(pmportp->pmnodep->nodeDesc.NodeString), pmportp->pmnodep->nodeDesc.NodeString,
 		pmportp->pmnodep->guid, pmportp->pmnodep->dlid, pmportp->portNum);
 
-        // If LinkWidth.Active is greater than LinkWidthDowngrade.txActive then port is downgraded
-        if (pImgPortCounters->lq.s.NumLanesDown) {
-            pm->Image[index].DowngradedPorts++;
-        }
+	// If LinkWidth.Active is greater than LinkWidthDowngrade.txActive then port is downgraded
+	if (pImgPortCounters->lq.s.NumLanesDown) {
+		pm->Image[index].DowngradedPorts++;
+	}
 	if (portImage->u.s.gotDataCntrs) {
+		// Copy MIN LQI into Delta Struct
+		pDeltaPortCounters->lq.s.LinkQualityIndicator =
+			MIN(pImgPortCounters->lq.s.LinkQualityIndicator,
+				pImgPortCountersPrev->lq.s.LinkQualityIndicator);
+		// Copy MAX Number of Lanes (LWD) into Delta Struct
+		pDeltaPortCounters->lq.s.NumLanesDown =
+			MAX(pImgPortCounters->lq.s.NumLanesDown,
+				pImgPortCountersPrev->lq.s.NumLanesDown);
 
 #define GET_DELTA_PORTCOUNTERS(cntr) do { \
 		if (pImgPortCounters->cntr < pImgPortCountersPrev->cntr || prevPortClrSelMask.s.cntr) { \
 			unexpectedClear.s.cntr = !prevPortClrSelMask.s.cntr; \
-			DeltaPortCounters.cntr = pImgPortCounters->cntr; \
+			pDeltaPortCounters->cntr = pImgPortCounters->cntr; \
 		} else { \
-			DeltaPortCounters.cntr = pImgPortCounters->cntr - pImgPortCountersPrev->cntr; \
+			pDeltaPortCounters->cntr = pImgPortCounters->cntr - pImgPortCountersPrev->cntr; \
 		} } while (0)
 
 #define GET_DELTA_VLCOUNTERS(vlcntr, vl, cntr) do { \
 		if (pImgPortVLCounters[vl].vlcntr < pImgPortVLCountersPrev[vl].vlcntr || prevPortClrSelMask.s.cntr) { \
 			unexpectedClear.s.cntr = !prevPortClrSelMask.s.cntr; \
-			DeltaVLCounters[vl].vlcntr = pImgPortVLCounters[vl].vlcntr; \
+			pDeltaVLCounters[vl].vlcntr = pImgPortVLCounters[vl].vlcntr; \
 		} else { \
-			DeltaVLCounters[vl].vlcntr = pImgPortVLCounters[vl].vlcntr - pImgPortVLCountersPrev[vl].vlcntr; \
+			pDeltaVLCounters[vl].vlcntr = pImgPortVLCounters[vl].vlcntr - pImgPortVLCountersPrev[vl].vlcntr; \
 		} } while (0)
 
 		GET_DELTA_PORTCOUNTERS(PortXmitData);
@@ -764,7 +689,6 @@ void PmFinalizePortStats(Pm_t *pm, PmPort_t *pmportp, uint32 index)
 				GET_DELTA_VLCOUNTERS(PortVLRcvData,      i, PortRcvData);
 				GET_DELTA_VLCOUNTERS(PortVLRcvPkts,      i, PortRcvPkts);
 				GET_DELTA_VLCOUNTERS(PortVLXmitWait,     i, PortXmitWait);
-				UPDATE_MAX(maxPortVLXmitWait, DeltaVLCounters[i].PortVLXmitWait); // for tracking most congested VL.
 				GET_DELTA_VLCOUNTERS(SwPortVLCongestion, i, SwPortCongestion);
 				GET_DELTA_VLCOUNTERS(PortVLRcvFECN,      i, PortRcvFECN);
 				GET_DELTA_VLCOUNTERS(PortVLRcvBECN,      i, PortRcvBECN);
@@ -775,11 +699,6 @@ void PmFinalizePortStats(Pm_t *pm, PmPort_t *pmportp, uint32 index)
 				GET_DELTA_VLCOUNTERS(PortVLMarkFECN,     i, PortMarkFECN);
 			}
 		}
-
-                // 2^(5-LQI) - 1 = (1<<(5-LQI))-1 = {0,1,3,7,15,31}
-                DeltaLinkQualityIndicator =
-                    (pImgPortCounters->lq.s.LinkQualityIndicator <= STL_LINKQUALITY_EXCELLENT ?
-                    ((1 << (STL_LINKQUALITY_EXCELLENT - pImgPortCounters->lq.s.LinkQualityIndicator) ) - 1) : 0);
 
 		if (portImage->u.s.gotErrorCntrs) {
 			GET_DELTA_PORTCOUNTERS(PortRcvConstraintErrors);
@@ -830,7 +749,7 @@ void PmFinalizePortStats(Pm_t *pm, PmPort_t *pmportp, uint32 index)
 #undef GET_DELTA_PORTCOUNTERS
 	}
 
-	if (DeltaPortCounters.LinkDowned) {
+	if (pDeltaPortCounters->LinkDowned) {
 		if (unexpectedClear.AsReg32 & ~LinkDownIgnoreMask.AsReg32) {
 			CounterSelectMask_t tempMask;
 			tempMask.AsReg32 = unexpectedClear.AsReg32 & ~LinkDownIgnoreMask.AsReg32 ;
@@ -846,225 +765,11 @@ void PmFinalizePortStats(Pm_t *pm, PmPort_t *pmportp, uint32 index)
 	//Copy In the Unexpected Clears to the previous image so the PA can handle them correctly
 	portImagePrev->clearSelectMask.AsReg32 |= unexpectedClear.AsReg32;
 
-
-	// Calulate Port Utilization
-	UPDATE_MAX(portImage->SendMBps, (DeltaPortCounters.PortXmitData) / FLITS_PER_MB / pm->interval);
-	UPDATE_MAX(portImage->SendKPps, (DeltaPortCounters.PortXmitPkts) / 1000 / pm->interval);
-
-	// Calulate Port Errors from local counters
-	portImage->Errors.Integrity += (uint32)(
-		DeltaPortCounters.LocalLinkIntegrityErrors  * pm->integrityWeights.LocalLinkIntegrityErrors +
-		DeltaPortCounters.PortRcvErrors             * pm->integrityWeights.PortRcvErrors +
-		DeltaPortCounters.LinkErrorRecovery         * pm->integrityWeights.LinkErrorRecovery +
-		DeltaPortCounters.LinkDowned                * pm->integrityWeights.LinkDowned +
-		DeltaPortCounters.UncorrectableErrors       * pm->integrityWeights.UncorrectableErrors +
-		DeltaPortCounters.FMConfigErrors            * pm->integrityWeights.FMConfigErrors +
-		DeltaLinkQualityIndicator                   * pm->integrityWeights.LinkQualityIndicator +
-		pImgPortCounters->lq.s.NumLanesDown         * pm->integrityWeights.LinkWidthDowngrade);
-
-	if (pm_config.process_vl_counters) {
-		if (DeltaPortCounters.PortXmitWait) {
-			uint8 i, numVLs=0;
-			for (i=0; i<MAX_PM_VLS; i++) {
-				numVLs += (portImage->vlSelectMask >> i) & 0x1;
-			}
-			// PortXmitWait counter is incremented once if any VLs experienced congestion.
-			// It is possible that minimal congestion in sequence could be treated as severe port congestion.
-			// So modify PortXmitWait taking into consideration the VL xmit wait counter data.
-			DeltaPortCounters.PortXmitWait = (maxPortVLXmitWait * maxPortVLXmitWait * numVLs)/DeltaPortCounters.PortXmitWait;
-		}
-	}
-
-	portImage->Errors.Congestion += (uint32)(
-		(DeltaPortCounters.PortXmitWait ? (DeltaPortCounters.PortXmitWait *
-			pm->congestionWeights.PortXmitWait * 10000) /
-			(DeltaPortCounters.PortXmitData + DeltaPortCounters.PortXmitWait) : 0) +
-		(DeltaPortCounters.PortXmitTimeCong ? (DeltaPortCounters.PortXmitTimeCong *
-			pm->congestionWeights.PortXmitTimeCong * 1000) /
-			(DeltaPortCounters.PortXmitData + DeltaPortCounters.PortXmitTimeCong) : 0) +
-		(DeltaPortCounters.PortRcvPkts ? (DeltaPortCounters.PortRcvBECN *
-			pm->congestionWeights.PortRcvBECN * 1000 *
-			(pmportp->pmnodep->nodeType == STL_NODE_FI ? 1 : 0) ) /
-			(DeltaPortCounters.PortRcvPkts) : 0) +
-		(DeltaPortCounters.PortXmitPkts ? (DeltaPortCounters.PortMarkFECN *
-			pm->congestionWeights.PortMarkFECN * 1000) /
-			(DeltaPortCounters.PortXmitPkts) : 0) +
-		(DeltaPortCounters.SwPortCongestion * pm->congestionWeights.SwPortCongestion) );
-
-	// Bubble uses MAX between PortXmitWastedBW + PortXmitWaitData and neighbor's PortRcvBubble
-        uint64 PortXmitBubble = DeltaPortCounters.PortXmitWastedBW + DeltaPortCounters.PortXmitWaitData;
-        UPDATE_MAX(portImage->Errors.Bubble,
-            (uint32)(PortXmitBubble ? (PortXmitBubble * 10000) /
-                (DeltaPortCounters.PortXmitData + PortXmitBubble): 0) );
-
-	portImage->Errors.Security += (uint32)(DeltaPortCounters.PortXmitConstraintErrors);
-
-	// There is no neighbor counter associated with routing.
-	portImage->Errors.Routing = (uint32)DeltaPortCounters.PortRcvSwitchRelayErrors;
-
-	if (pm->flags & STL_PM_PROCESS_VL_COUNTERS) {
-		// SmaCongestion uses congestion weigting on VL15 counters associated with congestion
-		portImage->Errors.SmaCongestion += (uint32)(
-			(DeltaVLCounters[15].PortVLXmitWait ? (DeltaVLCounters[15].PortVLXmitWait *
-				pm->congestionWeights.PortXmitWait * 10000) /
-				(DeltaVLCounters[15].PortVLXmitData + DeltaVLCounters[15].PortVLXmitWait) : 0) +
-			(DeltaVLCounters[15].PortVLXmitTimeCong ? (DeltaVLCounters[15].PortVLXmitTimeCong *
-				pm->congestionWeights.PortXmitTimeCong * 1000) /
-				(DeltaVLCounters[15].PortVLXmitData + DeltaVLCounters[15].PortVLXmitTimeCong) : 0) +
-			(DeltaVLCounters[15].PortVLRcvPkts ? (DeltaVLCounters[15].PortVLRcvBECN	*
-				pm->congestionWeights.PortRcvBECN * 1000 *
-				(pmportp->pmnodep->nodeType == STL_NODE_FI ? 1 : 0) ) /
-				(DeltaVLCounters[15].PortVLRcvPkts) : 0) +
-			(DeltaVLCounters[15].PortVLXmitPkts ? (DeltaVLCounters[15].PortVLMarkFECN *
-				pm->congestionWeights.PortMarkFECN * 1000) /
-				(DeltaVLCounters[15].PortVLXmitPkts) : 0) +
-			(DeltaVLCounters[15].SwPortVLCongestion * pm->congestionWeights.SwPortCongestion) );
-
-		// Calculate VF/VL Utilization and Errors
-		for (i = 0; i < portImage->numVFs; i++) {
-			int j;
-			for (j = 0; j < MAX_PM_VLS; j++) {
-				if (portImage->vfvlmap[i].vlmask & (1 << j)) {
-					// Utilization
-					UPDATE_MAX(portImage->VFSendMBps[i],
-                                            (uint32)(DeltaVLCounters[j].PortVLXmitData / FLITS_PER_MB / pm->interval));
-					UPDATE_MAX(portImage->VFSendKPps[i],
-                                            (uint32)(DeltaVLCounters[j].PortVLXmitPkts / 1000 / pm->interval));
-
-					// Errors
-					//portImage->VFErrors[i].Integrity = 0;   // no contributing error counters
-
-					portImage->VFErrors[i].Congestion += (uint32)(
-						(DeltaVLCounters[j].PortVLXmitWait ? (DeltaVLCounters[j].PortVLXmitWait *
-							pm->congestionWeights.PortXmitWait * 10000) /
-							(DeltaVLCounters[j].PortVLXmitData + DeltaVLCounters[j].PortVLXmitWait) : 0) +
-						(DeltaVLCounters[j].PortVLXmitTimeCong ? (DeltaVLCounters[j].PortVLXmitTimeCong *
-							pm->congestionWeights.PortXmitTimeCong * 1000) /
-							(DeltaVLCounters[j].PortVLXmitData + DeltaVLCounters[j].PortVLXmitTimeCong) : 0) +
-						(DeltaVLCounters[j].PortVLRcvPkts ? (DeltaVLCounters[j].PortVLRcvBECN *
-							pm->congestionWeights.PortRcvBECN * 1000 *
-							(pmportp->pmnodep->nodeType == STL_NODE_FI ? 1 : 0) ) /
-							(DeltaVLCounters[j].PortVLRcvPkts) : 0) +
-						(DeltaVLCounters[j].PortVLXmitPkts ? (DeltaVLCounters[j].PortVLMarkFECN *
-							pm->congestionWeights.PortMarkFECN * 1000) /
-							(DeltaVLCounters[j].PortVLXmitPkts) : 0) +
-						(DeltaVLCounters[j].SwPortVLCongestion * pm->congestionWeights.SwPortCongestion) );
-
-					if (j == 15) {
-						// Use Port SmaCongestion only for VFs that include VL15
-						UPDATE_MAX(portImage->VFErrors[i].SmaCongestion, portImage->Errors.SmaCongestion);
-					}
-
-					uint64 PortVLXmitBubble = DeltaVLCounters[j].PortVLXmitWastedBW + DeltaVLCounters[j].PortVLXmitWaitData;
-					UPDATE_MAX(portImage->VFErrors[i].Bubble, (uint32)(PortVLXmitBubble ?
-						(PortVLXmitBubble * 10000) / (DeltaVLCounters[j].PortVLXmitData + PortVLXmitBubble) : 0) );
-
-					//portImage->VFErrors[i].Security = 0;    // no contributing error counters
-
-					//portImage->VFErrors[i].Routing = 0;     // no contributing error counters
-				}
-			}
-		}
-	}
-
-	// Calculate Neighbor's Utilization and Errors using receive side counters
-	if (portImageNeighbor) {
-
-		// Calulate Port Utilization
-		UPDATE_MAX(portImageNeighbor->SendMBps, (uint32)(DeltaPortCounters.PortRcvData / FLITS_PER_MB / pm->interval));
-		UPDATE_MAX(portImageNeighbor->SendKPps, (uint32)(DeltaPortCounters.PortRcvPkts / 1000 / pm->interval));
-
-		portImageNeighbor->Errors.Integrity += (uint32)(
-			DeltaPortCounters.ExcessiveBufferOverruns	* pm->integrityWeights.ExcessiveBufferOverruns);
-
-		portImageNeighbor->Errors.Congestion += (uint32)(DeltaPortCounters.PortXmitPkts ?
-			(DeltaPortCounters.PortRcvFECN * pm->congestionWeights.PortRcvFECN * 1000) /
-				DeltaPortCounters.PortXmitPkts : 0);
-
-		// Bubble uses MAX between PortXmitWastedBW + PortXmitWaitData and neighbor's PortRcvBubble
-		UPDATE_MAX(portImageNeighbor->Errors.Bubble, (uint32)(DeltaPortCounters.PortRcvBubble ?
-			(DeltaPortCounters.PortRcvBubble * 10000) /
-			(DeltaPortCounters.PortRcvData + DeltaPortCounters.PortRcvBubble): 0) );
-
-		//portImage2->Errors.Routing += 0;		// no contributing error counters
-
-		portImageNeighbor->Errors.Security += (uint32)(DeltaPortCounters.PortRcvConstraintErrors);
-
-		if (pm->flags & STL_PM_PROCESS_VL_COUNTERS) {
-			// SmaCongestion uses congestion weigting on VL15 counters associated with congestion
-			portImageNeighbor->Errors.SmaCongestion += (uint32)(DeltaVLCounters[15].PortVLRcvPkts ?
-				(DeltaVLCounters[15].PortVLRcvFECN * pm->congestionWeights.PortRcvFECN * 1000) /
-					DeltaVLCounters[15].PortVLRcvPkts : 0);
-
-			// Calculate VF/VL Utilization and Errors
-			for (i = 0; i < portImageNeighbor->numVFs; i++) {
-				int j;
-				for (j = 0; j < MAX_PM_VLS; j++) {
-					if (portImageNeighbor->vfvlmap[i].vlmask & (1 << j)) {
-						// Utilization
-						UPDATE_MAX(portImageNeighbor->VFSendMBps[i],
-                                                    (uint32)(DeltaVLCounters[j].PortVLRcvData / FLITS_PER_MB / pm->interval) );
-						UPDATE_MAX(portImageNeighbor->VFSendKPps[i],
-                                                    (uint32)(DeltaVLCounters[j].PortVLRcvPkts / 1000 / pm->interval) );
-
-						// Errors
-						//portImage2->VFErrors[i].Integrity = 0;	// no contributing error counters
-
-						portImageNeighbor->VFErrors[i].Congestion += (uint32)(DeltaVLCounters[j].PortVLRcvPkts ?
-							(DeltaVLCounters[j].PortVLRcvFECN * pm->congestionWeights.PortRcvFECN * 1000) /
-								DeltaVLCounters[j].PortVLRcvPkts : 0);
-						if (j == 15) {
-							// Use Port SmaCongestion only for VFs that include VL15
-							UPDATE_MAX(portImageNeighbor->VFErrors[i].SmaCongestion, portImageNeighbor->Errors.SmaCongestion);
-						}
-
-						UPDATE_MAX(portImageNeighbor->VFErrors[i].Bubble, (uint32)(DeltaVLCounters[j].PortVLRcvBubble ?
-							(DeltaVLCounters[j].PortVLRcvBubble * 10000) /
-							(DeltaVLCounters[j].PortVLRcvData + DeltaVLCounters[j].PortVLRcvBubble): 0) );
-
-						//portImage2->VFErrors[i].Security = 0;		// no contributing error counters
-
-						//portImage2->VFErrors[i].Routing = 0;		// no contributing error counters
-
-					}
-				}
-			}
-		}
-
-		// Calculation of Pct10 counters for remote port
-		uint32 rate = PmCalculateRate(portImageNeighbor->u.s.activeSpeed, portImageNeighbor->u.s.rxActiveWidth);
-#define OVERFLOW_CHECK_MAX_PCT10(pct10, value) UPDATE_MAX(portImageNeighbor->Errors.pct10, (value > IB_UINT16_MAX ? IB_UINT16_MAX : (uint16)(value)))
-
-		OVERFLOW_CHECK_MAX_PCT10(UtilizationPct10, (uint32)(
-			(DeltaPortCounters.PortRcvData * 1000) /
-			(s_StaticRateToMBps[rate] * FLITS_PER_MB * pm->interval)) );
-
-#undef OVERFLOW_CHECK_MAX_PCT10
-	}	// End of 'if (pmportp2) {'
-
-	// Calculation of Pct10 counters for local port
-	uint32 rate = PmCalculateRate(portImage->u.s.activeSpeed, portImage->u.s.txActiveWidth);
-
-#define OVERFLOW_CHECK_SET_PCT10(pct10, value) portImage->Errors.pct10 = (value > IB_UINT16_MAX ? IB_UINT16_MAX : (uint16)(value))
-#define OVERFLOW_CHECK_MAX_PCT10(pct10, value) UPDATE_MAX(portImage->Errors.pct10, (value > IB_UINT16_MAX ? IB_UINT16_MAX : (uint16)(value)))
-
-	OVERFLOW_CHECK_MAX_PCT10(UtilizationPct10, (uint32)(
-		(DeltaPortCounters.PortXmitData * 1000) /
-		(s_StaticRateToMBps[rate] * FLITS_PER_MB * pm->interval)) );
-
-	OVERFLOW_CHECK_SET_PCT10(DiscardsPct10, (uint32)(
-		(DeltaPortCounters.PortXmitPkts + DeltaPortCounters.PortXmitDiscards) ?
-			(DeltaPortCounters.PortXmitDiscards * 1000) /
-			(DeltaPortCounters.PortXmitPkts + DeltaPortCounters.PortXmitDiscards) : 0) );
-
-#undef OVERFLOW_CHECK_SET_PCT10
-#undef OVERFLOW_CHECK_MAX_PCT10
-
 #define INC_RUNNING(cntr, max) do { \
-		if (pRunning->cntr >= (max - DeltaPortCounters.cntr)) { \
+		if (pRunning->cntr >= (max - pDeltaPortCounters->cntr)) { \
 			pRunning->cntr = max; \
 		} else { \
-			pRunning->cntr += DeltaPortCounters.cntr; \
+			pRunning->cntr += pDeltaPortCounters->cntr; \
 		} } while (0)
 
 	// running totals for this port
@@ -1104,10 +809,10 @@ void PmFinalizePortStats(Pm_t *pm, PmPort_t *pmportp, uint32 index)
 
 	if (pm_config.process_vl_counters) {
 #define INC_VLRUNNING(vlcntr, vl, max) do { \
-		if (pVLRunning[vl].vlcntr >= (max - DeltaVLCounters[vl].vlcntr)) { \
+		if (pVLRunning[vl].vlcntr >= (max - pDeltaVLCounters[vl].vlcntr)) { \
 			pVLRunning[vl].vlcntr = max; \
 		} else { \
-			pVLRunning[vl].vlcntr += DeltaVLCounters[vl].vlcntr; \
+			pVLRunning[vl].vlcntr += pDeltaVLCounters[vl].vlcntr; \
 		} } while (0)
 		for (i = 0; i < MAX_PM_VLS; i++) {
 			INC_VLRUNNING(PortVLXmitData,	  i, IB_UINT64_MAX);
@@ -1135,20 +840,19 @@ void PmFinalizePortStats(Pm_t *pm, PmPort_t *pmportp, uint32 index)
 // sides of a link
 void PmClearPortImage(PmPortImage_t *portImage)
 {
-	portImage->u.s.bucketComputed = 0;
 	portImage->u.s.queryStatus = PM_QUERY_STATUS_OK;
 	portImage->u.s.UnexpectedClear = 0;
 	portImage->u.s.gotDataCntrs = 0;
 	portImage->u.s.gotErrorCntrs = 0;
-	portImage->u.s.ClearAll = 0;
-	portImage->u.s.ClearSome = 0;
-	portImage->SendMBps = 0;
-	portImage->SendKPps = 0;
+	portImage->u.s.Reserved = 0;
 
-	memset(&portImage->Errors, 0, sizeof(ErrorSummary_t));
-	memset(portImage->VFSendMBps, 0, sizeof(uint32) * MAX_VFABRICS);
-	memset(portImage->VFSendKPps, 0, sizeof(uint32) * MAX_VFABRICS);
-	memset(portImage->VFErrors, 0, sizeof(ErrorSummary_t) * MAX_VFABRICS);
+	portImage->clearSelectMask.AsReg32 = 0;
+
+	memset(&portImage->StlPortCounters, 0, sizeof(PmCompositePortCounters_t));
+	memset(&portImage->StlVLPortCounters[0], 0, MAX_PM_VLS * sizeof(PmCompositeVLCounters_t));
+
+	memset(&portImage->DeltaStlPortCounters, 0, sizeof(PmCompositePortCounters_t));
+	memset(&portImage->DeltaStlVLPortCounters[0], 0, MAX_PM_VLS * sizeof(PmCompositeVLCounters_t));
 }
 
 // Returns TRUE if need to Clear some counters for Port, FALSE if not
@@ -1206,8 +910,6 @@ boolean PmTabulatePort(Pm_t *pm, PmPort_t *pmportp, uint32 imageIndex, uint32 *c
 		IF_EXCEED_CLEARTHRESHOLD(UncorrectableErrors);
 #undef IF_EXCEED_CLEARTHRESHOLD
 
-		portImage->u.s.ClearSome = (select.AsReg32 ? 1 : 0);
-		portImage->u.s.ClearAll = (select.AsReg32 == pm->clearCounterSelect.AsReg32 ? 1 : 0);
 		*counterSelect |= select.AsReg32;
 	}
 	portImage->clearSelectMask.AsReg32 = *counterSelect;
@@ -1376,7 +1078,7 @@ FSTATUS PmClearPortRunningVFCounters(PmPort_t *pmportp,
 {
 	PmCompositeVLCounters_t *pVLRunning;
 	PmPortImage_t *portImage = &pmportp->Image[g_pmSweepData.SweepIndex];
-	int vl = 0;
+	int vl = 0, j = 0;
 	boolean useHiddenVF = !strcmp(HIDDEN_VL15_VF, vfName);
 	int i = (useHiddenVF ? -1 : 0);
 	FSTATUS status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
@@ -1384,13 +1086,14 @@ FSTATUS PmClearPortRunningVFCounters(PmPort_t *pmportp,
 	pVLRunning = &pmportp->StlVLPortCountersTotal[0];
 
 #define CLEAR_SELECTED(counter) \
-	do { if (select.s.counter) pVLRunning[vl].counter = 0; } while (0)
+	do { if (select.s.counter) pVLRunning[j].counter = 0; } while (0)
 
 	for (; i < (int)portImage->numVFs; i++) {
 		if ((i == -1) || (portImage->vfvlmap[i].pVF && !strcmp(portImage->vfvlmap[i].pVF->Name, vfName)) ) {
 			uint32 vlmask = (i == -1) ? 0x8000 : portImage->vfvlmap[i].vlmask;
-			for (vl = 0; vl < MAX_PM_VLS && vlmask; vl++, vlmask >>= 1) {
+			for (vl = 0; vl < STL_MAX_VLS && vlmask; vl++, vlmask >>= 1) {
 				if ((vlmask & 0x1) == 0) continue;
+				j = vl_to_idx(vl);
 				CLEAR_SELECTED(PortVLXmitData);
 				CLEAR_SELECTED(PortVLRcvData);
 				CLEAR_SELECTED(PortVLXmitPkts);

@@ -138,16 +138,6 @@ extern void PrintPortInfoSmp(PrintDest_t *dest, int indent,
 				const SMP *smp, EUI64 portGuid);
 extern void PrintSMInfo(PrintDest_t *dest, int indent,
 				const SM_INFO *pSMInfo, IB_LID lid);
-extern void PrintSLVLMap(PrintDest_t *dest, int indent,
-				const SLVLMAP *pSLVLMap);
-extern void PrintSLVLMapSmp(PrintDest_t *dest, int indent,
-				const SMP *smp, NODE_TYPE nodetype);
-extern void PrintSLVLMap2Heading(PrintDest_t *dest, int indent,
-				const char* prefix);
-extern void PrintSLVLMap2(PrintDest_t *dest, int indent,
-				const char* prefix, const SLVLMAP *pSLVLMap, boolean heading);
-extern void PrintSLVLMapSmp2(PrintDest_t *dest, int indent,
-				const SMP *smp, NODE_TYPE nodetype, boolean heading);
 extern void PrintSwitchInfo(PrintDest_t *dest, int indent,
 				const SWITCH_INFO *pSwitchInfo, IB_LID lid);
 extern void PrintLinearFDB(PrintDest_t *dest, int indent,
@@ -199,10 +189,6 @@ extern void PrintLinkRecord(PrintDest_t *dest, int indent,
 				const IB_LINK_RECORD *pLinkRecord);
 extern void PrintTraceRecord(PrintDest_t *dest, int indent,
 				const IB_TRACE_RECORD *pTraceRecord);
-extern void PrintSLVLMapRecord(PrintDest_t *dest, int indent,
-				const IB_SLVLMAP_RECORD *pSLVLMapRecord);
-extern void PrintSLVLMapRecord2(PrintDest_t *dest, int indent,
-				const IB_SLVLMAP_RECORD *pSLVLMapRecord);
 extern void PrintSwitchInfoRecord(PrintDest_t *dest, int indent,
 				const IB_SWITCHINFO_RECORD *pSwitchInfoRecord);
 extern void PrintLinearFDBRecord(PrintDest_t *dest, int indent,

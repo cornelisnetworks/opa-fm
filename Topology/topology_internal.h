@@ -68,8 +68,8 @@ extern void CableDataFree(CableData *cablep);
 extern void PortSelectorFree(PortSelector *portselp);
 extern void ExpectedLinkFree(FabricData_t *fabricp, ExpectedLink *elinkp);
 extern void ExpectedLinkFreeAll(FabricData_t *fabricp);
-extern void ExpectedNodeFree(ExpectedNode *enodep, QUICK_LIST *listp);
-extern void ExpectedNodesFreeAll(QUICK_LIST *listp);
+extern void ExpectedNodeFree(FabricData_t *fabricp, ExpectedNode *enodep, QUICK_LIST *listp);
+extern void ExpectedNodesFreeAll(FabricData_t *fabricp, QUICK_LIST *listp);
 extern void ExpectedSMFree(FabricData_t *fabricp, ExpectedSM *esmp);
 extern void ExpectedSMsFreeAll(FabricData_t *fabricp);
 
@@ -79,21 +79,21 @@ extern void ExpectedSMsFreeAll(FabricData_t *fabricp);
 extern FSTATUS AddSystemNode(FabricData_t *fabricp, NodeData *nodep);
 
 // direct SMA queries
-extern FSTATUS SmaGetNodeDesc(struct oib_port *port, NodeData *nodep, uint32_t lid, STL_NODE_DESCRIPTION *pNodeDesc);
-extern FSTATUS SmaGetNodeInfo(struct oib_port *port, NodeData *nodep, uint32_t lid, STL_NODE_INFO *pNodeInfo);
-extern FSTATUS SmaGetSwitchInfo(struct oib_port *port, NodeData *nodep, uint32_t lid, STL_SWITCH_INFO *pSwitchInfo);
-extern FSTATUS SmaGetPortInfo(struct oib_port *port, NodeData *nodep, uint32_t lid, uint8_t portNum, STL_PORT_INFO *pPortInfo);
-extern FSTATUS SmaGetPartTable(struct oib_port *port, NodeData *nodep, uint32_t lid, uint8_t portNum, uint16 block, STL_PARTITION_TABLE *pPartTable);
-extern FSTATUS SmaGetVLArbTable(struct oib_port *port, NodeData *nodep, uint32_t lid, uint8_t portNum, uint8 part, STL_VLARB_TABLE *pVLArbTable);
-extern FSTATUS SmaGetSLSCMappingTable(struct oib_port *port, NodeData *nodep, uint32_t lid, STL_SLSCMAP *pSLSCMap);
-extern FSTATUS SmaGetSCSLMappingTable(struct oib_port *port, NodeData *nodep, uint32_t lid, STL_SCSLMAP *pSCSLMap);
-extern FSTATUS SmaGetSCSCMappingTable(struct oib_port *port, NodeData *nodep, uint32_t lid, uint8_t in_port, uint8_t out_port, STL_SCSCMAP *pSCSCMap);
-extern FSTATUS SmaGetSCVLMappingTable(struct oib_port *port, NodeData *nodep, uint32_t lid, uint8_t port_num, STL_SCVLMAP *pSCVLMap, uint16_t attr);
-extern FSTATUS SmaGetLinearFDBTable(struct oib_port *port, NodeData *nodep, uint32_t lid, uint16 block, STL_LINEAR_FORWARDING_TABLE *pFDB);
-extern FSTATUS SmaGetMulticastFDBTable(struct oib_port *port, NodeData *nodep, uint32_t lid, uint32 block, uint8 position, STL_MULTICAST_FORWARDING_TABLE *pFDB);
-extern FSTATUS SmaGetBufferControlTable(struct oib_port *port, NodeData *nodep, uint32_t lid, 
+extern FSTATUS SmaGetNodeDesc(struct omgt_port *port, NodeData *nodep, uint32_t lid, STL_NODE_DESCRIPTION *pNodeDesc);
+extern FSTATUS SmaGetNodeInfo(struct omgt_port *port, NodeData *nodep, uint32_t lid, STL_NODE_INFO *pNodeInfo);
+extern FSTATUS SmaGetSwitchInfo(struct omgt_port *port, NodeData *nodep, uint32_t lid, STL_SWITCH_INFO *pSwitchInfo);
+extern FSTATUS SmaGetPortInfo(struct omgt_port *port, NodeData *nodep, uint32_t lid, uint8_t portNum, STL_PORT_INFO *pPortInfo);
+extern FSTATUS SmaGetPartTable(struct omgt_port *port, NodeData *nodep, uint32_t lid, uint8_t portNum, uint16 block, STL_PARTITION_TABLE *pPartTable);
+extern FSTATUS SmaGetVLArbTable(struct omgt_port *port, NodeData *nodep, uint32_t lid, uint8_t portNum, uint8 part, STL_VLARB_TABLE *pVLArbTable);
+extern FSTATUS SmaGetSLSCMappingTable(struct omgt_port *port, NodeData *nodep, uint32_t lid, STL_SLSCMAP *pSLSCMap);
+extern FSTATUS SmaGetSCSLMappingTable(struct omgt_port *port, NodeData *nodep, uint32_t lid, STL_SCSLMAP *pSCSLMap);
+extern FSTATUS SmaGetSCSCMappingTable(struct omgt_port *port, NodeData *nodep, uint32_t lid, uint8_t in_port, uint8_t out_port, STL_SCSCMAP *pSCSCMap);
+extern FSTATUS SmaGetSCVLMappingTable(struct omgt_port *port, NodeData *nodep, uint32_t lid, uint8_t port_num, STL_SCVLMAP *pSCVLMap, uint16_t attr);
+extern FSTATUS SmaGetLinearFDBTable(struct omgt_port *port, NodeData *nodep, uint32_t lid, uint16 block, STL_LINEAR_FORWARDING_TABLE *pFDB);
+extern FSTATUS SmaGetMulticastFDBTable(struct omgt_port *port, NodeData *nodep, uint32_t lid, uint32 block, uint8 position, STL_MULTICAST_FORWARDING_TABLE *pFDB);
+extern FSTATUS SmaGetBufferControlTable(struct omgt_port *port, NodeData *nodep, uint32_t lid, 
 							   uint8_t startPort, uint8_t endPort, STL_BUFFER_CONTROL_TABLE pBCT[]);
-extern FSTATUS SmaGetCableInfo(struct oib_port *port, NodeData *nodep, uint32_t lid, uint8_t portnum, uint16_t addr, uint8_t len, uint8_t *data);
+extern FSTATUS SmaGetCableInfo(struct omgt_port *port, NodeData *nodep, uint32_t lid, uint8_t portnum, uint16_t addr, uint8_t len, uint8_t *data);
 
 #ifdef __cplusplus
 };

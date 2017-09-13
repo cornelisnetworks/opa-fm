@@ -45,12 +45,12 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <fm_xml.h>
 
 #ifdef IB_STACK_OPENIB
-#include "oib_utils_sa.h"
+#include "opamgt_sa_priv.h"
 #endif
 
 extern FEXmlConfig_t fe_config;
 #ifdef IB_STACK_OPENIB
-extern struct oib_port *fe_oib_session;
+extern struct omgt_port *fe_omgt_session;
 #endif
 
 IBhandle_t filterh = IB_NULLH;
@@ -222,14 +222,14 @@ fe_if3_subscribe_sa()
   
   IB_ENTER(__func__,0,0,0,0);
   
-  status = oib_sa_register_trap(fe_oib_session,MAD_SMT_PORT_UP,NULL);
+  status = omgt_sa_register_trap(fe_omgt_session,MAD_SMT_PORT_UP,NULL);
   if (status != FSUCCESS) {
     IB_LOG_INFINI_INFO("Failed to register for PORT UP notices, status:", status);
     IB_EXIT(__func__, FE_NO_RETRIEVE);
     return FE_NO_RETRIEVE;
   }
   
-  status = oib_sa_register_trap(fe_oib_session,MAD_SMT_PORT_DOWN,NULL);
+  status = omgt_sa_register_trap(fe_omgt_session,MAD_SMT_PORT_DOWN,NULL);
   if (status != FSUCCESS) {
     IB_LOG_INFINI_INFO("Failed to register for PORT DOWN notices, status:", status);
     IB_EXIT(__func__, FE_NO_RETRIEVE);
@@ -342,14 +342,14 @@ fe_if3_unsubscribe_sa(int doUnsubscribe)
     
     IB_ENTER(__func__, 0, 0, 0, 0); 
     
-    status = oib_sa_unregister_trap(fe_oib_session, MAD_SMT_PORT_UP); 
+    status = omgt_sa_unregister_trap(fe_omgt_session, MAD_SMT_PORT_UP); 
     if (status != FSUCCESS) {
         IB_LOG_INFINI_INFO("Failed to unregister for PORT UP notices, status:", status); 
         IB_EXIT(__func__, FE_NO_RETRIEVE); 
         return FE_NO_RETRIEVE;
     }
     
-    status = oib_sa_unregister_trap(fe_oib_session, MAD_SMT_PORT_DOWN); 
+    status = omgt_sa_unregister_trap(fe_omgt_session, MAD_SMT_PORT_DOWN); 
     if (status != FSUCCESS) {
         IB_LOG_INFINI_INFO("Failed to unregister for PORT DOWN notices, status:", status); 
         IB_EXIT(__func__, FE_NO_RETRIEVE); 

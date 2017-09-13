@@ -171,99 +171,6 @@ void PrintSMInfo(PrintDest_t *dest, int indent, const SM_INFO *pSMInfo, IB_LID l
 				pSMInfo->s.Priority, pSMInfo->ActCount);
 }
 
-void PrintSLVLMap(PrintDest_t *dest, int indent, const SLVLMAP *pSLVLMap)
-{
-	PrintFunc(dest, "%*sSL15 -> VL%02d   SL14 -> VL%02d   SL13 -> VL%02d   SL12 -> VL%02d\n",
-				indent, "",
-				pSLVLMap->u2.s.SL15_to_VL, pSLVLMap->u2.s.SL14_to_VL,
-				pSLVLMap->u2.s.SL13_to_VL, pSLVLMap->u2.s.SL12_to_VL);
-	PrintFunc(dest, "%*sSL11 -> VL%02d   SL10 -> VL%02d   SL09 -> VL%02d   SL08 -> VL%02d\n",
-				indent, "",
-				pSLVLMap->u2.s.SL11_to_VL, pSLVLMap->u2.s.SL10_to_VL,
-				pSLVLMap->u2.s.SL9_to_VL, pSLVLMap->u2.s.SL8_to_VL);
-	PrintFunc(dest, "%*sSL07 -> VL%02d   SL06 -> VL%02d   SL05 -> VL%02d   SL04 -> VL%02d\n",
-				indent, "",
-				pSLVLMap->u1.s.SL7_to_VL, pSLVLMap->u1.s.SL6_to_VL,
-				pSLVLMap->u1.s.SL5_to_VL, pSLVLMap->u1.s.SL4_to_VL);
-	PrintFunc(dest, "%*sSL03 -> VL%02d   SL02 -> VL%02d   SL01 -> VL%02d   SL00 -> VL%02d\n",
-				indent, "",
-				pSLVLMap->u1.s.SL3_to_VL, pSLVLMap->u1.s.SL2_to_VL,
-				pSLVLMap->u1.s.SL1_to_VL, pSLVLMap->u1.s.SL0_to_VL);
-}
-
-void PrintSLVLMapSmp(PrintDest_t *dest, int indent, const SMP *smp, NODE_TYPE nodetype)
-{
-	SLVLMAP *pSLVLMap = (SLVLMAP *)&(smp->SmpExt.DirectedRoute.SMPData);
-
-	if (nodetype == STL_NODE_SW) {
-		char buf[40];
-		int offset;
-
-		if (smp->common.AttributeModifier & 0x20000) {
-			offset = sprintf(buf, "InputPort: ALL");
-		} else {
-			offset = sprintf(buf, "InputPort: %3u", (smp->common.AttributeModifier >> 8) & 0xff);
-		}
-		if (smp->common.AttributeModifier & 0x10000) {
-			sprintf(&buf[offset], " OutputPort: ALL");
-		} else {
-			sprintf(&buf[offset], " OutputPort: %3u", smp->common.AttributeModifier & 0xff);
-		}
-		PrintFunc(dest, "%*s%s\n", indent, "", buf);
-	}
-	PrintSLVLMap(dest, indent, pSLVLMap);
-}
-
-void PrintSLVLMap2Heading(PrintDest_t *dest, int indent, const char* prefix)
-{
-	PrintFunc(dest, "%*s%sSL: 00 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15\n",
-				indent, "", prefix);
-}
-
-// more concise format
-void PrintSLVLMap2(PrintDest_t *dest, int indent, const char* prefix, const SLVLMAP *pSLVLMap, boolean heading)
-{
-	if (heading)
-		PrintSLVLMap2Heading(dest, indent, prefix);
-	PrintFunc(dest, "%*s%sVL: %02u %02u %02u %02u %02u %02u %02u %02u %02u %02u %02u %02u %02u %02u %02u %02u\n",
-				indent, "", prefix,
-			   	pSLVLMap->u1.s.SL0_to_VL, pSLVLMap->u1.s.SL1_to_VL,
-			   	pSLVLMap->u1.s.SL2_to_VL, pSLVLMap->u1.s.SL3_to_VL,
-			   	pSLVLMap->u1.s.SL4_to_VL, pSLVLMap->u1.s.SL5_to_VL,
-				pSLVLMap->u1.s.SL6_to_VL, pSLVLMap->u1.s.SL7_to_VL,
-			   	pSLVLMap->u2.s.SL8_to_VL, pSLVLMap->u2.s.SL9_to_VL,
-				pSLVLMap->u2.s.SL10_to_VL, pSLVLMap->u2.s.SL11_to_VL,
-			   	pSLVLMap->u2.s.SL12_to_VL, pSLVLMap->u2.s.SL13_to_VL,
-			   	pSLVLMap->u2.s.SL14_to_VL, pSLVLMap->u2.s.SL15_to_VL);
-
-}
-
-void PrintSLVLMapSmp2(PrintDest_t *dest, int indent, const SMP *smp, NODE_TYPE nodetype, boolean heading)
-{
-	SLVLMAP *pSLVLMap = (SLVLMAP *)&(smp->SmpExt.DirectedRoute.SMPData);
-	char prefix[40] = "";
-	const char *headingprefix = "";
-	
-	if (nodetype == STL_NODE_SW) {
-		int offset;
-
-		headingprefix = "InPort,OutPort|";
-		if (smp->common.AttributeModifier & 0x20000) {
-			offset = sprintf(prefix, "  ALL ,");
-		} else {
-			offset = sprintf(prefix, "  %3u ,", (smp->common.AttributeModifier >> 8) & 0xff);
-		}
-		if (smp->common.AttributeModifier & 0x10000) {
-			sprintf(&prefix[offset], "   ALL |");
-		} else {
-			sprintf(&prefix[offset], "   %3u |", smp->common.AttributeModifier & 0xff);
-		}
-	}
-	if (heading)
-		PrintSLVLMap2Heading(dest, indent, headingprefix);
-	PrintSLVLMap2(dest, indent, prefix, pSLVLMap, FALSE);
-}
-
 void PrintSwitchInfo(PrintDest_t *dest, int indent, const SWITCH_INFO *pSwitchInfo, IB_LID lid)
 {
 	char buf[8];
@@ -666,10 +573,6 @@ void PrintSmp(PrintDest_t *dest, int indent, const SMP *smp)
 	case MCLASS_ATTRIB_ID_PART_TABLE:
 		PrintPKeyTableSmp(dest, indent, smp,
 			(smp->common.AttributeModifier >> 16)?STL_NODE_SW:0, TRUE, TRUE);
-		break;
-	case MCLASS_ATTRIB_ID_SL_VL_MAPPING_TABLE:
-		PrintSLVLMapSmp2(dest, indent, smp,
-			smp->common.AttributeModifier?STL_NODE_SW:0, TRUE);
 		break;
 	case MCLASS_ATTRIB_ID_VL_ARBITRATION:
 		PrintVLArbTableSmp(dest, indent, smp, 

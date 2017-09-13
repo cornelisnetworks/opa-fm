@@ -76,20 +76,32 @@ sa_CongInfoRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
 
     records = 0;
 
-    switch (maip->base.method) {
-    case SA_CM_GET:
-        INCREMENT_COUNTER(smCounterSaRxGetCongInfoRecord);
-        (void)sa_CongInfoRecord_GetTable(maip, &records);
-        break;
-    case SA_CM_GETTABLE:
-        INCREMENT_COUNTER(smCounterSaRxGetTblCongInfoRecord);
-       	(void)sa_CongInfoRecord_GetTable(maip, &records);
-        break;
-    default:                                                                     
-        maip->base.status = MAD_STATUS_BAD_METHOD;                           
-        IB_LOG_WARN("sa_CongInfoRecord: invalid METHOD:", maip->base.method);
-		goto done;
-    }
+	// Check Method
+	if (maip->base.method == SA_CM_GET) {
+		INCREMENT_COUNTER(smCounterSaRxGetCongInfoRecord);
+	} else if (maip->base.method == SA_CM_GETTABLE) {
+		INCREMENT_COUNTER(smCounterSaRxGetTblCongInfoRecord);
+	} else {
+		// Generate an error response and return.
+		maip->base.status = MAD_STATUS_BAD_METHOD;
+		IB_LOG_WARN_FMT(__func__, "invalid Method: %s (%u)",
+			cs_getMethodText(maip->base.method), maip->base.method);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
+	}
+	// Check Base and Class Version
+	if (maip->base.bversion == STL_BASE_VERSION && maip->base.cversion == STL_SA_CLASS_VERSION) {
+		(void)sa_CongInfoRecord_GetTable(maip, &records);
+	} else {
+		// Generate an error response and return.
+		maip->base.status = MAD_STATUS_BAD_CLASS;
+		IB_LOG_WARN_FMT(__func__, "invalid Base and/or Class Versions: Base %u, Class %u",
+			maip->base.bversion, maip->base.cversion);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
+	}
      
     if (maip->base.status != MAD_STATUS_OK) {
         records = 0;
@@ -107,8 +119,6 @@ sa_CongInfoRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
     sa_cntxt->attribLen = attribOffset;
 
     sa_cntxt_data( sa_cntxt, sa_data, records * attribOffset);
-
-done:
     (void)sa_send_reply(maip, sa_cntxt);
 
     IB_EXIT("sa_CongInfoRecord", VSTATUS_OK);
@@ -123,23 +133,32 @@ sa_SwitchCongRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
     uint32_t    attribOffset;
 
     IB_ENTER("sa_SwitchCongRecord", maip, 0, 0, 0);
-
-    records = 0;
-
-    switch (maip->base.method) {
-    case SA_CM_GET:
-        INCREMENT_COUNTER(smCounterSaRxGetSwitchCongRecord);
-        (void)sa_SwitchCongRecord_GetTable(maip, &records);
-        break;
-    case SA_CM_GETTABLE:
-        INCREMENT_COUNTER(smCounterSaRxGetTblSwitchCongRecord);
-        (void)sa_SwitchCongRecord_GetTable(maip, &records);
-        break;
-    default:                                                                     
-        maip->base.status = MAD_STATUS_BAD_METHOD;                           
-        IB_LOG_WARN("sa_SwitchCongRecord: invalid METHOD:", maip->base.method);
-		goto done;
-    }
+	// Check Method
+	if (maip->base.method == SA_CM_GET) {
+		INCREMENT_COUNTER(smCounterSaRxGetSwitchCongRecord);
+	} else if (maip->base.method == SA_CM_GETTABLE) {
+		INCREMENT_COUNTER(smCounterSaRxGetTblSwitchCongRecord);
+	} else {
+		// Generate an error response and return.
+		maip->base.status = MAD_STATUS_BAD_METHOD;
+		IB_LOG_WARN_FMT(__func__, "invalid Method: %s (%u)",
+			cs_getMethodText(maip->base.method), maip->base.method);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
+	}
+	// Check Base and Class Version
+	if (maip->base.bversion == STL_BASE_VERSION && maip->base.cversion == STL_SA_CLASS_VERSION) {
+		(void)sa_SwitchCongRecord_GetTable(maip, &records);
+	} else {
+		// Generate an error response and return.
+		maip->base.status = MAD_STATUS_BAD_CLASS;
+		IB_LOG_WARN_FMT(__func__, "invalid Base and/or Class Versions: Base %u, Class %u",
+			maip->base.bversion, maip->base.cversion);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
+	}
 
     if (maip->base.status != MAD_STATUS_OK) {
         records = 0;
@@ -157,8 +176,6 @@ sa_SwitchCongRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
     sa_cntxt->attribLen = attribOffset;
 
     sa_cntxt_data( sa_cntxt, sa_data, records * attribOffset);
-
-done:
     (void)sa_send_reply(maip, sa_cntxt);
 
     IB_EXIT("sa_SwitchCongRecord", VSTATUS_OK);
@@ -174,20 +191,32 @@ sa_SwitchPortCongRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
 
     records = 0;
 
-    switch (maip->base.method) {
-    case SA_CM_GET:
-        INCREMENT_COUNTER(smCounterSaRxGetSwitchPortCongRecord);
-        (void)sa_SwitchPortCongRecord_GetTable(maip, &records);
-        break;
-    case SA_CM_GETTABLE:
-        INCREMENT_COUNTER(smCounterSaRxGetTblSwitchPortCongRecord);
-        (void)sa_SwitchPortCongRecord_GetTable(maip, &records);
-        break;
-    default:                                                                     
-        maip->base.status = MAD_STATUS_BAD_METHOD;                           
-        IB_LOG_WARN("sa_SwitchPortCongRecord: invalid METHOD:", maip->base.method);
-		goto done;
-    }
+	// Check Method
+	if (maip->base.method == SA_CM_GET) {
+		INCREMENT_COUNTER(smCounterSaRxGetSwitchPortCongRecord);
+	} else if (maip->base.method == SA_CM_GETTABLE) {
+		INCREMENT_COUNTER(smCounterSaRxGetTblSwitchPortCongRecord);
+	} else {
+		// Generate an error response and return.
+		maip->base.status = MAD_STATUS_BAD_METHOD;
+		IB_LOG_WARN_FMT(__func__, "invalid Method: %s (%u)",
+			cs_getMethodText(maip->base.method), maip->base.method);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
+	}
+	// Check Base and Class Version
+	if (maip->base.bversion == STL_BASE_VERSION && maip->base.cversion == STL_SA_CLASS_VERSION) {
+		(void)sa_SwitchPortCongRecord_GetTable(maip, &records);
+	} else {
+		// Generate an error response and return.
+		maip->base.status = MAD_STATUS_BAD_CLASS;
+		IB_LOG_WARN_FMT(__func__, "invalid Base and/or Class Versions: Base %u, Class %u",
+			maip->base.bversion, maip->base.cversion);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
+	}
 
     if (maip->base.status != MAD_STATUS_OK) {
         records = 0;
@@ -205,8 +234,6 @@ sa_SwitchPortCongRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
     sa_cntxt->attribLen = attribOffset;
 
     sa_cntxt_data( sa_cntxt, sa_data, records * attribOffset);
-
-done:
     (void)sa_send_reply(maip, sa_cntxt);
 
     IB_EXIT("sa_SwitchPortCongRecord", VSTATUS_OK);
@@ -221,21 +248,32 @@ sa_HFICongRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
     IB_ENTER("sa_HFICongRecord", maip, 0, 0, 0);
 
     records = 0;
-
-    switch (maip->base.method) {
-    case SA_CM_GET:
-        INCREMENT_COUNTER(smCounterSaRxGetHFICongRecord);
-        (void)sa_HFICongRecord_GetTable(maip, &records);
-        break;
-    case SA_CM_GETTABLE:
-        INCREMENT_COUNTER(smCounterSaRxGetTblHFICongRecord);
-        (void)sa_HFICongRecord_GetTable(maip, &records);
-        break;
-    default:                                                                     
-        maip->base.status = MAD_STATUS_BAD_METHOD;                           
-        IB_LOG_WARN("sa_HFICongRecord: invalid METHOD:", maip->base.method);
-		goto done;
-    }
+	// Check Method
+	if (maip->base.method == SA_CM_GET) {
+		INCREMENT_COUNTER(smCounterSaRxGetHFICongRecord);
+	} else if (maip->base.method == SA_CM_GETTABLE) {
+		INCREMENT_COUNTER(smCounterSaRxGetTblHFICongRecord);
+	} else {
+		// Generate an error response and return.
+		maip->base.status = MAD_STATUS_BAD_METHOD;
+		IB_LOG_WARN_FMT(__func__, "invalid Method: %s (%u)",
+			cs_getMethodText(maip->base.method), maip->base.method);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
+	}
+	// Check Base and Class Version
+	if (maip->base.bversion == STL_BASE_VERSION && maip->base.cversion == STL_SA_CLASS_VERSION) {
+		(void)sa_HFICongRecord_GetTable(maip, &records);
+	} else {
+		// Generate an error response and return.
+		maip->base.status = MAD_STATUS_BAD_CLASS;
+		IB_LOG_WARN_FMT(__func__, "invalid Base and/or Class Versions: Base %u, Class %u",
+			maip->base.bversion, maip->base.cversion);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
+	}
 
     if (maip->base.status != MAD_STATUS_OK) {
         records = 0;
@@ -253,8 +291,6 @@ sa_HFICongRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
     sa_cntxt->attribLen = attribOffset;
 
     sa_cntxt_data( sa_cntxt, sa_data, records * attribOffset);
-
-done:
     (void)sa_send_reply(maip, sa_cntxt);
 
     IB_EXIT("sa_HFICongRecord", VSTATUS_OK);
@@ -270,20 +306,32 @@ sa_HFICongCtrlRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
 
     records = 0;
 
-    switch (maip->base.method) {
-    case SA_CM_GET:
-        INCREMENT_COUNTER(smCounterSaRxGetHFICongCtrlRecord);
-        (void)sa_HFICongCtrlRecord_GetTable(maip, &records);
-        break;
-    case SA_CM_GETTABLE:
-        INCREMENT_COUNTER(smCounterSaRxGetTblHFICongCtrlRecord);
-        (void)sa_HFICongCtrlRecord_GetTable(maip, &records);
-        break;
-    default:                                                                     
-        maip->base.status = MAD_STATUS_BAD_METHOD;                           
-        IB_LOG_WARN("sa_HFICongCtrlRecord: invalid METHOD:", maip->base.method);
-		goto done;
-    }
+	// Check Method
+	if (maip->base.method == SA_CM_GET) {
+		INCREMENT_COUNTER(smCounterSaRxGetHFICongCtrlRecord);
+	} else if (maip->base.method == SA_CM_GETTABLE) {
+		INCREMENT_COUNTER(smCounterSaRxGetTblHFICongCtrlRecord);
+	} else {
+		// Generate an error response and return.
+		maip->base.status = MAD_STATUS_BAD_METHOD;
+		IB_LOG_WARN_FMT(__func__, "invalid Method: %s (%u)",
+			cs_getMethodText(maip->base.method), maip->base.method);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
+	}
+	// Check Base and Class Version
+	if (maip->base.bversion == STL_BASE_VERSION && maip->base.cversion == STL_SA_CLASS_VERSION) {
+		(void)sa_HFICongCtrlRecord_GetTable(maip, &records);
+	} else {
+		// Generate an error response and return.
+		maip->base.status = MAD_STATUS_BAD_CLASS;
+		IB_LOG_WARN_FMT(__func__, "invalid Base and/or Class Versions: Base %u, Class %u",
+			maip->base.bversion, maip->base.cversion);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
+	}
 
     if (maip->base.status != MAD_STATUS_OK) {
         records = 0;
@@ -301,8 +349,6 @@ sa_HFICongCtrlRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
     sa_cntxt->attribLen = attribOffset;
 
     sa_cntxt_data( sa_cntxt, sa_data, records * attribOffset);
-
-done:
     (void)sa_send_reply(maip, sa_cntxt);
 
     IB_EXIT("sa_HFICongCtrlRecord", VSTATUS_OK);

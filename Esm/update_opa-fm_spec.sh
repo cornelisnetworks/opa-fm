@@ -32,6 +32,7 @@ then
 		sed -i "s/__RPM_INS/install -D -m 755 stage.rpm\/opafm $RPM_BUILD_ROOT%{_sysconfdir}\/init.d\/opafm/g" $to
 		sed -i "s/__RPM_SYSCONF/%{_sysconfdir}\/init.d\/opafm/g" $to
 	fi
+	sed -i "s/__RPM_RQ2/Requires: libibumad%{?_isa}, libibmad%{?_isa}, libibverbs%{?_isa}, rdma, expat%{?_isa}, libhfi1, openssl%{?_isa}/g" $to
 	sed -i "/__RPM_DEBUG/,+1d" $to
 elif [ "$id" = "sles" ]
 then
@@ -54,6 +55,7 @@ then
 	fi
 	sed -i "/__RPM_INS/,+1d" $to
 	sed -i "/__RPM_SYSCONF/,+1d" $to
+	sed -i "s/__RPM_RQ2/Requires: libibumad3, libibmad5, libibverbs1, rdma, libexpat1, openssl/g" $to
 else
 	echo ERROR: Unsupported distribution: $id $versionid
 	exit 1

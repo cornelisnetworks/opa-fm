@@ -45,7 +45,7 @@ DIRS			=
 CFILES			= \
 				  paAccess.c pm_calc.c pm_groups.c mad_info.c pm_sweep.c \
 				  pm_mad.c pm_debug.c paServer.c pm_dispatch.c pm_async_rcv.c \
-				  pm_counters.c pm_vfs.c pm.c pa_protocol.c
+				  pm_counters.c pm_vfs.c pm.c pa_protocol.c pa_categories.c
 				# Add more c files here
 ifeq ($(BUILD_TARGET_OS),VXWORKS)
 CFILES			+=	pm_vxWorks.c

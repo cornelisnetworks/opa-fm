@@ -95,7 +95,7 @@ int main(int argc, char *argv[]) {
 //      Initialize the MAI subsystem and open the port.
 //
         mai_init();
-        status=ib_init_devport(&dev, &port, NULL);
+        status=ib_init_devport(&dev, &port, NULL, NULL);
         if (status)
           {
             printf("ib_init_devport failed, %d\n",status);

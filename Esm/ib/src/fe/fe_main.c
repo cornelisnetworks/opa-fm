@@ -66,7 +66,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "mal_g.h"
 #ifdef IB_STACK_OPENIB
 #include "fe_trap_thread.h"
-#include "oib_utils_sa.h"
+#include "opamgt_sa_priv.h"
 #endif
 
 #include "iba/ib_rmpp.h"
@@ -105,7 +105,7 @@ char msgbuf[256]={0};
 #endif
 
 #ifdef IB_STACK_OPENIB
-struct oib_port *fe_oib_session;
+struct omgt_port *fe_omgt_session;
 #endif
 
 extern Status_t fe_main_init_port(void);
@@ -348,7 +348,10 @@ int fe_main()
     // for where we are running.  Now that we are past config check and SM
     // has initialized interface to port, we can use the port information
     // of the SM so that FE log messages are accurate.
-    if (oib_open_port_by_guid(&fe_oib_session, fe_config.port_guid) != 0) 
+	FILE * tmp_log_file = strlen(fe_config.log_file) > 0 ? vs_log_get_logfile_fd() : OMGT_DBG_FILE_SYSLOG;
+	struct omgt_params params = {.error_file = fe_config.log_level > 0 ? tmp_log_file : NULL,
+	                             .debug_file = fe_config.log_level > 2 ? tmp_log_file : NULL};
+	if (omgt_open_port_by_guid(&fe_omgt_session, fe_config.port_guid, &params) != 0)
         IB_FATAL_ERROR("fe_main: Failed to init notice registration; terminating"); 
 #elif defined(__VXWORKS__)
 	// for CAL_IBACCESS, this call just returns values, does not open IbAccess
@@ -573,7 +576,7 @@ int fe_main()
     fe_shutdown(); 
     
 #ifdef IB_STACK_OPENIB
-    oib_close_port(fe_oib_session); 
+    omgt_close_port(fe_omgt_session); 
 #endif
     
 #ifdef __VXWORKS__

@@ -268,7 +268,7 @@ void dump_ap(char *desc,int line, Ag_Man_t *ap);
 void configConvertUsage(void);
 Status_t convertSrcXmlFile (char *,int);
 Ag_Man_t * find_detail_rec (char *system, int instance, char*key); 
-int parseLine(char *lineIn,int lineNumber, char *tagOut, char *valueOut, char *first, char *last, char* firstTag, char* lastTag, char *oldKey, char *defaultValue, int *exclusiveDefault, int *presence);
+int parseLine(char *lineIn,int lineNumber, char *tagOut, char *valueOut, char *first, char *last, char* firstTag, char* lastTag, char *oldKey, char *defaultValue, int *exclusiveDefault, int *presence, int buf_sizes);
 char* getOldValue(char *keyDescIn,int);
 int matching_system (Ag_Man_t *ag_start, char *which_one);
 
@@ -408,7 +408,7 @@ Status_t convertSrcXmlFile (char *xmlFileIn,int showMissing)
 
         if (g_debug)
             fprintf(stderr, "%s\n", buffIn);
-        if (parseLine(buffIn,lineNumber++,tag,value,first,last,firstTag, lastTag, oldKey,defaultValue, &exclusiveDefault, &presence))
+        if (parseLine(buffIn,lineNumber++,tag,value,first,last,firstTag, lastTag, oldKey,defaultValue, &exclusiveDefault, &presence, 255))
         {
             char* oldValue=getOldValue(oldKey,showMissing);
             if (g_debug) {
@@ -816,6 +816,7 @@ Ag_Man_t * find_detail_rec (char *system, int instance, char*key)
 // Output       : oldKey - the old key in the comment at col 120
 // Output       : exclusiveDefault - only compare old key to default
 // Output       : return a 0 if the line is does not have text after col 120 or 1 if it does//
+// Output       : Size of char buffers - all expected to have same size         //
 // Post-process : None                                                          //
 // Reference    :                                                               //
 //                                                                              //
@@ -831,7 +832,8 @@ int parseLine(char *line,
               char *oldKey,
               char *defaultValue,
               int *exclusiveDefault,
-              int *presence)
+              int *presence,
+			  int buf_size)
 {
     *exclusiveDefault=0;
     *presence=0;
@@ -900,17 +902,17 @@ int parseLine(char *line,
         // text                              <!--#oldKey#=-->
         // text                              <!--#oldKey#!-->
         // simple case, we need to output first and firstTag but "" for all else
-        strcpy(first,lineIn);
+        cs_strlcpy(first,lineIn, buf_size);
         int firstLen = strlen(first);
         while (firstLen > 1 && first[firstLen-1]==' ')
         {
             first[--firstLen]='\0';
         }
-        strcpy(tagOut,"");
-        strcpy(valueOut,"");
-        strcpy(last,"");
-        strcpy(firstTag, first);
-        strcpy(lastTag, last);
+        cs_strlcpy(tagOut,"", buf_size);
+        cs_strlcpy(valueOut,"", buf_size);
+        cs_strlcpy(last,"", buf_size);
+        cs_strlcpy(firstTag, first, buf_size);
+        cs_strlcpy(lastTag, last, buf_size);
         return 1;
     }
 
@@ -1000,8 +1002,8 @@ int parseLine(char *line,
     char *commentStart=strstr(first,"<!--"); // start of comment open
     if (commentStart==NULL) {
         // no commented out tag
-        strcpy(firstTag, first);
-        strcpy(lastTag, last);
+        cs_strlcpy(firstTag, first, buf_size);
+        cs_strlcpy(lastTag, last, buf_size);
     } else {
         // remove the comment, keep everything else
         strncpy(firstTag, first, commentStart-first);
@@ -1011,7 +1013,7 @@ int parseLine(char *line,
             fprintf(stderr,"Missing open tag for commented out tag. Line %d\n",lineNumber-1);
             exit(1);
         }
-        strcpy(firstTag+(commentStart-first), tagStart);
+        cs_strlcpy(firstTag+(commentStart-first), tagStart, buf_size - (commentStart-first));
 
         // find the end of the comment
         char *tagEnd=strchr(last,'>');    // end of tag
@@ -1027,7 +1029,7 @@ int parseLine(char *line,
             exit(1);
         }
         strncpy(lastTag, last, commentStart-last);
-        strcpy(lastTag+(commentStart-last), commentStart+3);
+        cs_strlcpy(lastTag+(commentStart-last), commentStart+3, buf_size - (commentStart-last));
         lastLen = strlen(lastTag);
         while (lastLen > 1 && lastTag[lastLen-1]==' ')
         {
@@ -1301,7 +1303,7 @@ is_special (void) {
 			return (FALSE);
 		}
 		// we'll use VIEO_FM_BASE for creating the output file
-		strcpy ((void *)subnetSize, equals + 1);
+		cs_strlcpy ((void *)subnetSize, equals + 1, sizeof(subnetSize));
 		/* add SUBNET_SIZE to each manager environment */
 		memset (line_key, 0, 100);
 		strncpy ((void *)line_key, "SUBNET_SIZE", 11);
@@ -1321,7 +1323,7 @@ is_special (void) {
 			return (FALSE);
 		}
 		/* add SYSLOG_MODE to each manager's environment */
-		strcpy ((void *)syslogMode, equals + 1);
+		cs_strlcpy ((void *)syslogMode, equals + 1, sizeof(syslogMode));
 		memset (line_key, 0, 100);
 		strncpy ((void *)line_key, "SYSLOG_MODE", 11);
 		memset (line_value, 0, 200);

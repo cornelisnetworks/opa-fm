@@ -36,6 +36,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 #include "hsm_com_srvr_api.h"
 #include "hsm_com_srvr_data.h"
+#include "cs_g.h"
 
 
    
@@ -108,7 +109,7 @@ hcom_server_init
 
 	// Initialize session data
 	hdl->buf_len = buf_len;
-	strcpy(hdl->path,socket_path);
+	cs_strlcpy(hdl->path,socket_path, HSM_COM_SVR_MAX_PATH);
 	hdl->callback = callback;
 
 

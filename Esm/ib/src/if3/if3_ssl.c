@@ -128,7 +128,7 @@ static int if3_ssl_ctx_pem_password_cb(char *buf, int size, int rwflag, void *us
 
     if (buf && userdata) {
         strncpy(buf, userdata, size - 1);
-		buf[size-1] = 0;
+        buf[size-1] = 0;
         len = strlen(buf);
     }
 
@@ -233,7 +233,8 @@ static DH * if3_ssl_tmp_dh_callback(SSL *ssl, int is_export, int keylength)
 static int if3_ssl_x509_verify_callback(int ok, X509_STORE_CTX *ctx)
 {
     if (!ok) {
-        char *str = (char *)X509_verify_cert_error_string(ctx->error);
+        int err = X509_STORE_CTX_get_error(ctx);
+        char *str = (char *)X509_verify_cert_error_string(err);
         IB_LOG_ERROR_FMT(__func__, "Peer certificate failed CRL verification: %s", str);
     }
 
@@ -479,7 +480,7 @@ void* if3_ssl_srvr_open(const char *fmDir,
     // by the context.
     IF3_SSL_GET_FN(fmDir, fmCaCertificate, fmCaCertificateFn);
     if (!SSL_CTX_load_verify_locations(context, fmCaCertificateFn, NULL)) {
-        IB_LOG_ERROR_FMT(__func__, "Failed to set up the FI certificates file: %s", fmCaCertificateFn);
+        IB_LOG_ERROR_FMT(__func__, "Failed to set up the CA certificates file: %s", fmCaCertificateFn);
         goto bail; 
     }
     
@@ -529,7 +530,7 @@ void* if3_ssl_srvr_open(const char *fmDir,
         }
     }
 
-    // set options to be enforced upon the SSL/TLS connection. 		
+    // set options to be enforced upon the SSL/TLS connection.
     SSL_CTX_set_verify(context, IF3_SSL_SSL_VERIFY, NULL); 
     SSL_CTX_set_verify_depth(context, fmCertChainDepth);
     SSL_CTX_set_options(context, IF3_SSL_OPTIONS);
@@ -549,7 +550,7 @@ void* if3_ssl_srvr_open(const char *fmDir,
         } else {
             g_if3_ssl_dh_parms = PEM_read_DHparams(dhParmsFile, NULL, NULL, NULL);
             if (!g_if3_ssl_dh_parms) {
-				fclose(dhParmsFile);
+                fclose(dhParmsFile);
                 IB_LOG_ERROR_FMT(__func__, "failed to read Diffie-Hillmen parameters PEM file");
                 goto bail; 
             } else {

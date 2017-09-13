@@ -90,7 +90,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define	MAD_SMA_GUIDINFO	0x0014
 #define	MAD_SMA_PORTINFO	0x0015
 #define	MAD_SMA_PART_TABLE	0x0016
-#define	MAD_SMA_SL2VL_MAP	0x0017
 #define	MAD_SMA_VL_ARBITRATION	0x0018
 #define	MAD_SMA_LFT		0x0019
 #define	MAD_SMA_RFT		0x001a
@@ -439,7 +438,8 @@ typedef SMDBSync_t  *SMDBSyncp;         /* SM DBSYNC pointer type */
 // version 4 - 10.2 release
 // version 5 - 10.3 release
 // version 6 - 10.4 release
-#define     FM_PROTOCOL_VERSION    6
+// version 7 - 10.5 release
+#define     FM_PROTOCOL_VERSION    7
 
 typedef struct {
     uint32_t        protocolVersion;

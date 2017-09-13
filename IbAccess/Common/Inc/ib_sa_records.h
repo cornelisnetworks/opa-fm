@@ -77,7 +77,6 @@ extern "C" {
 #define	SA_ATTRIB_INFORM_INFO					0x0003
 #define	SA_ATTRIB_NODE_RECORD					0x0011
 #define SA_ATTRIB_PORTINFO_RECORD				0x0012
-#define	SA_ATTRIB_SLTOVL_MAPTBL_RECORD			0x0013
 #define	SA_ATTRIB_SWITCHINFO_RECORD				0x0014
 #define	SA_ATTRIB_LINEAR_FWDTBL_RECORD			0x0015
 #define	SA_ATTRIB_RANDOM_FWDTBL_RECORD			0x0016
@@ -352,53 +351,6 @@ typedef struct _IB_PORTINFO_RECORD {
 	} RID;
 	PORT_INFO		PortInfoData;
 } PACK_SUFFIX IB_PORTINFO_RECORD;
-
-
-/* --------------------------------------------------------------------------
- * SL to VL Mapping Table Record - how SLs map to VLs for a port on a node in fabric
- */
-
-/* ComponentMask bits */
-#define IB_SLVLMAP_RECORD_COMP_LID						0x00000001
-#define IB_SLVLMAP_RECORD_COMP_INPUTPORTNUM				0x00000002
-#define IB_SLVLMAP_RECORD_COMP_OUTPUTPORTNUM			0x00000004
-	/* reserved field									0x00000008 */
-	/* SLtoVLMap fields */
-#define IB_SLVLMAP_RECORD_COMP_SL0TOVL					0x00000010
-#define IB_SLVLMAP_RECORD_COMP_SL1TOVL					0x00000020
-#define IB_SLVLMAP_RECORD_COMP_SL2TOVL					0x00000040
-#define IB_SLVLMAP_RECORD_COMP_SL3TOVL					0x00000080
-#define IB_SLVLMAP_RECORD_COMP_SL4TOVL					0x00000100
-#define IB_SLVLMAP_RECORD_COMP_SL5TOVL					0x00000200
-#define IB_SLVLMAP_RECORD_COMP_SL6TOVL					0x00000400
-#define IB_SLVLMAP_RECORD_COMP_SL7TOVL					0x00000800
-#define IB_SLVLMAP_RECORD_COMP_SL8TOVL					0x00001000
-#define IB_SLVLMAP_RECORD_COMP_SL9TOVL					0x00002000
-#define IB_SLVLMAP_RECORD_COMP_SL10TOVL					0x00004000
-#define IB_SLVLMAP_RECORD_COMP_SL11TOVL					0x00008000
-#define IB_SLVLMAP_RECORD_COMP_SL12TOVL					0x00010000
-#define IB_SLVLMAP_RECORD_COMP_SL13TOVL					0x00020000
-#define IB_SLVLMAP_RECORD_COMP_SL14TOVL					0x00040000
-#define IB_SLVLMAP_RECORD_COMP_SL15TOVL					0x00080000
-
-typedef struct _IB_SLVLMAP_RECORD {
-	union {
-		uint32	AsReg32;
-		struct {
-#if CPU_BE
-			uint32		LID:16;
-			uint32		InputPortNum:8;
-			uint32		OutputPortNum:8;
-#else
-			uint32		OutputPortNum:8;
-			uint32		InputPortNum:8;
-			uint32		LID:16;
-#endif
-		} PACK_SUFFIX s;
-	} RID;
-	uint32			Reserved;
-	SLVLMAP			SLVLMapData;			/* SL to VL mapping for this port */
-} PACK_SUFFIX IB_SLVLMAP_RECORD;
 
 
 /* --------------------------------------------------------------------------
@@ -1195,19 +1147,6 @@ BSWAP_IB_PORTINFO_RECORD(
 
 	Dest->RID.AsReg32 = ntoh32(Dest->RID.AsReg32);
     BSWAP_PORT_INFO(&Dest->PortInfoData, extended);
-#endif
-}
-
-static __inline
-void
-BSWAP_IB_SLVLMAP_RECORD(
-    IB_SLVLMAP_RECORD  *Dest
-    )
-{
-#if CPU_LE
-
-	Dest->RID.AsReg32 = ntoh32(Dest->RID.AsReg32);
-	BSWAP_SLVLMAP(&Dest->SLVLMapData);
 #endif
 }
 

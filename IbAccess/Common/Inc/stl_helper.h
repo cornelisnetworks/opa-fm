@@ -44,6 +44,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 extern "C" {
 #endif
 
+#define BYTES_PER_FLIT 8
+
 /*
  * STL defines an algorithmic relationship between NodeGUID and PortGUID
  * Bit 32-34 of the NodeGUID always has 1
@@ -1386,7 +1388,7 @@ OpaNeighborNodeTypeToText(uint8 ntype)
 static __inline int
 IsCableInfoAvailable(STL_PORT_INFO *portInfo)
 {
-	return (portInfo->PortPhyConfig.s.PortType == STL_PORT_TYPE_STANDARD
+	return (portInfo->PortPhysConfig.s.PortType == STL_PORT_TYPE_STANDARD
 			&& ! (portInfo->PortStates.s.PortPhysicalState == STL_PORT_PHYS_OFFLINE
 				&& portInfo->PortStates.s.OfflineDisabledReason == STL_OFFDIS_REASON_LOCAL_MEDIA_NOT_INSTALLED));
 }

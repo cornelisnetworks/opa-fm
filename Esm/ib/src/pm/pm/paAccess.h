@@ -105,8 +105,8 @@ typedef struct _pmFocusPortEntry_s {
 	uint8   		mtu;			// enum STL MTU
 	uint8			neighborPortNum;
 	STL_LID_32		neighborLid;
-	uint8           localFlags:4;
-	uint8           neighborFlags:4;
+	uint8			localStatus:4;
+	uint8			neighborStatus:4;
 	uint8           reserved[3];
 	uint64			value;
 	uint64			guid;
@@ -125,8 +125,8 @@ typedef struct _pmFocusPorts_s {
 typedef struct _sortedValueEntry_s {
 	STL_LID_32					lid;
 	uint8						portNum;
-	uint8                       localFlags : 4;
-	uint8						neighborFlags : 4;
+	uint8						localStatus : 4;
+	uint8						neighborStatus : 4;
 	uint8						reserved2[2];
 	uint64						value;
 	uint64						neighborValue;
@@ -165,8 +165,8 @@ typedef struct _pmImageInfo_s {
 	uint32						numSwitchPorts;
 	uint32						numLinks;
 	uint32						numSMs;
-	uint32						numFailedNodes;
-	uint32						numFailedPorts;
+	uint32						numNoRespNodes;
+	uint32						numNoRespPorts;
 	uint32						numSkippedNodes;
 	uint32						numSkippedPorts;
 	uint32						numUnexpectedClearPorts;

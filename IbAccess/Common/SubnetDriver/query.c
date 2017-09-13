@@ -119,12 +119,6 @@ FillSADetailsForTraceRecord(
 	);
 
 FSTATUS
-FillSADetailsForSLVLMapRecord(
-	PQueryDetails pQueryElement,
-	uint32 MemAllocFlags
-	);
-
-FSTATUS
 FillSADetailsForSwitchInfoRecord(
 	PQueryDetails pQueryElement,
 	uint32 MemAllocFlags
@@ -758,10 +752,6 @@ ValidateAndFillSDQuery(
 			{
 				status = FillSADetailsForInformInfoRecord(pQueryElement, MemAllocFlags);
 			}
-			else if (pQuery->OutputType == OutputTypeSLVLMapRecord)
-			{
-				status = FillSADetailsForSLVLMapRecord(pQueryElement, MemAllocFlags);
-			}
 			else if (pQuery->OutputType == OutputTypeSwitchInfoRecord)
 			{
 				status = FillSADetailsForSwitchInfoRecord(pQueryElement, MemAllocFlags);
@@ -1149,20 +1139,6 @@ ValidateAndFillSDQuery(
 				pSaMcMemberRecord = (IB_MCMEMBER_RECORD*)&(pQueryElement->u.pSaMad->Data);
 				pSaMcMemberRecord->MLID = pQuery->InputValue.Lid;
 				BSWAP_IB_MCMEMBER_RECORD(pSaMcMemberRecord);
-				status = FSUCCESS;
-				break;
-			} else if (pQuery->OutputType == OutputTypeSLVLMapRecord)
-			{
-				IB_SLVLMAP_RECORD*  pSLVLMapRecord;
-				status = FillSADetailsForSLVLMapRecord(pQueryElement, MemAllocFlags);
-				if ( status != FSUCCESS)
-				{
-					break;
-				}
-				pQueryElement->u.pSaMad->SaHdr.ComponentMask = IB_SLVLMAP_RECORD_COMP_LID;
-				pSLVLMapRecord = (IB_SLVLMAP_RECORD*)&(pQueryElement->u.pSaMad->Data);
-				pSLVLMapRecord->RID.s.LID = pQuery->InputValue.Lid;
-				BSWAP_IB_SLVLMAP_RECORD(pSLVLMapRecord);
 				status = FSUCCESS;
 				break;
 			} else if (pQuery->OutputType == OutputTypeSwitchInfoRecord)
@@ -1920,22 +1896,6 @@ FillSADetailsForTraceRecord(
 	Fstatus = BuildCommonSAMad(pQueryElement, SA_ATTRIB_TRACE_RECORD,
 								sizeof(IB_PATH_RECORD), MemAllocFlags);
 	pQueryElement->u.pMad->common.mr.s.Method = SUBN_ADM_GETTRACETABLE;
-	_DBG_LEAVE_LVL( _DBG_LVL_FUNC_TRACE );
-	return Fstatus;
-}
-
-FSTATUS
-FillSADetailsForSLVLMapRecord(
-	PQueryDetails pQueryElement,
-	uint32 MemAllocFlags
-	)
-{
-	FSTATUS Fstatus;
-
-	_DBG_ENTER_LVL(_DBG_LVL_FUNC_TRACE, FillSADetailsForSLVLMapRecord);
-	
-	Fstatus = BuildCommonSAMad(pQueryElement, SA_ATTRIB_SLTOVL_MAPTBL_RECORD,
-								sizeof(IB_SLVLMAP_RECORD), MemAllocFlags);
 	_DBG_LEAVE_LVL( _DBG_LVL_FUNC_TRACE );
 	return Fstatus;
 }

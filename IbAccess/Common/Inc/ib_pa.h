@@ -95,8 +95,8 @@ typedef struct _PMUTILSTATSTRUCT {
 // TBD - same question for other structures here
 typedef struct _PMERRSUMMARYSTRUCT {
 	uint32	integrityErrors;
-	uint32	congestionErrors;
-	uint32	smaCongestionErrors;
+	uint32	congestion;
+	uint32	smaCongestion;
 	uint32	securityErrors;
 	uint32	routingErrors;
 	uint16	discard;
@@ -109,8 +109,8 @@ typedef struct _PMERRSUMMARYSTRUCT {
 
 typedef struct _PMERRTHRESHOLDSTRUCT {
 	uint32	integrityErrors;
-	uint32	congestionErrors;
-	uint32	smaCongestionErrors;
+	uint32	congestion;
+	uint32	smaCongestion;
 	uint32	securityErrors;
 	uint32	routingErrors;
 	uint32	reserved;
@@ -118,15 +118,15 @@ typedef struct _PMERRTHRESHOLDSTRUCT {
 
 typedef struct PMERRBUCKETSTRUCT {
 			uint32	integrityErrors;
-			uint32	congestionErrors;
-			uint32	smaCongestionErrors;
+			uint32	congestion;
+			uint32	smaCongestion;
 			uint32	securityErrors;
 			uint32	routingErrors;
 			uint32	reserved;
 } PACK_SUFFIX PMERRBUCKET_T;
 
 typedef struct PMERRSTATSTRUCT {
-	PMERRSUMMARY_T	errorMaximums;
+	PMERRSUMMARY_T	categoryMaximums;
 	PMERRBUCKET_T	ports[PM_ERR_BUCKETS];
 } PACK_SUFFIX PMERRSTAT_T;
 
@@ -139,8 +139,8 @@ typedef struct _GROUP_INFO_DATA {
 	PMUTILSTAT_T			internalUtilStats;
 	PMUTILSTAT_T			sendUtilStats;
 	PMUTILSTAT_T			recvUtilStats;
-	PMERRSTAT_T				internalErrors;
-	PMERRSTAT_T				externalErrors;
+	PMERRSTAT_T				internalCategoryStats;
+	PMERRSTAT_T				externalCategoryStats;
 	// these are added at the end to allow for forward and backward
 	// compatibility.
 	uint8					maxInternalRate;
@@ -290,7 +290,7 @@ typedef struct _PM_CONFIG_DATA {
 	uint32					lease;
 	uint32					pmFlags;
 	CONGESTION_WEIGHTS_T	congestionWeights;
-	PMERRTHRESHOLD_T		errorThresholds;
+	PMERRTHRESHOLD_T		categoryThresholds;
 	INTEGRITY_WEIGHTS_T		integrityWeights;
 	uint64					memoryFootprint;
 	uint32					MaxAttempts;
@@ -371,8 +371,8 @@ typedef struct _IMAGE_INFO_DATA {
 	uint32					numSwitchPorts;
 	uint32					numLinks;
 	uint32					numSMs;
-	uint32					numFailedNodes;
-	uint32					numFailedPorts;
+	uint32					numNoRespNodes;
+	uint32					numNoRespPorts;
 	uint32					numSkippedNodes;
 	uint32					numSkippedPorts;
 	uint32					numUnexpectedClearPorts;
@@ -617,40 +617,40 @@ BSWAP_PA_GROUP_INFO(GROUP_INFO_DATA *pRecord)
 	pRecord->recvUtilStats.minKPps			= ntoh32(pRecord->recvUtilStats.minKPps);
 	pRecord->recvUtilStats.maxKPps			= ntoh32(pRecord->recvUtilStats.maxKPps);
 
-	pRecord->internalErrors.errorMaximums.integrityErrors			= ntoh32(pRecord->internalErrors.errorMaximums.integrityErrors);
-	pRecord->internalErrors.errorMaximums.congestionErrors			= ntoh32(pRecord->internalErrors.errorMaximums.congestionErrors);
-	pRecord->internalErrors.errorMaximums.smaCongestionErrors		= ntoh32(pRecord->internalErrors.errorMaximums.smaCongestionErrors);
-	pRecord->internalErrors.errorMaximums.securityErrors			= ntoh32(pRecord->internalErrors.errorMaximums.securityErrors);
-	pRecord->internalErrors.errorMaximums.routingErrors				= ntoh32(pRecord->internalErrors.errorMaximums.routingErrors);
-	pRecord->internalErrors.errorMaximums.discard				= ntoh16(pRecord->internalErrors.errorMaximums.discard);
-	//pRecord->internalErrors.errorMaximums.waitPct10			= ntoh16(pRecord->internalErrors.errorMaximums.waitPct10);
-	pRecord->internalErrors.errorMaximums.congestionPct10			= ntoh16(pRecord->internalErrors.errorMaximums.congestionPct10);
-	pRecord->internalErrors.errorMaximums.inefficiencyPct10			= ntoh16(pRecord->internalErrors.errorMaximums.inefficiencyPct10);
-	pRecord->internalErrors.errorMaximums.adaptiveRouting			= ntoh32(pRecord->internalErrors.errorMaximums.adaptiveRouting);
+	pRecord->internalCategoryStats.categoryMaximums.integrityErrors			= ntoh32(pRecord->internalCategoryStats.categoryMaximums.integrityErrors);
+	pRecord->internalCategoryStats.categoryMaximums.congestion			= ntoh32(pRecord->internalCategoryStats.categoryMaximums.congestion);
+	pRecord->internalCategoryStats.categoryMaximums.smaCongestion		= ntoh32(pRecord->internalCategoryStats.categoryMaximums.smaCongestion);
+	pRecord->internalCategoryStats.categoryMaximums.securityErrors			= ntoh32(pRecord->internalCategoryStats.categoryMaximums.securityErrors);
+	pRecord->internalCategoryStats.categoryMaximums.routingErrors				= ntoh32(pRecord->internalCategoryStats.categoryMaximums.routingErrors);
+	pRecord->internalCategoryStats.categoryMaximums.discard				= ntoh16(pRecord->internalCategoryStats.categoryMaximums.discard);
+	//pRecord->internalCategoryStats.categoryMaximums.waitPct10			= ntoh16(pRecord->internalCategoryStats.categoryMaximums.waitPct10);
+	pRecord->internalCategoryStats.categoryMaximums.congestionPct10			= ntoh16(pRecord->internalCategoryStats.categoryMaximums.congestionPct10);
+	pRecord->internalCategoryStats.categoryMaximums.inefficiencyPct10			= ntoh16(pRecord->internalCategoryStats.categoryMaximums.inefficiencyPct10);
+	pRecord->internalCategoryStats.categoryMaximums.adaptiveRouting			= ntoh32(pRecord->internalCategoryStats.categoryMaximums.adaptiveRouting);
 	for (i = 0; i < PM_ERR_BUCKETS; i++) {
-		pRecord->internalErrors.ports[i].integrityErrors			= ntoh32(pRecord->internalErrors.ports[i].integrityErrors);
-		pRecord->internalErrors.ports[i].congestionErrors			= ntoh32(pRecord->internalErrors.ports[i].congestionErrors);
-		pRecord->internalErrors.ports[i].smaCongestionErrors			= ntoh32(pRecord->internalErrors.ports[i].smaCongestionErrors);
-		pRecord->internalErrors.ports[i].securityErrors			= ntoh32(pRecord->internalErrors.ports[i].securityErrors);
-		pRecord->internalErrors.ports[i].routingErrors			= ntoh32(pRecord->internalErrors.ports[i].routingErrors);
+		pRecord->internalCategoryStats.ports[i].integrityErrors			= ntoh32(pRecord->internalCategoryStats.ports[i].integrityErrors);
+		pRecord->internalCategoryStats.ports[i].congestion			= ntoh32(pRecord->internalCategoryStats.ports[i].congestion);
+		pRecord->internalCategoryStats.ports[i].smaCongestion			= ntoh32(pRecord->internalCategoryStats.ports[i].smaCongestion);
+		pRecord->internalCategoryStats.ports[i].securityErrors			= ntoh32(pRecord->internalCategoryStats.ports[i].securityErrors);
+		pRecord->internalCategoryStats.ports[i].routingErrors			= ntoh32(pRecord->internalCategoryStats.ports[i].routingErrors);
 	}
 
-	pRecord->externalErrors.errorMaximums.integrityErrors			= ntoh32(pRecord->externalErrors.errorMaximums.integrityErrors);
-	pRecord->externalErrors.errorMaximums.congestionErrors			= ntoh32(pRecord->externalErrors.errorMaximums.congestionErrors);
-	pRecord->externalErrors.errorMaximums.smaCongestionErrors		= ntoh32(pRecord->externalErrors.errorMaximums.smaCongestionErrors);
-	pRecord->externalErrors.errorMaximums.securityErrors			= ntoh32(pRecord->externalErrors.errorMaximums.securityErrors);
-	pRecord->externalErrors.errorMaximums.routingErrors				= ntoh32(pRecord->externalErrors.errorMaximums.routingErrors);
-	pRecord->externalErrors.errorMaximums.discard				= ntoh16(pRecord->externalErrors.errorMaximums.discard);
-	//pRecord->externalErrors.errorMaximums.waitPct10			= ntoh16(pRecord->externalErrors.errorMaximums.waitPct10);
-	pRecord->externalErrors.errorMaximums.congestionPct10			= ntoh16(pRecord->externalErrors.errorMaximums.congestionPct10);
-	pRecord->externalErrors.errorMaximums.inefficiencyPct10			= ntoh16(pRecord->externalErrors.errorMaximums.inefficiencyPct10);
-	pRecord->externalErrors.errorMaximums.adaptiveRouting			= ntoh32(pRecord->externalErrors.errorMaximums.adaptiveRouting);
+	pRecord->externalCategoryStats.categoryMaximums.integrityErrors			= ntoh32(pRecord->externalCategoryStats.categoryMaximums.integrityErrors);
+	pRecord->externalCategoryStats.categoryMaximums.congestion			= ntoh32(pRecord->externalCategoryStats.categoryMaximums.congestion);
+	pRecord->externalCategoryStats.categoryMaximums.smaCongestion		= ntoh32(pRecord->externalCategoryStats.categoryMaximums.smaCongestion);
+	pRecord->externalCategoryStats.categoryMaximums.securityErrors			= ntoh32(pRecord->externalCategoryStats.categoryMaximums.securityErrors);
+	pRecord->externalCategoryStats.categoryMaximums.routingErrors				= ntoh32(pRecord->externalCategoryStats.categoryMaximums.routingErrors);
+	pRecord->externalCategoryStats.categoryMaximums.discard				= ntoh16(pRecord->externalCategoryStats.categoryMaximums.discard);
+	//pRecord->externalCategoryStats.categoryMaximums.waitPct10			= ntoh16(pRecord->externalCategoryStats.categoryMaximums.waitPct10);
+	pRecord->externalCategoryStats.categoryMaximums.congestionPct10			= ntoh16(pRecord->externalCategoryStats.categoryMaximums.congestionPct10);
+	pRecord->externalCategoryStats.categoryMaximums.inefficiencyPct10			= ntoh16(pRecord->externalCategoryStats.categoryMaximums.inefficiencyPct10);
+	pRecord->externalCategoryStats.categoryMaximums.adaptiveRouting			= ntoh32(pRecord->externalCategoryStats.categoryMaximums.adaptiveRouting);
 	for (i = 0; i < PM_ERR_BUCKETS; i++) {
-		pRecord->externalErrors.ports[i].integrityErrors			= ntoh32(pRecord->externalErrors.ports[i].integrityErrors);
-		pRecord->externalErrors.ports[i].congestionErrors			= ntoh32(pRecord->externalErrors.ports[i].congestionErrors);
-		pRecord->externalErrors.ports[i].smaCongestionErrors			= ntoh32(pRecord->externalErrors.ports[i].smaCongestionErrors);
-		pRecord->externalErrors.ports[i].securityErrors			= ntoh32(pRecord->externalErrors.ports[i].securityErrors);
-		pRecord->externalErrors.ports[i].routingErrors			= ntoh32(pRecord->externalErrors.ports[i].routingErrors);
+		pRecord->externalCategoryStats.ports[i].integrityErrors			= ntoh32(pRecord->externalCategoryStats.ports[i].integrityErrors);
+		pRecord->externalCategoryStats.ports[i].congestion			= ntoh32(pRecord->externalCategoryStats.ports[i].congestion);
+		pRecord->externalCategoryStats.ports[i].smaCongestion			= ntoh32(pRecord->externalCategoryStats.ports[i].smaCongestion);
+		pRecord->externalCategoryStats.ports[i].securityErrors			= ntoh32(pRecord->externalCategoryStats.ports[i].securityErrors);
+		pRecord->externalCategoryStats.ports[i].routingErrors			= ntoh32(pRecord->externalCategoryStats.ports[i].routingErrors);
 	}
 	pRecord->maxInternalMBps				= ntoh32(pRecord->maxInternalMBps);
 	pRecord->maxExternalMBps				= ntoh32(pRecord->maxExternalMBps);
@@ -743,11 +743,11 @@ BSWAP_PA_PM_CONFIG(PM_CONFIG_DATA *pRecord)
 	pRecord->congestionWeights.portXmitInefficiencyPct10 = ntoh16(pRecord->congestionWeights.portXmitInefficiencyPct10);
 	pRecord->congestionWeights.portXmitWaitCongestionPct10 = ntoh16(pRecord->congestionWeights.portXmitWaitCongestionPct10);
 	pRecord->congestionWeights.portXmitWaitInefficiencyPct10 = ntoh16(pRecord->congestionWeights.portXmitWaitInefficiencyPct10);
-	pRecord->errorThresholds.integrityErrors	= ntoh32(pRecord->errorThresholds.integrityErrors);
-	pRecord->errorThresholds.congestionErrors	= ntoh32(pRecord->errorThresholds.congestionErrors);
-	pRecord->errorThresholds.smaCongestionErrors	= ntoh32(pRecord->errorThresholds.smaCongestionErrors);
-	pRecord->errorThresholds.securityErrors		= ntoh32(pRecord->errorThresholds.securityErrors);
-	pRecord->errorThresholds.routingErrors		= ntoh32(pRecord->errorThresholds.routingErrors);
+	pRecord->categoryThresholds.integrityErrors	= ntoh32(pRecord->categoryThresholds.integrityErrors);
+	pRecord->categoryThresholds.congestion	= ntoh32(pRecord->categoryThresholds.congestion);
+	pRecord->categoryThresholds.smaCongestion	= ntoh32(pRecord->categoryThresholds.smaCongestion);
+	pRecord->categoryThresholds.securityErrors		= ntoh32(pRecord->categoryThresholds.securityErrors);
+	pRecord->categoryThresholds.routingErrors		= ntoh32(pRecord->categoryThresholds.routingErrors);
 	pRecord->memoryFootprint					= ntoh64(pRecord->memoryFootprint);
 	pRecord->MaxAttempts						= ntoh32(pRecord->MaxAttempts);
 	pRecord->RespTimeout						= ntoh32(pRecord->RespTimeout);
@@ -798,8 +798,8 @@ BSWAP_PA_IMAGE_INFO(IMAGE_INFO_DATA *pRecord)
 	pRecord->numSwitchPorts				= ntoh32(pRecord->numSwitchPorts);
 	pRecord->numLinks					= ntoh32(pRecord->numLinks);
 	pRecord->numSMs						= ntoh32(pRecord->numSMs);
-	pRecord->numFailedNodes				= ntoh32(pRecord->numFailedNodes);
-	pRecord->numFailedPorts				= ntoh32(pRecord->numFailedPorts);
+	pRecord->numNoRespNodes				= ntoh32(pRecord->numNoRespNodes);
+	pRecord->numNoRespPorts				= ntoh32(pRecord->numNoRespPorts);
 	pRecord->numSkippedNodes			= ntoh32(pRecord->numSkippedNodes);
 	pRecord->numSkippedPorts			= ntoh32(pRecord->numSkippedPorts);
 	pRecord->numUnexpectedClearPorts	= ntoh32(pRecord->numUnexpectedClearPorts);

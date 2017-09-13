@@ -198,7 +198,7 @@ int main(int argc, char *argv[])
 
   mai_init();
 
-  rc=ib_init_devport(&ib_dev, &ib_port, NULL);
+  rc=ib_init_devport(&ib_dev, &ib_port, NULL, NULL);
   if (rc)
     {
       printf("ERROR: ib_init_devport failed, %s\n",cs_convert_status(rc));

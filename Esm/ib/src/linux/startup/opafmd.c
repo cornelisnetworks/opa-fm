@@ -1,3 +1,33 @@
+/* BEGIN_ICS_COPYRIGHT1 ****************************************
+
+Copyright (c) 2015, Intel Corporation
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright notice,
+      this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * Neither the name of Intel Corporation nor the names of its contributors
+      may be used to endorse or promote products derived from this software
+      without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+** END_ICS_COPYRIGHT1   ****************************************/
+
+/* [ICS VERSION STRING: unknown] */
 #include <ctype.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -13,7 +43,8 @@
 #include <pthread.h>
 #include <errno.h>
 #include <fm_xml.h>
-#include <oib_utils.h>
+#include <opamgt_priv.h>
+#include "ib_utils_openib.h"
 
 #define OPAFMD_PIPE "/var/run/opafmd"
 
@@ -81,14 +112,6 @@ int loadConfig(void);
 int daemon_main(void);
 void *kill_thread(void *arg);
 
-extern FSTATUS oib_get_hfi_from_portguid(IN uint64_t portGuid,
-                                         OUT char *pCaName,
-                                         OUT int * caNum,
-                                         OUT int * portNum,
-                                         OUT uint64_t * pPrefix,
-                                         OUT uint16_t * pSMLid,
-                                         OUT uint8_t * pSMSL,
-										 OUT uint8_t * pPortState);
 
 /**
  * Returns string representation of component.
@@ -573,10 +596,6 @@ int loadConfig(void){
 
 	char      name[UMAD_CA_NAME_LEN];
 	uint64_t guid;
-	uint64_t  prefix;
-	uint16    sm_lid;
-	uint8     sm_sl;
-	uint8     port_state;
 
 	xml_config = parseFmConfig(FM_XML_CONFIG, IXML_PARSER_FLAG_NONE, /* instance does not matter for startup */ 0, /* full parse */ 1, /* embedded */ 0);
 	if (!xml_config) {
@@ -605,18 +624,19 @@ int loadConfig(void){
 	} selected_device[FM_MAX_INSTANCES] = {{0}};
 
 	for (i = 0; i < FM_MAX_INSTANCES; ++i) {
-		// +1 for hfi, as both oib_get_hfi_from_portguid and oib_get_portguid assumes 1 based hfi value,
+		// +1 for hfi, as both omgt_get_hfi_from_portguid and omgt_get_portguid assumes 1 based hfi value,
 		// and xml_config->fm_instance[i]->fm_config gives zero based hfi
 		selected_device[i].hfi = xml_config->fm_instance[i]->fm_config.hca+1;
 		selected_device[i].port = xml_config->fm_instance[i]->fm_config.port;
 		selected_device[i].guid = xml_config->fm_instance[i]->fm_config.port_guid;
 		if (xml_config->fm_instance[i]->fm_config.start) {
 			// To make sure we don't miss mismatched guid and hfi/port configs, we want to fill in missing info
-			if (selected_device[i].guid && oib_get_hfi_from_portguid(selected_device[i].guid, name, &hfi, &port, &prefix, &sm_lid, &sm_sl, &port_state) == VSTATUS_OK) {
+			if (selected_device[i].guid && omgt_get_hfi_from_portguid(selected_device[i].guid,
+					NULL, name, &hfi, &port, NULL, NULL, NULL, NULL) == VSTATUS_OK) {
 				selected_device[i].hfi = hfi;
 				selected_device[i].port = port;
-			} else if (selected_device[i].port &&
-					   oib_get_portguid(selected_device[i].hfi, selected_device[i].port, NULL, NULL, &guid, NULL, NULL, NULL, NULL, NULL, NULL, NULL) == VSTATUS_OK) {
+			} else if (selected_device[i].port && omgt_get_portguid(selected_device[i].hfi, selected_device[i].port,
+					NULL, NULL, NULL, &guid, NULL, NULL, NULL, NULL, NULL, NULL, NULL) == VSTATUS_OK) {
 				selected_device[i].guid = guid;
 			}
 			if (!selected_device[i].guid || !selected_device[i].port) {

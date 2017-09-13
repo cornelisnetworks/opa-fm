@@ -210,7 +210,7 @@ static void checkForChangesInStandbySMs(PmDbsyncSmInfo_t *base, PmDbsyncSmInfo_t
 				new->SMs[newIndex].histPmDbsyncNeeded = base->SMs[baseIndex].histPmDbsyncNeeded;
 				new->SMs[newIndex].rImgPmDbsyncNeeded = base->SMs[baseIndex].rImgPmDbsyncNeeded;
 				new->SMs[newIndex].numRImagesForSync = base->SMs[baseIndex].numRImagesForSync;
-				strcpy(new->SMs[newIndex].histImgListFile, base->SMs[newIndex].histImgListFile);
+				cs_strlcpy(new->SMs[newIndex].histImgListFile, base->SMs[newIndex].histImgListFile, 300);
 				new->SMs[newIndex].histImgFileIndex = base->SMs[newIndex].histImgFileIndex;
 				new->SMs[newIndex].numSweepImagesSent = base->SMs[baseIndex].numSweepImagesSent;
 				new->SMs[newIndex].numHistImagesSent = base->SMs[baseIndex].numHistImagesSent;
@@ -374,6 +374,7 @@ int createHistFileListForSM(char *histPath, uint16 smLid, char *fileList)
 
 	n = scandir(histPath, &d, hist_filter, alphasort);
 
+	block_sm_exit();
 	if (n < 0) {
 		ret = -1;
 	} else {
@@ -397,6 +398,7 @@ int createHistFileListForSM(char *histPath, uint16 smLid, char *fileList)
 			fclose(fp);
 		}
 	}
+	unblock_sm_exit();
 
 	if (d) {
 		int i;
@@ -737,7 +739,7 @@ static void RemoveFromGroups(Pm_t *pm, PmPort_t *pmportp)
 		goto done;
 
 #if PM_COMPRESS_GROUPS
-	loopMax = portImage->u.s.InGroups;
+	loopMax = portImage->numGroups;
 #else
 	loopMax = PM_MAX_GROUPS_PER_PORT;
 #endif
@@ -750,7 +752,7 @@ static void RemoveFromGroups(Pm_t *pm, PmPort_t *pmportp)
 			continue;
 #endif
 
-		if (portImage->IntLinkFlags & (1<<grpIndex)) {
+		if (portImage->InternalBitMask & (1<<grpIndex)) {
             IB_LOG_VERBOSE_FMT(__func__, "%s Int. %.*s Guid "FMT_U64" LID 0x%x Port %u",
 				groupp->Name, (int)sizeof(pmportp->pmnodep->nodeDesc.NodeString),
 			   	pmportp->pmnodep->nodeDesc.NodeString,
@@ -2087,7 +2089,7 @@ FSTATUS divideAndCompress(unsigned char *input_data, size_t input_size, unsigned
 *************************************************************************************/
 FSTATUS rebuildComposite(PmCompositeImage_t *cimg, unsigned char *data, uint32 history_version) {
 	unsigned char *loc = data;
-	int i, j, k;
+	int i, j;
 
 	if (history_version == PM_HISTORY_VERSION || history_version == PM_HISTORY_VERSION_OLD) {
 		// Copy everything except for the node pointer at the end of the struct
@@ -2122,13 +2124,6 @@ FSTATUS rebuildComposite(PmCompositeImage_t *cimg, unsigned char *data, uint32 h
 					return FINSUFFICIENT_MEMORY;
 				}
 				memcpy(cimg->nodes[i]->ports[j], loc, sizeof(PmCompositePort_t));
-				if (history_version == PM_HISTORY_VERSION_OLD) {
-					for (k = 0; k < cimg->nodes[i]->ports[j]->numVFs; k++) {
-						// Convert OLD version vl to vlmask
-						cimg->nodes[i]->ports[j]->compVfVlmap[k].vlmask =
-							(1 << cimg->nodes[i]->ports[j]->compVfVlmap[k].vlmask);
-					}
-				}
 				loc += sizeof(PmCompositePort_t);
 			}
 		} else {
@@ -2141,13 +2136,6 @@ FSTATUS rebuildComposite(PmCompositeImage_t *cimg, unsigned char *data, uint32 h
 				return FINSUFFICIENT_MEMORY;
 			}
 			memcpy(cimg->nodes[i]->ports[0], loc, sizeof(PmCompositePort_t));
-			if (history_version == PM_HISTORY_VERSION_OLD) {
-				for (k = 0; k < cimg->nodes[i]->ports[0]->numVFs; k++) {
-					// Convert OLD version vl to vlmask
-					cimg->nodes[i]->ports[0]->compVfVlmap[k].vlmask =
-						(1 << cimg->nodes[i]->ports[0]->compVfVlmap[k].vlmask);
-				}
-			}
 			loc += sizeof(PmCompositePort_t);
 		}
 	}
@@ -2221,45 +2209,6 @@ static FSTATUS flattenComposite(PmCompositeImage_t *cimg, unsigned char *data, u
 	return FSUCCESS;
 }
 
-static void combineUtilStats(PmUtilStats_t *a, PmUtilStats_t *b) {
-	a->TotMBps += b->TotMBps;						// Sum
-	a->TotKPps += b->TotKPps;						// Sum
-	a->AvgMBps += b->AvgMBps/pm_config.shortTermHistory.imagesPerComposite;	// Average
-	UPDATE_MIN(a->MinMBps, b->MinMBps);		// Min
-	UPDATE_MAX(a->MaxMBps, b->MaxMBps);		// Max
-	a->AvgKPps += b->AvgMBps/pm_config.shortTermHistory.imagesPerComposite;		// Average
-	UPDATE_MIN(a->MinKPps, b->MinKPps);		// Min
-	UPDATE_MAX(a->MaxKPps, b->MaxKPps);		// Max
-	int i;
-	for (i = 0; i < PM_UTIL_BUCKETS; i++) {
-		UPDATE_MAX(a->BwPorts[i], b->BwPorts[i]);
-	}
-}
-
-static void combineErrorSummary(ErrorSummary_t *a, ErrorSummary_t *b) {
-	a->Integrity += b->Integrity;
-	a->Congestion += b->Congestion;
-	a->SmaCongestion += b->SmaCongestion;
-	a->Bubble += b->Bubble;
-	a->Security += b->Security;
-	a->Routing += b->Routing;
-
-	UPDATE_MAX(a->UtilizationPct10, b->UtilizationPct10);
-	UPDATE_MAX(a->DiscardsPct10, b->DiscardsPct10);
-}
-
-static void combineErrStats(PmErrStats_t *a, PmErrStats_t *b) {
-	combineErrorSummary(&(a->Max), &(b->Max));
-	int i;
-	for (i = 0; i < PM_ERR_BUCKETS; i++) {
-		a->Ports[i].Integrity += b->Ports[i].Integrity;
-		a->Ports[i].Congestion += b->Ports[i].Congestion;
-		a->Ports[i].SmaCongestion += b->Ports[i].SmaCongestion;
-		a->Ports[i].Bubble += b->Ports[i].Bubble;
-		a->Ports[i].Security += b->Ports[i].Security;
-		a->Ports[i].Routing += b->Ports[i].Routing;
-	}
-}
 /************************************************************************************* 
     createCompositePort - Allocate and create a composite port
  
@@ -2288,6 +2237,7 @@ static PmCompositePort_t *createCompositePort(PmPort_t *port, PmCompositeImage_t
 	cport->guid = port->guid;
 	cport->portNum = port->portNum;
 	cport->u.AsReg32 = port->Image[imageIndex].u.AsReg32;
+
 	if (port->Image[imageIndex].neighbor && port->Image[imageIndex].neighbor->pmnodep) {
 		cport->neighborLid = port->Image[imageIndex].neighbor->pmnodep->Image[imageIndex].lid;
 		cport->neighborPort = port->Image[imageIndex].neighbor->portNum;
@@ -2296,26 +2246,16 @@ static PmCompositePort_t *createCompositePort(PmPort_t *port, PmCompositeImage_t
 		cport->neighborPort = 0;
 	}
 	cport->numVFs = port->Image[imageIndex].numVFs;
+	cport->numGroups = port->Image[imageIndex].numGroups;
+	cport->InternalBitMask = port->Image[imageIndex].InternalBitMask;
+
 	cport->vlSelectMask = port->Image[imageIndex].vlSelectMask;
-	cport->sendMBps = port->Image[imageIndex].SendMBps;
-	cport->sendKPps = port->Image[imageIndex].SendKPps;
-	cport->intLinkFlags = port->Image[imageIndex].IntLinkFlags;
-	cport->utilBucket = port->Image[imageIndex].UtilBucket;
-	cport->integrityBucket = port->Image[imageIndex].IntegrityBucket;
-	cport->congestionBucket = port->Image[imageIndex].CongestionBucket;
-	cport->smaCongestionBucket = port->Image[imageIndex].SmaCongestionBucket;
-	cport->bubbleBucket = port->Image[imageIndex].BubbleBucket;
-	cport->securityBucket = port->Image[imageIndex].SecurityBucket;
-	cport->routingBucket = port->Image[imageIndex].RoutingBucket;
-	cport->spare = 0;
-	memcpy(&(cport->VLBucketFlags), &(port->Image[imageIndex].VLBucketFlags), sizeof(uint32) * MAX_PM_VLS);
-	memcpy(&(cport->VFSendMBps), &(port->Image[imageIndex].VFSendMBps), sizeof(uint32)*MAX_VFABRICS);
-	memcpy(&(cport->VFSendKPps), &(port->Image[imageIndex].VFSendKPps), sizeof(uint32)*MAX_VFABRICS);
+	cport->clearSelectMask.AsReg32 = port->Image[imageIndex].clearSelectMask.AsReg32;
+
 	memcpy(&(cport->stlPortCounters), &(port->Image[imageIndex].StlPortCounters), sizeof(PmCompositePortCounters_t));
 	memcpy(&(cport->stlVLPortCounters), &(port->Image[imageIndex].StlVLPortCounters), sizeof(PmCompositeVLCounters_t)*MAX_PM_VLS);
-	cport->clearSelectMask.AsReg32 = port->Image[imageIndex].clearSelectMask.AsReg32;
-	memcpy(&(cport->errors), &(port->Image[imageIndex].Errors), sizeof(ErrorSummary_t));
-	memcpy(&(cport->VFErrors), &(port->Image[imageIndex].VFErrors), sizeof(ErrorSummary_t)*MAX_VFABRICS);
+	memcpy(&(cport->DeltaStlPortCounters), &(port->Image[imageIndex].DeltaStlPortCounters), sizeof(PmCompositePortCounters_t));
+	memcpy(&(cport->DeltaStlVLPortCounters), &(port->Image[imageIndex].DeltaStlVLPortCounters), sizeof(PmCompositeVLCounters_t)*MAX_PM_VLS);
 	
 	// Groups and VFs
 	// these are actually lists of indexes into the list of groups/list of VFs 
@@ -2598,8 +2538,8 @@ PmCompositeImage_t *PmCreateComposite(Pm_t *pm, uint32 imageIndex, uint8 isCompr
 	cimg->switchPorts = img->SwitchPorts;
 	cimg->numLinks = img->NumLinks;
 	cimg->numSMs = img->NumSMs;
-	cimg->failedNodes = img->FailedNodes;
-	cimg->failedPorts = img->FailedPorts;
+	cimg->noRespNodes = img->NoRespNodes;
+	cimg->noRespPorts = img->NoRespPorts;
 	cimg->skippedNodes = img->SkippedNodes;
 	cimg->skippedPorts = img->SkippedPorts;
 	cimg->unexpectedClearPorts = img->UnexpectedClearPorts;
@@ -2647,28 +2587,85 @@ error:
 	return NULL;
 }
 
-static void compoundGroup(PmGroup_t *group, PmCompositeGroup_t *cgroup, uint64 imageIndex) {
-	cgroup->minIntRate = MIN(cgroup->minIntRate, group->Image[imageIndex].MinIntRate);
-	cgroup->maxIntRate = MAX(cgroup->maxIntRate, group->Image[imageIndex].MaxIntRate);
-	cgroup->minExtRate = MIN(cgroup->minExtRate, group->Image[imageIndex].MinExtRate);
-	cgroup->maxExtRate = MAX(cgroup->maxExtRate, group->Image[imageIndex].MaxExtRate);
-	combineUtilStats(&(cgroup->intUtil), &(group->Image[imageIndex].IntUtil));
-	combineUtilStats(&(cgroup->sendUtil), &(group->Image[imageIndex].SendUtil));
-	combineUtilStats(&(cgroup->recvUtil), &(group->Image[imageIndex].RecvUtil));
-	combineErrStats(&(cgroup->intErr), &(group->Image[imageIndex].IntErr));
-	combineErrStats(&(cgroup->extErr), &(group->Image[imageIndex].ExtErr));
+/*************************************************************************************
+ *	compoundDeltaPortCounters
+ *
+ *
+ ************************************************************************************/
+void compoundDeltaPortCounters(PmCompositePortCounters_t *dest, PmCompositePortCounters_t *src)
+{
+	dest->PortXmitData                += src->PortXmitData;
+	dest->PortRcvData                 += src->PortRcvData;
+	dest->PortXmitPkts                += src->PortXmitPkts;
+	dest->PortRcvPkts                 += src->PortRcvPkts;
+	dest->PortMulticastXmitPkts       += src->PortMulticastXmitPkts;
+	dest->PortMulticastRcvPkts        += src->PortMulticastRcvPkts;
+	dest->PortXmitWait                += src->PortXmitWait;
+	dest->SwPortCongestion            += src->SwPortCongestion;
+	dest->PortRcvFECN                 += src->PortRcvFECN;
+	dest->PortRcvBECN                 += src->PortRcvBECN;
+	dest->PortXmitTimeCong            += src->PortXmitTimeCong;
+	dest->PortXmitWastedBW            += src->PortXmitWastedBW;
+	dest->PortXmitWaitData            += src->PortXmitWaitData;
+	dest->PortRcvBubble               += src->PortRcvBubble;
+	dest->PortMarkFECN                += src->PortMarkFECN;
+	dest->PortRcvConstraintErrors     += src->PortRcvConstraintErrors;
+	dest->PortRcvSwitchRelayErrors    += src->PortRcvSwitchRelayErrors;
+	dest->PortXmitDiscards            += src->PortXmitDiscards;
+	dest->PortXmitConstraintErrors    += src->PortXmitConstraintErrors;
+	dest->PortRcvRemotePhysicalErrors += src->PortRcvRemotePhysicalErrors;
+	dest->LocalLinkIntegrityErrors    += src->LocalLinkIntegrityErrors;
+	dest->PortRcvErrors               += src->PortRcvErrors;
+	dest->ExcessiveBufferOverruns     += src->ExcessiveBufferOverruns;
+	dest->FMConfigErrors              += src->FMConfigErrors;
+	dest->LinkErrorRecovery           += src->LinkErrorRecovery;
+	dest->LinkDowned                  += src->LinkDowned;
+	dest->UncorrectableErrors         += src->UncorrectableErrors;
+
+	// Use MIN LQI for Delta
+	UPDATE_MIN(dest->lq.s.LinkQualityIndicator, src->lq.s.LinkQualityIndicator);
+	// Use MAX Number of Lanes Down for Delta
+	UPDATE_MAX(dest->lq.s.NumLanesDown, src->lq.s.NumLanesDown);
 
 }
-
 /*************************************************************************************
  *	compoundPort
  *
  *
  ************************************************************************************/
-static void compoundPort (PmPort_t *port, PmCompositePort_t *cport, uint32 imageIndex)
+void compoundDeltaVLCounters(PmCompositeVLCounters_t *dest, PmCompositeVLCounters_t *src, uint8 numVls)
 {
-	cport->stlPortCounters.lq.s.LinkQualityIndicator = MIN(cport->stlPortCounters.lq.s.LinkQualityIndicator,
-		                     port->Image[imageIndex].StlPortCounters.lq.s.LinkQualityIndicator);
+	uint8 i;
+	for (i = 0; i < numVls; i++) {
+		dest[i].PortVLXmitData     += src[i].PortVLXmitData;
+		dest[i].PortVLRcvData      += src[i].PortVLRcvData;
+		dest[i].PortVLXmitPkts     += src[i].PortVLXmitPkts;
+		dest[i].PortVLRcvPkts      += src[i].PortVLRcvPkts;
+		dest[i].PortVLXmitWait     += src[i].PortVLXmitWait;
+		dest[i].SwPortVLCongestion += src[i].SwPortVLCongestion;
+		dest[i].PortVLRcvFECN      += src[i].PortVLRcvFECN;
+		dest[i].PortVLRcvBECN      += src[i].PortVLRcvBECN;
+		dest[i].PortVLXmitTimeCong += src[i].PortVLXmitTimeCong;
+		dest[i].PortVLXmitWastedBW += src[i].PortVLXmitWastedBW;
+		dest[i].PortVLXmitWaitData += src[i].PortVLXmitWaitData;
+		dest[i].PortVLRcvBubble    += src[i].PortVLRcvBubble;
+		dest[i].PortVLMarkFECN     += src[i].PortVLMarkFECN;
+		dest[i].PortVLXmitDiscards += src[i].PortVLXmitDiscards;
+	}
+}
+/*************************************************************************************
+ *	compoundDeltaVLCounters
+ *
+ *
+ ************************************************************************************/
+static void compoundPort(PmPort_t *port, PmCompositePort_t *cport, uint32 imageIndex)
+{
+	cport->stlPortCounters.lq.s.LinkQualityIndicator =
+		MIN(cport->stlPortCounters.lq.s.LinkQualityIndicator,
+			port->Image[imageIndex].StlPortCounters.lq.s.LinkQualityIndicator);
+
+	compoundDeltaPortCounters(&cport->DeltaStlPortCounters, &port->Image[imageIndex].DeltaStlPortCounters);
+	compoundDeltaVLCounters(&cport->DeltaStlVLPortCounters[0], &port->Image[imageIndex].DeltaStlVLPortCounters[0], MAX_PM_VLS);
 }
 
 /*************************************************************************************
@@ -2700,7 +2697,6 @@ FSTATUS compoundImage(Pm_t *pm, uint32 imageIndex, PmCompositeImage_t *cimg) {
 		                 /(cimg->header.common.imagesPerComposite + 1);
 
 	// groups
-	compoundGroup(pm->AllPorts, &(cimg->allPortsGroup), imageIndex);
 	int i;
 	for (i = 0; i < PM_MAX_GROUPS; i++) {
 		PmCompositeGroup_t *cgroup = &(cimg->groups[i]);
@@ -2709,7 +2705,6 @@ FSTATUS compoundImage(Pm_t *pm, uint32 imageIndex, PmCompositeImage_t *cimg) {
 			IB_LOG_WARN_FMT(__func__, "Group names are different- Expected: %s, Got: %s", cgroup->name, group->Name);
 			memcpy(cgroup->name, group->Name, STL_PM_GROUPNAMELEN);
 		}
-		compoundGroup(group, cgroup, imageIndex);
 	}
 
 	// VFs
@@ -2721,10 +2716,6 @@ FSTATUS compoundImage(Pm_t *pm, uint32 imageIndex, PmCompositeImage_t *cimg) {
 			memcpy(cVF->name, VF->Name, MAX_VFABRIC_NAME);
 		}
 		cVF->isActive = VF->Image[pm->history[imageIndex]].isActive;
-		cVF->minIntRate = MIN(cVF->minIntRate, VF->Image[pm->history[imageIndex]].MinIntRate);
-		cVF->maxIntRate = MAX(cVF->maxIntRate, VF->Image[pm->history[imageIndex]].MaxIntRate);
-		combineUtilStats(&(cVF->intUtil), &(VF->Image[pm->history[imageIndex]].IntUtil));
-		combineErrStats(&(cVF->intErr), &(VF->Image[pm->history[imageIndex]].IntErr));
 	}
 
 	// Nodes/Ports
@@ -2829,7 +2820,7 @@ PmVF_t *PmReconstituteVFImage(PmCompositeVF_t *cVF) {
 		IB_LOG_ERROR0("Unable to allocate memory to reconstitute PM VF Image");
 		return NULL;
 	}
-	strcpy(pmVFP->Name, cVF->name);
+	cs_strlcpy(pmVFP->Name, cVF->name, MAX_VFABRIC_NAME);
 	pmVFP->Image[0].isActive = cVF->isActive;
 	pmVFP->Image[0].NumPorts = cVF->numPorts;
 	pmVFP->Image[0].MinIntRate = cVF->minIntRate;
@@ -2856,7 +2847,7 @@ PmGroup_t *PmReconstituteGroupImage(PmCompositeGroup_t *cgroup)  {
 		IB_LOG_ERROR0("Unable to allocate memory to reconstitute PM Group Image");
 		return NULL;
 	}
-	strcpy(pmGroupP->Name, cgroup->name);
+	cs_strlcpy(pmGroupP->Name, cgroup->name, STL_PM_GROUPNAMELEN);
 	pmGroupP->Image[0].NumIntPorts = cgroup->numIntPorts;
 	pmGroupP->Image[0].NumExtPorts = cgroup->numExtPorts;
 	pmGroupP->Image[0].MinIntRate = cgroup->minIntRate;
@@ -2901,6 +2892,8 @@ PmPort_t *PmReconstitutePortImage(PmShortTermHistory_t *sth, PmCompositePort_t *
 	pmportp->neighbor_lid = cport->neighborLid;
 	pmportp->neighbor_portNum = cport->neighborPort;
 	pmportp->Image[0].numVFs = cport->numVFs;
+	pmportp->Image[0].numGroups = cport->numGroups;
+	pmportp->Image[0].InternalBitMask = cport->InternalBitMask;
 	// groups and VFS
 	int i;
 	for (i = 0; i < PM_MAX_GROUPS_PER_PORT; i++) {
@@ -2925,26 +2918,13 @@ PmPort_t *PmReconstitutePortImage(PmShortTermHistory_t *sth, PmCompositePort_t *
 	}
 
 	pmportp->Image[0].vlSelectMask = cport->vlSelectMask;
-	pmportp->Image[0].IntLinkFlags = cport->intLinkFlags;
-	pmportp->Image[0].UtilBucket = cport->utilBucket;
-	pmportp->Image[0].IntegrityBucket = cport->integrityBucket;
-	pmportp->Image[0].CongestionBucket = cport->congestionBucket;
-	pmportp->Image[0].SmaCongestionBucket = cport->smaCongestionBucket;
-	pmportp->Image[0].BubbleBucket = cport->bubbleBucket;
-	pmportp->Image[0].SecurityBucket = cport->securityBucket;
-	pmportp->Image[0].RoutingBucket = cport->routingBucket;
-	pmportp->Image[0].spare = 0;
-	memcpy(&(pmportp->Image[0].VLBucketFlags), &(cport->VLBucketFlags), sizeof(uint32) * MAX_PM_VLS);
+	pmportp->Image[0].clearSelectMask.AsReg32 = cport->clearSelectMask.AsReg32;
 	// counters
 	memcpy(&(pmportp->Image[0].StlPortCounters), &(cport->stlPortCounters), sizeof(PmCompositePortCounters_t));
 	memcpy(&(pmportp->Image[0].StlVLPortCounters), &(cport->stlVLPortCounters), sizeof(PmCompositeVLCounters_t) * MAX_PM_VLS);
-	pmportp->Image[0].clearSelectMask.AsReg32 = cport->clearSelectMask.AsReg32;
-	pmportp->Image[0].SendMBps = cport->sendMBps;
-	pmportp->Image[0].SendKPps = cport->sendKPps;
-	memcpy(&(pmportp->Image[0].VFSendMBps), &(cport->VFSendMBps), sizeof(uint32) * MAX_VFABRICS);
-	memcpy(&(pmportp->Image[0].VFSendKPps), &(cport->VFSendKPps), sizeof(uint32) * MAX_VFABRICS);
-	memcpy(&(pmportp->Image[0].Errors), &(cport->errors), sizeof(ErrorSummary_t));
-	memcpy(&(pmportp->Image[0].VFErrors), &(cport->VFErrors), sizeof(ErrorSummary_t) * MAX_VFABRICS);
+
+	memcpy(&(pmportp->Image[0].DeltaStlPortCounters), &(cport->DeltaStlPortCounters), sizeof(PmCompositePortCounters_t));
+	memcpy(&(pmportp->Image[0].DeltaStlVLPortCounters), &(cport->DeltaStlVLPortCounters), sizeof(PmCompositeVLCounters_t) * MAX_PM_VLS);
 
 	return pmportp;
 }
@@ -3058,8 +3038,8 @@ PmImage_t *PmReconstituteImage(PmShortTermHistory_t *sth, PmCompositeImage_t *ci
 	img->NumLinks = cimg->numLinks;
 	img->NumSMs = cimg->numSMs;
 	memcpy(img->SMs, cimg->SMs, sizeof(img->SMs[0]) * 2);
-	img->FailedNodes = cimg->failedNodes;
-	img->FailedPorts = cimg->failedPorts;
+	img->NoRespNodes = cimg->noRespNodes;
+	img->NoRespPorts = cimg->noRespPorts;
 	img->SkippedNodes = cimg->skippedNodes;
 	img->SkippedPorts = cimg->skippedPorts;
 	img->UnexpectedClearPorts  = cimg->unexpectedClearPorts;
@@ -3475,11 +3455,15 @@ static Status_t pruneOneStoredHistoryFile(PmShortTermHistory_t *pSth, uint32 idx
 	if (stat(filename, &fileInfo) < 0) {
 		return VSTATUS_EIO;
 	}
+	// Lock to prevent a shutdown mid file write (HSM only)
+	block_sm_exit();
 	if (remove(filename) != 0) {
 		// Can't remove file?
 		IB_LOG_WARN_FMT(__func__, "Unable to remove expired history file: %s", filename);
+		unblock_sm_exit();
 		return VSTATUS_EIO;
 	}
+	unblock_sm_exit();
 	pSth->totalDiskUsage -= fileInfo.st_size;
 	
 	return VSTATUS_OK;
@@ -3552,7 +3536,7 @@ static Status_t pruneStoredHistory(PmShortTermHistory_t *pSth, size_t req)
 	}
 	return status;
 }
-#endif
+
 /************************************************************************************* 
 *   storeComposite - store a composite image
 *  
@@ -3619,10 +3603,13 @@ FSTATUS storeComposite(Pm_t *pm, PmCompositeImage_t *cimg) {
 		// update header with division info
 		((PmFileHeader_t*)data)->numDivisions = pm_config.shortTermHistory.compressionDivisions;
 
+		// Lock to prevent a shutdown mid file write (HSM only)
+		block_sm_exit();
 		// open file
 		if (!(fp = fopen(cimg->header.common.filename, "wb"))) {
 			IB_LOG_ERROR0("Failed to create new PM history file");
 			ret = FERROR;
+			unblock_sm_exit();
 			goto error;
 		}
 
@@ -3630,6 +3617,7 @@ FSTATUS storeComposite(Pm_t *pm, PmCompositeImage_t *cimg) {
 		if (fwrite(data, 1, sizeof(PmFileHeader_t), fp) != sizeof(PmFileHeader_t) || ferror(fp)) {
 			IB_LOG_ERROR0("Encountered error while storing PM history file");
 			ret = FERROR;
+			unblock_sm_exit();
 			goto error;
 		}
 
@@ -3639,26 +3627,33 @@ FSTATUS storeComposite(Pm_t *pm, PmCompositeImage_t *cimg) {
 				if (fwrite(compressed_divisions[i], 1, compressed_sizes[i], fp) != compressed_sizes[i] || ferror(fp)) {
 					IB_LOG_ERROR0("Encountered error while storing PM history file");
 					ret = FERROR;
+					unblock_sm_exit();
 					goto error;
 				}
 			}
 		}
+		unblock_sm_exit();
 
 #endif
 	} else {
 #ifndef __VXWORKS__
 		if ((ret = pruneStoredHistory(&pm->ShortTermHistory, writeLen)) != VSTATUS_OK) goto error;
 #endif
+		// Lock to prevent a shutdown mid file write (HSM only)
+		block_sm_exit();
 		if (!(fp = fopen(cimg->header.common.filename, "wb"))) {
 			IB_LOG_ERROR0("Failed to create new PM history file");
 			ret = FERROR;
+			unblock_sm_exit();
 			goto error;
 		}
 		if (fwrite(data, 1, writeLen, fp) != writeLen || ferror(fp)) {
 			IB_LOG_ERROR0("Encountered error while storing PM history file");
 			ret = FERROR;
+			unblock_sm_exit();
 			goto error;
 		}
+		unblock_sm_exit();
 	}
 
 	pm->ShortTermHistory.totalDiskUsage += writeLen;
@@ -3675,7 +3670,6 @@ error:
 	return ret;
 }
 
-#ifndef __VXWORKS__
 /************************************************************************************* 
 *  	compoundNewImage - take a newly create PM image and compound it into the current image
 *  
@@ -3915,20 +3909,24 @@ store_file:
         return -1;
 	}
 
+	block_sm_exit();
 	/* Create the new file */
     IB_LOG_VERBOSE_FMT(__func__, "Received sweep image data (%s) at standby filelen=0x%x", newfilename,filelen);
     FILE *file = fopen(newfilename, "w");
     if (!file) {
         IB_LOG_ERROR("Error opening PM history image file to write data! rc:",errno);
+		unblock_sm_exit();
         return -1;
     }
     if (fwrite(buffer, sizeof(uint8_t), filelen, file) != filelen) {
         IB_LOG_ERROR("Error failed writing PM history image file! rc:",errno);
 		fclose(file);
 		remove(newfilename);
+		unblock_sm_exit();
 		return -1;
 	}
     fclose(file);
+	unblock_sm_exit();
 
 	/* Add the new file into the ShortTermHistory */
 	ASSERT(rec->index == INDEX_NOT_IN_USE);
@@ -4658,7 +4656,7 @@ static Status_t PmInit(Pm_t *pm, EUI64 portguid, uint16 pmflags,
 		pmimagep->state = PM_IMAGE_INVALID;
 	}
 
-	strcpy(pm->AllPorts->Name, "All");
+	cs_strlcpy(pm->AllPorts->Name, "All", STL_PM_GROUPNAMELEN);
 	PmCreateGroup(pm, "HFIs", PmCompareHFIPort);
 	//PmCreateGroup(pm, "TFIs", PmCompareTCAPort); //Temporary removal as TFIs do not exist in Gen1
 	PmCreateGroup(pm, "SWs", PmCompareSWPort);
@@ -4861,9 +4859,8 @@ void PmDestroy(Pm_t *pm)
 static void PmFinalizeAllPortStats(Pm_t *pm)
 {
 	uint16 lid;
-	PmPort_t *pmportp, *pmportneighborp;
+	PmPort_t *pmportp;
 	PmImage_t *pmimagep = &pm->Image[pm->SweepIndex];
-	PmPortImage_t *portImage;
 	PmThresholdsExceededMsgLimitXmlConfig_t thresholdsExceededMsgCount = {0};
 
 	// get totalsLock so we can update RunningTotals and avoid any races
@@ -4871,95 +4868,71 @@ static void PmFinalizeAllPortStats(Pm_t *pm)
 	(void)vs_wrlock(&pm->totalsLock);
 	for (lid = 1; lid <= pmimagep->maxLid; ++lid) {
 		PmNode_t *pmnodep = pmimagep->LidMap[lid];
-		if (! pmnodep)
+		if (!pmnodep)
 			continue;
 		if (pmnodep->nodeType == STL_NODE_SW) {
 			uint8 i;
-			for (i=0; i<= pmnodep->numPorts; ++i) {
+			for (i = 0; i <= pmnodep->numPorts; ++i) {
 				pmportp = pmnodep->up.swPorts[i];
-				if (pmportp && ! pmportp->u.s.PmaAvoid
+				if (pmportp && !pmportp->u.s.PmaAvoid
 					&& pmportp->Image[pm->SweepIndex].u.s.active)
 					PmFinalizePortStats(pm, pmportp, pm->SweepIndex);
 			}
 		} else {
 			pmportp = pmnodep->up.caPortp;
-			if (pmportp && ! pmportp->u.s.PmaAvoid)
+			if (pmportp && !pmportp->u.s.PmaAvoid)
 				PmFinalizePortStats(pm, pmportp, pm->SweepIndex);
 		}
 	}
 	(void)vs_rwunlock(&pm->totalsLock);
+
 	// Log Ports which exceeded threshold up to ThresholdExceededMsgLimit
 #define LOG_EXCEEDED_THRESHOLD(stat) \
 	do { \
-		if (portImage->stat##Bucket >= (PM_ERR_BUCKETS-1) \
-			&& thresholdsExceededMsgCount.stat < pm_config.thresholdsExceededMsgLimit.stat) { \
-			PmPrintExceededPort(pmportp, pm->SweepIndex, #stat, pm->Thresholds.stat, portImage->Errors.stat); \
-			PmPrintExceededPortDetails##stat(pmportp, pmportneighborp, pm->SweepIndex, pm->LastSweepIndex); \
-			thresholdsExceededMsgCount.stat++; \
+		if (thresholdsExceededMsgCount.stat < pm_config.thresholdsExceededMsgLimit.stat) { \
+			uint32 stat = compute##stat(pm, pm->SweepIndex, pmportp, NULL); \
+			if (ComputeErrBucket(stat, pm->Thresholds.stat) >= (PM_ERR_BUCKETS-1)) { \
+				PmPort_t *pmportp2 = pmportp->Image[pm->SweepIndex].neighbor; \
+				PmPrintExceededPort(pmportp, pm->SweepIndex, #stat, pm->Thresholds.stat, stat); \
+				PmPrintExceededPortDetails##stat(pmportp, pmportp2, pm->SweepIndex, pm->LastSweepIndex); \
+				thresholdsExceededMsgCount.stat++; \
+			} \
 		} \
 	} while (0)
 
 	for (lid = 1; lid <= pmimagep->maxLid; ++lid) {
 		PmNode_t *pmnodep = pmimagep->LidMap[lid];
-		if (! pmnodep)
+		if (!pmnodep)
 			continue;
 		if (pmnodep->nodeType == STL_NODE_SW) {
 			uint8 i;
-			for (i=0; i<= pmnodep->numPorts; ++i) {
+			for (i = 0; i <= pmnodep->numPorts; ++i) {
 				pmportp = pmnodep->up.swPorts[i];
-				if (pmportp && ! pmportp->u.s.PmaAvoid
+				if (pmportp && !pmportp->u.s.PmaAvoid
 					&& pmportp->Image[pm->SweepIndex].u.s.active) {
-					portImage = &pmportp->Image[pm->SweepIndex];
-					pmportneighborp = portImage->neighbor;
-					ComputeBuckets(pm, portImage);
 					LOG_EXCEEDED_THRESHOLD(Integrity);
 					LOG_EXCEEDED_THRESHOLD(Congestion);
 					LOG_EXCEEDED_THRESHOLD(SmaCongestion);
 					LOG_EXCEEDED_THRESHOLD(Bubble);
 					LOG_EXCEEDED_THRESHOLD(Security);
 					LOG_EXCEEDED_THRESHOLD(Routing);
-                }
-            }
+				}
+			}
 		} else {
 			pmportp = pmnodep->up.caPortp;
-			if (pmportp && ! pmportp->u.s.PmaAvoid) {
-                portImage = &pmportp->Image[pm->SweepIndex];
-                pmportneighborp = portImage->neighbor;
-                ComputeBuckets(pm, portImage);
+			if (pmportp && !pmportp->u.s.PmaAvoid
+				&& pmportp->Image[pm->SweepIndex].u.s.active) {
 				LOG_EXCEEDED_THRESHOLD(Integrity);
-                LOG_EXCEEDED_THRESHOLD(Congestion);
-                LOG_EXCEEDED_THRESHOLD(SmaCongestion);
-                LOG_EXCEEDED_THRESHOLD(Bubble);
-                LOG_EXCEEDED_THRESHOLD(Security);
-                LOG_EXCEEDED_THRESHOLD(Routing);
-            }
+				LOG_EXCEEDED_THRESHOLD(Congestion);
+				LOG_EXCEEDED_THRESHOLD(SmaCongestion);
+				LOG_EXCEEDED_THRESHOLD(Bubble);
+				LOG_EXCEEDED_THRESHOLD(Security);
+				LOG_EXCEEDED_THRESHOLD(Routing);
+			}
 		}
 	}
 #undef LOG_EXCEEDED_THRESHOLD
 }
-
-#if 0
-// for all ports of a node clear counters which can tabulate information
-// from both sides of a link
-// This is only valid for Switch Nodes
-static
-void PmClearNode(Pm_t *pm, PmNode_t *pmnodep)
-{
-	PmPort_t *pmportp;
-	int i;
-
-	ASSERT(pmnodep->nodeType == STL_NODE_SW);
-	pmnodep->Counters[pm->NumSweeps&1].flags = 0;
-	for (i=0; i<=pmnodep->numPorts; ++i) {
-		pmportp = pmnodep->up.swPorts[i];
-		if (pmportp) {
-			pmportp->Counters[pm->NumSweeps&1].flags = 0;
-			PmClearPortImage(&pmportp->Image[pm->SweepIndex]);
-		}
-	}
-}
-#endif
-
 
 // for all nodes clear tabulated counters which can tabulate information
 // from both sides of a link
@@ -4989,45 +4962,43 @@ void PmClearAllNodes(Pm_t *pm)
 	}
 }
 
-static void PmPrintFailNode(Pm_t *pm, PmNode_t *pmnodep, const char* message)
+static void PmPrintFailNode(Pm_t *pm, PmNode_t *pmnodep, uint8 method, uint16 aid)
 {
 	PmImage_t *pmimagep = &pm->Image[pm->SweepIndex];
 
-	if (pmimagep->FailedNodes + pmimagep->FailedPorts +
+	if (pmimagep->NoRespNodes + pmimagep->NoRespPorts +
             pmimagep->UnexpectedClearPorts
                 < pm_config.SweepErrorsLogThreshold)
 	{
-		IB_LOG_WARN_FMT(__func__, "Unable to %s %.*s Guid "FMT_U64" LID 0x%x",
-				message, (int)sizeof(pmnodep->nodeDesc.NodeString),
-			   	pmnodep->nodeDesc.NodeString,
-			   	pmnodep->guid, pmnodep->Image[pm->SweepIndex].lid);
+		IB_LOG_WARN_FMT(__func__, "Unable to %s(%s) %.*s Guid "FMT_U64" LID 0x%x",
+			StlPmMadMethodToText(method), StlPmMadAttributeToText(aid),
+			(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
+			pmnodep->guid, pmnodep->Image[pm->SweepIndex].lid);
 	} else {
-		IB_LOG_INFO_FMT(__func__, "Unable to %s %.*s Guid "FMT_U64" LID 0x%x",
-				message, (int)sizeof(pmnodep->nodeDesc.NodeString),
-			   	pmnodep->nodeDesc.NodeString,
-			   	pmnodep->guid, pmnodep->Image[pm->SweepIndex].lid);
+		IB_LOG_INFO_FMT(__func__, "Unable to %s(%s) %.*s Guid "FMT_U64" LID 0x%x",
+			StlPmMadMethodToText(method), StlPmMadAttributeToText(aid),
+			(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
+			pmnodep->guid, pmnodep->Image[pm->SweepIndex].lid);
 	}
 }
 
-static void PmPrintFailPort(Pm_t *pm, PmPort_t *pmportp, const char* message)
+static void PmPrintFailPort(Pm_t *pm, PmPort_t *pmportp, uint8 method, uint16 aid)
 {
 	PmImage_t *pmimagep = &pm->Image[pm->SweepIndex];
 
-	if (pmimagep->FailedNodes + pmimagep->FailedPorts +
+	if (pmimagep->NoRespNodes + pmimagep->NoRespPorts +
             pmimagep->UnexpectedClearPorts
                 < pm_config.SweepErrorsLogThreshold)
 	{
-		IB_LOG_WARN_FMT(__func__, "Unable to %s %.*s Guid "FMT_U64" LID 0x%x Port %u",
-				message, (int)sizeof(pmportp->pmnodep->nodeDesc.NodeString),
-			   	pmportp->pmnodep->nodeDesc.NodeString,
-			   	pmportp->pmnodep->guid,
-			   	pmportp->pmnodep->Image[pm->SweepIndex].lid, pmportp->portNum);
+		IB_LOG_WARN_FMT(__func__, "Unable to %s(%s) %.*s Guid "FMT_U64" LID 0x%x Port %u",
+			StlPmMadMethodToText(method), StlPmMadAttributeToText(aid),
+			(int)sizeof(pmportp->pmnodep->nodeDesc.NodeString), pmportp->pmnodep->nodeDesc.NodeString,
+			pmportp->pmnodep->guid, pmportp->pmnodep->Image[pm->SweepIndex].lid, pmportp->portNum);
 	} else {
-		IB_LOG_INFO_FMT(__func__, "Unable to %s %.*s Guid "FMT_U64" LID 0x%x Port %u",
-				message, (int)sizeof(pmportp->pmnodep->nodeDesc.NodeString),
-			   	pmportp->pmnodep->nodeDesc.NodeString,
-			   	pmportp->pmnodep->guid,
-			   	pmportp->pmnodep->Image[pm->SweepIndex].lid, pmportp->portNum);
+		IB_LOG_INFO_FMT(__func__, "Unable to %s(%s) %.*s Guid "FMT_U64" LID 0x%x Port %u",
+			StlPmMadMethodToText(method), StlPmMadAttributeToText(aid),
+			(int)sizeof(pmportp->pmnodep->nodeDesc.NodeString), pmportp->pmnodep->nodeDesc.NodeString,
+			pmportp->pmnodep->guid, pmportp->pmnodep->Image[pm->SweepIndex].lid, pmportp->portNum);
 	}
 }
 
@@ -5057,20 +5028,20 @@ void PmSkipNode(Pm_t *pm, PmNode_t *pmnodep)
 	pm->Image[pm->SweepIndex].SkippedNodes++;
 }
 
-void PmFailPort(Pm_t *pm, PmPort_t *pmportp, uint8 queryStatus, const char* message)
+void PmFailPort(Pm_t *pm, PmPort_t *pmportp, uint8 queryStatus, uint8 method, uint16 aid)
 {
 
-	PmPrintFailPort(pm, pmportp, message);
+	PmPrintFailPort(pm, pmportp, method, aid);
 	// don't tabulate if we already skipped or failed.  if query fail its
 	// reported 1st and more important than clear fail
 	if (pmportp->Image[pm->SweepIndex].u.s.queryStatus == PM_QUERY_STATUS_OK) {
-		pm->Image[pm->SweepIndex].FailedPorts++;
-		INCREMENT_PM_COUNTER(pmCounterPmFailedPorts);
+		pm->Image[pm->SweepIndex].NoRespPorts++;
+		INCREMENT_PM_COUNTER(pmCounterPmNoRespPorts);
 		pmportp->Image[pm->SweepIndex].u.s.queryStatus = queryStatus;
 	}
 }	// End of PmFailPort()
 
-void PmFailPacket(Pm_t *pm, PmDispatcherPacket_t *disppacket, uint8 queryStatus, const char* message)
+void PmFailPacket(Pm_t *pm, PmDispatcherPacket_t *disppacket, uint8 queryStatus, uint8 method, uint16 aid)
 {	
 	int i, j;
 	uint64 PortSelectMask;
@@ -5080,12 +5051,12 @@ void PmFailPacket(Pm_t *pm, PmDispatcherPacket_t *disppacket, uint8 queryStatus,
 			for (i = 0, PortSelectMask = disppacket->PortSelectMask[j]; i < 64 && (PortSelectMask); i++, PortSelectMask >>= (uint64)1 ) {
 				if (PortSelectMask & (uint64)1) {
 					pmportp = disppacket->dispnode->info.pmnodep->up.swPorts[i+(3-j)*64];
-					PmPrintFailPort(pm, pmportp, message);
+					PmPrintFailPort(pm, pmportp, method, aid);
 					// don't tabulate if we already skipped or failed.  if query fail its
 					// reported 1st and more important than clear fail
 					if (pmportp->Image[pm->SweepIndex].u.s.queryStatus == PM_QUERY_STATUS_OK) {
-						pm->Image[pm->SweepIndex].FailedPorts++;
-						INCREMENT_PM_COUNTER(pmCounterPmFailedPorts);
+						pm->Image[pm->SweepIndex].NoRespPorts++;
+						INCREMENT_PM_COUNTER(pmCounterPmNoRespPorts);
 						pmportp->Image[pm->SweepIndex].u.s.queryStatus = queryStatus;
 					}
 				}
@@ -5095,23 +5066,23 @@ void PmFailPacket(Pm_t *pm, PmDispatcherPacket_t *disppacket, uint8 queryStatus,
 	else {
 		for (i = 0; i < disppacket->numPorts; i++) {
 			pmportp = disppacket->DispPorts[i].pmportp;
-			PmPrintFailPort(pm, pmportp, message);
+			PmPrintFailPort(pm, pmportp, method, aid);
 			// don't tabulate if we already skipped or failed.  if query fail its
 			// reported 1st and more important than clear fail
 			if (pmportp->Image[pm->SweepIndex].u.s.queryStatus == PM_QUERY_STATUS_OK) {
-				pm->Image[pm->SweepIndex].FailedPorts++;
-				INCREMENT_PM_COUNTER(pmCounterPmFailedPorts);
+				pm->Image[pm->SweepIndex].NoRespPorts++;
+				INCREMENT_PM_COUNTER(pmCounterPmNoRespPorts);
 				pmportp->Image[pm->SweepIndex].u.s.queryStatus = queryStatus;
 			}
 		}
 	}
 }	// End of PmFailPacket()
 
-void PmFailNode(Pm_t *pm, PmNode_t *pmnodep, uint8 queryStatus, const char* message)
+void PmFailNode(Pm_t *pm, PmNode_t *pmnodep, uint8 queryStatus, uint8 method, uint16 aid)
 {
 	PmImage_t *pmimagep = &pm->Image[pm->SweepIndex];
 
-	PmPrintFailNode(pm, pmnodep, message);
+	PmPrintFailNode(pm, pmnodep, method, aid);
 	if (pmnodep->nodeType == STL_NODE_SW) {
 		int i;
 		for (i=0; i<=pmnodep->numPorts; ++i) {
@@ -5122,8 +5093,8 @@ void PmFailNode(Pm_t *pm, PmNode_t *pmnodep, uint8 queryStatus, const char* mess
 				// don't tabulate if we already skipped or failed.  if query
 				// fail its reported 1st and more important than clear fail
 				if (pmportp->Image[pm->SweepIndex].u.s.queryStatus == PM_QUERY_STATUS_OK) {
-					pmimagep->FailedPorts++;
-					INCREMENT_PM_COUNTER(pmCounterPmFailedPorts);
+					pmimagep->NoRespPorts++;
+					INCREMENT_PM_COUNTER(pmCounterPmNoRespPorts);
 					pmportp->Image[pm->SweepIndex].u.s.queryStatus = queryStatus;
 				}
 			}
@@ -5133,12 +5104,12 @@ void PmFailNode(Pm_t *pm, PmNode_t *pmnodep, uint8 queryStatus, const char* mess
 		// reported 1st and more important than clear fail
 		if (pmnodep->up.caPortp->Image[pm->SweepIndex].u.s.queryStatus == PM_QUERY_STATUS_OK) {
 			pmnodep->up.caPortp->Image[pm->SweepIndex].u.s.queryStatus = queryStatus;
-			pmimagep->FailedPorts++;
-			INCREMENT_PM_COUNTER(pmCounterPmFailedPorts);
+			pmimagep->NoRespPorts++;
+			INCREMENT_PM_COUNTER(pmCounterPmNoRespPorts);
 		}
 	}
-	//pmimagep->FailedNodes++;	// incremented in caller once for whole node
-	//INCREMENT_PM_COUNTER(pmCounterPmFailedNodes);
+	//pmimagep->NoRespNodes++;	// incremented in caller once for whole node
+	//INCREMENT_PM_COUNTER(pmCounterPmNoRespNodes);
 }	// End of PmFailNode()
 
 // perform a "minor sweep", fetch and analyze all port counters

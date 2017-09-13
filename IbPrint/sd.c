@@ -296,15 +296,6 @@ void PrintQueryResultValue(PrintDest_t *dest, int indent, PrintDest_t *dbgDest,
 		}
 		break;
 		}
-	case OutputTypeSLVLMapRecord:
-		{
-		SLVLMAP_RECORD_RESULTS *p = (SLVLMAP_RECORD_RESULTS*)pResult->QueryResult;
-		for (i=0; i<p->NumSLVLMapRecords; ++i)
-		{
-			PrintSLVLMapRecord(dest, indent, &p->SLVLMapRecords[i]);
-		}
-		break;
-		}
 	case OutputTypeStlSCSCTableRecord:
 		{
 		STL_SC_MAPPING_TABLE_RECORD_RESULTS *p = (STL_SC_MAPPING_TABLE_RECORD_RESULTS*)pResult->QueryResult;

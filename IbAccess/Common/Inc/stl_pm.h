@@ -47,14 +47,38 @@ extern "C" {
 
 #define STL_PM_CLASS_VERSION					0x80 	/* Performance Management version */
 
+#define STL_PM_ATTRIB_ID_CLASS_PORTINFO			0x01
 #define STL_PM_ATTRIB_ID_PORT_STATUS			0x40
 #define STL_PM_ATTRIB_ID_CLEAR_PORT_STATUS		0x41
 #define STL_PM_ATTRIB_ID_DATA_PORT_COUNTERS		0x42
 #define STL_PM_ATTRIB_ID_ERROR_PORT_COUNTERS	0x43
 #define STL_PM_ATTRIB_ID_ERROR_INFO				0x44
 
+enum PM_VLs {
+	PM_VL0 = 0,
+	PM_VL1 = 1,
+	PM_VL2 = 2,
+	PM_VL3 = 3,
+	PM_VL4 = 4,
+	PM_VL5 = 5,
+	PM_VL6 = 6,
+	PM_VL7 = 7,
+	PM_VL15 = 8,
+	MAX_PM_VLS = 9
+};
+static __inline uint32 vl_to_idx(uint32 vl) {
+	DEBUG_ASSERT(vl < PM_VL15 || vl == 15);
+	if (vl >= PM_VL15) return (uint32)PM_VL15;
+	return vl;
+}
+static __inline uint32 idx_to_vl(uint32 idx) {
+	DEBUG_ASSERT(idx < MAX_PM_VLS);
+	if (idx >= PM_VL15) return 15;
+	return idx;
+}
+
 #define	MAX_PM_PORTS							49		/* max in STL Gen1 (ports 0-48 on PRR switch) */
-#define	MAX_PM_VLS								16		/* max in STL Gen1 is 8 (0-7) plus VL15,*/
+
 
 #define MAX_BIG_ERROR_COUNTERS					9
 #define MAX_BIG_ERROR_COUNTERS_MIXED_MODE		5
@@ -72,27 +96,30 @@ extern "C" {
 #define STL_PM_STATUS_NUMBLOCKS_INCONSISTENT	0x0200	/* attribute modifier number of blocks inconsistent with number of ports/blocks in MAD */
 #define STL_PM_STATUS_OPERATION_FAILED			0x0300	/* an operation (such as clear counters) requested of the agent failed */
 
-/* counter size mode values for attr mod bits 23-22 for STL Error Port Counters */
-#define STL_PM_COUNTER_SIZE_MODE_ALL64			0
-#define STL_PM_COUNTER_SIZE_MODE_ALL32			1
-#define STL_PM_COUNTER_SIZE_MODE_MIXED			2
+static __inline const char*
+StlPmMadMethodToText(uint8 method)
+{
+	switch (method) {
+	case MMTHD_GET: return "Get";
+	case MMTHD_SET: return "Set";
+	case MMTHD_GET_RESP: return "GetResp";
+	default: return "Unknown";
+	}
+}
 
-// bit is the bit number to set, mask is a 4*uint64 mask array
-#define SETBITINMASK(bit, mask) (mask[3 - (bit / 64)] |= ((uint64)1 << (bit % 64)))
-
-// portNums is a 255*int array, mask is a 4*uint64 mask array
-// Note - should check that mask big enough
-#define GET_PORTS_FROM_PORT_SELECT(portNums, mask) \
-		{ int i, j; \
-		  uint64 k = 0; \
-		  for (i = 3; i >= 0; i--) { \
-			 for (j = 0; j < 64; j++) \
-				if (mask[i] & ((uint64)1 << j)) { \
-								portNums[k++] = (64 * (3 - i)) + j; \
-						} \
-		  } \
-		}
-
+static __inline const char*
+StlPmMadAttributeToText(uint16 aid)
+{
+	switch (aid) {
+	case STL_PM_ATTRIB_ID_CLASS_PORTINFO: return "ClassPortInfo";
+	case STL_PM_ATTRIB_ID_PORT_STATUS: return "PortStatus";
+	case STL_PM_ATTRIB_ID_CLEAR_PORT_STATUS: return "ClearPortStatus";
+	case STL_PM_ATTRIB_ID_DATA_PORT_COUNTERS: return "DataPortCounters";
+	case STL_PM_ATTRIB_ID_ERROR_PORT_COUNTERS: return "ErrorportCounters";
+	case STL_PM_ATTRIB_ID_ERROR_INFO: return "ErrorInfo";
+	default: return "Unknown";
+	}
+}
 static __inline void
 StlPmClassPortInfoCapMask(char buf[80], uint16 cmask)
 {
@@ -114,6 +141,7 @@ StlPmClassPortInfoCapMask2(char buf[80], uint32 cmask)
 		buf[0] = '\0';
 	}
 }
+
 /* MAD structure definitions */
 
 /* STL Port Counters - small request, large response */

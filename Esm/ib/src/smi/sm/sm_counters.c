@@ -226,6 +226,7 @@ sm_counter_t smCounters[smCountersMax] = {
 	[smCounterSaRxGetTblVfRecord]		= { "SA RX GETTBL(vFabricRecord)", 0, 0, 0 },
 	[smCounterSaRxGetFabricInfoRecord]			= { "SA RX GET(FabricInfoRecord)", 0, 0, 0 },
 
+	[smCounterSaRxGetQuarantinedNodeRecord] = { "SA RX GET(QuarantinedNodeRecord)", 0, 0, 0 },
 	[smCounterSaRxGetTblQuarantinedNodeRecord] = { "SA RX GETTBL(QuarantinedNodeRecord)", 0, 0, 0 },
 	[smCounterSaRxGetCongInfoRecord] = { "SA RX GET(CongInfoRecord)", 0, 0, 0 }, 
 	[smCounterSaRxGetTblCongInfoRecord] = { "SA RX GETTBL(CongInfoRecord)", 0, 0, 0 }, 
@@ -423,7 +424,7 @@ char * snprintfcat(char * buf, int * len, const char * format, ...)
             return NULL;
         }
 
-        strcpy(tmp, buf);
+        cs_strlcpy(tmp, buf, *len);
         vs_pool_free(&sm_pool, buf);
         buf = tmp;
     }
@@ -459,7 +460,7 @@ char * snprintfcat(char * buf, int * len, const char * format, ...)
 			return NULL;
 		}
 
-		strcpy(tmp, buf);
+		cs_strlcpy(tmp, buf, *len);
 		vs_pool_free(&sm_pool, buf);
 		buf = tmp;
 	}
@@ -481,7 +482,7 @@ char * snprintfcat(char * buf, int * len, const char * format, ...)
 			return NULL;
 		}
 
-		strcpy(tmp, buf);
+		cs_strlcpy(tmp, buf, *len);
 		vs_pool_free(&sm_pool, buf);
 		buf = tmp;
 		writeLocation = buf + n;

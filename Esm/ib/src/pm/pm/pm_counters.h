@@ -63,8 +63,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 typedef enum _pmCounters {
 	pmCounterPmSweeps,
-	pmCounterPmFailedPorts,
-	pmCounterPmFailedNodes,
+	pmCounterPmNoRespPorts,
+	pmCounterPmNoRespNodes,
 	pmCounterPmUnexpectedClearPorts,
 
 	// Total PM Class Packet Transmits

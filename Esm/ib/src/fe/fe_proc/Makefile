@@ -117,7 +117,7 @@ INCLUDE_SUBDIR		=
 
 CLOCAL	= -DUNIX $(CPIE)
 LOCAL_INCLUDE_DIRS=$(MOD_DIR)/src/smi/include $(MOD_DIR)/src/fe/ $(OPENIB_USER_LIB_DIRS)
-LOCALDEPLIBS = if3 if3sa net cs mai ibaccess config vslogu public Xml Md5 oib_utils
+LOCALDEPLIBS = if3 if3sa net cs mai ibaccess config vslogu public Xml Md5 opamgt-priv
 LOCALLIBS=rt ssl crypto $(OPENIB_USER_LIBS)
 
 ifneq "$(BUILD_TARGET_OS)" "VXWORKS"

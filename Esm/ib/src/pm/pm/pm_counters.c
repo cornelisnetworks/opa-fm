@@ -65,8 +65,8 @@ time_t pmCountersClearedTime = 0;
 //
 pm_counter_t pmCounters[pmCountersMax] = {
 	[pmCounterPmSweeps]		        = { "PM Sweeps", 0, 0, 0 },
-	[pmCounterPmFailedPorts]		= { "Ports whose PMA failed query", 0, 0, 0 },
-	[pmCounterPmFailedNodes]		= { "Nodes with 1 or more failed Ports", 0, 0, 0 },
+	[pmCounterPmNoRespPorts]		= { "Ports with No Response to PM query", 0, 0, 0 },
+	[pmCounterPmNoRespNodes]		= { "Nodes with 1 or more NoResp Ports", 0, 0, 0 },
 	[pmCounterPmUnexpectedClearPorts]	= { "Ports unexpectedly cleared", 0, 0, 0 },
 
 	// Total PM Class Packet Transmits

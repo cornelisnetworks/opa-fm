@@ -48,6 +48,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "hsm_config_client_api.h"
 #include "hsm_config_client_data.h"
 #include "hsm_com_client_data.h"
+#include "cs_g.h"
 
 extern int   getopt(int, char *const *, const char *);
 
@@ -1015,7 +1016,7 @@ int main(int argc, char *argv[]) {
 	int						i;
 
 	/* Get options at the command line (overide default values) */
-    strcpy(Opts, "+i:d:h-");
+    cs_strlcpy(Opts, "+i:d:h-", sizeof(Opts));
 
     while ((arg = getopt(argc, argv, Opts)) != EOF) {
         switch (arg) {

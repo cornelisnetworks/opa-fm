@@ -32,15 +32,15 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ib_types.h"
 #include "sm_l.h"
 #include "sa_l.h"
+#include "sm_qos.h"
 #include "sm_dor.h"
 #include "sm_dbsync.h"
 
-extern uint8_t sm_SLtoSC[STL_MAX_SLS];
-extern uint8_t sm_SCtoSL[STL_MAX_SCS];
-
-//pointer to block of memory treated as a two-dimenstional array of size PORT_PAIR_WARN_SIZE * PORT_PAIR_WARN_SIZE
-//to keep track of number of warnings for each port pair combination.
+//pointer to block of memory treated as a two-dimenstional array of size
+//PORT_PAIR_WARN_SIZE * PORT_PAIR_WARN_SIZE to keep track of number of warnings
+//for each port pair combination.
 uint8_t *port_pair_warnings;
+
 uint8_t incorrect_ca_warnings = 0;
 uint8_t invalid_isl_found = 0;
 
@@ -181,7 +181,7 @@ _verify_dimension_lengths(Topology_t *topop)
 		for (i = 0; i < dorTop->numDimensions; ++i) {
 			// only measure toroidal dimension starting from switch at 0 coordinate
 			// also skip dimensions we have already warned about
-			if ((flaggedDims && (1 << i)) || switchDnp->coords[i] != 0 || dorTop->toroidal[i] == 0) continue;
+			if (switchDnp->coords[i] != 0 || dorTop->toroidal[i] == 0) continue;
 
 			uint8_t expectedLength = dorTop->dimensionLength[i];
 			uint8_t measuredLength = 1;
@@ -194,10 +194,13 @@ _verify_dimension_lengths(Topology_t *topop)
 			// if nextSwitch != switchDnp then it was a broken dimension, don't measure
 			if (nextSwitch == switchDnp && expectedLength != measuredLength) {
 				flaggedDims |= (uint8_t)(1 << i);
-				IB_LOG_WARN_FMT(__func__,
-					"Dimension length does not match configured length; Actual: %d  Configured: %d",
-					measuredLength, expectedLength);
+				IB_LOG_ERROR_FMT(__func__,
+					"Dimension %d length does not match configured length; Actual: %d Configured: %d",
+					i, measuredLength, expectedLength);
 			}
+		}
+		if (flaggedDims != 0) {
+			IB_FATAL_ERROR("At least one dimension length configured incorrectly");
 		}
 	}
 
@@ -391,12 +394,16 @@ _missing_switch_check(Topology_t *topop) {
 	}
 }
 
+static int is_configured_toroidal(int p1, int p2);
+static int _mark_toroidal_dimension(DorDiscoveryState_t *state, DorTopology_t *dorTop, uint8_t dimension);
+
 //===========================================================================//
 // DOR COORDINATE ASSIGNMENT
 //
 
 static Status_t
-_create_dimension(DorDiscoveryState_t *state, uint8_t p, uint8_t q, DorDimension_t **outDim)
+_create_dimension(DorDiscoveryState_t *state, int configDim, DorTopology_t *dorTop, DorNode_t* dorNodep, 
+					int8_t p, uint8_t q, DorDimension_t **outDim)
 {
 	Status_t status;
 	DorDimension_t *dim;
@@ -430,6 +437,34 @@ _create_dimension(DorDiscoveryState_t *state, uint8_t p, uint8_t q, DorDimension
 		return VSTATUS_BAD;
 	}
 
+	//check if this dimension is configured as toroidal
+	if (is_configured_toroidal(p, q)) {
+		_mark_toroidal_dimension(state, dorTop, index);
+	}
+
+	dorTop->dimensionLength[index] = smDorRouting.dimension[index].length;
+
+	dorTop->coordMinimums[index] = !dorTop->toroidal[index] ? 0 : (0 -
+										(dorTop->dimensionLength[index] / 2) +
+										(dorTop->dimensionLength[index]%2 ? 0 : 1));
+
+	dorTop->coordMaximums[index] = !dorTop->toroidal[index] ?
+										(dorTop->dimensionLength[index] - 1) :
+										(dorTop->dimensionLength[index] / 2);
+
+	// check direction
+	int nextCoord = dorNodep->coords[index] + direction;
+	if (nextCoord > dorTop->coordMaximums[index])
+		direction = -1;
+	else if (nextCoord < dorTop->coordMinimums[index])
+		direction = 1;
+
+	if (smDorRouting.debug)
+		IB_LOG_INFINI_INFO_FMT(__func__,
+				"Dimension %d length %d coordMinimum %d coordMaximum %d",
+				index, dorTop->dimensionLength[index],
+				dorTop->coordMinimums[index], dorTop->coordMaximums[index]);
+
 	dim->ingressPort = q;
 	dim->dimension = index;
 	dim->direction = direction;
@@ -458,6 +493,9 @@ _create_dimension(DorDiscoveryState_t *state, uint8_t p, uint8_t q, DorDimension
 		IB_LOG_ERROR("Maximum number of DOR dimensions exceeded; invalid topology. limit:", SM_DOR_MAX_DIMENSIONS);
 		return VSTATUS_BAD;
 	}
+
+	// mark config information that the dimension has been created
+	smDorRouting.dimension[configDim].created = 1;
 
 	return VSTATUS_OK;
 }
@@ -516,10 +554,8 @@ _lookup_dimension(DorDiscoveryState_t *state, uint8_t p, uint8_t q, DorDimension
 // Returns 0 if we've maxed on the number of toroidal dimensions
 // available.  1 if we successfully marked it.
 static int
-_mark_toroidal_dimension(DorDiscoveryState_t *state, Topology_t *topop, uint8_t dimension)
+_mark_toroidal_dimension(DorDiscoveryState_t *state, DorTopology_t *dorTop, uint8_t dimension)
 {
-	DorTopology_t	*dorTop = (DorTopology_t *)topop->routingModule->data;
-
 	if (dorTop->numToroidal > SM_DOR_MAX_TOROIDAL_DIMENSIONS) {
 		state->toroidalOverflow = 1;
 		return 0;
@@ -730,7 +766,7 @@ _propagate_coord_through_port(DorDiscoveryState_t *state,
 			}
 
 			// never seen before; new dimemsion
-			status = _create_dimension(state, portp->index, portp->portno, &dim);
+			status = _create_dimension(state, config_dim, dorTop, (DorNode_t*)nodep->routingData, portp->index, portp->portno, &dim);
 			if (status != VSTATUS_OK) {
 				IB_LOG_ERROR_FMT(__func__,
 				       "Failed to create dimension in map between "
@@ -739,33 +775,6 @@ _propagate_coord_through_port(DorDiscoveryState_t *state,
 				       neighborNodep->nodeInfo.NodeGUID, sm_nodeDescString(neighborNodep), portp->portno,
 				       status);
 				return status;
-			}
-
-			//check if this dimension is configured as toroidal
-			if (is_configured_toroidal(portp->index, portp->portno)) {
-				_mark_toroidal_dimension(state, topop, dim->dimension);
-			}
-
-			dorTop->dimensionLength[dim->dimension] = smDorRouting.dimension[dim->dimension].length;
-
-			dorTop->coordMinimums[dim->dimension] = !dorTop->toroidal[dim->dimension] ? 0 : (0 -
-										(dorTop->dimensionLength[dim->dimension] / 2) +
-										(dorTop->dimensionLength[dim->dimension]%2 ? 0 : 1));
-
-			dorTop->coordMaximums[dim->dimension] = !dorTop->toroidal[dim->dimension] ?
-										(dorTop->dimensionLength[dim->dimension] - 1) :
-										(dorTop->dimensionLength[dim->dimension] / 2);
-
-			if (smDorRouting.debug)
-				IB_LOG_INFINI_INFO_FMT(__func__,
-						"Dimension %d length %d coordMinimum %d coordMaximum %d",
-						dim->dimension, dorTop->dimensionLength[dim->dimension],
-						dorTop->coordMinimums[dim->dimension], dorTop->coordMaximums[dim->dimension]);
-
-			//mark config information that the dimension has been created
-			config_dim = get_configured_dimension(portp->index, portp->portno);
-			if (config_dim >= 0) {
-				smDorRouting.dimension[config_dim].created = 1;
 			}
 		}
 		break;
@@ -815,6 +824,7 @@ _propagate_coord_through_port(DorDiscoveryState_t *state,
 				neighborDorNode->coords[dim->dimension] -= dorTop->dimensionLength[dim->dimension];
 			else if (neighborDorNode->coords[dim->dimension] < dorTop->coordMinimums[dim->dimension])
 				neighborDorNode->coords[dim->dimension] += dorTop->dimensionLength[dim->dimension];
+
 		} else {
 			neighborDorNode->coords[dim->dimension] += dim->direction;
 
@@ -1266,7 +1276,7 @@ _generate_scsc_map(Topology_t *topop, Node_t *switchp, int getSecondary, int *nu
 
 	*numBlocks = 0;
 
-	if ((topology_passcount && !topology_switch_port_changes) || getSecondary)
+	if ((topology_passcount && !topology_switch_port_changes && !sm_config.forceAttributeRewrite) || getSecondary)
 		return VSTATUS_OK;
 
 	memset(portDim, 0xff, sizeof(uint8_t)*(switchp->nodeInfo.NumPorts+1));
@@ -1618,7 +1628,7 @@ _compare_lids_routed(const void * arg1, const void * arg2)
 		return -1;
 	else if (sport1->portp->portData->lidsRouted > sport2->portp->portData->lidsRouted)
 		return 1;
-	else if (sport1->nextSwp->numLidsRouted < sport2->nextSwp->numLidsRouted) 
+	else if (sport1->nextSwp->numLidsRouted < sport2->nextSwp->numLidsRouted)
 		return -1;
 	else if (sport1->nextSwp->numLidsRouted > sport2->nextSwp->numLidsRouted)
 		return 1;
@@ -2551,7 +2561,7 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 	vs_pool_free(&sm_pool, state);
 
 	// check for fault regions
-	if (smDorRouting.faultRegions) 
+	if (smDorRouting.faultRegions)
 		_verify_connectivity(topop);
 
 	_verify_dimension_lengths(topop);
@@ -3356,6 +3366,458 @@ _num_routing_scs(int sls, boolean mc_sl)
 	return smDorRouting.routingSCs;
 }
 
+/*
+ * The following several functions handling the mapping of SCs to SLs and VLs
+ * to SCs. The basic rule of DOR routing is that unicast traffic requires 4 VLs
+ * per SL, preferably uniquely distinct. This limits the maximum # of QoS
+ * levels to two in the current generations of OPA hardware.
+ *
+ * Multicast traffic further complicates things. Because multicast traffic
+ * follows a spanning tree through the fabric it usually does not comply with
+ * the rule of DOR. For this reason we try to isolate multicast traffic on its
+ * own VL(s) if at all possible, using the following rules:
+ *
+ *  0. Multicast will always be placed on its own SL(s).
+ *
+ * 	1. If the (new) multicast_isolate flag is set, or if there is only one QOS
+ * 		level:
+ * 		a. reserve the highest VL for multicast traffic.
+ * 		b. Allocate VLs 0-3 to the base SL as normal.
+ * 		c. If the 1st QOS level has multicast, use the reserved VL for that.
+ * 		d. If there is a second QOS level, attempt to reserve the next 4 VLs for
+ * 			the 2nd base SL.
+ * 			i.  If we can only get 3 VLs, share the 4th VL from the 1st base SL.
+ * 			ii. If we can't get at least 3 VLs, return an error.
+ * 				(should be impossible)
+ *
+ * 	2. Else the flag is not set and there are 2 QOS levels:
+ * 		a. Allocate VLs 0-3 to the base SL of the 1st QOS level.
+ * 		b. Map VL3 to the multicast SL of the 1st QOS level.
+ * 		c. Allocate VLs 4-7 to the base SL of the 2nd QOS level.
+ *		d. Map VL7 to the multicast SL of the 2nd QOS level.
+ *
+ * Note that because DOR always returns true for mcast_isolation_required(),
+ * the stock sm_routing_func_assign_sls() handles rule 0 for us.
+ *
+ * Note also that if we have end up supporting equipment with different numbers
+ * of VLs (which could happen) we may have to restrict the SCVL maps to be as
+ * consistent as possible.
+ *
+ */
+
+// starting with the SC AFTER starting_sc, return an SC that maps to vl.
+// (to find the first SC that maps to VL pass -1 as the starting SC.
+static inline int
+_find_next_sc(const Qos_t * qos, int vl, int starting_sc)
+{
+	int sc;
+
+	for (sc = starting_sc+1; sc < STL_MAX_SCS; sc++) {
+		if (qos->scvl.SCVLMap[sc].VL == vl) break;
+	}
+
+	return sc;
+}
+
+// Returns the Nth SC mapped to an SL, where N is between 1 and numSCs.
+// Returns STL_MAX_SCS if we run off the end of the table.
+static inline int
+_find_nth_sc(const uint8_t *SLtoSC, const uint8_t *SCtoSL, int sl, int n)
+{
+	int sc, i=0;
+
+	for (sc = SLtoSC[sl]; sc < STL_MAX_SCS; sc++)
+	{
+		if (SCtoSL[sc] == sl) i++;
+		if (i == n) break;
+	}
+
+	return sc;
+}
+
+static inline void
+_add_vf_to_vl(Qos_t *qos, int vl, int vf)
+{
+	int i;
+
+	for (i=0; i<MAX_VFABRICS; i++) {
+		if (qos->vlvf.vf[vl][i] == vf) break; // No dup vfs
+		if (qos->vlvf.vf[vl][i] == -1) {
+			qos->vlvf.vf[vl][i] = vf;
+			break;
+		}
+	}
+	return;
+}
+
+/*
+ * Maps SCs to SLs in a DOR compatible way - isolating multicast on its own VL
+ * if it is at all possible, minimizing the overlap if it is not.
+ *
+ * Note that while we talk about supporting one or two QOS levels
+ * in reality we are dealing with one or more Virtual Fabrics which
+ * may or may not share SLs.
+ *
+ * Note that this code assumes that the SCVL map complies with the convention
+ * that VLs are assigned to SCs in a monotonic, increasing and repeating
+ * pattern. (In other words, 0,1,2,3,4,5,6,7,0,1,2,3,4,5,6,7, etc..)
+ *
+ * Note that this code assumes unicast will use more than one VL but multicast
+ * will only need a single VL.
+ */
+static Status_t
+_map_scs_to_sls(RoutingModule_t *rm, const Qos_t * qos,
+	VirtualFabrics_t *VirtualFabrics, uint8_t *SLtoSC, uint8_t *SCtoSL)
+{
+	// Populate the SLtoSC and SCtoSL
+	int sc, sl, vl, vf, numSCs;
+	int vls_needed=0, sls_needed=0, mcast_sls_needed=0;
+	int mcast_vl=-1, shared_sc=-1, shared_vl=-1;
+	bitset_t mappedSLs;
+	bitset_t freeVLs;
+	Status_t ret = VSTATUS_OK;
+
+	if (!bitset_init(&sm_pool, &mappedSLs, STL_MAX_SLS)
+	||  !bitset_init(&sm_pool, &freeVLs, qos->activeVLs)) {
+		IB_FATAL_ERROR("Out of memory, exiting.");
+	}
+
+	// Mark all VLs as free, except VL15, which is reserved for SMA traffic.
+	bitset_set_all(&freeVLs);
+	if (qos->activeVLs > 15)
+		bitset_clear(&freeVLs, 15);
+
+	// We need to count the unique base and resp SLs to see if there are
+	// spare VLs we can use for multicast. Currently this will only be true
+	// if all VFs are sharing a single SL for base and resp.
+	for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
+		VF_t *vfp = &VirtualFabrics->v_fabric_all[vf];
+
+		if (!bitset_test(&mappedSLs, vfp->base_sl)) {
+			bitset_set(&mappedSLs, vfp->base_sl);
+			vls_needed += rm->funcs.num_routing_scs(vfp->base_sl, 0);
+			sls_needed++;
+		}
+
+		if (!bitset_test(&mappedSLs, vfp->resp_sl)) {
+			bitset_set(&mappedSLs, vfp->resp_sl);
+			vls_needed += rm->funcs.num_routing_scs(vfp->resp_sl, 0);
+			sls_needed++;
+		}
+
+		if (!bitset_test(&mappedSLs, vfp->mcast_sl) && !smDorRouting.overlayMCast) {
+			bitset_set(&mappedSLs, vfp->resp_sl);
+			// In the case where only 8 VLs are available we will steal a
+			// VL from the unicast SLs.
+			if (rm->funcs.min_vls()>8) {
+				vls_needed += rm->funcs.num_routing_scs(vfp->mcast_sl, 1);
+			}
+			sls_needed++;
+			mcast_sls_needed++;
+		}
+	}
+	bitset_clear_all(&mappedSLs);
+
+	if (mcast_sls_needed>1) {
+		IB_LOG_ERROR_FMT(__func__,"The DOR topology can only support one "
+			"isolated multicast SL. Configuration requires %d.",
+			mcast_sls_needed);
+		ret = VSTATUS_BAD;
+	}
+	if (vls_needed > rm->funcs.min_vls()) {
+		IB_LOG_ERROR_FMT(__func__,"Configuration requires at least %d VLs, which "
+			"exceeds the maximum # of VLs supported (%d).",
+			vls_needed, rm->funcs.min_vls());
+		ret = VSTATUS_BAD;
+	}
+	if (ret != VSTATUS_OK) goto fail;
+
+	if (vls_needed < rm->funcs.min_vls() ||
+		!smDorRouting.overlayMCast) {
+		// If we have spare VLs or if multicast overlay is turned off,
+		// reserve the highest VL for multicast.
+		mcast_vl = rm->funcs.min_vls()-1;
+		bitset_clear(&freeVLs, mcast_vl);
+	}
+
+	// For all VFs (not just active) map SCs and VLs to all unique SLs.
+	for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
+		VF_t *vfp = &VirtualFabrics->v_fabric_all[vf];
+		int sl_i, vl_i;
+
+		// Iterate over base, resp, and mcast.
+		for (sl_i = 0; sl_i < 3; sl_i++) {
+			boolean mc_sl = 0;
+
+			switch (sl_i) {
+				default:
+				case 0: sl = vfp->base_sl; mc_sl = 0; break;
+				case 1: sl = vfp->resp_sl; mc_sl = 0; break;
+				case 2: sl = vfp->mcast_sl; mc_sl = 1; break;
+			}
+
+			if (bitset_test(&mappedSLs, sl)) {
+				// This can happen when multiple VFs share an SL or when
+				// resp_sl and/or mcast_sl == base_sl (which means they are
+				// unused).
+				continue;
+			}
+			bitset_set(&mappedSLs, sl);
+
+			numSCs = rm->funcs.num_routing_scs(sl, mc_sl);
+			if (mcast_vl >= 0 && mc_sl) {
+				// Multicast is isolated on its own SL.
+				sc = _find_next_sc(qos, mcast_vl, -1);
+				// Should be impossible, but check anyway.
+				if (sc >= STL_MAX_SCS) {
+					IB_LOG_ERROR_FMT(__func__,"# of multicast SLs exceeds "
+						"oversubscription limits.");
+					goto fail;
+				}
+
+				// VL was previously marked as in use.
+				SCtoSL[sc] = sl;
+				SLtoSC[sl] = sc;
+
+				if (sm_config.sm_debug_vf)
+					IB_LOG_INFINI_INFO_FMT(__func__, "Mapping MCSL %d to "
+						"VL %d via SC %d", sl, mcast_vl, sc);
+			} else if (mc_sl) {
+				// We need to share the last VL the base_sl is using
+				// so we have to find the next SC that maps to that VL.
+				sc = _find_nth_sc(SLtoSC, SCtoSL, vfp->base_sl,
+					rm->funcs.num_routing_scs(vfp->base_sl, 0));
+				if (sc >= STL_MAX_SCS) {
+					// This should be impossible, but it doesn't hurt to check.
+					IB_LOG_ERROR_FMT(__func__,"Invalid SCtoSL mapping for "
+						"SL %d.", vfp->base_sl);
+					goto fail;
+				}
+
+				vl = qos->scvl.SCVLMap[sc].VL;
+				sc = _find_next_sc(qos, vl, sc);
+				if (sc >= STL_MAX_SCS) {
+					// This should be impossible, but it doesn't hurt to check.
+					IB_LOG_ERROR_FMT(__func__,"Could not find a free SC"
+						" to map to VL %d. Configuration exceeds"
+						" oversubscription limits.", vl);
+					goto fail;
+				}
+
+				// VL was previously marked as in use.
+				SCtoSL[sc] = sl;
+				SLtoSC[sl] = sc;
+				if (sm_config.sm_debug_vf)
+					IB_LOG_INFINI_INFO_FMT(__func__, "Mapping MCSL %d to "
+						"VL %d via SC %d", sl, vl, sc);
+			} else {
+				// If we can, find numSCs free VLs and assign them to this
+				// SL. If we can only find numSCs-1 VLs, try to oversubscribe
+				// the shared VL.
+				sc = -1;
+				for (vl_i = 0; vl_i < numSCs; vl_i++) {
+					// Find an unused VL. If we can't find numSCs VLs
+					// (including the shared_vl), fail out.
+					vl = bitset_find_first_one(&freeVLs);
+					if ((vl == -1 && vl_i < (numSCs-1)) ||
+						(vl == -1 && shared_vl == -1)) {
+						IB_LOG_ERROR_FMT(__func__, "Configuration cannot be mapped."
+							" Requires more than %d VLs.", qos->activeVLs);
+						goto fail;
+					} else if (vl == -1) {
+						// If we got here, then we need to use the shared vl.
+						shared_sc = _find_next_sc(qos, shared_vl, shared_sc);
+						vl = shared_vl;
+						sc = shared_sc;
+						SCtoSL[sc] = sl;
+						if (sm_config.sm_debug_vf)
+							IB_LOG_INFINI_INFO_FMT(__func__, "Mapping SL %d to "
+								"shared VL %d via SC %d", sl, vl, sc);
+					} else {
+						bitset_clear(&freeVLs, vl);
+						sc = _find_next_sc(qos, vl, sc);
+						if (sc >= STL_MAX_SCS) {
+							// This should be impossible, but it doesn't hurt to check.
+							IB_LOG_ERROR_FMT(__func__,"Could not find a free SC"
+								" to map to VL %d. Configuration exceeds"
+								" oversubscription limits.", vl);
+							goto fail;
+						}
+						if (sm_config.sm_debug_vf)
+							IB_LOG_INFINI_INFO_FMT(__func__,"Mapping SL %d to"
+								" VL %d via SC %d", sl, vl, sc);
+						SCtoSL[sc] = sl;
+						if (vl_i == 0) SLtoSC[sl] = sc;
+						if (vl_i == (numSCs-1) && shared_vl == -1) {
+							shared_vl = vl;
+							shared_sc = sc;
+						}
+					}
+				}
+			}
+		}
+	}
+	ret = VSTATUS_OK;
+
+fail:
+	bitset_free(&freeVLs);
+	bitset_free(&mappedSLs);
+
+	return ret;
+}
+
+// This function is nearly identical to sm_setup_qos except it has to handle
+// the case where two SLs are sharing a VL and one of the SLs is high priority.
+static int
+_setup_qos(RoutingModule_t *rm, Qos_t * qos, VirtualFabrics_t *VirtualFabrics,
+	const uint8_t *SLtoSC, const uint8_t *SCtoSL)
+{
+	int sl, sc, vl, vf, numSCs;
+	int shared_vl=-1;
+	boolean mcast_sl = 0;
+
+	memset(&qos->vlvf, -1, sizeof(qos->vlvf));
+	for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
+		VF_t *vfp = &VirtualFabrics->v_fabric[vf];
+		int i, j;
+
+		for (i = 0; i < 3; i++) {
+			switch (i) {
+				default:
+				case 0:
+					sl = vfp->base_sl; mcast_sl = 0;
+					break;
+				case 1:
+					sl = vfp->resp_sl; mcast_sl = 0;
+					if (sl == vfp->base_sl) continue;
+					break;
+				case 2:
+					sl = vfp->mcast_sl; mcast_sl = 1;
+					if (sl == vfp->base_sl || sl == vfp->resp_sl) continue;
+					break;
+			}
+
+			numSCs = rm->funcs.num_routing_scs(sl, mcast_sl);
+			for (j = 1; j <= numSCs; j++) {
+				sc = _find_nth_sc(SLtoSC, SCtoSL, sl, j);
+				if (sc == 15 || sc >= STL_MAX_SCS) {
+					IB_LOG_ERROR_FMT(__func__, "Missing SC:SL Mapping:"
+						"SL=%02d needs %d SCs, could not find the %d SC.",
+						sl, numSCs, j);
+					return VSTATUS_BAD;
+				}
+
+				vl = qos->scvl.SCVLMap[sc].VL;
+				if (vl == 15 || vl >= qos->numVLs) {
+					IB_LOG_ERROR_FMT(__func__, "Unexpected SC:VL Mapping:"
+						"SL=%02d SC=%02d VL=%02d", sl, sc, vl);
+					return VSTATUS_BAD;
+				}
+
+				// We assign the VL to high or low priority here but
+				// note that if the vl is the shared vl we keep the previous
+				// settings for the VL.
+				if (vl != shared_vl && vfp->priority) {
+					bitset_set(&qos->highPriorityVLs, vl);
+					qos->vlBandwidth.highPriority[vl] = 1;
+				} else if (vl != shared_vl) {
+					bitset_set(&qos->lowPriorityVLs, vl);
+					if (shared_vl == -1 && j == numSCs) {
+						shared_vl = vl;
+					}
+				}
+				_add_vf_to_vl(qos, vl, vf);
+			}
+		}
+	}
+
+	int nonQosBw = 0;
+	int nonQos_base_sl = -1, nonQos_resp_sl = -1, nonQos_mcast_sl = -1;
+	for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
+		VF_t *vfp = &VirtualFabrics->v_fabric[vf];
+
+		if (vfp->qos_enable) {
+			if (vfp->priority) continue;
+
+			// Qos LowPriority
+			DivideBwUp(rm, qos, vfp->percent_bandwidth, vfp->base_sl,
+				vfp->resp_sl, vfp->mcast_sl, SLtoSC);
+		} else {
+			// NonQos only gets bandwidth once.
+			nonQosBw = vfp->percent_bandwidth;
+			nonQos_base_sl = vfp->base_sl;
+			if (vfp->resp_sl != vfp->base_sl) {
+				nonQos_resp_sl = vfp->resp_sl;
+			}
+			if (vfp->mcast_sl != vfp->base_sl) {
+				nonQos_mcast_sl = vfp->mcast_sl;
+			}
+		}
+	}
+	// Add in the nonQosBw last
+	if (nonQosBw) {
+		if (nonQos_resp_sl == -1) nonQos_resp_sl = nonQos_base_sl;
+		if (nonQos_mcast_sl == -1) nonQos_mcast_sl = nonQos_base_sl;
+		DivideBwUp(rm, qos, nonQosBw, nonQos_base_sl, nonQos_resp_sl,
+			nonQos_mcast_sl, SLtoSC);
+	}
+
+	sm_DbgPrintQOS(qos);
+	return VSTATUS_OK;
+}
+
+static Status_t
+_routing_func_assign_scs_to_sls(RoutingModule_t *rm, VirtualFabrics_t *vfs)
+{
+	Status_t ret;
+	uint8_t SLtoSC[STL_MAX_SLS];
+	uint8_t SCtoSL[STL_MAX_SCS];
+	Qos_t *qos = NULL;
+	int i;
+
+	if (rm->funcs.min_vls() > rm->funcs.max_vls()) {
+		IB_LOG_ERROR_FMT(__func__, "Configuration cannot be mapped. MinSupportedVLs (%d) cannot exceed MaxSupportedVLs (%d).",
+			rm->funcs.min_vls(),rm->funcs.max_vls());
+		return VSTATUS_BAD;
+	}
+
+	qos = sm_alloc_qos();
+
+	// Flag the maps as invalid.
+	memset(SLtoSC, 15, sizeof(SLtoSC));
+	memset(SCtoSL, 0xff, sizeof(SCtoSL));
+
+	// Populate the SCVL maps for each QOS level
+	for (i = 1; i <= rm->funcs.max_vls(); i++) {
+		sm_fill_SCVLMap(&qos[i]);
+	}
+
+	// Only perform SC to SL assignment on minimum supported VLs
+	ret = _map_scs_to_sls(rm, &qos[rm->funcs.min_vls()], vfs, SLtoSC, SCtoSL);
+	if (ret != VSTATUS_OK) {
+		sm_free_qos(qos);
+		return ret;
+	}
+
+	// 1 VL is a special case, always set it up
+	sm_setup_qos_1vl(rm, &qos[1], vfs);
+
+	// Set Qos for all supported number of VLs
+	for (i = rm->funcs.min_vls(); i <= rm->funcs.max_vls(); i++) {
+		ret = _setup_qos(rm, &qos[i], vfs, SLtoSC, SCtoSL);
+		if (ret != VSTATUS_OK) {
+			sm_free_qos(qos);
+			return ret;
+		}
+	}
+
+	memcpy(sm_SLtoSC, SLtoSC, sizeof(SLtoSC));
+	memcpy(sm_SCtoSL, SCtoSL, sizeof(SCtoSL));
+
+	sm_install_qos(qos);
+	return VSTATUS_OK;
+}
+
 static Status_t
 _make_routing_module(RoutingModule_t * rm)
 {
@@ -3374,10 +3836,11 @@ _make_routing_module(RoutingModule_t * rm)
 	rm->funcs.select_scsc_map = _generate_scsc_map;
 	rm->funcs.process_swIdx_change = _process_swIdx_change;
 	rm->funcs.update_bw = sm_routing_func_update_bw;
-	rm->funcs.assign_scs_to_sls = sm_routing_func_assign_scs_to_sls_fixedmap;
+	rm->funcs.assign_scs_to_sls = _routing_func_assign_scs_to_sls;
 	rm->funcs.assign_sls = sm_routing_func_assign_sls;
 	rm->funcs.num_routing_scs = _num_routing_scs;
 	rm->funcs.build_spanning_trees = _build_spanning_trees;
+	rm->funcs.mcast_isolation_required = sm_routing_func_mcast_isolation_is_required;
 
 	rm->release = _release;
 	rm->copy = _copy;

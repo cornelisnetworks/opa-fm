@@ -42,8 +42,34 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <ib_types.h>
 
+#ifndef __VXWORKS__
+#include "opamgt_priv.h"
+#endif
+
 extern int ib_instrumentJmMads;
 
+
+#ifndef __VXWORKS__
+/*
+ * ib_init_devport
+ *
+ * Initializes stack interface and binds to the specified
+ * device and port.
+ * If *Guidp is 0, *devp and *portp are used to select the device and port
+ *      and *Guidp is returned.
+ * If *Guidp is not 0, *Guid is used to select the device and port
+ *		and *devp and *portp are returned.
+ * Guidp may be NULL and/or devp and portp may be NULL
+ */
+Status_t ib_init_devport(uint32_t *dev, uint32_t *port, uint64_t *Guid, struct omgt_params *session_params);
+
+/*
+ * ib_get_devport
+ *
+ * Returns current porthandle
+ */
+struct omgt_port * ib_get_devport(void);
+#else
 /*
  * ib_init_devport
  *
@@ -56,6 +82,8 @@ extern int ib_instrumentJmMads;
  * Guidp may be NULL and/or devp and portp may be NULL
  */
 Status_t ib_init_devport(uint32_t *dev, uint32_t *port, uint64_t *Guid);
+
+#endif
 
 /*
  * ib_refresh_devport

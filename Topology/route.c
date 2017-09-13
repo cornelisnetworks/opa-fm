@@ -31,7 +31,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // functions to perform routing analysis using LFT tables in FabricData
 
-#include <oib_utils_sa.h>
+#include <opamgt_sa_priv.h>
 
 #include "topology.h"
 #include "topology_internal.h"
@@ -739,7 +739,12 @@ static FSTATUS getSLSCInfo(FabricData_t *fabricp, EUI64 portGuid, int quiet, uin
 	LIST_ITEM *i;
 
 	for (i = QListHead(&fabricp->AllVFs); i; i = QListNext(&fabricp->AllVFs, i)) {
-		(*usedSLs) |= 1 << ((VFData_t *)QListObj(i))->record.s1.sl;
+		STL_VFINFO_RECORD *vfr = &((VFData_t*)QListObj(i))->record;
+		(*usedSLs) |= 1 << vfr->s1.slBase;
+		if (vfr->slResponseSpecified)
+			(*usedSLs) |= 1 << vfr->slResponse;
+		if (vfr->slMulticastSpecified)
+			(*usedSLs) |= 1 << vfr->slMulticast;
 	}
 
 	if (!usedSCs) {
@@ -948,22 +953,22 @@ static STL_PORTMASK *LookupMFT(NodeData *nodep, IB_LID mlid)
 
 {
 	STL_PORTMASK *PortMask;
-	IB_LID lid;
+	uint32 entry;
+	uint16 MCFDBSize;
 
-	lid = mlid - LID_MCAST_START;
-	DEBUG_ASSERT(nodep->switchp && nodep->switchp->MulticastFDB);	//caller checks
-	if ( lid >= nodep->switchp->MulticastFDBSize)
+	DEBUG_ASSERT(nodep->switchp && nodep->switchp->MulticastFDB[0]);	//caller checks
+
+	entry = GetMulticastOffset((uint32)mlid);
+	MCFDBSize = nodep->switchp->MulticastFDBSize & MULTICAST_LID_OFFSET_MASK;
+	if ( entry >= MCFDBSize)
 		return NULL;
 
-	if (mlid > LID_MCAST_END)
-		return NULL;
-
-	PortMask = GetMulticastFDBEntry(nodep, lid);
+	PortMask = GetMulticastFDBEntry(nodep, entry);
 
 	return PortMask;
 }
 
-FSTATUS	CopytoList(FabricData_t *fabricp, MCROUTESTATUS MCRouteStatus, McLoopInc *pMcLoopInc)
+static FSTATUS	CopyAndInsertMcLoopInc(FabricData_t *fabricp, MCROUTESTATUS MCRouteStatus, McLoopInc *pMcLoopInc)
 // copying the route with problems to main list for later display.
 {
 	LIST_ITEM *p;
@@ -999,6 +1004,7 @@ FSTATUS	CopytoList(FabricData_t *fabricp, MCROUTESTATUS MCRouteStatus, McLoopInc
 		}
 			// copy node to node
 		pMcNodeLoopIncR->pPort = pmcnode->pPort;
+		pMcNodeLoopIncR->entryPort = pmcnode->entryPort;
 		pMcNodeLoopIncR->exitPort = pmcnode->exitPort;
 		//insert new node
 		QListSetObj(&pMcNodeLoopIncR->McNodeEntry, pMcNodeLoopIncR);
@@ -1013,7 +1019,7 @@ FSTATUS	CopytoList(FabricData_t *fabricp, MCROUTESTATUS MCRouteStatus, McLoopInc
 	return FSUCCESS;
 }
 
-FSTATUS IsMemberMcGroup(McGroupData *mcgroupp, PortData *portp)
+static FSTATUS IsMemberMcGroup(McGroupData *mcgroupp, PortData *portp)
 {
 	LIST_ITEM *p;
 
@@ -1037,7 +1043,7 @@ FSTATUS IsMemberMcGroup(McGroupData *mcgroupp, PortData *portp)
 // FNOT_DONE - unable to trace route, mlid is a dead end
 // FDUPLICATE - loop detected in mc routes
 
-FSTATUS WalkMCRoute(FabricData_t *fabricp, McGroupData *mcgroupp, PortData *portp, int *hop,
+FSTATUS WalkMCRoute(FabricData_t *fabricp, McGroupData *mcgroupp, PortData *portp, int hop,
 	uint8 EntryPort, McLoopInc *pMcLoopInc, uint32 *pathCount)
 {
 	PortData *portp2, *portn;	// next port in route
@@ -1047,119 +1053,132 @@ FSTATUS WalkMCRoute(FabricData_t *fabricp, McGroupData *mcgroupp, PortData *port
 	int ix_port, ix_lid;
 	SwitchData *switchp;
 	MCROUTESTATUS mcroutestat;
+	McNodeLoopInc McNodeLoopIncR, *pMcNodeLoopIncR;
 
-	Port_res=0;
-	PMsk =2; // 2 is 10 binary. starting with a 1 in position "1" representing port 1
-	(*hop)++;
-
-	McNodeLoopInc *pMcNodeLoopIncR = (McNodeLoopInc*)MemoryAllocate2AndClear(sizeof(McNodeLoopInc), IBA_MEM_FLAG_PREMPTABLE, MYTAG);
-	if (! pMcNodeLoopIncR) {
-		fprintf(stderr, "Unable to allocate memory for a list of MC loop and incomplete routes\n");
-		return FERROR;
-	}
+	pMcNodeLoopIncR = &McNodeLoopIncR;
 	ListItemInitState(&pMcNodeLoopIncR->McNodeEntry);
 	pMcNodeLoopIncR->pPort = portp;
-	if (EntryPort != 0 )
-			pMcNodeLoopIncR->pPort->PortNum = EntryPort;
+	pMcNodeLoopIncR->entryPort = EntryPort;
+
 	QListSetObj(&pMcNodeLoopIncR->McNodeEntry, pMcNodeLoopIncR);
 	QListInsertTail(&pMcLoopInc->AllMcNodeLoopIncR , &pMcNodeLoopIncR->McNodeEntry);
 
-	if ((*hop) >= 64) {
+
+	if ((hop) >= 64) {
 		// add list to NOT_DONE
 		mcroutestat=MC_NO_TRACE;
-		status = CopytoList(fabricp, mcroutestat, pMcLoopInc);
+		status = CopyAndInsertMcLoopInc(fabricp, mcroutestat, pMcLoopInc);
 		if (status== FINSUFFICIENT_MEMORY) {
 			fprintf(stderr, "Unable to allocate memory\n");
-			MemoryDeallocate (pMcNodeLoopIncR);
 			return FERROR;
 		}
 		QListRemoveTail(&pMcLoopInc->AllMcNodeLoopIncR);
-		MemoryDeallocate(pMcNodeLoopIncR);
 		(*pathCount)++;
 		return FNOT_DONE; // too long a path
 	}
-
-	if (portp->nodep->NodeInfo.NodeType == STL_NODE_FI) {
+// if port is FI them check membership, if OK then reach end-of-route
+// if port is SW; Port0 then check membership, if OK then reach end-of-route
+	if (( (hop > 1) && (portp->nodep->NodeInfo.NodeType == STL_NODE_SW)
+				&& (EntryPort == 0) && portp->nodep->pSwitchInfo->SwitchInfoData.u2.s.EnhancedPort0) // this is a enhanced Port0;
+		|| (portp->nodep->NodeInfo.NodeType == STL_NODE_FI)) { // these are end-nodes
 		status = IsMemberMcGroup(mcgroupp, portp);
 		(*pathCount)++;
 		if (status != FSUCCESS) {
 			mcroutestat=MC_NOGROUP;
-			status = CopytoList(fabricp, mcroutestat, pMcLoopInc);
+			status = CopyAndInsertMcLoopInc(fabricp, mcroutestat, pMcLoopInc);
 			if (status == FINSUFFICIENT_MEMORY) {
 				fprintf(stderr, "Unable to allocate memory\n");
-				MemoryDeallocate (pMcNodeLoopIncR);
 				return FERROR;
 			}
 			QListRemoveTail(&pMcLoopInc->AllMcNodeLoopIncR);
-			MemoryDeallocate(pMcNodeLoopIncR);
 			return FUNAVAILABLE; // not a member
 		}
 		else {
 			QListRemoveTail(&pMcLoopInc->AllMcNodeLoopIncR);
-			MemoryDeallocate(pMcNodeLoopIncR);
 		}
 		return FSUCCESS;
 	}
-
-	switchp = portp->nodep->switchp;
-
-	if (!switchp) {
-		mcroutestat=MC_NO_TRACE;
-		status = CopytoList(fabricp,mcroutestat, pMcLoopInc);
+	if ((EntryPort == 0) && (hop > 1)){ // Port 0 cannot be switch external port
+		mcroutestat=MC_NOGROUP;
+		status = CopyAndInsertMcLoopInc(fabricp,mcroutestat, pMcLoopInc);
 		if (status== FINSUFFICIENT_MEMORY) {
 			fprintf(stderr, "Unable to allocate memory\n");
-			MemoryDeallocate (pMcNodeLoopIncR);
 			return FERROR;
 		}
 		QListRemoveTail(&pMcLoopInc->AllMcNodeLoopIncR);
-		MemoryDeallocate(pMcNodeLoopIncR);
+		return FNOT_DONE;
+	}
+
+// if we are here, port can be a switch
+	switchp = portp->nodep->switchp;
+
+//test if there is a switch
+	if (!switchp) {
+		mcroutestat=MC_NO_TRACE;
+		status = CopyAndInsertMcLoopInc(fabricp,mcroutestat, pMcLoopInc);
+		if (status== FINSUFFICIENT_MEMORY) {
+			fprintf(stderr, "Unable to allocate memory\n");
+			return FERROR;
+		}
+		QListRemoveTail(&pMcLoopInc->AllMcNodeLoopIncR);
 		(*pathCount)++;
 		return FNOT_DONE;
 	}
 
-
+//test if there is a routing table
 	if (!switchp->MulticastFDB){
 		mcroutestat=MC_UNAVAILABLE;
-		status = CopytoList(fabricp,mcroutestat, pMcLoopInc);
+		status = CopyAndInsertMcLoopInc(fabricp,mcroutestat, pMcLoopInc);
 		if (status== FINSUFFICIENT_MEMORY) {
 			fprintf(stderr, "Unable to allocate memory\n");
-			MemoryDeallocate (pMcNodeLoopIncR);
 			return FERROR;
 		}
 		QListRemoveTail(&pMcLoopInc->AllMcNodeLoopIncR);
-		MemoryDeallocate(pMcNodeLoopIncR);
 		(*pathCount)++;
 		return FUNAVAILABLE;
 	}
-	if ( (switchp->MulticastFDBEntrySize) > (64/MFT_BLOCK_WIDTH)) {
+// check if the size of the table is enough
+// check if MulticastFDBTop <= MulticastFDBCap
+	uint16 MCTableSize;
+// lower 14 bits of top
+	MCTableSize = portp->nodep->pSwitchInfo->SwitchInfoData.MulticastFDBTop & MULTICAST_LID_OFFSET_MASK;
+	if (MCTableSize > portp->nodep->pSwitchInfo->SwitchInfoData.MulticastFDBCap){
 		mcroutestat=MC_UNAVAILABLE;
-		status = CopytoList(fabricp,mcroutestat, pMcLoopInc);
+		status = CopyAndInsertMcLoopInc(fabricp,mcroutestat, pMcLoopInc);
 		if (status== FINSUFFICIENT_MEMORY) {
-			MemoryDeallocate (pMcNodeLoopIncR);
+			fprintf(stderr, "Unable to allocate memory\n");
 			return FERROR;
 		}
 		QListRemoveTail(&pMcLoopInc->AllMcNodeLoopIncR);
-		MemoryDeallocate(pMcNodeLoopIncR);
 		(*pathCount)++;
 		return FUNAVAILABLE;
 	}
 
-	ix_lid = pMcLoopInc->mlid - LID_MCAST_START;
+	// get index to retrieve routing ports for MC from the MC table
+	ix_lid = GetMulticastOffset((uint32)pMcLoopInc->mlid);
+	//verify that index lies within the table size
+	if ( ix_lid > MCTableSize) {
+		mcroutestat=MC_UNAVAILABLE;
+		status = CopyAndInsertMcLoopInc(fabricp,mcroutestat, pMcLoopInc);
+		if (status== FINSUFFICIENT_MEMORY) {
+			fprintf(stderr, "Unable to allocate memory\n");
+			return FERROR;
+		}
+		QListRemoveTail(&pMcLoopInc->AllMcNodeLoopIncR);
+		(*pathCount)++;
+		return FUNAVAILABLE;
+	}
 
-	if ( ix_lid > switchp->MulticastFDBSize)
-		return FERROR;
 	pp = LookupMFT(portp->nodep, pMcLoopInc->mlid);
 
 	if (pp==NULL) {
 		mcroutestat=MC_UNAVAILABLE;
-		status = CopytoList(fabricp,mcroutestat, pMcLoopInc);
+		status = CopyAndInsertMcLoopInc(fabricp,mcroutestat, pMcLoopInc);
 		if (status== FINSUFFICIENT_MEMORY) {
 			fprintf(stderr, "Unable to allocate memory\n");
-			MemoryDeallocate (pMcNodeLoopIncR);
 			return FERROR;
 		}
 		QListRemoveTail(&pMcLoopInc->AllMcNodeLoopIncR);
-		MemoryDeallocate(pMcNodeLoopIncR);
 		(*pathCount)++;
 		return FUNAVAILABLE;
 	}
@@ -1169,61 +1188,65 @@ FSTATUS WalkMCRoute(FabricData_t *fabricp, McGroupData *mcgroupp, PortData *port
 		portp->nodep->switchp->HasBeenVisited = 1;
 	else {   //if not... there is a loop.
 		mcroutestat=MC_LOOP;
-		status = CopytoList(fabricp,mcroutestat, pMcLoopInc);
+		status = CopyAndInsertMcLoopInc(fabricp,mcroutestat, pMcLoopInc);
 		if (status== FINSUFFICIENT_MEMORY) {
 			fprintf(stderr, "Unable to allocate memory\n");
-			MemoryDeallocate (pMcNodeLoopIncR);
 			return FERROR;
 		}
-		// this is to prevent the WalkMC to use the current exit port as a valid entry port to scan.
-		uint64 P = 1;
-		P= P << portp->PortNum;
-		*pp &= ~P;
 		QListRemoveTail(&pMcLoopInc->AllMcNodeLoopIncR);
-		MemoryDeallocate(pMcNodeLoopIncR);
 		(*pathCount)++;
 		return FDUPLICATE;
 	}
 
 	// getting information of number of ports for the current switch to run the loop only for those values
+	// limiting max. num of ports to 64  (0-63).
 	uint8 swmaxnumport = portp->nodep->NodeInfo.NumPorts;
+	if (swmaxnumport >=63){
+		fprintf(stderr, "Cannot handle more than 64 different ports\n");
+		return FERROR;
+	}
+	
+	PMsk =1; // starting with a 1 in position "0" because Port0 can be a member
 
-	for (ix_port=1; ix_port <= swmaxnumport; ix_port ++) {
-		if (((portp->PortNum == 0 ) && (EntryPort != ix_port)) ||
-				(portp->PortNum != ix_port)) {
+//starting at Port 0 because enhanced Port O may be a multicast member
+	for (ix_port=0; ix_port <= swmaxnumport; ix_port ++) {
+		if (EntryPort != ix_port) {
 			Port_res= PMsk & *pp;
-			if (Port_res != 0) {
+			if (Port_res != 0){ // matching port
 				pMcNodeLoopIncR->exitPort = ix_port; // save exit port
-				portp2 = FindNodePort(portp->nodep, ix_port);
-				if (! portp2 || ! IsPortInitialized(portp2->PortInfo.PortStates)
-						|| (Port_res != 0 && ! portp2->neighbor)) {
-					mcroutestat=MC_NO_TRACE;
-					status = CopytoList(fabricp,mcroutestat, pMcLoopInc);
-					if (status== FINSUFFICIENT_MEMORY) {
-						fprintf(stderr, "Unable to allocate memory\n");
-						MemoryDeallocate (pMcNodeLoopIncR);
+				if (ix_port==0) {
+					status = WalkMCRoute( fabricp, mcgroupp, portp, (hop+1), 0, pMcLoopInc, pathCount);
+					if (status == FERROR)
 						return FERROR;
-					}
-					(*pathCount)++;
-					status = FNOT_DONE;
-				} // Non viable route
+				}
 				else {
-					portn = portp2->neighbor;
-					status = WalkMCRoute( fabricp, mcgroupp, portn, hop, 0, pMcLoopInc, pathCount);
-					if (status == FERROR) {
-						// just return all the way
-						return FERROR;
-					}
-				} //end else
-			(*hop)--;
+					portp2 = FindNodePort(portp->nodep, ix_port);
+					if (! portp2 || ! IsPortInitialized(portp2->PortInfo.PortStates)
+						|| !portp2->neighbor) {
+						mcroutestat=MC_NO_TRACE;
+						status = CopyAndInsertMcLoopInc(fabricp,mcroutestat, pMcLoopInc);
+						if (status== FINSUFFICIENT_MEMORY) {
+							fprintf(stderr, "Unable to allocate memory\n");
+							return FERROR;
+						}
+						(*pathCount)++;
+						status = FNOT_DONE;
+					} // Not a viable route
+					else {
+						portn = portp2->neighbor; // must be the entry port of the next switch
+						status = WalkMCRoute( fabricp, mcgroupp, portn, (hop+1), portn->PortNum, pMcLoopInc, pathCount);
+						if (status == FERROR)
+							// just return all the way
+							return FERROR;
+					}// end else
+				} // end else
 			} // end of there is a match
-		}// end of entry port != exit port
-		PMsk = PMsk <<1; // keep trying maybe the next is the one
+		}	// end of entry port != exit port
+		PMsk = PMsk <<1;
 	} // end looking for next port
 	portp->nodep->switchp->HasBeenVisited = 0;
 	//free record
 	QListRemoveTail(&pMcLoopInc->AllMcNodeLoopIncR);
-	MemoryDeallocate(pMcNodeLoopIncR);
 
 	return status;
 }
@@ -1233,10 +1256,9 @@ FSTATUS ValidateMCRoutes(FabricData_t *fabricp, McGroupData *mcgroupp,
 			McEdgeSwitchData *swp, uint32 *pathCount)
 {
 	FSTATUS status;
-
 	SwitchData *switchp;
 	PortData *portp1;
-	int hop=0;
+	McLoopInc mcLoop;
 
 	portp1 = swp->pPort;
 
@@ -1245,22 +1267,15 @@ FSTATUS ValidateMCRoutes(FabricData_t *fabricp, McGroupData *mcgroupp,
 		printf("No switch connected to HFI \n");
 		return FNOT_DONE;
 	}
-	McLoopInc *pMcLoopInc = (McLoopInc*)MemoryAllocate2AndClear(sizeof(McLoopInc), IBA_MEM_FLAG_PREMPTABLE, MYTAG);
-	if (! pMcLoopInc) {
-		fprintf(stderr, "Unable to allocate memory for a list of MC loop and incomplete routes\n");
-		return FERROR;
-	}
-	QListInitState(&pMcLoopInc->AllMcNodeLoopIncR);
-	if (!QListInit(&pMcLoopInc->AllMcNodeLoopIncR)) {
+
+	QListInitState(&mcLoop.AllMcNodeLoopIncR);
+	if (!QListInit(&mcLoop.AllMcNodeLoopIncR)) {
 		fprintf(stderr, "Unable to initialize List of nodes for loops and incomplete MC routes\n");
-		MemoryDeallocate(pMcLoopInc);
 		return FERROR;
 	}
 
-	pMcLoopInc->mlid = mcgroupp->MLID; // identifies the route to analyze
-	status = WalkMCRoute( fabricp, mcgroupp, portp1, &hop, swp->EntryPort, pMcLoopInc, pathCount);
-
-	MemoryDeallocate(pMcLoopInc);
+	mcLoop.mlid = mcgroupp->MLID; // identifies the route to analyze
+	status = WalkMCRoute( fabricp, mcgroupp, portp1, 1, swp->EntryPort, &mcLoop, pathCount);
 
 	return status;
 }
@@ -1320,6 +1335,10 @@ FSTATUS ValidateAllMCRoutes(FabricData_t *fabricp, uint32 *totalPaths )
 						pathCount=0;
 						McEdgeSwitchData *swp = (McEdgeSwitchData *)QListObj(q1);
 						status = ValidateMCRoutes(fabricp, pmcgmember, swp, &pathCount);
+						if (status ==FERROR) {
+							fprintf(stderr, "Unable to validate MC routes\n");
+							return FERROR;
+						}
 						(*totalPaths) += pathCount;
 					}
 				} // end if num members >1
@@ -1330,7 +1349,6 @@ FSTATUS ValidateAllMCRoutes(FabricData_t *fabricp, uint32 *totalPaths )
 	return FSUCCESS;
 } // End of ValidateAllMCRoutes
 
-#ifdef PRODUCT_OPENIB_FF
 void FreeValidateMCRoutes(FabricData_t *fabricp)
 { int i;
   LIST_ITEM *p, *q;
@@ -1354,8 +1372,6 @@ void FreeValidateMCRoutes(FabricData_t *fabricp)
 	return;
 
 } // end FreeValidateMCRoutes
-
-#endif
 ////////// /////////// end of MC-related functions
 
 
@@ -1530,7 +1546,7 @@ static FSTATUS CLGetRoute(FabricData_t *fabricp, EUI64 portGuid,
    
 done:
    if (pQueryResults)
-      oib_free_query_result_buffer(pQueryResults); 
+      omgt_free_query_result_buffer(pQueryResults); 
    if (pTraceRecords)
       MemoryDeallocate(pTraceRecords); 
    return status; 

@@ -157,8 +157,6 @@ SubnetAdmAttrToRecordSize(uint8 attribute)
 			return(sizeof(IB_NODE_RECORD));
 	case SA_ATTRIB_PORTINFO_RECORD:
 			return(sizeof(IB_PORTINFO_RECORD));
-	case SA_ATTRIB_SLTOVL_MAPTBL_RECORD:
-			return(sizeof(IB_SLVLMAP_RECORD));
 	case SA_ATTRIB_SWITCHINFO_RECORD:
 			return(sizeof(IB_SWITCHINFO_RECORD));
 	case SA_ATTRIB_LINEAR_FWDTBL_RECORD:
@@ -1064,49 +1062,6 @@ SubnetAdmRecv(
                             pTraceRecordResults->TraceRecords[i].EntryPortID ^= IB_TRACE_RECORD_COMP_ENCRYPT_MASK;
                             pTraceRecordResults->TraceRecords[i].ExitPortID ^= IB_TRACE_RECORD_COMP_ENCRYPT_MASK;
                     	}
-					}
-                    break;
-                }
-                default:
-                    break;
-            }
-			break;
-		}
-		case	SA_ATTRIB_SLTOVL_MAPTBL_RECORD:
-		{
-			for (i = 0, p = pSaMad->Data;
-					i < NumRecords; i++, p+=PaddedRecordSize)
-            {
-				BSWAP_IB_SLVLMAP_RECORD((IB_SLVLMAP_RECORD*)p);
-            }
-			_DBG_INFO(("Processing IB_SLVLMAP_RECORD..... NumRecords[%d]\n",
-						NumRecords));
-
-            switch(QueryOutputType)
-            {
- 
-                case (OutputTypeSLVLMapRecord):
-                {
-                    PSLVLMAP_RECORD_RESULTS    pSLVLMapResults;
- 
-                    pClientResult = (QUERY_RESULT_VALUES*)MemoryAllocate2AndClear(sizeof(QUERY_RESULT_VALUES)
-								+ (NumRecords * sizeof(SLVLMAP_RECORD_RESULTS)),
-								IBA_MEM_FLAG_PREMPTABLE|IBA_MEM_FLAG_SHORT_DURATION, SUBNET_DRIVER_TAG);
-                    if (pClientResult == NULL)
-						goto failalloc;
-                    pClientResult->ResultDataSize = NumRecords * sizeof(SLVLMAP_RECORD_RESULTS);
-
-					_DBG_INFO(("Extracting complete SLVLMapRecords - NumRecords[%d]\n",
-														NumRecords));
-                    if ( NumRecords > 0)
-                    {
-						pSLVLMapResults = (PSLVLMAP_RECORD_RESULTS)pClientResult->QueryResult;
-                   		pSLVLMapResults->NumSLVLMapRecords = NumRecords;
-						for (i = 0, p = pSaMad->Data;
-								i < NumRecords; i++, p+=PaddedRecordSize)
-                    	{
-                   			pSLVLMapResults->SLVLMapRecords[i] = *((IB_SLVLMAP_RECORD*)p);
-						}
 					}
                     break;
                 }

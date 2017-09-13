@@ -104,115 +104,105 @@ int MergePortIntoPacket(Pm_t *pm, PmDispatcherNode_t *dispnode, PmPort_t *pmport
 
 size_t CalculatePortInPacket(PmDispatcherNode_t *dispnode, PmDispatcherPacket_t *disppacket);
 
-#define CHECK_NEED_CLEAR(dispnode, portNum) \
-	((dispnode)->info.needClear[(portNum)/64] & ((uint64)1 << ((portNum) % 64)))
-
-#define SET_NEED_CLEAR(dispnode, portNum) \
-	(dispnode)->info.needClear[(portNum)/64] |= ((uint64)1 << ((portNum) % 64))
-
 // -------------------------------------------------------------------------
 // Utility routines
 // -------------------------------------------------------------------------
 
-static void PmFailNodeQuery(cntxt_entry_t *entry, PmDispatcherNode_t *dispnode, const char* message)
+static void PmFailNodeQuery(cntxt_entry_t *entry, PmDispatcherNode_t *dispnode, uint8 method, uint16 aid)
 {
 	dispnode->info.u.s.failed = 1;
-	PmFailNode(dispnode->pm, dispnode->info.pmnodep,
-				   	PM_QUERY_STATUS_FAIL_QUERY, message);
+	PmFailNode(dispnode->pm, dispnode->info.pmnodep, PM_QUERY_STATUS_FAIL_QUERY, method, aid);
 	if (entry)
 		cs_cntxt_retire_nolock( entry, &dispnode->pm->Dispatcher.cntx  );
 	DispatchNodeDone(dispnode->pm, dispnode);
 }
 
-static void PmFailPacketClear(cntxt_entry_t *entry, PmDispatcherPacket_t *disppacket, const char* message)
+static void PmFailPacketClear(cntxt_entry_t *entry, PmDispatcherPacket_t *disppacket, uint8 method, uint16 aid)
 {
 	PmDispatcherNode_t *dispnode = disppacket->dispnode;
 
 	dispnode->info.u.s.failed = 1;
-	PmFailPacket(dispnode->pm, disppacket,
-				   	PM_QUERY_STATUS_FAIL_CLEAR, message);
+	PmFailPacket(dispnode->pm, disppacket, PM_QUERY_STATUS_FAIL_CLEAR, method, aid);
 	if (entry)
 		cs_cntxt_retire_nolock( entry, &dispnode->pm->Dispatcher.cntx  );
 	DispatchPacketDone(dispnode->pm, disppacket);
 }
 
-static void PmFailPacketQuery(cntxt_entry_t *entry, PmDispatcherPacket_t *disppacket, const char* message)
+static void PmFailPacketQuery(cntxt_entry_t *entry, PmDispatcherPacket_t *disppacket, uint8 method, uint16 aid)
 {
 	PmDispatcherNode_t *dispnode = disppacket->dispnode;
 
 	dispnode->info.u.s.failed = 1;
-	PmFailPacket(dispnode->pm, disppacket,
-				   	PM_QUERY_STATUS_FAIL_QUERY, message);
+	PmFailPacket(dispnode->pm, disppacket, PM_QUERY_STATUS_FAIL_QUERY, method, aid);
 	if (entry)
 		cs_cntxt_retire_nolock( entry, &dispnode->pm->Dispatcher.cntx  );
 	DispatchPacketDone(dispnode->pm, disppacket);
 }
 
-static void PmNodeMadFail(Mai_t *mad, PmNode_t *pmnodep, const char* message)
+static void PmNodeMadFail(Mai_t *mad, PmNode_t *pmnodep)
 {
-	IB_LOG_INFO_FMT(__func__, "PMA response for %s with bad status: 0x%x From %.*s Guid "FMT_U64" LID 0x%x",
-		message, mad->base.status, (int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
+	IB_LOG_INFO_FMT(__func__, "PMA response for %s(%s) with bad status: 0x%x From %.*s Guid "FMT_U64" LID 0x%x",
+		StlPmMadMethodToText(mad->base.method), StlPmMadAttributeToText(mad->base.aid), mad->base.status,
+		(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
 		pmnodep->guid, pmnodep->dlid);
 }
 
-static void PmMadFailNodeQuery(cntxt_entry_t *entry, Mai_t *mad, PmDispatcherNode_t *dispnode,
-			   					const char* message)
+static void PmMadFailNodeQuery(cntxt_entry_t *entry, Mai_t *mad, PmDispatcherNode_t *dispnode)
 {
-	PmNodeMadFail(mad, dispnode->info.pmnodep, message);
-	PmFailNodeQuery(entry, dispnode, message);
+	PmNodeMadFail(mad, dispnode->info.pmnodep);
+	PmFailNodeQuery(entry, dispnode, mad->base.method, mad->base.aid);
 }
 
-static void PmPacketMadFail(Mai_t *mad, PmDispatcherPacket_t *disppacket, const char* message)
+static void PmPacketMadFail(Mai_t *mad, PmDispatcherPacket_t *disppacket)
 {
 #ifndef VIEO_TRACE_DISABLED
 	PmNode_t *pmnodep = disppacket->dispnode->info.pmnodep;
 
-	IB_LOG_INFO_FMT(__func__, "PMA response for %s with bad status: 0x%x From %.*s Guid "FMT_U64" LID 0x%x Ports %u",
-		message, mad->base.status, (int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
+	IB_LOG_INFO_FMT(__func__, "PMA response for %s(%s) with bad status: 0x%x From %.*s Guid "FMT_U64" LID 0x%x Ports %u",
+		StlPmMadMethodToText(mad->base.method), StlPmMadAttributeToText(mad->base.aid), mad->base.status,
+		(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
 		pmnodep->guid, pmnodep->dlid, (mad->base.amod >> 24) & 0xFF);
 #endif
 }
 
-static void PmMadFailPacketQuery(cntxt_entry_t *entry, Mai_t *mad, PmDispatcherPacket_t *disppacket,
-			   					const char* message)
+static void PmMadFailPacketQuery(cntxt_entry_t *entry, Mai_t *mad, PmDispatcherPacket_t *disppacket)
 {
-	PmPacketMadFail(mad, disppacket, message);
-	PmFailPacketQuery(entry, disppacket, message);
+	PmPacketMadFail(mad, disppacket);
+	PmFailPacketQuery(entry, disppacket, mad->base.method, mad->base.aid);
 }
 
-static void PmNodeMadAttrWrong(Mai_t *mad, PmNode_t *pmnodep, const char* message)
+static void PmNodeMadAttrWrong(Mai_t *mad, PmNode_t *pmnodep)
 {
-	IB_LOG_INFO_FMT(__func__, "PMA response for %s with wrong Attr: 0x%x From %.*s Guid "FMT_U64" LID 0x%x",
-		message, mad->base.aid, (int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
+	IB_LOG_INFO_FMT(__func__, "PMA response for %s(%s) with wrong Attr: 0x%x From %.*s Guid "FMT_U64" LID 0x%x",
+		StlPmMadMethodToText(mad->base.method), StlPmMadAttributeToText(mad->base.aid), mad->base.aid,
+		(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
 		pmnodep->guid, pmnodep->dlid);
 }
 
-static void PmMadAttrWrongNodeQuery(cntxt_entry_t *entry, Mai_t *mad, PmDispatcherNode_t *dispnode,
-			   					const char* message)
+static void PmMadAttrWrongNodeQuery(cntxt_entry_t *entry, Mai_t *mad, PmDispatcherNode_t *dispnode)
 {
-	PmNodeMadAttrWrong(mad, dispnode->info.pmnodep, message);
-	PmFailNodeQuery(entry, dispnode, message);
+	PmNodeMadAttrWrong(mad, dispnode->info.pmnodep);
+	PmFailNodeQuery(entry, dispnode, mad->base.method, mad->base.aid);
 }
 
-static void PmNodeMadSelectWrong(Mai_t *mad, PmNode_t *pmnodep, const char* message)
+static void PmNodeMadSelectWrong(Mai_t *mad, PmNode_t *pmnodep)
 {
-	IB_LOG_INFO_FMT(__func__, "PMA response for %s with wrong Port/VL Select From %.*s Guid "FMT_U64" LID 0x%x",
-		message, (int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
+	IB_LOG_INFO_FMT(__func__, "PMA response for %s(%s) with wrong Port/VL Select From %.*s Guid "FMT_U64" LID 0x%x",
+		StlPmMadMethodToText(mad->base.method), StlPmMadAttributeToText(mad->base.aid),
+		(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
 		pmnodep->guid, pmnodep->dlid);
 }
 
-static void PmMadAttrWrongPacketQuery(cntxt_entry_t *entry, Mai_t *mad, PmDispatcherPacket_t *disppacket,
-			   					const char* message)
+static void PmMadAttrWrongPacketQuery(cntxt_entry_t *entry, Mai_t *mad, PmDispatcherPacket_t *disppacket)
 {
-	PmNodeMadAttrWrong(mad, disppacket->dispnode->info.pmnodep, message);
-	PmFailPacketQuery(entry, disppacket, message);
+	PmNodeMadAttrWrong(mad, disppacket->dispnode->info.pmnodep);
+	PmFailPacketQuery(entry, disppacket, mad->base.method, mad->base.aid);
 }
 
-static void PmMadSelectWrongPacketQuery(cntxt_entry_t *entry, Mai_t *mad, PmDispatcherPacket_t *disppacket,
-			   					const char* message)
+static void PmMadSelectWrongPacketQuery(cntxt_entry_t *entry, Mai_t *mad, PmDispatcherPacket_t *disppacket)
 {
-	PmNodeMadSelectWrong(mad, disppacket->dispnode->info.pmnodep, message);
-	PmFailPacketQuery(entry, disppacket, message);
+	PmNodeMadSelectWrong(mad, disppacket->dispnode->info.pmnodep);
+	PmFailPacketQuery(entry, disppacket, mad->base.method, mad->base.aid);
 }
 // Copy port counters in STL_PORT_STATUS_RSP to port counters as referenced
 //   by PmDispatcherPort_t.pPortImage->StlPortCounters/StlVLPortCounters
@@ -235,10 +225,10 @@ static void PmCopyPortStatus(STL_PORT_STATUS_RSP *madp, PmDispatcherPacket_t * d
 	memcpy( &pCounters->PortXmitData, &madp->PortXmitData, size_counters );
 	pCounters->lq.s.LinkQualityIndicator = madp->lq.s.LinkQualityIndicator;
 
-	for (vl = 0, i = 0, vlSelMask = madp->VLSelectMask; (vl < MAX_PM_VLS) && vlSelMask;
+	for (vl = 0, i = 0, vlSelMask = madp->VLSelectMask; (vl < STL_MAX_VLS) && vlSelMask;
 			vl++, vlSelMask >>= 1) {
 		if (vlSelMask & 0x1) {
-			memcpy( &pVlCounters[vl], &madp->VLs[i++], sizeof(struct _vls_pctrs) );
+			memcpy( &pVlCounters[vl_to_idx(vl)], &madp->VLs[i++], sizeof(struct _vls_pctrs) );
 		}
 	}
 
@@ -261,8 +251,7 @@ static void PmCopyDataPortCounters(STL_DATA_PORT_COUNTERS_RSP *madp, PmDispatche
 
 	IB_LOG_INFO_FMT(__func__, "%.*s Guid "FMT_U64" LID 0x%x PortSelectMask[3] "FMT_U64" VLSelectMask 0x%08x",
 		(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
-		pmnodep->guid, pmnodep->dlid,
-		madp->PortSelectMask[3], madp->VLSelectMask);
+		pmnodep->guid, pmnodep->dlid, madp->PortSelectMask[3], madp->VLSelectMask);
 #endif
 
 	size_port = CalculatePortInPacket(dispnode, disppacket);
@@ -276,10 +265,10 @@ static void PmCopyDataPortCounters(STL_DATA_PORT_COUNTERS_RSP *madp, PmDispatche
 		pCounters->lq.s.LinkQualityIndicator = respp->Port->lq.s.LinkQualityIndicator;
 
 		memcpy(&pCounters->PortXmitData, &respp->Port->PortXmitData, size_counters);
-		for ( vl = 0, j = 0, vlSelMask = madp->VLSelectMask; (vl < MAX_PM_VLS) && vlSelMask;
+		for ( vl = 0, j = 0, vlSelMask = madp->VLSelectMask; (vl < STL_MAX_VLS) && vlSelMask;
 				vl++, vlSelMask >>= 1 ) {
 			if (vlSelMask & 0x1) {
-				memcpy( &pVlCounters[vl],
+				memcpy( &pVlCounters[vl_to_idx(vl)],
 					&respp->Port->VLs[j++], sizeof(struct _vls_dpctrs) );
 			}
 		}
@@ -290,7 +279,7 @@ static void PmCopyDataPortCounters(STL_DATA_PORT_COUNTERS_RSP *madp, PmDispatche
 		if ( (respp->Port->PortErrorCounterSummary != 0 && dispport->pPortImagePrev == NULL) ||
 			  (dispport->pPortImagePrev &&
 			    (PM_PORT_ERROR_SUMMARY(dispport->pPortImagePrev, 
-									   StlResolutionToShift(pm_config.resolution.LocalLinkIntegrity, RES_ADDER_LLI), 
+									   StlResolutionToShift(pm_config.resolution.LocalLinkIntegrity, RES_ADDER_LLI),
 									   StlResolutionToShift(pm_config.resolution.LinkErrorRecovery, RES_ADDER_LER)) != respp->Port->PortErrorCounterSummary) ) ) {
 			dispport->dispNodeSwPort->flags.s.NeedsError = 1;
 			disppacket->dispnode->info.u.s.needError = 1;
@@ -332,10 +321,10 @@ static void PmCopyErrorPortCounters(STL_ERROR_PORT_COUNTERS_RSP *madp, PmDispatc
 		pVlCounters = &dispport->pPortImage->StlVLPortCounters[0];
 
 		memcpy(&pCounters->PortRcvConstraintErrors, &respp->Port->PortRcvConstraintErrors, size_counters);
-		for (vl = 0, j = 0, vlSelMask = madp->VLSelectMask; (vl < MAX_PM_VLS) && vlSelMask;
+		for (vl = 0, j = 0, vlSelMask = madp->VLSelectMask; (vl < STL_MAX_VLS) && vlSelMask;
 				vl++, vlSelMask >>= 1) {
 			if (vlSelMask & 0x1) {
-				pVlCounters[vl].PortVLXmitDiscards = respp->Port->VLs[j++].PortVLXmitDiscards;
+				pVlCounters[vl_to_idx(vl)].PortVLXmitDiscards = respp->Port->VLs[j++].PortVLXmitDiscards;
 			}
 		}
 		dispport->pPortImage->u.s.gotErrorCntrs = 1;
@@ -400,15 +389,15 @@ static Status_t PmSendGetClassPortInfo(Pm_t *pm, PmDispatcherNode_t *dispnode)
 	cntxt_entry_t *entry;
 	PmNode_t *pmnodep = dispnode->info.pmnodep;
 
-    INCREMENT_PM_COUNTER(pmCounterGetClassPortInfo);
-	entry = PmInitMad(pm, pmnodep, MMTHD_GET, PM_ATTRIB_ID_CLASS_PORTINFO, 0);
-	if (! entry)
+	INCREMENT_PM_COUNTER(pmCounterGetClassPortInfo);
+	entry = PmInitMad(pm, pmnodep, MMTHD_GET, STL_PM_ATTRIB_ID_CLASS_PORTINFO, 0);
+	if (!entry)
 		goto fail;
 
 	entry->mad.datasize = 0;
 	// fill in rest of entry->mad.data as needed
 
-	IB_LOG_DEBUG1_FMT(__func__,"%.*s Guid "FMT_U64" LID 0x%x",
+	IB_LOG_DEBUG1_FMT(__func__, "%.*s Guid "FMT_U64" LID 0x%x",
 		(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
 		pmnodep->guid, pmnodep->dlid);
 
@@ -416,8 +405,8 @@ static Status_t PmSendGetClassPortInfo(Pm_t *pm, PmDispatcherNode_t *dispnode)
 	if (VSTATUS_OK ==  PmDispatcherSend(pm, entry))
 		return VSTATUS_OK;
 fail:
-	PmFailNodeQuery(entry, dispnode, "send Get(ClassPortInfo)");
-	return VSTATUS_NOT_FOUND;	// no work started
+	PmFailNodeQuery(entry, dispnode, MMTHD_GET, STL_PM_ATTRIB_ID_CLASS_PORTINFO);
+	return VSTATUS_NOT_FOUND;   // no work started
 }
 
 void setPortSelectMask(uint64 *selectMask, uint8 portNum, boolean clear)
@@ -425,7 +414,7 @@ void setPortSelectMask(uint64 *selectMask, uint8 portNum, boolean clear)
 	// selectMask points to an array of 4 uint64s representing sel mask
 
 	int index;
-    if (clear) memset(&selectMask[0], 0, 4 * sizeof(uint64));
+	if (clear) memset(&selectMask[0], 0, 4 * sizeof(uint64));
 
 	// find index
 	index = (3 - (portNum / 64));
@@ -438,8 +427,7 @@ void setPortSelectMask(uint64 *selectMask, uint8 portNum, boolean clear)
 // on success a Set(PortCounters) has been sent and Dispatcher.cntx is
 // ready to process the response
 // On failure, no request nor context entry is outstanding.
-static Status_t PmSendClearPortStatus(Pm_t *pm, PmDispatcherNode_t *dispnode,
-                                        PmDispatcherPacket_t *disppacket)
+static Status_t PmSendClearPortStatus(Pm_t *pm, PmDispatcherNode_t *dispnode, PmDispatcherPacket_t *disppacket)
 {
 	cntxt_entry_t *entry;
 	PmNode_t *pmnodep = dispnode->info.pmnodep;
@@ -448,16 +436,16 @@ static Status_t PmSendClearPortStatus(Pm_t *pm, PmDispatcherNode_t *dispnode,
 	// only called if we successfully got port counters
 	DEBUG_ASSERT(disppacket->DispPorts[0].pPortImage->u.s.gotDataCntrs || disppacket->DispPorts[0].pPortImage->u.s.gotErrorCntrs);
 
-    INCREMENT_PM_COUNTER(pmCounterSetClearPortStatus);
+	INCREMENT_PM_COUNTER(pmCounterSetClearPortStatus);
 	entry = PmInitMad(pm, pmnodep, MMTHD_SET, STL_PM_ATTRIB_ID_CLEAR_PORT_STATUS, 1 << 24);
-	if (! entry)
+	if (!entry)
 		goto fail;
 
 	entry->mad.datasize = sizeof(STL_CLEAR_PORT_STATUS);
 	// fill in rest of entry->mad.data as needed
 	p = (STL_CLEAR_PORT_STATUS *)&entry->mad.data;
 	memset(p, 0, sizeof(STL_CLEAR_PORT_STATUS));
-    memcpy(p->PortSelectMask, disppacket->PortSelectMask, sizeof(uint64)*4);
+	memcpy(p->PortSelectMask, disppacket->PortSelectMask, sizeof(uint64)*4);
 	p->CounterSelectMask.AsReg32 = disppacket->DispPorts[0].pPortImage->clearSelectMask.AsReg32;
 
 	IB_LOG_DEBUG1_FMT(__func__, "%.*s Guid "FMT_U64" LID 0x%x PortSelectMask[3] "FMT_U64" SelMask 0x%04x",
@@ -469,23 +457,22 @@ static Status_t PmSendClearPortStatus(Pm_t *pm, PmDispatcherNode_t *dispnode,
 	if (VSTATUS_OK ==  PmDispatcherSend(pm, entry))
 		return VSTATUS_OK;
 fail:
-	PmFailPacketClear(entry, disppacket, "send Set(PortStatus)");
-	return VSTATUS_NOT_FOUND;	// no work started
+	PmFailPacketClear(entry, disppacket, MMTHD_SET, STL_PM_ATTRIB_ID_CLEAR_PORT_STATUS);
+	return VSTATUS_NOT_FOUND;   // no work started
 }
 
 // on success a Get(PortStatus) has been sent and Dispatcher.cntx is
 // ready to process the response
 // On failure, no request nor context entry is outstanding.
-static Status_t PmSendGetPortStatus(Pm_t *pm, PmDispatcherNode_t *dispnode,
-                                    PmDispatcherPacket_t *disppacket)
+static Status_t PmSendGetPortStatus(Pm_t *pm, PmDispatcherNode_t *dispnode, PmDispatcherPacket_t *disppacket)
 {
 	cntxt_entry_t *entry;
 	PmNode_t *pmnodep = dispnode->info.pmnodep;
 	STL_PORT_STATUS_REQ *p;
 
-    INCREMENT_PM_COUNTER(pmCounterGetPortStatus);
+	INCREMENT_PM_COUNTER(pmCounterGetPortStatus);
 	entry = PmInitMad(pm, pmnodep, MMTHD_GET, STL_PM_ATTRIB_ID_PORT_STATUS, (disppacket->numPorts) << 24);
-	if (! entry)
+	if (!entry)
 		goto fail;
 
 	entry->mad.datasize = sizeof(STL_PORT_STATUS_REQ);
@@ -501,97 +488,86 @@ static Status_t PmSendGetPortStatus(Pm_t *pm, PmDispatcherNode_t *dispnode,
 
 	BSWAP_STL_PORT_STATUS_REQ(p);
 	cs_cntxt_set_callback(entry, DispatchPacketCallback, disppacket);
-	if (VSTATUS_OK ==  PmDispatcherSend(pm, entry))
+	if (VSTATUS_OK == PmDispatcherSend(pm, entry))
 		return VSTATUS_OK;
 fail:
-	PmFailPacketQuery(entry, disppacket, "send Get(PortStatus)");
-	return VSTATUS_NOT_FOUND;	// no work started
+	PmFailPacketQuery(entry, disppacket, MMTHD_GET, STL_PM_ATTRIB_ID_PORT_STATUS);
+	return VSTATUS_NOT_FOUND;   // no work started
 
-}	// End of PmSendGetPortStatus()
+}   // End of PmSendGetPortStatus()
 
 // on success a Get(DataPortCounters) has been sent and Dispatcher.cntx is
 // ready to process the response
 // On failure, no request nor context entry is outstanding.
-static Status_t PmSendGetDataPortCounters(Pm_t *pm, PmDispatcherNode_t *dispnode,
-                                          PmDispatcherPacket_t *disppacket)
+static Status_t PmSendGetDataPortCounters(Pm_t *pm, PmDispatcherNode_t *dispnode, PmDispatcherPacket_t *disppacket)
 {
 	cntxt_entry_t *entry;
 	PmNode_t *pmnodep = dispnode->info.pmnodep;
 	STL_DATA_PORT_COUNTERS_REQ *p;
-    int i;
 
-    INCREMENT_PM_COUNTER(pmCounterGetDataPortCounters);
-    entry = PmInitMad(pm, pmnodep, MMTHD_GET, STL_PM_ATTRIB_ID_DATA_PORT_COUNTERS,
-                                                                     (disppacket->numPorts) << 24);
-	if (! entry)
+	INCREMENT_PM_COUNTER(pmCounterGetDataPortCounters);
+	entry = PmInitMad(pm, pmnodep, MMTHD_GET, STL_PM_ATTRIB_ID_DATA_PORT_COUNTERS, (disppacket->numPorts) << 24);
+	if (!entry)
 		goto fail;
 
 	entry->mad.datasize = sizeof(STL_DATA_PORT_COUNTERS_REQ);
 	// fill in rest of entry->mad.data as needed
 	p = (STL_DATA_PORT_COUNTERS_REQ *)entry->mad.data;
-	
-    for (i = 0; i < disppacket->numPorts; i++) 
-        setPortSelectMask(p->PortSelectMask, disppacket->DispPorts[i].pmportp->portNum, (boolean)(!i));
-   
+	memcpy(p->PortSelectMask, disppacket->PortSelectMask, sizeof(uint64)*4);
+
 	p->VLSelectMask = disppacket->VLSelectMask;
 
 	p->res.s.LocalLinkIntegrityResolution = StlResolutionToShift(pm_config.resolution.LocalLinkIntegrity, RES_ADDER_LLI);
 	p->res.s.LinkErrorRecoveryResolution = StlResolutionToShift(pm_config.resolution.LinkErrorRecovery, RES_ADDER_LER);
 
-	IB_LOG_DEBUG1_FMT(__func__, "%.*s Guid "FMT_U64" LID 0x%x PortSelectMask[3]: "FMT_U64" ",
+	IB_LOG_DEBUG1_FMT(__func__, "%.*s Guid "FMT_U64" LID 0x%x PortSelectMask[3]: "FMT_U64,
 		(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
 		pmnodep->guid, pmnodep->dlid, p->PortSelectMask[3]);
 
 	BSWAP_STL_DATA_PORT_COUNTERS_REQ(p);
 	cs_cntxt_set_callback(entry, DispatchPacketCallback, disppacket);
-	if (VSTATUS_OK ==  PmDispatcherSend(pm, entry))
+	if (VSTATUS_OK == PmDispatcherSend(pm, entry))
 		return VSTATUS_OK;
 fail:
-	PmFailPacketQuery(entry, disppacket, "send Get(DataPortCounters)");
-	return VSTATUS_NOT_FOUND;	// no work started
+	PmFailPacketQuery(entry, disppacket, MMTHD_GET, STL_PM_ATTRIB_ID_DATA_PORT_COUNTERS);
+	return VSTATUS_NOT_FOUND;   // no work started
 
-}	// End of PmSendGetDataPortCounters()
+}   // End of PmSendGetDataPortCounters()
 
 // on success a Get(ErrorPortCounters) has been sent and Dispatcher.cntx is
 // ready to process the response
 // On failure, no request nor context entry is outstanding.
-static Status_t PmSendGetErrorPortCounters(Pm_t *pm, PmDispatcherNode_t *dispnode,
-                                           PmDispatcherPacket_t *disppacket)
+static Status_t PmSendGetErrorPortCounters(Pm_t *pm, PmDispatcherNode_t *dispnode, PmDispatcherPacket_t *disppacket)
 {
 	cntxt_entry_t *entry;
 	PmNode_t *pmnodep = dispnode->info.pmnodep;
 	STL_ERROR_PORT_COUNTERS_REQ *p;
-	int i;
 
-    INCREMENT_PM_COUNTER(pmCounterGetErrorPortCounters);
-    
-	entry = PmInitMad(pm, pmnodep, MMTHD_GET, STL_PM_ATTRIB_ID_ERROR_PORT_COUNTERS, 
-                                                                     (disppacket->numPorts) << 24);
-	if (! entry)
+	INCREMENT_PM_COUNTER(pmCounterGetErrorPortCounters);
+	entry = PmInitMad(pm, pmnodep, MMTHD_GET, STL_PM_ATTRIB_ID_ERROR_PORT_COUNTERS, (disppacket->numPorts) << 24);
+	if (!entry)
 		goto fail;
 
 	entry->mad.datasize = sizeof(STL_ERROR_PORT_COUNTERS_REQ);
 	// fill in rest of entry->mad.data as needed
 	p = (STL_ERROR_PORT_COUNTERS_REQ *)entry->mad.data;
-    
-    for (i = 0; i < disppacket->numPorts; i++) 
-        setPortSelectMask(p->PortSelectMask, disppacket->DispPorts[i].pmportp->portNum, (boolean)(!i));
-   
+	memcpy(p->PortSelectMask, disppacket->PortSelectMask, sizeof(uint64)*4);
+
 	p->VLSelectMask = disppacket->VLSelectMask;
 
 	IB_LOG_DEBUG1_FMT(__func__, "%.*s Guid "FMT_U64" LID 0x%x PortSelectMask[3]: "FMT_U64" VLSelectMask 0x%08x",
 		(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
-		pmnodep->guid, pmnodep->dlid, p->PortSelectMask[3], p->VLSelectMask );
+		pmnodep->guid, pmnodep->dlid, p->PortSelectMask[3], p->VLSelectMask);
 
 	BSWAP_STL_ERROR_PORT_COUNTERS_REQ(p);
 	cs_cntxt_set_callback(entry, DispatchPacketCallback, disppacket);
-	if (VSTATUS_OK ==  PmDispatcherSend(pm, entry))
+	if (VSTATUS_OK == PmDispatcherSend(pm, entry))
 		return VSTATUS_OK;
 fail:
-	PmFailPacketQuery(entry, disppacket, "send Get(ErrorPortCounters)");
-	return VSTATUS_NOT_FOUND;	// no work started
+	PmFailPacketQuery(entry, disppacket, MMTHD_GET, STL_PM_ATTRIB_ID_ERROR_PORT_COUNTERS);
+	return VSTATUS_NOT_FOUND;   // no work started
 
-}	// End of PmSendGetErrorPortCounters()
+}   // End of PmSendGetErrorPortCounters()
 
 static void DispatchPacketDone(Pm_t *pm, PmDispatcherPacket_t *disppacket)
 {
@@ -604,7 +580,7 @@ static void DispatchPacketDone(Pm_t *pm, PmDispatcherPacket_t *disppacket)
 
 	DEBUG_ASSERT(dispnode->info.state != PM_DISP_NODE_DONE);
 	// if dispport->failed,
-	// 		then already incremented pm->Image[pm->SweepIndex].FailedPorts
+	// 		then already incremented pm->Image[pm->SweepIndex].NoRespPorts
 	dispnode->info.numOutstandingPackets--;
 	//Cleanup DispPacket
 	memset(disppacket->PortSelectMask, 0, sizeof(uint64)*4);
@@ -622,12 +598,9 @@ static void DispatchPacketCallback(cntxt_entry_t *entry, Status_t status, void *
 	PmDispatcherPacket_t *disppacket = (PmDispatcherPacket_t *)data;
 	PmDispatcherNode_t *dispnode = disppacket->dispnode;
 	PmDispatcherPort_t *dispport;
-	STL_PORT_STATUS_RSP *portStatusMad;
-	STL_DATA_PORT_COUNTERS_RSP *dataPortCountersMad;
-	STL_ERROR_PORT_COUNTERS_RSP *errorPortCountersMad;
 	STL_CLEAR_PORT_STATUS *clearPortStatusMad;
 
-	IB_LOG_DEBUG3_FMT( __func__,"%.*s Guid "FMT_U64" LID 0x%x NodeState %u Ports %u PortSelectMask[3] "FMT_U64" ",
+	IB_LOG_DEBUG3_FMT( __func__,"%.*s Guid "FMT_U64" LID 0x%x NodeState %u Ports %u PortSelectMask[3] "FMT_U64,
 		(int)sizeof(dispnode->info.pmnodep->nodeDesc.NodeString), dispnode->info.pmnodep->nodeDesc.NodeString,
 		dispnode->info.pmnodep->guid, dispnode->info.pmnodep->dlid, dispnode->info.state,
 		disppacket->numPorts, disppacket->PortSelectMask[3] );
@@ -635,73 +608,75 @@ static void DispatchPacketCallback(cntxt_entry_t *entry, Status_t status, void *
 	switch (dispnode->info.state) {
 	case PM_DISP_NODE_GET_DATACOUNTERS:
 		if (dispnode->info.pmnodep->nodeType == STL_NODE_FI) {
-			if (status != VSTATUS_OK) {
-				PmFailPacketQuery(entry, disppacket, "Get(PortStatus)");
+			if (status != VSTATUS_OK || mad == NULL) {
+				PmFailPacketQuery(entry, disppacket, (mad ? mad->base.method : MMTHD_GET),
+					(mad ? mad->base.aid : STL_PM_ATTRIB_ID_PORT_STATUS));
 				goto nextpacket;	// PacketDone called on Fail
 			} else if (mad->base.status != MAD_STATUS_SUCCESS) {
-				PmMadFailPacketQuery(entry, mad, disppacket, "Get(PortStatus)");
+				PmMadFailPacketQuery(entry, mad, disppacket);
 				goto nextpacket;	// PacketDone called on Fail
+			} else if (mad->base.aid != STL_PM_ATTRIB_ID_PORT_STATUS) {
+				PmMadAttrWrongPacketQuery(entry, mad, disppacket);
+				goto nextpacket;    // PacketDone called on Fail
 			} else {
 				// process port status
-
-				portStatusMad = (STL_PORT_STATUS_RSP *)&mad->data;
-				dispport = &disppacket->DispPorts[0];
-
+				STL_PORT_STATUS_RSP *portStatusMad = (STL_PORT_STATUS_RSP *)&mad->data;
 				BSWAP_STL_PORT_STATUS_RSP(portStatusMad);
 				PmCopyPortStatus(portStatusMad, disppacket);
+
+				dispport = &disppacket->DispPorts[0];
 				dispport->pPortImage->u.s.gotDataCntrs = 1;
 				dispport->pPortImage->u.s.gotErrorCntrs = 1;
 			}
 		}
 		// DataPortCounters
 		else if (dispnode->info.pmnodep->nodeType == STL_NODE_SW) {
-			dataPortCountersMad = (STL_DATA_PORT_COUNTERS_RSP *)&mad->data;
-			if (status != VSTATUS_OK) {
-				PmFailPacketQuery(entry, disppacket, "Get(DataPortCounters)");
-				goto nextpacket;	// PacketDone called on Fail
+			if (status != VSTATUS_OK || mad == NULL) {
+				PmFailPacketQuery(entry, disppacket, (mad ? mad->base.method : MMTHD_GET),
+					(mad ? mad->base.aid : STL_PM_ATTRIB_ID_DATA_PORT_COUNTERS));
+				goto nextpacket;    // PacketDone called on Fail
 			} else if (mad->base.status != MAD_STATUS_SUCCESS) {
-				PmMadFailPacketQuery(entry, mad, disppacket, "Get(DataPortCounters)");
-				goto nextpacket;	// PacketDone called on Fail
+				PmMadFailPacketQuery(entry, mad, disppacket);
+				goto nextpacket;    // PacketDone called on Fail
 			} else if (mad->base.aid != STL_PM_ATTRIB_ID_DATA_PORT_COUNTERS) {
-				PmMadAttrWrongPacketQuery(entry, mad, disppacket, "Get(DataPortCounters)");
-				goto nextpacket;	// PacketDone called on Fail
+				PmMadAttrWrongPacketQuery(entry, mad, disppacket);
+				goto nextpacket;    // PacketDone called on Fail
 			} else {
+				STL_DATA_PORT_COUNTERS_RSP *dataPortCountersMad = (STL_DATA_PORT_COUNTERS_RSP *)&mad->data;
 				BSWAP_STL_DATA_PORT_COUNTERS_RSP(dataPortCountersMad);
-				if ( (dataPortCountersMad->PortSelectMask[3] != disppacket->PortSelectMask[3]) ||
-					(dataPortCountersMad->VLSelectMask != disppacket->VLSelectMask) ) {
-					PmMadSelectWrongPacketQuery(entry, mad, disppacket, "Get(DataPortCounters)");
-					goto nextpacket;	// PacketDone called on Fail
-				} else {
-					// process data port counters
-					PmCopyDataPortCounters(dataPortCountersMad, disppacket);
-					//IB_LOG_DEBUG2("SendPkts=", portCounters->PortStatus->PortXmitPkts);
+				if ((memcmp(dataPortCountersMad->PortSelectMask, disppacket->PortSelectMask, sizeof(uint64)*4) != 0) ||
+					(dataPortCountersMad->VLSelectMask != disppacket->VLSelectMask)) {
+					PmMadSelectWrongPacketQuery(entry, mad, disppacket);
+					goto nextpacket;    // PacketDone called on Fail
 				}
+				// Process Data Port Counters MAD
+				PmCopyDataPortCounters(dataPortCountersMad, disppacket);
 			}
 		}
 		break;
 
-	case PM_DISP_NODE_GET_ERRORCOUNTERS: ;
-		errorPortCountersMad = (STL_ERROR_PORT_COUNTERS_RSP *)&mad->data;
-		if (status != VSTATUS_OK) {
-			PmFailPacketQuery(entry, disppacket, "Get(ErrorPortCounters)");
-			goto nextpacket;	// PacketDone called on Fail
+	case PM_DISP_NODE_GET_ERRORCOUNTERS:
+		// ErrorPortCounters
+		if (status != VSTATUS_OK || mad == NULL) {
+			PmFailPacketQuery(entry, disppacket, (mad ? mad->base.method : MMTHD_GET),
+				(mad ? mad->base.aid : STL_PM_ATTRIB_ID_ERROR_PORT_COUNTERS));
+			goto nextpacket;    // PacketDone called on Fail
 		} else if (mad->base.status != MAD_STATUS_SUCCESS) {
-			PmMadFailPacketQuery(entry, mad, disppacket, "Get(ErrorPortCounters)");
-			goto nextpacket;	// PacketDone called on Fail
+			PmMadFailPacketQuery(entry, mad, disppacket);
+			goto nextpacket;    // PacketDone called on Fail
 		} else if (mad->base.aid != STL_PM_ATTRIB_ID_ERROR_PORT_COUNTERS) {
-			PmMadAttrWrongPacketQuery(entry, mad, disppacket, "Get(ErrorPortCounters)");
-			goto nextpacket;	// PacketDone called on Fail
+			PmMadAttrWrongPacketQuery(entry, mad, disppacket);
+			goto nextpacket;    // PacketDone called on Fail
 		} else {
+			STL_ERROR_PORT_COUNTERS_RSP *errorPortCountersMad = (STL_ERROR_PORT_COUNTERS_RSP *)&mad->data;
 			BSWAP_STL_ERROR_PORT_COUNTERS_RSP(errorPortCountersMad);
-			if ( (errorPortCountersMad->PortSelectMask[3] != disppacket->PortSelectMask[3]) ||
-				(errorPortCountersMad->VLSelectMask != disppacket->VLSelectMask) ) {
-				PmMadSelectWrongPacketQuery(entry, mad, disppacket, "Get(ErrorPortCounters)");
-				goto nextpacket;	// PacketDone called on Fail
-			} else {
-				// process error port counters
-				PmCopyErrorPortCounters((STL_ERROR_PORT_COUNTERS_RSP *)mad->data, disppacket);
-				//IB_LOG_DEBUG2("SendPkts=", portCounters->PortStatus->PortXmitPkts);
+			if ((memcmp(errorPortCountersMad->PortSelectMask, disppacket->PortSelectMask, sizeof(uint64)*4) != 0) ||
+				(errorPortCountersMad->VLSelectMask != disppacket->VLSelectMask)) {
+				PmMadSelectWrongPacketQuery(entry, mad, disppacket);
+				goto nextpacket;    // PacketDone called on Fail
 			}
+			// process error port counters
+			PmCopyErrorPortCounters(errorPortCountersMad, disppacket);
 		}
 		break;
 
@@ -710,8 +685,9 @@ static void DispatchPacketCallback(cntxt_entry_t *entry, Status_t status, void *
 		// we already tabulated, so on failure we simply do not set the Clear
 		// flags in the pCounters.  Hence next sweep will assume we didn't clear
 		//DEBUG_ASSERT(dispport->pCounters->flags & PM_PORT_GOT_COUNTERS);
-		if (status != VSTATUS_OK) {
-			PmFailPacketClear(entry, disppacket, "Set(PortStatus)");
+		if (status != VSTATUS_OK || mad == NULL) {
+			PmFailPacketClear(entry, disppacket, (mad ? mad->base.method : MMTHD_GET),
+				(mad ? mad->base.aid : STL_PM_ATTRIB_ID_CLEAR_PORT_STATUS));
 			goto nextpacket;
 #if 0
 		} else if (mad->base.status != MAD_STATUS_SUCCESS) {
@@ -726,21 +702,12 @@ static void DispatchPacketCallback(cntxt_entry_t *entry, Status_t status, void *
 			uint32 select = dispport->pPortImage->clearSelectMask.AsReg32;
 			clearPortStatusMad = (STL_CLEAR_PORT_STATUS *)&mad->data;
 			BSWAP_STL_CLEAR_PORT_STATUS_REQ(clearPortStatusMad);
-			if (select != clearPortStatusMad->CounterSelectMask.AsReg32 || 
-					disppacket->PortSelectMask[3] != clearPortStatusMad->PortSelectMask[3]) {
-				PmFailPacketClear(entry, disppacket, "Set(PortStatus)");
+			if ((memcmp(clearPortStatusMad->PortSelectMask, disppacket->PortSelectMask, sizeof(uint64)*4) != 0) ||
+				(clearPortStatusMad->CounterSelectMask.AsReg32 != select)) {
+				PmFailPacketClear(entry, disppacket, mad->base.method, mad->base.aid);
 				goto nextpacket;
 			}
 			// process clear port counters
-			// if we cleared all the dataxfer or error counters, we merely set
-			// a flag and save some work here and in PmTabulatePort
-			// otherwise, clear counters individually and delta
-			// computation on next sweep will see 0 in pLastCounters
-			if (PM_ALLBITS_SET(select, dispnode->pm->clearCounterSelect.AsReg32))
-				dispport->pPortImage->u.s.ClearAll = 1;
-			else //if (select != 0)
-				dispport->pPortImage->u.s.ClearSome = 1;
-
 			//PmClearSelectedPortCounters(dispnode->pm, disppacket);
 		}
 		break;
@@ -910,7 +877,7 @@ static Status_t DispatchNodeNextStep(Pm_t *pm, PmNode_t *pmnodep, PmDispatcherNo
         status = vs_pool_alloc(&pm_pool, size, (void *)&dispnode->info.activePorts);
         if (status != VSTATUS_OK || !dispnode->info.activePorts) {
             IB_LOG_ERROR_FMT(__func__, "PM: Failed to allocate Dispatcher activePorts for Node:%.*s status:%u",
-                (int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString, status );
+                (int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString, status);
             return VSTATUS_NOT_FOUND;
         }
         memset(dispnode->info.activePorts, 0, size);
@@ -1160,7 +1127,7 @@ int MergePortIntoPacket(Pm_t *pm, PmDispatcherNode_t *dispnode, PmPort_t *pmport
 	Status_t status;
 	PmPort_t *pmFirstPort;
 
-	IB_LOG_DEBUG3_FMT(__func__,"%.*s Guid "FMT_U64" LID 0x%x Node State %u PortSelectMask[3] "FMT_U64" ",
+	IB_LOG_DEBUG3_FMT(__func__,"%.*s Guid "FMT_U64" LID 0x%x Node State %u PortSelectMask[3] "FMT_U64,
 		(int)sizeof(dispnode->info.pmnodep->nodeDesc.NodeString), dispnode->info.pmnodep->nodeDesc.NodeString,
 		dispnode->info.pmnodep->guid, dispnode->info.pmnodep->dlid, 
 		dispnode->info.state, disppacket->PortSelectMask[3]);
@@ -1316,7 +1283,7 @@ size_t CalculatePortInPacket(PmDispatcherNode_t *dispnode, PmDispatcherPacket_t 
 }
 static Status_t DispatchPacketNextStep(Pm_t *pm, PmDispatcherNode_t *dispnode, PmDispatcherPacket_t *disppacket)
 {
-	IB_LOG_DEBUG3_FMT(__func__,"%.*s Guid "FMT_U64" LID 0x%x Node State %u PortSelectMask[3] "FMT_U64" ",
+	IB_LOG_DEBUG3_FMT(__func__,"%.*s Guid "FMT_U64" LID 0x%x Node State %u PortSelectMask[3] "FMT_U64,
 		(int)sizeof(dispnode->info.pmnodep->nodeDesc.NodeString),
 		dispnode->info.pmnodep->nodeDesc.NodeString,
 		dispnode->info.pmnodep->guid, dispnode->info.pmnodep->dlid,
@@ -1327,7 +1294,7 @@ static Status_t DispatchPacketNextStep(Pm_t *pm, PmDispatcherNode_t *dispnode, P
 		return VSTATUS_NOT_FOUND;	// nothing else to do for this port        
     dispnode->info.numOutstandingPackets++;    
 
-	if (disppacket->numPorts > 1) {
+	if (disppacket->numPorts > 1 && dispnode->info.state != PM_DISP_NODE_CLR_PORT_STATUS) {
 		// Sort DispPorts by Port Number, so that it will match response MAD order
 		qsort(disppacket->DispPorts, (size_t)disppacket->numPorts,
 			sizeof(PmDispatcherPort_t), PmDispatcherPortNumCompare);
@@ -1369,16 +1336,16 @@ static void DispatchNodeCallback(cntxt_entry_t *entry, Status_t status, void *da
 	switch (dispnode->info.state) {
 	case PM_DISP_NODE_CLASS_INFO:
 		if (status != VSTATUS_OK) {
-			PmFailNodeQuery(entry, dispnode, "Get(ClassPortInfo)");
+			PmFailNodeQuery(entry, dispnode, MMTHD_GET, STL_PM_ATTRIB_ID_CLASS_PORTINFO);
 			goto nextnode;	// NodeDone called on Fail
 		} else if (mad->base.status != MAD_STATUS_SUCCESS) {
-			PmMadFailNodeQuery(entry, mad, dispnode, "Get(ClassPortInfo)");
+			PmMadFailNodeQuery(entry, mad, dispnode);
 			goto nextnode;	// NodeDone called on Fail
-		} else if (mad->base.aid != PM_ATTRIB_ID_CLASS_PORTINFO) {
-			PmMadAttrWrongNodeQuery(entry, mad, dispnode, "Get(ClassPortInfo)");
+		} else if (mad->base.aid != STL_PM_ATTRIB_ID_CLASS_PORTINFO) {
+			PmMadAttrWrongNodeQuery(entry, mad, dispnode);
 			goto nextnode;	// NodeDone called on Fail
 		} else if (FSUCCESS != ProcessPmaClassPortInfo(pmnodep,(STL_CLASS_PORT_INFO*)mad->data) ){
-			PmFailNodeQuery(entry, dispnode, "Get(ClassPortInfo)");
+			PmFailNodeQuery(entry, dispnode, MMTHD_GET, STL_PM_ATTRIB_ID_CLASS_PORTINFO);
 			goto nextnode;	// NodeDone called on Fail
 		}
 		break;
@@ -1412,8 +1379,8 @@ static void DispatchNodeDone(Pm_t *pm, PmDispatcherNode_t *dispnode)
 	// we handle this once when all ports done, hence we will only increment
 	// once even if multiple ports fail in the same node
 	if (dispnode->info.u.s.failed) {
-		pm->Image[pm->SweepIndex].FailedNodes++;
-		INCREMENT_PM_COUNTER(pmCounterPmFailedNodes);
+		pm->Image[pm->SweepIndex].NoRespNodes++;
+		INCREMENT_PM_COUNTER(pmCounterPmNoRespNodes);
 	}
 	dispnode->info.state = PM_DISP_NODE_DONE;
         if(dispnode->info.activePorts) {
@@ -1497,7 +1464,7 @@ FSTATUS PmSweepAllPortCounters(Pm_t *pm)
 	Status_t rc;
 
 	IB_LOG_INFO0("START Sweeping All Port Counters...");
-	pmimagep->FailedNodes = pmimagep->FailedPorts = 0;
+	pmimagep->NoRespNodes = pmimagep->NoRespPorts = 0;
 	pmimagep->SkippedNodes = pmimagep->SkippedPorts = 0;
 	pmimagep->UnexpectedClearPorts = 0;
 	pmimagep->DowngradedPorts = 0;
@@ -1509,8 +1476,8 @@ FSTATUS PmSweepAllPortCounters(Pm_t *pm)
 	} while (rc == VSTATUS_TIMEOUT);
 
 	IB_LOG_INFO0("DONE Sweeping All Port Counters");
-	if (pmimagep->FailedPorts)
-		IB_LOG_WARN_FMT(__func__, "Unable to get %u Ports on %u Nodes", pmimagep->FailedPorts, pmimagep->FailedNodes);
+	if (pmimagep->NoRespPorts)
+		IB_LOG_WARN_FMT(__func__, "Unable to get %u Ports on %u Nodes", pmimagep->NoRespPorts, pmimagep->NoRespNodes);
 	if (pmimagep->UnexpectedClearPorts)
 		IB_LOG_WARN_FMT(__func__, "%u Ports were unexpectedly cleared", pmimagep->UnexpectedClearPorts);
 	if (pmimagep->DowngradedPorts)

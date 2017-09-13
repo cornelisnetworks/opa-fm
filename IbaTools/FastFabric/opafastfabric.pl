@@ -1076,7 +1076,8 @@ sub fabricsetup_install
 	my $install_file;
 	my $product = read_ffconfig_param("FF_PRODUCT");
 	my $version = read_ffconfig_param("FF_PRODUCT_VERSION");
-	my $packages = read_ffconfig_param("FF_PACKAGES");
+	my $packages = "";
+	my $options;
  
 	$install_file="$product.$version.tgz";
 
@@ -1084,9 +1085,6 @@ sub fabricsetup_install
 		return 1;
 	}
 	do {
-		# TBD - provide an install menu to allow selection of packages for
-		# the fabric installation, presently we default to selection in
-		# $FF_CONF_FILE
 		do {
 			if ( "$dir" ne "none" && ! -e "$dir/$install_file" ) {
 				print "$dir/$install_file: not found\n";
@@ -1110,17 +1108,55 @@ sub fabricsetup_install
 			$FabricSetupScpFromDir="$dir";
 			print "\nAn upgrade/reinstall or an initial installation may be performed.\n\n";
 			print "An upgrade/reinstall requires an existing installation of OPA software\non the selected nodes and will upgrade or reinstall the existing packages.\n\n";
-			print "An initial installation will uninstall any existing OPA software\nand install the packages selected by FF_PACKAGES:\n    $packages\n";
+			print "An initial installation will first uninstall any existing OPA software.\n";
+
 			my $choice = GetChoice("Would you like to do a fresh [i]nstall, an [u]pgrade or [s]kip this step?", 
 				"u", ("i", "u", "s"));
 
 			if ("$choice" eq "u") {
 				$install_mode="upgrade";
 				print "You have selected to perform an upgrade installation\n";
+				$options = read_ffconfig_param("FF_UPGRADE_OPTIONS");
+				if (! GetYesNo("Do you want to use the following upgrade options: '$options'?", "y")) {
+					do {
+						print "Enter upgrade options (or none):";
+						chomp($options = <STDIN>);
+						$options=remove_whitespace($options);
+					} until ( length($options) != 0);
+				}
+				if ("$options" eq "none") {
+					$options="";
+				}
+				$options = "-U \'$options\'";
 			} elsif ("$choice" eq "i") {
 				$install_mode="load";
 				print "You have selected to perform an initial installation\n";
 				print "This will uninstall any existing OPA software on the selected nodes\n";
+				$options = read_ffconfig_param("FF_INSTALL_OPTIONS");
+				if (! GetYesNo("Do you want to use the following install options: '$options'?", "y")) {
+					do {
+						print "Enter install options (or none):";
+						chomp($options = <STDIN>);
+						$options=remove_whitespace($options);
+					} until ( length($options) != 0);
+				}
+				if ("$options" eq "none") {
+					$options="";
+				}
+				$options = "-I \'$options\'";
+				$packages = read_ffconfig_param("FF_PACKAGES");
+				if (! GetYesNo("Do you want to install the following packages?\n    $packages\n", "y")) {
+					do {
+						print "Enter packages (or none):";
+						chomp($packages = <STDIN>);
+						$packages=remove_whitespace($packages);
+					} until ( length($packages) != 0);
+					if ("$packages" eq "none") {
+						printf "You have selected to skip the installation step\n";
+						$install_mode="skip"
+					}
+				}
+				$packages = "-P \'$packages\'";
 			} else {
 				print "You have selected to skip the installation/upgrade step\n";
 				$install_mode="skip";
@@ -1128,7 +1164,7 @@ sub fabricsetup_install
 		}
 	} until (GetYesNo("Are you sure you want to proceed?", "n") );
 	if ( "$install_mode" ne "skip" ) {
-		return run_fabric_cmd("$BIN_DIR/opahostadmin -f $FabricSetupHostsFile -d $FabricSetupScpFromDir $install_mode");
+		return run_fabric_cmd("$BIN_DIR/opahostadmin -f $FabricSetupHostsFile -d $FabricSetupScpFromDir $options $packages $install_mode");
 	}
 	return 0;
 }
@@ -1353,8 +1389,13 @@ sub fabricsetup_buildapps
 	if (GetYesNo("Do you want to build MPI Test Apps?", "y") ) {
 		$res = fabricsetup_buildmpi();
 	}
-	if (GetYesNo("Do you want to build SHMEM Test Apps?", "y") ) {
-		$res |= fabricsetup_buildshmem();
+	if ( installed_shmem() ) {
+		if (GetYesNo("Do you want to build SHMEM Test Apps?", "y") ) {
+			$res |= fabricsetup_buildshmem();
+		}
+	} else {
+		printf("Skipping option to build SHMEM Test Apps - SHMEM not installed\n");
+		HitKeyCont;
 	}
 	return $res;
 }
@@ -1628,37 +1669,56 @@ sub fabricadmin_findgood
 
 sub fabricadmin_singlehost
 {
-	my $verifyhosts_opts="-c"; # Always copy the hostverify.sh file.
+	my $verifyhosts_opts="";
 	my $verifyhosts_tests="";
 	my $result_dir = read_ffconfig_param("FF_RESULT_DIR");
 	my $hostverify_sample = "/usr/share/opa/samples/hostverify.sh";
-	my $hostverify = read_ffconfig_param("FF_HOSTVERIFY_DIR") . "/hostverify.sh";
+	my $hostverify_original = read_ffconfig_param("FF_HOSTVERIFY_DIR") . "/hostverify.sh";
+	my $hostverify = "";
 	my $hostverify_res = "hostverify.res";
 	my $inp;
 	my $timelimit = 1;
+	my $hostverify_specific = read_ffconfig_param("FF_HOSTVERIFY_DIR") . "/hostverify_" . basename($FabricAdminHostsFile) . ".sh";
+	my $use_specific = 0;
 
 	if (! valid_config_file("Host File", $FabricAdminHostsFile) ) {
 		return 1;
 	}
-	while (GetYesNo("Would you like to edit $hostverify and copy to hosts?", "y") ) {
-		
-		if ( ! -e "$hostverify" ) {
-			copy_data_file("$hostverify_sample", "$hostverify");
-		} else {
-			if(GetYesNo("Would you like to copy $hostverify_sample to $hostverify ", "n")) {	
+	if (-e $hostverify_specific && GetYesNo("Would you like to use $hostverify_specific?", "y") ) {
+		$use_specific = 1;
+		$hostverify = $hostverify_specific;
+	} else {
+		$hostverify = $hostverify_original;
+	}
+
+	if (GetYesNo("Would you like to copy $hostverify to hosts?", "y") ) {
+		$verifyhosts_opts="-c"; # copy the hostverify.sh file
+
+		while (GetYesNo("Would you like to edit $hostverify?", "y") ) {
+
+			if ( ! -e "$hostverify" ) {
 				copy_data_file("$hostverify_sample", "$hostverify");
+			} else {
+				if(GetYesNo("Would you like to copy $hostverify_sample to $hostverify ", "n")) {	
+					copy_data_file("$hostverify_sample", "$hostverify");
+				}
+			}
+
+			print "About to: $Editor $hostverify\n";
+			if ( HitKeyContAbortable() == 1) {
+				return 1;
+			}
+			system("$Editor $hostverify");
+			if ( ! -e "$hostverify" ) {
+				print "You must have a $hostverify file to proceed\n\n";
+			} else {
+				last;
 			}
 		}
-
-		print "About to: $Editor $hostverify\n";
-		if ( HitKeyContAbortable() == 1) {
-			return 1;
-		}
-		system("$Editor $hostverify");
-		if ( ! -e "$hostverify" ) {
-			print "You must have a $hostverify file to proceed\n\n";
-		} else {
-			last;
+		if (! $use_specific) {
+			if (GetYesNo("Would you like to save $hostverify locally as $hostverify_specific?", "n") ) {
+				copy_data_file("$hostverify", "$hostverify_specific");
+			}
 		}
 	}
 	if (GetYesNo("Would you like to specify tests to run?", "n") ) {
@@ -1702,7 +1762,7 @@ sub fabricadmin_singlehost
 	if (check_load($FabricAdminHostsFile, "", "prior to verification") ) {
 		return 1;
 	}
-	run_fabric_cmd("$BIN_DIR/opaverifyhosts -k $verifyhosts_opts -u $hostverify_res -T $timelimit -f $FabricAdminHostsFile $verifyhosts_tests", "skip_prompt");
+	run_fabric_cmd("$BIN_DIR/opaverifyhosts -k $verifyhosts_opts -u $hostverify_res -T $timelimit -f $FabricAdminHostsFile -F $hostverify $verifyhosts_tests", "skip_prompt");
 	print "About to: $Editor $result_dir/verifyhosts.res\n";
 	if ( HitKeyContAbortable() ) {
 		return 1;

@@ -35,11 +35,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //    sm_qos.c                                                          //
 //                                                                      //
 // DESCRIPTION                                                          //
-//    This file contains SM QoS routines for setting up SL2VL mapping   //  
-//    and VL Arbitration tables.                                        //
+//    This file contains SM QoS routines for setting up SL/SC/VL        //  
+//    mapping and VL Arbitration tables.                                //
 //                                                                      //
 // FUNCTIONS                                                            //
-//    sm_setup_SC2VL         Setup the SL2VL mapping tables             //
+//    sm_setup_SC2VL         Setup the SC2VL mapping tables             //
 //    sm_initialize_VLArbitration   Program VLArb tables                //
 //                                                                      //
 //======================================================================//
@@ -48,6 +48,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_g.h"
 #include "ib_status.h"
 #include "sm_l.h"
+#include "sm_qos.h"
 
 //			VF, SL, SC, VL mapping: 
 //
@@ -91,6 +92,12 @@ sm_aggregateToScvl(Node_t * nodep, STL_AGGREGATE * aggr);
 */ 
 static Status_t
 sm_aggregateToVlarb(Node_t * nodep, STL_AGGREGATE * aggr);
+
+/**
+	Update BufferControlTable  fields from @c agrr.  Assumes aggr->Data is in network order.
+*/
+static Status_t
+sm_aggregateToBfrctrl(Node_t * nodep, STL_AGGREGATE * aggr);
 
 /**
 	Do LR Get(Aggregate) of attributes on @c nodep with values from SMA at @c smaportp.
@@ -140,10 +147,6 @@ setWeightMultiplier(Qos_t * qos);
 // The following is for uniform qos
 static Qos_t *sm_Qos = NULL;
 
-static Qos_t* AllocQos(void);
-static void FreeQos(Qos_t* qos);
-Qos_t* GetQos(uint8_t vl);
-
 int sm_check_node_cache_valid(Node_t *);
 
 static Status_t
@@ -179,63 +182,10 @@ static Status_t
 
 static Status_t PopulateSCtoSL(RoutingModule_t *rm, const Qos_t * qos,
 	VirtualFabrics_t *VirtualFabrics, uint8_t *SLtoSC, uint8_t *SCtoSL);
-static void SetupQos(RoutingModule_t *rm, Qos_t * qos,
+void sm_setup_qos(RoutingModule_t *rm, Qos_t * qos,
 	VirtualFabrics_t *VirtualFabrics, const uint8_t *SLtoSC);
-static void SetupQos1VL(RoutingModule_t *rm, Qos_t * qos,
+void sm_setup_qos_1vl(RoutingModule_t *rm, Qos_t * qos,
 	VirtualFabrics_t *VirtualFabrics);
-
-static void
-sm_printf_vf_debug(VirtualFabrics_t *vfs)
-{
-    int vf;
-    for (vf=0; vf<vfs->number_of_vfs; vf++) {
-        IB_LOG_INFINI_INFO_FMT_VF(vfs->v_fabric[vf].name, "",
-            "Base SL:%d Resp SL:%d Requires Resp SL:%d Multicast SL:%d QOS:%d HP:%d",
-            vfs->v_fabric[vf].base_sl, vfs->v_fabric[vf].resp_sl,
-            vfs->v_fabric[vf].requires_resp_sl, vfs->v_fabric[vf].mcast_sl,
-            vfs->v_fabric[vf].qos_enable, vfs->v_fabric[vf].priority);
-    }
-
-    if (sm_config.sm_debug_vf)
-    {
-        // TODO do this for all (maybe just 2,4,8,9) VLs
-        // TODO do in a loop
-        // Dump SC to SL
-        IB_LOG_INFINI_INFO_FMT(__func__, "SCSL = 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
-                               sm_SCtoSL[0], sm_SCtoSL[1], sm_SCtoSL[2], sm_SCtoSL[3],
-                               sm_SCtoSL[4], sm_SCtoSL[5], sm_SCtoSL[6], sm_SCtoSL[7]);
-
-        IB_LOG_INFINI_INFO_FMT(__func__, "       0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
-                               sm_SCtoSL[8], sm_SCtoSL[9], sm_SCtoSL[10], sm_SCtoSL[11],
-                               sm_SCtoSL[12], sm_SCtoSL[13], sm_SCtoSL[14], sm_SCtoSL[15]);
-
-        IB_LOG_INFINI_INFO_FMT(__func__, "       0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
-                               sm_SCtoSL[16], sm_SCtoSL[17], sm_SCtoSL[18], sm_SCtoSL[19],
-                               sm_SCtoSL[20], sm_SCtoSL[21], sm_SCtoSL[22], sm_SCtoSL[23]);
-
-        IB_LOG_INFINI_INFO_FMT(__func__, "       0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
-                               sm_SCtoSL[24], sm_SCtoSL[25], sm_SCtoSL[26], sm_SCtoSL[27],
-                               sm_SCtoSL[28], sm_SCtoSL[29], sm_SCtoSL[30], sm_SCtoSL[31]);
-
-        // Dump SL to SC
-        IB_LOG_INFINI_INFO_FMT(__func__, "SLSC = 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
-                               sm_SLtoSC[0], sm_SLtoSC[1], sm_SLtoSC[2], sm_SLtoSC[3],
-                               sm_SLtoSC[4], sm_SLtoSC[5], sm_SLtoSC[6], sm_SLtoSC[7]);
-
-        IB_LOG_INFINI_INFO_FMT(__func__, "       0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
-                               sm_SLtoSC[8], sm_SLtoSC[9], sm_SLtoSC[10], sm_SLtoSC[11],
-                               sm_SLtoSC[12], sm_SLtoSC[13], sm_SLtoSC[14], sm_SLtoSC[15]);
-
-        IB_LOG_INFINI_INFO_FMT(__func__, "       0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
-                               sm_SLtoSC[16], sm_SLtoSC[17], sm_SLtoSC[18], sm_SLtoSC[19],
-                               sm_SLtoSC[20], sm_SLtoSC[21], sm_SLtoSC[22], sm_SLtoSC[23]);
-
-        IB_LOG_INFINI_INFO_FMT(__func__, "       0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
-                               sm_SLtoSC[24], sm_SLtoSC[25], sm_SLtoSC[26], sm_SLtoSC[27],
-                               sm_SLtoSC[28], sm_SLtoSC[29], sm_SLtoSC[30], sm_SLtoSC[31]);
-
-    }
-}
 
 Status_t
 sm_update_bw(RoutingModule_t *rm, VirtualFabrics_t *vfs)
@@ -393,7 +343,7 @@ sm_assign_scs_to_sls_FixedMap(RoutingModule_t *rm, VirtualFabrics_t *vfs)
 		return ret;
 	}
 
-	qos = AllocQos();
+	qos = sm_alloc_qos();
 
     memset(SLtoSC, 15, sizeof(SLtoSC));
     memset(SCtoSL, 0xff, sizeof(SCtoSL));
@@ -405,27 +355,23 @@ sm_assign_scs_to_sls_FixedMap(RoutingModule_t *rm, VirtualFabrics_t *vfs)
 	// Only perform SC to SL assignment on minimum supported VLs
 	ret = PopulateSCtoSL(rm, &qos[rm->funcs.min_vls()], vfs, SLtoSC, SCtoSL);
     if (ret != VSTATUS_OK) {
-		FreeQos(qos);
+		sm_free_qos(qos);
     	return ret;
     }
 
 	// 1 VL is a special case, always set it up
-    SetupQos1VL(rm, &qos[1], vfs);
+    sm_setup_qos_1vl(rm, &qos[1], vfs);
 
 	// Set Qos for all supported number of VLs
 	for (i = rm->funcs.min_vls(); i <= rm->funcs.max_vls(); i++) {
-    	SetupQos(rm, &qos[i], vfs, SLtoSC);
+    	sm_setup_qos(rm, &qos[i], vfs, SLtoSC);
 	}
 
     memcpy(sm_SLtoSC, SLtoSC, sizeof(SLtoSC));
     memcpy(sm_SCtoSL, SCtoSL, sizeof(SCtoSL));
 
-	Qos_t * tmpQos = sm_Qos;
-	sm_Qos = qos;
+    sm_install_qos(qos);
 
-	FreeQos(tmpQos);
-
-    sm_printf_vf_debug(vfs);
     return ret;
 }
 
@@ -468,7 +414,7 @@ sm_roundVLBandwidths(Qos_t * origQos)
 	origQos->weightMultiplier = qos.weightMultiplier;
 }
 
-static void
+void
 sm_DbgPrintQOS(Qos_t * qos)
 {
     if (sm_config.sm_debug_vf)
@@ -511,7 +457,7 @@ sm_DbgPrintQOS(Qos_t * qos)
     }
 }
 
-static void
+static inline void
 AddVfToVl(Qos_t *qos, int vl, int vf)
 {
 	int i;
@@ -523,7 +469,6 @@ AddVfToVl(Qos_t *qos, int vl, int vf)
 			break;
 		}
 	}
-	return;
 }
 
 /*
@@ -641,7 +586,7 @@ fail:
     return ret;
 }
 
-static void
+void
 DivideBwUp(RoutingModule_t *rm, Qos_t *qos, int bw, int base_sl, int resp_sl,
 	int mcast_sl, const uint8_t *SLtoSC)
 {
@@ -697,8 +642,8 @@ DivideBwUp(RoutingModule_t *rm, Qos_t *qos, int bw, int base_sl, int resp_sl,
 	}
 }
 
-static void
-SetupQos(RoutingModule_t *rm, Qos_t * qos, VirtualFabrics_t *VirtualFabrics, const uint8_t *SLtoSC)
+void
+sm_setup_qos(RoutingModule_t *rm, Qos_t * qos, VirtualFabrics_t *VirtualFabrics, const uint8_t *SLtoSC)
 {
 	// Assign SCs to SLs for Fixed mapping.
 	int sl, sc, vl, vf, numSCs;
@@ -782,8 +727,8 @@ SetupQos(RoutingModule_t *rm, Qos_t * qos, VirtualFabrics_t *VirtualFabrics, con
 }
 
 // Special QOS level where all non-SMA traffic goes over VL0.
-static void
-SetupQos1VL(RoutingModule_t *rm, Qos_t * qos, VirtualFabrics_t *VirtualFabrics)
+void
+sm_setup_qos_1vl(RoutingModule_t *rm, Qos_t * qos, VirtualFabrics_t *VirtualFabrics)
 {
     int vf;
 
@@ -809,22 +754,22 @@ free_vlarbList(Qos_t *qos) {
 	}
 }
 
-static Qos_t*
-AllocQos(void)
+Qos_t*
+sm_alloc_qos(void)
 {
 	Qos_t *qos = NULL;
 	int i, j;
 
 	vs_pool_alloc(&sm_pool, sizeof(Qos_t) * (STL_MAX_VLS + 1), (void*)&qos);
 	if (!qos)
-		IB_FATAL_ERROR("AllocQos: No memory for QoS structures, exiting.");
+		IB_FATAL_ERROR("sm_alloc_qos: No memory for QoS structures, exiting.");
 
 	for (i=1; i<=STL_MAX_VLS; i++) {
 		memset(&qos[i], 0, sizeof(qos[i]));
 		qos[i].numVLs = i;
 		if (!bitset_init(&sm_pool, &qos[i].highPriorityVLs, STL_MAX_VLS)
 		|| !bitset_init(&sm_pool, &qos[i].lowPriorityVLs, STL_MAX_VLS)) {
-			IB_FATAL_ERROR("AllocQos: No memory for QoS structures, exiting.");
+			IB_FATAL_ERROR("sm_alloc_qos: No memory for QoS structures, exiting.");
 		}
 		for (j=0; j< STL_MAX_SCS; j++) {
 			qos[i].scvl.SCVLMap[j].VL=15; // Invalid VL
@@ -833,8 +778,8 @@ AllocQos(void)
 	return qos;
 }
 
-static void
-FreeQos(Qos_t* qos)
+void
+sm_free_qos(Qos_t* qos)
 {
 	int i;
 
@@ -853,12 +798,20 @@ FreeQos(Qos_t* qos)
 void
 sm_destroy_qos(void)
 {
-	FreeQos(sm_Qos);
+	sm_free_qos(sm_Qos);
 	sm_Qos = NULL;
 }
 
+void
+sm_install_qos(Qos_t *qos)
+{
+	Qos_t *tmpQos = sm_Qos;
+	sm_Qos = qos;
+	sm_free_qos(tmpQos);
+}
+
 Qos_t*
-GetQos(uint8_t vl)
+sm_get_qos(uint8_t vl)
 {
 	// Range of data VLs is 1 - 31
 	if ((vl>=1) && (vl<STL_MAX_VLS)) {
@@ -1019,6 +972,7 @@ WriteGen1SCSC(Topology_t * topop, Node_t * switchp, STL_LID dlid,  int numScscBl
 		while (StlNumPortsSetInPortMask(scsc[b].EgressPortMask, switchp->nodeInfo.NumPorts)) {
 			if (StlTestAndClearPortInPortMask(scsc[b].EgressPortMask, switchp->nodeInfo.NumPorts)) {
 				// B=1, all Egress
+				egress = switchp->nodeInfo.NumPorts;
 				for (e=switchp->nodeInfo.NumPorts-1; e>0; e--) {
 					if (!StlTestAndClearPortInPortMask(scsc[b].EgressPortMask, e))
 						break;
@@ -1093,7 +1047,6 @@ WriteGen1SCSC(Topology_t * topop, Node_t * switchp, STL_LID dlid,  int numScscBl
 				if (status != VSTATUS_OK) {
 					IB_LOG_WARN_FMT(__func__, "Failed to set SCSC Map for switch %s nodeGuid " FMT_U64,
 									sm_nodeDescString(switchp), switchp->nodeInfo.NodeGUID);
-					return status;
 	
 				} else {
 					// update cached data on success
@@ -2137,6 +2090,9 @@ sm_node_handleGetRespAggr(Node_t * nodep, Port_t * smaportp, STL_AGGREGATE * agg
 			case STL_MCLASS_ATTRIB_ID_VL_ARBITRATION:
 				s = sm_aggregateToVlarb(nodep, aggr);
 				break;
+			case STL_MCLASS_ATTRIB_ID_BUFFER_CONTROL_TABLE:
+				s = sm_aggregateToBfrctrl(nodep, aggr);
+				break;
 			default:
 				return VSTATUS_BAD;
 		}
@@ -2299,6 +2255,34 @@ sm_aggregateToVlarb(Node_t * nodep, STL_AGGREGATE * aggr)
 				break;
 		}
 	}
+
+	return VSTATUS_OK;
+}
+
+static Status_t
+sm_aggregateToBfrctrl(Node_t * nodep, STL_AGGREGATE * aggr)
+{
+	const uint8_t *data = (uint8_t*)aggr->Data;
+	const uint8_t startPort = (uint8_t)(aggr->AttributeModifier & 0xff);
+	const uint8_t count = (nodep->nodeInfo.NodeType == NI_TYPE_CA) ? 1 : (uint8_t)(aggr->AttributeModifier >> 24);
+	uint8_t i = 0;
+
+	if (aggr->Result.s.Error)
+		return VSTATUS_OK;
+
+	if ((aggr->Result.s.RequestLength * 8) < (sizeof(STL_BUFFER_CONTROL_TABLE) * count))
+		return VSTATUS_BAD;
+
+	do {
+		Port_t *portp = sm_get_port(nodep, startPort + i);
+
+		if (!sm_valid_port(portp)) continue;
+
+		portp->portData->bufCtrlTable = *((STL_BUFFER_CONTROL_TABLE*)data);
+		portp->portData->current.bfrctrl = 1;
+		BSWAP_STL_BUFFER_CONTROL_TABLE(&(portp->portData->bufCtrlTable));
+		data += STL_BFRCTRLTAB_PAD_SIZE;
+	} while (++i < count);
 
 	return VSTATUS_OK;
 }
@@ -2802,7 +2786,7 @@ QosFillVlarbTable(Topology_t * topop, Node_t * nodep, Port_t * portp, Qos_t * qo
 	memset(arbp->vlarb.vlarbHigh, 0, sizeof(arbp->vlarb.vlarbHigh));
 	memset(arbp->vlarb.vlarbPre, 0, sizeof(arbp->vlarb.vlarbPre));
 
-	weight = Decode_MTU_To_Int(portp->portData->maxVlMtu) / 64;
+	weight = GetBytesFromMtu(portp->portData->maxVlMtu) / 64;
 
 	// Setup high priority table.
 	// No bandwidth associated with high priority.
@@ -3340,6 +3324,16 @@ sm_initialize_Port_BfrCtrl(Topology_t * topop, Node_t * nodep, Port_t * portp,
     au=8*(1 << neighborPort->portData->portInfo.BufferUnits.s.BufferAlloc);
     shmem = neighborPort->portData->portInfo.CapabilityMask3.s.IsSharedSpaceSupported;
 
+     if (neighborNode->nodeInfo.NodeType == NI_TYPE_SWITCH) {
+        // Switch port zero has mask3 bits, look up switch port zero.
+        // Note: PRR is setting up external switch ports instead of switch port zero,
+        // so check both.
+        Port_t* smaportp;
+        smaportp = sm_get_port(neighborNode, 0);
+        if (sm_valid_port(smaportp))
+            shmem |= smaportp->portData->portInfo.CapabilityMask3.s.IsSharedSpaceSupported;
+    }
+
     rxMemSize = neighborPort->portData->portInfo.OverallBufferSpace;
     if (rxMemSize==0) {
         IB_LOG_ERROR_FMT(__func__,
@@ -3558,7 +3552,8 @@ sm_node_updateFromSma_aggregate(IBhandle_t fd, uint16_t slid, Node_t * nodep, Po
         3 * stl_ReqAggrSegMem(numPorts, sizeof(STL_SCVLMAP)) + // 3 * -> SCVLt and SCVLnt and SCVLr
 
         // Not optimal; in the worst case, can do 2 VLArb blocks/segment
-        4 * (numPorts * (sizeof(STL_AGGREGATE) + sizeof(STL_VLARB_TABLE))); // vlarbLow, vlarbHigh, and preempt matrix/table use the same wire-size structure even though they are not the same size
+        4 * (numPorts * (sizeof(STL_AGGREGATE) + sizeof(STL_VLARB_TABLE))) + // vlarbLow, vlarbHigh, and preempt matrix/table use the same wire-size structure even though they are not the same size
+		stl_ReqAggrSegMem(numPorts, STL_BFRCTRLTAB_PAD_SIZE);
 
     STL_AGGREGATE * aggrBuffer;
     vs_pool_alloc(&sm_pool, reqMem, (void*)&aggrBuffer);
@@ -3569,22 +3564,6 @@ sm_node_updateFromSma_aggregate(IBhandle_t fd, uint16_t slid, Node_t * nodep, Po
     memset(aggrBuffer, 0, reqMem);
     STL_AGGREGATE * segHdr = aggrBuffer;
 
-    if (!smaportp->portData->current.slsc) {
-        segHdr->AttributeID = STL_MCLASS_ATTRIB_ID_SL_SC_MAPPING_TABLE;
-        segHdr->Result.s.Error = 0;
-        segHdr->Result.s.RequestLength = (sizeof(STL_SLSCMAP) + 7)/8;
-        segHdr->AttributeModifier = 0;
-        segHdr = STL_AGGREGATE_NEXT(segHdr);
-    }
-
-    if (!smaportp->portData->current.scsl) {
-        segHdr->AttributeID = STL_MCLASS_ATTRIB_ID_SC_SL_MAPPING_TABLE;
-        segHdr->Result.s.Error = 0;
-        segHdr->Result.s.RequestLength = (sizeof(STL_SCSLMAP) + 7)/8;
-        segHdr->AttributeModifier = 0;
-        segHdr = STL_AGGREGATE_NEXT(segHdr);
-    }
-
     Port_t * portp = NULL;
     boolean getScvlt = FALSE;
     boolean getScvlnt = FALSE;
@@ -3593,6 +3572,10 @@ sm_node_updateFromSma_aggregate(IBhandle_t fd, uint16_t slid, Node_t * nodep, Po
     boolean getVlarbHigh = FALSE;
 	boolean getVlarbPre = FALSE;
     boolean getVlarbMatrix = FALSE;
+	boolean getBufferCtrl = FALSE;
+
+	boolean getSlsc = !smaportp->portData->current.slsc;
+	boolean getScsl = !smaportp->portData->current.scsl;
 
     {
         uint8 i;
@@ -3603,7 +3586,8 @@ sm_node_updateFromSma_aggregate(IBhandle_t fd, uint16_t slid, Node_t * nodep, Po
 
             getScvlt |= !portp->portData->current.scvlt;
             getScvlnt |= !portp->portData->current.scvlnt;
-			getScvlr |= (!portp->portData->current.scvlr && portp->portData->portInfo.CapabilityMask3.s.IsVLrSupported);
+            getScvlr |= (!portp->portData->current.scvlr && smaportp->portData->portInfo.CapabilityMask3.s.IsVLrSupported);
+			getBufferCtrl |= !portp->portData->current.bfrctrl;
 
             if (portp->portData->vl0 > 1) {
                 getVlarbHigh |= !portp->portData->current.vlarbHigh;
@@ -3612,65 +3596,48 @@ sm_node_updateFromSma_aggregate(IBhandle_t fd, uint16_t slid, Node_t * nodep, Po
                 getVlarbMatrix |= !portp->portData->current.vlarbMatrix;
             }
 
-            if (getScvlt && getScvlnt && 
-                (getScvlr || !portp->portData->portInfo.CapabilityMask3.s.IsVLrSupported) &&
-                (getVlarbLow && getVlarbHigh && getVlarbPre && getVlarbMatrix))
+            if (getScvlt && getScvlnt &&
+                (getScvlr || !smaportp->portData->portInfo.CapabilityMask3.s.IsVLrSupported) &&
+                (getVlarbLow && getVlarbHigh && getVlarbPre && getVlarbMatrix) && 
+				getBufferCtrl)
                 break;
         }
     }
 
-    if (getScvlt) {
-        // Get(SCVLt)
-        size_t i;
-        size_t portsPerSeg = STL_MAX_PAYLOAD_AGGREGATE/sizeof(STL_SCVLMAP);
-        size_t segsReq = stl_ReqAggrSegCount(numPorts, sizeof(STL_SCVLMAP));
-        for (i = 0; i < segsReq; ++i) {
-            uint8 port = (i * portsPerSeg) + startPort;
-            uint8 blkCount = (segsReq > (i + 1)? portsPerSeg : numPorts % portsPerSeg);
+	const struct s_aggrList { boolean get; size_t size; uint32_t aid; boolean multiport; } aggrList[] = {
+		 {getScvlt, sizeof(STL_SCVLMAP), STL_MCLASS_ATTRIB_ID_SC_VLT_MAPPING_TABLE, TRUE},
+		 {getScvlnt, sizeof(STL_SCVLMAP), STL_MCLASS_ATTRIB_ID_SC_VLNT_MAPPING_TABLE, TRUE},
+		 {getScvlr, sizeof(STL_SCVLMAP), STL_MCLASS_ATTRIB_ID_SC_VLR_MAPPING_TABLE, TRUE},
+		 // NOTE: Bfrctrl tables are not 8 byte aligned, so must round up.
+		 {getBufferCtrl, STL_BFRCTRLTAB_PAD_SIZE, STL_MCLASS_ATTRIB_ID_BUFFER_CONTROL_TABLE, TRUE},
+		 {getSlsc, sizeof(STL_SLSCMAP), STL_MCLASS_ATTRIB_ID_SL_SC_MAPPING_TABLE, FALSE},
+		 {getScsl, sizeof(STL_SCSLMAP), STL_MCLASS_ATTRIB_ID_SC_SL_MAPPING_TABLE, FALSE} };
+	size_t aggrListIndx = 0;
 
-            segHdr->AttributeID = STL_MCLASS_ATTRIB_ID_SC_VLT_MAPPING_TABLE;
+	do {
+        const size_t portsPerSeg = STL_MAX_PAYLOAD_AGGREGATE/aggrList[aggrListIndx].size;
+        const size_t segsReq = aggrList[aggrListIndx].multiport ? stl_ReqAggrSegCount(numPorts, aggrList[aggrListIndx].size) : 1;
+        size_t i;
+		uint8 port = startPort;
+		uint8 blkCount = 1;
+
+		if (!aggrList[aggrListIndx].get) continue;
+
+        for (i = 0; i < segsReq; ++i) {
+
+			if (aggrList[aggrListIndx].multiport) {
+				port = (i * portsPerSeg) + startPort;
+				blkCount = (segsReq > (i + 1)? portsPerSeg : numPorts - ((numPorts > 1) ? port : 0));
+			}
+
+            segHdr->AttributeID = aggrList[aggrListIndx].aid;
             segHdr->Result.s.Error = 0;
-            segHdr->Result.s.RequestLength = (blkCount * sizeof(STL_SCVLMAP) + 7)/8;
-            segHdr->AttributeModifier = (blkCount << 24) | port;
+            segHdr->Result.s.RequestLength = (blkCount * aggrList[aggrListIndx].size + 7)/8;
+            segHdr->AttributeModifier = aggrList[aggrListIndx].multiport ? ( (blkCount << 24) | port ) : 0;
             segHdr = STL_AGGREGATE_NEXT(segHdr);
         }
-    }
+	} while (++aggrListIndx < (sizeof(aggrList)/sizeof(aggrList[0])) );
 
-    if (getScvlnt) {
-        // Copypasta from above getScvlt code FTW
-        // Get(SCVLnt)
-        size_t i;
-        size_t portsPerSeg = STL_MAX_PAYLOAD_AGGREGATE/sizeof(STL_SCVLMAP);
-        size_t segsReq = stl_ReqAggrSegCount(numPorts, sizeof(STL_SCVLMAP));
-        for (i = 0; i < segsReq; ++i) {
-            uint8 port = (i * portsPerSeg) + startPort;
-            uint8 blkCount = (segsReq > (i + 1)? portsPerSeg : numPorts % portsPerSeg);
-
-            segHdr->AttributeID = STL_MCLASS_ATTRIB_ID_SC_VLNT_MAPPING_TABLE;
-            segHdr->Result.s.Error = 0;
-            segHdr->Result.s.RequestLength = (blkCount * sizeof(STL_SCVLMAP) + 7)/8;
-            segHdr->AttributeModifier = (blkCount << 24) | port;
-            segHdr = STL_AGGREGATE_NEXT(segHdr);
-        }
-    }
-
-    if (getScvlr) {
-        // Copypasta from above getScvlt code FTW
-        // Get(SCVLr)
-        size_t i;
-        size_t portsPerSeg = STL_MAX_PAYLOAD_AGGREGATE/sizeof(STL_SCVLMAP);
-        size_t segsReq = stl_ReqAggrSegCount(numPorts, sizeof(STL_SCVLMAP));
-        for (i = 0; i < segsReq; ++i) {
-            uint8 port = (i * portsPerSeg) + startPort;
-            uint8 blkCount = (segsReq > (i + 1)? portsPerSeg : numPorts % portsPerSeg);
-
-            segHdr->AttributeID = STL_MCLASS_ATTRIB_ID_SC_VLR_MAPPING_TABLE;
-            segHdr->Result.s.Error = 0;
-            segHdr->Result.s.RequestLength = (blkCount * sizeof(STL_SCVLMAP) + 7)/8;
-            segHdr->AttributeModifier = (blkCount << 24) | port;
-            segHdr = STL_AGGREGATE_NEXT(segHdr);
-        }
-    }
 
     const int SEC_COUNT = 4;
     boolean getVlarb[] = { getVlarbHigh, getVlarbLow, getVlarbPre, getVlarbMatrix };
@@ -3832,6 +3799,7 @@ sm_node_updateFromSma_solo(IBhandle_t fd, uint16_t slid, Node_t * nodep, Port_t 
     boolean getVlarbHigh = FALSE;
 	boolean getVlarbPre = FALSE;
     boolean getVlarbMatrix = FALSE;
+	boolean getBufferCtrl= FALSE;
 
     Port_t * portp = NULL;
 
@@ -3844,7 +3812,8 @@ sm_node_updateFromSma_solo(IBhandle_t fd, uint16_t slid, Node_t * nodep, Port_t 
 
             getScvlt |= !portp->portData->current.scvlt;
             getScvlnt |= !portp->portData->current.scvlnt;
-			getScvlr |= (!portp->portData->current.scvlr && portp->portData->portInfo.CapabilityMask3.s.IsVLrSupported);
+            getScvlr |= (!smaportp->portData->current.scvlr && portp->portData->portInfo.CapabilityMask3.s.IsVLrSupported);
+			getBufferCtrl |= !portp->portData->current.bfrctrl;
 
             if (portp->portData->vl0 > 1) {
                 getVlarbHigh |= !portp->portData->current.vlarbHigh;
@@ -3853,10 +3822,11 @@ sm_node_updateFromSma_solo(IBhandle_t fd, uint16_t slid, Node_t * nodep, Port_t 
                 getVlarbMatrix |= !portp->portData->current.vlarbMatrix;
             }
 
-            if (getScvlt && getScvlnt && 
-                (getScvlr || !portp->portData->portInfo.CapabilityMask3.s.IsVLrSupported) &&
+            if (getScvlt && getScvlnt &&
+                (getScvlr || !smaportp->portData->portInfo.CapabilityMask3.s.IsVLrSupported) &&
                 (getVlarbLow && getVlarbHigh && getVlarbPre && getVlarbMatrix) &&
-                (getVlarbMatrix || nodep->nodeInfo.NodeType == NI_TYPE_SWITCH))
+                (getVlarbMatrix || nodep->nodeInfo.NodeType == NI_TYPE_SWITCH) &&
+				getBufferCtrl)
                 break;
         }
     }
@@ -3935,6 +3905,19 @@ sm_node_updateFromSma_solo(IBhandle_t fd, uint16_t slid, Node_t * nodep, Port_t 
             }
         }
     }
+
+	if (getBufferCtrl) {
+		s = sm_get_buffer_control_tables(fd_topology, nodep, 1, PORT_P1(nodep));
+
+		if (s == VSTATUS_OK) {
+			Port_t *temp;
+
+			for_all_ports(nodep, temp) {
+				if (sm_valid_port(temp))
+					temp->portData->current.bfrctrl = 1;
+			}
+		}
+	}
 
     const int SEC_COUNT = 4;
     boolean getVlarb[] = { getVlarbHigh, getVlarbLow, getVlarbPre, getVlarbMatrix };
@@ -4059,16 +4042,18 @@ sm_node_updateFromTopo(Node_t * nodep, Topology_t * oldTopop, Topology_t * curTo
 					}
 					
 					// Copy sl, sc, and vl related mapping tables
-					portp->portData->slscMap = oldPortp->portData->slscMap; 
+					portp->portData->slscMap = oldPortp->portData->slscMap;
 					portp->portData->current.slsc = 1;
-					portp->portData->scslMap = oldPortp->portData->scslMap; 
+					portp->portData->scslMap = oldPortp->portData->scslMap;
 					portp->portData->current.scsl = 1;
-					portp->portData->scvltMap = oldPortp->portData->scvltMap; 
+					portp->portData->scvltMap = oldPortp->portData->scvltMap;
 					portp->portData->current.scvlt = 1;
-					portp->portData->scvlntMap = oldPortp->portData->scvlntMap; 
+					portp->portData->scvlntMap = oldPortp->portData->scvlntMap;
 					portp->portData->current.scvlnt = 1;
-					portp->portData->scvlrMap = oldPortp->portData->scvlrMap; 
+					portp->portData->scvlrMap = oldPortp->portData->scvlrMap;
 					portp->portData->current.scvlr = 1;
+					portp->portData->bufCtrlTable = oldPortp->portData->bufCtrlTable;
+					portp->portData->current.bfrctrl = 1;
 
 					if (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH && portp->portData->scscMap && oldPortp->portData->scscMap) {
 						memcpy(portp->portData->scscMap, oldPortp->portData->scscMap, sizeof(STL_SCSCMAP)*nodep->nodeInfo.NumPorts);
@@ -4168,7 +4153,7 @@ sm_select_vlvf_map(Topology_t *topop, Node_t *nodep, Port_t *portp, VlVfMap_t * 
     //       - currently SC-VL map is not available in Port Data.
     //
 
-    Qos_t *qos = GetQos(portp->portData->vl1);
+    Qos_t *qos = sm_get_qos(portp->portData->vl1);
 
     VirtualFabrics_t *VirtualFabrics = topop->vfs_ptr;
     Port_t *neighbor_portp = NULL; // Will make a parameter(?)
@@ -4248,7 +4233,7 @@ sm_fill_stl_vlarb_table(Topology_t *topop, Node_t *nodep, Port_t *portp, PortDat
 	uint8_t		vlRank[STL_MAX_VLS];
 
 	if (portp && portp->portData->qosHfiFilter) {
-		// filtered by hca vf membership, vlarb already setup on slvl mapping call
+		// filtered by hca vf membership, vlarb already setup on sl/sc/vl mapping call
 		return VSTATUS_OK;
 	}
 
@@ -4259,7 +4244,7 @@ sm_fill_stl_vlarb_table(Topology_t *topop, Node_t *nodep, Port_t *portp, PortDat
 	}
 
 
- 	qos = GetQos(numVls);
+ 	qos = sm_get_qos(numVls);
 
 	memset(arbp, 0, sizeof(*arbp));
 
@@ -4400,15 +4385,14 @@ sm_select_scsl_map(Topology_t *topop, Node_t *nodep,
 Status_t
 sm_select_scvlr_map(Topology_t *topop, uint8_t vlCap, STL_SCVLMAP *outScvlMap)
 {
-	int sc, sl, vf;
-	int found=0;
-	Qos_t *qos = GetQos(vlCap);
-
-	memcpy(outScvlMap, &qos->scvl, sizeof(STL_SCVLMAP));
+	int sc, vf;
+	Qos_t *qos = sm_get_qos(vlCap);
 
 	bitset_clear_all(&sm_linkSLsInuse);
 
 	VirtualFabrics_t *VirtualFabrics = topop->vfs_ptr;
+
+	memset(outScvlMap, 0, sizeof(STL_SCVLMAP));
 
 	// In order to generate unique SL2SC map for this egress port, 
 	// filter the SLs based on this port's VF memberships.
@@ -4420,17 +4404,66 @@ sm_select_scvlr_map(Topology_t *topop, uint8_t vlCap, STL_SCVLMAP *outScvlMap)
 	}
 
 	for (sc=0; sc < STL_MAX_SCS; sc++) {
-		found = 0;
-		for (sl= bitset_find_first_one(&sm_linkSLsInuse); sl >=0;
-		 	 sl= bitset_find_next_one(&sm_linkSLsInuse, sl+1)) {
-			if (sm_SLtoSC[sl] == sc) {
-				found = 1;
-				break;
-			}
-		}
-		if (!found) {
+		if (bitset_test(&sm_linkSLsInuse, sm_SCtoSL[sc])) {
+			outScvlMap->SCVLMap[sc].VL = qos->scvl.SCVLMap[sc].VL;
+		} else {
 			outScvlMap->SCVLMap[sc].VL = 15;
 		}
 	}
 	return VSTATUS_OK;
 }
+
+void
+sm_printf_vf_debug(VirtualFabrics_t *vfs)
+{
+    int vf;
+    for (vf=0; vf<vfs->number_of_vfs; vf++) {
+        IB_LOG_INFINI_INFO_FMT_VF(vfs->v_fabric[vf].name, "",
+            "Base SL:%d Resp SL:%d Requires Resp SL:%d Multicast SL:%d QOS:%d HP:%d PKey:0x%04x",
+            vfs->v_fabric[vf].base_sl, vfs->v_fabric[vf].resp_sl,
+            vfs->v_fabric[vf].requires_resp_sl, vfs->v_fabric[vf].mcast_sl,
+            vfs->v_fabric[vf].qos_enable, vfs->v_fabric[vf].priority,
+            vfs->v_fabric[vf].pkey);
+    }
+
+    if (sm_config.sm_debug_vf)
+    {
+        // TODO do this for all (maybe just 2,4,8,9) VLs
+        // TODO do in a loop
+        // Dump SC to SL
+        IB_LOG_INFINI_INFO_FMT(__func__, "SCSL = 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
+                               sm_SCtoSL[0], sm_SCtoSL[1], sm_SCtoSL[2], sm_SCtoSL[3],
+                               sm_SCtoSL[4], sm_SCtoSL[5], sm_SCtoSL[6], sm_SCtoSL[7]);
+
+        IB_LOG_INFINI_INFO_FMT(__func__, "       0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
+                               sm_SCtoSL[8], sm_SCtoSL[9], sm_SCtoSL[10], sm_SCtoSL[11],
+                               sm_SCtoSL[12], sm_SCtoSL[13], sm_SCtoSL[14], sm_SCtoSL[15]);
+
+        IB_LOG_INFINI_INFO_FMT(__func__, "       0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
+                               sm_SCtoSL[16], sm_SCtoSL[17], sm_SCtoSL[18], sm_SCtoSL[19],
+                               sm_SCtoSL[20], sm_SCtoSL[21], sm_SCtoSL[22], sm_SCtoSL[23]);
+
+        IB_LOG_INFINI_INFO_FMT(__func__, "       0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
+                               sm_SCtoSL[24], sm_SCtoSL[25], sm_SCtoSL[26], sm_SCtoSL[27],
+                               sm_SCtoSL[28], sm_SCtoSL[29], sm_SCtoSL[30], sm_SCtoSL[31]);
+
+        // Dump SL to SC
+        IB_LOG_INFINI_INFO_FMT(__func__, "SLSC = 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
+                               sm_SLtoSC[0], sm_SLtoSC[1], sm_SLtoSC[2], sm_SLtoSC[3],
+                               sm_SLtoSC[4], sm_SLtoSC[5], sm_SLtoSC[6], sm_SLtoSC[7]);
+
+        IB_LOG_INFINI_INFO_FMT(__func__, "       0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
+                               sm_SLtoSC[8], sm_SLtoSC[9], sm_SLtoSC[10], sm_SLtoSC[11],
+                               sm_SLtoSC[12], sm_SLtoSC[13], sm_SLtoSC[14], sm_SLtoSC[15]);
+
+        IB_LOG_INFINI_INFO_FMT(__func__, "       0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
+                               sm_SLtoSC[16], sm_SLtoSC[17], sm_SLtoSC[18], sm_SLtoSC[19],
+                               sm_SLtoSC[20], sm_SLtoSC[21], sm_SLtoSC[22], sm_SLtoSC[23]);
+
+        IB_LOG_INFINI_INFO_FMT(__func__, "       0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x",
+                               sm_SLtoSC[24], sm_SLtoSC[25], sm_SLtoSC[26], sm_SLtoSC[27],
+                               sm_SLtoSC[28], sm_SLtoSC[29], sm_SLtoSC[30], sm_SLtoSC[31]);
+
+    }
+}
+

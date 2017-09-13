@@ -148,36 +148,8 @@ my $END_LIMITS_MARKER="OPA Settings End here";
 # Keep track of whether we already did edits to avoid repeated edits
 my $DidLimits=0;
 
-sub	edit_limitsconf($)
-{
-	my($srcdir) = shift();	# directory containing $LIMITS_CONF file
-
-	my $SourceFile;
-
-	if ($DidLimits == 1)
-	{
-		return;
-	}
-	if (! -e "$ROOT$LIMITS_CONF_FILE")
-	{
-		# older distros don't have this file
-		return;
-	}
-	# not all distros will have a update for this file
-	if ( -e "$srcdir/$LIMITS_CONF.$CUR_DISTRO_VENDOR.$CUR_VENDOR_VER" ) {
-		$SourceFile="$srcdir/$LIMITS_CONF.$CUR_DISTRO_VENDOR.$CUR_VENDOR_VER";
-	} elsif ( -e "$srcdir/$LIMITS_CONF.$CUR_DISTRO_VENDOR.$CUR_VENDOR_MAJOR_VER" ) {
-		$SourceFile="$srcdir/$LIMITS_CONF.$CUR_DISTRO_VENDOR.$CUR_VENDOR_MAJOR_VER";
-	} elsif ( -e "$srcdir/$LIMITS_CONF.$CUR_DISTRO_VENDOR" )
-	{
-		$SourceFile="$srcdir/$LIMITS_CONF.$CUR_DISTRO_VENDOR";
-	} else {
-		$SourceFile="/dev/null";
-	}
-	edit_conf_file("$SourceFile", "$LIMITS_CONF_FILE",
-		"memory locking limits", "$START_LIMITS_MARKER",  "$END_LIMITS_MARKER");
-	$DidLimits = 1;
-}
+# Path to opasystemconfig
+my $OPA_SYSTEMCFG_FILE = "/sbin/opasystemconfig";
 
 # remove iba entries from modules.conf
 sub remove_limits_conf()
@@ -189,7 +161,9 @@ sub remove_limits_conf()
 			print "Keeping $ROOT/$LIMITS_CONF_FILE changes ...\n";
 		} else {
 			print "Modifying $ROOT$LIMITS_CONF_FILE ...\n";
-			del_marks ("$START_LIMITS_MARKER", "$END_LIMITS_MARKER", 0, "$ROOT$LIMITS_CONF_FILE");
+			if ( -e "$ROOT$OPA_SYSTEMCFG_FILE" ) {
+			     system("$ROOT$OPA_SYSTEMCFG_FILE --disable Memory_Limit");
+			}
 		}
 	}
 }
@@ -218,27 +192,11 @@ sub install_udev_permissions($)
 	}
 
 	if ($Default_UserQueries > 0) {
-		if ( -e "$ROOT$UDEV_RULES_DIR" ) {
-			$SourceFile="$srcdir/udev.rules";
-			print "Updating udev rules.\n";
-			#removing older file
-			$Context=`ls -Z /etc/udev/ |grep rules.d |awk '{print \$(NF-1)}'`;
-			chomp($Context);
-			$Cnt=`echo $Context | cut -d ':' -f 1- --output-delimiter=' ' |awk '{print NF}'`;
-			if ($Cnt > 1) {
-				copy_file_context("$SourceFile",
-					  "$UDEV_RULES_DIR/$UDEV_RULES_FILE",
-					  "root", "root",
-					  "0644", "$Context");
-			} else {
-				copy_file("$SourceFile",
-					  "$UDEV_RULES_DIR/$UDEV_RULES_FILE",
-					  "root", "root",
-					  "0644");
-			}
-		}
+                # Installation of udev will be taken care during RPM installation, we just have to set
+                setup_env("OPA_UDEV_RULES", 1);
 	} elsif ( -e "$UDEV_RULES_DIR/$UDEV_RULES_FILE" ) {
-		remove_files("$UDEV_RULES_DIR/$UDEV_RULES_FILE");
+                #update environment variable accordingly
+                setup_env("OPA_UDEV_RULES", 0);
 	}
 }
 

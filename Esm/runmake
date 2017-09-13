@@ -328,7 +328,23 @@ then
 	cd ../
 	#rm -rf rpmbuild
 	mkdir -p rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-	tar -cvzf rpmbuild/SOURCES/opa-fm.tar.gz -T Esm/tar_inc_srcs_all --exclude-vcs -X Esm/tar_exc_pattern $FILES_TO_TAR
+	# Create source tar ball. Update licenses if needed.
+	if [[ "$RELEASE_TYPE" == "EMBARGOED" ]]
+	then
+		echo "Building Embargoed Release"
+		export OPA_LICENSE_DIR=${TL_DIR}/CodeTemplates/EmbargoedNotices
+		OWD=${PWD}
+		TMP=$(mktemp -d)
+		cp -rp * ${TMP}
+		cd ${TMP}
+		${TL_DIR}/CodeTemplates/update_license.sh -c -q ${TMP}
+		tar -cvzf ${OWD}/rpmbuild/SOURCES/opa-fm.tar.gz -T Esm/tar_inc_srcs_all --exclude-vcs -X Esm/tar_exc_pattern $FILES_TO_TAR
+		cd ${OWD}
+		rm -rf ${TMP}
+	else
+		echo "Building Public Release"
+		tar -cvzf rpmbuild/SOURCES/opa-fm.tar.gz -T Esm/tar_inc_srcs_all --exclude-vcs -X Esm/tar_exc_pattern $FILES_TO_TAR
+	fi
 	cp Esm/opa-fm.spec rpmbuild/SPECS/
 	cd rpmbuild
 	rpmbuild -ba --define "_topdir $(pwd)" SPECS/opa-fm.spec

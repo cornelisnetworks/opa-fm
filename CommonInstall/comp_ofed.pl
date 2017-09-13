@@ -2625,9 +2625,12 @@ sub install_opa_stack($$)
 
 	#override the udev permissions.
 	install_udev_permissions("$srcdir/config");
-
-	#edit_modconf("$srcdir/config");
-	edit_limitsconf("$srcdir/config");
+        # set environment variable for RPM to configure linmits_conf
+	# edit_limitsconf("$srcdir/config");
+	setup_env("OPA_LIMITS_CONF", 1);
+        # We also need to install driver, so setting up envirnment
+        # to install driver for this component. actual install is done by rpm
+	setup_env("OPA_INSTALL_DRIVER", 1);
 
 	# Check $BASE_DIR directory ...exist 
 	check_config_dirs();
@@ -2640,7 +2643,7 @@ sub install_opa_stack($$)
 	# in some recovery situations OFED doesn't properly restore openib.conf
 	# this makes sure the SMA NodeDesc is properly set so the hostnmae is used
 	change_openib_conf_param('NODE_DESC', '$(hostname -s)');
-	prompt_openib_conf_param('RENICE_IB_MAD', 'OFED SMI/GSI renice', "y");
+	prompt_openib_conf_param('RENICE_IB_MAD', 'OFED SMI/GSI renice', "y", 'OPA_RENICE_IB_MAD');
 	# QIB driver has replaced IPATH, make sure IPATH disabled
 	change_openib_conf_param('IPATH_LOAD', 'no');
 	# MWHEINZ FIXME - disabled because the qib driver is loaded 
@@ -3293,7 +3296,7 @@ sub install_ofed_ipoib($$)
 	print_install_banner_ofed_comp('ofed_ipoib');
 	install_ofed_comp('ofed_ipoib', $install_list);
 
-	prompt_openib_conf_param('SET_IPOIB_CM', 'IPoIB Connected Mode', "y");
+	prompt_openib_conf_param('SET_IPOIB_CM', 'IPoIB Connected Mode', "y", 'OPA_SET_IPOIB_CM');
 	# bonding is more involved, require user to edit to enable that
 	Config_ifcfg(1,"$ComponentInfo{'ofed_ipoib'}{'Name'}","ib", "$FirstIPoIBInterface",1);
 	check_network_config;
@@ -4210,7 +4213,7 @@ sub install_ofed_srp($$)
 	print_install_banner_ofed_comp('ofed_srp');
 	install_ofed_comp('ofed_srp', $install_list);
 
-	prompt_openib_conf_param('SRPHA_ENABLE', 'OFA SRP High Availability deamon', "n");
+	prompt_openib_conf_param('SRPHA_ENABLE', 'OFA SRP High Availability deamon', "n", 'OPA_SRPHA_ENABLE');
 	need_reboot();
 	$ComponentWasInstalled{'ofed_srp'}=1;
 }

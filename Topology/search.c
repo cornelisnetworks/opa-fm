@@ -1778,34 +1778,64 @@ PortData *FindNodeGuidPort(FabricData_t *fabricp, EUI64 nodeguid, uint8 port)
 	return FindNodePort(nodep, port);
 }
 
-// Search through the ExpectedFIs and ExpectedSWs for an ExpectedNode with the given nodeGuid
-// If more than 1 happens to match (duplicates in input), returns 1st found
-ExpectedNode* FindExpectedNodeByNodeGuid(FabricData_t *fabricp, EUI64 nodeGuid) {
+// search ExpectedNodeGuidMap for GUID
+// Search the ExpectedNodeGuidMap for an ExpectedNode with the given nodeGuid
+// This will cover all ExpectedFIs and ExpectedSWs which have Guids specified.
+ExpectedNode* FindExpectedNodeByNodeGuid(const FabricData_t *fabricp, EUI64 nodeGuid)
+{
+	cl_map_item_t *mi;
+	ExpectedNode *enodep;
+
+	if(fabricp == NULL)
+		return NULL;
+
+	mi = cl_qmap_get(&fabricp->ExpectedNodeGuidMap, nodeGuid);
+	if (mi == cl_qmap_end(&fabricp->ExpectedNodeGuidMap))
+		return NULL;
+
+	enodep = PARENT_STRUCT(mi, ExpectedNode, ExpectedNodeGuidMapEntry);
+	return enodep;
+}
+
+// Search through the ExpectedFIs and ExpectedSWs for an ExpectedNode with the
+// given node description
+// NodeType is optional and may limit scope of search
+ExpectedNode* FindExpectedNodeByNodeDesc(const FabricData_t* fabricp, const char* nodeDesc, uint8 NodeType)
+{
 	LIST_ITEM *p;
 
 	if(fabricp == NULL)
 		return NULL;
 
-	// First check through the FIs
-	if(QListHead(&fabricp->ExpectedFIs) != NULL) {
-		for(p = QListHead(&fabricp->ExpectedFIs); p != NULL; p = QListNext(&fabricp->ExpectedFIs, p)) {
-			ExpectedNode* enodep = PARENT_STRUCT(p, ExpectedNode, ExpectedNodesEntry);
+	if (nodeDesc == NULL)
+		return NULL;
 
-			if(enodep->NodeGUID == nodeGuid)
-				return enodep;
-		}
-		
-	}
+	// Since switches have multiple ports, when this is called as part of
+	// topology analysis or ExpectedLink analysis we have a better chance
+	// of finding switch, plus there are often less switches than FIs in a
+	// fabric, so we check switches first to improve performance on many use
+	// cases
 
-	// Check through switches if it wasn't a FI
-	if(QListHead(&fabricp->ExpectedSWs) != NULL) {
+	// First check through the switches
+	if(NodeType != STL_NODE_FI && QListHead(&fabricp->ExpectedSWs) != NULL) {
 		for(p = QListHead(&fabricp->ExpectedSWs); p != NULL; p = QListNext(&fabricp->ExpectedSWs, p)) {
 			ExpectedNode* enodep = PARENT_STRUCT(p, ExpectedNode, ExpectedNodesEntry);
 
-			if(enodep->NodeGUID == nodeGuid)
+			if (enodep->NodeDesc && 0 == strncmp(enodep->NodeDesc,
+                                        nodeDesc, STL_NODE_DESCRIPTION_ARRAY_SIZE))
 				return enodep;
 		}
-		
+	}
+
+	// Check through FIs if it wasn't a switch
+	if(NodeType != STL_NODE_SW && QListHead(&fabricp->ExpectedFIs) != NULL) {
+		for(p = QListHead(&fabricp->ExpectedFIs); p != NULL; p = QListNext(&fabricp->ExpectedFIs, p)) {
+			ExpectedNode* enodep = PARENT_STRUCT(p, ExpectedNode, ExpectedNodesEntry);
+
+			if (enodep->NodeDesc && 0 == strncmp(enodep->NodeDesc,
+                                        nodeDesc, STL_NODE_DESCRIPTION_ARRAY_SIZE))
+				return enodep;
+		}
 	}
 
 	return NULL;
@@ -1813,33 +1843,31 @@ ExpectedNode* FindExpectedNodeByNodeGuid(FabricData_t *fabricp, EUI64 nodeGuid) 
 
 // Search for the ExpectedLink by one side of the link with nodeGuid & portNum. 
 // (OPTIONAL) Side is which portsel in the ExpectedLink that was the one given.
-// If more than 1 happens to match (duplicates in input), returns 1st found
-ExpectedLink* FindExpectedLinkByOneSide(FabricData_t *fabricp, EUI64 nodeGuid, uint8 portNum, uint8* side)
+ExpectedLink* FindExpectedLinkByOneSide(const FabricData_t *fabricp, EUI64 nodeGuid, uint8 portNum, uint8* side)
 {
-	LIST_ITEM *p;
-
-	if(fabricp == NULL || QListHead(&fabricp->ExpectedLinks) == NULL)
+	ExpectedLink *elinkp;
+	ExpectedNode *enodep = FindExpectedNodeByNodeGuid(fabricp, nodeGuid);
+	if(!enodep)
 		return NULL;
 
-	for(p = QListHead(&fabricp->ExpectedLinks); p != NULL; p = QListNext(&fabricp->ExpectedLinks, p)) {
-		ExpectedLink* elinkp = PARENT_STRUCT(p, ExpectedLink, ExpectedLinksEntry);
-		if(elinkp->portselp1 == NULL || elinkp->portselp2 == NULL)
-			continue;
+	if(portNum >= enodep->portsSize ||  enodep->ports[portNum] == NULL) {
+		return NULL;
+	}
+	elinkp = enodep->ports[portNum]->elinkp;
 
-		if(elinkp->portselp1->NodeGUID == nodeGuid && elinkp->portselp1->PortNum == portNum) {
-			if(side)
-				*side = 1;
-
-			return elinkp;
-		} else if (elinkp->portselp2->NodeGUID == nodeGuid && elinkp->portselp2->PortNum == portNum) {
-			if(side)
-				*side = 2;
-			
-			return elinkp;
-		}
+	if(!elinkp)
+		return NULL;
+		
+	if(elinkp->portselp1->NodeGUID == nodeGuid && elinkp->portselp1->PortNum == portNum) {
+		if(side)
+			*side = 1;
+	} else if (elinkp->portselp2->NodeGUID == nodeGuid && elinkp->portselp2->PortNum == portNum) {
+		if(side)
+			*side = 2;	
 	}
 	
-	return NULL;
+	return elinkp;
+
 }
 
 // FNOT_FOUND - no instances found

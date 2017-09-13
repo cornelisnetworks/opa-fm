@@ -63,22 +63,31 @@ sa_VFabricRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 
 	records = 0;
 
-//
-//	Check the method.  If this is a template lookup, then call the regular
-//	GetTable(*) template lookup routine.
-//
-	switch (maip->base.method) {
-	case SA_CM_GET:
+	// Check Method
+	if (maip->base.method == SA_CM_GET) {
 		INCREMENT_COUNTER(smCounterSaRxGetVfRecord);
-		(void)sa_VFabric_GetTable(maip, &records);
-		break;
-	case SA_CM_GETTABLE:
+	} else if (maip->base.method == SA_CM_GETTABLE) {
 		INCREMENT_COUNTER(smCounterSaRxGetTblVfRecord);
-		(void)sa_VFabric_GetTable(maip, &records);
-		break;
-    default:
+	} else {
+		// Generate an error response and return.
 		maip->base.status = MAD_STATUS_BAD_METHOD;
-        break;
+		IB_LOG_WARN_FMT(__func__, "invalid Method: %s (%u)",
+			cs_getMethodText(maip->base.method), maip->base.method);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
+	}
+	// Check Base and Class Version
+	if (maip->base.bversion == STL_BASE_VERSION && maip->base.cversion == STL_SA_CLASS_VERSION) {
+		(void)sa_VFabric_GetTable(maip, &records);
+	} else {
+		// Generate an error response and return.
+		maip->base.status = MAD_STATUS_BAD_CLASS;
+		IB_LOG_WARN_FMT(__func__, "invalid Base and/or Class Versions: Base %u, Class %u",
+			maip->base.bversion, maip->base.cversion);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
 	}
 
 //
@@ -105,67 +114,81 @@ sa_VFabricRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 	return(VSTATUS_OK);
 }
 
-Status_t
-sa_VFabric_Set(uint8_t *vfrp, uint8_t vf, STL_SA_MAD *samad, uint64_t serviceId, IB_GID mGid) {
+static Status_t
+sa_VFabric_Set(STL_VFINFO_RECORD *vfrp, VirtualFabrics_t *vfsp, VF_t *vfp, STL_SA_MAD *samad, uint64_t serviceId, IB_GID mGid)
+{
 	
 	STL_VFINFO_RECORD vfRecord = {0};
 	
-	IB_ENTER("sa_VFabric_Set", vfrp, 0, 0, 0);
+	IB_ENTER(__func__, vfrp, 0, 0, 0);
 
-	VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
-
-	vfRecord.vfIndex = VirtualFabrics->v_fabric[vf].index;
-	vfRecord.pKey = VirtualFabrics->v_fabric[vf].pkey;
-	strncpy((void *)vfRecord.vfName, (void *)VirtualFabrics->v_fabric[vf].name, STL_VFABRIC_NAME_LEN);
+	vfRecord.vfIndex = vfp->index;
+	vfRecord.pKey = vfp->pkey;
+	strncpy((void *)vfRecord.vfName, (void *)vfp->name, STL_VFABRIC_NAME_LEN);
 	vfRecord.ServiceID = serviceId;
 	vfRecord.MGID = mGid;
 
-	if (VirtualFabrics->v_fabric[vf].security) {
+	if (vfp->security) {
 		vfRecord.s1.selectFlags = STL_VFINFO_REC_SEL_PKEY_QUERY;
 	}
 
-	if (VirtualFabrics->v_fabric[vf].qos_enable) {
+	if (vfp->qos_enable) {
 		vfRecord.s1.selectFlags |= STL_VFINFO_REC_SEL_SL_QUERY;
 	}
 
-	vfRecord.s1.mtu = VirtualFabrics->v_fabric[vf].max_mtu_int;
-	vfRecord.s1.mtuSpecified = VirtualFabrics->v_fabric[vf].max_mtu_specified;
-	vfRecord.s1.rate = VirtualFabrics->v_fabric[vf].max_rate_int;
-	vfRecord.s1.rateSpecified = VirtualFabrics->v_fabric[vf].max_rate_specified;
-	vfRecord.s1.pktLifeTimeInc = VirtualFabrics->v_fabric[vf].pkt_lifetime_mult;
-	vfRecord.s1.pktLifeSpecified = VirtualFabrics->v_fabric[vf].pkt_lifetime_specified;
-	vfRecord.s1.sl = VirtualFabrics->v_fabric[vf].base_sl;
+	vfRecord.s1.mtu = vfp->max_mtu_int;
+	vfRecord.s1.mtuSpecified = vfp->max_mtu_specified;
+	vfRecord.s1.rate = vfp->max_rate_int;
+	vfRecord.s1.rateSpecified = vfp->max_rate_specified;
+	vfRecord.s1.pktLifeTimeInc = vfp->pkt_lifetime_mult;
+	vfRecord.s1.pktLifeSpecified = vfp->pkt_lifetime_specified;
+	vfRecord.s1.slBase = vfp->base_sl;
+
+	if (vfp->resp_sl != UNDEFINED_XML8 &&
+		vfp->resp_sl != vfp->base_sl) {
+
+		vfRecord.slResponse = vfp->resp_sl;
+		vfRecord.slResponseSpecified = 1;
+	}
+
+	if (vfp->mcast_sl != UNDEFINED_XML8 &&
+		vfp->mcast_sl != vfp->base_sl) {
+
+		vfRecord.slMulticast = vfp->mcast_sl;
+		vfRecord.slMulticastSpecified = 1;
+	}
+
 	vfRecord.bandwidthPercent = 0;
-	vfRecord.priority = VirtualFabrics->v_fabric[vf].priority;
+	vfRecord.priority = vfp->priority;
 	vfRecord.routingSLs = 1;
-	vfRecord.preemptionRank = VirtualFabrics->v_fabric[vf].preempt_rank;
-	vfRecord.hoqLife = VirtualFabrics->v_fabric[vf].hoqlife_vf;
+	vfRecord.preemptionRank = vfp->preempt_rank;
+	vfRecord.hoqLife = vfp->hoqlife_vf;
 	vfRecord.optionFlags = 0;
 
-	if (VirtualFabrics->v_fabric[vf].security) {
+	if (vfp->security) {
 		vfRecord.optionFlags |= STL_VFINFO_REC_OPT_SECURITY;
 	}
 
-	if (VirtualFabrics->qosEnabled &&
-		VirtualFabrics->v_fabric[vf].qos_enable) {
+	if (vfsp->qosEnabled && vfp->qos_enable) {
 		vfRecord.optionFlags |= STL_VFINFO_REC_OPT_QOS;
-		if (!VirtualFabrics->v_fabric[vf].priority)
-			vfRecord.bandwidthPercent = VirtualFabrics->v_fabric[vf].percent_bandwidth;
+		if (!vfp->priority)
+			vfRecord.bandwidthPercent = vfp->percent_bandwidth;
 	}
 
-	if (VirtualFabrics->v_fabric[vf].flowControlDisable) {
+	if (vfp->flowControlDisable) {
 		vfRecord.optionFlags |= STL_VFINFO_REC_OPT_FLOW_DISABLE;
 	}
 
-	*(STL_VFINFO_RECORD*)vfrp = vfRecord;
+	*vfrp = vfRecord;
 
-	IB_EXIT("sa_VFabric_Set", VSTATUS_OK);
+	IB_EXIT(__func__, VSTATUS_OK);
 	return(VSTATUS_OK);
 }
 
 
 Status_t
-sa_VFabric_GetTable(Mai_t *maip, uint32_t *records) {
+sa_VFabric_GetTable(Mai_t *maip, uint32_t *records)
+{
 	uint8_t			*data;
 	uint32_t		bytes;
 	STL_SA_MAD			samad;
@@ -204,7 +227,11 @@ sa_VFabric_GetTable(Mai_t *maip, uint32_t *records) {
 	vFabricRecord.s1.rsvd4 = 0;
 	vFabricRecord.s1.rsvd5 = 0;
 	vFabricRecord.rsvd6 = 0;
-	memset(vFabricRecord.rsvd7, 0, sizeof(vFabricRecord.rsvd7));
+	vFabricRecord.rsvd7 = 0;
+	vFabricRecord.rsvd8 = 0;
+	vFabricRecord.rsvd9 = 0;
+	vFabricRecord.rsvd10 = 0;
+	memset(vFabricRecord.rsvd11, 0, sizeof(vFabricRecord.rsvd11));
 
 	if (samad.header.mask & STL_VFINFO_REC_COMP_SERVICEID) {
 		serviceId = vFabricRecord.ServiceID;
@@ -236,24 +263,23 @@ sa_VFabric_GetTable(Mai_t *maip, uint32_t *records) {
 	if (smValidatePortPKey(DEFAULT_PKEY, reqPortp))
 		reqInFullDefault=1;
 
-	for (vf=0; vf < VirtualFabrics->number_of_vfs && vf < MAX_VFABRICS; vf++) {
+	for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
+		VF_t *vfp = &VirtualFabrics->v_fabric[vf];
 
 		if ((samad.header.mask & STL_VFINFO_REC_COMP_PKEY) && 
-			(PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey) != PKEY_VALUE(vFabricRecord.pKey))) continue;
+			(PKEY_VALUE(vfp->pkey) != PKEY_VALUE(vFabricRecord.pKey))) continue;
 
 		if ((samad.header.mask & STL_VFINFO_REC_COMP_INDEX) &&
-			(VirtualFabrics->v_fabric[vf].index != vFabricRecord.vfIndex)) continue;
+			(vfp->index != vFabricRecord.vfIndex)) continue;
 
 		if (samad.header.mask & STL_VFINFO_REC_COMP_NAME) {
-			if (strncmp((void*)VirtualFabrics->v_fabric[vf].name, 
+			if (strncmp((void*)vfp->name,
 				(void*)vFabricRecord.vfName, STL_VFABRIC_NAME_LEN) != 0) continue;
 		}
 
-		// TBD - when allow multiple SLs for DOR, adjust this query to check
-		// if SL matches any of the SLs used by given VF
-		if (samad.header.mask & STL_VFINFO_REC_COMP_SL) {
-			if (VirtualFabrics->v_fabric[vf].base_sl != vFabricRecord.s1.sl) continue;
-		}
+		// Component field only for slBase, not slResponse or slMulticast
+		if (samad.header.mask & STL_VFINFO_REC_COMP_SL &&
+			vfp->base_sl != vFabricRecord.s1.slBase) continue;
 
 		if (samad.header.mask & STL_VFINFO_REC_COMP_SERVICEID) {
 			if (VSTATUS_OK != smVFValidateVfServiceId(vf, vFabricRecord.ServiceID) ) continue;
@@ -268,7 +294,7 @@ sa_VFabric_GetTable(Mai_t *maip, uint32_t *records) {
 		// convert VF pkey to a FULL PKey so we allow limited member reqPortp
 		if (!reqInFullDefault
 			&& !smValidatePortPKey(MAKE_PKEY(PKEY_TYPE_FULL, 
-				VirtualFabrics->v_fabric[vf].pkey), reqPortp)) continue;
+				vfp->pkey), reqPortp)) continue;
 		
 		if ((status = sa_check_len(data, sizeof(STL_VFINFO_RECORD), bytes)) != VSTATUS_OK) {
 			maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
@@ -276,8 +302,9 @@ sa_VFabric_GetTable(Mai_t *maip, uint32_t *records) {
 			break;
 		}
 
-		// VFabric_Set doesn't use the samad paramater, so for the time being just type cast. (Should work either way).
-		sa_VFabric_Set(data, vf, &samad, serviceId, mGid);
+		// sa_VFabric_Set doesn't use the samad paramater, so just cast. (Should work either way).
+		sa_VFabric_Set((STL_VFINFO_RECORD*)data, VirtualFabrics,
+			vfp, &samad, serviceId, mGid);
 		BSWAP_STL_VFINFO_RECORD((STL_VFINFO_RECORD*)data);
 	
 		if (samad.header.mask) {
@@ -301,7 +328,7 @@ sa_VFabric_GetTable(Mai_t *maip, uint32_t *records) {
 	if ((samad.header.mask & STL_VFINFO_REC_COMP_SL) && (*records == 0)) {
 		if (saDebugPerf) {
        		IB_LOG_INFINI_INFO_FMT("sa_VFabric_GetTable",
-				"No Virtual Fabric defined with SL %u", vFabricRecord.s1.sl);
+				"No Virtual Fabric defined with SL %u", vFabricRecord.s1.slBase);
 		}
 	}
 
@@ -358,8 +385,9 @@ void showStlVFabrics(void) {
      
 	(void)vs_rdlock(&old_topology_lock);
 
-	for (vf=0; vf < VirtualFabrics->number_of_vfs && vf < MAX_VFABRICS; vf++) {
-		sa_VFabric_Set((uint8_t *)&vFabricRecord, vf, NULL, 0, mGid);
+	for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
+		sa_VFabric_Set(&vFabricRecord, VirtualFabrics,
+			&VirtualFabrics->v_fabric[vf], NULL, 0, mGid);
 
         if (vf) PrintSeparator(&dest);
         PrintStlVfInfoRecord(&dest, 0, &vFabricRecord);

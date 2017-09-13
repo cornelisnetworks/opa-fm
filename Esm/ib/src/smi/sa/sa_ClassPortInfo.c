@@ -80,7 +80,7 @@ sa_ClassPortInfo(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 //
 	if (maip->base.method == SA_CM_GET) {
 		INCREMENT_COUNTER(smCounterSaRxGetClassPortInfo);
-                if (maip->base.cversion == SA_MAD_CVERSION) {
+		if (maip->base.bversion == IB_BASE_VERSION && maip->base.cversion == SA_MAD_CVERSION) {
 			memset(&myCPI.ib_version,0,sizeof(IB_CLASS_PORT_INFO));
 			myCPI.ib_version.BaseVersion = saClassPortInfo.BaseVersion;
 			myCPI.ib_version.ClassVersion = saClassPortInfo.ClassVersion;
@@ -97,7 +97,7 @@ sa_ClassPortInfo(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 			sa_cntxt_data( sa_cntxt, &myCPI.ib_version, attribOffset);
 			sa_cntxt->attribLen = attribOffset;
 			maip->base.status = MAD_STATUS_OK;
-		} else if (maip->base.cversion == STL_SM_CLASS_VERSION) {
+		} else if (maip->base.bversion == STL_BASE_VERSION && maip->base.cversion == STL_SA_CLASS_VERSION) {
 			myCPI.stl_version = saClassPortInfo;
 			BSWAP_STL_CLASS_PORT_INFO(&myCPI.stl_version);
 
@@ -108,9 +108,13 @@ sa_ClassPortInfo(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 			sa_cntxt->attribLen = attribOffset;
 		maip->base.status = MAD_STATUS_OK;
 		} else {
+			IB_LOG_WARN_FMT(__func__, "invalid Base and/or Class Versions: Base %u, Class %u",
+				maip->base.bversion, maip->base.cversion);
 			maip->base.status = MAD_STATUS_BAD_CLASS;
 		}
 	} else {
+		IB_LOG_WARN_FMT(__func__, "invalid Method: %s (%u)",
+			cs_getMethodText(maip->base.method), maip->base.method);
 		maip->base.status = MAD_STATUS_BAD_METHOD;
 	}
 	(void)sa_send_reply(maip, sa_cntxt);

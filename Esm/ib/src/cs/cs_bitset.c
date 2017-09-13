@@ -235,9 +235,12 @@ int bitset_find_next_one(bitset_t *bitset, unsigned bit) {
 	unsigned i_bit = bit%32;
 
 	if (bitset && bitset->bits_m && (bit < bitset->nbits_m)) {
+		unsigned t_bit = bitset->nbits_m;
 		for (i_word = bit/32; i_word < bitset->nwords_m; i_word++) {
+			unsigned l_bit = (t_bit>=32)?32:t_bit;
+			t_bit -= 32;
 			if (bitset->bits_m[i_word] != 0) {
-				for (; i_bit < 32; i_bit++) {
+				for (; i_bit < l_bit; i_bit++) {
 					if ((bitset->bits_m[i_word] & (1<<i_bit)) != 0) {
 						return i_word*32 + i_bit;
 					}
@@ -258,7 +261,8 @@ int bitset_find_last_one(bitset_t *bitset) {
 			if (bitset->bits_m[i_word] == 0) continue;
 			for (i_bit=31; i_bit >= 0; i_bit--) {
 				if ((bitset->bits_m[i_word] & (1<<i_bit)) != 0) {
-					return i_word*32 + i_bit;
+					if (i_word*32 + i_bit < bitset->nbits_m)
+						return i_word*32 + i_bit;
 				}
 			}
 		}
@@ -274,10 +278,13 @@ int bitset_find_next_zero(bitset_t *bitset, unsigned bit) {
 	unsigned i_word = bit/32;
 	unsigned i_bit = bit%32;
 
-	if (bitset->bits_m && (bit < bitset->nbits_m)) {
+	if (bitset && bitset->bits_m && (bit < bitset->nbits_m)) {
+		unsigned t_bit = bitset->nbits_m;
 		for (i_word = bit/32; i_word < bitset->nwords_m; i_word++) {
+			unsigned l_bit = (t_bit>=32)?32:t_bit;
+			t_bit -= 32;
 			if (bitset->bits_m[i_word] != 0xffffffff) {
-				for (; i_bit < 32; i_bit++) {
+				for (; i_bit < l_bit; i_bit++) {
 					if ((bitset->bits_m[i_word] & (1<<i_bit)) == 0) {
 						return i_word*32 + i_bit;
 					}
@@ -298,7 +305,8 @@ int bitset_find_last_zero(bitset_t *bitset) {
 			if (bitset->bits_m[i_word] == 0) return i_word * 32 + 31;
 			for (i_bit=31; i_bit >= 0; i_bit--) {
 				if ((bitset->bits_m[i_word] & (1<<i_bit)) == 0) {
-					return i_word*32 + i_bit;
+					if (i_word*32 + i_bit < bitset->nbits_m)
+						return i_word*32 + i_bit;
 				}
 			}
 		}

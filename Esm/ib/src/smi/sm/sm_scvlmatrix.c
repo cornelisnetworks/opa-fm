@@ -27,6 +27,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ** END_ICS_COPYRIGHT7   ****************************************/
 #include "sm_l.h"
+#include "sm_qos.h"
 
 static const uint8_t sm_globalSCVLMatrix[SCVLMAP_BASE + 1][SCVLMAP_MAX_INDEX] = {
 /* VL-8 */

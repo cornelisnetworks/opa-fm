@@ -393,7 +393,8 @@ sm_spanning_tree(int32_t mtu, int32_t rate, int *complete) {
 		} else {
 			if (tp->num_sws != 0)
 				IB_LOG_ERROR_FMT(__func__, "Did not find ideal multicast spanning tree root."
-						 "Falling back to default for constructing spanning tree for MTU %s Rate %s", Decode_MTU(mtu), StlStaticRateToText(rate));
+					" Falling back to default for constructing spanning tree for MTU %s Rate %s",
+					IbMTUToText(mtu), StlStaticRateToText(rate));
 		}
 		/* Fall back to old approach if there are errors in building
 		 * ideal spanning tree.
@@ -596,14 +597,12 @@ void sm_check_mc_groups_realizable(void)
 					mcGroup->flags |= McGroupUnrealizable;
 					// Only emit this message once
 					smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_OTHER_ERROR, getMyCsmNodeId(), NULL,
-				                "Multicast group "FMT_GID" with mtu of %s and rate of %s has become "
-				                "unrealizable due to fabric changes; current fabric mtu: %s, current "
-				                "fabric rate: %s", 
-								mcGroup->mGid.Type.Global.SubnetPrefix,
-								mcGroup->mGid.Type.Global.InterfaceID, 
-								Decode_MTU(mcGroup->mtu),
-				                StlStaticRateToText(mcGroup->rate), Decode_MTU(topo->maxMcastMtu),
-				                StlStaticRateToText(topo->maxMcastRate));
+						"Multicast group "FMT_GID" with mtu of %s and rate of %s has become "
+						"unrealizable due to fabric changes; current fabric mtu: %s, current "
+						"fabric rate: %s",
+						mcGroup->mGid.Type.Global.SubnetPrefix, mcGroup->mGid.Type.Global.InterfaceID,
+						IbMTUToText(mcGroup->mtu), StlStaticRateToText(mcGroup->rate),
+						IbMTUToText(topo->maxMcastMtu), StlStaticRateToText(topo->maxMcastRate));
 				}
 				continue;
 			} else if (mcGroup->flags & McGroupUnrealizable) {
@@ -611,11 +610,10 @@ void sm_check_mc_groups_realizable(void)
 				mcGroup->flags &= ~McGroupUnrealizable;
 
 				smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_OTHER_ERROR, getMyCsmNodeId(), NULL,
-				                "Return to normal: Multicast group "FMT_GID" has been restored "
-				                "by fabric changes; current fabric mtu: %s, current "
-				                "fabric rate: %s", mcGroup->mGid.Type.Global.SubnetPrefix,
-								mcGroup->mGid.Type.Global.InterfaceID,
-								Decode_MTU(topo->maxMcastMtu), StlStaticRateToText(topo->maxMcastRate));
+					"Return to normal: Multicast group "FMT_GID" has been restored "
+					"by fabric changes; current fabric mtu: %s, current fabric rate: %s",
+					mcGroup->mGid.Type.Global.SubnetPrefix, mcGroup->mGid.Type.Global.InterfaceID,
+					IbMTUToText(topo->maxMcastMtu), StlStaticRateToText(topo->maxMcastRate));
 			}
 		} else {
 			if (  (tree == NULL)
@@ -628,14 +626,12 @@ void sm_check_mc_groups_realizable(void)
 					mcGroup->flags |= McGroupUnrealizable;
 					// Only emit this message once
 					smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_OTHER_ERROR, getMyCsmNodeId(), NULL,
-					                "Multicast group "FMT_GID" with mtu of %s and rate of %s has become "
-					                "unrealizable due to fabric changes; current fabric maximum ISL mtu: %s, "
-					                "rate: %s", 
-									mcGroup->mGid.Type.Global.SubnetPrefix,
-									mcGroup->mGid.Type.Global.InterfaceID, 
-									Decode_MTU(mcGroup->mtu),
-					                StlStaticRateToText(mcGroup->rate), Decode_MTU(topo->maxISLMtu),
-				    	            StlStaticRateToText(topo->maxMcastRate));
+						"Multicast group "FMT_GID" with mtu of %s and rate of %s has become "
+						"unrealizable due to fabric changes; current fabric maximum ISL mtu: %s, "
+						"rate: %s",
+						mcGroup->mGid.Type.Global.SubnetPrefix, mcGroup->mGid.Type.Global.InterfaceID,
+						IbMTUToText(mcGroup->mtu), StlStaticRateToText(mcGroup->rate),
+						IbMTUToText(topo->maxISLMtu), StlStaticRateToText(topo->maxMcastRate));
 				}
 				continue;
 			} else if (mcGroup->flags & McGroupUnrealizable) {
@@ -643,11 +639,10 @@ void sm_check_mc_groups_realizable(void)
 				mcGroup->flags &= ~McGroupUnrealizable;
 
 				smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_OTHER_ERROR, getMyCsmNodeId(), NULL,
-			    	            "Return to normal: Multicast group "FMT_GID" has been restored "
-			        	        "by fabric changes; current maximum ISL mtu: %s, rate: %s",
-			            	    mcGroup->mGid.Type.Global.SubnetPrefix,
-								mcGroup->mGid.Type.Global.InterfaceID,
-								Decode_MTU(topo->maxISLMtu), StlStaticRateToText(topo->maxISLRate));
+					"Return to normal: Multicast group "FMT_GID" has been restored "
+					"by fabric changes; current maximum ISL mtu: %s, rate: %s",
+					mcGroup->mGid.Type.Global.SubnetPrefix, mcGroup->mGid.Type.Global.InterfaceID,
+					IbMTUToText(topo->maxISLMtu), StlStaticRateToText(topo->maxISLRate));
 			}
 		}
 

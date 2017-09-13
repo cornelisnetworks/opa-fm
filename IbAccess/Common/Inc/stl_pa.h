@@ -57,8 +57,8 @@ extern "C" {
 #define STL_PM_UTIL_GRAN_PERCENT 10 /* granularity of utilization buckets */
 #define STL_PM_UTIL_BUCKETS (100 / STL_PM_UTIL_GRAN_PERCENT)
 
-#define STL_PM_ERR_GRAN_PERCENT 25  /* granularity of error buckets */
-#define STL_PM_ERR_BUCKETS ((100 / STL_PM_ERR_GRAN_PERCENT) + 1) // extra bucket is for those over threshold
+#define STL_PM_CAT_GRAN_PERCENT 25  /* granularity of error buckets */
+#define STL_PM_CATEGORY_BUCKETS ((100 / STL_PM_CAT_GRAN_PERCENT) + 1) // extra bucket is for those over threshold
 
 /* ClassPortInfo Capability bits */
 
@@ -101,6 +101,9 @@ typedef struct _STL_PA_Group_List {
 	char					groupName[STL_PM_GROUPNAMELEN];	// \0 terminated - actual number indicated by numGroups
 } PACK_SUFFIX STL_PA_GROUP_LIST;
 
+#define PACLIENT_IMAGE_CURRENT  0   // imageNumber of most recent sweep image
+#define PACLIENT_IMAGE_TIMED   -1   // imageNumber of Image with particular time
+
 typedef struct _STL_PA_Image_ID_Data {
 	uint64					imageNumber;
 	int32					imageOffset;
@@ -122,46 +125,46 @@ typedef struct _STL_PA_PM_Util_Stats {
 	uint32					avgKPps;
 	uint32					minKPps;
 	uint32					maxKPps;
-	uint16					pmaFailedPorts;
-	uint16					topoFailedPorts;
+	uint16					pmaNoRespPorts;
+	uint16					topoIncompPorts;
 } PACK_SUFFIX STL_PA_PM_UTIL_STATS;
 
 /* Error statistical summary */
-typedef struct _STL_PA_PM_Error_Summary {
+typedef struct _STL_PA_PM_CATEGORY_SUMMARY {
 	uint32					integrityErrors;
-	uint32					congestionErrors;
-	uint32					smaCongestionErrors;
-	uint32					bubbleErrors;
+	uint32					congestion;
+	uint32					smaCongestion;
+	uint32					bubble;
 	uint32					securityErrors;
 	uint32					routingErrors;
 
 	uint16					utilizationPct10; /* in units of 10% */
 	uint16					discardsPct10;    /* in units of 10% */
 	uint16					reserved[6];
-} PACK_SUFFIX STL_PA_PM_ERROR_SUMMARY;
+} PACK_SUFFIX STL_PA_PM_CATEGORY_SUMMARY;
 
-typedef struct _STL_PMERRTHRESHOLDSTRUCT {
+typedef struct _STL_PM_CATEGORY_THRESHOLD {
     uint32					integrityErrors;
-	uint32					congestionErrors;
-	uint32					smaCongestionErrors;
-	uint32					bubbleErrors;
+	uint32					congestion;
+	uint32					smaCongestion;
+	uint32					bubble;
 	uint32					securityErrors;
 	uint32					routingErrors;
-} PACK_SUFFIX STL_PMERRTHRESHOLD_T;
+} PACK_SUFFIX STL_PM_CATEGORY_THRESHOLD;
 
-typedef struct STL_PMERRBUCKETSTRUCT {
+typedef struct _STL_PM_CATEGORY_BUCKET {
 	uint32					integrityErrors;
-	uint32					congestionErrors;
-	uint32					smaCongestionErrors;
-	uint32					bubbleErrors;
+	uint32					congestion;
+	uint32					smaCongestion;
+	uint32					bubble;
 	uint32					securityErrors;
 	uint32					routingErrors;
-} PACK_SUFFIX STL_PMERRBUCKET_T;
+} PACK_SUFFIX STL_PM_CATEGORY_BUCKET;
 
-typedef struct STL_PMERRSTATSTRUCT {
-	STL_PA_PM_ERROR_SUMMARY		errorMaximums;
-	STL_PMERRBUCKET_T			ports[STL_PM_ERR_BUCKETS];
-} PACK_SUFFIX STL_PMERRSTAT_T;
+typedef struct _STL_PM_CATEGORY_STATS {
+	STL_PA_PM_CATEGORY_SUMMARY		categoryMaximums;
+	STL_PM_CATEGORY_BUCKET			ports[STL_PM_CATEGORY_BUCKETS];
+} PACK_SUFFIX STL_PM_CATEGORY_STATS;
 
 typedef struct _STL_PA_Group_Info_Data {
 	char					groupName[STL_PM_GROUPNAMELEN]; // \0 terminated.
@@ -171,8 +174,8 @@ typedef struct _STL_PA_Group_Info_Data {
 	STL_PA_PM_UTIL_STATS	internalUtilStats;
 	STL_PA_PM_UTIL_STATS	sendUtilStats;
 	STL_PA_PM_UTIL_STATS	recvUtilStats;
-	STL_PMERRSTAT_T			internalErrors;
-	STL_PMERRSTAT_T			externalErrors;
+	STL_PM_CATEGORY_STATS			internalCategoryStats;
+	STL_PM_CATEGORY_STATS			externalCategoryStats;
 	uint8					maxInternalRate;
 	uint8					minInternalRate;
 	uint8					maxExternalRate;
@@ -273,14 +276,14 @@ typedef struct _STL_INTEGRITY_WEIGHTS {
 	uint8					reserved[7];
 } PACK_SUFFIX STL_INTEGRITY_WEIGHTS_T;
 
-typedef struct _STL_PM_ERR_THRESHOLDS {
+typedef struct _STL_PM_CATEGORY_THRESHOLDS {
 	uint32					integrityErrors;
-	uint32					congestionErrors;
-	uint32					smaCongestionErrors;
-	uint32					bubbleErrors;
+	uint32					congestion;
+	uint32					smaCongestion;
+	uint32					bubble;
 	uint32					securityErrors;
 	uint32					routingErrors;
-} PACK_SUFFIX STL_PM_ERR_THRESHOLDS;
+} PACK_SUFFIX STL_PM_CATEGORY_THRESHOLDS;
 
 typedef struct _STL_CONGESTION_WEIGHTS {
 	uint8					PortXmitWait;
@@ -327,7 +330,7 @@ typedef struct _STL_PA_PM_Cfg_Data {
 	uint32					lease;
 	uint32					pmFlags;
 	STL_CONGESTION_WEIGHTS_T congestionWeights;
-	STL_PM_ERR_THRESHOLDS	errorThresholds;
+	STL_PM_CATEGORY_THRESHOLDS	categoryThresholds;
 	STL_INTEGRITY_WEIGHTS_T	integrityWeights;
 	uint64					memoryFootprint;
 	uint32					maxAttempts;
@@ -349,19 +352,12 @@ typedef struct _STL_MOVE_FREEZE_DATA {
 #define STL_PA_SELECT_UTIL_PKTS_HIGH	0x00020082
 #define STL_PA_SELECT_UTIL_LOW			0x00020101			// lowest first, ascending
 #define STL_PA_SELECT_UTIL_MC_LOW		0x00020102
-#define STL_PA_SELECT_ERR_INTEG			0x00030001			// hightest first, descending
-#define STL_PA_SELECT_ERR_CONG			0x00030002
-#define STL_PA_SELECT_ERR_SMA_CONG		0x00030003
-#define STL_PA_SELECT_ERR_BUBBLE		0x00030004
-#define STL_PA_SELECT_ERR_SEC			0x00030005
-#define STL_PA_SELECT_ERR_ROUT			0x00030006
-
-#define STL_IS_VALID_SELECT(s)	   (((s) == STL_PA_SELECT_UTIL_HIGH) 	|| ((s) == STL_PA_SELECT_UTIL_PKTS_HIGH) ||\
-									((s) == STL_PA_SELECT_UTIL_LOW) 	|| ((s) == STL_PA_SELECT_ERR_INTEG) ||\
-									((s) == STL_PA_SELECT_ERR_CONG) 	|| ((s) == STL_PA_SELECT_ERR_SMA_CONG) ||\
-									((s) == STL_PA_SELECT_ERR_BUBBLE)	|| ((s) == STL_PA_SELECT_ERR_SEC) ||\
-									((s) == STL_PA_SELECT_ERR_ROUT)		)
-
+#define STL_PA_SELECT_CATEGORY_INTEG			0x00030001			// hightest first, descending
+#define STL_PA_SELECT_CATEGORY_CONG			0x00030002
+#define STL_PA_SELECT_CATEGORY_SMA_CONG		0x00030003
+#define STL_PA_SELECT_CATEGORY_BUBBLE		0x00030004
+#define STL_PA_SELECT_CATEGORY_SEC			0x00030005
+#define STL_PA_SELECT_CATEGORY_ROUT			0x00030006
 
 typedef struct _STL_FOCUS_PORTS_REQ {
 	char					groupName[STL_PM_GROUPNAMELEN];	// \0 terminated
@@ -371,20 +367,20 @@ typedef struct _STL_FOCUS_PORTS_REQ {
 	uint32					range;
 } PACK_SUFFIX STL_FOCUS_PORTS_REQ;
 
-#define STL_PA_FOCUS_FLAG_OK           0
-#define STL_PA_FOCUS_FLAG_PMA_IGNORE   1
-#define STL_PA_FOCUS_FLAG_PMA_FAILURE  2
-#define STL_PA_FOCUS_FLAG_TOPO_FAILURE 3
+#define STL_PA_FOCUS_STATUS_OK           0
+#define STL_PA_FOCUS_STATUS_PMA_IGNORE   1
+#define STL_PA_FOCUS_STATUS_PMA_FAILURE  2
+#define STL_PA_FOCUS_STATUS_TOPO_FAILURE 3
 
 static __inline
-const char* StlFocusFlagToText(uint8 flag)
+const char* StlFocusStatusToText(uint8 status)
 {
-	switch (flag) {
-	case STL_PA_FOCUS_FLAG_OK:           return "OK";
-	case STL_PA_FOCUS_FLAG_PMA_IGNORE:   return "PMA Ignore";
-	case STL_PA_FOCUS_FLAG_PMA_FAILURE:  return "PMA Failure";
-	case STL_PA_FOCUS_FLAG_TOPO_FAILURE: return "Topo Failure";
-	default:                             return "Unknown";
+	switch (status) {
+	case STL_PA_FOCUS_STATUS_OK:           return "OK";
+	case STL_PA_FOCUS_STATUS_PMA_IGNORE:   return "PMA Ignore";
+	case STL_PA_FOCUS_STATUS_PMA_FAILURE:  return "PMA Failure";
+	case STL_PA_FOCUS_STATUS_TOPO_FAILURE: return "Topo Failure";
+	default:                               return "Unknown";
 	}
 }
 
@@ -393,9 +389,9 @@ typedef struct _STL_FOCUS_PORTS_RSP {
 	uint32					nodeLid;
 	uint8					portNumber;
 	uint8					rate;	// IB_STATIC_RATE - 5 bit value
-	uint8					mtu;	// enum IB_MTU - 4 bit value
-	IB_BITFIELD2(uint8,     localFlags : 4,
-		                    neighborFlags : 4)
+	uint8					maxVlMtu;	// enum IB_MTU - 4 bit value
+	IB_BITFIELD2(uint8,     localStatus : 4,
+		                    neighborStatus : 4)
 	uint64					value;		// list sorting factor
 	uint64					nodeGUID;
 	char					nodeDesc[STL_PM_NODEDESCLEN]; // \0 terminated.
@@ -429,8 +425,8 @@ typedef struct _STL_PA_IMAGE_INFO_DATA {
 	uint32					numSwitchPorts;
 	uint32					numLinks;
 	uint32					numSMs;
-	uint32					numFailedNodes;
-	uint32					numFailedPorts;
+	uint32					numNoRespNodes;
+	uint32					numNoRespPorts;
 	uint32					numSkippedNodes;
 	uint32					numSkippedPorts;
 	uint32					numUnexpectedClearPorts;
@@ -448,7 +444,7 @@ typedef struct _STL_PA_VF_INFO_DATA {
 	STL_PA_IMAGE_ID_DATA	imageId;
 	uint32					numPorts;
 	STL_PA_PM_UTIL_STATS	internalUtilStats;
-	STL_PMERRSTAT_T			internalErrors;
+	STL_PM_CATEGORY_STATS			internalCategoryStats;
 	// these are added at the end to allow for forward and backward
 	// compatibility.
 	uint8					maxInternalRate;
@@ -543,9 +539,9 @@ typedef struct _STL_PA_VF_FOCUS_PORTS_RSP {
 	uint32					nodeLid;
 	uint8					portNumber;
 	uint8					rate;	// IB_STATIC_RATE - 5 bit value
-	uint8					mtu;	// enum IB_MTU - 4 bit value
-	IB_BITFIELD2(uint8,     localFlags : 4,
-		                    neighborFlags : 4)
+	uint8					maxVlMtu;	// enum IB_MTU - 4 bit value
+	IB_BITFIELD2(uint8,     localStatus : 4,
+		                    neighborStatus : 4)
 	uint64					value;		// list sorting factor
 	uint64					nodeGUID;
 	char					nodeDesc[STL_PM_NODEDESCLEN]; // \0 terminated.
@@ -790,8 +786,8 @@ BSWAP_STL_PA_PM_GROUP_INFO(STL_PA_PM_GROUP_INFO_DATA *pRecord, boolean isRequest
 	pRecord->internalUtilStats.avgKPps		= ntoh32(pRecord->internalUtilStats.avgKPps);
 	pRecord->internalUtilStats.minKPps		= ntoh32(pRecord->internalUtilStats.minKPps);
 	pRecord->internalUtilStats.maxKPps		= ntoh32(pRecord->internalUtilStats.maxKPps);
-	pRecord->internalUtilStats.pmaFailedPorts = ntoh16(pRecord->internalUtilStats.pmaFailedPorts);
-	pRecord->internalUtilStats.topoFailedPorts = ntoh16(pRecord->internalUtilStats.topoFailedPorts);
+	pRecord->internalUtilStats.pmaNoRespPorts = ntoh16(pRecord->internalUtilStats.pmaNoRespPorts);
+	pRecord->internalUtilStats.topoIncompPorts = ntoh16(pRecord->internalUtilStats.topoIncompPorts);
 
 	pRecord->sendUtilStats.totalMBps		= ntoh64(pRecord->sendUtilStats.totalMBps);
 	pRecord->sendUtilStats.totalKPps		= ntoh64(pRecord->sendUtilStats.totalKPps);
@@ -804,8 +800,8 @@ BSWAP_STL_PA_PM_GROUP_INFO(STL_PA_PM_GROUP_INFO_DATA *pRecord, boolean isRequest
 	pRecord->sendUtilStats.avgKPps			= ntoh32(pRecord->sendUtilStats.avgKPps);
 	pRecord->sendUtilStats.minKPps			= ntoh32(pRecord->sendUtilStats.minKPps);
 	pRecord->sendUtilStats.maxKPps			= ntoh32(pRecord->sendUtilStats.maxKPps);
-	pRecord->sendUtilStats.pmaFailedPorts   = ntoh16(pRecord->sendUtilStats.pmaFailedPorts);
-	pRecord->sendUtilStats.topoFailedPorts  = ntoh16(pRecord->sendUtilStats.topoFailedPorts);
+	pRecord->sendUtilStats.pmaNoRespPorts   = ntoh16(pRecord->sendUtilStats.pmaNoRespPorts);
+	pRecord->sendUtilStats.topoIncompPorts  = ntoh16(pRecord->sendUtilStats.topoIncompPorts);
 
 	pRecord->recvUtilStats.totalMBps		= ntoh64(pRecord->recvUtilStats.totalMBps);
 	pRecord->recvUtilStats.totalKPps		= ntoh64(pRecord->recvUtilStats.totalKPps);
@@ -818,45 +814,45 @@ BSWAP_STL_PA_PM_GROUP_INFO(STL_PA_PM_GROUP_INFO_DATA *pRecord, boolean isRequest
 	pRecord->recvUtilStats.avgKPps			= ntoh32(pRecord->recvUtilStats.avgKPps);
 	pRecord->recvUtilStats.minKPps			= ntoh32(pRecord->recvUtilStats.minKPps);
 	pRecord->recvUtilStats.maxKPps			= ntoh32(pRecord->recvUtilStats.maxKPps);
-	pRecord->recvUtilStats.pmaFailedPorts   = ntoh16(pRecord->recvUtilStats.pmaFailedPorts);
-	pRecord->recvUtilStats.topoFailedPorts  = ntoh16(pRecord->recvUtilStats.topoFailedPorts);
+	pRecord->recvUtilStats.pmaNoRespPorts   = ntoh16(pRecord->recvUtilStats.pmaNoRespPorts);
+	pRecord->recvUtilStats.topoIncompPorts  = ntoh16(pRecord->recvUtilStats.topoIncompPorts);
 
-	pRecord->internalErrors.errorMaximums.integrityErrors			= ntoh32(pRecord->internalErrors.errorMaximums.integrityErrors);
-	pRecord->internalErrors.errorMaximums.congestionErrors			= ntoh32(pRecord->internalErrors.errorMaximums.congestionErrors);
-	pRecord->internalErrors.errorMaximums.smaCongestionErrors		= ntoh32(pRecord->internalErrors.errorMaximums.smaCongestionErrors);
-	pRecord->internalErrors.errorMaximums.bubbleErrors				= ntoh32(pRecord->internalErrors.errorMaximums.bubbleErrors);
-	pRecord->internalErrors.errorMaximums.securityErrors			= ntoh32(pRecord->internalErrors.errorMaximums.securityErrors);
-	pRecord->internalErrors.errorMaximums.routingErrors				= ntoh32(pRecord->internalErrors.errorMaximums.routingErrors);
+	pRecord->internalCategoryStats.categoryMaximums.integrityErrors			= ntoh32(pRecord->internalCategoryStats.categoryMaximums.integrityErrors);
+	pRecord->internalCategoryStats.categoryMaximums.congestion			= ntoh32(pRecord->internalCategoryStats.categoryMaximums.congestion);
+	pRecord->internalCategoryStats.categoryMaximums.smaCongestion		= ntoh32(pRecord->internalCategoryStats.categoryMaximums.smaCongestion);
+	pRecord->internalCategoryStats.categoryMaximums.bubble				= ntoh32(pRecord->internalCategoryStats.categoryMaximums.bubble);
+	pRecord->internalCategoryStats.categoryMaximums.securityErrors			= ntoh32(pRecord->internalCategoryStats.categoryMaximums.securityErrors);
+	pRecord->internalCategoryStats.categoryMaximums.routingErrors				= ntoh32(pRecord->internalCategoryStats.categoryMaximums.routingErrors);
 
-        pRecord->internalErrors.errorMaximums.utilizationPct10 = ntoh16(pRecord->internalErrors.errorMaximums.utilizationPct10);
-        pRecord->internalErrors.errorMaximums.discardsPct10    = ntoh16(pRecord->internalErrors.errorMaximums.discardsPct10);
+        pRecord->internalCategoryStats.categoryMaximums.utilizationPct10 = ntoh16(pRecord->internalCategoryStats.categoryMaximums.utilizationPct10);
+        pRecord->internalCategoryStats.categoryMaximums.discardsPct10    = ntoh16(pRecord->internalCategoryStats.categoryMaximums.discardsPct10);
 
-	for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
-		pRecord->internalErrors.ports[i].integrityErrors			= ntoh32(pRecord->internalErrors.ports[i].integrityErrors);
-		pRecord->internalErrors.ports[i].congestionErrors			= ntoh32(pRecord->internalErrors.ports[i].congestionErrors);
-		pRecord->internalErrors.ports[i].smaCongestionErrors		= ntoh32(pRecord->internalErrors.ports[i].smaCongestionErrors);
-		pRecord->internalErrors.ports[i].bubbleErrors				= ntoh32(pRecord->internalErrors.ports[i].bubbleErrors);
-		pRecord->internalErrors.ports[i].securityErrors				= ntoh32(pRecord->internalErrors.ports[i].securityErrors);
-		pRecord->internalErrors.ports[i].routingErrors				= ntoh32(pRecord->internalErrors.ports[i].routingErrors);
+	for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++) {
+		pRecord->internalCategoryStats.ports[i].integrityErrors			= ntoh32(pRecord->internalCategoryStats.ports[i].integrityErrors);
+		pRecord->internalCategoryStats.ports[i].congestion			= ntoh32(pRecord->internalCategoryStats.ports[i].congestion);
+		pRecord->internalCategoryStats.ports[i].smaCongestion		= ntoh32(pRecord->internalCategoryStats.ports[i].smaCongestion);
+		pRecord->internalCategoryStats.ports[i].bubble				= ntoh32(pRecord->internalCategoryStats.ports[i].bubble);
+		pRecord->internalCategoryStats.ports[i].securityErrors				= ntoh32(pRecord->internalCategoryStats.ports[i].securityErrors);
+		pRecord->internalCategoryStats.ports[i].routingErrors				= ntoh32(pRecord->internalCategoryStats.ports[i].routingErrors);
 	}
 
-	pRecord->externalErrors.errorMaximums.integrityErrors			= ntoh32(pRecord->externalErrors.errorMaximums.integrityErrors);
-	pRecord->externalErrors.errorMaximums.congestionErrors			= ntoh32(pRecord->externalErrors.errorMaximums.congestionErrors);
-	pRecord->externalErrors.errorMaximums.smaCongestionErrors		= ntoh32(pRecord->externalErrors.errorMaximums.smaCongestionErrors);
-	pRecord->externalErrors.errorMaximums.bubbleErrors				= ntoh32(pRecord->externalErrors.errorMaximums.bubbleErrors);
-	pRecord->externalErrors.errorMaximums.securityErrors			= ntoh32(pRecord->externalErrors.errorMaximums.securityErrors);
-	pRecord->externalErrors.errorMaximums.routingErrors				= ntoh32(pRecord->externalErrors.errorMaximums.routingErrors);
+	pRecord->externalCategoryStats.categoryMaximums.integrityErrors			= ntoh32(pRecord->externalCategoryStats.categoryMaximums.integrityErrors);
+	pRecord->externalCategoryStats.categoryMaximums.congestion			= ntoh32(pRecord->externalCategoryStats.categoryMaximums.congestion);
+	pRecord->externalCategoryStats.categoryMaximums.smaCongestion		= ntoh32(pRecord->externalCategoryStats.categoryMaximums.smaCongestion);
+	pRecord->externalCategoryStats.categoryMaximums.bubble				= ntoh32(pRecord->externalCategoryStats.categoryMaximums.bubble);
+	pRecord->externalCategoryStats.categoryMaximums.securityErrors			= ntoh32(pRecord->externalCategoryStats.categoryMaximums.securityErrors);
+	pRecord->externalCategoryStats.categoryMaximums.routingErrors				= ntoh32(pRecord->externalCategoryStats.categoryMaximums.routingErrors);
 
-        pRecord->externalErrors.errorMaximums.utilizationPct10 = ntoh16(pRecord->externalErrors.errorMaximums.utilizationPct10);
-        pRecord->externalErrors.errorMaximums.discardsPct10    = ntoh16(pRecord->externalErrors.errorMaximums.discardsPct10);
+        pRecord->externalCategoryStats.categoryMaximums.utilizationPct10 = ntoh16(pRecord->externalCategoryStats.categoryMaximums.utilizationPct10);
+        pRecord->externalCategoryStats.categoryMaximums.discardsPct10    = ntoh16(pRecord->externalCategoryStats.categoryMaximums.discardsPct10);
 
-        for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
-		pRecord->externalErrors.ports[i].integrityErrors			= ntoh32(pRecord->externalErrors.ports[i].integrityErrors);
-		pRecord->externalErrors.ports[i].congestionErrors			= ntoh32(pRecord->externalErrors.ports[i].congestionErrors);
-		pRecord->externalErrors.ports[i].smaCongestionErrors		= ntoh32(pRecord->externalErrors.ports[i].smaCongestionErrors);
-		pRecord->externalErrors.ports[i].bubbleErrors				= ntoh32(pRecord->externalErrors.ports[i].bubbleErrors);
-		pRecord->externalErrors.ports[i].securityErrors				= ntoh32(pRecord->externalErrors.ports[i].securityErrors);
-			pRecord->externalErrors.ports[i].routingErrors			= ntoh32(pRecord->externalErrors.ports[i].routingErrors);
+        for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++) {
+		pRecord->externalCategoryStats.ports[i].integrityErrors			= ntoh32(pRecord->externalCategoryStats.ports[i].integrityErrors);
+		pRecord->externalCategoryStats.ports[i].congestion			= ntoh32(pRecord->externalCategoryStats.ports[i].congestion);
+		pRecord->externalCategoryStats.ports[i].smaCongestion		= ntoh32(pRecord->externalCategoryStats.ports[i].smaCongestion);
+		pRecord->externalCategoryStats.ports[i].bubble				= ntoh32(pRecord->externalCategoryStats.ports[i].bubble);
+		pRecord->externalCategoryStats.ports[i].securityErrors				= ntoh32(pRecord->externalCategoryStats.ports[i].securityErrors);
+			pRecord->externalCategoryStats.ports[i].routingErrors			= ntoh32(pRecord->externalCategoryStats.ports[i].routingErrors);
 	}
 	pRecord->maxInternalMBps				= ntoh32(pRecord->maxInternalMBps);
 	pRecord->maxExternalMBps				= ntoh32(pRecord->maxExternalMBps);
@@ -951,12 +947,12 @@ BSWAP_STL_PA_PM_CFG(STL_PA_PM_CFG_DATA *pRecord)
 	pRecord->sizeFreeze							= ntoh32(pRecord->sizeFreeze);
 	pRecord->lease								= ntoh32(pRecord->lease);
 	pRecord->pmFlags							= ntoh32(pRecord->pmFlags);
-	pRecord->errorThresholds.integrityErrors	= ntoh32(pRecord->errorThresholds.integrityErrors);
-	pRecord->errorThresholds.congestionErrors	= ntoh32(pRecord->errorThresholds.congestionErrors);
-	pRecord->errorThresholds.smaCongestionErrors	= ntoh32(pRecord->errorThresholds.smaCongestionErrors);
-	pRecord->errorThresholds.bubbleErrors		= ntoh32(pRecord->errorThresholds.bubbleErrors);
-	pRecord->errorThresholds.securityErrors		= ntoh32(pRecord->errorThresholds.securityErrors);
-	pRecord->errorThresholds.routingErrors		= ntoh32(pRecord->errorThresholds.routingErrors);
+	pRecord->categoryThresholds.integrityErrors	= ntoh32(pRecord->categoryThresholds.integrityErrors);
+	pRecord->categoryThresholds.congestion	= ntoh32(pRecord->categoryThresholds.congestion);
+	pRecord->categoryThresholds.smaCongestion	= ntoh32(pRecord->categoryThresholds.smaCongestion);
+	pRecord->categoryThresholds.bubble		= ntoh32(pRecord->categoryThresholds.bubble);
+	pRecord->categoryThresholds.securityErrors		= ntoh32(pRecord->categoryThresholds.securityErrors);
+	pRecord->categoryThresholds.routingErrors		= ntoh32(pRecord->categoryThresholds.routingErrors);
 	pRecord->memoryFootprint					= ntoh64(pRecord->memoryFootprint);
 	pRecord->maxAttempts						= ntoh32(pRecord->maxAttempts);
 	pRecord->respTimeout						= ntoh32(pRecord->respTimeout);
@@ -1005,8 +1001,8 @@ BSWAP_STL_PA_IMAGE_INFO(STL_PA_IMAGE_INFO_DATA *pRecord)
 	pRecord->numSwitchPorts          = ntoh32(pRecord->numSwitchPorts);
 	pRecord->numLinks                = ntoh32(pRecord->numLinks);
 	pRecord->numSMs                  = ntoh32(pRecord->numSMs);
-	pRecord->numFailedNodes          = ntoh32(pRecord->numFailedNodes);
-	pRecord->numFailedPorts          = ntoh32(pRecord->numFailedPorts);
+	pRecord->numNoRespNodes          = ntoh32(pRecord->numNoRespNodes);
+	pRecord->numNoRespPorts          = ntoh32(pRecord->numNoRespPorts);
 	pRecord->numSkippedNodes         = ntoh32(pRecord->numSkippedNodes);
 	pRecord->numSkippedPorts         = ntoh32(pRecord->numSkippedPorts);
 	pRecord->numUnexpectedClearPorts = ntoh32(pRecord->numUnexpectedClearPorts);
@@ -1056,26 +1052,26 @@ BSWAP_STL_PA_VF_INFO(STL_PA_VF_INFO_DATA *pRecord, boolean isRequest)
 	pRecord->internalUtilStats.avgKPps		= ntoh32(pRecord->internalUtilStats.avgKPps);
 	pRecord->internalUtilStats.minKPps		= ntoh32(pRecord->internalUtilStats.minKPps);
 	pRecord->internalUtilStats.maxKPps		= ntoh32(pRecord->internalUtilStats.maxKPps);
-	pRecord->internalUtilStats.pmaFailedPorts = ntoh16(pRecord->internalUtilStats.pmaFailedPorts);
-	pRecord->internalUtilStats.topoFailedPorts = ntoh16(pRecord->internalUtilStats.topoFailedPorts);
+	pRecord->internalUtilStats.pmaNoRespPorts = ntoh16(pRecord->internalUtilStats.pmaNoRespPorts);
+	pRecord->internalUtilStats.topoIncompPorts = ntoh16(pRecord->internalUtilStats.topoIncompPorts);
 
-	pRecord->internalErrors.errorMaximums.integrityErrors			= ntoh32(pRecord->internalErrors.errorMaximums.integrityErrors);
-	pRecord->internalErrors.errorMaximums.congestionErrors			= ntoh32(pRecord->internalErrors.errorMaximums.congestionErrors);
-	pRecord->internalErrors.errorMaximums.smaCongestionErrors		= ntoh32(pRecord->internalErrors.errorMaximums.smaCongestionErrors);
-	pRecord->internalErrors.errorMaximums.bubbleErrors				= ntoh32(pRecord->internalErrors.errorMaximums.bubbleErrors);
-	pRecord->internalErrors.errorMaximums.securityErrors			= ntoh32(pRecord->internalErrors.errorMaximums.securityErrors);
-	pRecord->internalErrors.errorMaximums.routingErrors				= ntoh32(pRecord->internalErrors.errorMaximums.routingErrors);
+	pRecord->internalCategoryStats.categoryMaximums.integrityErrors			= ntoh32(pRecord->internalCategoryStats.categoryMaximums.integrityErrors);
+	pRecord->internalCategoryStats.categoryMaximums.congestion			= ntoh32(pRecord->internalCategoryStats.categoryMaximums.congestion);
+	pRecord->internalCategoryStats.categoryMaximums.smaCongestion		= ntoh32(pRecord->internalCategoryStats.categoryMaximums.smaCongestion);
+	pRecord->internalCategoryStats.categoryMaximums.bubble				= ntoh32(pRecord->internalCategoryStats.categoryMaximums.bubble);
+	pRecord->internalCategoryStats.categoryMaximums.securityErrors			= ntoh32(pRecord->internalCategoryStats.categoryMaximums.securityErrors);
+	pRecord->internalCategoryStats.categoryMaximums.routingErrors				= ntoh32(pRecord->internalCategoryStats.categoryMaximums.routingErrors);
 
-        pRecord->internalErrors.errorMaximums.utilizationPct10 = ntoh16(pRecord->internalErrors.errorMaximums.utilizationPct10);
-        pRecord->internalErrors.errorMaximums.discardsPct10    = ntoh16(pRecord->internalErrors.errorMaximums.discardsPct10);
+        pRecord->internalCategoryStats.categoryMaximums.utilizationPct10 = ntoh16(pRecord->internalCategoryStats.categoryMaximums.utilizationPct10);
+        pRecord->internalCategoryStats.categoryMaximums.discardsPct10    = ntoh16(pRecord->internalCategoryStats.categoryMaximums.discardsPct10);
 
-	for (i = 0; i < STL_PM_ERR_BUCKETS; i++) {
-		pRecord->internalErrors.ports[i].integrityErrors			= ntoh32(pRecord->internalErrors.ports[i].integrityErrors);
-		pRecord->internalErrors.ports[i].congestionErrors			= ntoh32(pRecord->internalErrors.ports[i].congestionErrors);
-		pRecord->internalErrors.ports[i].smaCongestionErrors		= ntoh32(pRecord->internalErrors.ports[i].smaCongestionErrors);
-		pRecord->internalErrors.ports[i].bubbleErrors				= ntoh32(pRecord->internalErrors.ports[i].bubbleErrors);
-		pRecord->internalErrors.ports[i].securityErrors				= ntoh32(pRecord->internalErrors.ports[i].securityErrors);
-		pRecord->internalErrors.ports[i].routingErrors				= ntoh32(pRecord->internalErrors.ports[i].routingErrors);
+	for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++) {
+		pRecord->internalCategoryStats.ports[i].integrityErrors			= ntoh32(pRecord->internalCategoryStats.ports[i].integrityErrors);
+		pRecord->internalCategoryStats.ports[i].congestion			= ntoh32(pRecord->internalCategoryStats.ports[i].congestion);
+		pRecord->internalCategoryStats.ports[i].smaCongestion		= ntoh32(pRecord->internalCategoryStats.ports[i].smaCongestion);
+		pRecord->internalCategoryStats.ports[i].bubble				= ntoh32(pRecord->internalCategoryStats.ports[i].bubble);
+		pRecord->internalCategoryStats.ports[i].securityErrors				= ntoh32(pRecord->internalCategoryStats.ports[i].securityErrors);
+		pRecord->internalCategoryStats.ports[i].routingErrors				= ntoh32(pRecord->internalCategoryStats.ports[i].routingErrors);
 	}
 
 	pRecord->maxInternalMBps				= ntoh32(pRecord->maxInternalMBps);

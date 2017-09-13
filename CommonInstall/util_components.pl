@@ -1937,7 +1937,7 @@ sub show_autostart_menu($%)
 	# at components and include all their subcomponents in the prompts
 	foreach $comp ( @Components )
 	{
-		if ( $selections{$comp} && $ComponentInfo{$comp}{'HasStart'} )
+		if ( comp_is_installed("$comp") && $ComponentInfo{$comp}{'HasStart'} )
 		{
 			# StartComponents will list Components and SubComponents which
 			# have start capability

@@ -35,6 +35,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ib_types.h"
 #include "cs_log.h"
 #include "cs_csm_log.h"
+#include "cs_g.h"
 
 #ifdef __VXWORKS__
 
@@ -258,7 +259,7 @@ int smCsmLogMessage( SmCsmMsgType_t msgType, SmCsmMsgCondition_t cond,
 	char detailBuffer[MSG_BUFFER_SZ];
 	if (detailFmt != NULL)
 	{
-		strcpy(detailBuffer, "|DETAIL:");
+		cs_strlcpy(detailBuffer, "|DETAIL:", sizeof(detailBuffer));
 		va_start(ap, detailFmt);
 		vsprintf(detailBuffer + strlen(detailBuffer), detailFmt, ap);
 		va_end(ap);

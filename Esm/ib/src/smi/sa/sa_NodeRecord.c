@@ -88,9 +88,7 @@ sa_NodeRecord(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 	//
 	records = 0;
 
-	//
-	// We only support Get and GetTable.
-	//
+	// Check Method
 	if (maip->base.method == SA_CM_GET) {
 		INCREMENT_COUNTER(smCounterSaRxGetNodeRecord);
 	} else if (maip->base.method == SA_CM_GETTABLE) {
@@ -98,19 +96,26 @@ sa_NodeRecord(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 	} else {
 		// Generate an error response and return.
 		maip->base.status = MAD_STATUS_BAD_METHOD;
-		(void) sa_send_reply(maip, sa_cntxt);
-		IB_LOG_WARN("sa_NodeRecord: invalid METHOD:", maip->base.method);
-		IB_EXIT("sa_NodeRecord", VSTATUS_OK);
+		IB_LOG_WARN_FMT(__func__, "invalid Method: %s (%u)",
+			cs_getMethodText(maip->base.method), maip->base.method);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
 		return VSTATUS_OK;
 	}
-
-	//
-	// Do the search. Note that we don't support caching of IB records.
-	//
-	if (maip->base.cversion == STL_SA_CLASS_VERSION) 
+	// Check Base and Class Version
+	if (maip->base.bversion == STL_BASE_VERSION && maip->base.cversion == STL_SA_CLASS_VERSION) {
 		sa_NodeRecord_GetTable(maip, &records, &cache);
-	else
+	} else if (maip->base.bversion == IB_BASE_VERSION && maip->base.cversion == SA_MAD_CVERSION) {
 		sa_IbNodeRecord_GetTable(maip, &records);
+	} else {
+		// Generate an error response and return.
+		maip->base.status = MAD_STATUS_BAD_CLASS;
+		IB_LOG_WARN_FMT(__func__, "invalid Base and/or Class Versions: Base %u, Class %u",
+			maip->base.bversion, maip->base.cversion);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
+	}
 
 	//
 	//  Determine reply status

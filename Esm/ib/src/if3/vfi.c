@@ -201,8 +201,8 @@ vfi_MngrDelService(ManagerInfo_t * mi, VFI_SERVICE_RECORD * service, uint32_t ma
     // query the SA for the specified service record
     status = vfi_MngrQueryService(mi, service, mask, &count, NULL);
     if (status || count == 0) {
+        IB_LOG_ERROR_FMT(__func__, "service record not found, rc:%u count:%d", status, count);
         status = VSTATUS_NOT_FOUND; 
-        IB_LOG_ERROR_FMT(__func__, "service record does not");
         IB_EXIT(__func__,status);
         return status;
     }
@@ -221,7 +221,7 @@ vfi_MngrDelService(ManagerInfo_t * mi, VFI_SERVICE_RECORD * service, uint32_t ma
     memcpy(mad.Data, service, sizeof(IB_SERVICE_RECORD));
     (void)BSWAP_IB_SERVICE_RECORD((IB_SERVICE_RECORD *)mad.Data); 
     
-    if ((status = if3_mngr_send_mad(mi->fdr, &mad, sizeof(service), 
+    if ((status = if3_mngr_send_mad(mi->fdr, &mad, sizeof(IB_SERVICE_RECORD), 
                                buffer,
                               &bufferLength, &madRc, NULL, NULL)) != VSTATUS_OK) {
         IB_LOG_INFINI_INFO_FMT(__func__,
@@ -360,7 +360,7 @@ vfi_MngrQueryService(ManagerInfo_t * mi, VFI_SERVICE_RECORD * service,
     
     // send request to SA and wait for result
     if ((status = if3_mngr_send_mad(mi->fdr,
-                                &mad, sizeof(service), 
+                                &mad, sizeof(IB_SERVICE_RECORD), 
                                NULL, 
                                 &bufferLength, &madRc, one_sr_callback,
                                 &cb)) != VSTATUS_OK) {
@@ -385,7 +385,7 @@ vfi_MngrQueryService(ManagerInfo_t * mi, VFI_SERVICE_RECORD * service,
     IB_LOG_INFO0(Log_StrDup((const char*)insr.ServiceName));
     IB_LOG_INFO("insr.serviceId is ", insr.RID.ServiceID);
 
-    memcpy((void *)(service),(void *)(&insr),sizeof(*service));
+    memcpy((void *)(service),(void *)(&insr),sizeof(IB_SERVICE_RECORD));
 
     done:
 
@@ -608,7 +608,7 @@ vfi_mngr_register(IBhandle_t fd, uint8_t mclass, int gididx,
     }
 
     done:
-    memcpy(service,&servRec,sizeof(*service));
+    memcpy(service,&servRec,sizeof(IB_SERVICE_RECORD));
     IB_EXIT(__func__, status);
     return(status);
 

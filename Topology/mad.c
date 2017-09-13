@@ -37,7 +37,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // TBD - fix conflict with ib_utils_openib.h
 #define DBGPRINT(format, args...) if (g_verbose_file) { fprintf(g_verbose_file, format, ##args); }
 #include <limits.h>
-#include <oib_utils_sa.h>
+#include <opamgt_sa_priv.h>
 
 // umadt timeouts for DMA and PMA operations
 #define SEND_WAIT_TIME (100)	// 100 milliseconds for sends
@@ -263,7 +263,7 @@ FSTATUS send_recv_mad(MADT_HANDLE umadtHandle, IB_PATH_RECORD *pathp,
  * Retry as needed if unable to send or don't get a response
  */
 
-static FSTATUS stl_sma_send_recv_mad(struct oib_port *port,
+static FSTATUS stl_sma_send_recv_mad(struct omgt_port *port,
 									 uint16_t lid,
 									 uint8 method, 
 									 uint32 attr, 
@@ -271,13 +271,13 @@ static FSTATUS stl_sma_send_recv_mad(struct oib_port *port,
 									 STL_SMP *smp)
 {
 	FSTATUS fstatus;
-	struct oib_mad_addr addr;
+	struct omgt_mad_addr addr;
     size_t recv_size;
 
     // Determine which pkey to use (full or limited)
     // Attempt to use full at all times, otherwise, can
     // use the limited for queries of the local port.
-    uint16_t pkey = oib_get_mgmt_pkey(port, lid, 0);
+    uint16_t pkey = omgt_get_mgmt_pkey(port, lid, 0);
     if (pkey==0) {
         DBGPRINT("ERROR: Local port does not have management privileges\n");
         return (FPROTECTION);
@@ -312,7 +312,7 @@ static FSTATUS stl_sma_send_recv_mad(struct oib_port *port,
 
 	ASSERT(lid);
     recv_size = sizeof(*smp);
-	fstatus = oib_send_recv_mad_no_alloc(port, 
+	fstatus = omgt_send_recv_mad_no_alloc(port, 
 										 (uint8_t *)smp, sizeof(*smp), 
 										 &addr,
 										 (uint8_t *)smp, &recv_size,
@@ -331,7 +331,7 @@ static FSTATUS stl_sma_send_recv_mad(struct oib_port *port,
 /* Get NodeDescription from SMA at lid
  * Retry as needed
  */
-FSTATUS SmaGetNodeDesc(struct oib_port *port, 
+FSTATUS SmaGetNodeDesc(struct omgt_port *port, 
 					   NodeData *nodep, 
 					   uint32_t lid, 
 					   STL_NODE_DESCRIPTION *pNodeDesc)
@@ -366,7 +366,7 @@ FSTATUS SmaGetNodeDesc(struct oib_port *port,
 /* Get NodeInfo from SMA at lid
  * Retry as needed
  */
-FSTATUS SmaGetNodeInfo(struct oib_port *port, 
+FSTATUS SmaGetNodeInfo(struct omgt_port *port, 
 					   NodeData *nodep, 
 					   uint32_t lid, 
 					   STL_NODE_INFO *pNodeInfo)
@@ -399,7 +399,7 @@ FSTATUS SmaGetNodeInfo(struct oib_port *port,
 /* Get SwitchInfo from SMA at lid
  * Retry as needed
  */
-FSTATUS SmaGetSwitchInfo(struct oib_port *port, 
+FSTATUS SmaGetSwitchInfo(struct omgt_port *port, 
 						 NodeData *nodep, 
 						 uint32_t lid, 
 						 STL_SWITCH_INFO *pSwitchInfo)
@@ -432,7 +432,7 @@ FSTATUS SmaGetSwitchInfo(struct oib_port *port,
 /* Get PortInfo from SMA at lid
  * Retry as needed
  */
-FSTATUS SmaGetPortInfo(struct oib_port *port,
+FSTATUS SmaGetPortInfo(struct omgt_port *port,
 					   NodeData *nodep, 
 					   uint32_t lid, 
 					   uint8_t portNum, 
@@ -468,7 +468,7 @@ FSTATUS SmaGetPortInfo(struct oib_port *port,
  * Retry as needed
  */
 
-FSTATUS SmaGetCableInfo(struct oib_port *port,
+FSTATUS SmaGetCableInfo(struct omgt_port *port,
 						NodeData *nodep, 
 						uint32_t lid, 
 						uint8_t portnum,
@@ -505,7 +505,7 @@ FSTATUS SmaGetCableInfo(struct oib_port *port,
 /* Get Partition Table from SMA at lid
  * Retry as needed
  */
-FSTATUS SmaGetPartTable(struct oib_port *port,
+FSTATUS SmaGetPartTable(struct omgt_port *port,
 						NodeData *nodep, 
 						uint32_t lid, 
 						uint8_t portNum, 
@@ -542,7 +542,7 @@ FSTATUS SmaGetPartTable(struct oib_port *port,
  * Retry as needed
  # Part has changed in STL, due to the table changes
  */
-FSTATUS SmaGetVLArbTable(struct oib_port *port,
+FSTATUS SmaGetVLArbTable(struct omgt_port *port,
 						 NodeData *nodep, 
 						 uint32_t lid, 
 						 uint8_t portNum, 
@@ -578,7 +578,7 @@ FSTATUS SmaGetVLArbTable(struct oib_port *port,
 /* Get SL2SC Mapping Table from SMA at lid
  * Retry as needed
  */
-FSTATUS SmaGetSLSCMappingTable(struct oib_port *port,
+FSTATUS SmaGetSLSCMappingTable(struct omgt_port *port,
 							   NodeData *nodep, 
 							   uint32_t lid, 
 							   STL_SLSCMAP *pSLSCMap)
@@ -611,7 +611,7 @@ FSTATUS SmaGetSLSCMappingTable(struct oib_port *port,
 /* Get SC2SL Mapping Table from SMA at lid
  * Retry as needed
  */
-FSTATUS SmaGetSCSLMappingTable(struct oib_port *port,
+FSTATUS SmaGetSCSLMappingTable(struct omgt_port *port,
 							   NodeData *nodep, 
 							   uint32_t lid, 
 							   STL_SCSLMAP *pSCSLMap)
@@ -644,7 +644,7 @@ FSTATUS SmaGetSCSLMappingTable(struct oib_port *port,
 /* Get SC2SC Mapping Table from SMA at lid
  * Retry as needed
  */
-FSTATUS SmaGetSCSCMappingTable(struct oib_port *port,
+FSTATUS SmaGetSCSCMappingTable(struct omgt_port *port,
 							   NodeData *nodep, 
 							   uint32_t lid, 
 							   uint8_t in_port, 
@@ -677,7 +677,7 @@ FSTATUS SmaGetSCSCMappingTable(struct oib_port *port,
 	return fstatus;
 }
 
-FSTATUS SmaGetSCVLMappingTable(struct oib_port *port,
+FSTATUS SmaGetSCVLMappingTable(struct omgt_port *port,
 							   NodeData *nodep,
 							   uint32_t lid,
 							   uint8_t port_num,
@@ -713,7 +713,7 @@ FSTATUS SmaGetSCVLMappingTable(struct oib_port *port,
  * Retry as needed
  * pBCT must be large enough to hold all BufferControlTables
  */
-FSTATUS SmaGetBufferControlTable(struct oib_port *port,
+FSTATUS SmaGetBufferControlTable(struct omgt_port *port,
 							   NodeData *nodep,
 							   uint32_t lid,
 							   uint8_t startPort,
@@ -767,7 +767,7 @@ FSTATUS SmaGetBufferControlTable(struct oib_port *port,
 /* Get Linear FDB Table from SMA at lid
  * Retry as needed
  */
-FSTATUS SmaGetLinearFDBTable(struct oib_port *port,
+FSTATUS SmaGetLinearFDBTable(struct omgt_port *port,
 							 NodeData *nodep, 
 							 uint32_t lid, 
 							 uint16 block, 
@@ -803,7 +803,7 @@ FSTATUS SmaGetLinearFDBTable(struct oib_port *port,
 /* Get Multicast FDB Table from SMA at lid
  * Retry as needed
  */
-FSTATUS SmaGetMulticastFDBTable(struct oib_port *port,
+FSTATUS SmaGetMulticastFDBTable(struct omgt_port *port,
 								NodeData *nodep, 
 								uint32_t lid, 
 								uint32 block, 
@@ -858,12 +858,11 @@ static FSTATUS ProcessPmaClassPortInfo(PortData* portp, STL_CLASS_PORT_INFO *cla
 /* issue a single PMA mad and get the response.
  * Retry as needed if unable to send or don't get a response
  */
-static FSTATUS stl_pm_send_recv_mad(struct oib_port *port, IB_PATH_RECORD *pathp, 
-									uint32 qpn, uint32 qkey, uint8 method, 
-									uint32 attr, uint32 modifier, STL_PERF_MAD *mad)
+static FSTATUS stl_pm_send_recv_mad(struct omgt_port *port, IB_PATH_RECORD *pathp,
+	uint32 qpn, uint32 qkey, uint8 method, uint32 attr, uint32 modifier, STL_PERF_MAD *mad)
 {
 	FSTATUS fstatus;
-	struct oib_mad_addr addr;
+	struct omgt_mad_addr addr;
     size_t recv_size;
 
 	memset(&addr, 0, sizeof(addr));
@@ -871,6 +870,7 @@ static FSTATUS stl_pm_send_recv_mad(struct oib_port *port, IB_PATH_RECORD *pathp
 	addr.qpn = qpn;
 	addr.qkey = qkey;
 	addr.pkey = pathp->P_Key;
+	addr.sl = pathp->u2.s.SL;
 
 	mad->common.BaseVersion = STL_BASE_VERSION;
 	mad->common.MgmtClass = MCLASS_PERF;
@@ -895,7 +895,7 @@ static FSTATUS stl_pm_send_recv_mad(struct oib_port *port, IB_PATH_RECORD *pathp
 	ASSERT(pathp->DLID);
 
     recv_size = sizeof(*mad);
-	fstatus = oib_send_recv_mad_no_alloc(port, 
+	fstatus = omgt_send_recv_mad_no_alloc(port, 
 										 (uint8_t *)mad, sizeof(*mad),
 										 &addr,
 										 (uint8_t *)mad, &recv_size,
@@ -919,7 +919,7 @@ static FSTATUS stl_pm_send_recv_mad(struct oib_port *port, IB_PATH_RECORD *pathp
  * not match portNum.
  * Handle PMA redirection (currently not supported) here.
  */
-static FSTATUS stl_pm_send_recv(struct oib_port *port, PortData *portp, uint8 method,
+static FSTATUS stl_pm_send_recv(struct omgt_port *port, PortData *portp, uint8 method,
 				uint32 attr, uint32 modifier, STL_PERF_MAD *req, STL_PERF_MAD *resp)
 {
 	FSTATUS fstatus;
@@ -956,7 +956,7 @@ fail:
  * portp is the port to issue PMA request to (can be port 0 of switch)
  * The portp is updated with the CLASS_PORT_INFO redirect and PMA CapMask
  */
-FSTATUS STLPmGetClassPortInfo(struct oib_port *port, PortData *portp)
+FSTATUS STLPmGetClassPortInfo(struct omgt_port *port, PortData *portp)
 {
 	STL_PERF_MAD req;
 	STL_PERF_MAD resp;
@@ -972,7 +972,7 @@ FSTATUS STLPmGetClassPortInfo(struct oib_port *port, PortData *portp)
 	DBGPRINT("    Name: %.*s\n",
 				NODE_DESCRIPTION_ARRAY_SIZE,
 				(char*)portp->nodep->NodeDesc.NodeString);
-	fstatus = stl_pm_send_recv(port, portp, MMTHD_GET, PM_ATTRIB_ID_CLASS_PORTINFO, 
+	fstatus = stl_pm_send_recv(port, portp, MMTHD_GET, STL_PM_ATTRIB_ID_CLASS_PORTINFO,
 							   0, &req, &resp);
 	if (FSUCCESS != fstatus)
 		goto fail;
@@ -986,7 +986,7 @@ fail:
  * Retry and handle redirection as needed
  * portp is the port to issue PMA request to (can be port 0 of switch), it need
  */
-FSTATUS STLPmGetPortStatus(struct oib_port *port, PortData *portp, uint8 portNum,
+FSTATUS STLPmGetPortStatus(struct omgt_port *port, PortData *portp, uint8 portNum,
 							STL_PortStatusData_t *pPortStatus)
 {
 	STL_PERF_MAD req;
@@ -1028,7 +1028,7 @@ fail:
  * If thresholds is non-NULL, only counters with non-zero threshold are cleared
  * otherwise all counters are cleared
  */
-FSTATUS STLPmClearPortCounters(struct oib_port *port, PortData *portp, uint8 lastPortIndex, 
+FSTATUS STLPmClearPortCounters(struct omgt_port *port, PortData *portp, uint8 lastPortIndex, 
 							   uint32 counterselect)
 {
 	STL_PERF_MAD req;
@@ -1075,14 +1075,14 @@ fail:
 
 
 #if !defined(VXWORKS) || defined(BUILD_DMC)
-static FSTATUS dm_send_recv(struct oib_port *port,
+static FSTATUS dm_send_recv(struct omgt_port *port,
 							IB_PATH_RECORD *pathp, 
 							uint32 attr, 
 							uint32 modifier,
 							DM_MAD *mad)
 {
 	FSTATUS fstatus;
-	struct oib_mad_addr addr;
+	struct omgt_mad_addr addr;
     size_t recv_size;
 
 	memset(&addr, 0, sizeof(addr));
@@ -1108,7 +1108,7 @@ static FSTATUS dm_send_recv(struct oib_port *port,
 
 	ASSERT(pathp->DLID);
     recv_size = sizeof(*mad);
-	fstatus = oib_send_recv_mad_no_alloc(port, 
+	fstatus = omgt_send_recv_mad_no_alloc(port, 
 										 (uint8_t *)mad, sizeof(*mad),
 										 &addr,
 										 (uint8_t *)mad, &recv_size,
@@ -1123,7 +1123,7 @@ static FSTATUS dm_send_recv(struct oib_port *port,
 	return fstatus;
 }
 
-FSTATUS DmGetIouInfo(struct oib_port *port, IB_PATH_RECORD *pathp, IOUnitInfo *pIouInfo)
+FSTATUS DmGetIouInfo(struct omgt_port *port, IB_PATH_RECORD *pathp, IOUnitInfo *pIouInfo)
 {
 	DM_MAD mad;
 	FSTATUS fstatus;
@@ -1139,7 +1139,7 @@ fail:
 	return fstatus;
 }
 
-FSTATUS DmGetIocProfile(struct oib_port *port, 
+FSTATUS DmGetIocProfile(struct omgt_port *port, 
 						IB_PATH_RECORD *pathp, 
 						uint8 slot,
 						IOC_PROFILE *pIocProfile)
@@ -1159,7 +1159,7 @@ fail:
 }
 
 /* last - first must be <= 3 */
-FSTATUS DmGetServiceEntries(struct oib_port *port, 
+FSTATUS DmGetServiceEntries(struct omgt_port *port, 
 							IB_PATH_RECORD *pathp, 
 							uint8 slot,
 							uint8 first, 

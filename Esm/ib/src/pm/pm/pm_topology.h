@@ -283,9 +283,9 @@ typedef struct PmUtilStats_s {
 	uint32 MinKPps;	// minimum kilo packets/sec of all selected ports
 	uint32 MaxKPps;	// maximum kilo packets/sec of all selected ports
 
-	uint16 pmaFailedPorts;  // Number of ports with failures but were still able 
+	uint16 pmaNoRespPorts;  // Number of ports with no response but were still able
 							// to be included in Group/Vf Stats
-	uint16 topoFailedPorts; // Number of ports with failures that were not able
+	uint16 topoIncompPorts; // Number of ports with no response that were not able
 							// to be included in Group/Vf Stats
 	// buckets for packets/sec % don't make much sense since theroretical
 	// limit is a function of packet size, hence confusing to report
@@ -456,36 +456,48 @@ typedef struct _vfmap {
 	uint32 vlmask;
 } vfmap_t;
 
+typedef union {
+	uint32 AsReg32;
+	struct { IB_BITFIELD8(uint32,
+		UtilBucket:4,	// MBps utilization bucket: 0 - PM_UTIL_BUCKETS-1
+						// Error Buckets (0-PM_ERR_BUCKETS-1)
+
+		IntegrityBucket:3, 		// Integrity
+		CongestionBucket:3,		// Congestion
+		SmaCongestionBucket:3,	// SMA Congestion
+		BubbleBucket:3,			// Bubble
+		SecurityBucket:3,		// Security
+		RoutingBucket:3,		// Routing
+		Reserved:10)
+	} s;
+} BucketMask_t;
+
 // This tracks Switch, FI and router ports
 typedef struct PmPort_s {
 	// these fields do not change and are tracked once for the Port
-	Guid_t			guid;			// can be 0 for switch portNum != 0
+	Guid_t			guid;           // can be 0 for switch portNum != 0
 	PmNode_t		*pmnodep;
-	uint32			capmask;		// keep latest, rarely changes
+	uint32			capmask;        // keep latest, rarely changes
 
 	uint8			portNum;
 	// keep latest status here, they rarely change
 	union {
 		uint8	AsReg8;
-		struct {
-			uint8	PmaAvoid:1;				// initialized on create
-								// does port have a working PMA
-								// 0 for selected IBM eHFI devices
-								// 0 for Non-Enhanced Switch Port 0's
-			uint8	CountersIndex:1;	// most recent Counters[] index
-								// which has valid data
+		struct { IB_BITFIELD2(uint8,
+			PmaAvoid:1,				// PM should not sweep PMA on this Port
+			Reserved:7)
 		} s;
 	} u;
 
 	// lid/portnum of neighbor is temp data only used while doing sweep
 	STL_LID_32 		neighbor_lid;
-	PORT 			neighbor_portNum;	// only valid if neighbor_lid != 0
+	PORT 			neighbor_portNum;   // only valid if neighbor_lid != 0
 
 	// count warnings
 	uint32 groupWarnings;
 
 	// protected by Pm_t.totalsLock
-	PmCompositePortCounters_t StlPortCountersTotal;	// running total
+	PmCompositePortCounters_t StlPortCountersTotal; // running total
 	PmCompositeVLCounters_t StlVLPortCountersTotal[MAX_PM_VLS];
 	// somehow configure this based on pm_config.process_vl_counters
 
@@ -494,103 +506,44 @@ typedef struct PmPort_s {
 	struct PmPortImage_s {
 		union {
 			uint32	AsReg32;
-			struct {
-				// imageLock protects state, rate and mtu
-				uint32	active:1;// is port IB_PORT_ACTIVE (SW port 0 fixed up)
-				uint32	mtu:4;	// enum IB_MTU - due to actual range, 3 bits
-				uint32  txActiveWidth:4; // LinkWidthDowngrade.txActive
-				uint32	rxActiveWidth:4; // LinkWidthDowngrade.rxActive
-				uint32	activeSpeed:2;
-				uint32	bucketComputed:1; // only r/w by engine, no lock
-				uint32	Initialized:1;	// has group membership been initialized
-				uint32	queryStatus:2;	// PMA query or clear result
-				uint32	UnexpectedClear:1;	// PMA Counters unexpectedly cleared
-				// From Counters->flags
-				uint32	gotDataCntrs:1;  // Should Always be true
-				uint32	gotErrorCntrs:1; // Should Always be true for HFI
-				uint32  ClearSome:1;     // PMA Counters were cleared by the PM
-				uint32  ClearAll:1;
-#if PM_COMPRESS_GROUPS
-				uint32	InGroups:3;	// number of groups port is a member of
-				// 5 spare bits
-#else
-				// 8 spare bits
-#endif
+			struct { IB_BITFIELD11(uint32,
+				active:1, 			// is port IB_PORT_ACTIVE (SW port 0 fixed up)
+				mtu:4,				// enum IB_MTU - due to actual range, 3 bits
+				txActiveWidth:4,	// LinkWidthDowngrade.txActive
+				rxActiveWidth:4,	// LinkWidthDowngrade.rxActive
+				activeSpeed:3,		// LinkSeed.Active
+				Initialized:1,		// has group membership been initialized
+				queryStatus:2,		// PMA query or clear result
+				UnexpectedClear:1,	// PMA Counters unexpectedly cleared
+				gotDataCntrs:1,		// Were Data Counters updated
+				gotErrorCntrs:1,	// Were Error Counters updated
+				Reserved:10)
 			} s;
 		} u;
-		struct PmPort_s	*neighbor;
+		struct PmPort_s	*neighbor;		// Pointer to Neighbor Port
 
-		// set of groups this port is IN
-		// in addition all ports are implicitly in the AllPorts group
-		PmGroup_t 	*Groups[PM_MAX_GROUPS_PER_PORT];
-		uint16_t	dgMember[MAX_DEVGROUPS];
-		uint8 		numVFs;
-		vfmap_t 	vfvlmap[MAX_VFABRICS];
-		uint32_t 	vlSelectMask;
+		uint16_t	dgMember[MAX_DEVGROUPS];			// Copy of DeviceGroup Memebership from SM
 
-		// for each group a bit is used to indicate if the given group contains
-		// both this port and its neighbor (Internal Link)
-		// It will affect how we tabulate statistics in PmGroup_t
-		uint32 IntLinkFlags:8;	// one bit per Group
-		uint32 UtilBucket:4;// MBps utilization bucket: 0 - PM_UTIL_BUCKETS-1
-		// Error Buckets (0-PM_ERR_BUCKETS-1)
-		uint32 IntegrityBucket:3;// Integrity Errors
-		uint32 CongestionBucket:3;// Congestion Errors
-		uint32 SmaCongestionBucket:3; // SMA Congestion Errors
-		uint32 BubbleBucket:3; // Bubble Errors
-		uint32 SecurityBucket:3; // Security Errors
-		uint32 RoutingBucket:3;// Routing Errors
-		uint32 spare:2;
+		PmGroup_t 	*Groups[PM_MAX_GROUPS_PER_PORT];	// PortGroups (In additon to All) this port is a member of.
+		uint8		numGroups;							// Number of PortGroups
+		uint8		InternalBitMask;					// If Port is Internal to PortGroup Bit Mask (this and neighbor in group)
+	
+		uint8 		numVFs;                             // Number of VFs
+		vfmap_t 	vfvlmap[MAX_VFABRICS];				// VFs this port is a member of.
+														//                                
+		uint32_t 	vlSelectMask;                       // Aggreate of Active VLs used by VFs (also VL 15)
+		CounterSelectMask_t 		clearSelectMask;	// Counter Mask of Counters Cleared after the above data was recorded
 
-		struct _vl_bucket_flagbucket_flags {
-#if CPU_BE
-			uint32 IntLinkFlags:8;	// not used here
-			uint32 UtilBucket:4;// MBps utilization bucket: 0 - PM_UTIL_BUCKETS-1
-			// Error Buckets (0-PM_ERR_BUCKETS-1)
-			uint32 IntegrityBucket:3;// Integrity Errors
-			uint32 CongestionBucket:3;// Congestion Errors
-			uint32 SmaCongestionBucket:3; // SMA Congestion Errors
-			uint32 BubbleBucket:3; // Bubble Errors
-			uint32 SecurityBucket:3; // Security Errors
-			uint32 RoutingBucket:3;// Routing Errors
-			uint32 spare:2;
-#else
-			uint32 spare:2;
-			uint32 RoutingBucket:3;
-			uint32 SecurityBucket:3;
-			uint32 BubbleBucket:3;
-			uint32 SmaCongestionBucket:3;
-			uint32 CongestionBucket:3;
-			uint32 IntegrityBucket:3;
-			uint32 UtilBucket:4;
-			uint32 IntLinkFlags:8;
-#endif	// CPU_BE
-		} VLBucketFlags [MAX_PM_VLS];
+		// Raw PortCounters
+		PmCompositePortCounters_t	StlPortCounters;					// Port Level Counters
+		PmCompositeVLCounters_t		StlVLPortCounters[MAX_PM_VLS];		// VL Level Counters
+		// Delta PortCounters
+		PmCompositePortCounters_t	DeltaStlPortCounters;				// Port Level Counters
+		PmCompositeVLCounters_t		DeltaStlVLPortCounters[MAX_PM_VLS];	// VL Level Counters
 
-		// for statistics below, each interval we:
-		// 	fetch new PMA counters, compute statistics, discard old counters
-		// 	we keep raw counts here, we can compute % on fly as needed
-		// only Image[pm->LastSweepIndex] should be accessed by APIs
 
-		// We keep Raw Counters per image
-		// Newer tools should use this instead of PortCountersTotal
-		PmCompositePortCounters_t	StlPortCounters;	// Port Level Counters
-		PmCompositeVLCounters_t 	StlVLPortCounters[MAX_PM_VLS]; // VL Level Counters - used for VFs
-		CounterSelectMask_t 		clearSelectMask;	// what counters were cleared by PM after this image was recorded.
-
-		// Use larger of Send-from and Recv-to (Send should be >= Recv)
-		// keep our output stats here and look to neighbor for other direction
-		uint32 SendMBps;
-		uint32 SendKPps;
-		uint32 VFSendMBps[MAX_VFABRICS];
-		uint32 VFSendKPps[MAX_VFABRICS];
-		// can compute Avg pkt size - (BW/pkts) - with rounding errors
-
-		ErrorSummary_t Errors;	// errors associated with our receiver side
-							// look at neighbor for other half of picture
-		ErrorSummary_t VFErrors[MAX_VFABRICS]; // errors associated with our receiver side
-	} Image[1];	// sized when allocate PmPort_t
-} PmPort_t;
+	} Image[1]; // sized when allocate PmPort_t
+} PmPort_t; 
 
 #define PM_PORT_ERROR_SUMMARY(portImage, lli, ler)	((portImage)->StlPortCounters.PortRcvConstraintErrors + \
 											(portImage)->StlPortCounters.PortRcvSwitchRelayErrors + \
@@ -755,8 +708,8 @@ typedef struct PmImage_s {
 	} SMs[2];					// track just master and 1st secondary
 	// summary of errors during of sweep
 								// Nodes = Switch Node or a FI Port
-	uint32		FailedNodes;	// failed to get path or access PMA >=1 port
-	uint32		FailedPorts;	// failed to get path or access PMA
+	uint32		NoRespNodes;	// failed to get path or access PMA >=1 port
+	uint32		NoRespPorts;	// failed to get path or access PMA
 	uint32		SkippedNodes;	// Skipped all ports on Node
 	uint32		SkippedPorts;	// No PMA or filtered
 	uint32		UnexpectedClearPorts;	// Ports which whose counters decreased
@@ -771,104 +724,50 @@ typedef struct PmImage_s {
 #define PM_HISTORY_MAX_IMAGES_PER_COMPOSITE 60
 #define PM_HISTORY_MAX_SMS_PER_COMPOSITE 2
 #define PM_HISTORY_MAX_LOCATION_LEN 111
-#define PM_HISTORY_VERSION 8
-#define PM_HISTORY_VERSION_OLD 7 // Old version currently supported by PA
+#define PM_HISTORY_VERSION 9
+#define PM_HISTORY_VERSION_OLD 9 // Old version currently supported by PA
 #define PM_MAX_COMPRESSION_DIVISIONS 32
 #define PM_HISTORY_STHFILE_LEN 15 // the exact length of the filename, not full path
 
 typedef struct PmCompositePort_s {
 	uint64	guid;
-	// This is problematic to maintain, but a short-term work-around:
-	// Single instances of uint32 are gathered here so that an even number of them
-	//  can be maintained to ensure HSM and ESM have the same 64-bit data alignment
 	union {
-		uint32 AsReg32;
-		struct {
-#if CPU_BE
-			uint32 active:1;
-			uint32 mtu:4;
-			uint32 txActiveWidth:4;
-			uint32 rxActiveWidth:4;
-			uint32 activeSpeed:2;
-			uint32 bucketComputed:1;
-			uint32 Initialized:1;
-			uint32 queryStatus:2;
-			uint32 UnexpectedClear:1;
-			uint32 gotDataCntrs:1;
-			uint32 gotErrorCntrs:1;
-			uint32 ClearSome:1;
-			uint32 ClearAll:1;
-#if PM_COMPRESS_GROUPS
-			uint32 InGroups:3;
-#else
-			uint32 reserved:3;
-#endif
-#else
-#if PM_COMPRESS_GROUPS
-			uint32 InGroups:3;
-#else
-			uint32 reserved:3;
-#endif
-			uint32 ClearAll:1;
-			uint32 ClearSome:1;
-			uint32 gotErrorCntrs:1;
-			uint32 gotDataCntrs:1;
-			uint32 UnexpectedClear:1;
-			uint32 queryStatus:2;
-			uint32 Initialized:1;
-			uint32 bucketComputed:1;
-			uint32 activeSpeed:2;
-			uint32 rxActiveWidth:4;
-			uint32 txActiveWidth:4;
-			uint32 mtu:4;
-			uint32 active:1;
-#endif	// CPU_BE
+		uint32	AsReg32;
+		struct { IB_BITFIELD11(uint32,
+			active:1, 			// is port IB_PORT_ACTIVE (SW port 0 fixed up)
+			mtu:4,				// enum IB_MTU - due to actual range, 3 bits
+			txActiveWidth:4,	// LinkWidthDowngrade.txActive
+			rxActiveWidth:4,	// LinkWidthDowngrade.rxActive
+			activeSpeed:3,		// LinkSeed.Active
+			Initialized:1,		// has group membership been initialized
+			queryStatus:2,		// PMA query or clear result
+			UnexpectedClear:1,	// PMA Counters unexpectedly cleared
+			gotDataCntrs:1,		// Were Data Counters updated
+			gotErrorCntrs:1,	// Were Error Counters updated
+			Reserved:10)
 		} s;
 	} u;
-
-#if CPU_BE
-	uint32 intLinkFlags:8;
-	uint32 utilBucket:4;
-	uint32 integrityBucket:3;
-	uint32 congestionBucket:3;
-	uint32 smaCongestionBucket:3;
-	uint32 bubbleBucket:3;
-	uint32 securityBucket:3;
-	uint32 routingBucket:3;
-	uint32 spare:2;
-#else
-	uint32 spare:2;
-	uint32 routingBucket:3;
-	uint32 securityBucket:3;
-	uint32 bubbleBucket:3;
-	uint32 smaCongestionBucket:3;
-	uint32 congestionBucket:3;
-	uint32 integrityBucket:3;
-	uint32 utilBucket:4;
-	uint32 intLinkFlags:8;
-#endif	// CPU_BE
-
 	STL_LID_32 neighborLid;
-	uint8	portNum;
+
+	PORT	portNum;
 	PORT	neighborPort;
 	uint8	numVFs;
-	uint8	reserved;
-	uint32	sendMBps;
-	uint32	sendKPps;
+	uint8	numGroups;
 	uint8	groups[PM_MAX_GROUPS_PER_PORT];
+
+	uint8   InternalBitMask;
+	uint8   reserved2[3];
 	uint32 vlSelectMask;
+
 	CounterSelectMask_t clearSelectMask;
-	uint32	reserved99;
-	// End of single instances of uint32; see above
-	uint32	VFSendMBps[MAX_VFABRICS];
-	uint32	VFSendKPps[MAX_VFABRICS];
+	uint32 reserved99;
+
 	PmCompositeVfvlmap_t compVfVlmap[MAX_VFABRICS];
 
-	struct _vl_bucket_flagbucket_flags VLBucketFlags[MAX_PM_VLS];
 	PmCompositePortCounters_t	stlPortCounters;
 	PmCompositeVLCounters_t	stlVLPortCounters[MAX_PM_VLS];
-	ErrorSummary_t	errors;
-	ErrorSummary_t	VFErrors[MAX_VFABRICS];
+	PmCompositePortCounters_t	DeltaStlPortCounters;
+	PmCompositeVLCounters_t	DeltaStlVLPortCounters[MAX_PM_VLS];
 } PACK_SUFFIX PmCompositePort_t;
 
 typedef struct PmCompositeNode_s {
@@ -939,8 +838,8 @@ typedef struct PmCompositeImage_s {
 	uint32	switchPorts;
 	uint32	numLinks;
 	uint32 	numSMs;
-	uint32	failedNodes;
-	uint32	failedPorts;
+	uint32	noRespNodes;
+	uint32	noRespPorts;
 	uint32	skippedNodes;
 	uint32	skippedPorts;
 	uint32	unexpectedClearPorts;
@@ -1108,8 +1007,8 @@ BSWAP_PM_UTIL_STATS(PmUtilStats_t *Dest)
 	Dest->AvgKPps = ntoh32(Dest->AvgKPps);
 	Dest->MinKPps = ntoh32(Dest->MinKPps);
 	Dest->MaxKPps = ntoh32(Dest->MaxKPps);
-	Dest->pmaFailedPorts = ntoh16(Dest->pmaFailedPorts);
-	Dest->topoFailedPorts = ntoh16(Dest->topoFailedPorts);
+	Dest->pmaNoRespPorts = ntoh16(Dest->pmaNoRespPorts);
+	Dest->topoIncompPorts = ntoh16(Dest->topoIncompPorts);
 #endif
 }	// End of BSWAP_PM_UTIL_STATS
 
@@ -1241,27 +1140,24 @@ void
 BSWAP_PM_COMPOSITE_PORT(PmCompositePort_t *Dest, uint32 numPorts)
 {
 #if CPU_LE
-	uint32 i, j;
+	uint32 i;
 
 	for (i = 0; i < numPorts; i++) {
 		Dest[i].guid = ntoh64(Dest[i].guid);
-		Dest[i].neighborLid = ntoh32(Dest[i].neighborLid);
-		Dest[i].sendMBps = ntoh32(Dest[i].sendMBps);
-		Dest[i].sendKPps = ntoh32(Dest[i].sendKPps);
 
-		for (j = 0; j < MAX_VFABRICS; j++)
-			Dest[i].VFSendMBps[j] = ntoh32(Dest[i].VFSendMBps[j]);
-		for (j = 0; j < MAX_VFABRICS; j++)
-			Dest[i].VFSendKPps[j] = ntoh32(Dest[i].VFSendKPps[j]);
+		Dest[i].u.AsReg32 = ntoh32(Dest[i].u.AsReg32);
+		Dest[i].neighborLid = ntoh32(Dest[i].neighborLid);
+
+		Dest[i].vlSelectMask = ntoh32(Dest[i].vlSelectMask);
+		Dest[i].clearSelectMask.AsReg32 = ntoh32(Dest[i].clearSelectMask.AsReg32);
 
 		BSWAP_PM_COMPOSITE_VFVLMAP(Dest[i].compVfVlmap, MAX_VFABRICS);
-		Dest[i].vlSelectMask = ntoh32(Dest[i].vlSelectMask);
-		// VLBucketFlags is an endian-aware bit structure
+
 		BSWAP_PM_COMPOSITE_PORT_COUNTERS(&Dest[i].stlPortCounters);
 		BSWAP_PM_COMPOSITE_VL_COUNTERS(Dest[i].stlVLPortCounters, MAX_PM_VLS);
-		// clearSelectMask is an endian-aware bit structure
-		BSWAP_PM_ERROR_SUMMARY(&Dest[i].errors, 1);
-		BSWAP_PM_ERROR_SUMMARY(Dest[i].VFErrors, MAX_VFABRICS);
+
+		BSWAP_PM_COMPOSITE_PORT_COUNTERS(&Dest[i].DeltaStlPortCounters);
+		BSWAP_PM_COMPOSITE_VL_COUNTERS(Dest[i].DeltaStlVLPortCounters, MAX_PM_VLS);
 	}
 #endif
 }	// End of BSWAP_PM_COMPOSITE_PORT
@@ -1398,8 +1294,8 @@ BSWAP_PM_COMPOSITE_IMAGE_FLAT(PmCompositeImage_t *Dest, boolean hton, uint32 his
 	Dest->switchPorts = ntoh32(Dest->switchPorts);
 	Dest->numLinks = ntoh32(Dest->numLinks);
 	Dest->numSMs = ntoh32(Dest->numSMs);
-	Dest->failedNodes = ntoh32(Dest->failedNodes);
-	Dest->failedPorts = ntoh32(Dest->failedPorts);
+	Dest->noRespNodes = ntoh32(Dest->noRespNodes);
+	Dest->noRespPorts = ntoh32(Dest->noRespPorts);
 	Dest->skippedNodes = ntoh32(Dest->skippedNodes);
 	Dest->skippedPorts = ntoh32(Dest->skippedPorts);
 	Dest->unexpectedClearPorts = ntoh32(Dest->unexpectedClearPorts);
@@ -1617,17 +1513,56 @@ void PmClearAllNodes(Pm_t *pm);
 void PmSkipPort(Pm_t *pm, PmPort_t *pmportp);
 void PmSkipNode(Pm_t *pm, PmNode_t *pmnodep);
 
-void PmFailPort(Pm_t *pm, PmPort_t *pmportp, uint8 queryStatus, const char* message);
-void PmFailPacket(Pm_t *pm, PmDispatcherPacket_t *disppacket, uint8 queryStatus, const char* message);
-void PmFailNode(Pm_t *pm, PmNode_t *pmnodep, uint8 queryStatus, const char* message);
+void PmFailPort(Pm_t *pm, PmPort_t *pmportp, uint8 queryStatus, uint8 method, uint16 aid);
+void PmFailPacket(Pm_t *pm, PmDispatcherPacket_t *disppacket, uint8 queryStatus, uint8 method, uint16 aid);
+void PmFailNode(Pm_t *pm, PmNode_t *pmnodep, uint8 queryStatus, uint8 method, uint16 aid);
 
 // pm_debug.c
 void DisplayPm(Pm_t *pm);
 
-void ComputeBuckets(Pm_t *pm, PmPortImage_t *portImage);
+uint32 computeSendMBps(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data);
+uint32 computeSendKPkts(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data);
+uint32 computeIntegrity(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data);
+uint32 computeCongestion(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data);
+uint32 computeSmaCongestion(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data);
+uint32 computeBubble(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data);
+uint32 computeSecurity(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data);
+uint32 computeRouting(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data);
+uint32 computeUtilizationPct10(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data);
+uint32 computeDiscardsPct10(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data);
 
-void PmPrintExceededPort(PmPort_t *pmportp, uint32 index,
-				const char *statistic, uint32 threshold, uint32 value);
+
+// Given a MBps transfer rate and a theoretical maxMBps, compute the 
+//  utilization bucket number from 0 to PM_UTIL_BUCKETS-1
+static __inline uint8 ComputeUtilBucket(uint32 SendMBps, uint32 maxMBps)
+{
+	if (maxMBps) {
+		// directly compute bucket to reduce overflow chances
+		uint8 utilBucket = (SendMBps * PM_UTIL_BUCKETS) / maxMBps;
+		if (utilBucket >= PM_UTIL_BUCKETS)
+			return PM_UTIL_BUCKETS-1;
+		else
+			return utilBucket;
+	} else {
+		return 0;
+	}
+}
+
+// Given a Counter Category Value and a threshold, compute the bucket number
+//  from 0 to PM_ERR_BUCKETS-1
+static __inline uint8 ComputeErrBucket(uint32 errCnt, uint32 errThreshold)
+{
+	uint8 errBucket;
+	if (! errThreshold) return 0;
+
+	errBucket = (errCnt * (PM_ERR_BUCKETS-1)) / errThreshold;
+	if (errBucket >= PM_ERR_BUCKETS)
+		 return PM_ERR_BUCKETS-1;
+	else
+		 return errBucket;
+}
+
+void PmPrintExceededPort(PmPort_t *pmportp, uint32 index, const char *statistic, uint32 threshold, uint32 value);
 void PmPrintExceededPortDetailsIntegrity(PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint32 lastImageIndex);
 void PmPrintExceededPortDetailsCongestion(PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint32 lastImageIndex);
 void PmPrintExceededPortDetailsSmaCongestion(PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint32 lastImageIndex);
@@ -1644,9 +1579,9 @@ void PmClearPortImage(PmPortImage_t *portImage);
 void FinalizeVFStats(PmVFImage_t *vfImage);
 
 uint32_t PmCalculateRate(uint32_t speed, uint32_t width);
-void UpdateInGroupStats(Pm_t *pm, PmGroupImage_t *groupImage, PmPortImage_t *portImage);
-void UpdateExtGroupStats(Pm_t *pm, PmGroupImage_t *groupImage, PmPortImage_t *portImage, PmPortImage_t *portImage2);
-void UpdateVFStats(Pm_t *pm, PmVFImage_t *vfImage, PmPortImage_t *portImage);
+void UpdateInGroupStats(Pm_t *pm, uint32 imageIndex, PmPort_t *port, PmGroupImage_t *groupImage, uint32 imageInterval);
+void UpdateExtGroupStats(Pm_t *pm, uint32 imageIndex, PmPort_t *port, PmGroupImage_t *groupImage, uint32 imageInterval);
+void UpdateVFStats(Pm_t *pm, uint32 imageIndex, PmPort_t *port, PmVFImage_t *vfImage, uint32 imageInterval);
 
 // Clear Running totals for a given Port.  This simulates a PMA clear so
 // that tools like opareport can work against the Running totals until we

@@ -2071,6 +2071,7 @@ if3_mngr_send_mad(IBhandle_t fd, SA_MAD *psa, uint32_t dataLength, uint8_t *buff
         } else {
             // release context for single MAD request
             rmpp_cntxt_full_release(fe_cntxt);
+            fe_cntxt = NULL;
 
             // wait for response from manager
             rc = rmpp_receive_response(fd_rmpp_usrid, mi, &imad, buffer, bufferLength, cb, context); 
@@ -2083,9 +2084,9 @@ if3_mngr_send_mad(IBhandle_t fd, SA_MAD *psa, uint32_t dataLength, uint8_t *buff
             }
             
             // get MAD status from the header
-			if (rc == VSTATUS_OK) {
-				*madRc = imad.base.status; 
-			}
+            if (rc == VSTATUS_OK) {
+                *madRc = imad.base.status; 
+            }
             
             // set response status to no_records since rmpp returns zero length record with status OK 
             // in those cases

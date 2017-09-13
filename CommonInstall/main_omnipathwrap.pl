@@ -65,7 +65,7 @@ my @OmniPathAllComponents = ( "mvapich2_gcc_hfi",
 @Components = ( "opa_stack", "mpi_selector", "intel_hfi", 
 		"ib_wfr_lite",
 	   	"oftools", "opa_stack_dev", "fastfabric",
-		"ofed_ipoib", "ofed_ib_bonding", "opafm",
+		"ofed_ipoib", "ofed_ib_bonding", "opafm", "opamgt_sdk",
 	   	@OmniPathAllComponents, 
 		"gasnet", "openshmem",
 	   	"mvapich2", "openmpi",
@@ -405,6 +405,16 @@ $WrapperComponent = "opaconfig";
 					  StartPreReq => " opa_stack opafm ",
 					  StartComponents => [ "opafm_snmp" ],
 					},
+	"opamgt_sdk" => { Name => "OPA Management SDK",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-Tools*.*"),
+					  DriverSubdir => "",
+					  Prereq => " opa_stack ", CoReq => "",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ ],
+				  },
 	"ofed_iser" =>	{ Name => "OFA iSER",
 					  DefaultInstall => $State_DoNotInstall,
 					  SrcDir => file_glob("./IntelOPA-OFED.*"),
@@ -466,6 +476,7 @@ $WrapperComponent = "opaconfig";
 				"ofed_srp" => 0,
 				"ofed_srpt" => 0,
 				"opafm" => 0,
+				"opamgt_sdk" => 0,
 				"ofed_iser" => 0,
 				"ofed_nfsrdma" => 0,
 				"ofed_debug" => 0,
@@ -492,7 +503,6 @@ sub install_opaconfig
 	NormalPrint("Installing $ComponentInfo{'opaconfig'}{'Name'}...\n");
 
 	check_config_dirs();
-	copy_systool_file("$srcdir/INSTALL", "/sbin/opaconfig");
 	# remove the old style version file
 	system("rm -rf $ROOT/$BASE_DIR/version");
 	# version_wrapper is only for support (fetched in opacapture)

@@ -390,11 +390,11 @@ pm_initialize_config(void)
 	// translate sm_env ("sm_#") to pm_env_str ("pm_#")
 	// we use this to identify our instance and hence which Fm section of config
 	memset (pm_env_str, 0, sizeof(pm_env_str));
-	strcpy ((void *)pm_env_str, (void*)sm_env);
+	cs_strlcpy ((void *)pm_env_str, (void*)sm_env,sizeof(pm_env_str));
 	pm_env_str[0]='p';
 
 	// -X option information comes from sm's -X option
-	strcpy(pm_config_filename, sm_config_filename);
+	cs_strlcpy(pm_config_filename, sm_config_filename, sizeof(pm_config_filename));
 	
     //
     //	Get the environment variables before applying the command line overrides.
@@ -406,25 +406,18 @@ pm_initialize_config(void)
         return rc;
     }
 
-	// TBD if ! (pm_config.start) skip PM config validation?
-	// but if PM could be started later, might want to check now or defer
-	// to when PM is started.
-
-	// other command line overrides for device, port, logging come from SM
-	// pm_interval must be set via config file (could add -r option to
-	// sm_linux.c to parse pm_interval, but infrequently used by development
-	// only)
-
-    // ensure that the primary PM configuration parameters match those of the SM
-    if (!sm_isValidDeviceConfigSettings(VIEO_PM_MOD_ID, pm_config.hca, pm_config.port, pm_config.port_guid)) {
-    	(void)sm_getDeviceConfigSettings(&pm_config.hca, &pm_config.port, &pm_config.port_guid);
-	}
-    if (!sm_isValidLogConfigSettings(VIEO_PM_MOD_ID, pm_config.log_level, pm_config.syslog_mode, pm_log_masks, pm_config.log_file, pm_config.syslog_facility)) {
-    	(void)sm_getLogConfigSettings(&pm_config.log_level, &pm_config.syslog_mode, pm_log_masks,
-                                  pm_config.log_file, pm_config.syslog_facility);
-	}
-    if (!sm_isValidMasterConfigSettings(VIEO_PM_MOD_ID, pm_config.priority, pm_config.elevated_priority)) {
-    	(void)sm_getMasterConfigSettings(&pm_config.priority, &pm_config.elevated_priority);
+    if (pm_config.start) {
+		// ensure that the primary PM configuration parameters match those of the SM (if PM enabled)
+		if (!sm_isValidDeviceConfigSettings(VIEO_PM_MOD_ID, pm_config.hca, pm_config.port, pm_config.port_guid)) {
+			(void)sm_getDeviceConfigSettings(&pm_config.hca, &pm_config.port, &pm_config.port_guid);
+		}
+		if (!sm_isValidLogConfigSettings(VIEO_PM_MOD_ID, pm_config.log_level, pm_config.syslog_mode, pm_log_masks, pm_config.log_file, pm_config.syslog_facility)) {
+			(void)sm_getLogConfigSettings(&pm_config.log_level, &pm_config.syslog_mode, pm_log_masks,
+										pm_config.log_file, pm_config.syslog_facility);
+		}
+		if (!sm_isValidMasterConfigSettings(VIEO_PM_MOD_ID, pm_config.priority, pm_config.elevated_priority)) {
+			(void)sm_getMasterConfigSettings(&pm_config.priority, &pm_config.elevated_priority);
+		}
 	}
 
 	return VSTATUS_OK;

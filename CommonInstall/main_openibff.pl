@@ -45,7 +45,7 @@ my $FirstIPoIBInterface=0; # first device is ib0
 
 	# Names of supported install components
 	# must be listed in depdency order such that prereqs appear 1st
-@Components = ( "oftools", "fastfabric" );
+@Components = ( "oftools", "fastfabric", "opamgt_sdk" );
 
 # Sub components for autostart processing
 @SubComponents = ( );
@@ -131,7 +131,17 @@ $WrapperComponent = "opa_config_ff";
 					  StartPreReq => " opa_stack ",
 					  StartComponents => [ ],
 					},
- 			# ipoib is not on media, just for a few prompts
+	"opamgt_sdk" => { Name => "OPA Management SDK",
+					  DefaultInstall => $State_Install,
+					  SrcDir => ".",
+					  DriverSubdir => "",
+					  Prereq => " opa_stack ", CoReq => "",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ ],
+				  },
+				# ipoib is not on media, just for a few prompts
 	"ipoib" =>		{ Name => "IP over IB",
 					},
 	);
@@ -141,6 +151,7 @@ $WrapperComponent = "opa_config_ff";
 %ComponentWasInstalled = (
 				"oftools" => 0,
 				"fastfabric" => 0,
+				"opamgt_sdk" => 0,
 			);
 
 # ==========================================================================

@@ -33,7 +33,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ib_macros.h>
 #include <if3.h>
              
-#include "oib_utils.h"
+#include "opamgt_priv.h"
 #include <ib_mad.h>
 #include <ib_sa.h>
 #include <iba/ib_pa.h>
@@ -77,7 +77,7 @@ typedef struct
 
 static ib_issm_t ib_issm;
 
-static struct oib_class_args sm_class_args[] = {
+static struct omgt_class_args sm_class_args[] = {
 	{ IB_BASE_VERSION, MAD_CV_SUBN_DR, 1, 
 		.is_responding_client=1, .is_trap_client=1, .is_report_client=0, .kernel_rmpp=0, .oui=0, .use_methods=0 },
 	{ IB_BASE_VERSION, MAD_CV_SUBN_LR, 1, 
@@ -101,7 +101,7 @@ static struct oib_class_args sm_class_args[] = {
 	{ 0 }
 };
 
-static struct oib_class_args fe_class_args[] = {
+static struct omgt_class_args fe_class_args[] = {
 	{ IB_BASE_VERSION, MAD_CV_VENDOR_FE, 1, 
 		.kernel_rmpp=0, .oui=ib_truescale_oui, .use_methods=1, 
 		.methods={ FE_MNGR_PROBE_CMD,
@@ -111,7 +111,7 @@ static struct oib_class_args fe_class_args[] = {
 		.methods={ FE_CMD_RESP, RMPP_CMD_GET, RMPP_CMD_GETTABLE }},
 };
 
-static struct oib_class_args fe_proc_class_args[] = {
+static struct omgt_class_args fe_proc_class_args[] = {
 	{ IB_BASE_VERSION, MAD_CV_VENDOR_FE, 1, 
 		.kernel_rmpp=0, .oui=ib_truescale_oui, .use_methods=1, 
 		.methods={ FE_MNGR_PROBE_CMD,
@@ -134,7 +134,7 @@ static struct oib_class_args fe_proc_class_args[] = {
 	{ 0 }
 };
 
-static struct oib_class_args pm_class_args[] = {
+static struct omgt_class_args pm_class_args[] = {
 	{ STL_BASE_VERSION, MAD_CV_VFI_PM, STL_PM_CLASS_VERSION, 
 		.kernel_rmpp = 0, .oui=ib_truescale_oui, .use_methods=1, 
 		.methods={ FE_MNGR_PROBE_CMD, FE_MNGR_CLOSE_CMD, FM_CMD_SHUTDOWN,
@@ -146,21 +146,21 @@ static struct oib_class_args pm_class_args[] = {
 
 int ib_instrumentJmMads = 0;
 
-/** TODO: currently there is only one open to the oib_utils later (translated into only one open file
+/** TODO: currently there is only one open to the opamgt later (translated into only one open file
  *  handle to the ib_umad driver) and shared by all the threads spawned in Esm/ib/src/ibaccess/smi/sm/sm_main.c,
  *  which is the reason behind the complicated filtering mechanism in the upper MAI layer. To streamline
- *  the operation, the field in struct mai_dc->hndl can be replaced with struct oib_port * so that each
- *  thread that calls mai_open() can have a separate port open in oib_utils (i.e., a separate file handle
+ *  the operation, the field in struct mai_dc->hndl can be replaced with struct omgt_port * so that each
+ *  thread that calls mai_open() can have a separate port open in opamgt (i.e., a separate file handle
  *  to the ib_umad driver): mai_open() -> mai_get_dc() -> ib_attach_sma(), the last function (ib_attach_sma)
- *  should call oib_open_port_by_num(). Similarly, ib_detach_sma should call oib_close_port() to close
+ *  should call omgt_open_port_by_num(). Similarly, ib_detach_sma should call omgt_close_port() to close
  *  the corresponding port. In addition, all the sending/receiving function (ib_recv_sma, etc) should
- *  be modified to carrry the struct oib_port * parameter install of the IBhandle parameter). Of course,
+ *  be modified to carrry the struct omgt_port * parameter install of the IBhandle parameter). Of course,
  *  the ib_init_devport() and ib_init_guid() should not be used any more or modified not to call the
- *  oib_open_port_xx() function.
+ *  omgt_open_port_xx() function.
  *  Note: the xx_mai_to_wire() or xx_wire_to_mai function
  *  involve buffer copying, which is bad for performance.
  *  */
-static struct oib_port *g_port_handle = NULL;
+struct omgt_port *g_port_handle = NULL;
 
 //==============================================================================
 
@@ -199,65 +199,76 @@ static Status_t ib_init_common(void)
 // ib_init_devport
 //==============================================================================
 Status_t
-ib_init_devport(uint32_t *devp, uint32_t *portp, uint64_t *Guidp)
+ib_init_devport(uint32_t *devp, uint32_t *portp, uint64_t *Guidp, struct omgt_params *session_params)
 {
-	int status;
-	
+	OMGT_STATUS_T status;
+
 	IB_ENTER(__func__, devp, portp, Guidp, 0);
-	
+
 	// Check if the port is opened or
-    if (g_port_handle) 
-    {
+	if (g_port_handle) {
+		uint64_t port_guid = 0;
+		int32_t hfi_num = -1;
+		uint8_t port_num = 0;
+		(void)omgt_port_get_port_guid(g_port_handle, &port_guid);
+		(void)omgt_port_get_hfi_num(g_port_handle, &hfi_num);
+		(void)omgt_port_get_hfi_port_num(g_port_handle, &port_num);
 		IB_LOG_ERROR_FMT(__func__, "one port (%d/%d GUID 0x%.16"CS64"x) is already opened",
-						oib_get_hfi_num(g_port_handle),
-						oib_get_hfi_port_num(g_port_handle),
-						oib_get_port_guid(g_port_handle));
+			hfi_num, port_num, port_guid);
 		return VSTATUS_BUSY;
-    }
+	}
 	status = ib_init_common();
-	if (status != VSTATUS_OK)
-	{
+	if (status != VSTATUS_OK) {
 		IB_EXIT(__func__, status);
 		return status;
 	}
-	
+
 
 	if (Guidp != NULL && *Guidp != 0ULL) {
-		status = oib_open_port_by_guid(&g_port_handle, *Guidp);
+		status = omgt_open_port_by_guid(&g_port_handle, *Guidp, session_params);
 		if (status != FSUCCESS) {
 			IB_LOG_ERROR_FMT(__func__,
-			       "Failed to bind to GUID 0x%.16"CS64"x; status: %u",
-			       *Guidp, status);
+				"Failed to bind to GUID 0x%.16"CS64"x; status: %u",
+				*Guidp, status);
 			IB_EXIT(__func__, VSTATUS_BAD);
 			return VSTATUS_BAD;
 		}
-		// note that the oib interface uses 1-based devices
-		if (devp != NULL) *devp = oib_get_hfi_num(g_port_handle)-1;
-		if (portp != NULL) *portp = oib_get_hfi_port_num(g_port_handle);
+		// note that the opamgt interface uses 1-based devices
+		if (devp != NULL) {
+			(void)omgt_port_get_hfi_num(g_port_handle, (int32_t *)devp);
+			(*devp)--;
+		}
+		if (portp != NULL) {
+			uint8_t port_num = 0;
+			(void)omgt_port_get_hfi_port_num(g_port_handle, &port_num);
+			*portp = port_num;
+		}
 	} else if (devp != NULL && portp != NULL) {
-		// note that the oib interface uses 1-based devices
-		status = oib_open_port_by_num(&g_port_handle, *devp + 1, *portp);
+		// note that the opamgt interface uses 1-based devices
+		status = omgt_open_port_by_num(&g_port_handle, *devp + 1, *portp, session_params);
 		if (status != FSUCCESS) {
 			// PR 128290 - MWHEINZ - This is a bit of a hack. Some parts of
 			// the stack use 0-based counting of ports and devices but other
-			// parts use 1-based. We assume the caller of this function 
-			// is using zero-based counting, so we add 1 when we call 
-			// oib_open_port_by_num(), but we also assume the user is
+			// parts use 1-based. We assume the caller of this function
+			// is using zero-based counting, so we add 1 when we call
+			// omgt_open_port_by_num(), but we also assume the user is
 			// expecting a 1-based device number in their error messages.
 			IB_LOG_ERROR_FMT(__func__,
-			       "Failed to bind to device %d, port %d; status: %u",
-			       *devp+1, *portp, status);
+				"Failed to bind to device %d, port %d; status: %u",
+				*devp + 1, *portp, status);
 			IB_EXIT(__func__, VSTATUS_BAD);
 			return VSTATUS_BAD;
 		}
-		if (Guidp != NULL) *Guidp = oib_get_port_guid(g_port_handle);
+		if (Guidp != NULL) {
+			(void)omgt_port_get_port_guid(g_port_handle, Guidp);
+		}
 	} else {
 		IB_LOG_ERROR_FMT(__func__,
-		       "Neither Guid nor device and port were supplied");
+			"Neither Guid nor device and port were supplied");
 		IB_EXIT(__func__, VSTATUS_BAD);
 		return VSTATUS_BAD;
 	}
-	
+
 	IB_EXIT(__func__, VSTATUS_OK);
 	return VSTATUS_OK;
 }
@@ -270,7 +281,7 @@ ib_refresh_devport(void)
 {
 	IB_ENTER(__func__, 0, 0, 0, 0);
 	
-	if (oib_mad_refresh_port_pkey(g_port_handle) < 0) {
+	if (omgt_mad_refresh_port_pkey(g_port_handle) < 0) {
 		IB_LOG_ERROR_FMT(__func__,
 		       "Failed to refresh UMAD pkeys");
 		IB_EXIT(__func__, VSTATUS_BAD);
@@ -288,7 +299,7 @@ Status_t ib_shutdown(void)
 	IB_ENTER(__func__, 0, 0, 0, 0);
 	
 	ib_disable_is_sm();
-	oib_close_port(g_port_handle);
+	omgt_close_port(g_port_handle);
 	g_port_handle = NULL;
 	
 	IB_EXIT(__func__, 0);
@@ -303,7 +314,7 @@ ib_register_sm(int queue_size)
 {
 	FSTATUS status;
 
-	status = oib_bind_classes(g_port_handle, sm_class_args);
+	status = omgt_bind_classes(g_port_handle, sm_class_args);
 	if (status != FSUCCESS) {
 		IB_LOG_ERROR("Failed to register management classes;",
 					 status);
@@ -325,7 +336,7 @@ ib_register_fe(int queue_size, uint8_t thread)
 
 	IB_ENTER(__func__, 0, 0, 0, 0);
 
-	status = oib_bind_classes(g_port_handle, (thread) ? fe_class_args : fe_proc_class_args);
+	status = omgt_bind_classes(g_port_handle, (thread) ? fe_class_args : fe_proc_class_args);
 	if (status != FSUCCESS) {
 		IB_LOG_ERROR("Failed to register FE management classes;",
 					 status);
@@ -348,7 +359,7 @@ ib_register_pm(int queue_size)
 	
 	IB_ENTER(__func__, 0, 0, 0, 0);
 
-	status = oib_bind_classes(g_port_handle, pm_class_args);
+	status = omgt_bind_classes(g_port_handle, pm_class_args);
 	if (status != FSUCCESS) {
 		IB_LOG_ERROR("Failed to register PM management classes;",
 					 status);
@@ -387,7 +398,7 @@ ib_recv_sma(IBhandle_t handle, Mai_t *mai, uint64_t timeout)
    size_t   len = 0; 
    int      dev, port; 
    int      issmi; 
-   struct oib_mad_addr	addr;
+   struct omgt_mad_addr	addr;
    
    IB_ENTER(__func__, handle, mai, timeout, 0); 
    
@@ -397,7 +408,7 @@ ib_recv_sma(IBhandle_t handle, Mai_t *mai, uint64_t timeout)
    memset (&addr, 0, sizeof(addr));
    retry:
    do {
-	  status = oib_recv_mad_alloc(g_port_handle, &buf, &len, timeout, &addr);
+	  status = omgt_recv_mad_alloc(g_port_handle, &buf, &len, timeout, &addr);
    } 
    while (status == FNOT_DONE);
     
@@ -432,7 +443,7 @@ ib_recv_sma(IBhandle_t handle, Mai_t *mai, uint64_t timeout)
    
    if (status == FTIMEOUT || status == FREJECT) {
       // extern const char *iba_fstatus_msg(int);
-      // printf("oib_recv TYPE_ERROR: status=%s class=0x%x attr=0x%x method=0x%x\n",
+      // printf("omgt_recv TYPE_ERROR: status=%s class=0x%x attr=0x%x method=0x%x\n",
       // 			iba_fstatus_msg(status),mai->base.mclass, mai->base.aid, mai->base.method);
       // this is a packet we tried to send but failed to send or
       // failed to get a response for
@@ -506,7 +517,7 @@ ib_send_sma(IBhandle_t handle, Mai_t * mai, uint64_t timeout)
 	uint8_t  buf[sizeof(Mai_t)];
 	int      filterMatch;
 	int adjusted_timeout;
-	struct oib_mad_addr	addr;
+	struct omgt_mad_addr	addr;
 	
 	IB_ENTER(__func__, handle, mai, 0, 0);
 	
@@ -550,7 +561,7 @@ ib_send_sma(IBhandle_t handle, Mai_t * mai, uint64_t timeout)
 	addr.qkey = mai->addrInfo.qkey;
 	addr.pkey = mai->addrInfo.pkey;
 	addr.sl = mai->addrInfo.sl;
-	status = oib_send_mad2(g_port_handle, (void*)buf, IB_MAX_MAD_DATA, &addr, adjusted_timeout, 0);
+	status = omgt_send_mad2(g_port_handle, (void*)buf, IB_MAX_MAD_DATA, &addr, adjusted_timeout, 0);
 	if (status != FSUCCESS) {
 		if (mai->addrInfo.srcqp != 1) {
 			IB_LOG_INFO("Error sending packet via OPENIB interface; status:", status);
@@ -579,7 +590,7 @@ stl_send_sma(IBhandle_t handle, Mai_t * mai, uint64_t timeout)
 	uint8_t  buf[sizeof(Mai_t)];
 	int      filterMatch;
 	int adjusted_timeout;
-	struct oib_mad_addr	addr;
+	struct omgt_mad_addr	addr;
 	
 	IB_ENTER(__func__, handle, mai, 0, 0);
 	
@@ -625,7 +636,7 @@ stl_send_sma(IBhandle_t handle, Mai_t * mai, uint64_t timeout)
 	addr.pkey = mai->addrInfo.pkey;
 	addr.sl = mai->addrInfo.sl;
 	//IB_LOG_INFINI_INFO_FMT(__func__, "Sending MAD of size %d bytes", bufLen);
-	status = oib_send_mad2(g_port_handle, (void*)buf, bufLen, &addr, adjusted_timeout, 0);
+	status = omgt_send_mad2(g_port_handle, (void*)buf, bufLen, &addr, adjusted_timeout, 0);
 	if (status != FSUCCESS) {
 		if (mai->addrInfo.srcqp != 1) {
 			IB_LOG_INFO("Error sending packet via OPENIB interface; status:", status);
@@ -650,7 +661,7 @@ ib_attach_sma(int16_t dev, int8_t port, uint32_t qpn,
               IBhandle_t *handlep, uint8_t *nodeTypep)
 {
 	FSTATUS status;
-	int type;
+	uint8_t type;
 	
 	IB_ENTER(__func__, dev, port, qpn, 0);
 	
@@ -659,9 +670,9 @@ ib_attach_sma(int16_t dev, int8_t port, uint32_t qpn,
 	
 	if (nodeTypep != NULL)
 	{
-		status = oib_get_hfi_node_type(g_port_handle, &type);
+		status = omgt_port_get_node_type(g_port_handle, &type);
 		if (status == FSUCCESS)
-			*nodeTypep = (uint8_t)type;
+			*nodeTypep = type;
 		else
 		{
 			IB_LOG_WARN("failed to get node type; status:", status);
@@ -728,7 +739,7 @@ Status_t ib_enable_is_sm(void)
 		return status;
 	}
 	
-	rc = oib_get_issm_device(g_port_handle, dev, IB_ISSM_DEVICEPATH_MAXLEN);
+	rc = omgt_get_issm_device(g_port_handle, dev, IB_ISSM_DEVICEPATH_MAXLEN);
 	if (rc != FSUCCESS) {
 		IB_LOG_WARN("failed to resolve ISSM device name; status:", status);
 		IB_EXIT(__func__, VSTATUS_BAD);

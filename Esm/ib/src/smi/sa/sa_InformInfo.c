@@ -200,35 +200,27 @@ sa_InformInfo(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 
 	IB_ENTER("sa_InformInfo", maip, sa_cntxt, 0, 0);
 
-	//
-	//  Check to be sure that this is a Set.  Nothing else is allowed.
-	//
-	if (maip->base.method != SA_CM_SET) {
+	// Check Method
+	if (maip->base.method == SA_CM_SET) {
+		INCREMENT_COUNTER(smCounterSaRxSetInformInfo);
+	} else {
 		maip->base.status = MAD_STATUS_BAD_METHOD;
+		IB_LOG_WARN_FMT(__func__, "invalid Method: %s (%u)",
+			cs_getMethodText(maip->base.method), maip->base.method);
 		(void) sa_send_reply(maip, sa_cntxt);
-		IB_LOG_WARN("sa_InformInfo: invalid METHOD:", maip->base.method);
-		IB_EXIT("sa_InformInfo", VSTATUS_OK);
-		return (VSTATUS_OK);
-	} else if (maip->base.cversion != STL_SA_CLASS_VERSION
-		&& maip->base.cversion != IB_SUBN_ADM_CLASS_VERSION) {
-		maip->base.status = MAD_STATUS_BAD_CLASS;
-		(void) sa_send_reply(maip, sa_cntxt);
-		IB_LOG_WARN("sa_InformInfo: invalid CLASS:", maip->base.cversion);
-		IB_EXIT("sa_InformInfo", VSTATUS_OK);
-		return (VSTATUS_OK);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
 	}
-
-
-	INCREMENT_COUNTER(smCounterSaRxSetInformInfo);
 
 	memset(&informInfo, 0, sizeof(STL_INFORM_INFO));
 
-	if (maip->base.cversion == STL_SA_CLASS_VERSION) {
+	// Check Base and Class Version
+	if (maip->base.bversion == STL_BASE_VERSION && maip->base.cversion == STL_SA_CLASS_VERSION) {
 		BSWAPCOPY_STL_SA_MAD((STL_SA_MAD *) maip->data, &samad,
 						sizeof(STL_INFORM_INFO));
 		BSWAPCOPY_STL_INFORM_INFO((STL_INFORM_INFO *) samad.data, 
 						&informInfo);
-	} else {
+	} else if (maip->base.bversion == IB_BASE_VERSION && maip->base.cversion == SA_MAD_CVERSION) {
 		/* 
 		 * Convert IB query to STL. Fortunately, the only real
 		 * difference is that STL Lids are bigger.
@@ -257,6 +249,14 @@ sa_InformInfo(Mai_t * maip, sa_cntxt_t * sa_cntxt)
     	informInfo.u.Generic.u2.AsReg32 = ntoh32(ibInformInfo->u.Generic.u.AsReg32);
     	informInfo.u.Generic.u1.s.Reserved2 = 0;
     	informInfo.u.Generic.u2.s.Reserved3 = 0;
+	} else {
+		// Generate an error response and return.
+		maip->base.status = MAD_STATUS_BAD_CLASS;
+		IB_LOG_WARN_FMT(__func__, "invalid Base and/or Class Versions: Base %u, Class %u",
+			maip->base.bversion, maip->base.cversion);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
 	}
 
 	//

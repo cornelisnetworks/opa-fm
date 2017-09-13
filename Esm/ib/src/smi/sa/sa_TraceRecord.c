@@ -103,27 +103,29 @@ sa_TraceRecord(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 	// 
 	records = 0;
 
-	// 
-	// Lock the interface.
-	// 
-	(void) vs_rdlock(&old_topology_lock);
-	bytes = Calculate_Padding(sizeof(STL_TRACE_RECORD));
-
-	// 
-	// Check the basic assumptions.
-	// 
-	if (maip->base.method != SA_CM_GETTRACETABLE) {
-		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
-		IB_LOG_WARN("sa_TraceRecord: bad method:", maip->base.method);
-		goto reply_TraceRecord;
-	} else {
+	// Check Method
+	if (maip->base.method == SA_CM_GETTRACETABLE) {
 		INCREMENT_COUNTER(smCounterSaRxGetTraceRecord);
+	} else {
+		// Generate an error response and return.
+		maip->base.status = MAD_STATUS_BAD_METHOD;
+		IB_LOG_WARN_FMT(__func__, "invalid Method: %s (%u)",
+			cs_getMethodText(maip->base.method), maip->base.method);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
 	}
-
-	if (maip->base.cversion != STL_SA_CLASS_VERSION) {
-		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
-		IB_LOG_WARN("sa_TraceRecord: bad class:", maip->base.cversion);
-		goto reply_TraceRecord;
+	// Check Base and Class Version
+	if (maip->base.bversion == STL_BASE_VERSION && maip->base.cversion == STL_SA_CLASS_VERSION) {
+		bytes = Calculate_Padding(sizeof(STL_TRACE_RECORD));
+	} else {
+		// Generate an error response and return.
+		maip->base.status = MAD_STATUS_BAD_CLASS;
+		IB_LOG_WARN_FMT(__func__, "invalid Base and/or Class Versions: Base %u, Class %u",
+			maip->base.bversion, maip->base.cversion);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
 	}
 
 	prp = &pathRecord;
@@ -135,9 +137,11 @@ sa_TraceRecord(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 	/* 
 	 * Confirm that the path record used as input is valid.
 	 */
-	if (sa_TraceRecord_ValidatePathRecord(& samad, prp) != VSTATUS_OK) {
+	if (sa_TraceRecord_ValidatePathRecord(&samad, prp) != VSTATUS_OK) {
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
-		goto reply_TraceRecord;
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
 	}
 
 	/* 
@@ -145,7 +149,9 @@ sa_TraceRecord(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 	 */
 	if (sa_PathRecord_Interop(prp, samad.header.mask) != VSTATUS_OK) {
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
-		goto reply_TraceRecord;
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
 	}
 
 	/* 
@@ -155,13 +161,8 @@ sa_TraceRecord(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 		pkey = prp->P_Key;
 	}
 
-	if (maip->base.method != SA_CM_GETTRACETABLE) {
-		IB_LOG_WARN
-			("sa_TraceRecord: invalid method; only SubnAdmGetTraceTable supported method:",
-			 maip->base.method);
-		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
-		goto reply_TraceRecord;
-	}
+	// Lock the interface.
+	(void) vs_rdlock(&old_topology_lock);
 
 	/* 
 	 *  Find the source port.
@@ -328,7 +329,7 @@ sa_TraceRecord(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 	/* 
 	 *  Determine reply status
 	 */
-  reply_TraceRecord:
+reply_TraceRecord:
 	(void) vs_rwunlock(&old_topology_lock);
 	if (dstIsGroup) {
 		(void) vs_unlock(&sm_McGroups_lock);

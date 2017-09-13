@@ -66,7 +66,7 @@ struct ExpectedNode_s;
 struct ExpectedSM_s;
 struct NodeData_s;
 struct SystemData_s;
-struct oib_port;
+struct omgt_port;
 
 // Selection indicies for SCVL* tables
 typedef enum { Enum_SCVLt, Enum_SCVLnt, Enum_SCVLr } ScvlEnum_t;
@@ -146,18 +146,6 @@ typedef struct PortData_s {
 	void *context;					// application specific field
 } PortData;
 
-#define NODE_DETAILS_STRLEN 64
-// additional information about a node, from topology input
-typedef struct ExpectedNode_s {
-	LIST_ITEM	ExpectedNodesEntry;	// ExpectedFIs, ExpectedSWs
-	struct NodeData_s *nodep;		// NULL if not found
-	EUI64 NodeGUID;					// 0 if not specified
-	uint8 NodeType;					// 0 if not specified
-	char *NodeDesc;					// NULL if not specified
-	char *details;					// user description of node
-	void *context;					// application specific field
-} ExpectedNode;
-
 // additional information about cable for a link, from topology input
 // we limit sizes to make output formatting easier
 #define CABLE_LENGTH_STRLEN 10
@@ -169,6 +157,7 @@ typedef struct CableData_s {
 	char *details;	// user description of cable
 } CableData;
 
+typedef struct ExpectedNode_s ExpectedNode;
 #define PORT_DETAILS_STRLEN 64
 // port selector from topology input
 typedef struct PortSelector_s {
@@ -179,6 +168,8 @@ typedef struct PortSelector_s {
 	uint8 NodeType;					// 0 if not specified
 	char *NodeDesc;					// NULL if not specified
 	char *details;					// user description of port
+	ExpectedNode *enodep;			// associated ExpectedNode, set by
+									// TopologyValidate if match is found
 } PortSelector;
 
 #define LINK_DETAILS_STRLEN 64
@@ -189,8 +180,6 @@ typedef struct ExpectedLink_s {
 	PortSelector *portselp2;	// input selector
 	PortData *portp1;		// NULL if not found
 	PortData *portp2;		// NULL if not found
-	ExpectedNode *enodep1;	// NULL if not found or if ResolveExpectedLinks not called
-	ExpectedNode *enodep2;	// NULL if not found or if ResolveExpectedLinks not called
 	// the 4 fields below could become bit fields to save space if necessary
 	// MTU=4 bits, rate=6 bits, internal=1 bit, matchLevel = 3 bits
 	uint8 expected_rate;	// Expected Active rate for this link, IB_STATIC_RATE enum
@@ -201,7 +190,34 @@ typedef struct ExpectedLink_s {
 					// matches
 	char *details;	// user description of link
 	CableData CableData;	// user supplied info about cable
+	uint64	lineno;	// line number in XML of starting tag, for error messages
 } ExpectedLink;
+
+/*
+ * Limited port information possibly produced originally from
+ * full PortData.
+ */
+typedef struct ExpectedPort_s {
+	uint8 PortNum;
+	ExpectedLink *elinkp;
+} ExpectedPort;
+
+#define NODE_DETAILS_STRLEN 64
+// additional information about a node, from topology input
+struct ExpectedNode_s {
+	LIST_ITEM	ExpectedNodesEntry;	// g_ExpectedFIs, g_ExpectedSWs
+	cl_map_item_t ExpectedNodeGuidMapEntry;	// key is NodeGuid
+	struct NodeData_s *nodep;		// NULL if not found
+	EUI64 NodeGUID;					// 0 if not specified
+	uint8 NodeType;					// 0 if not specified
+	char *NodeDesc;					// NULL if not specified
+	char *details;					// user description of node
+	uint8 portsSize;
+	ExpectedPort **ports;
+	uint8 connected; //internally used to validate node is reachable, set by TopologyValidate
+	void *context;					// application specific field
+	uint64	lineno;	// line number in XML of starting tag, for error messages
+};
 
 #define SM_DETAILS_STRLEN 64
 // additional information about a SM, from topology input
@@ -366,6 +382,7 @@ typedef struct McMemberData_s { // entry in McGroupData
 typedef struct McNodeLoopInc_s {
 	LIST_ITEM	McNodeEntry;
 	PortData	*pPort;
+	uint16  	entryPort;
 	uint16  	exitPort;
 } McNodeLoopInc;
 
@@ -562,19 +579,22 @@ typedef struct FabricData_s {
 	uint32 ISLinkCount;		// number of inter-switch links in fabric
 	uint32 ExtISLinkCount;	// number of external inter-switch links in fabric
 
-        // additional information for credit loop
-        uint32 ConnectionCount;                         
-        uint32 RouteCount;                         
-        QUICK_LIST FIs;
-        QUICK_LIST Switches;
-        cl_qmap_t map_guid_to_ib_device;	// items are devices, ky is node guid
-        clGraphData_t Graph;
+	// additional information for credit loop
+	uint32 ConnectionCount;                         
+	uint32 RouteCount;                         
+	QUICK_LIST FIs;
+	QUICK_LIST Switches;
+	cl_qmap_t map_guid_to_ib_device;	// items are devices, ky is node guid
+	clGraphData_t Graph;
 
 	// additional information from topology input file
 	QUICK_LIST ExpectedLinks;	// in order read from topology input file
 	QUICK_LIST ExpectedFIs;		// in order read from topology input file
 	QUICK_LIST ExpectedSWs;		// in order read from topology input file
 	QUICK_LIST ExpectedSMs;		// in order read from topology input file
+	//topology input data optimized for search
+	cl_qmap_t  ExpectedNodeGuidMap; //all expected FIs/SWs mapped by NodeGuid
+
 	void *context;				// application specific field
 } FabricData_t;
 
@@ -830,12 +850,12 @@ extern FSTATUS NodeDataSetSwitchInfo(NodeData *nodep, STL_SWITCHINFO_RECORD *pSw
 extern NodeData *FabricDataAddNode(FabricData_t *fabricp, STL_NODE_RECORD *pNodeRecord, boolean *new_nodep);
 
 extern FSTATUS AddEdgeSwitchToGroup(FabricData_t *fabricp, McGroupData *mcgroupp, NodeData *groupswitch, uint8 SWentryport);
-extern McGroupData *FabricDataAddMCGroup(FabricData_t *fabricp, struct oib_port *port, int quiet, IB_MCMEMBER_RECORD *pMCGRecord,
+extern McGroupData *FabricDataAddMCGroup(FabricData_t *fabricp, struct omgt_port *port, int quiet, IB_MCMEMBER_RECORD *pMCGRecord,
 		boolean *new_nodep, FILE *verbose_file);
 
 extern FSTATUS GetAllMCGroups(EUI64 portGuid, FabricData_t *fabricp, Point *focus,
 		int quiet);
-extern FSTATUS GetAllMCGroupMember(FabricData_t *fabricp, McGroupData *mcgroupp,struct oib_port *portp,int quiet,
+extern FSTATUS GetAllMCGroupMember(FabricData_t *fabricp, McGroupData *mcgroupp,struct omgt_port *portp,int quiet,
 		FILE *g_verbose_file);
 extern boolean SupportsVendorPortCounters(NodeData *nodep,
                                         IB_CLASS_PORT_INFO *classPortInfop);
@@ -939,8 +959,9 @@ extern SMData * FindSMPort(FabricData_t *fabricp,EUI64 PortGUID);
 // For Switches, lid will identify the switch and port is used to select port
 extern PortData * FindLidPort(FabricData_t *fabricp,uint16 lid, uint8 port);
 extern PortData * FindNodeGuidPort(FabricData_t *fabricp,EUI64 nodeguid, uint8 port);
-extern ExpectedNode* FindExpectedNodeByNodeGuid(FabricData_t *fabricp, EUI64 nodeGuid);
-extern ExpectedLink* FindExpectedLinkByOneSide(FabricData_t* fabricp, EUI64 nodeGuid, uint8 portNum, uint8* side);
+extern ExpectedNode* FindExpectedNodeByNodeGuid(const FabricData_t* fabricp, EUI64 nodeGuid);
+extern ExpectedNode* FindExpectedNodeByNodeDesc(const FabricData_t* fabricp, const char* nodeDesc, uint8 NodeType);
+extern ExpectedLink* FindExpectedLinkByOneSide(const FabricData_t* fabricp, EUI64 nodeGuid, uint8 portNum, uint8* side);
 extern FSTATUS FindLinkQualityPoint(FabricData_t *fabricp, uint16 quality, LinkQualityCompare comp, Point *pPoint, uint8 find_flag);
 extern FSTATUS FindExpectedSMByPortGuid(FabricData_t *fabricp, EUI64 portGuid);
 extern FSTATUS FindExpectedSMByNodeGuid(FabricData_t *fabricp, EUI64 nodeGuid);
@@ -952,17 +973,17 @@ extern FSTATUS InitSmaMkey(uint64 mkey);
 extern boolean NodeHasPma(NodeData *nodep);
 extern boolean PortHasPma(PortData *portp);
 extern void UpdateNodePmaCapabilities(NodeData *nodep, boolean ProcessHFICounters);
-extern FSTATUS PmGetClassPortInfo(struct oib_port *port, PortData *portp);
-extern FSTATUS PmGetPortCounters(struct oib_port *port, PortData *portp, uint8 portNum,
+extern FSTATUS PmGetClassPortInfo(struct omgt_port *port, PortData *portp);
+extern FSTATUS PmGetPortCounters(struct omgt_port *port, PortData *portp, uint8 portNum,
 							PORT_COUNTERS *pPortCounters);
-extern FSTATUS STLPmGetClassPortInfo(struct oib_port *port, PortData *portp);
-extern FSTATUS STLPmGetPortStatus(struct oib_port *port, PortData *portp, uint8 portNum, STL_PortStatusData_t *pPortStatus);
-extern FSTATUS STLPmClearPortCounters(struct oib_port *port, PortData *portp, uint8 lastPortIndex, uint32 counterselect);
+extern FSTATUS STLPmGetClassPortInfo(struct omgt_port *port, PortData *portp);
+extern FSTATUS STLPmGetPortStatus(struct omgt_port *port, PortData *portp, uint8 portNum, STL_PortStatusData_t *pPortStatus);
+extern FSTATUS STLPmClearPortCounters(struct omgt_port *port, PortData *portp, uint8 lastPortIndex, uint32 counterselect);
 #if !defined(VXWORKS) || defined(BUILD_DMC)
-extern FSTATUS DmGetIouInfo(struct oib_port *port, IB_PATH_RECORD *pathp, IOUnitInfo *pIouInfo);
-extern FSTATUS DmGetIocProfile(struct oib_port *port, IB_PATH_RECORD *pathp, uint8 slot,
+extern FSTATUS DmGetIouInfo(struct omgt_port *port, IB_PATH_RECORD *pathp, IOUnitInfo *pIouInfo);
+extern FSTATUS DmGetIocProfile(struct omgt_port *port, IB_PATH_RECORD *pathp, uint8 slot,
 						IOC_PROFILE *pIocProfile);
-extern FSTATUS DmGetServiceEntries(struct oib_port *port, IB_PATH_RECORD *pathp, uint8 slot,
+extern FSTATUS DmGetServiceEntries(struct omgt_port *port, IB_PATH_RECORD *pathp, uint8 slot,
 							uint8 first, uint8 last, IOC_SERVICE *pIocServices);
 #endif
 
@@ -1067,20 +1088,46 @@ extern FSTATUS Xml2ParseSnapshot(const char *input_file, int quiet, FabricData_t
 #endif
  
 // expected topology input/output routines (from Topology/topology.c)
+
+// validation options for Xml2ParseTopology
+// None - no attempt to cross reference ExpectedLinks to ExpectedNodes
+// 		the ExpectedLink.portselp1 may be NULL
+// 		the ExpectedLink.portselp1->enodep will be NULL
+// 		the ExpectedLink.portselp2 may be NULL
+// 		the ExpectedLink.portselp2->enodep will be NULL
+// 		the ExpectedNode.ports[] may be empty
+// 		the ExpectedNode.ports[]->elinkp will be NULL
+// Loose - do a best attempt to resolve (eg. cross reference) ExpectedLinks
+//		to ExpectedNodes filling in the elinkp and enodep pointers mentioned
+//		above where possible. Also checks that when Node and Port GUIDs are
+//		supplied in ExpectedNodes, that switch port 0's GUIDs are consistent.
+//		However no error return reported by	Xml2ParseTopology when unable
+//		to resolve some links. 	Does not require ExpectedNodes to
+//		explicitly list ports in topology file. Will auto-create
+//		ExpectedNode.ports[] entries if a ExpectedLink references the given
+//		node's port.
+// Somewhat strict - cross references all ExpectedLinks to ExpectedNodes as
+//		in Loose.  Also checks that all nodes are connected to the same fabric.
+//		Any errors in resolution or checks are reported as an error by
+//		Xml2ParseTopology.
+// Strict - performs all checks in Somewhat strict.  Also requires that all
+//		ExpectedLinks explicitly list PortNum in topology file.
+// In all cases its valid for a ExpectedNode to list a port which is not
+// connected to the fabric (eg. not referenced by an ExpectedLink).
+//
+typedef enum {
+	TOPOVAL_NONE			=0,
+	TOPOVAL_LOOSE			=1,	// resolve what we can, no graph closure checks
+	TOPOVAL_SOMEWHAT_STRICT	=2,	// same as strict but don't require <Port>
+	TOPOVAL_STRICT			=3
+} TopoVal_t;
+									// in ExpectedNode in topology file
 #ifndef __VXWORKS__
-extern FSTATUS Xml2ParseTopology(const char *input_file, int quiet, FabricData_t *fabricp);
+extern FSTATUS Xml2ParseTopology(const char *input_file, int quiet, FabricData_t *fabricp, TopoVal_t validation);
 #else
-extern FSTATUS Xml2ParseTopology(const char *input_file, int quiet, FabricData_t *fabricp, XML_Memory_Handling_Suite* memsuite);
+extern FSTATUS Xml2ParseTopology(const char *input_file, int quiet, FabricData_t *fabricp, XML_Memory_Handling_Suite* memsuite, TopoVal_t validation);
 #endif
 extern void Xml2PrintTopology(FILE *file, FabricData_t *fabricp);
-// This routine takes the ExpectedLinks and attempts to resolve each
-// against a pair of ExpectedNodes, then fills in ExpectedLinks.enodep1, enodep2
-// By design this does not look at the NodeData (that is already handled on
-// parsing and generates ExpectedLinks.portp1,portp2).  Hence this is useful to
-// help build the graph for applications which only use the topology file.
-// Given the limited information in ExpectedNodes, the matching is based on
-// NodeDesc and/or NodeGUID matching as well as NodeType.
-extern void ResolveExpectedLinks(FabricData_t *fabricp, int quiet);
 
 // live fabric analysis routines (from Topology/sweep.c)
 extern FSTATUS InitSweepVerbose(FILE *verbose_file);
@@ -1098,16 +1145,16 @@ typedef enum {
 extern FSTATUS Sweep(EUI64 portGuid, FabricData_t *fabricp, FabricFlags_t fflags, SweepFlags_t flags, int quiet);
 
 //extern FSTATUS GetPathToPort(EUI64 portGuid, PortData *portp, uint16 pkey);
-extern FSTATUS GetPaths(struct oib_port *port, PortData *portp1, PortData *portp2,
+extern FSTATUS GetPaths(struct omgt_port *port, PortData *portp1, PortData *portp2,
 						PQUERY_RESULT_VALUES *ppQueryResults);
-extern FSTATUS GetTraceRoute(struct oib_port *port, IB_PATH_RECORD *pathp,
+extern FSTATUS GetTraceRoute(struct omgt_port *port, IB_PATH_RECORD *pathp,
 							 PQUERY_RESULT_VALUES *ppQueryResults);
 extern FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabricp,
 			   	Point *focus, boolean limitstats, boolean quiet, uint32 begin, uint32 end);
 extern FSTATUS GetAllFDBs( EUI64 portGuid, FabricData_t *fabricp, Point *focus,
 				int quiet );
 extern FSTATUS GetAllPortVLInfo(EUI64 portGuid, FabricData_t *fabricp, Point *focus, int quieti, int *use_scsc);
-extern PQUERY_RESULT_VALUES GetAllQuarantinedNodes(struct oib_port *port, FabricData_t *fabricp,
+extern PQUERY_RESULT_VALUES GetAllQuarantinedNodes(struct omgt_port *port, FabricData_t *fabricp,
 													Point *focus, int quiet);
 extern FSTATUS GetAllBCTs(EUI64 portGuid, FabricData_t *fabricp, Point *focus, int quiet);
 
@@ -1237,7 +1284,7 @@ extern FSTATUS ValidateAllMCRoutes(FabricData_t *fabricp,
 					uint32 *totalPaths);
 extern FSTATUS ValidateMCRoutes(FabricData_t *fabricp, McGroupData *mcgroupp,
 			McEdgeSwitchData *swp, uint32 *pathCount);
-extern FSTATUS WalkMCRoute(FabricData_t *fabricp, McGroupData *mcgroupp, PortData *portp, int *hop,
+extern FSTATUS WalkMCRoute(FabricData_t *fabricp, McGroupData *mcgroupp, PortData *portp, int hop,
 		uint8 EntryPort, McLoopInc *pMcLoopInc, uint32 *pathCount);
 extern FSTATUS AddSwtichToGroup(FabricData_t *fabricp, McGroupData *mcgroupp, NodeData *groupswitch);
 extern void FreeValidateMCRoutes(FabricData_t *fabricp);
@@ -1297,6 +1344,23 @@ static __inline uint32 ComputeMulticastFDBSize(const STL_SWITCH_INFO *pSwitchInf
 	//STL Volg1 20.2.2.6.5
 	return (pSwitchInfo->MulticastFDBTop >= LID_MCAST_START) ? 
 			pSwitchInfo->MulticastFDBTop-LID_MCAST_START+1 : 0;
+}
+
+
+//TODO MLID offset mask should be derived from MulticastMask in
+// SwitchInfo or PortInfo, not hardcoded to lower 14 bits
+#define MULTICAST_LID_OFFSET_MASK 0x3FFF
+
+/**
+* Use this function to get offset in multicast FDB without
+* having to know multicast LID format.
+*/
+static inline uint32 GetMulticastOffset(STL_LID mlid)
+{
+	// TODO should use MulticastMask and CollectiveMask from PortInfo
+	// or SwitchInfo to determine a) if mlid is a multicast LID and b)
+	// how many bits in mlid are offset bits
+	return (mlid & MULTICAST_LID_OFFSET_MASK);
 }
 
 #ifdef __cplusplus

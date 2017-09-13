@@ -212,7 +212,7 @@ MAIN(int argc, char *argv[])
         EXIT(1);
       }
 
-    rc=ib_init_devport(&dev, &port, NULL);
+    rc=ib_init_devport(&dev, &port, NULL, NULL);
     if (rc)
       {
         printf("ERROR: ib_init_devport failed, %s\n",cs_convert_status(rc));

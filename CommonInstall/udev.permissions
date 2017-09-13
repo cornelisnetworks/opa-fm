@@ -1,2 +1,0 @@
-# override permissions for some infiniband devices
-infiniband/umad*:root:root:0666

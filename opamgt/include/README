@@ -1,0 +1,1 @@
+Contains external interface to opamgt. Headers in the "Public" directory are included in the external library API.  Headers in top level include directory expose opamgt interface to internal IFS build components but are not included in public library API. 

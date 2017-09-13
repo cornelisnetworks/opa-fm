@@ -62,13 +62,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sm_l.h"
 #include "sa_l.h"
 
-Status_t	sa_SwitchInfoRecord_Get(Mai_t *, uint32_t *);
 Status_t	sa_SwitchInfoRecord_GetTable(Mai_t *, uint32_t *);
 
 Status_t
 sa_SwitchInfoRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 	uint32_t	records;
 	uint16_t	attribOffset;
+	uint16_t	rec_sz;
 
 	IB_ENTER("sa_SwitchInfoRecord", maip, 0, 0, 0);
 
@@ -77,26 +77,32 @@ sa_SwitchInfoRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 //
 	records = 0;
 
-//
-//	Check the method.  If this is a template lookup, then call the regular
-//	GetTable(*) template lookup routine.
-//
-	switch (maip->base.method) {
-	case SA_CM_GET:
+	// Check Method
+	if (maip->base.method == SA_CM_GET) {
 		INCREMENT_COUNTER(smCounterSaRxGetSwitchInfoRecord);
-		(void)sa_SwitchInfoRecord_GetTable(maip, &records);
-		break;
-	case SA_CM_GETTABLE:
+	} else if (maip->base.method == SA_CM_GETTABLE) {
 		INCREMENT_COUNTER(smCounterSaRxGetTblSwitchInfoRecord);
+	} else {
+		// Generate an error response and return.
+		maip->base.status = MAD_STATUS_BAD_METHOD;
+		IB_LOG_WARN_FMT(__func__, "invalid Method: %s (%u)",
+			cs_getMethodText(maip->base.method), maip->base.method);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
+	}
+	// Check Base and Class Version
+	if (maip->base.bversion == STL_BASE_VERSION && maip->base.cversion == STL_SA_CLASS_VERSION) {
+		rec_sz = sizeof(STL_SWITCHINFO_RECORD);
 		(void)sa_SwitchInfoRecord_GetTable(maip, &records);
-		break;
-        default:                                                                     
-                maip->base.status = MAD_STATUS_BAD_METHOD;                           
-                (void)sa_send_reply(maip, sa_cntxt);                                 
-                IB_LOG_WARN("sa_SwitchInfoRecord: invalid METHOD:", maip->base.method);
-                IB_EXIT("sa_SwitchInfoRecord", VSTATUS_OK);                            
-                return VSTATUS_OK;                                                   
-                break;                                                               
+	} else {
+		// Generate an error response and return.
+		maip->base.status = MAD_STATUS_BAD_CLASS;
+		IB_LOG_WARN_FMT(__func__, "invalid Base and/or Class Versions: Base %u, Class %u",
+			maip->base.bversion, maip->base.cversion);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
 	}
 
 //
@@ -111,7 +117,7 @@ sa_SwitchInfoRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 	} else {
 		maip->base.status = MAD_STATUS_OK;
 	}
-	attribOffset = sizeof(STL_SWITCHINFO_RECORD) + Calculate_Padding(sizeof(STL_SWITCHINFO_RECORD));
+	attribOffset = sizeof(STL_SWITCHINFO_RECORD) + Calculate_Padding(rec_sz);
 	/* setup attribute offset for possible RMPP transfer */
 	sa_cntxt->attribLen = attribOffset;
 	sa_cntxt_data( sa_cntxt, sa_data, records * attribOffset);
@@ -123,8 +129,8 @@ sa_SwitchInfoRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 
 Status_t
 sa_SwitchInfoRecord_Set(uint8_t *srp, Node_t *nodep, Port_t *portp) {
-	Lid_t			    lid;
-    Port_t              *swiPortp;
+	Lid_t lid;
+	Port_t *swiPortp;
 	STL_SWITCHINFO_RECORD	switchInfoRecord = {{0}};
 
 	IB_ENTER("sa_SwitchInfoRecord_Set", srp, nodep, portp, 0);

@@ -199,7 +199,6 @@ GsiDoSendDgrm(
   		workRequest.Req.SendUD.Options.AsUINT16 = 0;
 		workRequest.Req.SendUD.Options.s.SignaledCompletion = TRUE; 
 #if INCLUDE_16B
-		workRequest.Req.SendUD.Options.s.IsMAD				= 1;
 		workRequest.Req.SendUD.Options.s.SendFMH			= 0;
 #endif
 

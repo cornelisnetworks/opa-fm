@@ -61,29 +61,29 @@ my @OmniPathAllComponents = ( "mvapich2_gcc_hfi",
 
 # these are now gone, list them so they get uninstalled
 my @Components_other = ( "opa_stack", "ibacm", "mpi_selector", "intel_hfi",
-	   	"oftools", "opa_stack_dev", "fastfabric",
-		"delta_ipoib", "opafm",
+		"oftools", "opa_stack_dev", "fastfabric", "rdma_ndd",
+		"delta_ipoib", "opafm", "opamgt_sdk",
 	   	@OmniPathAllComponents, 
 		"gasnet", "openshmem",
 	   	"mvapich2", "openmpi",
 	   	"delta_mpisrc", "hfi1_uefi", "delta_debug", );
 my @Components_rhel72 = ( "opa_stack", "ibacm", "mpi_selector", "intel_hfi",
-	   	"oftools", "opa_stack_dev", "fastfabric",
-		"delta_ipoib", "opafm",
+		"oftools", "opa_stack_dev", "fastfabric", "rdma_ndd",
+		"delta_ipoib", "opafm", "opamgt_sdk",
 	   	@OmniPathAllComponents,
 		"openmpi_gcc_cuda_hfi", "gasnet", "openshmem",
 	   	"mvapich2", "openmpi",
 	   	"delta_mpisrc", "hfi1_uefi", "delta_debug", );
-my @Components_sles12_sp2 = ( "opa_stack", "mpi_selector", "intel_hfi",
-	   	"oftools", "opa_stack_dev", "fastfabric",
-		"delta_ipoib", "opafm",
+my @Components_sles12_sp2 = ( "opa_stack", "ibacm", "mpi_selector", "intel_hfi",
+		"oftools", "opa_stack_dev", "fastfabric", "rdma_ndd",
+		"delta_ipoib", "opafm", "opamgt_sdk",
 	   	@OmniPathAllComponents,
 		"openmpi_gcc_cuda_hfi", "gasnet", "openshmem",
 	   	"mvapich2", "openmpi",
 	   	"delta_mpisrc", "hfi1_uefi", "delta_debug", );
-my @Components_rhel73 = ( "opa_stack", "mpi_selector", "intel_hfi",
-	   	"oftools", "opa_stack_dev", "fastfabric",
-		"delta_ipoib", "opafm",
+my @Components_rhel73 = ( "opa_stack", "ibacm", "mpi_selector", "intel_hfi",
+		"oftools", "opa_stack_dev", "fastfabric", "rdma_ndd",
+		"delta_ipoib", "opafm", "opamgt_sdk",
 	   	@OmniPathAllComponents,
 		"openmpi_gcc_cuda_hfi",	"gasnet", "openshmem",
 	   	"mvapich2", "openmpi",
@@ -197,7 +197,7 @@ my %ComponentInfo_other = (
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob("./IntelOPA-Tools*.*"),
 					  DriverSubdir => "",
-					  PreReq => " opa_stack ", CoReq => " opa_stack ",
+					  PreReq => " opa_stack ibacm ", CoReq => " opa_stack ",
 					  Hidden => 0, Disabled => 0,
 					  HasStart => 1, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => " opa_stack ", # TBD
@@ -344,6 +344,16 @@ my %ComponentInfo_other = (
 					  #StartComponents => [ "qlgc_fm", "qlgc_fm_snmp"],
 					  StartComponents => [ "opafm" ],
 					},
+	"opamgt_sdk" => { Name => "OPA Management SDK",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-Tools*.*"),
+					  DriverSubdir => "",
+					  Prereq => " opa_stack ", CoReq => "",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ ],
+				  },
 	"delta_debug" =>	{ Name => "OFA Debug Info",
 					  DefaultInstall => $State_DoNotInstall,
 					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
@@ -364,6 +374,16 @@ my %ComponentInfo_other = (
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
+	"rdma_ndd" =>              { Name => "RDMA NDD",
+                                          DefaultInstall => $State_Install,
+                                          SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
+                                          DriverSubdir => "",
+                                          PreReq => " opa_stack ", CoReq => "",
+                                          Hidden => 1, Disabled => 1,
+                                          HasStart => 1, HasFirmware => 0, DefaultStart => 0,
+                                          StartPreReq => " opa_stack ",
+                                          StartComponents => [ "rdma_ndd" ],
+                                        },
 	);
 my %ComponentInfo_rhel72 = (
 		# our special WrapperComponent, limited use
@@ -573,6 +593,16 @@ my %ComponentInfo_rhel72 = (
 					  #StartComponents => [ "qlgc_fm", "qlgc_fm_snmp"],
 					  StartComponents => [ "opafm" ],
 					},
+	"opamgt_sdk" => { Name => "OPA Management SDK",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-Tools*.*"),
+					  DriverSubdir => "",
+					  Prereq => " opa_stack ", CoReq => "",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ ],
+				  },
 	"delta_debug" =>	{ Name => "OFA Debug Info",
 					  DefaultInstall => $State_DoNotInstall,
 					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
@@ -593,6 +623,16 @@ my %ComponentInfo_rhel72 = (
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
+	"rdma_ndd" =>              { Name => "RDMA NDD",
+                                          DefaultInstall => $State_Install,
+                                          SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
+                                          DriverSubdir => "",
+                                          PreReq => " opa_stack ", CoReq => "",
+                                          Hidden => 1, Disabled => 1,
+                                          HasStart => 1, HasFirmware => 0, DefaultStart => 0,
+                                          StartPreReq => " opa_stack ",
+                                          StartComponents => [ "rdma_ndd" ],
+                                        },
 	);
 
 my %ComponentInfo_sles12_sp2 = (
@@ -621,6 +661,16 @@ my %ComponentInfo_sles12_sp2 = (
 					  StartPreReq => "",
 					  StartComponents => [ "opa_stack" ],
 					},
+	"ibacm" =>              { Name => "OFA IBACM",
+                                          DefaultInstall => $State_Install,
+                                          SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
+                                          DriverSubdir => "",
+                                          PreReq => " opa_stack ", CoReq => "",
+                                          Hidden => 1, Disabled => 1,
+                                          HasStart => 1, HasFirmware => 0, DefaultStart => 0,
+                                          StartPreReq => " opa_stack ",
+                                          StartComponents => [ "ibacm" ],
+                                        },
 	"intel_hfi" =>	{ Name => "Intel HFI Components",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
@@ -793,6 +843,16 @@ my %ComponentInfo_sles12_sp2 = (
 					  #StartComponents => [ "qlgc_fm", "qlgc_fm_snmp"],
 					  StartComponents => [ "opafm" ],
 					},
+	"opamgt_sdk" => { Name => "OPA Management SDK",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-Tools*.*"),
+					  DriverSubdir => "",
+					  Prereq => " opa_stack ", CoReq => "",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ ],
+				  },
 	"delta_debug" =>	{ Name => "OFA Debug Info",
 					  DefaultInstall => $State_DoNotInstall,
 					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
@@ -813,6 +873,16 @@ my %ComponentInfo_sles12_sp2 = (
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
+	"rdma_ndd" =>              { Name => "RDMA NDD",
+                                          DefaultInstall => $State_Install,
+                                          SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
+                                          DriverSubdir => "",
+                                          PreReq => " opa_stack ", CoReq => "",
+                                          Hidden => 1, Disabled => 1,
+                                          HasStart => 1, HasFirmware => 0, DefaultStart => 0,
+                                          StartPreReq => " opa_stack ",
+                                          StartComponents => [ "rdma_ndd" ],
+                                        },
 	);
 my %ComponentInfo_rhel73 = (
 		# our special WrapperComponent, limited use
@@ -840,6 +910,16 @@ my %ComponentInfo_rhel73 = (
 					  StartPreReq => "",
 					  StartComponents => [ "opa_stack" ],
 					},
+	"ibacm" =>              { Name => "OFA IBACM",
+                                          DefaultInstall => $State_Install,
+                                          SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
+                                          DriverSubdir => "",
+                                          PreReq => " opa_stack ", CoReq => "",
+                                          Hidden => 1, Disabled => 1,
+                                          HasStart => 1, HasFirmware => 0, DefaultStart => 0,
+                                          StartPreReq => " opa_stack ",
+                                          StartComponents => [ "ibacm" ],
+                                        },
 	"intel_hfi" =>	{ Name => "Intel HFI Components",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
@@ -1012,6 +1092,16 @@ my %ComponentInfo_rhel73 = (
 					  #StartComponents => [ "qlgc_fm", "qlgc_fm_snmp"],
 					  StartComponents => [ "opafm" ],
 					},
+	"opamgt_sdk" => { Name => "OPA Management SDK",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-Tools*.*"),
+					  DriverSubdir => "",
+					  Prereq => " opa_stack ", CoReq => "",
+					  Hidden => 0, Disabled => 0,
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ ],
+				  },
 	"delta_debug" =>	{ Name => "OFA Debug Info",
 					  DefaultInstall => $State_DoNotInstall,
 					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
@@ -1032,6 +1122,16 @@ my %ComponentInfo_rhel73 = (
 					  StartPreReq => "",
 					  StartComponents => [ ],
 					},
+	"rdma_ndd" =>              { Name => "RDMA NDD",
+                                          DefaultInstall => $State_Install,
+                                          SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
+                                          DriverSubdir => "",
+                                          PreReq => " opa_stack ", CoReq => "",
+                                          Hidden => 1, Disabled => 1,
+                                          HasStart => 1, HasFirmware => 0, DefaultStart => 0,
+                                          StartPreReq => " opa_stack ",
+                                          StartComponents => [ "rdma_ndd" ],
+                                        },
 	);
 
 %ComponentInfo = ( );
@@ -1059,8 +1159,10 @@ my %ComponentInfo_rhel73 = (
 				"openmpi_intel_hfi" => 0,
 				"delta_mpisrc" => 0,
 				"opafm" => 0,
+				"opamgt_sdk" => 0,
 				"hfi1_uefi" => 0,
 				"delta_debug" => 0,
+				"rdma_ndd" => 0,
 			);
 
 sub init_components
@@ -1089,7 +1191,56 @@ sub init_components
 sub available_opaconfig
 {
 	my $srcdir=$ComponentInfo{'opaconfig'}{'SrcDir'};
-	return ( -e "$srcdir/INSTALL" );
+	return (rpm_resolve("$srcdir/*/", "any", "opaconfig"));
+}
+
+sub installed_opaconfig
+{
+	return rpm_is_installed("opaconfig", "any");
+}
+
+sub installed_version_opaconfig
+{
+	my $version = rpm_query_version_release_pkg("opaconfig");
+	return dot_version("$version");
+}
+
+sub media_version_opaconfig
+{
+	my $srcdir = $ComponentInfo{'opaconfig'}{'SrcDir'};
+	my $rpm = rpm_resolve("$srcdir/RPMS/*/", "any", "opaconfig");
+	my $version = rpm_query_version_release($rpm);
+	return dot_version("$version");
+}
+
+sub build_opaconfig
+{
+	my $osver = $_[0];
+	my $debug = $_[1];      # enable extra debug of build itself
+	my $build_temp = $_[2]; # temp area for use by build
+	my $force = $_[3];      # force a rebuild
+	return 0;       # success
+}
+
+sub need_reinstall_opaconfig($$)
+{
+	my $install_list = shift();	# total that will be installed when done
+	my $installing_list = shift();	# what items are being installed/reinstalled
+
+	return "no";
+}
+
+sub check_os_prereqs_opaconfig
+{
+	return rpm_check_os_prereqs("opaconfig", "user");
+}
+
+sub preinstall_opaconfig
+{
+        my $install_list = $_[0];       # total that will be installed when done
+        my $installing_list = $_[1];    # what items are being installed/reinstalled
+
+        return 0;       # success
 }
 
 sub install_opaconfig
@@ -1100,13 +1251,15 @@ sub install_opaconfig
 	my $srcdir=$ComponentInfo{'opaconfig'}{'SrcDir'};
 	NormalPrint("Installing $ComponentInfo{'opaconfig'}{'Name'}...\n");
 
-	check_config_dirs();
-	copy_systool_file("$srcdir/INSTALL", "/sbin/opaconfig");
+	# New Install Code
+	my $rpmfile = rpm_resolve("$srcdir/RPMS/*/", "any", "opaconfig");
+	rpm_run_install($rpmfile, "any", " -U ");
+	# New Install Code
+
 	# remove the old style version file
 	system("rm -rf $ROOT/$BASE_DIR/version");
 	# version_wrapper is only for support (fetched in opacapture)
 	system("echo '$VERSION' > $BASE_DIR/version_wrapper 2>/dev/null");
-	copy_data_file("$srcdir/os_id", "$BASE_DIR/osid_wrapper");
 	# there is no ideal answer here, if we install updates separately
 	# then upgrade or reinstall with wrapper, make sure we cleanup possibly old
 	# opaconfig_* files
@@ -1119,12 +1272,23 @@ sub install_opaconfig
 	$ComponentWasInstalled{'opaconfig'}=1;
 }
 
+sub postinstall_opaconfig
+{
+        my $install_list = $_[0];       # total that will be installed when done
+        my $installing_list = $_[1];    # what items are being installed/reinstalled
+}
+
 sub uninstall_opaconfig
 {
 	my $install_list = $_[0];	# total that will be left installed when done
 	my $uninstalling_list = $_[1];	# what items are being uninstalled
 
 	NormalPrint("Uninstalling $ComponentInfo{'opaconfig'}{'Name'}...\n");
+
+	# New Uninstall Code
+	rpm_uninstall_list("any", "verbose", ("opaconfig") );
+	# New Uninstall Code
+
 	system("rm -rf $ROOT$BASE_DIR/version_wrapper");
 	system("rm -rf $ROOT$BASE_DIR/osid_wrapper");
 	# remove the old style version file

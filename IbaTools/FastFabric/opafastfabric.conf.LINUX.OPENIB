@@ -221,11 +221,11 @@ export FF_MPI_APPS_DIR=${FF_MPI_APPS_DIR:-$HOME/mpi_apps}
 # alternatively the /usr/src/opa/mpi_apps/ofed.*.param files can be edited
 # with appropriate values.
 # example of PSM selection of vFabric by PKEY/SL
-#export FF_MPI_ENV=${FF_MPI_ENV:-PSM_PKEY=0xffff IPATH_SL=0 PSM_MTU=2048}
+#export FF_MPI_ENV=${FF_MPI_ENV:-PSM2_PKEY=0xffff HFI_SL=0 PSM2_MTU=2048}
 # example of PSM selection of path and vFabric by query to dist_sa
-#export FF_MPI_ENV=${FF_MPI_ENV:-PSM_PATH_REC=opp PSM_IB_SERVICE_ID=0x1000117500000000}
+#export FF_MPI_ENV=${FF_MPI_ENV:-PSM2_PATH_REC=opp PSM2_IB_SERVICE_ID=0x1000117500000000}
 # example of PSM selection of path and vFabric by default query to dist_sa
-#export FF_MPI_ENV=${FF_MPI_ENV:-PSM_PATH_REC=opp}
+#export FF_MPI_ENV=${FF_MPI_ENV:-PSM2_PATH_REC=opp}
 export FF_MPI_ENV=${FF_MPI_ENV:-}
 
 # configuration of arguments for MPI performance deviation testing

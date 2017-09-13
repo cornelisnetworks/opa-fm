@@ -121,8 +121,8 @@ CLOCAL =
 LOCAL_LIB_DIRS= /usr/lib 
 endif
 #LOCALDEPLIBS = ssoss_fm_api ssoss_core_unisck ssapi_core_common ssapi_common
-#LOCALDEPLIBS = sm sa pm fe if3sa if3 cs mai ibaccess config rem_conf net public vslogu Xml Md5 oib_utils
-#LOCALDEPLIBS = if3sa if3 cs mai ibaccess config rem_conf net public vslogu Xml Md5 oib_utils
+#LOCALDEPLIBS = sm sa pm fe if3sa if3 cs mai ibaccess config rem_conf net public vslogu Xml Md5 opamgt-priv
+#LOCALDEPLIBS = if3sa if3 cs mai ibaccess config rem_conf net public vslogu Xml Md5 opamgt-priv
 #LOCAL_INCLUDE_DIRS=.
 #LOCAL_INCLUDE_DIRS=$(MOD_DIR)/src/smi/include $(MOD_DIR)/src/fe/ $(OPENIB_USER_LIB_DIRS)
 LOCAL_INCLUDE_DIRS=$(MOD_DIR)/ib/include $(TL_DIR)/Esm/ib/src/if3

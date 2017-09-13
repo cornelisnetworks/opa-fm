@@ -105,16 +105,14 @@ int main (int argc, char **argv)
 	int						retries = 0;
 	long					timeout = 0;
     int             		arg;
-    char            		Opts[256];
 	char					*start_ip, *end_ip;
 	int						num_found = 0;
 	snmp_com_discovery_data	*disc_targets;
 	int						i,j;
 
 	// Get options at the command line (overide default values)
-    strcpy(Opts, "m:M:c:v:o:t:r:h-");
 
-    while ((arg = getopt(argc, argv, Opts)) != EOF) {
+    while ((arg = getopt(argc, argv, "m:M:c:v:o:t:r:h-")) != EOF) {
         switch (arg) {
 			case 'h':
 			case '-':

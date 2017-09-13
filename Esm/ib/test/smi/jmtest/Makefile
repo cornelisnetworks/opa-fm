@@ -113,7 +113,7 @@ INCLUDE_SUBDIR		=
 
 CLOCAL	= 
 LOCAL_INCLUDE_DIRS = $(MOD_DIR)/src/smi/include
-LOCALDEPLIBS = cs ibaccess mai public vslogu oib_utils
+LOCALDEPLIBS = cs ibaccess mai public vslogu opamgt-priv
 LOCALLIBS = pthread $(OPENIB_USER_LIBS)
 
 # Include Make Rules definitions and rules

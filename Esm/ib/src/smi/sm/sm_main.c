@@ -56,6 +56,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ib_status.h"
 #include "cs_g.h"
 #include "sm_l.h"
+#include "sm_qos.h"
 #include "sa_l.h"
 #include "sm_dbsync.h"
 #include "cs_csm_log.h"
@@ -64,7 +65,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "if3.h"
 
 #ifndef __VXWORKS__
-#include <oib_utils.h>
+#include <opamgt_priv.h>
 #endif
 
 #ifdef CAL_IBACCESS
@@ -95,6 +96,8 @@ extern void unified_sm_pm(uint32_t argc, uint8_t ** argv);
 extern Status_t fe_initialize_config(FMXmlCompositeConfig_t *xml_config, uint32_t fe_instance);
 
 extern void unified_sm_fe(uint32_t argc, uint8_t ** argv);
+
+extern struct omgt_port *g_port_handle;
 
 #ifdef CAL_IBACCESS
 extern void mai_umadt_read_kill(void);
@@ -275,6 +278,9 @@ Lock_t		new_topology_lock;			// a Thread Lock
 Lock_t		tid_lock;
 Lock_t		handover_sent_lock;
 
+#ifdef __LINUX__
+Lock_t linux_shutdown_lock; //RW lock for shutdown. Taken by file I/O ops that shouldn't be killed mid operation.
+#endif
 
 /* flag to indicate if we have triggered a sweep for handover from async thread (sm_fsm.c) */
 uint32_t triggered_handover=0;
@@ -433,29 +439,32 @@ void sm_init_log_setting(void){
 	if(strlen(sm_config.log_file) > 0)
 	{
 		vs_log_control(VS_LOG_SETOUTPUTFILE, (void *)sm_config.log_file, (void *)0, (void *)0);
+
 		if(sm_log_level > 0)
-			oib_set_err(vs_log_get_logfile_fd());
+			omgt_set_err(g_port_handle, vs_log_get_logfile_fd());
 		else
-			oib_set_err(NULL);
+			omgt_set_err(g_port_handle, NULL);
 
 		if(sm_log_level > 2)
-			oib_set_dbg(vs_log_get_logfile_fd());
+			omgt_set_dbg(g_port_handle, vs_log_get_logfile_fd());
 		else
-			oib_set_dbg(NULL);
+			omgt_set_dbg(g_port_handle, NULL);
+
 	}
 	else
 	{
 		vs_log_control(VS_LOG_SETOUTPUTFILE, (void *)0, (void *)0, (void *)0);
 
 		if(sm_log_level > 0)
-			oib_set_err(OIB_DBG_FILE_SYSLOG);
+			omgt_set_err(g_port_handle, OMGT_DBG_FILE_SYSLOG);
 		else
-			oib_set_err(NULL);
+			omgt_set_err(g_port_handle, NULL);
 
 		if(sm_log_level > 2)
-			oib_set_dbg(OIB_DBG_FILE_SYSLOG);
+			omgt_set_dbg(g_port_handle, OMGT_DBG_FILE_SYSLOG);
 		else
-			oib_set_dbg(NULL);
+			omgt_set_dbg(g_port_handle, NULL);
+
 	}
 
 #endif
@@ -521,6 +530,7 @@ uint32_t sm_get_log_mask(const char* mod)
 void sm_set_force_attribute_rewrite(uint32_t force_attr_rewrite){
 	sm_config.forceAttributeRewrite = force_attr_rewrite;
 	IB_LOG_INFINI_INFO_FMT(__func__, "Setting force attribute rewrite to %u", force_attr_rewrite);
+	if (force_attr_rewrite) forceRebalanceNextSweep = 1;
 }
 
 void sm_set_skip_attribute_write(char * datap){
@@ -583,41 +593,15 @@ static Status_t
 sm_resolve_pkeys_for_vfs(VirtualFabrics_t *VirtualFabrics)
 {
 	int				vf, vf2;
-	int				defaultPkey=0;
 	VFDg_t*			mcastGrpp;
 	VFAppMgid_t*	mgidp;
-	uint8_t			logMcRateChange, logMcMtuChange;
-	bitset_t		freePkeys;
 
 	if (!VirtualFabrics || (VirtualFabrics->number_of_vfs == 0))  {
 		return VSTATUS_OK;
 	}
 
-	// Only deal with 32 pkeys. We can't use more than 32 pkeys
-	// (hardware limit, 32 VF limit).
-	if (!bitset_init(&sm_pool, &freePkeys, SM_PKEYS+1)) {
-		IB_LOG_ERROR_FMT(__func__, "Out of memory.");
-		return VSTATUS_NOMEM;
-	}
-	bitset_set_all(&freePkeys);
-	bitset_clear(&freePkeys, 0);
-
 	for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
 		VF_t *vfp = &VirtualFabrics->v_fabric_all[vf];
-
-		VFDg_t*		 mcastGrpp;
-
-		if (PKEY_VALUE(vfp->pkey) < SM_PKEYS) {
-			bitset_clear(&freePkeys, PKEY_VALUE(vfp->pkey));
-		}
-
-		for (mcastGrpp = vfp->default_group; mcastGrpp;
-			 mcastGrpp = mcastGrpp->next_default_group) {
-			if (mcastGrpp->def_mc_create &&
-				(PKEY_VALUE(mcastGrpp->def_mc_pkey) < SM_PKEYS)) {
-				bitset_clear(&freePkeys, PKEY_VALUE(vfp->pkey));
-			}
-		}
 
 		if (vfp->security)
 			VirtualFabrics->securityEnabled = 1;
@@ -632,50 +616,17 @@ sm_resolve_pkeys_for_vfs(VirtualFabrics_t *VirtualFabrics)
 		// Check if pkey is defined.
 		if ((VirtualFabrics->v_fabric[vf].pkey == UNDEFINED_PKEY) ||
 			(PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey) == INVALID_PKEY)) {
-
-			for (mcastGrpp = VirtualFabrics->v_fabric[vf].default_group; mcastGrpp;
-			 	 mcastGrpp = mcastGrpp->next_default_group) {
-
-				if (mcastGrpp->def_mc_create &&
-					(mcastGrpp->def_mc_pkey != UNDEFINED_PKEY)) {
-					VirtualFabrics->v_fabric[vf].pkey = PKEY_VALUE(mcastGrpp->def_mc_pkey);
-					break;
-				}
-			}
-
-			if ((VirtualFabrics->v_fabric[vf].pkey == UNDEFINED_PKEY) ||
-				(PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey) == INVALID_PKEY)) {
-
-				if (!VirtualFabrics->securityEnabled) {
-					VirtualFabrics->v_fabric[vf].pkey = DEFAULT_PKEY;
-
-				} else if (VirtualFabrics->v_fabric[vf].security) {
-					// Assign unique pkey.
-					VirtualFabrics->v_fabric[vf].pkey = bitset_find_first_one(&freePkeys);
-					bitset_clear(&freePkeys, VirtualFabrics->v_fabric[vf].pkey);
-				} else {
-					if (defaultPkey == 0) {
-						defaultPkey = bitset_find_first_one(&freePkeys);
-						if (defaultPkey < 0) {
-							IB_LOG_ERROR_FMT_VF(VirtualFabrics->v_fabric[vf].name,
-								__func__,
-								"Unable to allocate pkey to vf. Pkey table full.");
-							return VSTATUS_BAD;
-						}
-						bitset_clear(&freePkeys, defaultPkey);
-					}
-					VirtualFabrics->v_fabric[vf].pkey = defaultPkey;
-				}
-			}
-
-			IB_LOG_INFINI_INFO_FMT_VF( VirtualFabrics->v_fabric[vf].name, "sm_resolve_pkeys_for_vfs",
-					"VFabric has undefined pkey. Assigning pkey 0x%x.", VirtualFabrics->v_fabric[vf].pkey);
+				IB_LOG_ERROR_FMT_VF(VirtualFabrics->v_fabric[vf].name,
+							__func__,
+							"Found VF without assigned pkey. All VFs should have already assigned pkeys either manually or automatically");
+						return VSTATUS_BAD;
 
 		} else if (!VirtualFabrics->v_fabric[vf].security) {
 			for (vf2=0; vf2<VirtualFabrics->number_of_vfs; vf2++) {
 				if (vf==vf2) continue;
 				if ((VirtualFabrics->v_fabric[vf].pkey == VirtualFabrics->v_fabric[vf2].pkey) && VirtualFabrics->v_fabric[vf2].security) {
-					IB_LOG_INFINI_INFO_FMT_VF( VirtualFabrics->v_fabric[vf].name, "sm_resolve_pkeys_for_vfs", "VFabric has security disabled. VFabric %s has same PKey with security enabled. Enabling security.", 
+					IB_LOG_INFINI_INFO_FMT_VF(VirtualFabrics->v_fabric[vf].name, __func__,
+						"VFabric has security disabled. VFabric %s has same PKey with security enabled. Enabling security.",
  						VirtualFabrics->v_fabric[vf2].name);
 					VirtualFabrics->v_fabric[vf].security = 1;
 					break;
@@ -691,29 +642,29 @@ sm_resolve_pkeys_for_vfs(VirtualFabrics_t *VirtualFabrics)
 	
 		if (VirtualFabrics->v_fabric[vf].apps.select_sa) {
 			if (PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey) != DEFAULT_PKEY) {
-				IB_LOG_ERROR_FMT_VF( VirtualFabrics->v_fabric[vf].name, "sm_resolve_pkeys_for_vfs",
-					"VFabric has application SA selected, bad PKey configured 0x%x, must use Mgmt PKey.", VirtualFabrics->v_fabric[vf].pkey);
+				IB_LOG_ERROR_FMT_VF(VirtualFabrics->v_fabric[vf].name, __func__,
+					"VFabric has application SA selected, bad PKey configured 0x%x, must use Mgmt PKey.",
+					VirtualFabrics->v_fabric[vf].pkey);
 			} else {
 				sm_masterSmSl = VirtualFabrics->v_fabric[vf].base_sl;
 			}
 		}
 		if (smCheckServiceId(vf, PM_SERVICE_ID, VirtualFabrics)) {
 			if (PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey) != DEFAULT_PKEY) {
-				IB_LOG_ERROR_FMT_VF( VirtualFabrics->v_fabric[vf].name, "sm_resolve_pkeys_for_vfs",
-					"VFabric has application PA selected, bad PKey configured 0x%x, must use Mgmt PKey.", VirtualFabrics->v_fabric[vf].pkey);
+				IB_LOG_ERROR_FMT_VF(VirtualFabrics->v_fabric[vf].name, __func__,
+					"VFabric has application PA selected, bad PKey configured 0x%x, must use Mgmt PKey.",
+					VirtualFabrics->v_fabric[vf].pkey);
 			}
 		}
 		if (VirtualFabrics->v_fabric[vf].apps.select_pm) {
 			if (PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey) != DEFAULT_PKEY) {
-				IB_LOG_ERROR_FMT_VF( VirtualFabrics->v_fabric[vf].name, "sm_resolve_pkeys_for_vfs",
-					"VFabric has application PM selected, bad PKey configured 0x%x, must use Mgmt PKey.", VirtualFabrics->v_fabric[vf].pkey);
+				IB_LOG_ERROR_FMT_VF(VirtualFabrics->v_fabric[vf].name, __func__,
+					"VFabric has application PM selected, bad PKey configured 0x%x, must use Mgmt PKey.",
+					VirtualFabrics->v_fabric[vf].pkey);
 			} else sm_masterPmSl = VirtualFabrics->v_fabric[vf].base_sl;
 		}
-
-		logMcRateChange = 1;
-		logMcMtuChange = 1;
 		for (mcastGrpp = VirtualFabrics->v_fabric[vf].default_group; mcastGrpp;
-			 mcastGrpp = mcastGrpp->next_default_group) {
+			mcastGrpp = mcastGrpp->next_default_group) {
 
 			if (mcastGrpp->def_mc_create) {
 				if (mcastGrpp->def_mc_pkey == UNDEFINED_PKEY) {
@@ -721,63 +672,65 @@ sm_resolve_pkeys_for_vfs(VirtualFabrics_t *VirtualFabrics)
 				}
 
 				if (PKEY_VALUE(mcastGrpp->def_mc_pkey) != PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey)) {
-					IB_LOG_ERROR_FMT_VF( VirtualFabrics->v_fabric[vf].name, __func__,
+					IB_LOG_ERROR_FMT_VF(VirtualFabrics->v_fabric[vf].name, __func__,
 						"MulticastGroup configuration error, mismatch on pkey. Disabling Default Group");
 					mcastGrpp->def_mc_create = 0;
+					continue; // Not going to create Default Group, skip.
 				}
 
 				if (mcastGrpp->def_mc_rate_int >= UNDEFINED_XML8) {
 					mcastGrpp->def_mc_rate_int = linkrate_gt(IB_STATIC_RATE_25G, VirtualFabrics->v_fabric[vf].max_rate_int) ?
-														VirtualFabrics->v_fabric[vf].max_rate_int : IB_STATIC_RATE_25G;
+						VirtualFabrics->v_fabric[vf].max_rate_int : IB_STATIC_RATE_25G;
+
 				} else if (linkrate_gt(mcastGrpp->def_mc_rate_int, VirtualFabrics->v_fabric[vf].max_rate_int)) {
 					mcastGrpp->def_mc_rate_int = linkrate_gt(IB_STATIC_RATE_25G, VirtualFabrics->v_fabric[vf].max_rate_int) ?
-														VirtualFabrics->v_fabric[vf].max_rate_int : IB_STATIC_RATE_25G;
-					if (logMcRateChange) {
-						logMcRateChange = 0;
-						IB_LOG_WARN_FMT_VF( VirtualFabrics->v_fabric[vf].name, "sm_resolve_pkeys_for_vfs",
-							"MulticastGroup configuration error, dropping rate to value consistent with vFabric (%dg).",
-							linkrate_to_ordinal(mcastGrpp->def_mc_rate_int)/10);
-					}
+						VirtualFabrics->v_fabric[vf].max_rate_int : IB_STATIC_RATE_25G;
+
+					IB_LOG_ERROR_FMT_VF(VirtualFabrics->v_fabric[vf].name, __func__,
+						"MulticastGroup configuration error, rate (%s) exceeds vFabric (%s), disabling Default Group",
+						IbStaticRateToText(mcastGrpp->def_mc_rate_int),
+						IbStaticRateToText(VirtualFabrics->v_fabric[vf].max_rate_int));
+					mcastGrpp->def_mc_create = 0;
+					continue; // Not going to create Default Group, skip.
 				}
 
 				if (mcastGrpp->def_mc_mtu_int >= UNDEFINED_XML8) {
 					mcastGrpp->def_mc_mtu_int = MIN(IB_MTU_2048, VirtualFabrics->v_fabric[vf].max_mtu_int);
 
 				} else if (mcastGrpp->def_mc_mtu_int > VirtualFabrics->v_fabric[vf].max_mtu_int) {
-					mcastGrpp->def_mc_mtu_int = MIN(IB_MTU_2048, VirtualFabrics->v_fabric[vf].max_mtu_int);
-					if (logMcMtuChange) {
-						logMcMtuChange = 0;
-						IB_LOG_WARN_FMT_VF( VirtualFabrics->v_fabric[vf].name, "sm_resolve_pkeys_for_vfs",
-							"MulticastGroup configuration error, dropping MTU to value consistent with vFabric (%d).",
-						Decode_MTU_To_Int(mcastGrpp->def_mc_mtu_int));
-					}
+					IB_LOG_ERROR_FMT_VF(VirtualFabrics->v_fabric[vf].name, __func__,
+						"MulticastGroup configuration error, MTU (%s) exceeds vFabric (%s), disabling Default Group",
+						IbMTUToText(mcastGrpp->def_mc_mtu_int), IbMTUToText(VirtualFabrics->v_fabric[vf].max_mtu_int));
+					mcastGrpp->def_mc_create = 0;
+					continue; // Not going to create Default Group, skip.
 				}
 
 				if (mcastGrpp->def_mc_sl == UNDEFINED_XML8) {
 					mcastGrpp->def_mc_sl = VirtualFabrics->v_fabric[vf].mcast_sl;
 
 				} else if (mcastGrpp->def_mc_sl != VirtualFabrics->v_fabric[vf].mcast_sl) {
-					IB_LOG_ERROR_FMT_VF(VirtualFabrics->v_fabric[vf].name,
-							"sm_resolve_pkeys_for_vfs", "MulticastGroup configuration error, SL must match SL %d (configured SL %d), disabling Default Group",
-							VirtualFabrics->v_fabric[vf].mcast_sl, mcastGrpp->def_mc_sl);
+					IB_LOG_ERROR_FMT_VF(VirtualFabrics->v_fabric[vf].name, __func__,
+						"MulticastGroup configuration error, SL must match SL %d (configured SL %d), disabling Default Group",
+						VirtualFabrics->v_fabric[vf].mcast_sl, mcastGrpp->def_mc_sl);
 					mcastGrpp->def_mc_create = 0;
+					continue; // Not going to create Default Group, skip.
 				}
 
-				cl_map_item_t* cl_map_item;
+				cl_map_item_t *cl_map_item;
 				for_all_qmap_ptr(&mcastGrpp->mgidMap, cl_map_item, mgidp) {
 					// Verify mgid has pkey inserted.
 					smVerifyMcastPkey(mgidp->mgid, mcastGrpp->def_mc_pkey);
 					if (smVFValidateMcDefaultGroup(vf, mgidp->mgid) != VSTATUS_OK) {
-						IB_LOG_ERROR_FMT_VF( VirtualFabrics->v_fabric[vf].name,
-								"sm_resolve_pkeys_for_vfs", "MulticastGroup configuration error, MGID "FMT_GID" does not match app, disabling Default Group",
-								mgidp->mgid[0], mgidp->mgid[1]);
+						IB_LOG_ERROR_FMT_VF(VirtualFabrics->v_fabric[vf].name, __func__,
+							"MulticastGroup configuration error, MGID "FMT_GID" does not match app, disabling Default Group",
+							mgidp->mgid[0], mgidp->mgid[1]);
 						mcastGrpp->def_mc_create = 0;
+						break; // for_all_qmap_ptr()
 					}
 				}
 			}
 		}
 	}
-	bitset_free(&freePkeys);
 	return VSTATUS_OK;
 }
 
@@ -797,10 +750,11 @@ sm_assign_qos_params(VirtualFabrics_t *VirtualFabrics)
 			return VSTATUS_BAD;
 
 	/* Assign SCs to SLs */
-	if (sm_main_routingModule->funcs.assign_scs_to_sls)
+	if (sm_main_routingModule->funcs.assign_scs_to_sls) {
 		if (sm_main_routingModule->funcs.assign_scs_to_sls(sm_main_routingModule, VirtualFabrics) != VSTATUS_OK)
 			return VSTATUS_BAD;
-
+		sm_printf_vf_debug(VirtualFabrics);
+	}
 	return VSTATUS_OK;
 }
 
@@ -891,6 +845,15 @@ Status_t sm_parse_xml_config(void) {
 	smTerminateAfter = sm_config.terminateAfter;
 	if (sm_config.dumpCounters[0] != 0) 
 		smDumpCounters = sm_config.dumpCounters;
+
+	/* The start parameter from the XML file is ignored for ESM */
+#ifndef __VXWORKS__
+	/* If start is disabled, the executable should exit in HSM */
+	if (!sm_config.start) {
+		IB_LOG_ERROR_FMT(__func__, "SM instance %u is not Enabled",(unsigned int)sm_instance );
+		return(VSTATUS_ILLPARM);
+        }
+#endif
 
 	// if LMC is zero, we will use this offset in the lid allocation logic 
 	// value of 1 is the default behavior for LMC=0
@@ -1661,13 +1624,28 @@ sm_main(void) {
 		IB_FATAL_ERROR_NODUMP("can't initialize Dateline Switch GUID lock");
 	}
 
+#ifdef __LINUX__
+	status = vs_lock_init(&linux_shutdown_lock, VLOCK_FREE, VLOCK_RWTHREAD);
+	if (status != VSTATUS_OK) {
+		IB_FATAL_ERROR_NODUMP("can't initialize shutdown lock");
+	}
+#endif
+
     //
     //	Initialize the MAI subsystem.
     //
 	mai_set_num_end_ports( MIN(2*sm_config.subnet_size, MAI_MAX_QUEUED_DEFAULT));
 	mai_init();
 
+#ifndef __VXWORKS__
+	FILE * tmp_log_file = strlen(sm_config.log_file) > 0 ? vs_log_get_logfile_fd() : NULL;
+	struct omgt_params params = {.error_file = sm_log_level > 0 ? tmp_log_file : NULL,
+	                             .debug_file = sm_log_level > 2 ? tmp_log_file : NULL};
+	status = ib_init_devport(&sm_config.hca, &sm_config.port, &sm_config.port_guid, &params);
+#else
 	status = ib_init_devport(&sm_config.hca, &sm_config.port, &sm_config.port_guid);
+#endif
+
 	if (status != VSTATUS_OK)
 		IB_FATAL_ERROR_NODUMP("sm_main: Failed to bind to device; terminating");
 	sm_portguid = sm_config.port_guid;

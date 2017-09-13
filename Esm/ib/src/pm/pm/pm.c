@@ -671,14 +671,6 @@ pm_main()
     // settings of the SM. 
     (void)sm_getDeviceConfigSettings(&pm_config.hca, &pm_config.port, &pm_config.port_guid);
 
-#if 0 // these are already checked by pm_initialize_config, should check for VxWorks too
-
-    // check configuration parameter settings related to being the Master PM, and
-    // display appropriate warning messages.  And always synch with the current
-    // configuration settings of the SM. 
-    sm_isValidMasterConfigSettings(VIEO_PM_MOD_ID, pm_config.priority, pm_config.elevated_priority);
-    (void)sm_getMasterConfigSettings(&pm_config.priority, &pm_config.elevated_priority);
-#endif
 #if ! defined(IB_STACK_OPENIB)
 	// normally ib_init_devport or ib_init_guid would return portGuid,
 	// hca and port.  However for unified SM

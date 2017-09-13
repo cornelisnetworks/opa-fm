@@ -145,7 +145,7 @@ done
 # If absolute path is specified as in "/tmp/cores/core.%e.%p.%h.%t" then the core files in the specified directory are copied.
 # The core file can only be in the sub directory that map to options %p%u%g%s%t%h%e.
 core_path=`cat /proc/sys/kernel/core_pattern`
-if [ -n $core_path -a "${core_path:0:1}" = "/" ]
+if [ -n "$core_path" -a "${core_path:0:1}" = "/" ]
 then
 	if [ $did_core_copy == n ]
 	then

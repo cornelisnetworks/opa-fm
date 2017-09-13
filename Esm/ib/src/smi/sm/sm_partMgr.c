@@ -800,6 +800,8 @@ smVFValidateVfServiceId(int vf, uint64_t serviceId)
 	int vf2;
 	VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
 
+	if (vf >= MAX_VFABRICS) return VSTATUS_BAD;
+
 	// Check for service ID	
 	if (smCheckServiceId(vf, serviceId, VirtualFabrics))
 		return VSTATUS_OK;
@@ -952,6 +954,8 @@ smVFValidateVfMGid(int vf, uint64_t mGid[2])
 {
 	int vf2;
 	VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
+
+	if (vf >= MAX_VFABRICS) return VSTATUS_BAD;
 
 	// Check for MGID	
 	if (smCheckMGid(vf, mGid))
@@ -1396,7 +1400,7 @@ smEvaluateNodeDG(Node_t* nodep, int dgIdxToEvaluate, PortRangeInfo_t* portInfo) 
 
 									//Make a copy of the node name, which we will manipulate to extract the number out of using the regmatch_t struct fields
 									char nodeName[strlen(sm_nodeDescString(nodep)) + 1];
-									strcpy(nodeName, sm_nodeDescString(nodep));
+									cs_strlcpy(nodeName, sm_nodeDescString(nodep), sizeof(nodeName));
 									nodeName[regExprPtr->groupArray[bracketGroupNum].rm_eo] = 0;
 
 									//Get the number to evalute by incrementing the node name to the position of the number

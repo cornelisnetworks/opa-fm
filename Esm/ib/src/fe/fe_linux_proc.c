@@ -39,7 +39,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "fm_xml.h"
 #include "if3.h"
 #include "mal_g.h"
-#include <oib_utils.h>
+#include <opamgt_priv.h>
 
 
 extern void fe_compute_pool_size(void);
@@ -52,6 +52,8 @@ extern Pool_t fe_xml_pool, fe_pool;
 extern IBhandle_t fdsa;
 extern size_t g_fePoolSize;
 extern char msgbuf[256];
+
+extern struct omgt_port *fe_omgt_session;
 
 // global vars
 FEXmlConfig_t fe_config;
@@ -337,26 +339,26 @@ void fe_init_log_setting(void){
 	if(strlen(fe_config.log_file) > 0) {
 		vs_log_control(VS_LOG_SETOUTPUTFILE, (void *)fe_config.log_file, (void *)0, (void *)0);
 		if(fe_config.log_level > 0)
-			oib_set_err(vs_log_get_logfile_fd());
+			omgt_set_err(fe_omgt_session, vs_log_get_logfile_fd());
 		else
-			oib_set_err(NULL);
+			omgt_set_err(fe_omgt_session, NULL);
 
 		if(fe_config.log_level > 2)
-			oib_set_dbg(vs_log_get_logfile_fd());
+			omgt_set_dbg(fe_omgt_session, vs_log_get_logfile_fd());
 		else
-			oib_set_dbg(NULL);
+			omgt_set_dbg(fe_omgt_session, NULL);
     } else {
 		vs_log_control(VS_LOG_SETOUTPUTFILE, (void *)0, (void *)0, (void *)0);
 
 		if(fe_config.log_level > 0)
-			oib_set_err(OIB_DBG_FILE_SYSLOG);
+			omgt_set_err(fe_omgt_session, OMGT_DBG_FILE_SYSLOG);
 		else
-			oib_set_err(NULL);
+			omgt_set_err(fe_omgt_session, NULL);
 
 		if(fe_config.log_level > 2)
-			oib_set_dbg(OIB_DBG_FILE_SYSLOG);
+			omgt_set_dbg(fe_omgt_session, OMGT_DBG_FILE_SYSLOG);
 		else
-			oib_set_dbg(NULL);
+			omgt_set_dbg(fe_omgt_session, NULL);
     }
 
 	vs_log_set_log_mode(fe_config.syslog_mode);
@@ -403,14 +405,17 @@ void fe_set_log_mask(const char* mod, uint32_t mask)
 
 Status_t fe_main_init_port(void)
 {
-    Status_t status = VSTATUS_OK;
+	Status_t status = VSTATUS_OK;
 
-        status = ib_init_devport(&fe_config.hca, &fe_config.port, (uint64_t *)&fe_config.port_guid);
+	FILE * tmp_log_file = strlen(fe_config.log_file) > 0 ? vs_log_get_logfile_fd() : OMGT_DBG_FILE_SYSLOG;
+	struct omgt_params params = {.error_file = fe_config.log_level > 0 ? tmp_log_file : NULL,
+		                         .debug_file = fe_config.log_level > 2 ? tmp_log_file : NULL};
+	status = ib_init_devport(&fe_config.hca, &fe_config.port, (uint64_t *)&fe_config.port_guid, &params);
 
 	if (status != VSTATUS_OK)
 		Shutdown = 1;
 
-    return status;
+	return status;
 }
 
 Status_t fe_main_register_fe(int queue_size)

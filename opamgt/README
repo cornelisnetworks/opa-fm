@@ -1,0 +1,3 @@
+adapter library to support IbAccess style management APIs on top of Open Fabrics
+This also contains some common utility functions to facilitate development
+of various tools for in-band and out-of-band management.

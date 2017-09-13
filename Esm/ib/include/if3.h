@@ -163,18 +163,6 @@ typedef struct
   uint8_t         dir;          /*direction: CB_TX_DIR,CB_RX_DIR*/
 }CBTxRxData_t;
 
-#define IF3_SSL_PARM_FN_LEN			      100
-typedef struct sslParametersData_s {
-    unsigned int sslSecurityEnabled;
-	char sslSecurityDir[IF3_SSL_PARM_FN_LEN];
-	char sslSecurityFmCertificate[IF3_SSL_PARM_FN_LEN];
-	char sslSecurityFmPrivateKey[IF3_SSL_PARM_FN_LEN];
-	char sslSecurityFmCaCertificate[IF3_SSL_PARM_FN_LEN];				
-    uint32_t sslSecurityFmCertChainDepth;
-	char sslSecurityFmDHParameters[IF3_SSL_PARM_FN_LEN];
-    char sslSecurityFmCaCRL[IF3_SSL_PARM_FN_LEN];				
-} sslParametersData_t;
-
 /**/
 /* Return values from CBTxRxFunc_t supported */
 /* VSTATUS_OK   - continue to get data from SA*/

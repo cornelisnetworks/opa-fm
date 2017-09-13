@@ -316,10 +316,10 @@ void PointDestroy(Point *point)
  */
 boolean PointValid(Point *point)
 {
-	return (point->Type != POINT_TYPE_NONE
+	return (point && (point->Type != POINT_TYPE_NONE
 			|| point->EnodeType != POINT_ENODE_TYPE_NONE
 			|| point->EsmType != POINT_ESM_TYPE_NONE
-			|| point->ElinkType != POINT_ELINK_TYPE_NONE);
+			|| point->ElinkType != POINT_ELINK_TYPE_NONE));
 }
 
 /* append object to the list

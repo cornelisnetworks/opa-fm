@@ -161,7 +161,6 @@ typedef enum
  * 									from the local PortGuid and each
  * 									Remote PortGuid reported in NodeRecords
  *
- * NoInput			SLVLMapRecord	SA GetTable all SLVLMapRecords
  * NoInput			SwitchInfoRecord SA GetTable all SwitchInfoRecords
  * NoInput			LinearFDBRecord	SA GetTable all LinearFDBRecords
  * NoInput			RandomFDBRecord	SA GetTable all RandomFDBRecords
@@ -300,7 +299,6 @@ typedef enum
  * 									Remote PortGuid reported in NodeRecords
  *
  * Lid				McMemberRecord	SA GetTable McRecords with given MLid		
- * Lid				SLVLMapRecord	SA GetTable SLVLMapRecords with Lid		
  * Lid				SwitchInfoRecord SA GetTable SwitchInfoRecords with Lid		
  * Lid				LinearFDBRecord	SA GetTable LinearFDBRecords for switch Lid
  * Lid				RandomFDBRecord	SA GetTable RandomFDBRecords for switch Lid
@@ -358,6 +356,7 @@ typedef enum  _QUERY_INPUT_TYPE
     InputTypePortGuidList,			/* GuidList - a list of port guids */
     InputTypeGidList,				/* GidList - a list of gids */
     InputTypeMultiPathRecord,       /* MultiPathRecord */
+	InputTypeSourceGid,             /* SourceGid */
 
 } QUERY_INPUT_TYPE, *PQUERY_INPUT_TYPE;
 
@@ -389,7 +388,6 @@ typedef enum  _QUERY_RESULT_TYPE
 	OutputTypeMcMemberRecord,		/* MCMEMBER_RECORD_RESULTS complete SA IB_MCMEMBER_RECORD */
 	OutputTypeInformInfoRecord,		/* INFORM_INFO_RECORD_RESULTS complete SA IB_INFORM_INFO_RECORD */
     OutputTypeTraceRecord,          /* TRACE_RECORD_RESULTS is set of trace records */
-	OutputTypeSLVLMapRecord,		/* SLVLMAP_RECORD_RESULTS is set of SL to VL records */
 	OutputTypeSwitchInfoRecord,		/* SWITCHINFO_RECORD_RESULTS is set of switch info records */
 	OutputTypeLinearFDBRecord,		/* LINEAR_FDB_RECORD_RESULTS is set of linear FDB records */
 	OutputTypeRandomFDBRecord,		/* RANDOM_FDB_RECORD_RESULTS is set of random FDB records */
@@ -580,11 +578,6 @@ typedef struct _TRACE_RECORD_RESULTS  {
     uint32 			    NumTraceRecords;   /* Number of TraceRecords returned */
 	IB_TRACE_RECORD 	TraceRecords[1];   /* list of trace records returned */
 } TRACE_RECORD_RESULTS, *PTRACE_RECORD_RESULTS;
-
-typedef struct _SLVLMAP_RECORD_RESULTS  {
-    uint32 			    NumSLVLMapRecords;   /* Number of SLVLMapRecords returned */
-	IB_SLVLMAP_RECORD 	SLVLMapRecords[1];   /* list of SL to VL Map records returned */
-} SLVLMAP_RECORD_RESULTS, *PSLVLMAP_RECORD_RESULTS;
 
 typedef struct _SWITCHINFO_RECORD_RESULTS  {
     uint32 			    NumSwitchInfoRecords;   /* Number of SwitchInfoRecords returned */

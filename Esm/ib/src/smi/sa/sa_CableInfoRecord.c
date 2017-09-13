@@ -69,22 +69,31 @@ sa_CableInfoRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 
 	IB_ENTER("sa_CableInfoRecord", maip, 0, 0, 0);
 
-	switch (maip->base.method) {
-		case SA_CM_GET:
-			INCREMENT_COUNTER(smCounterSaRxGetCableInfoRecord);
-			(void)GetCableInfoRecord(maip, &records);
-			break;
-		case SA_CM_GETTABLE:
-			INCREMENT_COUNTER(smCounterSaRxGetTblCableInfoRecord);
-			(void)GetCableInfoRecord(maip, &records);
-			break;
-		default:
-			maip->base.status = MAD_STATUS_BAD_METHOD;
-			(void)sa_send_reply(maip, sa_cntxt);
-			IB_LOG_WARN("sa_CableInfoRecord: invalid METHOD", maip->base.method);
-			IB_EXIT("sa_CableInfoRecord", VSTATUS_OK);
-			return VSTATUS_OK;
-			break;
+	// Check Method
+	if (maip->base.method == SA_CM_GET) {
+		INCREMENT_COUNTER(smCounterSaRxGetCableInfoRecord);
+	} else if (maip->base.method == SA_CM_GETTABLE) {
+		INCREMENT_COUNTER(smCounterSaRxGetTblCableInfoRecord);
+	} else {
+		// Generate an error response and return.
+		maip->base.status = MAD_STATUS_BAD_METHOD;
+		IB_LOG_WARN_FMT(__func__, "invalid Method: %s (%u)",
+			cs_getMethodText(maip->base.method), maip->base.method);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
+	}
+	// Check Base and Class Version
+	if (maip->base.bversion == STL_BASE_VERSION && maip->base.cversion == STL_SA_CLASS_VERSION) {
+		(void)GetCableInfoRecord(maip, &records);
+	} else {
+		// Generate an error response and return.
+		maip->base.status = MAD_STATUS_BAD_CLASS;
+		IB_LOG_WARN_FMT(__func__, "invalid Base and/or Class Versions: Base %u, Class %u",
+			maip->base.bversion, maip->base.cversion);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
 	}
 
 	if (maip->base.status != MAD_STATUS_OK) {
@@ -210,7 +219,7 @@ GetCableInfoRecord(Mai_t *maip, uint32_t *records)
 					record.Port = pPort->index;
 					record.u1.s.Address = addr + offset;
 					record.Length = MIN(len - offset, STL_CABLE_INFO_MAXLEN);
-					record.u1.s.PortType = pPort->portData->portInfo.PortPhyConfig.s.PortType;
+					record.u1.s.PortType = pPort->portData->portInfo.PortPhysConfig.s.PortType;
 					bfrIdx = addr - STL_CIB_STD_HIGH_PAGE_ADDR + offset;
 					memcpy(record.Data, &pPort->portData->cableInfo->buffer[bfrIdx], record.Length + 1); 
 					BSWAPCOPY_STL_CABLE_INFO_RECORD(&record, (STL_CABLE_INFO_RECORD*)data);
@@ -243,7 +252,7 @@ GetCableInfoRecord(Mai_t *maip, uint32_t *records)
 					record.Port = pPort->index;
 					record.u1.s.Address = addr + offset;
 					record.Length = MIN(len - offset, STL_CABLE_INFO_MAXLEN);
-					record.u1.s.PortType = pPort->portData->portInfo.PortPhyConfig.s.PortType;
+					record.u1.s.PortType = pPort->portData->portInfo.PortPhysConfig.s.PortType;
 					bfrIdx = addr - STL_CIB_STD_HIGH_PAGE_ADDR + offset;
 					memcpy(record.Data, &pPort->portData->cableInfo->buffer[bfrIdx], record.Length + 1);
 					BSWAPCOPY_STL_CABLE_INFO_RECORD(&record, (STL_CABLE_INFO_RECORD*)data);

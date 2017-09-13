@@ -133,6 +133,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define MAX_PARAM_BUF  8192				// Max size of parameter file
 #define MAX_FILENAME_CHARS  256			// Max size of file name
 #define WHITE_SPACE  " \t\r\n"			// White space characters
+#define OPTION_LEN 2			// string length of an option(eg. -P)
 
 // Element table entry, elements selected by user and present parsed value
 typedef struct 
@@ -926,6 +927,12 @@ void getRecu_opt( int argc, char ** argv, const char *pOptShort,
 					{
 						argc_recu--;
 						break;
+					}
+
+					if (!strncmp(argv_recu[ix], "-P", OPTION_LEN))
+					{
+						fprintf( stderr, NAME_PROG ": Parameter file (%s) cannot contain -P option\n", nameFileParam);
+						errUsage();
 					}
 
 					if ( (argv_recu[ix] - bfParam + strlen(argv_recu[ix]) + 1) ==

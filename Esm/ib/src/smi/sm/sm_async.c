@@ -591,7 +591,7 @@ int sm_send_xml_file(uint8_t activate) {
 
 	syncFile->version = DBSYNC_FILE_TRANSPORT_VERSION;
 	syncFile->length = sizeof(SMDBSyncFile_t);
-	strcpy(syncFile->name, "opafm.xml");
+	cs_strlcpy(syncFile->name, "opafm.xml", SMDBSYNCFILE_NAME_LEN);
 	syncFile->type = DBSYNC_FILE_XML_CONFIG;
 	syncFile->activate = activate;
 
@@ -797,7 +797,7 @@ char* sm_getMibPKeyDescription(char* vfName) {
 	VirtualFabrics_t* VirtualFabrics = old_topology.vfs_ptr;
 	VF_t* vf = findVfPointer(VirtualFabrics, vfName);
 	if (vf == NULL)
-		strcpy(pkey_description, "Default PKey");
+		cs_strlcpy(pkey_description, "Default PKey", sizeof(pkey_description));
 	else 
 		sprintf(pkey_description, "Virtual Fabric - %s", vf->name);
 	return pkey_description;

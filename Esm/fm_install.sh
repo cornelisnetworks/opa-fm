@@ -17,6 +17,7 @@ mkdir -p ${DESTDIR}/usr/lib/opa-fm/{bin,runtime}
 mkdir -p ${DESTDIR}/usr/share/opa-fm/samples
 mkdir -p ${DESTDIR}/usr/share/man/man8
 mkdir -p ${DESTDIR}/etc/opa-fm
+mkdir -p ${DESTDIR}/usr/lib/opa
 
 cd stage.rpm
 
@@ -47,6 +48,8 @@ cp -t ${DESTDIR}/usr/lib/opa-fm/bin config_generate
 cp -t ${DESTDIR}/usr/lib/opa-fm/bin opafm
 cp -t ${DESTDIR}/usr/lib/opa-fm/bin opaxmlextract
 cp -t ${DESTDIR}/usr/lib/opa-fm/bin opaxmlfilter
+
+cp -t ${DESTDIR}/usr/lib/opa .comp_opafm.pl
 
 cp -t ${DESTDIR}/usr/share/opa-fm opafm_src.xml
 

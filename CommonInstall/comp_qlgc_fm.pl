@@ -159,7 +159,6 @@ sub install_opafm
 
 	check_rpm_config_file("$CONFIG_DIR/opa-fm/opafm.xml", "/etc/sysconfig");
 	check_dir("/usr/lib/opa");
-	copy_systool_file("$srcdir/comp.pl", "/usr/lib/opa/.comp_opafm.pl");
 
 	if ($fm_start) {
 		enable_autostart("opafm");

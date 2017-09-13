@@ -46,9 +46,11 @@ my @opa_stack_prereq = (
 		"systemd",
 		"glibc",
 		"libibumad",
+		"libibumad-devel",
 		"libibverbs",
 		"pciutils",
 		"opensm-libs",
+		"libibcm",
 );
 $comp_prereq_hash{'opa_stack_prereq'} = \@opa_stack_prereq;
 
@@ -79,6 +81,7 @@ my @intel_hfi_prereq = (
 		"libuuid-devel",
 		"python",
 		"systemd",
+		"irqbalance",
 );
 $comp_prereq_hash{'intel_hfi_prereq'} = \@intel_hfi_prereq;
 
@@ -97,11 +100,13 @@ my @openmpi_prereq = (
 			"glibc",
 			"libgcc",
 			"libgfortran",
+			"gcc-gfortran",
 			"libgomp",
 			"libibverbs",
 			"libquadmath",
 			"librdmacm",
 			"libstdc++",
+			"libstdc++-devel",
 			"opensm-libs",
 			"papi",
 			"pkgconfig",
@@ -141,11 +146,13 @@ my @openmpi_gcc_hfi_prereq = (
 			"infinipath-psm",
 			"libgcc",
 			"libgfortran",
+			"gcc-gfortran",
 			"libgomp",
 			"libibverbs",
 			"libquadmath",
 			"librdmacm",
 			"libstdc++",
+			"libstdc++-devel",
 			"opensm-libs",
 			"papi",
 			"pkgconfig",

@@ -171,22 +171,33 @@ sm_AdaptiveRoutingSwitchUpdate(Topology_t* topop, Node_t* switchp)
 	// Update the port group forwarding table. The PGFT is similar to the LFT,
 	// with a different cap, so we use the LFT method to break the PGFT down into
 	// multiple MADs.
-	if ((status == VSTATUS_OK) && (sm_Node_get_pgft_size(switchp) != 0)) {
-		uint16_t	currentSet, currentLid, numBlocks;
-		uint64_t	amod;
-		const uint16_t lids_per_mad = sm_config.lft_multi_block * NUM_PGFT_ELEMENTS_BLOCK;
-		const uint32_t pgftCap = (topop->maxLid > DEFAULT_MAX_PGFT_LID)?DEFAULT_MAX_PGFT_LID:topop->maxLid;
+	if (status == VSTATUS_OK) {
+		STL_LID		currentLid;
+		uint16_t	currentSet, numBlocks;
+		uint32_t	amod;
+		const uint16_t  lids_per_mad = sm_config.lft_multi_block * MAX_LFT_ELEMENTS_BLOCK;
+		PORT * pgft = sm_Node_get_pgft_wr(switchp);
+		const uint32_t pgftSize = sm_Node_get_pgft_size(switchp);
+		const uint32_t pgftCap = (topop->maxLid > pgftSize)?pgftSize:topop->maxLid;
+
+		if (pgft == NULL) {
+			IB_LOG_ERROR_FMT(__func__, "Could not allocate pgft for node %s nodeGuid "FMT_U64,
+			sm_nodeDescString(switchp), switchp->nodeInfo.NodeGUID);
+			status = VSTATUS_NOMEM;
+			switchp->arDenyUnpause = 1;
+			return status;
+		}
 
 		for (currentSet = 0, currentLid = 0; 
-			(currentLid <=  sm_Node_get_pgft_size(switchp)) &&
+			(currentLid <= pgftSize) &&
 			(status == VSTATUS_OK);
 			currentSet += sm_config.lft_multi_block, 
 			currentLid += lids_per_mad) {
 
 			// The # of blocks we can send in this MAD. Normally 
 			// sm_config.lft_multi_block but will be less for the last send.
-			numBlocks = ( currentLid + lids_per_mad <= sm_Node_get_pgft_size(switchp)) ?  sm_config.lft_multi_block : sm_config.lft_multi_block - ( lids_per_mad - (pgftCap - currentLid + 1) )/NUM_PGFT_ELEMENTS_BLOCK;
-	
+			numBlocks = ( currentLid + lids_per_mad <= pgftSize) ?  sm_config.lft_multi_block :
+				sm_config.lft_multi_block - ( lids_per_mad - (pgftCap - currentLid + 1) )/NUM_PGFT_ELEMENTS_BLOCK;
 			// AMOD = NNNN NNNN 0000 0ABB BBBB BBBB BBBB BBBB
 			// AMOD = numBlocks 0000 00[[[[[[current set]]]]]
 			amod = (numBlocks<<24) | currentSet;

@@ -142,56 +142,26 @@ sm_control_shutdown(Mai_t *maip)
 	IB_ENTER(__func__, 0, 0, 0, 0);
 
 #ifdef __LINUX__	
-	if (vs_thread_name_str() && strcmp(vs_thread_name_str(), "main") != 0) {
-		// PR 119020 - Simultaneous user shutdown commands can cause multiple threads
-		// to capture the shutdowns.  Only allow initial shutdown from main thread).
-		IB_LOG_INFINI_INFO0("ignoring duplicate shutdown request");
-		IB_EXIT(__func__, 0);
-		return(VSTATUS_OK);
-	}
-#endif
+	// Under Linux just completely bail. Let the OS clean up memory and threads. Results in clean
+	// and expedient shutdown on large clusters.
+    IB_LOG_INFINI_INFO0("FM exiting.");
+	// Let file I/O that needs to complete finish prior to exiting to prevent issues when FM runs again
+	// next (HSM Only)
+	vs_wrlock(&linux_shutdown_lock);
+	exit(0);
+#else
 
     /* turn off isSm bit in portInfo and kill umadt reader */
     IB_LOG_INFINI_INFO0("turning off isSm bit in portInfo");
     sm_clearIsSM();
 
-#ifdef __LINUX__
-	smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_SM_SHUTDOWN, getMyCsmNodeId(), NULL, "Received shutdown command");
-    //mai_umadt_read_kill();
-
-    IB_LOG_INFINI_INFO0("stopping threads");
-	/*indicate the threads to stop and give them some time to stop*/
-	sm_shutdown(); /* calls the xxx_kill functions of the threads to make them exit their while(1) loops*/
-    vs_thread_sleep(VTIMER_1S * 2);
-
-    /* Kill off the threads, just in case they didn't stop */
-    (void)vs_thread_kill(&sm_threads[SM_THREAD_SA_WRITER].handle);
-    (void)vs_thread_kill(&sm_threads[SM_THREAD_SA_READER].handle);
-    (void)vs_thread_kill(&sm_threads[SM_THREAD_TOP_RCV].handle);
-    (void)vs_thread_kill(&sm_threads[SM_THREAD_TOPOLOGY].handle);
-    /* give dbsync a chance to flush it's queue before terminating */
-    sm_dbsync_kill();
-    (void)vs_thread_kill(&sm_threads[SM_THREAD_DBSYNC].handle);
-    vs_thread_sleep(VTIMER_1S);
-    if (maip) {
-        /* exit the async thread */
-    	(void)vs_thread_exit(&sm_threads[SM_THREAD_ASYNC].handle);
-    } else {
-        /* Kill off the async thread */
-    	(void)vs_thread_kill(&sm_threads[SM_THREAD_ASYNC].handle);
-	}
-#ifdef FE_THREAD_SUPPORT_ENABLED
-    (void)vs_thread_kill(&sm_threads[SM_THREAD_FE].handle);
-	/*TODO - probably need to call mai_shutdown() like in ESM. But do it after more thorough testing*/
-#endif
-#else
     sm_shutdown();
-#endif
     /* Signal the main thread that it is time to die. */
     sm_control_cmd = SM_CONTROL_SHUTDOWN;
 
 	IB_EXIT(__func__, 0);
 	return(VSTATUS_OK);
+#endif
 }
 
 Status_t

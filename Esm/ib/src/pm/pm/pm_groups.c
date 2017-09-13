@@ -42,9 +42,9 @@ void PmAddPortToGroupIndex(PmPortImage_t * portImage, uint32 grpIndex,
 {
 	portImage->Groups[grpIndex] = groupp;
 	if (internal)
-		portImage->IntLinkFlags |= (1<<grpIndex);
+		portImage->InternalBitMask |= (1<<grpIndex);
 #if PM_COMPRESS_GROUPS
-	portImage->u.s.InGroups++;
+	portImage->numGroups++;
 #endif
 }
 
@@ -54,11 +54,11 @@ void PmRemovePortFromGroupIndex(PmPortImage_t *portImage, uint32 grpIndex,
 {
 	if (PM_COMPRESS_GROUPS && compress) {
 		// compress rest of list
-		uint8 temp = (portImage->IntLinkFlags & (0xff<<(grpIndex+1))) >> 1;
-		portImage->IntLinkFlags &= ~(0xff<<grpIndex);
-		portImage->IntLinkFlags |= (uint32)temp;
+		uint8 temp = (portImage->InternalBitMask & (0xff<<(grpIndex+1))) >> 1;
+		portImage->InternalBitMask &= ~(0xff<<grpIndex);
+		portImage->InternalBitMask |= (uint32)temp;
 #if PM_COMPRESS_GROUPS
-		for (; grpIndex<portImage->u.s.InGroups-1; grpIndex++) {
+		for (; grpIndex<portImage->numGroups-1; grpIndex++) {
 #else
 		for (; grpIndex<PM_MAX_GROUPS_PER_PORT-1; grpIndex++) {
 #endif
@@ -66,13 +66,13 @@ void PmRemovePortFromGroupIndex(PmPortImage_t *portImage, uint32 grpIndex,
 		}
 		portImage->Groups[grpIndex] = NULL;
 #if PM_COMPRESS_GROUPS
-		portImage->u.s.InGroups--;
+		portImage->numGroups--;
 #endif
 	} else {
 		portImage->Groups[grpIndex] = NULL;
-		portImage->IntLinkFlags &= ~(1<<grpIndex);
+		portImage->InternalBitMask &= ~(1<<grpIndex);
 #if PM_COMPRESS_GROUPS
-		portImage->u.s.InGroups--;
+		portImage->numGroups--;
 #endif
 	}
 }
@@ -82,7 +82,7 @@ static boolean PmIsPortImageInGroup(PmPortImage_t *portImage, PmGroup_t *groupp,
     uint32 i;
     boolean isInGroup = FALSE;
 #if PM_COMPRESS_GROUPS
-    for (i = 0; i < portImage->u.s.InGroups; i++) {
+    for (i = 0; i < portImage->numGroups; i++) {
 #else
     for (i = 0; i < PM_MAX_GROUPS_PER_PORT; i++) {
 #endif
@@ -92,7 +92,7 @@ static boolean PmIsPortImageInGroup(PmPortImage_t *portImage, PmGroup_t *groupp,
         }
     }
     if (isInternal && isInGroup) {
-        *isInternal = (boolean)(portImage->IntLinkFlags & (1<<i));
+        *isInternal = (boolean)(portImage->InternalBitMask & (1<<i));
     }
     return isInGroup;
 }

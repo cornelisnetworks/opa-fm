@@ -35,7 +35,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 static Status_t build_cca_congestion_control_table(Node_t *nodep, Port_t *portp, STL_HFI_CONGESTION_CONTROL_TABLE *hfiCongCon,
 int cap)
 {
-	const unsigned int mtu = Decode_MTU_To_Int(portp->portData->maxVlMtu);
+	const unsigned int mtu = GetBytesFromMtu(portp->portData->maxVlMtu);
 	const double packet_xmit_time = (double)(mtu + 40) / (double)sm_GetBandwidth(&portp->portData->portInfo);
 	uint32_t maxMultiplier;
 	uint64_t maxIPG_shifted;

@@ -233,7 +233,7 @@ main(int argc, char* argv[])
   /* Initialize MAI subsystem */
   mai_init();
 
-  rc=ib_init_devport(&ib_dev, &ib_port, NULL);
+  rc=ib_init_devport(&ib_dev, &ib_port, NULL, NULL);
   if (rc)
     {
       printf("ib_init_devport failed, %d\n",rc);

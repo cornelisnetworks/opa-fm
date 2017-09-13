@@ -354,13 +354,6 @@ static void clearSaTables(void)
 
 //----------------------------------------------------------------------------
 
-boolean sm_uses_PreemptRemap(const Port_t * port)
-{
-	return 1;
-}
-
-//----------------------------------------------------------------------------
-
 /**
     @param compare @c a and @c b 
 */
@@ -387,134 +380,33 @@ boolean sm_eq_XmitQ(const struct XmitQ_s * a, const struct XmitQ_s * b, uint8 ac
 
 int sm_evalPreemptLargePkt(int cfgLarge, Node_t * nodep) 
 {
-	static boolean report = 1;
-	int retVal;
-
-	// The following evaluations are based on PRR limitations
-	// Eventually this may be come node specific.
-	retVal = cfgLarge / SM_PREEMPT_LARGE_PACKET_INC;
-	if (retVal > 1) retVal--;
-	if (retVal > 15) retVal = 15;
-
-	// Now check -
-	if (report==1) {
-		int prrLimit = (retVal*SM_PREEMPT_LARGE_PACKET_INC)+SM_PREEMPT_LARGE_PACKET_INC;
-
-		if (cfgLarge != prrLimit) {
-			report=0;
-			IB_LOG_WARN_FMT(__func__,
-			  "Node %s guid "FMT_U64", User LargePktPreempt changed from %d to %d",
-			  sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID,
-			  cfgLarge, prrLimit);
-		} 
-	}
-
-	return retVal;
+	// Algorithm is (x + 1) * INC
+	int x = cfgLarge / SM_PREEMPT_LARGE_PACKET_INC - 1;
+	// Value must fit in 4 bit field
+	x &= 0xf;
+	return x;
 }
 
 //----------------------------------------------------------------------------
 
 int sm_evalPreemptSmallPkt(int cfgSmall, Node_t * nodep) 
 {
-	static boolean report = 1;
-	int retVal;
-
-	// The following evaluations are based on PRR limitations
-	// Eventually this may be come node specific.
-	retVal = cfgSmall / SM_PREEMPT_SMALL_PACKET_INC;
-	if (retVal < 1) retVal = 1;
-	if (retVal > 31) retVal = 31;
-	retVal--;
-	retVal = ((retVal >> 1) << 1) + 1;  // Outcome: odd, positive vales 1-31
-
-	// Now check -
-	if (report==1) {
-		int prrLimit = ((retVal>>1)*64) + 64;
-		// Handle special bump-up case in PRR ASIC
-		if (prrLimit==1024) prrLimit=1152;
-
-		if (cfgSmall != prrLimit) {
-			report=0;
-			IB_LOG_WARN_FMT(__func__,
-			  "Node %s guid "FMT_U64", User SmallPktPreempt changed from %d to %d",
-			  sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID,
-			  cfgSmall, prrLimit);
-		} 
-	}
-
-	return retVal;
+	// Algorithm is (x + 1) * INC
+	int x = cfgSmall / SM_PREEMPT_SMALL_PACKET_INC - 1;
+	// Value must fit in 8 bit field
+	x &= 0xff;
+	return x;
 }
 
 //----------------------------------------------------------------------------
 
 int sm_evalPreemptLimit(int cfgLimit, Node_t * nodep)
 {
-	static boolean report = 1;
-	int retVal;
-
-	// The following evaluations are based on PRR limitations
-	// Eventually this may be come node specific.
-	retVal = cfgLimit / SM_PREEMPT_LIMIT_INC;
-
-    if (retVal > 255) retVal = 255;
-	// Now check -
-	if (report==1) {
-		int prrLimit = retVal*SM_PREEMPT_LIMIT_INC;
-
-		if (cfgLimit != prrLimit) {
-			report=0;
-			IB_LOG_WARN_FMT(__func__,
-			  "Node %s guid "FMT_U64", User PreemptLimit changed from %d to %d",
-			  sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID,
-			  cfgLimit, prrLimit);
-		} 
-	}
-
-	return retVal;
-}
-
-//----------------------------------------------------------------------------
-
-static void sm_PreemptRemap(struct Preemption_t * dest, const struct Preemption_t * src)
-{
-	if (dest != src) {
-		memcpy(dest, src, sizeof(struct Preemption_t));
-	}
-	if (dest->MinInitial > 255) dest->MinInitial = 255;
-	if (dest->MinInitial > 0) --dest->MinInitial;
-	if (dest->MinInitial < 6) dest->MinInitial = 6;
-	dest->MinInitial = ((dest->MinInitial >> 1) + 1) << 1;
-
-	if (dest->MinTail > 255) dest->MinTail = 255;
-	if (dest->MinTail > 0) --dest->MinTail;
-	if (dest->MinTail < 6) dest->MinTail = 6;
-	dest->MinTail = ((dest->MinTail >> 1) + 1) << 1;
-
-	// this isn't actually a remapping or conversion, just limit enforcement
-	dest->LargePktLimit = dest->LargePktLimit & 0xF;
-
-	if (dest->SmallPktLimit < 1) dest->SmallPktLimit = 1;
-	if (dest->SmallPktLimit > 31) dest->SmallPktLimit = 31;
-	--dest->SmallPktLimit;
-	dest->SmallPktLimit = ((dest->SmallPktLimit >> 1) << 1) + 1;
-}
-
-//----------------------------------------------------------------------------
-
-boolean sm_eq_Preempt(const struct Preemption_t * a, const struct Preemption_t * b, boolean doRemap)
-{
-	if (!doRemap)
-		return memcmp(a, b, sizeof(struct Preemption_t)) == 0;
-
-	struct Preemption_t modA, modB;
-	sm_PreemptRemap(&modA, a);
-	sm_PreemptRemap(&modB, b);
-
-	return modA.MinInitial == modB.MinInitial &&
-		modA.MinTail == modB.MinTail &&
-		modA.LargePktLimit == modB.LargePktLimit &&
-		modA.SmallPktLimit == modB.SmallPktLimit &&
-		modA.PreemptionLimit == modB.PreemptionLimit;
+	// Algorithm is x * INC. Zero means zero, 255 means infinite
+	int x = cfgLimit / SM_PREEMPT_LIMIT_INC;
+	// Value must fit in 8 bit field
+	x &= 0xff;
+	return x;
 }
 
 //----------------------------------------------------------------------------
@@ -958,17 +850,21 @@ topology_main(uint32_t argc, uint8_t ** argv)
 				for (i = 0; topology_functions[i] != NULL; i++) {
 					status = (topology_functions[i])();
 					if (status != VSTATUS_OK) {
-						// catch-all for any error condition that did not adjust the global topology
-						// error counter or topology abandonment counter  
-						if (topo_errors == prev_topo_errors)
-						   topo_errors++;
-						if (topo_abandon_count == prev_topo_abandon_count)
-						   topo_abandon_count++;
-						if (topo_errors > sm_config.topo_errors_threshold &&
-						   topo_abandon_count > sm_config.topo_abandon_threshold) {
-						   // abandonment threshold exceeded, so ignore error conditions and
-						   // continue the sweep of the entire fabric
-						   continue;
+						// UNRECOVERABLE errors indicate sweep-local unrecoverable problems.
+						// future sweeps may succeed, but don't attempt progress on abandonment
+						if (status != VSTATUS_UNRECOVERABLE && status != VSTATUS_NOT_MASTER) {
+							// catch-all for any error condition that did not adjust the global topology
+							// error counter or topology abandonment counter.
+							if (topo_errors == prev_topo_errors)
+							   topo_errors++;
+							if (topo_abandon_count == prev_topo_abandon_count)
+							   topo_abandon_count++;
+							if (topo_errors > sm_config.topo_errors_threshold &&
+							   topo_abandon_count > sm_config.topo_abandon_threshold) {
+							   // abandonment threshold exceeded, so ignore error conditions and
+							   // continue the sweep of the entire fabric
+							   continue;
+							}
 						}
 
 						/*
@@ -1191,6 +1087,7 @@ topology_main(uint32_t argc, uint8_t ** argv)
 
 		(void)vs_time_get(&now);
         if (newTopologyValid && !topology_resweep) {
+            forceRebalanceNextSweep = 0;
             if (sm_config.timer != 0)
             {
                 topology_wakeup_time = now + sm_config.timer;
@@ -1266,14 +1163,14 @@ topology_load_predef(void)
 		InitFabricData(&preDefTopology, FF_LIDARRAY);
 
 #ifndef __VXWORKS__
-		parseStatus = Xml2ParseTopology(sm_config.preDefTopo.topologyFilename, 1, &preDefTopology);
+		parseStatus = Xml2ParseTopology(sm_config.preDefTopo.topologyFilename, 1, &preDefTopology, TOPOVAL_LOOSE);
 #else
 		XML_Memory_Handling_Suite memsuite;
 		memsuite.malloc_fcn = &getParserMemory;
 		memsuite.realloc_fcn = &reallocParserMemory;
 		memsuite.free_fcn = &freeParserMemory;
 
-		parseStatus = Xml2ParseTopology(sm_config.preDefTopo.topologyFilename, 1, &preDefTopology, &memsuite);
+		parseStatus = Xml2ParseTopology(sm_config.preDefTopo.topologyFilename, 1, &preDefTopology, &memsuite, TOPOVAL_LOOSE);
 #endif
 
 		if(parseStatus != FSUCCESS) {
@@ -1413,7 +1310,7 @@ topology_initialize(void)
 #ifdef __VXWORKS__
 			ESM_LOG_ESMINFO("Topology Task exiting OK.", 0);
 #endif
-			return(VSTATUS_BAD);
+			return VSTATUS_UNRECOVERABLE;
 		}
 
 		// get PortInfo record of the local port
@@ -1437,7 +1334,7 @@ topology_initialize(void)
 				sm_config.port,
 				IbPortStateToText(portInfo.PortStates.s.PortState));
 			vs_thread_sleep(5 * VTIMER_1S);
-			status = VSTATUS_BAD;
+			status = VSTATUS_UNRECOVERABLE;
 			continue;
 		}
 
@@ -1483,10 +1380,9 @@ topology_initialize(void)
 				sm_hfi_direct_connect = FALSE;
 				if (!portInfo.PortNeighborMode.MgmtAllowed) {
 					IB_WARN_NOREPEAT(lastMsg,6,"Host SM's port is connected to a"
-						" switch port but MgmtAllowed is not set. sleeping rc: %u",
-						VSTATUS_BAD);
+						" switch port but MgmtAllowed is not set. sleeping");
 					vs_thread_sleep(5 * VTIMER_1S);
-					status = VSTATUS_BAD;
+					status = VSTATUS_UNRECOVERABLE;
 					continue;
 				} else {
 					IB_LOG_INFO_FMT(__func__,"Host SM's port is connected to a "
@@ -1497,7 +1393,7 @@ topology_initialize(void)
 						" unknown type of node (NeighborNodeType = %d)",
 						portInfo.PortNeighborMode.NeighborNodeType);
 				vs_thread_sleep(5 * VTIMER_1S);
-				status = VSTATUS_BAD;
+				status = VSTATUS_UNRECOVERABLE;
 				continue;
 			}
 		} else {
@@ -1535,28 +1431,20 @@ topology_initialize(void)
 
 	// Initialize the quick maps that store the sorted GUID lists
 	status = vs_pool_alloc(&sm_pool, sizeof(cl_qmap_t), (void *)&sm_newTopology.nodeIdMap);
-	if (status != VSTATUS_OK) {
-		IB_ERROR_NOREPEAT(lastMsg,9,"can't malloc node Id map: %u", status);
-		return(status);
-	}
+	if (status != VSTATUS_OK)
+		IB_FATAL_ERROR_NODUMP("Failed to allocate node ID map");
 	
 	status = vs_pool_alloc(&sm_pool, sizeof(cl_qmap_t), (void *)&sm_newTopology.nodeMap);
-	if (status != VSTATUS_OK) {
-		IB_ERROR_NOREPEAT(lastMsg,10,"can't malloc node map: %u", status);
-		return(status);
-	}
+	if (status != VSTATUS_OK)
+		IB_FATAL_ERROR_NODUMP("Failed to allocate node map");
 	
 	status = vs_pool_alloc(&sm_pool, sizeof(cl_qmap_t), (void *)&sm_newTopology.portMap);
-	if (status != VSTATUS_OK) {
-		IB_ERROR_NOREPEAT(lastMsg,11,"can't malloc port map: %u", status);
-		return(status);
-	}
+	if (status != VSTATUS_OK)
+		IB_FATAL_ERROR_NODUMP("Failed to allocate port map");
 	
 	status = vs_pool_alloc(&sm_pool, sizeof(cl_qmap_t), (void *)&sm_newTopology.quarantinedNodeMap);
-	if (status != VSTATUS_OK) {
-		IB_ERROR_NOREPEAT(lastMsg,12,"can't malloc node map: %u", status);
-		return(status);
-	}
+	if (status != VSTATUS_OK)
+		IB_FATAL_ERROR_NODUMP("Failed to allocate quarantined node map");
 
 	cl_qmap_init(sm_newTopology.nodeIdMap, NULL);
 	cl_qmap_init(sm_newTopology.nodeMap, NULL);
@@ -1568,9 +1456,8 @@ topology_initialize(void)
 	memset(&sm_newTopology.preDefLogCounts, 0, sizeof(PreDefTopoLogCounts));
 
 	status = vs_wrlock(&old_topology_lock);
-	if (status != VSTATUS_OK) {
-		return status;
-	}
+	if (status != VSTATUS_OK)
+		IB_FATAL_ERROR_NODUMP("Failed to acquire old topology lock");
 
 	if (sm_topop->routingModule == NULL && old_topology.routingModule != NULL) {
 		if ((status = vs_pool_alloc(&sm_pool, sizeof(RoutingModule_t), (void*)&sm_topop->routingModule)) != VSTATUS_OK) {
@@ -1592,27 +1479,25 @@ topology_initialize(void)
 unlock_bail:
 
 	vs_rwunlock(&old_topology_lock);
-	if (status != VSTATUS_OK) {
-		IB_ERROR_NOREPEAT(lastMsg,13,"Failed to initialize routing module. Sleeping rc: %u", status);
-		return status;
-	}
+	if (status != VSTATUS_OK)
+		IB_FATAL_ERROR_NODUMP("Failed to release old topology lock");
 
 	(void)memset((void *)path, 0, sizeof(path));
 	status = sm_setup_node(sm_topop, &preDefTopology, NULL, NULL,
 		path);
 	if (status != VSTATUS_OK) {
-		IB_ERROR_NOREPEAT(lastMsg,14, "Can't set up my local node, sleeping rc: %u", status);
-		return status;
+		IB_ERROR_NOREPEAT(lastMsg,15, "Can't set up my local node, sleeping rc: %u", status);
+		return VSTATUS_UNRECOVERABLE;
 	}
 
 	nodep = sm_topop->node_head;
 	if (!nodep) {
-		IB_ERROR_NOREPEAT(lastMsg,15,"Local node has not been initialized, sleeping rc: %u", status);
-		return VSTATUS_BAD;
+		IB_ERROR_NOREPEAT(lastMsg,16,"Local node has not been initialized, sleeping rc: %u", status);
+		return VSTATUS_UNRECOVERABLE;
 	}
 	if (!sm_valid_port((portp = sm_get_port(nodep,sm_config.port)))) {
-		IB_ERROR_NOREPEAT(lastMsg,16,"Failed to get a valid SM port, sleeping rc: %u", VSTATUS_BAD);
-		return(VSTATUS_BAD);
+		IB_ERROR_NOREPEAT(lastMsg,17,"Failed to get a valid SM port, sleeping");
+		return VSTATUS_UNRECOVERABLE;
     }
 
 	//
@@ -1620,10 +1505,10 @@ unlock_bail:
 	// sm_setup_node() had been run on our local node.
 	//
 	if (!verify_admin_membership(portp)) {
-		IB_ERROR_NOREPEAT(lastMsg,16,"SM port is not a full member of the admin VF, "
+		IB_ERROR_NOREPEAT(lastMsg,18,"SM port is not a full member of the admin VF, "
 			"sleeping rc: %u", VSTATUS_BAD);
 		vs_thread_sleep(5 * VTIMER_1S);
-		return VSTATUS_BAD;
+		return VSTATUS_UNRECOVERABLE;
 	}
 
 	//
@@ -1633,8 +1518,8 @@ unlock_bail:
 	//
 	status = sm_set_local_port_pkey(&nodeInfo);
 	if (status != VSTATUS_OK) {
-		IB_ERROR_NOREPEAT(lastMsg,17, "can't set PKey table, sleeping rc: %u", status);
-		return status;
+		IB_ERROR_NOREPEAT(lastMsg,19, "can't set PKey table, sleeping rc: %u", status);
+		return VSTATUS_UNRECOVERABLE;
 	}
 
 	//
@@ -1651,8 +1536,8 @@ unlock_bail:
 		// Verify we can talk to our neighbor.
 		status = SM_Get_NodeInfo(fd_topology, 0, path, &neighborNodeInfo);
 		if (status != VSTATUS_OK) {
-			IB_ERROR_NOREPEAT(lastMsg,18, "Can't get neighbor NodeInfo, sleeping rc: %u", status);
-			return status;
+			IB_ERROR_NOREPEAT(lastMsg,20, "Can't get neighbor NodeInfo, sleeping rc: %u", status);
+			return VSTATUS_UNRECOVERABLE;
 		}
 	}
 
@@ -1660,15 +1545,15 @@ unlock_bail:
 #if defined(IB_STACK_OPENIB)
 	status = ib_enable_is_sm();
 	if (status != VSTATUS_OK) {
-		IB_ERROR_NOREPEAT(lastMsg,19, "Can't set isSM, sleeping rc: %u", status);
-		return status;
+		IB_ERROR_NOREPEAT(lastMsg,21, "Can't set isSM, sleeping rc: %u", status);
+		return VSTATUS_UNRECOVERABLE;
 	}
 #elif defined(CAL_IBACCESS)
 	mask = portInfo.CapabilityMask.AsReg32 | PI_CM_IS_SM;
 	status = sm_set_CapabilityMask(fd_topology, sm_config.port, mask);
 	if (status != VSTATUS_OK) {
-		IB_ERROR_NOREPEAT(lastMsg,19, "can't set isSM, sleeping rc: %u", status);
-		return status;
+		IB_ERROR_NOREPEAT(lastMsg,21, "can't set isSM, sleeping rc: %u", status);
+		return VSTATUS_UNRECOVERABLE;
 	}
 #endif
 
@@ -2259,8 +2144,8 @@ topology_resolve(void)
 //	If we aren't the master SM, then we go no further.
 //
 	if (sm_state != SM_STATE_MASTER) {
-		IB_EXIT(__func__, VSTATUS_BAD);
-		return(VSTATUS_BAD);
+		IB_EXIT(__func__, VSTATUS_NOT_MASTER);
+		return(VSTATUS_NOT_MASTER);
 	}
 
 //
@@ -2369,13 +2254,12 @@ Status_t topology_setup_switches_LR_DR()
 		IB_LOG_INFINI_INFO_FMT(__func__, "Routing calculations failed");
 		return status;
 	} else {
+		if (sm_config.force_rebalance)
+			rebalance = 1;
 		routing_needed = 1;
 	}
 
-	if (sm_config.force_rebalance || rebalance || sm_config.forceAttributeRewrite) {
-		routing_needed = 1;
-		rebalance = 1;
-	}
+	if (rebalance) routing_needed = 1;
 
 	/* First initialize and assign LID to the SM port so that SM can send/recv LR SMPs*/
 	portp = sm_get_port(sm_topop->node_head, sm_config.port);
@@ -2516,34 +2400,19 @@ static Status_t buffer_control_assignments(void)
 			           "Failed to init Buffer Control (setting port down) on node %s nodeGuid "FMT_U64" node index %d port index %d",
 			           sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, nodep->index, portp->index);
 			} else {
-				Node_t *old_node = sm_find_guid(&old_topology, nodep->nodeInfo.NodeGUID);
-				if (old_node) {
-					Port_t *old_port = sm_get_port(old_node, portp->index);
-					if (!sm_valid_port(old_port) /* Port did not exist before */
-								/* OR new sweep does not match old sweep */
-							|| memcmp(&portp->portData->bufCtrlTable,
-								&old_port->portData->bufCtrlTable,
-								sizeof(portp->portData->bufCtrlTable))
-								/* OR new data does not match old sweep */
-							|| memcmp(&tmp_bcts[portp->index],
-								&old_port->portData->bufCtrlTable,
-								sizeof(old_port->portData->bufCtrlTable))) {
+				if (portp->portData->current.bfrctrl) {
+					if (memcmp(&tmp_bcts[portp->index],
+							&portp->portData->bufCtrlTable,
+							sizeof(portp->portData->bufCtrlTable)))
 						needSet = 1;
-					} else {
-						/* If the BCT's were read in from the SMA this is not
-						 * needed.  However it is anticipated that the SMA read
-						 * will be optimized away at some point.  If they are
-						 * this will be required to ensure correctness within
-						 * the SA.
-						 */
-						memcpy(&portp->portData->bufCtrlTable,
-								&tmp_bcts[portp->index],
-								sizeof(portp->portData->bufCtrlTable));
-					}
 				} else {
 					needSet = 1;
 				}
 			}
+
+			if (needSet)
+				portp->portData->current.bfrctrl = 0;
+
 			// PR 125129 - Set all ports individually, no multi-block write
 			// Temporary to move forward with debug, but should optimize in future
 			//if ((sm_config.forceAttributeRewrite || needSet) && nodep->nodeInfo.NodeType == NI_TYPE_CA) {
@@ -2557,6 +2426,7 @@ static Status_t buffer_control_assignments(void)
 					}
 				}
 				needSet = 0;
+				portp->portData->current.bfrctrl = 1;
 			}
         }
 		// PR 125129 - Do not do switches in bulk.
@@ -2570,6 +2440,14 @@ static Status_t buffer_control_assignments(void)
 		//				++topo_abandon_count <= sm_config.topo_abandon_threshold) {
 		//			goto exit;
 		//		}
+		//	}
+		//
+		//	Port_t* tempPort = NULL;
+		//	for_all_end_ports(nodep, tempPort) {
+		//		if (!sm_valid_port(tempPort) || tempPort->state <= IB_PORT_DOWN)
+		//			continue;
+		//
+		//		tempPort->portData->current.bfrctrl = 1;
 		//	}
 		//}
 
@@ -2602,8 +2480,8 @@ topology_assignments(void)
     //	If we aren't the master SM, then we go no further.
     //
 	if (sm_state != SM_STATE_MASTER) {
-		IB_EXIT(__func__, VSTATUS_BAD);
-		return(VSTATUS_BAD);
+		IB_EXIT(__func__, VSTATUS_NOT_MASTER);
+		return VSTATUS_NOT_MASTER;
 	}
 
     //
@@ -2819,7 +2697,7 @@ topology_assignments(void)
 
     if (smDebugPerf) {
         vs_time_get(&eTime);
-        IB_LOG_INFINI_INFO("topology assignments; END PORT setup/START SLVL/VLARB setup; elapsed time(usecs)=", 
+        IB_LOG_INFINI_INFO("topology assignments; END PORT setup/START SL/SC/VLARB setup; elapsed time(usecs)=", 
                            (int)(eTime-iTime));
         iTime = eTime;
     }
@@ -2849,8 +2727,7 @@ topology_assignments(void)
 	}
 
     //
-    //	For every node/port combo, we need to setup the SLVL Mapping.
-    //	Note: 9000 Series of QLogic switch is reporting incorrect bit for optimized slvl support
+    //	For every node/port combo, we need to setup the SL/SC/VL Mapping.
 	for_all_nodes(sm_topop, nodep) {
 		if (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH) {
 			// Node is a switch.
@@ -3003,7 +2880,7 @@ topology_assignments(void)
 
     if (smDebugPerf) {
         vs_time_get(&eTime);
-        IB_LOG_INFINI_INFO("topology assignments; END SLVL/VLARB setup/START BfrCtrl; elapsed time(usecs)=", 
+        IB_LOG_INFINI_INFO("topology assignments; END SL/SC/VLARB setup/START BfrCtrl; elapsed time(usecs)=", 
                            (int)(eTime-iTime));
         iTime = eTime;
     }
@@ -3034,16 +2911,15 @@ Status_t topology_setup_routing_cost_matrix(void)
 	Status_t	status = VSTATUS_OK;
 	uint64_t	sTime, eTime;
 	int			newSwitchesInFabric=0;
-	int			rebalance;
+	int			rebalance=0;
 
 	IB_ENTER(__func__, 0, 0, 0, 0);
 
-	rebalance = forceRebalanceNextSweep || sm_config.force_rebalance || sm_config.forceAttributeRewrite;
 
     /* If we aren't the master SM, then we go no further.*/
 	if (sm_state != SM_STATE_MASTER) {
-		IB_EXIT(__func__, VSTATUS_BAD);
-		return(VSTATUS_BAD);
+		IB_EXIT(__func__, VSTATUS_NOT_MASTER);
+		return VSTATUS_NOT_MASTER;
 	}
 
 	if (smDebugPerf) {
@@ -3107,6 +2983,11 @@ Status_t topology_setup_routing_cost_matrix(void)
 		}
     
     } else if (old_topology.num_sws) {
+
+		rebalance = forceRebalanceNextSweep ||
+				(sm_config.force_rebalance && (new_endnodesInUse.nset_m ||
+				old_topology.num_endports != sm_newTopology.num_endports));;
+
         /* no topology change, just copy over the old data */
 		status = sm_routing_copy_cost_matrix(&old_topology, sm_topop);
 		if (status != VSTATUS_OK) {
@@ -3173,8 +3054,8 @@ topology_adaptiverouting(void)
 //	If we aren't the master SM, then we go no further.
 //
 	if (sm_state != SM_STATE_MASTER) {
-		IB_EXIT(__func__, VSTATUS_BAD);
-		return(VSTATUS_BAD);
+		IB_EXIT(__func__, VSTATUS_NOT_MASTER);
+		return VSTATUS_NOT_MASTER;
 	}
 
 //
@@ -3278,8 +3159,8 @@ topology_activate(void)
 //	If we aren't the master SM, then we go no further.
 //
 	if (sm_state != SM_STATE_MASTER) {
-		IB_EXIT(__func__, VSTATUS_BAD);
-		return(VSTATUS_BAD);
+		IB_EXIT(__func__, VSTATUS_NOT_MASTER);
+		return VSTATUS_NOT_MASTER;
 	}
 
 	/* we are about to activate new nodes so mark us as sweeping now */
@@ -3433,8 +3314,8 @@ topology_multicast(void)
      * If we aren't the master SM, then we go no further.
      */
 	if (sm_state != SM_STATE_MASTER) {
-		IB_EXIT(__func__, VSTATUS_BAD);
-		return(VSTATUS_BAD);
+		IB_EXIT(__func__, VSTATUS_NOT_MASTER);
+		return VSTATUS_NOT_MASTER;
 	}
 
     if (smDebugPerf) {
@@ -4583,7 +4464,7 @@ static char* dump_topology(char* buf, int buffer) {
                     buf = snprintfcat(buf, &len, "%12d "FMT_U64"   %d                 %2d/%2d %3s/%3s %6s/%3s %11s %3s %08x %4d  %2d ",
                         portp->index, portp->portData->guid, (int)portp->state,
                         portp->portData->vl0,portp->portData->vl1,
-                        Decode_MTU(portp->portData->mtuSupported), Decode_MTU(portp->portData->maxVlMtu),
+                        IbMTUToText(portp->portData->mtuSupported), IbMTUToText(portp->portData->maxVlMtu),
                         StlLinkWidthToText(portp->portData->portInfo.LinkWidth.Supported, buf1, sizeof(buf1)), StlLinkWidthToText(portp->portData->portInfo.LinkWidth.Active, buf2, sizeof(buf2)),
                         GetStr_SpeedSupport(&portp->portData->portInfo, buf3, sizeof(buf3)), 
 						GetStr_SpeedActive(&portp->portData->portInfo, buf4, sizeof(buf4)),
@@ -4592,7 +4473,7 @@ static char* dump_topology(char* buf, int buffer) {
                     buf = snprintfcat(buf, &len, "%12d "FMT_U64"   %d  %08x  %04x  %2d/%2d %3s/%3s %6s/%3s %11s %3s %08x %4d  %2d ",
                         portp->index, portp->portData->guid, (int)portp->state, (int)portp->portData->lid, portp->portData->lmc,
                         portp->portData->vl0, portp->portData->vl1,
-                        Decode_MTU(portp->portData->mtuSupported), Decode_MTU(portp->portData->maxVlMtu),
+                        IbMTUToText(portp->portData->mtuSupported), IbMTUToText(portp->portData->maxVlMtu),
                         StlLinkWidthToText(portp->portData->portInfo.LinkWidth.Supported, buf1, sizeof(buf1)), StlLinkWidthToText(portp->portData->portInfo.LinkWidth.Active, buf2, sizeof(buf2)),
                         GetStr_SpeedSupport(&portp->portData->portInfo, buf3, sizeof(buf3)), 
 						GetStr_SpeedActive(&portp->portData->portInfo, buf4, sizeof(buf4)),

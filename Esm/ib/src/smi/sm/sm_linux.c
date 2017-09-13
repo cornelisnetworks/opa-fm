@@ -525,7 +525,7 @@ void bufferLargeSmDiagOutputs(fm_config_interation_data_t *iterationData) {
         iterationData->offset += FM_CONFIG_INTERMEDIATE_SIZE;
         return;
     }
-    strcpy(iterationData->intermediateBuffer, location);
+    cs_strlcpy(iterationData->intermediateBuffer, location, FM_CONFIG_INTERMEDIATE_BUFF);
     iterationData->intermediateLength = strlen(location);
     iterationData->more = 0;
     iterationData->done = 1;
@@ -541,7 +541,6 @@ void sm_linux_signal_handler(int a) {
 	}
 	else {
 		sm_control_shutdown(NULL);
-		exit(0);
 	}
 }
 

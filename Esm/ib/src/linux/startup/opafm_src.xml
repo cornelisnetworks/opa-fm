@@ -432,9 +432,9 @@
     <!-- 2. AND one or more sets of Applications                             -->
     <!-- 3. AND administrator policies                                       -->
 
-    <!-- The Virtual Fabric will control the configuration of Security       -->
-    <!-- for the given set of Devices and                                    -->
-    <!-- Applications in the overall Fabric.                                 -->
+    <!-- The Virtual Fabric will control the configuration of Security for   -->
+    <!-- the given set of Devices and Applications in the overall Fabric.    -->
+    <!-- Default for Security is 0(Off).                                     -->
 
     <!-- The Applications and DeviceGroups are matched against PathRecord and-->
     <!-- Multicast SA queries so that the returned SLID/DLID, PKey, SL, etc  -->
@@ -504,13 +504,14 @@
     <!--        requested to have a smaller MTU.                             -->
     <!--        However, SM will consider it an error to create a Multicast  -->
     <!--        group with MTU larger than that of the VirtualFabric.        -->
-    <!--        The value can also be stated as Unlimited.                   -->
+    <!--        Value should be one of 2048, 4096, 8192, 10240, or Unlimited -->
     <!--        If not specified the default MaxMTU will be Unlimited.       -->
-    <!-- Max Rate: <MaxRate>20g</MaxRate>                                    -->
+    <!-- Max Rate: <MaxRate>200g</MaxRate>                                   -->
     <!--        Maximum static rate for SM to return in any PathRecord or    -->
     <!--        Multicast group for the VirtualFabric.                       -->
     <!--        Similar behaviors to MaxMTU.                                 -->
-    <!--        The value can also be stated as Unlimited.                   -->
+    <!--        Value should be one of 25g, 50g, 75g, 100g, 150g, 200g,      -->
+    <!--        or Unlimited.                                                -->
     <!--        If not specified the default MaxRate will be Unlimited.      -->
     <!-- Active/Standby: <Standby>0</Standby>                                -->
     <!--        A Virtual Fabric in Standby cannot pass traffic.             -->
@@ -554,15 +555,24 @@
     <!--        Fabrics which are given low bandwidth allocations.           -->
     <!--        Value will be rounded up to the next power of 2.             -->
     <!--        0 is invalid, default is 1                                   -->
+    <!-- Service Levels:                                                     -->
+    <!--        Up to 2 service levels can be specified per VF: BaseSL       -->
+    <!--        and MulticastSL. If the configuration does not include       -->
+    <!--        either of these service levels, the SM will allocate         -->
+    <!--        unique SLs from the unused SLs. The SM will only allocate    -->
+    <!--        SLs required by the VF. If QoS is disabled on the VF, any    -->
+    <!--        configured SLs will be ignored. All QoS disabled VFs share   -->
+    <!--        the same SLs.                                                -->
     <!-- Base Service Level: <BaseSL>0</BaseSL>                              -->
-    <!--        Allows a specific SL (0-15) to be used for the VF.           -->
-    <!--        SM selects value if unspecified                              -->
-    <!-- Multicast Service Level: <MulticastSL>2</MulticastSL>               -->
-    <!--        Service level used by Multicast traffic for routing          -->
-    <!--        algorithms that require Multicast isolation. Valid           -->
-    <!--        range is 0-15. Must not be the same as the BaseSL            -->
-    <!--        in any VF. User-specified MulticastSL is ignored if the      -->
-    <!--        routing algorithm cannot use Multicast traffic isolation.    -->
+    <!--        Used for unicast traffic, and multicast traffic              -->
+    <!--        (if MulticastSL is not specified).                           -->
+    <!--        Valid values: 0-15                                           -->
+    <!-- Multicast Service Level: <MulticastSL>1</MulticastSL>               -->
+    <!--        Used to isolate Multicast traffic from other traffic. Some   -->
+    <!--        routing algorithms may require a separate MulticastSL for    -->
+    <!--        VFs with multicast groups. Any SL used to isolate Multicast  -->
+    <!--        cannot be used as a BaseSL in any VF.                        -->
+    <!--        Valid values: 0-15                                           -->
     <!-- FlowControlDisable: <FlowControlDisable>0</FlowControlDisable>      -->
     <!--        By default, the fabric uses link level flow control.         -->
     <!--        When link layer flow control has been disabled, packets will -->
@@ -678,7 +688,6 @@
       <!-- <Member>group_with_storage_targets</Member> -->
       <LimitedMember>All</LimitedMember>
       <Application>Storage</Application>
-      <!-- <MaxRate>10g</MaxRate> individual QP only needs FC speed -->
       <!-- <PreemptRank>1</PreemptRank> others can preempt this vf -->
     </VirtualFabric>
 
@@ -782,7 +791,7 @@
   <!-- Most of the parameters below can also be set per component if needed -->
   <Shared>
     <!-- Configure maximum number of times an FM component can be restarted -->
-    <!-- after running less then StartupStabelWait minutes before terminating the opafm service. -->
+    <!-- after running less then StartupStableWait minutes before terminating the opafm service. -->
     <StartupRetries>5</StartupRetries>
     <!-- Amount of time in minutes before an instance is considered -->
     <!-- successfully started and stable. -->
@@ -927,6 +936,7 @@
     <!-- shortestpath - pick shortest path and balance lids on ISLs        -->
     <!-- fattree -  A variation of shortestpath with better balancing      -->
     <!--            and improved SM performance on fat tree-like fabrics.  -->
+    <!--            See section <FatTreeTopology> below.                   -->
     <!-- dgshortestpath - A variation of shortestpath that uses the        -->
     <!--            RoutingOrder parameter to control the order in which   -->
     <!--            switch egress ports are assigned to LIDs being routed  -->
@@ -940,8 +950,8 @@
     <!--            See the <MeshTorusTopology> section below for more     -->
     <!--            information. (Intel Technical Preview)                 -->
     <!-- hypercube - A variation of dg shortest path for enhanced          -->
-    <!--            hypercube and mesh topologies cabled in                -->
-    <!--            port-to-dimension order. (Supported via 3rd parties)   -->
+    <!--            hypercube and mesh topologies.  See section            -->
+    <!--            <HypercubeTopology> below. (Supported via 3rd parties) -->
     <RoutingAlgorithm>shortestpath</RoutingAlgorithm>
 
     <!-- SpineFirstRouting - An option to avoid credit loops in complex    -->
@@ -1056,6 +1066,12 @@
     <!--        specified in the MeshTorusTopology are considered invalid  -->
     <!--        and will be logged and ignored.                            -->
     <!--        Default value is 5. Max value is 255.                      -->
+    <!--    OverlayMulticast:                                              -->
+    <!--        Instructs the FM to allow multicast traffic to travel over -->
+    <!--        a VL that is also used for normal traffic. This allows     -->
+    <!--        better QOS handling but in the event of equipment or link  -->
+    <!--        failures there is a risk of causing congestion.            -->
+    <!--        Default value is 0. Set to 1 to enable.                    -->
 
     <!-- Example of 2D (4x4) Torus with two ISLs in each dimension.        -->
     <!-- <MeshTorusTopology> -->
@@ -1079,8 +1095,6 @@
     <!-- Example of defining parameters for controlling the enhanced       -->
     <!-- hypercube routing algorithm. When the RoutingAlgorithm is set to  -->
     <!-- hypercube, this section is used to configure routing parameters.  -->
-    <!-- RoutingOrder is used to route using shortest path while           -->
-    <!-- controlling the order in which routes to end nodes are assigned.  -->
     <!-- EnhancedRoutingControl can be used to control the order that      -->
     <!-- ports are processed on a switch during routing through the use of -->
     <!-- virtual port numbers.  pPort represents a physical port number    -->
@@ -1440,22 +1454,26 @@
     <!-- "Small" packets are expected to be latency sensitive packets; -->
     <!-- "Large" packets are expected to be less latency sensitive packets. -->
     <!--     NOTE: These sizes represent PACKET sizes including all HEADERS -->
-    <!--           Packet sizes can be constrained by HW limitations, and -->
-    <!--           will be adjusted when necessary. Consult logs for -->
-    <!--           potential limitations. --> 
+    <!--           Settings are only reconfigured when the port is bounced. --> 
     <!-- These sizes are configurable by the user: -->
     <!--   LargePacket:   The minimum size (in bytes) for a "Large" (and -->
     <!--                  therefore pre-emptible) packet. --> 
-    <!--                  May also specify "MIN" or "MAX", defaults to 4096 -->
+    <!--                  Range is 512 to 8192 in 512 byte increments. -->
+    <!--                  HW may impose additional constraints. -->
+    <!--                  May also specify "MIN" or "MAX". Defaults to 4096 -->
     <!--   SmallPacket:   The maximum size (in bytes), for a "Small" (and -->
     <!--                  therefore a candidate for a preempting packet). --> 
-    <!--                  May also specify "MIN" or "MAX", defaults to 256 -->
+    <!--                  Range is 32 to 8192 in 32 byte increments. -->
+    <!--                  HW may impose additional constraints. -->
+    <!--                  May also specify "MIN" or "MAX". Defaults to 256 -->
     <!--   PreemptLimit:  Limit of total bytes for all preempting packets -->
     <!--                  which may preempt a given packet.  Once limit is -->
     <!--                  reached no further packets may preempt the given -->
     <!--                  packet. -->
-    <!--                  May also specify "MIN", "MAX" or "INF" (infinite), -->
-    <!--                  defaults to 4096 bytes. -->
+    <!--                  Range is 0 to 65024 in 256 byte increments. -->
+    <!--                  HW may impose additional constraints. -->
+    <!--                  May also specify "MIN", "MAX" or "INF" (infinite). -->
+    <!--                  Defaults to 4096 bytes. -->
     <!-- Preemption capability can be configured (enabled, disabled, ranked) -->
     <!-- per Virtual Fabric via the PreemptRank parameter.--> 
     <!-- See Virtual Fabric configuration options for more info. -->

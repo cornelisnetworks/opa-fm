@@ -79,59 +79,59 @@ void PrintStlPAGroupUtilStats(PrintDest_t *dest, int indent, const STL_PA_PM_UTI
 	PrintFunc(dest, "%*s\n", indent, "");
 	PrintFunc(dest, "%*sPkts: Tot %6"PRIu64" Max %6u Min %6u Avg %6u KiPps/s\n",
 				indent, "", pUtilStat->totalKPps, pUtilStat->maxKPps, pUtilStat->minKPps, pUtilStat->avgKPps);
-	PrintFunc(dest, "%*s Failed Ports: PMA: %u  Topo: %u\n",
-				indent, "", pUtilStat->pmaFailedPorts, pUtilStat->topoFailedPorts);
+	PrintFunc(dest, "%*s NoResp Ports: PMA: %u  Topo: %u\n",
+				indent, "", pUtilStat->pmaNoRespPorts, pUtilStat->topoIncompPorts);
 
 	return;
 }
 
-void PrintStlPAGroupErrorStats(PrintDest_t *dest, int indent, const STL_PMERRSTAT_T *pErrStat)
+void PrintStlPAGroupErrorStats(PrintDest_t *dest, int indent, const STL_PM_CATEGORY_STATS *pErrStat)
 {
 	int i;
 
 	PrintFunc(dest, "%*sIntegrity     Max %6u     Buckets: ",
-		indent, "", pErrStat->errorMaximums.integrityErrors);
+		indent, "", pErrStat->categoryMaximums.integrityErrors);
 	for (i = 0; i < PM_ERR_BUCKETS; i++)
 		PrintFunc(dest, " %4u ", pErrStat->ports[i].integrityErrors);
 	PrintFunc(dest, "\n");
 
 	PrintFunc(dest, "%*sCongestion    Max %6u     Buckets: ",
-		indent, "", pErrStat->errorMaximums.congestionErrors);
+		indent, "", pErrStat->categoryMaximums.congestion);
 	for (i = 0; i < PM_ERR_BUCKETS; i++)
-		PrintFunc(dest, " %4u ", pErrStat->ports[i].congestionErrors);
+		PrintFunc(dest, " %4u ", pErrStat->ports[i].congestion);
 	PrintFunc(dest, "\n");
 
 	PrintFunc(dest, "%*sSmaCongestion Max %6u     Buckets: ",
-		indent, "", pErrStat->errorMaximums.smaCongestionErrors);
+		indent, "", pErrStat->categoryMaximums.smaCongestion);
 	for (i = 0; i < PM_ERR_BUCKETS; i++)
-		PrintFunc(dest, " %4u ", pErrStat->ports[i].smaCongestionErrors);
+		PrintFunc(dest, " %4u ", pErrStat->ports[i].smaCongestion);
 	PrintFunc(dest, "\n");
 
 	PrintFunc(dest, "%*sBubble        Max %6u     Buckets: ",
-			  indent, "", pErrStat->errorMaximums.bubbleErrors);
+			  indent, "", pErrStat->categoryMaximums.bubble);
 	for (i = 0; i < PM_ERR_BUCKETS; i++)
-		PrintFunc(dest, " %4u ", pErrStat->ports[i].bubbleErrors);
+		PrintFunc(dest, " %4u ", pErrStat->ports[i].bubble);
 	PrintFunc(dest, "\n");
 
 	PrintFunc(dest, "%*sSecurity      Max %6u     Buckets: ",
-		indent, "", pErrStat->errorMaximums.securityErrors);
+		indent, "", pErrStat->categoryMaximums.securityErrors);
 	for (i = 0; i < PM_ERR_BUCKETS; i++)
 		PrintFunc(dest, " %4u ", pErrStat->ports[i].securityErrors);
 	PrintFunc(dest, "\n");
 
 	PrintFunc(dest, "%*sRouting       Max %6u     Buckets: ",
-		indent, "", pErrStat->errorMaximums.routingErrors);
+		indent, "", pErrStat->categoryMaximums.routingErrors);
 	for (i = 0; i < PM_ERR_BUCKETS; i++)
 		PrintFunc(dest, " %4u ", pErrStat->ports[i].routingErrors);
 	PrintFunc(dest, "\n");
 
 
 	PrintFunc(dest, "%*sUtilization:    %3u.%1u%%\n", indent, "",
-		   pErrStat->errorMaximums.utilizationPct10 / 10,
-		   pErrStat->errorMaximums.utilizationPct10 % 10);
+		   pErrStat->categoryMaximums.utilizationPct10 / 10,
+		   pErrStat->categoryMaximums.utilizationPct10 % 10);
 	PrintFunc(dest, "%*sDiscards:       %3u.%1u%%\n", indent, "",
-		   pErrStat->errorMaximums.discardsPct10 / 10,
-		   pErrStat->errorMaximums.discardsPct10 % 10);
+		   pErrStat->categoryMaximums.discardsPct10 / 10,
+		   pErrStat->categoryMaximums.discardsPct10 % 10);
 
 	return;
 }
@@ -174,10 +174,10 @@ void PrintStlPAGroupInfo(PrintDest_t *dest, int indent, const STL_PA_PM_GROUP_IN
 	PrintStlPAGroupUtilStats(dest, indent+2, &pGroupInfo->recvUtilStats);
 	PrintFunc(dest, "%*sInternal Error Summary:\n",
 				indent, "");
-	PrintStlPAGroupErrorStats(dest, indent+2, &pGroupInfo->internalErrors);
+	PrintStlPAGroupErrorStats(dest, indent+2, &pGroupInfo->internalCategoryStats);
 	PrintFunc(dest, "%*sExternal Error Summary:\n",
 				indent, "");
-	PrintStlPAGroupErrorStats(dest, indent+2, &pGroupInfo->externalErrors);
+	PrintStlPAGroupErrorStats(dest, indent+2, &pGroupInfo->externalCategoryStats);
 	PrintFunc(dest, "%*sImageID:\n",
 				indent, "");
 	PrintStlPAImageId(dest, indent+2, &pGroupInfo->imageId);
@@ -365,14 +365,14 @@ void PrintStlPMConfig(PrintDest_t *dest, int indent, const STL_PA_PM_CFG_DATA *p
 				indent, "", pPMConfig->sizeHistory, pPMConfig->sizeFreeze,
 				pPMConfig->lease);
 	PrintFunc(dest, "%*sErr Thresholds: Integrity: %-7u        Congestion: %-7u\n",
-				indent, "", pPMConfig->errorThresholds.integrityErrors,
-				pPMConfig->errorThresholds.congestionErrors );
+				indent, "", pPMConfig->categoryThresholds.integrityErrors,
+				pPMConfig->categoryThresholds.congestion );
 	PrintFunc(dest, "%*s                SMA Congest: %-7u      Bubble: %-7u\n",
-				indent, "",pPMConfig->errorThresholds.smaCongestionErrors,
-				pPMConfig->errorThresholds.bubbleErrors);
+				indent, "",pPMConfig->categoryThresholds.smaCongestion,
+				pPMConfig->categoryThresholds.bubble);
 	PrintFunc(dest, "%*s                Security: %-7u         Routing: %-7u\n",
-				indent, "", pPMConfig->errorThresholds.securityErrors,
-				pPMConfig->errorThresholds.routingErrors );
+				indent, "", pPMConfig->categoryThresholds.securityErrors,
+				pPMConfig->categoryThresholds.routingErrors );
 	PrintFunc(dest, "%*s Integrity Wts: Lnk Wdth Dngd: %-7u    Link Qual: %-7u\n",
 				indent, "", pPMConfig->integrityWeights.LinkWidthDowngrade,
 				pPMConfig->integrityWeights.LinkQualityIndicator );
@@ -422,17 +422,24 @@ void PrintStlPAFocusPorts(PrintDest_t *dest, int indent, const char *groupName, 
 	for (i = 0; i < numRecords; i++) {
 		PrintFunc(dest, "%*s%u:LID:0x%04x  Port:%u  Rate: %4s MTU: %5s nbrLID:0x%04x  nbrPort:%u\n",
 				indent, "", i+1, pFocusPorts[i].nodeLid, pFocusPorts[i].portNumber,
-				StlStaticRateToText(pFocusPorts[i].rate), IbMTUToText(pFocusPorts[i].mtu),
+				StlStaticRateToText(pFocusPorts[i].rate), IbMTUToText(pFocusPorts[i].maxVlMtu),
 				pFocusPorts[i].neighborLid, pFocusPorts[i].neighborPortNumber);
-		PrintFunc(dest, "%*s   Value:  %16"PRIu64"   nbrValue:  %16"PRIu64"\n",
-				indent, "", pFocusPorts[i].value, pFocusPorts[i].neighborValue);
+		if ( ( (select >= STL_PA_SELECT_CATEGORY_INTEG) &&
+			(select <= STL_PA_SELECT_CATEGORY_ROUT) ) ||
+			(select == STL_PA_SELECT_UTIL_PKTS_HIGH) ) {
+			PrintFunc(dest, "%*s   Value:  %16"PRIu64"   nbrValue:  %16"PRIu64"\n",
+					indent, "", pFocusPorts[i].value, pFocusPorts[i].neighborValue);
+		} else {
+			PrintFunc(dest, "%*s   Value:  %16.1f   nbrValue:   %16.1f\n",
+					indent, "", (float)pFocusPorts[i].value/10.0, (float)pFocusPorts[i].neighborValue/10.0);
+		}
 		PrintFunc(dest, "%*s   GUID: 0x%016"PRIx64"   nbrGuid: 0x%016"PRIx64"\n",
 				indent, "", pFocusPorts[i].nodeGUID, pFocusPorts[i].neighborGuid);
 		PrintFunc(dest, "%*s   Status: %s Name: %.*s\n", indent, "",
-				StlFocusFlagToText(pFocusPorts[i].localFlags),
+				StlFocusStatusToText(pFocusPorts[i].localStatus),
 				(int)sizeof(pFocusPorts[i].nodeDesc), pFocusPorts[i].nodeDesc);
 		PrintFunc(dest, "%*s   Status: %s Neighbor Name: %.*s\n", indent, "",
-				StlFocusFlagToText(pFocusPorts[i].neighborFlags),
+				StlFocusStatusToText(pFocusPorts[i].neighborStatus),
 				(int)sizeof(pFocusPorts[i].neighborNodeDesc), pFocusPorts[i].neighborNodeDesc);
 	}
 	PrintStlPAImageId(dest, indent, &pFocusPorts[0].imageId);
@@ -464,9 +471,9 @@ void PrintStlPAImageInfo(PrintDest_t *dest, int indent, const STL_PA_IMAGE_INFO_
 	PrintFunc(dest, "%*sNum SWs: %u  Links: %u  SMs: %u\n",
 				indent, "", pImageInfo->numSwitchNodes,
 				pImageInfo->numLinks, pImageInfo->numSMs);
-	PrintFunc(dest, "%*sNum Failed Nodes: %u  Failed Ports: %u  Unexpected Clear Ports: %u\n",
-				indent, "", pImageInfo->numFailedNodes,
-				pImageInfo->numFailedPorts,
+	PrintFunc(dest, "%*sNum NoResp Nodes: %u  NoResp Ports: %u  Unexpected Clear Ports: %u\n",
+				indent, "", pImageInfo->numNoRespNodes,
+				pImageInfo->numNoRespPorts,
 			   	pImageInfo->numUnexpectedClearPorts);
 	PrintFunc(dest, "%*sNum Skipped Nodes: %u  Skipped Ports: %u\n",
 				indent, "", pImageInfo->numSkippedNodes,
@@ -532,7 +539,7 @@ void PrintStlPAVFInfo(PrintDest_t *dest, int indent, const STL_PA_VF_INFO_DATA *
 	PrintStlPAGroupUtilStats(dest, indent+2, &pVFInfo->internalUtilStats);
 	PrintFunc(dest, "%*sInternal Error Summary:\n",
 				indent, "");
-	PrintStlPAGroupErrorStats(dest, indent+2, &pVFInfo->internalErrors);
+	PrintStlPAGroupErrorStats(dest, indent+2, &pVFInfo->internalCategoryStats);
 	PrintFunc(dest, "%*sImage Id:\n",
 				indent, "");
 	PrintStlPAImageId(dest, indent+2, &pVFInfo->imageId);
@@ -643,20 +650,27 @@ void PrintStlPAVFFocusPorts(PrintDest_t *dest, int indent, const char *vfName, c
 	for (i = 0; i < numRecords; i++) {
 		PrintFunc(dest, "%*s%u:LID:0x%04x  Port:%u  Rate: %4s MTU: %5s nbrLID:0x%04x  nbrPort:%u\n",
 				indent, "", i+1, pVFFocusPorts[i].nodeLid, pVFFocusPorts[i].portNumber,
-				StlStaticRateToText(pVFFocusPorts[i].rate), IbMTUToText(pVFFocusPorts[i].mtu),
+				StlStaticRateToText(pVFFocusPorts[i].rate), IbMTUToText(pVFFocusPorts[i].maxVlMtu),
 				pVFFocusPorts[i].neighborLid, pVFFocusPorts[i].neighborPortNumber);
-		PrintFunc(dest, "%*s   Value:   %16"PRIu64"   nbrValue:  %16"PRIu64"\n",
-				indent, "", pVFFocusPorts[i].value, pVFFocusPorts[i].neighborValue);
+		if ( ( (select >= STL_PA_SELECT_CATEGORY_INTEG) &&
+			(select <= STL_PA_SELECT_CATEGORY_ROUT) ) ||
+			(select == STL_PA_SELECT_UTIL_PKTS_HIGH) ) {
+			PrintFunc(dest, "%*s   Value:   %16"PRIu64"   nbrValue:  %16"PRIu64"\n",
+					indent, "", pVFFocusPorts[i].value, pVFFocusPorts[i].neighborValue);
+		} else {
+			PrintFunc(dest, "%*s   Value:   %16.1f   nbrValue:  %16.1f\n",
+					indent, "", (float)pVFFocusPorts[i].value / 10.0, (float)pVFFocusPorts[i].neighborValue / 10.0);
+		}
 		PrintFunc(dest, "%*s   GUID:  0x%016"PRIx64"   nbrGuid: 0x%016"PRIx64"\n",
 				indent, "", pVFFocusPorts[i].nodeGUID, pVFFocusPorts[i].neighborGuid);
 		PrintFunc(dest, "%*s   Status: %s Name: %.*s\n",
 				indent, "",
-				StlFocusFlagToText(pVFFocusPorts[i].localFlags),
+				StlFocusStatusToText(pVFFocusPorts[i].localStatus),
 				(int)sizeof(pVFFocusPorts[i].nodeDesc),
 				pVFFocusPorts[i].nodeDesc);
 		PrintFunc(dest, "%*s   Status: %s Neighbor Name: %.*s\n",
 				indent, "",
-				StlFocusFlagToText(pVFFocusPorts[i].neighborFlags),
+				StlFocusStatusToText(pVFFocusPorts[i].neighborStatus),
 				(int)sizeof(pVFFocusPorts[i].neighborNodeDesc),
 				pVFFocusPorts[i].neighborNodeDesc);
 	}

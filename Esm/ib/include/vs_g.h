@@ -93,6 +93,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ib_types.h>
 #include <ib_status.h>
 #include <stdlib.h>
+#include <string.h>
 
 #ifndef MIN
 #define MIN(a,b) ((a)<(b)?(a):(b))
@@ -482,6 +483,35 @@ extern Status_t cs_psema_wait (Sema_t * handle, int timeout);
 #ifndef INT64_MIN
 #define INT64_MIN         (-INT64_MAX - 1LL)
 #endif
+
+/**********************************************************************
+*
+* FUNCTION
+*    cs_strlcpy
+*
+* DESCRIPTION
+*    Safe version of strncpy that will always null terminate. Copies up
+*    to dstsize-1 characters from source to dest plus a null terminator.
+*
+*
+* INPUTS
+*    dest         - A pointer to destination buffer
+*    source       - A pointer to source buffer
+*    dstsize      - Size of dest buffer
+*
+* OUTPUTS
+*    char       - On success, return pointer to dest
+*
+*
+**********************************************************************/
+static __inline__ char * cs_strlcpy(char *dest, const char *source, size_t dstsize)
+{
+	if(!dstsize)
+		return NULL;
+	dest[0] = '\0';
+	return strncat(dest,source,dstsize-1);
+}
+
 
 extern uint8_t cs_strtoui8 (const char *nptr, uint8_t return_error);
 extern uint16_t cs_strtoui16 (const char *nptr, uint16_t return_error);

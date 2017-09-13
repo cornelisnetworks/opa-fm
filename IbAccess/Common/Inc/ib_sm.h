@@ -1050,66 +1050,6 @@ typedef union _IcsLedInfo {
 
 
 /*
- * Define SL_TO_VL Mapping table.
- */
-typedef struct _SLVLMAP{
-	/* laid out in network byte order for an Intel compiler */
-	union {
-		uint32			AsReg32;
-
-		struct {
-#if CPU_BE
-			uint32		SL0_to_VL:		4;
-			uint32		SL1_to_VL:		4;
-			uint32		SL2_to_VL:		4;
-			uint32		SL3_to_VL:		4;
-			uint32		SL4_to_VL:		4;
-			uint32		SL5_to_VL:		4;
-			uint32		SL6_to_VL:		4;
-			uint32		SL7_to_VL:		4;
-#else /* CPU_LE	 */
-			uint32		SL7_to_VL:		4;
-			uint32		SL6_to_VL:		4;
-			uint32		SL5_to_VL:		4;
-			uint32		SL4_to_VL:		4;
-			uint32		SL3_to_VL:		4;
-			uint32		SL2_to_VL:		4;
-			uint32		SL1_to_VL:		4;
-			uint32		SL0_to_VL:		4;
-#endif /*CPU_BE */
-		} s;
-	} u1;
-
-	union{
-		uint32			AsReg32;
-
-		struct {	
-#if CPU_BE
-			uint32		SL8_to_VL:		4;
-			uint32		SL9_to_VL:		4;
-			uint32		SL10_to_VL:		4;
-			uint32		SL11_to_VL:		4;
-			uint32		SL12_to_VL:		4;
-			uint32		SL13_to_VL:		4;
-			uint32		SL14_to_VL:		4;
-			uint32		SL15_to_VL:		4;
-#else
-			uint32		SL15_to_VL:		4;
-			uint32		SL14_to_VL:		4;
-			uint32		SL13_to_VL:		4;
-			uint32		SL12_to_VL:		4;
-			uint32		SL11_to_VL:		4;
-			uint32		SL10_to_VL:		4;
-			uint32		SL9_to_VL:		4;
-			uint32		SL8_to_VL:		4;
-#endif
-		} s;
-	} u2;
-
-} PACK_SUFFIX SLVLMAP;
-
-
-/*
  * Define VL Arbitration table.
  */
 #define IB_VLARBTABLE_SIZE 32
@@ -1449,18 +1389,6 @@ BSWAP_GUID_INFO(
 	{
 		Dest->Gid[i] = ntoh64(Dest->Gid[i]);
 	}
-#endif
-}
-
-static __inline
-void
-BSWAP_SLVLMAP(
-	SLVLMAP			*Dest
-	)
-{
-#if CPU_LE
-	Dest->u1.AsReg32 = ntoh32(Dest->u1.AsReg32);
-	Dest->u2.AsReg32 = ntoh32(Dest->u2.AsReg32);
 #endif
 }
 

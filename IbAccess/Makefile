@@ -64,6 +64,9 @@ LFILES			= \
 # archive library files (basename, $ARFILES will add MOD_LIB_DIR/prefix and suffix)
 ifeq "$(BUILD_TARGET_OS)" "VXWORKS"
 LIBFILES = Gsa Sma Vca Public TtsInit Umadt Sdi Tools
+ifeq "$(INCLUDE_STLEEP)" "yes"
+LIBFILES += Stleep
+endif
 ifeq "$(BUILD_CM)" "yes"
 LIBFILES += Cm
 endif

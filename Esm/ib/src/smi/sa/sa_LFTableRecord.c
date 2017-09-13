@@ -76,23 +76,30 @@ sa_LFTableRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
 //
 	records = 0;
 
-//
-//	Check the method.  If this is a template lookup, then call the regular
-//	GetTable(*) template lookup routine.
-//
+	// Check Method
 	if (maip->base.method == SA_CM_GET) {
 		INCREMENT_COUNTER(smCounterSaRxGetLftRecord);
-		(void)sa_LFTableRecord_GetTable(maip, &records);
 	} else if (maip->base.method == SA_CM_GETTABLE) {
 		INCREMENT_COUNTER(smCounterSaRxGetTblLftRecord);
-		(void)sa_LFTableRecord_GetTable(maip, &records);
 	} else {
 		maip->base.status = MAD_STATUS_BAD_METHOD;
+		IB_LOG_WARN_FMT(__func__, "invalid Method: %s (%u)",
+			cs_getMethodText(maip->base.method), maip->base.method);
 		(void)sa_send_reply(maip, sa_cntxt);
-        IB_EXIT("sa_LFTableRecord", VSTATUS_OK);
-        return(VSTATUS_OK);
-    }
-
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
+	}
+	// Check Base and Class Version
+	if (maip->base.bversion == STL_BASE_VERSION && maip->base.cversion == STL_SA_CLASS_VERSION) {
+		(void)sa_LFTableRecord_GetTable(maip, &records);
+	} else {
+		maip->base.status = MAD_STATUS_BAD_CLASS;
+		IB_LOG_WARN_FMT(__func__, "invalid Base and/or Class Versions: Base %u, Class %u",
+			maip->base.bversion, maip->base.cversion);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
+	}
 
 	attribOffset = Calculate_Padding(sizeof(STL_LINEAR_FORWARDING_TABLE_RECORD)) + sizeof(STL_LINEAR_FORWARDING_TABLE_RECORD);
 //
@@ -234,7 +241,7 @@ sa_LFTableRecord_GetTable(Mai_t *maip, uint32_t *records) {
 		}
 	} else {
 		for_all_switch_nodes(&old_topology, nodep) {
-			for (index = 0; index < nodep->switchInfo.LinearFDBTop; index += MAX_LFT_ELEMENTS_BLOCK) {
+			for (index = 0; index <= nodep->switchInfo.LinearFDBTop; index += MAX_LFT_ELEMENTS_BLOCK) {
 				if ((status = sa_check_len(data, sizeof(STL_LINEAR_FORWARDING_TABLE_RECORD), bytes)) != VSTATUS_OK) {
 					maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
 					IB_LOG_ERROR_FMT( "sa_LFTableRecord_GetTable",

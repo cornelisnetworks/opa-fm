@@ -219,8 +219,9 @@ impl_vs_thread_create (Thread_t *thr,
 	for (i = 0; i < argc; ++i)
 	{
 	    new_argv[i] = (void *)p;
-	    strcpy(p, (void *)argv[i]);
+	    cs_strlcpy(p, (void *)argv[i], size);
 	    p += strlen((void *)argv[i])+1;
+		size -= (strlen((void *)argv[i])+1);
 	}
 	impl->argv = new_argv;
 	impl->argv_copied = 1;

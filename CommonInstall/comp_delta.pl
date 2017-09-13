@@ -130,6 +130,7 @@ my @delta_components_rhel70 = (
 
 my @delta_components_sles12_sp2 = (
 				"opa_stack", 		# Kernel drivers.
+				"ibacm",
 				"intel_hfi", 		# HFI drivers
 				"delta_ipoib", 		# ipoib module.
 				"mpi_selector",
@@ -146,6 +147,7 @@ my @delta_components_sles12_sp2 = (
 
 my @delta_components_rhel73 = (
 				"opa_stack", 		# Kernel drivers.
+				"ibacm",
 				"intel_hfi", 		# HFI drivers
 				"delta_ipoib", 		# ipoib module.
 				"mpi_selector",
@@ -195,6 +197,28 @@ my %ibacm_comp_info = (
 					StartupScript => "ibacm",
 					StartupParams => [ ]
 					},
+);
+
+my %ibacm_sles12_sp2_comp_info = (
+        'ibacm' => {
+                                        KernelRpms => [ ],
+                                        UserRpms =>       [ ],
+                                        DebugRpms =>  [ ],
+                                        Drivers => "", # none
+                                        StartupScript => "ibacm",
+                                        StartupParams => [ ]
+                                        },
+);
+
+my %ibacm_rhel73_comp_info = (
+        'ibacm' => {
+                                        KernelRpms => [ ],
+                                        UserRpms =>       [ ],
+                                        DebugRpms =>  [ ],
+                                        Drivers => "", # none
+                                        StartupScript => "ibacm",
+                                        StartupParams => [ ]
+                                        },
 );
 
 my %intel_hfi_comp_info = (
@@ -671,6 +695,7 @@ my %delta_comp_info_sles12_sp2 = (
 	%mpiRest_comp_info,
 	%hfi1_uefi_comp_info,
 	%delta_debug_comp_info,
+	%ibacm_sles12_sp2_comp_info,
 );
 
 my %delta_comp_info_rhel73 = (
@@ -688,6 +713,7 @@ my %delta_comp_info_rhel73 = (
 	%mpiRest_comp_info,
 	%hfi1_uefi_comp_info,
 	%delta_debug_comp_info,
+	%ibacm_rhel73_comp_info,
 );
 
 my %delta_comp_info = ( );
@@ -1888,16 +1914,16 @@ sub build_srpm($$$$$)
 
 	if ("$srpm" eq "gasnet") {
 	    $cmd .= " --define '_name gasnet_openmpi_hfi'";
-	    $cmd .= " --define '_prefix /usr/shmem/gcc/gasnet-1.28.0-openmpi-hfi'";
+	    $cmd .= " --define '_prefix /usr/shmem/gcc/gasnet-1.28.2-openmpi-hfi'";
 	    $cmd .= " --define '_name gasnet_gcc_hfi'";
 	    $cmd .= " --define 'spawner mpi'";
-	    $cmd .= " --define 'mpi_prefix /usr/mpi/gcc/openmpi-1.8.5-hfi'";
+	    $cmd .= " --define 'mpi_prefix /usr/mpi/gcc/openmpi-1.10.4-hfi'";
 	}
 
 	if ("$srpm" eq "openshmem") {
 	    $cmd .= " --define '_name openshmem_gcc_hfi'";
 	    $cmd .= " --define '_prefix /usr/shmem/gcc/openshmem-1.3-hfi'";
-	    $cmd .= " --define 'gasnet_prefix /usr/shmem/gcc/gasnet-1.28.0-openmpi-hfi'";
+	    $cmd .= " --define 'gasnet_prefix /usr/shmem/gcc/gasnet-1.28.2-openmpi-hfi'";
 	    $cmd .= " --define 'configargs --with-gasnet-threnv=seq'";
 	}
 
@@ -2874,22 +2900,20 @@ sub install_opa_stack($$)
 	#override the udev permissions.
 	install_udev_permissions("$srcdir/config");
 
-	#edit_modconf("$srcdir/config");
-	edit_limitsconf("$srcdir/config");
+	# setup environment variable so that RPM can configure limits conf
+        setup_env("OPA_LIMITS_CONF", 1);
+        # so setting up envirnment to install driver for this component. actual install is done by rpm
+	setup_env("OPA_INSTALL_CALLER", 1);
 
 	# Check $BASE_DIR directory ...exist 
 	check_config_dirs();
 	check_dir("/usr/lib/opa");
 
-	copy_systool_file("$srcdir/comp.pl", "/usr/lib/opa/.comp_ofed_delta.pl");
+        prompt_opa_conf_param('ARPTABLE_TUNING', 'Adjust kernel ARP table size for large fabrics?', "y", 'OPA_ARPTABLE_TUNING');
+        prompt_opa_conf_param('SRP_LOAD', 'SRP initiator autoload?', "n", 'OPA_SRP_LOAD');
+        prompt_opa_conf_param('SRPT_LOAD', 'SRP target autoload?', "n", 'OPA_SRPT_LOAD');
 
 	install_delta_comp('opa_stack', $install_list);
-
-	prompt_opa_conf_param('ARPTABLE_TUNING', 'Adjust kernel ARP table size for large fabrics?', "y");
-	prompt_opa_conf_param('SRP_LOAD', 'SRP initiator autoload?', "n");
-	prompt_opa_conf_param('SRPT_LOAD', 'SRP target autoload?', "n");
-	
-	copy_data_file("$srcdir/Version", "$BASE_DIR/version_delta");
 
 	# prevent distro's open IB from loading
 	#add_blacklist("ib_mthca");
@@ -3094,7 +3118,6 @@ sub install_intel_hfi($$)
     my $installing_list = shift();  # what items are being installed/reinstalled
 
     print_install_banner_delta_comp('intel_hfi');
-    install_delta_comp('intel_hfi', $install_list);
 
     # Adjust irqbalance
     if ( -e "/etc/sysconfig/irqbalance" ) {
@@ -3102,9 +3125,16 @@ sub install_intel_hfi($$)
 		print "and run using the --hintpolicy=exact option.\n";
         $Default_IrqBalance = GetYesNoWithMemory("IrqBalance", 1, "$irq_perm_string", "y");
         if ( $Default_IrqBalance == 1 ) {
-            set_opairqbalance();
-		}
+            #set env variable so that RPM can do post install configuration of IRQBALANCE
+            #  if opasystemconfig already exists, set it manually
+            if ( -f "/sbin/opasystemconfig" ) {
+                system("/sbin/opasystemconfig --enable Irq_Balance");
+            } else {
+                setup_env("OPA_IRQBALANCE", 1);
+            }
+        }
     }
+    install_delta_comp('intel_hfi', $install_list);
 
     need_reboot();
     $ComponentWasInstalled{'intel_hfi'}=1;
@@ -3388,20 +3418,11 @@ sub available_delta_ipoib()
 
 sub installed_delta_ipoib()
 {
-	my $driver_subdir=$ComponentInfo{'delta_ipoib'}{'DriverSubdir'};
 	if ( "$CUR_VENDOR_VER" eq "ES67" ) {
-                return (( -e "$ROOT$BASE_DIR/version_delta"
-				&& rpm_is_installed("ifs-kernel-updates", $CUR_OS_VER)));
-	} elsif ( "$CUR_VENDOR_VER" eq "ES72" || "$CUR_VENDOR_VER" eq "ES73" ) {
-		return ((-e "$ROOT$BASE_DIR/version_delta"
-				&& rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER)));
-	} elsif ( "$CUR_VENDOR_VER" eq "ES122" ) {
-		return ((-e "$ROOT$BASE_DIR/version_delta"
-				&& rpm_is_installed("ifs-kernel-updates-kmp-default", $CUR_OS_VER)));
-	} else {
-		return ((-e "$ROOT$BASE_DIR/version_delta"
-				&& rpm_is_installed("compat-rdma", $CUR_OS_VER)));
+		return (( -e "$ROOT$BASE_DIR/version_delta"
+			&& rpm_is_installed("ifs-kernel-updates", $CUR_OS_VER)));
 	}
+	return 1;
 }
 
 # only called if installed_delta_ipoib is true
@@ -4339,6 +4360,35 @@ sub uninstall_ibacm($$)
 sub check_os_prereqs_ibacm
 {
 	return rpm_check_os_prereqs("ibacm", "user");
+}
+
+# ------------------------------------------------------------------
+# # subroutines for rdma-ndd component
+# # -----------------------------------------------------------------
+sub installed_rdma_ndd()
+{
+        return (rpm_is_installed("infiniband-diags", "user"));
+}
+
+sub enable_autostart2_rdma_ndd()
+{
+        system "systemctl enable rdma-ndd >/dev/null 2>&1";
+}
+
+sub disable_autostart2_rdma_ndd()
+{
+        system "systemctl disable rdma-ndd >/dev/null 2>&1";
+}
+
+sub IsAutostart2_rdma_ndd()
+{
+        my $status = `systemctl is-enabled rdma-ndd`;
+        if ( $status eq "enabled\n" ){
+                return 1;
+        }
+        else{
+                return 0;
+        }
 }
 
 # ------------------------------------------------------------------

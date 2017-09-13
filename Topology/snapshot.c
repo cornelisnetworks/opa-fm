@@ -100,7 +100,7 @@ static void PortStatusDataXmlParserEnd(IXmlParserState_t *state, const IXML_FIEL
 	STL_PortStatusData_t *pPortStatusData = (STL_PortStatusData_t*)object;
 	PortData *portp = (PortData*)parent;
 
-	if (! valid)	// missing manditory fields
+	if (! valid)	// missing mandatory fields
 		goto failvalidate;
 
 	if (portp->pPortStatus) {
@@ -1314,9 +1314,9 @@ static void PortDataXmlOutputPhysState(IXmlOutputState_t *state, const char *tag
 	IXmlOutputPortPhysStateValue(state, tag, ((PortData *)data)->PortInfo.PortStates.s.PortPhysicalState);
 }
 
-static void PortDataXmlOutputPortPhyConfig(IXmlOutputState_t *state, const char *tag, void *data)
+static void PortDataXmlOutputPortPhysConfig(IXmlOutputState_t *state, const char *tag, void *data)
 {
-	const uint8_t pt = ((PortData *)data)->PortInfo.PortPhyConfig.s.PortType;
+	const uint8_t pt = ((PortData *)data)->PortInfo.PortPhysConfig.s.PortType;
 	IXmlOutputStr(state, tag, StlPortTypeToText(pt));
 }
 
@@ -2387,8 +2387,9 @@ static void McGMemberXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *fi
 		McMemberData *pMCH = (McMemberData *)QListObj(q);
 		//fill McMemberData with info from group
 		if ((pMCH->MemberInfo.RID.PortGID.AsReg64s.H !=0) || (pMCH->MemberInfo.RID.PortGID.AsReg64s.L!=0)) {
-			// add switches that belong to this group
+			//check that there is a port and its neighbor is not NULL as in the case of a Enhanced Port0 in a Switch
 			if (pMCH->pPort && pMCH->pPort->neighbor) {
+				// add switches that belong to this group
 				if (pMCH->pPort->neighbor->nodep->NodeInfo.NodeType == STL_NODE_SW) {
 					NodeData *groupswitch = pMCH->pPort->neighbor->nodep;
 					uint8 switchentryport = pMCH->pPort->neighbor->PortNum ;
@@ -2437,7 +2438,6 @@ static void McGroupDataXmlOutput(IXmlOutputState_t *state, McGroupData *pMcGroup
 	IXmlOutputHexPad16(state, "MLID", pMcGroupRecord->MLID);
 	IXmlOutputPKey(state, "P_Key", &pMcGroupRecord->GroupInfo.P_Key);
 	IXmlOutputUint(state, "Mtu", GetBytesFromMtu(pMcGroupRecord->GroupInfo.Mtu));
-	
 	IXmlOutputRateValue(state, "Rate", pMcGroupRecord->GroupInfo.Rate);
 	IXmlOutputTimeoutMultValue(state, "PktLifeTime", pMcGroupRecord->GroupInfo.PktLifeTime);
 	IXmlOutputHexPad32(state, "Q_Key", pMcGroupRecord->GroupInfo.Q_Key);
@@ -2517,8 +2517,8 @@ static IXML_FIELD PortDataFields[] = {
 	{ tag:"InitReason_Int", format:'K', format_func: IXmlOutputNoop, end_func:PortDataXmlParserEndInitReason },
 	{ tag:"PhysState", format:'k', format_func: PortDataXmlOutputPhysState, end_func:IXmlParserEndNoop }, // output only bitfield
 	{ tag:"PhysState_Int", format:'K', format_func: IXmlOutputNoop, end_func:PortDataXmlParserEndPhysState }, // input only bitfield
-	{ tag:"PortType", format:'k', format_func:PortDataXmlOutputPortPhyConfig, end_func:IXmlParserEndNoop }, 
-	{ tag:"PortType_Int", format:'H', IXML_FIELD_INFO(PortData, PortInfo.PortPhyConfig.AsReg8)},
+	{ tag:"PortType", format:'k', format_func:PortDataXmlOutputPortPhysConfig, end_func:IXmlParserEndNoop }, 
+	{ tag:"PortType_Int", format:'H', IXML_FIELD_INFO(PortData, PortInfo.PortPhysConfig.AsReg8)},
 	{ tag:"LMC", format:'K', format_func:PortDataXmlOutputLMC, end_func:PortDataXmlParserEndLMC }, // bitfield
 	{ tag:"Protect", format:'k', format_func: PortDataXmlOutputMKeyProtect, end_func:IXmlParserEndNoop }, // output only bitfield
 	{ tag:"Protect_Int", format:'K', format_func: IXmlOutputNoop, end_func:PortDataXmlParserEndMKeyProtect }, // input only bitfield
@@ -2701,7 +2701,7 @@ static void PortDataXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *fie
 
 	ParseCompleteFn parseCompleteFn = GetPortDataComplete();
 
-	if (! valid)	// missing manditory fields
+	if (! valid)	// missing mandatory fields
 		goto failvalidate;
 
 	portp->rate = StlLinkSpeedWidthToStaticRate(
@@ -2764,7 +2764,7 @@ static void *IocServiceXmlParserStart(IXmlParserState_t *state, void *parent, co
 
 static void IocServiceXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
 {
-	if (! valid)	// missing manditory fields
+	if (! valid)	// missing mandatory fields
 		goto failvalidate;
 	g_service_index++;
 	return;
@@ -2893,7 +2893,7 @@ static void IocDataXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *fiel
 	
 	ASSERT(ioup == (IouData*)parent);
 
-	if (! valid)	// missing manditory fields
+	if (! valid)	// missing mandatory fields
 		goto failvalidate;
 
 	if (cl_qmap_insert(&fabricp->AllIOCs, iocp->IocProfile.IocGUID, &iocp->AllIOCsEntry) != &iocp->AllIOCsEntry)
@@ -3001,7 +3001,7 @@ static void IouDataXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *fiel
 	
 	ASSERT(nodep == (NodeData*)parent);
 
-	if (! valid)	// missing manditory fields
+	if (! valid)	// missing mandatory fields
 		goto failvalidate;
 
 	if (nodep->ioup) {
@@ -3023,12 +3023,26 @@ failvalidate:
 
 /* most are in ixml_ib */
 
+static void *SwitchInfoXmlParserStart(IXmlParserState_t *state,
+	void *parent, const char **attr)
+{
+	void *p = IXmlParserStartStruct(state, parent, attr);
+
+	if (!p) return p;
+
+	STL_SWITCHINFO_RECORD *pSwitchInfo = (STL_SWITCHINFO_RECORD*)p;
+	// For compatibility with snapshots from older versions of OPA,
+	// provide default values for optional fields.
+	pSwitchInfo->SwitchInfoData.PortGroupFDBCap = DEFAULT_MAX_PGFT_LID + 1;
+	return p;
+}
+
 static void SwitchInfoXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
 {
 	STL_SWITCHINFO_RECORD *pSwitchInfo = (STL_SWITCHINFO_RECORD*)object;
 	NodeData *nodep = (NodeData*)parent;
-	
-	if (! valid)	// missing manditory fields
+
+	if (! valid)	// missing mandatory fields
 		goto failvalidate;
 
 	if (nodep->pSwitchInfo) {
@@ -3050,12 +3064,27 @@ boolean fbFDB = FALSE;			// Flag for LinearFDB or MulticastFDB parsed
 static uint32 lidFDB = 0xFFFFFFFF;	// LID for Linear Multicast, or PortGroup FDB entry
 static uint32 portPGT = 0xFFFFFFFF; // PortGroupNumber for PortGroup Element entry
 
+static void *SwitchDataXmlParserStart(IXmlParserState_t *state,
+									void *parent, const char **attr)
+{
+	void *p = IXmlParserStartStruct(state, parent, attr);
+	if (!p) return p;
+
+	SwitchData *switchp = (SwitchData*)p;
+
+	// For compatibility with snapshots from older versions of OPA,
+	// provide default values for optional fields.
+	switchp->PortGroupFDBSize = DEFAULT_MAX_PGFT_LID + 1;
+
+	return p;
+}
+
 static void SwitchDataXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
 {
 	SwitchData *switchp = (SwitchData*)object;
 	NodeData *nodep = (NodeData*)parent;
-	
-	if (! valid)	// missing manditory fields
+
+	if (! valid)	// missing mandatory fields
 		goto failvalidate;
 
 	if (nodep->switchp) {
@@ -3174,7 +3203,7 @@ static void *SwitchDataXmlParserStartLinearFDB(IXmlParserState_t *state, void *p
 static void SwitchDataXmlParserEndLinearFDB(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
 {
 	SwitchData *switchp = (SwitchData *)object;
-	
+
 	if (! valid)
 		goto fail;
 
@@ -3267,6 +3296,7 @@ static void SwitchDataOutputMulticastFDB(IXmlOutputState_t *state, const char *t
 	STL_LID_32 mcastLid;
 	SwitchData *switchp = (SwitchData *)data;
 	uint64 portMask;
+	uint16 MCFDBSize = switchp->MulticastFDBSize & MULTICAST_LID_OFFSET_MASK;
 
 	//@todo: remove assertion once position number is an attribute in MulticastFDB/Value
 	assert(switchp->MulticastFDBEntrySize <= 1);
@@ -3274,14 +3304,14 @@ static void SwitchDataOutputMulticastFDB(IXmlOutputState_t *state, const char *t
 	// MulticastFDBTop can be less than LID_MCAST_START at POD.
 	// May not be an error but then there aren't any Mcast entries to be
 	// output either.
-	if (switchp->MulticastFDBSize <= LID_MCAST_START) {
+	if (MCFDBSize == 0) {
 		return;
 	}
 
 	IXmlOutputStartTag(state, tag);
 
 	uint32 i;
-	for (i = 0; i < (switchp->MulticastFDBSize - LID_MCAST_START);  ++i) {
+	for (i = 0; i < (MCFDBSize);  ++i) {
 		uint32 j;
 		for (j = 0; j < switchp->MulticastFDBEntrySize; ++j) {
 			portMask = (uint64)switchp->MulticastFDB[i * switchp->MulticastFDBEntrySize + j];
@@ -3304,19 +3334,20 @@ static void *SwitchDataXmlParserStartMulticastFDB(IXmlParserState_t *state, void
 {
 	SwitchData *switchp = (SwitchData *)parent;	// parent points to SwitchData
 	STL_PORTMASK *pPortMask;
+	uint16 MCFDBSize;
 
 	// Allocate MulticastFDB
 	if (!switchp || switchp->MulticastFDB) {
 		IXmlParserPrintError(state, "SwitchData improperly allocated");
 		return NULL;
 	}
-
-	if (switchp->MulticastFDBSize <= LID_MCAST_START) {
-		IXmlParserPrintError(state, "Invalid MulticastFDBSize, cannot allocate MulticastFDB");
+	MCFDBSize = switchp->MulticastFDBSize & MULTICAST_LID_OFFSET_MASK;
+	if (MCFDBSize == 0) {
+			IXmlParserPrintError(state, "Invalid MulticastFDBSize: size is zero ");
 		return NULL;
 	}
 
-	size_t allocSize = switchp->MulticastFDBSize - LID_MCAST_START;
+	size_t allocSize = MCFDBSize;
 
 	if ( !( pPortMask = (STL_PORTMASK *)MemoryAllocate2AndClear(
 			allocSize * sizeof(STL_PORTMASK) * switchp->MulticastFDBEntrySize,
@@ -3333,7 +3364,7 @@ static void *SwitchDataXmlParserStartMulticastFDB(IXmlParserState_t *state, void
 static void SwitchDataXmlParserEndMulticastFDB(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
 {
 	SwitchData *switchp = (SwitchData *)object;
-	
+
 	if (! valid)
 		goto fail;
 
@@ -3489,7 +3520,7 @@ static void SwitchDataXmlParserEndPortGroupFDBValue(IXmlParserState_t *state, co
 	if (!valid) {
 		return;
 	}
-	
+
 	if (!switchp || !switchp->PortGroupFDB || !pLID || !content ||
 		!len || (*pLID >= switchp->PortGroupFDBSize)) {
 		IXmlParserPrintError(state, "PortGroupFDB improperly allocated");
@@ -3578,7 +3609,7 @@ IXML_FIELD SwitchDataFields[] = {
 	{ tag:"LinearFDBSize", format:'U', IXML_FIELD_INFO(SwitchData, LinearFDBSize) },
 	{ tag:"MulticastFDBSize", format:'U', IXML_FIELD_INFO(SwitchData, MulticastFDBSize) },
 	{ tag:"MulticastFDBEntrySize", format:'U', IXML_FIELD_INFO(SwitchData, MulticastFDBEntrySize) },
-	{ tag:"PortGroupFDBSize", format:'U', IXML_FIELD_INFO(SwitchData, PortGroupFDBSize) },
+	{ tag:"PortGroupFDBSize", format:'u', IXML_FIELD_INFO(SwitchData, PortGroupFDBSize) },
 	{ tag:"PortGroupSize", format:'U', IXML_FIELD_INFO(SwitchData, PortGroupSize) },
 	{ tag:"LinearFDB", format:'k', format_func:SwitchDataOutputLinearFDB, subfields:LinearFDBFields, start_func:SwitchDataXmlParserStartLinearFDB, end_func:SwitchDataXmlParserEndLinearFDB },
 	{ tag:"MulticastFDB", format:'k', format_func:SwitchDataOutputMulticastFDB, subfields:MulticastFDBFields, start_func:SwitchDataXmlParserStartMulticastFDB, end_func:SwitchDataXmlParserEndMulticastFDB },
@@ -3670,8 +3701,8 @@ const IXML_FIELD NodeDataFields[] = {
 #if !defined(VXWORKS) || defined(BUILD_DMC)
 	{ tag:"Iou", format:'k', format_func:NodeDataXmlOutputIou, subfields:IouDataFields, start_func:IouDataXmlParserStart, end_func:IouDataXmlParserEnd }, // structure
 #endif
-	{ tag:"SwitchInfo", format:'k', size:sizeof(STL_SWITCHINFO_RECORD), format_func:NodeDataXmlOutputSwitchInfo, subfields:SwitchInfoFields, start_func:IXmlParserStartStruct, end_func:SwitchInfoXmlParserEnd }, // structure
-	{ tag:"SwitchData", format:'k', size:sizeof(SwitchData), format_func:NodeDataXmlOutputSwitchData, subfields:SwitchDataFields, start_func:IXmlParserStartStruct, end_func:SwitchDataXmlParserEnd }, // structure
+	{ tag:"SwitchInfo", format:'k', size:sizeof(STL_SWITCHINFO_RECORD), format_func:NodeDataXmlOutputSwitchInfo, subfields:SwitchInfoFields, start_func:SwitchInfoXmlParserStart, end_func:SwitchInfoXmlParserEnd }, // structure
+	{ tag:"SwitchData", format:'k', size:sizeof(SwitchData), format_func:NodeDataXmlOutputSwitchData, subfields:SwitchDataFields, start_func:SwitchDataXmlParserStart, end_func:SwitchDataXmlParserEnd }, // structure
 	{ NULL }
 };
 
@@ -3711,7 +3742,7 @@ static void NodeDataXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *fie
 	FabricData_t *fabricp = IXmlParserGetContext(state);
 	//FSTATUS status;
 
-	if (! valid)	// missing manditory fields
+	if (! valid)	// missing mandatory fields
 		goto failvalidate;
 
 	mi = cl_qmap_insert(&fabricp->AllNodes, nodep->NodeInfo.NodeGUID, &nodep->AllNodesEntry);
@@ -4061,12 +4092,39 @@ static void VFInfoXmlParserEndSelectFlags(IXmlParserState_t *state, const IXML_F
 }
 
 static void VFInfoXmlOutputSL(IXmlOutputState_t *state, const char *tag, void *data) {
-	IXmlOutputUint(state, tag, ((STL_VFINFO_RECORD *)data)->s1.sl);
+	IXmlOutputUint(state, tag, ((STL_VFINFO_RECORD *)data)->s1.slBase);
 }
+
 static void VFInfoXmlParserEndSL(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid) {
 	uint8 value;
 	if (IXmlParseUint8(state, content, len, &value))
-		((STL_VFINFO_RECORD *)object)->s1.sl = value;
+		((STL_VFINFO_RECORD *)object)->s1.slBase = value;
+}
+
+static void VFInfoXmlOutputRespSL(IXmlOutputState_t *state, const char *tag, void *data) {
+	if (((STL_VFINFO_RECORD*)data)->slResponseSpecified)
+		IXmlOutputUint(state, tag, ((STL_VFINFO_RECORD *)data)->slResponse);
+}
+
+static void VFInfoXmlParserEndRespSL(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid) {
+	uint8 value;
+	if (IXmlParseUint8(state, content, len, &value)) {
+		((STL_VFINFO_RECORD*)object)->slResponse = value;
+		((STL_VFINFO_RECORD*)object)->slResponseSpecified = 1;
+	}
+}
+
+static void VFInfoXmlOutputMulticastSL(IXmlOutputState_t *state, const char *tag, void *data) {
+	if (((STL_VFINFO_RECORD*)data)->slMulticastSpecified)
+		IXmlOutputUint(state, tag, ((STL_VFINFO_RECORD *)data)->slMulticast);
+}
+
+static void VFInfoXmlParserEndMulticastSL(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid) {
+	uint8 value;
+	if (IXmlParseUint8(state, content, len, &value)) {
+		((STL_VFINFO_RECORD*)object)->slMulticast = value;
+		((STL_VFINFO_RECORD*)object)->slMulticastSpecified = 1;
+	}
 }
 
 static void VFInfoXmlOutputMTUSpecified(IXmlOutputState_t *state, const char *tag, void *data) {
@@ -4159,6 +4217,8 @@ static IXML_FIELD VFFields[] = {
 	{ tag:"MGIDLow", format:'h', IXML_FIELD_INFO(STL_VFINFO_RECORD, MGID.AsReg64s.L) },
 	{ tag:"SelectFlags", format:'k', format_func:VFInfoXmlOutputSelectFlags, end_func:VFInfoXmlParserEndSelectFlags },
 	{ tag:"SL", format:'k', format_func:VFInfoXmlOutputSL, end_func:VFInfoXmlParserEndSL },
+	{ tag:"RespSL", format:'k', format_func:VFInfoXmlOutputRespSL, end_func:VFInfoXmlParserEndRespSL },
+	{ tag:"MulticastSL", format:'k', format_func:VFInfoXmlOutputMulticastSL, end_func:VFInfoXmlParserEndMulticastSL },
 	{ tag:"MTUSpecified", format:'k', format_func:VFInfoXmlOutputMTUSpecified, end_func:VFInfoXmlParserEndMTUSpecified },
 	{ tag:"MTU", format:'k', format_func:VFInfoXmlOutputMTU, end_func:VFInfoXmlParserEndMTU },
 	{ tag:"RateSpecified", format:'k', format_func:VFInfoXmlOutputRateSpecified, end_func:VFInfoXmlParserEndRateSpecified },

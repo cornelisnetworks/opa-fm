@@ -83,7 +83,6 @@ static const char* const SdQueryResultTypeText[] = {
 	"OutputTypeMcMemberRecord",
 	"OutputTypeInformInfoRecord",
 	"OutputTypeTraceRecord",
-	"OutputTypeSLVLMapRecord",
 	"OutputTypeSwitchInfoRecord",
 	"OutputTypeLinearFDBRecord",
 	"OutputTypeRandomFDBRecord",

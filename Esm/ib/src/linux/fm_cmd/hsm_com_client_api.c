@@ -35,6 +35,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 #include "hsm_com_client_api.h"
 #include "hsm_com_client_data.h"
+#include "cs_g.h"
 
 
    
@@ -95,8 +96,8 @@ hcom_client_init
 	hdl->trans_id = 1;
 
 
-	strcpy(hdl->s_path,server_path);
-	strcpy(hdl->c_path,client_path);
+	cs_strlcpy(hdl->s_path,server_path, HSM_COM_SVR_MAX_PATH);
+	cs_strlcpy(hdl->c_path,client_path, HSM_COM_SVR_MAX_PATH);
 
 	if (mkstemp(hdl->c_path) == -1)
 	{

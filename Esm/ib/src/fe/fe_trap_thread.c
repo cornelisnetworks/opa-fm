@@ -54,11 +54,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "fe_trap_thread.h"
 #include "sa/if3_sa.h"
-#include "oib_utils_sa.h"
+#include "opamgt_sa_priv.h"
 
 extern uint32_t g_fe_nodes_len;                 // len of node data in fe_in_buff
 extern FE_ConnList *clist;                      // pointer to connection list
-extern struct oib_port *fe_oib_session;
+extern struct omgt_port *fe_omgt_session;
 extern Pool_t fe_pool;
 
 static FE_TrapThreadData_t fe_trap_thread_data;
@@ -223,7 +223,7 @@ static uint32_t fe_if3_trap_thread_get_notice(STL_NOTICE *notice)
 	
 	IB_ENTER(__func__, notice, 0, 0, 0);
 	
-	status = oib_sa_get_event(fe_oib_session,
+	status = omgt_sa_get_event(fe_omgt_session,
 							  (void*)fe_trap_thread_data.data,
 	                          FE_TRAP_THREAD_DATA_LEN, &len);
 	if (status != FSUCCESS) {

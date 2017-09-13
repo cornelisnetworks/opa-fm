@@ -125,10 +125,6 @@ IB_GID otherGid = {.Raw =	{0x16, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 
 int	emptyBroadcastGroup = 0;
 
-#if 0
-#define PKEY_INDEX 4
-#define IPV6_INDEX 2
-#endif
 #define PKEY_INDEX 10
 #define IPV6_INDEX 13
 
@@ -201,25 +197,26 @@ sa_McMemberRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
 
 	IB_ENTER("sa_McMemberRecord", maip, 0, 0, 0);
 
-#ifdef NO_STL_MCMEMBER_RECORD     // SA shouldn't support STL McMember Record
-	if (maip->base.cversion != SA_MAD_CVERSION) {
-		maip->base.status = MAD_STATUS_BAD_CLASS;
-		(void) sa_send_reply(maip, sa_cntxt);
-		IB_LOG_WARN("sa_McMemberRecord: invalid CLASS:",
-				maip->base.cversion);
-		IB_EXIT("sa_McMemberRecord", VSTATUS_OK);
-		return (VSTATUS_OK);
-	}
-#endif
-
-
 //
 //	Assume failure.
 //
 	records = 0;
 
-	rec_sz = (maip->base.bversion == STL_BASE_VERSION) ? sizeof(STL_MCMEMBER_RECORD) :
-		sizeof(IB_MCMEMBER_RECORD);
+	// Check Base and Class Version
+	if (maip->base.bversion == IB_BASE_VERSION && maip->base.cversion == SA_MAD_CVERSION) {
+		rec_sz = sizeof(IB_MCMEMBER_RECORD);
+	} else {
+		// While originally in the spec, STL_MCMEMBER_RECORD was later dropped
+		// from it. As a result, while we use it internally it is not supported
+		// over the wire. Generate an error response and return.
+		maip->base.status = MAD_STATUS_BAD_CLASS;
+		IB_LOG_WARN_FMT(__func__, "invalid Base and/or Class Versions: Base %u, Class %u",
+			maip->base.bversion, maip->base.cversion);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
+	}
+
 //
 //	Check the method.  If this is a template lookup, then call the regular
 //	GetTable(*) template lookup routine.
@@ -247,13 +244,13 @@ sa_McMemberRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
 		INCREMENT_COUNTER(smCounterSaRxDeleteMcMemberRecord);
 		(void)sa_McMemberRecord_Delete(maip, &records);
 		break;
-        default:                                                                     
-                maip->base.status = MAD_STATUS_BAD_METHOD;                           
-                (void)sa_send_reply(maip, sa_cntxt);                                 
-                IB_LOG_WARN("sa_McMemberRecord: invalid METHOD:", maip->base.method);
-                IB_EXIT("sa_McMemberRecord", VSTATUS_OK);                            
-                return VSTATUS_OK;                                                   
-                break;                                                               
+	default:
+		maip->base.status = MAD_STATUS_BAD_METHOD;
+		IB_LOG_WARN_FMT(__func__, "invalid Method: %s (%u)",
+			cs_getMethodText(maip->base.method), maip->base.method);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
 	}
 
 //
@@ -270,15 +267,15 @@ sa_McMemberRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
 	}
 
 
-    if (maip->base.method == SA_CM_SET && maip->base.status == 0x0700) {
-        // drop the request on the floor until hosts backoff Mcmember requests when we are busy
-    } else {
-	attribOffset =  rec_sz + Calculate_Padding(rec_sz);
-	sa_cntxt->attribLen = attribOffset;
+	if (maip->base.method == SA_CM_SET && maip->base.status == 0x0700) {
+		// drop the request on the floor until hosts backoff Mcmember requests when we are busy
+	} else {
+		attribOffset = rec_sz + Calculate_Padding(rec_sz);
+		sa_cntxt->attribLen = attribOffset;
 
-	sa_cntxt_data( sa_cntxt, sa_data, records * attribOffset);
-	(void)sa_send_reply(maip, sa_cntxt );
-    }
+		sa_cntxt_data(sa_cntxt, sa_data, records * attribOffset);
+		(void)sa_send_reply(maip, sa_cntxt);
+	}
 
 	IB_EXIT("sa_McMemberRecord", VSTATUS_OK);
 	return(VSTATUS_OK);
@@ -377,15 +374,6 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 	mGid[0] = mcmp->RID.MGID.Type.Global.SubnetPrefix;
 	mGid[1] = mcmp->RID.MGID.Type.Global.InterfaceID;
 
-/*
-	guid = 0ull;
-	prefix = 0ull;
-	for (i = 0; i < 8; i++) {
-		guid = (guid << 8) | mcmp->RID.PortGID.Raw[i+8];
-		prefix = (prefix << 8) | mcmp->RID.PortGID.Raw[i];
-		
-	}
-*/
 	prefix = mcmp->RID.PortGID.Type.Global.SubnetPrefix;
 	guid = mcmp->RID.PortGID.Type.Global.InterfaceID;
 
@@ -525,11 +513,10 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 		if ((mtu > STL_MTU_MAX) || (mtu < IB_MTU_256) || (mtu > maxMtu)) {
 			maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 			smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_OTHER_ERROR, &csmReqNode, csmNeighborp,
-			                "MTU selector of %d with MTU of %s does not work with realizable "
-			                "MTU of %s for request from %s Port %d, PortGUID "FMT_U64", LID 0x%.4X, returning "
-			                "status 0x%.4X", mcmp->MtuSelector, Decode_MTU(mcmp->Mtu),
-			                Decode_MTU(maxMtu), (uint8_t*)req_nodeName, req_portp->index, req_portp->portData->guid, maip->addrInfo.slid,
-			                maip->base.status);
+				"MTU selector of %d with MTU of %s does not work with realizable MTU of %s for "
+				"request from %s Port %d, PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+				mcmp->MtuSelector, IbMTUToText(mcmp->Mtu), IbMTUToText(maxMtu), req_nodeName,
+				req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
 			goto done;
 		}
 	} else if (tempMask != 0) { /* Only one of the two bits set, only max allowed */
@@ -1851,131 +1838,9 @@ done:
 }
 
 // -------------------------------------------------------------------------- //
-
-#define TERMINAL_WIDTH_DEFAULT 80
-void showGroups(int termWidth, uint8_t showNodeName){
-	McGroup_t	*dGroup;
-	McMember_t	*dMember;
-	Status_t	status;
-	Port_t		*portp;
-	int			outputChars = 0; // number of chars output to the current line
-	int			guidAndStateLength = 23; // guid and join state + spacing chars
-	char		*nodeName = 0;
-	int			nodeNameDisplayLength=0;  // used to truncate the displayed 
-										 // length of the nodeName
-	char		*header = "Multicast Groups:\n  join state key: F=Full N=Non S=SendOnly Member";
-
-	if (topology_passcount < 1) {
-		sysPrintf("\nSM is currently in the %s state, count = %d\n\n", sm_getStateText(sm_state), (int)sm_smInfo.ActCount);
-		return;
-	}
-	if (sm_McGroups_lock.type == 0) {
-		sysPrintf("Fabric Manager is not running!\n");
-		return;
-	} else if (sm_McGroups == 0) {
-		sysPrintf("There are no Multicast Groups at this time!\n");
-		return;
-	}
-	// figure out the maximum display length of the nodeName (in case we are displaying it)
-	// the nodename will be truncated to fit on the output line
-	if (showNodeName) {
-		if (termWidth <= 0) { // could be that we were called from the support shell
-			nodeNameDisplayLength = TERMINAL_WIDTH_DEFAULT - guidAndStateLength;
-		} else {
-			if (termWidth <= guidAndStateLength) {
-				nodeNameDisplayLength = 0;
-			} else {
-				nodeNameDisplayLength = (termWidth - guidAndStateLength) - 1;
-			}
-		}
-	}
-	//sysPrintf("termWidth[%d] showNodeName[%d]\n", termWidth, showNodeName); // debug stmt
-
-	if (showNodeName) {
-		status = vs_rdlock(&old_topology_lock);
-		if (status != VSTATUS_OK) {
-			sysPrintf("error locking old_topology_lock %lu\n", (long)status);
-			return;
-		}
-	}
-
-	status = vs_lock(&sm_McGroups_lock);
-	if(status != VSTATUS_OK){
-		sysPrintf("error locking sm_McGroups_lock %lu\n", (long)status);
-		return;
-	}
-	
-	sysPrintf("%s\n\n", header);
-	for_all_multicast_groups(dGroup) {
-		sysPrintf("0x%02x%02x%02x%02x%02x%02x%02x%02x:%02x%02x%02x%02x%02x%02x%02x%02x (%08x)\n",
-			dGroup->mGid.Raw[0], dGroup->mGid.Raw[1], dGroup->mGid.Raw[2], dGroup->mGid.Raw[3],
-			dGroup->mGid.Raw[4], dGroup->mGid.Raw[5], dGroup->mGid.Raw[6], dGroup->mGid.Raw[7],
-			dGroup->mGid.Raw[8], dGroup->mGid.Raw[9], dGroup->mGid.Raw[10], dGroup->mGid.Raw[11],
-			dGroup->mGid.Raw[12], dGroup->mGid.Raw[13], dGroup->mGid.Raw[14], dGroup->mGid.Raw[15],
-			(unsigned int)dGroup->mLid); 
-		
-		sysPrintf("  qKey = 0x%.8X  pKey = 0x%.4X  mtu = %d  rate = %d  life = %d  sl = %d\n",
-			   (int)dGroup->qKey, dGroup->pKey, dGroup->mtu, dGroup->rate, dGroup->life, dGroup->sl);
-	
-		outputChars = 0;
-		for_all_multicast_members(dGroup, dMember) {
-			
-			if (!showNodeName && (termWidth > 0)) {
-				if ((outputChars + guidAndStateLength) > termWidth) {
-					sysPrintf("\n");
-					outputChars = 0;
-				}
-			}
-	
-			sysPrintf("  ");  // spacing          
-			sysPrintf("0x%02x%02x%02x%02x%02x%02x%02x%02x ",
-				dMember->record.RID.PortGID.Raw[8], dMember->record.RID.PortGID.Raw[9], dMember->record.RID.PortGID.Raw[10],
-				dMember->record.RID.PortGID.Raw[11], dMember->record.RID.PortGID.Raw[12], dMember->record.RID.PortGID.Raw[13],
-				dMember->record.RID.PortGID.Raw[14], dMember->record.RID.PortGID.Raw[15]);
-	
-			if (dMember->state & MCMEMBER_JOIN_FULL_MEMBER) 
-				sysPrintf("F");
-			if (dMember->state & MCMEMBER_JOIN_NON_MEMBER) 
-				sysPrintf("N");
-			if (dMember->state & MCMEMBER_JOIN_SENDONLY_MEMBER) 
-				sysPrintf("S");
-			outputChars += guidAndStateLength;
-	
-			// show nodeName only if desired
-			if (showNodeName) { 
-				if (old_topology.node_head == NULL) {
-					sysPrintf(" %s\n", "?");
-					continue;
-				}
-	
-				if ((portp = sm_find_port_guid(&old_topology, dMember->portGuid)) != NULL) {
-					Node_t * nodep;
-					if ((nodep = sm_find_port_node(&old_topology, portp))!=0) {
-						nodeName = sm_nodeDescString(nodep); 
-					}
-					if (nodeName == NULL) {
-						sysPrintf(" %s", "?");
-					} else {
-						sysPrintf(" %-.*s", nodeNameDisplayLength, nodeName);
-					}
-				}
-				sysPrintf("\n"); // if showNodeName, one entry per line
-			}
-		}
-		if (!showNodeName) {
-			sysPrintf("\n");
-		}
-		sysPrintf("\n");
-	}
-	
-    vs_unlock(&sm_McGroups_lock);
-	if (showNodeName)
-		vs_rwunlock(&old_topology_lock);
-
-	return;
-}
-
-void showStlGroups(int termWidth, uint8_t showNodeName) { 
+// invoked by the CLI interface.
+void
+showStlGroups(int termWidth, uint8_t showNodeName) { 
     uint32_t i = 0; 
     McGroup_t	*dGroup; 
     McMember_t	*dMember; 

@@ -139,6 +139,7 @@ void PrintStlMCastFDBRecord(PrintDest_t *dest, int indent, const STL_MULTICAST_F
 void PrintStlLinkRecord(PrintDest_t *dest, int indent, const STL_LINK_RECORD *pLinkRecord);
 void PrintStlServiceRecord(PrintDest_t *dest, int indent, const STL_SERVICE_RECORD *pServiceRecord);
 void PrintStlInformInfoRecord(PrintDest_t * dest, int indent, const STL_INFORM_INFO_RECORD * pInformInfoRecord);
+void PrintStlVfInfoRecord_detail(PrintDest_t *dest, int indent, int detail, const STL_VFINFO_RECORD *pVfInfo, int showQueryParams);
 void PrintStlVfInfoRecord(PrintDest_t *dest, int indent, const STL_VFINFO_RECORD *pVfInfo);
 void PrintStlVfInfoRecordCSV(PrintDest_t *dest, int indent, const STL_VFINFO_RECORD *pVfInfo);
 void PrintStlVfInfoRecordCSV2(PrintDest_t *dest, int indent, const STL_VFINFO_RECORD *pVfInfo);

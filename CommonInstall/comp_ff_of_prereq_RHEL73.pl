@@ -47,6 +47,7 @@ my @oftools_prereq = (
                     "libibverbs",
 		    "libhfi1",
                     "libstdc++",
+		    "ibacm",
 );
 $comp_prereq_hash{'oftools_prereq'} = \@oftools_prereq;
 

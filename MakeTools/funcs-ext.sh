@@ -710,13 +710,16 @@ function os_vendor()
         # Apple Mac
         rval=apple
     else
-        filelist=`'ls' /etc/*-release | egrep -v lsb | egrep -v os`
+        filelist=($('ls' /etc/*-release | egrep -v lsb | egrep -v os))
         rval=""
+        if [ ${#filelist[@]} -eq 0 ] && [ -f /etc/lsb-release ]; then
+            rval=$(cat /etc/lsb-release | egrep DISTRIB_ID | cut -d'=' -f2)
+        fi
         for file in $filelist
         do
 	    if [ -f $file ]
 	    then
-		    rval=`basename $file -release`
+		    rval=$(basename $file -release)
 		    if [ $rval = 'SuSE' ]
 		    then
 			    if [ -f /etc/UnitedLinux-release ]
@@ -751,7 +754,11 @@ function os_vendor_version()
 		# - use VERSION_ID - it has a common format among distros 
 		# - mimic old way and drop $minor if eq 0 (see redhat handling below)
 		# - drop '.'(dot)
-		rval=ES$(echo $VERSION_ID | sed -e 's/\.[0]//' -e 's/\.//')
+        if [ $1 = "Ubuntu" ]; then
+            rval=$(echo $VERSION_ID | sed -e 's/\.[0]//' -e 's/\.//')
+        else
+		    rval=ES$(echo $VERSION_ID | sed -e 's/\.[0]//' -e 's/\.//')
+        fi
 		echo $rval
 		return
 	fi
@@ -1251,3 +1258,29 @@ function setver()
        fi
     fi
 } #end function
+
+##
+## getIntelcompilervarsfile
+##
+## Parameters:
+##   prefix - directory pattern to search for in /opt/intel
+##   subdir - subdirectory under the pattern - can be null
+## 
+## Looks for a list of directories matching the pattern and selects the newest
+##
+
+getIntelcompilervarsfile()
+{
+	prefix=$1
+	subdir=$2
+	foundfile=
+	for f in $(ls -rd /opt/intel/${prefix}*)
+	do
+		if [ -f $f/$subdir/bin/compilervars.sh ]
+		then
+			foundfile=$f/$subdir/bin/compilervars.sh
+			break
+		fi
+	done
+	echo "$foundfile"
+}
