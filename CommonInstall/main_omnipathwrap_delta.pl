@@ -436,7 +436,7 @@ my %ComponentInfo_rhel72 = (
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob("./IntelOPA-Tools*.*"),
 					  DriverSubdir => "",
-					  PreReq => " opa_stack ", CoReq => " opa_stack ",
+					  PreReq => " opa_stack ibacm ", CoReq => " opa_stack ",
 					  Hidden => 0, Disabled => 0,
 					  HasStart => 1, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => " opa_stack ", # TBD

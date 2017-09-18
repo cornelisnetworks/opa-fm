@@ -2276,11 +2276,11 @@ sm_aggregateToBfrctrl(Node_t * nodep, STL_AGGREGATE * aggr)
 	do {
 		Port_t *portp = sm_get_port(nodep, startPort + i);
 
-		if (!sm_valid_port(portp)) continue;
-
-		portp->portData->bufCtrlTable = *((STL_BUFFER_CONTROL_TABLE*)data);
-		portp->portData->current.bfrctrl = 1;
-		BSWAP_STL_BUFFER_CONTROL_TABLE(&(portp->portData->bufCtrlTable));
+		if (sm_valid_port(portp)) {
+			portp->portData->bufCtrlTable = *((STL_BUFFER_CONTROL_TABLE*)data);
+			portp->portData->current.bfrctrl = 1;
+			BSWAP_STL_BUFFER_CONTROL_TABLE(&(portp->portData->bufCtrlTable));
+		}
 		data += STL_BFRCTRLTAB_PAD_SIZE;
 	} while (++i < count);
 
