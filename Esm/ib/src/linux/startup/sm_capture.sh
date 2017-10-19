@@ -38,8 +38,10 @@ SM_EXEC=/usr/lib/opa-fm/runtime/sm
 IFS_FM_BASE=/usr/lib/opa-fm
 
 PROGNAME="$0"
-dirName="smdump-"`date '+%d%b%y%H%M%S'`
-dumpLocation="/tmp/$dirName"
+# Hedge against bash vs. sh
+dateStr=`date '+%d%b%y%H%M%S'`
+dumpLocation="`mktemp -d /tmp/smdump-${dateStr}-XXXXXX`"
+dirName=`basename $dumpLocation`
 
 usage() {
 	echo "Usage:"
