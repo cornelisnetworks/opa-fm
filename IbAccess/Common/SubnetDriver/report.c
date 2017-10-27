@@ -39,7 +39,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <report.h>
 #include <subscribe.h>
 #include <sdi.h>
-#include "iba/stl_mad.h"
+#include "iba/stl_mad_priv.h"
 #include <imap.h>
 #include <imemory.h>
 #include <dbg.h>

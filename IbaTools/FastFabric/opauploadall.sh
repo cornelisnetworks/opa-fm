@@ -151,6 +151,8 @@ do
 done
 
 running=0
+pids=""
+stat=0
 for hostname in $HOSTS
 do
 	src_files=
@@ -168,15 +170,32 @@ do
 	then
 		if [ $running -ge $FF_MAX_PARALLEL ]
 		then
-			wait
+			for pid in $pids; do
+				wait $pid
+				if [ "$?" -ne 0 ]; then
+					stat=1
+				fi
+			done
+			pids=""
 			running=0
 		fi
 		echo "scp $opts $src_files $UPLOADS_DIR/$hostname/$dest"
 		scp $opts $src_files $UPLOADS_DIR/$hostname/$dest &
+		pid=$!
+		pids="$pids $pid"
 		running=$(( $running + 1))
 	else
 		echo "scp $opts $src_files $UPLOADS_DIR/$hostname/$dest"
 		scp $opts $src_files $UPLOADS_DIR/$hostname/$dest
+		if [ "$?" -ne 0 ]; then
+			stat=1
+		fi
 	fi
 done
-wait
+for pid in $pids; do
+	wait $pid
+	if [ "$?" -ne 0 ]; then
+		stat=1
+	fi
+done
+exit $stat

@@ -69,10 +69,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifdef BUILD_RHEL4
 #define _POSIX_C_SOURCE 200112L
 #endif
-#if defined(LINT)
-#define __signed__ signed
-#include <bits/sigset.h>
-#endif
 #include <stdio.h>
 #include <string.h>
 #include <fcntl.h>

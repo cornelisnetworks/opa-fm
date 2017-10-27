@@ -1033,6 +1033,8 @@ static uint8 DispatcherStartSweepAllPorts(Pm_t *pm, PmDispatcherNode_t *dispnode
 #endif
 
     for (slot = 0; slot < pm_config.PmaBatchSize; ) {
+	// reset numVLs back to 0 in case it has changed since the last PM sweep
+	dispnode->DispPackets[slot].numVLs = 0;
         status = DispatchNextPacket(pm, dispnode, &dispnode->DispPackets[slot]);
 		switch (status) {
 		case VSTATUS_OK:

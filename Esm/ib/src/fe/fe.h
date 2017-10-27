@@ -93,7 +93,7 @@ void BSWAP_OOB_PACKET(OOBPacket *packet)
 /* Unsolicited Notice / Traps Structure */
 struct Trap {
     uint32_t    trapType;           /* Type of Trap                 */
-    Lid_t   lidAddr;            /* LID Address                  */
+    STL_LID   lidAddr;            /* LID Address                  */
     uint8_t portNum;                /* Port number                  */
 	STL_NOTICE notice;
     struct Trap *next;

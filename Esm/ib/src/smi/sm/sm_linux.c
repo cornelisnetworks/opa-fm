@@ -560,8 +560,9 @@ uint8_t if3_is_master(void)
     return sm_isMaster(); 
 }
 
-void if3_set_rmpp_minfo (ManagerInfo_t *mi)
+Status_t if3_set_rmpp_minfo (ManagerInfo_t *mi)
 {
+    Status_t rc = VSTATUS_OK;
     // Default, RMPP filters required in order for thread to receive inbound
     // MAD requests
     mi->rmppCreateFilters = 1;
@@ -580,6 +581,7 @@ void if3_set_rmpp_minfo (ManagerInfo_t *mi)
 			if (tname == NULL) {
             	IB_LOG_INFINI_INFO_FMT(__func__, 
 					"Error unnamed thread");
+				rc = VSTATUS_BAD;
 			} else if (!strcmp(tname, "fe")) {
             	mi->rmppMngrfd = &fd_pm;
             	mi->rmppPool = &fe_pool;
@@ -593,6 +595,7 @@ void if3_set_rmpp_minfo (ManagerInfo_t *mi)
         	} else {
             	IB_LOG_INFINI_INFO_FMT(__func__, 
 					"Error unknown thread %s", tname);
+                rc = VSTATUS_BAD;
         	}
 		}
         break;
@@ -606,9 +609,11 @@ void if3_set_rmpp_minfo (ManagerInfo_t *mi)
         mi->rmppMaxCntxt = sa_max_cntxt;
         break;
     default:
+        rc = VSTATUS_ILLPARM;
         IB_LOG_INFINI_INFO_FMT(__func__, "MCLASS 0x%x not supported", mi->mclass);
         break;
     }
+    return rc;
 }
 
 /*                                                              

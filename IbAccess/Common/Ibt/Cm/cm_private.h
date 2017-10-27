@@ -55,7 +55,7 @@ extern "C" {
 #include "iquickmap.h"
 #include "ilist.h"
 #include "stl_types.h"
-#include "stl_mad.h"
+#include "stl_mad_priv.h"
 #include "stl_helper.h"
 #include "ib_gsi.h"
 #include "ibt.h"

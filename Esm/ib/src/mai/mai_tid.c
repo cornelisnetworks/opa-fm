@@ -48,6 +48,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include "mai_l.h"		/* Local mai function definitions */
+#include "ispinlock.h"
 
 /*
  * FUNCTION
@@ -69,21 +70,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *      NAME      DATE          REMARKS
  *      PAW     06/4/01 Initial entry
  */
-static uint16_t layer_counter=0;
+static ATOMIC_UINT layer_counter=0;
 
 Status_t
 mai_alloc_tid(IBhandle_t fd, uint8_t mclass, uint64_t * tid)
 {
-    int             rc;
-    Threadname_t    pid;
-    uint64_t        mc = mclass,
-                    mpid,
-                    counter;
-    uint64_t        llfd = (uint64_t)fd;
-
-    /*
-     * Standard entry stuff 
-     */
+    int             rc = 0;
+    ATOMIC_UINT     counter = AtomicIncrement(&layer_counter);
 
     IB_ENTER(__func__, fd, 0, 0, 0);
 
@@ -94,33 +87,23 @@ mai_alloc_tid(IBhandle_t fd, uint8_t mclass, uint64_t * tid)
 	  return rc;
       }
 
-    if ((rc = vs_thread_name(&pid)) != VSTATUS_OK)
-      {
-	  IB_EXIT(__func__, rc);
-	  return (rc);
-      }
-
-    mpid = (uint64_t) pid;
-
-    /*
-     * if first call do this computation. Avoid races by taking lock 
-     */
-    MAI_TID_LOCK();
-    counter = layer_counter++;
-    mc = mc << 56;
-    llfd = llfd << 48;
-    MAI_TID_UNLOCK();
 #if defined(CAL_IBACCESS)
+    // For the embedded SM, inject the process ID into the TID
+    // to ensure responses are delivered to the correct destination.
+    Threadname_t    pid;
+    if ((rc = vs_thread_name(&pid)) != VSTATUS_OK) {
+        IB_EXIT(__func__, rc);
+        return (rc);
+    }
+    uint64_t        mpid = (uint64_t) pid;
     *tid = (((mpid & 0xffffff) << 40) |	// 24 bits for pid
 	        ((counter & 0xffff) << 24));// 16 bits for counter
 #elif defined(IB_STACK_OPENIB)
-	*tid = (((mpid    & 0xffff) << 16) | // 16 bits for pid
-	         (counter & 0xffff));        // 16 bits for counter
+	// OpenIB reserves the top 32 bits of the TID for its own use.
+	// (See infiniband/core/user_mad.c.)
+	*tid = (counter & 0xffffffff);      // 32 bits for counter
 #else
-    /* Agilent based products */
-    *tid = (mc | llfd |	                // upper 16 bits for class
-            ((mpid & 0xffff) << 32) |	// 16 bits for pid
-	        (counter));		            // 32 bits for counter
+#error Either CAL_IBACCESS or IB_STACK_OPENIB must be defined.
 #endif
 
     IB_EXIT(__func__, rc);
@@ -140,16 +123,13 @@ mai_alloc_tid(IBhandle_t fd, uint8_t mclass, uint64_t * tid)
 uint64_t
 mai_increment_tid(uint64_t tid)
 {
-    uint64_t        counter;
-    MAI_TID_LOCK();
-    counter = layer_counter++;
-    MAI_TID_UNLOCK();
+    ATOMIC_UINT     counter = AtomicIncrement(&layer_counter);
+
 #if defined(CAL_IBACCESS)
     return (tid & 0xffffff0000ffffffULL) | ((counter & 0xffff) << 24);
 #elif defined(IB_STACK_OPENIB)
-    return (tid & 0xffffffffffff0000ULL) | (counter & 0xffff);
+    return (tid & 0xffffffff00000000ULL) | (counter & 0xffffffff);
 #else
-    /* Agilent based products */
-    return (tid & 0xffffffffffff0000ULL) | (counter & 0xffff);
+#error Either CAL_IBACCESS or IB_STACK_OPENIB must be defined.
 #endif
 }

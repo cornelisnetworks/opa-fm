@@ -69,7 +69,7 @@ Usage_full()
 	echo "   HOSTS='elrond arwen' opashowallports" >&2
 	echo "   opashowallports -C" >&2
 	echo "   opashowallports -H 'chassis1 chassis2'" >&2
-	echo "   CHASSIS='chassis1 chasssi2' opashowallports" >&2
+	echo "   CHASSIS='chassis1 chassis2' opashowallports -C" >&2
 	exit 0
 }
 

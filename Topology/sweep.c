@@ -47,7 +47,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 static int	g_skipswitchinfo= 0;	// workaround for open SM
-static int	g_paclient_state = PACLIENT_UNKNOWN;	// PaClient/PaServer communications
+static int	g_paclient_state = OMGT_SERVICE_STATE_UNKNOWN;	// PaClient/PaServer communications
 static FILE *g_verbose_file = NULL;	// file for verbose output
 static struct omgt_port *g_portHandle = NULL;
 
@@ -2332,8 +2332,8 @@ FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabric
 	}
 
 #ifdef PRODUCT_OPENIB_FF
-	if ((g_paclient_state == PACLIENT_UNKNOWN) && !(fabricp->flags & FF_PMADIRECT)){
-		g_paclient_state = omgt_pa_client_connect(g_portHandle);
+	if ((g_paclient_state == OMGT_SERVICE_STATE_UNKNOWN) && !(fabricp->flags & FF_PMADIRECT)){
+		g_paclient_state = omgt_pa_service_connect(g_portHandle);
 		if (g_paclient_state < 0) {
 			return FERROR;
 		}
@@ -2360,7 +2360,7 @@ FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabric
 #ifdef PRODUCT_OPENIB_FF
 			lid = first_portp->PortInfo.LID;
 #endif
-			if (g_paclient_state != PACLIENT_OPERATIONAL) {
+			if (g_paclient_state != OMGT_SERVICE_STATE_OPERATIONAL) {
 				status = GetPathToPort(g_portHandle, portGuid, first_portp);
 				if (FSUCCESS != status) {
 					DBGPRINT("Unable to get Path to Port %d LID 0x%04x Node 0x%016"PRIx64"\n",
@@ -2390,7 +2390,7 @@ FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabric
 #ifdef PRODUCT_OPENIB_FF
 
 			/* use PaClient if available */
-			if (g_paclient_state == PACLIENT_OPERATIONAL)
+			if (g_paclient_state == OMGT_SERVICE_STATE_OPERATIONAL)
 			{
 				if (!first_portp)
 					lid = portp->PortInfo.LID;
@@ -2558,7 +2558,7 @@ FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabric
 		omgt_close_port(g_portHandle);
 		g_portHandle = NULL;
 #ifdef PRODUCT_OPENIB_FF
-		g_paclient_state = PACLIENT_UNKNOWN;
+		g_paclient_state = OMGT_SERVICE_STATE_UNKNOWN;
 #endif
 	}
 
@@ -3489,6 +3489,28 @@ static FSTATUS CopyLinearFDBBlock(STL_LINEAR_FORWARDING_TABLE *pDestFwdTbl, PORT
 	return (FSUCCESS);
 }
 
+/* copy port group FDB block
+ */
+static FSTATUS CopyPortGroupFDBBlock(STL_PORT_GROUP_FORWARDING_TABLE *pDestFwdTbl, PORT *pSrcFDBData, uint16 blockSize)
+{
+	if (!pDestFwdTbl || !pSrcFDBData || !blockSize)
+		return (FINVALID_PARAMETER);
+
+	memcpy(pDestFwdTbl, pSrcFDBData, blockSize);
+	return (FSUCCESS);
+}
+
+/* copy port group block
+ */
+static FSTATUS CopyPortGroupBlock(STL_PORTMASK *pDestTbl, STL_PORTMASK *pSrcData, uint16 blockSize)
+{
+	if (!pDestTbl || !pSrcData || !blockSize)
+		return (FINVALID_PARAMETER);
+
+	memcpy(pDestTbl, pSrcData, blockSize);
+	return (FSUCCESS);
+}
+
 /* copy multicast FDB block
  */
 static FSTATUS CopyMulticastFDBBlock( NodeData *pNode, STL_PORTMASK *pDestFwdTbl,
@@ -3817,10 +3839,15 @@ static FSTATUS GetAllFDBsDirect(struct omgt_port *port, FabricData_t *fabricp, P
 
 	cl_map_item_t *p;
 
-	STL_LINEAR_FORWARDING_TABLE linearFDB;
-	STL_MULTICAST_FORWARDING_TABLE multicastFDB;
+	STL_LINEAR_FORWARDING_TABLE		linearFDB;
+	STL_MULTICAST_FORWARDING_TABLE	multicastFDB;
+	STL_PORT_GROUP_TABLE			pgt;
+	STL_PORT_GROUP_FORWARDING_TABLE	pgFDB;
+
 	uint32	linearFDBSize; // Size increased in STL
 	uint32	multicastFDBSize;
+	uint32	pgSize;
+	uint32	pgFDBSize;
 
 	int num_nodes = cl_qmap_count(&fabricp->AllNodes);
 
@@ -3843,6 +3870,7 @@ static FSTATUS GetAllFDBsDirect(struct omgt_port *port, FabricData_t *fabricp, P
 			linearFDBSize = nodep->pSwitchInfo->SwitchInfoData.LinearFDBTop+1;
 			multicastFDBSize = ComputeMulticastFDBSize(&nodep->pSwitchInfo->SwitchInfoData);
  			limit = ROUNDUP(linearFDBSize,MAX_LFT_ELEMENTS_BLOCK)/MAX_LFT_ELEMENTS_BLOCK;
+
 			// Add LinearFDB and MulticastFDB data to SwitchData
 			status = NodeDataAllocateSwitchData( fabricp, nodep, linearFDBSize,
 				multicastFDBSize);
@@ -3880,6 +3908,48 @@ static FSTATUS GetAllFDBsDirect(struct omgt_port *port, FabricData_t *fabricp, P
 					}
 				}
 			}
+
+			if (nodep->pSwitchInfo->SwitchInfoData.AdaptiveRouting.s.Enable) {
+				// Query Port Group FDB records
+				pgFDBSize = MIN(nodep->pSwitchInfo->SwitchInfoData.LinearFDBTop+1,
+								nodep->pSwitchInfo->SwitchInfoData.PortGroupFDBCap ?
+									nodep->pSwitchInfo->SwitchInfoData.PortGroupFDBCap :
+									DEFAULT_MAX_PGFT_LID+1);
+
+				limit = ROUNDUP(pgFDBSize, NUM_PGFT_ELEMENTS_BLOCK)/NUM_PGFT_ELEMENTS_BLOCK;
+				for (ix = 0; ix < limit; ix++) {
+					status = SmaGetPortGroupFDBTable(port, nodep, lid, ix, &pgFDB);
+					if (status != FSUCCESS)
+					{
+						fprintf(stderr, "%*sSMA Get(PortGroupFDB %u) Failed to LID 0x%x Node 0x%016"PRIx64" Name: %.*s: %s\n", 0, "", ix, lid,
+							nodep->NodeInfo.NodeGUID,
+							STL_NODE_DESCRIPTION_ARRAY_SIZE,
+							(char*)nodep->NodeDesc.NodeString, iba_fstatus_msg(status));
+					} else {
+						CopyPortGroupFDBBlock(&nodep->switchp->PortGroupFDB[ix],
+							pgFDB.PgftBlock,
+							MIN(pgFDBSize - ix, (int)NUM_PGFT_ELEMENTS_BLOCK));
+					}
+				}
+
+				pgSize = nodep->pSwitchInfo->SwitchInfoData.PortGroupTop;
+				limit = ROUNDUP(pgSize, NUM_PGT_ELEMENTS_BLOCK)/NUM_PGT_ELEMENTS_BLOCK;
+				for (ix = 0; ix < limit; ix++) {
+					status = SmaGetPortGroupTable(port, nodep, lid, ix, &pgt);
+					if (status != FSUCCESS)
+					{
+						fprintf(stderr, "%*sSMA Get(PortGroupTable %u) Failed to LID 0x%x Node 0x%016"PRIx64" Name: %.*s: %s\n", 0, "", ix, lid,
+							nodep->NodeInfo.NodeGUID,
+							STL_NODE_DESCRIPTION_ARRAY_SIZE,
+							(char*)nodep->NodeDesc.NodeString, iba_fstatus_msg(status));
+					} else {
+						CopyPortGroupBlock(&nodep->switchp->PortGroupElements[ix*NUM_PGT_ELEMENTS_BLOCK],
+							pgt.PgtBlock,
+							(MIN(pgSize - (ix*NUM_PGT_ELEMENTS_BLOCK), (int)NUM_PGT_ELEMENTS_BLOCK)) * sizeof(STL_PORTMASK));
+					}
+				}
+			}
+
 		}	// End of if (nodep->NodeInfo.NodeType == STL_NODE_SW
 
 	}	// End of for ( p=cl_qmap_head(&fabricp->AllNodes)
@@ -3940,8 +4010,8 @@ FSTATUS ClearAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabr
 	}
 
 #ifdef PRODUCT_OPENIB_FF
-	if ((g_paclient_state == PACLIENT_UNKNOWN) && !(fabricp->flags & FF_PMADIRECT)) {
-		g_paclient_state = omgt_pa_client_connect(g_portHandle);
+	if ((g_paclient_state == OMGT_SERVICE_STATE_UNKNOWN) && !(fabricp->flags & FF_PMADIRECT)) {
+		g_paclient_state = omgt_pa_service_connect(g_portHandle);
 		if (g_paclient_state < 0) {
 			return FERROR;
 		}
@@ -3971,7 +4041,7 @@ FSTATUS ClearAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabr
 #ifdef PRODUCT_OPENIB_FF
 			lid = first_portp->PortInfo.LID;
 #endif
-			if (g_paclient_state != PACLIENT_OPERATIONAL) {
+			if (g_paclient_state != OMGT_SERVICE_STATE_OPERATIONAL) {
 				status = GetPathToPort(g_portHandle, portGuid, first_portp);
 				if (FSUCCESS != status) {
 					DBGPRINT("Unable to get Path to Port %d LID 0x%04x Node 0x%016"PRIx64"\n",
@@ -4005,7 +4075,7 @@ FSTATUS ClearAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabr
 
 #ifdef PRODUCT_OPENIB_FF
 			/* use PaClient if available */
-			if (g_paclient_state == PACLIENT_OPERATIONAL)
+			if (g_paclient_state == OMGT_SERVICE_STATE_OPERATIONAL)
 			{
 				STL_PA_IMAGE_ID_DATA imageIdQuery = {PACLIENT_IMAGE_CURRENT, 0};
 
@@ -4072,7 +4142,7 @@ FSTATUS ClearAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabr
 		omgt_close_port(g_portHandle);
 		g_portHandle = NULL;
 #ifdef PRODUCT_OPENIB_FF
-		g_paclient_state = PACLIENT_UNKNOWN;
+		g_paclient_state = OMGT_SERVICE_STATE_UNKNOWN;
 #endif
 	}
 

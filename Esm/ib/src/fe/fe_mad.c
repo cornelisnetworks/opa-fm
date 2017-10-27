@@ -54,7 +54,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <fm_xml.h>
 #include "if3.h"
 #include "ib_sa.h"
-#include "stl_pa.h"
+#include "stl_pa_priv.h"
 
 extern IBhandle_t  fdsa,fd_pm,fd_dm;
 extern uint32_t fe_get_payload_length(uint8_t *netbuf);
@@ -110,7 +110,7 @@ uint32_t fe_vieo_init(uint8_t *logName)
         if (pm_lid)
             rc = if3_lid_mngr_cnx(fe_config.hca,fe_config.port,MAD_CV_VFI_PM,pm_lid,&fd_pm);
         else
-            rc = if3_sid_mngr_cnx(fe_config.hca,fe_config.port,(void *)PM_SERVICE_NAME,PM_SERVICE_ID,
+            rc = if3_sid_mngr_cnx(fe_config.hca,fe_config.port,(void *)STL_PM_SERVICE_NAME,STL_PM_SERVICE_ID,
                                MAD_CV_VFI_PM,&fd_pm);
 
         if (rc != VSTATUS_OK) {
@@ -336,6 +336,7 @@ uint32_t fe_sa_passthrough(uint8_t *netbuf, FE_ConnList *connList, IBhandle_t fd
 	case STL_SA_ATTR_SWITCH_PORT_CONG_RECORD:
 	case STL_SA_ATTR_HFI_CONG_RECORD:
 	case STL_SA_ATTR_HFI_CONG_CTRL_RECORD:
+	case STL_SA_ATTR_SWITCH_COST_RECORD:
 		if(saMad->common.mr.s.Method != SUBN_ADM_GET && saMad->common.mr.s.Method != SUBN_ADM_GETTABLE){
 			badRequest = FE_UNSUPPORTED;
 		}

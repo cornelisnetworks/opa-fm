@@ -129,7 +129,7 @@ sa_SwitchInfoRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 
 Status_t
 sa_SwitchInfoRecord_Set(uint8_t *srp, Node_t *nodep, Port_t *portp) {
-	Lid_t lid;
+	STL_LID lid;
 	Port_t *swiPortp;
 	STL_SWITCHINFO_RECORD	switchInfoRecord = {{0}};
 

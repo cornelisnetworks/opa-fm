@@ -38,6 +38,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <openssl/pem.h>
 #include <openssl/obj_mac.h>
 #include <openssl/ec.h>
+#include <string.h>
 
 
 #define OPAMGT_PRIVATE 1

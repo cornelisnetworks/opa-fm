@@ -33,7 +33,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define _MULTICAST_H
 
 #include <datatypes.h>
-#include <stl_sa.h>
+#include <stl_sa_priv.h>
 #include <stl_sd.h>
 #include <ib_ibt.h>
 

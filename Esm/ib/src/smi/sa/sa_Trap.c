@@ -65,8 +65,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sa_l.h"
 #include "cs_context.h"
 #include "cs_queue.h"
-#include "iba/stl_sa.h"
-#include "iba/stl_sm.h"
+#include "iba/stl_sa_priv.h"
+#include "iba/stl_sm_priv.h"
 
 static Status_t	sa_Trap_Forward(SubscriberKeyp, STL_NOTICE *);
 
@@ -239,7 +239,7 @@ sm_sa_forwardNotice(STL_NOTICE * noticep)
 // NOTE: Needs to be called from under an old_topology lock.
 //
 static void
-sa_updateTrapCountForPort(Lid_t lid, uint32_t portIndex, int disable)
+sa_updateTrapCountForPort(STL_LID lid, uint32_t portIndex, int disable)
 {
 	Node_t *nodep, *swnodep;
 	Port_t *portp, *ext_portp, *swportp;
@@ -479,6 +479,12 @@ sa_Trap(Mai_t *maip) {
 		case MAD_SMT_BAD_PKEY_ONPORT:
 			INCREMENT_COUNTER(smCounterTrapBadPKeySwPort);
 			break;
+		case STL_SMA_TRAP_LINK_WIDTH:
+			INCREMENT_COUNTER(smCounterTrapLinkWidthDowngrade);
+			break;
+		case STL_TRAP_COST_MATRIX_CHANGE:
+			INCREMENT_COUNTER(smCounterTrapCostMatrixChange);
+			break;
 	}
 
 	/* Send a TrapRepress to the sender after inserting our Mkey */
@@ -575,7 +581,7 @@ sa_Trap(Mai_t *maip) {
 					} 
 				}else{ //other capability bit changed, just get fresh port info
 					STL_PORT_INFO portInfo;
-					Status_t status = SM_Get_PortInfo_LR(fd_topology, (1 << 24) | portp->index, sm_lid, portp->portData->lid, &portInfo);
+					Status_t status = SM_Get_PortInfo_LR(fd_async_request, (1 << 24) | portp->index, sm_lid, portp->portData->lid, &portInfo);
 					if (status != VSTATUS_OK){
 						IB_LOG_WARN_FMT(__func__, 
 										"Cannot get PORTINFO for %s, TID="FMT_U64
@@ -889,6 +895,8 @@ static Status_t sa_Trap_Forward(SubscriberKeyp subsKeyp, STL_NOTICE * noticep) {
 			IB_LOG_ERRORRC("sa_Trap_Forward: can't send MAD unreliably rc:", status);
 		}
     } else {
+		// Set mad Data size
+		madcntxt->mad.datasize = (subsKeyp->ibMode ? sizeof(IB_NOTICE) : sizeof(STL_NOTICE));
         // send notice out reliably
         if ((status = cs_cntxt_send_mad (madcntxt, &sm_notice_cntxt)) != VSTATUS_OK) {
 			IB_LOG_ERRORRC("sa_Trap_Forward: can't send MAD reliably rc:", status);

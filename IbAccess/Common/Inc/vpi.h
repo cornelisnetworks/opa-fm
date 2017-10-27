@@ -37,7 +37,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * and Service Level Interface
  */
 
-#include "iba/stl_types.h"
+#include "iba/ib_types.h"
 
 #ifdef __cplusplus
 extern "C" {

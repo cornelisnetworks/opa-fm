@@ -68,8 +68,7 @@ int             gMAI_FILT_CNT,
                 gMAI_MAD_CNT,
                 gMAI_HDL_CNT;
 
-MLock_t         gmai_uplock,
-                gmai_tidlock;
+MLock_t         gmai_uplock;
 MLock_t         gmai_hlock,
                 gmai_mlock,
                 gmai_flock;
@@ -248,7 +247,6 @@ mai_init()
     (void)memset(&gmai_hlock, 0, sizeof(MLock_t));
     (void)memset(&gmai_flock, 0, sizeof(MLock_t));
     (void)memset(&gmai_mlock, 0, sizeof(MLock_t));
-    (void)memset(&gmai_tidlock, 0, sizeof(MLock_t));
     (void)memset(&gmai_dcthr_lock, 0, sizeof(MLock_t));
 
     rc = vs_lock_init(&gmai_uplock.lock, VLOCK_FREE, VLOCK_THREAD);
@@ -276,14 +274,6 @@ mai_init()
       }
 
     rc = vs_lock_init(&gmai_mlock.lock, VLOCK_FREE, VLOCK_THREAD);
-    if (rc)
-      {
-	  IB_LOG_ERRORRC("vs_lock_init rc:", rc);
-	  IB_EXIT(__func__, VSTATUS_BAD);
-	  return;
-      }
-
-    rc = vs_lock_init(&gmai_tidlock.lock, VLOCK_FREE, VLOCK_THREAD);
     if (rc)
       {
 	  IB_LOG_ERRORRC("vs_lock_init rc:", rc);
@@ -553,7 +543,6 @@ void
 mai_deinit(){
 	int i=0;
 	vs_lock_delete(&gmai_uplock.lock);
-	vs_lock_delete(&gmai_tidlock.lock);
 	vs_lock_delete(&gmai_hlock.lock);
 	vs_lock_delete(&gmai_mlock.lock);
 	vs_lock_delete(&gmai_flock.lock);

@@ -453,7 +453,7 @@ if3_mngr_query_service (IBhandle_t fd,
 }
 
 Status_t
-if3_mngr_query_srv_path(IBhandle_t fd, IB_SERVICE_RECORD *srp, Lid_t *lid , uint16_t *sl)
+if3_mngr_query_srv_path(IBhandle_t fd, IB_SERVICE_RECORD *srp, STL_LID *lid , uint16_t *sl)
 { 
     Status_t status; 
     IB_PATH_RECORD pr; 

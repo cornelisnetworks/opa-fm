@@ -42,7 +42,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "iba/ib_ibt.h"
 #include "iba/stl_types.h"
 #include "iba/stl_sd.h"
-#include "iba/stl_pa.h"
+#include "iba/stl_pa_priv.h"
 #if defined(VXWORKS)
 #ifdef BUILD_CM
 #include "iba/ib_cm.h"

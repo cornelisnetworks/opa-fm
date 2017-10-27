@@ -44,7 +44,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define _GNU_SOURCE
 #include <iba/ib_mad.h>
 #include <iba/stl_pm.h>
-#include <iba/stl_pa.h>
+#include <iba/stl_pa_priv.h>
 #include <iba/public/ispinlock.h>	// for ATOMIC_UINT
 #include <iba/public/iquickmap.h>	// for cl_qmap_t
 #include <limits.h>
@@ -257,12 +257,6 @@ typedef struct ErrorBucket_s {
 	pm_bucket_t Routing;
 } PACK_SUFFIX ErrorBucket_t;
 
-// we have 10 buckets each covering a 10% range.
-// So we can say number of ports with 0-10% utilization, number with 10-20%
-// ... number with 90-100%
-#define PM_UTIL_GRAN_PERCENT 10	/* granularity of utilization buckets */
-#define PM_UTIL_BUCKETS (100/PM_UTIL_GRAN_PERCENT)
-
 // summary of utilization statistics for a group of ports
 typedef struct PmUtilStats_s {
 	// internal intermediate data
@@ -276,7 +270,7 @@ typedef struct PmUtilStats_s {
 	uint32 MaxMBps;	// maximum MB per second of all selected ports
 
 	// Counter below counts number of ports within given % of BW utilization
-	pm_bucket_t BwPorts[PM_UTIL_BUCKETS];
+	pm_bucket_t BwPorts[STL_PM_UTIL_BUCKETS];
 
 	// packets/sec tracking
 	uint32 AvgKPps;	// average kilo packets/sec of all selected ports
@@ -296,12 +290,6 @@ typedef struct PmUtilStats_s {
 
 #define PA_INC_COUNTER_NO_OVERFLOW(cntr, max) do { if (cntr >= max) { cntr = max; } else { cntr++; } } while(0)
 
-// we have 4 buckets each covering a 25% range and one extra bucket
-// So we can say number of ports within 0-24% of threshold, number within 25-50%
-// ... number within 75-100% and number exceeding threshold.
-#define PM_ERR_GRAN_PERCENT 25	/* granularity of error buckets */
-#define PM_ERR_BUCKETS ((100/PM_ERR_GRAN_PERCENT)+1) // extra bucket is for those over threshold
-
 // summary of error statistics for a group of ports
 typedef struct PmErrStats_s {
 	// For between-group stats, we take Max of us and our neighbor
@@ -315,7 +303,7 @@ typedef struct PmErrStats_s {
 	// for in-group we count one for each port in group
 	// buckets are based on % of configured threshold,
 	// last bucket is for >=100% of threshold
-	ErrorBucket_t Ports[PM_ERR_BUCKETS];// in group
+	ErrorBucket_t Ports[STL_PM_CATEGORY_BUCKETS];// in group
 } PACK_SUFFIX PmErrStats_t;
 
 struct PmPort_s;
@@ -938,7 +926,7 @@ typedef struct Pm_s {
 	uint32 *freezeFrames;		// exclusively for FREEZE_FRAME
 
 	// configuration settings
-	uint16 flags;	// configured (see ib_pa.h pmFlags for a list)
+	uint16 flags;	// configured (see stl_pa.h pmFlags for a list)
 	uint16 interval;	// in seconds
 	// threshold is per interval NOT per second
 	// set threshold to 0 to disable monitoring given Error type
@@ -1003,7 +991,7 @@ BSWAP_PM_UTIL_STATS(PmUtilStats_t *Dest)
 	Dest->AvgMBps = ntoh32(Dest->AvgMBps);
 	Dest->MinMBps = ntoh32(Dest->MinMBps);
 	Dest->MaxMBps = ntoh32(Dest->MaxMBps);
-	BSWAP_PM_BUCKET(Dest->BwPorts, PM_UTIL_BUCKETS);
+	BSWAP_PM_BUCKET(Dest->BwPorts, STL_PM_UTIL_BUCKETS);
 	Dest->AvgKPps = ntoh32(Dest->AvgKPps);
 	Dest->MinKPps = ntoh32(Dest->MinKPps);
 	Dest->MaxKPps = ntoh32(Dest->MaxKPps);
@@ -1056,7 +1044,7 @@ BSWAP_PM_ERR_STATS(PmErrStats_t *Dest)
 {
 #if CPU_LE
 	BSWAP_PM_ERROR_SUMMARY(&Dest->Max, 1);
-	BSWAP_PM_ERROR_BUCKET(Dest->Ports, PM_ERR_BUCKETS);
+	BSWAP_PM_ERROR_BUCKET(Dest->Ports, STL_PM_CATEGORY_BUCKETS);
 #endif
 }	// End of BSWAP_PM_ERR_STATS
 
@@ -1538,9 +1526,9 @@ static __inline uint8 ComputeUtilBucket(uint32 SendMBps, uint32 maxMBps)
 {
 	if (maxMBps) {
 		// directly compute bucket to reduce overflow chances
-		uint8 utilBucket = (SendMBps * PM_UTIL_BUCKETS) / maxMBps;
-		if (utilBucket >= PM_UTIL_BUCKETS)
-			return PM_UTIL_BUCKETS-1;
+		uint8 utilBucket = (SendMBps * STL_PM_UTIL_BUCKETS) / maxMBps;
+		if (utilBucket >= STL_PM_UTIL_BUCKETS)
+			return STL_PM_UTIL_BUCKETS-1;
 		else
 			return utilBucket;
 	} else {
@@ -1555,9 +1543,9 @@ static __inline uint8 ComputeErrBucket(uint32 errCnt, uint32 errThreshold)
 	uint8 errBucket;
 	if (! errThreshold) return 0;
 
-	errBucket = (errCnt * (PM_ERR_BUCKETS-1)) / errThreshold;
-	if (errBucket >= PM_ERR_BUCKETS)
-		 return PM_ERR_BUCKETS-1;
+	errBucket = (errCnt * (STL_PM_CATEGORY_BUCKETS-1)) / errThreshold;
+	if (errBucket >= STL_PM_CATEGORY_BUCKETS)
+		 return STL_PM_CATEGORY_BUCKETS-1;
 	else
 		 return errBucket;
 }

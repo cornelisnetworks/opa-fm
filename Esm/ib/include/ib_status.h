@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -201,6 +201,8 @@ typedef	uint32_t	Status_t;
 #define VSTATUS_UNRECOVERABLE         (108)     // a variant of BAD that indicates to the
                                                 //   caller that recovery (within a context)
                                                 //   should not be attempted
+#define VSTATUS_TIMEOUT_LIMIT         (109)     // the maximum cumulative timeout limit
+                                                //   was reached
 #define VSTATUS_ITERATOR_OUT_OF_DATE     (119)   // data referred by
                                                 // iterator updated or deleted.
 #define VSTATUS_INSUFFICIENT_PERMISSION  (120)  // client has insufficient
@@ -208,6 +210,7 @@ typedef	uint32_t	Status_t;
 #define VSTATUS_INVALID_CQ_HANDLE        (126)  // CQ handle is invalid
 #define VSTATUS_INVALID_FORMAT           (127)  // Data format is invalid
 #define VSTATUS_REJECT                   (128)  // Request rejected
+#define VSTATUS_DONE                     (129)  // Request done
 
 // WHEN ADDING STATUS CODES, ALSO UPDATE cs_convert_status() in cs_utility.c
 

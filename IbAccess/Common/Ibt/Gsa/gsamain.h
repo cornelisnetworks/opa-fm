@@ -34,7 +34,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "datatypes.h"
 #include "stl_types.h"
-#include "stl_mad.h"
+#include "stl_mad_priv.h"
 #include "vpi.h"
 #include "sma_osd.h"
 #include "ib_debug_osd.h"
@@ -54,7 +54,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "imath.h"
 #include "isyscallback.h"
 #include "smagsa.h"
-//#include "ContextMgr.h"
 #include "gsi_params.h"
 
 #if defined (__cplusplus)

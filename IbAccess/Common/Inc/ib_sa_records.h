@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT3 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-17, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -29,23 +29,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /* [ICS VERSION STRING: unknown] */
 
-#if defined(CHECK_HEADERS)
-
-#ifndef __STL_SA_H__
-#warning FIX ME!!! Your includes should use the stl_sa.h header and not the ib_sa_records.h header for STL builds
-#endif
-
-#endif
-
 #ifndef _IBA_IB_SA_RECORDS_H_
 #define _IBA_IB_SA_RECORDS_H_
 
 /* IB Subnet Adminstration records and methods */
 
 #include "iba/public/datatypes.h"				/* Portable datatypes */
-#include "iba/stl_types.h"				/* IBA specific datatypes */
-#include "iba/stl_sm.h"
-#include "iba/stl_helper.h"
+#include "iba/stl_sm_types.h"
 #ifndef IB_STACK_OPENIB
 #include "iba/vpi.h"
 #endif
@@ -133,7 +123,7 @@ typedef enum {
  * SA records themselves
  */
 
-
+
 /* --------------------------------------------------------------------------
  * Path Record - describes path between 2 end nodes in the fabric
  */
@@ -256,7 +246,7 @@ typedef struct _IB_PATH_RECORD {
 	uint8		Reserved2 [6];
 } PACK_SUFFIX IB_PATH_RECORD;
 
-
+
 /* --------------------------------------------------------------------------
  * Node Record - describes a port on a node in the fabric
  */
@@ -297,7 +287,7 @@ typedef struct _IB_NODE_RECORD {
 	NODE_DESCRIPTION NodeDescData;
 } PACK_SUFFIX IB_NODE_RECORD;
 
-
+
 /* --------------------------------------------------------------------------
  * PortInfo Record - detailed description of a port on a node in the fabric
  */
@@ -352,243 +342,6 @@ typedef struct _IB_PORTINFO_RECORD {
 	PORT_INFO		PortInfoData;
 } PACK_SUFFIX IB_PORTINFO_RECORD;
 
-
-/* --------------------------------------------------------------------------
- * Switch Info Record - information about a switch in the fabric
- */
-
-/* ComponentMask bits */
-#define IB_SWITCHINFO_RECORD_COMP_LID								0x00000001
-	/* reserved field												0x00000002*/
-	/* switch info fields */
-#define IB_SWITCHINFO_RECORD_COMP_LINEARFDBCAP						0x00000004
-#define IB_SWITCHINFO_RECORD_COMP_RANDOMFDBCAP						0x00000008
-#define IB_SWITCHINFO_RECORD_COMP_MULTICASTFDBCAP					0x00000010
-#define IB_SWITCHINFO_RECORD_COMP_LINEARFDBTOP						0x00000020
-#define IB_SWITCHINFO_RECORD_COMP_DEFAULTPORT						0x00000040
-#define IB_SWITCHINFO_RECORD_COMP_DEFAULTMULTICASTPRIMARYPORT		0x00000080
-#define IB_SWITCHINFO_RECORD_COMP_DEFAULTMULTICASTNOTPRIMARYPORT	0x00000100
-#define IB_SWITCHINFO_RECORD_COMP_LIFETIMEVALUE						0x00000200
-#define IB_SWITCHINFO_RECORD_COMP_PORTSTATECHANGE					0x00000400
-	/* reserved field												0x00000800*/
-#define IB_SWITCHINFO_RECORD_COMP_LIDSPERPORT						0x00001000
-#define IB_SWITCHINFO_RECORD_COMP_PARTITIONENFORCEMENTCAP			0x00002000
-#define IB_SWITCHINFO_RECORD_COMP_INBOUNDENFORCEMENTCAP				0x00004000
-#define IB_SWITCHINFO_RECORD_COMP_OUTBOUNDENFORCEMENTCAP			0x00008000
-#define IB_SWITCHINFO_RECORD_COMP_FILTERRAWINBOUNDCAP				0x00010000
-#define IB_SWITCHINFO_RECORD_COMP_FILTERRAWOUTBOUNDCAP				0x00020000
-#define IB_SWITCHINFO_RECORD_COMP_ENHANCEDPORT0						0x00040000
-	/* reserved field												0x00080000*/
-
-typedef struct _IB_SWITCHINFO_RECORD {
-	union {
-		uint32	AsReg32;
-		struct {
-#if CPU_BE
-			uint32		LID:16;
-			uint32		Reserved:16;
-#else
-			uint32		Reserved:16;
-			uint32		LID:16;
-#endif
-		} PACK_SUFFIX s;
-	} RID;
-	SWITCH_INFO		SwitchInfoData;
-} PACK_SUFFIX IB_SWITCHINFO_RECORD;
-
-
-/* --------------------------------------------------------------------------
- * Linear Forwarding Table Record - linear forwarding table for a switch in the fabric
- */
-
-/* ComponentMask bits */
-#define IB_LINEARFDB_RECORD_COMP_LID						0x00000001
-#define IB_LINEARFDB_RECORD_COMP_BLOCKNUM					0x00000002
-	/* reserved field 										0x00000004 */
-	/* linear forwarding table fields */
-	/* Note insufficient bits in component mask to select */
-	/* all 64 entries in record */
-
-typedef struct _IB_LINEAR_FDB_RECORD {
-	union {
-		uint32	AsReg32;
-		struct {
-#if CPU_BE
-			uint32		LID:16;
-			uint32		BlockNum:16;
-#else
-			uint32		BlockNum:16;
-			uint32		LID:16;
-#endif
-		} PACK_SUFFIX s;
-	} RID;
-	uint32			Reserved;
-	FORWARDING_TABLE	LinearFdbData;
-} PACK_SUFFIX IB_LINEAR_FDB_RECORD;
-
-
-/* --------------------------------------------------------------------------
- * Random Forwarding Table Record - random forwarding table for a switch in the fabric
- */
-
-/* ComponentMask bits */
-#define IB_RANDOMFDB_RECORD_COMP_LID						0x00000001
-#define IB_RANDOMFDB_RECORD_COMP_BLOCKNUM					0x00000002
-	/* reserved field 										0x00000004 */
-	/* random forwarding table fields */
-	/* Note insufficient bits in component mask to select */
-	/* all 5 fields in all 16 entries in record */
-
-typedef struct _IB_RANDOM_FDB_RECORD {
-	union {
-		uint32	AsReg32;
-		struct {
-#if CPU_BE
-			uint32		LID:16;
-			uint32		BlockNum:16;
-#else
-			uint32		BlockNum:16;
-			uint32		LID:16;
-#endif
-		} PACK_SUFFIX s;
-	} RID;
-	uint32			Reserved;
-	FORWARDING_TABLE	RandomFdbData;
-} PACK_SUFFIX IB_RANDOM_FDB_RECORD;
-
-
-/* --------------------------------------------------------------------------
- * Multicast Forwarding Table Record - multicast forwarding table for a switch in the fabric
- */
-
-/* ComponentMask bits */
-#define IB_MCASTFDB_RECORD_COMP_LID							0x00000001
-#define IB_MCASTFDB_RECORD_COMP_POSITION					0x00000002
-	/* reserved field 										0x00000004 */
-#define IB_MCASTFDB_RECORD_COMP_BLOCKNUM					0x00000008
-	/* reserved field 										0x00000010 */
-	/* multicast forwarding table fields */
-	/* limited value to select on these, so omitted defines */
-
-typedef struct _IB_MCAST_FDB_RECORD {
-	union {
-		uint32	AsReg32;
-		struct {
-#if CPU_BE
-			uint32		LID:16;
-			uint32		Position:4;
-			uint32		Reserved0:3;
-			uint32		BlockNum:9;
-#else
-			uint32		BlockNum:9;
-			uint32		Reserved0:3;
-			uint32		Position:4;
-			uint32		LID:16;
-#endif
-		} PACK_SUFFIX s;
-	} RID;
-	uint32			Reserved;
-	FORWARDING_TABLE	MCastFdbData;
-} PACK_SUFFIX IB_MCAST_FDB_RECORD;
-
-
-/* --------------------------------------------------------------------------
- * VL Arbitration Table Record - VL priority controls for a port on a node in the fabric
- */
-
-/* ComponentMask bits */
-#define IB_VLARBTABLE_RECORD_COMP_LID						0x00000001
-#define IB_VLARBTABLE_RECORD_COMP_OUTPUTPORTNUM				0x00000002
-#define IB_VLARBTABLE_RECORD_COMP_BLOCKNUM					0x00000004
-	/* reserved field 										0x00000008 */
-	/* Note insufficient bits in component mask to select */
-	/* all 3 fields in all 32 entries in record */
-
-typedef struct _IB_VLARBTABLE_RECORD {
-	union {
-		uint32	AsReg32;
-		struct {
-#if CPU_BE
-			uint32		LID:16;
-			uint32		OutputPortNum:8;
-			uint32		BlockNum:8;
-#else
-			uint32		BlockNum:8;
-			uint32		OutputPortNum:8;
-			uint32		LID:16;
-#endif
-		} PACK_SUFFIX s;
-	} RID;
-	uint32			Reserved;
-	VLARBTABLE		VLArbData;				/* VLArbitration attribute */
-} PACK_SUFFIX IB_VLARBTABLE_RECORD;
-
-
-/* --------------------------------------------------------------------------
- * SM Info Record - basic information about an SM in the fabric
- */
-
-/* ComponentMask bits */
-#define IB_SMINFO_RECORD_COMP_LID						0x00000001
-	/* reserved field									0x00000002 */
-	/* SM Info fields */
-#define IB_SMINFO_RECORD_COMP_GUID						0x00000004
-#define IB_SMINFO_RECORD_COMP_SMKEY						0x00000008
-#define IB_SMINFO_RECORD_COMP_ACTCOUNT					0x00000010
-#define IB_SMINFO_RECORD_COMP_PRIORITY					0x00000020
-#define IB_SMINFO_RECORD_COMP_SMSTATE					0x00000040
-
-typedef struct _IB_SMINFO_RECORD {
-	union {
-		uint32	AsReg32;
-		struct {
-#if CPU_BE
-			uint32		LID:16;
-			uint32		Reserved:16;
-#else
-			uint32		Reserved:16;
-			uint32		LID:16;
-#endif
-		} PACK_SUFFIX s;
-	} RID;
-	SM_INFO			SMInfoData;				/* SMInfo attribute */
-} PACK_SUFFIX IB_SMINFO_RECORD;
-
-
-/* --------------------------------------------------------------------------
- * P_Key Table Record - P-Key configuration for a port on a node in the fabric
- */
-
-/* ComponentMask bits */
-#define IB_PKEYTABLE_RECORD_COMP_LID						0x00000001
-#define IB_PKEYTABLE_RECORD_COMP_BLOCKNUM					0x00000002
-#define IB_PKEYTABLE_RECORD_COMP_PORTNUM					0x00000004
-	/* reserved field										0x00000008 */
-	/* P Key Table fields */
-	/* limited value to select on these, so omitted defines */
-
-typedef struct _IB_P_KEY_TABLE_RECORD {
-	union {
-		struct {
-			uint32	AsReg32;
-			uint8	Byte;
-		} PACK_SUFFIX s2;
-		struct {
-#if CPU_BE
-			uint32		LID:16;
-			uint32		BlockNum:16;
-#else
-			uint32		BlockNum:16;
-			uint32		LID:16;
-#endif
-			uint8		PortNum;
-		} PACK_SUFFIX s;
-	} PACK_SUFFIX RID;
-	uint8		Reserved[3];
-	PARTITION_TABLE	PKeyTblData;			/* PartitionTable for this port */
-} PACK_SUFFIX IB_P_KEY_TABLE_RECORD;
-
-
 /* --------------------------------------------------------------------------
  * Inform Info (event subscription) Record - SA events which have been subscribed to
  */
@@ -622,27 +375,6 @@ typedef struct _IB_INFORM_INFO_RECORD {
 											/* for this port */
 } PACK_SUFFIX IB_INFORM_INFO_RECORD;
 
-
-/* --------------------------------------------------------------------------
- * Link Record - details about a link in the fabric
- */
-
-/* ComponentMask bits */
-#define IB_LINK_RECORD_COMP_FROMLID							0x00000001
-#define IB_LINK_RECORD_COMP_FROMPORT						0x00000002
-#define IB_LINK_RECORD_COMP_TOPORT							0x00000004
-#define IB_LINK_RECORD_COMP_TOLID							0x00000008
-
-typedef struct _IB_LINK_RECORD {
-	struct {
-		uint16			FromLID;			/* From this LID */
-		uint8			FromPort;				/* From port number */
-	} PACK_SUFFIX RID;
-	uint8			ToPort;					/* To port number */
-	uint16			ToLID;				/* To this LID */
-} PACK_SUFFIX IB_LINK_RECORD;
-
-
 /* --------------------------------------------------------------------------
  * Service Record - services provided by nodes in the fabric
  */
@@ -709,7 +441,6 @@ typedef struct _IB_SERVICE_RECORD {
 	uint64			ServiceData64[2];
 } PACK_SUFFIX IB_SERVICE_RECORD;
 
-
 /* --------------------------------------------------------------------------
  * Service Association Record - map between service keys and names
  */
@@ -723,7 +454,7 @@ typedef struct _IB_SERVICEASSOCIATION_RECORD {
 	uint8			ServiceName[16];		/* UTF8 null terminated */
 } PACK_SUFFIX IB_SERVICEASSOCIATION_RECORD;
 
-
+
 /* --------------------------------------------------------------------------
  * Multicast Member Record - members in a multicast group
  */
@@ -826,9 +557,9 @@ typedef struct _IB_MCMEMBER_RECORD {
 	uint8	Reserved3[2];	/* TBD spec has odd size here */
 } PACK_SUFFIX IB_MCMEMBER_RECORD;
 
-
 
-
+
+
 /* --------------------------------------------------------------------------
  * Trace Record - trace a path through the fabric
  */
@@ -860,7 +591,7 @@ typedef struct _IB_TRACE_RECORD {
 	uint8			ExitPort;
 } PACK_SUFFIX IB_TRACE_RECORD;
 
-
+
 /* --------------------------------------------------------------------------
  * Multipath Record - a set of paths between nodes in the fabric
  */
@@ -982,600 +713,7 @@ typedef struct _IB_MULTIPATH_RECORD {
 										/* followed by DGIDCount dest GIDs */
 } PACK_SUFFIX IB_MULTIPATH_RECORD;
 
-
-
-
-/* --------------------------------------------------------------------------
- * VFabric Record
- */
-/* ComponentMask bits */
-#define VEND_VF_RECORD_COMP_INDEX				0x00000001
-#define VEND_VF_RECORD_COMP_PKEY				0x00000002
-#define VEND_VF_RECORD_COMP_NAME				0x00000008
-#define VEND_VF_RECORD_COMP_SERVICEID			0x00000010
-#define VEND_VF_RECORD_COMP_MGID				0x00000020
-#define VEND_VF_RECORD_COMP_SL					0x00000080
-
-#define VEND_VFABRIC_NAME_COUNT					64
-
-#define VEND_PKEY_SEL							0x01
-#define VEND_SL_SEL								0x02
-
-#define OPT_VF_SECURITY							0x01
-#define OPT_VF_QOS								0x02
-#define OPT_VF_FLOW_DISABLE						0x04
-
-
-typedef struct _VF_INFO_RECORD {
-	uint16	vfIndex;		 		/* The index assigned to the VF */
-	uint16	pKey;					/* PKey associated with the VF */
-	uint32  rsvd6;
-	uint8	vfName[64];				/* The name of the VF */
-	uint64		ServiceID;			/* for query only */
-	IB_GID		MGID;				/* for query only */
-	struct {
-#if CPU_BE      
-    	uint8	selectFlags:4;  	/* 1 bit to indicate SL in queries, 1 bit for pkey, - 4bits total */
-    	uint8	sl:			4;		/* service level - 4 bits */
-#else
-    	uint8	sl:			4;		/* service level - 4 bits */
-    	uint8	selectFlags:4; 	 	/* 1 bit to indicate SL in queries, 1 bit for pkey, - 4bits total */
-#endif
-#if CPU_BE      
-    	uint8	mtuSpecified:1;		/* mtu specified for VF - 1 bit */
-    	uint8	rsvd1:1;	    
-    	uint8	mtu:6;				/* max mtu assigned to VF - 6 bits */
-#else
-		uint8	mtu:6;				/* max mtu assigned to VF - 6 bits */
-    	uint8	rsvd1:1;	    
-		uint8	mtuSpecified:1;		/* mtu specified for VF - 1 bit */
-#endif
-#if CPU_BE      
-		uint8	rateSpecified:1;	/* rate specified for VF - 1 bit */
-		uint8	rsvd2:1;
-		uint8	rate:6;				/* max rate assigned to VF - 6 bits */
-#else
-		uint8	rate:6;				/* max rate assigned to VF - 6 bits */
-		uint8	rsvd2:1;
-		uint8	rateSpecified:1;	/* rate specified for VF - 1 bit */
-#endif
-#if CPU_BE      
-		uint8	pktLifeSpecified:1; /* pkt life time specified for VF - 1 bit */
-		uint8	rsvd3:4;
-		uint8	pktLifeTimeInc:3;   /* pkt life time assigned to VF - 3 bits */
-#else
-		uint8	pktLifeTimeInc:3;   /* pkt life time assigned to VF - 3 bits */
-		uint8	rsvd3:4;
-		uint8	pktLifeSpecified:1; /* pkt life time specified for VF - 1 bit */
-#endif
-	} s1;
-    uint8       optionFlags;		/* security bit, QoS bit, 6 reserved */
-    uint8       bandwidthPercent;	/* bandwidth percentage, 8 bits */
-	struct {
-#if CPU_BE      
-        uint8   rsvd4:7;	
-        uint8   priority:1;			/* priority, 1 bit */
-#else
-        uint8   priority:1;			/* priority, 1 bit */
-        uint8   rsvd4:7;
-#endif
-	} s2;
-	uint8		routingSLs;
-	uint8		rsvd5[24];
-
-} PACK_SUFFIX VEND_VFINFO_RECORD;
-
-/* --------------------------------------------------------------------------
- * Vendor unique collective group Record
- */
-
-#define VEND_CG_RECORD_COMPONENTMASK_CGID        0x0000000000000001ull
-#define VEND_CG_RECORD_COMPONENTMASK_NODE        0x0000000000000002ull
-
-typedef struct _COLLECTIVE_GROUP_RECORD {
-    uint64_t    cgid;                           // a hash which uniquely identifies the group
-    uint64_t    nodeGuid;                       // node making the request
-    uint16_t    clid;                           // collective group lid (assigned by SA/SM on create)
-    uint16_t    numMembers;                     // the number of node members in the group
-    uint8_t     auxStatus;                      // auxiliary status info returned on set/delete
-    uint8_t     isFinal;                        // Valid on Delete, indicates release Immediate - 1 bit
-    uint32_t    rsvd1;                          // Reserved - 19 bits
-    uint8_t     sl;                             // service level - 4 bits
-    uint16_t    pKey;
-    uint8_t     mtuSelector;
-    uint8_t     mtuValue;
-    uint8_t     rateSelector;
-    uint8_t     rateValue;
-} PACK_SUFFIX VEND_COLLECTIVE_GROUP_RECORD;
-
-
-/* --------------------------------------------------------------------------
- * Vendor unique collective group status Record
- */
-
-#define VEND_CGS_RECORD_COMPONENTMASK_CLID       0x0000000000000001ull
-#define VEND_CGS_RECORD_COMPONENTMASK_LID        0x0000000000000002ull
-
-#define VEND_CG_STATUS_PROTOCOL_ERROR            0x1
-
-typedef struct _COLLECTIVE_GROUP_STATUS_RECORD {
-    uint16_t    clid;                           // collective group lid
-    uint16_t    lid;                            // lid of node reporting protocol error
-    uint8_t     cgStatus;                       // collective group status
-} PACK_SUFFIX VEND_COLLECTIVE_GROUP_STATUS_RECORD;
-
-
-/* --------------------------------------------------------------------------
- * Vendor unique CFT Record
- */
-
-#define VEND_CFT_RECORD_COMPONENTMASK_CLID       0x0000000000000001ull
-#define VEND_CFT_RECORD_COMPONENTMASK_LID        0x0000000000000002ull
-
-typedef struct _COLLECTIVE_GROUP_FORWARDING_TABLE_RECORD {
-    uint16_t    clid;                           // collective group lid
-    uint16_t    lid;                            // lid of node reporting protocol error
-    COLLECTIVE_FORWARDING_TABLE       cft;      // collective forwarding table
-} PACK_SUFFIX VEND_COLLECTIVE_GROUP_FORWARDING_TABLE_RECORD;
-
-
 #include "iba/public/ipackoff.h"
-
-/*---------------------------------------------------------------------------
- * Swap between CPU and network byte ordering
- */
-
-static __inline
-void
-BSWAP_IB_NODE_RECORD(
-    IB_NODE_RECORD  *Dest
-    )
-{
-#if CPU_LE
-	Dest->RID.AsReg32 = ntoh32(Dest->RID.AsReg32);
-    BSWAP_NODE_INFO(&Dest->NodeInfoData);
-#endif /* CPU_LE */
-}
-
-static __inline
-void
-BSWAP_IB_PORTINFO_RECORD(
-    IB_PORTINFO_RECORD  *Dest, int extended
-    )
-{
-#if CPU_LE
-
-	Dest->RID.AsReg32 = ntoh32(Dest->RID.AsReg32);
-    BSWAP_PORT_INFO(&Dest->PortInfoData, extended);
-#endif
-}
-
-static __inline
-void
-BSWAP_IB_SWITCHINFO_RECORD(
-    IB_SWITCHINFO_RECORD  *Dest
-    )
-{
-#if CPU_LE
-
-	Dest->RID.AsReg32 = ntoh32(Dest->RID.AsReg32);
-	BSWAP_SWITCH_INFO(&Dest->SwitchInfoData);
-#endif
-}
-
-static __inline
-void
-BSWAP_IB_LINEAR_FDB_RECORD(
-    IB_LINEAR_FDB_RECORD  *Dest
-    )
-{
-#if CPU_LE
-	Dest->RID.AsReg32 = ntoh32(Dest->RID.AsReg32);
-	BSWAP_LINEAR_FWD_TABLE(&Dest->LinearFdbData);
-#endif
-}
-
-static __inline
-void
-BSWAP_IB_RANDOM_FDB_RECORD(
-    IB_RANDOM_FDB_RECORD  *Dest
-    )
-{
-#if CPU_LE
-	Dest->RID.AsReg32 = ntoh32(Dest->RID.AsReg32);
-	BSWAP_RANDOM_FWD_TABLE(&Dest->RandomFdbData);
-#endif
-}
-
-static __inline
-void
-BSWAP_IB_MCAST_FDB_RECORD(
-    IB_MCAST_FDB_RECORD  *Dest
-    )
-{
-#if CPU_LE
-	Dest->RID.AsReg32 = ntoh32(Dest->RID.AsReg32);
-	BSWAP_MCAST_FWD_TABLE(&Dest->MCastFdbData);
-#endif
-}
-
-static __inline
-void
-BSWAP_IB_VLARBTABLE_RECORD(
-    IB_VLARBTABLE_RECORD  *Dest
-    )
-{
-#if CPU_LE
-	Dest->RID.AsReg32 = ntoh32(Dest->RID.AsReg32);
-	BSWAP_VLARBTABLE(&Dest->VLArbData);
-#endif
-}
-
-static __inline
-void
-BSWAP_IB_SMINFO_RECORD(
-    IB_SMINFO_RECORD  *Dest
-    )
-{
-#if CPU_LE
-	Dest->RID.AsReg32 = ntoh32(Dest->RID.AsReg32);
-    BSWAP_SM_INFO(&Dest->SMInfoData);
-#endif
-}
-
-static __inline
-void
-BSWAP_IB_P_KEY_TABLE_RECORD(
-    IB_P_KEY_TABLE_RECORD  *Dest
-    )
-{
-#if CPU_LE
-	Dest->RID.s2.AsReg32 = ntoh32(Dest->RID.s2.AsReg32);
-    BSWAP_PART_TABLE(&Dest->PKeyTblData);
-#endif
-}
-
-static __inline
-void
-BSWAP_IB_INFORM_INFO_RECORD(
-    IB_INFORM_INFO_RECORD  *Dest
-    )
-{
-#if CPU_LE
-	BSWAP_IB_GID(&Dest->RID.SubscriberGID);
-	Dest->RID.Enum = ntoh16(Dest->RID.Enum);
-    BSWAP_INFORM_INFO(&Dest->InformInfoData);
-#endif
-}
-
-static __inline
-void
-BSWAP_IB_LINK_RECORD(
-    IB_LINK_RECORD  *Dest
-    )
-{
-#if CPU_LE
-	Dest->RID.FromLID = ntoh16(Dest->RID.FromLID);
-	Dest->ToLID = ntoh16(Dest->ToLID);
-#endif /* CPU_LE */
-}
-
-static __inline
-void
-BSWAP_IB_SERVICE_RECORD(
-    IB_SERVICE_RECORD  *Dest
-    )
-{
-#if CPU_LE
-	uint8 i;
-
-	Dest->RID.ServiceID = ntoh64(Dest->RID.ServiceID);
-	BSWAP_IB_GID(&Dest->RID.ServiceGID);
-	Dest->RID.ServiceP_Key = ntoh16(Dest->RID.ServiceP_Key);
-	Dest->ServiceLease = ntoh32(Dest->ServiceLease);
-	ntoh(&Dest->ServiceKey[0], &Dest->ServiceKey[0], 16);
-
-	for (i=0; i<8; ++i)
-	{
-		Dest->ServiceData16[i] = ntoh16(Dest->ServiceData16[i]);
-	}
-	for (i=0; i<4; ++i)
-	{
-		Dest->ServiceData32[i] = ntoh32(Dest->ServiceData32[i]);
-	}
-	for (i=0; i<2; ++i)
-	{
-		Dest->ServiceData64[i] = ntoh64(Dest->ServiceData64[i]);
-	}
-#endif /* CPU_LE */
-}
-
-static __inline
-void
-BSWAP_IB_SERVICEASSOCIATION_RECORD(
-    IB_SERVICEASSOCIATION_RECORD  *Dest
-    )
-{
-#if CPU_LE
-	ntoh(&Dest->ServiceKey[0], &Dest->ServiceKey[0], 16);
-#endif
-}
-
-static __inline
-void
-BSWAP_IB_MCMEMBER_RECORD(
-    IB_MCMEMBER_RECORD  *Dest
-    )
-{
-#if CPU_LE
-	BSWAP_IB_GID(&Dest->RID.MGID);
-	BSWAP_IB_GID(&Dest->RID.PortGID);
-	Dest->Q_Key = ntoh32(Dest->Q_Key);
-	Dest->MLID = ntoh16(Dest->MLID);
-	Dest->P_Key = ntoh16(Dest->P_Key);
-	Dest->u1.AsReg32 = ntoh32(Dest->u1.AsReg32);
-#endif /* CPU_LE */
-}
-
-static __inline
-void
-BSWAPCOPY_IB_MCMEMBER_RECORD(IB_MCMEMBER_RECORD *Src, IB_MCMEMBER_RECORD *Dest)
-{
-	memcpy(Dest, Src, sizeof(IB_MCMEMBER_RECORD));
-	BSWAP_IB_MCMEMBER_RECORD(Dest);
-}
-
-static __inline
-void
-BSWAP_IB_TRACE_RECORD(
-    IB_TRACE_RECORD  *Dest
-    )
-{
-#if CPU_LE
-	Dest->GIDPrefix = ntoh64(Dest->GIDPrefix);
-	Dest->IDGeneration = ntoh16(Dest->IDGeneration);
-	Dest->NodeID = ntoh64(Dest->NodeID);
-	Dest->ChassisID = ntoh64(Dest->ChassisID);
-	Dest->EntryPortID = ntoh64(Dest->EntryPortID);
-	Dest->ExitPortID = ntoh64(Dest->ExitPortID);
-#endif
-}
-
-static __inline
-void
-BSWAP_IB_MULTIPATH_RECORD(
-    IB_MULTIPATH_RECORD  *Dest
-    )
-{
-#if CPU_LE
-	uint8 i;
-	Dest->u1.AsReg32 = ntoh32(Dest->u1.AsReg32);
-	Dest->P_Key = ntoh16(Dest->P_Key);
-	Dest->u2.AsReg16 = ntoh16(Dest->u2.AsReg16);
-
-	/* TBD - sanity check Counts */
-	for (i=0; i<(Dest->SGIDCount + Dest->DGIDCount); ++i)
-	{
-		BSWAP_IB_GID(&Dest->GIDList[i]);
-	}
-#endif
-}
-
-static __inline
-void
-BSWAPCOPY_IB_MULTIPATH_RECORD(
-    IB_MULTIPATH_RECORD  *Src, IB_MULTIPATH_RECORD  *Dest
-    )
-{
-    memcpy(Dest, Src, sizeof(IB_MULTIPATH_RECORD));
-    BSWAP_IB_MULTIPATH_RECORD(Dest);
-}
-
-static __inline
-void
-BSWAP_IB_PATH_RECORD(
-    IB_PATH_RECORD  *Dest
-    )
-{
-#if CPU_LE
-	Dest->ServiceID = ntoh64(Dest->ServiceID);
-    BSWAP_IB_GID(&Dest->DGID);
-    BSWAP_IB_GID(&Dest->SGID);
- 
-    Dest->DLID =   ntoh16(Dest->DLID);
-    Dest->SLID =   ntoh16(Dest->SLID);
-	Dest->u1.AsReg32 =	ntoh32(Dest->u1.AsReg32);
-    Dest->P_Key =  ntoh16(Dest->P_Key);
-    Dest->u2.AsReg16 =  ntoh16(Dest->u2.AsReg16);
-#endif /* CPU_LE */
-}
-
-static __inline
-void
-BSWAPCOPY_IB_PATH_RECORD(
-    IB_PATH_RECORD  *Src, IB_PATH_RECORD  *Dest
-    )
-{
-    memcpy(Dest, Src, sizeof(IB_PATH_RECORD));
-    BSWAP_IB_PATH_RECORD(Dest);
-}
-
-static __inline
-void
-BSWAP_VEND_VFINFO_RECORD(
-    VEND_VFINFO_RECORD  *Dest
-    )
-{
-#if CPU_LE
-    Dest->vfIndex =  ntoh16(Dest->vfIndex);
-    Dest->pKey =     ntoh16(Dest->pKey);
-    Dest->ServiceID =  ntoh64(Dest->ServiceID);
-	BSWAP_IB_GID(&Dest->MGID);
-#endif /* CPU_LE */
-}
-
-static __inline
-void
-BSWAP_VEND_COLLECTIVE_GROUP_RECORD(
-    VEND_COLLECTIVE_GROUP_RECORD  *Dest
-    )
-{
-#if CPU_LE
-    Dest->cgid = ntoh64(Dest->cgid);
-    Dest->nodeGuid = ntoh64(Dest->nodeGuid);
-    Dest->clid = ntoh16(Dest->clid);
-    Dest->numMembers = ntoh16(Dest->numMembers);
-    Dest->rsvd1 = ntoh32(Dest->rsvd1);
-    Dest->pKey = ntoh16(Dest->pKey);
-#endif /* CPU_LE */
-}
-
-static __inline
-void
-BSWAP_VEND_COLLECTIVE_GROUP_STATUS_RECORD(
-    VEND_COLLECTIVE_GROUP_STATUS_RECORD  *Dest
-    )
-{
-#if CPU_LE
-    Dest->clid = ntoh16(Dest->clid);
-    Dest->lid = ntoh16(Dest->lid);
-#endif /* CPU_LE */
-}
-
-static __inline
-void
-BSWAP_VEND_COLLECTIVE_GROUP_FORWARDING_TABLE_RECORD(
-    VEND_COLLECTIVE_GROUP_FORWARDING_TABLE_RECORD  *Dest
-    )
-{
-#if CPU_LE
-    Dest->clid = ntoh16(Dest->clid);
-    Dest->lid = ntoh16(Dest->lid);
-	BSWAP_COLLECTIVE_FORWARDING_TABLE(&Dest->cft);
-#endif /* CPU_LE */
-}
-
-
-
-/* determine if the given PATH_RECORD represents a global route
- * (eg. where GRH is used to go through an IB Router)
- */
-static __inline boolean
-IsGlobalRoute( IN const IB_PATH_RECORD *pPathRecord)
-{
-	return (pPathRecord->u1.s.HopLimit > 1);
-}
-
-/* compute LocalAckTimeout from PktLifeTime
- * note PktLifetime is one directional on wire, while LocalAckTimeout is
- * total round trip including CA Ack Delay
- * for client REQ.AckTimeout, caAckDelay should be our local CA's AckDelay
- * for client QP, use REP.TargetAckDelay
- * for server QP, use REQ.AckTimeout directly (no need to call this)
- * pktLifeTime, caAckDelay and returned values are IB timeout multipliers
- */
-static __inline uint8
-ComputeAckTimeout(IN uint8 pktLifeTime, IN uint8 caAckDelay)
-{
-    /* return TimeoutTimeToMult(TimeoutMultToTimeInUsec(pktLifeTime)*2 */
-	/* 				+ TimeoutMultToTimeInUsec(caAckDelay)); */
-  	/*return MIN(pktLifeTime + 2, 0x1f); */
-	uint8 ackTimeout;
-
-	/* tests also handle if remote endpoint didn't set REP.TargetAckDelay */
-	if (pktLifeTime+1 >= caAckDelay)
-	{
- 		/* since its a log2 value, +1 doubles the timeout */
- 		/* Additional +1 is to account for remote CA Ack delay */
-		ackTimeout = pktLifeTime+2;
-	} else {
-		/* since caAckDelay > 2*pktLifetime, +1 simply doubles ca Ack Delay */
-		ackTimeout = caAckDelay+1;
-	}
-	/* limit value to 5 bits (approx 2.4 hours) */
-	if (ackTimeout > 0x1f)
-		ackTimeout = 0x1f;
-	return ackTimeout;
-}
-
-#ifndef IB_STACK_OPENIB
-/* helper function, converts a PATH_RECORD to an IB_ADDRESS_VECTOR to facilitate
- * connection establishment and UD traffic
- * PathMTU is an IB_MTU enum
- */
-static __inline void
-GetAVFromPath2( IN uint64 PortGuid,	/* only needed for UD AVs */
-	IN const IB_PATH_RECORD *pPathRecord,
-	OUT uint8* PathMTU OPTIONAL,
-	OUT IB_ADDRESS_VECTOR* DestAv OPTIONAL )
-{
-	if (DestAv)
-	{
-		DestAv->PortGUID = PortGuid; /* only needed for UD AVs */
-		DestAv->DestLID = pPathRecord->DLID;
-		DestAv->PathBits = (uint8)(pPathRecord->SLID&IB_PATHBITS_MASK);
-		DestAv->ServiceLevel = pPathRecord->u2.s.SL;
-		DestAv->StaticRate = pPathRecord->Rate;
-
-		/* Global route information. */
-		DestAv->GlobalRoute = IsGlobalRoute(pPathRecord);
-		DestAv->GlobalRouteInfo.DestGID = pPathRecord->DGID;
-		DestAv->GlobalRouteInfo.FlowLabel = pPathRecord->u1.s.FlowLabel;
-		DestAv->GlobalRouteInfo.HopLimit = (uint8)pPathRecord->u1.s.HopLimit;
-		DestAv->GlobalRouteInfo.SrcGIDIndex = 0;	/* BUGBUG assume 0 */
-		DestAv->GlobalRouteInfo.TrafficClass = pPathRecord->TClass;
-	}
-
-	/* Reliable connection information, N/A for UD */
-	if (PathMTU)
-		*PathMTU = pPathRecord->Mtu;
-}
-
-/* This function is depricated, will be dropped in 3.1 release,
- * use GetAVFromPath2 above
- */
-static __inline void
-GetAVFromPath( IN uint64 PortGuid,	/* only needed for UD AVs */
-	IN const IB_PATH_RECORD *pPathRecord,
-	OUT uint8* PathMTU OPTIONAL, OUT uint8* LocalAckTimeout OPTIONAL,
-	OUT IB_ADDRESS_VECTOR* DestAv OPTIONAL )
-{
-	GetAVFromPath2(PortGuid, pPathRecord, PathMTU, DestAv);
-	if (LocalAckTimeout)
-		*LocalAckTimeout = ComputeAckTimeout(pPathRecord->PktLifeTime,
-								TimeoutTimeToMult(8));	/* guess: 8 ms */
-}
-
-/* helper function, converts a MCMEMBER_RECORD to an IB_ADDRESS_VECTOR to
- * facilitate UD traffic
- */
-static __inline void
-GetAVFromMcMemberRecord(EUI64              PortGuid,
-                        IB_MCMEMBER_RECORD *pMcMemberRecord,
-                        IB_ADDRESS_VECTOR  *pDestAv )
-{
-	if (pDestAv != NULL)
-	{
-		pDestAv->PortGUID = pMcMemberRecord->RID.PortGID.Type.Global.InterfaceID;
-		pDestAv->DestLID = pMcMemberRecord->MLID;
-/*		pDestAv->PathBits = (uint8)pPathRecord->SLID; */
-		pDestAv->PathBits = 0;
-		pDestAv->ServiceLevel = pMcMemberRecord->u1.s.SL;
-		pDestAv->StaticRate = pMcMemberRecord->Rate;
-
-		/* Global route information. */
-		pDestAv->GlobalRoute = TRUE;
-		pDestAv->GlobalRouteInfo.DestGID = pMcMemberRecord->RID.MGID;
-		pDestAv->GlobalRouteInfo.FlowLabel = pMcMemberRecord->u1.s.FlowLabel;
-		pDestAv->GlobalRouteInfo.HopLimit = (uint8)pMcMemberRecord->u1.s.HopLimit;
-		pDestAv->GlobalRouteInfo.SrcGIDIndex = 0;	/* BUGBUG assume 0 */
-		pDestAv->GlobalRouteInfo.TrafficClass = pMcMemberRecord->TClass;
-	}
-}
-
-
-
-#endif /* IB_STACK_OPENIB */
 
 #ifdef __cplusplus
 }

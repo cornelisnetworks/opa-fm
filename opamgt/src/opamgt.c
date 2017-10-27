@@ -50,8 +50,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "omgt_oob_net.h"
 #include "opamgt_dump_mad.h"
 #include "opamgt_sa_priv.h"
+#include "opamgt_pa_priv.h"
 #include "stl_convertfuncs.h"
-#include "iba/ib_sm.h"
+#include "iba/ib_sm_priv.h"
 #include "iba/ib_generalServices.h"
 
 /** ========================================================================= */
@@ -64,7 +65,61 @@ void omgt_set_err(struct omgt_port *port, FILE *file)
 {
 	if (port) port->error_file = file;
 }
-
+/** ========================================================================= */
+void omgt_set_timeout(struct omgt_port *port, int ms_timeout)
+{
+	if (port) {
+		port->ms_timeout = (ms_timeout > 0 ? ms_timeout : OMGT_DEF_TIMEOUT_MS);
+	}
+}
+/** ========================================================================= */
+void omgt_set_retry_count(struct omgt_port *port, int retry_count)
+{
+	if (port) {
+		port->retry_count = (retry_count >= 0 ? retry_count : OMGT_DEF_RETRY_CNT);
+	}
+}
+/** ========================================================================= */
+const char* omgt_status_totext(OMGT_STATUS_T status)
+{
+	switch (status) {
+	case OMGT_STATUS_SUCCESS:                return "Success";
+	case OMGT_STATUS_ERROR:                  return "Error";
+	case OMGT_STATUS_INVALID_STATE:          return "Invalid State";
+	case OMGT_STATUS_INVALID_OPERATION:      return "Invalid Operation";
+	case OMGT_STATUS_INVALID_SETTING:        return "Invalid Setting";
+	case OMGT_STATUS_INVALID_PARAMETER:      return "Invalid Parameter";
+	case OMGT_STATUS_INSUFFICIENT_RESOURCES: return "Insufficient Resources";
+	case OMGT_STATUS_INSUFFICIENT_MEMORY:    return "Insufficient Memory";
+	case OMGT_STATUS_COMPLETED:              return "Completed";
+	case OMGT_STATUS_NOT_DONE:               return "Not Done";
+	case OMGT_STATUS_PENDING:                return "Pending";
+	case OMGT_STATUS_TIMEOUT:                return "Timeout";
+	case OMGT_STATUS_CANCELED:               return "Canceled";
+	case OMGT_STATUS_REJECT:                 return "Reject";
+	case OMGT_STATUS_OVERRUN:                return "Overrun";
+	case OMGT_STATUS_PROTECTION:             return "Protection";
+	case OMGT_STATUS_NOT_FOUND:              return "Not Found";
+	case OMGT_STATUS_UNAVAILABLE:            return "Unavailable";
+	case OMGT_STATUS_BUSY:                   return "Busy";
+	case OMGT_STATUS_DISCONNECT:             return "Disconnect";
+	case OMGT_STATUS_DUPLICATE:              return "Duplicate";
+	case OMGT_STATUS_POLL_NEEDED:            return "Poll Needed";
+	default: return "Unknown";
+	}
+}
+/** ========================================================================= */
+const char* omgt_service_state_totext(int service_state)
+{
+	switch (service_state) {
+	case OMGT_SERVICE_STATE_OPERATIONAL: return "Operational";
+	case OMGT_SERVICE_STATE_DOWN:        return "Down";
+	case OMGT_SERVICE_STATE_UNAVAILABLE: return "Unavailable";
+	case OMGT_SERVICE_STATE_UNKNOWN:
+	default:
+		return "Unknown";
+	}
+}
 /** =========================================================================
  * Init sub libraries like umad here
  * */
@@ -543,6 +598,10 @@ static OMGT_STATUS_T omgt_open_port_internal(struct omgt_port *port, char *hfi_n
 		goto free_port;
 	}
 
+	/* Set Timeout and retry to default values */
+	port->ms_timeout = OMGT_DEF_TIMEOUT_MS;
+	port->retry_count = OMGT_DEF_RETRY_CNT;
+
 	if ((port->umad_fd = umad_open_port(hfi_name, port_num)) < 0) {
 		OMGT_OUTPUT_ERROR(port, "can't open UMAD port (%s:%d)\n", hfi_name, port_num);
 		err = OMGT_STATUS_INVALID_PARAMETER;
@@ -642,6 +701,9 @@ OMGT_STATUS_T omgt_open_port(struct omgt_port **port, char *hfi_name, uint8_t po
 	if (session_params) {
 		rc->dbg_file = session_params->debug_file;
 		rc->error_file = session_params->error_file;
+	} else {
+		rc->dbg_file = NULL;
+		rc->error_file = NULL;
 	}
 
 	status = omgt_open_port_internal(rc, hfi_name, port_num);
@@ -671,6 +733,9 @@ OMGT_STATUS_T omgt_open_port_by_num(struct omgt_port **port, int32_t hfi_num, ui
 	if (session_params) {
 		rc->dbg_file = session_params->debug_file;
 		rc->error_file = session_params->error_file;
+	} else {
+		rc->dbg_file = NULL;
+		rc->error_file = NULL;
 	}
 
 	status = omgt_get_portguid(hfi_num, port_num, NULL, rc, NULL, NULL, NULL,
@@ -715,6 +780,9 @@ OMGT_STATUS_T omgt_open_port_by_guid(struct omgt_port **port, uint64_t port_guid
 	if (session_params) {
 		rc->dbg_file = session_params->debug_file;
 		rc->error_file = session_params->error_file;
+	} else {
+		rc->dbg_file = NULL;
+		rc->error_file = NULL;
 	}
 
 	status = omgt_get_hfi_from_portguid(port_guid, rc, name, NULL, &num,
@@ -1074,7 +1142,78 @@ OMGT_STATUS_T omgt_port_get_node_type(struct omgt_port *port, uint8_t *node_type
 	*node_type = STL_NODE_FI;
 	return OMGT_STATUS_SUCCESS;
 }
+OMGT_STATUS_T omgt_port_get_sa_service_state(struct omgt_port *port, int *sa_service_state, uint32_t refresh)
+{
+	int need_refresh = 0;
+	OMGT_STATUS_T query_status = OMGT_STATUS_SUCCESS;
 
+	if (port->is_oob_enabled) {
+		OMGT_OUTPUT_ERROR(port, "Port in Out-of-Band Mode, no SA Service State\n");
+		return OMGT_STATUS_INVALID_STATE;
+	}
+
+	/* Check if we should attempt to refresh */
+	switch (refresh) {
+	case OMGT_REFRESH_SERVICE_NOP:
+		break;
+	case OMGT_REFRESH_SERVICE_BAD_STATE:
+		if (port->sa_service_state != OMGT_SERVICE_STATE_OPERATIONAL) {
+			need_refresh = 1;
+		}
+		break;
+	case OMGT_REFRESH_SERVICE_ANY_STATE:
+		need_refresh = 1;
+		break;
+	default:
+		OMGT_OUTPUT_ERROR(port, "Invalid Refresh Flags: 0x%x\n", refresh);
+		return OMGT_STATUS_INVALID_PARAMETER;
+	}
+	if (need_refresh == 1) {
+		/* Refresh SA Client */
+		query_status = omgt_query_sa(port, NULL, NULL);
+		if (query_status != OMGT_STATUS_SUCCESS) {
+			OMGT_OUTPUT_ERROR(port, "Failed to refresh SA Service State: %u\n", query_status);
+			return query_status;
+		}
+	}
+
+	*sa_service_state = port->sa_service_state;
+	return OMGT_STATUS_SUCCESS;
+}
+
+OMGT_STATUS_T omgt_port_get_pa_service_state(struct omgt_port *port, int *pa_service_state, uint32_t refresh)
+{
+	int need_refresh = 0;
+
+	if (port->is_oob_enabled) {
+		OMGT_OUTPUT_ERROR(port, "Port in Out-of-Band Mode, no PA Service State\n");
+		return OMGT_STATUS_INVALID_STATE;
+	}
+
+	/* Check if we should attempt to refresh */
+	switch (refresh) {
+	case OMGT_REFRESH_SERVICE_NOP:
+		break;
+	case OMGT_REFRESH_SERVICE_BAD_STATE:
+		if (port->pa_service_state != OMGT_SERVICE_STATE_OPERATIONAL) {
+			need_refresh = 1;
+		}
+		break;
+	case OMGT_REFRESH_SERVICE_ANY_STATE:
+		need_refresh = 1;
+		break;
+	default:
+		OMGT_OUTPUT_ERROR(port, "Invalid Refresh Flags: 0x%x\n", refresh);
+		return OMGT_STATUS_INVALID_PARAMETER;
+	}
+	if (need_refresh == 1) {
+		/* Refresh PA Client */
+		(void)omgt_pa_service_connect(port);
+	}
+
+	*pa_service_state = port->pa_service_state;
+	return OMGT_STATUS_SUCCESS;
+}
 /** ========================================================================= */
 OMGT_STATUS_T omgt_port_get_ip_version(struct omgt_port *port, uint8_t *ip_version)
 {
@@ -1564,14 +1703,15 @@ FSTATUS omgt_send_mad2(struct omgt_port *port, uint8_t *send_mad, size_t send_si
 
     umad_set_addr(umad_p, ib_lid?ib_lid:0xffff, addr->qpn, addr->sl, addr->qkey);
 
+    correctedTimeout = (timeout_ms == OMGT_SEND_TIMEOUT_DEFAULT)
+                     ? OMGT_DEF_TIMEOUT_MS : timeout_ms;
+
     if (port->dbg_file) {
         OMGT_DBGPRINT(port, ">>> sending: len %ld pktsz %zu\n", send_size, umad_size() + padded_size);
 		umad_dump(umad_p);
         omgt_dump_mad(port->dbg_file, umad_get_mad(umad_p), send_size, "send mad\n");
     }
 
-    correctedTimeout = (timeout_ms == OMGT_SEND_TIMEOUT_DEFAULT)
-                     ? OPAMGT_DEF_TIMEOUT_MS : timeout_ms;
 
     if (umad_send(port->umad_fd, aid, umad_p, padded_size, (response ? 0 : correctedTimeout), retries) < 0) {
         OMGT_OUTPUT_ERROR(port, "send failed; %s, agent id %u MClass 0x%x method 0x%x attrId 0x%x attrM 0x%x\n",
@@ -1644,7 +1784,7 @@ retry:
 			// just to be safe, we supply a timeout.  However it
 			// should be unnecessary since we know we have a packet
 retry2:
-			if ((mad_agent = umad_recv(port->umad_fd, umad, (int *)&length, OPAMGT_DEF_TIMEOUT_MS)) < 0) {
+			if ((mad_agent = umad_recv(port->umad_fd, umad, (int *)&length, OMGT_DEF_TIMEOUT_MS)) < 0) {
 				OMGT_OUTPUT_ERROR(port, "recv error on umad length %ld (%s)\n", length, strerror(errno));
 				if (errno == EINTR)
 					goto retry2;
@@ -1832,7 +1972,7 @@ retry:
 			// just to be safe, we supply a timeout.  However it
 			// should be unnecessary since we know we have a packet
 retry2:
-            if (umad_recv(port->umad_fd, umad, (int *)&length, OPAMGT_DEF_TIMEOUT_MS) < 0) {
+            if (umad_recv(port->umad_fd, umad, (int *)&length, OMGT_DEF_TIMEOUT_MS) < 0) {
                 OMGT_OUTPUT_ERROR(port, "recv error on cleanup, length %ld (%s)\n", length,
 			      strerror(errno));
 				if (errno == EINTR)

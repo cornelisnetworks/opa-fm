@@ -55,9 +55,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "mai_g.h"
 #include "sm_l.h"
 #include "sa_l.h"
-//#include "if3.h"
-//#include "if3_def.h"
-//#include "cs_queue.h"
 #include "sm_dbsync.h"
 #include "time.h"
 #ifdef __VXWORKS__
@@ -188,7 +185,7 @@ void sm_dbsync_initSmRec(SmRecp smrecp) {
 	/* fill in the XML consistency check version and clear data */
 	smrecp->dbsyncCCC.protocolVersion = FM_PROTOCOL_VERSION;
 	smrecp->dbsyncCCC.smVfChecksum = smrecp->dbsyncCCC.smConfigChecksum = 0;
-	smrecp->dbsyncCCC.pmConfigChecksum = smrecp->dbsyncCCC.feConfigChecksum = 0;
+	smrecp->dbsyncCCC.pmConfigChecksum = 0;
 	smrecp->dbsyncCCC.spare1 = smrecp->dbsyncCCC.spare2 = smrecp->dbsyncCCC.spare3 = smrecp->dbsyncCCC.spare4 = 0;
 	smrecp->dbsyncCCC.spare5 = smrecp->dbsyncCCC.spare6 = smrecp->dbsyncCCC.spare7 = smrecp->dbsyncCCC.spare8 = 0;
 }
@@ -196,7 +193,7 @@ void sm_dbsync_initSmRec(SmRecp smrecp) {
 /*
  * send sync request on sync queue to db_sync thread
 */
-void sm_dbsync_queueMsg(DBSyncType_t syncType, DBSyncDatTyp_t syncDataTye, Lid_t lid, Guid_t portguid, uint8_t isEmbedded, SMSyncData_t data) {
+void sm_dbsync_queueMsg(DBSyncType_t syncType, DBSyncDatTyp_t syncDataTye, STL_LID lid, Guid_t portguid, uint8_t isEmbedded, SMSyncData_t data) {
     SMSyncReqp      srp;
     Status_t        status;
 
@@ -770,13 +767,6 @@ Status_t sm_dbsync_configCheck(SmRecKey_t recKey, SMDBCCCSyncp smSyncSetting) {
 					deactivateSM = 1;
 					condition = CSM_COND_SECONDARY_PM_DEACTIVATION;
 					smrecp->syncCapability = DBSYNC_CAP_NOTSUPPORTED;
-				}
-				if (smSyncSetting->feConfigChecksum != smRecords.ourChecksums.feConfigChecksum) {
-					IB_LOG_WARN_FMT(__func__,
-						"SM at %s, portGuid="FMT_U64" detected a different FE configuration consistency checksum [%u] from us [%u]",
-						smrecp->nodeDescString, recKey, smSyncSetting->feConfigChecksum, smRecords.ourChecksums.feConfigChecksum);
-
-					mismatchDetected = 1;
 				}
 
 				if (mismatchDetected) {

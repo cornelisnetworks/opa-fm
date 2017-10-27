@@ -54,7 +54,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_g.h"
 #include "ib_mad.h"
 #include "ib_sa.h"
-#include "iba/stl_sa.h"
+#include "iba/stl_sa_priv.h"
 #include "ib_status.h"
 #include "cs_g.h"
 #include "mai_g.h"
@@ -154,7 +154,7 @@ sa_NodeRecord(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 static Status_t
 sa_NodeRecord_Set(uint8_t * cp, Node_t * nodep, Port_t * portp)
 {
-	Lid_t lid;
+	STL_LID lid;
 	uint32_t portno;
 	Port_t *nrPortp;
 	STL_NODE_RECORD nodeRecord = {{0}};
@@ -206,7 +206,7 @@ sa_NodeRecord_Set(uint8_t * cp, Node_t * nodep, Port_t * portp)
 static Status_t
 sa_IbNodeRecord_Set(uint8_t * cp, Node_t * nodep, Port_t * portp)
 {
-	Lid_t lid;
+	STL_LID lid;
 	uint32_t portno;
 	Port_t *nrPortp;
 	IB_NODE_RECORD *ibNodeRecord = (IB_NODE_RECORD *)cp;
@@ -283,7 +283,7 @@ sa_NodeRecord_GetTable(Mai_t * maip, uint32_t * records, SACacheEntry_t ** outCa
 	Status_t status;
 	STL_NODE_RECORD nodeRecord;
 	uint32_t newRecords;
-	Lid_t lid = 0;
+	STL_LID lid = 0;
 	Port_t *portp;
 
 	IB_ENTER("sa_NodeRecord_GetTable", maip, records, 0, 0);
@@ -438,7 +438,7 @@ sa_IbNodeRecord_GetTable(Mai_t * maip, uint32_t * records)
 	Status_t status;
 	IB_NODE_RECORD ibNodeRecord;
 	uint32_t newRecords;
-	Lid_t lid = 0;
+	STL_LID lid = 0;
 	Port_t *portp;
 
 	IB_ENTER("sa_IbNodeRecord_GetTable", maip, records, 0, 0);
@@ -487,9 +487,9 @@ sa_IbNodeRecord_GetTable(Mai_t * maip, uint32_t * records)
 			}
 			*records += newRecords;
 		}
-	} else if (samad.header.mask & NR_COMPONENTMASK_NI_NODETYPE) {
+	} else if (samad.header.mask & IB_NODE_RECORD_COMP_NODETYPE) {
 		/* look for specific nodetype and clear nodetype mask to not try to match again */
-		samad.header.mask = samad.header.mask & ~NR_COMPONENTMASK_NI_NODETYPE;
+		samad.header.mask = samad.header.mask & ~IB_NODE_RECORD_COMP_NODETYPE;
 		if (ibNodeRecord.NodeInfoData.NodeType == NI_TYPE_CA) {
 			for_all_ca_nodes(&old_topology, nodep) {
 				if ((newRecords = sa_IbNodeRecord_Matches(&data, &samad, nodep,
@@ -517,7 +517,7 @@ sa_IbNodeRecord_GetTable(Mai_t * maip, uint32_t * records)
 							"Invalid node type[%d] in request from lid 0x%x",
 							ibNodeRecord.NodeInfoData.NodeType, lid);
 		}
-	} else if (samad.header.mask & NR_COMPONENTMASK_NODEGUID) {
+	} else if (samad.header.mask & IB_NODE_RECORD_COMP_NODEGUID) {
 		/* look for a specific node guid */
 		if ((nodep = sm_find_guid(&old_topology, ibNodeRecord.NodeInfoData.NodeGUID)) != NULL) {
 			if ((newRecords = sa_IbNodeRecord_Matches(&data, &samad, nodep,
@@ -612,7 +612,7 @@ sa_IbNodeRecord_Matches(uint8_t ** data, STL_SA_MAD * samad, Node_t * nodep, IB_
 			continue;
 		}
 
-		if ((samad->header.mask & NR_COMPONENTMASK_LID)
+		if ((samad->header.mask & IB_NODE_RECORD_COMP_LID)
 			&& (portp->portData->lid != nr->RID.s.LID)) {
 			if ((portp->portData->lid <= nr->RID.s.LID)
 				&& (nr->RID.s.LID <= sm_port_top_lid(portp))) {
@@ -628,8 +628,8 @@ sa_IbNodeRecord_Matches(uint8_t ** data, STL_SA_MAD * samad, Node_t * nodep, IB_
 		}
 
 		/* if specific portNumber is desired, create node record for that port only */
-		if (!(samad->header.mask & NR_COMPONENTMASK_PORTNUMBER) ||
-			((samad->header.mask & NR_COMPONENTMASK_PORTNUMBER)
+		if (!(samad->header.mask & IB_NODE_RECORD_COMP_LOCALPORTNUM) ||
+			((samad->header.mask & IB_NODE_RECORD_COMP_LOCALPORTNUM)
 			 && (portp->portno == nr->NodeInfoData.u1.s.LocalPortNum))) {
 
 			if (sa_check_len(*data, sizeof(IB_NODE_RECORD), bytes) != VSTATUS_OK) {
@@ -662,7 +662,7 @@ sa_NodeRecord_CheckCache(STL_SA_MAD * samad, STL_NODE_RECORD * nr, SACacheEntry_
 
 	(void) vs_lock(&saCache.lock);
 
-	if (samad->header.mask == NR_COMPONENTMASK_NI_NODETYPE) {
+	if (samad->header.mask == IB_NODE_RECORD_COMP_NODETYPE) {
 		if (nr->NodeInfo.NodeType == NI_TYPE_CA) {
 			(void) sa_cache_get(SA_CACHE_FI_NODES, outCache);
 		} else if (nr->NodeInfo.NodeType == NI_TYPE_SWITCH) {

@@ -33,7 +33,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ievent.h>
 #include <imutex.h>
 #include <stl_sd.h>
-#include <stl_sa.h>
+#include <stl_sa_priv.h>
 #include <sdi.h>
 
 LOCKED_QUICK_LIST *pQueryList = NULL;

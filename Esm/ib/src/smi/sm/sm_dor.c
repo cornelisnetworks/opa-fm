@@ -407,15 +407,8 @@ _create_dimension(DorDiscoveryState_t *state, int configDim, DorTopology_t *dorT
 {
 	Status_t status;
 	DorDimension_t *dim;
-	int i, j, index;
+	int i, j, index = 0;
 	int8_t direction = 0;
-
-	// add forward direction
-	status = vs_pool_alloc(&sm_pool, sizeof(*dim), (void *)&dim);
-	if (status != VSTATUS_OK) {
-		IB_LOG_ERRORRC("Failed to allocate dimension data structure; rc:", status);
-		return status;
-	}
 
 	for (i = 0; i < smDorRouting.dimensionCount; i++) {
 		for (j = 0; j < smDorRouting.dimension[i].portCount; j++) {
@@ -437,6 +430,13 @@ _create_dimension(DorDiscoveryState_t *state, int configDim, DorTopology_t *dorT
 		return VSTATUS_BAD;
 	}
 
+	// add forward direction
+	status = vs_pool_alloc(&sm_pool, sizeof(*dim), (void *)&dim);
+	if (status != VSTATUS_OK) {
+		IB_LOG_ERRORRC("Failed to allocate dimension data structure; rc:", status);
+		return status;
+	}
+
 	//check if this dimension is configured as toroidal
 	if (is_configured_toroidal(p, q)) {
 		_mark_toroidal_dimension(state, dorTop, index);
@@ -444,13 +444,15 @@ _create_dimension(DorDiscoveryState_t *state, int configDim, DorTopology_t *dorT
 
 	dorTop->dimensionLength[index] = smDorRouting.dimension[index].length;
 
-	dorTop->coordMinimums[index] = !dorTop->toroidal[index] ? 0 : (0 -
+	dorTop->coordMinimums[index] = !dorTop->toroidal[index] ? (0 - (dorTop->dimensionLength[index] - 1)) : (0 -
 										(dorTop->dimensionLength[index] / 2) +
 										(dorTop->dimensionLength[index]%2 ? 0 : 1));
 
 	dorTop->coordMaximums[index] = !dorTop->toroidal[index] ?
 										(dorTop->dimensionLength[index] - 1) :
 										(dorTop->dimensionLength[index] / 2);
+	dorTop->measuredMaximums[index] = 0;
+	dorTop->measuredMinimums[index] = 0;
 
 	// check direction
 	int nextCoord = dorNodep->coords[index] + direction;
@@ -827,9 +829,15 @@ _propagate_coord_through_port(DorDiscoveryState_t *state,
 
 		} else {
 			neighborDorNode->coords[dim->dimension] += dim->direction;
+			if (dim->direction > 0)
+				dorTop->measuredMaximums[dim->dimension] = neighborDorNode->coords[dim->dimension];
+			else
+				dorTop->measuredMinimums[dim->dimension] = neighborDorNode->coords[dim->dimension];
 
 			if ((neighborDorNode->coords[dim->dimension] < dorTop->coordMinimums[dim->dimension]) ||
-				(neighborDorNode->coords[dim->dimension] > dorTop->coordMaximums[dim->dimension])) {
+				(neighborDorNode->coords[dim->dimension] > dorTop->coordMaximums[dim->dimension]) ||
+				((dorTop->measuredMaximums[dim->dimension] - dorTop->measuredMinimums[dim->dimension]) >=
+				dorTop->dimensionLength[dim->dimension])) {
 				char b1[32], b2[32];
 				_coord_to_string(topop, dorNode->coords, b1);
 				_coord_to_string(topop, neighborDorNode->coords, b2);
@@ -1701,7 +1709,6 @@ _setup_pgfdb(struct _Topology *topop, struct _Node * srcSw, struct _Node * dstSw
 	}
 
 	if (endPort <= 1) {
-		srcSw->switchInfo.PortGroupTop = 0;
 		return VSTATUS_OK;
 	}
 
@@ -1726,7 +1733,7 @@ _setup_pgfdb(struct _Topology *topop, struct _Node * srcSw, struct _Node * dstSw
 
 	if (rc >= 0) {
 		srcSw->arChange |= (rc > 0);
-		srcSw->switchInfo.PortGroupTop = srcSw->pgtLen; //MAX(srcSw->switchInfo.PortGroupTop, srcSw->pgtLen);
+		srcSw->switchInfo.PortGroupTop = srcSw->pgtLen;
 
 		//PGFT is independent of LFT with LMC, though it's supposed to re-use the LMC data
 		PORT * pgft = sm_Node_get_pgft_wr(srcSw);
@@ -1802,7 +1809,6 @@ _setup_pgs(struct _Topology *topop, struct _Node * srcSw, struct _Node * dstSw)
 
 	endPort = topop->routingModule->funcs.get_port_group(topop, srcSw, dstSw, portGroup);
 	if (endPort <= 1) {
-		srcSw->switchInfo.PortGroupTop = 0;
 		return VSTATUS_OK;
 	}
 
@@ -1842,11 +1848,25 @@ _get_dor_port_group(Topology_t *topop, Node_t *switchp, Node_t* toSwitchp, uint8
 	}
 
 	if (ijTest(dorTop->dorLeft, ij)) {
-		_add_ports(switchp, srcDnp->left[routingDim]->node, ordered_ports, &count);
+		if (srcDnp->left[routingDim]->node) {
+			_add_ports(switchp, srcDnp->left[routingDim]->node, ordered_ports, &count);
+		} else {
+			IB_LOG_ERROR_FMT(__func__, "Invalid DOR closure in dimension %d dor left"
+				" 0x%016"PRIx64" [%s] does not connect to 0x%016"PRIx64 " [%s]",
+				routingDim, switchp->nodeInfo.NodeGUID, sm_nodeDescString(switchp),
+				toSwitchp->nodeInfo.NodeGUID, sm_nodeDescString(toSwitchp));
+		}
 	}
 
 	if (ijTest(dorTop->dorRight, ij)) {
-		_add_ports(switchp, srcDnp->right[routingDim]->node, ordered_ports, &count);
+		if (srcDnp->right[routingDim]->node) {
+			_add_ports(switchp, srcDnp->right[routingDim]->node, ordered_ports, &count);
+		} else {
+			IB_LOG_ERROR_FMT(__func__, "Invalid DOR closure in dimension %d dor right"
+				" 0x%016"PRIx64" [%s] does not connect to 0x%016"PRIx64 " [%s]",
+				routingDim, switchp->nodeInfo.NodeGUID, sm_nodeDescString(switchp),
+				toSwitchp->nodeInfo.NodeGUID, sm_nodeDescString(toSwitchp));
+		}
 	}
 
 	qsort(ordered_ports, count, sizeof(SwitchportToNextGuid_t), _compare_lids_routed);
@@ -1866,7 +1886,9 @@ _get_port_group(Topology_t *topop, Node_t *switchp, Node_t *toSwitchp, uint8_t *
 
 	if (dorClosure(dorTop, switchp->swIdx, toSwitchp->swIdx)) {
 		count = _get_dor_port_group(topop, switchp, toSwitchp, portnos);
-	} else {
+	}
+
+	if (!count) {
 		count = _get_alternate_path_port_group(topop, switchp, toSwitchp, portnos);
 	}
 
@@ -1916,6 +1938,9 @@ _calculate_lft(Topology_t * topop, Node_t *switchp)
 
 	if (smDorRouting.debug)
 		IB_LOG_INFINI_INFO_FMT(__func__, "Switch %s", sm_nodeDescString(switchp));
+
+	// Initialize port group top prior to setting up groups.
+	switchp->switchInfo.PortGroupTop = 0;
 
 	for_all_switch_nodes(topop, toSwitchp) {
 		i = 0;
@@ -2052,8 +2077,7 @@ _pre_process_discovery(Topology_t *topop, void **outContext)
 	dorTop = (DorTopology_t*)topop->routingModule->data;
 	memset(dorTop, 0, sizeof(DorTopology_t));
 
-	status = vs_pool_alloc(&sm_pool, sizeof(DorDiscoveryState_t),
-		(void *)&state);
+	status = vs_pool_alloc(&sm_pool, sizeof(DorDiscoveryState_t), (void *)&state);
 	if (status != VSTATUS_OK) {
 		IB_LOG_ERRORRC("Failed to allocate up/down state; rc:", status);
 		return status;
@@ -2648,16 +2672,14 @@ static Status_t _process_swIdx_change(Topology_t * topop, int old_idx, int new_i
 		if (dorTop->dorLeft != NULL) {
 			if (ijTest(dorTop->dorLeft, oldij)) {
 				ijSet(dorTop->dorLeft, ij);
-				//reset old index value to 0 as it is no longer valid
-				dorTop->dorLeft[oldij >> 5] &= ~((uint32_t)(1 << (ij & 0x1f)));
+				ijClear(dorTop->dorLeft, oldij);
 			} else {
 				ijClear(dorTop->dorLeft, ij);
 			}
 
 			if (ijTest(dorTop->dorLeft, oldji)) {
 				ijSet(dorTop->dorLeft, ji);
-				//reset old index value to 0
-				dorTop->dorLeft[oldji >> 5] &= ~((uint32_t)(1 << (ji & 0x1f)));
+				ijClear(dorTop->dorLeft, oldji);
 			} else {
 				ijClear(dorTop->dorLeft, ji);
 			}
@@ -2666,16 +2688,14 @@ static Status_t _process_swIdx_change(Topology_t * topop, int old_idx, int new_i
 		if (dorTop->dorRight != NULL) {
 			if (ijTest(dorTop->dorRight, oldij)) {
 				ijSet(dorTop->dorRight, ij);
-				//reset old index value to 0 as it is no longer valid
-				dorTop->dorRight[oldij >> 5] &= ~((uint32_t)(1 << (ij & 0x1f)));
+				ijClear(dorTop->dorRight, oldij);
 			} else {
 				ijClear(dorTop->dorRight, ij);
 			}
 
 			if (ijTest(dorTop->dorRight, oldji)) {
 				ijSet(dorTop->dorRight, ji);
-				//reset old index value to 0
-				dorTop->dorRight[oldji >> 5] &= ~((uint32_t)(1 << (ji & 0x1f)));
+				ijClear(dorTop->dorRight, oldji);
 			} else {
 				ijClear(dorTop->dorRight, ji);
 			}
@@ -2684,16 +2704,14 @@ static Status_t _process_swIdx_change(Topology_t * topop, int old_idx, int new_i
 		if (dorTop->dorBroken != NULL) {
 			if (ijTest(dorTop->dorBroken, oldij)) {
 				ijSet(dorTop->dorBroken, ij);
-				//reset old index value to 0 as it is no longer valid
-				dorTop->dorBroken[oldij >> 5] &= ~((uint32_t)(1 << (ij & 0x1f)));
+				ijClear(dorTop->dorBroken, oldij);
 			} else {
 				ijClear(dorTop->dorBroken, ij);
 			}
 
 			if (ijTest(dorTop->dorBroken, oldji)) {
 				ijSet(dorTop->dorBroken, ji);
-				//reset old index value to 0
-				dorTop->dorBroken[oldji >> 5] &= ~((uint32_t)(1 << (ji & 0x1f)));
+				ijClear(dorTop->dorBroken, oldji);
 			} else {
 				ijClear(dorTop->dorBroken, ji);
 			}
@@ -2720,17 +2738,19 @@ extern McSpanningTree_t **uniqueSpanningTrees;
 // dnodep		- current node, assumed to have already been added to the tree.
 // dneighborp 	- a neighbor of dnodep, which will become a child of dnodep in
 // 				  the spanning tree.
-// dim			- the dimension we're working on.
-// isLeft		- true if dneighborp is on the left of dnodep in dimension dim.
 //
 static int
 _add_neighbor_to_tree(McSpanningTree_t *dorTree, DorNode_t *dnodep,
-	DorNode_t *dneighborp, unsigned dim, unsigned isLeft)
+	DorNode_t *dneighborp)
 {
 	Node_t *nodep = dnodep->node;
 	Node_t *nnodep = dneighborp->node;
 	Port_t *portp = NULL;
 	unsigned i, j, k, p;
+
+	unsigned numPorts;
+	uint8_t egressPorts[255]; 	// Note that OPA spec says we can't have more
+								// than 255 ports.
 
 	i = _lookup_index(dneighborp->coords);
 	j = _lookup_index(dnodep->coords);
@@ -2744,28 +2764,45 @@ _add_neighbor_to_tree(McSpanningTree_t *dorTree, DorNode_t *dnodep,
 	DEBUG_ASSERT(dnodep->node->nodeInfo.NodeType == STL_NODE_SW);
 	DEBUG_ASSERT(dneighborp->node->nodeInfo.NodeType == STL_NODE_SW);
 
-	for (k = 0; portp == NULL && k < smDorRouting.dimension[dim].portCount;
-		k++) {
-		if (isLeft) {
-			// If we're looking at the left neighbor, then traffic flows
-			// from our port2 ports to the neighbor's port1 ports.
-			// Find the first working port2.
-			p = smDorRouting.dimension[dim].portPair[k].port2;
-		} else {
-			// If we're looking at the right neighbor, then traffic flows
-			// from our port1 ports to the neighbor's port2 ports.
-			// Find the first working port1.
-			p = smDorRouting.dimension[dim].portPair[k].port1;
-		}
+	numPorts = sm_topop->routingModule->funcs.get_port_group(sm_topop, nodep,
+		nnodep, egressPorts);
+
+	for (k = 0; portp == NULL && k < numPorts; k++) {
+		p = egressPorts[k];
 		portp = sm_get_port(nodep, p);
-		if (!sm_valid_port(portp) || portp->state < IB_PORT_ACTIVE) {
+
+		if (!portp) {
+			IB_LOG_DEBUG1_FMT(__func__, "Expected link between 0x%016"PRIx64" [%s]:%u and "
+				"0x%016"PRIx64" [%s] not found - port not found in topology.",
+				nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep), p,
+				nnodep->nodeInfo.NodeGUID, sm_nodeDescString(nnodep));
+			IB_LOG_DEBUG1_FMT(__func__, "portIndex = %u, NumPorts = %u",
+				p, nodep->nodeInfo.NumPorts);
+		} else if (!portp->portData) {
+			IB_LOG_DEBUG1_FMT(__func__, "Expected link between 0x%016"PRIx64" [%s]:%u and "
+				"0x%016"PRIx64" [%s] port data for port %u is missing.",
+				nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep), p,
+				nnodep->nodeInfo.NodeGUID, sm_nodeDescString(nnodep), p);
+			IB_LOG_DEBUG1_FMT(__func__, "Port state for 0x%016"PRIx64" [%s]:%u is %u ",
+				nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep), p, portp->state);
 			portp = NULL;
+		} else if (portp->state < IB_PORT_ACTIVE) {
+			IB_LOG_DEBUG1_FMT(__func__, "Expected link between 0x%016"PRIx64" [%s]:%u and "
+				"0x%016"PRIx64" [%s] not found - port in state %u",
+				nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep), p,
+				nnodep->nodeInfo.NodeGUID, sm_nodeDescString(nnodep), portp->state);
+			portp = NULL;
+		} else {
+			IB_LOG_DEBUG1_FMT(__func__, "Found valid link between 0x%016"PRIx64" [%s]:%u and "
+				"0x%016"PRIx64" [%s].",
+				nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep), p,
+				nnodep->nodeInfo.NodeGUID, sm_nodeDescString(nnodep));
 		}
 	}
 
 	if (!portp) {
 		// No link between these neighbors. Cannot span.
-		IB_LOG_INFINI_INFO_FMT(__func__, "Unable to complete spanning tree. "
+		IB_LOG_DEBUG1_FMT(__func__, "Disrupted DOR MC spanning tree. "
 			"No connections between 0x%016"PRIx64" and 0x%016"PRIx64,
 			nodep->nodeInfo.NodeGUID, nnodep->nodeInfo.NodeGUID);
 		return 0;
@@ -2910,7 +2947,7 @@ _build_spanning_tree_branch(DorTopology_t *dorTop, McSpanningTree_t *dorTree,
 			break;
 		}
 
-		if (!_add_neighbor_to_tree(dorTree, dnodep, dneighborp, dim, 1)) {
+		if (!_add_neighbor_to_tree(dorTree, dnodep, dneighborp)) {
 			// Broken link.
 			break;
 		}
@@ -2947,7 +2984,7 @@ _build_spanning_tree_branch(DorTopology_t *dorTop, McSpanningTree_t *dorTree,
 			break;
 		}
 
-		if (!_add_neighbor_to_tree(dorTree, dnodep, dneighborp, dim, 0)) {
+		if (!_add_neighbor_to_tree(dorTree, dnodep, dneighborp)) {
 			// Broken link.
 			break;
 		}
@@ -2977,7 +3014,7 @@ _build_spanning_tree_branch(DorTopology_t *dorTop, McSpanningTree_t *dorTree,
 				break;
 			}
 
-			if (!_add_neighbor_to_tree(dorTree, dnodep, dneighborp, dim, 0)) {
+			if (!_add_neighbor_to_tree(dorTree, dnodep, dneighborp)) {
 				// Broken link.
 				break;
 			}
@@ -3004,7 +3041,7 @@ _build_spanning_tree_branch(DorTopology_t *dorTop, McSpanningTree_t *dorTree,
 				break;
 			}
 
-			if (!_add_neighbor_to_tree(dorTree, dnodep, dneighborp, dim, 1)) {
+			if (!_add_neighbor_to_tree(dorTree, dnodep, dneighborp)) {
 				// Broken link.
 				break;
 			}
@@ -3192,8 +3229,6 @@ _build_spanning_trees(void)
 
 			for (i=0; i < dorTree->num_nodes; i++) {
 				DorNode_t *bestp = NULL;
-				unsigned best_dim = 0;
-				unsigned is_left = 0;
 				McNode_t *mnodep = &(dorTree->nodes[i]);
 				int8_t height = 64; // max distance a node can be from the SM.
 
@@ -3228,8 +3263,6 @@ _build_spanning_trees(void)
 						if (dorTree->nodes[s].height < height &&
 							dorTree->nodes[s].height >= 0) {
 							bestp = lp;
-							best_dim = j;
-							is_left = 0;
 							height = dorTree->nodes[s].height;
 						}
 					}
@@ -3239,16 +3272,13 @@ _build_spanning_trees(void)
 						if (dorTree->nodes[s].height < height &&
 							dorTree->nodes[s].height >= 0) {
 							bestp = rp;
-							best_dim = j;
-							is_left = 1;
 							height = dorTree->nodes[s].height;
 						}
 					}
 				}
 				if (bestp) {
 					// Add dnodep to the tree with bestp as the parent.
-					if (_add_neighbor_to_tree(dorTree, bestp, dnodep,
-						best_dim, is_left)) {
+					if (_add_neighbor_to_tree(dorTree, bestp, dnodep)) {
 						progress = 1;
 					}
 				}

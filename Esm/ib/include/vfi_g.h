@@ -48,7 +48,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ib_types.h"
 #include "mai_g.h"
 #include "ib_sa.h"
-#include "stl_sa.h"
+#include "stl_sa_priv.h"
 
 #define VFI_DEFAULT_GUID     (0)
 

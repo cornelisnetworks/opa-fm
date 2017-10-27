@@ -313,7 +313,7 @@ typedef	struct {
 // CapabilityMask.
 //
 // Note for STL capability mask:
-// STL provides a bitfield definition for its capability mask. (see stl_sm.h)
+// STL provides a bitfield definition for its capability mask. (see stl_sm_types.h)
 // Many capability bits that were optional in IB are now mandatory in STL.
 // However, as per STL1G1 spec, STL returns these "mandatory" capability
 // bits as 0.  Be careful when checking STL capabilities and using 
@@ -439,7 +439,8 @@ typedef SMDBSync_t  *SMDBSyncp;         /* SM DBSYNC pointer type */
 // version 5 - 10.3 release
 // version 6 - 10.4 release
 // version 7 - 10.5 release
-#define     FM_PROTOCOL_VERSION    7
+// version 8 - 10.6 release
+#define     FM_PROTOCOL_VERSION    8
 
 typedef struct {
     uint32_t        protocolVersion;
@@ -451,9 +452,6 @@ typedef struct {
     // PM checksums
     uint32_t        pmConfigChecksum;
 
-    // FE checksums
-    uint32_t        feConfigChecksum;
-
 	// spare values for future expansion so packet framing does not need to change
 	uint32_t		spare1;
 	uint32_t		spare2;
@@ -463,7 +461,7 @@ typedef struct {
 	uint32_t		spare6;
 	uint32_t		spare7;
 	uint32_t		spare8;
-
+  	uint32_t		spare9;
 } SMDBCCCSync_t;
 typedef SMDBCCCSync_t  *SMDBCCCSyncp;         /* SM DBSYNC CCC pointer type */
 

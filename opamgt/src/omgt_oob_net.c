@@ -73,9 +73,14 @@ FSTATUS omgt_oob_net_connect(struct omgt_port *port)
 	int inaddr = 0;
 	int ipv6 = 0;
 
-	/*
-	 * First resolve the hostname and fill in the sockaddr
-	 */
+	/* Set Timeout to default value if incorrect value */
+	if (port->ms_timeout <= 0) {
+		port->ms_timeout = OMGT_DEF_TIMEOUT_MS;
+	}
+	if (port->retry_count < 0) {
+		port->retry_count = OMGT_DEF_RETRY_CNT;
+	}
+	/* First resolve the hostname and fill in the sockaddr */
 	inaddr = inet_pton(AF_INET6, port->oob_input.host, &ipv6addr);
 
 	if ((ipv6 = (inaddr == 1) ? 1 : 0)) {
@@ -105,9 +110,7 @@ FSTATUS omgt_oob_net_connect(struct omgt_port *port)
 		}
 	}
 
-	/*
-	 * Next, create a socket and attempt the connection
-	 */
+	/* Next, create a socket and attempt the connection */
 	conn = omgt_oob_new_connection();
 	if (conn == NULL) {
 		OMGT_OUTPUT_ERROR(port, "no memory for connection.\n");

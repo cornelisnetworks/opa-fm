@@ -29,19 +29,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /* [ICS VERSION STRING: unknown] */
 
-#if defined(CHECK_HEADERS)
-
-#ifndef __IBA_STL_MAD_H__
-#warning FIX ME!!! Your includes should use the stl_mad.h header and not the ib_mad.h header for STL builds
-#endif
-
-#endif
-
 #ifndef __IBA_IB_MAD_H__
 #define __IBA_IB_MAD_H__
 
 #include "iba/public/datatypes.h"
-#include "iba/vpi.h"
 
 /* Ths should be removed from here */
 #include "iba/stl_types.h"
@@ -77,7 +68,7 @@ extern "C" {
 #define MAD_BLOCK_SIZE				STL_MAD_BLOCK_SIZE
 
 #define IB_BASE_VERSION				1
-/* use ib_generalServices.h or ib_sm.h to get proper class version */
+/* use ib_generalServices.h or ib_sm_types.h to get proper class version */
 
 
 /*

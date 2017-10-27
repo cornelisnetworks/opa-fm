@@ -36,16 +36,15 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "opamgt_priv.h"
 #include <ib_mad.h>
 #include <ib_sa.h>
-#include <iba/ib_pa.h>
 #include <iba/ib_pkt.h>
 #include <iba/ib_mad.h>
-#include <iba/ib_sm.h>
+#include <iba/ib_sm_priv.h>
 #include <iba/public/statustext.h>
 #include <iba/ib_rmpp.h>
-#include <iba/stl_sm.h>
-#include <iba/stl_sa.h>
+#include <iba/stl_sm_priv.h>
+#include <iba/stl_sa_priv.h>
 #include <iba/stl_pm.h>
-#include <iba/stl_pa.h>
+#include <iba/stl_pa_priv.h>
 
 //==============================================================================
 
@@ -631,7 +630,7 @@ stl_send_sma(IBhandle_t handle, Mai_t * mai, uint64_t timeout)
 
 	memset(&addr, 0, sizeof(addr));
 	addr.lid = mai->addrInfo.dlid;
-	addr.qpn = mai->addrInfo.srcqp;
+	addr.qpn = mai->addrInfo.destqp;
 	addr.qkey = mai->addrInfo.qkey;
 	addr.pkey = mai->addrInfo.pkey;
 	addr.sl = mai->addrInfo.sl;

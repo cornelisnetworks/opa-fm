@@ -439,7 +439,7 @@ uint8_t fe_is_thread(void)
     return 0; 
 }
 
-void
+Status_t
 if3_set_rmpp_minfo (ManagerInfo_t *mi)
 {
     mi->rmppMngrfd = &fdsa;
@@ -450,6 +450,7 @@ if3_set_rmpp_minfo (ManagerInfo_t *mi)
     // used to define the RMPP context pool sizes for the SA.
     mi->rmppDataLength = 512 * cs_numPortRecords(fe_config.subnet_size);
     mi->rmppMaxCntxt = 2 * fe_config.subnet_size;
+    return VSTATUS_OK;
 }
 
 int

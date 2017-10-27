@@ -35,7 +35,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "iba/vpi.h"
 #include "stl_types.h"
-#include "stl_sm.h"
+#include "stl_sm_priv.h"
 
 #ifdef __cplusplus
 extern "C" {

@@ -48,7 +48,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "iba/ib_cm.h"
 #endif
 #include "iba/stl_sd.h"
-#include "iba/stl_pa.h"
+#include "iba/stl_pa_priv.h"
 #include "iba/ib_avtracker.h"
 #include "iba/umadt.h"
 #ifdef BUILD_DMC

@@ -34,7 +34,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <unistd.h>
 #include <errno.h>
 #include <iba/ibt.h>
-#include <iba/stl_pa.h>
+#include <iba/stl_pa_priv.h>
 #include <iba/ib_helper.h>
 #include <stdarg.h>
 #include <time.h>
@@ -91,37 +91,37 @@ void PrintStlPAGroupErrorStats(PrintDest_t *dest, int indent, const STL_PM_CATEG
 
 	PrintFunc(dest, "%*sIntegrity     Max %6u     Buckets: ",
 		indent, "", pErrStat->categoryMaximums.integrityErrors);
-	for (i = 0; i < PM_ERR_BUCKETS; i++)
+	for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++)
 		PrintFunc(dest, " %4u ", pErrStat->ports[i].integrityErrors);
 	PrintFunc(dest, "\n");
 
 	PrintFunc(dest, "%*sCongestion    Max %6u     Buckets: ",
 		indent, "", pErrStat->categoryMaximums.congestion);
-	for (i = 0; i < PM_ERR_BUCKETS; i++)
+	for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++)
 		PrintFunc(dest, " %4u ", pErrStat->ports[i].congestion);
 	PrintFunc(dest, "\n");
 
 	PrintFunc(dest, "%*sSmaCongestion Max %6u     Buckets: ",
 		indent, "", pErrStat->categoryMaximums.smaCongestion);
-	for (i = 0; i < PM_ERR_BUCKETS; i++)
+	for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++)
 		PrintFunc(dest, " %4u ", pErrStat->ports[i].smaCongestion);
 	PrintFunc(dest, "\n");
 
 	PrintFunc(dest, "%*sBubble        Max %6u     Buckets: ",
 			  indent, "", pErrStat->categoryMaximums.bubble);
-	for (i = 0; i < PM_ERR_BUCKETS; i++)
+	for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++)
 		PrintFunc(dest, " %4u ", pErrStat->ports[i].bubble);
 	PrintFunc(dest, "\n");
 
 	PrintFunc(dest, "%*sSecurity      Max %6u     Buckets: ",
 		indent, "", pErrStat->categoryMaximums.securityErrors);
-	for (i = 0; i < PM_ERR_BUCKETS; i++)
+	for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++)
 		PrintFunc(dest, " %4u ", pErrStat->ports[i].securityErrors);
 	PrintFunc(dest, "\n");
 
 	PrintFunc(dest, "%*sRouting       Max %6u     Buckets: ",
 		indent, "", pErrStat->categoryMaximums.routingErrors);
-	for (i = 0; i < PM_ERR_BUCKETS; i++)
+	for (i = 0; i < STL_PM_CATEGORY_BUCKETS; i++)
 		PrintFunc(dest, " %4u ", pErrStat->ports[i].routingErrors);
 	PrintFunc(dest, "\n");
 
@@ -294,39 +294,6 @@ void PrintStlPAPortCounters(PrintDest_t *dest, int indent, const STL_PORT_COUNTE
 			indent, "",
 		   	pPortCounters->portRcvBubble);
 	PrintStlPAImageId(dest, indent+2, &pPortCounters->imageId);
-#if 0
-	if (flags & STL_PA_PC_FLAG_DELTA) {
-		if (pPortCounters->PortCheckRate) {
-			PrintFunc(dest, "%*s    %s  %20"PRIu64" (%3u.%1u%%) (Inefficiency %3u.%1u%%)\n",
-				indent, "",
-		   		IbPortCongestionNameToText(pPortCounters->PortCheckRate),
-				pPortCounters->PortXmitCongestion,
-				pPortCounters->CongestionPct10/10,
-				pPortCounters->CongestionPct10%10,
-				pPortCounters->InefficiencyPct10/10,
-				pPortCounters->InefficiencyPct10%10);
-			PrintFunc(dest, "%*s    %-22s%10u %s\n",
-				indent, "",
-		   		IbPortCheckRateTypeToText(pPortCounters->PortCheckRate),
-		   		pPortCounters->PortCheckRate & PM_VENDOR_PORT_COUNTERS_RATE_VALUE_MASK,
-		   		IbPortCheckRateTypeSuffixToText(pPortCounters->PortCheckRate)
-				);
-		} else {
-			PrintFunc(dest, "%*s    Port Xmit Congestion Unavailable\n",
-				indent, "");
-		}
-		if (pPortCounters->PortCheckRate
-			&& (pPortCounters->PortCheckRate & PM_VENDOR_PORT_COUNTERS_RATE_TYPE_MASK)
-	   				== PM_VENDOR_PORT_COUNTERS_RATE_TYPE_CONG) {
-			PrintFunc(dest, "%*s    Port Adaptive Routing %20"PRIu64"\n",
-				indent, "",
-				pPortCounters->PortAdaptiveRouting);
-		} else {
-			PrintFunc(dest, "%*s    Port Adaptive Routing        N/A\n",
-				indent, "");
-		}
-	}
-#endif
 }
 
 void PrintStlPAGroupConfig(PrintDest_t *dest, int indent, const char *groupName, const int numRecords, const STL_PA_PM_GROUP_CFG_RSP *pGroupConfig)

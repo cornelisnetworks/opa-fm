@@ -32,8 +32,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "pm_l.h"
 #include "pa_l.h"
 #include "iba/stl_pm.h"
-#include "iba/stl_mad.h"
-#include "iba/stl_pa.h"
+#include "iba/stl_mad_priv.h"
+#include "iba/stl_pa_priv.h"
 #include <iba/ibt.h>
 #include "pm_topology.h"
 #include "paAccess.h"

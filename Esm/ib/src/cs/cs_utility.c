@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -56,11 +56,12 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 #include "cs_log.h"
 #include "cs_queue.h"
+#include "stl_mad_priv.h"
 #include "ib_mad.h"
 #include "ib_sa.h"
-#include "ib_pa.h"
+#include "stl_pa_priv.h"
 #include "sm_l.h"
-#include "stl_sa.h"
+#include "stl_sa_priv.h"
 #include "mai_g.h"
 #include "sm_dbsync.h"
 #include "if3.h"
@@ -390,13 +391,15 @@ cs_convert_status (Status_t status) {
 	case VSTATUS_INVALID_ITERATOR: return "105: resolver iterator invalid";
 	case VSTATUS_INVALID_MAGIC: return "106:Incorrect magic number";
 	case VSTATUS_BADPAGESIZE: return "107: invalid memory page size specified";
+	case VSTATUS_UNRECOVERABLE: return "108: unrecoverable error";
+	case VSTATUS_TIMEOUT_LIMIT: return "109: cumulative timeout limit reached";
 	case VSTATUS_ITERATOR_OUT_OF_DATE: return "119: data referred by case updated or deleted.";
 	case VSTATUS_INSUFFICIENT_PERMISSION: return "120: client has insufficient privillages";
 	case VSTATUS_INVALID_CQ_HANDLE: return "126: CQ handle is invalid";
 	case VSTATUS_INVALID_FORMAT: return "127: Data format is invalid";
 	case VSTATUS_REJECT: return "128: Request rejected";
+	case VSTATUS_DONE: return "129: Request done";
 	// a few extra just in case
-	case 129: return "129: Unknown status code";
 	case 130: return "130: Unknown status code";
 	case 131: return "131: Unknown status code";
 	case 132: return "132: Unknown status code";
@@ -416,7 +419,6 @@ char *cs_getAidName(uint16_t aidClass, uint16_t aid) {
 #define CASE_STL_SA_AID(aid) case STL_SA_ATTR_##aid: return #aid
 #define CASE_STL_PM_AID(aid) case STL_PM_ATTRIB_ID_##aid: return #aid
 #define CASE_MAD_CV(aid) case MAD_CV_##aid: return "Class " #aid
-#define CASE_PA_AID(aid) case PA_ATTRID_##aid: return #aid
 #define CASE_STL_PA_AID(aid) case STL_PA_ATTRID_##aid: return #aid
 
 	// Check common attribute ids first
@@ -469,7 +471,6 @@ char *cs_getAidName(uint16_t aidClass, uint16_t aid) {
 		CASE_MCLASS_AID(PORT_LFT);
 		CASE_MCLASS_AID(PORT_GROUP);
 		CASE_MCLASS_AID(AR_LIDMASK);
-		CASE_MCLASS_AID(ICS_LED_INFO);
 		CASE_MCLASS_AID(COLLECTIVE_NOTICE);
 		CASE_MCLASS_AID(CMLIST);
 		CASE_MCLASS_AID(CFT);
@@ -543,19 +544,19 @@ char *cs_getAidName(uint16_t aidClass, uint16_t aid) {
 		}
     case MAD_CV_VFI_PM:
         switch (aid) {
-        CASE_PA_AID(GET_GRP_LIST);
-        CASE_PA_AID(GET_GRP_INFO);
-        CASE_PA_AID(GET_GRP_CFG); 
-        CASE_PA_AID(GET_PORT_CTRS);
-        CASE_PA_AID(CLR_PORT_CTRS);
-        CASE_PA_AID(CLR_ALL_PORT_CTRS);
-        CASE_PA_AID(GET_PM_CONFIG);
-        CASE_PA_AID(FREEZE_IMAGE);
-        CASE_PA_AID(RELEASE_IMAGE);
-        CASE_PA_AID(RENEW_IMAGE);
-        CASE_PA_AID(GET_FOCUS_PORTS);
-        CASE_PA_AID(GET_IMAGE_INFO);
-        CASE_PA_AID(MOVE_FREEZE_FRAME);
+        CASE_STL_PA_AID(GET_GRP_LIST);
+        CASE_STL_PA_AID(GET_GRP_INFO);
+        CASE_STL_PA_AID(GET_GRP_CFG);
+        CASE_STL_PA_AID(GET_PORT_CTRS);
+        CASE_STL_PA_AID(CLR_PORT_CTRS);
+        CASE_STL_PA_AID(CLR_ALL_PORT_CTRS);
+        CASE_STL_PA_AID(GET_PM_CONFIG);
+        CASE_STL_PA_AID(FREEZE_IMAGE);
+        CASE_STL_PA_AID(RELEASE_IMAGE);
+        CASE_STL_PA_AID(RENEW_IMAGE);
+        CASE_STL_PA_AID(GET_FOCUS_PORTS);
+        CASE_STL_PA_AID(GET_IMAGE_INFO);
+        CASE_STL_PA_AID(MOVE_FREEZE_FRAME);
         CASE_STL_PA_AID(GET_VF_LIST);
         CASE_STL_PA_AID(GET_VF_INFO);
         CASE_STL_PA_AID(GET_VF_CONFIG);
@@ -587,7 +588,7 @@ char *cs_getAidName(uint16_t aidClass, uint16_t aid) {
 #undef CASE_STL_SA_AID
 #undef CASE_STL_PM_AID
 #undef CASE_MAD_CV
-
+#undef CASE_STL_PA_AID
     return "UNKNOWN";
 }
 

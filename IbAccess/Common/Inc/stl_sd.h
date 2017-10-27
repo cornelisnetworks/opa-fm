@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -32,7 +32,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define __STL_SD_H__
 
 #include "iba/ib_sd.h"
-#include "iba/stl_sa.h"
+#include "iba/stl_sa_types.h"
 
 #define NO_STL_MCMEMBER_OUTPUT      // Don't output STL McMember Records in SA tools
 #define NO_STL_SERVICE_OUTPUT      // Don't output STL Service Records in SA tools
@@ -82,6 +82,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OutputTypeStlSCSCTableRecord		(OutputTypeStlBase+34)
 #define OutputTypeStlClassPortInfo			(OutputTypeStlBase+35)
 #define OutputTypeStlFabricInfoRecord		(OutputTypeStlBase+36)
+#define OutputTypeStlSwitchCostRecord		(OutputTypeStlBase+53)
 
 typedef union _OMGT_QUERY_INPUT_VALUE
 {
@@ -166,6 +167,7 @@ typedef union _OMGT_QUERY_INPUT_VALUE
 		IB_GID McGid; /* InputType */
 		IB_LID Lid; /* InputType */
 		uint16 PKey; /* InputType */
+		uint8 SL;
 	} IbMcMemberRecord; /* OutputType */
 #ifndef NO_STL_MCMEMBER_OUTPUT
 	union _IbMcMemberRecord StlMcMemberRecord; /* OutputType */
@@ -202,6 +204,7 @@ typedef union _OMGT_QUERY_INPUT_VALUE
 	union _LidOnly CableInfoRecord;
 	union _LidOnly PortGroupRecord;
 	union _LidOnly PortGroupFwdRecord;
+	union _LidOnly SwitchCostRecord;
 } OMGT_QUERY_INPUT_VALUE;
 
 typedef struct _OMGT_QUERY  {
@@ -373,5 +376,10 @@ typedef struct {
 	uint32					NumRecords;
 	STL_PORT_GROUP_FORWARDING_TABLE_RECORD Records[1];
 } STL_PORT_GROUP_FORWARDING_TABLE_RECORD_RESULTS, *PSTL_PORT_GROUP_FORWARDING_TABLE_RECORD_RESULTS;
+
+typedef struct {
+	uint32					NumRecords;
+	STL_SWITCH_COST_RECORD	Records[1];
+} STL_SWITCH_COST_RECORD_RESULTS, *PSTL_SWITCH_COST_RECORD_RESULTS;
 
 #endif

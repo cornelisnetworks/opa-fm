@@ -61,7 +61,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sm_counters.h"
 #include "sm_l.h"
 #include "sa_l.h"
-#include "iba/stl_sm.h"
+#include "iba/stl_sm_priv.h"
 
 
 /**

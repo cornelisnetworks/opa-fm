@@ -538,6 +538,9 @@ sm_calculate_all_lfts(Topology_t * topop)
 			IB_LOG_ERROR_FMT(__func__, "Failed to allocate space for LFT.");
 			return status;
 		}
+
+		// Initialize port group top prior to setting up groups.
+		switchp->switchInfo.PortGroupTop = 0;
 	}
 
 	for (i=0; i<2; i++) {

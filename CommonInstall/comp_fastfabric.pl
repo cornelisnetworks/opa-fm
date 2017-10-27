@@ -43,13 +43,13 @@ my $FF_TLS_CONF_FILE = "/etc/opa/opaff.xml";
 sub available_fastfabric
 {
 	my $srcdir=$ComponentInfo{'fastfabric'}{'SrcDir'};
-	return ((rpm_resolve("$srcdir/RPMS/*/", "any", "opa-basic-tools") ne "") &&
+	return ((rpm_resolve("$srcdir/RPMS/*/", "any", "opa-mpi-apps") ne "") &&
 			(rpm_resolve("$srcdir/RPMS/*/", "any", "opa-fastfabric") ne ""));
 }
 
 sub installed_fastfabric
 {
-	return(system("rpm -q --quiet opa-fastfabric") == 0)
+	return rpm_is_installed("opa-fastfabric", "any");
 }
 
 # only called if installed_fastfabric is true
@@ -63,7 +63,10 @@ sub installed_version_fastfabric
 sub media_version_fastfabric
 {
 	my $srcdir=$ComponentInfo{'fastfabric'}{'SrcDir'};
-	return `cat "$srcdir/version"`;
+	my $rpmfile = rpm_resolve("$srcdir/RPMS/*/", "any", "opa-fastfabric");
+	my $version= rpm_query_version_release("$rpmfile");
+	# assume media properly built with matching versions for all rpms
+	return dot_version("$version");
 }
 
 sub build_fastfabric
@@ -107,13 +110,12 @@ sub install_fastfabric
 	my $version=media_version_fastfabric();
 	chomp $version;
 	printf("Installing $ComponentInfo{'fastfabric'}{'Name'} $version $DBG_FREE...\n");
-		LogPrint "Installing $ComponentInfo{'fastfabric'}{'Name'} $version $DBG_FREE for $CUR_DISTRO_VENDOR $CUR_VENDOR_VER\n";
-	check_config_dirs();
+	LogPrint "Installing $ComponentInfo{'fastfabric'}{'Name'} $version $DBG_FREE for $CUR_DISTRO_VENDOR $CUR_VENDOR_VER\n";
 
 	my $rpmfile = rpm_resolve("$srcdir/RPMS/*/", "any", "opa-fastfabric");
 	rpm_run_install($rpmfile, "any", " -U ");
 
-	check_dir("/usr/lib/opa/tools");
+	# TBD - spec file should do this
 	check_dir("/usr/share/opa/samples");
 	system "chmod ug+x $ROOT/usr/share/opa/samples/hostverify.sh";
 	system "rm -f $ROOT/usr/share/opa/samples/nodeverify.sh";
@@ -127,16 +129,16 @@ sub install_fastfabric
 	check_rpm_config_file("$CONFIG_DIR/opa/hosts", $depricated_dir);
 	check_rpm_config_file("$CONFIG_DIR/opa/ports", $depricated_dir);
 	check_rpm_config_file("$CONFIG_DIR/opa/switches", $depricated_dir);
+# TBD - this should not be a config file
 	check_rpm_config_file("/usr/lib/opa/tools/osid_wrapper");
 
 	#install_conf_file("$ComponentInfo{'fastfabric'}{'Name'}", "$FF_TLS_CONF_FILE", "$srcdir/fastfabric/tools/tls");
 	#remove_conf_file("$ComponentInfo{'fastfabric'}{'Name'}", "$OPA_CONFIG_DIR/iba_stat.conf");
+	# TBD - spec file should remove this
 	system("rm -rf $ROOT$OPA_CONFIG_DIR/iba_stat.conf");	# old config
 
 	$rpmfile = rpm_resolve("$srcdir/RPMS/*/", "any", "opa-mpi-apps");
 	rpm_run_install($rpmfile, "any", " -U ");
-
-
 
 	$ComponentWasInstalled{'fastfabric'}=1;
 }
@@ -191,14 +193,16 @@ sub installed_opamgt_sdk
 
 sub installed_version_opamgt_sdk
 {
-	return rpm_query_version_release_pkg("opa-libopamgt-devel");
+	my $version = rpm_query_version_release_pkg("opa-libopamgt-devel");
+	return dot_version("$version");
 }
 
 sub media_version_opamgt_sdk
 {
 	my $srcdir = $ComponentInfo{'opamgt_sdk'}{'SrcDir'};
 	my $rpm = rpm_resolve("$srcdir/RPMS/*/", "any", "opa-libopamgt-devel");
-	return rpm_query_version_release($rpm);
+	my $version = rpm_query_version_release($rpm);
+	return dot_version("$version");
 }
 
 sub build_opamgt_sdk

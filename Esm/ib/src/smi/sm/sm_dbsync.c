@@ -191,7 +191,7 @@ sm_DbsyncRecCompare(void *key1, void *key2) {
 }
 
 
-Status_t sm_dbsync_checksums(uint32_t vfCsum, uint32_t smCsum, uint32_t pmCsum, uint32_t feCsum) {
+Status_t sm_dbsync_checksums(uint32_t vfCsum, uint32_t smCsum, uint32_t pmCsum) {
     Status_t    status=VSTATUS_OK;
 
     if ((status = vs_lock(&smRecords.smLock)) != VSTATUS_OK) {
@@ -201,7 +201,6 @@ Status_t sm_dbsync_checksums(uint32_t vfCsum, uint32_t smCsum, uint32_t pmCsum, 
     	smRecords.ourChecksums.smVfChecksum = vfCsum;
     	smRecords.ourChecksums.smConfigChecksum = smCsum;
     	smRecords.ourChecksums.pmConfigChecksum = pmCsum;
-    	smRecords.ourChecksums.feConfigChecksum = feCsum;
 	}
     (void)vs_unlock(&smRecords.smLock);
     return status;
@@ -227,8 +226,7 @@ Status_t sm_dbsync_recInit(void) {
 	// Don't need to lock old_topology, we are still running single threaded
 	sm_dbsync_checksums(old_topology.vfs_ptr->consistency_checksum,
 						sm_config.consistency_checksum,
-						pm_config.consistency_checksum,
-						fe_config.consistency_checksum);
+						pm_config.consistency_checksum);
 
     return status;
 }
@@ -2331,7 +2329,7 @@ static void dbsync_procReqQ(void) {
 /*
  * see if remote SM still around
 */
-//static dbsync_pingSm(Lid_t lid) {
+//static dbsync_pingSm(STL_LID lid) {
 //    (void)if3_set_dlid(dbsyncfd_if3, lid);
 //    /* ping the remote sm's dbsync thread */
 //    if(If3CntrlCmdSend(dbsyncfd_if3, FE_MNGR_PROBE_CMD) != VSTATUS_OK) {

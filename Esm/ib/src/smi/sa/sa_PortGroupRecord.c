@@ -194,7 +194,7 @@ GetPortGroupRecord(Mai_t *maip, uint32_t *records)
     Status_t    status;
     Node_t      *nodep;
     bool_t      checkLid;
-    Lid_t       lid=0, port0Lid=0;
+    STL_LID       lid=0, port0Lid=0;
     bool_t      checkBlock;
     uint8_t     blockNum=0;
     int			endBlock, blkIdx;
@@ -323,7 +323,7 @@ GetPortGroupFwdRecord(Mai_t *maip, uint32_t *records)
     Status_t    status;
     Node_t      *nodep;
     bool_t      checkLid;
-    Lid_t       lid=0, port0Lid=0;
+    STL_LID       lid=0, port0Lid=0;
     bool_t      checkBlock;
     uint32_t    blockNum=0;
     uint32_t    endBlock, blkIdx;

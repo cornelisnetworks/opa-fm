@@ -27,7 +27,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
  * ** END_ICS_COPYRIGHT5   ****************************************/
 
-//#include "cs_log.h"
 #define INLINE
 #include "cs_hashtable.h"
 #include <stdlib.h>

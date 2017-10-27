@@ -29,7 +29,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /* [ICS VERSION STRING: unknown] */
 #include "os_g.h"
-#include "iba/stl_sa.h"
+#include "iba/stl_sa_priv.h"
 #include "ib_status.h"
 #include "cs_g.h"
 #include "mai_g.h"

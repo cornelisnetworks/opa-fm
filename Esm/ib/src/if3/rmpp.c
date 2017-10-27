@@ -63,7 +63,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 extern uint32_t if3DebugRmpp; 
 extern int smValidateGsiMadPKey(Mai_t *maip, uint8_t mgmntAllowedRequired, uint8_t antiSpoof);
-extern void if3_set_rmpp_minfo(ManagerInfo_t *mi);
+extern Status_t if3_set_rmpp_minfo(ManagerInfo_t *mi);
 
 #if defined(__VXWORKS__)
 #define RMPP_STACK_SIZE (24 * 1024)
@@ -1435,7 +1435,7 @@ cntxt_get(rmpp_user_info_t *info, Mai_t *mad, void **context)
    int 		bucket; 
    Status_t	status; 
    rmpp_cntxt_t *rmpp_cntxt; 
-   rmpp_context_get_t getStatus = 0; 
+   rmpp_context_get_t getStatus = ContextNotAvailable; 
    rmpp_cntxt_t *req_cntxt = NULL; 
    
    IB_ENTER(__func__, mad, 0, 0, 0); 
@@ -1720,9 +1720,6 @@ static void rmpp_delete_user(rmpp_user_info_t *info)
       memset(info, 0, sizeof(rmpp_user_info_t)); 
       info->inuse = 0; 
       rmpp_userCount--; 
-      // no active user, later re-initialize global variables
-      if (rmpp_userCount <= 0) 
-         rmpp_initialized = 0; 
       vs_unlock(&rmpp_user_lock);
    }
 }
@@ -1945,6 +1942,7 @@ rmpp_mngr_open_cnx(
       
       // reset necessary global variables
       rmpp_initialized = 1; 
+      rmpp_userCount = 0; 
       memset(&rmpp_users, 0, sizeof(rmpp_users));
    }
    if (!fd) {
@@ -2066,10 +2064,10 @@ rmpp_mngr_close_cnx(ManagerInfo_t *mi, uint8_t complete)
     
     if (mi) {
         // setup RMPP related fields 
-        (void)if3_set_rmpp_minfo(mi);
-
-        if (mi->rmppMngrfd && ((usrId = rmpp_is_cnx_open(mi->rmppMngrfd)) != -1))
-            (void)rmpp_close_cnx(usrId, complete);
+        if (!if3_set_rmpp_minfo(mi)) {
+            if (mi->rmppMngrfd && ((usrId = rmpp_is_cnx_open(mi->rmppMngrfd)) != -1))
+                (void)rmpp_close_cnx(usrId, complete);
+        }
     }
 }
 
@@ -2323,6 +2321,7 @@ rmpp_cntxt_get(int usrId, Mai_t *mad, uint8_t *processMad)
    IB_ENTER(__func__, mad, processMad, 0, 0); 
    
    if (mad == NULL || processMad == NULL) {
+      IB_LOG_ERROR_FMT(__func__, "NULL parameter specified!"); 
       IB_EXIT(__func__, rmpp_cntxt); 
       return rmpp_cntxt;
    } else if (!info) {
@@ -2910,6 +2909,8 @@ rmpp_receive_response(int usrId, ManagerInfo_t *mi, Mai_t *maip, uint8_t *buffer
     mi->timeout = timeout; 
     
     while (1) {
+        rmpp_cntxt = NULL;
+
         // attempt to receive response from manager 
         status = if3_recv(mi, &mad, timeout);       
         if (status != VSTATUS_OK) {

@@ -171,11 +171,34 @@ typedef struct {
     DBSyncType_t    type;           /* 1=get capability, 2=full sync, 3=update, 4=delete */
     DBSyncDatTyp_t  datatype;       /* 1=all (full sync only), 2=InformInfo, 3=groups, 4=services */
     uint64_t        portguid;       /* portguid of standby SM */
-    Lid_t           standbyLid;     /* lid of the standby SM */
+    STL_LID           standbyLid;     /* lid of the standby SM */
 	uint8_t			isEmbedded;		/* 1: standby SM is embedded */
     SMSyncData_t    data;           /* opaque data buffer to hold specific sync data */
 }SMSyncReq_t;
 typedef SMSyncReq_t *SMSyncReqp;    /* Sm Sync Request pointer type */
+
+//
+// Multicast dbsync structure
+//
+
+typedef	struct {
+	uint8_t			mGid[16];
+	uint32_t		members_full;
+	uint32_t		qKey;
+	uint16_t		pKey;
+	STL_LID			mLid;
+	uint8_t			mtu;
+	uint8_t			rate;
+	uint8_t			life;
+	uint8_t			sl;
+	uint32_t		flowLabel;
+	uint8_t			hopLimit;
+	uint8_t			tClass;
+	uint8_t			scope;
+    uint8_t         filler;
+    uint16_t        membercount;
+	uint32_t		index_pool; /* Next index to use for new Mc Member records */
+} McGroupSync_t;
 
 //**********  SM topology asynchronous send receive response queue **********
 extern  cs_Queue_ptr sm_dbsync_queue;
@@ -233,7 +256,6 @@ BSWAPCOPY_SM_DBSYNC_CCC_DATA(SMDBCCCSyncp Src, SMDBCCCSyncp Dest)
     Dest->smVfChecksum = ntoh32(Dest->smVfChecksum);
     Dest->smConfigChecksum = ntoh32(Dest->smConfigChecksum);
     Dest->pmConfigChecksum = ntoh32(Dest->pmConfigChecksum);
-    Dest->feConfigChecksum = ntoh32(Dest->feConfigChecksum);
 
     Dest->spare1 = ntoh32(Dest->spare1);
     Dest->spare2 = ntoh32(Dest->spare2);
@@ -307,7 +329,7 @@ BSWAPCOPY_SM_DBSYNC_RECORD_CNT(uint32_t *Src, uint32_t *Dest)
 void		sm_dbsync(uint32_t, uint8_t **);    /* sm db sync main function */
 Status_t    sm_dbsync_filter_add(IBhandle_t fd, Filter_t *filter, uint8_t mclass, 
                                  uint8_t method, uint16_t aid, uint32_t amod, uint64_t tid, const char *subRoutine);
-void        sm_dbsync_queueMsg(DBSyncType_t syncType, DBSyncDatTyp_t syncDataTye, Lid_t lid, Guid_t portguid, uint8_t isEmbedded, SMSyncData_t);
+void        sm_dbsync_queueMsg(DBSyncType_t syncType, DBSyncDatTyp_t syncDataTye, STL_LID lid, Guid_t portguid, uint8_t isEmbedded, SMSyncData_t);
 void        sm_dbsync_addSm(Node_t *, Port_t *, STL_SMINFO_RECORD *);
 void        sm_dbsync_deleteSm(uint64_t);
 void        sm_dbsync_updateSm(SmRecKey_t, STL_SM_INFO *);
@@ -321,7 +343,7 @@ DBSyncStat_t sm_dbsync_getSmDbsyncStat(SmRecKey_t);
 Status_t    sm_dbsync_getSmDbsync(SmRecKey_t, SMDBSyncp);
 boolean     sm_dbsync_isUpToDate(SmRecKey_t, char **reason);
 DBSyncCap_t sm_dbsync_getDbsyncSupport(SmRecKey_t);
-Status_t    sm_dbsync_checksums(uint32_t vfCsum, uint32_t smCsum, uint32_t pmCsum, uint32_t feCsum);
+Status_t    sm_dbsync_checksums(uint32_t vfCsum, uint32_t smCsum, uint32_t pmCsum);
 Status_t    sm_dbsync_recInit(void);
 void        sm_dbsync_kill(void);
 void        sm_dbsync_init(void);

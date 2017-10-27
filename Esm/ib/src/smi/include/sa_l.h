@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -175,7 +175,7 @@ typedef Status_t (*SACacheBuildFunc_t)(SACacheEntry_t *, Topology_t *);
 //	Authentication structure.
 //
 typedef	struct {
-	Lid_t		lid;		// 16 bit Lid
+	STL_LID		lid;		// 16 bit Lid
 	Node_t		*nodep;		// node for this Lid
 	Port_t		*portp;		// port on the node for this Lid
 	PKey_t		pKeys[SM_PKEYS];	// PKeys for comparison
@@ -191,7 +191,7 @@ extern uint32_t sa_max_path_records;// maximum path records in one response
 typedef struct sa_cntxt {
 	uint64_t	tstamp ;
 	uint64_t	tid ;		// Tid for hash table search
-	Lid_t		lid ;		// Lid for hash table search
+	STL_LID		lid ;		// Lid for hash table search
     uint16_t    method;     // initial method requested by initiator
     IBhandle_t	sendFd;     // mai handle to use for sending packets (fd_sa for 1st seg and fd_sa_w threafter)
 	uint8_t		hashed ;	// Entry is inserted into the hash table
@@ -350,8 +350,8 @@ extern  void        sa_ServiceRecDelete(void);
 extern  void        sa_ServiceRecClear(void);
 extern  Status_t    sa_McGroupInit(void);
 extern  void        sa_McGroupDelete(void);
-extern	Status_t	sa_Authenticate_Path(Lid_t, Lid_t);
-extern	Status_t	sa_Authenticate_Access(uint32_t, Lid_t, Lid_t, Lid_t);
+extern	Status_t	sa_Authenticate_Path(STL_LID, STL_LID);
+extern	Status_t	sa_Authenticate_Access(uint32_t, STL_LID, STL_LID, STL_LID);
 extern	Status_t	sa_Compare_Node_Port_PKeys(Node_t*, Port_t*);
 extern	Status_t	sa_Compare_Port_PKeys(Port_t*, Port_t*);
 extern  uint32_t    saDebugPerf;  // control SA performance messages; default is off
@@ -405,6 +405,7 @@ extern  Status_t	sa_HFICongCtrlRecord(Mai_t *, sa_cntxt_t* );
 extern  Status_t	sa_BufferControlTableRecord(Mai_t *, sa_cntxt_t* );
 extern  Status_t	sa_PortGroupRecord(Mai_t *, sa_cntxt_t* );
 extern  Status_t	sa_PortGroupFwdRecord(Mai_t *, sa_cntxt_t* );
+extern  Status_t	sa_SwitchCostRecord(Mai_t *, sa_cntxt_t* );
 
 extern	Status_t	sa_NodeRecord_BuildCACache(SACacheEntry_t *, Topology_t *);
 extern	Status_t	sa_NodeRecord_BuildSwitchCache(SACacheEntry_t *, Topology_t *);

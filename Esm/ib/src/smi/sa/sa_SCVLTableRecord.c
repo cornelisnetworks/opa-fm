@@ -146,7 +146,7 @@ sa_SCVLTableRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 
 Status_t
 sa_SCVLTableRecord_Set(uint8_t *slp, Node_t *nodep, Port_t *portp, uint16_t attrib) {
-	Lid_t			    lid;
+	STL_LID			    lid;
     Port_t              *scvlPortp;
 	STL_SC2VL_R_MAPPING_TABLE_RECORD scVLTableRecord;
 

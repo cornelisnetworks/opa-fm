@@ -571,13 +571,13 @@ sa_main_writer(uint32_t argc, uint8_t ** argv) {
 	filter.mai_filter_check_packet = sa_writer_filter;
 	MAI_SET_FILTER_NAME (&filter, "SA Writer");
 
-	if (mai_filter_create(fd_sa_w, &filter, VFILTER_SHARE) != VSTATUS_OK) {
+	if (mai_filter_create(fd_sa_writer, &filter, VFILTER_SHARE) != VSTATUS_OK) {
 		IB_LOG_ERROR0("esm_saw: can't create SubnAdm(*) filter");
 		(void)vs_thread_exit(&sm_threads[SM_THREAD_SA_WRITER].handle);
 	}
 
 	while (1) {
-		status = mai_recv(fd_sa_w, &in_mad, VTIMER_1S/4);
+		status = mai_recv(fd_sa_writer, &in_mad, VTIMER_1S/4);
         if (status != VSTATUS_OK && status != VSTATUS_TIMEOUT) {
             IB_LOG_ERRORRC("sa_main_writer: error on mai_recv rc:", status);
             vs_thread_sleep(VTIMER_1S/10);
@@ -759,7 +759,7 @@ void sa_cntxt_age(void)
                     // Touch the entry
                     tout_cntxt->tstamp = timeLastAged ;
                     // Call timeout
-                    tout_cntxt->sendFd = fd_sa_w;       // use sa writer mai handle for restransmits
+                    tout_cntxt->sendFd = fd_sa_writer;       // use sa writer mai handle for restransmits
                     if (tout_cntxt->method == SA_CM_GETMULTI && tout_cntxt->reqInProg) {
                         // resend the getMulti request ACK
                         sa_getMulti_resend_ack(tout_cntxt);

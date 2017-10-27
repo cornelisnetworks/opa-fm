@@ -109,7 +109,7 @@ fi
 ix=0
 
 /usr/sbin/opareport -x -d 10 -s -o errors -T "$@" | \
-  /usr/sbin/opaxmlextract -d \; -e Rate -e MTU -e LinkDetails -e CableLength \
+  /usr/sbin/opaxmlextract -d \; -e Rate -e LinkDetails -e CableLength \
   -e CableLabel -e CableDetails -e Port.NodeDesc -e Port.PortNum \
   -e LinkQualityIndicator.Value | while read line
 do

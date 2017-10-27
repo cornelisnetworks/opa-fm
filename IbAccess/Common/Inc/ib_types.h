@@ -29,14 +29,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /* [ICS VERSION STRING: unknown] */
 
-#if defined(CHECK_HEADERS)
-
-#ifndef _IBA_STL_TYPES_H_
-#warning FIX ME!!! Your includes should use the stl_types.h header and not the ib_types.h header for STL builds
-#endif
-
-#endif
-
 #ifndef _IBA_IB_TYPES_H_
 #define _IBA_IB_TYPES_H_
 

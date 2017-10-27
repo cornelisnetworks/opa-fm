@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -71,7 +71,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "ilist.h"
 #include "iquickmap.h"
-#include <iba/stl_sm.h>
+#include <iba/stl_sm_priv.h>
 #include <iba/stl_helper.h>
 
 #ifdef __VXWORKS__
@@ -230,6 +230,47 @@ typedef struct _PortDataVLArb {
 } PortDataVLArb;
 
 //
+// Persistent Topology API
+//
+
+typedef enum {
+	POPO_QUARANTINE_NONE  = 0,
+	POPO_QUARANTINE_SHORT = 1,
+} PopoQuarantineType_t;
+
+typedef struct {
+	struct _PopoNode * ponodep;
+	struct {
+		PopoQuarantineType_t type;
+		LIST_ITEM entry;
+	} quarantine;
+} PopoPort_t;
+
+typedef struct _PopoNode {
+	cl_map_item_t nodesEntry;
+	struct {
+		uint32_t pass;
+		uint8_t nodeType;
+		uint8_t numPorts;
+	} info;
+	struct {
+		uint8_t errorCount;
+	} quarantine;
+	PopoPort_t ports[0];
+} PopoNode_t;
+
+typedef struct {
+	Lock_t lock;
+	cl_qmap_t nodes;
+	struct {
+		ATOMIC_UINT cumulativeTimeout;
+	} errors;
+	struct {
+		QUICK_LIST shortTerm;
+	} quarantine;
+} Popo_t;
+
+//
 //	Per Port structure.
 //
 typedef	struct _PortData {
@@ -351,6 +392,7 @@ typedef	struct _Port {
 	uint32_t	nodeno;		// node index of other end
 	uint32_t	portno;		// port index of other end
 	uint8_t		path[64];	// path to get to this port
+	PopoPort_t	*poportp;	// pointer to persistent port structure
     PortData_t	*portData;  // Pointer to additional port related fields. 
 							// may be NULL when dynamic port alloc enabled
 							// TBD - is dynamic port alloc needed?  Should it
@@ -408,7 +450,8 @@ typedef	struct _Node {
 	cl_map_obj_t	mapObj;		// Quickmap item to sort on guids
 	cl_map_obj_t	nodeIdMapObj;	// Quickmap item to sort on guids
 	cl_map_obj_t	mapQuarantinedObj;		// Quickmap item to sort on guids
-
+	cl_map_obj_t	switchLidMapObj;	// Quickmap item to sort switch lids
+	PopoNode_t	*ponodep;		// pointer to persistent node structure
 	void		*routingData;	// Routing specific data.
 
 	/* There exist a case where these are both used (Enhanced SWP0 switch). We'll just
@@ -430,9 +473,8 @@ typedef	struct _Node {
 	uint8_t		hasSendOnlyMember:1; //switch has a multicast sendonly member attached */ 
 	uint8_t		mftChange:1;  		// indicates if mft of switch has to be completely reprogrammed
 	uint8_t		mftPortMaskChange:1;// indicates if mft entries of switch have changed since last sweep
-	uint8_t		arChange:1;			// indicates adaptive routing tables of switch need to be programmed
+	uint8_t		arChange:1;			// indicates adaptive routing tables of switch need to be programmed, leave pause if set
 	uint8_t		arSupport:1;		// indicates switch supports adaptive routing
-	uint8_t		arDenyUnpause:1;	///< Normally 0, set to 1 to prevent unpausing AR on an SMA because the SM was not able to update PGT/PGFTs fully on the SMA
 	uint8_t		oldExists:1;  		// this node is also in the old topology
 	uint8_t		uniformVL:1;  
 	uint8_t		internalLinks:1;  
@@ -878,6 +920,9 @@ typedef	struct _Topology {
 	/// Store link down reasons for ports that disappeared;
 	/// see LdrCacheEntry_t
 	cl_qmap_t *ldrCache;
+
+	/// Store switch lids for efficient cost queries
+	cl_qmap_t	* switchLids;
 } Topology_t;
 
 typedef struct {
@@ -955,7 +1000,7 @@ typedef	struct _McGroup {
 } McGroup_t;
 
 #if defined(__VXWORKS__)
-#define SM_STACK_SIZE (24 * 1024)
+#define SM_STACK_SIZE (29 * 1024)
 #else
 #define SM_STACK_SIZE (256 * 1024)
 #endif
@@ -1046,6 +1091,7 @@ typedef struct sm_dispatch_send_params {
 typedef struct sm_dispatch_req {
 	sm_dispatch_send_params_t sendParams;
 	Node_t *nodep;
+	uint64_t sendTime;
 	uint32_t sweepPasscount;
 	struct sm_dispatch *disp;
 	struct sm_dispatch_req *next, *prev;
@@ -1145,6 +1191,7 @@ typedef enum {
 	SM_SWEEP_REASON_INTERVAL_CHANGE,
 	SM_SWEEP_REASON_FAILED_SWEEP,
 	SM_SWEEP_REASON_TRAP_EVENT,
+	SM_SWEEP_REASON_UNQUARANTINE,
 	SM_SWEEP_REASON_UNDETERMINED
 } SweepReason_t;
 
@@ -1322,12 +1369,14 @@ void Switch_Enqueue_Type(Topology_t *, Node_t *, int, int);
 			int portBytes;													\
 			NODEP->port = (Port_t *)(NODEP+1);						        \
     		NODEP->uniformVL = 1;										\
+			NODEP->ponodep = sm_popo_get_node(&sm_popo, &nodeInfo);		\
 			for (local_i = 0; local_i < (int)(COUNT); local_i++) {		\
    				(NODEP->port)[local_i].state = IB_PORT_NOP;			    \
    				(NODEP->port)[local_i].path[0] = 0xff;				    \
    				(NODEP->port)[local_i].index = local_i;				    \
                 (NODEP->port)[local_i].nodeno = -1;                     \
                 (NODEP->port)[local_i].portno = -1;                     \
+                (NODEP->port)[local_i].poportp = sm_popo_get_port(&sm_popo, NODEP->ponodep, local_i); \
                 if (sm_dynamic_port_alloc()) {                          \
                      (NODEP->port)[local_i].portData = NULL;             \
                      if (local_i == sm_config.port) {                           \
@@ -1745,6 +1794,22 @@ static __inline__ int sm_is_scae_allowed(Node_t * nodep) {
 		|| (sm_config.switchCascadeActivateEnable == SCAE_SW_ONLY && nodep->nodeInfo.NodeType == STL_NODE_SW);
 }
 
+static __inline__ boolean is_swport(Port_t *portp) {
+	return portp->portData->nodePtr->nodeInfo.NodeType == NI_TYPE_SWITCH;
+}
+
+static __inline__ boolean is_hfiport(Port_t *portp) {
+	return portp->portData->nodePtr->nodeInfo.NodeType == NI_TYPE_CA;
+}
+
+static __inline__ boolean is_swport0(Port_t *portp) {
+	return (portp->portData->nodePtr->nodeInfo.NodeType == NI_TYPE_SWITCH && portp->index == 0);
+}
+
+static __inline__ boolean is_extswport(Port_t *portp) {
+	return (portp->portData->nodePtr->nodeInfo.NodeType == NI_TYPE_SWITCH && portp->index > 0);
+}
+
 // --------------------------------------------------------------------------- //
 
 //
@@ -1869,6 +1934,9 @@ extern int esmLoopTestInjectNode;
 extern uint8_t	esmLoopTestInjectEachSweep;
 extern uint8_t	esmLoopTestForceInject;
 extern int    	esmLoopTestMinISLRedundancy;
+
+extern Popo_t sm_popo;
+
 //
 //	Miscellaneous stuff.
 //
@@ -2024,9 +2092,10 @@ typedef struct McSpaningTrees {
 extern	SMThread_t	* sm_threads;
 
 extern	IBhandle_t	fd_sa;
-extern	IBhandle_t	fd_sa_w;
+extern	IBhandle_t	fd_sa_writer;
 extern	IBhandle_t	fd_multi;
 extern	IBhandle_t	fd_async;
+extern	IBhandle_t	fd_async_request;
 extern	IBhandle_t	fd_saTrap;
 extern	IBhandle_t	fd_policy;
 extern	IBhandle_t	fd_topology;
@@ -2040,6 +2109,9 @@ extern int	uniqueSpanningTreeCount;
 
 extern Node_t *sm_mcSpanningTreeRootSwitch;
 extern uint64_t sm_mcSpanningTreeRootGuid;
+
+extern Status_t sm_update_mc_groups(VirtualFabrics_t *newVF, VirtualFabrics_t *oldVF);
+
 
 //
 //	Prototypes.
@@ -2197,7 +2269,6 @@ Status_t	sm_bounce_link(Topology_t *, Node_t *, Port_t *);
 Status_t    sm_bounce_all_switch_ports(Topology_t *topop, Node_t *nodep, Port_t *portp, uint8_t *path);
 Status_t	sm_get_CapabilityMask(IBhandle_t, uint8_t, uint32_t *);
 Status_t	sm_set_CapabilityMask(IBhandle_t, uint8_t, uint32_t);
-Status_t	sm_process_notice(Notice_t *);
 Node_t		*sm_find_guid(Topology_t *, uint64_t);
 Node_t      *sm_find_quarantined_guid(Topology_t *topop, uint64_t guid);
 Node_t		*sm_find_next_guid(Topology_t *, uint64_t);
@@ -2247,10 +2318,10 @@ void		sm_mark_link_down(Topology_t *topop, Port_t *portp);
 // sm_activate.c prototypes
 //
 
-void sm_arm_node(Topology_t *, Node_t *);
-void sm_activate_all_hfi_first_safe(Topology_t *, pActivationRetry_t);
-void sm_activate_all_hfi_first(Topology_t *, pActivationRetry_t);
-void sm_activate_all_switch_first(Topology_t *, pActivationRetry_t);
+Status_t sm_arm_node(Topology_t *, Node_t *);
+Status_t sm_activate_all_hfi_first_safe(Topology_t *, pActivationRetry_t);
+Status_t sm_activate_all_hfi_first(Topology_t *, pActivationRetry_t);
+Status_t sm_activate_all_switch_first(Topology_t *, pActivationRetry_t);
 
 //
 // sm_routing.c prototypes
@@ -2355,7 +2426,7 @@ Status_t sm_dispatch_new_req(sm_dispatch_t *, sm_dispatch_send_params_t *, Node_
 Status_t sm_dispatch_enqueue(sm_dispatch_req_t *req);
 Status_t sm_dispatch_init(sm_dispatch_t *disp, uint32_t reqsSupported);
 Status_t sm_dispatch_wait(sm_dispatch_t *disp);
-Status_t sm_dispatch_clear(sm_dispatch_t *disp);
+void sm_dispatch_clear(sm_dispatch_t *disp);
 Status_t sm_dispatch_update(sm_dispatch_t *disp);
 void sm_dispatch_bump_passcount(sm_dispatch_t *disp);
 
@@ -2400,12 +2471,8 @@ char*		smGetVfName(uint16_t);
 
 //
 // sm_ar.c prototypes
+//  Send PGT and PGFT to node if necessary.
 //
-Status_t	sm_SetARPause(Node_t *, uint8_t);
-
-/**
-  Send PGT and PGFT to node if necessary.
-*/
 Status_t	sm_AdaptiveRoutingSwitchUpdate(Topology_t*, Node_t*);
 uint8_t		sm_VerifyAdaptiveRoutingConfig(Node_t *p);
 
@@ -2784,6 +2851,30 @@ struct _PortDataVLArb * sm_port_getNewArb(Port_t * portp);
 	Release portp->portData->newArb if allocated.
 */
 void sm_port_releaseNewArb(Port_t * portp);
+
+//
+// persistent topology api
+//
+
+extern void sm_popo_init(Popo_t * popop);
+extern void sm_popo_destroy(Popo_t * popop);
+extern void sm_popo_report(Popo_t * popop);
+extern PopoNode_t * sm_popo_get_node(Popo_t * popop, const STL_NODE_INFO * nodeInfo);
+extern PopoPort_t * sm_popo_get_port(Popo_t * popop, PopoNode_t * ponodep, uint8_t port);
+
+extern boolean sm_popo_is_port_quarantined(Popo_t * popop, Port_t * portp);
+extern boolean sm_popo_is_node_quarantined(Popo_t * popop, uint64_t guid);
+extern void sm_popo_quarantine_port(Popo_t * popop, Port_t * portp, PopoQuarantineType_t type);
+extern boolean sm_popo_clear_short_quarantine(Popo_t * popop);
+
+extern uint64_t sm_popo_scale_timeout(Popo_t * popop, uint64_t timeout);
+extern void sm_popo_report_timeout(Popo_t * popop, uint64_t timeout);
+extern Status_t sm_popo_port_error(Popo_t * popop, Topology_t * topop, Port_t * portp, Status_t status);
+extern void sm_popo_reset_errors(Popo_t * popop);
+extern boolean sm_popo_should_abandon(Popo_t * popop);
+
+extern void sm_popo_update_node(PopoNode_t * ponodep);
+extern void sm_popo_end_sweep(Popo_t * popop);
 
 #endif	// _SM_L_H_
 

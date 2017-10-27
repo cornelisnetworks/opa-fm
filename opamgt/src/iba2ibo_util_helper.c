@@ -40,8 +40,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #define OPAMGT_PRIVATE 1
-// Includes / Defines from IBACCESS
-//#include "iba/ibt.h"
 #include "ibt.h"
 
 #include "ib_utils_openib.h"

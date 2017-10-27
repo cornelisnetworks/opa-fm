@@ -136,11 +136,6 @@ extern void IXmlOutputOptionalPathRecord(IXmlOutputState_t *state, const char* t
 extern void IXmlOutputTraceRecord(IXmlOutputState_t *state, const char* tag, void *data);
 extern void IXmlOutputOptionalTraceRecord(IXmlOutputState_t *state, const char* tag, void *data);
 
-extern IXML_FIELD PortCountersFields[];
-extern void PortCountersXmlOutput(IXmlOutputState_t *state, const char *tag, void *data/*PORT_COUNTERS* */);
-extern void PortCountersXmlOutputOptional(IXmlOutputState_t *state, const char *tag, void *data/*PORT_COUNTERS* */);
-/* caller must supply PortCountersXmlParserStart and PortCountersXmlParserEnd */
-
 extern IXML_FIELD IocServiceFields[];
 extern void IocServiceXmlOutput(IXmlOutputState_t *state, const char *tag, void *data/*IOC_SERVICE*/);
 extern void IocServiceXmlOutputOptional(IXmlOutputState_t *state, const char *tag, void *data/*IOC_SERVICE*/);

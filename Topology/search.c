@@ -1186,34 +1186,41 @@ FSTATUS FindCableDetailsPatPoint(FabricData_t *fabricp, const char* pattern, Poi
 FSTATUS FindCabinfLenPatPoint(FabricData_t *fabricp, const char* pattern, Point *pPoint, uint8 find_flag)
 {
 	FSTATUS status;
-	uint32 n_pattern = 0;
+	char *cur, scrubbed_pat[strlen(pattern) + 1];
 
 	ASSERT(! PointValid(pPoint));
 	if (0 == (find_flag & FIND_FLAG_FABRIC))
 		return FINVALID_OPERATION;
-	if ((sscanf(pattern, "%3u", &n_pattern) != 1) || (n_pattern > 255))
-	{
-		fprintf(stderr, "%s: Invalid CABLE_INFO length Pattern: %s\n",
-			g_Top_cmdname, pattern);
-		return FNOT_FOUND;
-	}
+
+	// User may suffix pattern with 'm'. Scrub it as to not intefere with later calls
+	// to fnmatch().
+	snprintf(scrubbed_pat, sizeof(scrubbed_pat), "%s", pattern);
+	if (NULL != (cur = strchr(scrubbed_pat, 'm')))
+		*cur = '\0';
+
 	if (find_flag & FIND_FLAG_FABRIC) {
 		LIST_ITEM *p;
+
 		for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
 			PortData *portp = (PortData *)QListObj(p);
 			STL_CABLE_INFO_STD *pCableInfo;
 			uint8 xmit_tech;
 
 			pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
-			if (! pCableInfo)
+			if (!pCableInfo)
 				continue;
+
 			xmit_tech = pCableInfo->dev_tech.s.xmit_tech;
 			if ( ( ( (xmit_tech <= STL_CIB_STD_TXTECH_1490_DFB) &&
 					(xmit_tech != STL_CIB_STD_TXTECH_OTHER) &&
 					(pCableInfo->connector == STL_CIB_STD_CONNECTOR_NO_SEP) ) ||
-					(xmit_tech >= STL_CIB_STD_TXTECH_CU_UNEQ) ) &&
-					(pCableInfo->len_om4 == (uint8)n_pattern) )
-			{
+					(xmit_tech >= STL_CIB_STD_TXTECH_CU_UNEQ) )) {
+				char cablen_str[4] = {0}; // strlen("255") + 1 = 4
+
+				snprintf(cablen_str, sizeof(cablen_str), "%u", pCableInfo->len_om4);
+				if (fnmatch(scrubbed_pat, cablen_str, 0) != 0)
+					continue;
+
 				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
 				if (FSUCCESS != status)
 					return status;
@@ -1222,12 +1229,12 @@ FSTATUS FindCabinfLenPatPoint(FabricData_t *fabricp, const char* pattern, Point 
 	}
 
 	// N/A for FIND_FLAG_ENODE, FIND_FLAG_ESM and FIND_FLAG_ELINK
-
 	if (! PointValid(pPoint)) {
-		fprintf(stderr, "%s: CABLE_INFO length Not Found: %u\n",
-						g_Top_cmdname, n_pattern);
+		fprintf(stderr, "%s: CABLE_INFO length Not Found: %s\n",
+			g_Top_cmdname, pattern);
 		return FNOT_FOUND;
 	}
+
 	PointCompress(pPoint);
 	return FSUCCESS;
 

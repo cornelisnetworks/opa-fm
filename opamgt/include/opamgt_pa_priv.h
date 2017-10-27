@@ -39,16 +39,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <unistd.h>
 #include <ctype.h>
 #include "opamgt_priv.h"
-#include <iba/stl_pa.h>
+#include <iba/stl_pa_priv.h>
 #include <iba/stl_sd.h>
 
 #define PA_REQ_HEADER_SIZE (sizeof(MAD_COMMON) + sizeof(SA_MAD_HDR))
 
-
-#define PACLIENT_UNKNOWN        0
-#define PACLIENT_OPERATIONAL    1
-#define PACLIENT_DOWN           (-1)
-#define PACLIENT_INVALID_PARAM  (-2)
 /**
  * @brief PA query input type to string
  * @param code          Input type code value
@@ -81,7 +76,7 @@ iba_pa_query_result_type_msg(
  *         PACLIENT_DOWN - initialization not successful/PaServer not available
  */
 int
-omgt_pa_client_connect(
+omgt_pa_service_connect(
     struct omgt_port     *port
 );
 

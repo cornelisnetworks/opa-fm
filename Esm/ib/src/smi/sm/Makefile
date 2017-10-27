@@ -50,7 +50,7 @@ CFILES			= \
 				  sm_shortestpath.c sm_fattree.c sm_dgrouting.c sm_counters.c \
 		  		  sm_partMgr.c sm_qos.c sm_ar.c sm_jm.c sm_jm_wire.c \
 				  sm_buffer_control_tables.c stl_cca.c sm_scvlmatrix.c \
-				  sm_hypercube.c sm_dor.c sm_activate.c
+				  sm_hypercube.c sm_dor.c sm_activate.c sm_popo.c
 				# Add more c files here
 ifeq ($(BUILD_TARGET_OS),VXWORKS)
 CFILES			+= sm_vxWorks.c

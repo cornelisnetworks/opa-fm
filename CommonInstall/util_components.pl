@@ -215,10 +215,6 @@ sub printInstallAvailableState($$$$$$)
 # =======================================================================
 # Component processing
 
-# indicate which main INSTALL is being used.  This can influence error checks
-# and assumptions made by individual components
-my $MainInstall = "";
-
 # function must be supplied if any components set ComponentInfo{}{HasFirmware}
 sub update_hca_firmware();
 
@@ -1091,6 +1087,10 @@ DO_INS:
 		system "clear";        
 		printf ("$BRAND OPA Install ($VERSION $DBG_FREE) Menu\n\n");
 		my $screens = int((scalar(@Components) - $num_hidden_comps + $maxlines-1)/$maxlines);
+
+		if($GPU_Install == 1) {
+                        printf ("Install GPU Direct components, ensure nvidia drivers + SDK are present \n\n");
+                }
 		if ($screens > 1 ) {
 			printf ("Please Select Install Action (screen %d of $screens):\n",
 						$firstline/$maxlines+1);

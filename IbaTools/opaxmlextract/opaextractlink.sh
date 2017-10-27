@@ -74,7 +74,8 @@ fi
 
 ix=0
 
-/usr/sbin/opareport -x -o links -d 3 "$@" | \
+
+/usr/sbin/opareport -x -o links "$@" -d 3 | \
   /usr/sbin/opaxmlextract -d \; -e Rate -e LinkDetails -e CableLength \
   -e CableLabel -e CableDetails -e DeviceTechShort -e CableInfo.Length \
   -e CableInfo.VendorName -e CableInfo.VendorPN -e CableInfo.VendorRev \
@@ -88,11 +89,14 @@ do
   #       ... cable information from topology.xml
   #     </Cable>
   #     <Port>
-  #       .. information about 1st port including its CableInfo
+  #       .. information about 1st port excluding its CableInfo
   #     </Port>
   #     <Port>
-  #       .. information about 2nd port including its CableInfo
+  #       .. information about 2nd port excluding its CableInfo
   #     </Port>
+  #     <CableInfo>
+  #       .. information about the CableInfo for the cable between the two ports
+  #     </CableInfo>
   #  </Link>
   # opaxmlextract produces the following CSV format on each line:
   #    2 Link values (CSV 1-2) (Rate, LinkDetails)
@@ -101,48 +105,57 @@ do
   #    2 Port values (CSV 11-12) (NodeDesc, PortNum)
   # due to the nesting of tags, opaxmlextract will output the following
   #    a line with Link and Cable values but empty CableInfo and Port values
-  #    a line for 1st port with Link, CableInfo and Port but empty Cable values
-  #    a line for 2nd port with Link, CableInfo and Port but empty Cable values
+  #    a line for 1st port with Link and Port but empty Cable values
+  #    a line for 2nd port with Link and Port but empty Cable values
+  #    a line which contains the link and CableInfo.
   # if the topology.xml file is not supplied or has no information for the
   # given link, opareport will not output the <Cable> section and the
   # 1st line above will not be output by opaxmlextract for the given link
   case $ix in
   0)
-    # process heading and build new per link heading for this report
-    echo $line";"`echo $line | cut -d \; -f 11-`
-    ix=$((ix+1))
-    ;;
+     # process heading and build new per link heading for this report
+     echo $line";"`echo $line | cut -d \; -f 11-`
+     ix=$((ix+1))
+     ;;
 
   1)
-    # process 1st line in a given link
-    line1=`echo $line | cut -d \; -f 1-10`
-    if [ `echo "$line1" | cut -d \; -f3-5` = ";;" ]
-      then
-      # no topology file, we have port information here
-      line2=`echo $line | cut -d \; -f 11-`
-      ix=3
-    else
+     # process 1st line in a given link
+     line1=`echo $line | cut -d \; -f 1-10`
+     if [ `echo "$line1" | cut -d \; -f 3-5` = ";;" ]
+       then
+       # no topology file, we have port information here
+       line2=`echo $line | cut -d \; -f 11-`
+       ix=3
+     else
       # have a topology file, port information on next line
       ix=$((ix+1))
-    fi
-    ;;
+     fi
+     ;;
 
   2)
-    # process 1st port in a given link when we have a topology file
-    line2=`echo $line | cut -d \; -f 11-`
-    ix=$((ix+1))
-    ;;
+     # process 1st port in a given link when we have a topology file
+     line2=`echo $line | cut -d \; -f 11-`
+     ix=$((ix+1))
+     ;;
 
   3)
-    # process 2nd port in a given link when we have a topology file
-    # and output a single line for the given link
-    line3=`echo $line | cut -d \; -f 11-`
-    echo $line1";"$line2";"$line3
-    ix=1
-    ;;
+     # process 2nd port in a given link when we have a topology file
+     # and output a single line for the given link
+     line3=`echo $line | cut -d \; -f 11-`
+     ix=4
+     ;;
+
+  4)
+     #process the third line for the CableInfo and extract the part of line1 before the CableInfo details in the csv format
+     line4=`echo $line | cut -d \; -f 6-10`
+     line1=`echo $line1 | cut -d \; -f 1-5`
+     # combine all extracted parts from the three input lines into a single output line.
+     echo $line1";"$line4";"$line2";"$line3
+     ix=1
+     ;;
+
   esac
 
 done
 
 exit 0
-

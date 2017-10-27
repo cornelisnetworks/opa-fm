@@ -87,6 +87,8 @@ typedef struct  _DorTopology {
 	// contiguous within these bounds
 	int8_t coordMaximums[SM_DOR_MAX_DIMENSIONS];
 	int8_t coordMinimums[SM_DOR_MAX_DIMENSIONS];
+	int8_t measuredMaximums[SM_DOR_MAX_DIMENSIONS];
+	int8_t measuredMinimums[SM_DOR_MAX_DIMENSIONS];
 	// for each dimension, true if toroidal
 	uint8_t toroidal[SM_DOR_MAX_DIMENSIONS];
 	// the configured number of toroidal dimensions

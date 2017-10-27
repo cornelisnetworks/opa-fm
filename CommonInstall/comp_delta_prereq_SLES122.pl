@@ -64,14 +64,13 @@ my @intel_hfi_prereq = (
 			"glibc",
 			"libhfi1verbs-rdmav2",
 			"libgcc_s1",
-			"libuuid1",
 			"bash",
-			"libuuid-devel",
 			"udev",
 			"libudev-devel",
 			"python-base",
 			"libedit0",
 			"libncurses5",
+			"libnuma1",
 			"irqbalance",
 );
 $comp_prereq_hash{'intel_hfi_prereq'} = \@intel_hfi_prereq;

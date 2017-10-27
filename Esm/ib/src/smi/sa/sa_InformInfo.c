@@ -62,8 +62,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sm_l.h"
 #include "sa_l.h"
 #include "sm_dbsync.h"
-#include <iba/stl_mad.h>
-#include <iba/stl_sa.h>
+#include <iba/stl_mad_priv.h>
+#include <iba/stl_sa_priv.h>
 #include "stl_print.h"
 
 extern IB_GID nullGid;
@@ -196,7 +196,8 @@ sa_InformInfo(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 	STL_SA_MAD samad;
 	Status_t status;
 	STL_INFORM_INFO informInfo;
-	char data[sizeof(STL_INFORM_INFO)];
+	uint16_t attribOffset;
+	uint8_t *data = sa_data;
 
 	IB_ENTER("sa_InformInfo", maip, sa_cntxt, 0, 0);
 
@@ -299,8 +300,11 @@ sa_InformInfo(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 	//  Send the reply back.
 	//
 	if (maip->base.cversion == STL_SA_CLASS_VERSION) {
-		BSWAPCOPY_STL_INFORM_INFO(&informInfo, (STL_INFORM_INFO *) data);
-		sa_cntxt_data(sa_cntxt, data, sizeof(STL_INFORM_INFO));
+		BSWAPCOPY_STL_INFORM_INFO(&informInfo, (STL_INFORM_INFO *)data);
+
+		attribOffset = sizeof(STL_INFORM_INFO) + Calculate_Padding(sizeof(STL_INFORM_INFO));
+		sa_cntxt->attribLen = attribOffset;
+		sa_cntxt_data(sa_cntxt, data, attribOffset);
 	} else {
 		IB_INFORM_INFO *ibInformInfo = (IB_INFORM_INFO *)data;
 
@@ -312,17 +316,20 @@ sa_InformInfo(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 		if (informInfo.LIDRangeBegin == STL_LID_PERMISSIVE)
 			ibInformInfo->LIDRangeBegin = PERMISSIVE_LID;
 		else
-    		ibInformInfo->LIDRangeBegin = (uint16)ntoh32(informInfo.LIDRangeBegin);
-    	ibInformInfo->LIDRangeEnd = (uint16)ntoh32(informInfo.LIDRangeEnd);
-    	ibInformInfo->Type = ntoh16(informInfo.Type);
-    	ibInformInfo->Reserved = 0;
-    	ibInformInfo->u.Generic.TrapNumber = ntoh16(informInfo.u.Generic.TrapNumber);
+			ibInformInfo->LIDRangeBegin = (uint16)ntoh32(informInfo.LIDRangeBegin);
+		ibInformInfo->LIDRangeEnd = (uint16)ntoh32(informInfo.LIDRangeEnd);
+		ibInformInfo->Type = ntoh16(informInfo.Type);
+		ibInformInfo->Reserved = 0;
+		ibInformInfo->u.Generic.TrapNumber = ntoh16(informInfo.u.Generic.TrapNumber);
 		/* NOTO BENE: THE NAMES OF THE UNIONS CHANGED BETWEEN IB AND STL... */
-    	ibInformInfo->u.Generic.u2.AsReg32 = ntoh32(informInfo.u.Generic.u1.AsReg32);
-    	ibInformInfo->u.Generic.u.AsReg32 = ntoh32(informInfo.u.Generic.u2.AsReg32);
-    	ibInformInfo->u.Generic.u2.s.Reserved = 0;
-    	ibInformInfo->u.Generic.u.s.Reserved = 0;
-		sa_cntxt_data(sa_cntxt, data, sizeof(IB_INFORM_INFO));
+		ibInformInfo->u.Generic.u2.AsReg32 = ntoh32(informInfo.u.Generic.u1.AsReg32);
+		ibInformInfo->u.Generic.u.AsReg32 = ntoh32(informInfo.u.Generic.u2.AsReg32);
+		ibInformInfo->u.Generic.u2.s.Reserved = 0;
+		ibInformInfo->u.Generic.u.s.Reserved = 0;
+
+		attribOffset = sizeof(IB_INFORM_INFO) + Calculate_Padding(sizeof(IB_INFORM_INFO));
+		sa_cntxt->attribLen = attribOffset;
+		sa_cntxt_data(sa_cntxt, data, attribOffset);
 	}
 	(void) sa_send_reply(maip, sa_cntxt);
 
@@ -334,10 +341,10 @@ Status_t
 sa_InformInfo_Subscribe(Mai_t * maip, STL_INFORM_INFO * iip, uint8_t ibMode)
 {
 	int validateLidRange = 1;
-	Lid_t lid;
-	Lid_t topLid;
-	Lid_t LIDRangeEnd;
-	Lid_t LIDRangeBegin;
+	STL_LID lid;
+	STL_LID topLid;
+	STL_LID LIDRangeEnd;
+	STL_LID LIDRangeBegin;
 	Node_t *nodep;
 	Port_t *portp;
 	Port_t *subscriberPortp, subsPort;
@@ -528,7 +535,7 @@ sa_InformInfo_Subscribe(Mai_t * maip, STL_INFORM_INFO * iip, uint8_t ibMode)
 				}
 
 				status = sa_Authenticate_Access(SA_INFORMINFO,
-												(Lid_t) 0,
+												(STL_LID) 0,
 												maip->addrInfo.slid,
 												portp->portData->lid);
 				if (status != VSTATUS_OK) {

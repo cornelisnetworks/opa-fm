@@ -56,7 +56,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ib_mad.h"
 #include "ib_sa.h"
 #include "mai_g.h"
-#include "iba/stl_pa.h"
+#include "iba/stl_pa_priv.h"
 
 //
 // PM Counter Definitions
@@ -239,13 +239,13 @@ void INCREMENT_PM_MAD_STATUS_COUNTERS(Mai_t * mad) {
 		 case MAD_STATUS_BAD_FIELD:
 			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusBadField);
 			break;
-		 case MAD_STATUS_PA_UNAVAILABLE:
+		 case STL_MAD_STATUS_STL_PA_UNAVAILABLE:
 			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusPaUnavailable);
 			break;
-		 case MAD_STATUS_PA_NO_GROUP:
+		 case STL_MAD_STATUS_STL_PA_NO_GROUP:
 			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusPaNoGroup);
 			break;
-		 case MAD_STATUS_PA_NO_PORT:
+		 case STL_MAD_STATUS_STL_PA_NO_PORT:
 			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusPaNoPort);
 			break;
 		 case STL_MAD_STATUS_STL_PA_NO_VF:

@@ -32,8 +32,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef __IBA_STL_PM_H__
 #define __IBA_STL_PM_H__
 
-#include "iba/ib_pm.h"
+#include "iba/ib_generalServices.h"
 #include "iba/stl_types.h"
+#include "iba/stl_pa_types.h"
 
 #if defined (__cplusplus)
 extern "C" {
@@ -76,6 +77,9 @@ static __inline uint32 idx_to_vl(uint32 idx) {
 	if (idx >= PM_VL15) return 15;
 	return idx;
 }
+
+/* if AllPortSelect capability, use this as PortNum to operate on all ports */
+#define PM_ALL_PORT_SELECT 0xff
 
 #define	MAX_PM_PORTS							49		/* max in STL Gen1 (ports 0-48 on PRR switch) */
 
@@ -144,6 +148,13 @@ StlPmClassPortInfoCapMask2(char buf[80], uint32 cmask)
 
 /* MAD structure definitions */
 
+typedef struct _STL_PERF_MAD {
+	MAD_COMMON	common;				/* Generic MAD Header */
+
+	uint8		PerfData[STL_GS_DATASIZE];	/* Performance Management Data */
+} PACK_SUFFIX STL_PERF_MAD, *PSTL_PERF_MAD;
+
+
 /* STL Port Counters - small request, large response */
 
 typedef struct _STL_Port_Status_Req {
@@ -209,53 +220,6 @@ typedef struct _STL_Port_Status_Rsp {
 		uint64	PortVLXmitDiscards;
 	} VLs[1]; /* n defined by number of bits in VLSelectmask */
 } PACK_SUFFIX STLPortStatusRsp, STL_PORT_STATUS_RSP;
-
-/* LinkQualityIndicator values */
-#define STL_LINKQUALITY_EXCELLENT	5	/* working as intended */
-#define STL_LINKQUALITY_VERY_GOOD	4	/* slightly below preferred, */
-										/* no action needed */
-#define STL_LINKQUALITY_GOOD		3	/* low end of acceptable, */
-										/* recommend corrective action on */
-										/* next maintenance window */
-#define STL_LINKQUALITY_POOR		2	/* below acceptable, */
-										/* recommend timely corrective action */
-#define STL_LINKQUALITY_BAD			1	/* far below acceptable, */
-										/* immediate corrective action */
-#define STL_LINKQUALITY_NONE		0	/* link down */
-
-typedef union {
-	uint32	AsReg32;
-	struct stl_counter_select_mask { IB_BITFIELD28(uint32,
-		PortXmitData : 1,
-		PortRcvData : 1,
-		PortXmitPkts : 1,
-		PortRcvPkts : 1,
-		PortMulticastXmitPkts : 1,
-		PortMulticastRcvPkts : 1,
-		PortXmitWait : 1,
-		SwPortCongestion : 1,
-		PortRcvFECN : 1,
-		PortRcvBECN : 1,
-		PortXmitTimeCong : 1,
-		PortXmitWastedBW : 1,
-		PortXmitWaitData : 1,
-		PortRcvBubble : 1,
-		PortMarkFECN : 1,
-		PortRcvConstraintErrors : 1,
-		PortRcvSwitchRelayErrors : 1,
-		PortXmitDiscards : 1,
-		PortXmitConstraintErrors : 1,
-		PortRcvRemotePhysicalErrors : 1,
-		LocalLinkIntegrityErrors : 1,
-		PortRcvErrors : 1,
-		ExcessiveBufferOverruns : 1,
-		FMConfigErrors : 1,
-		LinkErrorRecovery : 1,
-		LinkDowned : 1,
-		UncorrectableErrors : 1,
-		Reserved : 5)
-	} PACK_SUFFIX s;
-} CounterSelectMask_t;
 
 typedef struct _STL_Clear_Port_Status {
 	uint64	PortSelectMask[4];
@@ -610,8 +574,7 @@ BSWAP_STL_PORT_STATUS_RSP(STL_PORT_STATUS_RSP *Dest)
 #endif
 }
 
-static __inline
-void
+static __inline void
 BSWAP_STL_CLEAR_PORT_STATUS_REQ(STL_CLEAR_PORT_STATUS *Dest)
 {
 #if CPU_LE
@@ -622,8 +585,7 @@ BSWAP_STL_CLEAR_PORT_STATUS_REQ(STL_CLEAR_PORT_STATUS *Dest)
 #endif
 }
 
-static __inline
-void
+static __inline void
 BSWAP_STL_DATA_PORT_COUNTERS_REQ(STL_DATA_PORT_COUNTERS_REQ *Dest)
 {
 #if CPU_LE
@@ -635,8 +597,7 @@ BSWAP_STL_DATA_PORT_COUNTERS_REQ(STL_DATA_PORT_COUNTERS_REQ *Dest)
 #endif
 }
 
-static __inline
-void
+static __inline void
 BSWAP_STL_DATA_PORT_COUNTERS_RSP(STL_DATA_PORT_COUNTERS_RSP *Dest)
 {
 #if CPU_LE
@@ -698,8 +659,7 @@ BSWAP_STL_DATA_PORT_COUNTERS_RSP(STL_DATA_PORT_COUNTERS_RSP *Dest)
 #endif
 }
 
-static __inline
-void
+static __inline void
 BSWAP_STL_ERROR_PORT_COUNTERS_REQ(STL_ERROR_PORT_COUNTERS_REQ *Dest)
 {
 #if CPU_LE
@@ -710,8 +670,7 @@ BSWAP_STL_ERROR_PORT_COUNTERS_REQ(STL_ERROR_PORT_COUNTERS_REQ *Dest)
 #endif
 }
 
-static __inline
-void
+static __inline void
 BSWAP_STL_ERROR_PORT_COUNTERS_RSP(STL_ERROR_PORT_COUNTERS_RSP *Dest)
 {
 #if CPU_LE
@@ -755,8 +714,7 @@ BSWAP_STL_ERROR_PORT_COUNTERS_RSP(STL_ERROR_PORT_COUNTERS_RSP *Dest)
 #endif
 }
 
-static __inline
-void
+static __inline void
 BSWAP_STL_ERROR_INFO_REQ(STL_ERROR_INFO_REQ *Dest)
 {
 #if CPU_LE
@@ -769,8 +727,7 @@ BSWAP_STL_ERROR_INFO_REQ(STL_ERROR_INFO_REQ *Dest)
 #endif
 }
 
-static __inline
-void
+static __inline void
 BSWAP_STL_ERROR_INFO_RSP(STL_ERROR_INFO_RSP *Dest)
 {
 #if CPU_LE
@@ -795,6 +752,48 @@ BSWAP_STL_ERROR_INFO_RSP(STL_ERROR_INFO_RSP *Dest)
 	Dest->ErrorInfoSelectMask.AsReg32 = ntoh32(Dest->ErrorInfoSelectMask.AsReg32);
 #endif
 }
+
+/**
+ * Copy data in a STL_PORT_COUNTERS_DATA variable into a STL_PortStatusData_t variable
+ *
+ * @param portCounters   - pointer to STL_PORT_COUNTERS_DATA variable from which to copy
+ * @param portStatusData - pointer to STL_PortStatusData_t variable to copy to
+ *
+ */
+static __inline void
+StlPortCountersToPortStatus(STL_PORT_COUNTERS_DATA *portCounters, STL_PORT_STATUS_RSP *portStatusData)
+{
+	portStatusData->LinkErrorRecovery  = portCounters->linkErrorRecovery;
+	portStatusData->LinkDowned  = portCounters->linkDowned;
+	portStatusData->PortRcvErrors = portCounters->portRcvErrors;
+	portStatusData->PortRcvRemotePhysicalErrors = portCounters->portRcvRemotePhysicalErrors;
+	portStatusData->PortRcvSwitchRelayErrors = portCounters->portRcvSwitchRelayErrors;
+	portStatusData->PortXmitDiscards = portCounters->portXmitDiscards;
+	portStatusData->PortXmitConstraintErrors = portCounters->portXmitConstraintErrors;
+	portStatusData->PortRcvConstraintErrors = portCounters->portRcvConstraintErrors;
+	portStatusData->LocalLinkIntegrityErrors = portCounters->localLinkIntegrityErrors;
+	portStatusData->ExcessiveBufferOverruns = portCounters->excessiveBufferOverruns;
+	portStatusData->PortXmitData = portCounters->portXmitData;
+	portStatusData->PortRcvData = portCounters->portRcvData;
+	portStatusData->PortXmitPkts = portCounters->portXmitPkts;
+	portStatusData->PortRcvPkts = portCounters->portRcvPkts;
+	portStatusData->PortMulticastXmitPkts = portCounters->portMulticastXmitPkts;
+	portStatusData->PortMulticastRcvPkts = portCounters->portMulticastRcvPkts;
+	portStatusData->PortXmitWait = portCounters->portXmitWait;
+	portStatusData->SwPortCongestion = portCounters->swPortCongestion;
+	portStatusData->PortRcvFECN = portCounters->portRcvFECN;
+	portStatusData->PortRcvBECN = portCounters->portRcvBECN;
+	portStatusData->PortXmitTimeCong = portCounters->portXmitTimeCong;
+	portStatusData->PortXmitWastedBW = portCounters->portXmitWastedBW;
+	portStatusData->PortXmitWaitData = portCounters->portXmitWaitData;
+	portStatusData->PortRcvBubble = portCounters->portRcvBubble;
+	portStatusData->PortMarkFECN = portCounters->portMarkFECN;
+	portStatusData->FMConfigErrors = portCounters->fmConfigErrors;
+	portStatusData->UncorrectableErrors = portCounters->uncorrectableErrors;
+	portStatusData->lq.AsReg8 = portCounters->lq.AsReg8;
+}
+
+#include "iba/public/ipackoff.h"
 
 #if defined (__cplusplus)
 };

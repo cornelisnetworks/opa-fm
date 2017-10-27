@@ -289,7 +289,7 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 	uint8_t 		activeRate;
 	uint8_t			life;
 	uint8_t			saLife, scope=0;
-	Lid_t		    mLid;
+	STL_LID		    mLid;
 	uint64_t		guid;
 	uint64_t		prefix;
 	// portp is port requested to join/leave MC group
@@ -2234,7 +2234,7 @@ Status_t createMCastGroup(uint64_t* mgid, uint16_t pkey, uint8_t mtu, uint8_t ra
 	McGroup_t			*mcGroup	= NULL;
 	McMember_t			*mcMember	= NULL;
 	STL_MCMEMBER_RECORD	*mcmp;
-	Lid_t  			    mLid;
+	STL_LID  			    mLid;
 	IB_GID				mGid;
 	int vf = 0;
 	VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;

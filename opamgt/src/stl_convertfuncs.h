@@ -31,8 +31,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef _stl_convertfuncs_h_included_
 #define _stl_convertfuncs_h_included_ 1
 
-#include "iba/ib_sm.h"
-#include "iba/stl_sm.h"
+#include "iba/ib_sm_priv.h"
+#include "iba/stl_sm_priv.h"
 
 /**
 	@file Provides functions for converting IB to STL data structures.

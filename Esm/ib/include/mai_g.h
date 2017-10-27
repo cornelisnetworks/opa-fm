@@ -94,7 +94,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ib_status.h>
 #include <ib_mad.h>
 #include <vs_g.h>
-#include "iba/stl_sm.h"
+#include "iba/stl_sm_priv.h"
 
 
 #define MAD_BASEHDR_SIZE (24)

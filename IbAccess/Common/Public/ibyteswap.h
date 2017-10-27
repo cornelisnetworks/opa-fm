@@ -38,8 +38,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *		__BIG_ENDIAN
  *		__BYTE_ORDER
  *
- * If the platform provides byte swapping functions, ibyteswap_osd.h also 
- * provides the following macros.
+ * If the platform does not provide byte swapping functions, ibyteswap_osd.h
+ * will also provide the following macros.
  *		ntoh16, hton16
  *		ntoh32, hton32
  *		ntoh64, hton64

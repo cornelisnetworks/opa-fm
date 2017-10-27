@@ -37,7 +37,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "iba/ib_ibt.h"
 
-#include "iba/stl_sa.h"
+#include "iba/stl_sa_priv.h"
 #include "iba/stl_sd.h"
 
 #if defined(VXWORKS)
@@ -47,11 +47,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #else
 #include "iba/ib_cm.h"
 #endif
-#include "iba/ib_pa.h"
+#include "iba/stl_pa_priv.h"
 #include "iba/ib_types.h"
-
-//#include "iba/ib_avtracker.h"
-//#include "iba/umadt.h"
 
 #ifdef __cplusplus
 };

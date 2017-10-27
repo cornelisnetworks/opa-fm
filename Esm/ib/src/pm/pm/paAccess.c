@@ -31,9 +31,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "pm_topology.h"
 #include "paAccess.h"
-#include "iba/stl_pa.h"
+#include "iba/stl_pa_priv.h"
 #include "fm_xml.h"
-//#include <limits.h>
 #include <stdio.h>
 #include <time.h>
 #ifndef __VXWORKS__

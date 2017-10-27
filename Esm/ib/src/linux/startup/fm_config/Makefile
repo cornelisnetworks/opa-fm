@@ -112,8 +112,8 @@ INCLUDE_SUBDIR		=
 #LOCAL_LIB_DIRS	= User library directories for libpaths [Empty]
 
 CLOCAL	=  $(CPIE)
-LOCALDEPLIBS = cs ibaccess config public vslogu Xml Md5 
-LOCALLIBS = rt
+LOCALDEPLIBS = cs ibaccess config public vslogu Xml
+LOCALLIBS = rt crypto
 
 ifneq "$(BUILD_TARGET_OS)" "VXWORKS"
 LOCALLIBS+= expat

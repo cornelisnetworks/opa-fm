@@ -887,11 +887,13 @@ typedef struct _SMXmlConfig {
 	char		routing_algorithm[STRING_SIZE];
 	uint32_t	path_selection;
 	uint32_t	queryValidation;
+	uint32_t	enforceVFPathRecs;	// Default to Enable to limit pathrecord scope to VFs
+									// otherwise, use PKEY as scope limit. 
 	uint32_t	sma_batch_size;
 	uint32_t	max_parallel_reqs;
  	uint32_t	check_mft_responses;
 	uint32_t	min_supported_vls;
-
+	uint64_t	cumulative_timeout_limit;
 	uint64_t	non_resp_tsec;
 	uint32_t	non_resp_max_count;
 
@@ -1185,10 +1187,6 @@ typedef struct _FEXmlConfig {
 	uint32_t	syslog_mode;
 	char		syslog_facility[STRING_SIZE];
     FmParamU32_t log_masks[VIEO_LAST_MOD_ID+1]; 
-
-	uint32_t		consistency_checksum;
-	uint32_t		disruptive_checksum;
-	uint32_t		overall_checksum;
 } FEXmlConfig_t;
 	
 // FM configuration (Shared)
@@ -1290,6 +1288,8 @@ extern int getXMLConfigData(uint8_t *buffer, uint32_t bufflen, uint32_t *filelen
 extern int putXMLConfigData(uint8_t *buffer, uint32_t filelen);
 extern int copyCompressXMLConfigFile(char *src, char *dst);
 extern int8_t copyDgVfInfo(FMXmlInstance_t *instance, DGXmlConfig_t *dg, VFXmlConfig_t *vf);
+extern FSTATUS MatchImplicitMGIDtoVF(SMMcastDefGrp_t *mdgp, VirtualFabrics_t *vf_config);
+extern FSTATUS MatchExplicitMGIDtoVF(SMMcastDefGrp_t *mdgp, VirtualFabrics_t *vf_config, int enforceVFPathRecs);
 
 // Export XML Memory mapping functions for the SM to use with the Topology lib on ESM
 #ifdef __VXWORKS__

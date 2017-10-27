@@ -52,8 +52,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ibt.h"
 #include "opamgt_priv.h"
 #include "ib_utils_openib.h"
-#include "ib_pm.h"
-#include "stl_pa.h"
+#include "stl_pa_priv.h"
 #include "ib_mad.h"
 #include "opamgt_dump_mad.h"
 #include "stl_sd.h"
@@ -176,9 +175,11 @@ pa_query_common(
 			OMGT_OUTPUT_ERROR(port, "Local port not Active!\n");
 			return FINVALID_STATE;
 		}
-		if ((port->pa_client_state != PACLIENT_OPERATIONAL) &&
-				(omgt_pa_client_connect(port) != PACLIENT_OPERATIONAL)){
-			OMGT_OUTPUT_ERROR(port, "Query PA failed: PA interface not available\n");
+		if ((port->pa_service_state != OMGT_SERVICE_STATE_OPERATIONAL)
+			&& (omgt_pa_service_connect(port) != OMGT_SERVICE_STATE_OPERATIONAL)) {
+
+			OMGT_OUTPUT_ERROR(port, "Query PA failed: PA Service Not Operational: %s (%d)\n",
+				omgt_service_state_totext(port->pa_service_state), port->pa_service_state);
 			return FUNAVAILABLE;
 		}
 		addr.lid = port->primary_pm_lid;
@@ -216,13 +217,15 @@ pa_query_common(
 
 	// submit RMPP MAD request
 	fstatus = omgt_send_recv_mad_alloc(port, snd_data, (size_t)snd_data_len, &addr,
-		(uint8_t **)rsp_mad, rcv_buf_len, DEFAULT_SD_TIMEOUT, DEFAULT_SD_RETRY_COUNT);
+		(uint8_t **)rsp_mad, rcv_buf_len, port->ms_timeout, port->retry_count);
 
 	if (fstatus != FSUCCESS) {
-		OMGT_DBGPRINT(port, "Query PA failed to send: %u\n",  (unsigned int)fstatus);
 		if (fstatus == FPROTECTION) {
 			// PKEY lookup error.
-			OMGT_OUTPUT_ERROR(port, "Query PA failed: requires full management node. Status:(%u)\n",  (unsigned int)fstatus);
+			OMGT_OUTPUT_ERROR(port, "Query Failed: requires full management node.\n");
+		} else {
+			OMGT_DBGPRINT(port, "Query Failed: %u. Marking PA Service State DOWN\n", (unsigned int)fstatus);
+			port->pa_service_state = OMGT_SERVICE_STATE_DOWN;
 		}
 		goto done;
 	}
@@ -495,12 +498,12 @@ iba_pa_single_mad_port_counters_response_query(
 		}
 	}
 
-	response = MemoryAllocate2AndClear(STL_PA_PORT_COUNTERS_NSIZE, IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG);
+	response = MemoryAllocate2AndClear(sizeof(STL_PORT_COUNTERS_DATA), IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG);
 	if (response == NULL) {
 		OMGT_OUTPUT_ERROR(port, "error allocating response buffer\n");
 		goto done;
 	}
-	memcpy((uint8 *)response, rsp_mad->Data, min(STL_PA_PORT_COUNTERS_NSIZE, rcv_buf_len - IB_SA_DATA_OFFS));
+	memcpy((uint8 *)response, rsp_mad->Data, min(sizeof(STL_PORT_COUNTERS_DATA), rcv_buf_len - IB_SA_DATA_OFFS));
 
 	// translate the data.
 	BSWAP_STL_PA_PORT_COUNTERS(response);
@@ -570,12 +573,12 @@ iba_pa_single_mad_clr_port_counters_response_query(
 		}
 	}
 
-	response = MemoryAllocate2AndClear(STL_PA_CLR_PORT_COUNTERS_NSIZE, IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG);
+	response = MemoryAllocate2AndClear(sizeof(STL_CLR_PORT_COUNTERS_DATA), IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG);
 	if (response == NULL) {
 		OMGT_OUTPUT_ERROR(port, "error allocating response buffer\n");
 		goto done;
 	}
-	memcpy((uint8 *)response, rsp_mad->Data, min(STL_PA_CLR_PORT_COUNTERS_NSIZE, rcv_buf_len - IB_SA_DATA_OFFS));
+	memcpy((uint8 *)response, rsp_mad->Data, min(sizeof(STL_CLR_PORT_COUNTERS_DATA), rcv_buf_len - IB_SA_DATA_OFFS));
 
 	// translate the data.
 	BSWAP_STL_PA_CLR_PORT_COUNTERS(response);
@@ -638,12 +641,12 @@ iba_pa_single_mad_clr_all_port_counters_response_query(
 		}
 	}
 
-	response = MemoryAllocate2AndClear(STL_PA_CLR_ALL_PORT_COUNTERS_NSIZE, IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG);
+	response = MemoryAllocate2AndClear(sizeof(STL_CLR_ALL_PORT_COUNTERS_DATA), IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG);
 	if (response == NULL) {
 		OMGT_OUTPUT_ERROR(port, "error allocating response buffer\n");
 		goto done;
 	}
-	memcpy((uint8 *)response, rsp_mad->Data, min(STL_PA_CLR_ALL_PORT_COUNTERS_NSIZE, rcv_buf_len - IB_SA_DATA_OFFS));
+	memcpy((uint8 *)response, rsp_mad->Data, min(sizeof(STL_CLR_ALL_PORT_COUNTERS_DATA), rcv_buf_len - IB_SA_DATA_OFFS));
 
 	// translate the data.
 	BSWAP_STL_PA_CLR_ALL_PORT_COUNTERS(response);
@@ -698,12 +701,12 @@ iba_pa_single_mad_get_pm_config_response_query(
 		}
 	}
 
-	response = MemoryAllocate2AndClear(STL_PA_PM_CONFIG_NSIZE, IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG);
+	response = MemoryAllocate2AndClear(sizeof(STL_PA_PM_CFG_DATA), IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG);
 	if (response == NULL) {
 		OMGT_OUTPUT_ERROR(port, "error allocating response buffer\n");
 		goto done;
 	}
-	memcpy((uint8 *)response, rsp_mad->Data, min(STL_PA_PM_CONFIG_NSIZE, rcv_buf_len - IB_SA_DATA_OFFS));
+	memcpy((uint8 *)response, rsp_mad->Data, min(sizeof(STL_PA_PM_CFG_DATA), rcv_buf_len - IB_SA_DATA_OFFS));
 
 	// translate the data.
 	BSWAP_STL_PA_PM_CFG(response);
@@ -765,12 +768,12 @@ iba_pa_single_mad_freeze_image_response_query(
 		}
 	}
 
-	response = MemoryAllocate2AndClear(STL_PA_IMAGE_ID_NSIZE, IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG);
+	response = MemoryAllocate2AndClear(sizeof(STL_PA_IMAGE_ID_DATA), IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG);
 	if (response == NULL) {
 		OMGT_OUTPUT_ERROR(port, "error allocating response buffer\n");
 		goto done;
 	}
-	memcpy((uint8 *)response, rsp_mad->Data, min(STL_PA_IMAGE_ID_NSIZE, rcv_buf_len - IB_SA_DATA_OFFS));
+	memcpy((uint8 *)response, rsp_mad->Data, min(sizeof(STL_PA_IMAGE_ID_DATA), rcv_buf_len - IB_SA_DATA_OFFS));
 
 	// translate the data.
 	BSWAP_STL_PA_IMAGE_ID(response);
@@ -832,12 +835,12 @@ iba_pa_single_mad_release_image_response_query(
 		}
 	}
 
-	response = MemoryAllocate2AndClear(STL_PA_IMAGE_ID_NSIZE, IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG);
+	response = MemoryAllocate2AndClear(sizeof(STL_PA_IMAGE_ID_DATA), IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG);
 	if (response == NULL) {
 		OMGT_OUTPUT_ERROR(port, "error allocating response buffer\n");
 		goto done;
 	}
-	memcpy((uint8 *)response, rsp_mad->Data, min(STL_PA_IMAGE_ID_NSIZE, rcv_buf_len - IB_SA_DATA_OFFS));
+	memcpy((uint8 *)response, rsp_mad->Data, min(sizeof(STL_PA_IMAGE_ID_DATA), rcv_buf_len - IB_SA_DATA_OFFS));
 
 	// translate the data.
 	BSWAP_STL_PA_IMAGE_ID(response);
@@ -899,12 +902,12 @@ iba_pa_single_mad_renew_image_response_query(
 		}
 	}
 
-	response = MemoryAllocate2AndClear(STL_PA_IMAGE_ID_NSIZE, IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG);
+	response = MemoryAllocate2AndClear(sizeof(STL_PA_IMAGE_ID_DATA), IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG);
 	if (response == NULL) {
 		OMGT_OUTPUT_ERROR(port, "error allocating response buffer\n");
 		goto done;
 	}
-	memcpy((uint8 *)response, rsp_mad->Data, min(STL_PA_IMAGE_ID_NSIZE, rcv_buf_len - IB_SA_DATA_OFFS));
+	memcpy((uint8 *)response, rsp_mad->Data, min(sizeof(STL_PA_IMAGE_ID_DATA), rcv_buf_len - IB_SA_DATA_OFFS));
 
 	// translate the data.
 	BSWAP_STL_PA_IMAGE_ID(response);
@@ -967,12 +970,12 @@ iba_pa_single_mad_move_freeze_response_query(
 		}
 	}
 
-	response = MemoryAllocate2AndClear(STL_PA_MOVE_FREEZE_NSIZE, IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG);
+	response = MemoryAllocate2AndClear(sizeof(STL_MOVE_FREEZE_DATA), IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG);
 	if (response == NULL) {
 		OMGT_OUTPUT_ERROR(port, "error allocating response buffer\n");
 		goto done;
 	}
-	memcpy((uint8 *)response, rsp_mad->Data, min(STL_PA_MOVE_FREEZE_NSIZE, rcv_buf_len - IB_SA_DATA_OFFS));
+	memcpy((uint8 *)response, rsp_mad->Data, min(sizeof(STL_MOVE_FREEZE_DATA), rcv_buf_len - IB_SA_DATA_OFFS));
 
 	// translate the data.
 	BSWAP_STL_PA_MOVE_FREEZE(response);
@@ -1031,12 +1034,12 @@ iba_pa_multi_mad_get_image_info_response_query (
 		}
 	}
 
-	response = MemoryAllocate2AndClear(STL_PA_IMAGE_INFO_NSIZE, IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG);
+	response = MemoryAllocate2AndClear(sizeof(STL_PA_IMAGE_INFO_DATA), IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG);
 	if (response == NULL) {
 		OMGT_OUTPUT_ERROR(port, "error allocating response buffer\n");
 		goto done;
 	}
-	memcpy((uint8 *)response, rsp_mad->Data, min(STL_PA_IMAGE_INFO_NSIZE, rcv_buf_len - IB_SA_DATA_OFFS));
+	memcpy((uint8 *)response, rsp_mad->Data, min(sizeof(STL_PA_IMAGE_INFO_DATA), rcv_buf_len - IB_SA_DATA_OFFS));
 
 	// translate the data.
 	BSWAP_STL_PA_IMAGE_INFO(response);
@@ -1706,12 +1709,12 @@ iba_pa_single_mad_vf_port_counters_response_query(
 		}
 	}
 
-	response = MemoryAllocate2AndClear(STL_PA_VF_PORT_COUNTERS_NSIZE, IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG);
+	response = MemoryAllocate2AndClear(sizeof(STL_PA_VF_PORT_COUNTERS_DATA), IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG);
 	if (response == NULL) {
 		OMGT_OUTPUT_ERROR(port, "error allocating response buffer\n");
 		goto done;
 	}
-	memcpy((uint8 *)response, rsp_mad->Data, min(STL_PA_VF_PORT_COUNTERS_NSIZE, rcv_buf_len - IB_SA_DATA_OFFS));
+	memcpy((uint8 *)response, rsp_mad->Data, min(sizeof(STL_PA_VF_PORT_COUNTERS_DATA), rcv_buf_len - IB_SA_DATA_OFFS));
 
 	// translate the data.
 	BSWAP_STL_PA_VF_PORT_COUNTERS(response);
@@ -1769,12 +1772,12 @@ iba_pa_single_mad_clr_vf_port_counters_response_query(
 		}
 	}
 
-	response = MemoryAllocate2AndClear(STL_PA_CLR_VF_PORT_COUNTERS_NSIZE, IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG);
+	response = MemoryAllocate2AndClear(sizeof(STL_PA_CLEAR_VF_PORT_COUNTERS_DATA), IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG);
 	if (response == NULL) {
 		OMGT_OUTPUT_ERROR(port, "error allocating response buffer\n");
 		goto done;
 	}
-	memcpy((uint8 *)response, rsp_mad->Data, min(STL_PA_CLR_VF_PORT_COUNTERS_NSIZE, rcv_buf_len - IB_SA_DATA_OFFS));
+	memcpy((uint8 *)response, rsp_mad->Data, min(sizeof(STL_PA_CLEAR_VF_PORT_COUNTERS_DATA), rcv_buf_len - IB_SA_DATA_OFFS));
 
 	// translate the data.
 	BSWAP_STL_PA_CLEAR_VF_PORT_COUNTERS(response);
@@ -1918,11 +1921,11 @@ iba_pa_query_master_pm_lid(struct omgt_port *port)
             OMGT_DBGPRINT(port, "Got Service Records: records=%d\n", service_record_results->NumServiceRecords);
             for (i = 0; i < service_record_results->NumServiceRecords; ++i) 
             {
-                if (PM_SERVICE_ID == service_record_results->ServiceRecords[i].RID.ServiceID) 
+                if (STL_PM_SERVICE_ID == service_record_results->ServiceRecords[i].RID.ServiceID) 
                 {
                     pmCount++;
-                    if ((service_record_results->ServiceRecords[i].ServiceData8[0] >= PM_VERSION) &&
-                        (service_record_results->ServiceRecords[i].ServiceData8[1] == PM_MASTER))
+                    if ((service_record_results->ServiceRecords[i].ServiceData8[0] >= STL_PM_VERSION) &&
+                        (service_record_results->ServiceRecords[i].ServiceData8[1] == STL_PM_MASTER))
                     {
                         OMGT_DBGPRINT(port, "This is the Primary PM.\n");
 
@@ -1936,7 +1939,7 @@ iba_pa_query_master_pm_lid(struct omgt_port *port)
 						query.InputValue.IbPathRecord.PathRecord.PathRecord.DGID =
 							service_record_results->ServiceRecords[i].RID.ServiceGID;
 						query.InputValue.IbPathRecord.PathRecord.PathRecord.SGID = port->local_gid;
-						query.InputValue.IbPathRecord.PathRecord.PathRecord.ServiceID = PM_SERVICE_ID;
+						query.InputValue.IbPathRecord.PathRecord.PathRecord.ServiceID = STL_PM_SERVICE_ID;
 						query.InputValue.IbPathRecord.PathRecord.ComponentMask =
 							IB_MULTIPATH_RECORD_COMP_NUMBPATH | PR_COMPONENTMASK_SRV_ID |
 							PR_COMPONENTMASK_DGID | PR_COMPONENTMASK_SGID;
@@ -2036,31 +2039,29 @@ iba_pa_mad_status_msg(
  *         PACLIENT_DOWN - initialization not successful/PaServer not available
  */
 int
-omgt_pa_client_connect(struct omgt_port *port)
+omgt_pa_service_connect(struct omgt_port *port)
 {
 	FSTATUS                 fstatus;
 	int                     mclass = MCLASS_VFI_PM;
 	struct omgt_class_args   mgmt_class[2];
 	int                     err = 0;
 	IB_PORT_ATTRIBUTES	*attrib = NULL;
-	int pa_client_status = PACLIENT_DOWN;
+	int pa_client_status = OMGT_SERVICE_STATE_DOWN;
 
 	fstatus = omgt_get_portguid(port->hfi_num, port->hfi_port_num, NULL, port, NULL, NULL, NULL, &attrib, NULL, NULL, NULL, NULL, NULL);
 
-	if (FSUCCESS == fstatus && attrib)
-	{
+	if (FSUCCESS == fstatus && attrib) {
 		port->local_gid = attrib->GIDTable[0];
-	}
-	else
-	{
+	} else {
 		OMGT_OUTPUT_ERROR(port, "Could not get port guid: %s\n", iba_fstatus_msg(fstatus));
 		goto done;
 	}
 
-
-	if ((fstatus = iba_pa_query_master_pm_lid(port)) != FSUCCESS)
-	{
+	if ((fstatus = iba_pa_query_master_pm_lid(port)) != FSUCCESS) {
 		OMGT_OUTPUT_ERROR(port, "Can't query primary PM LID!\n");
+		if (fstatus == FUNAVAILABLE) {
+			pa_client_status = OMGT_SERVICE_STATE_UNAVAILABLE;
+		}
 		goto done;
 	}
 
@@ -2072,23 +2073,22 @@ omgt_pa_client_connect(struct omgt_port *port)
 	mgmt_class[0].is_responding_client = 0;
 	mgmt_class[0].is_trap_client = 0;
 	mgmt_class[0].is_report_client = 0;
-	mgmt_class[0].kernel_rmpp = 1; // TODO: determine if this should be 0
+	mgmt_class[0].kernel_rmpp = 1;
 	mgmt_class[0].use_methods = 0;
 	mgmt_class[0].oui = ib_truescale_oui;
 
-	if ((err = omgt_bind_classes(port, mgmt_class)) != 0)
-	{
+	if ((err = omgt_bind_classes(port, mgmt_class)) != 0) {
 		OMGT_OUTPUT_ERROR(port, "Failed to  register management class 0x%02x: %s\n",
-				mclass, strerror(err));
+			mclass, strerror(err));
 		goto done;
 	}
 
-	pa_client_status = PACLIENT_OPERATIONAL;
+	pa_client_status = OMGT_SERVICE_STATE_OPERATIONAL;
 done:
 	if (attrib)
 		MemoryDeallocate(attrib);
 
-	return (port->pa_client_state = pa_client_status);
+	return (port->pa_service_state = pa_client_status);
 }
 
 /** 
@@ -2210,7 +2210,7 @@ omgt_pa_get_image_info(
         memcpy(pm_image_info, response, sizeof(*pm_image_info));
 
         for (ix = pm_image_info->numSMs; ix < 2; ix++)
-            memset(&pm_image_info->SMInfo[ix], 0, sizeof(SMINFO_DATA));
+            memset(&pm_image_info->SMInfo[ix], 0, sizeof(STL_SMINFO_DATA));
 
         MemoryDeallocate(response);
         fstatus = OMGT_STATUS_SUCCESS;

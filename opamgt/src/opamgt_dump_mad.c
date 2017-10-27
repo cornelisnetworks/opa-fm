@@ -33,10 +33,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include <infiniband/umad_types.h>
 #include <infiniband/umad_str.h>
-#include <stl_sm.h>
-#include <stl_sa.h>
+#include <stl_sm_priv.h>
+#include <stl_sa_priv.h>
 #include <stl_pm.h>
-#include <stl_pa.h>
+#include <stl_pa_priv.h>
 
 #include <opamgt_priv.h>
 #include <syslog.h>
@@ -226,8 +226,9 @@ const char *stl_attribute_str(uint8_t BaseVersion, uint8_t class, be16_t attr)
 		case STL_SA_ATTR_SWITCH_CONG_RECORD:			return("SwitchCongestionRecord");
 		case STL_SA_ATTR_SWITCH_PORT_CONG_RECORD:		return("SwitchPortCongestionRecord");
 		case STL_SA_ATTR_HFI_CONG_RECORD:				return("HFICongestionRecord");
-		case STL_SA_ATTR_HFI_CONG_CTRL_RECORD:			return("HFICongestionCtrlRecord"); 
-        }
+		case STL_SA_ATTR_HFI_CONG_CTRL_RECORD:			return("HFICongestionCtrlRecord");
+		case STL_SA_ATTR_SWITCH_COST_RECORD:			return("SwitchCostRecord");
+		}
         break;
     case MCLASS_PERF: //PM      //0x04
         switch (ntoh16(attr)) {

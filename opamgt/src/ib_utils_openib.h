@@ -231,7 +231,6 @@ typedef struct {
 #define OMGT_PKEY_MASK           0x7fff
 #define OMGT_PKEY_FULL_BIT       0x8000
 #define OMGT_INVALID_AGENTID     -1
-#define OPAMGT_DEF_TIMEOUT_MS 1000
 #define DEFAULT_USERSPACE_RECV_BUF  512
 #define DEFAULT_USERSPACE_SEND_BUF  128
 #define NOTICE_REG_TIMEOUT_MS   1000 /* 1sec */
@@ -316,6 +315,10 @@ struct omgt_port {
 	FILE *dbg_file;
 	FILE *error_file;
 
+	/* Timeout & Retries */
+	int ms_timeout;
+	int retry_count;
+
 	/* SA interaction for userspace Notice registration */
 	struct ibv_comp_channel *sa_qp_comp_channel;
 	struct ibv_cq           *sa_qp_cq;
@@ -331,13 +334,16 @@ struct omgt_port {
 	int                      outstanding_sends_cnt;
 	struct omgt_sa_msg       pending_reg_msg_head;
 	struct omgt_sa_msg      *recv_bufs;
+
+	/* For SA Client interface */
 	uint16_t                 sa_mad_status;
+	int                      sa_service_state;
 
 	/* For PA client interface */
 	IB_GID              local_gid;
 	FILE               *verbose_file;
 	int                 pa_verbose;
-	int                 pa_client_state;
+	int                 pa_service_state;
 	uint16_t            primary_pm_lid;
 	uint8_t             primary_pm_sl;
 	uint16_t            pa_mad_status;
@@ -376,6 +382,11 @@ int stop_ud_cq_monitor(struct omgt_port *port);
 int repost_pending_registrations(struct omgt_port *port);
 int reregister_traps(struct omgt_port *port);
 void omgt_sa_remove_all_pending_reg_msgs(struct omgt_port *port);
+
+int create_sa_qp(struct omgt_port *port);
+int userspace_register(struct omgt_port *port, uint16_t trap_num, omgt_sa_registration_t *reg);
+void omgt_sa_add_reg_unsafe(struct omgt_port *port, omgt_sa_registration_t *reg);
+FSTATUS omgt_sa_remove_reg_by_trap_unsafe(struct omgt_port *port, uint16_t trap_num);
 
 #define LIST_INIT(obj) \
     (obj)->next = obj; \

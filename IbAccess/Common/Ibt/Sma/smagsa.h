@@ -36,7 +36,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "datatypes.h"
 #include "stl_types.h"
-#include "stl_mad.h"
+#include "stl_mad_priv.h"
 #include "vpi.h"
 #include "ieventthread.h"
 

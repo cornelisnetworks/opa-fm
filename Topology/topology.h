@@ -35,19 +35,17 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <iba/ibt.h>
 
 #include <iba/ipublic.h>
-#include <iba/ib_pm.h>
 #if !defined(VXWORKS) || defined(BUILD_DMC)
 #include <iba/ib_dm.h>
 #endif
-#include <iba/stl_sm.h>
-#include <iba/stl_sa.h>
+#include <iba/stl_sm_priv.h>
+#include <iba/stl_sa_priv.h>
 #include <iba/stl_sd.h>
 #include <iba/stl_pm.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <unistd.h>
-//#include <ctype.h>
 #if !defined(_GNU_SOURCE)
 #define _GNU_SOURCE
 #endif
@@ -973,9 +971,6 @@ extern FSTATUS InitSmaMkey(uint64 mkey);
 extern boolean NodeHasPma(NodeData *nodep);
 extern boolean PortHasPma(PortData *portp);
 extern void UpdateNodePmaCapabilities(NodeData *nodep, boolean ProcessHFICounters);
-extern FSTATUS PmGetClassPortInfo(struct omgt_port *port, PortData *portp);
-extern FSTATUS PmGetPortCounters(struct omgt_port *port, PortData *portp, uint8 portNum,
-							PORT_COUNTERS *pPortCounters);
 extern FSTATUS STLPmGetClassPortInfo(struct omgt_port *port, PortData *portp);
 extern FSTATUS STLPmGetPortStatus(struct omgt_port *port, PortData *portp, uint8 portNum, STL_PortStatusData_t *pPortStatus);
 extern FSTATUS STLPmClearPortCounters(struct omgt_port *port, PortData *portp, uint8 lastPortIndex, uint32 counterselect);

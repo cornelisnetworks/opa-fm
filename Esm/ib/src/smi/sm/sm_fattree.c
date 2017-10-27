@@ -31,6 +31,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ib_types.h"
 #include "sm_l.h"
 
+int fattreeBadSweepCount = 0;
+int rebalanceGoodSweep = 0;
+
 Status_t sm_shortestpath_make_routing_module(RoutingModule_t * rm);
 
 static __inline__ void
@@ -307,9 +310,24 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 	}
 
 	if (processedSwitches.nset_m != new_switchesInUse.nset_m) {
-		IB_LOG_ERROR_FMT(__func__, "Switch(es) unassigned to/out-of-bound (fattree) tier. Check TierCount in config file.");
-		return VSTATUS_BAD;
+		// Bad config or edge switch with no HFIs online.
+		if (sm_config.ftreeRouting.fis_on_same_tier) {
+			IB_LOG_WARN_FMT(__func__, "Switch(es) unassigned to/out-of-bound (fattree) tier. All HFIs offline on edge switch or check TierCount in config file.");
+
+			// When all HFIs come online, force rebalance of fabric.
+			fattreeBadSweepCount++;
+
+		} else {
+			IB_LOG_WARN_FMT(__func__, "Switch(es) unassigned to/out-of-bound (fattree) tier. Check fattree configuration.");
+		}
+
+	} else if (fattreeBadSweepCount) {
+		// Looks like HFIs have been enabled on edge switch, force a rebalance this sweep
+		// instead of calculating deltas.
+		fattreeBadSweepCount = 0;
+		rebalanceGoodSweep = 1;
 	}
+
 	bitset_free(&processedSwitches);
 
 	return VSTATUS_OK;
@@ -375,6 +393,9 @@ _calculate_balanced_lfts_systematic(Topology_t *topop)
 			IB_LOG_ERROR_FMT(__func__, "Failed to allocate space for LFT.");
 			return status;
 		}
+
+		// Initialize port group top prior to setting up groups.
+		switchp->switchInfo.PortGroupTop = 0;
 	}
 
 	// if route last is indicated, balance over those HFIs on a second pass
@@ -503,6 +524,8 @@ _calculate_balanced_lfts_systematic(Topology_t *topop)
 		} else {
 			// Switch may not be added to tier switch group when no FIs in down path.
 			// If so, doesn't matter if it is balanced.
+			if (sm_config.sm_debug_routing)
+				IB_LOG_INFINI_INFO_FMT(__func__, "Switch %s is not queued", sm_nodeDescString(switchp));
 			topop->routingModule->funcs.calculate_routes(sm_topop, switchp);
 		}
 	}
@@ -695,11 +718,13 @@ _init_switch_lfts(Topology_t * topop, int * routing_needed, int * rebalance)
 	if (topop != sm_topop)
 		return VSTATUS_BAD;
 
-	if (topology_cost_path_changes || *rebalance) {
+	if (topology_cost_path_changes || *rebalance || rebalanceGoodSweep) {
 		// A topology change was indicated.  Re-calculate lfts with big hammer (rebalance).
 		s = _calculate_balanced_lfts_systematic(topop);
 		*rebalance = 1;
+		*routing_needed = 1;
 		routing_recalculated = 1;
+		rebalanceGoodSweep = 0;
 
 	} else if (	new_endnodesInUse.nset_m ||
 					old_topology.num_endports != topop->num_endports) {

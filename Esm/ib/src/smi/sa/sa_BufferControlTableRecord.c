@@ -133,7 +133,7 @@ sa_BufferControlTableRecord_Set(uint8_t *pRec, Node_t *pNode, Port_t *pPort)
 	IB_ENTER("sa_BufferControlTableRecord_Set", pRec, pNode, pPort, 0);
 	memset(&record, 0, sizeof(record));
     Port_t *swport;
-    Lid_t lid;
+    STL_LID lid;
 
 	if ((pNode->nodeInfo.NodeType == NI_TYPE_SWITCH) &&
 		(sm_valid_port((swport = sm_get_port(pNode,0))))) {
@@ -163,7 +163,7 @@ sa_BufferControlTableRecord_GetTable(Mai_t *maip, uint32_t *records)
 	STL_SA_MAD	samad;
 	Status_t	status;
 	bool_t		checkLid;
-	Lid_t		lid=0;
+	STL_LID		lid=0;
 	bool_t		checkPort;
 	uint8_t		portNum=0;
 	STL_BUFFER_CONTROL_TABLE_RECORD*	pCtrlTabRec;

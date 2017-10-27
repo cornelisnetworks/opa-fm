@@ -50,8 +50,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "mai_g.h"
 #include "mal_g.h"
 #include "ib_sa.h"
-#include "iba/ib_pa.h"
-#include "iba/stl_pa.h"
+#include "iba/stl_pa_priv.h"
 #include "ib_sm.h"
 #include "iba/ib_rmpp.h"
 #include <if3.h>
@@ -85,7 +84,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define DRAIN_MAI_STALE(fd) drain_stale(fd)
 
 extern uint8_t if3_is_master(void);
-extern void if3_set_rmpp_minfo(ManagerInfo_t *mi);
+extern Status_t if3_set_rmpp_minfo(ManagerInfo_t *mi);
 
 static ManagerInfo_t maninfo[MAX_MANAGER];
 
@@ -470,7 +469,7 @@ Status_t
 if3_addr_swizzle (Mai_t * mad)
 {
 
-	Lid_t lid;
+	STL_LID lid;
 	/*
 	 * swap the source and destination address
 	 */
@@ -1027,7 +1026,7 @@ if3_dbsync_close (IBhandle_t mhdl)
 
 }
 
-Status_t if3_set_dlid (IBhandle_t fd, Lid_t dlid)
+Status_t if3_set_dlid (IBhandle_t fd, STL_LID dlid)
 {
 	Status_t rc=VSTATUS_OK;
 	ManagerInfo_t *mi;
@@ -1307,7 +1306,7 @@ open_mngr_cnx(uint32_t dev, uint32_t port,
     } else if (mode == 0) {
         
         // we have the lid of the manager location
-        mi->dlid = (Lid_t)lid;
+        mi->dlid = (STL_LID)lid;
     } else {
         // manager is local
         mi->dlid = mi->slid;
@@ -1834,7 +1833,11 @@ if3_dbsync_reply_to_mngr(IBhandle_t fhdl, Mai_t * fmad,
 	}
     
     // setup RMPP related fields 
-    (void)if3_set_rmpp_minfo(mi); 
+    rc = if3_set_rmpp_minfo(mi); 
+    if (rc) {
+        IB_EXIT(__func__, rc);
+        return rc;
+    }
 
     // set return status
     fmad->base.status = (uint16_t)resp_status;
@@ -1924,7 +1927,11 @@ if3_mngr_send_mad(IBhandle_t fd, SA_MAD *psa, uint32_t dataLength, uint8_t *buff
     }
     
     // setup RMPP related fields 
-    (void)if3_set_rmpp_minfo(mi); 
+    rc = if3_set_rmpp_minfo(mi); 
+    if (rc) {
+        IB_EXIT(__func__, rc);
+        return rc;
+    }
     
     // 
     // calculating Response Timeout Period
@@ -2147,7 +2154,11 @@ if3_mngr_send_passthru_mad (IBhandle_t fd, SA_MAD *psa, uint32_t dataLength,
     }
     
     // setup RMPP related fields 
-    (void)if3_set_rmpp_minfo(mi); 
+    rc = if3_set_rmpp_minfo(mi); 
+    if (rc) {
+        IB_EXIT(__func__, rc);
+        return rc;
+    }
     
     // 
     // calculating Response Timeout Period
@@ -2291,6 +2302,7 @@ if3_mngr_send_passthru_mad (IBhandle_t fd, SA_MAD *psa, uint32_t dataLength,
         } else {
             // release context for single MAD request
             rmpp_cntxt_full_release(fe_cntxt);
+            fe_cntxt = NULL;
 
             // wait for response from manager
             rc = rmpp_receive_response(fd_rmpp_usrid, mi, &imad, buffer, bufferLength, cb, context); 
@@ -2368,7 +2380,11 @@ if3_dbsync_send_mad(IBhandle_t fd, SA_MAD *psa, uint32_t dataLength, uint8_t *bu
     }
     
     // setup RMPP related fields 
-    (void)if3_set_rmpp_minfo(mi); 
+    rc = if3_set_rmpp_minfo(mi); 
+    if (rc) {
+        IB_EXIT(__func__, rc);
+        return rc;
+    }
     
     // 
     // calculating Response Timeout Period
@@ -2508,38 +2524,41 @@ if3_dbsync_send_mad(IBhandle_t fd, SA_MAD *psa, uint32_t dataLength, uint8_t *bu
         // send DB Sync single MAD request to the remote STL SM
         if (VSTATUS_OK != (rc = rmpp_send_request(&mad, dbsync_cntxt))) {
             IB_LOG_ERROR_FMT(__func__, "Failed to send RMPP DB Sync request to remote SM: rc %d", rc); 
-        } else while(1) {
-			uint32_t tmpLength = *bufferLength;
-
+        } else {
             // release context for DB Sync single MAD request
             rmpp_cntxt_full_release(dbsync_cntxt);
-
-            // wait for response from the remote STL SM
-            rc = rmpp_receive_response(fd_rmpp_usrid, mi, &imad, buffer, &tmpLength, cb, context); 
-            if (if3DebugRmpp) {
-                if (rc == VSTATUS_OK) {
-                    IB_LOG_INFINI_INFO_FMT(__func__, "Data received OK, len %d", tmpLength);
-                } else {
-                    IB_LOG_INFINI_INFO_FMT(__func__, "Data received FAILED, rc %d", rc);
+            dbsync_cntxt = NULL;
+             
+            while (1) {
+                uint32_t tmpLength = *bufferLength; 
+                
+                // wait for response from the remote STL SM
+                rc = rmpp_receive_response(fd_rmpp_usrid, mi, &imad, buffer, &tmpLength, cb, context); 
+                if (if3DebugRmpp) {
+                    if (rc == VSTATUS_OK) {
+                        IB_LOG_INFINI_INFO_FMT(__func__, "Data received OK, len %d", tmpLength);
+                    } else {
+                        IB_LOG_INFINI_INFO_FMT(__func__, "Data received FAILED, rc %d", rc);
+                    }
                 }
+                
+                // no writer thread was implemented for DB Synch, like it was for the SA,
+                // PM, PA, and FE.  The writer thread would normally handle the filtering
+                // and processing of ACK responses.  DB synch main is the reader/writer thread,
+                // so process the ACKs for the Slave here. 
+                (void)BSWAPCOPY_STL_SA_MAD((STL_SA_MAD *)imad.data, &samad, STL_SA_DATA_LEN); 
+                if (!rc && samad.header.rmppType == RMPP_TYPE_ACK) {
+                    if (if3DebugRmpp) 
+                        IB_LOG_INFINI_INFO_FMT(__func__, "Got ACK packet"); 
+                    continue;
+                }
+                
+                *bufferLength = tmpLength; 
+                // get MAD status from the header
+                *madRc = imad.base.status; 
+                break;
             }
-
-            // no writer thread was implemented for DB Synch, like it was for the SA,
-            // PM, PA, and FE.  The writer thread would normally handle the filtering
-            // and processing of ACK responses.  DB synch main is the reader/writer thread,
-            // so process the ACKs for the Slave here. 
-            (void)BSWAPCOPY_STL_SA_MAD((STL_SA_MAD*)imad.data, &samad, STL_SA_DATA_LEN);
-            if (!rc && samad.header.rmppType == RMPP_TYPE_ACK) {
-                if (if3DebugRmpp)
-                    IB_LOG_INFINI_INFO_FMT(__func__, "Got ACK packet");
-                continue;
-            }
-            
-			*bufferLength = tmpLength;
-            // get MAD status from the header
-            *madRc = imad.base.status; 
-			break;
-        } 
+        }
     }
     
 bail:
@@ -2573,7 +2592,7 @@ if3_dbsync_send_multi_mad (IBhandle_t fd, SA_MAD *psa,
     Mai_t mad; 
     uint64_t timeout; 
     rmpp_cntxt_t *dbsync_cntxt = NULL; 
-    uint32_t attribOffset; 
+    uint16_t attribOffset; 
     uint8_t processMad = 0, omethod; 
     int fd_rmpp_usrid = -1; 
     SA_MAD_HDR saHdr; 
@@ -2596,7 +2615,11 @@ if3_dbsync_send_multi_mad (IBhandle_t fd, SA_MAD *psa,
     }
     
     // setup RMPP related fields 
-    (void)if3_set_rmpp_minfo(mi); 
+    rc = if3_set_rmpp_minfo(mi); 
+    if (rc) {
+        IB_EXIT(__func__, rc);
+        return rc;
+    }
     
     // 
     // calculating Response Timeout Period
@@ -2726,12 +2749,17 @@ if3_dbsync_send_multi_mad (IBhandle_t fd, SA_MAD *psa,
     // before sending the MAD request, perform any required pre-processing of
     // the RMPP context and MAD request    
     if (!(rc = rmpp_pre_process_request(fd_rmpp_usrid, &mad, dbsync_cntxt))) {
-        attribOffset = dataLength + Calculate_Padding(dataLength); 
+        uint32_t paddedDataLength;
+
+        // since data to be sent exceeds maximum MAD payload size, set
+        // attribute offset base on MAD payload size  
+        attribOffset = sizeof(mad.data) + Calculate_Padding(sizeof(mad.data)); 
         // setup attribute offset for RMPP transfer
         dbsync_cntxt->attribLen = attribOffset; 
+        paddedDataLength = dataLength + Calculate_Padding(dataLength); 
         
         // allocate RMPP request context structure
-        rmpp_cntxt_data(fd_rmpp_usrid, dbsync_cntxt, dataBuffer, attribOffset); 
+        rmpp_cntxt_data(fd_rmpp_usrid, dbsync_cntxt, dataBuffer, paddedDataLength); 
         uint32_t tmpLength;   
 send:
         // send DB Sync request to the remote STL SM
@@ -2821,7 +2849,11 @@ if3_dbsync_cmd_from_mngr (IBhandle_t fd, Mai_t *maip, uint8_t *buffer, uint32_t 
     }
     
     // setup RMPP related fields 
-    (void)if3_set_rmpp_minfo(mi); 
+    rc = if3_set_rmpp_minfo(mi); 
+    if (rc) {
+        IB_EXIT(__func__, rc);
+        return rc;
+    }
     
     // drain stale data from response handle
     DRAIN_MAI_STALE(mi->fds); 

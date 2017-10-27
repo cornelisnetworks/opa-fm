@@ -8,9 +8,6 @@ ib_pkt.h - IB Link, Network and Transport layer packet headers
 ib_sm.h - SMA/SMI packets
 ib_sd.h - Subnet Data interfaces for User and Kernel
 ib_generalServices.h - GSI packet headers
-ib_pm.h - PMA packets
-ib_cc.h - CCA packets
-ib_dm.h - DMA packets
 ib_sa_records.h - SA packets
 
 

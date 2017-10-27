@@ -475,8 +475,6 @@ print_checksum_information (int num_instances, VirtualFabrics_t **vf_configs) {
 		fprintf(stdout,"FM instance %u\n", i);
 		fprintf(stdout, "   SM overall checksum %8u    consistency checksum %8u\n", smp->overall_checksum, smp->consistency_checksum);
 		fprintf(stdout, "   PM overall checksum %8u    consistency checksum %8u\n", pmp->overall_checksum, pmp->consistency_checksum);
-		fprintf(stdout, "   FE overall checksum %8u    consistency checksum %8u\n", fep->overall_checksum, fep->consistency_checksum);
-
 		fprintf(stdout, "   VF database consistency checksum %8u\n", vf_configs[i]->consistency_checksum);
 		for (v = 0; v < vf_configs[i]->number_of_vfs; v++) 
 			fprintf(stdout, "       VF %s consistency checksum %8u\n", vf_configs[i]->v_fabric[v].name, vf_configs[i]->v_fabric[v].consistency_checksum);

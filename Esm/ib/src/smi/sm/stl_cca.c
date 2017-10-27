@@ -29,7 +29,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /* [ICS VERSION STRING: unknown] */
 
-#include <iba/stl_sm.h>
+#include <iba/stl_sm_priv.h>
 #include "stl_cca.h"
 
 static Status_t build_cca_congestion_control_table(Node_t *nodep, Port_t *portp, STL_HFI_CONGESTION_CONTROL_TABLE *hfiCongCon,

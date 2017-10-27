@@ -175,18 +175,7 @@ sa_ServiceRecord(Mai_t *maip, sa_cntxt_t *sa_cntxt) {
 	records = 0;
 
 	// Check Base and Class Version
-	if (maip->base.bversion == STL_BASE_VERSION && maip->base.cversion == STL_SA_CLASS_VERSION) {
-#ifdef NO_STL_SERVICE_OUTPUT     // SA shouldn't support STL Service Record
-		maip->base.status = MAD_STATUS_BAD_CLASS;
-		(void)sa_send_reply(maip, sa_cntxt);
-		IB_LOG_WARN_FMT(__func__, "invalid Base and/or Class Versions: Base %u, Class %u",
-			maip->base.bversion, maip->base.cversion);
-		IB_EXIT(__func__, VSTATUS_OK);
-		return VSTATUS_OK;
-#else
-		rec_sz = sizeof(STL_SERVICE_RECORD);
-#endif
-	} else if (maip->base.bversion == IB_BASE_VERSION && maip->base.cversion == SA_MAD_CVERSION) {
+	if (maip->base.bversion == IB_BASE_VERSION && maip->base.cversion == SA_MAD_CVERSION) {
 		rec_sz = sizeof(IB_SERVICE_RECORD);
 	} else {
 		// Generate an error response and return.

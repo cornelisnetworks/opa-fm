@@ -34,6 +34,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/stat.h>
 #include <sys/types.h>
 #include "if3.h"
+#include <stl_pa_priv.h>
 
 #ifndef __VXWORKS__
 #include <inttypes.h>
@@ -47,7 +48,12 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <fm_xml.h>
 #define _GNU_SOURCE
 
+#ifndef __VXWORKS__
+#include <openssl/md5.h>
+#else
 #include <Md5.h>
+#endif
+#include "fm_md5.h"
 
 #ifdef __VXWORKS__
 #include "Ism_Idb.h"
@@ -359,13 +365,6 @@ uint32_t xml_compute_pool_size(uint8_t full)
 
 
 // Checksum code
-typedef struct {
-	uint32_t method;
-	union {
-		uint32_t simple_sum;
-		Md5_Context_t ctx;
-	} u;
-} cksum_t;
 
 static void *cksumBegin(uint32_t method)
 {
@@ -381,7 +380,7 @@ static void *cksumBegin(uint32_t method)
 	if (method == SIMPLE_CHECKSUM_METHOD) {
 		cksum->u.simple_sum = 0;
 	} else {
-		Md5_Start(&cksum->u.ctx);
+		fm_md5_start((void *)&cksum->u.ctx);
 	}
 	return (void *)cksum;
 }
@@ -403,7 +402,7 @@ static void cksumData(void *ctx, void *block, uint32_t length)
 		}
 	} else {
 		// MD5 checksum
-		Md5_Update(&cksum->u.ctx, block, length);
+		fm_md5_update((void *)&cksum->u.ctx, block, length);
 	}
 }
 
@@ -423,7 +422,7 @@ static uint32_t cksumEnd(void *ctx)
 		uint32_t i;
 
 		// MD5 checksum
-		Md5_Finish(&cksum->u.ctx, computedMd5);
+		fm_md5_finish((void *)&cksum->u.ctx, computedMd5);
 
 		word = (uint32_t*)computedMd5;
 		for (i = 0; i < 4; i++) {
@@ -1425,8 +1424,6 @@ void feClearConfig(FEXmlConfig_t *fep)
 	memset(fep->name, 0, sizeof(fep->name));
 	memset(fep->syslog_facility, 0, sizeof(fep->syslog_facility));
 	memset(fep->log_masks, 0, sizeof(fep->log_masks));
-
-	fep->overall_checksum = fep->disruptive_checksum = fep->consistency_checksum = 0;
 }
 
 // initialize FE defaults
@@ -1445,28 +1442,17 @@ boolean feInitConfig(FEXmlConfig_t *fep, uint32_t instance, uint32_t ccc_method)
 	if (!startFE)
 		fep->start = 0;
 #endif
-
 	DEFAULT_INT(fep->start, 0); // FE defaults to disabled
-	if (!fep->start) { // if fe is diabled, set the checksums to 0 and return
-		fep->overall_checksum = 0;
-		fep->disruptive_checksum = 0;
-		fep->consistency_checksum = 0;
-		return 1;
-	}
 
-	CKSUM_BEGIN(ccc_method);
+	DEFAULT_INT(fep->hca, 0);
+	DEFAULT_INT(fep->port, 1);
+	DEFAULT_INT(fep->port_guid, 0);
 
-	// if the fe is enabled, do CKSUM checks
-	CKSUM_DATA(fep->start, CKSUM_OVERALL_DISRUPT);
-	DEFAULT_AND_CKSUM_INT(fep->hca, 0, CKSUM_OVERALL_DISRUPT);
-	DEFAULT_AND_CKSUM_INT(fep->port, 1, CKSUM_OVERALL_DISRUPT);
-	DEFAULT_AND_CKSUM_INT(fep->port_guid, 0, CKSUM_OVERALL_DISRUPT);
-
-	DEFAULT_AND_CKSUM_INT(fep->startup_retries, 5, CKSUM_OVERALL);
-	DEFAULT_AND_CKSUM_INT(fep->startup_stable_wait, 10, CKSUM_OVERALL);
+	DEFAULT_INT(fep->startup_retries, 5);
+	DEFAULT_INT(fep->startup_stable_wait, 10);
 
 	// These are now processed when "fill" at end of parsing whole file
-	DEFAULT_AND_CKSUM_INT(fep->login, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_INT(fep->login, 0);
 
 	DEFAULT_INT(fep->subnet_size, DEFAULT_SUBNET_SIZE);
 	if (fep->subnet_size > MAX_SUBNET_SIZE) {
@@ -1477,38 +1463,31 @@ boolean feInitConfig(FEXmlConfig_t *fep, uint32_t instance, uint32_t ccc_method)
         IB_LOG_WARN_FMT(__func__, "FE subnet size of %d is too small, setting to %d", fep->subnet_size, MIN_SUPPORTED_ENDPORTS);
         fep->subnet_size = MIN_SUPPORTED_ENDPORTS;
     }
-	CKSUM_DATA(fep->subnet_size, CKSUM_OVERALL_DISRUPT_CONSIST);
-
-	DEFAULT_AND_CKSUM_INT(fep->debug, 0, CKSUM_OVERALL_DISRUPT);
-	DEFAULT_AND_CKSUM_INT(fep->debug_rmpp, 0, CKSUM_OVERALL_DISRUPT);
-	DEFAULT_AND_CKSUM_INT(fep->log_level, 1, CKSUM_OVERALL_DISRUPT);
-	DEFAULT_AND_CKSUM_INT(fep->syslog_mode, 0, CKSUM_OVERALL_DISRUPT);
-	DEFAULT_AND_CKSUM_INT(fep->listen, FE_LISTEN_PORT, CKSUM_OVERALL_DISRUPT);
-	DEFAULT_AND_CKSUM_INT(fep->window, FE_WIN_SIZE, CKSUM_OVERALL_DISRUPT_CONSIST);
+  
+	DEFAULT_INT(fep->debug, 0);
+	DEFAULT_INT(fep->debug_rmpp, 0);
+	DEFAULT_INT(fep->log_level, 1);
+	DEFAULT_INT(fep->syslog_mode, 0);
+	DEFAULT_INT(fep->listen, FE_LISTEN_PORT);
+	DEFAULT_INT(fep->window, FE_WIN_SIZE);
 	set_log_masks(fep->log_level, fep->syslog_mode, fep->log_masks);
-	CKSUM_DATA(fep->log_masks, CKSUM_OVERALL_DISRUPT);
-	DEFAULT_AND_CKSUM_INT(fep->config_consistency_check_method, DEFAULT_CCC_METHOD, CKSUM_OVERALL_DISRUPT);
-	DEFAULT_AND_CKSUM_STR(fep->CoreDumpLimit, "0", CKSUM_OVERALL_DISRUPT);
-	DEFAULT_AND_CKSUM_STR(fep->CoreDumpDir, "/var/crash/opafm", CKSUM_OVERALL_DISRUPT);
-	DEFAULT_AND_CKSUM_STR(fep->syslog_facility, "local6", CKSUM_OVERALL_DISRUPT);
-	DEFAULT_AND_CKSUM_INT(fep->manager_check_rate, 60000000, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_INT(fep->SslSecurityEnabled, 0, CKSUM_OVERALL_DISRUPT);
+	DEFAULT_INT(fep->config_consistency_check_method, DEFAULT_CCC_METHOD);
+	DEFAULT_STR(fep->CoreDumpLimit, "0");
+	DEFAULT_STR(fep->CoreDumpDir, "/var/crash/opafm");
+	DEFAULT_STR(fep->syslog_facility, "local6");
+	DEFAULT_INT(fep->manager_check_rate, 60000000);
+	DEFAULT_INT(fep->SslSecurityEnabled, 0);
 	if (fep->SslSecurityEnabled) {
-		DEFAULT_AND_CKSUM_STR(fep->SslSecurityDir, FM_SSL_SECURITY_DIR, CKSUM_OVERALL_DISRUPT);
-		DEFAULT_AND_CKSUM_STR(fep->SslSecurityFmCertificate, "fm_cert.pem", CKSUM_OVERALL_DISRUPT);
-		DEFAULT_AND_CKSUM_STR(fep->SslSecurityFmPrivateKey, "fm_key.pem", CKSUM_OVERALL_DISRUPT);
-		DEFAULT_AND_CKSUM_STR(fep->SslSecurityFmCaCertificate, "fm_ca_cert.pem", CKSUM_OVERALL_DISRUPT);
-		DEFAULT_AND_CKSUM_INT(fep->SslSecurityFmCertChainDepth, 1, CKSUM_OVERALL_DISRUPT);
-		DEFAULT_AND_CKSUM_STR(fep->SslSecurityFmDHParameters, "fm_dh_parms.pem", CKSUM_OVERALL_DISRUPT);
-		DEFAULT_AND_CKSUM_INT(fep->SslSecurityFmCaCRLEnabled, 0, CKSUM_OVERALL_DISRUPT);
-		DEFAULT_AND_CKSUM_STR(fep->SslSecurityFmCaCRL, "fm_ca_crl.pem", CKSUM_OVERALL_DISRUPT);
+		DEFAULT_STR(fep->SslSecurityDir, FM_SSL_SECURITY_DIR);
+		DEFAULT_STR(fep->SslSecurityFmCertificate, "fm_cert.pem");
+		DEFAULT_STR(fep->SslSecurityFmPrivateKey, "fm_key.pem");
+		DEFAULT_STR(fep->SslSecurityFmCaCertificate, "fm_ca_cert.pem");
+		DEFAULT_INT(fep->SslSecurityFmCertChainDepth, 1);
+		DEFAULT_STR(fep->SslSecurityFmDHParameters, "fm_dh_parms.pem");
+		DEFAULT_INT(fep->SslSecurityFmCaCRLEnabled, 0);
+		DEFAULT_STR(fep->SslSecurityFmCaCRL, "fm_ca_crl.pem");
 	}
 
-    CKSUM_END(fep->overall_checksum, fep->disruptive_checksum, fep->consistency_checksum);
-
-    if (xml_parse_debug)
-        fprintf(stdout, "Fe instance %u checksum overall %u disruptive %u consistency %u\n", (unsigned int)instance,
-            (unsigned int)fep->overall_checksum, (unsigned int)fep->disruptive_checksum, (unsigned int)fep->consistency_checksum);
 	return 1;
 }
 
@@ -1784,6 +1763,7 @@ boolean smInitConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t
 	DEFAULT_AND_CKSUM_INT(smp->config_consistency_check_level, DEFAULT_CCC_LEVEL, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_INT(smp->path_selection, PATH_MODE_MINIMAL, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_INT(smp->queryValidation, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_INT(smp->enforceVFPathRecs, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
 
 	DEFAULT_INT(smp->sma_batch_size, 2);
 	DEFAULT_INT(smp->max_parallel_reqs, 3);
@@ -2020,6 +2000,8 @@ boolean smInitConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t
 	// FIXME: cjking - Temporary patch for FPGA related PR-124905
 	DEFAULT_AND_CKSUM_INT(smp->neighborFWAuthenEnable, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 
+	DEFAULT_AND_CKSUM_INT(smp->cumulative_timeout_limit, 300, CKSUM_OVERALL_DISRUPT_CONSIST);
+
 	CKSUM_STR(smp->dumpCounters, CKSUM_OVERALL_DISRUPT);
 
 	// Add all of the DGs to the SM checksums
@@ -2147,6 +2129,7 @@ void smShowConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 	printf("XML - routing_algorithm %s\n", smp->routing_algorithm);
 	printf("XML - path_selection %u\n", (unsigned int)smp->path_selection);
 	printf("XML - queryValidation %u\n", (unsigned int)smp->queryValidation);
+	printf("XML - enforceVFPathRecs %u\n", (unsigned int)smp->enforceVFPathRecs);
 	printf("XML - sma_batch_size %u\n", (unsigned int)smp->sma_batch_size);
 	printf("XML - max_parallel_reqs %u\n", (unsigned int)smp->max_parallel_reqs);
 	printf("XML - check_mft_responses %u\n", (unsigned int)smp->check_mft_responses);
@@ -3361,110 +3344,6 @@ void checksumVirtualFabricsConfig(VirtualFabrics_t *vfsip, SMXmlConfig_t *smp)
 	return;
 }
 
-// create a default Virtual Fabric Configuration in firmware
-static boolean
-addDefaultVirtualFabric(uint32_t fm, FMXmlCompositeConfig_t *config, VFXmlConfig_t *vf, char *error)
-{
-	VFConfig_t					*vfp;
-	AppXmlConfig_t				*app_config = &config->fm_instance[fm]->app_config;
-	AppConfig_t					*app;
-	uint32_t					i, j;
-
-	if (app_config->appMapSize == MAX_VFABRIC_APPS) {
-		sprintf(error, "Maximum Applications allocated, cannot create default Virtual Fabric");
-		return 0;
-	}
-	if (vf->number_of_vfs == MAX_ENABLED_VFABRICS) {
-		sprintf(error, "Maximum Virtual Fabrics allocated, cannot create default Virtual Fabric");
-		return 0;
-	}
-	vfp = getVfObject();
-	if (!vfp) {
-		return 0;
-	}
-	app = getApplicationObject();
-	if (!app) {
-		freeXmlMemory(vfp, sizeof(VFConfig_t), "VFConfig_t addDefaultVirtualFabric");
-		return 0;
-	}
-
-	// Try to name the App "Default". If that name is in use,
-	// try appending a number until we find a name that is
-	// not in use.
-	cs_strlcpy(app->name, "Default", MAX_VFABRIC_NAME+1);
-	j = 0;
-	while (cl_qmap_get(&app_config->appMap, XML_QMAP_U64_CAST app->name) != cl_qmap_end(&app_config->appMap)) {
-		// Name already in use
-		j++;
-		sprintf(app->name, "Default_%d",j);
-	}
-	app->serviceIdMapSize = addMap(&app->serviceIdMap, XML_QMAP_U64_CAST PM_SERVICE_ID);
-	app->serviceIdRangeMapSize = 0;
-	app->serviceIdMaskedMapSize = 0;
-    app->number_of_mgids = 1;
-    cs_strlcpy(app->mgid[0].mgid,"0x0000000000000000:0x0000000000000000", MAX_VFABRIC_NAME+1);
-    app->number_of_mgid_ranges = 0;
-    app->number_of_mgid_range_maskeds = 0;
-    app->number_of_included_apps = 0;
-    app->select_sa = 1;
-    app->select_unmatched_sid = 0;
-    app->select_unmatched_mgid = 0;
-    app->select_pm = 1;
-
-	// Try to name the VF "Default". If that name is in use,
-	// try appending a number until we find a name that is
-	// not in use.
-	cs_strlcpy(vfp->name, "Default", MAX_VFABRIC_NAME+1);
-	j = 0;
-	do {
-		for (i = 0; i < vf->number_of_vfs; i++) {
-			if (!strcmp(vf->vf[i]->name, vfp->name)) {
-				// Name already in use
-				j++;
-				sprintf(vfp->name, "Default_%d",j);
-			}
-		}
-	} while (i != vf->number_of_vfs);
-
-    vfp->enable = 1;
-    vfp->standby = 0;
-    vfp->pkey = STL_DEFAULT_PKEY;
-    vfp->security = 0;
-    vfp->qos_enable = 0;
-    vfp->base_sl = UNDEFINED_XML8;
-	vfp->resp_sl = UNDEFINED_XML8;
-	vfp->mcast_sl = UNDEFINED_XML8;
-    vfp->flowControlDisable = UNDEFINED_XML8;
-    vfp->percent_bandwidth = UNDEFINED_XML8;
-    // uint8_t      absolute_bandwidth;
-    vfp->priority = 0;
-    vfp->pkt_lifetime_mult = UNDEFINED_XML8;
-
-    vfp->max_mtu_int = UNDEFINED_XML8;
-    vfp->max_rate_int = UNDEFINED_XML8;
-    vfp->preempt_rank = 0;
-    vfp->hoqlife_vf = UNDEFINED_XML8;
-
-    vfp->number_of_full_members = 1;
-    sprintf(vfp->full_member[0].member,"All");
-
-    vfp->number_of_limited_members = 0;
-
-    vfp->number_of_applications = 1;
-    cs_strlcpy(vfp->application[0].application, app->name, MAX_VFABRIC_NAME+1);
-
-	if (!addMap(&app_config->appMap, XML_QMAP_U64_CAST app)) {
-		freeApplicationObject(app);
-		freeXmlMemory(vfp, sizeof(VFConfig_t), "VFConfig_t addDefaultVirtualFabric");
-		return 0;
-	}
-	app_config->appMapSize++;
-
-	vf->vf[vf->number_of_vfs++] = vfp;
-
-	return 1;
-}
-
 boolean validateDefaultVirtualFabric(uint32_t fm, FMXmlCompositeConfig_t *config, VFXmlConfig_t *vf, char *error)
 {
 	boolean default_pkey = 0;
@@ -3480,12 +3359,9 @@ boolean validateDefaultVirtualFabric(uint32_t fm, FMXmlCompositeConfig_t *config
 			}
 		}
 	}
-	if (default_pkey) {
+	if (default_pkey) 
 		sprintf(error, "Must have at least one non-standby Virtual Fabric with Mgmt Pkey");
-		return 0;
-	}
-	// Try to create a default Virtual Fabric
-	return addDefaultVirtualFabric(fm, config, vf, error);
+	return 0;
 }
 
 // find a pointer to a Group given the name
@@ -3692,11 +3568,66 @@ int includedGroups(FMXmlCompositeConfig_t *config, uint32_t fm, DGConfig_t **lis
 	}
 	return 0;
 }
-
-// check for duplicate MGID's within all DefaultGroups in a VirtualFabric
-void checkDefaultGroupMGIDDuplicates(VirtualFabrics_t *vfsip, char *error)
+// verify VFs are congruent
+boolean VerifyCongruentVF(VF_t *v_fp1, VF_t *v_fp2, VFDg_t *mcp)
 {
-	uint32_t vf;
+	uint8_t	vf_sl1 = UNDEFINED_XML8;
+	uint8_t vf_sl2 = UNDEFINED_XML8;
+
+	//checking PKey
+	if ((v_fp1->pkey != UNDEFINED_XML32) && (v_fp2->pkey != UNDEFINED_XML32)
+			&& ((v_fp1->pkey & 0x7fff) != (v_fp2->pkey & 0x7fff))){
+		return FALSE;
+	}
+	//check MTU
+	if ((GetBytesFromMtu(mcp->def_mc_mtu_int) > GetBytesFromMtu(v_fp1->max_mtu_int)) ||
+			(GetBytesFromMtu(mcp->def_mc_mtu_int) > GetBytesFromMtu(v_fp2->max_mtu_int)))
+		return FALSE;
+
+	// check rate
+	if ((IbStaticRateToMbps(mcp->def_mc_rate_int) > IbStaticRateToMbps(v_fp1->max_rate_int)) ||
+		(IbStaticRateToMbps(mcp->def_mc_rate_int) > IbStaticRateToMbps(v_fp2->max_rate_int)))
+		return FALSE;
+
+	// Check the SL's are the same
+	if ((v_fp1->qos_enable == 0) && (v_fp2->qos_enable ==0))
+		return TRUE; // if both VF have QoS =0, the SLs will be equal.
+					// otherwise it is not known in advance and the user must
+					// specify them explicitly
+	if (v_fp1->qos_enable != 0) {
+		if (v_fp1->mcast_sl != UNDEFINED_XML8)
+				vf_sl1 = v_fp1->mcast_sl;
+		else {
+			if (v_fp1->base_sl == UNDEFINED_XML8)
+				return FALSE;
+			else vf_sl1 = v_fp1->base_sl;
+		}
+	}
+
+	if (v_fp2->qos_enable != 0) {
+		if (v_fp2->mcast_sl != UNDEFINED_XML8)
+				vf_sl2 = v_fp2->mcast_sl;
+		else {
+			if (v_fp2->base_sl == UNDEFINED_XML8)
+				return FALSE;
+			else vf_sl2 = v_fp2->base_sl;
+		}
+	}
+
+	if (vf_sl1 != vf_sl2)
+		return FALSE;
+	else
+		if ((vf_sl1 == UNDEFINED_XML8) && (vf_sl2 == UNDEFINED_XML8))
+			return FALSE;
+		else return TRUE;
+} 
+
+
+// check for duplicate MGID's within all DefaultGroups in all VirtualFabrics
+// except itself. Duplicates within a VF are not checked here.
+void checkDefaultGroupMGIDDuplicates(VirtualFabrics_t *vfsip, char *error, SMXmlConfig_t *smp)
+{
+	uint32_t vf1, vf2;
 	VFDg_t *dg_ref;
 	VFDg_t *dg_check;
 	VFAppMgid_t *mgid_ref;
@@ -3707,25 +3638,36 @@ void checkDefaultGroupMGIDDuplicates(VirtualFabrics_t *vfsip, char *error)
 	if (!error)
 		return;
 
-	// go to each MGID and make sure no other MGID is the same
-	for (vf = 0; vf < vfsip->number_of_vfs; vf++) {
-		dg_ref = vfsip->v_fabric[vf].default_group;
+	for (vf1 = 0; vf1 < vfsip->number_of_vfs_all; vf1++) {
+		dg_ref = vfsip->v_fabric_all[vf1].default_group;
 		while (dg_ref) {
 			if (dg_ref->def_mc_create) {
 				for_all_qmap_ptr(&dg_ref->mgidMap, item1, mgid_ref) {
-					dg_check = vfsip->v_fabric[vf].default_group;
-					while (dg_check) {
-						if (dg_check->def_mc_create) {
-							for_all_qmap_ptr(&dg_check->mgidMap, item2, mgid_check) {
-								if (mgid_ref == mgid_check) continue;
-								if (mgid_ref->mgid[0] == mgid_check->mgid[0] && mgid_ref->mgid[1] == mgid_check->mgid[1]) {
-									sprintf(error, "Duplicate MGID (0x%016"PRIx64":0x%016"PRIx64") in MulticastGroup definitions for VirtualFabric (%s)",
-										mgid_ref->mgid[0], mgid_ref->mgid[1], vfsip->v_fabric[vf].name);
-									return;
+					for (vf2 = 0; vf2 < vfsip->number_of_vfs_all; vf2++) {
+						if (vf1 == vf2) continue;
+						dg_check = vfsip->v_fabric_all[vf2].default_group;
+						while (dg_check) {
+							if (dg_check->def_mc_create) {
+								for_all_qmap_ptr(&dg_check->mgidMap, item2, mgid_check) {
+									if (mgid_ref->mgid[0] == mgid_check->mgid[0] && mgid_ref->mgid[1] == mgid_check->mgid[1]) {
+										if (!smp->enforceVFPathRecs) {
+											//verify VFs are congruent, if so, allow duplicates, otherwise fail config
+											if (!VerifyCongruentVF(&vfsip->v_fabric_all[vf1], &vfsip->v_fabric_all[vf2], dg_ref)) {
+													sprintf(error, "Duplicate MGID (0x%016"PRIx64":0x%016"PRIx64") in MulticastGroup definitions",
+														mgid_ref->mgid[0], mgid_ref->mgid[1]);
+													return;
+												}
+										}
+										else {
+											sprintf(error, "Duplicate MGID (0x%016"PRIx64":0x%016"PRIx64") in MulticastGroup definitions",
+												mgid_ref->mgid[0], mgid_ref->mgid[1]);
+											return;
+										}
+									}
 								}
 							}
+							dg_check = dg_check->next_default_group;
 						}
-						dg_check = dg_check->next_default_group;
 					}
 				}
 			}
@@ -4186,8 +4128,6 @@ VirtualFabrics_t* renderVirtualFabricsConfig(uint32_t fm, FMXmlCompositeConfig_t
 	uint32_t					apps_in_list;
 
 	SMMcastDefGrp_t 			*mdgp;
-	VFDg_t						*dgip;
-	uint32_t					default_group;
 
 	uint32_t 					v_fabrics;
 	uint32_t					valid_vfs;
@@ -4197,7 +4137,6 @@ VirtualFabrics_t* renderVirtualFabricsConfig(uint32_t fm, FMXmlCompositeConfig_t
 	uint8_t						num_bwundef_qos = 0;
 
 	int32_t						result;
-	uint8_t						dg_match;
 	uint8_t						default_vf_check;
 
 	uint8_t						isPAAssigned = 0;
@@ -4533,6 +4472,8 @@ VirtualFabrics_t* renderVirtualFabricsConfig(uint32_t fm, FMXmlCompositeConfig_t
 				}
 			}
 		}
+		//MC groups will be initialized after all the VFs are done, in the meantime
+		vfip->number_of_default_groups = 0;
 
 		vfip->requires_resp_sl = 0;
 		vfip->contains_mcast = (vfip->apps.mgidMapSize != 0) || vfip->apps.select_unmatched_mgid;
@@ -4553,11 +4494,11 @@ VirtualFabrics_t* renderVirtualFabricsConfig(uint32_t fm, FMXmlCompositeConfig_t
 
 		// If this is a Default VF, make sure that SA, PM, or PA is included.
 		if (default_vf_check) {
-			if (vfip->apps.select_sa || checkVFSID(vfip, PM_SERVICE_ID) ||
+			if (vfip->apps.select_sa || checkVFSID(vfip, STL_PM_SERVICE_ID) ||
 				vfip->apps.select_pm ) {
 				if (!vfp->standby) {
 					if (vfip->apps.select_sa) isSAAssigned++;
-					if (checkVFSID(vfip, PM_SERVICE_ID)) isPAAssigned++;
+					if (checkVFSID(vfip, STL_PM_SERVICE_ID)) isPAAssigned++;
 					if (vfip->apps.select_pm) isPMAssigned++;
 				}
 			} else {
@@ -4569,7 +4510,7 @@ VirtualFabrics_t* renderVirtualFabricsConfig(uint32_t fm, FMXmlCompositeConfig_t
 
 				goto fail;
 			}
-		} else if (vfip->apps.select_sa || checkVFSID(vfip, PM_SERVICE_ID) ||
+		} else if (vfip->apps.select_sa || checkVFSID(vfip, STL_PM_SERVICE_ID) ||
 				vfip->apps.select_pm ) {
 				const char errStr[] = "Virtual Fabrics (%s) including <Select>SA</Select>, <Select>PM</Select>, "
 								  "or PA Service ID configured in an Application must use Mgmt Pkey";
@@ -4802,176 +4743,115 @@ VirtualFabrics_t* renderVirtualFabricsConfig(uint32_t fm, FMXmlCompositeConfig_t
 			continue;
 		}
 
-		// now we need to associate a Multicast DefaultGroup with this VirtualFabric
-		// scan for DefaultGroup VirtualFabric names that match this one
-		vfip->number_of_default_groups = 0;
-		for (default_group = 0; default_group < config->fm_instance[fm]->sm_mdg_config.number_of_groups; default_group++) {
-			mdgp = &config->fm_instance[fm]->sm_mdg_config.group[default_group];
+		vfsip->number_of_vfs_all++;
+		valid_vfs++;
+	}
 
-			dg_match = 0;
+	char mcerror[256];
+	FSTATUS status=FSUCCESS;
+	int default_group;
 
-			// if we have a match on a VirtualFabric then check the PKey
-			if (strlen(mdgp->virtual_fabric) > 0 && strcmp(mdgp->virtual_fabric, vfip->name) == 0) {
-				if (mdgp->def_mc_pkey != UNDEFINED_XML32 && vfip->pkey != UNDEFINED_XML32 && (mdgp->def_mc_pkey & 0x7fff) != (vfip->pkey & 0x7fff)) {
-					if (error) {
-						sprintf(error, "The MulticastGroup referencing VirtualFabric (%s) has a PKey (0x%4.4x) specified that does not match the PKey in that VirtualFabric",
-							vfp->name, (unsigned int)mdgp->def_mc_pkey);
+	uint32_t mg, mgj;
+	memset(mcerror, 0, sizeof(mcerror));
+	//match explicit MGIDs with VFs
+	for (default_group = 0; default_group < config->fm_instance[fm]->sm_mdg_config.number_of_groups; default_group++) {
+		mdgp = &config->fm_instance[fm]->sm_mdg_config.group[default_group];
+		if (mdgp->def_mc_create == 0)
+			continue;
+		// first assign VFs to all explicit MC groups
+		if (mdgp->number_of_mgids > 0 && mdgp->number_of_mgids < MAX_VFABRIC_DG_MGIDS) {
+			// check that the MGID is not duplicated within the group section
+			for (mg=0; mg < mdgp->number_of_mgids && mg < MAX_VFABRIC_DG_MGIDS; mg++)
+				for (mgj=0; mgj < mdgp->number_of_mgids && mgj < MAX_VFABRIC_DG_MGIDS; mgj++) {
+					if (mg == mgj) continue;
+					if (strncmp(mdgp->mgid[mg].mgid,mdgp->mgid[mgj].mgid, sizeof(mdgp->mgid[mg].mgid)) == 0) {
+						sprintf(mcerror,"Duplicate MGIDs in the same <MulticastGroup> section.");
+						if (error)
+							snprintf(error, sizeof (mcerror), "Multicast group matching XML parse error - %s", mcerror);
+						else
+							fprintf(stdout, "Multicast group matching XML parse error - %s", mcerror);
 						goto fail;
 					}
-					continue;
 				}
-				dg_match = 1;
-			}
 
-			// if we have a PKey match on a VirtualFabric then check the VirtualFabric name
-			if (dg_match == 0 && mdgp->def_mc_pkey != UNDEFINED_XML32 && vfip->pkey != UNDEFINED_XML32 && (mdgp->def_mc_pkey & 0x7fff) == (vfip->pkey & 0x7fff)) {
-				if (strlen(mdgp->virtual_fabric) > 0 && strcmp(mdgp->virtual_fabric, vfip->name) != 0) {
-					if (error) {
-						sprintf(error, "The MulticastGroup referencing PKey (0x%4.4x) has a VirtualFabric specified that does not match VirtualFabric (%s)",
-							(unsigned int)mdgp->def_mc_pkey, vfp->name);
-						goto fail;
-					}
-					continue;
+			status = MatchExplicitMGIDtoVF(mdgp, vfsip, smp->enforceVFPathRecs);
+			if (status != FSUCCESS) {
+				switch (status) {
+					case FUNAVAILABLE:
+							sprintf(mcerror,"MC Groups could not be created, not enough memory.");
+							break;
+					case FINVALID_PARAMETER:
+							sprintf(mcerror, "All explicit MGIDs must match some application. ");
+							break;
+					case FINVALID_STATE:
+						sprintf(mcerror, "MGID matches more than a single VF.");
+						break;
+					case FNOT_FOUND:
+						sprintf(mcerror,"MGID did not match any enabled VF.");
+						break;
+					default:
+						break;
 				}
-				dg_match = 1;
-			}
-
-			// if we do have a match then make sure the SL's are the same regardless of whether QOS is enabled or not
-			if (dg_match) {
-				if (mdgp->def_mc_sl != UNDEFINED_XML8) {
-					if ((vfip->mcast_sl != UNDEFINED_XML8 && mdgp->def_mc_sl != vfip->mcast_sl)
-					|| (vfip->base_sl != UNDEFINED_XML8 && mdgp->def_mc_sl != vfip->base_sl)) {
-						if (error) {
-							sprintf(error, "The MulticastGroup with SL (%u) references VirtualFabric (%s) that has a different QOS BaseSL (%u)",
-								(unsigned int)mdgp->def_mc_sl, vfp->name, (unsigned int)vfip->base_sl);
-							goto fail;
-						}
-					}
-					continue;
-				}
-			}
-
-			// if this Multicast DefaultGroup has neither a VirtualFabric or a PKey binding then include it anyway
-			if (dg_match == 0 && mdgp->def_mc_pkey == UNDEFINED_XML32 && strlen(mdgp->virtual_fabric) == 0)
-				dg_match = 1;
-
-			// if no matches then check the next DefaultGroup
-			if (!dg_match)
-				continue;
-
-			// go ahead and build the default group info
-			dgip = getDMCG();
-			if (!dgip) {
 				if (error)
-					sprintf(error, OUT_OF_MEMORY);
-				else fprintf(stdout, OUT_OF_MEMORY_RETURN);
+					snprintf(error, sizeof (mcerror), "Multicast group matching XML parse error - %s", mcerror);
+				else
+					fprintf(stdout, "Multicast group matching XML parse error - %s", mcerror);
 				goto fail;
 			}
 
-			// if Create not specified then default
-			if (mdgp->def_mc_create == UNDEFINED_XML32)
-				dgip->def_mc_create = 1;
-			else
-				dgip->def_mc_create = mdgp->def_mc_create;
-
-			// take these settings verbatim since SM will handle
-			// the UNDEFINED_XML32 defaults correctly
-			dgip->def_mc_pkey = mdgp->def_mc_pkey;
-			dgip->def_mc_mtu_int = mdgp->def_mc_mtu_int;
-			dgip->def_mc_rate_int = mdgp->def_mc_rate_int;
-			dgip->def_mc_sl = mdgp->def_mc_sl;
-
-			// if QKey is not specified then default
-			if (mdgp->def_mc_qkey == UNDEFINED_XML32)
-				dgip->def_mc_qkey = 0x0;
-			else
-				dgip->def_mc_qkey = mdgp->def_mc_qkey;
-
-			// if FlowLabel is not specified then default
-			if (mdgp->def_mc_fl == UNDEFINED_XML32)
-				dgip->def_mc_fl = 0x0;
-			else
-				dgip->def_mc_fl = mdgp->def_mc_fl;
-
-			// if TClass is not specified then default
-			if (mdgp->def_mc_tc == UNDEFINED_XML32)
-				dgip->def_mc_tc = 0x0;
-			else
-				dgip->def_mc_tc = mdgp->def_mc_tc;
-
-			dgip->next_default_group = vfip->default_group;
-			vfip->default_group = dgip;
-
-			// add all of the individual MGID's to the list
-			for (entry = 0; entry < mdgp->number_of_mgids; entry++) {
-				mgid = getAppMgid();
-				if (!mgid) {
-					if (error)
-						sprintf(error, OUT_OF_MEMORY);
-					else fprintf(stdout, OUT_OF_MEMORY_RETURN);
-					goto fail;
-				}
-
-				// since this is an individual MGID ID then set it up appropriately
-				verifyAndConvertMGidString(mdgp->mgid[entry].mgid, mgid);
-
-				// if first one on list then place at head
-				if (addMap(&dgip->mgidMap, XML_QMAP_U64_CAST mgid)) {
-					dgip->mgidMapSize++;
-				} else {
-					freeAppMgid(mgid);
-				}
-			}
-			// add all of the MGID range values to the list
-			for (entry = 0; entry < mdgp->number_of_mgid_ranges; entry++) {
-				mgid = getAppMgid();
-				if (!mgid) {
-					if (error)
-						sprintf(error, OUT_OF_MEMORY);
-					else fprintf(stdout, OUT_OF_MEMORY_RETURN);
-					goto fail;
-				}
-
-				// since this is an MGID range then set it up appropriately
-				verifyAndConvertMGidCompoundString(mdgp->mgid_range[entry].range, /* range */ 1, mgid);
-
-				// if first one on list then place at head
-				if (addMap(&dgip->mgidMap, XML_QMAP_U64_CAST mgid)) {
-					dgip->mgidMapSize++;
-				} else {
-					freeAppMgid(mgid);
-				}
-			}
-			// add all of the MGID masked values to the list
-			for (entry = 0; entry < mdgp->number_of_mgid_range_maskeds; entry++) {
-				mgid = getAppMgid();
-				if (!mgid) {
-					if (error)
-						sprintf(error, OUT_OF_MEMORY);
-					else fprintf(stdout, OUT_OF_MEMORY_RETURN);
-					goto fail;
-				}
-
-				// since this is an MGID mask then set it up appropriately
-				verifyAndConvertMGidCompoundString(mdgp->mgid_masked[entry].masked, /* range */ 0, mgid);
-
-				// if first one on list then place at head
-				if (addMap(&dgip->mgidMap, XML_QMAP_U64_CAST mgid)) {
-					dgip->mgidMapSize++;
-				} else {
-					freeAppMgid(mgid);
-				}
-			}
-			vfip->number_of_default_groups++;
 		}
+	}
+	//match implicit MGIDs with VFs
+	for (default_group = 0; default_group < config->fm_instance[fm]->sm_mdg_config.number_of_groups; default_group++) {
+		mdgp = &config->fm_instance[fm]->sm_mdg_config.group[default_group];
+		// first assign VFs to all explicit MC groups
+		if (mdgp->def_mc_create == 0)
+			continue;
+		if (mdgp->number_of_mgids == 0) {
+			status = MatchImplicitMGIDtoVF(mdgp, vfsip);
+			if (status != FSUCCESS) {
+				switch (status) {
+					case FUNAVAILABLE:
+						sprintf(mcerror, "Implicit MC Groups could not be created, not enough memory.");
+						break;
+					case FINVALID_PARAMETER:
+						sprintf(mcerror, "All Implicit MGIDs must match some application.");
+						break;
+					case FINVALID_STATE:
+						sprintf(mcerror, "Implicit MGID matches more than a single VF.");
+						break;
+					case FNOT_FOUND:
+						sprintf(mcerror,"Implicit MC Group did not match any enabled VF.");
+						break;
+					default:
+						break;
+				}
+				if (error)
+					snprintf(error, sizeof(mcerror),"Multicast group matching XML parse error - %s", mcerror);
+				else
+					fprintf(stdout, "Multicast group matching XML parse error - %s", mcerror);
+				goto fail;
+			}
+		}
+	}
 
-		if (!vfp->standby) {
-			if (cloneVF(&vfsip->v_fabric[vfsip->number_of_vfs], vfip)) {
+	//create an array of active VFs
+	int i;
+	for(i=0; i < vfsip->number_of_vfs_all && i < MAX_ENABLED_VFABRICS; i++){
+		if (!vfsip->v_fabric_all[i].standby) {
+			if (cloneVF(&vfsip->v_fabric[vfsip->number_of_vfs], &vfsip->v_fabric_all[i]))
 				vfsip->number_of_vfs++;
-			}
 		}
-		vfsip->number_of_vfs_all++;
-		valid_vfs++;
+	}
+
+	// If there are no VFs the configuration is failed
+	if (!valid_vfs) {
+		const char errStr[] = "Virtual Fabric configuration is invalid.";
+		if (error)
+			sprintf(error, errStr);
+		else
+			fprintf(stdout,"%s\n", errStr);
+		goto fail;
 	}
 
 	// if there is at least 1 nonQos VF, BW can't be greater than 95%
@@ -4999,26 +4879,26 @@ VirtualFabrics_t* renderVirtualFabricsConfig(uint32_t fm, FMXmlCompositeConfig_t
 	}
 
 	if (!isSAAssigned) {
-		const char errStr[] = "An Active Virtual Fabric must exist with <Select>SA</Select> configured in an Application";
+		const char errStr[] = "An Active Virtual Fabric must exist with <Select>SA</Select> configured in an Application. ";
 		if (error)
 			sprintf(error, errStr);
-		else fprintf(stdout, errStr);
+		else fprintf(stdout,"%s\n", errStr);
 
 		goto fail;
 	}
 	if (!isPMAssigned) {
-		const char errStr[] = "An Active Virtual Fabric must exist with <Select>PM</Select> configured in an Application";
+		const char errStr[] = "An Active Virtual Fabric must exist with <Select>PM</Select> configured in an Application. ";
 		if (error)
 			sprintf(error, errStr);
-		else fprintf(stdout, errStr);
+		else fprintf(stdout,"%s\n", errStr);
 
 		goto fail;
 	}
 	if (!isPAAssigned) {
-		const char errStr[] = "An Active Default Virtual Fabric must exist with PA Service ID configured in an Application";
+		const char errStr[] = "An Active Default Virtual Fabric must exist with PA Service ID configured in an Application. ";
 		if (error)
 			sprintf(error, errStr);
-		else fprintf(stdout, errStr);
+		else fprintf(stdout,"%s\n", errStr);
 
 		goto fail;
 	}
@@ -5028,7 +4908,7 @@ VirtualFabrics_t* renderVirtualFabricsConfig(uint32_t fm, FMXmlCompositeConfig_t
 		fprintf(stdout, "Number of valid Virtual Fabrics %u\n", (unsigned int)valid_vfs);
 
 	// for this VF check for duplicate MGID's in all default group
-	checkDefaultGroupMGIDDuplicates(vfsip, error);
+	checkDefaultGroupMGIDDuplicates(vfsip, error, smp);
 
 	// calculate Virtual Fabric database checksum
 	if (vfsip)
@@ -5488,24 +5368,21 @@ static void SmMcastDgXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *fi
 		goto cleanup;
 	}
 
-	// see if this is a valid entry by checking all important fields - we need to do this
-	// to fix PR 114824 where an empty MulticastGroup is getting added to a VF since we allow
-	// the Create to be set if it is undefined.
-	if (mdgp->def_mc_create == UNDEFINED_XML32 &&
-		mdgp->def_mc_pkey == UNDEFINED_XML32 &&
-		mdgp->def_mc_mtu_int == UNDEFINED_XML8 &&
-		mdgp->def_mc_rate_int == UNDEFINED_XML8 &&
-		mdgp->def_mc_sl == UNDEFINED_XML8 &&
-		mdgp->def_mc_qkey == UNDEFINED_XML32 &&
-		mdgp->def_mc_fl == UNDEFINED_XML32 &&
-		mdgp->def_mc_tc == UNDEFINED_XML32 &&
-		dgMgidInstance == 0 &&
-		dgMgidRangeInstance == 0 &&
-		dgMgidMaskedInstance == 0) {
-		if (xml_parse_debug)
-			fprintf(stdout, "MulticastGroup ingnored since there are only empty tags with no substance\n");
-		goto cleanup;
-	}
+	if (mdgp->def_mc_create == UNDEFINED_XML32)
+		mdgp->def_mc_create=1;
+
+	if (mdgp->def_mc_mtu_int == UNDEFINED_XML8)
+		mdgp->def_mc_mtu_int = IB_MTU_2048;
+
+	if (mdgp->def_mc_rate_int == UNDEFINED_XML8)
+		mdgp->def_mc_rate_int =IB_STATIC_RATE_25G;
+
+	if (mdgp->def_mc_qkey == UNDEFINED_XML32)
+		mdgp->def_mc_qkey=0;
+	if (mdgp->def_mc_fl == UNDEFINED_XML32)
+		mdgp->def_mc_fl=0;
+	if (mdgp->def_mc_tc == UNDEFINED_XML32)
+		mdgp->def_mc_tc=0;
 
 	// check for max (AFTER skipping uncreatable groups)
 	if (defaultGroupInstance >= MAX_DEFAULT_GROUPS) {
@@ -6476,6 +6353,20 @@ static void SmSweepIntervalParserEnd(IXmlParserState_t *state,
 	*(uint64_t *)IXmlParserGetField(field, object) = timer;
 }
 
+static void CumulativeTimeoutLimitParserEnd(IXmlParserState_t *state,
+	const IXML_FIELD *field, void *object, void *parent, XML_Char *content,
+	unsigned len, boolean valid)
+{
+	uint64_t value;
+
+	if (!IXmlParseUint64(state, content, len, &value)) {
+		IXmlParserPrintError(state, "Invalid value");
+		return;
+	}
+
+	*(uint64_t *)IXmlParserGetField(field, object) = value * VTIMER_1S;
+}
+
 // fields within "Sm" tag
 static IXML_FIELD SmFields[] = {
 	{ tag:"Start", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, start) },
@@ -6515,6 +6406,7 @@ static IXML_FIELD SmFields[] = {
 	{ tag:"ShortestPathBalanced", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, shortestPathBalanced) },
 	{ tag:"PathSelection", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, path_selection), end_func:SmPathSelectionParserEnd },
 	{ tag:"QueryValidation", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, queryValidation) },
+	{ tag:"EnforceVFPathRecord", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, enforceVFPathRecs) },
 	{ tag:"SmaBatchSize", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, sma_batch_size) },
 	{ tag:"MaxParallelReqs", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, max_parallel_reqs) },
  	{ tag:"CheckMftResponses", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, check_mft_responses) },
@@ -6609,6 +6501,7 @@ static IXML_FIELD SmFields[] = {
 	{ tag:"PortBounceLogLimit", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, portBounceLogLimit) },
 	{ tag:"NeighborFWAuthenEnable", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, neighborFWAuthenEnable) },
 	{ tag:"MinSupportedVLs", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, min_supported_vls), end_func:MinSupportedVLsParserEnd },
+	{ tag:"CumulativeTimeoutLimit", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, cumulative_timeout_limit), end_func:CumulativeTimeoutLimitParserEnd },
 	{ NULL }
 };
 
@@ -8244,6 +8137,11 @@ static void VfXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, vo
 		return;
 	}
 
+	//security
+	if (vfp->security == UNDEFINED_XML32)
+		vfp->security = 0;
+
+
 	// QOS Enable
 	if (vfp->qos_enable == UNDEFINED_XML8) {
 		vfp->qos_enable = 0;
@@ -8466,6 +8364,7 @@ static void PmPgXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, 
 {
 	pgp = (PmPortGroupXmlConfig_t *)IXmlParserGetField(field, object);
 	uint32_t i;
+	char *reservedGroups[] = {"All", "HFIs", "SWs"};
 
 	if (xml_parse_debug)
 		fprintf(stdout, "PmPgXmlParserEnd instance %u PmPgInstance %u common %u\n", (unsigned int)instance, (unsigned int)PmPgInstance, (unsigned int)common);
@@ -8487,19 +8386,26 @@ static void PmPgXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, 
 		}
 		// If it has a name check for duplicates
 		for (i = 0; i < PmPgInstance; i++) {
-			char *reservedGroups[] = {"All", "HFIs", "TFIs", "SWs"};
-			int ii;
-			if (strcmp(pgp->Name, configp->fm_instance[instance]->pm_config.pm_portgroups[i].Name) == 0) {
-				IXmlParserPrintError(state, "Duplicate PmPortGroup (%s) encountered", pgp->Name);
-				freeXmlMemory(pgp, sizeof(PmPortGroupXmlConfig_t), "PmPortGroupXmlConfig_t PmPgXmlParserEnd()");
-				return;
-			}
-			for (ii = 0; ii < 4; ii++) {
-				if (strcmp(pgp->Name, reservedGroups[ii]) == 0) {
-					IXmlParserPrintError(state, "PmPortGroup (%s) cannot have name of a default port group (All, HFIs, TFIs, SWs)", pgp->Name);
+			if (common) {
+				if (strcmp(pgp->Name, configp->fm_instance_common->pm_config.pm_portgroups[i].Name) == 0) {
+					IXmlParserPrintError(state, "Duplicate PmPortGroup (%s) encountered", pgp->Name);
 					freeXmlMemory(pgp, sizeof(PmPortGroupXmlConfig_t), "PmPortGroupXmlConfig_t PmPgXmlParserEnd()");
 					return;
 				}
+			} else if (configp->fm_instance[instance]) {
+				if (strcmp(pgp->Name, configp->fm_instance[instance]->pm_config.pm_portgroups[i].Name) == 0) {
+					IXmlParserPrintError(state, "Duplicate PmPortGroup (%s) encountered", pgp->Name);
+					freeXmlMemory(pgp, sizeof(PmPortGroupXmlConfig_t), "PmPortGroupXmlConfig_t PmPgXmlParserEnd()");
+					return;
+				}
+			}
+		}
+		// Check the name is not a reserved group
+		for (i = 0; i < 3; i++) {
+			if (strcmp(pgp->Name, reservedGroups[i]) == 0) {
+				IXmlParserPrintError(state, "PmPortGroup (%s) cannot have name of a default port group (All, HFIs, SWs)", pgp->Name);
+				freeXmlMemory(pgp, sizeof(PmPortGroupXmlConfig_t), "PmPortGroupXmlConfig_t PmPgXmlParserEnd()");
+				return;
 			}
 		}
 	}
@@ -8969,7 +8875,7 @@ static FSTATUS CheckAllVFsSecurity (VFXmlConfig_t *vf_c)
 // FM end tag
 static void FmXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
 {
-	char error[256];
+	char error[1000];
 	VirtualFabrics_t *vf_config = NULL;
 
 	if (xml_parse_debug)
@@ -9023,7 +8929,7 @@ static void FmXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, vo
 		instancep->fe_config.start = 1;
 #endif
 
-       	if (!smInitConfig(&instancep->sm_config, &instancep->sm_dpl_config,
+		if (!smInitConfig(&instancep->sm_config, &instancep->sm_dpl_config,
 			&instancep->sm_mc_config, &instancep->sm_mls_config,
 			&instancep->dg_config, instance, instancep->fm_config.config_consistency_check_method)
 		|| !pmInitConfig(&instancep->pm_config, instance, instancep->fm_config.config_consistency_check_method)
@@ -9095,15 +9001,18 @@ static void FmXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, vo
 		memset(error, 0, sizeof(error));
 		if (instancep->sm_config.start && validateDefaultVirtualFabric(instance, configp, &instancep->vf_config, error)) {
 			vf_config = renderVirtualFabricsConfig(instance, configp, &instancep->sm_config, error);
+			if (strlen(error)) {
+				IXmlParserPrintError(state, "Virtual Fabrics XML parse error - %s", error);
+			}
 		}
-		if (strlen(error)) {
+		else if (strlen(error)) {
 			IXmlParserPrintError(state, "Virtual Fabrics XML parse error - %s", error);
 		}
 
 		// free memory from test
-   		if (vf_config != NULL) {
+		if (vf_config != NULL) {
 			releaseVirtualFabricsConfig(vf_config);
-      			vf_config = NULL;
+			vf_config = NULL;
 		}
 	}
 	// index to next instance
@@ -10032,3 +9941,304 @@ int main()
 	exit(0);
 }
 #endif
+
+
+static boolean verifyrange (uint64_t mgidRangeInitH, uint64_t mgidRangeInitL, uint64_t mgidRangeLastH, uint64_t mgidRangeLastL,
+		uint64_t mcgidH, uint64_t mcgidL)
+{
+	//check upper limit
+	if (mgidRangeLastH < mcgidH)
+		return FALSE;
+	else if (mgidRangeLastH == mcgidH) {
+			if (mcgidL > mgidRangeLastL)
+				return FALSE;
+		}
+	//check lower limit
+	if (mgidRangeInitH < mcgidH)
+		return TRUE;
+	else {
+		if (mgidRangeInitH == mcgidH) {
+			if (mcgidL < mgidRangeInitL)
+				return FALSE;
+			else return TRUE;
+		}
+		else return FALSE;
+	}
+}
+
+static boolean checkMC_VFProperties (SMMcastDefGrp_t *mcp, VF_t *v_fp)
+{	// check the VirtualFabric name
+	if (strlen(mcp->virtual_fabric) > 0 && strncmp(mcp->virtual_fabric, v_fp->name, sizeof(mcp->virtual_fabric)) != 0) {
+		return FALSE;
+	}
+
+	//check pkey
+	if (mcp->def_mc_pkey != UNDEFINED_XML32 && v_fp->pkey != UNDEFINED_XML32 &&
+				(mcp->def_mc_pkey & 0x7fff) != (v_fp->pkey & 0x7fff)) {
+		return FALSE;
+	}
+	//check MTU
+	if ( GetBytesFromMtu(mcp->def_mc_mtu_int) > GetBytesFromMtu(v_fp->max_mtu_int))
+		return FALSE;
+
+	// check rate
+	if (IbStaticRateToMbps(mcp->def_mc_rate_int) > IbStaticRateToMbps(v_fp->max_rate_int)){
+		return FALSE;
+	}
+	// Check the SL's are the same
+	if (mcp->def_mc_sl != UNDEFINED_XML8) {
+		if (v_fp->qos_enable != 0) {
+			if (v_fp->mcast_sl != UNDEFINED_XML8) {
+				if (mcp->def_mc_sl != v_fp->mcast_sl)
+					return FALSE;
+			}
+			else if (mcp->def_mc_sl != v_fp->base_sl)
+				return FALSE;
+		}
+		else return FALSE;
+	}
+	return TRUE;
+}
+
+static boolean searchMgidsThruAppsinVF (VF_t *vf_p, uint64_t mcgidh, uint64_t mcgidl)
+{
+	int mgidsV = 0;
+	VFAppMgid_t *mgidp;
+	cl_map_item_t *cl_map_item;
+
+	// searching through mgids in applications of this VF
+	for_all_qmap_ptr(&vf_p->apps.mgidMap, cl_map_item, mgidp) {
+		//if there is a mask
+		if ((mgidp->mgid_mask[0] != 0xFFFFFFFFFFFFFFFFULL) || (mgidp->mgid_mask[1] != 0xFFFFFFFFFFFFFFFFULL)) {
+			if (((mgidp->mgid[0] == (mcgidh & mgidp->mgid_mask[0]))) &&
+					((mgidp->mgid[1] == (mcgidl & mgidp->mgid_mask[1]))))
+					mgidsV++;
+		}//if there is a range
+		else if ((mgidp-> mgid_last[0] != 0) || (mgidp-> mgid_last[1] != 0)) {
+				if (verifyrange(mgidp->mgid[0], mgidp-> mgid[1], mgidp->mgid_last[0], mgidp->mgid_last [1],mcgidh, mcgidl))
+					mgidsV++;
+		}//if there is a single value
+		else if ((mgidp->mgid[0] == mcgidh) && (mgidp->mgid[1] == mcgidl))
+					mgidsV++;
+	}
+
+	if (mgidsV > 0)
+		return TRUE;
+	else
+		return FALSE;
+}
+
+boolean PreCreateMCGroup (SMMcastDefGrp_t *mdgp, VF_t *matched_vf)
+{	// create default group
+	VFDg_t *dgip;
+	// go ahead and build the default group info
+	VFAppMgid_t *mgidp;
+	dgip = getDMCG(); /// type VFDg_t
+	if (!dgip) {
+		matched_vf->default_group = NULL;
+		return FALSE;
+	}
+
+	dgip->def_mc_create = mdgp->def_mc_create;
+
+// UNDEFINED_32XML were filled with default values before
+	uint32_t pkey = 0x8000 | matched_vf->pkey;
+
+	dgip->def_mc_pkey = pkey;
+	dgip->def_mc_mtu_int = mdgp->def_mc_mtu_int;
+	dgip->def_mc_rate_int = mdgp->def_mc_rate_int;
+	if (matched_vf->mcast_sl != UNDEFINED_XML8)
+		dgip->def_mc_sl =  matched_vf->mcast_sl;
+	else dgip->def_mc_sl =  matched_vf->base_sl;
+
+	dgip->def_mc_qkey = mdgp->def_mc_qkey;
+	dgip->def_mc_fl = mdgp->def_mc_fl;
+	dgip->def_mc_tc = mdgp->def_mc_tc;
+
+	dgip->next_default_group = matched_vf->default_group;
+	matched_vf->default_group = dgip;
+
+	// add all of the individual MGID's to the list
+	uint32_t entry;
+	for (entry = 0; entry < mdgp->number_of_mgids && entry < MAX_VFABRIC_DG_MGIDS; entry++) {
+		mgidp = getAppMgid();
+		if (!mgidp) {
+				dgip = matched_vf->default_group->next_default_group;
+				freeDMCG(matched_vf->default_group);
+				matched_vf->default_group = dgip;
+				return FALSE; //
+		}
+
+		// since this is an individual MGID ID then set it up appropriately
+		verifyAndConvertMGidString(mdgp->mgid[entry].mgid, mgidp);
+
+		// if first one on list then place at head
+		if (addMap(&dgip->mgidMap, XML_QMAP_U64_CAST mgidp)) {
+			dgip->mgidMapSize++;
+		} else {
+			freeAppMgid(mgidp);
+		}
+	}
+
+	matched_vf->number_of_default_groups++;
+	return TRUE;
+}
+
+FSTATUS MatchExplicitMGIDtoVF (SMMcastDefGrp_t *mdgp, VirtualFabrics_t *v_fabricp, int enforceVFPathRecs)
+// now we need to associate a Multicast Group with a VirtualFabric
+
+{	uint32_t number_of_vfs = 0;
+	uint32_t mg,i,j;
+	int vf = -1;
+	int matched_vf[MAX_ENABLED_VFABRICS] = {0};
+	uint64 mcgid[2];
+	boolean matchedAllMgids = TRUE;
+
+// all fabrics that get here are enabled (include Active and Standby)
+	for (i=0; i < v_fabricp->number_of_vfs_all && i < MAX_ENABLED_VFABRICS; i++) {
+		if (!checkMC_VFProperties(mdgp, &v_fabricp->v_fabric_all[i]))
+			continue;
+		matchedAllMgids = TRUE;
+		for (mg = 0; mg < mdgp->number_of_mgids && mg < MAX_VFABRIC_DG_MGIDS; mg++) {
+			StringToGid(&mcgid[0], &mcgid[1], mdgp->mgid[mg].mgid, NULL, TRUE);
+			//verify MGID matching by Application otherwise check unmatched
+			// search for the applications that are in the VF
+			// there is none >> fail config
+			if (searchMgidsThruAppsinVF(&v_fabricp->v_fabric_all[i], mcgid[0], mcgid[1]))
+				continue;
+			else if (v_fabricp->v_fabric_all[i].apps.select_unmatched_mgid){
+				//check if no other VF contains the application gid
+				boolean matchedOtherVF=FALSE;
+				for (j=0; j < v_fabricp->number_of_vfs_all && j < MAX_ENABLED_VFABRICS; j++) {
+					if (i==j) continue;
+					if (searchMgidsThruAppsinVF(&v_fabricp->v_fabric_all[j], mcgid[0], mcgid[1])) {
+						matchedOtherVF=TRUE;
+						break;
+					}
+				}
+				if (matchedOtherVF) {
+					matchedAllMgids=FALSE;
+					break;
+				}
+			}
+			else {
+				matchedAllMgids=FALSE;
+				break;
+			}
+		}
+		if (matchedAllMgids) {
+			matched_vf[i] = 1;
+			number_of_vfs++;
+			if (vf == -1) vf = i; // Shortcut for later, save first matching VF.
+		}
+	}// end of searching for a single VF to match a MC group for explicit groups
+
+	if (enforceVFPathRecs && number_of_vfs > 1) { // if more than one fail config
+		return FINVALID_STATE;
+	}
+
+	if (number_of_vfs == 0) {// if not unmatched then fail
+		return FNOT_FOUND;
+	}
+
+	/* This snippet below will copy the McGroups to all VFs that match.
+	   However, note that the if check above that checks if the number of matching VFs
+	   is more than 1. This check above makes sure that current behavior of one VF
+	   per McGroup is maintained unless enforceVFPathRecs is false, by which multiple
+	   VFs can then match an McGroup. */
+	for (; vf < v_fabricp->number_of_vfs_all && vf < MAX_ENABLED_VFABRICS && number_of_vfs > 0; ++vf) {
+		if (matched_vf[vf] != 0) {
+			// If this is the first time creating this group
+			if (!PreCreateMCGroup(mdgp, &v_fabricp->v_fabric_all[vf])) {
+				return FUNAVAILABLE;
+			}
+			--number_of_vfs;
+		}
+	}
+	return FSUCCESS;
+}// end of MatchExplicitGIDtoVF
+
+
+FSTATUS MatchImplicitMGIDtoVF(SMMcastDefGrp_t *mdgp, VirtualFabrics_t *v_fabricp)
+{
+#define MAX_NUM_IMPLICIT_MCG 8
+
+	typedef struct implicitMgid_t {
+	uint64_t Prefix;
+	uint64_t Postfix;
+	} implicitMgid;
+
+	int i,j,k;
+	int number_of_vfs = 0;
+	uint64_t Prefix[MAX_NUM_IMPLICIT_MCG];
+	VF_t *matched_vf=NULL;
+	boolean matchedAllMgids = TRUE;
+	implicitMgid mgids[8];
+	uint64_t broadcast = 0x00000000ffffffff;
+	uint64_t allNodes = 0x0000000000000001;
+	uint64_t allRouters = 0x0000000000000002;
+	uint64_t other = 0x0000000000000016;
+	uint64_t mcastDns = 0x00000000000000fb;
+	uint64_t IPv4 = 0xff12401b00000000ull;
+	uint64_t IPv6 = 0xff12601b00000000ull;
+
+	memset(mgids, 0, sizeof(mgids));
+
+	for (i =0; i<4; i++) Prefix[i] = IPv4;
+	for (i =4; i<8; i++) Prefix[i] = IPv6;
+
+	mgids[0].Postfix = broadcast;
+	mgids[1].Postfix = allNodes;
+	mgids[2].Postfix = other;
+	mgids[3].Postfix = mcastDns;
+	mgids[4].Postfix = allNodes;
+	mgids[5].Postfix = allRouters;
+	mgids[6].Postfix = mcastDns;
+	mgids[7].Postfix = other;
+
+	for (i=0; i < v_fabricp->number_of_vfs_all && i < MAX_ENABLED_VFABRICS; i++) {
+		if (!checkMC_VFProperties (mdgp, &v_fabricp->v_fabric_all[i]))
+			continue;
+		matchedAllMgids = TRUE;
+		for (j=0;j<MAX_NUM_IMPLICIT_MCG;j++){
+			uint32_t pkey = 0x8000 | v_fabricp->v_fabric_all[i].pkey;
+			mgids[j].Prefix = Prefix[j] | (pkey << 16 );
+			sprintf(mdgp->mgid[j].mgid,"0x%016"PRIx64":0x%016"PRIx64,mgids[j].Prefix,mgids[j].Postfix);
+			if (searchMgidsThruAppsinVF(&v_fabricp->v_fabric_all[i], mgids[j].Prefix,mgids[j].Postfix)) {
+				continue;
+			}
+			else if (v_fabricp->v_fabric_all[i].apps.select_unmatched_mgid){
+				//check if no other VF contains the application gid
+				boolean matchedOtherVF=FALSE;
+				for (k=0; k < v_fabricp->number_of_vfs_all && k < MAX_ENABLED_VFABRICS; k++) {
+					if (k==i) continue;
+					if (searchMgidsThruAppsinVF(&v_fabricp->v_fabric_all[k], mgids[j].Prefix,mgids[j].Postfix)) {
+						matchedOtherVF=TRUE;
+						break;
+					}
+				}
+				if (matchedOtherVF) {
+					matchedAllMgids=FALSE;
+					break;
+				}
+			}
+			else {
+				matchedAllMgids=FALSE;
+				break;
+			}
+		}
+		if (matchedAllMgids) {
+			matched_vf = &v_fabricp->v_fabric_all[i];
+			mdgp->number_of_mgids=MAX_NUM_IMPLICIT_MCG;
+			number_of_vfs++;
+			if (!PreCreateMCGroup(mdgp, matched_vf))
+				return FUNAVAILABLE;
+		}
+	}// create a group for all matched VF's
+
+	if (number_of_vfs == 0) // not matched
+		return FNOT_FOUND;
+
+	mdgp->number_of_mgids=0;
+	return FSUCCESS;
+}

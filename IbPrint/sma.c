@@ -617,9 +617,6 @@ void PrintSmp(PrintDest_t *dest, int indent, const SMP *smp)
 			//smp->common.AttributeModifier >>17,
 			smp->common.AttributeModifier & 0xffff);
 		break;
-	case MCLASS_ATTRIB_ID_ICS_LED_INFO:
-		// TBD Hex Dump
-		break;
 	default:
 		// TBD Hex Dump
 		break;

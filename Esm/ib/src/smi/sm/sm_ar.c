@@ -40,7 +40,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //									    								//
 // FUNCTIONS								 						    //
 //    LogPortGroupTable 				Log port groups					//
-//    LogAdaptiveRoutingLidmask			Log lid masks					//
+//    LogPortGroupFwdTable				Log port group FDB				//
 //    sm_AdaptiveRoutingSwitchUpdate	Program AR tables 				//
 //																		//
 //======================================================================//
@@ -86,7 +86,6 @@ sm_AdaptiveRoutingSwitchUpdate(Topology_t* topop, Node_t* switchp)
 {
 	Status_t 	status = VSTATUS_OK;
 	STL_LID_32	dlid;
-	uint8_t		*path = NULL;
 	
 	if (!sm_adaptiveRouting.enable || !switchp->arSupport) return VSTATUS_OK;
 
@@ -94,9 +93,8 @@ sm_AdaptiveRoutingSwitchUpdate(Topology_t* topop, Node_t* switchp)
 		!switchp->arChange &&
 		bitset_equal(&old_switchesInUse, &new_switchesInUse) &&
 		bitset_test(&old_switchesInUse, switchp->swIdx)) {
-		Node_t *oldnodep;
 		if (switchp->oldExists) {
-			oldnodep = switchp->old;
+			Node_t *oldnodep = switchp->old;
 			if (oldnodep &&
 				oldnodep->arSupport &&
 				!oldnodep->arChange &&
@@ -105,10 +103,12 @@ sm_AdaptiveRoutingSwitchUpdate(Topology_t* topop, Node_t* switchp)
 				return status;
 			}
 		}
+		// Set AR Change indicator.  If this sweep fails too,
+		// carry forward to next sweep.
+		switchp->arChange = 1;
 	}
 
 	Port_t *portp = sm_get_port(switchp, 0);
-	path = NULL;
 	dlid = portp->portData->lid;
 
 	// Update the port group table. By definition, this will never take more 
@@ -135,7 +135,7 @@ sm_AdaptiveRoutingSwitchUpdate(Topology_t* topop, Node_t* switchp)
 		// AMOD = # blocks  00 ------------ --00 0000
 		amod = blocks<<24;
 		
-		status = SM_Set_PortGroup(fd_topology, amod, path, sm_lid, dlid, 
+		status = SM_Set_PortGroup(fd_topology, amod, NULL, sm_lid, dlid,
 			(STL_PORT_GROUP_TABLE*)switchp->pgt, blocks, sm_config.mkey);
 
 		if (status != VSTATUS_OK) {
@@ -148,7 +148,7 @@ sm_AdaptiveRoutingSwitchUpdate(Topology_t* topop, Node_t* switchp)
 			// AMOD = last blks 00 ------------ --00 001f
 			amod = ((blocks - MAX_PGT_BLOCK_NUM)<<24) | MAX_PGT_BLOCK_NUM;
 		
-			status = SM_Set_PortGroup(fd_topology, amod, path, sm_lid, dlid, 
+			status = SM_Set_PortGroup(fd_topology, amod, NULL, sm_lid, dlid,
 				(STL_PORT_GROUP_TABLE*)&switchp->pgt[MAX_PGT_BLOCK_NUM*NUM_PGT_ELEMENTS_BLOCK], 
 				blocks, sm_config.mkey);
 
@@ -184,7 +184,6 @@ sm_AdaptiveRoutingSwitchUpdate(Topology_t* topop, Node_t* switchp)
 			IB_LOG_ERROR_FMT(__func__, "Could not allocate pgft for node %s nodeGuid "FMT_U64,
 			sm_nodeDescString(switchp), switchp->nodeInfo.NodeGUID);
 			status = VSTATUS_NOMEM;
-			switchp->arDenyUnpause = 1;
 			return status;
 		}
 
@@ -201,7 +200,7 @@ sm_AdaptiveRoutingSwitchUpdate(Topology_t* topop, Node_t* switchp)
 			// AMOD = NNNN NNNN 0000 0ABB BBBB BBBB BBBB BBBB
 			// AMOD = numBlocks 0000 00[[[[[[current set]]]]]
 			amod = (numBlocks<<24) | currentSet;
-			status = SM_Set_PortGroupFwdTable(fd_topology, amod, path, sm_lid, 
+			status = SM_Set_PortGroupFwdTable(fd_topology, amod, NULL, sm_lid, 
 				dlid, (STL_PORT_GROUP_FORWARDING_TABLE*)&sm_Node_get_pgft_wr(switchp)[currentLid],
 				numBlocks, sm_config.mkey);
 
@@ -221,42 +220,19 @@ sm_AdaptiveRoutingSwitchUpdate(Topology_t* topop, Node_t* switchp)
 		status = VSTATUS_EIO;
 	}
 
-	// Set(SwitchInfo) to update PortGroupTop on the target switch
-	status = SM_Set_SwitchInfo(fd_topology, 0, switchp->path, &switchp->switchInfo, sm_config.mkey);
+	if (status == VSTATUS_OK) {
+		// Set(SwitchInfo) to update PortGroupTop on the target switch
+		// and clear the pause
+		switchp->switchInfo.AdaptiveRouting.s.Pause = 0;
 
-	if (status != VSTATUS_OK) {
-		switchp->arDenyUnpause = 1;
-		IB_LOG_WARN_FMT(__func__,
-			"Set(SwitchInfo) failed for node %s nodeGuid "FMT_U64,
-			sm_nodeDescString(switchp), switchp->nodeInfo.NodeGUID);
-	}
-	else {
-		switchp->arChange = 0;
-		switchp->arDenyUnpause = 0;
-	}
-
-	return status;
-}
-
-Status_t
-sm_SetARPause(Node_t *switchp, uint8_t set) {
-	Status_t			status;
-
-    switchp->switchInfo.AdaptiveRouting.s.Pause = set ? 1 : 0;
-
-	Port_t *portp = sm_get_port(switchp, 0);
-	sm_topop->slid = sm_lid;
-	sm_topop->dlid = portp->portData->lid;
-
-	if ((status = SM_Set_SwitchInfo(fd_topology, 0, switchp->path, &switchp->switchInfo, sm_config.mkey)) != VSTATUS_OK) {
-    	IB_LOG_WARN_FMT(__func__, "Failed to Set Switchinfo for node %s nodeGuid "FMT_U64": status = %d", 
-        				sm_nodeDescString(switchp), switchp->nodeInfo.NodeGUID, status);
-	} else {
-		switchp->switchInfo.AdaptiveRouting.s.Pause = set ? 1 : 0;
-		if (sm_adaptiveRouting.debug) {
-			IB_LOG_INFINI_INFO_FMT(__func__,
-	   			"Setting adaptive routing pause (%d) for switch %s guid "FMT_U64,
-				set, sm_nodeDescString(switchp), switchp->nodeInfo.NodeGUID);
+		status = SM_Set_SwitchInfo(fd_topology, 0, switchp->path, &switchp->switchInfo, sm_config.mkey);
+		if (status == VSTATUS_OK) {
+			switchp->arChange = 0;
+		} else {
+			switchp->switchInfo.AdaptiveRouting.s.Pause = 1;
+			IB_LOG_WARN_FMT(__func__,
+				"Set(SwitchInfo) failed for node %s nodeGuid "FMT_U64,
+				sm_nodeDescString(switchp), switchp->nodeInfo.NodeGUID);
 		}
 	}
 

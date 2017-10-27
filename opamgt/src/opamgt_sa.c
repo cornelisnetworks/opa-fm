@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -38,8 +38,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OPAMGT_PRIVATE 1
 
 #include "iba/stl_sd.h"
+#include "iba/stl_sa_priv.h"
 #include "ib_mad.h"
-#include "ib_sm.h"
+#include "ib_sm_priv.h"
+#include "ib_generalServices.h"
 #include "ib_utils_openib.h"
 #include "opamgt_sa_priv.h"
 #include <infiniband/umad.h>
@@ -147,7 +149,8 @@ static const char* const SdQueryStlResultTypeText[] = {
 	"OutputTypeStlSCVLntTableRecord",
 	"OutputTypeStlSCSCTableRecord",
 	"OutputTypeStlClassPortInfo",
-	"OutputTypeStlFabricInfoRecord"
+	"OutputTypeStlFabricInfoRecord",
+	"OutputTypeStlSwitchCostRecord"
 };
 
 /* TBD get from libibt? */
@@ -289,9 +292,9 @@ static FSTATUS sa_query_common(SA_MAD * pSA, SA_MAD **ppRsp, uint32_t record_siz
         case SA_ATTRIB_PORTINFO_RECORD:
             if (pSA->common.BaseVersion != IB_BASE_VERSION) {
                 fstatus = FPROTECTION;
-                break;
+                goto done;
             }
-			// fall through 
+			// fall through
 		case SA_ATTRIB_PATH_RECORD:
 		case SA_ATTRIB_MULTIPATH_RECORD:
 		case SA_ATTRIB_NODE_RECORD:
@@ -306,40 +309,54 @@ static FSTATUS sa_query_common(SA_MAD * pSA, SA_MAD **ppRsp, uint32_t record_siz
 				addr.pkey = 0x7fff;
 				break;
 			}
-			// fall through 
+			// fall through
 		default:
 			// Unable to make such a query.
 			// Must be full or limited mgmt, and we do not have proper pkey in our tables.
 			fstatus = FPROTECTION;
-			break;
+			goto done;
 		}
 	}
 
-	if (fstatus!=FSUCCESS) {
-		goto done;
+	/* Set a short timeout for class port info as these queries will always be
+	 * a small constant size.
+	 */
+	int timeout;
+	if (pSA->common.AttributeID == SA_ATTRIB_CLASS_PORT_INFO && port->sa_service_state != OMGT_SERVICE_STATE_OPERATIONAL) {
+		timeout = 250; //250 ms
+	} else {
+		timeout = port->ms_timeout;
 	}
 
 	BSWAP_SA_HDR (&pSA->SaHdr);
 	BSWAP_MAD_HEADER((MAD*)pSA);
 
 	fstatus = omgt_send_recv_mad_alloc(port, (uint8_t *)pSA, record_size + sizeof(MAD_COMMON) + sizeof(SA_MAD_HDR),
-		&addr, (uint8_t **)ppRsp, &length, DEFAULT_SD_TIMEOUT, DEFAULT_SD_RETRY_COUNT);
+		&addr, (uint8_t **)ppRsp, &length, timeout, port->retry_count);
 
 	if (fstatus != FSUCCESS) {
 		OMGT_DBGPRINT(port, "Query SA failed to send: %d\n", fstatus);
 		goto done;
 	}
-
-	if (length < IBA_SUBN_ADM_HDRSIZE) {
-		OMGT_DBGPRINT(port, "Query SA: Failed to receive packet\n");
+	/* Check if MAD header is present */
+	if (length < sizeof(MAD_COMMON)) {
+		OMGT_DBGPRINT(port, "Query SA: Failed to receive packet: length (%zu) less than sizeof(MAD_COMMON) (%zu)\n",
+			length, sizeof(MAD_COMMON));
 		fstatus = FNOT_FOUND;
 		goto done;
 	}
-
-	// Fix endian of the received data
 	BSWAP_MAD_HEADER((MAD*)(*ppRsp));
-    BSWAP_SA_HDR (&(*ppRsp)->SaHdr);
 	MAD_GET_STATUS((*ppRsp), &madStatus);
+	port->sa_mad_status = madStatus.AsReg16;
+
+	/* Check if SA Header is present */
+	if (length < IBA_SUBN_ADM_HDRSIZE) {
+		OMGT_DBGPRINT(port, "Query SA: Failed to receive packet: length (%zu) less than IBA_SUBN_ADM_HDRSIZE (%u)\n",
+			length, IBA_SUBN_ADM_HDRSIZE);
+		fstatus = FNOT_FOUND;
+		goto done;
+	}
+	BSWAP_SA_HDR (&(*ppRsp)->SaHdr);
 
 	// dump of SA header for debug
 	OMGT_DBGPRINT(port, " SA Header\n");
@@ -393,7 +410,6 @@ static FSTATUS sa_query_common(SA_MAD * pSA, SA_MAD **ppRsp, uint32_t record_siz
 	(*ppQR)->ResultDataSize = record_size * cnt;
 	*((uint32_t*)((*ppQR)->QueryResult)) = cnt;
 
-	port->sa_mad_status = madStatus.AsReg16;
 done:
 	if (fstatus != FSUCCESS) {
 		if (*ppRsp!=NULL) {
@@ -811,20 +827,6 @@ FSTATUS omgt_input_value_conversion(OMGT_QUERY *output_query, QUERY_INPUT_VALUE 
 		default: return FNOT_FOUND;
 		}
 		break;
-#ifndef NO_STL_SERVICE_OUTPUT
-	case OutputTypeStlServiceRecord:
-		switch (output_query->InputType) {
-		case InputTypeNoInput: break;
-		case InputTypeLid:
-			output_query->InputValue.StlServiceRecord.Lid = old_query->Lid;
-			break;
-		case InputTypePortGid:
-			output_query->InputValue.StlServiceRecord.ServiceGid = old_query->Gid;
-			break;
-		default: return FNOT_FOUND;
-		}
-		break;
-#endif
 #ifndef NO_STL_MCMEMBER_OUTPUT
 	case OutputTypeStlMcMemberRecord:
 		switch (output_query->InputType) {
@@ -841,6 +843,9 @@ FSTATUS omgt_input_value_conversion(OMGT_QUERY *output_query, QUERY_INPUT_VALUE 
 		case InputTypePKey:
 			output_query->InputValue.StlMcMemberRecord.PKey = old_query->PKey;
 			break;
+		case InputTypeSL:
+                        output_query->InputValue.StlMcMemberRecord.SL = old_query->SL;
+                        break;
 		default: return FNOT_FOUND;
 		}
 		break;
@@ -860,6 +865,9 @@ FSTATUS omgt_input_value_conversion(OMGT_QUERY *output_query, QUERY_INPUT_VALUE 
 		case InputTypePKey:
 			output_query->InputValue.IbMcMemberRecord.PKey = old_query->PKey;
 			break;
+		case InputTypeSL:
+                        output_query->InputValue.IbMcMemberRecord.SL = old_query->SL;
+                        break;
 		default: return FNOT_FOUND;
 		}
 		break;
@@ -1060,6 +1068,15 @@ FSTATUS omgt_input_value_conversion(OMGT_QUERY *output_query, QUERY_INPUT_VALUE 
 		default: return FNOT_FOUND;
 		}
 		break;
+	case OutputTypeStlSwitchCostRecord:
+		switch (output_query->InputType) {
+		case InputTypeNoInput: break;
+		case InputTypeLid:
+			output_query->InputValue.SwitchCostRecord.Lid = old_query->Lid;
+			break;
+		default: return FNOT_FOUND;
+		}
+		break;
 	default: return FNOT_FOUND;
 	}
 	return FSUCCESS;
@@ -1076,7 +1093,7 @@ FSTATUS omgt_input_value_conversion(OMGT_QUERY *output_query, QUERY_INPUT_VALUE 
  *  
  * @return          0 if success, else error code
  */
-FSTATUS omgt_query_sa(struct omgt_port *port, OMGT_QUERY *pQuery,
+static FSTATUS omgt_query_sa_internal(struct omgt_port *port, OMGT_QUERY *pQuery,
 	struct _QUERY_RESULT_VALUES **ppQueryResult)
 {
 	FSTATUS fstatus = FSUCCESS;
@@ -1790,50 +1807,6 @@ FSTATUS omgt_query_sa(struct omgt_port *port, OMGT_QUERY *pQuery,
 		}
 		break;
 
-#ifndef NO_STL_SERVICE_OUTPUT       // Don't output STL Service if defined
-	case OutputTypeStlServiceRecord:   
-		{   
-			STL_SERVICE_RECORD_RESULTS *pSRR;
-			STL_SERVICE_RECORD      *pSR = (STL_SERVICE_RECORD*)mad.Data;
-
-			switch (pQuery->InputType) {
-			case InputTypeNoInput:
-				break;
-			case InputTypeLid:
-				mad.SaHdr.ComponentMask = STL_SERVICE_RECORD_COMP_SERVICELID;
-				pSR->RID.ServiceGID = pQuery->InputValue.StlServiceRecord.Lid;
-				break;
-			case InputTypePortGid:
-				mad.SaHdr.ComponentMask = STL_SERVICE_RECORD_COMP_SERVICEGID;
-				pSR->RID.ServiceGID = pQuery->InputValue.StlServiceRecord.ServiceGid;
-				break;
-			default:
-				OMGT_OUTPUT_ERROR(port, "Query not supported by opamgt: Input=%s, Output=%s\n",
-						iba_sd_query_input_type_msg(pQuery->InputType),
-						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FINVALID_PARAMETER; goto done;
-			}
-
-			pSR->RID.Reserved = 0;
-			pSR->Reserved = 0;
-                           
-			BSWAP_STL_SERVICE_RECORD(pSR);
-			MAD_SET_ATTRIB_ID(&mad, STL_SA_ATTR_SERVICE_RECORD);
-
-			fstatus = sa_query_common(&mad, &pRsp, sizeof (STL_SERVICE_RECORD), &pQR, port);
-			if (fstatus != FSUCCESS) break;
-
-			// Translate the data.
-			pSRR = (STL_SERVICE_RECORD_RESULTS*)pQR->QueryResult;
-			pSR  = pSRR->ServiceRecords;
-			for (i=0; i< pSRR->NumServiceRecords; i++, pSR++) {
-				*pSR =  * ((STL_SERVICE_RECORD*)(GET_RESULT_OFFSET(pRsp, i)));
-				BSWAP_STL_SERVICE_RECORD(pSR);
-			}
-		}
-		break;
-#endif
-
 #ifndef NO_STL_MCMEMBER_OUTPUT      // Don't output STL McMember (use IB format) if defined
 	case OutputTypeStlMcMemberRecord:  
         {   
@@ -1859,6 +1832,10 @@ FSTATUS omgt_query_sa(struct omgt_port *port, OMGT_QUERY *pQuery,
 				mad.SaHdr.ComponentMask = STL_MCMEMBER_COMPONENTMASK_PKEY;
 				pMCR->P_Key = pQuery->InputValue.StlMcMemberRecord.PKey;
 				break;
+			case InputTypeSL:
+                                mad.SaHdr.ComponentMask = STL_MCMEMBER_COMPONENTMASK_SL;
+                                pMCR->SL = pQuery->InputValue.StlMcMemberRecord.SL;
+                                break;
 			default:
 				OMGT_OUTPUT_ERROR(port, "Query not supported by opamgt: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
@@ -1913,6 +1890,10 @@ FSTATUS omgt_query_sa(struct omgt_port *port, OMGT_QUERY *pQuery,
 				mad.SaHdr.ComponentMask = IB_MCMEMBER_RECORD_COMP_PKEY;
 				pIbMCR->P_Key = pQuery->InputValue.IbMcMemberRecord.PKey;
 				break;
+			case InputTypeSL:
+                                mad.SaHdr.ComponentMask = IB_MCMEMBER_RECORD_COMP_SL;
+                                pIbMCR->u1.s.SL = pQuery->InputValue.IbMcMemberRecord.SL;
+                                break;
 			default:
 				OMGT_OUTPUT_ERROR(port, "Query not supported by opamgt: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
@@ -2811,11 +2792,47 @@ FSTATUS omgt_query_sa(struct omgt_port *port, OMGT_QUERY *pQuery,
 			// Translate the data
 			pRecResults = (STL_PORT_GROUP_FORWARDING_TABLE_RECORD_RESULTS*)pQR->QueryResult;
 			pRec = pRecResults->Records;
-            
+
 			for(i = 0; i < pRecResults->NumRecords; i++, pRec++)
 			{
 				*pRec = * ((STL_PORT_GROUP_FORWARDING_TABLE_RECORD*)(GET_RESULT_OFFSET(pRsp, i)));
                 BSWAP_STL_PORT_GROUP_FORWARDING_TABLE_RECORD(pRec);
+			}
+			break;
+		}
+
+	case OutputTypeStlSwitchCostRecord:
+		{
+			STL_SWITCH_COST_RECORD_RESULTS	*pSCR;
+			STL_SWITCH_COST_RECORD			*pSC = (STL_SWITCH_COST_RECORD *)mad.Data;
+
+			switch(pQuery->InputType) {
+				case InputTypeNoInput:
+					break;
+				case InputTypeLid:
+					mad.SaHdr.ComponentMask = STL_SWITCH_COST_REC_COMP_SLID;
+					pSC->SLID = pQuery->InputValue.SwitchCostRecord.Lid;
+					break;
+				default:
+					OMGT_OUTPUT_ERROR(port, "Query not supported by opamgt: Input=%s, Output=%s\n",
+							iba_sd_query_input_type_msg(pQuery->InputType),
+							iba_sd_query_result_type_msg(pQuery->OutputType));
+					fstatus = FINVALID_PARAMETER; goto done;
+			}
+
+			BSWAP_STL_SWITCH_COST_RECORD(pSC);
+			MAD_SET_ATTRIB_ID(&mad, STL_SA_ATTR_SWITCH_COST_RECORD);
+
+			fstatus = sa_query_common(&mad, &pRsp, sizeof(STL_SWITCH_COST_RECORD), &pQR, port);
+			if(fstatus != FSUCCESS) break;
+
+			pSCR = (STL_SWITCH_COST_RECORD_RESULTS*)pQR->QueryResult;
+			pSC = pSCR->Records;
+
+			for(i = 0; i < pSCR->NumRecords; ++i, ++pSC)
+			{
+				*pSC = *((STL_SWITCH_COST_RECORD*)(GET_RESULT_OFFSET(pRsp, i)));
+				BSWAP_STL_SWITCH_COST_RECORD(pSC);
 			}
 			break;
 		}
@@ -2844,6 +2861,62 @@ done:
 	return fstatus;
 }
 
+/* omgt_query_sa
+ *
+ * All SA queries are sent through this path. This function performs a test of
+ * SA reachability before sending the main query. If the FM's reachability is
+ * not operational, a request for a ClassPortInfo with a small timeout
+ * (defaulted to 250ms in lower layer) is sent. Only after determining the SA
+ * is reachable is the main query sent. All other queries currently default to
+ * a timeout of 20s with 3 retires. Sending the CPI first allows us to do a
+ * quick ping and avoid long timeouts when SA is unreachable.
+ *
+ * if pQuery and ppQueryResult are input NULL, only a reachability test will be
+ * performed with no main query.
+ *
+ */
+FSTATUS omgt_query_sa(struct omgt_port *port, OMGT_QUERY *pQuery,
+	struct _QUERY_RESULT_VALUES **ppQueryResult)
+{
+	FSTATUS fstatus = FSUCCESS;
 
+	if (port == NULL)
+		return FINVALID_PARAMETER;
 
+	if (port->sa_service_state != OMGT_SERVICE_STATE_OPERATIONAL && !port->is_oob_enabled) {
+		QUERY_RESULT_VALUES *cpi_query_result = NULL;
+		OMGT_QUERY cpi_query;
+		cpi_query.InputType = InputTypeNoInput;
+		cpi_query.OutputType = OutputTypeStlClassPortInfo;
+		fstatus = omgt_query_sa_internal(port, &cpi_query, &cpi_query_result);
 
+		if (fstatus == FSUCCESS) {
+			port->sa_service_state = OMGT_SERVICE_STATE_OPERATIONAL;
+			if (pQuery != NULL && ppQueryResult != NULL &&
+				pQuery->OutputType == OutputTypeStlClassPortInfo &&
+				pQuery->InputType == InputTypeNoInput && cpi_query_result != NULL) {
+				/* If request is a ClassPortInfo Query, then just return with results */
+				*ppQueryResult = cpi_query_result;
+				return FSUCCESS;
+			}
+		} else {
+			OMGT_OUTPUT_ERROR(port, "SA Service State refresh failed: %u. Marking SA and PA Service State DOWN\n", fstatus);
+			port->sa_service_state = OMGT_SERVICE_STATE_DOWN;
+			/* If SA is down assume PA is down */
+			port->pa_service_state = OMGT_SERVICE_STATE_DOWN;
+		}
+		omgt_free_query_result_buffer(cpi_query_result);
+	}
+
+	if (fstatus == FSUCCESS && pQuery != NULL && ppQueryResult != NULL) {
+		fstatus = omgt_query_sa_internal(port, pQuery, ppQueryResult); 
+		if (fstatus != FSUCCESS) {
+			OMGT_OUTPUT_ERROR(port, "Query Failed: %u. Marking SA and PA Service State DOWN\n", fstatus);
+			port->sa_service_state = OMGT_SERVICE_STATE_DOWN;
+			/* If SA is down assume PA is down */
+			port->pa_service_state = OMGT_SERVICE_STATE_DOWN;
+		}
+	}
+
+	return fstatus;
+}

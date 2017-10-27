@@ -54,7 +54,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "fe_trap_thread.h"
 #include "sa/if3_sa.h"
-#include "opamgt_sa_priv.h"
+#include "opamgt_sa_notice.h"
 
 extern uint32_t g_fe_nodes_len;                 // len of node data in fe_in_buff
 extern FE_ConnList *clist;                      // pointer to connection list
@@ -188,59 +188,29 @@ void fe_trap_thread_resume(void)
 	IB_EXIT(__func__, 0);
 }
 
-static void Ib2Stl_Notice(IB_NOTICE *ibp, STL_NOTICE *stlp)
-{
-	STL_TRAP_GID *stlTrapDataDetails = (STL_TRAP_GID *)stlp->Data;
-    TRAPS_64_65_66_67_DETAILS *ibTrapDataDetails = (TRAPS_64_65_66_67_DETAILS *)ibp->Data;
-
-    stlp->Attributes.Generic.u.AsReg32 = ibp->u.Generic.u.AsReg32;
-    stlp->Attributes.Generic.TrapNumber = ibp->u.Generic.TrapNumber;
-    stlp->Attributes.Vendor.u.AsReg32 = ibp->u.Vendor.u.AsReg32;
-    stlp->Attributes.Vendor.DeviceID = ibp->u.Vendor.DeviceID;
-    stlp->IssuerLID = ibp->IssuerLID;
-    stlp->Stats.s.Toggle = ibp->Stats.Toggle;
-    stlp->Stats.s.Count = ibp->Stats.Count;
-    stlp->IssuerGID = ibp->IssuerGID;
-
-    // replicate Data Detail fields
-    switch (ibp->u.Generic.TrapNumber) {
-    case SMA_TRAP_GID_NOW_IN_SERVICE:
-    case SMA_TRAP_GID_OUT_OF_SERVICE:
-    case SMA_TRAP_ADD_MULTICAST_GROUP:
-    case SMA_TRAP_DEL_MULTICAST_GROUP:
-        memcpy(&stlTrapDataDetails->Gid, &ibTrapDataDetails->GIDAddress, sizeof(IB_GID));
-        break;
-    default:
-        memcpy(stlp->Data, ibp->Data, sizeof(ibp->Data));
-        break;
-    }
-}
-
 static uint32_t fe_if3_trap_thread_get_notice(STL_NOTICE *notice)
 {
 	FSTATUS status;
-	int len;
-	
+	size_t len;
+	STL_NOTICE *stl_notice = NULL;
+
 	IB_ENTER(__func__, notice, 0, 0, 0);
-	
-	status = omgt_sa_get_event(fe_omgt_session,
-							  (void*)fe_trap_thread_data.data,
-	                          FE_TRAP_THREAD_DATA_LEN, &len);
+
+	status = omgt_sa_get_notice_report(fe_omgt_session, &stl_notice, &len, NULL, -1);
+
 	if (status != FSUCCESS) {
 		IB_LOG_WARN("failure while waiting for incoming fabric event; status:", status);
 		IB_EXIT(__func__, FAILED);
 		return FAILED;
-	} else if (len < sizeof(IB_NOTICE)) {
+	} else if (len < sizeof(STL_NOTICE)) {
 		IB_LOG_WARN("invalid data length returned; length:", len);
 		IB_EXIT(__func__, FAILED);
 		return FAILED;
 	}
-	
-    // convert notice host byte order	
-    (void)BSWAP_IB_NOTICE((IB_NOTICE *)fe_trap_thread_data.data);
-    // convert STL notice to IB notice 
-    (void)Ib2Stl_Notice((IB_NOTICE *)fe_trap_thread_data.data, notice);
-	
+	memcpy(fe_trap_thread_data.data, stl_notice, len);
+	memcpy(notice, stl_notice, sizeof(*notice));
+	free(stl_notice);
+
 	IB_EXIT(__func__, SUCCESS);
 	return SUCCESS;
 }

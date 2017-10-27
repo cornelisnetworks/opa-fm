@@ -69,7 +69,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #endif
 
-#include "iba/stl_mad.h"
+#include "iba/stl_mad_priv.h"
 #include "iba/ib_generalServices.h"
 
 #include "netblob.h"

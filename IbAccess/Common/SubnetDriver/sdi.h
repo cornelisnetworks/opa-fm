@@ -42,6 +42,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <isyscallback.h>
 #include <query.h>
 #include <ib_gsi.h>
+#include <ib_sd_priv.h>
 #include <sd_params.h>
 
 #ifdef __cplusplus

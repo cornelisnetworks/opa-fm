@@ -39,7 +39,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <iba/vpi.h>
 #include "iba/stl_types.h"
-#include "iba/stl_sm.h"
+#include "iba/stl_sm_types.h"
 
 
 #if defined (__cplusplus)

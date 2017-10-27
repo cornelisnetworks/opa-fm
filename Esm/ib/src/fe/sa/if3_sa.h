@@ -64,7 +64,7 @@ typedef struct
 {
 	uint32_t found;
 	uint32_t toBeProcessed;
-	Lid_t smlid;
+	STL_LID smlid;
 	uint32_t trap128Received;
 } FE_Trap_Processing_State_t;
 

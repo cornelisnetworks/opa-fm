@@ -130,7 +130,7 @@ sa_VLArbitrationRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 
 Status_t
 sa_VLArbitrationRecord_Set(uint8_t *vlarbp, Node_t *nodep, Port_t *portp, int ind) {
-	Lid_t			        lid;
+	STL_LID			        lid;
 	STL_VLARBTABLE_RECORD		vlArbRecord;
 
     if (portp == NULL) {

@@ -255,7 +255,8 @@ omgt_sa_get_nodedesc_records(
  * @param selector		 Criteria to select records.
  *                		 Valid InputType values:
  *                		 	NoInput, PortGuid, PortGid, PortGuidPair, GidPair,
- *                		 	PathRecord, Lid, PKey, SL, ServiceId
+ *                		 	PathRecord, PortGuidList, GidList, Lid,
+ *                		 	PKey, SL, ServiceId
  * @note
  * A sourcegid is always required with this query
  *
@@ -492,6 +493,28 @@ omgt_sa_get_scvlt_table_records(
 	omgt_sa_selector_t *selector,
 	int32_t *num_records,
 	STL_SC2PVL_T_MAPPING_TABLE_RECORD **records
+	);
+
+
+/**
+ * @brief Query SA for SCVLnt Table Records
+ *
+ * @param port			 port opened by omgt_open_port_*
+ * @param selector		 Criteria to select records.
+ *                		 Valid InputType values:
+ *                		 	NoInput, Lid
+ * @param num_records	 Output: The number of records returned in query
+ * @param records		 Output: Pointer to records.
+ *								 Must be freed by calling omgt_sa_free_records
+ *
+ *@return		   OMGT_STATUS_SUCCESS if success, else error code
+ */
+OMGT_STATUS_T
+omgt_sa_get_scvlnt_table_records(
+	struct omgt_port *port,
+	omgt_sa_selector_t *selector,
+	int32_t *num_records,
+	STL_SC2PVL_NT_MAPPING_TABLE_RECORD **records
 	);
 
 
@@ -873,6 +896,29 @@ omgt_sa_get_portgroupfwd_records(
 	omgt_sa_selector_t *selector,
 	int32_t *num_records,
 	STL_PORT_GROUP_FORWARDING_TABLE_RECORD **records
+	);
+
+
+
+/**
+ * @brief Query SA for SwitchCost Records
+ *
+ * @param port			 port opened by omgt_open_port_*
+ * @param selector		 Criteria to select records.
+ *                       Valid InputType values:
+ *                         NoInput, Lid
+ * @param num_records	 Output: The number of records returned in query
+ * @param records		 Output: Pointer to records.
+ *                               Must be freed by calling omgt_sa_free_records
+ *
+ * @return		OMGT_STATUS_SUCCESS if success, else error code
+ */
+OMGT_STATUS_T
+omgt_sa_get_switchcost_records(
+	struct omgt_port *port,
+	omgt_sa_selector_t *selector,
+	int32_t *num_records,
+	STL_SWITCH_COST_RECORD **records
 	);
 
 

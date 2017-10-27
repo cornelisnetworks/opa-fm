@@ -92,6 +92,10 @@ endif
 ifneq "$(VXWORKS_REV_6_9)" ""
 PRODUCT_DEFINES += -DVXWORKS_REV_6_9=$(VXWORKS_REV_6_9)
 endif
+
+# include buildFeatureDefs to let inplace build work for stream consistency
+PRODUCT_DEFINES += -include $(TL_DIR)/buildFeatureDefs
+
 ifneq "$(STL_GEN)" ""
 PRODUCT_DEFINES += -DSTL_GEN=$(STL_GEN)
 endif

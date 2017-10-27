@@ -63,11 +63,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define SM_SERVICE_NAME     "Primary Intel OmniPath Subnet Manager"
 #define SM_SERVICE_NAME_SEC "Secondary Intel OmniPath Subnet Manager"
 
-#define PM_SERVICE_ID       (0x1100d03c34845555ull)
-#define PM_SERVICE_ID_SEC   (0x1100d03c34845555ull)
-#define PM_SERVICE_NAME     "Primary Intel OmniPath Performance Manager"
-#define PM_SERVICE_NAME_SEC "Secondary Intel OmniPath Performance Manager"
-
 #define  IF3_REGFORCE_PORT      (1)      /* force the registration */
 #define  IF3_REGFORCE_FABRIC    (2)      /* force the registration */
 #define  IF3_REGTRY_PORT        (3)      /* only try to register   */
@@ -99,9 +94,9 @@ typedef void  (*AsyncCallBack_t)(IBhandle_t fd , Mai_t *mad, void *context);
 typedef struct {
     uint8_t         flag;	/* flag indicating whether the entry is in use */
 
-    Lid_t           slid;	/* this port lid */
-    Lid_t           dlid;	/* the managers port lid */
-    Lid_t           saLid;	/* where the sa lives */
+    STL_LID         slid;	/* this port lid */
+    STL_LID         dlid;	/* the managers port lid */
+    STL_LID         saLid;	/* where the sa lives */
     uint8_t         lmc;	/* lmc of port */
     uint64_t        SubnetTO;	/* Subnet Timeout */
 
@@ -185,7 +180,7 @@ Status_t if3_cntrl_cmd_send(IBhandle_t fd, uint8_t cmd);
 Status_t if3_open(uint32_t dev, uint32_t port, uint8_t mclass, IBhandle_t * pfd);
 Status_t if3_close(IBhandle_t mhdl);
 Status_t if3_check_sa(IBhandle_t fd, int refresh, uint16_t *hasMoved);
-Status_t if3_set_dlid(IBhandle_t fd, Lid_t dlid);
+Status_t if3_set_dlid(IBhandle_t fd, STL_LID dlid);
 
 Status_t if3_mngr_locate_minfo(IBhandle_t rcv, ManagerInfo_t ** pt);
 

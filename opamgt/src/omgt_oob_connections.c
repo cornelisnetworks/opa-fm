@@ -48,7 +48,14 @@ OMGT_STATUS_T omgt_oob_connect(struct omgt_port **port, struct omgt_oob_input *o
 	if (session_params) {
 		prt->dbg_file = session_params->debug_file;
 		prt->error_file = session_params->error_file;
+	} else {
+		prt->dbg_file = NULL;
+		prt->error_file = NULL;
 	}
+
+	prt->ms_timeout = OMGT_DEF_TIMEOUT_MS;
+	prt->retry_count = OMGT_DEF_RETRY_CNT;
+
 	/* copy login info into port struct */
 	prt->oob_input = *oob_input;
 
@@ -130,8 +137,8 @@ FSTATUS omgt_oob_receive_response(struct omgt_port *port, uint8_t **data, uint32
 
 	boolean data_null;
 	boolean response_acquired;
-	time_t current_time;
-	time_t start_time;
+	struct timeval start, current;
+	uint64_t delta_ms, total_timeout;
 
 	/* Do nothing if no conn */
 	if (!port || !port->conn)
@@ -142,9 +149,11 @@ FSTATUS omgt_oob_receive_response(struct omgt_port *port, uint8_t **data, uint32
 	while (response_acquired != TRUE) {
 		e = FSUCCESS;
 		data_null = TRUE;
-		(void)time(&start_time);
-		(void)time(&current_time);
-		while ((difftime(current_time, start_time) < (double)5.0) && data_null) {
+		(void)gettimeofday(&start, NULL);
+		(void)gettimeofday(&current, NULL);
+		delta_ms = 0;
+		total_timeout = port->ms_timeout * (port->retry_count + 1);
+		while (delta_ms < total_timeout && data_null) {
 			omgt_oob_net_process(port, 100, 1);
 			omgt_oob_net_get_next_message(port->conn, (uint8_t **)&packet, (int *)len);
 			if (packet != NULL) {
@@ -153,7 +162,9 @@ FSTATUS omgt_oob_receive_response(struct omgt_port *port, uint8_t **data, uint32
 				if (port->conn->err) {
 					return FERROR;
 				}
-				(void)time(&current_time);
+				(void)gettimeofday(&current, NULL);
+				/* Get Delta in ms */
+				delta_ms = ((current.tv_sec - start.tv_sec) * 1000) + ((current.tv_usec - start.tv_usec) / 1000);
 			}
 		}
 		if (data_null == TRUE) {

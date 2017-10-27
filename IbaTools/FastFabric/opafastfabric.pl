@@ -1673,7 +1673,7 @@ sub fabricadmin_singlehost
 	my $verifyhosts_tests="";
 	my $result_dir = read_ffconfig_param("FF_RESULT_DIR");
 	my $hostverify_sample = "/usr/share/opa/samples/hostverify.sh";
-	my $hostverify_original = read_ffconfig_param("FF_HOSTVERIFY_DIR") . "/hostverify.sh";
+	my $hostverify_default = read_ffconfig_param("FF_HOSTVERIFY_DIR") . "/hostverify_default.sh";
 	my $hostverify = "";
 	my $hostverify_res = "hostverify.res";
 	my $inp;
@@ -1684,43 +1684,44 @@ sub fabricadmin_singlehost
 	if (! valid_config_file("Host File", $FabricAdminHostsFile) ) {
 		return 1;
 	}
-	if (-e $hostverify_specific && GetYesNo("Would you like to use $hostverify_specific?", "y") ) {
+	if (GetYesNo("Would you like to use $hostverify_specific?", "y") ) {
 		$use_specific = 1;
 		$hostverify = $hostverify_specific;
 	} else {
-		$hostverify = $hostverify_original;
+		$hostverify = $hostverify_default;
 	}
 
-	if (GetYesNo("Would you like to copy $hostverify to hosts?", "y") ) {
-		$verifyhosts_opts="-c"; # copy the hostverify.sh file
+	if ( ! -e "$hostverify" ) {
+		copy_data_file("$hostverify_sample", "$hostverify");
+	}
 
-		while (GetYesNo("Would you like to edit $hostverify?", "y") ) {
+	if (GetYesNo("Would you like to copy $hostverify_sample to $hostverify?", "n") ) {
+		copy_data_file("$hostverify_sample", "$hostverify");
+	}
 
-			if ( ! -e "$hostverify" ) {
-				copy_data_file("$hostverify_sample", "$hostverify");
-			} else {
-				if(GetYesNo("Would you like to copy $hostverify_sample to $hostverify ", "n")) {	
-					copy_data_file("$hostverify_sample", "$hostverify");
-				}
-			}
+	if (GetYesNo("Would you like to edit $hostverify?", "y") ) {
 
-			print "About to: $Editor $hostverify\n";
-			if ( HitKeyContAbortable() == 1) {
-				return 1;
-			}
-			system("$Editor $hostverify");
-			if ( ! -e "$hostverify" ) {
-				print "You must have a $hostverify file to proceed\n\n";
-			} else {
-				last;
-			}
+		print "About to: $Editor $hostverify\n";
+		if ( HitKeyContAbortable() == 1) {
+			return 1;
 		}
+		system("$Editor $hostverify");
 		if (! $use_specific) {
 			if (GetYesNo("Would you like to save $hostverify locally as $hostverify_specific?", "n") ) {
 				copy_data_file("$hostverify", "$hostverify_specific");
 			}
+		} else {
+			if (GetYesNo("Would you like to save $hostverify locally as $hostverify_default?", "n") ) {
+				copy_data_file("$hostverify", "$hostverify_default");
+			}
 		}
 	}
+
+	print "Choose n below only if $hostverify on hosts has not changed \n";
+	if (GetYesNo("Would you like to copy $hostverify to hosts?", "y") ) {
+		$verifyhosts_opts="-c"; # copy the hostverify.sh file
+	}
+
 	if (GetYesNo("Would you like to specify tests to run?", "n") ) {
 		print "Enter space separated list of hostverify tests [default hpl]: ";
 		chomp($inp = <STDIN>);

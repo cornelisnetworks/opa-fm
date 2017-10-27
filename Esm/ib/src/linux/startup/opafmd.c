@@ -418,9 +418,9 @@ int parseInput(char *buf){
 			fprintf(stderr, "Unknown component value.\n");
 		}
 	} else if(strncmp(token, "sig_hup", 7) == 0){
+		reloadSMs();
 		loadConfig();
 		updateInstances();
-		reloadSMs();
 	} else if(strncmp(token, "restart", 7) == 0){
 		token = strtok(NULL, " ");
 		if(token == NULL){
@@ -540,11 +540,11 @@ int pkill(const unsigned int instance, const int component){
 	if(!pid) return 0;
 	if(kill(pid, 0) == 0){
 		kill(pid, SIGTERM);							// Here we send a SIGTERM to the PID specified.
-		sleep(component == SM_COMPONENT ? 3 : 1); 				// Wait 3 seconds for SM to die from SIGTERM, only 1 sec for FE
+		sleep(component == SM_COMPONENT ? 3 : 5); 				// Wait 3 seconds for SM to die from SIGTERM, 5 sec for FE
 		ret = waitpid((pid_t)pid, &status, WUNTRACED | WNOHANG);		// Reap the children if they're already dead. Because zombies are bad, mmkay.
 		if(!ret){								// Checks for insubordinate children
 			kill(pid, SIGKILL);						// Order a hit on them
-			sleep(component == SM_COMPONENT ? 3 : 1);			// Allow 1-3 seconds for murder
+			sleep(component == SM_COMPONENT ? 3 : 5);			// Allow 1-5 seconds for murder
 			ret = waitpid((pid_t)pid, &status, WUNTRACED | WNOHANG);	// Reap
 			if(!ret){							// Report all survivors
 				fprintf(stderr, "Failed to kill %s from instance %d\n", componentToString(component), instance);

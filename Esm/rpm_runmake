@@ -37,16 +37,15 @@
 ## the source tree of FM
 ##
 ## Usage:
-##	rpm_runmake [-V 'module_version'] [-B 'build_config'] [-n]
+##	rpm_runmake [-B 'build_config'] [-n]
 ##			or
-##	rpm_runmake [-V 'module_version'] -r [-B 'build_config'] [-C] [-n]
+##	rpm_runmake -r [-B 'build_config'] [-C] [-n]
 ##
 ## Arguments:
 ##	-B build_config	release type to build, (debug/release). default is release
 ##	-r 		rerun the build in place without doing a new checkout/tag
 ##	-C		don't clobber prior to the rerun
 ##	-n		No build.  Useful for checking build machine
-##	-V module_version The MODULEVERSION define.
 ##
 ## In addition, the following environment variables are expected to be set:
 ##	RELEASE_TAG, BRANCH_TAG, BUILD_TARGET, PRODUCT, RELEASE_HOME, BUILD_CONFIG 
@@ -73,9 +72,9 @@ Usage()
 {
 	# include "ERROR" in message so weeklybuild catches it in error log
 	echo "ERROR: rpm_runmake failed" >&2
-	echo "Usage: rpm_runmake [-V 'module_version'] [-B 'build_config'] [-n]" >&2
+	echo "Usage: rpm_runmake [-B 'build_config'] [-n]" >&2
 	echo "            OR" >&2
-	echo "       rpm_runmake [-V 'module_version'] -r [-B 'build_config'] [-C] [-n]" >&2
+	echo "       rpm_runmake -r [-B 'build_config'] [-C] [-n]" >&2
 	exit 2
 }
 
@@ -89,26 +88,17 @@ showbuild()
 build_config=
 rerun=n
 Cflag=n
-inplace=n
-rpm=y
-module_version=
-while getopts V:B:riRCnS param
+while getopts B:rCn param
 do
 	case $param in
 	r)
 		rerun=y;;
 	B)
 		build_config="$OPTARG";;
-	i)	
-		inplace=y;;
-	R)	
-		rpm=n;;
 	C)
 		Cflag=y;;
 	n)
 		nflag=y;;
-	V)
-		module_version="$OPTARG";;
 	?)
 		Usage
 	esac
@@ -123,7 +113,7 @@ fi
 if [ -z "$build_config" ]
 then
 	# default to release build
-	export BUILD_CONFIG-release
+	export BUILD_CONFIG=release
 elif [ "$build_config" != debug -a "$build_config" != release ]
 then
 	Usage
@@ -151,7 +141,7 @@ then
 fi
 
 # when inplace developer builds have been done, the src rpm will include
-# prebuilt code.  if the -C option is not specified
+# prebuilt code.  if the -C option is not specified (via BUILD_ARGS)
 # clobber any such files if they are present (indicated by builtinplace file).
 # The clobber allows a src.rpm packaged with an in-place build to still
 # generate normally when -C not given.

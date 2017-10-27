@@ -57,9 +57,9 @@ DIRS			+= \
 endif
 DIRS			+= \
 				$(TL_DIR)/Xml \
-				$(TL_DIR)/Md5 \
 				$(TL_DIR)/Topology \
 				$(TL_DIR)/IbPrint \
+				$(TL_DIR)/CodeVersion \
 				$(TL_DIR)/IbaTools/opaxmlextract \
 				$(TL_DIR)/IbaTools/opaxmlfilter \
 				$(TL_DIR)/IbaTools/FastFabric \
@@ -99,24 +99,33 @@ INSTALL_SOURCES	= \
  				$(TL_DIR)/CommonInstall/util_driver.pl \
  				$(TL_DIR)/CommonInstall/util_components.pl \
  				$(TL_DIR)/CommonInstall/util_blacklist.pl \
+ 				$(TL_DIR)/CommonInstall/util_ifcfg.pl \
  				$(TL_DIR)/CommonInstall/util_linuxconfig.pl \
+ 				$(TL_DIR)/CommonInstall/util_hosttools.pl \
  				$(TL_DIR)/CommonInstall/util_rpm.pl \
  				$(TL_DIR)/CommonInstall/util_build.pl \
  				$(TL_DIR)/CommonInstall/comp_qlgc_fm.pl \
- 				$(TL_DIR)/CommonInstall/main_qlgc_fm.pl
+ 				$(TL_DIR)/CommonInstall/overrides_fm.pl \
+ 				$(TL_DIR)/CommonInstall/main_omnipathwrap_delta.pl
 COMP_SOURCES = $(TL_DIR)/CommonInstall/comp_qlgc_fm.pl
 
 ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES72"
         PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL72.pl
 endif
 ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES73"
-        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL72.pl
+        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL73.pl
+endif
+ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES74"
+        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL74.pl
 endif
 ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES121"
         PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_SLES121.pl
 endif
 ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES122"
         PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_SLES122.pl
+endif
+ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES123"
+        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_SLES123.pl
 endif
 
 # Source files to include in DSP File
@@ -221,7 +230,7 @@ endif
 	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_DIR) README
 
 # put version number into a file to facilitate rpm construction
-# presently only INSTALL allows dynamic version patch
+# presently only INSTALL, sm and fe allow dynamic version patch
 prepfiles:: check_env
 ifeq "$(RELEASE_TAG)" ""
 	$(CONVERT_RELEASETAG) $(MODULEVERSION) > $(PROJ_STAGE_DIR)/Version
@@ -233,7 +242,10 @@ endif
 	mkdir $$dir/stage.rpm; \
 	cp -r -L $(GLOBAL_BIN_DIR)/* $$dir/stage.rpm/ ; \
 	cp $(TL_DIR)/Esm/.comp_opafm.pl $$dir/stage.rpm/; \
-	cd $$dir/stage.rpm && find . -print| $(PREP);
+	cd $$dir/stage.rpm ; \
+		find . -print| $(PREP); \
+		$(PATCH_VERSION) $(RELEASE_TAG) sm fe; \
+		$(PATCH_BRAND) "$(BUILD_BRAND)" sm fe;
 	cd $(PROJ_STAGE_DIR) && $(PATCH_VERSION) -m % $(RELEASE_TAG) INSTALL
 	cd $(PROJ_STAGE_DIR) && $(PATCH_BRAND) -m % "$(BUILD_BRAND)" INSTALL
 
@@ -257,25 +269,25 @@ vars_include: vars_include_global
 
 final_package:
 	cd $(TL_DIR)/rpmbuild; \
-	dir=`head -n1 BUILD/opa-fm-$${MKRPM_REL}/packaged_files |xargs dirname`; \
-	filename=`head -n1 BUILD/opa-fm-$${MKRPM_REL}/packaged_files |xargs basename`; \
+	dir=`head -n1 BUILD/opa-fm-$${MKRPM_VER}/packaged_files |xargs dirname`; \
+	filename=`head -n1 BUILD/opa-fm-$${MKRPM_VER}/packaged_files |xargs basename`; \
 	subdir=$${filename%.tgz}; \
 	srpmdir=$$dir/$$subdir/SRPMS; \
 	arch=`echo $(BUILD_TARGET) | tr '[A-Z]' '[a-z]'`; \
 	rpmdir=$$dir/$$subdir/RPMS/$$arch;\
 	mkdir -p $$srpmdir; \
 	mkdir -p $$rpmdir; \
-	cp SRPMS/opa-fm-$${MKRPM_REL}-$${MKRPM_VER}.src.rpm $$srpmdir/ ; \
-	cp RPMS/$$arch/opa-fm-$${MKRPM_REL}-$${MKRPM_VER}.$$arch.rpm $$rpmdir/; \
-	cp RPMS/$$arch/opa-fm-debuginfo-$${MKRPM_REL}-$${MKRPM_VER}.$$arch.rpm $$rpmdir/; \
+	cp SRPMS/opa-fm-$${MKRPM_VER}-$${MKRPM_REL}.src.rpm $$srpmdir/ ; \
+	cp RPMS/$$arch/opa-fm-$${MKRPM_VER}-$${MKRPM_REL}.$$arch.rpm $$rpmdir/; \
+	cp RPMS/$$arch/opa-fm-debuginfo-$${MKRPM_VER}-$${MKRPM_REL}.$$arch.rpm $$rpmdir/; \
 	if [ "$(BUILD_TARGET_OS_VENDOR)" = "SuSE" ]; then \
-		cp RPMS/$$arch/opa-fm-debugsource-$${MKRPM_REL}-$${MKRPM_VER}.$$arch.rpm $$rpmdir/; \
+		cp RPMS/$$arch/opa-fm-debugsource-$${MKRPM_VER}-$${MKRPM_REL}.$$arch.rpm $$rpmdir/; \
 	fi; \
 	cd $$dir; \
 	echo "Packaging $$dir/$$filename ..."; \
 	tar cvfz $$filename $$subdir
-	cp $(TL_DIR)/rpmbuild/BUILD/opa-fm-$${MKRPM_REL}/packaged_files .
-	cp $(TL_DIR)/rpmbuild/BUILD/opa-fm-$${MKRPM_REL}/dist_files .
+	cp $(TL_DIR)/rpmbuild/BUILD/opa-fm-$${MKRPM_VER}/packaged_files .
+	cp $(TL_DIR)/rpmbuild/BUILD/opa-fm-$${MKRPM_VER}/dist_files .
 
 # Unit test execution
 #include $(TL_DIR)/Makerules/Maketargets.runtest

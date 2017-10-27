@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/perl
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
 # Copyright (c) 2015, Intel Corporation
@@ -28,11 +28,37 @@
 # 
 # END_ICS_COPYRIGHT8   ****************************************
 
-#[ICS VERSION STRING: unknown]
-#!/bin/sh
+# [ICS VERSION STRING: unknown]
+use strict;
+#use Term::ANSIColor;
+#use Term::ANSIColor qw(:constants);
+#use File::Basename;
+#use Math::BigInt;
 
-mkdir SOURCES SPECS SRPMS
-cp ofa_kernel-1.4.tgz SOURCES/
-cp ofa_kernel.spec SPECS/
-rpmbuild -bs --define "_topdir `pwd`" SPECS/ofa_kernel.spec
+# override some of settings in main_omnipathwrap_delta.pl
+sub overrides()
+{
+	# Names of supported install components
+	# must be listed in depdency order such that prereqs appear 1st
+	@Components = ( "opafm" );
 
+	# Sub components for autostart processing
+	@SubComponents = ( );
+
+	# TBD remove this concept
+	# no WrapperComponent (eg. opaconfig)
+	$WrapperComponent = "";
+
+	# set SrcDir for all components to .
+	foreach my $comp ( @Components )
+	{
+        $ComponentInfo{$comp}{'SrcDir'} = ".";
+	}
+}
+
+# main_omnipathwrap_delta.pl calls this, but since we don't have comp_delta.pl
+# we just provide a dummy function to keep PERL happy
+# TBD - move this to util_init.pl?
+sub init_delta_rpm_info($)
+{
+}

@@ -51,7 +51,7 @@ endif
 
 ifneq "$(strip $(LIB_TARGETS_ARLIB))" ""
 # archive/static library
-# FIXME: BUILDDIR path prefix for target
+# BUILDDIR is in LIB_PREFIX and hence in LIB_TARGETS_ARLIB
 CT_OBJECTS	= $(foreach f,$(OBJECTS),$(BUILDDIR)/$(f))
 $(LIB_TARGETS_ARLIB): $(ARLIBS) $(CT_OBJECTS) $(RSCOBJECTS)
 	@mkdir -p $(dir $@)
@@ -67,7 +67,7 @@ endif
 
 ifneq "$(strip $(CMD_TARGETS_SHLIB))" ""
 # shared library/DLL
-# FIXME: BUILDDIR path prefix for target
+# BUILDDIR is in LIB_PREFIX and hence in CMD_TARGETS_SHLIB
 CT_OBJECTS	= $(foreach f,$(OBJECTS),$(BUILDDIR)/$(f))
 # don't use $^, would have deplibs explicit on line
 $(CMD_TARGETS_SHLIB): $(ARLIBS) $(CT_OBJECTS) $(EXP_TARGET) $(RSCOBJECTS) $(DEPLIBS_TARGETS)
@@ -123,8 +123,7 @@ $(BUILDDIR)/$(CMD_TARGETS_EXE) :	$(CT_OBJECTS) $(RSCOBJECTS) $(DEPLIBS_TARGETS)
 	$(RM) $(RMFORCE) partialImage.o ctdt.c ctdt.o
 
 else # BUILD_TARGET_OS is not VXWORKS
-# FIXME, need to fix CMD_TARGETS_EXE to have BUILDDIR prefixing it
-# This may need update in all makefiles?  Especially when referenced for STAGE:
+# In Makefiles CMD_TARGETS_EXE must have BUILDDIR prefixing it
 $(CMD_TARGETS_EXE) :	$(CT_OBJECTS) $(RSCOBJECTS) $(DEPLIBS_TARGETS)
 	@echo Linking executable...
 	@mkdir -p $(dir $@)

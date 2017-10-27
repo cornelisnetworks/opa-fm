@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -36,6 +36,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <iba/ibt.h>
 #include <stdarg.h>
 #include "ibprint.h"
+#include "ib_sd_priv.h"
 #include "stl_sd.h"
 #include "stl_print.h"
 
@@ -641,6 +642,16 @@ void PrintQueryResultValue(PrintDest_t *dest, int indent, PrintDest_t *dbgDest,
         }
 		break;
 		}
+	case OutputTypeStlSwitchCostRecord:
+		{
+		STL_SWITCH_COST_RECORD_RESULTS *p = (STL_SWITCH_COST_RECORD_RESULTS*)pResult->QueryResult;
+		for(i = 0; i < p ->NumRecords; ++i)
+		{
+			if (i) PrintSeparator(dest);
+			PrintStlSwitchCostRecord(dest, indent, &p->Records[i]);
+		}
+		}
+		break;
 	default:
 		PrintFunc(dest, "Unsupported OutputType\n");
 	}

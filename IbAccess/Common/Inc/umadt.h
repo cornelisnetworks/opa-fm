@@ -34,8 +34,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <iba/public/datatypes.h>
 #include <iba/stl_types.h>
-#include <iba/stl_mad.h>
-#include <iba/stl_sa.h>
+#include <iba/stl_mad_priv.h>
+#include <iba/stl_sa_priv.h>
 #include <iba/vpi.h>
 
 #if defined (__cplusplus)

@@ -99,6 +99,8 @@ sm_counter_t smCounters[smCountersMax] = {
 	[smCounterTrapBadPKey]				= { "SM RX TRAP(BadPkey)", 0, 0, 0 },
 	[smCounterTrapBadQKey]				= { "SM RX TRAP(BadQkey)", 0, 0, 0 },
 	[smCounterTrapBadPKeySwPort]		= { "SM RX TRAP(BadPkeySwPort)", 0, 0, 0 },
+	[smCounterTrapLinkWidthDowngrade]	= { "SM RX TRAP(LinkWidthDowngrade)", 0, 0, 0 },
+	[smCounterTrapCostMatrixChange]		= { "SM RX TRAP(CostMatrixChange)", 0, 0, 0 },
 
 	[smCounterTrapsRepressed]           = { "SM TX TRAPREPRESS(Notice)", 0, 0, 0 },
 	[smCounterGetNodeDescription]       = { "SM TX GET(NodeDescription)", 0, 0, 0 },

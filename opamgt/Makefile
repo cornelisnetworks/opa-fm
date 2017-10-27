@@ -52,6 +52,7 @@ CFILES			= \
 				src/opamgt.c \
 				src/opamgt_pa.c \
 				src/opamgt_sa.c \
+				src/opamgt_sa_notice.c \
 				src/opamgt_sa_query.c \
 				src/omgt_oob_connections.c \
 				src/omgt_oob_net.c  \
@@ -80,7 +81,8 @@ INCLUDE_TARGETS	= \
 				src/stl_convertfuncs.h \
 				include/public/opamgt.h \
 				include/public/opamgt_pa.h \
-				include/public/opamgt_sa.h  \
+				include/public/opamgt_sa.h \
+				include/public/opamgt_sa_notice.h \
 				include/opamgt_dump_mad.h  \
 				include/opamgt_priv.h \
 				include/opamgt_pa_priv.h \
@@ -94,10 +96,13 @@ SAMPLE_TARGETS = \
 				 samples/saquery.c \
 				 samples/paquery.c \
 				 samples/simple_sa_query.c \
-				 samples/simple_pa_query.c
+				 samples/simple_sa_notice.c \
+				 samples/simple_pa_query.c \
+				 samples/job_schedule.c \
+				 samples/show_switch_cost_matrix.c
 
 # Non-compiled files
-MISC_FILES		= 
+MISC_FILES		= version
 # all source files
 SOURCES			= $(CFILES) $(CCFILES) $(LFILES) $(RSCFILES) $(IDLFILE)
 # Source files to include in DSP File
@@ -186,8 +191,10 @@ include $(TL_DIR)/Makerules/Maketargets.install
 STAGE::
 ifeq "$(PRODUCT)" "OPENIB_FF"
 		$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_LIB_DIR) $(CMD_TARGETS_SHLIB)
-		$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_OPAMGT_DIR) $(INCLUDE_TARGETS)
-		$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_OPAMGT_DIR) $(SAMPLE_TARGETS)
+		$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_OPAMGT_DIR) \
+			$(INCLUDE_TARGETS) \
+			$(SAMPLE_TARGETS) \
+			$(MISC_FILES)
 endif
 
 # Unit test execution

@@ -13,17 +13,18 @@
 
 void Usage(void)
 {
-	fprintf(stderr, "Usage:paquery [-v] [-h hfi] [-p port] -o type [-g groupName] [-l nodeLid]\n");
-	fprintf(stderr, "                   [-b oob_host] [-P portNumber] [-d] [-U]\n");
-	fprintf(stderr, "                   [-f focus] [-S start] [-r range] [-n imgNum]\n");
-	fprintf(stderr, "                   [-O imgOff] [-y imgTime] [-m moveImgNum] [-M moveImgOff]\n");
-	fprintf(stderr, "                   [-V vfName]\n");
+	fprintf(stderr, "Usage:paquery [-v] [-h hfi] [-p port] [-t ms] [-b oob_host] -o type\n");
+	fprintf(stderr, "              [-g groupName] [-l nodeLid] [-P portNumber] [-d] [-U]\n");
+	fprintf(stderr, "              [-f focus] [-S start] [-r range] [-n imgNum]\n");
+	fprintf(stderr, "              [-O imgOff] [-y imgTime] [-m moveImgNum] [-M moveImgOff]\n");
+	fprintf(stderr, "              [-V vfName]\n");
 	fprintf(stderr, "    --help             - display this help text\n");
 	fprintf(stderr, "    -v/--verbose       - verbose output\n");
 	fprintf(stderr, "    -h/--hfi hfi       - hfi, numbered 1..n, 0= -p port will be a system wide\n");
 	fprintf(stderr, "                         port num (default is 0)\n");
 	fprintf(stderr, "    -p/--port port     - port, numbered 1..n, 0=1st active (default is 1st\n");
 	fprintf(stderr, "                         active)\n");
+	fprintf(stderr, "    -t/--timeout       - timeout in ms\n");
 	fprintf(stderr, "    -b  oob_host       - perform out of band query. For this example, oob_host\n");
 	fprintf(stderr, "                         should have format hostname[:port] or a.b.c.d[:port]\n");
 	fprintf(stderr, "    -o/--output        - output type, default is groupList\n");
@@ -163,6 +164,7 @@ struct option options[] = {
 	{ "verbose", required_argument, NULL, 'v' },
 	{ "hfi", required_argument, NULL, 'h' },
 	{ "port", required_argument, NULL, 'p' },
+	{ "timeout", required_argument, NULL, 't' },
 	{ "lid", required_argument, NULL, 'l' },
 
 	{ "groupName", required_argument, NULL, 'g' },
@@ -191,6 +193,7 @@ int main(int argc, char **argv)
 	int exitcode = 0;
 	struct omgt_port * port = NULL;
 	int i,c,index;
+	int pa_service_state = OMGT_SERVICE_STATE_UNKNOWN;
 	uint32_t num_data;
 
 	int debug = 0;
@@ -198,6 +201,7 @@ int main(int argc, char **argv)
 	char * type = "groupList";
 	int hfi_num = 1;
 	int port_num = 1;
+	int ms_timeout = OMGT_DEF_TIMEOUT_MS;
 	char * oob_addr = NULL;
 
 	int select,start,range;
@@ -212,17 +216,20 @@ int main(int argc, char **argv)
 	STL_PA_IMAGE_ID_DATA response_id;
 
 	STL_PA_IMAGE_ID_DATA image_id_move = {0};
-	while (-1 != (c = getopt_long(argc, argv, "h:p:o:l:P:n:g:dUO:y:m:M:f:S:r:V:b:v$", options, &index))){
+	while (-1 != (c = getopt_long(argc, argv, "h:p:t:o:l:P:n:g:dUO:y:m:M:f:S:r:V:b:v$", options, &index))){
 		switch (c)
 		{
 			case '$':
 				Usage();
 				break;
 			case 'h':
-				hfi_num = strtoul(optarg, NULL, 0);
+				hfi_num = strtol(optarg, NULL, 0);
 				break;
 			case 'p':
-				port_num = strtoul(optarg, NULL, 0);
+				port_num = strtol(optarg, NULL, 0);
+				break;
+			case 't':
+				ms_timeout = strtol(optarg, NULL, 0);
 				break;
 			case 'o':
 				type = optarg;
@@ -303,13 +310,38 @@ int main(int argc, char **argv)
 		status = omgt_oob_connect(&port, &oob_input, &session_params);
 	} else {
 		status = omgt_open_port_by_num(&port, hfi_num, port_num, &session_params);
+
+		/* (Optional) Check if the PA Service is Operational
+		 * All PA queries will do an initial pa service state check if not already
+		 * operational, so this is more of a verbose sanity check.
+		 */
+		if (status == OMGT_STATUS_SUCCESS) {
+			status = omgt_port_get_pa_service_state(port, &pa_service_state, OMGT_REFRESH_SERVICE_ANY_STATE);
+			if (status == OMGT_STATUS_SUCCESS) {
+				if (pa_service_state != OMGT_SERVICE_STATE_OPERATIONAL) {
+					fprintf(stderr, "failed to connect, PA service state is Not Operational: %s (%d)\n",
+						omgt_service_state_totext(pa_service_state), pa_service_state);
+					exitcode = 1;
+					goto fail2;
+				}
+			} else {
+				fprintf(stderr, "failed to get and refresh PA service state: %s (%u)\n",
+					omgt_status_totext(status), status);
+				exitcode = 1;
+				goto fail2;
+			}
+		}
 	}
 
 	if (OMGT_STATUS_SUCCESS != status){
-		fprintf(stderr, "failed to open port\n");
+		fprintf(stderr, "failed to open port: %s (%u)\n",
+			omgt_status_totext(status), status);
 		exitcode=1;
 		goto fail1;
 	}
+
+	//set timeout for PA operations
+	omgt_set_timeout(port, ms_timeout);
 
 	void * pa_data;
 	//perform the requested operation

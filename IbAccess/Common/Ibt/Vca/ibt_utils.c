@@ -32,6 +32,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "imemory.h"
 #include "ib_debug.h"
 #include "ib_debug_osd.h"
+#include "ib_generalServices.h"
 
 #include "precomp.h"
 #define ALLOC_TAG VCA_MEM_TAG

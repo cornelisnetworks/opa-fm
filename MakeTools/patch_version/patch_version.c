@@ -88,15 +88,15 @@ and/or the product takes a long amount of time to compile.
 	// the string and returns it.
 	// It accepts no arguments and returns NULL if the string cannot
 	// be evaluated.
-	// The version number created can also be extracted by the Unix "what"
-	// command.
+	// The version number created can also be extracted by the strings command
+	// or the internal whatversion tool
 	//
 	#define ICS_BUILD_VERSION "THIS_IS_THE_ICS_VERSION_NUMBER:@(#)000.000.000.000B000"
 	const char* GetCodeVersion(void)
 	{
 		static const char* BuildVersion=ICS_BUILD_VERSION;
 		static char* version;
-		static built=0;
+		static int built=0;
 		if (!built)
 		{
 			// locate start of version string,
@@ -112,7 +112,7 @@ and/or the product takes a long amount of time to compile.
 	{
 		static const char* BuildBrand=ICS_BUILD_BRAND;
 		static char* brand;
-		static built=0;
+		static int built=0;
 		if (!built)
 		{
 			// locate start of brand string,

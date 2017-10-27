@@ -66,6 +66,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "cs_g.h"
 #include "vs_g.h"
 #include "cs_log.h"
+#include <stdarg.h>
 #define function __FUNCTION__
 #ifdef LOCAL_MOD_ID
 #undef LOCAL_MOD_ID
@@ -1416,3 +1417,47 @@ cs_parse_gid(const char * str, Gid_t gid)
 	IB_EXIT(__FUNCTION__, rc);
 	return rc;
 }
+
+/**********************************************************************
+*
+* DESCRIPTION
+*    Invokes snprintf to append the format string into the
+*    passed buffer.  Will adjust the provided buffer pointer
+*    to just beyond the concatenated portion, and decrement
+*    len accordingly, such that a chain of invocations function
+*    as appends.
+*
+* INPUTS
+*    buf - Pointer to the output buffer.  Will be incremented by
+*      the number of bytes written.
+*    len - Pointer to the remaining length.  Will be decremented by
+*      the number of bytes written.
+*    fmt - printf-style format string.
+*    ... - pritnf-style format string arguments.
+*
+* OUTPUTS
+*    Returns the return value of printf.
+*
+**********************************************************************/
+int cs_snprintfcat(char ** buf, size_t * len, char * fmt, ...)
+{
+	if (!buf || !len || !fmt || !*len)
+		return 0;
+
+	va_list(args);
+	va_start(args, fmt);
+	int n = vsnprintf(*buf, *len, fmt, args);
+	va_end(args);
+
+	if (n <= 0) return n;
+
+	// printf returns number of bytes that *would* be written.
+	// correct to actual bytes written
+	size_t m = MIN((size_t)n, *len);
+
+	*buf += m;
+	*len -= m;
+
+	return n;
+}
+

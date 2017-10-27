@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -32,8 +32,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef __STL_PRINT_H__
 #define __STL_PRINT_H__
 
-#include "iba/stl_sm.h"
-#include "iba/stl_sa.h"
+#include "iba/stl_mad_priv.h"
+#include "iba/stl_sm_priv.h"
+#include "iba/stl_sa_priv.h"
 #include "iba/stl_sd.h"
 #include "iba/stl_pm.h"
 #include "ibprint.h"
@@ -155,6 +156,7 @@ void PrintBfrCtlTableRecord(PrintDest_t *dest, int indent, const STL_BUFFER_CONT
 void PrintStlCableInfoRecord(PrintDest_t *dest, int indent, const STL_CABLE_INFO_RECORD *pCableInfoRecord);
 void PrintStlPortGroupTabRecord(PrintDest_t *dest, int indent, const STL_PORT_GROUP_TABLE_RECORD *pRecord);
 void PrintStlPortGroupFwdTabRecord(PrintDest_t *dest, int indent, const STL_PORT_GROUP_FORWARDING_TABLE_RECORD *pRecord);
+void PrintStlSwitchCostRecord(PrintDest_t *dest, int indent, const STL_SWITCH_COST_RECORD *pRecord);
 // len is real length of cable data
 void PrintStlPortSummary(PrintDest_t *dest, int indent, const char* portName, const STL_PORT_INFO *pPortInfo, EUI64 portGuid, uint16_t g_pkey, const uint8_t *cableInfoData, uint16_t addr, uint8_t len, const STL_PORT_STATUS_RSP *pPortStatusRsp, uint8_t detail, int printLineByLine);
 

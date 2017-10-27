@@ -66,6 +66,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef __VXWORKS__
 #include <opamgt_priv.h>
+#include <code_version.h>
 #endif
 
 #ifdef CAL_IBACCESS
@@ -261,9 +262,10 @@ VirtualFabrics_t *initialVfPtr  = NULL;
 VirtualFabrics_t *updatedVirtualFabrics = NULL;
 
 IBhandle_t	fd_sa;
-IBhandle_t	fd_sa_w;
+IBhandle_t	fd_sa_writer;
 IBhandle_t	fd_saTrap;
 IBhandle_t	fd_async;
+IBhandle_t	fd_async_request;
 IBhandle_t  fd_sminfo;
 IBhandle_t	fd_topology;
 IBhandle_t	fd_atopology;
@@ -649,7 +651,7 @@ sm_resolve_pkeys_for_vfs(VirtualFabrics_t *VirtualFabrics)
 				sm_masterSmSl = VirtualFabrics->v_fabric[vf].base_sl;
 			}
 		}
-		if (smCheckServiceId(vf, PM_SERVICE_ID, VirtualFabrics)) {
+		if (smCheckServiceId(vf, STL_PM_SERVICE_ID, VirtualFabrics)) {
 			if (PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey) != DEFAULT_PKEY) {
 				IB_LOG_ERROR_FMT_VF(VirtualFabrics->v_fabric[vf].name, __func__,
 					"VFabric has application PA selected, bad PKey configured 0x%x, must use Mgmt PKey.",
@@ -882,6 +884,14 @@ Status_t sm_parse_xml_config(void) {
 	}
 	sm_init_log_setting();
 	vs_log_output_message("Subnet Manager starting up.", TRUE);
+#ifndef __VXWORKS__
+    vs_log_output(VS_LOG_NONE, VIEO_NONE_MOD_ID, NULL, NULL,
+                    "SM: Version: %s", GetCodeVersion());
+    //vs_log_output(VS_LOG_NONE, VIEO_NONE_MOD_ID, NULL, NULL,
+    //                "SM: IntVersion: %s", GetCodeInternalVersion());
+    //vs_log_output(VS_LOG_NONE, VIEO_NONE_MOD_ID, NULL, NULL,
+    //                "SM: Brand: %s", GetCodeBrand());
+#endif
 
     // Print out XML SM debug settings that could really break SM
     if ((sm_config.forceAttributeRewrite!=0) || (sm_config.skipAttributeWrite!=0)) {
@@ -1670,8 +1680,8 @@ sm_main(void) {
 	}
 
 	// used by the SA to handle RMPP responses and acks
-	if ((status = mai_open(1, sm_config.hca, sm_config.port, &fd_sa_w)) != VSTATUS_OK) {
-		IB_FATAL_ERROR_NODUMP("can't open fd_sa_w");
+	if ((status = mai_open(1, sm_config.hca, sm_config.port, &fd_sa_writer)) != VSTATUS_OK) {
+		IB_FATAL_ERROR_NODUMP("can't open fd_sa_writer");
 	}
 
 	// used by the notice async context to handle SA reports (notices)
@@ -1682,6 +1692,11 @@ sm_main(void) {
 	// used by the async thread to catch traps and SMInfo requests
 	if ((status = mai_open(0, sm_config.hca, sm_config.port, &fd_async)) != VSTATUS_OK) {
 		IB_FATAL_ERROR_NODUMP("can't open fd_async");
+	}
+
+	// used by the SA (via async thread) to handle outbound queries (e.g. PortInfo in response to traps)
+	if ((status = mai_open(0, sm_config.hca, sm_config.port, &fd_async_request)) != VSTATUS_OK) {
+		IB_FATAL_ERROR_NODUMP("can't open fd_async_request");
 	}
 
 	// used by the fsm (via async thread) for SMInfo and PortInfo GETs
@@ -1711,7 +1726,8 @@ sm_main(void) {
 	}
 
 	IB_LOG_INFO("fd_sa", fd_sa);
-	IB_LOG_INFO("fd_sa_w", fd_sa_w);
+	IB_LOG_INFO("fd_sa_writer", fd_sa_writer);
+	IB_LOG_INFO("fd_async_request", fd_async_request);
 	IB_LOG_INFO("fd_saTrap", fd_saTrap);
 	IB_LOG_INFO("fd_async", fd_async);
 	IB_LOG_INFO("fd_sminfo", fd_sminfo);
@@ -2181,7 +2197,6 @@ smProcessReconfigureRequest(void){
 			}
 
 			if (configChanged) {
-
 				//Verify that no disruptive checksums have changed
 
 				if (!sm_config_valid(new_xml_config, newVirtualFabrics, oldVirtualFabrics) || !pm_config_valid(new_xml_config)) {
@@ -2216,14 +2231,17 @@ smProcessReconfigureRequest(void){
 
 					savedVfConsistencyChecksum = updatedVirtualFabrics->consistency_checksum;
 
+					//check if activating or deactivating a VF cause changes in mcgroups
+					IB_LOG_INFINI_INFO0("SM: Checking changes in MC groups");
+					sm_update_mc_groups( newVirtualFabrics, oldVirtualFabrics);
+
 					// Allow sweeps to run
 					(void)vs_unlock(&new_topology_lock);
 
 					/* Update our consistency checksums */
     				sm_dbsync_checksums(savedVfConsistencyChecksum,
                        					new_xml_config->fm_instance[sm_instance]->sm_config.consistency_checksum,
-                       					new_xml_config->fm_instance[sm_instance]->pm_config.consistency_checksum,
-                       					new_xml_config->fm_instance[sm_instance]->fe_config.consistency_checksum
+                       					new_xml_config->fm_instance[sm_instance]->pm_config.consistency_checksum
                                         );
 					sm_config.overall_checksum = new_xml_config->fm_instance[sm_instance]->sm_config.overall_checksum;
 		 			pm_config.overall_checksum = new_xml_config->fm_instance[sm_instance]->pm_config.overall_checksum;

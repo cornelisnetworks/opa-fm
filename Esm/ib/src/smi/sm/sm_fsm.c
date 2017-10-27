@@ -399,8 +399,8 @@ sm_fsm_standby(Mai_t *maip, char *nodename)
     long        new_state=-1;
     STL_SM_INFO    theirSmInfo;
 	STL_SM_INFO smInfoCopy;
-    Lid_t       slid=maip->addrInfo.slid;    // original source lid; mai_reply swaps slid-dlid
-    Lid_t       dlid=maip->addrInfo.dlid;    // original destination lid(us); mai_reply swaps slid-dlid
+    STL_LID       slid=maip->addrInfo.slid;    // original source lid; mai_reply swaps slid-dlid
+    STL_LID       dlid=maip->addrInfo.dlid;    // original destination lid(us); mai_reply swaps slid-dlid
 
 	IB_ENTER(__func__, maip->base.amod, 0, 0, 0);
 
@@ -560,8 +560,8 @@ sm_fsm_master(Mai_t *maip, char *nodename)
 	uint8_t		*path;
     int         i, wakeTpThread=0;
 	STL_SM_INFO 	smInfoCopy;
-    Lid_t       slid=maip->addrInfo.slid;    // original source lid; mai_reply swaps slid-dlid
-    Lid_t       dlid=maip->addrInfo.dlid;    // original destination lid(us); mai_reply swaps slid-dlid
+    STL_LID       slid=maip->addrInfo.slid;    // original source lid; mai_reply swaps slid-dlid
+    STL_LID       dlid=maip->addrInfo.dlid;    // original destination lid(us); mai_reply swaps slid-dlid
 
 	IB_ENTER(__func__, maip->base.amod, sm_state, 0, 0);
 
@@ -669,7 +669,7 @@ sm_fsm_discovering(Mai_t *maip, char *nodename)
 {
 	Status_t	status;
     STL_SM_INFO theirSmInfo;
-    Lid_t       slid=maip->addrInfo.slid;    // original source lid; mai_reply swaps slid-dlid
+    STL_LID       slid=maip->addrInfo.slid;    // original source lid; mai_reply swaps slid-dlid
 
 	IB_ENTER(__func__, maip->base.amod, sm_state, 0, 0);
 

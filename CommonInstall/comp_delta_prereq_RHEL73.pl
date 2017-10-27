@@ -68,10 +68,9 @@ my @intel_hfi_prereq = (
 		    "libhfi1",
                     "glibc",
                     "libgcc",
-                    "libuuid",
-                    "libuuid-devel",
                     "python",
                     "systemd",
+		    "numactl-libs",
                     "irqbalance",
 );
 $comp_prereq_hash{'intel_hfi_prereq'} = \@intel_hfi_prereq;

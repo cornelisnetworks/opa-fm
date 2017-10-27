@@ -30,7 +30,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 #include <stl_sd.h>
+#include <ib_sd_priv.h>
 #include <stl_types.h>
+#include <ib_generalServices.h>
 #include <dbg.h>
 #include <ilist.h>
 #include <ispinlock.h>

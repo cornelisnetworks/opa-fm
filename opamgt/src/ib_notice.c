@@ -55,8 +55,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "ib_utils_openib.h"
 #include "ib_notice_net.h"
-#include "opamgt_sa_priv.h"
 #include "iba/public/ibyteswap.h"
+#include "iba/stl_sa_types.h"
+#include "iba/stl_mad_priv.h"
 
 #define OMGT_SA_MAX_REGISTRANTS 10
 
@@ -69,6 +70,15 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     ((type *) ((void *) ptr - offsetof(type, field)))
 #endif
 
+struct ibv_sa_event {
+	void *context;
+	int status;
+	int attr_count;
+	int attr_size;
+	int attr_offset;
+	uint16_t attr_id;
+	void *attr;
+};
 struct omgt_sa_event {
     struct ibv_sa_event event;
     struct ibv_sa_event_channel *channel;
@@ -199,7 +209,7 @@ static void free_sa_msg(struct omgt_sa_msg *msg)
  *  
  * @return       none 
  */
-static void omgt_sa_add_reg_unsafe(struct omgt_port *port, omgt_sa_registration_t *reg)
+void omgt_sa_add_reg_unsafe(struct omgt_port *port, omgt_sa_registration_t *reg)
 {
 	reg->next = port->regs_list;
 	port->regs_list = reg;
@@ -213,44 +223,45 @@ static void set_sa_msg_tid(struct omgt_port *port, struct umad_sa_packet *sa_pkt
     sa_pkt->mad_hdr.tid = htonll((uint64_t)port->next_tid);
 }
 
-static void set_sa_common_inform_info(struct omgt_port *port, struct umad_sa_packet *sa_pkt)
+static void set_sa_common_stl_inform_info(struct omgt_port *port, struct umad_sa_packet *sa_pkt)
 {
-    struct ibv_sa_net_inform_info *ii;
+	STL_INFORM_INFO *informinfo;
 
-    sa_pkt->mad_hdr.base_version = UMAD_BASE_VERSION;
-    sa_pkt->mad_hdr.mgmt_class = UMAD_CLASS_SUBN_ADM;
-    sa_pkt->mad_hdr.class_version = UMAD_SA_CLASS_VERSION;
-    sa_pkt->mad_hdr.method = UMAD_METHOD_SET;
-    sa_pkt->mad_hdr.attr_id = htons(UMAD_ATTR_INFORM_INFO);
+    sa_pkt->mad_hdr.base_version = STL_BASE_VERSION;
+    sa_pkt->mad_hdr.mgmt_class = MCLASS_SUBN_ADM;
+    sa_pkt->mad_hdr.class_version = STL_SA_CLASS_VERSION;
+    sa_pkt->mad_hdr.method = MMTHD_SET;
+    sa_pkt->mad_hdr.attr_id = hton16(STL_MCLASS_ATTRIB_ID_INFORM_INFO);
 
     sa_pkt->rmpp_hdr.rmpp_version = UMAD_RMPP_VERSION;
     sa_pkt->rmpp_hdr.rmpp_type = 0;
 
-    ii = (struct ibv_sa_net_inform_info *)sa_pkt->data;
+    informinfo = (STL_INFORM_INFO *)sa_pkt->data;
 
-    ii->lid_range_begin = htons(0xffff);
-    ii->is_generic = 1;
-    ii->type = htons(0xffff);
-    ii->producer_type_vendor_id = htonl(0xffffff);
+    informinfo->LIDRangeBegin = UINT32_MAX;
+    informinfo->IsGeneric = 1;
+	informinfo->Type = UINT16_MAX;
+    informinfo->u.Generic.u2.s.ProducerType = 0xFFFFFF;
 }
 
-static void set_sa_common_response_notice(struct omgt_port *port, struct umad_sa_packet *sa_pkt)
+static void set_sa_common_stl_response_notice(struct omgt_port *port, struct umad_sa_packet *sa_pkt)
 {
-    struct ibv_sa_net_notice *nn;
+    STL_NOTICE *notice;
 
-    sa_pkt->mad_hdr.base_version = UMAD_BASE_VERSION;
-    sa_pkt->mad_hdr.mgmt_class = UMAD_CLASS_SUBN_ADM;
-    sa_pkt->mad_hdr.class_version = UMAD_SA_CLASS_VERSION;
-    sa_pkt->mad_hdr.method = UMAD_METHOD_REPORT_RESP;
-    sa_pkt->mad_hdr.attr_id = htons(UMAD_ATTR_NOTICE);
+    sa_pkt->mad_hdr.base_version = STL_BASE_VERSION;
+    sa_pkt->mad_hdr.mgmt_class = MCLASS_SUBN_ADM;
+    sa_pkt->mad_hdr.class_version = STL_SA_CLASS_VERSION;
+    sa_pkt->mad_hdr.method = MMTHD_REPORT_RESP;
+    sa_pkt->mad_hdr.attr_id = hton16(STL_MCLASS_ATTRIB_ID_NOTICE);
 
     sa_pkt->rmpp_hdr.rmpp_version = UMAD_RMPP_VERSION;
     sa_pkt->rmpp_hdr.rmpp_type = 0;
 
-    nn = (struct ibv_sa_net_notice *)sa_pkt->data;
+    notice = (STL_NOTICE *)sa_pkt->data;
 
     // if the Type is set to 0x7f (empty) all other fields are unused
-    nn->generic_type_producer = htonl(0x7f000000);
+	notice->Attributes.Generic.u.AsReg32 = 0;
+	notice->Attributes.Generic.u.s.Type = 0x7f;
 }
 
 static void post_send_sa_msg(struct omgt_port *port,
@@ -346,15 +357,15 @@ find_req_by_tid(struct omgt_port *port, uint32_t tid)
 static void process_sa_get_resp(struct omgt_port *port, struct umad_sa_packet *sa_pkt)
 {
     struct omgt_sa_msg *req;
-    struct ibv_sa_net_inform_info *ii = (struct ibv_sa_net_inform_info *)sa_pkt->data;
-    uint16_t trap_num = ntohs(ii->trap_num_device_id);
+    STL_INFORM_INFO *informinfo = (STL_INFORM_INFO *)sa_pkt->data;
+    uint16_t trap_num = ntoh16(informinfo->u.Generic.TrapNumber);
 
     omgt_lock_sem(&port->lock);
 
     /* find the registration for this response */
     req = find_req_by_tid(port, ntohll(sa_pkt->mad_hdr.tid) & 0xffffffff);
     if (req) {
-        if (ii->subscribe == 1) {
+        if (informinfo->Subscribe == 1) {
             OMGT_DBGPRINT(port, "registration complete for trap %d; req %p\n", trap_num, req);
         } else {
             OMGT_DBGPRINT(port, "UN-registration complete for trap %d; req %p\n", trap_num, req);
@@ -384,12 +395,12 @@ static void process_sa_report(struct omgt_port *port, struct umad_sa_packet *sa_
     struct umad_sa_packet *response_pkt;
     struct ibv_send_wr *bad_wr;
 
-    struct ibv_sa_net_notice *nn = (struct ibv_sa_net_notice *)sa_pkt->data;
-    struct ibv_sa_net_notice_data_gid *nngd = (struct ibv_sa_net_notice_data_gid *)&nn->data_details[0];
+    STL_NOTICE *notice = (STL_NOTICE *)sa_pkt->data;
+    STL_TRAP_GID *notice_gid = (STL_TRAP_GID *)&notice->Data[0];
     struct omgt_thread_msg thread_msg;
     struct iovec iov[2];
     size_t write_count, write_size;
-    uint16_t trap_num = ntohs(nn->trap_num_device_id);
+    uint16_t trap_num = ntoh16(notice->Attributes.Generic.TrapNumber);
 
     // create and send ReportResp to trap notify
     if (omgt_lock_sem(&port->lock)) {
@@ -400,10 +411,13 @@ static void process_sa_report(struct omgt_port *port, struct umad_sa_packet *sa_
     response_msg = alloc_send_sa_msg(port);
     if (response_msg)
     {
+		STL_NOTICE *notice_resp;
         int rc;
         memset(response_msg->data, 0, sizeof(response_msg->data));
         response_pkt = (struct umad_sa_packet *)response_msg->data;
-        set_sa_common_response_notice(port, response_pkt);
+        set_sa_common_stl_response_notice(port, response_pkt);
+		notice_resp = (STL_NOTICE *)response_pkt->data;
+		BSWAP_STL_NOTICE(notice_resp);
         response_pkt->mad_hdr.tid = sa_pkt->mad_hdr.tid;
 
         if ((rc = ibv_post_send(port->sa_qp, &(response_msg->wr.send), &bad_wr)) != 0) {
@@ -415,13 +429,13 @@ static void process_sa_report(struct omgt_port *port, struct umad_sa_packet *sa_
     }
     omgt_unlock_sem(&port->lock);
 
-    thread_msg.size = sizeof *nn;
+    thread_msg.size = sizeof *notice;
     thread_msg.evt  = OMGT_TH_EVT_TRAP_MSG;
 
 	iov[0].iov_base = &thread_msg;
 	iov[0].iov_len  = sizeof thread_msg;
-	iov[1].iov_base = nn;
-	iov[1].iov_len  = sizeof *nn;
+	iov[1].iov_base = notice;
+	iov[1].iov_len  = sizeof *notice;
 	write_size = iov[0].iov_len + iov[1].iov_len;
 
     if ( write_size !=
@@ -429,7 +443,8 @@ static void process_sa_report(struct omgt_port *port, struct umad_sa_packet *sa_
          OMGT_OUTPUT_ERROR(port, "bad write count %d\n", (int)write_count);
 
     OMGT_DBGPRINT(port, "process_sa_report: msg queued - trap %d gid %02x%02x%02x%02x%02x%02x%02x%02x\n",
-     trap_num, nngd->gid[8],nngd->gid[9],nngd->gid[10],nngd->gid[11],nngd->gid[12],nngd->gid[13],nngd->gid[14],nngd->gid[15]);
+		trap_num, notice_gid->Gid.Raw[8], notice_gid->Gid.Raw[9], notice_gid->Gid.Raw[10], notice_gid->Gid.Raw[11],
+		notice_gid->Gid.Raw[12], notice_gid->Gid.Raw[13], notice_gid->Gid.Raw[14], notice_gid->Gid.Raw[15]);
 }
 
 static void process_sa_rcv_msg(struct omgt_port *port, struct omgt_sa_msg *msg)
@@ -628,7 +643,7 @@ int stop_ud_cq_monitor(struct omgt_port *port)
     return 0;
 }
 
-static int create_sa_qp(struct omgt_port *port)
+int create_sa_qp(struct omgt_port *port)
 {
     int i;
     int flags, rc;
@@ -772,12 +787,11 @@ static int start_outstanding_req_timer(struct omgt_port *port)
 /**
  * port->lock must be held
  */
-static int userspace_register(struct omgt_port *port, uint16_t trap_num,
-							omgt_sa_registration_t *reg)
+int userspace_register(struct omgt_port *port, uint16_t trap_num, omgt_sa_registration_t *reg)
 {
     struct omgt_sa_msg *sa_msg;
     struct umad_sa_packet *sa_pkt;
-    struct ibv_sa_net_inform_info *ii;
+	STL_INFORM_INFO *informinfo;
 
     sa_msg = alloc_send_sa_msg(port);
     if (!sa_msg)
@@ -785,11 +799,12 @@ static int userspace_register(struct omgt_port *port, uint16_t trap_num,
 
     memset(sa_msg->data, 0, sizeof(sa_msg->data));
     sa_pkt = (struct umad_sa_packet *)sa_msg->data;
-    set_sa_common_inform_info(port, sa_pkt);
-    ii = (struct ibv_sa_net_inform_info *)sa_pkt->data;
-    ii->subscribe = 1;
-    ii->trap_num_device_id = htons(trap_num);
-    ii->qpn_resptime = htonl(19);
+    set_sa_common_stl_inform_info(port, sa_pkt);
+    informinfo = (STL_INFORM_INFO *)sa_pkt->data;
+    informinfo->Subscribe = 1;
+    informinfo->u.Generic.TrapNumber = trap_num;
+    informinfo->u.Generic.u1.s.RespTimeValue = 19;
+	BSWAP_STL_INFORM_INFO(informinfo);
 
     LIST_ADD(&port->pending_reg_msg_head, sa_msg);
 
@@ -812,7 +827,7 @@ static int userspace_unregister(struct omgt_port *port, omgt_sa_registration_t *
 {
     struct omgt_sa_msg *sa_msg;
     struct umad_sa_packet *sa_pkt;
-    struct ibv_sa_net_inform_info *ii;
+	STL_INFORM_INFO *informinfo;
     uint16_t trap_num;
 
     if (reg->reg_msg) {
@@ -831,11 +846,13 @@ static int userspace_unregister(struct omgt_port *port, omgt_sa_registration_t *
     trap_num = reg->trap_num;
     memset(sa_msg->data, 0, sizeof(sa_msg->data));
     sa_pkt = (struct umad_sa_packet *)sa_msg->data;
-    set_sa_common_inform_info(port, sa_pkt);
-    ii = (struct ibv_sa_net_inform_info *)sa_pkt->data;
-    ii->subscribe = 0;
-    ii->trap_num_device_id = htons(trap_num);
-    ii->qpn_resptime = htonl((port->sa_qp->qp_num << 8) | 19);
+    set_sa_common_stl_inform_info(port, sa_pkt);
+    informinfo = (STL_INFORM_INFO *)sa_pkt->data;
+    informinfo->Subscribe = 0;
+    informinfo->u.Generic.TrapNumber = trap_num;
+    informinfo->u.Generic.u1.s.RespTimeValue = 19;
+    informinfo->u.Generic.u1.s.QPNumber = port->sa_qp->qp_num;
+	BSWAP_STL_INFORM_INFO(informinfo);
 
     LIST_ADD(&port->pending_reg_msg_head, sa_msg);
 
@@ -862,7 +879,7 @@ static int userspace_unregister(struct omgt_port *port, omgt_sa_registration_t *
  *
  * @return          0 if success, else error code
  */
-static FSTATUS omgt_sa_remove_reg_by_trap_unsafe(struct omgt_port *port, uint16_t trap_num)
+FSTATUS omgt_sa_remove_reg_by_trap_unsafe(struct omgt_port *port, uint16_t trap_num)
 {
 	omgt_sa_registration_t *curr = port->regs_list, *prev = NULL;
 	while (curr != NULL) {
@@ -881,57 +898,6 @@ static FSTATUS omgt_sa_remove_reg_by_trap_unsafe(struct omgt_port *port, uint16_
 	}
 
 	return FERROR;
-}
-
-/**
- * Get the buffer counts for QP creation.
- */
-FSTATUS omgt_get_sa_buf_cnt(struct omgt_port *port, int *send_cnt, int *recv_cnt)
-{
-    FSTATUS status = FTIMEOUT;
-    if (omgt_lock_sem(&port->lock)) {
-        OMGT_OUTPUT_ERROR(port, "failed to acquire lock (status: %d)\n", status);
-        return status;
-    }
-    status = FSUCCESS;
-
-    if (send_cnt)
-        *send_cnt = port->num_userspace_send_buf;
-    if (recv_cnt)
-        *recv_cnt = port->num_userspace_recv_buf;
-
-    omgt_unlock_sem(&port->lock);
-
-    return status;
-}
-
-/**
- * Set the buffer counts for QP creation.
- */
-FSTATUS omgt_set_sa_buf_cnt(struct omgt_port *port, int send_cnt, int recv_cnt)
-{
-    FSTATUS status = FTIMEOUT;
-    if (omgt_lock_sem(&port->lock)) {
-        OMGT_OUTPUT_ERROR(port, "failed to acquire lock (status: %d)\n", status);
-        return status;
-    }
-    status = FSUCCESS;
-
-    if (port->sa_qp){
-       OMGT_OUTPUT_ERROR(port, "Cannot modify port buffer counts once a trap is registered.\n");
-        status = FERROR;
-        goto buf_cnt_too_late;
-    }
-
-    if (send_cnt)
-        port->num_userspace_send_buf = send_cnt;
-    if (recv_cnt)
-        port->num_userspace_recv_buf = recv_cnt;
-
-buf_cnt_too_late:
-    omgt_unlock_sem(&port->lock);
-
-    return status;
 }
 
 /**
@@ -977,268 +943,4 @@ int reregister_traps(struct omgt_port *port)
 
     omgt_unlock_sem(&port->lock);
     return 0;
-}
-
-/**
- * Find a previous registration
- *
- * @return          0 if success, else error code
- */
-static omgt_sa_registration_t *omgt_sa_find_reg(struct omgt_port *port, uint16_t trap_num)
-{
-    omgt_sa_registration_t *curr = port->regs_list;
-    while (curr != NULL) {
-        if (curr->trap_num == trap_num) {
-            return curr;
-        }
-        curr = curr->next;
-    }
-    return NULL;
-}
-
-/**
- * Initiates a registration for the specified trap.
- *  
- * @param port      port opened by omgt_open_port_*
- * @param trap_num  The trap number to register for 
- * @param port_num  port number requesting trap 
- * @param context   optional opaque info 
- *  
- * @return   0 if success, else error code
- */
-FSTATUS omgt_sa_register_trap(struct omgt_port *port, 
-							 uint16_t trap_num,
-							 void *context)
-{
-	FSTATUS status;
-	int ret;
-	omgt_sa_registration_t *reg;
-
-    reg = (omgt_sa_registration_t *)calloc(1, sizeof *reg);
-	if (reg == NULL) {
-		OMGT_OUTPUT_ERROR(port, "failed to allocate reg structure\n");
-		return FERROR;
-	}
-
-	status = FTIMEOUT;
-    if (omgt_lock_sem(&port->lock)) {
-		OMGT_OUTPUT_ERROR(port, "failed to acquire lock (status: %d)\n", status);
-		free(reg);
-        return (FERROR);
-    }
-
-    if (omgt_sa_find_reg(port, trap_num)) {
-        omgt_unlock_sem(&port->lock);
-        free(reg);
-        return FSUCCESS;
-    }
-
-    if ((ret = create_sa_qp(port)) != 0) {
-        omgt_unlock_sem(&port->lock);
-        OMGT_OUTPUT_ERROR(port, "failed to create notice QP for trap (%u) registration (status: %d)\n",
-                     trap_num, ret);
-    }
-    else if ((ret = userspace_register(port, trap_num, reg)) != 0) {
-        omgt_unlock_sem(&port->lock);
-        OMGT_OUTPUT_ERROR(port, "failed to register for trap (%u) (status: %d)\n",
-                     trap_num, ret);
-    }
-
-    if (ret) {
-        free(reg);
-        return FERROR;
-    }
-	
-    reg->user_context = context;
-	reg->trap_num = trap_num;
-	omgt_sa_add_reg_unsafe(port, reg);
-	
-    omgt_unlock_sem(&port->lock);
-	return FSUCCESS;
-}
-
-/**
- * Unregisters for the specified trap.
- *  
- * @param port      port opened by omgt_open_port_*
- * @param trap_num  The trap number to unregister 
- *  
- * @return 
- */
-FSTATUS omgt_sa_unregister_trap(struct omgt_port *port, uint16_t trap_num)
-{
-	FSTATUS status;
-	status = FTIMEOUT;
-
-    if (omgt_lock_sem(&port->lock))
-        return (FERROR);
-	
-	status = omgt_sa_remove_reg_by_trap_unsafe(port, trap_num);
-	
-	omgt_unlock_sem(&port->lock);
-	return status;
-}
-
-/**
- * Fetches the next available notice.  Blocks in kernel (interrupted on
- * process signal).
- *
- * @param port      port opened by omgt_open_port_*
- * @param target_buf     Pointer to buffer to place notice into
- * @param buf_size       Size of the target buffer
- * @param bytes_written  OUTPUT: Set to the number of bytes written
- *  					 written into the buffer
- *
- * @return   0 if success, else error code
- */
-FSTATUS omgt_sa_get_event(struct omgt_port *port, void *target_buf,
-						 size_t buf_size, int *bytes_written)
-{
-    int rc;
-    int s;
-    struct pollfd pollfd[1];
-    struct omgt_thread_msg *msg;
-    struct ibv_sa_net_notice *nn;
-    uint8_t rdbuf[2048];
-
-    pollfd[0].fd = port->umad_port_sv[0];
-    pollfd[0].events = POLLIN;
-    pollfd[0].revents = 0;
-
-    if ((rc = poll(pollfd, 1, -1)) < 0) {
-       OMGT_OUTPUT_ERROR(port, "trap poll failed : %s\n", strerror(errno));
-        return FERROR;
-    }
-    else if (pollfd[0].revents & POLLIN) {
-        s = read(port->umad_port_sv[0], rdbuf, sizeof rdbuf);
-        if (s <= 0) {
-           OMGT_OUTPUT_ERROR(port, "user event read failed : %s\n", strerror(errno));
-            return FERROR;
-        }
-
-        msg = (struct omgt_thread_msg *)rdbuf;
-        if (OMGT_TH_EVT_TRAP_MSG == msg->evt) {
-	        if ( msg->size > buf_size)
-	            msg->size = buf_size;
-
-	        memcpy(target_buf, (rdbuf + sizeof *msg), msg->size);
-	        *bytes_written = msg->size;
-
-	        nn = (struct ibv_sa_net_notice *)target_buf;
-            OMGT_DBGPRINT(port, "trap message %u: %d bytes\n", ntohs(nn->trap_num_device_id), (int)(msg->size));
-        }
-        else if (OMGT_TH_EVT_TRAP_REG_ERR_TIMEOUT == msg->evt) {
-	        if ( msg->size > buf_size)
-	            msg->size = buf_size;
-
-	        memcpy(target_buf, (rdbuf + sizeof *msg), msg->size);
-	        *bytes_written = msg->size;
-
-	        OMGT_DBGPRINT(port, "registration of trap message timed out\n");
-	        return FTIMEOUT;
-        }
-    	else {
-           OMGT_OUTPUT_ERROR(port, "user event read invalid message.\n");
-            return FERROR;
-        }
-    }
-    else {
-        OMGT_DBGPRINT(port, "trap poll unexpected result : %d\n", pollfd[0].revents);
-        return FERROR;
-    }
-
-    return FSUCCESS;
-}
-
-/**
- * Fetches the next available notice.  Blocks (interrupted on
- * process signal).
- *
- * @param port       port opened by omgt_open_port_*
- * @param event      Pointer to structure to place event notice into
- *
- * @return   0 if success, else error code
- */
-FSTATUS omgt_get_sa_event(struct omgt_port *port, struct ibv_sa_event **event)
-{
-    struct ibv_sa_event_channel *channel;
-    struct omgt_sa_event *evt;
-    uint8_t target_buf[2048];
-    int bytes_written;
-    omgt_sa_registration_t *reg;
-    struct ibv_sa_net_notice *nn;
-    uint16_t trap_num;
-    FSTATUS ret;
-
-    channel = port->channel;
-
-    evt = (struct omgt_sa_event *)calloc(1, sizeof *evt);
-    if (!evt)
-        return ENOMEM;
-    else
-        *event = &evt->event;
-
-    ret = omgt_sa_get_event(port, target_buf,
-                           sizeof target_buf, &bytes_written);
-    if ( FSUCCESS == ret) {
-	    nn = (struct ibv_sa_net_notice *)target_buf;
-	    trap_num = ntohs(nn->trap_num_device_id);
-
-	    evt->channel = channel;
-	    evt->event.status = 0;
-	    reg = omgt_sa_find_reg(port, trap_num);
-	    if (NULL == reg) {
-		    evt->event.context = NULL;
-	    } else {
-    	    evt->event.context = reg->user_context;
-	    }
-	    evt->event.attr_id = IBV_SA_ATTR_NOTICE;
-
-	    if (bytes_written) {
-	        evt->data = malloc(bytes_written);
-	        if (!evt->data) {
-	            ret = FINSUFFICIENT_MEMORY;
-	            goto err;
-	        }
-
-	        memcpy(evt->data, target_buf, bytes_written);
-			(*event)->attr = evt->data;
-			(*event)->attr_size = bytes_written;
-			(*event)->attr_count = 1;
-	    }
-	    
-	    return FSUCCESS;
-    }
-    else if (FTIMEOUT == ret) {
-    	reg = (omgt_sa_registration_t *)target_buf;
-    	
-    	evt->data = NULL;
-	    evt->channel = channel;
-    	evt->event.context = reg->user_context;
-	    evt->event.attr_id = IBV_SA_ATTR_INFORM_INFO;
-	    evt->event.status = -ETIMEDOUT;
-	    return FSUCCESS;
-    }
-    ret = FERROR;
-err:
-    free(evt);
-    return ret;
-}
-
-/**
- * Clean up ibv_sa_event structure
- *
- * @param event      Pointer to structure to place event notice into
- *
- * @return   0 if success, else error code
- */
-FSTATUS omgt_ack_sa_event(struct ibv_sa_event *event)
-{
-    struct omgt_sa_event *evt = container_of(event, struct omgt_sa_event, event);
-
-    if (evt->data)
-        free(evt->data);
-
-    free(event);
-    return FSUCCESS;
 }

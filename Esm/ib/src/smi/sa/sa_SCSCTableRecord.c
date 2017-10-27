@@ -105,7 +105,7 @@ sa_SCSCTableRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 }
 
 Status_t
-sa_SCSCTableRecord_Set(uint8_t *slp, Node_t *nodep, Port_t *in_portp, Port_t *out_portp, Lid_t lid) {
+sa_SCSCTableRecord_Set(uint8_t *slp, Node_t *nodep, Port_t *in_portp, Port_t *out_portp, STL_LID lid) {
 	STL_SC_MAPPING_TABLE_RECORD scSCTableRecord;
 	int i;
 
@@ -158,8 +158,8 @@ sa_SCSCTableRecord_GetTable(Mai_t *maip, uint32_t *records) {
 	bool_t		checkLid;
 	bool_t		checkInPort;
 	bool_t		checkOutPort;
-	Lid_t		lid = 0;
-	Lid_t		portLid=0;
+	STL_LID		lid = 0;
+	STL_LID		portLid=0;
 	uint16_t	inPort=0;
 	uint16_t	outPort=0;
 

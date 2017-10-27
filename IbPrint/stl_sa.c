@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -39,7 +39,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdarg.h>
 #include "stl_print.h"
 #include <iba/stl_helper.h>
-#include <iba/stl_sa.h>
+#include <iba/stl_sa_priv.h>
 
 #define SIZE_TIME 256   // used in buffer to generate time string for output
 
@@ -329,8 +329,8 @@ void PrintStlVfInfoRecord_detail(PrintDest_t *dest, int indent, int detail,
 					slStr,
 					pVfInfo->s1.selectFlags,
 					pVfInfo->s1.selectFlags? ":" : "",
-					(pVfInfo->s1.selectFlags&VEND_PKEY_SEL) ? "PKEY " : "",
-					(pVfInfo->s1.selectFlags&VEND_SL_SEL) ? "SL ": "",
+					(pVfInfo->s1.selectFlags&STL_VFINFO_REC_SEL_PKEY_QUERY) ? "PKEY " : "",
+					(pVfInfo->s1.selectFlags&STL_VFINFO_REC_SEL_SL_QUERY) ? "SL ": "",
 					pVfInfo->s1.pktLifeSpecified? buf: "unspecified");
 
 		if (pVfInfo->s1.mtuSpecified) {
@@ -347,13 +347,13 @@ void PrintStlVfInfoRecord_detail(PrintDest_t *dest, int indent, int detail,
 		PrintFunc(dest, "%*sOptions: 0x%02x%s %s%s%s\n", indent, "",
 					pVfInfo->optionFlags,
 					pVfInfo->optionFlags? ":" : "",
-					(pVfInfo->optionFlags&OPT_VF_SECURITY) ? "Security " : "",
-					(pVfInfo->optionFlags&OPT_VF_QOS) ? "QoS " : "",
-					(pVfInfo->optionFlags&OPT_VF_FLOW_DISABLE) ? "FlowCtrlDisable" : "");
+					(pVfInfo->optionFlags&STL_VFINFO_REC_OPT_SECURITY) ? "Security " : "",
+					(pVfInfo->optionFlags&STL_VFINFO_REC_OPT_QOS) ? "QoS " : "",
+					(pVfInfo->optionFlags&STL_VFINFO_REC_OPT_FLOW_DISABLE) ? "FlowCtrlDisable" : "");
 
 		FormatTimeoutMult(buf, pVfInfo->hoqLife);
 
-		if (pVfInfo->optionFlags&OPT_VF_QOS) {
+		if (pVfInfo->optionFlags&STL_VFINFO_REC_OPT_QOS) {
 			if (pVfInfo->priority) {
 				if (pVfInfo->bandwidthPercent) {
 					PrintFunc(dest,"%*sQOS: Bandwidth: %3d%%  Priority: %s  PreemptionRank: %u  HoQLife: %s\n",
@@ -585,6 +585,15 @@ void PrintStlPortGroupFwdTabRecord(PrintDest_t *dest, int indent, const STL_PORT
 
 	PrintFunc(dest, "%*sSwitch LID: 0x%08x BlockNum: %6u\n", indent, "", pRecord->RID.LID, pRecord->RID.u1.s.BlockNum);
 	PrintStlPortGroupFDB(dest, indent+4, (STL_PORT_GROUP_FORWARDING_TABLE *) pRecord->PGFdbData, pRecord->RID.u1.s.BlockNum, 0);
+}
+
+void PrintStlSwitchCostRecord(PrintDest_t *dest, int indent, const STL_SWITCH_COST_RECORD *pRecord)
+{
+	int i;
+	PrintFunc(dest, "%*sSource LID: 0x%08x\n", indent, "", pRecord->SLID);
+	for(i = 0; (i < STL_SWITCH_COST_NUM_ENTRIES) && (pRecord->Cost[i].DLID != 0); ++i){
+		PrintFunc(dest, "%*sLID: 0x%08x -> Cost: %u\n", indent+4, "", pRecord->Cost[i].DLID, pRecord->Cost[i].value);
+	}
 }
 
 #define HEXTOCHAR(c) ((isgraph(c)||(c)==' ')?(c):'.')

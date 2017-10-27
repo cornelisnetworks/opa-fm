@@ -324,7 +324,7 @@ BmaAddDevice(
 	if (!g_BmaGlobalInfo->binitsuccess)
 	{
 		// Create the datagram pool
-		BufferSize = sizeof(PERF_MAD);
+		BufferSize = sizeof(MAD);
 		status = iba_gsi_create_dgrm_pool(g_BmaGlobalInfo->GsaHandle,
 								g_BmaSettings.MaxNDgrm,
 								1,

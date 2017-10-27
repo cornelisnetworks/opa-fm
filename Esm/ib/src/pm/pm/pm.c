@@ -51,8 +51,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sm_l.h"
 #include "sm_dbsync.h"
 #include "pm_topology.h"
-#include "iba/ib_pa.h"
-#include "iba/stl_pa.h"
+#include "iba/stl_pa_priv.h"
 
 #ifdef __LINUX__
 #define static
@@ -379,9 +378,9 @@ Status_t doRegisterPM(uint8_t masterPm)
     uint32_t rc;
     uint64_t lease;
     uint16_t flags;
-    uint8_t pmState = (masterPm) ? PM_MASTER : PM_STANDBY;
-    uint64_t pmSrvId = (masterPm) ? PM_SERVICE_ID : PM_SERVICE_ID_SEC;
-    char *pmSrvNm = (masterPm) ? PM_SERVICE_NAME : PM_SERVICE_NAME_SEC;
+    uint8_t pmState = (masterPm) ? STL_PM_MASTER : STL_PM_STANDBY;
+    uint64_t pmSrvId = (masterPm) ? STL_PM_SERVICE_ID : STL_PM_SERVICE_ID_SEC;
+    char *pmSrvNm = (masterPm) ? STL_PM_SERVICE_NAME : STL_PM_SERVICE_NAME_SEC;
 
 
     lease = 2 * pm_interval;
@@ -391,7 +390,7 @@ Status_t doRegisterPM(uint8_t masterPm)
 	vs_unlock(&smRecords.smLock);
 
     BuildRecord(&pmServRer, (void *)pmSrvNm, pmSrvId, flags, lease,
-			    PmEngineRunning() ? PM_VERSION : 0,
+			    PmEngineRunning() ? STL_PM_VERSION : 0,
 				PmEngineRunning() ? pmState : 0);
     rc = vfi_mngr_register(pm_fd, vfi_mclass, VFI_DEFAULT_GUID, &pmServRer,
                            VFI_SVRREC_GID | VFI_SVREC_NAME | VFI_SVRREC_ID, VFI_REGFORCE_FABRIC);
@@ -429,7 +428,7 @@ registerPM(void)
 
     memset((void *)&pmServRer, 0, sizeof(pmServRer));
     memset((void *)&pathr[0], 0, sizeof(pathr));
-    BuildRecord(&pmServRer, (void *)PM_SERVICE_NAME, PM_SERVICE_ID, flags, lease, PM_VERSION, PM_MASTER);
+    BuildRecord(&pmServRer, (void *)STL_PM_SERVICE_NAME, STL_PM_SERVICE_ID, flags, lease, STL_PM_VERSION, STL_PM_MASTER);
 
     rc = vfi_mngr_find_cmp(pm_fd, vfi_mclass,
                            VFI_LMC_BASELID, &pmServRer,
@@ -931,20 +930,20 @@ pm_main()
                    "Received cmd 0x%.8x  insize %d", cmd, insize);
             switch (cmd)
             {
-	    	case PA_ATTRID_GET_CLASSPORTINFO:
-	    	case PA_ATTRID_GET_GRP_CFG:
-	    	case PA_ATTRID_GET_GRP_INFO:
-	    	case PA_ATTRID_GET_GRP_LIST:
-	    	case PA_ATTRID_GET_PORT_CTRS:
-	    	case PA_ATTRID_CLR_PORT_CTRS:
-	    	case PA_ATTRID_CLR_ALL_PORT_CTRS:
-	    	case PA_ATTRID_GET_PM_CONFIG:
-	    	case PA_ATTRID_FREEZE_IMAGE:
-	    	case PA_ATTRID_RELEASE_IMAGE:
-	    	case PA_ATTRID_RENEW_IMAGE:
-	    	case PA_ATTRID_GET_FOCUS_PORTS:
-	    	case PA_ATTRID_GET_IMAGE_INFO:
-	    	case PA_ATTRID_MOVE_FREEZE_FRAME:
+	    	case STL_PA_ATTRID_GET_CLASSPORTINFO:
+	    	case STL_PA_ATTRID_GET_GRP_CFG:
+	    	case STL_PA_ATTRID_GET_GRP_INFO:
+	    	case STL_PA_ATTRID_GET_GRP_LIST:
+	    	case STL_PA_ATTRID_GET_PORT_CTRS:
+	    	case STL_PA_ATTRID_CLR_PORT_CTRS:
+	    	case STL_PA_ATTRID_CLR_ALL_PORT_CTRS:
+	    	case STL_PA_ATTRID_GET_PM_CONFIG:
+	    	case STL_PA_ATTRID_FREEZE_IMAGE:
+	    	case STL_PA_ATTRID_RELEASE_IMAGE:
+	    	case STL_PA_ATTRID_RENEW_IMAGE:
+	    	case STL_PA_ATTRID_GET_FOCUS_PORTS:
+	    	case STL_PA_ATTRID_GET_IMAGE_INFO:
+	    	case STL_PA_ATTRID_MOVE_FREEZE_FRAME:
 	    	case STL_PA_ATTRID_GET_VF_LIST:
 	    	case STL_PA_ATTRID_GET_VF_INFO:
 	    	case STL_PA_ATTRID_GET_VF_CONFIG:

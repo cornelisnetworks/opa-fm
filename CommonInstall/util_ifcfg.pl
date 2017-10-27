@@ -43,6 +43,7 @@ use strict;
 # used for IPoIB at present but generalized so could support VNIC or
 # iPathEther also
 
+my $FirstIPoIBInterface=0; # first device is ib0
 my $MAX_HFI_PORTS=20;	# maximum valid ports
 
 # Validate the passed in IP address (or netmask).

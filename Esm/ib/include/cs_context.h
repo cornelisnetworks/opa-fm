@@ -108,6 +108,7 @@ typedef struct _cntxt_entry {
 	uint16_t        retries;    // retry count
     uint64_t        RespTimeout; // current response timeout value (13.6.3.1)
 	uint64_t		cumulative_timeout; //sum of timeouts across retries
+	uint64_t		totalTimeout; // total initial timeout value
     uint8_t         senderWantsResponse;    // 1 = sender wants the response on the resp_queue
     uint8_t			sendFailed;	// most recent attempt to send failed
     uint16_t        releasing;	// have begun to release

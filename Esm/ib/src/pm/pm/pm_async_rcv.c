@@ -58,11 +58,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ib_mad.h"
 #include "ib_status.h"
 #include "cs_g.h"
-//#include "sm_counters.h"
-//#include "sm_l.h"
 #include "pm_l.h"
 #include "cs_context.h"
-//#include "cs_queue.h"
 #include "pm_topology.h"
 
 extern SMXmlConfig_t sm_config;

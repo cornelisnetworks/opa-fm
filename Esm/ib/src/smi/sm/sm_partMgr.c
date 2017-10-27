@@ -363,19 +363,22 @@ sm_set_portPkey(Topology_t *topop, Node_t *nodep, Port_t *portp,
      * IB spec 10.9.2 C10-120 requirement - switch external ports won't 
      * have pkey tables if switchInfo->enforcementcap is zero, so don't ask
      */
-	if ((nodep->nodeInfo.NodeType == NI_TYPE_SWITCH && portp->index == 0 && nodep->nodeInfo.PartitionCap) ||
-         (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH && portp->index > 0 && nodep->switchInfo.PartitionEnforcementCap) ||
-         (nodep->nodeInfo.NodeType == NI_TYPE_CA))
+	if (is_hfiport(portp) ||
+		(is_swport0(portp) && nodep->nodeInfo.PartitionCap) ||
+		(is_extswport(portp) && nodep->switchInfo.PartitionEnforcementCap))
 	{
-		amod = nodep->nodeInfo.NodeType == NI_TYPE_SWITCH ? portp->index << 16 : 0;
-		/* for switch port0, FIs, and routers, partitionCap is in nodep->nodeInfo.PartitionCap */
-		if ( (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH && portp->index == 0) ||
-			 (nodep->nodeInfo.NodeType != NI_TYPE_SWITCH) ) {
+		amod = is_swport(portp) ? portp->index << 16 : 0;
+		/* for switch port0 and FIs, partitionCap is in nodep->nodeInfo.PartitionCap 
+		 * Otherwise, for switch external ports, use switchInfo->partCap.
+		 */
+		if ( is_swport0(portp) || is_hfiport(portp) )
 			pkeyCap = nodep->nodeInfo.PartitionCap;
-		} else {
-			/* for switch external ports, use switchInfo->partCap */
+		else
 			pkeyCap = nodep->switchInfo.PartitionEnforcementCap;
-		}
+
+		/* non-ISL (i.e. SW<->HFI, HFI<->HFI) links should not use more pkeys than their neighbor. */
+		if (linkedPortp && !portp->portData->isIsl)
+			pkeyCap = MIN(pkeyCap, linkedPortp->portData->nodePtr->nodeInfo.PartitionCap);
 
 		if (pkeyCap < pkeyEntryCntr) {
 			if (*enforcePkey) {
@@ -854,21 +857,68 @@ smGetValidatedServiceIDVFs(Port_t* srcport, Port_t* dstport, uint16_t pkey, uint
 		// Is this the proper vf?
 		if ((pkey != 0) && (PKEY_VALUE(pkey) != PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey))) continue;
 
-		// One is full?
-		if (srcport != dstport &&
-			!bitset_test(&srcport->portData->fullPKeyMember, vfIdx) &&
-			!bitset_test(&dstport->portData->fullPKeyMember, vfIdx)) continue;
-
-		// Are both src and dst part of this VF?
-		if (!bitset_test(&srcport->portData->vfMember, vfIdx)) continue;
-		if (!bitset_test(&dstport->portData->vfMember, vfIdx)) continue;
-
 		// Are these the proper sls?
 		if ((reqSL < STL_MAX_SLS) &&
 			(reqSL != VirtualFabrics->v_fabric[vf].base_sl)) continue;
 		if ((respSL < STL_MAX_SLS) &&
 			(respSL != VirtualFabrics->v_fabric[vf].resp_sl)) continue;
-		bitset_set(vfs, vf);
+
+		if (sm_config.enforceVFPathRecs) {
+			// One is full?
+			if (srcport != dstport &&
+				!bitset_test(&srcport->portData->fullPKeyMember, vfIdx) &&
+				!bitset_test(&dstport->portData->fullPKeyMember, vfIdx)) continue;
+
+			// Are both src and dst part of this VF?
+			if (!bitset_test(&srcport->portData->vfMember, vfIdx)) continue;
+			if (!bitset_test(&dstport->portData->vfMember, vfIdx)) continue;
+
+			bitset_set(vfs, vf);
+		}
+		else {
+
+			// If we are not checking that the src/dst ports are in the same VF,
+			// then need to check that pkey shared between the source and destination ports
+			int	vf2;
+			Port_t*  tstport = 0;
+			if (srcport == dstport) tstport = dstport;
+			else if (bitset_test(&srcport->portData->fullPKeyMember, vfIdx)) tstport = dstport;
+			else if (bitset_test(&dstport->portData->fullPKeyMember, vfIdx)) tstport = srcport;
+
+			if (tstport == 0) continue; // Case where neither port is a full member of this VF
+
+			uint16_t tstpkey = VirtualFabrics->v_fabric[vf].pkey;
+			uint8_t tstSL = VirtualFabrics->v_fabric[vf].base_sl;
+			uint8_t tstrspSL = VirtualFabrics->v_fabric[vf].resp_sl;
+
+			for (vf2 = 0; vf2 < VirtualFabrics->number_of_vfs && vf2 < MAX_VFABRICS; vf2++) {
+				// Check for service ID
+				if (smCheckServiceId(vf2, serviceId, VirtualFabrics)) {
+					if (!appFound) {
+						// Outer loop is using unmatched, exit this loop because this vf will be found later in outer loop.
+						break;
+					}
+				} else if (appFound || !VirtualFabrics->v_fabric[vf2].apps.select_unmatched_sid) {
+					// Two cases to skip:
+					//    App is found and no service ID match on this vf, continue to next vf.
+					//    Unmatched is in use and this vf is not using unmatched.
+					continue;
+				}
+
+				// To have a path between VFs, the VFs must share the same PKEY and Base SL
+				// (AND Response SL if either VF requires Response SLs). Only need to check
+				// base SL b/c rules for SL sharing requires consistent pairing among VFs
+				if (PKEY_VALUE(tstpkey) != PKEY_VALUE(VirtualFabrics->v_fabric[vf2].pkey)) continue;
+				if (tstSL != VirtualFabrics->v_fabric[vf2].base_sl) continue;
+				if ((VirtualFabrics->v_fabric[vf].requires_resp_sl || VirtualFabrics->v_fabric[vf2].requires_resp_sl) &&
+					tstrspSL != VirtualFabrics->v_fabric[vf2].resp_sl) continue;
+
+				vfIdx=VirtualFabrics->v_fabric[vf2].index;
+				if (bitset_test(&tstport->portData->vfMember, vfIdx)) {
+					bitset_set(vfs, vf2);
+				}
+			}
+		}
 	}
 
 	return VSTATUS_OK;
@@ -878,30 +928,62 @@ smGetValidatedServiceIDVFs(Port_t* srcport, Port_t* dstport, uint16_t pkey, uint
 Status_t
 smGetValidatedVFs(Port_t* srcport, Port_t* dstport, uint16_t pkey, uint8_t reqSL, uint8_t respSL, bitset_t* vfs) {
 	// TODO consolidate with smGetValidatedServiceIDVFs()
-	int			vf;
+	int	vf, vfIdx;
 	VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
 
 	for (vf = 0; vf < VirtualFabrics->number_of_vfs; vf++) {
-		uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
 		// Is this the proper vf?
 		if ((pkey != 0) && (PKEY_VALUE(pkey) != PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey))) continue;
-
-		// One is full?
-		if (srcport != dstport &&
-			!bitset_test(&srcport->portData->fullPKeyMember, vfIdx) &&
-			!bitset_test(&dstport->portData->fullPKeyMember, vfIdx)) continue;
-
-		// Are both src and dst part of this VF?
-		if (!bitset_test(&srcport->portData->vfMember, vfIdx)) continue;
-		if (!bitset_test(&dstport->portData->vfMember, vfIdx)) continue;
 
 		// Are these the proper sls?
 		if ((reqSL < STL_MAX_SLS) &&
 			(reqSL != VirtualFabrics->v_fabric[vf].base_sl)) continue;
 		if ((respSL < STL_MAX_SLS) &&
 			(respSL != VirtualFabrics->v_fabric[vf].resp_sl)) continue;
+		vfIdx=VirtualFabrics->v_fabric[vf].index;
 
-		bitset_set(vfs, vf);
+		if (sm_config.enforceVFPathRecs) {
+			// One is full?
+			if (
+				(srcport != dstport) && !bitset_test(&srcport->portData->fullPKeyMember, vfIdx) &&
+				!bitset_test(&dstport->portData->fullPKeyMember, vfIdx)) continue;
+
+			// Are both src and dst part of this VF?
+			if (!bitset_test(&srcport->portData->vfMember, vfIdx)) continue;
+			if (!bitset_test(&dstport->portData->vfMember, vfIdx)) continue;
+
+			bitset_set(vfs, vf);
+		}
+		else {
+
+			// If we are not checking that the src/dst ports are in the same VF,
+			// then need to check that pkey shared between the source and destination ports
+			int	vf2;
+			Port_t*  tstport = 0;
+			if (bitset_test(&srcport->portData->fullPKeyMember, vfIdx)) tstport = dstport;
+			else if (bitset_test(&dstport->portData->fullPKeyMember, vfIdx)) tstport = srcport;
+			if (tstport == 0) {
+				if (srcport == dstport)
+					tstport = srcport; // Loopback case
+				else 
+					continue; // Case where neither port is a full member of this VF
+			}
+
+			uint16_t tstpkey = VirtualFabrics->v_fabric[vf].pkey;
+			uint8_t tstSL = VirtualFabrics->v_fabric[vf].base_sl;
+
+			for (vf2 = 0; vf2 < VirtualFabrics->number_of_vfs && vf2 < MAX_VFABRICS; vf2++) {
+				// To have a path between VFs, the VFs must share the same PKEY AND Base SL
+				// Only need to check base SL b/c rules for SL sharing requires consistent pairing among VFs
+				if (PKEY_VALUE(tstpkey) != PKEY_VALUE(VirtualFabrics->v_fabric[vf2].pkey)) continue;
+				if (tstSL != VirtualFabrics->v_fabric[vf2].base_sl) continue;
+
+				vfIdx=VirtualFabrics->v_fabric[vf2].index;
+				if (bitset_test(&tstport->portData->vfMember, vfIdx)) {
+					bitset_set(vfs, vf2);
+				}
+			}
+		}
 	}
 
 	return VSTATUS_OK;
@@ -1065,6 +1147,7 @@ smVFValidateMcGrpCreateParams(Port_t * joiner, Port_t * requestor,
 				mgidInVF = 1;
 				mgidFound = 1;
 				bitset_set(groupVf, vf);
+				break;
 			}
 
 		}

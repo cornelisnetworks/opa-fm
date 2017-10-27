@@ -4891,7 +4891,7 @@ static void PmFinalizeAllPortStats(Pm_t *pm)
 	do { \
 		if (thresholdsExceededMsgCount.stat < pm_config.thresholdsExceededMsgLimit.stat) { \
 			uint32 stat = compute##stat(pm, pm->SweepIndex, pmportp, NULL); \
-			if (ComputeErrBucket(stat, pm->Thresholds.stat) >= (PM_ERR_BUCKETS-1)) { \
+			if (ComputeErrBucket(stat, pm->Thresholds.stat) >= (STL_PM_CATEGORY_BUCKETS-1)) { \
 				PmPort_t *pmportp2 = pmportp->Image[pm->SweepIndex].neighbor; \
 				PmPrintExceededPort(pmportp, pm->SweepIndex, #stat, pm->Thresholds.stat, stat); \
 				PmPrintExceededPortDetails##stat(pmportp, pmportp2, pm->SweepIndex, pm->LastSweepIndex); \

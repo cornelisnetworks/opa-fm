@@ -72,8 +72,7 @@ sub stop_opafm
 sub available_opafm
 {
 	my $srcdir=$ComponentInfo{'opafm'}{'SrcDir'};
-	my $rpmfile = file_glob("$srcdir/RPMS/*/opa-fm-*.rpm");
-	return ( -d "$srcdir" && -e "$rpmfile" );
+	return (rpm_resolve("$srcdir/RPMS/*/", "any", "opa-fm") ne "");
 }
 
 sub installed_opafm
@@ -85,19 +84,18 @@ sub installed_opafm
 # only called if installed_opafm is true
 sub installed_version_opafm
 {
-	my $fm_version = rpm_query_version_release_pkg("opa-fm");
-
-	return dot_version("$fm_version");
+	my $version = rpm_query_version_release_pkg("opa-fm");
+	return dot_version("$version");
 }
 
 # only called if available_opafm is true
 sub media_version_opafm
 {
 	my $srcdir=$ComponentInfo{'opafm'}{'SrcDir'};
-	my $fm_rpmfile = file_glob("$srcdir/RPMS/*/opa-fm-*.rpm");
-	my $fm_version= rpm_query_version_release("$fm_rpmfile");
+	my $rpmfile = rpm_resolve("$srcdir/RPMS/*/", "any", "opa-fm");
+	my $version= rpm_query_version_release("$rpmfile");
 	# assume media properly built with matching versions
-	return dot_version("$fm_version");
+	return dot_version("$version");
 }
 
 sub build_opafm

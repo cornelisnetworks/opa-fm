@@ -38,7 +38,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* Kernel mode GSI interfaces */
 
 #include "iba/vpi.h"
-#include "iba/stl_mad.h"
+#include "iba/stl_mad_priv.h"
 
 #if defined (__cplusplus)
 extern "C" {

@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -29,37 +29,24 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /* [ICS VERSION STRING: unknown] */
 
-#ifndef __IBA_STL_MAD_H__
-#define __IBA_STL_MAD_H__
+#ifndef __IBA_STL_MAD_TYPES_H__
+#define __IBA_STL_MAD_TYPES_H__
 
-#define STL_MAD_BLOCK_SIZE			2048
-
+#include "iba/public/datatypes.h"
 #include "iba/stl_types.h"
-#include "iba/ib_types.h"
 #include "iba/ib_mad.h"
 
 #if defined (__cplusplus)
 extern "C" {
 #endif
 
-#include "iba/public/ipackon.h"
-
-/* --------------------------------------------------------------------------
- * Defines 
- */
-
-#define STL_BASE_VERSION			0x80
+#define STL_BASE_VERSION 						0x80
 
 /*
  * STL equivalents of IBA_NODE_CHANNEL_ADAPTER and IBA_NODE_SWITCH.
  */
-#define STL_NODE_FI					1
-#define STL_NODE_SW					2
-
-/*
- * MAD Base Fields
- */
-typedef MAD STL_MAD;
+#define STL_NODE_FI 							1
+#define STL_NODE_SW 							2
 
 /*
  * The following MADs are generic across all management classes.
@@ -75,27 +62,7 @@ typedef MAD STL_MAD;
 #define STL_CLASS_PORT_CAPMASK_NOTICE           0x0002 /* Implements Get/Set Notice */
 #define STL_CLASS_PORT_CAPMASK_CM2              0x0004 /* Implements Additional Class Specific Capabilities (CapMask2) */
 
-static __inline void
-StlCommonClassPortInfoCapMask(char buf[80], uint16 cmask)
-{
-	if (!cmask) {
-		snprintf(buf, 80, "-");
-	} else {
-		snprintf(buf, 80, "%s%s%s",
-			(cmask & STL_CLASS_PORT_CAPMASK_TRAP) ? "Trap " : "",
-			(cmask & STL_CLASS_PORT_CAPMASK_NOTICE) ? "Notice " : "",
-			(cmask & STL_CLASS_PORT_CAPMASK_CM2) ? "CapMask2 " : "");
-	}
-}
-static __inline void
-StlCommonClassPortInfoCapMask2(char buf[80], uint32 cmask)
-{
-	if (!cmask) {
-		snprintf(buf, 80, "-");
-	} else {
-		buf[0] = '\0';
-	}
-}
+#include "iba/public/ipackon.h"
 
 /*
  * Class Port Info: 
@@ -114,6 +81,7 @@ StlCommonClassPortInfoCapMask2(char buf[80], uint32 cmask)
  *		Trap_P_Key moved for qword alignment.
  *		RedirectSL and TrapSL moved to handle longer lengths.
  */
+
 typedef struct {
 	uint8 		BaseVersion; 			// RO: Must be STL_BASE_VERSION 
 	uint8 		ClassVersion;			// RO
@@ -157,7 +125,7 @@ typedef struct {
 	STL_FIELDUNION3(u4, 32, 
 				TrapTClass:8, 			// RW
 				Reserved3:4, 			// Must be zero.
-				TrapFlowLabel:20);		// RW: TODO: Convert to reserved?
+				TrapFlowLabel:20);		// RW
 
 	uint32 TrapLID; 					// Lengthened for STL.
 
@@ -183,109 +151,6 @@ typedef struct {
 	/* 80 bytes */
 	
 } STL_CLASS_PORT_INFO;
-
-
-static __inline
-void
-BSWAP_STL_CLASS_PORT_INFO(
-	STL_CLASS_PORT_INFO	*Dest
-	)
-{
-#if CPU_LE
-	Dest->CapMask = ntoh16(Dest->CapMask);
-	Dest->u1.AsReg32 = ntoh32(Dest->u1.AsReg32);
-	BSWAP_IB_GID(&Dest->RedirectGID);
-	Dest->u2.AsReg32 = ntoh32(Dest->u2.AsReg32);
-	Dest->RedirectLID = ntoh32(Dest->RedirectLID);
-	Dest->u3.AsReg32 = ntoh32(Dest->u3.AsReg32);
-	Dest->Redirect_Q_Key = ntoh32(Dest->Redirect_Q_Key);
-	BSWAP_IB_GID(&Dest->TrapGID);
-	Dest->u4.AsReg32 = ntoh32(Dest->u4.AsReg32);
-	Dest->TrapLID = ntoh32(Dest->TrapLID);
-	Dest->u5.AsReg32 = ntoh32(Dest->u5.AsReg32);
-	Dest->Trap_Q_Key = ntoh32(Dest->Trap_Q_Key);
-	Dest->Trap_P_Key = ntoh16(Dest->Trap_P_Key);
-	Dest->Redirect_P_Key = ntoh16(Dest->Redirect_P_Key);
-#endif
-}
-
-
-
-/*
- * Notice 
- *
- * All STL fabrics should use the STL Notice structure when communicating with
- * STL devices and applications. When forwarding notices to IB applications,
- * the SM shall translate them into IB format, when IB equivalents exist.
- * 
- * STL Differences:
- *		IssuerLID is now 32 bits.
- *		Moved fields to maintain word alignment.
- *		Data and ClassTrapSpecificData combined into a single field.
- */
-typedef struct {
-	union {
-		/* Generic Notice attributes */
-		struct /*_GENERIC*/ {
-			STL_FIELDUNION3(u, 32,
-				IsGeneric:1, 			// RO
-				Type:7, 				// RO
-				ProducerType:24);		// RO
-			uint16	TrapNumber;			// RO
-		} PACK_SUFFIX Generic;
-
-		/* Vendor specific Notice attributes */
-		struct /*_VENDOR*/ {
-			STL_FIELDUNION3(u, 32,
-				IsGeneric:1, 			// RO
-				Type:7, 				// RO
-				VendorID:24);			// RO
-			uint16	DeviceID;			// RO
-		} PACK_SUFFIX Vendor;
-	} PACK_SUFFIX Attributes;
-
-	STL_FIELDUNION2(Stats, 16, 
-				Toggle:1, 				// RW
-				Count:15);				// RW
-
-	/* 8 bytes */
-	uint32 		IssuerLID; 				// RO: Extended for STL
-	uint32		Reserved2;				// Added for qword alignment
-	/* 16 bytes */
-	IB_GID 		IssuerGID;				// RO
-	/* 32 bytes */
-	uint8 		Data[64]; 				// RO. 
-	/* 96 bytes */
-	uint8		ClassData[0];			// RO. Variable length.
-} PACK_SUFFIX STL_NOTICE;
-
-
-static __inline
-void BSWAP_STL_NOTICE(STL_NOTICE * notice)
-{
-#if CPU_LE
-	if (notice->Attributes.Generic.u.s.IsGeneric) {
-		notice->Attributes.Generic.u.AsReg32 = ntoh32(notice->Attributes.Generic.u.AsReg32);
-		notice->Attributes.Generic.TrapNumber = ntoh16(notice->Attributes.Generic.TrapNumber);
-	}
-	else {
-		notice->Attributes.Vendor.u.AsReg32 = ntoh32(notice->Attributes.Vendor.u.AsReg32);
-		notice->Attributes.Vendor.DeviceID = ntoh16(notice->Attributes.Vendor.DeviceID);
-	}
-
-	notice->Stats.AsReg16 = ntoh16(notice->Stats.AsReg16);
-	notice->IssuerLID = ntoh32(notice->IssuerLID);
-
-	BSWAP_IB_GID(&notice->IssuerGID);
-#endif
-}
-
-static __inline
-void BSWAPCOPY_STL_NOTICE(STL_NOTICE * src, STL_NOTICE * dst)
-{
-	memcpy(dst, src, sizeof(STL_NOTICE));
-	(void)BSWAP_STL_NOTICE(dst);
-}
 
 
 /*
@@ -348,37 +213,81 @@ typedef struct {
 	/* 40 bytes */
 } STL_INFORM_INFO;
 
-static __inline 
-void
-BSWAP_STL_INFORM_INFO(STL_INFORM_INFO *dst)
-{
-#if CPU_LE
-	BSWAP_IB_GID(&dst->GID);
 
-	dst->LIDRangeBegin = ntoh32(dst->LIDRangeBegin);
-	dst->LIDRangeEnd = ntoh32(dst->LIDRangeEnd);
-	dst->Type = ntoh16(dst->Type);
-	dst->u.Generic.TrapNumber = ntoh16(dst->u.Generic.TrapNumber);
-	dst->u.Generic.u1.AsReg32 = ntoh32(dst->u.Generic.u1.AsReg32);
-	dst->u.Generic.u2.AsReg32 = ntoh32(dst->u.Generic.u2.AsReg32);
-#endif
-}
+/*
+ * Notice 
+ *
+ * All STL fabrics should use the STL Notice structure when communicating with
+ * STL devices and applications. When forwarding notices to IB applications,
+ * the SM shall translate them into IB format, when IB equivalents exist.
+ * 
+ * STL Differences:
+ *		IssuerLID is now 32 bits.
+ *		Moved fields to maintain word alignment.
+ *		Data and ClassTrapSpecificData combined into a single field.
+ */
+typedef struct {
+	union {
+		/* Generic Notice attributes */
+		struct /*_GENERIC*/ {
+			STL_FIELDUNION3(u, 32,
+				IsGeneric:1, 			// RO
+				Type:7, 				// RO
+				ProducerType:24);		// RO
+			uint16	TrapNumber;			// RO
+		} PACK_SUFFIX Generic;
 
-static __inline 
-void
-BSWAPCOPY_STL_INFORM_INFO(STL_INFORM_INFO *src, STL_INFORM_INFO *dst)
-{
-#if CPU_LE
-	memcpy(dst, src, sizeof(STL_INFORM_INFO));
-	BSWAP_STL_INFORM_INFO(dst);
-#endif
-}
+		/* Vendor specific Notice attributes */
+		struct /*_VENDOR*/ {
+			STL_FIELDUNION3(u, 32,
+				IsGeneric:1, 			// RO
+				Type:7, 				// RO
+				VendorID:24);			// RO
+			uint16	DeviceID;			// RO
+		} PACK_SUFFIX Vendor;
+	} PACK_SUFFIX Attributes;
+
+	STL_FIELDUNION2(Stats, 16, 
+				Toggle:1, 				// RW
+				Count:15);				// RW
+
+	/* 8 bytes */
+	uint32 		IssuerLID; 				// RO: Extended for STL
+	uint32		Reserved2;				// Added for qword alignment
+	/* 16 bytes */
+	IB_GID 		IssuerGID;				// RO
+	/* 32 bytes */
+	uint8 		Data[64]; 				// RO. 
+	/* 96 bytes */
+	uint8		ClassData[0];			// RO. Variable length.
+} PACK_SUFFIX STL_NOTICE;
 
 #include "iba/public/ipackoff.h"
 
+static __inline void
+StlCommonClassPortInfoCapMask(char buf[80], uint16 cmask)
+{
+	if (!cmask) {
+		snprintf(buf, 80, "-");
+	} else {
+		snprintf(buf, 80, "%s%s%s",
+			(cmask & STL_CLASS_PORT_CAPMASK_TRAP) ? "Trap " : "",
+			(cmask & STL_CLASS_PORT_CAPMASK_NOTICE) ? "Notice " : "",
+			(cmask & STL_CLASS_PORT_CAPMASK_CM2) ? "CapMask2 " : "");
+	}
+}
+
+static __inline void
+StlCommonClassPortInfoCapMask2(char buf[80], uint32 cmask)
+{
+	if (!cmask) {
+		snprintf(buf, 80, "-");
+	} else {
+		buf[0] = '\0';
+	}
+}
+
 #if defined (__cplusplus)
-};
+}
 #endif
-
-#endif /* __IBA_STL_MAD_H__ */
-
+#endif

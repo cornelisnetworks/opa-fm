@@ -107,7 +107,7 @@ sa_SCSLTableRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 
 Status_t
 sa_SCSLTableRecord_Set(uint8_t *slp, Node_t *nodep, Port_t *portp) {
-	Lid_t			    lid;
+	STL_LID			    lid;
     Port_t              *scslPortp;
 	STL_SC2SL_MAPPING_TABLE_RECORD scSLTableRecord;
 

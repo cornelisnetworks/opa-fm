@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -62,7 +62,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sm_l.h"
 #include "sa_l.h"
 #include "sa_m.h"
-#include "iba/stl_sa.h"
+#include "iba/stl_sa_priv.h"
 #ifdef __VXWORKS__
 #include "bspcommon/h/usrBootManager.h"
 #include "BootCfgMgr.h"
@@ -242,7 +242,7 @@ sa_process_getmulti(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
         /* get the request to processing routine */
         sa_cntxt->processFunc((Mai_t *)&sa_cntxt->mad, sa_cntxt);
         /* switch the mai_handle to writer thread's now that we are sending rmpp response */
-        sa_cntxt->sendFd = fd_sa_w;
+        sa_cntxt->sendFd = fd_sa_writer;
     }
 
     IB_EXIT("sa_process_getmulti", VSTATUS_OK);
@@ -381,6 +381,9 @@ sa_process_mad(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 	case STL_SA_ATTR_PGROUP_FWDTBL_RECORD:
 		sa_PortGroupFwdRecord(maip, sa_cntxt);
 		break;
+	case STL_SA_ATTR_SWITCH_COST_RECORD:
+		(void)sa_SwitchCostRecord(maip, sa_cntxt);
+		break;
     default:
         IB_LOG_INFINI_INFO_FMT( "sa_process_mad",
                "Unsupported or invalid %s[%s] request from LID [0x%x], TID["FMT_U64"]", 
@@ -396,7 +399,7 @@ sa_process_mad(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
      * switch to sa writer mai handle for sending out remainder of rmpp responses
      * Mutipath request are set after complete receipt of requests in sa_process_getmulti
      */
-    if (maip->base.aid != SA_MULTIPATH_RECORD) sa_cntxt->sendFd = fd_sa_w;
+    if (maip->base.aid != SA_MULTIPATH_RECORD) sa_cntxt->sendFd = fd_sa_writer;
 
     if (saDebugPerf) {
         /* use the time received from umadt as start time if available */
@@ -1700,10 +1703,10 @@ sa_cache_print_stats(void)
 //----------------------------------------------------------------------------//
 
 Status_t
-sa_Authenticate_Path(Lid_t srcLid, Lid_t dstLid) {
+sa_Authenticate_Path(STL_LID srcLid, STL_LID dstLid) {
 	int		i;
 	int		j;
-	Lid_t		topLid;
+	STL_LID		topLid;
 	Node_t		*nodep;
 	Port_t		*portp;
 	Status_t	status;
@@ -1814,8 +1817,8 @@ sa_Authenticate_Path(Lid_t srcLid, Lid_t dstLid) {
 //------------------------------------------------------------------------------------------------//
 
 Status_t
-sa_Authenticate_Access(uint32_t type, Lid_t srcLid, Lid_t dstLid, Lid_t reqLid) {
-	Lid_t		topLid;
+sa_Authenticate_Access(uint32_t type, STL_LID srcLid, STL_LID dstLid, STL_LID reqLid) {
+	STL_LID		topLid;
 	Node_t		*nodep;
 	Port_t		*portp;
 	Status_t	status;
@@ -1914,18 +1917,10 @@ sa_Compare_PKeys(STL_PKEY_ELEMENT *key1, STL_PKEY_ELEMENT *key2) {
 	IB_ENTER("sa_Compare_PKeys", key1, key2, 0, 0);
 
 //
-//	If there are no PKeys, then return good.
-//
-	if ((key1[0].AsReg16 == 0) && (key2[0].AsReg16 == 0)) {
-		IB_EXIT("sa_Compare_PKeys", VSTATUS_OK);
-		return(VSTATUS_OK);
-	}
-
-//
 //	Loop over both arrays looking for at least one match.
 //
-	for (i = 0; (i < SM_PKEYS) && (key1[i].AsReg16 != 0); i++) {
-		for (j = 0; (j < SM_PKEYS) && (key2[j].AsReg16 != 0); j++) {
+	for (i = 0; (i < SM_PKEYS); i++) {
+		for (j = 0; (j < SM_PKEYS); j++) {
 			if ((PKEY_VALUE(key1[i].AsReg16) == PKEY_VALUE(key2[j].AsReg16)) &&
 				((PKEY_TYPE(key1[i].AsReg16) == PKEY_TYPE_FULL) ||
 				 (PKEY_TYPE(key2[j].AsReg16) == PKEY_TYPE_FULL))) {
@@ -2379,13 +2374,6 @@ int getDefBcGrp(uint16_t *pKey, uint8_t	*mtu, uint8_t *rate, uint8_t *sl, uint32
 
 Status_t sa_SetDefBcGrp(void) {
 
-	uint16_t	pKey = 0;
-	uint8_t		mtu = 0;
-	uint8_t		rate = 0;
-	uint8_t		sl = 0;
-	uint32_t	qkey = 0;
-    uint32_t    fl=0;
-    uint8_t     tc=0;
 	int				vf;
 	VFDg_t*			mcastGrpp;
 	VFAppMgid_t*	mgidp;
@@ -2393,13 +2381,6 @@ Status_t sa_SetDefBcGrp(void) {
 
 	(void)vs_rdlock(&old_topology_lock);
 	VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
-
-	if (!VirtualFabrics || (VirtualFabrics->number_of_vfs == 0)) {
-		if(getDefBcGrp(&pKey, &mtu, &rate, &sl, &qkey, &fl, &tc)){
-			createBroadcastGroup(pKey,mtu,rate,sl,qkey,fl,tc);
-		}
-		return VSTATUS_OK;
-	}
 
 	for (vf= 0; vf < VirtualFabrics->number_of_vfs && vf < MAX_VFABRICS; vf++) {
 		for (mcastGrpp = VirtualFabrics->v_fabric[vf].default_group; mcastGrpp;

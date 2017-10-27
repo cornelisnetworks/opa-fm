@@ -39,7 +39,7 @@ extern "C" {
 
 #include "datatypes.h"
 #include "stl_types.h"
-#include "stl_mad.h"
+#include "stl_mad_priv.h"
 #include "ibyteswap.h"
 
 #include "ib_generalServices.h"

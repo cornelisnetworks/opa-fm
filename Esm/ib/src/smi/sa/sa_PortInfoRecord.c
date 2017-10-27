@@ -55,7 +55,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "os_g.h"
 #include "ib_mad.h"
 #include "ib_sa.h"
-#include "iba/stl_sa.h"
+#include "iba/stl_sa_priv.h"
 #include "ib_status.h"
 #include "cs_g.h"
 #include "mai_g.h"
@@ -137,7 +137,7 @@ sa_PortInfoRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
 static Status_t
 sa_PortInfoRecord_Set(uint8_t *prp, Node_t *nodep, Port_t *portp, STL_SA_MAD *samad) {
 	uint32_t		    portno;
-	Lid_t			    lid;
+	STL_LID			    lid;
     Port_t              *piPortp;
 	STL_PORTINFO_RECORD	portInfoRecord;
 
@@ -183,7 +183,7 @@ sa_PortInfoRecord_Set(uint8_t *prp, Node_t *nodep, Port_t *portp, STL_SA_MAD *sa
 static Status_t
 sa_IbPortInfoRecord_Set(uint8_t *prp, Node_t *nodep, Port_t *portp, STL_SA_MAD *samad) {
 	uint32_t		    portno;
-	Lid_t			    lid;
+	STL_LID			    lid;
     Port_t              *piPortp;
 	IB_PORTINFO_RECORD	*ibPortInfoRecord = (IB_PORTINFO_RECORD *)prp;
 
@@ -253,7 +253,7 @@ sa_PortInfoRecord_GetTable(Mai_t *maip, uint32_t *records) {
 	STL_SA_MAD	samad;
 	Status_t	status;
 	bool_t		checkLid;
-	Lid_t		endPortLid=0;
+	STL_LID		endPortLid=0;
 	uint8_t		checkCapMask = 0;
 	uint32_t	capMask = 0, cap;
 	STL_PORTINFO_RECORD *portInfoRecp;
@@ -407,7 +407,7 @@ sa_IbPortInfoRecord_GetTable(Mai_t *maip, uint32_t *records) {
 	STL_SA_MAD	samad;
 	Status_t	status;
 	bool_t		checkLid;
-	Lid_t		endPortLid=0;
+	STL_LID		endPortLid=0;
 	uint8_t		checkCapMask = 0;
 	uint32_t	capMask = 0, cap;
 

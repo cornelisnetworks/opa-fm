@@ -34,8 +34,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <stdio.h>
 #include "ib_helper.h"
-#include "iba/stl_sm.h"
-#include "iba/stl_pa.h"
+#include "iba/stl_sm_types.h"
+#include "iba/stl_pa_types.h"
 #if defined(VXWORKS)
 #include "private/stdioP.h" // pick up snprintf extern definition
 #endif
@@ -48,30 +48,27 @@ extern "C" {
 
 /*
  * STL defines an algorithmic relationship between NodeGUID and PortGUID
- * Bit 32-34 of the NodeGUID always has 1
- * Bit 32-34 of the PortGUID has 1 for switch port 0, or the HFI port number
- * These bits should never be 0
+ * Bit 30-31 of the NodeGUID always has 0
+ * Bit 30-31 of the PortGUID has 0 for switch port 0, or the HFI port number - 1
  * These functions help translate from one to the other
  */
-#define PORTGUID_PNUM_MASK 0x7ull	// bit field mask
-#define PORTGUID_PNUM_SHIFT 32		// low bit number
+#define PORTGUID_PNUM_SHIFT 30		// low bit number
+#define PORTGUID_PNUM_MASK (0x3ull << PORTGUID_PNUM_SHIFT)	// bit field mask
 
 static __inline EUI64 PortGUIDtoNodeGUID(EUI64 portGUID)
 {
-	return ((portGUID & ~(PORTGUID_PNUM_MASK << PORTGUID_PNUM_SHIFT))
-				| (1ull << PORTGUID_PNUM_SHIFT));
+	return portGUID & ~PORTGUID_PNUM_MASK;
 }
 
 static __inline EUI64 NodeGUIDtoPortGUID(EUI64 nodeGUID, uint8 portnum)
 {
-	// assume portnum is valid, in which case it can't be zero for HFIs
-	// and can only be zero for switches
+	// assume portnum is valid, in which case it must be zero for switches
+	// or 1-4 (which we must convert to 0 relative) for HFIs
 	// hence avoiding the need for a NodeType argument to this function
-	if (portnum)
-		return ((nodeGUID & ~(PORTGUID_PNUM_MASK << PORTGUID_PNUM_SHIFT))
-				 | ((EUI64)portnum << PORTGUID_PNUM_SHIFT));	// HFI port
-	else
-		return nodeGUID;	// switch port 0
+	if (portnum) portnum--;
+
+	return (nodeGUID & ~PORTGUID_PNUM_MASK)
+			| (((EUI64)portnum << PORTGUID_PNUM_SHIFT) & PORTGUID_PNUM_MASK);
 }
 
 /*
@@ -659,15 +656,6 @@ StlPortOfflineDisabledReasonToText(uint8 offlineReason)
 		default:
 			return " ???? ";
 	};
-}
-
-static __inline const char*
-StlSMStateToText(SM_STATE state)
-{
-	return ((state == SM_INACTIVE)? "Inactive":
-			(state == SM_DISCOVERING)? "Discovering":
-			(state == SM_STANDBY)? "Standby":
-			(state == SM_MASTER)? "Master": "???");
 }
 
 static __inline
@@ -1557,46 +1545,6 @@ static __inline CounterSelectMask_t DiffPAVFCounters(STL_PA_VF_PORT_COUNTERS_DAT
 
 #undef GET_DELTA_COUNTER
 	return mask;
-}
-
-/**
- * Copy data in a STL_PORT_COUNTERS_DATA variable into a STL_PortStatusData_t variable
- *
- * @param portCounters   - pointer to STL_PORT_COUNTERS_DATA variable from which to copy
- * @param portStatusData - pointer to STL_PortStatusData_t variable to copy to
- *
- */
-static __inline void StlPortCountersToPortStatus(STL_PORT_COUNTERS_DATA *portCounters, STL_PORT_STATUS_RSP *portStatusData)
-{
-	portStatusData->LinkErrorRecovery  = portCounters->linkErrorRecovery;
-	portStatusData->LinkDowned  = portCounters->linkDowned;
-	portStatusData->PortRcvErrors = portCounters->portRcvErrors;
-	portStatusData->PortRcvRemotePhysicalErrors = portCounters->portRcvRemotePhysicalErrors;
-	portStatusData->PortRcvSwitchRelayErrors = portCounters->portRcvSwitchRelayErrors;
-	portStatusData->PortXmitDiscards = portCounters->portXmitDiscards;
-	portStatusData->PortXmitConstraintErrors = portCounters->portXmitConstraintErrors;
-	portStatusData->PortRcvConstraintErrors = portCounters->portRcvConstraintErrors;
-	portStatusData->LocalLinkIntegrityErrors = portCounters->localLinkIntegrityErrors;
-	portStatusData->ExcessiveBufferOverruns = portCounters->excessiveBufferOverruns;
-	portStatusData->PortXmitData = portCounters->portXmitData;
-	portStatusData->PortRcvData = portCounters->portRcvData;
-	portStatusData->PortXmitPkts = portCounters->portXmitPkts;
-	portStatusData->PortRcvPkts = portCounters->portRcvPkts;
-	portStatusData->PortMulticastXmitPkts = portCounters->portMulticastXmitPkts;
-	portStatusData->PortMulticastRcvPkts = portCounters->portMulticastRcvPkts;
-	portStatusData->PortXmitWait = portCounters->portXmitWait;
-	portStatusData->SwPortCongestion = portCounters->swPortCongestion;
-	portStatusData->PortRcvFECN = portCounters->portRcvFECN;
-	portStatusData->PortRcvBECN = portCounters->portRcvBECN;
-	portStatusData->PortXmitTimeCong = portCounters->portXmitTimeCong;
-	portStatusData->PortXmitWastedBW = portCounters->portXmitWastedBW;
-	portStatusData->PortXmitWaitData = portCounters->portXmitWaitData;
-	portStatusData->PortRcvBubble = portCounters->portRcvBubble;
-	portStatusData->PortMarkFECN = portCounters->portMarkFECN;
-	portStatusData->FMConfigErrors = portCounters->fmConfigErrors;
-	portStatusData->UncorrectableErrors = portCounters->uncorrectableErrors;
-	portStatusData->lq.AsReg8 = portCounters->lq.AsReg8;
-
 }
 
 #if !defined(ROUNDUP)

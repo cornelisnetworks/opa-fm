@@ -36,12 +36,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "string.h"
 #include "taskLib.h"
 #include "time.h"
-//#include "includes.h"
-//#include "xmalloc.h"
-//#include "atomicio.h"
-//#include "pathnames.h"
-//#include "log.h"
-//#include "misc.h"
 #include "tms/common/rdHelper.h"
 #include "tms/idb/icsUiConfigMib.h"
 #include "tms/common/usrSecLib.h"
@@ -49,11 +43,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "bspcommon/h/icsBspUtil.h"
 #include "bspcommon/h/sysFlash.h"
 
-//#include "adpTaskLib.h"
-//#include "adpTimerLib.h"
-//#include "adpSocketIoLib.h"
-//#include "errnoLib.h"
-//#include "Http/FirmwareUpdateApi.h"
 #include "config_compression.h"
 
 extern int UiUtil_GetLocalTime ();

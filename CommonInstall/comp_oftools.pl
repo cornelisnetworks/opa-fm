@@ -49,13 +49,17 @@ sub stop_oftools
 
 sub available_oftools
 {
+# TBD - could we move the algorithms for many of these functions into
+# util_component.pl and simply put a list of rpms in the ComponentInfo
+# as well as perhaps config files
 	my $srcdir=$ComponentInfo{'oftools'}{'SrcDir'};
-	return (rpm_resolve("$srcdir/RPMS/*/", "any", "opa-basic-tools") ne "" );
+	return ((rpm_resolve("$srcdir/RPMS/*/", "any", "opa-basic-tools") ne "")
+			&& (rpm_resolve("$srcdir/RPMS/*/", "any", "opa-address-resolution") ne "" ));
 }
 
 sub installed_oftools
 {
-	return(system("rpm -q --quiet opa-basic-tools") == 0)
+	return rpm_is_installed("opa-basic-tools", "any");
 }
 
 # only called if installed_oftools is true
@@ -69,7 +73,10 @@ sub installed_version_oftools
 sub media_version_oftools
 {
 	my $srcdir=$ComponentInfo{'oftools'}{'SrcDir'};
-	return `cat "$srcdir/version"`;
+	my $rpmfile = rpm_resolve("$srcdir/RPMS/*/", "any", "opa-basic-tools");
+	my $version= rpm_query_version_release("$rpmfile");
+	# assume media properly built with matching versions for all rpms
+	return dot_version("$version");
 }
 
 sub build_oftools
@@ -107,25 +114,18 @@ sub install_oftools
 	my $version=media_version_oftools();
 	chomp $version;
 	printf("Installing $ComponentInfo{'oftools'}{'Name'} $version $DBG_FREE...\n");
+	# TBD - review all components and make installing messages the same
 	#LogPrint "Installing $ComponentInfo{'oftools'}{'Name'} $version $DBG_FREE for $CUR_OS_VER\n";
 	LogPrint "Installing $ComponentInfo{'oftools'}{'Name'} $version $DBG_FREE for $CUR_DISTRO_VENDOR $CUR_VENDOR_VER\n";
-
-	# Check $BASE_DIR directory ...exist 
-	check_config_dirs();
-
-	check_dir("/usr/lib/opa/tools");
-	check_dir("/usr/share/opa/samples");
 
 	my $rpmfile = rpm_resolve("$srcdir/RPMS/*/", "any", "opa-basic-tools");
 	rpm_run_install($rpmfile, "any", " -U ");
 
 	$rpmfile = rpm_resolve("$srcdir/RPMS/*/", "any", "opa-address-resolution");
 	rpm_run_install($rpmfile, "any", " -U ");
+# TBD - could we figure out the list of config files from a query of rpm
+# and then simply iterate on each config file?
 	check_rpm_config_file("/etc/rdma/dsap.conf");
-
-	## Install OPA_SA_DB library, headers.
-	check_dir("/usr/include/infiniband");
-	copy_shlib("$srcdir/bin/$ARCH/$CUR_DISTRO_VENDOR.$CUR_VENDOR_VER/lib/$DBG_FREE/libopasadb", "$LIB_DIR/libopasadb", "1.0.0");
 
 	$ComponentWasInstalled{'oftools'}=1;
 }

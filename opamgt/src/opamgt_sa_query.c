@@ -1931,4 +1931,55 @@ exit:
 	return status;
 }
 
+/**
+ * @brief Query SA for SwitchCost Records
+ *
+ * @param port			 port opened by omgt_open_port_*
+ * @param selector		 Criteria to select records.
+ *                       Valid InputType values:
+ *                         NoInput, Lid
+ * @param num_records	 Output: The number of records returned in query
+ * @param records		 Output: Pointer to records.
+ *                               Must be freed by calling omgt_sa_free_records
+ *
+ * @return		OMGT_STATUS_SUCCESS if success, else error code
+ */
+OMGT_STATUS_T
+omgt_sa_get_switchcost_records(
+	struct omgt_port *port,
+	omgt_sa_selector_t *selector,
+	int32_t *num_records,
+	STL_SWITCH_COST_RECORD **records
+	)
+{
+
+	OMGT_STATUS_T status;
+	QUERY_RESULT_VALUES *query_result;
+	STL_SWITCH_COST_RECORD_RESULTS *record_results = NULL;
+
+	status = omgt_sa_query_helper(port, selector, OutputTypeStlSwitchCostRecord, &query_result);
+
+	if (OMGT_STATUS_SUCCESS != status)
+		return status;
+
+	record_results = (STL_SWITCH_COST_RECORD_RESULTS*)query_result->QueryResult;
+	*num_records = record_results->NumRecords;
+	if(*num_records == 0) {
+		*records = NULL;
+		goto exit;
+	}
+
+	int buf_size = sizeof(**records) * (*num_records);
+	*records = malloc(buf_size);
+	if(*records == NULL){
+		status = OMGT_STATUS_INSUFFICIENT_MEMORY;
+		goto exit;
+	}
+
+	memcpy(*records, record_results->Records, buf_size);
+
+exit:
+	omgt_free_query_result_buffer(query_result);
+	return status;
+}
 

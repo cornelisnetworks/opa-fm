@@ -840,6 +840,79 @@ FSTATUS SmaGetMulticastFDBTable(struct omgt_port *port,
 	}
 	return fstatus;
 }
+
+/* Get PortGroup Table from SMA at lid
+ * Retry as needed
+ */
+FSTATUS SmaGetPortGroupTable(struct omgt_port *port,
+							 NodeData *nodep,
+							 uint32_t lid,
+							 uint16 block,
+							 STL_PORT_GROUP_TABLE *pPGT)
+{
+	STL_SMP smp;
+	FSTATUS fstatus;
+	uint32_t  modifier;
+
+	MemoryClear(&smp, sizeof(smp));
+	// rest of fields should be ignored for a Get, zero'ed above
+
+	DBGPRINT("Sending SMA Get(PortGroup %u) to LID 0x%x Node 0x%016"PRIx64"\n",
+				block, lid,
+				nodep->NodeInfo.NodeGUID);
+	DBGPRINT("    Name: %.*s\n",
+				STL_NODE_DESCRIPTION_ARRAY_SIZE,
+				(char*)nodep->NodeDesc.NodeString);
+	modifier = 0x01000000 + (uint32_t)block;
+	fstatus = stl_sma_send_recv_mad(port, lid, MMTHD_GET, STL_MCLASS_ATTRIB_ID_PORT_GROUP_TABLE, modifier, &smp);
+	if (FSUCCESS == fstatus) {
+		if (smp.common.u.DR.s.Status != MAD_STATUS_SUCCESS) {
+			DBGPRINT("SMA response with bad status: 0x%x\n", smp.common.u.DR.s.Status);
+			fstatus = FERROR;
+		} else {
+			*pPGT = *(STL_PORT_GROUP_TABLE*)stl_get_smp_data(&smp);
+			BSWAP_STL_PORT_GROUP_TABLE(pPGT);
+		}
+	}
+	return fstatus;
+}
+
+/* Get PortGroup FDB Table from SMA at lid
+ * Retry as needed
+ */
+FSTATUS SmaGetPortGroupFDBTable(struct omgt_port *port,
+							 NodeData *nodep,
+							 uint32_t lid,
+							 uint16 block,
+							 STL_PORT_GROUP_FORWARDING_TABLE *pFDB)
+{
+	STL_SMP smp;
+	FSTATUS fstatus;
+	uint32_t  modifier;
+
+	MemoryClear(&smp, sizeof(smp));
+	// rest of fields should be ignored for a Get, zero'ed above
+
+	DBGPRINT("Sending SMA Get(PortGroupFDB %u) to LID 0x%x Node 0x%016"PRIx64"\n",
+				block, lid,
+				nodep->NodeInfo.NodeGUID);
+	DBGPRINT("    Name: %.*s\n",
+				STL_NODE_DESCRIPTION_ARRAY_SIZE,
+				(char*)nodep->NodeDesc.NodeString);
+	modifier = 0x01000000 + (uint32_t)block;
+	fstatus = stl_sma_send_recv_mad(port, lid, MMTHD_GET, STL_MCLASS_ATTRIB_ID_PORT_GROUP_FWD_TABLE, modifier, &smp);
+	if (FSUCCESS == fstatus) {
+		if (smp.common.u.DR.s.Status != MAD_STATUS_SUCCESS) {
+			DBGPRINT("SMA response with bad status: 0x%x\n", smp.common.u.DR.s.Status);
+			fstatus = FERROR;
+		} else {
+			*pFDB = *(STL_PORT_GROUP_FORWARDING_TABLE*)stl_get_smp_data(&smp);
+			BSWAP_STL_PORT_GROUP_FORWARDING_TABLE(pFDB);
+		}
+	}
+	return fstatus;
+}
+
 #endif	// PRODUCT_OPENIB_FF
 
 /* process a PMA class port info or redirection required response

@@ -73,11 +73,16 @@ typedef uint32_t OMGT_STATUS_T;
 struct omgt_port;
 
 #define OMGT_DBG_FILE_SYSLOG ((FILE *)-1)
+#define OMGT_DEF_TIMEOUT_MS 1000
+#define OMGT_DEF_RETRY_CNT 3
 /**
  * @brief Configuration settings used when opening an omgt_port
  *
- * Configuration options are passed to omgt_port open functions. Current
- * capabilility of settings is limited to configuring logging.
+ * Optional advanced configuration options than can be passed to omgt_port open
+ * functions.
+ *
+ * Current default values when NULL pointer is passed to open functions is NULL,
+ * meaning error and debug logging are disabled.
  *
  * error_file and debug_file can be specified as either an open linux FILE, or
  * can use the following special values:
@@ -145,7 +150,8 @@ struct omgt_oob_input {
  * @param hfi_name          HFI device name (e.g. "hfi1_0")
  * @param port_num          port number of the hfi starting at 1 (0 is a
  *  						wildcard meaning first active)
- * @param session_params    Parameters to open port with (e.g. Logging streams)
+ * @param session_params    Optional advanced parameters to open port with (e.g.
+ *  						Logging streams).
  *
  * @return OMGT_STATUS_T
  *
@@ -166,7 +172,8 @@ OMGT_STATUS_T omgt_open_port(struct omgt_port **port, char *hfi_name, uint8_t po
  *  						at 1 (0 is a wildcard meaning first active)
  * @param port_num          port number of the hfi starting at 1 (0 is a
  *  						wildcard meaning first active)
- * @param session_params    Parameters to open port with (e.g. Logging streams)
+ * @param session_params    Optional advanced parameters to open port with (e.g.
+ *  						Logging streams).
  *
  * @return OMGT_STATUS_T
  *
@@ -184,7 +191,8 @@ OMGT_STATUS_T omgt_open_port_by_num(struct omgt_port **port, int32_t hfi_num, ui
  *
  * @param port              port object is allocated and returned
  * @param port_guid         port GUID of the port
- * @param session_params    Parameters to open port with (e.g. Logging streams)
+ * @param session_params    Optional advanced parameters to open port with (e.g.
+ *  						Logging streams).
  *
  * @return OMGT_STATUS_T
  *
@@ -202,7 +210,8 @@ OMGT_STATUS_T omgt_open_port_by_guid(struct omgt_port **port, uint64_t port_guid
  *
  * @param port              port object is allocated and returned
  * @param oob_input         OOB conection info
- * @param session_params    Parameters to open port with (e.g. Logging streams)
+ * @param session_params    Optional advanced parameters to open port with (e.g.
+ *  						Logging streams).
  *
  * @return OMGT_STATUS_T
  *
@@ -263,6 +272,38 @@ void omgt_set_dbg(struct omgt_port *port, FILE *file);
  */
 void omgt_set_err(struct omgt_port *port, FILE *file);
 
+/**
+ * @brief Set query timeout for an opamgt port
+ *
+ * Allows Dynamic modification of the query timeout value. Timeout value is
+ * initially set to OMGT_DEF_TIMEOUT_MS during port open and can be changed
+ * at any time with this function.
+ *
+ * @param port        port instance to modify configuration.
+ * @param ms_timeout  timeout value in milliseconds (ms). An invalid timeout
+ *  				  value will reset timeout to default. Default timeout is
+ *  				  1000 ms or 1 second.
+ *
+ * @see omgt_params
+ * @see OMGT_DEF_TIMEOUT_MS
+ */
+void omgt_set_timeout(struct omgt_port *port, int ms_timeout);
+
+/**
+ * @brief Set query retry count for an opamgt port
+ *
+ * Allows Dynamic modification of the query retry value. Retry value is
+ * initially set to OMGT_DEF_RETRY_CNT during port open and can be changed
+ * at any time with this function.
+ *
+ * @param port        port instance to modify configuration.
+ * @param retry_count Number of times to retry query. An invalid retry count
+ *  				  will reset to default. Default is 3.
+ *
+ * @see omgt_params
+ * @see OMGT_DEF_RETRY_CNT
+ */
+void omgt_set_retry_count(struct omgt_port *port, int retry_count);
 
 /** ============================================================================
  * omgt_port accessor functions for use while in in-band mode
@@ -335,6 +376,53 @@ OMGT_STATUS_T omgt_port_get_port_state(struct omgt_port *port, uint8_t *port_sta
  */
 OMGT_STATUS_T omgt_port_get_hfi_name(struct omgt_port *port, char hfi_name[IBV_SYSFS_NAME_MAX]);
 
+
+/* OMGT Service State Values */
+#define OMGT_SERVICE_STATE_UNKNOWN         0
+#define OMGT_SERVICE_STATE_OPERATIONAL     1
+#define OMGT_SERVICE_STATE_DOWN            (-1)
+#define OMGT_SERVICE_STATE_UNAVAILABLE     (-2)
+
+/* OMGT refresh values for how to get or update a service's state */
+#define OMGT_REFRESH_SERVICE_NOP             0x00000000 /* Do not refresh */
+#define OMGT_REFRESH_SERVICE_BAD_STATE       0x00000001 /* Only Refresh if state is not Operational */
+#define OMGT_REFRESH_SERVICE_ANY_STATE       0x00000002 /* Refresh on any state */
+
+/**
+ * @brief Gets port's SA Service's State.
+ *
+ * Get the Port's SA Service State. If refresh is triggered, this function will
+ * send an SA ClassPortInfo query with a small timeout value to quickly check
+ * the responsiveness of the SA. This get function is an alternative way to
+ * initialize the port's SA Service State. The SA Service State is also updated
+ * or initialized before an SA query when the state is not operational.
+ *
+ * @param port              previously initialized port object for an in-band
+ *  					    connection
+ * @param sa_service_state  SA Service State to be returned
+ * @param refresh           value to possibly trigger a refresh
+ * @return OMGT_STATUS_T
+ */
+OMGT_STATUS_T omgt_port_get_sa_service_state(struct omgt_port *port, int *sa_service_state, uint32_t refresh);
+/**
+ * @brief Gets port's PA Client State.
+ *
+ * Get the Port's PA Service State. If refresh is triggered, this function will
+ * attempt to find the PA's Service record using an SA query to quickly check
+ * the responsiveness and presence of the PA. An Additional SA Path Record query
+ * will be issued to determine how to route to the PA. This get function is an
+ * alternative way to initialize the port's PA Service State. The PA Service
+ * State is also updated or initialized before a PA query when the state is not
+ * operational.
+ *
+ * @param port              previously initialized port object for an in-band
+ *  					    connection
+ * @param pa_service_state  PA Service State to be returned
+ * @param refresh           value to possibly trigger a refresh
+ *
+ * @return OMGT_STATUS_T
+ */
+OMGT_STATUS_T omgt_port_get_pa_service_state(struct omgt_port *port, int *pa_service_state, uint32_t refresh);
 
 /** ============================================================================
  * omgt_port accessor functions for use while in out-of-band mode
@@ -412,7 +500,23 @@ OMGT_STATUS_T omgt_port_get_ip_addr_text(struct omgt_port *port, char buf[], siz
  */
 OMGT_STATUS_T omgt_get_hfi_names(char hfis[][UMAD_CA_NAME_LEN], int32_t max, int32_t *hfi_count);
 
-#ifdef __cpluspluc
+/**
+ * @brief Converts the service state to text
+ *
+ * @param service_state value to convert to text
+ *
+ * @return const char*
+ */
+const char* omgt_service_state_totext(int service_state);
+/**
+ * @brief Converts the status value to text
+ *
+ * @param status OMGT_STATUS_T value to convert to text
+ *
+ * @return const char*
+ */
+const char* omgt_status_totext(OMGT_STATUS_T status);
+#ifdef __cplusplus
 }
 #endif
 

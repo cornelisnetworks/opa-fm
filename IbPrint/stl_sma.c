@@ -1576,7 +1576,7 @@ void PrintStlVLArbTableSmp(PrintDest_t *dest, int indent, const STL_SMP *smp, ui
         for (i = 0; i < numPorts; i++) {
     	    BSWAP_STL_VLARB_TABLE(pVlArbTab, section);
             if (nodeType == STL_NODE_SW) {
-	      PrintIntWithDots(dest, indent, "Port: ", port+i);
+	      PrintIntWithDots(dest, indent, "Port", port+i);
               PrintStlVLArbTable(dest, indent+4, pVlArbTab, section, printLineByLine);
             } else {
     	      PrintStlVLArbTable(dest, indent, pVlArbTab, section, printLineByLine);
@@ -2184,7 +2184,7 @@ void PrintStlPortGroupTable(PrintDest_t *dest, int indent, const uint64_t *pPort
     if (printLineByLine) {
     	for (i=0; i<NUM_PGT_ELEMENTS_BLOCK; ++i) {
             PrintIntWithDots(dest, indent, "PortGroup", (blockNum*NUM_PGT_ELEMENTS_BLOCK) + i);
-            PrintIntWithDots(dest, indent, "PortMask:", *pPortGroup + i);
+            PrintIntWithDots(dest, indent, "PortMask", pPortGroup[i]);
         }
 
     }

@@ -107,7 +107,7 @@ sa_SLSCTableRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 
 Status_t
 sa_SLSCTableRecord_Set(uint8_t *slp, Node_t *nodep, Port_t *portp) {
-	Lid_t			    lid;
+	STL_LID			    lid;
     Port_t              *slscPortp;
 	STL_SL2SC_MAPPING_TABLE_RECORD slSCTableRecord;
 

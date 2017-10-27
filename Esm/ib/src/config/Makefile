@@ -44,6 +44,7 @@ DIRS			=
 # C files (.c)
 CFILES			= \
 				  fm_xml.c \
+				  fm_md5.c \
 				# Add more c files here
 # C++ files (.cpp)
 CCFILES			= \
@@ -61,6 +62,7 @@ IDLFILE			=
 DEFFILE			=
 # targets to build during INCLUDES phase (add public includes here)
 INCLUDE_TARGETS	= \
+				  fm_md5.h \
 				# Add more h hpp files here
 # Non-compiled files
 MISC_FILES		= 

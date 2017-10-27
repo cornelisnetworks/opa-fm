@@ -29,8 +29,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* [ICS VERSION STRING: unknown] */
 
 #include <iba/ipublic.h>
-#include <iba/ib_pm.h>
-#include <iba/ib_sm.h>
+#include <iba/ib_sm_priv.h>
 #if !defined(VXWORKS) || defined(BUILD_DMC)
 #include <iba/ib_dm.h>
 #endif

@@ -893,6 +893,9 @@ hypercube_calculate_all_lfts(Topology_t * topop)
 			IB_LOG_ERROR_FMT(__func__, "Failed to allocate space for LFT.");
 			return status;
 		}
+
+		// Initialize port group top prior to setting up groups.
+		switchp->switchInfo.PortGroupTop = 0;
 	}
 
 	// if route last is indicated, balance over those HFIs on a second pass
@@ -1017,6 +1020,9 @@ hypercube_calculate_lft(Topology_t * topop, Node_t * switchp)
 		IB_LOG_ERROR_FMT(__func__, "Failed to allocate space for LFT.");
 		return status;
 	}
+
+	// Initialize port group top prior to setting up groups.
+	switchp->switchInfo.PortGroupTop = 0;
 
 	// if route last is indicated, balance over those HFIs on a second pass
 	routingIterations = (strlen(sm_config.hypercubeRouting.routeLast.member) == 0) ? 1 : 2;

@@ -356,6 +356,8 @@ activate_switch_via_portinfo(Topology_t * topop, Node_t * nodep, pActivationRetr
 			IB_LOG_WARN_FMT(__func__,
 				"Failed to activate node %s nodeGuid "FMT_U64" port 0; status=%u",
 				sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, status);
+			if ((status = sm_popo_port_error(&sm_popo, sm_topop, portp, status)) == VSTATUS_TIMEOUT_LIMIT)
+				return status;
 		}
 	}
 
@@ -378,6 +380,9 @@ activate_switch_via_portstateinfo(Topology_t * topop, Node_t * nodep, Port_t * p
 			"Failed Set(PortStateInfo) for node %s nodeGuid "FMT_U64": status=%u",
 			sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, status);
 
+		if ((status = sm_popo_port_error(&sm_popo, sm_topop, port0p, status)) == VSTATUS_TIMEOUT_LIMIT)
+			return status;
+
 		// if Set failed, see if we can Get and take advantage of any ports
 		// that succeeded
 		status = sm_get_node_port_states(topop, nodep, port0p, NULL, &psi);
@@ -385,6 +390,9 @@ activate_switch_via_portstateinfo(Topology_t * topop, Node_t * nodep, Port_t * p
 			IB_LOG_WARN_FMT(__func__,
 				"Failed Get(PortStateInfo) for node %s nodeGuid "FMT_U64": status=%u",
 				sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, status);
+
+			if ((status = sm_popo_port_error(&sm_popo, sm_topop, port0p, status)) == VSTATUS_TIMEOUT_LIMIT)
+				return status;
 
 			// last resort... hit each port individually
 			status = activate_switch_via_portinfo(topop, nodep, retry);
@@ -427,6 +435,8 @@ activate_switch_via_portstateinfo(Topology_t * topop, Node_t * nodep, Port_t * p
 						IB_LOG_WARN_FMT(__func__,
 							"Failed to activate node %s nodeGuid "FMT_U64" port 0: status=%u",
 							sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, status);
+						if ((status = sm_popo_port_error(&sm_popo, sm_topop, portp, status)) == VSTATUS_TIMEOUT_LIMIT)
+							break;
 					}
 				}
 				break;
@@ -439,8 +449,8 @@ activate_switch_via_portstateinfo(Topology_t * topop, Node_t * nodep, Port_t * p
 
 	vs_pool_free(&sm_pool, psi);
 
-	IB_EXIT(__func__, VSTATUS_OK);
-	return VSTATUS_OK;
+	IB_EXIT(__func__, status);
+	return status;
 }
 
 static Status_t
@@ -474,6 +484,8 @@ activate_switch(Topology_t * topop, Node_t * nodep, pActivationRetry_t retry)
 			IB_LOG_WARN_FMT(__func__,
 				"Failed to activate node %s nodeGuid "FMT_U64" port 0: status=%u",
 				sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, status);
+			if ((status = sm_popo_port_error(&sm_popo, sm_topop, port0p, status)) == VSTATUS_TIMEOUT_LIMIT)
+				return status;
 		}
 	}
 
@@ -501,6 +513,8 @@ activate_hfi(Topology_t * topop, Node_t * nodep, pActivationRetry_t retry)
 			IB_LOG_WARN_FMT(__func__,
 				"Failed to activate node %s nodeGuid "FMT_U64" port %u: status=%u",
 				sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index, status);
+			if ((status = sm_popo_port_error(&sm_popo, sm_topop, portp, status)) == VSTATUS_TIMEOUT_LIMIT)
+				return status;
 		}
 	}
 
@@ -538,20 +552,23 @@ sm_activate_node_safe(Topology_t * topop, Node_t * nodep, pActivationRetry_t ret
 	for_all_ports(nodep, portp) {
 		if (!sm_valid_port(portp) || portp->state < IB_PORT_ARMED) continue;
 		status = sm_activate_port(sm_topop, nodep, portp, FALSE, retry);
-		if (status != VSTATUS_OK)
+		if (status != VSTATUS_OK) {
 			IB_LOG_WARN_FMT(__func__,
 				"Failed to activate node %s nodeGuid "FMT_U64" port %u; status=%u",
 				sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index, status);
+			if ((status = sm_popo_port_error(&sm_popo, sm_topop, portp, status)) == VSTATUS_TIMEOUT_LIMIT)
+				return status;
+		}
 	}
 
 	IB_EXIT(__func__, status);
 	return status;
 }
 
-void
+Status_t
 sm_arm_node(Topology_t * topop, Node_t * nodep)
 {
-	Status_t status;
+	Status_t status = VSTATUS_OK;
 	Port_t *portp;
 
 	for_all_ports(nodep, portp) {
@@ -561,6 +578,8 @@ sm_arm_node(Topology_t * topop, Node_t * nodep)
 				IB_LOG_ERROR_FMT(__func__, "TT(ta): can't ARM node %s nodeGuid "FMT_U64" node index %d port index %d",
 					   sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, nodep->index, portp->index);
 				sm_enable_port_led(nodep, portp, TRUE);
+				if ((status = sm_popo_port_error(&sm_popo, sm_topop, portp, status)) == VSTATUS_TIMEOUT_LIMIT)
+					return status;
 			} else {
 				bitset_clear(&nodep->initPorts, portp->index);
 			}
@@ -572,44 +591,53 @@ sm_arm_node(Topology_t * topop, Node_t * nodep)
 		}
 	}
 
-	if (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH) {
-		// clear any pause state on switch doing adaptive routing
-		if (nodep->arSupport && nodep->switchInfo.AdaptiveRouting.s.Pause && !nodep->arDenyUnpause) {
-			// Setup was successful, clear pause
-			sm_SetARPause(nodep, 0) ;
-		}
-	}
+	return status;
 }
 
-void
+Status_t
 sm_activate_all_hfi_first_safe(Topology_t * topop, pActivationRetry_t retry)
 {
+	Status_t status = VSTATUS_OK;
 	Node_t * nodep;
 
 	for_all_ca_nodes(topop, nodep)
-		sm_activate_node_safe(topop, nodep, retry);
+		if ((status = sm_activate_node_safe(topop, nodep, retry)) == VSTATUS_TIMEOUT_LIMIT)
+			return status;
 	for_all_switch_nodes(topop, nodep)
-		sm_activate_node_safe(topop, nodep, retry);
+		if ((status = sm_activate_node_safe(topop, nodep, retry)) == VSTATUS_TIMEOUT_LIMIT)
+			return status;
+
+	return VSTATUS_OK;
 }
 
-void
+Status_t
 sm_activate_all_hfi_first(Topology_t * topop, pActivationRetry_t retry)
 {
+	Status_t status = VSTATUS_OK;
 	Node_t * nodep;
 
 	for_all_ca_nodes(topop, nodep)
-		sm_activate_node(topop, nodep, retry);
+		if ((status = sm_activate_node(topop, nodep, retry)) == VSTATUS_TIMEOUT_LIMIT)
+			return status;
 	for_all_switch_nodes(topop, nodep)
-		sm_activate_node(topop, nodep, retry);
+		if ((status = sm_activate_node(topop, nodep, retry)) == VSTATUS_TIMEOUT_LIMIT)
+			return status;
+
+	return VSTATUS_OK;
 }
 
-void
+Status_t
 sm_activate_all_switch_first(Topology_t * topop, pActivationRetry_t retry)
 {
+	Status_t status = VSTATUS_OK;
 	Node_t * nodep;
 
 	for_all_switch_nodes(topop, nodep)
-		sm_activate_node(topop, nodep, retry);
+		if ((status = sm_activate_node(topop, nodep, retry)) == VSTATUS_TIMEOUT_LIMIT)
+			return status;
 	for_all_ca_nodes(topop, nodep)
-		sm_activate_node(topop, nodep, retry);
+		if ((status = sm_activate_node(topop, nodep, retry)) == VSTATUS_TIMEOUT_LIMIT)
+			return status;
+
+	return VSTATUS_OK;
 }

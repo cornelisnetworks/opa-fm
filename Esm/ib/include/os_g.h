@@ -117,7 +117,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //---------------------------------------------------------------------//
 
 #elif   defined(__VXWORKS__)
-//#include <isysutil.h>	// causes warnings due to duplicates of SM typdefs
 extern unsigned long SystemGetRandom(void);
 /* Get a random number between two numbers.
  * a%b will return a value between 0 and b-1 (inclusive).

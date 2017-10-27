@@ -51,8 +51,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "mai_l.h"		/* Local mai function definitions */
 #include "ib_macros.h"
-#include "iba/stl_sm.h"
-#include "iba/stl_sa.h"
+#include "iba/stl_sm_priv.h"
+#include "iba/stl_sa_priv.h"
 
 #ifdef __VXWORKS__
 extern uint16_t getDefaultPKey(void);

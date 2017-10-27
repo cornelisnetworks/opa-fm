@@ -90,7 +90,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef __VS_G_
 #define __VS_G_
-#include <ib_types.h>
+#include <stl_types.h>
 #include <ib_status.h>
 #include <stdlib.h>
 #include <string.h>
@@ -407,6 +407,9 @@ sem_t osdSema;
 }
 Sema_t;
 
+//
+// MWHEINZ FIXME: Why are the cs_ functions prototyped here and not in cs_g.h?
+// 
 #define CS_SEMA_WAIT_FOREVER  -1
 #define CS_SEMA_NO_WAIT        0
 extern Status_t cs_sema_create (Sema_t * handle, uint32_t count);
@@ -418,7 +421,7 @@ extern Status_t cs_sema_getcount(Sema_t * handle, int *cnt);
 extern Status_t cs_psema_wait (Sema_t * handle, int timeout);
 /*=== Semaphores ===*/
 
-/*=== String Conversion ===*/
+/*=== String Operations ===*/
 /* max/min values for uint*_t and int*_t */
 #ifndef UINT8_MAX
 #define UINT8_MAX       255
@@ -526,7 +529,8 @@ extern Status_t	cs_parse_gid	(const char * str, Gid_t gid);
 extern char *cs_getAidName(uint16_t, uint16_t);
 extern char *cs_getMethodText(uint8_t);
 
-/*=== String Conversion ===*/
+extern int cs_snprintfcat(char ** buf, size_t * len, char * fmt, ...) __attribute__((format(printf,3,4)));
+/*=== String Operations ===*/
 
 /*=== Computational Utility Functions ===*/
 extern uint32_t cs_numSwitches(uint32_t subnet_size);

@@ -66,7 +66,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "iba/ib_helper.h"
 
 
-
  __inline__
 int find_mlid_offset(Lid_t mLid) {
 	return(mLid & STL_LID_MCAST_OFFSET_MASK);
@@ -568,7 +567,189 @@ findFirstPortInMftBlock(STL_PORTMASK *mftBlock, int blockPos) {
 #define	Mft_Position(X)			((X)/STL_PORT_MASK_WIDTH)
 #define	Mft_PortmaskBit(X)		((uint64)1 << (X)%STL_PORT_MASK_WIDTH)
 
+static Status_t sm_createMCastGrp(int vf, uint64_t* mgid, uint16_t pkey, uint8_t mtu, uint8_t rate, uint8_t sl, uint32_t qkey, uint32_t fl, uint8_t tc) {
 
+	Status_t	status;
+	McGroup_t	*mcGroup;
+	McMember_t	*mcMember = NULL;
+	STL_MCMEMBER_RECORD *mcmp;
+	Lid_t   	mLid;
+	IB_GID  	mGid;
+
+
+	if ((status = sm_multicast_assign_lid(mGid, pkey, mtu, rate, &mLid)) != VSTATUS_OK) {
+		sysPrintf("Failed to allocate LID for Multicast group!\n");
+		return status;
+	}
+	McGroup_Create(mcGroup); //create register and add it to structure
+
+	mcGroup->mGid.AsReg64s.H = mgid[0];
+	mcGroup->mGid.AsReg64s.L = mgid[1];
+	mcGroup->mLid = mLid;
+	mcGroup->qKey = qkey;
+	mcGroup->pKey = pkey;
+	mcGroup->mtu = mtu;
+	mcGroup->rate = rate;
+	mcGroup->life = sa_dynamicPlt[0] ? sa_dynamicPlt[9] : sm_config.sa_packet_lifetime_n2;
+	mcGroup->sl = sl;
+	mcGroup->tClass = tc;
+	mcGroup->hopLimit = 0xFF;
+	mcGroup->scope = IB_LINK_LOCAL_SCOPE;
+	mcGroup->members_full = 1;
+	bitset_set(&mcGroup->vfMembers, vf);
+	//also add dummy McMember
+	McMember_Create(mcGroup, mcMember);
+	mcMember->slid = 0;
+	mcMember->proxy = 1;
+	mcMember->state = MCMEMBER_JOIN_FULL_MEMBER;
+	mcMember->nodeGuid = 0;
+	mcMember->portGuid = SA_FAKE_MULTICAST_GROUP_MEMBER;
+
+	//create STL_MCMEMBER_RECORD
+	mcmp = &mcMember->record;
+	mcmp->RID.MGID.AsReg64s.H = mgid[0];
+	mcmp->RID.MGID.AsReg64s.L = mgid[1];
+
+	memset((void*)mcmp->RID.PortGID.Raw, 0, sizeof(mcmp->RID.PortGID));
+	mcmp->Q_Key = mcGroup->qKey;
+	mcmp->MLID = mcGroup->mLid;
+	mcmp->MtuSelector= PR_EQ;
+	mcmp->Mtu = mcGroup->mtu;
+	mcmp->TClass = mcGroup->tClass;
+	mcmp->P_Key = mcGroup->pKey;
+	mcmp->RateSelector = PR_EQ;
+	mcmp->Rate = mcGroup->rate;
+	mcmp->PktLifeTimeSelector = PR_EQ;
+	mcmp->PktLifeTime = mcGroup->life;
+	mcmp->SL = mcGroup->sl;
+	mcmp->HopLimit = mcGroup->hopLimit;
+	mcmp->Scope = mcGroup->scope;
+	mcmp->JoinFullMember = mcMember->state & MCMEMBER_JOIN_FULL_MEMBER;
+	mcmp->JoinNonMember = 0;
+	mcmp->JoinSendOnlyMember = 0;
+	mcmp->ProxyJoin = mcMember->proxy;
+
+	return VSTATUS_OK;
+}
+
+Status_t sm_update_mc_groups(VirtualFabrics_t *newVF, VirtualFabrics_t *oldVF)
+{
+	McGroup_t *mcGroup, *tmpGroup;
+	McMember_t *mcMember;
+	uint32_t vf;
+	VFDg_t *dg_ref;
+	VFAppMgid_t *mgid_ref;
+	cl_map_item_t *item1;
+	Status_t status;
+	IB_GID mGid;
+
+	if ((status = vs_wrlock(&old_topology_lock)) != VSTATUS_OK)
+		return status;
+
+	if ((status = vs_lock(&sm_McGroups_lock)) != VSTATUS_OK) {
+		vs_unlock(&old_topology_lock);
+		return status;
+	}
+
+	for (vf=0; vf < newVF->number_of_vfs_all; vf++) {
+		//order in v_fabric_all remains same when changing status (Active/Standby)
+		// from old to new.
+		// swap from standby to active
+		if ((newVF->v_fabric_all[vf].standby == 0) && (oldVF->v_fabric_all[vf].standby == 1)) {
+			// add if necessary mcgroups
+			IB_LOG_INFINI_INFO_FMT(__func__,
+					"VF %s change from STB to ACT ",newVF->v_fabric_all[vf].name );
+			//compare groups and if it is not there add it.
+			dg_ref = newVF->v_fabric_all[vf].default_group;
+			while (dg_ref) {
+				if (dg_ref->def_mc_create) {
+					for_all_qmap_ptr(&dg_ref->mgidMap, item1, mgid_ref) {
+						mGid.Type.Global.SubnetPrefix = mgid_ref->mgid[0];
+						mGid.Type.Global.InterfaceID = mgid_ref->mgid[1];
+						mcGroup = sm_find_multicast_gid(mGid);
+
+						if (!mcGroup) {
+							uint8_t sl;
+							//assigning the newVF's SL. For now it did not change dynamically.
+							if (newVF->v_fabric_all[vf].mcast_sl != UNDEFINED_XML8)
+								sl = newVF->v_fabric_all[vf].mcast_sl;
+							else sl = newVF->v_fabric_all[vf].base_sl;
+							status = sm_createMCastGrp(vf, mgid_ref->mgid, dg_ref->def_mc_pkey, dg_ref->def_mc_mtu_int,
+								dg_ref->def_mc_rate_int, sl ,dg_ref->def_mc_qkey, dg_ref->def_mc_fl, dg_ref->def_mc_tc);
+							if (status == VSTATUS_OK) {
+								IB_LOG_INFINI_INFO_FMT(__func__, "Creating multicast MGID: "FMT_GID, mgid_ref->mgid[0], mgid_ref->mgid[1]);
+							}
+							else IB_LOG_INFINI_INFO_FMT(__func__, "Not able to create group MGID: "FMT_GID, mgid_ref->mgid[0], mgid_ref->mgid[1]);
+						}
+						else {
+							IB_LOG_INFINI_INFO_FMT(__func__," Multicast group exists MGID: "FMT_GID, mgid_ref->mgid[0], mgid_ref->mgid[1]);
+							bitset_set(&mcGroup->vfMembers, vf); // add current VF to the mgid
+						}
+					}
+				}
+				dg_ref = dg_ref->next_default_group;
+			}
+		} // end transition STB-> ACT
+
+		// VF transitions from active to standby
+		if ((newVF->v_fabric_all[vf].standby == 1) && (oldVF->v_fabric_all[vf].standby == 0)) {
+			IB_LOG_INFINI_INFO_FMT(__func__, "VF %s change from ACT to STB ", newVF->v_fabric_all[vf].name );
+
+			//delete if necessary mcgroups
+			mcGroup = sm_McGroups;
+			while (mcGroup) {
+				if (bitset_test(&mcGroup->vfMembers, vf)) {
+					//find members in VF
+					mcMember = mcGroup->mcMembers;
+					for_all_multicast_members(mcGroup, mcMember) {
+						uint64_t mcMemberGuid;
+						Port_t *portp;
+						mcMemberGuid = mcGroup->mcMembers->record.RID.PortGID.Type.Global.InterfaceID;
+						if (mcMemberGuid != 0) {
+							if ((portp = sm_find_port_guid(&old_topology, mcGroup->mcMembers->portGuid)) != NULL) {
+								if (bitset_test(&portp->portData->vfMember,vf)) { 
+									IB_LOG_INFINI_INFO_FMT(__func__, "VF %s  port_guid "FMT_U64" moved to STB\n", 
+										oldVF->v_fabric_all[vf].name, mcGroup->mcMembers->portGuid);
+									//mark node that is not a member
+									if (portp->portData->portInfo.PortStates.s.PortState == IB_PORT_ACTIVE) {
+									// Indicate that reregistration is pending; will persist across
+									// sweeps until it succeeds or is no longer required (e.g. state change)
+										portp->portData->reregisterPending = 1;
+									}
+									bitset_clear(&portp->portData->vfMember,vf);
+								}
+							}
+						}
+					}
+					//reset bit for that VF
+					bitset_clear(&mcGroup->vfMembers, vf);
+				}
+				// if there is no other VF matching, check it has no members and then delete it
+				if (bitset_nset(&mcGroup->vfMembers)== 0) {
+					while (mcGroup->mcMembers) {
+						// MUST copy head pointer into temp
+						// Passing mcGroup->members directly to the delete macro will corrupt the list
+						mcMember = mcGroup->mcMembers;
+						McMember_Delete(mcGroup, mcMember);
+					}
+					if (mcGroup->mcMembers == NULL) { // Group is empty, delete it
+						IB_LOG_INFINI_INFO_FMT(__func__, "VF %s. Group is empty, deleting MGID: "FMT_GID, newVF->v_fabric_all[vf].name, mcGroup->mGid.Type.Global.SubnetPrefix, mcGroup->mGid.Type.Global.InterfaceID);
+						tmpGroup = mcGroup->next;
+						McGroup_Delete(mcGroup);
+						mcGroup = tmpGroup;
+					}
+				}
+				else 
+					mcGroup = mcGroup->next;
+			} // while mcGroup ends
+		} // if end
+	} // for all vfs end
+	status = VSTATUS_OK;
+	vs_unlock(&sm_McGroups_lock);
+	vs_unlock(&old_topology_lock);
+	return status;
+
+}
 /* sm_check_mc_groups_realizable - checks multicast groups to see if they have become unrealizable
  * due to topology/mtu/rate changes, or if for some other reason we did not compute a valid spanning
  * tree and marks such groups  as unrealizable.
@@ -804,7 +985,6 @@ Status_t sm_calculate_mfts()
 	}
 
 	sm_check_mc_groups_realizable();
-
 
 	sm_calculate_spanning_tree_port_mask();
 

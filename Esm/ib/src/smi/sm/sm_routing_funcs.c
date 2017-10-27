@@ -1221,7 +1221,6 @@ sm_routing_func_setup_pgs(struct _Topology *topop, struct _Node * srcSw, struct 
 
 	int end_port =  topop->routingModule->funcs.select_ports(topop, srcSw, dstSw->swIdx, ordered_ports, 0);
 	if (end_port <= 1) {
-		srcSw->switchInfo.PortGroupTop = 0;
 		return VSTATUS_OK;
 	}
 
@@ -1247,7 +1246,7 @@ sm_routing_func_setup_pgs(struct _Topology *topop, struct _Node * srcSw, struct 
 
 	if (rc >= 0) {
 		srcSw->arChange |= (rc > 0);
-		srcSw->switchInfo.PortGroupTop = srcSw->pgtLen; //MAX(srcSw->switchInfo.PortGroupTop, srcSw->pgtLen);
+		srcSw->switchInfo.PortGroupTop = srcSw->pgtLen;
 
 		//PGFT is independent of LFT with LMC, though it's supposed to re-use the LMC data
 		PORT * pgft = sm_Node_get_pgft_wr(srcSw);

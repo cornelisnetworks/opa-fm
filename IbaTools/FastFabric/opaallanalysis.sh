@@ -92,6 +92,10 @@ Usage_full()
 	echo "   ESM_CHASSIS_FILE - file containing list of SM chassis, used if -G and -E not" >&2
 	echo "                      supplied" >&2
 	echo "   FF_ANALYSIS_DIR - top level directory for baselines and failed health checks" >&2
+	echo "   FF_CHASSIS_CMDS - list of commands to issue during analysis," >&2 
+	echo "                     unused if -e option supplied" >&2
+	echo "   FF_CHASSIS_HEALTH - single command to issue to check overall health during analysis," >&2
+	echo "                       unused if -b option supplied" >&2
 	echo "for example:" >&2
 	echo "   opaallanalysis" >&2
 	echo "   opaallanalysis -p '1:1 1:2 2:1 2:2'" >&2

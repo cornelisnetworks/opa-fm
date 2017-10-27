@@ -126,7 +126,7 @@ sa_LFTableRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
 
 Status_t
 sa_LFTableRecord_Set(uint8_t *lftp, Node_t *nodep, Port_t *portp, uint16_t index) {
-	Lid_t		    lid;
+	STL_LID		    lid;
 	Port_t          *lftPortp;
 	uint32_t		length;
 	STL_LINEAR_FORWARDING_TABLE_RECORD lftRecord;

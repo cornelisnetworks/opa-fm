@@ -42,7 +42,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "ib_status.h"
 #include "os_g.h"
-#include "iba/stl_sm.h"
+#include "iba/stl_sm_priv.h"
 #include "sm_l.h"
 
 static Status_t

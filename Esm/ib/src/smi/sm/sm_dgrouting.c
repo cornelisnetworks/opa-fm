@@ -95,8 +95,9 @@ dgmh_pre_process_discovery(Topology_t *topop, void **outContext)
 			MAX_VFABRIC_NAME);
 		dgp->deviceGroupName[i][MAX_VFABRIC_NAME]=0;
 		if ((dgIndex = smGetDgIdx(dgp->deviceGroupName[i])) < 0) {
-			IB_LOG_ERROR_FMT(__func__, "DGMinHopTopology has undefined RoutingOrder DeviceGroup %s",
+			IB_LOG_ERROR_FMT(__func__,"DGMinHopTopology has undefined RoutingOrder DeviceGroup %s",
 							dgp->deviceGroupName[i]);
+			IB_FATAL_ERROR_NODUMP("FM cannot continue.");
 			return VSTATUS_BAD;
 		}
 		dgp->deviceGroupIndex[i] = dgIndex;
@@ -313,6 +314,8 @@ dgmh_calculate_lft(Topology_t * topop, Node_t * switchp)
 		return status;
 	}
 
+	// Initialize port group top prior to setting up groups.
+	switchp->switchInfo.PortGroupTop = 0;
 
 	IB_LOG_DEBUG4_FMT(__func__, "Building LFT for 0x%"PRIx64, switchp->nodeInfo.NodeGUID);
 

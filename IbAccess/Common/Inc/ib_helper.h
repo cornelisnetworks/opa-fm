@@ -29,23 +29,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /* [ICS VERSION STRING: unknown] */
 
-#if defined(CHECK_HEADERS)
-
-#ifndef _IBA_STL_HELPER_H_
-#warning FIX ME!!! Your includes should use the stl_helper.h header and not the ib_helper.h header for STL builds
-#endif
-
-#endif
-
 #ifndef _IBA_IB_HELPER_H_
 #define _IBA_IB_HELPER_H_
 
 #include "iba/stl_types.h"
-#include "iba/stl_sm.h"
-#include "iba/stl_pm.h"
+#include "iba/stl_sm_types.h"
 
 #include "iba/ib_mad.h"
-#include "iba/public/imemory.h"
 #include "iba/public/imath.h"
 
 #ifdef __cplusplus
@@ -767,235 +757,6 @@ PortDataSetLinkSpeedEnabledSplit(uint8 speed, PORT_INFO *portInfop)
 	portInfop->LinkSpeedExt.Enabled = speed >> 4;
 }
 
-#if 0	/* not useful, handful of discads/millions packets is too small */
-/* compute Percent Xmit Discard packets as integer 0-10000 (2 decimal place) */
-static __inline uint16
-IbPortXmitDiscardPct100(uint16 PortXmitDiscards, uint64 PortXmitPkts)
-{
-	if (! PortXmitDiscards)
-		return 0;
-	return ((uint64)PortXmitDiscards * 10000)/(PortXmitPkts + PortXmitDiscards);
-}
-#endif
-
-/* indicate name for PortCongestion based on PortCheckRate type field */
-/* used by IbPrint for PA and PM queries */
-static __inline const char*
-IbPortCongestionNameToText(uint16 portCheckRate)
-{
-	switch (portCheckRate & PM_VENDOR_PORT_COUNTERS_RATE_TYPE_MASK) {
-	case PM_VENDOR_PORT_COUNTERS_RATE_TYPE_CONG:
-		return "Port Xmit Congestion";
-	case PM_VENDOR_PORT_COUNTERS_RATE_TYPE_PICO_TICK:
-		return "Port Xmit Wait";
-	default:
-		return "Unknown";
-	}
-}
-
-/* indicate brief name for PortCongestion based on PortCheckRate type field */
-/* this is for use in opatop */
-static __inline const char*
-IbPortCongestionNameToBriefText(uint16 portCheckRate)
-{
-	switch (portCheckRate & PM_VENDOR_PORT_COUNTERS_RATE_TYPE_MASK) {
-	case PM_VENDOR_PORT_COUNTERS_RATE_TYPE_CONG:
-		return "Port Xmt Congest*:";
-	case PM_VENDOR_PORT_COUNTERS_RATE_TYPE_PICO_TICK:
-		return "Port Xmt Wait*:   ";
-	default:
-		return "Unknown";
-	}
-}
-
-/* indicate name for Inefficiency based on PortCheckRate type field */
-/* used by IbPrint for PA and PM queries */
-static __inline const char*
-IbPortInefficiencyNameToText(uint16 portCheckRate)
-{
-	switch (portCheckRate & PM_VENDOR_PORT_COUNTERS_RATE_TYPE_MASK) {
-	case PM_VENDOR_PORT_COUNTERS_RATE_TYPE_CONG:
-		return "Congestion Inefficiency";
-	case PM_VENDOR_PORT_COUNTERS_RATE_TYPE_PICO_TICK:
-		return "Wait Inefficiency";
-	default:
-		return "Unknown";
-	}
-}
-
-/* indicate brief name for Inefficiency based on PortCheckRate type field */
-/* this is for use in opatop */
-static __inline const char*
-IbPortInefficiencyNameToBriefText(uint16 portCheckRate)
-{
-	switch (portCheckRate & PM_VENDOR_PORT_COUNTERS_RATE_TYPE_MASK) {
-	case PM_VENDOR_PORT_COUNTERS_RATE_TYPE_CONG:
-		return "Congest Inefficiency*:";
-	case PM_VENDOR_PORT_COUNTERS_RATE_TYPE_PICO_TICK:
-		return "Wait Inefficiency*:   ";
-	default:
-		return "Unknown";
-	}
-}
-
-/* convert PortCheckRate Type to Text */
-static __inline const char*
-IbPortCheckRateTypeToText(uint16 portCheckRate)
-{
-	switch (portCheckRate & PM_VENDOR_PORT_COUNTERS_RATE_TYPE_MASK) {
-	case PM_VENDOR_PORT_COUNTERS_RATE_TYPE_CONG:
-		return "Port Check Rate";
-	case PM_VENDOR_PORT_COUNTERS_RATE_TYPE_PICO_TICK:
-		return "Xmit Wait Tick";
-	default:
-		return "Unknown";
-	}
-}
-/* convert PortCheckRate Type to Text */
-static __inline const char*
-IbPortCheckRateTypeSuffixToText(uint16 portCheckRate)
-{
-	switch (portCheckRate & PM_VENDOR_PORT_COUNTERS_RATE_TYPE_MASK) {
-	case PM_VENDOR_PORT_COUNTERS_RATE_TYPE_CONG:
-		return "per sec";
-	case PM_VENDOR_PORT_COUNTERS_RATE_TYPE_PICO_TICK:
-		return "picosec";
-	default:
-		return "Unknown";
-	}
-}
-
-/* compute Percent Congestion as an integer 0-1000 (1 decimal place) */
-/* this is used for PM_VENDOR_PORT_COUNTERS_RATE_TYPE_CONG
- * in which case PortXmitCongestion indicates number of times that port
- * was checked and had a deep queue depth (for 1 or more VLs)
- * indicating congestion
- * PortCheckRate is in units of checks per second
- */
-static __inline uint16
-IbPortXmitCongestionPct10(uint16 PortCheckRate, uint16 interval,
-						uint64 PortXmitCongestion)
-{
-	uint32 portChecks;
-	// Note interval is limited to uint16 which is 3/4 of a day
-	// max expected PortXmitCongestion delta at 2000 check rate is < uint32
-	// so math below will not overflow
-	if (! PortCheckRate)
-		return 0;
-	portChecks = (uint32)PortCheckRate * interval;
-
-	// test for unexpected odd case in case delta is unexpectedly large
-	if (PortXmitCongestion > portChecks)
-		return 1000;	// 100%
-
-	return (PortXmitCongestion * 1000) / portChecks;
-}
-
-/* compute Percent Congestion as an integer 0-1000 (1 decimal place) */
-/* this is used for PM_VENDOR_PORT_COUNTERS_RATE_TYPE_PICO_TICK
- * in which case PortXmitCongestion indicates number of times that port
- * was checked and had insufficient credits to xmit (for 1 or more VLs)
- * indicating congestion
- * PortCheckRate is in units of picoseconds per check
- */
-static __inline uint16
-IbPortXmitWaitCongestionPct10(uint16 PortCheckRate, uint16 interval,
-						uint64 PortXmitCongestion)
-{
-	uint32 portCheckRate;	// checks per millisecond
-	uint64 portChecks;		// total checks over interval
-	// Note interval is limited to uint16 which is 3/4 of a day
-	// max expected PortXmitCongestion delta at 1000 picosecond checkrate
-	// is 6.5E13 which needs 46 bits
-	// at 1 picosecond checkrate and 3/4 of a day interval PortXmitCongestion
-	// delta could be 6.5E16 which needs 56 bits
-	// hence math below is careful to avoid overflow
-	// simple equation is:
-	// pct10 = (PortXmitCongestion * 1000) / (TicksPerSec * interval)
-	// where TicksPerSec= (10^12)/PortCheckRate
-
-
-	if (! PortCheckRate)
-		return 0;
-
-	// test for unexpected odd case in case delta is unexpectedly large
-	// Factor out 1000 in denominator because result range is 0-1000
-	// Factor out another 1000 in numerator and denominator, avoids overflow for
-	// large PortXmitCongestion but may introduce some modest rounding error
-	//if (PortXmitCongestion > (1000000ULL / PortCheckRate))
-	//	return 1000;	// 100%
-
-	// this value could take up to 30 bits
-	portCheckRate = (1000000000UL/PortCheckRate);	// checks per millisecond
-
-	// this value will fit in 46 bits
-	portChecks = portCheckRate * interval;	// total checks over interval/1000
-
-	// because portChecks fits in 46 bits, we are safe doing simpler range test
-	if (PortXmitCongestion > portChecks*1000)
-		return 1000;	// 100%
-
-	return PortXmitCongestion / portChecks;	// 0 - 1000 result
-}
-
-/* compute Percent Inefficiency as an integer 0-1000 (1 decimal place) */
-/* We consider InEfficiency as the Percent of time the port was congested
- * compared to the overall percent of time the port was sending data
- */
-static __inline uint16
-IbPortXmitInefficiencyPct10(uint16 PortXmitCongestionPct10,
-							uint32 SendMBps, uint32 MaxMBps)
-{
-	uint16 SendUtilPct10;
-	if (! PortXmitCongestionPct10)
-		return 0;
-	SendUtilPct10 = ((uint64)SendMBps * 1000) / MaxMBps;
-	return (PortXmitCongestionPct10*1000)/
-			(PortXmitCongestionPct10 +  SendUtilPct10);
-}
-
-
-#if 0	// no way to clear PortXmitWait, so can't use for now
-/* compute Percent XmitWait as an integer 0-1000 (1 decimal place) */
-static __inline uint16
-IbPortXmitWaitPct10(uint8 rate, uint16 interval, uint64 PortXmitWait)
-{
-	uint64 numerator, denominator;
-
-	if (! PortXmitWait)
-		return 0;
-
-	// Normally would multiply numerator by 1000 to get Pct10
-	// and denominator by 1,000,000 to get MTicks to Ticks
-	// so instead just adjust multipliers and reduce chance of overflow
-	numerator=(uint64)pDelta->PortXmitWait; // ticks we had a delay,
-	// TBD - if use this in PM, pass MTickps as arg and lookup in static table
-	denominator=IbStaticRateToMTickps(rate) * interval * 1000; // ticks in interval
-	if (numerator > denominator*1000)
-		return 1000;	// 100%
-	return numerator / denominator;
-}
-#endif
-
-/* convert Node Type to text */
-static __inline const char*
-IbNodeTypeToText(NODE_TYPE type)
-{
-	return (type == IBA_NODE_CHANNEL_ADAPTER)?"CA":
-			(type == IBA_NODE_SWITCH)?"SW":
-			(type == IBA_NODE_ROUTER)?"RT":"??";
-}
-
-/* convert SM State to text */
-static __inline const char*
-IbSMStateToText(SM_STATE state)
-{
-	return (state == SM_INACTIVE? "Inactive":
-			state == SM_DISCOVERING? "Discovering":
-			state == SM_STANDBY? "Standby":
-			state == SM_MASTER? "Master": "???");
-}
-
 /* convert Notice Type to text */
 static __inline const char*
 IbNoticeTypeToText(IB_NOTICE_TYPE type)
@@ -1131,86 +892,6 @@ uint64 TimeoutMultToTimeInUsec(uint32 timeout_mult)
 	}
 }
 
-/* Convert Rnr NAK Timer value to usec */
-static __inline
-uint32 RnrNakTimerToUsec(uint8 rnrNakTimer)
-{
-	switch (rnrNakTimer)
-	{
-		default:
-		case 0:	return 655360;
-		case 1:	return 10;
-		case 2:	return 20;
-		case 3:	return 30;
-		case 4: return 40;
-		case 5:	return 60;
-		case 6:	return 80;
-		case 7:	return 120;
-		case 8:	return 160;
-		case 9:	return 240;
-		case 10: return 320;
-		case 11: return 480;
-		case 12: return 640;
-		case 13: return 960;
-		case 14: return 1280;
-		case 15: return 1920;
-		case 16: return 2560;
-		case 17: return 3840;
-		case 18: return 5120;
-		case 19: return 7680;
-		case 20: return 10240;
-		case 21: return 15360;
-		case 22: return 20480;
-		case 23: return 30720;
-		case 24: return 40960;
-		case 25: return 61440;
-		case 26: return 81920;
-		case 27: return 122880;
-		case 28: return 163840;
-		case 29: return 245760;
-		case 30: return 327680;
-		case 31: return 491520;
-	}
-}
-
-/* Convert Usec to Rnr NAK Timer value */
-static __inline
-uint8 UsecToRnrNakTimer(uint32 usec)
-{
-		if (usec <= 10) return 1;
-		else if (usec <= 20) return 2;
-		else if (usec <= 30) return 3;
-		else if (usec <= 40) return 4;
-		else if (usec <= 60) return 5;
-		else if (usec <= 80) return 6;
-		else if (usec <= 120) return 7;
-		else if (usec <= 160) return 8;
-		else if (usec <= 240) return 9;
-		else if (usec <= 320) return 10;
-		else if (usec <= 480) return 11;
-		else if (usec <= 640) return 12;
-		else if (usec <= 960) return 13;
-		else if (usec <= 1280) return 14;
-		else if (usec <= 1920) return 15;
-		else if (usec <= 2560) return 16;
-		else if (usec <= 3840) return 17;
-		else if (usec <= 5120) return 18;
-		else if (usec <= 7680) return 19;
-		else if (usec <= 10240) return 20;
-		else if (usec <= 15360) return 21;
-		else if (usec <= 20480) return 22;
-		else if (usec <= 30720) return 23;
-		else if (usec <= 40960) return 24;
-		else if (usec <= 61440) return 25;
-		else if (usec <= 81920) return 26;
-		else if (usec <= 122880) return 27;
-		else if (usec <= 163840) return 28;
-		else if (usec <= 245760) return 29;
-		else if (usec <= 327680) return 30;
-		else if (usec <= 491520) return 31;
-		else return 0;
-}
-
 /* convert capability mask into a text representation */
 static __inline
 void FormatCapabilityMask(char buf[80], IB_CAPABILITY_MASK cmask)
@@ -1239,27 +920,9 @@ void FormatCapabilityMask(char buf[80], IB_CAPABILITY_MASK cmask)
 		cmask.s.IsSM?"SM ": "");
 }
 
-/* convert InitType into a text representation */
-static __inline
-void FormatInitType(char buf[80], IB_PORT_INIT_TYPE value)
-{
-	snprintf(buf, 80, "%s%s%s%s",
-		value & PORT_INIT_TYPE_NOLOAD?"NL ": "",
-		value & PORT_INIT_TYPE_PRESERVE_CONTENT?"PC ": "",
-		value & PORT_INIT_TYPE_PRESERVE_PRESENCE?"PP ": "",
-		value & PORT_INIT_TYPE_DO_NOT_RESUSCITATE?"NR ": "");
-}
-
-/* value where we should round up to higher units at loss of output accuracy */
-#if 0
-/* old values, produces more precise output */
-#define FORMAT_MULT_THRESHOLD_FRACTION 9999
-#define FORMAT_MULT_THRESHOLD 9999	/* for seconds and minutes */
-#else
-/* more human readable, slightly less precise */
 #define FORMAT_MULT_THRESHOLD_FRACTION 1000	/* for fractions of a second */
 #define FORMAT_MULT_THRESHOLD 180	/* for seconds and minutes */
-#endif
+
 /* convert 4.096us*2^timeout to a reasonable value
  * and format into a buffer as #### uu
  * where uu is units and timeout is limited to 31
@@ -1447,23 +1110,6 @@ uint32 TimeoutTimeMsToMult(uint32 timeout_ms)
 		return 31;	/* 2.4 hr */
 }
 
-/* Returns TRUE if the LID is valid for the specified port attributes. */
-static __inline boolean
-ValidateLid(
-	IN const IB_PORT_ATTRIBUTES* const pPortAttr,
-	IN const IB_LID Lid )
-{
-	/* Compare the requested LID to see if it is within the port's  */
-	/* LID range.  2^LMC is the number of LIDs on this port. */
-	if( Lid >= pPortAttr->Address.BaseLID &&
-		Lid < (pPortAttr->Address.BaseLID + (1 << pPortAttr->Address.LMC)) )
-	{
-		return TRUE;
-	}
-
-	return FALSE;
-}
-
 /* using the LMC, convert a lid to the Source Path Bits for use in
  * and address vector
  */
@@ -1490,38 +1136,6 @@ PathBitsToLid(
 {
 	IB_LID mask = (1<<lmc)-1;
 	return (baselid & ~mask) | (pathbits & mask);
-}
-
-
-/*
- * Return TRUE if the GID is valid for the specified port attributes.
- */
-static __inline boolean
-ValidateGid( 
-	IN const IB_PORT_ATTRIBUTES* const pPortAttr,
-	IN const IB_GID* const pGid )
-{
-	uint8	i;
-
-	/* If the requested GID is built using the well-known GID type, */
-	/* we only need to match on the port GUID. */
-	if( (pGid->Type.Global.SubnetPrefix == DEFAULT_SUBNET_PREFIX) && 
-		(pGid->Type.Global.InterfaceID == pPortAttr->GUID) )
-	{
-		return TRUE;
-	}
-	
-	/* Compare the port's GIDs to see if the requested GID matches. */
-	for( i = 0; i < pPortAttr->NumGIDs; i++ )
-	{
-		if( !MemoryCompare( &pPortAttr->GIDTable[i], 
-			pGid, sizeof( IB_GID ) ) )
-		{
-			return TRUE;
-		}
-	}
-
-	return FALSE;
 }
 
 

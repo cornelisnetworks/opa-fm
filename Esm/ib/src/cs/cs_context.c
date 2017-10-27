@@ -59,7 +59,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ib_status.h"
 #include "cs_context.h"
 #include "mai_g.h"
-
+#include "ib_generalServices.h"
 
 #include "sm_counters.h"
 #include "pm_counters.h"
@@ -342,7 +342,7 @@ count++;
 }
 }
 #endif
-	if (entry->mad.base.mclass == MAD_CV_PERF) {
+	if (entry->mad.base.mclass == MAD_CV_PERF || entry->mad.base.mclass == MAD_CV_SUBN_ADM) {
 		datalen = MIN((uint32_t)entry->mad.datasize, STL_GS_DATASIZE);
 		if ((status = mai_send_stl_timeout(cntx->ibHandle, &entry->mad, &datalen, entry->RespTimeout)) != VSTATUS_OK) {
 			IB_LOG_ERROR_FMT(__func__,
@@ -486,9 +486,9 @@ Status_t cs_cntxt_timeout_entry(cntxt_entry_t *tout_cntxt, generic_cntxt_t *cntx
 		 * If it will cause an overshoot, then just use whatever is left
 		 * from the total timeout
 		 */
-		if ((tout_cntxt->cumulative_timeout < cntx->totalTimeout) &&
-			 ((tout_cntxt->cumulative_timeout + timeout) > cntx->totalTimeout)) {
-			timeout = cntx->totalTimeout - tout_cntxt->cumulative_timeout; 
+		if ((tout_cntxt->cumulative_timeout < tout_cntxt->totalTimeout) &&
+			 ((tout_cntxt->cumulative_timeout + timeout) > tout_cntxt->totalTimeout)) {
+			timeout = tout_cntxt->totalTimeout - tout_cntxt->cumulative_timeout;
 			/* if the timeout left is less than min, set it to the min. This will cause cumulative_timeout to overshoot
 			 * total_timeout by a bit, but that should be OK */
 			if (timeout < cntx->MinRespTimeout)
@@ -508,7 +508,7 @@ Status_t cs_cntxt_timeout_entry(cntxt_entry_t *tout_cntxt, generic_cntxt_t *cntx
 			IB_LOG_ERRORRC("can't resend notice reliably rc:", status);
 			return VSTATUS_BAD;	// send failed
 		}
-	} else if ((cntx->MinRespTimeout != 0) && (tout_cntxt->cumulative_timeout < cntx->totalTimeout)) {
+	} else if ((cntx->MinRespTimeout != 0) && (tout_cntxt->cumulative_timeout < tout_cntxt->totalTimeout)) {
 		/*stepped retry logic is being used, so retry till cumulative timeout
 		 * reaches total timeout
 		 */
@@ -637,6 +637,7 @@ cs_cntxt_get_nolock( Mai_t* mad, generic_cntxt_t *cntx, boolean wait )
         --cntx->numFree;
         // reserve the context
         req_cntxt->alloced = 1;
+        req_cntxt->totalTimeout = cntx->totalTimeout;
         if (mad) {
             // save the output mad
             memcpy((void *)&req_cntxt->mad, mad, sizeof(Mai_t));

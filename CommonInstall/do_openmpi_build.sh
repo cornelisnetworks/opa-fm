@@ -1,11 +1,11 @@
 #!/bin/bash
 # BEGIN_ICS_COPYRIGHT8 ****************************************
-# 
-# Copyright (c) 2015, Intel Corporation
-# 
+#
+# Copyright (c) 2017, Intel Corporation
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
-# 
+#
 #     * Redistributions of source code must retain the above copyright notice,
 #       this list of conditions and the following disclaimer.
 #     * Redistributions in binary form must reproduce the above copyright
@@ -14,7 +14,7 @@
 #     * Neither the name of Intel Corporation nor the names of its contributors
 #       may be used to endorse or promote products derived from this software
 #       without specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -25,7 +25,7 @@
 # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-# 
+#
 # END_ICS_COPYRIGHT8   ****************************************
 
 # This file incorporates work covered by the following copyright and permission notice
@@ -60,7 +60,21 @@
 
 # rebuild OpenMPI to target a specific compiler
 
-PREREQ=("libibverbs-devel" "librdmacm-devel" "mpi-selector")
+ID=""
+VERSION_ID=""
+
+if [ -e /etc/os-release ]; then
+	. /etc/os-release
+else
+    echo /etc/os-release is not available !!!
+fi
+
+if [[ ( "$ID" == "rhel"  &&  $(echo "$VERSION_ID > 7.3" | bc -l) == 1 ) || \
+	( "$ID" == "sles"  && $(echo "$VERSION_ID > 12.2" | bc -l) == 1 ) ]]; then
+    PREREQ=("rdma-core-devel" "mpi-selector")
+else
+    PREREQ=("libibverbs-devel" "librdmacm-devel" "mpi-selector")
+fi
 
 CheckPreReqs()
 {
@@ -86,7 +100,7 @@ CheckPreReqs()
 		fi
 		echo
 		exit 2
-	fi	
+	fi
 }
 
 Usage()
@@ -95,7 +109,7 @@ Usage()
 	echo "       -d - use default settings for openmpi options" >&2
 	echo "            if omitted, will be prompted for each option" >&2
 	echo "       -Q - build the MPI targeted for the PSM API." >&2
-	echo "       -O - build the MPI targeted for the Omnipath HFI PSM API." >&2
+	echo "       -O - build the MPI targeted for the Omni-path HFI PSM2 and OFI API." >&2
 	echo "       -C - build the MPI targeted for the Omnipath HFI PSM with CUDA." >&2
 	echo "       config_opt - a compiler selection option (gcc, pathscale, pgi or intel)" >&2
 	echo "             if config_opt is not specified, the user will be prompted" >&2
@@ -288,7 +302,7 @@ then
 	if rpm -qa|grep libpsm2 >/dev/null 2>&1
 	then
 		echo
-		get_yes_no "Build for Omnipath HFI PSM" "y"
+		get_yes_no "Build for Omnipath HFI PSM2 and OFI" "y"
 		if [ "$ans" = 1 ]
 		then
 			Oflag=y
@@ -312,7 +326,7 @@ fi
 if [ "$Qflag" = y ]
 then
 	PREREQ+=('infinipath-devel')
-	
+
 	openmpi_conf_psm=
 	# PSM indicated by qlc suffix so user can ID PSM vs verbs MPIs
 	openmpi_path_suffix="-qlc"
@@ -320,16 +334,21 @@ then
 	interface=psm
 elif [ "$Oflag" = y ]
 then
-	PREREQ+=('libpsm2')
-	
-	openmpi_conf_psm='--with-psm=/usr --with-psm2=/usr --disable-oshmem'
+	PREREQ+=('libpsm2-devel')
+	if [[ -f /etc/redhat-release && ($(cat /etc/redhat-release | grep 6.7) ) ]]; then
+                openmpi_conf_psm='--with-psm=/usr --with-psm2=/usr --disable-oshmem'
+        else
+                PREREQ+=('libfabric-devel')
+                openmpi_conf_psm='--with-psm=/usr --with-psm2=/usr --disable-oshmem --with-libfabric=/usr'
+        fi
+
 	# PSM indicated by qlc suffix so user can ID PSM vs verbs MPIs
 	openmpi_path_suffix="-hfi"
 	openmpi_rpm_suffix="_hfi"
 	interface=psm
 elif [ "$Cflag" = y ]
 then
-	PREREQ+=('libpsm2' 'cuda')
+	PREREQ+=('libpsm2-devel' 'cuda')
 	
 	openmpi_conf_psm='--with-psm=/usr --with-psm2=/usr --disable-oshmem --with-cuda=/usr/local/cuda'
 	# PSM indicated by qlc suffix so user can ID PSM vs verbs MPIs
@@ -642,7 +661,7 @@ logfile=make.openmpi.$interface.$compiler
 		echo "error: mpitests_openmpi_$compiler$openmpi_rpm_suffix Build ERROR: bad exit code"
 		exit 1
 	fi
-	
+
 	if [ "$iflag" = n ]
 	then
 		mv $RPM_DIR/RPMS/$target_cpu/mpitests_openmpi_$compiler$openmpi_rpm_suffix-$mpitests_fullversion.$target_cpu.rpm $DESTDIR

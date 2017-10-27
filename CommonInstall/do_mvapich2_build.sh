@@ -60,7 +60,21 @@
 
 # rebuild MVAPICH2 to target a specific compiler
 
-PREREQ=("libibverbs-devel" "librdmacm-devel" "mpi-selector")
+ID=""
+VERSION_ID=""
+
+if [ -e /etc/os-release ]; then
+    . /etc/os-release
+else
+    echo /etc/os-release is not available !!!
+fi
+
+if [[ ( "$ID" == "rhel"  &&  $(echo "$VERSION_ID > 7.3" | bc -l) == 1 ) || \
+	( "$ID" == "sles"  && $(echo "$VERSION_ID > 12.2" | bc -l) == 1 ) ]]; then
+    PREREQ=("rdma-core-devel" "mpi-selector")
+else
+    PREREQ=("libibverbs-devel" "librdmacm-devel" "mpi-selector")
+fi
 
 CheckPreReqs()
 {
@@ -334,7 +348,7 @@ case $interface in
 			# PSM indicated by qlc suffix so user can ID PSM vs verbs MPIs
 			mvapich2_path_suffix="-hfi"
 			mvapich2_rpm_suffix="_hfi"
-   			PREREQ+=("libpsm2")
+   			PREREQ+=("libpsm2-devel")
 		else
 			# PSM indicated by qlc suffix so user can ID PSM vs verbs MPIs
 			mvapich2_path_suffix="-qlc"

@@ -50,7 +50,7 @@ static void ClearUtilStats(PmUtilStats_t *utilp)
 
 	utilp->MaxKPps = 0;
 	utilp->MinKPps = IB_UINT32_MAX;
-	MemoryClear(&utilp->BwPorts[0], sizeof(utilp->BwPorts[0]) * PM_UTIL_BUCKETS);
+	MemoryClear(&utilp->BwPorts[0], sizeof(utilp->BwPorts[0]) * STL_PM_UTIL_BUCKETS);
 }
 
 static void ClearErrStats(PmErrStats_t *errp)

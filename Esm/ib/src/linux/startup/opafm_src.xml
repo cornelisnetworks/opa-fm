@@ -506,12 +506,11 @@
     <!--        group with MTU larger than that of the VirtualFabric.        -->
     <!--        Value should be one of 2048, 4096, 8192, 10240, or Unlimited -->
     <!--        If not specified the default MaxMTU will be Unlimited.       -->
-    <!-- Max Rate: <MaxRate>200g</MaxRate>                                   -->
+    <!-- Max Rate: <MaxRate>100g</MaxRate>                                   -->
     <!--        Maximum static rate for SM to return in any PathRecord or    -->
     <!--        Multicast group for the VirtualFabric.                       -->
     <!--        Similar behaviors to MaxMTU.                                 -->
-    <!--        Value should be one of 25g, 50g, 75g, 100g, 150g, 200g,      -->
-    <!--        or Unlimited.                                                -->
+    <!--        Value should be one of 25g, 50g, 75g, 100g, or Unlimited.    -->
     <!--        If not specified the default MaxRate will be Unlimited.      -->
     <!-- Active/Standby: <Standby>0</Standby>                                -->
     <!--        A Virtual Fabric in Standby cannot pass traffic.             -->
@@ -1657,6 +1656,12 @@
     <!-- and defaults numbPath to 127 if not specified. -->
     <QueryValidation>0</QueryValidation>
 
+    <!-- EnforceVFPathRecord is a parameter that controls the search -->
+    <!--   scope for path records. It defaults to enabled (1), which -->
+    <!--   limits the scope to Virtual Fabrics. When disabled (0),   -->
+    <!--   the scope is restricted to pkey/partition boundaries      -->
+    <EnforceVFPathRecord>1</EnforceVFPathRecord>
+
     <!-- These parameters tune how many concurrent SMA requests the SM -->
     <!-- can have in flight while programming the SMAs in the fabric. -->
     <SmaBatchSize>2</SmaBatchSize> <!-- max parallel requests to a given SMA -->                                       <!--SM_0_sma_batch_size:dec-->
@@ -1673,18 +1678,27 @@
     <!-- interval can be zero (do not sweep) or between 3 and 86400 seconds. -->
     <SweepInterval>300</SweepInterval> <!-- max seconds between sweeps -->                                             <!--SM_0_timer:dec-->
     <IgnoreTraps>0</IgnoreTraps> <!-- don't sweep nor log when traps occur -->
+    <!-- When MinRespTimeout below is set to 0: -->
     <!-- The SM waits up to RespTimeout milliseconds for responses. -->
-    <!-- Upon a timeout, up to MaxAttempts are attempted for a given request -->
+    <!-- the SM will retry the request, with the same timeout, up to -->
+    <!-- MaxAttempts times before giving up. -->
+    <!-- Otherwise: -->
+    <!-- The SM will start with MinRespTimeout as the timeout value for -->
+    <!-- requests and increase the timeout with each retry until -->
+    <!-- MaxAttempts * RespTimeout amount of time has elapsed -->
+    <!-- Note: Be aware that the SA will also use MaxAttempts to limit the -->
+    <!-- number of RMPP retries -->
     <MaxAttempts>3</MaxAttempts>                                                                                       <!--SM_0_max_retries:dec-->
     <RespTimeout>250</RespTimeout> <!-- in milliseconds -->                                                            <!--SM_0_rcv_wait_msec:dec-->
-    <!-- SM will start with MinRespTimeout as the timeout value for requests -->
-    <!-- and use multiples of this value for subsequent attempts if there is -->
-    <!-- a timeout in the previous attempt. SM will keep retrying till -->
-    <!-- cumulative sum of timeouts for retries is less than -->
-    <!-- RespTimeout multiplied by MaxAttempts. -->
-    <!-- If MinRespTimeout is set to 0, upon timeout, up to MaxAttempts -->
-    <!-- are attempted with each attempt having a timeout of RespTimeout -->
     <MinRespTimeout>35</MinRespTimeout> <!-- in milliseconds -->
+
+    <!-- The maximum time, in seconds, that the FM will spend waiting on -->
+    <!-- timeouts during a sweep.  Beyond this limit, the FM will abandon -->
+    <!-- the current sweep, temporarily quarantine any ports that timed -->
+    <!-- out, and resweep.  This is intended to limit the amount of time -->
+    <!-- the FM spends in any one sweep and increase responsiveness in -->
+    <!-- the presence of disruptions. -->
+    <CumulativeTimeoutLimit>300</CumulativeTimeoutLimit>
 
     <!-- When there are a large number of fabric changes at once, the SM -->
     <!-- could have lots of errors while attempting to access/program -->

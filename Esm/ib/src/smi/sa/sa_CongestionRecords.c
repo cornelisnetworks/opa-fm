@@ -365,7 +365,7 @@ sa_CongInfoRecord_GetTable(Mai_t *maip, uint32_t *records) {
     STL_SA_MAD  samad;
     Status_t    status;
     bool_t      checkLid;
-    Lid_t       lid=0;
+    STL_LID       lid=0;
     STL_CONGESTION_INFO_RECORD record;
 
     IB_ENTER("sa_CongInfoRecord_GetTable", maip, *records, 0, 0);
@@ -461,7 +461,7 @@ sa_SwitchCongRecord_GetTable(Mai_t *maip, uint32_t *records) {
     STL_SA_MAD  samad;
     Status_t    status;
     bool_t      checkLid;
-    Lid_t       lid=0;
+    STL_LID       lid=0;
 
     STL_SWITCH_CONGESTION_SETTING_RECORD record;
 
@@ -554,7 +554,7 @@ sa_SwitchPortCongRecord_GetTable(Mai_t *maip, uint32_t *records) {
 	STL_SA_MAD	samad;
 	Status_t 	status;
 	bool_t		checkLid;
-	Lid_t		lid=0;
+	STL_LID		lid=0;
 	STL_SWITCH_PORT_CONGESTION_SETTING_RECORD record = {{0}};
 	
 	IB_ENTER(__func__, maip, *records, 0, 0);
@@ -636,7 +636,7 @@ sa_HFICongRecord_GetTable(Mai_t *maip, uint32_t *records) {
     STL_SA_MAD  samad;
     Status_t    status;
     bool_t      checkLid;
-    Lid_t       lid=0;
+    STL_LID       lid=0;
 
     STL_HFI_CONGESTION_SETTING_RECORD record;
 
@@ -738,7 +738,7 @@ sa_HFICongCtrlRecord_GetTable(Mai_t *maip, uint32_t *records) {
     STL_SA_MAD  samad;
     Status_t    status;
     bool_t      checkLid;
-    Lid_t       lid=0;
+    STL_LID       lid=0;
     bool_t      checkBlock;
     uint16_t    blockNum=0;
     uint16_t    numBlocks=0;

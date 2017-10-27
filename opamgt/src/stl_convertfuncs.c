@@ -28,7 +28,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * ** END_ICS_COPYRIGHT5   ****************************************/
 /* [ICS VERSION STRING: unknown] */
 
-#include "iba/stl_mad.h"
+#include "iba/stl_mad_priv.h"
 #include "stl_convertfuncs.h"
 
 int stl_CopyIbNodeInfo(STL_NODE_INFO * dest, NODE_INFO * src, int cpyVerInfo)

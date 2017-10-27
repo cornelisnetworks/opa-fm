@@ -171,41 +171,8 @@ endif
 include $(TL_DIR)/Makerules/Maketargets.moduleinstall
 
 # install for stage phase
-ifeq "$(BUILD_TARGET_OS)" "VXWORKS"
-STAGE::
-else
 #include $(TL_DIR)/Makerules/Maketargets.modulestage
-# create the opafm rpm
-# lower case platform name
-platform=$(shell echo $(BUILD_TARGET)| tr '[A-Z]' '[a-z]')
-package:
-	rm -rf $(PROJ_STAGE_PACKAGES_DIR)
-	mkdir -p $(PROJ_STAGE_PACKAGES_DIR)
-	mkdir -p $(PROJ_STAGE_PACKAGES_DIR)/RPMS/$(platform)
-	mkdir -p $(PROJ_STAGE_PACKAGES_DIR)/BUILD
-	mkdir -p $(PROJ_STAGE_PACKAGES_DIR)/BUILDROOT
-	mkdir -p $(PROJ_STAGE_PACKAGES_DIR)/SOURCES
-	mkdir -p $(PROJ_STAGE_PACKAGES_DIR)/SPECS
-	mkdir -p $(PROJ_STAGE_PACKAGES_DIR)/SRPMS
-	sed -e "s/^Version:.*/Version:\ $(RPM_REL)/g" \
-		-e "s/^Release:.*/Release:\ $(RPM_VER)/g" \
-		-e "s/^Source:.*/Source:\ $(RPM_NAME)-$(RPM_REL).tar.gz/g" \
-		< src/linux/rpm/vieo_fm.spec.base > $(PROJ_STAGE_PACKAGES_DIR)/SPECS/$(RPM_NAME).spec
-	# Append list of files to be installed to spec file
-	# strip the top part of the path away and replace it with the install dir.
-	cd $(PROJ_STAGE_IMAGE_DIR); find -type f -o -type l | sort | sed 's/./\/opt\/opafm/' >> $(PROJ_STAGE_PACKAGES_DIR)/SPECS/$(RPM_NAME).spec
-	cd $(STAGE_DIR) ; \
-		tar cvfz $(PROJ_STAGE_PACKAGES_DIR)/SOURCES/$(RPM_NAME)-$(RPM_REL).tar.gz $(RPM_NAME)-$(RPM_REL)
-	rpmbuild \
-		--buildroot $(PROJ_STAGE_PACKAGES_DIR)/BUILDROOT \
-		--define '_unpackaged_files_terminate_build 1' \
-		--define 'debug_package	%{nil}' \
-		--define 'dist %{nil}' \
-		--define '__spec_build_pre %{___build_pre}' \
-		--define "_topdir $(PROJ_STAGE_PACKAGES_DIR)" \
-		 	-bb $(PROJ_STAGE_PACKAGES_DIR)/SPECS/$(RPM_NAME).spec
-	cp $(PROJ_STAGE_PACKAGES_DIR)/RPMS/$(platform)/$(RPM_NAME)-$(RPM_REL)-$(RPM_VER).$(platform).rpm $(PROJ_STAGE_DIR)/$(RPM_NAME)-$(RPM_REL)_$(RPM_VER).$(platform).rpm
-endif
+STAGE::
 
 # Unit test execution
 #include $(TL_DIR)/Makerules/Maketargets.runtest

@@ -3,15 +3,15 @@ All the util_*pl files are provide utility functions for use.
 The comp*pl files are various examples of comp.pl files for assorted products.
 
 the main*pl files are the main installer algorithm for assorted packagings,
-the one of interest for QLogicIB-IFS is main_openibwrap.pl
+the one of interest for IntelOPA-IFS is main_omnipathwrap_delta.pl
 
 The comp_qlgc_fm.pl is a good example.  It implements a component consisting of
 two user space rpms with init.d scripts.
 
 The main*pl defines which components are part of the packaging and what their
-capabilities are.  main_openibwrap.pl is a packaging for IntelOPA-IFS and
-IntelOPA-Basic.  A simpler example is main_qlgc_fm.pl which is a packaging
-consisting of just the SM.
+capabilities are.  main_omnipathwrap_delta.pl is a packaging for IntelOPA-IFS
+and IntelOPA-Basic.  This main is also used for individual component INSTALLs
+along with the corresponding override*pl file.
 
 routines in a comp.pl file:
 config_autostart_X - called to configure autostart of component.  Only called if HasStart set in main.

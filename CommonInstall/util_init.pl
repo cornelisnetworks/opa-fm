@@ -301,6 +301,10 @@ sub determine_os_version()
 	} elsif ( -s "/etc/SuSE-release" ) {          
 		$CUR_DISTRO_VENDOR = "SuSE";
 		$NETWORK_CONF_DIR = "/etc/sysconfig/network";
+	} elsif ( -e "/usr/bin/lsb_release" ) {
+		$CUR_DISTRO_VENDOR = `/usr/bin/lsb_release -is`;
+		chop($CUR_DISTRO_VENDOR);
+		$CUR_DISTRO_VENDOR = lc($CUR_DISTRO_VENDOR); 
 	} else {
 		# autodetermine the distribution
 		open DISTRO_VENDOR, "ls /etc/*-release|grep -v lsb\|^os 2>/dev/null |"
@@ -402,4 +406,10 @@ sub verify_distrib_files
 			Abort "Please contact your support representative...\n";
 		}
 	}
+}
+
+# this will be replaced in component specific INSTALL with any special
+# overrides of things in main*pl
+sub overrides()
+{
 }

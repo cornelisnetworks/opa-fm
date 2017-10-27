@@ -69,6 +69,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "opamgt_sa_priv.h"
 #endif
 
+#ifndef __VXWORKS__
+#include <code_version.h>
+#endif
+
 #include "iba/ib_rmpp.h"
 
 #define SA_CHECK_TIMEOUT    10000000        /* Timeout check SA in micr sec */
@@ -117,9 +121,6 @@ extern FEXmlConfig_t fe_config;
 extern void if3RmppDebugOn(void);
 #endif
 
-// checksum info
-uint32_t    fe_overall_checksum = 0;
-uint32_t    fe_consistency_checksum = 0;
 
 // XML debug tracing
 static uint32_t xml_trace = 0;
@@ -179,15 +180,6 @@ void fe_process_config(FMXmlCompositeConfig_t *xml_config, uint32_t fe_instance)
     if (xml_trace) {
         feShowConfig(&fe_config);
     }
-
-    if (xml_trace) {
-        printf("XML - FE old overall_checksum %llu new overall_checksum %llu\n",
-            (long long unsigned int)fe_overall_checksum, (long long unsigned int)fe_config.overall_checksum);
-        printf("XML - FE old consistency_checksum %llu new consistency_checksum %llu\n",
-            (long long unsigned int)fe_consistency_checksum, (long long unsigned int)fe_config.consistency_checksum);
-    }
-    fe_overall_checksum = fe_config.overall_checksum;
-    fe_consistency_checksum = fe_config.consistency_checksum;
 
 #ifdef __VXWORKS__
     if (fe_config.debug_rmpp)
@@ -321,6 +313,10 @@ int fe_main()
     fe_init_log_setting(); 
 #endif
     vs_log_output_message("Fabric Executive starting up.", TRUE); 
+#ifndef __VXWORKS__
+    vs_log_output(VS_LOG_NONE, VIEO_NONE_MOD_ID, NULL, NULL,
+                    "FE: Version: %s", GetCodeVersion());
+#endif
     
     
 #ifndef __VXWORKS__
@@ -556,7 +552,7 @@ int fe_main()
 				IB_LOG_VERBOSE("trying to re-register FE with PM", 0);
 
                 // reset connection to PM
-				if(if3_sid_mngr_cnx(fe_config.hca, fe_config.port, (void *)PM_SERVICE_NAME, PM_SERVICE_ID, MAD_CV_VFI_PM, &fd_pm) == FSUCCESS){
+				if(if3_sid_mngr_cnx(fe_config.hca, fe_config.port, (void *)STL_PM_SERVICE_NAME, STL_PM_SERVICE_ID, MAD_CV_VFI_PM, &fd_pm) == FSUCCESS){
                     IB_LOG_INFINI_INFO("connection to PM reinitialized, fd_pm=", fd_pm);
 				} else {
 					IB_LOG_VERBOSE("Failed to reconnect to PM, will try again later", 0);

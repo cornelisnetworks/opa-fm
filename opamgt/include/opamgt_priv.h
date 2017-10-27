@@ -39,7 +39,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "opamgt.h"
 
 #include "iba/ib_types.h"
-
+#include "iba/ib_generalServices.h"
 
 #ifndef OMGT_OUTPUT_ERROR
 #define OMGT_OUTPUT_ERROR(port, format, args...) \
@@ -408,6 +408,7 @@ FSTATUS omgt_mad_refresh_port_details(struct omgt_port *port);
 /** =========================================================================
  * Generic HELPER FUNCTIONs
  */
+
 
 /**
  * @brief Get the HFI number

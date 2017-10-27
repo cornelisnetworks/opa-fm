@@ -749,7 +749,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "iba/public/datatypes.h"		/* Portable datatypes */
 #include "iba/vpi.h"
 #include "iba/stl_types.h"		/* IB-defined types */
-#include "iba/stl_sa.h"	/* PATH_RECORD */
+#include "iba/ib_sa_records_priv.h"	/* PATH_RECORD */
 #include "iba/ib_status.h"		/* IB-defined status code */
 
 #if defined (__cplusplus)

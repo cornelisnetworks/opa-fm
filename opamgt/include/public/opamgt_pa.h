@@ -37,7 +37,7 @@ extern "C" {
 #endif
 
 //opamgt includes
-#include <iba/stl_pa.h>
+#include <iba/stl_pa_types.h>
 #include "opamgt.h"
 
 

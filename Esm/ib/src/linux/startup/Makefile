@@ -113,8 +113,8 @@ INCLUDE_SUBDIR		=
 #LOCAL_LIB_DIRS	= User library directories for libpaths [Empty]
 
 CLOCAL	=  $(CPIE)
-LOCALDEPLIBS = cs ibaccess public config vslogu Xml expat Md5 opamgt-priv
-LOCALLIBS = pthread $(OPENIB_USER_LIBS) rt
+LOCALDEPLIBS = cs ibaccess public config vslogu Xml expat opamgt-priv
+LOCALLIBS = pthread $(OPENIB_USER_LIBS) rt crypto
 
 # Include Make Rules definitions and rules
 include $(PROJ_SM_DIR)/Makerules.module

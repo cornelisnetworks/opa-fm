@@ -45,7 +45,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <fm_xml.h>
 
 #ifdef IB_STACK_OPENIB
-#include "opamgt_sa_priv.h"
+#include "opamgt_sa_notice.h"
 #endif
 
 extern FEXmlConfig_t fe_config;
@@ -128,7 +128,7 @@ fe_if3_get_node_by_port_guid(uint64_t portguid, STL_NODE_RECORD* nr)
   BSWAPCOPY_STL_NODE_RECORD(&nrec, (STL_NODE_RECORD *)fe_sa_send_buf);
 
   pack.method = SA_CM_GETTABLE;
-  pack.mask = NR_COMPONENTMASK_PORTGUID;     // match on portGuid
+  pack.mask = IB_NODE_RECORD_COMP_PORTGUID;     // match on portGuid
   pack.recsize = sizeof(STL_NODE_RECORD);
   pack.rec = fe_sa_send_buf;
   pack.data = fe_sa_recv_buf;
@@ -611,7 +611,7 @@ fe_if3_get_traps(FE_Trap_t* trapinfo,uint32_t* found)
   STL_NOTICE notice;
   FE_Trap_t *temp,*top;
   FE_Trap_t current={0};
-  Lid_t tempLid;
+  STL_LID tempLid;
   uint64_t  timeout=50000;  // 50 millisecs
   FE_Trap_Processing_State_t state;
   SA_MAD_HDR *sa_hdr;

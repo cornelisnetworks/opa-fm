@@ -29,13 +29,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* [ICS VERSION STRING: unknown] */
 
 #include <iba/ipublic.h>
-#include <iba/ib_pm.h>
 #if !defined(VXWORKS) || defined(BUILD_DMC)
 #include <iba/ib_dm.h>
 #endif
-#include <iba/ib_sm.h>
-#include <iba/ib_sa_records.h>
-#include "iba/stl_sa.h"
+#include <iba/ib_sm_priv.h>
+#include <iba/ib_sa_records_priv.h>
+#include "iba/stl_sa_priv.h"
+#include "iba/stl_pm.h"
 #if defined(USE_NETF1_IP_STACK)
 /* add this to avoid implicit declaration warning in mips/netf1 build */
 extern int snprintf (char *str, size_t count, const char *fmt, ...);
@@ -526,7 +526,13 @@ void IXmlOutputOptionalVLs(IXmlOutputState_t *state, const char* tag, void *data
 void IXmlOutputInitTypeValue(IXmlOutputState_t *state, const char* tag, uint8 value)
 {
 	char buf[80];
-	FormatInitType(buf, (IB_PORT_INIT_TYPE)value);
+ 
+	snprintf(buf, 80, "%s%s%s%s",
+		value & PORT_INIT_TYPE_NOLOAD?"NL ": "",
+		value & PORT_INIT_TYPE_PRESERVE_CONTENT?"PC ": "",
+		value & PORT_INIT_TYPE_PRESERVE_PRESENCE?"PP ": "",
+		value & PORT_INIT_TYPE_DO_NOT_RESUSCITATE?"NR ": "");
+
 	IXmlOutputStrUint(state, tag, buf, value);
 }
 
@@ -858,72 +864,6 @@ void IXmlOutputOptionalTraceRecord(IXmlOutputState_t *state, const char* tag, vo
 {
 	IXmlOutputOptionalStruct(state, tag, data, NULL, XmlTraceRecordFields);
 }
-
-/****************************************************************************/
-/* PortCounters Input/Output functions */
-
-/* bitfields needs special handling: LocalLinkIntegrityErrors */
-static void PortCountersXmlOutputLocalLinkIntegrityErrors(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	IXmlOutputUint(state, tag, ((PORT_COUNTERS *)data)->LocalLinkIntegrityErrors);
-}
-
-static void PortCountersXmlParserEndLocalLinkIntegrityErrors(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
-{
-	uint8 value;
-	
-	if (IXmlParseUint8(state, content, len, &value))
-		((PORT_COUNTERS *)object)->LocalLinkIntegrityErrors = value;
-}
-
-/* bitfields needs special handling: ExcessiveBufferOverrunErrors */
-static void PortCountersXmlOutputExcessiveBufferOverrunErrors(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	IXmlOutputUint(state, tag, ((PORT_COUNTERS *)data)->ExcessiveBufferOverrunErrors);
-}
-
-static void PortCountersXmlParserEndExcessiveBufferOverrunErrors(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
-{
-	uint8 value;
-	
-	if (IXmlParseUint8(state, content, len, &value))
-		((PORT_COUNTERS *)object)->ExcessiveBufferOverrunErrors = value;
-}
-
-IXML_FIELD PortCountersFields[] = {
-	{ tag:"PortSelect", format:'H', IXML_FIELD_INFO(PORT_COUNTERS, PortSelect) },
-	{ tag:"CounterSelect", format:'H', IXML_FIELD_INFO(PORT_COUNTERS, CounterSelect.AsUint16) },
-	{ tag:"SymbolErrorCounter", format:'U', IXML_FIELD_INFO(PORT_COUNTERS, SymbolErrorCounter) },
-	{ tag:"LinkErrorRecoveryCounter", format:'U', IXML_FIELD_INFO(PORT_COUNTERS, LinkErrorRecoveryCounter) },
-	{ tag:"LinkDownedCounter", format:'U', IXML_FIELD_INFO(PORT_COUNTERS, LinkDownedCounter) },
-	{ tag:"PortRcvErrors", format:'U', IXML_FIELD_INFO(PORT_COUNTERS, PortRcvErrors) },
-	{ tag:"PortRcvRemotePhysicalErrors", format:'U', IXML_FIELD_INFO(PORT_COUNTERS, PortRcvRemotePhysicalErrors) },
-	{ tag:"PortRcvSwitchRelayErrors", format:'U', IXML_FIELD_INFO(PORT_COUNTERS, PortRcvSwitchRelayErrors) },
-	{ tag:"PortXmitDiscards", format:'U', IXML_FIELD_INFO(PORT_COUNTERS, PortXmitDiscards) },
-	{ tag:"PortXmitConstraintErrors", format:'U', IXML_FIELD_INFO(PORT_COUNTERS, PortXmitConstraintErrors) },
-	{ tag:"PortRcvConstraintErrors", format:'U', IXML_FIELD_INFO(PORT_COUNTERS, PortRcvConstraintErrors) },
-	{ tag:"LocalLinkIntegrityErrors", format:'K', format_func:PortCountersXmlOutputLocalLinkIntegrityErrors, end_func:PortCountersXmlParserEndLocalLinkIntegrityErrors }, // bitfield
-	{ tag:"ExcessiveBufferOverrunErrors", format:'K', format_func:PortCountersXmlOutputExcessiveBufferOverrunErrors, end_func:PortCountersXmlParserEndExcessiveBufferOverrunErrors }, // bitfield
-	{ tag:"VL15Dropped", format:'U', IXML_FIELD_INFO(PORT_COUNTERS, VL15Dropped) },
-	{ tag:"PortXmitData", format:'U', IXML_FIELD_INFO(PORT_COUNTERS, PortXmitData) },
-	{ tag:"PortRcvData", format:'U', IXML_FIELD_INFO(PORT_COUNTERS, PortRcvData) },
-	{ tag:"PortXmitPkts", format:'U', IXML_FIELD_INFO(PORT_COUNTERS, PortXmitPkts) },
-	{ tag:"PortRcvPkts", format:'U', IXML_FIELD_INFO(PORT_COUNTERS, PortRcvPkts) },
-	{ NULL }
-};
-
-void PortCountersXmlOutput(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	IXmlOutputStruct(state, tag, (PORT_COUNTERS*)data, NULL, PortCountersFields);
-}
-
-// only output if value != NULL
-void PortCountersXmlOutputOptional(IXmlOutputState_t *state, const char *tag, void *data)
-{
-	IXmlOutputOptionalStruct(state, tag, (PORT_COUNTERS*)data, NULL, PortCountersFields);
-}
-
-/* caller must supply a PortCountersXmlParserEnd function */
 
 #if !defined(VXWORKS) || defined(BUILD_DMC)
 /****************************************************************************/

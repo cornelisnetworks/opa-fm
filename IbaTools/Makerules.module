@@ -87,9 +87,6 @@ ifeq "$(TARGET_OS)" "WIN32"
 endif # WIN32
 #=============================================================================#
 # Include Global makerules definitions and rules
-ifdef BUILD_26
-AUTODEP=no
-endif
 include $(TL_DIR)/$(PROJ_FILE_DIR)/Makerules.project
 #=============================================================================#
 

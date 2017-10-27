@@ -71,7 +71,7 @@ sa_setPartitionRecord(uint8_t * data, Node_t * node, Port_t * port, int block)
 	STL_P_KEY_TABLE_RECORD record;
 	int pkey_idx = 0, i = 0;
 	Port_t *swport;
-    	Lid_t lid;
+    	STL_LID lid;
 
 	memset(&record, 0, sizeof(record));
 
@@ -133,16 +133,16 @@ sa_getPartitionRecordTable(Mai_t *maip, uint32_t * records)
 	BSWAPCOPY_STL_SA_MAD((STL_SA_MAD*)maip->data, &samad, sizeof(STL_P_KEY_TABLE_RECORD));
 	pPartitionRec = (STL_P_KEY_TABLE_RECORD *)samad.data;
 
-	checkLid = (samad.header.mask & PKEY_COMPONENTMASK_PORTLID);
+	checkLid = (samad.header.mask & IB_PKEYTABLE_RECORD_COMP_LID);
 	if (checkLid) {	
 		portLid = ntoh32(pPartitionRec->RID.LID);
-		samad.header.mask ^= PKEY_COMPONENTMASK_PORTLID;
+		samad.header.mask ^= IB_PKEYTABLE_RECORD_COMP_LID;
 	}
 
-	checkPort = (samad.header.mask & PKEY_COMPONENTMASK_PORTNUM);
+	checkPort = (samad.header.mask & IB_PKEYTABLE_RECORD_COMP_PORTNUM);
 	if (checkPort) {	
 		portNum = pPartitionRec->RID.PortNum;
-		samad.header.mask ^= PKEY_COMPONENTMASK_PORTNUM;
+		samad.header.mask ^= IB_PKEYTABLE_RECORD_COMP_PORTNUM;
 	}
 
 	/* C15-0.2.2 - PKeyTableRecords and ServiceAssociationRecords shall only

@@ -209,6 +209,7 @@ else # AUTODEP
   cmds: check_env buildcmds
   cmdsonly: check_env buildcmdsonly
 endif #AUTODEP
+.PHONY: libsonly cmdsonly
 
 DEPEND_MK_FILE	= $(BUILDDIR)/depend.mk
 
@@ -226,7 +227,7 @@ buildall: $(DEPEND_MK_FILE)
 
 .PHONY: INCLUDES LIBS CMDS
 .PHONY: includes imports libs cmds
-.PHONY: buildincludes buildimports buildlibs buildcmds buildall check_env
+.PHONY: buildincludes buildimports buildlibs buildlibsonly buildcmds buildcmdsonly buildall check_env
 
 check_env:: check_target check_config check_platform check_subsystem check_usemfc check_windbase check_mipspath	check_i386path check_target_bsp
 
@@ -250,6 +251,7 @@ check_brand::
     ifneq "$(BRANDIT)" ""
         BRAND_DIRS := $(BRANDIT)
     endif
+.PHONY: check_brand
 
 
 #FIXME - this CARD_TYPE check should be cleaned up
@@ -334,6 +336,7 @@ endif
 ifneq "$(MOD_SBR_DIR)" "$(PROJ_SBR_DIR)"
 	-$(VS)$(RM) $(RMFORCE) $(RMRECURSE) $(MOD_SBR_DIR)
 endif
+.PHONY: clobber_module
 
 clobber_stage:: check_env
 	-$(VS)$(RM) $(RMFORCE) $(RMRECURSE) $(STAGE_DIR)
@@ -346,6 +349,7 @@ clobber_release:: check_env
 #	cd $(PROJ_STAGE_LIB_DIR) && $(INSTALL) -d $(PROJ_RELEASE_LIB_DIR) *
 #	cd $(PROJ_STAGE_BIN_DIR) && $(INSTALL) -d $(PROJ_RELEASE_BIN_DIR) *
 #	cd $(PROJ_STAGE_SBR_DIR) && $(INSTALL) -d $(PROJ_RELEASE_SBR_DIR) *
+#.PHONY: release
 
 cleandepend:: check_env CLEANDEPEND
 CLEANDEPEND::
@@ -409,14 +413,14 @@ ifneq "$(strip $(BUILDDIR))" ""
 $(BUILDDIR)/%.c.dep: %.c
 	@echo "Updating $< Dependencies"
 	@mkdir -p $(dir $@)
-	$(CC) $(DEPENDFLAGS) -MM $< > $@
+	$(CC) $(DEPENDFLAGS) -MT $(BUILDDIR)/$*.o -MM $< > $@
 ifneq "$(CARD_TYPE)" ""
 	$(STRIPDEPENDS) $@
 endif
 $(BUILDDIR)/%.cpp.dep: %.cpp
 	@echo "Updating $< Dependencies"
 	@mkdir -p $(dir $@)
-	$(CC) $(CCDEPENDFLAGS) -MM $< > $@
+	$(CC) $(CCDEPENDFLAGS) -MT $(BUILDDIR)/$*.o -MM $< > $@
 ifneq "$(CARD_TYPE)" ""
 	$(STRIPDEPENDS) $@
 endif
@@ -446,6 +450,7 @@ stage:: STAGE
 stageboot:: check_env
 	@echo "Staging Bootloader Product(s)"
 stageboot:: STAGEBOOT
+.PHONY: stageboot
 
 runtest:: check_env all
 	@echo "Running Unit Test(s)"
@@ -704,7 +709,7 @@ else
 check_config:
 endif # BUILD_CONFIG in SUPPORTED_CONFIGS
 endif # BUILD_CONFIG defined
-.PHONY: SUPPORTED_CONFIGS
+.PHONY: SUPPORTED_CONFIGS check_config
 
 ifeq "$(BUILD_TARGET_OS)" "WIN32"
 #-----------------------------------------------------------------------------#
@@ -869,7 +874,7 @@ else
 check_root:
 endif # UID is 0
 else
-checkroot:
+check_root:
 endif # BUILD_PLATFORM LINUX
 ifeq "$(BUILD_PLATFORM)" "DARWIN"
 # Check if running as root
@@ -884,7 +889,7 @@ else
 check_root:
 endif # UID is 0
 else
-checkroot:
+check_root:
 endif # BUILD_PLATFORM DARWIN
 .PHONY: check_root
 

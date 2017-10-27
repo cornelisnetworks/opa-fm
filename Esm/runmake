@@ -36,8 +36,6 @@
 ## than simply a "make stage prepfiles"
 ## When this is invoked, the current directory will be the TL_DIR for a
 ## full checkout of the product to be built
-## This is also invoked by the ALL_EMB runmake, in which case the current
-## directory will be Esm while TL_DIR will be ALL_EMB
 ##
 ## Usage:
 ##	runmake [-B 'build_config'] [-n]
@@ -67,7 +65,7 @@
 ##
 ## For developer builds (such as via dobuildall), the following combinations
 ## of the -r, -i, -C and -R options are useful
-##	-r  - existing typical mode for developer builds
+##	-r	- existing typical mode for developer builds
 ##			- clobbers any existing built files
 ##			- creates a src.rpm
 ##			- builds in rpmbuild tree
@@ -75,11 +73,11 @@
 ##	-r -C - behaves same as -r above except skips the clobber
 ##	-r -i [-C] - incremental build mode for developer builds
 ##			- clobbers any existing built files (unless -C specified)
-##			- builds SM code in place in source tree
+##			- builds code in place in source tree
 ##			- src rpm contains pre-built code
 ##			- rpmbuild ends up using pre-built code, creates binary rpm
 ##			After this build, the developer may do incremental sub-tree builds
-##			using . Esm/setenv and then running make in the subtree
+##			using . setenv and then running make in the subtree
 ##	-r -i [-C] -R - incremental build mode for developer builds with no rpms
 ##			- same as -r -i [-C] except no rpms are created
 ##	none of these options - typical production build
@@ -97,15 +95,15 @@
 ##			For unit tests only needing a few binaries, they can also be
 ##			directly tested.
 ##			after initial attempt, if compile errors are limited to a subtree:
-##				create a new bash shell, use . ./Esm/setenv and then
+##				create a new bash shell, use . setenv and then
 ##				iterate on make in the subtree and code changes until compiles
 ## -r -i -C - performs a build to generate rpms
 ##			install the rpms and continue testing
 ##			if focused on a few executables:
-##				create a new bash shell, use . ./Esm/setenv and then
+##				create a new bash shell, use . setenv and then
 ##				iterate on make in the subtree and code changes and test of
 ##				the individual binary until works properly
-## -r 		- perform a full build and generate rpms
+## -r		- perform a full build and generate rpms
 ##			install the rpms, confirm clean build, proper install and function
 ##
 ##	Since weeklybuild and target commands always set BUILD_CONFIG, this
@@ -116,7 +114,8 @@
 
 # A given release will be targeted for a specific version of ofed
 # however we allow build.config to override if needed
-export OFED_STACK_PREFIX=${OFED_STACK_PREFIX:-/usr/ofed-1.5.2}
+#export OFED_STACK_PREFIX=${OFED_STACK_PREFIX:-/usr/ofed-1.5.2}
+export OFED_STACK_PREFIX=${OFED_STACK_PREFIX:-/usr}
 
 # typically exported by build.config
 export BUILD_WITH_STACK=${BUILD_WITH_STACK:-OPENIB}
@@ -134,10 +133,10 @@ Usage()
 build_config=
 rerun=n
 Cflag=n
+nflag=n
 inplace=n
 rpm=y
-args="$*"
-while getopts B:riRCnS param
+while getopts B:riRCn param
 do
 	case $param in
 	r)
@@ -172,10 +171,6 @@ then
 	rerun=y
 fi
 
-
-
-# target will adjust TL_DIR to be our directory, hence it will be
-# ALL_EMB/Esm when building in a ALL_EMB checkout
 resetct
 resetbsp
 target $BUILD_TARGET
@@ -200,42 +195,35 @@ else
 	export BUILD_CONFIG="$build_config"
 fi
 
-if [ "$BUILD_WITH_STACK" = "OPENIB" ]
+if [ ! -d $OFED_STACK_PREFIX ]
 then
-	if [ ! -d $OFED_STACK_PREFIX ]
-	then
-		echo "$0: ERROR: OFED stack not found: $OFED_STACK_PREFIX" >&2
-		exit 1
-	fi
-	echo "Stack to build for: $BUILD_WITH_STACK ($OFED_STACK_PREFIX)"
-else
-	echo "Stack to build for: $BUILD_WITH_STACK"
+	echo "$0: ERROR: OFED stack not found: $OFED_STACK_PREFIX" >&2
+	exit 1
 fi
+
+echo "---------------------------------------"
+showenv
+echo "---------------------------------------"
+
+echo "build for: $BUILD_TARGET"
+echo "Stack to build for: $BUILD_WITH_STACK ($OFED_STACK_PREFIX)"
 
 if [ "$nflag" = "y" ]
 then
 	exit 0
 fi
 
-# Check if we need to build SRPM and start from there
 if [ "$BUILD_TARGET_OS" = "VXWORKS" ]
 then
-	echo "Err: Wrong runmake file"
+	echo "ERROR: Wrong runmake file"
 	exit 1
 fi
 
-if [ "x${RELEASE_TAG}" = "x" ]
-then
-	MODULEVERSION=`patch_engineer_version`
-	RPM_REL=`echo ${MODULEVERSION}|cut -d"." -f1-2`
-	RPM_VER=`echo ${MODULEVERSION}.999.999|cut -d"." -f3`
-else
-	MODULEVERSION=`patch_version ${RELEASE_TAG}`
-	RPM_REL=`echo ${MODULEVERSION}|cut -d"." -f1-4`
-	RPM_VER=`echo ${MODULEVERSION}.999.999.999.999|cut -d"." -f5`
-fi
-export MKRPM_REL=${RPM_REL}
-export MKRPM_VER=${RPM_VER}`rpm --eval %{?dist}`
+MODULEVERSION=`$TL_DIR/MakeTools/convert_releasetag.pl $RELEASE_TAG`
+RPM_VER=`echo $MODULEVERSION|cut -d"." -f1-4`
+RPM_REL=`echo $MODULEVERSION.999.999.999.999|cut -d"." -f5`
+export MKRPM_VER=$RPM_VER
+export MKRPM_REL=$RPM_REL`rpm --eval %{?dist}`
 
 # even if building rpms, clobber to cleanup any previous in-place builds
 # so they don't end up inside the src.rpm when not wanted
@@ -243,68 +231,39 @@ export MKRPM_VER=${RPM_VER}`rpm --eval %{?dist}`
 if [ "$rerun" = y -a "$Cflag" != y ]
 then
 	# force full rebuild
-	# this clobber is only necessary if we have ever built inplace
-	# otherwise each rpm build will get a fresh workplace for its build
-	# so to save some time, only do the clobber if needed
-	#for build_config in $build_configs
-	#do
-		#export BUILD_CONFIG=$build_config
-		#if [ -e $TL_DIR/builtinplace.$PRODUCT.$BUILD_CONFIG \
-		#	-o  -e $TL_DIR/builtinclude.$PRODUCT.$BUILD_CONFIG \
-		#	-o  -e $TL_DIR/builtlibs.$PRODUCT.$BUILD_CONFIG \
-		#	-o  -e $TL_DIR/builtbin.$PRODUCT.$BUILD_CONFIG ]
-		#then
-			export REMOVE_DEPENDS=yes
-			make clobber clobber_stage clobber_release
-			rm -f $TL_DIR/builtinplace.$PRODUCT.$BUILD_CONFIG
-		#fi
-	#done
+	# Clobber is really only necessary if we have ever built inplace
+	# but to be safe we always clobber just in case an aborted inplace
+	# build has previously occurred.
+	#if [ -e $TL_DIR/builtinplace.$PRODUCT.$BUILD_CONFIG \
+	#	-o  -e $TL_DIR/builtinclude.$PRODUCT.$BUILD_CONFIG \
+	#	-o  -e $TL_DIR/builtlibs.$PRODUCT.$BUILD_CONFIG \
+	#	-o  -e $TL_DIR/builtbin.$PRODUCT.$BUILD_CONFIG ]
+	#then
+		export REMOVE_DEPENDS=yes
+		make clobber clobber_stage clobber_release
+		rm -f $TL_DIR/builtinplace.$PRODUCT.$BUILD_CONFIG
+	#fi
 fi
-clobber_arg=
 
 rm -rf $TL_DIR/$PROJ_FILE_DIR/packaged_files $TL_DIR/$PROJ_FILE_DIR/dist_files
 
+args=
 if [ "$inplace" = y ]
 then
-	#echo "Building $build_configs for allkernels for $BUILD_TARGET_OS $BUILD_TARGET ..."
-	echo "Building $BUILD_CONFIG for allkernels for $BUILD_TARGET_OS $BUILD_TARGET ..."
-	echo "==============================================================================="
-	#for build_config in $build_configs
-	#do
-		## setup environment using BUILD_CONFIG
-		#export BUILD_CONFIG=$build_config
-
-		#for os_version in $os_versions
-		#do
-			#setver $BUILD_TARGET_OS_VENDOR $os_version
-			echo > $TL_DIR/builtinplace.$PRODUCT.$BUILD_CONFIG
-			./rpm_runmake -r -C -B $BUILD_CONFIG
-		#done
-	#done
-	args="$args -r -C"	# we pre-built, so skip clobber in rpmbuild
+	# Do not use unifdef for inplace build
+	export USE_UNIFDEF="no"
+	echo > $TL_DIR/builtinplace.$PRODUCT.$BUILD_CONFIG
+	./rpm_runmake -r -C -B $BUILD_CONFIG
+	args="-r -C"	# we pre-built, so skip clobber in rpmbuild
 fi
 
 if [ "$rpm" = y ]
 then
+	USE_UNIFDEF=${USE_UNIFDEF:-"no"}
 	set -x
-	# Copy the spec file for editing.
-	cp opa-fm.spec.base opa-fm.spec
-
-	# Repair the spec file
-	sed -i "s/^Version:.*/Version: ${RPM_REL}/g" opa-fm.spec
-	sed -i "s/^Release:.*/Release: ${RPM_VER}%{?dist}/g" opa-fm.spec
-	if [ -d IbAccess ] ; then 
-		sed -i "s/^%doc Esm\/README/%doc README/g" opa-fm.spec; 
-	fi;
-
-	# Pass command-line arguments to rpmbuild 
-	sed -i "s/^\.\/fmbuild.*/\.\/fmbuild -V \%{version}\.\%{release} $args/g" opa-fm.spec
-
-	# update distro dependencies
-	./update_opa-fm_spec.sh
 
 	# Pass env variables to rpmbuild. In integration build,
-	# Most of the rpmbuild environment variables remains the same except
+	# most of the rpmbuild environment variables remains the same except
 	# a few (like TL_DIR). However, when the SRPM is built on another
 	# different machine, the environment variables may be totally
 	# different. In that case, we may want to pass (hardcode) some
@@ -315,9 +274,9 @@ then
 	echo "export BUILD_CONFIG=\${BUILD_CONFIG:-\"${BUILD_CONFIG}\"}" >> build.env
 	echo "export BUILD_WITH_STACK=${BUILD_WITH_STACK}" >> build.env
 
+	FILES_TO_TAR=
 	# if in-place build left builtbin, builtinclude and builtlibs, pick them up
 	# to accelerate incremental builds
-	FILES_TO_TAR=
 	for i in builtbin builtinclude builtlibs builtinplace
 	do
 		if [ -e $TL_DIR/$i.$PRODUCT.$BUILD_CONFIG ]
@@ -325,35 +284,29 @@ then
 			FILES_TO_TAR="$FILES_TO_TAR $i.$PRODUCT.$BUILD_CONFIG"
 		fi
 	done
-	cd ../
-	#rm -rf rpmbuild
-	mkdir -p rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-	# Create source tar ball. Update licenses if needed.
-	if [[ "$RELEASE_TYPE" == "EMBARGOED" ]]
-	then
-		echo "Building Embargoed Release"
-		export OPA_LICENSE_DIR=${TL_DIR}/CodeTemplates/EmbargoedNotices
-		OWD=${PWD}
-		TMP=$(mktemp -d)
-		cp -rp * ${TMP}
-		cd ${TMP}
-		${TL_DIR}/CodeTemplates/update_license.sh -c -q ${TMP}
-		tar -cvzf ${OWD}/rpmbuild/SOURCES/opa-fm.tar.gz -T Esm/tar_inc_srcs_all --exclude-vcs -X Esm/tar_exc_pattern $FILES_TO_TAR
-		cd ${OWD}
-		rm -rf ${TMP}
-	else
-		echo "Building Public Release"
-		tar -cvzf rpmbuild/SOURCES/opa-fm.tar.gz -T Esm/tar_inc_srcs_all --exclude-vcs -X Esm/tar_exc_pattern $FILES_TO_TAR
-	fi
-	cp Esm/opa-fm.spec rpmbuild/SPECS/
-	cd rpmbuild
-	rpmbuild -ba --define "_topdir $(pwd)" SPECS/opa-fm.spec
-	cd ../Esm
-	make final_package
+	FILES_TO_TAR="$FILES_TO_TAR -T tar_inc_srcs_all"
 
-	# Remove temp files
-	rm -f opafm.spec
-	rm -f build.env
+	RPMDIR="$TL_DIR/rpmbuild"
+	mkdir -p $RPMDIR/{BUILD,SPECS,BUILDROOT,SOURCES,RPMS,SRPMS}
+
+	# Update the spec file
+	cp opa-fm.spec.base opa-fm.spec
+	sed -i "s/^Version:.*/Version: ${RPM_VER}/g" opa-fm.spec
+	sed -i "s/^Release:.*/Release: ${RPM_REL}%{?dist}/g" opa-fm.spec
+	# update distro dependencies
+	./update_opa-fm_spec.sh
+	mv opa-fm.spec $RPMDIR/SPECS/
+
+	# Create source tar ball. Update licenses if needed.
+	$TL_DIR/MakeTools/make_src_tar.sh "${RELEASE_TYPE}" "${TL_DIR}" "$USE_UNIFDEF" "$RPMDIR/SOURCES/opa-fm.tar.gz" "$FILES_TO_TAR" " -X tar_exc_pattern" || exit 1
+
+	(
+		export BUILD_ARGS="$args"
+		cd $RPMDIR
+		rpmbuild -ba --define "_topdir $RPMDIR" SPECS/opa-fm.spec
+	) || exit 1
+
+	make final_package
 fi
 
 exit 0

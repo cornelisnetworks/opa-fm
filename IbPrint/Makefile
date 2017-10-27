@@ -52,7 +52,6 @@ CFILES			= \
 				stl_pa.c \
 				types.c \
 				sma.c \
-				pm.c \
 				sa.c \
 				sd.c \
 				mad.c \

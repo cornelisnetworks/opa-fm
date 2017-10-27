@@ -43,7 +43,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define _GNU_SOURCE
 
 #include <iba/stl_pm.h>
-#include <iba/stl_pa.h>
+#include <iba/stl_pa_priv.h>
 
 #ifdef __cplusplus
 extern "C" {

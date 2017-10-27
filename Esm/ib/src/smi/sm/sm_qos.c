@@ -572,7 +572,7 @@ PopulateSCtoSL(RoutingModule_t *rm, const Qos_t * qos,
 			// map explicitly shows all SC to SL mappings.
 			for (vl_i = 0; vl_i < numSCs; vl_i++) {
 				bitset_clear(&freeVLs, vl + vl_i);
-				SCtoSL[sc + vl_i] = sl;
+				SCtoSL[sc + vl_i] = vfp->standby? 15 : sl;
 			}
 			SLtoSC[sl] = sc;
 		}
@@ -841,6 +841,7 @@ sm_initialize_Switch_SLSCMap(Topology_t * topop, Node_t * switchp,
         IB_LOG_WARN_FMT(__func__, 
                         "Failed to get Port 0 of Switch " FMT_U64, 
                         switchp->nodeInfo.NodeGUID); 
+        IB_EXIT(__func__, VSTATUS_BAD);
         return VSTATUS_BAD;
     }
 
@@ -857,6 +858,7 @@ sm_initialize_Switch_SLSCMap(Topology_t * topop, Node_t * switchp,
         IB_LOG_WARNRC("Failed to get SLSC "
                       "map from routing algorithm;  rc:", 
                       status);
+        IB_EXIT(__func__, status);
         return status;
     }
     
@@ -873,6 +875,7 @@ sm_initialize_Switch_SLSCMap(Topology_t * topop, Node_t * switchp,
                             "Failed to set SLSC Map for switch node %s nodeGuid " FMT_U64, 
                             sm_nodeDescString(switchp), switchp->nodeInfo.NodeGUID); 
             switchp->slscChange = 1;
+            status = sm_popo_port_error(&sm_popo, sm_topop, swportp, status);
         }
         swportp->portData->current.slsc = (status == VSTATUS_OK);
 #else
@@ -887,7 +890,7 @@ sm_initialize_Switch_SLSCMap(Topology_t * topop, Node_t * switchp,
 #endif
 
 
-    IB_EXIT(__func__, 0); 
+    IB_EXIT(__func__, status);
     return (status);
 }
 
@@ -907,7 +910,7 @@ sm_initialize_Switch_SCSLMap(Topology_t * topop, Node_t * switchp,
         IB_LOG_WARN_FMT(__func__, 
                         "Failed to get Port 0 of Switch " FMT_U64, 
                         switchp->nodeInfo.NodeGUID); 
-        IB_EXIT(__func__, 1); 
+        IB_EXIT(__func__, VSTATUS_BAD);
         return VSTATUS_BAD;
     }
 
@@ -923,6 +926,7 @@ sm_initialize_Switch_SCSLMap(Topology_t * topop, Node_t * switchp,
         IB_LOG_WARNRC("Failed to get SCSL "
                       "map from routing algorithm; rc:", 
                       status);
+        IB_EXIT(__func__, status);
         return status;
     }
     
@@ -940,6 +944,7 @@ sm_initialize_Switch_SCSLMap(Topology_t * topop, Node_t * switchp,
                             "Failed to set SCSL Map for switch node %s nodeGuid " FMT_U64, 
                             sm_nodeDescString(switchp), switchp->nodeInfo.NodeGUID); 
             switchp->slscChange = 1;
+            status = sm_popo_port_error(&sm_popo, sm_topop, swportp, status);
         }
         swportp->portData->current.scsl = (status == VSTATUS_OK);
 #else
@@ -952,7 +957,7 @@ sm_initialize_Switch_SCSLMap(Topology_t * topop, Node_t * switchp,
     swportp->portData->scslMap = *scslmapp; 
 #endif
 
-    IB_EXIT(__func__, 0); 
+    IB_EXIT(__func__, status);
     return (status);
 }
 
@@ -1202,10 +1207,13 @@ sm_initialize_Switch_SCVLMaps(Topology_t * topop, Node_t * switchp)
                 status = SM_Set_SCVLrMap_LR(fd_topology, amod, sm_lid, swportp->portData->lid, &scvlmap, sm_config.mkey); 
 
                 if (status != VSTATUS_OK) {
-                   IB_LOG_WARN_FMT("sm_initialize_Switch_SCVLMaps", 
-                                   "Failed to set SCVL_r Map for node %s nodeGuid " FMT_U64
-                                   " output port %d", sm_nodeDescString(switchp), 
-                                   switchp->nodeInfo.NodeGUID, swportp->index);
+                    IB_LOG_WARN_FMT("sm_initialize_Switch_SCVLMaps",
+                                    "Failed to set SCVL_r Map for node %s nodeGuid " FMT_U64
+                                    " output port %d", sm_nodeDescString(switchp),
+                                    switchp->nodeInfo.NodeGUID, swportp->index);
+                    status = sm_popo_port_error(&sm_popo, sm_topop, swportp, status);
+                    if (status == VSTATUS_TIMEOUT_LIMIT)
+                        goto fail;
                 }
                 swportp->portData->current.scvlr = (status == VSTATUS_OK);
                 swportp->portData->scvlrMap = scvlmap;
@@ -1330,6 +1338,7 @@ sm_initialize_Switch_SCVLMaps(Topology_t * topop, Node_t * switchp)
                                     "Failed to set SCVL_t Map for node %s nodeGuid " FMT_U64
                                     " output port %d", sm_nodeDescString(switchp), 
                                     switchp->nodeInfo.NodeGUID, out_portp->index);
+                        status = sm_popo_port_error(&sm_popo, sm_topop, swportp, status);
                         goto fail;
                     }
                     if (out_portp->index > 0)
@@ -1374,6 +1383,7 @@ sm_initialize_Switch_SCVLMaps(Topology_t * topop, Node_t * switchp)
                                     "Failed to set SCVL_nt Map for node %s nodeGuid " FMT_U64
                                     " output port %d", sm_nodeDescString(neighborNodep), 
                                     neighborNodep->nodeInfo.NodeGUID, neighborPortp->index);
+                    status = sm_popo_port_error(&sm_popo, sm_topop, swportp, status);
                     goto fail;
                 }
             } else {
@@ -1389,7 +1399,7 @@ sm_initialize_Switch_SCVLMaps(Topology_t * topop, Node_t * switchp)
     }
 
 fail:
-    IB_EXIT(__func__, 0); 
+    IB_EXIT(__func__, status);
     return (status);
 }
 
@@ -2026,6 +2036,7 @@ sm_syncSmaChanges(Topology_t * topop, Node_t ** firstError)
 				s = sm_node_syncSmaChanges(topop, nodep, smaportp);
 
 				if (s != VSTATUS_OK) {
+					s = sm_popo_port_error(&sm_popo, topop, smaportp, s);
 					if (retStat == VSTATUS_OK) {
 						if (firstError)
 							*firstError = nodep;
@@ -2035,12 +2046,15 @@ sm_syncSmaChanges(Topology_t * topop, Node_t ** firstError)
 					IB_LOG_WARN_FMT(__func__,
 							"Failed to sync changes for node %s, node GUID "FMT_U64", port %d",
 							sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, smaportp->index);
-					}
-				}
 
-				// dirty and change values are not currently copied sweep-to sweep, so free to
-				// release them whether or not Set() was successful
-				sm_node_release_changes(nodep);
+					if (s == VSTATUS_TIMEOUT_LIMIT)
+						return s;
+				}
+			}
+
+			// dirty and change values are not currently copied sweep-to sweep, so free to
+			// release them whether or not Set() was successful
+			sm_node_release_changes(nodep);
 		}
 
 		nodeIdx = bitset_find_next_one(topop->smaChanges, nodeIdx + 1);

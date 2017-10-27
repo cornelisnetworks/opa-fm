@@ -312,7 +312,7 @@
 ##
 ##
 ##MAKEDEPEND	= System makedepend application (Windows Only, on others
-##					$(CC) -MM $(DEPENDFLAGS) is used)
+##					$(CC) $(DEPENDFLAGS) -MT $(BUILDIR)/$*.o -MM is used)
 ##DEPENDFLAGS	= makedepend flags for .c files
 ##CCDEPENDFLAGS	= makedepend flags for .cpp files
 ##DEPENDMOD		= module level defined makedepend flags [Not Defined]

@@ -51,11 +51,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 * SFW       03/10/02    Initial functions all passing testcases.
 * MGR       04/19/02    Changed pthread_kill call to pthread_cancel.
 ***********************************************************************/
-//#if defined(LINT)
 #include <pthread.h>
-#define __signed__ signed
-#include <bits/sigset.h>
-//#endif
 #include <stdio.h>
 #include <sys/types.h>
 #include <unistd.h>

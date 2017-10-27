@@ -758,7 +758,7 @@ sub rpm_resolve($$$)
 	} else {
 		my $osver = rpm_tr_os_version("$mode");	# OS version
 		# we expect 1 match, ignore all other filenames returned
-		if ( "$CUR_VENDOR_VER" eq 'ES122' ) {
+		if ( "$CUR_VENDOR_VER" eq 'ES122' || "$CUR_VENDOR_VER" eq 'ES123') {
 			DebugPrint("Checking for Kernel Rpm: $rpmdir/${package}-${osver}_k*.${cpu}.rpm\n");
 			$rpmfile = file_glob("$rpmdir/${package}-${osver}_k*.${cpu}.rpm");
 		} else {
@@ -819,7 +819,7 @@ RPM_RES:
 		if ( "$mode" ne "user" && "$mode" ne "any" ) # kernel mode
 		{
 			NormalPrint "Rebuilding $package SRPM $mode\n";
-			if (0 == build_srpm($package, $RPM_DIR, $BUILD_ROOT, $prefix, "append")) {
+			if (0 == build_srpm($package, $RPM_DIR, $BUILD_ROOT, $prefix, "append", $mode)) {
 				delta_move_rpms("$RPM_DIR/$RPMS_SUBDIR", "$rpmdir");
 				goto RPM_RES;
 			}
@@ -870,7 +870,7 @@ RPM_RES:
 		if ( "$mode" ne "user" && "$mode" ne "any" ) # kernel mode
 		{
 			NormalPrint "Rebuilding $package SRPM $mode\n";
-			if (0 == build_srpm($package, $RPM_DIR, $BUILD_ROOT, $prefix, "append")) {
+			if (0 == build_srpm($package, $RPM_DIR, $BUILD_ROOT, $prefix, "append", $mode)) {
 				delta_move_rpms("$RPM_DIR/$RPMS_SUBDIR", "$rpmdir");
 				goto RPM_RES;
 			}

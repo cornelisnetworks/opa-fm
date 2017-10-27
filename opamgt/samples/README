@@ -5,3 +5,18 @@ Use 'make <app>' to just build a single application where <app> is one
 	of the sources in this directory without a '.c' suffix, e.g. saquery
 
 Use 'make clean' to remove all compiled applications
+
+applications:
+simple_sa_query - A 'hello world' of how to query an OPA SA
+saquery - A sample showing all requests for subnet management information stored in an OPA SA
+
+simple_pa_query - A 'hello world' of how to query an OPA PA
+paquery - A sample showing all requests for performance management information stored in an OPA PA
+
+simple_sa_notice - A 'hello world' of how to subscribe to fabric notifications
+
+show_switch_cost_matrix - A sample showing how to request the cost data an OPA FM uses to make routing decisions
+job_schedule - A sample showing how to determine fabric topology and schedule a 'job' or request a number of
+                 nodes based on that topology.
+
+

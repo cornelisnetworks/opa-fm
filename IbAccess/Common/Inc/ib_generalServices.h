@@ -32,8 +32,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef __IBA_IB_GENERAL_SERVICES_H__
 #define __IBA_IB_GENERAL_SERVICES_H__ (1) /* suppress duplicate loading of this file */
 
-#include "iba/stl_mad.h"
-#include "iba/public/ibyteswap.h"
+#include "iba/stl_mad_types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -46,10 +45,7 @@ extern "C" {
  * For each class, there is an additional header file which documents
  * specific attribute formats and Status codes specific to the class
  * For example:
- * 	ib_pm.h - performance management
- *	ib_dm.h - device management
  *	ib_sa_records.h - subnet administration
- *	ib_cc.h - congestion control
  */
 
 /* these are valid in 1.0a and 1.1
@@ -209,23 +205,6 @@ typedef struct _SA_MAD {
 	SA_HDR		SaHdr;			/* SA class specific header */
 	uint8		Data[STL_SUBN_ADM_DATASIZE];
 } PACK_SUFFIX SA_MAD, *PSA_MAD;
-
-/* -------------------------------------------------------------------------- */
-/* Performance Management MAD format */
-typedef struct _PERF_MAD {
-	MAD_COMMON	common;				/* Generic MAD Header */
-
-	uint8		Resv[40];					/* class specific header */
-	
-	uint8		PerfData[IBA_GS_DATASIZE];	/* Performance Management Data */
-} PACK_SUFFIX PERF_MAD, *PPERF_MAD;
-
-typedef struct _STL_PERF_MAD {
-	MAD_COMMON	common;				/* Generic MAD Header */
-
-	uint8		PerfData[STL_GS_DATASIZE];	/* Performance Management Data */
-} PACK_SUFFIX STL_PERF_MAD, *PSTL_PERF_MAD;
-
 
 /* -------------------------------------------------------------------------- */
 /* BaseBoard Management MAD format */

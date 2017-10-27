@@ -52,6 +52,7 @@ static void sm_dispatch_cntxt_callback(cntxt_entry_t *cntxt, Status_t cntxtStatu
 	sm_dispatch_req_t *req = (sm_dispatch_req_t *)data;
 	sm_dispatch_t *disp = req->disp;
 	Node_t *nodep = NULL;
+	uint64_t now;
 
 	if (req->sweepPasscount == disp->sweepPasscount) {
 		nodep = req->nodep;
@@ -59,6 +60,11 @@ static void sm_dispatch_cntxt_callback(cntxt_entry_t *cntxt, Status_t cntxtStatu
 		IB_LOG_WARN_FMT(__func__,
 			"Stale MAD response callback for LID 0x%x, ATTR %d, AMOD 0x%08x",
               	cntxt->lid, cntxt->mad.base.aid, cntxt->mad.base.amod);
+	}
+
+	if (cntxtStatus == VSTATUS_TIMEOUT) {
+		vs_time_get(&now);
+		sm_popo_report_timeout(&sm_popo, MAX(0, now - req->sendTime));
 	}
 
 	if (cntxt && cntxt->mad.base.aid == MAD_SMA_LFT) {
@@ -137,6 +143,8 @@ static Status_t sm_dispatch_send(sm_dispatch_req_t *req)
 		sm_newTopology.slid = req->sendParams.slid;
 		sm_newTopology.dlid = req->sendParams.dlid;
 	}
+
+	vs_time_get(&req->sendTime);
 
     if (req->sendParams.bversion == STL_BASE_VERSION) {
         return sm_send_stl_request_impl(
@@ -343,12 +351,10 @@ void sm_dispatch_bump_passcount(sm_dispatch_t *disp)
 	cs_cntxt_unlock(&sm_async_send_rcv_cntxt);
 }
 
-Status_t sm_dispatch_clear(sm_dispatch_t *disp)
+static void _dispatch_clear_unsafe(sm_dispatch_t *disp)
 {
 	LIST_ITEM *item;
 	sm_dispatch_req_t *req;
-
-	cs_cntxt_lock(&sm_async_send_rcv_cntxt);
 
 	item = QListRemoveHead(&disp->queue);
 	while (item != NULL) {
@@ -356,10 +362,13 @@ Status_t sm_dispatch_clear(sm_dispatch_t *disp)
 		sm_dispatch_free_req(req);
 		item = QListRemoveHead(&disp->queue);
 	}
+}
 
+void sm_dispatch_clear(sm_dispatch_t *disp)
+{
+	cs_cntxt_lock(&sm_async_send_rcv_cntxt);
+	_dispatch_clear_unsafe(disp);
 	cs_cntxt_unlock(&sm_async_send_rcv_cntxt);
-
-	return VSTATUS_OK;
 }
 
 Status_t sm_dispatch_update(sm_dispatch_t *disp)
@@ -377,9 +386,15 @@ Status_t sm_dispatch_update(sm_dispatch_t *disp)
 		return VSTATUS_OK;
 	}
 
+	if (sm_popo_should_abandon(&sm_popo)) {
+		_dispatch_clear_unsafe(disp);
+		cs_cntxt_unlock(&sm_async_send_rcv_cntxt);
+		return VSTATUS_OK;
+	}
+
 	if (disp->reqsOutstanding >= disp->reqsSupported) {
 		cs_cntxt_unlock(&sm_async_send_rcv_cntxt);
-//		IB_LOG_INFINI_INFO0("maximum requests outstanding");
+		IB_LOG_VERBOSE_FMT(__func__, "maximum requests outstanding");
 		return VSTATUS_OK;
 	}
 
@@ -389,7 +404,7 @@ Status_t sm_dispatch_update(sm_dispatch_t *disp)
 		item = QListNext(&disp->queue, item);
 		if ((disp->sweepPasscount != req->sweepPasscount) ||
 			(req->nodep->asyncReqsOutstanding < req->nodep->asyncReqsSupported)) {
-//			IB_LOG_INFINI_INFO0("servicing incoming queue");
+			IB_LOG_VERBOSE_FMT(__func__, "servicing incoming queue");
 			QListRemoveItem(&disp->queue, &req->item);
 			++disp->reqsOutstanding;
 			if (disp->sweepPasscount == req->sweepPasscount) ++req->nodep->asyncReqsOutstanding;

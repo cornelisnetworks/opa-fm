@@ -456,8 +456,8 @@ extern int      gMAI_INITIALIZED,
                 gMAI_MAD_CNT,
                 gMAI_HDL_CNT;
 
-extern MLock_t  gmai_uplock,
-                gmai_tidlock;
+extern MLock_t  gmai_uplock;
+
 extern MLock_t  gmai_hlock,
                 gmai_flock,
                 gmai_mlock;
@@ -560,9 +560,6 @@ extern uint32_t gMAI_MADS_LOWWM;
 
 #define MAI_GHANDLES_LOCK()     MAI_LOCK((&gmai_hlock))
 #define MAI_GHANDLES_UNLOCK()   MAI_UNLOCK((&gmai_hlock))
-
-#define MAI_TID_LOCK()          MAI_LOCK((&gmai_tidlock))
-#define MAI_TID_UNLOCK()        MAI_UNLOCK((&gmai_tidlock))
 
 #define MAI_DCTHR_LOCK()          MAI_LOCK((&gmai_dcthr_lock))
 #define MAI_DCTHR_UNLOCK()        MAI_UNLOCK((&gmai_dcthr_lock))
