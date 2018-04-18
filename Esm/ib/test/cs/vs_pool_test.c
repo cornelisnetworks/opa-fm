@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -55,10 +55,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *                         DEFAULT_PAGESIZE.
 * PJG       04/12/02    Don't run vs_pool_create_6b on PPC Linux Kernel space.
 ***********************************************************************/
-#if defined (LINT)
-#include <bits/sigset.h>
-#endif
-
 #include <cs_g.h>
 static uint64_t sleeptime;
 #define WAIT_FOR_LOGGING_TO_CATCHUP  sleeptime = (uint64_t) 1000000U; \

@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2018, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -86,12 +86,10 @@ static int CompareLid(const cl_map_item_t *mi, const uint64 key)
 
 // search for the PortData corresponding to the given lid
 // accounts for LMC giving a port a range of lids
-PortData * FindLid(FabricData_t *fabricp, uint16 lid)
+PortData * FindLid(FabricData_t *fabricp, STL_LID lid)
 {
 	if (fabricp->flags & FF_LIDARRAY) {
-		if (lid > LID_UCAST_END)
-			return NULL;
-		return fabricp->u.LidMap[lid];
+		return GetMapEntry(fabricp, lid);
 	} else {
 		cl_map_item_t *mi;
 
@@ -1204,26 +1202,48 @@ FSTATUS FindCabinfLenPatPoint(FabricData_t *fabricp, const char* pattern, Point 
 		for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
 			PortData *portp = (PortData *)QListObj(p);
 			STL_CABLE_INFO_STD *pCableInfo;
+			STL_CABLE_INFO_UP0_DD *pCableInfoDD;
 			uint8 xmit_tech;
+			boolean qsfp_dd;
 
 			pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
 			if (!pCableInfo)
 				continue;
+			pCableInfoDD = (STL_CABLE_INFO_UP0_DD *)portp->pCableInfoData;
+			qsfp_dd = (portp->pCableInfoData[0] == STL_CIB_STD_QSFP_DD);
 
-			xmit_tech = pCableInfo->dev_tech.s.xmit_tech;
-			if ( ( ( (xmit_tech <= STL_CIB_STD_TXTECH_1490_DFB) &&
-					(xmit_tech != STL_CIB_STD_TXTECH_OTHER) &&
-					(pCableInfo->connector == STL_CIB_STD_CONNECTOR_NO_SEP) ) ||
-					(xmit_tech >= STL_CIB_STD_TXTECH_CU_UNEQ) )) {
-				char cablen_str[4] = {0}; // strlen("255") + 1 = 4
+			if (!qsfp_dd) {
+				xmit_tech = pCableInfo->dev_tech.s.xmit_tech;
+				if ( ( ( (xmit_tech <= STL_CIB_STD_TXTECH_1490_DFB) &&
+						(xmit_tech != STL_CIB_STD_TXTECH_OTHER) &&
+						(pCableInfo->connector == STL_CIB_STD_CONNECTOR_NO_SEP) ) ||
+						(xmit_tech >= STL_CIB_STD_TXTECH_CU_UNEQ) )) {
+					char cablen_str[4] = {0}; // strlen("255") + 1 = 4
 
-				snprintf(cablen_str, sizeof(cablen_str), "%u", pCableInfo->len_om4);
-				if (fnmatch(scrubbed_pat, cablen_str, 0) != 0)
-					continue;
+					snprintf(cablen_str, sizeof(cablen_str), "%u", pCableInfo->len_om4);
+					if (fnmatch(scrubbed_pat, cablen_str, 0) != 0)
+						continue;
 
-				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
-				if (FSUCCESS != status)
-					return status;
+					status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+					if (FSUCCESS != status)
+						return status;
+				}
+			} else {
+				xmit_tech = pCableInfoDD->cable_type;
+				if ( ( ( (xmit_tech <= STL_CIB_STD_TXTECH_1490_DFB) &&
+						(xmit_tech != STL_CIB_STD_TXTECH_OTHER) &&
+						(pCableInfoDD->connector == STL_CIB_STD_CONNECTOR_NO_SEP) ) ||
+						(xmit_tech >= STL_CIB_STD_TXTECH_CU_UNEQ) )) {
+					char cablen_str[16] = {0};  // can have decimal places
+
+					StlCableInfoDDCableLengthToText(pCableInfoDD->cableLengthEnc, sizeof(cablen_str), cablen_str);
+					if (fnmatch(scrubbed_pat, cablen_str, 0) != 0)
+						continue;
+
+					status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+					if (FSUCCESS != status)
+						return status;
+				}
 			}
 		}
 	}
@@ -1249,7 +1269,9 @@ FSTATUS FindCabinfVendNamePatPoint(FabricData_t *fabricp, const char* pattern, P
 	FSTATUS status;
 	uint32 len_pattern;
 	STL_CABLE_INFO_STD *pCableInfo;
+	STL_CABLE_INFO_UP0_DD *pCableInfoDD;
 	char bf_pattern[sizeof(pCableInfo->vendor_name) + 1];
+	boolean qsfp_dd;
 
 	ASSERT(! PointValid(pPoint));
 	if (0 == (find_flag & FIND_FLAG_FABRIC))
@@ -1271,8 +1293,15 @@ FSTATUS FindCabinfVendNamePatPoint(FabricData_t *fabricp, const char* pattern, P
 			pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
 			if (! pCableInfo)
 				continue;
-			memcpy(tempStr, pCableInfo->vendor_name, sizeof(pCableInfo->vendor_name));
-			tempStr[sizeof(pCableInfo->vendor_name)] = '\0';
+			pCableInfoDD = (STL_CABLE_INFO_UP0_DD *)portp->pCableInfoData;
+			qsfp_dd = (portp->pCableInfoData[0] == STL_CIB_STD_QSFP_DD);
+			if (!qsfp_dd) {
+				memcpy(tempStr, pCableInfo->vendor_name, sizeof(pCableInfo->vendor_name));
+				tempStr[sizeof(pCableInfo->vendor_name)] = '\0';
+			} else {
+				memcpy(tempStr, pCableInfoDD->vendor_name, sizeof(pCableInfoDD->vendor_name));
+				tempStr[sizeof(pCableInfoDD->vendor_name)] = '\0';
+			}
 			if (fnmatch(bf_pattern, (const char *)tempStr, 0) == 0)
 			{
 				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
@@ -1303,7 +1332,9 @@ FSTATUS FindCabinfVendPNPatPoint(FabricData_t *fabricp, const char* pattern, Poi
 	FSTATUS status;
 	uint32 len_pattern;
 	STL_CABLE_INFO_STD *pCableInfo;
+	STL_CABLE_INFO_UP0_DD *pCableInfoDD;
 	char bf_pattern[sizeof(pCableInfo->vendor_pn) + 1];
+	boolean qsfp_dd;
 
 	ASSERT(! PointValid(pPoint));
 	if (0 == (find_flag & FIND_FLAG_FABRIC))
@@ -1325,8 +1356,15 @@ FSTATUS FindCabinfVendPNPatPoint(FabricData_t *fabricp, const char* pattern, Poi
 			pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
 			if (! pCableInfo)
 				continue;
-			memcpy(tempStr, pCableInfo->vendor_pn, sizeof(pCableInfo->vendor_pn));
-			tempStr[sizeof(pCableInfo->vendor_pn)] = '\0';
+			pCableInfoDD = (STL_CABLE_INFO_UP0_DD *)portp->pCableInfoData;
+			qsfp_dd = (portp->pCableInfoData[0] == STL_CIB_STD_QSFP_DD);
+			if (!qsfp_dd) {
+				memcpy(tempStr, pCableInfo->vendor_pn, sizeof(pCableInfo->vendor_pn));
+				tempStr[sizeof(pCableInfo->vendor_pn)] = '\0';
+			} else {
+				memcpy(tempStr, pCableInfoDD->vendor_pn, sizeof(pCableInfoDD->vendor_pn));
+				tempStr[sizeof(pCableInfoDD->vendor_pn)] = '\0';
+			}
 			if (fnmatch(bf_pattern, (const char *)tempStr, 0) == 0)
 			{
 				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
@@ -1357,7 +1395,9 @@ FSTATUS FindCabinfVendRevPatPoint(FabricData_t *fabricp, const char* pattern, Po
 	FSTATUS status;
 	uint32 len_pattern;
 	STL_CABLE_INFO_STD *pCableInfo;
+	STL_CABLE_INFO_UP0_DD *pCableInfoDD;
 	char bf_pattern[sizeof(pCableInfo->vendor_rev) + 1];
+	boolean qsfp_dd;
 
 	ASSERT(! PointValid(pPoint));
 	if (0 == (find_flag & FIND_FLAG_FABRIC))
@@ -1379,8 +1419,15 @@ FSTATUS FindCabinfVendRevPatPoint(FabricData_t *fabricp, const char* pattern, Po
 			pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
 			if (! pCableInfo)
 				continue;
-			memcpy(tempStr, pCableInfo->vendor_rev, sizeof(pCableInfo->vendor_rev));
-			tempStr[sizeof(pCableInfo->vendor_rev)] = '\0';
+			pCableInfoDD = (STL_CABLE_INFO_UP0_DD *)portp->pCableInfoData;
+			qsfp_dd = (portp->pCableInfoData[0] == STL_CIB_STD_QSFP_DD);
+			if (!qsfp_dd) {
+				memcpy(tempStr, pCableInfo->vendor_rev, sizeof(pCableInfo->vendor_rev));
+				tempStr[sizeof(pCableInfo->vendor_rev)] = '\0';
+			} else {
+				memcpy(tempStr, pCableInfoDD->vendor_rev, sizeof(pCableInfoDD->vendor_rev));
+				tempStr[sizeof(pCableInfoDD->vendor_rev)] = '\0';
+			}
 			if (fnmatch(bf_pattern, (const char *)tempStr, 0) == 0)
 			{
 				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
@@ -1411,7 +1458,9 @@ FSTATUS FindCabinfVendSNPatPoint(FabricData_t *fabricp, const char* pattern, Poi
 	FSTATUS status;
 	uint32 len_pattern;
 	STL_CABLE_INFO_STD *pCableInfo;
+	STL_CABLE_INFO_UP0_DD *pCableInfoDD;
 	char bf_pattern[sizeof(pCableInfo->vendor_sn) + 1];
+	boolean qsfp_dd;
 
 	ASSERT(! PointValid(pPoint));
 	if (0 == (find_flag & FIND_FLAG_FABRIC))
@@ -1433,8 +1482,15 @@ FSTATUS FindCabinfVendSNPatPoint(FabricData_t *fabricp, const char* pattern, Poi
 			pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
 			if (! pCableInfo)
 				continue;
-			memcpy(tempStr, pCableInfo->vendor_sn, sizeof(pCableInfo->vendor_sn));
-			tempStr[sizeof(pCableInfo->vendor_sn)] = '\0';
+			pCableInfoDD = (STL_CABLE_INFO_UP0_DD *)portp->pCableInfoData;
+			qsfp_dd = (portp->pCableInfoData[0] == STL_CIB_STD_QSFP_DD);
+			if (!qsfp_dd) {
+				memcpy(tempStr, pCableInfo->vendor_sn, sizeof(pCableInfo->vendor_sn));
+				tempStr[sizeof(pCableInfo->vendor_sn)] = '\0';
+			} else {
+				memcpy(tempStr, pCableInfoDD->vendor_sn, sizeof(pCableInfoDD->vendor_sn));
+				tempStr[sizeof(pCableInfoDD->vendor_sn)] = '\0';
+			}
 			if (fnmatch(bf_pattern, (const char *)tempStr, 0) == 0)
 			{
 				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
@@ -1475,7 +1531,9 @@ FSTATUS FindCabinfCableTypePoint(FabricData_t *fabricp, char *pattern, Point *pP
 		for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
 			PortData *portp = (PortData *)QListObj(p);
 			STL_CABLE_INFO_STD *pCableInfo;
+			STL_CABLE_INFO_UP0_DD *pCableInfoDD;
 			uint8 xmit_tech;
+			boolean qsfp_dd;
 
 			/* omit switch port 0, no cable connected to port0 */
 			if (portp->PortNum == 0)
@@ -1483,7 +1541,12 @@ FSTATUS FindCabinfCableTypePoint(FabricData_t *fabricp, char *pattern, Point *pP
 			pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
 			if (! pCableInfo)
 				continue;
-			xmit_tech = pCableInfo->dev_tech.s.xmit_tech;
+			pCableInfoDD = (STL_CABLE_INFO_UP0_DD *)portp->pCableInfoData;
+			qsfp_dd = (portp->pCableInfoData[0] == STL_CIB_STD_QSFP_DD);
+			if (!qsfp_dd)
+				xmit_tech = pCableInfo->dev_tech.s.xmit_tech;
+			else
+				xmit_tech = pCableInfoDD->cable_type;
 			if (strncmp(pattern, "optical", len) == 0) // this includes AOL and Optical Transceiver
 				if (xmit_tech <= STL_CIB_STD_TXTECH_1490_DFB && (xmit_tech >= STL_CIB_STD_TXTECH_850_VCSEL)
 						&& (xmit_tech != STL_CIB_STD_TXTECH_OTHER)) {
@@ -1759,7 +1822,7 @@ SMData * FindSMPort(FabricData_t *fabricp, EUI64 PortGUID)
 // search for the PortData corresponding to the given lid and port number
 // For FIs lid completely defines the port
 // For Switches, lid will identify the switch and port is used to select port
-PortData * FindLidPort(FabricData_t *fabricp, uint16 lid, uint8 port)
+PortData * FindLidPort(FabricData_t *fabricp, STL_LID lid, uint8 port)
 {
 	PortData *portp;
 

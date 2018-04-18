@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -68,13 +68,13 @@ extern int snprintf (char *str, size_t count, const char *fmt, ...);
 #endif
 
 /* sometimes a bitfield, so need to call with value instead of ptr */
-void IXmlOutputLIDValue(IXmlOutputState_t *state, const char *tag, STL_LID_32 value)
+void IXmlOutputLIDValue(IXmlOutputState_t *state, const char *tag, STL_LID value)
 {
 	IXmlOutputHexPad32(state, tag, value);
 }
 
 // only output if value != 0
-void IXmlOutputOptionalLIDValue(IXmlOutputState_t *state, const char *tag, STL_LID_32 value)
+void IXmlOutputOptionalLIDValue(IXmlOutputState_t *state, const char *tag, STL_LID value)
 {
 	if (value)
 		IXmlOutputLIDValue(state, tag, value);
@@ -82,13 +82,13 @@ void IXmlOutputOptionalLIDValue(IXmlOutputState_t *state, const char *tag, STL_L
 
 void IXmlOutputLID(IXmlOutputState_t *state, const char *tag, void *data)
 {
-	IXmlOutputHexPad32(state, tag, *(STL_LID_32*)data);
+	IXmlOutputHexPad32(state, tag, *(STL_LID*)data);
 }
 
 // only output if value != 0
 void IXmlOutputOptionalLID(IXmlOutputState_t *state, const char *tag, void *data)
 {
-	IXmlOutputOptionalHexPad32(state, tag, *(STL_LID_32*)data);
+	IXmlOutputOptionalHexPad32(state, tag, *(STL_LID*)data);
 }
 
 
@@ -349,10 +349,6 @@ boolean IXmlParseRateMult_Str(IXmlParserState_t *state, XML_Char *content, uint8
 		*value = IB_STATIC_RATE_100G;
 #if 0
 	// future
-	} else if (0 == strcasecmp(content, "150g") || 0 == strcasecmp(content, "150")) {
-		*value = STL_STATIC_RATE_150G;
-	} else if (0 == strcasecmp(content, "200g") || 0 == strcasecmp(content, "200")) {
-		*value = IB_STATIC_RATE_200G;
 	} else if (0 == strcasecmp(content, "225g") || 0 == strcasecmp(content, "250")) {
 		*value = STL_STATIC_RATE_225G;
 	} else if (0 == strcasecmp(content, "300g") || 0 == strcasecmp(content, "300")) {
@@ -386,8 +382,6 @@ void IXmlParserEndRate(IXmlParserState_t *state, const IXML_FIELD *field, void *
 		value = IB_STATIC_RATE_100G;
 #if 0
 	// future
-	} else if (0 == strcasecmp(content, "150g") || 0 == strcasecmp(content, "150")) {
-		value = STL_STATIC_RATE_150G;
 	} else if (0 == strcasecmp(content, "200g") || 0 == strcasecmp(content, "200")) {
 		value = IB_STATIC_RATE_200G;
 	} else if (0 == strcasecmp(content, "225g") || 0 == strcasecmp(content, "225")) {
@@ -417,9 +411,9 @@ void IXmlParserEndRate_Int(IXmlParserState_t *state, const IXML_FIELD *field, vo
 			&& value != IB_STATIC_RATE_40G && value != IB_STATIC_RATE_80G
 			&& value != IB_STATIC_RATE_56G && value != IB_STATIC_RATE_100G ) {
 			IXmlParserPrintError(state, "Invalid Rate: %u  Must be (12.5g, 25g, 37.5g, 50g, 75g, 100g): %u, %u, %u, %u, %u, %u", value,
-					IB_STATIC_RATE_14G, IB_STATIC_RATE_25G,
-					IB_STATIC_RATE_40G, IB_STATIC_RATE_56G, 
-					IB_STATIC_RATE_80G, IB_STATIC_RATE_100G);
+					IB_STATIC_RATE_14G, IB_STATIC_RATE_25G, 
+					IB_STATIC_RATE_40G, IB_STATIC_RATE_56G,
+					IB_STATIC_RATE_80G, IB_STATIC_RATE_100G ); 
 		} else {
 			ASSERT(field->size == 1);
 			*(uint8 *)IXmlParserGetField(field, object) = value;
@@ -499,7 +493,7 @@ void IXmlOutputVLsValue(IXmlOutputState_t *state, const char* tag, uint8 value)
 {
 	char buf[8];
 
-	(void)snprintf(buf, sizeof(buf), "%u+1", value);
+	snprintf(buf, sizeof(buf), "%u+1", value);
 	IXmlOutputStrUint(state, tag, buf, value);
 }
 
@@ -757,33 +751,48 @@ fail:
 	return FALSE;
 }
 
-// parse TimeoutMult string into a uint8 field and validate value
-// treat "infinite" or multipliers > IB_LIFETIME_MAX as IB_LIFETIME_MAX+1
-void IXmlParserEndTimeoutMultInf_Str(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+void IXmlParserEndHoqTimeout_Str(IXmlParserState_t *state,
+	const IXML_FIELD *field, void *object, void *parent, XML_Char *content,
+	unsigned int len, boolean valid)
 {
-	uint8 value;
-	
-	if (! IXmlParseTimeoutMultInf_Str(state, content, len, &value))
-		goto fail;
-	ASSERT(field->size == 1);
-	*(uint8 *)IXmlParserGetField(field, object) = value;
-fail:
-	return;
+	uint8_t value;
+	if (!IXmlParseTimeoutMultInf_Str(state, content, len, &value)) {
+		IXmlParserPrintError(state, "Invalid value");
+		return;
+	}
+
+	if (value > IB_LIFETIME_MAX) {
+		char minBuf[8];
+		char maxBuf[8];
+		FormatTimeoutMult(minBuf, 0);
+		FormatTimeoutMult(maxBuf, IB_LIFETIME_MAX);
+		IXmlParserPrintWarning(state, "%s is outside allowed range %s-%s. Setting to %s.",
+			content, minBuf, maxBuf, maxBuf);
+		value = IB_LIFETIME_MAX;
+	}
+
+	*(uint32_t *)IXmlParserGetField(field, object) = value;
 }
 
-// parse TimeoutMult string into a uint32 field and validate value
-// treat "infinite" or multipliers > IB_LIFETIME_MAX as IB_LIFETIME_MAX+1
-void IXmlParserEndTimeoutMultInf32_Str(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+void IXmlParserEndHoqTimeout_Int(IXmlParserState_t *state,
+	const IXML_FIELD *field, void *object, void *parent, XML_Char *content,
+	unsigned int len, boolean valid)
 {
-	uint8 value;
-	
-	if (! IXmlParseTimeoutMultInf_Str(state, content, len, &value))
-		goto fail;
-	ASSERT(field->size == 4);
-	*(uint32 *)IXmlParserGetField(field, object) = value;
-fail:
-	return;
+	uint32_t value;
+	if (!IXmlParseUint32(state, content, len, &value)) {
+		IXmlParserPrintError(state, "Invalid value");
+		return;
+	}
+
+	if (value > IB_LIFETIME_MAX) {
+		IXmlParserPrintWarning(state, "%u is outside allowed range 0-%u. Setting to %u.",
+			value, IB_LIFETIME_MAX, IB_LIFETIME_MAX);
+		value = IB_LIFETIME_MAX;
+	}
+
+	*(uint32_t *)IXmlParserGetField(field, object) = value;
 }
+
 
 /* typically a bitfield, so need to call with value instead of ptr */
 /* 0 has meaning, so no 'Optional' variations of this function */
@@ -907,10 +916,24 @@ static void SwitchInfoXmlOutputLID(IXmlOutputState_t *state, const char *tag, vo
 
 static void SwitchInfoXmlParserEndLID(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
 {
-	uint16 value;
+	uint32 value;
 	
-	if (IXmlParseUint16(state, content, len, &value))
+	if (IXmlParseUint32(state, content, len, &value))
 		((STL_SWITCHINFO_RECORD *)object)->RID.LID = value;
+}
+
+static void IXmlParserEndMulticastFDBTop(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+        uint32 value;
+
+	if (IXmlParseUint32(state, content, len, &value)) {
+		if (IS_MCAST16(value))
+			value = MCAST16_TO_MCAST32(value);
+		if (value && ((value < STL_LID_MULTICAST_BEGIN) || (value > STL_LID_MULTICAST_END)))
+			IXmlParserPrintError(state, "MulticastFDBTop value 0x%08x out of range.  Must be 0 or in the range 0x%08x through 0x%08x\n", value, STL_LID_MULTICAST_BEGIN, STL_LID_MULTICAST_END);
+		else
+			((STL_SWITCHINFO_RECORD *)object)->SwitchInfoData.MulticastFDBTop = value;
+	}
 }
 
 /* bitfields needs special handling: LifeTimeValue */
@@ -942,12 +965,40 @@ static void SwitchInfoXmlParserEndPortStateChange(IXmlParserState_t *state, cons
 		((STL_SWITCHINFO_RECORD *)object)->SwitchInfoData.u1.s.PortStateChange = value;
 }
 
+/* bitfields needs special handling: MulticastMask */
+static void SwitchInfoXmlOutputMulticastMask(IXmlOutputState_t *state, const char *tag, void *data)
+{
+	IXmlOutputHex(state, tag, ((STL_SWITCHINFO_RECORD *)data)->SwitchInfoData.MultiCollectMask.MulticastMask);
+}
+
+static void SwitchInfoXmlParserEndMulticastMask(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	uint8 value;
+
+	if (IXmlParseUint8(state, content, len, &value))
+		((STL_SWITCHINFO_RECORD *)object)->SwitchInfoData.MultiCollectMask.MulticastMask = value;
+}
+
+/* bitfields needs special handling: CollectiveMask */
+static void SwitchInfoXmlOutputCollectiveMask(IXmlOutputState_t *state, const char *tag, void *data)
+{
+	IXmlOutputHex(state, tag, ((STL_SWITCHINFO_RECORD *)data)->SwitchInfoData.MultiCollectMask.CollectiveMask);
+}
+
+static void SwitchInfoXmlParserEndCollectiveMask(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	uint8 value;
+
+	if (IXmlParseUint8(state, content, len, &value))
+		((STL_SWITCHINFO_RECORD *)object)->SwitchInfoData.MultiCollectMask.CollectiveMask = value;
+}
+
 IXML_FIELD SwitchInfoFields[] = {
 	{ tag:"LID", format:'K', format_func:SwitchInfoXmlOutputLID, end_func:SwitchInfoXmlParserEndLID }, // bitfield
 	{ tag:"LinearFDBCap", format:'U', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.LinearFDBCap) },
 	{ tag:"MulticastFDBCap", format:'U', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.MulticastFDBCap) },
 	{ tag:"LinearFDBTop", format:'U', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.LinearFDBTop) },
-	{ tag:"MulticastFDBTop", format:'U', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.MulticastFDBTop) },
+	{ tag:"MulticastFDBTop", format:'U', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.MulticastFDBTop), end_func:IXmlParserEndMulticastFDBTop},
 	{ tag:"IPAddrIPV6", format:'k', format_func:IXmlOutputIPAddrIPV6, IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.IPAddrIPV6.addr), end_func:IXmlParserEndIPAddrIPV6},
 	{ tag:"IPAddrIPV4", format:'k', format_func:IXmlOutputIPAddrIPV4, IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.IPAddrIPV4.addr), end_func:IXmlParserEndIPAddrIPV4},
 	{ tag:"LifeTimeValue", format:'k', format_func:SwitchInfoXmlOutputLifeTimeValue, end_func:IXmlParserEndNoop }, // output only bitfield
@@ -956,6 +1007,8 @@ IXML_FIELD SwitchInfoFields[] = {
 	{ tag:"PartitionEnforcementCap", format:'U', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.PartitionEnforcementCap) },
 	{ tag:"U2", format:'X', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.u2.AsReg8) },
 	{ tag:"CapabilityMask", format:'X', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.CapabilityMask) },
+	{ tag:"MulticastMask", format:'k', format_func:SwitchInfoXmlOutputMulticastMask, end_func:SwitchInfoXmlParserEndMulticastMask }, // bitfield
+	{ tag:"CollectiveMask", format:'k', format_func:SwitchInfoXmlOutputCollectiveMask, end_func:SwitchInfoXmlParserEndCollectiveMask }, // bitfield
 	{ tag:"RoutingModeSupported", format:'X', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.RoutingMode.Supported) },
 	{ tag:"RoutingModeEnabled", format:'X', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.RoutingMode.Enabled) },
 	{ tag:"PortGroupFDBCap", format:'u', IXML_FIELD_INFO(STL_SWITCHINFO_RECORD, SwitchInfoData.PortGroupFDBCap) }, // optional to retain compatibility with snapshots made by older versions of OPA.

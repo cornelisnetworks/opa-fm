@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -213,7 +213,7 @@ sm_routing_copy_cost_matrix(Topology_t *src_topop, Topology_t *dst_topop)
  * talk to the SM.
  */
 Status_t
-sm_routing_prep_new_switch(Topology_t *topop, Node_t *nodep, int use_lr_dr_mix, uint8_t *path)
+sm_routing_prep_new_switch(Topology_t *topop, Node_t *nodep, SmpAddr_t *addr)
 {
 	Status_t	status;
 
@@ -235,7 +235,7 @@ sm_routing_prep_new_switch(Topology_t *topop, Node_t *nodep, int use_lr_dr_mix, 
 				"writing minimal routes for switch "FMT_U64, nodep->nodeInfo.NodeGUID);
 
 	/* setup route blocks for the SM LID and the switch's own LID*/
-	status = topop->routingModule->funcs.write_minimal_routes(sm_topop, nodep, use_lr_dr_mix, path);
+	status = topop->routingModule->funcs.write_minimal_routes(sm_topop, nodep, addr);
 
 	return status;
 }
@@ -389,12 +389,12 @@ sm_routing_route_old_switch(Topology_t *src_topop, Topology_t *dst_topop, Node_t
 		return sm_setup_lft_deltas(src_topop, dst_topop, nodep);
 	}
 
-
 	if (sm_config.sm_debug_routing)
 		IB_LOG_INFINI_INFO_FMT(__func__, "Copied old LFTs for switch %s", sm_nodeDescString(nodep));
 
 	return VSTATUS_OK;
 }
+
 
 Status_t sm_routing_route_switch_LR(Topology_t *topop, SwitchList_t *swlist, int rebalance)
 {
@@ -425,6 +425,7 @@ Status_t sm_routing_route_switch_LR(Topology_t *topop, SwitchList_t *swlist, int
 	for_switch_list_switches(swlist, sw) {
 		if (!bitset_test(&old_switchesInUse, sw->switchp->swIdx))
 			continue;
+
 		status = topop->routingModule->funcs.route_old_switch(&old_topology, topop, sw->switchp);
 		if (status != VSTATUS_OK)
 			break;
@@ -449,8 +450,8 @@ int
 sm_balance_base_lids(SwitchportToNextGuid_t *ordered_ports, int olen)
 {
 	int i, j;
-	STL_LID bestLidsRouted = 0xffff; // Gen1 uses 16 bit lids.
-	STL_LID bestSwLidsRouted = 0xffff; // Gen1 uses 16 bit lids.
+	STL_LID bestLidsRouted = STL_LID_PERMISSIVE;
+	STL_LID bestSwLidsRouted = STL_LID_PERMISSIVE;
 
 	for (i = 0, j = 0; i < olen; ++i) {
 		if (ordered_ports[i].portp->portData->baseLidsRouted < bestLidsRouted) {
@@ -615,5 +616,13 @@ sm_routing_init(void)
 		return status;
 
 	status = sm_dor_init();
+
 	return status;
+}
+
+int
+sm_get_route(Topology_t *topop, Node_t *switchp, uint8_t inport, STL_LID dlid) {
+
+
+	return switchp->lft ? switchp->lft[dlid] : 0xff;
 }

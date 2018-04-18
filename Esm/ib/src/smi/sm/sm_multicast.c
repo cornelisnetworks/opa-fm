@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -49,7 +49,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //    ib_mad.h								     //
 //    ib_status.h							     //
 //									     //
-//									     //
 //===========================================================================//
 
 #include "os_g.h"
@@ -65,12 +64,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sa_l.h"
 #include "iba/ib_helper.h"
 
-
- __inline__
-int find_mlid_offset(Lid_t mLid) {
-	return(mLid & STL_LID_MCAST_OFFSET_MASK);
-}
-
 McSpanningTrees_t spanningTrees[STL_MTU_MAX+1][IB_STATIC_RATE_MAX+1];
 
 McSpanningTree_t **uniqueSpanningTrees;
@@ -81,6 +74,7 @@ uint64_t sm_mcSpanningTreeRootGuid = 0;
 Lock_t sm_mcSpanningTreeRootGuidLock;
 /* Number of classes that actually exist */
 uint16_t numMcGroupClasses = 0;
+
 
 McGroupClass_t mcGroupClasses[MAX_SUPPORTED_MCAST_GRP_CLASSES];
 McGroupClass_t defaultMcGroupClass = {
@@ -133,7 +127,6 @@ void sm_spanning_tree_resetGlobals(void) {
 
    If filter_mtu_rate is not set, the SM does not consider mtu and rate of ISLs. It will consider
    any ISL that is atleast in INIT state.
-
 */
 
 Status_t sm_ideal_spanning_tree(McSpanningTree_t *mcST, int filter_mtu_rate, int32_t mtu, int32_t rate, int num_nodes, int *complete)
@@ -152,7 +145,7 @@ Status_t sm_ideal_spanning_tree(McSpanningTree_t *mcST, int filter_mtu_rate, int
 	 * a BFS from there by walking through its connections to other switches
 	 */
 	swlist_head = NULL;
-	prev_sw = NULL; 
+	prev_sw = NULL;
 	peer_sw = NULL;
 	nodep = sm_mcSpanningTreeRootSwitch;
 
@@ -238,7 +231,7 @@ Status_t sm_ideal_spanning_tree(McSpanningTree_t *mcST, int filter_mtu_rate, int
 
 		nodep->mcSpanningChkDone = 1;
 
-		if (swlist_head) {	
+		if (swlist_head) {
 			nodep = swlist_head->switchp;
 			tmp = swlist_head;
 			swlist_head	= swlist_head->next;
@@ -281,7 +274,7 @@ Status_t sm_ideal_spanning_tree(McSpanningTree_t *mcST, int filter_mtu_rate, int
 // which switches are returned from the for_all_switch_nodes macro
 // is the same order in which they were discovered (breadth first
 // search from the SM node).
-// 
+//
 // Needless to say, if discovery ever modifies the order in which
 // switches are discovered during a sweep, this algorithm will break.
 //
@@ -306,10 +299,10 @@ Status_t sm_ideal_spanning_tree(McSpanningTree_t *mcST, int filter_mtu_rate, int
 // to create mcast groups with higher MTU's/rates than the entire fabric
 // supports.
 //
-Status_t 
+Status_t
 sm_spanning_tree(int32_t mtu, int32_t rate, int *complete) {
 	int			i, j;
-	int			num_nodes = 0, num_links = 0;
+	int			num_links = 0;
 	void			*address;
 	uint32_t		bytes;
 	Node_t			*tmp_nodep;
@@ -323,20 +316,11 @@ sm_spanning_tree(int32_t mtu, int32_t rate, int *complete) {
 
 	tp = (Topology_t *)&sm_newTopology;
 
-    /*
-     * Count the nodes.
-     * MWHEINZ FIXME: Why aren't we using the data in the topology structure?
-     */
-	num_nodes = 0;
-	for_all_switch_nodes(sm_topop, nodep) {
-		num_nodes++;
-	}
-
-    /*
-     * Allocate space for the nodes.
-     * MWHEINZ FIXME: What's up with the 32 bytes of padding?
-     */
-	bytes = 32 + sizeof(McSpanningTree_t) + (num_nodes * sizeof(McNode_t));
+	/*
+	 * Allocate space for the nodes.
+	 * MWHEINZ FIXME: What's up with the 32 bytes of padding?
+	 */
+	bytes = 32 + sizeof(McSpanningTree_t) + (tp->num_sws * sizeof(McNode_t));
 	if (vs_pool_alloc(&sm_pool, bytes, (void **)&address) != VSTATUS_OK) {
 		IB_EXIT(__func__, VSTATUS_BAD);
 		return(VSTATUS_BAD);
@@ -357,14 +341,14 @@ sm_spanning_tree(int32_t mtu, int32_t rate, int *complete) {
 	uniqueSpanningTreeCount++;
 
 	mcST = spanningTrees[mtu][rate].spanningTree;
-	mcST->num_nodes = num_nodes;
+	mcST->num_nodes = tp->num_sws;
 	mcST->nodes = (McNode_t *)(mcST+1);
 
     /*
      * Initialize the nodes.
      */
 	/* PR 123715: make sure we don't use an old nodep... */
-	sm_mcSpanningTreeRootSwitch = NULL; 
+	sm_mcSpanningTreeRootSwitch = NULL;
 	i = 0;
 	mcNodes = mcST->nodes;
 	for_all_switch_nodes(sm_topop, nodep) {
@@ -386,7 +370,7 @@ sm_spanning_tree(int32_t mtu, int32_t rate, int *complete) {
 		if (sm_mcSpanningTreeRootSwitch) {
 			Status_t status;
 			/* Compute the ideal spanning tree */
-			status = sm_ideal_spanning_tree(mcST, 1, mtu, rate, num_nodes, complete);
+			status = sm_ideal_spanning_tree(mcST, 1, mtu, rate, tp->num_sws, complete);
 			if (status == VSTATUS_OK)
 				return status;
 		} else {
@@ -400,9 +384,11 @@ sm_spanning_tree(int32_t mtu, int32_t rate, int *complete) {
 		 */
 	}
     /*
-     * Compute the spanning tree.
+     * Compute the spanning tree. Note the check for num_sws > 0. Since
+     * num_sws is unsigned, comparing i against num_sws-1 can lead to unexpected
+     * results...
      */
-	for (i = 0; i < num_nodes-1; i++) {
+	for (i = 0; (tp->num_sws > 0) && (i < tp->num_sws-1); i++) {
 		if ((nodep = sm_find_node(sm_topop, mcNodes[i].index)) == NULL) continue;
 		for_all_physical_ports(nodep, portp) {
 			if (!sm_valid_port(portp) || portp->state < IB_PORT_ACTIVE) {	// not ACTIVE, skip
@@ -426,7 +412,7 @@ sm_spanning_tree(int32_t mtu, int32_t rate, int *complete) {
 				continue;
 			}
 
-			for (j = i+1; j < num_nodes; j++) {
+			for (j = i+1; j < tp->num_sws; j++) {
 				if (mcNodes[j].index == portp->nodeno) {
 					if (mcNodes[j].nodeno < 0) {
 						mcNodes[j].nodeno = nodep->index;
@@ -440,7 +426,7 @@ sm_spanning_tree(int32_t mtu, int32_t rate, int *complete) {
 		}
 	}
 
-	if (num_links == (num_nodes - 1))
+	if (num_links == (tp->num_sws - 1))
 		*complete = 1;
 	else
 		*complete = 0;
@@ -494,7 +480,7 @@ void sm_build_spanning_trees(void)
 					vs_pool_free(&sm_pool, (void *)spanningTrees[i][j].spanningTree);
 				}
 				spanningTrees[i][j].spanningTree = spanningTrees[mtu][rate].spanningTree;
-				spanningTrees[i][j].copy = 1;			
+				spanningTrees[i][j].copy = 1;
 			}
 		}
 		return;
@@ -573,7 +559,7 @@ static Status_t sm_createMCastGrp(int vf, uint64_t* mgid, uint16_t pkey, uint8_t
 	McGroup_t	*mcGroup;
 	McMember_t	*mcMember = NULL;
 	STL_MCMEMBER_RECORD *mcmp;
-	Lid_t   	mLid;
+	STL_LID		mLid;
 	IB_GID  	mGid;
 
 
@@ -601,7 +587,7 @@ static Status_t sm_createMCastGrp(int vf, uint64_t* mgid, uint16_t pkey, uint8_t
 	McMember_Create(mcGroup, mcMember);
 	mcMember->slid = 0;
 	mcMember->proxy = 1;
-	mcMember->state = MCMEMBER_JOIN_FULL_MEMBER;
+	mcMember->state = MCMEMBER_STATE_FULL_MEMBER;
 	mcMember->nodeGuid = 0;
 	mcMember->portGuid = SA_FAKE_MULTICAST_GROUP_MEMBER;
 
@@ -613,18 +599,18 @@ static Status_t sm_createMCastGrp(int vf, uint64_t* mgid, uint16_t pkey, uint8_t
 	memset((void*)mcmp->RID.PortGID.Raw, 0, sizeof(mcmp->RID.PortGID));
 	mcmp->Q_Key = mcGroup->qKey;
 	mcmp->MLID = mcGroup->mLid;
-	mcmp->MtuSelector= PR_EQ;
+	mcmp->MtuSelector= IB_SELECTOR_EQ;
 	mcmp->Mtu = mcGroup->mtu;
 	mcmp->TClass = mcGroup->tClass;
 	mcmp->P_Key = mcGroup->pKey;
-	mcmp->RateSelector = PR_EQ;
+	mcmp->RateSelector = IB_SELECTOR_EQ;
 	mcmp->Rate = mcGroup->rate;
-	mcmp->PktLifeTimeSelector = PR_EQ;
+	mcmp->PktLifeTimeSelector = IB_SELECTOR_EQ;
 	mcmp->PktLifeTime = mcGroup->life;
 	mcmp->SL = mcGroup->sl;
 	mcmp->HopLimit = mcGroup->hopLimit;
 	mcmp->Scope = mcGroup->scope;
-	mcmp->JoinFullMember = mcMember->state & MCMEMBER_JOIN_FULL_MEMBER;
+	mcmp->JoinFullMember = mcMember->state & MCMEMBER_STATE_FULL_MEMBER;
 	mcmp->JoinNonMember = 0;
 	mcmp->JoinSendOnlyMember = 0;
 	mcmp->ProxyJoin = mcMember->proxy;
@@ -707,8 +693,8 @@ Status_t sm_update_mc_groups(VirtualFabrics_t *newVF, VirtualFabrics_t *oldVF)
 						mcMemberGuid = mcGroup->mcMembers->record.RID.PortGID.Type.Global.InterfaceID;
 						if (mcMemberGuid != 0) {
 							if ((portp = sm_find_port_guid(&old_topology, mcGroup->mcMembers->portGuid)) != NULL) {
-								if (bitset_test(&portp->portData->vfMember,vf)) { 
-									IB_LOG_INFINI_INFO_FMT(__func__, "VF %s  port_guid "FMT_U64" moved to STB\n", 
+								if (bitset_test(&portp->portData->vfMember,vf)) {
+									IB_LOG_INFINI_INFO_FMT(__func__, "VF %s  port_guid "FMT_U64" moved to STB\n",
 										oldVF->v_fabric_all[vf].name, mcGroup->mcMembers->portGuid);
 									//mark node that is not a member
 									if (portp->portData->portInfo.PortStates.s.PortState == IB_PORT_ACTIVE) {
@@ -739,7 +725,7 @@ Status_t sm_update_mc_groups(VirtualFabrics_t *newVF, VirtualFabrics_t *oldVF)
 						mcGroup = tmpGroup;
 					}
 				}
-				else 
+				else
 					mcGroup = mcGroup->next;
 			} // while mcGroup ends
 		} // if end
@@ -759,10 +745,10 @@ Status_t sm_update_mc_groups(VirtualFabrics_t *newVF, VirtualFabrics_t *oldVF)
 
 void sm_check_mc_groups_realizable(void)
 {
-	McSpanningTree_t	*tree;	
+	McSpanningTree_t	*tree;
 	McGroup_t	*mcGroup;
 	Topology_t *topo;
-	int mlid_offset;
+	int offset;
 
 	topo = &sm_newTopology;
 
@@ -773,7 +759,7 @@ void sm_check_mc_groups_realizable(void)
 			if (  (tree == NULL)
 			   || (mcGroup->mtu > topo->maxMcastMtu)
 			   || linkrate_gt(mcGroup->rate, topo->maxMcastRate) ) {
-	   
+
 				if ((mcGroup->flags & McGroupUnrealizable) == 0) {
 					mcGroup->flags |= McGroupUnrealizable;
 					// Only emit this message once
@@ -800,7 +786,7 @@ void sm_check_mc_groups_realizable(void)
 			if (  (tree == NULL)
 			   || (mcGroup->mtu > topo->maxISLMtu)
 			   || linkrate_gt(mcGroup->rate, topo->maxISLRate) ) {
-				/* the group's MTU, rate are higher than the maximum MTU, ISL we found in the fabric 
+				/* the group's MTU, rate are higher than the maximum MTU, ISL we found in the fabric
 			 	 * which means, the spanning tree for that mtu/rate would be NULL anyway.
 				 */
 				if ((mcGroup->flags & McGroupUnrealizable) == 0) {
@@ -827,11 +813,11 @@ void sm_check_mc_groups_realizable(void)
 			}
 		}
 
-		mlid_offset = find_mlid_offset(mcGroup->mLid);
-		if (mlid_offset >= sm_mcast_mlid_table_cap) {
+		offset = mcGroup->mLid - STL_LID_MULTICAST_BEGIN;
+		if (offset >= sm_mcast_mlid_table_cap) {
 			IB_LOG_ERROR_FMT(__func__,
 			"sm_setup_spanning_tree_port_masks - Multicast group "FMT_GID" MLID 0x%x exceeds MLIDTableCap %u\n",
-			mcGroup->mGid.Type.Global.SubnetPrefix,	mcGroup->mGid.Type.Global.InterfaceID, 
+			mcGroup->mGid.Type.Global.SubnetPrefix,	mcGroup->mGid.Type.Global.InterfaceID,
 			mcGroup->mLid, sm_mcast_mlid_table_cap);
 
 			mcGroup->flags |= McGroupUnrealizable;
@@ -853,11 +839,11 @@ void sm_check_mc_groups_realizable(void)
 
 void sm_calculate_spanning_tree_port_mask(void)
 {
-	McSpanningTree_t	*tree;	
+	McSpanningTree_t	*tree;
 	McNode_t	*mcNode;
 	Port_t 	*parent_portp = NULL, *portp = NULL;
 	Node_t  *parent_nodep = NULL, *nodep = NULL;
-	int		i, j, mlid_offset;
+	int		i, j, offset;
 	Topology_t *topo;
 
 	topo = &sm_newTopology;
@@ -866,7 +852,7 @@ void sm_calculate_spanning_tree_port_mask(void)
 		tree = uniqueSpanningTrees[i];
 		if (!tree->first_mlid)
 			continue;
-		mlid_offset = find_mlid_offset(tree->first_mlid);
+		offset = tree->first_mlid - STL_LID_MULTICAST_BEGIN;
 		for (j=0; j < tree->num_nodes; j++) {
 			mcNode = &tree->nodes[j];
 			if (mcNode && mcNode->nodeno >= 0) {
@@ -884,10 +870,10 @@ void sm_calculate_spanning_tree_port_mask(void)
 				/* Set bits in the port mask in the switch corresponding to mcNode*/
 				if (sm_valid_port(portp) && nodep) {
 					if (mcNode->mft_mlid_init != tree->first_mlid) {
-						nodep->mft[mlid_offset][Mft_Position(portp->index)] = Mft_PortmaskBit(portp->index);
+						nodep->mft[offset][Mft_Position(portp->index)] = Mft_PortmaskBit(portp->index);
 						mcNode->mft_mlid_init = tree->first_mlid;
 					} else {
-						nodep->mft[mlid_offset][Mft_Position(portp->index)] |= Mft_PortmaskBit(portp->index);
+						nodep->mft[offset][Mft_Position(portp->index)] |= Mft_PortmaskBit(portp->index);
 					}
 				} else {
 					IB_LOG_INFINI_INFO_FMT(__func__,
@@ -898,10 +884,10 @@ void sm_calculate_spanning_tree_port_mask(void)
 				/* Set bits in the port mask in the switch corresponding to mcNode's parent */
 				if (sm_valid_port(parent_portp) && parent_nodep) {
 					if (mcNode->parent->mft_mlid_init != tree->first_mlid) {
-						parent_nodep->mft[mlid_offset][Mft_Position(parent_portp->index)] = Mft_PortmaskBit(parent_portp->index);
+						parent_nodep->mft[offset][Mft_Position(parent_portp->index)] = Mft_PortmaskBit(parent_portp->index);
 						mcNode->parent->mft_mlid_init = tree->first_mlid;
 					} else {
-						parent_nodep->mft[mlid_offset][Mft_Position(parent_portp->index)] |= Mft_PortmaskBit(parent_portp->index);
+						parent_nodep->mft[offset][Mft_Position(parent_portp->index)] |= Mft_PortmaskBit(parent_portp->index);
 					}
 				}
 			} else if (!mcNode) {
@@ -911,6 +897,7 @@ void sm_calculate_spanning_tree_port_mask(void)
 	}
 }
 
+
 void sm_add_mcmember_port_masks(void)
 {
 	McGroup_t	*mcGroup;
@@ -918,7 +905,7 @@ void sm_add_mcmember_port_masks(void)
 	Port_t 	*portp = NULL;
 	Node_t  *nodep = NULL;
 	Topology_t *topo;
-	int mlid_offset;
+	int offset;
 
 	topo = &sm_newTopology;
 
@@ -927,15 +914,15 @@ void sm_add_mcmember_port_masks(void)
 			continue;
 		if (!mcGroup->mcMembers)
 			continue;
-		mlid_offset = find_mlid_offset(mcGroup->mLid);
+		offset = mcGroup->mLid - STL_LID_MULTICAST_BEGIN;
 		for_all_multicast_members(mcGroup, mcMember) {
 			if (mcMember->portGuid == SA_FAKE_MULTICAST_GROUP_MEMBER) continue;
 			portp = sm_find_active_port_guid(topo, mcMember->portGuid);
 			if (!sm_valid_port(portp)) {
 				if (smDebugPerf) {
 					/* this is ok; host(s) gone and we haven't cleaned up the mcmember tables yet */
-					IB_LOG_VERBOSE_FMT(__func__, 
-						   "Could not find active port for mcMember->portGuid "FMT_U64" in new topology", 
+					IB_LOG_VERBOSE_FMT(__func__,
+						   "Could not find active port for mcMember->portGuid "FMT_U64" in new topology",
 						   mcMember->portGuid);
 				}
 				continue;
@@ -943,7 +930,7 @@ void sm_add_mcmember_port_masks(void)
 			nodep = sm_find_node(topo, portp->nodeno);
 			if (!nodep) {
 				IB_LOG_ERROR_FMT(__func__,
-						   "Could not find the switch for mcMember->portGuid "FMT_U64" in new topology", 
+						   "Could not find the switch for mcMember->portGuid "FMT_U64" in new topology",
 						   mcMember->portGuid);
 				continue;
 			}
@@ -951,9 +938,9 @@ void sm_add_mcmember_port_masks(void)
 				// hca to hca
 				continue;
 			}
-			if ((mcMember->record.JoinNonMember) || 
+			if ((mcMember->record.JoinNonMember) ||
 				(mcMember->record.JoinFullMember)) {
-				nodep->mft[mlid_offset][Mft_Position(portp->portno)] |= Mft_PortmaskBit(portp->portno);
+				nodep->mft[offset][Mft_Position(portp->portno)] |= Mft_PortmaskBit(portp->portno);
 			} else if (mcMember->record.JoinSendOnlyMember) {
 				// mark this switch as having a send only broadcast group member so we do not prune
 				nodep->hasSendOnlyMember = 1;
@@ -964,12 +951,13 @@ void sm_add_mcmember_port_masks(void)
 
 Status_t sm_calculate_mfts()
 {
-	McSpanningTree_t	*tree;	
+	McSpanningTree_t	*tree;
 	McGroup_t	*mcGroup;
 	Port_t 	 *portp = NULL;
 	Node_t   *nodep = NULL, *oldswp = NULL;
-	int		i, mlid_offset, first_mlid_offset, mlid_count;
-	Lid_t	maxmcLid;
+	int		i, offset;
+	STL_LID	first_mlid_offset;
+	STL_LID	maxmcLid, lid;
 	Topology_t *topo;
 	Status_t status;
 
@@ -995,8 +983,7 @@ Status_t sm_calculate_mfts()
 	maxmcLid = sm_multicast_get_max_lid();
 
 	for_all_switch_nodes(topo, nodep) {
-		mlid_count = find_mlid_offset(maxmcLid);
-		for (mlid_offset = 0 ; mlid_offset <= mlid_count; mlid_offset++) {
+		for (lid = STL_LID_MULTICAST_BEGIN; lid <= maxmcLid; lid++) {
 			tree = NULL;
 			if (uniqueSpanningTreeCount == 1) {
 				tree = uniqueSpanningTrees[0];
@@ -1004,7 +991,7 @@ Status_t sm_calculate_mfts()
 				for_all_multicast_groups(mcGroup) {
 					if (mcGroup->flags & McGroupUnrealizable)
 						continue;
-					if (mcGroup->mLid == (maxmcLid-mlid_offset)) {
+					if (mcGroup->mLid == lid) {
 						tree = spanningTrees[mcGroup->mtu][mcGroup->rate].spanningTree;
 						break;
 					}
@@ -1014,9 +1001,10 @@ Status_t sm_calculate_mfts()
 				continue;
 			if (!tree->first_mlid)
 				continue;
-			if (mlid_offset != find_mlid_offset(tree->first_mlid)) {
-                		first_mlid_offset = find_mlid_offset(tree->first_mlid);
-				memcpy((void *)nodep->mft[mlid_offset], (void *)nodep->mft[first_mlid_offset],
+			offset = lid - STL_LID_MULTICAST_BEGIN;
+			if (lid != tree->first_mlid) {
+				first_mlid_offset = tree->first_mlid - STL_LID_MULTICAST_BEGIN;
+				memcpy((void *)nodep->mft[offset], (void *)nodep->mft[first_mlid_offset],
 						 sizeof(STL_PORTMASK) * STL_NUM_MFT_POSITIONS_MASK);
 			}
 		}
@@ -1050,14 +1038,14 @@ Status_t sm_calculate_mfts()
 
 	/* check if port masks have changed since last sweep */
 	for_all_switch_nodes(topo, nodep) {
-		mlid_count = find_mlid_offset(maxmcLid);
-		for (mlid_offset = 0 ; mlid_offset <= mlid_count; mlid_offset++) {
+		for (lid = STL_LID_MULTICAST_BEGIN; lid <= maxmcLid; lid++) {
+			offset = lid - STL_LID_MULTICAST_BEGIN;
 	        if (!nodep->mftPortMaskChange && topology_passcount && sm_valid_port((portp = sm_get_port(nodep, 0)))) {
 	   	        if ((oldswp = lidmap[portp->portData->lid].oldNodep)) {
-					if (memcmp((void *)nodep->mft[mlid_offset], (void *)oldswp->mft[mlid_offset], sizeof(STL_PORTMASK) * STL_NUM_MFT_POSITIONS_MASK))
+					if (memcmp((void *)nodep->mft[offset], (void *)oldswp->mft[offset], sizeof(STL_PORTMASK) * STL_NUM_MFT_POSITIONS_MASK))
 						nodep->mftPortMaskChange = 1;
 				}
-        	}		
+        	}
 		}
 	}
 
@@ -1078,83 +1066,83 @@ void sm_pruneMcastSpanningTree(McSpanningTree_t *mcST)
 	Node_t			*neighborSw;
     STL_PORTMASK	*swMftEntry=NULL;
 	Topology_t		*topo;
-	int				mlid_offset, mlid_count;
-	Lid_t			maxmcLid;
+	int				offset;
+	STL_LID			maxmcLid, lid;
 
 	topo = &sm_newTopology;
 
 	maxmcLid = sm_multicast_get_max_lid();
 
      // prune out switches with only one entry
-	mlid_count = find_mlid_offset(maxmcLid);
-	for (mlid_offset = 0 ; mlid_offset <= mlid_count; mlid_offset++) {
-        	for (i = 0; i < mcST->num_nodes; i++) {
-            		mcNode = &mcST->nodes[i];
-            		if (!mcNode) {
-                		IB_LOG_ERROR0("sm_pruneMcastSpanningTree - spanning tree entry is null");
-                		continue;
-            		}
-            		// from this node, walk up the branch from the leaf pruning
-            		// as many nodes as possible
-            		while (mcNode) {
-                		switchp = sm_find_node(topo, mcNode->index);
-                		if (!switchp) {
-                    		IB_LOG_ERROR_FMT(__func__,
-                           		"can't find switch node for nodeno %d",
-                           		mcNode->index);
-                    			break;
-                		}
-                		// FIXME: this flag should be group specific
-                		if (switchp->hasSendOnlyMember) break;
-                		// don't try to get an accurate count... just 0, 1, or 2+
-                		// is enough to go on
-                		count = 0;
-                		for (j = 0; j < STL_NUM_MFT_POSITIONS_MASK && j * STL_PORT_MASK_WIDTH <= switchp->nodeInfo.NumPorts; j++) {
-                    			if (switchp->mft[mlid_offset][j]) {
-                        			if (switchp->mft[mlid_offset][j] & (switchp->mft[mlid_offset][j] - 1)) {
-                            			// more than one port in this block
-                            			count = 2;
-                            			break;
-                        			}
-                        			if (count++) break;
-                        			// found exactly 1 so far... save it
-                        			swMftEntry = &switchp->mft[mlid_offset][j];
-                        			loneEntryPos = j;
-                    			}
-                		}
-                		//IB_LOG_INFINI_INFO_FMT(__func__,
-                		//       "NodeGUID "FMT_U64" [%s]: mlid 0x%04x, count %d", 
-                		//       switchp->nodeInfo.NodeGUID, sm_nodeDescString(switchp), mcGroup->mLid, count);
-                		// clear it if there is only one port set
-                		if (  count == 1
-                   		&& (portNum = findFirstPortInMftBlock(swMftEntry, loneEntryPos)) >= 0) {
-                    			//IB_LOG_INFINI_INFO_FMT(__func__, "clearing mft entry for node[%d], port[%d], MCGLid 0x%4X", 
-                    			//       mcNode->index, portNum, mcGroup->mLid);
-                    			// clear this switch's mft and the corresponding entry of it's neighbor
-                    			*swMftEntry ^= Mft_PortmaskBit(portNum);
+	for (lid = STL_LID_MULTICAST_BEGIN; lid <= maxmcLid; lid++) {
+		offset = lid - STL_LID_MULTICAST_BEGIN;
+        for (i = 0; i < mcST->num_nodes; i++) {
+            mcNode = &mcST->nodes[i];
+            if (!mcNode) {
+                IB_LOG_ERROR0("sm_pruneMcastSpanningTree - spanning tree entry is null");
+                continue;
+            }
+            // from this node, walk up the branch from the leaf pruning
+            // as many nodes as possible
+            while (mcNode) {
+                switchp = sm_find_node(topo, mcNode->index);
+                if (!switchp) {
+                    IB_LOG_ERROR_FMT(__func__,
+                           "can't find switch node for nodeno %d",
+                           mcNode->index);
+                    break;
+                }
+                // FIXME: this flag should be group specific
+                if (switchp->hasSendOnlyMember) break;
+                // don't try to get an accurate count... just 0, 1, or 2+
+                // is enough to go on
+                count = 0;
+                for (j = 0; j < STL_NUM_MFT_POSITIONS_MASK && j * STL_PORT_MASK_WIDTH <= switchp->nodeInfo.NumPorts; j++) {
+                    if (switchp->mft[offset][j]) {
+                        if (switchp->mft[offset][j] & (switchp->mft[offset][j] - 1)) {
+                            // more than one port in this block
+                            count = 2;
+                            break;
+                        }
+                        if (count++) break;
+                        // found exactly 1 so far... save it
+                        swMftEntry = &switchp->mft[offset][j];
+                        loneEntryPos = j;
+                    }
+                }
+                //IB_LOG_INFINI_INFO_FMT(__func__,
+                //       "NodeGUID "FMT_U64" [%s]: mlid 0x%04x, count %d",
+                //       switchp->nodeInfo.NodeGUID, sm_nodeDescString(switchp), mcGroup->mLid, count);
+                // clear it if there is only one port set
+                if (  count == 1
+                   && (portNum = findFirstPortInMftBlock(swMftEntry, loneEntryPos)) >= 0) {
+                    //IB_LOG_INFINI_INFO_FMT(__func__, "clearing mft entry for node[%d], port[%d], MCGLid 0x%4X",
+                    //       mcNode->index, portNum, mcGroup->mLid);
+                    // clear this switch's mft and the corresponding entry of it's neighbor
+                    *swMftEntry ^= Mft_PortmaskBit(portNum);
 					if (mcNode->nodeno < 0) {
 						mcNode = mcNode->parent;
 						continue;
 					}
-                    			// clear the neighbor
-                    			if ((neighborSw = sm_find_node(topo, mcNode->nodeno)) != NULL
-                       			&& (portp = sm_find_node_port(topo, neighborSw, mcNode->portno)) != NULL) {
-                        			//IB_LOG_INFINI_INFO_FMT(__func__, "clearing neighborSw mft entry for node[%d], port[%d], MCGLid 0x%4X", 
-                        			//       mcNode->nodeno, mcNode->portno, mcGroup->mLid);
-                        			neighborSw->mft[mlid_offset][Mft_Position(portp->index)] ^= Mft_PortmaskBit(portp->index);
-                    			} else {
-                        			IB_LOG_WARN_FMT(__func__, 
-                               			"Could not find neighbor for NodeGUID "FMT_U64" [%s] (neighbor idx %d, port %d) in new topology; spanning tree not up to date",
-                               			switchp->nodeInfo.NodeGUID, sm_nodeDescString(switchp),
-                               				mcNode->nodeno, mcNode->portno);
-                    			}
-                    			mcNode = mcNode->parent;
-				} else {
-                    			break;
-				}
-			}
-		}
-	}	
+                    // clear the neighbor
+                    if ((neighborSw = sm_find_node(topo, mcNode->nodeno)) != NULL
+                       && (portp = sm_find_node_port(topo, neighborSw, mcNode->portno)) != NULL) {
+                        //IB_LOG_INFINI_INFO_FMT(__func__, "clearing neighborSw mft entry for node[%d], port[%d], MCGLid 0x%4X",
+                        //       mcNode->nodeno, mcNode->portno, mcGroup->mLid);
+                        neighborSw->mft[offset][Mft_Position(portp->index)] ^= Mft_PortmaskBit(portp->index);
+                    } else {
+                        IB_LOG_WARN_FMT(__func__,
+                               "Could not find neighbor for NodeGUID "FMT_U64" [%s] (neighbor idx %d, port %d) in new topology; spanning tree not up to date",
+                               switchp->nodeInfo.NodeGUID, sm_nodeDescString(switchp),
+                               mcNode->nodeno, mcNode->portno);
+                    }
+                    mcNode = mcNode->parent;
+                } else {
+                    break;
+                }
+            }
+        }
+  	}
 }
 
 /*
@@ -1164,23 +1152,21 @@ void sm_multicast_switch_mft_copy() {
 	Topology_t		*newtopop;
 	Node_t			*oldswp, *newswp;
 	Port_t			*portp;
-    int             mlid_offset, mlid_count;
-	Lid_t			maxmcLid;
+    STL_LID         offset, lid;
+	STL_LID			maxmcLid;
 
     newtopop = (Topology_t *)&sm_newTopology;
 
-	(void)vs_lock(&sm_McGroups_lock);
 	maxmcLid = sm_multicast_get_max_lid();
-	(void)vs_unlock(&sm_McGroups_lock);
-	ASSERT(find_mlid_offset(maxmcLid) < sm_mcast_mlid_table_cap);
+	ASSERT(maxmcLid < sm_mcast_mlid_table_cap+STL_LID_MULTICAST_BEGIN);
 
     for_all_switch_nodes(newtopop, newswp) {
         if (sm_valid_port((portp = sm_get_port(newswp,0)))) {
             if ((oldswp = lidmap[portp->portData->lid].oldNodep)) {
-		mlid_count = find_mlid_offset(maxmcLid);
-		for (mlid_offset = 0 ; mlid_offset <= mlid_count; mlid_offset++) {
+                for (lid = STL_LID_MULTICAST_BEGIN; lid <= maxmcLid; ++lid) {
+                    offset = lid - STL_LID_MULTICAST_BEGIN;
                     /* copy the mft over into new topology */
-                    memcpy(newswp->mft[mlid_offset], oldswp->mft[mlid_offset],
+                    memcpy(newswp->mft[offset], oldswp->mft[offset],
                            sizeof(STL_PORTMASK) * STL_NUM_MFT_POSITIONS_MASK);
                 }
             }
@@ -1188,52 +1174,43 @@ void sm_multicast_switch_mft_copy() {
     }
 }
 
-
-Status_t sm_set_all_mft(int force, Topology_t *prev_tp)
+// NOTE: Assumes both curr_tp and prev_tp are properly locked.
+// MWHEINZ TODO: Consider putting the locks >inside< the Topology_t structure.
+Status_t sm_set_all_mft(int force, Topology_t *curr_tp, Topology_t *prev_tp)
 {
-	static Lid_t	oldMaxmcLid 	= 0;
+	static STL_LID	oldMaxLid 	= 0;
 	Status_t		status;
 	Status_t		worstStatus = VSTATUS_OK;
 	Node_t			*switchp, *oldswp = NULL;
     Port_t          *portp;
-	Lid_t			lid;
-	Lid_t			newMaxmcLid;
-	Lid_t			maxmcLid;
+	STL_LID			lid;
+	STL_LID			newMaxLid;
+	STL_LID			maxLid;
     uint16_t		numBlocks = 1;
 	int				i, j;
 	STL_MULTICAST_FORWARDING_TABLE mft;
 	uint32_t		amod;
-	Topology_t		*topo;
     uint64_t        sTime, eTime;
 	int             dispatched = 0, mftBlockChange = 0;
 	uint16_t		old_portMask = 0;
-	int mlid_offset, mlid_count;
 
-	if ((status = vs_lock(&sm_McGroups_lock)) != VSTATUS_OK) {
-		IB_LOG_ERRORRC("Failed to get sa lock rc:", status);
-		return status;
-	}
-
-    	if (smDebugPerf) {
- 	       vs_time_get(&sTime);
+    if (smDebugPerf) {
+        vs_time_get(&sTime);
         IB_LOG_INFINI_INFO0("START MFT set for switches");
         if (force)
             IB_LOG_INFINI_INFO0("Forcing complete MFT reprogramming");
-    	}
+    }
 
-	newMaxmcLid = sm_multicast_get_max_lid();
-	if ((status = vs_unlock(&sm_McGroups_lock)) != VSTATUS_OK) {
-		IB_LOG_ERRORRC("Failed to give sa lock rc:", status);
-	}
+	newMaxLid = sm_multicast_get_max_lid();
 
-	if (oldMaxmcLid > newMaxmcLid) {
-		maxmcLid = oldMaxmcLid;
+	if (oldMaxLid > newMaxLid) {
+		maxLid = oldMaxLid;
 	} else {
-		maxmcLid = newMaxmcLid;
-		ASSERT(find_mlid_offset(maxmcLid) < sm_mcast_mlid_table_cap);
+		maxLid = newMaxLid;
+		ASSERT(maxLid < sm_mcast_mlid_table_cap + STL_LID_MULTICAST_BEGIN);
 	}
-	topo = (Topology_t *)&old_topology;
-	for_all_switch_nodes(topo, switchp)
+
+	for_all_switch_nodes(curr_tp, switchp)
 	{
 		if (sm_state != SM_STATE_MASTER)
 		{
@@ -1243,51 +1220,44 @@ Status_t sm_set_all_mft(int force, Topology_t *prev_tp)
 			break;
 		}
 
-		/* PR 106923 - SM Tries to program MFT's for switches that belong to another
-		 * SM during first topology sweep after 2 fabrics have been merged... We need to
-		 * hold off doing so until one SM relinquished control
-		 */
-		if (!sm_valid_port((portp = sm_get_port(switchp,0))) || portp->state < IB_PORT_ACTIVE)
+		/* Basic sanity check - do we have the management port in the topology? */
+		if (!sm_valid_port((portp = sm_get_port(switchp,0)))) {
 			continue;
+		}
 
         /* skip switches whose mft's did not change */
         if (topology_passcount > 1 && !switchp->mftChange && !switchp->mftPortMaskChange && !force) {
             continue;
-        } 
-        //else if (switchp->mftChange) {
-        // 	IB_LOG_INFINI_INFO_FMT(__func__,
-        //            "Updating Switch[%d] %s's MFT", switchp->index, sm_nodeDescString(switchp));
-        //}
+        }
 
 		if (topology_passcount > 1 && prev_tp)
 			oldswp = sm_find_guid(prev_tp, switchp->nodeInfo.NodeGUID);
 
 		memset(&mft, 0, sizeof(mft));
 		status = VSTATUS_OK;
-		mlid_count = find_mlid_offset(maxmcLid);
-		for (mlid_offset = 0 ; mlid_offset <= mlid_count && status == VSTATUS_OK; mlid_offset+=STL_NUM_MFT_ELEMENTS_BLOCK) {
-			lid = (maxmcLid-mlid_count+mlid_offset);
+		for (lid = STL_LID_MULTICAST_BEGIN; lid <= maxLid && status == VSTATUS_OK; lid+=STL_NUM_MFT_ELEMENTS_BLOCK) {
 			for (i = 0; i < STL_NUM_MFT_POSITIONS_MASK && i * STL_PORT_MASK_WIDTH <= switchp->nodeInfo.NumPorts; ++i) {
 				mftBlockChange = 0;
 				for (j = 0; j < STL_NUM_MFT_ELEMENTS_BLOCK; j++) {
-					if (mlid_offset+j < sm_mcast_mlid_table_cap)
-						mft.MftBlock[j] = switchp->mft[mlid_offset + j][i];
+					uint16_t offset = (lid - STL_LID_MULTICAST_BEGIN);
+					if (offset+j < sm_mcast_mlid_table_cap)
+						mft.MftBlock[j] = switchp->mft[offset + j][i];
 					else
 						mft.MftBlock[j] = 0;
 
 					if (mftBlockChange)
 						continue;
 
-					if (j > (mlid_count - mlid_offset)) 
+					if ((lid + j) > maxLid)
 						break;
 
-					if ((lid + j) > oldMaxmcLid) {
+					if ((lid + j) > oldMaxLid) {
 						/* new multicast lid */
 						if (mft.MftBlock[j] != 0)
 							mftBlockChange = 1;
 					} else if (!force && !switchp->mftChange && oldswp) {
-						if (mlid_offset+j < sm_mcast_mlid_table_cap)
-							old_portMask = oldswp->mft[mlid_offset + j][i];
+						if (offset+j < sm_mcast_mlid_table_cap)
+							old_portMask = oldswp->mft[offset + j][i];
 						else
 							old_portMask = 0;
 						if (mft.MftBlock[j] != old_portMask)
@@ -1298,8 +1268,8 @@ Status_t sm_set_all_mft(int force, Topology_t *prev_tp)
 				if (!force && !switchp->mftChange && oldswp && !mftBlockChange)
 					continue;
 
-				amod = (numBlocks << 24) | (i << 22) | (mlid_offset / STL_NUM_MFT_ELEMENTS_BLOCK);
-                		status = SM_Set_MFT_DispatchLR(fd_topology, amod, sm_lid, portp->portData->lid,
+				amod = (numBlocks << 24) | (i << 22) | ((lid - STL_LID_MULTICAST_BEGIN) / STL_NUM_MFT_ELEMENTS_BLOCK);
+                status = SM_Set_MFT_DispatchLR(fd_topology, amod, sm_lid, portp->portData->lid,
 					                               &mft, sm_config.mkey, switchp, &sm_asyncDispatch);
 				if (status != VSTATUS_OK) {
 					worstStatus = status;
@@ -1312,7 +1282,7 @@ Status_t sm_set_all_mft(int force, Topology_t *prev_tp)
 			}
 		}
 	}
-	
+
 	if (dispatched) {
 		status = sm_dispatch_wait(&sm_asyncDispatch);
 		if (status != VSTATUS_OK) {
@@ -1322,10 +1292,10 @@ Status_t sm_set_all_mft(int force, Topology_t *prev_tp)
 		}
 	}
 
-	oldMaxmcLid = newMaxmcLid;
+	oldMaxLid = newMaxLid;
     if (smDebugPerf) {
         vs_time_get(&eTime);
-        IB_LOG_INFINI_INFO("END SET MFT of switches, elapsed time(usecs)=", 
+        IB_LOG_INFINI_INFO("END SET MFT of switches, elapsed time(usecs)=",
                            (int)(eTime-sTime));
     }
 	return worstStatus;
@@ -1384,7 +1354,7 @@ LidClass_t * addLidClass(McGroupClass_t * grpClass, PKey_t pKey, uint8_t mtu, ui
 	LidClass_t * lidClass = NULL;
 	cl_map_item_t * mi = NULL;
 
-	
+
 	// We allocate the LidClass_t structure and the array of lid array with one allocation,
 	// then set the 'lids' pointer in the lidClass to the proper memory address
 	status = vs_pool_alloc(&sm_pool, sizeof(LidClass_t) +
@@ -1421,7 +1391,7 @@ LidClass_t * addLidClass(McGroupClass_t * grpClass, PKey_t pKey, uint8_t mtu, ui
 //
 static Status_t
 sm_multicast_create_group_class(McGroupClass_t * class, IB_GID mask, IB_GID value,
-                                uint16_t maxLids)
+                                STL_LID maxLids)
 {
 	Status_t status = VSTATUS_OK;
 
@@ -1443,7 +1413,7 @@ sm_multicast_create_group_class(McGroupClass_t * class, IB_GID mask, IB_GID valu
 // gid is in host byte order
 //
 Status_t
-sm_multicast_add_group_class(IB_GID mask, IB_GID value, uint16_t maxLids)
+sm_multicast_add_group_class(IB_GID mask, IB_GID value, STL_LID maxLids)
 {
 	Status_t status = VSTATUS_OK;
 	int i = 0;
@@ -1470,7 +1440,7 @@ sm_multicast_add_group_class(IB_GID mask, IB_GID value, uint16_t maxLids)
 	}
 
 	if (status == VSTATUS_OK)
-		status = sm_multicast_create_group_class((mcGroupClasses + numMcGroupClasses), 
+		status = sm_multicast_create_group_class((mcGroupClasses + numMcGroupClasses),
 					mask, value, maxLids);
 
 	if (status == VSTATUS_OK)
@@ -1479,7 +1449,7 @@ sm_multicast_add_group_class(IB_GID mask, IB_GID value, uint16_t maxLids)
 
 		IB_LOG_VERBOSE_FMT(__func__, "Added multicast group to match table with "
 		       "Mask: " FMT_GID " Value: " FMT_GID " and limit of %d",
-		       mask.Type.Global.SubnetPrefix, mask.Type.Global.InterfaceID, 
+		       mask.Type.Global.SubnetPrefix, mask.Type.Global.InterfaceID,
 			   value.Type.Global.SubnetPrefix, value.Type.Global.InterfaceID, maxLids);
 	}
 
@@ -1491,7 +1461,7 @@ sm_multicast_add_group_class(IB_GID mask, IB_GID value, uint16_t maxLids)
 //
 //
 Status_t
-sm_multicast_set_default_group_class(uint16_t maxLids)
+sm_multicast_set_default_group_class(STL_LID maxLids)
 {
 	Status_t status = VSTATUS_OK;
 	IB_ENTER(__func__, maxLids, 0, 0, 0);
@@ -1547,69 +1517,156 @@ find_mc_group_class(IB_GID gid)
 	return retVal;
 }
 
+// We need to keep track of which multicast LIDs have been assigned.
+// We can't use a simple atomic counter here, because the list of mlids in use
+// will develop holes as groups are created and then deleted.
 //
+// So, we use a "highwater LID" (the first MLID that's never been used)
+// and a FIFO of MLIDs that have been freed and are available for
+// re-use.
 //
-//
-static int
-sm_multicast_is_lid_in_use(Lid_t lid) {
-	int retVal = 0;
-	McGroup_t	*mcGroup;
+DLIST free_mlid_list;
+STL_LID highwater_mlid;
+Lock_t free_mlid_lock;
 
-	IB_ENTER(__func__, lid, 0, 0, 0);
+// Initialize the free list and the first available mlid.
+void
+sm_multicast_init_mlid_list()
+{
+	highwater_mlid = STL_LID_MULTICAST_BEGIN;
+	ListInitState(&free_mlid_list);
+	if (!ListInit(&free_mlid_list, 64)) {
+		IB_FATAL_ERROR_NODUMP("Failed to allocate mlid memory pool.");
+	}
+	vs_lock_init(&free_mlid_lock, VLOCK_FREE, VLOCK_THREAD);
+}
 
-	/* Loop over all of the groups looking for this MC lid. */
-	for_all_multicast_groups(mcGroup) {
-		if (mcGroup->mLid == lid) {
-			++retVal;
+void
+sm_multicast_destroy_mlid_list(void)
+{
+	ListDestroy(&free_mlid_list);
+	vs_lock_delete(&free_mlid_lock);
+}
+
+static STL_LID
+sm_multicast_get_mlid(void)
+{
+	STL_LID mlid = 0;
+
+	if (vs_lock(&free_mlid_lock) != VSTATUS_OK) {
+		IB_LOG_ERROR_FMT(__func__,"Failed to lock the mlid free list!");
+		return 0;
+	}
+
+	// First, see if there's an unused mlid in the list. If not, increment
+	// the highwater mark. If we've already exceeded the cap, return 0.
+	if (ListCount(&free_mlid_list)) {
+		mlid = (STL_LID)(uintn)ListRemoveHead(&free_mlid_list);
+	} else if (highwater_mlid < (STL_LID_MULTICAST_BEGIN+sm_mcast_mlid_table_cap)) {
+		mlid = highwater_mlid++;
+	}
+
+	vs_unlock(&free_mlid_lock);
+	return mlid;
+}
+
+static void
+sm_multicast_free_mlid(STL_LID mlid) {
+
+	LIST_ITERATOR i, j;
+	boolean b = TRUE;
+
+	if (vs_lock(&free_mlid_lock) != VSTATUS_OK) {
+		IB_LOG_ERROR_FMT(__func__,"Failed to lock the mlid free list!");
+		// Yeah, we just leaked an MLID. The alternative is to terminate the FM.
+		return;
+	}
+
+	if (mlid >= (highwater_mlid-1)) {
+		// There may be a contiguous gap between highwater_mlid and the highest
+		// mlid still in use, so do some garbage collection. Discard all
+		// freed mlids that are equal to or higher than the highwater_mlid,
+		// lowering highwater_mlid as we go.
+		//
+		// Worst case, we could end up discarding the entire list, leading to
+		// O(n) performance.  This should happen rarely, however, and
+		// sm_multicast_get_max_lid() is called many times per sweep,
+		// so we take the hit here, allowing sm_multicast_get_max_lid() to
+		// run in constant time.
+	
+		highwater_mlid = MIN(mlid, highwater_mlid); // Just discard this mlid.
+		for (i=ListTail(&free_mlid_list);
+			i != NULL && ((STL_LID)(uintn)ListObj(i) >= (highwater_mlid-1));
+			i = j) {
+			j = ListPrev(&free_mlid_list,i);
+			// Note that the free list shouldn't have anything greater than
+			// highwater_mlid-1 but we check just in case.
+			highwater_mlid = MIN((STL_LID)(uintn)ListObj(i),highwater_mlid);
+			ListRemoveItem(&free_mlid_list,i);
+		}
+	} else {
+		// Freeing this mlid creates a hole in the mlid table. Stash the mlid
+		// in this sorted list so we can reuse it.  
+		for (i=ListHead(&free_mlid_list);
+			i != NULL && (STL_LID)(uintn)ListObj(i) < mlid;
+			i=ListNext(&free_mlid_list, i));
+	
+		if (i == NULL) {
+			b=ListInsertTail(&free_mlid_list,(void*)(uintn)mlid);
+		} else {
+			b=ListInsertPrev(&free_mlid_list,i,(void*)(uintn)mlid);
 		}
 	}
 
-	IB_EXIT(__func__, retVal);
-	return retVal;
-}
+	vs_unlock(&free_mlid_lock);
 
-//
-//
-//
-static Status_t
-sm_mc_find_unused_lid(Lid_t *lid) {
-	Lid_t		i;
-
-	IB_ENTER(__func__, lid, 0, 0, 0);
-
-	// JSY - we need a topology variable which tells us the Min(switchp->MLIDTableCap), trust user config for now
-
-	/* Find a lid we can use for this Multicast Group. */
-	for (i = MULTICAST_LID_MIN; i < MULTICAST_LID_MIN+sm_mcast_mlid_table_cap; i++) {
-		if (sm_multicast_is_lid_in_use(i) == 0) {
-			*lid = i;
-			IB_EXIT(__func__, i);
-			return(VSTATUS_OK);
-		}
+	if (!b) {
+		IB_LOG_ERROR_FMT(__func__,"Failed to return mlid to free mlid pool.");
+		// Yeah, we just leaked an MLID. The alternative is to terminate the FM.
 	}
-
-	IB_EXIT(__func__, VSTATUS_BAD);
-	return(VSTATUS_BAD);
+	return;
 }
 
 //
+// Returns the highest mlid currently in use.
 //
-//
-Lid_t
+STL_LID
 sm_multicast_get_max_lid() {
-	Lid_t maxLid = 0;
-	McGroup_t *localGroup;
+	STL_LID maxLid = 0;
 
-	IB_ENTER(__func__, 0, 0, 0, 0);
-
-	for_all_multicast_groups(localGroup) {
-		if (localGroup->mLid > maxLid) {
-			maxLid = localGroup->mLid;
-		}
+	if (vs_lock(&free_mlid_lock) != VSTATUS_OK) {
+		IB_LOG_ERROR_FMT(__func__,"Failed to lock the mlid free list!");
+		return 0;
 	}
 
-	IB_EXIT(__func__, maxLid);
+	maxLid = (highwater_mlid == STL_LID_MULTICAST_BEGIN)?0:(highwater_mlid-1);
+
+	vs_unlock(&free_mlid_lock);
 	return maxLid;
+}
+
+void
+sm_multicast_mark_lid_in_use(STL_LID mlid) {
+	ASSERT(mlid < sm_mcast_mlid_table_cap+STL_LID_MULTICAST_BEGIN);
+	if (mlid >= highwater_mlid) {
+		highwater_mlid = mlid+1;
+	} else {
+		LIST_ITERATOR i;
+
+		ASSERT(vs_lock(&free_mlid_lock) == VSTATUS_OK);
+
+		// Make sure the mlid isn't in the free list.
+		for (i=ListHead(&free_mlid_list);
+			i != NULL && (STL_LID)(uintn)ListObj(i) < mlid;
+			i=ListNext(&free_mlid_list, i));
+	
+		// Remove this mlid from the free list.
+		if (i != NULL && (STL_LID)(uintn)ListObj(i) == mlid) {
+			ListRemoveItem(&free_mlid_list,i);
+		}
+
+		vs_unlock(&free_mlid_lock);
+	}
 }
 
 // -------------------------------------------------------------------------- //
@@ -1628,13 +1685,13 @@ sm_multicast_get_max_lid() {
 #if defined(TEST_HEAP)
 static void
 checkHeap(LidClass_t * lidClass)
-{   
-    int i = 0;
-    
+{
+    STL_LID i = 0;
+
     for (i = 1; i < lidClass->lidsUsed; ++i)
-    {   
+    {
         int parent = PARENT_NODE(i);
-        
+
         assert(lidClass->lids[i].usageCount >= lidClass->lids[parent].usageCount);
     }
 
@@ -1648,7 +1705,7 @@ heapTrickleDown(LidClass_t * lidClass, int index)
 {
     int i = 0, child = 0;
     LidUsage_t temp;
-	
+
     memcpy(&temp, lidClass->lids + index, sizeof(LidUsage_t));
 
     for (i = index; (child = CHILD_LEFT(i)) < lidClass->lidsUsed; i = child)
@@ -1700,10 +1757,10 @@ heapTrickleUp(LidClass_t * lidClass, int index)
 
 static Status_t
 sm_mc_get_group_class_lid(McGroupClass_t * groupClass, PKey_t pKey, uint8_t mtu, uint8_t rate,
-                          Lid_t requestedLid, Lid_t * lid)
+                          STL_LID requestedLid, STL_LID * lid)
 {
 	Status_t status = VSTATUS_OK;
-	Lid_t newLid = 0;
+	STL_LID newLid = 0;
 	int index = 0;
 	LidClass_t * lidClass = getLidClass(groupClass, pKey, mtu, rate);
 
@@ -1722,7 +1779,8 @@ sm_mc_get_group_class_lid(McGroupClass_t * groupClass, PKey_t pKey, uint8_t mtu,
 			{
 				// Simple case... assign a new MLid and put it at the end of
 				// the heap, then trickle it up towards the front.
-				if ((status = sm_mc_find_unused_lid(&newLid)) == VSTATUS_OK)
+				newLid = sm_multicast_get_mlid();
+				if (newLid != 0)
 				{
 					assert(lidClass->lids[lidClass->lidsUsed].lid == 0xFFFFFFFF);
 
@@ -1736,6 +1794,9 @@ sm_mc_get_group_class_lid(McGroupClass_t * groupClass, PKey_t pKey, uint8_t mtu,
 
 					++groupClass->currentLids;
 					*lid = newLid;
+				} else {
+					// No free mlids. Caller will handle the error.
+					status = VSTATUS_BAD;
 				}
 			} else
 			{
@@ -1813,7 +1874,6 @@ sm_mc_get_group_class_lid(McGroupClass_t * groupClass, PKey_t pKey, uint8_t mtu,
 				// and should only occur on the standby SM.
 				status = VSTATUS_NORESOURCE;
 			}
-			
 		}
 	}
 
@@ -1853,7 +1913,10 @@ sm_multicast_decommision_group(McGroup_t * group)
 
 				if (lidClass->lids[i].usageCount == 0)
 				{
-					if (i != (lidClass->lidsUsed - 1)) 
+					// Mark the mlid as re-usable.
+					sm_multicast_free_mlid(lidClass->lids[i].lid);
+
+					if (i != (lidClass->lidsUsed - 1))
 					{
 						// Swap the last entry in the heap with this entry... We just do a memset
 						// on the last entry instead of a real swap.
@@ -1876,7 +1939,7 @@ sm_multicast_decommision_group(McGroup_t * group)
 						// need to do anything else
 						memset(&lidClass->lids[lidClass->lidsUsed - 1], 0xFF, sizeof(LidUsage_t));
 					}
-						
+
 					// This mlid no longer has any MC groups - decrement the
 					// lid count for the entire group class & mark the mlid
 					// entry as unused
@@ -1903,7 +1966,7 @@ sm_multicast_decommision_group(McGroup_t * group)
 //
 Status_t
 sm_multicast_check_sync_consistancy(McGroupClass_t * groupClass, PKey_t pKey,
-                                    uint8_t mtu, uint8_t rate, Lid_t lid)
+                                    uint8_t mtu, uint8_t rate, STL_LID lid)
 {
 	Status_t status = VSTATUS_OK;
 	int i, j;
@@ -1968,11 +2031,11 @@ sm_multicast_check_sync_consistancy(McGroupClass_t * groupClass, PKey_t pKey,
 }
 
 Status_t
-sm_multicast_sync_lid(IB_GID mGid, PKey_t pKey, uint8_t mtu, uint8_t rate, Lid_t lid)
+sm_multicast_sync_lid(IB_GID mGid, PKey_t pKey, uint8_t mtu, uint8_t rate, STL_LID lid)
 {
 	Status_t status = VSTATUS_OK;
 	McGroupClass_t * groupClass = NULL;
-	Lid_t newLid = 0;
+	STL_LID newLid = 0;
 
 	IB_ENTER(__func__, lid, mtu, rate, 0);
 
@@ -2000,11 +2063,11 @@ sm_multicast_sync_lid(IB_GID mGid, PKey_t pKey, uint8_t mtu, uint8_t rate, Lid_t
 		}
 	} else
 	{
-		IB_LOG_ERROR_FMT(__func__, 
+		IB_LOG_ERROR_FMT(__func__,
 		       "%s Consistency check for sync of group " FMT_GID
 		       " failed. (lid = 0x%04X, mtu = %d, rate = %d, pkey = %04X)",
 		       __func__, mGid.Type.Global.SubnetPrefix, mGid.Type.Global.InterfaceID, lid, mtu, rate, pKey);
-		       
+
 	}
 
 	IB_EXIT(__func__, status);
@@ -2025,7 +2088,7 @@ sm_multicast_sync_lid(IB_GID mGid, PKey_t pKey, uint8_t mtu, uint8_t rate, Lid_t
  */
 Status_t
 sm_multicast_assign_lid(IB_GID mGid, PKey_t pKey, uint8_t mtu, uint8_t rate,
-                        Lid_t * lid)
+                        STL_LID * lid)
 {
 	Status_t status = VSTATUS_OK;
 	McGroupClass_t * groupClass = NULL;
@@ -2034,18 +2097,28 @@ sm_multicast_assign_lid(IB_GID mGid, PKey_t pKey, uint8_t mtu, uint8_t rate,
 
 #if defined(TEST_HEAP)
 	assert(groupClass != NULL);
+#else
+	if (!groupClass) {
+		IB_LOG_ERROR_FMT(__func__, "Group Class for 0x%016"PRIx64":0x%016"PRIx64
+			" is not found.", mgid.AsReg64s.H, mgid.AsReg64s.L);
+		return VSTATUS_BAD;
+	}
 #endif
 
 	if (groupClass->maximumLids == 0)
 	{
 		/* Non-shared MLIDs for this MGID - just generate a new mcast
 		 * lid and return */
-		status = sm_mc_find_unused_lid(lid);
-		if (status == VSTATUS_OK)
+		*lid = sm_multicast_get_mlid();
+		if (*lid != 0) {
 			++groupClass->currentLids;
+		} else {
+			// Caller will log the error.
+			status = VSTATUS_BAD;
+		}
 	} else
 	{
-		IB_LOG_INFO_FMT(__func__, 
+		IB_LOG_INFO_FMT(__func__,
 		       "sm_multicast_assign_lid: got request for new group that matches "
 		       "group class with mask: " FMT_GID " and value: " FMT_GID,
 		       groupClass->mask.Type.Global.SubnetPrefix, groupClass->mask.Type.Global.InterfaceID,
@@ -2055,7 +2128,10 @@ sm_multicast_assign_lid(IB_GID mGid, PKey_t pKey, uint8_t mtu, uint8_t rate,
 	}
 
 
-	//IB_LOG_INFINI_INFO_FMT(__func__, "sm_multicast_assign_lid - assigned lid %08X", *lid);
+	if (smDebugPerf) {
+		IB_LOG_INFINI_INFO_FMT(__func__,
+			"sm_multicast_assign_lid - assigned lid %08X", *lid);
+	}
 
 	IB_EXIT(__func__, status);
 	return status;
@@ -2089,7 +2165,7 @@ sm_find_next_multicast_gid(IB_GID gid) {
 	McGroup_t	*dGroup;
 	McGroup_t	*pGroupBest = NULL;
 	int			i,j;
-		
+
 	for_all_multicast_groups(dGroup) {
 		for(i=0;i<16;i++){
 			if(dGroup->mGid.Raw[i] < gid.Raw[i]){
@@ -2201,8 +2277,8 @@ sm_multicast_gid_valid(uint8_t scope, IB_GID gid) {
 	temp = gid.Type.Multicast.s.Scope;
     /* check the scope bits in the gid */
 	if ((temp != IB_LINK_LOCAL_SCOPE) &&
-        (temp != IB_SITE_LOCAL_SCOPE) && 
-        (temp != IB_ORG_LOCAL_SCOPE) && 
+        (temp != IB_SITE_LOCAL_SCOPE) &&
+        (temp != IB_ORG_LOCAL_SCOPE) &&
         (temp != IB_GLOBAL_SCOPE)) {			// Bad scope
 		IB_EXIT(__func__, VSTATUS_BAD);
 		return(VSTATUS_BAD);
@@ -2211,7 +2287,7 @@ sm_multicast_gid_valid(uint8_t scope, IB_GID gid) {
 //
 //	If SA-specific signature and link-local scope bits, then bad.
 //
-	if ((gid.Type.Multicast.GroupId[13] == 0xa0) && 
+	if ((gid.Type.Multicast.GroupId[13] == 0xa0) &&
 		(gid.Type.Multicast.GroupId[12] == 0x1b)) {	// SA-specific
 		if (temp == 0x2) {		// Link local
 			IB_EXIT(__func__, VSTATUS_BAD);

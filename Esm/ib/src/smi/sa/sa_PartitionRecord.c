@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -71,7 +71,7 @@ sa_setPartitionRecord(uint8_t * data, Node_t * node, Port_t * port, int block)
 	STL_P_KEY_TABLE_RECORD record;
 	int pkey_idx = 0, i = 0;
 	Port_t *swport;
-    	STL_LID lid;
+	STL_LID lid;
 
 	memset(&record, 0, sizeof(record));
 
@@ -85,9 +85,8 @@ sa_setPartitionRecord(uint8_t * data, Node_t * node, Port_t * port, int block)
 	record.RID.LID = lid;
 	record.RID.Blocknum = block;
 	record.RID.PortNum = port->index;
-
 	for (pkey_idx = (block * PKEY_TABLE_LIST_COUNT), i = 0;
-	     pkey_idx < port->portData->num_pkeys; ++pkey_idx, ++i)
+	     pkey_idx <= bitset_find_last_one(&port->portData->pkey_idxs) && i < PKEY_TABLE_LIST_COUNT; ++pkey_idx, ++i)
 	{
 		record.PKeyTblData.PartitionTableBlock[i] = port->portData->pPKey[pkey_idx];
 	}
@@ -107,7 +106,7 @@ sa_getPartitionRecordTable(Mai_t *maip, uint32_t * records)
 	uint8_t * data = NULL;
 	int block = 0, bytes = 0;
 	bool_t		checkLid;
-	uint16_t	portLid=0;
+	STL_LID		portLid=0;
 	bool_t		checkPort;
 	uint8_t		portNum=0;
 	STL_P_KEY_TABLE_RECORD *pPartitionRec;
@@ -133,16 +132,16 @@ sa_getPartitionRecordTable(Mai_t *maip, uint32_t * records)
 	BSWAPCOPY_STL_SA_MAD((STL_SA_MAD*)maip->data, &samad, sizeof(STL_P_KEY_TABLE_RECORD));
 	pPartitionRec = (STL_P_KEY_TABLE_RECORD *)samad.data;
 
-	checkLid = (samad.header.mask & IB_PKEYTABLE_RECORD_COMP_LID);
+	checkLid = (samad.header.mask & STL_PKEYTABLE_RECORD_COMP_LID);
 	if (checkLid) {	
 		portLid = ntoh32(pPartitionRec->RID.LID);
-		samad.header.mask ^= IB_PKEYTABLE_RECORD_COMP_LID;
+		samad.header.mask ^= STL_PKEYTABLE_RECORD_COMP_LID;
 	}
 
-	checkPort = (samad.header.mask & IB_PKEYTABLE_RECORD_COMP_PORTNUM);
+	checkPort = (samad.header.mask & STL_PKEYTABLE_RECORD_COMP_PORTNUM);
 	if (checkPort) {	
 		portNum = pPartitionRec->RID.PortNum;
-		samad.header.mask ^= IB_PKEYTABLE_RECORD_COMP_PORTNUM;
+		samad.header.mask ^= STL_PKEYTABLE_RECORD_COMP_PORTNUM;
 	}
 
 	/* C15-0.2.2 - PKeyTableRecords and ServiceAssociationRecords shall only
@@ -177,7 +176,7 @@ sa_getPartitionRecordTable(Mai_t *maip, uint32_t * records)
 				if (!sm_valid_port(port) || port->state <= IB_PORT_DOWN) continue;
 				if (checkPort && portNum != port->index) continue;
 
-				for (block = 0; (block * PKEY_TABLE_LIST_COUNT) < port->portData->num_pkeys; ++block) {
+				for (block = 0; (block * PKEY_TABLE_LIST_COUNT) <= bitset_find_last_one(&port->portData->pkey_idxs); ++block) {
 					if ((status = sa_check_len(data, sizeof(STL_P_KEY_TABLE_RECORD), bytes)) != VSTATUS_OK) {
 						maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
 						IB_LOG_ERROR_FMT( "sa_getPartitionRecordTable",
@@ -200,7 +199,7 @@ sa_getPartitionRecordTable(Mai_t *maip, uint32_t * records)
 				if (!sm_valid_port(port) || port->state <= IB_PORT_DOWN) continue;
 				if (checkPort && portNum != port->index) continue;
 	
-				for (block = 0; (block * PKEY_TABLE_LIST_COUNT) < port->portData->num_pkeys;
+				for (block = 0; (block * PKEY_TABLE_LIST_COUNT) <= bitset_find_last_one(&port->portData->pkey_idxs);
 			     	++block)
 				{
 					if ((status = sa_check_len(data, sizeof(STL_P_KEY_TABLE_RECORD),
@@ -311,7 +310,7 @@ void showStlPKeys(void)
             if (!sm_valid_port(port) || port->state <= IB_PORT_DOWN) 
                 continue; 
             
-            for (block = 0; (block * PKEY_TABLE_LIST_COUNT) < port->portData->num_pkeys; ++block) {
+            for (block = 0; (block * PKEY_TABLE_LIST_COUNT) <= bitset_find_last_one(&port->portData->pkey_idxs); ++block) {
                 sa_setPartitionRecord((uint8_t *)&tempPartitionRec, node, port, block); 
                 BSWAPCOPY_STL_PARTITION_TABLE_RECORD(&tempPartitionRec, (STL_P_KEY_TABLE_RECORD *)&partitionRec);
                  

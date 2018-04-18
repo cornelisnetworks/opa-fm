@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -55,10 +55,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 * MGR       04/25/02    PR1651.  Corrected vs_thread_kill_2b().  In Linux
 *                       Kernel, the sleeping thread will awaken when killed.
 ***********************************************************************/
-#if defined (LINT)
-#define __signed__ signed
-#include <bits/sigset.h>
-#endif
 #include <stdio.h>
 #include <ib_types.h>
 #include  <ib_status.h>

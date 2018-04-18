@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -66,6 +66,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "iba/ib_helper.h"
 #include "stl_print.h"
 
+McGroup_t   *sm_McGroups = NULL;
+uint32_t    sm_numMcGroups = 0; 
+ATOMIC_UINT sm_McGroups_Need_Prog = 0; 
+Lock_t      sm_McGroups_lock;
 
 extern	IB_GID nullGid;
 extern	Pool_t			sm_pool;
@@ -76,40 +80,16 @@ extern  uint32_t		sa_mft_reprog;
 /************ support for dynamic update of switch config parms *************/
 extern uint8_t sa_dynamicPlt[];
 
-//extern Status_t sa_TrapFromSm(Notice_t * noticep);
-extern Status_t sm_sa_forward_trap(STL_NOTICE * noticep);
-
-Status_t	topology_Trap(Notice_t * noticep);
-
-Status_t	sa_McMemberRecord_Group_Create(Mai_t *, McMemberRecord_t *);
-
-Status_t	sa_McMemberRecord_Set(Mai_t *, uint32_t *);
-Status_t	sa_McMemberRecord_Delete(Mai_t *, uint32_t *);
-Status_t	sa_McMemberRecord_GetTable(Mai_t *, uint32_t *);
-Status_t	sa_McMemberRecord_IBGetTable(Mai_t *, uint32_t *);
+static Status_t	sa_McMemberRecord_GetTable(Mai_t *, uint32_t *);
+static Status_t	sa_McMemberRecord_IBGetTable(Mai_t *, uint32_t *);
 
 static void	sa_updateMcDeleteCountForPort(Port_t *);
-void		dumpMCastGroups(void);
-void		logGroups(void);
-
 
 /*         0 0 0 0 0 0 0 0    0 0 1 1 1 1 1 1
  *         0 1 2 3 4 5 6 7    8 9 0 1 2 3 4 5
  * GID: 0xff12401bffff0000:0x00000000ffffffff
  *                pkey
  */
-
-//Gid_t broadcastGid = {0xff, 0x10 | IB_LINK_LOCAL_SCOPE, 0x40, 0x1b, 0xff, 0xff, 0x00, 0x00,
-//					  0x00, 0x00,                       0x00, 0x00, 0xff, 0xff, 0xff, 0xff};
-//Gid_t allNodesGid  = {0xff, 0x10 | IB_LINK_LOCAL_SCOPE, 0x40, 0x1b, 0xff, 0xff, 0x00, 0x00,
-//					  0x00, 0x00,                       0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
-//Gid_t allRoutersGid  = {0xff, 0x10 | IB_LINK_LOCAL_SCOPE, 0x40, 0x1b, 0xff, 0xff, 0x00, 0x00,
-//					  0x00, 0x00,                       0x00, 0x00, 0x00, 0x00, 0x00, 0x02};
-//Gid_t mcastDnsGid  = {0xff, 0x10 | IB_LINK_LOCAL_SCOPE, 0x40, 0x1b, 0xff, 0xff, 0x00, 0x00,
-//                      0x00, 0x00,                       0x00, 0x00, 0x00, 0x00, 0x00, 0xfb};
-/* uncertain what this Multicast Gid is for, but Linux IPv6 tries to join it */
-//Gid_t otherGid  = {0xff, 0x10 | IB_LINK_LOCAL_SCOPE, 0x40, 0x1b, 0xff, 0xff, 0x00, 0x00,
-//					  0x00, 0x00,                       0x00, 0x00, 0x00, 0x00, 0x00, 0x16};
 
 // Store in little endian format.
 IB_GID broadcastGid = {.Raw =	{0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00,
@@ -150,9 +130,7 @@ static uint32_t rateOneStepSmaller(uint32_t rate) {
     case IB_STATIC_RATE_60G:
         return IB_STATIC_RATE_40G;
     case IB_STATIC_RATE_80G:
-        return IB_STATIC_RATE_60G;
-    case IB_STATIC_RATE_120G:
-        return IB_STATIC_RATE_80G;
+        return IB_STATIC_RATE_56G;
 	// FDR
 	case IB_STATIC_RATE_14G:
         return IB_STATIC_RATE_10G;
@@ -161,7 +139,7 @@ static uint32_t rateOneStepSmaller(uint32_t rate) {
 	case IB_STATIC_RATE_112G:
         return IB_STATIC_RATE_80G;
 	case IB_STATIC_RATE_168G:
-        return IB_STATIC_RATE_112G;
+        return IB_STATIC_RATE_100G;
 	// EDR
 	case IB_STATIC_RATE_25G:
         return IB_STATIC_RATE_20G;
@@ -178,11 +156,12 @@ static uint32_t rateOneStepSmaller(uint32_t rate) {
 }
 
 Status_t sa_McGroupInit(void) {
-    sm_McGroups = 0;
+    sm_McGroups = NULL;
     return vs_lock_init(&sm_McGroups_lock, VLOCK_FREE, VLOCK_THREAD);
 }
 
 
+// Deletes all multicast groups. Intended for SA shutdown.
 void sa_McGroupDelete(void) {
     (void)clearBroadcastGroups(FALSE);
     (void)vs_lock_delete(&sm_McGroups_lock);
@@ -224,25 +203,25 @@ sa_McMemberRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
 	switch (maip->base.method) {
 	case SA_CM_SET:
 		INCREMENT_COUNTER(smCounterSaRxSetMcMemberRecord);
-		(void)sa_McMemberRecord_Set(maip, &records);
+		(void)sa_McMemberRecord_Set(NULL, maip, &records);
 		break;
 	case SA_CM_GET:
 		INCREMENT_COUNTER(smCounterSaRxGetMcMemberRecord);
 		if (maip->base.bversion == STL_BASE_VERSION)
-		(void)sa_McMemberRecord_GetTable(maip, &records);
+			(void)sa_McMemberRecord_GetTable(maip, &records);
 		else
 			(void)sa_McMemberRecord_IBGetTable(maip, &records);
 		break;
 	case SA_CM_GETTABLE:
 		INCREMENT_COUNTER(smCounterSaRxGetTblMcMemberRecord);
 		if (maip->base.bversion == STL_BASE_VERSION)
-		(void)sa_McMemberRecord_GetTable(maip, &records);
+			(void)sa_McMemberRecord_GetTable(maip, &records);
 		else
 			(void)sa_McMemberRecord_IBGetTable(maip, &records);
 		break;
 	case SA_CM_DELETE:
 		INCREMENT_COUNTER(smCounterSaRxDeleteMcMemberRecord);
-		(void)sa_McMemberRecord_Delete(maip, &records);
+		(void)sa_McMemberRecord_Delete(NULL, maip, &records);
 		break;
 	default:
 		maip->base.status = MAD_STATUS_BAD_METHOD;
@@ -281,9 +260,20 @@ sa_McMemberRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
 	return(VSTATUS_OK);
 }
 
+//
+// Adds a node to a Multicast Group, creating the group if necessary.
+// Note:
+// 1. The primary use of this function is to process incoming MADs but it is
+//    also used internally within the SM.
+// 2. The main code path works on the "old" topology and the global list of 
+//    McGroups. If a different topology pointer is passed to this function as
+//    an argument, this function will still alter the global McGroups list. In
+//    addition, when a topology pointer is passed in, this function assumes the
+//    caller already holds any required locks.
+//
 Status_t
-sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
-	//int			i;
+sa_McMemberRecord_Set(Topology_t *topop, Mai_t *maip, uint32_t *records)
+{
 	uint8_t			mtu, maxMtu, vfMaxMtu;
 	uint8_t			rate, maxRate, vfMaxRate;
 	uint8_t 		activeRate;
@@ -304,8 +294,6 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 	Node_t			*req_nodep;
 	McGroup_t		*mcGroup;
 	McMember_t		*mcMember;
-	//McMemberRecord_t	mcMemberRecord;
-	//McMemberRecord_t	*mcmp;
 	STL_MCMEMBER_RECORD	mcMemberRecord = {{{{0}}}};
 	STL_MCMEMBER_RECORD	*mcmp;
 	STL_NOTICE		notice;
@@ -320,6 +308,7 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 	bitset_t        mcGroupVf;
 	char			*vfp=NULL;
 	IB_MCMEMBER_RECORD temporary_rec;
+	boolean			got_old_topology_lock = FALSE;
 
 	IB_ENTER("sa_McMemberRecord_Set", maip, *records, 0, 0);
 
@@ -350,7 +339,6 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 			IB_EXIT("sa_McMemberRecord_Set", MAD_STATUS_SA_REQ_INVALID);
 			return (MAD_STATUS_SA_REQ_INVALID);
 		}
-
 		BSWAPCOPY_STL_SA_MAD((STL_SA_MAD*)maip->data, &samad, sizeof(STL_MCMEMBER_RECORD));
 		BSWAPCOPY_STL_MCMEMBER_RECORD((STL_MCMEMBER_RECORD*)samad.data, &mcMemberRecord);
 	}
@@ -377,18 +365,23 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 	prefix = mcmp->RID.PortGID.Type.Global.SubnetPrefix;
 	guid = mcmp->RID.PortGID.Type.Global.InterfaceID;
 
-    (void)vs_wrlock(&old_topology_lock);
-    (void)vs_lock(&sm_McGroups_lock);
+	// The locks are already held when we are passed a topology.
+	if (!topop) {
+		(void)vs_wrlock(&old_topology_lock); 
+		(void)vs_lock(&sm_McGroups_lock);
+		got_old_topology_lock = TRUE;
+		topop = &old_topology;
+	}
 
-	VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
+	VirtualFabrics_t *VirtualFabrics = topop->vfs_ptr;
 
-	if (old_topology.node_head == NULL ||
-        (!sm_valid_port((mcmPortp = sm_get_port(old_topology.node_head,sm_config.port))))) {
+	if (topop->node_head == NULL ||
+        (!sm_valid_port((mcmPortp = sm_get_port(topop->node_head,sm_config.port))))) {
 		maip->base.status = MAD_STATUS_BUSY;
         if (saDebugPerf) {
-            if (old_topology.node_head == NULL) {
-                IB_LOG_INFINI_INFO_FMT( "sa_McMemberRecord_Set", "Not done first sweep, failing request from LID "
-                       "0x%.4X for port GID "FMT_GID", Group "FMT_GID" with status 0x%.4X",
+            if (topop->node_head == NULL) {
+                IB_LOG_INFINI_INFO_FMT( "sa_McMemberRecord_Set", "Not done discovery, failing request from LID "
+                       "0x%.8X for port GID "FMT_GID", Group "FMT_GID" with status 0x%.4X",
                        maip->addrInfo.slid, prefix, guid, mGid[0], mGid[1], maip->base.status);
             } else {
                 IB_LOG_ERROR_FMT( "sa_McMemberRecord_Set", "Failed to get SM port %d, "
@@ -405,13 +398,13 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 //
 //	Find the requestors port.
 //
-	if ((req_portp = sm_find_active_port_lid(&old_topology, maip->addrInfo.slid)) == NULL) {
+	if ((req_portp = sm_find_active_port_lid(topop, maip->addrInfo.slid)) == NULL) {
 		//maip->base.status = activateInProgress ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID;
         // temp patch for Sun Oregon
         maip->base.status = activateInProgress ? 0x0700 : MAD_STATUS_SA_REQ_INVALID;
         if (saDebugPerf) {
 		IB_LOG_INFINI_INFO_FMT( "sa_McMemberRecord_Set", 
-               "Can not find requester's LID (0x%.4X) or not active in current topology, "
+               "Can not find requester's LID (0x%.8X) or not active in current topology, "
 			   "failing request for port GID "FMT_GID", Group "FMT_GID" with "
 			   "status 0x%.4X",
 			   maip->addrInfo.slid, prefix, guid, mGid[0], mGid[1], maip->base.status);
@@ -419,12 +412,12 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 		goto done;
 	}
 
-	req_nodep = sm_find_port_node(&old_topology, req_portp);
+	req_nodep = sm_find_port_node(topop, req_portp);
 	req_nodeName = sm_nodeDescString(req_nodep);
 
 	smCsmFormatNodeId(&csmReqNode, (uint8_t*)req_nodeName, req_portp->index, req_nodep->nodeInfo.NodeGUID);
 
-	if (  ((neighbor_portp = sm_find_port(&old_topology, req_portp->nodeno, req_portp->portno)) != NULL)
+	if (  ((neighbor_portp = sm_find_port(topop, req_portp->nodeno, req_portp->portno)) != NULL)
 	   && sm_valid_port(neighbor_portp)) {
 		smCsmFormatNodeId(&csmConnectedNode, (uint8_t*)sm_nodeDescString(neighbor_portp->portData->nodePtr),     
 		                  neighbor_portp->index, (neighbor_portp->portData->nodePtr)->nodeInfo.NodeGUID);                
@@ -437,7 +430,7 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 	if (guid == 0x0ull) {
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID_GID;
 		IB_LOG_ERROR_FMT( "sa_McMemberRecord_Set", "Port GID in request ("FMT_GID") from "
-			   "%s Port %d, PortGUID "FMT_U64", LID 0x%.4X has a NULL GUID, returning status 0x%.4X",
+			   "%s Port %d, PortGUID "FMT_U64", LID 0x%.8X has a NULL GUID, returning status 0x%.4X",
 			   prefix, guid, req_nodeName, req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
 		goto done;
 	}
@@ -445,16 +438,16 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 	if (prefix != sm_config.subnet_prefix) {
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID_GID;
 		IB_LOG_ERROR_FMT( "sa_McMemberRecord_Set", "Port GID in request ("FMT_GID") from "
-			   "%s Port %d, PortGUID "FMT_U64", LID 0x%.4X has an invalid prefix, returning status 0x%.4X",
+			   "%s Port %d, PortGUID "FMT_U64", LID 0x%.8X has an invalid prefix, returning status 0x%.4X",
 			   prefix, guid, req_nodeName, req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
 		goto done;
 	}
 
-	if ((portp = sm_find_active_port_guid(&old_topology, guid)) == NULL) {
+	if ((portp = sm_find_active_port_guid(topop, guid)) == NULL) {
 		maip->base.status = activateInProgress ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID;
 		IB_LOG_INFINI_INFO_FMT( "sa_McMemberRecord_Set", 
                "Port GID in request ("FMT_GID") from %s Port %d, PortGUID "FMT_U64", "
-			   "LID 0x%.4X, for group "FMT_GID" can't be found or not active in current topology, "
+			   "LID 0x%.8X, for group "FMT_GID" can't be found or not active in current topology, "
 			   "returning status 0x%.4X",
 			   prefix, guid, req_nodeName, req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, mGid[0], mGid[1], maip->base.status);
 		goto done;
@@ -471,7 +464,7 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 	if (sm_mc_config.disable_mcast_check == McGroupBehaviorRelaxed) {
 		maxMtu = portp->portData->maxVlMtu;
 	} else {
-		maxMtu = Min(portp->portData->maxVlMtu, old_topology.maxMcastMtu);
+		maxMtu = Min(portp->portData->maxVlMtu, topop->maxMcastMtu);
 		if (vfMaxMtu) {
 			maxMtu = Min(maxMtu, vfMaxMtu);
 		}
@@ -479,30 +472,30 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 
 	if (tempMask == STL_MCMEMBER_COMPONENTMASK_OK_MTU) {
 		switch (mcmp->MtuSelector) {
-			case PR_GT:
+			case IB_SELECTOR_GT:
 				if (maxMtu > mcmp->Mtu) {
 					mtu = maxMtu;
 				} else {
 					mtu = getNextMTU(mcmp->Mtu);
 				}
 				break;
-			case PR_LT:
+			case IB_SELECTOR_LT:
 				if (maxMtu < mcmp->Mtu) {
 					mtu = maxMtu;
 				} else {
 					mtu = getPrevMTU(mcmp->Mtu);
 				}
 				break;
-			case PR_EQ:
+			case IB_SELECTOR_EQ:
 				mtu = mcmp->Mtu;
 				break;
-			case PR_MAX:
+			case IB_SELECTOR_MAX:
 				mtu = maxMtu;
 				break;
 			default:
 				maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 				IB_LOG_ERROR_FMT( "sa_McMemberRecord_Set", "Bad MTU selector of %d for request from "
-					   "%s Port %d, PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+					   "%s Port %d, PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
 					   mcmp->MtuSelector, req_nodeName, req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
 				goto done;
 				
@@ -514,16 +507,16 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 			maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 			smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_OTHER_ERROR, &csmReqNode, csmNeighborp,
 				"MTU selector of %d with MTU of %s does not work with realizable MTU of %s for "
-				"request from %s Port %d, PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+				"request from %s Port %d, PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
 				mcmp->MtuSelector, IbMTUToText(mcmp->Mtu), IbMTUToText(maxMtu), req_nodeName,
 				req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
 			goto done;
 		}
 	} else if (tempMask != 0) { /* Only one of the two bits set, only max allowed */
-		if (tempMask != STL_MCMEMBER_COMPONENTMASK_MTU_SEL || mcmp->MtuSelector != PR_MAX) {
+		if (tempMask != STL_MCMEMBER_COMPONENTMASK_MTU_SEL || mcmp->MtuSelector != IB_SELECTOR_MAX) {
 			maip->base.status = MAD_STATUS_SA_REQ_INSUFFICIENT_COMPONENTS;
 			IB_LOG_ERROR_FMT( "sa_McMemberRecord_Set", "Only one of MTU selector (%d) and MTU "
-				   "value (%d) set in component mask "FMT_U64" in request from %s Port %d, PortGUID "FMT_U64", LID 0x%.4X, "
+				   "value (%d) set in component mask "FMT_U64" in request from %s Port %d, PortGUID "FMT_U64", LID 0x%.8X, "
 				   "returning status 0x%.4X",
 				   mcmp->MtuSelector, mcmp->Mtu, samad.header.mask, req_nodeName, req_portp->index, req_portp->portData->guid,
 				   maip->addrInfo.slid, maip->base.status);
@@ -550,7 +543,7 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 	if (sm_mc_config.disable_mcast_check == McGroupBehaviorRelaxed) {
 		maxRate = activeRate;
 	} else {
-		maxRate = linkrate_lt(activeRate, old_topology.maxMcastRate) ? activeRate : old_topology.maxMcastRate;
+		maxRate = linkrate_lt(activeRate, topop->maxMcastRate) ? activeRate : topop->maxMcastRate;
 		if (vfMaxRate) {
 			maxRate = linkrate_lt(maxRate, vfMaxRate) ? maxRate : vfMaxRate;
 		}
@@ -559,7 +552,7 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 	if (tempMask == STL_MCMEMBER_COMPONENTMASK_OK_RATE) {
 
 		switch (mcmp->RateSelector) {
-			case PR_GT:
+			case IB_SELECTOR_GT:
 				if (linkrate_gt(maxRate, mcmp->Rate)) {
 					rate = maxRate;
 				} else {
@@ -567,23 +560,23 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 					rate = IB_STATIC_RATE_MAX+1;
 				}
 				break;
-			case PR_LT:
+			case IB_SELECTOR_LT:
 				if (linkrate_lt(maxRate, mcmp->Rate)) {
 					rate = maxRate;
 				} else {
 					rate = rateOneStepSmaller(mcmp->Rate);
 				}
 				break;
-			case PR_EQ:
+			case IB_SELECTOR_EQ:
 				rate = mcmp->Rate;
 				break;
-			case PR_MAX:
+			case IB_SELECTOR_MAX:
 				rate = maxRate;
 				break;
 			default:
 				maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 				IB_LOG_ERROR_FMT( "sa_McMemberRecord_Set", "Bad rate selector of %d for request from "
-					   "%s Port %d, PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+					   "%s Port %d, PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
 					   mcmp->RateSelector, req_nodeName, req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
 				goto done;
 		}
@@ -592,16 +585,16 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 			maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 			smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_OTHER_ERROR, &csmReqNode, csmNeighborp,
 			                "Rate selector of %d with rate of %s does not work with realizable rate "
-			                "of %s for request from %s Port %d, PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+			                "of %s for request from %s Port %d, PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
 			                mcmp->RateSelector, StlStaticRateToText(mcmp->Rate), StlStaticRateToText(maxRate), (uint8_t*)req_nodeName,
 			                req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
 			goto done;
 		}
 	} else if (tempMask != 0) {
-		if (tempMask != STL_MCMEMBER_COMPONENTMASK_RATE_SEL || mcmp->RateSelector != PR_MAX) {
+		if (tempMask != STL_MCMEMBER_COMPONENTMASK_RATE_SEL || mcmp->RateSelector != IB_SELECTOR_MAX) {
 			maip->base.status = MAD_STATUS_SA_REQ_INSUFFICIENT_COMPONENTS;
 			IB_LOG_ERROR_FMT( "sa_McMemberRecord_Set", "Only one of rate selector (%d) and rate (%d) "
-				   "set in component mask "FMT_U64" in request from %s Port %d, PortGUID "FMT_U64", LID 0x%.4X, "
+				   "set in component mask "FMT_U64" in request from %s Port %d, PortGUID "FMT_U64", LID 0x%.8X, "
 				   "returning status 0x%.4X",
 				   mcmp->RateSelector, mcmp->Rate, samad.header.mask, req_nodeName,
 				   req_portp->index, req_portp->portData->guid,
@@ -611,8 +604,8 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 		rate = maxRate;  /* Only selector was on with value of max */
 	} else {
 		if (sm_mc_config.disable_mcast_check == McGroupBehaviorRelaxed) {
-			rate = linkrate_lt(activeRate, IB_STATIC_RATE_100G)
-			         ? activeRate : IB_STATIC_RATE_100G;
+			rate = linkrate_lt(activeRate, IB_STATIC_RATE_200G)
+			         ? activeRate : IB_STATIC_RATE_200G;
 		} else {
 			rate = maxRate;
 		}
@@ -644,49 +637,49 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 	tempMask = samad.header.mask & STL_MCMEMBER_COMPONENTMASK_OK_LIFE;
 	if (tempMask == STL_MCMEMBER_COMPONENTMASK_OK_LIFE) {
 		switch (mcmp->PktLifeTimeSelector) {
-			case PR_GT:
+			case IB_SELECTOR_GT:
 				if (saLife > mcmp->PktLifeTime) {
 					life = saLife;
 				} else {
 					life = mcmp->PktLifeTime + 1;
 				}
 				break;
-			case PR_LT:
+			case IB_SELECTOR_LT:
 				if (saLife < mcmp->PktLifeTime) {
 					life = saLife;
 				} else {
 					life = mcmp->PktLifeTime - 1;
 				}
 				break;
-			case PR_EQ:
+			case IB_SELECTOR_EQ:
 				life = mcmp->PktLifeTime;
 				break;
-			case PR_MAX:
+			case IB_SELECTOR_MAX:
 				life = saLife;
 				break;
 			default:
 				maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 				IB_LOG_ERROR_FMT( "sa_McMemberRecord_Set", "Bad Life Selector of %d for request from "
-					   "%s Port %d, PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+					   "%s Port %d, PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
 					   mcmp->PktLifeTimeSelector, req_nodeName, req_portp->index,
 					   req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
 				goto done;
 		}
 	
 		// Do not allow lifetime less than system life time
-		if (life < saLife || life > PR_LIFE_MAX) {
+		if (life < saLife || life > DYNAMIC_PLT_MAX) {
 			IB_LOG_ERROR_FMT( "sa_McMemberRecord_Set", "Life selector of %d with life of %d does not "
-				   "work with port sa life of %d for request from %s Port %d, PortGUID "FMT_U64", LID 0x%.4X, "
+				   "work with port sa life of %d for request from %s Port %d, PortGUID "FMT_U64", LID 0x%.8X, "
 				   "returning status 0x%.4X",
 				   mcmp->PktLifeTimeSelector, mcmp->PktLifeTime, saLife, req_nodeName, req_portp->index, req_portp->portData->guid,
 				   maip->addrInfo.slid, maip->base.status);
 			goto done;
 		}
 	} else if (tempMask != 0) {
-		if (tempMask != STL_MCMEMBER_COMPONENTMASK_LIFE_SEL || mcmp->PktLifeTimeSelector != PR_MAX) {
+		if (tempMask != STL_MCMEMBER_COMPONENTMASK_LIFE_SEL || mcmp->PktLifeTimeSelector != IB_SELECTOR_MAX) {
 			maip->base.status = MAD_STATUS_SA_REQ_INSUFFICIENT_COMPONENTS;
 			IB_LOG_ERROR_FMT( "sa_McMemberRecord_Set", "Only one of life selector (%d) and life (%d) "
-				   "set in component mask "FMT_U64" in request from %s Port %d, PortGUID "FMT_U64", LID 0x%.4X, "
+				   "set in component mask "FMT_U64" in request from %s Port %d, PortGUID "FMT_U64", LID 0x%.8X, "
 				   "returning status 0x%.4X",
 				   mcmp->PktLifeTimeSelector, mcmp->PktLifeTime, samad.header.mask, req_nodeName, req_portp->index, req_portp->portData->guid,
 				   maip->addrInfo.slid, maip->base.status);
@@ -703,10 +696,10 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 //
 	if (samad.header.mask & STL_MCMEMBER_COMPONENTMASK_PKEY) {
 		vfp = smGetVfName(mcmp->P_Key);
-        if (PKEY_TYPE(mcmp->P_Key) == PKeyMemberLimited) {
+        if (PKEY_TYPE(mcmp->P_Key) != PKEY_TYPE_FULL) {
 			maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 			IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", "Bad (limited member) PKey of 0x%.4X for "
-			       "request from %s Port %d, PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+			       "request from %s Port %d, PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
 				   mcmp->P_Key, req_nodeName, req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
 			goto done;
 		}
@@ -721,7 +714,7 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 	if (STL_MCMRECORD_GETJOINSTATE(mcmp) == 0) {
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 		IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", "Join state of 0 for request from "
-			   "%s Port %d, PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+			   "%s Port %d, PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
 			   req_nodeName, req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
 		goto done;
 	}
@@ -744,7 +737,7 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 			maip->base.status = MAD_STATUS_SA_REQ_INSUFFICIENT_COMPONENTS;
 			IB_LOG_ERROR_FMT_VF( vfp, __func__,
 				"Component mask of "FMT_U64" does not have bits required ("FMT_U64") to CREATE a new group "
-				"in request from %s Port %d, PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+				"in request from %s Port %d, PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
 				samad.header.mask, (uint64)(STL_MCMEMBER_COMPONENTMASK_OK_CREATE), req_nodeName, req_portp->index,
 				req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
 			goto done;
@@ -753,7 +746,7 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 		if (!(mcmp->JoinFullMember)) {
 			maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 			IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", "Join state of 0x%.2X not full member "
-				   "for NULL GID CREATE request from %s Port %d, PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+				   "for NULL GID CREATE request from %s Port %d, PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
 				   STL_MCMRECORD_GETJOINSTATE(mcmp), req_nodeName, req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
 			goto done;
 		}
@@ -761,7 +754,7 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 		if (sm_numMcGroups == MAX_MCAST_MGIDS) {
 			maip->base.status = MAD_STATUS_SA_NO_RESOURCES; 
 			IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", "Maximum number groups reached (%d), "
-				   "failing CREATE request from %s Port %d, PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+				   "failing CREATE request from %s Port %d, PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
 				   MAX_MCAST_MGIDS, req_nodeName, req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
 			goto done;
 		}
@@ -769,16 +762,16 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 		if (sm_multicast_gid_assign(scope, mcmp->RID.MGID) != VSTATUS_OK) {
 			maip->base.status = MAD_STATUS_SA_NO_RESOURCES; 
 			IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", "Failed to assign GID "
-				   "for CREATE request from %s Port %d, PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+				   "for CREATE request from %s Port %d, PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
 				   req_nodeName, req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
 			goto done;
 		}
 
-		mcmp->MtuSelector = PR_EQ;
+		mcmp->MtuSelector = IB_SELECTOR_EQ;
 		mcmp->Mtu = mtu;
-		mcmp->RateSelector = PR_EQ;
+		mcmp->RateSelector = IB_SELECTOR_EQ;
 		mcmp->Rate = rate;
-		mcmp->PktLifeTimeSelector = PR_EQ;
+		mcmp->PktLifeTimeSelector = IB_SELECTOR_EQ;
 		mcmp->PktLifeTime = life;
 		mcmp->Q_Key = qKey;
 		mcmp->HopLimit = hopLimit;
@@ -796,7 +789,7 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 		                                       req_portp : NULL, mcmp, &mcGroupVf)) != VSTATUS_OK) {
 			maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 			IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", "MC group create request denied for PortGUID "
-			       FMT_U64" from %s Port %d, PortGUID "FMT_U64", LID 0x%04X, failed VF validation (mgid= "FMT_GID", sl= %d, pkey= 0x%x)",
+			       FMT_U64" from %s Port %d, PortGUID "FMT_U64", LID 0x%08X, failed VF validation (mgid= "FMT_GID", sl= %d, pkey= 0x%x)",
 				   guid, req_nodeName, req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, mGid[0], mGid[1], mcmp->SL, mcmp->P_Key);
 			goto done;
 		}
@@ -805,7 +798,7 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 		                                      mcmp->P_Key, &mLid)) != VSTATUS_OK) {
 			maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
 			IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", "No multicast LIDs available for CREATE request from "
-				   "%s Port %d, PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+				   "%s Port %d, PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
 				   req_nodeName, req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
 			goto done;
 		}
@@ -850,40 +843,38 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 				maip->base.status = MAD_STATUS_SA_REQ_INVALID_GID;
 				IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", 
 				       "Invalid MGID ("FMT_GID") in CREATE/JOIN request from %s Port %d, PortGUID "FMT_U64", "
-				       "LID 0x%.4X, returning status 0x%.4X",
+				       "LID 0x%.8X, returning status 0x%.4X",
 				       mGid[0], mGid[1], req_nodeName, req_portp->index, req_portp->portData->guid,
 			           maip->addrInfo.slid, maip->base.status);
 				goto done;
 			}
 
-			/* MGID does not exist; must be a CREATE request or its an ERROR */
-			if ((samad.header.mask & STL_MCMEMBER_COMPONENTMASK_OK_CREATE) != STL_MCMEMBER_COMPONENTMASK_OK_CREATE) {
+            /* MGID does not exist; must be a CREATE request or its an ERROR */
+            if ((samad.header.mask & STL_MCMEMBER_COMPONENTMASK_OK_CREATE) != STL_MCMEMBER_COMPONENTMASK_OK_CREATE) {
 
-				if ((samad.header.mask & STL_MCMEMBER_COMPONENTMASK_OK_JOIN) == STL_MCMEMBER_COMPONENTMASK_OK_JOIN) {
-					/* no MGID - must be create or ERROR */
-					maip->base.status = MAD_STATUS_SA_REQ_INVALID;
-					IB_LOG_ERROR_FMT_VF(  vfp,"sa_McMemberRecord_Set", 
-						"MGID "FMT_GID" does not exist; Failing JOIN "
-						"request from %s Port %d, PortGUID "FMT_U64", LID 0x%.4X, returning status: Invalid SA Request (0x%.4X) "
-						"May need to pre-create the group in opafm.xml. Only Full-members can CREATE/JOIN when MGID does not exist",
-						mGid[0], mGid[1], req_nodeName, req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
-					goto done;
-				} else {
-					maip->base.status = MAD_STATUS_SA_REQ_INSUFFICIENT_COMPONENTS;
-					IB_LOG_ERROR_FMT_VF(  vfp, __func__,
+                if ((samad.header.mask & STL_MCMEMBER_COMPONENTMASK_OK_JOIN) == STL_MCMEMBER_COMPONENTMASK_OK_JOIN) {
+                    maip->base.status = MAD_STATUS_SA_REQ_INVALID;
+                    IB_LOG_ERROR_FMT_VF(  vfp,"sa_McMemberRecord_Set", 
+                           "MGID "FMT_GID" does not exist; Failing JOIN "
+                           "request from %s Port %d, PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
+                           mGid[0], mGid[1], req_nodeName, req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
+                    goto done;
+                } else {
+                    maip->base.status = MAD_STATUS_SA_REQ_INSUFFICIENT_COMPONENTS;
+                    IB_LOG_ERROR_FMT_VF( vfp, __func__,
 						"Component mask ("FMT_U64") does not have bits required to create ("FMT_U64") a group for new MGID"
-						" of "FMT_GID" for request from %s Port %d, PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+						" of "FMT_GID" for request from %s Port %d, PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
 						samad.header.mask, (uint64)(STL_MCMEMBER_COMPONENTMASK_OK_CREATE), mGid[0], mGid[1], req_nodeName,
 						req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
-					goto done;
-				}
+                    goto done;
+                }
 			}
 
 			if (!(mcmp->JoinFullMember)) {
 				maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 				IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", "Join state of 0x%.2X not full member "
 					   "for NEW MGID of "FMT_GID" for CREATE request from %s Port %d, PortGUID "FMT_U64", "
-					   "LID 0x%.4X, returning status 0x%.4X",
+					   "LID 0x%.8X, returning status 0x%.4X",
 					   STL_MCMRECORD_GETJOINSTATE(mcmp), mGid[0], mGid[1], req_nodeName, req_portp->index, req_portp->portData->guid,
 					   maip->addrInfo.slid, maip->base.status);
 				goto done;
@@ -893,17 +884,17 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 				maip->base.status = MAD_STATUS_SA_NO_RESOURCES; 
 				IB_LOG_ERROR_FMT_VF(  vfp,"sa_McMemberRecord_Set", "Maximum number groups reached (%d) "
 					   "for new MGID of "FMT_GID" for CREATE request from %s Port %d, PortGUID "FMT_U64", "
-					   "LID 0x%.4X, returning status 0x%.4X",
+					   "LID 0x%.8X, returning status 0x%.4X",
 					   MAX_MCAST_MGIDS, mGid[0], mGid[1], req_nodeName, req_portp->index, req_portp->portData->guid,
 					   maip->addrInfo.slid, maip->base.status);
 				goto done;
 			}
 
-			mcmp->MtuSelector = PR_EQ;
+			mcmp->MtuSelector = IB_SELECTOR_EQ;
 			mcmp->Mtu = mtu;
-			mcmp->RateSelector = PR_EQ;
+			mcmp->RateSelector = IB_SELECTOR_EQ;
 			mcmp->Rate = rate;
-			mcmp->PktLifeTimeSelector = PR_EQ;
+			mcmp->PktLifeTimeSelector = IB_SELECTOR_EQ;
 			mcmp->PktLifeTime = life;
 			mcmp->Q_Key = qKey;
 			mcmp->HopLimit = hopLimit;
@@ -921,7 +912,7 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 								mcmp, &mcGroupVf)) != VSTATUS_OK) {
 				maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 				IB_LOG_ERROR_FMT_VF(  vfp,"sa_McMemberRecord_Set", "MC group create request denied for PortGUID "
-			       		FMT_U64" from %s Port %d, PortGUID "FMT_U64", LID 0x%04X, failed VF validation (mgid= "FMT_GID", sl= %d, pkey= 0x%x)",
+			       		FMT_U64" from %s Port %d, PortGUID "FMT_U64", LID 0x%08X, failed VF validation (mgid= "FMT_GID", sl= %d, pkey= 0x%x)",
 				   		portp->portData->guid,
 				   		req_nodeName, req_portp->index, req_portp->portData->guid,
 				   		maip->addrInfo.slid, mGid[0], mGid[1], mcmp->SL, mcmp->P_Key);
@@ -932,7 +923,7 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 			                                      mcmp->Mtu, mcmp->Rate, &mLid)) != VSTATUS_OK) {
 				maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
 				IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", "No multicast LIDs available for CREATE "
-				       "request of group with MGID "FMT_GID" from %s Port %d, PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+				       "request of group with MGID "FMT_GID" from %s Port %d, PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
 					   mGid[0], mGid[1], req_nodeName, req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
 				goto done;
 			}
@@ -962,7 +953,6 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 			mcMember->state = STL_MCMRECORD_GETJOINSTATE(mcmp);
 			mcMember->proxy = (maip->addrInfo.slid == portp->portData->lid) ? 0 : 1;// JSY - check LMC aliasing
 		} else {
-
             /*
              * Valid MGID specified is in group table already
              * see if we can join requester
@@ -972,7 +962,7 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 				maip->base.status = MAD_STATUS_SA_REQ_INSUFFICIENT_COMPONENTS;
 				IB_LOG_ERROR_FMT_VF( vfp, __func__,
 					"Component mask of "FMT_U64" does not have bits required ("FMT_U64") to JOIN group with"
-					" MGID "FMT_GID" in request from %s Port %d, PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+					" MGID "FMT_GID" in request from %s Port %d, PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
 					samad.header.mask, (uint64)(STL_MCMEMBER_COMPONENTMASK_OK_JOIN), mGid[0], mGid[1], req_nodeName,
 					req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
 				goto done;
@@ -982,7 +972,7 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 				maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 				IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", "QKey of 0x%.8X does not match "
 					   "group QKey of 0x%.8X for group "FMT_GID" in request from %s Port %d, "
-					   "PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+					   "PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
 					   mcmp->Q_Key, mcGroup->qKey, mGid[0], mGid[1], req_nodeName, req_portp->index, req_portp->portData->guid,
 					   maip->addrInfo.slid, maip->base.status);
 				goto done;
@@ -992,7 +982,7 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 				maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 				IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", "PKey of 0x%.4X does not match "
 					   "group PKey of 0x%.4X for group "FMT_GID" in request from %s Port %d, "
-					   "PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+					   "PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
 					   mcmp->P_Key, mcGroup->pKey, mGid[0], mGid[1], req_nodeName, req_portp->index, req_portp->portData->guid,
 					   maip->addrInfo.slid, maip->base.status);
 				goto done;
@@ -1002,7 +992,7 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 				maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 				IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", "SL of %d does not match "
 					   "group SL of %d for group "FMT_GID" in request from %s Port %d, "
-					   "PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+					   "PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
 					   mcmp->SL, mcGroup->sl, mGid[0], mGid[1], req_nodeName, req_portp->index, req_portp->portData->guid,
 					   maip->addrInfo.slid, maip->base.status);
 				goto done;
@@ -1014,27 +1004,27 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
                     IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", 
                            "Group MTU of %d greater than requester port mtu of %d "
                            "for group "FMT_GID" in request from %s Port %d, "
-                           "PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+                           "PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
                            mcGroup->mtu, portp->portData->maxVlMtu, mGid[0], mGid[1],
                            req_nodeName, req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
                     goto done;
                 }
-			} else if (mcGroup->mtu < mtu && mcmp->MtuSelector != PR_LT) { // They didn't choose less than so can't drop down
+			} else if (mcGroup->mtu < mtu && mcmp->MtuSelector != IB_SELECTOR_LT) { // They didn't choose less than so can't drop down
 				maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 				IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", "Group MTU of %d is too low "
 					   "for requested MTU of %d, MTU selector of %d, and port MTU of %d "
 					   "for group "FMT_GID" in request from %s Port %d, "
-					   "PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+					   "PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
 					   mcGroup->mtu, mcmp->Mtu, mcmp->MtuSelector, portp->portData->maxVlMtu, mGid[0], mGid[1],
 					   req_nodeName, req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
 				goto done;
-			} else if (mcGroup->mtu > mtu && mcmp->MtuSelector != PR_GT &&
-					   mcmp->MtuSelector != PR_MAX) { // They didn't choose greater than so can't rise up
+			} else if (mcGroup->mtu > mtu && mcmp->MtuSelector != IB_SELECTOR_GT &&
+					   mcmp->MtuSelector != IB_SELECTOR_MAX) { // They didn't choose greater than so can't rise up
 				maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 				IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", "Group MTU of %d is too high "
 					   "for requested MTU of %d, MTU selector of %d, and port MTU of %d "
 					   "for group "FMT_GID" in request from %s Port %d, "
-					   "PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+					   "PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
 					   mcGroup->mtu, mcmp->Mtu, mcmp->MtuSelector, portp->portData->maxVlMtu, mGid[0], mGid[1], req_nodeName,
 					   req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
 				goto done;
@@ -1043,7 +1033,7 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 				IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", "Group MTU of 0x%.2X is too high "
 					   "for requested MTU of %d, MTU selector of %d, and port MTU of %d "
 					   "for group "FMT_GID" in request from %s Port %d, "
-					   "PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+					   "PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
 					   mcGroup->mtu, mcmp->Mtu, mcmp->MtuSelector, portp->portData->maxVlMtu, mGid[0], mGid[1], req_nodeName,
 					   req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
 				goto done;
@@ -1056,31 +1046,31 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
                     maip->base.status = MAD_STATUS_SA_REQ_INVALID;
                     IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", "Group Rate of %s greater than "
                            "requester port rate of %s for group "FMT_GID" in request from %s Port %d, "
-                           "PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+                           "PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
                            StlStaticRateToText(mcGroup->rate),
 						   StlStaticRateToText(activeRate), mGid[0], mGid[1],
                            req_nodeName, req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
                     goto done;
                 }
-			} else if (linkrate_lt(mcGroup->rate, rate) && mcmp->RateSelector != PR_LT) { // They didn't choose less than so can't drop down
+			} else if (linkrate_lt(mcGroup->rate, rate) && mcmp->RateSelector != IB_SELECTOR_LT) { // They didn't choose less than so can't drop down
 				maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 				IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", "Group Rate of %s is too low "
 					   "for requested rate of %s, rate selector of %d, and port rate of %d "
 					   "for group "FMT_GID" in request from %s Port %d, "
-					   "PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+					   "PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
 					   StlStaticRateToText(mcGroup->rate),
 					   StlStaticRateToText(mcmp->Rate), mcmp->RateSelector,
 					   activeRate, mGid[0], mGid[1],
 					   req_nodeName, req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, maip->base.status);
 				goto done;
 
-			} else if (linkrate_gt(mcGroup->rate, rate) && mcmp->RateSelector != PR_GT &&
-					   mcmp->RateSelector != PR_MAX) { // They didn't choose greater than so can't rise up
+			} else if (linkrate_gt(mcGroup->rate, rate) && mcmp->RateSelector != IB_SELECTOR_GT &&
+					   mcmp->RateSelector != IB_SELECTOR_MAX) { // They didn't choose greater than so can't rise up
 				maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 				IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", "Group Rate of %s is too high "
 					   "for requested rate of %s, rate selector of %d, and port rate of %d "
 					   "for group "FMT_GID" in request from %s Port %d, "
-					   "PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+					   "PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
 					   StlStaticRateToText(mcGroup->rate),
 					   StlStaticRateToText(mcmp->Rate),
 					   mcmp->RateSelector, activeRate, mGid[0], mGid[1],
@@ -1091,7 +1081,7 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 				IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", "Group Rate of %s is too high "
 					   "for requested rate of %s, rate selector of %d, and port rate of %d "
 					   "for group "FMT_GID" for request from %s Port %d, "
-					   "PortGUID "FMT_U64", LID 0x%.4X, returning status 0x%.4X",
+					   "PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
 					   StlStaticRateToText(mcGroup->rate),
 					   StlStaticRateToText(mcmp->Rate),
 					   mcmp->RateSelector, activeRate, mGid[0], mGid[1],
@@ -1103,7 +1093,7 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 			   bitset_test_intersection(&mcGroup->vfMembers, &req_portp->portData->vfMember) == 0) {
 				maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 				IB_LOG_ERROR_FMT_VF( vfp, __func__, "Failing group join request for PortGUID "FMT_U64 
-				       " from %s Port %d, PortGUID "FMT_U64", LID 0x%04X because it does not share a virtual fabric with MGid "FMT_GID,
+				       " from %s Port %d, PortGUID "FMT_U64", LID 0x%08X because it does not share a virtual fabric with MGid "FMT_GID,
 					   portp->portData->guid, 
 					   req_nodeName, req_portp->index, req_portp->portData->guid, 
 					   maip->addrInfo.slid, mGid[0], mGid[1]);
@@ -1114,7 +1104,7 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 			   bitset_test_intersection(&mcGroup->vfMembers, &req_portp->portData->fullPKeyMember) == 0) {
 				maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 				IB_LOG_ERROR_FMT_VF( vfp, __func__, "Failing group join request for PortGUID "FMT_U64 
-				       " from %s Port %d, PortGUID "FMT_U64", LID 0x%04X because it is not a full member of virtual fabric with MGid "FMT_GID,
+				       " from %s Port %d, PortGUID "FMT_U64", LID 0x%08X because it is not a full member of virtual fabric with MGid "FMT_GID,
 					   portp->portData->guid, 
 					   req_nodeName, req_portp->index, req_portp->portData->guid, 
 					   maip->addrInfo.slid, mGid[0], mGid[1]);
@@ -1122,11 +1112,11 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
 			}
 
 			mcmp->MLID = mcGroup->mLid;
-			mcmp->MtuSelector = PR_EQ;
+			mcmp->MtuSelector = IB_SELECTOR_EQ;
 			mcmp->Mtu = mcGroup->mtu;
-			mcmp->RateSelector = PR_EQ;
+			mcmp->RateSelector = IB_SELECTOR_EQ;
 			mcmp->Rate = mcGroup->rate;
-			mcmp->PktLifeTimeSelector = PR_EQ;
+			mcmp->PktLifeTimeSelector = IB_SELECTOR_EQ;
 			mcmp->PktLifeTime = mcGroup->life;
 			mcmp->P_Key = mcGroup->pKey;
 			mcmp->Q_Key = mcGroup->qKey;
@@ -1141,10 +1131,10 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
                 /* new member: sync the group change with standby SMs */
                 (void)sm_dbsync_syncGroup(DBSYNC_TYPE_UPDATE, &mcmp->RID.MGID);
 			} else {
-				mcmp->JoinFullMember |= mcMember->state & MCMEMBER_JOIN_FULL_MEMBER;
-				mcmp->JoinNonMember |= mcMember->state & MCMEMBER_JOIN_NON_MEMBER;
-				mcmp->JoinSendOnlyMember |= mcMember->state & MCMEMBER_JOIN_SENDONLY_MEMBER;
-				if (!(mcMember->state & MCMEMBER_JOIN_FULL_MEMBER)) { /* If we were not a full member */
+				mcmp->JoinFullMember |= mcMember->state & MCMEMBER_STATE_FULL_MEMBER;
+				mcmp->JoinNonMember |= mcMember->state & MCMEMBER_STATE_NON_MEMBER;
+				mcmp->JoinSendOnlyMember |= mcMember->state & MCMEMBER_STATE_SENDONLY_MEMBER;
+				if (!(mcMember->state & MCMEMBER_STATE_FULL_MEMBER)) { /* If we were not a full member */
 					if (mcmp->JoinFullMember) {	/* but are a full member now */
 						mcGroup->members_full++;
 					}
@@ -1154,7 +1144,8 @@ sa_McMemberRecord_Set(Mai_t *maip, uint32_t *records) {
                     (void)sm_dbsync_syncGroup(DBSYNC_TYPE_UPDATE, &mcmp->RID.MGID);
                 }
 			}
-            /* don't trigger sweep if joinstate has no change */
+			/* don't change state if trigger already set, but
+			 * don't trigger sweep if joinstate has no change */
             newJoinState = (mcMember->state == STL_MCMRECORD_GETJOINSTATE(mcmp)) ? 0 : 1;
 			mcMember->record = *mcmp; 
 			mcMember->portGuid = guid;
@@ -1177,8 +1168,11 @@ done:
 		 * blocks the SA. Instead, we will tigger a sweep which will pick up the group changes.
 		 */
 	
-		/* Trigger sm_top to sweep and reprogram the switch MFTs */
-		sa_mft_reprog = newJoinState;
+		/* If not already triggered,
+		 * trigger sm_top to sweep and reprogram the switch MFTs */
+		if (!sa_mft_reprog) {
+			sa_mft_reprog = newJoinState; 
+		}
 	
 		/* Note the results */
 		*records = 1;
@@ -1202,11 +1196,32 @@ done:
 			status = sm_sa_forward_trap(&notice);
 		}
 	} else if (status == VSTATUS_OK) {
-		// logGroups();
 		status = VSTATUS_BAD;
 	}
-	vs_rwunlock(&old_topology_lock);
-	vs_unlock(&sm_McGroups_lock);
+
+#if DUMP_MCGROUPS
+	if (saDebugPerf) {
+		McGroup_t	*dGroup;
+
+		for_all_multicast_groups(dGroup) {
+			IB_LOG_INFINI_INFO_FMT( "McGroup mgid",""FMT_GID" (%04x)",
+				dGroup->mGid.Type.Global.SubnetPrefix,
+				dGroup->mGid.Type.Global.InterfaceID,
+				dGroup->mLid); 
+
+			IB_LOG_INFINI_INFO_FMT( "McGroup:","\tqKey = 0x%.8X  pKey = 0x%.4X  mtu = %d  rate = %d  life = %d  sl = %d",
+				(int)dGroup->qKey, dGroup->pKey, dGroup->mtu, dGroup->rate,
+				dGroup->life, dGroup->sl);
+
+			bitset_info_log(&dGroup->vfMembers, "McGroup vfMembers");
+		}
+	}
+#endif
+
+	if (got_old_topology_lock) {
+		vs_rwunlock(&old_topology_lock); 
+		vs_unlock(&sm_McGroups_lock);
+	}
 
 	bitset_free(&mcGroupVf);
 
@@ -1214,8 +1229,20 @@ done:
 	return(status);
 }
 
+//
+// Deletes a node from a Multicast Group, deleting the group if necessary.
+// Note:
+// 1. The primary use of this function is to process incoming MADs but it is
+//    also used internally within the SM.
+// 2. The main code path works on the "old" topology and the global list of 
+//    McGroups. If a different topology pointer is passed to this function as
+//    an argument, this function will still alter the global McGroups list. In
+//    addition, when a topology pointer is passed in, this function assumes the
+//    caller already holds any required locks.
+//
 Status_t
-sa_McMemberRecord_Delete(Mai_t *maip, uint32_t *records) {
+sa_McMemberRecord_Delete(Topology_t *topop, Mai_t *maip, uint32_t *records)
+{
 	Guid_t			guid;
 	Guid_t			prefix;
 	Guid_t			mcastGid[2];
@@ -1236,6 +1263,8 @@ sa_McMemberRecord_Delete(Mai_t *maip, uint32_t *records) {
 	Node_t			*nodep = 0;
 	uint8_t         joinstate=0;
 	char			*vfp=NULL;
+	boolean			got_old_topology_lock = FALSE;
+	boolean			got_mcgroups_lock = FALSE;
 
 	IB_ENTER("sa_McMemberRecord_Delete", maip, *records, 0, 0);
 
@@ -1247,15 +1276,17 @@ sa_McMemberRecord_Delete(Mai_t *maip, uint32_t *records) {
 	notice.Stats.s.Toggle	= 0;
 	notice.Stats.s.Count	= 0;
 
-	(void)vs_wrlock(&old_topology_lock);
+	if (!topop) {
+		topop = &old_topology;
+		(void)vs_wrlock(&old_topology_lock);
+		got_old_topology_lock = TRUE;
+	}
 
-	if (old_topology.node_head == NULL ||
-        (!sm_valid_port((mcmPortp = sm_get_port(old_topology.node_head,sm_config.port))))) {
+	if (topop->node_head == NULL ||
+        (!sm_valid_port((mcmPortp = sm_get_port(topop->node_head,sm_config.port))))) {
 		maip->base.status = MAD_STATUS_BUSY;
 		status = VSTATUS_BAD;
-		vs_rwunlock(&old_topology_lock);
-		IB_EXIT("sa_McMemberRecord_Delete", status);
-		return(status);		
+		goto done;
 	}
 
 	memcpy(notice.IssuerGID.Raw, mcmPortp->portData->gid, sizeof(notice.IssuerGID.Raw));
@@ -1289,62 +1320,51 @@ sa_McMemberRecord_Delete(Mai_t *maip, uint32_t *records) {
 
 	guid = 0ull;
 	prefix = 0ull;
-/*
-	for (i = 0; i < 8; i++) {
-		guid = (guid << 8) | mcmp->RID.PortGID.Raw[i+8];
-		prefix = (prefix << 8) | mcmp->RID.PortGID.Raw[i];
-	}
-*/
 
 	prefix = mcmp->RID.PortGID.Type.Global.SubnetPrefix;
 	guid = mcmp->RID.PortGID.Type.Global.InterfaceID;
 
 	// Get requestor info
-	if ((senderPort = sm_find_active_port_lid(&old_topology, maip->addrInfo.slid))) {
+	if ((senderPort = sm_find_active_port_lid(topop, maip->addrInfo.slid))) {
 		senderGuid = senderPort->portData->guid;
-		if ((senderNode = sm_find_port_node(&old_topology, senderPort))) {
+		if ((senderNode = sm_find_port_node(topop, senderPort))) {
 			senderName = sm_nodeDescString(senderNode);
 		}
 	} else {
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
-		IB_LOG_INFINI_INFO_FMT( __func__,
-			"Can not find requester's LID (0x%.4X) or not active in current topology, failing request for port GID "FMT_GID,
+		IB_LOG_INFINI_INFO_FMT(__func__,
+			"Can not find requester's LID (0x%.8X) or not active in current topology, failing request for port GID "FMT_GID,
 			maip->addrInfo.slid, prefix, guid);
-		(void)vs_rwunlock(&old_topology_lock);
-		IB_EXIT("sa_McMemberRecord_Delete", VSTATUS_BAD);
-		return(VSTATUS_BAD);
+		goto done;
 	}
 
 	if (guid == 0x0ull) {
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID_GID;
 		status = VSTATUS_BAD;
-		IB_LOG_ERROR_FMT( "sa_McMemberRecord_Delete", "PortGUID of 0 in request from %s Port %d, PortGUID "FMT_U64", LID 0x%.4X",
+		IB_LOG_ERROR_FMT( "sa_McMemberRecord_Delete", "PortGUID of 0 in request from %s Port %d, PortGUID "FMT_U64", LID 0x%.8X",
 				   senderName, senderPort->index, senderGuid,
 				   maip->addrInfo.slid);
-		(void)vs_rwunlock(&old_topology_lock);
-		IB_EXIT("sa_McMemberRecord_Delete", VSTATUS_BAD);
-		return(VSTATUS_BAD);
+		goto done;
 	}
 
 	if (prefix != sm_config.subnet_prefix) {
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID_GID;
-		IB_LOG_ERROR_FMT( "sa_McMemberRecord_Delete", "Bad port GID prefix ("FMT_U64") in request from %s Port %d, PortGUID "FMT_U64", LID 0x%.4X",
+		status = VSTATUS_BAD;
+		IB_LOG_ERROR_FMT( "sa_McMemberRecord_Delete", "Bad port GID prefix ("FMT_U64") in request from %s Port %d, PortGUID "FMT_U64", LID 0x%.8X",
 				   prefix, senderName, senderPort->index, senderGuid,
 				   maip->addrInfo.slid);
-		(void)vs_rwunlock(&old_topology_lock);
-		IB_EXIT("sa_McMemberRecord_Delete", VSTATUS_BAD);
-		return(VSTATUS_BAD);
+		goto done;
 	}
 
-	if ((portp = sm_find_active_port_guid(&old_topology, guid)) == NULL) {
+	if ((portp = sm_find_active_port_guid(topop, guid)) == NULL) {
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
-		IB_LOG_INFINI_INFO_FMT( "sa_McMemberRecord_Delete", "Port not active in current topology GUID "FMT_U64" in request from %s Port %d, PortGUID "FMT_U64", LID 0x%.4X",
+		IB_LOG_INFINI_INFO_FMT( "sa_McMemberRecord_Delete", "Port not active in current topology GUID "FMT_U64" in request from %s Port %d, PortGUID "FMT_U64", LID 0x%.8X",
 				   guid, senderName, senderPort->index, senderGuid,
 				   maip->addrInfo.slid);
-		(void)vs_rwunlock(&old_topology_lock);
-		IB_EXIT("sa_McMemberRecord_Delete", VSTATUS_BAD);
-		return(VSTATUS_BAD);
+		status = VSTATUS_BAD;
+		goto done;
 	}
+
 	if ((nodep = sm_find_port_node(&old_topology, portp))!=0) {
 		nodeName = sm_nodeDescString(nodep); 
 	}
@@ -1356,33 +1376,32 @@ sa_McMemberRecord_Delete(Mai_t *maip, uint32_t *records) {
 //
 //	Find the mcMember.
 //
-    (void)vs_lock(&sm_McGroups_lock);
+	if (got_old_topology_lock) {
+    	(void)vs_lock(&sm_McGroups_lock);
+		got_mcgroups_lock = TRUE;
+	}
 	mcastGid[0] = mcmp->RID.MGID.Type.Global.SubnetPrefix;
 	mcastGid[1] = mcmp->RID.MGID.Type.Global.InterfaceID;
 	if ((mcGroup = sm_find_multicast_gid(mcmp->RID.MGID)) == NULL) {
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID_GID;
 		IB_LOG_VERBOSE_FMT_VF( vfp, "sa_McMemberRecord_Delete",
 			   "Cound not find multicast GID of "FMT_GID" in list of active multicast GIDs,"
-			   " for request from %s Port %d, PortGUID "FMT_U64", LID 0x%.4X",
+			   " for request from %s Port %d, PortGUID "FMT_U64", LID 0x%.8X",
 			   mcastGid[0], mcastGid[1], senderName, senderPort->index, senderGuid,
 			   maip->addrInfo.slid);
-		(void)vs_rwunlock(&old_topology_lock);
-        (void)vs_unlock(&sm_McGroups_lock);
-		IB_EXIT("sa_McMemberRecord_Delete", VSTATUS_BAD);
-		return(VSTATUS_BAD);
+		status = VSTATUS_BAD;
+		goto done;
 	}
 	if ((mcMember = sm_find_multicast_member(mcGroup, mcmp->RID.PortGID)) == NULL) {
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID_GID;
 		IB_LOG_VERBOSE_FMT_VF( vfp, "sa_McMemberRecord_Delete",
 			   "Cound not find multicast member with port GID of "FMT_GID" in list "
 			   "for multicast group with GID "FMT_GID
-			   " for request from %s Port %d, PortGUID "FMT_U64", LID 0x%.4X",
+			   " for request from %s Port %d, PortGUID "FMT_U64", LID 0x%.8X",
 			   prefix, guid, mcastGid[0], mcastGid[1], senderName, senderPort->index, senderGuid,
 			   maip->addrInfo.slid);
-		(void)vs_rwunlock(&old_topology_lock);
-        (void)vs_unlock(&sm_McGroups_lock);
-		IB_EXIT("sa_McMemberRecord_Delete", VSTATUS_BAD);
-		return(VSTATUS_BAD);
+		status = VSTATUS_BAD;
+		goto done;
 	}
 
 //
@@ -1397,10 +1416,8 @@ sa_McMemberRecord_Delete(Mai_t *maip, uint32_t *records) {
 			   "with old join state of 0x%.2X for request for %s Port %d, PortGUID "FMT_U64", multicast group "
 			   "GID "FMT_GID,
 			   STL_MCMRECORD_GETJOINSTATE(mcmp), mcMember->state, nodeName, portp->index, guid, mcastGid[0], mcastGid[1]);
-		(void)vs_rwunlock(&old_topology_lock);
-        (void)vs_unlock(&sm_McGroups_lock);
-		IB_EXIT("sa_McMemberRecord_Delete", VSTATUS_BAD);
-		return(VSTATUS_BAD);
+		status = VSTATUS_BAD;
+		goto done;
 	}
 
 //
@@ -1408,18 +1425,14 @@ sa_McMemberRecord_Delete(Mai_t *maip, uint32_t *records) {
 //
 	if (mcMember->proxy == 0) {
 		if (portp->portData->lid != maip->addrInfo.slid) {
-
 			maip->base.status = MAD_STATUS_SA_REQ_INVALID;
-
-			(void)vs_rwunlock(&old_topology_lock);
-            (void)vs_unlock(&sm_McGroups_lock);
 			IB_LOG_ERROR_FMT_VF( vfp, __func__,
-				"Lid 0x%.4X, %s Port %d, PortGUID "FMT_U64" can not delete record set by "
-				"LID 0x%.4X, %s Port %d, PortGUID "FMT_U64", multicast group GID "FMT_GID,
+				"Lid 0x%.8X, %s Port %d, PortGUID "FMT_U64" can not delete record set by "
+				"LID 0x%.8X, %s Port %d, PortGUID "FMT_U64", multicast group GID "FMT_GID,
 				maip->addrInfo.slid, senderName, senderPort->index, senderGuid,
 				portp->portData->lid, nodeName, portp->index, guid, mcastGid[0], mcastGid[1]);
-			IB_EXIT("sa_McMemberRecord_Delete", VSTATUS_BAD);
-			return(VSTATUS_BAD);
+			status = VSTATUS_BAD;
+			goto done;
 		}
 	} else {
 		if ((samad.header.mask & STL_MCMEMBER_COMPONENTMASK_PKEY) && mcmp->P_Key != mcMember->record.P_Key) {
@@ -1427,18 +1440,16 @@ sa_McMemberRecord_Delete(Mai_t *maip, uint32_t *records) {
 			IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Delete", "Sender gave bad P_Key of 0x%.4X while "
 				   "record had P_Key of 0x%.4X on request for %s, GUID "FMT_U64", multicast group "
 				   "GID "FMT_GID
-				   " from %s Port %d, PortGUID "FMT_U64" LID 0x%.4X",
+				   " from %s Port %d, PortGUID "FMT_U64" LID 0x%.8X",
 				   mcmp->P_Key, mcMember->record.P_Key, nodeName, guid, mcastGid[0], mcastGid[1],
 				   senderName, senderPort->index, senderGuid, maip->addrInfo.slid);
-			(void)vs_rwunlock(&old_topology_lock);
-			(void)vs_unlock(&sm_McGroups_lock);
-			IB_EXIT("sa_McMemberRecord_Delete", VSTATUS_BAD);
-			return(VSTATUS_BAD);
+			status = VSTATUS_BAD;
+			goto done;
 		}
 
 	}
 
-	VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
+	VirtualFabrics_t *VirtualFabrics = topop->vfs_ptr;
 
 	if (  VirtualFabrics != NULL && VirtualFabrics->securityEnabled && senderPort!=NULL
 	   && (bitset_test_intersection(&mcGroup->vfMembers, &senderPort->portData->vfMember) == 0) 
@@ -1446,19 +1457,17 @@ sa_McMemberRecord_Delete(Mai_t *maip, uint32_t *records) {
 
 		IB_LOG_ERROR_FMT_VF( vfp, __func__,
 			"Sender gave bad P_Key of 0x%.4X while record had P_Key of 0x%.4X on request for %s, GUID "FMT_U64
-			", multicast group GID "FMT_GID" from %s Port %d, PortGUID "FMT_U64" LID 0x%.4X",
+			", multicast group GID "FMT_GID" from %s Port %d, PortGUID "FMT_U64" LID 0x%.8X",
 			mcmp->P_Key, mcMember->record.P_Key, nodeName, guid, mcastGid[0], mcastGid[1],
 			senderName, senderPort->index, senderGuid, maip->addrInfo.slid);
-		(void)vs_rwunlock(&old_topology_lock);
-		(void)vs_unlock(&sm_McGroups_lock);
-		IB_EXIT(__func__, VSTATUS_BAD);
-		return(VSTATUS_BAD);
+		status = VSTATUS_BAD;
+		goto done;
 	}
 
 	joinstate = mcMember->state & ~STL_MCMRECORD_GETJOINSTATE(mcmp);
 	if (joinstate == 0) {
 		//	Delete the multicast member and decrement full member count if needed
-		if (mcMember->state & MCMEMBER_JOIN_FULL_MEMBER) {
+		if (mcMember->state & MCMEMBER_STATE_FULL_MEMBER) {
 			IB_LOG_VERBOSE_FMT_VF( vfp, "sa_McMemberRecord_Delete", "full mcMember "FMT_U64" left multicast group "
 				   "GID "FMT_GID,
 				   mcMember->portGuid, mcastGid[0], mcastGid[1]);
@@ -1471,7 +1480,7 @@ sa_McMemberRecord_Delete(Mai_t *maip, uint32_t *records) {
 		McMember_Delete(mcGroup, mcMember);
 	} else {
         /* decrement the number of full members in group if member is removing full membership */
-		if (mcMember->state & MCMEMBER_JOIN_FULL_MEMBER  && 
+		if (mcMember->state & MCMEMBER_STATE_FULL_MEMBER  && 
             mcmp->JoinFullMember) {
 			IB_LOG_VERBOSE_FMT_VF( vfp, "sa_McMemberRecord_Delete", 
                    "full mcMember "FMT_U64" downgrading membership in multicast group "
@@ -1510,11 +1519,6 @@ sa_McMemberRecord_Delete(Mai_t *maip, uint32_t *records) {
 //
 
 
-//
-//  MUST release topology lock before calling setup multicast group
-//
-	vs_rwunlock(&old_topology_lock);
-
 	/* Previously we would try to setup the MFT inline with a call to sm_setup_multicast_group. 
 	 * This call could take a long time as it talks to each switch chip in the fabric and
 	 * blocks the SA. Instead, we will tigger a sweep which will pick up the group changes.
@@ -1540,7 +1544,14 @@ sa_McMemberRecord_Delete(Mai_t *maip, uint32_t *records) {
         /* sync the group change with standby SMs */
         (void)sm_dbsync_syncGroup(DBSYNC_TYPE_UPDATE, &mcmp->RID.MGID);
     }
-    (void)vs_unlock(&sm_McGroups_lock);
+
+done:
+	if (got_mcgroups_lock) {
+    	(void)vs_unlock(&sm_McGroups_lock);
+	}
+	if (got_old_topology_lock) {
+    	(void)vs_rwunlock(&old_topology_lock);
+	}
 
 	IB_EXIT("sa_McMemberRecord_Delete", status);
 	return(status);
@@ -1613,7 +1624,7 @@ sa_McMemberRecord_GetTable(Mai_t *maip, uint32_t *records) {
 	// Get requestor info
 	if ((senderPort = sm_find_active_port_lid(&old_topology, maip->addrInfo.slid)) == NULL) {
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
-		IB_LOG_WARN_FMT( __func__, "Received McMember GetTable request from unknown lid 0x%04X",
+		IB_LOG_WARN_FMT( __func__, "Received McMember GetTable request from unknown lid 0x%08X",
 		       maip->addrInfo.slid);
 		vs_rwunlock(&old_topology_lock);
 		return VSTATUS_OK;
@@ -1678,11 +1689,12 @@ sa_McMemberRecord_GetTable(Mai_t *maip, uint32_t *records) {
 	}
 
 done:
+	(void)vs_unlock(&sm_McGroups_lock);
+	(void)vs_rwunlock(&old_topology_lock);
+
 	if (saDebugPerf) {
         IB_LOG_INFINI_INFO("sa_McMemberRecord_GetTable: Number of member records to return is", *records);
     }
-    (void)vs_unlock(&sm_McGroups_lock);
-    (void)vs_rwunlock(&old_topology_lock);
 
 	IB_EXIT("sa_McMemberRecord_GetTable", status);
 	return(status);
@@ -1691,7 +1703,8 @@ done:
 
 #define MC_REMOVE_MTU_RATE_LIFE_MASK    0x0000000000000F30ull 
 Status_t
-sa_McMemberRecord_IBGetTable(Mai_t *maip, uint32_t *records) {
+sa_McMemberRecord_IBGetTable(Mai_t *maip, uint32_t *records)
+{
 	uint8_t			*data;
 	uint32_t		bytes;
 	STL_SA_MAD		samad;
@@ -1704,7 +1717,7 @@ sa_McMemberRecord_IBGetTable(Mai_t *maip, uint32_t *records) {
 	uint64_t		mask;
 	Port_t 			*senderPort;
 
-	IB_ENTER("sa_McMemberRecord_GetTable", maip, *records, 0, 0);
+	IB_ENTER(__func__, maip, *records, 0, 0);
 
 	mcgp = NULL;		// JSY - compiler is whining during development
 	mcmp = NULL;		// JSY - compiler is whining during development
@@ -1724,7 +1737,7 @@ sa_McMemberRecord_IBGetTable(Mai_t *maip, uint32_t *records) {
 //
 	status = sa_create_template_mask(maip->base.aid, mask);
 	if (status != VSTATUS_OK) {
-		IB_EXIT("sa_McMemberRecord_GetTable", VSTATUS_OK);
+		IB_EXIT(__func__, VSTATUS_OK);
 		return(VSTATUS_OK);
 	}
 //
@@ -1737,7 +1750,7 @@ sa_McMemberRecord_IBGetTable(Mai_t *maip, uint32_t *records) {
 	// Get requestor info
 	if ((senderPort = sm_find_active_port_lid(&old_topology, maip->addrInfo.slid)) == NULL) {
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
-		IB_LOG_WARN_FMT( __func__, "Received McMember GetTable request from unknown lid 0x%04X",
+		IB_LOG_WARN_FMT( __func__, "Received McMember GetTable request from unknown lid 0x%08X",
 		       maip->addrInfo.slid);
 		vs_rwunlock(&old_topology_lock);
 		return VSTATUS_OK;
@@ -1750,11 +1763,13 @@ sa_McMemberRecord_IBGetTable(Mai_t *maip, uint32_t *records) {
 	   join state, and proxy join.
 	 */
 
-	for_all_multicast_groups(mcgp)
-	{
+	for_all_multicast_groups(mcgp) {
+		if (mcgp->sl > 15)
+			continue;
+
 		 /* If they are looking for a specific MGID, check that first,
 		  * no need to check every member's MGID */
-		if (samad.header.mask & MC_COMPONENTMASK_MGID &&
+		if (samad.header.mask & IB_MCMEMBER_RECORD_COMP_MGID &&
 			memcmp(&(mcgp->mGid), &mcMemQuery.RID.MGID, sizeof(mcgp->mGid))) {
 			continue;
 		}
@@ -1771,7 +1786,7 @@ sa_McMemberRecord_IBGetTable(Mai_t *maip, uint32_t *records) {
 		for_all_multicast_members(mcgp, mcmp) {
 			if ((status = sa_check_len(data, sizeof(IB_MCMEMBER_RECORD), bytes)) != VSTATUS_OK) {
 				maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
-				IB_LOG_ERROR_FMT( "sa_McMemberRecord_GetTable",
+				IB_LOG_ERROR_FMT( __func__,
 					   "Reached size limit at %d records", *records);
 				goto done;
 			}
@@ -1779,7 +1794,7 @@ sa_McMemberRecord_IBGetTable(Mai_t *maip, uint32_t *records) {
 			converted.RID.MGID = mcmp->record.RID.MGID;
 			converted.RID.PortGID = mcmp->record.RID.PortGID;
 			converted.Q_Key = mcmp->record.Q_Key;
-			converted.MLID = mcmp->record.MLID;
+			converted.MLID = MCAST32_TO_MCAST16(mcmp->record.MLID);
 			converted.MtuSelector = mcmp->record.MtuSelector;
 			converted.Mtu = mcmp->record.Mtu;
 			converted.TClass = mcmp->record.TClass;
@@ -1816,7 +1831,7 @@ sa_McMemberRecord_IBGetTable(Mai_t *maip, uint32_t *records) {
 					BSWAPCOPY_IB_MCMEMBER_RECORD(&mcMemTemp, (IB_MCMEMBER_RECORD*)data);
 					data += sizeof(IB_MCMEMBER_RECORD) + bytes;
 					break;
-				} else if ((samad.header.mask & MC_COMPONENTMASK_MGID) == 0)
+				} else if ((samad.header.mask & IB_MCMEMBER_RECORD_COMP_MGID) == 0)
 				{
 					/* Per IBTA 15-0.2.5, only return one record per
 					 * multicast group if the MGID is is wildcarded */
@@ -1833,7 +1848,7 @@ done:
     (void)vs_unlock(&sm_McGroups_lock);
     (void)vs_rwunlock(&old_topology_lock);
 
-	IB_EXIT("sa_McMemberRecord_GetTable", status);
+	IB_EXIT(__func__, status);
 	return(status);
 }
 
@@ -1908,27 +1923,12 @@ showStlGroups(int termWidth, uint8_t showNodeName) {
     return;
 }
 
-void logGroups(){
-	McGroup_t	*dGroup;
-
-	for_all_multicast_groups(dGroup) {
-        IB_LOG_INFINI_INFO_FMT( "McGroup mgid",""FMT_GID" (%04x)",
-			dGroup->mGid.Type.Global.SubnetPrefix, dGroup->mGid.Type.Global.InterfaceID, dGroup->mLid); 
-		
-        IB_LOG_INFINI_INFO_FMT( "McGroup:","\tqKey = 0x%.8X  pKey = 0x%.4X  mtu = %d  rate = %d  life = %d  sl = %d",
-			   (int)dGroup->qKey, dGroup->pKey, dGroup->mtu, dGroup->rate, dGroup->life, dGroup->sl);
-
-		bitset_info_log(&dGroup->vfMembers, "McGroup vfMembers");
-	}
-	return;
-}
-
 Status_t createBroadcastGroup(uint16_t pkey, uint8_t mtu, uint8_t rate, uint8_t sl, uint32_t qkey, uint32_t fl, uint8_t tc) {
 	Status_t			status;
 	McGroup_t			*mcGroup	= NULL;
 	McMember_t			*mcMember	= NULL;
 	STL_MCMEMBER_RECORD		*mcmp;
-	uint32_t  			mLid;
+	STL_LID  			mLid;
 	IB_GID	  			mGid;
 	//uint16_t            netPKey;
 
@@ -1945,7 +1945,7 @@ Status_t createBroadcastGroup(uint16_t pkey, uint8_t mtu, uint8_t rate, uint8_t 
 	}
 
 	if (!rate) {
-		rate = IB_STATIC_RATE_100G;
+		rate = IB_STATIC_RATE_200G;
 	}
 	
 	if ((status = vs_lock(&sm_McGroups_lock)) != VSTATUS_OK) {
@@ -1984,7 +1984,7 @@ Status_t createBroadcastGroup(uint16_t pkey, uint8_t mtu, uint8_t rate, uint8_t 
 
 	mcMember->slid     = 0;
 	mcMember->proxy    = 1;
-	mcMember->state    = MCMEMBER_JOIN_FULL_MEMBER;
+	mcMember->state    = MCMEMBER_STATE_FULL_MEMBER;
 	mcMember->nodeGuid = 0;
 	mcMember->portGuid = SA_FAKE_MULTICAST_GROUP_MEMBER;
 
@@ -1993,20 +1993,20 @@ Status_t createBroadcastGroup(uint16_t pkey, uint8_t mtu, uint8_t rate, uint8_t 
 	memset((void*)mcmp->RID.PortGID.Raw, 0, sizeof(mcmp->RID.PortGID));
 	mcmp->Q_Key			= mcGroup->qKey;
 	mcmp->MLID			= mcGroup->mLid;
-	mcmp->MtuSelector	= PR_EQ;
+	mcmp->MtuSelector	= IB_SELECTOR_EQ;
 	mcmp->Mtu		= mcGroup->mtu;
 	mcmp->TClass		= mcGroup->tClass;
 	mcmp->P_Key			= mcGroup->pKey;
-	mcmp->RateSelector	= PR_EQ;
+	mcmp->RateSelector	= IB_SELECTOR_EQ;
 	mcmp->Rate		= mcGroup->rate;
-	mcmp->PktLifeTimeSelector	= PR_EQ;
+	mcmp->PktLifeTimeSelector	= IB_SELECTOR_EQ;
 	mcmp->PktLifeTime		= mcGroup->life;
 	mcmp->SL			= mcGroup->sl;
 	mcmp->HopLimit		= mcGroup->hopLimit;
 	mcmp->Scope			= mcGroup->scope;
-	mcmp->JoinFullMember	= mcMember->state & MCMEMBER_JOIN_FULL_MEMBER;
-	mcmp->JoinNonMember	= mcMember->state & MCMEMBER_JOIN_NON_MEMBER;
-	mcmp->JoinSendOnlyMember = mcMember->state & MCMEMBER_JOIN_SENDONLY_MEMBER;
+	mcmp->JoinFullMember	= mcMember->state & MCMEMBER_STATE_FULL_MEMBER;
+	mcmp->JoinNonMember	= mcMember->state & MCMEMBER_STATE_NON_MEMBER;
+	mcmp->JoinSendOnlyMember = mcMember->state & MCMEMBER_STATE_SENDONLY_MEMBER;
 	mcmp->ProxyJoin     = mcMember->proxy;
 
 	emptyBroadcastGroup = 1;
@@ -2058,6 +2058,8 @@ done:
 }
 
 
+// Deletes all multicast groups, possibly recreating the default group(s).
+// Used during shutdown, dbsync, and when we transition to inactive.
 Status_t clearBroadcastGroups(int recreateGroup) {
 	Status_t	status;
 	McGroup_t	*mcGroup;
@@ -2234,7 +2236,7 @@ Status_t createMCastGroup(uint64_t* mgid, uint16_t pkey, uint8_t mtu, uint8_t ra
 	McGroup_t			*mcGroup	= NULL;
 	McMember_t			*mcMember	= NULL;
 	STL_MCMEMBER_RECORD	*mcmp;
-	STL_LID  			    mLid;
+	STL_LID			    mLid;
 	IB_GID				mGid;
 	int vf = 0;
 	VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
@@ -2253,7 +2255,7 @@ Status_t createMCastGroup(uint64_t* mgid, uint16_t pkey, uint8_t mtu, uint8_t ra
 	}
 
 	if (!rate) {
-		rate = IB_STATIC_RATE_100G;
+		rate = IB_STATIC_RATE_200G;
 	}
 	
 	if ((status = vs_lock(&sm_McGroups_lock)) != VSTATUS_OK) {
@@ -2263,15 +2265,21 @@ Status_t createMCastGroup(uint64_t* mgid, uint16_t pkey, uint8_t mtu, uint8_t ra
 	mcGroup = sm_find_multicast_gid(mGid);
 	if (mcGroup) {
 		if (VirtualFabrics) {
-		for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
-			if ((PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey) == PKEY_VALUE(pkey)) &&
-				(smVFValidateMcDefaultGroup(vf, mgid) == VSTATUS_OK)) {
-				uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
-				bitset_set(&mcGroup->vfMembers, vfIdx);
-          		}
+			for (vf = 0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
+				if (VirtualFabrics->v_fabric_all[vf].standby) continue;
+				if ((PKEY_VALUE(VirtualFabrics->v_fabric_all[vf].pkey) == PKEY_VALUE(pkey)) &&
+					(smVFValidateVfMGid(VirtualFabrics, vf, mgid) == VSTATUS_OK)) {
+					bitset_set(&mcGroup->vfMembers, vf);
+				}
 			}
 		}
 		status = VSTATUS_OK;
+		goto done;
+	}
+
+	if (sm_numMcGroups == MAX_MCAST_MGIDS) {
+		sysPrintf("Maximum number of groups reached (%d) before group create, MGID "FMT_GID, MAX_MCAST_MGIDS, mgid[0], mgid[1]);
+		status = VSTATUS_BAD;
 		goto done;
 	}
 
@@ -2285,11 +2293,11 @@ Status_t createMCastGroup(uint64_t* mgid, uint16_t pkey, uint8_t mtu, uint8_t ra
 	McMember_Create(mcGroup, mcMember);
 
 	if (VirtualFabrics) {
-		for (vf=0; vf < VirtualFabrics->number_of_vfs && vf < MAX_VFABRICS; vf++) {
-			if ((PKEY_VALUE(VirtualFabrics->v_fabric[vf].pkey) == PKEY_VALUE(pkey)) &&
-				(smVFValidateMcDefaultGroup(vf, mgid) == VSTATUS_OK)) {
-				uint32 vfIdx=VirtualFabrics->v_fabric[vf].index;
-				bitset_set(&mcGroup->vfMembers, vfIdx);
+		for (vf = 0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
+			if (VirtualFabrics->v_fabric_all[vf].standby) continue;
+			if ((PKEY_VALUE(VirtualFabrics->v_fabric_all[vf].pkey) == PKEY_VALUE(pkey)) &&
+				(smVFValidateVfMGid(VirtualFabrics, vf, mgid) == VSTATUS_OK)) {
+				bitset_set(&mcGroup->vfMembers, vf);
 			}
 		}
 	}
@@ -2311,7 +2319,7 @@ Status_t createMCastGroup(uint64_t* mgid, uint16_t pkey, uint8_t mtu, uint8_t ra
 
 	mcMember->slid     = 0;
 	mcMember->proxy    = 1;
-	mcMember->state    = MCMEMBER_JOIN_FULL_MEMBER;
+	mcMember->state    = MCMEMBER_STATE_FULL_MEMBER;
 	mcMember->nodeGuid = 0;
 	mcMember->portGuid = SA_FAKE_MULTICAST_GROUP_MEMBER;
 
@@ -2320,20 +2328,20 @@ Status_t createMCastGroup(uint64_t* mgid, uint16_t pkey, uint8_t mtu, uint8_t ra
 	memset((void*)mcmp->RID.PortGID.Raw, 0, sizeof(mcmp->RID.PortGID));
 	mcmp->Q_Key			= mcGroup->qKey;
 	mcmp->MLID			= mcGroup->mLid;
-	mcmp->MtuSelector	= PR_EQ;
+	mcmp->MtuSelector	= IB_SELECTOR_EQ;
 	mcmp->Mtu		= mcGroup->mtu;
 	mcmp->TClass		= mcGroup->tClass;
 	mcmp->P_Key			= mcGroup->pKey;
-	mcmp->RateSelector	= PR_EQ;
+	mcmp->RateSelector	= IB_SELECTOR_EQ;
 	mcmp->Rate		= mcGroup->rate;
-	mcmp->PktLifeTimeSelector	= PR_EQ;
+	mcmp->PktLifeTimeSelector	= IB_SELECTOR_EQ;
 	mcmp->PktLifeTime		= mcGroup->life;
 	mcmp->SL			= mcGroup->sl;
 	mcmp->HopLimit		= mcGroup->hopLimit;
 	mcmp->Scope			= mcGroup->scope;
-	mcmp->JoinFullMember	= mcMember->state & MCMEMBER_JOIN_FULL_MEMBER;
-	mcmp->JoinNonMember	= mcMember->state & MCMEMBER_JOIN_NON_MEMBER;
-	mcmp->JoinSendOnlyMember = mcMember->state & MCMEMBER_JOIN_SENDONLY_MEMBER;
+	mcmp->JoinFullMember	= mcMember->state & MCMEMBER_STATE_FULL_MEMBER;
+	mcmp->JoinNonMember	= mcMember->state & MCMEMBER_STATE_NON_MEMBER;
+	mcmp->JoinSendOnlyMember = mcMember->state & MCMEMBER_STATE_SENDONLY_MEMBER;
 	mcmp->ProxyJoin     = mcMember->proxy;
 
 	emptyBroadcastGroup = 1;
@@ -2353,7 +2361,7 @@ Status_t createMCastGroups(int vf, uint16_t pkey, uint8_t mtu, uint8_t rate, uin
 
 	if (!VirtualFabrics) return VSTATUS_BAD;
 
-	if (vf >= VirtualFabrics->number_of_vfs) {
+	if (vf >= VirtualFabrics->number_of_vfs_all) {
 		return VSTATUS_BAD;
 	}
 
@@ -2369,18 +2377,18 @@ Status_t createMCastGroups(int vf, uint16_t pkey, uint8_t mtu, uint8_t rate, uin
 	vfmGid[0] = mGid.AsReg64s.H;
 	vfmGid[1] = mGid.AsReg64s.L;
 
-	if (smVFValidateMcDefaultGroup(vf, vfmGid) == VSTATUS_OK) {
+	if (smVFValidateVfMGid(VirtualFabrics, vf, vfmGid) == VSTATUS_OK) {
 		if (createMCastGroup(vfmGid, pkey, mtu, rate, sl, qkey, fl, tc) == VSTATUS_OK) {
-			IB_LOG_VERBOSE_FMT_VF( VirtualFabrics->v_fabric[vf].name, "createMCastGroups", "Creating multicast GID "FMT_GID,
+			IB_LOG_VERBOSE_FMT_VF( VirtualFabrics->v_fabric_all[vf].name, "createMCastGroups", "Creating multicast GID "FMT_GID,
 			   		vfmGid[0], vfmGid[1]);
 
 			memcpy(&mGid, allNodesGid.Raw, sizeof(allNodesGid));
 			memcpy(&(mGid.Raw[PKEY_INDEX]), &pkey, sizeof(pkey));
 			vfmGid[0] = mGid.AsReg64s.H;
 			vfmGid[1] = mGid.AsReg64s.L;
-			if (smVFValidateMcDefaultGroup(vf, vfmGid) == VSTATUS_OK) {
+			if (smVFValidateVfMGid(VirtualFabrics, vf, vfmGid) == VSTATUS_OK) {
 				createMCastGroup(vfmGid, pkey, mtu, rate, sl, qkey, fl, tc);
-				IB_LOG_VERBOSE_FMT_VF(VirtualFabrics->v_fabric[vf].name, "createMCastGroups", "Creating multicast GID "FMT_GID,
+				IB_LOG_VERBOSE_FMT_VF(VirtualFabrics->v_fabric_all[vf].name, "createMCastGroups", "Creating multicast GID "FMT_GID,
 			   		vfmGid[0], vfmGid[1]);
 			}
 
@@ -2389,9 +2397,9 @@ Status_t createMCastGroups(int vf, uint16_t pkey, uint8_t mtu, uint8_t rate, uin
 
 			vfmGid[0] = mGid.AsReg64s.H;
 			vfmGid[1] = mGid.AsReg64s.L;
-			if ((smVFValidateMcDefaultGroup(vf, vfmGid) == VSTATUS_OK) &&
+			if ((smVFValidateVfMGid(VirtualFabrics, vf, vfmGid) == VSTATUS_OK) &&
 				(createMCastGroup(vfmGid, pkey, mtu, rate, sl, qkey, fl, tc) == VSTATUS_OK)) {
-				IB_LOG_VERBOSE_FMT_VF( VirtualFabrics->v_fabric[vf].name, "createMCastGroups", "Creating multicast GID "FMT_GID,
+				IB_LOG_VERBOSE_FMT_VF( VirtualFabrics->v_fabric_all[vf].name, "createMCastGroups", "Creating multicast GID "FMT_GID,
 		   				vfmGid[0], vfmGid[1]);
 			}
 			memcpy(&mGid, mcastDnsGid.Raw, sizeof(mcastDnsGid));
@@ -2399,9 +2407,9 @@ Status_t createMCastGroups(int vf, uint16_t pkey, uint8_t mtu, uint8_t rate, uin
 
 			vfmGid[0] = mGid.AsReg64s.H;
 			vfmGid[1] = mGid.AsReg64s.L;
-			if ((smVFValidateMcDefaultGroup(vf, vfmGid) == VSTATUS_OK) &&
+			if ((smVFValidateVfMGid(VirtualFabrics, vf, vfmGid) == VSTATUS_OK) &&
 				(createMCastGroup(vfmGid, pkey, mtu, rate, sl, qkey, fl, tc) == VSTATUS_OK)) {
-				IB_LOG_VERBOSE_FMT_VF( VirtualFabrics->v_fabric[vf].name, "createMCastGroups", "Creating multicast GID "FMT_GID,
+				IB_LOG_VERBOSE_FMT_VF( VirtualFabrics->v_fabric_all[vf].name, "createMCastGroups", "Creating multicast GID "FMT_GID,
 					vfmGid[0], vfmGid[1]);
             }
 		}
@@ -2414,9 +2422,9 @@ Status_t createMCastGroups(int vf, uint16_t pkey, uint8_t mtu, uint8_t rate, uin
 
 	vfmGid[0] = mGid.AsReg64s.H;
 	vfmGid[1] = mGid.AsReg64s.L;
-	if ((smVFValidateMcDefaultGroup(vf, vfmGid) == VSTATUS_OK) &&
+	if ((smVFValidateVfMGid(VirtualFabrics, vf, vfmGid) == VSTATUS_OK) &&
 		(createMCastGroup(vfmGid, pkey, mtu, rate, sl, qkey, fl, tc) == VSTATUS_OK)) {
-		IB_LOG_VERBOSE_FMT_VF( VirtualFabrics->v_fabric[vf].name, "createMCastGroups", "Creating multicast GID "FMT_GID,
+		IB_LOG_VERBOSE_FMT_VF( VirtualFabrics->v_fabric_all[vf].name, "createMCastGroups", "Creating multicast GID "FMT_GID,
 		   		vfmGid[0], vfmGid[1]);
 	}
 
@@ -2425,9 +2433,9 @@ Status_t createMCastGroups(int vf, uint16_t pkey, uint8_t mtu, uint8_t rate, uin
 	memcpy(&(mGid.Raw[IPV6_INDEX]), &ipv6, sizeof(ipv6));
 	vfmGid[0] = mGid.AsReg64s.H;
 	vfmGid[1] = mGid.AsReg64s.L;
-	if ((smVFValidateMcDefaultGroup(vf, vfmGid) == VSTATUS_OK) &&
+	if ((smVFValidateVfMGid(VirtualFabrics, vf, vfmGid) == VSTATUS_OK) &&
 		(createMCastGroup(vfmGid, pkey, mtu, rate, sl, qkey, fl, tc) == VSTATUS_OK)) {
-		IB_LOG_VERBOSE_FMT_VF( VirtualFabrics->v_fabric[vf].name, "createMCastGroups", "Creating multicast GID "FMT_GID,
+		IB_LOG_VERBOSE_FMT_VF( VirtualFabrics->v_fabric_all[vf].name, "createMCastGroups", "Creating multicast GID "FMT_GID,
 		   		vfmGid[0], vfmGid[1]);
 	}
 
@@ -2436,9 +2444,9 @@ Status_t createMCastGroups(int vf, uint16_t pkey, uint8_t mtu, uint8_t rate, uin
 	memcpy(&(mGid.Raw[IPV6_INDEX]), &ipv6, sizeof(ipv6));
 	vfmGid[0] = mGid.AsReg64s.H;
 	vfmGid[1] = mGid.AsReg64s.L;
-	if ((smVFValidateMcDefaultGroup(vf, vfmGid) == VSTATUS_OK) &&
+	if ((smVFValidateVfMGid(VirtualFabrics, vf, vfmGid) == VSTATUS_OK) &&
 		(createMCastGroup(vfmGid, pkey, mtu, rate, sl, qkey, fl, tc) == VSTATUS_OK)) {
-		IB_LOG_VERBOSE_FMT_VF( VirtualFabrics->v_fabric[vf].name, "createMCastGroups", "Creating multicast GID "FMT_GID,
+		IB_LOG_VERBOSE_FMT_VF( VirtualFabrics->v_fabric_all[vf].name, "createMCastGroups", "Creating multicast GID "FMT_GID,
 		   		vfmGid[0], vfmGid[1]);
 	}
 
@@ -2447,9 +2455,9 @@ Status_t createMCastGroups(int vf, uint16_t pkey, uint8_t mtu, uint8_t rate, uin
 	memcpy(&(mGid.Raw[IPV6_INDEX]), &ipv6, sizeof(ipv6));
 	vfmGid[0] = mGid.AsReg64s.H;
 	vfmGid[1] = mGid.AsReg64s.L;
-	if ((smVFValidateMcDefaultGroup(vf, vfmGid) == VSTATUS_OK) &&
+	if ((smVFValidateVfMGid(VirtualFabrics, vf, vfmGid) == VSTATUS_OK) &&
 		(createMCastGroup(vfmGid, pkey, mtu, rate, sl, qkey, fl, tc) == VSTATUS_OK)) {
-		IB_LOG_VERBOSE_FMT_VF( VirtualFabrics->v_fabric[vf].name, "createMCastGroups", "Creating multicast GID "FMT_GID,
+		IB_LOG_VERBOSE_FMT_VF( VirtualFabrics->v_fabric_all[vf].name, "createMCastGroups", "Creating multicast GID "FMT_GID,
 		   		vfmGid[0], vfmGid[1]);
 	}
 

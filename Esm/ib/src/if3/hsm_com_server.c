@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -43,6 +43,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 #include <libgen.h>
 #include <errno.h>
+#include "vs_g.h"
 #include "hsm_com_srvr_api.h"
 #include "hsm_com_srvr_data.h"
 
@@ -83,7 +84,7 @@ int unix_serv_listen(char *name)
 	memset(&socketaddr,0,sizeof(socketaddr));
 
 	socketaddr.sun_family = AF_UNIX;
-	strcpy(socketaddr.sun_path,name);
+	cs_strlcpy(socketaddr.sun_path,name,sizeof(socketaddr.sun_path));
 
 	len = SUN_LEN(&socketaddr);
 

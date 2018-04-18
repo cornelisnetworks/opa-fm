@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -91,9 +91,8 @@ dgmh_pre_process_discovery(Topology_t *topop, void **outContext)
 	allFound = 0;
 	for (i=0; i<dgp->dgCount; i++) { 
 		cl_qmap_init(&(dgp->deviceGroup[i]), NULL);
-		strncpy(dgp->deviceGroupName[i],sm_config.dgRouting.dg[i].member,
+		cs_strlcpy(dgp->deviceGroupName[i],sm_config.dgRouting.dg[i].member,
 			MAX_VFABRIC_NAME);
-		dgp->deviceGroupName[i][MAX_VFABRIC_NAME]=0;
 		if ((dgIndex = smGetDgIdx(dgp->deviceGroupName[i])) < 0) {
 			IB_LOG_ERROR_FMT(__func__,"DGMinHopTopology has undefined RoutingOrder DeviceGroup %s",
 							dgp->deviceGroupName[i]);
@@ -302,7 +301,7 @@ dgmh_calculate_lft(Topology_t * topop, Node_t * switchp)
 
 	Status_t status = VSTATUS_OK;
 	
-	uint16_t portLid;
+	STL_LID portLid;
 	uint8_t xftPorts[256];
 
 	if (sm_config.sm_debug_routing)
@@ -405,7 +404,7 @@ dgmh_calculate_all_lfts(Topology_t * topop)
 	Node_t *switchp;
 	Status_t status = VSTATUS_OK;
 	int i, end;
-	uint16_t portLid;
+	STL_LID portLid;
 	uint8_t xftPorts[128];
 
 	DGTopology 	*dgp = topop->routingModule->data;
@@ -682,8 +681,8 @@ dgmh_setup_switches_lrdr(Topology_t *topop, int rebalance, int routing_needed)
 {
 	IB_LOG_DEBUG4_FMT(__func__, "Rebalance = %d, Routing Needed = %d",
 		rebalance, routing_needed);
-	return	sm_setup_switches_lrdr_wave_discovery_order(topop, rebalance,
-		routing_needed);
+	return	sm_setup_switches_lrdr_wave_discovery_order(topop, 
+		rebalance, routing_needed);
 }
 
 static Status_t

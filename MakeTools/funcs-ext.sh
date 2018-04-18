@@ -1,7 +1,7 @@
 #!/bin/bash -v
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015, Intel Corporation
+# Copyright (c) 2015-2017, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -713,26 +713,26 @@ function os_vendor()
         filelist=($('ls' /etc/*-release | egrep -v lsb | egrep -v os))
         rval=""
         if [ ${#filelist[@]} -eq 0 ] && [ -f /etc/lsb-release ]; then
-            rval=$(cat /etc/lsb-release | egrep DISTRIB_ID | cut -d'=' -f2)
+            rval=$(cat /etc/lsb-release | egrep DISTRIB_ID | cut -d'=' -f2 | tr '[:upper:]' '[:lower:]')
         fi
         for file in $filelist
         do
 	    if [ -f $file ]
 	    then
-		    rval=$(basename $file -release)
-		    if [ $rval = 'SuSE' ]
-		    then
-			    if [ -f /etc/UnitedLinux-release ]
-			    then
-				    rval=UnitedLinux
-			    fi
-			elif [ $rval = 'centos' ]
+		rval=$(basename $file -release)
+		if [ $rval = 'SuSE' ]
+		then
+			if [ -f /etc/UnitedLinux-release ]
 			then
-				rval=redhat
-			elif [ $rval != 'os' ]
-			then
-				break
-		    fi
+				rval=UnitedLinux
+			fi
+		elif [ $rval = 'centos' ]
+		then
+			rval=redhat
+		elif [ $rval != 'os' ]
+		then
+			break
+		fi
 	    fi
         done
     fi
@@ -754,11 +754,11 @@ function os_vendor_version()
 		# - use VERSION_ID - it has a common format among distros 
 		# - mimic old way and drop $minor if eq 0 (see redhat handling below)
 		# - drop '.'(dot)
-        if [ $1 = "Ubuntu" ]; then
-            rval=$(echo $VERSION_ID | sed -e 's/\.[0]//' -e 's/\.//')
-        else
-		    rval=ES$(echo $VERSION_ID | sed -e 's/\.[0]//' -e 's/\.//')
-        fi
+		if [ $1 = "ubuntu" ]; then
+			rval=ES$(echo $VERSION_ID | sed -e 's/\.//')
+		else
+			rval=ES$(echo $VERSION_ID | sed -e 's/\.[0]//' -e 's/\.//')
+        	fi
 		echo $rval
 		return
 	fi
@@ -873,7 +873,7 @@ function target()
     local message
 
     # always set top level directoy
-    settl        
+    settl
     
     export BUILD_PLATFORM_OS_VENDOR=`os_vendor`    
     export BUILD_PLATFORM_OS_VENDOR_VERSION=`os_vendor_version $BUILD_PLATFORM_OS_VENDOR`    

@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -115,8 +115,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * destination addressing for a MAD packet.
  */
 typedef struct _MaiAddrInfo_t {
-	uint16_t	slid;		// source LID (16)
-	uint16_t	dlid;		// destination LID (16)
+	STL_LID		slid;		// source LID (32)
+	STL_LID		dlid;		// destination LID (32)
 	uint8_t		sl;		    // service level (4)
 	uint16_t	pkey;		// partition key (16)
 	uint32_t	srcqp;	    // WQP number at the source (24)

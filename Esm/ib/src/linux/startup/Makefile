@@ -1,6 +1,6 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015, Intel Corporation
+# Copyright (c) 2015-2017, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -156,6 +156,15 @@ fm_capture: sm_capture
 
 $(BUILDDIR)/config_convert: $(PROJ_BIN_DIR)/config_convert
 	cp $(PROJ_BIN_DIR)/config_convert $(BUILDDIR)
+
+# for now, there is no gen2 xml for host - it lives
+# in the vxworks directory for the APR build only
+ifeq "$(STL_GEN)" "2"
+#opafm_src.xml: opafm_src.xml.gen2
+else
+opafm_src.xml: opafm_src.xml.gen1
+endif
+	cp $< $@
 
 opafm.xml : opafm_src.xml $(BUILDDIR)/config_convert
 	$(BUILDDIR)/config_convert dummy.config opafm_src.xml > opafm.xml

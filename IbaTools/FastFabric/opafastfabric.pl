@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015, Intel Corporation
+# Copyright (c) 2015-2017, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -724,7 +724,7 @@ sub installed_mpidev
 
 sub installed_shmem
 {
-	return (system("rpm -q --whatprovides openshmem_gcc_hfi") == 0);
+	return (system("rpm -q --whatprovides sandia-openshmem_gcc_hfi-devel") == 0);
 }
 
 sub installed_mpisrc
@@ -1312,9 +1312,9 @@ sub fabricsetup_buildshmem
 		my $prefix="/usr";
 
 		# Selected MPI implementation does not affect compilation,
-		# only running. Limit selection to openmpi implementations as
+		# only running. Limit selection to mvapich2 implementations as
 		# these are the only supported implementations
-		my $dirs=`find $prefix/mpi -maxdepth 2 -mindepth 2 -type d 2>/dev/null|grep openmpi|sort`;
+		my $dirs=`find $prefix/mpi -maxdepth 2 -mindepth 2 -type d 2>/dev/null|grep mvapich2|sort`;
 		my @dirs = split /[[:space:]]+/, $dirs;
 		#print "The following MPIs have been found on this system:\n";
 		if ( $dirs !~ m|$mpich_prefix|) {
@@ -1720,7 +1720,7 @@ sub fabricadmin_singlehost
 	print "Choose n below only if $hostverify on hosts has not changed \n";
 	if (GetYesNo("Would you like to copy $hostverify to hosts?", "y") ) {
 		$verifyhosts_opts="-c"; # copy the hostverify.sh file
-	}
+        }
 
 	if (GetYesNo("Would you like to specify tests to run?", "n") ) {
 		print "Enter space separated list of hostverify tests [default hpl]: ";
@@ -1804,7 +1804,7 @@ sub fabricadmin_showallports
 	}
 	print "\nThe fabric deployment can be verified against the planned topology.\n";
 	print "Typically the planned topology will have been converted to an XML topology\n";
-	print "file using opaxlattopology, opaxlattopology_cust or a customized variation.\n";
+	print "file using opaxlattopology or a customized variation.\n";
 	print "If this step has been done and a topology file has been placed in the\n";
 	print "location specified by the FF_TOPOLOGY_FILE in opafastfabric.conf then\n";
 	print "a topology verification can be performed.\n";

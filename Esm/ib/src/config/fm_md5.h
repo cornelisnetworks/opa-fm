@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2017, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -32,17 +32,17 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef _FM_MD5_HELPER_H_
 #define _FM_MD5_HELPER_H_
 
-typedef struct {
-	uint32_t method;
-	union {
-		uint32_t simple_sum;
 #ifndef __VXWORKS__
-        MD5_CTX ctx;
+#include <openssl/md5.h>
 #else
-		Md5_Context_t ctx;
+#include <Md5.h>
 #endif
-	} u;
-} cksum_t;
+
+#ifndef __VXWORKS__
+typedef MD5_CTX ctx_t;
+#else
+typedef Md5_Context_t ctx_t;
+#endif
 
 
 void fm_md5_start(void *ctx);

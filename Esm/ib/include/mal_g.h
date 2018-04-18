@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -119,6 +119,8 @@ Status_t ib_register_fe(int queue_size, uint8_t thread);
  * Registers the PM with the MAL layer.
  */
 Status_t ib_register_pm(int queue_size);
+
+
 
 /*
  * ib_disable_is_sm

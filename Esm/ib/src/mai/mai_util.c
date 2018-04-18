@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -1162,7 +1162,7 @@ mai_getqp(struct mai_fd *act, uint64_t wakeup)
 					  int handled = mai_mad_process(&mad, &filterMatch);
 					  if (!handled)
 					  {
-						  uint16_t tempLid;
+						  STL_LID  tempLid;
 						  uint32_t tempQP;
 						  Status_t status;
 

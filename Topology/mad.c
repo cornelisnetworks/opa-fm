@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -43,7 +43,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define SEND_WAIT_TIME (100)	// 100 milliseconds for sends
 #define FLUSH_WAIT_TIME (100)	// 100 milliseconds for sends/recv during flush
 #define RESP_WAIT_TIME (100)	// 100 milliseconds for response recv
-#define MAD_ATTEMPTS (8)		// number of request/response attempts
 
 #if defined(IB_STACK_IBACCESS) || defined(CAL_IBACCESS)
 static IB_HANDLE g_umadtHandle = NULL;	/* umadt handle for DM interface queries */
@@ -52,10 +51,19 @@ static IB_HANDLE g_umadtHandle = NULL;	/* umadt handle for DM interface queries 
 static uint64			g_transId		= 1234;	// transaction id
 static FILE 			*g_verbose_file = NULL;	// file for verbose output
 static uint64 			g_mkey = 0;				// m_Key for SMA operations
+static int 				g_smaRetries = 8; 		// number of request/response attempts
 
 FSTATUS send_recv_mad(MADT_HANDLE umadtHandle, IB_PATH_RECORD *pathp,
                              uint32 qpn, uint32 qkey, MAD* mad,
                              int timeout, int retries);
+
+void setTopologyMadVerboseFile(FILE* verbose_file) {
+	g_verbose_file = verbose_file;
+}
+
+void setTopologyMadRetryCount(int retries) {
+	g_smaRetries = retries;
+}
 
 #ifdef IB_DEBUG
 void DumpMad(void *addr)
@@ -259,504 +267,630 @@ FSTATUS send_recv_mad(MADT_HANDLE umadtHandle, IB_PATH_RECORD *pathp,
 #endif
 
 #ifdef PRODUCT_OPENIB_FF
-/* issue a single SMA mad and get the response.
- * Retry as needed if unable to send or don't get a response
- */
 
+static __inline__ void debugLogSmaRequest(const char* requestName, uint8_t* path, STL_LID dlid, STL_LID slid) {
+	int i;
+
+	if(path) {
+		DBGPRINT("Sending DR SMA %s to ", requestName);
+		if(slid)
+			DBGPRINT("slid: 0x%08x, ", slid);
+
+		DBGPRINT("path:");
+		for(i = 1; i <= path[0]; i++) {
+			DBGPRINT(" %02d", path[i]);
+		}
+		DBGPRINT("\n");
+	} else {
+		DBGPRINT("Sending SMA %s to LID 0x%x\n", requestName, dlid);
+	}
+}
+
+/**
+ * Issue a single SMA mad and get the response.
+ * Retry as needed if unable to send or don't get a response
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param method Request method, likely either get or set
+ * @param attr Attribute type being issued for this request
+ * @param modifier Attribute modifier for the specified attribute
+ * @param buffer Pointer to attribute data
+ * @param bufferLen The Length of the attribute data in the buffer
+ * @return FSTATUS return code
+ */
 static FSTATUS stl_sma_send_recv_mad(struct omgt_port *port,
-									 uint16_t lid,
-									 uint8 method, 
-									 uint32 attr, 
-									 uint32 modifier, 
-									 STL_SMP *smp)
+									 STL_LID dlid,
+									 STL_LID slid,
+									 uint8_t* path,
+									 uint8_t method, 
+									 uint32_t attr, 
+									 uint32_t modifier, 
+									 uint8_t* buffer,
+									 uint32_t bufferLength)
 {
 	FSTATUS fstatus;
+	STL_SMP smp;
 	struct omgt_mad_addr addr;
+	size_t send_size;
     size_t recv_size;
+
+	memset(&smp, 0, sizeof(smp));
+	memset(&addr, 0, sizeof(addr));
+
+	if(dlid && path == NULL) {
+		// LID routed only
+		smp.common.MgmtClass = MCLASS_SM_LID_ROUTED;
+		smp.common.u.NS.Status.AsReg16 = 0;
+		addr.lid = dlid;
+	} else if (!dlid && !slid && path) {
+		// Directed route only
+		addr.lid = STL_LID_PERMISSIVE;
+		smp.common.MgmtClass = MCLASS_SM_DIRECTED_ROUTE;
+		smp.common.u.DR.s.D = 0;
+		smp.common.u.DR.s.Status = 0;
+		smp.common.u.DR.HopPointer = 0;
+		smp.common.u.DR.HopCount = path[0];
+		smp.SmpExt.DirectedRoute.DrSLID = STL_LID_PERMISSIVE;
+		smp.SmpExt.DirectedRoute.DrDLID = STL_LID_PERMISSIVE;
+		memcpy(smp.SmpExt.DirectedRoute.InitPath, path, sizeof(smp.SmpExt.DirectedRoute.InitPath));
+	} else if (!dlid && slid && path) {
+		// Mixed LR-DR (initial LID route, then DR)
+		addr.lid = STL_LID_PERMISSIVE;
+		smp.common.MgmtClass = MCLASS_SM_DIRECTED_ROUTE;
+		smp.common.u.DR.s.D = 0;
+		smp.common.u.DR.s.Status = 0;
+		smp.common.u.DR.HopPointer = 0;
+		smp.common.u.DR.HopCount = path[0];
+		smp.SmpExt.DirectedRoute.DrSLID = slid;
+		smp.SmpExt.DirectedRoute.DrDLID = STL_LID_PERMISSIVE;
+		memcpy(smp.SmpExt.DirectedRoute.InitPath, path, sizeof(smp.SmpExt.DirectedRoute.InitPath));
+	} else {
+		DBGPRINT("ERROR: unable to route packet: slid, dlid, or path not properly specified\n");
+		return (FINVALID_PARAMETER);
+	}
+
+	smp.common.BaseVersion = STL_BASE_VERSION;
+	smp.common.ClassVersion = STL_SM_CLASS_VERSION;
+	smp.common.mr.AsReg8 = 0;
+	smp.common.mr.s.Method = method;
+#if defined(IB_STACK_IBACCESS) || defined(CAL_IBACCESS)
+	smp.common.TransactionID = (++g_transId)<<24;
+#else
+	smp.common.TransactionID = (++g_transId) & 0xffffffff;
+#endif
+	smp.common.AttributeID = attr;
+	smp.common.AttributeModifier = modifier;
+	smp.M_Key = g_mkey;
+
+	// Copy the attribute information into the SMP
+	memcpy(stl_get_smp_data(&smp), buffer, bufferLength);
 
     // Determine which pkey to use (full or limited)
     // Attempt to use full at all times, otherwise, can
     // use the limited for queries of the local port.
-    uint16_t pkey = omgt_get_mgmt_pkey(port, lid, 0);
+    uint16_t pkey = omgt_get_mgmt_pkey(port, dlid, 0);
     if (pkey==0) {
         DBGPRINT("ERROR: Local port does not have management privileges\n");
         return (FPROTECTION);
     }
 
-	memset(&addr, 0, sizeof(addr));
-	addr.lid = lid;
 	addr.qpn = 0;
 	addr.qkey = 0;
 	addr.pkey = pkey;
 
-	smp->common.BaseVersion = STL_BASE_VERSION;
-	smp->common.MgmtClass = MCLASS_SM_LID_ROUTED;
-	smp->common.ClassVersion = STL_SM_CLASS_VERSION;
-	smp->common.mr.AsReg8 = 0;
-	smp->common.mr.s.Method = method;
-	smp->common.u.NS.Status.AsReg16 = 0;
-#if defined(IB_STACK_IBACCESS) || defined(CAL_IBACCESS)
-	smp->common.TransactionID = (++g_transId)<<24;
-#else
-	smp->common.TransactionID = (++g_transId) & 0xffffffff;
-#endif
-	smp->common.AttributeID = attr;
-	smp->common.AttributeModifier = modifier;
-	smp->M_Key = g_mkey;
-	// rest of fields should be ignored for a Get, zero'ed above
-	STL_BSWAP_SMP_HEADER(smp);
+	send_size = bufferLength;
+    send_size += stl_get_smp_header_size(&smp);
+    send_size = ROUNDUP_TYPE(size_t, send_size, 8);
+	STL_BSWAP_SMP_HEADER(&smp);
+
 #ifdef IB_DEBUG
 	DBGPRINT("Sending STL MAD:\n");
-	DumpMad(smp);
+	DumpMad(&smp);
 #endif
 
-	ASSERT(lid);
-    recv_size = sizeof(*smp);
+    recv_size = sizeof(smp);
 	fstatus = omgt_send_recv_mad_no_alloc(port, 
-										 (uint8_t *)smp, sizeof(*smp), 
+										 (uint8_t *)&smp, send_size, 
 										 &addr,
-										 (uint8_t *)smp, &recv_size,
+										 (uint8_t *)&smp, &recv_size,
 										 RESP_WAIT_TIME, 
-										 MAD_ATTEMPTS-1);
+										 g_smaRetries-1);
 #ifdef IB_DEBUG
 	if (fstatus == FSUCCESS) {
 		DBGPRINT("Received STL MAD:\n");
-		StlDumpMad(smp);
+		StlDumpMad(&smp);
 	}
 #endif
-	STL_BSWAP_SMP_HEADER(smp);
-	//DBGPRINT("send_recv_mad fstatus=%s\n", iba_fstatus_msg(fstatus));
+	STL_BSWAP_SMP_HEADER(&smp);
+
+	if (smp.common.MgmtClass == MCLASS_SM_DIRECTED_ROUTE && path && memcmp(path, smp.SmpExt.DirectedRoute.InitPath, sizeof(smp.SmpExt.DirectedRoute.InitPath)) != 0) {
+		int i;
+
+		DBGPRINT("Response failed directed route validation, received packet with path: ");
+		for(i = 1; i < 64; i++) {
+			if(smp.SmpExt.DirectedRoute.InitPath[i] != 0) {
+				DBGPRINT("%d ", smp.SmpExt.DirectedRoute.InitPath[i]);
+			} else {
+				break;
+			}
+		}
+		DBGPRINT("\n");
+
+		fstatus = FERROR;
+	}
+
+	if (smp.common.u.DR.s.Status != MAD_STATUS_SUCCESS) {
+		DBGPRINT("SMA response with bad status: 0x%x\n", smp.common.u.DR.s.Status);
+		fstatus = FERROR;
+	} else {
+		memcpy(buffer, stl_get_smp_data(&smp), bufferLength);
+	}
+
 	return fstatus;
 }
-/* Get NodeDescription from SMA at lid
- * Retry as needed
+
+/**
+ * Get the NodeDesc from the requested LID/path
+ * Retry as needed if unable to send or don't get a response
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param pNodeDesc Pointer to allocated space to store the returned NodeDesc
+ * @return FSTATUS return code
  */
 FSTATUS SmaGetNodeDesc(struct omgt_port *port, 
-					   NodeData *nodep, 
-					   uint32_t lid, 
+					   STL_LID dlid, 
+					   STL_LID slid,
+					   uint8_t* path,
 					   STL_NODE_DESCRIPTION *pNodeDesc)
 {
-	STL_SMP smp;
 	FSTATUS fstatus;
+	uint32_t bufferLength = sizeof(STL_NODE_DESCRIPTION);
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
 
-	MemoryClear(&smp, sizeof(smp));
-	// rest of fields should be ignored for a Get, zero'ed above
+	debugLogSmaRequest("Get(NodeDesc)", path, dlid, slid);
 
-	DBGPRINT("Sending SMA Get(NodeDesc) to LID 0x%x Node 0x%016"PRIx64"\n",
-				lid,
-				nodep->NodeInfo.NodeGUID);
-	DBGPRINT("    Name: %.*s\n",
-				STL_NODE_DESCRIPTION_ARRAY_SIZE,
-				(char*)nodep->NodeDesc.NodeString);
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_GET, STL_MCLASS_ATTRIB_ID_NODE_DESCRIPTION, 0, buffer, bufferLength);
 
-	fstatus = stl_sma_send_recv_mad(port, lid, MMTHD_GET, STL_MCLASS_ATTRIB_ID_NODE_DESCRIPTION, 0, &smp);
-
-	if (FSUCCESS == fstatus) {
-		if (smp.common.u.DR.s.Status != MAD_STATUS_SUCCESS) {
-			DBGPRINT("SMA response with bad status: 0x%x\n", smp.common.u.DR.s.Status);
-			fstatus = FERROR;
-		} else {
-			*pNodeDesc = *(STL_NODE_DESCRIPTION*)stl_get_smp_data(&smp);
-			BSWAP_STL_NODE_DESCRIPTION(pNodeDesc);
-		}
+	if (fstatus == FSUCCESS) {
+		BSWAP_STL_NODE_DESCRIPTION((STL_NODE_DESCRIPTION*)buffer);
+		memcpy(pNodeDesc, buffer, bufferLength);
 	}
 	return fstatus;
 }
 
-/* Get NodeInfo from SMA at lid
- * Retry as needed
+/**
+ * Get the NodeInfo from the requested LID/path
+ * Retry as needed if unable to send or don't get a response
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param pNodeInfo Pointer to allocated space to store the returned NodeInfo
+ * @return FSTATUS return code
  */
 FSTATUS SmaGetNodeInfo(struct omgt_port *port, 
-					   NodeData *nodep, 
-					   uint32_t lid, 
+					   STL_LID dlid, 
+					   STL_LID slid,
+					   uint8_t* path,
 					   STL_NODE_INFO *pNodeInfo)
 {
-	STL_SMP smp;
 	FSTATUS fstatus;
+	uint32_t bufferLength = sizeof(STL_NODE_INFO);
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
 
-	MemoryClear(&smp, sizeof(smp));
-	// rest of fields should be ignored for a Get, zero'ed above
+	debugLogSmaRequest("Get(NodeInfo)", path, dlid, slid);
 
-	DBGPRINT("Sending SMA Get(NodeInfo) to LID 0x%x Node 0x%016"PRIx64"\n",
-				lid,
-				nodep->NodeInfo.NodeGUID);
-	DBGPRINT("    Name: %.*s\n",
-				STL_NODE_DESCRIPTION_ARRAY_SIZE,
-				(char*)nodep->NodeDesc.NodeString);
-	fstatus = stl_sma_send_recv_mad(port, lid, MMTHD_GET, STL_MCLASS_ATTRIB_ID_NODE_INFO, 0, &smp);
-	if (FSUCCESS == fstatus) {
-		if (smp.common.u.DR.s.Status != MAD_STATUS_SUCCESS) {
-			DBGPRINT("SMA response with bad status: 0x%x\n", smp.common.u.DR.s.Status);
-			fstatus = FERROR;
-		} else {
-			*pNodeInfo = *(STL_NODE_INFO*)stl_get_smp_data(&smp);
-			BSWAP_STL_NODE_INFO(pNodeInfo);
-		}
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_GET, STL_MCLASS_ATTRIB_ID_NODE_INFO, 0, buffer, bufferLength);
+
+	if (fstatus == FSUCCESS) {
+		BSWAP_STL_NODE_INFO((STL_NODE_INFO*)buffer);
+		memcpy(pNodeInfo, buffer, bufferLength);
 	}
 	return fstatus;
 }
 
-/* Get SwitchInfo from SMA at lid
- * Retry as needed
+/**
+ * Get the SwitchInfo from the requested LID/path
+ * Retry as needed if unable to send or don't get a response
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param pSwitchInfo Pointer to allocated space to store the returned SwitchInfo
+ * @return FSTATUS return code
  */
 FSTATUS SmaGetSwitchInfo(struct omgt_port *port, 
-						 NodeData *nodep, 
-						 uint32_t lid, 
+						 STL_LID dlid,
+						 STL_LID slid,
+						 uint8_t* path,
 						 STL_SWITCH_INFO *pSwitchInfo)
 {
-	STL_SMP smp;
 	FSTATUS fstatus;
+	uint32_t bufferLength = sizeof(STL_SWITCH_INFO);
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
 
-	MemoryClear(&smp, sizeof(smp));
-	// rest of fields should be ignored for a Get, zero'ed above
+	debugLogSmaRequest("Get(SwitchInfo)", path, dlid, slid);
 
-	DBGPRINT("Sending SMA Get(SwitchInfo) to LID 0x%x Node 0x%016"PRIx64"\n",
-				lid,
-				nodep->NodeInfo.NodeGUID);
-	DBGPRINT("    Name: %.*s\n",
-				STL_NODE_DESCRIPTION_ARRAY_SIZE,
-				(char*)nodep->NodeDesc.NodeString);
-	fstatus = stl_sma_send_recv_mad(port, lid, MMTHD_GET, STL_MCLASS_ATTRIB_ID_SWITCH_INFO, 0, &smp);
-	if (FSUCCESS == fstatus) {
-		if (smp.common.u.DR.s.Status != MAD_STATUS_SUCCESS) {
-			DBGPRINT("SMA response with bad status: 0x%x\n", smp.common.u.DR.s.Status);
-			fstatus = FERROR;
-		} else {
-			*pSwitchInfo = *(STL_SWITCH_INFO*)stl_get_smp_data(&smp);
-			BSWAP_STL_SWITCH_INFO(pSwitchInfo);
-		}
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_GET, STL_MCLASS_ATTRIB_ID_SWITCH_INFO, 0, buffer, bufferLength);
+
+	if (fstatus == FSUCCESS) {
+		BSWAP_STL_SWITCH_INFO((STL_SWITCH_INFO*)buffer);
+		memcpy(pSwitchInfo, buffer, bufferLength);
 	}
 	return fstatus;
 }
 
-/* Get PortInfo from SMA at lid
- * Retry as needed
+/**
+ * Get the PortInfo from the requested LID/path and portNum
+ * Retry as needed if unable to send or don't get a response
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param portNum Port number for desired port information
+ * @param pPortInfo Pointer to allocated space to store the returned PortInfo
+ * @return FSTATUS return code
  */
 FSTATUS SmaGetPortInfo(struct omgt_port *port,
-					   NodeData *nodep, 
-					   uint32_t lid, 
+					   STL_LID dlid, 
+					   STL_LID slid,
+					   uint8_t* path,
 					   uint8_t portNum, 
+					   uint8_t smConfigStarted,
 					   STL_PORT_INFO *pPortInfo)
 {
-	STL_SMP smp;
 	FSTATUS fstatus;
-	uint32 amod = 0x01000000 | portNum;
+	uint32 amod = 0x01000000 | portNum | (smConfigStarted ? 0x00000200 : 0x0);
+	char attributeName[64];
+	uint32_t bufferLength = sizeof(STL_PORT_INFO);
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
 
-	MemoryClear(&smp, sizeof(smp));
-	// rest of fields should be ignored for a Get, zero'ed above
+	snprintf(attributeName, sizeof(attributeName), "Get(PortInfo %u)", portNum);
+	debugLogSmaRequest(attributeName, path, dlid, slid);
 
-	DBGPRINT("Sending SMA Get(PortInfo %u) to LID 0x%x Node 0x%016"PRIx64"\n",
-				portNum, lid,
-				nodep->NodeInfo.NodeGUID);
-	DBGPRINT("    Name: %.*s\n",
-				STL_NODE_DESCRIPTION_ARRAY_SIZE,
-				(char*)nodep->NodeDesc.NodeString);
-	fstatus = stl_sma_send_recv_mad(port, lid, MMTHD_GET, STL_MCLASS_ATTRIB_ID_PORT_INFO, amod, &smp);
-	if (FSUCCESS == fstatus) {
-		if (smp.common.u.DR.s.Status != MAD_STATUS_SUCCESS) {
-			DBGPRINT("SMA response with bad status: 0x%x\n", smp.common.u.DR.s.Status);
-			fstatus = FERROR;
-		} else {
-			*pPortInfo = *(STL_PORT_INFO*)stl_get_smp_data(&smp);
-			BSWAP_STL_PORT_INFO(pPortInfo);
-		}
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_GET, STL_MCLASS_ATTRIB_ID_PORT_INFO, amod, buffer, bufferLength);
+
+	if (fstatus == FSUCCESS) {
+		BSWAP_STL_PORT_INFO((STL_PORT_INFO*)buffer);
+		memcpy(pPortInfo, buffer, bufferLength);
 	}
 	return fstatus;
 }
 
-/* Get CableInfo from SMA at lid, starting at address addr & length len
- * Retry as needed
+/**
+ * Get the CableInfo from the requested LID/path starting at address addr with length len
+ * Retry as needed if unable to send or don't get a response
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param portNum Port number for desired port information
+ * @param addr Starting address for CableInfo
+ * @param len Length of requested CableInfo data
+ * @param data Pointer to allocated space to store the returned CableInfo data
+ * @return FSTATUS return code
  */
-
 FSTATUS SmaGetCableInfo(struct omgt_port *port,
-						NodeData *nodep, 
-						uint32_t lid, 
-						uint8_t portnum,
+						STL_LID dlid, 
+						STL_LID slid,
+						uint8_t* path,
+						uint8_t portNum,
 						uint16_t addr, 
 						uint8_t len,
 						uint8_t *data)
 {
-	STL_SMP smp;
 	FSTATUS fstatus;
-	uint32_t amod = (addr & 0x07ff)<<19 | (len & 0x3f)<<13 | (portnum & 0xff);
+	uint32_t amod = (addr & 0x07ff)<<19 | (len & 0x3f)<<13 | (portNum & 0xff);
 	STL_CABLE_INFO *pCableInfo;
+	char attributeName[64];
+	uint32_t bufferLength = sizeof(STL_CABLE_INFO);
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
 
-	MemoryClear(&smp, sizeof(smp));
+	snprintf(attributeName, sizeof(attributeName), "Get(CableInfo %u)", portNum);
+	debugLogSmaRequest(attributeName, path, dlid, slid);
 
-	DBGPRINT("Sending SMA Get(CableInfo %u) to LID 0x%x Node 0x%016"PRIx64"\n",
-				portnum, lid, nodep->NodeInfo.NodeGUID);
-	DBGPRINT("    Name: %.*s\n",
-				STL_NODE_DESCRIPTION_ARRAY_SIZE,
-				(char*)nodep->NodeDesc.NodeString);
-	fstatus = stl_sma_send_recv_mad(port, lid, MMTHD_GET, STL_MCLASS_ATTRIB_ID_CABLE_INFO, amod, &smp);
-	if (FSUCCESS == fstatus) {
-		if (smp.common.u.DR.s.Status != MAD_STATUS_SUCCESS) {
-			DBGPRINT("SMA response with bad status: 0x%x\n", smp.common.u.DR.s.Status);
-			fstatus = FERROR;
-		} else {
-			pCableInfo = (STL_CABLE_INFO*)stl_get_smp_data(&smp);
-			BSWAP_STL_CABLE_INFO(pCableInfo);
-			memcpy(data, pCableInfo->Data, len+1);
-		}
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_GET, STL_MCLASS_ATTRIB_ID_CABLE_INFO, amod, buffer, bufferLength);
+
+	if (fstatus == FSUCCESS) {
+		pCableInfo = (STL_CABLE_INFO*)buffer;
+		BSWAP_STL_CABLE_INFO(pCableInfo);
+		memcpy(data, pCableInfo->Data, len+1);
 	}
 	return fstatus;
 }
 
-/* Get Partition Table from SMA at lid
- * Retry as needed
+/**
+ * Get the Partition Table from the requested LID/path
+ * Retry as needed if unable to send or don't get a response
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param portNum Port number for desired port information
+ * @param block PKey table block number
+ * @param pPartTable Pointer to allocated space to store the returned Partition Table information
+ * @return FSTATUS return code
  */
 FSTATUS SmaGetPartTable(struct omgt_port *port,
-						NodeData *nodep, 
-						uint32_t lid, 
+						STL_LID dlid, 
+						STL_LID slid,
+						uint8_t* path,
 						uint8_t portNum, 
-						uint16 block, 
+						uint16_t block, 
 						STL_PARTITION_TABLE *pPartTable)
 {
-	STL_SMP smp;
 	FSTATUS fstatus;
 	uint32 attrmod = (1<<24) | (portNum<<16) | block;
+	char attributeName[64];
+	uint32_t bufferLength = sizeof(STL_PARTITION_TABLE);
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
 
-	MemoryClear(&smp, sizeof(smp));
-	// rest of fields should be ignored for a Get, zero'ed above
+	snprintf(attributeName, sizeof(attributeName), "Get(P_KeyTable %u %u)", portNum, block);
+	debugLogSmaRequest(attributeName, path, dlid, slid);
 
-	DBGPRINT("Sending SMA Get(P_KeyTable %u %u) to LID 0x%x Node 0x%016"PRIx64"\n",
-				portNum, block, lid,
-				nodep->NodeInfo.NodeGUID);
-	DBGPRINT("    Name: %.*s\n",
-				STL_NODE_DESCRIPTION_ARRAY_SIZE,
-				(char*)nodep->NodeDesc.NodeString);
-	fstatus = stl_sma_send_recv_mad(port, lid, MMTHD_GET, STL_MCLASS_ATTRIB_ID_PART_TABLE, attrmod, &smp);
-	if (FSUCCESS == fstatus) {
-		if (smp.common.u.DR.s.Status != MAD_STATUS_SUCCESS) {
-			DBGPRINT("SMA response with bad status: 0x%x\n", smp.common.u.DR.s.Status);
-			fstatus = FERROR;
-		} else {
-			*pPartTable = *(STL_PARTITION_TABLE*)stl_get_smp_data(&smp);
-			BSWAP_STL_PARTITION_TABLE(pPartTable);
-		}
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_GET, STL_MCLASS_ATTRIB_ID_PART_TABLE, attrmod, buffer, bufferLength);
+
+	if (fstatus == FSUCCESS) {
+		BSWAP_STL_PARTITION_TABLE((STL_PARTITION_TABLE*)buffer);
+		memcpy(pPartTable, buffer, bufferLength);
 	}
 	return fstatus;
 }
 
-/* Get VLArb Table from SMA at lid
- * Retry as needed
- # Part has changed in STL, due to the table changes
+/**
+ * Get the VLArb Table from the requested LID/path
+ * Retry as needed if unable to send or don't get a response
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param portNum Port number for desired port information
+ * @param part Which part of the VLArb table to retrieve
+ * @param pVLArbTable Pointer to allocated space to store the returned VLArb Table information
+ * @return FSTATUS return code
  */
 FSTATUS SmaGetVLArbTable(struct omgt_port *port,
-						 NodeData *nodep, 
-						 uint32_t lid, 
+						 STL_LID dlid,
+						 STL_LID slid,
+						 uint8_t* path, 
 						 uint8_t portNum, 
-						 uint8 part, 
+						 uint8_t part, 
 						 STL_VLARB_TABLE *pVLArbTable)
 {
-	STL_SMP smp;
 	FSTATUS fstatus;
 	uint32 attrmod = (1<<24) | (part<<16) | portNum;
+	char attributeName[64];
+	uint32_t bufferLength = sizeof(STL_VLARB_TABLE);
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
 
-	MemoryClear(&smp, sizeof(smp));
-	// rest of fields should be ignored for a Get, zero'ed above
+	snprintf(attributeName, sizeof(attributeName), "Get(VLArb %u %u)", part, portNum);
+	debugLogSmaRequest(attributeName, path, dlid, slid);
 
-	DBGPRINT("Sending SMA Get(VLArb %u %u) to LID 0x%x Node 0x%016"PRIx64"\n",
-				part, portNum, lid,
-				nodep->NodeInfo.NodeGUID);
-	DBGPRINT("    Name: %.*s\n",
-				STL_NODE_DESCRIPTION_ARRAY_SIZE,
-				(char*)nodep->NodeDesc.NodeString);
-	fstatus = stl_sma_send_recv_mad(port, lid, MMTHD_GET, STL_MCLASS_ATTRIB_ID_VL_ARBITRATION, attrmod, &smp);
-	if (FSUCCESS == fstatus) {
-		if (smp.common.u.DR.s.Status != MAD_STATUS_SUCCESS) {
-			DBGPRINT("SMA response with bad status: 0x%x\n", smp.common.u.DR.s.Status);
-			fstatus = FERROR;
-		} else {
-			*pVLArbTable = *(STL_VLARB_TABLE*)stl_get_smp_data(&smp);
-			BSWAP_STL_VLARB_TABLE(pVLArbTable, part);
-		}
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_GET, STL_MCLASS_ATTRIB_ID_VL_ARBITRATION, attrmod, buffer, bufferLength);
+
+	if (fstatus == FSUCCESS) {
+		BSWAP_STL_VLARB_TABLE((STL_VLARB_TABLE*)buffer, part);
+		memcpy(pVLArbTable, buffer, bufferLength);
 	}
 	return fstatus;
 }
 
-/* Get SL2SC Mapping Table from SMA at lid
- * Retry as needed
+
+/**
+ * Get the SLSC Mapping Table from the requested LID/path
+ * Retry as needed if unable to send or don't get a response
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param pSLSCMap Pointer to allocated space to store the returned SLSC Mapping Table
+ * @return FSTATUS return code
  */
 FSTATUS SmaGetSLSCMappingTable(struct omgt_port *port,
-							   NodeData *nodep, 
-							   uint32_t lid, 
+							   STL_LID dlid, 
+							   STL_LID slid,
+							   uint8_t* path,
 							   STL_SLSCMAP *pSLSCMap)
 {
-	STL_SMP smp;
 	FSTATUS fstatus;
 	uint32 attrmod = 0;
+	uint32_t bufferLength = sizeof(STL_SLSCMAP);
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
 
-	MemoryClear(&smp, sizeof(smp));
-	// rest of fields should be ignored for a Get, zero'ed above
+	debugLogSmaRequest("Get(SLSCMap)", path, dlid, slid);
 
-	DBGPRINT("Sending SMA Get(SLSCMap) to LID 0x%x Node 0x%016"PRIx64"\n",
-				lid, nodep->NodeInfo.NodeGUID);
-	DBGPRINT("    Name: %.*s\n",
-				STL_NODE_DESCRIPTION_ARRAY_SIZE,
-				(char*)nodep->NodeDesc.NodeString);
-	fstatus = stl_sma_send_recv_mad(port, lid, MMTHD_GET, STL_MCLASS_ATTRIB_ID_SL_SC_MAPPING_TABLE, attrmod, &smp);
-	if (FSUCCESS == fstatus) {
-		if (smp.common.u.DR.s.Status != MAD_STATUS_SUCCESS) {
-			DBGPRINT("SMA response with bad status: 0x%x\n", smp.common.u.DR.s.Status);
-			fstatus = FERROR;
-		} else {
-			*pSLSCMap = *(STL_SLSCMAP*)stl_get_smp_data(&smp);
-			BSWAP_STL_SLSCMAP(pSLSCMap);
-		}
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_GET, STL_MCLASS_ATTRIB_ID_SL_SC_MAPPING_TABLE, attrmod, buffer, bufferLength);
+
+	if (fstatus == FSUCCESS) {
+		BSWAP_STL_SLSCMAP((STL_SLSCMAP*)buffer);
+		memcpy(pSLSCMap, buffer, bufferLength);
 	}
 	return fstatus;
 }
 
-/* Get SC2SL Mapping Table from SMA at lid
- * Retry as needed
+/**
+ * Get the SCSL Mapping Table from the requested LID/path
+ * Retry as needed if unable to send or don't get a response
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param pSCSLMap Pointer to allocated space to store the returned SCSL Mapping Table
+ * @return FSTATUS return code
  */
 FSTATUS SmaGetSCSLMappingTable(struct omgt_port *port,
-							   NodeData *nodep, 
-							   uint32_t lid, 
+							   STL_LID dlid, 
+							   STL_LID slid,
+							   uint8_t* path,
 							   STL_SCSLMAP *pSCSLMap)
 {
-	STL_SMP smp;
 	FSTATUS fstatus;
 	uint32 attrmod = 0;
+	uint32_t bufferLength = sizeof(STL_SCSLMAP);
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
 
-	MemoryClear(&smp, sizeof(smp));
-	// rest of fields should be ignored for a Get, zero'ed above
+	debugLogSmaRequest("Get(SCSLMap)", path, dlid, slid);
 
-	DBGPRINT("Sending SMA Get(SCSLMap) to LID 0x%x Node 0x%016"PRIx64"\n",
-				lid, nodep->NodeInfo.NodeGUID);
-	DBGPRINT("    Name: %.*s\n",
-				STL_NODE_DESCRIPTION_ARRAY_SIZE,
-				(char*)nodep->NodeDesc.NodeString);
-	fstatus = stl_sma_send_recv_mad(port, lid, MMTHD_GET, STL_MCLASS_ATTRIB_ID_SC_SL_MAPPING_TABLE, attrmod, &smp);
-	if (FSUCCESS == fstatus) {
-		if (smp.common.u.DR.s.Status != MAD_STATUS_SUCCESS) {
-			DBGPRINT("SMA response with bad status: 0x%x\n", smp.common.u.DR.s.Status);
-			fstatus = FERROR;
-		} else {
-			*pSCSLMap = *(STL_SCSLMAP*)stl_get_smp_data(&smp);
-			BSWAP_STL_SCSLMAP(pSCSLMap);
-		}
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_GET, STL_MCLASS_ATTRIB_ID_SC_SL_MAPPING_TABLE, attrmod, buffer, bufferLength);
+
+	if (fstatus == FSUCCESS) {
+		BSWAP_STL_SCSLMAP((STL_SCSLMAP*)buffer);
+		memcpy(pSCSLMap, buffer, bufferLength);
 	}
 	return fstatus;
 }
 
-/* Get SC2SC Mapping Table from SMA at lid
- * Retry as needed
+/**
+ * Get the SCSC Mapping Table from the requested LID/path
+ * Retry as needed if unable to send or don't get a response
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param in_port Ingress port number for SCSC Mapping Table
+ * @param out_port Egress port number for SCSC Mapping Table
+ * @param pSCSCMap Pointer to allocated space to store the returned SCSC Mapping Table
+ * @return FSTATUS return code
  */
 FSTATUS SmaGetSCSCMappingTable(struct omgt_port *port,
-							   NodeData *nodep, 
-							   uint32_t lid, 
+							   STL_LID dlid, 
+							   STL_LID slid,
+							   uint8_t* path,
 							   uint8_t in_port, 
 							   uint8_t out_port, 
 							   STL_SCSCMAP *pSCSCMap)
 {
-	STL_SMP smp;
 	FSTATUS fstatus;
 	uint32 attrmod = (1 << 24) | (in_port<<8) | out_port;
+	char attributeName[64];
+	uint32_t bufferLength = sizeof(STL_SCSCMAP);
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
 
-	MemoryClear(&smp, sizeof(smp));
-	// rest of fields should be ignored for a Get, zero'ed above
+	snprintf(attributeName, sizeof(attributeName), "Get(SCSCMap %u %u)", in_port, out_port);
+	debugLogSmaRequest(attributeName, path, dlid, slid);
 
-	DBGPRINT("Sending SMA Get(SCSCMap %u %u) to LID 0x%x Node 0x%016"PRIx64"\n",
-				in_port, out_port, lid,
-				nodep->NodeInfo.NodeGUID);
-	DBGPRINT("    Name: %.*s\n",
-				STL_NODE_DESCRIPTION_ARRAY_SIZE,
-				(char*)nodep->NodeDesc.NodeString);
-	fstatus = stl_sma_send_recv_mad(port, lid, MMTHD_GET, STL_MCLASS_ATTRIB_ID_SC_SC_MAPPING_TABLE, attrmod, &smp);
-	if (FSUCCESS == fstatus) {
-		if (smp.common.u.DR.s.Status != MAD_STATUS_SUCCESS) {
-			DBGPRINT("SMA response with bad status: 0x%x\n", smp.common.u.DR.s.Status);
-			fstatus = FERROR;
-		} else {
-			*pSCSCMap = *(STL_SCSCMAP*)stl_get_smp_data(&smp);
-			BSWAP_STL_SCSCMAP(pSCSCMap);
-		}
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_GET, STL_MCLASS_ATTRIB_ID_SC_SC_MAPPING_TABLE, attrmod, buffer, bufferLength);
+
+	if (fstatus == FSUCCESS) {
+		BSWAP_STL_SCSCMAP((STL_SCSCMAP*)buffer);
+		memcpy(pSCSCMap, buffer, bufferLength);
 	}
 	return fstatus;
 }
 
+/**
+ * Get the SCVL Mapping Table from the requested LID/path
+ * Retry as needed if unable to send or don't get a response
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param portNum Port number for desired port information
+ * @param pSCVLMap Pointer to allocated space to store the returned SCVL Mapping Table
+ * @param attr SMP Attribute value - used to select between different SCVL Mapping Tables
+ * @return FSTATUS return code
+ */
 FSTATUS SmaGetSCVLMappingTable(struct omgt_port *port,
-							   NodeData *nodep,
-							   uint32_t lid,
+							   STL_LID dlid, 
+							   STL_LID slid,
+							   uint8_t* path,
 							   uint8_t port_num,
 							   STL_SCVLMAP *pSCVLMap,
 							   uint16_t attr)
 {
-	STL_SMP smp;
 	FSTATUS fstatus;
 	uint32 attrmod = (1<<24) | port_num;
+	char attributeName[64];
+	uint32_t bufferLength = sizeof(STL_SCVLMAP);
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
 
-	MemoryClear(&smp, sizeof(smp));
+	snprintf(attributeName, sizeof(attributeName), "Get(SCVLMap %u)", port_num);
+	debugLogSmaRequest(attributeName, path, dlid, slid);
 
-	DBGPRINT("Sending SMA Get(SCVLMap %u) to LID 0x%x Node 0x%016"PRIx64"\n",
-			 port_num, lid,
-			 nodep->NodeInfo.NodeGUID);
-	DBGPRINT("    Name: %.*s\n",
-			 STL_NODE_DESCRIPTION_ARRAY_SIZE,
-			 (char*)nodep->NodeDesc.NodeString);
-	fstatus = stl_sma_send_recv_mad(port, lid, MMTHD_GET, attr, attrmod, &smp);
-	if (FSUCCESS == fstatus) {
-		if (smp.common.u.DR.s.Status != MAD_STATUS_SUCCESS) {
-			DBGPRINT("SMA response with bad status: 0x%x\n", smp.common.u.DR.s.Status);
-			fstatus = FERROR;
-		} else {
-			*pSCVLMap = *(STL_SCVLMAP*)stl_get_smp_data(&smp);
-			BSWAP_STL_SCVLMAP(pSCVLMap);
-		}
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_GET, attr, attrmod, buffer, bufferLength);
+
+	if (fstatus == FSUCCESS) {
+		BSWAP_STL_SCVLMAP((STL_SCVLMAP*)buffer);
+		memcpy(pSCVLMap, buffer, bufferLength);
 	}
 	return fstatus;  
 }
 
-/* Get Buffer Control Table from SMA at lid
- * Retry as needed
+/**
+ * Get the Buffer Control Table from the requested LID/path
+ * Retry as needed if unable to send or don't get a response
  * pBCT must be large enough to hold all BufferControlTables
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param startPort Beginning of port range for returned Buffer Control Tables
+ * @param endPort End of port range for returned Buffer Control Tables
+ * @param pBCT[] Array to store the returned Buffer Control Table(s)
+ * @return FSTATUS return code
  */
 FSTATUS SmaGetBufferControlTable(struct omgt_port *port,
-							   NodeData *nodep,
-							   uint32_t lid,
+							   STL_LID dlid, 
+							   STL_LID slid,
+							   uint8_t* path,
 							   uint8_t startPort,
 							   uint8_t endPort,
 							   STL_BUFFER_CONTROL_TABLE pBCT[])
 {
-	STL_SMP smp;
 	FSTATUS fstatus = FERROR;
-    uint8_t maxcount = STL_NUM_BFRCTLTAB_BLOCKS_PER_LID_SMP;
+    uint8_t maxCount = path == NULL ? STL_NUM_BFRCTLTAB_BLOCKS_PER_LID_SMP : STL_NUM_BFRCTLTAB_BLOCKS_PER_DRSMP;
 	uint8_t block;
+	char attributeName[64];
+	const size_t bufferLength = STL_BFRCTRLTAB_PAD_SIZE * maxCount;
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
 
-	MemoryClear(&smp, sizeof(smp));
+	snprintf(attributeName, sizeof(attributeName), "Get(BufferControlTable %u %u)", startPort, endPort);
+	debugLogSmaRequest(attributeName, path, dlid, slid);
 
-	DBGPRINT("Sending SMA Get(BufferControlTable %u %u) to LID 0x%x Node 0x%016"PRIx64"\n",
-				startPort, endPort, lid,
-				nodep->NodeInfo.NodeGUID);
-	DBGPRINT("    Name: %.*s\n",
-				STL_NODE_DESCRIPTION_ARRAY_SIZE,
-				(char*)nodep->NodeDesc.NodeString);
+	for (block = startPort; block <= endPort; block += maxCount) {
+		uint8_t numPorts = MIN(maxCount, (endPort - block)+1);
+		uint32_t amod = (numPorts << 24) | block;
 
-	for (block = startPort; block <= endPort; block += maxcount) {
-		uint8_t n = MIN(maxcount, (endPort - block)+1);
-		uint32_t am = (n << 24) | block;
-		fstatus = stl_sma_send_recv_mad(port, lid, MMTHD_GET, STL_MCLASS_ATTRIB_ID_BUFFER_CONTROL_TABLE,
-										am, &smp);
-		if (FSUCCESS == fstatus) {
-			if (smp.common.u.DR.s.Status != MAD_STATUS_SUCCESS) {
-				DBGPRINT("SMA response with bad status: 0x%x\n", smp.common.u.DR.s.Status);
-				fstatus = FERROR;
-			} else {
-				int numPorts = (smp.common.AttributeModifier >> 24) & 0xff;
-				int i;
+		fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_GET, STL_MCLASS_ATTRIB_ID_BUFFER_CONTROL_TABLE, amod, buffer, bufferLength);
 
-				uint8_t * data = stl_get_smp_data(&smp);
-				STL_BUFFER_CONTROL_TABLE *table = (STL_BUFFER_CONTROL_TABLE *)data;
+		if (fstatus == FSUCCESS) {
+			int i;
+			STL_BUFFER_CONTROL_TABLE *table = (STL_BUFFER_CONTROL_TABLE *)buffer;
 
-				for (i = 0; i < numPorts; i++) {
-					BSWAP_STL_BUFFER_CONTROL_TABLE(table);
-					memcpy(&pBCT[block-startPort+i], table, sizeof(STL_BUFFER_CONTROL_TABLE));
-					// Handle the dissimilar sizes of Buffer Table and 8-byte pad alignment
-					data += STL_BFRCTRLTAB_PAD_SIZE;
-					table = (STL_BUFFER_CONTROL_TABLE *)(data);
-				}
+			for (i = 0; i < numPorts; i++) {
+				BSWAP_STL_BUFFER_CONTROL_TABLE(table);
+				pBCT[block-startPort+i] = *table;
+				// Handle the dissimilar sizes of Buffer Table and 8-byte pad alignment
+				table = (STL_BUFFER_CONTROL_TABLE *)((uint8_t *)table + STL_BFRCTRLTAB_PAD_SIZE);
 			}
 		}
 	}
@@ -764,153 +898,725 @@ FSTATUS SmaGetBufferControlTable(struct omgt_port *port,
 	return fstatus;
 }
 
-/* Get Linear FDB Table from SMA at lid
- * Retry as needed
+/**
+ * Get the Linear Forwarding Table from the requested LID/path
+ * Retry as needed if unable to send or don't get a response
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param block Linear Forwarding Table block number
+ * @param pFDB Pointer to allocated space to store the returned Linear Forwarding Table
+ * @return FSTATUS return code
  */
 FSTATUS SmaGetLinearFDBTable(struct omgt_port *port,
-							 NodeData *nodep, 
-							 uint32_t lid, 
-							 uint16 block, 
+							 STL_LID dlid, 
+							 STL_LID slid,
+							 uint8_t* path,
+							 uint16_t block, 
 							 STL_LINEAR_FORWARDING_TABLE *pFDB)
 {
-	STL_SMP smp;
 	FSTATUS fstatus;
-	uint32_t  modifier;
+	uint32_t modifier;
+	char attributeName[64];
+	uint32_t bufferLength = sizeof(STL_LINEAR_FORWARDING_TABLE);
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
 
-	MemoryClear(&smp, sizeof(smp));
-	// rest of fields should be ignored for a Get, zero'ed above
+	snprintf(attributeName, sizeof(attributeName), "Get(LFT %u)", block);
+	debugLogSmaRequest(attributeName, path, dlid, slid);
 
-	DBGPRINT("Sending SMA Get(LFT %u) to LID 0x%x Node 0x%016"PRIx64"\n",
-				block, lid,
-				nodep->NodeInfo.NodeGUID);
-	DBGPRINT("    Name: %.*s\n",
-				STL_NODE_DESCRIPTION_ARRAY_SIZE,
-				(char*)nodep->NodeDesc.NodeString);
 	modifier = 0x01000000 + (uint32_t)block;
-	fstatus = stl_sma_send_recv_mad(port, lid, MMTHD_GET, STL_MCLASS_ATTRIB_ID_LINEAR_FWD_TABLE, modifier, &smp);
-	if (FSUCCESS == fstatus) {
-		if (smp.common.u.DR.s.Status != MAD_STATUS_SUCCESS) {
-			DBGPRINT("SMA response with bad status: 0x%x\n", smp.common.u.DR.s.Status);
-			fstatus = FERROR;
-		} else {
-			*pFDB = *(STL_LINEAR_FORWARDING_TABLE*)stl_get_smp_data(&smp);
-			BSWAP_STL_LINEAR_FORWARDING_TABLE(pFDB);
-		}
+
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_GET, STL_MCLASS_ATTRIB_ID_LINEAR_FWD_TABLE, modifier, buffer, bufferLength);
+
+	if (fstatus == FSUCCESS) {
+		BSWAP_STL_LINEAR_FORWARDING_TABLE((STL_LINEAR_FORWARDING_TABLE*)buffer);
+		memcpy(pFDB, buffer, bufferLength);
 	}
 	return fstatus;
 }
 
-/* Get Multicast FDB Table from SMA at lid
- * Retry as needed
+/**
+ * Get the Multicast Forwarding Table from the requested LID/path
+ * Retry as needed if unable to send or don't get a response
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param block Multicast Forwarding Table block number
+ * @param position Desired port mask for selected block (0-3)
+ * @param pFDB Pointer to allocated space to store the returned Multicast Forwarding Table
+ * @return FSTATUS return code
  */
 FSTATUS SmaGetMulticastFDBTable(struct omgt_port *port,
-								NodeData *nodep, 
-								uint32_t lid, 
-								uint32 block, 
-								uint8 position, 
+							    STL_LID dlid, 
+							    STL_LID slid,
+							    uint8_t* path,
+								uint32_t block, 
+								uint8_t position, 
 								STL_MULTICAST_FORWARDING_TABLE *pFDB)
 {
-	STL_SMP smp;
 	FSTATUS fstatus;
+	char attributeName[64];
+	uint32_t bufferLength = sizeof(STL_MULTICAST_FORWARDING_TABLE);
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
 
-	MemoryClear(&smp, sizeof(smp));
-	// rest of fields should be ignored for a Get, zero'ed above
+	snprintf(attributeName, sizeof(attributeName), "Get(MFT %u %u)", block, position);
+	debugLogSmaRequest(attributeName, path, dlid, slid);
 
-	DBGPRINT("Sending SMA Get(MFT %u %u) to LID 0x%x Node 0x%016"PRIx64"\n",
-				block, position, lid,
-				nodep->NodeInfo.NodeGUID);
-	DBGPRINT("    Name: %.*s\n",
-				STL_NODE_DESCRIPTION_ARRAY_SIZE,
-				(char*)nodep->NodeDesc.NodeString);
 	//@TODO: Enable multi-block requests from just a single block request
-	fstatus = stl_sma_send_recv_mad(port, 
-									lid, 
-									MMTHD_GET, 
-									STL_MCLASS_ATTRIB_ID_MCAST_FWD_TABLE, 
-									(0x1<<24) | (0x3 & position)<<22 | (block & 0xfffff), 
-									&smp);
-	if (FSUCCESS == fstatus) {
-		if (smp.common.u.DR.s.Status != MAD_STATUS_SUCCESS) {
-			DBGPRINT("SMA response with bad status: 0x%x\n", smp.common.u.DR.s.Status);
-			fstatus = FERROR;
-		} else {
-			*pFDB = *(STL_MULTICAST_FORWARDING_TABLE*)stl_get_smp_data(&smp);
-			BSWAP_STL_MULTICAST_FORWARDING_TABLE(pFDB);
-		}
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_GET, STL_MCLASS_ATTRIB_ID_MCAST_FWD_TABLE, 
+									(0x1<<24) | (0x3 & position)<<22 | (block & 0xfffff), buffer, bufferLength);
+
+	if (fstatus == FSUCCESS) {
+		BSWAP_STL_MULTICAST_FORWARDING_TABLE((STL_MULTICAST_FORWARDING_TABLE*)buffer);
+		memcpy(pFDB, buffer, bufferLength);
 	}
 	return fstatus;
 }
 
 /* Get PortGroup Table from SMA at lid
  * Retry as needed
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param block Port Group Table block number
+ * @param pPGT Pointer to allocated space to store the returned Port Group Table
+ * @return FSTATUS return code
  */
 FSTATUS SmaGetPortGroupTable(struct omgt_port *port,
-							 NodeData *nodep,
-							 uint32_t lid,
+							 STL_LID dlid,
+							 STL_LID slid,
+							 uint8_t* path,
 							 uint16 block,
 							 STL_PORT_GROUP_TABLE *pPGT)
 {
-	STL_SMP smp;
 	FSTATUS fstatus;
-	uint32_t  modifier;
+	uint32_t modifier;
+	char attributeName[64];
+	uint32_t bufferLength = sizeof(STL_PORT_GROUP_TABLE);
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
 
-	MemoryClear(&smp, sizeof(smp));
-	// rest of fields should be ignored for a Get, zero'ed above
+	snprintf(attributeName, sizeof(attributeName), "Get(PGT %u)", block);
+	debugLogSmaRequest(attributeName, path, dlid, slid);
 
-	DBGPRINT("Sending SMA Get(PortGroup %u) to LID 0x%x Node 0x%016"PRIx64"\n",
-				block, lid,
-				nodep->NodeInfo.NodeGUID);
-	DBGPRINT("    Name: %.*s\n",
-				STL_NODE_DESCRIPTION_ARRAY_SIZE,
-				(char*)nodep->NodeDesc.NodeString);
 	modifier = 0x01000000 + (uint32_t)block;
-	fstatus = stl_sma_send_recv_mad(port, lid, MMTHD_GET, STL_MCLASS_ATTRIB_ID_PORT_GROUP_TABLE, modifier, &smp);
+
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_GET, STL_MCLASS_ATTRIB_ID_PORT_GROUP_TABLE,
+									modifier, buffer, bufferLength);
 	if (FSUCCESS == fstatus) {
-		if (smp.common.u.DR.s.Status != MAD_STATUS_SUCCESS) {
-			DBGPRINT("SMA response with bad status: 0x%x\n", smp.common.u.DR.s.Status);
-			fstatus = FERROR;
-		} else {
-			*pPGT = *(STL_PORT_GROUP_TABLE*)stl_get_smp_data(&smp);
-			BSWAP_STL_PORT_GROUP_TABLE(pPGT);
-		}
+		BSWAP_STL_PORT_GROUP_TABLE((STL_PORT_GROUP_TABLE*)buffer);
+		memcpy(pPGT, buffer, bufferLength);
 	}
 	return fstatus;
 }
 
 /* Get PortGroup FDB Table from SMA at lid
  * Retry as needed
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param block Port Group FDB Table block number
+ * @param pFDB Pointer to allocated space to store the returned Port Group FDB Table
+ * @return FSTATUS return code
  */
 FSTATUS SmaGetPortGroupFDBTable(struct omgt_port *port,
-							 NodeData *nodep,
-							 uint32_t lid,
+							 STL_LID dlid,
+							 STL_LID slid,
+							 uint8_t* path,
 							 uint16 block,
 							 STL_PORT_GROUP_FORWARDING_TABLE *pFDB)
 {
-	STL_SMP smp;
 	FSTATUS fstatus;
-	uint32_t  modifier;
+	uint32_t modifier;
+	char attributeName[64];
+	uint32_t bufferLength = sizeof(STL_PORT_GROUP_TABLE);
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
 
-	MemoryClear(&smp, sizeof(smp));
-	// rest of fields should be ignored for a Get, zero'ed above
+	snprintf(attributeName, sizeof(attributeName), "Get(PGFDB %u)", block);
+	debugLogSmaRequest(attributeName, path, dlid, slid);
 
-	DBGPRINT("Sending SMA Get(PortGroupFDB %u) to LID 0x%x Node 0x%016"PRIx64"\n",
-				block, lid,
-				nodep->NodeInfo.NodeGUID);
-	DBGPRINT("    Name: %.*s\n",
-				STL_NODE_DESCRIPTION_ARRAY_SIZE,
-				(char*)nodep->NodeDesc.NodeString);
 	modifier = 0x01000000 + (uint32_t)block;
-	fstatus = stl_sma_send_recv_mad(port, lid, MMTHD_GET, STL_MCLASS_ATTRIB_ID_PORT_GROUP_FWD_TABLE, modifier, &smp);
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_GET, STL_MCLASS_ATTRIB_ID_PORT_GROUP_FWD_TABLE,
+									modifier, buffer, bufferLength);
 	if (FSUCCESS == fstatus) {
-		if (smp.common.u.DR.s.Status != MAD_STATUS_SUCCESS) {
-			DBGPRINT("SMA response with bad status: 0x%x\n", smp.common.u.DR.s.Status);
-			fstatus = FERROR;
-		} else {
-			*pFDB = *(STL_PORT_GROUP_FORWARDING_TABLE*)stl_get_smp_data(&smp);
-			BSWAP_STL_PORT_GROUP_FORWARDING_TABLE(pFDB);
-		}
+		BSWAP_STL_PORT_GROUP_FORWARDING_TABLE((STL_PORT_GROUP_FORWARDING_TABLE*)buffer);
+		memcpy(pFDB, buffer, bufferLength);
 	}
 	return fstatus;
+}
+
+
+
+/**
+ * Set the SwitchInfo of the requested LID/path
+ * Retry as needed if unable to send or don't get a response
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param pSwitchInfo Pointer to SwitchInfo to set. Will be overwritten with response
+ * @return FSTATUS return code
+ */
+FSTATUS SmaSetSwitchInfo(struct omgt_port *port, 
+						 STL_LID dlid,
+						 STL_LID slid,
+						 uint8_t* path,
+						 STL_SWITCH_INFO *pSwitchInfo)
+{
+	FSTATUS fstatus;
+	uint32_t bufferLength = sizeof(STL_SWITCH_INFO);
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
+
+	debugLogSmaRequest("Set(SwitchInfo)", path, dlid, slid);
+	
+	memcpy(buffer, pSwitchInfo, bufferLength);
+	BSWAP_STL_SWITCH_INFO((STL_SWITCH_INFO*)buffer);
+
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_SET, STL_MCLASS_ATTRIB_ID_SWITCH_INFO, 0, buffer, bufferLength);
+
+	if (fstatus == FSUCCESS) {
+		BSWAP_STL_SWITCH_INFO((STL_SWITCH_INFO*)buffer);
+		memcpy(pSwitchInfo, buffer, bufferLength);
+	}
+	return fstatus;
+}
+
+/**
+ * Set the PortInfo of the requested LID/path and portNum
+ * Retry as needed if unable to send or don't get a response
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param portNum Port number for desired port information
+ * @param pPortInfo Pointer to PortInfo to set. Will be overwritten with response
+ * @return FSTATUS return code
+ */
+FSTATUS SmaSetPortInfo(struct omgt_port *port,
+					   STL_LID dlid, 
+					   STL_LID slid,
+					   uint8_t* path,
+					   uint8_t portNum, 
+					   STL_PORT_INFO *pPortInfo)
+{
+	FSTATUS fstatus;
+	uint32 amod = 0x01000000 | portNum;
+	char attributeName[64];
+	uint32_t bufferLength = sizeof(STL_PORT_INFO);
+	uint8_t buffer[bufferLength];
+	
+	snprintf(attributeName, sizeof(attributeName), "Set(PortInfo %u)", portNum);
+	debugLogSmaRequest(attributeName, path, dlid, slid);
+
+	memcpy(buffer, pPortInfo, bufferLength);
+	BSWAP_STL_PORT_INFO((STL_PORT_INFO*)buffer);
+
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_SET, STL_MCLASS_ATTRIB_ID_PORT_INFO, amod, buffer, bufferLength);
+
+	if (fstatus == FSUCCESS) {
+		BSWAP_STL_PORT_INFO((STL_PORT_INFO*)buffer);
+		memcpy(pPortInfo, buffer, bufferLength);
+	}
+	return fstatus;
+}
+
+/**
+ * Set the Partition Table of the requested LID/path
+ * Retry as needed if unable to send or don't get a response
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param portNum Port number for desired port information
+ * @param block PKey table block number
+ * @param pPartTable Pointer to Partition table to set. Will be overwritten with response
+ * @return FSTATUS return code
+ */
+FSTATUS SmaSetPartTable(struct omgt_port *port,
+						STL_LID dlid, 
+						STL_LID slid,
+						uint8_t* path,
+						uint8_t portNum, 
+						uint16_t block, 
+						STL_PARTITION_TABLE *pPartTable)
+{
+	FSTATUS fstatus;
+	uint32 attrmod = (1<<24) | (portNum<<16) | block;
+	char attributeName[64];
+	uint32_t bufferLength = sizeof(STL_PARTITION_TABLE);
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
+
+	snprintf(attributeName, sizeof(attributeName), "Set(P_KeyTable %u %u)", portNum, block);
+	debugLogSmaRequest(attributeName, path, dlid, slid);
+
+	memcpy(buffer, pPartTable, bufferLength);
+	BSWAP_STL_PARTITION_TABLE((STL_PARTITION_TABLE*)buffer);
+
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_SET, STL_MCLASS_ATTRIB_ID_PART_TABLE, attrmod, buffer, bufferLength);
+
+	if (fstatus == FSUCCESS) {
+		BSWAP_STL_PARTITION_TABLE((STL_PARTITION_TABLE*)buffer);
+		memcpy(pPartTable, buffer, bufferLength);
+	}
+	return fstatus;
+}
+
+/**
+ * Set the VLArb Table of the requested LID/path
+ * Retry as needed if unable to send or don't get a response
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param portNum Port number for desired port information
+ * @param part Which part of the VLArb table to write to
+ * @param pVLArbTable Pointer to VLArb table to set. Will be overwritten with response
+ * @return FSTATUS return code
+ */
+FSTATUS SmaSetVLArbTable(struct omgt_port *port,
+						 STL_LID dlid,
+						 STL_LID slid,
+						 uint8_t* path, 
+						 uint8_t portNum, 
+						 uint8_t part, 
+						 STL_VLARB_TABLE *pVLArbTable)
+{
+	FSTATUS fstatus;
+	uint32 attrmod = (1<<24) | (part<<16) | portNum;
+	char attributeName[64];
+	uint32_t bufferLength = sizeof(STL_VLARB_TABLE);
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
+
+	snprintf(attributeName, sizeof(attributeName), "Set(VLArb %u %u)", part, portNum);
+	debugLogSmaRequest(attributeName, path, dlid, slid);
+
+	memcpy(buffer, pVLArbTable, bufferLength);
+	BSWAP_STL_VLARB_TABLE((STL_VLARB_TABLE*)buffer, part);
+
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_SET, STL_MCLASS_ATTRIB_ID_VL_ARBITRATION, attrmod, buffer, bufferLength);
+
+	if (fstatus == FSUCCESS) {
+		BSWAP_STL_VLARB_TABLE((STL_VLARB_TABLE*)buffer, part);
+		memcpy(pVLArbTable, buffer, bufferLength);
+	}
+	return fstatus;
+}
+
+
+/**
+ * Set the SLSC Mapping Table of the requested LID/path
+ * Retry as needed if unable to send or don't get a response
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param pSLSCMap Pointer to SLSC Mapping Table to set. Will be overwritten with response
+ * @return FSTATUS return code
+ */
+FSTATUS SmaSetSLSCMappingTable(struct omgt_port *port,
+							   STL_LID dlid, 
+							   STL_LID slid,
+							   uint8_t* path,
+							   STL_SLSCMAP *pSLSCMap)
+{
+	FSTATUS fstatus;
+	uint32 attrmod = 0;
+	uint32_t bufferLength = sizeof(STL_SLSCMAP);
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
+
+	debugLogSmaRequest("Set(SLSCMap)", path, dlid, slid);
+
+	memcpy(buffer, pSLSCMap, bufferLength);
+	BSWAP_STL_SLSCMAP((STL_SLSCMAP*)buffer);
+
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_SET, STL_MCLASS_ATTRIB_ID_SL_SC_MAPPING_TABLE, attrmod, buffer, bufferLength);
+
+	if (fstatus == FSUCCESS) {
+		BSWAP_STL_SLSCMAP((STL_SLSCMAP*)buffer);
+		memcpy(pSLSCMap, buffer, bufferLength);
+	}
+	return fstatus;
+}
+
+/**
+ * Set the SCSL Mapping Table of the requested LID/path
+ * Retry as needed if unable to send or don't get a response
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param pSCSLMap Pointer to SCSL Mapping Table to set. Will be overwritten with response
+ * @return FSTATUS return code
+ */
+FSTATUS SmaSetSCSLMappingTable(struct omgt_port *port,
+							   STL_LID dlid, 
+							   STL_LID slid,
+							   uint8_t* path,
+							   STL_SCSLMAP *pSCSLMap)
+{
+	FSTATUS fstatus;
+	uint32 attrmod = 0;
+	uint32_t bufferLength = sizeof(STL_SCSLMAP);
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
+
+	debugLogSmaRequest("Set(SCSLMap)", path, dlid, slid);
+
+	memcpy(buffer, pSCSLMap, bufferLength);
+	BSWAP_STL_SCSLMAP((STL_SCSLMAP*)buffer);
+
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_SET, STL_MCLASS_ATTRIB_ID_SC_SL_MAPPING_TABLE, attrmod, buffer, bufferLength);
+
+	if (fstatus == FSUCCESS) {
+		BSWAP_STL_SCSLMAP((STL_SCSLMAP*)buffer);
+		memcpy(pSCSLMap, buffer, bufferLength);
+	}
+	return fstatus;
+}
+
+/**
+ * Set the SCSC Mapping Table of the requested LID/path
+ * Retry as needed if unable to send or don't get a response
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param in_port Ingress port number for SCSC Mapping Table
+ * @param out_port Egress port number for SCSC Mapping Table
+ * @param pSCSCMap Pointer to SCSC Mapping Table to set. Will be overwritten with response
+ * @return FSTATUS return code
+ */
+FSTATUS SmaSetSCSCMappingTable(struct omgt_port *port,
+							   STL_LID dlid, 
+							   STL_LID slid,
+							   uint8_t* path,
+							   uint8_t in_port, 
+							   uint8_t out_port, 
+							   STL_SCSCMAP *pSCSCMap)
+{
+	FSTATUS fstatus;
+	uint32 attrmod = (1 << 24) | (in_port<<8) | out_port;
+	char attributeName[64];
+	uint32_t bufferLength = sizeof(STL_SCSCMAP);
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
+
+	snprintf(attributeName, sizeof(attributeName), "Set(SCSCMap %u %u)", in_port, out_port);
+	debugLogSmaRequest(attributeName, path, dlid, slid);
+
+	memcpy(buffer, pSCSCMap, bufferLength);
+	BSWAP_STL_SCSCMAP((STL_SCSCMAP*)buffer);
+
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_SET, STL_MCLASS_ATTRIB_ID_SC_SC_MAPPING_TABLE, attrmod, buffer, bufferLength);
+
+	if (fstatus == FSUCCESS) {
+		BSWAP_STL_SCSCMAP((STL_SCSCMAP*)buffer);
+		memcpy(pSCSCMap, buffer, bufferLength);
+	}
+	return fstatus;
+}
+
+/**
+ * Set the SCVL Mapping Table of the requested LID/path
+ * Retry as needed if unable to send or don't get a response
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param portNum Port number for desired port information
+ * @param pSCVLMap Pointer to SCVL Mapping Table to set. Will be overwritten with response
+ * @param attr SMP Attribute value - used to select between different SCVL Mapping Tables
+ * @return FSTATUS return code
+ */
+FSTATUS SmaSetSCVLMappingTable(struct omgt_port *port,
+							   STL_LID dlid, 
+							   STL_LID slid,
+							   uint8_t* path,
+							   uint8_t allPorts,
+							   uint8_t port_num,
+							   STL_SCVLMAP *pSCVLMap,
+							   uint16_t attr)
+{
+	FSTATUS fstatus;
+	uint32 attrmod = (1<<24) | port_num;
+	char attributeName[64];
+	uint32_t bufferLength = sizeof(STL_SCVLMAP);
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
+
+	if (allPorts)
+		attrmod |= 1<<8;
+
+	snprintf(attributeName, sizeof(attributeName), "Set(SCVLMap %u)", port_num);
+	debugLogSmaRequest(attributeName, path, dlid, slid);
+
+	memcpy(buffer, pSCVLMap, bufferLength);
+	BSWAP_STL_SCVLMAP((STL_SCVLMAP*)buffer);
+
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_SET, attr, attrmod, buffer, bufferLength);
+
+	if (fstatus == FSUCCESS) {
+		BSWAP_STL_SCVLMAP((STL_SCVLMAP*)buffer);
+		memcpy(pSCVLMap, buffer, bufferLength);
+	}
+	return fstatus;  
+}
+
+/**
+ * Set the Buffer Control Table from the requested LID/path
+ * Retry as needed if unable to send or don't get a response
+ * pBCT must be large enough to hold all BufferControlTables
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param startPort Beginning of port range for returned Buffer Control Tables
+ * @param endPort End of port range for returned Buffer Control Tables
+ * @param pBCT[] Array of Buffer Control Table(s) to set. Will be overwritten with response
+ * @return FSTATUS return code
+ */
+FSTATUS SmaSetBufferControlTable(struct omgt_port *port,
+							   STL_LID dlid, 
+							   STL_LID slid,
+							   uint8_t* path,
+							   uint8_t startPort,
+							   uint8_t endPort,
+							   STL_BUFFER_CONTROL_TABLE pBCT[])
+{
+	FSTATUS fstatus = FERROR;
+    uint8_t maxCount = (path == NULL ? STL_NUM_BFRCTLTAB_BLOCKS_PER_LID_SMP : STL_NUM_BFRCTLTAB_BLOCKS_PER_DRSMP);
+	uint8_t block;
+	int i;
+	char attributeName[64];
+	uint32_t bufferLength = sizeof(STL_BUFFER_CONTROL_TABLE) * maxCount;
+	uint8_t buffer[bufferLength];
+	uint8_t* data = buffer;
+	STL_BUFFER_CONTROL_TABLE *table = (STL_BUFFER_CONTROL_TABLE *)data;
+	memset(buffer, 0, bufferLength);
+
+	snprintf(attributeName, sizeof(attributeName), "Set(BufferControlTable %u %u)", startPort, endPort);
+	debugLogSmaRequest(attributeName, path, dlid, slid);
+
+	for (block = startPort; block <= endPort; block += maxCount) {
+		uint8_t numPorts = MIN(maxCount, (endPort - block)+1);
+		uint32_t amod = (numPorts << 24) | block;
+
+		for (i = 0; i < numPorts; i++) {
+			memcpy(table, &pBCT[block-startPort+i], sizeof(STL_BUFFER_CONTROL_TABLE));
+			BSWAP_STL_BUFFER_CONTROL_TABLE(table);
+			// Handle the dissimilar sizes of Buffer Table and 8-byte pad alignment
+			data += STL_BFRCTRLTAB_PAD_SIZE;
+			table = (STL_BUFFER_CONTROL_TABLE *)(data);
+		}
+
+		fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_SET, STL_MCLASS_ATTRIB_ID_BUFFER_CONTROL_TABLE, amod, buffer, sizeof(STL_BUFFER_CONTROL_TABLE));
+
+		if (fstatus == FSUCCESS) {
+			data = buffer;
+			table = (STL_BUFFER_CONTROL_TABLE*)data;
+
+			for (i = 0; i < numPorts; i++) {
+				BSWAP_STL_BUFFER_CONTROL_TABLE(table);
+				memcpy(&pBCT[block-startPort+i], table, sizeof(STL_BUFFER_CONTROL_TABLE));
+				// Handle the dissimilar sizes of Buffer Table and 8-byte pad alignment
+				data += STL_BFRCTRLTAB_PAD_SIZE;
+				table = (STL_BUFFER_CONTROL_TABLE *)(data);
+			}
+		}
+	}
+
+	return fstatus;
+}
+
+/**
+ * Set the Linear Forwarding Table of the requested LID/path
+ * Retry as needed if unable to send or don't get a response
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param block Linear Forwarding Table block number
+ * @param pFDB Pointer to Linear Forwarding Table to set. Will be overwritten with response
+ * @return FSTATUS return code
+ */
+FSTATUS SmaSetLinearFDBTable(struct omgt_port *port,
+							 STL_LID dlid, 
+							 STL_LID slid,
+							 uint8_t* path,
+							 uint16_t block, 
+							 STL_LINEAR_FORWARDING_TABLE *pFDB)
+{
+	FSTATUS fstatus;
+	uint32_t modifier;
+	char attributeName[64];
+	uint32_t bufferLength = sizeof(STL_LINEAR_FORWARDING_TABLE);
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
+
+	snprintf(attributeName, sizeof(attributeName), "Set(LFT %u)", block);
+	debugLogSmaRequest(attributeName, path, dlid, slid);
+
+	modifier = 0x01000000 + (uint32_t)block;
+
+	memcpy(buffer, pFDB, bufferLength);
+	BSWAP_STL_LINEAR_FORWARDING_TABLE((STL_LINEAR_FORWARDING_TABLE*)buffer);
+
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_SET, STL_MCLASS_ATTRIB_ID_LINEAR_FWD_TABLE, modifier, buffer, bufferLength);
+
+	if (fstatus == FSUCCESS) {
+		BSWAP_STL_LINEAR_FORWARDING_TABLE((STL_LINEAR_FORWARDING_TABLE*)buffer);
+		memcpy(pFDB, buffer, bufferLength);
+	}
+	return fstatus;
+}
+
+/**
+ * Set the Multicast Forwarding Table of the requested LID/path
+ * Retry as needed if unable to send or don't get a response
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param block Multicast Forwarding Table block number
+ * @param position Desired port mask for selected block (0-3)
+ * @param pFDB Pointer to Multicast Forwarding Table to set. Will be overwritten with response
+ * @return FSTATUS return code
+ */
+FSTATUS SmaSetMulticastFDBTable(struct omgt_port *port,
+							    STL_LID dlid, 
+							    STL_LID slid,
+							    uint8_t* path,
+								uint32_t block, 
+								uint8_t position, 
+								STL_MULTICAST_FORWARDING_TABLE *pFDB)
+{
+	FSTATUS fstatus;
+	char attributeName[64];
+	uint32_t bufferLength = sizeof(STL_MULTICAST_FORWARDING_TABLE);
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
+
+	snprintf(attributeName, sizeof(attributeName), "Set(MFT %u %u)", block, position);
+	debugLogSmaRequest(attributeName, path, dlid, slid);
+
+	memcpy(buffer, pFDB, bufferLength);
+	BSWAP_STL_MULTICAST_FORWARDING_TABLE((STL_MULTICAST_FORWARDING_TABLE*)buffer);
+
+	//@TODO: Enable multi-block requests from just a single block request
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_SET, STL_MCLASS_ATTRIB_ID_MCAST_FWD_TABLE, 
+									(0x1<<24) | (0x3 & position)<<22 | (block & 0xfffff), buffer, bufferLength);
+
+	if (fstatus == FSUCCESS) {
+		BSWAP_STL_MULTICAST_FORWARDING_TABLE((STL_MULTICAST_FORWARDING_TABLE*)buffer);
+		memcpy(pFDB, buffer, bufferLength);
+	}
+	return fstatus;
+}
+
+/**
+ * Get the SmaGetCongestionInfo from the requested LID/path
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param pCongestionInfo Pointer to allocated space to store the returned CongestionInfo
+ * @return FSTATUS return code
+ */
+FSTATUS SmaGetCongestionInfo(struct omgt_port *port,
+					   STL_LID dlid,
+					   STL_LID slid,
+					   uint8_t* path,
+					   STL_CONGESTION_INFO *pCongestionInfo)
+{
+	FSTATUS fstatus;
+	uint32_t bufferLength = sizeof(STL_CONGESTION_INFO);
+	uint8_t buffer[bufferLength];
+	memset(buffer, 0, bufferLength);
+
+	debugLogSmaRequest("Get(CongestionInfo)", path, dlid, slid);
+
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_GET, STL_MCLASS_ATTRIB_ID_CONGESTION_INFO, 0, buffer, bufferLength);
+
+	if (fstatus == FSUCCESS) {
+		BSWAP_STL_CONGESTION_INFO((STL_CONGESTION_INFO*)buffer);
+		memcpy(pCongestionInfo, buffer, bufferLength);
+	}
+	return fstatus;
+}
+
+/**
+ * Get the SmaGetHFICongestionControlTable from the requested LID/path
+ *
+ * @param port The omgt_port to communicate with the fabric
+ * @param dlid Destination LID to send packet to
+ * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
+ * @param path Directed route path to destination
+ * @param block Starting block value
+ * @param numBlocks Number of blocks in table
+ * @return FSTATUS return code
+ */
+
+/* Maximum HFICCT size that can fit in a MAD packet */
+#define HFICCTI_MAX_BLOCK 14
+FSTATUS SmaGetHFICongestionControlTable(struct omgt_port *port,
+					   STL_LID dlid,
+					   STL_LID slid,
+					   uint8_t* path,
+					   uint16_t block,
+					   uint16_t numBlocks,
+					   STL_HFI_CONGESTION_CONTROL_TABLE *pHfiCongestionControl)
+{
+	FSTATUS fstatus;
+
+	if (numBlocks < 1 || numBlocks > HFICCTI_MAX_BLOCK)
+		return FERROR;
+
+	uint32_t bufferLength = sizeof(STL_HFI_CONGESTION_CONTROL_TABLE) +
+				sizeof(STL_HFI_CONGESTION_CONTROL_TABLE_BLOCK) * (numBlocks - 1);
+
+	uint8_t buffer[bufferLength];
+	uint32_t amod = (numBlocks<<24) | (block & 0xff);
+
+	memset(buffer, 0, bufferLength);
+
+	debugLogSmaRequest("Get(HFICongestionControlTable)", path, dlid, slid);
+
+	fstatus = stl_sma_send_recv_mad(port, dlid, slid, path, MMTHD_GET, STL_MCLASS_ATTRIB_ID_HFI_CONGESTION_CONTROL_TABLE, amod, buffer, bufferLength);
+
+	if (fstatus != FSUCCESS)
+		return fstatus;
+
+	BSWAP_STL_HFI_CONGESTION_CONTROL_TABLE((STL_HFI_CONGESTION_CONTROL_TABLE*)buffer, numBlocks);
+	memcpy(pHfiCongestionControl, buffer, bufferLength);
+
+	return FSUCCESS;
 }
 
 #endif	// PRODUCT_OPENIB_FF
@@ -973,7 +1679,7 @@ static FSTATUS stl_pm_send_recv_mad(struct omgt_port *port, IB_PATH_RECORD *path
 										 &addr,
 										 (uint8_t *)mad, &recv_size,
 										 RESP_WAIT_TIME, 
-										 MAD_ATTEMPTS-1);
+										 g_smaRetries-1);
 	
 #ifdef IB_DEBUG
 	if (fstatus == FSUCCESS) {
@@ -1039,7 +1745,7 @@ FSTATUS STLPmGetClassPortInfo(struct omgt_port *port, PortData *portp)
 		return FSUCCESS;	// if we already have, no use asking again
 	MemoryClear(&req, sizeof(req));
 
-	DBGPRINT("Sending PM Get(ClassPortInfo) to LID 0x%04x Node 0x%016"PRIx64"\n",
+	DBGPRINT("Sending PM Get(ClassPortInfo) to LID 0x%08x Node 0x%016"PRIx64"\n",
 				portp->pathp->DLID,
 				portp->nodep->NodeInfo.NodeGUID);
 	DBGPRINT("    Name: %.*s\n",
@@ -1160,6 +1866,10 @@ static FSTATUS dm_send_recv(struct omgt_port *port,
 
 	memset(&addr, 0, sizeof(addr));
 	addr.lid = pathp->DLID;
+	if (pathp->u1.s.HopLimit == 1) {
+		if ((pathp->DGID.Type.Global.InterfaceID >> 40) == OUI_TRUESCALE)
+			addr.lid = pathp->DGID.Type.Global.InterfaceID & 0xFFFFFFFF;
+	}
 	addr.qpn = 1;
 	addr.qkey = QP1_WELL_KNOWN_Q_KEY;
 	addr.pkey = pathp->P_Key;
@@ -1179,14 +1889,14 @@ static FSTATUS dm_send_recv(struct omgt_port *port,
 	// rest of fields should be ignored for a Get, zero'ed above
 	BSWAP_MAD_HEADER((MAD*)mad);
 
-	ASSERT(pathp->DLID);
+	ASSERT(addr.lid);
     recv_size = sizeof(*mad);
 	fstatus = omgt_send_recv_mad_no_alloc(port, 
 										 (uint8_t *)mad, sizeof(*mad),
 										 &addr,
 										 (uint8_t *)mad, &recv_size,
 										 RESP_WAIT_TIME, 
-										 MAD_ATTEMPTS-1);
+										 g_smaRetries-1);
 
 	BSWAP_MAD_HEADER((MAD*)mad);
 	if (FSUCCESS == fstatus && mad->common.u.NS.Status.AsReg16 != MAD_STATUS_SUCCESS) {

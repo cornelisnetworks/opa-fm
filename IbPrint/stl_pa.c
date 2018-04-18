@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -184,17 +184,18 @@ void PrintStlPAGroupInfo(PrintDest_t *dest, int indent, const STL_PA_PM_GROUP_IN
 	return;
 }
 
-void PrintStlPAPortCounters(PrintDest_t *dest, int indent, const STL_PORT_COUNTERS_DATA *pPortCounters, const uint32 nodeLid, const uint32 portNumber, const uint32 flags)
+void PrintStlPAPortCounters(PrintDest_t *dest, int indent, const STL_PORT_COUNTERS_DATA *pPortCounters, const STL_LID nodeLid, const uint32 portNumber, const uint32 flags)
 {
-	PrintFunc(dest, "%*s%s controlled Port Counters (%s) for LID 0x%04x, port number %u%s:\n",
+	PrintFunc(dest, "%*s%s controlled Port Counters (%s) for LID 0x%.*x, port number %u%s:\n",
 				indent, "", (flags & STL_PA_PC_FLAG_USER_COUNTERS) ? "User" : "PM",
 				(flags & STL_PA_PC_FLAG_DELTA) ? "delta" : "total",
-			   	nodeLid, portNumber,
+				(nodeLid <= IB_MAX_UCAST_LID ? 4:8),
+				nodeLid, portNumber,
 				(flags&STL_PA_PC_FLAG_UNEXPECTED_CLEAR)?" (Unexpected Clear)":"");
 	PrintFunc(dest, "%*sPerformance: Transmit\n", indent, "");
 	PrintFunc(dest, "%*s    Xmit Data             %20"PRIu64" MB (%"PRIu64" Flits)\n",
 			indent, "",
- 			pPortCounters->portXmitData/FLITS_PER_MB,
+			pPortCounters->portXmitData/FLITS_PER_MB,
 			pPortCounters->portXmitData);
 	PrintFunc(dest, "%*s    Xmit Pkts             %20"PRIu64"\n",
 			indent, "",
@@ -206,7 +207,7 @@ void PrintStlPAPortCounters(PrintDest_t *dest, int indent, const STL_PORT_COUNTE
 			indent, "");
 	PrintFunc(dest, "%*s    Rcv Data              %20"PRIu64" MB (%"PRIu64" Flits)\n",
 			indent, "",
- 			pPortCounters->portRcvData/FLITS_PER_MB,
+			pPortCounters->portRcvData/FLITS_PER_MB,
 			pPortCounters->portRcvData);
 	PrintFunc(dest, "%*s    Rcv Pkts              %20"PRIu64"\n",
 			indent, "",
@@ -218,81 +219,84 @@ void PrintStlPAPortCounters(PrintDest_t *dest, int indent, const STL_PORT_COUNTE
 			indent, "");
 	PrintFunc(dest, "%*s    Link Quality Ind      %10u\n",
 			indent, "",
-		   	pPortCounters->lq.s.linkQualityIndicator);
+			pPortCounters->lq.s.linkQualityIndicator);
 	PrintFunc(dest, "%*s    Uncorrectable Err     %10u\n", // 8-bit
 			indent, "",
-		   	pPortCounters->uncorrectableErrors);
+			pPortCounters->uncorrectableErrors);
 	PrintFunc(dest, "%*s    Link Downed           %10u\n", // 32-bit
 			indent, "",
-		   	pPortCounters->linkDowned);
+			pPortCounters->linkDowned);
 	PrintFunc(dest, "%*s    Num Lanes Down        %10u\n",
 			indent, "",
 			pPortCounters->lq.s.numLanesDown);
 	PrintFunc(dest, "%*s    Rcv Errors            %10"PRIu64"\n",
 			indent, "",
-	   		pPortCounters->portRcvErrors);
+			pPortCounters->portRcvErrors);
 	PrintFunc(dest, "%*s    Exc. Buffer Overrun   %10"PRIu64"\n",
 			indent, "",
-	   		pPortCounters->excessiveBufferOverruns);
+			pPortCounters->excessiveBufferOverruns);
 	PrintFunc(dest, "%*s    FM Config             %10"PRIu64"\n",
 			indent, "",
-	   		pPortCounters->fmConfigErrors);
+			pPortCounters->fmConfigErrors);
 	PrintFunc(dest, "%*s    Link Error Recovery   %10u\n", // 32-bit
 			indent, "",
-		   	pPortCounters->linkErrorRecovery);
+			pPortCounters->linkErrorRecovery);
 	PrintFunc(dest, "%*s    Local Link Integrity  %10"PRIu64"\n",
 			indent, "",
-	   		pPortCounters->localLinkIntegrityErrors);
+			pPortCounters->localLinkIntegrityErrors);
 	PrintFunc(dest, "%*s    Rcv Rmt Phys Err      %10"PRIu64"\n",
 			indent, "",
-	   		pPortCounters->portRcvRemotePhysicalErrors);
+			pPortCounters->portRcvRemotePhysicalErrors);
 	PrintFunc(dest, "%*sSecurity Errors:              \n",
 			indent, "");
 	PrintFunc(dest, "%*s    Xmit Constraint       %10"PRIu64"\n",
 			indent, "",
-	   		pPortCounters->portXmitConstraintErrors);
+			pPortCounters->portXmitConstraintErrors);
 	PrintFunc(dest, "%*s    Rcv Constraint        %10"PRIu64"\n",
 			indent, "",
-	   		pPortCounters->portRcvConstraintErrors);
+			pPortCounters->portRcvConstraintErrors);
 	PrintFunc(dest, "%*sRouting and Other Errors:     \n",
 			indent, "");
 	PrintFunc(dest, "%*s    Rcv Sw Relay Err      %10"PRIu64"\n",
 			indent, "",
-	   		pPortCounters->portRcvSwitchRelayErrors);
+			pPortCounters->portRcvSwitchRelayErrors);
 	PrintFunc(dest, "%*s    Xmit Discards         %10"PRIu64"\n",
 			indent, "",
-	   		pPortCounters->portXmitDiscards);
+			pPortCounters->portXmitDiscards);
 	PrintFunc(dest, "%*sCongestion:             \n",
 			indent, "");
 	PrintFunc(dest, "%*s    Cong Discards         %10"PRIu64"\n",
 			indent, "",
-	   		pPortCounters->swPortCongestion);
+			pPortCounters->swPortCongestion);
 	PrintFunc(dest, "%*s    Rcv FECN              %10"PRIu64"\n",
 			indent, "",
-		   	pPortCounters->portRcvFECN);
+			pPortCounters->portRcvFECN);
 	PrintFunc(dest, "%*s    Rcv BECN              %10"PRIu64"\n",
 			indent, "",
-		   	pPortCounters->portRcvBECN);
+			pPortCounters->portRcvBECN);
 	PrintFunc(dest, "%*s    Mark FECN             %10"PRIu64"\n",
 			indent, "",
-		   	pPortCounters->portMarkFECN);
+			pPortCounters->portMarkFECN);
 	PrintFunc(dest, "%*s    Xmit Time Cong        %10"PRIu64"\n",
 			indent, "",
-		   	pPortCounters->portXmitTimeCong);
+			pPortCounters->portXmitTimeCong);
 	PrintFunc(dest, "%*s    Xmit Wait             %10"PRIu64"\n",
 			indent, "",
-		   	pPortCounters->portXmitWait);
+			pPortCounters->portXmitWait);
 	PrintFunc(dest, "%*sBubbles:	             \n",
 			indent, "");
 	PrintFunc(dest, "%*s    Xmit Wasted BW        %10"PRIu64"\n",
 			indent, "",
-		   	pPortCounters->portXmitWastedBW);
+			pPortCounters->portXmitWastedBW);
 	PrintFunc(dest, "%*s    Xmit Wait Data        %10"PRIu64"\n",
 			indent, "",
-		   	pPortCounters->portXmitWaitData);
+			pPortCounters->portXmitWaitData);
 	PrintFunc(dest, "%*s    Rcv Bubble            %10"PRIu64"\n",
 			indent, "",
-		   	pPortCounters->portRcvBubble);
+			pPortCounters->portRcvBubble);
+	if (flags & STL_PA_PC_FLAG_CLEAR_FAIL) {
+		PrintFunc(dest, "\nPort Counter Clear was Unsuccessful\n\n");
+	}
 	PrintStlPAImageId(dest, indent+2, &pPortCounters->imageId);
 }
 
@@ -305,8 +309,10 @@ void PrintStlPAGroupConfig(PrintDest_t *dest, int indent, const char *groupName,
 	PrintFunc(dest, "%*sNumber ports: %u\n",
 				indent, "", numRecords);
 	for (i = 0; i < numRecords; i++) {
-		PrintFunc(dest, "%*s%u:LID:0x%04x Port:%u  GUID:0x%016"PRIx64"  NodeDesc: %.*s\n",
-				indent, "", i+1, pGroupConfig[i].nodeLid, pGroupConfig[i].portNumber,
+		PrintFunc(dest, "%*s%u:LID:0x%.*x Port:%u  GUID:0x%016"PRIx64"  NodeDesc: %.*s\n",
+				indent, "", i+1,(pGroupConfig[i].nodeLid <= IB_MAX_UCAST_LID ? 4:8),
+				pGroupConfig[i].nodeLid,
+				pGroupConfig[i].portNumber,
 				pGroupConfig[i].nodeGUID,
 			   	(int)sizeof(pGroupConfig[i].nodeDesc),
 			   	pGroupConfig[i].nodeDesc);
@@ -315,6 +321,60 @@ void PrintStlPAGroupConfig(PrintDest_t *dest, int indent, const char *groupName,
 
 	return;
 }
+
+void PrintStlPAGroupNodeInfo(PrintDest_t *dest, int indent, const char *groupName, const int numRecords, const STL_PA_GROUP_NODEINFO_RSP *pGroupNodeInfo)
+{
+	char buf[80];
+	int i;
+
+	PrintFunc(dest, "%*sGroup name: %s\n",
+				indent, "", groupName);
+	PrintFunc(dest, "%*sNumber nodes: %u\n",
+				indent, "", numRecords);
+	for (i = 0; i < numRecords; i++) {
+		PrintFunc(dest, "%*s%u:LID: 0x%08x Type:  %s  Name: %.*s\n",
+			indent, "", i+1, pGroupNodeInfo[i].nodeLID,
+			StlNodeTypeToText(pGroupNodeInfo[i].nodeType),
+			(int)sizeof(pGroupNodeInfo[i].nodeDesc),
+			pGroupNodeInfo[i].nodeDesc);
+		PrintFunc(dest, "%*s NodeGuid: 0x%016" PRIx64 "\n",
+			indent, " ",pGroupNodeInfo[i].nodeGUID);
+		FormatStlPortMask(buf, pGroupNodeInfo[i].portSelectMask, MAX_STL_PORTS, 80);
+		PrintFunc(dest, "%*s PortSelectMask: %s\n", indent, " ", buf);
+		PrintSeparator(dest);
+	}
+	PrintStlPAImageId(dest, indent, &pGroupNodeInfo->imageId);
+
+	return;
+}
+
+void PrintStlPAGroupLinkInfo(PrintDest_t *dest, int indent, const char *groupName, const int numRecords, const STL_PA_GROUP_LINKINFO_RSP *pGroupLinkInfo)
+{
+	int i;
+
+	PrintFunc(dest, "%*sGroup name: %s\n",
+				indent, "", groupName);
+	PrintFunc(dest, "%*sNumber links: %u\n",
+				indent, "", numRecords);
+	for (i = 0; i < numRecords; i++) {
+		PrintFunc(dest, "%*s%u:LID: 0x%08x -> 0x%08x Port: %3u -> %3u\n",
+			indent, "", i+1, pGroupLinkInfo[i].fromLID, pGroupLinkInfo[i].toLID,
+			pGroupLinkInfo[i].fromPort, pGroupLinkInfo[i].toPort);
+		PrintFunc(dest, "%*s MTU: %5s txRate: %4s rxRate: %4s\n",
+			indent, " ", IbMTUToText(pGroupLinkInfo[i].mtu),
+			StlStaticRateToText(StlLinkSpeedWidthToStaticRate(pGroupLinkInfo[i].activeSpeed, pGroupLinkInfo[i].txLinkWidthDowngradeActive)),
+			StlStaticRateToText(StlLinkSpeedWidthToStaticRate(pGroupLinkInfo[i].activeSpeed, pGroupLinkInfo[i].rxLinkWidthDowngradeActive))); 
+		PrintFunc(dest, "%*s Local Status: %s\n", indent, "",
+				StlFocusStatusToText(pGroupLinkInfo[i].localStatus));
+		PrintFunc(dest, "%*s Neighbor Status: %s\n", indent, "",
+				StlFocusStatusToText(pGroupLinkInfo[i].neighborStatus));
+		PrintSeparator(dest);
+	}
+	PrintStlPAImageId(dest, indent, &pGroupLinkInfo->imageId);
+
+	return;
+}
+
 
 void PrintStlPMConfig(PrintDest_t *dest, int indent, const STL_PA_PM_CFG_DATA *pPMConfig)
 {
@@ -354,13 +414,13 @@ void PrintStlPMConfig(PrintDest_t *dest, int indent, const STL_PA_PM_CFG_DATA *p
 				pPMConfig->integrityWeights.LinkErrorRecovery);
 	PrintFunc(dest, "%*s                Loc Link Integ: %-7u \n",
 				indent, "", pPMConfig->integrityWeights.LocalLinkIntegrityErrors );
-	PrintFunc(dest, "%*s Congest Wts:   Cong Discards: %-7u    Rcv FECN: %-7u\n",
+	PrintFunc(dest, "%*s Congest Wts:  Cong Discards: %-7u     Rcv FECN: %-7u\n",
 				indent, "", pPMConfig->congestionWeights.SwPortCongestion,
 				pPMConfig->congestionWeights.PortRcvFECN);
-	PrintFunc(dest, "%*s                Rcv BECN: %-7u         Mark FECN: %-7u\n",
+	PrintFunc(dest, "%*s               Rcv BECN: %-7u          Mark FECN: %-7u\n",
 				indent, "", pPMConfig->congestionWeights.PortRcvBECN,
 				pPMConfig->congestionWeights.PortMarkFECN);
-	PrintFunc(dest, "%*s                Tx Time Cong: %-7u     Tx Wait: %-7u\n",
+	PrintFunc(dest, "%*s               Tx Time Cong: %-7u      Tx Wait: %-7u\n",
 				indent, "", pPMConfig->congestionWeights.PortXmitTimeCong,
 				pPMConfig->congestionWeights.PortXmitWait);
 	PrintFunc(dest, "%*sPM Memory Size: %"PRIu64" MiB (%" PRIu64 " bytes)\n",
@@ -383,12 +443,12 @@ void PrintStlPAFocusPorts(PrintDest_t *dest, int indent, const char *groupName, 
 
 	PrintFunc(dest, "%*sGroup name: %s\n", indent, "", groupName);
 	PrintFunc(dest, "%*sNumber links: %u\n", indent, "", numRecords);
-	PrintFunc(dest, "%*sFocus select: 0x%x\n", indent, "", select);
+	PrintFunc(dest, "%*sFocus select: %s\n", indent, "", StlFocusAttributeToText(select));
 	PrintFunc(dest, "%*sFocus start:  %u\n", indent, "", start);
 	PrintFunc(dest, "%*sFocus range:  %u\n", indent, "", range);
 	for (i = 0; i < numRecords; i++) {
 		PrintFunc(dest, "%*s%u:LID:0x%04x  Port:%u  Rate: %4s MTU: %5s nbrLID:0x%04x  nbrPort:%u\n",
-				indent, "", i+1, pFocusPorts[i].nodeLid, pFocusPorts[i].portNumber,
+				indent, "", i+start, pFocusPorts[i].nodeLid, pFocusPorts[i].portNumber,
 				StlStaticRateToText(pFocusPorts[i].rate), IbMTUToText(pFocusPorts[i].maxVlMtu),
 				pFocusPorts[i].neighborLid, pFocusPorts[i].neighborPortNumber);
 		if ( ( (select >= STL_PA_SELECT_CATEGORY_INTEG) &&
@@ -399,6 +459,63 @@ void PrintStlPAFocusPorts(PrintDest_t *dest, int indent, const char *groupName, 
 		} else {
 			PrintFunc(dest, "%*s   Value:  %16.1f   nbrValue:   %16.1f\n",
 					indent, "", (float)pFocusPorts[i].value/10.0, (float)pFocusPorts[i].neighborValue/10.0);
+		}
+		PrintFunc(dest, "%*s   GUID: 0x%016"PRIx64"   nbrGuid: 0x%016"PRIx64"\n",
+				indent, "", pFocusPorts[i].nodeGUID, pFocusPorts[i].neighborGuid);
+		PrintFunc(dest, "%*s   Status: %s Name: %.*s\n", indent, "",
+				StlFocusStatusToText(pFocusPorts[i].localStatus),
+				(int)sizeof(pFocusPorts[i].nodeDesc), pFocusPorts[i].nodeDesc);
+		PrintFunc(dest, "%*s   Status: %s Neighbor Name: %.*s\n", indent, "",
+				StlFocusStatusToText(pFocusPorts[i].neighborStatus),
+				(int)sizeof(pFocusPorts[i].neighborNodeDesc), pFocusPorts[i].neighborNodeDesc);
+	}
+	PrintStlPAImageId(dest, indent, &pFocusPorts[0].imageId);
+
+	return;
+}
+
+void PrintStlPAFocusPortsMultiSelect(PrintDest_t *dest, int indent, const char *groupName, const int numRecords, const uint32 start, const uint32 range, const STL_FOCUS_PORTS_MULTISELECT_RSP *pFocusPorts, uint8 logical_operator,
+	STL_FOCUS_PORT_TUPLE *tuple)
+{
+	int i, j;
+
+	PrintFunc(dest, "%*sGroup name: %s\n", indent, "", groupName);
+	PrintFunc(dest, "%*sNumber links: %u\n", indent, "", numRecords);
+	PrintFunc(dest, "%*sFocus start:  %u\n", indent, "", start);
+	PrintFunc(dest, "%*sFocus range:  %u\n", indent, "", range);
+
+	for (j = 0; j < MAX_NUM_FOCUS_PORT_TUPLES; j++) {
+		if (tuple[j].comparator != FOCUS_PORTS_COMPARATOR_INVALID) {
+			PrintFunc(dest, "%*sFocus select: %-22s %-25s %16"PRIu64"\n", indent, "",
+				StlFocusAttributeToText(tuple[j].select),
+				StlComparatorToText(tuple[j].comparator),
+				tuple[j].argument);
+		}
+	}
+
+	if (logical_operator != FOCUS_PORTS_LOGICAL_OPERATOR_INVALID) {
+		PrintFunc(dest, "%*sTuples joined by logical operator: %s\n", indent, "", StlOperatorToText(logical_operator));
+	}
+
+	for (i = 0; i < numRecords; i++) {
+		PrintFunc(dest, "%*s%3u:LID:0x%.*x  Port:%u  Rate: %4s MTU: %5s nbrLID:0x%.*x  nbrPort:%u\n",
+				indent, "", i+start, (pFocusPorts[i].nodeLid <= IB_MAX_UCAST_LID ? 4:8), pFocusPorts[i].nodeLid,
+				pFocusPorts[i].portNumber,
+				StlStaticRateToText(pFocusPorts[i].rate), IbMTUToText(pFocusPorts[i].maxVlMtu),
+				(pFocusPorts[i].neighborLid <= IB_MAX_UCAST_LID ? 4:8), pFocusPorts[i].neighborLid,
+				pFocusPorts[i].neighborPortNumber);
+		for (j = 0; j < MAX_NUM_FOCUS_PORT_TUPLES; j++) {
+			if (tuple[j].comparator != FOCUS_PORTS_COMPARATOR_INVALID) {
+				if ( ( (tuple[j].select >= STL_PA_SELECT_CATEGORY_INTEG) &&
+					tuple[j].select <= STL_PA_SELECT_CATEGORY_ROUT) ||
+					(tuple[j].select == STL_PA_SELECT_UTIL_PKTS_HIGH) ) {
+					PrintFunc(dest, "%*s   %-22s Value:  %16"PRIu64"   nbrValue:  %16"PRIu64"\n",
+						indent, "", StlFocusAttributeToText(tuple[j].select), pFocusPorts[i].value[j], pFocusPorts[i].neighborValue[j]);
+				} else {
+					PrintFunc(dest, "%*s  %-22s Value:  %16.1f   nbrValue:  %16.1f\n",
+						indent, "", StlFocusAttributeToText(tuple[j].select), (float)pFocusPorts[i].value[j]/10.0, (float)pFocusPorts[i].neighborValue[j]/10.0);
+				}
+			}
 		}
 		PrintFunc(dest, "%*s   GUID: 0x%016"PRIx64"   nbrGuid: 0x%016"PRIx64"\n",
 				indent, "", pFocusPorts[i].nodeGUID, pFocusPorts[i].neighborGuid);
@@ -448,8 +565,9 @@ void PrintStlPAImageInfo(PrintDest_t *dest, int indent, const STL_PA_IMAGE_INFO_
 	for (i = 0; i < 2; i++) {
 		if (i != 0 && ! pImageInfo->SMInfo[i].lid)
 			continue;
-		PrintFunc(dest, "%*s%s: LID: 0x%04x  Port: %3u  Priority: %2u  State: %s\n",
+		PrintFunc(dest, "%*s%s: LID: 0x%.*x  Port: %3u  Priority: %2u  State: %s\n",
 				indent, "", (i==0)?"   Master SM":"Secondary SM",
+				(pImageInfo->SMInfo[i].lid <= IB_MAX_UCAST_LID ? 4:8),
 				pImageInfo->SMInfo[i].lid,
 				pImageInfo->SMInfo[i].portNumber,
 				pImageInfo->SMInfo[i].priority,
@@ -523,8 +641,10 @@ void PrintStlPAVFConfig(PrintDest_t *dest, int indent, const char *vfName, const
 	PrintFunc(dest, "%*sNumber ports: %u\n",
 				indent, "", numRecords);
 	for (i = 0; i < numRecords; i++) {
-		PrintFunc(dest, "%*s%u:LID:0x%04x Port:%u  GUID:0x%016"PRIx64"  NodeDesc: %.*s\n",
-				indent, "", i+1, pVFConfig[i].nodeLid, pVFConfig[i].portNumber,
+		PrintFunc(dest, "%*s%u:LID:0x%.*x Port:%u  GUID:0x%016"PRIx64"  NodeDesc: %.*s\n",
+				indent, "", i+1, (pVFConfig[i].nodeLid <= IB_MAX_UCAST_LID ? 4:8),
+				pVFConfig[i].nodeLid,
+				pVFConfig[i].portNumber,
 				pVFConfig[i].nodeGUID,
 			   	(int)sizeof(pVFConfig[i].nodeDesc),
 			   	pVFConfig[i].nodeDesc);
@@ -534,11 +654,12 @@ void PrintStlPAVFConfig(PrintDest_t *dest, int indent, const char *vfName, const
 	return;
 }
 
-void PrintStlPAVFPortCounters(PrintDest_t *dest, int indent, const STL_PA_VF_PORT_COUNTERS_DATA *pVFPortCounters, const uint32 nodeLid, const uint32 portNumber, const uint32 flags)
+void PrintStlPAVFPortCounters(PrintDest_t *dest, int indent, const STL_PA_VF_PORT_COUNTERS_DATA *pVFPortCounters, const STL_LID nodeLid, const uint32 portNumber, const uint32 flags)
 {
-	PrintFunc(dest, "%*s%s Controlled VF Port Counters (%s) for node LID 0x%04x, port number %u%s:\n", indent, "",
+	PrintFunc(dest, "%*s%s Controlled VF Port Counters (%s) for node LID 0x%.*x, port number %u%s:\n", indent, "",
 			  (flags & STL_PA_PC_FLAG_USER_COUNTERS) ? "User" : "PM",
 			  (flags & STL_PA_PC_FLAG_DELTA) ? "delta" : "total",
+			  (nodeLid <= IB_MAX_UCAST_LID ? 4:8),
 			  nodeLid, portNumber,
 			  (flags & STL_PA_PC_FLAG_UNEXPECTED_CLEAR) ? " (Unexpected Clear)" : "");
 	PrintFunc(dest, "%*sVF name: %s\n",
@@ -599,6 +720,9 @@ void PrintStlPAVFPortCounters(PrintDest_t *dest, int indent, const STL_PA_VF_POR
 	if (flags & STL_PA_PC_FLAG_SHARED_VL) {
 		PrintFunc(dest, "\nCounters may be shared between Virtual Fabrics\n\n");
 	}
+	if (flags & STL_PA_PC_FLAG_CLEAR_FAIL) {
+		PrintFunc(dest, "\nPort Counter Clear was Unsuccessful\n\n");
+	}
 	PrintStlPAImageId(dest, indent, &pVFPortCounters->imageId);
 
 	return;
@@ -611,12 +735,12 @@ void PrintStlPAVFFocusPorts(PrintDest_t *dest, int indent, const char *vfName, c
 
 	PrintFunc(dest, "%*sVF name: %s\n", indent, "", vfName);
 	PrintFunc(dest, "%*sNumber links: %u\n", indent, "", numRecords);
-	PrintFunc(dest, "%*sFocus select: 0x%x\n", indent, "", select);
+	PrintFunc(dest, "%*sFocus select: %s\n", indent, "", StlFocusAttributeToText(select));
 	PrintFunc(dest, "%*sFocus start:  %u\n", indent, "", start);
 	PrintFunc(dest, "%*sFocus range:  %u\n", indent, "", range);
 	for (i = 0; i < numRecords; i++) {
 		PrintFunc(dest, "%*s%u:LID:0x%04x  Port:%u  Rate: %4s MTU: %5s nbrLID:0x%04x  nbrPort:%u\n",
-				indent, "", i+1, pVFFocusPorts[i].nodeLid, pVFFocusPorts[i].portNumber,
+				indent, "", i+start, pVFFocusPorts[i].nodeLid, pVFFocusPorts[i].portNumber,
 				StlStaticRateToText(pVFFocusPorts[i].rate), IbMTUToText(pVFFocusPorts[i].maxVlMtu),
 				pVFFocusPorts[i].neighborLid, pVFFocusPorts[i].neighborPortNumber);
 		if ( ( (select >= STL_PA_SELECT_CATEGORY_INTEG) &&

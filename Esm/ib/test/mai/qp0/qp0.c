@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -192,7 +192,7 @@ int main(int argc, char *argv[]) {
 		LRMad_Init(&out_mai, MAD_CV_SUBN_LR, MAD_CM_GET, 0xdeadbeefdeadbeefull, aid, amod, 0x0);
 		printf("Sending LID routed Get(NodeDesc) from 0x%x to 0x%x\n", slid, dlid);
 	} else {
-		DRMad_Init(&out_mai, MAD_CM_GET, 0xdeadbeefdeadbeefull, aid, amod, 0x0, path);
+		DRStlMad_Init(&out_mai, MAD_CM_GET, 0xdeadbeefdeadbeefull, aid, amod, 0x0, path);
 		printf("Sending Directed routed Get(NodeDesc)\n");
 	}
 

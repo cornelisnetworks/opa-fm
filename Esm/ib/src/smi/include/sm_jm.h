@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -74,7 +74,7 @@ typedef struct _JmWireGuidList {
 typedef struct _JmWireUseElement {
 	uint16_t bursty : 1;
 	uint16_t swidx : 15;
-	uint16_t dlid;
+	STL_LID dlid;
 	uint8_t use;
 } JmWireUseElement_t;
 
@@ -138,7 +138,7 @@ typedef struct _JmUseElement {
 	// index of the source switch
 	uint16_t swidx  : 15;
 	// lid of the destination
-	uint16_t dlid;
+	STL_LID dlid;
 	// relative weight of path with respect to other paths
 	uint8_t use;
 } JmUseElement_t;

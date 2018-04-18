@@ -101,7 +101,7 @@ int main(int argc, char ** argv)
 	int exitcode = 0;
 	struct omgt_port * port = NULL;
 	int num_records = 0;
-	int i, c, index, debug = 0;
+	int c, index, debug = 0;
 	int sa_service_state = OMGT_SERVICE_STATE_UNKNOWN;
 	void *sa_records = NULL;
 	omgt_sa_selector_t selector;
@@ -276,8 +276,7 @@ int main(int argc, char ** argv)
 	} else if (!strcmp(type, "path")){
 		/* Valid Input Types:
 		 * 	NoInput, PortGuid, PortGid, PortGuidPair, GidPair, PathRecord,
-		 * 	PortGuidList, GidList, Lid, MultiPathRecord, PKey, SourceGid, SL,
-		 * 	ServiceId
+		 * 	Lid, PKey, SL, ServiceId
 		 *
 		 * 	SourceGid is not treated as an InputType but is ALWAYS required when querying path/trace records
 		 */
@@ -305,6 +304,18 @@ int main(int argc, char ** argv)
 		/* Valid Input Types: NoInput, PortGid */
 		status = omgt_sa_get_service_records(port, &selector, &num_records, (IB_SERVICE_RECORD **)&sa_records);
 	} else if (!strcmp(type, "mcmember")){
+		// must check if SA supports these records
+		omgt_sa_selector_t pre_select = {.InputType = InputTypeNoInput};
+		status = omgt_sa_get_classportinfo_records(port, &pre_select, &num_records, (STL_CLASS_PORT_INFO **)&sa_records);
+
+		if (OMGT_STATUS_SUCCESS != status || num_records != 1){
+			fprintf(stderr, "Failed to determine SA capabilities for mcmember query\n");
+			goto fail2;
+		}else if (! (((STL_CLASS_PORT_INFO **)&sa_records)[0]->CapMask & STL_SA_CAPABILITY_MULTICAST_SUPPORT )){
+			fprintf(stderr, "mcmember records not supported by SA\n");
+			goto fail2;
+		}
+
 		if (selector.InputType == InputTypeLid) selector.InputValue.IbMcMemberRecord.Lid = lid;
 		status = omgt_sa_get_ib_mcmember_records(port, &selector, &num_records, (IB_MCMEMBER_RECORD **)&sa_records);
 	} else if (!strcmp(type, "inform")){
@@ -312,17 +323,6 @@ int main(int argc, char ** argv)
 		if (selector.InputType == InputTypeLid) selector.InputValue.StlInformInfoRecord.SubscriberLID = lid;
 		status = omgt_sa_get_informinfo_records(port, &selector, &num_records, (STL_INFORM_INFO_RECORD **)&sa_records);
 	} else if (!strcmp(type, "trace")){
-		//must check if SA supports these records
-		omgt_sa_selector_t pre_select = {.InputType = InputTypeNoInput};
-		status = omgt_sa_get_classportinfo_records(port, &pre_select, &num_records, (STL_CLASS_PORT_INFO **)&sa_records);
-		if (OMGT_STATUS_SUCCESS != status || num_records != 1){
-			fprintf(stderr, "Failed to determine SA capabilities for trace query\n");
-			goto fail2;
-		}else if (! ((STL_CLASS_PORT_INFO **)&sa_records)[0]->CapMask && STL_SA_CAPABILITY_MULTIPATH_SUPPORT ){
-			fprintf(stderr, "trace records not supported by SA\n");
-			goto fail2;
-		}
-
 		/* Valid Input Types: PathRecord, PortGuid, GidPair, PortGid */
 		/* 	SourceGid is not treated as an InputType but is ALWAYS required when querying path/trace records */
 		if (selector.InputType == InputTypePortGuid) {
@@ -379,7 +379,6 @@ int main(int argc, char ** argv)
 		/* Valid Input Types:
 		 * 	NoInput, PKey, SL, ServiceID, McGid, Index, NodeDesc
 		 */
-		if (selector.InputType == InputTypeLid) selector.InputValue.VfInfoRecord.Lid = lid;
 		status = omgt_sa_get_vfinfo_records(port, &selector, &num_records, (STL_VFINFO_RECORD **)&sa_records);
 	} else if (!strcmp(type, "fabricinfo")){
 		/* Valid Input Types: NoInput */

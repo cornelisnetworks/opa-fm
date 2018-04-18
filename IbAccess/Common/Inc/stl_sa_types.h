@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -73,7 +73,7 @@ extern "C" {
 
 #include "iba/public/ipackon.h"
 
-#define STL_SA_CLASS_VERSION					0x80
+#define STL_SA_CLASS_VERSION				0x80
 
 /* 
  * Subnet Administration Attribute IDs Adapted from IB
@@ -117,17 +117,22 @@ extern "C" {
 #define	STL_SA_ATTR_MULTIPATH_LID_RECORD		0x0087 	/* not implemented */
 #define STL_SA_ATTR_CABLE_INFO_RECORD			0x0088 
 #define STL_SA_ATTR_VF_INFO_RECORD				0x0089 // Previously vendor specific
-/* Reserved                                             0x008A */
+#define STL_SA_ATTR_PORT_STATE_INFO_RECORD		0x008A 
 #define STL_SA_ATTR_PORTGROUP_TABLE_RECORD		0x008B 
 #define STL_SA_ATTR_BUFF_CTRL_TAB_RECORD		0x008C 
 #define STL_SA_ATTR_FABRICINFO_RECORD			0x008D
-//Available										0x008E-0x008F
 #define STL_SA_ATTR_QUARANTINED_NODE_RECORD		0x0090 // Previously vendor specific
 #define STL_SA_ATTR_CONGESTION_INFO_RECORD		0x0091 // Previously vendor specific
 #define STL_SA_ATTR_SWITCH_CONG_RECORD			0x0092 // Previously vendor specific
 #define STL_SA_ATTR_SWITCH_PORT_CONG_RECORD		0x0093 // Previously vendor specific
 #define STL_SA_ATTR_HFI_CONG_RECORD				0x0094 // Previously vendor specific
 #define STL_SA_ATTR_HFI_CONG_CTRL_RECORD		0x0095 // Previously vendor specific
+
+
+
+#define STL_SA_ATTR_DG_MEMBER_RECORD			0x009B
+#define STL_SA_ATTR_DG_NAME_RECORD				0x009C
+#define STL_SA_ATTR_DT_MEMBER_RECORD			0x009D
 
 
 #define STL_SA_ATTR_SWITCH_COST_RECORD			0x00A3
@@ -153,6 +158,7 @@ extern "C" {
 #define STL_SA_CAPABILITY2_MFTTOP_SUPPORT         0x0000008
 #define STL_SA_CAPABILITY2_FULL_PORTINFO          0x0000040
 #define STL_SA_CAPABILITY2_EXT_SUPPORT            0x0000080
+#define STL_SA_CAPABILITY2_DGDTRECORD_SUPPORT	  0x1000000
 #define STL_SA_CAPABILITY2_SWCOSTRECORD_SUPPORT   0x2000000
 
 static __inline void
@@ -178,11 +184,12 @@ StlSaClassPortInfoCapMask2(char buf[80], uint32 cmask)
 	if (!cmask) {
 		snprintf(buf, 80, "-");
 	} else {
-		snprintf(buf, 80, "%s%s%s%s%s",
+		snprintf(buf, 80, "%s%s%s%s%s%s",
 			(cmask & STL_SA_CAPABILITY2_QOS_SUPPORT) ? "QoS " : "",
 			(cmask & STL_SA_CAPABILITY2_MFTTOP_SUPPORT) ? "MFTTop " : "",
 			(cmask & STL_SA_CAPABILITY2_FULL_PORTINFO) ? "FullPortInfo " : "",
 			(cmask & STL_SA_CAPABILITY2_EXT_SUPPORT) ? "ExtSpeed " : "",
+			(cmask & STL_SA_CAPABILITY2_DGDTRECORD_SUPPORT) ? "DG/DT " : "",
 			(cmask & STL_SA_CAPABILITY2_SWCOSTRECORD_SUPPORT) ? "SwCost " : "");
 	}
 }
@@ -196,7 +203,7 @@ StlSaClassPortInfoCapMask2(char buf[80], uint32 cmask)
  */
 typedef struct {
 	struct {
-		uint32	LID;
+		STL_LID	LID;
 	} PACK_SUFFIX RID;
 	
 	uint32		Reserved;				
@@ -286,7 +293,7 @@ static __inline__ int STL_LINKDOWN_REASON_LAST_INDEX(STL_LINKDOWN_REASON* ldr) {
 
 typedef struct {
 	struct {
-		uint32	EndPortLID;				
+		STL_LID	EndPortLID;				
 		uint8	PortNum;			/* for switch or HFI: port numnber */
 		uint8	Reserved;
 	} PACK_SUFFIX RID;
@@ -309,8 +316,6 @@ typedef struct {
 #define STL_PORTINFO_RECORD_COMP_PORTNUM				0x0000000000000002ll
 #define STL_PORTINFO_RECORD_COMP_OPTIONS				0x0000000000000004ll
 #define STL_PORTINFO_RECORD_COMP_CAPABILITYMASK			0x0000000000000008ll
-
-
 
 /*
  * P_KeyTableRecord
@@ -352,11 +357,10 @@ typedef struct {
  */
 typedef struct {
 	struct {
-		uint32	LID;	
+		STL_LID	LID;	
 		uint8	InputPort;				
-		uint8	OutputPort;				
+		uint8	OutputPort;
 	} PACK_SUFFIX RID;
-
 	uint16		Reserved;
 	
 	STL_SC		Map[STL_MAX_SCS]; 	
@@ -375,7 +379,7 @@ typedef struct {
  */
 typedef struct {
 	struct {
-		uint32	LID;	
+		STL_LID	LID;	
 		uint16	Reserved;				
 	} PACK_SUFFIX RID;
 	
@@ -395,7 +399,7 @@ typedef struct {
  */
 typedef struct {
 	struct {
-		uint32	LID;	
+		STL_LID	LID;	
 		uint16	Reserved;				
 	} PACK_SUFFIX RID;
 	
@@ -416,7 +420,7 @@ typedef struct {
  */
 typedef struct {
 	struct {
-		uint32	LID;
+		STL_LID	LID;
 		uint8	Port; 				/* for switch or HFI: port numnber */
 	} PACK_SUFFIX RID;
 	
@@ -428,6 +432,7 @@ typedef struct {
 
 typedef STL_SC2VL_R_MAPPING_TABLE_RECORD STL_SC2PVL_T_MAPPING_TABLE_RECORD;
 typedef STL_SC2VL_R_MAPPING_TABLE_RECORD STL_SC2PVL_NT_MAPPING_TABLE_RECORD;
+typedef STL_SC2VL_R_MAPPING_TABLE_RECORD STL_SC2PVL_R_MAPPING_TABLE_RECORD;
 
 #define STL_SC2VL_R_RECORD_COMP_LID 0x0000000000000001ull
 #define STL_SC2VL_R_RECORD_COMP_PORT 0x0000000000000002ull
@@ -441,7 +446,7 @@ typedef STL_SC2VL_R_MAPPING_TABLE_RECORD STL_SC2PVL_NT_MAPPING_TABLE_RECORD;
  */
 typedef struct {
 	struct {
-		uint32 	LID;
+		STL_LID 	LID;
 	} PACK_SUFFIX RID;
 
 	uint32		Reserved;		
@@ -462,10 +467,6 @@ typedef struct {
 /* Reserved											0x0000000000000400ull */
 #define STL_SWITCHINFO_RECORD_COMP_IPPRIMARY		0x0000000000000800ull
 #define STL_SWITCHINFO_RECORD_COMP_IPSECONDARY		0x0000000000001000ull
-/* Reserved											0x0000000000002000ull */
-/* Reserved											0x0000000000004000ull */
-/* Reserved											0x0000000000008000ull */
-/* Reserved											0x0000000000010000ull */
 #define STL_SWITCHINFO_RECORD_COMP_PORTSTATECHG		0x0000000000020000ull
 #define STL_SWITCHINFO_RECORD_COMP_LIFETIME			0x0000000000040000ull
 #define STL_SWITCHINFO_RECORD_COMP_PENFCAP			0x0000000000080000ull
@@ -504,7 +505,7 @@ typedef struct {
  */
 typedef struct {
 	struct {
-		uint32	LID;	
+		STL_LID	LID;	
 		IB_BITFIELD2(uint32, 
 				Reserved:14,
 				BlockNum:18);
@@ -520,6 +521,7 @@ typedef struct {
 #define STL_LFT_RECORD_COMP_LID 			0x0000000000000001ull
 /* Reserved 								0x0000000000000002ull */
 #define STL_LFT_RECORD_COMP_BLOCKNUM		0x0000000000000004ull
+
 
 /*
  * MFTRecord 
@@ -550,7 +552,7 @@ typedef struct {
 #define STL_MFTB_MAX_POSITION 4
 typedef struct _STL_MULTICAST_FORWARDING_TABLE_RECORD {
 	struct {
-		uint32		LID; 				// Port 0 of the switch.	
+		STL_LID		LID; 				// Port 0 of the switch.	
 	
 		STL_FIELDUNION3(u1, 32,
 				Position:2,			
@@ -582,12 +584,11 @@ typedef struct _STL_MULTICAST_FORWARDING_TABLE_RECORD {
 #define STL_PGTB_NUM_ENTRIES_PER_BLOCK  8
 typedef struct {
 	struct {
-		uint32	LID;
-
-		IB_BITFIELD3(uint16, 
-				Position:2,			
-				Reserved:9,	
-				BlockNum:5);	
+		STL_LID	LID;
+		IB_BITFIELD3(uint16,
+				Position:2,
+				Reserved:9,
+				BlockNum:5);
 	} PACK_SUFFIX RID;
 	
 	uint16		Reserved2;
@@ -612,7 +613,7 @@ typedef struct {
 #define STL_PGFDB_NUM_ENTRIES_PER_BLOCK 64
 typedef struct {	
 	struct {
-		uint32	LID;	
+		STL_LID	LID;	
 	
 		STL_FIELDUNION2(u1, 32,
 				Reserved:14, 
@@ -638,7 +639,7 @@ typedef struct {
  */
 typedef struct {
 	struct {
-		uint32	LID;				
+		STL_LID	LID;				
 		uint8	OutputPortNum;		/* for switch or HFI: port numnber */
 		uint8	BlockNum;
 	} PACK_SUFFIX RID;
@@ -651,6 +652,7 @@ typedef struct {
 #define STL_VLARB_COMPONENTMASK_LID 		0x0000000000000001ul
 #define STL_VLARB_COMPONENTMASK_OUTPORTNUM 	0x0000000000000002ul
 #define STL_VLARB_COMPONENTMASK_BLOCKNUM 	0x0000000000000004ul
+
 
 /*
  * MCMemberRecord
@@ -711,7 +713,7 @@ typedef struct {
 
 	uint16 Reserved3; 
 
-	uint32 MLID; // Moved for alignment.
+	STL_LID MLID; // Moved for alignment.
 
 	/* 56 bytes */
 } PACK_SUFFIX STL_MCMEMBER_RECORD;
@@ -766,7 +768,7 @@ typedef struct {
  */
 typedef struct {
 	struct {
-		uint32	LID;
+		STL_LID	LID;
 	} PACK_SUFFIX RID;
 	
 	uint32		Reserved;
@@ -798,7 +800,7 @@ typedef struct {
  */
 typedef struct {
 	struct {
-		uint32	SubscriberLID;	
+		STL_LID	SubscriberLID;	
 		uint16	Enum;
 	} PACK_SUFFIX RID;
 	
@@ -831,26 +833,33 @@ typedef struct {
  *		LIDs lengthened
  *		Reserved field added to preserve alignment.
  *		RID.FromPort and ToPort for HFI will return HFI port number
+ *		LinkCondition field added to describe which link errors apply to the link when asking for this data.
+ *		ErrorMask field added to provide detailed information on the particular errors that led to the LinkCondition error.
  */
 typedef struct _STL_LINK_RECORD {
 	struct {
-		uint32	FromLID;		
-		uint8	FromPort;		/* for switch or HFI: port numnber */
+		STL_LID	FromLID;		
+		uint8	FromPort;		/* for switch or HFI: port number */
 	} PACK_SUFFIX RID;
 	
-	uint8		ToPort;			/* for switch or HFI: port numnber */
+	uint8		ToPort;			/* for switch or HFI: port number */
 
 	uint16		Reserved;
 	
-	uint32		ToLID;	
-
+	STL_LID		ToLID;	
 } PACK_SUFFIX STL_LINK_RECORD;
 
 #define STL_LINK_REC_COMP_FROM_LID				0x0000000000000001ll
 #define STL_LINK_REC_COMP_FROM_PORT				0x0000000000000002ll
 #define STL_LINK_REC_COMP_TO_PORT				0x0000000000000004ll
-/* Reserved										0x0000000000000008ll */
+#define STL_LINK_REC_LINK_CONDITION				0x0000000000000008ll
 #define STL_LINK_REC_COMP_TO_LID				0x0000000000000010ll
+#define STL_LINK_REC_COMP_ERROR_MASK			0x0000000000000020ll
+
+/* These constants are used to describe the applicable link condition(s) */
+#define STL_LINK_REC_SLOWLINKS					0x0000000000000001ll
+#define STL_LINK_REC_MISCONFIGLINKS				0x0000000000000002ll
+#define STL_LINK_REC_MISCONNLINKS				0x0000000000000004ll
 
 /*
  * ServiceRecord
@@ -863,7 +872,7 @@ typedef struct {
 	struct {
 		uint64	ServiceID;
 	
-		uint32	ServiceLID;
+		STL_LID	ServiceLID;
 		uint16	ServiceP_Key;
 		uint16	Reserved;
 
@@ -1146,7 +1155,7 @@ typedef struct {
 				
 	uint64		ServiceID;	
 	
-	uint32		LIDList[0];			// SLIDCount + DLIDCount entries
+	STL_LID		LIDList[0];			// SLIDCount + DLIDCount entries
 } PACK_SUFFIX STL_MULTIPATH_RECORD_LID;
 
 /*
@@ -1160,7 +1169,7 @@ typedef struct {
 #define STL_CIR_DATA_SIZE		64
 typedef struct {
 	struct {
-		uint32	LID;
+		STL_LID	LID;
 		uint8	Port;				/* for switch or HFI: port numnber */
 		IB_BITFIELD2(uint8,
 				Length:7,
@@ -1297,6 +1306,8 @@ typedef struct {
 #define STL_QUARANTINE_REASON_TOPO_UNDEFINED_LINK 	0x00000010
 #define STL_QUARANTINE_REASON_VL_COUNT 				0x00000020
 #define STL_QUARANTINE_REASON_SMALL_MTU_SIZE 		0x00000040
+#define STL_QUARANTINE_REASON_BAD_PACKET_FORMATS    0x00000080
+#define STL_QUARANTINE_REASON_MAXLID				0x00000100
 #define STL_QUARANTINE_REASON_UNKNOWN 				0x00000000
 
 typedef struct {
@@ -1306,7 +1317,7 @@ typedef struct {
 } PACK_SUFFIX STL_EXPECTED_NODE_INFO;
 
 typedef struct {
-	STL_LID_32 trustedLid;
+	STL_LID trustedLid;
 	uint8 trustedPortNum;
 	uint8 Reserved[3];
 	uint64 trustedNodeGUID;
@@ -1328,7 +1339,7 @@ typedef struct {
  * 		Was Vendor Specific in IB.
  */
 typedef struct {
-	uint32				LID;
+	STL_LID				LID;
 	uint32				reserved;				
 	STL_CONGESTION_INFO CongestionInfo;
 } PACK_SUFFIX STL_CONGESTION_INFO_RECORD;
@@ -1342,7 +1353,7 @@ typedef struct {
  * 		Was Vendor Specific in IB.
  */
 typedef struct {	/* all fields are RW */
-	uint32				LID;
+	STL_LID				LID;
 	uint32				reserved;				
 	STL_SWITCH_CONGESTION_SETTING SwitchCongestionSetting;
 } PACK_SUFFIX STL_SWITCH_CONGESTION_SETTING_RECORD;
@@ -1357,7 +1368,7 @@ typedef struct {	/* all fields are RW */
  */
 typedef struct {
 	struct {
-		uint32			LID;
+		STL_LID			LID;
 		uint8			Port;
 	} PACK_SUFFIX RID;
 	
@@ -1379,7 +1390,7 @@ typedef struct {
  * 		Was Vendor Specific in IB.
  */
 typedef struct {	/* all fields are RW */
-	uint32				LID;	
+	STL_LID				LID;	
 	uint32				reserved;			
 	STL_HFI_CONGESTION_SETTING HFICongestionSetting;
 } PACK_SUFFIX STL_HFI_CONGESTION_SETTING_RECORD;
@@ -1394,7 +1405,7 @@ typedef struct {	/* all fields are RW */
  */
 typedef struct {	/* all fields are RW */
 	struct {
-		uint32			LID;
+		STL_LID			LID;
 		uint16			BlockNum;
 	} PACK_SUFFIX RID;
 	uint16				reserved;				
@@ -1412,7 +1423,7 @@ typedef struct {	/* all fields are RW */
  */
 typedef struct {
 	struct {
-		uint32			LID;
+		STL_LID			LID;
 		uint8			Port;			/* for switch or HFI: port numnber */
 	} PACK_SUFFIX RID;
 
@@ -1451,18 +1462,81 @@ typedef struct {
 	uint32	rsvd5[92];
 } PACK_SUFFIX STL_FABRICINFO_RECORD;
 
+
+#define MAX_DG_NAME 64
+
+/*
+ * DeviceGroupNameRecord
+ */ 
+typedef struct {
+	uint8 	DeviceGroupName[MAX_DG_NAME];		/* Must be \0 terminated. */
+} PACK_SUFFIX STL_DEVICE_GROUP_NAME_RECORD;
+
+
+#define STL_DEVICE_GROUP_COMPONENTMASK_LID		0x0000000000000001ull
+#define STL_DEVICE_GROUP_COMPONENTMASK_PORT		0x0000000000000002ull
+/* reserved field								0x0000000000000004ull */
+#define STL_DEVICE_GROUP_COMPONENTMASK_DGNAME	0x0000000000000008ull
+#define STL_DEVICE_GROUP_COMPONENTMASK_GUID		0x0000000000000010ull
+#define STL_DEVICE_GROUP_COMPONENTMASK_NODEDESC	0x0000000000000020ull
+
+/*
+ * DeviceGroupMemberRecord
+ */
+typedef struct {
+	STL_LID 				LID;
+	uint8					Port;
+	uint8					Reserved1[3];
+	uint8					DeviceGroupName[MAX_DG_NAME];	/* Must be \0 terminated. */
+	uint64					GUID;
+	STL_NODE_DESCRIPTION	NodeDescription;
+} PACK_SUFFIX STL_DEVICE_GROUP_MEMBER_RECORD;
+
+#define STL_DEVICE_TREE_COMPONENTMASK_LID		0x0000000000000001ull
+#define STL_DEVICE_TREE_COMPONENTMASK_NUMPORTS		0x0000000000000002ull
+#define STL_DEVICE_TREE_COMPONENTMASK_NODETYPE		0x0000000000000004ull
+/* reserved field					0x0000000000000008ull */
+#define STL_DEVICE_TREE_COMPONENTMASK_PORTSTATEMASKACT	0x0000000000000010ull
+#define STL_DEVICE_TREE_COMPONENTMASK_PORTSTATEMASKETH	0x0000000000000020ull
+#define STL_DEVICE_TREE_COMPONENTMASK_GUID		0x0000000000000040ull
+#define STL_DEVICE_TREE_COMPONENTMASK_SYSIMAGEGUID	0x0000000000000080ull
+#define STL_DEVICE_TREE_COMPONENTMASK_NODEDESC		0x0000000000000100ull
+/* reserved field					0x0000000000000200ull */
+
+/*
+ * DeviceTreeMemberRecord
+ */
+typedef struct {
+	STL_LID					LID;
+	uint8					NumPorts;
+	uint8					NodeType;
+	uint8					Reserved1[2];
+	STL_PORTMASK			portMaskAct[STL_MAX_PORTMASK];
+
+	STL_PORTMASK			portMaskReserved[STL_MAX_PORTMASK];
+
+	STL_PORTMASK			portMaskPortLinkMode[STL_MAX_PORTMASK];
+
+	uint64					GUID;
+	uint64					SystemImageGUID;
+	STL_NODE_DESCRIPTION	NodeDescription;
+	uint64					Reserved2[4];
+
+} PACK_SUFFIX STL_DEVICE_TREE_MEMBER_RECORD;
+
+
 /*
  * SwitchCost Record
  */
 #define STL_SWITCH_COST_NUM_ENTRIES 64
 typedef struct _STL_SWITCH_COST {
-	uint32 DLID;
+	STL_LID DLID;
 	uint16 value;
 	uint16 Reserved;
 } PACK_SUFFIX STL_SWITCH_COST;
 
 typedef struct _STL_SWITCH_COST_RECORD {
-	uint32 SLID;
+	STL_LID SLID;
 	STL_SWITCH_COST Cost[STL_SWITCH_COST_NUM_ENTRIES];
 } PACK_SUFFIX STL_SWITCH_COST_RECORD;
 
@@ -1472,4 +1546,3 @@ typedef struct _STL_SWITCH_COST_RECORD {
 }
 #endif
 #endif // __STL_SA_H__
-

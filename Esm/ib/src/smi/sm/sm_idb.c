@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -689,14 +689,6 @@ uint32_t idbSetSmLidOffset(uint32_t value)
 	return rc;
 }
 
-uint32_t idbGetSmLidOffset() {
-	uint32_t value;
-	IB_ENTER(__func__, 0, 0, 0, 0);
-	value = sm_getLidOffset();
-	IB_EXIT(__func__, value);
-	return value;
-}
-
 /* FIXME - Determine whether this can be set on the fly or needs sm restart */
 uint32_t idbSetSmTopoErrorThreshold(uint32_t value) {
 	uint32_t rc;
@@ -1155,6 +1147,7 @@ void idbSmGetManagersToStart(int * pm, int * fe) {
 	
 	IB_EXIT(__func__, value);
 }
+
 
 uint32_t idbGetSmSupportOptions() {
 	uint32_t rc;

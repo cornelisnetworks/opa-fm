@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 ## BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015, Intel Corporation
+# Copyright (c) 2015-2017, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -49,7 +49,6 @@ my $GPU_Install = 0;
 
 # some options specific to OFED builds
 my $OFED_force_rebuild=0;
-my $OFED_user_configure_options="";
 my $OFED_kernel_configure_options="";
 my $OFED_prefix="/usr";
 my $OFED_debug = 0;	# if 1 build a debug version of modules
@@ -57,7 +56,7 @@ my $OFED_debug = 0;	# if 1 build a debug version of modules
 my $CUR_OS_VER = `uname -r`;
 chomp $CUR_OS_VER;
 # firmware and data files
-my $OLD_BASE_DIR = "/etc/opa";
+my $OLD_BASE_DIR = "/etc/sysconfig/opa";
 my $BASE_DIR = "/etc/opa";
 # iba editable config scripts
 my $OPA_CONFIG_DIR = "/etc/opa";
@@ -77,15 +76,6 @@ my $CUR_VENDOR_VER = "";	# full version (such as ES5.1)
 my $CUR_VENDOR_MAJOR_VER = "";    # just major number part (such as ES5)
 my $ARCH = `uname -m | sed -e s/ppc/PPC/ -e s/powerpc/PPC/ -e s/i.86/IA32/ -e s/ia64/IA64/ -e s/x86_64/X86_64/`;
 chomp $ARCH;
-my $ARCH_VENDOR=`grep vendor_id /proc/cpuinfo | tail -1`;
-chomp $ARCH_VENDOR;
-if ($ARCH eq "X86_64")
-{
-	if ((-f "$ROOT/etc/redhat-release" || -f "$ROOT/etc/rocks-release") && $ARCH_VENDOR =~ /.*GenuineIntel.*/ && substr($CUR_OS_VER,0,3) eq "2.4")
-	{
-		$ARCH = "EM64T";
-	}
-}
 my $DRIVER_SUFFIX=".o";
 if (substr($CUR_OS_VER,0,3) eq "2.6" || substr($CUR_OS_VER,0,2) eq "3.")
 {
@@ -95,11 +85,10 @@ my $DBG_FREE="release";
 
 
 # Command paths
-my $LSPCI = "/sbin/lspci";
-my $RPM="/bin/rpm";
+my $RPM = "/bin/rpm";
 
 # a few key commands to verify exist
-my @verify_cmds = ( "uname", "mv", "cp", "rm", "ln", "cmp", "yes", "echo", "sed", "chmod", "chown", "chgrp", "mkdir", "rmdir", "grep", "diff", "awk", "find", "xargs", "sort", $RPM, "chroot", $LSPCI );
+my @verify_cmds = ( "uname", "mv", "cp", "rm", "ln", "cmp", "yes", "echo", "sed", "chmod", "chown", "chgrp", "mkdir", "rmdir", "grep", "diff", "awk", "find", "xargs", "sort", "chroot");
 
 sub Abort(@);
 sub NormalPrint(@);
@@ -124,6 +113,7 @@ sub check_root_user()
 		die "\n\nYou must be \"root\" to run this install program\n\n";
 	}
 
+	@verify_cmds = (@verify_cmds, rpm_get_cmds_for_verification());
 	# verify basic commands are in path
 	foreach my $cmd ( @verify_cmds ) {
 		if (! check_cmd_exists($cmd)) {
@@ -207,7 +197,11 @@ sub os_vendor_version($)
 	my $rval = "";
 	my $mn = "";
 	if ( -e "/etc/os-release" ) {
-		$rval=`cat /etc/os-release | grep VERSION_ID | cut -d'=' -f2 | tr -d [\\"\\.0]`;
+		if ($vendor eq "ubuntu") {
+			$rval=`cat /etc/os-release | grep VERSION_ID | cut -d'=' -f2 | tr -d [\\"\\.]`;
+		} else {
+			$rval=`cat /etc/os-release | grep VERSION_ID | cut -d'=' -f2 | tr -d [\\"\\.0]`;
+		}
 		chop($rval);
 		$rval="ES".$rval;
 		if ( -e "/etc/redhat-release" ) {

@@ -62,6 +62,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "stl_pa_priv.h"
 #include "sm_l.h"
 #include "stl_sa_priv.h"
+
+
 #include "mai_g.h"
 #include "sm_dbsync.h"
 #include "if3.h"
@@ -464,6 +466,7 @@ char *cs_getAidName(uint16_t aidClass, uint16_t aid) {
 		CASE_STL_MCLASS_AID(HFI_CONGESTION_LOG);
 		CASE_STL_MCLASS_AID(HFI_CONGESTION_SETTING);
 		CASE_STL_MCLASS_AID(HFI_CONGESTION_CONTROL_TABLE);
+		CASE_STL_MCLASS_AID(SC_SC_MULTI_SET);
 
 		// IB AIDs that do not conflict with STL AIDs
 		CASE_MCLASS_AID(GUID_INFO);
@@ -520,6 +523,7 @@ char *cs_getAidName(uint16_t aidClass, uint16_t aid) {
         CASE_STL_SA_AID(MULTIPATH_LID_RECORD);
         CASE_STL_SA_AID(CABLE_INFO_RECORD);
         CASE_STL_SA_AID(VF_INFO_RECORD);
+        CASE_STL_SA_AID(PORT_STATE_INFO_RECORD);
         CASE_STL_SA_AID(PORTGROUP_TABLE_RECORD);
         CASE_STL_SA_AID(BUFF_CTRL_TAB_RECORD);
         CASE_STL_SA_AID(FABRICINFO_RECORD);
@@ -529,6 +533,9 @@ char *cs_getAidName(uint16_t aidClass, uint16_t aid) {
         CASE_STL_SA_AID(SWITCH_PORT_CONG_RECORD);
         CASE_STL_SA_AID(HFI_CONG_RECORD);
         CASE_STL_SA_AID(HFI_CONG_CTRL_RECORD);
+        CASE_STL_SA_AID(DG_MEMBER_RECORD);
+        CASE_STL_SA_AID(DG_NAME_RECORD);
+        CASE_STL_SA_AID(DT_MEMBER_RECORD);
 		default:
 			break;
         }
@@ -566,6 +573,8 @@ char *cs_getAidName(uint16_t aidClass, uint16_t aid) {
         default:
             break;
         }
+
+
 	// Unhandled Classes
 	CASE_MAD_CV(BM);
 	CASE_MAD_CV(DEV_MGT);

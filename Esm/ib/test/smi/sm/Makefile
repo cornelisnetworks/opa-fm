@@ -1,6 +1,6 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015, Intel Corporation
+# Copyright (c) 2015-2017, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -114,7 +114,7 @@ INCLUDE_SUBDIR		=
 CLOCAL	= 
 LOCAL_INCLUDE_DIRS = $(MOD_DIR)/src/smi/include
 LOCALDEPLIBS = cs ibaccess mai public vslogu opamgt-priv
-LOCALLIBS = pthread $(OPENIB_USER_LIBS)
+LOCALLIBS = pthread $(OPENIB_USER_LIBS) rt
 
 # Include Make Rules definitions and rules
 include $(PROJ_SM_DIR)/Makerules.module

@@ -1,12 +1,12 @@
 .\" .\" *********************************************************************
 .\" .\" *                                                                   *
-.\" .\" *             Copyright 2015-2017, Intel Corporation                *
+.\" .\" *             Copyright 2015-2018, Intel Corporation                *
 .\" .\" *                                                                   *
 .\" .\" *                       All Rights Reserved.                        *
 .\" .\" *                                                                   *
 .\" .\" *********************************************************************
 
-.TH opafmcmd 8 "Intel Corporation" "Copyright(C) 2015\-2017" "Master map: IFSFFCLIRG (Man Page)" 
+.TH opafmcmd 8 "Intel Corporation" "Copyright(C) 2015\-2018" "Master map: IFSFFCLIRG (Man Page)" 
 .SH NAME
 opafmcmd
 
@@ -309,7 +309,7 @@ Stops loop test. Returns switch LFTs back to normal.
 
 .sp
 smLooptestInjectPackets 
-Enter  \fInumPkts\fR to send to all switch loops. Default = 1.
+Enter \fInumPkts\fR to send to all switch loops. Default = 1.
 
 .RE
 

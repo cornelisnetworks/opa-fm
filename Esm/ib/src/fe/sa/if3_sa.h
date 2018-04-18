@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -64,7 +64,7 @@ typedef struct
 {
 	uint32_t found;
 	uint32_t toBeProcessed;
-	STL_LID smlid;
+	STL_LID  smlid;
 	uint32_t trap128Received;
 } FE_Trap_Processing_State_t;
 

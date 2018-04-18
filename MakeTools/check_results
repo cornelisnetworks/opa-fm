@@ -1,7 +1,7 @@
 #!/bin/bash
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015, Intel Corporation
+# Copyright (c) 2015-2017, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -149,7 +149,7 @@ warn_file=$3
 # sort out duplicated messages from multiple build runs
 sort -u expected.err > .expected.err
 # future: add back in check for "No such file"
-egrep " Error |ERROR|^Bad | Bad |failed|FAILED| Stop|No space left on device$add_error" $results_file |egrep -v "_ERROR|_failed|failed_"| sort -u|filter .expected.err > $errors_file 
+egrep " Error |ERROR|^Bad | Bad |failed|FAILED|unifdef:| Stop|No space left on device$add_error" $results_file |egrep -v "_ERROR|_failed|failed_"| sort -u|filter .expected.err > $errors_file 
 
 sort -u expected.warn > .expected.warn
 egrep -i "warning:$add_warn" $results_file |egrep -v "Warnings$add_warn_filter" | sort -u |filter .expected.warn > $warn_file

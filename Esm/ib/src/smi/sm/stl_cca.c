@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -31,15 +31,45 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <iba/stl_sm_priv.h>
 #include "stl_cca.h"
+Status_t stl_sm_cca_hfi_ref_acquire(HfiCongestionControlTableRefCount_t** congConrfCount, uint32_t tableSize) {
+	Status_t status;
+	if ((status = vs_pool_alloc(&sm_pool, tableSize, (void *)&(*congConrfCount))) != VSTATUS_OK) {
+		IB_LOG_ERROR_FMT(__func__,
+				"No memory for HFI Congestion Control Table");
+		return status;
+	}
+	else {
+		memset(*congConrfCount, 0, tableSize);
+		(*congConrfCount)->refCount++;
+		return status;
+	}
+}
 
-static Status_t build_cca_congestion_control_table(Node_t *nodep, Port_t *portp, STL_HFI_CONGESTION_CONTROL_TABLE *hfiCongCon,
+HfiCongestionControlTableRefCount_t* stl_sm_cca_hfi_ref_copyptr(HfiCongestionControlTableRefCount_t* congConrfCount) {
+	if (congConrfCount) {
+		congConrfCount->refCount++;
+		return congConrfCount;
+	}
+	else
+		return congConrfCount;
+}
+
+void stl_sm_cca_hfi_ref_release(HfiCongestionControlTableRefCount_t** congConRefCount) {
+	if (*congConRefCount) {
+		if(--(*congConRefCount)->refCount == 0)
+			vs_pool_free(&sm_pool, (*congConRefCount));
+			*congConRefCount = NULL;
+	}
+}
+
+static Status_t build_cca_congestion_control_table(Node_t *nodep, Port_t *portp, HfiCongestionControlTableRefCount_t *congConRefCount,
 int cap)
 {
 	const unsigned int mtu = GetBytesFromMtu(portp->portData->maxVlMtu);
 	const double packet_xmit_time = (double)(mtu + 40) / (double)sm_GetBandwidth(&portp->portData->portInfo);
 	uint32_t maxMultiplier;
 	uint64_t maxIPG_shifted;
-	unsigned int i, j, b;
+	unsigned int i, j, b, tmp;
 	uint8_t shift;
 
 	if (mtu == 0) {
@@ -48,6 +78,7 @@ int cap)
 			nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep));
 		return VSTATUS_BAD;
 	}
+
 
 	// As defined in STL Spec Vol 1g1 17.3.12, Inter Packet Gap (IPG) is defined
 	// as:
@@ -78,8 +109,9 @@ int cap)
 	}
 
 	// CCTI_Limit is max valid index = num valid entries-1
-	hfiCongCon->CCTI_Limit = MIN(sm_config.congestion.ca.limit, cap * STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES - 1);
-	if (hfiCongCon->CCTI_Limit != sm_config.congestion.ca.limit)
+	tmp = cap ? (unsigned)(cap * STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES - 1) : 0;
+	congConRefCount->hfiCongCon.CCTI_Limit = MIN(sm_config.congestion.ca.limit, tmp);
+	if (congConRefCount->hfiCongCon.CCTI_Limit != sm_config.congestion.ca.limit)
 		IB_LOG_WARN_FMT(__func__,
 			"SM Config has too large a CCT Index Limit: %d; max is %d for node: NodeGUID "FMT_U64" [%s]",
  				sm_config.congestion.ca.limit,
@@ -87,38 +119,37 @@ int cap)
 				nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep));
 	
 	for (b = 0,i = 0; b <= cap; ++b) {
-		STL_HFI_CONGESTION_CONTROL_TABLE_BLOCK *block = &hfiCongCon->CCT_Block_List[b];
-		
-		for(j = 0; i <= hfiCongCon->CCTI_Limit && j < STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES; ++i, ++j){
+		STL_HFI_CONGESTION_CONTROL_TABLE_BLOCK *block = &congConRefCount->hfiCongCon.CCT_Block_List[b];
+
+		for(j = 0; i <= congConRefCount->hfiCongCon.CCTI_Limit && j < STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES; ++i, ++j){
 			if (i == 0) continue;
 			STL_HFI_CONGESTION_CONTROL_TABLE_ENTRY *entry = &block->CCT_Entry_List[j];
 			entry->s.CCT_Shift = shift;
-			entry->s.CCT_Multiplier = i * ((double)maxMultiplier / (double)hfiCongCon->CCTI_Limit);
+			entry->s.CCT_Multiplier = i * ((double)maxMultiplier / (double)congConRefCount->hfiCongCon.CCTI_Limit);
 		}
 	}
 	
 	return VSTATUS_OK;
 }
 
-
 Status_t stl_sm_cca_configure_hfi(Node_t *nodep)
 {
 	Status_t status;
 	Port_t *portp;
-	STL_HFI_CONGESTION_SETTING hfiCongSett = {0};
-	uint32_t dlid;
+	STL_HFI_CONGESTION_SETTING hfiCongSett;
+	STL_LID dlid;
 
 	// Can be called for ESP0. Return if Switch port 0 has no congestion table capacity.
 	if ( (nodep->nodeInfo.NodeType==STL_NODE_SW) &&
-		  nodep->switchInfo.u2.s.EnhancedPort0      &&
-		  (nodep->congestionInfo.ControlTableCap == 0) ) {
+			(!nodep->switchInfo.u2.s.EnhancedPort0 ||
+			(nodep->congestionInfo.ControlTableCap == 0)) ) {
 		return (VSTATUS_OK);
 	}
-
+	memset(&hfiCongSett, 0, sizeof(STL_HFI_CONGESTION_SETTING));
 	if (sm_config.congestion.enable) {
-		STL_HFI_CONGESTION_CONTROL_TABLE *hfiCongCon = NULL;
+		HfiCongestionControlTableRefCount_t *congConRefCount = NULL;
 		uint8_t numBlocks = nodep->congestionInfo.ControlTableCap;
-		const size_t tableSize = CONGESTION_CONTROL_TABLE_CCTILIMIT_SZ + sizeof(STL_HFI_CONGESTION_CONTROL_TABLE_BLOCK) * numBlocks;
+		const uint32_t tableSize = getCongrefTableSize(numBlocks);
 		const uint8_t maxBlocks = (STL_MAD_PAYLOAD_SIZE - CONGESTION_CONTROL_TABLE_CCTILIMIT_SZ) /
 								 sizeof(STL_HFI_CONGESTION_CONTROL_TABLE_BLOCK); // Maximum number of blocks we can fit in a single MAD;
 		unsigned int i;
@@ -126,45 +157,46 @@ Status_t stl_sm_cca_configure_hfi(Node_t *nodep)
 		/* Build the congestion control table for each end port. */
 		for_all_end_ports(nodep, portp) {
 
-			if (!sm_valid_port(portp) || portp->state == IB_PORT_DOWN) continue;
+			if (!sm_valid_port(portp) || portp->state == IB_PORT_DOWN 
+				) {
+				continue;
+			}
 		
-			if ((status = vs_pool_alloc(&sm_pool, tableSize, (void *)&hfiCongCon)) != VSTATUS_OK) {
-				IB_LOG_ERROR_FMT(__func__,
-					"No memory for HFI Congestion Control Table");
+			if((status = stl_sm_cca_hfi_ref_acquire(&congConRefCount, tableSize)) != VSTATUS_OK)
 				return status;
-			}
-		
-			memset(hfiCongCon, 0, tableSize);
-		
-			build_cca_congestion_control_table(nodep, portp, hfiCongCon, numBlocks);
 
-			dlid = portp->portData->lid;
-			// CCTI_Limit is max valid index = num valid entries-1
-			numBlocks = MIN(numBlocks, (hfiCongCon->CCTI_Limit + STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES) / STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES);
-			for(i = 0; i < numBlocks;){
-				uint8_t payloadBlocks; // How many blocks being sent in this MAD
-				uint32_t amod = 0;
+			build_cca_congestion_control_table(nodep, portp, congConRefCount, numBlocks);
 
-				payloadBlocks = numBlocks - i;  // Calculate how many blocks are left to be sent
-				payloadBlocks = MIN(payloadBlocks, maxBlocks);  // Limit the number of blocks to be sent
-				amod = payloadBlocks << 24 | i;
-				status = SM_Set_HfiCongestionControl_LR(fd_topology, hfiCongCon->CCTI_Limit,
-													 payloadBlocks, amod, sm_lid, dlid, &hfiCongCon->CCT_Block_List[i], sm_config.mkey);
-				if(status != VSTATUS_OK)
-					break;
-				else
-					i += payloadBlocks;
-			}
-			if (status != VSTATUS_OK) {
-				IB_LOG_ERROR_FMT(__func__,
-					"Failed to set HFI Congestion Control Table for NodeGUID "FMT_U64" [%s], portGUID "
-					FMT_U64"; rc: %d, NumBlocks: %u", nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep), 
-					portp->portData->guid, status, numBlocks);
-				vs_pool_free(&sm_pool, hfiCongCon);
-				return status;
-			}
+			if (!portp->portData->congConRefCount || 0 != memcmp(portp->portData->congConRefCount, congConRefCount, tableSize)) { // if not same
+				dlid = portp->portData->lid;
+				// CCTI_Limit is max valid index = num valid entries-1
+				numBlocks = MIN(numBlocks, (congConRefCount->hfiCongCon.CCTI_Limit + STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES) / STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES);
+				for(i = 0; i < numBlocks;){
+					uint8_t payloadBlocks; // How many blocks being sent in this MAD
+					uint32_t amod = 0;
 
-			portp->portData->hfiCongCon = hfiCongCon;
+					payloadBlocks = numBlocks - i;  // Calculate how many blocks are left to be sent
+					payloadBlocks = MIN(payloadBlocks, maxBlocks);  // Limit the number of blocks to be sent
+					amod = payloadBlocks << 24 | i;
+					status = SM_Set_HfiCongestionControl_LR(fd_topology, congConRefCount->hfiCongCon.CCTI_Limit,
+														 payloadBlocks, amod, sm_lid, dlid, &congConRefCount->hfiCongCon.CCT_Block_List[i], sm_config.mkey);
+					if(status != VSTATUS_OK)
+						break;
+					else
+						i += payloadBlocks;
+				}
+				if (status != VSTATUS_OK) {
+					IB_LOG_ERROR_FMT(__func__,
+						"Failed to set HFI Congestion Control Table for NodeGUID "FMT_U64" [%s], portGUID "
+						FMT_U64"; rc: %d, NumBlocks: %u", nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep), 
+						portp->portData->guid, status, numBlocks);
+					stl_sm_cca_hfi_ref_release(&congConRefCount);
+					return status;
+				}
+				stl_sm_cca_hfi_ref_release(&portp->portData->congConRefCount);
+				portp->portData->congConRefCount = congConRefCount;
+			} else
+				stl_sm_cca_hfi_ref_release(&congConRefCount);
 		}
 
 
@@ -190,33 +222,37 @@ Status_t stl_sm_cca_configure_hfi(Node_t *nodep)
 		return VSTATUS_BAD;
 	}
 
-	dlid = portp->portData->lid;
-	status = SM_Set_HfiCongestionSetting_LR(fd_topology, 0, sm_lid, dlid, &hfiCongSett, sm_config.mkey);
-	if (status != VSTATUS_OK) {
-		IB_LOG_ERROR_FMT(__func__,
-			"Failed to set HFI Congestion Setting Table for NodeGUID "FMT_U64" [%s]; rc: %d",
-			nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep), status);
-		return status;
-	}
+
+	if (0 != memcmp(&nodep->hfiCongestionSetting, &hfiCongSett, sizeof(STL_HFI_CONGESTION_SETTING))) { // if not same
+		dlid = portp->portData->lid;
+		status = SM_Set_HfiCongestionSetting_LR(fd_topology, 0, sm_lid, dlid, &hfiCongSett, sm_config.mkey);
+		if (status != VSTATUS_OK) {
+			IB_LOG_ERROR_FMT(__func__,
+				"Failed to set HFI Congestion Setting Table for NodeGUID "FMT_U64" [%s]; rc: %d",
+				nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep), status);
+			return status;
+		}
 	
-	nodep->hfiCongestionSetting = hfiCongSett;
+		nodep->hfiCongestionSetting = hfiCongSett;
+	}
 
 	return VSTATUS_OK;
 }
 
 Status_t stl_sm_cca_configure_sw(Node_t *nodep)
 {
-	Status_t status;
-	STL_SWITCH_CONGESTION_SETTING setting = { 0 };
+	Status_t status=VSTATUS_OK;
+	STL_SWITCH_CONGESTION_SETTING setting;
 	STL_SWITCH_PORT_CONGESTION_SETTING * swPortSet;
 	const uint8_t port_count = nodep->nodeInfo.NumPorts + 1; // index 0 reserved for SWP0.
 	uint8_t i;
-	uint32_t dlid;
+	STL_LID dlid;
 	Port_t *portp;
 
 	if (nodep->switchInfo.u2.s.EnhancedPort0) 
 		stl_sm_cca_configure_hfi(nodep);
 
+	memset(&setting, 0, sizeof(STL_SWITCH_CONGESTION_SETTING));
 	if (sm_config.congestion.enable) {
 
 		setting.Control_Map = CC_SWITCH_CONTROL_MAP_VICTIM_VALID
@@ -255,18 +291,20 @@ Status_t stl_sm_cca_configure_sw(Node_t *nodep)
 	}
 
 	dlid = portp->portData->lid;
-	status = SM_Set_SwitchCongestionSetting_LR(fd_topology, 0, sm_lid, dlid, &setting, sm_config.mkey);
-	if (status != VSTATUS_OK) {
-		IB_LOG_ERROR_FMT(__func__,
-			"Failed to set switch Congestion Setting for NodeGUID "FMT_U64" [%s]; rc: %d",
-			nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep), status);
-		return status;
+	if (0 != memcmp(&nodep->swCongestionSetting, &setting, sizeof(STL_SWITCH_CONGESTION_SETTING))) { // if not same
+		status = SM_Set_SwitchCongestionSetting_LR(fd_topology, 0, sm_lid, dlid, &setting, sm_config.mkey);
+		if (status != VSTATUS_OK) {
+			IB_LOG_ERROR_FMT(__func__,
+				"Failed to set switch Congestion Setting for NodeGUID "FMT_U64" [%s]; rc: %d",
+				nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep), status);
+			return status;
+		}
+		nodep->swCongestionSetting = setting;
 	}
 
 	if (!sm_config.congestion.enable)
 		return status;
 
-	nodep->swCongestionSetting = setting;
 
 	if (vs_pool_alloc(&sm_pool, sizeof(STL_SWITCH_PORT_CONGESTION_SETTING_ELEMENT) * port_count, 
 			(void *)&swPortSet) != VSTATUS_OK) {
@@ -292,5 +330,116 @@ Status_t stl_sm_cca_configure_sw(Node_t *nodep)
 	
 	(void)vs_pool_free(&sm_pool, (void *)swPortSet);
 	
+	return VSTATUS_OK;
+}
+
+Status_t stl_sm_cca_copy_hfi_data(Node_t *nodep)
+{
+	Node_t		*oldnodep;
+	Port_t		*portp, *oldportp;
+
+	if (!nodep) {
+		return (VSTATUS_OK);
+	}
+	// Can be called for ESP0. Return if Switch port 0 has no congestion table capacity.
+	if ( (nodep->nodeInfo.NodeType==STL_NODE_SW) &&
+			(!nodep->switchInfo.u2.s.EnhancedPort0 ||
+			(nodep->congestionInfo.ControlTableCap == 0)) ) {
+		return (VSTATUS_OK);
+	}
+
+	for_all_end_ports(nodep, portp) {
+		if (!sm_valid_port(portp) || portp->state == IB_PORT_DOWN){
+			return VSTATUS_BAD;
+		}
+		if ((oldnodep = lidmap[portp->portData->lid].oldNodep)) {
+			memcpy((void *) &nodep->hfiCongestionSetting, &oldnodep->hfiCongestionSetting, sizeof(STL_HFI_CONGESTION_SETTING));
+			oldportp = sm_get_port(oldnodep, portp->index);
+			if (sm_valid_port(oldportp)
+				) {
+				// copy over hfiCongCon mem block pointer
+				portp->portData->congConRefCount = stl_sm_cca_hfi_ref_copyptr(oldportp->portData->congConRefCount);
+			}
+			else {
+				nodep->congConfigDone = 0;
+			}
+		}
+		else {
+			return VSTATUS_BAD;
+		}
+	}
+
+	return VSTATUS_OK;
+}
+
+Status_t stl_sm_cca_copy_sw_data(Node_t *nodep)
+{
+	Node_t		*oldswp;
+	Port_t		*portp, *oldportp;
+	uint8_t		i, port_count;
+
+	if (!nodep) {
+		return (VSTATUS_OK);
+	}
+	if (nodep->switchInfo.u2.s.EnhancedPort0) {
+		(void)stl_sm_cca_copy_hfi_data(nodep);
+	}
+
+	portp = sm_get_port(nodep,0);
+	if (!sm_valid_port(portp) || portp->state == IB_PORT_DOWN){
+		return VSTATUS_BAD;
+	}
+	else {
+		if ((oldswp = lidmap[portp->portData->lid].oldNodep)) {
+			if (nodep->initPorts.nset_m ||
+					!bitset_equal(&nodep->activePorts, &oldswp->activePorts) ||
+					oldswp->switchInfo.u1.s.PortStateChange) {
+				nodep->congConfigDone = 0; // port count/state change detected; force reconfigure
+				return VSTATUS_OK;
+			}
+			/* copy sw cca data over into new topology */
+			memcpy((void *) &nodep->swCongestionSetting, &oldswp->swCongestionSetting, sizeof(STL_SWITCH_CONGESTION_SETTING));
+			port_count = nodep->nodeInfo.NumPorts + 1; // index 0 reserved for SWP0.
+			for (i = 0; i < port_count; ++i) {
+				if (sm_valid_port((portp = sm_get_port(nodep, i))) &&
+						sm_valid_port((oldportp = sm_get_port(oldswp, i)))) {
+					memcpy((void *) &portp->portData->swPortCongSet, &oldportp->portData->swPortCongSet,
+									sizeof(STL_SWITCH_PORT_CONGESTION_SETTING_ELEMENT));
+				}
+			}
+		}
+	}
+	return VSTATUS_OK;
+}
+
+/*
+ *  copy the congestion control configure status to new topology
+ */
+Status_t sm_cong_config_copy() {
+	Topology_t	*newtopop;
+	Node_t		*nodep, *oldnodep;
+	Port_t		*portp;
+
+	newtopop = (Topology_t *)&sm_newTopology;
+
+	for_all_nodes(newtopop, nodep) {
+		portp = sm_get_node_end_port(nodep);
+		if (sm_valid_port(portp)) {
+			if ((oldnodep = lidmap[portp->portData->lid].oldNodep)) {
+				/* copy congestion control configure status to new topology */
+				nodep->congConfigDone = oldnodep->congConfigDone;
+				nodep->congestionInfo = oldnodep->congestionInfo;
+
+				if (nodep->congConfigDone) { // copy if config was done
+					if (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH) {
+						(void)stl_sm_cca_copy_sw_data(nodep);
+					}
+					else { // HFI
+						(void)stl_sm_cca_copy_hfi_data(nodep);
+					}
+				}
+			}
+		}
+	}
 	return VSTATUS_OK;
 }

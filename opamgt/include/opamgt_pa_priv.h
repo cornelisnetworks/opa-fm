@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -78,7 +78,7 @@ iba_pa_query_result_type_msg(
 int
 omgt_pa_service_connect(
     struct omgt_port     *port
-);
+    );
 
 /**
  *  Clear specified port counters for specified port
@@ -97,7 +97,7 @@ FSTATUS
 pa_client_clr_port_counters( 
     struct omgt_port        *port,
     STL_PA_IMAGE_ID_DATA    pm_image_id_query, 
-    uint16                  lid,
+    STL_LID                 lid,
     uint8                   port_num, 
     uint32                  select_flag 
     );
@@ -138,7 +138,7 @@ set_opapaquery_debug (
 STL_PORT_COUNTERS_DATA *
 iba_pa_single_mad_port_counters_response_query(
     IN struct omgt_port  *port,
-    IN uint32_t          node_lid,
+    IN STL_LID           node_lid,
     IN uint8_t           port_number,
     IN uint32_t          delta_flag,
     IN uint32_t          user_cntrs_flag,
@@ -278,13 +278,15 @@ iba_pa_multi_mad_get_image_info_response_query (
     );
 
 /**
- *  Get master pm LID
+ * @brief Get LID and SL of master PM service
  *
- * @param port                  Local port to operate on.
+ * This function will query the SA service records to get the PM's GID. It will
+ * then construct a PATH record query (using the ServiceGID as the DGID for the
+ * request) to get the PM's LID and SL for sending PA queries.
  *
- * @return 
- *   FSUCCESS       - Get successfully
- *     FERROR       - Error
+ * @param port         port object to to store master PM LID and SL.
+ *
+ * @return FSTATUS
  */
 FSTATUS 
 iba_pa_query_master_pm_lid(struct omgt_port *port);
@@ -334,18 +336,18 @@ iba_pa_multi_mad_group_stats_response_query(
 /**
  *  Get multi-record response for pa group config.
  *
- * @param port                      Local port to operate on. 
- * @param query                     Pointer to the query 
- * @param group_name                Group name 
- * @param pquery_result             Pointer to query result to be filled. The caller has 
+ * @param port                      Local port to operate on.
+ * @param query                     Pointer to the query
+ * @param group_name                Group name
+ * @param pquery_result             Pointer to query result to be filled. The caller has
  *                                  to free the buffer.
- * @param imageID                   Pointer to the image ID. 
+ * @param imageID                   Pointer to the image ID.
  *
- * @return 
+ * @return
  *   FSUCCESS       - Get successfully
  *     FERROR       - Error
  */
-FSTATUS 
+FSTATUS
 iba_pa_multi_mad_group_config_response_query(
     IN struct omgt_port              *port,
     IN POMGT_QUERY                  query,
@@ -353,25 +355,80 @@ iba_pa_multi_mad_group_config_response_query(
     OUT PQUERY_RESULT_VALUES        *pquery_result,
     IN STL_PA_IMAGE_ID_DATA                *image_id
     );
+/**
+ *  Get multi-record response for pa group node Info.
+ *
+ * @param port                      Local port to operate on.
+ * @param query                     Pointer to the query
+ * @param group_name                Group name
+ * @param nodeLid                   node LID
+ * @param nodeGuid                  node GUID
+ * @param nodeDesc                  node Description
+ * @param pquery_result             Pointer to query result to be filled. The caller has
+ *                                  to free the buffer.
+ * @param imageID                   Pointer to the image ID.
+ *
+ * @return
+ *   FSUCCESS       - Get successfully
+ *     FERROR       - Error
+ */
+FSTATUS
+iba_pa_multi_mad_group_nodeinfo_response_query(
+	IN struct omgt_port              *port,
+	IN POMGT_QUERY                   query,
+	IN char                         *group_name,
+	IN STL_LID                      nodeLid,
+	IN uint64                       nodeGuid,
+	IN char                         *nodeDesc,
+	OUT PQUERY_RESULT_VALUES        *pquery_result,
+	IN STL_PA_IMAGE_ID_DATA         *image_id
+	);
+
+/**
+ *  Get multi-record response for pa group link Info.
+ *
+ * @param port                      Local port to operate on.
+ * @param query                     Pointer to the query
+ * @param group_name                Group name
+ * @param inputLid                  input LID
+ * @param inputPort                 input port
+ * @param pquery_result             Pointer to query result to be filled. The caller has
+ *                                  to free the buffer.
+ * @param imageID                   Pointer to the image ID.
+ *
+ * @return
+ *   FSUCCESS       - Get successfully
+ *     FERROR       - Error
+ */
+FSTATUS
+iba_pa_multi_mad_group_linkinfo_response_query(
+	IN struct omgt_port             *port,
+	IN POMGT_QUERY                  query,
+	IN char                         *group_name,
+	IN STL_LID                      inputLid,
+	IN uint8                        inputPort,
+	OUT PQUERY_RESULT_VALUES        *pquery_result,
+	IN STL_PA_IMAGE_ID_DATA         *image_id
+	);
 
 /**
  *  Get multi-record response for pa group focus portlist.
  *
- * @param port                      Local port to operate on. 
- * @param query                     Pointer to the query 
- * @param group_name                Group name 
- * @param select                    Select value for focus portlist. 
- * @param start                     Start index value of portlist 
+ * @param port                      Local port to operate on.
+ * @param query                     Pointer to the query
+ * @param group_name                Group name
+ * @param select                    Select value for focus portlist.
+ * @param start                     Start index value of portlist
  * @param range                     Index range of portlist.
- * @param pquery_result             Pointer to query result to be filled. The caller has 
+ * @param pquery_result             Pointer to query result to be filled. The caller has
  *                                  to fill the buffer.
- * @param imageID                   Pointer to the image ID. 
+ * @param imageID                   Pointer to the image ID.
  *
- * @return 
+ * @return
  *   FSUCCESS       - Get successfully
  *     FERROR       - Error
  */
-FSTATUS 
+FSTATUS
 iba_pa_multi_mad_focus_ports_response_query (
     IN struct omgt_port              *port,
     IN POMGT_QUERY                  query,
@@ -383,6 +440,36 @@ iba_pa_multi_mad_focus_ports_response_query (
     IN STL_PA_IMAGE_ID_DATA                *image_id
     );
 
+
+/**
+ *  Get multi-record response for pa group focus portlist.
+ *
+ * @param port              Local port to operate on.
+ * @param query             Pointer to the query.
+ * @param group_name        Group name.
+ * @param select            Select value for focus portlist.
+ * @param start             Start index value of portlist.
+ * @param range             Index range of portlist.
+ * @param pquery_result     Pointer to query result to be filled. The caller has
+ *  						to fill the buffer.
+ * @param imageID           Pointer to the image ID.
+ *
+ * @return
+ *   FSUCCESS	- Get successfully
+ *     FERROR	- Error
+ */
+FSTATUS
+iba_pa_multi_mad_focus_ports_multiselect_response_query (
+	IN struct omgt_port		    *port,
+	IN POMGT_QUERY              query,
+	IN char				        *group_name,
+	IN uint32			        start,
+	IN uint32			        range,
+	OUT PQUERY_RESULT_VALUES	*pquery_result,
+	IN STL_PA_IMAGE_ID_DATA		*image_id,
+	IN STL_FOCUS_PORT_TUPLE		*tuple,
+	IN uint8			        logical_operator
+	);
 
 /**
  *  Get multi-record response for pa vf data (vf list).

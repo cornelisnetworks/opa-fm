@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -59,8 +59,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define OUI_TRUESCALE_2 (0x6a)
 
 #define GSI_WELLKNOWN_QKEY		(0x80010000)  /* QKEY for GSI            */
-#define UNICAST_LID_MAX			(0xBFFF)      /* Unicast LID upper range */
 #define UNICAST_LID_MIN			(0x0001)      /* Lowest valid Unicast Lid*/
+#define UNICAST_LID_MAX			(0xBFFF)      /* max valid Unicast Lid*/
 #define MULTICAST_LID_MAX		(0xFFFE)      /* MAX MC lid value        */
 #define MULTICAST_LID_MIN		(0xC000)      /* Min MC lid value        */
 #define PERMISSIVE_LID			(0xFFFF)      /* permissive lid for SMP  */
@@ -153,12 +153,4 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endif
 
 #endif	// _IB_CONST_H_
-
-
-
-
-
-
-
-
 

@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -123,6 +123,11 @@ size_t bitset_nset(bitset_t *);
 /* Returns 1 if logical and of the bitsets has at least one bit set,
  * returns 0 if bitsets are different sizes or logical and is 0 */
 int bitset_test_intersection(bitset_t * a, bitset_t * b);
+
+/* Sets result to the bitwise and of bitsets a and b
+ * Returns the number of bits set in the result
+ * or -1 if the bitsets aren't allocated or differ in size */
+int bitset_set_intersection(bitset_t * a, bitset_t * b, bitset_t * result);
 
 /* Display a human readable representation of the bitset.
    This uses log level INFINI_INFO and should probably only

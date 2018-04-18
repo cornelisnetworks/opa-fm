@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -753,7 +753,7 @@ static NetConnection* AcceptConnection() {
     sock = ACCEPT (G_listenSock_, 
                   (struct sockaddr*) &addr, 
                    (void *)&addrSize);
-
+ 
     if (sock == INVALID_SOCKET) {
         IB_LOG_ERROR0("Invalid IPv6 socket");
         IB_EXIT(__func__, 0);

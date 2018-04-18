@@ -1,11 +1,11 @@
 #!/bin/bash
 # BEGIN_ICS_COPYRIGHT8 ****************************************
-#
-# Copyright (c) 2017, Intel Corporation
-#
+# 
+# Copyright (c) 2015-2017, Intel Corporation
+# 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
-#
+# 
 #     * Redistributions of source code must retain the above copyright notice,
 #       this list of conditions and the following disclaimer.
 #     * Redistributions in binary form must reproduce the above copyright
@@ -14,7 +14,7 @@
 #     * Neither the name of Intel Corporation nor the names of its contributors
 #       may be used to endorse or promote products derived from this software
 #       without specific prior written permission.
-#
+# 
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -25,7 +25,7 @@
 # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
+# 
 # END_ICS_COPYRIGHT8   ****************************************
 
 # This file incorporates work covered by the following copyright and permission notice
@@ -404,7 +404,10 @@ logfile=make.openmpi.$interface.$compiler
 		mpitests_srpm=./SRPMS/mpitests-*.src.rpm
 	fi
 	openmpi_version=$(ls $openmpi_srpm 2>/dev/null|head -1|cut -f2 -d-)
-	openmpi_fullversion=$(ls $openmpi_srpm 2>/dev/null|head -1|cut -f2- -d-|sed -e 's/.src.rpm//')
+
+	# For RHEL7x: %{?dist} resolves to '.el7'. For SLES, an empty string
+	# E.g. on rhel7.x: openmpi_gcc_hfi-2.1.2-11.el7.x86_64.rpm; on SLES openmpi_gcc_hfi-2.1.2-11.x86_64.rpm
+	openmpi_fullversion=$(ls $openmpi_srpm 2>/dev/null|head -1|cut -f2- -d-|sed -e 's/.src.rpm//')$(rpm --eval %{?dist})
 	mpitests_version=$(ls $mpitests_srpm 2>/dev/null|head -1|cut -f2 -d-)
 	mpitests_fullversion=$(ls $mpitests_srpm 2>/dev/null|head -1|cut -f2- -d-|sed -e 's/.src.rpm//')
 	MPICH_PREFIX=${MPICH_PREFIX:-$STACK_PREFIX/mpi/$compiler/openmpi-$openmpi_version$openmpi_path_suffix}
@@ -472,12 +475,20 @@ logfile=make.openmpi.$interface.$compiler
 		openmpi_comp_env=""
 	fi
 
+	# determine is it is required to build with MPI C++ bindings based on user input
+	if [[ "$CONFIG_OPTIONS" =~ .*disable-mpi-cxx*. ]]
+	then
+		enable_cxx_bindings=""
+	else
+		enable_cxx_bindings="--enable-mpi-cxx"
+	fi
+
 	case "$compiler" in
 	gcc)
 		openmpi_comp_env="$openmpi_comp_env CC=gcc CFLAGS=-O3"
 		if have_comp g++
 		then
-			openmpi_comp_env="$openmpi_comp_env CXX=g++"
+			openmpi_comp_env="$openmpi_comp_env CXX=g++ $enable_cxx_bindings"
 		else
 			openmpi_comp_env="$openmpi_comp_env --disable-mpi-cxx"
 		fi
@@ -496,7 +507,7 @@ logfile=make.openmpi.$interface.$compiler
 		disable_auto_requires="--define 'disable_auto_requires 1'"
 		if have_comp pathCC
 		then
-			openmpi_comp_env="$openmpi_comp_env CXX=pathCC"
+			openmpi_comp_env="$openmpi_comp_env CXX=pathCC $enable_cxx_bindings"
 		else
 			openmpi_comp_env="$openmpi_comp_env --disable-mpi-cxx"
 		fi
@@ -519,7 +530,7 @@ logfile=make.openmpi.$interface.$compiler
 		use_default_rpm_opt_flags=0
 		if have_comp pgCC
 		then
-			openmpi_comp_env="$openmpi_comp_env CXX=pgCC"
+			openmpi_comp_env="$openmpi_comp_env CXX=pgCC $enable_cxx_bindings"
 			# See http://www.pgroup.com/userforum/viewtopic.php?p=2371
 			openmpi_wrapper_cxx_flags="-fpic"
 		else
@@ -543,7 +554,7 @@ logfile=make.openmpi.$interface.$compiler
 		openmpi_comp_env="$openmpi_comp_env CC=icc"
 		if have_comp icpc
 		then
-			openmpi_comp_env="$openmpi_comp_env CXX=icpc"
+			openmpi_comp_env="$openmpi_comp_env CXX=icpc $enable_cxx_bindings"
 		else
 			openmpi_comp_env="$openmpi_comp_env --disable-mpi-cxx"
 		fi
@@ -584,6 +595,11 @@ logfile=make.openmpi.$interface.$compiler
 	if [ "$STACK_PREFIX" != "/usr" ]
 	then
 		pref_env="$pref_env LD_LIBRARY_PATH=$STACK_PREFIX/lib64:$STACK_PREFIX/lib:\$LD_LIBRARY_PATH"
+	fi
+
+	if [ "$Cflag" = y ]
+	then
+		pref_env = "$pref_env MPI_STRESS_CUDA=1"
 	fi
 
 	cmd="$pref_env rpmbuild --rebuild \

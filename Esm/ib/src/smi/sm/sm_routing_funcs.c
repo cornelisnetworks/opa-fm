@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -515,6 +515,7 @@ sm_routing_func_calc_cost_matrix_floyds(Topology_t * topop, int switches, unsign
 	if (switches != old_topology.max_sws || topology_passcount == 0) {
 		topology_cost_path_changes = 1;
 	}
+
 	for (k = 0, kNumNodes = 0; k < switches; k++, kNumNodes += switches) {
 		for (i = 0, iNumNodes = 0; i < switches; i++, iNumNodes += switches) {
 
@@ -534,7 +535,7 @@ sm_routing_func_calc_cost_matrix_floyds(Topology_t * topop, int switches, unsign
 
 					path[ij] = path[ik];
 					path[Index(j, i)] = path[Index(j, k)];
-
+					
 				} else if (value == cost[ij]) {
 					sm_path_portmask_merge(path + ij, path + ik);
 					sm_path_portmask_merge(path + Index(j, i), path + Index(j, k));
@@ -571,6 +572,7 @@ sm_routing_func_calc_cost_matrix_floyds(Topology_t * topop, int switches, unsign
 				}
 			}
 			
+
 			/* PR 115770. If there is any switch cost/path change (including removal of switches),
 			 * set topology_cost_path_changes which will force full LFT reprogramming for all switches.
 			 */
@@ -587,6 +589,9 @@ sm_routing_func_calc_cost_matrix_floyds(Topology_t * topop, int switches, unsign
 				topology_cost_path_changes = 1;
 			}
 		}
+
+
+
 
 		if (sm_useIdealMcSpanningTreeRoot) {
 			if (sw && sw->nodeInfo.NodeGUID == sm_mcSpanningTreeRootGuid) {
@@ -642,6 +647,9 @@ sm_routing_func_calc_cost_matrix_floyds(Topology_t * topop, int switches, unsign
 		}
 		sw = sw->type_next;
 	}
+
+
+
 
 	if (!sm_useIdealMcSpanningTreeRoot)
 		return VSTATUS_OK;
@@ -796,15 +804,34 @@ sm_routing_func_calc_cost_matrix_floyds(Topology_t * topop, int switches, unsign
 }
 
 int
-sm_routing_func_override_in_use_false(void)
+sm_routing_func_routing_mode_noop(void)
+{
+	return STL_ROUTE_NOP;
+}
+
+int
+sm_routing_func_routing_mode_linear(void)
+{
+	return STL_ROUTE_LINEAR;
+}
+
+int
+sm_routing_func_false(void)
 {
 	return 0;
 }
 
 int
-sm_routing_func_override_in_use_true(void)
+sm_routing_func_true(void)
 {
 	return 1;
+}
+
+
+STL_LID
+sm_routing_func_get_reserved_lid(Topology_t * topop, Node_t * nodep, const Port_t* portp)
+{
+	return STL_LID_RESERVED;
 }
 
 Status_t
@@ -922,6 +949,7 @@ sm_routing_func_copy_routing_lfts(Topology_t *src_topop, Topology_t *dst_topop)
 	return VSTATUS_OK;
 }
 
+
 Status_t
 sm_routing_func_init_switch_routing_lfts(Topology_t * topop, int * routing_needed, int * rebalance)
 {
@@ -942,6 +970,7 @@ sm_routing_func_init_switch_routing_lfts(Topology_t * topop, int * routing_neede
 
 	return s;
 }
+
 
 Status_t
 sm_routing_func_setup_switches_lrdr_wave_discovery_order(Topology_t * topop, int rebalance,
@@ -1099,7 +1128,7 @@ sm_routing_func_select_ports(Topology_t *topop, Node_t *switchp, int endIndex, S
 	SmPathPortmask_t ports;
 	uint8_t cport;
 	uint8_t doSpineCheck;
-	uint8_t      end_port = 0;
+	uint8_t end_port = 0;
 
 	i = switchp->swIdx;
 	j = endIndex;
@@ -1224,7 +1253,6 @@ sm_routing_func_setup_pgs(struct _Topology *topop, struct _Node * srcSw, struct 
 		return VSTATUS_OK;
 	}
 
-	
 	STL_PORTMASK pgMask = 0;
 	int i;
 	for (i = 0; i < end_port; ++i) {
@@ -1262,9 +1290,9 @@ sm_routing_func_setup_pgs(struct _Topology *topop, struct _Node * srcSw, struct 
 		STL_LID portLid = 0;
 		for_all_port_lids(&dstSw->port[0], portLid) {
 			if (portLid < pgftLen) {
-			srcSw->arChange |= (pgft[portLid] != pgid);
-			pgft[portLid] = pgid;
-		}
+				srcSw->arChange |= (pgft[portLid] != pgid);
+				pgft[portLid] = pgid;
+			}
 		}
 
 		// iterate through the end nodes attached to dstSw,
@@ -1359,6 +1387,7 @@ sm_routing_func_select_scsc_map(Topology_t *topop, Node_t *switchp, int getSecon
 	STL_SCSC_MULTISET *scsc=NULL;
 	int portToSet = 0;
 	int needsSet = 0;
+	STL_SCSCMAP *scscTmp= NULL;
 
 	*numBlocks = 0;
 
@@ -1379,16 +1408,12 @@ sm_routing_func_select_scsc_map(Topology_t *topop, Node_t *switchp, int getSecon
 
 	for_all_physical_ports(switchp, portp) {
 		if (!sm_valid_port(portp) || portp->state <= IB_PORT_DOWN) continue;
-		if (!portp->portData->scscMap) {
-			// unexpected error
-			(void) vs_pool_free(&sm_pool, scsc);
-			return VSTATUS_BAD;
-		}
 
 		needsSet = !portp->portData->current.scsc ||  sm_config.forceAttributeRewrite;
 		if (!needsSet) {
 			for (i=1; i<=switchp->nodeInfo.NumPorts; i++) {
-				if (memcmp((void *)&scsc->SCSCMap, (void *)&portp->portData->scscMap[i-1], sizeof(STL_SCSCMAP)) != 0) {
+				scscTmp = sm_lookupPortDataSCSCMap(portp, i-1, 0);
+				if (!scscTmp || (memcmp((void *)&scsc->SCSCMap, (void *)scscTmp, sizeof(STL_SCSCMAP)) != 0)) {
 					needsSet = 1;
 					break;
 				}
@@ -1454,8 +1479,8 @@ sm_routing_func_fill_stl_vlarb_table(Topology_t *topop, Node_t *nodep, Port_t *p
 }
 
 Status_t
-sm_routing_func_select_path_lids(Topology_t *topop, Port_t *srcPortp, uint16_t slid, Port_t *dstPortp,
-	uint16_t dlid, uint16_t *outSrcLids, uint8_t *outSrcLen, uint16_t *outDstLids, uint8_t *outDstLen)
+sm_routing_func_select_path_lids(Topology_t *topop, Port_t *srcPortp, STL_LID slid, Port_t *dstPortp,
+	STL_LID dlid, STL_LID *outSrcLids, uint8_t *outSrcLen, STL_LID *outDstLids, uint8_t *outDstLen)
 {
 	return sm_select_path_lids(topop, srcPortp, slid, dstPortp, dlid, outSrcLids, outSrcLen, outDstLids, outDstLen);
 }
@@ -1465,6 +1490,7 @@ sm_routing_func_process_swIdx_change_noop(Topology_t * topop, int old_idx, int n
 {
 	return VSTATUS_OK;
 }
+
 
 int
 sm_routing_func_check_switch_path_change(Topology_t * oldtp, Topology_t * newtp, Node_t *switchp)
@@ -1520,16 +1546,18 @@ sm_routing_func_do_spine_check(Topology_t * topop, Node_t * switchp)
 }
 
 Status_t
-sm_routing_func_write_minimal_lft_blocks(Topology_t * topop, Node_t * switchp, int use_lr_dr_mix, uint8_t * path)
+sm_routing_func_write_minimal_lft_blocks(Topology_t * topop, Node_t * switchp, SmpAddr_t * addr)
 {
-	return sm_write_minimal_lft_blocks(topop, switchp, use_lr_dr_mix, path);
+	return sm_write_minimal_lft_blocks(topop, switchp, addr);
 }
+
 
 Status_t
 sm_routing_func_write_full_lfts_LR(Topology_t * topop, SwitchList_t * swlist, int rebalance)
 {
 	return sm_write_full_lfts_by_block_LR(topop, swlist, rebalance);
 }
+
 
 Status_t
 sm_routing_func_route_old_switch(Topology_t *src_topop, Topology_t *dst_topop, Node_t *nodep)
@@ -1602,7 +1630,7 @@ sm_routing_func_assign_sls(RoutingModule_t *rm, VirtualFabrics_t *vfs)
     bitset_t usedSLs;
 	int numSCs = 0;
 
-    if (!vfs || (vfs->number_of_vfs == 0) || (vfs->number_of_vfs_all == 0) )  {
+    if (!vfs)  {
         return ret;
     }
 
@@ -1643,22 +1671,6 @@ sm_routing_func_assign_sls(RoutingModule_t *rm, VirtualFabrics_t *vfs)
             	IB_LOG_INFINI_INFO_FMT_VF(vfp->name, "",
             	"Assigning multicast SL to base SL %d", vfp->mcast_sl);
 		}
-    }
-
-    // Assign SLs to the active VF list
-    uint32_t activeVfIdx;
-
-    for (vf=0; vf < vfs->number_of_vfs_all; vf++){
-
-        if (!vfs->v_fabric_all[vf].standby) {
-            activeVfIdx = findVfIdxInActiveList(&vfs->v_fabric_all[vf], vfs, TRUE);
-
-            if (activeVfIdx != -1) {
-                vfs->v_fabric[activeVfIdx].base_sl = vfs->v_fabric_all[vf].base_sl;
-                vfs->v_fabric[activeVfIdx].resp_sl = vfs->v_fabric_all[vf].resp_sl;
-                vfs->v_fabric[activeVfIdx].mcast_sl = vfs->v_fabric_all[vf].mcast_sl;
-            }
-        }
     }
 
     IB_LOG_INFINI_INFO_FMT(__func__, "%d active VF(s), %d standby VF(s) requires %d SLs and %d SCs for operation",
@@ -1710,6 +1722,9 @@ RoutingFuncs_t defaultRoutingFuncs = {
     allocate_cost_matrix:		sm_routing_func_alloc_cost_matrix_floyds,
     initialize_cost_matrix:		sm_routing_func_init_cost_matrix_floyds,
     calculate_cost_matrix:		sm_routing_func_calc_cost_matrix_floyds,
+    routing_mode:				sm_routing_func_routing_mode_linear,
+
+
     copy_routing:				sm_routing_func_copy_routing_lfts,
     init_switch_routing:		sm_routing_func_init_switch_routing_lfts,
     setup_switches_lrdr:		sm_routing_func_setup_switches_lrdr_wave_discovery_order,
@@ -1724,7 +1739,7 @@ RoutingFuncs_t defaultRoutingFuncs = {
     select_scvl_map:			sm_routing_func_select_scvl_map_fixedmap,
     select_vlvf_map:			sm_routing_func_select_vlvf_map,
     select_vlbw_map:			sm_routing_func_select_vlbw_map,
-	select_scvlr_map:			sm_routing_func_select_scvlr_map,
+    select_scvlr_map:			sm_routing_func_select_scvlr_map,
     fill_stl_vlarb_table:		sm_routing_func_fill_stl_vlarb_table,
     select_path_lids:			sm_routing_func_select_path_lids,
     process_swIdx_change:		sm_routing_func_process_swIdx_change_noop,

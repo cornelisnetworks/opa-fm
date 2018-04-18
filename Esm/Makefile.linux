@@ -1,6 +1,6 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015, Intel Corporation
+# Copyright (c) 2015-2017, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -35,6 +35,7 @@ include $(TL_DIR)/$(PROJ_FILE_DIR)/Makesettings.project
 stage::
 #prepfiles:: prepfiles_global
 clobber:: clobber_global clobber_tools
+
 ALL:: tools
 
 BSP_SPECIFIC_DIRS=
@@ -90,6 +91,11 @@ INCLUDE_TARGETS	= \
 MISC_FILES		= $(PWD)/README 
 # all source files
 SOURCES			= $(CFILES) $(CCFILES) $(LFILES) $(RSCFILES) $(IDLFILE)
+ifeq "$(BUILD_TARGET_OS_VENDOR)" "ubuntu"
+	UTIL_PKG = $(TL_DIR)/CommonInstall/util_deb.pl
+else
+	UTIL_PKG = $(TL_DIR)/CommonInstall/util_rpm.pl
+endif
 INSTALL_SOURCES	= \
 				$(TL_DIR)/CommonInstall/util_init.pl \
  				$(TL_DIR)/CommonInstall/util_basicio.pl \
@@ -102,7 +108,7 @@ INSTALL_SOURCES	= \
  				$(TL_DIR)/CommonInstall/util_ifcfg.pl \
  				$(TL_DIR)/CommonInstall/util_linuxconfig.pl \
  				$(TL_DIR)/CommonInstall/util_hosttools.pl \
- 				$(TL_DIR)/CommonInstall/util_rpm.pl \
+                                $(UTIL_PKG) \
  				$(TL_DIR)/CommonInstall/util_build.pl \
  				$(TL_DIR)/CommonInstall/comp_qlgc_fm.pl \
  				$(TL_DIR)/CommonInstall/overrides_fm.pl \
@@ -197,6 +203,7 @@ include $(TL_DIR)/Makerules/Maketargets.toplevel
 # build cmds and libs
 include $(TL_DIR)/Makerules/Maketargets.build
 
+
 # to avoid conflicts with the INSTALL pseudo target in make system build as .pl
 # and rename during STAGE
 INSTALL.pl: $(INSTALL_SOURCES)
@@ -216,9 +223,9 @@ include $(TL_DIR)/Makerules/Maketargets.install
 STAGE::
 	mkdir -p $(PROJ_STAGE_DIR)
 ifeq "$(RELEASE_TAG)" ""
-	echo $(MODULEVERSION) | tr '_-' '..' > $(PROJ_STAGE_DIR)/Version
+	$(CONVERT_RELEASETAG) $(MODULEVERSION) > $(PROJ_STAGE_DIR)/Version
 else
-	echo $(RELEASE_TAG) | tr '_-' '..' > $(PROJ_STAGE_DIR)/Version
+	$(CONVERT_RELEASETAG) $(RELEASE_TAG) > $(PROJ_STAGE_DIR)/Version
 endif
 	echo $(BUILD_TARGET) > $(PROJ_STAGE_DIR)/arch
 	echo $(BUILD_TARGET_OS_VENDOR) > $(PROJ_STAGE_DIR)/distro
@@ -267,27 +274,54 @@ package:
 
 vars_include: vars_include_global
 
+DIR_ARCH := $(shell echo $(BUILD_TARGET) | tr '[A-Z]' '[a-z]')
+
+ifeq "$(BUILD_TARGET_OS_VENDOR)" "ubuntu"
+	RPM_ARCH := $(subst ia32,i386,$(subst em64t,amd64,$(subst x86_64,amd64,$(DIR_ARCH))))
+	RPMDIR := $(TL_DIR)/debbuild
+	RPM_BUILD_DIR := build
+	SRPMSDIR := $(RPM_BUILD_DIR)
+	RPMSDIR := $(RPM_BUILD_DIR)
+	DEVEL := dev
+	SEPARATOR := _
+	DEBUGINFO := dbgsym
+	SRPM_EXT := {.tar.xz,.dsc,_$(RPM_ARCH).changes}
+	RPM_EXT := _$(RPM_ARCH).deb
+	DEBUG_EXT := _$(RPM_ARCH).ddeb
+else
+	RPM_ARCH := $(DIR_ARCH)
+	RPMDIR := $(TL_DIR)/rpmbuild
+	RPM_BUILD_DIR := BUILD
+	SRPMSDIR := SRPMS
+	RPMSDIR := RPMS/$(RPM_ARCH)
+	DEVEL := devel
+	SEPARATOR := -
+	DEBUGINFO := debuginfo
+	SRPM_EXT := .src.rpm
+	RPM_EXT := .$(RPM_ARCH).rpm
+	DEBUG_EXT := $(RPM_EXT)
+endif
+
 final_package:
-	cd $(TL_DIR)/rpmbuild; \
-	dir=`head -n1 BUILD/opa-fm-$${MKRPM_VER}/packaged_files |xargs dirname`; \
-	filename=`head -n1 BUILD/opa-fm-$${MKRPM_VER}/packaged_files |xargs basename`; \
+	cd $(RPMDIR); \
+	dir=`head -n1 $(RPM_BUILD_DIR)/opa-fm-$${MKRPM_VER}/packaged_files | xargs dirname`; \
+	filename=`head -n1 $(RPM_BUILD_DIR)/opa-fm-$${MKRPM_VER}/packaged_files | xargs basename`; \
 	subdir=$${filename%.tgz}; \
 	srpmdir=$$dir/$$subdir/SRPMS; \
-	arch=`echo $(BUILD_TARGET) | tr '[A-Z]' '[a-z]'`; \
-	rpmdir=$$dir/$$subdir/RPMS/$$arch;\
-	mkdir -p $$srpmdir; \
-	mkdir -p $$rpmdir; \
-	cp SRPMS/opa-fm-$${MKRPM_VER}-$${MKRPM_REL}.src.rpm $$srpmdir/ ; \
-	cp RPMS/$$arch/opa-fm-$${MKRPM_VER}-$${MKRPM_REL}.$$arch.rpm $$rpmdir/; \
-	cp RPMS/$$arch/opa-fm-debuginfo-$${MKRPM_VER}-$${MKRPM_REL}.$$arch.rpm $$rpmdir/; \
+	rpmdir=$$dir/$$subdir/RPMS/$(DIR_ARCH); \
+	mkdir -p $$srpmdir || echo "ERR""OR: mkdir $$srpmdir."; \
+	mkdir -p $$rpmdir || echo "ERR""OR: mkdir $$rpmdir."; \
+	cp $(SRPMSDIR)/opa-fm$(SEPARATOR)$${MKRPM_VER}-$${MKRPM_REL}$(SRPM_EXT) $$srpmdir/ || echo "ERR""OR: cp $$srpmdir."; \
+	cp $(RPMSDIR)/opa-fm$(SEPARATOR)$${MKRPM_VER}-$${MKRPM_REL}$(RPM_EXT) $$rpmdir/ || echo "ERR""OR: cp $$rpmdir."; \
+	cp $(RPMSDIR)/opa-fm-$(DEBUGINFO)$(SEPARATOR)$${MKRPM_VER}-$${MKRPM_REL}$(DEBUG_EXT) $$rpmdir/ || echo "ERR""OR: cp $$rpmdir."; \
 	if [ "$(BUILD_TARGET_OS_VENDOR)" = "SuSE" ]; then \
-		cp RPMS/$$arch/opa-fm-debugsource-$${MKRPM_VER}-$${MKRPM_REL}.$$arch.rpm $$rpmdir/; \
+		cp $(RPMSDIR)/opa-fm-debugsource$(SEPARATOR)$${MKRPM_VER}-$${MKRPM_REL}$(RPM_EXT) $$rpmdir/; \
 	fi; \
 	cd $$dir; \
 	echo "Packaging $$dir/$$filename ..."; \
 	tar cvfz $$filename $$subdir
-	cp $(TL_DIR)/rpmbuild/BUILD/opa-fm-$${MKRPM_VER}/packaged_files .
-	cp $(TL_DIR)/rpmbuild/BUILD/opa-fm-$${MKRPM_VER}/dist_files .
+	cp "$(RPMDIR)/$(RPM_BUILD_DIR)/opa-fm-$${MKRPM_VER}/packaged_files" "$(TL_DIR)/$(PROJ_FILE_DIR)/"
+	cp "$(RPMDIR)/$(RPM_BUILD_DIR)/opa-fm-$${MKRPM_VER}/dist_files" "$(TL_DIR)/$(PROJ_FILE_DIR)/"
 
 # Unit test execution
 #include $(TL_DIR)/Makerules/Maketargets.runtest

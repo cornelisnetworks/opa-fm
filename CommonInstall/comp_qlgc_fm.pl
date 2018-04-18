@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015, Intel Corporation
+# Copyright (c) 2015-2017, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -57,16 +57,6 @@ sub enable_autostart2_opafm()
 sub disable_autostart2_opafm()
 {
 	disable_autostart("opafm");
-}
-
-sub start_opafm
-{
-	start_utility($ComponentInfo{'opafm'}{'Name'}, "/usr/lib/opa-fm/runtime", "sm", "opafm");
-}
-
-sub stop_opafm
-{
-	stop_utility($ComponentInfo{'opafm'}{'Name'}, "sm", "opafm");
 }
 
 sub available_opafm

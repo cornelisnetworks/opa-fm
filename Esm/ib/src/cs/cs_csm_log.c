@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -92,7 +92,7 @@ static const char * conditionStrings[CSM_COND_MAX] = {
 	"#16 BM secondary configuration inconsistency",
 	"#17 PM secondary configuration inconsistency",
 	"#18 Master SM deactivating standby that is not responding",
-
+	"#19 EM secondary configuration inconsistency",
 };
 
 

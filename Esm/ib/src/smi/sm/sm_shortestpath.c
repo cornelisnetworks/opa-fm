@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -31,11 +31,14 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ib_types.h"
 #include "sm_l.h"
 
+extern RoutingFuncs_t defaultRoutingFuncs;
 
 Status_t
 sm_shortestpath_make_routing_module(RoutingModule_t * rm)
 {
+	rm->name = "shortestpath";
 	// Use all default routines
+	rm->funcs = defaultRoutingFuncs;
 
 	return VSTATUS_OK;
 }
@@ -45,6 +48,5 @@ sm_shortestpath_init(void)
 {
 	Status_t s;
 	s = sm_routing_addModuleFac("shortestpath", sm_shortestpath_make_routing_module);
-
 	return s;
 }

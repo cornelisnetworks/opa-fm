@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -52,107 +52,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define OMGT_NUM_MGMT_CLASSES 4
 
-static const char* const SdQueryInputTypeText[] = {
-	"InputTypeNoInput",
-	"InputTypeNodeType",
-	"InputTypeSystemImageGuid",
-	"InputTypeNodeGuid",
-	"InputTypePortGuid",
-	"InputTypePortGid",
-	"InputTypeMcGid",
-	"InputTypePortGuidPair",
-	"InputTypeGidPair",
-	"InputTypePathRecord",
-#ifdef IB_STACK_OPENIB
-	"InputTypePathRecordNetworkOrder",
-#endif
-	"InputTypeLid",
-	"InputTypePKey",
-	"InputTypeSL",
-	"InputTypeIndex",
-	"InputTypeServiceId",
-	"InputTypeNodeDesc",
-	"InputTypeServiceRecord",
-	"InputTypeMcMemberRecord",
-	"InputTypePortGuidList",
-	"InputTypeGidList",
-	"InputTypeMultiPathRecord",
-};
-
-static const char* const SdQueryResultTypeText[] = {
-	"OutputTypeSystemImageGuid",
-	"OutputTypeNodeGuid",
-	"OutputTypePortGuid",
-	"OutputTypeLid",
-	"OutputTypeGid",
-	"OutputTypeNodeDesc",
-	"OutputTypePathRecord",
-#ifdef IB_STACK_OPENIB
-	"OutputTypePathRecordNetworkOrder",
-#endif
-	"OutputTypeNodeRecord",
-	"OutputTypePortInfoRecord",
-	"OutputTypeSMInfoRecord",
-	"OutputTypeLinkRecord",
-	"OutputTypeServiceRecord",
-	"OutputTypeMcMemberRecord",
-	"OutputTypeInformInfoRecord",
-	"OutputTypeTraceRecord",
-	"OutputTypeSwitchInfoRecord",
-	"OutputTypeLinearFDBRecord",
-	"OutputTypeRandomFDBRecord",
-	"OutputTypeMCastFDBRecord",
-	"OutputTypeVLArbTableRecord",
-	"OutputTypePKeyTableRecord",
-	"OutputTypeVfInfoRecord",
-	"OutputTypeClassPortInfo",
-	// PM query results
-	"OutputTypePaRecord",
-	"OutputTypePaTableRecord",
-};
-
-// See IbAccess/Common/Inc/stl_sd.h for the OutputTypeStlBase defines
-static const char* const SdQueryStlResultTypeText[] = {
-	"OutputTypeStlUndefined",
-	"OutputTypeStlNodeRecord",
-	"OutputTypeStlNodeDesc",
-	"OutputTypeStlPortInfoRecord",
-	"OutputTypeStlSwitchInfoRecord",
-	"OutputTypeStlPkeyTableRecord",
-	"OutputTypeStlSLSCTableRecord",
-	"OutputTypeStlSMInfoRecord",
-	"OutputTypeStlLinearFDBRecord",
-	"OutputTypeStlVLArbTableRecord",
-	"OutputTypeStlMcMemberRecord",
-	"OutputTypeStlLid",
-	"OutputTypeStlMCastFDBRecord",
-	"OutputTypeStlLinkRecord",
-	"OutputTypeStlSystemImageGuid",
-	"OutputTypeStlPortGuid",
-	"OutputTypeStlNodeGuid",
-	"OutputTypeStlServiceRecord",
-	"OutputTypeStlInformInfoRecord",
-	"OutputTypeStlVfInfo",
-	"OutputTypeStlTraceRecord",
-	"OutputTypeStlQuarantinedNodeRecord",
-    "OutputTypeStlCongInfoRecord",
-    "OutputTypeStlSwitchCongRecord",
-    "OutputTypeStlSwitchPortCongRecord",
-    "OutputTypeStlHFICongRecord",
-    "OutputTypeStlHFICongCtrlRecord",
-	"OutputTypeStlBufCtrlTabRecord",
-	"OutputTypeStlCableInfoRecord",
-	"OutputTypeStlPortGroupRecord",
-	"OutputTypeStlPortGroupFwdRecord",
-	"OutputTypeStlSCSLTableRecord",
-	"OutputTypeStlSCVLtTableRecord",
-	"OutputTypeStlSCVLntTableRecord",
-	"OutputTypeStlSCSCTableRecord",
-	"OutputTypeStlClassPortInfo",
-	"OutputTypeStlFabricInfoRecord",
-	"OutputTypeStlSwitchCostRecord"
-};
-
 /* TBD get from libibt? */
 static const char * const MadInvalidFieldText[] = {
 	"Valid Field",	// should not be used below
@@ -169,31 +68,133 @@ static const char * const MadInvalidFieldText[] = {
 static const char* const SdSAStatusText[] = {
 	"Success",	// not used by code below
 	"Insufficient SA Resources",
-	"No SA Records",
 	"Invalid SA Request",
+	"No SA Records",
 	"Too Many SA Records",
 	"Invalid GID in SA Request",
 	"Insufficient Components in SA Request"
 };
 
+static const QueryInputString_t InputTypeStringValuePair[] = {
+	{ InputTypeNoInput,                "InputTypeNoInput" },
+	{ InputTypeNodeType,               "InputTypeNodeType" },
+	{ InputTypeSystemImageGuid,        "InputTypeSystemImageGuid" },
+	{ InputTypeNodeGuid,               "InputTypeNodeGuid" },
+	{ InputTypePortGuid,               "InputTypePortGuid" },
+	{ InputTypePortGid,                "InputTypePortGid" },
+	{ InputTypeMcGid,                  "InputTypeMcGid" },
+	{ InputTypePortGuidPair,           "InputTypePortGuidPair" },
+	{ InputTypeGidPair,                "InputTypeGidPair" },
+	{ InputTypePathRecord,             "InputTypePathRecord" },
+	{ InputTypePathRecordNetworkOrder, "InputTypePathRecordNetworkOrder" },
+	{ InputTypeLid,                    "InputTypeLid" },
+	{ InputTypePKey,                   "InputTypePKey" },
+	{ InputTypeSL,                     "InputTypeSL" },
+	{ InputTypeIndex,                  "InputTypeIndex" },
+	{ InputTypeServiceId,              "InputTypeServiceId" },
+	{ InputTypeNodeDesc,               "InputTypeNodeDesc" },
+	{ InputTypeServiceRecord,          "InputTypeServiceRecord" },
+	{ InputTypeMcMemberRecord,         "InputTypeMcMemberRecord" },
+	{ InputTypePortGuidList,           "InputTypePortGuidList" },
+	{ InputTypeGidList,                "InputTypeGidList" },
+	{ InputTypeMultiPathRecord,        "InputTypeMultiPathRecord" },
+	{ InputTypeSourceGid,              "InputTypeSourceGid" },
+
+	{ InputTypeDeviceGroup,            "InputTypeDeviceGroup" },
+	{ InputTypeNoInput, NULL } // {0, NULL} Must be the last element to terminate the Map
+};
 const char* iba_sd_query_input_type_msg(QUERY_INPUT_TYPE code)
 {
-	if (code < 0 || code >= (int)(sizeof(SdQueryInputTypeText)/sizeof(char*)))
-		return "Unknown SD Query Input Type";
-	else
-		return SdQueryInputTypeText[code];
+	int i;
+	for (i = 0; InputTypeStringValuePair[i].inputTypeStr != NULL; i++) {
+		if (InputTypeStringValuePair[i].inputType == code)
+			return InputTypeStringValuePair[i].inputTypeStr;
+	}
+	return "Unknown Query Input Type";
 }
 
+static const QueryOutputString_t OutputTypeStringValuePair[] = {
+	/* SA query results */
+	{ OutputTypeSystemImageGuid,            "OutputTypeSystemImageGuid" },
+	{ OutputTypeNodeGuid,                   "OutputTypeNodeGuid" },
+	{ OutputTypePortGuid,                   "OutputTypePortGuid" },
+	{ OutputTypeLid,                        "OutputTypeLid" },
+	{ OutputTypeGid,                        "OutputTypeGid" },
+	{ OutputTypeNodeDesc,                   "OutputTypeNodeDesc" },
+	{ OutputTypePathRecord,                 "OutputTypePathRecord" },
+	{ OutputTypePathRecordNetworkOrder,     "OutputTypePathRecordNetworkOrder" },
+	{ OutputTypeNodeRecord,                 "OutputTypeNodeRecord" },
+	{ OutputTypePortInfoRecord,             "OutputTypePortInfoRecord" },
+	{ OutputTypeSMInfoRecord,               "OutputTypeSMInfoRecord" },
+	{ OutputTypeLinkRecord,                 "OutputTypeLinkRecord" },
+	{ OutputTypeServiceRecord,              "OutputTypeServiceRecord" },
+	{ OutputTypeMcMemberRecord,             "OutputTypeMcMemberRecord" },
+	{ OutputTypeInformInfoRecord,           "OutputTypeInformInfoRecord" },
+	{ OutputTypeTraceRecord,                "OutputTypeTraceRecord" },
+	{ OutputTypeSwitchInfoRecord,           "OutputTypeSwitchInfoRecord" },
+	{ OutputTypeLinearFDBRecord,            "OutputTypeLinearFDBRecord" },
+	{ OutputTypeRandomFDBRecord,            "OutputTypeRandomFDBRecord" },
+	{ OutputTypeMCastFDBRecord,             "OutputTypeMCastFDBRecord" },
+	{ OutputTypeVLArbTableRecord,           "OutputTypeVLArbTableRecord" },
+	{ OutputTypePKeyTableRecord,            "OutputTypePKeyTableRecord" },
+	{ OutputTypeVfInfoRecord,               "OutputTypeVfInfoRecord" },
+	{ OutputTypeClassPortInfo,              "OutputTypeClassPortInfo" },
+
+	/* PA query results */
+	{ OutputTypePaRecord,                   "OutputTypePaRecord" },
+	{ OutputTypePaTableRecord,              "OutputTypePaTableRecord" },
+
+	/* New STL SA Types */
+	{ OutputTypeStlNodeRecord,              "OutputTypeStlNodeRecord" },
+	{ OutputTypeStlNodeDesc,                "OutputTypeStlNodeDesc" },
+	{ OutputTypeStlPortInfoRecord,          "OutputTypeStlPortInfoRecord" },
+	{ OutputTypeStlSwitchInfoRecord,        "OutputTypeStlSwitchInfoRecord" },
+	{ OutputTypeStlPKeyTableRecord,         "OutputTypeStlPKeyTableRecord" },
+	{ OutputTypeStlSLSCTableRecord,         "OutputTypeStlSLSCTableRecord" },
+	{ OutputTypeStlSMInfoRecord,            "OutputTypeStlSMInfoRecord" },
+	{ OutputTypeStlLinearFDBRecord,         "OutputTypeStlLinearFDBRecord" },
+	{ OutputTypeStlVLArbTableRecord,        "OutputTypeStlVLArbTableRecord" },
+	{ OutputTypeStlLid,                     "OutputTypeStlLid" },
+	{ OutputTypeStlMCastFDBRecord,          "OutputTypeStlMCastFDBRecord" },
+	{ OutputTypeStlLinkRecord,              "OutputTypeStlLinkRecord" },
+	{ OutputTypeStlSystemImageGuid,         "OutputTypeStlSystemImageGuid" },
+	{ OutputTypeStlPortGuid,                "OutputTypeStlPortGuid" },
+	{ OutputTypeStlNodeGuid,                "OutputTypeStlNodeGuid" },
+	{ OutputTypeStlInformInfoRecord,        "OutputTypeStlInformInfoRecord" },
+	{ OutputTypeStlVfInfoRecord,            "OutputTypeStlVfInfoRecord" },
+	{ OutputTypeStlTraceRecord,             "OutputTypeStlTraceRecord" },
+	{ OutputTypeStlQuarantinedNodeRecord,   "OutputTypeStlQuarantinedNodeRecord" },
+	{ OutputTypeStlCongInfoRecord,          "OutputTypeStlCongInfoRecord" },
+	{ OutputTypeStlSwitchCongRecord,        "OutputTypeStlSwitchCongRecord" },
+	{ OutputTypeStlSwitchPortCongRecord,    "OutputTypeStlSwitchPortCongRecord" },
+	{ OutputTypeStlHFICongRecord,           "OutputTypeStlHFICongRecord" },
+	{ OutputTypeStlHFICongCtrlRecord,       "OutputTypeStlHFICongCtrlRecord" },
+	{ OutputTypeStlBufCtrlTabRecord,        "OutputTypeStlBufCtrlTabRecord" },
+	{ OutputTypeStlCableInfoRecord,         "OutputTypeStlCableInfoRecord" },
+	{ OutputTypeStlPortGroupRecord,         "OutputTypeStlPortGroupRecord" },
+	{ OutputTypeStlPortGroupFwdRecord,      "OutputTypeStlPortGroupFwdRecord" },
+	{ OutputTypeStlSCSLTableRecord,         "OutputTypeStlSCSLTableRecord" },
+	{ OutputTypeStlSCVLtTableRecord,        "OutputTypeStlSCVLtTableRecord" },
+	{ OutputTypeStlSCVLntTableRecord,       "OutputTypeStlSCVLntTableRecord" },
+	{ OutputTypeStlSCSCTableRecord,         "OutputTypeStlSCSCTableRecord" },
+	{ OutputTypeStlClassPortInfo,           "OutputTypeStlClassPortInfo" },
+	{ OutputTypeStlFabricInfoRecord,        "OutputTypeStlFabricInfoRecord" },
+	{ OutputTypeStlSCVLrTableRecord,        "OutputTypeStlSCVLrTableRecord" },
+	{ OutputTypeStlDeviceGroupNameRecord,   "OutputTypeStlDeviceGroupNameRecord" },
+	{ OutputTypeStlDeviceGroupMemberRecord, "OutputTypeStlDeviceGroupMemberRecord" },
+	{ OutputTypeStlDeviceTreeMemberRecord,  "OutputTypeStlDeviceTreeMemberRecord" },
+	{ OutputTypeStlSwitchCostRecord,        "OutputTypeStlSwitchCostRecord" },
+
+	{ OutputTypeSystemImageGuid, NULL } // {0, NULL} Must be the last element to terminate the Map
+};
 const char* iba_sd_query_result_type_msg(QUERY_RESULT_TYPE code)
 {
-	if (code < 0 || code >= (int)(sizeof(SdQueryResultTypeText)/sizeof(char*))) {
-		code -= OutputTypeStlBase;
-		if (code < 0 || code >= (int)(sizeof(SdQueryStlResultTypeText)/sizeof(char*)))
-			return "Unknown SD Query Result Type";
-		else
-			return SdQueryStlResultTypeText[code];
-	} else
-		return SdQueryResultTypeText[code];
+	int i;
+	for (i = 0; OutputTypeStringValuePair[i].outputTypeStr != NULL; i++) {
+		if (OutputTypeStringValuePair[i].outputType == code)
+			return OutputTypeStringValuePair[i].outputTypeStr;
+	}
+	return "Unknown Query Result Type";
 }
 
 const char* iba_mad_status_msg(MAD_STATUS madStatus)
@@ -304,6 +305,7 @@ static FSTATUS sa_query_common(SA_MAD * pSA, SA_MAD **ppRsp, uint32_t record_siz
 		case SA_ATTRIB_SERVICE_RECORD:
 		case SA_ATTRIB_MCMEMBER_RECORD:
 		case SA_ATTRIB_CLASS_PORT_INFO:
+		case STL_SA_ATTR_VF_INFO_RECORD:
 			// These attributes can use limited mgmt pkey, if available.
 			if (omgt_find_pkey(port, 0x7fff) >= 0) {
 				addr.pkey = 0x7fff;
@@ -569,6 +571,7 @@ FSTATUS omgt_input_value_conversion(OMGT_QUERY *output_query, QUERY_INPUT_VALUE 
 	case OutputTypeStlSMInfoRecord:
 	case OutputTypeStlFabricInfoRecord:
 	case OutputTypeStlQuarantinedNodeRecord:
+	case OutputTypeStlDeviceGroupNameRecord:
 		switch (output_query->InputType) {
 		case InputTypeNoInput: break;
 		default: return FNOT_FOUND;
@@ -668,35 +671,6 @@ FSTATUS omgt_input_value_conversion(OMGT_QUERY *output_query, QUERY_INPUT_VALUE 
 	case OutputTypePathRecord:
 	case OutputTypePathRecordNetworkOrder:
 		switch (output_query->InputType) {
-		case InputTypePortGuidList:
-			output_query->InputValue.IbPathRecord.PortGuidList.SourceGuidCount =
-				old_query->PortGuidList.SourceGuidCount;
-			output_query->InputValue.IbPathRecord.PortGuidList.DestGuidCount =
-				old_query->PortGuidList.DestGuidCount;
-			memcpy(output_query->InputValue.IbPathRecord.PortGuidList.GuidList,
-				old_query->PortGuidList.GuidList, MULTIPATH_GID_LIMIT * sizeof(EUI64));
-			/* SharedSubnetPrefix is new field for this InputType */
-			if (source_gid.Type.Global.SubnetPrefix == 0) return FERROR;
-			output_query->InputValue.IbPathRecord.PortGuidList.SharedSubnetPrefix =
-				source_gid.Type.Global.SubnetPrefix;
-			break;
-		case InputTypeGidList:
-			output_query->InputValue.IbPathRecord.GidList.SourceGidCount =
-				old_query->GidList.SourceGidCount;
-			output_query->InputValue.IbPathRecord.GidList.DestGidCount =
-				old_query->GidList.DestGidCount;
-			memcpy(output_query->InputValue.IbPathRecord.GidList.GidList,
-				old_query->GidList.GidList, MULTIPATH_GID_LIMIT * sizeof(IB_GID));
-			break;
-		case InputTypeMultiPathRecord:
-			output_query->InputValue.IbPathRecord.MultiPathRecord.ComponentMask =
-				old_query->MultiPathRecordValue.ComponentMask;
-			output_query->InputValue.IbPathRecord.MultiPathRecord.MultiPathRecord =
-				old_query->MultiPathRecordValue.MultiPathRecord;
-			memcpy(output_query->InputValue.IbPathRecord.MultiPathRecord.Gids,
-				old_query->MultiPathRecordValue.Gids, (MULTIPATH_GID_LIMIT - 1) * sizeof(IB_GID));
-			break;
-		case InputTypeSourceGid:
 		case InputTypeNoInput:
 			/* SourceGid is a new field for this InputType */
 			if (source_gid.AsReg64s.H == 0 || source_gid.AsReg64s.L == 0) return FERROR;
@@ -807,7 +781,7 @@ FSTATUS omgt_input_value_conversion(OMGT_QUERY *output_query, QUERY_INPUT_VALUE 
 				old_query->Gid;
 			/* SourceGid is new field for this InputType */
 			if (source_gid.AsReg64s.H == 0 || source_gid.AsReg64s.L == 0) return FERROR;
-			output_query->InputValue.IbPathRecord.PortGid.SourceGid = source_gid;
+			output_query->InputValue.TraceRecord.PortGid.SourceGid = source_gid;
 			break;
 		case InputTypeGidPair:
 			output_query->InputValue.TraceRecord.GidPair.DestGid =
@@ -824,32 +798,12 @@ FSTATUS omgt_input_value_conversion(OMGT_QUERY *output_query, QUERY_INPUT_VALUE 
 		case InputTypePortGid:
 			output_query->InputValue.IbServiceRecord.ServiceGid = old_query->Gid;
 			break;
+		case InputTypeServiceId:
+			output_query->InputValue.IbServiceRecord.ServiceId = old_query->ServiceId;
+			break;
 		default: return FNOT_FOUND;
 		}
 		break;
-#ifndef NO_STL_MCMEMBER_OUTPUT
-	case OutputTypeStlMcMemberRecord:
-		switch (output_query->InputType) {
-		case InputTypeNoInput: break;
-		case InputTypePortGid:
-			output_query->InputValue.StlMcMemberRecord.PortGid = old_query->Gid;
-			break;
-		case InputTypeMcGid:
-			output_query->InputValue.StlMcMemberRecord.McGid = old_query->Gid;
-			break;
-		case InputTypeLid:
-			output_query->InputValue.StlMcMemberRecord.Lid = old_query->Lid;
-			break;
-		case InputTypePKey:
-			output_query->InputValue.StlMcMemberRecord.PKey = old_query->PKey;
-			break;
-		case InputTypeSL:
-                        output_query->InputValue.StlMcMemberRecord.SL = old_query->SL;
-                        break;
-		default: return FNOT_FOUND;
-		}
-		break;
-#endif
 	case OutputTypeMcMemberRecord:
 		switch (output_query->InputType) {
 		case InputTypeNoInput: break;
@@ -865,10 +819,10 @@ FSTATUS omgt_input_value_conversion(OMGT_QUERY *output_query, QUERY_INPUT_VALUE 
 		case InputTypePKey:
 			output_query->InputValue.IbMcMemberRecord.PKey = old_query->PKey;
 			break;
-		case InputTypeSL:
+                case InputTypeSL:
                         output_query->InputValue.IbMcMemberRecord.SL = old_query->SL;
                         break;
-		default: return FNOT_FOUND;
+	  	default: return FNOT_FOUND;
 		}
 		break;
 	case OutputTypeInformInfoRecord:
@@ -918,6 +872,7 @@ FSTATUS omgt_input_value_conversion(OMGT_QUERY *output_query, QUERY_INPUT_VALUE 
 		break;
 	case OutputTypeStlSCVLtTableRecord:
 	case OutputTypeStlSCVLntTableRecord:
+	case OutputTypeStlSCVLrTableRecord:
 		switch (output_query->InputType) {
 		case InputTypeNoInput: break;
 		case InputTypeLid:
@@ -1068,6 +1023,35 @@ FSTATUS omgt_input_value_conversion(OMGT_QUERY *output_query, QUERY_INPUT_VALUE 
 		default: return FNOT_FOUND;
 		}
 		break;
+	case OutputTypeStlDeviceGroupMemberRecord:
+		switch (output_query->InputType) {
+		case InputTypeNoInput: break;
+		case InputTypeLid:
+			output_query->InputValue.DgGrpMemberRecord.Lid = old_query->Lid;
+			break;
+		case InputTypePortGuid:
+			output_query->InputValue.DgGrpMemberRecord.Guid = old_query->Guid;
+			break;
+		case InputTypeNodeDesc:
+			snprintf(output_query->InputValue.DgGrpMemberRecord.NodeDesc,
+				STL_NODE_DESCRIPTION_ARRAY_SIZE, "%s", old_query->NodeDesc.Name);
+			break;
+		case InputTypeDeviceGroup:
+			snprintf(output_query->InputValue.DgGrpMemberRecord.DeviceGroup,
+				MAX_DG_NAME, "%s", old_query->NodeDesc.Name);
+			break;
+		default: return FNOT_FOUND;
+		}
+		break;
+	case OutputTypeStlDeviceTreeMemberRecord:
+		switch (output_query->InputType) {
+		case InputTypeNoInput: break;
+		case InputTypeLid:
+			output_query->InputValue.DgTreeMemberRecord.Lid = old_query->Lid;
+			break;
+		default: return FNOT_FOUND;
+		}
+		break;
 	case OutputTypeStlSwitchCostRecord:
 		switch (output_query->InputType) {
 		case InputTypeNoInput: break;
@@ -1174,8 +1158,7 @@ static FSTATUS omgt_query_sa_internal(struct omgt_port *port, OMGT_QUERY *pQuery
 			MAD_SET_VERSION_INFO(&mad, IB_BASE_VERSION, MCLASS_SUBN_ADM, IB_SUBN_ADM_CLASS_VERSION);
 
 			// Take care of input types in fillIn...
-			fstatus = fillInIbNodeRecord(&mad, pQuery);
-			if (fstatus != FSUCCESS) break;
+			if (fillInIbNodeRecord(&mad, pQuery) != FSUCCESS) break;
 
 			fstatus = sa_query_common(&mad, &pRsp, sizeof (IB_NODE_RECORD), &pQR, port);
 			if (fstatus != FSUCCESS) break;
@@ -1372,12 +1355,13 @@ static FSTATUS omgt_query_sa_internal(struct omgt_port *port, OMGT_QUERY *pQuery
 			STL_LINK_RECORD_RESULTS *pLRR;
 			STL_LINK_RECORD      *pLR = (STL_LINK_RECORD*)mad.Data;
 
+
 			switch (pQuery->InputType) {
 			case InputTypeNoInput:     
 				break;
 			case InputTypeLid:           
 				mad.SaHdr.ComponentMask = IB_LINK_RECORD_COMP_FROMLID;
-				pLR->RID.FromLID = pQuery->InputValue.PortInfoRecord.Lid;
+				pLR->RID.FromLID = pQuery->InputValue.LinkRecord.Lid;
 				break;
 			default:
 				OMGT_OUTPUT_ERROR(port, "Query not supported: Input=%s, Output=%s\n",
@@ -1385,8 +1369,6 @@ static FSTATUS omgt_query_sa_internal(struct omgt_port *port, OMGT_QUERY *pQuery
 						iba_sd_query_result_type_msg(pQuery->OutputType));
 				fstatus = FINVALID_PARAMETER; goto done;
 			}
-
-			pLR->Reserved = 0;
 
 			BSWAP_STL_LINK_RECORD(pLR);
 			MAD_SET_ATTRIB_ID(&mad, STL_SA_ATTR_LINK_RECORD);
@@ -1403,7 +1385,7 @@ static FSTATUS omgt_query_sa_internal(struct omgt_port *port, OMGT_QUERY *pQuery
 			}
 		}
 		break;
-
+  
 	case OutputTypeStlSwitchInfoRecord:
     	{
 			STL_SWITCHINFO_RECORD_RESULTS *pSIR = 0;
@@ -1493,64 +1475,7 @@ static FSTATUS omgt_query_sa_internal(struct omgt_port *port, OMGT_QUERY *pQuery
 			int i;
 
 			switch (pQuery->InputType) {
-			case InputTypePortGuidList: 
-				pMPR = (IB_MULTIPATH_RECORD *)mad.Data;
-				MAD_SET_ATTRIB_ID(&mad, SA_ATTRIB_MULTIPATH_RECORD);
-				MAD_SET_METHOD_TYPE (&mad, SUBN_ADM_GETMULTI);
-				mad.SaHdr.ComponentMask = IB_MULTIPATH_RECORD_COMP_NUMBPATH |
-					IB_MULTIPATH_RECORD_COMP_SGIDCOUNT |
-					IB_MULTIPATH_RECORD_COMP_DGIDCOUNT; 
-				pMPR->NumbPath = PATHRECORD_NUMBPATH;
-				pMPR->SGIDCount = pQuery->InputValue.IbPathRecord.PortGuidList.SourceGuidCount;
-				pMPR->DGIDCount = pQuery->InputValue.IbPathRecord.PortGuidList.DestGuidCount;
-				for (i=0;i<(pMPR->SGIDCount+pMPR->DGIDCount); i++) {
-					IB_GID *pGIDList = pMPR->GIDList; // fix compiler warning
-					pGIDList[i].Type.Global.SubnetPrefix =
-						pQuery->InputValue.IbPathRecord.PortGuidList.SharedSubnetPrefix;
-					pGIDList[i].Type.Global.InterfaceID = 
-						pQuery->InputValue.IbPathRecord.PortGuidList.GuidList[i];
-				}
-				length = sizeof(IB_MULTIPATH_RECORD) + 
-					sizeof(IB_GID)*(pMPR->SGIDCount+pMPR->DGIDCount);
-				BSWAP_IB_MULTIPATH_RECORD(pMPR);
-				break;
-
-			case InputTypeGidList: 
-				pMPR = (IB_MULTIPATH_RECORD *)mad.Data;
-				MAD_SET_ATTRIB_ID(&mad, SA_ATTRIB_MULTIPATH_RECORD);
-				MAD_SET_METHOD_TYPE (&mad, SUBN_ADM_GETMULTI);
-				mad.SaHdr.ComponentMask = IB_MULTIPATH_RECORD_COMP_NUMBPATH |
-					IB_MULTIPATH_RECORD_COMP_SGIDCOUNT |
-					IB_MULTIPATH_RECORD_COMP_DGIDCOUNT; 
-				pMPR->NumbPath = PATHRECORD_NUMBPATH;
-				pMPR->SGIDCount = pQuery->InputValue.IbPathRecord.GidList.SourceGidCount;
-				pMPR->DGIDCount = pQuery->InputValue.IbPathRecord.GidList.DestGidCount;
-				memcpy(pMPR->GIDList, 
-					pQuery->InputValue.IbPathRecord.GidList.GidList,
-					sizeof(IB_GID)*(pMPR->SGIDCount+pMPR->DGIDCount));
-				length = sizeof(IB_MULTIPATH_RECORD) + 
-					sizeof(IB_GID)*(pMPR->SGIDCount+pMPR->DGIDCount);
-				BSWAP_IB_MULTIPATH_RECORD(pMPR);
-				break;
-
-			case InputTypeMultiPathRecord: 
-				pMPR = (IB_MULTIPATH_RECORD *)mad.Data;
-				MAD_SET_ATTRIB_ID(&mad, SA_ATTRIB_MULTIPATH_RECORD);
-				MAD_SET_METHOD_TYPE (&mad, SUBN_ADM_GETMULTI);
-				mad.SaHdr.ComponentMask = pQuery->InputValue.IbPathRecord.MultiPathRecord.ComponentMask;
-				memcpy(pMPR,
-					&pQuery->InputValue.IbPathRecord.MultiPathRecord.MultiPathRecord,
-					sizeof(IB_MULTIPATH_RECORD));
-				memcpy(pMPR->GIDList, 
-					pQuery->InputValue.IbPathRecord.MultiPathRecord.Gids,
-					sizeof(IB_GID)*(pMPR->SGIDCount+pMPR->DGIDCount));
-				length = sizeof(IB_MULTIPATH_RECORD) + 
-					sizeof(IB_GID)*(pMPR->SGIDCount+pMPR->DGIDCount);
-				BSWAP_IB_MULTIPATH_RECORD(pMPR);
-				break;
-
 			case InputTypeNoInput:
-			case InputTypeSourceGid:
 				pPR = (IB_PATH_RECORD *)mad.Data;
 				MAD_SET_ATTRIB_ID(&mad, SA_ATTRIB_PATH_RECORD);
 				/* node record query??? */
@@ -1782,6 +1707,10 @@ static FSTATUS omgt_query_sa_internal(struct omgt_port *port, OMGT_QUERY *pQuery
 				mad.SaHdr.ComponentMask = IB_SERVICE_RECORD_COMP_SERVICEGID;
 				pSR->RID.ServiceGID = pQuery->InputValue.IbServiceRecord.ServiceGid;
 				break;
+			case InputTypeServiceId:
+				mad.SaHdr.ComponentMask = IB_SERVICE_RECORD_COMP_SERVICEID;
+				pSR->RID.ServiceID = pQuery->InputValue.IbServiceRecord.ServiceId;
+				break;
 			default:
 				OMGT_OUTPUT_ERROR(port, "Query not supported by opamgt: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),
@@ -1807,64 +1736,6 @@ static FSTATUS omgt_query_sa_internal(struct omgt_port *port, OMGT_QUERY *pQuery
 		}
 		break;
 
-#ifndef NO_STL_MCMEMBER_OUTPUT      // Don't output STL McMember (use IB format) if defined
-	case OutputTypeStlMcMemberRecord:  
-        {   
-			STL_MCMEMBER_RECORD_RESULTS *pMCRR;
-			STL_MCMEMBER_RECORD	    *pMCR = (STL_MCMEMBER_RECORD*)mad.Data;
-
-			switch (pQuery->InputType) {
-			case InputTypeNoInput:
-				break;
-			case InputTypePortGid:
-				mad.SaHdr.ComponentMask = STL_MCMEMBER_COMPONENTMASK_PORTGID;
-				pMCR->RID.PortGID = pQuery->InputValue.StlMcMemberRecord.PortGid;
-				break;           
-			case InputTypeMcGid:
-				mad.SaHdr.ComponentMask = STL_MCMEMBER_COMPONENTMASK_MGID;
-				pMCR->RID.MGID = pQuery->InputValue.StlMcMemberRecord.McGid;
-				break;           
-			case InputTypeLid:
-				mad.SaHdr.ComponentMask = STL_MCMEMBER_COMPONENTMASK_MLID;
-				pMCR->MLID = pQuery->InputValue.StlMcMemberRecord.Lid;
-				break;
-			case InputTypePKey:
-				mad.SaHdr.ComponentMask = STL_MCMEMBER_COMPONENTMASK_PKEY;
-				pMCR->P_Key = pQuery->InputValue.StlMcMemberRecord.PKey;
-				break;
-			case InputTypeSL:
-                                mad.SaHdr.ComponentMask = STL_MCMEMBER_COMPONENTMASK_SL;
-                                pMCR->SL = pQuery->InputValue.StlMcMemberRecord.SL;
-                                break;
-			default:
-				OMGT_OUTPUT_ERROR(port, "Query not supported by opamgt: Input=%s, Output=%s\n",
-						iba_sd_query_input_type_msg(pQuery->InputType),
-						iba_sd_query_result_type_msg(pQuery->OutputType));
-				fstatus = FINVALID_PARAMETER; goto done;
-			}
-
-			pMCR->Reserved = 0;
-			pMCR->Reserved2 = 0;
-			pMCR->Reserved3 = 0;
-			pMCR->Reserved4 = 0;
-			pMCR->Reserved5 = 0;
-
-			BSWAP_STL_MCMEMBER_RECORD(pMCR);
-			MAD_SET_ATTRIB_ID(&mad, SA_ATTRIB_MCMEMBER_RECORD);
-
-			fstatus = sa_query_common(&mad, &pRsp, sizeof (STL_MCMEMBER_RECORD), &pQR, port);
-			if (fstatus != FSUCCESS) break;
-
-			// Translate the data.
-			pMCRR = (STL_MCMEMBER_RECORD_RESULTS*)pQR->QueryResult;
-			pMCR  = pMCRR->McMemberRecords;
-			for (i=0; i< pMCRR->NumMcMemberRecords; i++, pMCR++) {
-				*pMCR =  * ((STL_MCMEMBER_RECORD*)(GET_RESULT_OFFSET(pRsp, i)));
-				BSWAP_STL_MCMEMBER_RECORD(pMCR);
-			}
-		}
-		break;
-#endif
 
 	case OutputTypeMcMemberRecord:
 		{
@@ -1884,13 +1755,13 @@ static FSTATUS omgt_query_sa_internal(struct omgt_port *port, OMGT_QUERY *pQuery
 				break;           
 			case InputTypeLid:
 				mad.SaHdr.ComponentMask = IB_MCMEMBER_RECORD_COMP_MLID;
-				pIbMCR->MLID = pQuery->InputValue.IbMcMemberRecord.Lid;
+				pIbMCR->MLID = MCAST32_TO_MCAST16(pQuery->InputValue.IbMcMemberRecord.Lid);
 				break;
 			case InputTypePKey:
 				mad.SaHdr.ComponentMask = IB_MCMEMBER_RECORD_COMP_PKEY;
 				pIbMCR->P_Key = pQuery->InputValue.IbMcMemberRecord.PKey;
 				break;
-			case InputTypeSL:
+                        case InputTypeSL:
                                 mad.SaHdr.ComponentMask = IB_MCMEMBER_RECORD_COMP_SL;
                                 pIbMCR->u1.s.SL = pQuery->InputValue.IbMcMemberRecord.SL;
                                 break;
@@ -2176,6 +2047,41 @@ static FSTATUS omgt_query_sa_internal(struct omgt_port *port, OMGT_QUERY *pQuery
 			}
 		}
 		break;
+	case OutputTypeStlSCVLrTableRecord:
+		{
+			STL_SC2PVL_R_MAPPING_TABLE_RECORD_RESULTS *pSCVLrRR;
+			STL_SC2PVL_R_MAPPING_TABLE_RECORD *pSCVLrR = (STL_SC2PVL_R_MAPPING_TABLE_RECORD*)mad.Data;
+
+			switch (pQuery->InputType) {
+			case InputTypeNoInput:
+				break;
+			case InputTypeLid:
+				mad.SaHdr.ComponentMask = STL_SC2VL_R_RECORD_COMP_LID;
+				pSCVLrR->RID.LID = pQuery->InputValue.ScVlxTableRecord.Lid;
+				break;
+			default:
+				fprintf(stderr, "Query not supported by opamgt: Input=%s, Output=%s\n",
+						iba_sd_query_input_type_msg(pQuery->InputType),
+						iba_sd_query_result_type_msg(pQuery->OutputType));
+				fstatus = FINVALID_PARAMETER;
+				goto done;
+			}
+			BSWAP_STL_SC2VL_R_MAPPING_TABLE_RECORD(pSCVLrR);
+			MAD_SET_ATTRIB_ID(&mad, STL_SA_ATTR_SC2VL_R_MAPTBL_RECORD);
+
+			fstatus = sa_query_common(&mad, &pRsp, sizeof(STL_SC2PVL_R_MAPPING_TABLE_RECORD), &pQR, port);
+			if (fstatus != FSUCCESS) {
+				break;
+			}
+
+			pSCVLrRR = (STL_SC2PVL_R_MAPPING_TABLE_RECORD_RESULTS*)pQR->QueryResult;
+			pSCVLrR = pSCVLrRR->SCVLrRecords;
+			for (i=0; i < pSCVLrRR->NumSCVLrTableRecords; i++, pSCVLrR++) {
+				*pSCVLrR = *((STL_SC2PVL_R_MAPPING_TABLE_RECORD*)(GET_RESULT_OFFSET(pRsp, i)));
+				BSWAP_STL_SC2VL_R_MAPPING_TABLE_RECORD(pSCVLrR);
+			}
+		}
+		break;
 	case OutputTypeStlVLArbTableRecord: 
 		{
 			STL_VLARBTABLE_RECORD_RESULTS  *pVLRR;
@@ -2213,6 +2119,7 @@ static FSTATUS omgt_query_sa_internal(struct omgt_port *port, OMGT_QUERY *pQuery
 			}
 		}
 		break;
+
 
 	case OutputTypeStlPKeyTableRecord:  
 		{   
@@ -2288,6 +2195,7 @@ static FSTATUS omgt_query_sa_internal(struct omgt_port *port, OMGT_QUERY *pQuery
 		}
 		break;
 
+
 	case OutputTypeStlMCastFDBRecord:
 		{
 			STL_MCAST_FDB_RECORD_RESULTS *pMFRR;
@@ -2312,10 +2220,9 @@ static FSTATUS omgt_query_sa_internal(struct omgt_port *port, OMGT_QUERY *pQuery
 			BSWAP_STL_MCFTB_RECORD(pMFR);
 			MAD_SET_ATTRIB_ID(&mad, SA_ATTRIB_MCAST_FWDTBL_RECORD);
 
-			fstatus = sa_query_common(&mad, &pRsp, sizeof (IB_MCAST_FDB_RECORD), &pQR, port);
+			fstatus = sa_query_common(&mad, &pRsp, sizeof (STL_MULTICAST_FORWARDING_TABLE_RECORD), &pQR, port);
 			if (fstatus != FSUCCESS) break;
 
-			//TODO: RESUME HERE (EEKAHN)
 			// Translate the data.
 			pMFRR = (STL_MCAST_FDB_RECORD_RESULTS*)pQR->QueryResult;
 			pMFR  = pMFRR->MCastFDBRecords;
@@ -2489,7 +2396,6 @@ static FSTATUS omgt_query_sa_internal(struct omgt_port *port, OMGT_QUERY *pQuery
 			}
 			break;
 		}
-
 	case OutputTypeStlSwitchCongRecord:
 		{
 			STL_SWITCH_CONGESTION_SETTING_RECORD_RESULTS *pRecResults;
@@ -2741,7 +2647,6 @@ static FSTATUS omgt_query_sa_internal(struct omgt_port *port, OMGT_QUERY *pQuery
 						iba_sd_query_result_type_msg(pQuery->OutputType));
 				fstatus = FINVALID_PARAMETER; goto done;
 			}
-
 			pRec->RID.Reserved = 0;
 			pRec->Reserved2 = 0;
 
@@ -2801,6 +2706,135 @@ static FSTATUS omgt_query_sa_internal(struct omgt_port *port, OMGT_QUERY *pQuery
 			break;
 		}
 
+	case OutputTypeStlDeviceGroupMemberRecord:
+		{
+			STL_DEVICE_GROUP_MEMBER_RECORD_RESULTS *pRecResults;
+			STL_DEVICE_GROUP_MEMBER_RECORD *pRec = (STL_DEVICE_GROUP_MEMBER_RECORD*)mad.Data;
+
+			switch (pQuery->InputType) {
+
+			case InputTypeNoInput:
+				mad.SaHdr.ComponentMask = 0;
+				break;
+			case InputTypeLid:
+				mad.SaHdr.ComponentMask = STL_DEVICE_GROUP_COMPONENTMASK_LID;
+				pRec->LID = pQuery->InputValue.DgGrpMemberRecord.Lid;
+				break;
+			case InputTypePortGuid:
+				mad.SaHdr.ComponentMask = STL_DEVICE_GROUP_COMPONENTMASK_GUID;
+				pRec->GUID = pQuery->InputValue.DgGrpMemberRecord.Guid;
+				break;
+			case InputTypeNodeDesc:
+				mad.SaHdr.ComponentMask = STL_DEVICE_GROUP_COMPONENTMASK_NODEDESC;
+				memcpy(pRec->NodeDescription.NodeString, pQuery->InputValue.DgGrpMemberRecord.NodeDesc,
+					STL_NODE_DESCRIPTION_ARRAY_SIZE);
+				break;
+			case InputTypeDeviceGroup:
+				mad.SaHdr.ComponentMask = STL_DEVICE_GROUP_COMPONENTMASK_DGNAME;
+				memcpy(pRec->DeviceGroupName, pQuery->InputValue.DgGrpMemberRecord.DeviceGroup,
+					MAX_DG_NAME);
+				break;
+			default:
+				fprintf(stderr, "Query not supported by opamgt: Input=%s, Output=%s\n",
+						iba_sd_query_input_type_msg(pQuery->InputType),
+						iba_sd_query_result_type_msg(pQuery->OutputType));
+				fstatus = FINVALID_PARAMETER; 
+				goto done;
+			}
+
+			BSWAP_STL_DEVICE_GROUP_MEMBER_RECORD(pRec);
+			MAD_SET_ATTRIB_ID(&mad, STL_SA_ATTR_DG_MEMBER_RECORD);
+
+			fstatus = sa_query_common(&mad, &pRsp, sizeof(STL_DEVICE_GROUP_MEMBER_RECORD), &pQR, port);
+			if(fstatus != FSUCCESS) break;
+
+			// Translate the data
+			pRecResults = (STL_DEVICE_GROUP_MEMBER_RECORD_RESULTS*)pQR->QueryResult;
+			pRec = pRecResults->Records;
+
+			for(i = 0; i < pRecResults->NumRecords; i++, pRec++)
+			{
+				*pRec = * ((STL_DEVICE_GROUP_MEMBER_RECORD*)(GET_RESULT_OFFSET(pRsp, i)));
+				BSWAP_STL_DEVICE_GROUP_MEMBER_RECORD(pRec);
+			}
+			break;
+		}
+
+	case OutputTypeStlDeviceGroupNameRecord:
+		{
+			STL_DEVICE_GROUP_NAME_RECORD_RESULTS *pRecResults;
+			STL_DEVICE_GROUP_NAME_RECORD *pRec = (STL_DEVICE_GROUP_NAME_RECORD*)mad.Data;
+
+			switch (pQuery->InputType) {
+			case InputTypeNoInput:
+				mad.SaHdr.ComponentMask = 0;
+				break;
+			default:
+				fprintf(stderr, "Query not supported by opamgt: Input=%s, Output=%s\n",
+						iba_sd_query_input_type_msg(pQuery->InputType),
+						iba_sd_query_result_type_msg(pQuery->OutputType));
+				fstatus = FINVALID_PARAMETER; 
+				goto done;
+			}
+
+			BSWAP_STL_DEVICE_GROUP_NAME_RECORD(pRec);
+			MAD_SET_ATTRIB_ID(&mad, STL_SA_ATTR_DG_NAME_RECORD);
+
+			fstatus = sa_query_common(&mad, &pRsp, sizeof(STL_DEVICE_GROUP_NAME_RECORD), &pQR, port);
+			if(fstatus != FSUCCESS) break;
+
+			// Translate the data
+			pRecResults = (STL_DEVICE_GROUP_NAME_RECORD_RESULTS*)pQR->QueryResult;
+			pRec = pRecResults->Records;
+
+			for(i = 0; i < pRecResults->NumRecords; i++, pRec++)
+			{
+				*pRec = * ((STL_DEVICE_GROUP_NAME_RECORD*)(GET_RESULT_OFFSET(pRsp, i)));
+				BSWAP_STL_DEVICE_GROUP_NAME_RECORD(pRec);
+			}
+			break;
+		}
+
+	case OutputTypeStlDeviceTreeMemberRecord:
+		{
+			STL_DEVICE_TREE_MEMBER_RECORD_RESULTS *pRecResults;
+			STL_DEVICE_TREE_MEMBER_RECORD *pRec = (STL_DEVICE_TREE_MEMBER_RECORD*)mad.Data;
+
+			switch (pQuery->InputType) {
+
+			case InputTypeNoInput:
+				mad.SaHdr.ComponentMask = 0;
+				break;
+
+			case InputTypeLid:
+				mad.SaHdr.ComponentMask = STL_DEVICE_TREE_COMPONENTMASK_LID;
+				pRec->LID = pQuery->InputValue.DgTreeMemberRecord.Lid;
+				break;
+			default:
+				fprintf(stderr, "Query not supported by opamgt: Input=%s, Output=%s\n",
+						iba_sd_query_input_type_msg(pQuery->InputType),
+						iba_sd_query_result_type_msg(pQuery->OutputType));
+				fstatus = FINVALID_PARAMETER;
+				goto done;
+			}
+
+			BSWAP_STL_DEVICE_TREE_MEMBER_RECORD(pRec);
+			MAD_SET_ATTRIB_ID(&mad, STL_SA_ATTR_DT_MEMBER_RECORD);
+
+			fstatus = sa_query_common(&mad, &pRsp, sizeof(STL_DEVICE_TREE_MEMBER_RECORD), &pQR, port);
+			if(fstatus != FSUCCESS) break;
+
+			// Translate the data
+			pRecResults = (STL_DEVICE_TREE_MEMBER_RECORD_RESULTS*)pQR->QueryResult;
+			pRec = pRecResults->Records;
+
+			for(i = 0; i < pRecResults->NumRecords; i++, pRec++)
+			{
+				*pRec = * ((STL_DEVICE_TREE_MEMBER_RECORD*)(GET_RESULT_OFFSET(pRsp, i)));
+				BSWAP_STL_DEVICE_TREE_MEMBER_RECORD(pRec);
+			}
+			break;
+		}
 	case OutputTypeStlSwitchCostRecord:
 		{
 			STL_SWITCH_COST_RECORD_RESULTS	*pSCR;
@@ -2892,6 +2926,9 @@ FSTATUS omgt_query_sa(struct omgt_port *port, OMGT_QUERY *pQuery,
 
 		if (fstatus == FSUCCESS) {
 			port->sa_service_state = OMGT_SERVICE_STATE_OPERATIONAL;
+			STL_CLASS_PORT_INFO *pClassPortInfo = NULL;
+			pClassPortInfo = (STL_CLASS_PORT_INFO*)cpi_query_result->QueryResult;
+			port->sa_capmask2 = pClassPortInfo->u1.s.CapMask2;
 			if (pQuery != NULL && ppQueryResult != NULL &&
 				pQuery->OutputType == OutputTypeStlClassPortInfo &&
 				pQuery->InputType == InputTypeNoInput && cpi_query_result != NULL) {
@@ -2899,22 +2936,28 @@ FSTATUS omgt_query_sa(struct omgt_port *port, OMGT_QUERY *pQuery,
 				*ppQueryResult = cpi_query_result;
 				return FSUCCESS;
 			}
-		} else {
-			OMGT_OUTPUT_ERROR(port, "SA Service State refresh failed: %u. Marking SA and PA Service State DOWN\n", fstatus);
+		} else if (fstatus == FTIMEOUT || fstatus == FNOT_DONE){
+			OMGT_OUTPUT_ERROR(port, "SA nonresponsive. SA Service State refresh failed:  %s.\n", omgt_status_totext(fstatus));
 			port->sa_service_state = OMGT_SERVICE_STATE_DOWN;
 			/* If SA is down assume PA is down */
 			port->pa_service_state = OMGT_SERVICE_STATE_DOWN;
+		} else {
+			OMGT_OUTPUT_ERROR(port, "SA nonresponsive. SA Service State refresh failed: %s.\n", omgt_status_totext(fstatus));
+			port->sa_service_state = OMGT_SERVICE_STATE_UNKNOWN;
+			port->pa_service_state = OMGT_SERVICE_STATE_UNKNOWN;
 		}
 		omgt_free_query_result_buffer(cpi_query_result);
 	}
 
 	if (fstatus == FSUCCESS && pQuery != NULL && ppQueryResult != NULL) {
-		fstatus = omgt_query_sa_internal(port, pQuery, ppQueryResult); 
-		if (fstatus != FSUCCESS) {
-			OMGT_OUTPUT_ERROR(port, "Query Failed: %u. Marking SA and PA Service State DOWN\n", fstatus);
+		fstatus = omgt_query_sa_internal(port, pQuery, ppQueryResult);
+		if (fstatus == FTIMEOUT || fstatus ==  FNOT_DONE) {
+			OMGT_OUTPUT_ERROR(port, "Query Failed on response: %s.\n", omgt_status_totext(fstatus));
 			port->sa_service_state = OMGT_SERVICE_STATE_DOWN;
 			/* If SA is down assume PA is down */
 			port->pa_service_state = OMGT_SERVICE_STATE_DOWN;
+		} else if (fstatus != FSUCCESS) {
+			OMGT_OUTPUT_ERROR(port, "Query Failed: %s. \n", omgt_status_totext(fstatus));
 		}
 	}
 

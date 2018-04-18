@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -204,6 +204,7 @@ static uint32_t fe_if3_trap_thread_get_notice(STL_NOTICE *notice)
 		return FAILED;
 	} else if (len < sizeof(STL_NOTICE)) {
 		IB_LOG_WARN("invalid data length returned; length:", len);
+		free(stl_notice);
 		IB_EXIT(__func__, FAILED);
 		return FAILED;
 	}

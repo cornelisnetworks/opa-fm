@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -48,6 +48,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <mai_g.h>
 #include <iba/ib_generalServices.h>
+#include <iba/stl_rmpp.h>
 
 /*
  * Defines for service ID, service name and classes used by IF3
@@ -62,6 +63,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define SM_SERVICE_ID_SEC   (0x1100d03c34822222ull)
 #define SM_SERVICE_NAME     "Primary Intel OmniPath Subnet Manager"
 #define SM_SERVICE_NAME_SEC "Secondary Intel OmniPath Subnet Manager"
+
 
 #define  IF3_REGFORCE_PORT      (1)      /* force the registration */
 #define  IF3_REGFORCE_FABRIC    (2)      /* force the registration */
@@ -127,7 +129,7 @@ typedef struct {
     int8_t          vfi_guid;	/* Guid being used by vfi  - set to -1 when not initialized */
     GuidInfo_t      guid;	/* Guid for port */
     uint64_t        gidPrefix;	/* GID prefix */
-    ClassPortInfo_t cpi;
+    STL_CLASS_PORT_INFO cpi;
     int             cpi_valid;	/* true if classPortInfo is valid */
     uint8_t         isRegistered;	/* true if Manager service is
 					 * registered */
@@ -168,14 +170,14 @@ typedef uint32_t  (*CBTxRxFunc_t)(CBTxRxData_t *arg, void* context);
 
 Status_t if3_register_fe(uint32_t dev, uint32_t port, uint8_t *servName, uint64_t servID, uint32_t option, IBhandle_t *pfd);
 Status_t if3_deregister_fe(IBhandle_t fd);
-Status_t if3_lid_mngr_cnx(uint32_t dev,uint32_t port, uint8_t mclass, uint16_t lid, IBhandle_t *mhdl);
+Status_t if3_lid_mngr_cnx(uint32_t dev,uint32_t port, uint8_t mclass, STL_LID lid, IBhandle_t *mhdl);
 Status_t if3_sid_mngr_cnx(uint32_t dev,uint32_t port, uint8_t *servName, uint64_t servID, uint8_t mclass, IBhandle_t *mhdl);
 
 Status_t if3_local_mngr_cnx (uint32_t dev, uint32_t port, uint8_t mclass, IBhandle_t * mhdl);
 Status_t if3_close_mngr_cnx(IBhandle_t mhdl);
 Status_t if3_close_mngr_rmpp_cnx (IBhandle_t mhdl);
-void STL_BasicMadInit (Mai_t * madp, uint8_t mclass, uint8_t method, uint16_t aid, uint32_t amod, uint16_t slid, uint16_t dlid, uint8_t sl);
-Status_t if3_mad_init(IBhandle_t fd, Mai_t *madp, uint8_t    mclass, uint8_t method, uint16_t   aid, uint32_t   amod, uint16_t dlid);
+void STL_BasicMadInit (Mai_t * madp, uint8_t mclass, uint8_t method, uint16_t aid, uint32_t amod, STL_LID slid, STL_LID dlid, uint8_t sl);
+Status_t if3_mad_init(IBhandle_t fd, Mai_t *madp, uint8_t    mclass, uint8_t method, uint16_t   aid, uint32_t   amod, STL_LID dlid);
 Status_t if3_cntrl_cmd_send(IBhandle_t fd, uint8_t cmd);
 Status_t if3_open(uint32_t dev, uint32_t port, uint8_t mclass, IBhandle_t * pfd);
 Status_t if3_close(IBhandle_t mhdl);
@@ -207,21 +209,5 @@ void if3_ssl_sess_close(void *session);
 
 Status_t vfi_GetPortGuid(ManagerInfo_t *fp, uint32_t gididx);
 
+
 #endif
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

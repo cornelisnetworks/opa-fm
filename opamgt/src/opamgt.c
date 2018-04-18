@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -45,7 +45,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <iba/ib_mad.h>
 
 #define OPAMGT_PRIVATE 1
-
 #include "ib_utils_openib.h"
 #include "omgt_oob_net.h"
 #include "opamgt_dump_mad.h"
@@ -54,6 +53,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "stl_convertfuncs.h"
 #include "iba/ib_sm_priv.h"
 #include "iba/ib_generalServices.h"
+
 
 /** ========================================================================= */
 void omgt_set_dbg(struct omgt_port *port, FILE *file)
@@ -174,12 +174,13 @@ static int cache_port_details(struct omgt_port *port)
         goto fail2;
     }
 
-	/* NOTE the umad interface returns network byte order here; fix it */
-	port->umad_port_cache.port_guid = ntoh64(port->umad_port_cache.port_guid);
-	port->umad_port_cache.gid_prefix = ntoh64(port->umad_port_cache.gid_prefix);
+    /* NOTE the umad interface returns network byte order here; fix it */
+    port->umad_port_cache.port_guid = ntoh64(port->umad_port_cache.port_guid);
+    port->umad_port_cache.gid_prefix = ntoh64(port->umad_port_cache.gid_prefix);
 
     port->umad_port_cache_valid = 1;
     omgt_unlock_sem(&port->umad_port_cache_lock);
+    
     return 0;
 
 fail2:
@@ -249,6 +250,7 @@ static void update_umad_port_cache(struct omgt_port *port)
         case IBV_EVENT_PORT_ERR:
         case IBV_EVENT_LID_CHANGE:
         case IBV_EVENT_PKEY_CHANGE:
+        case IBV_EVENT_GID_CHANGE:
             rc = cache_port_details(port);
             if (rc != 0)
                 OMGT_OUTPUT_ERROR(port, "umad port cache data invalid!\n");
@@ -465,11 +467,11 @@ static uint8_t get_base_version_from_ni(int fd, uint32_t aid, int pkey_index)
 	send_mad->method = UMAD_METHOD_GET;
 	send_mad->tid = htonl(0xDEADBEEF);
 	send_mad->attr_id = htons(UMAD_SM_ATTR_NODE_INFO);
-	send_mad->dr_slid = 0xffff;
-	send_mad->dr_dlid = 0xffff;
+	send_mad->dr_slid = LID_PERMISSIVE;
+	send_mad->dr_dlid = LID_PERMISSIVE;
 
     umad_set_pkey(umad_p, pkey_index);
-    umad_set_addr(umad_p, 0xffff, 0, 0, 0);
+    umad_set_addr(umad_p, LID_PERMISSIVE, 0, 0, 0);
 
 	rc = 0;
     if (umad_send(fd, aid, umad_p, sizeof(*send_mad), 100, 1) < 0)
@@ -754,6 +756,8 @@ OMGT_STATUS_T omgt_open_port_by_num(struct omgt_port **port, int32_t hfi_num, ui
 	}
 
 	status = omgt_open_port_internal(rc, name, num);
+
+done:
 	if (status == OMGT_STATUS_SUCCESS) {
 		rc->is_oob_enabled = FALSE;
 		*port = rc;
@@ -762,7 +766,6 @@ OMGT_STATUS_T omgt_open_port_by_num(struct omgt_port **port, int32_t hfi_num, ui
 		rc = NULL;
 	}
 
-done:
 	return status;
 }
 
@@ -788,10 +791,12 @@ OMGT_STATUS_T omgt_open_port_by_guid(struct omgt_port **port, uint64_t port_guid
 	status = omgt_get_hfi_from_portguid(port_guid, rc, name, NULL, &num,
 		NULL, NULL, NULL, NULL);
 	if (status != OMGT_STATUS_SUCCESS) {
-		return (status);
+		goto done;
 	}
 
 	status = omgt_open_port_internal(rc, name, num);
+
+done:
 	if (status == OMGT_STATUS_SUCCESS) {
 		rc->is_oob_enabled = FALSE;
 		*port = rc;
@@ -799,7 +804,6 @@ OMGT_STATUS_T omgt_open_port_by_guid(struct omgt_port **port, uint64_t port_guid
 		free(rc);
 		rc = NULL;
 	}
-
 	return status;
 }
 
@@ -893,9 +897,35 @@ void omgt_close_port(struct omgt_port *port)
 
 	/* If port is in OOB mode just close connction */
 	if (port->is_oob_enabled) {
-		if ((status = omgt_oob_disconnect(port)) != FSUCCESS) {
+		if (port->is_ssl_enabled && port->is_ssl_initialized) {
+			if (port->x509_store) {
+				X509_STORE_free(port->x509_store);
+				port->x509_store = NULL;
+				port->is_x509_store_initialized = 0;
+			}
+			if (port->dh_params) {
+				DH_free(port->dh_params);
+				port->dh_params = NULL;
+				port->is_dh_params_initialized = 0;
+			}
+			if (port->ssl_context) {
+				SSL_CTX_free(port->ssl_context);
+				port->ssl_context = NULL;
+			}
+			/* Clean up SSL_load_error_strings() from omgt_oob_ssl_init() */
+			ERR_free_strings();
+			port->is_ssl_initialized = 0;
+		}
+		if ((status = omgt_oob_disconnect(port, port->conn)) != FSUCCESS) {
 			OMGT_OUTPUT_ERROR(port, "Failed to disconnect from OOB connection: %u\n", status);
 		}
+		port->conn = NULL;
+		if (port->is_oob_notice_setup &&
+			(status = omgt_oob_disconnect(port, port->notice_conn)) != FSUCCESS)
+		{
+			OMGT_OUTPUT_ERROR(port, "Failed to disconnect from OOB Notice connection: %u\n", status);
+		}
+		port->notice_conn = NULL;
 		free(port);
 		return;
 	}
@@ -921,46 +951,46 @@ void omgt_close_port(struct omgt_port *port)
 }
 
 /** ========================================================================= */
-uint16_t omgt_get_mgmt_pkey(struct omgt_port *port, uint16_t dlid, uint8_t hopCnt)
+uint16_t omgt_get_mgmt_pkey(struct omgt_port *port, STL_LID dlid, uint8_t hopCnt)
 {
-    uint16_t mgmt = 0;
+	uint16_t mgmt = 0;
 	int err = 0;
-    int i = 0;
+	int i = 0;
 
 	if (port->is_oob_enabled) {
 		OMGT_OUTPUT_ERROR(port, "Port in Out-of-Band Mode, no pkey\n");
 		return 0;
 	}
-    if ((err = omgt_lock_sem(&port->umad_port_cache_lock)) != 0) {
+	if ((err = omgt_lock_sem(&port->umad_port_cache_lock)) != 0) {
 		OMGT_OUTPUT_ERROR(port, "Cannot get port LID, failed to acquire lock (err: %d)\n", err);
-        return mgmt;
-    }
+		return mgmt;
+	}
 
-    // Look for full mgmt pkey first.
-    for (i=0; i<port->umad_port_cache.pkeys_size; i++) {
-        if (port->umad_port_cache.pkeys[i] == 0xffff) {
-            mgmt = 0xffff;
-            goto unlock;
-        }
-    }
+	// Look for full mgmt pkey first.
+	for (i=0; i<port->umad_port_cache.pkeys_size; i++) {
+		if (port->umad_port_cache.pkeys[i] == 0xffff) {
+			mgmt = 0xffff;
+			goto unlock;
+		}
+	}
 
-    // If there is a hop count, is not local access,
-    // requires a full pkey, and there is no full mgmt pkey in the table, 
-    if (hopCnt != 0) 
-        goto unlock;
+	// If there is a hop count, is not local access,
+	// requires a full pkey, and there is no full mgmt pkey in the table, 
+	if (hopCnt != 0) 
+		goto unlock;
 
-    // Look for limited mgmt pkey only if local query
-    if ((dlid==0) || (dlid==port->umad_port_cache.base_lid) || (dlid==0xffff)) {
-        for (i=0; i<port->umad_port_cache.pkeys_size; i++) {
-            if (port->umad_port_cache.pkeys[i] == 0x7fff) {
-                mgmt = 0x7fff;
-                goto unlock;
-            }
-        }
-    }
+	// Look for limited mgmt pkey only if local query
+	if ((dlid == 0) || (dlid == port->umad_port_cache.base_lid) || (dlid == STL_LID_PERMISSIVE)) {
+		for (i=0; i<port->umad_port_cache.pkeys_size; i++) {
+			if (port->umad_port_cache.pkeys[i] == 0x7fff) {
+				mgmt = 0x7fff;
+				goto unlock;
+			}
+		}
+	}
 unlock:
-    omgt_unlock_sem(&port->umad_port_cache_lock);
-    return mgmt;
+	omgt_unlock_sem(&port->umad_port_cache_lock);
+	return mgmt;
 }
 
 /** ========================================================================= */
@@ -978,6 +1008,25 @@ OMGT_STATUS_T omgt_port_get_port_lid(struct omgt_port *port, uint32_t *port_lid)
 	}
 
 	*port_lid = port->umad_port_cache.base_lid;
+
+	omgt_unlock_sem(&port->umad_port_cache_lock);
+	return OMGT_STATUS_SUCCESS;
+}
+
+/** ========================================================================= */
+OMGT_STATUS_T omgt_port_get_port_lmc(struct omgt_port *port, uint32_t *port_lmc)
+{
+	int err = 0;
+
+	if (port->is_oob_enabled) {
+		OMGT_OUTPUT_ERROR(port, "Port in Out-of-Band Mode, no LMC\n");
+		return OMGT_STATUS_INVALID_STATE;
+	}
+	if ((err = omgt_lock_sem(&port->umad_port_cache_lock)) != 0) {
+		OMGT_OUTPUT_ERROR(port, "Cannot get port LMC, failed to acquire lock (err: %d)\n", err);
+		return OMGT_STATUS_PROTECTION;
+	}
+    *port_lmc = port->umad_port_cache.lmc;
 
 	omgt_unlock_sem(&port->umad_port_cache_lock);
 	return OMGT_STATUS_SUCCESS;
@@ -1244,6 +1293,10 @@ OMGT_STATUS_T omgt_port_get_ipv4_addr(struct omgt_port *port, struct in_addr *ip
 		OMGT_OUTPUT_ERROR(port, "Net Connection not initialized\n");
 		return OMGT_STATUS_INVALID_STATE;
 	}
+	if (port->conn->ipv6) {
+		OMGT_OUTPUT_ERROR(port, "Net Connection is using IPv6, no IPv4 Address\n");
+		return OMGT_STATUS_INVALID_STATE;
+	}
 	if (port->conn->err) {
 		OMGT_DBGPRINT(port, "Net Connection has the Error Flag set: %d\n", port->conn->err);
 	}
@@ -1261,6 +1314,10 @@ OMGT_STATUS_T omgt_port_get_ipv6_addr(struct omgt_port *port, struct in6_addr *i
 	}
 	if (port->conn == NULL || port->conn->sock == INVALID_SOCKET) {
 		OMGT_OUTPUT_ERROR(port, "Net Connection not initialized\n");
+		return OMGT_STATUS_INVALID_STATE;
+	}
+	if (!port->conn->ipv6) {
+		OMGT_OUTPUT_ERROR(port, "Net Connection is using IPv4, no IPv6 Address\n");
 		return OMGT_STATUS_INVALID_STATE;
 	}
 	if (port->conn->err) {
@@ -1601,6 +1658,19 @@ static inline int is_my_lid_port(struct omgt_port *port, uint32_t lid)
     return rc;
 }
 
+static int omgt_extract_lid(ib_user_mad_t *umad)
+{
+	uint64_t dest_if_id;
+
+	if (umad->addr.grh_present) {
+		memcpy(&dest_if_id, umad->addr.gid + 8, sizeof(dest_if_id));
+		dest_if_id = ntoh64(dest_if_id);
+		if ((dest_if_id >> 40) == OMGT_STL_OUI)
+			return dest_if_id & 0xFFFFFFFF;
+	}
+	return IB2STL_LID(ntoh16(umad->addr.lid));
+}
+
 /** ========================================================================= */
 FSTATUS omgt_send_mad2(struct omgt_port *port, uint8_t *send_mad, size_t send_size,
 			struct omgt_mad_addr *addr, int timeout_ms, int retries)
@@ -1615,11 +1685,15 @@ FSTATUS omgt_send_mad2(struct omgt_port *port, uint8_t *send_mad, size_t send_si
 	uint16_t         ib_lid;
     int              pkey_idx;
     size_t           padded_size;
+    struct ib_mad_addr *mad_addr;
+    int slid_is_permissive = 0;
+    int dlid_is_permissive = 0;
+    IB_GID gid;
+    struct umad_smp *ib_mad;
+    STL_SMP *stl_mad;
 
-	if (!port || !send_mad || !send_size || !addr)
-		return FINVALID_PARAMETER;
-
-    ib_lid = addr->lid & 0xffff;
+    if (!port || !send_mad || !send_size || !addr)
+        return FINVALID_PARAMETER;
 
     // Make sure we are registered for this class/version...
 	mclass = mad_hdr->mgmt_class;
@@ -1663,16 +1737,72 @@ FSTATUS omgt_send_mad2(struct omgt_port *port, uint8_t *send_mad, size_t send_si
     // Initialize the user mad.
     // umad has limititation that outgoing packets must be > 36 bytes.
     padded_size = ( MAX(send_size,36) + 7) & ~0x7;
-    OMGT_DBGPRINT(port, "dlid %d qpn %d qkey %x sl %d\n", ib_lid, addr->qpn, addr->qkey, addr->sl);
-    umad_p = umad_alloc(1, padded_size + umad_size());
+    OMGT_DBGPRINT (port, "dlid %d qpn %d qkey %x sl %d\n", addr->lid, addr->qpn, addr->qkey, addr->sl);
+
+    umad_p = umad_alloc(1,  padded_size + umad_size());
     if (!umad_p) {
-        OMGT_OUTPUT_ERROR(port, "can't alloc umad send_size %ld\n", padded_size);
+        OMGT_OUTPUT_ERROR(port, "can't alloc umad send_size %ld\n", padded_size + umad_size());
         status = FINSUFFICIENT_MEMORY;
         goto done;
     }
     memset(umad_p, 0, padded_size + umad_size());
-    memcpy (umad_get_mad(umad_p), send_mad, send_size); /* Copy mad to umad */
-    umad_set_grh(umad_p, 0);   
+
+	memcpy (umad_get_mad(umad_p), send_mad, send_size); /* Copy mad to umad */
+
+    /**
+     *  If incoming dlid is 0, set it to a permissive LID.
+     * If slid is an extended LID, set it to 0xFFFFFFFF.
+     * If not, set it to 0xFFFF
+     */
+    if (addr->lid == 0) {
+	if (omgt_is_ext_lid(port->umad_port_cache.base_lid))
+		addr->lid = STL_LID_PERMISSIVE;
+	else
+		addr->lid = LID_PERMISSIVE;
+    }
+
+    ib_lid = addr->lid & 0xffff;
+
+    /* Pure Directed Route packets dont need GRH */
+    if (mad_hdr->mgmt_class == UMAD_CLASS_SUBN_DIRECTED_ROUTE) {
+    	if (mad_hdr->base_version == UMAD_BASE_VERSION) {
+	    /* IB MAD */
+    	    ib_mad = (struct umad_smp *)send_mad;
+    	    slid_is_permissive = (ib_mad->dr_slid == LID_PERMISSIVE);
+    	    dlid_is_permissive = (ib_mad->dr_dlid == LID_PERMISSIVE);
+        } else {
+	    /* OPA MAD */
+ 	    stl_mad = (STL_SMP *)send_mad;
+    	    slid_is_permissive = (stl_mad->SmpExt.DirectedRoute.DrSLID
+				== STL_LID_PERMISSIVE);
+    	    dlid_is_permissive = (stl_mad->SmpExt.DirectedRoute.DrDLID
+				== STL_LID_PERMISSIVE);
+        }
+    }
+	OMGT_DBGPRINT(port, "dlid: 0x%x, slid: 0x%x\n",
+		addr->lid, port->umad_port_cache.base_lid);
+	if ((!slid_is_permissive) || (!dlid_is_permissive)) {
+		/* Not a pure DR packet */
+		if ((omgt_is_ext_lid(addr->lid)) ||
+			omgt_is_ext_lid(port->umad_port_cache.base_lid) ||
+			addr->flags & OMGT_MAD_ADDR_16B) {
+			mad_addr = umad_get_mad_addr(umad_p);
+			mad_addr->gid_index = 0;
+			mad_addr->grh_present = 1;
+			mad_addr->hop_limit = 1;
+			gid.Type.Global.SubnetPrefix = port->umad_port_cache.gid_prefix;
+			gid.Type.Global.InterfaceID = omgt_create_gid(addr->lid);
+			BSWAP_IB_GID(&gid);
+			OMGT_DBGPRINT(port, "Assigned DGID: 0x%lx:0x%lx\n",
+				ntoh64(gid.Type.Global.InterfaceID),
+				ntoh64(gid.Type.Global.SubnetPrefix));
+			memcpy(mad_addr->gid, &gid, sizeof(gid));
+		} else {
+			umad_set_grh(umad_p, 0);
+		}
+	} else {
+		umad_set_grh(umad_p, 0);
+	}
 
     pkey_idx = omgt_find_pkey(port, addr->pkey);
     if (pkey_idx < 0) {
@@ -1701,7 +1831,7 @@ FSTATUS omgt_send_mad2(struct omgt_port *port, uint8_t *send_mad, size_t send_si
     }
     umad_set_pkey(umad_p, pkey_idx);
 
-    umad_set_addr(umad_p, ib_lid?ib_lid:0xffff, addr->qpn, addr->sl, addr->qkey);
+    umad_set_addr(umad_p, ib_lid, addr->qpn, addr->sl, addr->qkey);
 
     correctedTimeout = (timeout_ms == OMGT_SEND_TIMEOUT_DEFAULT)
                      ? OMGT_DEF_TIMEOUT_MS : timeout_ms;
@@ -1712,21 +1842,18 @@ FSTATUS omgt_send_mad2(struct omgt_port *port, uint8_t *send_mad, size_t send_si
         omgt_dump_mad(port->dbg_file, umad_get_mad(umad_p), send_size, "send mad\n");
     }
 
-
-    if (umad_send(port->umad_fd, aid, umad_p, padded_size, (response ? 0 : correctedTimeout), retries) < 0) {
-        OMGT_OUTPUT_ERROR(port, "send failed; %s, agent id %u MClass 0x%x method 0x%x attrId 0x%x attrM 0x%x\n",
-				strerror(errno), aid, mclass, mad_hdr->method, 
-				ntohs(mad_hdr->attr_id), ntohl(mad_hdr->attr_mod)); 
-        status = FNOT_DONE;
-        goto done;
-    }
-
+	if (umad_send(port->umad_fd, aid, umad_p, padded_size, (response ? 0 : correctedTimeout), retries) < 0) {
+		OMGT_OUTPUT_ERROR(port, "send failed; %s, agent id %u MClass 0x%x method 0x%x attrId 0x%x attrM 0x%x\n",
+			strerror(errno), aid, mclass, mad_hdr->method,
+			ntohs(mad_hdr->attr_id), ntohl(mad_hdr->attr_mod));
+		status = FNOT_DONE;
+		goto done;
+	}
 done:
-    // Free umad if allocated.
-    if (umad_p != NULL) {
-        umad_free(umad_p);
-    }
-
+	// Free umad if allocated.
+	if (umad_p != NULL) {
+		umad_free(umad_p);
+	}
     return status;
 }
 
@@ -1740,7 +1867,7 @@ FSTATUS omgt_recv_mad_alloc(struct omgt_port *port, uint8_t **recv_mad, size_t *
 	int            mad_agent; 
 	uint32_t       my_umad_status = 0; 
 	size_t         length;
-	
+
 	if (!port || !recv_mad || !recv_size)
 		return FINVALID_PARAMETER;
 
@@ -1753,7 +1880,8 @@ FSTATUS omgt_recv_mad_alloc(struct omgt_port *port, uint8_t **recv_mad, size_t *
 	}
    
 retry:
-   mad_agent = umad_recv(port->umad_fd, umad, (int *)&length, timeout_ms); 
+
+	mad_agent = umad_recv(port->umad_fd, umad, (int *)&length, timeout_ms);
    // There are 4 combinations:
    //	assorted errors: mad_agent < 0, length <= MAD_SIZE 
    //	large RMPP response: mad_agent < 0, length > MAD_SIZE, umad_status==0
@@ -1873,7 +2001,7 @@ retry2:
     my_umad_status = umad_status(umad);
     OMGT_DBGPRINT(port, "UMAD Status: %s (%d)\n", strerror(my_umad_status), my_umad_status);
 	if (my_umad_status != 0) {
-        status = (my_umad_status == ETIMEDOUT) ? FTIMEOUT : FREJECT;
+		status = (my_umad_status == ETIMEDOUT) ? FTIMEOUT : FREJECT;
 	}
 
     OMGT_DBGPRINT(port, "Received MAD length=%ld, total umad size=%ld\n",length, length + umad_size());
@@ -1901,7 +2029,7 @@ retry2:
 	*recv_size = length;
 
 	if (addr != NULL) {
-		addr->lid  = IB2STL_LID(ntoh16(umad->addr.lid));
+		addr->lid = omgt_extract_lid(umad);
 		addr->sl   = umad->addr.sl;
 		addr->qkey = ntoh32(umad->addr.qkey);
 		addr->qpn  = ntoh32(umad->addr.qpn);
@@ -2013,7 +2141,7 @@ retry2:
     }
 
 	if (addr != NULL) {
-		addr->lid  = IB2STL_LID(ntoh16(umad->addr.lid));
+		addr->lid = omgt_extract_lid(umad);
 		addr->sl   = umad->addr.sl;
 		addr->qkey = ntoh32(umad->addr.qkey);
 		addr->qpn  = ntoh32(umad->addr.qpn);

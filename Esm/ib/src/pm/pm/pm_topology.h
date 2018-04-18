@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -76,10 +76,12 @@ extern "C" {
 #define IMAGEID_LIVE_DATA			 0	// 64 bit ImageId to access live data
 #define IMAGEID_ABSOLUTE_TIME		-1	// 64 bit ImageID to request image by time
 
-// values for ImageId.s.type field, used to determine which table to look in
+// values for ImageId.s.type field, used to determine which table to look in, or
+// to determine if an image came from disk.
 #define IMAGEID_TYPE_ANY			0	// Matches any image ID type
 #define IMAGEID_TYPE_FREEZE_FRAME	1	// client requested Freeze Frame
 #define IMAGEID_TYPE_HISTORY		2	// last sweep and recent history
+#define IMAGEID_TYPE_HISTORY_DISK	3	// Recent history *disk only*
 
 #define IMAGEID_MAX_INSTANCE_ID		256	// 8 bit field
 										  
@@ -159,7 +161,9 @@ typedef struct PmCompositePortCounters_s {
 #endif	// CPU_BE
 		} s;
 	} lq;
-	uint8	Reserved2[6];
+
+	uint8	Reserved2[30];
+
 } PmCompositePortCounters_t;
 
 typedef struct _vls_pctrs PmCompositeVLCounters_t;
@@ -167,8 +171,7 @@ typedef struct _vls_pctrs PmCompositeVLCounters_t;
 
 typedef struct PmCompositeVfvlmap_s {
 	uint32	vlmask;
-	uint8   VF; //index into vf array
-	uint8	Reserved[3];
+	uint32  VF; //index into vf array
 } PmCompositeVfvlmap_t;
 
 #define UPDATE_MAX(max, cnt) do { if (cnt > max) max = cnt; } while (0)
@@ -277,9 +280,9 @@ typedef struct PmUtilStats_s {
 	uint32 MinKPps;	// minimum kilo packets/sec of all selected ports
 	uint32 MaxKPps;	// maximum kilo packets/sec of all selected ports
 
-	uint16 pmaNoRespPorts;  // Number of ports with no response but were still able
+	uint16 pmaNoRespPorts;  // Number of ports with failures but were still able
 							// to be included in Group/Vf Stats
-	uint16 topoIncompPorts; // Number of ports with no response that were not able
+	uint16 topoIncompPorts; // Number of ports with failures that were not able
 							// to be included in Group/Vf Stats
 	// buckets for packets/sec % don't make much sense since theroretical
 	// limit is a function of packet size, hence confusing to report
@@ -387,7 +390,8 @@ typedef struct PmNode_s {
 	cl_map_item_t	AllNodesEntry;	// engine use only, key is portGuid
 
 	// these fields do not change and are tracked once for the Node
-	Guid_t			guid;
+	Guid_t			NodeGUID;
+	Guid_t			SystemImageGUID;
 // TBD - track system image guid?
 	STL_NODE_DESCRIPTION		nodeDesc;	// we keep latest name, rarely changes
 	uint32			changed_count;	// topology_changed_count when last saw node
@@ -410,13 +414,15 @@ typedef struct PmNode_s {
 			uint16	PmaAvoid:1; 			// node does not have a working PMA or
 											//  PM sweeping has been disabled for this Node
 			uint16	PmaGotClassPortInfo:1;	// has Pma capabilities been init'ed
+
 			uint16	Reserved:14;			// 14 spare bits
+
 		} s;
 	} u;
 
 	// Path Information to talk to Node's PMA
 	// we keep latest information here, only used when doing current sweep
-	uint16			dlid;		// for PMA Redirect
+	STL_LID			dlid;		// for PMA Redirect
 	uint16			pkey;		// for PMA Redirect
 	uint32			qpn:24;		// for PMA Redirect
 	uint32			sl:4;		// set when update_path
@@ -426,7 +432,7 @@ typedef struct PmNode_s {
 	// must be last in structure so can dynamically size total images in future
 	struct PmNodeImage_s {
 		// can change per sweep, so track per sweep and can be Freeze Framed
-		uint16			lid;		// for switch, its lid of port 0
+		STL_LID		lid;		// for switch, its lid of port 0
 	} Image[1];	// sized when allocate PmNode_t
 } PmNode_t;
 
@@ -478,8 +484,8 @@ typedef struct PmPort_s {
 	} u;
 
 	// lid/portnum of neighbor is temp data only used while doing sweep
-	STL_LID_32 		neighbor_lid;
-	PORT 			neighbor_portNum;   // only valid if neighbor_lid != 0
+	STL_LID 		neighbor_lid;
+	PORT 			neighbor_portNum;	// only valid if neighbor_lid != 0
 
 	// count warnings
 	uint32 groupWarnings;
@@ -516,7 +522,7 @@ typedef struct PmPort_s {
 		uint8		numGroups;							// Number of PortGroups
 		uint8		InternalBitMask;					// If Port is Internal to PortGroup Bit Mask (this and neighbor in group)
 	
-		uint8 		numVFs;                             // Number of VFs
+		uint32 		numVFs;                             // Number of VFs
 		vfmap_t 	vfvlmap[MAX_VFABRICS];				// VFs this port is a member of.
 														//                                
 		uint32_t 	vlSelectMask;                       // Aggreate of Active VLs used by VFs (also VL 15)
@@ -675,22 +681,23 @@ typedef struct PmImage_s {
 // TBD - SM LidMap could similarly use an array for rapid lookup
 // and keep lidmap, maxlid, size per sweep
 	PmNode_t	**LidMap;
-	STL_LID_32	lidMapSize;	// number of entries allocated in LidMap
-	STL_LID_32	maxLid;
+	STL_LID	lidMapSize;	// number of entries allocated in LidMap
+	STL_LID	maxLid;
 
 	time_t		sweepStart;	// when started sweep, seconds since 1970
 	uint32		sweepDuration;	// in usec
+	uint32      imageInterval; // in sec
 
 	// counts of devices found during this sweep
 	uint16		HFIPorts;		// count of active HFI ports
 // TFI not included in Gen1
 //	uint16		TFIPorts;		// count of active TFI ports
 	uint16		SwitchNodes;	// count of Switch Nodes
-	uint32		SwitchPorts;	// count of Switch Ports (excludes Port 0)
+	uint32		SwitchPorts;	// count of Switch Ports (includes Port 0)
 	uint32		NumLinks;		// count of links (includes internal)
 	uint32		NumSMs;			// count of SMs (including us)
 	struct PmSmInfo {
-		uint16	smLid;			// implies port, 0 if empty record
+		STL_LID	smLid;			// implies port, 0 if empty record
 		uint8	priority:4;		// present priority
 		uint8	state:4;		// present state
 	} SMs[2];					// track just master and 1st secondary
@@ -706,14 +713,18 @@ typedef struct PmImage_s {
 } PmImage_t;
 
 // --------------- Short-Term PA History --------------------
+//TBD: OPA_VERSION_MAJOR should be moved to a more generic location
+#define OPA_VERSION_MAJOR 10
+#define PM_HISTORY_VERSION (10 | (OPA_VERSION_MAJOR << 24))
+// Old version currently supported by PA
+#define PM_HISTORY_VERSION_OLD 9
 
 #define PM_HISTORY_FILENAME_LEN 136		// max length of full filepath
 										// MUST BE MULTIPLE OF 8
 #define PM_HISTORY_MAX_IMAGES_PER_COMPOSITE 60
 #define PM_HISTORY_MAX_SMS_PER_COMPOSITE 2
 #define PM_HISTORY_MAX_LOCATION_LEN 111
-#define PM_HISTORY_VERSION 9
-#define PM_HISTORY_VERSION_OLD 9 // Old version currently supported by PA
+
 #define PM_MAX_COMPRESSION_DIVISIONS 32
 #define PM_HISTORY_STHFILE_LEN 15 // the exact length of the filename, not full path
 
@@ -735,16 +746,15 @@ typedef struct PmCompositePort_s {
 			Reserved:10)
 		} s;
 	} u;
-	STL_LID_32 neighborLid;
+	STL_LID neighborLid;
 
 	PORT	portNum;
 	PORT	neighborPort;
-	uint8	numVFs;
+	uint8   InternalBitMask;
 	uint8	numGroups;
 	uint8	groups[PM_MAX_GROUPS_PER_PORT];
 
-	uint8   InternalBitMask;
-	uint8   reserved2[3];
+	uint32 numVFs;
 	uint32 vlSelectMask;
 
 	CounterSelectMask_t clearSelectMask;
@@ -759,12 +769,16 @@ typedef struct PmCompositePort_s {
 } PACK_SUFFIX PmCompositePort_t;
 
 typedef struct PmCompositeNode_s {
-	uint64	guid;
-	char nodeDesc[STL_NODE_DESCRIPTION_ARRAY_SIZE];
-	uint16	lid;
-	uint8	nodeType;
-	uint8	numPorts;
-	uint32	reserved;
+	uint64				NodeGUID;
+	uint64				SystemImageGUID;
+	char				nodeDesc[STL_NODE_DESCRIPTION_ARRAY_SIZE];
+	STL_LID 			lid;
+	uint8				nodeType;
+	uint8				numPorts;
+
+	uint8				Reserved;
+
+	uint8				reserved;
 	PmCompositePort_t	**ports;
 } PACK_SUFFIX PmCompositeNode_t;
 
@@ -835,18 +849,18 @@ typedef struct PmCompositeImage_s {
 	uint32	numGroups;
 	uint32	numVFs;
 	uint32	numVFsActive;
-	uint32	maxLid;
+	STL_LID	maxLid;
 	uint32	numPorts;
 	struct PmCompositeSmInfo {
-		uint16	smLid;			// implies port, 0 if empty record
+		STL_LID	smLid;			// implies port, 0 if empty record
 #if CPU_BE
-		uint8	priority:4;		// present priority
-		uint8	state:4;		// present state
+		uint8		priority:4;		// present priority
+		uint8		state:4;		// present state
 #else
-		uint8	state:4;
-		uint8	priority:4;
+		uint8		state:4;
+		uint8		priority:4;
 #endif
-		uint8	reserved;
+		uint8		reserved[3];
 	} SMs[PM_HISTORY_MAX_SMS_PER_COMPOSITE];
 	uint32	reserved3;
 	PmCompositeGroup_t	allPortsGroup;
@@ -917,8 +931,8 @@ typedef struct Pm_s {
 	uint8 NumGroups;		// how many of list below are configured/valid
 	PmGroup_t *Groups[PM_MAX_GROUPS];
 
-	uint8 numVFs;
-	uint8 numVFsActive;
+	uint32 numVFs;
+	uint32 numVFsActive;
 	PmVF_t *VFs[MAX_VFABRICS];
 
 	// these are look aside buffers to translate from a ImageId to an ImageIndex
@@ -943,7 +957,7 @@ typedef struct Pm_s {
 
 	// keep these as scratch area for use by current sweep, not kept per image
 	// private to engine thread, not protected by lock
-	uint16		pm_slid;	// SLID for packets we send
+	STL_LID 	pm_slid;	// SLID for packets we send
 	uint32		changed_count;	// last pass synchronized topology with SM
 	uint32 		SweepIndex;	// sweep in progress, no lock needed
 	cl_qmap_t	AllNodes;	// all PmNode_t keyed by portGuid, engine use only
@@ -957,7 +971,7 @@ typedef struct Pm_s {
 		generic_cntxt_t cntx;
 		Event_t sweepDone;
 		uint8	postedEvent;			// have we posted the sweepDone event
-		uint16	nextLid;
+		STL_LID	nextLid;
 		uint16	numOutstandingNodes;	// num nodes in Dispatcher.Nodes
 		PmDispatcherNode_t *DispNodes;	// allocated array of PmMaxParallelNodes
 	} Dispatcher;
@@ -1093,6 +1107,8 @@ BSWAP_PM_COMPOSITE_PORT_COUNTERS(PmCompositePortCounters_t *Dest)
 	Dest->FMConfigErrors = ntoh64(Dest->FMConfigErrors);
 	Dest->LinkErrorRecovery = ntoh32(Dest->LinkErrorRecovery);
 	Dest->LinkDowned = ntoh32(Dest->LinkDowned);
+
+
 #endif
 }	// End of BSWAP_PM_COMPOSITE_PORT_COUNTERS
 
@@ -1161,13 +1177,14 @@ BSWAP_PM_COMPOSITE_NODE(PmCompositeNode_t *Dest, uint32 numNodes)
 
 	for (i = 0; i < numNodes; i++) {
 		numPorts = (cnode->nodeType == STL_NODE_SW ? cnode->numPorts+1 : cnode->numPorts);
-		cnode->guid = ntoh64(cnode->guid);
-		cnode->lid = ntoh16(cnode->lid);
+		cnode->NodeGUID = ntoh64(cnode->NodeGUID);
+		cnode->SystemImageGUID = ntoh64(cnode->SystemImageGUID);
+		cnode->lid = ntoh32(cnode->lid);
 		BSWAP_PM_COMPOSITE_PORT((PmCompositePort_t *)&cnode->ports, numPorts);
 		// Calc address of next (flattened) composite node
 		cnode = (PmCompositeNode_t *)((size_t)cnode
-			+ (sizeof(PmCompositeNode_t) - sizeof(PmCompositePort_t **))
-			+ (sizeof(PmCompositePort_t) * numPorts));
+				+ (sizeof(PmCompositeNode_t) - sizeof(PmCompositePort_t **))
+				+ (sizeof(PmCompositePort_t) * numPorts));
 	}
 #endif
 }	// End of BSWAP_PM_COMPOSITE_NODE
@@ -1213,7 +1230,7 @@ BSWAP_PM_COMPOSITE_SM_INFO(struct PmCompositeSmInfo *Dest, uint32 numSMs)
 #if CPU_LE
 	uint32 i;
 	for (i = 0; i < numSMs; i++)
-		Dest[i].smLid = ntoh16(Dest[i].smLid);
+		Dest[i].smLid = ntoh32(Dest[i].smLid);
 #endif
 }	// End of BSWAP_PM_COMPOSITE_SM_INFO
 
@@ -1224,7 +1241,7 @@ BSWAP_PM_HISTORY_VERSION(uint32 *Dest)
 #if CPU_LE
 	*Dest = ntoh32(*Dest);
 #endif
-}	// End of BSWAP_PM_HISTORY_VERSION
+}   // End of BSWAP_PM_HISTORY_VERSION
 
 static __inline
 void
@@ -1261,7 +1278,7 @@ BSWAP_PM_FILE_HEADER(PmFileHeader_t *Dest)
 // Byte-swap flattened Composite Image
 static __inline
 void
-BSWAP_PM_COMPOSITE_IMAGE_FLAT(PmCompositeImage_t *Dest, boolean hton, uint32 history_version)
+BSWAP_PM_COMPOSITE_IMAGE_FLAT(PmCompositeImage_t *Dest, boolean hton /*, uint32 historyVersion*/)
 {
 #if CPU_LE
 	uint32 numNodes;
@@ -1444,12 +1461,15 @@ extern IBhandle_t hpma, pm_fd;
 
 // Lookup a node in pmImage based on lid
 // caller should have pmImage->imageLock held
-PmNode_t *pm_find_node(PmImage_t *pmimagep, STL_LID_32 lid);
+PmNode_t *pm_find_node(PmImage_t *pmimagep, STL_LID lid);
 
 // Lookup a port in pmImage based on lid and portNum
 // does not have to be a "lid"'ed port
 // caller should have pmImage->imageLock held
-PmPort_t *pm_find_port(PmImage_t *pmImage, STL_LID_32 lid, uint8 portNum);
+PmPort_t *pm_find_port(PmImage_t *pmImage, STL_LID lid, uint8 portNum);
+
+// Lookup a node in Pm Topology based on nodeguid
+PmNode_t *pm_find_nodeguid(Pm_t *pm, uint64 nodeGUID);
 
 // Clear Running totals for a given Node.  This simulates a PMA clear so
 // that tools like opareport can work against the Running totals until we
@@ -1598,8 +1618,8 @@ void PmAddPortToVFIndex(PmPortImage_t * portImage, uint32 vfIndex, PmVF_t *vfp);
 
 boolean PmIsPortInGroup(Pm_t *pm, PmPort_t *pmport, PmPortImage_t *portImage,
     PmGroup_t *groupp, boolean sth, boolean *isInternal);
-boolean PmIsPortInVF(Pm_t *pm, PmPort_t *pmportp,
-						PmPortImage_t *portImage, PmVF_t *vfp);
+boolean PmIsPortInVF(Pm_t *pm, PmPort_t *pmportp, PmPortImage_t *portImage,
+	PmVF_t *vfp, int vfIdx);
 
 // adds a port to a group where the neighbor of the port WILL NOT be in
 // the given group

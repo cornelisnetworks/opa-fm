@@ -1,6 +1,6 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015, Intel Corporation
+# Copyright (c) 2015-2017, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -47,7 +47,8 @@ CFILES			= \
 				  cs_string.c vs_pool_common.c \
 				  cs_bitset.c \
 				  vs_thr_common.c \
-				  cs_utility.c cs_csm_log.c
+				  cs_utility.c cs_csm_log.c \
+				  cs_sockwrap.c cs_vesw.c
 				# Add more c files here
 # C++ files (.cpp)
 CCFILES			= \

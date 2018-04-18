@@ -678,6 +678,16 @@
     </VirtualFabric>
 
     <!-- a template for a storage Virtual Fabric -->
+    <!-- This vFabric can be used for Lustre traffic.  The PKey field should -->
+    <!-- be specified to map Lustre traffic.  The CMA in OFA currently -->
+    <!-- specifies the PKey and ServiceID in the path record query.  The CMA -->
+    <!-- requires that the PKey match the PKey for networking traffic -->
+    <!-- (IPoIB). When setting up this vFabric the PKey should be configured -->
+    <!-- to be identical to the PKey used for IPoIB.  For example if the -->
+    <!-- Default VF is used for IPoIB, the PKey of the Default VF and the -->
+    <!-- PKey of the Storage VF should match. In addition, either the -->
+    <!-- <Security> should be disabled OR the VF should be changed from -->
+    <!-- <LimitedMember> to <Member>. -->
     <VirtualFabric>
       <Name>Storage</Name>
       <Enable>0</Enable>
@@ -979,31 +989,46 @@
     <ForceRebalance>0</ForceRebalance>
     <!-- Toggle to force rebalancing routing every change -->
 
-    <!-- **************** Fat Tree Topology **************************** -->
-    <!-- When the RoutingAlgorithm is set to fattree, the following -->
-    <!-- section is used to configure fat tree parameters.  -->
-    <!-- FatTreeTopology:  -->
-    <!--    To properly handle routing decisions, the SM need to understand -->
-    <!--    some fabric topology information.  Specifically, how many -->
-    <!--    tiers are in the fat tree and which tier a switch belongs to. -->
-    <!--    If all FIs are on the same tier, the SM can easily determine -->
-    <!--    the fat tree topology and tier a given switch resides in. -->
-    <!--    If they are not, a list of CoreSwitches will be used -->
-    <!--    to identify the topology. -->
+    <!-- ******************** Fat Tree Topology **************************** -->
+    <!-- When the RoutingAlgorithm is set to fattree, the following section  -->
+    <!-- is used to configure fat tree parameters.                           -->
+    <!-- FatTreeTopology:                                                    -->
+    <!--    To properly handle routing decisions, the SM needs to understand -->
+    <!--    some fabric topology information.  Specifically, how many tiers  -->
+    <!--    are in the fat tree and which tier a switch belongs to.  This is -->
+    <!--    used to balance the tree and determine which links are up/down   -->
+    <!--    for deadlock avoidance.                                          -->
+    <!--    If all FIs are on the same tier, the SM can easily determine the -->
+    <!--    fat tree topology and tier a given switch resides in. If they    -->
+    <!--    are not, a list of CoreSwitches will be used to identify the     -->
+    <!--    topology.  It is a good practice to specify the CoreSwitches     -->
+    <!--    group explicitly and disable the FIsOnSameTier config, this will -->
+    <!--    determine the proper layout of the fabric in the event that some -->
+    <!--    of the HFIs are offline.                                         -->
     <FatTreeTopology>
-      <!-- The number of tiers in the fat tree -->
+      <!-- The number of tiers in the fat tree.                              -->
       <TierCount>3</TierCount>
-      <!-- Indicates whether or not the HFIs are on the same tier in the -->
-      <!-- fat tree. -->
+      <!-- Fabric topology will be discovered using information that all     -->
+      <!-- HFIs are on the same tier in the fat tree.                        -->
       <FIsOnSameTier>1</FIsOnSameTier>
-      <!-- The following must be setup if the HFIs are not on the same tier. -->
-      <!-- It identifies the root/core switches in the fat tree. -->
-      <!-- <CoreSwitches>core_device_group</CoreSwitches> -->
-      <!-- Nodes may be specified for exclusion from initial round-robin -->
-      <!-- to give better route balancing of remaining nodes. -->
-      <!-- This may be useful in asymmetric fat trees or to -->
-      <!-- initially balance across compute nodes in the tree. -->
-      <!-- <RouteLast>hfi_device_group</RouteLast>  -->
+      <!-- Fabric topology will be discovered based on the location of the   -->
+      <!-- core/root switches.  The following must be setup if the HFIs are  -->
+      <!-- not on the same tier.  It's also a good practice to use the core  -->
+      <!-- switches group to discover the fabric topology (in the event      -->
+      <!-- that HFIs are offline).  Note, FIsOnSameTier should be set to     -->
+      <!-- zero when using the CoreSwitches discovery method.                -->
+      <!-- <CoreSwitches>core_device_group</CoreSwitches>                    -->
+      <!-- Nodes may be specified for exclusion from initial round-robin     -->
+      <!-- to give better route balancing of remaining nodes.                -->
+      <!-- This may be useful in asymmetric fat trees or to initially        -->
+      <!-- balance across compute nodes in the tree.                         -->
+      <!-- <RouteLast>hfi_device_group</RouteLast>                           -->
+      <!-- The following can be enabled to setup routing with a simple       -->
+      <!-- round robin.  Paths are selected without offsetting the start     -->
+      <!-- such that the first HFI on a switch is routed through the first   -->
+      <!-- ISL on the same tier, the second HFI on the second ISL, etc. in   -->
+      <!-- a pass through type assignment.                                   -->
+      <PassThrough>0</PassThrough>
     </FatTreeTopology>
     
     <!-- **************** DG ShortestPath Topology **************************** -->
@@ -1065,12 +1090,6 @@
     <!--        specified in the MeshTorusTopology are considered invalid  -->
     <!--        and will be logged and ignored.                            -->
     <!--        Default value is 5. Max value is 255.                      -->
-    <!--    OverlayMulticast:                                              -->
-    <!--        Instructs the FM to allow multicast traffic to travel over -->
-    <!--        a VL that is also used for normal traffic. This allows     -->
-    <!--        better QOS handling but in the event of equipment or link  -->
-    <!--        failures there is a risk of causing congestion.            -->
-    <!--        Default value is 0. Set to 1 to enable.                    -->
 
     <!-- Example of 2D (4x4) Torus with two ISLs in each dimension.        -->
     <!-- <MeshTorusTopology> -->
@@ -1330,8 +1349,7 @@
     <!-- than HoqLife, it is discarded.  -->
     <!-- Similarly a packet queued in a switch for more than SwitchLifetime -->
     <!-- is discarded. -->
-    <!-- Specified as integer time using ns, us, ms, s, m, or h as units. -->
-    <!-- SwitchLifetime and HoqLife can also be set to infinite. -->
+    <!-- Specified as integer time using ns, us, ms, or s as units. -->
     <!-- VLStallCount controls a second tier more aggressive discard.  -->
     <!-- If VLStallCount packets in a row are discarded due to HoqLife by a -->
     <!-- given VL on an egress port.  That egress port's VL enters the VL -->
@@ -1349,8 +1367,8 @@
     <!-- level, the timeout scaling is automatically disabled for that VF -->
 
     <TimerScalingEnable>0</TimerScalingEnable>
-    <SwitchLifetime>33ms</SwitchLifetime>                                                                              <!--SM_0_switchlifetime:2ninf-->
-    <HoqLife>8ms</HoqLife>                                                                                             <!--SM_0_hoqlife:2ninf-->
+    <SwitchLifetime>33ms</SwitchLifetime>                                                                              <!--SM_0_switchlifetime:2n-->
+    <HoqLife>8ms</HoqLife>                                                                                             <!--SM_0_hoqlife:2n-->
     <VLStallCount>7</VLStallCount>                                                                                     <!--SM_0_vlstall:dec-->
 
     <!-- VL15FlowControlDisable can be used to turn off the link-level -->
@@ -1453,7 +1471,6 @@
     <!-- "Small" packets are expected to be latency sensitive packets; -->
     <!-- "Large" packets are expected to be less latency sensitive packets. -->
     <!--     NOTE: These sizes represent PACKET sizes including all HEADERS -->
-    <!--           Settings are only reconfigured when the port is bounced. --> 
     <!-- These sizes are configurable by the user: -->
     <!--   LargePacket:   The minimum size (in bytes) for a "Large" (and -->
     <!--                  therefore pre-emptible) packet. --> 
@@ -1568,7 +1585,7 @@
       <LostRouteOnly>0</LostRouteOnly>                                                                                 <!--SM_0_ar_lost_route_only:dec-->
       <!-- Algorithm the switch should use when selecting an egress port -->
       <!-- Algorithms are currently 0 = Random, 1 = Greedy and -->
-      <!-- 2 = GreedyRandom. -->
+      <!-- 2 = GreedyRandom. Default is 2.-->
       <Algorithm>2</Algorithm>
       <!-- Update Frequency: Specifies the minimum time between -->
       <!-- AR adjustments. Values range from 0 to 7 and are read as 2^n -->
@@ -1579,10 +1596,10 @@
       <!-- Values range from 0 to 7. -->
       <!-- 7, 6, 5, 4 correspond to 55%, 60%, 65%, and 70%, respectively. -->
       <!-- 3, 2, 1 correspond to 80%, 90%, and 100%, respectively. -->
-      <!-- 0 means "Use firmware default" -->
+      <!-- 0 means "Use firmware default". Default is 3. -->
       <!-- Higher Percentage means higher congestion is required before Adaptive -->
       <!-- routing takes control. Higher Percentage is less sensitive, less adaptive. -->
-      <Threshold>1</Threshold>
+      <Threshold>3</Threshold>
     </AdaptiveRouting>
 
     <SaRespTime>1s</SaRespTime> <!-- maximum anticipated SA response time -->                                          <!--SM_0_saRespTime:2n-->
@@ -1920,6 +1937,15 @@
     <!-- <LogFile></LogFile> -->                                                                                       <!--#FE_0_log_file-->
     <!-- <SyslogFacility>Local6</SyslogFacility> -->
     <!-- <DefaultPKey>0xffff</DefaultPKey> -->                                                                         <!--#FE_0_default_pkey:hex-->
+
+    <!-- Trap Subscriptions allow the FE to register for Traps that will be -->
+    <!-- forwarded to an FE user with an open connection. "All" or 0xFFFF can -->
+    <!-- be used to register to have the FE listen for all Traps. -->
+    <!-- Default Traps are 64 and 65. -->
+    <!-- <TrapSubscriptions> -->
+    <!--   <TrapNumber>64</TrapNumber> --><!-- GID In Service (New Node) -->
+    <!--   <TrapNumber>65</TrapNumber> --><!-- GID Out of Service (Node Disappears) -->
+    <!-- </TrapSubscriptions> -->
 
     <!-- Time in microseconds between checking & attempting to reconnect to -->
     <!-- managers (SA/PM) that have become unreachable -->
@@ -2286,8 +2312,8 @@
     </Multicast>
     <!-- <SmKey>0x0</SmKey> -->                                                                                        <!--#SM_1_key:hex-->
     <!-- <MKey>0x0</MKey> -->                                                                                          <!--#SM_1_Mkey:hex-->
-    <!-- <SwitchLifetime>33ms</SwitchLifetime> -->                                                                     <!--#SM_1_switchlifetime:2ninf-->
-    <!-- <HoqLife>8ms</HoqLife> -->                                                                                    <!--#SM_1_hoqlife:2ninf-->
+    <!-- <SwitchLifetime>33ms</SwitchLifetime> -->                                                                     <!--#SM_1_switchlifetime:2n-->
+    <!-- <HoqLife>8ms</HoqLife> -->                                                                                    <!--#SM_1_hoqlife:2n-->
     <!-- <VLStallCount>7</VLStallCount> -->                                                                            <!--#SM_1_vlstall:dec-->
 
     <AdaptiveRouting>                                                                                                  <!--#SM_1_ar_enable#=-->
@@ -2428,8 +2454,8 @@
     </Multicast>
     <!-- <SmKey>0x0</SmKey> -->                                                                                        <!--#SM_2_key:hex-->
     <!-- <MKey>0x0</MKey> -->                                                                                          <!--#SM_2_Mkey:hex-->
-    <!-- <SwitchLifetime>33ms</SwitchLifetime> -->                                                                     <!--#SM_2_switchlifetime:2ninf-->
-    <!-- <HoqLife>8ms</HoqLife> -->                                                                                    <!--#SM_2_hoqlife:2ninf-->
+    <!-- <SwitchLifetime>33ms</SwitchLifetime> -->                                                                     <!--#SM_2_switchlifetime:2n-->
+    <!-- <HoqLife>8ms</HoqLife> -->                                                                                    <!--#SM_2_hoqlife:2n-->
     <!-- <VLStallCount>7</VLStallCount> -->                                                                            <!--#SM_2_vlstall:dec-->
 
     <AdaptiveRouting>                                                                                                  <!--#SM_2_ar_enable#=-->
@@ -2536,7 +2562,6 @@
   <!-- Additional Instance Specific Virtual Fabrics -->
   <VirtualFabrics>
   </VirtualFabrics>
-
   <!-- Shared Instance config, applies to all components: SM, PM and FE -->
   <Shared>
     <Start>0</Start> <!-- Overall Instance Startup, see fm0 for more info -->                                          <!--SM_3_start:dec-->
@@ -2571,8 +2596,8 @@
     </Multicast>
     <!-- <SmKey>0x0</SmKey> -->                                                                                        <!--#SM_3_key:hex-->
     <!-- <MKey>0x0</MKey> -->                                                                                          <!--#SM_3_Mkey:hex-->
-    <!-- <SwitchLifetime>33ms</SwitchLifetime> -->                                                                     <!--#SM_3_switchlifetime:2ninf-->
-    <!-- <HoqLife>8ms</HoqLife> -->                                                                                    <!--#SM_3_hoqlife:2ninf-->
+    <!-- <SwitchLifetime>33ms</SwitchLifetime> -->                                                                     <!--#SM_3_switchlifetime:2n-->
+    <!-- <HoqLife>8ms</HoqLife> -->                                                                                    <!--#SM_3_hoqlife:2n-->
     <!-- <VLStallCount>7</VLStallCount> -->                                                                            <!--#SM_3_vlstall:dec-->
 
     <AdaptiveRouting>                                                                                                  <!--#SM_3_ar_enable#=-->

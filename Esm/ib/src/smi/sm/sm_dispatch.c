@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -137,28 +137,18 @@ static void sm_dispatch_cntxt_callback(cntxt_entry_t *cntxt, Status_t cntxtStatu
 // can only be called under lock from the topology_rcv thread
 static Status_t sm_dispatch_send(sm_dispatch_req_t *req)
 {
-	// current sm_send_request_impl implementation requires we hack the
-	// addressing info into the new topology
-	if (req->sendParams.path == NULL) {
-		sm_newTopology.slid = req->sendParams.slid;
-		sm_newTopology.dlid = req->sendParams.dlid;
-	}
-
 	vs_time_get(&req->sendTime);
 
     if (req->sendParams.bversion == STL_BASE_VERSION) {
+        SmpAddr_t addr = SMP_ADDR_CREATE(req->sendParams.path, req->sendParams.slid, req->sendParams.dlid);
         return sm_send_stl_request_impl(
            req->sendParams.fd, req->sendParams.method, req->sendParams.aid, 
-           req->sendParams.amod, req->sendParams.path,
+           req->sendParams.amod, &addr,
            req->sendParams.bufferLength, req->sendParams.buffer, &req->sendParams.bufferLength, 
            RCV_REPLY_AYNC, req->sendParams.mkey, sm_dispatch_cntxt_callback, 
-           (void *)req, 0, NULL);
+           (void *)req, NULL);
     } else {
-        return sm_send_request_impl(
-           req->sendParams.fd, req->sendParams.method, req->sendParams.aid, 
-           req->sendParams.amod, req->sendParams.path, req->sendParams.buffer, 
-           RCV_REPLY_AYNC, req->sendParams.mkey, sm_dispatch_cntxt_callback, 
-           (void *)req, 0);
+		return VSTATUS_BAD;
     }
 }
 
@@ -167,24 +157,15 @@ static Status_t sm_dispatch_passthrough(sm_dispatch_req_t *req)
 {
 	Status_t status;
 
-	// current sm_send_request_impl implementation requires we hack the
-	// addressing info into the new topology
-	if (req->sendParams.path == NULL) {
-		sm_newTopology.slid = req->sendParams.slid;
-		sm_newTopology.dlid = req->sendParams.dlid;
-	}
-
     if (req->sendParams.bversion == STL_BASE_VERSION) {
+        SmpAddr_t addr = SMP_ADDR_CREATE(req->sendParams.path, req->sendParams.slid, req->sendParams.dlid);
         status = sm_send_stl_request_impl(
            req->sendParams.fd, req->sendParams.method, req->sendParams.aid, 
-           req->sendParams.amod, req->sendParams.path,
+           req->sendParams.amod, &addr,
            req->sendParams.bufferLength, req->sendParams.buffer, &req->sendParams.bufferLength,
-           RCV_REPLY_AYNC, req->sendParams.mkey, NULL, NULL, 0, NULL);
+           RCV_REPLY_AYNC, req->sendParams.mkey, NULL, NULL, NULL);
     } else {
-        status = sm_send_request_impl(
-           req->sendParams.fd, req->sendParams.method, req->sendParams.aid, 
-           req->sendParams.amod, req->sendParams.path, req->sendParams.buffer, 
-           RCV_REPLY_AYNC, req->sendParams.mkey, NULL, NULL, 0);
+		status = VSTATUS_BAD;
     }
 
 	sm_dispatch_free_req(req);

@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT6 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -38,6 +38,24 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include <unistd.h>
 #include <ctype.h>
+
+#define MAX_VFABRIC_NAME	64	// from fm_xml.h
+
+// from stl_pa.h
+#define STL_PA_SELECT_UTIL_HIGH			0x00020001
+#define STL_PA_SELECT_UTIL_MC_HIGH		0x00020081
+#define STL_PA_SELECT_UTIL_PKTS_HIGH		0x00020082
+#define STL_PA_SELECT_CATEGORY_INTEG			0x00030001
+#define STL_PA_SELECT_CATEGORY_CONG			0x00030002
+#define STL_PA_SELECT_CATEGORY_SMA_CONG		0x00030003
+#define STL_PA_SELECT_CATEGORY_BUBBLE		0x00030004
+#define STL_PA_SELECT_CATEGORY_SEC			0x00030005
+#define STL_PA_SELECT_CATEGORY_ROUT			0x00030006
+#define FOCUS_PORTS_COMPARATOR_INVALID			0
+#define FOCUS_PORTS_COMPARATOR_GREATER_THAN		1
+#define FOCUS_PORTS_COMPARATOR_LESS_THAN		2
+#define FOCUS_PORTS_COMPARATOR_GREATER_THAN_OR_EQUAL	3
+#define FOCUS_PORTS_COMPARATOR_LESS_THAN_OR_EQUAL	4
 
 #if defined(MEM_TRACK_ON)
 #if defined(VXWORKS)
@@ -285,6 +303,104 @@ FSTATUS StringToGid(uint64 *hValue, uint64 *lValue, const char* str, char **endp
 	return StringToUint64(lValue, end, endptr, 16, skip_trail_whitespace);
 }
 
+// VESWPort of form guid:port:index or desc:port:index
+// guid must be base 16, as such 0x prefix is optional.
+// desc max size is MAX_VFABRIC_NAME (64)
+// port and index are decimal
+// whitespace is permitted before and after :
+// byname = 0: the format is guid:port:index
+// byname = 1: the format is desc:port:index
+FSTATUS StringToVeswPort(uint64 *guid, char *desc, uint32 *port, uint32 *index,
+	const char* str, char **endptr, boolean skip_trail_whitespace,
+	boolean byname)
+{
+	FSTATUS status = FSUCCESS;
+	char *end, *string = NULL;
+	char *name;
+
+	if (byname) {
+		string = strdup(str);
+
+		name = strtok_r((char *)string, ":", &end);
+		if (name != NULL && strlen(name) <= MAX_VFABRIC_NAME && end != NULL) {
+			strcpy(desc, name);
+		} else {
+			status = FERROR;
+			goto out;
+		}
+	} else {
+		status = StringToUint64(guid, str, &end, 16, TRUE);
+		if (status != FSUCCESS || end == NULL || *end != ':') {
+			status = FERROR;
+			goto out;
+		}
+		end++;
+	}
+
+	status = StringToUint32(port, end, &end, 10, TRUE);
+	if (status != FSUCCESS || end == NULL || *end != ':') {
+		status = FERROR;
+		goto out;
+	}
+	end++;
+	status = StringToUint32(index, end, endptr, 10, skip_trail_whitespace);
+out:
+	if (string != NULL) {
+		free(string);
+	}
+	return status;
+}
+
+
+// MAC Address of form %02x:%02x:%02x:%02x:%02x:%02x
+// values must be base16, 0x prefix is optional
+FSTATUS StringToMAC(uint8_t *MAC,const char *str, char **endptr,
+					boolean skip_trail_whitespace)
+{
+	FSTATUS status;
+	char *end = NULL;
+
+	status = StringToUint8(&MAC[0], str, &end, 16, FALSE);
+	if (status != FSUCCESS)
+		return status;
+	if ((end == NULL) || (*end != ':'))
+		return FERROR;
+	end++;
+
+	status = StringToUint8(&MAC[1], end, &end, 16, FALSE);
+	if (status != FSUCCESS)
+		return status;
+	if ((end == NULL) || (*end != ':'))
+		return FERROR;
+	end++;
+
+	status = StringToUint8(&MAC[2], end, &end, 16, FALSE);
+	if (status != FSUCCESS)
+		return status;
+	if ((end == NULL) || (*end != ':'))
+		return FERROR;
+	end++;
+
+	status = StringToUint8(&MAC[3], end, &end, 16, FALSE);
+	if (status != FSUCCESS)
+		return status;
+	if ((end == NULL) || (*end != ':'))
+		return FERROR;
+	end++;
+
+	status = StringToUint8(&MAC[4], end, &end, 16, FALSE);
+	if (status != FSUCCESS)
+		return status;
+	if ((end == NULL) || (*end != ':'))
+		return FERROR;
+	end++;
+
+	status = StringToUint8(&MAC[5], end, endptr, 16, FALSE);
+
+	return status;
+}
+
+
 // Byte Count as an integer followed by an optional suffix of:
 // K, KB, M, MB, G or GB
 // (K==KB, etc)
@@ -342,7 +458,7 @@ FSTATUS StringToUint64Bytes(uint64 *value, const char* str, char **endptr, int b
 
 #if !defined(VXWORKS)
 #define RELATIVE_TIME_STR_LEN 3
-                                                     // June 30th, 2015 11:59:59 PM
+                                                     // June 6th, 2015 11:59:59 PM
 													 // as represented by the format
 static const char * date_formats[] = {"%Y-%m-%d %T", // 2015-06-30 23:59:59
                                       "%Y-%m-%d %R", // 2015-06-30 23:59
@@ -400,7 +516,7 @@ FSTATUS StringToDateTime(uint32 *value, const char* str){
 			time(&timer);   //get current time
 			struct tm * tmp;
 			tmp = localtime(&timer);
-			if (!tmp){ 
+			if (!tmp){
 				return FERROR;
 			}
 			tm.tm_year = tmp->tm_year;
@@ -424,7 +540,9 @@ FSTATUS StringToDateTime(uint32 *value, const char* str){
 				return FSUCCESS;
 			}
 		}
-	}else{ // relative time entered?
+	}else{
+		// determine if time entered in the form
+		// "<x> <units> ago" where units is a member of time_units from above
 		char *string, *saveptr, *token, *tokens[RELATIVE_TIME_STR_LEN];
 
 		string = strdup(str);
@@ -498,6 +616,73 @@ FSTATUS StringToDateTime(uint32 *value, const char* str){
 
 	return FERROR;
 }
+
+// Tuple of form select:comparator:argument
+// select must be one of "utilization", "pktrate", "integrity", "congestion", "smacongestion", "bubbles", "security", or "routing".
+// comparator must be one of "GT", "LT", "GE", "LE".
+// argument may be any 64-bit value
+// string inputs are case insensitive.
+FSTATUS StringToTuple(uint32 *select, uint8 *comparator, uint64 *argument, char* str, char **endptr)
+{
+	FSTATUS status = FSUCCESS;
+	char *end;
+	char *selectstr;
+	char *comparatorstr;
+	char *argumentstr;
+
+	if ((select == NULL) || (comparator == NULL) || (argument == NULL) || (str == NULL))
+		return FERROR;
+
+	selectstr = strtok_r(str, ":", &end);
+
+	if (selectstr == NULL)
+		return FERROR;
+
+	if (strcasecmp(selectstr, "utilization") == 0)
+		*select = STL_PA_SELECT_UTIL_HIGH;
+	else if (strcasecmp(selectstr, "pktrate") == 0)
+		*select = STL_PA_SELECT_UTIL_PKTS_HIGH;
+	else if (strcasecmp(selectstr, "integrity") == 0)
+		*select = STL_PA_SELECT_CATEGORY_INTEG;
+	else if (strcasecmp(selectstr, "congestion") == 0)
+		*select = STL_PA_SELECT_CATEGORY_CONG;
+	else if (strcasecmp(selectstr, "smacongestion") == 0)
+		*select = STL_PA_SELECT_CATEGORY_SMA_CONG;
+	else if (strcasecmp(selectstr, "bubbles") == 0)
+		*select = STL_PA_SELECT_CATEGORY_BUBBLE;
+	else if (strcasecmp(selectstr, "security") == 0)
+		*select = STL_PA_SELECT_CATEGORY_SEC;
+	else if (strcasecmp(selectstr, "routing") == 0)
+		*select = STL_PA_SELECT_CATEGORY_ROUT;
+	else
+		return FERROR;
+
+	comparatorstr = strtok_r((char *)NULL, ":", &end);
+
+	if (comparatorstr == NULL)
+		return FERROR;
+
+	if (strcasecmp(comparatorstr, "GT") == 0)
+		*comparator = FOCUS_PORTS_COMPARATOR_GREATER_THAN;
+	else if (strcasecmp(comparatorstr, "LT") == 0)
+		*comparator = FOCUS_PORTS_COMPARATOR_LESS_THAN;
+	else if (strcasecmp(comparatorstr, "GE") == 0)
+		*comparator = FOCUS_PORTS_COMPARATOR_GREATER_THAN_OR_EQUAL;
+	else if (strcasecmp(comparatorstr, "LE") == 0)
+		*comparator = FOCUS_PORTS_COMPARATOR_LESS_THAN_OR_EQUAL;
+	else
+		return FERROR;
+
+	argumentstr = strtok_r((char *)NULL, ":", &end);
+
+	if (argumentstr) {
+		status = StringToUint64(argument, argumentstr, NULL, 0, TRUE);
+		return status;
+	}
+
+	return FERROR;
+}
+
 #endif
 
 #if !defined(VXWORKS)

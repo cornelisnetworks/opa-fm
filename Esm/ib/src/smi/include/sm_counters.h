@@ -122,6 +122,7 @@ typedef enum _smCounters {
 	smCounterSetSC2VLrMappingTable,
 	smCounterGetSC2SCMappingTable,
 	smCounterSetSC2SCMappingTable,
+	smCounterSetSC2SCMultiSet,
 	smCounterGetVLArbitrationTable,
 	smCounterSetVLArbitrationTable,
 	smCounterGetLft,
@@ -133,7 +134,6 @@ typedef enum _smCounters {
 	smCounterGetLedInfo,
 	smCounterSetLedInfo,
 	smCounterGetCableInfo, // No Set
-
 	smCounterRxGetSmInfo, // SmInfo is an oddball
 	smCounterGetSmInfo,
 	smCounterRxSetSmInfo,
@@ -253,6 +253,14 @@ typedef enum _smCounters {
 	smCounterSaRxGetTblSwitchCostRecord,
 
 	smCounterSaRxReportResponse,
+
+	smCounterSaRxGetDgMemberRecord,
+	smCounterSaRxGetTblDgMemberRecord,
+	smCounterSaRxGetDgNameRecord,
+	smCounterSaRxGetTblDgNameRecord,
+
+	smCounterSaRxGetDtMemberRecord,
+	smCounterSaRxGetTblDtMemberRecord,
 
 	// Weird conditions
 	smCounterSaDuplicateRequests,

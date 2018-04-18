@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -141,7 +141,6 @@ typedef	long long int		int64_t;
 //                                                                            //
 //----------------------------------------------------------------------------//
 
-typedef	uint32_t		Lid_t;
 typedef	uint64_t		Guid_t;
 typedef	uint16_t		PKey_t;
 typedef	uint16_t		QKey_t;

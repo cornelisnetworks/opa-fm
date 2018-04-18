@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -35,19 +35,17 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //    sm_linux.c							     //
 //									     //
 // DESCRIPTION								     //
-//    The OS dependent part of SM.  This version parses the command	     //
-//    line and starts the OS independent part.				     //
+//    The OS dependent part of SM.  This file has OS specific functions//
+//    inside of it.				     //
 //									     //
 // DATA STRUCTURES							     //
 //    None								     //
 //									     //
 // FUNCTIONS								     //
-//    main				main entry point		     //
 //									     //
 // DEPENDENCIES								     //
 //    ib_mad.h								     //
 //    ib_status.h							     //
-//									     //
 //									     //
 //===========================================================================//
 
@@ -66,19 +64,12 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "hsm_config_srvr_data.h"
 #include "ibyteswap.h"
 
-/*
- *	Posix defines for argument cracking.
- */
-extern	int		optind;
-extern	int		opterr;
-extern	int		optopt;
-extern	char		*optarg;
 extern  uint32_t sm_nodaemon;
-extern  uint32_t xml_trace;
 extern uint32_t            smDebugPerf;  // control SM/SA performance messages; default is off
 extern uint32_t            saDebugRmpp;  // control SA RMPP INFO debug messages; default is off
 extern IBhandle_t fdsa, fd_pm, pm_fd, dbsyncfd_if3;
 extern Pool_t fe_pool, pm_pool;
+
 
 /*
  *	Simulator definitions.
@@ -88,62 +79,11 @@ time_t			sm_starttime = 0;
 static SMThread_t				conf_server; // Runtime configuration server thread...
 static p_hsm_com_server_hdl_t	conf_handle;
 
-extern void* getSmXmlParserMemory(uint32_t size, char* info);
-extern void freeSmXmlParserMemory(void *address, uint32_t size, char* info);
-extern Status_t initSmXmlMemoryPool(void);
-extern Status_t sm_parse_xml_config(void);
-extern Status_t handleVfDgMemory(void);
-extern Status_t sm_initialize_sm_pool(void);
-extern void smLogLevelOverride(void);
-extern size_t computeCompositeSize(void);
-
-/*
- *	External SM independent routine.
- */
-Status_t		sm_main(void);		   
-
-extern Port_t *
-sm_idb_find_port(uint64_t *guid, uint32_t *port, Port_t *pPort);
-
-extern Port_t *
-sm_idb_find_next_port(uint64_t *guid, uint32_t *port, Port_t *pPort);
-
-extern Node_t *
-sm_idb_find_node_id(uint32_t node_id, Node_t *pNode);
-
-extern Node_t *
-sm_idb_find_next_guid(uint64_t guid, Node_t *pNode);
-
-extern Node_t *
-sm_idb_find_guid(uint64_t guid, Node_t *pNode);
-
-extern ServiceRecord_t* 
-sm_idb_find_next_service_record(uint64_t *serviceId, IB_GID *serviceGid, uint16_t *servicep_key, ServiceRecord_t *pSrp);
-
-extern ServiceRecord_t* 
-sm_idb_find_service_record(uint64_t *serviceId, IB_GID *serviceGid, uint16_t *servicep_key, ServiceRecord_t *pSrp);
-		 
-extern McGroup_t*	
-sm_idb_find_broadCast_group(IB_GID *pGid, McGroup_t *pGroup);
-
-extern McGroup_t*	
-sm_idb_find_next_broadCast_group(IB_GID *pGid, McGroup_t *pGroup);
-
-extern McMember_t*	
-sm_idb_find_broadCast_group_member(IB_GID *pGid, uint32_t *index, McMember_t *pMember);
-
-extern McMember_t*	
-sm_idb_find_next_broadCast_group_member(IB_GID *pGid, uint32_t *index, McMember_t *pMember);
-
-extern Node_t *
-sm_idb_find_switch(uint64_t guid, Node_t *pNode);
-
-extern Node_t *
-sm_idb_find_next_switch(uint64_t guid, Node_t *pNode);
-
 extern void sm_setSweepRate(uint32_t rate);
 
 extern fm_msg_ret_code_t sm_diag_ctrl(fm_config_datagram_t *msg);
+
+extern size_t computeCompositeSize(void);
 
 fm_msg_ret_code_t
 sm_conf_fill_common(fm_mgr_action_t action, fm_config_common_t *common)
@@ -483,7 +423,7 @@ sm_conf_server_init(void){
 	conf_server.id = (void *)"RT-Conf server";
 	conf_server.function = sm_conf_server_run;
 
-	sprintf(server_path,"%s%s",HSM_FM_SCK_PREFIX,sm_env);
+	snprintf(server_path, sizeof(server_path)-1, "%s%s",HSM_FM_SCK_PREFIX,sm_env);
 
 	if(hcom_server_init(&conf_handle,server_path,5,32768,&sm_conf_callback) != HSM_COM_OK){
 		IB_LOG_ERROR0("Could not allocate server handle");
@@ -492,7 +432,7 @@ sm_conf_server_init(void){
 
 	status = sm_start_thread(&conf_server);
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't create remote configuration thread");
+		IB_FATAL_ERROR_NODUMP("can't create remote configuration thread");
 	}
 
 	return 0;
@@ -530,18 +470,6 @@ void bufferLargeSmDiagOutputs(fm_config_interation_data_t *iterationData) {
     iterationData->more = 0;
     iterationData->done = 1;
     return;
-}
-
-/*                                                              
- * sigterm signal handler setup                                                                
- */
-void sm_linux_signal_handler(int a) {
-	if (a == SIGHUP) {
-		sm_control_reconfig();
-	}
-	else {
-		sm_control_shutdown(NULL);
-	}
 }
 
 //
@@ -599,6 +527,8 @@ Status_t if3_set_rmpp_minfo (ManagerInfo_t *mi)
         	}
 		}
         break;
+
+
     case MAD_CV_VENDOR_DBSYNC:
         mi->rmppMngrfd = &dbsyncfd_if3; 
         mi->rmppPool = &sm_pool; 
@@ -616,149 +546,3 @@ Status_t if3_set_rmpp_minfo (ManagerInfo_t *mi)
     return rc;
 }
 
-/*                                                              
- * SM main                                                                
- */
-int
-main(int argc, char *argv[]) {
-	int		c;
-	Status_t    status;
-	char Opts[] = "Dnzie:d:p:k:r:t:x:y:s:l:C:X:";
-
-	sm_starttime = time(NULL);
-
-	/* Set the default environment name. */
-	strcpy((void *)sm_env, "sm_0");
-
-	// initialize XML memory pool here since we need it for XML parsing
-	status = initSmXmlMemoryPool();
-	if (status != VSTATUS_OK) {
-		printf("exiting\n");
-		exit(2);
-	}
-
-	// init callback function for XML parser so it can get pool memory
-	initXmlPoolGetCallback(&getSmXmlParserMemory);
-	initXmlPoolFreeCallback(&freeSmXmlParserMemory);
-
-	// extract the instance number from the command line
-	while ((c = getopt(argc, argv, Opts)) != -1) {
-		switch (c) {
-		case 'e':
-			strncpy((void *)sm_env, optarg, 32);
-			break;
-		case 'X':
-			sscanf(optarg, "%256s", sm_config_filename);
-			break;
-		case '?':
-			IB_LOG_ERROR_FMT(__func__, "invalid command line parameter specified: %d", optopt);
-			exit(1);
-		default:
-			break;
-		}
-	}
-
-	// Parse the XML configuration
-	status = sm_parse_xml_config();
-	if (status != VSTATUS_OK) {
-		printf("exiting\n");
-		exit(1);
-	}
-
-	// Initialize SM memory pool so that we can allocate and copy sm_vfdg_config data
-	// This parallels Esm_Init which also allocates the sm_pool early giving it the ability to
-	// allocate memory that will be used for the sm_vfdg_config copy from the xml_config
-	status = sm_initialize_sm_pool();
-	if (status != VSTATUS_OK) {
-		printf("sm_initialize_sm_pool not successful; exiting\n");
-		exit(2);
-	}
-
-	// Allocate memory for and copy VF and DG information from xml config to sm_vfdg_config
-	status = handleVfDgMemory();
-	if (status != VSTATUS_OK) {
-		printf("handleVfDgMemory not successful; exiting\n");
-		exit(2);
-	}
-
-	// reset getopt()
-	optind = 1;
-
-	int overrideLogSetting = 0;
-
-	/* Parse the command line.*/
-	while ((c = getopt(argc, argv, Opts)) != -1) {
-		switch (c) {
-		case 'D':
-			if (!xml_trace)
-				sm_nodaemon = 0;
-			break;
-		case 'n':
-			sm_nodaemon = 1;
-			break;
-		case 'd':
-			sscanf(optarg, "%u", (uint32_t *)&sm_config.hca);
-			break;
-		case 'p':
-			sscanf(optarg, "%u", (uint32_t *)&sm_config.port);
-			break;
-		case 'x':
-			sscanf(optarg, "%u", (uint32_t *)&sm_lid);
-			break;
-		case 'k':
-			sscanf(optarg, "0x%016"CS64"x", &sm_config.sm_key);
-			break;
-		case 't':
-			sscanf(optarg, "%u", (uint32_t *)&sm_config.timer);
-			break;
-		case 'r':
-			sscanf(optarg, "%u", (uint32_t *)&sm_config.priority);
-			break;
-		case 'y':
-			sscanf(optarg, "%u", (uint32_t *)&sm_config.lmc);
-			break;
-		case 'z':
-			sm_config.debug = 1;
-			break;
-		case 'e':
-			break;
-		case 'l':
-			sscanf(optarg, "%u", (uint32_t *)&sm_log_level);
-			sm_log_level_override = 1;
-			overrideLogSetting = 1;
-			break;
-		case 'C':
-			sscanf(optarg, "%u", (uint32_t *)&sm_log_to_console);
-			overrideLogSetting = 1;
-			break;
-		case 'X':
-			break;
-		}
-	}
-
-	if (overrideLogSetting)
-		smLogLevelOverride();
-
-#ifdef SIGTERM
-    signal(SIGTERM, sm_linux_signal_handler);
-#else
-	#error SIGNTERM NOT INCLUDED
-#endif
-#ifdef SIGINT
-    signal(SIGINT, sm_linux_signal_handler);
-#endif
-#ifdef SIGHUP
-    signal(SIGHUP, sm_linux_signal_handler);
-#endif
-#ifdef SIGUSR1
-    signal(SIGUSR1, sm_linux_signal_handler);
-#endif
-#ifdef SIGPIPE
-    signal(SIGPIPE, SIG_IGN);   /* 'Inline' failure of wayward readers */
-#endif
-
-	/* Start up the independent SM code.*/
-	(void)sm_main();
-	printf("exiting\n");
-	exit(0);
-}

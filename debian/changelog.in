@@ -1,0 +1,5 @@
+opa-fm (10.7.0.0-1) UNRELEASED; urgency=medium
+
+  * Add Ubuntu support
+
+ -- Tymoteusz Kielan <tymoteusz.kielan@intel.com>  Wed, 21 Dec 2016 14:02:27 +0100

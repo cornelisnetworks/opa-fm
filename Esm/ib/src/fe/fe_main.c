@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -84,8 +84,9 @@ NetConnection   *conn           = NULL;    /* Anchor ptr to conn structs    */
 FE_ConnList     *clist          = NULL;    /* Pointer to connection list    */
 IBhandle_t      fdsa,fd_pm,fd_dm;          /* Manager Handles               */
 uint8_t         *g_fe_oob_send_buf;                 /* Ptr to net send buffer        */
-int32_t         pm_lid;                    /* Lid of PM                     */
-int32_t         dm_lid;                    /* Lid of DM                     */
+STL_LID         pm_lid;                    /* Lid of PM                     */
+STL_LID         dm_lid;                    /* Lid of DM                     */
+STL_LID         ea_lid;                    /* Lid of EA                     */
 int32_t         ConnDisconnect  = FALSE;   /* Disconnect connection flag    */
 int32_t         Shutdown        = FALSE;   /* Orderly shutdown flag         */
 int32_t         fe_nodaemon = 1;           /* daemonize or not              */
@@ -120,7 +121,6 @@ extern FEXmlConfig_t fe_config;
 #ifdef __VXWORKS__
 extern void if3RmppDebugOn(void);
 #endif
-
 
 // XML debug tracing
 static uint32_t xml_trace = 0;
@@ -206,7 +206,7 @@ void fe_parse_xml_config(void) {
     // if we cannot parse correctly the default values as mentioned above should still work
     xml_config = parseFmConfig(fe_config_filename, IXML_PARSER_FLAG_NONE, fe_instance, /* full parse */ 0, /* embedded */ 0);
     if (!xml_config || !xml_config->fm_instance[fe_instance]) {
-        IB_FATAL_ERROR("FE: unable to read configuration file");
+        IB_FATAL_ERROR_NODUMP("FE: unable to read configuration file");
     }
 
     // copy the configuration to local structures
@@ -262,6 +262,7 @@ uint32_t fe_process_passthrough(uint8_t *netbuf, int buflen, FE_ConnList *clist)
 	/* OOB header appears reasonable, so continue to process the message  */
     BSWAP_MAD_HEADER((MAD*) &(message->MadData));
 
+
 	/* Process message type and route to the apropriate manager */
 	switch(message->MadData.common.MgmtClass) {
 	case MCLASS_SUBN_ADM: 			/* SA */
@@ -270,9 +271,9 @@ uint32_t fe_process_passthrough(uint8_t *netbuf, int buflen, FE_ConnList *clist)
 	case MCLASS_VFI_PM: 			/* PA */
 		rc = fe_pa_passthrough(netbuf, clist, fdsa);
 		break;
-    default:
+	default:
 		rc = FE_NO_COMPLETE;
-        break;
+		break;
 	}
 
 	IB_EXIT(__func__, rc);
@@ -334,7 +335,7 @@ int fe_main()
 #endif
     
     if (fe_main_init_port() != VSTATUS_OK)
-        IB_FATAL_ERROR("fe_main: Failed to bind to device; terminating; status"); 
+        IB_FATAL_ERROR_NODUMP("fe_main: Failed to bind to device; terminating; status"); 
 
 #if defined(__LINUX__)
     // normally ib_init_devport or ib_init_guid would return portGuid,
@@ -348,22 +349,22 @@ int fe_main()
 	struct omgt_params params = {.error_file = fe_config.log_level > 0 ? tmp_log_file : NULL,
 	                             .debug_file = fe_config.log_level > 2 ? tmp_log_file : NULL};
 	if (omgt_open_port_by_guid(&fe_omgt_session, fe_config.port_guid, &params) != 0)
-        IB_FATAL_ERROR("fe_main: Failed to init notice registration; terminating"); 
+        IB_FATAL_ERROR("fe_main: Failed to init notice registration; terminating");
 #elif defined(__VXWORKS__)
 	// for CAL_IBACCESS, this call just returns values, does not open IbAccess
 	if (VSTATUS_OK != ib_init_devport(&fe_config.hca, &fe_config.port, &fe_config.port_guid))
-		IB_FATAL_ERROR("fe_main: Failed to bind to device; terminating");
+		IB_FATAL_ERROR_NODUMP("fe_main: Failed to bind to device; terminating");
 #endif
     
     if (fe_main_register_fe(512) != VSTATUS_OK) {
-        IB_FATAL_ERROR("fe_main: Failed to register management classes; terminating"); 
+        IB_FATAL_ERROR_NODUMP("fe_main: Failed to register management classes; terminating"); 
         Shutdown = 1;
     }
     
 #if defined(IB_STACK_OPENIB)
     // spawn off a thread to deal with the synchronous notice API
     if (fe_trap_thread_create() != VSTATUS_OK) 
-        IB_FATAL_ERROR("bm_main: Failed to launch trap thread; terminating; terminating"); 
+        IB_FATAL_ERROR_NODUMP("bm_main: Failed to launch trap thread; terminating; terminating"); 
 #endif
     
     // initialize FE task
@@ -507,6 +508,7 @@ int fe_main()
                     if3_close_mngr_cnx(fd_pm); 
                     fd_pm = INVALID_HANDLE;
                 }
+
                 
                 // close the file descriptor used for sa comm
                 sa_valid_con = FALSE; 
@@ -517,18 +519,21 @@ int fe_main()
                 IB_LOG_INFINI_INFO0("SM/SA have moved, will resync if a few seconds"); 
                 continue;
             // check on PM
-            } else if (fd_pm != INVALID_HANDLE && if3_cntrl_cmd_send(fd_pm, FE_MNGR_PROBE_CMD) != VSTATUS_OK){
+            }
+
+            if (fd_pm != INVALID_HANDLE && if3_cntrl_cmd_send(fd_pm, FE_MNGR_PROBE_CMD) != VSTATUS_OK){
                 IB_LOG_INFINI_INFO0("connection to PM is lost, will try to reconnect later"); 
                 if3_close_mngr_cnx(fd_pm); 
                 fd_pm = INVALID_HANDLE; 
                 endtime = timenow + fe_config.manager_check_rate; 
                 continue;
             }
+
             
             if (Shutdown) 
                 break; 
 
-			// Attempt to reconnect to each of the managers if we don't have a valid connection
+            // Attempt to reconnect to each of the managers if we don't have a valid connection
             if (!sa_valid_con) {
                 fdsa = INVALID_HANDLE; 
                 IB_LOG_VERBOSE("trying to re-register FE with SA", 0); 
@@ -539,10 +544,11 @@ int fe_main()
                     fdsa = INVALID_HANDLE;
 					endtime = timenow + fe_config.manager_check_rate;
                 } else {
-                    rc = fe_if3_subscribe_sa(); 
-                    if (rc != VSTATUS_OK) {
-                        IB_LOG_WARNRC("Failed to subscribe for traps in SA rc:", rc);
-                    }
+					rc = fe_if3_subscribe_sa();
+					if (rc != FSUCCESS) {
+						IB_LOG_ERROR_FMT(__func__, "Failed to subscribe for traps in SA status: %u", rc);
+						rc = FE_NO_RETRIEVE;
+					}
                     sa_valid_con = TRUE; 
                     conn_state = CONN_ESTABLISH; 
                     IB_LOG_INFINI_INFO("Successful reconnect to SA", rc);
@@ -559,6 +565,7 @@ int fe_main()
 					endtime = timenow + fe_config.manager_check_rate;
 				}
             }
+
         }   // end time check
         
         // keep out of time check area to catch traps at full speed
@@ -675,15 +682,15 @@ uint32_t fe_init(void)
 
     // create a memory pool to use for FE
     if ((rc = vs_pool_create(&fe_pool,0,(void *)"FAB_EXEC",NULL,g_fePoolSize)) != VSTATUS_OK) {
-        IB_FATAL_ERROR("fe_init: fe_pool vs_pool_create failure");
+        IB_FATAL_ERROR_NODUMP("fe_init: fe_pool vs_pool_create failure");
 		return 1;
 	}
 
      // allocate the FE buffers from the fe_pool
     if ((rc = vs_pool_alloc(&fe_pool, STL_BUF_OOB_SEND_SIZE, (void *)&g_fe_oob_send_buf)) != VSTATUS_OK) {
-        IB_FATAL_ERROR("fe_init: failed to allocate g_fe_oob_send_buf from fe_pool");
+        IB_FATAL_ERROR_NODUMP("fe_init: failed to allocate g_fe_oob_send_buf from fe_pool");
     } else if ((rc = vs_pool_alloc(&fe_pool, STL_BUF_RECV_SIZE, (void *)&g_fe_recv_buf)) != VSTATUS_OK) {
-        IB_FATAL_ERROR("fe_init: failed to allocate g_fe_recv_buf from fe_pool");
+        IB_FATAL_ERROR_NODUMP("fe_init: failed to allocate g_fe_recv_buf from fe_pool");
     }
     
 #ifndef __VXWORKS__

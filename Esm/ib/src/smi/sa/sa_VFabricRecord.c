@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -141,7 +141,7 @@ sa_VFabric_Set(STL_VFINFO_RECORD *vfrp, VirtualFabrics_t *vfsp, VF_t *vfp, STL_S
 	vfRecord.s1.rate = vfp->max_rate_int;
 	vfRecord.s1.rateSpecified = vfp->max_rate_specified;
 	vfRecord.s1.pktLifeTimeInc = vfp->pkt_lifetime_mult;
-	vfRecord.s1.pktLifeSpecified = vfp->pkt_lifetime_specified;
+	vfRecord.s1.pktLifeSpecified = 1; 
 	vfRecord.s1.slBase = vfp->base_sl;
 
 	if (vfp->resp_sl != UNDEFINED_XML8 &&
@@ -263,8 +263,10 @@ sa_VFabric_GetTable(Mai_t *maip, uint32_t *records)
 	if (smValidatePortPKey(DEFAULT_PKEY, reqPortp))
 		reqInFullDefault=1;
 
-	for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
-		VF_t *vfp = &VirtualFabrics->v_fabric[vf];
+	for (vf=0; vf < VirtualFabrics->number_of_vfs_all && vf < MAX_VFABRICS; vf++) {
+		VF_t *vfp = &VirtualFabrics->v_fabric_all[vf];
+
+		if (vfp->standby) continue;
 
 		if ((samad.header.mask & STL_VFINFO_REC_COMP_PKEY) && 
 			(PKEY_VALUE(vfp->pkey) != PKEY_VALUE(vFabricRecord.pKey))) continue;
@@ -286,7 +288,7 @@ sa_VFabric_GetTable(Mai_t *maip, uint32_t *records)
 		}
 
 		if (samad.header.mask & STL_VFINFO_REC_COMP_MGID) {
-			if (VSTATUS_OK != smVFValidateVfMGid(vf, (uint64_t*)vFabricRecord.MGID.Raw) ) continue;
+			if (VSTATUS_OK != smVFValidateVfMGid(VirtualFabrics, vf, (uint64_t*)vFabricRecord.MGID.Raw) ) continue;
 		}
 
 		// If requestor is not a member of the VF and requestor is not
@@ -385,10 +387,10 @@ void showStlVFabrics(void) {
      
 	(void)vs_rdlock(&old_topology_lock);
 
-	for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
-		sa_VFabric_Set(&vFabricRecord, VirtualFabrics,
-			&VirtualFabrics->v_fabric[vf], NULL, 0, mGid);
-
+	for (vf=0; vf < VirtualFabrics->number_of_vfs_all && vf < MAX_VFABRICS; vf++) {
+		if (VirtualFabrics->v_fabric_all[vf].standby) continue;
+		sa_VFabric_Set(&vFabricRecord, VirtualFabrics, 
+			&VirtualFabrics->v_fabric_all[vf], NULL, 0, mGid);
         if (vf) PrintSeparator(&dest);
         PrintStlVfInfoRecord(&dest, 0, &vFabricRecord);
 	}

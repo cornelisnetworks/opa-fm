@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -64,7 +64,6 @@ static Status_t sa_SwitchCongRecord_GetTable(Mai_t *maip, uint32_t *records);
 static Status_t sa_SwitchPortCongRecord_GetTable(Mai_t *maip, uint32_t *records);
 static Status_t sa_HFICongRecord_GetTable(Mai_t *maip, uint32_t *records);
 static Status_t sa_HFICongCtrlRecord_GetTable(Mai_t *maip, uint32_t *records);
-
 
 
 Status_t
@@ -365,7 +364,7 @@ sa_CongInfoRecord_GetTable(Mai_t *maip, uint32_t *records) {
     STL_SA_MAD  samad;
     Status_t    status;
     bool_t      checkLid;
-    STL_LID       lid=0;
+    STL_LID     lid=0;
     STL_CONGESTION_INFO_RECORD record;
 
     IB_ENTER("sa_CongInfoRecord_GetTable", maip, *records, 0, 0);
@@ -461,7 +460,7 @@ sa_SwitchCongRecord_GetTable(Mai_t *maip, uint32_t *records) {
     STL_SA_MAD  samad;
     Status_t    status;
     bool_t      checkLid;
-    STL_LID       lid=0;
+    STL_LID     lid=0;
 
     STL_SWITCH_CONGESTION_SETTING_RECORD record;
 
@@ -636,7 +635,7 @@ sa_HFICongRecord_GetTable(Mai_t *maip, uint32_t *records) {
     STL_SA_MAD  samad;
     Status_t    status;
     bool_t      checkLid;
-    STL_LID       lid=0;
+    STL_LID     lid=0;
 
     STL_HFI_CONGESTION_SETTING_RECORD record;
 
@@ -738,7 +737,7 @@ sa_HFICongCtrlRecord_GetTable(Mai_t *maip, uint32_t *records) {
     STL_SA_MAD  samad;
     Status_t    status;
     bool_t      checkLid;
-    STL_LID       lid=0;
+    STL_LID     lid=0;
     bool_t      checkBlock;
     uint16_t    blockNum=0;
     uint16_t    numBlocks=0;
@@ -794,9 +793,9 @@ sa_HFICongCtrlRecord_GetTable(Mai_t *maip, uint32_t *records) {
             if (!sm_valid_port(pPort) || pPort->state <= IB_PORT_DOWN) goto done;
             if ((pNode->nodeInfo.NodeType == NI_TYPE_SWITCH) &&
                (!pNode->switchInfo.u2.s.EnhancedPort0)) goto done;
-            if (pPort->portData->hfiCongCon == 0) goto done;
+            if (pPort->portData->congConRefCount == NULL) goto done;
 
-            numBlocks = pPort->portData->hfiCongCon->CCTI_Limit/STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES;
+            numBlocks = pPort->portData->congConRefCount->hfiCongCon.CCTI_Limit/STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES;
             if (checkBlock && blockNum>numBlocks) {
                 maip->base.status = MAD_STATUS_SA_REQ_INVALID;
                 IB_LOG_ERROR_FMT(__func__, "Requested block (%u) does not exist", blockNum);
@@ -804,7 +803,7 @@ sa_HFICongCtrlRecord_GetTable(Mai_t *maip, uint32_t *records) {
             }
             memset(&record, 0, sizeof(record));
             record.RID.LID = lid;
-            record.HFICongestionControlTable.CCTI_Limit = pPort->portData->hfiCongCon->CCTI_Limit;
+            record.HFICongestionControlTable.CCTI_Limit = pPort->portData->congConRefCount->hfiCongCon.CCTI_Limit;
             for (;blockNum<=numBlocks; blockNum++) {
                 if ((status = sa_check_len(data, sizeof(STL_HFI_CONGESTION_CONTROL_TABLE_RECORD), bytes)) != VSTATUS_OK) {
                     maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
@@ -814,7 +813,7 @@ sa_HFICongCtrlRecord_GetTable(Mai_t *maip, uint32_t *records) {
 
                 record.RID.BlockNum = blockNum;
                 memcpy(&record.HFICongestionControlTable.CCT_Block_List[0],
-                       &pPort->portData->hfiCongCon->CCT_Block_List[blockNum], 
+                       &pPort->portData->congConRefCount->hfiCongCon.CCT_Block_List[blockNum],
                        sizeof(record.HFICongestionControlTable.CCT_Block_List));
                 BSWAPCOPY_STL_HFI_CONGESTION_CONTROL_TABLE_RECORD(&record, (STL_HFI_CONGESTION_CONTROL_TABLE_RECORD*)data);
                 (void)sa_template_test(samad.data, &data, sizeof(STL_HFI_CONGESTION_CONTROL_TABLE_RECORD), bytes, records);
@@ -829,12 +828,12 @@ sa_HFICongCtrlRecord_GetTable(Mai_t *maip, uint32_t *records) {
             for_all_ports(pNode, pPort) {
                 if (!sm_valid_port(pPort) || pPort->state <= IB_PORT_DOWN) continue;
                 if ((pNode->nodeInfo.NodeType == NI_TYPE_SWITCH) && (pPort->index!=0)) break;
-                if (pPort->portData->hfiCongCon == 0) continue;
+                if (pPort->portData->congConRefCount == NULL) continue;
     
-                numBlocks = pPort->portData->hfiCongCon->CCTI_Limit/STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES;
+                numBlocks = pPort->portData->congConRefCount->hfiCongCon.CCTI_Limit/STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES;
                 memset(&record, 0, sizeof(record));
                 record.RID.LID = pPort->portData->lid;
-                record.HFICongestionControlTable.CCTI_Limit = pPort->portData->hfiCongCon->CCTI_Limit;
+                record.HFICongestionControlTable.CCTI_Limit = pPort->portData->congConRefCount->hfiCongCon.CCTI_Limit;
                 for (blockNum=0 ;blockNum<=numBlocks; blockNum++) {
                     if ((status = sa_check_len(data, sizeof(STL_HFI_CONGESTION_CONTROL_TABLE_RECORD), bytes)) != VSTATUS_OK) {
                         maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
@@ -844,7 +843,7 @@ sa_HFICongCtrlRecord_GetTable(Mai_t *maip, uint32_t *records) {
 
                     record.RID.BlockNum = blockNum;
                     memcpy(&record.HFICongestionControlTable.CCT_Block_List[0],
-                           &pPort->portData->hfiCongCon->CCT_Block_List[blockNum], 
+                           &pPort->portData->congConRefCount->hfiCongCon.CCT_Block_List[blockNum],
                            sizeof(record.HFICongestionControlTable.CCT_Block_List));
                     BSWAPCOPY_STL_HFI_CONGESTION_CONTROL_TABLE_RECORD(&record, (STL_HFI_CONGESTION_CONTROL_TABLE_RECORD*)data);
                     (void)sa_template_test(samad.data, &data, sizeof(STL_HFI_CONGESTION_CONTROL_TABLE_RECORD), bytes, records);
@@ -859,5 +858,4 @@ done:
     IB_EXIT("sa_HFICongCtrlRecord_GetTable", VSTATUS_OK);
     return(VSTATUS_OK);
 }
-
 

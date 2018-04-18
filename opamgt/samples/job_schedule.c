@@ -58,15 +58,15 @@ int main(int argc, char **argv)
 	struct omgt_port *port = NULL;
 	int num_host_records, num_link_records, num_cost_records, num_fabricinfo_records, num_classportinfo_records;
 
-	STL_LINK_RECORD *link_records;
-	STL_NODE_RECORD *host_records;
-	STL_FABRICINFO_RECORD *fabricinfo_records;
+	STL_LINK_RECORD *link_records = NULL;
+	STL_NODE_RECORD *host_records = NULL;
+	STL_FABRICINFO_RECORD *fabricinfo_records = NULL;
 	STL_SWITCH_COST_RECORD *cost_records = NULL;
 	STL_CLASS_PORT_INFO *classportinfo_records = NULL;
 
-	opa_switch *edge_switches;
-	opa_switch **used_switches;
-	STL_LID *visited_switch_lids;
+	opa_switch *edge_switches = NULL;
+	opa_switch **used_switches = NULL;
+	STL_LID *visited_switch_lids = NULL;
 
 
 	int last_switch_index = 0;
@@ -101,6 +101,12 @@ int main(int argc, char **argv)
 	status = omgt_sa_get_fabric_info_records(port, &selector, &num_fabricinfo_records, &fabricinfo_records);
 	if (OMGT_STATUS_SUCCESS != status || num_fabricinfo_records < 1) {
 		fprintf(stderr, "failed to get fabricinfo. MADStatus=0x%x\n", omgt_get_sa_mad_status(port));
+		exitcode = 1;
+		goto cleanup;
+	}
+
+	if (fabricinfo_records[0].NumSwitches < 1) {
+		fprintf(stderr, "No switches in fabric\n");
 		exitcode = 1;
 		goto cleanup;
 	}

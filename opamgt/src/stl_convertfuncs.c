@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -140,8 +140,8 @@ int IB2STL_PORT_INFO(PORT_INFO *pIb, STL_PORT_INFO *pStl)
 	// Fields shared with IB (in IB listed order)
 	pStl->M_Key = pIb->M_Key;
 	pStl->SubnetPrefix = pIb->SubnetPrefix;
-	pStl->LID = (STL_LID_32)pIb->LID;
-	pStl->MasterSMLID = (STL_LID_32)pIb->MasterSMLID;
+	pStl->LID = (STL_LID)pIb->LID;
+	pStl->MasterSMLID = (STL_LID)pIb->MasterSMLID;
 	pStl->CapabilityMask.AsReg32 = pIb->CapabilityMask.AsReg32;
 	pStl->DiagCode.AsReg16 = pIb->DiagCode;
 	pStl->M_KeyLeasePeriod = pIb->M_KeyLeasePeriod;	
@@ -364,16 +364,3 @@ int STL2IB_SWITCH_INFO(STL_SWITCH_INFO *pStl, SWITCH_INFO *pIb)
 	// TODO
 	return -1;
 };
-
-STL_LID_32 IB2STL_LID(IB_LID lid)
-{
-	if(lid == 0xffff){
-		return 0xffffffff;
-	}
-	return (STL_LID_32)lid;
-}
-
-IB_LID STL2IB_LID(STL_LID_32 lid)
-{
-	return (IB_LID)lid;
-}

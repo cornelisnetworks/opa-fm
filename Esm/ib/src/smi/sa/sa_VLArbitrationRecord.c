@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -62,7 +62,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sm_l.h"
 #include "sa_l.h"
 
-Status_t	sa_VLArbitrationRecord_Get(Mai_t *, uint32_t *);
 Status_t	sa_VLArbitrationRecord_GetTable(Mai_t *, uint32_t *);
 
 Status_t
@@ -130,7 +129,7 @@ sa_VLArbitrationRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 
 Status_t
 sa_VLArbitrationRecord_Set(uint8_t *vlarbp, Node_t *nodep, Port_t *portp, int ind) {
-	STL_LID			        lid;
+	STL_LID 			        lid;
 	STL_VLARBTABLE_RECORD		vlArbRecord;
 
     if (portp == NULL) {
@@ -162,13 +161,13 @@ sa_VLArbitrationRecord_Set(uint8_t *vlarbp, Node_t *nodep, Port_t *portp, int in
 	vlArbRecord.RID.BlockNum = ind;
     switch (ind) {
         case STL_VLARB_LOW_ELEMENTS:
-            memcpy(vlArbRecord.VLArbTable.Elements, portp->portData->curArb.vlarb.vlarbLow, sizeof(portp->portData->curArb.vlarb.vlarbLow));
+            memcpy(vlArbRecord.VLArbTable.Elements, portp->portData->curArb.u.vlarb.vlarbLow, sizeof(portp->portData->curArb.u.vlarb.vlarbLow));
             break;
         case STL_VLARB_HIGH_ELEMENTS:
-            memcpy(vlArbRecord.VLArbTable.Elements, portp->portData->curArb.vlarb.vlarbHigh, sizeof(portp->portData->curArb.vlarb.vlarbHigh));
+            memcpy(vlArbRecord.VLArbTable.Elements, portp->portData->curArb.u.vlarb.vlarbHigh, sizeof(portp->portData->curArb.u.vlarb.vlarbHigh));
             break;
         case STL_VLARB_PREEMPT_ELEMENTS:
-            memcpy(vlArbRecord.VLArbTable.Elements, portp->portData->curArb.vlarb.vlarbPre, sizeof(portp->portData->curArb.vlarb.vlarbPre));
+            memcpy(vlArbRecord.VLArbTable.Elements, portp->portData->curArb.u.vlarb.vlarbPre, sizeof(portp->portData->curArb.u.vlarb.vlarbPre));
             break;
         case STL_VLARB_PREEMPT_MATRIX:
             memcpy(vlArbRecord.VLArbTable.Matrix, portp->portData->curArb.vlarbMatrix, sizeof(portp->portData->curArb.vlarbMatrix));
@@ -187,11 +186,11 @@ sa_VLArbitrationRecord_GetTable(Mai_t *maip, uint32_t *records) {
 	uint32_t	bytes;
 	Node_t		*nodep;
 	Port_t		*portp;
-	STL_SA_MAD		samad;
+	STL_SA_MAD	samad;
 	Status_t	status;
 	STL_VLARBTABLE_RECORD vla;
 	bool_t		checkLid;
-	uint16_t	portLid=0;
+	STL_LID		portLid=0;
 
 	*records = 0;
 	data = sa_data;
@@ -235,6 +234,11 @@ sa_VLArbitrationRecord_GetTable(Mai_t *maip, uint32_t *records) {
 	if (checkLid) {
 		Port_t *matched_portp;
 		if ((matched_portp = sm_find_node_and_port_lid(&old_topology, portLid, &nodep)) != NULL) {
+			if (!nodep->vlArb) {
+				maip->base.status = MAD_STATUS_SA_REQ_INVALID;
+				goto done;
+			}
+
 			for_all_matched_ports(nodep, portp, matched_portp) {
 				if (!sm_valid_port(portp) || portp->state <= IB_PORT_DOWN) continue;
 
@@ -245,7 +249,7 @@ sa_VLArbitrationRecord_GetTable(Mai_t *maip, uint32_t *records) {
 				for (i = 0; i < 4; ++i) {
 					if ((status = sa_check_len(data, sizeof(STL_VLARBTABLE_RECORD), bytes)) != VSTATUS_OK) {
 						maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
-						IB_LOG_ERROR_FMT( "sa_SwitchInfoRecord_GetTable",
+						IB_LOG_ERROR_FMT( "sa_VLArbitrationRecord_GetTable",
 						   	"Reached size limit at %d records", *records);
 						goto done;
 					}
@@ -261,6 +265,8 @@ sa_VLArbitrationRecord_GetTable(Mai_t *maip, uint32_t *records) {
 		}
 	} else {
 		for_all_nodes(&old_topology, nodep) {
+			if (!nodep->vlArb) continue;
+
 			for_all_ports(nodep, portp) {
 				if (!sm_valid_port(portp) || portp->state <= IB_PORT_DOWN) continue;
 
@@ -271,7 +277,7 @@ sa_VLArbitrationRecord_GetTable(Mai_t *maip, uint32_t *records) {
 				for (i = 0; i < 4; ++i) {
 					if ((status = sa_check_len(data, sizeof(STL_VLARBTABLE_RECORD), bytes)) != VSTATUS_OK) {
 						maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
-						IB_LOG_ERROR_FMT( "sa_SwitchInfoRecord_GetTable",
+						IB_LOG_ERROR_FMT( "sa_VLArbitrationRecord_GetTable",
 						   	"Reached size limit at %d records", *records);
 						goto done;
 					}

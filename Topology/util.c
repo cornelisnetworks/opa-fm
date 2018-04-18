@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -52,7 +52,7 @@ void ProgressPrint(boolean newline, const char *format, ...)
 	static int first_progress = 1;	// has 1st progress been output yet
 
 	va_start(args, format);
-	(void)vsnprintf(buffer, sizeof(buffer), format, args);
+	vsnprintf(buffer, sizeof(buffer), format, args);
 	va_end(args);
 	if (first_progress) {
 		first_progress = 0;
@@ -80,7 +80,7 @@ const char* Top_truncate_str(const char *name)
 	} else {
 		static char buf[LINE_LEN-19];
 	
-		(void)snprintf(buf, sizeof buf, "...%s", name+len-(LINE_LEN-23));
+		snprintf(buf, sizeof(buf), "...%s", name+len-(LINE_LEN-23));
 		return buf;
 	}
 }

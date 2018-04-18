@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -59,11 +59,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *                         in vs_event_post_4a.
 * PJG       04/10/02    Put in a thread exit in thread_delete_events 
 ***********************************************************************/
-#if defined (LINT) || defined (_lint)
-#define __signed__ signed
-#include <bits/sigset.h>
-#include <stdlib.h>
-#endif
 #include <vs_g.h>
 #include <cs_g.h>
 

@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -128,55 +128,40 @@ sa_LinkRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
 	return(VSTATUS_OK);
 }
 
+// Returns TRUE if nodep1/PortNumP1 is the "From" port of the pair
+bool_t
+isFromPort(Node_t *nodep1, Node_t *nodep2, uint32_t PortNumP1, uint32_t PortNumP2) {
+
+        if (nodep1->nodeInfo.NodeGUID != nodep2->nodeInfo.NodeGUID) {
+		return (nodep1->nodeInfo.NodeGUID < nodep2->nodeInfo.NodeGUID) ? TRUE : FALSE;
+	}
+
+	return (PortNumP1 < PortNumP2) ? TRUE : FALSE;
+}
+
 Status_t
 sa_LinkRecord_Set(uint8_t *lrp, Node_t *nodep, Port_t *portp) {
-	uint32_t	    portno;
-	uint32		    lid;
-	uint32		    newlid;
-	Node_t		    *newnodep;
-    Port_t          *lnkPortp;
+	Port_t		*pNeighborPort;
+	Node_t		*pNeighborNode;
 	STL_LINK_RECORD linkRecord = {{0}};
 
 	IB_ENTER("sa_LinkRecord_Set", lrp, nodep, portp, 0);
 
-    //
-    //	Find the neighbor node.
-    //
-	newnodep = sm_find_node(&old_topology, portp->nodeno);
-	if (newnodep==NULL) {
+	pNeighborPort = sm_find_neighbor_node_and_port(&old_topology, portp, &pNeighborNode);
+	if (pNeighborPort == NULL) {
 		return (VSTATUS_BAD);
 	}
-	portno = (newnodep->nodeInfo.NodeType == NI_TYPE_SWITCH) ? 0 : portp->portno;
 
-	if (!sm_valid_port((lnkPortp = sm_get_port(newnodep,portno)))) {
-		IB_LOG_ERROR0("sa_LinkRecord_Set: failed to get port of neighbor node");
-		IB_EXIT("sa_LinkRecord_Set", VSTATUS_BAD);
-		return(VSTATUS_BAD);
-	}
-
-	newlid = lnkPortp->portData->lid;
-
-    //
-    //	Load the actual LinkRecord.
-    //
-	portno = (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH) ? 0 : portp->index;
-
-	if (!sm_valid_port((lnkPortp = sm_get_port(nodep,portno)))) {
-		IB_LOG_ERROR0("sa_LinkRecord_Set: failed to get port");
-		IB_EXIT("sa_LinkRecord_Set", VSTATUS_BAD);
-		return(VSTATUS_BAD);
-	}
-
-	lid = lnkPortp->portData->lid;
-
-	linkRecord.RID.FromLID = lid;
+	linkRecord.RID.FromLID = (nodep->nodeInfo.NodeType != NI_TYPE_SWITCH) ? portp->portData->lid : nodep->port[0].portData->lid;
 	linkRecord.RID.FromPort = portp->index;
-	linkRecord.ToLID = newlid;
+	linkRecord.ToLID = (pNeighborNode->nodeInfo.NodeType != NI_TYPE_SWITCH) ? pNeighborPort->portData->lid : pNeighborNode->port[0].portData->lid;
 	linkRecord.ToPort = portp->portno;
-	BSWAPCOPY_STL_LINK_RECORD(&linkRecord, (STL_LINK_RECORD*)lrp);
 
+	
+	BSWAPCOPY_STL_LINK_RECORD(&linkRecord, (STL_LINK_RECORD*)lrp);
 	IB_EXIT("sa_LinkRecord_Set", VSTATUS_OK);
 	return(VSTATUS_OK);
+
 }
 
 Status_t
@@ -208,13 +193,14 @@ sa_LinkRecord_GetTable(Mai_t *maip, uint32_t *records) {
 
 	BSWAPCOPY_STL_SA_MAD((STL_SA_MAD*)maip->data, &samad, sizeof(STL_LINK_RECORD));
 
+
 //
 //	Create the template mask for the lookup.
 //
 	status = sa_create_template_mask(maip->base.aid, samad.header.mask);
 	if (status != VSTATUS_OK) {
 		IB_EXIT("sa_LinkRecord_GetTable", VSTATUS_OK);
-		return(VSTATUS_OK);
+		return(VSTATUS_BAD);
 	}
 
 //
@@ -235,15 +221,19 @@ sa_LinkRecord_GetTable(Mai_t *maip, uint32_t *records) {
 				goto done;
 			}
 
-			if ((status = sa_LinkRecord_Set(data, nodep, portp)) != VSTATUS_OK) {
+
+			// if status is VSTATUS_BAD, the query should abort.
+			// if status is VSTATUS_OK, the record is good and should be returned.
+			// if status is VSTATUS_IGNORE, it means the link record didn't meet the LinkCondition criteria and should be ignored, but it is not an error.
+			if ((status = sa_LinkRecord_Set(data, nodep, portp)) == VSTATUS_BAD) {
 				maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
 				goto done;
 			}
 
-			(void)sa_template_test_mask(samad.header.mask, samad.data, &data, sizeof(STL_LINK_RECORD), bytes, records);
+			if (status == VSTATUS_OK)
+				(void)sa_template_test_mask(samad.header.mask, samad.data, &data, sizeof(STL_LINK_RECORD), bytes, records);
 		}
 	}
-
 done:
 	(void)vs_rwunlock(&old_topology_lock);
 

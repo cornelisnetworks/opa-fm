@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -187,7 +187,7 @@ vs_lock_init (Lock_t *handle,
   if ((sizeof(Implpriv_Lock_t)) > (sizeof(handle->opaque)))
   {
     IB_LOG_ERROR("Implpriv_Lock_t too large:", (sizeof(Implpriv_Lock_t)));
-    IB_FATAL_ERROR("Implpriv_Lock_t too large");
+    IB_FATAL_ERROR_NODUMP("Implpriv_Lock_t too large");
     IB_EXIT (function, VSTATUS_ILLPARM);
     return VSTATUS_ILLPARM;
   }

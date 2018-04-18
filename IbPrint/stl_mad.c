@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -112,8 +112,8 @@ void PrintStlClassPortInfo(PrintDest_t *dest, int indent, const STL_CLASS_PORT_I
 				indent, "",
 				pClassPortInfo->u1.s.CapMask2, c2buf);
 
-	PrintFunc(dest, "%*sRedirect: LID: 0x%04x GID: 0x%016"PRIx64":0x%016"PRIx64"\n",
-				indent, "",
+	PrintFunc(dest, "%*sRedirect: LID: 0x%.*x GID: 0x%016"PRIx64":0x%016"PRIx64"\n",
+				indent, "",(pClassPortInfo->RedirectLID <= IB_MAX_UCAST_LID ? 4 : 8),
 				pClassPortInfo->RedirectLID,
 				pClassPortInfo->RedirectGID.AsReg64s.H,
 				pClassPortInfo->RedirectGID.AsReg64s.L);
@@ -128,8 +128,8 @@ void PrintStlClassPortInfo(PrintDest_t *dest, int indent, const STL_CLASS_PORT_I
 				pClassPortInfo->u2.s.RedirectFlowLabel,
 				pClassPortInfo->u2.s.RedirectTClass);
 
-	PrintFunc(dest, "%*sTrap: LID: 0x%04x GID: 0x%016"PRIx64":0x%016"PRIx64"\n",
-				indent, "",
+	PrintFunc(dest, "%*sTrap: LID: 0x%.*x GID: 0x%016"PRIx64":0x%016"PRIx64"\n",
+				indent, "",(pClassPortInfo->TrapLID <= IB_MAX_UCAST_LID ? 4:8),
 				pClassPortInfo->TrapLID,
 				pClassPortInfo->TrapGID.AsReg64s.H,
 				pClassPortInfo->TrapGID.AsReg64s.L);
@@ -142,7 +142,7 @@ void PrintStlClassPortInfo(PrintDest_t *dest, int indent, const STL_CLASS_PORT_I
 	PrintFunc(dest, "%*s      FlowLabel: 0x%05x HopLimit: 0x%02x TClass: 0x%02x\n",
 				indent, "",
 				pClassPortInfo->u4.s.TrapFlowLabel,
-				pClassPortInfo->u4.s.TrapTClass,
-				pClassPortInfo->u5.s.TrapHopLimit);
+				pClassPortInfo->u5.s.TrapHopLimit,
+				pClassPortInfo->u4.s.TrapTClass);
 }
 

@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2018, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -36,6 +36,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ib_helper.h"
 #include "iba/stl_sm_types.h"
 #include "iba/stl_pa_types.h"
+
 #if defined(VXWORKS)
 #include "private/stdioP.h" // pick up snprintf extern definition
 #endif
@@ -96,6 +97,8 @@ StlPortPhysStateToText( uint8_t state )
 	return IbPortPhysStateToText((IB_PORT_PHYS_STATE)state);
 }
 
+
+
 static __inline int IsPortInitialized(STL_PORT_STATES portStates)
 {
 	return (portStates.s.PortState == IB_PORT_ARMED
@@ -137,20 +140,25 @@ static __inline uint32 StlMbpsToStaticRate(uint32 rate_mbps)
 		return IB_STATIC_RATE_80G;
 	else if (rate_mbps <= 103125)
 		return IB_STATIC_RATE_100G;
+#if !defined(PRODUCT_STL1)
+	else if (rate_mbps <= 112500)
+	    return IB_STATIC_RATE_112G;
+	else if (rate_mbps <= 120000)
+	    return IB_STATIC_RATE_120G;
+	else if (rate_mbps <= 154687)
+	    return IB_STATIC_RATE_168G;// STL_STATIC_RATE_150G
+	else if (rate_mbps <= 168750)
+	    return IB_STATIC_RATE_168G;
+	else if (rate_mbps <= 206250)
+	    return IB_STATIC_RATE_200G;
 	else
-		return IB_STATIC_RATE_100G;
+	  return IB_STATIC_RATE_200G;
+#else
+	else
+	  return IB_STATIC_RATE_100G;
+#endif
 #if 0
 	// future
-	else if (rate_mbps <= 112500)
-		return IB_STATIC_RATE_112G;
-	else if (rate_mbps <= 120000)
-		return IB_STATIC_RATE_120G;
-	else if (rate_mbps <= 150000)
-		return STL_STATIC_RATE_150G;
-	else if (rate_mbps <= 168750)
-		return IB_STATIC_RATE_168G;
-	else if (rate_mbps <= 206250)
-		return IB_STATIC_RATE_200G;
 	else if (rate_mbps <= 225000)
 		return STL_STATIC_RATE_225G;
 	else if (rate_mbps <= 300000)
@@ -197,11 +205,15 @@ StlStaticRateToText(uint32 rate)
 		case IB_STATIC_RATE_100G:
 			return "100g";				// 103.125g
 		case IB_STATIC_RATE_112G:
-			return "112g";				// 112.5g
+			return "112g";
 		case IB_STATIC_RATE_200G:
 			return "200g";				// 206.25g
 		case IB_STATIC_RATE_168G:
+#if !defined(PRODUCT_STL1)
+			return "150g";				// STL_STATIC_RATE_150G;
+#else
 			return "168g";				// 168.75g
+#endif
 		case IB_STATIC_RATE_300G:
 			return "300g";				// 309.375g
 		default:
@@ -245,6 +257,10 @@ static __inline uint32 StlStaticRateToMbps(IB_STATIC_RATE rate)
 		return 77343;
 	case IB_STATIC_RATE_100G:
 		return 103125;
+#if !defined(PRODUCT_STL1)
+	case IB_STATIC_RATE_168G: // STL_STATIC_RATE_150G
+		return 154686;
+#endif
 	case IB_STATIC_RATE_200G:
 		return 206250;
 	case IB_STATIC_RATE_300G:
@@ -404,7 +420,7 @@ StlLinkWidthToText(uint16_t w, char *buf, size_t len)
 // if the specified speed is invalid. 
 //
 // NOTA BENE: This function will assert if the buffer is too short.  The buffer 
-// should be at least 16 bytes long, to hold the error message.
+// should be at least 16 bytes long to hold the error message.
 static __inline const char*
 StlLinkSpeedToText(uint16_t speed, char *str, size_t len)
 {
@@ -454,8 +470,6 @@ StlPortLinkModeToText(uint16_t mode, char *str, size_t len)
 
 	str[0]='\0';
 
-	if (mode & STL_PORT_LINK_MODE_ETH)
-		PRINT_OR_OUT(str, len, "ETH,");
 	if (mode & STL_PORT_LINK_MODE_STL)
 		PRINT_OR_OUT(str, len, "STL,");
     str[n-1] = 0; // Eliminate trailing comma
@@ -658,20 +672,88 @@ StlPortOfflineDisabledReasonToText(uint8 offlineReason)
 	};
 }
 
+static __inline const char*
+StlRoutingModeToText(uint8 rmode) 
+{
+	if (rmode & STL_ROUTE_LINEAR)
+		return "Linear";
+	return "Unknown";
+}
+
+static __inline const char*
+StlVLSchedulingConfigToText(STL_CAPABILITY_MASK3 cmask)
+{
+#if !defined(PRODUCT_STL1)
+	if (cmask.AsReg16) {
+		if (cmask.s.VLSchedulingConfig == STL_VL_SCHED_MODE_VLARB)
+			return "VLArb";
+		else if (cmask.s.VLSchedulingConfig == STL_VL_SCHED_MODE_AUTOMATIC)
+			return "Automatic";
+	}
+#endif
+	return "";
+}
+
+static __inline
+void FormatStlPortPacketFormat(char *buf, uint16_t packetFormat, int buflen)
+{
+	snprintf(buf, buflen, "%s%s%s%s%s",
+		packetFormat & STL_PORT_PACKET_FORMAT_8B ? "8B ":"",
+		packetFormat & STL_PORT_PACKET_FORMAT_9B ? "9B ":"",
+		packetFormat & STL_PORT_PACKET_FORMAT_10B? "10B ":"",
+		packetFormat & STL_PORT_PACKET_FORMAT_16B? "16B ":"",
+		packetFormat ? "":"-");
+	buf[buflen-1] = '\0';
+}
+
+static __inline
+const char *FormatStlVLSchedulingMode(uint8_t mode)
+{
+	static const char *modes[] = {"VLARB ", "", "Auto "};
+
+	if (mode == 0 || mode == 2) {
+		return modes[mode];
+	} else {
+		return "";
+	}
+}
+
 static __inline
 void FormatStlCapabilityMask3(char *buf, STL_CAPABILITY_MASK3 cmask, int buflen)
 {
-	snprintf(buf, buflen, "%s%s%s%s%s%s%s%s",
-		cmask.s.IsSnoopSupported?"SN ":"",
-		cmask.s.IsAsyncSC2VLSupported?"aSC2VL ":"",
-		cmask.s.IsAddrRangeConfigSupported?"ARC ":"",
-		cmask.s.IsPassThroughSupported?"PT ":"",
-		cmask.s.IsSharedSpaceSupported?"SS ":"",
-		cmask.s.IsVLMarkerSupported?"VLM ":"",
-		cmask.s.IsVLrSupported?"VLr ":"",
-		cmask.AsReg16?"":"-");
+	buf[0] = '-';
+	if (cmask.AsReg16) {
+#if !defined(PRODUCT_STL1)
+		snprintf(buf, buflen, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
+			"",
+			"",
+			"",
+			cmask.s.IsMAXLIDSupported?"ML ":"",
+			"",
+			"",
+			FormatStlVLSchedulingMode(cmask.s.VLSchedulingConfig),
+			cmask.s.IsSnoopSupported?"SN ":"",
+			cmask.s.IsAsyncSC2VLSupported?"aSC2VL ":"",
+			cmask.s.IsAddrRangeConfigSupported?"ARC ":"",
+			cmask.s.IsPassThroughSupported?"PT ":"",
+			cmask.s.IsSharedSpaceSupported?"SS ":"",
+			cmask.s.IsSharedGroupSpaceSupported?"SG ":"",
+			cmask.s.IsVLMarkerSupported?"VLM ":"",
+			cmask.s.IsVLrSupported?"VLr":"");
+#else
+		snprintf(buf, buflen, "%s%s%s%s%s%s%s",
+			cmask.s.IsSnoopSupported?"SN ":"",
+			cmask.s.IsAsyncSC2VLSupported?"aSC2VL ":"",
+			cmask.s.IsAddrRangeConfigSupported?"ARC ":"",
+			cmask.s.IsPassThroughSupported?"PT ":"",
+			cmask.s.IsSharedSpaceSupported?"SS ":"",
+			cmask.s.IsVLMarkerSupported?"VLM ":"",
+			cmask.s.IsVLrSupported?"VLr ":"");
+#endif
+	}
 	buf[buflen-1] = '\0';
 }
+
 
 static __inline
 void FormatStlPortErrorAction(char *buf, const STL_PORT_INFO *pPortInfo, int buflen)
@@ -753,6 +835,27 @@ StlQPServiceTypeToText(uint8_t code)
 	}
 }
 
+// Cable info field definitions - lines 1, 2, and 3
+
+#define STL_CIB_INDENT						6
+
+#define STL_CIB_LINE1_FIELD1				(0 + STL_CIB_INDENT)
+#define STL_CIB_LINE1_FIELD2				(19 + STL_CIB_INDENT)
+#define STL_CIB_LINE1_FIELD3				(23 + STL_CIB_INDENT)
+#define STL_CIB_LINE1_FIELD4				(41 + STL_CIB_INDENT)
+#define STL_CIB_LINE1_FIELD5				(45 + STL_CIB_INDENT)
+#define STL_CIB_LINE1_FIELD6				(63 + STL_CIB_INDENT)
+#define STL_CIB_LINE1_FIELD7				(67 + STL_CIB_INDENT)
+#define STL_CIB_LINE1_FIELD8				(69 + STL_CIB_INDENT)
+
+#define STL_CIB_LINE2_FIELD1				(0 + STL_CIB_INDENT)
+#define STL_CIB_LINE2_FIELD2				(30 + STL_CIB_INDENT)
+#define STL_CIB_LINE2_FIELD3				(34 + STL_CIB_INDENT)
+#define STL_CIB_LINE2_FIELD4				(51 + STL_CIB_INDENT)
+#define STL_CIB_LINE2_FIELD5				(55 + STL_CIB_INDENT)
+
+#define STL_CIB_LINE3_FIELD1				(0 + STL_CIB_INDENT)
+
 static __inline
 int IsStlCableInfoActiveCable(uint8_t code_xmit)
 {
@@ -787,6 +890,89 @@ int IsStlCableInfoCableCertified(uint8_t code_cert)
 		return 0;
 
 }	// End of IsStlCableInfoCableLengthValid()
+
+static __inline
+void StlCableInfoDecodeConnType(uint8_t connType, char *connTypeDesc)
+{
+	switch (connType) {
+		case STL_CIB_STD_QSFP:
+		case STL_CIB_STD_QSFP_PLUS:
+		case STL_CIB_STD_QSFP_28:
+			StringCopy(connTypeDesc, "QSFP", 5);
+			break;
+		case STL_CIB_STD_QSFP_DD:
+			StringCopy(connTypeDesc, "QSFP-DD", 8);
+			break;
+		default:
+			StringCopy(connTypeDesc, "Unknown", 8);
+			break;
+	}
+	return;
+} // End of StlCableInfoDecodeConnType
+
+typedef struct {
+	boolean activeCable;
+	boolean cableLengthValid;
+	char cableTypeShortDesc[64];
+	char connectorType[64];
+} CableTypeInfoType;
+
+static __inline
+void StlCableInfoDecodeCableType(uint8_t cableType, uint8_t mediaConnType, uint8_t connType,  CableTypeInfoType *cableTypeInfo)
+{
+	char connTypeDesc[16];
+
+	if (!cableTypeInfo)
+		return;
+
+	// set defaults
+	cableTypeInfo->activeCable = 0;
+	cableTypeInfo->cableLengthValid = 0;
+	cableTypeInfo->cableTypeShortDesc[0] = 0;
+	memset(connTypeDesc, 0, sizeof(connTypeDesc));
+
+	StlCableInfoDecodeConnType(connType, connTypeDesc);
+	StringCopy(cableTypeInfo->cableTypeShortDesc, connTypeDesc, strlen(connTypeDesc)+1);
+
+	if ((cableType <= STL_CIB_STD_TXTECH_1490_DFB) && (cableType != STL_CIB_STD_TXTECH_OTHER)) {
+		if (mediaConnType == STL_CIB_STD_CONNECTOR_NO_SEP) {
+			strncat(cableTypeInfo->cableTypeShortDesc, " AOC", 4);
+			cableTypeInfo->cableLengthValid = 1;
+		} else {
+			strncat(cableTypeInfo->cableTypeShortDesc, " Xcvr", 5);
+			cableTypeInfo->cableLengthValid = 0;
+		}
+		cableTypeInfo->activeCable = 1;
+	} else {
+		if (cableType >= STL_CIB_STD_TXTECH_CU_UNEQ) {
+			if (cableType <= STL_CIB_STD_TXTECH_CU_PASSIVEQ) {
+				strncat(cableTypeInfo->cableTypeShortDesc, " Copper", 7);
+				cableTypeInfo->activeCable = 0;
+			} else {
+				strncat(cableTypeInfo->cableTypeShortDesc, " ActCu", 6);
+				cableTypeInfo->activeCable = 1;
+			}
+			cableTypeInfo->cableLengthValid = 1;
+		}
+	}
+	switch (mediaConnType) {
+		case STL_CIB_STD_CONNECTOR_MPO1x12:
+			StringCopy(cableTypeInfo->connectorType, "MPO 1x12", strlen("MPO 1x12")+1);
+			break;
+		case STL_CIB_STD_CONNECTOR_MPO2x16:
+			StringCopy(cableTypeInfo->connectorType, "MPO 2x16", strlen("MPO 2x16")+1);
+			break;
+		case STL_CIB_STD_CONNECTOR_NO_SEP:
+			StringCopy(cableTypeInfo->connectorType, "No separable connector", strlen("No separable connector")+1);
+			break;
+		case STL_CIB_STD_CONNECTOR_MXC2x16:
+			StringCopy(cableTypeInfo->connectorType, "MXC 2x16", strlen("MXC 2x16")+1);
+			break;
+		default:
+			StringCopy(cableTypeInfo->connectorType, "Unknown", strlen("Unknown")+1);
+			break;
+	}
+}	// End of StlCableInfoDecodeCableType()
 
 static __inline
 void StlCableInfoBitRateToText(uint8_t code_low, uint8_t code_high, char *text_out)
@@ -1025,6 +1211,47 @@ void StlCableInfoValidCableLengthToText(uint8_t code_len, uint8_t code_valid, ch
 }	// End of StlCableInfoValidCableLengthToText()
 
 static __inline
+void StlCableInfoDDCableLengthToText(uint8_t code_len, int max_chars, char *text_out)
+{
+	float computedLen;
+	uint8_t baseLen;
+	float multiplier = 1.0;
+	float factor;
+	int exponent;
+	int loopLim;
+	int i;
+
+	// code_len is 8-bits:
+	//   Bits 7-6 are exponent for multiplier for base length as a power of 10 (after subtracting 1)
+	//   Bits 5-0 are base length
+
+	baseLen = code_len & 0x3f;
+	exponent = (code_len >> 6) - 1;
+
+	if (exponent < 0) {
+		factor = 0.1;
+		loopLim = -1 * exponent;
+	} else {
+		factor = 10;
+		loopLim = exponent;
+	}
+	for (i = 0; i < loopLim; i++)
+		multiplier *= factor;
+
+	computedLen = multiplier * baseLen;
+
+	// if len <= 6.3, only display one decimal place
+	// otherwise display length as whole number
+	if (computedLen <= 6.3)
+		snprintf(text_out, max_chars, "%.1fm", computedLen);
+	else
+		snprintf(text_out, max_chars, "%dm", (uint32_t)computedLen);
+
+	return;
+
+}	// End of StlCableInfoDDCableLengthToText()
+
+static __inline
 void StlCableInfoDateCodeToText(uint8_t * code_date, char *text_out)
 {
 	if (! text_out)
@@ -1174,6 +1401,75 @@ StlLinkQualToText(uint8 linkQual)
 	}
 }
 
+
+
+/* convert Neighbor node Type to text */
+static __inline const char*
+OpaNeighborNodeTypeToText(uint8 ntype)
+{
+	return (ntype == STL_NEIGH_NODE_TYPE_HFI) ? "HFI":
+		(ntype == STL_NEIGH_NODE_TYPE_SW) ? "Switch" : "Unknown";
+}
+
+static __inline int
+IsCableInfoAvailable(STL_PORT_INFO *portInfo)
+{
+	return (portInfo->PortPhysConfig.s.PortType == STL_PORT_TYPE_STANDARD
+			&& ! ( (portInfo->PortStates.s.PortPhysicalState == STL_PORT_PHYS_OFFLINE ||
+				portInfo->PortStates.s.PortPhysicalState == IB_PORT_PHYS_DISABLED)
+				&& portInfo->PortStates.s.OfflineDisabledReason == STL_OFFDIS_REASON_LOCAL_MEDIA_NOT_INSTALLED));
+}
+
+static __inline uint8
+StlResolutionToShift(uint32 res, uint8 add) {
+// shift = log2(res) - add
+	uint8 shift = FloorLog2(res);
+	if (shift > add) {
+		if ((shift - add) > 15) return 15;
+		else return shift - add;
+	}
+	else return 0;
+}
+
+static __inline uint32
+StlShiftToResolution(uint8 shift, uint8 add) {
+// res = 2^(shift + add)
+	if (shift) return (uint32)1<<(shift + add);
+	else return 0;
+}
+
+static __inline const char*
+StlVlarbSecToText (uint8 sec) {
+	switch (sec) {
+		case STL_VLARB_LOW_ELEMENTS:
+			return "Low";
+		case STL_VLARB_HIGH_ELEMENTS:
+			return "High";
+		case STL_VLARB_PREEMPT_ELEMENTS:
+			return "Preempt";
+		case STL_VLARB_PREEMPT_MATRIX:
+			return "Preempt Matrix";
+		default:
+			DEBUG_ASSERT(0);
+			return "Unknown";
+	}
+}
+
+
+
+static __inline int
+StlNumVLsSetInVLSelectMask(const uint32 VLSelectMask)
+{
+	uint32_t vlmask;
+	int i;
+	int numSet=0;
+
+	for (i=0, vlmask=VLSelectMask; (i <= STL_MAX_VLS) && vlmask; i++, vlmask >>= 1) {
+        if (vlmask & 1) numSet++;
+	}
+	return numSet;
+}
+
 static __inline int
 StlNumPortsSetInPortMask(const STL_PORTMASK* portSelectMask, const uint8_t totalPorts) 
 {
@@ -1299,11 +1595,13 @@ void FormatStlPortMask(char *buf, const STL_PORTMASK *portSelectMask, uint8_t nu
 	int last=-1;
 	int first=0;
  
+	l += snprintf(&buf[l], buflen - l, "ports: ");
+
 	for (i=0; i <= numPorts; i++) {
 		pmask = (uint64_t)(1) << (i % 64);
 		if ((portSelectMask[3-(i/64)] & pmask) == 0) continue;
 		if (last == -1) {
-			l += snprintf(&buf[l], buflen - l, "ports: %d", i);
+			l += snprintf(&buf[l], buflen - l, "%d", i);
 			first = i;
 			last = first;
 		} else if ((i-last) > 1) {
@@ -1336,15 +1634,15 @@ FSTATUS StringToStlPortMask(STL_PORTMASK *portSelectMask, const char *buf)
 	char currChar;
 	memset(newString, 0, sizeof(newString));
 
-	// cut "ports:" off buf if necessary
-	if (strncmp(buf, "ports: ", 7) == 0) pbuf += 7;
+	//cut "ports:" off buf if necessary
+	if (strncmp(buf, "ports: ", 7) == 0)  pbuf += 7;
 
 	for(i=0; i < strlen(pbuf)+1; i++) {
 		currChar = pbuf[i];
 		if(currChar == ',' || currChar == '\0') {
 			if(!newString[0]) continue;
 			if (strchr(newString, delimiter)) {
-			// for (lhs-rhs), add port to portmask
+				//for (lhs-rhs), add port to portmask
 				if(sscanf(newString, "%u-%u", &lhs, &rhs) != 2)
 					return FINVALID_PARAMETER;
 				if (lhs > MAX_STL_PORTS || rhs > MAX_STL_PORTS || lhs >= rhs)
@@ -1365,60 +1663,42 @@ FSTATUS StringToStlPortMask(STL_PORTMASK *portSelectMask, const char *buf)
 	return FSUCCESS;
 }
 
-/* convert Neighbor node Type to text */
-static __inline const char*
-OpaNeighborNodeTypeToText(uint8 ntype)
+
+static __inline
+void FormatStlVLMask(char *buf, const uint32 vlmask, int buflen)
 {
-	return (ntype == STL_NEIGH_NODE_TYPE_HFI) ? "HFI":
-		(ntype == STL_NEIGH_NODE_TYPE_SW) ? "Switch" : "Unknown";
-}
+	int i, l;
+	l = 0;
+	int last=-1;
+	int first=0;
 
-static __inline int
-IsCableInfoAvailable(STL_PORT_INFO *portInfo)
-{
-	return (portInfo->PortPhysConfig.s.PortType == STL_PORT_TYPE_STANDARD
-			&& ! (portInfo->PortStates.s.PortPhysicalState == STL_PORT_PHYS_OFFLINE
-				&& portInfo->PortStates.s.OfflineDisabledReason == STL_OFFDIS_REASON_LOCAL_MEDIA_NOT_INSTALLED));
-}
-
-static __inline uint8
-StlResolutionToShift(uint32 res, uint8 add) {
-// shift = log2(res) - add
-	uint8 shift = FloorLog2(res);
-	if (shift > add) {
-		if ((shift - add) > 15) return 15;
-		else return shift - add;
+	for (i=0; i<32; i++) {
+		if ((vlmask & (1 << i)) == 0) continue;
+		if (last == -1) {
+			l += snprintf(&buf[l], buflen - l, "VLs: %d", i);
+			first = i;
+			last = first;
+		} else if ((i-last) > 1) {
+			if (first == last)
+				l += snprintf(&buf[l], buflen - l, ",%d", i);
+			else
+				l += snprintf(&buf[l], buflen - l, "-%d,%d", last, i);
+			first = i;
+			last = first;
+		} else {
+			last = i;
+		}
 	}
-	else return 0;
-}
 
-static __inline uint32
-StlShiftToResolution(uint8 shift, uint8 add) {
-// res = 2^(shift + add)
-	if (shift) return (uint32)1<<(shift + add);
-	else return 0;
-}
+	if (first != last)
+		l += snprintf(&buf[l], buflen - l, "-%d", last);
 
-static __inline const char*
-StlVlarbSecToText (uint8 sec) {
-	switch (sec) {
-		case STL_VLARB_LOW_ELEMENTS:
-			return "Low";
-		case STL_VLARB_HIGH_ELEMENTS:
-			return "High";
-		case STL_VLARB_PREEMPT_ELEMENTS:
-			return "Preempt";
-		case STL_VLARB_PREEMPT_MATRIX:
-			return "Preempt Matrix";
-		default:
-			DEBUG_ASSERT(0);
-			return "Unknown";
-	}
+	if (l >= buflen)
+		buf[buflen - 1] = '\0'; // ran out of space, cap it off
 }
 
 static __inline void
 FormatStlCounterSelectMask(char buf[128], CounterSelectMask_t mask) {
-
 	snprintf(buf, 128, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
 		(mask.s.PortXmitData                ? "TxD ": ""),
 		(mask.s.PortRcvData                 ? "RxD ": ""),
@@ -1560,6 +1840,7 @@ static __inline CounterSelectMask_t DiffPAVFCounters(STL_PA_VF_PORT_COUNTERS_DAT
     LftTable[i/MAX_LFT_ELEMENTS_BLOCK].LftBlock[i%MAX_LFT_ELEMENTS_BLOCK]
 #define STL_PGFT_PORT_BLOCK(PgftTable, i) \
     PgftTable[i/NUM_PGFT_ELEMENTS_BLOCK].PgftBlock[i%NUM_PGFT_ELEMENTS_BLOCK]
+
 
 #ifdef __cplusplus
 };

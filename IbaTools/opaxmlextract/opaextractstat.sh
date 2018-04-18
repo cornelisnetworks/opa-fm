@@ -1,7 +1,7 @@
 #!/bin/bash
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015, Intel Corporation
+# Copyright (c) 2015-2017, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -80,6 +80,7 @@ Usage_full()
 	echo "	${cmd} topology_file -c my_opamon.conf"
 	echo >&2
 	echo "See the man page for \"opareport\" for the full set of options." >&2
+	echo "By design, the tool ignores \"-o/--output\" report option." >&2
 	echo >&2
 	exit 0
 
@@ -115,7 +116,7 @@ ix=0
 do
   case $ix in
   0)
-    echo $line";"`echo $line | cut -d \; -f 7-`
+    echo $line";"`echo $line | cut -d \; -f 6-`
     ix=$((ix+1))
     ;;
 
@@ -125,7 +126,7 @@ do
     ;;
 
   2)
-    line2=`echo $line | cut -d \; -f 7-`
+    line2=`echo $line | cut -d \; -f 6-`
     echo $line1";"$line2
     ix=1
     ;;

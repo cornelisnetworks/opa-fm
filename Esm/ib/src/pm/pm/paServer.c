@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT3 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -68,14 +68,18 @@ pa_getClassPortInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 
 	if (status == FSUCCESS) {
 		records = 1;
-		response.BaseVersion			= STL_BASE_VERSION;
-		response.ClassVersion			= STL_PA_CLASS_VERSION;
-		response.CapMask			   |= STL_PA_CPI_CAPMASK_ABSTIMEQUERY;
-		response.u1.s.RespTimeValue		= pa_respTimeValue;
+		response.BaseVersion = STL_BASE_VERSION;
+		response.ClassVersion = STL_PA_CLASS_VERSION;
+		response.CapMask =
+			STL_PA_CPI_CAPMASK_ABSTIMEQUERY |
+			STL_PA_CPI_CAPMASK_EXT_FOCUSTYPES |
+			STL_PA_CPI_CAPMASK_TOPO_INFO;
+		response.u1.s.RespTimeValue = pa_respTimeValue;
 
 		IB_LOG_DEBUG2_FMT(__func__, "Base Version:  0x%x", response.BaseVersion);
 		IB_LOG_DEBUG2_FMT(__func__, "Class Version: 0x%x", response.ClassVersion);
 		IB_LOG_DEBUG2_FMT(__func__, "Resp Time Value: %u", response.u1.s.RespTimeValue);
+		IB_LOG_DEBUG2_FMT(__func__, "CapMask: 0x%04x", response.CapMask);
 
 		BSWAP_STL_CLASS_PORT_INFO(&response);
 		memcpy(data, &response, sizeof(response));
@@ -186,7 +190,7 @@ pa_getPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	uint8_t		*data = pa_data;
 	uint32_t	records = 0;
 	uint32_t	attribOffset;
-	STL_LID_32	nodeLid;
+	STL_LID 	nodeLid;
 	PORT		portNumber;
 	uint32_t	delta, userCntrs;
 	uint32_t	flags;
@@ -247,9 +251,10 @@ pa_getPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
             response.imageId.imageOffset = 0;
 
 		/* debug logging */
-		IB_LOG_DEBUG2_FMT(__func__, "%s Controlled Port Counters (%s) for node lid 0x%x, port number %u%s:", (userCntrs?"User":"PM"),
+		IB_LOG_DEBUG2_FMT(__func__, "%s Controlled Port Counters (%s) for node lid 0x%x, port number %u%s%s:", (userCntrs?"User":"PM"),
 			delta?"delta":"total", nodeLid, portNumber,
-			flags & STL_PA_PC_FLAG_UNEXPECTED_CLEAR?" (Unexpected Clear)":"");
+			(flags & STL_PA_PC_FLAG_UNEXPECTED_CLEAR?" (Unexpected Clear)":""),
+			(flags & STL_PA_PC_FLAG_CLEAR_FAIL?" (Clear Unsuccessful)":""));
 		IB_LOG_DEBUG2_FMT(__func__, "Xmit: Data:%-10" PRIu64 " MB (%10" PRIu64 " Flits) Pkts: %-10"PRIu64" ",
 			response.portXmitData / FLITS_PER_MB, response.portXmitData, response.portXmitPkts);
 		IB_LOG_DEBUG2_FMT(__func__, "Recv: Data:%-10" PRIu64 " MB (%10" PRIu64 " Flits) Pkts: %-10"PRIu64" ",
@@ -312,6 +317,10 @@ pa_getPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_PORT;			// PM Port Could not be found (unlikely)
 	} else if (status == (FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_PORT)) {
 		maip->base.status = STL_MAD_STATUS_STL_PA_NO_PORT;				// Pm Port could not be found
+	} else if (status == (FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_DATA)) {
+		maip->base.status = STL_MAD_STATUS_STL_PA_NO_DATA;				// Pm Port is skipped
+	} else if (status == (FNOT_FOUND | STL_MAD_STATUS_STL_PA_BAD_DATA)) {
+		maip->base.status = STL_MAD_STATUS_STL_PA_BAD_DATA;				// Query fails or clear fails
 	} else if (maip->base.status != MAD_STATUS_OK) {
 		records = 0;
 	} else if (records == 0) {
@@ -341,7 +350,7 @@ pa_clrPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	uint32_t	records = 0;
 	uint32_t	attribOffset;
 	FSTATUS		status;
-	STL_LID_32	nodeLid;
+	STL_LID 	nodeLid;
 	PORT		portNumber;
 	CounterSelectMask_t select;
     STL_CLR_PORT_COUNTERS_DATA response = {0};
@@ -1183,7 +1192,7 @@ pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 				response[0].internalUtilStats.totalKPps, response[0].internalUtilStats.maxKPps,
 				response[0].internalUtilStats.minKPps, response[0].internalUtilStats.avgKPps);
 			IB_LOG_DEBUG2_FMT(__func__, "  NoResp Ports PMA: %u    NoResp Ports Topology: %u",
-				response[0].internalUtilStats.pmaNoRespPorts, response[0].internalUtilStats.topoIncompPorts);
+				response[0].internalUtilStats.topoIncompPorts, response[0].internalUtilStats.topoIncompPorts);
 			IB_LOG_DEBUG2_FMT(__func__, "Send utilization statistics:");
 			IB_LOG_DEBUG2_FMT(__func__, "  Util: Tot %6"PRIu64" Max %6u Min %6u Avg %6u MB/s",
 				response[0].sendUtilStats.totalMBps, response[0].sendUtilStats.maxMBps,
@@ -1481,11 +1490,258 @@ done:
 		vs_pool_free(&pm_pool, pmGroupConfig.portList);
 	if (response != NULL)
 		vs_pool_free(&pm_pool, response);
-	
+
 	IB_EXIT(__func__, status);
 	return(status);
 
 }	// End of pa_getGroupConfigResp()
+
+	Status_t
+pa_getGroupNodeInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
+{
+	uint8_t		*data = pa_data;
+	uint32_t	records = 0;
+	uint32_t	attribOffset;
+	STL_PA_IMAGE_ID_DATA retImageId = {0};
+	FSTATUS		status;
+	Status_t	vStatus;
+	PmGroupNodeInfo_t pmGroupNodeInfo = {{0}};
+	STL_PA_GROUP_NODEINFO_RSP *response = NULL;
+	STL_PA_GROUP_NODEINFO_REQ *p = (STL_PA_GROUP_NODEINFO_REQ*)&maip->data[STL_PA_DATA_OFFSET];
+	uint32		responseSize = 0;
+	int			i;
+	char		groupName[STL_PM_GROUPNAMELEN];
+
+	IB_ENTER(__func__, maip, 0, 0, 0);
+
+	INCREMENT_PM_COUNTER(pmCounterPaRxGetGrpNodeInfo);
+	BSWAP_STL_PA_GROUP_NODE_INFO_REQ(p);
+	cs_strlcpy(groupName, p->groupName, STL_PM_GROUPNAMELEN);
+
+	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", p->imageId.imageNumber, p->imageId.imageOffset);
+	IB_LOG_DEBUG1_FMT(__func__, "Group: %.*s", (int)sizeof(groupName), groupName);
+
+	status = paGetGroupNodeInfo(&g_pmSweepData, groupName, p->nodeGUID, p->nodeLID, p->nodeDesc, &pmGroupNodeInfo, p->imageId, &retImageId);
+	if (status == FSUCCESS) {
+		records = pmGroupNodeInfo.NumNodes;
+		responseSize = pmGroupNodeInfo.NumNodes * sizeof(STL_PA_GROUP_NODEINFO_RSP);
+		if (responseSize) {
+			vStatus = vs_pool_alloc(&pm_pool, responseSize, (void*)&response);
+			if (vStatus != VSTATUS_OK) {
+				IB_LOG_ERRORRC("Failed to allocate response buffer for GroupNodeInfo rc:", vStatus);
+				status = FINSUFFICIENT_MEMORY;
+				goto done;
+			}
+			memset(response, 0, responseSize);
+		}
+
+		for (i = 0; i < pmGroupNodeInfo.NumNodes; i++) {
+			response[i].nodeLID = pmGroupNodeInfo.nodeList[i].nodeLid;
+			response[i].nodeGUID = pmGroupNodeInfo.nodeList[i].nodeGuid;
+			response[i].nodeType = pmGroupNodeInfo.nodeList[i].nodeType;
+			strncpy(response[i].nodeDesc, pmGroupNodeInfo.nodeList[i].nodeDesc, sizeof(response[i].nodeDesc)-1);
+			memcpy(response[i].portSelectMask, pmGroupNodeInfo.nodeList[i].portSelectMask, STL_PORT_SELECTMASK_SIZE);
+			response[i].imageId = retImageId;
+			response[i].imageId.imageOffset = 0;
+		}
+
+		time_t absTime = (time_t)retImageId.imageTime.absoluteTime;
+		char buf[80];
+
+		if (absTime) {
+			snprintf(buf, sizeof(buf), " Time %s", ctime((const time_t *)&absTime));
+			if ((strlen(buf)>0) && (buf[strlen(buf)-1] == '\n'))
+				buf[strlen(buf)-1] = '\0';
+		}
+
+		IB_LOG_DEBUG2_FMT(__func__, "Group name %.*s", (int)sizeof(groupName), groupName);
+		IB_LOG_DEBUG2_FMT(__func__, "Number Nodes: %u", pmGroupNodeInfo.NumNodes);
+		IB_LOG_DEBUG2_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d%s",
+			retImageId.imageNumber, retImageId.imageOffset, buf);
+		for (i = 0; i < pmGroupNodeInfo.NumNodes; i++) {
+			IB_LOG_DEBUG2_FMT(__func__, "  %d:LID:0x%08X Guid:0x%016"PRIx64" Node Type:%u  NodeDesc: %.*s",
+				i+1, response[i].nodeLID, response[i].nodeGUID, response[i].nodeType,
+				(int)sizeof(response[i].nodeDesc), response[i].nodeDesc);
+			IB_LOG_DEBUG2_FMT(__func__, "PortSelectMask=0x%016"PRIx64" 0x%016"PRIx64" 0x%016"PRIx64" 0x%016"PRIx64"\n",
+				response[i].portSelectMask[0], response[i].portSelectMask[1], response[i].portSelectMask[2], response[i].portSelectMask[3]);
+			BSWAP_STL_PA_GROUP_NODE_INFO_RSP(&response[i]);
+		}
+		memcpy(data, response, responseSize);
+	}
+
+done:
+	// determine reply status
+	if (status == FUNAVAILABLE) {
+		maip->base.status = STL_MAD_STATUS_STL_PA_UNAVAILABLE;			// PM engine not running
+	} else if (status == FINSUFFICIENT_MEMORY) {
+		maip->base.status = MAD_STATUS_SA_NO_RESOURCES;					// allocating array failed
+	} else if (status == FINVALID_PARAMETER) {
+		maip->base.status = MAD_STATUS_BAD_FIELD;						// NULL pointer passed to function
+	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
+		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Impropper parameter passed to function
+	} else if (status == FNOT_FOUND) {
+		if (retImageId.imageNumber == BAD_IMAGE_ID)
+			maip->base.status = STL_MAD_STATUS_STL_PA_NO_IMAGE;			// Failed to access/find image
+		else
+			maip->base.status = STL_MAD_STATUS_STL_PA_NO_GROUP;			// Failed to find Group
+	} else if (status == (FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_GROUP)) {
+		maip->base.status = STL_MAD_STATUS_STL_PA_NO_GROUP;				// Failed to find Group
+	} else if (status == (FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_PORT)) {
+		maip->base.status = STL_MAD_STATUS_STL_PA_NO_PORT;				// Group has no ports
+	} else if (maip->base.status != MAD_STATUS_OK) {
+		records = 0;
+	} else if (records == 0) {
+		maip->base.status = MAD_STATUS_SA_NO_RECORDS;
+	} else if ((maip->base.method == STL_PA_CMD_GET) && (records != 1)) {
+		IB_LOG_WARN("too many records for STL_PA_CMD_GET:", records);
+		records = 0;
+		maip->base.status = MAD_STATUS_SA_TOO_MANY_RECS;
+	}
+
+	attribOffset = sizeof(STL_PA_GROUP_NODEINFO_RSP) + Calculate_Padding(sizeof(STL_PA_GROUP_NODEINFO_RSP));
+	/* setup attribute offset for possible RMPP transfer */
+	pa_cntxt->attribLen = attribOffset / 8;
+
+	pa_cntxt_data(pa_cntxt, data, records * attribOffset);
+	// send response
+	(void)pa_send_reply(maip, pa_cntxt);
+
+	if (pmGroupNodeInfo.nodeList != NULL)
+		vs_pool_free(&pm_pool, pmGroupNodeInfo.nodeList);
+	if (response != NULL)
+		vs_pool_free(&pm_pool, response);
+
+	IB_EXIT(__func__, status);
+	return(status);
+
+}// End of pa_getGroupNodeInfoResp
+
+
+Status_t
+pa_getGroupLinkInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
+{
+	uint8_t		*data = pa_data;
+	uint32_t	records = 0;
+	uint32_t	attribOffset;
+	STL_PA_IMAGE_ID_DATA retImageId = {0};
+	FSTATUS		status;
+	Status_t	vStatus;
+	PmGroupLinkInfo_t pmGroupLinkInfo = {{0}};
+	STL_PA_GROUP_LINKINFO_RSP *response = NULL;
+	STL_PA_GROUP_LINKINFO_REQ *p = (STL_PA_GROUP_LINKINFO_REQ*)&maip->data[STL_PA_DATA_OFFSET];
+	uint32		responseSize = 0;
+	int			i;
+	char		groupName[STL_PM_GROUPNAMELEN];
+
+	IB_ENTER(__func__, maip, 0, 0, 0);
+
+	INCREMENT_PM_COUNTER(pmCounterPaRxGetGrpLinkInfo);
+	BSWAP_STL_PA_GROUP_LINK_INFO_REQ(p);
+	cs_strlcpy(groupName, p->groupName, STL_PM_GROUPNAMELEN);
+
+
+	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", p->imageId.imageNumber, p->imageId.imageOffset);
+	IB_LOG_DEBUG1_FMT(__func__, "Group: %.*s", (int)sizeof(groupName), groupName);
+
+	status = paGetGroupLinkInfo(&g_pmSweepData, groupName, p->lid, p->port, &pmGroupLinkInfo, p->imageId, &retImageId);
+	if (status == FSUCCESS) {
+		records = pmGroupLinkInfo.NumLinks;
+		responseSize = pmGroupLinkInfo.NumLinks * sizeof(STL_PA_GROUP_LINKINFO_RSP);
+		if (responseSize) {
+			vStatus = vs_pool_alloc(&pm_pool, responseSize, (void*)&response);
+			if (vStatus != VSTATUS_OK) {
+				IB_LOG_ERRORRC("Failed to allocate response buffer for GroupLinkInfo rc:", vStatus);
+				status = FINSUFFICIENT_MEMORY;
+				goto done;
+			}
+			memset(response, 0, responseSize);
+		}
+
+		for (i = 0; i < pmGroupLinkInfo.NumLinks; i++) {
+			response[i].fromLID = pmGroupLinkInfo.linkInfoList[i].fromLid;
+			response[i].toLID = pmGroupLinkInfo.linkInfoList[i].toLid;
+			response[i].fromPort = pmGroupLinkInfo.linkInfoList[i].fromPort;
+			response[i].toPort = pmGroupLinkInfo.linkInfoList[i].toPort;
+			response[i].mtu = pmGroupLinkInfo.linkInfoList[i].mtu;
+			response[i].activeSpeed = pmGroupLinkInfo.linkInfoList[i].activeSpeed;
+			response[i].txLinkWidthDowngradeActive = pmGroupLinkInfo.linkInfoList[i].txLinkWidthDowngradeActive;
+			response[i].rxLinkWidthDowngradeActive = pmGroupLinkInfo.linkInfoList[i].rxLinkWidthDowngradeActive;
+			response[i].localStatus = pmGroupLinkInfo.linkInfoList[i].localStatus;
+			response[i].neighborStatus = pmGroupLinkInfo.linkInfoList[i].neighborStatus;
+			response[i].imageId = retImageId;
+			response[i].imageId.imageOffset = 0;
+		}
+
+		time_t absTime = (time_t)retImageId.imageTime.absoluteTime;
+		char buf[80];
+
+		if (absTime) {
+			snprintf(buf, sizeof(buf), " Time %s", ctime((const time_t *)&absTime));
+			if ((strlen(buf)>0) && (buf[strlen(buf)-1] == '\n'))
+				buf[strlen(buf)-1] = '\0';
+		}
+
+		IB_LOG_DEBUG2_FMT(__func__, "Group name %.*s", (int)sizeof(groupName), groupName);
+		IB_LOG_DEBUG2_FMT(__func__, "Number Links: %u", pmGroupLinkInfo.NumLinks);
+		IB_LOG_DEBUG2_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d%s",
+			retImageId.imageNumber, retImageId.imageOffset, buf);
+		for (i = 0; i < pmGroupLinkInfo.NumLinks; i++) {
+			IB_LOG_DEBUG2_FMT(__func__, "  %d:From LID:0x%08X From Port:%u To LID:0x%08X To Port:%u",
+				i+1, response[i].fromLID, response[i].fromPort, response[i].toLID, response[i].toPort);
+			IB_LOG_DEBUG2_FMT(__func__, "mtu:%u activeSpeed:%u txLinkWidthDowngradeActive:%u rxLinkWidthDowngradeActive:%u",
+				response[i].mtu, response[i].activeSpeed, response[i].txLinkWidthDowngradeActive, response[i].rxLinkWidthDowngradeActive);
+			IB_LOG_DEBUG2_FMT(__func__, "local status:%u neighbor status:%u\n",
+				response[i].localStatus, response[i].neighborStatus);
+			BSWAP_STL_PA_GROUP_LINK_INFO_RSP(&response[i]);
+		}
+		memcpy(data, response, responseSize);
+	}
+
+done:
+	// determine reply status
+	if (status == FUNAVAILABLE) {
+		maip->base.status = STL_MAD_STATUS_STL_PA_UNAVAILABLE;			// PM engine not running
+	} else if (status == FINSUFFICIENT_MEMORY) {
+		maip->base.status = MAD_STATUS_SA_NO_RESOURCES;					// allocating array failed
+	} else if (status == FINVALID_PARAMETER) {
+		maip->base.status = MAD_STATUS_BAD_FIELD;						// NULL pointer passed to function
+	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
+		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Impropper parameter passed to function
+	} else if (status == FNOT_FOUND) {
+		if (retImageId.imageNumber == BAD_IMAGE_ID)
+			maip->base.status = STL_MAD_STATUS_STL_PA_NO_IMAGE;			// Failed to access/find image
+		else
+			maip->base.status = STL_MAD_STATUS_STL_PA_NO_GROUP;			// Failed to find Group
+	} else if (status == (FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_GROUP)) {
+		maip->base.status = STL_MAD_STATUS_STL_PA_NO_GROUP;				// Failed to find Group
+	} else if (status == (FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_PORT)) {
+		maip->base.status = STL_MAD_STATUS_STL_PA_NO_PORT;				// Group has no ports
+	} else if (maip->base.status != MAD_STATUS_OK) {
+		records = 0;
+	} else if (records == 0) {
+		maip->base.status = MAD_STATUS_SA_NO_RECORDS;
+	} else if ((maip->base.method == STL_PA_CMD_GET) && (records != 1)) {
+		IB_LOG_WARN("too many records for STL_PA_CMD_GET:", records);
+		records = 0;
+		maip->base.status = MAD_STATUS_SA_TOO_MANY_RECS;
+	}
+
+	attribOffset = sizeof(STL_PA_GROUP_LINKINFO_RSP) + Calculate_Padding(sizeof(STL_PA_GROUP_LINKINFO_RSP));
+	/* setup attribute offset for possible RMPP transfer */
+	pa_cntxt->attribLen = attribOffset / 8;
+
+	pa_cntxt_data(pa_cntxt, data, records * attribOffset);
+	// send response
+	(void)pa_send_reply(maip, pa_cntxt);
+
+	if (pmGroupLinkInfo.linkInfoList!= NULL)
+		vs_pool_free(&pm_pool, pmGroupLinkInfo.linkInfoList);
+	if (response != NULL)
+		vs_pool_free(&pm_pool, response);
+
+	IB_EXIT(__func__, status);
+	return(status);
+}// End of pa_getGroupLinkInfoResp
 
 Status_t
 pa_getFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
@@ -1519,8 +1775,14 @@ pa_getFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	IB_LOG_DEBUG1_FMT(__func__, "Group: %.*s  Select: 0x%x  Start: %u  Range: %u",
 		(int)sizeof(groupName), groupName, select, start, range);
 
-	status = paGetFocusPorts(&g_pmSweepData, groupName, &pmFocusPorts,
-	    p->imageId, &retImageId, select, start, range);
+	if(select == STL_PA_SELECT_UNEXP_CLR_PORT || select == STL_PA_SELECT_NO_RESP_PORT ||
+		select == STL_PA_SELECT_SKIPPED_PORT){
+		status = paGetExtFocusPorts(&g_pmSweepData, groupName, &pmFocusPorts,
+			p->imageId, &retImageId, select, start, range);
+	} else {
+		status = paGetFocusPorts(&g_pmSweepData, groupName, &pmFocusPorts,
+			p->imageId, &retImageId, select, start, range, NULL, 0);
+	}
 
 	if (status == FSUCCESS) {
 		records = pmFocusPorts.NumPorts;
@@ -1538,16 +1800,16 @@ pa_getFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		for (i = 0; i < pmFocusPorts.NumPorts; i++) {
     		response[i].nodeLid				= pmFocusPorts.portList[i].lid;
     		response[i].portNumber			= pmFocusPorts.portList[i].portNum;
-			response[i].localStatus			= pmFocusPorts.portList[i].localStatus;
+		response[i].localStatus			= pmFocusPorts.portList[i].localStatus;
     		response[i].rate				= pmFocusPorts.portList[i].rate;
-			response[i].maxVlMtu					= pmFocusPorts.portList[i].mtu;
-    		response[i].value				= pmFocusPorts.portList[i].value;
+		response[i].maxVlMtu					= pmFocusPorts.portList[i].maxVlMtu;
+    		response[i].value				= pmFocusPorts.portList[i].value[0];
     		response[i].nodeGUID			= pmFocusPorts.portList[i].guid;
     		strncpy(response[i].nodeDesc, pmFocusPorts.portList[i].nodeDesc, sizeof(response[i].nodeDesc)-1);
-			response[i].neighborStatus 		= pmFocusPorts.portList[i].neighborStatus;
+		response[i].neighborStatus 		= pmFocusPorts.portList[i].neighborStatus;
     		response[i].neighborLid 		= pmFocusPorts.portList[i].neighborLid;
     		response[i].neighborPortNumber	= pmFocusPorts.portList[i].neighborPortNum;
-    		response[i].neighborValue		= pmFocusPorts.portList[i].neighborValue;
+		response[i].neighborValue		= pmFocusPorts.portList[i].neighborValue[0];
     		response[i].neighborGuid		= pmFocusPorts.portList[i].neighborGuid;
     		strncpy(response[i].neighborNodeDesc, pmFocusPorts.portList[i].neighborNodeDesc,
 					sizeof(response[i].neighborNodeDesc)-1);
@@ -1606,7 +1868,7 @@ done:
 		maip->base.status = STL_MAD_STATUS_STL_PA_NO_GROUP;				// Failed to find Group
 	} else if (maip->base.status != MAD_STATUS_OK) {
 		records = 0;
-	} else if (records == 0) {
+	} else if ((records == 0) && (status != (FSUCCESS | MAD_STATUS_SA_NO_RECORDS))){
 		maip->base.status = MAD_STATUS_SA_NO_RECORDS;
 	} else if ((maip->base.method == STL_PA_CMD_GET) && (records != 1)) {
 		IB_LOG_WARN("too many records for STL_PA_CMD_GET:", records);
@@ -1631,6 +1893,184 @@ done:
 	return(status);
 }
 
+Status_t
+pa_getFocusPortsMultiSelectResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
+{
+	uint8_t		*data = pa_data;
+	uint32_t	records = 0;
+	uint32_t	attribOffset;
+	STL_PA_IMAGE_ID_DATA retImageId = {0};
+	FSTATUS		status;
+	Status_t	vStatus;
+	uint32_t	start, range;
+	PmFocusPorts_t  pmFocusPorts = {{0}};
+
+	STL_FOCUS_PORTS_MULTISELECT_RSP *response = NULL;
+	STL_FOCUS_PORTS_MULTISELECT_REQ *p = (STL_FOCUS_PORTS_MULTISELECT_REQ *)&maip->data[STL_PA_DATA_OFFSET];
+	uint32		responseSize = 0;
+	int			i, j;
+	char		groupName[STL_PM_GROUPNAMELEN];
+
+	IB_ENTER(__func__, maip, 0, 0, 0);
+
+	INCREMENT_PM_COUNTER(pmCounterPaRxGetFocusPortsMultiSelect);
+	BSWAP_STL_PA_FOCUS_PORTS_MULTISELECT_REQ(p);
+	start   = p->start;
+	range   = p->range;
+
+	strncpy(groupName, p->groupName, STL_PM_GROUPNAMELEN-1);
+	groupName[STL_PM_GROUPNAMELEN-1] = 0;
+
+	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", p->imageId.imageNumber, p->imageId.imageOffset);
+	IB_LOG_DEBUG1_FMT(__func__, "Group: %.*s  Start: %u  Range: %u", (int)sizeof(groupName), groupName, start, range);
+	if (p->logical_operator)
+		IB_LOG_DEBUG1_FMT(__func__, "Logical operator: %s", StlOperatorToText(p->logical_operator));
+
+	for (i = 0; i < MAX_NUM_FOCUS_PORT_TUPLES; i++) {
+		if (p->tuple[i].comparator != FOCUS_PORTS_COMPARATOR_INVALID) {
+			IB_LOG_DEBUG1_FMT(__func__, "Tuple: %d, select: %s, comparator %s, argument 0x%"PRIx64, i,
+				StlFocusAttributeToText(p->tuple[i].select),
+				StlComparatorToText(p->tuple[i].comparator),
+				p->tuple[i].argument);
+		} else {
+			break;
+		}
+	}
+
+	status = paGetFocusPorts(&g_pmSweepData, groupName, &pmFocusPorts,
+		p->imageId, &retImageId, 0, start, range, p->tuple, p->logical_operator);
+
+	// if this fails next time, then go ahead and call the original function to see if it works.
+	//
+
+	if (status == FSUCCESS) {
+		records = pmFocusPorts.NumPorts;
+		responseSize = pmFocusPorts.NumPorts * sizeof(STL_FOCUS_PORTS_MULTISELECT_RSP);
+		if (responseSize) {
+			vStatus = vs_pool_alloc(&pm_pool, responseSize, (void*)&response);
+			if (vStatus != VSTATUS_OK) {
+				IB_LOG_ERRORRC("Failed to allocate response buffer for FocusPorts rc:", vStatus);
+				status = FINSUFFICIENT_MEMORY;
+				goto done;
+			}
+		}
+		memset(response, 0, responseSize);
+
+		for (i = 0; i < pmFocusPorts.NumPorts; i++) {
+			response[i].nodeLid	= pmFocusPorts.portList[i].lid;
+			response[i].portNumber	= pmFocusPorts.portList[i].portNum;
+			response[i].localStatus	= pmFocusPorts.portList[i].localStatus;
+			response[i].rate	= pmFocusPorts.portList[i].rate;
+			response[i].maxVlMtu		= pmFocusPorts.portList[i].maxVlMtu;
+
+			for (j = 0; j < MAX_NUM_FOCUS_PORT_TUPLES; j++) {
+				response[i].value[j]			= pmFocusPorts.portList[i].value[j];
+				response[i].neighborValue[j]		= pmFocusPorts.portList[i].neighborValue[j];
+			}
+			response[i].nodeGUID= pmFocusPorts.portList[i].guid;
+			strncpy(response[i].nodeDesc, pmFocusPorts.portList[i].nodeDesc, sizeof(response[i].nodeDesc)-1);
+			response[i].neighborStatus	= pmFocusPorts.portList[i].neighborStatus;
+			response[i].neighborLid		= pmFocusPorts.portList[i].neighborLid;
+			response[i].neighborPortNumber	= pmFocusPorts.portList[i].neighborPortNum;
+
+			response[i].neighborGuid	= pmFocusPorts.portList[i].neighborGuid;
+			strncpy(response[i].neighborNodeDesc, pmFocusPorts.portList[i].neighborNodeDesc,
+					sizeof(response[i].neighborNodeDesc)-1);
+			response[i].imageId = retImageId;
+			response[i].imageId.imageOffset = 0;
+		}
+
+		time_t absTime = (time_t)retImageId.imageTime.absoluteTime;
+		char buf[80];
+
+		if (absTime) {
+			snprintf(buf, sizeof(buf), " Time %s", ctime((const time_t *)&absTime));
+			if ((strlen(buf)>0) && (buf[strlen(buf)-1] == '\n'))
+				buf[strlen(buf)-1] = '\0';
+		}
+
+		IB_LOG_DEBUG2_FMT(__func__, "Group name %.*s", (int)sizeof(groupName), groupName);
+		IB_LOG_DEBUG2_FMT(__func__, "Number ports: %u", pmFocusPorts.NumPorts);
+
+
+		for (j = 0; j < MAX_NUM_FOCUS_PORT_TUPLES; j++) {
+			if (p->tuple[j].comparator != FOCUS_PORTS_COMPARATOR_INVALID) {
+				IB_LOG_DEBUG2_FMT(__func__, "Focus select: %s Comparator: %s Argument: 0x%016"PRIx64"",
+					StlFocusAttributeToText(p->tuple[j].select),
+					StlComparatorToText(p->tuple[j].comparator),
+					p->tuple[j].argument);
+			}
+		}
+
+		for (i = 0; i < pmFocusPorts.NumPorts; i++) {
+			IB_LOG_DEBUG2_FMT(__func__, "  %u:LID:0x%08X Port:%u ",
+					i+1, response[i].nodeLid, response[i].portNumber);
+			for (j = 0; j < MAX_NUM_FOCUS_PORT_TUPLES; j++) {
+				if (p->tuple[j].comparator != FOCUS_PORTS_COMPARATOR_INVALID) {
+					IB_LOG_DEBUG2_FMT(__func__, "    Value:%"PRId64" nValue:%"PRId64" ", response[i].value[j], response[i].neighborValue[j]);
+				}
+			}
+			IB_LOG_DEBUG2_FMT(__func__, "     nodeGUID 0x%"PRIx64" ", response[i].nodeGUID);
+			IB_LOG_DEBUG2_FMT(__func__, "     Node Description %.*s Status: %s",
+				(int)sizeof(response[i].nodeDesc), response[i].nodeDesc,
+				StlFocusStatusToText(response[i].localStatus));
+			IB_LOG_DEBUG2_FMT(__func__, "     nLID:0x%08X nPort:%u ",
+					response[i].neighborLid, response[i].neighborPortNumber);
+			IB_LOG_DEBUG2_FMT(__func__, "     rate:%u mtu:%u", response[i].rate, response[i].maxVlMtu);
+			IB_LOG_DEBUG2_FMT(__func__, "     nGUID 0x%"PRIx64" ", response[i].neighborGuid);
+			IB_LOG_DEBUG2_FMT(__func__, "     Nbr Node Desc    %.*s Status: %s",
+				(int)sizeof(response[i].neighborNodeDesc), response[i].neighborNodeDesc,
+				StlFocusStatusToText(response[i].neighborStatus));
+			IB_LOG_DEBUG2_FMT(__func__, "     ImageID: Number 0x%"PRIx64" Offset %d%s",
+				response[i].imageId.imageNumber, response[i].imageId.imageOffset, buf);
+			BSWAP_STL_PA_FOCUS_PORTS_MULTISELECT_RSP(&response[i]);
+		}
+		memcpy(data, response, responseSize);
+	}
+
+done:
+	// determine reply status
+	if (status == FUNAVAILABLE) {
+		maip->base.status = STL_MAD_STATUS_STL_PA_UNAVAILABLE;			// PM engine not running
+	} else if (status == FINSUFFICIENT_MEMORY) {
+		maip->base.status = MAD_STATUS_SA_NO_RESOURCES;					// allocating array failed
+	} else if (status == FINVALID_PARAMETER) {
+		maip->base.status = MAD_STATUS_BAD_FIELD;						// NULL pointer passed to function
+	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
+		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Impropper parameter passed to function
+	} else if (status == FNOT_FOUND) {
+		if (retImageId.imageNumber == BAD_IMAGE_ID)
+			maip->base.status = STL_MAD_STATUS_STL_PA_NO_IMAGE;			// Failed to access/find image
+		else
+			maip->base.status = STL_MAD_STATUS_STL_PA_NO_GROUP;			// Failed to find Group
+	} else if (status == (FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_GROUP)) {
+		maip->base.status = STL_MAD_STATUS_STL_PA_NO_GROUP;				// Failed to find Group
+	} else if (maip->base.status != MAD_STATUS_OK) {
+		records = 0;
+	} else if (records == 0) {
+		maip->base.status = MAD_STATUS_SA_NO_RECORDS;
+	} else if ((maip->base.method == STL_PA_CMD_GET) && (records != 1)) {
+		IB_LOG_WARN("too many records for STL_PA_CMD_GET:", records);
+		records = 0;
+		maip->base.status = MAD_STATUS_SA_TOO_MANY_RECS;
+	}
+
+	attribOffset = sizeof(STL_FOCUS_PORTS_MULTISELECT_RSP) + Calculate_Padding(sizeof(STL_FOCUS_PORTS_MULTISELECT_RSP));
+	/* setup attribute offset for possible RMPP transfer */
+	pa_cntxt->attribLen = attribOffset / 8;
+
+	pa_cntxt_data(pa_cntxt, data, records * attribOffset);
+	// send response
+	(void)pa_send_reply(maip, pa_cntxt);
+
+	if (pmFocusPorts.portList != NULL)
+		vs_pool_free(&pm_pool, pmFocusPorts.portList);
+	if (response != NULL)
+		vs_pool_free(&pm_pool, response);
+
+	IB_EXIT(__func__, status);
+	return(status);
+}
 Status_t
 pa_getVFListResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 {
@@ -2049,7 +2489,7 @@ pa_getVFPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	uint32_t	delta, userCntrs;
 	uint32		flags = 0;
 	STL_PA_IMAGE_ID_DATA retImageId = {0};
-	STL_LID_32	nodeLid;
+	STL_LID 	nodeLid;
 	PORT		portNumber;
 	FSTATUS		status;
 	PmCompositeVLCounters_t pmVLPortCounters = {0};
@@ -2092,14 +2532,15 @@ pa_getVFPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		response.portVFXmitWaitData				= pmVLPortCounters.PortVLXmitWaitData;
 		response.portVFRcvBubble				= pmVLPortCounters.PortVLRcvBubble;
 		response.portVFMarkFECN					= pmVLPortCounters.PortVLMarkFECN;
-    	response.imageId = retImageId;
+		response.imageId = retImageId;
 		response.imageId.imageOffset = 0;
 		strncpy(response.vfName, vfName, STL_PM_VFNAMELEN-1);
 
 		/* debug logging */
-		IB_LOG_DEBUG2_FMT(__func__, "%s Controlled VF Port Counters (%s) for node lid 0x%x, port number %u%s:",
+		IB_LOG_DEBUG2_FMT(__func__, "%s Controlled VF Port Counters (%s) for node lid 0x%x, port number %u%s%s:",
 			(userCntrs?"User":"PM"), (delta?"delta":"total"), nodeLid, portNumber,
-			flags & STL_PA_PC_FLAG_UNEXPECTED_CLEAR?" (Unexpected Clear)":"");
+			(flags & STL_PA_PC_FLAG_UNEXPECTED_CLEAR?" (Unexpected Clear)":""),
+			(flags & STL_PA_PC_FLAG_CLEAR_FAIL?" (Clear Unsuccessful)":""));
 		IB_LOG_DEBUG2_FMT(__func__, " VF Name: %s", vfName);
 		IB_LOG_DEBUG2_FMT(__func__, "Perfromance:");
 		IB_LOG_DEBUG2_FMT(__func__, " Xmit Data:       %10"PRIu64" MB (%"PRIu64" Flits)",
@@ -2155,6 +2596,10 @@ pa_getVFPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		maip->base.status = STL_MAD_STATUS_STL_PA_NO_VF;				// Failed to find VF
 	} else if (status == (FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_PORT)) {
 		maip->base.status = STL_MAD_STATUS_STL_PA_NO_PORT;				// Failed to find port
+	} else if (status == (FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_DATA)) {
+		maip->base.status = STL_MAD_STATUS_STL_PA_NO_DATA;				// Pm Port is skipped
+	} else if (status == (FNOT_FOUND | STL_MAD_STATUS_STL_PA_BAD_DATA)) {
+		maip->base.status = STL_MAD_STATUS_STL_PA_BAD_DATA;				// Query fails or clear fails
 	} else if (maip->base.status != MAD_STATUS_OK) {
 		records = 0;
 	} else if (records == 0) {
@@ -2185,7 +2630,7 @@ pa_clrVFPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	uint32_t	attribOffset;
 	char		vfName[STL_PM_VFNAMELEN];
 	FSTATUS		status;
-	STL_LID_32	nodeLid;
+	STL_LID 	nodeLid;
 	PORT		portNumber;
 	STLVlCounterSelectMask select;
     STL_PA_CLEAR_VF_PORT_COUNTERS_DATA response = {0};
@@ -2283,8 +2728,15 @@ pa_getVFFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	IB_LOG_DEBUG1_FMT(__func__, "VF: %.*s  Select: 0x%x  Start: %u  Range: %u",
 		(int)sizeof(vfName), vfName, select, start, range);
 
-	status = paGetVFFocusPorts(&g_pmSweepData, vfName, &pmVFFocusPorts,
-	    p->imageId, &retImageId, select, start, range);
+	if(select == STL_PA_SELECT_UNEXP_CLR_PORT || select == STL_PA_SELECT_NO_RESP_PORT ||
+		select == STL_PA_SELECT_SKIPPED_PORT){
+		status = paGetExtVFFocusPorts(&g_pmSweepData, vfName, &pmVFFocusPorts,
+			p->imageId, &retImageId, select, start, range);
+	} else {
+		status = paGetVFFocusPorts(&g_pmSweepData, vfName, &pmVFFocusPorts,
+			p->imageId, &retImageId, select, start, range);
+	}
+
 	if (status == FSUCCESS) {
 		records = pmVFFocusPorts.NumPorts;
 		responseSize = pmVFFocusPorts.NumPorts * sizeof(STL_PA_VF_FOCUS_PORTS_RSP);
@@ -2301,18 +2753,18 @@ pa_getVFFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		for (i = 0; i < pmVFFocusPorts.NumPorts; i++) {
     		response[i].nodeLid				= pmVFFocusPorts.portList[i].lid;
     		response[i].portNumber			= pmVFFocusPorts.portList[i].portNum;
-			response[i].localStatus			= pmVFFocusPorts.portList[i].localStatus;
+		response[i].localStatus			= pmVFFocusPorts.portList[i].localStatus;
     		response[i].rate				= pmVFFocusPorts.portList[i].rate;
-			response[i].maxVlMtu					= pmVFFocusPorts.portList[i].mtu;
-    		response[i].value				= pmVFFocusPorts.portList[i].value;
+		response[i].maxVlMtu					= pmVFFocusPorts.portList[i].maxVlMtu;
+    		response[i].value				= pmVFFocusPorts.portList[i].value[0];
     		response[i].nodeGUID			= pmVFFocusPorts.portList[i].guid;
     		strncpy(response[i].nodeDesc, pmVFFocusPorts.portList[i].nodeDesc,
 					sizeof(response[i].nodeDesc)-1);
 
-			response[i].neighborStatus 		= pmVFFocusPorts.portList[i].neighborStatus;
+		response[i].neighborStatus 		= pmVFFocusPorts.portList[i].neighborStatus;
     		response[i].neighborLid 		= pmVFFocusPorts.portList[i].neighborLid;
     		response[i].neighborPortNumber 	= pmVFFocusPorts.portList[i].neighborPortNum;
-    		response[i].neighborValue 		= pmVFFocusPorts.portList[i].neighborValue;
+		response[i].neighborValue 		= pmVFFocusPorts.portList[i].neighborValue[0];
     		response[i].neighborGuid 		= pmVFFocusPorts.portList[i].neighborGuid;
     		strncpy(response[i].neighborNodeDesc, pmVFFocusPorts.portList[i].neighborNodeDesc,
 					sizeof(response[i].neighborNodeDesc)-1);
@@ -2375,7 +2827,7 @@ done:
 		maip->base.status = STL_MAD_STATUS_STL_PA_NO_PORT;				// Failed to find port
 	} else if (maip->base.status != MAD_STATUS_OK) {
 		records = 0;
-	} else if (records == 0) {
+	} else if ((records == 0) && (status != (FSUCCESS | MAD_STATUS_SA_NO_RECORDS))){
 		maip->base.status = MAD_STATUS_SA_NO_RECORDS;
 	} else if ((maip->base.method == STL_PA_CMD_GET) && (records != 1)) {
 		IB_LOG_WARN("too many records for STL_PA_CMD_GET:", records);
@@ -2399,3 +2851,4 @@ done:
 	IB_EXIT(__func__, status);
 	return(status);
 }
+

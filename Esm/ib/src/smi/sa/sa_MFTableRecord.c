@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -174,7 +174,7 @@ sa_MFTableRecord_GetTable(Mai_t * maip, uint32_t * records)
 	uint32_t   bytes = 0;
 	uint32_t   lidIndex = 0;
 	uint8_t    portMaskIndex = 0;
-	uint32_t     maxMcLid = 0, tmpLid = 0;
+	STL_LID	   maxMcLid = 0, tmpLid = 0;
 	STL_SA_MAD    samad;
 
 
@@ -206,23 +206,7 @@ sa_MFTableRecord_GetTable(Mai_t * maip, uint32_t * records)
 		return status;
 	}
 
-	/* Grab a lock on the MC Groups table so that we can get the
-	 * maximum multicast LID address */
-	if ((status = vs_lock(&sm_McGroups_lock)) != VSTATUS_OK)
-	{
-		IB_EXIT("sa_MFTableRecord_GetTable: Failed to obtain sa lock",
-		        status);
-		return status;
-	}
-
 	maxMcLid = sm_multicast_get_max_lid();
-
-	if ((status = vs_unlock(&sm_McGroups_lock)) != VSTATUS_OK)
-	{
-		IB_EXIT("sa_MFTableRecord_GetTable: Failed to release sa lock",
-		        status);
-		return status;
-	}
 
 	/* Load the MFTableRecords in the SADB */
 	(void)vs_rdlock(&old_topology_lock);
@@ -231,7 +215,7 @@ sa_MFTableRecord_GetTable(Mai_t * maip, uint32_t * records)
 	for_all_switch_nodes(&old_topology, nodep)
 	{
 		/* iterate through each multicast LID */
-		for (tmpLid = MULTICAST_LID_MIN, lidIndex = 0;
+		for (tmpLid = STL_LID_MULTICAST_BEGIN, lidIndex = 0;
 		     (tmpLid <= maxMcLid) && (status == VSTATUS_OK);
 		     tmpLid += STL_NUM_MFT_ELEMENTS_BLOCK, ++lidIndex)
 		{

@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -111,9 +111,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define INVALID_HANDLE  (-1)
 
 /* externs */
-extern int32_t         pm_lid;
-extern int32_t         dm_lid;
-extern int32_t         bm_lid;
+extern STL_LID         pm_lid;
+extern STL_LID         ea_lid;
+extern STL_LID         dm_lid;
+extern STL_LID         bm_lid;
 extern int32_t         ConnDisconnect;
 extern int32_t         Shutdown;
 extern int32_t         fe_nodaemon;

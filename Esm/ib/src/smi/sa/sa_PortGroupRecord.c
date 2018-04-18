@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -194,7 +194,7 @@ GetPortGroupRecord(Mai_t *maip, uint32_t *records)
     Status_t    status;
     Node_t      *nodep;
     bool_t      checkLid;
-    STL_LID       lid=0, port0Lid=0;
+    STL_LID     lid=0, port0Lid=0;
     bool_t      checkBlock;
     uint8_t     blockNum=0;
     int			endBlock, blkIdx;
@@ -228,8 +228,8 @@ GetPortGroupRecord(Mai_t *maip, uint32_t *records)
 
     // Block Num
     checkBlock = (samad.header.mask & STL_PGTB_RECORD_COMP_BLOCKNUM);
-    if (checkBlock) { 
-        blockNum = ((STL_PORT_GROUP_TABLE_RECORD*)(samad.data))->RID.BlockNum;
+    if (checkBlock) {
+	blockNum = ((STL_PORT_GROUP_TABLE_RECORD*)(samad.data))->RID.BlockNum;
     	samad.header.mask ^= STL_PGTB_RECORD_COMP_BLOCKNUM;
     }
 
@@ -242,7 +242,7 @@ GetPortGroupRecord(Mai_t *maip, uint32_t *records)
 
     // Position, if specified, must be 0 for now
     if ((samad.header.mask & STL_PGTB_RECORD_COMP_POSITION) &&
-        (((STL_PORT_GROUP_TABLE_RECORD*)(samad.data))->RID.Position!=0) ) {
+	(((STL_PORT_GROUP_TABLE_RECORD*)(samad.data))->RID.Position!=0) ) {
         maip->base.status = MAD_STATUS_SA_REQ_INVALID;
         IB_LOG_ERROR_FMT( "GetPortGroupRecord","Block specified w/o Lid. Block %d", blockNum);
         return;
@@ -288,9 +288,8 @@ GetPortGroupRecord(Mai_t *maip, uint32_t *records)
 
             memset(&record, 0, sizeof(record));
             record.RID.LID = port0Lid;
-            record.RID.BlockNum = blkIdx;
+	    record.RID.BlockNum = blkIdx;
             record.RID.Position = 0;
-
             // Copy port group block from SM DB, without exceeding the capacity.
             int maxCopy = STL_PGTB_NUM_ENTRIES_PER_BLOCK;
             if (((blkIdx+1)*STL_PGTB_NUM_ENTRIES_PER_BLOCK) > nodep->switchInfo.PortGroupTop) {
@@ -323,7 +322,7 @@ GetPortGroupFwdRecord(Mai_t *maip, uint32_t *records)
     Status_t    status;
     Node_t      *nodep;
     bool_t      checkLid;
-    STL_LID       lid=0, port0Lid=0;
+    STL_LID     lid=0, port0Lid=0;
     bool_t      checkBlock;
     uint32_t    blockNum=0;
     uint32_t    endBlock, blkIdx;

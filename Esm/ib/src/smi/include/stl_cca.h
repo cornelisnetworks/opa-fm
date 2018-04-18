@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -34,7 +34,14 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sm_l.h"
 
 
+Status_t stl_sm_cca_hfi_ref_acquire(HfiCongestionControlTableRefCount_t** congConRefCount, uint32_t tableSize);
+HfiCongestionControlTableRefCount_t* stl_sm_cca_hfi_ref_copyptr(HfiCongestionControlTableRefCount_t* congConRefCount);
+void stl_sm_cca_hfi_ref_release(HfiCongestionControlTableRefCount_t** congConRefCount);
+
 Status_t stl_sm_cca_configure_hfi(Node_t *nodep);
 Status_t stl_sm_cca_configure_sw(Node_t *nodep);
+Status_t stl_sm_cca_copy_hfi_data(Node_t *nodep);
+Status_t stl_sm_cca_copy_sw_data(Node_t *nodep);
+Status_t sm_cong_config_copy(void);
 
 #endif

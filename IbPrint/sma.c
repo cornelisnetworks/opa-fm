@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -178,7 +178,7 @@ void PrintSwitchInfo(PrintDest_t *dest, int indent, const SWITCH_INFO *pSwitchIn
 	if (lid)
 		PrintFunc(dest, "%*sLID: 0x%04x\n", indent, "", lid);
 
-	PrintFunc(dest, "%*sLinearFDBCap: %5u LinearFDBTop: %5u MCFDBCap: %5u MCFDBTop: %5u\n",
+	PrintFunc(dest, "%*sLinearFDBCap: %5u LinearFDBTop: 0x%04x MCFDBCap: %5u MCFDBTop: 0x%04x\n",
 			indent, "",
 			pSwitchInfo->LinearFDBCap, pSwitchInfo->LinearFDBTop,
 			pSwitchInfo->MulticastFDBCap, pSwitchInfo->MulticastFDBTop);

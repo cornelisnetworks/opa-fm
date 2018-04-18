@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -36,6 +36,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define OPAMGT_PRIVATE 1
 #include "ib_utils_openib.h"
+#include "opamgt_dump_mad.h"
+#include "omgt_oob_net.h"
+#include "omgt_oob_protocol.h"
 
 #include <opamgt.h>
 #include <opamgt_sa.h>
@@ -62,6 +65,11 @@ OMGT_STATUS_T omgt_sa_register_trap(struct omgt_port *port, uint16_t trap_num,
 	OMGT_STATUS_T status;
 	int ret;
 	omgt_sa_registration_t *reg;
+
+	if (port->is_oob_enabled) {
+		OMGT_OUTPUT_ERROR(port, "Port in Out-of-Band Mode, Trap registration not Supported\n");
+		return OMGT_STATUS_INVALID_STATE;
+	}
 
 	reg = (omgt_sa_registration_t *)calloc(1, sizeof*reg);
 	if (reg == NULL) {
@@ -109,6 +117,11 @@ OMGT_STATUS_T omgt_sa_unregister_trap(struct omgt_port *port, uint16_t trap_num)
 {
 	OMGT_STATUS_T status;
 
+	if (port->is_oob_enabled) {
+		OMGT_OUTPUT_ERROR(port, "Port in Out-of-Band Mode, Trap (un)registration not Supported\n");
+		return OMGT_STATUS_INVALID_STATE;
+	}
+
 	if (omgt_lock_sem(&port->lock))
 		return OMGT_STATUS_ERROR;
 
@@ -130,6 +143,92 @@ OMGT_STATUS_T omgt_sa_get_notice_report(struct omgt_port *port, STL_NOTICE **not
 	omgt_sa_registration_t *reg;
 	uint16_t trap_num;
 
+	if (port->is_oob_enabled) {
+		uint32_t oob_recv_len = 0;
+		OOB_PACKET *packet = NULL;
+
+		if (!port->is_oob_notice_setup) {
+			OMGT_STATUS_T status;
+			if ((status = omgt_oob_net_connect(port, &port->notice_conn)) != FSUCCESS) {
+				OMGT_OUTPUT_ERROR(port, "failed to establish a connection to the host: %u\n", status);
+				return status;
+			}
+			port->is_oob_notice_setup = TRUE;
+		}
+
+		do {
+			/* Process IP 'blobs' (TCP Segments) */
+			omgt_oob_net_process(port, port->notice_conn, poll_timeout_ms, 1);
+			/* If failure return error */
+			if (port->notice_conn->err) {
+				return OMGT_STATUS_ERROR;
+			}
+		} while (port->notice_conn->blob_in_progress);
+
+		/* Check if we are done getting all the 'blobs' */
+		omgt_oob_net_get_next_message(port->notice_conn, (uint8_t **)&packet, (int *)&oob_recv_len);
+		/* Handle Timeout Case */
+		if (packet == NULL) {
+			return OMGT_STATUS_TIMEOUT;
+		}
+
+		/* Handle packet */
+		oob_recv_len = 0;
+		BSWAP_OOB_HEADER(&(packet->Header));
+		oob_recv_len = packet->Header.Length;
+		BSWAP_MAD_HEADER((MAD *)&packet->MadData.common);
+
+		/* Handle Trap/Notice Report */
+		if (packet->MadData.common.AttributeID == STL_MCLASS_ATTRIB_ID_NOTICE) {
+			/* Remove Header Bytes */
+			oob_recv_len -= (sizeof(MAD_COMMON) - sizeof(RMPP_HEADER) - sizeof(SA_HDR));
+
+			/* Allocate the Notice */
+			notice_buf = (STL_NOTICE *)calloc(1, oob_recv_len);
+			if (notice_buf == NULL) {
+				OMGT_OUTPUT_ERROR(port, "failed to allocate notice buffer\n");
+				return OMGT_STATUS_INSUFFICIENT_MEMORY;
+			}
+
+			/* Copy and allocate the Data */
+			SA_MAD *samad = (SA_MAD *)&packet->MadData.common;
+			memcpy(notice_buf, samad->Data, oob_recv_len);
+			BSWAP_STL_NOTICE(notice_buf);
+			trap_num = notice_buf->Attributes.Generic.TrapNumber;
+			OMGT_DBGPRINT(port, "trap message %u: %d bytes\n", trap_num, oob_recv_len);
+
+			/* Find Context (Not in OOB) */
+			if (context) {
+				*context = NULL;
+			}
+			/* Set Notice struct and length */
+			*notice = notice_buf;
+			*notice_len = oob_recv_len;
+			return OMGT_STATUS_SUCCESS;
+		/* Handle Inform Info */
+		} else if (packet->MadData.common.AttributeID == STL_MCLASS_ATTRIB_ID_INFORM_INFO) {
+			SA_MAD *samad = (SA_MAD *)&packet->MadData.common;
+			STL_INFORM_INFO *informinfo = (STL_INFORM_INFO *)samad->Data;
+			trap_num = ntoh16(informinfo->u.Generic.TrapNumber);
+
+			/* Free Packet */
+			free(packet);
+
+			OMGT_OUTPUT_ERROR(port, "Registration of Trap message timed out: Trap %u\n", trap_num);
+			return OMGT_STATUS_DISCONNECT;
+		/* Otherwise error */
+		} else {
+			SA_MAD *samad = (SA_MAD *)&packet->MadData.common;
+			OMGT_OUTPUT_ERROR(port, "Unexpected OOB MAD recieved: %s %s(%s)\n",
+				stl_class_str(samad->common.BaseVersion, samad->common.MgmtClass),
+				stl_method_str(samad->common.BaseVersion, samad->common.MgmtClass, samad->common.mr.AsReg8),
+				stl_attribute_str(samad->common.BaseVersion, samad->common.MgmtClass, hton16(samad->common.AttributeID)));
+
+			/* Free Packet */
+			free(packet);
+			return OMGT_STATUS_ERROR;
+		}
+	}
 	pollfd[0].fd = port->umad_port_sv[0];
 	pollfd[0].events = POLLIN;
 	pollfd[0].revents = 0;

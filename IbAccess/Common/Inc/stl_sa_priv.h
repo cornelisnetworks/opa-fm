@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -245,6 +245,7 @@ BSWAPCOPY_STL_LINEAR_FORWARDING_TABLE_RECORD(STL_LINEAR_FORWARDING_TABLE_RECORD 
 	BSWAP_STL_LINEAR_FORWARDING_TABLE_RECORD(Dest);
 }
 
+
 static __inline void
 BSWAP_STL_MCFTB_RECORD(STL_MULTICAST_FORWARDING_TABLE_RECORD *Dest)
 {
@@ -304,6 +305,7 @@ BSWAPCOPY_STL_VLARBTABLE_RECORD(STL_VLARBTABLE_RECORD *Src, STL_VLARBTABLE_RECOR
 	BSWAP_STL_VLARBTABLE_RECORD(Dest);
 }
 
+
 static __inline void
 BSWAP_STL_MCMEMBER_RECORD(STL_MCMEMBER_RECORD *Dest)
 {
@@ -336,7 +338,11 @@ CONVERT_IB2STL_MCMEMBER_RECORD(IB_MCMEMBER_RECORD *Src, STL_MCMEMBER_RECORD *Des
 	Dest->RID.MGID = Src->RID.MGID;
 	Dest->RID.PortGID = Src->RID.PortGID;
 	Dest->Q_Key = Src->Q_Key;
+#if !defined(PRODUCT_STL1)
+	Dest->MLID = MCAST16_TO_MCAST32(Src->MLID);
+#else
 	Dest->MLID = Src->MLID;
+#endif
 	Dest->MtuSelector = Src->MtuSelector;
 	Dest->Mtu = Src->Mtu;
 	Dest->TClass = Src->TClass;
@@ -360,7 +366,11 @@ CONVERT_STL2IB_MCMEMBER_RECORD(STL_MCMEMBER_RECORD *Src, IB_MCMEMBER_RECORD *Des
 	Dest->RID.MGID = Src->RID.MGID;
 	Dest->RID.PortGID = Src->RID.PortGID;
 	Dest->Q_Key = Src->Q_Key;
+#if !defined(PRODUCT_STL1)
+	Dest->MLID = MCAST32_TO_MCAST16(Src->MLID);
+#else
 	Dest->MLID = Src->MLID;
+#endif
 	Dest->MtuSelector = Src->MtuSelector;
 	Dest->Mtu = Src->Mtu;
 	Dest->TClass = Src->TClass;
@@ -415,7 +425,7 @@ REBUILD_COMPMSK_IB2STL_MCMEMBER_RECORD(uint64 mask)
 typedef struct {
 	STL_MCMEMBER_RECORD member;
 	uint32_t	index;
-	uint32_t	slid;
+	STL_LID		slid;
 	uint8_t		proxy;
 	uint8_t		state;
 	uint64_t	nodeGuid;
@@ -525,7 +535,6 @@ BSWAP_STL_TRACE_RECORD(STL_TRACE_RECORD  *Dest)
 {
 #if CPU_LE
 	Dest->IDGeneration = ntoh16(Dest->IDGeneration);
-	Dest->NodeID = ntoh64(Dest->NodeID);
 	Dest->ChassisID = ntoh64(Dest->ChassisID);
 	Dest->EntryPortID = ntoh64(Dest->EntryPortID);
 	Dest->ExitPortID = ntoh64(Dest->ExitPortID);
@@ -711,6 +720,75 @@ BSWAP_STL_FABRICINFO_RECORD(
 	Dest->NumOmittedISLs = ntoh32(Dest->NumOmittedISLs);
 #endif /* CPU_LE */
 }
+
+
+
+static __inline
+void
+BSWAP_STL_DEVICE_GROUP_NAME_RECORD(STL_DEVICE_GROUP_NAME_RECORD *Dest)
+{
+
+}
+
+static __inline
+void
+BSWAPCOPY_STL_DEVICE_GROUP_NAME_RECORD(STL_DEVICE_GROUP_NAME_RECORD *Src, STL_DEVICE_GROUP_NAME_RECORD *Dest)
+{
+	memcpy(Dest, Src, sizeof(STL_DEVICE_GROUP_NAME_RECORD));
+	BSWAP_STL_DEVICE_GROUP_NAME_RECORD(Dest);
+}
+
+static __inline
+void
+BSWAP_STL_DEVICE_GROUP_MEMBER_RECORD(STL_DEVICE_GROUP_MEMBER_RECORD *Dest)
+{
+	Dest->LID = ntoh32(Dest->LID);
+	Dest->GUID = ntoh64(Dest->GUID);
+}
+
+static __inline
+void
+BSWAPCOPY_STL_DEVICE_GROUP_MEMBER_RECORD(STL_DEVICE_GROUP_MEMBER_RECORD *Src, STL_DEVICE_GROUP_MEMBER_RECORD *Dest)
+{
+	memcpy(Dest, Src, sizeof(STL_DEVICE_GROUP_MEMBER_RECORD));
+	BSWAP_STL_DEVICE_GROUP_MEMBER_RECORD(Dest);
+}
+
+static __inline void
+BSWAP_STL_DEVICE_TREE_MEMBER_RECORD(STL_DEVICE_TREE_MEMBER_RECORD *Dest)
+{
+	uint32 i;
+	Dest->LID = ntoh32(Dest->LID);
+	Dest->GUID = ntoh64(Dest->GUID);
+	Dest->SystemImageGUID = ntoh64(Dest->SystemImageGUID);
+	for (i = 0; i < STL_MAX_PORTMASK; i++) {
+		Dest->portMaskAct[i] = ntoh64(Dest->portMaskAct[i]);
+	}
+	for (i = 0; i < STL_MAX_PORTMASK; i++) {
+		Dest->portMaskPortLinkMode[i] = ntoh64(Dest->portMaskPortLinkMode[i]);
+	}
+}
+
+static __inline
+void
+BSWAPCOPY_STL_DEVICE_TREE_MEMBER_RECORD(STL_DEVICE_TREE_MEMBER_RECORD *Src, STL_DEVICE_TREE_MEMBER_RECORD *Dest)
+{
+	memcpy(Dest, Src, sizeof(STL_DEVICE_TREE_MEMBER_RECORD));
+	BSWAP_STL_DEVICE_TREE_MEMBER_RECORD(Dest);
+}
+
+#ifndef IB_MAX_UCAST_LID
+#define IB_MAX_UCAST_LID 0xBFFF
+#endif
+/**
+ * If STL LID falls within the IB unicast LID range,
+ * just return the LID. If it falls outside the range
+ * return the last 14 bits of the LID
+ */
+#define STL_TO_IB_UCAST_LID(x) ((uint16) (((x) > IB_MAX_UCAST_LID) ?\
+					  ((x) & 0x3FFF) : (x)))
+#define MAKE_OPA_GID_IID(lid) (((uint64)OUI_TRUESCALE << 40) | (uint64)(lid))
+
 
 static __inline void
 BSWAP_STL_SWITCH_COST(STL_SWITCH_COST *cost)

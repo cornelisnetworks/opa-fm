@@ -1,0 +1,7 @@
+/etc/opa-fm/opafm.xml
+usr/lib/systemd/system/opafm.service /lib/systemd/system/
+/usr/lib/opa/.comp_opafm.pl
+/usr/lib/opa-fm/bin/*
+/usr/lib/opa-fm/runtime/*
+/usr/share/man/man8/*
+/usr/share/opa-fm/*

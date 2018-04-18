@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -984,15 +984,15 @@ mai_send_timeout(IBhandle_t fd, Mai_t * inbuf, uint64_t timeout)
 /* Note: For linux/Ibaccess builds we can ignore the slid, since that 
 		 is handled within Umadt */
 #ifdef CAL_IBACCESS
-	  if (buf->addrInfo.dlid == RESERVED_LID)
+	  if (buf->addrInfo.dlid == STL_LID_RESERVED)
 	    {
 		IB_EXIT(__func__, VSTATUS_INVALID_LID);
 		IB_LOG_ERRORX("mai_send, invalid DLID:", buf->addrInfo.dlid);
 		return (VSTATUS_INVALID_LID);
 	    }
 #else
-	  if ((buf->addrInfo.slid == RESERVED_LID)
-	      || (buf->addrInfo.dlid == RESERVED_LID))
+	  if ((buf->addrInfo.slid == STL_LID_RESERVED)
+	      || (buf->addrInfo.dlid == STL_LID_RESERVED))
 	    {
 		IB_EXIT(__func__, VSTATUS_INVALID_LID);
 		return (VSTATUS_INVALID_LID);
@@ -1301,14 +1301,14 @@ mai_send_stl_timeout(IBhandle_t fd, Mai_t *inbuf, uint32_t *datalen, uint64_t ti
 /* Note: For linux/Ibaccess builds we can ignore the slid, since that 
          is handled within Umadt */
 #ifdef CAL_IBACCESS
-      if (buf->addrInfo.dlid == RESERVED_LID) {
+      if (buf->addrInfo.dlid == STL_LID_RESERVED) {
          IB_EXIT(__func__, VSTATUS_INVALID_LID); 
          IB_LOG_ERRORX("mai_send_stl, invalid DLID:", buf->addrInfo.dlid); 
          return (VSTATUS_INVALID_LID);
       }
 #else
-      if ((buf->addrInfo.slid == RESERVED_LID)
-          || (buf->addrInfo.dlid == RESERVED_LID)) {
+      if ((buf->addrInfo.slid == STL_LID_RESERVED)
+          || (buf->addrInfo.dlid == STL_LID_RESERVED)) {
          IB_EXIT(__func__, VSTATUS_INVALID_LID); 
          return (VSTATUS_INVALID_LID);
       }
@@ -1425,7 +1425,7 @@ stl_get_portinfo(IBhandle_t handle, STL_PORT_INFO * pip, uint8_t user_port,
 	out_mad.qp      = 0;
 	out_mad.active |= (MAI_ACT_DEV | MAI_ACT_PORT | MAI_ACT_QP);
 	
-	AddrInfo_Init(&out_mad, PERMISSIVE_LID, PERMISSIVE_LID, SMI_MAD_SL, mai_get_default_pkey(), MAI_SMI_QP, MAI_SMI_QP, 0);
+	AddrInfo_Init(&out_mad, STL_LID_PERMISSIVE, STL_LID_PERMISSIVE, SMI_MAD_SL, mai_get_default_pkey(), MAI_SMI_QP, MAI_SMI_QP, 0);
 	DRStlMad_Init(&out_mad, MAD_CM_GET, tid, STL_MCLASS_ATTRIB_ID_PORT_INFO, 0x01000000 | user_port, 0, path);
     datalen = STL_SMP_DR_HDR_LEN;
 	

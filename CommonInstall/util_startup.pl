@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015, Intel Corporation
+# Copyright (c) 2015-2017, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -44,9 +44,6 @@ my $INSSERV_CONF="/etc/insserv.conf";
 # where master copy of init scripts are installed
 my $INIT_DIR = "/etc/init.d";
 my $SYSTEMCTL_EXEC = system("command -v systemctl > /dev/null 2>&1");
-# Components and Sub-Components which user has asked to stop
-# these could be utilities or drivers
-my %StopFacility = ();
 
 sub disable_autostart($)
 {
@@ -174,121 +171,6 @@ sub IsUtilityRunning($)
 }
 
 # prompts and stops a driver or autostart utility
-sub check_stop_facility($$)
-{
-	my($WhichFacility) = shift();
-	my($prompt) = shift();
-
-	if ( ROOT_is_set() )
-	{
-		return 0;
-	}
-	if (! exists $StopFacility{$WhichFacility})
-	{
-		$StopFacility{$WhichFacility} = GetYesNo("Stop $prompt now?", "n");
-	}
-	return $StopFacility{$WhichFacility};
-}
-
-sub stop_utility($$$)
-{
-	my($UtilityDesc) = shift();
-	my($WhichUtility) = shift();	# utility executable in ps
-	my($InitScript) = shift();
-
-	my($retval)=0;
-	my $prompt;
-
-	if ( ROOT_is_set() )
-	{
-		return;
-	}
-	if ( "$UtilityDesc" eq "" )
-	{
-		$prompt="$WhichUtility";
-	} else {
-		$prompt="$UtilityDesc ($WhichUtility)";
-	}
-	if (IsUtilityRunning("$WhichUtility") == 1) 
-	{
-		if (check_stop_facility("$WhichUtility", "$prompt") == 1)
-		{
-			if (-e "$INIT_DIR/$InitScript" )
-			{
-				if($SYSTEMCTL_EXEC eq 0 && ($InitScript eq "opafm" || $InitScript eq "opa"))
-				{
-					system "systemctl stop $InitScript >/dev/null 2>&1";
-				} else {
-					system "$INIT_DIR/$InitScript stop";
-				}
-				$retval=1;
-			} else {
-				system "/usr/bin/pkill $WhichUtility";
-				$retval=1;
-			}
-			$StopFacility{$WhichUtility} = 0;	# ask again if find still running
-		}
-	}
-	return $retval;
-}
-
-sub start_utility($$$$)
-{
-	my($UtilityDesc) = shift();
-	my($UtilityDir) = shift();
-	my($WhichUtility) = shift();	# executable in $UtilityDir and found in ps
-	my($InitScript) = shift();
-
-	my $prompt;
-
-	if ( ROOT_is_set() )
-	{
-		return;
-	}
-	if ( "$UtilityDesc" eq "" )
-	{
-		$prompt="$WhichUtility";
-	} else {
-		$prompt="$UtilityDesc ($WhichUtility)";
-	}
-	if (-e "/$UtilityDir/$WhichUtility" )
-	{
-		if (IsUtilityRunning("$WhichUtility") == 1) 
-		{
-			print "$prompt already started...\n";
-			if (GetYesNo("Restart $prompt now?", "n") == 1)
-			{
-				if (-e "$INIT_DIR/$InitScript" )
-				{
-					if($SYSTEMCTL_EXEC eq 0 && ($InitScript eq "opafm" || $InitScript eq "opa"))
-					{
-						system "systemctl restart $InitScript >/dev/null 2>&1";
-					} else {
-						system "$INIT_DIR/$InitScript restart";
-					}
-				} else {
-					system "/usr/bin/pkill $WhichUtility";
-				}
-			}
-		} else {
-			if (GetYesNo("Start $prompt now?", "n") == 1)
-			{
-				if (-e "$INIT_DIR/$InitScript" )
-				{
-					if($SYSTEMCTL_EXEC eq 0 && ($InitScript eq "opafm" || $InitScript eq "opa"))
-					{
-						system "systemctl start $InitScript >/dev/null 2>&1";
-					} else {
-						system "$INIT_DIR/$InitScript start";
-					}
-				} else {
-					system "/usr/bin/pkill $WhichUtility";
-				}
-			}
-		}
-	}
-}
-
 sub remove_startup($)
 {
 	my($WhichStartup) = shift();

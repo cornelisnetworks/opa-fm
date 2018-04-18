@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -35,15 +35,18 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ib_utils_openib.h"
 #include "omgt_oob_net.h"
 #include "omgt_oob_protocol.h"
+#include "opamgt_dump_mad.h"
 
 OMGT_STATUS_T omgt_oob_connect(struct omgt_port **port, struct omgt_oob_input *oob_input, struct omgt_params *session_params)
 {
 	struct omgt_port *prt = calloc(1, sizeof(struct omgt_port));
+	struct net_connection *conn = NULL;
 	FSTATUS status = FSUCCESS;
 
 	if (prt == NULL) {
 		return OMGT_STATUS_INSUFFICIENT_MEMORY;
 	}
+
 	/* Copy session_params into port struct */
 	if (session_params) {
 		prt->dbg_file = session_params->debug_file;
@@ -59,51 +62,54 @@ OMGT_STATUS_T omgt_oob_connect(struct omgt_port **port, struct omgt_oob_input *o
 	/* copy login info into port struct */
 	prt->oob_input = *oob_input;
 
+	prt->is_oob_enabled = TRUE;
 	/* Establish a connection to the host */
 	OMGT_DBGPRINT(prt, "establish a connection to host\n");
-	if ((status = omgt_oob_net_connect(prt)) != FSUCCESS) {
+	if ((status = omgt_oob_net_connect(prt, &conn)) != FSUCCESS) {
 		OMGT_OUTPUT_ERROR(prt, "failed to establish a connection to the host: %u\n", status);
-		if (prt) free(prt);
+		if (prt->is_ssl_enabled && prt->is_ssl_initialized) {
+			if (prt->x509_store) {
+				X509_STORE_free(prt->x509_store);
+				prt->x509_store = NULL;
+				prt->is_x509_store_initialized = 0;
+			}
+			if (prt->dh_params) {
+				DH_free(prt->dh_params);
+				prt->dh_params = NULL;
+				prt->is_dh_params_initialized = 0;
+			}
+			if (prt->ssl_context) {
+				SSL_CTX_free(prt->ssl_context);
+				prt->ssl_context = NULL;
+			}
+
+			ERR_free_strings();
+			prt->is_ssl_initialized = 0;
+		}
+		free(prt);
 		return OMGT_STATUS_UNAVAILABLE;
 	}
-
-	prt->is_oob_enabled = TRUE;
+	prt->conn = conn;
+	prt->is_oob_notice_setup = FALSE;
 	*port = prt;
 	return OMGT_STATUS_SUCCESS;
 }
 
-FSTATUS omgt_oob_disconnect(struct omgt_port *port)
+FSTATUS omgt_oob_disconnect(struct omgt_port *port, struct net_connection *conn)
 {
 	FSTATUS status = FSUCCESS;
 
-	if (port->conn) {
-		if ((status = omgt_oob_net_disconnect(port)) != FSUCCESS) {
+	if (conn) {
+		if (port->is_ssl_enabled) {
+			if (conn->ssl_session) {
+				(void)SSL_shutdown(conn->ssl_session);
+				SSL_free(conn->ssl_session);
+				conn->ssl_session = NULL;
+			}
+		}
+		if ((status = omgt_oob_net_disconnect(port, conn)) != FSUCCESS) {
 			OMGT_OUTPUT_ERROR(port, "failed to disconnect from socket: %u\n", status);
 		}
-	}
-	if (port->is_ssl_enabled) {
-		if (port->ssl_context) {
-			SSL_CTX_free(port->ssl_context);
-			port->ssl_context = NULL;
-		}
-		if (port->ssl_session) {
-			(void)SSL_shutdown(port->ssl_session);
-			SSL_free(port->ssl_session);
-			port->ssl_session = NULL;
-		}
-		if (port->x509_store) {
-			X509_STORE_free(port->x509_store);
-			port->x509_store = NULL;
-			port->is_x509_store_initialized = 0;
-		}
-		if (port->dh_params) {
-			DH_free(port->dh_params);
-			port->dh_params = NULL;
-			port->is_dh_params_initialized = 0;
-		}
-		/* Clean up SSL_load_error_strings() from omgt_oob_ssl_init() */
-		ERR_free_strings();
-		port->is_ssl_initialized = 0;
 	}
 	return status;
 }
@@ -127,7 +133,7 @@ FSTATUS omgt_oob_send_packet(struct omgt_port *port, uint8_t *data, size_t len)
 		return FINVALID_PARAMETER;
 
 	/* Send the header and payload */
-	return omgt_oob_net_send(port, (char *)&packet, len);
+	return omgt_oob_net_send(port, (uint8_t *)&packet, len);
 }
 
 FSTATUS omgt_oob_receive_response(struct omgt_port *port, uint8_t **data, uint32_t *len)
@@ -154,7 +160,7 @@ FSTATUS omgt_oob_receive_response(struct omgt_port *port, uint8_t **data, uint32
 		delta_ms = 0;
 		total_timeout = port->ms_timeout * (port->retry_count + 1);
 		while (delta_ms < total_timeout && data_null) {
-			omgt_oob_net_process(port, 100, 1);
+			omgt_oob_net_process(port, port->conn, 100, 1);
 			omgt_oob_net_get_next_message(port->conn, (uint8_t **)&packet, (int *)len);
 			if (packet != NULL) {
 				data_null = FALSE;
@@ -174,6 +180,11 @@ FSTATUS omgt_oob_receive_response(struct omgt_port *port, uint8_t **data, uint32
 			*len = 0;
 			BSWAP_OOB_HEADER(&(packet->Header));
 			*len = packet->Header.Length;
+
+			if (port->dbg_file) {
+				OMGT_DBGPRINT(port, "Received MAD: socket %d, length=%u\n", port->conn->sock, *len);
+				omgt_dump_mad(port->dbg_file, (uint8_t *)&(packet->MadData), *len, "rcv mad\n");
+			}
 
 			// Allocate and copy to new buffer
 			*data = calloc(1, *len);

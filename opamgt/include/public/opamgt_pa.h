@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -217,6 +217,93 @@ omgt_pa_release_group_config(
     STL_PA_PM_GROUP_CFG_RSP    **pm_group_config
     );
 
+/**
+ *  Get group node info
+ *
+ * @param port                  Port to operate on.
+ * @param pm_image_id_query     Image ID of group config to get.
+ * @param group_name            Pointer to group name
+ * @param nodeLid               node LID
+ * @param nodeGuid              node GUID
+ * @param nodeDesc              node Description
+ * @param pm_image_id_resp      Pointer to image ID of group info returned.
+ * @param pm_group_config       Pointer to group config to fill. Upon successful return, a memory to
+ *                              contain the group config is allocated. The caller must call
+ *                              omgt_pa_release_group_config to free the memory later.
+ *
+ * @return
+ *   OMGT_STATUS_SUCCESS - Get successful
+ *     OMGT_STATUS_ERROR - Error
+ */
+OMGT_STATUS_T
+omgt_pa_get_group_nodeinfo(
+    struct omgt_port     	*port,
+    STL_PA_IMAGE_ID_DATA 	pm_image_id_query,
+    char                	*group_name,
+    STL_LID             	nodeLid,
+    uint64              	nodeGuid,
+    char                	*nodeDesc,
+    STL_PA_IMAGE_ID_DATA       	*pm_image_id_resp,
+    uint32               	*pNum_nodes,
+    STL_PA_GROUP_NODEINFO_RSP   **pm_group_nodeinfo
+    );
+
+/**
+ *  Release group node info
+ *
+ * @param pm_group_nodeinfo       Pointer to pointer to the group nodeinfo to free.
+ *
+ * @return
+ *   None
+ */
+void
+omgt_pa_release_group_nodeinfo(
+    STL_PA_GROUP_NODEINFO_RSP   **pm_group_nodeinfo
+    );
+
+/**
+ *  Get group link info
+ *
+ * @param port                  Port to operate on.
+ * @param pm_image_id_query     Image ID of group config to get.
+ * @param group_name            Pointer to group name
+ * @param inputLid              input LID
+ * @param inputPort            	input Port
+ * @param pm_image_id_resp      Pointer to image ID of group info returned.
+ * @param pm_group_config       Pointer to group config to fill. Upon successful return, a memory to
+ *                              contain the group config is allocated. The caller must call
+ *                              omgt_pa_release_group_config to free the memory later.
+ *
+ * @return
+ *   OMGT_STATUS_SUCCESS - Get successful
+ *     OMGT_STATUS_ERROR - Error
+ */
+OMGT_STATUS_T
+omgt_pa_get_group_linkinfo(
+    struct omgt_port     	*port,
+    STL_PA_IMAGE_ID_DATA       	pm_image_id_query,
+    char                	*group_name,
+    STL_LID             	inputLid,
+    uint8               	inputPort,
+    STL_PA_IMAGE_ID_DATA       	*pm_image_id_resp,
+    uint32               	*pNum_links,
+    STL_PA_GROUP_LINKINFO_RSP   **pm_group_linkinfo
+    );
+
+/**
+ *  Release group link info
+ *
+ * @param port                  Port to operate on.
+ * @param pm_group_nodeinfo     Pointer to pointer to the group nodeinfo to free.
+ *
+ * @return
+ *   None
+ */
+void
+omgt_pa_release_group_linkinfo(
+    STL_PA_GROUP_LINKINFO_RSP   **pm_group_linkinfo
+    );
+
 /* @brief Get VF config info
  *
  * @param port					Port to operate on
@@ -302,52 +389,120 @@ omgt_pa_release_group_focus(
 /*
  * @brief Get VF focus portlist
  *
- * @param port                  Port to operate on. 
- * @param pm_image_id_query     Image ID of vf focus portlist to get. 
+ * @param port                  Port to operate on.
+ * @param pm_image_id_query     Image ID of vf focus portlist to get.
  * @param vf_name            Pointer to vf name.
- * @param select                Select value for focus portlist. 
- * @param start                 Start index value of portlist 
- * @param range                 Index range of portlist. 
- * @param pm_image_id_resp      Pointer to image ID of group focus portlist returned. 
- * @param pm_vf_focus        Pointer to pointer to focus portlist to fill. Upon 
+ * @param select                Select value for focus portlist.
+ * @param start                 Start index value of portlist
+ * @param range                 Index range of portlist.
+ * @param pm_image_id_resp      Pointer to image ID of group focus portlist returned.
+ * @param pm_vf_focus        Pointer to pointer to focus portlist to fill. Upon
  *                              successful return, a memory to contain the group focus
  *                              portlist is allocated. The caller must call
  *                              omgt_pa_release_vf_focus to free the memory later.
  *
- * @return 
+ * @return
  *   OMGT_STATUS_SUCCESS - Get successful
  *     OMGT_STATUS_ERROR - Error
  */
 
 OMGT_STATUS_T
 omgt_pa_get_vf_focus(
-    struct omgt_port           *port, 
+    struct omgt_port           *port,
     STL_PA_IMAGE_ID_DATA       pm_image_id_query,
-    char                      *vf_name, 
-    uint32_t                     select, 
-    uint32_t                     start, 
+    char                      *vf_name,
+    uint32_t                     select,
+    uint32_t                     start,
     uint32_t                     range,
-    STL_PA_IMAGE_ID_DATA      *pm_image_id_resp, 
-	uint32_t						*pNum_ports,
-    STL_PA_VF_FOCUS_PORTS_RSP     **pm_vf_focus 
+    STL_PA_IMAGE_ID_DATA      *pm_image_id_resp,
+    uint32_t                   *pNum_ports,
+    STL_PA_VF_FOCUS_PORTS_RSP     **pm_vf_focus
     );
 
 
-/* 
+/*
  * @brief Release vf focus portlist
  *
- * @param pm_vf_config       Pointer to pointer to the vf focus portlist to free. 
+ * @param pm_vf_config       Pointer to pointer to the vf focus portlist to free.
  *
- * @return 
+ * @return
  *   None
  */
-void 
+void
 omgt_pa_release_vf_focus(
     STL_PA_VF_FOCUS_PORTS_RSP     **pm_group_focus
    );
 
 /**
- * @brief Get port statistics (counters)
+ * @brief Get port statistics (counters). Supports 32 bit LIDs
+ *
+ * @param port                  Port to operate on.
+ * @param pm_image_id_query     Image ID of port counters to get.
+ * @param lid                   LID of node.
+ * @param port_num              Port number.
+ * @param pm_image_id_resp      Pointer to image ID of port counters returned.
+ * @param port_counters         Pointer to port counters to fill.
+ * @param flags                 Pointer to flags
+ * @param delta                 1 for delta counters, 0 for raw image counters.
+ * @param user_cntrs            1 for running counters, 0 for image counters. (delta must be 0)
+ *
+ * @return
+ *   OMGT_STATUS_SUCCESS - Get successful
+ *     OMGT_STATUS_ERROR - Error
+ */
+OMGT_STATUS_T
+omgt_pa_get_port_stats2(
+    struct omgt_port         *port,
+    STL_PA_IMAGE_ID_DATA     pm_image_id_query,
+    STL_LID                  lid,
+    uint8_t                  port_num,
+    STL_PA_IMAGE_ID_DATA    *pm_image_id_resp,
+    STL_PORT_COUNTERS_DATA  *port_counters,
+    uint32_t                  *flags,
+    uint32_t                   delta,
+    uint32_t                   user_cntrs
+    );
+
+
+
+/**
+ * @brief Get vf port statistics (counters). Supports 32 bit LIDs
+ *
+ * @param port                  Port to operate on.
+ * @param pm_image_id_query     Image ID of port counters to get.
+ * @param vf_name				Pointer to VF name.
+ * @param lid                   LID of node.
+ * @param port_num              Port number.
+ * @param pm_image_id_resp      Pointer to image ID of port counters returned.
+ * @param vf_port_counters      Pointer to vf port counters to fill.
+ * @param flags                 Pointer to flags
+ * @param delta                 1 for delta counters, 0 for raw image counters.
+ * @param user_cntrs            1 for running counters, 0 for image counters. (delta must be 0)
+ *
+ * @return
+ *   OMGT_STATUS_SUCCESS - Get successful
+ *     OMGT_STATUS_ERROR - Error
+ */
+OMGT_STATUS_T
+omgt_pa_get_vf_port_stats2(
+    struct omgt_port              *port,
+    STL_PA_IMAGE_ID_DATA          pm_image_id_query,
+    char				         *vf_name,
+    STL_LID                       lid,
+    uint8_t                        port_num,
+    STL_PA_IMAGE_ID_DATA         *pm_image_id_resp,
+    STL_PA_VF_PORT_COUNTERS_DATA *vf_port_counters,
+    uint32_t                       *flags,
+    uint32_t                        delta,
+    uint32_t                        user_cntrs
+    );
+
+
+/**
+ * @brief Get port statistics (counters). 
+ *
+ * @deprecated This function is deprecated and will be removed in a future release. 
+ * @see omgt_pa_get_port_stats2
  *
  * @param port                  Port to operate on. 
  * @param pm_image_id_query     Image ID of port counters to get. 
@@ -367,19 +522,22 @@ OMGT_STATUS_T
 omgt_pa_get_port_stats(
     struct omgt_port         *port,
     STL_PA_IMAGE_ID_DATA     pm_image_id_query,
-    uint16_t                   lid,
-    uint8_t                    port_num,
+    uint16_t                 lid,
+    uint8_t                  port_num,
     STL_PA_IMAGE_ID_DATA    *pm_image_id_resp,
     STL_PORT_COUNTERS_DATA  *port_counters,
     uint32_t                  *flags,
     uint32_t                   delta,
-	uint32_t                   user_cntrs
+    uint32_t                   user_cntrs
     );
 
 
 
 /**
  * @brief Get vf port statistics (counters)
+ *
+ * @deprecated This function is deprecated and will be removed in a future release. 
+ * @see omgt_pa_get_vf_port_stats2
  *
  * @param port                  Port to operate on.
  * @param pm_image_id_query     Image ID of port counters to get.
@@ -400,14 +558,14 @@ OMGT_STATUS_T
 omgt_pa_get_vf_port_stats(
     struct omgt_port              *port,
     STL_PA_IMAGE_ID_DATA          pm_image_id_query,
-	char				         *vf_name,
-    uint16_t                        lid,
-    uint8_t                         port_num,
+    char				         *vf_name,
+    uint16_t                       lid,
+    uint8_t                        port_num,
     STL_PA_IMAGE_ID_DATA         *pm_image_id_resp,
     STL_PA_VF_PORT_COUNTERS_DATA *vf_port_counters,
     uint32_t                       *flags,
     uint32_t                        delta,
-	uint32_t                        user_cntrs
+    uint32_t                        user_cntrs
     );
 
 /**

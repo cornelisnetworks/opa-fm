@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -49,6 +49,7 @@ static const char* IbMgmtClassToText(uint8 class)
 	case MCLASS_COMM_MGT: return "CM";
 	case MCLASS_SNMP: return "SNMP";
 	case MCLASS_CC: return "CCA";
+	case MCLASS_VFI_PM: return "PM";
 	default: return "Unknown";
 	}
 }
@@ -130,7 +131,7 @@ void PrintSmpHeader(PrintDest_t *dest, int indent, const SMP *smp)
 
 void FormatClassPortInfoCapMask(char buf[80], uint16 cmask)
 {
-	sprintf(buf, "%s%s",
+	snprintf(buf, 80, "%s%s",
 			(cmask & CLASS_PORT_CAPMASK_TRAP)?"Trap ":"",
 			(cmask & CLASS_PORT_CAPMASK_NOTICE)?"Notice ":"");
 }
@@ -191,8 +192,8 @@ void PrintClassPortInfo2(PrintDest_t *dest, int indent, const IB_CLASS_PORT_INFO
 	PrintFunc(dest, "%*s      FlowLabel: 0x%05x HopLimit: 0x%02x TClass: 0x%02x\n",
 				indent, "",
 				pClassPortInfo->u4.s.TrapFlowLabel,
-				pClassPortInfo->u4.s.TrapTClass,
-				pClassPortInfo->u5.s.TrapHopLimit);
+				pClassPortInfo->u5.s.TrapHopLimit,
+				pClassPortInfo->u4.s.TrapTClass);
 }
 
 void PrintClassPortInfo(PrintDest_t *dest, int indent, const IB_CLASS_PORT_INFO *pClassPortInfo)

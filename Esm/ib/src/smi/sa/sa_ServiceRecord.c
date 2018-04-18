@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -123,12 +123,12 @@ Status_t sa_ServiceRecInit(void) {
 	memset(&saServiceRecords, 0, sizeof(ServiceRecTable_t));
 	if ((status = vs_lock_init(&saServiceRecords.serviceRecLock, VLOCK_FREE, 
 		VLOCK_THREAD)) != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't initialize sa lock");
+		IB_FATAL_ERROR_NODUMP("can't initialize sa lock");
 	} else if (NULL == (saServiceRecords.serviceRecMap = 
 		cs_create_hashtable("sa_ServiceRec", 16, sa_ServiceRecHashFromKey, 
 		sa_ServiceRecCompare, CS_HASH_KEY_ALLOCATED))) {
 		status = VSTATUS_NOMEM;
-		IB_FATAL_ERROR("sa_main: Can't allocate subscriber hash table");
+		IB_FATAL_ERROR_NODUMP("sa_main: Can't allocate subscriber hash table");
 	}
 	return status;
 }
@@ -154,7 +154,7 @@ void sa_ServiceRecClear(void) {
     if (NULL == (saServiceRecords.serviceRecMap = 
                  cs_create_hashtable("sa_ServiceRec", 16, sa_ServiceRecHashFromKey, 
                                      sa_ServiceRecCompare, CS_HASH_KEY_ALLOCATED))) {
-        IB_FATAL_ERROR("sa_ServiceRecClear: Can't reallocate service record hash table");
+        IB_FATAL_ERROR_NODUMP("sa_ServiceRecClear: Can't reallocate service record hash table");
     }
 	(void)vs_unlock(&saServiceRecords.serviceRecLock);
 }
@@ -343,7 +343,7 @@ sa_ServiceRecord_GetTable(Mai_t *maip, uint32_t *records) {
 							reqPortp->state <= IB_PORT_DOWN ||
 							!smValidatePortPKey(srkeyp->servicep_key, reqPortp)) {
 							IB_LOG_WARN_FMT( "sa_ServiceRecord_GetTable", 
-								"Filter serviced record ID="FMT_U64" from lid 0x%.4X "
+								"Filter serviced record ID="FMT_U64" from lid 0x%.8X "
 								"due to pkey mismatch from request port",
 								osrp->serviceRecord.RID.ServiceID, maip->addrInfo.slid);
 							continue;
@@ -351,7 +351,7 @@ sa_ServiceRecord_GetTable(Mai_t *maip, uint32_t *records) {
 					}
 
 					/* IBTA 1.2 C15-0.2.2 - do not return real serviceKey if not trusted request */
-                    memset(srp->ServiceKey, 0, SERVICE_RECORD_KEY_COUNT);
+                    memset(srp->ServiceKey, 0, sizeof(srp->ServiceKey));
                 }
 				
 				srp->RID.Reserved = 0;
@@ -424,24 +424,24 @@ sa_IbServiceRecord_GetTable(Mai_t *maip, uint32_t *records) {
 			osrp = cs_hashtable_iterator_value(&itr);
 			answer = &osrp->serviceRecord;
 
-			if (samad.SaHdr.ComponentMask & SR_COMPONENTMASK_ID &&
+			if (samad.SaHdr.ComponentMask & IB_SERVICE_RECORD_COMP_SERVICEID &&
 				query.RID.ServiceID != answer->RID.ServiceID) {
 				continue;
-			} else if (samad.SaHdr.ComponentMask & SR_COMPONENTMASK_PKEY &&
+			} else if (samad.SaHdr.ComponentMask & IB_SERVICE_RECORD_COMP_SERVICEPKEY &&
 				query.RID.ServiceP_Key != answer->RID.ServiceP_Key) {
 				continue;
-			} else if (samad.SaHdr.ComponentMask & SR_COMPONENTMASK_GID &&
+			} else if (samad.SaHdr.ComponentMask & IB_SERVICE_RECORD_COMP_SERVICEGID &&
 				memcmp(query.RID.ServiceGID.Raw, 
 					answer->RID.ServiceGID.Raw, 
 					sizeof(IB_GID))) {
 				continue;
-			} else if (samad.SaHdr.ComponentMask & SR_COMPONENTMASK_LEASE &&
+			} else if (samad.SaHdr.ComponentMask & IB_SERVICE_RECORD_COMP_SERVICELEASE &&
 				query.ServiceLease != answer->ServiceLease) {
 				continue;
-			} else if (samad.SaHdr.ComponentMask & SR_COMPONENTMASK_KEY &&
+			} else if (samad.SaHdr.ComponentMask & IB_SERVICE_RECORD_COMP_SERVICEKEY &&
 				memcmp(query.ServiceKey, answer->ServiceKey, sizeof(query.ServiceKey))) {
 				continue;
-			} else if (samad.SaHdr.ComponentMask & SR_COMPONENTMASK_NAME &&
+			} else if (samad.SaHdr.ComponentMask & IB_SERVICE_RECORD_COMP_SERVICENAME &&
 				memcmp(query.ServiceName, answer->ServiceName, sizeof(query.ServiceName))) {
 				continue;
 			}
@@ -486,7 +486,7 @@ sa_IbServiceRecord_GetTable(Mai_t *maip, uint32_t *records) {
 						!smValidatePortPKey(srkeyp->servicep_key, reqPortp)) {
 						IB_LOG_WARN_FMT( "sa_IbServiceRecord_GetTable", 
 							"Filter serviced record ID="FMT_U64" from lid "
-							"0x%.4X due to pkey mismatch from request port",
+							"0x%.8X due to pkey mismatch from request port",
 							osrp->serviceRecord.RID.ServiceID, 
 							maip->addrInfo.slid);
 						continue;
@@ -494,7 +494,7 @@ sa_IbServiceRecord_GetTable(Mai_t *maip, uint32_t *records) {
 				}
 
 				/* IBTA 1.2 C15-0.2.2 - do not return real serviceKey if not trusted request */
-				memset(ibsrp->ServiceKey, 0, SERVICE_RECORD_KEY_COUNT);
+				memset(ibsrp->ServiceKey, 0, sizeof(ibsrp->ServiceKey));
 			}
 			/* put in outbut buffer */
 			sa_increment_and_pad((uint8_t**)&ibsrp, sizeof(IB_SERVICE_RECORD), 
@@ -684,7 +684,7 @@ sa_ServiceRecord_DoAdd(uint16_t slid, STL_SERVICE_RECORD *serviceRecordp,
     /* allocate a service record key for searching hash table */
     srkeyp = (ServiceRecKeyp) malloc(sizeof(ServiceRecKey_t));
     if (srkeyp == NULL) {
-        IB_FATAL_ERROR("sa_ServiceRecord_Add: Can't allocate service record key");
+        IB_FATAL_ERROR_NODUMP("sa_ServiceRecord_Add: Can't allocate service record key");
         return VSTATUS_NOMEM;
     }
     memcpy(&srkeyp->serviceGid, &serviceRecordp->RID.ServiceGID, sizeof(IB_GID));
@@ -695,7 +695,7 @@ sa_ServiceRecord_DoAdd(uint16_t slid, STL_SERVICE_RECORD *serviceRecordp,
 		/* C15-02-1.3 */
 		if (PKEY_VALUE(srkeyp->servicep_key) == 0) {
 			IB_LOG_WARN_FMT( "sa_ServiceRecord_Add", 
-				"Failed to ADD serviced record ID="FMT_U64" from lid 0x%.4X due to invalid pkey",
+				"Failed to ADD serviced record ID="FMT_U64" from lid 0x%.8X due to invalid pkey",
 				serviceRecordp->RID.ServiceID, slid);
 			free(srkeyp);
 			return(VSTATUS_BAD);
@@ -707,7 +707,7 @@ sa_ServiceRecord_DoAdd(uint16_t slid, STL_SERVICE_RECORD *serviceRecordp,
 			reqPortp->state <= IB_PORT_DOWN ||
 			!smValidatePortPKey(srkeyp->servicep_key, reqPortp)) {
 			IB_LOG_WARN_FMT( "sa_ServiceRecord_Add", 
-				"Failed to ADD serviced record ID="FMT_U64" from lid 0x%.4X due to pkey mismatch from request port",
+				"Failed to ADD serviced record ID="FMT_U64" from lid 0x%.8X due to pkey mismatch from request port",
 				serviceRecordp->RID.ServiceID, slid);
 			free(srkeyp);
 			return(VSTATUS_BAD);
@@ -717,7 +717,7 @@ sa_ServiceRecord_DoAdd(uint16_t slid, STL_SERVICE_RECORD *serviceRecordp,
 			servicePortp->state <= IB_PORT_DOWN ||
 			!smValidatePortPKey(srkeyp->servicep_key, servicePortp)) {
 			IB_LOG_WARN_FMT( "sa_ServiceRecord_Add", 
-				"Failed to ADD serviced record ID="FMT_U64" from lid 0x%.4X due to pkey mismatch from service port",
+				"Failed to ADD serviced record ID="FMT_U64" from lid 0x%.8X due to pkey mismatch from service port",
 				serviceRecordp->RID.ServiceID, slid);
 			free(srkeyp);
 			return(VSTATUS_BAD);
@@ -734,7 +734,7 @@ sa_ServiceRecord_DoAdd(uint16_t slid, STL_SERVICE_RECORD *serviceRecordp,
         if ((osrp = (OpaServiceRecordp) malloc(sizeof(OpaServiceRecord_t))) == NULL) {
             free(srkeyp);
             (void)vs_unlock(&saServiceRecords.serviceRecLock);
-            IB_FATAL_ERROR("sa_ServiceRecord_Add: Can't allocate Service Record hash entry");
+            IB_FATAL_ERROR_NODUMP("sa_ServiceRecord_Add: Can't allocate Service Record hash entry");
             IB_EXIT("sa_ServiceRecord_Add - memory allocation failure", VSTATUS_NOMEM);
             return VSTATUS_NOMEM;
         }
@@ -749,7 +749,7 @@ sa_ServiceRecord_DoAdd(uint16_t slid, STL_SERVICE_RECORD *serviceRecordp,
         if (!cs_hashtable_insert(saServiceRecords.serviceRecMap, srkeyp, osrp)) {
             (void)vs_unlock(&saServiceRecords.serviceRecLock);
             IB_LOG_ERROR_FMT( "sa_ServiceRecord_Add", 
-                   "Failed to ADD serviced record ID="FMT_U64", serviceName[%s] from lid 0x%.4X to service record hashtable",
+                   "Failed to ADD serviced record ID="FMT_U64", serviceName[%s] from lid 0x%.8X to service record hashtable",
                    osrp->serviceRecord.RID.ServiceID, osrp->serviceRecord.ServiceName, slid);
             free(srkeyp);
             free(osrp);
@@ -830,7 +830,7 @@ sa_IbServiceRecord_Add(Mai_t *maip, uint32_t *records) {
 
 	status = sa_ServiceRecord_DoAdd(maip->addrInfo.slid, &serviceRecord,
 							 records,
-							 0 != (samad.SaHdr.ComponentMask & SR_COMPONENTMASK_PKEY));
+							 0 != (samad.SaHdr.ComponentMask & IB_SERVICE_RECORD_COMP_SERVICEKEY));
 	if (*records == 1)
 		(void)memcpy((void *)sa_data, samad.Data, sizeof(IB_SERVICE_RECORD));
 				

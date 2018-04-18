@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -458,7 +458,7 @@ Status_t mai_wait_handle(IBhandle_t *ha, int count,
   int               rc,i;
 
   IB_ENTER("mai_wait_handle", ha, count, p_to[0], p_to[1]);
-
+  (void)(p_to); // remove unused warning.
  
   
   if (ha    == NULL || pfirst == NULL ||

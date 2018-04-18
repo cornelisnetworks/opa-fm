@@ -1,6 +1,6 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015, Intel Corporation
+# Copyright (c) 2015-2017, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -91,6 +91,10 @@ INCLUDE_TARGETS	= \
 				$(COMMON_SRCDIR)/stl_sd.h \
 				$(COMMON_SRCDIR)/stl_t.h \
 				$(COMMON_SRCDIR)/stl_types.h \
+				$(COMMON_SRCDIR)/stl_em_eostl.h \
+				$(COMMON_SRCDIR)/stl_ea_eostl.h \
+				$(COMMON_SRCDIR)/stl_eepha_eostl.h \
+				$(COMMON_SRCDIR)/stl_rmpp.h \
 				ib_debug_osd.h \
 				# Add more h hpp files here
 				# bldver_osd.h \

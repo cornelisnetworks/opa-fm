@@ -1,6 +1,6 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015, Intel Corporation
+# Copyright (c) 2015-2017, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -29,8 +29,8 @@
 
 #[ICS VERSION STRING: unknown]
 Name: opa-fm
-Version: 10.6.0.0
-Release: 132%{?dist}
+Version: 10.7.0.0
+Release: 141%{?dist}
 Summary: Intel Omni-Path Fabric Management Software
 
 License: GPLv2 or BSD
@@ -45,7 +45,6 @@ ExclusiveArch: x86_64
 
 Requires: rdma
 
-#BuildRequires: libibverbs-devel >= 1.1-1, libibumad-devel, libibmad-devel
 BuildRequires: __RPM_BLDRQ1
 
 __RPM_BLDRQ2

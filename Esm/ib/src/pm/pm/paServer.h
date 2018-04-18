@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT3 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -37,6 +37,8 @@ Status_t pa_getGroupListResp(Mai_t *maip, pa_cntxt_t* pa_cntxt);
 Status_t pa_getPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt);
 Status_t pa_getGroupInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt);
 Status_t pa_getGroupConfigResp(Mai_t *maip, pa_cntxt_t* pa_cntxt);
+Status_t pa_getGroupNodeInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt);
+Status_t pa_getGroupLinkInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt);
 Status_t pa_clrPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt);
 Status_t pa_clrAllPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt);
 Status_t pa_getPmConfigResp(Mai_t *maip, pa_cntxt_t* pa_cntxt);
@@ -44,6 +46,7 @@ Status_t pa_freezeImageResp(Mai_t *maip, pa_cntxt_t* pa_cntxt);
 Status_t pa_releaseImageResp(Mai_t *maip, pa_cntxt_t* pa_cntxt);
 Status_t pa_renewImageResp(Mai_t *maip, pa_cntxt_t* pa_cntxt);
 Status_t pa_getFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt);
+Status_t pa_getFocusPortsMultiSelectResp(Mai_t *maip, pa_cntxt_t* pa_cntxt);
 Status_t pa_getImageInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt);
 Status_t pa_moveFreezeImageResp(Mai_t *maip, pa_cntxt_t* pa_cntxt);
 Status_t pa_getVFListResp(Mai_t *maip, pa_cntxt_t* pa_cntxt);
@@ -52,6 +55,5 @@ Status_t pa_getVFConfigResp(Mai_t *maip, pa_cntxt_t* pa_cntxt);
 Status_t pa_getVFPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt);
 Status_t pa_clrVFPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt);
 Status_t pa_getVFFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt);
-
 
 #endif /* _PASERVER_H */

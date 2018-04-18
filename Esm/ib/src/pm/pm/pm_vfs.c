@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -52,25 +52,21 @@ void PmRemovePortFromVFIndex(PmPortImage_t *portImage, uint32 vfIndex,
 	}
 }
 
-static boolean PmIsPortImageInVF(PmPortImage_t *portImage, PmVF_t *vfp)
+static boolean PmIsPortImageInVF(PmPortImage_t *portImage, PmVF_t *vfp, int vfIdx)
 {
-	int i;
+	if (vfIdx != -1 && portImage->vfvlmap[vfIdx].pVF == vfp) return TRUE;
 
-	for (i=0; i<MAX_VFABRICS; i++) {
-		if (portImage->vfvlmap[i].pVF == vfp)
-			return TRUE;
-	}
 	return FALSE;
 }
 
-boolean PmIsPortInVF(Pm_t *pm, PmPort_t *pmportp,
-						PmPortImage_t *portImage, PmVF_t *vfp)
+boolean PmIsPortInVF(Pm_t *pm, PmPort_t *pmportp, PmPortImage_t *portImage,
+	PmVF_t *vfp, int vfIdx)
 {
 	// for non-Switch ports and switch port 0, active will be true
 	// but for other switch ports could be not active
 	// ports without a PMA are not tabulated
-	if (pmportp->u.s.PmaAvoid || ! portImage->u.s.active)
+	if (! portImage->u.s.active)
 		return FALSE;
-	return (PmIsPortImageInVF(portImage, vfp));
+	return (PmIsPortImageInVF(portImage, vfp, vfIdx));
 }
 

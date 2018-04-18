@@ -1,7 +1,7 @@
 #!/bin/bash
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015, Intel Corporation
+# Copyright (c) 2015-2017, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -78,6 +78,7 @@ Usage_full()
     echo "	${cmd} topology_file -c my_opamon.conf" >&2
     echo >&2
     echo "See the man page for \"opareport\" for the full set of options." >&2
+    echo "By design, the tool ignores \"-o/--output\" report option." >&2
     echo >&2
 	exit 0
 
@@ -109,24 +110,24 @@ ix=0
 /usr/sbin/opareport -x -d 10 -s -o errors -T "$@" | \
   /usr/sbin/opaxmlextract -d \; -e Rate -e Internal -e LinkDetails \
   -e CableLength -e CableLabel -e CableDetails -e Port.NodeGUID \
-  -e Port.PortGUID -e Port.PortNum -e Port.PortType -e Port.NodeDesc \
+  -e Port.PortGUID -e Port.PortNum -e Port.NodeType -e Port.NodeDesc \
   -e Port.PortDetails \
-  -e XmitData.Value -e XmitPkts.Value -e PortMulticastXmitPkts.Value \
-  -e RcvData.Value -e RcvPkts.Value -e MulticastRcvPkts.Value \
-  -e XmitWait.Value -e CongDiscards.Value -e XmitTimeCong.Value \
-  -e MarkFECN.Value -e RcvFECN.Value -e RcvBECN.Value \
-  -e RcvBubble.Value -e XmitWastedBW.Value -e XmitWaitData.Value \
-  -e LinkQualityIndicator.Value -e LocalLinkIntegrityErrors.Value \
-  -e RcvErrors.Value -e ExcessiveBufferOverruns.Value \
-  -e LinkErrorRecovery.Value -e LinkDowned.Value -e UncorrectableErrors.Value \
-  -e FMConfigErrors.Value -e XmitConstraintErrors.Value \
-  -e RcvConstraintErrors.Value -e RcvSwitchRelayErrors.Value \
-  -e XmitDiscards.Value -e RcvRemotePhysicalErrors.Value | \
+  -e XmitDataValue -e XmitPktsValue -e PortMulticastXmitPktsValue \
+  -e RcvDataValue -e RcvPktsValue -e MulticastRcvPktsValue \
+  -e XmitWaitValue -e CongDiscardsValue -e XmitTimeCongValue \
+  -e MarkFECNValue -e RcvFECNValue -e RcvBECNValue \
+  -e RcvBubbleValue -e XmitWastedBWValue -e XmitWaitDataValue \
+  -e LinkQualityIndicatorValue -e LocalLinkIntegrityErrorsValue \
+  -e RcvErrorsValue -e ExcessiveBufferOverrunsValue \
+  -e LinkErrorRecoveryValue -e LinkDownedValue -e UncorrectableErrorsValue \
+  -e FMConfigErrorsValue -e XmitConstraintErrorsValue \
+  -e RcvConstraintErrorsValue -e RcvSwitchRelayErrorsValue \
+  -e XmitDiscardsValue -e RcvRemotePhysicalErrorsValue | \
   while read line
 do
   case $ix in
   0)
-    echo $line";"`echo $line | cut -d \; -f 8-`
+    echo $line";"`echo $line | cut -d \; -f 7-`
     ix=$((ix+1))
     ;;
 
@@ -136,7 +137,7 @@ do
     ;;
 
   2)
-    line2=`echo $line | cut -d \; -f 8-`
+    line2=`echo $line | cut -d \; -f 7-`
     echo $line1";"$line2
     ix=1
     ;;

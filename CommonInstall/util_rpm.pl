@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015, Intel Corporation
+# Copyright (c) 2015-2017, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -73,6 +73,12 @@ if ( "$RPM_DIST" eq "" ) {
 }
 sub rpm_query_release_pkg($);
 my $RPM_DIST_REL = rpm_query_release_pkg($RPM_DIST);
+
+# return array of cmds for verification during init
+sub rpm_get_cmds_for_verification()
+{
+	return ("/bin/rpm"); # Command paths
+}
 
 # version string for kernel used in RPM filenames uses _ instead of -
 sub rpm_tr_os_version($)

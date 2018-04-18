@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -455,4 +455,19 @@ int bitset_test_intersection(bitset_t * a, bitset_t * b) {
 	}
 
 	return 0;
+}
+
+int bitset_set_intersection(bitset_t * a, bitset_t * b, bitset_t * result) {
+	int i;
+
+	if (!a->bits_m || !b->bits_m || !result->bits_m) return -1;
+	if (a->nwords_m != b->nwords_m || a->nwords_m != result->nwords_m) return -1;
+
+	for (i = 0; i < a->nwords_m; ++i) {
+		result->bits_m[i] = a->bits_m[i] & b->bits_m[i];
+	}
+
+	result->nset_m = count_nset(result);
+
+	return result->nset_m;
 }

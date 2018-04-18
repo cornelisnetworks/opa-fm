@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -549,6 +549,36 @@ invalid:
 	return;
 }
 
+static void ExpectedPortXmlParserEndPortNum(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	uint8 value;
+
+	if (IXmlParseUint8(state, content, len, &value)) {
+		if (value > 254) {
+			IXmlParserPrintError(state, "PortNum must be in range [0,254]");
+		} else {
+			((ExpectedPort *)object)->PortNum = value;
+		}
+	}
+}
+
+static void ExpectedPortXmlParserEndLmc(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	uint8 value;
+
+	if (IXmlParseUint8(state, content, len, &value))
+		((ExpectedPort *)object)->lmc = value;
+}
+
+static IXML_FIELD ExpectedPortFields[] = {
+	{ tag:"PortNum", format:'u', end_func:ExpectedPortXmlParserEndPortNum },
+	{ tag:"LID", format:'h', IXML_FIELD_INFO(ExpectedPort, lid) },
+	{ tag:"LMC", format:'u', end_func:ExpectedPortXmlParserEndLmc },
+	{ tag:"PortGUID", format:'h', IXML_FIELD_INFO(ExpectedPort, PortGuid) },
+	{ NULL }
+};
+
+
 /****************************************************************************/
 /* Node Input/Output functions */
 
@@ -601,6 +631,19 @@ static const char *FormatExpectedNode(ExpectedNode *enodep)
 
 /* <Node> fields */
 
+static void *ExpectedPortXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr)
+{
+	ExpectedPort *eportp = MemoryAllocate2AndClear(sizeof(ExpectedPort),
+		IBA_MEM_FLAG_PREMPTABLE, MYTAG);
+
+	if (!eportp) {
+		IXmlParserPrintError(state, "Unable to allocate memory");
+		return NULL;
+	}
+
+	return eportp;
+}
+
 // check enodep->ports size and grow as needed to accomidate adding portNum
 static FSTATUS ExpectedNodePrepareSize(ExpectedNode *enodep, uint8 portNum)
 {
@@ -643,10 +686,47 @@ static ExpectedPort *ExpectedNodeGetPort(ExpectedNode *enodep, uint8 portNum)
 		return enodep->ports[portNum];
 }
 
+static void ExpectedPortXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	ExpectedNode *enodep = (ExpectedNode*)parent;
+	ExpectedPort *eportp = (ExpectedPort*)object;
+
+	if (!valid)
+		goto invalid;
+
+	switch (ExpectedNodeAddPort(enodep, eportp)) {
+	case FSUCCESS:
+		break;
+	case FINVALID_PARAMETER:
+		break;
+	case FINSUFFICIENT_MEMORY:
+		IXmlParserPrintError(state, "Unable to allocate memory");
+		goto invalid;
+		break;
+	case FDUPLICATE:
+		// depending on order of tags, we may not yet know the complete enodep
+		IXmlParserPrintError(state, "Duplicate PortNums (%u) found in Node: %s\n", eportp->PortNum, FormatExpectedNode(enodep));
+		goto invalid;
+		break;
+	default:	// unexpected
+		// depending on order of tags, we may not yet know the complete enodep
+		IXmlParserPrintError(state, "Unable to add port %u to Node: %s\n", eportp->PortNum, FormatExpectedNode(enodep));
+		goto invalid;
+		break;
+	}
+
+	enodep->ports[eportp->PortNum] = eportp;
+	return;
+
+invalid:
+	MemoryDeallocate(eportp);
+}
+
 static IXML_FIELD ExpectedNodeFields[] = {
 	{ tag:"NodeGUID", format:'h', IXML_FIELD_INFO(ExpectedNode, NodeGUID) },
 	{ tag:"NodeDesc", format:'p', IXML_P_FIELD_INFO(ExpectedNode, NodeDesc, STL_NODE_DESCRIPTION_ARRAY_SIZE) },
 	{ tag:"NodeDetails", format:'p', IXML_P_FIELD_INFO(ExpectedNode, details, NODE_DETAILS_STRLEN) },
+	{ tag:"Port", format:'k', subfields:ExpectedPortFields, start_func:ExpectedPortXmlParserStart, end_func:ExpectedPortXmlParserEnd },
 	{ NULL }
 };
 
@@ -1143,19 +1223,22 @@ static FSTATUS TopologyValidateLinkPort(FabricData_t *fabricp, ExpectedLink *eli
 		return FERROR;
 	}
 
-	// It is valid to omit the port number.  On strict validation this
-	// is unacceptable, but on looser validation it is ok
 	if (! portselp->gotPortNum) {
-		if (TOPOVAL_STRICT == validation) {
-			fprintf(stderr, "Topology file line %"PRIu64": Link port specification with no PortNum: %s\n", elinkp->lineno, FormatPortSelector(portselp));
-			return FINVALID_PARAMETER;
-		}
+		fprintf(stderr, "Topology file line %"PRIu64": Link port specification with no PortNum: %s\n", elinkp->lineno, FormatPortSelector(portselp));
+		return FINVALID_PARAMETER;
 	} else {
 		//	store a pointer to the ExpectedLink in the ExpectedNode to allow
 		//	for constant time lookup later
 		ExpectedPort *eportp = ExpectedNodeGetPort(enodep, portselp->PortNum);
-		if (NULL == eportp) {
-			// did not have port in enode yet, we'll add it here
+		if (TOPOVAL_STRICT == validation) {
+			if(NULL == eportp ) {
+				fprintf(stderr, "Topology file line %"PRIu64": Referenced port %u not specified in Node (line %"PRIu64"): %s\n",
+					elinkp->lineno, portselp->PortNum,
+					enodep->lineno, FormatExpectedNode(enodep));
+				return FERROR;
+			}
+		} else if (NULL == eportp) {
+			// did not have port in enode section, we'll add it here
 			eportp = (ExpectedPort*)MemoryAllocate2AndClear(sizeof(ExpectedPort), IBA_MEM_FLAG_PREMPTABLE, MYTAG);
 			if (NULL == eportp)
 				goto unable2add;
@@ -1265,6 +1348,20 @@ static FSTATUS TopologyValidate(FabricData_t *fabricp, int quiet, TopoVal_t vali
 	if(QListHead(&fabricp->ExpectedLinks) == NULL) {
 		fprintf(stderr, "Topology file does not have link definitions\n");
 		return FERROR;
+	}
+
+	// Validate that all SW0's have matching Node and Port GUIDs.
+	// This is meant to catch hand-edited topologies with errorneous switch
+	// GUIDs as SW0 is not checked by pre-defined topology.
+	for(it = QListHead(&fabricp->ExpectedSWs); it != NULL; it = QListNext(&fabricp->ExpectedSWs, it)) {
+		ExpectedNode *enodep = PARENT_STRUCT(it, ExpectedNode, ExpectedNodesEntry);
+        	if (enodep->portsSize > 0 && enodep->ports[0] != NULL
+				&& enodep->ports[0]->PortGuid && enodep->NodeGUID
+				&& enodep->ports[0]->PortGuid != NodeGUIDtoPortGUID(enodep->NodeGUID, 0)) {
+			fprintf(stderr, "Topology file line %"PRIu64": mismatched NodeGUID and PortGUID for switch port 0: %s\n", enodep->lineno, FormatExpectedNode(enodep));
+			if (TOPOVAL_SOMEWHAT_STRICT <= validation)
+				status = FERROR;
+		}
 	}
 
 	//Validate each link has a matching node entry, and ensure

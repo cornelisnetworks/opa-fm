@@ -1,6 +1,6 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015, Intel Corporation
+# Copyright (c) 2015-2017, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -63,9 +63,20 @@ DEFFILE			=
 INCLUDE_TARGETS	= \
 				# Add more h hpp files here
 # Non-compiled files
-MISC_FILES		= switches opaff.xml allhosts-sample chassis-sample esm_chassis-sample hosts-sample switches-sample ports-sample osid_wrapper opaff.xml-sample mac_to_dhcp opa_ca_openssl.cnf opa_comp_openssl.cnf opa_ca_openssl.cnf-sample opa_comp_openssl.cnf-sample
+MISC_FILES		= switches allhosts-sample chassis-sample esm_chassis-sample \
+				hosts-sample switches-sample ports-sample osid_wrapper \
+				mac_to_dhcp opa_ca_openssl.cnf opa_comp_openssl.cnf \
+				opa_ca_openssl.cnf-sample opa_comp_openssl.cnf-sample
 # expect files
-TCL_SOURCES		= chassis_reboot.exp reboot.exp sacache.exp load.exp chassis_upgrade.exp chassis_fmconfig.exp chassis_fmcontrol.exp chassis_fmgetconfig.exp chassis_fmgetsecurityfiles.exp chassis_fmsecurityfiles.exp upgrade.exp configipoib.exp mpiperf.exp mpiperfdeviation.exp ipoibping.exp ff_function.exp switch_upgrade.exp switch_dump.exp switch_reboot.exp switch_info.exp switch_hwvpd.exp switch_ping.exp switch_fwverify.exp switch_capture.exp chassis_configure.exp switch_configure.exp  switch_getconfig.exp chassis_getconfig.exp
+TCL_SOURCES		= chassis_reboot.exp reboot.exp sacache.exp load.exp \
+				chassis_upgrade.exp chassis_fmconfig.exp chassis_fmcontrol.exp \
+				chassis_fmgetconfig.exp chassis_fmgetsecurityfiles.exp \
+				chassis_fmsecurityfiles.exp upgrade.exp configipoib.exp \
+				mpiperf.exp mpiperfdeviation.exp ipoibping.exp ff_function.exp \
+				switch_upgrade.exp switch_dump.exp switch_reboot.exp \
+				switch_info.exp switch_hwvpd.exp switch_ping.exp \
+				switch_fwverify.exp switch_capture.exp chassis_configure.exp \
+				switch_configure.exp switch_getconfig.exp chassis_getconfig.exp
 # all source files
 SOURCES			= $(CFILES) $(CCFILES) $(LFILES) $(RSCFILES) $(IDLFILE)
 # Source files to include in DSP File
@@ -167,9 +178,6 @@ opaswitchadmin: opatest
 switches:	ibnodes
 	$(CP) $< $@
 
-opaff.xml:	tls
-	$(CP) $< $@
-
 osid_wrapper:
 	echo $(BUILD_TARGET_OS_ID) > osid_wrapper
 
@@ -186,8 +194,8 @@ include $(TL_DIR)/Makerules/Maketargets.install
 #include $(TL_DIR)/Makerules/Maketargets.stage
 STAGE::
 	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_FASTFABRIC_DIR) opasetupssh opascpall opauploadall opadownloadall opapingall opacmdall opashowallports opacaptureall opahostadmin opachassisadmin opaswitchadmin opafabricanalysis opahostsmanalysis opaesmanalysis opachassisanalysis opaallanalysis opafastfabric opaswenableall opaswdisableall opaexpandfile ff_funcs opafastfabric.conf.def show_counts
-	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_IBTOOLS_DIR) tcl_proc $(TCL_SOURCES) opafastfabric.conf.def ff_funcs ports hosts allhosts switches chassis esm_chassis opaff.xml osid_wrapper
-	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_FASTFABRIC_DIR)/samples allhosts-sample chassis-sample hosts-sample switches-sample ports-sample opaff.xml-sample mac_to_dhcp opafastfabric.conf-sample opa_ca_openssl.cnf-sample opa_comp_openssl.cnf-sample esm_chassis-sample
+	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_IBTOOLS_DIR) tcl_proc $(TCL_SOURCES) opafastfabric.conf.def ff_funcs ports hosts allhosts switches chassis esm_chassis osid_wrapper
+	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_FASTFABRIC_DIR)/samples allhosts-sample chassis-sample hosts-sample switches-sample ports-sample mac_to_dhcp opafastfabric.conf-sample opa_ca_openssl.cnf-sample opa_comp_openssl.cnf-sample esm_chassis-sample
 
 # Unit test execution
 #include $(TL_DIR)/Makerules/Maketargets.runtest

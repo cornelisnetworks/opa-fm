@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -39,6 +39,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "opamgt.h"
 
 #include "iba/ib_types.h"
+
+#define OMGT_STL_OUI    (0x66A)
+
 #include "iba/ib_generalServices.h"
 
 #ifndef OMGT_OUTPUT_ERROR
@@ -115,6 +118,15 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 OMGT_STATUS_T omgt_port_get_port_sm_lid(struct omgt_port *port, uint32_t *sm_lid);
 /**
+ * @brief Gets Port's LMC for the given port.
+ * Retrieves port's LMC for an open in-band port.
+ * @param port           previously initialized port object for an in-band
+ *  					 connection
+ * @param port_lmc       LMC to be retruned
+ * @return OMGT_STATUS_T
+ */
+OMGT_STATUS_T omgt_port_get_port_lmc(struct omgt_port *port, uint32_t *port_lmc);
+/**
  * @brief Gets Port's SM SL for the given port.
  * Retrieves port's SM sl for an open in-band port.
  * @param port           previously initialized port object for an in-band
@@ -125,14 +137,26 @@ OMGT_STATUS_T omgt_port_get_port_sm_lid(struct omgt_port *port, uint32_t *sm_lid
 OMGT_STATUS_T omgt_port_get_port_sm_sl(struct omgt_port *port, uint8_t *sm_sl);
 
 /**
- * @brief Gets Port's SM SL for the given port.
- * Retrieves port's SM sl for an open in-band port.
+ * @brief Gets Port's NodeType for the given port.
+ * Retrieves port's NodeType for an open in-band port.
  * @param port           previously initialized port object for an in-band
  *  					 connection
  * @param node_type      Node Type of the omgt_port
  * @return OMGT_STATUS_T
  */
 OMGT_STATUS_T omgt_port_get_node_type(struct omgt_port *port, uint8_t *node_type);
+
+/* Create OPA GID from 32 bit LID */
+static inline uint64_t omgt_create_gid(STL_LID lid)
+{
+	return (uint64_t) OMGT_STL_OUI << 40 | lid;
+}
+
+/* Check if lid is beyond the IB Unicast LID range */
+static inline int omgt_is_ext_lid(STL_LID lid)
+{
+	return !!((lid > LID_UCAST_END) && lid != STL_LID_PERMISSIVE);
+}
 
 /**
  * Gets the ISSM device corresponding to the specified port.
@@ -181,7 +205,7 @@ extern int omgt_find_pkey(struct omgt_port *port, uint16_t pkey);
  * @return pkey     success 
  *         0        Failure  (Not mgmt allowed for request)
  */
-extern uint16_t omgt_get_mgmt_pkey(struct omgt_port *port, uint16_t dlid, uint8_t hopCnt);
+extern uint16_t omgt_get_mgmt_pkey(struct omgt_port *port, STL_LID dlid, uint8_t hopCnt);
 
 
 /** =========================================================================
@@ -237,7 +261,7 @@ int omgt_bind_classes(struct omgt_port *port, struct omgt_class_args *mgmt_class
  * Also used to return address information on received MAD's
  */
 struct omgt_mad_addr {
-	uint32_t lid;
+	STL_LID lid;
 	uint32_t qpn;
 	uint32_t qkey;
 	uint16_t pkey;
@@ -249,6 +273,7 @@ struct omgt_mad_addr {
 };
 enum omgt_mad_addr_flags {
 	OMGT_MAD_ADDR_SM = (1 << 0), /* use SM addr values defined in PortInfo (SMLID/SMSL)*/
+	OMGT_MAD_ADDR_16B = (1 << 1), /* Force L2 layer to use 16B packets */
 };
 #define OMGT_DEFAULT_PKEY        0xffff
 /**
@@ -408,7 +433,6 @@ FSTATUS omgt_mad_refresh_port_details(struct omgt_port *port);
 /** =========================================================================
  * Generic HELPER FUNCTIONs
  */
-
 
 /**
  * @brief Get the HFI number

@@ -1,6 +1,6 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015, Intel Corporation
+# Copyright (c) 2015-2017, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -73,6 +73,7 @@
 IB_STACK=$(BUILD_WITH_STACK)
 NO_BUILD_SUFFIX=n
 PROJ_SM_DIR=$(TL_DIR)/$(PROJ_FILE_DIR)/ib
+DEFS_VERSION=stl1
 
 #-----------------------------------------------------------------------------#
 # Platform specific definitions:

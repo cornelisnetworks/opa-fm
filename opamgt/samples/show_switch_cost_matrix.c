@@ -98,7 +98,7 @@ int main(int argc, char **argv)
 	omgt_sa_selector_t selector;
 
 	int num_classportinfo_records, num_fabricinfo_records, num_cost_records, num_switch_records;
-	int num_nodes;
+	int num_nodes = 0;
 
 	STL_CLASS_PORT_INFO *classportinfo_records = NULL;
 	STL_FABRICINFO_RECORD *fabricinfo_records = NULL;
@@ -109,7 +109,7 @@ int main(int argc, char **argv)
 	size_t notice_len = 0;
 	struct omgt_port *context = NULL;
 
-	uint16_t **cost;
+	uint16_t **cost = NULL;
 	int i,j;
 
 	if (argc < 2) {
@@ -156,7 +156,7 @@ int main(int argc, char **argv)
 		goto close_port;
 	}
 
-	opa_switch *head_switch, *temp_switch = NULL;
+	opa_switch *head_switch = NULL, *temp_switch = NULL;
 	while(!exitcode){
 		selector.InputType = InputTypeNoInput;
 

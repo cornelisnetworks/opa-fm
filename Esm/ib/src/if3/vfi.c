@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -75,24 +75,7 @@ vfi_MngrQueryService(ManagerInfo_t * mi, VFI_SERVICE_RECORD * service,
  *=========================================================================
  */
 
-#define	SA_KEY			0
-
-#define	SVC_SA_GETA_SERV_CMASK	(SR_COMPONENTMASK_NAME | SR_COMPONENTMASK_ID)
-//#define	SVC_SA_GETA_SERV_CMASK	0xa0	/* service name, serivce ID */
-
-#define	SVC_SA_GET_SERV_CMASK	(SR_COMPONENTMASK_NAME | SR_COMPONENTMASK_GID | SR_COMPONENTMASK_ID)
-//#define	SVC_SA_GET_SERV_CMASK	0xe0	/* service name, service GID, serivce ID */
-
-#define	SVC_SA_DELA_SERV_CMASK	(SR_COMPONENTMASK_NAME | SR_COMPONENTMASK_ID)
-//#define	SVC_SA_DELA_SERV_CMASK	0xa0	/* service name, serivce ID */
-
-#define	SVC_SA_DEL_SERV_CMASK	(SR_COMPONENTMASK_NAME | SR_COMPONENTMASK_GID | SR_COMPONENTMASK_ID)
-//#define	SVC_SA_DEL_SERV_CMASK	0xe0	/* service name, service GID, serivce ID */
-
-//#define INVALID_MASK_BITS ~(0xFE)
-
-//#define	SVC_SA_GET_PATH_CMASK  (PR_COMPONENTMASK_SGID | PR_COMPONENTMASK_DGID | PR_COMPONENTMASK_PATHS)
-#define	SVC_SA_GET_PATH_CMASK  0x000000000000100cull	/* SGID, DGID, numPath */
+#define	SVC_SA_GET_PATH_CMASK  (IB_PATH_RECORD_COMP_NUMBPATH | IB_PATH_RECORD_COMP_SGID | IB_PATH_RECORD_COMP_DGID)
 
 typedef struct {
     int             cnt;
@@ -462,8 +445,8 @@ vfi_MngrQuerySrvPath(ManagerInfo_t * mi,
         
         
         {
-            uint16_t        lid, 
-               sl; 
+            IB_LID   lid; 
+            uint16_t sl; 
             
             for (plen = 0; plen < (uint32_t)(*count); plen++) {
                 (void)BSWAPCOPY_IB_PATH_RECORD((IB_PATH_RECORD *)buffer + plen * (sizeof(IB_PATH_RECORD)), 

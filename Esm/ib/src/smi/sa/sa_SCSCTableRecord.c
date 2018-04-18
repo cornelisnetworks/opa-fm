@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -105,7 +105,7 @@ sa_SCSCTableRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 }
 
 Status_t
-sa_SCSCTableRecord_Set(uint8_t *slp, Node_t *nodep, Port_t *in_portp, Port_t *out_portp, STL_LID lid) {
+sa_SCSCTableRecord_Set(uint8_t *slp, Node_t *nodep, Port_t *in_portp, Port_t *out_portp, STL_LID lid, int extended) {
 	STL_SC_MAPPING_TABLE_RECORD scSCTableRecord;
 	int i;
 
@@ -121,12 +121,14 @@ sa_SCSCTableRecord_Set(uint8_t *slp, Node_t *nodep, Port_t *in_portp, Port_t *ou
 
 	memset((char *)&scSCTableRecord, 0, sizeof(scSCTableRecord));
 
+	STL_SCSCMAP *ingressMap = sm_lookupPortDataSCSCMap(in_portp, (out_portp->index-1), extended);
+
 	scSCTableRecord.RID.LID = lid;
     if ((nodep->nodeInfo.NodeType == NI_TYPE_SWITCH) && (in_portp->index>0) && (out_portp->index>0)) {
         scSCTableRecord.RID.InputPort = in_portp->index; 
         scSCTableRecord.RID.OutputPort = out_portp->index;
-		if (in_portp->portData->scscMap) {
-        	memcpy(&scSCTableRecord.Map, &in_portp->portData->scscMap[out_portp->index-1], sizeof(scSCTableRecord.Map));
+		if (ingressMap) {
+			memcpy(&scSCTableRecord.Map, ingressMap, sizeof(scSCTableRecord.Map));
 		} else {
 			// Hard coded for POD Values as these are not touched or fetched by SM in PRR
 			// [They are hard-coded for the unity fn.]
@@ -158,7 +160,7 @@ sa_SCSCTableRecord_GetTable(Mai_t *maip, uint32_t *records) {
 	bool_t		checkLid;
 	bool_t		checkInPort;
 	bool_t		checkOutPort;
-	STL_LID		lid = 0;
+    STL_LID     lid = 0;
 	STL_LID		portLid=0;
 	uint16_t	inPort=0;
 	uint16_t	outPort=0;
@@ -215,10 +217,8 @@ sa_SCSCTableRecord_GetTable(Mai_t *maip, uint32_t *records) {
 //
     (void)vs_rdlock(&old_topology_lock);
 
-    for_all_nodes(&old_topology, nodep) {
-		// SC2SC only applicable to switch external ports
-        if (nodep->nodeInfo.NodeType != NI_TYPE_SWITCH) continue;
-
+    // SC2SC only applicable to switch external ports
+    for_all_switch_nodes(&old_topology, nodep) {
         // Update lid for Switches
         Port_t * port0 = sm_get_port(nodep, 0);
         if (!sm_valid_port(port0) || port0->state <= IB_PORT_DOWN) continue;
@@ -246,12 +246,14 @@ sa_SCSCTableRecord_GetTable(Mai_t *maip, uint32_t *records) {
                     goto done;
                 }
 
-                if ((status = sa_SCSCTableRecord_Set(data, nodep, in_portp, out_portp, lid)) != VSTATUS_OK) {
+                if ((status = sa_SCSCTableRecord_Set(data, nodep, in_portp, out_portp, lid, 0)) != VSTATUS_OK) {
                     maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
                     goto done;
                 }
 
                 (void)sa_template_test_mask(samad.header.mask, samad.data, &data, sizeof(STL_SC_MAPPING_TABLE_RECORD), bytes, records);
+
+
 				if (checkOutPort && out_portp->index == outPort) break;
             }
 			if (checkInPort && in_portp->index == inPort) break;

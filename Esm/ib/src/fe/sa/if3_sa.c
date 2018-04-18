@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -121,14 +121,14 @@ fe_if3_get_node_by_port_guid(uint64_t portguid, STL_NODE_RECORD* nr)
   memset(&nrec,0,sizeof(nrec));
 
   /* Getting  all nodes */
-  pack.aid = SA_NODE_RECORD;
+  pack.aid = STL_SA_ATTR_NODE_RECORD;
   pack.amod = 0;
   /* match on node Guid */
   nrec.NodeInfo.PortGUID = portguid;
   BSWAPCOPY_STL_NODE_RECORD(&nrec, (STL_NODE_RECORD *)fe_sa_send_buf);
 
-  pack.method = SA_CM_GETTABLE;
-  pack.mask = IB_NODE_RECORD_COMP_PORTGUID;     // match on portGuid
+  pack.method = SUBN_ADM_GETTABLE;
+  pack.mask = STL_NODE_RECORD_COMP_PORTGUID;     // match on portGuid
   pack.recsize = sizeof(STL_NODE_RECORD);
   pack.rec = fe_sa_send_buf;
   pack.data = fe_sa_recv_buf;
@@ -184,7 +184,7 @@ uint32_t
 fe_if3_sa_check()
 { 
     Packet_t pack; 
-    ClassPortInfo_t cpinfo; 
+    STL_CLASS_PORT_INFO cpinfo; 
     uint32_t rc = FE_SUCCESS;  
     
     IB_ENTER(__func__, 0, 0, 0, 0);
@@ -192,9 +192,9 @@ fe_if3_sa_check()
     memset(&cpinfo, 0, sizeof(cpinfo)); 
     
     // initialize packet for ClassPortInfo query
-    pack.aid = SA_CLASSPORTINFO; 
+    pack.aid = STL_SA_ATTR_CLASS_PORT_INFO; 
     pack.amod = 0; 
-    pack.method = SA_CM_GET; 
+    pack.method = SUBN_ADM_GET; 
     //pack.endRid = 0xFFFFFFFF;
     pack.mask = 0; 
     pack.rec = (uint8_t *)&cpinfo; 
@@ -214,246 +214,180 @@ fe_if3_sa_check()
     return rc;
 }
 
-uint32_t
-fe_if3_subscribe_sa()
-{ 
+FSTATUS fe_register_trap(uint16 trap_num)
+{
+	FSTATUS status;
+
+	IB_ENTER(__func__, 0, 0, 0, 0);
 #ifdef IB_STACK_OPENIB
-  FSTATUS status;
-  
-  IB_ENTER(__func__,0,0,0,0);
-  
-  status = omgt_sa_register_trap(fe_omgt_session,MAD_SMT_PORT_UP,NULL);
-  if (status != FSUCCESS) {
-    IB_LOG_INFINI_INFO("Failed to register for PORT UP notices, status:", status);
-    IB_EXIT(__func__, FE_NO_RETRIEVE);
-    return FE_NO_RETRIEVE;
-  }
-  
-  status = omgt_sa_register_trap(fe_omgt_session,MAD_SMT_PORT_DOWN,NULL);
-  if (status != FSUCCESS) {
-    IB_LOG_INFINI_INFO("Failed to register for PORT DOWN notices, status:", status);
-    IB_EXIT(__func__, FE_NO_RETRIEVE);
-    return FE_NO_RETRIEVE;
-  }
-  
-#else
 
-  // TBD TODD - replace with calls to IbAccess sd to register for notices
-    SA_MAD mad;
-  uint32_t rc;
-  uint32_t sz = FE_SA_RECV_BUF_SIZE, madRc = 0;
-  STL_INFORM_INFO info;
+	status = omgt_sa_register_trap(fe_omgt_session, trap_num, NULL);
+	if (status != FSUCCESS) {
+		IB_LOG_INFINI_INFO_FMT(__func__, "Failed to register for Trap %u notices, status: %u",
+			trap_num, status);
+		IB_EXIT(__func__, status);
+		return status;
+	}
+#else /* IB_STACK_OPENIB */
+	Status_t rc = VSTATUS_OK;
 
-  IB_ENTER(__func__,0,0,0,0);
-  memset(&info,0,sizeof(info)); 
-    
-    // subscibe for Port Down 65
-    info.LIDRangeBegin = STL_LID_PERMISSIVE;
-  info.IsGeneric = 1;
-  info.Subscribe = 1;
-  info.Type = TRAP_ALL;
-  info.u.Generic.TrapNumber = MAD_SMT_PORT_DOWN;
-  info.u.Generic.u1.s.RespTimeValue = 18;
-  info.u.Generic.u2.s.ProducerType = INFORMINFO_PRODUCERTYPE_SM; 
-    
-    memset((void *)(&mad), 0, sizeof(mad)); 
-    
-    // initialize SA MAD header fields    
-    SA_MAD_SET_HEADER(&mad, SM_KEY, 0); 
-    
-    // initialize the commom mad header fields of the SA MAD
-    MAD_SET_METHOD_TYPE(&mad, SUBN_ADM_SET); 
-    MAD_SET_VERSION_INFO(&mad, STL_BASE_VERSION, MCLASS_SUBN_ADM, STL_SA_CLASS_VERSION); 
-    MAD_SET_ATTRIB_ID(&mad, SA_ATTRIB_INFORM_INFO); 
-    
-    // initialize SA MAD payload
-    BSWAPCOPY_STL_INFORM_INFO(&info, (STL_INFORM_INFO *)&mad.Data); 
-    
-    // send command to the SA
-    rc = if3_mngr_send_mad(fdsa,&mad, sizeof(STL_INFORM_INFO),fe_sa_recv_buf,&sz,&madRc, NULL, NULL);
-  if (rc != VSTATUS_OK || madRc != 0) {
-      if (rc != VSTATUS_OK) {
-          IB_LOG_INFINI_INFORC("Failed when trying to subscribe, rc:", rc);
-      } else {
-          IB_LOG_INFINI_INFO("Invalid status when subscribing, status=", madRc);
-      }
-      rc = FE_NO_RETRIEVE;
-      IB_EXIT(__func__,rc);
-      return rc;
-  } else {
-        // subscibe for Port Up 64
-        memset(&info,0,sizeof(info));
-      info.LIDRangeBegin = STL_LID_PERMISSIVE;
-      info.IsGeneric = 1;
-      info.Subscribe = 1;
-      info.Type = TRAP_ALL;
-      info.u.Generic.TrapNumber = MAD_SMT_PORT_UP;
-      info.u.Generic.u1.s.RespTimeValue = 18;
-      info.u.Generic.u2.s.ProducerType = INFORMINFO_PRODUCERTYPE_SM; 
-        
-        memset((void *)(&mad), 0, sizeof(mad)); 
-        
-        // initialize SA MAD header fields    
-        SA_MAD_SET_HEADER(&mad, SM_KEY, 0); 
-        
-        // initialize the commom mad header fields of the SA MAD
-        MAD_SET_METHOD_TYPE(&mad, SUBN_ADM_SET); 
-        MAD_SET_VERSION_INFO(&mad, STL_BASE_VERSION, MCLASS_SUBN_ADM, STL_SA_CLASS_VERSION); 
-        MAD_SET_ATTRIB_ID(&mad, SA_ATTRIB_INFORM_INFO); 
-        
-        // initialize SA MAD payload
-        BSWAPCOPY_STL_INFORM_INFO(&info, (STL_INFORM_INFO *)&mad.Data); 
-        
-        // send command to the SA
-        rc = if3_mngr_send_mad(fdsa,&mad, sizeof(STL_INFORM_INFO),fe_sa_recv_buf,&sz,&madRc, NULL, NULL);
-      if (rc != VSTATUS_OK || madRc != 0) {
-          if (rc != VSTATUS_OK) {
-              IB_LOG_INFINI_INFORC("Failed when trying to subscribe, rc:", rc);
-          } else {
-              IB_LOG_INFINI_INFO("Invalid status when subscribing, status=", madRc);
-          }
-          rc = FE_NO_RETRIEVE;
-          IB_EXIT(__func__,rc);
-          return rc;
-      }
-  }
-    
-    // create filters to listen for traps now
-    rc = mai_filter_method(fdsa,VFILTER_SHARE,MAI_TYPE_ANY,&filterh,MAD_CV_SUBN_ADM,MAD_CM_REPORT);
-  if (rc != VSTATUS_OK)
-    {
-      IB_LOG_ERRORRC("Failed to create filter to receive traps rc:",rc);
-      rc = FE_NO_RETRIEVE;
-      IB_EXIT(__func__,rc);
-      return rc;
-    }
+	SA_MAD samad = {{0}};
+	STL_INFORM_INFO *info = (STL_INFORM_INFO *)&samad.Data;
+	uint32_t rcv_buf_len = FE_SA_RECV_BUF_SIZE, madRc = 0;
 
-#endif
+	/* Setup MAD Header */
+	MAD_SET_METHOD_TYPE(&samad, SUBN_ADM_SET);
+	MAD_SET_VERSION_INFO(&samad, STL_BASE_VERSION, MCLASS_SUBN_ADM, STL_SA_CLASS_VERSION);
+	MAD_SET_ATTRIB_ID(&samad, STL_SA_ATTR_INFORM_INFO);
 
-  IB_EXIT(__func__,FE_SUCCESS);
-  return FE_SUCCESS;
+	/* Setup SA Header */
+	SA_MAD_SET_HEADER(&samad, SM_KEY, 0);
+
+	/* Setup InformInfo */
+	info->LIDRangeBegin = STL_LID_PERMISSIVE;
+	info->IsGeneric = 1;
+	info->Subscribe = 1; /* Subscribe */
+	info->Type = TRAP_ALL;
+	info->u.Generic.u1.s.RespTimeValue = 19;
+	info->u.Generic.u2.s.ProducerType = 0xFFFFFF; /* 24-bit*/
+
+	/* Set Trap Number */
+	info->u.Generic.TrapNumber = trap_num;
+
+	/* Send InfromInfo MAD */
+	rc = if3_mngr_send_mad(fdsa, &samad, sizeof(STL_INFORM_INFO), fe_sa_recv_buf, &rcv_buf_len, &madRc, NULL, NULL);
+	if (rc != VSTATUS_OK || madRc != 0) {
+		if (rc != VSTATUS_OK) {
+			status = FERROR;
+			IB_LOG_INFINI_INFO_FMT(__func__, "Failed to register for Trap %u notices, status: %u",
+				trap_num, status);
+		} else {
+			IB_LOG_INFINI_INFO_FMT(__func__, "Failed to register for Trap %u notices, MAD status: %u",
+				trap_num, madRc);
+			status = FINVALID_PARAMETER;
+		}
+	}
+#endif /* IB_STACK_OPENIB */
+	IB_EXIT(__func__, status);
+	return status;
 }
 
-uint32_t
-fe_if3_unsubscribe_sa(int doUnsubscribe)
-{ 
+FSTATUS fe_unregister_trap(uint16 trap_num)
+{
+	FSTATUS status;
+
+	IB_ENTER(__func__, 0, 0, 0, 0);
 #ifdef IB_STACK_OPENIB
-    FSTATUS status; 
-    
+
+	status = omgt_sa_unregister_trap(fe_omgt_session, trap_num);
+	if (status != FSUCCESS) {
+		IB_LOG_INFINI_INFO_FMT(__func__, "Failed to unregister for Trap %u notices, status: %u",
+			trap_num, status);
+		IB_EXIT(__func__, status);
+		return status;
+	}
+#else /* IB_STACK_OPENIB */
+	Status_t rc = VSTATUS_OK;
+
+	SA_MAD samad = {{0}};
+	STL_INFORM_INFO *info = (STL_INFORM_INFO *)&samad.Data;
+	uint32_t rcv_buf_len = FE_SA_RECV_BUF_SIZE, madRc = 0;
+
+	/* Setup MAD Header */
+	MAD_SET_METHOD_TYPE(&samad, SUBN_ADM_SET);
+	MAD_SET_VERSION_INFO(&samad, STL_BASE_VERSION, MCLASS_SUBN_ADM, STL_SA_CLASS_VERSION);
+	MAD_SET_ATTRIB_ID(&samad, STL_SA_ATTR_INFORM_INFO);
+
+	/* Setup SA Header */
+	SA_MAD_SET_HEADER(&samad, SM_KEY, 0);
+
+	/* Setup InformInfo */
+	info->LIDRangeBegin = STL_LID_PERMISSIVE;
+	info->IsGeneric = 1;
+	info->Subscribe = 0; /* Unsubscribe */
+	info->Type = TRAP_ALL;
+	info->u.Generic.u1.s.QPNumber = 1; /* Fe Always uses QP 1 */
+	info->u.Generic.u1.s.RespTimeValue = 19;
+	info->u.Generic.u2.s.ProducerType = 0xFFFFFF; /* 24-bit*/
+
+	/* Set Trap Number */
+	info->u.Generic.TrapNumber = trap_num;
+
+	/* Send InfromInfo MAD */
+	rc = if3_mngr_send_mad(fdsa, &samad, sizeof(STL_INFORM_INFO), fe_sa_recv_buf, &rcv_buf_len, &madRc, NULL, NULL);
+	if (rc != VSTATUS_OK || madRc != 0) {
+		if (rc != VSTATUS_OK) {
+			status = FERROR;
+			IB_LOG_INFINI_INFO_FMT(__func__, "Failed to unregister for Trap %u notices, status: %u",
+				trap_num, status);
+		} else {
+			IB_LOG_INFINI_INFO_FMT(__func__, "Failed to unregister for Trap %u notices, MAD status: %u",
+				trap_num, madRc);
+			status = FINVALID_PARAMETER;
+		}
+	}
+#endif /* IB_STACK_OPENIB */
+	IB_EXIT(__func__, status);
+	return status;
+}
+
+FSTATUS
+fe_if3_subscribe_sa()
+{
     IB_ENTER(__func__, 0, 0, 0, 0); 
-    
-    status = omgt_sa_unregister_trap(fe_omgt_session, MAD_SMT_PORT_UP); 
-    if (status != FSUCCESS) {
-        IB_LOG_INFINI_INFO("Failed to unregister for PORT UP notices, status:", status); 
-        IB_EXIT(__func__, FE_NO_RETRIEVE); 
-        return FE_NO_RETRIEVE;
-    }
-    
-    status = omgt_sa_unregister_trap(fe_omgt_session, MAD_SMT_PORT_DOWN); 
-    if (status != FSUCCESS) {
-        IB_LOG_INFINI_INFO("Failed to unregister for PORT DOWN notices, status:", status); 
-        IB_EXIT(__func__, FE_NO_RETRIEVE); 
-        return FE_NO_RETRIEVE;
-    }
-    
-#else
-    
-    SA_MAD mad; 
-    uint32_t rc, sz = FE_SA_RECV_BUF_SIZE, madRc = 0; 
-    STL_INFORM_INFO info; 
-    
-    IB_ENTER(__func__, 0, 0, 0, 0); 
-    
-    if (fdsa == INVALID_HANDLE) {
-        rc = FE_NO_RETRIEVE; 
-        IB_LOG_WARN0("fdsa IBHandle is not valid"); 
-        IB_EXIT(__func__, rc); 
-        return rc;
-    }
-    
-    if (doUnsubscribe) {
-        // unsubscribe for port down traps
-        memset(&info, 0, sizeof(info)); 
-        info.LIDRangeBegin = STL_LID_PERMISSIVE; 
-        info.IsGeneric = 1; 
-        info.Subscribe = 0; 
-        info.Type = TRAP_ALL; 
-        info.u.Generic.TrapNumber = MAD_SMT_PORT_DOWN; 
-        info.u.Generic.u1.s.QPNumber = 1;     /* FE always uses qp 1 */
-        info.u.Generic.u1.s.RespTimeValue = 18; 
-        info.u.Generic.u2.s.ProducerType = INFORMINFO_PRODUCERTYPE_SM; 
-        
-        memset((void *)(&mad), 0, sizeof(mad)); 
-        
-        // initialize SA MAD header fields    
-        SA_MAD_SET_HEADER(&mad, SM_KEY, 0); 
-        
-        // initialize the commom mad header fields of the SA MAD
-        MAD_SET_METHOD_TYPE(&mad, SUBN_ADM_SET); 
-        MAD_SET_VERSION_INFO(&mad, STL_BASE_VERSION, MCLASS_SUBN_ADM, STL_SA_CLASS_VERSION); 
-        MAD_SET_ATTRIB_ID(&mad, SA_ATTRIB_INFORM_INFO); 
-        
-        // initialize SA MAD payload
-        BSWAPCOPY_STL_INFORM_INFO(&info, (STL_INFORM_INFO *)&mad.Data); 
-        
-        // send command to the SA
-        rc = if3_mngr_send_mad(fdsa, &mad, sizeof(STL_INFORM_INFO), fe_sa_recv_buf, &sz, &madRc, NULL, NULL); 
-        if (rc != VSTATUS_OK) {
-            IB_LOG_INFINI_INFORC("Failed when trying to unsubscribe for MAD_SMT_PORT_DOWN rc:", rc);
-        } else if (rc != VSTATUS_OK && madRc != 0x300) { // ignore status code record not found, just means it was already removed
-            IB_LOG_INFINI_INFO("Invalid status: unsubscribing for MAD_SMT_PORT_DOWN status:", madRc);
-        }
-        
-        //
-        // unsubscribe for port up traps
-        sz = FE_SA_RECV_BUF_SIZE; 
-        memset(&info, 0, sizeof(info)); 
-        info.LIDRangeBegin = STL_LID_PERMISSIVE; 
-        info.IsGeneric = 1; 
-        info.Subscribe = 0; 
-        info.Type = TRAP_ALL; 
-        info.u.Generic.TrapNumber = MAD_SMT_PORT_UP; 
-        info.u.Generic.u1.s.QPNumber = 1;     /* FE always uses qp 1 */
-        info.u.Generic.u1.s.RespTimeValue = 18; 
-        info.u.Generic.u2.s.ProducerType = INFORMINFO_PRODUCERTYPE_SM; 
-        
-        memset((void *)(&mad), 0, sizeof(mad)); 
-        
-        // initialize SA MAD header fields    
-        SA_MAD_SET_HEADER(&mad, SM_KEY, 0); 
-        
-        // initialize the commom mad header fields of the SA MAD
-        MAD_SET_METHOD_TYPE(&mad, SUBN_ADM_SET); 
-        MAD_SET_VERSION_INFO(&mad, STL_BASE_VERSION, MCLASS_SUBN_ADM, STL_SA_CLASS_VERSION); 
-        MAD_SET_ATTRIB_ID(&mad, SA_ATTRIB_INFORM_INFO); 
-        
-        // initialize SA MAD payload
-        BSWAPCOPY_STL_INFORM_INFO(&info, (STL_INFORM_INFO *)&mad.Data); 
-        
-        // send command to the SA
-        rc = if3_mngr_send_mad(fdsa, &mad, sizeof(STL_INFORM_INFO), fe_sa_recv_buf, &sz, &madRc, NULL, NULL); 
-        if (rc != VSTATUS_OK) {
-            IB_LOG_INFINI_INFORC("Failed when trying to unsubscribe for MAD_SMT_PORT_UP rc:", rc);
-        } else if (rc != VSTATUS_OK && madRc != 0x300) { // ignore status code record not found, just means it was already removed
-            IB_LOG_INFINI_INFO("Invalid status: unsubscribing for MAD_SMT_PORT_UP status:", madRc);
-        }
-    }
-    
-    // delete filters to listen for traps now
+
+	FSTATUS status = FSUCCESS;
+	uint8_t i;
+
+	for (i = 0; i < fe_config.trap_count; i++) {
+		status = fe_register_trap(fe_config.trap_nums[i]);
+		if (status != FSUCCESS) return status;
+	}
+
+#ifndef IB_STACK_OPENIB
+	// Only Setup filters if not already setup
+	if (filterh == IB_NULLH) {
+		Status_t rc;
+		// create filters to listen for traps now
+		rc = mai_filter_method(fdsa, VFILTER_SHARE, MAI_TYPE_ANY, &filterh, MAD_CV_SUBN_ADM, MAD_CM_REPORT);
+		if (rc != VSTATUS_OK) {
+			IB_LOG_ERRORRC("Failed to create filter to receive traps rc:", rc);
+			status = FERROR;
+		}
+	}
+#endif
+	IB_EXIT(__func__, status);
+	return status;
+}
+
+FSTATUS
+fe_if3_unsubscribe_sa(int doUnsubscribe)
+{
+	IB_ENTER(__func__, 0, 0, 0, 0); 
+	FSTATUS status = FSUCCESS;
+	uint8_t i;
+
+	if (doUnsubscribe) {
+		for (i = 0; i < fe_config.trap_count; i++) {
+			status = fe_unregister_trap(fe_config.trap_nums[i]);
+			if (status != FSUCCESS) return status;
+		}
+	}
+
+#ifndef IB_STACK_OPENIB
+	// delete filters to listen for traps now
     if (filterh != IB_NULLH) {
+		Status_t rc;
         rc = mai_filter_hdelete(fdsa, filterh); 
         if (rc != VSTATUS_OK) {
-            IB_LOG_INFINI_INFORC("Failed when trying to delete filter rc:", rc); 
-            rc = FE_NO_RETRIEVE; 
-            IB_EXIT(__func__, rc); 
-            return rc;
-        }
-        filterh = IB_NULLH;
-    }
+            IB_LOG_INFINI_INFORC("Failed when trying to delete filter rc:", rc);
+			status = FERROR;
+		}
+		filterh = IB_NULLH;
+	}
 #endif
-    
-    IB_EXIT(__func__, FE_SUCCESS); 
-    return FE_SUCCESS;
+	IB_EXIT(__func__, status);
+	return status;
 }
 
 static uint64_t   prevTid=0;
@@ -584,16 +518,16 @@ void fe_if3_ib_notice_to_fe_trap(STL_NOTICE *notice, FE_Trap_t *current, FE_Trap
         
     case STL_TRAP_BAD_M_KEY:                // trap 256
         {
-            Trap256_t trap; 
-            memcpy(&trap, notice, sizeof(trap)); 
+            STL_NOTICE trap256;
+            memcpy(&trap256, notice, sizeof(trap256)); 
             IB_LOG_INFO0("Trap 256");
         }
         break; 
         
     case STL_TRAP_BAD_P_KEY:                // trap 257
         {
-            Trap257_t trap; 
-            memcpy(&trap, notice, sizeof(trap)); 
+            STL_NOTICE trap257;
+            memcpy(&trap257, notice, sizeof(trap257)); 
             IB_LOG_INFO0("Trap 257");
         }
         break;

@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT3 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -72,15 +72,6 @@ void
 MemoryDisplayUsage( int method, uint32 minSize, uint32 minTick );
 
 /* Turn on memory allocation tracking in debug builds if not already turned on. */
-#if defined( IB_DEBUG ) && 0 /* disable memory tracker on debug builds.  Too disruptive */
-	#ifndef MEM_TRACK_ON
-		#define MEM_TRACK_ON
-	#endif /* MEM_TRACK_ON */
-#else
-#if defined(VXWORKS) && 0 /* change 0 to 1 to enable memory tracking in VXWORKS */
-	#define MEM_TRACK_ON 
-#endif
-#endif /* defined( _DEBUG ) */
 #if !defined(MALLOC_TRACK_ON)
 	#define MALLOC_TRACK_ON
 #endif
@@ -254,6 +245,23 @@ static _inline void MemoryFixAddrLength(IN uint32 page_size,
 	/* round up Length to a page boundary */
 	*Length = ROUNDUPP2(*Length, page_size);
 }
+/**
+ * Safe version of strncpy that will always null terminate. Copies up to
+ * dstsize-1 characters from source to dest plus a null terminator.
+ *
+ * @param dest     A pointer to destination buffer
+ * @param source   A pointer to source buffer
+ * @param dstsize  Size of dest buffer
+ *
+ * @return dest on Success or NULL on failure
+ */
+static _inline char * StringCopy(char * dest, const char * source, size_t dstsize)
+{
+	if(!dstsize)
+		return NULL;
+	dest[0] = '\0';
+	return strncat(dest,source,dstsize-1);
+}
 
 // convert a string to a uint or int
 // Very similar to strtoull/strtoll except that
@@ -286,6 +294,22 @@ FSTATUS StringToInt8(int8 *value, const char* str, char **endptr, int base, bool
 // lValue
 // whitespace is permitted before and after :
 FSTATUS StringToGid(uint64 *hValue, uint64 *lValue, const char* str, char **endptr, boolean skip_trail_whitespace);
+// VESWPort of form guid:port:index or desc:port:index
+// guid must be base 16, as such 0x prefix is optional.
+// desc max size is MAX_VFABRIC_NAME (64)
+// port and index are decimal
+// whitespace is permitted before and after :
+// byname = 0: the format is guid:port:index
+// byname = 1: the format is desc:port:index
+FSTATUS StringToVeswPort(uint64 *guid, char *desc, uint32 *port, uint32 *index,
+	const char* str, char **endptr, boolean skip_trail_whitespace,
+	boolean byname);
+
+// MAC Address of form %02x:%02x:%02x:%02x:%02x:%02x
+// values must be base16, 0x prefix is optional
+FSTATUS StringToMAC(uint8_t *MAC,const char *str, char **endptr,
+					boolean skip_trail_whitespace);
+
 // Byte Count as an integer followed by an optional suffix of:
 // K, KB, M, MB, G or GB
 // (K==KB, etc)
@@ -305,6 +329,12 @@ FSTATUS StringToUint64Bytes(uint64 *value, const char* str, char **endptr, int b
  * 			 FERROR - other error parsing string
  */
 FSTATUS StringToDateTime(uint32 *value, const char * str);
+
+// Tuple of form select:comparator:argument
+// select must be one of "utilization", "pktrate", "integrity", "congestion", "smacongestion", "bubbles", "security", or "routing".
+// comparator must be one of "gt", "ge", "lt", "le".
+// argument may be any 64-bit value
+FSTATUS StringToTuple(uint32 *select, uint8 *comparator, uint64 *argument, char* str, char **endptr);
 
 #if defined(VXWORKS)
 /* internal private functions not for general use, these are supplied

@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015, Intel Corporation
+# Copyright (c) 2015-2017, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -226,11 +226,6 @@ my %AnswerMemory = ();	# keep track of past answers to yes/no questions
 
 my @AnswerHelp = ();	# help test for each keyword
 
-# process_args and Usage call occurs before source_comp.  So when we put
-# this call in comp.pl, INSTALL has the "built version" of the usage
-# which may be out of sync with the "installed version".  Only impacts questions
-# asked during uninstall, especially for downgrade case, so that is
-# acceptable
 sub AddAnswerHelp($$)
 {
 	my($Keyword) = shift();

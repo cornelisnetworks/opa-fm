@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -66,11 +66,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 static Status_t sa_NodeRecord_GetTable(Mai_t *, uint32_t *, SACacheEntry_t **);
 static Status_t sa_IbNodeRecord_GetTable(Mai_t *, uint32_t *);
 static uint32_t sa_NodeRecord_Matches(uint8_t ** data, STL_SA_MAD * samad, Node_t * nodep,
-							   		  STL_NODE_RECORD * nr, uint32_t bytes);
+					STL_NODE_RECORD * nr, uint32_t bytes, Port_t * reqPortp, boolean fullAdmin);
 static uint32_t sa_IbNodeRecord_Matches(uint8_t ** data, STL_SA_MAD * samad, Node_t * nodep,
-							   		  IB_NODE_RECORD * nr, uint32_t bytes);
+					IB_NODE_RECORD * nr, uint32_t bytes, Port_t * reqPortp, boolean fullAdmin);
 static Status_t sa_NodeRecord_CheckCache(STL_SA_MAD * samad, STL_NODE_RECORD * nr,
-								  		 SACacheEntry_t ** outCache);
+								 SACacheEntry_t ** outCache, boolean fullAdmin);
 
 #define NO_MEM_RECORDS 0xFFFFFFFF
 
@@ -186,7 +186,6 @@ sa_NodeRecord_Set(uint8_t * cp, Node_t * nodep, Port_t * portp)
 		   sizeof(nodeRecord.NodeDesc));
 	nodeRecord.NodeDesc.NodeString[STL_NODE_DESCRIPTION_ARRAY_SIZE-1]=0;
 	nodeRecord.NodeInfo = nodep->nodeInfo;
-	nodeRecord.NodeInfo.u1.s.LocalPortNum = nodep->nodeInfo.u1.s.LocalPortNum;
 
 	if (nodep->nodeInfo.NodeType != NI_TYPE_SWITCH) {
 		nodeRecord.NodeInfo.PortGUID = portp->portData->guid;
@@ -253,7 +252,7 @@ sa_IbNodeRecord_Set(uint8_t * cp, Node_t * nodep, Port_t * portp)
 	ibNodeRecord->NodeInfoData.PartitionCap = ntoh16(nodep->nodeInfo.PartitionCap);
 	ibNodeRecord->NodeInfoData.DeviceID = ntoh16(nodep->nodeInfo.DeviceID);
 	ibNodeRecord->NodeInfoData.Revision = ntoh32(nodep->nodeInfo.Revision);
-	ibNodeRecord->NodeInfoData.u1.s.LocalPortNum = portp->index;
+	ibNodeRecord->NodeInfoData.u1.s.LocalPortNum = nodep->nodeInfo.u1.s.LocalPortNum;
 	ibNodeRecord->NodeInfoData.u1.s.VendorID = nodep->nodeInfo.u1.s.VendorID;
 	ibNodeRecord->NodeInfoData.u1.AsReg32 = ntoh32(ibNodeRecord->NodeInfoData.u1.AsReg32);
 
@@ -285,6 +284,7 @@ sa_NodeRecord_GetTable(Mai_t * maip, uint32_t * records, SACacheEntry_t ** outCa
 	uint32_t newRecords;
 	STL_LID lid = 0;
 	Port_t *portp;
+	boolean isFullAdmin;
 
 	IB_ENTER("sa_NodeRecord_GetTable", maip, records, 0, 0);
 
@@ -333,8 +333,13 @@ sa_NodeRecord_GetTable(Mai_t * maip, uint32_t * records, SACacheEntry_t ** outCa
 
 	BSWAPCOPY_STL_NODE_RECORD((STL_NODE_RECORD *) samad.data, &nodeRecord);
 
+	if (maip->addrInfo.pkey == STL_DEFAULT_FM_PKEY)
+		isFullAdmin = TRUE;
+	else
+		isFullAdmin = FALSE;
+
 	// try to obtain data from cache first
-	(void) sa_NodeRecord_CheckCache(&samad, &nodeRecord, outCache);
+	(void) sa_NodeRecord_CheckCache(&samad, &nodeRecord, outCache, isFullAdmin);
 
 
 	if (*outCache) {
@@ -344,9 +349,8 @@ sa_NodeRecord_GetTable(Mai_t * maip, uint32_t * records, SACacheEntry_t ** outCa
 		// IB_LOG_INFINI_INFOLX("sa_NodeRecord_GetTable: Getting all the Node Records, mask=",
 		// samad.mask);
 		for_all_nodes(&old_topology, nodep) {
-			// MWHEINZ FIXME: Replace this with a loop of sa_NodeRecord_Set() - don't do tests.
 			if ((newRecords = sa_NodeRecord_Matches(&data, &samad, nodep,
-													&nodeRecord, bytes)) == NO_MEM_RECORDS) {
+						&nodeRecord, bytes, portp, isFullAdmin)) == NO_MEM_RECORDS) {
 				status = VSTATUS_NOMEM;
 				break;
 			}
@@ -360,8 +364,7 @@ sa_NodeRecord_GetTable(Mai_t * maip, uint32_t * records, SACacheEntry_t ** outCa
 			// mask=", samad.mask);
 			for_all_ca_nodes(&old_topology, nodep) {
 				if ((newRecords = sa_NodeRecord_Matches(&data, &samad, nodep,
-														&nodeRecord,
-														bytes)) == NO_MEM_RECORDS) {
+							&nodeRecord, bytes, portp, isFullAdmin)) == NO_MEM_RECORDS) {
 					status = VSTATUS_NOMEM;
 					break;
 				}
@@ -372,8 +375,7 @@ sa_NodeRecord_GetTable(Mai_t * maip, uint32_t * records, SACacheEntry_t ** outCa
 			// mask=", samad.mask);
 			for_all_switch_nodes(&old_topology, nodep) {
 				if ((newRecords = sa_NodeRecord_Matches(&data, &samad, nodep,
-														&nodeRecord,
-														bytes)) == NO_MEM_RECORDS) {
+							&nodeRecord, bytes, portp, isFullAdmin)) == NO_MEM_RECORDS) {
 					status = VSTATUS_NOMEM;
 					break;
 				}
@@ -392,7 +394,7 @@ sa_NodeRecord_GetTable(Mai_t * maip, uint32_t * records, SACacheEntry_t ** outCa
 		// GUID=", nodeRecord.NodeInfo.NodeGUID);
 		if ((nodep = sm_find_guid(&old_topology, nodeRecord.NodeInfo.NodeGUID)) != NULL) {
 			if ((newRecords = sa_NodeRecord_Matches(&data, &samad, nodep,
-													&nodeRecord, bytes)) == NO_MEM_RECORDS) {
+						&nodeRecord, bytes, portp, isFullAdmin)) == NO_MEM_RECORDS) {
 				status = VSTATUS_NOMEM;
 			} else {
 				*records += newRecords;
@@ -404,7 +406,7 @@ sa_NodeRecord_GetTable(Mai_t * maip, uint32_t * records, SACacheEntry_t ** outCa
 		// default, mask=", samad.header.mask);
 		for_all_nodes(&old_topology, nodep) {
 			if ((newRecords = sa_NodeRecord_Matches(&data, &samad, nodep,
-													&nodeRecord, bytes)) == NO_MEM_RECORDS) {
+						&nodeRecord, bytes, portp, isFullAdmin)) == NO_MEM_RECORDS) {
 				status = VSTATUS_NOMEM;
 				break;
 			}
@@ -440,12 +442,24 @@ sa_IbNodeRecord_GetTable(Mai_t * maip, uint32_t * records)
 	uint32_t newRecords;
 	STL_LID lid = 0;
 	Port_t *portp;
+	boolean isFullAdmin;
 
 	IB_ENTER("sa_IbNodeRecord_GetTable", maip, records, 0, 0);
 
 	*records = 0;
 	data = sa_data;
 	bytes = Calculate_Padding(sizeof(IB_NODE_RECORD));
+//
+//  Verify the size of the data received for the request
+//
+	if ( maip->datasize-sizeof(STL_SA_MAD_HEADER) < sizeof(IB_NODE_RECORD) ) {
+		IB_LOG_ERROR_FMT(__func__,
+			"invalid MAD length; size of IB_NODE_RECORD[%"PRISZT"], datasize[%d]",
+			sizeof(IB_NODE_RECORD), (int)(maip->datasize-sizeof(STL_SA_MAD_HEADER)));
+		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
+		IB_EXIT(__func__, MAD_STATUS_SA_REQ_INVALID);
+		return (MAD_STATUS_SA_REQ_INVALID);
+	}
 
 	// Again, small hack: We assume STL and IB have the same MAD structure.
 	BSWAPCOPY_STL_SA_MAD((STL_SA_MAD *) maip->data, &samad, sizeof(IB_NODE_RECORD));
@@ -476,12 +490,16 @@ sa_IbNodeRecord_GetTable(Mai_t * maip, uint32_t * records)
 
 	BSWAPCOPY_IB_NODE_RECORD((IB_NODE_RECORD *) samad.data, &ibNodeRecord);
 
+	if (maip->addrInfo.pkey == STL_DEFAULT_FM_PKEY)
+		isFullAdmin = TRUE;
+	else
+		isFullAdmin = FALSE;
+
 	if (!samad.header.mask) {
 		/* doing for all nodes */
 		for_all_nodes(&old_topology, nodep) {
-			// MWHEINZ FIXME: Replace this with a loop of sa_IbNodeRecord_GetTable() - don't do tests.
 			if ((newRecords = sa_IbNodeRecord_Matches(&data, &samad, nodep,
-													  &ibNodeRecord, bytes)) == NO_MEM_RECORDS) {
+						&ibNodeRecord, bytes, portp, isFullAdmin)) == NO_MEM_RECORDS) {
 				status = VSTATUS_NOMEM;
 				break;
 			}
@@ -493,8 +511,7 @@ sa_IbNodeRecord_GetTable(Mai_t * maip, uint32_t * records)
 		if (ibNodeRecord.NodeInfoData.NodeType == NI_TYPE_CA) {
 			for_all_ca_nodes(&old_topology, nodep) {
 				if ((newRecords = sa_IbNodeRecord_Matches(&data, &samad, nodep,
-														  &ibNodeRecord,
-														bytes)) == NO_MEM_RECORDS) {
+							&ibNodeRecord, bytes, portp, isFullAdmin)) == NO_MEM_RECORDS) {
 					status = VSTATUS_NOMEM;
 					break;
 				}
@@ -503,8 +520,7 @@ sa_IbNodeRecord_GetTable(Mai_t * maip, uint32_t * records)
 		} else if (ibNodeRecord.NodeInfoData.NodeType == NI_TYPE_SWITCH) {
 			for_all_switch_nodes(&old_topology, nodep) {
 				if ((newRecords = sa_IbNodeRecord_Matches(&data, &samad, nodep,
-														&ibNodeRecord,
-														bytes)) == NO_MEM_RECORDS) {
+							&ibNodeRecord, bytes, portp, isFullAdmin)) == NO_MEM_RECORDS) {
 					status = VSTATUS_NOMEM;
 					break;
 				}
@@ -521,7 +537,7 @@ sa_IbNodeRecord_GetTable(Mai_t * maip, uint32_t * records)
 		/* look for a specific node guid */
 		if ((nodep = sm_find_guid(&old_topology, ibNodeRecord.NodeInfoData.NodeGUID)) != NULL) {
 			if ((newRecords = sa_IbNodeRecord_Matches(&data, &samad, nodep,
-													&ibNodeRecord, bytes)) == NO_MEM_RECORDS) {
+					&ibNodeRecord, bytes, portp, isFullAdmin)) == NO_MEM_RECORDS) {
 				status = VSTATUS_NOMEM;
 			} else {
 				*records += newRecords;
@@ -531,7 +547,7 @@ sa_IbNodeRecord_GetTable(Mai_t * maip, uint32_t * records)
 		/* default: look at all the nodes and match */
 		for_all_nodes(&old_topology, nodep) {
 			if ((newRecords = sa_IbNodeRecord_Matches(&data, &samad, nodep,
-													&ibNodeRecord, bytes)) == NO_MEM_RECORDS) {
+						&ibNodeRecord, bytes, portp, isFullAdmin)) == NO_MEM_RECORDS) {
 				status = VSTATUS_NOMEM;
 				break;
 			}
@@ -557,10 +573,14 @@ sa_IbNodeRecord_GetTable(Mai_t * maip, uint32_t * records)
 
 static uint32_t
 sa_NodeRecord_Matches(uint8_t ** data, STL_SA_MAD * samad, Node_t * nodep, STL_NODE_RECORD * nr,
-					  uint32_t bytes)
+					  uint32_t bytes, Port_t * reqPortp, boolean fullAdmin)
 {
 	Port_t *portp = NULL;
 	uint32_t records = 0;
+
+	// Don't process node if it is not a full Admin Member and its PKeys don't match the requestor
+	if (!fullAdmin && (sa_Compare_Node_Port_PKeys(nodep, reqPortp) != VSTATUS_OK)) 
+		return (records);
 
 	for_all_end_ports(nodep, portp) {
 		if (!sm_valid_port(portp) || portp->state <= IB_PORT_DOWN) {
@@ -602,10 +622,14 @@ sa_NodeRecord_Matches(uint8_t ** data, STL_SA_MAD * samad, Node_t * nodep, STL_N
 
 static uint32_t
 sa_IbNodeRecord_Matches(uint8_t ** data, STL_SA_MAD * samad, Node_t * nodep, IB_NODE_RECORD * nr,
-					  uint32_t bytes)
+					  uint32_t bytes, Port_t * reqPortp, boolean fullAdmin)
 {
 	Port_t *portp = NULL;
 	uint32_t records = 0;
+
+	// Don't process node if it is not a full Admin Member and its PKeys don't match the requestor
+	if (!fullAdmin && (sa_Compare_Node_Port_PKeys(nodep, reqPortp) != VSTATUS_OK)) 
+		return (records);
 
 	for_all_end_ports(nodep, portp) {
 		if (!sm_valid_port(portp) || portp->state <= IB_PORT_DOWN) {
@@ -650,7 +674,7 @@ sa_IbNodeRecord_Matches(uint8_t ** data, STL_SA_MAD * samad, Node_t * nodep, IB_
 
 
 Status_t
-sa_NodeRecord_CheckCache(STL_SA_MAD * samad, STL_NODE_RECORD * nr, SACacheEntry_t ** outCache)
+sa_NodeRecord_CheckCache(STL_SA_MAD * samad, STL_NODE_RECORD * nr, SACacheEntry_t ** outCache, boolean fullAdmin)
 {
 	Status_t rc;
 	SACacheEntry_t *caches[3];
@@ -660,9 +684,11 @@ sa_NodeRecord_CheckCache(STL_SA_MAD * samad, STL_NODE_RECORD * nr, SACacheEntry_
 	*outCache = NULL;
 	rc = VSTATUS_OK;
 
+	if (!fullAdmin) return rc;
+
 	(void) vs_lock(&saCache.lock);
 
-	if (samad->header.mask == IB_NODE_RECORD_COMP_NODETYPE) {
+	if (samad->header.mask == STL_NODE_RECORD_COMP_NODETYPE) {
 		if (nr->NodeInfo.NodeType == NI_TYPE_CA) {
 			(void) sa_cache_get(SA_CACHE_FI_NODES, outCache);
 		} else if (nr->NodeInfo.NodeType == NI_TYPE_SWITCH) {

@@ -321,9 +321,6 @@ static int LockedAreaRangeCompare(uint64 key1, uint64 key2)
 	LOCKED_AREA *pArea1 = (LOCKED_AREA*)(uintn)key1;
 	ADDR_RANGE *pRange2 = (ADDR_RANGE*)(uintn)key2;
 
-#if MLOCK_DBG > 1 && 0
-	MsgOut("%s: key1: start:0x%"PRIxN" end:0x%"PRIxN" key2: start:0x%"PRIxN" end:0x%"PRIxN"\n",__func__,pArea1->start,pArea1->end,pRange2->start,pRange2->end);
-#endif
 	if (pArea1->start > pRange2->end)
 		return 1;
 	else if (pArea1->end < pRange2->start)
@@ -444,16 +441,10 @@ static LOCKED_AREA *FindFirstOverlap(uintn start, uintn end)
 	/* first find if any locked areas overlap the Range */
 	pMapItem = cl_qmap_get_compare(&LockedArea_Map, (uint64)(uintn)&Range, LockedAreaRangeCompare);
 	if (pMapItem == cl_qmap_end(&LockedArea_Map)) {
-#if MLOCK_DBG > 1 && 0
-		MsgOut("%s: no overlap start:0x%"PRIxN" end:0x%"PRIxN"\n",__func__,Range.start,Range.end);
-#endif
 		/* no overlap with existing locks */
 		return NULL;
 	}
 	pArea = PARENT_STRUCT(pMapItem, LOCKED_AREA, MapItem);
-#if MLOCK_DBG > 1 && 0
-	MsgOut("%s: looked up start:0x%"PRIxN" end:0x%"PRIxN"\n",__func__,pArea->start,pArea->end);
-#endif
 	/* because RangeCompare is not unique, we could get any area which
 	 * overlaps, so we must back up to find first area which overlaps
 	 */
@@ -463,9 +454,6 @@ static LOCKED_AREA *FindFirstOverlap(uintn start, uintn end)
 			break;
 		}
 		pArea = PARENT_STRUCT(pMapItem, LOCKED_AREA, MapItem);
-#if MLOCK_DBG > 1 && 0
-		MsgOut("%s: moved back to start:0x%"PRIxN" end:0x%"PRIxN"\n",__func__,pArea->start,pArea->end);
-#endif
 	}
 	/* now pArea is 1st area to overlap Range */
 	return pArea;

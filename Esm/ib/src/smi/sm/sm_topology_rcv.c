@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -36,7 +36,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //									   
 // DESCRIPTION								     
 //    This thread will process asynchronous SM set responses. Used for	    
-//    LFT and MFT primarily.		    
+//    ucast and mcast tables primarily.
 //									    
 // DATA STRUCTURES							  
 //    None								     
@@ -72,6 +72,62 @@ cs_Queue_ptr sm_async_rcv_resp_queue;
 // static variables
 static  uint32_t    topology_rcv_exit=0;
 
+
+static void
+createFilter(uint16_t aid, char* filterName, char* filterErrName) {
+
+	Status_t	status=VSTATUS_OK;
+	Filter_t	filter;
+
+	//
+	//	Set the filter for catching set responses on fd_atopology.
+	//
+	SM_Filter_Init(&filter);
+	filter.value.bversion = STL_BASE_VERSION;
+	filter.value.cversion = STL_SM_CLASS_VERSION;
+	filter.value.mclass = MAD_CV_SUBN_LR & 0x7f;	// LR or DR
+	//filter.value.mclass = MAD_CV_SUBN_LR;
+	filter.value.method = MAD_CM_GET_RESP;
+	filter.value.aid = aid;
+
+	filter.mask.bversion  = MAI_FMASK_ALL;
+	filter.mask.cversion  = MAI_FMASK_ALL;
+	//filter.mask.mclass  = MAI_FMASK_ALL;
+	filter.mask.mclass  = 0x7f;
+	filter.mask.method  = MAI_FMASK_ALL;
+	filter.mask.aid  = MAI_FMASK_ALL;
+	MAI_SET_FILTER_NAME (&filter, filterName);
+
+	status = mai_filter_create(fd_atopology, &filter, VFILTER_SHARE | VFILTER_PURGE);
+	if (status != VSTATUS_OK) {
+		IB_LOG_ERRORRC("topology_rcv: can't create topology async receive filter for set responses rc:", status);
+		(void)vs_thread_exit(&sm_threads[SM_THREAD_ASYNC].handle);
+	}
+
+	//
+	//	Set the filter for catching set errors on fd_atopology.
+	//
+	SM_Filter_Init(&filter);
+	filter.type = MAI_TYPE_ERROR;
+	filter.value.bversion = STL_BASE_VERSION;
+	filter.value.cversion = STL_SM_CLASS_VERSION;
+	filter.value.mclass = MAD_CV_SUBN_LR & 0x7f;	// LR or DR
+	//filter.value.method = MAD_CM_GET_RESP;
+	filter.value.aid = aid;
+
+	filter.mask.bversion  = MAI_FMASK_ALL;
+	filter.mask.cversion  = MAI_FMASK_ALL;
+	filter.mask.mclass  = 0x7f;
+	//filter.mask.method  = MAI_FMASK_ALL;
+	filter.mask.aid  = MAI_FMASK_ALL;
+	MAI_SET_FILTER_NAME (&filter, filterErrName);
+
+	status = mai_filter_create(fd_atopology, &filter, VFILTER_SHARE | VFILTER_PURGE);
+	if (status != VSTATUS_OK) {
+		IB_LOG_ERRORRC("topology_rcv: can't create topology async receive filter for set errors rc:", status);
+		(void)vs_thread_exit(&sm_threads[SM_THREAD_ASYNC].handle);
+	}
+}
 
 void
 topology_rcv(uint32_t argc, uint8_t ** argv) {
@@ -131,131 +187,9 @@ topology_rcv(uint32_t argc, uint8_t ** argv) {
 		(void)vs_thread_exit(&sm_threads[SM_THREAD_TOP_RCV].handle);
 	}
 
-    //
-    //	Set the filter for catching LFT set responses on fd_atopology.
-    //
-	SM_Filter_Init(&filter);
-	filter.value.bversion = STL_BASE_VERSION;
-	filter.value.cversion = STL_SM_CLASS_VERSION;
-	filter.value.mclass = MAD_CV_SUBN_LR & 0x7f;	// LR or DR
-	//filter.value.mclass = MAD_CV_SUBN_LR;
-	filter.value.method = MAD_CM_GET_RESP;
-	filter.value.aid = MAD_SMA_LFT;
+	createFilter(MAD_SMA_LFT, "top_rcv_lft", "top_rcv_lft_err");
+	createFilter(MAD_SMA_MFT, "top_rcv_lft", "top_rcv_mft_err");
 
-	filter.mask.bversion  = MAI_FMASK_ALL;
-	filter.mask.cversion  = MAI_FMASK_ALL;
-	//filter.mask.mclass  = MAI_FMASK_ALL;
-	filter.mask.mclass  = 0x7f;
-	filter.mask.method  = MAI_FMASK_ALL;
-	filter.mask.aid  = MAI_FMASK_ALL;
-	MAI_SET_FILTER_NAME (&filter, "top_rcv_lft");
-
-	status = mai_filter_create(fd_atopology, &filter, VFILTER_SHARE | VFILTER_PURGE);
-	if (status != VSTATUS_OK) {
-		IB_LOG_ERRORRC("topology_rcv: can't create topology async receive filter for LFT set responses rc:", status);
-		(void)vs_thread_exit(&sm_threads[SM_THREAD_ASYNC].handle);
-	}
-    
-    //
-    //	Set the filter for catching LFT set errors on fd_atopology.
-    //
-	SM_Filter_Init(&filter);
-	filter.type = MAI_TYPE_ERROR;
-	filter.value.bversion = STL_BASE_VERSION;
-	filter.value.cversion = STL_SM_CLASS_VERSION;
-	filter.value.mclass = MAD_CV_SUBN_LR & 0x7f;	// LR or DR
-	//filter.value.method = MAD_CM_GET_RESP;
-	filter.value.aid = MAD_SMA_LFT;
-
-	filter.mask.bversion  = MAI_FMASK_ALL;
-	filter.mask.cversion  = MAI_FMASK_ALL;
-	filter.mask.mclass  = 0x7f;
-	//filter.mask.method  = MAI_FMASK_ALL;
-	filter.mask.aid  = MAI_FMASK_ALL;
-	MAI_SET_FILTER_NAME (&filter, "top_rcv_lft_err");
-
-	status = mai_filter_create(fd_atopology, &filter, VFILTER_SHARE | VFILTER_PURGE);
-	if (status != VSTATUS_OK) {
-		IB_LOG_ERRORRC("topology_rcv: can't create topology async receive filter for LFT set errors rc:", status);
-		(void)vs_thread_exit(&sm_threads[SM_THREAD_ASYNC].handle);
-	}
-
-    //
-    //	Set the filter for catching MFT set responses on fd_atopology.
-    //
-	SM_Filter_Init(&filter);
-	filter.value.bversion = STL_BASE_VERSION;
-	filter.value.cversion = STL_SM_CLASS_VERSION;
-	filter.value.mclass = MAD_CV_SUBN_LR & 0x7f;	// LR or DR
-	//filter.value.mclass = MAD_CV_SUBN_LR;
-	filter.value.method = MAD_CM_GET_RESP;
-	filter.value.aid = MAD_SMA_MFT;
-
-	filter.mask.bversion  = 0xff;
-	filter.mask.cversion  = 0xff;
-	//filter.mask.mclass  = MAI_FMASK_ALL;
-	filter.mask.mclass  = 0x7f;
-	filter.mask.method  = 0xff;
-	filter.mask.aid  = 0xffff;
-	MAI_SET_FILTER_NAME (&filter, "top_rcv_mft");
-
-	status = mai_filter_create(fd_atopology, &filter, VFILTER_SHARE | VFILTER_PURGE);
-	if (status != VSTATUS_OK) {
-		IB_LOG_ERRORRC("topology_rcv: can't create topology async receive filter for MFT set responses rc:", status);
-		(void)vs_thread_exit(&sm_threads[SM_THREAD_ASYNC].handle);
-	}
-    
-    //
-    //	Set the filter for catching MFT set errors on fd_atopology.
-    //
-	SM_Filter_Init(&filter);
-	filter.type = MAI_TYPE_ERROR;
-	filter.value.bversion = STL_BASE_VERSION;
-	filter.value.cversion = STL_SM_CLASS_VERSION;
-	filter.value.mclass = MAD_CV_SUBN_LR & 0x7f;	// LR or DR
-	//filter.value.mclass = MAD_CV_SUBN_LR;
-	//filter.value.method = MAD_CM_GET_RESP;
-	filter.value.aid = MAD_SMA_MFT;
-
-	filter.mask.bversion  = 0xff;
-	filter.mask.cversion  = 0xff;
-	filter.mask.mclass  = 0x7f;
-	//filter.mask.mclass  = MAI_FMASK_ALL;
-	//filter.mask.method  = 0xff;
-	filter.mask.aid  = 0xffff;
-	MAI_SET_FILTER_NAME (&filter, "top_rcv_mft_err");
-
-	status = mai_filter_create(fd_atopology, &filter, VFILTER_SHARE | VFILTER_PURGE);
-	if (status != VSTATUS_OK) {
-		IB_LOG_ERRORRC("topology_rcv: can't create topology async receive filter for MFT set errors rc:", status);
-		(void)vs_thread_exit(&sm_threads[SM_THREAD_ASYNC].handle);
-	}
-    
-#if 0
-    //
-    //	Set the filter for catching DR MFT set responses on fd_atopology.
-    //
-	SM_Filter_Init(&filter);
-	filter.value.bversion = STL_BASE_VERSION;
-	filter.value.cversion = STL_SM_CLASS_VERSION;
-	filter.value.mclass = MAD_CV_SUBN_DR;
-	filter.value.method = MAD_CM_GET_RESP;
-	filter.value.aid = MAD_SMA_MFT;
-
-	filter.mask.bversion  = 0xff;
-	filter.mask.cversion  = 0xff;
-	filter.mask.mclass  = MAI_FMASK_ALL;
-	filter.mask.method  = 0xff;
-	filter.mask.aid  = 0xffff;
-	MAI_SET_FILTER_NAME (&filter, "top_rcv_mft_dr");
-
-	status = mai_filter_create(fd_atopology, &filter, VFILTER_SHARE | VFILTER_PURGE);
-	if (status != VSTATUS_OK) {
-		IB_LOG_ERRORRC("topology_rcv: can't create topology async receive filter for DR MFT set responses rc:", status);
-		(void)vs_thread_exit(&sm_threads[SM_THREAD_ASYNC].handle);
-	}
-#endif
-    
     //
     //	Set the filter for catching LID routed get GUIDINFO responses on fd_atopology.
     //
@@ -275,7 +209,7 @@ topology_rcv(uint32_t argc, uint8_t ** argv) {
 
 	status = mai_filter_create(fd_atopology, &filter, VFILTER_SHARE | VFILTER_PURGE);
 	if (status != VSTATUS_OK) {
-		IB_LOG_ERRORRC("topology_rcv: can't create topology async receive filter for MFT set responses rc:", status);
+		IB_LOG_ERRORRC("topology_rcv: can't create topology async receive filter for GuidInfo set responses rc:", status);
 		(void)vs_thread_exit(&sm_threads[SM_THREAD_ASYNC].handle);
 	}
 
@@ -299,7 +233,7 @@ topology_rcv(uint32_t argc, uint8_t ** argv) {
 
 	status = mai_filter_create(fd_atopology, &filter, VFILTER_SHARE | VFILTER_PURGE);
 	if (status != VSTATUS_OK) {
-		IB_LOG_ERRORRC("topology_rcv: can't create topology async receive filter for MFT set errors rc:", status);
+		IB_LOG_ERRORRC("topology_rcv: can't create topology async receive filter for GuidInfo set errors rc:", status);
 		(void)vs_thread_exit(&sm_threads[SM_THREAD_ASYNC].handle);
 	}
 

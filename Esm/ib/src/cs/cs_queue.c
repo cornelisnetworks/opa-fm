@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -74,7 +74,7 @@ cs_Queue_ptr cs_queue_CreateQueue( Pool_t *pool, uint32_t MaxElements ) {
     // initialize queue lock
 	status = vs_lock_init(&que->lock, VLOCK_FREE, VLOCK_THREAD);
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("cs_queue_CreateQueue: can't initialize SM trap forwarding queue lock");
+		IB_FATAL_ERROR_NODUMP("cs_queue_CreateQueue: can't initialize SM trap forwarding queue lock");
         vs_pool_free( pool, (void *)que );
         vs_pool_free( pool, (void *)que->qData );
         que = NULL;

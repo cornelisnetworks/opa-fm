@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -233,30 +233,6 @@ void PrintQueryResultValue(PrintDest_t *dest, int indent, PrintDest_t *dbgDest,
 		}
 		break;
 		}
-#ifndef NO_STL_SERVICE_OUTPUT       // Don't output STL Service if defined
-	case OutputTypeStlServiceRecord:
-		{
-		STL_SERVICE_RECORD_RESULTS *p = (STL_SERVICE_RECORD_RESULTS*)pResult->QueryResult;
-		for (i=0; i<p->NumServiceRecords; ++i)
-		{
-			if (i) PrintSeparator(dest);
-			PrintStlServiceRecord(dest, indent, &p->ServiceRecords[i]);
-		}
-		break;
-		}
-#endif
-#ifndef NO_STL_MCMEMBER_OUTPUT       // Don't output STL McMember if defined
-	case OutputTypeStlMcMemberRecord:
-		{
-		STL_MCMEMBER_RECORD_RESULTS *p = (STL_MCMEMBER_RECORD_RESULTS*)pResult->QueryResult;
-		for (i=0; i<p->NumMcMemberRecords; ++i)
-		{
-			if (i) PrintSeparator(dest);
-			PrintStlMcMemberRecord(dest, indent, &p->McMemberRecords[i]);
-		}
-		break;
-		}
-#endif
 	case OutputTypeMcMemberRecord:
 		{
 		MCMEMBER_RECORD_RESULTS *p = (MCMEMBER_RECORD_RESULTS*)pResult->QueryResult;
@@ -361,6 +337,19 @@ void PrintQueryResultValue(PrintDest_t *dest, int indent, PrintDest_t *dbgDest,
 				lid=p->SCVLntRecords[i].RID.LID;
 			}
 			PrintStlSCVLxTableRecord(dest, indent, &p->SCVLntRecords[i], STL_MCLASS_ATTRIB_ID_SC_VLNT_MAPPING_TABLE);
+		}
+		break;
+		}
+	case OutputTypeStlSCVLrTableRecord:
+		{
+		STL_SC2PVL_R_MAPPING_TABLE_RECORD_RESULTS *p = (STL_SC2PVL_R_MAPPING_TABLE_RECORD_RESULTS*)pResult->QueryResult;
+		uint32_t lid=p->SCVLrRecords[0].RID.LID;
+		for (i=0; i<p->NumSCVLrTableRecords; i++) {
+			if (lid!=p->SCVLrRecords[i].RID.LID) {
+				PrintSeparator(dest);
+				lid=p->SCVLrRecords[i].RID.LID;
+			}
+			PrintStlSCVLxTableRecord(dest, indent, &p->SCVLrRecords[i], STL_MCLASS_ATTRIB_ID_SC_VLR_MAPPING_TABLE);
 		}
 		break;
 		}
@@ -624,32 +613,62 @@ void PrintQueryResultValue(PrintDest_t *dest, int indent, PrintDest_t *dbgDest,
 		}
 	case OutputTypeStlPortGroupRecord:
 		{
-        STL_PORT_GROUP_TABLE_RECORD_RESULTS *p = (STL_PORT_GROUP_TABLE_RECORD_RESULTS*)pResult->QueryResult;
-        for(i = 0; i < p->NumRecords; ++i)
-        {
-            if (i) PrintSeparator(dest);
-            PrintStlPortGroupTabRecord(dest, indent, &p->Records[i]);
-        }
-		break;
+		        STL_PORT_GROUP_TABLE_RECORD_RESULTS *p = (STL_PORT_GROUP_TABLE_RECORD_RESULTS*)pResult->QueryResult;
+		        for(i = 0; i < p->NumRecords; ++i)
+		        {
+		            if (i) PrintSeparator(dest);
+		            PrintStlPortGroupTabRecord(dest, indent, &p->Records[i]);
+		        }
+			break;
 		}
 	case OutputTypeStlPortGroupFwdRecord:
 		{
-        STL_PORT_GROUP_FORWARDING_TABLE_RECORD_RESULTS *p = (STL_PORT_GROUP_FORWARDING_TABLE_RECORD_RESULTS*)pResult->QueryResult;
-        for(i = 0; i < p->NumRecords; ++i)
-        {
-            if (i) PrintSeparator(dest);
-            PrintStlPortGroupFwdTabRecord(dest, indent, &p->Records[i]);
-        }
-		break;
+		        STL_PORT_GROUP_FORWARDING_TABLE_RECORD_RESULTS *p = (STL_PORT_GROUP_FORWARDING_TABLE_RECORD_RESULTS*)pResult->QueryResult;
+		        for(i = 0; i < p->NumRecords; ++i)
+		        {
+		            if (i) PrintSeparator(dest);
+		            PrintStlPortGroupFwdTabRecord(dest, indent, &p->Records[i]);
+		        }
+			break;
+		}
+
+	case OutputTypeStlDeviceGroupMemberRecord:
+		{
+			STL_DEVICE_GROUP_MEMBER_RECORD_RESULTS *p = (STL_DEVICE_GROUP_MEMBER_RECORD_RESULTS*)pResult->QueryResult;
+			for (i=0; i < p->NumRecords; ++i)
+			{
+				PrintStlDeviceGroupMemberRecord(dest, indent, &p->Records[i]);
+			}
+			break;
+		}
+
+	case OutputTypeStlDeviceGroupNameRecord:
+		{
+			STL_DEVICE_GROUP_NAME_RECORD_RESULTS *p = (STL_DEVICE_GROUP_NAME_RECORD_RESULTS*)pResult->QueryResult;
+			for (i=0; i < p->NumRecords; ++i)
+			{
+				PrintStlDeviceGroupNameRecord(dest, indent, &p->Records[i], i+1);
+			}
+			break;
+		}
+
+	case OutputTypeStlDeviceTreeMemberRecord:
+		{
+			STL_DEVICE_TREE_MEMBER_RECORD_RESULTS *p = (STL_DEVICE_TREE_MEMBER_RECORD_RESULTS*)pResult->QueryResult;
+			for (i=0; i < p->NumRecords; ++i)
+			{
+				PrintStlDeviceTreeMemberRecord(dest, indent, &p->Records[i]);
+			}
+			break;
 		}
 	case OutputTypeStlSwitchCostRecord:
 		{
-		STL_SWITCH_COST_RECORD_RESULTS *p = (STL_SWITCH_COST_RECORD_RESULTS*)pResult->QueryResult;
-		for(i = 0; i < p ->NumRecords; ++i)
-		{
-			if (i) PrintSeparator(dest);
-			PrintStlSwitchCostRecord(dest, indent, &p->Records[i]);
-		}
+			STL_SWITCH_COST_RECORD_RESULTS *p = (STL_SWITCH_COST_RECORD_RESULTS*)pResult->QueryResult;
+			for(i = 0; i < p ->NumRecords; ++i)
+			{
+				if (i) PrintSeparator(dest);
+				PrintStlSwitchCostRecord(dest, indent, &p->Records[i]);
+			}
 		}
 		break;
 	default:
@@ -675,7 +694,7 @@ int PrintQueryResult(PrintDest_t *dest, int indent, PrintDest_t *dbgDest,
 		// for FINVALID_PARAMETER, use special exit status
 		// will trigger usage output by main
 		ret = (status == FINVALID_PARAMETER)?2:1;
-	} else if (pResult->Status != FSUCCESS) {
+	} else if (pResult->Status != FSUCCESS || pResult->MadStatus!= MAD_STATUS_SUCCESS) {
 		PrintFunc(dest, "%*sFailed: %s MadStatus 0x%x: %s\n", indent, "",
 				iba_fstatus_msg(pResult->Status),
 			   	pResult->MadStatus, iba_sd_mad_status_msg(pResult->MadStatus));

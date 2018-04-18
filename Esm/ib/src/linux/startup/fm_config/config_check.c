@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -382,8 +382,9 @@ check_multicast_VFs (int num_instances, VirtualFabrics_t **vf_configs) {
 			if (mdgp->def_mc_pkey != 0xffffffff) {
 				uint32_t vf;
 				int match = 0;
-				for (vf=0; vf < vf_configs[i]->number_of_vfs; vf++) {
-					if (PKEY_VALUE(vf_configs[i]->v_fabric[vf].pkey) == PKEY_VALUE(mdgp->def_mc_pkey)) {
+				for (vf=0; vf < vf_configs[i]->number_of_vfs_all; vf++) {
+					if (vf_configs[i]->v_fabric_all[vf].standby) continue;
+					if (PKEY_VALUE(vf_configs[i]->v_fabric_all[vf].pkey) == PKEY_VALUE(mdgp->def_mc_pkey)) {
 						match=1;
 						break;
 					}
@@ -476,8 +477,11 @@ print_checksum_information (int num_instances, VirtualFabrics_t **vf_configs) {
 		fprintf(stdout, "   SM overall checksum %8u    consistency checksum %8u\n", smp->overall_checksum, smp->consistency_checksum);
 		fprintf(stdout, "   PM overall checksum %8u    consistency checksum %8u\n", pmp->overall_checksum, pmp->consistency_checksum);
 		fprintf(stdout, "   VF database consistency checksum %8u\n", vf_configs[i]->consistency_checksum);
-		for (v = 0; v < vf_configs[i]->number_of_vfs; v++) 
-			fprintf(stdout, "       VF %s consistency checksum %8u\n", vf_configs[i]->v_fabric[v].name, vf_configs[i]->v_fabric[v].consistency_checksum);
+		for (v = 0; v < vf_configs[i]->number_of_vfs_all; v++) {
+			if (vf_configs[i]->v_fabric_all[v].standby) continue;
+			fprintf(stdout, "       VF %s consistency checksum %8u\n", vf_configs[i]->v_fabric_all[v].name,
+				vf_configs[i]->v_fabric_all[v].consistency_checksum);
+		}
 		fprintf(stdout,"\n");
 	}
 }

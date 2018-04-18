@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT3 ****************************************
 
-Copyright (c) 2015-17, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -163,8 +163,8 @@ typedef struct _IB_PATH_RECORD {
 	uint64		ServiceID;
 	IB_GID		DGID;				/* Destination GID */
 	IB_GID		SGID;				/* Source GID */
-	uint16		DLID;				/* Destination LID */
-	uint16		SLID;				/* Source LID */
+	IB_LID		DLID;				/* Destination LID */
+	IB_LID		SLID;				/* Source LID */
 	union {
 		uint32 AsReg32;
 		struct {
@@ -487,7 +487,7 @@ typedef struct _IB_MCMEMBER_RECORD {
 	} PACK_SUFFIX RID;
 	uint32			Q_Key;					/* Q_Key supplied at Multicast Group */
 											/*	creation time by the creator. */
-	uint16			MLID;					/* Multicast LID.  Assigned by SM/SA */
+	IB_LID			MLID;					/* Multicast LID.  Assigned by SM/SA */
 											/* at creation time. */
 #if CPU_BE
 	uint8		MtuSelector	:2;		/* enum IB_SELECTOR */

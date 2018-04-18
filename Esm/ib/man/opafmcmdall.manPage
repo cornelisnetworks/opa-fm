@@ -1,12 +1,12 @@
 .\" .\" *********************************************************************
 .\" .\" *                                                                   *
-.\" .\" *             Copyright 2015-2017, Intel Corporation                *
+.\" .\" *             Copyright 2015-2018, Intel Corporation                *
 .\" .\" *                                                                   *
 .\" .\" *                       All Rights Reserved.                        *
 .\" .\" *                                                                   *
 .\" .\" *********************************************************************
 
-.TH opafmcmdall 8 "Intel Corporation" "Copyright(C) 2015\-2017" "Master map: IFSFFCLIRG (Man Page)" 
+.TH opafmcmdall 8 "Intel Corporation" "Copyright(C) 2015\-2018" "Master map: IFSFFCLIRG (Man Page)" 
 .SH NAME
 opafmcmdall
 
@@ -28,10 +28,10 @@ Produces full help text.
 .TP 10
 -i \fIfm\(ulinstance\fR 
 .NL
-Specifies the number of the FM instance to act on.
+Specifies the FM instance number (0-7) to act on.
 
 .IP
-Range = 0 to 7. Default = 0.
+Specify multiple -i options as needed. Default = all instances.
 .TP 10
 cmd [args] 
 .NL
@@ -309,7 +309,7 @@ Stops loop test. Returns switch LFTs back to normal.
 
 .sp
 smLooptestInjectPackets 
-Enter  \fInumPkts\fR to send to all switch loops. Default = 1.
+Enter \fInumPkts\fR to send to all switch loops. Default = 1.
 
 .RE
 

@@ -44,19 +44,22 @@ DIRS			=
 # C files (.c)
 CFILES			= \
 				  sa_main.c sa_utility.c sa_db.c sa_userexits.c		\
-		  		  sa_ClassPortInfo.c sa_InformInfo.c	\
-		  		  sa_InformRecord.c sa_LFTableRecord.c sa_LinkRecord.c		\
-		  		  sa_McMemberRecord.c sa_MFTableRecord.c \
-		  		  sa_NodeRecord.c sa_PartitionRecord.c					\
-		  		  sa_PathRecord.c sa_PortInfoRecord.c sa_SLSCTableRecord.c \
-		  		  sa_SMInfoRecord.c sa_ServiceRecord.c sa_SwitchInfoRecord.c \
-		  		  sa_VLArbitrationRecord.c sa_Trap.c		\
-		  		  sa_TraceRecord.c sa_VFabricRecord.c \
+				  sa_ClassPortInfo.c sa_InformInfo.c	\
+				  sa_InformRecord.c sa_LFTableRecord.c sa_LinkRecord.c		\
+				  sa_McMemberRecord.c sa_MFTableRecord.c \
+				  sa_NodeRecord.c sa_PartitionRecord.c sa_HFTableRecord.c \
+				  sa_PathRecord.c sa_PortInfoRecord.c sa_SLSCTableRecord.c \
+				  sa_SMInfoRecord.c sa_ServiceRecord.c sa_SwitchInfoRecord.c \
+				  sa_VLArbitrationRecord.c sa_BwArbitrationRecord.c sa_Trap.c		\
+				  sa_TraceRecord.c sa_VFabricRecord.c \
 				  sa_FabricInfoRecord.c sa_QuarantinedNodeRecord.c \
-		  		  sa_BufferControlTableRecord.c	sa_CongestionRecords.c \
-		  		  sa_CableInfoRecord.c sa_PortGroupRecord.c \
- 		  		  sa_SCSLTableRecord.c sa_SCVLTableRecord.c \
- 		  		  sa_SCSCTableRecord.c sa_SwitchCostRecord.c
+				  sa_BufferControlTableRecord.c	sa_CongestionRecords.c \
+				  sa_CableInfoRecord.c sa_PortGroupRecord.c \
+				  sa_SCSLTableRecord.c sa_SCVLTableRecord.c \
+				  sa_SCSCTableRecord.c sa_SwitchCostRecord.c \
+				  sa_DeviceGroupMembership.c sa_DeviceGroupName.c \
+				  sa_DeviceTree.c sa_TsyncRecord.c \
+				  sa_SLPairs.c
 				# Add more c files here
 
 # C++ files (.cpp)

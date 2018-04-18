@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT3 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -58,6 +58,7 @@ extern "C" {
 #define		STL_IBA_GS_DATASIZE		(STL_MAD_BLOCK_SIZE - IBA_GS_HDRSIZE)
 #define		STL_GS_DATASIZE			(STL_MAD_BLOCK_SIZE - STL_GS_HDRSIZE)
 										/* can include SAR header */
+
 /* IBA_RMPP_GS* is computed below, these are here as a reminder for users */
 /*#define	IBA_RMPP_GS_DATASIZE	220*//* what's left for class payload */
 /*#define	IBA_RMPP_GS_HDRSIZE		36 *//* common + RMPP header */
@@ -343,6 +344,7 @@ BSWAPCOPY_IB_SA_MAD(IB_SA_MAD *src, IB_SA_MAD *dst, size_t len)
     BSWAP_RMPP_HEADER(&dst->RmppHdr);
 	memcpy(&dst->Data, &src->Data, len);
 }
+
 
 static __inline
 void

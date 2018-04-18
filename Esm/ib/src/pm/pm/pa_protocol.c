@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -204,6 +204,12 @@ pa_getAidName(uint16_t aid)
     case STL_PA_ATTRID_GET_GRP_CFG:
         return "STL_GET_GRP_CONFIG";
         break;
+    case STL_PA_ATTRID_GET_GRP_NODE_INFO:
+        return "STL_GET_GRP_NODEINFO";
+        break;
+    case STL_PA_ATTRID_GET_GRP_LINK_INFO:
+        return "STL_GET_GRP_LINKINFO";
+        break;
     case STL_PA_ATTRID_GET_PORT_CTRS:
         return "STL_GET_PORT_CNTRS";
         break;
@@ -228,7 +234,10 @@ pa_getAidName(uint16_t aid)
 	case STL_PA_ATTRID_GET_FOCUS_PORTS:
         return "STL_GET_FOCUS_PORTS";
         break;
-	case STL_PA_ATTRID_GET_IMAGE_INFO:
+    case STL_PA_ATTRID_GET_FOCUS_PORTS_MULTISELECT:
+        return "STL_GET_FOCUS_PORTS_MULTISELECT";
+        break;
+    case STL_PA_ATTRID_GET_IMAGE_INFO:
         return "STL_GET_IMAGE_INFO";
         break;
 	case STL_PA_ATTRID_MOVE_FREEZE_FRAME:
@@ -895,7 +904,7 @@ Status_t
 pa_send_reply(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 {
 	uint8_t		method;
-	uint16_t	lid;
+	STL_LID 	lid;
 
 	IB_ENTER(__func__, maip, pa_cntxt, 0, 0);
 
@@ -1347,7 +1356,7 @@ pa_protocol_init(void)
     IB_LOG_VERBOSE("Allocating PA context pool with num entries=", pa_max_cntxt);
 	status = vs_pool_alloc(&pm_pool, sizeof(pa_cntxt_t) * pa_max_cntxt, (void *)&pa_cntxt_pool);
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("PM: Can't allocate PA context pool");
+		IB_FATAL_ERROR_NODUMP("PM: Can't allocate PA context pool");
 		return VSTATUS_NOMEM;
 	}
 	memset(pa_cntxt_pool, 0, sizeof(pa_cntxt_t) * pa_max_cntxt);
@@ -1373,13 +1382,13 @@ pa_protocol_init(void)
     //	allocate the PA data storage pool.
 	status = vs_pool_alloc(&pm_pool, pa_data_length, (void*)&pa_data);
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("PM: can't allocate pa data");
+		IB_FATAL_ERROR_NODUMP("PM: can't allocate pa data");
 		return VSTATUS_NOMEM;
 	}
 
 	// open a channel that is used by the PA to handle RMPP responses and acks
 	if ((status = mai_open(MAI_GSI_QP, pm_config.hca, pm_config.port, &fd_pa_w)) != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't open fd_sa_w");
+		IB_FATAL_ERROR_NODUMP("can't open fd_sa_w");
         return VSTATUS_BAD;
 	}
     //
@@ -1390,7 +1399,7 @@ pa_protocol_init(void)
 
     if ((status = vs_thread_create(&pa_writer_thread, (unsigned char *)thread_id,
 		                          pa_main_writer, 0, NULL, PA_STACK_SIZE)) != VSTATUS_OK)
-		IB_FATAL_ERROR("failed to start PA Writer thread");
+		IB_FATAL_ERROR_NODUMP("failed to start PA Writer thread");
 
     return status;
 }
@@ -1491,64 +1500,70 @@ pa_process_mad(Mai_t *maip, pa_cntxt_t* pa_cntxt)
     
 	switch (maip->base.method) {
 	case STL_PA_CMD_SET:
-    	if (maip->base.aid == STL_PA_ATTRID_CLR_PORT_CTRS) {
-		    (void)pa_clrPortCountersResp(maip, pa_cntxt);
-    	} else if (maip->base.aid == STL_PA_ATTRID_CLR_ALL_PORT_CTRS) {
-		    (void)pa_clrAllPortCountersResp(maip, pa_cntxt);
-    	} else if (maip->base.aid == STL_PA_ATTRID_FREEZE_IMAGE) {
-		    (void)pa_freezeImageResp(maip, pa_cntxt);
-    	} else if (maip->base.aid == STL_PA_ATTRID_RELEASE_IMAGE) {
-		    (void)pa_releaseImageResp(maip, pa_cntxt);
-    	} else if (maip->base.aid == STL_PA_ATTRID_RENEW_IMAGE) {
-		    (void)pa_renewImageResp(maip, pa_cntxt);
-    	} else if (maip->base.aid == STL_PA_ATTRID_MOVE_FREEZE_FRAME) {
-		    (void)pa_moveFreezeImageResp(maip, pa_cntxt);
-    	} else if (maip->base.aid == STL_PA_ATTRID_CLR_VF_PORT_CTRS) {
-		    (void)pa_clrVFPortCountersResp(maip, pa_cntxt);
+		if (maip->base.aid == STL_PA_ATTRID_CLR_PORT_CTRS) {
+			(void)pa_clrPortCountersResp(maip, pa_cntxt);
+		} else if (maip->base.aid == STL_PA_ATTRID_CLR_ALL_PORT_CTRS) {
+			(void)pa_clrAllPortCountersResp(maip, pa_cntxt);
+		} else if (maip->base.aid == STL_PA_ATTRID_FREEZE_IMAGE) {
+			(void)pa_freezeImageResp(maip, pa_cntxt);
+		} else if (maip->base.aid == STL_PA_ATTRID_RELEASE_IMAGE) {
+			(void)pa_releaseImageResp(maip, pa_cntxt);
+		} else if (maip->base.aid == STL_PA_ATTRID_RENEW_IMAGE) {
+			(void)pa_renewImageResp(maip, pa_cntxt);
+		} else if (maip->base.aid == STL_PA_ATTRID_MOVE_FREEZE_FRAME) {
+			(void)pa_moveFreezeImageResp(maip, pa_cntxt);
+		} else if (maip->base.aid == STL_PA_ATTRID_CLR_VF_PORT_CTRS) {
+			(void)pa_clrVFPortCountersResp(maip, pa_cntxt);
 		} else {
-		    //(void)pa_getSingleMadResp(maip, pa_cntxt);
+			//(void)pa_getSingleMadResp(maip, pa_cntxt);
 			goto invalid;
 		}
 		break;
 	case STL_PA_CMD_GET:
-    	if (maip->base.aid == STL_PA_ATTRID_GET_CLASSPORTINFO) {
-		    (void)pa_getClassPortInfoResp(maip, pa_cntxt);
-    	} else if (maip->base.aid == STL_PA_ATTRID_GET_PORT_CTRS) {
-		    (void)pa_getPortCountersResp(maip, pa_cntxt);
-    	} else if (maip->base.aid == STL_PA_ATTRID_GET_PM_CONFIG) {
-		    (void)pa_getPmConfigResp(maip, pa_cntxt);
-    	} else if (maip->base.aid == STL_PA_ATTRID_GET_VF_PORT_CTRS) {
-		    (void)pa_getVFPortCountersResp(maip, pa_cntxt);
+		if (maip->base.aid == STL_PA_ATTRID_GET_CLASSPORTINFO) {
+			(void)pa_getClassPortInfoResp(maip, pa_cntxt);
+		} else if (maip->base.aid == STL_PA_ATTRID_GET_PORT_CTRS) {
+			(void)pa_getPortCountersResp(maip, pa_cntxt);
+		} else if (maip->base.aid == STL_PA_ATTRID_GET_PM_CONFIG) {
+			(void)pa_getPmConfigResp(maip, pa_cntxt);
+		} else if (maip->base.aid == STL_PA_ATTRID_GET_VF_PORT_CTRS) {
+			(void)pa_getVFPortCountersResp(maip, pa_cntxt);
 		} else {
-		    //(void)pa_getSingleMadResp(maip, pa_cntxt);
+			//(void)pa_getSingleMadResp(maip, pa_cntxt);
 			goto invalid;
 		}
-		break;
+			break;
 	case STL_PA_CMD_GETTABLE:
 		if (maip->base.aid == STL_PA_ATTRID_GET_GRP_LIST) {
-		    (void)pa_getGroupListResp(maip, pa_cntxt);
+			(void)pa_getGroupListResp(maip, pa_cntxt);
 		} else if (maip->base.aid == STL_PA_ATTRID_GET_GRP_INFO) {
-		    (void)pa_getGroupInfoResp(maip, pa_cntxt);
+			(void)pa_getGroupInfoResp(maip, pa_cntxt);
 		} else if (maip->base.aid == STL_PA_ATTRID_GET_GRP_CFG) {
-		    (void)pa_getGroupConfigResp(maip, pa_cntxt);
-    	} else if (maip->base.aid == STL_PA_ATTRID_GET_FOCUS_PORTS) {
-		    (void)pa_getFocusPortsResp(maip, pa_cntxt);
-    	} else if (maip->base.aid == STL_PA_ATTRID_GET_IMAGE_INFO) {
-		    (void)pa_getImageInfoResp(maip, pa_cntxt);
-    	} else if (maip->base.aid == STL_PA_ATTRID_GET_VF_LIST) {
-		    (void)pa_getVFListResp(maip, pa_cntxt);
-    	} else if (maip->base.aid == STL_PA_ATTRID_GET_VF_INFO) {
-		    (void)pa_getVFInfoResp(maip, pa_cntxt);
-    	} else if (maip->base.aid == STL_PA_ATTRID_GET_VF_CONFIG) {
-		    (void)pa_getVFConfigResp(maip, pa_cntxt);
-    	} else if (maip->base.aid == STL_PA_ATTRID_GET_VF_FOCUS_PORTS) {
-		    (void)pa_getVFFocusPortsResp(maip, pa_cntxt);
+			(void)pa_getGroupConfigResp(maip, pa_cntxt);
+		} else if (maip->base.aid == STL_PA_ATTRID_GET_FOCUS_PORTS) {
+			(void)pa_getFocusPortsResp(maip, pa_cntxt);
+		} else if (maip->base.aid == STL_PA_ATTRID_GET_FOCUS_PORTS_MULTISELECT) {
+			(void)pa_getFocusPortsMultiSelectResp(maip, pa_cntxt);
+		} else if (maip->base.aid == STL_PA_ATTRID_GET_IMAGE_INFO) {
+			(void)pa_getImageInfoResp(maip, pa_cntxt);
+		} else if (maip->base.aid == STL_PA_ATTRID_GET_VF_LIST) {
+			(void)pa_getVFListResp(maip, pa_cntxt);
+		} else if (maip->base.aid == STL_PA_ATTRID_GET_VF_INFO) {
+			(void)pa_getVFInfoResp(maip, pa_cntxt);
+		} else if (maip->base.aid == STL_PA_ATTRID_GET_VF_CONFIG) {
+			(void)pa_getVFConfigResp(maip, pa_cntxt);
+		} else if (maip->base.aid == STL_PA_ATTRID_GET_VF_FOCUS_PORTS) {
+			(void)pa_getVFFocusPortsResp(maip, pa_cntxt);
+		} else if (maip->base.aid == STL_PA_ATTRID_GET_GRP_NODE_INFO) {
+			(void)pa_getGroupNodeInfoResp(maip, pa_cntxt);
+		} else if (maip->base.aid == STL_PA_ATTRID_GET_GRP_LINK_INFO) {
+			(void)pa_getGroupLinkInfoResp(maip, pa_cntxt);
 		} else {
-		    //(void)pa_getMultiMadResp(maip, pa_cntxt);
+			//(void)pa_getMultiMadResp(maip, pa_cntxt);
 			goto invalid;
 		}
 		break;
-    default:
+	default:
 invalid:
         IB_LOG_INFINI_INFO_FMT(__func__,
                "Unsupported or invalid %s[%s] request from LID [0x%x], TID["FMT_U64"]", 
@@ -1570,7 +1585,7 @@ invalid:
         /* lids have been swapped, so use dlid here */
         (void) vs_time_get (&endTime);
         IB_LOG_INFINI_INFO_FMT(__func__, 
-               "%ld microseconds to process %s[%s] request from LID 0x%.4X, TID="FMT_U64,
+               "%ld microseconds to process %s[%s] request from LID 0x%.8X, TID="FMT_U64,
                (long)(endTime - startTime), pa_getMethodText((int)pa_cntxt->method), 
                pa_getAidName(maip->base.aid), maip->addrInfo.dlid, maip->base.tid);
     }

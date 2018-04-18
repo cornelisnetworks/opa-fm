@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -68,6 +68,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ib_status.h"
 #include "cs_g.h"
 #include "cs_log.h"
+#include <features.h>
 #ifdef LOCAL_MOD_ID
 #undef LOCAL_MOD_ID
 #endif
@@ -183,8 +184,7 @@ void vs_init_coredump_settings(const char* mgr, const char* limit, const char *d
 	if (setrlimit(RLIMIT_CORE, &rlimit) != 0) {
 		snprintf(buf, sizeof(buf), "%s: Unable to change CoreDumpLimit to '%s' %m", mgr, limit);
 		vs_log_output_message(buf, FALSE);
-	}
-	if (rlimit.rlim_cur) {
+	} else if (rlimit.rlim_cur) {
 		snprintf(buf, sizeof(buf), "%s: Enabling CoreDumps to %s up to %s bytes", mgr, dir, limit);
 		vs_log_output_message(buf, FALSE);
 	}

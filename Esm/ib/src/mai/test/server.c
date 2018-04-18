@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -164,7 +164,8 @@ main(int argc, char* argv[])
   IBhandle_t fd,fh;
   Mai_t mad;
   uint16_t taid;
-  uint16_t method,dlid,slid;
+  uint16_t method;
+  STL_LID  dlid,slid;
 
 
   if (argc > 1)

@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -47,11 +47,15 @@ uint32 computeSendMBps(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data)
 
 	port2 = port->Image[imageIndex].neighbor;
 
-	SendMBps = (uint32)(port->Image[imageIndex].DeltaStlPortCounters.PortXmitData / FLITS_PER_MB / interval);
+	{
+		SendMBps = (uint32)(port->Image[imageIndex].DeltaStlPortCounters.PortXmitData / FLITS_PER_MB / interval);
+	}
 
-	if (port2)
-		SendMBps2 = (uint32)(port2->Image[imageIndex].DeltaStlPortCounters.PortRcvData / FLITS_PER_MB / interval);
-
+	if (port2) {
+		{
+			SendMBps2 = (uint32)(port2->Image[imageIndex].DeltaStlPortCounters.PortRcvData / FLITS_PER_MB / interval);
+		}
+	}
 	return MAX(SendMBps, SendMBps2);
 }
 uint32 computeSendKPkts(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data)
@@ -106,56 +110,51 @@ uint32 computeCongestion(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data
 {
 	PmPort_t *port2 = NULL;
 	CongestionWeights_t *weights = (data ? (CongestionWeights_t *)data : &pm->congestionWeights);
-	uint32 Congestion, vlmask;
-	uint64 XmitWait = 0, maxPortVLXmitWait = 0;
+	uint32 Congestion;
 
 	if (port == NULL || imageIndex == PM_IMAGE_INDEX_INVALID) return 0;
 
 	port2 = port->Image[imageIndex].neighbor;
 
-	/* Handle PortXmitWait */
-	XmitWait = port->Image[imageIndex].DeltaStlPortCounters.PortXmitWait;
-	if (pm->flags & STL_PM_PROCESS_VL_COUNTERS && XmitWait) {
-		uint8 i, numVLs = 0;
-		vlmask = port->Image[imageIndex].vlSelectMask;
-		for (i = 0; i < STL_MAX_VLS && vlmask; i++, vlmask >>= 1) {
-			if (vlmask & 0x1) {
-				UPDATE_MAX(maxPortVLXmitWait, port->Image[imageIndex].DeltaStlVLPortCounters[vl_to_idx(i)].PortVLXmitWait);
-				numVLs++;
-			}
+	{
+		uint64 XmitWaitFlitTimes = port->Image[imageIndex].DeltaStlPortCounters.PortXmitWait;
+		uint64 XmitTimeCongFlitTimes = port->Image[imageIndex].DeltaStlPortCounters.PortXmitTimeCong;
+		/* Convert switch wait counter units from cycle time to flit time */
+		if (port->pmnodep->nodeType == STL_NODE_SW) {
+			XmitWaitFlitTimes = XmitWaitFlitTimes * 2 *
+				(4 / StlLinkWidthToInt(port->Image[imageIndex].u.s.txActiveWidth));
+			XmitTimeCongFlitTimes = XmitTimeCongFlitTimes * 2 *
+				(4 / StlLinkWidthToInt(port->Image[imageIndex].u.s.txActiveWidth));
 		}
-		// PortXmitWait counter is incremented once if any VLs experienced congestion.
-		// It is possible that minimal congestion in sequence could be treated as severe port congestion.
-		// So modify PortXmitWait taking into consideration the VL xmit wait counter data.
-		XmitWait = (maxPortVLXmitWait * maxPortVLXmitWait * numVLs) / XmitWait;
+		Congestion = (uint32)(
+			(XmitWaitFlitTimes ?
+				(XmitWaitFlitTimes * weights->PortXmitWait * 10000) /
+				(port->Image[imageIndex].DeltaStlPortCounters.PortXmitData +
+					XmitWaitFlitTimes) : 0) +
+
+			(XmitTimeCongFlitTimes ?
+				(XmitTimeCongFlitTimes * weights->PortXmitTimeCong * 1000) /
+				(port->Image[imageIndex].DeltaStlPortCounters.PortXmitData +
+					XmitTimeCongFlitTimes) : 0) +
+
+			(port->Image[imageIndex].DeltaStlPortCounters.PortRcvPkts ?
+				((port->pmnodep->nodeType == STL_NODE_FI ? 1 : 0) *
+					(port->Image[imageIndex].DeltaStlPortCounters.PortRcvBECN * weights->PortRcvBECN * 1000)) /
+				(port->Image[imageIndex].DeltaStlPortCounters.PortRcvPkts) : 0) +
+
+			(port->Image[imageIndex].DeltaStlPortCounters.PortXmitPkts ?
+				(port->Image[imageIndex].DeltaStlPortCounters.PortMarkFECN * weights->PortMarkFECN * 1000) /
+				(port->Image[imageIndex].DeltaStlPortCounters.PortXmitPkts) : 0) +
+
+			(port->Image[imageIndex].DeltaStlPortCounters.SwPortCongestion * weights->SwPortCongestion));
 	}
 
-	Congestion = (uint32)(
-		(XmitWait ? (XmitWait * weights->PortXmitWait * 10000) /
-			(port->Image[imageIndex].DeltaStlPortCounters.PortXmitData + XmitWait) : 0)+
-
-		(port->Image[imageIndex].DeltaStlPortCounters.PortXmitTimeCong ?
-			(port->Image[imageIndex].DeltaStlPortCounters.PortXmitTimeCong * weights->PortXmitTimeCong * 1000) /
-			(port->Image[imageIndex].DeltaStlPortCounters.PortXmitData +
-				port->Image[imageIndex].DeltaStlPortCounters.PortXmitTimeCong) : 0) +
-
-		(port->Image[imageIndex].DeltaStlPortCounters.PortRcvPkts ?
-			( (port->pmnodep->nodeType == STL_NODE_FI ? 1 : 0) *
-				(port->Image[imageIndex].DeltaStlPortCounters.PortRcvBECN * weights->PortRcvBECN * 1000) ) /
-			(port->Image[imageIndex].DeltaStlPortCounters.PortRcvPkts) : 0) +
-
-		(port->Image[imageIndex].DeltaStlPortCounters.PortXmitPkts ?
-			(port->Image[imageIndex].DeltaStlPortCounters.PortMarkFECN * weights->PortMarkFECN * 1000) /
-			(port->Image[imageIndex].DeltaStlPortCounters.PortXmitPkts) : 0) +
-
-		(port->Image[imageIndex].DeltaStlPortCounters.SwPortCongestion * weights->SwPortCongestion) );
-
-	if (port2)
+	if (port2) {
 		Congestion += (uint32)(
 			(port2->Image[imageIndex].DeltaStlPortCounters.PortXmitPkts ?
 				(port2->Image[imageIndex].DeltaStlPortCounters.PortRcvFECN * weights->PortRcvFECN * 1000) /
-				(port2->Image[imageIndex].DeltaStlPortCounters.PortXmitPkts) : 0) );
-
+				(port2->Image[imageIndex].DeltaStlPortCounters.PortXmitPkts) : 0));
+	}
 	return Congestion;
 }
 uint32 computeSmaCongestion(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data)
@@ -168,28 +167,39 @@ uint32 computeSmaCongestion(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *d
 	if ((pm->flags & STL_PM_PROCESS_VL_COUNTERS) == 0) return 0;
 
 	port2 = port->Image[imageIndex].neighbor;
+	
+	{
+		uint64 VlXmitWaitFlitTimes = port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].PortVLXmitWait;
+		uint64 VlXmitTimeCongFlitTimes = port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].PortVLXmitTimeCong;
+		/* Convert switch wait counter units from cycle time to flit time */
+		if (port->pmnodep->nodeType == STL_NODE_SW) {
+			VlXmitWaitFlitTimes = VlXmitWaitFlitTimes * 2 *
+				(4 / StlLinkWidthToInt(port->Image[imageIndex].u.s.txActiveWidth));
+			VlXmitTimeCongFlitTimes = VlXmitTimeCongFlitTimes * 2 *
+				(4 / StlLinkWidthToInt(port->Image[imageIndex].u.s.txActiveWidth));
+		}
+		SmaCongestion = (uint32)(
+			(VlXmitWaitFlitTimes ?
+				(VlXmitWaitFlitTimes * weights->PortXmitWait * 10000) /
+				(port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].PortVLXmitData +
+					VlXmitWaitFlitTimes) : 0) +
 
-	SmaCongestion = (uint32)(
-		(port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].PortVLXmitWait ?
-			(port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].PortVLXmitWait * weights->PortXmitWait * 10000) /
-			(port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].PortVLXmitData +
-				port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].PortVLXmitWait) : 0)+
+			(VlXmitTimeCongFlitTimes ?
+				(VlXmitTimeCongFlitTimes * weights->PortXmitTimeCong * 1000) /
+				(port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].PortVLXmitData +
+					VlXmitTimeCongFlitTimes) : 0) +
 
-		(port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].PortVLXmitTimeCong ?
-			(port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].PortVLXmitTimeCong * weights->PortXmitTimeCong * 1000) /
-			(port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].PortVLXmitData +
-				port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].PortVLXmitTimeCong) : 0) +
+			(port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].PortVLRcvPkts ?
+				((port->pmnodep->nodeType == STL_NODE_FI ? 1 : 0) *
+					(port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].PortVLRcvBECN * weights->PortRcvBECN * 1000)) /
+				(port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].PortVLRcvPkts) : 0) +
 
-		(port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].PortVLRcvPkts ?
-			( (port->pmnodep->nodeType == STL_NODE_FI ? 1 : 0) *
-				(port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].PortVLRcvBECN * weights->PortRcvBECN * 1000) ) /
-			(port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].PortVLRcvPkts) : 0) +
+			(port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].PortVLXmitPkts ?
+				(port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].PortVLMarkFECN * weights->PortMarkFECN * 1000) /
+				(port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].PortVLXmitPkts) : 0) +
 
-		(port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].PortVLXmitPkts ?
-			(port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].PortVLMarkFECN * weights->PortMarkFECN * 1000) /
-			(port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].PortVLXmitPkts) : 0) +
-
-		(port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].SwPortVLCongestion * weights->SwPortCongestion) );
+			(port->Image[imageIndex].DeltaStlVLPortCounters[PM_VL15].SwPortVLCongestion * weights->SwPortCongestion));
+	}
 
 	if (port2)
 		SmaCongestion += (uint32)(
@@ -210,20 +220,37 @@ uint32 computeBubble(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data)
 
 	port2 = port->Image[imageIndex].neighbor;
 
+
 	PortXmitBubble =
 		(port->Image[imageIndex].DeltaStlPortCounters.PortXmitWastedBW +
-			port->Image[imageIndex].DeltaStlPortCounters.PortXmitWaitData);
+		port->Image[imageIndex].DeltaStlPortCounters.PortXmitWaitData);
 
-	Bubble = (uint32)(
-		(PortXmitBubble ? (PortXmitBubble * 10000) /
-			(port->Image[imageIndex].DeltaStlPortCounters.PortXmitData + PortXmitBubble) : 0) );
+	{
+		/* Convert switch wait counter units from cycle time to flit time */
+		if (port->pmnodep->nodeType == STL_NODE_SW) {
+			PortXmitBubble = PortXmitBubble * 2 *
+				(4 / StlLinkWidthToInt(port->Image[imageIndex].u.s.txActiveWidth));
+		}
+		Bubble = (uint32)(
+			(PortXmitBubble ? (PortXmitBubble * 10000) /
+				(port->Image[imageIndex].DeltaStlPortCounters.PortXmitData + PortXmitBubble) : 0));
+	}
 
-	if (port2)
-		Bubble2 = (uint32)(
-			(port2->Image[imageIndex].DeltaStlPortCounters.PortRcvBubble ?
-				(port2->Image[imageIndex].DeltaStlPortCounters.PortRcvBubble * 10000) /
-				(port2->Image[imageIndex].DeltaStlPortCounters.PortRcvData +
-					port2->Image[imageIndex].DeltaStlPortCounters.PortRcvBubble) : 0) );
+	if (port2) {
+		{
+			uint64 RcvBubbleFlitTimes = port->Image[imageIndex].DeltaStlPortCounters.PortRcvBubble;
+			/* Convert switch wait counter units from cycle time to flit time */
+			if (port->pmnodep->nodeType == STL_NODE_SW) {
+				RcvBubbleFlitTimes = RcvBubbleFlitTimes * 2 *
+					(4 / StlLinkWidthToInt(port->Image[imageIndex].u.s.txActiveWidth));
+			}
+			Bubble2 = (uint32)(
+				(RcvBubbleFlitTimes ?
+					(RcvBubbleFlitTimes * 10000) /
+					(port2->Image[imageIndex].DeltaStlPortCounters.PortRcvData +
+						RcvBubbleFlitTimes) : 0));
+		}
+	}
 
 	return MAX(Bubble, Bubble2);
 }

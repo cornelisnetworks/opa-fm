@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -126,7 +126,7 @@ GetCableInfoRecord(Mai_t *maip, uint32_t *records)
 	Status_t 	status;
 	bool_t 		checkLid, checkPort;
 	uint8_t		portNum=0;
-	uint16_t	portLid=0;
+	STL_LID		portLid=0;
 	Node_t		*pNode;
 	Port_t		*pPort;
 	STL_CABLE_INFO_RECORD record = {{0}};

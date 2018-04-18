@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -121,170 +121,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* optional bad pkey on switch external port */
 #define MAD_SMT_BAD_PKEY_ONPORT 259
 
-typedef	struct {
-	uint8_t		generic;	// 1 -> generic
-	uint8_t		noticeType;	// notice type (see IB spec)
-	uint32_t	nodeType;	// node type of generating node
-	uint16_t	trapNumber;	// class-defined (or device ID)
-	uint16_t	issuerLid;	// LID of issuer
-	uint8_t		toggle;		// noticeToggle
-	uint16_t	count;		// noticeCount
-
-	uint8_t     reserved[6];// 48-bit actual
-	Gid_t		gid;		// GID of port that changed
-	uint8_t		padding[32];	// padding - ignored
-} Trap64_t;
-
-typedef	Trap64_t	Trap65_t;
-typedef	Trap64_t	Trap66_t;
-typedef	Trap64_t	Trap67_t;
-
-typedef	struct {
-	uint8_t		generic;	// 1 -> generic
-	uint8_t		noticeType;	// notice type (see IB spec)
-	uint32_t	nodeType;	// node type of generating node
-	uint16_t	trapNumber;	// class-defined (or device ID)
-	uint16_t	issuerLid;	// LID of issuer
-	uint8_t		toggle;		// noticeToggle
-	uint16_t	count;		// noticeCount
-
-	uint16_t	lid;		// LID
-	uint8_t		padding[52];	// padding - ignored
-} Trap128_t;
-
-typedef	struct {
-	uint8_t		generic;	// 1 -> generic
-	uint8_t		noticeType;	// notice type (see IB spec)
-	uint32_t	nodeType;	// node type of generating node
-	uint16_t	trapNumber;	// class-defined (or device ID)
-	uint16_t	issuerLid;	// LID of issuer
-	uint8_t		toggle;		// noticeToggle
-	uint16_t	count;		// noticeCount
-
-	uint16_t	rsvd0;		// reserved - 0
-	uint16_t	lid;		// LID
-	uint8_t		port;		// port number
-	uint8_t		padding[49];	// padding - ignored
-} Trap129_t;
-
-typedef	Trap129_t	Trap130_t;
-
-typedef	Trap129_t	Trap131_t;
-
-typedef	struct {
-	uint8_t		generic;	// 1 -> generic
-	uint8_t		noticeType;	// notice type (see IB spec)
-	uint32_t	nodeType;	// node type of generating node
-	uint16_t	trapNumber;	// class-defined (or device ID)
-	uint16_t	issuerLid;	// LID of issuer
-	uint8_t		toggle;		// noticeToggle
-	uint16_t	count;		// noticeCount
-	uint16_t	rsvd0;		// reserved - 0
-	uint16_t	lid;		// LID
-	uint16_t	rsvd1;		// reserved - 1
-	uint32_t	capMask;	// capability mask
-	uint8_t		padding[44];	// padding - ignored
-} Trap144_t;
-
-typedef	struct {
-	uint8_t		generic;	// 1 -> generic
-	uint8_t		noticeType;	// notice type (see IB spec)
-	uint32_t	nodeType;	// node type of generating node
-	uint16_t	trapNumber;	// class-defined (or device ID)
-	uint16_t	issuerLid;	// LID of issuer
-	uint8_t		toggle;		// noticeToggle
-	uint16_t	count;		// noticeCount
-	uint16_t	rsvd0;		// reserved - 0
-	uint16_t	lid;		// LID
-	uint16_t	rsvd1;		// reserved - 1
-	uint64_t	sysImageGuid;   // system image guidk
-	uint8_t		padding[40];	// padding - ignored
-} Trap145_t;
-
-typedef	struct {
-	uint8_t		generic;	// 1 -> generic
-	uint8_t		noticeType;	// notice type (see IB spec)
-	uint32_t	nodeType;	// node type of generating node
-	uint16_t	trapNumber;	// class-defined (or device ID)
-	uint16_t	issuerLid;	// LID of issuer
-	uint8_t		toggle;		// noticeToggle
-	uint16_t	count;		// noticeCount
-
-	uint16_t	rsvd0;		// reserved - 0
-	uint16_t	lid;		// LID
-    uint16_t    drSlid;
-	//uint16_t	rsvd1;		// reserved - 0
-	uint8_t		method;		// method
-    uint8_t		rsvd1;		// reserved - 0
-    //uint8_t		rsvd2;		// reserved - 0
-	uint16_t	aid;		// attribute ID
-	uint32_t	amod;		// attribute modifier
-	uint64_t	mkey;		// M_Key
-    uint8_t		rsvd2;		// reserved - 0
-    uint8_t     drNotice;
-    uint8_t     drPathTruncated;
-    uint8_t     drHopCount;
-    uint8_t     drNoticeRetunPath[30];
-	//uint8_t		padding[32];	// padding
-} Trap256_t;
-
-typedef	struct {
-	uint8_t		generic;	// 1 -> generic
-	uint8_t		noticeType;	// notice type (see IB spec)
-	uint32_t	nodeType;	// node type of generating node
-	uint16_t	trapNumber;	// class-defined (or device ID)
-	uint16_t	issuerLid;	// LID of issuer
-	uint8_t		toggle;		// noticeToggle
-	uint16_t	count;		// noticeCount
-
-	uint16_t	rsvd0;		// reserved - 0
-	uint16_t	lid1;		// LID
-	uint16_t	lid2;		// LID
-	uint32_t	key;		// P_Key or Q_Key
-	uint8_t		sl;		// service level
-	uint8_t		rsvd2;		// reserved
-	uint32_t	qp1;		// queue pair 1
-        uint8_t		rsvd3;		// reserved
-	uint32_t	qp2;		// queue pair 2
-	Gid_t   	gid1;	        // GID for GRH
-	Gid_t   	gid2;	        // GID for GRH
-	uint8_t		padding[4];	// padding - ignored
-} Trap257_t;
-
-typedef	Trap257_t	Trap258_t;
-
-typedef	struct {
-	uint8_t		generic;	// 1 -> generic
-	uint8_t		noticeType;	// notice type (see IB spec)
-	uint32_t	nodeType;	// node type of generating node
-	uint16_t	trapNumber;	// class-defined (or device ID)
-	uint16_t	issuerLid;	// LID of issuer
-	uint8_t		toggle;		// noticeToggle
-	uint16_t	count;		// noticeCount
-
-	uint16_t	dataValid;	// optional data valid bits
-	uint16_t	lid1;		// LID
-	uint16_t	lid2;		// LID
-	uint16_t	pkey;		// P_Key
-	uint8_t		sl;			// service level - 4 bits
-	uint8_t		rsvd1;		// reserved - 4 bits
-	uint32_t	qp1;		// queue pair 1 - 24 bits
-	uint8_t		rsvd2;		// reserved
-	uint32_t	qp2;		// queue pair 2 - 24 bits
-	Gid_t   	gid1;		// GID for GRH
-	Gid_t   	gid2;		// GID for GRH
-	uint16_t	swlidAddr;	// local id of switch
-	uint8_t		portNo;		// port on switch
-	uint8_t		padding[3];	// padding - ignored
-} SMTrap259_t;
-
 // IBTA:  Volume 1, Section 14.2.5.2
 
 #define ND_LEN				64
-
-typedef	struct {
-	uint8_t		string[ND_LEN];	// JSY - really UNICODE
-} NodeDesc_t;
 
 // IBTA:  Volume 1, Section 14.2.5.3
 
@@ -349,13 +188,8 @@ typedef	struct {
 
 // IBTA:  Volume 1, Section 14.2.5.7
 
-typedef enum {
-	PKeyMemberLimited = 0,
-	PKeyMemberFull = 1,
-} PKeyMember_t;
-
 /* Macros for extracting the two pieces of a PKey */
-#define PKEY_TYPE(key) ( (PKeyMember_t) ((key) >> 15) )
+#define PKEY_TYPE(key) ( ((uint16_t) (key)) >> 15 )
 #define PKEY_VALUE(key) ( ((uint16_t) (key)) & 0x7FFF )
 #define MAKE_PKEY(type, key) \
 	((uint16_t) ((((uint16_t)(type)) & 0x01) << 15) | ((key) & 0x7FFF))
@@ -432,6 +266,8 @@ typedef struct {
 typedef SMDBSync_t  *SMDBSyncp;         /* SM DBSYNC pointer type */
 
 // FM Protocol Version
+
+
 // version 1 - initial creation of FM protocol version feature
 // version 2 - 10.0.1 releases and before
 // version 3 - 10.1 release
@@ -440,7 +276,9 @@ typedef SMDBSync_t  *SMDBSyncp;         /* SM DBSYNC pointer type */
 // version 6 - 10.4 release
 // version 7 - 10.5 release
 // version 8 - 10.6 release
-#define     FM_PROTOCOL_VERSION    8
+// version 9 - 10.7 release
+#define     FM_PROTOCOL_VERSION    9
+
 
 typedef struct {
     uint32_t        protocolVersion;
@@ -452,6 +290,9 @@ typedef struct {
     // PM checksums
     uint32_t        pmConfigChecksum;
 
+	// EM checksums
+	uint32_t		emConfigChecksum;		/* Ethernet over STL */
+
 	// spare values for future expansion so packet framing does not need to change
 	uint32_t		spare1;
 	uint32_t		spare2;
@@ -460,8 +301,8 @@ typedef struct {
 	uint32_t		spare5;
 	uint32_t		spare6;
 	uint32_t		spare7;
-	uint32_t		spare8;
-  	uint32_t		spare9;
+	uint32_t                spare8;
+
 } SMDBCCCSync_t;
 typedef SMDBCCCSync_t  *SMDBCCCSyncp;         /* SM DBSYNC CCC pointer type */
 

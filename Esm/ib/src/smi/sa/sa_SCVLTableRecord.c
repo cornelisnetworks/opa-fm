@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -176,6 +176,9 @@ sa_SCVLTableRecord_Set(uint8_t *slp, Node_t *nodep, Port_t *portp, uint16_t attr
 	case STL_SA_ATTR_SC2VL_NT_MAPTBL_RECORD:
 		memcpy(scVLTableRecord.SCVLMap, &portp->portData->scvlntMap, sizeof(STL_VL) * STL_MAX_VLS);
 		break;
+	case STL_SA_ATTR_SC2VL_R_MAPTBL_RECORD:
+		memcpy(scVLTableRecord.SCVLMap, &portp->portData->scvlrMap, sizeof(STL_VL) * STL_MAX_VLS);
+		break;
 	default:
 		IB_LOG_WARN_FMT( "sa_SCVLTableRecord_Set",
 			   "failed to set SCVLTable attribute for Node Guid["FMT_U64"], %s",
@@ -198,7 +201,7 @@ sa_SCVLTableRecord_GetTable(Mai_t *maip, uint32_t *records) {
 	Status_t	status;
 	uint8_t		*data;
 	bool_t		checkLid;
-	uint16_t	portLid=0;
+	STL_LID		portLid=0;
 	bool_t		checkPort;
 	uint8_t		portNum=0;
 
@@ -261,7 +264,10 @@ sa_SCVLTableRecord_GetTable(Mai_t *maip, uint32_t *records) {
 			// SC2VLnt N/A for switch port 0
 			if (maip->base.aid ==  STL_SA_ATTR_SC2VL_NT_MAPTBL_RECORD && portp->index == 0)
 				continue;
-				
+
+			if (maip->base.aid == STL_SA_ATTR_SC2VL_R_MAPTBL_RECORD &&
+				!sm_IsVLrSupported(nodep, portp))
+				continue;
 
 			if ((status = sa_check_len(data, sizeof(STL_SC2VL_R_MAPPING_TABLE_RECORD), bytes)) != VSTATUS_OK) {
 				maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
@@ -289,6 +295,10 @@ sa_SCVLTableRecord_GetTable(Mai_t *maip, uint32_t *records) {
 				continue;
 			// SC2VLnt N/A for switch port 0
 			if (maip->base.aid ==  STL_SA_ATTR_SC2VL_NT_MAPTBL_RECORD && portp->index == 0)
+				continue;
+
+			if (maip->base.aid == STL_SA_ATTR_SC2VL_R_MAPTBL_RECORD &&
+				!sm_IsVLrSupported(nodep, portp))
 				continue;
 
 			if ((status = sa_check_len(data, sizeof(STL_SC2VL_R_MAPPING_TABLE_RECORD), bytes)) != VSTATUS_OK) {

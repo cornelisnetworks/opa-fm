@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -75,9 +75,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define IF3_SSL_IS_VALID_FN(d, f, b)   ((strlen(d) + strlen(f) + 1) < (sizeof(b) - 1))
 #define IF3_SSL_GET_FN(d, f, b) { \
     if (d[strlen(d)] == '/') \
-        sprintf(b, "%s%s", d, f); \
+        snprintf(b, sizeof(b), "%s%s", d, f); \
     else \
-        sprintf(b, "%s/%s", d, f); \
+        snprintf(b, sizeof(b), "%s/%s", d, f); \
 }
 
 static int g_if3_ssl_inited = 0;

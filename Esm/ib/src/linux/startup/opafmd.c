@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT1 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -51,7 +51,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define NO_SUCH_COMPONENT 0
 #define SM_COMPONENT 1
 #define FE_COMPONENT 2
+
 #define FM_NUM_COMPONENTS 3
+
 #define FM_MAX_INSTANCES 4
 
 #define FM_XML_CONFIG "/etc/opa-fm/opafm.xml"
@@ -64,17 +66,17 @@ struct thread_data {
 	int instance;
 };
 
-struct restartCounter_t {
-	struct componentCounter_t {
+struct restartCounter {
+	struct componentCounter {
 		time_t lastUpdate;
 		unsigned int counter;
 	} components[FM_NUM_COMPONENTS];
 };
 
-struct daemonConfig_t {
-	struct instanceConfig_t {
+struct daemonConfig {
+	struct instanceConfig {
 		int enabled;
-		struct componentConfig_t {
+		struct componentConfig {
 			int enabled;
 			unsigned int maxRetries;
 			unsigned int retryTimeout;
@@ -93,7 +95,7 @@ char *progName;
 char *nullEnv[] = {0};
 int smPID[FM_MAX_INSTANCES] = {0};
 int fePID[FM_MAX_INSTANCES] = {0};
-struct restartCounter_t instanceRestarts[FM_MAX_INSTANCES] = {};
+struct restartCounter instanceRestarts[FM_MAX_INSTANCES] = {};
 int doStop = 0;
 int fd = -1;
 
@@ -115,10 +117,11 @@ void *kill_thread(void *arg);
 
 /**
  * Returns string representation of component.
- * 
- * @param component 
- * 
- * @return const char* 
+ *
+ *
+ * @param component
+ *
+ * @return const char*
  */
 const char *componentToString(const unsigned int component){
 	switch (component){
@@ -133,10 +136,11 @@ const char *componentToString(const unsigned int component){
 
 /**
  * Returns string representation of component's executable.
- * 
- * @param component 
- * 
- * @return const char* 
+ *
+ *
+ * @param component
+ *
+ * @return const char*
  */
 const char *componentToExecName(const unsigned int component){
 	switch (component){
@@ -151,10 +155,11 @@ const char *componentToExecName(const unsigned int component){
 
 /**
  * Returns associated PID array for component.
- * 
- * @param component 
- * 
- * @return int* 
+ *
+ *
+ * @param component
+ *
+ * @return int*
  */
 int *componentToPIDArray(const unsigned int component){
 	switch (component){
@@ -169,6 +174,7 @@ int *componentToPIDArray(const unsigned int component){
 
 /**
  * Sends SIGHUP to all running SM instances.
+ *
  */
 void reloadSMs(void){
 	int inst = 0;
@@ -180,45 +186,50 @@ void reloadSMs(void){
 
 /**
  * Print program usage information
- * 
+ *
  * @param err Program exit code
  */
 void Usage(int err){
 	fprintf(stderr, "Usage: %s -D\n", progName);
-	fprintf(stderr, "       %s [-i instance] [sm|fe] start|stop|restart|halt\n", progName);
 	exit(err);
 }
 
 /**
- * Checks restart counter specified to see if the counter has 
- * exceeded the threshold over a the course of it's grace 
- * period. 
- * 
- * @param instance 
- * @param component 
- * 
- * @return int 0 if counter has not surpassed threshold, 1 
+ * Checks restart counter specified to see if the counter has
+ * exceeded the threshold over the course of its grace period.
+ *
+ *
+ * @param instance
+ * @param component
+ *
+ * @return int 0 if counter has not surpassed threshold, 1
  *  	   otherwise
  */
 int checkRestarts(const unsigned int instance, const unsigned int component){
-	struct componentCounter_t *count = &instanceRestarts[instance].components[component];
+	struct componentCounter *count = &instanceRestarts[instance].components[component];
 	int retryTimeout = config.instance[instance].component[component].retryTimeout;
 	int maxRetries = config.instance[instance].component[component].maxRetries;
 	time_t now = time(NULL);
 
+	// Check if the current restart attempt is beyond the restart grace period
 	if ((now - count->lastUpdate) > retryTimeout){
+		// Restart the counter if the component has been alive longer than the grace period
 		count->counter = 1;
 	} else {
+		// Otherwise, keep counting.
 		count->counter += 1;
 	}
-	count->lastUpdate = (1 > 0 ? now : count->lastUpdate);
+	// Finally, we update the timestamp
+	count->lastUpdate = now;
+	// Then we return true if the threshold has been crossed, triggering a service failure.
 	return count->counter > maxRetries;
 }
 
 /**
- * Handle Linux signals, specifically SIGTERM, SIGHUP and 
- * SIGCHLD. 
- * 
+ * Handle Linux signals, specifically SIGTERM, SIGHUP and
+ * SIGCHLD.
+ *
+ *
  * @param signo Caught signal
  * @param siginfo Signal information, ignored.
  * @param context Stack frame where signal occured, ignored.
@@ -247,9 +258,10 @@ void sig_handler(int signo, siginfo_t *siginfo, void *context) {
 
 /**
  * pthread function to kill an instance of an FM component.
- * 
+ *
+ *
  * @param arg Pointer to thread_data structure.
- * 
+ *
  * @return void* NULL
  */
 void *kill_thread(void *arg){
@@ -260,13 +272,14 @@ void *kill_thread(void *arg){
 }
 
 /**
- * Function to parse values passed through named pipe to the 
- * daemon. 
- * 
- * @param buf Pointer to the string extracted from the named 
+ * Function to parse values passed through named pipe to the
+ * daemon.
+ *
+ *
+ * @param buf Pointer to the string extracted from the named
  *  		  pipe
- * 
- * @return int Returns 1 if the daemon recieved a command to 
+ *
+ * @return int Returns 1 if the daemon recieved a command to
  *  	   stop.
  */
 int parseInput(char *buf){
@@ -279,9 +292,11 @@ int parseInput(char *buf){
 		fprintf(stderr, "Received invalid input. Ignoring.\n");
 		return 0;
 	}
+
 	if(strncmp(token, "sig_chld", 8) == 0){
 		int i = 0, pid = 0, stat = 0;
 		unsigned int instance = 0, component = 0;
+
 		while ((pid = waitpid(-1, &stat, WNOHANG)) > 0) {
 			for(i = 0; i < FM_MAX_INSTANCES; ++i){
 				if(smPID[i] == pid){
@@ -292,7 +307,8 @@ int parseInput(char *buf){
 					component = FE_COMPONENT;
 					instance = i;
 					break;
-				}
+				} 
+
 			}
 			if(component == 0){
 				continue;
@@ -342,12 +358,13 @@ int parseInput(char *buf){
 				thread->component = c;
 				pthread_create(&thread_id[c], NULL, &kill_thread, thread);
 			}
-			for(c = 1; c < FM_NUM_COMPONENTS; ++c){
+			for(c = 1; c < FM_NUM_COMPONENTS; c++){
 				pthread_join(thread_id[c], NULL);
 			}
 			break;
-		case '1':	// SM and FE are treated the same so this prevents code redundancy
+		case '1':	// All components are stopped the same way, no need for duplicate code
 		case '2':
+		case '3':
 			c = atoi((const char*)token);
 			token = strtok(NULL, " ");
 			if(token == NULL){
@@ -373,16 +390,15 @@ int parseInput(char *buf){
 			}
 			for(i = 0; i < FM_MAX_INSTANCES; ++i){
 				for(c = 1; c < FM_NUM_COMPONENTS; ++c){
-        	                        pthread_join(thread_id[i*FM_NUM_COMPONENTS+c], NULL);
-                	        }
+					pthread_join(thread_id[i*FM_NUM_COMPONENTS+c], NULL);
+				}
 			}
 			return 1;
 		default:
 			fprintf(stderr, "Unknown component value. (%d)\n", token[0]);
 		}
 		return 0;
-	}
-	if(strncmp(token, "start", 5) == 0){
+	} else if(strncmp(token, "start", 5) == 0){
 		token = strtok(NULL, " ");
 		if(token == NULL){
 			fprintf(stderr, "Received invalid input. Ignoring.\n");
@@ -396,15 +412,16 @@ int parseInput(char *buf){
 				return 0;
 			}
 			i = atoi((const char*)token);
-			if(i > FM_MAX_INSTANCES){	//Adding additional instance check here to avoid duplicate error messages
-				fprintf(stderr, "Received invalid instance number %d. Ignoring.\n", i);
+			if(i >= FM_MAX_INSTANCES) {
+				fprintf(stderr, "Received invalid instance number %d. Ignoring.\n",i);
 				return 0;
 			}
-			spawn(i, SM_COMPONENT);
-			spawn(i, FE_COMPONENT);
+			if(spawn(i, SM_COMPONENT) == -1) return 0;
+			if(spawn(i, FE_COMPONENT) == -1) return 0;
 			break;
 		case '1':
 		case '2':
+		case '3':
 			c = atoi((const char*)token);
 			token = strtok(NULL, " ");
 			if(token == NULL){
@@ -412,6 +429,10 @@ int parseInput(char *buf){
 				return 0;
 			}
 			i = atoi((const char*)token);
+			if(i >= FM_MAX_INSTANCES) {
+				fprintf(stderr, "Received invalid instance number %d. Ignoring.\n",i);
+				return 0;
+			}
 			spawn(i, c);
 			break;
 		default:
@@ -435,10 +456,10 @@ int parseInput(char *buf){
 				return 0;
 			}
 			i = atoi((const char*)token);
-                        if(i > FM_MAX_INSTANCES){	//Adding additional instance check here to avoid duplicate error messages
-                                fprintf(stderr, "Received invalid instance number %d. Ignoring.\n", i);
-                                return 0;
-                        }
+			if(i >= FM_MAX_INSTANCES) {
+				fprintf(stderr, "Received invalid instance number %d. Ignoring.\n",i);
+				return 0;
+			}
 			if(pkill(i, SM_COMPONENT) == 0)
 				spawn(i, SM_COMPONENT);
 			if(pkill(i, FE_COMPONENT) == 0)
@@ -446,6 +467,7 @@ int parseInput(char *buf){
 			break;
 		case '1':
 		case '2':
+		case '3':
 			c = atoi((const char*)token);
 			token = strtok(NULL, " ");
 			if(token == NULL){
@@ -453,6 +475,10 @@ int parseInput(char *buf){
 				return 0;
 			}
 			i = atoi((const char*)token);
+			if(i >= FM_MAX_INSTANCES) {
+				fprintf(stderr, "Received invalid instance number %d. Ignoring.\n",i);
+				return 0;
+			}
 			if(pkill(i, c) == 0)
 				spawn(i, c);
 			break;
@@ -465,26 +491,29 @@ int parseInput(char *buf){
 
 /**
  * Spawns an instance of the FM component.
- * 
- * @param instance Instance number the component belongs to 
- * @param component Integer representation of the component 
+ *
+ *
+ * @param instance Instance number the component belongs to
+ * @param component Integer representation of the component
  *  				(1 = SM, 2 = FE)
+ *
  * @return int PID spawned or -1 if an error has occurred
  */
+
 int spawn(const unsigned int instance, const int component){
 	sigset_t mask;
 	int *pids;
 	int pid;
 	char prog[32], name[32];
-	if (instance >= FM_MAX_INSTANCES){
-		fprintf(stderr, "Invalid instance number.\n");
+	if(instance >= FM_MAX_INSTANCES){
+		fprintf(stderr, "spawn: Invalid instance number %d.\n",instance);
 		return -1;
 	}
-	if ((pids = componentToPIDArray(component)) == NULL){
-		fprintf(stderr, "spawn: Invalid component number %d.\n", component);
+	if((pids = componentToPIDArray(component)) == NULL){
+		fprintf(stderr, "spawn: Invalid component number %d.\n",component);
 		return -1;
 	}
-	if (pids[instance] != 0 && kill(pids[instance], 0) == 0){
+	if(pids[instance] != 0 && kill(pids[instance], 0) == 0){
 		fprintf(stderr, "Instance %d of %s is already running.\n", instance, componentToString(component));
 		return -1;
 	}
@@ -508,45 +537,57 @@ int spawn(const unsigned int instance, const int component){
 		break;
 	default:
 		fprintf(stdout, "Started instance %d of %s.\n", instance, componentToString(component));
-		if(pid > 0) pids[instance] = pid;
+		pids[instance] = pid;
 		break;
 	}
 	return pid;
 }
 
 /**
- * Kills instance of FM component 
- * 
+ * Kills instance of FM component
+ *
+ *
  * @param instance Instance number the component belongs to
- * @param component Integer representation of the component 
+ * @param component Integer representation of the component
  *  				(1 = SM, 2 = FE)
- * @return int Returns 0 if process was properly terminated, 
+ *
+ * @return int Returns 0 if process was properly terminated,
  *  	   otherwise -1 on error.
  */
 int pkill(const unsigned int instance, const int component){
 	int *pids;
 	int pid;
 	int status;
-	int ret;
 	if(instance >= FM_MAX_INSTANCES){
-		fprintf(stderr, "Invalid instance number.\n");
+		fprintf(stderr, "pkill: Invalid instance number %d.\n",instance);
 		return -1;
 	}
 	if((pids = componentToPIDArray(component)) == NULL){
-		fprintf(stderr, "pkill: Invalid component number %d.\n", component);
+		fprintf(stderr, "pkill: Invalid component number %d.\n",component);
 		return -1;
 	}
 	pid = pids[instance];
-	if(!pid) return 0;
-	if(kill(pid, 0) == 0){
-		kill(pid, SIGTERM);							// Here we send a SIGTERM to the PID specified.
-		sleep(component == SM_COMPONENT ? 3 : 5); 				// Wait 3 seconds for SM to die from SIGTERM, 5 sec for FE
-		ret = waitpid((pid_t)pid, &status, WUNTRACED | WNOHANG);		// Reap the children if they're already dead. Because zombies are bad, mmkay.
-		if(!ret){								// Checks for insubordinate children
-			kill(pid, SIGKILL);						// Order a hit on them
-			sleep(component == SM_COMPONENT ? 3 : 5);			// Allow 1-5 seconds for murder
-			ret = waitpid((pid_t)pid, &status, WUNTRACED | WNOHANG);	// Reap
-			if(!ret){							// Report all survivors
+	if (!pid) return 0;
+	if (kill(pid, 0) == 0){
+		kill(pid, SIGTERM);								// Here we send a SIGTERM to the PID specified.
+		time_t now, start;
+		start = now = time(NULL);
+		while (now - start < (component == SM_COMPONENT ? 3 : 1)) {
+			waitpid((pid_t)pid, &status, WUNTRACED | WNOHANG);	// Reap the children if they're already dead. Because zombies are bad, mmkay.
+			if(WIFSIGNALED(status) || WIFEXITED(status)) break;
+			usleep(100000);
+			now = time(NULL);
+		}
+		if(!(WIFSIGNALED(status) || WIFEXITED(status))){		// Checks for insubordinate children
+			kill(pid, SIGKILL);							// Order a hit on them
+			start = now = time(NULL);
+			while (now - start < (component == SM_COMPONENT ? 3 : 1)) {
+				waitpid((pid_t)pid, &status, WUNTRACED | WNOHANG);	// Reap the children if they're already dead. Because zombies are bad, mmkay.
+				if(WIFSIGNALED(status) || WIFEXITED(status)) break;
+				usleep(100000);
+				now = time(NULL);
+			}
+			if(!(WIFSIGNALED(status) || WIFEXITED(status))){		// Report all survivors
 				fprintf(stderr, "Failed to kill %s from instance %d\n", componentToString(component), instance);
 				return -1;
 			}
@@ -556,12 +597,13 @@ int pkill(const unsigned int instance, const int component){
 	} else {
 		fprintf(stderr, "Instance %d of %s not running.\n", instance, componentToString(component));
 	}
-	pids[instance] = 0;	// PID not running or doesn't exist
+	pids[instance] = 0;	//PID not running or doesn't exist.
 	return 0;
 }
 
 /**
  * Checks config and starts/stop instances according to config.
+ *
  */
 void updateInstances(void) {
 	int inst, comp;
@@ -586,13 +628,14 @@ void updateInstances(void) {
 }
 
 /**
- * Load up xml parser and extract values 
- * 
+ * Load up xml parser and extract values
+ *
+ *
  * @return int 0 on success.
  */
 int loadConfig(void){
 	FMXmlCompositeConfig_t *xml_config = NULL;
-	int i, j, hfi, port;
+	int i, j, hfi, port, num_enabled = 0;
 
 	char      name[UMAD_CA_NAME_LEN];
 	uint64_t guid;
@@ -608,13 +651,25 @@ int loadConfig(void){
 			config.instance[i].enabled = 0;
 		} else {
 			config.instance[i].enabled = xml_config->fm_instance[i]->fm_config.start;
+			if (config.instance[i].enabled) ++num_enabled;
 			config.instance[i].component[SM_COMPONENT].enabled = xml_config->fm_instance[i]->sm_config.start;
 			config.instance[i].component[SM_COMPONENT].maxRetries = xml_config->fm_instance[i]->sm_config.startup_retries;
 			config.instance[i].component[SM_COMPONENT].retryTimeout = xml_config->fm_instance[i]->sm_config.startup_stable_wait * 60;
 			config.instance[i].component[FE_COMPONENT].enabled = xml_config->fm_instance[i]->fe_config.start;
 			config.instance[i].component[FE_COMPONENT].maxRetries = xml_config->fm_instance[i]->fe_config.startup_retries;
 			config.instance[i].component[FE_COMPONENT].retryTimeout = xml_config->fm_instance[i]->fe_config.startup_stable_wait * 60;
+
+
 		}
+	}
+
+	if (!num_enabled) {
+		fprintf(stderr, "None of the 4 instances are enabled! Please make sure at least one instance is enabled in your XML config file.\n");
+		return 1;
+	}
+
+	if (xml_config->fm_instance[FM_MAX_INSTANCES]) {
+		fprintf(stderr, "Found more than 4 instances in XML config, ignoring additional instances.\n");
 	}
 
 	struct { // Struct created to make the if tree below more readable.
@@ -624,6 +679,7 @@ int loadConfig(void){
 	} selected_device[FM_MAX_INSTANCES] = {{0}};
 
 	for (i = 0; i < FM_MAX_INSTANCES; ++i) {
+		if (!xml_config->fm_instance[i]) continue;
 		// +1 for hfi, as both omgt_get_hfi_from_portguid and omgt_get_portguid assumes 1 based hfi value,
 		// and xml_config->fm_instance[i]->fm_config gives zero based hfi
 		selected_device[i].hfi = xml_config->fm_instance[i]->fm_config.hca+1;
@@ -648,8 +704,10 @@ int loadConfig(void){
 	}
 
 	for (i = 0; i < FM_MAX_INSTANCES; ++i) {
+		if (!xml_config->fm_instance[i]) continue;
 		if (xml_config->fm_instance[i]->fm_config.start) { // only compare enabled instances
 			for (j = i + 1; j < FM_MAX_INSTANCES; ++j) {
+				if (!xml_config->fm_instance[j]) continue;
 				if (xml_config->fm_instance[j]->fm_config.start && // against other enabled instances
 					((selected_device[i].hfi == selected_device[j].hfi &&
 					selected_device[i].port == selected_device[j].port) ||
@@ -667,11 +725,12 @@ int loadConfig(void){
 }
 
 /**
- * Daemon main loop. Sets up named pipe and captures commands 
- * given through named pipe. 
- *  
- * Can be stopped with "stop" command or with SIGTERM. 
- * 
+ * Daemon main loop. Sets up named pipe and captures commands
+ * given through named pipe.
+ *
+ * Can be stopped with "stop" command or with SIGTERM.
+ *
+ *
  * @return int Returns negative integer on error.
  */
 int daemon_main(){
@@ -682,21 +741,20 @@ int daemon_main(){
 	int res = 0;
 
 	sigemptyset(&mask);
- 	sigaddset(&mask,SIGTERM);
- 	sigaddset(&mask,SIGCHLD);
- 	sigaddset(&mask,SIGHUP);
- 
-	setlinebuf(stdout);
- 
+	sigaddset(&mask,SIGTERM);
+	sigaddset(&mask,SIGCHLD);
+	sigaddset(&mask,SIGHUP);
+
+    setlinebuf(stdout);
+
 	bzero(&act, sizeof(act));
- 	act.sa_sigaction = sig_handler;
- 	act.sa_mask = mask;
- 	act.sa_flags = SA_NOCLDSTOP|SA_SIGINFO;
-	
+	act.sa_sigaction = sig_handler;
+	act.sa_mask = mask;
+	act.sa_flags = SA_NOCLDSTOP|SA_SIGINFO;
+
 	sigaction(SIGTERM, &act, NULL);
 	sigaction(SIGCHLD, &act, NULL);
 	sigaction(SIGHUP, &act, NULL);
-
 	if((res = loadConfig()) != 0){
 		if (res == 1) return res;
 		fprintf(stderr, "Failed to load conf, continuing with defaults.\n");
@@ -704,7 +762,7 @@ int daemon_main(){
 	updateInstances();
 
 	unlink(OPAFMD_PIPE); // cleanup any bad states
-	if (mkfifo(OPAFMD_PIPE, 0660) == -1){
+	if(mkfifo(OPAFMD_PIPE, 0660) == -1){
 		fprintf(stderr, "Failed to create pipe: %s\n", strerror(errno));
 		return(2);
 	}
@@ -718,16 +776,16 @@ int daemon_main(){
 		unlink(OPAFMD_PIPE); // cleanup any bad states
 		return(2);
 	}
-	sigprocmask(SIG_BLOCK, &mask, NULL);
 
-	while(!doStop){
+	sigprocmask(SIG_BLOCK, &mask, NULL);
+	while(!doStop) {
 		char *s;
- 		sigprocmask(SIG_UNBLOCK, &mask, NULL);
- 		s = fgets(buf, 127, fp);
- 		sigprocmask(SIG_BLOCK, &mask, NULL);
- 		if (s != NULL) {
- 			parseInput(buf);
- 		}
+		sigprocmask(SIG_UNBLOCK, &mask, NULL);
+		s = fgets(buf, 127, fp);
+		sigprocmask(SIG_BLOCK, &mask, NULL);
+		if (s != NULL) {
+			parseInput(buf);
+		}
 	}
 	sigprocmask(SIG_UNBLOCK, &mask, NULL);
 
@@ -794,8 +852,7 @@ int main(int argc, char* argv[]) {
 				Usage(1);
 			} else {
 				cmd = "restart";
-			}
-			break;
+			} break;
 		case 'f':
 			if (strcmp(arg, "fe")) {
 				fprintf(stderr, "Unknown parameter %s\n", arg);
@@ -814,7 +871,7 @@ int main(int argc, char* argv[]) {
 					// Daemon is already stopped
 					exit(0);
 				}
-				res = write(fd, "stop\n", 5);	// write stop command without parameters to named pipe to kill it softly. With our words.
+				res = write (fd, "stop\n", 5);	// write stop command without parameters to named pipe to kill it
 				if(res <= 0){
 					//Something went wrong while writing to pipe.
 					fprintf(stderr, "Failed to send stop command to daemon: %s\n", strerror(errno));
@@ -838,7 +895,7 @@ int main(int argc, char* argv[]) {
 		if (isDebug) {
 			// don't fork if debug
 			return daemon_main();
-		}
+		}	
 		// Here we fork the daemon and if successful...
 		switch(fork()){
 		case 0:

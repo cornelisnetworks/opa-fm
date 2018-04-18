@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -145,7 +145,7 @@ sa_SCSLTableRecord_GetTable(Mai_t *maip, uint32_t *records) {
 	STL_SA_MAD		samad;
 	Status_t	status;
 	uint8_t		*data;
-	uint16_t	portLid=0;
+	STL_LID		portLid=0;
 	bool_t		checkLid;
 
 	IB_ENTER("sa_SCSLTableRecord_GetTable", maip, records, 0, 0);

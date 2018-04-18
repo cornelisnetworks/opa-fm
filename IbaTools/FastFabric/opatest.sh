@@ -100,6 +100,8 @@ Usage_opahostadmin_full()
 	echo "   HOSTS_FILE - file containing list of hosts, used in absence of -f and -h" >&2
 	echo "   FF_MAX_PARALLEL - maximum concurrent operations" >&2
 	echo "   FF_SERIALIZE_OUTPUT - serialize output of parallel operations (yes or no)" >&2
+	echo "   FF_TIMEOUT_MULT - Multiplier for all timeouts associated with this command." >&2
+	echo "                     Used if the systems are slow for some reason." >&2
 	echo "for example:" >&2
 	echo "   opahostadmin -c reboot" >&2
 	echo "   opahostadmin upgrade" >&2
@@ -180,6 +182,8 @@ Usage_opachassisadmin_full()
 	echo "   CHASSIS_FILE - file containing list of chassis, used in absence of -F and -H" >&2
 	echo "   FF_MAX_PARALLEL - maximum concurrent operations" >&2
 	echo "   FF_SERIALIZE_OUTPUT - serialize output of parallel operations (yes or no)" >&2
+	echo "   FF_TIMEOUT_MULT - Multiplier for all timeouts associated with this command." >&2
+	echo "                     Used if the systems are slow for some reason." >&2
 	echo "   UPLOADS_DIR - directory to upload to, used in absence of -d" >&2
 	echo "for example:" >&2
 	echo "   opachassisadmin -c reboot" >&2
@@ -229,6 +233,7 @@ Usage_opaswitchadmin_full()
 	echo "  operation - operation to perform. operation can be one or more of:" >&2
 	echo "     reboot - reboot switches, ensure they go down and come back" >&2
 	echo "     configure - run wizard to set up switch configuration" >&2
+	echo "            NOTE: You must reboot the switch for any new settings to be applied." >&2
 	echo "     upgrade - upgrade install of all switches" >&2
 	echo "     info - report f/w & h/w version, part number, and data rate capability of" >&2
 	echo "            all OPA switches" >&2
@@ -242,6 +247,8 @@ Usage_opaswitchadmin_full()
 	echo "                      -L" >&2
 	echo "   FF_MAX_PARALLEL - maximum concurrent operations" >&2
 	echo "   FF_SERIALIZE_OUTPUT - serialize output of parallel operations (yes or no)" >&2
+	echo "   FF_TIMEOUT_MULT - Multiplier for all timeouts associated with this command." >&2
+	echo "                     Used if the systems are slow for some reason." >&2
 	echo "for example:" >&2
 	echo "   opaswitchadmin -c reboot" >&2
 	echo "   opaswitchadmin -P /root/ChassisFw4.2.0.0.1 upgrade" >&2
@@ -397,6 +404,7 @@ Usage_opaswitchadmin()
 	echo "  operation - operation to perform. operation can be one or more of:" >&2
 	echo "     reboot - reboot switches, ensure they go down and come back" >&2
 	echo "     configure - run wizard to set up switch configuration" >&2
+	echo "            NOTE: You must reboot the switch for any new settings to be applied." >&2
 	echo "     upgrade - upgrade install of all switches" >&2
 	echo "     info - report f/w & h/w version, part number, and data rate capability of" >&2
 	echo "            all OPA switches" >&2

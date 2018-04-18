@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -63,17 +63,18 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sa_l.h"
 #include "fm_xml.h"
 
-Status_t	sa_PathRecord_Set(uint8_t*, uint32_t*, uint32_t, Port_t*, uint32_t, Port_t*, uint32_t, PKey_t, uint64_t, uint8_t, uint8_t);
-void        sa_GroupPathRecord_Set(uint8_t*, uint32_t*, Port_t *, McGroup_t *);
-Status_t	sa_PathRecord_Wildcard(uint8_t*, Port_t *, uint32_t, uint32_t *, PKey_t, uint8_t, Node_t*, uint64_t, uint8_t);
-Status_t	sa_PathRecord_Interop(IB_PATH_RECORD *, uint64_t);
+void		sa_GroupPathRecord_Set(uint8_t * query, uint32_t * records, Port_t *src_portp, McGroup_t *group, uint8_t cversion);
+Status_t	sa_PathRecord_Set(uint8_t*, uint32_t*, uint8_t, uint32_t, Port_t*, STL_LID, Port_t*,
+				  STL_LID, PKey_t, uint64_t, uint8_t, uint8_t);
+Status_t	sa_PathRecord_Wildcard(uint8_t*, Port_t *, uint8_t,  uint32_t, uint32_t *, PKey_t, uint8_t, Node_t*, uint64_t, uint8_t);
+Status_t	sa_PathRecord_Selector_Check(IB_PATH_RECORD *, uint64_t);
 IB_GID		nullGid={.Raw={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}};
 
 /************ support for dynamic update of switch config parms *************/
 extern uint8_t sa_dynamicPlt[];
 
-static uint16_t srcLids[128];
-static uint16_t dstLids[128];
+static STL_LID srcLids[128];
+static STL_LID dstLids[128];
 
 static uint8_t serviceIdCheck;
 
@@ -111,48 +112,48 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 	uint32_t	records;
 	uint64_t	prefix=0,pf2=0;
 	uint64_t	guid=0,sguid=0;
-	IB_SA_MAD		samad;
+	IB_SA_MAD	samad;
 	Port_t		*src_portp;
 	Port_t		*dst_portp;
-	IB_PATH_RECORD	*prp;
-	IB_PATH_RECORD	pathRecord;
+	IB_PATH_RECORD	ibPathRecord;
+	IB_PATH_RECORD	*prp = &ibPathRecord;
 	PKey_t		pkey=0;
-    McGroup_t   *mcastGroup=NULL;
-    uint32_t    dstIsGroup=0;
+	McGroup_t	*mcastGroup=NULL;
+	uint32_t	dstIsGroup=0;
 	Port_t*		reqPortp;
 	Node_t*		reqNodep;
 	uint64_t	serviceId=0;
 	uint8_t		sl=0xff;
+	uint8_t		cversion = maip->base.cversion;
 	Status_t	status;
 
 	// init to permissive lid to represent wildcarded lid
-	uint32_t    slid = PERMISSIVE_LID, dlid = PERMISSIVE_LID;
+	STL_LID    slid = STL_LID_PERMISSIVE, dlid = STL_LID_PERMISSIVE;
 
 	IB_ENTER("sa_PathRecord", maip, 0, 0, 0);
 
-	if (maip->base.cversion != SA_MAD_CVERSION) {
+	if (cversion != SA_MAD_CVERSION) {
 		maip->base.status = MAD_STATUS_BAD_CLASS;
 		(void) sa_send_reply(maip, sa_cntxt);
-		IB_LOG_WARN("sa_PathRecord: invalid CLASS:",
-					maip->base.cversion);
+		IB_LOG_WARN("invalid CLASS:", cversion);
 		IB_EXIT("sa_PathRecord", VSTATUS_OK);
 		return (VSTATUS_OK);
 	}
 
-//
-//	Assume failure.
-//
+	//
+	//	Assume failure.
+	//
 	records = 0;
 
-//
-//	Lock the interface.
-//
+	//
+	//	Lock the interface.
+	//
 	(void)vs_rdlock(&old_topology_lock);
 	bytes = 0;
 
-//
-//	Check the basic assumptions.
-//
+	//
+	//	Check the basic assumptions.
+	//
 	if (maip->base.method != SA_CM_GET) {
 		if (maip->base.method != SA_CM_GETTABLE) {
 			maip->base.status = MAD_STATUS_SA_REQ_INVALID;
@@ -165,66 +166,63 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 		INCREMENT_COUNTER(smCounterSaRxGetPathRecord);
 	}
 
-	prp = &pathRecord;
+	//
+	//  Verify the size of the data received for the request
+	//
+		if ( maip->datasize-sizeof(SA_MAD_HDR) < sizeof(IB_PATH_RECORD) ) {
+			IB_LOG_ERROR_FMT(__func__,
+				"invalid MAD length; size of IB_PATH_RECORD[%"PRISZT"], datasize[%d]",
+				sizeof(IB_PATH_RECORD), (int)(maip->datasize-sizeof(SA_MAD_HDR)));
+			maip->base.status = MAD_STATUS_SA_REQ_INVALID;
+			goto reply_PathRecord;
+		}
 
-//
-//  Verify the size of the data received for the request
-//
-	if ( maip->datasize-sizeof(SA_MAD_HDR) < sizeof(IB_PATH_RECORD) ) {
-		IB_LOG_ERROR_FMT(__func__,
-			"invalid MAD length; size of IB_PATH_RECORD[%"PRISZT"], datasize[%d]",
-			sizeof(IB_PATH_RECORD), (int)(maip->datasize-sizeof(SA_MAD_HDR)));
-		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
-		IB_EXIT("sa_PathRecord", MAD_STATUS_SA_REQ_INVALID);
-		return (MAD_STATUS_SA_REQ_INVALID);
-	}
-	
-	BSWAPCOPY_IB_SA_MAD((IB_SA_MAD*)maip->data, &samad, sizeof(IB_PATH_RECORD));
-	memcpy(prp,samad.Data,sizeof(IB_PATH_RECORD));
-	BSWAP_IB_PATH_RECORD(prp);
+		BSWAPCOPY_IB_SA_MAD((IB_SA_MAD*)maip->data, &samad,
+			sizeof(IB_PATH_RECORD));
+		memcpy(&ibPathRecord, samad.Data, sizeof(IB_PATH_RECORD));
+		BSWAP_IB_PATH_RECORD(&ibPathRecord);
 
-	if ((status = create_ib_mask(maip, &samad)) != VSTATUS_OK) {
-		IB_LOG_WARNRC("sa_PathRecord: failed to create IB template mask, rc:", status);
-		goto reply_PathRecord;
-	}
+		if ((status = create_ib_mask(maip, &samad)) != VSTATUS_OK) {
+			IB_LOG_WARNRC("sa_PathRecord: failed to create IB template mask, rc:", status);
+			goto reply_PathRecord;
+		}
 
-//
-//	JSY - this is a quick cut-through check for temporarily static fields.
-//
-	if (sa_PathRecord_Interop(prp, samad.SaHdr.ComponentMask) != VSTATUS_OK) {
+	if (sa_PathRecord_Selector_Check(prp, samad.SaHdr.ComponentMask) != VSTATUS_OK) {
 		IB_LOG_WARNX("sa_PathRecord: mask failed interop:", samad.SaHdr.ComponentMask);
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 		goto reply_PathRecord;
 	}
-
-//
-//	Check the validity of the requested PKey.
-//
-	if (samad.SaHdr.ComponentMask & PR_COMPONENTMASK_PKEY) {
+	
+	//
+	//	Check the validity of the requested PKey.
+	//
+	if (samad.SaHdr.ComponentMask & IB_PATH_RECORD_COMP_PKEY) {
 		pkey = prp->P_Key;
 	}
 
-	if (samad.SaHdr.ComponentMask & PR_COMPONENTMASK_SRV_ID) {
+	if (samad.SaHdr.ComponentMask & IB_PATH_RECORD_COMP_SERVICEID) {
 		serviceId = prp->ServiceID;
 		serviceIdCheck = 1;
 	} else {
 		serviceIdCheck = 0;
 	}
 
-	if (samad.SaHdr.ComponentMask & PR_COMPONENTMASK_SL) {
+	if (samad.SaHdr.ComponentMask & IB_PATH_RECORD_COMP_SL) {
 		sl = prp->u2.s.SL;
 	}
 
-//
-//  GetTable only requirement - must have SGID and Numpath specified
-//
+	//
+	//  GetTable only requirement - must have SGID and Numpath specified
+	//
 	if (maip->base.method == SA_CM_GETTABLE) {
 		/* validate the minimal set of components are specified */
 		if (sm_config.queryValidation) {
 			/* IBTA requires SGID and NumbPath on GetTable */
-			if ((samad.SaHdr.ComponentMask & PR_COMPONENTMASK_OK_SRC) != PR_COMPONENTMASK_OK_SRC) {
+			if ((samad.SaHdr.ComponentMask & (IB_PATH_RECORD_COMP_SGID|IB_PATH_RECORD_COMP_NUMBPATH)) !=
+					(IB_PATH_RECORD_COMP_SGID|IB_PATH_RECORD_COMP_NUMBPATH)) {
 				maip->base.status = MAD_STATUS_SA_REQ_INSUFFICIENT_COMPONENTS;
-				IB_LOG_WARNX("sa_PathRecord: must specify a SGID and number of paths for GetTable:", samad.SaHdr.ComponentMask);
+				IB_LOG_WARNX("sa_PathRecord: must specify a SGID and number of"
+					" paths for GetTable:", samad.SaHdr.ComponentMask);
 				goto reply_PathRecord;
 			}
 		} else {
@@ -232,37 +230,33 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 			// instead of a SGID.
 
 			/* Were the SGID or SLID and NumbPath specified? */
-			if (!(samad.SaHdr.ComponentMask & PR_COMPONENTMASK_SGID) && !(samad.SaHdr.ComponentMask & PR_COMPONENTMASK_SLID)) {
+			if (!(samad.SaHdr.ComponentMask & IB_PATH_RECORD_COMP_SGID) &&
+				!(samad.SaHdr.ComponentMask & IB_PATH_RECORD_COMP_SLID)) {
 				maip->base.status = MAD_STATUS_SA_REQ_INSUFFICIENT_COMPONENTS;
-				IB_LOG_WARNX("sa_PathRecord: must specify a SLID or SGID for GetTable:", samad.SaHdr.ComponentMask);
+				IB_LOG_WARNX("sa_PathRecord: must specify a SLID or SGID for GetTable:",
+					samad.SaHdr.ComponentMask);
 				goto reply_PathRecord;
-			} else if (!(samad.SaHdr.ComponentMask & PR_COMPONENTMASK_PATHS)) {
-#if 0
-				maip->base.status = MAD_STATUS_SA_REQ_INSUFFICIENT_COMPONENTS;
-				IB_LOG_WARNX("sa_PathRecord: must specify the number of paths for GetTable:", samad.SaHdr.ComponentMask);
-				goto reply_PathRecord;
-#else
-				// OFED expects a default of 127
+			} else if (!(samad.SaHdr.ComponentMask & IB_PATH_RECORD_COMP_NUMBPATH)) {
+				// By the spec we should reject this request, but that would break OFED.
 				prp->NumbPath = 127;
-#endif
 			}
 		}
 
 		/* now validate the components we have present */
-		if ((samad.SaHdr.ComponentMask & PR_COMPONENTMASK_SGID) &&
+		if ((samad.SaHdr.ComponentMask & IB_PATH_RECORD_COMP_SGID) &&
 			(memcmp(&prp->SGID, &nullGid, sizeof(IB_GID)) == 0)) {
 			maip->base.status = MAD_STATUS_SA_REQ_INVALID_GID;
 			IB_LOG_WARN0("Invalid Query: Mask specifies a source GID but source GID is NULL.");
 			goto reply_PathRecord;
 		}
-		if ((samad.SaHdr.ComponentMask & PR_COMPONENTMASK_SLID) &&
+		if ((samad.SaHdr.ComponentMask & IB_PATH_RECORD_COMP_SLID) &&
 			(prp->SLID == 0)) {
 			maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 			IB_LOG_WARN0("Invalid Query: Mask specifies a source LID but source LID is zero.");
 			goto reply_PathRecord;
 		}
-		if ((samad.SaHdr.ComponentMask & PR_COMPONENTMASK_PATHS) &&
-	   		(prp->NumbPath == 0)) {
+		if ((samad.SaHdr.ComponentMask & IB_PATH_RECORD_COMP_NUMBPATH) &&
+			(prp->NumbPath == 0)) {
 			maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 			IB_LOG_WARN0("Invalid Query: Mask specifies numbPath, but numbPath = 0.");
 			goto reply_PathRecord;
@@ -273,54 +267,54 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 		prp->NumbPath = 1;
 	}
 
-//
-// Find the requestor
-//
+	//
+	// Find the requestor
+	//
 	reqPortp = sm_find_node_and_port_lid(&old_topology, maip->addrInfo.slid, &reqNodep);
 	if (!sm_valid_port(reqPortp) || reqPortp->state <= IB_PORT_DOWN) {
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 		goto reply_PathRecord;
 	}
-//
-//	Find the source port.
-//
-	if ((samad.SaHdr.ComponentMask & PR_COMPONENTMASK_SGID) != 0) {
+	//
+	//	Find the source port.
+	//
+	if ((samad.SaHdr.ComponentMask & IB_PATH_RECORD_COMP_SGID) != 0) {
 		prefix = prp->SGID.Type.Global.SubnetPrefix;
 		guid = prp->SGID.Type.Global.InterfaceID;
 		if (prefix != sm_config.subnet_prefix) {
-            IB_LOG_ERROR_FMT( "sa_PathRecord",
-                   "gidprefix in Source Gid "FMT_GID" of PATH request from %s port "FMT_U64" LID 0x%x does not match SM's("FMT_U64")",
-                   prefix, guid, sm_nodeDescString(reqNodep), reqPortp->portData->guid, maip->addrInfo.slid, sm_config.subnet_prefix);
-            goto reply_PathRecord;
+			IB_LOG_ERROR_FMT( "sa_PathRecord",
+				"gidprefix in Source Gid "FMT_GID" of PATH request from %s port "FMT_U64" LID 0x%x does not match SM's("FMT_U64")",
+				prefix, guid, sm_nodeDescString(reqNodep), reqPortp->portData->guid, maip->addrInfo.slid, sm_config.subnet_prefix);
+			goto reply_PathRecord;
 		}
-        if (!guid) {
-            IB_LOG_ERROR_FMT( "sa_PathRecord",
-                   "NULL PORTGUID in Source Gid "FMT_GID" of PATH request from %s port "FMT_U64" LID 0x%x",
-                   prefix, guid, sm_nodeDescString(reqNodep), reqPortp->portData->guid, maip->addrInfo.slid);
-            maip->base.status = MAD_STATUS_SA_REQ_INVALID_GID;
-            goto reply_PathRecord;
-        }
-    	if ((src_portp = sm_find_active_port_guid(&old_topology, guid)) == NULL) {
+		if (!guid) {
+			IB_LOG_ERROR_FMT( "sa_PathRecord",
+				"NULL PORTGUID in Source Gid "FMT_GID" of PATH request from %s port "FMT_U64" LID 0x%x",
+				prefix, guid, sm_nodeDescString(reqNodep), reqPortp->portData->guid, maip->addrInfo.slid);
+			maip->base.status = MAD_STATUS_SA_REQ_INVALID_GID;
+			goto reply_PathRecord;
+		}
+		if ((src_portp = sm_find_active_port_guid(&old_topology, guid)) == NULL) {
 			if (saDebugPerf) {
 				IB_LOG_INFINI_INFOLX("sa_PathRecord: requested source GUID not found/active in current topology:", guid);
 			}
 			maip->base.status = activateInProgress ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID_GID;
 			goto reply_PathRecord;
 		}
-    	if (src_portp->portData->gidPrefix != prefix || src_portp->portData->guid != guid) {
-            pf2 = ntoh64(*(uint64_t *)&src_portp->portData->gid[0]);
-            sguid = ntoh64(*(uint64_t *)&src_portp->portData->gid[8]);
-            IB_LOG_WARN_FMT( "sa_PathRecord",
-                   "Source Gid "FMT_GID" in request from %s port "FMT_U64" LID 0x%x does not match found GID's "FMT_GID" "
-                   "port guid of "FMT_U64,
-                   prefix, guid, sm_nodeDescString(reqNodep), reqPortp->portData->guid, maip->addrInfo.slid, pf2, sguid, src_portp->portData->guid);
+		if (src_portp->portData->gidPrefix != prefix || src_portp->portData->guid != guid) {
+			pf2 = ntoh64(*(uint64_t *)&src_portp->portData->gid[0]);
+			sguid = ntoh64(*(uint64_t *)&src_portp->portData->gid[8]);
+			IB_LOG_WARN_FMT( "sa_PathRecord",
+				"Source Gid "FMT_GID" in request from %s port "FMT_U64" LID 0x%x does not match found GID's "FMT_GID" "
+				"port guid of "FMT_U64,
+				prefix, guid, sm_nodeDescString(reqNodep), reqPortp->portData->guid, maip->addrInfo.slid, pf2, sguid, src_portp->portData->guid);
 			maip->base.status = MAD_STATUS_SA_REQ_INVALID_GID;
 			goto reply_PathRecord;
 		}
-	} else if ((samad.SaHdr.ComponentMask & PR_COMPONENTMASK_SLID) != 0) {
+	} else if ((samad.SaHdr.ComponentMask & IB_PATH_RECORD_COMP_SLID) != 0) {
 		if ((src_portp = sm_find_active_port_lid(&old_topology, prp->SLID)) == NULL) {
 			IB_LOG_INFINI_INFOX("sa_PathRecord: requested source Lid not found/active in current topology:", prp->SLID);
-            maip->base.status = activateInProgress ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID;
+			maip->base.status = activateInProgress ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID;
 			goto reply_PathRecord;
 		}
 	} else {
@@ -331,7 +325,7 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 
 	if (pkey) {
 		if (smGetPortPkey(pkey, src_portp) == 0) {
-        	IB_LOG_INFO_FMT("sa_PathRecord",
+			IB_LOG_INFO_FMT("sa_PathRecord",
 				"Failed pairwise PKey check (pkey= 0x%x) for request for paths from source port "FMT_U64,
 				pkey, src_portp->portData->guid);
 			maip->base.status = MAD_STATUS_SA_REQ_INVALID;
@@ -339,78 +333,75 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 		}
 	}
 
-// if srclid is specified, store it.
-	if ((samad.SaHdr.ComponentMask & PR_COMPONENTMASK_SLID) != 0)
+	// if srclid is specified, store it.
+	if ((samad.SaHdr.ComponentMask & IB_PATH_RECORD_COMP_SLID) != 0)
 		slid = prp->SLID;
 
-//
-// IBTA 1.2 C15-0.1.21 - pairwise pkey check for request/src.
-//
+	//
+	// IBTA 1.2 C15-0.1.21 - pairwise pkey check for request/src.
+	//
 	if (sa_Compare_Node_Port_PKeys(reqNodep, src_portp) != VSTATUS_OK) {
-        IB_LOG_INFO_FMT( "sa_PathRecord",
-				"Failed pairwise PKey check for request from node "FMT_U64" for req/src port "FMT_U64" ",
-				reqNodep->nodeInfo.NodeGUID, src_portp->portData->guid);
+		IB_LOG_INFO_FMT( "sa_PathRecord",
+			"Failed pairwise PKey check for request from node "FMT_U64" for req/src port "FMT_U64" ",
+			reqNodep->nodeInfo.NodeGUID, src_portp->portData->guid);
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 		goto reply_PathRecord;
 	}
 
-//
-//	Check for Bus-walk operation.
-//
-	if ((samad.SaHdr.ComponentMask & PR_COMPONENTMASK_NO_DST) == 0) {
-		if (sa_PathRecord_Wildcard(samad.Data, src_portp, slid, &records, pkey, prp->NumbPath, reqNodep, serviceId, sl) != VSTATUS_OK) {
-            maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
+	//
+	//	Find the destination port(s).
+	//
+	if ((samad.SaHdr.ComponentMask & (IB_PATH_RECORD_COMP_DGID|IB_PATH_RECORD_COMP_DLID)) == 0) {
+		if (sa_PathRecord_Wildcard(samad.Data, src_portp, cversion, slid, &records, pkey,
+			prp->NumbPath, reqNodep, serviceId, sl) != VSTATUS_OK) {
+			maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
 		}
+		// Note the short-circuit here - succeed or fail we don't continue.
 		goto reply_PathRecord;
-	}
-
-//
-//	Find the destination port.
-//
-	if ((samad.SaHdr.ComponentMask & PR_COMPONENTMASK_DGID) != 0) {
+	} else if ((samad.SaHdr.ComponentMask & IB_PATH_RECORD_COMP_DGID) != 0) {
 		prefix = prp->DGID.Type.Global.SubnetPrefix;
 		guid = prp->DGID.Type.Global.InterfaceID;
 		if (prefix != sm_config.subnet_prefix) {
-            IB_LOG_ERROR_FMT( "sa_PathRecord",
-                   "gidprefix in Dest Gid "FMT_GID" of PATH request from %s port "FMT_U64" LID 0x%x does not match SM's("FMT_U64")",
-                   prefix, guid, sm_nodeDescString(reqNodep), reqPortp->portData->guid, maip->addrInfo.slid, sm_config.subnet_prefix);
+			IB_LOG_ERROR_FMT( "sa_PathRecord",
+				"gidprefix in Dest Gid "FMT_GID" of PATH request from %s port "FMT_U64" LID 0x%x does not match SM's("FMT_U64")",
+				prefix, guid, sm_nodeDescString(reqNodep), reqPortp->portData->guid, maip->addrInfo.slid, sm_config.subnet_prefix);
 		}
 
-        if (!guid) {
-            IB_LOG_ERROR_FMT( "sa_PathRecord",
-                   "NULL PORTGUID in Destination Gid "FMT_GID" of PATH request from %s port "FMT_U64" LID 0x%x",
-                   prefix, guid, sm_nodeDescString(reqNodep), reqPortp->portData->guid, maip->addrInfo.slid);
-            maip->base.status = MAD_STATUS_SA_REQ_INVALID_GID;
-            goto reply_PathRecord;
-        }
+		if (!guid) {
+			IB_LOG_ERROR_FMT( "sa_PathRecord",
+				"NULL PORTGUID in Destination Gid "FMT_GID" of PATH request from %s port "FMT_U64" LID 0x%x",
+				prefix, guid, sm_nodeDescString(reqNodep), reqPortp->portData->guid, maip->addrInfo.slid);
+			maip->base.status = MAD_STATUS_SA_REQ_INVALID_GID;
+			goto reply_PathRecord;
+		}
 
 		if ((dst_portp = sm_find_port_guid(&old_topology, guid)) == NULL) {
-            (void)vs_lock(&sm_McGroups_lock);   /* lock out the multicast group table */
-            if ((mcastGroup = sm_find_multicast_gid(prp->DGID)) == NULL) {
-                (void)vs_unlock(&sm_McGroups_lock);
-                maip->base.status = MAD_STATUS_SA_NO_RECORDS;
-                if (saDebugPerf || !guid) 
-                    IB_LOG_INFINI_INFOLX("sa_PathRecord: requested destination GUID not an active port nor a Multicast Group:", guid);
-                goto reply_PathRecord;
+			(void)vs_lock(&sm_McGroups_lock);   /* lock out the multicast group table */
+			if ((mcastGroup = sm_find_multicast_gid(prp->DGID)) == NULL) {
+				(void)vs_unlock(&sm_McGroups_lock);
+				maip->base.status = MAD_STATUS_SA_NO_RECORDS;
+				if (saDebugPerf || !guid)
+					IB_LOG_INFINI_INFOLX("sa_PathRecord: requested destination GUID not an active port nor a Multicast Group:", guid);
+				goto reply_PathRecord;
 
-            } else {
-                if (saDebugPerf) {
+			} else {
+				if (saDebugPerf) {
 					IB_LOG_INFINI_INFO_FMT("sa_PathRecord",
-					   "Destination Multicast Group "FMT_GID" in request from %s port "FMT_U64" LID 0x%x found",
-					   prefix, guid, sm_nodeDescString(reqNodep), reqPortp->portData->guid, maip->addrInfo.slid);
-                }
-                dstIsGroup = 1;
-            }
-		} else if (dst_portp->state < IB_PORT_ACTIVE) {
-            if (saDebugPerf) IB_LOG_INFINI_INFOLX("sa_PathRecord: requested destination GUID not active in current topology:", guid);
-            maip->base.status = MAD_STATUS_SA_NO_RECORDS;
-            goto reply_PathRecord;
-        }
+						"Destination Multicast Group "FMT_GID" in request from %s port "FMT_U64" LID 0x%x found",
+						prefix, guid, sm_nodeDescString(reqNodep), reqPortp->portData->guid, maip->addrInfo.slid);
+				}
+				dstIsGroup = 1;
+			}
+		} else if (dst_portp->state < IB_PORT_ARMED) {
+			if (saDebugPerf) IB_LOG_INFINI_INFOLX("sa_PathRecord: requested destination GUID not armed or active in current topology:", guid);
+			maip->base.status = MAD_STATUS_SA_NO_RECORDS;
+			goto reply_PathRecord;
+		}
 
-	} else if ((samad.SaHdr.ComponentMask & PR_COMPONENTMASK_DLID) != 0) {
+	} else if ((samad.SaHdr.ComponentMask & IB_PATH_RECORD_COMP_DLID) != 0) {
 		if ((dst_portp = sm_find_active_port_lid(&old_topology, prp->DLID)) == NULL) {
 			if (saDebugPerf) IB_LOG_INFINI_INFOX("sa_PathRecord: requested destination Lid not found/active:", prp->DLID);
-            maip->base.status = MAD_STATUS_SA_NO_RECORDS;
+			maip->base.status = MAD_STATUS_SA_NO_RECORDS;
 			goto reply_PathRecord;
 		}
 
@@ -419,23 +410,23 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 		maip->base.status = MAD_STATUS_SA_REQ_INSUFFICIENT_COMPONENTS;
 		goto reply_PathRecord;
 	}
-	
-//
-// if dlid is specified, store it
-//
-	if ((samad.SaHdr.ComponentMask & PR_COMPONENTMASK_DLID) != 0)
+
+	//
+	// if dlid is specified, store it
+	//
+	if ((samad.SaHdr.ComponentMask & IB_PATH_RECORD_COMP_DLID) != 0)
 		dlid = prp->DLID;
 
-//
-//	Find the requested paths from the source port to the destination port.
-//
+	//
+	//	Find the requested paths from the source port to the destination port.
+	//
 	if (src_portp != NULL && dst_portp != NULL) {
 		if (dst_portp->state <= IB_PORT_INIT) {
 			/* PR#101615 - SM99% when host/line cards disappear in middle of sweep */
 			if (saDebugPerf) {
 				IB_LOG_INFINI_INFO_FMT("sa_PathRecord", "destination port is not in active state; port LID: 0x%x (port GUID "FMT_U64")",
-                       dst_portp->portData->lid, dst_portp->portData->guid);
-            }
+					dst_portp->portData->lid, dst_portp->portData->guid);
+			}
 			goto reply_PathRecord;
 		}
 
@@ -445,21 +436,21 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 		//
 		if (sa_Compare_Node_Port_PKeys(reqNodep, dst_portp) != VSTATUS_OK) {
 			if (saDebugPerf) {
-        		IB_LOG_INFINI_INFO_FMT("sa_PathRecord",
+				IB_LOG_INFINI_INFO_FMT("sa_PathRecord",
 					"Failed pairwise PKey check for request from node "FMT_U64" for req/dst port "FMT_U64" ",
 					reqNodep->nodeInfo.NodeGUID, dst_portp->portData->guid);
 			}
 			maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 			goto reply_PathRecord;
-    	}
+		}
 
 		if (pkey) {
 			// Does requested pkey match?
 			if (!smCheckPortPKey(pkey, dst_portp) && (src_portp != dst_portp)) {
 				if (saDebugPerf) {
 					IB_LOG_WARN_FMT("sa_PathRecord",
-				   		"Cannot find path to port LID 0x%x (port guid "FMT_U64") from port LID 0x%x (port guid "FMT_U64") with pkey 0x%x",
-				   		dst_portp->portData->lid, dst_portp->portData->guid, src_portp->portData->lid, src_portp->portData->guid, pkey);
+						"Cannot find path to port LID 0x%x (port guid "FMT_U64") from port LID 0x%x (port guid "FMT_U64") with pkey 0x%x",
+						dst_portp->portData->lid, dst_portp->portData->guid, src_portp->portData->lid, src_portp->portData->guid, pkey);
 				}
 				goto reply_PathRecord;
 			}
@@ -467,48 +458,52 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 		} else if (sa_Compare_PKeys(src_portp->portData->pPKey, dst_portp->portData->pPKey) != VSTATUS_OK) {
 			// Do any pkeys match?
 			if (saDebugPerf) {
-            	IB_LOG_INFO_FMT("sa_PathRecord",
-                	"Cannot find path to port "FMT_U64" from port "FMT_U64": failing src/dst pkey validation",
-                	dst_portp->portData->guid, src_portp->portData->guid);
+				IB_LOG_INFO_FMT("sa_PathRecord",
+					"Cannot find path to port "FMT_U64" from port "FMT_U64": failing src/dst pkey validation",
+					dst_portp->portData->guid, src_portp->portData->guid);
 			}
 			goto reply_PathRecord;
-        }
+		}
 
-		(void)sa_PathRecord_Set(samad.Data, &records, prp->NumbPath, src_portp, slid, dst_portp, dlid,
-							pkey, serviceId, serviceIdCheck, sl);
+		(void)sa_PathRecord_Set(samad.Data, &records, cversion, prp->NumbPath, src_portp, slid, dst_portp, dlid,
+			pkey, serviceId, serviceIdCheck, sl);
 
 		if (saDebugRmpp && (records == 0)) {
 			IB_LOG_INFINI_INFO_FMT("sa_PathRecord",
 				"Cannot find path to port LID 0x%x (port guid "FMT_U64") from port LID 0x%x (port guid "FMT_U64")",
 				dst_portp->portData->lid, dst_portp->portData->guid, src_portp->portData->lid, src_portp->portData->guid);
 		}
-	
+
 	} else if (src_portp != NULL && dstIsGroup) {
-        // path request from node to multicast group
-        // just make sure port is active and a member of the group
+		// path request from node to multicast group
+		// just make sure port is active and a member of the group
         IB_GID gid;
         memcpy(gid.Raw, src_portp->portData->gid, sizeof(IB_GID));
         BSWAP_IB_GID(&gid);
-        if (sm_find_multicast_member(mcastGroup, gid) == NULL) {
-            //maip->base.status = MAD_STATUS_SA_REQ_INVALID_GID;
-            IB_LOG_ERROR_FMT( "sa_PathRecord",
-                   "port LID 0x%x (port guid "FMT_U64") not a member of multicast group "FMT_GID,
-                   src_portp->portData->lid, src_portp->portData->guid, prefix, guid);
-            goto reply_PathRecord;
-        }
-        sa_GroupPathRecord_Set(samad.Data, &records, src_portp, mcastGroup);
-    }
+		if (sm_find_multicast_member(mcastGroup, gid) == NULL) {
+			//maip->base.status = MAD_STATUS_SA_REQ_INVALID_GID;
+			IB_LOG_ERROR_FMT( "sa_PathRecord",
+				"port LID 0x%x (port guid "FMT_U64") not a member of multicast group "FMT_GID,
+				src_portp->portData->lid, src_portp->portData->guid, prefix, guid);
+			goto reply_PathRecord;
+		}
+		sa_GroupPathRecord_Set(samad.Data, &records, src_portp, mcastGroup, cversion);
+	}
 
-//
-//	Determine reply status
-//
+	//
+	//	Determine reply status
+	//
 reply_PathRecord:
-	(void)vs_rwunlock(&old_topology_lock);
-	if (dstIsGroup) {(void)vs_unlock(&sm_McGroups_lock);}  /*release the multicast group table if necessary */
+	if (dstIsGroup) {
+		/*release the multicast group table if necessary */
+		(void)vs_unlock(&sm_McGroups_lock);
+	}
 
-//
-//	Call the user exit to manipulate the records.
-//
+	(void)vs_rwunlock(&old_topology_lock);
+
+	//
+	//	Call the user exit to manipulate the records.
+	//
 	(void)pathrecord_userexit(sa_data, &records);
 
 	bytes += sizeof(IB_PATH_RECORD);
@@ -521,9 +516,8 @@ reply_PathRecord:
 		IB_LOG_WARN("sa_PathRecord: too many records for SA_CM_GET:", records);
 		records = 0;
 		maip->base.status = MAD_STATUS_SA_TOO_MANY_RECS;
-	} else {
-		maip->base.status = MAD_STATUS_OK;
 	}
+
 	/* setup attribute offset for possible RMPP transfer */
 	sa_cntxt->attribLen = bytes;
 
@@ -534,9 +528,11 @@ reply_PathRecord:
 	return(VSTATUS_OK);
 }
 
+#define TOO_MANY_RECORDS(cversion, records) (records > sa_max_ib_path_records)
+
 Status_t
-sa_PathRecord_Wildcard(uint8_t *query, Port_t *src_portp, uint32_t slid, uint32_t *records, PKey_t pkey, uint8_t numPath,
-						Node_t *reqNodep, uint64_t serviceId, uint8_t sl) {
+sa_PathRecord_Wildcard(uint8_t * query, Port_t *src_portp, uint8_t cversion, STL_LID slid, uint32_t *records,
+		       PKey_t pkey, uint8_t numPath, Node_t *reqNodep, uint64_t serviceId, uint8_t sl) {
 	Node_t		*dst_nodep;
 	Port_t		*dst_portp;
 	uint32_t	pathCount;
@@ -544,13 +540,13 @@ sa_PathRecord_Wildcard(uint8_t *query, Port_t *src_portp, uint32_t slid, uint32_
 
 	IB_ENTER("sa_PathRecord_Wildcard", src_portp, records, pkey, numPath);
 
-//
-//	Loop over all of the nodes and find the paths.
-//	
+	//
+	//	Loop over all of the nodes and find the paths.
+	//	
 	for_all_nodes(&old_topology, dst_nodep) {
 		for_all_end_ports(dst_nodep, dst_portp) {
-			if (!sm_valid_port(dst_portp))  continue;
-			if (dst_portp->state <= IB_PORT_DOWN) continue;			// RMW - should this also be <= IB_PORT_INIT (PR101615)?
+			if (!sm_valid_port(dst_portp)) continue;
+			if (dst_portp->state < IB_PORT_ARMED) continue;
 			if (pkey && !smValidatePortPKey(pkey, dst_portp) && (src_portp != dst_portp)) continue;
 			if (sa_Compare_Node_Port_PKeys(reqNodep, dst_portp) != VSTATUS_OK) continue;
 
@@ -558,9 +554,9 @@ sa_PathRecord_Wildcard(uint8_t *query, Port_t *src_portp, uint32_t slid, uint32_
             // So reset the local path count for each dst port.
 			pathCount = (*records);
 
-			if ((status = sa_PathRecord_Set(query, records, pathCount+numPath, src_portp, slid, dst_portp, PERMISSIVE_LID,
-								pkey, serviceId, serviceIdCheck, sl)) == VSTATUS_OK) {
-               	if ((*records) > sa_max_path_records) {
+			if ((status = sa_PathRecord_Set(query, records, cversion, pathCount+numPath, src_portp, slid,
+				dst_portp, STL_LID_PERMISSIVE, pkey, serviceId, serviceIdCheck, sl)) == VSTATUS_OK) {
+               	if (TOO_MANY_RECORDS(cversion,(*records))) {
                  	*records = 0;
                    	IB_EXIT("sa_PathRecord_Wildcard", VSTATUS_BAD);
 					return(VSTATUS_BAD);
@@ -579,10 +575,10 @@ sa_PathRecord_Wildcard(uint8_t *query, Port_t *src_portp, uint32_t slid, uint32_
 }
 
 void
-sa_GroupPathRecord_Set(uint8_t *query, uint32_t *records, Port_t *src_portp, McGroup_t *group) {
+sa_GroupIBPathRecord_Set(uint8_t * query, uint32_t * records, Port_t *src_portp, McGroup_t *group) {
 	IB_PATH_RECORD	pathRecord;
 
-	IB_ENTER("sa_GroupPathRecord_Set", src_portp, group, 0, 0);
+	IB_ENTER(__func__, src_portp, group, 0, 0);
 
     //
     //	Fill in the PathRecord.
@@ -599,16 +595,16 @@ sa_GroupPathRecord_Set(uint8_t *query, uint32_t *records, Port_t *src_portp, McG
 	pathRecord.u1.s.FlowLabel = group->flowLabel;
 	pathRecord.u1.s.HopLimit = group->hopLimit;
 	pathRecord.TClass = 0;
-    pathRecord.Reversible = 1;
+	pathRecord.Reversible = 1;
 	pathRecord.NumbPath = 0;
 	pathRecord.P_Key = group->pKey;
 	pathRecord.u2.s.SL = group->sl;
-	pathRecord.MtuSelector = PR_EQ;
+	pathRecord.MtuSelector = IB_SELECTOR_EQ;
 	pathRecord.Mtu = group->mtu;
-	pathRecord.RateSelector = PR_EQ;
+	pathRecord.RateSelector = IB_SELECTOR_EQ;
 	pathRecord.Rate = group->rate;
-	pathRecord.PktLifeTimeSelector = PR_EQ;
-    pathRecord.PktLifeTime = group->life; 
+	pathRecord.PktLifeTimeSelector = IB_SELECTOR_EQ;
+	pathRecord.PktLifeTime = group->life;
 	pathRecord.Preference = 0;
 	BSWAP_IB_PATH_RECORD(&pathRecord);
 	(void)memcpy((void *)pathRecord.SGID.Raw, src_portp->portData->gid, 16); // port gids are network order
@@ -622,37 +618,73 @@ sa_GroupPathRecord_Set(uint8_t *query, uint32_t *records, Port_t *src_portp, McG
 	(*records)++;
 
 	IB_EXIT(__func__, 0);
-} // end sa_GroupPathRecord_Set
+} // end sa_GroupIBPathRecord_Set
 
+void
+sa_GroupPathRecord_Set(uint8_t * query, uint32_t * records, Port_t *src_portp, McGroup_t *group, uint8_t cversion) {
+	if (cversion == SA_MAD_CVERSION) {
+		sa_GroupIBPathRecord_Set(query, records, src_portp, group);
+		return;
+	}
 
-static void
-sa_FillPathRecord (uint8_t *query, uint32_t* records, Port_t *src_portp, uint32_t slid, 
-				Port_t *dst_portp, uint32_t dlid, PKey_t pkey,
+	IB_LOG_ERROR_FMT(__func__, "Invalid class Version %u!", cversion);
+}
+
+void
+sa_FillPathRecord (uint8_t *query, uint32_t* records, Port_t *src_portp, STL_LID slid,
+				Port_t *dst_portp, STL_LID dlid, PKey_t pkey,
 				uint8_t mtu, uint8_t rate, uint8_t lifeMult,
 				uint32_t hopCount, uint64_t serviceId, uint8_t sl) {
 
 	IB_PATH_RECORD	pathRecord;
 	uint8_t			*cp = sa_data;
+	IB_GID DGID, SGID;
 
     //
-    //	Fill in the PathRecord.  This whole setup is an interop fix.
+    //	Fill in the PathRecord.
     //
 	(void)memset((void *)&pathRecord, 0, sizeof(IB_PATH_RECORD));
 
-	pathRecord.DLID = dlid;
-	pathRecord.SLID = slid;
-    pathRecord.ServiceID = serviceId;  
-	pathRecord.u1.s.RawTraffic = 0;			// JSY - temp
-	pathRecord.u1.s.FlowLabel = 0;		// JSY - temp
-	pathRecord.u1.s.HopLimit = 0;		// JSY - temp
-	pathRecord.TClass = 0;			// JSY - temp
-    pathRecord.Reversible = 1;      // JMS - 1.1 compliance temp
-	pathRecord.NumbPath = 0;			// JMS - 0 is OK since undefined in response
-	pathRecord.P_Key = smGetPortPkey(pkey, src_portp);	// use membership of src
-	pathRecord.MtuSelector = PR_EQ;		// JSY - interop fix
-	pathRecord.RateSelector = PR_EQ;	// JSY - interop fix
-	pathRecord.PktLifeTimeSelector = PR_EQ;	// JSY - interop fix
-	pathRecord.Preference = 0;      // JMS - 1.1 compliance temp
+	if (slid > UNICAST_LID_MAX
+	|| dlid > UNICAST_LID_MAX) {
+		// STL Extension for handling large LIDs
+		// in IB format PATH_RECORDS
+		pathRecord.u1.s.HopLimit = 1;
+		/**
+		 * If the LID falls within the IB unicast LID range,
+		 * just return the LID. If it falls outside the range
+		 * return the last 14 bits of the LID
+		 */
+		pathRecord.DLID = (dlid > UNICAST_LID_MAX)?
+					(dlid & 0x3fff) : dlid;
+		pathRecord.SLID = (slid > UNICAST_LID_MAX)?
+					(slid & 0x3fff) : slid;
+		// Construct special GIDs
+		DGID.Type.Global.SubnetPrefix = dst_portp->portData->portInfo.SubnetPrefix;
+		DGID.Type.Global.InterfaceID = ((uint64_t)OUI_TRUESCALE << 40) | dlid;
+		BSWAP_IB_GID(&DGID);
+		SGID.Type.Global.SubnetPrefix = src_portp->portData->portInfo.SubnetPrefix;
+		SGID.Type.Global.InterfaceID = ((uint64_t)OUI_TRUESCALE << 40) | slid;
+		BSWAP_IB_GID(&SGID);
+	} else {
+		pathRecord.u1.s.HopLimit = 0;
+		pathRecord.DLID = dlid;
+		pathRecord.SLID = slid;
+		(void)memcpy((void *)&DGID, dst_portp->portData->gid, 16);
+		(void)memcpy((void *)&SGID, src_portp->portData->gid, 16);
+	}
+
+	pathRecord.ServiceID = serviceId;
+	pathRecord.u1.s.RawTraffic = 0;
+	pathRecord.u1.s.FlowLabel = 0;
+	pathRecord.TClass = 0;
+	pathRecord.Reversible = 1;
+	pathRecord.NumbPath = 0;
+	pathRecord.P_Key = smGetPortPkey(pkey, src_portp);
+	pathRecord.MtuSelector = IB_SELECTOR_EQ;
+	pathRecord.RateSelector = IB_SELECTOR_EQ;
+	pathRecord.PktLifeTimeSelector = IB_SELECTOR_EQ;
+	pathRecord.Preference = 0;
 	pathRecord.Mtu = mtu;
 	pathRecord.Rate = rate;
 
@@ -667,11 +699,10 @@ sa_FillPathRecord (uint8_t *query, uint32_t* records, Port_t *src_portp, uint32_
 		} else {
 			/* compute the PLT based on hopCount */
 			if (saDebugRmpp) {
-				IB_LOG_INFINI_INFO_FMT(__func__,
-					"hopCount from SGID "FMT_GID", LID 0x%x to DGID "FMT_GID", LID 0x%x is %u",
-					pathRecord.SGID.Type.Global.SubnetPrefix, pathRecord.SGID.Type.Global.InterfaceID, src_portp->portData->lid,
-					pathRecord.DGID.Type.Global.SubnetPrefix, pathRecord.DGID.Type.Global.InterfaceID, dst_portp->portData->lid,
-					hopCount);
+                IB_LOG_INFINI_INFO_FMT(__func__,
+                       "hopCount from LID 0x%x to LID 0x%x is %d", 
+                       (int)src_portp->portData->lid, 
+                       (int)dst_portp->portData->lid, (int)hopCount);
             }
 			if (hopCount < 8) {
 				pathRecord.PktLifeTime = sa_dynamicPlt[hopCount];
@@ -683,16 +714,16 @@ sa_FillPathRecord (uint8_t *query, uint32_t* records, Port_t *src_portp, uint32_
 
 	pathRecord.PktLifeTime += lifeMult;
 
-	IB_LOG_VERBOSE_FMT(NULL, "Path Record %u added to Response:  DLID 0x%x SLID 0x%x SL %u MTU %u Rate %u pkey 0x%x",
-			*records, pathRecord.DLID, pathRecord.SLID,
-			pathRecord.u2.s.SL, pathRecord.Mtu, pathRecord.Rate, pathRecord.P_Key);
+	IB_LOG_VERBOSE_FMT(__func__, "Path Record %u added to Response: DLID 0x%x SLID 0x%x SL %u MTU %u Rate %u pkey 0x%x",
+		*records, pathRecord.DLID, pathRecord.SLID,
+		pathRecord.u2.s.SL, pathRecord.Mtu, pathRecord.Rate, pathRecord.P_Key);
 
 	// NOTA BENE: We don't copy the GIDs till after we bswap the rest
-	// of the path record. This is becasue GIDs are stored in network
+	// of the path record. This is because GIDs are stored in network
 	// byte order.
 	BSWAP_IB_PATH_RECORD(&pathRecord);
-	(void)memcpy((void *)&pathRecord.DGID, dst_portp->portData->gid, 16);
-	(void)memcpy((void *)&pathRecord.SGID, src_portp->portData->gid, 16);
+	pathRecord.DGID = DGID;
+	pathRecord.SGID = SGID;
 
 	if (sa_template_test_noinc(query, (uint8_t *)&pathRecord, sizeof(IB_PATH_RECORD)) != VSTATUS_OK)
 		return;
@@ -701,12 +732,11 @@ sa_FillPathRecord (uint8_t *query, uint32_t* records, Port_t *src_portp, uint32_
 	(*records)++;
 }
 
-
 Status_t
-sa_PathRecord_Set(uint8_t *query, uint32_t* records, uint32_t numPath, Port_t *src_portp, uint32_t slid,
-				Port_t *dst_portp, uint32_t dlid, PKey_t pkey, 
-				uint64_t serviceId, uint8_t serviceIdChk, uint8_t sl) {
-
+sa_PathRecord_Set(uint8_t * query, uint32_t* records, uint8_t cversion, uint32_t numPath, Port_t *src_portp,
+				STL_LID slid, Port_t *dst_portp, STL_LID dlid, PKey_t pkey,
+				uint64_t serviceId, uint8_t serviceIdChk, uint8_t sl)
+{
 	uint8_t			mtu, vfMtu;
 	uint8_t			rate, vfRate, rated;
 	uint32_t		hopCount=1;
@@ -717,36 +747,33 @@ sa_PathRecord_Set(uint8_t *query, uint32_t* records, uint32_t numPath, Port_t *s
 	Node_t			*last_nodep;
 	Port_t			*last_portp;
 	int				vf, vf2;
-	uint16_t		slid_iter, dlid_iter;
+	STL_LID			slid_iter, dlid_iter;
 	lid_iterator_t	iter;
 	uint8_t			srcLidLen, dstLidLen;
 	bitset_t		vfs;
 	Status_t		status=VSTATUS_OK;
+	uint8_t			inPortNum = 0;
 
-	IB_ENTER("sa_PathRecord_Set", src_portp, dst_portp, pkey, 0);
+	IB_ENTER("sa_PathRecord_Set", src_portp, dst_portp, pkey, cversion);
 
-//
-//  Get all VFs containing the src/dst which match appropriate path data
-//
+	//
+	//  Get all VFs containing the src/dst which match appropriate path data
+	//
 	if (!bitset_init(&sm_pool, &vfs, MAX_VFABRICS)) {
 		IB_LOG_WARN0("sa_PathRecord_Set: insufficient memory to process request");
 		IB_EXIT("sa_PathRecord_Set", VSTATUS_NOMEM);
 		return(VSTATUS_NOMEM);
 	}
 
-	if (serviceIdChk) {
-		smGetValidatedServiceIDVFs(src_portp, dst_portp, pkey, sl, sl, serviceId, &vfs);
-	} else {
-		smGetValidatedVFs(src_portp, dst_portp, pkey, sl, sl, &vfs);
-	}
+	smGetValidatedVFs(src_portp, dst_portp, pkey, sl, sl, serviceId, serviceIdChk, &vfs);
 	
 	if (vfs.nset_m == 0) {
 		goto done_PathRecordSet;
 	}
 
-//
-//	Locate the node which house these ports.
-//
+	//
+	//	Locate the nodes which house these ports.
+	//
 	next_nodep = sm_find_port_node(&old_topology, src_portp);
 	last_nodep = sm_find_port_node(&old_topology, dst_portp);
 	if ((next_nodep == NULL) || (last_nodep == NULL)) {
@@ -759,6 +786,8 @@ sa_PathRecord_Set(uint8_t *query, uint32_t* records, uint32_t numPath, Port_t *s
 
 	next_portp = src_portp;
 	last_portp = dst_portp;
+	inPortNum = src_portp->index;
+
 	if (src_portp == dst_portp) {
 		mtu = src_portp->portData->maxVlMtu;
 		rate = linkWidthToRate(src_portp->portData);
@@ -776,6 +805,7 @@ sa_PathRecord_Set(uint8_t *query, uint32_t* records, uint32_t numPath, Port_t *s
 	} else {
 		if (next_nodep->nodeInfo.NodeType != NI_TYPE_SWITCH) {
 			next_nodep = sm_find_node(&old_topology, src_portp->nodeno);
+			inPortNum = src_portp->portno;
 			// PR#103535 - data corruption results in invalid topology
 			if (next_nodep == NULL) {
 				IB_LOG_WARN_FMT("sa_PathRecord_Set",
@@ -818,13 +848,14 @@ sa_PathRecord_Set(uint8_t *query, uint32_t* records, uint32_t numPath, Port_t *s
 			mtu = IB_MTU_2048; 
 			rate = IB_STATIC_RATE_2_5G;
 		}
-	
+
 		while (next_nodep != last_nodep && next_nodep != NULL) {
             /*
              * PR 106193 - the lft of the switch will be null if a secondary SM has taken ownership.
              * We need to improve discovery to not take ownership of nodes attached to ports that we do not own.
              */
-			if (next_nodep->lft == NULL) {
+			if (next_nodep->switchInfo.RoutingMode.Enabled == STL_ROUTE_LINEAR &&
+				next_nodep->lft == NULL) {
 				IB_LOG_WARN_FMT("sa_PathRecord_Set",
 					   "INVALID TOPOLOGY, path to portGuid "FMT_U64" from portGuid "FMT_U64" goes through switch [%s] that belongs to another SM", 
 					   dst_portp->portData->guid, src_portp->portData->guid, sm_nodeDescString(next_nodep));
@@ -848,7 +879,7 @@ sa_PathRecord_Set(uint8_t *query, uint32_t* records, uint32_t numPath, Port_t *s
 				status = VSTATUS_BAD;
 				goto done_PathRecordSet;
 			}
-			portno = next_nodep->lft[last_portp->portData->lid];
+			portno = sm_get_route(&old_topology, next_nodep, inPortNum, last_portp->portData->lid);
 			if (portno == 255) {
 				/* PR#101984 - no path from this node for given Lid */
 				IB_LOG_WARN_FMT("sa_PathRecord_Set",
@@ -857,7 +888,7 @@ sa_PathRecord_Set(uint8_t *query, uint32_t* records, uint32_t numPath, Port_t *s
 				status = VSTATUS_BAD;
 				goto done_PathRecordSet;
 			}
-			next_portp = sm_get_port(next_nodep,portno);
+			next_portp = sm_get_port(next_nodep, portno);
 			if (!sm_valid_port(next_portp) || next_portp->state < IB_PORT_ACTIVE) {
 				// PR#103535 - data corruption results in invalid topology
 				IB_LOG_WARN_FMT("sa_PathRecord_Set",
@@ -867,6 +898,7 @@ sa_PathRecord_Set(uint8_t *query, uint32_t* records, uint32_t numPath, Port_t *s
 				goto done_PathRecordSet;
 			}
 			next_nodep = sm_find_node(&old_topology, next_portp->nodeno);
+			inPortNum = next_portp->portno;
 
 			if ( (mtu = Min(mtu, next_portp->portData->maxVlMtu)) < IB_MTU_2048)
 				break;
@@ -901,37 +933,39 @@ sa_PathRecord_Set(uint8_t *query, uint32_t* records, uint32_t numPath, Port_t *s
 
 	VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
 
-	for (vf=bitset_find_first_one(&vfs); vf>=0;
-		 vf=bitset_find_next_one(&vfs, vf+1)) {
-			
-		pkey = VirtualFabrics->v_fabric[vf].pkey;
-		vfMtu = Min(mtu, VirtualFabrics->v_fabric[vf].max_mtu_int);
-		vfRate = linkrate_gt(rate, VirtualFabrics->v_fabric[vf].max_rate_int) ?
-						VirtualFabrics->v_fabric[vf].max_rate_int : rate;
-		lifeMult = !VirtualFabrics->v_fabric[vf].pkt_lifetime_specified ? 0 :
-						VirtualFabrics->v_fabric[vf].pkt_lifetime_mult;
-		sl = VirtualFabrics->v_fabric[vf].base_sl;
+	for (vf=0; (vf = bitset_find_next_one(&vfs, vf)) != -1; vf++) {
+		if (VirtualFabrics->v_fabric_all[vf].standby) continue;
+
+		pkey = VirtualFabrics->v_fabric_all[vf].pkey; 
+		vfMtu = Min(mtu, VirtualFabrics->v_fabric_all[vf].max_mtu_int);
+		vfRate = linkrate_gt(rate, VirtualFabrics->v_fabric_all[vf].max_rate_int) ?
+			VirtualFabrics->v_fabric_all[vf].max_rate_int : rate;
+		lifeMult = (!VirtualFabrics->v_fabric_all[vf].pkt_lifetime_specified) ? 0 :
+			VirtualFabrics->v_fabric_all[vf].pkt_lifetime_mult;
+		sl = VirtualFabrics->v_fabric_all[vf].base_sl;
 
 		//
-		// Check for other VFs sharing same pkey & sl (same path).
+		// Check for other VFs sharing same pkey & sls (same path).
 		// Adjust mtu/rate/pktLifetime accordingly.
 		//
-		for (vf2= bitset_find_next_one(&vfs, vf+1); vf2 >=0;
-			 vf2= bitset_find_next_one(&vfs, vf2+1)) {
+		for (vf2 = vf+1; (vf2 = bitset_find_next_one(&vfs, vf2)) != -1; vf2++) {
+			if (VirtualFabrics->v_fabric_all[vf2].standby) continue;
 
-			if (PKEY_VALUE(pkey) != PKEY_VALUE(VirtualFabrics->v_fabric[vf2].pkey)) continue;
+			if (PKEY_VALUE(pkey) != PKEY_VALUE(VirtualFabrics->v_fabric_all[vf2].pkey)) continue;
 
-			if (sl != VirtualFabrics->v_fabric[vf2].base_sl) continue;
+			if (sl != VirtualFabrics->v_fabric_all[vf2].base_sl)
+				continue;
 
-           	if (VirtualFabrics->v_fabric[vf2].max_mtu_int < vfMtu) {
-				vfMtu = VirtualFabrics->v_fabric[vf2].max_mtu_int;
-			}		
-			if (linkrate_gt(vfRate, VirtualFabrics->v_fabric[vf2].max_rate_int)) {
-				vfRate = VirtualFabrics->v_fabric[vf2].max_rate_int;
+
+			if (VirtualFabrics->v_fabric_all[vf2].max_mtu_int < vfMtu) {
+				vfMtu = VirtualFabrics->v_fabric_all[vf2].max_mtu_int;
 			}
-			if (VirtualFabrics->v_fabric[vf2].pkt_lifetime_specified &&
-				lifeMult < VirtualFabrics->v_fabric[vf2].pkt_lifetime_mult) {
-				lifeMult = VirtualFabrics->v_fabric[vf2].pkt_lifetime_mult;
+			if (linkrate_gt(vfRate, VirtualFabrics->v_fabric_all[vf2].max_rate_int)) {
+				vfRate = VirtualFabrics->v_fabric_all[vf2].max_rate_int;
+			}
+			if (VirtualFabrics->v_fabric_all[vf2].pkt_lifetime_specified &&
+				lifeMult < VirtualFabrics->v_fabric_all[vf2].pkt_lifetime_mult) {
+				lifeMult = VirtualFabrics->v_fabric_all[vf2].pkt_lifetime_mult;
 			}
 
 			// Clear vf so dual path not reported.
@@ -941,16 +975,16 @@ sa_PathRecord_Set(uint8_t *query, uint32_t* records, uint32_t numPath, Port_t *s
 		//
 		//	Iterate over lid pairs (multiple pairs for lmc > 0).
 		//	
-		if (slid == PERMISSIVE_LID && dlid == PERMISSIVE_LID) {
+		if (slid == STL_LID_PERMISSIVE && dlid == STL_LID_PERMISSIVE) {
 			for (lid_iterator_init(&iter, src_portp, srcLids[0], srcLidLen,
 					dst_portp, dstLids[0], dstLidLen,
 					sm_config.path_selection, &slid_iter, &dlid_iter);
 				! lid_iterator_done(&iter);
 				lid_iterator_next(&iter, &slid_iter, &dlid_iter)) {
 	
-				sa_FillPathRecord(query, records, src_portp, slid_iter, dst_portp, dlid_iter, 
+				sa_FillPathRecord(query, records, src_portp, slid_iter, dst_portp, dlid_iter,
 								pkey, vfMtu, vfRate, lifeMult, hopCount, serviceId, sl);
-				if ((*records) >= sa_max_path_records) {
+				if (TOO_MANY_RECORDS(cversion,(*records))) {
             		IB_LOG_WARN("sa_PathRecord_Set: too many records:", (*records));
             		goto done_PathRecordSet;
         		}
@@ -959,15 +993,15 @@ sa_PathRecord_Set(uint8_t *query, uint32_t* records, uint32_t numPath, Port_t *s
 				}
 			}
 	
-		} else if (slid == PERMISSIVE_LID) {
+		} else if (slid == STL_LID_PERMISSIVE) {
 			for (lid_iterator_init1(&iter, dst_portp, dlid, dstLids[0], dstLidLen,
 					src_portp, srcLids[0], srcLidLen,
 					sm_config.path_selection, &slid_iter);
 				! lid_iterator_done1(&iter);
 				lid_iterator_next1(&iter, &slid_iter)) {
-				sa_FillPathRecord(query, records, src_portp, slid_iter, dst_portp, dlid, 
+				sa_FillPathRecord(query, records, src_portp, slid_iter, dst_portp, dlid,
 								pkey, vfMtu, vfRate, lifeMult, hopCount, serviceId, sl);
-				if ((*records) >= sa_max_path_records) {
+				if (TOO_MANY_RECORDS(cversion,(*records))) {
             		IB_LOG_WARN("sa_PathRecord_Set: too many records:", (*records));
             		goto done_PathRecordSet;
         		}
@@ -976,15 +1010,15 @@ sa_PathRecord_Set(uint8_t *query, uint32_t* records, uint32_t numPath, Port_t *s
 				}
 			}
 	
-		} else if (dlid == PERMISSIVE_LID) {
+		} else if (dlid == STL_LID_PERMISSIVE) {
 			for (lid_iterator_init1(&iter, src_portp, slid, srcLids[0], srcLidLen,
 					dst_portp, dstLids[0], dstLidLen,
 					sm_config.path_selection, &dlid_iter);
 				! lid_iterator_done1(&iter);
 				lid_iterator_next1(&iter, &dlid_iter)) {
-				sa_FillPathRecord(query, records, src_portp, slid, dst_portp, dlid_iter, 
+				sa_FillPathRecord(query, records, src_portp, slid, dst_portp, dlid_iter,
 								pkey, vfMtu, vfRate, lifeMult, hopCount, serviceId, sl);
-				if ((*records) >= sa_max_path_records) {
+				if (TOO_MANY_RECORDS(cversion,(*records))) {
             		IB_LOG_WARN("sa_PathRecord_Set: too many records:", (*records));
             		goto done_PathRecordSet;
         		}
@@ -995,8 +1029,8 @@ sa_PathRecord_Set(uint8_t *query, uint32_t* records, uint32_t numPath, Port_t *s
 	
 		} else {  // LID to LID
 			sa_FillPathRecord(query, records, src_portp, slid, dst_portp, dlid,
-						pkey, vfMtu, vfRate, lifeMult, hopCount, serviceId, sl);
-			if ((*records) >= sa_max_path_records) {
+					  pkey, vfMtu, vfRate, lifeMult, hopCount, serviceId, sl);
+			if (TOO_MANY_RECORDS(cversion,(*records))) {
             	IB_LOG_WARN("sa_PathRecord_Set: too many records:", (*records));
             	goto done_PathRecordSet;
         	}
@@ -1012,71 +1046,74 @@ done_PathRecordSet:
 	return status;
 }
 
+
 //
 //	This whole routine is a quick short circuit for interoperability
 //	until general MTU and RATES are available.
 //
 Status_t
-sa_PathRecord_Interop(IB_PATH_RECORD *prp, uint64_t mask) {	// JSY - interop fix
+sa_PathRecord_Selector_Check(IB_PATH_RECORD *prp, uint64_t mask) {
 	uint8_t		value;
 	uint8_t		selector;
 
-	IB_ENTER("sa_PathRecord_Interop", prp, &mask, 0, 0);
+	IB_ENTER(__func__, prp, &mask, 0, 0);
 
-//
-//	Does the MTU match what we have.
-//
-	if ((mask & PR_COMPONENTMASK_MTU_SEL) != 0ull) {
+	//
+	//	Does the MTU match what we have.
+	//
+	if ((mask & IB_PATH_RECORD_COMP_MTUSELECTOR) != 0ull) {
 		selector = prp->MtuSelector;
-		if (selector < PR_MAX && (mask & PR_COMPONENTMASK_MTU)) {
+		if (selector < IB_SELECTOR_MAX && (mask & IB_PATH_RECORD_COMP_MTU)) {
 			value = prp->Mtu;
 			if (value == 0 || value > STL_MTU_MAX) {
-				IB_LOG_WARN("sa_PathRecord_Interop: invalid specified MTU value:", value);
-				IB_EXIT("sa_PathRecord_Interop", VSTATUS_BAD);
+				IB_LOG_WARN_FMT(__func__,": invalid specified MTU value: %u", value);
+				IB_EXIT(__func__, VSTATUS_BAD);
 				return(VSTATUS_BAD);
 			} else if (value == STL_MTU_MAX) {
-				if (selector == PR_GT) {
-					IB_LOG_WARN("sa_PathRecord_Interop: invalid selector with 10K MTU value:", selector);
-					IB_EXIT("sa_PathRecord_Interop", VSTATUS_BAD);
+				if (selector == IB_SELECTOR_GT) {
+					IB_LOG_WARN_FMT(__func__, ": invalid selector with %s MTU value: %u",
+						IbMTUToText(STL_MTU_MAX), selector);
+					IB_EXIT(__func__, VSTATUS_BAD);
 					return(VSTATUS_BAD);
 				}
 			} else if (value == IB_MTU_256) {
-				if (selector < PR_LT) {
-					IB_LOG_WARN("sa_PathRecord_Interop: invalid selector with 256 MTU value:", selector);
-					IB_EXIT("sa_PathRecord_Interop", VSTATUS_BAD);
+				if (selector < IB_SELECTOR_LT) {
+					IB_LOG_WARN_FMT(__func__, " invalid selector with 256 MTU value: %u", selector);
+					IB_EXIT(__func__, VSTATUS_BAD);
 					return(VSTATUS_BAD);
 				}
 			}
 		} /* MTU selector not max */
 	}
-//
-//	Does the RATE match what we have.
-//
-	if ((mask & PR_COMPONENTMASK_RATE_SEL) != 0ull) {
+	//
+	//	Does the RATE match what we have.
+	//
+	if ((mask & IB_PATH_RECORD_COMP_RATESELECTOR) != 0ull) {
 		selector = prp->RateSelector;
-		if (selector < PR_MAX && (mask & PR_COMPONENTMASK_RATE)) {
+		if (selector < IB_SELECTOR_MAX && (mask & IB_PATH_RECORD_COMP_RATE)) {
 			value = prp->Rate;
 			if (value < IB_STATIC_RATE_MIN || value > IB_STATIC_RATE_MAX) {
-				IB_LOG_WARN("sa_PathRecord_Interop: invalid specified RATE value:", value);
-				IB_EXIT("sa_PathRecord_Interop", VSTATUS_BAD);
+				IB_LOG_WARN_FMT(__func__, ": invalid specified RATE value: %u", value);
+				IB_EXIT(__func__, VSTATUS_BAD);
 				return(VSTATUS_BAD);
 			} else if (value == IB_STATIC_RATE_MAX) {
-				if (selector == PR_GT) {
-					IB_LOG_WARN("sa_PathRecord_Interop: invalid selector with 30GPS rate value:", selector);
-					IB_EXIT("sa_PathRecord_Interop", VSTATUS_BAD);
+				if (selector == IB_SELECTOR_GT) {
+					IB_LOG_WARN_FMT(__func__, ": invalid selector with %s Gbps rate value: %u",
+						IbStaticRateToText(IB_STATIC_RATE_MAX), selector);
+					IB_EXIT(__func__, VSTATUS_BAD);
 					return(VSTATUS_BAD);
 				}
 			} else if (value == IB_STATIC_RATE_MIN) {
-				if (selector == PR_LT) {
-					IB_LOG_WARN("sa_PathRecord_Interop: invalid selector with 2.5GPS rate value:", selector);
-					IB_EXIT("sa_PathRecord_Interop", VSTATUS_BAD);
+				if (selector == IB_SELECTOR_LT) {
+					IB_LOG_WARN_FMT(__func__, ": invalid selector with 2.5 Gbps rate value: %u", selector);
+					IB_EXIT(__func__, VSTATUS_BAD);
 					return(VSTATUS_BAD);
 				}
 			}
 		} /* rate selector not max */
 	}
 
-	IB_EXIT("sa_PathRecord_Interop", VSTATUS_OK);
+	IB_EXIT(__func__, VSTATUS_OK);
 	return(VSTATUS_OK);
 }
 

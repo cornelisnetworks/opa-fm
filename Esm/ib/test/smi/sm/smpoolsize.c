@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -75,6 +75,7 @@ uint32_t	numSwChips2=0;
 uint32_t	numPortsPerSwChip2=0;
 uint32_t	numActivPortsPerSwChip2=0;
 uint32_t    Lmc=0;
+uint32_t	numLIDs=SM_DEFAULT_MAX_LID+1;
 Status_t	status;
 
 #define SA_MAX_DATA_LEN (512*1024)
@@ -83,15 +84,16 @@ Status_t	status;
 void
 usage(void) {
 
-	fprintf(stderr, "smpoolsize -n numFIs -s numSwType1 -p numPortsSwType1 -S numSwType2 -P numPortsSwType2 -A numActivePortsSwType2 -l lmc\n");
+	fprintf(stderr, "smpoolsize -n numFIs -s numSwType1 -p numPortsSwType1 -S numSwType2 -P numPortsSwType2 -A numActivePortsSwType2 -l lmc -L numLIDs\n");
 	fprintf(stderr, "           -n, -s, are mandatory.  -p defaults to 24, -S, -P, -A, -l default to 0 if not entered\n");
+	fprintf(stderr, "           -L defaults to %d (%dK LIDs)\n", SM_DEFAULT_MAX_LID, (SM_DEFAULT_MAX_LID+1)/1024);
 	exit(1);
 }
 //
 // available on both embeded and HSM
 //
 int saSubscriberSize(void) {
-	int size = sizeof(InformRecord_t);
+	int size = sizeof(STL_INFORM_INFO_RECORD);
 	sysPrintf("An SA Subscriber is %d bytes\n", size);
 	return size;
 }
@@ -158,8 +160,8 @@ int smPortSize(void) {
 	return size;
 }
 
-int smLidmapSize(void) {
-	int size = sizeof(LidMap_t) * SIZE_LFT;
+int smLidmapSize(int numLids) {
+	int size = sizeof(LidMap_t) * numLids;
 	sysPrintf("The size LidMap in the topology is %d bytes\n", size);
 	return size;
 }
@@ -185,7 +187,7 @@ uint64_t smFabricSize(void) {
     uint64_t costArraySize = sizeof(uint8_t) * numTopologies;
     uint64_t maxResponseSize = saMaxResponseSize();
     uint64_t nodeRecordSize = saNodeRecordSize();
-    uint64_t lidMapSize = smLidmapSize();
+    uint64_t lidMapSize = smLidmapSize(numLIDs);
     uint64_t smSize = numSmSubs * subscriberSize + numManagers * serviceRecordSize;
     uint64_t standbySize = smSize * numStandbys;
     uint64_t guidInfoSize = sizeof(GuidInfo_t) * (numFIs+numSwChips+numSwChips2) * numTopologies;
@@ -220,7 +222,7 @@ uint64_t smFabricSize(void) {
     sysPrintf("The total for %d multicast groups is %"CS64"d bytes\n", numMcGroups, groupSize);
     sysPrintf("The total for the cost array is %"CS64"d bytes\n", costArraySize);
     sysPrintf("The total for the path array is %"CS64"d bytes\n", pathArraySize);
-    sysPrintf("The total for the LidMap is %"CS64"d bytes\n", lidMapSize);
+    sysPrintf("The total for the LidMap with %d LIDs is %"CS64"d bytes\n", numLIDs, lidMapSize);
     sysPrintf("The total for SA max response is %"CS64"d bytes\n", maxResponseSize);
     sysPrintf("The total for sending all node records to 1/4 the nodes at once is %"CS64"d bytes\n", nodeRecordSize);
 
@@ -238,7 +240,7 @@ int main(int argc, char *argv[]) {
 //
 //	Get the parameters
 //
-	while ((c = getopt(argc, argv, "n:s:p:S:P:A:l:")) != -1) {
+	while ((c = getopt(argc, argv, "n:s:p:S:P:A:l:L:")) != -1) {
 		switch (c) {
 		case 'n':
 			sscanf(optarg, "%u", &numFIs);
@@ -261,13 +263,16 @@ int main(int argc, char *argv[]) {
 		case 'l':
 			sscanf(optarg, "%u", &Lmc);
 			break;
+		case 'L':
+			sscanf(optarg, "%u", &numLIDs);
+			break;
 		default:
 			usage();
 			break;
 		}
 	}
 
-	if (numFIs == 0 || numSwChips == 0) {
+	if (numFIs == 0 || numSwChips == 0 || numLIDs == 0) {
 		usage();
 	}
 

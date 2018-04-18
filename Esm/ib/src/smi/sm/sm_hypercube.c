@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -457,8 +457,11 @@ hypercube_post_process_discovery(Topology_t *topop, Status_t discoveryStatus, vo
 
 	// check for ca route last
 	dgIdx = smGetDgIdx(sm_config.hypercubeRouting.routeLast.member);
-	if (dgIdx == -1) 
+	if (dgIdx == -1) {
+		IB_LOG_WARN_FMT(__func__, "HypercubeTopology has undefined RouteLast Switches group %s",
+									sm_config.hypercubeRouting.routeLast.member);
 		return VSTATUS_OK;
+	}
 
 	for_all_ca_nodes(topop, nodep) {
 		for_all_physical_ports(nodep, portp) {
@@ -509,6 +512,7 @@ hypercube_routing_init_floyds(Topology_t *topop)
 
 				ik = Index(i, k);
 				topop->cost[ik] = hypercube_GetCost(portp->portData);
+				sm_path_portmask_set(topop->path + ik, portp->index);
 			}
 		}
 	}
@@ -541,7 +545,7 @@ hypercube_routing_calc_floyds(Topology_t *topop, int switches, unsigned short * 
 	Node_t *nodep;
 	Node_t *sw = topop->switch_head;
 
-	if (topology_passcount == 0 || switches != old_topology.max_sws) {
+	if (switches != old_topology.max_sws || topology_passcount == 0) {
 		topology_cost_path_changes = 1;
 	}
 
@@ -564,7 +568,7 @@ hypercube_routing_calc_floyds(Topology_t *topop, int switches, unsigned short * 
 					
 				} else if (value == cost[ij]) {
 					sm_path_portmask_merge(path + ij, path + ik);
-				} 
+				}
 			}
 		}
 
@@ -597,6 +601,7 @@ hypercube_routing_calc_floyds(Topology_t *topop, int switches, unsigned short * 
 				}
 			}
 			
+
 			/* PR 115770. If there is any switch cost/path change (including removal of switches),
 			 * set topology_cost_path_changes which will force full LFT reprogramming for all switches.
 			 */
@@ -613,6 +618,9 @@ hypercube_routing_calc_floyds(Topology_t *topop, int switches, unsigned short * 
 				topology_cost_path_changes = 1;
 			}
 		}
+
+
+
 
 		if (sm_useIdealMcSpanningTreeRoot) {
 			if (sw && sw->nodeInfo.NodeGUID == sm_mcSpanningTreeRootGuid) {
@@ -667,6 +675,9 @@ hypercube_routing_calc_floyds(Topology_t *topop, int switches, unsigned short * 
 		}
 		sw = sw->type_next;
 	}
+
+
+
 
 	if (!sm_useIdealMcSpanningTreeRoot)
 		return VSTATUS_OK;
@@ -883,7 +894,7 @@ hypercube_calculate_all_lfts(Topology_t * topop)
 	Node_t *switchp, *toSwitchp, *nodep;
 	Port_t *portp, *toSwitchPortp;
 	Status_t status = VSTATUS_OK;
-	int i, currentLid, numPorts;
+	int i, j, currentLid, numPorts;
 	uint8_t portGroup[256];
 	int routingIterations, r;
 
@@ -939,9 +950,14 @@ hypercube_calculate_all_lfts(Topology_t * topop)
 						continue;
 					}
 
+					if ((r==1) && !nodep->skipBalance) {
+						// already programmed
+						continue;
+					}
+
+					j = 0;
 					for_all_end_ports(nodep, portp) {
 						if (!sm_valid_port(portp) || portp->state <= IB_PORT_DOWN) continue;
-
 						for_all_port_lids(portp, currentLid) {
 							// Handle the case where switchp == toSwitchp. 
 							// In this case, the target LID(s) are directly
@@ -951,11 +967,12 @@ hypercube_calculate_all_lfts(Topology_t * topop)
 								continue;
 							}
 
-							switchp->lft[currentLid] = portGroup[i%numPorts];
-							i++;
+							switchp->lft[currentLid] = portGroup[(i+j)%numPorts];
+							j++;
 
 							incr_lids_routed(topop, switchp, switchp->lft[currentLid]);
 						}
+						if (j) i++;
 					}
 				}
 			}
@@ -1008,7 +1025,7 @@ hypercube_calculate_lft(Topology_t * topop, Node_t * switchp)
 	Node_t *toSwitchp, *nodep;
 	Port_t *portp, *toSwitchPortp;
 	Status_t status = VSTATUS_OK;
-	int i, currentLid, numPorts;
+	int i, j,currentLid, numPorts;
 	uint8_t portGroup[256];
 	int routingIterations, r;
 
@@ -1064,9 +1081,15 @@ hypercube_calculate_lft(Topology_t * topop, Node_t * switchp)
 					continue;
 				}
 
+				if ((r==1) && !nodep->skipBalance) {
+					// already programmed
+					continue;
+				}
+
 				for_all_end_ports(nodep, portp) {
 					if (!sm_valid_port(portp) || portp->state <= IB_PORT_DOWN) continue;
 
+					j = 0;
 					for_all_port_lids(portp, currentLid) {
 						// Handle the case where switchp == toSwitchp. 
 						// In this case, the target LID(s) are directly
@@ -1076,11 +1099,12 @@ hypercube_calculate_lft(Topology_t * topop, Node_t * switchp)
 							continue;
 						}
 
-						switchp->lft[currentLid] = portGroup[i%numPorts];
-						i++;
+						switchp->lft[currentLid] = portGroup[(i+j)%numPorts];
+						j++;
 
 						incr_lids_routed(topop, switchp, switchp->lft[currentLid]);
 					}
+					if (j) i++;
 				}
 			}
 		}

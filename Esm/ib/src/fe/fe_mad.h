@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -61,6 +61,7 @@ uint32_t fe_vieo_init(uint8_t *);
 void fe_shutdown(void);
 uint32_t fe_sa_passthrough(uint8_t *, FE_ConnList *, IBhandle_t);
 uint32_t fe_pa_passthrough(uint8_t *, FE_ConnList *, IBhandle_t);
+uint32_t fe_ea_passthrough(uint8_t *, FE_ConnList *, IBhandle_t);
 uint32_t fe_unsolicited(FE_ConnList *, uint32_t *);
 uint32_t fe_get_config_file_checksum(NetConnection *conn, uint32_t mid);
 uint32_t fe_get_config_file_timestamp(NetConnection *conn, uint32_t mid);

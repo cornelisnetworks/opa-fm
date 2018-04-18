@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -130,9 +130,31 @@ static __inline void BSWAP_STL_10B_HDR( STL_10B_HDR *hdr) {
 }
 
 /*  
- * 16B Header Format 
+ * 16B Header Format
  */ 
 typedef struct _STL_16B_HDR {
+#if !defined(PRODUCT_STL1)
+	STL_FIELDUNION3(u2, 32,
+		B:1,
+		Length:11,
+		SLID_19_0:20);
+	STL_FIELDUNION6(u1, 32,
+		LT:1,
+		L2:2,
+		F:1,
+		RC:3,
+		SC:5,
+		DLID_19_0:20);
+	uint8 L4;
+	STL_FIELDUNION2(u3, 8,
+		DLID_23_20:4,
+		SLID_23_20:4);
+	uint16 Pkey;
+	uint16 Entropy;
+	uint8 Age;
+	uint8 Reserved;
+} PACK_SUFFIX STL_16B_HDR;
+#else
 	STL_FIELDUNION6(u1, 32,
 		LT:1,
 		L2:2,
@@ -153,16 +175,56 @@ typedef struct _STL_16B_HDR {
 		SLID_23_20:4);
 	uint8 L4;
 } STL_16B_HDR;
+#endif
 
 static __inline void BSWAP_STL_16B_HDR( STL_16B_HDR *hdr) {
+#if !defined(PRODUCT_STL1)
+	// LE format on the wire. No need to swap.
+#else
 #ifdef CPU_BE
 	hdr->u1.AsReg32 = ntoh32(hdr->u1.AsReg32);
 	hdr->u2.AsReg32 = ntoh32(hdr->u2.AsReg32);
 	hdr->Entropy = ntoh16(hdr->Entropy);
 	hdr->Pkey = ntoh16(hdr->Pkey);
 #endif
+#endif
 }
 
+
+/*
+ * Base Transport Header for STL 16B
+ */
+typedef struct _STL_16B_BTH {
+	uint8		OpCode;
+
+	struct _STL_16B_BTH_V {IB_BITFIELD3(uint8,
+		SolicitedEvent:	1,
+		PadCount:		3,
+		HeaderVersion:	4)	/* Transport Header version */
+	} v;
+
+	uint16 Reserved;
+
+	union _STL_16B_BTH_QP {
+		uint32	AsUINT32;
+
+		struct _STL_16B_BTH_QP_S {IB_BITFIELD3(uint32,
+			Migrate:		1,
+			Reserved:		7,
+			DestQPNumber:	24)
+		} s;
+	} Qp;
+
+	union _STL_16B_BTH_PSN {
+		uint32	AsUINT32;
+
+		struct _STL_16B_BTH_PSN_S {IB_BITFIELD2(uint32,
+			AckReq:			1,
+			PSN:			31)
+		} s;
+	} Psn;
+
+} PACK_SUFFIX STL_16B_BTH;
 
 
 #include "iba/public/ipackoff.h"

@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015, Intel Corporation
+# Copyright (c) 2015-2017, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -36,52 +36,32 @@ use strict;
 #use Math::BigInt;
 
 	# Names of supported install components
-	# must be listed in depdency order such that prereqs appear 1st
+	# must be listed in dependency order such that prereqs appear 1st
 # TBD ofed_vnic
 my @delta_Components_other = ( "opa_stack", "ibacm", "intel_hfi", "mpi_selector",
 		"delta_ipoib",
 		"opa_stack_dev", "rdma_ndd",
- 		"gasnet", "openshmem",
-		"mvapich2", "openmpi",
-		"delta_mpisrc",
-		"hfi1_uefi",
 		"delta_debug", );
 my @delta_Components_rhel72 = ( "opa_stack", "ibacm", "intel_hfi", "mpi_selector",
 		"delta_ipoib",
 		"opa_stack_dev", "rdma_ndd",
- 		"gasnet", "openshmem",
-		"mvapich2", "openmpi",
-		"delta_mpisrc", 
-		"hfi1_uefi",
 		"delta_debug", );
 my @delta_Components_sles12_sp2 = ( "opa_stack", "intel_hfi", "mpi_selector",
 		"delta_ipoib",
 		"opa_stack_dev", "rdma_ndd",
- 		"gasnet", "openshmem",
-		"mvapich2", "openmpi",
-		"delta_mpisrc", 
-		"hfi1_uefi",
 		"delta_debug", );
 my @delta_Components_rhel73 = ( "opa_stack", "ibacm", "intel_hfi", "mpi_selector",
 		"delta_ipoib",
 		"opa_stack_dev", "rdma_ndd",
-		"gasnet", "openshmem",
-	   	"mvapich2", "openmpi",
-	   	"delta_mpisrc", "hfi1_uefi", "delta_debug", );
+	   	"delta_debug", );
 my @delta_Components_sles12_sp3 = ( "opa_stack", "intel_hfi", "mpi_selector",
 		"delta_ipoib",
 		"opa_stack_dev", "rdma_ndd",
- 		"gasnet", "openshmem",
-		"mvapich2", "openmpi",
-		"delta_mpisrc", 
-		"hfi1_uefi",
 		"delta_debug", );
 my @delta_Components_rhel74 = ( "opa_stack", "ibacm", "intel_hfi", "mpi_selector",
 		"delta_ipoib",
 		"opa_stack_dev", "rdma_ndd",
-		"gasnet", "openshmem",
-	   	"mvapich2", "openmpi",
-	   	"delta_mpisrc", "hfi1_uefi", "delta_debug", );
+	   	"delta_debug", );
 @Components = ( );
 # delta_debug must be last
 

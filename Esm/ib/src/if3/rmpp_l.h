@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -46,7 +46,7 @@ struct rmpp_user_info_s;
 typedef struct rmpp_cntxt {
 	uint64_t	tstamp ;
 	uint64_t	tid ;		// Tid for hash table search
-	uint16_t	lid ;		// Lid for hash table search
+	STL_LID		lid ;		// Lid for hash table search
     uint16_t    method;     // initial method requested by initiator
     IBhandle_t	sendFd;     // mai handle to use for sending packets (fd_sa for 1st seg and fd_rmpp_w threafter)
 	uint8_t		hashed ;	// Entry is inserted into the hash table
@@ -68,14 +68,15 @@ typedef struct rmpp_cntxt {
     uint16_t    reqInProg;  // receipt of request in progress
     uint64_t    RespTimeout;// current response timeout value (13.6.3.1)
     uint64_t    tTime;      // total transaction timeout value (13.6.3.2)
-	uint16_t	retries;    // retry count
-	uint16_t	last_ack;   // last segment number acked
+    uint32_t    bytesRcvd;  // Number of bytes received so far
+    uint16_t	retries;    // retry count
+    uint16_t	last_ack;   // last segment number acked
     uint16_t    segTotal;   // total segments in response
-	struct rmpp_cntxt *next ;	// Link List next pointer
-	struct rmpp_cntxt *prev ;	// Link List prev pointer
-    uint8_t     chkSum;     // checksum of rmpp response 
+    struct rmpp_cntxt *next ;	// Link List next pointer
+    struct rmpp_cntxt *prev ;	// Link List prev pointer
+    uint8_t     chkSum;     // checksum of rmpp response
 	//SACacheEntry_t *cache;  // pointer to cache structure if applicable
-	Status_t (*freeDataFunc)(struct rmpp_cntxt *);  // func to call to free data. may
+    Status_t (*freeDataFunc)(struct rmpp_cntxt *);  // func to call to free data. may
                         	                        // either free locally allocated data, or defer to
                         	                        // the cache mechanism to decref the cache
     Status_t(*processFunc)(Mai_t *, struct rmpp_cntxt *); // function to call
@@ -100,19 +101,42 @@ rmpp_context_get_totext(rmpp_context_get_t status)
 	}
 }
 
+/**
+ * @brief This indicates the type of
+ * 		the RMPP request being sent.
+ * 		The format for SA RMPP packets
+ * 		is handled differently from the
+ * 		format for VENDOR and other
+ * 		RMPP packets. The SA will put its
+ * 		header in every RMPP packet whereas
+ * 		vendor RMPP packets will only put
+ * 		their header in the first RMPP packet.
+ * 		This is accomplished by adding the
+ * 		header as data before passing it to
+ * 		the RMPP library. These values are
+ * 		passed into the rmpp_open_cnx()
+ * 		function and handled internally
+ * 		by the rmpp library.
+ */
+typedef enum {
+	RMPP_FORMAT_UNKNOWN = 0,
+	RMPP_FORMAT_SA = 1,
+	RMPP_FORMAT_VENDOR = 2
+} rmpp_format_t;
+
 extern uint32_t rmpp_sma_spoofing_check_get(void);
 extern void rmpp_sma_spoofing_check_set(uint32_t value);
 extern int rmpp_is_cnx_open(IBhandle_t *fd);
 extern int rmpp_is_cnx_partial_open(int usrId);
 extern rmpp_cntxt_t *rmpp_mngr_get_cmd(int usrId, Mai_t * mad, uint8_t * processMad);
-extern rmpp_cntxt_t* rmpp_cntxt_get(int usrId, Mai_t *mad, uint8_t *processMad); 
+extern rmpp_cntxt_t* rmpp_cntxt_get(int usrId, Mai_t *mad, uint8_t *processMad);
 extern Status_t rmpp_cntxt_data(int usrId, rmpp_cntxt_t* rmpp_cntxt, void* buf, uint32_t len);
 Status_t rmpp_pre_process_request(int usrId, Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt);
 extern Status_t rmpp_send_reply(Mai_t *maip, rmpp_cntxt_t* rmpp_cntxt);
 extern Status_t rmpp_send_request(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt);
 extern Status_t rmpp_receive_response(int usrId, ManagerInfo_t *mi, Mai_t *maip, uint8_t *buffer, uint32_t *bufferLength, CBTxRxFunc_t cb, void *context);
 extern Status_t rmpp_cntxt_release(rmpp_cntxt_t *rmpp_cntxt);
-extern Status_t rmpp_cntxt_full_release(rmpp_cntxt_t *rmpp_cntxt); 
+extern Status_t rmpp_cntxt_full_release(rmpp_cntxt_t *rmpp_cntxt);
 extern void rmpp_mngr_close_cnx(ManagerInfo_t *mi, uint8_t complete);
 extern void rmpp_init(void);
 
@@ -137,5 +161,30 @@ extern int rmpp_mngr_open_cnx(
                                  char *wtName
                              );
 
+extern void rmpp_close_cnx(int usrId, uint8_t complete);
+extern int rmpp_open_cnx(
+                                 IBhandle_t *fd,
+                                 uint32_t qp,
+                                 uint32_t dev,
+                                 uint32_t port,
+                                 Pool_t *pool,
+                                 uint32_t data_length,
+                                 uint32_t max_cntxt,
+                                 IBhandle_t *fh_req_get,
+                                 IBhandle_t *fh_req_gettable,
+                                 uint8_t mclass,
+                                 char* (*get_method_text)(int),
+                                 char* (*get_aid_name)(uint16_t, uint16_t),
+                                 Status_t(*pre_process_request)(Mai_t *, rmpp_cntxt_t *),
+                                 Status_t(*pre_process_response)(Mai_t *, rmpp_cntxt_t *),
+                                 uint8_t(*rmpp_is_master)(void),
+                                 uint32_t vieo_mod_id,
+                                 uint32_t rmpp_format,
+                                 char *wtName
+                             );
+
+extern Status_t rmpp_receive_request(IBhandle_t fd, Mai_t *in_mad);
+extern void rmpp_prepare_response(rmpp_cntxt_t *rmpp_cntxt);
+extern Status_t rmpp_send_reply_EA(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt);
 
 #endif

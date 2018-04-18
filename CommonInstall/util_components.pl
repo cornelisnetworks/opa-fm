@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015, Intel Corporation
+# Copyright (c) 2015-2017, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -45,7 +45,6 @@ my $State_UpToDate = 2;
 my $State_DoNotInstall = 3;
 my $State_DoNotAutoInstall = 4;	# valid only in DefaultInstall, must explicitly select
 
-sub component_start_prompts();
 sub disable_components(@);
 my %comp_prereq_hash;
 # indicate if given state reflects a component which will be on the system
@@ -614,24 +613,6 @@ sub comp_uninstall($$$)
 	eval "uninstall_$comp('$install_list', '$uninstalling_list')";
 }
 
-# start the given component now
-# only valid if comp_is_installed is TRUE
-sub comp_start($)
-{
-	my $comp = shift();
-
-	eval "start_$comp()";
-}
-
-# stop the given component now
-# can be called even if comp_is_installed is FALSE, in which case can be a noop
-sub comp_stop($)
-{
-	my $comp = shift();
-
-	eval "stop_$comp()";
-}
-
 # determine if the given component is configured for Autostart at boot
 sub comp_IsAutostart2($)
 {
@@ -720,30 +701,6 @@ sub DumpComponents($)
 		DebugPrint("           StartPreReq: $ComponentInfo{$comp}{'StartPreReq'}\n");
 	}
 }
-
-# make sure every component is stopped
-sub stop_all_components()
-{
-	my $comp;
-	my $i;
-
-	if ( ROOT_is_set() )
-	{
-		return;
-	}
-	print_separator;
-	print "Stopping loaded drivers...\n";
-	# perform the stop, work backwards through list
-	for ($i=scalar(@Components)-1; $i >= 0; $i--)
-	{
-		$comp = $Components[$i];
-		if ( $ComponentInfo{$comp}{'HasStart'} )
-		{
-			comp_stop($comp);
-		}
-	}
-}
-
 
 # build @AutostartComponents listing all components and subcomponents which
 # have autostart capability.  They are listed in prefered startup order
@@ -1479,13 +1436,9 @@ DO_INS:
 		# show_autostart_menu unconditionally requested user hit return,
 		# update_hca_firmware will also as needed, so only request return below
 		# if one of these functions does something.
-		# component_start_prompts if it does anything will also request a return
 		my $need_ret = 0;
 		$need_ret |= check_depmod;
 		$need_ret |= check_ldconfig;
-		if (component_start_prompts) {
-			$need_ret=0;
-		}
 		$need_ret |= check_need_reboot;
 		if ($need_ret) {
 			HitKeyCont;
@@ -1838,34 +1791,6 @@ sub reconfig_autostart()
 		}
 	}
 }
-
-sub component_start_prompts()
-{
-	my $comp;
-	my $start = 0;
-
-	foreach $comp ( @Components ) {
-		$start ||= ($ComponentWasInstalled{$comp} && $ComponentInfo{$comp}{'HasStart'});;
-	}
-	# TBD disabled for now, restart of iba causes problems if other
-	# drivers are running above it
-	if (0 && $start && GetYesNo("Start drivers now?", "n") == 1)
-	{
-		foreach $comp ( @Components )
-		{
-			# if not already loaded, start prereqs
-			# prehaps prompt for all then do the work?
-			if ($ComponentWasInstalled{$comp} && $ComponentInfo{$comp}{'HasStart'})
-			{
-				comp_start($comp);
-				$ComponentWasInstalled{$comp}=0;
-			}
-		}
-		HitKeyCont;
-		return 1;
-	}
-	return 0;
-} 
 
 # states:
 # $Start_Start - Enable Autostart

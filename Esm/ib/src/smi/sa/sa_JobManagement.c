@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -78,7 +78,7 @@ static sa_jm_cmd_resp_t
 sa_jm_cmd_get_cpi(Mai_t *mad, uint8_t *data, uint32_t len, uint8_t **outData, int *outLen)
 {
 	Status_t s;
-	ClassPortInfo_t cpi;
+	STL_CLASS_PORT_INFO cpi;
 	uint8_t *buf;
 	
     INCREMENT_COUNTER(smCounterJmReqClassPortInfo);

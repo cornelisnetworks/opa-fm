@@ -257,15 +257,24 @@ _clear_quarantine(char * name, QUICK_LIST * list)
 	return TRUE;
 }
 
-// Returns TRUE if any ports were unquarantined.
+// Returns TRUE if caller should schedule a resweep.
 boolean
 sm_popo_clear_short_quarantine(Popo_t * popop)
 {
-	boolean unquarantined = FALSE;
+	boolean resweep = FALSE;
+
 	_popo_lock(popop);
-	unquarantined |= _clear_quarantine("short", &popop->quarantine.shortTerm);
+
+	resweep = _clear_quarantine("short", &popop->quarantine.shortTerm);
+
+	// Only resweep if a trap is pending from a previous failed sweep.
+	// Otherwise, rely on the normal sweep schedule or future traps as per default behavior.
+	resweep = resweep && popop->errors.trapPending;
+	popop->errors.trapPending = FALSE;
+
 	_popo_unlock(popop);
-	return unquarantined;
+
+	return resweep;
 }
 
 uint64_t sm_popo_scale_timeout(Popo_t * popop, uint64_t timeout)
@@ -318,6 +327,14 @@ sm_popo_should_abandon(Popo_t * popop)
 	uint32_t limit = sm_config.cumulative_timeout_limit;
 	return limit && AtomicRead(&popop->errors.cumulativeTimeout) >= limit;
 }
+
+ void
+ sm_popo_report_trap(Popo_t * popop)
+ {
+ 	_popo_lock(popop);
+	popop->errors.trapPending = TRUE;
+	_popo_unlock(popop);
+ }
 
 void sm_popo_update_node(PopoNode_t * ponodep)
 {

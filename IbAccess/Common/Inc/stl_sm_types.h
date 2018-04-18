@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2018, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -86,6 +86,8 @@ extern "C" {
 #define STL_MCLASS_ATTRIB_ID_HFI_CONGESTION_SETTING	0x0090	/* HFI Congestion Setting */
 #define STL_MCLASS_ATTRIB_ID_HFI_CONGESTION_CONTROL_TABLE	0x0091	/* HFI Congestion Control Table */
 
+#define STL_MCLASS_ATTRIB_ID_SC_SC_MULTI_SET        0x0094  /* Service Channel to Service */
+
 /* SMP Attribute Modifiers */
 #define STL_SM_CONF_START_ATTR_MOD 0x00000200  /* PortInfo & PortStateInfo Attr Mod Flag */
 
@@ -114,8 +116,8 @@ typedef struct {
 		} LIDRouted;
 
 		struct _STL_DirectedRoute {
-			STL_LID_32  DrSLID; 		/* Directed route source LID */
-			STL_LID_32  DrDLID; 		/* Directed route destination LID */
+			STL_LID DrSLID; 			/* Directed route source LID */
+			STL_LID DrDLID; 			/* Directed route destination LID */
 			uint8   InitPath[64];   	/* 64-byte field containing the initial */
 										/* directed path */
 			uint8   RetPath[64];		/* 64-byte field containing the */
@@ -188,11 +190,11 @@ typedef struct {
 #define STL_TRAP_GID_DEL_MULTICAST_GROUP_DATA STL_TRAP_GID
 
 typedef struct {
-	uint32		Lid;
+	STL_LID		Lid;
 } PACK_SUFFIX STL_TRAP_PORT_CHANGE_STATE_DATA;
 
 typedef struct {
-	uint32		Lid;
+	STL_LID		Lid;
 	uint8		Port;
 } PACK_SUFFIX STL_TRAP_LINK;
 #define STL_TRAP_LINK_INTEGRITY_DATA STL_TRAP_LINK
@@ -220,10 +222,19 @@ typedef STL_FIELDUNION16(STL_CAPABILITY_MASK, 32,
 /* Capability Mask 3 - a bit set to 1 for affirmation of supported capability
  * by a given port
  */
-typedef STL_FIELDUNION9(STL_CAPABILITY_MASK3, 16,
-		CmReserved:					8,
+typedef STL_FIELDUNION15(STL_CAPABILITY_MASK3, 16,
+		CmReserved0:					1,
+		CmReserved1:					1,
+		CmReserved2:					1,
+		IsMAXLIDSupported:			1,		/* RO/H--- Does the HFI support the MAX */
+											/* LID being configured */
+		CmReserved3:			 	1,
+		CmReserved4:				1,
+		VLSchedulingConfig:			2,		/* RO/H-PE VL Arbitration */
+											/* see STL_VL_SCHEDULING_MODE */
+											/* Port 0 indicates whole switch */
 		IsSnoopSupported: 			1,		/* RO/--PE Packet snoop */
-											/* Reserved in Gen1 */
+											/* Port 0 indicates whole switch */
 		IsAsyncSC2VLSupported:	 	1,		/* RO/H-PE Port 0 indicates whole switch */
 		IsAddrRangeConfigSupported:	1,		/* RO/H-PE Can addr range for Multicast */
 											/* and Collectives be configured */
@@ -232,15 +243,21 @@ typedef STL_FIELDUNION9(STL_CAPABILITY_MASK3, 16,
 											/* Port 0 indicates whole switch */
 		IsSharedSpaceSupported: 	1,		/* RO/H-PE Shared Space */
 											/* Port 0 indicates whole switch */
-		CmReserved2:			 	1,
+		IsSharedGroupSpaceSupported:1,		/* RO/H-PE Shared Space */
+											/* Port 0 indicates whole switch */
 		IsVLMarkerSupported: 		1,		/* RO/H-PE VL Marker */
 											/* Port 0 indicates whole switch */
 		IsVLrSupported: 			1 );	/* RO/H-PE SC->VL_r table */
-											/* Reserved in Gen1 */
-											/* Port 0 indicates whole switch */
+
+
+typedef enum {
+	VL_SCHED_MODE_VLARB			= 0,	/* VL Arbitration Tables */
+	VL_SCHED_MODE_AUTOMATIC		= 2,	/* harcoded, not configurable */
+	/* reserved 3 */
+} STL_VL_SCHEDULING_MODE;
 
 typedef struct {
-	STL_LID_32				Lid;
+	STL_LID					Lid;
 	STL_CAPABILITY_MASK		CapabilityMask;
 	uint16					Reserved;
 	STL_CAPABILITY_MASK3	CapabilityMask3;
@@ -250,16 +267,17 @@ typedef struct {
 							LinkSpeedEnabledChange:1,
 							LinkWidthEnabledChange:1,
 							NodeDescriptionChange:1);
+
 } PACK_SUFFIX STL_TRAP_CHANGE_CAPABILITY_DATA;
 
 typedef struct {
 	uint64		SystemImageGuid;
-	uint32		Lid;
+	STL_LID		Lid;
 } PACK_SUFFIX STL_TRAP_SYSGUID_CHANGE_DATA;
 
 typedef struct {
-	uint32		Lid;
-	uint32		DRSLid;
+	STL_LID		Lid;
+	STL_LID		DRSLid;
 	/*	8 bytes */
 	uint8		Method;
 	STL_FIELDUNION3(u,8,
@@ -277,8 +295,8 @@ typedef struct {
 } PACK_SUFFIX STL_TRAP_BAD_M_KEY_DATA;
 
 typedef struct {
-	uint32		Lid1;
-	uint32		Lid2;
+	STL_LID		Lid1;
+	STL_LID		Lid2;
 	/*	8 bytes */
 	uint32		Key;	// pkey or qkey
 	STL_FIELDUNION2(u,8,
@@ -310,8 +328,8 @@ typedef struct {
 				Reserved:8);
 	uint16		PKey;
 	/*	4 bytes */
-	uint32		Lid1;
-	uint32		Lid2;
+	STL_LID		Lid1;
+	STL_LID		Lid2;
 	STL_FIELDUNION2(u2,8,
 				SL:5,
 				Reserved:3);
@@ -333,7 +351,7 @@ typedef struct {
 
 /* LinkWidth of at least one port of switch at <ReportingLID> has changed */
 typedef struct {
-	uint32  ReportingLID;
+	STL_LID  ReportingLID;   		
 } PACK_SUFFIX STL_SMA_TRAP_DATA_LINK_WIDTH;
 
 /*
@@ -398,8 +416,8 @@ typedef struct {
 /* STL Routing Modes */
 #define STL_ROUTE_NOP			0	/* No change */
 #define STL_ROUTE_LINEAR		1	/* Linear routing algorithm */
-#define STL_ROUTE_HIERARCHICAL	2	/* Hierarchical routing algorithm */
-#define STL_ROUTE_DRAGONFLY		4	/* Dragonfly routing algorithm */
+
+
 
 typedef	union {
 	uint16	AsReg16;
@@ -426,16 +444,16 @@ typedef struct {
 								/* Port Group Forwarding Database */
 	uint32  MulticastFDBCap;	/* RO Number of entries supported in the */
 								/*  Multicast Forwarding Database */
-	STL_LID_32  LinearFDBTop;		/* RW Indicates the top of the Linear */
-								/*  Forwarding Table */
+	STL_LID  LinearFDBTop;		/* RW Indicates the maximum DLID programmed */
+								/*  in the routing tables */
 								/* POD: 0 */
-	STL_LID_32  MulticastFDBTop;	/* RW Indicates the top of the Multicast */
+	STL_LID  MulticastFDBTop;	/* RW Indicates the top of the Multicast */
 								/*  Forwarding Table */
 								/* POD: 0 */
 	uint32  CollectiveCap;   	/* RO Number of entries supported in the */
 								/*  Collective Table */
 								/* Reserved in Gen1 */
-	STL_LID_32  CollectiveTop;		/* RW Indicates the top of the Collective Table */
+	STL_LID  CollectiveTop;		/* RW Indicates the top of the Collective Table */
 								/* POD: 0 */
 								/* Reserved in Gen1 */
 	uint32  Reserved;
@@ -446,11 +464,11 @@ typedef struct {
 
 	uint32  Reserved26;
 	uint32  Reserved27;
-	uint32  Reserved28;
 
-	uint8   Reserved21;			
-	uint8   Reserved22;	
-	uint8   Reserved23;
+	uint32	Reserved28;
+	uint8	Reserved21;
+	uint8	Reserved22;
+	uint8	Reserved23;
 
 	union {
 		uint8   AsReg8;
@@ -497,7 +515,7 @@ typedef struct {
 								/* POD: 4 */
 	} MultiCollectMask;
 
-	STL_FIELDUNION7(AdaptiveRouting, 16,
+	STL_FIELDUNION8(AdaptiveRouting, 16,
 		Enable: 			1,	/* RW Enable/Disable AR */
 		Pause:				1,	/* RW Pause AR when true */
 		Algorithm:			3,	/* RW 0 = Random, 1 = Greedy, */
@@ -505,14 +523,13 @@ typedef struct {
 		Frequency:			3,	/* RW 0-7. Value expands to 2^F*64ms. */
 		LostRoutesOnly:		1,  /* RW. Indicates that AR should only be done */
 								/* for failed links. */
-		Threshold: 3, /* CCA-level at which switch uses AR. */
-		Reserved:			4);
+		Threshold:			3,  /* CCA-level at which switch uses AR. */
+		Reserved2:			1,
+		Reserved:			3);
 
 	SWITCH_CAPABILITY_MASK  CapabilityMask;		/* RO */
 
 	CAPABILITY_MASK_COLLECTIVES  CapabilityMaskCollectives;	/* RW */
-												/* Reserved in Gen1 */
-
 } PACK_SUFFIX STL_SWITCH_INFO;
 
 
@@ -687,7 +704,7 @@ typedef union {
 	uint32  AsReg32;
 	struct { IB_BITFIELD8( uint32,	/* Port states */
 		Reserved:					9,
-		LEDEnabled:					1, 	/* RW/HS-- Set to 1 if the port LED is active. */
+		LEDEnabled:					1, 	/* RO/HS-- Set to 1 if the port LED is active. */
 		IsSMConfigurationStarted: 	1,  /* RO/HS-E - POD/LUD: 0 */
 		NeighborNormal:				1,	/* RO/HS-- */
 										/* POD/LUD: 0 */
@@ -716,7 +733,8 @@ typedef union {
 #define STL_LINK_SPEED_NOP		 0		/* LinkSpeed.Enabled: no change */
 										/* LinkSpeeed.Active: link is LinkDown*/
 #define STL_LINK_SPEED_12_5G	 0x0001	/* 12.5 Gbps */
-#define STL_LINK_SPEED_25G		 0x0002		/* 25.78125? Gbps (EDR) */
+#define STL_LINK_SPEED_25G		 0x0002	/* 25.78125? Gbps (EDR) */
+
 
 /* STL Link width, continued from IB_LINK_WIDTH and indicated as follows:
  * values are additive for Supported and Enabled fields
@@ -739,7 +757,7 @@ typedef union {
  */
 #define STL_PORT_LINK_MODE_NOP	0		/* No change */
 /* reserved 1 */
-#define STL_PORT_LINK_MODE_ETH	2		/* Port mode is ETH (Gateway) */
+/* reserved 2 */
 #define STL_PORT_LINK_MODE_STL	4		/* Port mode is STL */
 
 /* STL Port link formats, indicated as follows:
@@ -767,6 +785,11 @@ typedef union {
 #define STL_PORT_FLIT_DISTANCE_MODE_1		1	/* STL1 mode */
 #define STL_PORT_FLIT_DISTANCE_MODE_2		2	/* STL2 mode */
 
+/* STL VL Scheduling mode, indicated as follows:
+ */
+#define STL_VL_SCHED_MODE_VLARB		0	/* Gen1 VLARB */
+#define STL_VL_SCHED_MODE_AUTOMATIC	2	/* hardcoded, not configurable */
+
 /* STL Port Flit preemption limits of unlimited */
 #define STL_PORT_PREEMPTION_LIMIT_NONE		255 /* Unlimited */
 
@@ -784,7 +807,7 @@ typedef union {
  *   P = port number
  */
 typedef struct {
-	STL_LID_32  LID;				/* RW/HSPE H-PE: base LID of this node */
+	STL_LID LID;					/* RW/HSPE H-PE: base LID of this node */
 									/*               POD: 0 */
 									/*         -S--: base LID of neighbor node */
 									/*               POD/LUD: 0 */
@@ -793,24 +816,35 @@ typedef struct {
 									/* POD/LUD: flow control enabled all VLs except VL15 */
 
 	struct {
-		uint8	PreemptCap;
+		uint8	PreemptCap;		/* RO/HS-E size of Preempting VL Arbitration table */
+						/* only used when VLSchedulingConfig */
+						/* is VL_SCHED_MODE_VLARB, otherwise reserved */
 
 		struct { IB_BITFIELD2( uint8,
 			Reserved:		3,
 			Cap:			5 )		/* RO/HS-E Virtual Lanes supported on this port */
 		} s2;
 
-		uint16  HighLimit;			/* RW/HS-E Limit of high priority component of */
-									/*  VL Arbitration table */
-									/* POD: 0 */
+		uint16  HighLimit;		/* RW/HS-E Limit of high priority component of */
+						/*  VL Arbitration table */
+						/* only used when VLSchedulingConfig */
+						/* is VL_SCHED_MODE_VLARB, otherwise reserved */
+						/* POD: 0 */
 		uint16  PreemptingLimit;	/* RW/HS-E Limit of preempt component of */
-									/*  VL Arbitration table */
-									/* POD: 0 */
+						/*  VL Arbitration table */
+						/* only used when VLSchedulingConfig */
+						/* is VL_SCHED_MODE_VLARB, otherwise reserved */
+						/* POD: 0 */
+
 		union {
-			uint8   ArbitrationHighCap;	 /* RO/HS-E */
+			uint8   ArbitrationHighCap;	/* RO/HS-E VL Arbitration table cap */
+						/* only used when VLSchedulingConfig */
+						/* is VL_SCHED_MODE_VLARB, otherwise reserved */
 		};
 
-		uint8   ArbitrationLowCap;	/* RO/HS-E */
+		uint8   ArbitrationLowCap;	/* RO/HS-E VL Arbitration table cap */
+						/* only used when VLSchedulingConfig */
+						/* is VL_SCHED_MODE_VLARB, otherwise reserved */
 	} VL;
 
 	STL_PORT_STATES  PortStates;		/* Port states */
@@ -818,6 +852,8 @@ typedef struct {
 	STL_FIELDUNION2(PortPhysConfig,8,
 			Reserved:4,				/* Reserved */
 			PortType:4);            /* RO/HS-- PORT_TYPE */
+						/* Switch port 0 shall report Fixed */
+						/* reserved when PortLinkMode.Active is not STL */
 
 	struct { IB_BITFIELD3( uint8,	/* Multicast/Collectives masks */
 		Reserved:			2,
@@ -916,18 +952,21 @@ typedef struct {
 	} LinkWidthDowngrade;
 
 	STL_FIELDUNION4(PortLinkMode,16, 	/* STL/Eth Port Link Modes */
-										/* (see STL_PORT_LINK_MODE_XXX) */
+									/* (see STL_PORT_LINK_MODE_XXX) */
 		Reserved:	1,
 		Supported:	5,					/* RO/HS-E Supported port link mode */
 		Enabled:	5,					/* RW/HS-E Enabled port link mode POD: from FW INI */
 		Active:		5 );				/* RO/HS-E Active port link mode */
 
 	STL_FIELDUNION4(PortLTPCRCMode, 16,	/* STL Port LTP CRC Modes */
-										/* (see STL_PORT_LTP_CRC_MODE_XXX) */
+						/* (see STL_PORT_LTP_CRC_MODE_XXX) */
 		Reserved:   4,
-		Supported:	4,					/* RO/HS-E Supported port LTP mode */
-		Enabled:	4,					/* RW/HS-E Enabled port LTP mode POD: from FW INI */
-		Active:		4 );				/* RO/HS-E Active port LTP mode */
+		Supported:	4,		/* RO/HS-E Supported port LTP mode */
+						/* reserved when PortLinkMode.Active is not STL */
+		Enabled:	4,		/* RW/HS-E Enabled port LTP mode POD: from FW INI */
+						/* reserved when PortLinkMode.Active is not STL */
+		Active:		4 );		/* RO/HS-E Active port LTP mode */
+						/* reserved when PortLinkMode.Active is not STL */
 
 	STL_FIELDUNION7(PortMode, 16, 		/* General port modes */
 		Reserved:				9,
@@ -985,7 +1024,7 @@ typedef struct {
 
 	} FlitControl;
 
-	uint32  Reserved13;
+	STL_LID  MaxLID;					/* RW/H---: POD: 0xBFFF */
 
 	union _PortErrorAction {
 		uint32  AsReg32;
@@ -1040,9 +1079,11 @@ typedef struct {
 		CreditAck:		3,		/* RO/HS-E Credit ack unit (BufferAlloc*2^N) */
 		BufferAlloc:	3 );	/* RO/HS-E Buffer alloc unit (8*2^N) */
 
-	uint32  Reserved14;
+	uint16  Reserved14;
+	uint8   BundleNextPort;		/* RO/HS-- next logical port in a bundled connector */
+	uint8   BundleLane;			/* RO/HS-- first lane in connector associated with this port */
 
-	STL_LID_32  MasterSMLID;	/* RW/H-PE The base LID of the master SM that is */
+	STL_LID MasterSMLID;		/* RW/H-PE The base LID of the master SM that is */
 								/* managing this port */
 								/* POD/LUD: 0 */
 
@@ -1072,8 +1113,9 @@ typedef struct {
 
 	STL_IPV4_IP_ADDR  IPAddrIPV4;	/* RO/H-PE IP Address - IPV4 */
 
-	uint32 Reserved26;
-	uint32 Reserved27;
+	uint32  Reserved26;
+	uint32  Reserved27;
+
 	uint32 Reserved28;
 
 	uint64  NeighborNodeGUID;   /* RO/-S-E GUID of neighbor connected to this port */
@@ -1088,16 +1130,23 @@ typedef struct {
 
 	uint16  OverallBufferSpace;		/* RO/HS-E Overall dedicated + shared space */
 
-	uint16  Reserved21;			
+	struct {				/* most significant 8 bits of Replay depths */
+		uint8   BufferDepthH;		/* RO/HS-- Replay buffer depth MSB */
+						/* reserved when PortLinkMode.Active is not STL */
+		uint8   WireDepthH;		/* RO/HS-- Replay wire depth MSB */
+						/* reserved when PortLinkMode.Active is not STL */
+	} ReplayDepthH;
 
 	STL_FIELDUNION3(DiagCode, 16, 	/* RO/H-PE Diagnostic code, Refer Node Diagnostics */
 		UniversalDiagCode:		4,
 		VendorDiagCode:			11,
 		Chain:			        1 );
 
-	struct {						/* Replay depths */
-		uint8   BufferDepth;		/* RO/HS-E Replay buffer depth in LTP units */
-		uint8   WireDepth;			/* RO/HS-E Replay wire depth in LTP units */
+	struct {				/* least significant 8 bits of Replay depths */
+		uint8   BufferDepth;		/* RO/HS-E Replay buffer depth LSB */
+						/* reserved when PortLinkMode.Active is not STL */
+		uint8   WireDepth;		/* RO/HS-E Replay wire depth LSB */
+						/* reserved when PortLinkMode.Active is not STL */
 	} ReplayDepth;
 
 	struct { IB_BITFIELD4( uint8,	/* RO/HS-E Port modes based on neighbor */
@@ -1106,7 +1155,7 @@ typedef struct {
 									/* Switch: mgmt is allowed for neighbor */
 									/* EP0: mgmt is allowed for port */
 		NeighborFWAuthenBypass:	1,	/* RO/-S-E 0=Authenticated, 1=Not Authenticated */
-		NeighborNodeType:		2 )	/* RO/-S-E 0=WFR (not trusted), 1=PRR (trusted) */
+		NeighborNodeType:		2 )	/* RO/-S-E 0=HFI (not trusted), 1=Switch (trusted) */
 	} PortNeighborMode;
 
 	struct { IB_BITFIELD2( uint8,
@@ -1231,8 +1280,10 @@ typedef struct {
 											/*    -SPE: POD: SCn_to_SCn (1-to-1) */
 } PACK_SUFFIX STL_SCSC_MULTISET;
 
+
 #define STL_NUM_SCSC_MULTI_BLOCKS_PER_DRSMP ((uint8_t)(STL_MAX_PAYLOAD_SMP_DR / sizeof(STL_SCSC_MULTISET)))
 #define STL_NUM_SCSC_MULTI_BLOCKS_PER_LRSMP ((uint8_t)(STL_MAX_PAYLOAD_SMP_LR / sizeof(STL_SCSC_MULTISET)))
+
 
 /*
  * SC_TO_SL Mapping table
@@ -1247,7 +1298,6 @@ typedef struct {					/* RW POD: SCn_to_SLn (1-to-1) */
 	STL_SL  SCSLMap[STL_MAX_SCS];
 
 } PACK_SUFFIX STL_SCSLMAP;
-
 
 /*
  * SC_TO_VL Mapping table
@@ -1344,6 +1394,7 @@ typedef struct {
 } PACK_SUFFIX STL_LINEAR_FORWARDING_TABLE;
 
 
+
 /*
  * Multicast Forwarding Table (MFT)
  *
@@ -1358,13 +1409,12 @@ typedef struct {
  * 2-dimensional array of blocks[2**20][4].
  */
 
-//typedef uint64  STL_PORTMASK;			/* Port mask element (MFT and PGFT */
 
 #define STL_NUM_MFT_ELEMENTS_BLOCK	8	/* Num elements per block */
 #define STL_NUM_MFT_POSITIONS_MASK	4	/* Num positions per 256-bit port mask */
 #define STL_MAX_MFT_BLOCK_NUM		0xFFFFF
 #define STL_PORT_MASK_WIDTH			64		/* Width of STL_PORTMASK in bits */
-#define STL_MAX_PORTS			255
+#define STL_MAX_PORTS				255
 
 typedef struct {
 	STL_PORTMASK  MftBlock[STL_NUM_MFT_ELEMENTS_BLOCK];
@@ -1445,7 +1495,6 @@ typedef struct {
 #define STL_CABLE_INFO_DATA_SIZE 	64
 typedef struct {
 	uint8   Data[STL_CABLE_INFO_DATA_SIZE];			/* RO Cable Info data (up to 64 bytes) */
-		
 } PACK_SUFFIX STL_CABLE_INFO;
 
 #define STL_CABLE_INFO_PAGESZ 	128
@@ -1465,6 +1514,12 @@ typedef struct {
 
 #define STL_CIB_STD_MAX_STRING			16		// Max ASCII string in STD CableInfo field
 
+// Byte 0 and byte 128: identifier (SFF-8024)
+#define STL_CIB_STD_QSFP				0xC		// QSFP transceiver identifier value
+#define STL_CIB_STD_QSFP_PLUS			0xD		// QSFP+ transceiver identifier value
+#define STL_CIB_STD_QSFP_28				0x11	// QSFP28 transceiver identifier value
+#define STL_CIB_STD_QSFP_DD				0x18	// QSFP-DD transceiver identifier value
+
 // Byte 129: pwr_class_low, pwr_class_high
 #define STL_CIB_STD_PWRLOW_1_5			0		// Pwr class low class 1 (1.5 W)
 #define STL_CIB_STD_PWRLOW_2_0			1		// Pwr class low class 2 (2.0 W)
@@ -1476,7 +1531,10 @@ typedef struct {
 #define STL_CIB_STD_PWRHIGH_5_0			3		// Pwr class high class 7 (5.0 W)
 
 // Byte 130: connector
+#define STL_CIB_STD_CONNECTOR_MPO1x12	0x0C	// Connector type is MPO 1x12
+#define STL_CIB_STD_CONNECTOR_MPO2x16	0x0D	// Connector type is MPO 2x16
 #define STL_CIB_STD_CONNECTOR_NO_SEP	0x23	// Connector type is non-separable
+#define STL_CIB_STD_CONNECTOR_MXC2x16	0x24	// Connector type is MXC 2x16
 
 // Byte 140: bit_rate_low
 #define STL_CIB_STD_RATELOW_NONE		0		// Nominal bit rate low not specified 
@@ -1601,6 +1659,25 @@ typedef struct {
 	uint8	vendor3[3];				// 253-255: Vendor specific
 } PACK_SUFFIX STL_CABLE_INFO_STD;
 
+// The following structure represents CableInfo page 0 upper (DD) in memory.
+// (based on Rev 0.61 frozen memory map)
+typedef struct {
+	uint8	ident;					// 128: Identifier
+	uint8	vendor_name[16];		// 129-144: Vendor name
+	uint8	vendor_oui[3];			// 145-147: Vendor OUI
+	uint8	vendor_pn[16];			// 148-163: Vendor part number
+	uint8	vendor_rev[2];			// 164-165: Vendor revision
+	uint8	vendor_sn[16];			// 166-181: Vendor serial number
+	uint8	date_code[8];			// 182-189: Vendor manufacture date code
+	uint8	reserved1[11];			// 190-200: Reserved
+	uint8	powerMax;				// 201: Max power dissipation, in 0.25W increments
+	uint8	cableLengthEnc;			// 202: Cable assembly length
+	uint8	connector;				// 203: Connector (see STL_CIB_CONNECTOR_TYPE_xxx)
+	uint8	reserved2[8];			// 204-211: Reserved
+	uint8	cable_type;				// 212: Cable type (optics/passive/active Cu)
+	uint8	reserved3[43];			// 213-255: Reserved
+} PACK_SUFFIX STL_CABLE_INFO_UP0_DD;
+
 /*
  * Aggregate
  *
@@ -1649,7 +1726,7 @@ typedef struct {
  * Given an STL_AGGREGATE member, returns the next member.
  * Member header must be in HOST byte order. Does not range check.
  */ 
-#define STL_AGGREGATE_NEXT(pAggr) (STL_AGGREGATE*)((uint8*)(pAggr)+((pAggr)->Result.s.RequestLength*8)+sizeof(STL_AGGREGATE))
+#define STL_AGGREGATE_NEXT(pAggr) ((STL_AGGREGATE*)((uint8*)(pAggr)+((pAggr)->Result.s.RequestLength*8)+sizeof(STL_AGGREGATE)))
 
 /*
  * PortStateInfo
@@ -1783,8 +1860,8 @@ typedef struct {
 #define STL_NUM_CONGESTION_LOG_ELEMENTS	96		/* Max num elements in log (SW and HFI) */
 
 typedef struct {						/* POD: 0 */
-	STL_LID_32	SLID;
-	STL_LID_32	DLID;
+	STL_LID	SLID;
+	STL_LID	DLID;
 
 	IB_BITFIELD2( uint8,
 		SC:			5,
@@ -1917,7 +1994,7 @@ typedef struct {					/* POD: 0 */
 
 	uint8   Reserved;
 
-	uint32  Remote_LID_CN_Entry;	/* IBTA already used 32 bits for this */
+	STL_LID  Remote_LID_CN_Entry;	/* IBTA already used 32 bits for this */
 
 	uint32  TimeStamp_CN_Entry;
 
@@ -2007,8 +2084,8 @@ typedef struct {						/* RW */
 
 typedef struct {
    uint64  M_Key;  			/* A 64 bit key, */
-   STL_LID_32  DrSLID;            /* Directed route source LID */
-   STL_LID_32  DrDLID;            /* Directed route destination LID */
+   STL_LID DrSLID;            /* Directed route source LID */
+   STL_LID DrDLID;            /* Directed route destination LID */
    uint8   InitPath[64];      /* 64-byte field containing the initial */
                               /* directed path */
    uint8   RetPath[64];       /* 64-byte field containing the */

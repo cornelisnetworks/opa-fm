@@ -1,10 +1,10 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
-#
-# Copyright (c) 2017, Intel Corporation
-#
+# 
+# Copyright (c) 2015-2017, Intel Corporation
+# 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
-#
+# 
 #     * Redistributions of source code must retain the above copyright notice,
 #       this list of conditions and the following disclaimer.
 #     * Redistributions in binary form must reproduce the above copyright
@@ -13,7 +13,7 @@
 #     * Neither the name of Intel Corporation nor the names of its contributors
 #       may be used to endorse or promote products derived from this software
 #       without specific prior written permission.
-#
+# 
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -24,7 +24,7 @@
 # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
+# 
 # END_ICS_COPYRIGHT8   ****************************************
 
 #[ICS VERSION STRING: unknown]
@@ -53,26 +53,32 @@ else
         echo "Building Public Release."
 fi
 
+SrcTmp=$(mktemp -d)
+
+# Use tar command to copy files to temp dirs
+# For unifdef, then run unifdef on files in temp dir
+
+tar c -C ${SrcRoot} ${FILES_TO_TAR} --exclude-vcs --ignore-case $FILE_TO_EXCLUDE | \
+   	tar x -C ${SrcTmp}
 if [[ $USE_UNIFDEF = "yes" ]] ; then
         # Check if unifdef tool exists
         type unifdef > /dev/null 2>&1 || { echo "error: unifdef tool missing"; exit 1; }
-        # For unifdef, use tar command to copy files to temp dirs
-        # then run unifdef on files in temp dir
-        SrcTmp=$(mktemp -d)
-        tar c -C ${SrcRoot} ${FILES_TO_TAR} --exclude-vcs --ignore-case $FILE_TO_EXCLUDE | \
-        	tar x -C ${SrcTmp}
         find ${SrcTmp}/ -type f -regex ".*\.[ch][p]*$" -exec unifdef -m -f "${TL_DIR}/buildFeatureDefs" {} \;
-        SrcRoot=${SrcTmp}
         # Delete content of buildFeatureDefs before creating source tar for rpm
-        >${SrcRoot}/buildFeatureDefs
+        >${SrcTmp}/buildFeatureDefs
 fi
 
-tar cvzf ${ARCHIVE} -C ${SrcRoot} ${FILES_TO_TAR} --exclude-vcs --ignore-case $FILE_TO_EXCLUDE
+# Delete include of Rules.buildFeatureDefs
+mfiles=$(find ${SrcTmp} -name "Makefile*" | xargs grep -l Rules.buildFeatureDefs)
+for mf in $mfiles
+do
+        sed -i '/Rules.buildFeatureDefs/d' $mf
+done
+
+tar cvzf ${ARCHIVE} -C ${SrcTmp} ${FILES_TO_TAR} --exclude-vcs --ignore-case $FILE_TO_EXCLUDE
 
 # Remove temp dir
 if [[ "${RELEASE_TYPE}" == "EMBARGOED" ]] ; then
         rm -rf ${TMP}
 fi
-if [[ $USE_UNIFDEF = "yes" ]] ; then
-        rm -rf ${SrcTmp}
-fi
+rm -rf ${SrcTmp}

@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -34,58 +34,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "iba/ib_sd.h"
 #include "iba/stl_sa_types.h"
 
-#define NO_STL_MCMEMBER_OUTPUT      // Don't output STL McMember Records in SA tools
-#define NO_STL_SERVICE_OUTPUT      // Don't output STL Service Records in SA tools
 
-/*
- * Extensions to the QUERY_RESULT_TYPE found in ib_sd.h. 
- * NOTE: Also update iba2ibo_saquery_helper.c with text version of any additions! 
- */
-#define OutputTypeStlBase 					0x1000
-#define OutputTypeStlNodeRecord				(OutputTypeStlBase+1)
-#define OutputTypeStlNodeDesc				(OutputTypeStlBase+2)
-#define OutputTypeStlPortInfoRecord			(OutputTypeStlBase+3)
-#define OutputTypeStlSwitchInfoRecord		(OutputTypeStlBase+4)
-#define OutputTypeStlPKeyTableRecord		(OutputTypeStlBase+5)
-#define OutputTypeStlSLSCTableRecord		(OutputTypeStlBase+6)
-#define OutputTypeStlSMInfoRecord			(OutputTypeStlBase+7)
-#define OutputTypeStlLinearFDBRecord		(OutputTypeStlBase+8)
-#define OutputTypeStlVLArbTableRecord		(OutputTypeStlBase+9)
-#ifndef NO_STL_MCMEMBER_OUTPUT       // Don't output STL McMember if defined
-#define OutputTypeStlMcMemberRecord			(OutputTypeStlBase+10)
-#endif
-#define OutputTypeStlLid					(OutputTypeStlBase+11)
-#define OutputTypeStlMCastFDBRecord			(OutputTypeStlBase+12)
-#define OutputTypeStlLinkRecord				(OutputTypeStlBase+13)
-#define OutputTypeStlSystemImageGuid		(OutputTypeStlBase+14)
-#define OutputTypeStlPortGuid				(OutputTypeStlBase+15)
-#define OutputTypeStlNodeGuid				(OutputTypeStlBase+16)
-#ifndef NO_STL_SERVICE_OUTPUT       // Don't output STL Service if defined
-#define OutputTypeStlServiceRecord			(OutputTypeStlBase+17)
-#endif
-#define OutputTypeStlInformInfoRecord		(OutputTypeStlBase+18)
-#define OutputTypeStlVfInfoRecord			(OutputTypeStlBase+19)
-#define OutputTypeStlTraceRecord			(OutputTypeStlBase+20)
-#define OutputTypeStlQuarantinedNodeRecord	(OutputTypeStlBase+21)
-#define OutputTypeStlCongInfoRecord         (OutputTypeStlBase+22)
-#define OutputTypeStlSwitchCongRecord       (OutputTypeStlBase+23)
-#define OutputTypeStlSwitchPortCongRecord   (OutputTypeStlBase+24)
-#define OutputTypeStlHFICongRecord          (OutputTypeStlBase+25)
-#define OutputTypeStlHFICongCtrlRecord      (OutputTypeStlBase+26)
-#define OutputTypeStlBufCtrlTabRecord       (OutputTypeStlBase+27)
-#define OutputTypeStlCableInfoRecord		(OutputTypeStlBase+28)
-#define OutputTypeStlPortGroupRecord		(OutputTypeStlBase+29)
-#define OutputTypeStlPortGroupFwdRecord		(OutputTypeStlBase+30)
-#define OutputTypeStlSCSLTableRecord		(OutputTypeStlBase+31)
-#define OutputTypeStlSCVLtTableRecord		(OutputTypeStlBase+32)
-#define OutputTypeStlSCVLntTableRecord		(OutputTypeStlBase+33)
-#define OutputTypeStlSCSCTableRecord		(OutputTypeStlBase+34)
-#define OutputTypeStlClassPortInfo			(OutputTypeStlBase+35)
-#define OutputTypeStlFabricInfoRecord		(OutputTypeStlBase+36)
-#define OutputTypeStlSwitchCostRecord		(OutputTypeStlBase+53)
+typedef union _OMGT_QUERY_INPUT_VALUE {
 
-typedef union _OMGT_QUERY_INPUT_VALUE
-{
+	/* SA Record OutputTypes */
 	union _IbNodeRecord {
 		IB_LID Lid; /* InputType */
 		EUI64  PortGUID; /* InputType */
@@ -94,15 +46,27 @@ typedef union _OMGT_QUERY_INPUT_VALUE
 		NODE_TYPE NodeType; /* InputType */
 		char NodeDesc[STL_NODE_DESCRIPTION_ARRAY_SIZE]; /* InputType */
 	} IbNodeRecord; /* OutputType */
-	union _IbNodeRecord NodeRecord; /* OutputType */
-	union _LidOnly {
+	union _NodeRecord {
+		STL_LID Lid; /* InputType */
+		EUI64  PortGUID; /* InputType */
+		EUI64  NodeGUID; /* InputType */
+		EUI64  SystemImageGUID; /* InputType */
+		NODE_TYPE NodeType; /* InputType */
+		char NodeDesc[STL_NODE_DESCRIPTION_ARRAY_SIZE]; /* InputType */
+	} NodeRecord; /* OutputType */
+	union _IbLidOnly {
 		IB_LID Lid; /* InputType */
 	} IbPortInfoRecord; /* OutputType */
-	union _LidOnly PortInfoRecord; /* OutputType */
-	union _LidOnly LinkRecord; /* OutputType */
+	union _LidOnly {
+		STL_LID Lid; /* InputType */
+	} PortInfoRecord; /* OutputType */
+	union _LinkRecord {
+		STL_LID Lid;
+		uint16 LinkConditionMask;
+	} LinkRecord; /* OutputType */
 	union _LidOnly SwitchInfoRecord; /* OutputType */
 	union _IbPathRecord {
-		IB_GID SourceGid; /* InputType SourceGid */
+		IB_GID SourceGid; /* InputType None */
 		struct {
 			uint8 SourceGuidCount; /* number of Source GUIDs in GuidList */
 			uint8 DestGuidCount; /* number of Dest GUIDs in GuidList */
@@ -155,28 +119,20 @@ typedef union _OMGT_QUERY_INPUT_VALUE
 	union _IbPathRecord TraceRecord; /* OutputType */
 	union _IbServiceRecord {
 		IB_GID ServiceGid; /* InputType */
+		uint64 ServiceId; /* InputType */
 	} IbServiceRecord; /* OutputType */
-#ifndef NO_STL_SERVICE_OUTPUT
-	union _StlServiceRecord {
-		IB_LID Lid; /* InputType */
-		IB_GID ServiceGid; /* InputType */
-	} StlServiceRecord; /* OutputType */
-#endif
 	union _IbMcMemberRecord {
 		IB_GID PortGid; /* InputType */
 		IB_GID McGid; /* InputType */
-		IB_LID Lid; /* InputType */
+		STL_LID Lid; /* InputType */
+		uint8 SL; /* InputType */
 		uint16 PKey; /* InputType */
-		uint8 SL;
 	} IbMcMemberRecord; /* OutputType */
-#ifndef NO_STL_MCMEMBER_OUTPUT
-	union _IbMcMemberRecord StlMcMemberRecord; /* OutputType */
-#endif
 	union _IbInforInfoRecord {
 		IB_GID SubscriberGID;
 	} IbInformInfoRecord;
 	union _StlInforInfoRecord {
-		IB_LID SubscriberLID;
+		STL_LID SubscriberLID;
 	} StlInformInfoRecord;
 	union _LidOnly ScScTableRecord;
 	union _LidOnly SlScTableRecord;
@@ -188,7 +144,6 @@ typedef union _OMGT_QUERY_INPUT_VALUE
 	union _LidOnly McFdbTableRecord;
 	union _VfInfoRecord {
 		uint16 PKey;
-		IB_LID Lid;
 		uint8 SL;
 		uint64 ServiceId;
 		IB_GID McGid;
@@ -204,6 +159,13 @@ typedef union _OMGT_QUERY_INPUT_VALUE
 	union _LidOnly CableInfoRecord;
 	union _LidOnly PortGroupRecord;
 	union _LidOnly PortGroupFwdRecord;
+	union _DgGrpMemberRecord {
+		STL_LID Lid;
+		EUI64 Guid;
+		char NodeDesc[STL_NODE_DESCRIPTION_ARRAY_SIZE]; /* InputType */
+		char DeviceGroup[STL_NODE_DESCRIPTION_ARRAY_SIZE]; /* InputType */
+	} DgGrpMemberRecord;
+	union _LidOnly DgTreeMemberRecord;
 	union _LidOnly SwitchCostRecord;
 } OMGT_QUERY_INPUT_VALUE;
 
@@ -213,8 +175,7 @@ typedef struct _OMGT_QUERY  {
     OMGT_QUERY_INPUT_VALUE InputValue;   /* input record selection value input query */
 } OMGT_QUERY, *POMGT_QUERY;
 
-
-
+/* SA Query Results Structs */
 typedef struct {
 	uint32							NumClassPortInfo;	/* Should always be 1 or 0 */
 	STL_CLASS_PORT_INFO				ClassPortInfo;		/* Should never have more than 1 */
@@ -278,9 +239,15 @@ typedef struct {
 } STL_SC2PVL_NT_MAPPING_TABLE_RECORD_RESULTS, *PSTL_SC2PVL_NT_MAPPING_TABLE_RECORD_RESULTS;
 
 typedef struct {
+	uint32							NumSCVLrTableRecords;
+	STL_SC2PVL_R_MAPPING_TABLE_RECORD	SCVLrRecords[1];
+} STL_SC2PVL_R_MAPPING_TABLE_RECORD_RESULTS, *PSTL_SC2PVL_R_MAPPING_TABLE_RECORD_RESULTS;
+
+typedef struct {
    uint32					NumLinearFDBRecords;
    STL_LINEAR_FORWARDING_TABLE_RECORD		LinearFDBRecords[1];
 } STL_LINEAR_FDB_RECORD_RESULTS, *PSTL_LINEAR_FDB_RECORD_RESULTS;
+
 
 typedef struct {
 	uint32					NumSMInfoRecords;	/* Number of SmInfoRecords returned */
@@ -292,6 +259,7 @@ typedef struct {
 	STL_VLARBTABLE_RECORD			VLArbTableRecords[1];
 } STL_VLARBTABLE_RECORD_RESULTS, *PSTL_VLARBTABLE_RECORD_RESULTS;
 
+
 typedef struct {
 	uint32					NumMcMemberRecords;
 	STL_MCMEMBER_RECORD			McMemberRecords[1];
@@ -299,7 +267,7 @@ typedef struct {
 
 typedef struct {
 	uint32					NumLids;
-	uint32					Lids[1];
+	STL_LID					Lids[1];
 } STL_LID_RESULTS, *PSTL_LID_RESULTS;
 
 typedef struct {
@@ -379,6 +347,22 @@ typedef struct {
 
 typedef struct {
 	uint32					NumRecords;
+	STL_DEVICE_GROUP_MEMBER_RECORD		Records[1];
+} STL_DEVICE_GROUP_MEMBER_RECORD_RESULTS, *PSTL_DEVICE_GROUP_MEMBER_RECORD_RESULTS;
+
+typedef struct {
+	uint32					NumRecords;
+	STL_DEVICE_GROUP_NAME_RECORD		Records[1];
+} STL_DEVICE_GROUP_NAME_RECORD_RESULTS, *PSTL_DEVICE_GROUP_NAME_RECORD_RESULTS;
+
+typedef struct {
+	uint32					NumRecords;
+	STL_DEVICE_TREE_MEMBER_RECORD		Records[1];
+} STL_DEVICE_TREE_MEMBER_RECORD_RESULTS, *PSTL_DEVICE_TREE_MEMBER_RECORD_RESULTS;
+
+
+typedef struct {
+	uint32							NumRecords;
 	STL_SWITCH_COST_RECORD	Records[1];
 } STL_SWITCH_COST_RECORD_RESULTS, *PSTL_SWITCH_COST_RECORD_RESULTS;
 

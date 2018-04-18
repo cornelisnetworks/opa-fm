@@ -1,0 +1,2 @@
+/usr/lib/opa-fm/bin/fm_cmd /usr/sbin/opafmcmd
+/usr/lib/opa-fm/bin/fm_cmdall /usr/sbin/opafmcmdall

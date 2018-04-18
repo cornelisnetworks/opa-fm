@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -37,6 +37,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stl_sa_priv.h>
 #include <stl_pm.h>
 #include <stl_pa_priv.h>
+
 
 #include <opamgt_priv.h>
 #include <syslog.h>
@@ -146,7 +147,7 @@ const char *stl_mad_status_str(uint8_t BaseVersion, uint8_t class, uint16_t Stat
  *  
  * Added All AttrIDs because they were redefined with STL_... 
  */
-const char *stl_attribute_str(uint8_t BaseVersion, uint8_t class, be16_t attr)
+const char *stl_attribute_str(uint8_t BaseVersion, uint8_t class, uint16_t attr)
 {
 	if  (BaseVersion != STL_BASE_VERSION) 
 		return umad_attribute_str(class, attr);
@@ -161,6 +162,7 @@ const char *stl_attribute_str(uint8_t BaseVersion, uint8_t class, be16_t attr)
 		case STL_MCLASS_ATTRIB_ID_PORT_INFO:                        return("PortInfo");
 		case STL_MCLASS_ATTRIB_ID_PART_TABLE:                       return("PKey");
 		case STL_MCLASS_ATTRIB_ID_SL_SC_MAPPING_TABLE:              return("SLtoSC");
+		case STL_MCLASS_ATTRIB_ID_SC_SC_MULTI_SET:                  return("SLtoSCMulti");
 		case STL_MCLASS_ATTRIB_ID_VL_ARBITRATION:                   return("VLArb");
 		case STL_MCLASS_ATTRIB_ID_LINEAR_FWD_TABLE:                 return("LinerFwdTable");
 		case STL_MCLASS_ATTRIB_ID_MCAST_FWD_TABLE:                  return("MulticastFwdTable");
@@ -218,6 +220,7 @@ const char *stl_attribute_str(uint8_t BaseVersion, uint8_t class, be16_t attr)
 		case STL_SA_ATTR_MULTIPATH_LID_RECORD:			return("MultipathLIDRecord");
 		case STL_SA_ATTR_CABLE_INFO_RECORD:				return("CableInfoRecord");
 		case STL_SA_ATTR_VF_INFO_RECORD:				return("VFInfoRecord");
+		case STL_SA_ATTR_PORT_STATE_INFO_RECORD:		return("PortStateInfoRecord");
 		case STL_SA_ATTR_PORTGROUP_TABLE_RECORD:		return("PortGroupTableRecord");
 		case STL_SA_ATTR_BUFF_CTRL_TAB_RECORD:			return("BufferCtrlTableRecord");
 		case STL_SA_ATTR_FABRICINFO_RECORD:				return("FabricInfoRecord");
@@ -228,7 +231,7 @@ const char *stl_attribute_str(uint8_t BaseVersion, uint8_t class, be16_t attr)
 		case STL_SA_ATTR_HFI_CONG_RECORD:				return("HFICongestionRecord");
 		case STL_SA_ATTR_HFI_CONG_CTRL_RECORD:			return("HFICongestionCtrlRecord");
 		case STL_SA_ATTR_SWITCH_COST_RECORD:			return("SwitchCostRecord");
-		}
+        }
         break;
     case MCLASS_PERF: //PM      //0x04
         switch (ntoh16(attr)) {
@@ -237,7 +240,7 @@ const char *stl_attribute_str(uint8_t BaseVersion, uint8_t class, be16_t attr)
 		case STL_PM_ATTRIB_ID_CLEAR_PORT_STATUS:    return("ClearPortStatus");
 		case STL_PM_ATTRIB_ID_DATA_PORT_COUNTERS:   return("DataPortCounters");
 		case STL_PM_ATTRIB_ID_ERROR_PORT_COUNTERS:  return("ErrorPortCounters");
-        case STL_PM_ATTRIB_ID_ERROR_INFO:           return("ErrorInfo");
+		case STL_PM_ATTRIB_ID_ERROR_INFO:           return("ErrorInfo");
         }
         break;
     case MCLASS_VFI_PM: //PA    //0x32
@@ -262,9 +265,14 @@ const char *stl_attribute_str(uint8_t BaseVersion, uint8_t class, be16_t attr)
 		case STL_PA_ATTRID_GET_VF_PORT_CTRS:        return("VFPortCounters");
 		case STL_PA_ATTRID_CLR_VF_PORT_CTRS:        return("ClearVFPortCounters");
 		case STL_PA_ATTRID_GET_VF_FOCUS_PORTS:      return("VFFocusPorts");
+		case STL_PA_ATTRID_GET_FOCUS_PORTS_MULTISELECT: return("MultiSelectFocusPorts");
+		case STL_PA_ATTRID_GET_GRP_NODE_INFO:       return("GroupNodeInfo");
+		case STL_PA_ATTRID_GET_GRP_LINK_INFO:       return("GroupLinkInfo");
         }
         break;
+
 	}
+
 	return umad_attribute_str(class, attr);
 }
 
@@ -422,7 +430,6 @@ static size_t get_data_offset(uint8_t mgmt_class)
 	case MCLASS_SUBN_ADM:		    return(24+12+8+2+2+8);      //MAD+RMPP+SMKey+AttrOff+Rsvd+CompMask
 	case MCLASS_PERF:		        return(24);                 //MAD
 	case MCLASS_VFI_PM:		        return(24+12+8+2+2+8);      //MAD+RMPP+SMKey+AttrOff+Rsvd+CompMask
-
 	case MCLASS_BM:
 	case MCLASS_DEV_MGT:
 	case MCLASS_COMM_MGT:

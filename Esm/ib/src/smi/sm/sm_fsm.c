@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -198,7 +198,7 @@ state_event_mad(Mai_t *maip) {
                 nodep = sm_find_port_node(&old_topology, portp);
         }
         if (nodep == NULL) {
-    		if (maip->addrInfo.slid != PERMISSIVE_LID) {
+    		if (maip->addrInfo.slid != STL_LID_PERMISSIVE) {
             	/* try find by lid */
             	portp = sm_find_node_and_port_lid(&old_topology, maip->addrInfo.slid, &nodep);
 			}
@@ -312,10 +312,10 @@ state_event_mad(Mai_t *maip) {
 					 * previous trigger, we do not cause multiple triggers.
 					 */
 					if (!triggered_handover) {
-						IB_LOG_INFINI_INFO_FMT(__func__, 
-											   "triggering a sweep to hand over to node %s, lid[0x%x], portguid "FMT_U64", TID="FMT_U64,
-											   nodescription, maip->addrInfo.dlid, theirSmInfo.PortGUID, maip->base.tid);  // lids got swapped by mai_reply
-						sm_trigger_sweep(SM_SWEEP_REASON_HANDOFF);
+		                   IB_LOG_INFINI_INFO_FMT(__func__, 
+        	                  "triggering a sweep to hand over to node %s, lid[0x%x], portguid "FMT_U64", TID="FMT_U64,
+                           nodescription, maip->addrInfo.dlid, theirSmInfo.PortGUID, maip->base.tid);  // lids got swapped by mai_reply
+                           sm_trigger_sweep(SM_SWEEP_REASON_HANDOFF);
 						triggered_handover = 1;
 					}
                 }
@@ -399,8 +399,8 @@ sm_fsm_standby(Mai_t *maip, char *nodename)
     long        new_state=-1;
     STL_SM_INFO    theirSmInfo;
 	STL_SM_INFO smInfoCopy;
-    STL_LID       slid=maip->addrInfo.slid;    // original source lid; mai_reply swaps slid-dlid
-    STL_LID       dlid=maip->addrInfo.dlid;    // original destination lid(us); mai_reply swaps slid-dlid
+    STL_LID     slid=maip->addrInfo.slid;    // original source lid; mai_reply swaps slid-dlid
+    STL_LID     dlid=maip->addrInfo.dlid;    // original destination lid(us); mai_reply swaps slid-dlid
 
 	IB_ENTER(__func__, maip->base.amod, 0, 0, 0);
 
@@ -463,8 +463,6 @@ sm_fsm_standby(Mai_t *maip, char *nodename)
 
 		if (maip->base.mclass == MAD_CV_SUBN_LR) {
 			path = NULL;
-            sm_topop->dlid = slid;    // this is original sender of SmInfo
-            sm_topop->slid = dlid;    // this is us
             IB_LOG_INFINI_INFO_FMT(__func__, "sending LR HANDOVER ACK to node %s, Lid [0x%x], portguid "FMT_U64,
                    nodename, slid, theirSmInfo.PortGUID);
 		} else {
@@ -482,7 +480,10 @@ sm_fsm_standby(Mai_t *maip, char *nodename)
                    nodename, theirSmInfo.PortGUID);
 		}
 		smInfoCopy = sm_smInfo;
-		status = SM_Set_SMInfo(fd_sminfo, SM_AMOD_ACKNOWLEDGE, path, &smInfoCopy, sm_config.mkey);
+		// slid: this is original sender of SmInfo
+		// dlid: this is us
+		SmpAddr_t addr = SMP_ADDR_CREATE(path, dlid, slid);
+		status = SM_Set_SMInfo(fd_sminfo, SM_AMOD_ACKNOWLEDGE, &addr, &smInfoCopy, sm_config.mkey);
 		if (status != VSTATUS_OK) {
             IB_LOG_WARN_FMT(__func__, 
                    "[%s] SM did not receive response to Handover Acknowledgement from SM node %s, LID [0x%x], portguid ["FMT_U64"]",
@@ -560,8 +561,8 @@ sm_fsm_master(Mai_t *maip, char *nodename)
 	uint8_t		*path;
     int         i, wakeTpThread=0;
 	STL_SM_INFO 	smInfoCopy;
-    STL_LID       slid=maip->addrInfo.slid;    // original source lid; mai_reply swaps slid-dlid
-    STL_LID       dlid=maip->addrInfo.dlid;    // original destination lid(us); mai_reply swaps slid-dlid
+    STL_LID     slid=maip->addrInfo.slid;    // original source lid; mai_reply swaps slid-dlid
+    STL_LID     dlid=maip->addrInfo.dlid;    // original destination lid(us); mai_reply swaps slid-dlid
 
 	IB_ENTER(__func__, maip->base.amod, sm_state, 0, 0);
 
@@ -625,8 +626,6 @@ sm_fsm_master(Mai_t *maip, char *nodename)
 
         if (maip->base.mclass == MAD_CV_SUBN_LR) {
             path = NULL;
-            sm_topop->dlid = slid;    // this is original sender of SmInfo
-            sm_topop->slid = dlid;    // this is us
             IB_LOG_INFINI_INFO_FMT(__func__, "sending LR HANDOVER ACK to node %s, Lid [0x%x], portguid "FMT_U64,
                    nodename, slid, theirSmInfo.PortGUID);
         } else {
@@ -644,7 +643,10 @@ sm_fsm_master(Mai_t *maip, char *nodename)
                    nodename, theirSmInfo.PortGUID);
         }
         smInfoCopy = sm_smInfo;
-        status = SM_Set_SMInfo(fd_sminfo, SM_AMOD_ACKNOWLEDGE, path, &smInfoCopy, sm_config.mkey);
+        // slid: this is original sender of SmInfo
+        // dlid: this is us
+        SmpAddr_t addr = SMP_ADDR_CREATE(path, dlid, slid);
+        status = SM_Set_SMInfo(fd_sminfo, SM_AMOD_ACKNOWLEDGE, &addr, &smInfoCopy, sm_config.mkey);
         if (status != VSTATUS_OK) {
             IB_LOG_WARN_FMT(__func__, 
                    "[%s] SM did not receive response to Handover Acknowledgement from [%s] SM node %s, LID [0x%x], portguid ["FMT_U64"]",
@@ -669,7 +671,7 @@ sm_fsm_discovering(Mai_t *maip, char *nodename)
 {
 	Status_t	status;
     STL_SM_INFO theirSmInfo;
-    STL_LID       slid=maip->addrInfo.slid;    // original source lid; mai_reply swaps slid-dlid
+    STL_LID     slid=maip->addrInfo.slid;    // original source lid; mai_reply swaps slid-dlid
 
 	IB_ENTER(__func__, maip->base.amod, sm_state, 0, 0);
 
@@ -710,8 +712,8 @@ sm_fsm_default(Mai_t *maip, char *nodename)
 
 	maip->base.status = MAD_STATUS_BAD_ATTR;
 	status = mai_stl_reply(fd_async, maip, sizeof(STL_SM_INFO));
-
 	IB_EXIT(__func__, status);
+	(void)(status); // fix "unused" warning
 	return(VSTATUS_OK);
 }
 
@@ -778,9 +780,8 @@ sm_check_Master() {
         goto stay_standby; // not yet at threshold
     }
 
-    sm_topop->slid = portInfo.LID;
-    sm_topop->dlid = portInfo.MasterSMLID;
-    if ((status = SM_Get_SMInfo(fd_sminfo, 0, NULL, &theirSmInfo)) != VSTATUS_OK) {
+    SmpAddr_t addr = SMP_ADDR_CREATE_LR(portInfo.LID, portInfo.MasterSMLID);
+    if ((status = SM_Get_SMInfo(fd_sminfo, 0, &addr, &theirSmInfo)) != VSTATUS_OK) {
         if (++fsmCheckMasterFailed >= fsmMultMaxFail * sm_config.master_ping_max_fail) {
             IB_LOG_WARNX("Switching to DISCOVERY state; Failed to get SmInfo from master SM at LID:", portInfo.MasterSMLID);
             goto discovering;

@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT3 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -64,7 +64,6 @@ extern "C" {
 #if !defined(STL_MAD_BLOCK_SIZE)
 #define STL_MAD_BLOCK_SIZE			2048
 #endif
-
 #define MAD_BLOCK_SIZE				STL_MAD_BLOCK_SIZE
 
 #define IB_BASE_VERSION				1
@@ -103,8 +102,7 @@ extern "C" {
 											/* class (CFM/IORM) */
 #define MCLASS_DTA					0x20	/* IBTA CIWG Device Test Agent */
 #define MCLASS_CC					0x21	/* Congestion Control class */
-#define	MCLASS_VFI_PM		        0x32    /* PM VFI mclass value */
-/*                             		0x0B-0xFF Reserved (except 0x81 see above)*/
+#define MCLASS_VFI_PM		        0x32    /* PM VFI mclass value */
 
 
 /* --------------------------------------------------------------------------
@@ -492,7 +490,7 @@ typedef struct _ClassPortInfo{
 			RedirectFlowLabel:20)
 		} PACK_SUFFIX s;
 	} u2;
-	uint16				RedirectLID;
+	IB_LID				RedirectLID;
 	uint16				Redirect_P_Key;
 	union {
 		uint32			AsReg32;
@@ -513,7 +511,7 @@ typedef struct _ClassPortInfo{
 			TrapFlowLabel:	20)
 		} PACK_SUFFIX s;
 	} u4;
-	uint16				TrapLID;
+	IB_LID				TrapLID;
 	uint16				Trap_P_Key;
 	union {
 		uint32			AsReg32;
@@ -594,7 +592,7 @@ typedef struct _NOTICE {
 	} u;
 
 	/* Common Notice attributes */
-	uint16	IssuerLID;							/* LID of requester */
+	IB_LID	IssuerLID;							/* LID of requester */
 
 	/* Toggle:
 	 *	For Notices, alternates between zero and one after each Notice is
@@ -636,8 +634,8 @@ typedef struct _TRAPS_64_65_66_67_DETAILS
 typedef struct _INFORM_INFO {
 	IB_GID	GID;				/* specifies specific GID to subscribe for.  */
 								/* Set to zero if not desired. */
-	uint16	LIDRangeBegin;		/* 0xFFFF encapsulates all LIDs */
-	uint16	LIDRangeEnd;
+	IB_LID	LIDRangeBegin;		/* 0xFFFF encapsulates all LIDs */
+	IB_LID	LIDRangeEnd;
 	uint16	Reserved;
 	uint8	IsGeneric;			/* 1 = forward generic traps */
 								/* 0 = vendor specific */

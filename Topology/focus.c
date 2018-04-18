@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -91,12 +91,12 @@ static FSTATUS ParseGidPoint(FabricData_t *fabricp, char *arg, Point *pPoint, ui
 
 static FSTATUS ParseLidPoint(FabricData_t *fabricp, char *arg, Point *pPoint, uint8 find_flag, char **pp)
 {
-	IB_LID lid;
+	STL_LID lid;
 	PortData *portp = NULL;
 	char *param;
 	
 	ASSERT(! PointValid(pPoint));
-	if (FSUCCESS != StringToUint16(&lid, arg, pp, 0, TRUE))  {
+	if (FSUCCESS != StringToUint32(&lid, arg, pp, 0, TRUE))  {
 		fprintf(stderr, "%s: Invalid LID format: '%s'\n", g_Top_cmdname, arg);
 		return FINVALID_PARAMETER;
 	}
@@ -923,6 +923,10 @@ static FSTATUS ParseRatePoint(FabricData_t *fabricp, char *arg, Point *pPoint, u
 		rate = IB_STATIC_RATE_80G;
 	else if (strncmp(arg, "100g", len) == 0)
 		rate = IB_STATIC_RATE_100G;
+	else if (strncmp(arg, "150g", len) == 0)
+		rate = IB_STATIC_RATE_168G;
+	else if (strncmp(arg, "200g", len) == 0)
+		rate = IB_STATIC_RATE_200G;
 	else {
 		fprintf(stderr, "%s: Invalid Rate: %.*s\n", g_Top_cmdname, len, arg);
 		*pp -= len;	/* back up for syntax error report */
@@ -1556,6 +1560,7 @@ static FSTATUS ParseLinkQualityPoint(FabricData_t *fabricp, char *arg, Point *pP
  *	lid:lid
  *	lid:lid:node
  *	lid:lid:port:#
+ *	lid:lid:veswport:#
  *	portguid:guid
  *	nodeguid:guid
  *	nodeguid:guid:port:#

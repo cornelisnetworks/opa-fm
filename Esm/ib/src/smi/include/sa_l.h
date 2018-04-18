@@ -70,21 +70,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define SA_FAKE_MULTICAST_GROUP_MEMBER 0x00066A00FACADE01ull
 
 //
-// SA capability mask defines
-//
-#define SA_CAPABILITY_OPTIONAL_RECORDS      0x0100
-#define SA_CAPABILITY_MULTICAST_SUPPORT     0x0200
-#define SA_CAPABILITY_MULTIPATH_SUPPORT     0x0400
-#define SA_CAPABILITY_REINIT_SUPPORT        0x0800
-#define	SA_CAPABILITY_PORTINFO_CAPMASK_MATCH 0x2000		
-#define SA_CAPABILITY_PA_SERVICES_SUPPORT   0x8000
-
-#define SA_CAPABILITY2_QOS_SUPPORT			0x0002
-#define SA_CAPABILITY2_MFTTOP_SUPPORT		0x0008
-#define SA_CAPABILITY2_FULL_PORTINFO		0x0040
-#define SA_CAPABILITY2_EXT_SUPPORT			0x0080
-
-//
 //	This struct is for the queued MAD requests to the SA>
 //
 #define SA_MADS         256
@@ -185,7 +170,7 @@ typedef	struct {
 #define SA_CNTXT_HASH_TABLE_DEPTH	64
 extern uint32_t sa_max_cntxt;
 extern uint32_t sa_data_length;	// maximum SA response size
-extern uint32_t sa_max_path_records;// maximum path records in one response
+extern uint32_t sa_max_ib_path_records;// maximum IB path records in one response
 #define SA_CNTXT_MAX_GUIDINFO		256
 #define SA_CNTXT_MAX_STANDARD		256
 typedef struct sa_cntxt {
@@ -285,7 +270,7 @@ static __inline__ uint32_t linkrate_to_ordinal(uint32_t rate) {
 	 case IB_STATIC_RATE_100G: return 1040;
 	 case IB_STATIC_RATE_112G: return 1120;
 	 case IB_STATIC_RATE_120G: return 1200;
-	 case IB_STATIC_RATE_168G: return 1680;
+	 case IB_STATIC_RATE_168G: return 1560;// STL_STATIC_RATE_150G
 	 case IB_STATIC_RATE_200G: return 2080;
 	 case IB_STATIC_RATE_300G: return 3120;
 	 default:             return 25;
@@ -295,14 +280,14 @@ static __inline__ uint32_t linkrate_to_ordinal(uint32_t rate) {
 
 // iterators to help construct Path Record responses
 typedef struct lid_iterator_s {
-	uint16	src_start;
-	uint16	src_endp1;
-	uint16	src_lmc_mask;
-	uint16	dst_start;
-	uint16	dst_endp1;
-	uint16	dst_lmc_mask;
-	uint16	slid;
-	uint16	dlid;
+	STL_LID	src_start;
+	STL_LID	src_endp1;
+	STL_LID	src_lmc_mask;
+	STL_LID	dst_start;
+	STL_LID	dst_endp1;
+	STL_LID	dst_lmc_mask;
+	STL_LID	slid;
+	STL_LID	dlid;
 	uint8	phase;
 	uint8	end_phase;
 } lid_iterator_t;
@@ -314,22 +299,22 @@ typedef struct lid_iterator_s {
 //#define PATH_MODE_SRCDSTALL 3	// all src, all dst
 
 void lid_iterator_init(lid_iterator_t *iter,
-				Port_t *src_portp, uint16 src_start_lid, uint16 src_lid_len,
-				Port_t *dst_portp, uint16 dst_start_lid, uint16 dst_lid_len,
+				Port_t *src_portp, STL_LID src_start_lid, STL_LID src_lid_len,
+				Port_t *dst_portp, STL_LID dst_start_lid, STL_LID dst_lid_len,
 				int path_mode,
-			   	uint16 *slid, uint16 *dlid);
+			   	STL_LID *slid, STL_LID *dlid);
 int lid_iterator_done(lid_iterator_t *iter);
-void lid_iterator_next(lid_iterator_t *iter, uint16 *slid, uint16 *dlid);
+void lid_iterator_next(lid_iterator_t *iter, STL_LID *slid, STL_LID *dlid);
 // This handles 1 fixed lid, 1 GID or wildcard style queries.
 // src is the fixed side, dst is the iterated side.
 // doesn't really matter if src is source or dest and visa versa
 void lid_iterator_init1(lid_iterator_t *iter,
-				Port_t *src_portp, uint16 slid, uint16 src_lid_start, uint16 src_lid_len,
-				Port_t *dst_portp, uint16 dst_lid_start, uint16 dst_lid_len,
+				Port_t *src_portp, STL_LID slid, STL_LID src_lid_start, STL_LID src_lid_len,
+				Port_t *dst_portp, STL_LID dst_lid_start, STL_LID dst_lid_len,
 			   	int path_mode,
-			   	uint16 *dlid);
+			   	STL_LID *dlid);
 int lid_iterator_done1(lid_iterator_t *iter);
-void lid_iterator_next1(lid_iterator_t *iter, uint16 *dlid);
+void lid_iterator_next1(lid_iterator_t *iter, STL_LID *dlid);
 
 //
 //	External declarations.
@@ -342,119 +327,134 @@ extern	uint8_t		*sa_data;
 extern SACache_t	saCache;
 extern SACacheBuildFunc_t	saCacheBuildFunctions[];	
 
-extern  Status_t    sa_SubscriberInit(void);
-extern  void        sa_SubscriberDelete(void);
-extern  void        sa_SubscriberClear(void);
-extern  Status_t    sa_ServiceRecInit(void);
-extern  void        sa_ServiceRecDelete(void);
-extern  void        sa_ServiceRecClear(void);
-extern  Status_t    sa_McGroupInit(void);
-extern  void        sa_McGroupDelete(void);
-extern	Status_t	sa_Authenticate_Path(STL_LID, STL_LID);
-extern	Status_t	sa_Authenticate_Access(uint32_t, STL_LID, STL_LID, STL_LID);
-extern	Status_t	sa_Compare_Node_Port_PKeys(Node_t*, Port_t*);
-extern	Status_t	sa_Compare_Port_PKeys(Port_t*, Port_t*);
-extern  uint32_t    saDebugPerf;  // control SA performance messages; default is off
+//
+// Prototypes
+//
+Status_t    sa_SubscriberInit(void);
+void        sa_SubscriberDelete(void);
+void        sa_SubscriberClear(void);
+Status_t    sa_ServiceRecInit(void);
+void        sa_ServiceRecDelete(void);
+void        sa_ServiceRecClear(void);
+Status_t    sa_McGroupInit(void);
+void        sa_McGroupDelete(void);
+Status_t	sa_Authenticate_Path(STL_LID, STL_LID);
+Status_t	sa_Authenticate_Access(uint32_t, STL_LID, STL_LID, STL_LID);
+Status_t	sa_Compare_Node_Port_PKeys(Node_t*, Port_t*);
+Status_t	sa_Compare_Port_PKeys(Port_t*, Port_t*);
+uint32_t    saDebugPerf;  // control SA performance messages; default is off
 
-extern	Status_t	sa_data_offset(uint16_t class, uint16_t type);
-extern	Status_t	sa_create_template_mask(uint16_t, uint64_t);
-extern	Status_t	sa_template_test_mask(uint64_t, uint8_t *, uint8_t **, uint32_t, uint32_t, uint32_t *);
-extern	Status_t	sa_template_test(uint8_t *, uint8_t **, uint32_t, uint32_t, uint32_t *);
-extern  Status_t    sa_template_test_noinc(uint8_t *, uint8_t *, uint32_t);
-extern  void        sa_increment_and_pad(uint8_t **, uint32_t, uint32_t, uint32_t *);
-extern  Status_t    sa_check_len(uint8_t *, uint32_t, uint32_t);
+Status_t	sa_data_offset(uint16_t class, uint16_t type);
+Status_t	sa_create_template_mask(uint16_t, uint64_t);
+Status_t	sa_template_test_mask(uint64_t, uint8_t *, uint8_t **, uint32_t, uint32_t, uint32_t *);
+Status_t	sa_template_test(uint8_t *, uint8_t **, uint32_t, uint32_t, uint32_t *);
+Status_t    sa_template_test_noinc(uint8_t *, uint8_t *, uint32_t);
+void        sa_increment_and_pad(uint8_t **, uint32_t, uint32_t, uint32_t *);
+Status_t    sa_check_len(uint8_t *, uint32_t, uint32_t);
 
-extern  Status_t    sa_getMulti_resend_ack(sa_cntxt_t *);
-extern	Status_t	sa_send_reply(Mai_t *, sa_cntxt_t*);
-extern	Status_t	sa_send_multi(Mai_t *, sa_cntxt_t*);
-extern	Status_t	sa_send_single(Mai_t *, sa_cntxt_t*);
+Status_t    sa_getMulti_resend_ack(sa_cntxt_t *);
+Status_t	sa_send_reply(Mai_t *, sa_cntxt_t*);
+Status_t	sa_send_multi(Mai_t *, sa_cntxt_t*);
+Status_t	sa_send_single(Mai_t *, sa_cntxt_t*);
 
-extern	Status_t	sa_ClassPortInfo(Mai_t *, sa_cntxt_t* );
-extern	Status_t	sa_InformInfo(Mai_t *, sa_cntxt_t* );
-extern	Status_t	sa_InformRecord(Mai_t *, sa_cntxt_t* );
-extern	Status_t	sa_LFTableRecord(Mai_t *, sa_cntxt_t* );
-extern	Status_t	sa_LinkRecord(Mai_t *, sa_cntxt_t* );
-extern	Status_t	sa_McMemberRecord(Mai_t *, sa_cntxt_t* );
-extern	Status_t	sa_MFTableRecord(Mai_t *, sa_cntxt_t* );
-extern	Status_t	sa_NodeRecord(Mai_t *, sa_cntxt_t* );
-extern	Status_t	sa_PartitionRecord(Mai_t *, sa_cntxt_t* );
-extern	Status_t	sa_PathRecord(Mai_t *, sa_cntxt_t* );
-extern	Status_t	sa_PortInfoRecord(Mai_t *, sa_cntxt_t* );
-extern	Status_t	sa_SAResponse(Mai_t *, sa_cntxt_t* );
-extern  Status_t	sa_SCSCTableRecord(Mai_t *, sa_cntxt_t* );
-extern  Status_t	sa_SLSCTableRecord(Mai_t *, sa_cntxt_t* );
-extern	Status_t	sa_SCSLTableRecord(Mai_t *, sa_cntxt_t* );
-extern	Status_t	sa_SCVLTableRecord(Mai_t *, sa_cntxt_t* );
-extern	Status_t	sa_SMInfoRecord(Mai_t *, sa_cntxt_t* );
-extern	Status_t	sa_ServiceRecord(Mai_t *, sa_cntxt_t* );
-extern  Status_t    sa_ServiceRecord_Age(uint32_t *);
-extern	Status_t	sa_SwitchInfoRecord(Mai_t *, sa_cntxt_t* );
-extern	Status_t	sa_Trap(Mai_t *);
-extern	Status_t	sa_VLArbitrationRecord(Mai_t *, sa_cntxt_t* );
-extern	Status_t	sa_TraceRecord(Mai_t *, sa_cntxt_t* );
-extern	Status_t	sa_VFabricRecord(Mai_t *, sa_cntxt_t* );
-extern	Status_t	sa_JobManagement(Mai_t *, sa_cntxt_t* );
-extern	Status_t	sa_FabricInfoRecord(Mai_t *, sa_cntxt_t* );
-extern	Status_t	sa_QuarantinedNodeRecord(Mai_t *, sa_cntxt_t* );
-extern  Status_t	sa_CongInfoRecord(Mai_t *, sa_cntxt_t* );
-extern 	Status_t	sa_CableInfoRecord(Mai_t *, sa_cntxt_t* );
-extern  Status_t	sa_SwitchCongRecord(Mai_t *, sa_cntxt_t* );
-extern  Status_t	sa_SwitchPortCongRecord(Mai_t *, sa_cntxt_t* );
-extern  Status_t	sa_HFICongRecord(Mai_t *, sa_cntxt_t* );
-extern  Status_t	sa_HFICongCtrlRecord(Mai_t *, sa_cntxt_t* );
-extern  Status_t	sa_BufferControlTableRecord(Mai_t *, sa_cntxt_t* );
-extern  Status_t	sa_PortGroupRecord(Mai_t *, sa_cntxt_t* );
-extern  Status_t	sa_PortGroupFwdRecord(Mai_t *, sa_cntxt_t* );
-extern  Status_t	sa_SwitchCostRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_ClassPortInfo(Mai_t *, sa_cntxt_t* );
+Status_t	sa_InformInfo(Mai_t *, sa_cntxt_t* );
+Status_t	sa_InformRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_LFTableRecord(Mai_t *, sa_cntxt_t* );
 
-extern	Status_t	sa_NodeRecord_BuildCACache(SACacheEntry_t *, Topology_t *);
-extern	Status_t	sa_NodeRecord_BuildSwitchCache(SACacheEntry_t *, Topology_t *);
 
-extern	Status_t	pathrecord_userexit(uint8_t *, uint32_t *);
-extern	Status_t	multipathrecord_userexit(uint8_t *, uint32_t *);
-extern	Status_t	servicerecord_userexit(Mai_t *);
-extern	Status_t	tracerecord_userexit(uint8_t *, uint32_t *);
+Status_t	sa_LinkRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_McMemberRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_MFTableRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_NodeRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_PartitionRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_PathRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_PortInfoRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_SAResponse(Mai_t *, sa_cntxt_t* );
+Status_t	sa_SCSCTableRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_SLSCTableRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_SCSLTableRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_SCVLTableRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_SMInfoRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_ServiceRecord(Mai_t *, sa_cntxt_t* );
+Status_t    sa_ServiceRecord_Age(uint32_t *);
+Status_t	sa_SwitchInfoRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_Trap(Mai_t *);
+Status_t	sa_VLArbitrationRecord(Mai_t *, sa_cntxt_t* );
 
-extern 	Status_t	sa_process_getmulti(Mai_t *, sa_cntxt_t*);
-extern 	Status_t	sa_process_mad(Mai_t *, sa_cntxt_t*);
-extern  Status_t    sa_process_inflight_rmpp_request(Mai_t *, sa_cntxt_t*);
-extern  void		sa_main_reader(uint32_t, uint8_t **);
-extern  void		sa_main_writer(uint32_t argc, uint8_t ** argv);
-extern  void        sa_cntxt_age(void);
-extern  sa_cntxt_t* sa_cntxt_find( Mai_t* );
-extern	SAContextGet_t	sa_cntxt_get( Mai_t*, void**);
-extern	Status_t   	sa_cntxt_release( sa_cntxt_t* );
-extern 	Status_t	sa_cntxt_reserve( sa_cntxt_t* );
-extern  Status_t	sa_cntxt_data( sa_cntxt_t*, void*, uint32_t );
-extern  Status_t	sa_cntxt_data_cached(sa_cntxt_t *, void *, uint32_t, SACacheEntry_t *);
-extern  void        sa_cntxt_clear(void);
-extern  Status_t	sa_SetDefBcGrp( void );
 
-extern  Status_t	sa_cache_init(void);
-extern  Status_t	sa_cache_alloc_transient(SACacheEntry_t *[], int, SACacheEntry_t **);
-extern  Status_t	sa_cache_get(int, SACacheEntry_t **);
-extern  void		sa_cache_clean(void);
-extern  Status_t	sa_cache_release(SACacheEntry_t *);
-extern	Status_t    sa_cache_cntxt_free(sa_cntxt_t *);
+Status_t	sa_TraceRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_VFabricRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_JobManagement(Mai_t *, sa_cntxt_t* );
+Status_t	sa_FabricInfoRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_QuarantinedNodeRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_CongInfoRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_CableInfoRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_SwitchCongRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_SwitchPortCongRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_HFICongRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_HFICongCtrlRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_BufferControlTableRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_PortGroupRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_PortGroupFwdRecord(Mai_t *, sa_cntxt_t* );
+Status_t	sa_DeviceGroupMemberRecord(Mai_t *, sa_cntxt_t * );
+Status_t	sa_DeviceGroupNameRecord(Mai_t *, sa_cntxt_t * );
+Status_t	sa_DeviceTreeMemberRecord(Mai_t *, sa_cntxt_t * );
+Status_t	sa_NodeRecord_BuildCACache(SACacheEntry_t *, Topology_t *);
+Status_t	sa_NodeRecord_BuildSwitchCache(SACacheEntry_t *, Topology_t *);
 
-extern  char *      sa_getMethodText(int method);
-extern  char *      sa_getAidName(uint16_t aid);
+Status_t	sa_SwitchCostRecord(Mai_t *, sa_cntxt_t* );
 
-extern	void		dumpGid(IB_GID gid);
-extern	void		dumpGuid(Guid_t guid);
-extern	void		dumpBytes(uint8_t * bytes, size_t num_bytes);
-extern	void		dumpHWords(uint16_t * hwords, size_t num_hwords);
-extern	void		dumpWords(uint32_t * words, size_t num_words);
-extern	void		dumpGuids(Guid_t * guids, size_t num_guids);  
+Status_t	pathrecord_userexit(uint8_t *, uint32_t *);
+Status_t	multipathrecord_userexit(uint8_t *, uint32_t *);
+Status_t	servicerecord_userexit(Mai_t *);
+Status_t	tracerecord_userexit(uint8_t *, uint32_t *);
 
-extern STL_SERVICE_RECORD* getNextService(uint64_t *serviceId, IB_GID *serviceGid, uint16_t *servicep_key, STL_SERVICE_RECORD *pSrp);
-extern STL_SERVICE_RECORD* getService(uint64_t *serviceId, IB_GID *serviceGid, uint16_t *servicep_key, STL_SERVICE_RECORD *pSrp);
+Status_t	sa_process_getmulti(Mai_t *, sa_cntxt_t*);
+Status_t	sa_process_mad(Mai_t *, sa_cntxt_t*);
+Status_t    sa_process_inflight_rmpp_request(Mai_t *, sa_cntxt_t*);
+void		sa_main_reader(uint32_t, uint8_t **);
+void		sa_main_writer(uint32_t argc, uint8_t ** argv);
+void        sa_cntxt_age(void);
+sa_cntxt_t* sa_cntxt_find( Mai_t* );
+SAContextGet_t	sa_cntxt_get( Mai_t*, void**);
+Status_t   	sa_cntxt_release( sa_cntxt_t* );
+Status_t	sa_cntxt_reserve( sa_cntxt_t* );
+Status_t	sa_cntxt_data( sa_cntxt_t*, void*, uint32_t );
+Status_t	sa_cntxt_data_cached(sa_cntxt_t *, void *, uint32_t, SACacheEntry_t *);
+void        sa_cntxt_clear(void);
+Status_t	sa_SetDefBcGrp( void );
 
-extern McGroup_t*	getBroadCastGroup(IB_GID * pGid, McGroup_t *pGroup);
-extern McGroup_t*	getNextBroadCastGroup(IB_GID * pGid, McGroup_t *pGroup);
-extern McMember_t*	getBroadCastGroupMember(IB_GID * pGid, uint32_t index, McMember_t *pMember);
-extern McMember_t*	getNextBroadCastGroupMember(IB_GID * pGid, uint32_t *index, McMember_t *pMember);
-extern Status_t     clearBroadcastGroups(int);  // TRUE=recreate broadcast group
+Status_t	sa_cache_init(void);
+Status_t	sa_cache_alloc_transient(SACacheEntry_t *[], int, SACacheEntry_t **);
+Status_t	sa_cache_get(int, SACacheEntry_t **);
+void		sa_cache_clean(void);
+Status_t	sa_cache_release(SACacheEntry_t *);
+Status_t    sa_cache_cntxt_free(sa_cntxt_t *);
+
+char *      sa_getMethodText(int method);
+char *      sa_getAidName(uint16_t aid);
+
+void		dumpGid(IB_GID gid);
+void		dumpGuid(Guid_t guid);
+void		dumpBytes(uint8_t * bytes, size_t num_bytes);
+void		dumpHWords(uint16_t * hwords, size_t num_hwords);
+void		dumpWords(uint32_t * words, size_t num_words);
+void		dumpGuids(Guid_t * guids, size_t num_guids);  
+
+STL_SERVICE_RECORD* getNextService(uint64_t *serviceId, IB_GID *serviceGid, uint16_t *servicep_key, STL_SERVICE_RECORD *pSrp);
+STL_SERVICE_RECORD* getService(uint64_t *serviceId, IB_GID *serviceGid, uint16_t *servicep_key, STL_SERVICE_RECORD *pSrp);
+
+McGroup_t*	getBroadCastGroup(IB_GID * pGid, McGroup_t *pGroup);
+McGroup_t*	getNextBroadCastGroup(IB_GID * pGid, McGroup_t *pGroup);
+McMember_t*	getBroadCastGroupMember(IB_GID * pGid, uint32_t index, McMember_t *pMember);
+McMember_t*	getNextBroadCastGroupMember(IB_GID * pGid, uint32_t *index, McMember_t *pMember);
+Status_t     clearBroadcastGroups(int);  // TRUE=recreate broadcast group
+
+Status_t sa_McMemberRecord_Set(Topology_t *topop, Mai_t *maip, uint32_t *records);
+Status_t sa_McMemberRecord_Delete(Topology_t *topop, Mai_t *maip, uint32_t *records);
+
+Status_t sm_sa_forward_trap(STL_NOTICE *noticep);
 
 #endif	// _SA_L_H_
 

@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -56,11 +56,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define FE_SSL_OPTIONS      SSL_OP_ALL | SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_SINGLE_DH_USE
 
 #define FE_SSL_IS_VALID_FN(d, f, b)   ((strlen(d) + strlen(f) + 1) < (sizeof(b) - 1))
-#define FE_SSL_GET_FN(d, f, b, s) { \
+#define FE_SSL_GET_FN(d, f, b) { \
     if (d[strlen(d)] == '/') \
-        snprintf(b, s, "%s%s", d, f); \
+        snprintf(b, sizeof(b), "%s%s", d, f); \
     else \
-        snprintf(b, s, "%s/%s", d, f); \
+        snprintf(b, sizeof(b), "%s/%s", d, f); \
 }
 
 static void omgt_oob_ssl_print_ciphers(struct omgt_port *port, SSL *ssl)
@@ -207,31 +207,34 @@ void* omgt_oob_ssl_client_open(struct omgt_port *port, const char *ffDir,
 	SSL_CTX_set_default_passwd_cb_userdata(context, (void *)bogusPassword);
 
 	// set the location and name of certificate file to be used by the context.
-	FE_SSL_GET_FN(ffDir, ffCertificate, ffCertificateFn, OMGT_OOB_SSL_PATH_SIZE);
+	FE_SSL_GET_FN(ffDir, ffCertificate, ffCertificateFn);
 	if (SSL_CTX_use_certificate_file(context, ffCertificateFn, SSL_FILETYPE_PEM) <= 0) {
 		OMGT_OUTPUT_ERROR(port, "failed to set up the certificate file: %s\n", ffCertificateFn);
+		omgt_oob_ssl_print_error_stack(port);
 		goto bail;
 	}
 
 	// set the location and name of the private key file to be used by the context.
-	FE_SSL_GET_FN(ffDir, ffPrivateKey, fileName, OMGT_OOB_SSL_PATH_SIZE);
+	FE_SSL_GET_FN(ffDir, ffPrivateKey, fileName);
 	if (SSL_CTX_use_PrivateKey_file(context, fileName, SSL_FILETYPE_PEM) <= 0) {
 		OMGT_OUTPUT_ERROR(port, "failed to set up the private key file: %s\n", fileName);
-		(void)omgt_oob_ssl_print_error_stack(port);
+		omgt_oob_ssl_print_error_stack(port);
 		goto bail;
 	}
 
 	// check the consistency of the private key with the certificate
 	if (SSL_CTX_check_private_key(context) != 1) {
 		OMGT_OUTPUT_ERROR(port, "private key and certificate do not match\n");
+		omgt_oob_ssl_print_error_stack(port);
 		goto bail;
 	}
 
 	// set the location and name of the trusted CA certificates file to be used
 	// by the context.
-	FE_SSL_GET_FN(ffDir, ffCaCertificate, ffCaCertificateFn, OMGT_OOB_SSL_PATH_SIZE);
+	FE_SSL_GET_FN(ffDir, ffCaCertificate, ffCaCertificateFn);
 	if (!SSL_CTX_load_verify_locations(context, ffCaCertificateFn, NULL)) {
 		OMGT_OUTPUT_ERROR(port, "failed to set up the CA certificates file: %s\n", ffCaCertificateFn);
+		omgt_oob_ssl_print_error_stack(port);
 		goto bail;
 	}
 
@@ -259,7 +262,7 @@ void* omgt_oob_ssl_client_open(struct omgt_port *port, const char *ffDir,
 			goto bail;
 		}
 
-		FE_SSL_GET_FN(ffDir, ffCaCrl, fileName, OMGT_OOB_SSL_PATH_SIZE);
+		FE_SSL_GET_FN(ffDir, ffCaCrl, fileName);
 		if (X509_load_crl_file(x509StoreLookup, fileName, X509_FILETYPE_PEM) != 1) {
 			OMGT_OUTPUT_ERROR(port, "Failed to load the FF CRL file into X509 store: file %s\n", fileName);
 			goto bail;
@@ -291,7 +294,7 @@ void* omgt_oob_ssl_client_open(struct omgt_port *port, const char *ffDir,
 
 		// set the location and name of the Diffie-Hillmen parameters file to be used
 		// by the context.
-		FE_SSL_GET_FN(ffDir, ffDHParameters, fileName, OMGT_OOB_SSL_PATH_SIZE);
+		FE_SSL_GET_FN(ffDir, ffDHParameters, fileName);
 
 		dhParmsFile = fopen(fileName, "r");
 		if (!dhParmsFile) {

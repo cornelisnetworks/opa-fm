@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -43,6 +43,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "vfi_g.h"
 #include "rmpp_counters.h"
 #include "iba/ib_rmpp.h"
+#include "iba/stl_rmpp.h"
 #include <fm_xml.h>
 
 #ifdef __LINUX__
@@ -60,6 +61,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #undef LOCAL_MOD_ID
 #define LOCAL_MOD_ID    VIEO_IF3_MOD_ID
+
+#define RMPP_NO_RRESP_TIME_VALUE 0x1f
 
 extern uint32_t if3DebugRmpp; 
 extern int smValidateGsiMadPKey(Mai_t *maip, uint8_t mgmntAllowedRequired, uint8_t antiSpoof);
@@ -188,6 +191,7 @@ typedef struct rmpp_user_info_s {
    uint16_t template_type; 
    uint32_t template_length; 
    FieldMask_t	*template_fieldp;
+   uint32_t rmpp_format;
 } rmpp_user_info_t; 
 
 
@@ -195,7 +199,6 @@ uint32_t rmpp_sma_spoofing_check = 0;
 
 static Status_t rmpp_process_response(int usrId, Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt); 
 static Status_t rmpp_process_getmulti_response(Mai_t *maip, rmpp_cntxt_t* rmpp_cntxt);
-static void rmpp_close_cnx(int usrId, uint8_t complete);
 
 static Lock_t rmpp_user_lock; 
 static uint8_t rmpp_initialized = 0; 
@@ -225,6 +228,12 @@ static FieldMask_t tableRecordFieldMask[] = {
 
 
 static void rmpp_main_writer(uint32_t argc, uint8_t **argv); 
+static Status_t rmpp_send_single_vendor(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt);
+static Status_t rmpp_send_multi_vendor(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt);
+static Status_t rmpp_send_single_sa(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt);
+static Status_t rmpp_send_multi_sa(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt);
+static Status_t rmpp_process_multi_response(Mai_t *maip,
+					    rmpp_cntxt_t *rmpp_cntxt);
 
 
 static void
@@ -327,11 +336,11 @@ rmpp_cntxt_free_data(rmpp_cntxt_t *cntxt)
       if (info->rmpp_pool) {
          vs_pool_free(info->rmpp_pool, cntxt->data); 
       } else {
-         IB_LOG_WARN_FMT(__func__, 
-             "Free failed, invalid pool received in %s[%s] request from LID [0x%x], TID ["FMT_U64"]!",
-             info->rmpp_get_method_text((int)cntxt->method),
-             info->rmpp_get_aid_name((int)cntxt->mad.base.mclass, (int)cntxt->mad.base.aid),
-             cntxt->lid, cntxt->tid);
+         IB_LOG_WARN_FMT(__func__,
+			 "Free failed, invalid pool received in %s[%s] request from LID [0x%x], TID ["FMT_U64"]!",
+			 info->rmpp_get_method_text((int)cntxt->method),
+			 info->rmpp_get_aid_name((int)cntxt->mad.base.mclass, (int)cntxt->mad.base.aid),
+			 cntxt->lid, cntxt->tid); 
          IB_EXIT(__func__, VSTATUS_BAD); 
          return (VSTATUS_BAD);
       }
@@ -589,7 +598,7 @@ done:
 }
 
 static Status_t
-rmpp_send_single(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt) 
+rmpp_send_single_sa(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
 { 
    Status_t	status; 
    STL_SA_MAD mad; 
@@ -651,7 +660,7 @@ rmpp_send_single(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
 }
 
 static Status_t
-rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt) 
+rmpp_send_multi_sa(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
 { 
     int         i; 
     int         wl = 0; 
@@ -796,8 +805,8 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
                 /* silently discard the packet */
                 if (if3DebugRmpp) {
                     IB_LOG_INFINI_INFO_FMT(__func__,
-                        "LID[0x%x] sent ACK for seg %d which is less than Window First (%d) for TID: "FMT_U64,
-                        rmpp_cntxt->lid, (int)resp.header.segNum, (int)rmpp_cntxt->WF, rmpp_cntxt->tid);
+						"LID[0x%x] sent ACK for seg %d which is less than Window First (%d) for TID: "FMT_U64,
+						rmpp_cntxt->lid, (int)resp.header.segNum, (int)rmpp_cntxt->WF, rmpp_cntxt->tid);
                 }
             } else if (resp.header.segNum > rmpp_cntxt->WL) {
                 /* ABORT the transaction with S2B status */
@@ -805,8 +814,8 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
                 sendAbort = 1; 
                 mad.header.rmppStatus = RMPP_STATUS_ABORT_SEGNUM_TOOBIG; 
                 IB_LOG_INFINI_INFO_FMT(__func__,
-                    "ABORT - LID[0x%x] sent invalid seg %d in ACK, should be <= than %d, ABORTING TID:"FMT_U64,
-                    rmpp_cntxt->lid, (int)resp.header.segNum, (int)rmpp_cntxt->WL, rmpp_cntxt->tid);
+					"ABORT - LID[0x%x] sent invalid seg %d in ACK, should be <= than %d, ABORTING TID:"FMT_U64,
+					rmpp_cntxt->lid, (int)resp.header.segNum, (int)rmpp_cntxt->WL, rmpp_cntxt->tid);
             } else if (resp.header.length < rmpp_cntxt->WL /*|| resp.header.length > rmpp_cntxt->segTotal*/) {
                 /* length is NewWindowLast (NWL) in ACK packet */
                 /* ABORT transaction with W2S status */
@@ -819,8 +828,8 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
                     mad.header.rmppStatus = RMPP_STATUS_ABORT_UNSPECIFIED;
                 }
                 IB_LOG_INFINI_INFO_FMT(__func__,
-                    "ABORT - LID[0x%x] sent invalid NWL %d in ACK, should be >=%d and <=%d, ABORTING TID:"FMT_U64,
-                    rmpp_cntxt->lid, (int)resp.header.length, (int)rmpp_cntxt->WL, rmpp_cntxt->segTotal, rmpp_cntxt->tid);
+					"ABORT - LID[0x%x] sent invalid NWL %d in ACK, should be >=%d and <=%d, ABORTING TID:"FMT_U64,
+					rmpp_cntxt->lid, (int)resp.header.length, (int)rmpp_cntxt->WL, rmpp_cntxt->segTotal, rmpp_cntxt->tid);
             } else if (resp.header.segNum >= rmpp_cntxt->last_ack) {
                 rmpp_cntxt->last_ack = resp.header.segNum; 
                 rmpp_cntxt->retries = 0;  /* reset the retry count  after receipt of ack */
@@ -854,10 +863,10 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
             /* got a STOP or ABORT */
             if (if3DebugRmpp) {
                 IB_LOG_INFINI_INFO_FMT(__func__,
-                    "STOP/ABORT received for %s[%s] from LID[0x%x], status code = %x, for TID["FMT_U64"]",
-                    info->rmpp_get_method_text((int)rmpp_cntxt->method),
-                    info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid),
-                    rmpp_cntxt->lid, resp.header.rmppStatus, rmpp_cntxt->tid);
+					"STOP/ABORT received for %s[%s] from LID[0x%x], status code = %x, for TID["FMT_U64"]",
+					info->rmpp_get_method_text((int)rmpp_cntxt->method),
+					info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid),
+					rmpp_cntxt->lid, resp.header.rmppStatus, rmpp_cntxt->tid);
             }
             rmpp_cntxt_release(rmpp_cntxt); 
             IB_EXIT(__func__, VSTATUS_OK); 
@@ -882,10 +891,10 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
         if (rmpp_cntxt->retries > rmppMaxRetries) {
             if (if3DebugRmpp) {
                 IB_LOG_INFINI_INFO_FMT(__func__,
-                    "ABORT - MAX RETRIES EXHAUSTED; no ACK for seg %d of %s[%s] request from LID[0x%X], TID["FMT_U64"]",
-                    (int)rmpp_cntxt->WL, info->rmpp_get_method_text((int)rmpp_cntxt->method),
-                    info->rmpp_get_aid_name((int)rmpp_cntxt->mad.base.mclass, (int)rmpp_cntxt->mad.base.aid),
-                    rmpp_cntxt->lid, rmpp_cntxt->tid);
+					"ABORT - MAX RETRIES EXHAUSTED; no ACK for seg %d of %s[%s] request from LID[0x%X], TID["FMT_U64"]",
+					(int)rmpp_cntxt->WL, info->rmpp_get_method_text((int)rmpp_cntxt->method),
+					info->rmpp_get_aid_name((int)rmpp_cntxt->mad.base.mclass, (int)rmpp_cntxt->mad.base.aid),
+					rmpp_cntxt->lid, rmpp_cntxt->tid);
             }
             /* ABORT transaction with too many retries status */
             //INCREMENT_COUNTER(smCounterRmppStatusAbortTooManyRetries);
@@ -1007,8 +1016,9 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
                              sa_data_size); 
         
         if (if3DebugRmpp) {
-            IB_LOG_INFINI_INFO_FMT(__func__, "sending fragment %d of %d segments, len %d to LID[0x%x] for TID["FMT_U64"]",
-               (int)mad.header.segNum, rmpp_cntxt->segTotal, (int)mad.header.length, (int)rmpp_cntxt->lid,
+            IB_LOG_INFINI_INFO_FMT(__func__,
+				"sending fragment %d of %d segments, len %d to LID[0x%x] for TID["FMT_U64"]",
+               (int)mad.header.segNum, rmpp_cntxt->segTotal, (int)mad.header.length, (int)rmpp_cntxt->lid, 
                rmpp_cntxt->tid);
         }
         /* increment NS */
@@ -1045,10 +1055,10 @@ rmpp_send_multi(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
         
         if ((status = mai_send(rmpp_cntxt->sendFd, maip)) != VSTATUS_OK) 
             IB_LOG_ERROR_FMT(__func__,
-                "error[%d] from mai_send while sending ABORT of %s[%s] request to LID[0x%x], TID["FMT_U64"]",
-                status, info->rmpp_get_method_text((int)rmpp_cntxt->method),
-                info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid),
-                rmpp_cntxt->lid, maip->base.tid);
+				"error[%d] from mai_send while sending ABORT of %s[%s] request to LID[0x%x], TID["FMT_U64"]",
+				status, info->rmpp_get_method_text((int)rmpp_cntxt->method),
+				info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid),
+				rmpp_cntxt->lid, maip->base.tid); 
         /*
            * We are done with this RMPP xfer.  Release the context here if 
            * in flight transaction (maip not NULL) or let sa_cntxt_age do it 
@@ -1066,7 +1076,7 @@ Status_t
 rmpp_send_reply(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt) 
 { 
    uint8_t		method; 
-   uint16_t	lid; 
+   STL_LID		lid; 
    rmpp_user_info_t *info = NULL; 
    
    IB_ENTER(__func__, maip, rmpp_cntxt, 0, 0); 
@@ -1125,7 +1135,17 @@ rmpp_send_reply(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
          rmpp_cntxt->len = 0;
       }
       
-      (void)rmpp_send_multi(maip, rmpp_cntxt); 
+      if (info->rmpp_format == RMPP_FORMAT_SA) {
+         (void)rmpp_send_multi_sa(maip, rmpp_cntxt);
+      } else if (info->rmpp_format == RMPP_FORMAT_VENDOR) {
+         (void)rmpp_send_multi_vendor(maip, rmpp_cntxt);
+      } else {
+         IB_LOG_WARN_FMT(__func__,
+               "info->rmpp_format = %d not supported. Should be RMPP_FORMAT_SA(%d) or RMPP_FORMAT_VENDOR(%d).",
+               info->rmpp_format, RMPP_FORMAT_SA, RMPP_FORMAT_VENDOR);
+         IB_EXIT(__func__, VSTATUS_NOSUPPORT);
+         return VSTATUS_NOSUPPORT;
+      }
       IB_EXIT(__func__, VSTATUS_OK); 
       return (VSTATUS_OK);
    }
@@ -1139,7 +1159,17 @@ rmpp_send_reply(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
    }
    
    if (maip) {
-      (void)rmpp_send_single(maip, rmpp_cntxt); 
+      if (info->rmpp_format == RMPP_FORMAT_SA) {
+         rmpp_send_single_sa(maip, rmpp_cntxt);
+      } else if (info->rmpp_format == RMPP_FORMAT_VENDOR) {
+         rmpp_send_single_vendor(maip, rmpp_cntxt);
+      } else {
+         IB_LOG_WARN_FMT(__func__,
+               "info->rmpp_format = %d not supported. Should be RMPP_FORMAT_SA(%d) or RMPP_FORMAT_VENDOR(%d).",
+               info->rmpp_format, RMPP_FORMAT_SA, RMPP_FORMAT_VENDOR);
+         IB_EXIT(__func__, VSTATUS_NOSUPPORT);
+         return VSTATUS_NOSUPPORT;
+      }
       IB_EXIT(__func__, VSTATUS_OK); 
       return (VSTATUS_OK);
    }
@@ -1182,7 +1212,16 @@ rmpp_send_request(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
          rmpp_cntxt->len = 0;
       }
       
-      status = rmpp_send_multi(maip, rmpp_cntxt); 
+      if (info->rmpp_format == RMPP_FORMAT_SA) {
+         status = rmpp_send_multi_sa(maip, rmpp_cntxt);
+      } else if (info->rmpp_format == RMPP_FORMAT_VENDOR) {
+         status = rmpp_send_multi_vendor(maip, rmpp_cntxt);
+      } else { // Not supported
+         status = VSTATUS_NOSUPPORT;
+         IB_LOG_WARN_FMT(__func__,
+                         "info->rmpp_format = %d not supported. Should be RMPP_FORMAT_SA(%d) or RMPP_FORMAT_VENDOR(%d).",
+                         info->rmpp_format, RMPP_FORMAT_SA, RMPP_FORMAT_VENDOR);
+      }
       // deallocation of the context will be handled after completion of the
       // transmission. 
       return status;
@@ -1195,8 +1234,17 @@ rmpp_send_request(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
       maip->base.status = MAD_STATUS_SA_TOO_MANY_RECS; 
       rmpp_cntxt->len = 0;
    }
-      
-   status = rmpp_send_single(maip, rmpp_cntxt); 
+
+   if (info->rmpp_format == RMPP_FORMAT_SA) {
+       status = rmpp_send_single_sa(maip, rmpp_cntxt);
+   } else if (info->rmpp_format == RMPP_FORMAT_VENDOR) {
+       status = rmpp_send_single_vendor(maip, rmpp_cntxt);
+   } else { // Not supported
+       status = VSTATUS_NOSUPPORT;
+       IB_LOG_WARN_FMT(__func__,
+                       "info->rmpp_format = %d not supported. Should be RMPP_FORMAT_SA(%d) or RMPP_FORMAT_VENDOR(%d).",
+                       info->rmpp_format, RMPP_FORMAT_SA, RMPP_FORMAT_VENDOR);
+   }
 
 done:
    if (rmpp_cntxt)
@@ -1905,8 +1953,36 @@ rmpp_deinit(void)
     }
 }
 
+int rmpp_mngr_open_cnx (
+   IBhandle_t *fd,
+   uint32_t qp,
+   uint32_t dev,
+   uint32_t port,
+   Pool_t *pool,
+   uint32_t data_length,
+   uint32_t max_cntxt,
+   IBhandle_t *fh_req_get,
+   IBhandle_t *fh_req_gettable,
+   uint8_t mclass,
+   char* (*get_method_text)(int),
+   char* (*get_aid_name)(uint16_t, uint16_t),
+   Status_t(*pre_process_request)(Mai_t *, rmpp_cntxt_t *),
+   Status_t(*pre_process_response)(Mai_t *, rmpp_cntxt_t *),
+   uint8_t(*rmpp_is_master)(void),
+   uint32_t vieo_mod_id,
+   char *wtName
+   )
+{
+   return rmpp_open_cnx(fd, qp, dev, port, pool, data_length,
+                        max_cntxt, fh_req_get, fh_req_gettable,
+                        mclass, get_method_text, get_aid_name,
+                        pre_process_request, pre_process_response,
+                        rmpp_is_master, vieo_mod_id, RMPP_FORMAT_SA,
+                        wtName);
+}
+
 int
-rmpp_mngr_open_cnx(
+rmpp_open_cnx(
    IBhandle_t *fd, 
    uint32_t qp, 
    uint32_t dev, 
@@ -1923,6 +1999,7 @@ rmpp_mngr_open_cnx(
    Status_t(*pre_process_response)(Mai_t *, rmpp_cntxt_t *), 
    uint8_t(*rmpp_is_master)(void), 
    uint32_t vieo_mod_id, 
+   uint32_t rmpp_format,
    char *wtName
    ) 
 { 
@@ -1971,6 +2048,9 @@ rmpp_mngr_open_cnx(
    
    // initialize new RMPP user
    if (usrId != -1 && (info = rmpp_get_userinfo(usrId))) {
+      // Set RMPP Format (either SA or vendor)
+      info->rmpp_format = rmpp_format;
+
       // create filters to enable the reception of RMPP related requests
       if ((status = rmpp_create_filters(info, fd, fh_req_get, fh_req_gettable, mclass)))
           IB_LOG_ERROR_FMT(__func__, "failed to create filter in open of RMPP connection"); 
@@ -2019,7 +2099,7 @@ rmpp_remove_cnx(rmpp_user_info_t *info)
     }
 }
 
-static void
+void
 rmpp_close_cnx(int usrId, uint8_t complete)
 {
     rmpp_user_info_t *info = NULL; 
@@ -2335,6 +2415,7 @@ rmpp_cntxt_get(int usrId, Mai_t *mad, uint8_t *processMad)
    case RMPP_CMD_GETTABLE:
    case RMPP_CMD_GETTRACETABLE:
    case RMPP_CMD_DELETE:
+
       if (if3DebugRmpp) {
          IB_LOG_INFINI_INFO_FMT(__func__, 
                                 "Processing request for %s[%s] from LID[0x%x], TID="FMT_U64, 
@@ -2388,7 +2469,7 @@ rmpp_cntxt_get(int usrId, Mai_t *mad, uint8_t *processMad)
 
 static Status_t rmpp_receive_getmuli_response_send_ack(Mai_t *maip, STL_SA_MAD *samad, rmpp_cntxt_t* rmpp_cntxt, uint16_t wsize) {
     Status_t    rc=VSTATUS_OK;
-    uint16_t    lid;
+    STL_LID     lid;
     rmpp_user_info_t *info = NULL; 
     IBhandle_t  fd;
 
@@ -2462,7 +2543,7 @@ rmpp_receive_getmulti_response(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
     uint16_t bytesRcvd = 0, badPayloadLen = 0; 
     uint16_t sendStopAbort = 0; // 2=ABORT, 1=STOP
     uint16_t wsize = 1;         // ACK window of 1
-    uint16_t lid; 
+    STL_LID  lid; 
     uint32_t len; 
     rmpp_user_info_t *info = NULL; 
     Status_t rc = VSTATUS_OK; 
@@ -2477,6 +2558,10 @@ rmpp_receive_getmulti_response(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
     } else if (!(info = (rmpp_user_info_t *)rmpp_cntxt->info)) {
         IB_LOG_ERROR_FMT(__func__, "failed to get info for user %d!", rmpp_cntxt->usrId); 
         return VSTATUS_BAD;
+    }
+
+    if (rmpp_cntxt->info->rmpp_format == RMPP_FORMAT_VENDOR) {
+        return (rmpp_process_multi_response(maip, rmpp_cntxt));
     }
     
     // validate the MAD received.  If it is not valid, just drop it.
@@ -2895,15 +2980,15 @@ rmpp_receive_response(int usrId, ManagerInfo_t *mi, Mai_t *maip, uint8_t *buffer
     
     IB_ENTER(__func__, 0, 0, 0, 0); 
     
-    if (mi->cpi.respTimeValue == 0) {
+    if (mi->cpi.u1.s.RespTimeValue == 0) {
         timeout = RC_MAD_TIMEOUT; 
         if (if3DebugRmpp) 
             IB_LOG_INFINI_INFO_FMT(__func__, "Using default RC_MAD_TIMEOUT = %"PRId64, timeout);
     } else {
-        timeout = ((1 << mi->cpi.respTimeValue) * 4ull) + mi->SubnetTO; 
+        timeout = ((1 << mi->cpi.u1.s.RespTimeValue) * 4ull) + mi->SubnetTO; 
         if (if3DebugRmpp) {
-            IB_LOG_INFINI_INFO_FMT(__func__, "used RespTimeValue=%d, SubnetTO=%d to calculate timeout=%"PRId64,
-                                   (int)mi->cpi.respTimeValue, (int)mi->SubnetTO, timeout);
+            IB_LOG_INFINI_INFO_FMT(__func__, "used RespTimeValue=%d, SubnetTO=%d to calculate timeout=%"PRId64, 
+                                   (int)mi->cpi.u1.s.RespTimeValue, (int)mi->SubnetTO, timeout);
         }
     }
     mi->timeout = timeout; 
@@ -3045,8 +3130,9 @@ rmpp_receive_response(int usrId, ManagerInfo_t *mi, Mai_t *maip, uint8_t *buffer
                 rmpp_cntxt_release(rmpp_cntxt);
             } else {
                 IB_LOG_ERROR_FMT(__func__, "Invalid RMPP cntxt_get return code: %s",
-                    rmpp_context_get_totext(cntxGetStatus));
+					rmpp_context_get_totext(cntxGetStatus));
             }
+            
         }
     }
     
@@ -3093,15 +3179,15 @@ int rmpp_gsi_check_packet_filter(Mai_t *maip)
         else {
             if (maip->addrInfo.pkey != STL_DEFAULT_FM_PKEY) {
                 switch (maip->base.aid) {
-                case SA_PATH_RECORD:
-                case SA_MULTIPATH_RECORD:
-                case SA_NODE_RECORD:
-                case SA_INFORMINFO:
-                case SA_INFORM_RECORD:
-                case SA_NOTICE:
-                case SA_SERVICE_RECORD:
-                case SA_MCMEMBER_RECORD:
-                case SA_CLASSPORTINFO:
+                case STL_SA_ATTR_PATH_RECORD:
+                case STL_SA_ATTR_MULTIPATH_GID_RECORD:
+                case STL_SA_ATTR_NODE_RECORD:
+                case STL_SA_ATTR_INFORM_INFO_RECORD:
+                case STL_SA_ATTR_INFORM_INFO:
+                case STL_SA_ATTR_NOTICE:
+                case STL_SA_ATTR_SERVICE_RECORD:
+                case STL_SA_ATTR_MCMEMBER_RECORD:
+                case STL_SA_ATTR_CLASS_PORT_INFO:
                     break; 
                 default:
                     rc = 2; 
@@ -3171,4 +3257,1595 @@ void rmpp_sma_spoofing_check_set(uint32_t value)
 {
     rmpp_sma_spoofing_check = value;
 }
+
+/**
+ * @brief rmpp_receive_request - This function
+ * receives non-rmpp packets used to
+ * initiate an rmpp transaction.
+ *
+ * @param fd - file descriptor to receive on
+ * @param in_mad - MAD packet to store data received
+ *
+ * @return VSTATUS_OK on success, other on failure
+ */
+Status_t
+rmpp_receive_request(IBhandle_t fd, Mai_t *in_mad)
+{
+   return mai_recv(fd, in_mad, VTIMER_1S/4);
+}
+
+/**
+ * @brief rmpp_prepare_response - This function
+ * does some needed modification of the rmpp
+ * context so that the sending file descriptor
+ * correctly points to the writer's file
+ * descriptor. This allows the rmpp writer
+ * thread to send out the response packets.
+ *
+ * @param rmpp_cntxt - allocated rmpp context.
+ */
+void
+rmpp_prepare_response(rmpp_cntxt_t *rmpp_cntxt)
+{
+   rmpp_user_info_t *info = NULL;
+   info = rmpp_get_userinfo(rmpp_cntxt->usrId);
+   if (info == NULL) {
+      IB_LOG_WARN_FMT(__func__, "Couldn't get info for usrId %d", rmpp_cntxt->usrId);
+   } else {
+      rmpp_cntxt->sendFd = info->rmpp_fd_w;
+   }
+}
+
+/**
+ * @brief rmpp_send_single_vendor - This function is adapted
+ * from rmpp_send_single_sa(). The difference between this
+ * one and the other is that STL_SA_MAD is replaced
+ * with STL_RMPP_MAD. All of the associated STL_SA
+ * constants are also replaced by STL_RMPP constants.
+ * This function handles RMPP_FORMAT_VENDOR RMPP
+ * packets.
+ *
+ * @param maip - received MAD
+ * @param rmpp_cntxt - associated rmpp context.
+ *
+ * @return - VSTATUS_OK on success, other on failure.
+ */
+static Status_t
+rmpp_send_single_vendor(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
+{
+   Status_t status;
+   STL_RMPP_VENDOR_PACKET mad;
+   rmpp_user_info_t *info = NULL;
+   /* set the mai handle to use for sending - use reader handle PM if no context */
+
+   IB_ENTER(__func__, maip, rmpp_cntxt, 0, 0);
+
+   if (!rmpp_cntxt) {
+      IB_LOG_ERROR_FMT(__func__, "context is NULL!");
+      return VSTATUS_BAD;
+   } else if (!(info = (rmpp_user_info_t *)rmpp_cntxt->info)) {
+      IB_LOG_ERROR_FMT(__func__, "failed to get info for user %d!", rmpp_cntxt->usrId);
+      return VSTATUS_BAD;
+   }
+
+   // send the response MAD.
+   (void)BSWAPCOPY_STL_RMPP_VENDOR_PACKET((STL_RMPP_VENDOR_PACKET *)maip->data,
+				&mad, STL_RMPP_VENDOR_DATA_LEN);
+
+   mad.header.rmppVersion = 0;
+   mad.header.rmppType = 0;
+   mad.header.u.timeFlag = 0;
+   mad.header.rmppStatus = 0;
+   mad.header.segNum = 0;
+   mad.header.length = 0;
+
+   (void)memset(mad.data, 0, sizeof(mad.data));
+   if ((rmpp_cntxt == NULL) || (rmpp_cntxt->len != 0 && rmpp_cntxt->data == NULL)) {
+      if (maip->base.status == MAD_STATUS_OK)
+         maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
+   } else if (rmpp_cntxt->len != 0) {
+      if (rmpp_cntxt->len > sizeof(mad.data)) {
+         // caller should have checked this, just to be safe
+         IB_LOG_ERROR_FMT(__func__, "mad.data=%"PRISZT" len=%d LEN=%d", sizeof(mad.data), rmpp_cntxt->len, (int)(STL_RMPP_VENDOR_DATA_LEN));
+         IB_EXIT(__func__, VSTATUS_OK);
+         return (VSTATUS_OK);
+      }
+      (void)memcpy(mad.data, rmpp_cntxt->data, rmpp_cntxt->len);
+   }
+
+   (void)BSWAPCOPY_STL_RMPP_VENDOR_PACKET(&mad,
+					  (STL_RMPP_VENDOR_PACKET *)maip->data,
+					  STL_RMPP_VENDOR_DATA_LEN);
+
+   if (if3DebugRmpp) {
+      IB_LOG_INFINI_INFO_FMT(__func__,
+                             "sending reply to %s request to LID[0x%x] for TID["FMT_U64"]\n",
+                             info->rmpp_get_method_text(maip->base.method), (int)maip->addrInfo.dlid, maip->base.tid);
+   }
+
+   if ((status = mai_send(rmpp_cntxt->sendFd, maip)) != VSTATUS_OK) {
+      IB_LOG_ERROR_FMT(__func__,
+                       "can't send reply to %s request to LID[0x%x] for TID["FMT_U64"]",
+                       info->rmpp_get_method_text(maip->base.method), (int)maip->addrInfo.dlid, maip->base.tid);
+      IB_EXIT(__func__, VSTATUS_OK);
+      return (VSTATUS_OK);
+   }
+
+   IB_EXIT(__func__, VSTATUS_OK);
+   return (VSTATUS_OK);
+}
+
+/**
+ * @brief rmpp_send_multi_vendor - This function is adapted
+ * from rmpp_send_multi_sa(). The difference between this
+ * one and the other is that STL_SA_MAD is replaced
+ * with STL_RMPP_MAD. All of the associated STL_SA
+ * constants are also replaced by STL_RMPP constants.
+ * The rmpp_cntxt.attribLen is not set because
+ * this is handled by the function that packs in
+ * the data records instead. Instead of adding the
+ * SA header per segment, the vendor OUI is added.
+ * This function handles RMPP_FORMAT_VENDOR RMPP packets.
+ *
+ * Most of the functionality is similiar to
+ * rmpp_send_multi_sa because there didn't
+ * seem to be a good way of adapting the previous
+ * function to handle RMPP sequences for both the
+ * SA and Vendor headers. The mad and resp variables in
+ * this function would have to be abstracted
+ * out, and changing this requires quite a bit
+ * work/testing.
+ *
+ * @param maip - received MAD
+ * @param rmpp_cntxt - associated rmpp context.
+ *
+ * @return - VSTATUS_OK on success, other on failure.
+ */
+static Status_t
+rmpp_send_multi_vendor(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
+{
+    int i;
+    int wl = 0;
+    uint8_t chkSum = 0;
+    uint32_t dlen, datalen = sizeof(STL_RMPP_VENDOR_HEADER);
+    Status_t status;
+    STL_RMPP_VENDOR_PACKET mad;
+    STL_RMPP_VENDOR_PACKET resp;
+    uint16_t sendAbort = 0;
+    uint16_t releaseContext = 1; /* release context here unless we are in resend mode */
+    uint64_t tnow, delta, ttemp;
+    rmpp_user_info_t *info = NULL;
+    size_t rmpp_data_size = STL_RMPP_VENDOR_DATA_LEN;
+
+    IB_ENTER(__func__, maip, rmpp_cntxt, rmpp_cntxt->len, 0);
+
+    if (!rmpp_cntxt) {
+        IB_LOG_ERROR_FMT(__func__, "context is NULL!");
+        return VSTATUS_BAD;
+    } else if (!(info = (rmpp_user_info_t *)rmpp_cntxt->info)) {
+        IB_LOG_ERROR_FMT(__func__, "failed to get info for user %d!", rmpp_cntxt->usrId);
+        return VSTATUS_BAD;
+    }
+
+    // Initialize packet data structures on the stack
+    memset((void *)&mad, 0, sizeof(mad));
+    memset((void *)&resp, 0, sizeof(resp));
+
+    // maip is NULL if Ack timeout
+    if (maip) {
+        BSWAPCOPY_STL_RMPP_VENDOR_HEADER((STL_RMPP_VENDOR_HEADER *)maip->data,
+                                    (STL_RMPP_VENDOR_HEADER *)&resp);
+
+        if (maip->base.bversion == STL_BASE_VERSION)
+            rmpp_data_size = MIN(STL_RMPP_VENDOR_DATA_LEN, rmpp_cntxt->len);
+    }
+
+    // Check if this is an incoming request
+    // normal getTable requests are not hashed while
+    // getMulti requests have the isDS bit set
+    if (rmpp_cntxt->hashed == 0 || rmpp_cntxt->isDS) {
+        /* init/save parameters and reserve context */
+        if (maip) {
+            memcpy(&rmpp_cntxt->mad, maip, sizeof(Mai_t));
+            if (rmpp_cntxt->data) {
+                memcpy(rmpp_cntxt->mad.data + sizeof(STL_RMPP_VENDOR_HEADER),
+		       rmpp_cntxt->data, MIN(rmpp_data_size, rmpp_cntxt->len));
+            }
+
+            /* get original mad with appropriate offset */
+            (void)BSWAPCOPY_STL_RMPP_VENDOR_HEADER((STL_RMPP_VENDOR_HEADER *)rmpp_cntxt->mad.data,
+						(STL_RMPP_VENDOR_HEADER *)&mad);
+        }
+        rmpp_cntxt->WF = 1;
+        /* use value set in getMulti request ACK */
+        if (!rmpp_cntxt->isDS)
+            rmpp_cntxt->WL = 1;
+        rmpp_cntxt->NS = rmpp_cntxt->WF;  // Next packet segment to send
+        rmpp_cntxt->ES = 0;               // Expected segment number (Receiver only)
+        rmpp_cntxt->last_ack = 0;         // last packet acked by receiver
+        rmpp_cntxt->retries = 0;          // current retry count
+        if (rmpp_cntxt->len == 0) {
+            rmpp_cntxt->segTotal = 1;
+        } else if (rmpp_cntxt->len <= info->rmpp_data_length) {
+            rmpp_cntxt->segTotal = (rmpp_data_size) ? ((rmpp_cntxt->len + rmpp_data_size - 1) / rmpp_data_size) : 1;
+        } else {
+            IB_LOG_WARN("NO RESOURCES--> rmpp_cntxt->len too large:", rmpp_cntxt->len);
+            rmpp_cntxt->len = 0;
+            mad.header.rmppStatus = RMPP_STATUS_ABORT_BADTYPE;
+            rmpp_cntxt->segTotal = 1;
+            sendAbort = 1;
+        }
+
+        /* calculate packet and total transaction timeouts C13-13.1.1 */
+        rmpp_cntxt->RespTimeout = 4ull * (1 << 20); // ~4.3 seconds
+        rmpp_cntxt->tTime = 0;            // receiver only
+        ttemp = rmpp_cntxt->mad.intime;   // save the time from original mad in context
+        if (rmpp_cntxt->isDS) {
+            rmpp_cntxt->mad.intime = ttemp;   // we want the time when getMulti request really started
+            rmpp_cntxt->isDS = 0;
+        }
+
+        /* 8-bit cheksum of the rmpp response */
+        rmpp_cntxt->chkSum = 0;
+        if (rmppCheckSum && rmpp_cntxt->data) {
+            for (i = 0; i < rmpp_cntxt->len; i++) {
+                rmpp_cntxt->chkSum += rmpp_cntxt->data[i];
+            }
+        }
+        rmpp_cntxt_reserve(rmpp_cntxt);
+        mad.header.rmppVersion = RMPP_VERSION;
+        mad.header.u.tf.rmppRespTime = 0x1F; // no time provided
+        //mad.header.offset = rmpp_cntxt->attribLen / 8; // setup attribute offset for RMPP xfer
+        if (if3DebugRmpp) {
+            IB_LOG_INFINI_INFO_FMT(__func__,
+                                   "Lid[0x%x] STARTING RMPP %s[%s] with TID="FMT_U64", CHKSUM[%d]",
+                                   (int)rmpp_cntxt->lid, info->rmpp_get_method_text((int)rmpp_cntxt->method),
+                                   (maip?info->rmpp_get_aid_name((int)maip->base.mclass, maip->base.aid):"<null>"), rmpp_cntxt->tid, rmpp_cntxt->chkSum);
+        }
+    } else if (maip) {
+        /* get original mad with appropriate offset */
+        (void)BSWAPCOPY_STL_RMPP_VENDOR_HEADER((STL_RMPP_VENDOR_HEADER *)rmpp_cntxt->mad.data,
+					    (STL_RMPP_VENDOR_HEADER *)&mad);
+
+        /*
+           * Check the response and set the context parameters according to it
+           */
+        if (resp.header.rmppType == RMPP_TYPE_NOT && (resp.header.u.tf.rmppFlags & RMPP_FLAGS_ACTIVE)) {
+            // invalid RMPP type
+            IB_LOG_WARN_FMT(__func__,
+                            "ABORTING - RMPP protocol error; RmppType is NULL in %s[%s] from Lid[%d] for TID="FMT_U64,
+                            info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), (int)rmpp_cntxt->lid, rmpp_cntxt->tid);
+            sendAbort = 1;
+            mad.header.rmppStatus = RMPP_STATUS_ABORT_BADTYPE;
+        } else if (resp.header.rmppVersion != RMPP_VERSION) {
+            /* ABORT transaction with BadT status */
+            sendAbort = 1;
+            mad.header.rmppStatus = RMPP_STATUS_ABORT_UNSUPPORTED_VERSION;
+            IB_LOG_WARN_FMT(__func__,
+                            "ABORTING - Unsupported Version %d in %s[%s] request from LID[0x%x], TID["FMT_U64"]",
+                            resp.header.rmppVersion, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), (int)rmpp_cntxt->lid, rmpp_cntxt->tid);
+        } else if (!(resp.header.u.tf.rmppFlags & RMPP_FLAGS_ACTIVE)) {
+            /* invalid RMPP type */
+            IB_LOG_WARN_FMT(__func__,
+                            "RMPP protocol error, RMPPFlags.Active bit is NULL in %s[%s] from LID[0x%x] for TID["FMT_U64"]",
+                            info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), (int)rmpp_cntxt->lid, rmpp_cntxt->tid);
+            mad.header.rmppStatus = RMPP_STATUS_ABORT_BADTYPE;
+            sendAbort = 1;
+        } else if (resp.header.rmppType == RMPP_TYPE_ACK) {
+            /* Got an ACK packet from receiver */
+            if (resp.header.segNum < rmpp_cntxt->WF) {
+                /* silently discard the packet */
+                if (if3DebugRmpp) {
+                    IB_LOG_INFINI_INFO_FMT(__func__,
+                       "LID[0x%x] sent ACK for seg %d which is less than Window First (%d) for TID: "FMT_U64,
+                       rmpp_cntxt->lid, (int)resp.header.segNum, (int)rmpp_cntxt->WF,
+                       rmpp_cntxt->tid);
+                }
+            } else if (resp.header.segNum > rmpp_cntxt->WL) {
+                /* ABORT the transaction with S2B status */
+                sendAbort = 1;
+                mad.header.rmppStatus = RMPP_STATUS_ABORT_SEGNUM_TOOBIG;
+                IB_LOG_INFINI_INFO_FMT(__func__,
+                   "ABORT - LID[0x%x] sent invalid seg %d in ACK, should be <= than %d, ABORTING TID:"FMT_U64,
+                   rmpp_cntxt->lid, (int)resp.header.segNum, (int)rmpp_cntxt->WL,
+                   rmpp_cntxt->tid);
+            } else if (resp.header.length < rmpp_cntxt->WL /*|| resp.header.length > rmpp_cntxt->segTotal*/) {
+                /* length is NewWindowLast (NWL) in ACK packet */
+                /* ABORT transaction with W2S status */
+                sendAbort = 1;
+                if (resp.header.length < rmpp_cntxt->WL) {
+                    mad.header.rmppStatus = RMPP_STATUS_ABORT_NEWWINDOWLAST_TOOSMALL;
+                } else {
+                    mad.header.rmppStatus = RMPP_STATUS_ABORT_UNSPECIFIED;
+                }
+                IB_LOG_INFINI_INFO_FMT(__func__,
+                   "ABORT - LID[0x%x] sent invalid NWL %d in ACK, should be >=%d and <=%d, ABORTING TID:"FMT_U64,
+                   rmpp_cntxt->lid, (int)resp.header.length, (int)rmpp_cntxt->WL, rmpp_cntxt->segTotal, rmpp_cntxt->tid);
+            } else if (resp.header.segNum >= rmpp_cntxt->last_ack) {
+                rmpp_cntxt->last_ack = resp.header.segNum;
+                rmpp_cntxt->retries = 0;  /* reset the retry count  after receipt of ack */
+                /* is it ack of very last packet? */
+                if (resp.header.segNum == rmpp_cntxt->segTotal) {
+                    /* we are done */
+                    if (if3DebugRmpp) {
+                        IB_LOG_INFINI_INFO_FMT(__func__,
+                                               " Received seg %d ACK, %s[%s] transaction from LID[0x%x], TID["FMT_U64"] has completed",
+                                               resp.header.segNum, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)rmpp_cntxt->mad.base.mclass, (int)rmpp_cntxt->mad.base.aid),
+                                               rmpp_cntxt->lid, rmpp_cntxt->tid);
+                    }
+                } else {
+                    /* update WF, WL, and NS and resume sends */
+                    rmpp_cntxt->WF = rmpp_cntxt->last_ack + 1;
+                    rmpp_cntxt->WL = (resp.header.length > rmpp_cntxt->segTotal) ? rmpp_cntxt->segTotal : resp.header.length;
+                    /* see if new Response time needs to be calculated */
+                    if (resp.header.u.tf.rmppRespTime && resp.header.u.tf.rmppRespTime != 0x1f) {
+                        rmpp_cntxt->RespTimeout = 4ull * ((2 * (1 << rmpp_packetLifetime)) + (1 << resp.header.u.tf.rmppRespTime));
+                        if (if3DebugRmpp) {
+                            IB_LOG_INFINI_INFO_FMT(__func__,
+                                                   "LID[0x%x] set RespTimeValue (%d usec) in ACK of seg %d for %s[%s], TID["FMT_U64"]",
+                                                   rmpp_cntxt->lid, (int)rmpp_cntxt->RespTimeout, resp.header.segNum,
+                                                   info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)rmpp_cntxt->mad.base.mclass, (int)rmpp_cntxt->mad.base.aid),
+                                                   rmpp_cntxt->tid);
+                        }
+                    }
+                }
+            }
+        } else if (resp.header.rmppType == RMPP_TYPE_STOP || resp.header.rmppType == RMPP_TYPE_ABORT) {
+            /* got a STOP or ABORT */
+            if (if3DebugRmpp) {
+                IB_LOG_INFINI_INFO_FMT(__func__,
+					"STOP/ABORT received for %s[%s] from LID[0x%x], status code = %x, for TID["FMT_U64"]",
+					info->rmpp_get_method_text((int)rmpp_cntxt->method),
+					info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid),
+					rmpp_cntxt->lid, resp.header.rmppStatus, rmpp_cntxt->tid);
+            }
+            rmpp_cntxt_release(rmpp_cntxt);
+            IB_EXIT(__func__, VSTATUS_OK);
+            return VSTATUS_OK;
+        } else {
+            /* invalid RmppType received */
+            IB_LOG_WARN_FMT(__func__,
+                            "ABORT - Invalid rmppType %d received for %s[%s] from LID[0x%x] for TID["FMT_U64"]",
+                            resp.header.rmppType, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid),
+                            rmpp_cntxt->lid, rmpp_cntxt->tid);
+            // abort with badtype status
+            sendAbort = 1;
+            mad.header.rmppStatus = RMPP_STATUS_ABORT_BADTYPE;
+        }
+    } else {
+        /* We are timing out, retry till retry  count expires */
+        /* get original mad from context with correct offset */
+        (void)BSWAPCOPY_STL_RMPP_VENDOR_HEADER((STL_RMPP_VENDOR_HEADER *)rmpp_cntxt->mad.data,
+					    (STL_RMPP_VENDOR_HEADER *)&mad);
+
+        ++rmpp_cntxt->retries;
+        if (rmpp_cntxt->retries > rmppMaxRetries) {
+            if (if3DebugRmpp) {
+                IB_LOG_INFINI_INFO_FMT(__func__,
+                   "ABORT - MAX RETRIES EXHAUSTED; no ACK for seg %d of %s[%s] request from LID[0x%X], TID = "FMT_U64,
+                   (int)rmpp_cntxt->WL, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)rmpp_cntxt->mad.base.mclass, (int)rmpp_cntxt->mad.base.aid), rmpp_cntxt->lid, rmpp_cntxt->tid);
+            }
+            /* ABORT transaction with too many retries status */
+            sendAbort = 1;
+            mad.header.rmppStatus = RMPP_STATUS_ABORT_TOO_MANY_RETRIES;
+            /* let context_age do the releasing;  It already holds the lock */
+            releaseContext = 0;
+        } else {
+            rmpp_cntxt->NS = rmpp_cntxt->WF;            // reset Next packet segment to send
+            if (if3DebugRmpp) {
+                IB_LOG_INFINI_INFO_FMT(__func__,
+                                       "Timed out waiting for ACK of seg %d of %s[%s] from LID[0x%x], TID["FMT_U64"], retry #%d",
+                                       (int)rmpp_cntxt->WL, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)rmpp_cntxt->mad.base.mclass, (int)rmpp_cntxt->mad.base.aid),
+                                       rmpp_cntxt->lid, rmpp_cntxt->tid, rmpp_cntxt->retries);
+            }
+        }
+    }
+
+    /* see if we're done (last segment was acked) */
+    if (rmpp_cntxt->last_ack == rmpp_cntxt->segTotal && !sendAbort) {
+        if (if3DebugRmpp) {
+            vs_time_get(&tnow);
+            delta = tnow - rmpp_cntxt->mad.intime;
+            IB_LOG_INFINI_INFO_FMT(__func__,
+                                   "%s[%s] RMPP [CHKSUM=%d] TRANSACTION from LID[0x%x], TID["FMT_U64"] has completed in %d.%.3d seconds (%"CS64"d usecs)",
+                                   info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)rmpp_cntxt->mad.base.mclass, (int)rmpp_cntxt->mad.base.aid),
+                                   rmpp_cntxt->chkSum, rmpp_cntxt->lid, rmpp_cntxt->tid,
+                                   (int)(delta / 1000000), (int)((delta - delta / 1000000 * 1000000)) / 1000, delta);
+        }
+        /* validate that the 8-bit cheksum of the rmpp response is still the same as when we started */
+        if (rmppCheckSum && rmpp_cntxt->data) {
+            chkSum = 0;
+            for (i = 0; i < rmpp_cntxt->len; i++) {
+                chkSum += rmpp_cntxt->data[i];
+            }
+            if (chkSum != rmpp_cntxt->chkSum) {
+                IB_LOG_ERROR_FMT(__func__,
+                                 "CHECKSUM FAILED [%d vs %d] for completeted %s[%s] RMPP TRANSACTION from LID[0x%x], TID["FMT_U64"]",
+                                 chkSum, rmpp_cntxt->chkSum, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)rmpp_cntxt->mad.base.mclass, (int)rmpp_cntxt->mad.base.aid),
+                                 rmpp_cntxt->lid, rmpp_cntxt->tid);
+            }
+        }
+        if (releaseContext)
+            rmpp_cntxt_release(rmpp_cntxt);
+        IB_EXIT(__func__, VSTATUS_OK);
+        return VSTATUS_OK;
+    }
+
+    /* we must use the Mad_t that was saved in the context */
+    maip = &rmpp_cntxt->mad;
+    /*
+      * send segments up till Window Last (WL) and wait for ACK
+      * Due to possible concurrency issue if reader is pre-empted while
+      * sending segement 1 and writer runs to process ACK of seg 1, use
+      * a local var for WL.
+      * In the future we need to add individual context locking if we intend
+      * to go with a pool threads.
+      */
+    wl = rmpp_cntxt->WL;
+    while (rmpp_cntxt->NS <= wl && !sendAbort) {
+
+       /*
+        * calculate amount of data length to send in this segment and put in mad;
+        * dlen=payloadLength in first packet, dlen=remainder in last packet
+        */
+        if (rmpp_cntxt->NS == rmpp_cntxt->segTotal) {
+            dlen = (rmpp_data_size) ? (rmpp_cntxt->len % rmpp_data_size) : 0;
+            dlen = (dlen) ? dlen : rmpp_data_size;
+        } else
+            dlen = rmpp_data_size;
+
+        if (dlen > info->rmpp_data_length) {
+            IB_LOG_WARN("dlen is too large dlen:", dlen);
+        }
+        // make sure there is data to send; could just be error case with no data
+        if (rmpp_cntxt->len && rmpp_cntxt->data) {
+            (void)memcpy(mad.data, rmpp_cntxt->data + ((rmpp_cntxt->NS - 1) * rmpp_data_size), dlen);
+        }
+
+        mad.header.rmppVersion = RMPP_VERSION;
+        mad.header.rmppType = RMPP_TYPE_DATA;
+        mad.header.rmppStatus = 0;
+        mad.header.segNum = rmpp_cntxt->NS;
+        if (rmpp_cntxt->NS == 1 && rmpp_cntxt->NS == rmpp_cntxt->segTotal) {
+            // first and last segment to transfer, set length to payload length
+            // The OUI is counted as part of the RMPP data length for Vendor classes
+            mad.header.u.tf.rmppFlags = RMPP_FLAGS_ACTIVE | RMPP_FLAGS_FIRST | RMPP_FLAGS_LAST;
+            mad.header.length = rmpp_cntxt->len + STL_RMPP_SIZEOF_OUI;
+        } else if (rmpp_cntxt->NS == 1) {
+            // first segment to transfer, set length to payload length
+            // The OUI is counted as part of the RMPP data length for Vendor classes,
+            // and it is sent per packet.
+            mad.header.length = rmpp_cntxt->len + rmpp_cntxt->segTotal*STL_RMPP_SIZEOF_OUI;
+            mad.header.u.tf.rmppFlags = RMPP_FLAGS_ACTIVE | RMPP_FLAGS_FIRST;
+        } else if (rmpp_cntxt->NS == rmpp_cntxt->segTotal) {
+            // last segment to go; len=bytes remaining
+            // The OUI is counted as part of the RMPP data length for Vendor classes
+            mad.header.u.tf.rmppFlags = RMPP_FLAGS_ACTIVE | RMPP_FLAGS_LAST;
+            mad.header.length = dlen + STL_RMPP_SIZEOF_OUI;
+            if (mad.header.length == 0) {
+                mad.header.length = rmpp_data_size;
+            }
+        } else {
+            /* middle segments */
+            mad.header.u.tf.rmppFlags = RMPP_FLAGS_ACTIVE;
+            mad.header.length = 0;
+        }
+        /* put mad back into Mad_t in the context */
+        datalen = sizeof(STL_RMPP_VENDOR_HEADER) + dlen;
+        BSWAPCOPY_STL_RMPP_VENDOR_PACKET((STL_RMPP_VENDOR_PACKET *)&mad,
+                             (STL_RMPP_VENDOR_PACKET *)maip->data,
+                             rmpp_data_size);
+
+        if (if3DebugRmpp) {
+            IB_LOG_INFINI_INFO_FMT(__func__,
+               "sending fragment %d of %d segments, len (in rmpp header) %d, datalen (to be sent) %d to LID[0x%x] for TID = "FMT_U64,
+               (int)mad.header.segNum, rmpp_cntxt->segTotal, (int)mad.header.length, (int)datalen, (int)rmpp_cntxt->lid,
+               rmpp_cntxt->tid);
+        }
+        /* increment NS */
+        ++rmpp_cntxt->NS;
+        if (maip->base.bversion == IB_BASE_VERSION) {
+            status = mai_send(rmpp_cntxt->sendFd, maip);
+        } else {
+            status = mai_stl_send(rmpp_cntxt->sendFd, maip, &datalen);
+        }
+
+        if (status != VSTATUS_OK) {
+            IB_LOG_ERROR_FMT(__func__,
+                             "mai_send error [%d] while processing %s[%s] request from LID[0x%x], TID["FMT_U64"]",
+                             status, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid),
+                             rmpp_cntxt->lid, rmpp_cntxt->tid);
+            if (releaseContext)
+                rmpp_cntxt_release(rmpp_cntxt);
+            IB_EXIT(__func__, VSTATUS_OK);
+            return VSTATUS_OK;
+        }
+    }
+
+    /*
+     * Send Abort if desired
+     */
+    if (sendAbort) {
+        mad.header.rmppVersion = RMPP_VERSION;
+        mad.header.rmppType = RMPP_TYPE_ABORT;
+        mad.header.u.tf.rmppFlags = RMPP_FLAGS_ACTIVE;
+        mad.header.u.tf.rmppRespTime = 0;
+        mad.header.segNum = 0;
+        mad.header.length = 0;
+        (void)BSWAPCOPY_STL_RMPP_VENDOR_HEADER((STL_RMPP_VENDOR_HEADER *)&mad,
+					    (STL_RMPP_VENDOR_HEADER *)maip->data);
+
+        if ((status = mai_send(rmpp_cntxt->sendFd, maip)) != VSTATUS_OK)
+            IB_LOG_ERROR_FMT(__func__,
+				"error[%d] from mai_send while sending ABORT of %s[%s] request to LID[0x%x], TID["FMT_U64"]",
+				status, info->rmpp_get_method_text((int)rmpp_cntxt->method),
+				info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid),
+				rmpp_cntxt->lid, maip->base.tid);
+        /*
+         * We are done with this RMPP xfer.  Release the context here if
+         * in flight transaction (maip not NULL) or let cntxt_age do it
+         * for us.
+         */
+        if (releaseContext)
+            rmpp_cntxt_release(rmpp_cntxt);
+    }
+
+    IB_EXIT(__func__, VSTATUS_OK);
+    return (VSTATUS_OK);
+}
+
+/**
+ * @brief  Gets the maximum data length of first packet.
+ *
+ * Check class version and the rmpp_format and return the correct
+ * maximum data length the first packet contained in maip can hold.
+ * Only the first EA packet has an EA header and the length does not
+ * include the header
+ *
+ *
+ * @param[in]  maip       ptr to packet and its important fields.
+ * @param[in]  rmpp_cntxt ptr to the rmpp context to which the packet belongs
+ *
+ * @return   Maximum data length the packet can hold
+ *
+ *
+ */
+static inline int32_t
+get_first_pkt_datalen(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
+{
+    int32_t rmppDataLen;
+
+    if (maip->base.cversion  == STL_SA_CLASS_VERSION) {
+        if (rmpp_cntxt->info->rmpp_format == RMPP_FORMAT_VENDOR) {
+
+		{
+                rmppDataLen = STL_RMPP_VENDOR_DATA_LEN;
+            }
+        } else {
+            rmppDataLen = STL_SA_DATA_LEN;
+        }
+    } else {
+        rmppDataLen = IB_SA_DATA_LEN;
+    }
+
+    return rmppDataLen;
+}
+
+/**
+ * @brief  Gets the maximum data length of the packet.
+ *
+ * Check class version and the rmpp_format and return the correct
+ * maximum data length the packet contained in maip can hold.
+ * This is the length only of the data, and does not include any headers
+ *
+ *
+ * @param[in]  maip       ptr to packet and its important fields.
+ * @param[in]  rmpp_cntxt ptr to the rmpp context to which the packet belongs
+ *
+ * @return   Maximum data length the packet can hold
+ *
+ *
+ */
+static inline int32_t
+get_pkt_datalen(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
+{
+    int32_t rmppDataLen;
+
+    if (maip->base.cversion  == STL_SA_CLASS_VERSION) {
+        if (rmpp_cntxt->info->rmpp_format == RMPP_FORMAT_VENDOR) {
+                rmppDataLen = STL_RMPP_VENDOR_DATA_LEN;
+        } else {
+            rmppDataLen = STL_SA_DATA_LEN;
+        }
+    } else {
+        rmppDataLen = IB_SA_DATA_LEN;
+    }
+
+    return rmppDataLen;
+}
+
+/**
+ * @brief  Gets the header size depending on the packet type
+ *
+ *
+ * Check class version and the rmpp format and return the size of the header.
+ * The header size does not include the COMMON MAD and the RMPP header.
+ *
+ *
+ * @param[in]  maip       ptr to packet and its important fields.
+ * @param[in]  rmpp_cntxt ptr to the rmpp context to which the packet belongs
+ *
+ * @return  size of the header used for the packet type.
+ *
+ */
+static inline int32_t
+get_pkt_type_hdr_size(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
+{
+    int32_t hdr_size = 0;
+
+        hdr_size = sizeof(SA_HDR);
+
+    return hdr_size;
+}
+
+/**
+ * @brief   Gets the pointer to the data present in the first packet.
+ *
+ * Returns a pointer to the actual data present in the packet. This is the
+ * data present after the COMMON MAD, the RMPP and the packet header.
+ * Only the first EA packet has an EA header.
+ *
+ * @param[in]  maip       ptr to packet and its important fields.
+ * @param[in]  rmpp_cntxt ptr to the rmpp context to which the packet belongs
+ *
+ * @return  ptr to the data in the packet.
+ */
+static inline void *
+get_ptr_to_first_pkt_mad_data(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
+{
+    void *src_data;
+
+    if (rmpp_cntxt->info->rmpp_format == RMPP_FORMAT_VENDOR) {
+		{
+            src_data = (void *)(((STL_RMPP_VENDOR_PACKET *)maip->data)->data);
+        }
+    } else {
+        src_data = (void *)(((STL_SA_MAD *)maip->data)->data);
+    }
+
+    return src_data;
+}
+
+/**
+ * @brief   Gets the pointer to the data present in the packet.
+ *
+ * Returns a pointer to the actual data present in the packet. This is the
+ * data present after the COMMON MAD, the RMPP and the packet header if
+ * there is one. Only the first EA packet in an RMPP sequence has an EA
+ * header.
+ *
+ * @param[in]  maip       ptr to packet and its important fields.
+ * @param[in]  rmpp_cntxt ptr to the rmpp context to which the packet belongs
+ *
+ * @return  ptr to the data in the packet.
+ */
+static inline void *
+get_ptr_to_mad_data(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
+{
+    void *src_data;
+
+    if (rmpp_cntxt->info->rmpp_format == RMPP_FORMAT_VENDOR) {
+        src_data = (void *)(((STL_RMPP_VENDOR_PACKET *)maip->data)->data);
+    } else {
+        src_data = (void *)(((STL_SA_MAD *)maip->data)->data);
+    }
+
+    return src_data;
+}
+
+
+
+/**
+ * @brief    Sends a stop or a abort response to the peer.
+ *
+ * This function sends a stop or an abort depending on the status field
+ * passed to it. This packet is sent to the connected peer,
+ *
+ * @param[in]  maip       ptr to packet and its important fields.
+ * @param[in]  rmpp_cntxt ptr to the rmpp context to which the packet belongs
+ * @param[in]  type       STOP or ABORT code.
+ * @param[in]  status     RMPP status codes (See Infiniband Arch. Spec )
+ *
+ * @return  VSTATUS_OK if send successful else error.
+ */
+static Status_t
+rmpp_send_stop_abort(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt,
+                     uint8_t type, uint8_t status)
+{
+    STL_RMPP_DATA_HEADER *rmpp_hdr;
+    Status_t             rc = VSTATUS_OK;
+    STL_LID              lid;
+    IBhandle_t           fd;
+
+    IB_ENTER(__func__, maip, rmpp_cntxt, 0, 0);
+
+    rmpp_hdr = (STL_RMPP_DATA_HEADER *)maip->data;
+
+    /*
+     * set the mai handle to use for sending - use primary handle if no send handle
+     */
+    fd = (rmpp_cntxt->sendFd) ? rmpp_cntxt->sendFd : *rmpp_cntxt->info->fd;
+
+    if (if3DebugRmpp) {
+        IB_LOG_INFINI_INFO_FMT(__func__,
+                               "Sending ABORT to LID[0x%x] for TID["FMT_U64"]",
+                               (int)maip->addrInfo.slid, maip->base.tid);
+    }
+    /*
+     * Setup the out-bound MAD.  We need to reverse the LRH addresses.
+     */
+    lid = maip->addrInfo.slid;
+    maip->addrInfo.slid = maip->addrInfo.dlid;
+    maip->addrInfo.dlid = lid;
+    maip->base.method |= MAD_CM_REPLY;  // send as response
+    rmpp_hdr->rmppType = type;
+    rmpp_hdr->rmppStatus = status;
+    rmpp_hdr->u.tf.rmppFlags = RMPP_FLAGS_ACTIVE;
+    rmpp_hdr->u.timeFlag = 0;
+    rmpp_hdr->segNum = 0;
+    rmpp_hdr->length = 0;
+
+    if ((rc = mai_send(fd, maip)) != VSTATUS_OK) {
+        IB_LOG_ERROR_FMT(__func__,
+                         "error from mai_send while sending STOP OR ABORT to"
+                         "LID[0x%x] for TID["FMT_U64"]",
+                         (int)maip->addrInfo.dlid, maip->base.tid);
+    }
+    /* release the context, done with this RMPP xfer */
+    rmpp_cntxt_release(rmpp_cntxt);
+
+    IB_EXIT(__func__, rc);
+    return (rc);
+}
+
+
+/**
+ * @brief   Checks if packet is a valid RMPP packet
+ *
+ * Checks to see if the packet is an RMPP packet, whether the RMPP version
+ * field has the right value and if the RMPP flags in the RMPP header are set
+ * correctly. Should return a bool but not sure if Vxworks C compiler supports
+ * C99 bool definition.
+ *
+ * @param[in]  maip        ptr to packet and its important fields.
+ * @param[out] abortStatus RMPP status code (See InfiniBand Arc. Spec)
+ *
+ * @return  1 if not a valid pkt else 0
+ */
+static uint32_t
+is_not_valid_rmpp_pkt(Mai_t *maip, uint8_t *abortStatus)
+{
+    STL_RMPP_DATA_HEADER *rmpp_hdr;
+    uint32_t             invalid = 0;
+
+    IB_ENTER(__func__, maip, 0, 0, 0);
+
+    *abortStatus = 0;
+    /*
+     * Must be an RMPP request at this point, do the basic RMPP
+     * validation of header fields.
+     */
+    rmpp_hdr = (STL_RMPP_DATA_HEADER *)maip->data;
+
+    if (rmpp_hdr->rmppType == RMPP_TYPE_NOT) {
+        IB_LOG_WARN_FMT(__func__, "ABORTING - RMPP protocol error;"
+                        "type is NULL from Lid[%d] for TID="FMT_U64,
+                        (int)maip->addrInfo.slid, maip->base.tid);
+        *abortStatus = RMPP_STATUS_ABORT_BADTYPE;
+    } else if (rmpp_hdr->rmppVersion != RMPP_VERSION) {
+        IB_LOG_WARN_FMT(__func__, "RMPP protocol error, received RMPP"
+                        "Version %d from LID[0x%x] for"
+                        "getMulti TID["FMT_U64"]",
+                        (int)rmpp_hdr->rmppVersion,
+                        (int)maip->addrInfo.slid, maip->base.tid);
+        *abortStatus = RMPP_STATUS_ABORT_UNSUPPORTED_VERSION;
+    } else if (!(rmpp_hdr->u.tf.rmppFlags & RMPP_FLAGS_ACTIVE)) {
+        IB_LOG_WARN_FMT(__func__,
+                        "RMPP protocol error, RMPPFlags.Active bit is"
+                        "NULL from LID[0x%x] for TID["FMT_U64"]"
+                        "timeFlag[0x%x] RmppFlags[0x%x, %s]",
+                        (int)maip->addrInfo.slid, maip->base.tid,
+                        rmpp_hdr->u.timeFlag,
+                        rmpp_hdr->u.tf.rmppFlags,
+                        (rmpp_hdr->u.tf.rmppFlags & RMPP_FLAGS_ACTIVE) ?
+                        "ACTIVE" : "NULL");
+        *abortStatus = RMPP_STATUS_ABORT_BADTYPE;
+    }
+    if (*abortStatus) {
+        invalid = 1;
+    }
+
+    IB_EXIT(__func__, invalid);
+    return invalid;
+}
+
+/**
+ * @brief   Checks if the rmpp ack packet received is invalid
+ *
+ * This function checks to see if the rmpp ack packet received from the sender
+ * in response to segment 0 has the right segment number and whether
+ * NewWindowLast field is non zero. Should ideally return "bool"
+ *
+ * @param[in]  maip        ptr to packet and its important fields.
+ * @param[out] abortStatus RMPP status code (See InfiniBand Arc. Spec)
+ *
+ * @return  1 if not a valid pkt else 0
+ */
+static uint32_t
+is_invalid_rmpp_ack_pkt(Mai_t *maip, uint8_t *abortStatus)
+{
+    STL_RMPP_ACK_HEADER *rmpp_hdr;
+    uint32_t            invalid = 1;
+
+    IB_ENTER(__func__, maip,0, 0, 0);
+
+    rmpp_hdr = (STL_RMPP_ACK_HEADER *)maip->data;
+    *abortStatus = 0;
+
+    // process ACK of segment num 0 from sender
+    if (rmpp_hdr->segNum == 0) {
+        IB_LOG_WARN_FMT(__func__, "ABORTING - Invalid segment number %d in ACK"
+                        "when expecting [0] from LID[0x%x] for TID["FMT_U64"]",
+                        rmpp_hdr->segNum,
+                        (int)maip->addrInfo.slid, maip->base.tid);
+        *abortStatus = RMPP_STATUS_ABORT_SEGNUM_TOOBIG;
+    } else if (rmpp_hdr->newwindowlast == 0) {
+        // invalid window size
+        IB_LOG_WARN_FMT(__func__, "ABORTING - A window size of zero was "
+                        "specified in ACK from LID[0x%x] for TID["FMT_U64"]",
+                        (int)maip->addrInfo.slid, maip->base.tid);
+        *abortStatus = RMPP_STATUS_ABORT_NEWWINDOWLAST_TOOSMALL;
+    } else {
+        invalid = 0;
+    }
+
+    IB_EXIT(__func__, invalid);
+    return invalid;
+}
+
+/**
+ * @brief     Acknowledge the reception of a packet to peer.
+ *
+ * Send acknowledgement to peer for the receipt of a packet. If this is the last
+ * segment of the transmission set the window to the last segment. Otherwise if
+ * the window size is 1 set it to the next segment. If wsize is not 1 then set
+ * the ack's newwindowlast to the minimum of the associated rmpp context's
+ * segTotal field or the segment number + wsize or the wsize if it's the first
+ * segment received. Update the response time value and set the rmpp_cntxt last
+ * acked value to the current segment number.
+ *
+ * @param[in]  maip       ptr to packet and its important fields.
+ * @param[in]  rmpp_cntxt ptr to the rmpp context to which the packet belongs
+ * @param[in]  wsize      window size
+ *
+ * @return  VSTATUS_OK if send successful else error.
+ *
+ */
+static Status_t
+rmpp_ack_multi_packet_recv(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt, int32_t wsize)
+{
+    Status_t            rc = VSTATUS_OK;
+    STL_LID             lid;
+    IBhandle_t          fd;
+    STL_RMPP_ACK_HEADER *rmpp_mad;
+    uint32_t            segnum;
+    uint32_t            window;
+    rmpp_user_info_t    *info = NULL;
+
+    IB_ENTER(__func__, maip, rmpp_cntxt, 0, 0);
+
+    /*
+     * set the mai handle for sending - use primary handle if no send handle
+     */
+    info = (rmpp_user_info_t *)rmpp_cntxt->info;
+    fd = (rmpp_cntxt->sendFd) ? rmpp_cntxt->sendFd : *info->fd;
+    rmpp_mad = (STL_RMPP_ACK_HEADER *) maip->data;
+    segnum = ntoh32(rmpp_mad->segNum);
+    window = ntoh32(rmpp_mad->newwindowlast);
+
+    rmpp_mad->rmppType = RMPP_TYPE_ACK;
+
+    if (rmpp_mad->u.tf.rmppFlags & RMPP_FLAGS_LAST) {
+        rmpp_mad->newwindowlast = rmpp_mad->segNum;
+    } else if (wsize == 1) {
+        rmpp_mad->newwindowlast = hton32(segnum + 1);
+    } else {
+        rmpp_mad->newwindowlast = hton32(MIN(((segnum == 1) ?
+                                    wsize :
+                                    (segnum + wsize)),
+                                   rmpp_cntxt->segTotal));
+    }
+
+    rmpp_mad->u.tf.rmppFlags = RMPP_FLAGS_ACTIVE;
+    if (if3DebugRmpp) {
+        IB_LOG_INFINI_INFO_FMT(__func__,
+               "ACK window[%d] reached for LID[0x%x] TID="FMT_U64", New ACK"
+               "window[%d] timeFlag[0x%x] RmppFlags[0x%x, %s]",
+               window, (int)maip->addrInfo.slid, maip->base.tid,
+               ntoh32(rmpp_mad->newwindowlast), rmpp_mad->u.timeFlag,
+               rmpp_mad->u.tf.rmppFlags,
+               (rmpp_mad->u.tf.rmppFlags & RMPP_FLAGS_ACTIVE) ?
+               "ACTIVE" : "NULL");
+    }
+    /* set the desired response time value for client to use*/
+    if (segnum == 1)
+        rmpp_mad->u.tf.rmppRespTime = rmpp_respTimeValue;
+    else
+        rmpp_mad->u.tf.rmppRespTime = RMPP_NO_RRESP_TIME_VALUE;
+
+    rmpp_mad->rmppStatus = 0;
+    lid = maip->addrInfo.slid;
+    maip->addrInfo.slid = maip->addrInfo.dlid;
+    maip->addrInfo.dlid = lid;
+    maip->base.method ^= MAD_CM_REPLY;
+    if (if3DebugRmpp) {
+       IB_LOG_INFINI_INFO_FMT(__func__,
+                              "sending ACK to %s request to LID[0x%x]"
+                              "for TID["FMT_U64"], mclass=0x%x\n",
+                              info->rmpp_get_method_text(maip->base.method),
+                              (int)maip->addrInfo.dlid, maip->base.tid,
+                              maip->base.mclass);
+    }
+
+
+    if ((rc = mai_send(fd, maip)) == VSTATUS_OK) {
+        rmpp_cntxt->last_ack = segnum;
+    }
+    IB_EXIT(__func__,rc);
+    return rc;
+
+}
+
+
+/**
+ * @brief  Process non rmpp multi request
+ *
+ * This function processes a non rmpp request.It allocates memory sets up
+ * fields in the rmpp_cntxt to point to it copies the data to the allocated
+ * memory.It assumes that the rmpp_cntxt has a pointer to a processing
+ * function for such packets and calls that function.
+ *
+ * @param[in]  maip       ptr to packet and its important fields.
+ * @param[in]  rmpp_cntxt ptr to the rmpp context to which the packet belongs
+ *
+ * @return  VSTATUS_OK if send successful else error.
+ *
+ */
+static Status_t
+rmpp_process_non_rmpp_req(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
+{
+    Status_t rc = VSTATUS_OK;
+    void     *src_data;
+
+    IB_ENTER(__func__, maip, rmpp_cntxt, 0, 0);
+
+    rmpp_cntxt->method = maip->base.method;
+    rmpp_cntxt->segTotal = 1;
+    rmpp_cntxt->reqInProg = 0;
+    memcpy(&rmpp_cntxt->mad, maip, sizeof(Mai_t));
+    rmpp_cntxt->reqDataLen = (uint32_t)get_pkt_datalen(maip, rmpp_cntxt);
+
+    src_data = get_ptr_to_mad_data(maip, rmpp_cntxt);
+
+    rc = vs_pool_alloc(rmpp_cntxt->info->rmpp_pool, rmpp_cntxt->reqDataLen,
+                       (void *) &rmpp_cntxt->reqData);
+
+    if (!rc) {
+        memcpy(rmpp_cntxt->reqData, src_data, rmpp_cntxt->reqDataLen);
+        if (rmpp_cntxt->processFunc) {
+            rc = rmpp_cntxt->processFunc((Mai_t *) &rmpp_cntxt->mad,
+                                         rmpp_cntxt);
+        }
+        if (if3DebugRmpp) {
+            IB_LOG_INFINI_INFO_FMT(__func__,
+                                   "Non RMPP GetMulti from Lid[%d],"
+                                   "TID="FMT_U64" processed",
+                                   (int)maip->addrInfo.slid,
+                                   rmpp_cntxt->tid);
+        }
+    } else {
+        IB_LOG_ERRORX("Couldn't allocate resources for Non RMPP"
+                      "GetMulti request from LID:", rmpp_cntxt->lid);
+    }
+
+    IB_EXIT(__func__, rc);
+
+    return rc;
+}
+
+/**
+ * @brief  Intialize rmpp_cntxt fields before receiving packet.
+ *
+ * @param[in]  maip       ptr to packet and its important fields.
+ * @param[in]  rmpp_cntxt ptr to the rmpp context to which the packet belongs
+ */
+static void
+rmpp_init_recv_data_rmpp_cntxt(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
+{
+    IB_ENTER(__func__, maip, rmpp_cntxt, 0, 0);
+
+    rmpp_cntxt->method = maip->base.method;
+    rmpp_cntxt->WF = 1;
+    rmpp_cntxt->WL = 1;
+    rmpp_cntxt->NS = 0;
+    rmpp_cntxt->ES = 1;
+    rmpp_cntxt->last_ack = 0;
+    rmpp_cntxt->retries = 0;
+    rmpp_cntxt->segTotal = 0;
+    rmpp_cntxt->reqInProg = 1;
+    rmpp_cntxt->sendFd = *rmpp_cntxt->info->fd;
+    rmpp_cntxt->RespTimeout = 4ull * (2 * (1 << rmpp_packetLifetime) +
+                                      (1 << rmpp_respTimeValue));
+    rmpp_cntxt->tTime = 0;
+    memcpy(&rmpp_cntxt->mad, maip, sizeof(*maip));
+    rmpp_cntxt_reserve(rmpp_cntxt);
+
+    IB_EXIT(__func__, 0);
+
+}
+
+/**
+ * @brief   Acknowledge  received packet
+ *
+ * Checks the received packet for to see whether it is the last packet in the
+ * multi packet chain or whether it is a single packet. Updates rmpp_cntxt
+ * fields and then calls rmpp_ack_multi_packet_recv to send the actual ack. If
+ * the send is successful good else free the rmpp_cntxt and report error.
+ *
+ * @param[in]  maip       ptr to packet and its important fields.
+ * @param[in]  rmpp_cntxt ptr to the rmpp context to which the packet belongs
+ * @param[in]  wsize      window size
+ *
+ *
+ * @return  VSTATUS_OK if send successful else error.
+ */
+static Status_t
+rmpp_multi_response_send_ack(Mai_t *maip, rmpp_cntxt_t* rmpp_cntxt,
+                             int32_t wsize)
+{
+    Status_t             rc = VSTATUS_OK;
+    uint32_t             segnum;
+    uint32_t             datalen;
+    STL_RMPP_DATA_HEADER *rmpp_mad;
+
+    IB_ENTER(__func__, maip, rmpp_cntxt, 0, 0);
+
+    rmpp_mad = (STL_RMPP_DATA_HEADER *)maip->data;
+    segnum = ntoh32(rmpp_mad->segNum);
+    datalen = ntoh32(rmpp_mad->length);
+
+    IB_ENTER(__func__, maip, rmpp_cntxt, 0, 0);
+
+    if (if3DebugRmpp) {
+        IB_LOG_INFINI_INFO_FMT(__func__, "(segNum MOD wsize) = %d, (segNum EQ 1)"
+                               "= %d, (segNum EQ rmpp_cntxt->segTotal) = %d",
+                               (int)(segnum % wsize),
+                               (segnum == 1),
+                               (segnum == rmpp_cntxt->segTotal));
+    }
+
+    if (segnum == rmpp_cntxt->segTotal) {
+        rmpp_cntxt->reqInProg = 0;
+    }
+
+    if (segnum == 1 &&
+        (rmpp_mad->u.tf.rmppFlags & RMPP_FLAGS_FIRST) &&
+        (rmpp_mad->u.tf.rmppFlags & RMPP_FLAGS_LAST)) {
+        if (if3DebugRmpp)
+            IB_LOG_INFINI_INFO_FMT(__func__, "Received single packet request");
+    } else {
+        if (if3DebugRmpp)
+            IB_LOG_INFINI_INFO_FMT(__func__,
+                                   "Received multi-packet request");
+    }
+
+    if (if3DebugRmpp)
+        IB_LOG_INFINI_INFO_FMT(__func__,
+                               "Sending ACK with segNum %d, length %d,"
+                               "reqInProg %d, ES %d",
+                               (int)segnum,
+                               datalen,
+                               rmpp_cntxt->reqInProg,
+                               rmpp_cntxt->ES);
+
+    // sent ACK to sender
+    if ((rc = rmpp_ack_multi_packet_recv(maip, rmpp_cntxt,
+                                         wsize)) != VSTATUS_OK) {
+        IB_LOG_WARN_FMT(__func__,
+                        "error %d while sending ACK to"
+                        "LID[0x%x] for TID["FMT_U64"], terminating transaction",
+                        rc, (int)maip->addrInfo.dlid, maip->base.tid);
+        /* release the context, done with this RMPP xfer */
+        rmpp_cntxt_release(rmpp_cntxt);
+    }
+
+
+    IB_EXIT(__func__, rc);
+    return rc;
+}
+
+/**
+ * @brief  Processes an out of sequence packet.
+ *
+ * When we receive and out of sequence segment then we can either not send
+ * an ACK  and discard the packet and sender can retransmit from WF to WL
+ * or we send ack of (ES-1) as per figure 178 of receiver main flow diagram
+ * Here we opt to send an ack of (ES-1).
+ *
+ * @param[in]  maip       ptr to packet and its important fields.
+ * @param[in]  rmpp_cntxt ptr to the rmpp context to which the packet belongs
+ * @param[in]  wsize      window size
+ *
+ *
+ * @return  VSTATUS_OK if send successful else error.
+ */
+static Status_t
+rmpp_process_oos_segment(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt,
+                        int32_t wsize)
+{
+    Status_t             rc = VSTATUS_OK;
+    STL_RMPP_ACK_HEADER *rmpp_mad;
+
+    IB_ENTER(__func__, maip, rmpp_cntxt, 0, 0);
+
+    rmpp_mad = (STL_RMPP_ACK_HEADER *)maip->data;
+    if (if3DebugRmpp) {
+        IB_LOG_INFINI_INFO_FMT(__func__,
+                               "got seg[%d] when expecting seg[%d] from"
+                               "lID[0x%x] TID="FMT_U64,
+                               ntoh32(rmpp_mad->segNum), rmpp_cntxt->ES,
+                               (int)maip->addrInfo.slid, maip->base.tid);
+    }
+    /* resend ack of (ES-1) here */
+    rmpp_mad->u.tf.rmppFlags = RMPP_FLAGS_ACTIVE;
+    rmpp_mad->newwindowlast = hton32(rmpp_cntxt->ES - 1);
+    if ((rc = rmpp_ack_multi_packet_recv(maip, rmpp_cntxt,
+                                         wsize)) != VSTATUS_OK) {
+        IB_LOG_WARN_FMT(__func__,
+                        "error %d while sending ACK to LID[0x%x]"
+                        "for TID["FMT_U64"]", rc, (int)maip->addrInfo.dlid,
+                        maip->base.tid);
+        /* release the context, done with this RMPP xfer */
+        rmpp_cntxt_release(rmpp_cntxt);
+    }
+    IB_EXIT(__func__, rc);
+    return rc;
+}
+
+/**
+ * @brief   Process the first data segment of the response.
+ *
+ * Check if the packet has its header setup correctly to indicate that it is
+ * the first packet in the segment.
+ *
+ * Next extract the Payload Length that will be there in the response and
+ * calculate the total number of segments and use this to allocate the size of
+ * the buffer needed to store the entire response.
+ *
+ * If the Payload Length is zero then check if it is also the last packet and if
+ * so flag an error and send an abort and return. We don't handle packets with
+ * the payload length equal to zero, though the IB spec states that we can.
+ * If the Payload Length is zero and it is the last packet then treat it as a
+ * single packet.
+ *
+ * Allocate buffer for packet from pool and copy the data from the packet into
+ * the buffer.
+ * If it is not a single packet response the increment the expected segment
+ * field in the rmpp_cntxt.
+ *
+ * @param[in]  maip       ptr to packet and its important fields.
+ * @param[in]  rmpp_cntxt ptr to the rmpp context to which the packet belongs
+ * @param[in]  wsize      window size
+ *
+ *
+ * @return  VSTATUS_OK if send successful else error.
+ */
+static Status_t
+rmpp_process_first_data_segment(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt,
+                                __attribute__((unused)) int32_t wsize)
+{
+    Status_t             rc = VSTATUS_OK;
+    STL_RMPP_DATA_HEADER *rmpp_mad;
+    uint32_t             hdr_size;
+    int32_t              max_pkt_datalen;
+    void                 *src_data;
+    uint32_t             max_payload_len;
+    rmpp_user_info_t     *info = NULL;
+
+    IB_ENTER(__func__, maip, rmpp_cntxt, 0, 0);
+
+    rmpp_mad = (STL_RMPP_DATA_HEADER *) maip->data;
+
+    if (!(rmpp_mad->u.tf.rmppFlags & RMPP_FLAGS_FIRST)) {
+        IB_LOG_WARN_FMT(__func__,
+                        "ABORTING - invalid multi pkt first flag[%d] with"
+                        "segnum 1 from LID[0x%x] for TID["FMT_U64"]",
+                        rmpp_mad->u.tf.rmppFlags, (int)maip->addrInfo.slid,
+                        maip->base.tid);
+
+        rc = RMPP_STATUS_ABORT_INCONSISTENT_FIRST_SEGNUM;
+        rmpp_send_stop_abort(maip, rmpp_cntxt, RMPP_TYPE_ABORT,
+                             RMPP_STATUS_ABORT_INCONSISTENT_FIRST_SEGNUM);
+        goto func_exit;
+    }
+
+    rmpp_cntxt->bytesRcvd = 0;
+    hdr_size = get_pkt_type_hdr_size(maip, rmpp_cntxt);
+    max_pkt_datalen = get_first_pkt_datalen(maip, rmpp_cntxt);
+    max_payload_len = ntoh32(rmpp_mad->length);
+    src_data = get_ptr_to_first_pkt_mad_data(maip, rmpp_cntxt);
+    info = (rmpp_user_info_t *)rmpp_cntxt->info;
+
+    if (max_payload_len) {
+        uint32_t totsize = max_pkt_datalen + hdr_size;
+
+        rmpp_cntxt->segTotal = (max_payload_len / totsize) +
+                               ((max_payload_len % totsize) ? 1:0);
+
+        if (info->rmpp_format == RMPP_FORMAT_VENDOR) {
+            rmpp_cntxt->reqDataLen = max_payload_len - hdr_size;
+        } else {
+            rmpp_cntxt->reqDataLen = max_payload_len -
+                (rmpp_cntxt->segTotal * hdr_size);
+        }
+
+        if (if3DebugRmpp) {
+            IB_LOG_INFINI_INFO_FMT(__func__,
+                                   "GetMulti from LID[0x%x], TID="FMT_U64", %d total bytes,"
+                                   "%d segments, %d data bytes",
+                                   maip->addrInfo.slid, maip->base.tid,
+                                   max_payload_len, rmpp_cntxt->segTotal,
+                                   rmpp_cntxt->reqDataLen);
+        }
+
+    } else {
+        if (rmpp_mad->u.tf.rmppFlags & RMPP_FLAGS_LAST) {
+            /* send ABORT with status of inconsistent payloadLength */
+            IB_LOG_WARN_FMT(__func__,
+                            "ABORTING - First and Last segment received with"
+                            "no length from LID[0x%x] for TID["FMT_U64"]",
+                            (int)maip->addrInfo.slid, maip->base.tid);
+            rc = rmpp_send_stop_abort(maip, rmpp_cntxt, RMPP_TYPE_ABORT,
+                                      RMPP_STATUS_ABORT_INCONSISTENT_LAST_PAYLOADLENGTH);
+            if (rc == VSTATUS_OK) {
+                rc = RMPP_STATUS_ABORT_INCONSISTENT_LAST_PAYLOADLENGTH;
+            }
+
+            goto func_exit;
+
+        } else {
+            /* no payload length specified, terminate at single packet*/
+            rmpp_cntxt->reqDataLen = max_pkt_datalen;
+            rmpp_cntxt->segTotal = 0;
+            if (if3DebugRmpp) {
+                IB_LOG_INFINI_INFO0("PayloadLength is not specified, using"
+                                    "single packet data length as payload");
+            }
+        }
+    }
+
+    if (rmpp_cntxt->reqDataLen)
+        rc = vs_pool_alloc(info->rmpp_pool, rmpp_cntxt->reqDataLen,
+                           (void *)&rmpp_cntxt->reqData);
+
+    if (rc != VSTATUS_OK) {
+        rmpp_cntxt->reqData = NULL;
+        rc = rmpp_send_stop_abort(maip, rmpp_cntxt, RMPP_TYPE_STOP,
+                                  RMPP_STATUS_STOP_NORESOURCES);
+        if (rc == VSTATUS_OK) {
+            rc = RMPP_STATUS_STOP_NORESOURCES;
+        }
+    } else {
+        if (rmpp_mad->u.tf.rmppFlags & RMPP_FLAGS_LAST) {
+            memcpy(rmpp_cntxt->reqData , src_data, rmpp_cntxt->reqDataLen);
+            rmpp_cntxt->bytesRcvd = rmpp_cntxt->reqDataLen;
+        } else {
+            memcpy(rmpp_cntxt->reqData, src_data, max_pkt_datalen);
+            ++rmpp_cntxt->ES;          /* increment expected seg */
+            rmpp_cntxt->bytesRcvd = max_pkt_datalen;
+        }
+    }
+
+
+func_exit:
+    IB_EXIT(__func__, rc);
+    return rc;
+}
+
+/**
+ * @brief Process the middle or last segment of a response.
+ *
+ * Process the received packet and check that the Payload Length field which
+ * should only be non zero in the case of the last packet in the sequence has
+ * the right value. If this is incorrect send an abort and return.
+ * If all else is good, copy the data into the buffer that was allocated
+ * when the first segment was received at the right offset. Update the expected
+ * sequence number if it is not the last packet.
+ *
+ *
+ * @param[in]  maip       ptr to packet and its important fields.
+ * @param[in]  rmpp_cntxt ptr to the rmpp context to which the packet belongs
+ * @param[in]  wsize      window size
+ *
+ *
+ * @return  VSTATUS_OK if send successful else error.
+ */
+static Status_t
+rmpp_process_mid_last_segment(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt,
+                              __attribute__((unused)) int32_t wsize)
+{
+    Status_t             rc = VSTATUS_OK;
+    STL_RMPP_DATA_HEADER *rmpp_mad;
+    uint32_t             segnum;
+    uint32_t             last_pkt_dlen;
+    void                 *src_data;
+    int                  badPayloadLen = 0;
+    uint32_t             bytesRcvd = 0;
+    int                  max_pkt_datalen;
+    int                  hdr_size;
+
+    IB_ENTER(__func__, maip, rmpp_cntxt, 0, 0);
+
+    rmpp_mad = (STL_RMPP_DATA_HEADER *) maip->data;
+    segnum = ntoh32(rmpp_mad->segNum);
+    src_data = get_ptr_to_mad_data(maip, rmpp_cntxt);
+    max_pkt_datalen = get_pkt_datalen(maip, rmpp_cntxt);
+    hdr_size = get_pkt_type_hdr_size(maip, rmpp_cntxt);
+
+
+    if ((rmpp_mad->u.tf.rmppFlags & RMPP_FLAGS_LAST)) {
+        if (rmpp_cntxt->info->rmpp_format == RMPP_FORMAT_VENDOR) {
+            last_pkt_dlen = ntoh32(rmpp_mad->length);
+        } else {
+            last_pkt_dlen = ntoh32(rmpp_mad->length) - hdr_size;
+        }
+        if (if3DebugRmpp) {
+            IB_LOG_INFINI_INFO_FMT(__func__,
+                                   "GetMulti from LID[0x%x], TID="FMT_U64" has"
+                                   "%d Total data bytes in last packet "
+                                   "segment number %d",
+                                   maip->addrInfo.slid, maip->base.tid,
+                                   last_pkt_dlen, segnum);
+        }
+
+        bytesRcvd = rmpp_cntxt->bytesRcvd + last_pkt_dlen;
+        if (bytesRcvd > rmpp_cntxt->reqDataLen) {
+            badPayloadLen = 1;
+        } else {
+            memcpy(rmpp_cntxt->reqData + rmpp_cntxt->bytesRcvd,
+                   src_data, last_pkt_dlen);
+            rmpp_cntxt->bytesRcvd += last_pkt_dlen;
+        }
+
+    } else {
+
+        bytesRcvd = rmpp_cntxt->bytesRcvd + max_pkt_datalen;
+        if (bytesRcvd > rmpp_cntxt->reqDataLen) {
+            badPayloadLen = 1;
+        } else {
+            memcpy(rmpp_cntxt->reqData + rmpp_cntxt->bytesRcvd,
+                   src_data, max_pkt_datalen);
+            rmpp_cntxt->bytesRcvd += max_pkt_datalen;
+            ++rmpp_cntxt->ES;          /* increment expected seg */
+        }
+
+    }
+
+    if (badPayloadLen) {
+        IB_LOG_WARN_FMT(__func__,
+                        "ABORTING - data received [%d] inconsistent"
+                        "with payloadLength [%d] from LID[0x%x] for"
+                        "TID["FMT_U64"]", bytesRcvd, rmpp_cntxt->reqDataLen,
+                        (int)maip->addrInfo.slid, maip->base.tid);
+        rc = rmpp_send_stop_abort(maip, rmpp_cntxt, RMPP_TYPE_ABORT,
+                                  RMPP_STATUS_ABORT_INCONSISTENT_LAST_PAYLOADLENGTH);
+        if (rc == VSTATUS_OK)
+            rc = RMPP_STATUS_ABORT_INCONSISTENT_LAST_PAYLOADLENGTH;
+    }
+
+    IB_EXIT(__func__, rc);
+    return rc;
+}
+
+/**
+ * @brief  Process the received data packet.
+ *
+ * Check if this is the start of the request/response and if so set up the
+ * associated rmpp_cntxt fields for context entry.
+ *
+ * Check that the expected segment value in the context tallies with the segment
+ * number in the recieved packet RMPP header and process it by calling the
+ * appropriate processing function for the segments. Acknowledge the receipt of
+ * the packet to the peer.
+ *
+ * If the received segment is out of sequence call the out of sequence
+ * processing function.
+ *
+ * @param[in]  maip       ptr to packet and its important fields.
+ * @param[in]  rmpp_cntxt ptr to the rmpp context to which the packet belongs
+ *
+ * @return  VSTATUS_OK if send successful else error.
+ */
+static Status_t
+rmpp_process_data_pkt(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
+{
+    STL_RMPP_DATA_HEADER *rmpp_mad;
+    uint32_t             segnum;
+    Status_t             rc = VSTATUS_OK;
+    int32_t              wsize = 1;
+
+    IB_ENTER(__func__, maip, rmpp_cntxt, 0, 0);
+    rmpp_mad = (STL_RMPP_DATA_HEADER *) maip->data;
+
+    segnum = ntoh32(rmpp_mad->segNum);
+
+    if (rmpp_cntxt->hashed == 0) {
+        /*
+         * This is the start of request, init/save parameters for context entry
+         */
+        rmpp_init_recv_data_rmpp_cntxt(maip, rmpp_cntxt);
+        rmpp_mad->rmppVersion = RMPP_VERSION;
+        rmpp_mad->u.tf.rmppRespTime = rmpp_respTimeValue; // use classPortInfo setting
+    }
+
+    if (segnum == rmpp_cntxt->ES) {   /* is this segment expected */
+        if (segnum == 1) {
+            rc = rmpp_process_first_data_segment(maip, rmpp_cntxt, wsize);
+        } else {
+            rc = rmpp_process_mid_last_segment(maip, rmpp_cntxt, wsize);
+        }
+
+        /* ACK the first, last segments and window hits */
+        if (((segnum % wsize) == 0 || segnum == 1 ||
+             segnum == rmpp_cntxt->segTotal) && (rc == VSTATUS_OK)) {
+            rmpp_multi_response_send_ack(maip, rmpp_cntxt, wsize);
+        }
+
+    } else {
+
+        rc = rmpp_process_oos_segment(maip, rmpp_cntxt, wsize);
+
+    }
+
+    IB_EXIT(__func__, rc);
+    return rc;
+}
+
+/**
+ * @brief   Processes the received data packet
+ *
+ * First validate the received packet to ensure that the method is supported.
+ * If not drop it and return.
+ *
+ * Check if it is by chance a non rmpp Get Multi request and if so process it by
+ * calling the right function and return.
+ *
+ * Next check if it is a valid rmpp packet and if not respond with an abort and
+ * return.
+ *
+ * If the received packet is a STOP or ABORT packet then release the rmpp
+ * context associated and stop the processing and return.
+ *
+ * If the packet is a valid RMPP ACK packet update fields in the rmpp_cntxt
+ * else send ABORT and return.
+ *
+ * If it is a data packet then process it.
+ *
+ * @param[in]  maip       ptr to packet and its important fields.
+ * @param[in]  rmpp_cntxt ptr to the rmpp context to which the packet belongs
+ *
+ * @return  VSTATUS_OK if send successful else error.
+ */
+static Status_t
+rmpp_process_multi_response(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
+{
+    STL_RMPP_DATA_HEADER *rmpp_mad;
+    rmpp_user_info_t     *info = NULL;
+    Status_t             rc = VSTATUS_OK;
+    uint32_t             rmppDataLen;
+    uint8_t             rmppStatus;
+
+    IB_ENTER(__func__, maip, rmpp_cntxt, 0, 0);
+
+    if (!rmpp_cntxt) {
+        IB_LOG_ERROR_FMT(__func__, "context is NULL!");
+        rc =  VSTATUS_BAD;
+        goto func_exit;
+    } else if (!(info = (rmpp_user_info_t *)rmpp_cntxt->info)) {
+        IB_LOG_ERROR_FMT(__func__, "failed to get info for user %d!",
+                         rmpp_cntxt->usrId);
+        rc =  VSTATUS_BAD;
+        goto func_exit;
+    }
+
+
+    // validate the MAD received.  If it is not valid, just drop it.
+    if (rmpp_validate_response_mad(info, maip) != VSTATUS_OK) {
+        goto func_exit;
+    }
+
+    rmpp_mad = (STL_RMPP_DATA_HEADER *) maip->data;
+    rmppDataLen =  (uint32_t) get_pkt_datalen(maip, rmpp_cntxt);
+
+    if (if3DebugRmpp)
+        IB_LOG_INFINI_INFO_FMT(__func__, "Data length inuse %d, bversion=0x%x,"
+                               "cversion=0x%x", rmppDataLen,
+                               maip->base.bversion,
+                               maip->base.cversion);
+
+
+    /*
+     * check if possible non-rmpp GetMulti request  or invalid pkt
+     */
+    if (rmpp_mad->rmppType == RMPP_TYPE_NOT && rmpp_cntxt->hashed == 0) {
+       if ((rc = rmpp_process_non_rmpp_req(maip, rmpp_cntxt)) != VSTATUS_OK) {
+            goto func_exit;
+        }
+    } else {
+        if (is_not_valid_rmpp_pkt(maip, &rmppStatus)) {
+            rc = rmpp_send_stop_abort(maip, rmpp_cntxt, RMPP_TYPE_ABORT,
+                                      rmppStatus);
+            goto func_exit;
+        }
+    }
+
+
+    /*
+     * Exit if packet is stop or abort type
+     */
+    if (rmpp_mad->rmppType == RMPP_TYPE_STOP ||
+        rmpp_mad->rmppType == RMPP_TYPE_ABORT) {
+        /* got a STOP or ABORT */
+        if (if3DebugRmpp) {
+            IB_LOG_WARN_FMT(__func__,
+                            "Processing STOP OR ABORT with status code[0x%x]"
+                            "from LID[0x%x] for TID["FMT_U64"]",
+                            (int)rmpp_mad->rmppStatus,
+                            (int)maip->addrInfo.slid, maip->base.tid);
+        }
+        rmpp_cntxt_release(rmpp_cntxt);
+        rc =  VSTATUS_OK;
+        goto func_exit;
+    }
+
+
+    if (rmpp_mad->rmppType == RMPP_TYPE_ACK) {
+        if (is_invalid_rmpp_ack_pkt(maip, &rmppStatus)) {
+            rc = rmpp_send_stop_abort(maip, rmpp_cntxt, RMPP_TYPE_ABORT,
+                                      rmppStatus);
+        } else {
+            /*
+             * set DS bit, set Window Last to desired, and clear request in progress bit
+             */
+            rmpp_cntxt->isDS = 1;
+            rmpp_cntxt->WL = rmpp_mad->length;
+            rmpp_cntxt->reqInProg = 0;
+        }
+
+    } else {
+        // processing DATA packet
+        if (if3DebugRmpp) {
+            IB_LOG_INFINI_INFO_FMT(__func__,
+                                   "Processing RMPP GETMULTI request from Lid[%d], TID="FMT_U64,
+                                   (int)maip->addrInfo.slid, maip->base.tid);
+        }
+        rc = rmpp_process_data_pkt(maip, rmpp_cntxt);
+    }
+
+func_exit:
+        IB_EXIT(__func__, rc);
+        return (rc);
+}
+
+
 #endif

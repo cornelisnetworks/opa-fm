@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -75,18 +75,18 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define	SA_KEY			0
 #define	SM_KEY			0
 
-#define	SVC_SA_GET_SERV_CMASK	(SR_COMPONENTMASK_NAME | SR_COMPONENTMASK_GID | SR_COMPONENTMASK_ID)
+#define	SVC_SA_GET_SERV_CMASK	(STL_SERVICE_RECORD_COMP_SERVICENAME | STL_SERVICE_RECORD_COMP_SERVICEGID | STL_SERVICE_RECORD_COMP_SERVICEID)
 //#define	SVC_SA_GET_SERV_CMASK	0xe0  /* service name, service GID, serivce ID*/
 
-#define	SVC_SA_DEL_SERV_CMASK	(SR_COMPONENTMASK_NAME | SR_COMPONENTMASK_GID | SR_COMPONENTMASK_ID)
+#define	SVC_SA_DEL_SERV_CMASK	(STL_SERVICE_RECORD_COMP_SERVICENAME | STL_SERVICE_RECORD_COMP_SERVICEGID | STL_SERVICE_RECORD_COMP_SERVICEID)
 //#define	SVC_SA_DEL_SERV_CMASK	0xe0  /* service name, service GID, serivce ID*/
 
-#define	SVC_SA_GET_PATH_CMASK  (PR_COMPONENTMASK_SGID | PR_COMPONENTMASK_DGID | PR_COMPONENTMASK_PATHS)
+#define	SVC_SA_GET_PATH_CMASK  (IB_PATH_RECORD_COMP_SGID | IB_PATH_RECORD_COMP_DGID | IB_PATH_RECORD_COMP_NUMBPATH)
 //#define	SVC_SA_GET_PATH_CMASK   0x100c /* SGID, DGID, numPath                  */
 
 
 #define MAX_RECORDS_SUPPORTED (8)            /* for querries                */
-#define MAX_BUFFER (MAX_RECORDS_SUPPORTED*sizeof(ServiceRecord_t)) 
+#define MAX_BUFFER (MAX_RECORDS_SUPPORTED*sizeof(STL_SERVICE_RECORD)) 
 
 
 static void
@@ -121,8 +121,8 @@ if3_mngr_get_sa_classportInfo (ManagerInfo_t *fp)
     memset ((void *)(&mad),0,sizeof(mad)); 
     
     MAD_SET_METHOD_TYPE(&mad, SUBN_ADM_GET); 
-    MAD_SET_VERSION_INFO(&mad, IB_BASE_VERSION, MCLASS_SUBN_ADM, IB_SUBN_ADM_CLASS_VERSION); 
-    MAD_SET_ATTRIB_ID(&mad, SA_ATTRIB_CLASS_PORT_INFO);
+    MAD_SET_VERSION_INFO(&mad, STL_BASE_VERSION, MCLASS_SUBN_ADM, STL_SA_CLASS_VERSION); 
+    MAD_SET_ATTRIB_ID(&mad, STL_SA_ATTR_CLASS_PORT_INFO);
 
 #if defined(IB_STACK_OPENIB)
 	if (ib_refresh_devport() != VSTATUS_OK) {
@@ -142,8 +142,8 @@ if3_mngr_get_sa_classportInfo (ManagerInfo_t *fp)
         goto done;
     }
     
-    (void)BSWAP_IB_CLASS_PORT_INFO((IB_CLASS_PORT_INFO *) buffer);
-    memcpy(&fp->cpi, buffer, sizeof(IB_CLASS_PORT_INFO));
+    (void)BSWAP_STL_CLASS_PORT_INFO((STL_CLASS_PORT_INFO *) buffer);
+    memcpy(&fp->cpi, buffer, sizeof(STL_CLASS_PORT_INFO));
 
     fp->cpi_valid = 1;
 
@@ -516,13 +516,22 @@ if3_mngr_query_srv_path(IBhandle_t fd, IB_SERVICE_RECORD *srp, STL_LID *lid , ui
     } else {
         // retrieve response data
         (void)BSWAPCOPY_IB_PATH_RECORD((IB_PATH_RECORD *)buffer, &pr); 
+		STL_LID dlid, slid;
         
-        *lid = pr.DLID; 
+		dlid = pr.DLID;
+		slid = pr.SLID;
+		if (pr.u1.s.HopLimit == 1) {
+			if ((pr.DGID.Type.Global.InterfaceID >> 40) == OUI_TRUESCALE)
+				dlid = pr.DGID.Type.Global.InterfaceID & 0xFFFFFFFF;
+			if ((pr.SGID.Type.Global.InterfaceID >> 40) == OUI_TRUESCALE)
+				slid = pr.SGID.Type.Global.InterfaceID & 0xFFFFFFFF;
+		}
+        *lid = dlid;
         *sl  = pr.u2.s.SL; 
         if (IB_LOG_IS_INTERESTED(VS_LOG_VERBOSE)) {
             IB_LOG_VERBOSE(" PathREC : ", madRc); 
-            IB_LOG_VERBOSEX("    DLid : ", *lid); 
-            IB_LOG_VERBOSEX("    SLid : ", pr.SLID); 
+            IB_LOG_VERBOSEX("    DLid : ", dlid); 
+            IB_LOG_VERBOSEX("    SLid : ", slid); 
             IB_LOG_VERBOSE("      SL : ", *sl);
         }
         

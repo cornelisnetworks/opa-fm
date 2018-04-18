@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT1 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -146,9 +146,10 @@ typedef struct _SMP_BLOCK {
 	
 	uint32		SmpByteCount;		/* Used size of *Smp in bytes */
 									/* When zero indicates MAD_BLOCK_SIZE */
+	uint32		RecvByteCount;		/* Total size of receive completion */
 	void		*Smp;				/* Pointer to SMP/MAD */
-	uint32		DLID;				/* destination LID */
-	uint32		SLID;				/* source LID */
+	STL_LID		DLID;				/* destination LID */
+	STL_LID		SLID;				/* source LID */
 
 	IB_PATHBITS	PathBits;			/* path bits */
 	uint8		StaticRate;			/* enum IB_STATIC_RATE */

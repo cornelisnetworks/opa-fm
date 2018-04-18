@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -45,6 +45,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <signal.h>
 #include <ixml.h>
 #include "cs_log.h"
+
 
 #ifdef __VXWORKS__
 #include "regexp.h"
@@ -93,7 +94,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define PM_DEFAULT_FF_LEASE 60				// in seconds
 
-#define PM_DEFAULT_MAX_ATTEMPTS			8
+#define PM_DEFAULT_MAX_ATTEMPTS			3
 #define PM_DEFAULT_RESP_TIMEOUT			250
 #define PM_DEFAULT_MIN_RESP_TIMEOUT		35
 #define PM_DEFAULT_SWEEP_ERRORS_LOG_THRESHOLD	10
@@ -102,12 +103,14 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define STL_PM_MAX_DG_PER_PMPG	5		//Maximum number of Monitors allowed in a PmPortGroup
 #define STL_PM_GROUPNAMELEN		64
-#define STL_PM_MAX_GROUPS		10
+#define STL_PM_MAX_CUSTOM_PORT_GROUPS 8 // HFIs and SWs take the first 2 slots.
 
 #define FE_LISTEN_PORT     	3245    // FAB_EXEC listen port
 #define FE_WIN_SIZE			1       // Default Window Size for Reliable
 #define FE_MAX_WIN_SIZE    	16      // Maximum window size 
 #define FE_MIN_WIN_SIZE    	1       // Minimum window size
+
+#define FE_MAX_TRAP_SUBS    20      // Maximum number of TrapSubs
 
 // max number of times to fail to check on master
 #define SM_CHECK_MASTER_INTERVAL 5
@@ -120,6 +123,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define SM_TRAP_THRESHOLD_COUNT_DEFAULT 10
 #define SM_TRAP_THRESHOLD_COUNT_MIN     2
 #define SM_TRAP_THRESHOLD_COUNT_MAX     100
+
+#define STL_CONFIGURABLE_SLS		16
+
 
 #define NONRESP_TIMEOUT  	600ull
 #define NONRESP_MAXRETRY 	3
@@ -183,6 +189,14 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define SM_PREEMPT_HEAD_MIN 80
 #define SM_PREEMPT_HEAD_DEF 80
 #define SM_PREEMPT_HEAD_INC 8
+#define SM_DEFAULT_MAX_LID  0xBFFF
+#define SM_MAX_LID_LIMIT    0xBFFF
+#define SM_MAX_9B_LID       0xBFFF
+
+// Note: Multicast and Collective masks are currently
+// not configurable.
+#define SM_DEFAULT_MULTICAST_MASK 4
+#define SM_DEFAULT_COLLECTIVE_MASK 1
 
 // Constants related to our multicast lid collescing scheme
 #define MAX_SUPPORTED_MCAST_GRP_CLASSES 32
@@ -202,17 +216,18 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // VF definitions - note that the number of devices is unlimited and has been
 // tested to 20,000
-#define MAX_CONFIGURED_VFABRICS				64
-#define MAX_ENABLED_VFABRICS				32
-#define MAX_VFABRIC_APPS					64
-#define MAX_VFABRIC_GROUPS					1024
+#define MAX_CONFIGURED_VFABRICS             64
+#define MAX_ENABLED_VFABRICS                32
+
+#define MAX_VFABRIC_APPS				64
+#define MAX_VFABRIC_GROUPS				1024
 #define MAX_VFABRIC_MEMBERS_PER_VF			1024
 #define MAX_VFABRIC_APPS_PER_VF				64
 #define MAX_VFABRIC_APP_SIDS				64
 #define MAX_VFABRIC_APP_MGIDS				64
-#define MAX_INCLUDED_GROUPS					32
-#define MAX_INCLUDED_APPS					32
-#define MAX_DEFAULT_GROUPS					64
+#define MAX_INCLUDED_GROUPS				32
+#define MAX_INCLUDED_APPS				32
+#define MAX_DEFAULT_GROUPS				64
 #define MAX_VFABRIC_DG_MGIDS				32
 
 // Length of VirtualFabric, Group, Application, Fm instance  Names
@@ -254,10 +269,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define CHECK_NO_ACTION_CCC_LEVEL		1
 #define CHECK_ACTION_CCC_LEVEL			2
 #define DEFAULT_CCC_LEVEL				CHECK_ACTION_CCC_LEVEL
-
-// config consistency check method
-#define MD5_CHECKSUM_METHOD				0
-#define SIMPLE_CHECKSUM_METHOD			1
 #define DEFAULT_CCC_METHOD				MD5_CHECKSUM_METHOD
 
 // values for Sm.PathSelection parameter
@@ -273,13 +284,16 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define SM_SKIP_WRITE_SWITCHINFO	0x00000008	// Includes Switch Info
 #define SM_SKIP_WRITE_VLARB			0x00000020	// Includes VLArb Tables (High / Low / Preempt Matrix)
 #define SM_SKIP_WRITE_MAPS			0x00000040	// Includes SL::SC, SC::SL, SC::VL
-#define SM_SKIP_WRITE_LFT			0x00000080	// Includes LFT, MFT
+
+#define SM_SKIP_WRITE_LFT			0x00000080	// Includes LFT and  MFT
+
 #define SM_SKIP_WRITE_AR			0x00000100	// Includes port group table, portgroup FDB
 #define SM_SKIP_WRITE_PKEY			0x00000200
 #define SM_SKIP_WRITE_CONG			0x00000400	// Includes HFI congestion / Switch congestion
 #define SM_SKIP_WRITE_BFRCTRL		0x00000800
 #define SM_SKIP_WRITE_NOTICE		0x00001000
 #define SM_SKIP_WRITE_PORTSTATEINFO 0x00002000  // Includes PortStateInfo sets for cascade activation
+
 
 // This can be used for values such as LogMask's where it is necessary
 // to know if a value was supplied.
@@ -296,12 +310,12 @@ typedef struct _XmlGuid {
 } XmlGuid_t;
 
 typedef struct _XmlNode {
-	char				node[MAX_VFABRIC_NAME + 1];
+	char				node[MAX_VFABRIC_NAME];
 	struct _XmlNode		*next;
 } XmlNode_t;
 
 typedef struct _XmlIncGroup {
-	char				group[MAX_VFABRIC_NAME + 1];
+	char				group[MAX_VFABRIC_NAME];
 	struct _XmlIncGroup	*next;
 } XmlIncGroup_t;
 
@@ -345,7 +359,7 @@ typedef struct _RegExp {
 
 // Virtual Fabric Group configuration
 typedef struct  _DGConfig {
-	char			name[MAX_VFABRIC_NAME + 1];
+	char			name[MAX_VFABRIC_NAME];
 	uint32_t		number_of_system_image_guids;
 	cl_qmap_t		system_image_guid;
 	uint32_t		number_of_node_guids;
@@ -366,6 +380,7 @@ typedef struct  _DGConfig {
 	uint8_t			select_hfi_direct_connect;
 	uint8_t			select_all_tfis;
 
+
 	// NodeType
 	uint8_t			node_type_fi;
 	uint8_t			node_type_sw;
@@ -385,7 +400,7 @@ typedef struct _XmlAppMgidMsk {
 
 // Virtual Fabric Application configuration
 typedef struct 	_AppConfig {
-	char			name[MAX_VFABRIC_NAME + 1]; /* MUST BE FIRST FIELD FOR MAP */
+	char			name[MAX_VFABRIC_NAME]; /* MUST BE FIRST FIELD FOR MAP */
 	uint32_t		serviceIdMapSize;
 	cl_qmap_t		serviceIdMap;
 	uint32_t		serviceIdRangeMapSize;
@@ -403,21 +418,22 @@ typedef struct 	_AppConfig {
 	uint8_t			select_sa;
 	uint8_t			select_unmatched_sid;
 	uint8_t			select_unmatched_mgid;
-	uint8_t			select_pm; 
+	uint8_t			select_pm;
+	uint8_t			select_em;
 } AppConfig_t;
 
 // Application configuration
 typedef struct _XMLApp {
-	char            application[MAX_VFABRIC_NAME + 1];
+	char            application[MAX_VFABRIC_NAME];
 } XMLApp_t;
 
 typedef struct _XMLMember {
-	char			member[MAX_VFABRIC_NAME + 1];
+	char			member[MAX_VFABRIC_NAME];
 } XMLMember_t;
 
 // Virtual Fabric configuration
 typedef struct 	_VFConfig {
-	char			name[MAX_VFABRIC_NAME + 1]; /* MUST BE FIRST FIELD FOR MAP */
+	char			name[MAX_VFABRIC_NAME]; /* MUST BE FIRST FIELD FOR MAP */
 	uint32_t		enable;
 	uint32_t		standby;
 	uint32_t		pkey;
@@ -455,7 +471,7 @@ typedef struct 	_DGXmlConfig {
 	DGConfig_t			*dg[MAX_VFABRIC_GROUPS];
 } DGXmlConfig_t;
 
-// VirtualFabric Database Composite per FM
+// VirtualFabrics Database Composite per FM
 typedef struct 	_VFXmlConfig {
 	uint32_t			number_of_vfs;
 	VFConfig_t			*vf[MAX_CONFIGURED_VFABRICS];
@@ -498,6 +514,8 @@ typedef struct _VFApp {
 													// defaults to 0
 	uint8_t				select_unmatched_mgid;		// boolean select unmatched MGID
 	uint8_t				select_pm;					// boolean select PM - defaults to 0
+
+
 } VFApp_t;
 
 // Internal rendering of Virtual Fabric Members
@@ -534,7 +552,10 @@ typedef struct _VFMem {
 // Internal rendering of Default Groups
 typedef struct _VFDg {
 	uint8_t				def_mc_create;				// if undefined will default to 1				
-	uint32_t			def_mc_pkey;			 	// if undefined will default to STL_DEFAULT_APP_PKEY
+	uint8_t				prejoin_allowed;			// 0 = false, non-zero = true.
+													// if undefined will default to 0
+	uint32_t			def_mc_pkey;			 	// if undefined will default to
+													// STL_DEFAULT_APP_PKEY
 	uint8_t				def_mc_mtu_int;				// if undefined will default to 0xff
 	uint8_t				def_mc_rate_int;			// if undefined will default to 0xff
 	uint8_t				def_mc_sl;					// if undefined will default to 0xff
@@ -552,7 +573,7 @@ typedef struct _VFDg {
 // Virtual Fabric will be created. Disabled Virtual Fabrics will not show
 // up as a defined VirtualFabric within this structure.
 typedef struct _VFabric {
-	char			name[MAX_VFABRIC_NAME + 1];		// defaults to "Default"
+	char			name[MAX_VFABRIC_NAME];		    // defaults to "Default"
 	uint32_t		index;							// one will be uniquely assigned
 	uint32_t		pkey;							// if 0xffffffff use default pkey
 	uint8_t			standby;						// is this virtual fabric in standby?
@@ -578,6 +599,7 @@ typedef struct _VFabric {
 	uint32_t		number_of_default_groups;		// number of default multicast groups
 	VFDg_t			*default_group;					// default group configuration linked list
     uint32_t		hoqlife_vf;						// HOQ Lifetime for this VF (overriding SM global)
+	uint8_t			hoqlife_specified;
     uint8_t         preempt_rank;                   // Preemption Rank, used for config preempt matrix.
 	uint32_t		consistency_checksum;
 	uint32_t		disruptive_checksum;
@@ -590,7 +612,6 @@ typedef struct _SMVirtualFabricsInternal {
 	uint32_t		number_of_vfs_all;				// valid active/standby virtual fabrics in v_fabric_all
 	uint8_t			securityEnabled;				// setup by SM
 	uint8_t			qosEnabled;						// setup by SM
-	VF_t			v_fabric[MAX_ENABLED_VFABRICS];	// array of active Virtual Fabrics
 	VF_t			v_fabric_all[MAX_ENABLED_VFABRICS];// array of active/standby Virtual Fabrics
 	uint32_t		consistency_checksum;
 	uint32_t		disruptive_checksum;
@@ -605,7 +626,8 @@ typedef struct _SMDPLXmlConfig {
 // SM Multicast DefaultGroup configuration
 typedef struct _SMMcastDefGrp {
 	uint32_t		def_mc_create;
-	char			virtual_fabric[MAX_VFABRIC_NAME + 1];
+	uint32_t		prejoin_allowed;
+	char			virtual_fabric[MAX_VFABRIC_NAME];
 	uint32_t		def_mc_pkey;
 	uint8_t			def_mc_mtu_int;
 	uint8_t			def_mc_rate_int;
@@ -710,6 +732,7 @@ typedef struct _SmCongestionXmlConfig {
 	SmCaCongestionXmlConfig_t ca;
 } SmCongestionXmlConfig_t;
 
+
 // Adaptive Routing control settings
 typedef struct _SmAdaptiveRoutingXmlConfig {
 	uint8_t enable;
@@ -723,12 +746,13 @@ typedef struct _SmAdaptiveRoutingXmlConfig {
 #define MAX_TIER	10
 typedef struct _SmFtreeRouting_t {
 	uint8_t 	debug;
-	uint8_t 	systematic;
+	uint8_t 	passthru;
 	uint8_t		tierCount;				// height of the fat tree. edges are rank 0.
 	uint8_t		fis_on_same_tier;		// indicates that all end nodes are at the bottom of the tree.
 	XMLMember_t	coreSwitches;			// device group indicating core switches
 	XMLMember_t	routeLast;				// device group indicating HFIs that should be routed last.
 } SmFtreeRouting_t;
+
 
 /*
  * Structure for Device Group Min Hop routing.
@@ -783,7 +807,7 @@ typedef struct _SmHypercubeRouting_t {
 #define DEFAULT_DOR_PORT_PAIR_WARN_THRESHOLD	5
 #define DEFAULT_UPDN_MC_SAME_SPANNING_TREE	1
 #define DEFAULT_ESCAPE_VLS_IN_USE			1
-#define DEFAULT_FAULT_REGIONS_IN_USE	1
+#define DEFAULT_FAULT_REGIONS_IN_USE		1
 
 typedef enum {
 	DOR_MESH,
@@ -846,12 +870,17 @@ typedef struct _SmPreDefTopoXmlConfig {
 
 extern const char* SmPreDefFieldEnfToText(FieldEnforcementLevel_t fieldEnfLevel);
 
+typedef enum {
+	LID_STRATEGY_SERIAL,
+	LID_STRATEGY_TOPOLOGY
+} LidStrategy_t;
+
+
 // SM configuration
 typedef struct _SMXmlConfig {
 	uint64_t	subnet_prefix;
 	uint32_t	subnet_size;
 	uint32_t	config_consistency_check_level;
-	uint32_t	config_consistency_check_method;
 
 	uint32_t	startup_retries;
 	uint32_t	startup_stable_wait;
@@ -859,6 +888,7 @@ typedef struct _SMXmlConfig {
     uint64_t    mkey;  
     uint64_t    timer;  
     uint32_t    IgnoreTraps;  
+    uint32_t    trap_hold_down;  
     uint32_t    max_retries;
     uint32_t    rcv_wait_msec;
     uint32_t    min_rcv_wait_msec;
@@ -894,20 +924,24 @@ typedef struct _SMXmlConfig {
  	uint32_t	check_mft_responses;
 	uint32_t	min_supported_vls;
 	uint64_t	cumulative_timeout_limit;
+	uint32_t	max_fixed_vls;
+
 	uint64_t	non_resp_tsec;
 	uint32_t	non_resp_max_count;
 
 	uint32_t	monitor_standby_enable;
 	uint32_t	loopback_mode; 		// disable duplicate portguid checking, allowing loopback fabrics
-	uint32_t	topo_lid_offset;
+	uint32_t	max_supported_lid;
 	uint32_t	force_rebalance;
 	uint32_t	use_cached_node_data;
+	uint32_t	use_cached_hfi_node_data;
 
     SMLinkPolicyXmlConfig_t hfi_link_policy;
     SMLinkPolicyXmlConfig_t isl_link_policy;
     SMPreemptionXmlConfig_t preemption;
 
 	SmCongestionXmlConfig_t congestion;
+
 
 	SmDorRouting_t smDorRouting;
 
@@ -934,6 +968,8 @@ typedef struct _SMXmlConfig {
 	uint32_t	sc_multi_block;				// # of SC->SC blocks per MAD. Valid range 
 											// 1-31 MADs to program SC tables.
 	uint32_t	optimized_portinfo;			// 0/1 - if true, use multi-port and aggregate
+											// MADs to program switch ports.
+	uint32_t    optimized_buffer_control;	// 0/1 - if true, use multi-port and uniform buffer ctrl
 											// MADs to program switch ports.
     SmAppliancesXmlConfig_t appliances;     // List of node GUIDs associated with appliance nodes
 	SmPreDefTopoXmlConfig_t preDefTopo; 	// Pre-defined topology verification options and field enforcement
@@ -976,7 +1012,7 @@ typedef struct _SMXmlConfig {
 	SmDGRouting_t dgRouting;
 	SmHypercubeRouting_t hypercubeRouting;
 
-	char        name[MAX_VFABRIC_NAME + 1];
+	char        name[MAX_VFABRIC_NAME];
 	uint32_t	start;
     uint32_t    hca;
     uint32_t	port;
@@ -1011,12 +1047,15 @@ typedef struct _SMXmlConfig {
 	uint32_t	loop_test_packets;
 
 	char		dumpCounters[LOGFILE_SIZE];	// Undocumented setting. Null - Disabled. Not Null - dump performance counters after each sweep.
-
+	uint32_t	lid_strategy;
+	uint32_t	P_Key_8B;
+	uint32_t	P_Key_10B;
 } SMXmlConfig_t;
 	
 
 typedef struct _XMLMonitor {
-	char			monitor[MAX_VFABRIC_NAME + 1];
+	char			monitor[MAX_VFABRIC_NAME];
+	uint16_t		dg_Index;
 } XMLMonitor_t;
 //Pm PortGroups
 typedef struct PmPortGroupXmlConfig {
@@ -1086,7 +1125,6 @@ typedef struct _PmShortTermHistoryXmlConfig {
 typedef struct _PMXmlConfig {
 	uint32_t	subnet_size;
 	uint32_t	config_consistency_check_level;
-	uint32_t	config_consistency_check_method;
 
     uint16_t    sweep_interval;
     uint32_t    timer;
@@ -1114,7 +1152,7 @@ typedef struct _PMXmlConfig {
 	PmCongestionWeightsXmlConfig_t congestionWeights;
 	PmResolutionXmlConfig_t resolution;
 	uint8_t		number_of_pm_groups;
-	PmPortGroupXmlConfig_t pm_portgroups[STL_PM_MAX_GROUPS];
+	PmPortGroupXmlConfig_t pm_portgroups[STL_PM_MAX_CUSTOM_PORT_GROUPS];
 	PmShortTermHistoryXmlConfig_t shortTermHistory;
     uint32_t    SslSecurityEnabled;
 	char		SslSecurityDir[FILENAME_SIZE];
@@ -1130,7 +1168,7 @@ typedef struct _PMXmlConfig {
 	uint32_t	overall_checksum;
 	uint32_t	disruptive_checksum;		// checksum of parameters that are disruptive to change
 
-	char        name[MAX_VFABRIC_NAME + 1];
+	char        name[MAX_VFABRIC_NAME];
 	uint32_t	start;
     uint32_t    hca;
     uint32_t	port;
@@ -1153,7 +1191,6 @@ typedef struct _PMXmlConfig {
 // FE configuration
 typedef struct _FEXmlConfig {
 	uint32_t	subnet_size;
-	uint32_t	config_consistency_check_method;
 	uint32_t	startup_retries;
 	uint32_t	startup_stable_wait;
 
@@ -1187,6 +1224,9 @@ typedef struct _FEXmlConfig {
 	uint32_t	syslog_mode;
 	char		syslog_facility[STRING_SIZE];
     FmParamU32_t log_masks[VIEO_LAST_MOD_ID+1]; 
+
+	uint32_t    trap_count;
+	uint16_t    trap_nums[FE_MAX_TRAP_SUBS];
 } FEXmlConfig_t;
 	
 // FM configuration (Shared)
@@ -1196,7 +1236,6 @@ typedef struct _FMXmlConfig {
 	uint32_t	startup_retries;
 	uint32_t	startup_stable_wait;
 	uint32_t	config_consistency_check_level;
-	uint32_t	config_consistency_check_method;
     uint32_t    SslSecurityEnabled;
 	char		SslSecurityDir[FILENAME_SIZE];
 	char		SslSecurityFmCertificate[FILENAME_SIZE];
@@ -1207,7 +1246,7 @@ typedef struct _FMXmlConfig {
     uint32_t    SslSecurityFmCaCRLEnabled;
     char        SslSecurityFmCaCRL[FILENAME_SIZE];				
 
-	char		fm_name[MAX_VFABRIC_NAME + 1];
+	char		fm_name[MAX_VFABRIC_NAME];
 	uint32_t	start;
     uint32_t    hca;
     uint32_t	port;
@@ -1227,6 +1266,9 @@ typedef struct _FMXmlConfig {
 	// FM config doesn't have checksums because all the data is contained in SM, PM, or FE configs
 } FMXmlConfig_t;
 
+
+
+
 // FM instance
 typedef struct _FMXmlInstance {
 	FMXmlConfig_t			fm_config;
@@ -1240,6 +1282,8 @@ typedef struct _FMXmlInstance {
 	AppXmlConfig_t			app_config;
 	PMXmlConfig_t			pm_config;
 	FEXmlConfig_t			fe_config;
+
+
 } FMXmlInstance_t;
 
 // XML debug
@@ -1263,6 +1307,8 @@ typedef struct _FMXmlCompositeConfig {
 extern FMXmlCompositeConfig_t* parseFmConfig(char *filename, uint32_t flags, uint32_t fm, uint32_t full, uint32_t embedded);
 extern void releaseXmlConfig(FMXmlCompositeConfig_t *config, uint32_t full);
 extern VirtualFabrics_t* renderVirtualFabricsConfig(uint32_t fm, FMXmlCompositeConfig_t *config, SMXmlConfig_t *smp, char *error);
+
+
 extern boolean applyVirtualFabricRules(VirtualFabrics_t *vfsip, IXmlParserPrintMessage printError, IXmlParserPrintMessage printWarning);
 extern void releaseVirtualFabricsConfig(VirtualFabrics_t *vfsip);
 extern void initXmlPoolGetCallback(void *function);
@@ -1289,7 +1335,7 @@ extern int putXMLConfigData(uint8_t *buffer, uint32_t filelen);
 extern int copyCompressXMLConfigFile(char *src, char *dst);
 extern int8_t copyDgVfInfo(FMXmlInstance_t *instance, DGXmlConfig_t *dg, VFXmlConfig_t *vf);
 extern FSTATUS MatchImplicitMGIDtoVF(SMMcastDefGrp_t *mdgp, VirtualFabrics_t *vf_config);
-extern FSTATUS MatchExplicitMGIDtoVF(SMMcastDefGrp_t *mdgp, VirtualFabrics_t *vf_config, int enforceVFPathRecs);
+extern FSTATUS MatchExplicitMGIDtoVF(SMMcastDefGrp_t *mdgp, VirtualFabrics_t *vf_config, boolean update_active_vfabrics, int enforceVFPathRecs);
 
 // Export XML Memory mapping functions for the SM to use with the Topology lib on ESM
 #ifdef __VXWORKS__

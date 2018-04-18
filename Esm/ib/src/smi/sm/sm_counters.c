@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -117,16 +117,18 @@ sm_counter_t smCounters[smCountersMax] = {
 	[smCounterSetSL2SCMappingTable]     = { "SM TX SET(SL2SCMappingTable)", 0, 0, 0 },
 	[smCounterGetSC2SLMappingTable]     = { "SM TX GET(SC2SLMappingTable)", 0, 0, 0 },
 	[smCounterSetSC2SLMappingTable]     = { "SM TX SET(SC2SLMappingTable)", 0, 0, 0 },
-	[smCounterGetSC2VLtMappingTable]     = { "SM TX GET(SC2VLtMappingTable)", 0, 0, 0 },
-	[smCounterSetSC2VLtMappingTable]     = { "SM TX SET(SC2VLtMappingTable)", 0, 0, 0 },
-	[smCounterGetSC2VLntMappingTable]     = { "SM TX GET(SC2VLntMappingTable)", 0, 0, 0 },
-	[smCounterSetSC2VLntMappingTable]     = { "SM TX SET(SC2VLntMappingTable)", 0, 0, 0 },
-	[smCounterGetSC2VLrMappingTable]     = { "SM TX GET(SC2VLrMappingTable)", 0, 0, 0 },
-	[smCounterSetSC2VLrMappingTable]     = { "SM TX SET(SC2VLrMappingTable)", 0, 0, 0 },
+	[smCounterGetSC2VLtMappingTable]    = { "SM TX GET(SC2VLtMappingTable)", 0, 0, 0 },
+	[smCounterSetSC2VLtMappingTable]    = { "SM TX SET(SC2VLtMappingTable)", 0, 0, 0 },
+	[smCounterGetSC2VLntMappingTable]   = { "SM TX GET(SC2VLntMappingTable)", 0, 0, 0 },
+	[smCounterSetSC2VLntMappingTable]   = { "SM TX SET(SC2VLntMappingTable)", 0, 0, 0 },
+	[smCounterGetSC2VLrMappingTable]    = { "SM TX GET(SC2VLrMappingTable)", 0, 0, 0 },
+	[smCounterSetSC2VLrMappingTable]    = { "SM TX SET(SC2VLrMappingTable)", 0, 0, 0 },
 	[smCounterGetSC2SCMappingTable]     = { "SM TX GET(SC2SCMappingTable)", 0, 0, 0 },
 	[smCounterSetSC2SCMappingTable]     = { "SM TX SET(SC2SCMappingTable)", 0, 0, 0 },
+	[smCounterSetSC2SCMultiSet]         = { "SM TX SET(SC2SCMultiSet)", 0, 0, 0 },
 	[smCounterGetVLArbitrationTable]    = { "SM TX GET(VLArbitrationTable)", 0, 0, 0 },
 	[smCounterSetVLArbitrationTable]    = { "SM TX SET(VLArbitrationTable)", 0, 0, 0 },
+
 	[smCounterGetLft]                   = { "SM TX GET(LFT)", 0, 0, 0 },
 	[smCounterSetLft]                   = { "SM TX SET(LFT)", 0, 0, 0 },
 	[smCounterGetMft]                   = { "SM TX GET(MFT)", 0, 0, 0 },
@@ -250,6 +252,14 @@ sm_counter_t smCounters[smCountersMax] = {
     [smCounterSaRxGetTblPortGroupRecord] = { "SA RX GETTBL(PortGroupRecord)", 0, 0, 0 },
     [smCounterSaRxGetPortGroupFwdRecord] = { "SA RX GET(PortGroupFwdRecord)", 0, 0, 0 },
     [smCounterSaRxGetTblPortGroupFwdRecord] = { "SA RX GETTBL(PortGroupFwdRecord)", 0, 0, 0 },
+
+	[smCounterSaRxGetDgMemberRecord]  = { "SA RX GET(DeviceGroupMemberRecord)", 0, 0, 0 },
+	[smCounterSaRxGetTblDgMemberRecord] = { "SA RX GETTBL(DeviceGroupMemberRecord)", 0, 0, 0 },
+	[smCounterSaRxGetDgNameRecord]  = { "SA RX GET(DeviceGroupNameRecord)", 0, 0, 0 },
+	[smCounterSaRxGetTblDgNameRecord] = { "SA RX GETTBL(DeviceGroupNameRecord)", 0, 0, 0 },
+
+	[smCounterSaRxGetDtMemberRecord]  = { "SA RX GET(DeviceTreeMemberRecord)", 0, 0, 0 },
+	[smCounterSaRxGetTblDtMemberRecord] = { "SA RX GETTBL(DeviceTreeMemberRecord)", 0, 0, 0 },
 
 	[smCounterSaRxReportResponse]       = { "SA RX REPORTRESP(Notice)", 0, 0, 0 },
 
@@ -421,7 +431,7 @@ char * snprintfcat(char * buf, int * len, const char * format, ...)
     if ((n = strlen(temp)) >= (*len - 4)) {
         *len *= 2;
         if (vs_pool_alloc(&sm_pool, *len, (void*)&tmp) != VSTATUS_OK) {
-            IB_FATAL_ERROR("snprintfcat: CAN'T ALLOCATE SPACE.");
+            IB_FATAL_ERROR_NODUMP("snprintfcat: CAN'T ALLOCATE SPACE.");
             vs_pool_free(&sm_pool, buf);
             return NULL;
         }
@@ -457,7 +467,7 @@ char * snprintfcat(char * buf, int * len, const char * format, ...)
 	if ((n = strlen(buf)) >= *len) {
 		*len *= 2;
 		if (vs_pool_alloc(&sm_pool, *len, (void*)&tmp) != VSTATUS_OK) {
-			IB_FATAL_ERROR("sm_print_counters_to_buf: CAN'T ALLOCATE SPACE.");
+			IB_FATAL_ERROR_NODUMP("sm_print_counters_to_buf: CAN'T ALLOCATE SPACE.");
 			vs_pool_free(&sm_pool, buf);
 			return NULL;
 		}
@@ -479,7 +489,7 @@ char * snprintfcat(char * buf, int * len, const char * format, ...)
 
 		*len *= 2;
 		if (vs_pool_alloc(&sm_pool, *len, (void*)&tmp) != VSTATUS_OK) {
-			IB_FATAL_ERROR("sm_print_counters_to_buf: CAN'T ALLOCATE SPACE.");
+			IB_FATAL_ERROR_NODUMP("sm_print_counters_to_buf: CAN'T ALLOCATE SPACE.");
 			vs_pool_free(&sm_pool, buf);
 			return NULL;
 		}
@@ -508,7 +518,7 @@ char * sm_print_counters_to_buf(void) {
 	time_t elapsedTime;
 
 	if (vs_pool_alloc(&sm_pool, len, (void*)&buf) != VSTATUS_OK) {
-		IB_FATAL_ERROR("sm_print_counters_to_buf: CAN'T ALLOCATE SPACE.");
+		IB_FATAL_ERROR_NODUMP("sm_print_counters_to_buf: CAN'T ALLOCATE SPACE.");
 		return NULL;
 	}
 

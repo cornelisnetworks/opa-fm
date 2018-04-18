@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -338,7 +338,7 @@ fe_conf_server_init(void){
 							  0,NULL,256 * 1024);
 
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't create remote configuration thread");
+		IB_FATAL_ERROR_NODUMP("can't create remote configuration thread");
 	}
 
 	return 0;

@@ -152,49 +152,50 @@ char *sa_getMethodText(int method) {
 Status_t
 sa_validate_mad(Mai_t *maip) {
     Status_t	rc = VSTATUS_OK;
+
 	IB_ENTER("sa_validate_mad", maip, 0, 0, 0);
 
-    if (maip->base.bversion != IB_BASE_VERSION && 
+	if (maip->base.bversion != IB_BASE_VERSION &&
 		maip->base.bversion != STL_BASE_VERSION) {
         IB_LOG_WARN_FMT( "sa_validate_mad",
                "Invalid SA Base Version %d received in %s[%s] request from LID [0x%x], TID ["FMT_U64"], ignoring request!",
                maip->base.bversion, sa_getMethodText((int)maip->base.method), sa_getAidName((int)maip->base.aid), maip->addrInfo.slid, maip->base.tid);
-	rc = VSTATUS_BAD;
-    } else if (maip->base.cversion != SA_MAD_CVERSION && 
-		maip->base.cversion != STL_SA_CLASS_VERSION) {
-        IB_LOG_WARN_FMT( "sa_validate_mad",
-               "Invalid SA Class Version %d received in %s[%s] request from LID [0x%x], TID ["FMT_U64"], ignoring request!",
-               maip->base.cversion, sa_getMethodText((int)maip->base.method), sa_getAidName((int)maip->base.aid), maip->addrInfo.slid, maip->base.tid);
-	rc = VSTATUS_BAD;
-    } else if (maip->base.bversion == IB_BASE_VERSION &&
-                maip->base.cversion == STL_SA_CLASS_VERSION) {
-        IB_LOG_WARN_FMT( "sa_validate_mad",
+		rc = VSTATUS_BAD;
+	} else if (maip->base.cversion != SA_MAD_CVERSION &&
+			maip->base.cversion != STL_SA_CLASS_VERSION) {
+            IB_LOG_WARN_FMT( "sa_validate_mad",
+                   "Invalid SA Class Version %d received in %s[%s] request from LID [0x%x], TID ["FMT_U64"], ignoring request!",
+                   maip->base.cversion, sa_getMethodText((int)maip->base.method), sa_getAidName((int)maip->base.aid), maip->addrInfo.slid, maip->base.tid);
+		rc = VSTATUS_BAD;
+    	} else if (maip->base.bversion == IB_BASE_VERSION &&
+    		maip->base.cversion == STL_SA_CLASS_VERSION) {
+        	IB_LOG_WARN_FMT( "sa_validate_mad",
                "Invalid SA Base Version %d - Class Version %d received in %s[%s] request from LID [0x%x], TID ["FMT_U64"], ignoring request!",
-               maip->base.bversion, maip->base.cversion,
-               sa_getMethodText((int)maip->base.method), sa_getAidName((int)maip->base.aid),
-               maip->addrInfo.slid, maip->base.tid);
-        rc = VSTATUS_BAD;
-    } else {
-        /*  Drop unsupported MADs */
-    	switch (maip->base.method) {
-    	case SA_CM_GET_RESP:
-    	case SA_CM_GETTABLE_RESP:
-        case SA_CM_REPORT:
-            if (smDebugPerf || saDebugPerf) {
-                IB_LOG_INFINI_INFO_FMT( "sa_validate_mad",
-                       "Unsupported or invalid %s[%s] request from LID [0x%x], TID["FMT_U64"]", 
-                       sa_getMethodText((int)maip->base.method), sa_getAidName((int)maip->base.aid), maip->addrInfo.slid, maip->base.tid);
-            }
-    	    IB_EXIT("sa_validate_mad", VSTATUS_OK);
-    	    rc = VSTATUS_BAD;
-            break;
-        default:
-            break;
+        		maip->base.bversion, maip->base.cversion, 
+			sa_getMethodText((int)maip->base.method), sa_getAidName((int)maip->base.aid), 
+			maip->addrInfo.slid, maip->base.tid);
+    		rc = VSTATUS_BAD;
+    	} else {
+           /*  Drop unsupported MADs */
+    		switch (maip->base.method) {
+    			case SA_CM_GET_RESP:
+    			case SA_CM_GETTABLE_RESP:
+        		case SA_CM_REPORT:
+            			if (smDebugPerf || saDebugPerf) {
+                			IB_LOG_INFINI_INFO_FMT( "sa_validate_mad",
+                       			"Unsupported or invalid %s[%s] request from LID [0x%x], TID["FMT_U64"]", 
+                       			sa_getMethodText((int)maip->base.method), sa_getAidName((int)maip->base.aid), maip->addrInfo.slid, maip->base.tid);
+            			}
+    				IB_EXIT("sa_validate_mad", VSTATUS_OK);
+    				rc = VSTATUS_BAD;
+            			break;
+        		default:
+            			break;
+    		}
     	}
-    }
 
-    IB_EXIT("sa_validate_mad", rc);
-    return(rc);
+    	IB_EXIT("sa_validate_mad", rc);
+	return(rc);
 }
 
 //
@@ -330,6 +331,7 @@ sa_process_mad(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
           break;
 	case STL_SA_ATTR_SC2VL_T_MAPTBL_RECORD:
 	case STL_SA_ATTR_SC2VL_NT_MAPTBL_RECORD:
+	case STL_SA_ATTR_SC2VL_R_MAPTBL_RECORD:
 		(void)sa_SCVLTableRecord(maip, sa_cntxt);
 		break;
 	case SA_SMINFO_RECORD:
@@ -381,6 +383,15 @@ sa_process_mad(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 	case STL_SA_ATTR_PGROUP_FWDTBL_RECORD:
 		sa_PortGroupFwdRecord(maip, sa_cntxt);
 		break;
+	case STL_SA_ATTR_DG_NAME_RECORD:
+		(void)sa_DeviceGroupNameRecord(maip, sa_cntxt);
+		break;
+	case STL_SA_ATTR_DG_MEMBER_RECORD:
+		(void)sa_DeviceGroupMemberRecord(maip, sa_cntxt);
+		break;
+	case STL_SA_ATTR_DT_MEMBER_RECORD:
+		(void)sa_DeviceTreeMemberRecord(maip, sa_cntxt);
+		break;
 	case STL_SA_ATTR_SWITCH_COST_RECORD:
 		(void)sa_SwitchCostRecord(maip, sa_cntxt);
 		break;
@@ -407,7 +418,7 @@ sa_process_mad(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
         /* lids have been swapped, so use dlid here */
         (void) vs_time_get (&endTime);
         IB_LOG_INFINI_INFO_FMT( "sa_process_mad", 
-               "%ld microseconds to process %s[%s] request from LID 0x%.4X, TID="FMT_U64,
+               "%ld microseconds to process %s[%s] request from LID 0x%.8X, TID="FMT_U64,
                (long)(endTime - startTime), sa_getMethodText((int)sa_cntxt->method), 
                sa_getAidName(maip->base.aid), maip->addrInfo.dlid, maip->base.tid);
     }
@@ -420,7 +431,7 @@ sa_process_mad(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 Status_t
 sa_send_reply(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 	uint8_t		method;
-	uint16_t	lid;
+	STL_LID	lid;
 
 	IB_ENTER("sa_send_reply", maip, sa_cntxt, 0, 0);
 
@@ -530,7 +541,7 @@ sa_send_reply(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 Status_t sa_getMulti_resend_ack(sa_cntxt_t *sa_cntxt) {
     Mai_t       mad;
 	STL_SA_MAD	samad;
-    uint16_t    lid;
+    STL_LID    lid;
     Status_t    status=VSTATUS_OK;
     /* set the mai handle to use for sending - use reader handle fd_sa if no context */
     IBhandle_t  fd = (sa_cntxt->sendFd) ? sa_cntxt->sendFd : fd_sa;
@@ -599,7 +610,7 @@ Status_t sa_getMulti_resend_ack(sa_cntxt_t *sa_cntxt) {
 */
 static Status_t send_ack(Mai_t *maip, STL_SA_MAD *samad, sa_cntxt_t* sa_cntxt, uint16_t wsize) {
     Status_t    rc=VSTATUS_OK;
-    uint16_t    lid;
+    STL_LID    lid;
     /* set the mai handle to use for sending - use reader handle fd_sa if no context */
     IBhandle_t  fd = (sa_cntxt->sendFd) ? sa_cntxt->sendFd : fd_sa;
 
@@ -649,7 +660,7 @@ sa_receive_getmulti(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
     uint16_t    bytesRcvd=0, badPayloadLen=0;
     uint16_t    sendStopAbort=0;    // 2=ABORT, 1=STOP
 	uint16_t	wsize=1;            // ACK window of 1
-    uint16_t    lid;
+    STL_LID    lid;
     uint32_t    len;
     Status_t    rc=VSTATUS_OK;
     /* set the mai handle to use for sending - use reader handle fd_sa if no context */
@@ -1473,7 +1484,7 @@ sa_cache_init(void)
 	// init lock
 	rc = vs_lock_init(&saCache.lock, VLOCK_FREE, VLOCK_THREAD);
 	if (rc != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't initialize SA cache lock");
+		IB_FATAL_ERROR_NODUMP("can't initialize SA cache lock");
 	}
 	
 	IB_EXIT("sa_cache_init", rc);
@@ -1963,8 +1974,8 @@ sa_Compare_Port_PKeys(Port_t *port1, Port_t *port2) {
     //
     //	Loop over both arrays looking for at least one match.
     //
-	for (i = 0; (i < SM_PKEYS) && (i < port1->portData->num_pkeys); i++) {
-		for (j = 0; (j < SM_PKEYS) && (j < port2->portData->num_pkeys); j++) {
+	for (i = 0; (i < SM_PKEYS) && (i <= bitset_find_last_one(&port1->portData->pkey_idxs)); i++) {
+		for (j = 0; (j < SM_PKEYS) && (j <= bitset_find_last_one(&port2->portData->pkey_idxs)); j++) {
 			if ((PKEY_VALUE(key1[i].AsReg16) == PKEY_VALUE(key2[j].AsReg16)) &&
 				((PKEY_TYPE(key1[i].AsReg16) == PKEY_TYPE_FULL) ||
 				 (PKEY_TYPE(key2[j].AsReg16) == PKEY_TYPE_FULL))) {
@@ -2048,7 +2059,6 @@ sa_data_offset(uint16_t class, uint16_t type) {
 
 	template_type = type;
 	template_fieldp = NULL;
-
 //
 //	Create the mask for the comparisons.
 //
@@ -2119,8 +2129,8 @@ sa_data_offset(uint16_t class, uint16_t type) {
 		template_fieldp = StlVLArbTableRecordFieldMask;
 		break;
 	case SA_PATH_RECORD:
-		template_length = sizeof(IB_PATH_RECORD);
-		template_fieldp = PathRecordFieldMask;
+			template_length = sizeof(IB_PATH_RECORD);
+			template_fieldp = PathRecordFieldMask;
 		break;
 	case STL_SA_ATTR_MCMEMBER_RECORD:
 		if (class == STL_SA_CLASS_VERSION) {
@@ -2139,6 +2149,18 @@ sa_data_offset(uint16_t class, uint16_t type) {
 		template_length = sizeof(STL_VFINFO_RECORD);
 		template_fieldp = StlVfInfoRecordFieldMask;
 		break;
+	case STL_SA_ATTR_DG_MEMBER_RECORD:
+		template_length = sizeof(STL_DEVICE_GROUP_MEMBER_RECORD);
+		template_fieldp = StlDgMemberRecordFieldMask;
+		break;
+	case STL_SA_ATTR_DG_NAME_RECORD:
+		template_length = sizeof(STL_DEVICE_GROUP_NAME_RECORD);
+		template_fieldp = StlDgNameRecordFieldMask;
+		break;
+	case STL_SA_ATTR_DT_MEMBER_RECORD:
+		template_length = sizeof(STL_DEVICE_TREE_MEMBER_RECORD);
+		template_fieldp = StlDtMemberRecordFieldMask;
+		break;
 	default:
         //IB_LOG_ERROR_FMT( "sa_data_offset", "Unsupported SA attribute %x", type);
 		IB_EXIT("sa_data_offset", VSTATUS_BAD);
@@ -2155,7 +2177,7 @@ sa_data_offset(uint16_t class, uint16_t type) {
 }
 
 char *sa_getAidName(uint16_t aid) {
-	static char num[] = "0x0000";
+	static char num[8] = "0x0000";
     static char *aidName[0x40]={	/* 0x00 to 0x3F */
 		"0x00","CLASSPORTINFO","NOTICE","INFORMINFO","0x4","0x5","0x6","0x7",
 		"0x08","0x09","0x0A","0x0B","0x0C","0x0D","0x0E","0x0F",
@@ -2179,7 +2201,7 @@ char *sa_getAidName(uint16_t aid) {
 	else if (aid == SA_INFORM_RECORD)	/* 0xF3 */
 		return "INFORMINFORECORD";
 	else {
-		sprintf(num, "0x%.2X", aid);
+		snprintf(num, sizeof(num), "0x%.2X", aid);
 		return(num);
 	}
 }
@@ -2195,7 +2217,7 @@ uint8_t linkWidthToRate(PortData_t *portData) {
 				case STL_LINK_WIDTH_3X: return IB_STATIC_RATE_40G; // STL_STATIC_RATE_37_5G;
 				case STL_LINK_WIDTH_4X: return IB_STATIC_RATE_56G; // STL_STATIC_RATE_50G
 				default: return IB_STATIC_RATE_1GB; // Invalid!
-    }
+    	}
 		case STL_LINK_SPEED_25G:
 			switch (portInfo->LinkWidth.Active) {
 				case STL_LINK_WIDTH_1X: return IB_STATIC_RATE_25G;
@@ -2203,8 +2225,7 @@ uint8_t linkWidthToRate(PortData_t *portData) {
 				case STL_LINK_WIDTH_3X: return IB_STATIC_RATE_80G; // STL_STATIC_RATE_75G;
 				case STL_LINK_WIDTH_4X: return IB_STATIC_RATE_100G;
 				default: return IB_STATIC_RATE_1GB; // Invalid!
-	}
-
+		}
 		default: return IB_STATIC_RATE_1GB; // Invalid!
 	}
 }
@@ -2366,7 +2387,7 @@ int getDefBcGrp(uint16_t *pKey, uint8_t	*mtu, uint8_t *rate, uint8_t *sl, uint32
 	}
 
 	if (*rate == 0) {
-		*rate = IB_STATIC_RATE_100G;
+		*rate = IB_STATIC_RATE_200G;
 	}
 	return 1;
 }
@@ -2382,8 +2403,9 @@ Status_t sa_SetDefBcGrp(void) {
 	(void)vs_rdlock(&old_topology_lock);
 	VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
 
-	for (vf= 0; vf < VirtualFabrics->number_of_vfs && vf < MAX_VFABRICS; vf++) {
-		for (mcastGrpp = VirtualFabrics->v_fabric[vf].default_group; mcastGrpp;
+	for (vf= 0; vf < VirtualFabrics->number_of_vfs_all && vf < MAX_VFABRICS; vf++) {
+		if (VirtualFabrics->v_fabric_all[vf].standby) continue;
+		for (mcastGrpp = VirtualFabrics->v_fabric_all[vf].default_group; mcastGrpp; 
 			 mcastGrpp = mcastGrpp->next_default_group) {
 			if (mcastGrpp->def_mc_create) {
 				if (!mcastGrpp->mgidMapSize) {
@@ -2416,22 +2438,18 @@ Status_t sa_SetDefBcGrp(void) {
 // 				can be useful to limit paths to switches where redundant paths
 // 				not important because would only be redundant in 1 direction
 void lid_iterator_init(lid_iterator_t *iter,
-				Port_t *src_portp, uint16 src_start_lid, uint16 src_lid_len,
-				Port_t *dst_portp, uint16 dst_start_lid, uint16 dst_lid_len,
+				Port_t *src_portp, STL_LID src_start_lid, STL_LID src_lid_len,
+				Port_t *dst_portp, STL_LID dst_start_lid, STL_LID dst_lid_len,
 				int path_mode,
-			   	uint16 *slid, uint16 *dlid)
+			   	STL_LID *slid, STL_LID *dlid)
 {
-	//*slid = iter->slid = iter->src_start = src_portp->portData->lid;
-	//iter->src_endp1 = iter->src_start + (1<<src_portp->portData->lmc);
 	*slid = iter->slid = iter->src_start = src_start_lid;
 	iter->src_endp1 = iter->src_start + src_lid_len ;
-	iter->src_lmc_mask = ~(0xffff<<src_portp->portData->lmc);
+	iter->src_lmc_mask = ~(0xffffffff<<src_portp->portData->lmc);
 
-	//*dlid = iter->dlid = iter->dst_start = dst_portp->portData->lid;
-	//iter->dst_endp1 = iter->dst_start + (1<<dst_portp->portData->lmc);
 	*dlid = iter->dlid = iter->dst_start = dst_start_lid;
 	iter->dst_endp1 = iter->dst_start + dst_lid_len;
-	iter->dst_lmc_mask = ~(0xffff<<dst_portp->portData->lmc);
+	iter->dst_lmc_mask = ~(0xffffffff<<dst_portp->portData->lmc);
 
 	switch (path_mode) {
 	case PATH_MODE_PAIRWISE:
@@ -2459,7 +2477,7 @@ int lid_iterator_done(lid_iterator_t *iter)
 		|| iter->phase > iter->end_phase);
 }
 
-void lid_iterator_next(lid_iterator_t *iter, uint16 *slid, uint16 *dlid)
+void lid_iterator_next(lid_iterator_t *iter, STL_LID *slid, STL_LID *dlid)
 {
 	if (iter->phase == 0) {
 		// PATH_MODE_PAIRWISE or 1st part of PATH_MODE_ORDERALL
@@ -2531,8 +2549,8 @@ void lid_iterator_next(lid_iterator_t *iter, uint16 *slid, uint16 *dlid)
 	}
 	return;
 done:
-	*slid = (iter->src_start & (0xffff ^ iter->src_lmc_mask)) | (iter->slid & iter->src_lmc_mask);
-	*dlid = (iter->dst_start & (0xffff ^ iter->dst_lmc_mask)) | (iter->dlid & iter->dst_lmc_mask);
+	*slid = (iter->src_start & (0xffffffff ^ iter->src_lmc_mask)) | (iter->slid & iter->src_lmc_mask);
+	*dlid = (iter->dst_start & (0xffffffff ^ iter->dst_lmc_mask)) | (iter->dlid & iter->dst_lmc_mask);
 	return;
 }
 
@@ -2548,26 +2566,26 @@ done:
 // src is the fixed side, dst is the iterated side.
 // doesn't really matter if src is source or dest and visa versa
 void lid_iterator_init1(lid_iterator_t *iter,
-				Port_t *src_portp, uint16 slid, uint16 src_lid_start, uint16 src_lid_len,
-				Port_t *dst_portp, uint16 dst_lid_start, uint16 dst_lid_len,
+				Port_t *src_portp, STL_LID slid, STL_LID src_lid_start, STL_LID src_lid_len,
+				Port_t *dst_portp, STL_LID dst_lid_start, STL_LID dst_lid_len,
 			   	int path_mode,
-			   	uint16 *dlid)
+			   	STL_LID *dlid)
 {
-	uint16 slid_offset;
+	STL_LID slid_offset;
 
 	//iter->src_start = src_portp->portData->lid;
 	iter->src_start = src_lid_start;
 	iter->slid = slid;
 	//iter->src_endp1 = iter->src_start + (1<<src_portp->portData->lmc);
 	iter->src_endp1 = iter->src_start + src_lid_len;
-	iter->src_lmc_mask = ~(0xffff<<src_portp->portData->lmc);
+	iter->src_lmc_mask = ~(0xffffffff<<src_portp->portData->lmc);
 	slid_offset = slid & iter->src_lmc_mask;
 
 	//*dlid = iter->dlid = iter->dst_start = dst_portp->portData->lid;
 	*dlid = iter->dlid = iter->dst_start = dst_lid_start;
 	//iter->dst_endp1 = iter->dst_start + (1<<dst_portp->portData->lmc);
 	iter->dst_endp1 = iter->dst_start + dst_lid_len;
-	iter->dst_lmc_mask = ~(0xffff<<dst_portp->portData->lmc);
+	iter->dst_lmc_mask = ~(0xffffffff<<dst_portp->portData->lmc);
 
 	switch (path_mode) {
 	case PATH_MODE_PAIRWISE:
@@ -2608,7 +2626,7 @@ int lid_iterator_done1(lid_iterator_t *iter)
 	return ( iter->dlid >= iter->dst_endp1 || iter->phase > iter->end_phase);
 }
 
-void lid_iterator_next1(lid_iterator_t *iter, uint16 *dlid)
+void lid_iterator_next1(lid_iterator_t *iter, STL_LID *dlid)
 {
 	if (iter->phase == 0) {
 		// pairwise SLID1 DLID1, SLID2, DLID2, etc
@@ -2652,6 +2670,6 @@ void lid_iterator_next1(lid_iterator_t *iter, uint16 *dlid)
 	}
 	return;
 done:
-	*dlid = (iter->dst_start & (0xffff ^ iter->dst_lmc_mask)) | (iter->dlid & iter->dst_lmc_mask);
+	*dlid = (iter->dst_start & ~iter->dst_lmc_mask) | (iter->dlid & iter->dst_lmc_mask);
 	return;
 }

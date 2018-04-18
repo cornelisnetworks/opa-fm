@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -98,13 +98,13 @@ typedef struct MadtStruct_ {
 	} MadtStruct;
 
 typedef struct MadAddrStruct_ {
-		STL_LID_32	DestLid;				/* DLID */
+		STL_LID		DestLid;				/* DLID */
 		IB_PATHBITS	PathBits;				/* PathBits */
 		uint8		StaticRate;				/* The maximum static rate supported */
 											/* enum IB_STATIC_RATE */
 		union AddrType_ {
 			struct Smi_ {
-				STL_LID_32	SourceLid;		/* SLID */
+				STL_LID		SourceLid;		/* SLID */
 				uint8		PortNumber;		/* Incomming PortNumber		 */
 											/* Returned on RecvCompletion */
 											/* not required for Sends */
@@ -571,6 +571,7 @@ FSTATUS (UMADT_DEREGISTER)(
 		);
 IBA_API UMADT_DEREGISTER iba_umadt_deregister;
 
+#if defined(PRODUCT_STL1)
 static __inline void
 GetSmiAddrFromPath( IN const IB_PATH_RECORD *pPathRecord,
 					OUT MadAddrStruct *pAddrInfo
@@ -581,6 +582,7 @@ GetSmiAddrFromPath( IN const IB_PATH_RECORD *pPathRecord,
 	pAddrInfo->StaticRate = pPathRecord->Rate;
 	pAddrInfo->AddrType.Smi.SourceLid = pPathRecord->SLID;
 }
+#endif
 
 static __inline void
 GetGsiAddrFromPath( IN const IB_PATH_RECORD *pPathRecord,

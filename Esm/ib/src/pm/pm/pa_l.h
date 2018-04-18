@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -32,7 +32,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define	_PA_L_H_
 
 #include "ib_const.h"
-#include "ib_types.h"
+#include "stl_types.h"
 #include "cs_g.h"
 #include "cs_hashtable.h"
 
@@ -42,7 +42,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 typedef struct pa_cntxt {
 	uint64_t	tstamp ;
 	uint64_t	tid ;		// Tid for hash table search
-	uint16_t	lid ;		// Lid for hash table search
+	STL_LID 	lid ;		// Lid for hash table search
     uint16_t    method;     // initial method requested by initiator
     IBhandle_t	sendFd;     // mai handle to use for sending packets (fd_sa for 1st seg and fd_pa_w threafter)
 	uint8_t		hashed ;	// Entry is inserted into the hash table

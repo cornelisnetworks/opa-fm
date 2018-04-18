@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -102,7 +102,7 @@ sm_get_buffer_control_tables(IBhandle_t fd_topology, Node_t *nodep,
 			   port, sm_nodeDescString(nodep));
 		free(pbct);
 		return VSTATUS_BAD;
-	} 
+	}
 	path = PathToPort(nodep, portp);
 
 	/*
@@ -148,11 +148,11 @@ error:
 Status_t
 sm_set_buffer_control_tables(IBhandle_t fd_topology, Node_t *nodep,
 						uint8_t start_port, uint8_t end_port,
-						STL_BUFFER_CONTROL_TABLE bcts[])
+						STL_BUFFER_CONTROL_TABLE bcts[],
+						uint8_t uniform_bcts)
 {
 	Status_t status = VSTATUS_OK;
     uint8 maxcount = STL_NUM_BFRCTLTAB_BLOCKS_PER_LID_SMP;
-//	unsigned char *path = NULL;
 	uint16_t port;
 	uint8_t num_ports;
 	uint64_t mkey;
@@ -160,10 +160,6 @@ sm_set_buffer_control_tables(IBhandle_t fd_topology, Node_t *nodep,
 	extern char * sm_getMadStatusText(uint16_t status);
 	Port_t *destPortp;
 	uint32_t dlid = 0;
-
-	// Temporary debug if needed...
-	//printf ("sm_set_buffer_control_table for node %s ports %u - %u\n",
-	//  	  nodep?sm_nodeDescString(nodep):"<NULL>", start_port, end_port);
 
 	IB_ENTER(__func__, nodep, start_port, end_port, 0);
 
@@ -189,54 +185,122 @@ sm_set_buffer_control_tables(IBhandle_t fd_topology, Node_t *nodep,
 	port = nodep->nodeInfo.NodeType == NI_TYPE_CA ? start_port : 0;
 	destPortp = sm_get_port(nodep, port);
 	if (!sm_valid_port(destPortp)) {
-		cs_log(VS_LOG_VERBOSE, "sm_set_buffer_control_table", 
+		cs_log(VS_LOG_VERBOSE, "sm_set_buffer_control_table",
 			   "Failed to get Port %d of node %s",
 			   port, sm_nodeDescString(nodep));
 		return VSTATUS_BAD;
-	} 
-//	path = PathToPort(nodep, destpPortp);
+	}
+
 	dlid = destPortp->portData->lid;
 
-	/**
-	 * FIXME Optimization loop through ports specified and see if they are all
-	 * the same.  If so use "All" bit
-	 */
-
-	/*
-	 * FIXME Optimization:
-	 * this could be updated to set only ports which are LinkUp.
-	 * But that makes the block algorithm much more difficult and for most
-	 * large fabrics you will only be missing a small number of links which
-	 * means it is likely just as efficient to set all ports in large ranges.
-	 */
-	for (port = start_port; port <= end_port; port += maxcount) {
-		uint8_t n = MIN(maxcount, (end_port - port)+1);
-		uint32_t am = (n << 24) | port;
-		STL_BUFFER_CONTROL_TABLE *buf = &bcts[port-start_port];
-
-		status = SM_Set_BufferControlTable_LR(fd_topology, am, sm_lid, dlid, buf, mkey, &madStatus);
+	if (uniform_bcts) {
+		// All the ports have identical BCts, so send one block with the all
+		// ports bit set.
+		uint32_t amod = (1<<24) + (1<<8) + start_port;
+		status = SM_Set_BufferControlTable_LR(fd_topology, amod, sm_lid,
+			dlid, &bcts[0], mkey, &madStatus);
 		if (status != VSTATUS_OK) {
 			cs_log(VS_LOG_ERROR, "sm_set_buffer_control_table",
-					"buffer control table query failed; node %s; %s (madStatus=%s)",
-					sm_nodeDescString(nodep),
-					cs_convert_status (status), sm_getMadStatusText(madStatus));
+				"buffer control table query failed; node %s; %s (madStatus=%s)",
+				sm_nodeDescString(nodep),
+				cs_convert_status (status), sm_getMadStatusText(madStatus));
 			goto error;
 		} else {
 			/**
 			 * If the Set was successful update port data
 			 */
-			uint8_t p;
-			for (p = port; p < (port+n); p++) {
+			for (port = start_port; port <= end_port; port++) {
 				Port_t *portp;
-				portp = sm_get_port(nodep, p);
+				portp = sm_get_port(nodep, port);
 				if (!sm_valid_port(portp)) {
-					cs_log(VS_LOG_VERBOSE, "sm_set_buffer_control_table", 
-						   "Failed to get port %d of node %s",
-						   port, sm_nodeDescString(nodep));
+					cs_log(VS_LOG_VERBOSE, "sm_set_buffer_control_table",
+									"Failed to get port %d of node %s",
+									port, sm_nodeDescString(nodep));
 					continue;
 				}
-				memcpy(&portp->portData->bufCtrlTable, &buf[p-port],
-						sizeof(portp->portData->bufCtrlTable));
+				memcpy(&portp->portData->bufCtrlTable, &bcts[0],
+								sizeof(portp->portData->bufCtrlTable));
+			}
+		}
+	} else {
+		// Send the BCTs in the fewest MADs possible. A single MAD can hold
+		// up to maxcount BCTs, but may hold fewer because we need to omit
+		// ports that are not up.
+		//
+		// In this loop, the value of num_ports is the # of BCTs that can be
+		// sent in the next MAD, including the current port. We may end up
+		// sending less than that if the current port is not valid or isn't up.
+		for (num_ports = 1, port = start_port; port <= end_port;
+			num_ports++, port ++) {
+			Port_t *portp = sm_get_port(nodep, port);
+
+			if (!sm_valid_port(portp)) {
+				cs_log(VS_LOG_VERBOSE, "sm_set_buffer_control_table",
+					"Failed to get port %d of node %s",
+					port, sm_nodeDescString(nodep));
+			}
+
+			if (!sm_valid_port(portp) || (portp->state < IB_PORT_INIT)) {
+				// We have to skip down ports, so send what we have, not
+				// including the bad port.  If this is the only port
+				// (num_ports == 1) then skip the send.
+				if (num_ports > 1) {
+					uint16_t first_port = port - num_ports + 1;
+					STL_BUFFER_CONTROL_TABLE *buf = &bcts[first_port-start_port];
+					uint32_t amod = ((num_ports-1)<<24) | first_port;
+
+					status = SM_Set_BufferControlTable_LR(fd_topology, amod,
+						sm_lid, dlid, buf, mkey, &madStatus);
+					if (status != VSTATUS_OK) {
+						cs_log(VS_LOG_ERROR, "sm_set_buffer_control_table",
+										"buffer control table query failed; node %s; %s (madStatus=%s)",
+										sm_nodeDescString(nodep),
+										cs_convert_status (status), sm_getMadStatusText(madStatus));
+						goto error;
+					} else {
+						/*
+						 * If the Set was successful update port data
+						 */
+						uint8_t p;
+						for (p = first_port; p < port; p++) {
+							Port_t *portp2 = sm_get_port(nodep, p);
+							if (sm_valid_port(portp2)) {
+								memcpy(&portp2->portData->bufCtrlTable, &buf[p-first_port],
+												sizeof(portp2->portData->bufCtrlTable));
+							}
+						}
+					}
+				}
+
+				// Note that this will get set back to 1 by the for loop.
+				num_ports = 0;
+			} else if ((num_ports == maxcount) || port == end_port) {
+				// Unlike the previous case, here we include the current port.
+				uint16_t first_port = port - num_ports + 1;
+				STL_BUFFER_CONTROL_TABLE *buf = &bcts[first_port-start_port];
+				uint32_t amod = (num_ports<<24) | first_port;
+
+				status = SM_Set_BufferControlTable_LR(fd_topology, amod, sm_lid, dlid, buf, mkey, &madStatus);
+				if (status != VSTATUS_OK) {
+					cs_log(VS_LOG_ERROR, "sm_set_buffer_control_table",
+						"buffer control table query failed; node %s; %s (madStatus=%s)",
+						sm_nodeDescString(nodep),
+						cs_convert_status (status), sm_getMadStatusText(madStatus));
+					goto error;
+				} else {
+					/*
+					 * If the Set was successful update port data
+					 */
+					uint8_t p;
+					for (p = first_port; p <= port; p++) {
+						Port_t *portp2 = sm_get_port(nodep, p);
+						memcpy(&portp2->portData->bufCtrlTable, &buf[p-first_port],
+							sizeof(portp2->portData->bufCtrlTable));
+					}
+				}
+
+				// Note that this will get set back to 1 by the for loop.
+				num_ports = 0;
 			}
 		}
 	}

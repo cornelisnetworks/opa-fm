@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -184,7 +184,7 @@ Status_t dumpTopologyStruct(const char * dumpDir, FILE * mapFile)
 
 	printf("Dumping lidmap\n");
 	if (VSTATUS_OK != (rc = dumpStructure(lidmap, sizeof(LidMap_t) *
-	                                              (UNICAST_LID_MAX + 1),
+	                                              (STL_GET_UNICAST_LID_MAX() + 1),
 	                                      lidFile, LIDMAP_FNAME, mapFile)))
 		goto bail;
 

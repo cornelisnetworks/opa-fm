@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -32,7 +32,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <mal_g.h>
 #include <ib_macros.h>
 #include <if3.h>
-             
 #include "opamgt_priv.h"
 #include <ib_mad.h>
 #include <ib_sa.h>
@@ -108,6 +107,7 @@ static struct omgt_class_args fe_class_args[] = {
 	{ IB_BASE_VERSION, MAD_CV_VFI_PM, 1,
 		.kernel_rmpp=0, .oui=ib_truescale_oui, .use_methods=1,
 		.methods={ FE_CMD_RESP, RMPP_CMD_GET, RMPP_CMD_GETTABLE }},
+	{ 0 }
 };
 
 static struct omgt_class_args fe_proc_class_args[] = {
@@ -142,6 +142,7 @@ static struct omgt_class_args pm_class_args[] = {
 		.is_responding_client=0, .is_trap_client=0, .is_report_client=0, .kernel_rmpp=0, .oui=0, .use_methods=0},
 	{ 0 }
 };
+
 
 int ib_instrumentJmMads = 0;
 
@@ -371,6 +372,7 @@ ib_register_pm(int queue_size)
 }
 
 
+
 //==============================================================================
 static void
 dump_mad(uint8_t *buf, int len, char *prefix)
@@ -479,8 +481,8 @@ ib_recv_sma(IBhandle_t handle, Mai_t *mai, uint64_t timeout)
    mai->addrInfo.sl     = addr.sl; 
 
    if(mai->base.mclass == MAD_CV_SUBN_DR && ((DRStlSmp_t*)(mai->data))->DrSLID == STL_LID_PERMISSIVE && ((DRStlSmp_t*)(mai->data))->DrSLID == STL_LID_PERMISSIVE){
-      mai->addrInfo.slid = LID_PERMISSIVE;
-	  mai->addrInfo.dlid = LID_PERMISSIVE;
+      mai->addrInfo.slid = STL_LID_PERMISSIVE;
+      mai->addrInfo.dlid = STL_LID_PERMISSIVE;
    } else {
       mai->addrInfo.slid = addr.lid;
 	  mai->addrInfo.dlid = addr.lid;
@@ -523,7 +525,7 @@ ib_send_sma(IBhandle_t handle, Mai_t * mai, uint64_t timeout)
 	ASSERT(mai != NULL);
 	
 	if (mai->type == MAI_TYPE_INTERNAL) {
-		IB_LOG_VERBOSE_FMT(__func__, "local delivery for MAD to 0x%04x on QP %d",
+		IB_LOG_VERBOSE_FMT(__func__, "local delivery for MAD to 0x%08x on QP %d",
 		       mai->addrInfo.dlid, mai->qp);
 		// for local delivery
 		(void)mai_mad_process(mai, &filterMatch);
@@ -596,7 +598,7 @@ stl_send_sma(IBhandle_t handle, Mai_t * mai, uint64_t timeout)
 	ASSERT(mai != NULL);
 	
 	if (mai->type == MAI_TYPE_INTERNAL) {
-		IB_LOG_VERBOSE_FMT(__func__, "local delivery for MAD to 0x%04x on QP %d",
+		IB_LOG_VERBOSE_FMT(__func__, "local delivery for MAD to 0x%08x on QP %d",
 		       mai->addrInfo.dlid, mai->qp);
 		// for local delivery
 		(void)mai_mad_process(mai, &filterMatch);

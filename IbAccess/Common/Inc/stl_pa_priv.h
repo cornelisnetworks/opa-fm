@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -171,6 +171,49 @@ BSWAP_STL_PA_GROUP_CONFIG_RSP(STL_PA_PM_GROUP_CFG_RSP *pRecord)
 }
 
 static __inline void
+BSWAP_STL_PA_GROUP_NODE_INFO_REQ(STL_PA_GROUP_NODEINFO_REQ *pRecord)
+{
+#if CPU_LE
+	BSWAP_STL_PA_IMAGE_ID(&pRecord->imageId);
+	pRecord->nodeGUID							= ntoh64(pRecord->nodeGUID);
+	pRecord->nodeLID							= ntoh32(pRecord->nodeLID);
+#endif /* CPU_LE */
+}
+
+static __inline void
+BSWAP_STL_PA_GROUP_NODE_INFO_RSP(STL_PA_GROUP_NODEINFO_RSP *pRecord)
+{
+#if CPU_LE
+	int i;
+
+	BSWAP_STL_PA_IMAGE_ID(&pRecord->imageId);
+	pRecord->nodeGUID							= ntoh64(pRecord->nodeGUID);
+	pRecord->nodeLID							= ntoh32(pRecord->nodeLID);
+	for (i = 0; i < 4; i++)
+		pRecord->portSelectMask[i]					= ntoh64(pRecord->portSelectMask[i]);
+#endif /* CPU_LE */
+}
+
+static __inline void
+BSWAP_STL_PA_GROUP_LINK_INFO_REQ(STL_PA_GROUP_LINKINFO_REQ *pRecord)
+{
+#if CPU_LE
+	BSWAP_STL_PA_IMAGE_ID(&pRecord->imageId);
+	pRecord->lid								= ntoh32(pRecord->lid);
+#endif /* CPU_LE */
+}
+
+static __inline void
+BSWAP_STL_PA_GROUP_LINK_INFO_RSP(STL_PA_GROUP_LINKINFO_RSP *pRecord)
+{
+#if CPU_LE
+	BSWAP_STL_PA_IMAGE_ID(&pRecord->imageId);
+	pRecord->fromLID							= ntoh32(pRecord->fromLID);
+	pRecord->toLID								= ntoh32(pRecord->toLID);
+#endif /* CPU_LE */
+}
+
+static __inline void
 BSWAP_STL_PA_PORT_COUNTERS(STL_PORT_COUNTERS_DATA *pRecord)
 {
 #if CPU_LE
@@ -260,6 +303,23 @@ BSWAP_STL_PA_FOCUS_PORTS_REQ(STL_FOCUS_PORTS_REQ *pRecord)
 #endif
 }
 
+
+static __inline void
+BSWAP_STL_PA_FOCUS_PORTS_MULTISELECT_REQ(STL_FOCUS_PORTS_MULTISELECT_REQ *pRecord)
+{
+#if CPU_LE
+	int i;
+	pRecord->start						= ntoh32(pRecord->start);
+	pRecord->range						= ntoh32(pRecord->range);
+	for (i = 0; i < MAX_NUM_FOCUS_PORT_TUPLES; i++) {
+		pRecord->tuple[i].select			= ntoh32(pRecord->tuple[i].select);
+		pRecord->tuple[i].argument			= ntoh64(pRecord->tuple[i].argument);
+	}
+	BSWAP_STL_PA_IMAGE_ID(&pRecord->imageId);
+#endif
+}
+
+
 static __inline void
 BSWAP_STL_PA_FOCUS_PORTS_RSP(STL_FOCUS_PORTS_RSP *pRecord)
 {
@@ -273,6 +333,26 @@ BSWAP_STL_PA_FOCUS_PORTS_RSP(STL_FOCUS_PORTS_RSP *pRecord)
 	BSWAP_STL_PA_IMAGE_ID(&pRecord->imageId);
 #endif /* CPU_LE */
 }
+
+
+static __inline void
+BSWAP_STL_PA_FOCUS_PORTS_MULTISELECT_RSP(STL_FOCUS_PORTS_MULTISELECT_RSP *pRecord)
+{
+#if CPU_LE
+	int i;
+	pRecord->nodeLid					= ntoh32(pRecord->nodeLid);
+	pRecord->neighborLid					= ntoh32(pRecord->neighborLid);
+	pRecord->nodeGUID					= ntoh64(pRecord->nodeGUID);
+	pRecord->neighborGuid					= ntoh64(pRecord->neighborGuid);
+	for (i = 0; i < MAX_NUM_FOCUS_PORT_TUPLES; i++) {
+		pRecord->value[i]				= ntoh64(pRecord->value[i]);
+		pRecord->neighborValue[i]			= ntoh64(pRecord->neighborValue[i]);
+	}
+
+	BSWAP_STL_PA_IMAGE_ID(&pRecord->imageId);
+#endif /* CPU_LE */
+}
+
 
 static __inline void
 BSWAP_STL_PA_IMAGE_INFO(STL_PA_IMAGE_INFO_DATA *pRecord)
@@ -456,6 +536,16 @@ typedef struct _STL_PA_GROUP_CONFIG_RESULTS  {
     STL_PA_PM_GROUP_CFG_RSP GroupConfigRecords[1];		/* list of PA records returned */
 } STL_PA_GROUP_CONFIG_RESULTS, *PSTL_PA_GROUP_CONFIG_RESULTS;
 
+typedef struct _STL_PA_GROUP_NODEINFO_RESULTS  {
+    uint32 NumGroupNodeInfoRecords;                /* Number of PA Records returned */
+    STL_PA_GROUP_NODEINFO_RSP GroupNodeInfoRecords[1];		/* list of PA records returned */
+} STL_PA_GROUP_NODEINFO_RESULTS, *PSTL_PA_GROUP_NODEINFO_RESULTS;
+
+typedef struct _STL_PA_GROUP_LINKINFO_RESULTS  {
+    uint32 NumGroupLinkInfoRecords;                /* Number of PA Records returned */
+    STL_PA_GROUP_LINKINFO_RSP GroupLinkInfoRecords[1];		/* list of PA records returned */
+} STL_PA_GROUP_LINKINFO_RESULTS, *PSTL_PA_GROUP_LINKINFO_RESULTS;
+
 typedef struct _STL_PA_PORT_COUNTERS_RESULTS  {
     uint32 NumPortCountersRecords;                /* Number of PA Records returned */
     STL_PORT_COUNTERS_DATA PortCountersRecords[1];		/* list of PA records returned */
@@ -485,6 +575,11 @@ typedef struct _STL_PA_FOCUS_PORTS_RESULTS  {
     uint32 NumFocusPortsRecords;                /* Number of PA Records returned */
     STL_FOCUS_PORTS_RSP FocusPortsRecords[1];		/* list of PA records returned */
 } STL_PA_FOCUS_PORTS_RESULTS, *PSTL_PA_FOCUS_PORTS_RESULTS;
+
+typedef struct _STL_PA_FOCUS_PORTS_MULTISELECT_RESULTS  {
+    uint32 NumFocusPortsRecords;                /* Number of PA Records returned */
+    STL_FOCUS_PORTS_MULTISELECT_RSP FocusPortsRecords[1];		/* list of PA records returned */
+} STL_PA_FOCUS_PORTS_MULTISELECT_RESULTS, *PSTL_PA_FOCUS_PORTS_RESULTS_MULTISELECT;
 
 typedef struct _STL_PA_IMAGE_INFO_RESULTS  {
     uint32 NumImageInfoRecords;                /* Number of PA Records returned */

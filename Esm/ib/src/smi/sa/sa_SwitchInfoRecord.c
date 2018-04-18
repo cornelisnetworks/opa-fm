@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -129,8 +129,8 @@ sa_SwitchInfoRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 
 Status_t
 sa_SwitchInfoRecord_Set(uint8_t *srp, Node_t *nodep, Port_t *portp) {
-	STL_LID lid;
-	Port_t *swiPortp;
+	STL_LID			    lid;
+    Port_t              *swiPortp;
 	STL_SWITCHINFO_RECORD	switchInfoRecord = {{0}};
 
 	IB_ENTER("sa_SwitchInfoRecord_Set", srp, nodep, portp, 0);
@@ -168,7 +168,7 @@ sa_SwitchInfoRecord_GetTable(Mai_t *maip, uint32_t *records) {
 	Status_t	status;
 	STL_SWITCHINFO_RECORD sir;
 	bool_t		checkLid;
-	uint16_t	portLid=0;
+	STL_LID		portLid=0;
 
 	IB_ENTER("sa_SwitchInfoRecord_GetTable", maip, *records, 0, 0);
 

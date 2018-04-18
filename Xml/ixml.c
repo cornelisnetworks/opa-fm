@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -101,6 +101,11 @@ void IXmlOutputPrint(IXmlOutputState_t *state, const char *format, ...)
 {
 	va_list args;
 
+	if (state->flags & IXML_OUTPUT_FLAG_IN_START_TAG) {
+		fprintf(state->file, ">");
+		state->flags &= ~IXML_OUTPUT_FLAG_IN_START_TAG;
+	}
+
 	va_start(args, format);
 
 	state->flags &= ~IXML_OUTPUT_FLAG_START_NEED_NL;
@@ -115,6 +120,11 @@ void IXmlOutputPrintIndent(IXmlOutputState_t *state, const char *format, ...)
 	va_list args;
 
 	va_start(args, format);
+
+	if (state->flags & IXML_OUTPUT_FLAG_IN_START_TAG) {
+		fprintf(state->file, ">");
+		state->flags &= ~IXML_OUTPUT_FLAG_IN_START_TAG;
+	}
 
 	if (state->flags & IXML_OUTPUT_FLAG_START_NEED_NL) {
 		fprintf(state->file, "\n");
@@ -132,7 +142,8 @@ void IXmlOutputNoop(IXmlOutputState_t *state, const char *tag, void *data)
 
 void IXmlOutputStartTag(IXmlOutputState_t *state, const char *tag)
 {
-	IXmlOutputPrintIndent(state, "<%s>", tag);
+	IXmlOutputPrintIndent(state, "<%s", tag);
+	state->flags |= IXML_OUTPUT_FLAG_IN_START_TAG;
 	state->flags |= IXML_OUTPUT_FLAG_START_NEED_NL;
 	state->flags &= ~IXML_OUTPUT_FLAG_HAD_CONTENT;	// no content yet
 	state->cur_indent += state->indent;
@@ -151,6 +162,30 @@ void IXmlOutputStartAttrTag(IXmlOutputState_t *state, const char *tag, void *dat
 	} else {
 		IXmlOutputStartTag(state, tag);
 	}
+}
+
+FSTATUS IXmlOutputAttr(IXmlOutputState_t *state, const char *attr,
+	const char *val)
+{
+	return IXmlOutputAttrFmt(state, attr, "%s", val);
+}
+
+FSTATUS IXmlOutputAttrFmt(IXmlOutputState_t *state, const char *attr,
+	const char *format, ...)
+{
+	va_list args;
+
+	if (!(state->flags & IXML_OUTPUT_FLAG_IN_START_TAG))
+		return FERROR;
+
+	va_start(args, format);
+
+	fprintf(state->file, " %s=\"", attr);
+	vfprintf(state->file, format, args);
+	fprintf(state->file, "\"");
+	va_end(args);
+
+	return FSUCCESS;
 }
 
 void IXmlOutputEndTag(IXmlOutputState_t *state, const char *tag)
@@ -1218,7 +1253,7 @@ IXmlParserCheckSubfields(IXmlParserState_t *state,
 		printf("fields_found=0x%"PRIx64"\n", state->current.fields_found);
 #endif
 		for (i=0,p=state->current.subfields,field_count=0; p && p->tag && i < 64; p++,i++) {
-			if (state->current.fields_found & (1<<i)) {
+			if (state->current.fields_found & ((uint64)1<<i)) {
 				field_count++;
 			} else if (isupper(p->format)) {
 				/* manditory field not found */
@@ -1317,7 +1352,7 @@ IXmlParserRawStart(void *data, const char *el, const char **attr) {
 			if (strcmp(el, p->tag) == 0 || strcmp("*", p->tag) == 0) {
 				char *tagname;
 				if (i < 64)
-					state->current.fields_found |= (uint64)(1<<i);
+					state->current.fields_found |= ((uint64)1)<<i;
 				state->current.tags_found++;
 #if DEBUG_IXML_PARSER
 				printf("tags_found=%u fields_found=0x%"PRIx64"\n", state->current.tags_found, state->current.fields_found);

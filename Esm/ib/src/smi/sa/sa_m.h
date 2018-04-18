@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -100,7 +100,6 @@ FieldMask_t	StlPortInfoRecordFieldMask[] = {
 	{     0,     0 },	// No other fields are searchable at this time.
 };
 
-
 FieldMask_t	IbPortInfoRecordFieldMask[] = {
 	{     0,    16 },
     {    16,     8 },
@@ -171,10 +170,6 @@ FieldMask_t	StlSwitchInfoRecordFieldMask[] = {
 	{   288,    32 },	// Reserved
 	{   320,   128 },	// IPAddrPrimary (v6)
 	{   448,    32 },	// IPAddrSecondary (v4)
-	{   544,    16 },	// Reserved
-	{   560,    16 },	// Reserved
-	{   576,    16 },	// Reserved
-	{   592,     8 },	// Reserved
 	{   605,     1 },	// Port State Change
 	{   600,     5 },	// Lifetime
 	{   624,    16 },	// PartitionEnforcementCap
@@ -210,12 +205,6 @@ FieldMask_t	StlLFTRecordFieldMask[] = {
 	{   000,    00 },
 };
 
-FieldMask_t	StlRFTRecordFieldMask[] = {
-	{   000,    32 },	// RID LID
-	{    32,    11 },	// Reserved
-	{    43,    21 },	// BlockNum
-	{   000,    00 },
-};
 
 FieldMask_t	StlMFTRecordFieldMask[] = {
 	{   000,    32 },	// RID LID
@@ -283,8 +272,9 @@ FieldMask_t	StlLinkRecordFieldMask[] = {
 	{   000,    32 },	// From LID
 	{    32,     8 },	// From Port
 	{    40,     8 },	// To Port
-	{    48,    16 },	// Reserved
+	{    48,    16 },	// Link Condition
 	{    64,    32 },	// To LID
+	{    96,    32 },	// Error Mask
 };
 
 FieldMask_t	StlServiceRecordFieldMask[] = {
@@ -413,6 +403,36 @@ FieldMask_t	StlVLArbTableRecordFieldMask[] = {
 	{    40,     8 },	// Block Number
 	{    48,    16 },	// Reserved
 	{     0,     0 },	// Can't select individual blocks of vlarb table.
+};
+
+
+FieldMask_t	StlDgNameRecordFieldMask[] = {
+	{     0,    512}, 	// Device Group
+	{     0,      0}, 	
+};
+
+FieldMask_t	StlDgMemberRecordFieldMask[] = {
+	{     0,    32 }, 	// LID
+	{    32,     8 },	// Port
+	{    40,    24 },	// Reserved
+	{    64,    512},	// Device Group
+	{   576,    64 },	// GUID
+	{   640,    512},	// NodeDesc
+	{     0,      0}, 	
+};
+
+FieldMask_t	StlDtMemberRecordFieldMask[] = {
+	{     0,    32 }, 	// LID
+	{    32,     8 },	// NumPorts
+	{    40,     8 },	// NodeType
+	{    48,    16 },	// Reserverd
+	{    64,   256 },	// PortMaskAct
+	{   320,   256 },	// PortMaskEth
+	{   576,    64 },	// GUID
+	{   640,    64 },	// SystemImageGUID
+	{   704,   512 },	// NodeDesc
+	{  1216,   256 },	// Reserved
+	{     0,      0},
 };
 
 FieldMask_t	StlMcMemberRecordFieldMask[] = {

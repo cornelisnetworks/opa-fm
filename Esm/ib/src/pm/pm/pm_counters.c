@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -77,12 +77,12 @@ pm_counter_t pmCounters[pmCountersMax] = {
 	[pmCounterPmTxRetriesExhausted]     = { "PMA Query Retransmits Exhausted", 0, 0, 0 },
 
 	// PMA Method/Attributes
-	[pmCounterGetClassPortInfo]		= { "PM TX GET(ClassPortInfo)", 0, 0, 0 },
-	[pmCounterGetPortStatus]		= { "PM TX GET(PortStatus)", 0, 0, 0 },
-	[pmCounterSetClearPortStatus]	= { "PM TX SET(ClearPortStatus)", 0, 0, 0 },
-	[pmCounterGetDataPortCounters]	= { "PM TX GET(DataPortCounters)", 0, 0, 0 },
-	[pmCounterGetErrorPortCounters]	= { "PM TX GET(ErrorPortCounters)", 0, 0, 0 },
-	[pmCounterGetErrorInfo]			= { "PM TX GET(ErrorInfo)", 0, 0, 0 },
+	[pmCounterGetClassPortInfo]			= { "PM TX GET(ClassPortInfo)", 0, 0, 0 },
+	[pmCounterGetPortStatus]			= { "PM TX GET(PortStatus)", 0, 0, 0 },
+	[pmCounterSetClearPortStatus]		= { "PM TX SET(ClearPortStatus)", 0, 0, 0 },
+	[pmCounterGetDataPortCounters]		= { "PM TX GET(DataPortCounters)", 0, 0, 0 },
+	[pmCounterGetErrorPortCounters]		= { "PM TX GET(ErrorPortCounters)", 0, 0, 0 },
+	[pmCounterGetErrorInfo]				= { "PM TX GET(ErrorInfo)", 0, 0, 0 },
 
 	[pmCounterRxGetResp]			= { "PM RX GETRESP(*)", 0, 0, 0 },
 
@@ -97,25 +97,30 @@ pm_counter_t pmCounters[pmCountersMax] = {
 
 	// PA Queries
 	[pmCounterPaRxGetClassPortInfo]     = { "PA RX GET(ClassPortInfo)", 0, 0, 0 },
-	[pmCounterPaRxGetGrpList]     = { "PA RX GET(GrpList)", 0, 0, 0 },
-	[pmCounterPaRxGetGrpInfo]     = { "PA RX GET(GrpInfo)", 0, 0, 0 },
-	[pmCounterPaRxGetGrpCfg]     = { "PA RX GET(GrpCfg)", 0, 0, 0 },
-	[pmCounterPaRxGetPortCtrs]     = { "PA RX GET(PortCtrs)", 0, 0, 0 },
-	[pmCounterPaRxClrPortCtrs]     = { "PA RX GET(ClrPortCtrs)", 0, 0, 0 },
-	[pmCounterPaRxClrAllPortCtrs]     = { "PA RX GET(ClrAllPortCtrs)", 0, 0, 0 },
-	[pmCounterPaRxGetPmConfig]     = { "PA RX GET(PmConfig)", 0, 0, 0 },
-	[pmCounterPaRxFreezeImage]     = { "PA RX GET(FreezeImage)", 0, 0, 0 },
-	[pmCounterPaRxReleaseImage]     = { "PA RX GET(ReleaseImage)", 0, 0, 0 },
-	[pmCounterPaRxRenewImage]     = { "PA RX GET(RenewImage)", 0, 0, 0 },
-	[pmCounterPaRxGetFocusPorts]     = { "PA RX GET(FocusPorts)", 0, 0, 0 },
-	[pmCounterPaRxGetImageInfo]     = { "PA RX GET(ImageInfo)", 0, 0, 0 },
-	[pmCounterPaRxMoveFreezeFrame]     = { "PA RX GET(MoveFreezeFrame)", 0, 0, 0 },
-	[pmCounterPaRxGetVFList]     = { "PA RX GET(VFList)", 0, 0, 0 },
-	[pmCounterPaRxGetVFInfo]     = { "PA RX GET(VFInfo)", 0, 0, 0 },
-	[pmCounterPaRxGetVFCfg]     = { "PA RX GET(VFCfg)", 0, 0, 0 },
-	[pmCounterPaRxGetVFPortCtrs]     = { "PA RX GET(VFPortCtrs)", 0, 0, 0 },
-	[pmCounterPaRxClrVFPortCtrs]     = { "PA RX GET(ClrVFPortCtrs)", 0, 0, 0 },
-	[pmCounterPaRxGetVFFocusPorts]     = { "PA RX GET(VFFocusPorts)", 0, 0, 0 },
+	[pmCounterPaRxGetGrpList]           = { "PA RX GET(GrpList)", 0, 0, 0 },
+	[pmCounterPaRxGetGrpInfo]           = { "PA RX GET(GrpInfo)", 0, 0, 0 },
+	[pmCounterPaRxGetGrpCfg]            = { "PA RX GET(GrpCfg)", 0, 0, 0 },
+	[pmCounterPaRxGetPortCtrs]          = { "PA RX GET(PortCtrs)", 0, 0, 0 },
+	[pmCounterPaRxClrPortCtrs]          = { "PA RX GET(ClrPortCtrs)", 0, 0, 0 },
+	[pmCounterPaRxClrAllPortCtrs]       = { "PA RX GET(ClrAllPortCtrs)", 0, 0, 0 },
+	[pmCounterPaRxGetPmConfig]          = { "PA RX GET(PmConfig)", 0, 0, 0 },
+	[pmCounterPaRxFreezeImage]          = { "PA RX GET(FreezeImage)", 0, 0, 0 },
+	[pmCounterPaRxReleaseImage]         = { "PA RX GET(ReleaseImage)", 0, 0, 0 },
+	[pmCounterPaRxRenewImage]           = { "PA RX GET(RenewImage)", 0, 0, 0 },
+	[pmCounterPaRxGetFocusPorts]        = { "PA RX GET(FocusPorts)", 0, 0, 0 },
+	[pmCounterPaRxGetImageInfo]         = { "PA RX GET(ImageInfo)", 0, 0, 0 },
+	[pmCounterPaRxMoveFreezeFrame]      = { "PA RX GET(MoveFreezeFrame)", 0, 0, 0 },
+	[pmCounterPaRxGetVFList]            = { "PA RX GET(VFList)", 0, 0, 0 },
+	[pmCounterPaRxGetVFInfo]            = { "PA RX GET(VFInfo)", 0, 0, 0 },
+	[pmCounterPaRxGetVFCfg]             = { "PA RX GET(VFCfg)", 0, 0, 0 },
+	[pmCounterPaRxGetVFPortCtrs]        = { "PA RX GET(VFPortCtrs)", 0, 0, 0 },
+	[pmCounterPaRxClrVFPortCtrs]        = { "PA RX GET(ClrVFPortCtrs)", 0, 0, 0 },
+	[pmCounterPaRxGetVFFocusPorts]      = { "PA RX GET(VFFocusPorts)", 0, 0, 0 },
+	[pmCounterPaRxGetFocusPortsMultiSelect]
+	                                   = { "PA RX GET(FocusPortsMultiSelect)", 0, 0, 0 },
+
+	[pmCounterPaRxGetGrpNodeInfo]       = { "PA RX GET(GrpNodeInfo)", 0, 0, 0 },
+	[pmCounterPaRxGetGrpLinkInfo]       = { "PA RX GET(GrpLinkInfo)", 0, 0, 0 },
 
 	// Weird conditions
 	[pmCounterPaDuplicateRequests]      = { "PA RX DUPLICATE REQUESTS", 0, 0, 0 },
@@ -267,7 +272,7 @@ char * pm_print_counters_to_buf(void) {
 	 * passed in buffer from sm_pool. So allocate buf from sm_pool.
 	 */
 	if (vs_pool_alloc(&sm_pool, len, (void*)&buf) != VSTATUS_OK) {
-		IB_FATAL_ERROR("pm_print_counters_to_buf: CAN'T ALLOCATE SPACE.");
+		IB_FATAL_ERROR_NODUMP("pm_print_counters_to_buf: CAN'T ALLOCATE SPACE.");
 		return NULL;
 	}
 	buf[0] = '\0';

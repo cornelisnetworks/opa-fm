@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -125,6 +125,7 @@ typedef	struct {
 #define	MAD_CV_VFI_PM		0x32		// PM VFI mclass value
 #define	MAD_CV_VFI_BM		0x33		// BM VFI mclass value
 
+
 // VENDOR MAD RANGE
 #define MAD_VENDOR_CLASS_MIN    0x30
 #define MAD_VENDOR_CLASS_MAX    0x4f
@@ -165,55 +166,7 @@ typedef	struct {
 #define	MAD_STATUS_BAD_FIELD	0x001c
 #define MAD_STATUS_D_BIT        0x8000      // set by SM if response to directed route SMInfo
 
-// IBTA:  Volume 1, Section 13.4.8.1
-
-//
-//	ClassPortInfo
-//
-typedef	struct {
-	uint8_t		bversion;		// base version
-	uint8_t		cversion;		// class version
-	uint16_t	capabilityMask;		// capability mask (2)
-	uint32_t	capabilityMask2;	// capability mask2 (6)
-	uint8_t		respTimeValue;		//
-	uint8_t		redirectGid[16];	// GID for GRH
-	uint8_t		redirectTC;		// TC
-	uint8_t		redirectSL;		// SL
-	uint32_t	redirectFL;		// FL
-	uint16_t	redirectLid;		// DLID to access the class services
-	uint16_t	redirectPKey;		// P_Key to use
-	uint8_t		rsvd2;			// (8)
-	uint32_t	redirectQP;		// QP to use (can't be zero) (24)
-	uint32_t	redirectQKey;		// Q_Key associated with redirect QP
-	uint8_t		trapGid[16];		// GID for GRH trap messages
-	uint8_t		trapTC;			// TC (8)
-	uint8_t		trapSL;			// SL (4)
-	uint32_t	trapFL;			// FL (20)
-	uint16_t	trapLid;		// LID for traps
-	uint16_t	trapPKey;		// P_Key for traps
-	uint8_t		trapHL;			// HL
-	uint32_t	trapQP;			// QP
-	uint32_t	trapQKey;		// Q_Key associated with trap QP
-} ClassPortInfo_t;
-
-
 // IBTA:  Volume 1, Section 13.4.8.3
-
-typedef	struct {
-	uint8_t		gid[16];		// GID (or zero)
-	Lid_t	    startLid;		// starting Lid range value
-	Lid_t	    endLid;			// ending Lid range value
-	uint16_t	reserved1;		// reserved
-	uint8_t		isGeneric;		// 1 -> forward generic traps
-	uint8_t		subscribe;		// 1 -> subscribe
-	uint16_t	type;		    // class of trap/notice
-	uint16_t	trapNumber;		// trap number (or device ID)
-    uint32_t    qpn;            // Queue pair number - 24 bits
-    uint8_t     reserv3bits;    // 3 bit reserved field
-	uint8_t     respTimeValue;  // time to respond to requests - 5 bit field
-	uint8_t		reserved2;		// reserved
-	uint32_t	nodeType;		// node type (or vendor ID) - 24 bit field
-} InformInfo_t;
 
 #define	TRAP_ALL	0xffff
 #define NODE_TYPE_ALL 0xffffff
@@ -246,16 +199,6 @@ typedef	struct {
 #define DRSMP_IPATH_COUNT	64
 #define DRSMP_RPATH_COUNT	64
 
-typedef	struct {
-	uint64_t	mkey;				// management key
-	uint16_t	drslid;				// source LID
-	uint16_t	drdlid;				// destination LID
-	uint8_t		rsvd2[DRSMP_RSVD2_COUNT];	// reserved - 0
-	uint8_t		smpdata[DRSMP_SMPDATA_COUNT];	// SMP data
-	uint8_t		ipath[DRSMP_IPATH_COUNT];	// initial path
-	uint8_t		rpath[DRSMP_RPATH_COUNT];	// return path
-} DRSmp_t;
-
 #define	MAD_DR_INITIAL		0x0000
 #define	MAD_DR_RETURN		0x8000
 
@@ -264,21 +207,6 @@ typedef	struct {
 //
 //	Generic Notice structure.
 //
-
-#define NOTICE_DATA_COUNT	54
-
-typedef	struct {
-	uint8_t		generic;			// generic
-	uint8_t		noticeType;			// noticeType
-	uint32_t	nodeType;			// nodeType
-	uint16_t	trapNumber;			// class-defined (or device ID)
-	uint16_t	issuerLid;			// LID of issuer
-	uint8_t		noticeToggle;			// noticeToggle
-	uint16_t	noticeCount;			// noticeCount
-	uint8_t		data[NOTICE_DATA_COUNT];	// class specific data
-    Gid_t       issuerGid;          // Issuer Gid
-} Notice_t;
-typedef Notice_t * Noticep;  /* pointer to a notice structure */
 
 #define	NOTICE_TYPE_FATAL		0
 #define	NOTICE_TYPE_URGENT		1

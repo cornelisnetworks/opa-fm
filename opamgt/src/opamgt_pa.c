@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -111,6 +111,8 @@ static const char* const pa_status_text[] =
     "PA: Virtual Fabric Not Found", 		//0x0D00 - VF not found
     "PA: Invalid Parameter",  				//0x0E00 - Invalid parameter
     "PA: Image Not Found",  				//0x0F00 - Image not found
+    "PA: No Data",  					//0x1000 - no data skipped port
+    "PA: Bad Data",  					//0x1100 - query fail or clear fail
 };
 
 /**************************************** 
@@ -121,7 +123,6 @@ static const char* const pa_status_text[] =
 /******************************************************** 
  * Local file functions
  *******************************************************/
-
 
 /** 
  *  Send a PA query and get the result.
@@ -188,7 +189,7 @@ pa_query_common(
 		addr.qkey = QP1_WELL_KNOWN_Q_KEY;
 		addr.pkey = OMGT_DEFAULT_PKEY;
 		if (omgt_find_pkey(port, OMGT_DEFAULT_PKEY) < 0) {
-			OMGT_OUTPUT_ERROR(port, "Query PA failed: requires full management node. Status:(%u)\n",  (unsigned int)fstatus);
+			OMGT_OUTPUT_ERROR(port, "Query PA failed: requires full management node. Status:(%u)\n", FPROTECTION);
 			return FPROTECTION;
 		}
 	}
@@ -224,7 +225,7 @@ pa_query_common(
 			// PKEY lookup error.
 			OMGT_OUTPUT_ERROR(port, "Query Failed: requires full management node.\n");
 		} else {
-			OMGT_DBGPRINT(port, "Query Failed: %u. Marking PA Service State DOWN\n", (unsigned int)fstatus);
+			OMGT_DBGPRINT(port, "Query Failed: %u.\n", (unsigned int)fstatus);
 			port->pa_service_state = OMGT_SERVICE_STATE_DOWN;
 		}
 		goto done;
@@ -448,7 +449,7 @@ done:
 STL_PORT_COUNTERS_DATA *
 iba_pa_single_mad_port_counters_response_query(
     IN struct omgt_port  *port,
-    IN uint32_t          node_lid,
+    IN STL_LID           node_lid,
     IN uint8_t           port_number,
     IN uint32_t          delta_flag,
     IN uint32_t          user_cntrs_flag,
@@ -515,6 +516,7 @@ done:
 	DBG_EXIT_FUNC(port);
 	return response;
 }
+
 
 /**
  *  Clear port statistics (counters)
@@ -1306,6 +1308,201 @@ done:
 }	// End of iba_pa_multi_mad_group_config_response_query()
 
 /**
+ *  Get multi-record response for pa group node Info.
+ *
+ * @param port           	Local port to operate on.
+ * @param query                 Pointer to the query
+ * @param group_name 		Group name
+ * @param nodeLid               node LID
+ * @param nodeGuid              node GUID
+ * @param nodeDesc              node Description
+ * @param pquery_result       	Pointer to query result to be filled. The caller has
+ *                              to free the buffer.
+ * @param imageID               Pointer to the image ID.
+ *
+ * @return
+ *   FSUCCESS       - Get successfully
+ *     FERROR       - Error
+ */
+FSTATUS
+iba_pa_multi_mad_group_nodeinfo_response_query(
+	IN struct omgt_port              *port,
+	IN POMGT_QUERY                   query,
+	IN char                         *group_name,
+	IN STL_LID                      nodeLid,
+	IN uint64                       nodeGuid,
+	IN char                         *nodeDesc,
+	OUT PQUERY_RESULT_VALUES        *pquery_result,
+	IN STL_PA_IMAGE_ID_DATA         *image_id
+	)
+{
+	FSTATUS                     fstatus = FSUCCESS;
+	QUERY_RESULT_VALUES         *query_result = NULL;
+	SA_MAD                      *rsp_mad = NULL;
+	size_t                      rcv_buf_len = 0;
+	uint8_t                     request_data[PA_REQ_HEADER_SIZE + sizeof(STL_PA_GROUP_NODEINFO_REQ)] = {0};
+	STL_PA_GROUP_NODEINFO_RSP     *pa_data;
+	STL_PA_GROUP_NODEINFO_REQ     *p;
+	STL_PA_GROUP_NODEINFO_RESULTS *pa_result;
+	int i;
+
+	DBG_ENTER_FUNC(port);
+	// Check the incoming port parameter
+	if (port == NULL) return FERROR;
+
+	p = (STL_PA_GROUP_NODEINFO_REQ *)(((SA_MAD *)request_data)->Data);
+	snprintf(p->groupName, sizeof(p->groupName), "%s", group_name);
+	p->nodeLID = nodeLid;
+	p->nodeGUID = nodeGuid;
+	if(nodeDesc)
+		snprintf(p->nodeDesc, sizeof(p->nodeDesc), "%s", nodeDesc);
+	p->imageId.imageNumber = image_id->imageNumber;
+	p->imageId.imageOffset = image_id->imageOffset;
+	p->imageId.imageTime.absoluteTime = image_id->imageTime.absoluteTime;
+	BSWAP_STL_PA_GROUP_NODE_INFO_REQ(p);
+
+	// process the command.
+	switch (query->OutputType) {
+	case OutputTypePaTableRecord:
+		// submit request
+		fstatus = pa_query_common(port, STL_PA_CMD_GETTABLE, STL_PA_ATTRID_GET_GRP_NODE_INFO, 0,
+			request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
+		if (fstatus != FSUCCESS){
+			if (port->pa_verbose)
+				OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n",(unsigned int)fstatus);
+			goto done;
+		} else {
+			if (port->pa_verbose){
+				OMGT_DBGPRINT(port, "Completed request: OK\n");
+			}
+		}
+
+		// translate the data.
+		pa_result = (STL_PA_GROUP_NODEINFO_RESULTS *)query_result->QueryResult;
+		pa_data = pa_result->GroupNodeInfoRecords;
+		for (i = 0; i < pa_result->NumGroupNodeInfoRecords; i++) {
+			STL_PA_GROUP_NODEINFO_RSP *group_node_info = (STL_PA_GROUP_NODEINFO_RSP *)GET_RESULT_OFFSET(rsp_mad, i);
+			pa_data[i] = *group_node_info;
+			BSWAP_STL_PA_GROUP_NODE_INFO_RSP(&pa_data[i]);
+		}
+		break;
+
+	default:
+		OMGT_OUTPUT_ERROR(port, "Query Not supported in OPAMGT: Input=%s, Output=%s\n",
+		iba_pa_query_input_type_msg(query->InputType),
+		iba_pa_query_result_type_msg(query->OutputType));
+		fstatus = FERROR;
+		goto done;
+		break;
+	}
+
+done:
+	if (rsp_mad)
+		free(rsp_mad);
+
+	*pquery_result = query_result;
+
+	DBG_EXIT_FUNC(port);
+	return fstatus;
+} // End of iba_pa_multi_mad_group_nodeinfo_response_query()
+
+/**
+ *  Get multi-record response for pa group link Info.
+ *
+ * @param port        		Local port to operate on.
+ * @param query                 Pointer to the query
+ * @param group_name         	Group name
+ * @param inputLid              input LID
+ * @param inputPort          	input port
+ * @param pquery_result       	Pointer to query result to be filled. The caller has
+ *                              to free the buffer.
+ * @param imageID               Pointer to the image ID.
+ *
+ * @return
+ *   FSUCCESS       - Get successfully
+ *     FERROR       - Error
+ */
+FSTATUS
+iba_pa_multi_mad_group_linkinfo_response_query(
+	IN struct omgt_port       	*port,
+	IN POMGT_QUERY             	query,
+	IN char                         *group_name,
+	IN STL_LID                      inputLid,
+	IN uint8                      	inputPort,
+	OUT PQUERY_RESULT_VALUES        *pquery_result,
+	IN STL_PA_IMAGE_ID_DATA         *image_id
+	)
+{
+	FSTATUS                     fstatus = FSUCCESS;
+	QUERY_RESULT_VALUES         *query_result = NULL;
+	SA_MAD                      *rsp_mad = NULL;
+	size_t                      rcv_buf_len = 0;
+	uint8_t                     request_data[PA_REQ_HEADER_SIZE + sizeof(STL_PA_GROUP_LINKINFO_REQ)] = {0};
+	STL_PA_GROUP_LINKINFO_RSP     *pa_data;
+	STL_PA_GROUP_LINKINFO_REQ     *p;
+	STL_PA_GROUP_LINKINFO_RESULTS *pa_result;
+	int i;
+
+	DBG_ENTER_FUNC(port);
+	// Check the incoming port parameter
+	if (port == NULL) return FERROR;
+
+	p = (STL_PA_GROUP_LINKINFO_REQ *)(((SA_MAD *)request_data)->Data);
+	snprintf(p->groupName, sizeof(p->groupName), "%s", group_name);
+	p->lid = inputLid;
+	p->port = inputPort;
+	p->imageId.imageNumber = image_id->imageNumber;
+	p->imageId.imageOffset = image_id->imageOffset;
+	p->imageId.imageTime.absoluteTime = image_id->imageTime.absoluteTime;
+	BSWAP_STL_PA_GROUP_LINK_INFO_REQ(p);
+
+	// process the command.
+	switch (query->OutputType) {
+	case OutputTypePaTableRecord:
+		// submit request
+		fstatus = pa_query_common(port, STL_PA_CMD_GETTABLE, STL_PA_ATTRID_GET_GRP_LINK_INFO, 0,
+			request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
+		if (fstatus != FSUCCESS){
+			if (port->pa_verbose)
+				OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n",(unsigned int)fstatus);
+			goto done;
+		} else {
+			if (port->pa_verbose){
+				OMGT_DBGPRINT(port, "Completed request: OK\n");
+			}
+		}
+
+		// translate the data.
+		pa_result = (STL_PA_GROUP_LINKINFO_RESULTS *)query_result->QueryResult;
+		pa_data = pa_result->GroupLinkInfoRecords;
+		for (i = 0; i < pa_result->NumGroupLinkInfoRecords; i++) {
+			STL_PA_GROUP_LINKINFO_RSP *group_link_info = (STL_PA_GROUP_LINKINFO_RSP *)GET_RESULT_OFFSET(rsp_mad, i);
+			pa_data[i] = *group_link_info;
+			BSWAP_STL_PA_GROUP_LINK_INFO_RSP(&pa_data[i]);
+		}
+		break;
+
+	default:
+		OMGT_OUTPUT_ERROR(port, "Query Not supported in OPAMGT: Input=%s, Output=%s\n",
+		iba_pa_query_input_type_msg(query->InputType),
+		iba_pa_query_result_type_msg(query->OutputType));
+		fstatus = FERROR;
+		goto done;
+		break;
+	}
+
+done:
+	if (rsp_mad)
+		free(rsp_mad);
+
+	*pquery_result = query_result;
+
+	DBG_EXIT_FUNC(port);
+	return fstatus;
+}
+
+
+/**
  *  Get multi-record response for pa group focus portlist.
  *
  * @param port                      Local port to operate on. 
@@ -1356,7 +1553,7 @@ iba_pa_multi_mad_focus_ports_response_query (
 
     p->imageId.imageNumber = hton64(image_id->imageNumber);
     p->imageId.imageOffset = hton32(image_id->imageOffset);
-	p->imageId.imageTime.absoluteTime = hton32(image_id->imageTime.absoluteTime);
+    p->imageId.imageTime.absoluteTime = hton32(image_id->imageTime.absoluteTime);
 
 	// process the command.
 	switch (query->OutputType) {
@@ -1381,6 +1578,113 @@ iba_pa_multi_mad_focus_ports_response_query (
 			STL_FOCUS_PORTS_RSP *focus_port = (STL_FOCUS_PORTS_RSP *)GET_RESULT_OFFSET(rsp_mad, i);
 			pa_data[i] = *focus_port;
 			BSWAP_STL_PA_FOCUS_PORTS_RSP(&pa_data[i]);
+		}
+		break;
+
+	default:
+		OMGT_OUTPUT_ERROR(port, "Query Not supported in OPAMGT: Input=%s, Output=%s\n",
+			iba_pa_query_input_type_msg(query->InputType),
+			iba_pa_query_result_type_msg(query->OutputType));
+		fstatus = FERROR;
+		goto done;
+		break;
+	}
+
+done:
+	if (rsp_mad)
+		free(rsp_mad);
+
+	*pquery_result = query_result;
+
+	DBG_EXIT_FUNC(port);
+	return fstatus;
+}
+
+
+/**
+ *  Get multi-record response for pa group focus portlist.
+ *
+ * @param port              Local port to operate on.
+ * @param query             Pointer to the query.
+ * @param group_name        Group name.
+ * @param select            Select value for focus portlist.
+ * @param start             Start index value of portlist.
+ * @param range             Index range of portlist.
+ * @param pquery_result     Pointer to query result to be filled. The caller has
+ *  						to fill the buffer.
+ * @param imageID           Pointer to the image ID.
+ *
+ * @return
+ *   FSUCCESS	- Get successfully
+ *     FERROR	- Error
+ */
+FSTATUS
+iba_pa_multi_mad_focus_ports_multiselect_response_query (
+	IN struct omgt_port		    *port,
+	IN POMGT_QUERY              query,
+	IN char				        *group_name,
+	IN uint32			        start,
+	IN uint32			        range,
+	OUT PQUERY_RESULT_VALUES	*pquery_result,
+	IN STL_PA_IMAGE_ID_DATA		*image_id,
+	IN STL_FOCUS_PORT_TUPLE		*tuple,
+	IN uint8			        logical_operator
+	)
+{
+    FSTATUS                     fstatus = FSUCCESS;
+    QUERY_RESULT_VALUES         *query_result = NULL;
+    SA_MAD                      *rsp_mad = NULL;
+    size_t                      rcv_buf_len = 0;
+    uint8_t                     request_data[PA_REQ_HEADER_SIZE + sizeof(STL_FOCUS_PORTS_MULTISELECT_REQ)] = {0};
+    STL_FOCUS_PORTS_MULTISELECT_RSP         *pa_data;
+	STL_FOCUS_PORTS_MULTISELECT_REQ         *p;
+    STL_PA_FOCUS_PORTS_MULTISELECT_RESULTS  *pa_result;
+    int i;
+
+    DBG_ENTER_FUNC(port);
+    // Check the incoming port parameter
+    if (port == NULL) return FERROR;
+    
+    p = (STL_FOCUS_PORTS_MULTISELECT_REQ *)(((SA_MAD *)request_data)->Data);
+	snprintf(p->groupName, STL_PM_GROUPNAMELEN, "%s", group_name);
+	p->start = hton32(start);
+	p->range = hton32(range);
+
+	for (i = 0; i < MAX_NUM_FOCUS_PORT_TUPLES; i++) {
+		p->tuple[i].select = hton32(tuple[i].select);
+		p->tuple[i].comparator = tuple[i].comparator;
+		p->tuple[i].argument = hton64(tuple[i].argument);
+	}
+
+	p->logical_operator = logical_operator;
+
+	p->imageId.imageNumber = hton64(image_id->imageNumber);
+	p->imageId.imageOffset = hton32(image_id->imageOffset);
+	p->imageId.imageTime.absoluteTime = hton32(image_id->imageTime.absoluteTime);
+
+	// process the command.
+	switch (query->OutputType) {
+	case OutputTypePaTableRecord:
+		// submit request
+		fstatus = pa_query_common(port, STL_PA_CMD_GETTABLE, STL_PA_ATTRID_GET_FOCUS_PORTS_MULTISELECT, 0,
+			request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
+		if (fstatus != FSUCCESS) {
+			if (port->pa_verbose)
+				OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n", (unsigned int)fstatus);
+			goto done;
+		} else {
+			if (port->pa_verbose) {
+				OMGT_DBGPRINT(port, "Completed request: OK\n");
+			}
+		}
+
+		// translate the data.
+		pa_result = (STL_PA_FOCUS_PORTS_MULTISELECT_RESULTS *)query_result->QueryResult;
+		pa_data = pa_result->FocusPortsRecords;
+		for (i = 0; i < pa_result->NumFocusPortsRecords; i++) {
+			STL_FOCUS_PORTS_MULTISELECT_RSP *focus_port = (STL_FOCUS_PORTS_MULTISELECT_RSP *)GET_RESULT_OFFSET(rsp_mad, i);
+			pa_data[i] = *focus_port;
+			BSWAP_STL_PA_FOCUS_PORTS_MULTISELECT_RSP(&pa_data[i]);
 		}
 		break;
 
@@ -1659,7 +1963,7 @@ done:
 STL_PA_VF_PORT_COUNTERS_DATA *
 iba_pa_single_mad_vf_port_counters_response_query(
     IN struct omgt_port      *port,
-    IN uint32_t              node_lid,
+    IN STL_LID               node_lid,
     IN uint8_t               port_number,
     IN uint32_t              delta_flag,
     IN uint32_t              user_cntrs_flag,
@@ -1683,7 +1987,7 @@ iba_pa_single_mad_vf_port_counters_response_query(
     p->portNumber = port_number;
     p->flags =  (delta_flag ? STL_PA_PC_FLAG_DELTA : 0) |
                 (user_cntrs_flag ? STL_PA_PC_FLAG_USER_COUNTERS : 0);
-	snprintf(p->vfName, sizeof(p->vfName), "%s", vfName);
+    snprintf(p->vfName, STL_PM_VFNAMELEN, "%s", vfName);
 
     p->imageId.imageNumber = image_id->imageNumber;
     p->imageId.imageOffset = image_id->imageOffset;
@@ -1751,7 +2055,7 @@ iba_pa_single_mad_clr_vf_port_counters_response_query(
     p->nodeLid = hton32(node_lid);
     p->portNumber = port_number;
     p->vfCounterSelectMask.AsReg32 = hton32(select);
-	snprintf(p->vfName, sizeof(p->vfName), "%s", vfName);
+    snprintf(p->vfName, STL_PM_VFNAMELEN, "%s", vfName);
 	memset(p->reserved, 0, sizeof(p->reserved));
 	p->reserved2 = 0;
 
@@ -1872,13 +2176,15 @@ done:
 }
 
 /**
- *  Get master pm LID
+ * @brief Get LID and SL of master PM service
  *
- * @param port                  Local port to operate on.
+ * This function will query the SA service records to get the PM's GID. It will
+ * then construct a PATH record query (using the ServiceGID as the DGID for the
+ * request) to get the PM's LID and SL for sending PA queries.
  *
- * @return 
- *   FSUCCESS       - Get successfully
- *     FERROR       - Error
+ * @param port         port object to to store master PM LID and SL.
+ *
+ * @return FSTATUS
  */
 FSTATUS 
 iba_pa_query_master_pm_lid(struct omgt_port *port)
@@ -1888,7 +2194,6 @@ iba_pa_query_master_pm_lid(struct omgt_port *port)
     PQUERY_RESULT_VALUES    query_results = NULL;
     PQUERY_RESULT_VALUES    query_path_results = NULL;
     SERVICE_RECORD_RESULTS  *service_record_results;
-    PATH_RESULTS            *path_record_results;
 
     // Check the incoming port parameter
     if (NULL == port) {
@@ -1900,96 +2205,97 @@ iba_pa_query_master_pm_lid(struct omgt_port *port)
     query.InputType = InputTypeNoInput;
     query.OutputType = OutputTypeServiceRecord;
 
-    status = omgt_query_sa(port, &query, &query_results);
-    if (status != FSUCCESS) 
-    {
-       OMGT_OUTPUT_ERROR(port, "Error, failed to get service records (status=0x%x) query_results=%p: %s\n",
-		     (unsigned int)status, (void *)query_results, FSTATUS_MSG(status));
-    } 
-    else if ((query_results == NULL) || (query_results->ResultDataSize == 0)) 
-    {
-        status = FUNAVAILABLE;
-    } 
-    else 
-    {
-        int i, ix, pmCount=0;
+	status = omgt_query_sa(port, &query, &query_results);
+	if (status != FSUCCESS) {
+		OMGT_OUTPUT_ERROR(port, "Error, failed to get service records (status=0x%x) query_results=%p: %s\n",
+			(unsigned int)status, (void *)query_results, FSTATUS_MSG(status));
+	} else if ((query_results == NULL) || (query_results->ResultDataSize == 0)) {
+		status = FUNAVAILABLE;
+	} else {
+		int i, ix, pmCount = 0;
 
-        status=FUNAVAILABLE;
-        service_record_results = (SERVICE_RECORD_RESULTS *)query_results->QueryResult;
-        if (service_record_results->NumServiceRecords) 
-        {
-            OMGT_DBGPRINT(port, "Got Service Records: records=%d\n", service_record_results->NumServiceRecords);
-            for (i = 0; i < service_record_results->NumServiceRecords; ++i) 
-            {
-                if (STL_PM_SERVICE_ID == service_record_results->ServiceRecords[i].RID.ServiceID) 
-                {
-                    pmCount++;
-                    if ((service_record_results->ServiceRecords[i].ServiceData8[0] >= STL_PM_VERSION) &&
-                        (service_record_results->ServiceRecords[i].ServiceData8[1] == STL_PM_MASTER))
-                    {
-                        OMGT_DBGPRINT(port, "This is the Primary PM.\n");
+		status = FUNAVAILABLE;
+		service_record_results = (SERVICE_RECORD_RESULTS *)query_results->QueryResult;
+		if (service_record_results->NumServiceRecords) {
+			OMGT_DBGPRINT(port, "Got Service Records: records=%d\n", service_record_results->NumServiceRecords);
+			for (i = 0; i < service_record_results->NumServiceRecords; ++i) {
+				if (STL_PM_SERVICE_ID == service_record_results->ServiceRecords[i].RID.ServiceID) {
+					pmCount++;
+					if ((service_record_results->ServiceRecords[i].ServiceData8[0] >= STL_PM_VERSION) &&
+						(service_record_results->ServiceRecords[i].ServiceData8[1] == STL_PM_MASTER)) {
+						OMGT_DBGPRINT(port, "This is the Primary PM.\n");
 
-                        //
-                        // query SA for Path Record to the primary PM
-                        memset(&query, 0, sizeof(query));
-						query.InputType = InputTypePathRecord;
+						//
+						// query SA for Path Record to the primary PM
+						memset(&query, 0, sizeof(query));
+						{
+							query.InputType = InputTypePathRecord;
+							query.OutputType = OutputTypePathRecord;
+							query.InputValue.IbPathRecord.PathRecord.PathRecord.DGID =
+								service_record_results->ServiceRecords[i].RID.ServiceGID;
+							omgt_port_get_port_prefix(port,
+								&query.InputValue.IbPathRecord.PathRecord.PathRecord.SGID.Type.Global.SubnetPrefix);
+							omgt_port_get_port_guid(port,
+								&query.InputValue.IbPathRecord.PathRecord.PathRecord.SGID.Type.Global.InterfaceID);
+							query.InputValue.IbPathRecord.PathRecord.PathRecord.ServiceID = STL_PM_SERVICE_ID;
 
-                        query.OutputType = OutputTypePathRecord;
+							query.InputValue.IbPathRecord.PathRecord.ComponentMask =
+								IB_PATH_RECORD_COMP_NUMBPATH | IB_PATH_RECORD_COMP_SERVICEID |
+								IB_PATH_RECORD_COMP_DGID | IB_PATH_RECORD_COMP_SGID;
+							query.InputValue.IbPathRecord.PathRecord.PathRecord.NumbPath = 32;
+						}
 
-						query.InputValue.IbPathRecord.PathRecord.PathRecord.DGID =
-							service_record_results->ServiceRecords[i].RID.ServiceGID;
-						query.InputValue.IbPathRecord.PathRecord.PathRecord.SGID = port->local_gid;
-						query.InputValue.IbPathRecord.PathRecord.PathRecord.ServiceID = STL_PM_SERVICE_ID;
-						query.InputValue.IbPathRecord.PathRecord.ComponentMask =
-							IB_MULTIPATH_RECORD_COMP_NUMBPATH | PR_COMPONENTMASK_SRV_ID |
-							PR_COMPONENTMASK_DGID | PR_COMPONENTMASK_SGID;
-						query.InputValue.IbPathRecord.PathRecord.PathRecord.NumbPath = 32;
+						status = omgt_query_sa(port, &query, &query_path_results);
+						if ((status != FSUCCESS) || (query_path_results == NULL) || (query_path_results->ResultDataSize == 0)) {
+							OMGT_OUTPUT_ERROR(port, "Error, failed to get path record (status=0x%x) query_path_results=%p: %s\n",
+								(unsigned int)status, (void *)query_path_results, FSTATUS_MSG(status));
+							status = FERROR;
+							break;
+						}
+						else {
+							PATH_RESULTS *path_record_results = (PATH_RESULTS *)query_path_results->QueryResult;
+							OMGT_DBGPRINT(port, "Got Path Records: records=%d\n", path_record_results->NumPathRecords);
+							if (path_record_results->NumPathRecords >= 1) {
+							 // Find PathRecord with default P_Key or use PathRecords[0]
+							for (ix = path_record_results->NumPathRecords - 1; ix > 0; ix--) {
+								if ((path_record_results->PathRecords[ix].P_Key & 0x7FFF) ==
+										(DEFAULT_P_KEY & 0x7FFF))
+										break;
+							}
+							OMGT_DBGPRINT(port, "DGID in path record: 0x%lx:0x%lx\n",
+								path_record_results->PathRecords[ix].DGID.Type.Global.SubnetPrefix,
+								path_record_results->PathRecords[ix].DGID.Type.Global.InterfaceID);
+								/* Check for Extended LID in the OPA GID */
+								if ((path_record_results->PathRecords[ix].DGID.Type.Global.InterfaceID >> 40)
+									== OMGT_STL_OUI) {
+									port->primary_pm_lid =
+										path_record_results->PathRecords[ix].DGID.Type.Global.InterfaceID & 0xFFFFFFFF;
+								} else {
+									port->primary_pm_lid = path_record_results->PathRecords[ix].DLID;
+								}
+								// Remember that for our own use
+								port->primary_pm_sl = path_record_results->PathRecords[ix].u2.s.SL;
+								OMGT_DBGPRINT(port, "Found Master PM LID 0x%x SL %u\n",
+									port->primary_pm_lid, port->primary_pm_sl);
+								} else {
+									status = FERROR;
+									OMGT_OUTPUT_ERROR(port, "Error, received no path records\n");
+									break;
+								}
+						}
+					}
+				}
+			}
+			OMGT_DBGPRINT(port, "Number of PMs found %d\n", pmCount);
+		}
+	}
+	// deallocate results buffers
+	if (query_results)
+		omgt_free_query_result_buffer(query_results);
+	if (query_path_results)
+		omgt_free_query_result_buffer(query_path_results);
 
-                        status = omgt_query_sa(port, &query, &query_path_results);
-                        if ((status != FSUCCESS) || (query_path_results == NULL) || (query_path_results->ResultDataSize == 0)) 
-                        {
-                            OMGT_OUTPUT_ERROR(port, "Error, failed to get path record (status=0x%x) query_path_results=%p: %s\n",
-                                    (unsigned int)status, (void *)query_path_results, FSTATUS_MSG(status));
-                            status = FERROR;
-                            break;
-                        } 
-                        else 
-                        {
-                            path_record_results = (PATH_RESULTS *)query_path_results->QueryResult;
-                            OMGT_DBGPRINT(port, "Got Path Records: records=%d\n", path_record_results->NumPathRecords);
-                            if (path_record_results->NumPathRecords >= 1) 
-                            {
-                                // Find PathRecord with default P_Key or use PathRecords[0]
-                                for (ix = path_record_results->NumPathRecords - 1; ix > 0; ix--)
-                                    if ( (path_record_results->PathRecords[ix].P_Key & 0x7FFF) ==
-                                            (DEFAULT_P_KEY & 0x7FFF) )
-                                        break;
-                                // Remember that for our own use
-                                port->primary_pm_lid = path_record_results->PathRecords[ix].DLID;
-                                port->primary_pm_sl = path_record_results->PathRecords[ix].u2.s.SL;
-                                OMGT_DBGPRINT(port, "Found Master PM LID 0x%x\n", path_record_results->PathRecords[ix].DLID);
-                            } 
-                            else 
-                            {
-                                status = FERROR;
-                               OMGT_OUTPUT_ERROR(port, "Error, received no path records\n");
-                                        
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            OMGT_DBGPRINT(port, "Number of PMs found %d\n", pmCount);
-        }
-    }
-    // deallocate results buffers
-    if (query_results)
-        omgt_free_query_result_buffer(query_results);
-    if (query_path_results)
-        omgt_free_query_result_buffer(query_path_results);
-
-    return status;
+	return status;
 }
 
 /**
@@ -2041,12 +2347,12 @@ iba_pa_mad_status_msg(
 int
 omgt_pa_service_connect(struct omgt_port *port)
 {
-	FSTATUS                 fstatus;
-	int                     mclass = MCLASS_VFI_PM;
-	struct omgt_class_args   mgmt_class[2];
-	int                     err = 0;
-	IB_PORT_ATTRIBUTES	*attrib = NULL;
-	int pa_client_status = OMGT_SERVICE_STATE_DOWN;
+	FSTATUS fstatus;
+	uint8_t mclass = MCLASS_VFI_PM;
+	struct omgt_class_args mgmt_class[2];
+	int err = 0;
+	IB_PORT_ATTRIBUTES *attrib = NULL;
+	int pa_service_state = OMGT_SERVICE_STATE_DOWN;
 
 	fstatus = omgt_get_portguid(port->hfi_num, port->hfi_port_num, NULL, port, NULL, NULL, NULL, &attrib, NULL, NULL, NULL, NULL, NULL);
 
@@ -2060,7 +2366,7 @@ omgt_pa_service_connect(struct omgt_port *port)
 	if ((fstatus = iba_pa_query_master_pm_lid(port)) != FSUCCESS) {
 		OMGT_OUTPUT_ERROR(port, "Can't query primary PM LID!\n");
 		if (fstatus == FUNAVAILABLE) {
-			pa_client_status = OMGT_SERVICE_STATE_UNAVAILABLE;
+			pa_service_state = OMGT_SERVICE_STATE_UNAVAILABLE;
 		}
 		goto done;
 	}
@@ -2083,12 +2389,12 @@ omgt_pa_service_connect(struct omgt_port *port)
 		goto done;
 	}
 
-	pa_client_status = OMGT_SERVICE_STATE_OPERATIONAL;
+	pa_service_state = OMGT_SERVICE_STATE_OPERATIONAL;
 done:
 	if (attrib)
 		MemoryDeallocate(attrib);
 
-	return (port->pa_service_state = pa_client_status);
+	return (port->pa_service_state = pa_service_state);
 }
 
 /** 
@@ -2298,7 +2604,7 @@ omgt_pa_get_group_list(
 
 		if ( !( *pm_group_list = MemoryAllocate2AndClear( size_group_list, IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG ) ) )
         {
-           OMGT_OUTPUT_ERROR(port, "can not allocate memory\n");
+            OMGT_OUTPUT_ERROR(port, "can not allocate memory\n");
             goto fail;
         }
 
@@ -2407,7 +2713,7 @@ omgt_pa_get_vf_list(
 
 		if ( !( *pm_vf_list = MemoryAllocate2AndClear( size_vf_list, IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG ) ) )
         {
-           OMGT_OUTPUT_ERROR(port, "can not allocate memory\n");
+            OMGT_OUTPUT_ERROR(port, "can not allocate memory\n");
             goto fail;
         }
 
@@ -2745,7 +3051,7 @@ omgt_pa_get_group_config(
         if ( !( *pm_group_config = MemoryAllocate2AndClear( size_group_config,
                                                             IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG ) ) )
         {
-           OMGT_OUTPUT_ERROR(port, "can not allocate memory\n");
+            OMGT_OUTPUT_ERROR(port, "can not allocate memory\n");
             goto fail;
         }
         
@@ -2790,6 +3096,282 @@ omgt_pa_release_group_config(
 
 }
 
+/**
+ *  Get group node info
+ *
+ * @param port                  Port to operate on.
+ * @param pm_image_id_query     Image ID of group config to get.
+ * @param group_name            Pointer to group name
+ * @param nodeLid               node LID
+ * @param nodeGuid              node GUID
+ * @param nodeDesc              node Description
+ * @param pm_image_id_resp      Pointer to image ID of group info returned.
+ * @param pm_group_config       Pointer to group config to fill. Upon successful return, a memory to
+ *                              contain the group config is allocated. The caller must call
+ *                              omgt_pa_release_group_config to free the memory later.
+ *
+ * @return
+ *   OMGT_STATUS_SUCCESS - Get successful
+ *     OMGT_STATUS_ERROR - Error
+ */
+OMGT_STATUS_T
+omgt_pa_get_group_nodeinfo(
+    struct omgt_port     	*port,
+    STL_PA_IMAGE_ID_DATA       	pm_image_id_query,
+    char                	*group_name,
+    STL_LID             	nodeLid,
+    uint64              	nodeGuid,
+    char                        *nodeDesc,
+    STL_PA_IMAGE_ID_DATA       	*pm_image_id_resp,
+    uint32               	*pNum_nodes,
+    STL_PA_GROUP_NODEINFO_RSP   **pm_group_nodeinfo
+    )
+{
+    OMGT_STATUS_T           fstatus = OMGT_STATUS_ERROR;
+    uint32                  num_nodes;
+    uint32                  size_group_nodeinfo;
+    STL_PA_IMAGE_ID_DATA    image_id = pm_image_id_query;
+    OMGT_QUERY              query;
+    PQUERY_RESULT_VALUES    query_results = NULL;
+    STL_PA_GROUP_NODEINFO_RESULTS *p;
+
+    // Validate the parameters and state
+    if (!port || !group_name || !pm_group_nodeinfo || *pm_group_nodeinfo)
+    {
+        OMGT_OUTPUT_ERROR(port, "invalid params or state\n");
+        return (fstatus);
+    }
+
+    memset(&query, 0, sizeof(query));	// initialize reserved fields
+    query.InputType     = InputTypeNoInput;
+    query.OutputType    = OutputTypePaTableRecord;
+
+    OMGT_DBGPRINT(port, "Getting Group Node Info...\n");
+    OMGT_DBGPRINT(port, "Query: Input=%s, Output=%s\n",
+             iba_pa_query_input_type_msg(query.InputType),
+             iba_pa_query_result_type_msg(query.OutputType));
+
+    fstatus = iba_pa_multi_mad_group_nodeinfo_response_query(
+       port, &query, group_name, nodeLid, nodeGuid, nodeDesc, &query_results, &image_id );
+
+    if (!query_results)
+    {
+        OMGT_DBGPRINT(port,  "PA GroupNodeInfo query Failed: %s\n",
+                  iba_fstatus_msg(fstatus) );
+        goto fail;
+    }
+    else if (query_results->Status != FSUCCESS)
+    {
+        OMGT_DBGPRINT(port,  "PA GroupNodeInfo query Failed: %s MadStatus 0x%X: %s\n",
+                  iba_fstatus_msg(query_results->Status), port->pa_mad_status,
+                  iba_pa_mad_status_msg(port) );
+        goto fail;
+    }
+    else if (query_results->ResultDataSize == 0)
+    {
+        OMGT_DBGPRINT(port, "No Records Returned\n");
+        goto fail;
+    }
+    else
+    {
+        p = (STL_PA_GROUP_NODEINFO_RESULTS*)query_results->QueryResult;
+
+        // TBD remove some of these after additional MAD testing
+        OMGT_DBGPRINT(port, "MadStatus 0x%X: %s\n", port->pa_mad_status,
+                  iba_pa_mad_status_msg(port) );
+        OMGT_DBGPRINT(port, "%d Bytes Returned\n", query_results->ResultDataSize);
+        OMGT_DBGPRINT(port, "PA Multiple MAD Response for GroupNodeInfo group %s:\n",
+                  group_name );
+        OMGT_DBGPRINT(port, "NumGroupNodeInfoRecords = %d\n",
+                  (int)p->NumGroupNodeInfoRecords );
+
+        num_nodes = p->NumGroupNodeInfoRecords;
+        *pNum_nodes = num_nodes;
+        size_group_nodeinfo = sizeof(STL_PA_GROUP_NODEINFO_RSP) * num_nodes;
+
+        if ( !( *pm_group_nodeinfo = MemoryAllocate2AndClear( size_group_nodeinfo,
+                                                            IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG ) ) )
+        {
+            OMGT_OUTPUT_ERROR(port, "can not allocate memory\n");
+            goto fail;
+        }
+
+        OMGT_DBGPRINT(port,  "\tname:%s, nodes:%u\n",
+                  group_name,
+                  (unsigned int)num_nodes );
+
+        memcpy(*pm_group_nodeinfo, p->GroupNodeInfoRecords, size_group_nodeinfo);
+        fstatus = OMGT_STATUS_SUCCESS;
+    }
+
+done:
+    // iba_pa_query_port_fabric_info will have allocated a result buffer
+    // we must free the buffer when we are done with it
+    omgt_free_query_result_buffer(query_results);
+    return (fstatus);
+
+fail:
+    fstatus = OMGT_STATUS_ERROR;
+    goto done;
+}
+
+/**
+ *  Release group node info
+ *
+ * @param pm_group_nodeinfo       Pointer to pointer to the group nodeinfo to free.
+ *
+ * @return
+ *   None
+ */
+void
+omgt_pa_release_group_nodeinfo(
+    STL_PA_GROUP_NODEINFO_RSP   **pm_group_nodeinfo
+    )
+{
+    if (pm_group_nodeinfo && *pm_group_nodeinfo)
+    {
+        MemoryDeallocate(*pm_group_nodeinfo);
+        *pm_group_nodeinfo = NULL;
+    }
+}
+
+/**
+ *  Get group link info
+ *
+ * @param port                  Port to operate on.
+ * @param pm_image_id_query     Image ID of group config to get.
+ * @param group_name            Pointer to group name
+ * @param inputLid              input LID
+ * @param inputPort             input Port
+ * @param pm_image_id_resp      Pointer to image ID of group info returned.
+ * @param pm_group_config       Pointer to group config to fill. Upon successful return, a memory to
+ *                              contain the group config is allocated. The caller must call
+ *                              omgt_pa_release_group_config to free the memory later.
+ *
+ * @return
+ *   OMGT_STATUS_SUCCESS - Get successful
+ *     OMGT_STATUS_ERROR - Error
+ */
+OMGT_STATUS_T
+omgt_pa_get_group_linkinfo(
+    struct omgt_port     *port,
+    STL_PA_IMAGE_ID_DATA       pm_image_id_query,
+    char                *group_name,
+    STL_LID             inputLid,
+    uint8               inputPort,
+    STL_PA_IMAGE_ID_DATA       *pm_image_id_resp,
+    uint32               *pNum_links,
+    STL_PA_GROUP_LINKINFO_RSP   **pm_group_linkinfo
+    )
+{
+    OMGT_STATUS_T           fstatus = OMGT_STATUS_ERROR;
+    uint32                  num_links;
+    uint32                  size_group_linkinfo;
+    STL_PA_IMAGE_ID_DATA    image_id = pm_image_id_query;
+    OMGT_QUERY              query;
+    PQUERY_RESULT_VALUES    query_results = NULL;
+    STL_PA_GROUP_LINKINFO_RESULTS *p;
+
+    // Validate the parameters and state
+    if (!port || !group_name || !pm_group_linkinfo || *pm_group_linkinfo)
+    {
+        OMGT_OUTPUT_ERROR(port, "invalid params or state\n");
+        return (fstatus);
+    }
+
+    memset(&query, 0, sizeof(query));	// initialize reserved fields
+    query.InputType     = InputTypeNoInput;
+    query.OutputType    = OutputTypePaTableRecord;
+
+    OMGT_DBGPRINT(port, "Getting Group Link Info...\n");
+    OMGT_DBGPRINT(port, "Query: Input=%s, Output=%s\n",
+             iba_pa_query_input_type_msg(query.InputType),
+             iba_pa_query_result_type_msg(query.OutputType));
+
+    fstatus = iba_pa_multi_mad_group_linkinfo_response_query(
+       port, &query, group_name, inputLid, inputPort, &query_results, &image_id );
+
+    if (!query_results)
+    {
+        OMGT_DBGPRINT(port,  "PA GroupLinkInfo query Failed: %s\n",
+                  iba_fstatus_msg(fstatus) );
+        goto fail;
+    }
+    else if (query_results->Status != FSUCCESS)
+    {
+        OMGT_DBGPRINT(port,  "PA GroupLinkInfo query Failed: %s MadStatus 0x%X: %s\n",
+                  iba_fstatus_msg(query_results->Status), port->pa_mad_status,
+                  iba_pa_mad_status_msg(port) );
+        goto fail;
+    }
+    else if (query_results->ResultDataSize == 0)
+    {
+        OMGT_DBGPRINT(port, "No Records Returned\n");
+        goto fail;
+    }
+    else
+    {
+        p = (STL_PA_GROUP_LINKINFO_RESULTS*)query_results->QueryResult;
+
+        // TBD remove some of these after additional MAD testing
+        OMGT_DBGPRINT(port, "MadStatus 0x%X: %s\n", port->pa_mad_status,
+                  iba_pa_mad_status_msg(port) );
+        OMGT_DBGPRINT(port, "%d Bytes Returned\n", query_results->ResultDataSize);
+        OMGT_DBGPRINT(port, "PA Multiple MAD Response for GroupLinkInfo group %s:\n",
+                  group_name );
+        OMGT_DBGPRINT(port, "NumGroupLinkInfoRecords = %d\n",
+                  (int)p->NumGroupLinkInfoRecords );
+
+        num_links = p->NumGroupLinkInfoRecords;
+        *pNum_links = num_links;
+        size_group_linkinfo = sizeof(STL_PA_GROUP_LINKINFO_RSP) * num_links;
+
+        if ( !( *pm_group_linkinfo = MemoryAllocate2AndClear( size_group_linkinfo,
+                                                            IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG ) ) )
+        {
+            OMGT_OUTPUT_ERROR(port, "can not allocate memory\n");
+            goto fail;
+        }
+
+        OMGT_DBGPRINT(port,  "\tname:%s, links:%u\n",
+                  group_name,
+                  (unsigned int)num_links );
+
+        memcpy(*pm_group_linkinfo, p->GroupLinkInfoRecords, size_group_linkinfo);
+        fstatus = OMGT_STATUS_SUCCESS;
+    }
+
+done:
+    // iba_pa_query_port_fabric_info will have allocated a result buffer
+    // we must free the buffer when we are done with it
+    omgt_free_query_result_buffer(query_results);
+    return (fstatus);
+
+fail:
+    fstatus = OMGT_STATUS_ERROR;
+    goto done;
+}
+
+/**
+ *  Release group link info
+ *
+ * @param port         		Port to operate on.
+ * @param pm_group_nodeinfo     Pointer to pointer to the group nodeinfo to free.
+ *
+ * @return
+ *   None
+ */
+void
+omgt_pa_release_group_linkinfo(
+    STL_PA_GROUP_LINKINFO_RSP   **pm_group_linkinfo
+    )
+{
+    if (pm_group_linkinfo && *pm_group_linkinfo)
+    {
+        MemoryDeallocate(*pm_group_linkinfo);
+        *pm_group_linkinfo = NULL;
+    }
+}
 
 /* Get VF config info
  *
@@ -2881,7 +3463,7 @@ omgt_pa_get_vf_config(
         if ( !( *pm_vf_config = MemoryAllocate2AndClear( size_vf_config,
                                                             IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG ) ) )
         {
-           OMGT_OUTPUT_ERROR(port, "can not allocate memory\n");
+            OMGT_OUTPUT_ERROR(port, "can not allocate memory\n");
             goto fail;
         }
         
@@ -3028,7 +3610,7 @@ omgt_pa_get_group_focus(
         if ( !( *pm_group_focus = MemoryAllocate2AndClear( size_group_focus,
                                                          IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG ) ) )
         {
-           OMGT_OUTPUT_ERROR(port, "can not allocate memory\n");
+            OMGT_OUTPUT_ERROR(port, "can not allocate memory\n");
             goto fail;
         }
         
@@ -3175,7 +3757,7 @@ omgt_pa_get_vf_focus(
         if ( !( *pm_vf_focus = MemoryAllocate2AndClear( size_vf_focus,
                                                          IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG ) ) )
         {
-           OMGT_OUTPUT_ERROR(port, "can not allocate memory\n");
+            OMGT_OUTPUT_ERROR(port, "can not allocate memory\n");
             goto fail;
         }
         
@@ -3221,30 +3803,30 @@ omgt_pa_release_vf_focus(
 }
 
 /**
- *  Get port statistics (counters)
+ *  Get port statistics (counters). Supports 32 bit lids
  *
- * @param port                  Port to operate on. 
- * @param pm_image_id_query     Image ID of port counters to get. 
+ * @param port                  Port to operate on.
+ * @param pm_image_id_query     Image ID of port counters to get.
  * @param lid                   LID of node.
- * @param port_num              Port number. 
- * @param pm_image_id_resp      Pointer to image ID of port counters returned. 
- * @param port_counters         Pointer to port counters to fill. 
+ * @param port_num              Port number.
+ * @param pm_image_id_resp      Pointer to image ID of port counters returned.
+ * @param port_counters         Pointer to port counters to fill.
  * @param flags                 Pointer to flags
  * @param delta                 1 for delta counters, 0 for raw image counters.
  * @param user_cntrs            1 for running counters, 0 for image counters. (delta must be 0)
  *
- * @return 
+ * @return
  *   OMGT_STATUS_SUCCESS - Get successful
  *     OMGT_STATUS_ERROR - Error
  */
 OMGT_STATUS_T
-omgt_pa_get_port_stats(
+omgt_pa_get_port_stats2(
     struct omgt_port         *port,
     STL_PA_IMAGE_ID_DATA     pm_image_id_query,
-    uint16                   lid,
+    STL_LID                  lid,
     uint8                    port_num,
     STL_PA_IMAGE_ID_DATA    *pm_image_id_resp,
-    STL_PORT_COUNTERS_DATA  *port_counters, 
+    STL_PORT_COUNTERS_DATA  *port_counters,
     uint32                  *flags,
     uint32                   delta,
 	uint32                   user_cntrs
@@ -3263,13 +3845,14 @@ omgt_pa_get_port_stats(
 
     OMGT_DBGPRINT(port, "Getting Port Counters...\n");
 
-    if ( ( response = iba_pa_single_mad_port_counters_response_query( 
+    if ( ( response = iba_pa_single_mad_port_counters_response_query(
        port, lid, port_num, delta, user_cntrs, &image_id ) ) != NULL )
     {
         // TBD remove some of these after additional MAD testing
-        OMGT_DBGPRINT(port, "%s Controlled Port Counters (%s) Response for nodeLid 0x%X portNumber %d%s:\n",
+        OMGT_DBGPRINT(port, "%s Controlled Port Counters (%s) Response for nodeLid 0x%X portNumber %d%s%s:\n",
 				 (user_cntrs?"User":"PM"), (delta?"Delta":"Total"), lid, port_num,
-				 response->flags & STL_PA_PC_FLAG_UNEXPECTED_CLEAR?" (Unexpected Clear)":"" );
+				 response->flags & STL_PA_PC_FLAG_UNEXPECTED_CLEAR?" (Unexpected Clear)":"",
+				 response->flags & STL_PA_PC_FLAG_CLEAR_FAIL?" (Clear Unsuccessful)":"" );
         OMGT_DBGPRINT(port, "\tXmitData = %" PRIu64 "\n", response->portXmitData);
         OMGT_DBGPRINT(port, "\tRcvData = %" PRIu64 "\n", response->portRcvData);
         OMGT_DBGPRINT(port, "\tXmitPkts = %" PRIu64 "\n", response->portXmitPkts);
@@ -3282,8 +3865,8 @@ omgt_pa_get_port_stats(
         OMGT_DBGPRINT(port, "\tLinkDowned = %u\n", response->linkDowned);	// 32 bit
         OMGT_DBGPRINT(port, "\tNumLanesDown = %u\n", response->lq.s.numLanesDown);
         OMGT_DBGPRINT(port, "\tRcvErrors = %"PRIu64"\n", response->portRcvErrors);
-        OMGT_DBGPRINT(port, "\tExcessiveBufferOverruns = %"PRIu64"\n",
-                response->excessiveBufferOverruns );
+        OMGT_DBGPRINT(port,  "\tExcessiveBufferOverruns = %"PRIu64"\n",
+                  response->excessiveBufferOverruns );
         OMGT_DBGPRINT(port, "\tFMConfigErrors = %"PRIu64"\n",
                   response->fmConfigErrors );
         OMGT_DBGPRINT(port,  "\tLinkErrorRecovery = %u\n", response->linkErrorRecovery);	// 32 bit
@@ -3293,12 +3876,12 @@ omgt_pa_get_port_stats(
                   response->portRcvRemotePhysicalErrors);
         OMGT_DBGPRINT(port, "\tXmitConstraintErrors = %"PRIu64"\n",
                   response->portXmitConstraintErrors );
-        OMGT_DBGPRINT(port, "\tRcvConstraintErrors = %"PRIu64"\n",
+        OMGT_DBGPRINT(port,  "\tRcvConstraintErrors = %"PRIu64"\n",
                   response->portRcvConstraintErrors );
         OMGT_DBGPRINT(port, "\tRcvSwitchRelayErrors = %"PRIu64"\n",
                   response->portRcvSwitchRelayErrors);
         OMGT_DBGPRINT(port, "\tXmitDiscards = %"PRIu64"\n", response->portXmitDiscards);
-        OMGT_DBGPRINT(port, "\tCongDiscards = %"PRIu64"\n",
+        OMGT_DBGPRINT(port,  "\tCongDiscards = %"PRIu64"\n",
                   response->swPortCongestion);
         OMGT_DBGPRINT(port, "\tRcvFECN = %"PRIu64"\n", response->portRcvFECN);
         OMGT_DBGPRINT(port, "\tRcvBECN = %"PRIu64"\n", response->portRcvBECN);
@@ -3312,7 +3895,7 @@ omgt_pa_get_port_stats(
             *pm_image_id_resp = response->imageId;
         if (flags)
             *flags = response->flags;
-        
+
         memcpy(port_counters, response, sizeof(*port_counters));
         MemoryDeallocate(response);
         fstatus = OMGT_STATUS_SUCCESS;
@@ -3322,6 +3905,29 @@ omgt_pa_get_port_stats(
 
     return (fstatus);
 }
+
+/* Deprecated. Use omgt_get_vf_port_stats2
+*  This Should be removed in favor of the version that supports 32bit lids
+*  when opamgt public library decides breaking compatibility is acceptable. 
+*/
+OMGT_STATUS_T
+omgt_pa_get_port_stats(
+    struct omgt_port         *port,
+    STL_PA_IMAGE_ID_DATA     pm_image_id_query,
+    uint16_t                 lid,
+    uint8                    port_num,
+    STL_PA_IMAGE_ID_DATA    *pm_image_id_resp,
+    STL_PORT_COUNTERS_DATA  *port_counters,
+    uint32                  *flags,
+    uint32                   delta,
+	uint32                   user_cntrs
+    )
+{
+	OMGT_DBGPRINT(port, "omgt_pa_get_port_stats is deprecated. Please use omgt_pa_get_port_stats2\n");
+	return omgt_pa_get_port_stats2(port, pm_image_id_query, lid, port_num, pm_image_id_resp, port_counters, flags, delta, user_cntrs);
+}
+
+
 
 /**
  *  Clear specified port counters for specified port
@@ -3340,7 +3946,7 @@ FSTATUS
 pa_client_clr_port_counters( 
     struct omgt_port     *port,
     STL_PA_IMAGE_ID_DATA       pm_image_id_query, 
-    uint16              lid,
+    STL_LID             lid,
     uint8               port_num, 
     uint32              select_flag 
     )
@@ -3365,8 +3971,9 @@ pa_client_clr_port_counters(
 
     return (fstatus);
 }
+
 /**
- *  Get vf port statistics (counters)
+ *  Get vf port statistics (counters). Supports 32 bit lids. 
  *
  * @param port                  Port to operate on.
  * @param pm_image_id_query     Image ID of port counters to get.
@@ -3384,11 +3991,11 @@ pa_client_clr_port_counters(
  *     OMGT_STATUS_ERROR - Error
  */
 OMGT_STATUS_T
-omgt_pa_get_vf_port_stats(
+omgt_pa_get_vf_port_stats2(
     struct omgt_port              *port,
     STL_PA_IMAGE_ID_DATA          pm_image_id_query,
 	char				         *vf_name,
-    uint16                        lid,
+    STL_LID                       lid,
     uint8                         port_num,
     STL_PA_IMAGE_ID_DATA         *pm_image_id_resp,
     STL_PA_VF_PORT_COUNTERS_DATA *vf_port_counters,
@@ -3414,9 +4021,10 @@ omgt_pa_get_vf_port_stats(
        port, lid, port_num, delta, user_cntrs, vf_name, &image_id ) ) != NULL )
     {
         // TBD remove some of these after additional MAD testing
-        OMGT_DBGPRINT(port, "%s Controlled VF Port Counters (%s) Response for nodeLid 0x%X portNumber %d%s:\n",
+        OMGT_DBGPRINT(port, "%s Controlled VF Port Counters (%s) Response for nodeLid 0x%X portNumber %d%s%s:\n",
 				 (user_cntrs?"User":"PM"), (delta?"Delta":"Total"), lid, port_num,
-				 response->flags & STL_PA_PC_FLAG_UNEXPECTED_CLEAR?" (Unexpected Clear)":"" );
+				 response->flags & STL_PA_PC_FLAG_UNEXPECTED_CLEAR?" (Unexpected Clear)":"",
+				 response->flags & STL_PA_PC_FLAG_CLEAR_FAIL?" (Clear Unsuccessful)":"" );
         OMGT_DBGPRINT(port, "\tvfName = %s\n", response->vfName);
         OMGT_DBGPRINT(port, "\tXmitData = %" PRIu64 "\n", response->portVFXmitData);
         OMGT_DBGPRINT(port, "\tRcvData = %" PRIu64 "\n", response->portVFRcvData);
@@ -3445,6 +4053,29 @@ omgt_pa_get_vf_port_stats(
         OMGT_DBGPRINT(port, "Got NULL response - FAILED\n");
 
     return (fstatus);
+}
+
+/* Deprecated. Use omgt_get_vf_port_stats2
+*  This Should be removed in favor of the version that supports 32bit lids
+*  when opamgt public library decides breaking compatibility is acceptable. 
+*/
+
+OMGT_STATUS_T
+omgt_pa_get_vf_port_stats(
+    struct omgt_port         *port,
+    STL_PA_IMAGE_ID_DATA     pm_image_id_query,
+	char    		         *vf_name,
+    uint16_t                 lid,
+    uint8                    port_num,
+    STL_PA_IMAGE_ID_DATA    *pm_image_id_resp,
+    STL_PA_VF_PORT_COUNTERS_DATA *vf_port_counters,
+    uint32                  *flags,
+    uint32                   delta,
+	uint32                   user_cntrs
+    )
+{
+	OMGT_DBGPRINT(port, "omgt_pa_get_vf_port_stats is deprecated. Please use omgt_pa_get_vf_port_stats2\n");
+	return omgt_pa_get_vf_port_stats2(port, pm_image_id_query, vf_name, lid, port_num, pm_image_id_resp, vf_port_counters, flags, delta, user_cntrs);
 }
 
 /**

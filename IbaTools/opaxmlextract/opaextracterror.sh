@@ -60,6 +60,7 @@ Usage_full()
 	echo "      ${cmd} -h 2" >&2
 	echo >&2
 	echo "See the man page for \"opareport\" for the full set of options." >&2
+	echo "By design, the tool ignores \"-o/--output\" report option." >&2
 	echo >&2
 	exit 0
 }

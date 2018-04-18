@@ -189,204 +189,11 @@ typedef	struct {
 #define SA_MULTIPATH_RECORD 0x003A  // Request for multi paths
 #define	SA_SARESPONSE		0x8001	// Container for query responses
 #define SA_VFABRIC_RECORD	0xFF02  // "Vendor unique" vfabric record
-#define SA_JOB_MANAGEMENT	0xFFB2  // job management extensions
-
-//
-//	MWHEINZ FIXME: References to these typedefs should all be replaced
-//	with the equivalent IB_* SA record types.
-//
-
-//
-// IBTA:  Volume 1, Section 15.2.5.11
-
-//
-//	InformRecord
-//
-typedef	struct {
-	Gid_t		    subscriberGid;	// subscriber GID
-	uint16_t	    id;	            // unique id
-    uint8_t         reserved[6];    // 48 bits reserved
-	InformInfo_t	informInfo;	    // Inform Info
-} InformRecord_t;
-typedef InformRecord_t * InformRecordp;
-
-
-// IBTA:  Volume 1, Section 15.2.5.14
-
-//
-//	ServiceRecord
-//	
-
-#define SERVICE_RECORD_NAME_COUNT	64
-//#define SERVICE_RECORD_GID_COUNT	16
-#define SERVICE_RECORD_KEY_COUNT	16
-
-typedef	struct {
-    uint64_t    serviceId;          // Id of service on port specified by serviceGid
-	Gid_t		serviceGid;	        // String of 16 hex digits
-    uint16_t    servicep_key;       // p_key used in contacting service
-	uint16_t	reserved;
-	uint32_t	serviceLease;		// seconds remaining in lease
-    uint8_t     serviceKey[SERVICE_RECORD_KEY_COUNT];  // key associated with service name
-	uint8_t		name[SERVICE_RECORD_NAME_COUNT];// Null terminated service name
-    uint8_t     data8[16];			// data8[2] and data8[3] used by config consistency check
-    uint16_t    data16[8];
-    uint32_t    data32[4];			// data32[0] and data32[1] used by config consistency check
-    uint64_t    data64[2];
-} ServiceRecord_t;
-typedef ServiceRecord_t * ServiceRecordp;
-
-
-#define SR_COMPONENTMASK_ID 	0x01ull
-#define SR_COMPONENTMASK_GID 	0x02ull
-#define SR_COMPONENTMASK_PKEY 	0x04ull
-#define SR_COMPONENTMASK_LEASE 	0x10ull
-#define SR_COMPONENTMASK_KEY 	0x20ull
-#define SR_COMPONENTMASK_NAME 	0x40ull
-#define	SR_GFLAG_INDIRECTION	0x1	// set if service may redirect
-#define	SR_GFLAG_DHCP_CAPABLE	0x2	// set if DHCP server may register
-
-// IBTA:  Volume 1, Section 15.2.5.15
-
-
-//
-//	PathRecord
-//
-
-/* IB 1.1 */
-#define	PR_COMPONENTMASK_NO_DST	0x0000000000000014ull
-#define	PR_COMPONENTMASK_OK_SRC	0x0000000000001008ull
-
-#define	PR_COMPONENTMASK_SRV_ID	0x0000000000000001ull
-#define	PR_COMPONENTMASK_DGID	0x0000000000000004ull
-#define	PR_COMPONENTMASK_SGID	0x0000000000000008ull
-#define	PR_COMPONENTMASK_DLID	0x0000000000000010ull
-#define	PR_COMPONENTMASK_SLID	0x0000000000000020ull
-#define	PR_COMPONENTMASK_RAW	0x0000000000000040ull
-#define	PR_COMPONENTMASK_FLOW	0x0000000000000100ull
-#define	PR_COMPONENTMASK_HOP	0x0000000000000200ull
-#define	PR_COMPONENTMASK_TCLASS	0x0000000000000400ull
-#define	PR_COMPONENTMASK_REVERSIBLE	0x0000000000000800ull
-#define	PR_COMPONENTMASK_PATHS	0x0000000000001000ull
-#define	PR_COMPONENTMASK_PKEY	0x0000000000002000ull
-#define	PR_COMPONENTMASK_QOS	0x0000000000004000ull
-#define	PR_COMPONENTMASK_SL	    0x0000000000008000ull
-#define	PR_COMPONENTMASK_MTU_SEL  0x0000000000010000ull
-#define	PR_COMPONENTMASK_MTU	0x0000000000020000ull
-#define	PR_COMPONENTMASK_RATE_SEL 0x0000000000040000ull
-#define	PR_COMPONENTMASK_RATE	0x0000000000080000ull
-#define	PR_COMPONENTMASK_LIFE_SEL 0x0000000000100000ull
-#define	PR_COMPONENTMASK_LIFE	0x0000000000200000ull
-
-#define	PR_GT			0	// value is greater than
-#define	PR_LT			1	// value is less than
-#define	PR_EQ			2	// value is equal
-#define	PR_MAX			3	// maximum possible
-
-#define PR_LIFE_MAX			0x3F
-
-// IBTA:  Volume 1, Section 15.2.5.17
-
-//
-//	MCMemberRecord
-//
-typedef	struct {
-	Gid_t		mGid;
-	Gid_t		portGid;
-	uint32_t	qKey;
-	Lid_t	mLid;
-	uint8_t		mtuSelector;
-	uint8_t		mtuValue;
-	uint8_t		tClass;
-	uint16_t	pKey;
-	uint8_t		rateSelector;
-	uint8_t		rateValue;
-	uint8_t		lifeSelector;
-	uint8_t		lifeValue;
-	uint8_t		sl;
-	uint32_t	flowLabel;
-	uint8_t		hopLimit;
-	uint8_t		scope;
-	uint8_t		joinState;
-	uint8_t		proxyJoin;
-	uint32_t	rsvd;
-} McMemberRecord_t;
-
-#define MC_COMPONENTMASK_MGID			0x0000000000000001ull
-#define MC_COMPONENTMASK_PGID			0x0000000000000002ull
-#define MC_COMPONENTMASK_QKEY			0x0000000000000004ull
-#define MC_COMPONENTMASK_MLID			0x0000000000000008ull
-#define MC_COMPONENTMASK_MTU_SEL		0x0000000000000010ull
-#define MC_COMPONENTMASK_MTU			0x0000000000000020ull
-#define MC_COMPONENTMASK_TCLASS			0x0000000000000040ull
-#define MC_COMPONENTMASK_PKEY			0x0000000000000080ull
-#define MC_COMPONENTMASK_RATE_SEL		0x0000000000000100ull
-#define MC_COMPONENTMASK_RATE			0x0000000000000200ull
-#define MC_COMPONENTMASK_LIFE_SEL		0x0000000000000400ull
-#define MC_COMPONENTMASK_LIFE			0x0000000000000800ull
-#define MC_COMPONENTMASK_SL				0x0000000000001000ull
-#define MC_COMPONENTMASK_FLOW			0x0000000000002000ull
-#define MC_COMPONENTMASK_HOP			0x0000000000004000ull
-#define MC_COMPONENTMASK_SCOPE			0x0000000000008000ull
-#define MC_COMPONENTMASK_STATE			0x0000000000010000ull
-#define MC_COMPONENTMASK_PROXY			0x0000000000020000ull
-
-/* P_Key,  Q_Key, SL, FlowLabel, TClass, JoinState, PortGID */
-#define MC_COMPONENTMASK_OK_CREATE		(MC_COMPONENTMASK_PKEY   | \
-										 MC_COMPONENTMASK_QKEY   | \
-										 MC_COMPONENTMASK_SL     | \
-										 MC_COMPONENTMASK_FLOW   | \
-										 MC_COMPONENTMASK_TCLASS | \
-										 MC_COMPONENTMASK_STATE  | \
-										 MC_COMPONENTMASK_PGID)
-
-/* MGID, JoinState, PortGID */
-#define MC_COMPONENTMASK_OK_JOIN		(MC_COMPONENTMASK_MGID   | \
-										 MC_COMPONENTMASK_STATE  | \
-										 MC_COMPONENTMASK_PGID)
-
-/* All of MTU */
-#define MC_COMPONENTMASK_OK_MTU			(MC_COMPONENTMASK_MTU_SEL | \
-										 MC_COMPONENTMASK_MTU)
-										 
-/* All of Rate */
-#define MC_COMPONENTMASK_OK_RATE		(MC_COMPONENTMASK_RATE_SEL | \
-										 MC_COMPONENTMASK_RATE)
-										 
-/* All of Life */
-#define MC_COMPONENTMASK_OK_LIFE		(MC_COMPONENTMASK_LIFE_SEL | \
-										 MC_COMPONENTMASK_LIFE)
-
-
-#define	MCMEMBER_JOIN_FULL_MEMBER		0x01
-#define	MCMEMBER_JOIN_NON_MEMBER		0x02
-#define	MCMEMBER_JOIN_SENDONLY_MEMBER		0x04
 
 #define IB_LINK_LOCAL_SCOPE             0x2
 #define IB_SITE_LOCAL_SCOPE             0x5
 #define IB_ORG_LOCAL_SCOPE              0x8
 #define IB_GLOBAL_SCOPE                 0xE
-
-//
-// IBTA:  Volume 1r1.1, Section 15.2.5.20
-
-#define	MR_COMPONENTMASK_RAW	    0x0000000000000001ull
-#define	MR_COMPONENTMASK_FLOW	    0x0000000000000004ull
-#define	MR_COMPONENTMASK_HOP	    0x0000000000000008ull
-#define	MR_COMPONENTMASK_TCLASS	    0x0000000000000010ull
-#define	MR_COMPONENTMASK_REVERSIBLE	0x0000000000000020ull
-#define	MR_COMPONENTMASK_PATHS	    0x0000000000000040ull
-#define	MR_COMPONENTMASK_PKEY	    0x0000000000000080ull
-#define	MR_COMPONENTMASK_QOS	    0x0000000000000100ull
-#define	MR_COMPONENTMASK_SL	        0x0000000000000200ull
-#define	MR_COMPONENTMASK_MTU_SEL	0x0000000000000400ull
-#define	MR_COMPONENTMASK_MTU     	0x0000000000000800ull
-#define	MR_COMPONENTMASK_RATE_SEL	0x0000000000001000ull
-#define	MR_COMPONENTMASK_RATE	    0x0000000000002000ull
-#define	MR_COMPONENTMASK_LIFE_SEL	0x0000000000004000ull
-#define	MR_COMPONENTMASK_LIFE	    0x0000000000008000ull
-#define	MR_COMPONENTMASK_SRVID	    0x0000000000010000ull
-#define MR_COMPONENTMASK_INDEP_SEL  0x0000000000020000ull
 
 /*
  * subscriber table (informInfo)
@@ -401,15 +208,15 @@ typedef struct {
  */
 typedef struct {
     Gid_t           subscriberGid;
-	uint16_t	    lid;		// destination lid
+	STL_LID			lid;		// destination lid
     uint16_t        trapnum;    // trap number
     uint32_t        qpn;        // queue pair number - 24 bits
     uint8_t         producer;   // producer of traps/notices - using 3 bits
 	uint8_t         rtv;        // time to respond to requests - 5 bits
 	uint16_t        pkey;		// original PKey
 	uint32_t	    qkey;	    // queue pair key (32)
-	uint16_t	    startLid;	// calculated start Lid
-	uint16_t	    endLid;		// calculated end Lid
+	STL_LID		    startLid;	// calculated start Lid
+	STL_LID		    endLid;		// calculated end Lid
 	uint8_t			ibMode;		// true if subscriber needs IB notices.
 } SubscriberKey_t;
 typedef SubscriberKey_t * SubscriberKeyp;

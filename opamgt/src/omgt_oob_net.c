@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -45,14 +45,15 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ib_utils_openib.h"
 #include "omgt_oob_net.h"
 #include "omgt_oob_ssl.h"
+#include "opamgt_dump_mad.h"
 
 #define CONNECTION_BACKLOG 10
 
 #define SET_ERROR(x,y) if (x) { *(x)=(y); }
 #define NET_MAGIC 0x31E0CC01
 
-static FSTATUS omgt_oob_read_from_socket(struct omgt_port *port);
-static FSTATUS omgt_oob_write_to_socket(struct omgt_port *port);
+static FSTATUS omgt_oob_read_from_socket(struct omgt_port *port, struct net_connection *conn);
+static FSTATUS omgt_oob_write_to_socket(struct omgt_port *port, struct net_connection *conn);
 static struct net_connection* omgt_oob_new_connection();
 static FSTATUS omgt_oob_print_addrinfo(struct omgt_port *port, char *hostname, uint16_t conn_port);
 
@@ -62,7 +63,7 @@ static FSTATUS omgt_oob_print_addrinfo(struct omgt_port *port, char *hostname, u
  * @param port            port object with connection info
  * @return FSTATUS
  */
-FSTATUS omgt_oob_net_connect(struct omgt_port *port)
+FSTATUS omgt_oob_net_connect(struct omgt_port *port, struct net_connection **cnn)
 {
 	struct net_connection *conn = NULL;
 	struct sockaddr_in v4_addr;
@@ -141,8 +142,6 @@ FSTATUS omgt_oob_net_connect(struct omgt_port *port)
 	OMGT_DBGPRINT(port, "Out-bound connection to %s port %d (conn #%d) established.\n",
 		port->oob_input.host, port->oob_input.port, conn->sock);
 
-	port->conn = conn;
-
 	// Should we setup SSL/TLS
 	if (port->oob_input.ssl_params.enable) {
 		port->is_ssl_enabled = TRUE;
@@ -151,70 +150,72 @@ FSTATUS omgt_oob_net_connect(struct omgt_port *port)
 			goto bail;
 		}
 
-		// open SSL/TLS connection
-		if (!(port->ssl_context = omgt_oob_ssl_client_open(port,
-					port->oob_input.ssl_params.directory,
-					port->oob_input.ssl_params.certificate,
-					port->oob_input.ssl_params.private_key,
-					port->oob_input.ssl_params.ca_certificate,
-					port->oob_input.ssl_params.cert_chain_depth,
-					port->oob_input.ssl_params.dh_params,
-					port->oob_input.ssl_params.ca_crl_enable,
-					port->oob_input.ssl_params.ca_crl))) {
-			OMGT_OUTPUT_ERROR(port, "cannot open SSL/TLS connection\n");
-			goto bail;
+		if (port->ssl_context == NULL) {
+			// open SSL/TLS connection
+			if (!(port->ssl_context = omgt_oob_ssl_client_open(port,
+						port->oob_input.ssl_params.directory,
+						port->oob_input.ssl_params.certificate,
+						port->oob_input.ssl_params.private_key,
+						port->oob_input.ssl_params.ca_certificate,
+						port->oob_input.ssl_params.cert_chain_depth,
+						port->oob_input.ssl_params.dh_params,
+						port->oob_input.ssl_params.ca_crl_enable,
+						port->oob_input.ssl_params.ca_crl))) {
+				OMGT_OUTPUT_ERROR(port, "cannot open SSL/TLS connection\n");
+				goto bail;
+			}
 		}
 
 		// establish SSL/TLS session
-		port->ssl_session = omgt_oob_ssl_connect(port, port->ssl_context, conn->sock);
-		if (!port->ssl_session) {
+		conn->ssl_session = omgt_oob_ssl_connect(port, port->ssl_context, conn->sock);
+		if (!conn->ssl_session) {
 			OMGT_OUTPUT_ERROR(port, "cannot establish SSL/TLS session\n");
-			goto bail;
+			goto bail; 
 		}
 	}
 
+	*cnn = conn;
 	return FSUCCESS;
+
 bail:
 	close(conn->sock);
 	conn->sock = INVALID_SOCKET;
 	free(conn);
-	port->conn = NULL;
 	return FERROR;
 }
 
-FSTATUS omgt_oob_net_disconnect(struct omgt_port *port)
+FSTATUS omgt_oob_net_disconnect(struct omgt_port *port, struct net_connection *conn)
 {
 	struct net_blob *blob;
 	int nr, ns;
 
-	if (!port->conn || port->conn->sock == INVALID_SOCKET) {
+	if (!conn || conn->sock == INVALID_SOCKET) {
 		return FINVALID_PARAMETER;
 	}
 
-	close(port->conn->sock);
-	port->conn->sock = INVALID_SOCKET;
+	close(conn->sock);
+	conn->sock = INVALID_SOCKET;
 
 	/*
 	 * Delete all enqueued blobs
 	 */
 	ns = 0;
-	while (!omgt_oob_queue_empty(&port->conn->send_queue)) {
-		blob = omgt_oob_dequeue_net_blob(&port->conn->send_queue);
+	while (!omgt_oob_queue_empty(&conn->send_queue)) {
+		blob = omgt_oob_dequeue_net_blob(&conn->send_queue);
 		if (blob) omgt_oob_free_net_blob(blob);
 		++ns;
 	}
 	nr = 0;
-	while (!omgt_oob_queue_empty(&port->conn->recv_queue)) {
-		blob = omgt_oob_dequeue_net_blob(&port->conn->recv_queue);
+	while (!omgt_oob_queue_empty(&conn->recv_queue)) {
+		blob = omgt_oob_dequeue_net_blob(&conn->recv_queue);
 		if (blob) omgt_oob_free_net_blob(blob);
 		++nr;
 	}
 
 	OMGT_DBGPRINT(port, "closed connection %d, deleted %d send %d recv blobs\n",
-		port->conn->sock, ns, nr);
+		conn->sock, ns, nr);
 
-	free(port->conn);
-	port->conn = NULL;
+	free(conn);
 
 	return FSUCCESS;
 }
@@ -224,7 +225,7 @@ FSTATUS omgt_oob_net_disconnect(struct omgt_port *port)
  * connection. Simply enqueue the blob here. omgt_oob_net_sleep() will take
  * care of the actual sending.
  */
-FSTATUS omgt_oob_net_send(struct omgt_port *port, char *data, int len)
+FSTATUS omgt_oob_net_send(struct omgt_port *port, uint8_t *data, int len)
 {
 	int magic;
 	int tot_len;
@@ -252,6 +253,11 @@ FSTATUS omgt_oob_net_send(struct omgt_port *port, char *data, int len)
 	tot_len = htonl(tot_len);
 	memcpy((void *)(blob->data + sizeof(int)), (void *)&tot_len, sizeof(int));
 	memcpy((void *)(blob->data + 2 * sizeof(int)), (void *)data, len);
+
+	if (port->dbg_file) {
+		OMGT_DBGPRINT(port, ">>> sending: len %d pktsz %d\n", len, tot_len);
+		omgt_dump_mad(port->dbg_file, data, len, "send mad\n");
+	}
 
 	omgt_oob_enqueue_net_blob(&port->conn->send_queue, blob);
 
@@ -299,7 +305,7 @@ void omgt_oob_net_get_next_message(struct net_connection *conn, uint8_t **data, 
 	}
 }
 
-static FSTATUS omgt_oob_read_from_socket(struct omgt_port *port)
+static FSTATUS omgt_oob_read_from_socket(struct omgt_port *port, struct net_connection *conn)
 {
 	ssize_t bytes_read;
 	struct net_blob *blob;
@@ -308,44 +314,44 @@ static FSTATUS omgt_oob_read_from_socket(struct omgt_port *port)
 	 * If we're in the middle of a message, pick up where we left off.
 	 * Otherwise, start reading a new message.
 	 */
-	if (port->conn->blob_in_progress == NULL) {
+	if (conn->blob_in_progress == NULL) {
 		blob = omgt_oob_new_net_blob(0);
 		if (blob) {
 			blob->data = NULL; /* this flags that we haven't read the msg size yet */
 			blob->cur_ptr = (uint8_t *)blob->magic;
 			blob->bytes_left = 2 * sizeof(int);
-			port->conn->blob_in_progress = blob;
+			conn->blob_in_progress = blob;
 		} else {
 			OMGT_DBGPRINT(port, "Received NULL blob from socket.");
 			return FERROR;
 		}
 	} else {
-		blob = port->conn->blob_in_progress;
+		blob = conn->blob_in_progress;
 	}
 
 	if (port->is_ssl_enabled && port->is_ssl_initialized) {
-		bytes_read = omgt_oob_ssl_read(port, port->ssl_session, blob->cur_ptr, blob->bytes_left);
+		bytes_read = omgt_oob_ssl_read(port, conn->ssl_session, blob->cur_ptr, blob->bytes_left);
 	} else {
-		bytes_read = recv(port->conn->sock, blob->cur_ptr, blob->bytes_left, 0);
+		bytes_read = recv(conn->sock, blob->cur_ptr, blob->bytes_left, 0);
 	}
 
 	if (bytes_read == 0) { /* graceful shutdown */
-		OMGT_DBGPRINT(port, "conn %d shut down gracefully\n", port->conn->sock);
+		OMGT_DBGPRINT(port, "conn %d shut down gracefully\n", conn->sock);
 		return FERROR;
 	} else if (bytes_read == SOCKET_ERROR) {
-		OMGT_DBGPRINT(port, "err %zd, %d over connection %d\n", bytes_read, errno, port->conn->sock);
+		OMGT_DBGPRINT(port, "err %zd, %d over connection %d\n", bytes_read, errno, conn->sock);
 		return FERROR;
 	} else {
 		if (bytes_read < blob->bytes_left) { /* still more to read */
 			omgt_oob_adjust_blob_cur_ptr(blob, bytes_read);
 			OMGT_DBGPRINT(port, "read %zu bytes over conn %d, %zu bytes to go\n",
-				bytes_read, port->conn->sock, blob->bytes_left);
+				bytes_read, conn->sock, blob->bytes_left);
 			return FSUCCESS;
 		} else {
 			if (blob->data == NULL) { /* NULL means we just finished reading msg size */
 				/* if we didn't get the magic, DISCONNECT this connection */
 				if (ntohl(blob->magic[0]) != NET_MAGIC) {
-					OMGT_OUTPUT_ERROR(port, "Read/write error over connection %d\n", port->conn->sock);
+					OMGT_OUTPUT_ERROR(port, "Read/write error over connection %d\n", conn->sock);
 					omgt_oob_free_net_blob(blob);
 					return FERROR;
 				}
@@ -360,31 +366,31 @@ static FSTATUS omgt_oob_read_from_socket(struct omgt_port *port)
 				blob->cur_ptr = blob->data;
 				blob->bytes_left = blob->len;
 				OMGT_DBGPRINT(port, "read %zd bytes over conn %d, start reading size %zu\n",
-					bytes_read, port->conn->sock, blob->len);
+					bytes_read, conn->sock, blob->len);
 				return FSUCCESS;
 			} else { /* we just finished reading the user data -- enqueue blob */
 				blob->bytes_left = 0;
 				blob->cur_ptr = NULL;
-				omgt_oob_enqueue_net_blob(&port->conn->recv_queue, blob);
-				port->conn->blob_in_progress = NULL;
+				omgt_oob_enqueue_net_blob(&conn->recv_queue, blob);
+				conn->blob_in_progress = NULL;
 				OMGT_DBGPRINT(port, "read %zd bytes over conn %d, finish reading msg of size %zu\n",
-					bytes_read, port->conn->sock, blob->len);
+					bytes_read, conn->sock, blob->len);
 				return FSUCCESS;
 			}
 		}
 	}
 }
 
-static FSTATUS omgt_oob_write_to_socket(struct omgt_port *port)
+static FSTATUS omgt_oob_write_to_socket(struct omgt_port *port, struct net_connection *conn)
 {
 	ssize_t bytes_sent;
 	struct net_blob *blob;
 
-	if (omgt_oob_queue_empty(&port->conn->send_queue)) {
+	if (omgt_oob_queue_empty(&conn->send_queue)) {
 		return FSUCCESS;
 	}
 
-	blob = omgt_oob_peek_net_blob(&port->conn->send_queue);
+	blob = omgt_oob_peek_net_blob(&conn->send_queue);
 
 	/*
 	 * #define TEST if you want to stress test message fragmentation.
@@ -396,19 +402,19 @@ static FSTATUS omgt_oob_write_to_socket(struct omgt_port *port)
 		xxx = blob->bytes_left;
 	}
 	if (port->is_ssl_enabled && port->is_ssl_initialized) {
-		bytes_sent = omgt_oob_ssl_write(port, port->ssl_session, blob->cur_ptr, xxx);
+		bytes_sent = omgt_oob_ssl_write(port, conn->ssl_session, blob->cur_ptr, xxx);
 	} else {
-		bytes_sent = send(port->conn->sock, blob->cur_ptr, xxx, 0);
+		bytes_sent = send(conn->sock, blob->cur_ptr, xxx, 0);
 	}
 #else
 	if (port->is_ssl_enabled && port->is_ssl_initialized) {
-		bytes_sent = omgt_oob_ssl_write(port, port->ssl_session, blob->cur_ptr, blob->bytes_left);
+		bytes_sent = omgt_oob_ssl_write(port, conn->ssl_session, blob->cur_ptr, blob->bytes_left);
 	} else {
-		bytes_sent = send(port->conn->sock, blob->cur_ptr, blob->bytes_left, 0);
+		bytes_sent = send(conn->sock, blob->cur_ptr, blob->bytes_left, 0);
 	}
 #endif
 
-	OMGT_DBGPRINT(port, "wrote %zd bytes over conn %d\n", bytes_sent, port->conn->sock);
+	OMGT_DBGPRINT(port, "wrote %zd bytes over conn %d\n", bytes_sent, conn->sock);
 
 	if (bytes_sent == SOCKET_ERROR) {
 		/*
@@ -427,7 +433,7 @@ static FSTATUS omgt_oob_write_to_socket(struct omgt_port *port)
 		 * next time.
 		 */
 		if (bytes_sent == blob->bytes_left) {
-			blob = omgt_oob_dequeue_net_blob(&port->conn->send_queue);
+			blob = omgt_oob_dequeue_net_blob(&conn->send_queue);
 			if (blob) omgt_oob_free_net_blob(blob);
 			return FSUCCESS;
 		} else {
@@ -462,21 +468,22 @@ static struct net_connection* omgt_oob_new_connection()
  * for data to be sent and received and calls the appropriate read/write socket
  * function.
  *
- * @param port                port object to listen on
+ * @param port                port object 
+ * @param conn                connection to listen on 
  * @param msec_to_wait        number of milliseconds to wait
  * @param blocking            specifies whether to block while sleeping
  *
  * @return None
  */
-void omgt_oob_net_process(struct omgt_port *port, int msec_to_wait, int blocking)
+void omgt_oob_net_process(struct omgt_port *port, struct net_connection *conn, int msec_to_wait, int blocking)
 {
 	int n, nfds;
 	fd_set readfds, writefds, errorfds;
 	int queued_data = 0, inprogress_data = 0;
-	struct timeval timeout;
+	struct timeval timeout = {0};
 
 	/* Do nothing if no conn */
-	if (!port || !port->conn)
+	if (!port || !conn)
 		return;
 
 	/*
@@ -491,14 +498,14 @@ void omgt_oob_net_process(struct omgt_port *port, int msec_to_wait, int blocking
 	FD_ZERO(&writefds);
 	nfds = 0;
 
-	FD_SET(port->conn->sock, &readfds);
-	nfds = MAX(nfds, (int)port->conn->sock);
-	if (!omgt_oob_queue_empty(&port->conn->send_queue)) {
+	FD_SET(conn->sock, &readfds);
+	nfds = MAX(nfds, (int)conn->sock);
+	if (!omgt_oob_queue_empty(&conn->send_queue)) {
 		queued_data++;
-		nfds = MAX(nfds, (int)port->conn->sock);
-		FD_SET(port->conn->sock, &writefds);
+		nfds = MAX(nfds, (int)conn->sock);
+		FD_SET(conn->sock, &writefds);
 	}
-	if (port->conn->blob_in_progress) {
+	if (conn->blob_in_progress) {
 		inprogress_data++;
 	}
 
@@ -507,12 +514,11 @@ void omgt_oob_net_process(struct omgt_port *port, int msec_to_wait, int blocking
 	}
 	++nfds;
 
-	if (msec_to_wait < 0) {
-		msec_to_wait = 0;
+	if (msec_to_wait > 0) {
+		timeout.tv_sec = msec_to_wait / 1000;
+		timeout.tv_usec = (msec_to_wait % 1000) * 1000;
 	}
-	timeout.tv_sec = msec_to_wait / 1000;
-	timeout.tv_usec = (msec_to_wait % 1000) * 1000;
-	n = select(nfds, &readfds, &writefds, &errorfds, &timeout);
+	n = select(nfds, &readfds, &writefds, &errorfds, (msec_to_wait < 0 ? NULL : &timeout));
 
 	if (n == SOCKET_ERROR) {
 		return;
@@ -521,17 +527,17 @@ void omgt_oob_net_process(struct omgt_port *port, int msec_to_wait, int blocking
 		return;
 	}
 
-	if (FD_ISSET(port->conn->sock, &readfds) || port->conn->blob_in_progress) {
-		port->conn->err = omgt_oob_read_from_socket(port);
+	if (FD_ISSET(conn->sock, &writefds) || !omgt_oob_queue_empty(&conn->send_queue)) {
+		conn->err = omgt_oob_write_to_socket(port, conn);
 	}
-	if (port->conn->err == 0 &&
-		(FD_ISSET(port->conn->sock, &writefds) || !omgt_oob_queue_empty(&port->conn->send_queue))) {
-
-		port->conn->err = omgt_oob_write_to_socket(port);
+	if (conn->err == 0 &&
+		(FD_ISSET(conn->sock, &readfds) || conn->blob_in_progress))
+	{
+		conn->err = omgt_oob_read_from_socket(port, conn);
 	}
 
-	if (port->conn->err) {
-		OMGT_OUTPUT_ERROR(port, "Read/write error over connection %d\n", port->conn->sock);
+	if (conn->err) {
+		OMGT_OUTPUT_ERROR(port, "Read/write error over connection %d\n", conn->sock);
 	}
 
 	return;

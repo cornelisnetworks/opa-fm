@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT3 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -84,7 +84,7 @@ typedef struct _pmGroupInfo_s {
 } PmGroupInfo_t;
 
 typedef struct _pmPortConfig_s {
-	STL_LID_32		lid;
+	STL_LID 		lid;
 	uint8			portNum;
 	uint8			reserved2[3];
 	uint64			guid;
@@ -99,37 +99,40 @@ typedef struct _pmGroupConfig_s {
 } PmGroupConfig_t;
 
 typedef struct _pmFocusPortEntry_s {
-	STL_LID_32		lid;
+	STL_LID 		lid;
 	uint8			portNum;
 	uint8   		rate;			// IB_STATIC_RATE
-	uint8   		mtu;			// enum STL MTU
+	uint8   		maxVlMtu;		// enum STL MTU
 	uint8			neighborPortNum;
-	STL_LID_32		neighborLid;
+	STL_LID 		neighborLid;
 	uint8			localStatus:4;
 	uint8			neighborStatus:4;
 	uint8           reserved[3];
-	uint64			value;
+	uint64			value[MAX_NUM_FOCUS_PORT_TUPLES];
 	uint64			guid;
 	char			nodeDesc[64];	// can be 64 char w/o \0
-	uint64			neighborValue;
+	uint64			neighborValue[MAX_NUM_FOCUS_PORT_TUPLES];
 	uint64			neighborGuid;
 	char			neighborNodeDesc[64];	// can be 64 char w/o \0
+//	STL_FOCUS_PORT_TUPLE	tuple[MAX_NUM_FOCUS_PORT_TUPLES];
+
 } PmFocusPortEntry_t;
 
 typedef struct _pmFocusPorts_s {
 	char			groupName[STL_PM_GROUPNAMELEN];	// \0 terminated
 	uint32			NumPorts;
+	uint32			portCntr;
 	PmFocusPortEntry_t	*portList;
 } PmFocusPorts_t;
 
 typedef struct _sortedValueEntry_s {
-	STL_LID_32					lid;
+	STL_LID					lid;
 	uint8						portNum;
 	uint8						localStatus : 4;
 	uint8						neighborStatus : 4;
 	uint8						reserved2[2];
-	uint64						value;
-	uint64						neighborValue;
+	uint64						value[MAX_NUM_FOCUS_PORT_TUPLES];
+	uint64						neighborValue[MAX_NUM_FOCUS_PORT_TUPLES];
 	uint64						sortValue;
 	PmPort_t					*portp;
 	PmPort_t					*neighborPortp;
@@ -146,7 +149,7 @@ typedef struct _sortInfo_s {
 } sortInfo_t;
 
 typedef struct smInfo_s {
-	STL_LID_32	smLid;		// implies port, 0 if empty record
+	STL_LID	smLid;		// implies port, 0 if empty record
 	uint8	priority:4;		// present priority
 	uint8	state:4;		// present state
 	uint8	portNumber;
@@ -175,7 +178,7 @@ typedef struct _pmImageInfo_s {
 } PmImageInfo_t;
 
 typedef struct _pmVFList_s {
-	uint8			   NumVFs;
+	uint32			   NumVFs;
 	PmNameListEntry_t  *VfList;	// \0 terminated
 } PmVFList_t;
 
@@ -198,8 +201,46 @@ typedef struct _pmVFInfo_s {
 typedef struct _pmVFFocusPorts_s {
 	char			vfName[STL_PM_VFNAMELEN];	// \0 terminated
 	uint32			NumPorts;
+	uint32			portCntr;
 	PmFocusPortEntry_t	*portList;
 } PmVFFocusPorts_t;
+
+typedef struct _pmNodeInfo_s {
+	STL_LID 		nodeLid;
+	uint8			nodeType;
+	uint8			reserved2[3];
+	uint64			nodeGuid;
+	uint64		portSelectMask[4];
+	char			nodeDesc[64];	// can be 64 char w/o \0
+} PmNodeInfo_t;
+
+
+typedef struct _pmGroupNodeInfo_s {
+	char			groupName[STL_PM_GROUPNAMELEN];	// \0 terminated
+	uint32			NumNodes;
+	PmNodeInfo_t		*nodeList;
+} PmGroupNodeInfo_t;
+
+typedef struct _pmLinkInfo_s {
+	STL_LID 		fromLid;
+	STL_LID 		toLid;
+	uint8			fromPort;
+	uint8			toPort;
+	uint8			mtu:4;
+	uint8			activeSpeed:4;
+	uint8			txLinkWidthDowngradeActive:4;
+	uint8			rxLinkWidthDowngradeActive:4;
+	uint8			localStatus:4;
+	uint8			neighborStatus:4;
+	uint8			reserved2[3];
+} PmLinkInfo_t;
+
+
+typedef struct _pmGroupLinkInfo_s {
+	char			groupName[STL_PM_GROUPNAMELEN];	// \0 terminated
+	uint32			NumLinks;
+	PmLinkInfo_t		*linkInfoList;
+} PmGroupLinkInfo_t;
 
 
 // FUNCTION PROTOTYPES
@@ -218,16 +259,24 @@ FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo,
 FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConfig,
 	STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE_ID_DATA *returnImageId);
 
+// get group node info - caller declares Pm_T and PmGroupConfig_t, and passes pointers
+FSTATUS paGetGroupNodeInfo(Pm_t *pm, char *groupName, uint64 nodeGUID, STL_LID nodeLID, char *nodeDesc,
+	PmGroupNodeInfo_t *pmGroupNodeInfo, STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE_ID_DATA *returnImageId);
+
+// get group link info - caller declares Pm_T and PmGroupConfig_t, and passes pointers
+FSTATUS paGetGroupLinkInfo(Pm_t *pm, char *groupName, STL_LID inputLID, uint8 inputPort,
+	PmGroupLinkInfo_t *pmGroupLinkInfo, STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE_ID_DATA *returnImageId);
+
 // get port stats - caller declares Pm_T and PmCompositePortCounters_t
 //                  delta - 1 requests delta counters, 0 gets raw total
 //                  userCntrs - 1 requests PA user controled counters, 0 gets Pm Controlled Image Counters. if 1 delta and ofset must be 0
-FSTATUS paGetPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, PmCompositePortCounters_t *portCountersP,
+FSTATUS paGetPortStats(Pm_t *pm, STL_LID lid, uint8 portNum, PmCompositePortCounters_t *portCountersP,
 	uint32 delta, uint32 userCntrs, STL_PA_IMAGE_ID_DATA imageId, uint32 *flagsp,
 	STL_PA_IMAGE_ID_DATA *returnImageId);
 
 // Clear Running totals for a port.  This simulates a PMA clear so
 // that tools like opareport can work against the Running totals
-FSTATUS paClearPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum,
+FSTATUS paClearPortStats(Pm_t *pm, STL_LID lid, uint8 portNum,
 						CounterSelectMask_t select);
 
 // Clear Running totals for all Ports.  This simulates a PMA clear so
@@ -245,7 +294,11 @@ FSTATUS paFreezeFrameMove(Pm_t *pm, STL_PA_IMAGE_ID_DATA ffImageId, STL_PA_IMAGE
 
 FSTATUS paGetFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPorts,
 	STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE_ID_DATA *returnImageId, uint32 select,
-	uint32 start, uint32 range);
+	uint32 start, uint32 range, STL_FOCUS_PORT_TUPLE *tuple, uint8 logical_operator);
+
+FSTATUS paGetExtFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPorts,
+        STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE_ID_DATA *returnImageId, uint32 select,
+        uint32 start, uint32 range);
 
 FSTATUS paGetImageInfo(Pm_t *pm, STL_PA_IMAGE_ID_DATA imageId, PmImageInfo_t *imageInfo,
 	STL_PA_IMAGE_ID_DATA *returnImageId);
@@ -264,16 +317,19 @@ FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, PmVFInfo_t *pmVFInfo, STL_PA_IMAGE_I
 // get vf port stats - caller declares Pm_T and PmCompositeVLCounters_t
 //                  delta - 1 requests delta counters, 0 gets raw total
 //                  userCntrs - 1 requests PA user controled counters, 0 gets Pm Controlled Image Counters. if 1 delta and ofset must be 0
-FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, char *vfName,
+FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID lid, uint8 portNum, char *vfName,
 	PmCompositeVLCounters_t *vfPortCountersP, uint32 delta, uint32 userCntrs,
 	STL_PA_IMAGE_ID_DATA imageId, uint32 *flagsp, STL_PA_IMAGE_ID_DATA *returnImageId);
 
-FSTATUS paClearVFPortStats(Pm_t *pm, STL_LID_32 lid, uint8 portNum, STLVlCounterSelectMask select, char *vfName);
+FSTATUS paClearVFPortStats(Pm_t *pm, STL_LID lid, uint8 portNum, STLVlCounterSelectMask select, char *vfName);
 
 FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocusPorts,
 	STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE_ID_DATA *returnImageId, uint32 select,
 	uint32 start, uint32 range);
 
+FSTATUS paGetExtVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocusPorts,
+	STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE_ID_DATA *returnImageId, uint32 select,
+	uint32 start, uint32 range);
 
 #ifdef __cplusplus
 };

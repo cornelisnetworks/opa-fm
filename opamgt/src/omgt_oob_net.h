@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -63,6 +63,8 @@ struct net_connection {
 	struct sockaddr_in    v4_addr; /* socket IPv4 address of peer */
 	struct sockaddr_in6   v6_addr; /* socket IPv6 address of peer */
 	int                   ipv6;    /* specify ipv6 or ipv4 as domain family */
+	/* SSL */
+	void                  *ssl_session;
 };
 
 /* Error defines */
@@ -70,15 +72,15 @@ struct net_connection {
 #define SOCKET_ERROR        -1
 
 /* Net connection functions */
-FSTATUS omgt_oob_net_connect(struct omgt_port *port);
-FSTATUS omgt_oob_net_disconnect(struct omgt_port *port);
-void omgt_oob_net_process(struct omgt_port *port, int msec_to_wait, int blocking);
-FSTATUS omgt_oob_net_send(struct omgt_port *port, char *data, int len);
+FSTATUS omgt_oob_net_connect(struct omgt_port *port, struct net_connection **conn);
+FSTATUS omgt_oob_net_disconnect(struct omgt_port *port, struct net_connection *conn);
+void omgt_oob_net_process(struct omgt_port *port, struct net_connection *conn, int msec_to_wait, int blocking);
+FSTATUS omgt_oob_net_send(struct omgt_port *port, uint8_t *data, int len);
 void omgt_oob_net_get_next_message(struct net_connection *conn, uint8_t **data, int *len);
 
 /* Connection functions */
 FSTATUS omgt_oob_send_packet(struct omgt_port *port, uint8_t *buf, size_t len);
 FSTATUS omgt_oob_receive_response(struct omgt_port *port, uint8_t **data, uint32_t *len);
-FSTATUS omgt_oob_disconnect(struct omgt_port *port);
+FSTATUS omgt_oob_disconnect(struct omgt_port *port, struct net_connection *conn);
 
 #endif /* _OMGT_OOB_NET_H_ */

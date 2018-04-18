@@ -1,6 +1,6 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015, Intel Corporation
+# Copyright (c) 2015-2017, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -94,8 +94,15 @@ PRODUCT_DEFINES += -DVXWORKS_REV_6_9=$(VXWORKS_REV_6_9)
 endif
 
 # include buildFeatureDefs to let inplace build work for stream consistency
+ifeq "$(BUILD_TARGET_OS)" "VXWORKS"
+PRODUCT_DEFINES += -include $(GLOBAL_INCLUDE_DIR)/buildFeatureDefs
+else
 PRODUCT_DEFINES += -include $(TL_DIR)/buildFeatureDefs
+endif
 
+ifeq "$(BIOS_UPDATE_ENABLED)" "yes"
+PRODUCT_DEFINES += -DBIOS_UPDATE_ENABLED
+endif
 ifneq "$(STL_GEN)" ""
 PRODUCT_DEFINES += -DSTL_GEN=$(STL_GEN)
 endif

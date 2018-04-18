@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -66,11 +66,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 static Status_t sa_TraceRecord_ValidatePathRecord(STL_SA_MAD * samad, IB_PATH_RECORD * prp);
 static Status_t sa_TraceRecord_Set(uint8_t ** cpp, STL_SA_MAD * samad, Port_t * src_portp,
-								   uint32_t slid, Port_t * dst_portp, uint32_t dlid,
+								   STL_LID slid, Port_t * dst_portp, STL_LID dlid,
 								   PKey_t pkey, uint32_t * records, uint32_t bytes);
 static Status_t sa_TraceRecord_PostProcess(Mai_t *, uint32_t *);
 
-Status_t sa_PathRecord_Interop(IB_PATH_RECORD *, uint64_t);
+Status_t sa_PathRecord_Selector_Check(IB_PATH_RECORD *, uint64_t);
 uint32_t saDebugTrace = 0;
 
 /************ support for dynamic update of switch config parms *************/
@@ -93,8 +93,7 @@ sa_TraceRecord(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 	IB_PATH_RECORD *prp;
 	IB_PATH_RECORD pathRecord;
 	PKey_t pkey = INVALID_PKEY;
-	uint32_t dstIsGroup = 0;
-	uint32_t slid, dlid;
+	STL_LID slid, dlid;
 
 	IB_ENTER("sa_TraceRecord", maip, 0, 0, 0);
 
@@ -147,7 +146,7 @@ sa_TraceRecord(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 	/* 
 	 *  JSY - this is a quick cut-through check for temporarily static fields.
 	 */
-	if (sa_PathRecord_Interop(prp, samad.header.mask) != VSTATUS_OK) {
+	if (sa_PathRecord_Selector_Check(prp, samad.header.mask) != VSTATUS_OK) {
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 		(void)sa_send_reply(maip, sa_cntxt);
 		IB_EXIT(__func__, VSTATUS_OK);
@@ -157,7 +156,7 @@ sa_TraceRecord(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 	/* 
 	 *  Check the validity of the requested PKey.
 	 */
-	if (samad.header.mask & PR_COMPONENTMASK_PKEY) {
+	if (samad.header.mask & IB_PATH_RECORD_COMP_PKEY) {
 		pkey = prp->P_Key;
 	}
 
@@ -169,7 +168,7 @@ sa_TraceRecord(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 	 *  Note that LID (if present) is attempted before GID for fabrics
 	 *    where LMC > 0.
 	 */
-	if ((samad.header.mask & PR_COMPONENTMASK_SLID) != 0) {
+	if ((samad.header.mask & IB_PATH_RECORD_COMP_SLID) != 0) {
 		if ((src_portp = sm_find_active_port_lid(&old_topology, prp->SLID)) == NULL) {
 			IB_LOG_INFINI_INFO
 				("sa_TraceRecord: requested source Lid not found/active in current topology:",
@@ -178,7 +177,7 @@ sa_TraceRecord(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 			goto reply_TraceRecord;
 		}
 		slid = prp->SLID;
-	} else if ((samad.header.mask & PR_COMPONENTMASK_SGID) != 0) {
+	} else if ((samad.header.mask & IB_PATH_RECORD_COMP_SGID) != 0) {
 		prefix = prp->SGID.Type.Global.SubnetPrefix;
 		guid = prp->SGID.Type.Global.InterfaceID;
 		if (saDebugTrace)
@@ -215,7 +214,7 @@ sa_TraceRecord(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 	/* 
 	 *  Find the destination port.
 	 */
-	if ((samad.header.mask & PR_COMPONENTMASK_DLID) != 0) {
+	if ((samad.header.mask & IB_PATH_RECORD_COMP_DLID) != 0) {
 		if ((dst_portp = sm_find_active_port_lid(&old_topology, prp->DLID)) == NULL) {
 			if (saDebugTrace)
 				IB_LOG_INFINI_INFO
@@ -225,7 +224,7 @@ sa_TraceRecord(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 			goto reply_TraceRecord;
 		}
 		dlid = prp->DLID;
-	} else if ((samad.header.mask & PR_COMPONENTMASK_DGID) != 0) {
+	} else if ((samad.header.mask & IB_PATH_RECORD_COMP_DGID) != 0) {
 		prefix = prp->DGID.Type.Global.SubnetPrefix;
 		guid = prp->DGID.Type.Global.InterfaceID;
 		if (saDebugTrace)
@@ -270,7 +269,7 @@ sa_TraceRecord(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 			goto reply_TraceRecord;
 		}
 
-		if (samad.header.mask & PR_COMPONENTMASK_PKEY) {
+		if (samad.header.mask & IB_PATH_RECORD_COMP_PKEY) {
 			if (!smValidatePortPKey2Way(pkey, src_portp, dst_portp)) {
 				IB_LOG_ERROR_FMT("sa_TraceRecord",
 								 "Failed PKey check for source " FMT_U64 " and destination "
@@ -311,9 +310,6 @@ sa_TraceRecord(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 			}
 			goto reply_TraceRecord;
 		}
-	} else if (src_portp != NULL && dstIsGroup) {
-		/* path request from node to multicast group, nothing to do just return. */
-		goto reply_TraceRecord;
 	}
 
 	/* 
@@ -331,9 +327,6 @@ sa_TraceRecord(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 	 */
 reply_TraceRecord:
 	(void) vs_rwunlock(&old_topology_lock);
-	if (dstIsGroup) {
-		(void) vs_unlock(&sm_McGroups_lock);
-	}
 
 	/* release the multicast group table if necessary */
 	/* 
@@ -377,12 +370,12 @@ sa_TraceRecord_ValidatePathRecord(STL_SA_MAD * samad, IB_PATH_RECORD * prp)
 
 	if (sm_config.lmc == 0) {
 		// fabric LMC is zero; allow either LID or GID queries
-		if ((samad->header.mask & (PR_COMPONENTMASK_SLID | PR_COMPONENTMASK_SGID)) == 0) {
+		if ((samad->header.mask & (IB_PATH_RECORD_COMP_SLID | IB_PATH_RECORD_COMP_SGID)) == 0) {
 			IB_LOG_WARNX
 				("sa_TraceRecord_ValidatePathRecord: invalid component mask, source not specified mask:",
 				 samad->header.mask);
 			return VSTATUS_BAD;
-		} else if ((samad->header.mask & (PR_COMPONENTMASK_DLID | PR_COMPONENTMASK_DGID)) == 0) {
+		} else if ((samad->header.mask & (IB_PATH_RECORD_COMP_DLID | IB_PATH_RECORD_COMP_DGID)) == 0) {
 			IB_LOG_WARNX
 				("sa_TraceRecord_ValidatePathRecord: invalid component mask, destination not specified mask:",
 				 samad->header.mask);
@@ -390,8 +383,8 @@ sa_TraceRecord_ValidatePathRecord(STL_SA_MAD * samad, IB_PATH_RECORD * prp)
 		}
 	} else {
 		// fabric LMC is > 0; only LID queries represent unique paths
-		if ((samad->header.mask & (PR_COMPONENTMASK_SLID | PR_COMPONENTMASK_DLID))
-			!= (PR_COMPONENTMASK_SLID | PR_COMPONENTMASK_DLID)) {
+		if ((samad->header.mask & (IB_PATH_RECORD_COMP_SLID | IB_PATH_RECORD_COMP_DLID))
+			!= (IB_PATH_RECORD_COMP_SLID | IB_PATH_RECORD_COMP_DLID)) {
 			IB_LOG_WARNX("sa_TraceRecord_ValidatePathRecord: invalid component mask:",
 						 samad->header.mask);
 			return VSTATUS_BAD;
@@ -399,13 +392,13 @@ sa_TraceRecord_ValidatePathRecord(STL_SA_MAD * samad, IB_PATH_RECORD * prp)
 	}
 
 	// only unicast LIDs are valid
-	if ((samad->header.mask & PR_COMPONENTMASK_SLID)
-		&& (prp->SLID < UNICAST_LID_MIN || prp->SLID > UNICAST_LID_MAX)) {
+	if ((samad->header.mask & IB_PATH_RECORD_COMP_SLID)
+		&& (prp->SLID < UNICAST_LID_MIN || prp->SLID > STL_GET_UNICAST_LID_MAX())) {
 		IB_LOG_WARNX("sa_TraceRecord_ValidatePathRecord: source LID is not unicast srcLid:",
 					 prp->SLID);
 		return VSTATUS_BAD;
-	} else if ((samad->header.mask & PR_COMPONENTMASK_DLID)
-			   && (prp->DLID < UNICAST_LID_MIN || prp->DLID > UNICAST_LID_MAX)) {
+	} else if ((samad->header.mask & IB_PATH_RECORD_COMP_DLID)
+			   && (prp->DLID < UNICAST_LID_MIN || prp->DLID > STL_GET_UNICAST_LID_MAX())) {
 		IB_LOG_WARNX
 			("sa_TraceRecord_ValidatePathRecord: destination LID is not unicast dstLid:",
 			 prp->DLID);
@@ -506,8 +499,8 @@ sa_TraceRecord_Fill(uint8_t ** cp, STL_SA_MAD * samad, Node_t * nodep,
 }
 
 static Status_t
-sa_TraceRecord_Set(uint8_t ** cpp, STL_SA_MAD * samad, Port_t * src_portp, uint32_t slid,
-				   Port_t * dst_portp, uint32_t dlid, PKey_t pkey, uint32_t * records,
+sa_TraceRecord_Set(uint8_t ** cpp, STL_SA_MAD * samad, Port_t * src_portp, STL_LID slid,
+				   Port_t * dst_portp, STL_LID dlid, PKey_t pkey, uint32_t * records,
 				   uint32_t bytes)
 {
 	int32_t exit_portno = 0, entry_portno = 0;

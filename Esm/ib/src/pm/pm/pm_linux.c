@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -347,7 +347,7 @@ pm_conf_server_init(void){
 	memset(server_path,0,sizeof(server_path));
 
 
-	sprintf(server_path,"%s%s",HSM_FM_SCK_PREFIX,pm_env_str);
+	snprintf(server_path, sizeof(server_path), "%s%s", HSM_FM_SCK_PREFIX, pm_env_str);
 
 	if(hcom_server_init(&conf_handle,server_path,5,32768,&pm_conf_callback) != HSM_COM_OK){
 		IB_LOG_ERROR0("Could not allocate server handle");
@@ -358,7 +358,7 @@ pm_conf_server_init(void){
 							  0,NULL,256*1024);
 
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't create remote configuration thread");
+		IB_FATAL_ERROR_NODUMP("can't create remote configuration thread");
 	}
 
 	return 0;
@@ -402,7 +402,7 @@ pm_initialize_config(void)
 	// sm_main has already called read_info_file()
     //
     if ((rc = pm_get_xml_config()) != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't retrieve PM XML configuration");
+		IB_LOG_ERROR_FMT(__func__, "can't retrieve PM XML configuration");
         return rc;
     }
 

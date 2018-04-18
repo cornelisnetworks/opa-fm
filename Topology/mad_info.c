@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -45,7 +45,7 @@ boolean NodeHasPma(NodeData *nodep)
 /* indicate if the given port supports a PMA */
 boolean PortHasPma(PortData *portp)
 {
-	/* all STL ports support a PMA */
+
 	return NodeHasPma(portp->nodep);
 }
 

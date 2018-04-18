@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -39,8 +39,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* indicate if the given node supports a PMA */
 static boolean PmNodeHasPma(Node_t *nodep)
 {
-	//This function will remain in the code, for the possibility
-	// of a future device or port that does not have a PMA
 	return TRUE;
 }
 
@@ -48,8 +46,6 @@ static boolean PmNodeHasPma(Node_t *nodep)
 // assumes caller will first check if Node supports a PMA */
 static boolean PmPortHasPma(Port_t *portp)
 {
-	//This function will remain in the code, for the possibility 
-	// of a future device or port that does not have a PMA
 	return TRUE;
 }
 

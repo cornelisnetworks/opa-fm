@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -81,76 +81,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 	(MAIP)->addrInfo.srcqp = SRCQP;						\
 	(MAIP)->addrInfo.destqp = DSTQP;						\
 	(MAIP)->addrInfo.qkey = QKEY;						\
-}
-
-//
-//	Setup the DR_Mad
-//
-#define	DRMad_Init(MAIP,METHOD,TID,AID,AMOD,MKEY,IPATH) {			\
-	DRSmp_t	*drp;								\
-										\
-	(void)memset((void *)&(MAIP)->base, 0, sizeof((MAIP)->base));		\
-										\
-	(MAIP)->active |= (MAI_ACT_BASE | MAI_ACT_DATA);			\
-	(MAIP)->base.bversion = MAD_BVERSION;					\
-	(MAIP)->base.mclass = MAD_CV_SUBN_DR;					\
-	(MAIP)->base.cversion = MAD_CVERSION;					\
-	(MAIP)->base.method = METHOD;						\
-	(MAIP)->base.status = 0;						\
-	(MAIP)->base.hopPointer = 0;						\
-	(MAIP)->base.hopCount = IPATH[0];					\
-	(MAIP)->base.tid = TID;							\
-	(MAIP)->base.aid = AID;							\
-	(MAIP)->base.rsvd3 = 0;							\
-	(MAIP)->base.amod = AMOD;						\
-										\
-	drp = (DRSmp_t *)(MAIP)->data;						\
-	(void)memset((void *)drp, 0, sizeof(*drp));				\
-										\
-	drp->mkey = MKEY;							\
-	drp->drslid = PERMISSIVE_LID;						\
-	drp->drdlid = PERMISSIVE_LID;						\
-										\
-	(void)memcpy((void *)&drp->ipath[1], (void *)&IPATH[1], IPATH[0]);	\
-}
-
-#define	LRDRMad_Init(MAIP,METHOD,TID,AID,AMOD,MKEY,IPATH,SLID) {			\
-	DRSmp_t	*drp;								\
-										\
-	(void)memset((void *)&(MAIP)->base, 0, sizeof((MAIP)->base));		\
-										\
-	(MAIP)->active |= (MAI_ACT_BASE | MAI_ACT_DATA);			\
-	(MAIP)->base.bversion = MAD_BVERSION;					\
-	(MAIP)->base.mclass = MAD_CV_SUBN_DR;					\
-	(MAIP)->base.cversion = MAD_CVERSION;					\
-	(MAIP)->base.method = METHOD;						\
-	(MAIP)->base.status = 0;						\
-	(MAIP)->base.hopPointer = 0;						\
-	(MAIP)->base.hopCount = IPATH[0];					\
-	(MAIP)->base.tid = TID;							\
-	(MAIP)->base.aid = AID;							\
-	(MAIP)->base.rsvd3 = 0;							\
-	(MAIP)->base.amod = AMOD;						\
-										\
-	drp = (DRSmp_t *)(MAIP)->data;						\
-	(void)memset((void *)drp, 0, sizeof(*drp));				\
-	drp->mkey = MKEY;							\
-	drp->drslid = SLID;						\
-	drp->drdlid = PERMISSIVE_LID;						\
-										\
-	(void)memcpy((void *)&drp->ipath[1], (void *)&IPATH[1], IPATH[0]);	\
-}
-
-//
-//	Setup the DR_Mad data.
-//
-#define	DRData_Init(MAIP,DATA,BYTES) {						\
-	DRSmp_t	*drp;								\
-										\
-	(MAIP)->active |= MAI_ACT_DATA;						\
-										\
-	drp = (DRSmp_t *)(MAIP)->data;						\
-	(void)memcpy((void *)drp->smpdata, (void *)(DATA), BYTES);		\
 }
 
 //

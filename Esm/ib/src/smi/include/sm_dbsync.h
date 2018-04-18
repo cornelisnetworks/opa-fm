@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -146,7 +146,7 @@ typedef PmDbSync_t *PmDbSyncp;
 
 typedef struct {
     uint64_t        portguid;       /* port guid of SM node (used as hash key) */
-    uint32_t        lid;            /* lid of SM - may not be set yet */
+    STL_LID         lid;            /* lid of SM - may not be set yet */
     DBSyncCap_t     syncCapability; /* 0=unknown, 1=not supported, 2=supported */
 
     SMDBSync_t      dbsync;         /* db sync data of SM node */
@@ -171,7 +171,7 @@ typedef struct {
     DBSyncType_t    type;           /* 1=get capability, 2=full sync, 3=update, 4=delete */
     DBSyncDatTyp_t  datatype;       /* 1=all (full sync only), 2=InformInfo, 3=groups, 4=services */
     uint64_t        portguid;       /* portguid of standby SM */
-    STL_LID           standbyLid;     /* lid of the standby SM */
+    STL_LID         standbyLid;     /* lid of the standby SM */
 	uint8_t			isEmbedded;		/* 1: standby SM is embedded */
     SMSyncData_t    data;           /* opaque data buffer to hold specific sync data */
 }SMSyncReq_t;
@@ -256,6 +256,7 @@ BSWAPCOPY_SM_DBSYNC_CCC_DATA(SMDBCCCSyncp Src, SMDBCCCSyncp Dest)
     Dest->smVfChecksum = ntoh32(Dest->smVfChecksum);
     Dest->smConfigChecksum = ntoh32(Dest->smConfigChecksum);
     Dest->pmConfigChecksum = ntoh32(Dest->pmConfigChecksum);
+    Dest->emConfigChecksum = ntoh32(Dest->emConfigChecksum);
 
     Dest->spare1 = ntoh32(Dest->spare1);
     Dest->spare2 = ntoh32(Dest->spare2);
@@ -264,7 +265,6 @@ BSWAPCOPY_SM_DBSYNC_CCC_DATA(SMDBCCCSyncp Src, SMDBCCCSyncp Dest)
     Dest->spare5 = ntoh32(Dest->spare5);
     Dest->spare6 = ntoh32(Dest->spare6);
     Dest->spare7 = ntoh32(Dest->spare7);
-    Dest->spare8 = ntoh32(Dest->spare8);
 }
 
 static __inline
@@ -290,13 +290,13 @@ BSWAPCOPY_SM_DBSYNC_SUBSKEY_DATA(SubscriberKeyp Src, SubscriberKeyp Dest)
 {
 	memcpy(Dest, Src, sizeof(*Src));
 
-    Dest->lid = ntoh16(Dest->lid);
+    Dest->lid = ntoh32(Dest->lid);
     Dest->trapnum = ntoh16(Dest->trapnum);
     Dest->qpn = ntoh32(Dest->qpn);
     Dest->pkey = ntoh16(Dest->pkey);
     Dest->qkey = ntoh32(Dest->qkey);
-    Dest->startLid = ntoh16(Dest->startLid);
-    Dest->endLid = ntoh16(Dest->endLid);
+    Dest->startLid = ntoh32(Dest->startLid);
+    Dest->endLid = ntoh32(Dest->endLid);
 }
 
 static __inline
@@ -344,6 +344,7 @@ Status_t    sm_dbsync_getSmDbsync(SmRecKey_t, SMDBSyncp);
 boolean     sm_dbsync_isUpToDate(SmRecKey_t, char **reason);
 DBSyncCap_t sm_dbsync_getDbsyncSupport(SmRecKey_t);
 Status_t    sm_dbsync_checksums(uint32_t vfCsum, uint32_t smCsum, uint32_t pmCsum);
+Status_t    sm_dbsync_em_checksums(uint32_t emCsum);
 Status_t    sm_dbsync_recInit(void);
 void        sm_dbsync_kill(void);
 void        sm_dbsync_init(void);

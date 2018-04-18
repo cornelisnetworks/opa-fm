@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT3 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -41,8 +41,6 @@ extern "C" {
 #endif
 
 typedef uint16		STL_LID_16;			/* Can replace IB_LID */
-typedef uint32		STL_LID_20;			/* Indicates intended max LID size */
-typedef uint32		STL_LID_24;			/* Indicates intended max LID size */
 typedef uint32		STL_LID_32;			/* Max LID size */
 typedef uint32		STL_LID;			/* Max LID size */
 
@@ -50,19 +48,60 @@ typedef uint32		STL_LID;			/* Max LID size */
 #define STL_MAX_SCS			32			/* Max number of SCs */
 #define STL_MAX_VLS			32			/* Max number of VLs */
 
+
 #define MAX_STL_PORTS		64
+#define MAX_STL2_VLS		9
 
 typedef uint64		STL_PORTMASK;		/* Port mask element */
 
 #define STL_MAX_PORTMASK				256/(sizeof(STL_PORTMASK)*8)	/* Max Ports in select */
 #define STL_PORT_SELECTMASK_SIZE		(sizeof(STL_PORTMASK)*STL_MAX_PORTMASK)
+#define STL_EXT_GID_INDEX	1		/* Index into GID table where extended LIDs are stored */
 
 /* -------------------------------------------------------------------------- */
 /* LID's */
 
-#define	STL_LID_PERMISSIVE			0xffffffffU
-#define	STL_LID_MCAST_OFFSET_MASK		0x00003fffU /*use to calculate multicast offset and count */
+#define STL_LID_UNICAST_BEGIN	0x00000001U
+#define STL_LID_UNICAST_END		0xbfffffffU
+#define STL_LID_MULTICAST_BEGIN	0xf0000000U
+#define STL_LID_MULTICAST_END	0xf0003ffeU
+#define STL_LID_MULTICAST_MASK	0x00003fffU
+#define STL_LID_MCAST_OFFSET_MASK	STL_LID_MULTICAST_MASK 
+#define STL_LID_RESERVED		0x00000000U
+#define STL_LID_PERMISSIVE		0xffffffffU
+#define PERMISSIVE_LID_24BITS   (STL_LID_PERMISSIVE & 0xffffff)
 
+#define	MCAST32_TO_MCAST16(x) ((uint16_t)((x) & 0xffff) | 0xc000)
+#define	MCAST24_TO_MCAST16(x) MCAST32_TO_MCAST16(x)
+#define	MCAST20_TO_MCAST16(x) MCAST32_TO_MCAST16(x)
+
+#define	MCAST16_TO_MCAST20(x) ((uint32_t)((x) & ~0xc000) | 0xf0000)
+#define	MCAST16_TO_MCAST24(x) ((uint32_t)((x) & ~0xc000) | 0xf00000)
+#define	MCAST16_TO_MCAST32(x) ((uint32_t)((x) & ~0xc000) | 0xf0000000)
+
+/*
+ * The IS_MCAST20,-24, and -32 macros below assume
+ * MultiCollectMask.MulticastMask = 4
+ */
+#define	IS_MCAST16(x) (((STL_LID)(x) & 0xffffc000) == 0x0000c000)
+#define	IS_MCAST20(x) (((STL_LID)(x) & 0xffff0000) == 0x000f0000)
+#define	IS_MCAST24(x) (((STL_LID)(x) & 0xfff00000) == 0x00f00000)
+#define	IS_MCAST32(x) (((STL_LID)(x) & 0xf0000000) == 0xf0000000)
+
+#define	UCAST32_TO_UCAST16(x) (IB_LID)(x)
+#define	UCAST16_TO_UCAST32(x) (STL_LID)(((x) == LID_PERMISSIVE) ? STL_LID_PERMISSIVE:(x))
+
+static inline STL_LID
+IB2STL_LID(IB_LID ib_lid) {
+	if (IS_MCAST16(ib_lid)) return MCAST16_TO_MCAST32(ib_lid);
+	else return UCAST16_TO_UCAST32(ib_lid);
+}
+
+static inline IB_LID
+STL2IB_LID(STL_LID stl_lid) {
+	if (IS_MCAST32(stl_lid)) return MCAST32_TO_MCAST16(stl_lid);
+	else return UCAST32_TO_UCAST16(stl_lid);
+}
 
 #include "iba/public/ipackon.h"
 
@@ -223,6 +262,39 @@ typedef struct { IB_BITFIELD2( uint8,
         		STL_UINT(len) field9; \
 			} PACK_SUFFIX s; \
 		} PACK_SUFFIX name
+    #define STL_FIELDUNION10(name, len, field1,field2,field3,field4,field5,field6,field7,field8,field9,field10)  \
+		union { \
+			STL_UINT(len) STL_ASREG(len); \
+			struct { \
+			STL_UINT(len) field1; \
+        		STL_UINT(len) field2; \
+        		STL_UINT(len) field3; \
+        		STL_UINT(len) field4; \
+        		STL_UINT(len) field5; \
+        		STL_UINT(len) field6; \
+        		STL_UINT(len) field7; \
+        		STL_UINT(len) field8; \
+        		STL_UINT(len) field9; \
+			STL_UINT(len) field10; \
+			} PACK_SUFFIX s; \
+		} PACK_SUFFIX name
+    #define STL_FIELDUNION11(name, len, field1,field2,field3,field4,field5,field6,field7,field8,field9,field10,field11)  \
+		union { \
+			STL_UINT(len) STL_ASREG(len); \
+			struct { \
+			STL_UINT(len) field1; \
+			STL_UINT(len) field2; \
+			STL_UINT(len) field3; \
+			STL_UINT(len) field4; \
+			STL_UINT(len) field5; \
+			STL_UINT(len) field6; \
+			STL_UINT(len) field7; \
+			STL_UINT(len) field8; \
+			STL_UINT(len) field9; \
+			STL_UINT(len) field10; \
+			STL_UINT(len) field11; \
+			} PACK_SUFFIX s; \
+		} PACK_SUFFIX name
     #define STL_FIELDUNION14(name, len, field1,field2,field3,field4,field5,field6,field7,field8,field9,field10,field11,field12,field13,field14)  \
 		union { \
 			STL_UINT(len) STL_ASREG(len); \
@@ -241,6 +313,27 @@ typedef struct { IB_BITFIELD2( uint8,
         		STL_UINT(len) field12; \
         		STL_UINT(len) field13; \
         		STL_UINT(len) field14; \
+			} PACK_SUFFIX s; \
+		} PACK_SUFFIX name
+    #define STL_FIELDUNION15(name, len, field1,field2,field3,field4,field5,field6,field7,field8,field9,field10,field11,field12,field13,field14,field15) \
+		union { \
+			STL_UINT(len) STL_ASREG(len); \
+			struct { \
+        		STL_UINT(len) field1; \
+        		STL_UINT(len) field2; \
+        		STL_UINT(len) field3; \
+        		STL_UINT(len) field4; \
+        		STL_UINT(len) field5; \
+        		STL_UINT(len) field6; \
+        		STL_UINT(len) field7; \
+        		STL_UINT(len) field8; \
+        		STL_UINT(len) field9; \
+        		STL_UINT(len) field10; \
+        		STL_UINT(len) field11; \
+        		STL_UINT(len) field12; \
+        		STL_UINT(len) field13; \
+        		STL_UINT(len) field14; \
+        		STL_UINT(len) field15; \
 			} PACK_SUFFIX s; \
 		} PACK_SUFFIX name
     #define STL_FIELDUNION16(name, len, field1,field2,field3,field4,field5,field6,field7,field8,field9,field10,field11,field12,field13,field14,field15,field16)  \
@@ -381,10 +474,64 @@ typedef struct { IB_BITFIELD2( uint8,
         		STL_UINT(len) field1; \
 			} PACK_SUFFIX s; \
 		} PACK_SUFFIX name
+    #define STL_FIELDUNION10(name, len, field1,field2,field3,field4,field5,field6,field7,field8,field9,field10)  \
+		union { \
+			STL_UINT(len) STL_ASREG(len); \
+			struct { \
+			STL_UINT(len) field10; \
+        		STL_UINT(len) field9; \
+        		STL_UINT(len) field8; \
+        		STL_UINT(len) field7; \
+        		STL_UINT(len) field6; \
+        		STL_UINT(len) field5; \
+        		STL_UINT(len) field4; \
+        		STL_UINT(len) field3; \
+        		STL_UINT(len) field2; \
+        		STL_UINT(len) field1; \
+			} PACK_SUFFIX s; \
+		} PACK_SUFFIX name
+    #define STL_FIELDUNION11(name, len, field1,field2,field3,field4,field5,field6,field7,field8,field9,field10,field11)  \
+			union { \
+			STL_UINT(len) STL_ASREG(len); \
+			struct { \
+			STL_UINT(len) field11; \
+			STL_UINT(len) field10; \
+			STL_UINT(len) field9; \
+			STL_UINT(len) field8; \
+			STL_UINT(len) field7; \
+			STL_UINT(len) field6; \
+			STL_UINT(len) field5; \
+			STL_UINT(len) field4; \
+			STL_UINT(len) field3; \
+			STL_UINT(len) field2; \
+			STL_UINT(len) field1; \
+			} PACK_SUFFIX s; \
+		} PACK_SUFFIX name
     #define STL_FIELDUNION14(name, len, field1,field2,field3,field4,field5,field6,field7,field8,field9,field10,field11,field12,field13,field14)  \
 		union { \
 			STL_UINT(len) STL_ASREG(len); \
 			struct { \
+        		STL_UINT(len) field14; \
+        		STL_UINT(len) field13; \
+        		STL_UINT(len) field12; \
+        		STL_UINT(len) field11; \
+        		STL_UINT(len) field10; \
+        		STL_UINT(len) field9; \
+        		STL_UINT(len) field8; \
+        		STL_UINT(len) field7; \
+        		STL_UINT(len) field6; \
+        		STL_UINT(len) field5; \
+        		STL_UINT(len) field4; \
+        		STL_UINT(len) field3; \
+        		STL_UINT(len) field2; \
+        		STL_UINT(len) field1; \
+			} PACK_SUFFIX s; \
+		} PACK_SUFFIX name
+    #define STL_FIELDUNION15(name, len, field1,field2,field3,field4,field5,field6,field7,field8,field9,field10,field11,field12,field13,field14,field15) \
+		union { \
+			STL_UINT(len) STL_ASREG(len); \
+			struct { \
+        		STL_UINT(len) field15; \
         		STL_UINT(len) field14; \
         		STL_UINT(len) field13; \
         		STL_UINT(len) field12; \

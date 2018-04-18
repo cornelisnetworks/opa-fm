@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -130,7 +130,7 @@ sa_SubscriberInit(void)
 	if ((status =
 		 vs_lock_init(&saSubscribers.subsLock, VLOCK_FREE,
 					  VLOCK_THREAD)) != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't initialize sa lock");
+		IB_FATAL_ERROR_NODUMP("can't initialize sa lock");
 	} else {
 		if (NULL ==
 			(saSubscribers.subsMap =
@@ -139,7 +139,7 @@ sa_SubscriberInit(void)
 								 sa_SubscriberCompare,
 								 CS_HASH_KEY_ALLOCATED))) {
 			status = VSTATUS_NOMEM;
-			IB_FATAL_ERROR
+			IB_FATAL_ERROR_NODUMP
 				("sa_main: Can't allocate subscriber hash table");
 		}
 	}
@@ -181,7 +181,7 @@ sa_SubscriberClear(void)
 		 cs_create_hashtable("sa_subscriber", 16, sa_SubscriberHashFromKey,
 							 sa_SubscriberCompare,
 							 CS_HASH_KEY_ALLOCATED))) {
-		IB_FATAL_ERROR
+		IB_FATAL_ERROR_NODUMP
 			("sa_SubscriberClear: Can't reallocate subscriber hash table");
 	}
 	(void) vs_unlock(&saSubscribers.subsLock);
@@ -238,14 +238,17 @@ sa_InformInfo(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 
 		informInfo.IsGeneric = ibInformInfo->IsGeneric;
 		informInfo.Subscribe = ibInformInfo->Subscribe;
-    	informInfo.LIDRangeBegin = (uint32)ntoh16(ibInformInfo->LIDRangeBegin);
-		if (informInfo.LIDRangeBegin == PERMISSIVE_LID)
-			informInfo.LIDRangeBegin = STL_LID_PERMISSIVE;
-    	informInfo.LIDRangeEnd = (uint32)ntoh16(ibInformInfo->LIDRangeEnd);
+    	informInfo.LIDRangeBegin = IB2STL_LID(ntoh16(ibInformInfo->LIDRangeBegin));
+    	informInfo.LIDRangeEnd = IB2STL_LID(ntoh16(ibInformInfo->LIDRangeEnd));
     	informInfo.Type = ntoh16(ibInformInfo->Type);
     	informInfo.Reserved1 = 0;
     	informInfo.u.Generic.TrapNumber = ntoh16(ibInformInfo->u.Generic.TrapNumber);
-		/* NOTO BENE: THE NAMES OF THE UNIONS CHANGED BETWEEN IB AND STL... */
+		/* NOTA BENE: THE NAMES OF THE UNIONS CHANGED BETWEEN IB AND STL... */
+    	informInfo.u.Generic.u1.AsReg32 = ntoh32(ibInformInfo->u.Generic.u2.AsReg32);
+    	informInfo.Type = ntoh16(ibInformInfo->Type);
+    	informInfo.Reserved1 = 0;
+    	informInfo.u.Generic.TrapNumber = ntoh16(ibInformInfo->u.Generic.TrapNumber);
+		/* NOTA BENE: THE NAMES OF THE UNIONS CHANGED BETWEEN IB AND STL... */
     	informInfo.u.Generic.u1.AsReg32 = ntoh32(ibInformInfo->u.Generic.u2.AsReg32);
     	informInfo.u.Generic.u2.AsReg32 = ntoh32(ibInformInfo->u.Generic.u.AsReg32);
     	informInfo.u.Generic.u1.s.Reserved2 = 0;
@@ -270,7 +273,7 @@ sa_InformInfo(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 			&& samad.header.smKey != sm_smInfo.SM_Key) {
 			maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 			IB_LOG_WARN_FMT(__func__,
-				"Subscription for security trap not from trusted source[lid=0x%.4X], smkey=0x%"PRIX64", returning status 0x%.4X",
+				"Subscription for security trap not from trusted source[lid=0x%.8X], smkey=0x%"PRIX64", returning status 0x%.4X",
 				maip->addrInfo.slid, samad.header.smKey, maip->base.status);
 			status = VSTATUS_BAD;
 		} else {
@@ -313,15 +316,13 @@ sa_InformInfo(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 
 		ibInformInfo->IsGeneric = informInfo.IsGeneric;
 		ibInformInfo->Subscribe = informInfo.Subscribe;
-		if (informInfo.LIDRangeBegin == STL_LID_PERMISSIVE)
-			ibInformInfo->LIDRangeBegin = PERMISSIVE_LID;
-		else
-			ibInformInfo->LIDRangeBegin = (uint16)ntoh32(informInfo.LIDRangeBegin);
-		ibInformInfo->LIDRangeEnd = (uint16)ntoh32(informInfo.LIDRangeEnd);
+
+		ibInformInfo->LIDRangeBegin = STL2IB_LID(ntoh32(informInfo.LIDRangeBegin));
+		ibInformInfo->LIDRangeEnd = STL2IB_LID(ntoh32(informInfo.LIDRangeEnd));
 		ibInformInfo->Type = ntoh16(informInfo.Type);
 		ibInformInfo->Reserved = 0;
 		ibInformInfo->u.Generic.TrapNumber = ntoh16(informInfo.u.Generic.TrapNumber);
-		/* NOTO BENE: THE NAMES OF THE UNIONS CHANGED BETWEEN IB AND STL... */
+		/* NOTA BENE: THE NAMES OF THE UNIONS CHANGED BETWEEN IB AND STL... */
 		ibInformInfo->u.Generic.u2.AsReg32 = ntoh32(informInfo.u.Generic.u1.AsReg32);
 		ibInformInfo->u.Generic.u.AsReg32 = ntoh32(informInfo.u.Generic.u2.AsReg32);
 		ibInformInfo->u.Generic.u2.s.Reserved = 0;
@@ -383,7 +384,7 @@ sa_InformInfo_Subscribe(Mai_t * maip, STL_INFORM_INFO * iip, uint8_t ibMode)
 			logseverity = VS_LOG_INFINI_INFO;
 		if (logseverity < VS_LOG_INFINI_INFO || saDebugPerf) {
 			cs_log(logseverity, "sa_InformInfo_Subscribe",
-				   "Can not find source lid of 0x%.4X in topology "
+				   "Can not find source lid of 0x%.8X in topology "
 				   "in request to subscribe with GID " FMT_GID
 				   ", start LID 0x%.8X, end LID 0x%.8X, "
 				   "PKey 0x%.4X, isGeneric %d, subscribe %d, type 0x%.4X, trap number 0x%.4X, "
@@ -426,7 +427,7 @@ sa_InformInfo_Subscribe(Mai_t * maip, STL_INFORM_INFO * iip, uint8_t ibMode)
 				IB_LOG_ERROR_FMT("sa_InformInfo_Subscribe",
 								 "Can not find port GUID " FMT_U64 " from "
 								 "%s, port " FMT_U64
-								 ", lid of 0x%.4X in topology "
+								 ", lid of 0x%.8X in topology "
 								 "in request to subscribe with GID "
 								 FMT_GID ", start LID 0x%.8X, "
 								 "end LID 0x%.8X, PKey 0x%.4X, isGeneric %d, subscribe %d, type 0x%.4X, "
@@ -451,34 +452,9 @@ sa_InformInfo_Subscribe(Mai_t * maip, STL_INFORM_INFO * iip, uint8_t ibMode)
 		LIDRangeEnd = LIDRangeBegin;
 	} else {
 		if (iip->LIDRangeBegin == STL_LID_PERMISSIVE) {
-			/* no validation required when LidRangeBegin is 0xFFFFFFFF in
-			   request - per IBTA R1.1 13-14.1.1 */
 			validateLidRange = 0;
 			LIDRangeBegin = 1;
-			LIDRangeEnd = UNICAST_LID_MAX;
-		} else if (iip->LIDRangeBegin > UNICAST_LID_MAX
-					 || iip->LIDRangeEnd > UNICAST_LID_MAX) {
-			/* we don't yet fully support extended LIDs */
-			IB_LOG_ERROR_FMT("sa_InformInfo_Subscribe",
-							 "Invalid LIDRange from "
-							 "%s, port " FMT_U64
-							 ", lid of 0x%.4X in topology "
-							 "in request to subscribe with GID "
-							 FMT_GID ", start LID 0x%.8X, "
-							 "end LID 0x%.8X, PKey 0x%.4X, isGeneric %d, subscribe %d, type 0x%.4X, "
-							 "trap number 0x%.4X, QPN 0x%.8X, response time of 0x%.2X, "
-							 "returning status 0x%.4X", nodeName,
-							 subsPort.portData->guid, lid, gid[0],
-							 gid[1], iip->LIDRangeBegin,
-							 iip->LIDRangeEnd, maip->addrInfo.pkey,
-							 iip->IsGeneric, iip->Subscribe, iip->Type,
-							 iip->u.Generic.TrapNumber,
-							 iip->u.Generic.u1.s.QPNumber,
-							 iip->u.Generic.u1.s.RespTimeValue,
-							 maip->base.status);
-			IB_EXIT("sa_InformInfo_Subscribe - bad Lid Range",
-					VSTATUS_BAD);
-			return (VSTATUS_BAD);
+			LIDRangeEnd = STL_LID_UNICAST_END;
 		} else if (iip->LIDRangeEnd != 0) {
 			LIDRangeBegin = iip->LIDRangeBegin;
 			LIDRangeEnd = iip->LIDRangeEnd;
@@ -492,7 +468,7 @@ sa_InformInfo_Subscribe(Mai_t * maip, STL_INFORM_INFO * iip, uint8_t ibMode)
 	 * We need to check that this user has access to the Lid range
 	 * in question.  If the user does not have access to all of the
 	 * Lids, then we reject this subscription request.
-	 * No validation required when LidRangeBegin is 0xFFFF in informInfo request
+	 * No validation required when LidRangeBegin is permissive in informInfo request
 	 */
 	if (validateLidRange)
 		for_all_ca_nodes(&old_topology, nodep) {
@@ -513,7 +489,7 @@ sa_InformInfo_Subscribe(Mai_t * maip, STL_INFORM_INFO * iip, uint8_t ibMode)
 					IB_LOG_ERROR_FMT("sa_InformInfo_Subscribe",
 									 "Failed to authenticate path from "
 									 "%s, port " FMT_U64
-									 ", lid of 0x%.4X in topology "
+									 ", lid of 0x%.8X in topology "
 									 "to subscribe with GID " FMT_GID
 									 ", start LID 0x%.8X, "
 									 "end LID 0x%.8X, PKey 0x%.4X, isGeneric %d, subscribe %d, type 0x%.4X, "
@@ -543,7 +519,7 @@ sa_InformInfo_Subscribe(Mai_t * maip, STL_INFORM_INFO * iip, uint8_t ibMode)
 					IB_LOG_ERROR_FMT("sa_InformInfo_Subscribe",
 									 "Failed to authenticate access from "
 									 "%s, port " FMT_U64
-									 ", lid of 0x%.4X in topology "
+									 ", lid of 0x%.8X in topology "
 									 "to subscribe with GID " FMT_GID
 									 ", start LID 0x%.8X, "
 									 "end LID 0x%.8X, PKey 0x%.4X, isGeneric %d, subscribe %d, type 0x%.4X, "
@@ -577,7 +553,7 @@ sa_InformInfo_Subscribe(Mai_t * maip, STL_INFORM_INFO * iip, uint8_t ibMode)
 	/* allocate a subscriber key for searching hash table */
 	subsKeyp = (SubscriberKeyp) malloc(sizeof(SubscriberKey_t));
 	if (subsKeyp == NULL) {
-		IB_FATAL_ERROR
+		IB_FATAL_ERROR_NODUMP
 			("sa_InformInfo_Subscribe: Can't allocate subscriber entry/key");
 		return VSTATUS_NOMEM;
 	}
@@ -612,7 +588,7 @@ sa_InformInfo_Subscribe(Mai_t * maip, STL_INFORM_INFO * iip, uint8_t ibMode)
 		if (iRecordp == NULL) {
 			free(subsKeyp);
 			(void) vs_unlock(&saSubscribers.subsLock);
-			IB_FATAL_ERROR
+			IB_FATAL_ERROR_NODUMP
 				("sa_InformInfo_Subscribe: Can't allocate informInfoRecord entry");
 			IB_EXIT("sa_InformInfo_Subscribe - memory allocation failure",
 					VSTATUS_NOMEM);
@@ -634,7 +610,7 @@ sa_InformInfo_Subscribe(Mai_t * maip, STL_INFORM_INFO * iip, uint8_t ibMode)
 			IB_LOG_ERROR_FMT("sa_InformInfo_Subscribe",
 							 "Failed to insert subscription from %s, port "
 							 FMT_U64
-							 ", lid 0x%.4X in Subscriber hashtable",
+							 ", lid 0x%.8X in Subscriber hashtable",
 							 nodeName, subsPort.portData->guid, lid);
 			IB_EXIT("sa_InformInfo_Subscribe - hashtable insert failure",
 					VSTATUS_BAD);
@@ -644,7 +620,7 @@ sa_InformInfo_Subscribe(Mai_t * maip, STL_INFORM_INFO * iip, uint8_t ibMode)
 			IB_LOG_INFINI_INFO_FMT("sa_InformInfo_Subscribe",
 								   "Processed subscription from "
 								   "%s, port " FMT_U64
-								   ", lid of 0x%.4X in topology "
+								   ", lid of 0x%.8X in topology "
 								   "to subscribe with GID " FMT_GID
 								   ", start LID 0x%.8X, "
 								   "end LID 0x%.8X, PKey 0x%.4X, isGeneric %d, subscribe %d, type 0x%.4X, "
@@ -710,7 +686,7 @@ sa_InformInfo_Unsubscribe(Mai_t * maip, STL_INFORM_INFO * iip)
 		 sm_find_active_port_lid(&old_topology, maip->addrInfo.slid)) == NULL) {
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 		IB_LOG_INFINI_INFO_FMT("sa_InformInfo_Unsubscribe",
-							   "Cannot find source lid of 0x%.4X in topology "
+							   "Cannot find source lid of 0x%.8X in topology "
 							   "in request to Unsubscribe with GID "
 							   FMT_GID
 							   ", start LID 0x%.8X, end LID 0x%.8X, "
@@ -754,7 +730,7 @@ sa_InformInfo_Unsubscribe(Mai_t * maip, STL_INFORM_INFO * iip)
 														&subsKey))) {
 		maip->base.status = MAD_STATUS_SA_NO_RECORDS;
 		IB_LOG_VERBOSE_FMT("sa_InformInfo_Unsubscribe",
-						   "Unsubscribe failed from lid 0x%.4X in topology "
+						   "Unsubscribe failed from lid 0x%.8X in topology "
 						   "GID " FMT_GID
 						   ", PKey 0x%.4X, type 0x%.4X, Producer 0x%.6X, "
 						   "trap number 0x%.4X, QPN 0x%.8X, response time of 0x%.2X, Qkey of 0x%.8X "

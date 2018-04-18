@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -285,9 +285,9 @@ void PrintMcMemberRecord(PrintDest_t *dest, int indent, const IB_MCMEMBER_RECORD
 				pMcMemberRecord->JoinNonMember?"Non ":"",
 				pMcMemberRecord->JoinSendOnlyMember?"Sendonly ":"");
 	FormatTimeoutMult(buf, pMcMemberRecord->PktLifeTime);
-	PrintFunc(dest, "%*sMLID: 0x%04x PKey: 0x%04x Mtu: %5s Rate: %4s PktLifeTime: %s\n",
+	PrintFunc(dest, "%*sMLID: 0x%08x PKey: 0x%04x Mtu: %5s Rate: %4s PktLifeTime: %s\n",
 				indent, "",
-				pMcMemberRecord->MLID, pMcMemberRecord->P_Key,
+				MCAST16_TO_MCAST32(pMcMemberRecord->MLID), pMcMemberRecord->P_Key,
 				IbMTUToText(pMcMemberRecord->Mtu),
 				IbStaticRateToText(pMcMemberRecord->Rate),
 				buf);

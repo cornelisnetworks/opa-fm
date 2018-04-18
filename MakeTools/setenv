@@ -49,7 +49,9 @@ else
     export BUILD_TARGET_OS=LINUX
     export BUILD_TARGET_TOOLCHAIN=GNU
     export BUILD_TARGET_OS_VERSION=${BUILD_TARGET_OS_VERSION:-`uname -r`}
-    if [ ${BUILD_TARGET_OS_VERSION:0:3} = '2.6' -o ${BUILD_TARGET_OS_VERSION:0:2} = '3.' ]
+    if [ ${BUILD_TARGET_OS_VERSION:0:3} = '2.6' -o \
+         ${BUILD_TARGET_OS_VERSION:0:2} = '3.' -o \
+         ${BUILD_TARGET_OS_VERSION:0:2} = '4.' ]
     then
 	    export BUILD_26=1
     else

@@ -10,7 +10,7 @@ int main(int argc, char ** argv)
 	int i;
 	struct omgt_port * port = NULL;
 	int num_records;
-	STL_PORTINFO_RECORD *pi_records;
+	STL_PORTINFO_RECORD *pi_records = NULL;
 
 
 	// create a session

@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -688,7 +688,7 @@ char* getOldValue(char *keyDescIn,int showMissing)
         int len=(int)(secondUnderScore-&keyIn[3]);
 	if (len>=INSTANCE_LEN) return NULL;
 
-        strncpy(instance,&keyIn[3],len);
+        strncpy(instance,&keyIn[3],sizeof(instance));
 
         instance[INSTANCE_LEN]=0;
 
@@ -952,7 +952,7 @@ int parseLine(char *line,
         fprintf(stderr,"Invalid tag length %d\n%s\n",lineNumber,line);
         exit(1);
     }
-    strncpy(tag,leftBracket1+1,tagLength);
+    strncpy(tag,leftBracket1+1,tagLength < sizeof(tag) ? tagLength : sizeof(tag));
     if (tagLength==TAG_LENGTH) tag[tagLength-1]='\0';
     startValue=rightBracket1+1;
     char *leftBracket2=strstr(rightBracket1+1,"</");
@@ -975,7 +975,7 @@ int parseLine(char *line,
         fprintf(stderr,"left=%s right=%s",tag,rightBracket2);
         exit(1);
     }
-    strncpy(tag2,leftBracket2+2,tagLength);
+    strncpy(tag2,leftBracket2+2,tagLength < sizeof(tag2) ? tagLength : sizeof(tag2));
     if (tagLength == TAG_LENGTH) tag2[tagLength-1]='\0';
     if (strncmp(tag,tag2,tagLength)!=0)
     {

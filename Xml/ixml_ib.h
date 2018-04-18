@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -41,8 +41,8 @@ extern "C" {
 #endif
 
 /* sometimes a bitfield, so need to call with value instead of ptr */
-extern void IXmlOutputLIDValue(IXmlOutputState_t *state, const char *tag, STL_LID_32 value);
-extern void IXmlOutputOptionalLIDValue(IXmlOutputState_t *state, const char *tag, STL_LID_32 value);
+extern void IXmlOutputLIDValue(IXmlOutputState_t *state, const char *tag, STL_LID value);
+extern void IXmlOutputOptionalLIDValue(IXmlOutputState_t *state, const char *tag, STL_LID value);
 extern void IXmlOutputLID(IXmlOutputState_t *state, const char *tag, void *data);
 extern void IXmlOutputOptionalLID(IXmlOutputState_t *state, const char *tag, void *data);
 extern void IXmlOutputPKey(IXmlOutputState_t *state, const char *tag, void *data);
@@ -123,8 +123,11 @@ extern boolean IXmlParseTimeoutMult_Str(IXmlParserState_t *state, XML_Char *cont
 extern void IXmlParserEndTimeoutMult_Str(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid);
 extern void IXmlParserEndTimeoutMult32_Str(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid);
 extern boolean IXmlParseTimeoutMultInf_Str(IXmlParserState_t *state, XML_Char *content, unsigned len, uint8 *value);
-extern void IXmlParserEndTimeoutMultInf_Str(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid);
-extern void IXmlParserEndTimeoutMultInf32_Str(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid);
+
+/* Specialized timeout parsing for SwitchLifetime and HoQLife elements. Parse infinite but map any values > IB_LIFETIME_MAX to IB_LIFETIME_MAX. */
+extern void IXmlParserEndHoqTimeout_Int(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned int len, boolean valid);
+extern void IXmlParserEndHoqTimeout_Str(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned int len, boolean valid);
+
 /* typically a bitfield, so need to call with value instead of ptr */
 extern void IXmlOutputSMStateValue(IXmlOutputState_t *state, const char* tag, uint8 value);
 extern void IXmlOutputSMState(IXmlOutputState_t *state, const char* tag, void *data);

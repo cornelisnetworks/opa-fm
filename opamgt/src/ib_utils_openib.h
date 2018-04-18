@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT3 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -45,6 +45,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "iba/public/datatypes.h"
 #include "iba/public/isemaphore.h"
 #include "iba/ib_types.h"
+#include "iba/stl_types.h"
 
 #define OMGT_MEMORY_TAG        ((uint32)0x4F50454E) /* OPEN */
 
@@ -74,7 +75,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * Initailize global elements to be used for queries and access to OFED stack.    
  * 
  * There are 3 different ways to call init, all 3 have the same effect - 
- *   they initialize all the global vars to be used later for opamgt
+ *   they initialize all the global vars to be used later for oib
  *   (ofed to ib access) utilities.
  *   They also initialize the umad interface.
  * 
@@ -107,19 +108,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * @param pointer to ca number (1=1st CA)
  * @param pointer to port number (1=1st port)
  * @param pointer to port gid prefix
- * @param pointer to port sm Lid
  *
  * @return 0 for success, else error code
  */
-extern FSTATUS omgt_get_hfi_from_portguid(IN uint64_t portGuid,
-                                          IN struct omgt_port *port,
-                                         OUT char *pCaName,
-                                         OUT int * caNum,
-                                         OUT int * portNum,
-                                         OUT uint64_t * pPrefix,
-                                         OUT uint16_t * pSMLid,
-                                         OUT uint8_t * pSMSL,
-										 OUT uint8_t * pPortState);
+extern FSTATUS omgt_get_hfi_from_portguid(uint64_t portGuid, struct omgt_port *port, char *pCaName,
+	int *caNum, int *portNum, uint64_t *pPrefix, uint16 *pSMLid, uint8 *pSMSL, uint8 *pPortState);
 
 
 /**
@@ -338,25 +331,32 @@ struct omgt_port {
 	/* For SA Client interface */
 	uint16_t                 sa_mad_status;
 	int                      sa_service_state;
+	uint32_t                 sa_capmask2;
 
-	/* For PA client interface */
+	/* For PA/EA client interface */
 	IB_GID              local_gid;
 	FILE               *verbose_file;
 	int                 pa_verbose;
 	int                 pa_service_state;
-	uint16_t            primary_pm_lid;
+	STL_LID             primary_pm_lid;
 	uint8_t             primary_pm_sl;
 	uint16_t            pa_mad_status;
+
+	int                 ea_service_state;
+	STL_LID             primary_em_lid;
+	uint8_t             primary_em_sl;
 
 	/* For OOB client interface */
 	boolean                is_oob_enabled; /* Is port in FE OOB mode */
 	struct net_connection *conn;
 	struct omgt_oob_input  oob_input;
+	/* For OOB Notice interface */
+	boolean                is_oob_notice_setup;
+	struct net_connection *notice_conn;
 	/* For OOB SSL */
 	boolean             is_ssl_enabled; /* Is SSL enabled */
 	boolean             is_ssl_initialized;
 	void               *ssl_context;
-	void               *ssl_session;
 	const SSL_METHOD   *ssl_client_method;
 	boolean             is_x509_store_initialized;
 	X509_STORE         *x509_store;

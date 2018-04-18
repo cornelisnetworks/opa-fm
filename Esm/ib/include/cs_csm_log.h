@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -58,6 +58,7 @@ typedef enum {
 	CSM_COND_SECONDARY_BM_DEACTIVATION = 16,
 	CSM_COND_SECONDARY_PM_DEACTIVATION = 17,
 	CSM_COND_DEACTIVATION_OF_STANDBY = 18,
+	CSM_COND_SECONDARY_EM_DEACTIVATION = 19,
 	CSM_COND_MAX
 } SmCsmMsgCondition_t;
 

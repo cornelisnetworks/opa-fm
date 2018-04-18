@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -69,8 +69,8 @@ int loop = 1;                   /* how many times should I loop */
 uint32_t ib_dev = 0;                 /* what device am I running from */
 uint32_t ib_port = 5;                /* what port am I running from */
 uint8_t mclass = 4;             /* mclass of receiver */
-uint16_t slid = 1;              /* my lid */
-uint16_t dlid = 1;              /* lid of receiver */
+STL_LID  slid = 1;              /* my lid */
+STL_LID  dlid = 1;              /* lid of receiver */
 uint16_t aid = AID_ONE;         /* Attribute ID */
 uint16_t method = SEND_ONE;     /* Method to use in MAD */
 uint32_t timeout = 15000000;    /* how long to wait for acknowledgement */

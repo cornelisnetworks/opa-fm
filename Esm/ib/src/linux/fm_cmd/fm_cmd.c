@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -102,7 +102,7 @@ static command_t commandList[] = {
 	{"smForceSweep", mgr_force_sweep, FM_MGR_SM, "Make the SM sweep now"},
 	{"smRestorePriority", sm_restore_priority, FM_MGR_SM, "Restore the normal priority of the SM (if it is\n                           currently elevated)"},
 	{"smShowCounters", sm_get_counters, FM_MGR_SM, "Get statistics and performance counters from the SM"},
-	{"smResetCounters",sm_reset_counters, FM_MGR_SM, "Reset SM statistics and performace counters"},
+	{"smResetCounters",sm_reset_counters, FM_MGR_SM, "Reset SM statistics and performance counters"},
 	{"smStateDump",sm_state_dump, FM_MGR_SM, "Dump Internal SM state into directory specified"},
 	{"smLogLevel", mgr_log_level, FM_MGR_SM, "Set the SM logging level (0=NONE+, 1=WARN+, 2=NOTICE+,\n                           3=INFO+, 4=VERBOSE+, 5=DEBUG2+, 6=DEBUG4+, 7=TRACE+)"},
 	{"smLogMode", mgr_log_mode, FM_MGR_SM, "Set the SM log mode flags (0/1 1=downgrade\n                           non-actionable, 0/2 2=logfile only)"},
@@ -112,7 +112,7 @@ static command_t commandList[] = {
 	{"saRmppDebug", mgr_rmpp_debug_toggle, FM_MGR_SM, "Toggle Rmpp debug output for SA"},
 	// these commands can be issued direct to PM without issue
 	{"pmShowCounters", pm_get_counters, FM_MGR_PM, "Get statistics and performance counters about the PM"},
-	{"pmResetCounters",pm_reset_counters, FM_MGR_PM, "Reset statistics and performace counters about the PM"},
+	{"pmResetCounters",pm_reset_counters, FM_MGR_PM, "Reset statistics and performance counters about the PM"},
 	{"pmDebug", mgr_debug_toggle, FM_MGR_PM, "Toggle debug output for PM"},
 	{"pmRmppDebug", mgr_rmpp_debug_toggle, FM_MGR_PM, "Toggle Rmpp debug output for PM"},
 	{"feLogLevel", mgr_log_level, FM_MGR_FE, "Set the FE logging level (0=NONE+, 1=WARN+, 2=NOTICE+,\n                           3=INFO+, 4=VERBOSE+, 5=DEBUG2+, 6=DEBUG4+, 7=TRACE+)"},
@@ -154,9 +154,8 @@ void usage(char *cmd)
 	fprintf(stderr, " [options] cmd [args]\n\n");
 
 	fprintf(stderr, "options:\n");
-	fprintf(stderr, "  --help             - show this help text)\n");
-	fprintf(stderr, "  -i fm_instance     - FM instance to connect to (0 - default)\n\n");
-
+	fprintf(stderr, "  --help		- show this help text\n");
+	fprintf(stderr, "  -i fm_instance	- FM instance to connect to (0 - default)\n\n");
 	fprintf(stderr, "cmd:\n");
 	for(i=0;i<commandListLen;i++){
 		fprintf(stderr, "  %-21s %s\n",commandList[i].name,commandList[i].desc);
@@ -234,6 +233,12 @@ int sm_get_counters(p_fm_config_conx_hdlt hdl, fm_mgr_type_t mgr, int argc, char
     }
 	return 0;
 }
+
+#define MAX_VESW 4095
+#define MIN_VESW 1
+#define ALL_VESW -1
+#define MIN_VESW_COUNT 1
+#define MAX_VESW_COUNT 20
 
 int pm_get_counters(p_fm_config_conx_hdlt hdl, fm_mgr_type_t mgr, int argc, char *argv[]) {
 	fm_mgr_config_errno_t	res;
@@ -975,19 +980,20 @@ int sm_skip_attr_write(p_fm_config_conx_hdlt hdl, fm_mgr_type_t mgr, int argc, c
 	}
 	if ((argc==0) || ((argc==1) && (strcmp(argv[0],"-help")==0)) ) {
 		printf(" SM SKIP WRITE BITMASKS...\n");
-		printf("   SM_SKIP_WRITE_PORTINFO   0x00000001  (Includes Port Info)\n");
-		printf("   SM_SKIP_WRITE_SMINFO     0x00000002  (Includes Sm Info)\n");
-		printf("   SM_SKIP_WRITE_GUID       0x00000004  (Includes GUID Info\n");
-		printf("   SM_SKIP_WRITE_SWITCHINFO 0x00000008  (Includes Switch Info\n");
-		printf("   SM_SKIP_WRITE_SWITCHLTV  0x00000010  (Includes Switch LTV)\n");
-		printf("   SM_SKIP_WRITE_VLARB      0x00000020  (Includes VLArb Tables/Preempt Tables)\n");
-		printf("   SM_SKIP_WRITE_MAPS       0x00000040  (Includes SL::SC, SC::SL, SC::VL)\n");
-		printf("   SM_SKIP_WRITE_LFT        0x00000080  (Includes LFT, MFT)\n");
-		printf("   SM_SKIP_WRITE_AR         0x00000100  (Includes PG table, PG FDB)\n");
-		printf("   SM_SKIP_WRITE_PKEY       0x00000200\n");
-		printf("   SM_SKIP_WRITE_CONG       0x00000400  (Includes HFI / Switch congestion)\n");
-		printf("   SM_SKIP_WRITE_BFRCTRL    0x00000800\n");
-		printf("   SM_SKIP_WRITE_NOTICE     0x00001000\n");
+		printf("   SM_SKIP_WRITE_PORTINFO        0x00000001  (Includes Port Info)\n");
+		printf("   SM_SKIP_WRITE_SMINFO          0x00000002  (Includes Sm Info)\n");
+		printf("   SM_SKIP_WRITE_GUID            0x00000004  (Includes GUID Info)\n");
+		printf("   SM_SKIP_WRITE_SWITCHINFO      0x00000008  (Includes Switch Info)\n");
+		printf("   SM_SKIP_WRITE_SWITCHLTV       0x00000010  (Includes Switch LTV)\n");
+		printf("   SM_SKIP_WRITE_VLARB           0x00000020  (Includes VLArb Tables/Preempt Tables)\n");
+		printf("   SM_SKIP_WRITE_MAPS            0x00000040  (Includes SL::SC, SC::SL, SC::VL)\n");
+		printf("   SM_SKIP_WRITE_LFT             0x00000080  (Includes LFT and MFT)\n");
+		printf("   SM_SKIP_WRITE_AR              0x00000100  (Includes PG table, PG FDB)\n");
+		printf("   SM_SKIP_WRITE_PKEY            0x00000200\n");
+		printf("   SM_SKIP_WRITE_CONG            0x00000400  (Includes HFI / Switch congestion)\n");
+		printf("   SM_SKIP_WRITE_BFRCTRL         0x00000800\n");
+		printf("   SM_SKIP_WRITE_NOTICE          0x00001000\n");
+		printf("   SM_SKIP_WRITE_PORTSTATEINFO   0x00002000  (Includes PortStateInfo sets for cascade activation)\n");
 		return  0;
 	}
 
@@ -1003,6 +1009,7 @@ int sm_skip_attr_write(p_fm_config_conx_hdlt hdl, fm_mgr_type_t mgr, int argc, c
 	}
 	return 0;
 }
+
 
 int main(int argc, char *argv[]) {
 	p_fm_config_conx_hdlt	hdl = NULL;

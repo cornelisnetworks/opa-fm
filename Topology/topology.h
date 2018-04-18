@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -42,6 +42,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <iba/stl_sa_priv.h>
 #include <iba/stl_sd.h>
 #include <iba/stl_pm.h>
+#include <iba/stl_types.h>
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -80,16 +83,25 @@ typedef struct PortMaskSC2SCMap_s {
 	STL_SCSCMAP	*SC2SCMap;
 } PortMaskSC2SCMap;
 
+#define SC2SCMAPLIST_MAX 1
 // QOS information for a Port in the fabric
 typedef struct QOSData_s {
-	STL_VLARB_TABLE VLArbTable[4]; // One table per type, low, high, preempt, preempt matrix
-	QUICK_LIST	SC2SCMapList;	// PortMaskSC2SCMap
+	union {
+		STL_VLARB_TABLE VLArbTable[4]; // One table per type, low, high, preempt, preempt matrix
+	} u;
+
+	QUICK_LIST	SC2SCMapList[SC2SCMAPLIST_MAX];	// PortMaskSC2SCMap
 	STL_SLSCMAP	*SL2SCMap; // only defined for HFI and SW port 0
 	STL_SCSLMAP	*SC2SLMap; // only defined for HFI and SW port 0
 	STL_SCVLMAP	SC2VLMaps[3]; // VL_t, _nt, and _r; indicies given by ScvlEnum_t
 } QOSData;
 
+
 typedef STL_PORT_STATUS_RSP STL_PortStatusData_t;
+
+// How many STL_CABLE_INFO structs to store per port
+#define PORTDATA_CABLEINFO_SIZE	4
+#define IFACE_MACLIST_SIZE		512
 
 // information about an IB Port in the fabric
 // for switches a GUID and LID are only available for Port 0 of the switch
@@ -108,8 +120,10 @@ typedef struct PortData_s {
 	uint8	PmaGotClassPortInfo:1;	// have issued a ClassPortInfo
 	uint8	spare:6;
 	uint32 rate;			// Active rate for this port
-	STL_LID_32	EndPortLID;				// LID to get to device with this port
+	STL_LID	EndPortLID;				// LID to get to device with this port
 	STL_PORT_INFO	PortInfo;			// do not use LocalPortNum,use PortNum above
+
+
 	STL_LED_INFO LedInfo;			//Led Info for this port
 	IB_PATH_RECORD *pathp;			// Path Record to send to this port
 	STL_PortStatusData_t *pPortStatus;
@@ -197,6 +211,9 @@ typedef struct ExpectedLink_s {
  */
 typedef struct ExpectedPort_s {
 	uint8 PortNum;
+	STL_LID lid;
+	uint8 lmc;
+	EUI64 PortGuid;
 	ExpectedLink *elinkp;
 } ExpectedPort;
 
@@ -207,6 +224,7 @@ struct ExpectedNode_s {
 	cl_map_item_t ExpectedNodeGuidMapEntry;	// key is NodeGuid
 	struct NodeData_s *nodep;		// NULL if not found
 	EUI64 NodeGUID;					// 0 if not specified
+	EUI64 SystemImageGUID;			// 0 if not specified
 	uint8 NodeType;					// 0 if not specified
 	char *NodeDesc;					// NULL if not specified
 	char *details;					// user description of node
@@ -252,6 +270,9 @@ typedef struct IouData_s {
 	void *context;					// application specific field
 } IouData;
 #endif
+
+
+
 // detailed information specific to an IB Switch in the fabric
 typedef struct SwitchData_s {
 	/**
@@ -275,9 +296,8 @@ typedef struct SwitchData_s {
 		Prefer MulticastFDBTop & MulticastFDBCap from NodeData when available.
 	*/
 	uint32	MulticastFDBSize;
-	uint8	MulticastFDBEntrySize;	// number of STL_PORTMASK units per entry
+	STL_PORTMASK *MulticastFDB[STL_NUM_MFT_POSITIONS_MASK];
 	uint8	HasBeenVisited;			//indicates 0: no; 1: yes when searching for MC routes
-	STL_PORTMASK *MulticastFDB;
 
 	/**
 		Lower upper-bound on number of entries allocated.
@@ -294,6 +314,7 @@ typedef struct SwitchData_s {
 	STL_PORT_GROUP_FORWARDING_TABLE	*PortGroupFDB;
 
 } SwitchData;
+
 /*
 	Information about a Node in the fabric.
 	The SA reports a NodeRecord per port, we coallese all nodes with
@@ -337,6 +358,11 @@ typedef struct NodeData_s {
 		STL_SWITCH_CONGESTION_LOG Switch;
 		STL_HFI_CONGESTION_LOG Hfi;
 	} CongestionLog;
+
+	uint8_t coreSwitch;  // (fabric_sim) fat tree non-edge switch
+	uint8_t visited; // (opasnapconfig) has this node been visited
+	uint8_t valid; // (opasnapconfig) whether node exists in proper location from snapshot
+	uint8_t path[64]; // (opasnapconfig) path we traversed to get to this node
 } NodeData;
 
 
@@ -353,14 +379,10 @@ typedef struct McGroupData_s {		// entry to AllMcGroups
 									// belong to the group
 	LIST_ITEM	AllMcGMembersEntry;
 	QUICK_LIST	AllMcGroupMembers;	//datatype: McMemberData
-	int     	NumOfMembers; // if zero member  are not counted, this number != QListCount(list)
-	IB_LID		MLID;
+	int     	NumOfMembers;
+	STL_LID		MLID;
 	IB_GID		MGID;
-	IB_MCMEMBER_RECORD	GroupInfo;	//although this is a IB_MCMEMBER-type record
-								//and it has few more fields than needed
-								//so as suggested by TR, this should be used instead
-								//of a group only set of fields.
-								//Fields corresponding to individual members should not be used
+	IB_MCMEMBER_RECORD	GroupInfo;	//Fields corresponding to individual members should not be used
 	QUICK_LIST	EdgeSwitchesInGroup;//datatype:McHFISwitchData
 } McGroupData;
 
@@ -373,7 +395,10 @@ typedef struct McEdgeSwitchData_s {	// entry in McGroupData
 
 typedef struct McMemberData_s { // entry in McGroupData
 	LIST_ITEM		McMembersEntry;
+
+	// Do not use 16-bit MemberInfo.MLID; use 32-bit MLID of containing McGroupData
 	IB_MCMEMBER_RECORD	MemberInfo;
+
 	PortData		*pPort;	
 } McMemberData;
 
@@ -388,7 +413,7 @@ typedef struct McLoopInc_s {
 	QUICK_LIST	AllMcNodeLoopIncR;	//datatype: McNodeLoopInc
 	LIST_ITEM	LoopIncEntry;
 	MCROUTESTATUS	status;
-	IB_LID  	mlid;
+	STL_LID  	mlid;
 } McLoopInc;
 
 typedef struct McRouteStatus_s {
@@ -417,7 +442,7 @@ typedef struct clConnData_s {
 typedef struct clDeviceData_s {
    cl_map_item_t   AllDevicesEntry;          // key is NodeGuid
    LIST_ITEM       AllDeviceTypesEntry; 
-   uint16          Lid; 
+   STL_LID         Lid;
    NodeData        *nodep; 
    clConnData_t    *Connections[CREDIT_LOOP_DEVICE_MAX_CONNECTIONS][STL_MAX_SCS];       // 36 port switch + 1 for port zero
    cl_qmap_t       map_dlid_to_route;
@@ -484,14 +509,17 @@ typedef struct clDijkstraDistancesAndRoutes_s {
     uint32          nCols;
 } clDijkstraDistancesAndRoutes_t;
 
-// get start of an entry (indexed by low bits of MLID) in MulticastFDB
-// The entry will consist of MulticastFDBEntrySize PORTMASK values
+/**
+ * Get start of an entry in MulticastFDB. Should use bits MLID[13:0].
+ * @c pos is the portmask position; each position is 64 bits (ports) wide.
+ */
 static inline
-STL_PORTMASK *GetMulticastFDBEntry(NodeData *nodep, uint32 entry)
+STL_PORTMASK *GetMulticastFDBEntry(NodeData *nodep, uint32 entry, uint8 pos)
 {
-	if (! nodep->switchp || ! nodep->switchp->MulticastFDB)
+	if (! nodep->switchp || !nodep->switchp->MulticastFDB[pos])
 		return NULL;
-	return (&nodep->switchp->MulticastFDB[entry * nodep->switchp->MulticastFDBEntrySize]);
+
+	return (&nodep->switchp->MulticastFDB[pos][entry]);
 }
 
 // information about an IB enabled system in the fabric
@@ -544,6 +572,19 @@ typedef enum {
 	FF_DOWNPORTINFO		=0x000001000,	// Get PortInfo for Down switch ports
 } FabricFlags_t;
 
+// Handling for LIDs up to 24 bits
+#define TOPLM_BLOCK_BITS 10
+#define TOPLM_ENTRY_BITS 14
+#define TOPLM_BLOCKS (1 << TOPLM_BLOCK_BITS)  /* There are 2^10 blocks in the map */
+#define TOPLM_ENTRIES (1 << TOPLM_ENTRY_BITS) /* Each block contains 2^14 pointers to PortData */
+#define TOPLM_BLOCK_NUM(lid)	((lid) >> TOPLM_ENTRY_BITS)
+#define TOPLM_ENTRY_NUM(lid)	((lid) & (TOPLM_ENTRIES -1))
+#define TOPLM_LID_MAX ((1 << (TOPLM_BLOCK_BITS + TOPLM_ENTRY_BITS)) - 1) // Map can handle 2^24 lids
+
+typedef struct TopLidMap_s {
+	PortData **LidBlocks[TOPLM_BLOCKS];
+} TopLidMap_t;
+
 typedef struct FabricData_s {
 	time_t	time;			// when fabric data was obtained from a real fabric
 	FabricFlags_t	flags;	// what data is available in FabricData
@@ -552,8 +593,9 @@ typedef struct FabricData_s {
 	cl_qmap_t AllNodes;		// items are NodeData, key is node guid
 	union {
 		cl_qmap_t AllLids;		// items are PortData, key is LID
-		PortData **LidMap;		// allocated for max ucast lids, index is LID
+		TopLidMap_t LidMap;
 	} u;
+	uint32 lidCount;
 	cl_qmap_t AllSystems;	// items are SystemData, key is system image guid
 	QUICK_LIST AllPorts;	// sorted by NodeGUID+PortNum
 	QUICK_LIST AllFIs;		// sorted by NodeGUID
@@ -566,7 +608,7 @@ typedef struct FabricData_s {
 	cl_qmap_t AllSMs;		// items are SMData, key is PortGuid
 
 	//	Multicast  related structures
-	QUICK_LIST	AllMcGroups;	// items are MCMembers, Key is MGID
+	QUICK_LIST	AllMcGroups;	// items are MCGroups, Key is MGID
 	McRouteStatus	AllMcLoopIncRoutes[MAXMCROUTESTATUS];	// items are list of loop and incomplete MC routes.
 	uint32		NumOfMcGroups;
 
@@ -779,6 +821,9 @@ extern boolean isVFMember(PortData *portp, VFData_t *pVFData);
 extern uint32 CountInitializedPorts(FabricData_t *fabricp, NodeData *nodep);
 extern FSTATUS NodeDataAllocateSwitchData(FabricData_t *fabricp, NodeData *nodep,
 				uint32 LinearFDBSize, uint32 MulticastFDBSize);
+extern FSTATUS NodeDataAllocateFDB(FabricData_t *fabricp, NodeData *nodep,
+                uint32 LinearFDBSize);
+extern FSTATUS SwitchDataAllocateQOS(SwitchData *sw);
 
 /**
 	Adjust amount of memory allocated for Linear and Multicast FDB tables.
@@ -794,6 +839,8 @@ extern FSTATUS NodeDataAllocateSwitchData(FabricData_t *fabricp, NodeData *nodep
 	@return FSUCCESS on success, non-FSUCCESS on failure.  Existing memory is not destroyed until after new tables are successfully allocated and copied.
 */
 FSTATUS NodeDataSwitchResizeFDB(NodeData * nodep, uint32 newLfdbSize, uint32 newMfdbSize);
+FSTATUS NodeDataSwitchResizeLinearFDB(NodeData * nodep, uint32 newLfdbSize);
+FSTATUS NodeDataSwitchResizeMcastFDB(NodeData * nodep, uint32 newMfdbSize);
 
 extern FSTATUS PortDataAllocateAllQOSData(FabricData_t *fabricp);
 extern FSTATUS PortDataAllocateAllBufCtrlTable(FabricData_t *fabricp);
@@ -801,6 +848,7 @@ extern FSTATUS PortDataAllocateAllPartitionTable(FabricData_t *fabricp);
 extern FSTATUS PortDataAllocateAllCableInfo(FabricData_t *fabricp);
 extern FSTATUS PortDataAllocateAllCongestionControlTableEntries(FabricData_t *fabricp);
 extern FSTATUS PortDataAllocateAllGuidTable(FabricData_t *fabricp);
+
 
 /// @param fabricp optional, can be NULL
 extern void PortDataFreeQOSData(FabricData_t *fabricp, PortData *portp);
@@ -821,6 +869,7 @@ extern FSTATUS PortDataAllocateCableInfoData(FabricData_t *fabricp, PortData *po
 extern void PortDataFreeCongestionControlTableEntries(FabricData_t *fabricp, PortData *portp);
 /// @param fabricp optional, can be NULL
 extern FSTATUS PortDataAllocateCongestionControlTableEntries(FabricData_t *fabricp, PortData *portp);
+
 
 // these routines can be used to manually build FabricData.  Use as follows:
 // for each node
@@ -851,10 +900,9 @@ extern FSTATUS AddEdgeSwitchToGroup(FabricData_t *fabricp, McGroupData *mcgroupp
 extern McGroupData *FabricDataAddMCGroup(FabricData_t *fabricp, struct omgt_port *port, int quiet, IB_MCMEMBER_RECORD *pMCGRecord,
 		boolean *new_nodep, FILE *verbose_file);
 
-extern FSTATUS GetAllMCGroups(EUI64 portGuid, FabricData_t *fabricp, Point *focus,
-		int quiet);
-extern FSTATUS GetAllMCGroupMember(FabricData_t *fabricp, McGroupData *mcgroupp,struct omgt_port *portp,int quiet,
-		FILE *g_verbose_file);
+extern FSTATUS GetAllMCGroups(EUI64 portGuid, FabricData_t *fabricp, Point *focus, int quiet);
+extern FSTATUS GetAllMCGroupMember(FabricData_t *fabricp, McGroupData *mcgroupp,struct omgt_port *portp,int quiet, FILE *g_verbose_file);
+
 extern boolean SupportsVendorPortCounters(NodeData *nodep,
                                         IB_CLASS_PORT_INFO *classPortInfop);
 extern boolean SupportsVendorPortCounters2(NodeData *nodep,
@@ -870,8 +918,8 @@ extern FSTATUS FabricDataAddLink(FabricData_t *fabricp, PortData *p1, PortData *
 extern FSTATUS FabricDataAddLinkRecord(FabricData_t *fabricp, STL_LINK_RECORD *pLinkRecord);
 extern FSTATUS FabricDataRemoveLink(FabricData_t *fabricp, PortData *p1);
 
-extern void QOSDataAddSCSCMap(PortData *portp, uint8_t outport, const STL_SCSCMAP *pSCSC);
-extern STL_SCSCMAP * QOSDataLookupSCSCMap(PortData *portp, uint8_t outport);
+extern void QOSDataAddSCSCMap(PortData *portp, uint8_t outport, int extended, const STL_SCSCMAP *pSCSC);
+extern STL_SCSCMAP * QOSDataLookupSCSCMap(PortData *portp, uint8_t outport, int extended);
 
 // Set update lookup tables due to PortState, LID or LMC change for port.
 // Typical use is when a SetPortInfo on neighbor causes a link state change
@@ -884,9 +932,9 @@ extern void PortDataSetPortInfo(FabricData_t *fabricp, PortData *portp, STL_PORT
 
 extern void DestroyFabricData(FabricData_t *fabricp);
 
-extern NodeData * CLDataAddDevice(FabricData_t *fabricp, NodeData *nodep, uint16 lid, int verbose, int quiet);
+extern NodeData * CLDataAddDevice(FabricData_t *fabricp, NodeData *nodep, STL_LID lid, int verbose, int quiet);
 extern FSTATUS CLDataAddConnection(FabricData_t *fabricp, PortData *portp1, PortData *portp2, clConnPathData_t *pathInfo, uint8 sc, int verbose, int quiet);
-extern FSTATUS CLDataAddRoute(FabricData_t *fabricp, uint16 slid, uint16 dlid, PortData *sportp, int verbose, int quiet);
+extern FSTATUS CLDataAddRoute(FabricData_t *fabricp, STL_LID slid, STL_LID dlid, PortData *sportp, int verbose, int quiet);
 extern clGraphData_t * CLGraphDataSplit(clGraphData_t *graphp, int verbose);
 extern FSTATUS CLFabricDataDestroy(FabricData_t *fabricp, void *context);
 extern void CLGraphDataFree(clGraphData_t *graphp, void *context);
@@ -913,7 +961,7 @@ extern void CLDijkstraFreeDistancesAndRoutes(clDijkstraDistancesAndRoutes_t *drp
 // search for the PortData corresponding to the given node and port number
 extern PortData * FindNodePort(NodeData *nodep, uint8 port);
 // search for the PortData corresponding to the given lid
-extern PortData * FindLid(FabricData_t* fabricp, uint16 lid);
+extern PortData * FindLid(FabricData_t* fabricp, STL_LID lid);
 // search for the PortData corresponding to the given port Guid
 extern PortData * FindPortGuid(FabricData_t* fabricp, EUI64 guid);
 extern FSTATUS FindPortGuidPoint(FabricData_t *fabricp, EUI64 guid, Point *pPoint, uint8 find_flag, int silent);
@@ -955,7 +1003,7 @@ extern SMData * FindSMPort(FabricData_t *fabricp,EUI64 PortGUID);
 // search for the PortData corresponding to the given lid and port number
 // For FIs lid completely defines the port
 // For Switches, lid will identify the switch and port is used to select port
-extern PortData * FindLidPort(FabricData_t *fabricp,uint16 lid, uint8 port);
+extern PortData * FindLidPort(FabricData_t *fabricp, STL_LID lid, uint8 port);
 extern PortData * FindNodeGuidPort(FabricData_t *fabricp,EUI64 nodeguid, uint8 port);
 extern ExpectedNode* FindExpectedNodeByNodeGuid(const FabricData_t* fabricp, EUI64 nodeGuid);
 extern ExpectedNode* FindExpectedNodeByNodeDesc(const FabricData_t* fabricp, const char* nodeDesc, uint8 NodeType);
@@ -963,6 +1011,42 @@ extern ExpectedLink* FindExpectedLinkByOneSide(const FabricData_t* fabricp, EUI6
 extern FSTATUS FindLinkQualityPoint(FabricData_t *fabricp, uint16 quality, LinkQualityCompare comp, Point *pPoint, uint8 find_flag);
 extern FSTATUS FindExpectedSMByPortGuid(FabricData_t *fabricp, EUI64 portGuid);
 extern FSTATUS FindExpectedSMByNodeGuid(FabricData_t *fabricp, EUI64 nodeGuid);
+
+extern void setTopologyMadVerboseFile(FILE* verbose_file);
+extern void setTopologyMadRetryCount(int retries);
+// mad queries to SMA (from Topology/mad.c)
+extern FSTATUS SmaGetNodeDesc(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, STL_NODE_DESCRIPTION *pNodeDesc);
+extern FSTATUS SmaGetNodeInfo(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, STL_NODE_INFO *pNodeInfo);
+extern FSTATUS SmaGetSwitchInfo(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, STL_SWITCH_INFO *pSwitchInfo);
+extern FSTATUS SmaGetPortInfo(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, uint8_t portNum, uint8_t smConfigStarted, STL_PORT_INFO *pPortInfo);
+extern FSTATUS SmaGetPartTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, uint8_t portNum, uint16_t block, STL_PARTITION_TABLE *pPartTable);
+extern FSTATUS SmaGetVLArbTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, uint8_t portNum, uint8_t part, STL_VLARB_TABLE *pVLArbTable);
+extern FSTATUS SmaGetSLSCMappingTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, STL_SLSCMAP *pSLSCMap);
+extern FSTATUS SmaGetSCSLMappingTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, STL_SCSLMAP *pSCSLMap);
+extern FSTATUS SmaGetSCSCMappingTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, uint8_t in_port, uint8_t out_port, STL_SCSCMAP *pSCSCMap);
+extern FSTATUS SmaGetSCVLMappingTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, uint8_t port_num, STL_SCVLMAP *pSCVLMap, uint16_t attr);
+extern FSTATUS SmaGetLinearFDBTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, uint16_t block, STL_LINEAR_FORWARDING_TABLE *pFDB);
+extern FSTATUS SmaGetMulticastFDBTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, uint32_t block, uint8_t position, STL_MULTICAST_FORWARDING_TABLE *pFDB);
+extern FSTATUS SmaGetPortGroupFDBTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, uint16 block, STL_PORT_GROUP_FORWARDING_TABLE *pFDB);
+extern FSTATUS SmaGetPortGroupTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, uint16 block, STL_PORT_GROUP_TABLE *pPGT);
+
+extern FSTATUS SmaGetBufferControlTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, uint8_t startPort, uint8_t endPort, STL_BUFFER_CONTROL_TABLE pBCT[]);
+extern FSTATUS SmaGetCableInfo(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, uint8_t portNum, uint16_t addr, uint8_t len, uint8_t *data);
+
+extern FSTATUS SmaSetSwitchInfo(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, STL_SWITCH_INFO *pSwitchInfo);
+extern FSTATUS SmaSetPortInfo(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, uint8_t portNum, STL_PORT_INFO *pPortInfo);
+extern FSTATUS SmaSetPartTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, uint8_t portNum, uint16_t block, STL_PARTITION_TABLE *pPartTable);
+extern FSTATUS SmaSetVLArbTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, uint8_t portNum, uint8_t part, STL_VLARB_TABLE *pVLArbTable);
+extern FSTATUS SmaSetSLSCMappingTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, STL_SLSCMAP *pSLSCMap);
+extern FSTATUS SmaSetSCSLMappingTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, STL_SCSLMAP *pSCSLMap);
+extern FSTATUS SmaSetSCSCMappingTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, uint8_t in_port, uint8_t out_port, STL_SCSCMAP *pSCSCMap);
+extern FSTATUS SmaSetSCVLMappingTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, uint8_t allPorts, uint8_t port_num, STL_SCVLMAP *pSCVLMap, uint16_t attr);
+extern FSTATUS SmaSetBufferControlTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, uint8_t startPort, uint8_t endPort, STL_BUFFER_CONTROL_TABLE pBCT[]);
+extern FSTATUS SmaSetLinearFDBTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, uint16_t block, STL_LINEAR_FORWARDING_TABLE *pFDB);
+extern FSTATUS SmaSetMulticastFDBTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, uint32_t block, uint8_t position, STL_MULTICAST_FORWARDING_TABLE *pFDB);
+
+extern FSTATUS SmaGetCongestionInfo(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, STL_CONGESTION_INFO *pCongestionInfo);
+extern FSTATUS SmaGetHFICongestionControlTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, uint16_t block, uint16_t numBlocks, STL_HFI_CONGESTION_CONTROL_TABLE *pHfiCongestionControl);
 
 // mad queries to PMA and DMA (from Topology/mad.c)
 extern FSTATUS InitMad(EUI64 portguid, FILE *verbose_file);
@@ -1106,14 +1190,15 @@ extern FSTATUS Xml2ParseSnapshot(const char *input_file, int quiet, FabricData_t
 //		Any errors in resolution or checks are reported as an error by
 //		Xml2ParseTopology.
 // Strict - performs all checks in Somewhat strict.  Also requires that all
-//		ExpectedLinks explicitly list PortNum in topology file.
+//		ExpectedLinks explicitly list PortNum in topology file and
+//		all ExpectedNodes explicitly list ports in topology file.
 // In all cases its valid for a ExpectedNode to list a port which is not
 // connected to the fabric (eg. not referenced by an ExpectedLink).
 //
 typedef enum {
 	TOPOVAL_NONE			=0,
 	TOPOVAL_LOOSE			=1,	// resolve what we can, no graph closure checks
-	TOPOVAL_SOMEWHAT_STRICT	=2,	// same as strict but don't require <Port>
+	TOPOVAL_SOMEWHAT_STRICT	=2,	// same as strict but don't require <Port> under <Node>
 	TOPOVAL_STRICT			=3
 } TopoVal_t;
 									// in ExpectedNode in topology file
@@ -1153,19 +1238,13 @@ extern PQUERY_RESULT_VALUES GetAllQuarantinedNodes(struct omgt_port *port, Fabri
 													Point *focus, int quiet);
 extern FSTATUS GetAllBCTs(EUI64 portGuid, FabricData_t *fabricp, Point *focus, int quiet);
 
-// port 0 gets a bit as well as ports 1-NumPorts
-// this returns Entry size in sizeof(PORTMASK) units
-static __inline uint32 ComputeMulticastFDBEntrySize(uint8 numports)
-{
-	return ROUNDUP( (numports + 1),
-			(sizeof(STL_PORTMASK) * 8) ) / (sizeof(STL_PORTMASK) * 8);
-}
-
 extern FSTATUS ClearAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabricp,
 			  	Point *focus, uint32 counterselect, boolean limitstats,
 			   	boolean quiet, uint32 *node_countp, uint32 *port_countp,
 			   	uint32 *fail_node_countp, uint32 *fail_port_countp);
 
+extern PQUERY_RESULT_VALUES GetAllDeviceGroupMemberRecords(struct omgt_port *port, FabricData_t *fabricp,
+													Point *focus, int quiet);
 extern void XmlPrintHex64(const char *tag, uint64 value, int indent);
 extern FSTATUS ParseFocusPoint(EUI64 portGuid, FabricData_t *fabricp, char* arg, Point* pPoint, uint8 find_flag, char **pp, boolean allow_route);
 
@@ -1199,17 +1278,17 @@ typedef FSTATUS (RouteCallback_t)(PortData *entryPortp, PortData *exitPortp, uin
 // FNOT_FOUND - unable to find starting port
 // FNOT_DONE - unable to trace route, dlid is a dead end
 extern FSTATUS WalkRoutePort(FabricData_t *fabricp,
-			   		PortData *portp, IB_LID dlid, uint8 SL,
+			   		PortData *portp, STL_LID dlid, uint8 SL,
 			  		RouteCallback_t *callback, void *context);
 // walk by slid to dlid
-extern FSTATUS WalkRoute(FabricData_t *fabricp, IB_LID slid, IB_LID dlid,
+extern FSTATUS WalkRoute(FabricData_t *fabricp, STL_LID slid, STL_LID dlid,
 			  		RouteCallback_t *callback, void *context);
 
 // caller must free *ppTraceRecords
 extern FSTATUS GenTraceRoutePort(FabricData_t *fabricp,
-			   	PortData *portp, IB_LID dlid,
+			   	PortData *portp, STL_LID dlid,
 	   			STL_TRACE_RECORD **ppTraceRecords, uint32 *pNumTraceRecords);
-extern FSTATUS GenTraceRoute(FabricData_t *fabricp, IB_LID slid, IB_LID dlid,
+extern FSTATUS GenTraceRoute(FabricData_t *fabricp, STL_LID slid, STL_LID dlid,
 	   			STL_TRACE_RECORD **ppTraceRecords, uint32 *pNumTraceRecords);
 extern FSTATUS GenTraceRoutePath(FabricData_t *fabricp, IB_PATH_RECORD *pathp,
 	   			STL_TRACE_RECORD **ppTraceRecords, uint32 *pNumTraceRecords);
@@ -1226,7 +1305,7 @@ extern FSTATUS GenPaths(FabricData_t *fabricp,
 		IB_PATH_RECORD **ppPathRecords, uint32 *pNumPathRecords);
 
 // tabulate all the ports along the route from slid to dlid
-extern FSTATUS TabulateRoute(FabricData_t *fabricp, IB_LID slid, IB_LID dlid,
+extern FSTATUS TabulateRoute(FabricData_t *fabricp, STL_LID slid, STL_LID dlid,
 					boolean fatTree);
 // tabulate all routes from portp1 to portp2
 extern FSTATUS TabulateRoutes(FabricData_t *fabricp,
@@ -1237,7 +1316,7 @@ extern FSTATUS TabulateCARoutes(FabricData_t *fabricp, uint32 *totalPaths,
 					uint32 *badPaths, boolean fatTree);
 
 typedef void (*ReportCallback_t)(PortData *portp1, PortData *portp2,
-			   		IB_LID dlid, boolean isBaseLid,
+			   		STL_LID dlid, boolean isBaseLid,
 				   	boolean flag /* TRUE=uplink or Recv */, void *context);
 
 // report all routes from portp1 to portp2 that cross reportPort
@@ -1253,7 +1332,7 @@ extern FSTATUS ReportCARoutes(FabricData_t *fabricp,
 
 // callback used to indicate that an incomplete route exists between p1 and p2
 typedef void (*ValidateCallback_t)(PortData *portp1, PortData *portp2,
-			   		IB_LID dlid, boolean isBaseLid, uint8 sl, void *context);
+			   		STL_LID dlid, boolean isBaseLid, uint8 sl, void *context);
 
 // callback used to indicate a port along an incomplete route
 typedef void (*ValidateCallback2_t)(PortData *portp, uint8 vl, void *context);
@@ -1273,7 +1352,7 @@ extern FSTATUS ValidateAllRoutes(FabricData_t *fabricp, EUI64 portGuid,
 				   	ValidateCallback2_t callback2, void *context2,
 					uint8 useSCSC);
 
-// validate all MC routes between all memberss
+// validate all MC routes between all members
 // exclude loopback routes
 extern FSTATUS ValidateAllMCRoutes(FabricData_t *fabricp,
 					uint32 *totalPaths);
@@ -1314,7 +1393,7 @@ extern FSTATUS ValidateAllCreditLoopRoutes(FabricData_t *fabricp, EUI64 portGuid
                                            ValidateCLTimeGetCallback_t timeGetCallback,
                                            void *context, 
                                            uint8 snapshotInFile,
-                                           uint8 useSCSC); 
+                                           uint8 useSCSC);
 extern void CLFabricSummary(FabricData_t *fabricp, const char *name, ValidateCLFabricSummaryCallback_t callback,
 			    uint32 totalPaths, uint32 totalBadPaths, void *context);
 extern void CLGraphDataSummary(clGraphData_t *graphp, const char *name, ValidateCLDataSummaryCallback_t callback, void *context);
@@ -1334,28 +1413,60 @@ extern void CLDijkstraFindCycles(FabricData_t *fabricp,
 extern FSTATUS CLTimeGet(uint64_t *address); 
 #endif
 
+extern PortData *GetMapEntry(FabricData_t *fabricp, STL_LID lid);
+extern FSTATUS SetMapEntry(FabricData_t *fabricp, STL_LID lid, PortData *pd);
+extern void FreeLidMap(FabricData_t *fabricp);
+
 static __inline uint32 ComputeMulticastFDBSize(const STL_SWITCH_INFO *pSwitchInfo)
 {
 	//STL Volg1 20.2.2.6.5
-	return (pSwitchInfo->MulticastFDBTop >= LID_MCAST_START) ? 
-			pSwitchInfo->MulticastFDBTop-LID_MCAST_START+1 : 0;
+	return (pSwitchInfo->MulticastFDBTop >= STL_LID_MULTICAST_BEGIN) ? 
+			pSwitchInfo->MulticastFDBTop-STL_LID_MULTICAST_BEGIN+1 : 0;
 }
 
 
-//TODO MLID offset mask should be derived from MulticastMask in
+static __inline int getVLArb(PortData *p, int *res)
+{
+	NodeData *n = p->nodep;
+
+	if (n->NodeInfo.NodeType == STL_NODE_SW && p->PortNum != 0) {
+		cl_map_item_t *it = cl_qmap_get(&n->Ports, 0);
+		if (it == cl_qmap_end(&n->Ports))
+			return 1;
+
+		p = PARENT_STRUCT(it, PortData, NodePortsEntry);
+	}
+
+	*res = p->PortInfo.CapabilityMask3.s.VLSchedulingConfig == STL_VL_SCHED_MODE_VLARB;
+	return 0;
+}
+
+// TODO MLID offset mask should be derived from MulticastMask in
 // SwitchInfo or PortInfo, not hardcoded to lower 14 bits
 #define MULTICAST_LID_OFFSET_MASK 0x3FFF
 
 /**
-* Use this function to get offset in multicast FDB without
-* having to know multicast LID format.
-*/
+ * Use this function to get offset in multicast FDB without
+ * having to know multicast LID format.
+ */
 static inline uint32 GetMulticastOffset(STL_LID mlid)
 {
 	// TODO should use MulticastMask and CollectiveMask from PortInfo
 	// or SwitchInfo to determine a) if mlid is a multicast LID and b)
 	// how many bits in mlid are offset bits
 	return (mlid & MULTICAST_LID_OFFSET_MASK);
+}
+
+static __inline int getIsVLrSupported(NodeData *nodep, PortData *portp)
+{
+	if (nodep->NodeInfo.NodeType == STL_NODE_SW && portp->PortNum != 0) {
+		PortData * port0 = FindNodePort(nodep, 0);
+		if (port0 && port0->PortInfo.CapabilityMask3.s.IsVLrSupported)
+			return 1;
+	} else if (portp->PortInfo.CapabilityMask3.s.IsVLrSupported)
+		return 1;
+
+	return 0;
 }
 
 #ifdef __cplusplus

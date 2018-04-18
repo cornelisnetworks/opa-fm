@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-D__X86_64__ -DCPU_LE -DLINUX -DIB_STACK_OPENIB -I/usr/include/opamgt
+CFLAGS=-D__X86_64__ -DCPU_LE -DLINUX -DIB_STACK_OPENIB -I/usr/include/opamgt -Wall -g
 
 LIBS=-lopamgt \
 	 -libverbs \

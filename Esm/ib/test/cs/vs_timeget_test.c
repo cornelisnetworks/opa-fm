@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -48,9 +48,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 * NAME      DATE        REMARKS
 * DKJ       02/28/02    Initial creation of file.
 ***********************************************************************/
-#if defined (LINT)
-#include <bits/sigset.h>
-#endif
 #include <ib_types.h>
 #include <vs_g.h>
 #include <cs_log.h>

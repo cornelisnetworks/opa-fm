@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -154,24 +154,36 @@ static struct omgt_sa_msg * alloc_send_sa_msg(struct omgt_port *port)
     struct omgt_sa_msg *msg;
 
     if (!port->sa_ah) {
-		int err = 0;
         struct ibv_ah_attr attr;
+	int err = 0;
         memset(&attr, 0, sizeof(attr));
 
-		if ((err = omgt_lock_sem(&port->umad_port_cache_lock)) != 0) {
-			OMGT_OUTPUT_ERROR(port, "failed to acquire lock (err: %d)\n", err);
-			return (NULL);
-		}
-        attr.dlid = port->umad_port_cache.sm_lid;
-        attr.sl = port->umad_port_cache.sm_sl;
-		omgt_unlock_sem(&port->umad_port_cache_lock);
+        attr.dlid = (uint16_t)port->umad_port_cache.sm_lid;
+	if (omgt_is_ext_lid(port->umad_port_cache.base_lid) ||
+		omgt_is_ext_lid(port->umad_port_cache.sm_lid)) {
+       		attr.is_global = 1;
+		attr.grh.hop_limit = 1;
+		attr.grh.sgid_index = 0;
+		attr.grh.dgid.global.subnet_prefix =
+				port->umad_port_cache.gid_prefix;
+		/* Not too sure why ntoh64 is required */
+		attr.grh.dgid.global.interface_id =
+				ntoh64(omgt_create_gid(port->umad_port_cache.sm_lid));
+	}
+
+	if ((err = omgt_lock_sem(&port->umad_port_cache_lock)) != 0) {
+		OMGT_OUTPUT_ERROR(port, "failed to acquire lock (err: %d)\n", err);
+		return (NULL);
+	}
+	attr.sl = port->umad_port_cache.sm_sl;
+	omgt_unlock_sem(&port->umad_port_cache_lock);
 
         attr.port_num = port->hfi_port_num;
         port->sa_ah = ibv_create_ah(port->sa_qp_pd, &attr);
         if (!port->sa_ah) {
-			OMGT_OUTPUT_ERROR(port, "failed to create SA AH (err: %d)\n", errno);
-            return (NULL);
-		}
+		OMGT_OUTPUT_ERROR(port, "failed to create SA AH (err: %d)\n", errno);
+		return (NULL);
+	}
     }
 
     msg = calloc(1, sizeof(*msg));
@@ -220,12 +232,12 @@ static void set_sa_msg_tid(struct omgt_port *port, struct umad_sa_packet *sa_pkt
     port->next_tid++;
     if (port->next_tid == 0)
         port->next_tid++;
-    sa_pkt->mad_hdr.tid = htonll((uint64_t)port->next_tid);
+    sa_pkt->mad_hdr.tid = hton64((uint64_t)port->next_tid);
 }
 
 static void set_sa_common_stl_inform_info(struct omgt_port *port, struct umad_sa_packet *sa_pkt)
 {
-	STL_INFORM_INFO *informinfo;
+     STL_INFORM_INFO *informinfo;
 
     sa_pkt->mad_hdr.base_version = STL_BASE_VERSION;
     sa_pkt->mad_hdr.mgmt_class = MCLASS_SUBN_ADM;
@@ -240,7 +252,7 @@ static void set_sa_common_stl_inform_info(struct omgt_port *port, struct umad_sa
 
     informinfo->LIDRangeBegin = UINT32_MAX;
     informinfo->IsGeneric = 1;
-	informinfo->Type = UINT16_MAX;
+    informinfo->Type = UINT16_MAX;
     informinfo->u.Generic.u2.s.ProducerType = 0xFFFFFF;
 }
 
@@ -260,8 +272,8 @@ static void set_sa_common_stl_response_notice(struct omgt_port *port, struct uma
     notice = (STL_NOTICE *)sa_pkt->data;
 
     // if the Type is set to 0x7f (empty) all other fields are unused
-	notice->Attributes.Generic.u.AsReg32 = 0;
-	notice->Attributes.Generic.u.s.Type = 0x7f;
+    notice->Attributes.Generic.u.AsReg32 = 0;
+    notice->Attributes.Generic.u.s.Type = 0x7f;
 }
 
 static void post_send_sa_msg(struct omgt_port *port,
@@ -269,7 +281,7 @@ static void post_send_sa_msg(struct omgt_port *port,
                              enum omgt_reg_retry_state resend)
 {
     int rc;
-    struct ibv_send_wr *bad_wr;
+    struct ibv_send_wr *bad_wr = NULL;
 
     if (msg->in_q) {
         OMGT_OUTPUT_ERROR(port, "msg (%p) is already in the send Q!!!\n", msg);
@@ -289,7 +301,7 @@ static void post_send_sa_msg(struct omgt_port *port,
     if (OMGT_RRS_SEND_RETRY == resend) {
     	msg->retries--;
     	if (!msg->retries) {
-            OMGT_DBGPRINT(port, "Timeout sending SA msg.\n");
+    		OMGT_DBGPRINT(port, "Timeout sending SA msg.\n");
     		return;
     	}
     }
@@ -343,7 +355,7 @@ find_req_by_tid(struct omgt_port *port, uint32_t tid)
 
     LIST_FOR_EACH(&port->pending_reg_msg_head, msg) {
         struct umad_sa_packet *sa_pkt = (struct umad_sa_packet *)msg->data;
-        uint32_t mtid = ntohll(sa_pkt->mad_hdr.tid) & 0xffffffff;
+        uint32_t mtid = ntoh64(sa_pkt->mad_hdr.tid) & 0xffffffff;
         OMGT_DBGPRINT(port, "found tid 0x%x\n", mtid);
         if (mtid == tid) {
             rc = msg;
@@ -363,16 +375,16 @@ static void process_sa_get_resp(struct omgt_port *port, struct umad_sa_packet *s
     omgt_lock_sem(&port->lock);
 
     /* find the registration for this response */
-    req = find_req_by_tid(port, ntohll(sa_pkt->mad_hdr.tid) & 0xffffffff);
+    req = find_req_by_tid(port, ntoh64(sa_pkt->mad_hdr.tid) & 0xffffffff);
     if (req) {
         if (informinfo->Subscribe == 1) {
             OMGT_DBGPRINT(port, "registration complete for trap %d; req %p\n", trap_num, req);
         } else {
             OMGT_DBGPRINT(port, "UN-registration complete for trap %d; req %p\n", trap_num, req);
         }
-	/* Check if the registration has been freed */
-	if (req->reg) 
-		req->reg->reg_msg = NULL;
+        /* Check if the registration has been freed */
+        if (req->reg)
+            req->reg->reg_msg = NULL;
         LIST_DEL(req);
         free_sa_msg(req);
     } else {
@@ -391,9 +403,9 @@ sa_pkt_from_recv_msg(struct omgt_sa_msg *msg)
 
 static void process_sa_report(struct omgt_port *port, struct umad_sa_packet *sa_pkt)
 {
-    struct omgt_sa_msg *response_msg;
-    struct umad_sa_packet *response_pkt;
-    struct ibv_send_wr *bad_wr;
+    struct omgt_sa_msg *response_msg = NULL;
+    struct umad_sa_packet *response_pkt = NULL;
+    struct ibv_send_wr *bad_wr = NULL;
 
     STL_NOTICE *notice = (STL_NOTICE *)sa_pkt->data;
     STL_TRAP_GID *notice_gid = (STL_TRAP_GID *)&notice->Data[0];
@@ -411,13 +423,13 @@ static void process_sa_report(struct omgt_port *port, struct umad_sa_packet *sa_
     response_msg = alloc_send_sa_msg(port);
     if (response_msg)
     {
-		STL_NOTICE *notice_resp;
+        STL_NOTICE *notice_resp;
         int rc;
         memset(response_msg->data, 0, sizeof(response_msg->data));
         response_pkt = (struct umad_sa_packet *)response_msg->data;
         set_sa_common_stl_response_notice(port, response_pkt);
-		notice_resp = (STL_NOTICE *)response_pkt->data;
-		BSWAP_STL_NOTICE(notice_resp);
+        notice_resp = (STL_NOTICE *)response_pkt->data;
+        BSWAP_STL_NOTICE(notice_resp);
         response_pkt->mad_hdr.tid = sa_pkt->mad_hdr.tid;
 
         if ((rc = ibv_post_send(port->sa_qp, &(response_msg->wr.send), &bad_wr)) != 0) {
@@ -432,19 +444,19 @@ static void process_sa_report(struct omgt_port *port, struct umad_sa_packet *sa_
     thread_msg.size = sizeof *notice;
     thread_msg.evt  = OMGT_TH_EVT_TRAP_MSG;
 
-	iov[0].iov_base = &thread_msg;
-	iov[0].iov_len  = sizeof thread_msg;
-	iov[1].iov_base = notice;
-	iov[1].iov_len  = sizeof *notice;
-	write_size = iov[0].iov_len + iov[1].iov_len;
+    iov[0].iov_base = &thread_msg;
+    iov[0].iov_len  = sizeof thread_msg;
+    iov[1].iov_base = notice;
+    iov[1].iov_len  = sizeof *notice;
+    write_size = iov[0].iov_len + iov[1].iov_len;
 
     if ( write_size !=
         (write_count = writev(port->umad_port_sv[1], iov, 2)) )
          OMGT_OUTPUT_ERROR(port, "bad write count %d\n", (int)write_count);
 
     OMGT_DBGPRINT(port, "process_sa_report: msg queued - trap %d gid %02x%02x%02x%02x%02x%02x%02x%02x\n",
-		trap_num, notice_gid->Gid.Raw[8], notice_gid->Gid.Raw[9], notice_gid->Gid.Raw[10], notice_gid->Gid.Raw[11],
-		notice_gid->Gid.Raw[12], notice_gid->Gid.Raw[13], notice_gid->Gid.Raw[14], notice_gid->Gid.Raw[15]);
+        trap_num, notice_gid->Gid.Raw[8], notice_gid->Gid.Raw[9], notice_gid->Gid.Raw[10], notice_gid->Gid.Raw[11],
+        notice_gid->Gid.Raw[12], notice_gid->Gid.Raw[13], notice_gid->Gid.Raw[14], notice_gid->Gid.Raw[15]);
 }
 
 static void process_sa_rcv_msg(struct omgt_port *port, struct omgt_sa_msg *msg)
@@ -479,7 +491,7 @@ int repost_pending_registrations(struct omgt_port *port)
     LIST_FOR_EACH(&port->pending_reg_msg_head, msg) {
     	if (msg->retries) {
 	        new_timeout_ms = NOTICE_REG_TIMEOUT_MS;
-	        post_send_sa_msg(port, msg, OMGT_RRS_SEND_RETRY);    		
+	        post_send_sa_msg(port, msg, OMGT_RRS_SEND_RETRY);
     	} else {
 		/*
 		 * When the registration is unregistered (in
@@ -508,8 +520,8 @@ int repost_pending_registrations(struct omgt_port *port)
 		del_msg = msg;
 		msg = msg->prev;
 		if (del_msg->reg) {
-			OMGT_DBGPRINT(port, "registration timeout on trap %d : req %p\n",
-			 	del_msg->reg->trap_num, del_msg->reg);
+		OMGT_DBGPRINT(port, "registration timeout on trap %d : req %p\n",
+			 del_msg->reg->trap_num, del_msg->reg);
 		} else {
 			OMGT_DBGPRINT(port, "registration timeout on trap: No information available.\n");
 		}
@@ -577,7 +589,7 @@ static void process_wc(struct omgt_port *port, struct ibv_wc *wc)
         // If any receive buffers failed to repost cycle through the list here
         // and retry the post to keep the buffer queue full.
         for (i = 0; i < port->num_userspace_recv_buf; i++)
-            if (!&port->recv_bufs[i].in_q)
+            if (!port->recv_bufs[i].in_q)
                 if (0 == ibv_post_recv(port->sa_qp, &port->recv_bufs[i].wr.recv, NULL)) {
                     port->recv_bufs[i].in_q = 1;
                 }
@@ -614,7 +626,7 @@ request_notify:
 int start_ud_cq_monitor(struct omgt_port *port)
 {
     int rc;
-    struct omgt_thread_msg msg;
+    struct omgt_thread_msg msg = {0};
 
     msg.size = sizeof(msg);
     msg.evt = OMGT_TH_EVT_UD_MONITOR_ON;
@@ -630,7 +642,7 @@ int start_ud_cq_monitor(struct omgt_port *port)
 int stop_ud_cq_monitor(struct omgt_port *port)
 {
     int rc;
-    struct omgt_thread_msg msg;
+    struct omgt_thread_msg msg = {0};
 
     msg.size = sizeof(msg);
     msg.evt = OMGT_TH_EVT_UD_MONITOR_OFF;
@@ -648,8 +660,8 @@ int create_sa_qp(struct omgt_port *port)
     int i;
     int flags, rc;
     int buf_cnt;
-    struct ibv_qp_init_attr init_attr;
-    struct ibv_qp_attr attr;
+    struct ibv_qp_init_attr init_attr = {0};
+    struct ibv_qp_attr attr = {0};
 
     if (port->sa_qp) {
         return 0;
@@ -771,7 +783,7 @@ cq_fail:
 static int start_outstanding_req_timer(struct omgt_port *port)
 {
     int rc;
-    struct omgt_thread_msg msg;
+    struct omgt_thread_msg msg = {0};
 
     msg.size = sizeof(msg);
     msg.evt = OMGT_TH_EVT_START_OUTSTANDING_REQ_TIME;
@@ -791,7 +803,7 @@ int userspace_register(struct omgt_port *port, uint16_t trap_num, omgt_sa_regist
 {
     struct omgt_sa_msg *sa_msg;
     struct umad_sa_packet *sa_pkt;
-	STL_INFORM_INFO *informinfo;
+    STL_INFORM_INFO *informinfo;
 
     sa_msg = alloc_send_sa_msg(port);
     if (!sa_msg)
@@ -804,7 +816,7 @@ int userspace_register(struct omgt_port *port, uint16_t trap_num, omgt_sa_regist
     informinfo->Subscribe = 1;
     informinfo->u.Generic.TrapNumber = trap_num;
     informinfo->u.Generic.u1.s.RespTimeValue = 19;
-	BSWAP_STL_INFORM_INFO(informinfo);
+    BSWAP_STL_INFORM_INFO(informinfo);
 
     LIST_ADD(&port->pending_reg_msg_head, sa_msg);
 
@@ -827,7 +839,7 @@ static int userspace_unregister(struct omgt_port *port, omgt_sa_registration_t *
 {
     struct omgt_sa_msg *sa_msg;
     struct umad_sa_packet *sa_pkt;
-	STL_INFORM_INFO *informinfo;
+    STL_INFORM_INFO *informinfo;
     uint16_t trap_num;
 
     if (reg->reg_msg) {
@@ -852,7 +864,7 @@ static int userspace_unregister(struct omgt_port *port, omgt_sa_registration_t *
     informinfo->u.Generic.TrapNumber = trap_num;
     informinfo->u.Generic.u1.s.RespTimeValue = 19;
     informinfo->u.Generic.u1.s.QPNumber = port->sa_qp->qp_num;
-	BSWAP_STL_INFORM_INFO(informinfo);
+    BSWAP_STL_INFORM_INFO(informinfo);
 
     LIST_ADD(&port->pending_reg_msg_head, sa_msg);
 

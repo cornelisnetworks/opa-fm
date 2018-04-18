@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -71,10 +71,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 	than it is to make the 'how do you pack and unpack a request' stuff common.
 */
 static Status_t
-SM_Aggregate_LR_impl(
-	IBhandle_t fd, STL_AGGREGATE * inStart, STL_AGGREGATE * inEnd,
-	STL_LID_32 srcLid, STL_LID_32 destLid, uint8 method,
-	uint64_t mkey, STL_AGGREGATE ** lastSeg, uint32_t * madStatus);
+SM_Aggregate_impl( IBhandle_t fd, STL_AGGREGATE * inStart, STL_AGGREGATE * inEnd,
+	SmpAddr_t * addr, uint8 method, uint64_t mkey, STL_AGGREGATE ** lastSeg, uint32_t * madStatus);
 
 static boolean sm_valid_port_state(const STL_PORT_STATES * ps)
 {
@@ -90,7 +88,8 @@ SM_Get_NodeDesc(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_NODE_DESCRIPTIO
 
    INCREMENT_COUNTER(smCounterGetNodeDescription);
 
-   status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_NODE_DESCRIPTION, amod, path, buffer, &bufferLength);
+   SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+   status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_NODE_DESCRIPTION, amod, &addr, buffer, &bufferLength);
    if (status == VSTATUS_OK) {
       BSWAP_STL_NODE_DESCRIPTION((STL_NODE_DESCRIPTION*)buffer);
       memcpy(ndp, buffer, sizeof(STL_NODE_DESCRIPTION));
@@ -108,7 +107,8 @@ SM_Get_NodeInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_NODE_INFO *nip)
    
    INCREMENT_COUNTER(smCounterGetNodeInfo); 
    
-   status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_NODE_INFO, amod, path, buffer, &bufferLength); 
+   SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+   status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_NODE_INFO, amod, &addr, buffer, &bufferLength);
    if (status == VSTATUS_OK) {
       BSWAP_STL_NODE_INFO((STL_NODE_INFO *)buffer); 
 
@@ -150,7 +150,8 @@ SM_Get_PortInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_PORT_INFO *pip)
    
    INCREMENT_COUNTER(smCounterGetPortInfo);
    
-   status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_PORT_INFO, amod, path, buffer, &bufferLength);
+   SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+   status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_PORT_INFO, amod, &addr, buffer, &bufferLength);
    if (status == VSTATUS_OK) {
       (void)BSWAP_STL_PORT_INFO((STL_PORT_INFO *)buffer); 
       memcpy(pip, buffer, sizeof(STL_PORT_INFO));
@@ -162,16 +163,15 @@ SM_Get_PortInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_PORT_INFO *pip)
 }
 
 Status_t
-SM_Get_PortInfo_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, STL_PORT_INFO *pip) {
+SM_Get_PortInfo_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_PORT_INFO *pip) {
    Status_t	status; 
    uint32_t bufferLength = sizeof(STL_PORT_INFO); 
    uint8_t buffer[bufferLength]; 
    
    INCREMENT_COUNTER(smCounterGetPortInfo); 
-                                                                                //   
-   sm_topop->slid = slid; 
-   sm_topop->dlid = dlid; 
-   status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_PORT_INFO, amod, NULL, buffer, &bufferLength); 
+
+   SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+   status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_PORT_INFO, amod, &addr, buffer, &bufferLength);
    if (status == VSTATUS_OK) {
       (void)BSWAP_STL_PORT_INFO((STL_PORT_INFO *)buffer); 
       memcpy(pip, buffer, sizeof(STL_PORT_INFO));
@@ -190,7 +190,8 @@ SM_Get_PortStateInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_PORT_STATE
 
 	INCREMENT_COUNTER(smCounterGetPortStateInfo);
 
-	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_PORT_STATE_INFO, amod, path, buffer, &bufferLength);
+	SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_PORT_STATE_INFO, amod, &addr, buffer, &bufferLength);
 	if (status == VSTATUS_OK) {
 		(void)BSWAP_STL_PORT_STATE_INFO((STL_PORT_STATE_INFO *)buffer, portCount);
 		memcpy(psip, buffer, sizeof(STL_PORT_STATE_INFO) * portCount); 
@@ -205,7 +206,7 @@ SM_Get_PortStateInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_PORT_STATE
 }
 
 Status_t
-SM_Get_PortStateInfo_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, STL_PORT_STATE_INFO *psip) {
+SM_Get_PortStateInfo_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_PORT_STATE_INFO *psip) {
 	Status_t status;
 	uint8_t portCount = (amod>>24 & 0xff);
 	uint32_t bufferLength = sizeof(STL_PORT_STATE_INFO) * portCount;
@@ -213,9 +214,8 @@ SM_Get_PortStateInfo_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dl
 
 	INCREMENT_COUNTER(smCounterGetPortStateInfo);
 
-	sm_topop->slid = slid;
-	sm_topop->dlid = dlid;
-	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_PORT_STATE_INFO, amod, NULL, buffer, &bufferLength);
+	SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_PORT_STATE_INFO, amod, &addr, buffer, &bufferLength);
 	if (status == VSTATUS_OK) {
 		(void)BSWAP_STL_PORT_STATE_INFO((STL_PORT_STATE_INFO *)buffer, portCount);
 		memcpy(psip, buffer, sizeof(STL_PORT_STATE_INFO) * portCount); 
@@ -237,7 +237,8 @@ SM_Get_SwitchInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SWITCH_INFO *
 
 	INCREMENT_COUNTER(smCounterGetSwitchInfo);
 
-	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SWITCH_INFO, amod, path, buffer, &bufferLength);
+	SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SWITCH_INFO, amod, &addr, buffer, &bufferLength);
 	if (status == VSTATUS_OK) {
 		(void)BSWAP_STL_SWITCH_INFO((STL_SWITCH_INFO *)buffer);
 		memcpy(swp, buffer, sizeof(STL_SWITCH_INFO));
@@ -247,7 +248,7 @@ SM_Get_SwitchInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SWITCH_INFO *
 }
 
 Status_t
-SM_Get_SMInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SM_INFO *smip) {
+SM_Get_SMInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SM_INFO *smip) {
 	Status_t status;
     uint32_t bufferLength = sizeof(STL_SM_INFO); 
 	uint8_t buffer[bufferLength];
@@ -259,7 +260,7 @@ SM_Get_SMInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SM_INFO *smip) {
 	((STL_SM_INFO*)buffer)->SM_Key = 0;
     (void)BSWAP_STL_SM_INFO((STL_SM_INFO *)buffer);
 
-	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SM_INFO, amod, path, buffer, &bufferLength);
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SM_INFO, amod, addr, buffer, &bufferLength);
 	if (status == VSTATUS_OK) {
         (void)BSWAP_STL_SM_INFO((STL_SM_INFO *)buffer);
         memcpy(smip, buffer, sizeof(STL_SM_INFO));
@@ -280,7 +281,8 @@ SM_Get_VLArbitration(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_VLARB_TABL
 
 	INCREMENT_COUNTER(smCounterGetVLArbitrationTable);
 
-	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_VL_ARBITRATION, amod, path, buffer, &bufferLength);
+	SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_VL_ARBITRATION, amod, &addr, buffer, &bufferLength);
 	if (status == VSTATUS_OK) {
         (void)BSWAP_STL_VLARB_TABLE((STL_VLARB_TABLE *)buffer, ((amod >> 16) & 0xff));
         memcpy(vlp, buffer, sizeof(STL_VLARB_TABLE));
@@ -290,7 +292,7 @@ SM_Get_VLArbitration(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_VLARB_TABL
 }
 
 Status_t
-SM_Get_VLArbitration_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, STL_VLARB_TABLE *vlp) {
+SM_Get_VLArbitration_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_VLARB_TABLE *vlp) {
     Status_t status;
     uint32_t bufferLength = 0; 
     uint8_t buffer[STL_MAD_PAYLOAD_SIZE];
@@ -300,9 +302,8 @@ SM_Get_VLArbitration_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dl
     INCREMENT_COUNTER(smCounterGetVLArbitrationTable);
     bufferLength = sizeof(STL_VLARB_TABLE)*blkCount;
 
-    sm_topop->slid = slid;
-    sm_topop->dlid = dlid;
-    status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_VL_ARBITRATION, amod, NULL, buffer, &bufferLength);
+    SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+    status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_VL_ARBITRATION, amod, &addr, buffer, &bufferLength);
 
     if (status == VSTATUS_OK) {
         uint8_t i;
@@ -315,6 +316,7 @@ SM_Get_VLArbitration_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dl
     return(status);
 }
 
+
 Status_t
 SM_Get_SLSCMap(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SLSCMAP *slscp) {
 	Status_t status;
@@ -323,7 +325,8 @@ SM_Get_SLSCMap(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SLSCMAP *slscp) 
 
 	INCREMENT_COUNTER(smCounterGetSL2SCMappingTable);
 
-	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SL_SC_MAPPING_TABLE, amod, path, buffer, &bufferLength);
+	SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SL_SC_MAPPING_TABLE, amod, &addr, buffer, &bufferLength);
 	if (status == VSTATUS_OK) {
         (void)BSWAP_STL_SLSCMAP((STL_SLSCMAP *)buffer);
         memcpy(slscp, buffer, sizeof(STL_SLSCMAP));
@@ -333,16 +336,15 @@ SM_Get_SLSCMap(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SLSCMAP *slscp) 
 }
 
 Status_t
-SM_Get_SLSCMap_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, STL_SLSCMAP *slscp) {
+SM_Get_SLSCMap_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_SLSCMAP *slscp) {
 	Status_t status;
 	uint32_t bufferLength = sizeof(STL_SLSCMAP); 
 	uint8_t buffer[bufferLength];
 
 	INCREMENT_COUNTER(smCounterGetSL2SCMappingTable);
 
-	sm_topop->slid = slid;
-	sm_topop->dlid = dlid;
-	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SL_SC_MAPPING_TABLE, amod, NULL, buffer, &bufferLength);
+	SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SL_SC_MAPPING_TABLE, amod, &addr, buffer, &bufferLength);
 	if (status == VSTATUS_OK) {
         (void)BSWAP_STL_SLSCMAP((STL_SLSCMAP *)buffer);
         memcpy(slscp, buffer, sizeof(STL_SLSCMAP));
@@ -359,7 +361,8 @@ SM_Get_SCSLMap(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SCSLMAP *scslp) 
 
 	INCREMENT_COUNTER(smCounterGetSC2SLMappingTable);
 
-	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_SL_MAPPING_TABLE, amod, path, buffer, &bufferLength);
+	SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_SL_MAPPING_TABLE, amod, &addr, buffer, &bufferLength);
 	if (status == VSTATUS_OK) {
         (void)BSWAP_STL_SCSLMAP((STL_SCSLMAP *)buffer);
         memcpy(scslp, buffer, sizeof(STL_SCSLMAP));
@@ -376,7 +379,8 @@ SM_Get_SCVLtMap(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SCVLMAP *scvlp)
 
 	INCREMENT_COUNTER(smCounterGetSC2VLtMappingTable);
 
-	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_VLT_MAPPING_TABLE, amod, path, buffer, &bufferLength);
+	SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_VLT_MAPPING_TABLE, amod, &addr, buffer, &bufferLength);
 	if (status == VSTATUS_OK) {
         (void)BSWAP_STL_SCVLMAP((STL_SCVLMAP *)buffer);
         memcpy(scvlp, buffer, sizeof(STL_SCVLMAP));
@@ -393,7 +397,8 @@ SM_Get_SCVLntMap(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SCVLMAP *scvlp
 
 	INCREMENT_COUNTER(smCounterGetSC2VLntMappingTable);
 
-	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_VLNT_MAPPING_TABLE, amod, path, buffer, &bufferLength);
+	SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_VLNT_MAPPING_TABLE, amod, &addr, buffer, &bufferLength);
 	if (status == VSTATUS_OK) {
         (void)BSWAP_STL_SCVLMAP((STL_SCVLMAP *)buffer);
         memcpy(scvlp, buffer, sizeof(STL_SCVLMAP));
@@ -403,16 +408,34 @@ SM_Get_SCVLntMap(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SCVLMAP *scvlp
 }
 
 Status_t
-SM_Get_SCSLMap_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, STL_SCSLMAP *scslp) {
+SM_Get_SCVLrMap_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_SCVLMAP *scvlp) {
+	Status_t status;
+	uint32_t bufferLength = sizeof(STL_SCVLMAP); 
+	uint8_t buffer[bufferLength];
+
+	INCREMENT_COUNTER(smCounterGetSC2VLrMappingTable);
+
+	SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_VLR_MAPPING_TABLE, amod, &addr, buffer, &bufferLength);
+	if (status == VSTATUS_OK) {
+        (void)BSWAP_STL_SCVLMAP((STL_SCVLMAP *)buffer);
+        memcpy(scvlp, buffer, sizeof(STL_SCVLMAP));
+        ZERO_RSVD_STL_SCVLMAP(scvlp);
+	}
+
+	return(status);
+}
+
+Status_t
+SM_Get_SCSLMap_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_SCSLMAP *scslp) {
 	Status_t status;
 	uint32_t bufferLength = sizeof(STL_SCSLMAP); 
 	uint8_t buffer[bufferLength];
 
 	INCREMENT_COUNTER(smCounterGetSC2SLMappingTable);
 
-	sm_topop->slid = slid;
-	sm_topop->dlid = dlid;
-	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_SL_MAPPING_TABLE, amod, NULL, buffer, &bufferLength);
+	SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_SL_MAPPING_TABLE, amod, &addr, buffer, &bufferLength);
 	if (status == VSTATUS_OK) {
         (void)BSWAP_STL_SCSLMAP((STL_SCSLMAP *)buffer);
         memcpy(scslp, buffer, sizeof(STL_SCSLMAP));
@@ -422,7 +445,7 @@ SM_Get_SCSLMap_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, ST
 }
 
 Status_t
-SM_Get_SCVLtMap_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, STL_SCVLMAP *scvlp) {
+SM_Get_SCVLtMap_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_SCVLMAP *scvlp) {
 	Status_t status;
 	uint32_t bufferLength = 0;
 	uint8_t buffer[STL_MAD_PAYLOAD_SIZE] = { 0 };
@@ -432,9 +455,8 @@ SM_Get_SCVLtMap_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, S
 	bufferLength = blkCount * sizeof(STL_SCVLMAP);
 	INCREMENT_COUNTER(smCounterGetSC2VLtMappingTable);
 
-	sm_topop->slid = slid;
-	sm_topop->dlid = dlid;
-	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_VLT_MAPPING_TABLE, amod, NULL, buffer, &bufferLength);
+	SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_VLT_MAPPING_TABLE, amod, &addr, buffer, &bufferLength);
 	if (status == VSTATUS_OK) {
 		size_t cpyCount = MIN(blkCount*sizeof(STL_SCVLMAP), bufferLength);
 		memcpy(scvlp, buffer, cpyCount);
@@ -450,7 +472,7 @@ SM_Get_SCVLtMap_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, S
 }
 
 Status_t
-SM_Get_SCVLntMap_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, STL_SCVLMAP *scvlp) {
+SM_Get_SCVLntMap_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_SCVLMAP *scvlp) {
 	Status_t status;
     uint32_t bufferLength = 0; 
 	uint8_t buffer[STL_MAD_PAYLOAD_SIZE] = { 0 };
@@ -460,9 +482,8 @@ SM_Get_SCVLntMap_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, 
 	bufferLength = blkCount * sizeof(STL_SCVLMAP);
 	INCREMENT_COUNTER(smCounterGetSC2VLntMappingTable);
 
-	sm_topop->slid = slid;
-	sm_topop->dlid = dlid;
-	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_VLNT_MAPPING_TABLE, amod, NULL, buffer, &bufferLength);
+	SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_VLNT_MAPPING_TABLE, amod, &addr, buffer, &bufferLength);
 	if (status == VSTATUS_OK) {
 		// This isn't really a good check 'cause neither arg is really the amount of mem available starting at scvlp
 		size_t cpyCount = MIN(blkCount*sizeof(STL_SCVLMAP), bufferLength);
@@ -479,41 +500,23 @@ SM_Get_SCVLntMap_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, 
 }
 
 Status_t
-SM_Get_SCVLrMap_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_SCVLMAP *scvlp) {
+SM_Get_PKeyTable(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_PARTITION_TABLE *pkp) {
 	Status_t status;
-	uint32_t bufferLength = sizeof(STL_SCVLMAP); 
-	uint8_t buffer[bufferLength];
-
-	INCREMENT_COUNTER(smCounterGetSC2VLrMappingTable);
-
-	sm_topop->slid = slid;
-	sm_topop->dlid = dlid;
-	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_VLR_MAPPING_TABLE, amod, NULL, buffer, &bufferLength);
-	if (status == VSTATUS_OK) {
-        (void)BSWAP_STL_SCVLMAP((STL_SCVLMAP *)buffer);
-        memcpy(scvlp, buffer, sizeof(STL_SCVLMAP));
-        ZERO_RSVD_STL_SCVLMAP(scvlp);
-	}
-
-	return(status);
-}
-
-Status_t
-SM_Get_PKeyTable(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_PARTITION_TABLE *pkp, int use_lr_dr_mix) {
-	Status_t status;
-	uint32_t bufferLength = sizeof(STL_PARTITION_TABLE); 
+	const uint8_t blkCnt = (amod>>24) & 0xff;
+	uint32_t bufferLength = sizeof(STL_PARTITION_TABLE) * blkCnt;
 	uint8_t buffer[bufferLength];
 
 	INCREMENT_COUNTER(smCounterGetPKeyTable);
 
-	if (use_lr_dr_mix)
-		status = sm_get_stl_attribute_lrdr(fd, STL_MCLASS_ATTRIB_ID_PART_TABLE, amod, path, buffer, &bufferLength, use_lr_dr_mix);
-	else
-		status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_PART_TABLE, amod, path, buffer, &bufferLength);
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_PART_TABLE, amod, addr, buffer, &bufferLength);
 
 	if (status == VSTATUS_OK) {
-		(void)BSWAP_STL_PARTITION_TABLE((STL_PARTITION_TABLE *)buffer);
-		memcpy(pkp, buffer, sizeof(STL_PARTITION_TABLE));
+		uint8_t i;
+
+		for (i = 0; i < blkCnt; ++i)
+			(void)BSWAP_STL_PARTITION_TABLE( &(((STL_PARTITION_TABLE *)buffer)[i]) );
+
+		memcpy(pkp, buffer, sizeof(STL_PARTITION_TABLE) * blkCnt);
 	}
 
 	return(status);
@@ -530,7 +533,8 @@ SM_Get_BufferControlTable(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_BUFFE
 
 	INCREMENT_COUNTER(smCounterGetBufferControlTable);
 
-	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_BUFFER_CONTROL_TABLE, amod, path, buffer, &bufferLength);
+	SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_BUFFER_CONTROL_TABLE, amod, &addr, buffer, &bufferLength);
 	if (status == VSTATUS_OK) {
 		uint32_t i;
 		uint8_t * data = buffer;
@@ -557,7 +561,8 @@ SM_Get_LedInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_LED_INFO *li) {
    
    INCREMENT_COUNTER(smCounterGetLedInfo); 
    
-   status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_LED_INFO, amod, path, buffer, &bufferLength);
+   SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+   status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_LED_INFO, amod, &addr, buffer, &bufferLength);
    
    if (status == VSTATUS_OK) {
       (void)BSWAP_STL_LED_INFO((STL_LED_INFO *)buffer); 
@@ -569,7 +574,7 @@ SM_Get_LedInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_LED_INFO *li) {
 
 
 Status_t
-SM_Get_LedInfo_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, STL_LED_INFO *li) {
+SM_Get_LedInfo_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_LED_INFO *li) {
 
    Status_t status;
    uint32_t bufferLength=sizeof(STL_LED_INFO); 
@@ -577,10 +582,8 @@ SM_Get_LedInfo_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, ST
    
    INCREMENT_COUNTER(smCounterGetLedInfo); 
 
-   sm_topop->slid = slid;
-   sm_topop->dlid = dlid;
-   
-   status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_LED_INFO, amod, NULL, buffer, &bufferLength);
+   SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+   status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_LED_INFO, amod, &addr, buffer, &bufferLength);
    
    if (status == VSTATUS_OK) {
       (void)BSWAP_STL_LED_INFO((STL_LED_INFO *)buffer); 
@@ -594,7 +597,7 @@ SM_Get_LedInfo_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, ST
 // -------------------------------------------------------------------------- //
 
 Status_t
-SM_Set_PortInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_PORT_INFO *pip, uint64_t mkey, int use_lr_dr_mix) {
+SM_Set_PortInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t * addr, STL_PORT_INFO *pip, uint64_t mkey) {
    Status_t status;
    uint32_t bufferLength=sizeof(STL_PORT_INFO); 
    uint8_t buffer[bufferLength];
@@ -605,11 +608,10 @@ SM_Set_PortInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_PORT_INFO *pip,
    (void)BSWAP_STL_PORT_INFO((STL_PORT_INFO *)buffer); 
    
    if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_PORTINFO) {
-       status = VSTATUS_OK;
-   } else if (use_lr_dr_mix)
-      status = sm_set_stl_attribute_lrdr(fd, STL_MCLASS_ATTRIB_ID_PORT_INFO, amod, path, buffer, &bufferLength, mkey, use_lr_dr_mix);
-   else
-      status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_PORT_INFO, amod, path, buffer, &bufferLength, mkey);
+      status = VSTATUS_OK;
+   } else {
+      status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_PORT_INFO, amod, addr, buffer, &bufferLength, mkey);
+   }
 
    if (status == VSTATUS_OK) {
       (void)BSWAP_STL_PORT_INFO((STL_PORT_INFO *)buffer); 
@@ -620,7 +622,7 @@ SM_Set_PortInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_PORT_INFO *pip,
 }
 
 Status_t
-SM_Set_PortInfo_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, STL_PORT_INFO *pip, uint64_t mkey, uint32_t* madStatus) {
+SM_Set_PortInfo_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_PORT_INFO *pip, uint64_t mkey, uint32_t* madStatus) {
 	Status_t status; 
     uint32_t bufferLength=sizeof(STL_PORT_INFO); 
 	uint8_t buffer[bufferLength];
@@ -630,13 +632,12 @@ SM_Set_PortInfo_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, S
 	memcpy(buffer, pip, sizeof(STL_PORT_INFO)); 
 	ZERO_RSVD_STL_PORT_INFO((STL_PORT_INFO*)buffer);
 	(void)BSWAP_STL_PORT_INFO((STL_PORT_INFO *)buffer);
-	sm_topop->slid = slid;
-	sm_topop->dlid = dlid;
 
     if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_PORTINFO) {
         status = VSTATUS_OK;
     } else {
-        status = sm_set_stl_attribute_mad_status(fd, STL_MCLASS_ATTRIB_ID_PORT_INFO, amod, NULL, buffer, &bufferLength, mkey, madStatus);
+        SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+        status = sm_set_stl_attribute_mad_status(fd, STL_MCLASS_ATTRIB_ID_PORT_INFO, amod, &addr, buffer, &bufferLength, mkey, madStatus);
     }
 	// sm_set_stl_attribute_mad_status returns VSTATUS_BAD if there is a mad error code.
 	// We probably still want the packet, so copy it as normal.
@@ -663,7 +664,8 @@ SM_Set_PortStateInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_PORT_STATE
 	if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_PORTSTATEINFO) {
 		status = VSTATUS_OK;
 	} else {
-		status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_PORT_STATE_INFO, amod, path, buffer, &bufferLength, mkey);
+		SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+		status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_PORT_STATE_INFO, amod, &addr, buffer, &bufferLength, mkey);
 	}
 
 	if(status == VSTATUS_OK) {
@@ -680,7 +682,7 @@ SM_Set_PortStateInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_PORT_STATE
 }
 
 Status_t
-SM_Set_PortStateInfo_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, STL_PORT_STATE_INFO *psip, uint64_t mkey) {
+SM_Set_PortStateInfo_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_PORT_STATE_INFO *psip, uint64_t mkey) {
 	Status_t status;
 	uint32_t portCount = (0xff & (amod >> 24));
 	uint32_t bufferLength = portCount * sizeof(STL_PORT_STATE_INFO);
@@ -691,13 +693,12 @@ SM_Set_PortStateInfo_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dl
 
 	memcpy(buffer, psip, bufferLength);
 	(void)BSWAP_STL_PORT_STATE_INFO((STL_PORT_STATE_INFO *)buffer, portCount);
-	sm_topop->slid = slid;
-	sm_topop->dlid = dlid;
 
 	if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_PORTSTATEINFO) {
 		status = VSTATUS_OK;
 	} else {
-		status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_PORT_STATE_INFO, amod, NULL, buffer, &bufferLength, mkey);
+		SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+		status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_PORT_STATE_INFO, amod, &addr, buffer, &bufferLength, mkey);
 	}
 
 	if(status == VSTATUS_OK) {
@@ -714,7 +715,7 @@ SM_Set_PortStateInfo_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dl
 }
 
 Status_t
-SM_Set_SwitchInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SWITCH_INFO *swp, uint64_t mkey) {
+SM_Set_SwitchInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SWITCH_INFO *swp, uint64_t mkey) {
 	Status_t status;
     uint32_t bufferLength = sizeof(STL_SWITCH_INFO); 
 	uint8_t buffer[bufferLength];
@@ -728,7 +729,7 @@ SM_Set_SwitchInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SWITCH_INFO *
     if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_SWITCHINFO) {
         status = VSTATUS_OK;
     } else {
-        status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SWITCH_INFO, amod, path, buffer, &bufferLength, mkey);
+        status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SWITCH_INFO, amod, addr, buffer, &bufferLength, mkey);
     }
 	if (status == VSTATUS_OK) {
 		(void)BSWAP_STL_SWITCH_INFO((STL_SWITCH_INFO *)buffer);
@@ -739,7 +740,7 @@ SM_Set_SwitchInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SWITCH_INFO *
 }
 
 Status_t
-SM_Set_SMInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SM_INFO *smip, uint64_t mkey) {
+SM_Set_SMInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SM_INFO *smip, uint64_t mkey) {
 	Status_t status;
     uint32_t bufferLength = sizeof(STL_SM_INFO); 
 	uint8_t buffer[bufferLength];
@@ -752,7 +753,7 @@ SM_Set_SMInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SM_INFO *smip, ui
     if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_SMINFO) {
         status = VSTATUS_OK;
     } else {
-        status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SM_INFO, amod, path, buffer, &bufferLength, mkey);
+        status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SM_INFO, amod, addr, buffer, &bufferLength, mkey);
     }
 	if (status == VSTATUS_OK) {
         (void)BSWAP_STL_SM_INFO((STL_SM_INFO *)buffer);
@@ -776,7 +777,8 @@ SM_Set_VLArbitration(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_VLARB_TABL
     if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_VLARB) {
         status = VSTATUS_OK;
     } else {
-        status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_VL_ARBITRATION, amod, path, buffer, &bufferLength, mkey);
+        SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+        status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_VL_ARBITRATION, amod, &addr, buffer, &bufferLength, mkey);
     }
 	if (status == VSTATUS_OK) {
         (void)BSWAP_STL_VLARB_TABLE((STL_VLARB_TABLE *)buffer, ((amod >> 16) & 0xff));
@@ -787,7 +789,7 @@ SM_Set_VLArbitration(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_VLARB_TABL
 }
 
 Status_t
-SM_Set_VLArbitration_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, STL_VLARB_TABLE *vlp, size_t vlpSize, uint64_t mkey) {
+SM_Set_VLArbitration_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_VLARB_TABLE *vlp, size_t vlpSize, uint64_t mkey) {
 	Status_t status;
 	uint32_t bufferLength = sizeof(STL_VLARB_TABLE); 
 	uint8_t buffer[STL_MAD_PAYLOAD_SIZE] = { 0 };	// no need to zero, fills buffer
@@ -803,12 +805,11 @@ SM_Set_VLArbitration_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dl
 	memcpy(buffer, vlp, vlpSize);
 	(void)BSWAP_STL_VLARB_TABLE((STL_VLARB_TABLE *)buffer, sec);
 
-	sm_topop->slid = slid;
-	sm_topop->dlid = dlid;
 	if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_VLARB) {
 		status = VSTATUS_OK;
 	} else {
-		status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_VL_ARBITRATION, amod, NULL, buffer, &bufferLength, mkey);
+		SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+		status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_VL_ARBITRATION, amod, &addr, buffer, &bufferLength, mkey);
 	}
 	if (status == VSTATUS_OK) {
 		(void)BSWAP_STL_VLARB_TABLE((STL_VLARB_TABLE *)buffer, sec);
@@ -817,6 +818,7 @@ SM_Set_VLArbitration_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dl
 
 	return(status);
 }
+
 
 Status_t
 SM_Set_SLSCMap(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SLSCMAP *slscp, uint64_t mkey) {
@@ -833,7 +835,8 @@ SM_Set_SLSCMap(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SLSCMAP *slscp, 
     if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_MAPS) {
         status = VSTATUS_OK;
     } else {
-        status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SL_SC_MAPPING_TABLE, amod, path, buffer, &bufferLength, mkey);
+        SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+        status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SL_SC_MAPPING_TABLE, amod, &addr, buffer, &bufferLength, mkey);
     }
     if (status == VSTATUS_OK) {
         (void)BSWAP_STL_SLSCMAP((STL_SLSCMAP *)buffer);
@@ -844,7 +847,7 @@ SM_Set_SLSCMap(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SLSCMAP *slscp, 
 }
 
 Status_t
-SM_Set_SLSCMap_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, STL_SLSCMAP *slscp, uint64_t mkey) {
+SM_Set_SLSCMap_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_SLSCMAP *slscp, uint64_t mkey) {
 	Status_t status;
     uint32_t bufferLength = sizeof(STL_SLSCMAP); 
 	uint8_t buffer[bufferLength];
@@ -855,12 +858,11 @@ SM_Set_SLSCMap_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, ST
     ZERO_RSVD_STL_SLSCMAP((STL_SLSCMAP*)buffer);
     (void)BSWAP_STL_SLSCMAP((STL_SLSCMAP *)buffer);
 
-    sm_topop->slid = slid;
-    sm_topop->dlid = dlid;
     if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_MAPS) {
         status = VSTATUS_OK;
     } else {
-        status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SL_SC_MAPPING_TABLE, amod, NULL, buffer, &bufferLength, mkey);
+        SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+        status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SL_SC_MAPPING_TABLE, amod, &addr, buffer, &bufferLength, mkey);
     }
     if (status == VSTATUS_OK) {
         (void)BSWAP_STL_SLSCMAP((STL_SLSCMAP *)buffer);
@@ -886,7 +888,8 @@ SM_Set_SCSLMap(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SCSLMAP *scslp, 
     if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_MAPS) {
         status = VSTATUS_OK;
     } else {
-        status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_SL_MAPPING_TABLE, amod, path, buffer, &bufferLength, mkey);
+        SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+        status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_SL_MAPPING_TABLE, amod, &addr, buffer, &bufferLength, mkey);
     }
     if (status == VSTATUS_OK) {
         (void)BSWAP_STL_SCSLMAP((STL_SCSLMAP *)buffer);
@@ -908,7 +911,8 @@ SM_Set_SCVLtMap(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SCVLMAP *scvlp,
     ZERO_RSVD_STL_SCVLMAP((STL_SCVLMAP*)buffer);
     (void)BSWAP_STL_SCVLMAP((STL_SCVLMAP *)buffer);
 
-    status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_VLT_MAPPING_TABLE, amod, path, buffer, &bufferLength, mkey);
+    SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+    status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_VLT_MAPPING_TABLE, amod, &addr, buffer, &bufferLength, mkey);
     if (status == VSTATUS_OK) {
         (void)BSWAP_STL_SCVLMAP((STL_SCVLMAP *)buffer);
         memcpy(scvlp, buffer, sizeof(STL_SCVLMAP));
@@ -929,7 +933,8 @@ SM_Set_SCVLntMap(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_SCVLMAP *scvlp
     ZERO_RSVD_STL_SCVLMAP((STL_SCVLMAP*)buffer);
     (void)BSWAP_STL_SCVLMAP((STL_SCVLMAP *)buffer);
 
-    status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_VLNT_MAPPING_TABLE, amod, path, buffer, &bufferLength, mkey);
+    SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+    status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_VLNT_MAPPING_TABLE, amod, &addr, buffer, &bufferLength, mkey);
     if (status == VSTATUS_OK) {
         (void)BSWAP_STL_SCVLMAP((STL_SCVLMAP *)buffer);
         memcpy(scvlp, buffer, sizeof(STL_SCVLMAP));
@@ -950,15 +955,14 @@ SM_Set_SCVLrMap_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL
     memcpy(buffer, scvlp, sizeof(STL_SCVLMAP));
     (void)BSWAP_STL_SCVLMAP((STL_SCVLMAP *)buffer);
 
-    sm_topop->slid = slid;
-    sm_topop->dlid = dlid;
-    status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_VLR_MAPPING_TABLE, amod, NULL, buffer, &bufferLength, mkey);
+    SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+    status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_VLR_MAPPING_TABLE, amod, &addr, buffer, &bufferLength, mkey);
 
 	return(status);
 }
 
 Status_t
-SM_Set_SCSLMap_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, STL_SCSLMAP *scslp, uint64_t mkey) {
+SM_Set_SCSLMap_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_SCSLMAP *scslp, uint64_t mkey) {
 	Status_t status;
     uint32_t bufferLength = sizeof(STL_SCSLMAP); 
 	uint8_t buffer[bufferLength];
@@ -969,12 +973,11 @@ SM_Set_SCSLMap_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, ST
     ZERO_RSVD_STL_SCSLMAP((STL_SCSLMAP*)buffer);
     (void)BSWAP_STL_SCSLMAP((STL_SCSLMAP *)buffer);
 
-    sm_topop->slid = slid;
-    sm_topop->dlid = dlid;
     if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_MAPS) {
         status = VSTATUS_OK;
     } else {
-        status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_SL_MAPPING_TABLE, amod, NULL, buffer, &bufferLength, mkey);
+        SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+        status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_SL_MAPPING_TABLE, amod, &addr, buffer, &bufferLength, mkey);
     }
     if (status == VSTATUS_OK) {
         (void)BSWAP_STL_SCSLMAP((STL_SCSLMAP *)buffer);
@@ -985,7 +988,7 @@ SM_Set_SCSLMap_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, ST
 }
 
 Status_t
-SM_Set_SCVLtMap_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, STL_SCVLMAP *scvlp, uint64_t mkey) {
+SM_Set_SCVLtMap_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_SCVLMAP *scvlp, uint64_t mkey) {
 	Status_t status;
     uint32_t bufferLength = sizeof(STL_SCVLMAP); 
 	uint8_t buffer[bufferLength];
@@ -996,9 +999,8 @@ SM_Set_SCVLtMap_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, S
     ZERO_RSVD_STL_SCVLMAP((STL_SCVLMAP*)buffer);
     (void)BSWAP_STL_SCVLMAP((STL_SCVLMAP *)buffer);
 
-    sm_topop->slid = slid;
-    sm_topop->dlid = dlid;
-    status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_VLT_MAPPING_TABLE, amod, NULL, buffer, &bufferLength, mkey);
+    SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+    status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_VLT_MAPPING_TABLE, amod, &addr, buffer, &bufferLength, mkey);
     if (status == VSTATUS_OK) {
         (void)BSWAP_STL_SCVLMAP((STL_SCVLMAP *)buffer);
         memcpy(scvlp, buffer, sizeof(STL_SCVLMAP));
@@ -1008,7 +1010,7 @@ SM_Set_SCVLtMap_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, S
 }
 
 Status_t
-SM_Set_SCVLntMap_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, STL_SCVLMAP *scvlp, uint64_t mkey) {
+SM_Set_SCVLntMap_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_SCVLMAP *scvlp, uint64_t mkey) {
 	Status_t status;
     uint32_t bufferLength = sizeof(STL_SCVLMAP); 
 	uint8_t buffer[bufferLength];
@@ -1019,9 +1021,8 @@ SM_Set_SCVLntMap_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, 
     ZERO_RSVD_STL_SCVLMAP((STL_SCVLMAP*)buffer);
     (void)BSWAP_STL_SCVLMAP((STL_SCVLMAP *)buffer);
 
-    sm_topop->slid = slid;
-    sm_topop->dlid = dlid;
-    status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_VLNT_MAPPING_TABLE, amod, NULL, buffer, &bufferLength, mkey);
+    SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+    status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_VLNT_MAPPING_TABLE, amod, &addr, buffer, &bufferLength, mkey);
     if (status == VSTATUS_OK) {
         (void)BSWAP_STL_SCVLMAP((STL_SCVLMAP *)buffer);
         memcpy(scvlp, buffer, sizeof(STL_SCVLMAP));
@@ -1033,7 +1034,7 @@ SM_Set_SCVLntMap_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, 
 Status_t
 SM_Set_SCSC_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_SCSCMAP *scscp, uint64_t mkey) {
 	Status_t status;
-	uint8_t numBlocks = amod >> 24; 
+	uint8_t numBlocks = amod >> 24;
 	uint32_t bufferLength = sizeof(STL_SCSCMAP)*numBlocks; 
 	uint8_t buffer[bufferLength];
 	int i;
@@ -1043,17 +1044,37 @@ SM_Set_SCSC_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_SCS
 	for (i=0; i<numBlocks; i++) {
 		memcpy((void*)&((STL_SCSCMAP*)buffer)[i], scscp, sizeof(STL_SCSCMAP));
 		(void)BSWAP_STL_SCSCMAP(&((STL_SCSCMAP*)buffer)[i]);
-	}   
+	}
 
-	sm_topop->slid = slid;
-	sm_topop->dlid = dlid;
-	status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_SC_MAPPING_TABLE, amod, NULL, buffer, &bufferLength, mkey);
+	SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+	status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_SC_MAPPING_TABLE, amod, &addr, buffer, &bufferLength, mkey);
 
 	return(status);
 }
 
 Status_t
-SM_Set_LFT(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_LINEAR_FORWARDING_TABLE *lftp, uint64_t mkey, int use_lr_dr_mix) {
+SM_Set_SCSCMultiSet_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_SCSC_MULTISET *scscp, uint64_t mkey) {
+	Status_t status;
+	uint8_t numBlocks = amod >> 24;
+    uint32_t bufferLength = sizeof(STL_SCSC_MULTISET)*numBlocks; 
+	uint8_t buffer[bufferLength];
+	int i;
+
+	INCREMENT_COUNTER(smCounterSetSC2SCMultiSet);
+
+    memcpy(buffer, scscp, sizeof(STL_SCSC_MULTISET) * numBlocks);
+	for (i=0; i<numBlocks; i++) {
+    	(void)BSWAP_STL_SCSC_MULTISET(&((STL_SCSC_MULTISET*)buffer)[i]);
+	}
+
+	SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+	status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SC_SC_MULTI_SET, amod, &addr, buffer, &bufferLength, mkey);
+
+	return(status);
+}
+
+Status_t
+SM_Set_LFT(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_LINEAR_FORWARDING_TABLE *lftp, uint64_t mkey) {
 	Status_t status;
     uint32_t bufferLength = sizeof(STL_LINEAR_FORWARDING_TABLE); 
 	uint8_t buffer[bufferLength];
@@ -1063,12 +1084,10 @@ SM_Set_LFT(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_LINEAR_FORWARDING_TA
     memcpy(buffer, lftp, sizeof(STL_LINEAR_FORWARDING_TABLE));
     BSWAP_STL_LINEAR_FORWARDING_TABLE((STL_LINEAR_FORWARDING_TABLE *)buffer);
 
-    if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_LFT) {
+    if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_LFT)
         status = VSTATUS_OK;
-    } else if (use_lr_dr_mix)
-        status = sm_set_stl_attribute_lrdr(fd, STL_MCLASS_ATTRIB_ID_LINEAR_FWD_TABLE, amod, path, buffer, &bufferLength, mkey, use_lr_dr_mix);
     else
-        status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_LINEAR_FWD_TABLE, amod, path, buffer, &bufferLength, mkey);
+        status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_LINEAR_FWD_TABLE, amod, addr, buffer, &bufferLength, mkey);
 
     if (status == VSTATUS_OK) {
         BSWAP_STL_LINEAR_FORWARDING_TABLE((STL_LINEAR_FORWARDING_TABLE *)buffer);
@@ -1112,7 +1131,7 @@ SM_Set_LFT_Dispatch_DR(IBhandle_t fd, uint32_t amod, uint8_t *path,
 }
 
 Status_t
-SM_Set_LFT_Dispatch_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, 
+SM_Set_LFT_Dispatch_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, 
 					   STL_LINEAR_FORWARDING_TABLE *lftp, uint16_t count, 
 					   uint64_t mkey, Node_t *nodep, sm_dispatch_t *disp) {
 	Status_t status;
@@ -1143,6 +1162,7 @@ SM_Set_LFT_Dispatch_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dli
 	return(status);
 }
 
+
 Status_t
 SM_Set_MFT_Dispatch(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_MULTICAST_FORWARDING_TABLE *mftp, uint64_t mkey, Node_t *nodep, sm_dispatch_t *disp) {
 	Status_t status;
@@ -1164,47 +1184,51 @@ SM_Set_MFT_Dispatch(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_MULTICAST_F
 }
 
 Status_t
-SM_Set_MFT_DispatchLR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, STL_MULTICAST_FORWARDING_TABLE *mftp, uint64_t mkey, Node_t *nodep, sm_dispatch_t *disp) {
+SM_Set_MFT_DispatchLR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_MULTICAST_FORWARDING_TABLE *mftp, uint64_t mkey, Node_t *nodep, sm_dispatch_t *disp) {
 	Status_t status;
     uint32_t bufferLength = sizeof(STL_MULTICAST_FORWARDING_TABLE); 
 	uint8_t buffer[STL_MAD_PAYLOAD_SIZE];
 
 	INCREMENT_COUNTER(smCounterSetMft);
 
-    memcpy(buffer, mftp, sizeof(STL_MULTICAST_FORWARDING_TABLE));
-    BSWAP_STL_MULTICAST_FORWARDING_TABLE((STL_MULTICAST_FORWARDING_TABLE *)buffer);
+	memcpy(buffer, mftp, sizeof(STL_MULTICAST_FORWARDING_TABLE));
+	BSWAP_STL_MULTICAST_FORWARDING_TABLE((STL_MULTICAST_FORWARDING_TABLE *)buffer);
 
-    if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_LFT) {
-        status = VSTATUS_OK;
-    } else {
-        status = sm_set_stl_attribute_async_dispatch_lr(fd, STL_MCLASS_ATTRIB_ID_MCAST_FWD_TABLE, amod,
-                                                        slid, dlid, buffer, &bufferLength, mkey, nodep, disp);
-    }
+	if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_LFT) {
+		status = VSTATUS_OK;
+	} else {
+		status = sm_set_stl_attribute_async_dispatch_lr(fd, STL_MCLASS_ATTRIB_ID_MCAST_FWD_TABLE,
+			amod, slid, dlid, buffer, &bufferLength, mkey, nodep, disp);
+	}
 	return(status);
 }
 
 
 Status_t
-SM_Set_PKeyTable(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_PARTITION_TABLE *pkp, uint64_t mkey, int use_lr_dr_mix) {
+SM_Set_PKeyTable(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_PARTITION_TABLE *pkp, uint64_t mkey) {
 	Status_t status;
-    uint32_t bufferLength = sizeof(STL_PARTITION_TABLE); 
+	const uint8_t blkCnt = (amod>>24) & 0xff;
+    uint32_t bufferLength = sizeof(STL_PARTITION_TABLE) * blkCnt;
 	uint8_t buffer[bufferLength];
+	uint8_t i;
 
 	INCREMENT_COUNTER(smCounterSetPKeyTable);
 
-	memcpy(buffer, pkp, sizeof(STL_PARTITION_TABLE));
-	(void)BSWAP_STL_PARTITION_TABLE((STL_PARTITION_TABLE *)buffer);
+	memcpy(buffer, pkp, sizeof(STL_PARTITION_TABLE) * blkCnt);
+	for (i = 0; i < blkCnt; ++i)
+		(void)BSWAP_STL_PARTITION_TABLE( &(((STL_PARTITION_TABLE *)buffer)[i]) );
 
-    if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_PKEY) {
-        status = VSTATUS_OK;
-    } else if (use_lr_dr_mix)
-		status = sm_set_stl_attribute_lrdr(fd, STL_MCLASS_ATTRIB_ID_PART_TABLE, amod, path, buffer, &bufferLength, mkey, use_lr_dr_mix);
-	else
-		status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_PART_TABLE, amod, path, buffer, &bufferLength, mkey);
+	if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_PKEY) {
+		status = VSTATUS_OK;
+	} else {
+		status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_PART_TABLE,
+			amod, addr, buffer, &bufferLength, mkey);
+	}
 
 	if (status == VSTATUS_OK) {
-		(void)BSWAP_STL_PARTITION_TABLE((STL_PARTITION_TABLE *)buffer);
-		memcpy(pkp, buffer, sizeof(STL_PARTITION_TABLE));
+		for (i = 0; i < blkCnt; ++i)
+			(void)BSWAP_STL_PARTITION_TABLE( &(((STL_PARTITION_TABLE *)buffer)[i]) );
+		memcpy(pkp, buffer, sizeof(STL_PARTITION_TABLE) * blkCnt);
 	}
 
 	return(status);
@@ -1222,8 +1246,9 @@ SM_Get_PortGroup(IBhandle_t fd, uint32_t amod, uint8_t *path,
 	assert(blocks >0 && blocks <= STL_NUM_PGTABLE_BLOCKS_PER_DRSMP);
 	INCREMENT_COUNTER(smCounterGetPG);
 
+	SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
 	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_PORT_GROUP_TABLE, 
-		amod, path, (uint8_t*)pgp, &length);
+		amod, &addr, (uint8_t*)pgp, &length);
 
 	if (status == VSTATUS_OK) {
 		for (i=0;i<blocks;i++) {
@@ -1237,8 +1262,8 @@ SM_Get_PortGroup(IBhandle_t fd, uint32_t amod, uint8_t *path,
 // "blocks" specifies the # of entries in pgp[]. Makes no attempt to
 // verify that "blocks" agrees with the value of "N" in amod.
 Status_t
-SM_Set_PortGroup(IBhandle_t fd, uint32_t amod, uint8_t *path, uint16_t slid, 
-	uint16_t dlid, STL_PORT_GROUP_TABLE *pgp, uint8_t blocks, uint64_t mkey) {
+SM_Set_PortGroup(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid,
+	STL_PORT_GROUP_TABLE *pgp, uint8_t blocks, uint64_t mkey) {
 	Status_t	status;
 	uint8_t		i;
 	uint32_t	bufferLength = blocks * sizeof(STL_PORT_GROUP_TABLE);
@@ -1253,12 +1278,9 @@ SM_Set_PortGroup(IBhandle_t fd, uint32_t amod, uint8_t *path, uint16_t slid,
 		BSWAP_STL_PORT_GROUP_TABLE(&((STL_PORT_GROUP_TABLE*)buffer)[i]);
 	}
 
-	if (!path) {
-		sm_topop->slid = slid;
-		sm_topop->dlid = dlid;
-	}
+	SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
 	status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_PORT_GROUP_TABLE, 
-		amod, path, buffer, &bufferLength, mkey);
+		amod, &addr, buffer, &bufferLength, mkey);
 
 	if (status == VSTATUS_OK) {
 		for (i=0;i<blocks;i++) {
@@ -1285,9 +1307,9 @@ SM_Get_PortGroupFwdTable(IBhandle_t fd, uint32_t amod, uint8_t *path,
 
 	INCREMENT_COUNTER(smCounterGetPGft);
 
-	status = sm_get_stl_attribute(fd, 
-		STL_MCLASS_ATTRIB_ID_PORT_GROUP_FWD_TABLE, 
-		amod, path, (uint8_t*)pgftp, &length);
+	SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_PORT_GROUP_FWD_TABLE, 
+		amod, &addr, (uint8_t*)pgftp, &length);
 
 	if (status == VSTATUS_OK) {
 		for (i=0;i<blocks;i++) {
@@ -1302,8 +1324,8 @@ SM_Get_PortGroupFwdTable(IBhandle_t fd, uint32_t amod, uint8_t *path,
 // verify that "blocks" agrees with the value of "N" in amod. pgftp must fit
 // in a single multi-block MAD.
 Status_t
-SM_Set_PortGroupFwdTable(IBhandle_t fd, uint32_t amod, uint8_t *path, 
-	uint16_t slid, uint16_t dlid, STL_PORT_GROUP_FORWARDING_TABLE *pgftp, 
+SM_Set_PortGroupFwdTable(IBhandle_t fd, uint32_t amod,
+	STL_LID slid, STL_LID dlid, STL_PORT_GROUP_FORWARDING_TABLE *pgftp, 
 	uint8_t blocks, uint64_t mkey) {
 	uint8_t		i;
 	Status_t	status;
@@ -1319,13 +1341,9 @@ SM_Set_PortGroupFwdTable(IBhandle_t fd, uint32_t amod, uint8_t *path,
 		BSWAP_STL_PORT_GROUP_FORWARDING_TABLE(&((STL_PORT_GROUP_FORWARDING_TABLE*)buffer)[i]);
 	}
 
-	if (!path) {
-		sm_topop->slid = slid;
-		sm_topop->dlid = dlid;
-	}
-	status = sm_set_stl_attribute(fd, 
-		STL_MCLASS_ATTRIB_ID_PORT_GROUP_FWD_TABLE, amod, path, buffer, 
-		&length, mkey);
+	SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+	status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_PORT_GROUP_FWD_TABLE,
+		amod, &addr, buffer, &length, mkey);
 
 	if (status == VSTATUS_OK) {
 		for (i=0;i<blocks;i++) {
@@ -1339,16 +1357,15 @@ SM_Set_PortGroupFwdTable(IBhandle_t fd, uint32_t amod, uint8_t *path,
 }
 
 Status_t
-SM_Get_CongestionInfo_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_CONGESTION_INFO * congestionInfo) {
+SM_Get_CongestionInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_CONGESTION_INFO * congestionInfo) {
 	uint32_t	bufferLength = sizeof(STL_CONGESTION_INFO);
 	uint8_t		buffer[bufferLength];
 	Status_t	status;
 
 	INCREMENT_COUNTER(smCounterGetCongestionInfo);
 
-	sm_topop->slid = slid;
-	sm_topop->dlid = dlid;
-	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_CONGESTION_INFO, amod, NULL, buffer, &bufferLength);
+	SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_CONGESTION_INFO, amod, &addr, buffer, &bufferLength);
 	if (status == VSTATUS_OK) {
 		BSWAP_STL_CONGESTION_INFO((STL_CONGESTION_INFO*)buffer);
 		memcpy(congestionInfo, buffer, bufferLength);
@@ -1358,14 +1375,15 @@ SM_Get_CongestionInfo_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dli
 }
 
 Status_t
-SM_Get_CongestionInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_CONGESTION_INFO * congestionInfo) {
+SM_Get_CongestionInfo_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_CONGESTION_INFO * congestionInfo) {
 	uint32_t	bufferLength = sizeof(STL_CONGESTION_INFO);
 	uint8_t		buffer[bufferLength];
 	Status_t	status;
 
 	INCREMENT_COUNTER(smCounterGetCongestionInfo);
 
-	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_CONGESTION_INFO, amod, path, buffer, &bufferLength);
+	SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_CONGESTION_INFO, amod, &addr, buffer, &bufferLength);
 	if (status == VSTATUS_OK) {
 		BSWAP_STL_CONGESTION_INFO((STL_CONGESTION_INFO*)buffer);
 		memcpy(congestionInfo, buffer, bufferLength);
@@ -1382,11 +1400,12 @@ SM_Get_HfiCongestionSetting(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_HFI
 
 	INCREMENT_COUNTER(smCounterGetHfiCongestionSetting);
 
-	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_HFI_CONGESTION_SETTING, amod, path, buffer, &bufferLength);
-   if (status == VSTATUS_OK) {
+	SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_HFI_CONGESTION_SETTING, amod, &addr, buffer, &bufferLength);
+	if (status == VSTATUS_OK) {
 		BSWAP_STL_HFI_CONGESTION_SETTING((STL_HFI_CONGESTION_SETTING*)buffer);
 		memcpy(hfics, buffer, bufferLength);
-   }
+	}
 
 	return(status);
 }
@@ -1402,12 +1421,11 @@ SM_Set_HfiCongestionSetting_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_L
     memcpy(buffer, hfics, sizeof(STL_HFI_CONGESTION_SETTING));
     BSWAP_STL_HFI_CONGESTION_SETTING((STL_HFI_CONGESTION_SETTING *)buffer);
 
-    sm_topop->slid = slid;
-    sm_topop->dlid = dlid;
     if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_CONG) {
         status = VSTATUS_OK;
     } else {
-        status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_HFI_CONGESTION_SETTING, amod, NULL, buffer, &bufferLength, mkey);
+        SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+        status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_HFI_CONGESTION_SETTING, amod, &addr, buffer, &bufferLength, mkey);
     }
     if (status == VSTATUS_OK) {
         BSWAP_STL_HFI_CONGESTION_SETTING((STL_HFI_CONGESTION_SETTING *)buffer);
@@ -1431,7 +1449,8 @@ SM_Set_HfiCongestionSetting(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_HFI
     if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_CONG) {
         status = VSTATUS_OK;
     } else {
-        status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_HFI_CONGESTION_SETTING, amod, path, buffer, &bufferLength, mkey);
+        SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+        status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_HFI_CONGESTION_SETTING, amod, &addr, buffer, &bufferLength, mkey);
     }
 	if (status == VSTATUS_OK) {
 		BSWAP_STL_HFI_CONGESTION_SETTING((STL_HFI_CONGESTION_SETTING *)buffer);
@@ -1444,14 +1463,14 @@ SM_Set_HfiCongestionSetting(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_HFI
 Status_t
 SM_Get_HfiCongestionControl(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_HFI_CONGESTION_CONTROL_TABLE *hficct) {
 	const uint8_t numBlocks = (amod>>24) & 0xff;
-	uint32_t	bufferLength = CONGESTION_CONTROL_TABLE_CCTILIMIT_SZ +
-									64 * numBlocks * sizeof(STL_HFI_CONGESTION_CONTROL_TABLE_ENTRY);
+	uint32_t	bufferLength = getCongTableSize(numBlocks);
 	uint8_t		buffer[bufferLength];
 	Status_t	status;
 
 	INCREMENT_COUNTER(smCounterGetHfiCongestionControl);
 
-	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_HFI_CONGESTION_CONTROL_TABLE, amod, path, buffer, &bufferLength);
+	SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_HFI_CONGESTION_CONTROL_TABLE, amod, &addr, buffer, &bufferLength);
 	if (status == VSTATUS_OK) {
 		BSWAP_STL_HFI_CONGESTION_CONTROL_TABLE((STL_HFI_CONGESTION_CONTROL_TABLE*)buffer, numBlocks);
 		memcpy(hficct, buffer, bufferLength);
@@ -1474,7 +1493,9 @@ SM_Set_HfiCongestionControl(IBhandle_t fd, uint16 CCTI_Limit, const uint8_t numB
     ptr->CCTI_Limit = CCTI_Limit;
     memcpy(ptr->CCT_Block_List, hficct, sizeof(STL_HFI_CONGESTION_CONTROL_TABLE_BLOCK) * numBlocks);
     BSWAP_STL_HFI_CONGESTION_CONTROL_TABLE(ptr, numBlocks);
-    status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_HFI_CONGESTION_CONTROL_TABLE, amod, path, buffer, &bufferLength, mkey);
+
+    SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+    status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_HFI_CONGESTION_CONTROL_TABLE, amod, &addr, buffer, &bufferLength, mkey);
 
 	return(status);
 }
@@ -1487,6 +1508,7 @@ SM_Set_HfiCongestionControl_LR(IBhandle_t fd, uint16 CCTI_Limit, const uint8_t n
 
     STL_HFI_CONGESTION_CONTROL_TABLE *ptr = NULL;
 
+
     memset(buffer, 0, bufferLength);
     ptr = (STL_HFI_CONGESTION_CONTROL_TABLE *)buffer;
     INCREMENT_COUNTER(smCounterSetHfiCongestionControl);
@@ -1494,12 +1516,11 @@ SM_Set_HfiCongestionControl_LR(IBhandle_t fd, uint16 CCTI_Limit, const uint8_t n
     memcpy(ptr->CCT_Block_List, hficct, sizeof(STL_HFI_CONGESTION_CONTROL_TABLE_BLOCK) * numBlocks);
     BSWAP_STL_HFI_CONGESTION_CONTROL_TABLE(ptr, numBlocks);
 	
-    sm_topop->slid = slid;
-    sm_topop->dlid = dlid;
-	if(sm_config.skipAttributeWrite & SM_SKIP_WRITE_CONG) {
-		status = VSTATUS_OK;
+	if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_CONG) {
+        status =  VSTATUS_OK;
 	} else {
-	    status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_HFI_CONGESTION_CONTROL_TABLE, amod, NULL, buffer, &bufferLength, mkey);
+		SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+		status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_HFI_CONGESTION_CONTROL_TABLE, amod, &addr, buffer, &bufferLength, mkey);
 	}
 
     return(status);
@@ -1513,7 +1534,8 @@ SM_Get_SwitchCongestionSetting(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_
 
 	INCREMENT_COUNTER(smCounterGetSwitchCongestionSetting);
 
-	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SWITCH_CONGESTION_SETTING, amod, path, buffer, &bufferLength);
+	SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SWITCH_CONGESTION_SETTING, amod, &addr, buffer, &bufferLength);
 	if (status == VSTATUS_OK) {
 		BSWAP_STL_SWITCH_CONGESTION_SETTING((STL_SWITCH_CONGESTION_SETTING*)buffer);
 		memcpy(swcs, buffer, bufferLength);
@@ -1538,7 +1560,8 @@ SM_Set_SwitchCongestionSetting(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_
     if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_CONG) {
         status = VSTATUS_OK;
     } else {
-        status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SWITCH_CONGESTION_SETTING, amod, path, buffer, &bufferLength, mkey);
+        SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+        status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SWITCH_CONGESTION_SETTING, amod, &addr, buffer, &bufferLength, mkey);
     }
 	if (status == VSTATUS_OK) {
 		BSWAP_STL_SWITCH_CONGESTION_SETTING((STL_SWITCH_CONGESTION_SETTING*)buffer);
@@ -1560,12 +1583,11 @@ SM_Set_SwitchCongestionSetting_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, ST
 	ZERO_RSVD_STL_SWITCH_CONGESTION_SETTING((STL_SWITCH_CONGESTION_SETTING*)buffer);
 	BSWAP_STL_SWITCH_CONGESTION_SETTING((STL_SWITCH_CONGESTION_SETTING*)buffer);
 
-	sm_topop->slid = slid;
-	sm_topop->dlid = dlid;
 	if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_CONG) {
 		status = VSTATUS_OK;
 	} else {
-		status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SWITCH_CONGESTION_SETTING, amod, NULL, buffer, &bufferLength, mkey);
+		SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+		status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SWITCH_CONGESTION_SETTING, amod, &addr, buffer, &bufferLength, mkey);
 	}
 	if (status == VSTATUS_OK) {
 		BSWAP_STL_SWITCH_CONGESTION_SETTING((STL_SWITCH_CONGESTION_SETTING*)buffer);
@@ -1584,7 +1606,8 @@ SM_Get_SwitchPortCongestionSetting(IBhandle_t fd, uint32_t amod, uint8_t *path, 
 
 	INCREMENT_COUNTER(smCounterGetSwitchPortCongestionSetting);
 	
-	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SWITCH_PORT_CONGESTION_SETTING, amod, path, buffer, &bufferLength);
+	SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SWITCH_PORT_CONGESTION_SETTING, amod, &addr, buffer, &bufferLength);
 	if (status == VSTATUS_OK) {
 		BSWAP_STL_SWITCH_PORT_CONGESTION_SETTING((STL_SWITCH_PORT_CONGESTION_SETTING*)buffer, count);
 		memcpy(swpcs, buffer, bufferLength);
@@ -1602,10 +1625,8 @@ SM_Get_SwitchPortCongestionSetting_LR(IBhandle_t fd, uint32_t amod, STL_LID slid
 
 	INCREMENT_COUNTER(smCounterGetSwitchPortCongestionSetting);
 
-
-	sm_topop->slid = slid;
-	sm_topop->dlid = dlid;
-	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SWITCH_PORT_CONGESTION_SETTING, amod, NULL, buffer, &bufferLength);
+	SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+	status = sm_get_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_SWITCH_PORT_CONGESTION_SETTING, amod, &addr, buffer, &bufferLength);
 	if (status == VSTATUS_OK) {
 		BSWAP_STL_SWITCH_PORT_CONGESTION_SETTING((STL_SWITCH_PORT_CONGESTION_SETTING*)buffer, count);
 		memcpy(swpcs, buffer, bufferLength);
@@ -1616,7 +1637,7 @@ SM_Get_SwitchPortCongestionSetting_LR(IBhandle_t fd, uint32_t amod, STL_LID slid
 
 
 Status_t
-SM_Set_BufferControlTable_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_BUFFER_CONTROL_TABLE pbct[], uint64_t mkey, uint32_t *madStatus)
+SM_Set_BufferControlTable_LR(IBhandle_t fd, uint32_t amod, uint32_t slid, uint32_t dlid, STL_BUFFER_CONTROL_TABLE pbct[], uint64_t mkey, uint32_t *madStatus)
 {
 	Status_t status;
 	uint32_t i;
@@ -1645,13 +1666,12 @@ SM_Set_BufferControlTable_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID
 		table = (STL_BUFFER_CONTROL_TABLE *)(data);
 	}
 
-	sm_topop->slid = slid;
-	sm_topop->dlid = dlid;
 	if (sm_config.skipAttributeWrite & SM_SKIP_WRITE_BFRCTRL) {
 		status = VSTATUS_OK;
 	} else {
 		// sm_set_stl_attribute_mad_status returns VSTATUS_BAD, if there is a madStatus error code.
-        status = sm_set_stl_attribute_mad_status(fd, STL_MCLASS_ATTRIB_ID_BUFFER_CONTROL_TABLE, amod, NULL, buffer, &bufferLength, mkey, madStatus);
+		SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+		status = sm_set_stl_attribute_mad_status(fd, STL_MCLASS_ATTRIB_ID_BUFFER_CONTROL_TABLE, amod, &addr, buffer, &bufferLength, mkey, madStatus);
 		// PR 125784: If buffer control table update is attempted for the same port back-to-back (say due to a SM retry following
 		// lost response), FW can return BUSY only if the values are being changed otherwise, returns OK. Caller to treat BUSY as error and trigger resweep.
 	}
@@ -1705,7 +1725,8 @@ SM_Set_BufferControlTable(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_BUFFE
 		status = VSTATUS_OK;
 	} else {
 		// sm_set_stl_attribute_mad_status returns VSTATUS_BAD, if there is a madStatus error code.
-        status = sm_set_stl_attribute_mad_status(fd, STL_MCLASS_ATTRIB_ID_BUFFER_CONTROL_TABLE, amod, path, buffer, &bufferLength, mkey, madStatus);
+		SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+		status = sm_set_stl_attribute_mad_status(fd, STL_MCLASS_ATTRIB_ID_BUFFER_CONTROL_TABLE, amod, &addr, buffer, &bufferLength, mkey, madStatus);
 		// PR 125784: If buffer control table update is attempted for the same port back-to-back (say due to a SM retry following
 		// lost response), FW can return BUSY only if the values are being changed otherwise, returns OK. Caller to treat BUSY as error and trigger resweep.
 	}
@@ -1770,7 +1791,7 @@ SM_ComposeCableInfoAggr(uint8_t * buffer, size_t bufferSize,
 
 //@todo: consolidate LR and DR request functions and turn this into a wrapper around that
 Status_t
-SM_Get_CableInfo_LR(IBhandle_t fd, uint8_t portIdx, uint8_t startSeg, uint8_t segCount, uint16_t slid, uint16_t dlid, STL_CABLE_INFO * ci, uint32_t * madStatus)
+SM_Get_CableInfo_LR(IBhandle_t fd, uint8_t portIdx, uint8_t startSeg, uint8_t segCount, STL_LID slid, STL_LID dlid, STL_CABLE_INFO * ci, uint32_t * madStatus)
 {
 	Status_t status = VSTATUS_OK;
 	uint32_t bufferLength = sizeof(STL_CABLE_INFO);
@@ -1779,6 +1800,8 @@ SM_Get_CableInfo_LR(IBhandle_t fd, uint8_t portIdx, uint8_t startSeg, uint8_t se
 		*madStatus = 0;
 
 	uint8 buffer[STL_MAX_PAYLOAD_SMP_LR] = { 0 };
+
+	SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
 
 	if (sm_config.use_aggregates) {
 		STL_AGGREGATE * aggr = SM_ComposeCableInfoAggr(buffer, sizeof(buffer),
@@ -1790,12 +1813,10 @@ SM_Get_CableInfo_LR(IBhandle_t fd, uint8_t portIdx, uint8_t startSeg, uint8_t se
 
 		bufferLength = ((uint8_t*)aggr) - buffer;
 
-		sm_topop->slid = slid;
-		sm_topop->dlid = dlid;
 		INCREMENT_COUNTER(smCounterGetCableInfo);
 
 		status = sm_send_stl_request(fd, MAD_CM_GET, STL_MCLASS_ATTRIB_ID_AGGREGATE,
-			segCount, NULL, buffer, &bufferLength, 0, madStatus);
+			segCount, &addr, buffer, &bufferLength, 0, madStatus);
 
 		aggr = (STL_AGGREGATE*) buffer;
 		BSWAP_STL_AGGREGATE_HEADER(aggr);
@@ -1807,19 +1828,16 @@ SM_Get_CableInfo_LR(IBhandle_t fd, uint8_t portIdx, uint8_t startSeg, uint8_t se
 			aggr = STL_AGGREGATE_NEXT(aggr);
 			BSWAP_STL_AGGREGATE_HEADER(aggr);
 		}
-	}
-	else {
+	} else {
 		uint8_t i;
 		for (i = 0; i < segCount && status == VSTATUS_OK; ++i) {
 			uint16_t startAddr = (i + startSeg) * sizeof(STL_CABLE_INFO);
 			uint32 amod = ((startAddr & 0x0FFF) << 19) | (((sizeof(STL_CABLE_INFO) - 1) & 0x3F) << 13) | portIdx;
 
-			sm_topop->slid = slid;
-			sm_topop->dlid = dlid;
 			INCREMENT_COUNTER(smCounterGetCableInfo);
 
 			status = sm_send_stl_request(fd, MAD_CM_GET, STL_MCLASS_ATTRIB_ID_CABLE_INFO,
-				amod, NULL, buffer, &bufferLength, 0, madStatus);
+				amod, &addr, buffer, &bufferLength, 0, madStatus);
 
 			if (status == VSTATUS_OK) {
 				memcpy(&ci[i], buffer, sizeof(STL_CABLE_INFO));
@@ -1843,6 +1861,8 @@ SM_Get_CableInfo(IBhandle_t fd, uint8_t portIdx, uint8_t startSeg, uint8_t segCo
 
 	uint8 buffer[STL_MAX_PAYLOAD_SMP_DR];
 
+	SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+
 	if (sm_config.use_aggregates) {
 		STL_AGGREGATE * aggr = SM_ComposeCableInfoAggr(buffer, sizeof(buffer),
 			portIdx, portIdx, startSeg, segCount);
@@ -1855,8 +1875,8 @@ SM_Get_CableInfo(IBhandle_t fd, uint8_t portIdx, uint8_t startSeg, uint8_t segCo
 
 		INCREMENT_COUNTER(smCounterGetCableInfo);
 
-		status = sm_send_stl_request(fd, MAD_CM_GET, STL_MCLASS_ATTRIB_ID_AGGREGATE,
-			segCount, path, buffer, &bufferLength, 0, madStatus);
+		status = sm_send_stl_request( fd, MAD_CM_GET, STL_MCLASS_ATTRIB_ID_AGGREGATE,
+			segCount, &addr, buffer, &bufferLength, 0, madStatus);
 
 		aggr = (STL_AGGREGATE*) buffer;
 		BSWAP_STL_AGGREGATE_HEADER(aggr);
@@ -1868,8 +1888,7 @@ SM_Get_CableInfo(IBhandle_t fd, uint8_t portIdx, uint8_t startSeg, uint8_t segCo
 			aggr = STL_AGGREGATE_NEXT(aggr);
 			BSWAP_STL_AGGREGATE_HEADER(aggr);
 		}
-	}
-	else {
+	} else {
 		uint8_t i;
 		for (i = 0; i < segCount && status == VSTATUS_OK; ++i) {
 			uint16_t startAddr = (i + startSeg) * sizeof(STL_CABLE_INFO);
@@ -1878,7 +1897,7 @@ SM_Get_CableInfo(IBhandle_t fd, uint8_t portIdx, uint8_t startSeg, uint8_t segCo
 			INCREMENT_COUNTER(smCounterGetCableInfo);
 
 			status = sm_send_stl_request(fd, MAD_CM_GET, STL_MCLASS_ATTRIB_ID_CABLE_INFO,
-				amod, path, buffer, &bufferLength, 0, madStatus);
+				amod, &addr, buffer, &bufferLength, 0, madStatus);
 
 			if (status == VSTATUS_OK) {
 				memcpy(&ci[i], buffer, sizeof(STL_CABLE_INFO));
@@ -1889,7 +1908,6 @@ SM_Get_CableInfo(IBhandle_t fd, uint8_t portIdx, uint8_t startSeg, uint8_t segCo
 
 	return status;
 }
-
 
 Status_t
 SM_Set_LedInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_LED_INFO *li, uint64_t mkey) {
@@ -1903,7 +1921,8 @@ SM_Set_LedInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_LED_INFO *li, ui
    memcpy(buffer, li, sizeof(STL_LED_INFO)); 
    (void)BSWAP_STL_LED_INFO((STL_LED_INFO *)buffer); 
    
-   status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_LED_INFO, amod, path, buffer, &bufferLength, mkey);
+   SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+   status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_LED_INFO, amod, &addr, buffer, &bufferLength, mkey);
    
    if (status == VSTATUS_OK) {
       (void)BSWAP_STL_LED_INFO((STL_LED_INFO *)buffer); 
@@ -1915,7 +1934,7 @@ SM_Set_LedInfo(IBhandle_t fd, uint32_t amod, uint8_t *path, STL_LED_INFO *li, ui
 
 
 Status_t
-SM_Set_LedInfo_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, STL_LED_INFO *li, uint64_t mkey) {
+SM_Set_LedInfo_LR(IBhandle_t fd, uint32_t amod, STL_LID slid, STL_LID dlid, STL_LED_INFO *li, uint64_t mkey) {
 
    Status_t status;
    uint32_t bufferLength=sizeof(STL_LED_INFO); 
@@ -1925,10 +1944,9 @@ SM_Set_LedInfo_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, ST
    
    memcpy(buffer, li, sizeof(STL_LED_INFO)); 
    (void)BSWAP_STL_LED_INFO((STL_LED_INFO *)buffer); 
-   sm_topop->slid = slid;
-   sm_topop->dlid = dlid;
    
-   status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_LED_INFO, amod, NULL, buffer, &bufferLength, mkey);
+   SmpAddr_t addr = SMP_ADDR_CREATE_LR(slid, dlid);
+   status = sm_set_stl_attribute(fd, STL_MCLASS_ATTRIB_ID_LED_INFO, amod, &addr, buffer, &bufferLength, mkey);
    
    if (status == VSTATUS_OK) {
       (void)BSWAP_STL_LED_INFO((STL_LED_INFO *)buffer); 
@@ -1938,19 +1956,30 @@ SM_Set_LedInfo_LR(IBhandle_t fd, uint32_t amod, uint16_t slid, uint16_t dlid, ST
    return (status); 
 }
 
+
+Status_t
+SM_Get_Aggregate_DR(IBhandle_t fd, STL_AGGREGATE * start, STL_AGGREGATE * end,
+	uint8_t *path, STL_AGGREGATE ** lastSeg, uint32_t * madStatus)
+{
+	SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+	return SM_Aggregate_impl(fd, start, end, &addr, MAD_CM_GET, 0, lastSeg, madStatus);
+}
+
 Status_t
 SM_Get_Aggregate_LR(IBhandle_t fd, STL_AGGREGATE * start, STL_AGGREGATE * end,
-	STL_LID_32 srcLid, STL_LID_32 destLid, STL_AGGREGATE ** lastSeg, uint32_t * madStatus)
+	STL_LID srcLid, STL_LID destLid, STL_AGGREGATE ** lastSeg, uint32_t * madStatus)
 {
-	return SM_Aggregate_LR_impl(fd, start, end, srcLid, destLid, MAD_CM_GET, 0, lastSeg, madStatus);
+	SmpAddr_t addr = SMP_ADDR_CREATE_LR(srcLid, destLid);
+	return SM_Aggregate_impl(fd, start, end, &addr, MAD_CM_GET, 0, lastSeg, madStatus);
 }
 
 
 Status_t
 SM_Set_Aggregate_LR(IBhandle_t fd, STL_AGGREGATE * start, STL_AGGREGATE * end,
-	STL_LID_32 srcLid, STL_LID_32 destLid, uint64_t mkey, STL_AGGREGATE ** lastSeg, uint32_t * madStatus)
+	STL_LID srcLid, STL_LID destLid, uint64_t mkey, STL_AGGREGATE ** lastSeg, uint32_t * madStatus)
 {
-	return SM_Aggregate_LR_impl(fd, start, end, srcLid, destLid, MAD_CM_SET, mkey, lastSeg, madStatus);
+	SmpAddr_t addr = SMP_ADDR_CREATE_LR(srcLid, destLid);
+	return SM_Aggregate_impl(fd, start, end, &addr, MAD_CM_SET, mkey, lastSeg, madStatus);
 }
 
 /**
@@ -1986,13 +2015,13 @@ SM_Set_Aggregate_LR(IBhandle_t fd, STL_AGGREGATE * start, STL_AGGREGATE * end,
 		The return value of sm_send_stl_request_impl() for either the first error or the last successful send otherwise.
 */
 static Status_t
-SM_Aggregate_LR_impl(
-	IBhandle_t fd, STL_AGGREGATE * inStart, STL_AGGREGATE * inEnd,
-	STL_LID_32 srcLid, STL_LID_32 destLid, uint8 method,
-	uint64_t mkey, STL_AGGREGATE ** lastSeg, uint32_t * madStatus)
+SM_Aggregate_impl(
+	IBhandle_t fd, STL_AGGREGATE * inStart, STL_AGGREGATE * inEnd, SmpAddr_t * addr,
+	uint8 method, uint64_t mkey, STL_AGGREGATE ** lastSeg, uint32_t * madStatus)
 {
 	Status_t s = VSTATUS_OK;
 	uint32_t lclMadStatus;
+	const size_t maxPayload = addr->path ? STL_MAX_PAYLOAD_SMP_DR : STL_MAX_PAYLOAD_SMP_LR;
 
 	if (!lastSeg) {
 		return VSTATUS_ILLPARM;
@@ -2028,8 +2057,7 @@ SM_Aggregate_LR_impl(
 		uint32_t reqLength = 0;
 
 		while (next < inEnd && segCount < MAX_AGGREGATE_ATTRIBUTES) {
-			if (((uint8_t*)STL_AGGREGATE_NEXT(next) - (uint8_t*)cur) >
-			  STL_MAX_PAYLOAD_SMP_LR)
+			if (((uint8_t*)STL_AGGREGATE_NEXT(next) - (uint8_t*)cur) > maxPayload)
 				break;
 			lastSegSize = next->Result.s.RequestLength * 8;
 			next = STL_AGGREGATE_NEXT(next);
@@ -2060,7 +2088,7 @@ SM_Aggregate_LR_impl(
 		}
 
 		uint32_t respLength = (uint8*)next - (uint8*)cur;
-		uint8 buffer[STL_MAX_PAYLOAD_SMP_LR];
+		uint8 buffer[maxPayload];
 		memcpy(buffer, cur, reqLength);
 
 
@@ -2075,12 +2103,9 @@ SM_Aggregate_LR_impl(
 			break;
 		}
 
-		sm_topop->slid = srcLid;
-		sm_topop->dlid = destLid;
-
 		s = sm_send_stl_request_impl(fd, method, STL_MCLASS_ATTRIB_ID_AGGREGATE,
-			segCount, NULL, reqLength, buffer, &respLength,
-			WAIT_FOR_REPLY, mkey, NULL, NULL, 0, madStatus);
+			segCount, addr, reqLength, buffer, &respLength,
+			WAIT_FOR_REPLY, mkey, NULL, NULL, madStatus);
 
 		// sm_send_stl_request_impl() returns a non-OK status on MAD errors
 		// So a mix of (OK,!OK)x(s,*madStatus) is an invalid or undefined state
@@ -2157,3 +2182,4 @@ SM_Aggregate_LR_impl(
 
 	return s;
 }
+

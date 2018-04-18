@@ -37,7 +37,7 @@ int main()
 	STL_PORT_COUNTERS_DATA port_counters;
 	/*loop here, collecting counters and storing or displaying*/
 	/*maybe show capability to get specific images*/
-	if (omgt_pa_get_port_stats(port, image_ID, 1, 1, &image_ID, &port_counters, NULL, 0, 1)){
+	if (omgt_pa_get_port_stats2(port, image_ID, 1, 1, &image_ID, &port_counters, NULL, 0, 1)){
 		fprintf(stderr, "Failed to get port counters\n");
 		exitcode=1;
 		goto fail2;

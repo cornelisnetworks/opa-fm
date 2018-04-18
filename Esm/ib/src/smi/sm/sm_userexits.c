@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -60,8 +60,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sm_l.h"
 
 extern	Lock_t		tid_lock;
-uint16_t loopPathLidStart = 0;       // will be calculated to next 64 after max lid
-uint16_t loopPathLidEnd=0;
+STL_LID loopPathLidStart = 0;       // will be calculated to next 64 after max lid
+STL_LID loopPathLidEnd=0;
 
 int     esmLoopTestOn = 0;
 int     esmLoopTestAllowAdaptiveRouting = 0;
@@ -1142,7 +1142,7 @@ char*  printLoopPaths(int nodeIdx, int buffer) {
 
 	if (buffer) {
 		if (vs_pool_alloc(&sm_pool, len, (void*)&buf) != VSTATUS_OK) {
-			IB_FATAL_ERROR("printLoopPaths: CAN'T ALLOCATE SPACE.");
+			IB_FATAL_ERROR_NODUMP("printLoopPaths: CAN'T ALLOCATE SPACE.");
 			return NULL;
 		}
 		buf[0] = '\0';
@@ -1262,7 +1262,7 @@ char* printSwitchLft(int nodeIdx, int useNew, int haveLock, int buffer) {
 
 	if (buffer) {
 		if (vs_pool_alloc(&sm_pool, len, (void*)&buf) != VSTATUS_OK) {
-			IB_FATAL_ERROR("printSwitchLft: CAN'T ALLOCATE SPACE.");
+			IB_FATAL_ERROR_NODUMP("printSwitchLft: CAN'T ALLOCATE SPACE.");
 			return NULL;
 		}
 		buf[0] = '\0';
@@ -1333,7 +1333,7 @@ char* printLoopTestConfig(int buffer) {
 
 	if (buffer) {
 		if (vs_pool_alloc(&sm_pool, len, (void*)&buf) != VSTATUS_OK) {
-			IB_FATAL_ERROR("printLoopTestConfig: CAN'T ALLOCATE SPACE.");
+			IB_FATAL_ERROR_NODUMP("printLoopTestConfig: CAN'T ALLOCATE SPACE.");
 			return NULL;
 		}
 		buf[0] = '\0';

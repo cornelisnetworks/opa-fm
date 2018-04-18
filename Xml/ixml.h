@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -253,6 +253,7 @@ typedef enum {
 	/* these flags are for internal use only */
 	IXML_OUTPUT_FLAG_START_NEED_NL = 0x10000,	/* start tag output without newline */
 	IXML_OUTPUT_FLAG_HAD_CONTENT = 0x20000,	/* tag had content output */
+	IXML_OUTPUT_FLAG_IN_START_TAG = 0x40000, /* For printing multiple attrs */
 } IXmlOutputFlags_t;
 
 /* these structures should not be directly used by callers */
@@ -290,7 +291,32 @@ extern void IXmlOutputPrint(IXmlOutputState_t *state, const char *format, ...);
 extern void IXmlOutputPrintIndent(IXmlOutputState_t *state, const char *format, ...);
 extern void IXmlOutputNoop(IXmlOutputState_t *state, const char *tag, void *data);
 extern void IXmlOutputStartTag(IXmlOutputState_t *state, const char *tag);
+
+/*
+ * Print start tag with single attribute and value. Use
+ * IXmlOutputStartTag() and IXmlOutputAttr*() if you need to print
+ * multiple attributes.
+ */
 extern void IXmlOutputStartAttrTag(IXmlOutputState_t *state, const char *tag, void *data, IXML_FORMAT_ATTR_FUNC attr_func);
+
+/*
+ * Add @attr with @val to current element tag definition.
+ * This doesn't do any sanitizing on @attr or @val so be careful
+ * what you put in. Should be called after a call to IXmlOutputStartTag().
+ * Any call (direct or indirect) to IXmlOutputPrint() or
+ * IXmlOutputPrintIndent() closes the start tag.
+ *
+ * @return FSUCCESS on success, FERROR if not in the start of a tag
+ */
+extern FSTATUS IXmlOutputAttr(IXmlOutputState_t *state, const char *attr, const char *val);
+
+/*
+ * Like IXmlOutputAttr() but takes a format string and variable args.
+ * As with IXmlOutputAttr(), does not sanitize inputs.
+ *
+ * @return FSUCCESS on success, FERROR if not in the start of a tag
+ */
+extern FSTATUS IXmlOutputAttrFmt(IXmlOutputState_t *state, const char *attr, const char *format, ...);
 extern void IXmlOutputEndTag(IXmlOutputState_t *state, const char *tag);
 extern void IXmlOutputEndTagWithLineno(IXmlOutputState_t *state, const char *tag, unsigned long lineno);
 extern void IXmlOutputHexPad8(IXmlOutputState_t *state, const char *tag, uint8 value);

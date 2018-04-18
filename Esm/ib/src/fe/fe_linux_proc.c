@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -323,7 +323,7 @@ fe_conf_server_init(void){
 							  0,NULL,256 * 1024);
 
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("can't create remote configuration thread");
+		IB_FATAL_ERROR_NODUMP("can't create remote configuration thread");
 	}
 
 	return 0;
@@ -557,7 +557,6 @@ int main(int argc, char *argv[]){
      */
 
     pm_lid          = 0;   
-    //bm_lid          = 0;    
     dm_lid          = 0;    
     ConnDisconnect  = FALSE;
     Shutdown        = FALSE;
@@ -615,8 +614,7 @@ int main(int argc, char *argv[]){
 	// initialize memory pool for FE XML parsing
 	status = initFeXmlMemoryPool();
 	if (status != VSTATUS_OK) {
-		IB_FATAL_ERROR("initFeXmlMemoryPool: fe_xml_pool vs_pool_create failure");
-		return 1;
+		IB_FATAL_ERROR_NODUMP("initFeXmlMemoryPool: fe_xml_pool vs_pool_create failure");
 	}
 
 	// init callback function for XML parser so it can get pool memory

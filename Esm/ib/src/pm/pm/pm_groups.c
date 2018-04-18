@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -103,12 +103,18 @@ boolean PmIsPortInGroup(Pm_t *pm, PmPort_t *pmportp, PmPortImage_t *portImage,
     // for non-Switch ports and switch port 0, active will be true
     // but for other switch ports could be not active
     // ports without a PMA are not tabulated
-    if (pmportp->u.s.PmaAvoid || !portImage->u.s.active)
+    if (!portImage->u.s.active)
         return FALSE;
     if (!sth) {
+	if(isInternal)	{
+		*isInternal = (groupp == pm->AllPorts);
+	}
         return ((groupp == pm->AllPorts)
             || PmIsPortImageInGroup(portImage, groupp, isInternal));
     } else {
+	if(isInternal)	{
+		*isInternal = (groupp == pm->ShortTermHistory.LoadedImage.AllGroup);
+	}
         return ((groupp == pm->ShortTermHistory.LoadedImage.AllGroup)
             || PmIsPortImageInGroup(portImage, groupp, isInternal));
     }
@@ -119,15 +125,6 @@ boolean PmIsPortInGroup(Pm_t *pm, PmPort_t *pmportp, PmPortImage_t *portImage,
 void PmAddExtPortToGroupIndex(PmPortImage_t *portImage, uint32 grpIndex,
 			   						PmGroup_t *groupp, uint32 imageIndex)
 {
-#if DEBUG && 0	// TBD - enable this
-	// make sure neighbor is not in the group
-	{
-		PmTopologyPort_t *neighbor = portImage->neighbor->Image[imageIndex];
-		if (neighbor) {
-			DEBUG_ASSERT(! PmIsPortInGroup(&neighbor->Image[imageIndex], groupp));
-		}
-	}
-#endif
 	PmAddPortToGroupIndex(portImage, grpIndex, groupp, FALSE);
 	groupp->Image[imageIndex].NumExtPorts++;
 }

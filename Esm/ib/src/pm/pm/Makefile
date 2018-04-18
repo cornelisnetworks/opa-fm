@@ -1,6 +1,6 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015, Intel Corporation
+# Copyright (c) 2015-2017, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -50,7 +50,7 @@ CFILES			= \
 ifeq ($(BUILD_TARGET_OS),VXWORKS)
 CFILES			+=	pm_vxWorks.c
 else
-CFILES			+=	pm_linux.c
+CFILES			+=	pm_linux.c pa_sth_old.c
 endif
 # C++ files (.cpp)
 CCFILES			= \

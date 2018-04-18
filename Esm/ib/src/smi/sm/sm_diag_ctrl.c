@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -73,7 +73,7 @@ char* sm_looptest_start(int numPkts) {
 	int len = 500, pos = 0;
 
 	if (vs_pool_alloc(&sm_pool, len, (void*)&buf) != VSTATUS_OK) {
-		IB_FATAL_ERROR("sm_looptest_start: CAN'T ALLOCATE SPACE.");
+		IB_FATAL_ERROR_NODUMP("sm_looptest_start: CAN'T ALLOCATE SPACE.");
 		return NULL;
 	}
 	buf[0] = '\0';
@@ -123,7 +123,7 @@ char* sm_looptest_inject_packets(int numPkts) {
 	int len = 500;
 
 	if (vs_pool_alloc(&sm_pool, len, (void*)&buf) != VSTATUS_OK) {
-		IB_FATAL_ERROR("sm_looptest_inject_packets: CAN'T ALLOCATE SPACE.");
+		IB_FATAL_ERROR_NODUMP("sm_looptest_inject_packets: CAN'T ALLOCATE SPACE.");
 		return NULL;
 	}
 	buf[0] = '\0';
@@ -157,7 +157,7 @@ char* sm_looptest_inject_at_node(int nodeIdx) {
 	int len = 500;
 
 	if (vs_pool_alloc(&sm_pool, len, (void*)&buf) != VSTATUS_OK) {
-		IB_FATAL_ERROR("sm_looptest_inject_at_node: CAN'T ALLOCATE SPACE.");
+		IB_FATAL_ERROR_NODUMP("sm_looptest_inject_at_node: CAN'T ALLOCATE SPACE.");
 		return NULL;
 	}
 	buf[0] = '\0';
@@ -189,7 +189,7 @@ char* sm_looptest_inject_packets_each_sweep(int inject) {
 	int len = 500;
 
 	if (vs_pool_alloc(&sm_pool, len, (void*)&buf) != VSTATUS_OK) {
-		IB_FATAL_ERROR("sm_looptest_inject_packets_each_sweep: CAN'T ALLOCATE SPACE.");
+		IB_FATAL_ERROR_NODUMP("sm_looptest_inject_packets_each_sweep: CAN'T ALLOCATE SPACE.");
 		return NULL;
 	}
 	buf[0] = '\0';
@@ -218,7 +218,7 @@ char* sm_set_loop_path_length(int length) {
 	int len = 500;
 
 	if (vs_pool_alloc(&sm_pool, len, (void*)&buf) != VSTATUS_OK) {
-		IB_FATAL_ERROR("sm_set_loop_path_length: CAN'T ALLOCATE SPACE.");
+		IB_FATAL_ERROR_NODUMP("sm_set_loop_path_length: CAN'T ALLOCATE SPACE.");
 		return NULL;
 	}
 	buf[0] = '\0';
@@ -239,7 +239,7 @@ char* sm_set_loop_min_redundancy(int redundancy) {
 	int len = 500;
 
 	if (vs_pool_alloc(&sm_pool, len, (void*)&buf) != VSTATUS_OK) {
-		IB_FATAL_ERROR("sm_set_loop_min_redundancy: CAN'T ALLOCATE SPACE.");
+		IB_FATAL_ERROR_NODUMP("sm_set_loop_min_redundancy: CAN'T ALLOCATE SPACE.");
 		return NULL;
 	}
 	buf[0] = '\0';
@@ -259,7 +259,7 @@ char* sm_looptest_stop(void) {
 	int len = 500;
 
 	if (vs_pool_alloc(&sm_pool, len, (void*)&buf) != VSTATUS_OK) {
-		IB_FATAL_ERROR("sm_looptest_stop: CAN'T ALLOCATE SPACE.");
+		IB_FATAL_ERROR_NODUMP("sm_looptest_stop: CAN'T ALLOCATE SPACE.");
 		return NULL;
 	}
 	buf[0] = '\0';

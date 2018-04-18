@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -54,14 +54,17 @@ extern "C" {
 #define CABLEINFO_DETAIL_BRIEF    2			// Brief output
 #define CABLEINFO_DETAIL_VERBOSE  3			// Verbose output
 #define CABLEINFO_DETAIL_ALL      4			// All fields output
-#define RCVERRORINFO1              1
-#define RCVERRORINFO4              4
-#define RCVERRORINFO12            12
-#define RCVERRORINFO13            13
+#define RCVERRORINFO1		  1
+#define RCVERRORINFO4		  4
+#define RCVERRORINFO12		  12
+#define RCVERRORINFO13		  13
 
+
+// verbose level of print content
+int PrintStlVerboseSet(int level);
 
 // Basic STL prints
-void PrintStlLid(PrintDest_t *dest, int indent, uint32_t lid, int printLineByLine);
+void PrintStlLid(PrintDest_t *dest, int indent, STL_LID lid, int printLineByLine);
 
 // General classPortInfo
 void PrintStlClassPortInfo(PrintDest_t *dest, int indent, const STL_CLASS_PORT_INFO *pClassPortInfo, uint8 MgmtClass);
@@ -74,9 +77,12 @@ void PrintStlAggregateMember(PrintDest_t *dest, int indent,
 void PrintStlNodeInfo(PrintDest_t *dest, int indent, const STL_NODE_INFO *pNodeInfo, int printLineByLine);
 void PrintStlNodeDesc(PrintDest_t *dest, int indent, const STL_NODE_DESCRIPTION *pStlNodeDesc, int printLineByLine);
 void PrintStlPortInfo(PrintDest_t *dest, int indent, const STL_PORT_INFO *pPortInfo, EUI64 portGuid, int PrintLineByLine);
-void PrintStlSwitchInfo(PrintDest_t *dest, int indent, const STL_SWITCH_INFO *pSwitchInfo, STL_LID_32 lid, int PrintLineByLine);
+
+void PrintStlSwitchInfo(PrintDest_t *dest, int indent, const STL_SWITCH_INFO *pSwitchInfo, STL_LID lid, int PrintLineByLine);
 void PrintStlPKeyTable(PrintDest_t *dest, int indent, const STL_PARTITION_TABLE *pPKeyTable, uint16 blockNum, int printLineByLine);
 void PrintStlPortInfoSmp(PrintDest_t *dest, int indent, const STL_SMP *smp, EUI64 portGuid, int printLineByLine);
+
+
 void PrintStlPKeyTableSmp(PrintDest_t *dest, int indent, const STL_SMP *smp,
 			  NODE_TYPE nodetype, boolean showHeading, boolean showBlock, int printLineByLine);
 void PrintStlSLSCMap(PrintDest_t *dest, int indent, const char* prefix,
@@ -98,8 +104,11 @@ void PrintStlSCVLxMapSmp(PrintDest_t *dest, int indent, const STL_SMP *smp,
 			NODE_TYPE nodetype, boolean heading, int printLineByLine);
 		/* NOTE: smp defines Attribute printed via AttributeID */
 void PrintStlLinearFDB(PrintDest_t *dest, int indent, const STL_LINEAR_FORWARDING_TABLE *pLinearFDB, uint32 blockNum, int printLineByLine);
+
+
 void PrintStlVLArbTable(PrintDest_t *dest, int indent, const STL_VLARB_TABLE *pVLArbTable, uint32 blockNum, int printLineByLine);
 void PrintStlVLArbTableSmp(PrintDest_t *dest, int indent, const STL_SMP *smp, uint8_t nodeType, int printLineByLine);
+void PrintStlMCastSmp(PrintDest_t *dest, int indent, const STL_SMP *smp, uint8_t pos, uint32_t startBlk, uint8_t count, int printLineByLine);
 void PrintStlMCastFDB(PrintDest_t *dest, int indent, const STL_MULTICAST_FORWARDING_TABLE *pMCastFDB, uint32 blockNum, int printLineByLine);
 void PrintStlInformInfo(PrintDest_t *dest, int indent, const STL_INFORM_INFO *pInformInfo);
 void PrintStlCongestionInfo(PrintDest_t *dest, int indent, const STL_CONGESTION_INFO *pCongestionInfo, int printLineByLine);
@@ -114,13 +123,13 @@ void PrintStlBfrCtlTable(PrintDest_t *dest, int indent, const STL_BUFFER_CONTROL
 void PrintStlBfrCtlTableSmp(PrintDest_t *dest, int indent, const STL_SMP *smp, uint8_t nodeType, int printLineByLine);
 void PrintStlCableInfoLowPage(PrintDest_t *dest, int indent, const uint8_t *cableInfoData, uint8_t detail, int printLineByLine);
 void PrintStlCableInfoHighPage(PrintDest_t *dest, int indent, const uint8_t *cableInfoData, uint8_t portType, uint8_t detail, int printLineByLine);
+void PrintStlCableInfoHighPage0DD(PrintDest_t *dest, int indent, const uint8_t *cableInfoData, uint8_t portType, uint8_t detail, int printLineByLine);
 void PrintStlCableInfoDump(PrintDest_t *dest, int indent, const uint8_t *cableInfoData, uint16_t addr, uint8_t len, int printLineByLine);
 // len is real length of cable data
-void PrintStlCableInfo(PrintDest_t *dest, int indent, const uint8_t *cableInfoData, uint16_t addr, uint8_t len, uint8_t portType, uint8_t detail, int printLineByLine);
+void PrintStlCableInfo(PrintDest_t *dest, int indent, const uint8_t *cableInfoData, uint16_t addr, uint8_t len, uint8_t portType, uint8_t detail, int printLineByLine, boolean hexOnly);
 void PrintStlCableInfoSmp(PrintDest_t *dest, int indent, const STL_SMP *smp, uint8_t portType, int printLineByLine);
 void PrintStlPortGroupFDB(PrintDest_t *dest, int indent, const STL_PORT_GROUP_FORWARDING_TABLE *pPortGroupFDB, uint32 blockNum, int printLineByLine);
 void PrintStlPortGroupTable(PrintDest_t *dest, int indent, const uint64_t *pPortGroup, uint32 blockNum, int position, int printLineByLine);
-
 // SA/ iba_* customer-visible user commands
 // SA one print function for each SA query OutputType
 void PrintStlNodeRecord(PrintDest_t *dest, int indent, const STL_NODE_RECORD *pNodeRecord);
@@ -128,11 +137,11 @@ void PrintStlPortInfoRecord(PrintDest_t *dest, int indent, const STL_PORTINFO_RE
 void PrintStlPortStateInfo(PrintDest_t *dest, int indent, const STL_PORT_STATE_INFO *psip, uint16 portCount, uint16 startPort, int printLineByLine);
 void PrintStlSwitchInfoRecord(PrintDest_t *dest, int indent, const STL_SWITCHINFO_RECORD *pSwitchInfoRecord);
 void PrintStlPKeyTableRecord(PrintDest_t *dest, int indent, const STL_P_KEY_TABLE_RECORD *pPKeyTableRecord);
-void PrintStlSCSCTableRecord(PrintDest_t *dest, int indent, const STL_SC_MAPPING_TABLE_RECORD *pSLSCMapRecord);
+void PrintStlSCSCTableRecord(PrintDest_t *dest, int indent, const STL_SC_MAPPING_TABLE_RECORD *pSCSCMapRecord);
 void PrintStlSLSCTableRecord(PrintDest_t *dest, int indent, const STL_SL2SC_MAPPING_TABLE_RECORD *pSCSLMapRecord);
 void PrintStlSCSLTableRecord(PrintDest_t *dest, int indent, const STL_SC2SL_MAPPING_TABLE_RECORD *pSCSLMapRecord);
 void PrintStlSCVLxTableRecord(PrintDest_t *dest, int indent, const STL_SC2VL_R_MAPPING_TABLE_RECORD *pSCVLxMapRecord, uint16_t attribute);
-void PrintStlSMInfo(PrintDest_t *dest, int indent, const STL_SM_INFO *pSMInfo, STL_LID_32 lid, int printLineByLine);
+void PrintStlSMInfo(PrintDest_t *dest, int indent, const STL_SM_INFO *pSMInfo, STL_LID lid, int printLineByLine);
 void PrintStlLinearFDBRecord(PrintDest_t *dest, int indent, const STL_LINEAR_FORWARDING_TABLE_RECORD *pLinearFDBRecord);
 void PrintStlVLArbTableRecord(PrintDest_t *dest, int indent, const STL_VLARBTABLE_RECORD *pVLArbTableRecord);
 void PrintStlMcMemberRecord(PrintDest_t *dest, int indent, const STL_MCMEMBER_RECORD *pMcMemberRecord);
@@ -156,6 +165,9 @@ void PrintBfrCtlTableRecord(PrintDest_t *dest, int indent, const STL_BUFFER_CONT
 void PrintStlCableInfoRecord(PrintDest_t *dest, int indent, const STL_CABLE_INFO_RECORD *pCableInfoRecord);
 void PrintStlPortGroupTabRecord(PrintDest_t *dest, int indent, const STL_PORT_GROUP_TABLE_RECORD *pRecord);
 void PrintStlPortGroupFwdTabRecord(PrintDest_t *dest, int indent, const STL_PORT_GROUP_FORWARDING_TABLE_RECORD *pRecord);
+void PrintStlDeviceGroupMemberRecord(PrintDest_t *dest, int indent, const STL_DEVICE_GROUP_MEMBER_RECORD *pRecord);
+void PrintStlDeviceGroupNameRecord(PrintDest_t *dest, int indent, const STL_DEVICE_GROUP_NAME_RECORD *pRecord, int record_no);
+void PrintStlDeviceTreeMemberRecord(PrintDest_t *dest, int indent, const STL_DEVICE_TREE_MEMBER_RECORD *pRecord);
 void PrintStlSwitchCostRecord(PrintDest_t *dest, int indent, const STL_SWITCH_COST_RECORD *pRecord);
 // len is real length of cable data
 void PrintStlPortSummary(PrintDest_t *dest, int indent, const char* portName, const STL_PORT_INFO *pPortInfo, EUI64 portGuid, uint16_t g_pkey, const uint8_t *cableInfoData, uint16_t addr, uint8_t len, const STL_PORT_STATUS_RSP *pPortStatusRsp, uint8_t detail, int printLineByLine);
@@ -168,21 +180,26 @@ void PrintStlDataPortCountersRsp(PrintDest_t *dest, int indent, const STL_DATA_P
 void PrintStlErrorPortCountersRsp(PrintDest_t *dest, int indent, const STL_ERROR_PORT_COUNTERS_RSP *pStlErrorPortCountersRsp);
 void PrintStlErrorInfoRsp(PrintDest_t *dest, int indent, const STL_ERROR_INFO_RSP *pStlErrorInfoRsp, int headerOnly);
 
+
 // PA
 void PrintStlPAGroupList(PrintDest_t *dest, int indent, const int numRecords, const STL_PA_GROUP_LIST *pGroupList);
 void PrintStlPAGroupInfo(PrintDest_t *dest, int indent, const STL_PA_PM_GROUP_INFO_DATA *pGroupInfo);
 void PrintStlPAGroupConfig(PrintDest_t *dest, int indent, const char *groupName, const int numRecords, const STL_PA_PM_GROUP_CFG_RSP *pGroupConfig);
-void PrintStlPAPortCounters(PrintDest_t *dest, int indent, const STL_PORT_COUNTERS_DATA *pPortCounters, const uint32 nodeLid, const uint32 portNumber, const uint32 flags);
+void PrintStlPAGroupNodeInfo(PrintDest_t *dest, int indent, const char *groupName, const int numRecords, const STL_PA_GROUP_NODEINFO_RSP *pGroupNodeInfo);
+void PrintStlPAGroupLinkInfo(PrintDest_t *dest, int indent, const char *groupName, const int numRecords, const STL_PA_GROUP_LINKINFO_RSP *pGroupLinkInfo);
+void PrintStlPAPortCounters(PrintDest_t *dest, int indent, const STL_PORT_COUNTERS_DATA *pPortCounters, const STL_LID nodeLid, const uint32 portNumber, const uint32 flags);
 void PrintStlPMConfig(PrintDest_t *dest, int indent, const STL_PA_PM_CFG_DATA *pPMConfig);
 void PrintStlPAImageId(PrintDest_t *dest, int indent, const STL_PA_IMAGE_ID_DATA *pPAImageID);
 void PrintStlPAFocusPorts(PrintDest_t *dest, int indent, const char *groupName, const int numRecords, const uint32 select, const uint32 start, const uint32 range,
 	const STL_FOCUS_PORTS_RSP *pFocusPorts);
+void PrintStlPAFocusPortsMultiSelect(PrintDest_t *dest, int indent, const char *groupName, const int numRecords, const uint32 start, const uint32 range,
+	const STL_FOCUS_PORTS_MULTISELECT_RSP *pFocusPorts, uint8 logical_operator, STL_FOCUS_PORT_TUPLE *tuple);
 void PrintStlPAImageInfo(PrintDest_t *dest, int indent, const STL_PA_IMAGE_INFO_DATA *pImageInfo);
 void PrintStlPAMoveFreeze(PrintDest_t *dest, int indent, const STL_MOVE_FREEZE_DATA *pMoveFreeze);
 void PrintStlPAVFList(PrintDest_t *dest, int indent, const int numRecords, const STL_PA_VF_LIST *pVFList);
 void PrintStlPAVFInfo(PrintDest_t *dest, int indent, const STL_PA_VF_INFO_DATA *pVFInfo);
 void PrintStlPAVFConfig(PrintDest_t *dest, int indent, const char *vfName, const int numRecords, const STL_PA_VF_CFG_RSP *pVFConfig);
-void PrintStlPAVFPortCounters(PrintDest_t *dest, int indent, const STL_PA_VF_PORT_COUNTERS_DATA *pVFPortCounters, const uint32 nodeLid, const uint32 portNumber, const uint32 flags);
+void PrintStlPAVFPortCounters(PrintDest_t *dest, int indent, const STL_PA_VF_PORT_COUNTERS_DATA *pVFPortCounters, const STL_LID nodeLid, const uint32 portNumber, const uint32 flags);
 void PrintStlPAVFFocusPorts(PrintDest_t *dest, int indent, const char *vfName, const int numRecords, const uint32 select, const uint32 start, const uint32 range,
 	const STL_PA_VF_FOCUS_PORTS_RSP *pVFFocusPorts);
 
@@ -203,27 +220,19 @@ void PrintStrWithDots(PrintDest_t *dest, int indent, const char * name, const ch
 static __inline const char*
 FMConfigErrorInfoToText(uint8 errorInfo)
 {
-        switch (errorInfo)
-        {
-                case 0:
-                        return "BadHeadDist";
-                case 1:
-                        return "BadTailDist";
-                case 2:
-                        return "BadCtrlDist";
-                case 3:
-                        return "BadCrdtAck";
-                case 4:
-                        return "UnsupportedVLMarker";
-                case 5:
-                        return "BadPreempt";
-                case 6:
-                        return "BadControlFlit";
-                case 7:
-                        return "ExceedMulticastLimit";
-                default:
-                        return "Unknown"; 
-        }
+	switch (errorInfo) {
+	case 0: return "BadHeadDist";
+	case 1: return "BadTailDist";
+	case 2: return "BadCtrlDist";
+	case 3: return "BadCrdtAck";
+	case 4: return "UnsupportedVLMarker";
+	case 5: return "BadPreempt";
+	case 6: return "BadControlFlit";
+	case 7: return "ExceedMulticastLimit";
+	case 8: return "BadMarkerDist";
+	default:
+		return "Unknown";
+	}
 }
 
 static __inline const char*
@@ -267,21 +276,33 @@ PortRcvErrorInfoToText(uint8 errorInfo)
 static __inline const char*
 PortRcvSwitchRelayErrorInfoToText(uint8 errorInfo)
 {
+	switch (errorInfo) {
+	case 0: return "BadDLIDRange";
+	case 1: return "reserved";
+	case 2: return "BadEgress";
+	case 3: return "BadSC2SC";
+	default:
+		return "Unknown";
+	}
+}
+
+static __inline const char*
+PortRcvConstraintErrorInfoToText(uint8 errorInfo)
+{
         switch (errorInfo)
         {
                 case 0:
-                        return "BadDLIDRange";
-                case 1:
                         return "reserved";
+                case 1:
+                        return "pkeyViolation";
                 case 2:
-                        return "BadEgress";
+                        return "BadSLIDRange";
                 case 3:
-                        return "BadSC2SC";
+                        return "SWP0pkeyCheck";
                 default:
                         return "Unknown"; 
         }
 }
-
 static __inline const char*
 UncorrectableErrorInfoToText(uint8 errorInfo)
 {

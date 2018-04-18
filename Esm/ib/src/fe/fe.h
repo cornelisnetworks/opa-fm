@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2017, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -93,9 +93,9 @@ void BSWAP_OOB_PACKET(OOBPacket *packet)
 /* Unsolicited Notice / Traps Structure */
 struct Trap {
     uint32_t    trapType;           /* Type of Trap                 */
-    STL_LID   lidAddr;            /* LID Address                  */
-    uint8_t portNum;                /* Port number                  */
-	STL_NOTICE notice;
+    STL_LID     lidAddr;            /* LID Address                  */
+    uint8_t     portNum;            /* Port number                  */
+	STL_NOTICE  notice;
     struct Trap *next;
 };
 typedef struct Trap FE_Trap_t;

@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2015-2018, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -9,7 +9,7 @@ modification, are permitted provided that the following conditions are met:
       this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
-     documentation and/or other materials provided with the distribution.
+      documentation and/or other materials provided with the distribution.
     * Neither the name of Intel Corporation nor the names of its contributors
       may be used to endorse or promote products derived from this software
       without specific prior written permission.
@@ -32,7 +32,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "stl_print.h"
 #include <iba/stl_helper.h>
 
-void PrintStlLid(PrintDest_t *dest, int indent, uint32_t lid, int printLineByLine)
+void PrintStlLid(PrintDest_t *dest, int indent, STL_LID lid, int printLineByLine)
 {
     if (printLineByLine) 
         PrintIntWithDots(dest, indent, "Lid", lid);
@@ -167,12 +167,16 @@ void PrintStlPortInfo(PrintDest_t *dest, int indent, const STL_PORT_INFO *pPortI
 	if (printLineByLine) {
 		PrintIntWithDots(dest, indent, "LID", (uint32)pPortInfo->LID);
 		PrintIntWithDots(dest, indent, "FlowControlMask", (uint32)pPortInfo->FlowControlMask);
-		PrintIntWithDots(dest, indent, "VL.PreemptCap", (uint32)pPortInfo->VL.PreemptCap);
+
+		if (pPortInfo->CapabilityMask3.s.VLSchedulingConfig == VL_SCHED_MODE_VLARB)
+			PrintIntWithDots(dest, indent, "VL.PreemptCap", (uint32)pPortInfo->VL.PreemptCap);
 		PrintIntWithDots(dest, indent, "VL.s2.Cap", (uint32)pPortInfo->VL.s2.Cap);
-		PrintIntWithDots(dest, indent, "VL.HighLimit", (uint32)pPortInfo->VL.HighLimit);
-		PrintIntWithDots(dest, indent, "VL.PreemptingLimit", (uint32)pPortInfo->VL.PreemptingLimit);
-		PrintIntWithDots(dest, indent, "VL.ArbitrationHighCap", (uint32)pPortInfo->VL.ArbitrationHighCap);
-		PrintIntWithDots(dest, indent, "VL.ArbitrationLowCap", (uint32)pPortInfo->VL.ArbitrationLowCap);
+		if (pPortInfo->CapabilityMask3.s.VLSchedulingConfig == VL_SCHED_MODE_VLARB) {
+			PrintIntWithDots(dest, indent, "VL.HighLimit", (uint32)pPortInfo->VL.HighLimit);
+			PrintIntWithDots(dest, indent, "VL.PreemptingLimit", (uint32)pPortInfo->VL.PreemptingLimit);
+			PrintIntWithDots(dest, indent, "VL.ArbitrationHighCap", (uint32)pPortInfo->VL.ArbitrationHighCap);
+			PrintIntWithDots(dest, indent, "VL.ArbitrationLowCap", (uint32)pPortInfo->VL.ArbitrationLowCap);
+		}
         // STL_PORT_STATES
 		PrintIntWithDots(dest, indent, "PortStates.AsReg32", (uint32)pPortInfo->PortStates.AsReg32);
 		PrintIntWithDots(dest, indent, "PortStates.s.IsSMConfigurationStarted", (uint32)pPortInfo->PortStates.s.IsSMConfigurationStarted);
@@ -183,6 +187,8 @@ void PrintStlPortInfo(PrintDest_t *dest, int indent, const STL_PORT_INFO *pPortI
 		PrintIntWithDots(dest, indent, "PortStates.s.LEDEnabled", (uint32)pPortInfo->PortStates.s.LEDEnabled);
 		PrintIntWithDots(dest, indent, "PortPhysConfig.AsReg8", pPortInfo->PortPhysConfig.AsReg8);
 		PrintIntWithDots(dest, indent, "PortPhysConfig.s.PortType", pPortInfo->PortPhysConfig.s.PortType);
+		PrintIntWithDots(dest, indent, "BundleNextPort", (uint32)pPortInfo->BundleNextPort);
+		PrintIntWithDots(dest, indent, "BundleLane", (uint32)pPortInfo->BundleLane);
 		PrintIntWithDots(dest, indent, "MultiCollectMask.CollectiveMask", (uint32)pPortInfo->MultiCollectMask.CollectiveMask);
 		PrintIntWithDots(dest, indent, "MultiCollectMask.MulticastMask", (uint32)pPortInfo->MultiCollectMask.MulticastMask);
 		PrintIntWithDots(dest, indent, "s1.M_KeyProtectBits", (uint32)pPortInfo->s1.M_KeyProtectBits);
@@ -250,6 +256,9 @@ void PrintStlPortInfo(PrintDest_t *dest, int indent, const STL_PORT_INFO *pPortI
 		PrintIntWithDots(dest, indent, "FlitControl.Preemption.SmallPktLimit", (uint32)pPortInfo->FlitControl.Preemption.SmallPktLimit);
 		PrintIntWithDots(dest, indent, "FlitControl.Preemption.MaxSmallPktLimit", (uint32)pPortInfo->FlitControl.Preemption.MaxSmallPktLimit);
 		PrintIntWithDots(dest, indent, "FlitControl.Preemption.PreemptionLimit", (uint32)pPortInfo->FlitControl.Preemption.PreemptionLimit);
+
+		PrintIntWithDots(dest, indent, "MaxLID", (uint32)pPortInfo->MaxLID);
+
 		PrintIntWithDots(dest, indent, "PortErrorAction.AsReg32", (uint32)pPortInfo->PortErrorAction.AsReg32);
 		PrintIntWithDots(dest, indent, "PortErrorAction.s.ExcessiveBufferOverrun", (uint32)pPortInfo->PortErrorAction.s.ExcessiveBufferOverrun);
 		PrintIntWithDots(dest, indent, "PortErrorAction.s.FmConfigErrorExceedMulticastLimit", (uint32)pPortInfo->PortErrorAction.s.FmConfigErrorExceedMulticastLimit);
@@ -316,13 +325,17 @@ void PrintStlPortInfo(PrintDest_t *dest, int indent, const STL_PORT_INFO *pPortI
 		PrintIntWithDots(dest, indent, "CapabilityMask.s.IsSM", (uint32)pPortInfo->CapabilityMask.s.IsSM);
 
 		PrintIntWithDots(dest, indent, "CapabilityMask3.AsReg16", (uint32)pPortInfo->CapabilityMask3.AsReg16);
+		PrintIntWithDots(dest, indent, "CapabilityMask3.s.IsMAXLIDSupported", (uint32)pPortInfo->CapabilityMask3.s.IsMAXLIDSupported);
 		PrintIntWithDots(dest, indent, "CapabilityMask3.s.IsSnoopSupported", (uint32)pPortInfo->CapabilityMask3.s.IsSnoopSupported);
 		PrintIntWithDots(dest, indent, "CapabilityMask3.s.IsAsyncSC2VLSupported", (uint32)pPortInfo->CapabilityMask3.s.IsAsyncSC2VLSupported);
 		PrintIntWithDots(dest, indent, "CapabilityMask3.s.IsAddrRangeConfigSupported", (uint32)pPortInfo->CapabilityMask3.s.IsAddrRangeConfigSupported);
 		PrintIntWithDots(dest, indent, "CapabilityMask3.s.IsPassThroughSupported", (uint32)pPortInfo->CapabilityMask3.s.IsPassThroughSupported);
 		PrintIntWithDots(dest, indent, "CapabilityMask3.s.IsSharedSpaceSupported", (uint32)pPortInfo->CapabilityMask3.s.IsSharedSpaceSupported);
+		PrintIntWithDots(dest, indent, "CapabilityMask3.s.IsSharedGroupSpaceSupported", (uint32)pPortInfo->CapabilityMask3.s.IsSharedGroupSpaceSupported);
 		PrintIntWithDots(dest, indent, "CapabilityMask3.s.IsVLMarkerSupported", (uint32)pPortInfo->CapabilityMask3.s.IsVLMarkerSupported);
 		PrintIntWithDots(dest, indent, "CapabilityMask3.s.IsVLrSupported", (uint32)pPortInfo->CapabilityMask3.s.IsVLrSupported);
+		PrintStrWithDots(dest, indent, "CapabilityMask3.s.VLSchedulingConfig", StlVLSchedulingConfigToText(pPortInfo->CapabilityMask3));
+
 
 		PrintIntWithDots(dest, indent, "OverallBufferSpace", (uint32)pPortInfo->OverallBufferSpace);
 		PrintIntWithDots(dest, indent, "DiagCode.AsReg16", (uint32)pPortInfo->DiagCode.AsReg16);
@@ -338,7 +351,6 @@ void PrintStlPortInfo(PrintDest_t *dest, int indent, const STL_PORT_INFO *pPortI
 		PrintIntWithDots(dest, indent, "MTU.Cap", (uint32)pPortInfo->MTU.Cap);
 		PrintIntWithDots(dest, indent, "Resp.TimeValue", (uint32)pPortInfo->Resp.TimeValue);
 		PrintIntWithDots(dest, indent, "LocalPortNum", (uint32)pPortInfo->LocalPortNum);
-
 	} else {
 		// Patterned after the existing IB output
 		char tempBuf[64];
@@ -406,6 +418,10 @@ void PrintStlPortInfo(PrintDest_t *dest, int indent, const STL_PORT_INFO *pPortI
 		FormatTimeoutMult(tempBuf2, pPortInfo->Subnet.Timeout);
         PrintFunc(dest,"%*sPortType: %-22s LimtRsp/Subnet:   %s,%s\n",
             indent, "",  StlPortTypeToText(pPortInfo->PortPhysConfig.s.PortType), tempBuf, tempBuf2);
+		PrintFunc(dest, "%*sBundleNextPort:%-3u               BundleLane:       %-3u\n",
+			indent, "",
+			pPortInfo->BundleNextPort,
+			pPortInfo->BundleLane);
 		PrintFunc(dest, "%*sM_KEY:    0x%016"PRIx64"     Lease:   %5u s  Protect: %s\n",
 			indent, "", pPortInfo->M_Key, pPortInfo->M_KeyLeasePeriod,
 			IbMKeyProtectToText(pPortInfo->s1.M_KeyProtectBits));
@@ -431,11 +447,6 @@ void PrintStlPortInfo(PrintDest_t *dest, int indent, const STL_PORT_INFO *pPortI
 			StlLinkSpeedToText(pPortInfo->LinkSpeed.Enabled, tempBuf3, sizeof(tempBuf3)),
 			StlLinkSpeedToText(pPortInfo->LinkSpeed.Supported, tempBuf2, sizeof(tempBuf2)));
 
-		// Not necessary to print in gen1, as only 9B supported
-		//PrintFunc(dest, "%*sPortPacketFormats: Supported 0x%04x  Enabled: 0x%04x\n",
-		//	indent, "", pPortInfo->PortPacketFormats.Supported,
-		//	pPortInfo->PortPacketFormats.Enabled);
-
 		PrintFunc(dest, "%*sPortLinkMode   Act: %-8s     En: %-13s Sup: %-13s\n", 
 			indent, "",
 			StlPortLinkModeToText(pPortInfo->PortLinkMode.s.Active, tempBuf, sizeof(tempBuf)), 
@@ -456,6 +467,12 @@ void PrintStlPortInfo(PrintDest_t *dest, int indent, const STL_PORT_INFO *pPortI
 		PrintFunc(dest, "%*sNeighborNodeGuid:   0x%016"PRIx64"   NeighborPortNum:   %-3d\n",
 			indent, "", pPortInfo->NeighborNodeGUID, pPortInfo->NeighborPortNum);
 
+		FormatStlPortPacketFormat(cbuf, pPortInfo->PortPacketFormats.Supported, sizeof(cbuf));
+		PrintFunc(dest, "%*sPortPacketFormats   Sup: %s",
+			indent, "", cbuf);
+		FormatStlPortPacketFormat(cbuf, pPortInfo->PortPacketFormats.Enabled, sizeof(cbuf));
+		PrintFunc(dest, "  En: %s\n", cbuf);
+
 		FormatStlCapabilityMask(cbuf, pPortInfo->CapabilityMask); // same as IB
 		PrintFunc(dest, "%*sCapability:    0x%08x: %s\n",
 			indent, "",
@@ -463,6 +480,7 @@ void PrintStlPortInfo(PrintDest_t *dest, int indent, const STL_PORT_INFO *pPortI
 		FormatStlCapabilityMask3(cbuf, pPortInfo->CapabilityMask3, sizeof(cbuf));
 		PrintFunc(dest, "%*sCapability3:   0x%04x: %s\n",
 			indent, "", pPortInfo->CapabilityMask3.AsReg16, cbuf);
+
 
 		PrintFunc(dest, "%*sSM_TrapQP: 0x%x  SA_QP: 0x%x\n",
 			indent, "",
@@ -474,24 +492,33 @@ void PrintStlPortInfo(PrintDest_t *dest, int indent, const STL_PORT_INFO *pPortI
 
 		PrintFunc(dest, "%*sVLs Active:    %d+1\n",
 			indent, "", pPortInfo->s4.OperationalVL);
-		PrintFunc(dest, "%*sVL: PreemptCap %d   Cap %d+1   HighLimit 0x%04x   PreemptLimit 0x%04x\n",
-			indent, "", pPortInfo->VL.PreemptCap, pPortInfo->VL.s2.Cap,
-				pPortInfo->VL.HighLimit, pPortInfo->VL.PreemptingLimit);
-		PrintFunc(dest, "%*sVLFlowControlDisabledMask: 0x%08x   ArbHighCap: %d  ArbLowCap: %d\n", 
-				  indent, "", pPortInfo->FlowControlMask, 
-				  pPortInfo->VL.ArbitrationHighCap, pPortInfo->VL.ArbitrationLowCap);
+		if (pPortInfo->CapabilityMask3.s.VLSchedulingConfig == VL_SCHED_MODE_VLARB) {
+			PrintFunc(dest, "%*sVL: PreemptCap %d   Cap %d+1   HighLimit 0x%04x   PreemptLimit 0x%04x\n",
+				indent, "", pPortInfo->VL.PreemptCap, pPortInfo->VL.s2.Cap,
+					pPortInfo->VL.HighLimit, pPortInfo->VL.PreemptingLimit);
+		} else
+			PrintFunc(dest, "%*sVL: Cap %d+1\n", indent, "", pPortInfo->VL.s2.Cap);
+
+		PrintFunc(dest, "%*sVLFlowControlDisabledMask: 0x%08x", indent, "",
+			  pPortInfo->FlowControlMask);
+		if (pPortInfo->CapabilityMask3.s.VLSchedulingConfig == VL_SCHED_MODE_VLARB) {
+			PrintFunc(dest, "   ArbHighCap: %d  ArbLowCap: %d",
+				  pPortInfo->VL.ArbitrationHighCap,
+				  pPortInfo->VL.ArbitrationLowCap);
+		}
+		PrintFunc(dest, "\n");
 
 		PrintFunc(dest, "%*sMulticastMask: 0x%x    CollectiveMask: 0x%x\n",
 			indent, "", pPortInfo->MultiCollectMask.MulticastMask,
 				pPortInfo->MultiCollectMask.CollectiveMask);
+
 		PrintFunc(dest, "%*sP_Key Enforcement: In: %3s Out: %3s\n",
 			indent, "",
 			pPortInfo->s3.PartitionEnforcementInbound?"On":"Off",
 			pPortInfo->s3.PartitionEnforcementOutbound?"On":"Off");
 
-		// not useful to print in gen1, as only 9B supported
-		//PrintFunc(dest, "%*sP_Keys        P_Key_8B:  0x%04x   P_Key_10B: 0x%04x\n",
-		//	indent, "", pPortInfo->P_Keys.P_Key_8B, pPortInfo->P_Keys.P_Key_10B);
+		PrintFunc(dest, "%*sP_Keys        P_Key_8B:  0x%04x   P_Key_10B: 0x%04x\n",
+			indent, "", pPortInfo->P_Keys.P_Key_8B, pPortInfo->P_Keys.P_Key_10B);
 
 		PrintFunc(dest, "%*sMulticastPKeyTrapSuppressionEnabled: %2u   ClientReregister %2u\n",
 			indent, "",
@@ -527,6 +554,10 @@ void PrintStlPortInfo(PrintDest_t *dest, int indent, const STL_PORT_INFO *pPortI
 			pPortInfo->FlitControl.Preemption.SmallPktLimit,
 			pPortInfo->FlitControl.Preemption.MaxSmallPktLimit,
 			pPortInfo->FlitControl.Preemption.PreemptionLimit);
+
+		if (pPortInfo->CapabilityMask3.s.IsMAXLIDSupported)
+			PrintFunc(dest, "%*sMaxLID: %u\n",
+				indent, "", pPortInfo->MaxLID);
 
 		FormatStlPortErrorAction(cbuf, pPortInfo, sizeof(cbuf));
 		PrintFunc(dest, "%*sPortErrorActions: 0x%x: %s\n", indent, "", pPortInfo->PortErrorAction.AsReg32, cbuf);
@@ -637,30 +668,30 @@ void PrintStlPortStateInfo(PrintDest_t *dest, int indent, const STL_PORT_STATE_I
     char tempBuf[64];
     if (printLineByLine) {
         for (i = 0; i < portCount; i++) {
-            snprintf(tempBuf, sizeof(tempBuf), "Port[%d].PortStates.AsReg32", i);
-            PrintIntWithDots(dest, indent, tempBuf, psip[i].PortStates.AsReg32);
-			snprintf(tempBuf, sizeof(tempBuf), "Port[%d].PortStates.s.LEDEnabled", i);
+	             snprintf(tempBuf, sizeof(tempBuf), "Port[%d].PortStates.AsReg32", i+startPort);
+          	      PrintIntWithDots(dest, indent, tempBuf, psip[i].PortStates.AsReg32);
+		snprintf(tempBuf, sizeof(tempBuf), "Port[%d].PortStates.s.LEDEnabled", i+startPort);
 			PrintIntWithDots(dest, indent, tempBuf, psip[i].PortStates.s.LEDEnabled);
-            snprintf(tempBuf, sizeof(tempBuf), "Port[%d].PortStates.s.IsSMConfigurationStarted", i);
+            snprintf(tempBuf, sizeof(tempBuf), "Port[%d].PortStates.s.IsSMConfigurationStarted", i+startPort);
             PrintIntWithDots(dest, indent, tempBuf, psip[i].PortStates.s.IsSMConfigurationStarted);
-            snprintf(tempBuf, sizeof(tempBuf), "Port[%d].PortStates.s.NeighborNormal", i);
+            snprintf(tempBuf, sizeof(tempBuf), "Port[%d].PortStates.s.NeighborNormal", i+startPort);
             PrintIntWithDots(dest, indent, tempBuf, psip[i].PortStates.s.NeighborNormal);
-            snprintf(tempBuf, sizeof(tempBuf), "Port[%d].PortStates.s.OfflineDisabledReason", i);
+            snprintf(tempBuf, sizeof(tempBuf), "Port[%d].PortStates.s.OfflineDisabledReason", i+startPort);
             PrintIntWithDots(dest, indent, tempBuf, psip[i].PortStates.s.OfflineDisabledReason);
-            snprintf(tempBuf, sizeof(tempBuf), "Port[%d].PortStates.s.PortPhysicalState", i);
+            snprintf(tempBuf, sizeof(tempBuf), "Port[%d].PortStates.s.PortPhysicalState", i+startPort);
             PrintIntWithDots(dest, indent, tempBuf, psip[i].PortStates.s.PortPhysicalState);
-            snprintf(tempBuf, sizeof(tempBuf), "Port[%d].PortStates.s.PortState", i);
+            snprintf(tempBuf, sizeof(tempBuf), "Port[%d].PortStates.s.PortState", i+startPort);
             PrintIntWithDots(dest, indent, tempBuf, psip[i].PortStates.s.PortState);
-			snprintf(tempBuf, sizeof(tempBuf), "Port[%d].LinkWidthDowngradeTxActive", i);
+			snprintf(tempBuf, sizeof(tempBuf), "Port[%d].LinkWidthDowngradeTxActive", i+startPort);
 			PrintIntWithDots(dest, indent, tempBuf, psip[i].LinkWidthDowngradeTxActive);
-			snprintf(tempBuf, sizeof(tempBuf), "Port[%d].LinkWidthDowngradeRxActive", i);
+			snprintf(tempBuf, sizeof(tempBuf), "Port[%d].LinkWidthDowngradeRxActive", i+startPort);
 			PrintIntWithDots(dest, indent, tempBuf, psip[i].LinkWidthDowngradeRxActive);
 
         }
     }
     else {
 	char tempBuf2[64];
-        for (i=0; i<portCount; ++i) {
+        for (i=0; i<portCount; ++i) { 
     		PrintFunc(dest, "%*sPort %u: PortState: %-6s  PhysState: %-8s\n",
     			indent, "", startPort+i,
     			StlPortStateToText(psip[i].PortStates.s.PortState),
@@ -753,17 +784,20 @@ void PrintStlPKeyTableSmp(PrintDest_t *dest, int indent, const STL_SMP *smp, NOD
     }
 }
 
-void PrintStlSwitchInfo(PrintDest_t *dest, int indent, const STL_SWITCH_INFO *pSwitchInfo, STL_LID_32 lid, int printLineByLine)
+void PrintStlSwitchInfo(PrintDest_t *dest, int indent, const STL_SWITCH_INFO *pSwitchInfo, STL_LID lid, int printLineByLine)
 {
 	char buf[64];
     if (printLineByLine) {
-        if (lid) 
+        if (lid)
             PrintIntWithDots(dest, indent, "lid", lid);
-        PrintIntWithDots(dest, indent, "LinearFDBCap", pSwitchInfo->LinearFDBCap);
-        PrintIntWithDots(dest, indent, "MulticastFDBCap", pSwitchInfo->MulticastFDBCap);
-        PrintIntWithDots(dest, indent, "LinearFDBTop", pSwitchInfo->LinearFDBTop);
+
+		if (pSwitchInfo->RoutingMode.Enabled & STL_ROUTE_LINEAR)
+			PrintIntWithDots(dest, indent, "LinearFDBCap", pSwitchInfo->LinearFDBCap);
+
+		PrintIntWithDots(dest, indent, "MulticastFDBCap", pSwitchInfo->MulticastFDBCap);
+		PrintIntWithDots(dest, indent, "LinearFDBTop", pSwitchInfo->LinearFDBTop);
         PrintIntWithDots(dest, indent, "MulticastFDBTop", pSwitchInfo->MulticastFDBTop);
-    #if 0 
+    #if 0
         //Not Support in Gen 1.
         PrintIntWithDots(dest, indent, "CollectiveCap", pSwitchInfo->CollectiveCap);
         PrintIntWithDots(dest, indent, "CollectiveTop", pSwitchInfo->CollectiveTop);
@@ -784,11 +818,8 @@ void PrintStlSwitchInfo(PrintDest_t *dest, int indent, const STL_SWITCH_INFO *pS
         PrintIntWithDots(dest, indent, "RoutingMode.Enabled", pSwitchInfo->RoutingMode.Enabled);
         PrintIntWithDots(dest, indent, "u2.AsReg8", pSwitchInfo->u2.AsReg8);
         PrintIntWithDots(dest, indent, "u2.s.EnhancedPort0", pSwitchInfo->u2.s.EnhancedPort0);
-    #if 0
-        //Not Support in Gen 1.
         PrintIntWithDots(dest, indent, "MultiCollectMask.CollectiveMask", pSwitchInfo->MultiCollectMask.CollectiveMask);
         PrintIntWithDots(dest, indent, "MultiCollectMask.MulticastMask", pSwitchInfo->MultiCollectMask.MulticastMask);
-    #endif
         PrintIntWithDots(dest, indent, "AdaptiveRouting.AsReg16", pSwitchInfo->AdaptiveRouting.AsReg16);
         PrintIntWithDots(dest, indent, "AdaptiveRouting.s.Enable", pSwitchInfo->AdaptiveRouting.s.Enable);
         PrintIntWithDots(dest, indent, "AdaptiveRouting.s.Pause", pSwitchInfo->AdaptiveRouting.s.Pause);
@@ -799,20 +830,26 @@ void PrintStlSwitchInfo(PrintDest_t *dest, int indent, const STL_SWITCH_INFO *pS
         PrintIntWithDots(dest, indent, "CapabilityMask.AsReg16", pSwitchInfo->CapabilityMask.AsReg16);
         PrintIntWithDots(dest, indent, "CapabilityMask.s.IsAddrRangeConfigSupported", pSwitchInfo->CapabilityMask.s.IsAddrRangeConfigSupported);
         PrintIntWithDots(dest, indent, "CapabilityMask.s.IsAdaptiveRoutingSupported", pSwitchInfo->CapabilityMask.s.IsAdaptiveRoutingSupported);
-    #if 0
+
+#if 0
         //Not Support in Gen 1.
         PrintIntWithDots(dest, indent, "CapabilityMaskCollectives.AsReg16", pSwitchInfo->CapabilityMaskCollectives.AsReg16);
-    #endif
+#endif
     }
     else {
 
-    	if (lid)
-    		PrintFunc(dest, "%*sLID: 0x%08x\n", indent, "", lid);
+		if (lid)
+			PrintFunc(dest, "%*sLID: 0x%08x\n", indent, "", lid);
 
-    	PrintFunc(dest, "%*sLinearFDBCap: %5u LinearFDBTop: 0x%08x MCFDBCap: %5u MCFDBTop: 0x%08x\n",
-    			indent, "",
-    			pSwitchInfo->LinearFDBCap, pSwitchInfo->LinearFDBTop,
-    			pSwitchInfo->MulticastFDBCap, pSwitchInfo->MulticastFDBTop);
+		if (pSwitchInfo->RoutingMode.Enabled & STL_ROUTE_LINEAR)
+			PrintFunc(dest, "%*sLinearFDBCap: %5u LinearFDBTop: 0x%08x MCFDBCap: %5u MCFDBTop: 0x%08x\n",
+					indent, "",
+					pSwitchInfo->LinearFDBCap, pSwitchInfo->LinearFDBTop,
+					pSwitchInfo->MulticastFDBCap, pSwitchInfo->MulticastFDBTop);
+		else
+			PrintFunc(dest, "%*sLinearFDBTop: 0x%08x MCFDBCap: %5u MCFDBTop: 0x%08x\n",
+					indent, "",
+					pSwitchInfo->LinearFDBTop, pSwitchInfo->MulticastFDBCap, pSwitchInfo->MulticastFDBTop);
     	PrintFunc(dest, "%*sCapability: 0x%02x: %s PartEnfCap: %5u PortStateChange: %d SwitchLifeTime: %d\n",
     				indent, "",
     				pSwitchInfo->u2.AsReg8,
@@ -834,23 +871,19 @@ void PrintStlSwitchInfo(PrintDest_t *dest, int indent, const STL_SWITCH_INFO *pS
     				inet_ntop(AF_INET, 
     						  pSwitchInfo->IPAddrIPV4.addr, 
     						  buf, sizeof(buf)));
-
-    #if 0
-    	//Not supported in Gen 1.
     	PrintFunc(dest, "%*sCollectiveCap: %5u CollectiveTop: %5u CollectiveMask: %1u MulticastMask: %1u\n",
     				indent, "", 
     			 	pSwitchInfo->CollectiveCap, pSwitchInfo->CollectiveTop,
     				pSwitchInfo->MultiCollectMask.CollectiveMask, 
     				pSwitchInfo->MultiCollectMask.MulticastMask); 
-    #endif
     	
-    	PrintFunc(dest, "%*sRoutingMode: Supported: %u Enabled: %u\n",
+    	PrintFunc(dest, "%*sRoutingMode: Supported: %s Enabled: %s\n",
     				indent, "", 
-    				pSwitchInfo->RoutingMode.Supported,
-    				pSwitchInfo->RoutingMode.Enabled);
+    				StlRoutingModeToText(pSwitchInfo->RoutingMode.Supported),
+    				StlRoutingModeToText(pSwitchInfo->RoutingMode.Enabled));
 
     	PrintFunc(dest, "%*sAdaptiveRouting: Enable: %u Pause: %u Alg: %u Freq: %u LostRoutesOnly: %u Thresh: %u\n",
-    				indent, "", 
+    				indent, "",
     				pSwitchInfo->AdaptiveRouting.s.Enable,
     				pSwitchInfo->AdaptiveRouting.s.Pause,
     				pSwitchInfo->AdaptiveRouting.s.Algorithm,
@@ -862,13 +895,17 @@ void PrintStlSwitchInfo(PrintDest_t *dest, int indent, const STL_SWITCH_INFO *pS
     				indent, "", 
     				pSwitchInfo->CapabilityMask.s.IsAddrRangeConfigSupported,
                     pSwitchInfo->CapabilityMask.s.IsAdaptiveRoutingSupported);
-    #if 0 
+
+#if 0
         //Not Support in Gen 1.
         PrintFunc(dest, "*sCapabilityMaskCollectives: Reserved: %u\n", indent, "", pSwitchInfo->CapabilityMaskCollectives.s.Reserved);
-    #endif
+#endif
+
+		PrintFunc(dest, "%*sMulticastMask: 0x%x    CollectiveMask: 0x%x\n",
+					indent, "", pSwitchInfo->MultiCollectMask.MulticastMask,
+					pSwitchInfo->MultiCollectMask.CollectiveMask);
     }
 }
-
 void PrintStlCongestionInfo(PrintDest_t *dest, int indent, const STL_CONGESTION_INFO *pCongestionInfo, int printLineByLine)
 {
     if (printLineByLine) {
@@ -1171,6 +1208,9 @@ void PrintStlHfiCongestionControlTab(PrintDest_t *dest, int indent, const STL_HF
     char tempBuf[64];
     if (printLineByLine) {
         PrintIntWithDots(dest, indent, "CCTI_Limit", pHfiCongestionControl->CCTI_Limit);
+		if (!pHfiCongestionControl->CCTI_Limit) {
+			return;
+		}
         for (block = 0; block < cnt; ++block) {
             for(i = 0; i < STL_NUM_CONGESTION_CONTROL_ELEMENTS_BLOCK_ENTRIES; ++i){
                 if (printLineByLine >= 2) {
@@ -1185,6 +1225,9 @@ void PrintStlHfiCongestionControlTab(PrintDest_t *dest, int indent, const STL_HF
         }
     } else {
     	PrintFunc(dest, "%*sMax CCTI: %u\n", indent, "", pHfiCongestionControl->CCTI_Limit);
+		if (!pHfiCongestionControl->CCTI_Limit) {
+			return;
+		}
     	PrintFunc(dest, "%*sCCT Entries:\n", indent, "");
     	for (block = 0; block < cnt; ++block) {
             PrintFunc(dest, "%*sBlock %u:\n", indent+3, "", block + start);
@@ -1442,7 +1485,7 @@ void PrintStlSCVLxMapSmp(PrintDest_t *dest, int indent, const STL_SMP *smp, NODE
     }
 }
 
-void PrintStlSMInfo(PrintDest_t *dest, int indent, const STL_SM_INFO *pSMInfo, STL_LID_32 lid, int printLineByLine)
+void PrintStlSMInfo(PrintDest_t *dest, int indent, const STL_SM_INFO *pSMInfo, STL_LID lid, int printLineByLine)
 {
     if (printLineByLine) {
         if (lid) {
@@ -1598,10 +1641,33 @@ void PrintStlVLArbTableSmp(PrintDest_t *dest, int indent, const STL_SMP *smp, ui
     }
 }
 
+
+
+void PrintStlMCastSmp(PrintDest_t *dest, int indent, const STL_SMP *smp, uint8_t pos, uint32_t startBlk, uint8_t count, int printLineByLine)
+{
+	uint8_t block;
+	STL_MULTICAST_FORWARDING_TABLE *pMCastBlock;
+
+	if (printLineByLine)
+		PrintIntWithDots(dest, indent, "pos", pos);
+	else {
+		const uint8_t startPort = pos * STL_PORT_MASK_WIDTH;
+		PrintFunc(dest, "Position %u (ports %u-%u)\n", pos, startPort, startPort + STL_PORT_MASK_WIDTH - 1);
+	}
+
+	for (block = 0, pMCastBlock = (STL_MULTICAST_FORWARDING_TABLE*)stl_get_smp_data((STL_SMP*)smp);
+			block < count; ++block, ++pMCastBlock) {
+
+		BSWAP_STL_MULTICAST_FORWARDING_TABLE(pMCastBlock);
+
+		PrintStlMCastFDB(dest, indent + (printLineByLine ? 0 : 4), pMCastBlock, startBlk + block, printLineByLine);
+	}
+}
+
 void PrintStlMCastFDB(PrintDest_t *dest, int indent, const STL_MULTICAST_FORWARDING_TABLE *pMCastFDB, uint32 blockNum, int printLineByLine)
 {
 	int i;
-	uint32 baselid = blockNum * STL_NUM_MFT_ELEMENTS_BLOCK + LID_MCAST_START; 
+	STL_LID baselid = blockNum * STL_NUM_MFT_ELEMENTS_BLOCK + STL_LID_MULTICAST_BEGIN;
     char tempBuf[64];
     if (printLineByLine) {
         for (i=0; i< STL_NUM_MFT_ELEMENTS_BLOCK; ++i) {
@@ -1719,22 +1785,35 @@ void PrintStlCableInfoLowPage(PrintDest_t *dest, int indent, const uint8_t *cabl
 {
 	float temp;
 	char tempBuf[129];
+	char tempBuf2[129];
 	char temperature[15]={0};
 	char vcc[15]={0};
-	temp = ((cableInfoData[22] << 8) + (cableInfoData[23]))/256.0;
+	boolean qsfp_dd = (cableInfoData[0] == STL_CIB_STD_QSFP_DD);
+	
+	if (qsfp_dd)
+		temp = ((cableInfoData[14] << 8) + (cableInfoData[15]))/256.0;
+	else
+		temp = ((cableInfoData[22] << 8) + (cableInfoData[23]))/256.0;
 	if (temp) {
 		snprintf(temperature, sizeof(temperature), "%.2f C", temp);
 	}
 	else {
 		snprintf(temperature, sizeof(temperature), "not indicated");
 	}
-	temp = ((cableInfoData[26] << 8) + (cableInfoData[27]))/10000.0;
+	if (qsfp_dd)
+		temp = ((cableInfoData[16] << 8) + (cableInfoData[17]))/10000.0;
+	else
+		temp = ((cableInfoData[26] << 8) + (cableInfoData[27]))/10000.0;
 	if (temp) {
 		snprintf(vcc, sizeof(vcc), "%.2f V", temp);
 	}
 	else {
 		snprintf(vcc, sizeof(vcc), "not indicated");
 	}
+
+	// get connection type
+	StlCableInfoDecodeConnType(cableInfoData[0], tempBuf2);
+
 	// For lower page, print temperature and vcc
 	switch (detail) {
 		case CABLEINFO_DETAIL_ONELINE:
@@ -1742,33 +1821,31 @@ void PrintStlCableInfoLowPage(PrintDest_t *dest, int indent, const uint8_t *cabl
 		case CABLEINFO_DETAIL_BRIEF:
 		case CABLEINFO_DETAIL_VERBOSE:
 			if (printLineByLine) {
-				PrintStrWithDots(dest, indent, "QSFP Direct CableInfo", "");
+				StringCopy(tempBuf, tempBuf2, strlen(tempBuf2));
+				strncat(tempBuf2, ": Direct CableInfo", strlen(": Direct CableInfo"));
+				PrintStrWithDots(dest, indent, tempBuf2, "");
 				PrintStrWithDots(dest, indent, "Temperature", temperature);
 				PrintStrWithDots(dest, indent, "Supply Voltage", vcc);
 				break;
 			}
 			else {
 				memset(tempBuf, ' ', sizeof(tempBuf));
-				if (!strncmp(temperature, "not indicated", sizeof(temperature))) {
-					memset(temperature, 0, sizeof(temperature));
-				}
-				if (!strncmp(vcc, "not indicated", sizeof(vcc))) {
-					memset(vcc, 0, sizeof(vcc));
-				}
-				snprintf(tempBuf, sizeof(tempBuf), "QSFP: %s  %s", temperature, vcc);
+				snprintf(tempBuf, sizeof(tempBuf), "%s: %s  %s", tempBuf2, temperature, vcc);
 				PrintFunc(dest, "%*s%s\n", indent, "", tempBuf);
 				break;
 			}
 		case CABLEINFO_DETAIL_ALL:
 		default:
 			if (printLineByLine) {
-				PrintStrWithDots(dest, indent, "QSFP Direct CableInfo", "");
+				StringCopy(tempBuf, tempBuf2, strlen(tempBuf2));
+				strncat(tempBuf2, ": Direct CableInfo", strlen(": Direct CableInfo"));
+				PrintStrWithDots(dest, indent, tempBuf2, "");
 				PrintStrWithDots(dest, indent, "Temperature", temperature);
 				PrintStrWithDots(dest, indent, "Supply Voltage", vcc);
 				break;
 			}
 			else {
-				PrintFunc(dest, "%*sQSFP Interpreted CableInfo:\n", indent, "");
+				PrintFunc(dest, "%*s%s Interpreted CableInfo:\n", indent, "", tempBuf2);
 				PrintFunc(dest, "%*sTemperature: %s\n", indent+4, "", temperature);
 				PrintFunc(dest, "%*sSupply Voltage: %s\n", indent+4, "", vcc);
 				break;
@@ -1780,14 +1857,14 @@ void PrintStlCableInfoHighPage(PrintDest_t *dest, int indent, const uint8_t *cab
 {
 	unsigned int i;
 	boolean cableLenValid;			// Copper cable length valid
-	boolean activeCable;
 	char tempBuf[129];
 	char tempStr[STL_CIB_STD_MAX_STRING + 1] = {'\0'};
 	STL_CABLE_INFO_STD* cableInfo;
+	CableTypeInfoType cableTypeInfo;
 	cableInfo = (STL_CABLE_INFO_STD*)cableInfoData;
 	
-	cableLenValid = IsStlCableInfoCableLengthValid(cableInfo->dev_tech.s.xmit_tech, cableInfo->connector);
-	activeCable = IsStlCableInfoActiveCable(cableInfo->dev_tech.s.xmit_tech);
+	StlCableInfoDecodeCableType(cableInfo->dev_tech.s.xmit_tech, cableInfo->connector, cableInfo->ident, &cableTypeInfo);
+	cableLenValid = cableTypeInfo.cableLengthValid;
 
 	// Output CableInfo fields per detail level
 	switch (detail) {
@@ -1797,7 +1874,7 @@ void PrintStlCableInfoHighPage(PrintDest_t *dest, int indent, const uint8_t *cab
 	case CABLEINFO_DETAIL_VERBOSE:
 		if (printLineByLine) {
 			// Build ONELINE output line-by-line
-			StlCableInfoCableTypeToTextShort(cableInfo->dev_tech.s.xmit_tech, cableInfo->connector, tempBuf);
+			strncpy(tempBuf, cableTypeInfo.cableTypeShortDesc, strlen(cableTypeInfo.cableTypeShortDesc));
 			PrintStrWithDots(dest, indent, "CableType", tempBuf);
 			StlCableInfoValidCableLengthToText(cableInfo->len_om4, cableLenValid, tempBuf);
 			PrintStrWithDots(dest, indent, "CableLength", tempBuf);
@@ -1823,46 +1900,8 @@ void PrintStlCableInfoHighPage(PrintDest_t *dest, int indent, const uint8_t *cab
 			PrintStrWithDots(dest, indent, "CableDateCode", tempBuf);
 
 			// Build line 3 of SUMMARY output line-by-line
-			PrintStrWithDots(dest, indent, "CableOPACert", (IsStlCableInfoCableCertified(cableInfo->opa_cert_cable) ? "Y" : "N"));
-			PrintStrWithDots(dest, indent, "CableOPARates", StlCableInfoOpaCertifiedRateToText(cableInfo->opa_cert_data_rate));
 			sprintf(tempBuf, "0x%02X%02X%02X", cableInfo->vendor_oui[0], cableInfo->vendor_oui[1], cableInfo->vendor_oui[2]);
 			PrintStrWithDots(dest, indent, "CableOUI", tempBuf);
-			if (detail == CABLEINFO_DETAIL_SUMMARY)
-				break;
-
-			// Build BRIEF output line-by-line
-			if (cableLenValid) {
-				StlCableInfoCableTypeToTextLong(cableInfo->dev_tech.s.xmit_tech, cableInfo->connector, tempBuf);
-				PrintStrWithDots(dest, indent, "Cable Type", tempBuf);
-			}
-			else {
-				StlCableInfoCableTypeToTextLong(cableInfo->dev_tech.s.xmit_tech, cableInfo->connector, tempBuf);
-				PrintStrWithDots(dest, indent, "Module Type", tempBuf);
-				PrintIntWithDots(dest, indent, "OM2 Length Cap Supported by Module", StlCableInfoOM2Length(cableInfo->len_om2));
-				PrintIntWithDots(dest, indent, "OM3 Length Cap Supported by Module", StlCableInfoOM3Length(cableInfo->len_om3));
-				PrintIntWithDots(dest, indent, "OM4 Length Cap Supported by Module", StlCableInfoOM4Length(cableInfo->len_om4, cableLenValid));
-			}
-
-			if (activeCable) {
-				StlCableInfoBitRateToText(cableInfo->bit_rate_low, cableInfo->bit_rate_high, tempBuf);
-				PrintStrWithDots(dest, indent, "Speed Sup", tempBuf);
-			}
-			if (detail == CABLEINFO_DETAIL_BRIEF)
-				break;
-
-			// Build VERBOSE output line-by-line
-			if (cableInfo->max_case_temp == 0)
-				PrintStrWithDots(dest, indent, "Supported Max Temp C",  "not indicated");
-			else
-				PrintIntWithDots( dest, indent, "Supported Max Temp C", cableInfo->max_case_temp);
-
-			PrintStrWithDots(dest, indent, "TX SI CDR", StlCableInfoCDRToText(cableInfo->ext_ident.s.tx_cdr_supp, cableInfo->rxtx_opt_cdrsquel.s.tx_cdr_ctrl));
-			PrintStrWithDots(dest, indent, "TX Inp EQ Fixed-Prog Cap", cableInfo->rxtx_opt_equemp.s.tx_inpeq_fixpro_cap ? "Y" : "N");
-			PrintStrWithDots(dest, indent, "TX Inp EQ Auto-Adaptive Cap", cableInfo->rxtx_opt_equemp.s.tx_inpeq_autadp_cap ? "Y" : "N");
-			PrintStrWithDots(dest, indent, "TX Squelch Imp", cableInfo->rxtx_opt_cdrsquel.s.tx_squel ? "Y" : "N");
-			PrintStrWithDots(dest, indent, "RX SI CDR", StlCableInfoCDRToText(cableInfo->ext_ident.s.rx_cdr_supp, cableInfo->rxtx_opt_cdrsquel.s.rx_cdr_ctrl));
-			PrintStrWithDots(dest, indent, "RX Outp Emphasis Fixed-Prog Cap", cableInfo->rxtx_opt_equemp.s.rx_outemp_fixpro_cap ? "Y" : "N");
-			PrintStrWithDots(dest, indent, "RX Outp Amplitude Fixed-Prog Cap", cableInfo->rxtx_opt_equemp.s.rx_outamp_fixpro_cap ? "Y" : "N");
 			break;
 		}
 		else {
@@ -1870,25 +1909,24 @@ void PrintStlCableInfoHighPage(PrintDest_t *dest, int indent, const uint8_t *cab
 			memset(tempBuf, ' ', sizeof(tempBuf));
 			i = 0;
 			strcpy(&tempBuf[i], "      ");
-			i = 6;
-			StlCableInfoCableTypeToTextShort(cableInfo->dev_tech.s.xmit_tech, cableInfo->connector, &tempBuf[i]);
-			tempBuf[i + strlen(&tempBuf[i])] = ' ';
-			i = 15;
-			tempBuf[i] = ',';
-			i = 17;
+			i = STL_CIB_LINE1_FIELD1;
+			strncpy(&tempBuf[i], cableTypeInfo.cableTypeShortDesc, strlen(cableTypeInfo.cableTypeShortDesc));
+			tempBuf[i + strlen(cableTypeInfo.cableTypeShortDesc)] = ',';
+			tempBuf[i + 1 + strlen(cableTypeInfo.cableTypeShortDesc)] = ' ';
+			i = STL_CIB_LINE1_FIELD2; 
 			StlCableInfoValidCableLengthToText(cableInfo->len_om4, cableLenValid, &tempBuf[i]);
 			tempBuf[i + strlen(&tempBuf[i])] = ' ';
-			i = 22;
+			i = STL_CIB_LINE1_FIELD3;
 			memcpy(&tempBuf[i], cableInfo->vendor_name, sizeof(cableInfo->vendor_name));
-			i = 40;
+			i = STL_CIB_LINE1_FIELD4;
 			strcpy(&tempBuf[i], "P/N ");
-			i = 44;
+			i = STL_CIB_LINE1_FIELD5;
 			memcpy(&tempBuf[i], cableInfo->vendor_pn, sizeof(cableInfo->vendor_pn));
-			i = 62;
+			i = STL_CIB_LINE1_FIELD6;
 			strcpy(&tempBuf[i], "Rev ");
-			i = 66;
+			i = STL_CIB_LINE1_FIELD7;
 			memcpy(&tempBuf[i], cableInfo->vendor_rev, sizeof(cableInfo->vendor_rev));
-			i = 68;
+			i = STL_CIB_LINE1_FIELD8;
 			tempBuf[i] = '\0';
 			PrintFunc(dest, "%*s%s\n", indent, "", tempBuf);
 			if (detail == CABLEINFO_DETAIL_ONELINE)
@@ -1896,64 +1934,25 @@ void PrintStlCableInfoHighPage(PrintDest_t *dest, int indent, const uint8_t *cab
 
 			// Build line 2 of SUMMARY output on one line (68 chars)
 			memset(tempBuf, ' ', sizeof(tempBuf));
-			i = 6;
+			i = STL_CIB_LINE2_FIELD1;
 			strcpy(&tempBuf[i], StlCableInfoPowerClassToText(cableInfo->ext_ident.s.pwr_class_low, cableInfo->ext_ident.s.pwr_class_high));
 			tempBuf[i + strlen(&tempBuf[i])] = ' ';
-			i = 30;
+			i = STL_CIB_LINE2_FIELD2;
 			strcpy(&tempBuf[i], "S/N ");
-			i = 34;
+			i = STL_CIB_LINE2_FIELD3;
 			memcpy(&tempBuf[i], cableInfo->vendor_sn, sizeof(cableInfo->vendor_sn));
-			i = 51;
+			i = STL_CIB_LINE2_FIELD4;
 			strcpy(&tempBuf[i], "Mfg ");
-			i = 55;
+			i = STL_CIB_LINE2_FIELD5;
 			StlCableInfoDateCodeToText(cableInfo->date_code, &tempBuf[i]);
 			PrintFunc(dest, "%*s%s\n", indent, "", tempBuf);
 
 			// Build line 3 of SUMMARY output on one line (68 chars)
 			memset(tempBuf, ' ', sizeof(tempBuf));
-			i = 6;
+			i = STL_CIB_LINE3_FIELD1;
 			sprintf(&tempBuf[i], "OUI 0x%02X%02X%02X", cableInfo->vendor_oui[0], cableInfo->vendor_oui[1], cableInfo->vendor_oui[2]);
 			PrintFunc(dest, "%*s%s\n", indent, "", tempBuf);
-			if (detail == CABLEINFO_DETAIL_SUMMARY)
-				break;
-
-			// Build BRIEF output without dots (68 chars)
-			if (cableLenValid) {
-				StlCableInfoCableTypeToTextLong(cableInfo->dev_tech.s.xmit_tech, cableInfo->connector, tempBuf);
-				PrintFunc(dest, "%*sCable Type: %s\n", indent+6, "", tempBuf);
-			}
-			else {
-				StlCableInfoCableTypeToTextLong(cableInfo->dev_tech.s.xmit_tech, cableInfo->connector, tempBuf);
-				PrintFunc(dest, "%*sModule Type: %s\n", indent+6, "", tempBuf);
-				PrintFunc(dest, "%*sLength Cap: OM2: %um OM3: %um OM4: %um\n", indent+6, "",
-					StlCableInfoOM2Length(cableInfo->len_om2), StlCableInfoOM3Length(cableInfo->len_om3),
-					StlCableInfoOM4Length(cableInfo->len_om4, cableLenValid));
-			}
-
-			if (activeCable) {
-				StlCableInfoBitRateToText(cableInfo->bit_rate_low, cableInfo->bit_rate_high, tempBuf);
-				PrintFunc(dest, "Speed Sup: %s\n", tempBuf);
-			}
-
-			if (detail == CABLEINFO_DETAIL_BRIEF)
-				break;
-			// Build VERBOSE output without dots (68 chars)
-
-			if (cableInfo->max_case_temp == 0)
-				PrintFunc(dest, "%*sSupported Max Temp: not indicated\n ", indent+6, "");
-			else
-				PrintFunc(dest, "%*sSupported Max Temp: %u C\n ", indent+6, "", cableInfo->max_case_temp);
-
-			PrintFunc(dest, "%*sTX SI: CDR: %s EQ: Fixed Cap: %s Auto Cap: %s Squelch En: %s\n",
-				indent+5, "", StlCableInfoCDRToText(cableInfo->ext_ident.s.tx_cdr_supp, cableInfo->rxtx_opt_cdrsquel.s.tx_cdr_ctrl),
-				cableInfo->rxtx_opt_equemp.s.tx_inpeq_fixpro_cap ? "Y" : "N",
-				cableInfo->rxtx_opt_equemp.s.tx_inpeq_autadp_cap ? "Y" : "N",
-				cableInfo->rxtx_opt_cdrsquel.s.tx_squel ? "Y" : "N");
-			PrintFunc(dest, "%*sRX SI: CDR: %s Emph Cap: %s Ampl Cap: %s\n",
-				indent+6, "", StlCableInfoCDRToText(cableInfo->ext_ident.s.rx_cdr_supp, cableInfo->rxtx_opt_cdrsquel.s.rx_cdr_ctrl),
-				cableInfo->rxtx_opt_equemp.s.rx_outemp_fixpro_cap ? "Y" : "N",
-				cableInfo->rxtx_opt_equemp.s.rx_outamp_fixpro_cap ? "Y" : "N");
-		break;
+			break;
 		}
 
 	case CABLEINFO_DETAIL_ALL:
@@ -1964,14 +1963,9 @@ void PrintStlCableInfoHighPage(PrintDest_t *dest, int indent, const uint8_t *cab
 			PrintIntWithDots(dest, indent, "Identifier", cableInfo->ident);
 			PrintStrWithDots(dest, indent, "PowerClass",
 				StlCableInfoPowerClassToText(cableInfo->ext_ident.s.pwr_class_low, cableInfo->ext_ident.s.pwr_class_high));
-			PrintIntWithDots(dest, indent, "TxCDRSupported", cableInfo->ext_ident.s.tx_cdr_supp);
-			PrintIntWithDots(dest, indent, "RxCDRSupported", cableInfo->ext_ident.s.rx_cdr_supp);
-			PrintIntWithDots(dest, indent, "Connector", cableInfo->connector);
+			PrintStrWithDots(dest, indent, "Connector", cableTypeInfo.connectorType);
 			StlCableInfoBitRateToText(cableInfo->bit_rate_low, cableInfo->bit_rate_high, tempBuf);
 			PrintStrWithDots(dest, indent, "NominalBR", tempBuf);
-			PrintIntWithDots(dest, indent, "OM2Length m", StlCableInfoOM2Length(cableInfo->len_om2));
-			PrintIntWithDots(dest, indent, "OM3Length m", StlCableInfoOM3Length(cableInfo->len_om3));
-			PrintIntWithDots(dest, indent, "OM4Length m", StlCableInfoOM4Length(cableInfo->len_om4, cableLenValid));
 			StlCableInfoCableTypeToTextLong(cableInfo->dev_tech.s.xmit_tech, cableInfo->connector, tempBuf);
 			PrintStrWithDots(dest, indent, "DeviceTech", tempBuf);
 			memcpy(tempStr, cableInfo->vendor_name, sizeof(cableInfo->vendor_name));
@@ -1986,29 +1980,13 @@ void PrintStlCableInfoHighPage(PrintDest_t *dest, int indent, const uint8_t *cab
 			memcpy(tempStr, cableInfo->vendor_rev, sizeof(cableInfo->vendor_rev));
 			tempStr[sizeof(cableInfo->vendor_rev)] = '\0';
 			PrintStrWithDots(dest, indent, "VendorRev", tempStr);
-			if (cableInfo->max_case_temp == 0)
-				PrintStrWithDots(dest, indent, "MaxCaseTemp C", "not indicated");
-			else
-				PrintIntWithDots(dest, indent, "MaxCaseTemp C", cableInfo->max_case_temp);
 			PrintIntWithDots(dest, indent, "CC_BASE", cableInfo->cc_base);
-			PrintIntWithDots(dest, indent, "TxInpEqAutoAdp", cableInfo->rxtx_opt_equemp.s.tx_inpeq_autadp_cap);
-			PrintIntWithDots(dest, indent, "TxInpEqFixProg", cableInfo->rxtx_opt_equemp.s.tx_inpeq_fixpro_cap);
-			PrintIntWithDots(dest, indent, "RxOutpEmphFixProg", cableInfo->rxtx_opt_equemp.s.rx_outemp_fixpro_cap);
-			PrintIntWithDots(dest, indent, "RxOutpAmplFixProg", cableInfo->rxtx_opt_equemp.s.rx_outamp_fixpro_cap);
-			PrintIntWithDots(dest, indent, "TxCDROnOffCtrl", cableInfo->rxtx_opt_cdrsquel.s.tx_cdr_ctrl);
-			PrintIntWithDots(dest, indent, "RxCDROnOffCtrl", cableInfo->rxtx_opt_cdrsquel.s.rx_cdr_ctrl);
-			PrintIntWithDots(dest, indent, "TxSquelchImp", cableInfo->rxtx_opt_cdrsquel.s.tx_squel);
-			PrintIntWithDots(dest, indent, "MemPage02Provided", cableInfo->memtx_opt_pagesquel.s.page_2);
-			PrintIntWithDots(dest, indent, "MemPage01Provided", cableInfo->memtx_opt_pagesquel.s.page_1);
 			memcpy(tempStr, cableInfo->vendor_sn, sizeof(cableInfo->vendor_sn));
 			tempStr[sizeof(cableInfo->vendor_sn)] = '\0';
 			PrintStrWithDots(dest, indent, "VendorSN", tempStr);
 			StlCableInfoDateCodeToText(cableInfo->date_code, tempBuf);
 			PrintStrWithDots(dest, indent, "DateCode", tempBuf);
 			PrintIntWithDots(dest, indent, "CC_EXT", cableInfo->cc_ext);
-			PrintIntWithDots(dest, indent, "CertCableFlag", cableInfo->opa_cert_cable);
-			PrintIntWithDots(dest, indent, "ReachClass", cableInfo->vendor2);
-			PrintIntWithDots(dest, indent, "CertDataRates", cableInfo->opa_cert_data_rate);
 			break;
 		}
 		else {
@@ -2017,16 +1995,10 @@ void PrintStlCableInfoHighPage(PrintDest_t *dest, int indent, const uint8_t *cab
 			PrintFunc(dest, "%*sIdentifier: 0x%x\n", indent+4, "", cableInfo->ident);
 			PrintFunc(dest, "%*sPowerClass: %s\n", indent+4, "", 
 				StlCableInfoPowerClassToText(cableInfo->ext_ident.s.pwr_class_low, cableInfo->ext_ident.s.pwr_class_high));
-			PrintFunc(dest, "%*sTxCDRSupported: %s\n",
-				indent+4, "", cableInfo->ext_ident.s.tx_cdr_supp ? "True" : "False");
-			PrintFunc(dest, "%*sRxCDRSupported: %s\n",
-				indent+4, "", cableInfo->ext_ident.s.rx_cdr_supp ? "True" : "False");
-			PrintFunc(dest, "%*sConnector: 0x%x\n", indent+4, "", cableInfo->connector); 
+			memcpy(tempBuf, cableTypeInfo.connectorType, sizeof(cableTypeInfo.connectorType));
+			PrintFunc(dest, "%*sConnector: %s\n", indent+4, "", tempBuf);
 			StlCableInfoBitRateToText(cableInfo->bit_rate_low, cableInfo->bit_rate_high, tempBuf);
 			PrintFunc(dest, "%*sNominalBR: %s\n", indent+4, "", tempBuf);
-			PrintFunc(dest, "%*sOM2Length: %um\n", indent+4, "", StlCableInfoOM2Length(cableInfo->len_om2));
-			PrintFunc(dest, "%*sOM3Length: %um\n", indent+4, "", StlCableInfoOM3Length(cableInfo->len_om3));
-			PrintFunc(dest, "%*sOM4Length: %um\n", indent+4, "", StlCableInfoOM4Length(cableInfo->len_om4, cableLenValid));
 			StlCableInfoCableTypeToTextLong(cableInfo->dev_tech.s.xmit_tech, cableInfo->connector, tempBuf);
 			PrintFunc(dest, "%*sDeviceTech: %s\n", indent+4, "", tempBuf);
 			memcpy(tempStr, cableInfo->vendor_name, sizeof(cableInfo->vendor_name));
@@ -2040,35 +2012,187 @@ void PrintStlCableInfoHighPage(PrintDest_t *dest, int indent, const uint8_t *cab
 			memcpy(tempStr, cableInfo->vendor_rev, sizeof(cableInfo->vendor_rev));
 			tempStr[sizeof(cableInfo->vendor_rev)] = '\0';
 			PrintFunc(dest, "%*sVendorRev: %s\n", indent+4, "", tempStr); 
-			if (cableInfo->max_case_temp == 0)
-				PrintFunc(dest, "%*sMaxCaseTemp: not indicated\n", indent+4, "");
-			else
-				PrintFunc(dest, "%*sMaxCaseTemp: %u C\n", indent+4, "", cableInfo->max_case_temp);
 			PrintFunc(dest, "%*sCC_BASE: 0x%x\n", indent+4, "", cableInfo->cc_base);
-			PrintFunc(dest, "%*sTxInpEqAutoAdp: %s\n", indent+4, "", cableInfo->rxtx_opt_equemp.s.tx_inpeq_autadp_cap ? "True" : "False" );
-			PrintFunc(dest, "%*sTxInpEqFixProg: %s\n", indent+4, "", cableInfo->rxtx_opt_equemp.s.tx_inpeq_fixpro_cap ? "True" : "False" );
-			PrintFunc(dest, "%*sRxOutpEmphFixProg: %s\n", indent+4, "", cableInfo->rxtx_opt_equemp.s.rx_outemp_fixpro_cap ? "True" : "False" );
-			PrintFunc(dest, "%*sRxOutpAmplFixProg: %s\n", indent+4, "", cableInfo->rxtx_opt_equemp.s.rx_outamp_fixpro_cap ? "True" : "False" );
-			PrintFunc(dest, "%*sTxCDROnOffCtrl: %s\n", indent+4, "", cableInfo->rxtx_opt_cdrsquel.s.tx_cdr_ctrl ? "True" : "False" );
-			PrintFunc(dest, "%*sRxCDROnOffCtrl: %s\n", indent+4, "", cableInfo->rxtx_opt_cdrsquel.s.rx_cdr_ctrl ? "True" : "False" );
-			PrintFunc(dest, "%*sTxSquelchImp: %s\n", indent+4, "", cableInfo->rxtx_opt_cdrsquel.s.tx_squel ? "True" : "False" );
-			PrintFunc(dest, "%*sMemPage02Provided: %s\n", indent+4, "", cableInfo->memtx_opt_pagesquel.s.page_2 ? "True" : "False" );
-			PrintFunc(dest, "%*sMemPage01Provided: %s\n", indent+4, "", cableInfo->memtx_opt_pagesquel.s.page_1 ? "True" : "False" );
 			memcpy(tempStr, cableInfo->vendor_sn, sizeof(cableInfo->vendor_sn));
 			tempStr[sizeof(cableInfo->vendor_sn)] = '\0';
 			PrintFunc(dest, "%*sVendorSN: %s\n", indent+4, "", tempStr);
 			StlCableInfoDateCodeToText(cableInfo->date_code, tempBuf);
 			PrintFunc(dest, "%*sDateCode: %s\n", indent+4, "", tempBuf);
 			PrintFunc(dest, "%*sCC_EXT: 0x%x\n", indent+4, "", cableInfo->cc_ext);
-			PrintFunc(dest, "%*sCertCableFlag: %s\n", indent+4, "", IsStlCableInfoCableCertified(cableInfo->opa_cert_cable) ? "Y" : "N");
-			PrintFunc(dest, "%*sReachClass: %u\n", indent+4, "", cableInfo->vendor2);
-			PrintFunc(dest, "%*sCertDataRates: %s\n", indent+4, "", StlCableInfoOpaCertifiedRateToText(cableInfo->opa_cert_data_rate));
 			break;
 		}
 
 	}	// End of switch (detail)
 
 
+}
+
+// Print for upper page 0 for QSFP-DD
+void PrintStlCableInfoHighPage0DD(PrintDest_t *dest, int indent, const uint8_t *cableInfoData, uint8_t portType, uint8_t detail, int printLineByLine)
+{
+	unsigned int i;
+	char tempBuf[129];
+	char tempStr[STL_CIB_STD_MAX_STRING + 1] = {'\0'};
+	STL_CABLE_INFO_UP0_DD* cableInfo;
+	CableTypeInfoType cableTypeInfo;
+	cableInfo = (STL_CABLE_INFO_UP0_DD*)cableInfoData;
+
+	StlCableInfoDecodeCableType(cableInfo->cable_type, cableInfo->connector, cableInfo->ident, &cableTypeInfo);
+
+	// Output CableInfo fields per detail level
+	switch (detail) {
+	case CABLEINFO_DETAIL_ONELINE:
+	case CABLEINFO_DETAIL_SUMMARY:
+	case CABLEINFO_DETAIL_BRIEF:
+	case CABLEINFO_DETAIL_VERBOSE:
+		if (printLineByLine) {
+			// Build ONELINE output line-by-line
+			strncpy(tempBuf, cableTypeInfo.cableTypeShortDesc, strlen(cableTypeInfo.cableTypeShortDesc));
+			PrintStrWithDots(dest, indent, "CableType", tempBuf);
+			StlCableInfoDDCableLengthToText(cableInfo->cableLengthEnc, sizeof(tempBuf), tempBuf);
+			PrintStrWithDots(dest, indent, "CableLength", tempBuf);
+			memcpy(tempBuf, cableInfo->vendor_name, sizeof(cableInfo->vendor_name));
+			tempBuf[sizeof(cableInfo->vendor_name)] = '\0';
+			PrintStrWithDots(dest, indent, "CableVendorName", tempBuf);
+			memcpy(tempBuf, cableInfo->vendor_pn, sizeof(cableInfo->vendor_pn));
+			tempBuf[sizeof(cableInfo->vendor_pn)] = '\0';
+			PrintStrWithDots(dest, indent, "CableVendorPN", tempBuf);
+			memcpy(tempBuf, cableInfo->vendor_rev, sizeof(cableInfo->vendor_rev));
+			tempBuf[sizeof(cableInfo->vendor_rev)] = '\0';
+			PrintStrWithDots(dest, indent, "CableVendorRev", tempBuf);
+			if (detail == CABLEINFO_DETAIL_ONELINE)
+				break;
+
+			// Build line 2 of SUMMARY output line-by-line
+			snprintf(tempBuf, 20, "%.2f W max", (float)cableInfo->powerMax / 4.0);
+			PrintStrWithDots( dest, indent, "CableMaxPower", tempBuf);
+			memcpy(tempBuf, cableInfo->vendor_sn, sizeof(cableInfo->vendor_sn));
+			tempBuf[sizeof(cableInfo->vendor_sn)] = '\0';
+			PrintStrWithDots(dest, indent, "CableVendorSN", tempBuf);
+			StlCableInfoDateCodeToText(cableInfo->date_code, tempBuf);
+			PrintStrWithDots(dest, indent, "CableDateCode", tempBuf);
+
+			// Build line 3 of SUMMARY output line-by-line
+			sprintf(tempBuf, "0x%02X%02X%02X", cableInfo->vendor_oui[0], cableInfo->vendor_oui[1], cableInfo->vendor_oui[2]);
+			PrintStrWithDots(dest, indent, "CableOUI", tempBuf);
+			break;
+		}
+		else {
+			// Build ONELINE output on one line (68 chars)
+			memset(tempBuf, ' ', sizeof(tempBuf));
+			i = 0;
+			strcpy(&tempBuf[i], "      ");
+			i = STL_CIB_LINE1_FIELD1;
+			strncpy(&tempBuf[i], cableTypeInfo.cableTypeShortDesc, strlen(cableTypeInfo.cableTypeShortDesc));
+			tempBuf[i + strlen(cableTypeInfo.cableTypeShortDesc)] = ',';
+			tempBuf[i + 1 + strlen(cableTypeInfo.cableTypeShortDesc)] = ' ';
+			i = STL_CIB_LINE1_FIELD2; 
+			StlCableInfoDDCableLengthToText(cableInfo->cableLengthEnc, sizeof(tempBuf), tempBuf);
+			tempBuf[i + strlen(&tempBuf[i])] = ' ';
+			i = STL_CIB_LINE1_FIELD3;
+			memcpy(&tempBuf[i], cableInfo->vendor_name, sizeof(cableInfo->vendor_name));
+			i = STL_CIB_LINE1_FIELD4;
+			strcpy(&tempBuf[i], "P/N ");
+			i = STL_CIB_LINE1_FIELD5;
+			memcpy(&tempBuf[i], cableInfo->vendor_pn, sizeof(cableInfo->vendor_pn));
+			i = STL_CIB_LINE1_FIELD6;
+			strcpy(&tempBuf[i], "Rev ");
+			i = STL_CIB_LINE1_FIELD7;
+			memcpy(&tempBuf[i], cableInfo->vendor_rev, sizeof(cableInfo->vendor_rev));
+			i = STL_CIB_LINE1_FIELD8;
+			tempBuf[i] = '\0';
+			PrintFunc(dest, "%*s%s\n", indent, "", tempBuf);
+			if (detail == CABLEINFO_DETAIL_ONELINE)
+				break;
+
+			// Build line 2 of SUMMARY output on one line (68 chars)
+			memset(tempBuf, ' ', sizeof(tempBuf));
+			i = STL_CIB_LINE2_FIELD1;
+			snprintf(&tempBuf[i], 20, "%.2f W max", (float)cableInfo->powerMax / 4.0);
+			tempBuf[i + strlen(&tempBuf[i])] = ' ';
+			i = STL_CIB_LINE2_FIELD2;
+			strcpy(&tempBuf[i], "S/N ");
+			i = STL_CIB_LINE2_FIELD3;
+			memcpy(&tempBuf[i], cableInfo->vendor_sn, sizeof(cableInfo->vendor_sn));
+			i = STL_CIB_LINE2_FIELD4;
+			strcpy(&tempBuf[i], "Mfg ");
+			i = STL_CIB_LINE2_FIELD5;
+			StlCableInfoDateCodeToText(cableInfo->date_code, &tempBuf[i]);
+			PrintFunc(dest, "%*s%s\n", indent, "", tempBuf);
+
+			// Build line 3 of SUMMARY output on one line (68 chars)
+			memset(tempBuf, ' ', sizeof(tempBuf));
+			i = STL_CIB_LINE3_FIELD1;
+			sprintf(&tempBuf[i], "OUI 0x%02X%02X%02X", cableInfo->vendor_oui[0], cableInfo->vendor_oui[1], cableInfo->vendor_oui[2]);
+			PrintFunc(dest, "%*s%s\n", indent, "", tempBuf);
+			break;
+		}
+
+	case CABLEINFO_DETAIL_ALL:
+	default:
+		if (printLineByLine) {
+			if (portType != STL_PORT_TYPE_STANDARD) return;
+			PrintStrWithDots(dest, indent, "QSFP Direct CableInfo", "");
+			PrintIntWithDots(dest, indent, "Identifier", cableInfo->ident);
+			snprintf(tempBuf, 20, "%.2f W max", (float)cableInfo->powerMax / 4.0);
+			PrintStrWithDots(dest, indent, "CableMaxPower", tempBuf);
+			memcpy(tempBuf, cableTypeInfo.connectorType, sizeof(cableTypeInfo.connectorType));
+			PrintStrWithDots(dest, indent, "Connector", tempBuf);
+			snprintf(tempBuf, 4, "n/a");
+			PrintStrWithDots(dest, indent, "NominalBR", tempBuf);
+			StlCableInfoCableTypeToTextLong(cableInfo->cable_type, cableInfo->connector, tempBuf);
+			PrintStrWithDots(dest, indent, "DeviceTech", tempBuf);
+			memcpy(tempStr, cableInfo->vendor_name, sizeof(cableInfo->vendor_name));
+			tempStr[sizeof(cableInfo->vendor_name)] = '\0';
+			PrintStrWithDots(dest, indent, "VendorName", tempStr);
+			snprintf(tempStr, sizeof(tempStr), "0x%02x%02x%02x", cableInfo->vendor_oui[0],
+				cableInfo->vendor_oui[1], cableInfo->vendor_oui[2]);
+			PrintStrWithDots(dest, indent, "VendorOUI", tempStr);
+			memcpy(tempStr, cableInfo->vendor_pn, sizeof(cableInfo->vendor_pn));
+			tempStr[sizeof(cableInfo->vendor_pn)] = '\0';
+			PrintStrWithDots(dest, indent, "VendorPN", tempStr);
+			memcpy(tempStr, cableInfo->vendor_rev, sizeof(cableInfo->vendor_rev));
+			tempStr[sizeof(cableInfo->vendor_rev)] = '\0';
+			PrintStrWithDots(dest, indent, "VendorRev", tempStr);
+			memcpy(tempStr, cableInfo->vendor_sn, sizeof(cableInfo->vendor_sn));
+			tempStr[sizeof(cableInfo->vendor_sn)] = '\0';
+			PrintStrWithDots(dest, indent, "VendorSN", tempStr);
+			StlCableInfoDateCodeToText(cableInfo->date_code, tempBuf);
+			PrintStrWithDots(dest, indent, "DateCode", tempBuf);
+			break;
+		}
+		else {
+			if (portType != STL_PORT_TYPE_STANDARD) return;
+			PrintFunc(dest, "%*sQSFP Interpreted CableInfo:\n", indent, "");
+			PrintFunc(dest, "%*sIdentifier: 0x%x\n", indent+4, "", cableInfo->ident);
+			snprintf(tempBuf, 20, "%.2f W max", (float)cableInfo->powerMax / 4.0);
+			PrintFunc(dest, "%*sCableMaxPower: %s\n", indent+4, "", tempBuf);
+			memcpy(tempBuf, cableTypeInfo.connectorType, sizeof(cableTypeInfo.connectorType));
+			PrintFunc(dest, "%*sConnector: %s\n", indent+4, "", tempBuf);
+			StlCableInfoCableTypeToTextLong(cableInfo->cable_type, cableInfo->connector, tempBuf);
+			PrintFunc(dest, "%*sDeviceTech: %s\n", indent+4, "", tempBuf);
+			memcpy(tempStr, cableInfo->vendor_name, sizeof(cableInfo->vendor_name));
+			tempStr[sizeof(cableInfo->vendor_name)] = '\0';
+			PrintFunc(dest, "%*sVendorName: %s\n", indent+4, "", tempStr); 
+			PrintFunc(dest, "%*sVendorOUI: 0x%02x%02x%02x\n", indent+4, "", cableInfo->vendor_oui[0],
+				cableInfo->vendor_oui[1], cableInfo->vendor_oui[2]);
+			memcpy(tempStr, cableInfo->vendor_pn, sizeof(cableInfo->vendor_pn));
+			tempStr[sizeof(cableInfo->vendor_pn)] = '\0';
+			PrintFunc(dest, "%*sVendorPN: %s\n", indent+4, "", tempStr); 
+			memcpy(tempStr, cableInfo->vendor_rev, sizeof(cableInfo->vendor_rev));
+			tempStr[sizeof(cableInfo->vendor_rev)] = '\0';
+			PrintFunc(dest, "%*sVendorRev: %s\n", indent+4, "", tempStr); 
+			memcpy(tempStr, cableInfo->vendor_sn, sizeof(cableInfo->vendor_sn));
+			tempStr[sizeof(cableInfo->vendor_sn)] = '\0';
+			PrintFunc(dest, "%*sVendorSN: %s\n", indent+4, "", tempStr);
+			StlCableInfoDateCodeToText(cableInfo->date_code, tempBuf);
+			PrintFunc(dest, "%*sDateCode: %s\n", indent+4, "", tempBuf);
+			break;
+		}
+
+	}	// End of switch (detail)
+
+	return;
 }
 
 void PrintStlCableInfoDump(PrintDest_t *dest, int indent, const uint8_t *cableInfoData, uint16_t addr, uint8_t len, int printLineByLine)
@@ -2105,9 +2229,21 @@ void PrintStlCableInfoDump(PrintDest_t *dest, int indent, const uint8_t *cableIn
 //    len                 - Real length of cable data (must be <= 255)
 //    detail              - Output detail level as CABLEINFO_DETAIL_xxx
 //    printLineByLine = 1 - Print line-by-line format
-void PrintStlCableInfo(PrintDest_t *dest, int indent, const uint8_t *cableInfoData, uint16_t addr, uint8_t len, uint8_t portType, uint8_t detail, int printLineByLine)
+void PrintStlCableInfo(PrintDest_t *dest, int indent, const uint8_t *cableInfoData, uint16_t addr, uint8_t len, uint8_t portType, uint8_t detail, int printLineByLine, boolean hexOnly)
 {
-	if (addr==STL_CIB_STD_LOW_PAGE_ADDR && len==STL_CIB_STD_LEN) {
+	boolean qsfp_dd;
+
+	if (cableInfoData)
+		qsfp_dd = (cableInfoData[0] == STL_CIB_STD_QSFP_DD);
+	else {
+		fprintf(stderr, "PrintStlCableInfo: cableInfoData pointer is invalid\n");
+		return;
+	}
+
+	if (hexOnly) {
+		PrintStlCableInfoDump(dest, indent, cableInfoData, addr, len, printLineByLine);
+	}
+	else if (addr==STL_CIB_STD_LOW_PAGE_ADDR && len==STL_CIB_STD_LEN) {
 		if (detail >= CABLEINFO_DETAIL_ALL) {
 			PrintStlCableInfoDump(dest, indent, cableInfoData, addr, len, printLineByLine);
 		}
@@ -2117,7 +2253,10 @@ void PrintStlCableInfo(PrintDest_t *dest, int indent, const uint8_t *cableInfoDa
 		if (detail >= CABLEINFO_DETAIL_ALL) {
 			PrintStlCableInfoDump(dest, indent, cableInfoData, addr, len, printLineByLine);
 		}
-		PrintStlCableInfoHighPage(dest, indent, cableInfoData, portType, detail, printLineByLine);	
+		if (qsfp_dd)
+			PrintStlCableInfoHighPage0DD(dest, indent, cableInfoData, portType, detail, printLineByLine);	
+		else
+			PrintStlCableInfoHighPage(dest, indent, cableInfoData, portType, detail, printLineByLine);	
 	}
 	else {
 		PrintFunc(dest, "%*sOnly raw hex cable data available - Addr:%u Len:%u\n", indent, "", addr, len);
@@ -2143,13 +2282,13 @@ void PrintStlCableInfoSmp(PrintDest_t *dest, int indent, const STL_SMP *smp, uin
 				addr, addr, len+1, StlPortTypeToText(portType));
     }
 	BSWAP_STL_CABLE_INFO(pCableInfo);
-	PrintStlCableInfo(dest, indent, pCableInfo->Data, addr, len+1, portType, CABLEINFO_DETAIL_ALL, printLineByLine);
+	PrintStlCableInfo(dest, indent, pCableInfo->Data, addr, len+1, portType, CABLEINFO_DETAIL_ALL, printLineByLine,FALSE);
 }
 
 void PrintStlPortGroupFDB(PrintDest_t *dest, int indent, const STL_PORT_GROUP_FORWARDING_TABLE *pPortGroupFDB, uint32 blockNum, int printLineByLine)
 {
 	int i;
-	uint32 baselid = blockNum*NUM_PGFT_ELEMENTS_BLOCK;
+	STL_LID baselid = blockNum*NUM_PGFT_ELEMENTS_BLOCK;
     char tempBuf[64];
     if (printLineByLine) {
     	for (i=0; i<NUM_PGFT_ELEMENTS_BLOCK; ++i) {
@@ -2186,14 +2325,13 @@ void PrintStlPortGroupTable(PrintDest_t *dest, int indent, const uint64_t *pPort
             PrintIntWithDots(dest, indent, "PortGroup", (blockNum*NUM_PGT_ELEMENTS_BLOCK) + i);
             PrintIntWithDots(dest, indent, "PortMask", pPortGroup[i]);
         }
-
     }
     else {
     	for (i=0; i<NUM_PGT_ELEMENTS_BLOCK; ++i) {
+            if (pPortGroup[i]==0) continue;
             PrintFunc(dest, "%*s  PG: 0x%04x   Egress:", indent, "", (blockNum*NUM_PGT_ELEMENTS_BLOCK) + i);
-    		if (pPortGroup[i]==0) PrintFunc(dest, "None");
-    		else for (msk = 1, j = 0;j < 64;msk<<= 1, j++)
-            if (pPortGroup[i] & msk) PrintFunc(dest, "%d, ", j+position+1);
+            for (msk = 1, j = 0;j < 64;msk<<= 1, j++)
+                if (pPortGroup[i] & msk) PrintFunc(dest, "%d, ", j+position+1);
             PrintFunc(dest, "\n");
         }
     }
@@ -2449,9 +2587,10 @@ void PrintStlPortSummary(PrintDest_t *dest, int indent, const char* portName, co
 		}
 	}
 	if (show_cable && cableInfoData) {
-		PrintStlCableInfo(dest, indent, cableInfoData, addr, len, pPortInfo->PortPhysConfig.s.PortType, detail, printLineByLine);
+		PrintStlCableInfo(dest, indent, cableInfoData, addr, len, pPortInfo->PortPhysConfig.s.PortType, detail, printLineByLine, FALSE);
 	}
 	if (show_perf && pPortStatusRsp) {
 		PrintStlPortStatusRspSummary(dest, indent, pPortStatusRsp, printLineByLine);
 	}
 }
+
