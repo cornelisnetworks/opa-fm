@@ -34,14 +34,26 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 static __inline__ int
 needs_reregistration(Node_t * nodep, Port_t * portp, pActivationRetry_t retry)
 {
-	if (activation_retry_attempts(retry)) {
-		// on retries, only reregister if pending
+	// general conditions are only checked on first attempt.
+	// on retries, only reregister if it remains pending from previous attempts
+	if (activation_retry_attempts(retry))
 		return portp->portData->reregisterPending;
-	}
 
-	return topology_passcount < 1 // new sm
-		|| sm_find_guid(&old_topology, nodep->nodeInfo.NodeGUID) == NULL // new node
-		|| portp->portData->reregisterPending; // previous attempts haven't yet succeeded
+	// reregister if new sm
+	if (topology_passcount < 1) return TRUE;
+
+	// reregister if previous attempts haven't yet succeeded
+	if (portp->portData->reregisterPending) return TRUE;
+
+	// reregister if node/port is new this sweep
+	Node_t * oldnodep = sm_find_guid(&old_topology, nodep->nodeInfo.NodeGUID);
+	if (!oldnodep) return TRUE;
+	Port_t * oldportp = sm_find_node_port(&old_topology, oldnodep, portp->index);
+	if (!oldportp) return TRUE;
+
+	// reregister if old port was DOWN
+	// (implying we removed its groups/subscriptions)
+	return oldportp->state <= IB_PORT_DOWN;
 }
 
 static void

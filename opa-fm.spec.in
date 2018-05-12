@@ -30,11 +30,11 @@
 #[ICS VERSION STRING: unknown]
 Name: opa-fm
 Version: 10.7.0.0
-Release: 141%{?dist}
+Release: 142%{?dist}
 Summary: Intel Omni-Path Fabric Management Software
 
 License: GPLv2 or BSD
-Url: https://github.com/01org/opa-fm
+Url: https://github.com/intel/opa-fm
 # tarball created by:
 # git clone https://github.com/01org/opa-fm.git
 # cd opa-fm
