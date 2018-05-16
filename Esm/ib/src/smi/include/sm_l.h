@@ -1412,7 +1412,7 @@ void activation_retry_inc_failures(pActivationRetry_t);
 }
 
 
-void Switch_Enqueue_Type(Topology_t *, Node_t *, int, int);
+void Switch_Enqueue_Type(Topology_t *, Node_t *, int, int, int);
 
 //
 //	Macros for allocating Nodes and Ports.

@@ -1897,6 +1897,7 @@ boolean smInitConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t
 	}
 
 	DEFAULT_AND_CKSUM_INT(smp->ftreeRouting.passthru, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_INT(smp->ftreeRouting.converge, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_INT(smp->ftreeRouting.debug, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_INT(smp->ftreeRouting.tierCount, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_INT(smp->ftreeRouting.fis_on_same_tier, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
@@ -2283,6 +2284,7 @@ void smShowConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 	printf("XML - adaptiveRouting.threshold %u\n", (unsigned int)smp->adaptiveRouting.threshold);
 
 	printf("XML - ftreeRouting.passthru %u\n", (unsigned int)smp->ftreeRouting.passthru);
+	printf("XML - ftreeRouting.converge %u\n", (unsigned int)smp->ftreeRouting.converge);
 	printf("XML - ftreeRouting.debug %u\n", (unsigned int)smp->ftreeRouting.debug);
 	printf("XML - ftreeRouting.tierCount %u\n", (unsigned int)smp->ftreeRouting.tierCount);
 	printf("XML - ftreeRouting.fis_on_same_tier %u\n", (unsigned int)smp->ftreeRouting.fis_on_same_tier);
@@ -6062,6 +6064,7 @@ static void SmFtreeRoutingXmlParserEnd(IXmlParserState_t *state, const IXML_FIEL
 static IXML_FIELD SmFtreeRoutingFields[] = {
 	{ tag:"Debug", format:'u', IXML_FIELD_INFO(SmFtreeRouting_t, debug) },
 	{ tag:"PassThrough", format:'u', IXML_FIELD_INFO(SmFtreeRouting_t, passthru) },
+	{ tag:"Converge", format:'u', IXML_FIELD_INFO(SmFtreeRouting_t, converge) },
 	{ tag:"FIsOnSameTier", format:'u', IXML_FIELD_INFO(SmFtreeRouting_t, fis_on_same_tier) },
 	{ tag:"TierCount", format:'u', IXML_FIELD_INFO(SmFtreeRouting_t, tierCount) },
 	{ tag:"CoreSwitches", format:'k', end_func:SmFtreeCoreSwitchEnd },

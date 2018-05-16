@@ -177,7 +177,7 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 					swportp->portData->downlink = 1;
 					if (bitset_test(&processedSwitches, switchp->swIdx)) continue;
 	
-					Switch_Enqueue_Type(topop, switchp, 0, 1);
+					Switch_Enqueue_Type(topop, switchp, 0, 1, sm_config.ftreeRouting.converge);
 					bitset_set(&processedSwitches, switchp->swIdx);
 				}
 			}
@@ -208,7 +208,7 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 
 					if (bitset_test(&processedSwitches, nodep->swIdx)) continue;
 
-					Switch_Enqueue_Type(topop, nodep, t, 1);
+					Switch_Enqueue_Type(topop, nodep, t, 1, 0);
 					bitset_set(&processedSwitches, nodep->swIdx);
 				}
 
@@ -223,7 +223,7 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 		// Determine core switches from config information.
 		for_all_switch_nodes(topop, switchp) {
 			if (_is_core(switchp)) {
-				Switch_Enqueue_Type(topop, switchp, sm_config.ftreeRouting.tierCount-1, 0);
+				Switch_Enqueue_Type(topop, switchp, sm_config.ftreeRouting.tierCount-1, 0, 0);
 				bitset_set(&processedSwitches, switchp->swIdx);
 			}
 		}
@@ -260,7 +260,7 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 
 					if (bitset_test(&processedSwitches, nodep->swIdx)) continue;
 
-					Switch_Enqueue_Type(topop, nodep, t-1, 1);
+					Switch_Enqueue_Type(topop, nodep, t-1, 1, sm_config.ftreeRouting.converge);
 					bitset_set(&processedSwitches, nodep->swIdx);
 				}
 
@@ -297,6 +297,9 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 		for_all_tier_switches(topop, switchp, t) {
 			switchp->tierIndex = i++;
 			
+			// IB_LOG_INFINI_INFO_FMT(__func__, "Switch %s tier %d, tierIndex %d",
+						// sm_nodeDescString(switchp), switchp->tier, switchp->tierIndex);
+
 			// Debug dump of fat tree info
 			if (sm_config.ftreeRouting.debug) {
 				for_all_physical_ports(switchp, swportp) {
@@ -363,8 +366,69 @@ incr_lids_routed(Topology_t *topop, Node_t *switchp, int port)
 	}
 }
 
+static int
+_compare_sysguids_then_guids(const void * arg1, const void * arg2)
+{
+	SwitchportToNextGuid_t * sport1 = (SwitchportToNextGuid_t *)arg1;
+	SwitchportToNextGuid_t * sport2 = (SwitchportToNextGuid_t *)arg2;
+
+	if (sport1->sysGuid < sport2->sysGuid)
+		return -1;
+	else if (sport1->sysGuid > sport2->sysGuid)
+		return 1;
+	else if (sport1->guid < sport2->guid)
+		return -1;
+	else if (sport1->guid > sport2->guid)
+		return 1;
+	else
+		return 0;
+}
+
+static int
+_get_port_group(Topology_t *topop, Node_t *switchp, Node_t *nodep, uint8_t *portnos)
+{
+	int i, j;
+	int end_port = 0;
+	SwitchportToNextGuid_t *ordered_ports = (SwitchportToNextGuid_t *)topop->pad;
+
+	IB_ENTER(__func__, switchp, nodep, 0, 0);
+
+	memset((void*)portnos, 0xff, sizeof(uint8_t)*128);
+
+	if (nodep->nodeInfo.NodeType != NI_TYPE_SWITCH) {
+		IB_EXIT(__func__, VSTATUS_OK);
+		return 0;
+	}
+
+	i = switchp->swIdx;
+	j = nodep->swIdx;
+
+	if (j == i) {
+		IB_EXIT(__func__, VSTATUS_OK);
+		return 0;
+	}
+
+	memset(ordered_ports, 0, sizeof(SwitchportToNextGuid_t) * switchp->nodeInfo.NumPorts);
+
+	end_port =  topop->routingModule->funcs.select_ports(topop, switchp, j, ordered_ports, 0);
+
+	qsort(ordered_ports, end_port, sizeof(SwitchportToNextGuid_t), _compare_sysguids_then_guids);
+
+	for (i=0; i<end_port; i++) {
+		portnos[i] = ordered_ports[i].portp->index;
+	}
+
+	if (portnos[0] == 0xff && smDebugPerf) {
+		IB_LOG_INFINI_INFO_FMT(__func__, "Failed to get portGroup from switch %s to switch %s",
+		       sm_nodeDescString(switchp), sm_nodeDescString(nodep));
+	}
+
+	IB_EXIT(__func__, VSTATUS_OK);
+	return end_port;
+}
+
 static Status_t
-_calculate_balanced_lfts_systematic(Topology_t *topop)
+_calculate_balanced_lfts(Topology_t *topop)
 {
 	Node_t *nodep, *switchp, *toSwitchp;
 	Port_t *portp, *swPortp, *toSwitchPortp;
@@ -382,7 +446,7 @@ _calculate_balanced_lfts_systematic(Topology_t *topop)
 	if (smDebugPerf) {
 		vs_time_get(&sTime);
 		if (sm_config.ftreeRouting.debug) {
-			IB_LOG_INFINI_INFO0("entry");
+			IB_LOG_INFINI_INFO0("_calculate_balanced_lfts:entry");
 		}
 	}
 
@@ -433,7 +497,9 @@ _calculate_balanced_lfts_systematic(Topology_t *topop)
 							numPorts = 0;
 						} else {
 							// get a list of valid egress parts from switchp to toSwitchp.
+							// sort by system guid, then guid
 							numPorts = topop->routingModule->funcs.get_port_group(topop, switchp, toSwitchp, portGroup);
+
 							if (!numPorts) continue;
 
 							// portGroup will all be up or down per spine first routing.
@@ -474,11 +540,21 @@ _calculate_balanced_lfts_systematic(Topology_t *topop)
 										continue;
 									}
 
-									if (sm_config.ftreeRouting.passthru) {
-										// try passthru
+									if (sm_config.ftreeRouting.converge &&
+										sm_config.ftreeRouting.tierCount == 3 && t == 1 && isUp && r == 0) {
+										// Converge at top of tree - gives better dispersion down routing
+										// for 3 tier fat tree for pairwise traffic.
+										// Passthru/converge work well with compute traffic, fall back to
+										// original fat tree algorithm for route last device group.
+										switchp->lft[currentLid] = portGroup[toSwitchp->tierIndex % numPorts];
+
+									} else if (sm_config.ftreeRouting.passthru && r == 0) {
+										// Use passthru
 										switchp->lft[currentLid] = portGroup[(i+pi+(t*toSwitchp->tierIndex)) % numPorts];
+
 									} else if (isUp) {
 										switchp->lft[currentLid] = portGroup[(i+upDestCount + switchp->tierIndex*switchp->uplinkTrunkCnt) % numPorts];
+
 									} else {
 										switchp->lft[currentLid] = portGroup[(i+downDestCount + switchp->tierIndex) % numPorts];
 									}
@@ -550,7 +626,7 @@ _calculate_balanced_lfts_systematic(Topology_t *topop)
 		vs_time_get(&eTime);
 		IB_LOG_INFINI_INFO("END; elapsed time(usecs)=", (int)(eTime-sTime));
 	} else if (sm_config.ftreeRouting.debug) {
-		IB_LOG_INFINI_INFO0("_systematic:exit");
+		IB_LOG_INFINI_INFO0("_calculate_balanced_lfts:exit");
 	}
 
 	return VSTATUS_OK;
@@ -736,7 +812,8 @@ _init_switch_lfts(Topology_t * topop, int * routing_needed, int * rebalance)
 
 	if (topology_cost_path_changes || *rebalance || rebalanceGoodSweep) {
 		// A topology change was indicated.  Re-calculate lfts with big hammer (rebalance).
-		s = _calculate_balanced_lfts_systematic(topop);
+		s = _calculate_balanced_lfts(topop);
+
 		*rebalance = 1;
 		*routing_needed = 1;
 		routing_recalculated = 1;
@@ -867,12 +944,22 @@ _calculate_balanced_lft(Topology_t *topop, Node_t *switchp)
 								continue;
 							}
 
-							if (sm_config.ftreeRouting.passthru) {
-								// try passthru
+							if (sm_config.ftreeRouting.converge &&
+								sm_config.ftreeRouting.tierCount == 3 && switchp->tier == 2 && isUp && r == 0) {
+								// Converge at top of tree - gives better dispersion down routing
+								// for 3 tier fat tree for pairwise traffic.
+								// Passthru/converge work well with compute traffic, fall back to
+								// original fat tree algorithm for route last device group.
+								switchp->lft[currentLid] = portGroup[toSwitchp->tierIndex % numPorts];
+
+							} else if (sm_config.ftreeRouting.passthru && r == 0) {
+								// use passthru
 								int tierAdjust = switchp->tier ? switchp->tier-1 : 0;
 								switchp->lft[currentLid] = portGroup[(i+pi+(tierAdjust*toSwitchp->tierIndex)) % numPorts];
+
 							} else if (isUp) {
 								switchp->lft[currentLid] = portGroup[(i+upDestCount + switchp->tierIndex*switchp->uplinkTrunkCnt) % numPorts];
+
 							} else {
 								switchp->lft[currentLid] = portGroup[(i+downDestCount + switchp->tierIndex) % numPorts];
 							}
@@ -939,6 +1026,7 @@ _make_fattree(RoutingModule_t * rm)
 	rm->funcs.can_send_partial_routes = sm_routing_func_can_send_partial_routes_true;
 	rm->funcs.init_switch_routing = _init_switch_lfts;
 	rm->funcs.calculate_routes = _calculate_balanced_lft;
+	rm->funcs.get_port_group = _get_port_group;
 	rm->funcs.post_process_discovery = _post_process_discovery;
 	rm->funcs.do_spine_check = _do_spine_check;
 

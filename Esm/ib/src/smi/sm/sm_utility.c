@@ -9024,7 +9024,7 @@ sm_getLogConfigSettings(uint32_t * logLevel, uint32_t * logMode,
 #endif
 
 void
-Switch_Enqueue_Type(Topology_t * topop, Node_t * nodep, int tier, int checkName)
+Switch_Enqueue_Type(Topology_t * topop, Node_t * nodep, int tier, int checkName, int discoveryOrder)
 {
 
 	Node_t *prevNodep = NULL;
@@ -9047,6 +9047,15 @@ Switch_Enqueue_Type(Topology_t * topop, Node_t * nodep, int tier, int checkName)
 		nodep->sw_next = NULL;
 		nodep->sw_prev = NULL;
 		topop->tier_head[tier] = nodep;
+		topop->tier_tail[tier] = nodep;
+		return;
+	}
+
+	if (discoveryOrder) {
+		// tail[tier]
+		nodep->sw_next = NULL;
+		nodep->sw_prev = topop->tier_tail[tier];
+		topop->tier_tail[tier]->sw_next = nodep;
 		topop->tier_tail[tier] = nodep;
 		return;
 	}

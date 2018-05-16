@@ -747,6 +747,7 @@ typedef struct _SmAdaptiveRoutingXmlConfig {
 typedef struct _SmFtreeRouting_t {
 	uint8_t 	debug;
 	uint8_t 	passthru;
+	uint8_t 	converge;
 	uint8_t		tierCount;				// height of the fat tree. edges are rank 0.
 	uint8_t		fis_on_same_tier;		// indicates that all end nodes are at the bottom of the tree.
 	XMLMember_t	coreSwitches;			// device group indicating core switches

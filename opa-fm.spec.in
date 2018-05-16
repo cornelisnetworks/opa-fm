@@ -30,7 +30,7 @@
 #[ICS VERSION STRING: unknown]
 Name: opa-fm
 Version: 10.7.0.0
-Release: 142%{?dist}
+Release: 143%{?dist}
 Summary: Intel Omni-Path Fabric Management Software
 
 License: GPLv2 or BSD

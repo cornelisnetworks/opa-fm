@@ -1162,6 +1162,7 @@ sm_routing_func_select_ports(Topology_t *topop, Node_t *switchp, int endIndex, S
 				best_switchLidsRouted = next_nodep->numLidsRouted;
 				ordered_ports[0].portp = portp;
 				ordered_ports[0].guid = next_nodep->nodeInfo.NodeGUID;
+				ordered_ports[0].sysGuid = next_nodep->nodeInfo.SystemImageGUID;
 				ordered_ports[0].nextSwp = next_nodep;
 				end_port = 1;
 				continue;
@@ -1205,6 +1206,7 @@ sm_routing_func_select_ports(Topology_t *topop, Node_t *switchp, int endIndex, S
 
 			ordered_ports[end_port].portp = portp;
 			ordered_ports[end_port].guid = next_nodep->nodeInfo.NodeGUID;
+			ordered_ports[end_port].sysGuid = next_nodep->nodeInfo.SystemImageGUID;
 			ordered_ports[end_port].nextSwp = next_nodep;
 			++end_port;
 		}
