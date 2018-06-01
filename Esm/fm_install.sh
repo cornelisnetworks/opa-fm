@@ -77,8 +77,6 @@ cp -t ${DESTDIR}/usr/lib/opa-fm/bin opafm
 cp -t ${DESTDIR}/usr/lib/opa-fm/bin opaxmlextract
 cp -t ${DESTDIR}/usr/lib/opa-fm/bin opaxmlfilter
 
-cp -t ${DESTDIR}/usr/lib/opa .comp_opafm.pl
-
 cp -t ${DESTDIR}/usr/share/opa-fm opafm_src.xml
 
 cp -t ${DESTDIR}/usr/share/opa-fm opafm.xml

@@ -96,7 +96,6 @@ __RPM_SYSCONF
 /usr/lib/opa-fm/bin/*
 /usr/lib/opa-fm/runtime/*
 /usr/share/opa-fm/*
-/usr/lib/opa/.comp_opafm.pl
 %{_sbindir}/opafmcmd
 %{_sbindir}/opafmcmdall
 %{_mandir}/man8/*

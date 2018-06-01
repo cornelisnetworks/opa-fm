@@ -213,7 +213,6 @@ INSTALL.pl: $(INSTALL_SOURCES)
 comp.pl: $(COMP_SOURCES)
 	 cat $(PREREQ_SOURCE) $(COMP_SOURCES) > comp.pl
 	 chmod +x comp.pl
-	 cp comp.pl $(TL_DIR)/Esm/.comp_opafm.pl
 
 # install for includes, libs and cmds phases
 include $(TL_DIR)/Makerules/Maketargets.install
@@ -248,7 +247,6 @@ endif
 	dir=`dirname $(GLOBAL_BIN_DIR)`; \
 	mkdir $$dir/stage.rpm; \
 	cp -r -L $(GLOBAL_BIN_DIR)/* $$dir/stage.rpm/ ; \
-	cp $(TL_DIR)/Esm/.comp_opafm.pl $$dir/stage.rpm/; \
 	cd $$dir/stage.rpm ; \
 		find . -print| $(PREP); \
 		$(PATCH_VERSION) $(RELEASE_TAG) sm fe; \
