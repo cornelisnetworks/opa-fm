@@ -541,7 +541,7 @@ char *formatOldValue(Ag_Man_t *sp, OldFormat_t format)
     case FORMAT_MTU:
         if (FALSE == getOldUllValue(sp, &value))
             return (char*)sp->value;
-        snprintf(buf, 50, IbMTUToText((IB_MTU)value));
+        snprintf(buf, 50, "%s", IbMTUToText((IB_MTU)value));
         return buf;
     case FORMAT_RATE:
         if (FALSE == getOldUllValue(sp, &value))

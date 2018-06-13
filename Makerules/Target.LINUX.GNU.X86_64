@@ -77,7 +77,7 @@ SHLIB_SONAME=$(notdir $(CMD_TARGETS_SHLIB))
 # ----------------------------
 # -fcheck-new does the opposite of what the manual implies.
 # -fcheck-new DISABLES the run-time test of return value from new
-CMACH		= -pipe -DTARGET_CPU_FAMILY_X86 -Wall -D__X86_64__ -DCPU_LE -m64 -fno-strict-aliasing -fstack-protector
+CMACH		= -pipe -DTARGET_CPU_FAMILY_X86 -Wall -Werror=format-security -D__X86_64__ -DCPU_LE -m64 -fno-strict-aliasing -fstack-protector
 CCMACH		= $(CMACH) -fcheck-new -Wno-ctor-dtor-privacy
 CSYS		= -DLINUX -Dlinux -D__LINUX__ 
 CCSYS		= $(CSYS)

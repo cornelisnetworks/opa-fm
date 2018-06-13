@@ -710,7 +710,7 @@ skip_send:
 						}
 						if(rc < 256)
 							snprintf(msgbuf + rc, 256 - rc, " TID: 0x%"CS64"x", out_mad.base.tid);
-						IB_LOG_INFO_FMT(__func__, msgbuf);
+						IB_LOG_INFO_FMT(__func__, "%s", msgbuf);
 					}
 				}
 			}

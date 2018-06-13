@@ -380,7 +380,7 @@ void PmPrintExceededPortDetailsIntegrity(PmPort_t *pmportp, PmPort_t *pmportneig
 		logMessage += strlen(logMessage);
 	}
 
-	IB_LOG_WARN_FMT(NULL, message);
+	IB_LOG_WARN_FMT(NULL, "%s", message);
 }
 void PmPrintExceededPortDetailsCongestion(PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint32 lastImageIndex)
 {
@@ -459,7 +459,7 @@ void PmPrintExceededPortDetailsCongestion(PmPort_t *pmportp, PmPort_t *pmportnei
 		logMessage += strlen(logMessage);
 	}
 
-	IB_LOG_WARN_FMT(NULL, message);
+	IB_LOG_WARN_FMT(NULL, "%s", message);
 }
 void PmPrintExceededPortDetailsSmaCongestion(PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint32 lastImageIndex)
 {
@@ -538,7 +538,7 @@ void PmPrintExceededPortDetailsSmaCongestion(PmPort_t *pmportp, PmPort_t *pmport
 		logMessage += strlen(logMessage);
 	}
 
-	IB_LOG_WARN_FMT(NULL, message);
+	IB_LOG_WARN_FMT(NULL, "%s", message);
 }
 void PmPrintExceededPortDetailsBubble(PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint32 lastImageIndex)
 {

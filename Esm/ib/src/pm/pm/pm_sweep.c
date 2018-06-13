@@ -4010,7 +4010,7 @@ store_file:
 	// Update the record.  Only fill in the filename. Leave the images
 	// per composite as zero. This is all the Standby cares about.
 	// If/When we become Master, we'll reread the history.
-	snprintf(rec->header.filename, sizeof(rec->header.filename), newfilename);
+	snprintf(rec->header.filename, sizeof(rec->header.filename), "%s", newfilename);
 	for (i = 0; i < PM_HISTORY_MAX_IMAGES_PER_COMPOSITE; i++) {
 		rec->historyImageEntries[i].inx = INDEX_NOT_IN_USE;
 	}

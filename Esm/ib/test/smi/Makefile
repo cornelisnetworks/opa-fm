@@ -43,7 +43,7 @@ EXECUTABLE		= # Sm$(EXE_SUFFIX)
 ifeq "$(BUILD_TARGET_OS)" "VXWORKS"
 DIRS			= 
 else
-DIRS			= sm jmtest
+DIRS			= sm
 endif
 # C files (.c)
 CFILES			= \
