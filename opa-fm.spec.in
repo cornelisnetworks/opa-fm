@@ -1,6 +1,6 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015-2017, Intel Corporation
+# Copyright (c) 2015-2018, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -29,8 +29,11 @@
 
 #[ICS VERSION STRING: unknown]
 Name: opa-fm
-Version: 10.7.0.0
-Release: 145%{?dist}
+Version: 10.8.0.0
+Release: 202%{?dist}
+%if 0%{?rhel}
+Epoch: 1
+%endif
 Summary: Intel Omni-Path Fabric Management Software
 
 License: GPLv2 or BSD
@@ -57,13 +60,14 @@ __RPM_DEBUG
 The %{name} contains Intel Omni-Path fabric management applications. This 
 includes: the Subnet Manager, Baseboard Manager, Performance Manager, 
 Fabric Executive, and some fabric management tools.
+IFSComponent: FM __RPM_VERSION.__RPM_RELEASE
 
 %prep
 %setup -q -c
 
 %build
 cd Esm
-./fmbuild $BUILD_ARGS
+__RPM_FS ./fmbuild $BUILD_ARGS
 
 %install
 BUILDDIR=%{_builddir} DESTDIR=%{buildroot} LIBDIR=%{_libdir} RPM_INS=n ./Esm/fm_install.sh
@@ -93,15 +97,22 @@ __RPM_SYSCONF
 
 /usr/lib/systemd/system/opafm.service
 %config(noreplace) %{_sysconfdir}/opa-fm/opafm.xml
+%config(noreplace) %{_sysconfdir}/opa-fm/opafm_pp.xml
+%{_sysconfdir}/opa-fm/vfs
+%{_sysconfdir}/opa-fm/dgs
 /usr/lib/opa-fm/bin/*
 /usr/lib/opa-fm/runtime/*
 /usr/share/opa-fm/*
 %{_sbindir}/opafmcmd
 %{_sbindir}/opafmcmdall
+%{_sbindir}/opafmconfigpp
 %{_mandir}/man8/*
 
 %changelog
+* Mon Feb 26 2018 Jijun Wang <jijun.wang@intel.com> - 10.8.0.0
+- Added epoch for RHEL
+- Added component information in description
 * Thu Oct 09 2014 Kaike Wan <kaike.wan@intel.com> - 10.0.0.0-177
-- Initial version 
+- Initial version
 
 

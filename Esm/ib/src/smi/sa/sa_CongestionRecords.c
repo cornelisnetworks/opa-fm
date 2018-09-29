@@ -681,8 +681,10 @@ sa_HFICongRecord_GetTable(Mai_t *maip, uint32_t *records) {
     if (checkLid) {
         if ((pPort = sm_find_node_and_port_lid(&old_topology, lid, &pNode)) != NULL) {
             if (!sm_valid_port(pPort) || pPort->state <= IB_PORT_DOWN) goto done;
-            if ((pNode->nodeInfo.NodeType == NI_TYPE_SWITCH) &&
-               (!pNode->switchInfo.u2.s.EnhancedPort0)) goto done;
+	    if (pNode->nodeInfo.NodeType == NI_TYPE_SWITCH) {
+		if(!is_cc_supported_by_enhanceport0(pNode))
+			goto done;
+	    }
             if ((status = sa_check_len(data, sizeof(STL_HFI_CONGESTION_SETTING_RECORD), bytes)) != VSTATUS_OK) {
                 maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
                 IB_LOG_ERROR_FMT( "sa_HFICongRecord_GetTable", "Reached size limit at %d records", *records);
@@ -702,7 +704,10 @@ sa_HFICongRecord_GetTable(Mai_t *maip, uint32_t *records) {
 
             for_all_ports(pNode, pPort) {
                 if (!sm_valid_port(pPort) || pPort->state <= IB_PORT_DOWN) continue;
-                if ((pNode->nodeInfo.NodeType == NI_TYPE_SWITCH) && (pPort->index!=0)) break;
+                if (pNode->nodeInfo.NodeType == NI_TYPE_SWITCH) {
+			if(!is_cc_supported_by_enhanceport0(pNode))
+				break;
+		}
 
                 if ((status = sa_check_len(data, sizeof(STL_HFI_CONGESTION_SETTING_RECORD), bytes)) != VSTATUS_OK) {
                     maip->base.status = MAD_STATUS_SA_NO_RESOURCES;

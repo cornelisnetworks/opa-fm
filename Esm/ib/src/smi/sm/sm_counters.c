@@ -436,7 +436,7 @@ char * snprintfcat(char * buf, int * len, const char * format, ...)
             return NULL;
         }
 
-        cs_strlcpy(tmp, buf, *len);
+        StringCopy(tmp, buf, *len);
         vs_pool_free(&sm_pool, buf);
         buf = tmp;
     }
@@ -472,7 +472,7 @@ char * snprintfcat(char * buf, int * len, const char * format, ...)
 			return NULL;
 		}
 
-		cs_strlcpy(tmp, buf, *len);
+		StringCopy(tmp, buf, *len);
 		vs_pool_free(&sm_pool, buf);
 		buf = tmp;
 	}
@@ -494,7 +494,7 @@ char * snprintfcat(char * buf, int * len, const char * format, ...)
 			return NULL;
 		}
 
-		cs_strlcpy(tmp, buf, *len);
+		StringCopy(tmp, buf, *len);
 		vs_pool_free(&sm_pool, buf);
 		buf = tmp;
 		writeLocation = buf + n;

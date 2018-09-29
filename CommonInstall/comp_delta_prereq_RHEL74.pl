@@ -47,7 +47,6 @@ my @opa_stack_prereq = (
                     "glibc",
 		    "pciutils",
 		    "opensm-libs",
-		    "libibmad",
 		    "libibcm",
 		    "libibumad",
 		    "rdma-core-devel",
@@ -97,7 +96,6 @@ my @openmpi_prereq = (
                     "libstdc++",
 		    "libstdc++-devel",
                     "opensm-libs",
-                    "papi",
                     "pkgconfig",
                     "zlib",
 );
@@ -129,7 +127,6 @@ my @openmpi_gcc_hfi_prereq = (
                     "libstdc++",
   		    "libstdc++-devel",
                     "opensm-libs",
-                    "papi",
                     "pkgconfig",
                     "zlib",
 );

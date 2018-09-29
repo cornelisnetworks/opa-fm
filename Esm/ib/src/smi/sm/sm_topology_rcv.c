@@ -187,8 +187,10 @@ topology_rcv(uint32_t argc, uint8_t ** argv) {
 		(void)vs_thread_exit(&sm_threads[SM_THREAD_TOP_RCV].handle);
 	}
 
-	createFilter(MAD_SMA_LFT, "top_rcv_lft", "top_rcv_lft_err");
-	createFilter(MAD_SMA_MFT, "top_rcv_lft", "top_rcv_mft_err");
+	createFilter(STL_MCLASS_ATTRIB_ID_LINEAR_FWD_TABLE, "top_rcv_lft", "top_rcv_lft_err");
+	createFilter(STL_MCLASS_ATTRIB_ID_MCAST_FWD_TABLE, "top_rcv_mft", "top_rcv_mft_err");
+	createFilter(STL_MCLASS_ATTRIB_ID_PART_TABLE, "top_rcv_pkey", "top_rcv_pkey_err");
+	createFilter(STL_MCLASS_ATTRIB_ID_PORT_INFO, "top_rcv_pi", "top_rcv_pi_err");
 
     //
     //	Set the filter for catching LID routed get GUIDINFO responses on fd_atopology.

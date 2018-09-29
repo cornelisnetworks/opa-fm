@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2018, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -1043,6 +1043,55 @@ exit:
 }
 
 /**
+ * @brief Query SA for SCVLr Table Records
+ *
+ * @param port			 port opened by omgt_open_port_*
+ * @param selector		 Criteria to select records. NULL == all records
+ * @param num_records	 Output: The number of records returned in query
+ * @param records		 Output: Pointer to records.
+ *								 Must be freed by calling omgt_free_query_result_buffer
+ *
+ *@return		   OMGT_STATUS_SUCCESS if success, else error code
+ */
+OMGT_STATUS_T
+omgt_sa_get_scvlr_table_records(
+	struct omgt_port *port,
+	omgt_sa_selector_t *selector,
+	int32_t *num_records,
+	STL_SC2PVL_R_MAPPING_TABLE_RECORD **records
+	)
+{
+
+	OMGT_STATUS_T status;
+	QUERY_RESULT_VALUES *query_result;
+	STL_SC2PVL_R_MAPPING_TABLE_RECORD_RESULTS *record_results = NULL;
+
+	status = omgt_sa_query_helper(port, selector, OutputTypeStlSCVLrTableRecord, &query_result);
+
+	if(OMGT_STATUS_SUCCESS != status)
+		return status;
+
+	record_results = (STL_SC2PVL_R_MAPPING_TABLE_RECORD_RESULTS*)query_result->QueryResult;
+	*num_records = record_results->NumSCVLrTableRecords;
+	if(*num_records == 0) {
+		*records = NULL;
+		goto exit;
+	}
+
+	int buf_size = sizeof(**records) * (*num_records);
+	*records = malloc(buf_size);
+	if(*records == NULL){
+		status = OMGT_STATUS_INSUFFICIENT_MEMORY;
+		goto exit;
+	}
+
+	memcpy(*records, record_results->SCVLrRecords, buf_size);
+exit:
+	omgt_free_query_result_buffer(query_result);
+	return status;
+}
+
+/**
  * @brief Query SA for SCVLnt Table Records
  *
  * @param port			 port opened by omgt_open_port_*
@@ -1286,6 +1335,7 @@ exit:
 	omgt_free_query_result_buffer(query_result);
 	return status;
 }
+
 
 /**
  * @brief Query SA for PKEY Table Records

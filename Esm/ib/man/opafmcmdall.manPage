@@ -31,7 +31,7 @@ Produces full help text.
 Specifies the FM instance number (0-7) to act on.
 
 .IP
-Specify multiple -i options as needed. Default = all instances.
+Specify multiple -i options as needed. Default is all instances.
 .TP 10
 cmd [args] 
 .NL
@@ -282,7 +282,7 @@ Toggles RMPP debug output for FE.
 
 .sp
 smLooptestStart 
-Starts loop test in normal mode. Specify the number of 256 byte packets. Default = 0.
+Starts loop test in normal mode. Specify the number of 256 byte packets. Default is 0.
 
 .RE
 
@@ -291,7 +291,7 @@ Starts loop test in normal mode. Specify the number of 256 byte packets. Default
 
 .sp
 smLooptestFastModeStart 
-Starts loop test in fast mode. Specify the number of 256 byte packets. Default = 5.
+Starts loop test in fast mode. Specify the number of 256 byte packets. Default is 5.
 
 .RE
 
@@ -309,7 +309,7 @@ Stops loop test. Returns switch LFTs back to normal.
 
 .sp
 smLooptestInjectPackets 
-Enter \fInumPkts\fR to send to all switch loops. Default = 1.
+Enter \fInumPkts\fR to send to all switch loops. Default is 1.
 
 .RE
 
@@ -318,7 +318,7 @@ Enter \fInumPkts\fR to send to all switch loops. Default = 1.
 
 .sp
 smLooptestInjectAtNode 
-Enter the switch node index to inject loop packets. Default = 0.
+Enter the switch node index to inject loop packets. Default is 0.
 
 .RE
 
@@ -345,7 +345,7 @@ Enter 0 to stop injecting each sweep.
 
 .sp
 smLooptestPathLength 
-Sets the loop path length. Range = 2 - 4. Default = 3.
+Sets the loop path length. Range is 2 - 4. Default is 3.
 
 .RE
 
@@ -354,7 +354,7 @@ Sets the loop path length. Range = 2 - 4. Default = 3.
 
 .sp
 smLooptestMinISLRedundancy 
-Sets the minimum number of loops in which to include each ISL. Default = 4.
+Sets the minimum number of loops in which to include each ISL. Default is 4.
 
 .RE
 
@@ -363,7 +363,7 @@ Sets the minimum number of loops in which to include each ISL. Default = 4.
 
 .sp
 smLooptestShowLoopPaths 
-Displays the loop paths given node index or all loop paths. Default = all.
+Displays the loop paths given node index or all loop paths. Default is all.
 
 .RE
 
@@ -372,7 +372,7 @@ Displays the loop paths given node index or all loop paths. Default = all.
 
 .sp
 smLooptestShowSwitchLft 
-Displays a switch LFT given node index or all switches LFTs. Default = all.
+Displays a switch LFT given node index or all switches LFTs. Default is all.
 
 .RE
 

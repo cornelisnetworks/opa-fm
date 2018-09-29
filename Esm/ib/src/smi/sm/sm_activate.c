@@ -107,6 +107,7 @@ sm_arm_port(Topology_t * topop, Node_t * nodep, Port_t * portp)
 	STL_PORT_INFO portInfo;
 	STL_LID dlid;
 	uint32_t madStatus = 0;
+    SmpAddr_t addr;
 
 	IB_ENTER(__func__, topop, nodep, portp, 0);
 
@@ -145,6 +146,9 @@ sm_arm_port(Topology_t * topop, Node_t * nodep, Port_t * portp)
 		return (VSTATUS_OK);
 	}
 
+	// Set the "No change" attributes.
+	sm_portinfo_nop_init(&portInfo);
+
 	portInfo.PortStates.s.PortState = IB_PORT_ARMED;
 	portInfo.LinkDownReason = STL_LINKDOWN_REASON_NONE;
 	portInfo.NeighborLinkDownReason = STL_LINKDOWN_REASON_NONE;
@@ -154,18 +158,11 @@ sm_arm_port(Topology_t * topop, Node_t * nodep, Port_t * portp)
 		portInfo.PortMode.s.IsActiveOptimizeEnabled = 1;
 
 	//
-	//  Set the "No change" attributes.
-	//
-	portInfo.LinkSpeed.Enabled = 0;
-	portInfo.LinkWidth.Enabled = 0;
-	portInfo.PortStates.s.PortPhysicalState = 0;
-	portInfo.s4.OperationalVL = 0;
-
-	//
 	//  Tell the port its new state.
 	//
-	status = SM_Set_PortInfo_LR(fd_topology, (1 << 24) | (portp->index),
-		sm_lid, dlid, &portInfo, portp->portData->portInfo.M_Key, &madStatus);
+	SMP_ADDR_SET_LR(&addr, sm_lid, dlid);
+	status = SM_Set_PortInfo(fd_topology, (1 << 24) | (portp->index),
+		&addr, &portInfo, portp->portData->portInfo.M_Key, &madStatus);
 
 	if (status != VSTATUS_OK && madStatus != MAD_STATUS_INVALID_ATTRIB) {
 		IB_LOG_WARN_FMT(__func__,
@@ -257,6 +254,10 @@ sm_arm_switch(Topology_t *topop, Node_t *switchp)
 				aggrHdr->AttributeModifier =  (1<<24) | (uint32_t)portp->index;
 
 				*pPortInfo = portp->portData->portInfo;
+
+				// Set the "No change" attributes.
+				sm_portinfo_nop_init(pPortInfo);
+
 				pPortInfo->PortStates.s.PortState = IB_PORT_ARMED;
 				pPortInfo->LinkDownReason = STL_LINKDOWN_REASON_NONE;
 				pPortInfo->NeighborLinkDownReason = STL_LINKDOWN_REASON_NONE;
@@ -264,12 +265,6 @@ sm_arm_switch(Topology_t *topop, Node_t *switchp)
 
 				if (sm_is_scae_allowed(switchp))
 					pPortInfo->PortMode.s.IsActiveOptimizeEnabled = 1;
-
-				// No-Op attributes
-				pPortInfo->LinkSpeed.Enabled = 0;
-				pPortInfo->LinkWidth.Enabled = 0;
-				pPortInfo->PortStates.s.PortPhysicalState = 0;
-				pPortInfo->s4.OperationalVL = 0;
 
 				BSWAP_STL_PORT_INFO(pPortInfo);
 				aggrHdr = STL_AGGREGATE_NEXT(aggrHdr);
@@ -379,6 +374,7 @@ sm_activate_port(Topology_t * topop, Node_t * nodep, Port_t * portp,
 	STL_LID dlid;
 	uint32_t madStatus = 0;
 	int reregisterable = TRUE;
+    SmpAddr_t addr;
 
 	IB_ENTER(__func__, topop, nodep, portp, forceReregister);
 
@@ -421,40 +417,29 @@ sm_activate_port(Topology_t * topop, Node_t * nodep, Port_t * portp,
 			// re-register any multicast groups. This might be because the FM was
 			// restarted or because the node just appeared in the fabric and
 			// ActiveOptimize is enabled.
-			portInfo.Subnet.ClientReregister = 1;
+
 			// Indicate that reregistration is pending; will persist across
 			// sweeps until it succeeds or is no longer required (e.g. state change)
 			portp->portData->reregisterPending = 1;
-			if (smDebugPerf) {
-				IB_LOG_VERBOSE_FMT(__func__,
-					"Setting ClientReregister bit in portInfo of node %s nodeGuid "FMT_U64" port %u",
-					sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index);
-			}
-		} else {
-			// If the port is already active and we don't need to re-register
-			// MC groups, we don't need to actually send the MAD.
-			portp->state = portInfo.PortStates.s.PortState;
-			portp->portData->numFailedActivate = 0;
-			IB_EXIT(__func__, VSTATUS_OK);
-			return (VSTATUS_OK);
 		}
+		// If the port is already active, we don't need to actually send the MAD.
+		portp->state = portInfo.PortStates.s.PortState;
+		portp->portData->numFailedActivate = 0;
+		IB_EXIT(__func__, VSTATUS_OK);
+		return (VSTATUS_OK);
 	}
+
+	// Set the "No change" attributes.
+	sm_portinfo_nop_init(&portInfo);
 
 	portInfo.PortStates.s.PortState = IB_PORT_ACTIVE;
 
 	//
-	//  Set the "No change" attributes.
-	//
-	portInfo.LinkSpeed.Enabled = 0;
-	portInfo.LinkWidth.Enabled = 0;
-	portInfo.PortStates.s.PortPhysicalState = 0;
-	portInfo.s4.OperationalVL = 0;
-
-	//
 	//  Tell the port its new state.
 	//
-	status = SM_Set_PortInfo_LR(fd_topology, (1 << 24) | (portp->index),
-		sm_lid, dlid, &portInfo, portp->portData->portInfo.M_Key, &madStatus);
+    SMP_ADDR_SET_LR(&addr, sm_lid, dlid);
+	status = SM_Set_PortInfo(fd_topology, (1 << 24) | (portp->index),
+		&addr, &portInfo, portp->portData->portInfo.M_Key, &madStatus);
 
 	if (status != VSTATUS_OK && madStatus != MAD_STATUS_INVALID_ATTRIB) {
 		IB_LOG_WARN_FMT(__func__,
@@ -464,10 +449,6 @@ sm_activate_port(Topology_t * topop, Node_t * nodep, Port_t * portp,
 		IB_EXIT(__func__, status);
 		return (status);
 	}
-
-	// reset the pending reregistration flag as appropriate
-	if (status == VSTATUS_OK || portInfo.PortStates.s.PortState != IB_PORT_ACTIVE)
-		portp->portData->reregisterPending = 0;
 
 	// check for failures to activate
 	if (portInfo.PortStates.s.PortState != IB_PORT_ACTIVE) {
@@ -811,3 +792,56 @@ sm_activate_all_switch_first(Topology_t * topop, pActivationRetry_t retry)
 	return VSTATUS_OK;
 }
 
+static void sm_set_all_reregisters_callback(cntxt_entry_t *cntxt, Status_t status, void *data, Mai_t *mad)
+{
+	Node_t *nodep = (Node_t *)data;
+	Port_t *portp = (nodep ? sm_get_node_end_port(nodep) : NULL);
+	boolean skip = (sm_config.skipAttributeWrite & SM_SKIP_WRITE_PORTINFO ? 1 : 0);
+
+	if (!skip && !sm_callback_check(cntxt, status, nodep, portp, mad)) {
+		// Handle Failure
+	} else if (sm_valid_port(portp)) {
+		portp->portData->reregisterPending = 0;
+	}
+}
+Status_t sm_set_all_reregisters(void)
+{
+	Node_t *nodep;
+	Port_t *portp;
+	Status_t status;
+
+	for_all_nodes(&old_topology, nodep) {
+		portp = sm_get_node_end_port(nodep);
+		if (!sm_valid_port(portp) || portp->state != IB_PORT_ACTIVE) continue;
+		if (!portp->portData->reregisterPending) continue;
+
+		/* Only need to lock the Copy out of the port */
+		(void)vs_rdlock(&old_topology_lock);
+		STL_PORT_INFO pi = portp->portData->portInfo;
+		(void)vs_rwunlock(&old_topology_lock);
+
+		// Set the "No change" attributes.
+		sm_portinfo_nop_init(&pi);
+
+		pi.Subnet.ClientReregister = 1;
+
+		SmpAddr_t addr = SMP_ADDR_CREATE_LR(sm_lid, portp->portData->lid);
+		status = SM_Set_PortInfo_Dispatch(fd_topology, (1 << 24) | portp->index,
+			&addr, &pi, portp->portData->portInfo.M_Key, nodep, &sm_asyncDispatch,
+			sm_set_all_reregisters_callback, nodep);
+		if (status != VSTATUS_OK) {
+			IB_LOG_ERROR_FMT(__func__, "Failed to Send Set Client Reregister on port of node %s nodeGuid "FMT_U64" port %u",
+				sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index);
+		}
+	}
+
+	status = sm_dispatch_wait(&sm_asyncDispatch);
+	if (status != VSTATUS_OK) {
+		sm_dispatch_clear(&sm_asyncDispatch);
+		IB_LOG_INFINI_INFO_FMT(__func__,
+			"Failed to wait on the dispatch queue for Client Reregistration rc: %s",
+			cs_convert_status(status));
+	}
+
+	return status;
+}

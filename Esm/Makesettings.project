@@ -73,7 +73,6 @@
 IB_STACK=$(BUILD_WITH_STACK)
 NO_BUILD_SUFFIX=n
 PROJ_SM_DIR=$(TL_DIR)/$(PROJ_FILE_DIR)/ib
-DEFS_VERSION=stl1
 
 #-----------------------------------------------------------------------------#
 # Platform specific definitions:

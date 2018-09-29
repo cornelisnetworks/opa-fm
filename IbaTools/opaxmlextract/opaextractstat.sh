@@ -1,7 +1,7 @@
 #!/bin/bash
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015-2017, Intel Corporation
+# Copyright (c) 2015-2018, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -99,40 +99,122 @@ then
     usage
 fi
 
-# NOTE: opaxmlextract produces the following CSV for each port:
-#    3 Link values (CSV 1-3)
-#    3 Cable values (CSV 4-6)
-#    2 Port values (CSV 7-8)
-#    1 Stat value (CSV 9)
+# NOTE: opareport -o errors generates XML output of this general form:
+#  <Link>
+#     <Rate>....
+#     <LinkDetails>....
+#     <Cable>
+#       ... cable information from topology.xml
+#     </Cable>
+#     <Port>
+#       .. information about 1st port excluding its CableInfo
+#     </Port>
+#     <Port>
+#       .. information about 2nd port excluding its CableInfo
+#     </Port>
+#     <CableInfo>
+#       .. information about the CableInfo for the cable between the two ports
+#     </CableInfo>
+#  </Link>
+  # opaxmlextract produces the following CSV format on each line:
+  #    1 Link ID (CSV 1) LinkID
+  #    2 Link values (CSV 2-3) (Rate, LinkDetails)
+  #    3 Cable values (CSV 4-6) (CableLength, CableLabel, CableDetails)
+  #    3 Port values (CSV 7-9) (NodeDesc, PortNum, LinkQualityIndicator)
+  # due to the nesting of tags, opaxmlextract will output the following
+  #    All lines have LinkID and Rate and one set of Cable values or Port Values
 
 # Combine 2 ports for each link onto 1 line, removing redundant Link and Cable values
+link1=0
+link2=0
+printHeader=1
+curLinkID=""
+prevLinkID=""
+RateStr=""
+LinkDetailsStr=""
+CableValuesStr=";;"
+Port1ValuesStr=";;"
+Port2ValuesStr=";;"
 
-ix=0
-
-/usr/sbin/opareport -x -d 10 -s -o errors -T "$@" | \
-  /usr/sbin/opaxmlextract -d \; -e Rate -e LinkDetails -e CableLength \
-  -e CableLabel -e CableDetails -e Port.NodeDesc -e Port.PortNum \
-  -e LinkQualityIndicator.Value | while read line
+while read line
 do
-  case $ix in
-  0)
-    echo $line";"`echo $line | cut -d \; -f 6-`
-    ix=$((ix+1))
-    ;;
 
-  1)
-    line1=$line
-    ix=$((ix+1))
-    ;;
+  curLinkID=`echo $line | cut -d \; -f 1`
 
-  2)
-    line2=`echo $line | cut -d \; -f 6-`
-    echo $line1";"$line2
-    ix=1
-    ;;
-  esac
+  # When Link:ID changes, print previous link and start new one
+  if [ "$curLinkID" != "$prevLinkID" ]
+  then
+    # Display header first time
+    if [ $printHeader -eq 1 ]
+    then
+        echo "Rate;LinkDetails;CableLength;CableLabel;CableDetails;Port.NodeDesc;Port.PortNum;LinkQualityIndicator.Value;Port.NodeDesc;Port.PortNum;LinkQualityIndicator.Value"
+        printHeader=0
+    fi
 
-done
+    # Display the previous link before starting this new one
+    if [ "$prevLinkID" != "" ]
+    then
+        echo $RateStr";"$LinkDetailsStr";"$CableValuesStr";"$Port1ValuesStr";"$Port2ValuesStr
+    fi
+
+    # Reset for the next set of data
+    link1=0
+    link2=0
+    RateStr=""
+    LinkDetailsStr=""
+    CableValuesStr=";;"
+    Port1ValuesStr=";;"
+    Port2ValuesStr=";;"
+    prevLinkID=$curLinkID
+  fi
+
+  if [ "$RateStr" == "" ]
+  then
+    RateStr=`echo $line | cut -d \; -f 2`
+  fi
+
+  if [ "$LinkDetailsStr" == "" ]
+  then
+    LinkDetailsStr=`echo $line | cut -d \; -f 3`
+  fi
+
+  if [ "$CableValuesStr" == ";;" ]
+  then
+    CableValuesStr=`echo $line | cut -d \; -f 4-6`
+  fi
+
+  if [ $link1 -eq 0 ]
+  then
+    if [ "$Port1ValuesStr" == ";;" ]
+    then
+      Port1ValuesStr=`echo $line | cut -d \; -f 7-`
+    fi
+    if [ "$Port1ValuesStr" != ";;" ]
+    then
+      link1=1
+    fi
+  elif [ $link2 -eq 0 ]
+  then
+    if [ "$Port2ValuesStr" == ";;" ]
+    then
+      Port2ValuesStr=`echo $line | cut -d \; -f 7-`
+    fi
+    if [ "$Port2ValuesStr" != ";;" ]
+    then
+      link2=1
+    fi
+  fi
+
+done < <(/usr/sbin/opareport -x -d 10 -s -o errors -T "$@" | \
+        /usr/sbin/opaxmlextract -H -d \; -e Link:id -e Rate -e LinkDetails -e CableLength \
+        -e CableLabel -e CableDetails -e Port.NodeDesc -e Port.PortNum \
+        -e LinkQualityIndicator.Value)
+
+# print the last link record
+if [ "$prevLinkID" != "" ]
+then
+  echo $RateStr";"$LinkDetailsStr";"$CableValuesStr";"$Port1ValuesStr";"$Port2ValuesStr
+fi
 
 exit 0
 

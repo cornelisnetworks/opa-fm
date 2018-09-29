@@ -48,6 +48,11 @@ extern "C" {
  * 8B Header Format 
  */ 
 typedef struct _STL_8B_HDR {
+	STL_FIELDUNION4(u2, 32,
+		B:1,
+		L4:4,
+		Length:7,
+		SLID20:20);
 	STL_FIELDUNION6(u1, 32,
 		LT:1,
 		L2:2,
@@ -55,11 +60,6 @@ typedef struct _STL_8B_HDR {
 		RC:3,
 		SC:5,
 		DLID20:20);
-	STL_FIELDUNION4(u2, 32,
-		B:1,
-		L4:4,
-		Length:7,
-		SLID20:20);
 } STL_8B_HDR;
 
 static __inline void BSWAP_STL_8B_HDR( STL_8B_HDR *hdr) {
@@ -103,6 +103,10 @@ static __inline void BSWAP_STL_9B_HDR( STL_9B_HDR *hdr) {
  * 10B Header Format 
  */ 
 typedef struct _STL_10B_HDR {
+	STL_FIELDUNION3(u2, 32,
+		B:1,
+		Length:11,
+		SLID20:20);
 	STL_FIELDUNION6(u1, 32,
 		LT:1,
 		L2:2,
@@ -110,15 +114,10 @@ typedef struct _STL_10B_HDR {
 		RC:3,
 		SC:5,
 		DLID20:20);
-	STL_FIELDUNION4(u2, 32,
-		B:1,
-		L4:4,
-		Length:7,
-		SLID20:20);
-	uint8 Entropy;
 	STL_FIELDUNION2(u3, 8,
 		Pkey:4,
 		L4:4);
+	uint8 Entropy;
 
 } STL_10B_HDR;
 
@@ -133,7 +132,6 @@ static __inline void BSWAP_STL_10B_HDR( STL_10B_HDR *hdr) {
  * 16B Header Format
  */ 
 typedef struct _STL_16B_HDR {
-#if !defined(PRODUCT_STL1)
 	STL_FIELDUNION3(u2, 32,
 		B:1,
 		Length:11,
@@ -154,28 +152,6 @@ typedef struct _STL_16B_HDR {
 	uint8 Age;
 	uint8 Reserved;
 } PACK_SUFFIX STL_16B_HDR;
-#else
-	STL_FIELDUNION6(u1, 32,
-		LT:1,
-		L2:2,
-		F:1,
-		RC:3,
-		SC:5,
-		DLID_19_0:20);
-	STL_FIELDUNION3(u2, 32,
-		B:1,
-		Length:11,
-		SLID_19_0:20);
-	uint8 Reserved;
-	uint8 Age;
-	uint16 Entropy;
-	uint16 Pkey;
-	STL_FIELDUNION2(u3, 8,
-		DLID_23_20:4,
-		SLID_23_20:4);
-	uint8 L4;
-} STL_16B_HDR;
-#endif
 
 static __inline void BSWAP_STL_16B_HDR( STL_16B_HDR *hdr) {
 #if !defined(PRODUCT_STL1)

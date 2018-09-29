@@ -1,7 +1,7 @@
 #!/bin/bash
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015, Intel Corporation
+# Copyright (c) 2018, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -93,7 +93,7 @@ then
 fi
 
 echo
-echo "OFED MVAPICH MPI Library/Tools rebuild"
+echo "IFS MPI Library/Tools rebuild"
 mpi="$1"
 compiler="$2"
 if [ ! -z "$3" ]
@@ -110,7 +110,7 @@ nompi()
 if [ -z "$mpi" ]
 then
 	choices=""
-	for i in openmpi mvapich mvapich2
+	for i in openmpi mvapich2
 	do
 		if [ -e do_${i}_build ]
 		then
@@ -125,7 +125,7 @@ then
 		select mpi in $choices
 		do
 			case "$mpi" in
-			mvapich|mvapich2|openmpi) break;;
+			mvapich2|openmpi) break;;
 			esac
 		done
 	fi

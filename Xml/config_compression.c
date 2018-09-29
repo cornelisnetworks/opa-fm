@@ -317,9 +317,9 @@ FILE* openUncompressedFile(char *filename, time_t *time) {
 			return (FILE *)cf;
 		}
 		fclose(cf->fdin);
-		free(cf);
 		SCP_LOG("openUncompressedFile: Unable to read file header for %s.", __FUNCTION__, filename);
 	}
+	free(cf);
 	return NULL;
 }
 
@@ -389,6 +389,8 @@ int readUncompressedBytes(FILE *fileIn, char *buffer, int bufsize) {
 			uncompBytes = inflater(cf->uncompressedBytesArray, UNCOMPRESSED_ARRAY_SIZE,
 					cf->compressedBytesArray, header.compressedBytes);
 			SCP_LOG("DECOMPRESSED %d BYTES INTO %d BYTES", __FUNCTION__, header.compressedBytes, uncompBytes);
+			if (uncompBytes < 0)
+				return -1;
 			bytesToCopy = uncompBytes;
 		} else {
 			// this block is not compressed, just copy it

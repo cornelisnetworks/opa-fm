@@ -640,7 +640,7 @@ int loadConfig(void){
 	char      name[UMAD_CA_NAME_LEN];
 	uint64_t guid;
 
-	xml_config = parseFmConfig(FM_XML_CONFIG, IXML_PARSER_FLAG_NONE, /* instance does not matter for startup */ 0, /* full parse */ 1, /* embedded */ 0);
+	xml_config = parseFmConfig(FM_XML_CONFIG, IXML_PARSER_FLAG_NONE, /* instance does not matter for startup */ 0, /* full */ 1, /* preverify */ 1, /* embedded */ 0);
 	if (!xml_config) {
 		fprintf(stdout, "Could not open or there was a parse error while reading configuration file ('%s')\n", FM_XML_CONFIG);
 		return -1;

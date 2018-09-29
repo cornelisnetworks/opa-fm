@@ -300,8 +300,7 @@ int sm_state_dump(p_fm_config_conx_hdlt hdl, fm_mgr_type_t mgr, int argc, char *
     char dirName[256];
 
 	if (argc == 1 && strlen(argv[0]) < 256) {
-		strncpy(dirName, argv[0], sizeof(dirName));
-		dirName[sizeof(dirName)-1]=0;
+		StringCopy(dirName, argv[0], sizeof(dirName));
 	} else {
 		sprintf(dirName, "/tmp");
 	}
@@ -1023,7 +1022,7 @@ int main(int argc, char *argv[]) {
 	int						i;
 
 	/* Get options at the command line (overide default values) */
-    cs_strlcpy(Opts, "+i:d:h-", sizeof(Opts));
+    StringCopy(Opts, "+i:d:h-", sizeof(Opts));
 
     while ((arg = getopt(argc, argv, Opts)) != EOF) {
         switch (arg) {

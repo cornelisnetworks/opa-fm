@@ -163,15 +163,6 @@ sa_DeviceGroupMemberRecord_GetTable(Mai_t *maip, uint32_t *records) {
 
 	blindQuery = (samad.header.mask == 0);
 
-	checkName = samad.header.mask & STL_DEVICE_GROUP_COMPONENTMASK_DGNAME;
-	if (checkName) {
-		dgIndex = smGetDgIdx((char*)((STL_DEVICE_GROUP_MEMBER_RECORD*)samad.data)->DeviceGroupName);
-		// Early exit if the device group name doesn't exist.
-		if (dgIndex == -1) {
-			return VSTATUS_OK;
-		}
-	}
-	
 	checkLid = samad.header.mask & STL_DEVICE_GROUP_COMPONENTMASK_LID;
 	if (checkLid) {
 		portLid = ntoh32(((STL_DEVICE_GROUP_MEMBER_RECORD*)(samad.data))->LID);
@@ -188,32 +179,38 @@ sa_DeviceGroupMemberRecord_GetTable(Mai_t *maip, uint32_t *records) {
 
 	(void)vs_rdlock(&old_topology_lock);
 	
+	checkName = samad.header.mask & STL_DEVICE_GROUP_COMPONENTMASK_DGNAME;
+	if (checkName) {
+		dgIndex = smGetDgIdx(&old_topology.vfs_ptr->dg_config, (char*)((STL_DEVICE_GROUP_MEMBER_RECORD*)samad.data)->DeviceGroupName);
+		// Early exit if the device group name doesn't exist.
+		if (dgIndex == -1) {
+			goto done;
+		}
+	}
+
 	if (blindQuery) {
-		for (dgIndex = 0; dgIndex < MAX_VFABRIC_GROUPS; dgIndex++) {
-			if (dg_config.dg[dgIndex]->name) {
-				for_all_nodes(&old_topology, pNode) {
-					for_all_ports(pNode, pPort) {
-						if (!sm_valid_port(pPort) || pPort->state <= IB_PORT_DOWN) continue;
-						if (isDgMember(dgIndex, pPort->portData)) {
-							if ((status = sa_check_len(data, sizeof(STL_DEVICE_GROUP_MEMBER_RECORD), bytes)) != VSTATUS_OK) {
-								maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
-								IB_LOG_ERROR_FMT("sa_DeviceGroupMemberRecord_GetTable", "Reached size limit at %d records", *records);
-								goto done;
-							}
-	
-							record.LID = (pNode->nodeInfo.NodeType != NI_TYPE_SWITCH) ? pPort->portData->lid : pNode->port[0].portData->lid;
-							record.Port = pPort->index;
-							record.GUID = (pNode->nodeInfo.NodeType != NI_TYPE_SWITCH) ? pPort->portData->guid : pNode->port[0].portData->guid;
-							memcpy((void *) &record.NodeDescription, (void *) &pNode->nodeDesc, sizeof(record.NodeDescription));
-							record.NodeDescription.NodeString[STL_NODE_DESCRIPTION_ARRAY_SIZE-1]=0;
-							memset(record.DeviceGroupName, 0, MAX_DG_NAME);
-							memcpy(record.DeviceGroupName, dg_config.dg[dgIndex]->name, MAX_DG_NAME-1);
-							BSWAPCOPY_STL_DEVICE_GROUP_MEMBER_RECORD(&record, (STL_DEVICE_GROUP_MEMBER_RECORD*)data);
-							(void)sa_template_test_mask(samad.header.mask, samad.data, &data, sizeof(STL_DEVICE_GROUP_MEMBER_RECORD), bytes, records);
+		for (dgIndex = 0; dgIndex < old_topology.vfs_ptr->dg_config.number_of_dgs; dgIndex++) {
+			for_all_nodes(&old_topology, pNode) {
+				for_all_ports(pNode, pPort) {
+					if (!sm_valid_port(pPort) || pPort->state <= IB_PORT_DOWN) continue;
+					if (isDgMember(dgIndex, pPort->portData)) {
+						if ((status = sa_check_len(data, sizeof(STL_DEVICE_GROUP_MEMBER_RECORD), bytes)) != VSTATUS_OK) {
+							maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
+							IB_LOG_ERROR_FMT("sa_DeviceGroupMemberRecord_GetTable", "Reached size limit at %d records", *records);
+							goto done;
 						}
+
+						record.LID = (pNode->nodeInfo.NodeType != NI_TYPE_SWITCH) ? pPort->portData->lid : pNode->port[0].portData->lid;
+						record.Port = pPort->index;
+						record.GUID = (pNode->nodeInfo.NodeType != NI_TYPE_SWITCH) ? pPort->portData->guid : pNode->port[0].portData->guid;
+						memcpy((void *) &record.NodeDescription, (void *) &pNode->nodeDesc, sizeof(record.NodeDescription));
+						record.NodeDescription.NodeString[STL_NODE_DESCRIPTION_ARRAY_SIZE-1]=0;
+						StringCopy((void *)record.DeviceGroupName, (void *) old_topology.vfs_ptr->dg_config.dg[dgIndex]->name, MAX_DG_NAME);
+						BSWAPCOPY_STL_DEVICE_GROUP_MEMBER_RECORD(&record, (STL_DEVICE_GROUP_MEMBER_RECORD*)data);
+						(void)sa_template_test_mask(samad.header.mask, samad.data, &data, sizeof(STL_DEVICE_GROUP_MEMBER_RECORD), bytes, records);
 					}
 				}
-			} else break;
+			}
 		}
 	} else {
 		int foundLid = 0;
@@ -240,27 +237,22 @@ sa_DeviceGroupMemberRecord_GetTable(Mai_t *maip, uint32_t *records) {
 				// For any query that doesn't specify a matching device group name,
 				// return a record for each device group associated with this port.
 				if (!checkName) {
-					for (dgIndex = 0; dgIndex < MAX_VFABRIC_GROUPS; dgIndex++) {
-						if (dg_config.dg[dgIndex]->name) {
-							if (isDgMember(dgIndex, pPort->portData)) {
-								if ((status = sa_check_len(data, sizeof(STL_DEVICE_GROUP_MEMBER_RECORD), bytes)) != VSTATUS_OK) {
-									maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
-									IB_LOG_ERROR_FMT("sa_DeviceGroupMemberRecord_GetTable", "Reached size limit at %d records", *records);
-									goto done;
-								}
-	
-								record.LID = (pNode->nodeInfo.NodeType != NI_TYPE_SWITCH) ? pPort->portData->lid : pNode->port[0].portData->lid;
-								record.Port = pPort->index;
-								record.GUID = (pNode->nodeInfo.NodeType != NI_TYPE_SWITCH) ? pPort->portData->guid : pNode->port[0].portData->guid;
-								memcpy((void *) &record.NodeDescription, (void *) &pNode->nodeDesc, sizeof(record.NodeDescription));
-								record.NodeDescription.NodeString[STL_NODE_DESCRIPTION_ARRAY_SIZE-1]=0;
-								memset(record.DeviceGroupName, 0, MAX_DG_NAME);
-								memcpy(record.DeviceGroupName, dg_config.dg[dgIndex]->name, MAX_DG_NAME-1);
-
-								BSWAPCOPY_STL_DEVICE_GROUP_MEMBER_RECORD(&record, (STL_DEVICE_GROUP_MEMBER_RECORD*)data);
-								(void)sa_template_test_mask(samad.header.mask, samad.data, &data, sizeof(STL_DEVICE_GROUP_MEMBER_RECORD), bytes, records);
-							}
+					for (dgIndex = 0; (dgIndex = bitset_find_next_one(&pPort->portData->dgMember, dgIndex)) != -1; dgIndex++) {
+						if ((status = sa_check_len(data, sizeof(STL_DEVICE_GROUP_MEMBER_RECORD), bytes)) != VSTATUS_OK) {
+							maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
+							IB_LOG_ERROR_FMT("sa_DeviceGroupMemberRecord_GetTable", "Reached size limit at %d records", *records);
+							goto done;
 						}
+
+						record.LID = (pNode->nodeInfo.NodeType != NI_TYPE_SWITCH) ? pPort->portData->lid : pNode->port[0].portData->lid;
+						record.Port = pPort->index;
+						record.GUID = (pNode->nodeInfo.NodeType != NI_TYPE_SWITCH) ? pPort->portData->guid : pNode->port[0].portData->guid;
+						memcpy((void *) &record.NodeDescription, (void *) &pNode->nodeDesc, sizeof(record.NodeDescription));
+						record.NodeDescription.NodeString[STL_NODE_DESCRIPTION_ARRAY_SIZE-1]=0;
+						StringCopy((char *)record.DeviceGroupName, old_topology.vfs_ptr->dg_config.dg[dgIndex]->name, MAX_DG_NAME);
+
+						BSWAPCOPY_STL_DEVICE_GROUP_MEMBER_RECORD(&record, (STL_DEVICE_GROUP_MEMBER_RECORD*)data);
+						(void)sa_template_test_mask(samad.header.mask, samad.data, &data, sizeof(STL_DEVICE_GROUP_MEMBER_RECORD), bytes, records);
 					}
 				} else {
 					// We're looking for specific device group membership

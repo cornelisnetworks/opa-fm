@@ -37,33 +37,49 @@ use strict;
 
 	# Names of supported install components
 	# must be listed in dependency order such that prereqs appear 1st
-# TBD ofed_vnic
-my @delta_Components_other = ( "opa_stack", "ibacm", "intel_hfi", "mpi_selector",
+	# delta_debug must be last
+my @delta_Components_rhel72 = ( "opa_stack", "ibacm", "mpi_selector", "intel_hfi",
+		"opa_stack_dev",
 		"delta_ipoib",
-		"opa_stack_dev", "rdma_ndd",
+		"sandiashmem",
 		"delta_debug", );
-my @delta_Components_rhel72 = ( "opa_stack", "ibacm", "intel_hfi", "mpi_selector",
+my @delta_Components_sles12_sp2 = ( "opa_stack", "intel_hfi",
+		"opa_stack_dev",
 		"delta_ipoib",
-		"opa_stack_dev", "rdma_ndd",
+		"sandiashmem",
 		"delta_debug", );
-my @delta_Components_sles12_sp2 = ( "opa_stack", "intel_hfi", "mpi_selector",
+my @delta_Components_rhel73 = ( "opa_stack", "mpi_selector", "intel_hfi",
+		"opa_stack_dev",
 		"delta_ipoib",
-		"opa_stack_dev", "rdma_ndd",
+		"sandiashmem",
 		"delta_debug", );
-my @delta_Components_rhel73 = ( "opa_stack", "ibacm", "intel_hfi", "mpi_selector",
+my @delta_Components_sles12_sp3 = ( "opa_stack", "intel_hfi",
+		"opa_stack_dev",
 		"delta_ipoib",
-		"opa_stack_dev", "rdma_ndd",
-	   	"delta_debug", );
-my @delta_Components_sles12_sp3 = ( "opa_stack", "intel_hfi", "mpi_selector",
-		"delta_ipoib",
-		"opa_stack_dev", "rdma_ndd",
+		"sandiashmem",
 		"delta_debug", );
-my @delta_Components_rhel74 = ( "opa_stack", "ibacm", "intel_hfi", "mpi_selector",
+my @delta_Components_rhel74 = ( "opa_stack", "mpi_selector", "intel_hfi",
+		"opa_stack_dev",
 		"delta_ipoib",
-		"opa_stack_dev", "rdma_ndd",
-	   	"delta_debug", );
+		"sandiashmem",
+		"delta_debug", );
+my @delta_Components_rhel75 = ( "opa_stack", "mpi_selector", "intel_hfi",
+		"opa_stack_dev",
+		"delta_ipoib",
+		"sandiashmem",
+		"delta_debug", );
+my @delta_Components_sles15 = ( "opa_stack", "intel_hfi",
+		"opa_stack_dev",
+		"delta_ipoib",
+		"sandiashmem",
+		"delta_debug", );
+
 @Components = ( );
-# delta_debug must be last
+# RHEL7.2, ibacm is a full component with rpms to install
+my @delta_SubComponents_older = ( "rdma_ndd", "delta_srp", "delta_srpt" );
+# RHEL7.3 and newer AND SLES12.2 and newer
+my @delta_SubComponents_newer = ( "ibacm", "rdma_ndd", "delta_srp", "delta_srpt" );
+@SubComponents = ( );
 
 # override some of settings in main_omnipathwrap_delta.pl
 sub overrides()
@@ -79,20 +95,28 @@ sub overrides()
 		@Components = ( @delta_Components_sles12_sp3 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES74" ) {
 		@Components = ( @delta_Components_rhel74 );
+	} elsif ( "$CUR_VENDOR_VER" eq "ES75" ) {
+		@Components = ( @delta_Components_rhel75 );
+	} elsif ( "$CUR_VENDOR_VER" eq "ES15" ) {
+		@Components = ( @delta_Components_sles15 );
 	} else {
-		@Components = ( @delta_Components_other );
+		# unsupported OS
+		@Components = ( );
 	}
 
 	# Sub components for autostart processing
-	@SubComponents = ( );
+	if ( "$CUR_VENDOR_VER" eq "ES72" ) {
+		@SubComponents = ( @delta_SubComponents_older );
+	} else {
+		@SubComponents = ( @delta_SubComponents_newer );
+	}
 
 	# TBD remove this concept
 	# no WrapperComponent (eg. opaconfig)
 	$WrapperComponent = "";
 
 	# set SrcDir for all components to .
-	# ofed_delta is a special component only used for the SrcDir of comp.pl
-	foreach my $comp ( @Components, "ofed_delta" )
+	foreach my $comp ( @Components )
 	{
         $ComponentInfo{$comp}{'SrcDir'} = ".";
 	}

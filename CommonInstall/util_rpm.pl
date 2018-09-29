@@ -44,7 +44,6 @@ use strict;
 my $suffix_64bit = "";	# suffix for rpm name for 64 bit rpms
 
 my $rpm_check_dependencies = 1;	# can be set to 0 to disable rpm_check_os_prereqs
-my $skip_kernel = 0; # can be set to 1 by --user-space argument
 
 sub rpm_query_param($);
 # TBD or
@@ -59,21 +58,6 @@ if ( "$RPM_ARCH" eq "ia32" ) {
 my $RPM_KERNEL_ARCH = `uname -m`; # typically matches $RPM_ARCH
 chomp $RPM_KERNEL_ARCH;
 
-my $RPM_DIST=`rpm -qf /etc/issue 2>/dev/null|head -1`;
-chomp $RPM_DIST;
-if ( "$RPM_DIST" eq "" ) {
-	$RPM_DIST="unsupported";
-} else {
-	# This effectively gets rid of any CPU architecture suffix in RPM_DIST
-	$RPM_DIST=`rpm -q --queryformat "[%{NAME}]-[%{VERSION}]-[%{RELEASE}]" $RPM_DIST 2>/dev/null`;
-	chomp $RPM_DIST;
-	if ( "$RPM_DIST" eq "" ) {
-		$RPM_DIST="unsupported";
-	}
-}
-sub rpm_query_release_pkg($);
-my $RPM_DIST_REL = rpm_query_release_pkg($RPM_DIST);
-
 # return array of cmds for verification during init
 sub rpm_get_cmds_for_verification()
 {
@@ -83,7 +67,7 @@ sub rpm_get_cmds_for_verification()
 # version string for kernel used in RPM filenames uses _ instead of -
 sub rpm_tr_os_version($)
 {
-	my($osver) = shift();	# uname -r style output
+	my $osver = shift();	# uname -r style output
 	$osver =~ s/-/_/g;
 	return "$osver";
 }
@@ -91,7 +75,7 @@ sub rpm_tr_os_version($)
 # query a parameter of RPM tools themselves
 sub	rpm_query_param($)
 {
-	my($param) = shift();	# parameter name: such as _mandir, _sysconfdir, _target_cpu
+	my $param = shift();	# parameter name: such as _mandir, _sysconfdir, _target_cpu
 	my $ret = `chroot /$ROOT $RPM --eval "%{$param}"`;
 	chomp $ret;
 	return $ret;
@@ -100,8 +84,8 @@ sub	rpm_query_param($)
 # query an attribute of the RPM file
 sub	rpm_query_attr($$)
 {
-	my($rpmfile) = shift();	# .rpm file
-	my($attr) = shift();	# attribute name: such as NAME or VERSION
+	my $rpmfile = shift();	# .rpm file
+	my $attr = shift();	# attribute name: such as NAME or VERSION
 
 	if ( ! -f "$rpmfile" ) {
 		return "";
@@ -112,8 +96,8 @@ sub	rpm_query_attr($$)
 # query an attribute of the installed RPM package
 sub	rpm_query_attr_pkg($$)
 {
-	my($package) = shift();	# installed package
-	my($attr) = shift();	# attribute name: such as NAME or VERSION
+	my $package = shift();	# installed package
+	my $attr = shift();	# attribute name: such as NAME or VERSION
 
 	return `chroot /$ROOT $RPM --queryformat "[%{$attr}]" -q $package 2>/dev/null`;
 }
@@ -129,22 +113,14 @@ sub rpm_will_build_debuginfo()
 # get NAME of RPM file
 sub rpm_query_name($)
 {
-	my($rpmfile) = shift();	# .rpm file
+	my $rpmfile = shift();	# .rpm file
 
 	return rpm_query_attr($rpmfile, "NAME");
 }
 
-# get RELEASE of installed RPM package
-sub rpm_query_release_pkg($)
-{
-	my($package) = shift();	# installed package
-
-	return rpm_query_attr_pkg($package, "RELEASE");
-}
-
 sub rpm_query_version_release($)
 {
-	my($rpmfile) = shift();	# .rpm file
+	my $rpmfile = shift();	# .rpm file
 
 	my $ver = rpm_query_attr($rpmfile, "VERSION");
 	my $rel = rpm_query_attr($rpmfile, "RELEASE");
@@ -154,7 +130,7 @@ sub rpm_query_version_release($)
 # get VERSION-RELEASE of installed RPM package
 sub rpm_query_version_release_pkg($)
 {
-	my($package) = shift();	# installed package
+	my $package = shift();	# installed package
 
 	my $ver = rpm_query_attr_pkg($package, "VERSION");
 	my $rel = rpm_query_attr_pkg($package, "RELEASE");
@@ -164,7 +140,7 @@ sub rpm_query_version_release_pkg($)
 # return NAME-VERSION-RELEASE.ARCH
 sub rpm_query_full_name($)
 {
-	my($rpmfile) = shift();	# .rpm file
+	my $rpmfile = shift();	# .rpm file
 
 	if ( ! -f "$rpmfile" ) {
 		return "";
@@ -175,47 +151,48 @@ sub rpm_query_full_name($)
 # beware, this could return more than 1 name
 #sub rpm_query_full_name_pkg($)
 #{
-#	my($package) = shift();	# installed package
+#	my $package = shift();	# installed package
 #	return `chroot /$ROOT $RPM --queryformat '[%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}]' -q $package 2>/dev/null`;
 #}
 
-sub rpm_adjust_mode_cpu($$)
+sub rpm_get_cpu_arch($)
 {
-	my($package) = shift();	# package name
-	my $mode = shift();	# "user" or "kernel rev"
+	my $mode = shift();	# "user" or kernel rev or "firmware"
 						# "any"- checks if any variation of package is installed
 
-	if ("$mode" eq "user" || "$mode" eq "any") {
-			return ($mode, $RPM_ARCH);
-		} else {
-			return ($mode, $RPM_KERNEL_ARCH);
-		}
+	if ("$mode" eq "user" || "$mode" eq "any" || "$mode" eq "firmware") {
+		return $RPM_ARCH;
+    } else {
+		return $RPM_KERNEL_ARCH;
 	}
+}
 
 my $last_checked;	# last checked for in rpm_is_installed
 sub rpm_is_installed($$)
 {
-	my($package) = shift();	# package name
-	my $mode = shift();	# "user" or kernel rev
+	my $package = shift();	# package name
+	my $mode = shift();	# "user" or kernel rev or "firmware"
 						# "any"- checks if any variation of package is installed
 	my $rc;
 	my $cpu;
 
-	if ($skip_kernel && "$mode" ne "user" && "$mode" ne "any") {
+	if ($user_space_only && "$mode" ne "user" && "$mode" ne "any") {
                return 1;
 	}
 
-	( $mode, $cpu ) = rpm_adjust_mode_cpu($package, $mode);
+	$cpu = rpm_get_cpu_arch($mode);
 	if ("$mode" eq "any" ) {
 		# any variation is ok
 		DebugPrint("$RPM -q $package > /dev/null 2>&1\n");
 		$rc = system("chroot /$ROOT $RPM -q $package > /dev/null 2>&1");
 		$last_checked = "any variation";
-	} elsif ("$mode" eq "user") {
+	} elsif ("$mode" eq "user" || "$mode" eq "firmware" || $package eq "hfi2") {
+		# the above check on hfi2 is a temporary work around because the current hfi2 kernel rpm has no kernel version
+		# number in file name (see STL-14187). After we resolve the issue, we shall remove the above check on hfi2
 		# verify $cpu version or noarch is installed
 		DebugPrint "chroot /$ROOT $RPM --queryformat '[%{ARCH}\\n]' -q $package 2>/dev/null|egrep '^$cpu\$|^noarch\$' >/dev/null 2>&1\n";
 		$rc = system "chroot /$ROOT $RPM --queryformat '[%{ARCH}\\n]' -q $package 2>/dev/null|egrep '^$cpu\$|^noarch\$' >/dev/null 2>&1";
-		$last_checked = "for $cpu or noarch";
+		$last_checked = "for $mode $cpu or noarch";
 	} else {
 		# $mode is kernel rev, verify proper kernel version is installed
 		# for kernel packages, RELEASE is kernel rev
@@ -230,9 +207,9 @@ sub rpm_is_installed($$)
 
 sub rpm_is_installed_list($@)
 {
-	my $mode = shift();	# "user" or kernel rev
+	my $mode = shift();	# "user" or kernel rev or "firmware"
 						# "any"- verifies any variation of package is installed
-	my(@package_list) = @_;	# package names
+	my @package_list = @_;	# package names
 
 	foreach my $package ( @package_list )
 	{
@@ -248,7 +225,7 @@ sub rpm_check_os_prereqs_internal($$@)
 {
 	my $mode = shift();	# default mode
 	my $message = shift();
-	my(@package_list) = @_;	# package names
+	my @package_list = @_;	# package names
 	my $err=0;
 	
 	if ( ! $rpm_check_dependencies ) {
@@ -346,14 +323,11 @@ sub rpm_check_os_prereqs_internal($$@)
 				if ("$CUR_DISTRO_VENDOR" ne 'SuSE' && "$CUR_DISTRO_VENDOR" ne 'redhat'
 			    	&& "$CUR_DISTRO_VENDOR" ne 'fedora' && "$CUR_DISTRO_VENDOR" ne 'rocks') {
 					$package="libsysfs";
-				} elsif (($CUR_DISTRO_VENDOR eq "redhat" and $CUR_VENDOR_VER eq "ES6")) {
-        			$package = "libsysfs";
 				}
 			}
 
 			# distro specific naming of sysfsutils-devel
 			# RHEL4 used sysfsutils-devel
-			# RHEL6 uses libsysfs
 			# SuSE uses sysfsutils
 			# others use libsysfs-devel
 			if ("$package" eq "sysfsutils-devel" ) {
@@ -361,8 +335,6 @@ sub rpm_check_os_prereqs_internal($$@)
 					or ($CUR_DISTRO_VENDOR eq "redhat" and $CUR_VENDOR_VER eq "ES5")
 	) {
         			$package = "sysfsutils";
-				} elsif (($CUR_DISTRO_VENDOR eq "redhat" and $CUR_VENDOR_VER eq "ES6")) {
-        			$package = "libsysfs";
     			} elsif (($CUR_DISTRO_VENDOR eq "rocks") or
         			($CUR_DISTRO_VENDOR eq "fedora") or
         			($CUR_DISTRO_VENDOR eq "redhat")) {
@@ -442,7 +414,7 @@ sub rpm_check_os_prereqs($$)
         foreach (@rpm_list){
                 DebugPrint "Checking installation of $_\n";
 		#Don't check dependencies for kernel RPMS if their installation is skipped
-		if($skip_kernel == 1){
+		if($user_space_only == 1){
                 	if( "$_" =~ /kernel/ || "$_" =~ /kmod/ || "$_" eq "pciutils" ) {
 				DebugPrint("Skipping check for $_ \n");
 				next;
@@ -462,7 +434,7 @@ sub rpm_check_build_os_prereqs($$@)
 {
 	my $mode = shift();
 	my $build_info = shift();
-	my(@package_list) = @_;	# package names
+	my @package_list = @_;	# package names
 	return rpm_check_os_prereqs_internal($mode, " to build $build_info", @package_list);
 }
 
@@ -474,17 +446,17 @@ sub rpm_check_build_os_prereqs($$@)
 sub rpms_installed_pkg($$)
 {
 	my $package=shift();
-	my $mode = shift();	# "user" or kernel rev
+	my $mode = shift();	# "user" or kernel rev or "firmware"
 						# "any"- checks if any variation of package is installed
 
 	my @lines=();
 	my $cpu;
 
-	( $mode, $cpu ) = rpm_adjust_mode_cpu($package, $mode);
+	$cpu = rpm_get_cpu_arch($mode);
 	if ( "$mode" eq "any" ) {
 		DebugPrint("chroot /$ROOT $RPM --queryformat '[%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n]' -q $package 2>/dev/null\n");
 		open(rpms, "chroot /$ROOT $RPM --queryformat '[%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n]' -q $package 2>/dev/null|");
-	} elsif ("$mode" eq "user" ) {
+	} elsif ("$mode" eq "user" || "$mode" eq "firmware") {
 		DebugPrint("chroot /$ROOT $RPM --queryformat '[%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n]' -q $package 2>/dev/null|egrep '\.$cpu\$|\.noarch\$' 2>/dev/null\n");
 		open(rpms, "chroot /$ROOT $RPM --queryformat '[%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n]' -q $package 2>/dev/null|egrep '\.$cpu\$|\.noarch\$' 2>/dev/null|");
 	} else {
@@ -509,7 +481,7 @@ sub rpms_installed_pkg($$)
 sub rpm_variations($$)
 {
 	my $package=shift();
-	my $mode = shift();	# "user", kernel rev or "any"
+	my $mode = shift();	# "user", kernel rev, "firmware" or "any"
 						# "any" checks if any variation of package is installed
 	my @variations = ( $package );
 
@@ -540,8 +512,8 @@ sub rpms_variations_installed_pkg($$)
 # determine if given rpm contains the given file
 sub rpm_has_file($$)
 {
-	my($rpmfile) = shift();	# .rpm file
-	my($file) = shift();		# file to look for in rpm
+	my $rpmfile = shift();	# .rpm file
+	my $file = shift();		# file to look for in rpm
 
 	if ( ! -f "$rpmfile" ) {
 		return 0;
@@ -586,10 +558,10 @@ sub rpm_uninstall_matches($$$;$)
 
 sub rpm_run_install($$$)
 {
-	my($rpmfile) = shift();	# .rpm file
-	my $mode = shift();	# "user" or kernel rev
+	my $rpmfile = shift();	# .rpm file
+	my $mode = shift();	# "user" or kernel rev or "firmware"
 						# "any"- will install any variation found
-	my($options) = shift();	# additional rpm command options
+	my $options = shift();	# additional rpm command options
 						# if " -U " is part of these options, -U will be
 						# unconditionally used, even if the rpm is not
 						# already installed.  Otherwise -U will only be
@@ -601,9 +573,7 @@ sub rpm_run_install($$$)
 	my $chrootcmd="";
 	my $Uoption= 0;
 
-	if ($skip_kernel && "$mode" ne "user" && "$mode" ne "any") {
-		return;
-	} elsif ($skip_kernel && $rpmfile =~ /\/hfi1-firmware/) {
+	if ($user_space_only && "$mode" ne "user" && "$mode" ne "any") {
 		return;
 	}
 
@@ -691,11 +661,11 @@ sub rpm_run_install($$$)
 # uninstalls all variations of given package
 sub rpm_uninstall($$$$)
 {
-	my($package) = shift();	# package name
-	my $mode = shift();	# "user" or kernel rev
+	my $package = shift();	# package name
+	my $mode = shift();	# "user" or kernel rev or "firmware"
 						# "any"- checks if any variation of package is installed
-	my($options) = shift();	# additional rpm command options
-	my($verbosity) = shift();	# verbose or silent
+	my $options = shift();	# additional rpm command options
+	my $verbosity = shift();	# verbose or silent
 	my @fullnames = rpms_variations_installed_pkg($package, $mode); # already adjusts mode
 	my $rc = 0;
 	foreach my $fullname (@fullnames) {
@@ -713,176 +683,119 @@ sub rpm_uninstall($$$$)
 	return $rc;
 }
 
-# resolve rpm package filename within $rpmdir for $mode
-sub rpm_resolve($$$)
+# resolve rpm package filename for $mode
+# rpmpath is a glob style absolute or relative path to the package
+# including the package name, but excluding package version, architecture and
+# .rpm suffix
+# TBD - can restructure this as a loop for a list of paths to check
+# for each in @( "-[0-9]*.${cpu}.rpm "-r[0-9]*.${cpu}.rpm" ... )
+#     Print
+#     file_glob("${rpmpath}${suffix}"
+#     if match
+#         exit loop
+sub rpm_resolve($$)
 {
-	my $rpmdir = shift();
-	my $mode = shift();	# "user" or kernel rev
+	my $rpmpath = shift();
+	my $mode = shift();	# "user" or kernel rev or "firmware"
 						# "any"- any variation found
-	my $package = shift();	# package name
 	my $rpmfile;
 	my $cpu;
 
-	( $mode, $cpu ) = rpm_adjust_mode_cpu($package, $mode);
-	if ("$mode" eq "user" ) {
+	$cpu = rpm_get_cpu_arch($mode);
+	if ("$mode" eq "user" || "$mode" eq "firmware") {
 		# we expect 0-1 match, ignore all other filenames returned
-		DebugPrint("Checking for User Rpm: $rpmdir/${package}-[0-9]*.${cpu}.rpm\n");
-		$rpmfile = file_glob("$rpmdir/${package}-[0-9]*.${cpu}.rpm");
+		DebugPrint("Checking for $mode Rpm: ${rpmpath}-[0-9]*.${cpu}.rpm\n");
+		$rpmfile = file_glob("${rpmpath}-[0-9]*.${cpu}.rpm");
 		if ( "$rpmfile" eq "" || ! -e "$rpmfile" ) {
-			DebugPrint("Checking for User Rpm: $rpmdir/${package}-r[0-9]*.${cpu}.rpm\n");
-			$rpmfile = file_glob("$rpmdir/${package}-r[0-9]*.${cpu}.rpm");
+			DebugPrint("Checking for $mode Rpm: ${rpmpath}-r[0-9]*.${cpu}.rpm\n");
+			$rpmfile = file_glob("${rpmpath}-r[0-9]*.${cpu}.rpm");
 		}
 		if ( "$rpmfile" eq "" || ! -e "$rpmfile" ) {
-			DebugPrint("Checking for User Rpm: $rpmdir/${package}-trunk-[0-9]*.${cpu}.rpm\n");
-			$rpmfile = file_glob("$rpmdir/${package}-trunk-[0-9]*.${cpu}.rpm");
+			DebugPrint("Checking for $mode Rpm: ${rpmpath}-trunk-[0-9]*.${cpu}.rpm\n");
+			$rpmfile = file_glob("${rpmpath}-trunk-[0-9]*.${cpu}.rpm");
 		}
 		if ( "$rpmfile" eq "" || ! -e "$rpmfile" ) {
 			# we expect 0-1 match, ignore all other filenames returned
-			DebugPrint("Checking for User Rpm: $rpmdir/${package}-[0-9]*.noarch.rpm\n");
-			$rpmfile = file_glob("$rpmdir/${package}-[0-9]*.noarch.rpm");
+			DebugPrint("Checking for $mode Rpm: ${rpmpath}-[0-9]*.noarch.rpm\n");
+			$rpmfile = file_glob("${rpmpath}-[0-9]*.noarch.rpm");
 			if ( "$rpmfile" eq "" || ! -e "$rpmfile" ) {
-				DebugPrint("Checking for User Rpm: $rpmdir/${package}-r[0-9]*.noarch.rpm\n");
-				$rpmfile = file_glob("$rpmdir/${package}-r[0-9]*.noarch.rpm");
+				DebugPrint("Checking for $mode Rpm: ${rpmpath}-r[0-9]*.noarch.rpm\n");
+				$rpmfile = file_glob("${rpmpath}-r[0-9]*.noarch.rpm");
 			}
 			if ( "$rpmfile" eq "" || ! -e "$rpmfile" ) {
-				DebugPrint("Checking for User Rpm: $rpmdir/${package}-trunk-[0-9]*.noarch.rpm\n");
-				$rpmfile = file_glob("$rpmdir/${package}-trunk-[0-9]*.noarch.rpm");
+				DebugPrint("Checking for $mode Rpm: ${rpmpath}-trunk-[0-9]*.noarch.rpm\n");
+				$rpmfile = file_glob("${rpmpath}-trunk-[0-9]*.noarch.rpm");
 			}
 		}
 	} elsif ("$mode" eq "any" ) {
 		# we expect 0-1 match, ignore all other filenames returned
-		DebugPrint("Checking for User Rpm: $rpmdir/${package}-[0-9]*.*.rpm\n");
-		$rpmfile = file_glob("$rpmdir/${package}-[0-9]*.*.rpm");
+		DebugPrint("Checking for User Rpm: ${rpmpath}-[0-9]*.*.rpm\n");
+		$rpmfile = file_glob("${rpmpath}-[0-9]*.*.rpm");
 		if ( "$rpmfile" eq "" || ! -e "$rpmfile" ) {
-			DebugPrint("Checking for User Rpm: $rpmdir/${package}-r[0-9]*.*.rpm\n");
-			$rpmfile = file_glob("$rpmdir/${package}-r[0-9]*.*.rpm");
+			DebugPrint("Checking for User Rpm: ${rpmpath}-r[0-9]*.*.rpm\n");
+			$rpmfile = file_glob("${rpmpath}-r[0-9]*.*.rpm");
 		}
 		if ( "$rpmfile" eq "" || ! -e "$rpmfile" ) {
-			DebugPrint("Checking for User Rpm: $rpmdir/${package}-trunk-[0-9]*.*.rpm\n");
-			$rpmfile = file_glob("$rpmdir/${package}-trunk-[0-9]*.*.rpm");
+			DebugPrint("Checking for User Rpm: ${rpmpath}-trunk-[0-9]*.*.rpm\n");
+			$rpmfile = file_glob("${rpmpath}-trunk-[0-9]*.*.rpm");
 		}
 	} else {
 		my $osver = rpm_tr_os_version("$mode");	# OS version
 		# we expect 1 match, ignore all other filenames returned
-		if ( "$CUR_VENDOR_VER" eq 'ES122' || "$CUR_VENDOR_VER" eq 'ES123') {
-			DebugPrint("Checking for Kernel Rpm: $rpmdir/${package}-${osver}_k*.${cpu}.rpm\n");
-			$rpmfile = file_glob("$rpmdir/${package}-${osver}_k*.${cpu}.rpm");
+		if ( "$CUR_VENDOR_VER" eq 'ES122' || "$CUR_VENDOR_VER" eq 'ES123' || "$CUR_VENDOR_VER" eq 'ES15') {
+			DebugPrint("Checking for Kernel Rpm: ${rpmpath}-${osver}_k*.${cpu}.rpm\n");
+			$rpmfile = file_glob("${rpmpath}-${osver}_k*.${cpu}.rpm");
 		} else {
-			DebugPrint("Checking for Kernel Rpm: $rpmdir/${package}-[0-9]*.[0-9][0-9].${osver}-[0-9]*.${cpu}.rpm\n");
-			$rpmfile = file_glob("$rpmdir/${package}-[0-9]*.[0-9][0-9].${osver}-[0-9]*.${cpu}.rpm");
+			DebugPrint("Checking for Kernel Rpm: ${rpmpath}-[0-9]*.[0-9][0-9].${osver}-[0-9]*.${cpu}.rpm\n");
+			$rpmfile = file_glob("${rpmpath}-[0-9]*.[0-9][0-9].${osver}-[0-9]*.${cpu}.rpm");
 		}
 		if ( "$rpmfile" eq "" || ! -e "$rpmfile" ) {
-			DebugPrint("Checking for Kernel Rpm: $rpmdir/${package}-${osver}-[0-9]*.${cpu}.rpm\n");
-			$rpmfile = file_glob("$rpmdir/${package}-${osver}-[0-9]*.${cpu}.rpm");
+			DebugPrint("Checking for Kernel Rpm: ${rpmpath}-${osver}-[0-9]*.${cpu}.rpm\n");
+			$rpmfile = file_glob("${rpmpath}-${osver}-[0-9]*.${cpu}.rpm");
 		}
 		if ( "$rpmfile" eq "" || ! -e "$rpmfile" ) {
-			DebugPrint("Checking for Kernel Rpm: $rpmdir/${package}-trunk-[0-9]*-${osver}.${cpu}.rpm\n");
-			$rpmfile = file_glob("$rpmdir/${package}-trunk-[0-9]*-${osver}.${cpu}.rpm");
+			DebugPrint("Checking for Kernel Rpm: ${rpmpath}-trunk-[0-9]*-${osver}.${cpu}.rpm\n");
+			$rpmfile = file_glob("${rpmpath}-trunk-[0-9]*-${osver}.${cpu}.rpm");
+		}
+		# the following is a temporary work around because the current hfi2 kernel rpm has no kernel version
+		# number in file name (see STL-14187). After we resolve the issue, we shall remove the following 4 lines
+		if ( $HFI2_INSTALL && ("$rpmfile" eq "" || ! -e "$rpmfile") ) {
+			DebugPrint("Checking for Kernel Rpm: ${rpmpath}-[0-9]*.${cpu}.rpm\n");
+			$rpmfile = file_glob("${rpmpath}-[0-9]*.${cpu}.rpm");
 		}
 	}
-	VerbosePrint("Resolved $package $mode: $rpmfile\n");
+	VerbosePrint("Resolved $rpmpath $mode: $rpmfile\n");
 	return $rpmfile;
 }
 
-sub rpm_exists($$$)
+sub rpm_exists($$)
 {
-	my $rpmdir = shift();
-	my $mode = shift();	# "user" or kernel rev
+	my $rpmpath = shift();
+	my $mode = shift();	# "user" or kernel rev or "firmware"
 						# "any"- any variation found
-	my $package = shift();	# package name
 	my $rpmfile;
 
-	$rpmfile = rpm_resolve($rpmdir, $mode, $package);
+	$rpmfile = rpm_resolve("$rpmpath", $mode);
 	return ("$rpmfile" ne "" && -e "$rpmfile");
 }
 
-sub rpm_install($$$)
+sub rpm_install_with_options($$$)
 {
-	my $rpmdir = shift();
-	my $mode = shift();	# "user" or kernel rev
+	my $rpmpath = shift();
+	my $mode = shift();	# "user" or kernel rev or "firmware"
 						# "any"- will install any variation found
-	my $package = shift();	# package name
+	my $options = shift();	# additional rpm command options
 	my $rpmfile;
 
-	# use a different directory for BUILD_ROOT to limit conflict with OFED
-	my $build_temp = "/var/tmp/IntelOPA-DELTA";
-	my $BUILD_ROOT="$build_temp/build";
-	my $RPM_DIR="$build_temp/DELTARPMS";
-	my $RPMS_SUBDIR = "RPMS";
-	my $prefix=$OFED_prefix;
-
-	if ($skip_kernel && "$mode" ne "user" && "$mode" ne "any") {
-		return;
-	} elsif ($skip_kernel && $rpmfile =~ /\/hfi1-firmware/) {
+	if ($user_space_only && "$mode" ne "user" && "$mode" ne "any") {
 		return;
 	}
 
-RPM_RES:
-
-	$rpmfile = rpm_resolve($rpmdir, $mode, $package);
+	$rpmfile = rpm_resolve("$rpmpath", $mode);
 	if ( "$rpmfile" eq "" || ! -e "$rpmfile" ) {
-		NormalPrint "Not Found: $package $mode\n";
-		if ( "$mode" ne "user" && "$mode" ne "any" ) # kernel mode
-		{
-			NormalPrint "Rebuilding $package SRPM $mode\n";
-			if (0 == build_srpm($package, $RPM_DIR, $BUILD_ROOT, $prefix, "append", $mode)) {
-				delta_move_rpms("$RPM_DIR/$RPMS_SUBDIR", "$rpmdir");
-				goto RPM_RES;
-			}
-		}
+		NormalPrint "Not Found: $rpmpath $mode\n";
 	} else {
-		if ("$mode" eq "user" || "$mode" eq "any" ) {
-			rpm_run_install($rpmfile, $mode, "");
-		} else {
-			# kernel install
-			if ("$CUR_DISTRO_VENDOR" eq 'SuSE') {
-				# ofed1.3 only uses --nodeps on SuSE to workaround ksym
-				# dependencies.
-				rpm_run_install($rpmfile, $mode, "--nodeps");
-			} else {
-				rpm_run_install($rpmfile, $mode, "");
-			}
-		}
-	}
-}
-
-sub rpm_install_with_options($$$$)
-{
-	my $rpmdir = shift();
-	my $mode = shift();	# "user" or kernel rev
-						# "any"- will install any variation found
-	my $package = shift();	# package name
-	my($options) = shift();	# additional rpm command options
-	my $rpmfile;
-
-	# use a different directory for BUILD_ROOT to limit conflict with OFED
-	my $build_temp = "/var/tmp/IntelOPA-DELTA";
-	my $BUILD_ROOT="$build_temp/build";
-	my $RPM_DIR="$build_temp/DELTARPMS";
-	my $RPMS_SUBDIR = "RPMS";
-	my $prefix=$OFED_prefix;
-
-	if ($skip_kernel && "$mode" ne "user" && "$mode" ne "any") {
-		return;
-	} elsif ($skip_kernel && $rpmfile =~ /\/hfi1-firmware/) {
-		return;
-	}
-
-RPM_RES:
-
-	$rpmfile = rpm_resolve($rpmdir, $mode, $package);
-	if ( "$rpmfile" eq "" || ! -e "$rpmfile" ) {
-		NormalPrint "Not Found: $package $mode\n";
-		if ( "$mode" ne "user" && "$mode" ne "any" ) # kernel mode
-		{
-			NormalPrint "Rebuilding $package SRPM $mode\n";
-			if (0 == build_srpm($package, $RPM_DIR, $BUILD_ROOT, $prefix, "append", $mode)) {
-				delta_move_rpms("$RPM_DIR/$RPMS_SUBDIR", "$rpmdir");
-				goto RPM_RES;
-			}
-		}
-	} else {
-		if ("$mode" eq "user" || "$mode" eq "any" ) {
+		if ("$mode" eq "user" || "$mode" eq "any" || "$mode" eq "firmware" ) {
 			rpm_run_install($rpmfile, $mode, $options);
 		} else {
 			# kernel install
@@ -890,6 +803,7 @@ RPM_RES:
 			    $options !~ / --nodeps /) {
 				# ofed1.3 only uses --nodeps on SuSE to workaround ksym
 				# dependencies.
+				# TBD - is this still needed?
 				rpm_run_install($rpmfile, $mode, "--nodeps $options");
 			} else {
 				rpm_run_install($rpmfile, $mode, $options);
@@ -898,58 +812,96 @@ RPM_RES:
 	}
 }
 
+# TBD - phase out this function (or get all callers to use same options)
+sub rpm_install($$)
+{
+	my $rpmpath = shift();
+	my $mode = shift();	# "user" or kernel rev or "firmware"
+						# "any"- will install any variation found
+	
+	rpm_install_with_options($rpmpath, $mode, "");
+}
+
 # verify the rpmfiles exist for all the RPMs listed
 sub rpm_exists_list($$@)
 {
 	my $rpmdir = shift();
-	my $mode = shift();	# "user" or kernel rev
+	my $mode = shift();	# "user" or kernel rev or "firmware"
 						# "any"- any variation found
-	my(@package_list) = @_;	# package names
+	my @package_list = @_;	# package names
 
 	foreach my $package ( @package_list )
 	{
-		if (! rpm_exists($rpmdir, $mode, $package) ) {
+		if (! rpm_exists("$rpmdir/$package", $mode) ) {
 			return 0;
 		}
 	}
 	return 1;
 }
 
-sub rpm_install_list($$@)
-{
-	my $rpmdir = shift();
-	my $mode = shift();	# "user" or kernel rev
-						# "any"- will install any variation found
-	my(@package_list) = @_;	# package names
-
-	foreach my $package ( @package_list )
-	{
-		rpm_install($rpmdir, $mode, $package);
-	}
-}
-
 sub rpm_install_list_with_options($$$@)
 {
 	my $rpmdir = shift();
-	my $mode = shift();	# "user" or kernel rev
+	my $mode = shift();	# "user" or kernel rev or "firmware"
 						# "any"- will install any variation found
-	my($options) = shift();	# additional rpm command options
-	my(@package_list) = @_;	# package names
+	my $options = shift();	# additional rpm command options
+	my @package_list = @_;	# package names
 
 	foreach my $package ( @package_list )
 	{
-		rpm_install_with_options($rpmdir, $mode, $package, $options);
+		rpm_install_with_options("$rpmdir/$package", $mode, $options);
 	}
 }
+
+# TBD - phase out this function (or get all callers to use same options)
+sub rpm_install_list($$@)
+{
+	my $rpmdir = shift();
+	my $mode = shift();	# "user" or kernel rev or "firmware"
+						# "any"- will install any variation found
+	my @package_list = @_;	# package names
+
+	rpm_install_list_with_options($rpmdir, $mode, "", @package_list);
+}
+
+# rpmpath_list is a list of glob style absolute or relative path to the packages
+# including the package name, but excluding package version, architecture and
+# .rpm suffix
+sub rpm_install_path_list_with_options($$@)
+{
+	my $mode = shift();	# "user" or kernel rev or "firmware"
+						# "any"- will install any variation found
+	my $options = shift();	# additional rpm command options
+	my @rpmpath_list = @_;	# rpm pathnames
+
+	foreach my $rpmpath ( @rpmpath_list )
+	{
+		rpm_install_with_options("$rpmpath", $mode, $options);
+	}
+}
+
+# rpmpath_list is a list of glob style absolute or relative path to the packages
+# including the package name, but excluding package version, architecture and
+# .rpm suffix
+# TBD - phase out this function (or get all callers to use same options)
+sub rpm_install_path_list($@)
+{
+	my $mode = shift();	# "user" or kernel rev or "firmware"
+						# "any"- will install any variation found
+	my @rpmpath_list = @_;	# rpm pathnames
+
+	rpm_install_path_list_with_options($mode, "", @rpmpath_list);
+}
+
 
 # returns 0 on success (or rpms not installed), != 0 on failure
 sub rpm_uninstall_list2($$$@)
 {
-	my $mode = shift();	# "user" or kernel rev
+	my $mode = shift();	# "user" or kernel rev or "firmware"
 						# "any"- checks if any variation of package is installed
-	my($options) = shift();	# additional rpm command options
-	my($verbosity) = shift();	# verbose or silent
-	my(@package_list) = @_;	# package names
+	my $options = shift();	# additional rpm command options
+	my $verbosity = shift();	# verbose or silent
+	my @package_list = @_;	# package names
 	my $package;
 	my $ret = 0;	# assume success
 
@@ -963,58 +915,12 @@ sub rpm_uninstall_list2($$$@)
 # returns 0 on success (or rpms not installed), != 0 on failure
 sub rpm_uninstall_list($$@)
 {
-	my $mode = shift();	# "user" or kernel rev
+	my $mode = shift();	# "user" or kernel rev or "firmware"
 						# "any"- checks if any variation of package is installed
-	my($verbosity) = shift();	# verbose or silent
-	my(@package_list) = @_;	# package names
+	my $verbosity = shift();	# verbose or silent
+	my @package_list = @_;	# package names
 
 	return rpm_uninstall_list2($mode, "", $verbosity, (@package_list));
-}
-
-
-# uninstall all rpms which match any of the supplied package names
-# and based on mode and distro/cpu.
-# uninstall is done in a single command so dependency issues handled
-# returns 0 on success (or rpms not installed), != 0 on failure
-sub rpm_uninstall_all_list($$@)
-{
-	my $mode = shift();	# "user" or kernel rev
-						# "any"- checks if any variation of package is installed
-	my($verbosity) = shift();	# verbose or silent
-	my(@package_list) = @_;	# package names
-	my @uninstall = ();
-	my $options = "";
-
-	if ("$mode" eq "any") {
-		$options = "--allmatches";
-	}
-	foreach my $package ( @package_list )
-	{
-		foreach my $p ( rpm_variations($package, $mode) )
-		{
-			if (rpm_is_installed($p, $mode)) {
-				if ("$mode" eq "any") {
-					@uninstall = (@uninstall, $p);
-				} else {
-					@uninstall = (@uninstall, rpms_installed_pkg($p, $mode));
-				}
-			}
-		}
-	}
-	
-	if (scalar(@uninstall) != 0) {
-		LogPrint "chroot /$ROOT $RPM -e $options @uninstall\n";
-		my $out=`chroot /$ROOT $RPM -e $options @uninstall 2>&1`;
-		my $rc=$?;
-		NormalPrint("$out");
-		if ($rc != 0) {
-			$exit_code = 1;
-		}
-		return $rc;
-	} else {
-		LogPrint "None Found\n";
-		return 0;	# nothing to do
-	}
 }
 
 # uninstall all rpms which match any of the supplied package names
@@ -1024,11 +930,11 @@ sub rpm_uninstall_all_list($$@)
 # Force to uninstall without any concern for dependency.
 sub rpm_uninstall_all_list_with_options($$$@)
 {
-	my $mode = shift();	# "user" or kernel rev
+	my $mode = shift();	# "user" or kernel rev or "firmware"
 						# "any"- checks if any variation of package is installed
-	my($options) = shift();	# additional rpm command options
-	my($verbosity) = shift();	# verbose or silent
-	my(@package_list) = @_;	# package names
+	my $options = shift();	# additional rpm command options
+	my $verbosity = shift();	# verbose or silent
+	my @package_list = @_;	# package names
 	my @uninstall = ();
 
 	if ("$mode" eq "any") {
@@ -1061,6 +967,21 @@ sub rpm_uninstall_all_list_with_options($$$@)
 		LogPrint "None Found\n";
 		return 0;	# nothing to do
 	}
+}
+
+# uninstall all rpms which match any of the supplied package names
+# and based on mode and distro/cpu.
+# uninstall is done in a single command so dependency issues handled
+# returns 0 on success (or rpms not installed), != 0 on failure
+# TBD - phase out this function (or get all callers to use same options)
+sub rpm_uninstall_all_list($$@)
+{
+	my $mode = shift();	# "user" or kernel rev or "firmware"
+						# "any"- checks if any variation of package is installed
+	my $verbosity = shift();	# verbose or silent
+	my @package_list = @_;	# package names
+
+	rpm_uninstall_all_list_with_options($mode, "", $verbosity, @package_list);
 }
 
 # see if prereqs for building kernel modules are installed

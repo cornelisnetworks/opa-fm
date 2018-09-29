@@ -132,8 +132,7 @@ int smCsmSetLogSmDesc(const char * nodeDesc, int port, uint64_t guid)
 	if (nodeDesc == NULL)
 		nodeDesc = DefaultDesc;
 
-	strncpy(myNodeId.description, nodeDesc, 64);
-	myNodeId.description[63] = '\0';
+	StringCopy(myNodeId.description, nodeDesc, 64);
 
 	convertChars(myNodeId.description, sizeof(translationFromChars),
 	             translationFromChars, translationToChars);
@@ -151,8 +150,7 @@ int smCsmSetLogSmDesc(const char * nodeDesc, int port, uint64_t guid)
 
 void smCsmFormatNodeId(SmCsmNodeId_t * id, uint8_t * desc, int port, uint64_t guid)
 {
-	strncpy(id->description, (char *)desc, 64);
-	id->description[63] = '\0';
+	StringCopy(id->description, (char *)desc, 64);
 
 	convertChars(id->description, sizeof(translationFromChars),
 	             translationFromChars, translationToChars);
@@ -259,7 +257,7 @@ int smCsmLogMessage( SmCsmMsgType_t msgType, SmCsmMsgCondition_t cond,
 	char detailBuffer[MSG_BUFFER_SZ];
 	if (detailFmt != NULL)
 	{
-		cs_strlcpy(detailBuffer, "|DETAIL:", sizeof(detailBuffer));
+		StringCopy(detailBuffer, "|DETAIL:", sizeof(detailBuffer));
 		va_start(ap, detailFmt);
 		vsprintf(detailBuffer + strlen(detailBuffer), detailFmt, ap);
 		va_end(ap);

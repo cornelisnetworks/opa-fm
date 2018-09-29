@@ -172,7 +172,7 @@ cs_local_comm_accept(int listenfd)
 	}
 
 	len -= offsetof(struct sockaddr_un, sun_path); /* len of pathname */
-	cs_strlcpy(name, un.sun_path, len);
+	StringCopy(name, un.sun_path, len);
 
 #ifdef __LINUX__
 	if (stat(name, &statbuf) < 0) {
@@ -251,7 +251,7 @@ cs_local_comm_connect(const char *srvaddr, const char *claddr)
 
 	/* fill socket address structure with our address */
 	memset(&un, 0, sizeof(un));
-	cs_strlcpy(un.sun_path, claddr, sizeof(un.sun_path));
+	StringCopy(un.sun_path, claddr, sizeof(un.sun_path));
 
 #ifdef __LINUX__
 	un.sun_family = AF_UNIX;
@@ -276,7 +276,7 @@ cs_local_comm_connect(const char *srvaddr, const char *claddr)
 
 	/* fill socket address structure with server's address */
 	memset(&sun, 0, sizeof(sun));
-	cs_strlcpy(sun.sun_path, srvaddr, sizeof(un.sun_path));
+	StringCopy(sun.sun_path, srvaddr, sizeof(un.sun_path));
 
 #ifdef __LINUX__
 	sun.sun_family = AF_UNIX;

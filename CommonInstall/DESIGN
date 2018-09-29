@@ -16,6 +16,9 @@ along with the corresponding override*pl file.
 routines in a comp.pl file:
 config_autostart_X - called to configure autostart of component.  Only called if HasStart set in main.
 
+get_rpms_dir_X - returns the directory on the media which contains the given
+ package within the component
+
 available_X - is component X available on the install media (use of this allows for optional components in packaging or limited availability if a component isn't available on some OS/CPU combos)
 
 installed_X - is component X presently installed on the system.  This is a quick check, not a "verify".

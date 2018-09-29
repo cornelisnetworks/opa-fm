@@ -39,13 +39,15 @@
 #
 #Installation Prequisites array for opafm
 my @opafm_prereq = (
-                    "glibc",
-                    "bash",
-                    "rdma",
-                    "systemd",
-                    "libexpat1",
-                    "libibverbs1",
-                    "libopenssl1_0_0",
-                    "libz1",
+    "bash",
+    "expat",
+    "glibc",
+    "libibumad",
+    "libibverbs",
+    "openssl-libs",
+    "rdma-core",
+    "systemd",
+    "zlib",
 );
 $comp_prereq_hash{'opafm_prereq'} = \@opafm_prereq;
+

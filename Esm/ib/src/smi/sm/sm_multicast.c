@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2018, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -562,7 +562,8 @@ static Status_t sm_createMCastGrp(int vf, uint64_t* mgid, uint16_t pkey, uint8_t
 	STL_LID		mLid;
 	IB_GID  	mGid;
 
-
+	mGid.AsReg64s.H = mgid[0];
+	mGid.AsReg64s.L = mgid[1];
 	if ((status = sm_multicast_assign_lid(mGid, pkey, mtu, rate, &mLid)) != VSTATUS_OK) {
 		sysPrintf("Failed to allocate LID for Multicast group!\n");
 		return status;
@@ -637,50 +638,10 @@ Status_t sm_update_mc_groups(VirtualFabrics_t *newVF, VirtualFabrics_t *oldVF)
 		return status;
 	}
 
-	for (vf=0; vf < newVF->number_of_vfs_all; vf++) {
-		//order in v_fabric_all remains same when changing status (Active/Standby)
-		// from old to new.
-		// swap from standby to active
-		if ((newVF->v_fabric_all[vf].standby == 0) && (oldVF->v_fabric_all[vf].standby == 1)) {
-			// add if necessary mcgroups
-			IB_LOG_INFINI_INFO_FMT(__func__,
-					"VF %s change from STB to ACT ",newVF->v_fabric_all[vf].name );
-			//compare groups and if it is not there add it.
-			dg_ref = newVF->v_fabric_all[vf].default_group;
-			while (dg_ref) {
-				if (dg_ref->def_mc_create) {
-					for_all_qmap_ptr(&dg_ref->mgidMap, item1, mgid_ref) {
-						mGid.Type.Global.SubnetPrefix = mgid_ref->mgid[0];
-						mGid.Type.Global.InterfaceID = mgid_ref->mgid[1];
-						mcGroup = sm_find_multicast_gid(mGid);
-
-						if (!mcGroup) {
-							uint8_t sl;
-							//assigning the newVF's SL. For now it did not change dynamically.
-							if (newVF->v_fabric_all[vf].mcast_sl != UNDEFINED_XML8)
-								sl = newVF->v_fabric_all[vf].mcast_sl;
-							else sl = newVF->v_fabric_all[vf].base_sl;
-							status = sm_createMCastGrp(vf, mgid_ref->mgid, dg_ref->def_mc_pkey, dg_ref->def_mc_mtu_int,
-								dg_ref->def_mc_rate_int, sl ,dg_ref->def_mc_qkey, dg_ref->def_mc_fl, dg_ref->def_mc_tc);
-							if (status == VSTATUS_OK) {
-								IB_LOG_INFINI_INFO_FMT(__func__, "Creating multicast MGID: "FMT_GID, mgid_ref->mgid[0], mgid_ref->mgid[1]);
-							}
-							else IB_LOG_INFINI_INFO_FMT(__func__, "Not able to create group MGID: "FMT_GID, mgid_ref->mgid[0], mgid_ref->mgid[1]);
-						}
-						else {
-							IB_LOG_INFINI_INFO_FMT(__func__," Multicast group exists MGID: "FMT_GID, mgid_ref->mgid[0], mgid_ref->mgid[1]);
-							bitset_set(&mcGroup->vfMembers, vf); // add current VF to the mgid
-						}
-					}
-				}
-				dg_ref = dg_ref->next_default_group;
-			}
-		} // end transition STB-> ACT
-
+	for (vf=0; vf < oldVF->number_of_vfs_all; vf++) {
 		// VF transitions from active to standby
-		if ((newVF->v_fabric_all[vf].standby == 1) && (oldVF->v_fabric_all[vf].standby == 0)) {
-			IB_LOG_INFINI_INFO_FMT(__func__, "VF %s change from ACT to STB ", newVF->v_fabric_all[vf].name );
-
+		if (oldVF->v_fabric_all[vf].removed) {
+			IB_LOG_INFINI_INFO_FMT(__func__, "VF %s change from ACT to STB or REMOVED", oldVF->v_fabric_all[vf].name );
 			//delete if necessary mcgroups
 			mcGroup = sm_McGroups;
 			while (mcGroup) {
@@ -719,7 +680,7 @@ Status_t sm_update_mc_groups(VirtualFabrics_t *newVF, VirtualFabrics_t *oldVF)
 						McMember_Delete(mcGroup, mcMember);
 					}
 					if (mcGroup->mcMembers == NULL) { // Group is empty, delete it
-						IB_LOG_INFINI_INFO_FMT(__func__, "VF %s. Group is empty, deleting MGID: "FMT_GID, newVF->v_fabric_all[vf].name, mcGroup->mGid.Type.Global.SubnetPrefix, mcGroup->mGid.Type.Global.InterfaceID);
+						IB_LOG_INFINI_INFO_FMT(__func__, "VF %s. Group is empty, deleting MGID: "FMT_GID, oldVF->v_fabric_all[vf].name, mcGroup->mGid.Type.Global.SubnetPrefix, mcGroup->mGid.Type.Global.InterfaceID);
 						tmpGroup = mcGroup->next;
 						McGroup_Delete(mcGroup);
 						mcGroup = tmpGroup;
@@ -729,7 +690,49 @@ Status_t sm_update_mc_groups(VirtualFabrics_t *newVF, VirtualFabrics_t *oldVF)
 					mcGroup = mcGroup->next;
 			} // while mcGroup ends
 		} // if end
-	} // for all vfs end
+	} // for all old-vfs end
+
+	for (vf=0; vf < newVF->number_of_vfs_all; vf++) {
+		//order in v_fabric_all remains same when changing status (Active/Standby)
+		// from old to new.
+		// swap from standby to active
+		uint32_t qos_idx = newVF->v_fabric_all[vf].qos_index;
+		if (newVF->v_fabric_all[vf].added) {
+			// add if necessary mcgroups
+			IB_LOG_INFINI_INFO_FMT(__func__,
+					"VF %s change from STB to ACT or CREATE",newVF->v_fabric_all[vf].name );
+			//compare groups and if it is not there add it.
+			dg_ref = newVF->v_fabric_all[vf].default_group;
+			while (dg_ref) {
+				if (dg_ref->def_mc_create) {
+					for_all_qmap_ptr(&dg_ref->mgidMap, item1, mgid_ref) {
+						mGid.Type.Global.SubnetPrefix = mgid_ref->mgid[0];
+						mGid.Type.Global.InterfaceID = mgid_ref->mgid[1];
+						mcGroup = sm_find_multicast_gid(mGid);
+
+						if (!mcGroup) {
+							uint8_t sl;
+							//assigning the newVF's SL. For now it did not change dynamically.
+							if (newVF->qos_all[qos_idx].mcast_sl != UNDEFINED_XML8)
+								sl = newVF->qos_all[qos_idx].mcast_sl;
+							else sl = newVF->qos_all[qos_idx].base_sl;
+							status = sm_createMCastGrp(vf, mgid_ref->mgid, dg_ref->def_mc_pkey, dg_ref->def_mc_mtu_int,
+								dg_ref->def_mc_rate_int, sl ,dg_ref->def_mc_qkey, dg_ref->def_mc_fl, dg_ref->def_mc_tc);
+							if (status == VSTATUS_OK) {
+								IB_LOG_INFINI_INFO_FMT(__func__, "Creating multicast MGID: "FMT_GID, mgid_ref->mgid[0], mgid_ref->mgid[1]);
+							}
+							else IB_LOG_INFINI_INFO_FMT(__func__, "Not able to create group MGID: "FMT_GID, mgid_ref->mgid[0], mgid_ref->mgid[1]);
+						}
+						else {
+							IB_LOG_INFINI_INFO_FMT(__func__," Multicast group exists MGID: "FMT_GID, mgid_ref->mgid[0], mgid_ref->mgid[1]);
+							bitset_set(&mcGroup->vfMembers, vf); // add current VF to the mgid
+						}
+					}
+				}
+				dg_ref = dg_ref->next_default_group;
+			}
+		} // end transition STB-> ACT
+	}
 	status = VSTATUS_OK;
 	vs_unlock(&sm_McGroups_lock);
 	vs_unlock(&old_topology_lock);
@@ -1182,24 +1185,25 @@ Status_t sm_set_all_mft(int force, Topology_t *curr_tp, Topology_t *prev_tp)
 	Status_t		status;
 	Status_t		worstStatus = VSTATUS_OK;
 	Node_t			*switchp, *oldswp = NULL;
-    Port_t          *portp;
+	Port_t			*portp;
 	STL_LID			lid;
 	STL_LID			newMaxLid;
 	STL_LID			maxLid;
-    uint16_t		numBlocks = 1;
+	uint16_t		numBlocks = 1;
 	int				i, j;
 	STL_MULTICAST_FORWARDING_TABLE mft;
 	uint32_t		amod;
-    uint64_t        sTime, eTime;
-	int             dispatched = 0, mftBlockChange = 0;
+	SmpAddr_t		addr;
+	uint64_t		sTime, eTime;
+	int				dispatched = 0, mftBlockChange = 0;
 	uint16_t		old_portMask = 0;
 
-    if (smDebugPerf) {
-        vs_time_get(&sTime);
-        IB_LOG_INFINI_INFO0("START MFT set for switches");
-        if (force)
-            IB_LOG_INFINI_INFO0("Forcing complete MFT reprogramming");
-    }
+	if (smDebugPerf) {
+		vs_time_get(&sTime);
+		IB_LOG_INFINI_INFO0("START MFT set for switches");
+		if (force)
+			IB_LOG_INFINI_INFO0("Forcing complete MFT reprogramming");
+	}
 
 	newMaxLid = sm_multicast_get_max_lid();
 
@@ -1225,10 +1229,10 @@ Status_t sm_set_all_mft(int force, Topology_t *curr_tp, Topology_t *prev_tp)
 			continue;
 		}
 
-        /* skip switches whose mft's did not change */
-        if (topology_passcount > 1 && !switchp->mftChange && !switchp->mftPortMaskChange && !force) {
-            continue;
-        }
+		/* skip switches whose mft's did not change */
+		if (topology_passcount > 1 && !switchp->mftChange && !switchp->mftPortMaskChange && !force) {
+			continue;
+		}
 
 		if (topology_passcount > 1 && prev_tp)
 			oldswp = sm_find_guid(prev_tp, switchp->nodeInfo.NodeGUID);
@@ -1269,8 +1273,9 @@ Status_t sm_set_all_mft(int force, Topology_t *curr_tp, Topology_t *prev_tp)
 					continue;
 
 				amod = (numBlocks << 24) | (i << 22) | ((lid - STL_LID_MULTICAST_BEGIN) / STL_NUM_MFT_ELEMENTS_BLOCK);
-                status = SM_Set_MFT_DispatchLR(fd_topology, amod, sm_lid, portp->portData->lid,
-					                               &mft, sm_config.mkey, switchp, &sm_asyncDispatch);
+				SMP_ADDR_SET_LR(&addr, sm_lid, portp->portData->lid);
+				status = SM_Set_MFT_Dispatch(fd_topology, amod, &addr,
+												&mft, sm_config.mkey, switchp, &sm_asyncDispatch);
 				if (status != VSTATUS_OK) {
 					worstStatus = status;
 					IB_LOG_ERROR_FMT(__func__, "can't set MFT on switch %s, amod 0x%.8X "
@@ -1293,11 +1298,10 @@ Status_t sm_set_all_mft(int force, Topology_t *curr_tp, Topology_t *prev_tp)
 	}
 
 	oldMaxLid = newMaxLid;
-    if (smDebugPerf) {
-        vs_time_get(&eTime);
-        IB_LOG_INFINI_INFO("END SET MFT of switches, elapsed time(usecs)=",
-                           (int)(eTime-sTime));
-    }
+	if (smDebugPerf) {
+		vs_time_get(&eTime);
+		IB_LOG_INFINI_INFO("END SET MFT of switches, elapsed time(usecs)=", (int)(eTime - sTime));
+	}
 	return worstStatus;
 }
 
@@ -1386,12 +1390,38 @@ LidClass_t * addLidClass(McGroupClass_t * grpClass, PKey_t pKey, uint8_t mtu, ui
 	return lidClass;
 }
 
+static __inline__
+PKeyUsage_t * getPKeyU(McGroupClass_t * grpClass, PKey_t pKey)
+{
+	Status_t status;
+	PKeyUsage_t * PKeyU = NULL;
+	cl_map_item_t * PKU_item = NULL;
+
+	//did we exhaust all pkey per lid_classes?
+	PKU_item = cl_qmap_get(&grpClass->PKeyUsageMap,pKey);
+	if (PKU_item == cl_qmap_end(&grpClass->PKeyUsageMap)) {
+		status = vs_pool_alloc(&sm_pool, (sizeof(PKeyUsage_t) ),(void*) &PKeyU);
+		if (status != VSTATUS_OK)
+			return NULL;
+
+		// init PKeyU
+		PKeyU->PKey = pKey;
+		PKeyU->PKeyCount = 0;
+		PKU_item = cl_qmap_insert(&grpClass->PKeyUsageMap,pKey,&PKeyU->PKeyItem);
+		assert(PKU_item == &PKeyU->PKeyItem);
+	}
+	else {
+		PKeyU = PARENT_STRUCT(PKU_item, PKeyUsage_t, PKeyItem);
+	}
+	return PKeyU;
+}
+
 //
 // gids are in host byte order
 //
 static Status_t
 sm_multicast_create_group_class(McGroupClass_t * class, IB_GID mask, IB_GID value,
-                                STL_LID maxLids)
+                                STL_LID maxLids, uint32_t maxLidsPkey)
 {
 	Status_t status = VSTATUS_OK;
 
@@ -1402,8 +1432,10 @@ sm_multicast_create_group_class(McGroupClass_t * class, IB_GID mask, IB_GID valu
 	memcpy(&(class->mask), &(mask), sizeof(IB_GID));
 	memcpy(&(class->value), &(value), sizeof(IB_GID));
 	class->maximumLids = maxLids;
+	class->maximumLidsperPkey = maxLidsPkey;
 
 	cl_qmap_init(&class->usageMap, NULL);
+	cl_qmap_init(&class->PKeyUsageMap, NULL);
 
 	IB_EXIT(__func__, status);
 	return status;
@@ -1413,7 +1445,7 @@ sm_multicast_create_group_class(McGroupClass_t * class, IB_GID mask, IB_GID valu
 // gid is in host byte order
 //
 Status_t
-sm_multicast_add_group_class(IB_GID mask, IB_GID value, STL_LID maxLids)
+sm_multicast_add_group_class(IB_GID mask, IB_GID value, STL_LID maxLids, uint32_t maxLidsPkey)
 {
 	Status_t status = VSTATUS_OK;
 	int i = 0;
@@ -1441,7 +1473,7 @@ sm_multicast_add_group_class(IB_GID mask, IB_GID value, STL_LID maxLids)
 
 	if (status == VSTATUS_OK)
 		status = sm_multicast_create_group_class((mcGroupClasses + numMcGroupClasses),
-					mask, value, maxLids);
+					mask, value, maxLids, maxLidsPkey);
 
 	if (status == VSTATUS_OK)
 	{
@@ -1461,13 +1493,13 @@ sm_multicast_add_group_class(IB_GID mask, IB_GID value, STL_LID maxLids)
 //
 //
 Status_t
-sm_multicast_set_default_group_class(STL_LID maxLids)
+sm_multicast_set_default_group_class(STL_LID maxLids, uint32_t maxLidsPKey)
 {
 	Status_t status = VSTATUS_OK;
 	IB_ENTER(__func__, maxLids, 0, 0, 0);
 
 	status = sm_multicast_create_group_class(&defaultMcGroupClass,
-	                                         nullGid, nullGid, maxLids);
+	                                         nullGid, nullGid, maxLids, maxLidsPKey);
 	if (status == VSTATUS_OK)
 		IB_LOG_VERBOSE_FMT(__func__, "Default mcast table cap set to %d", maxLids);
 
@@ -1762,44 +1794,74 @@ sm_mc_get_group_class_lid(McGroupClass_t * groupClass, PKey_t pKey, uint8_t mtu,
 	Status_t status = VSTATUS_OK;
 	STL_LID newLid = 0;
 	int index = 0;
+	PKeyUsage_t * PKeyU = NULL;
 	LidClass_t * lidClass = getLidClass(groupClass, pKey, mtu, rate);
+
+
+	if (groupClass->maximumLidsperPkey != 0) {
+		PKeyU = getPKeyU(groupClass, pKey);
+		if (PKeyU == NULL) {
+			// ran out of memory to allocate PKeyU
+			status = VSTATUS_NOMEM;
+			IB_EXIT(__func__, status);
+			return status;
+		}
+	}
 
 	if (groupClass->currentLids < groupClass->maximumLids)
 	{
 		if (lidClass == NULL)
 		{
-			// If lidClass doesn't yet exist, create it
-			if ((lidClass = addLidClass(groupClass, pKey, mtu, rate)) == NULL)
-				status = VSTATUS_NOMEM;
+		  	if ((groupClass->maximumLidsperPkey == 0) ||
+				 (PKeyU->PKeyCount < groupClass->maximumLidsperPkey)) {
+				// If lidClass doesn't yet exist, create it
+				if ((lidClass = addLidClass(groupClass, pKey, mtu, rate)) == NULL)
+					status = VSTATUS_NOMEM;
+			}
+			else {
+				lidClass = NULL;
+				status = VSTATUS_NORESOURCE;
+			}
 		}
 
 		if (status == VSTATUS_OK)
 		{
 			if (requestedLid == 0)
 			{
-				// Simple case... assign a new MLid and put it at the end of
-				// the heap, then trickle it up towards the front.
-				newLid = sm_multicast_get_mlid();
-				if (newLid != 0)
-				{
-					assert(lidClass->lids[lidClass->lidsUsed].lid == 0xFFFFFFFF);
+				// is there a limit of Mlids/pkey?
+				if ((groupClass->maximumLidsperPkey != 0) &&
+				// if all mlids/pkey are used
+					 (PKeyU->PKeyCount >= groupClass->maximumLidsperPkey)) {
+						//reuse the mlid
+						*lid = lidClass->lids[0].lid;
+						lidClass->lids[0].usageCount++;
+						heapTrickleDown(lidClass, 0);
+				}
+				else {
+					// Simple case... assign a new MLid and put it at the end of
+					// the heap, then trickle it up towards the front.
+					newLid = sm_multicast_get_mlid();
+					if (newLid != 0)
+					{
+						assert(lidClass->lids[lidClass->lidsUsed].lid == 0xFFFFFFFF);
 
-					index = lidClass->lidsUsed;
-					++lidClass->lidsUsed;
-
-					lidClass->lids[index].lid = newLid;
-					lidClass->lids[index].usageCount = 1;
-
-					heapTrickleUp(lidClass, index);
-
-					++groupClass->currentLids;
-					*lid = newLid;
-				} else {
-					// No free mlids. Caller will handle the error.
-					status = VSTATUS_BAD;
+						index = lidClass->lidsUsed;
+						++lidClass->lidsUsed;
+						lidClass->lids[index].lid = newLid;
+						lidClass->lids[index].usageCount = 1;
+						heapTrickleUp(lidClass, index);
+						++groupClass->currentLids;
+						*lid = newLid;
+						if (PKeyU != NULL)
+							PKeyU->PKeyCount++;
+					} else {
+						// No free mlids. Caller will handle the error.
+						status = VSTATUS_BAD;
+					}
 				}
 			} else
 			{
+				// requesting a specific LID but not all LIDs have been used.
 				// More complicated... cycle through the heap looking for the lid
 				for (index = 0; index < lidClass->lidsUsed; ++index)
 				{
@@ -1812,14 +1874,24 @@ sm_mc_get_group_class_lid(McGroupClass_t * groupClass, PKey_t pKey, uint8_t mtu,
 					assert(lidClass->lids[lidClass->lidsUsed].lid == 0xFFFFFFFF);
 
 					// didn't find the LID, add to end of heap & trickle it up
-					lidClass->lids[index].lid = requestedLid;
-					lidClass->lids[index].usageCount = 1;
+					// but first, is there a limit of MLids/pkey?
+		  			if ((groupClass->maximumLidsperPkey == 0) ||
+				 		(PKeyU->PKeyCount < groupClass->maximumLidsperPkey)) {
+						if (PKeyU != NULL) 
+							PKeyU->PKeyCount++;
 
-					heapTrickleUp(lidClass, index);
-
-					++lidClass->lidsUsed;
-					++groupClass->currentLids;
-					*lid = requestedLid;
+						lidClass->lids[index].lid = requestedLid;
+						lidClass->lids[index].usageCount = 1;
+						heapTrickleUp(lidClass, index);
+						++lidClass->lidsUsed;
+						++groupClass->currentLids;
+						*lid = requestedLid;
+					}
+					else
+					{
+						lid = NULL;
+						status = VSTATUS_NORESOURCE;
+					}
 				} else
 				{
 					assert(lidClass->lids[index].lid == requestedLid);
@@ -1829,6 +1901,7 @@ sm_mc_get_group_class_lid(McGroupClass_t * groupClass, PKey_t pKey, uint8_t mtu,
 					heapTrickleDown(lidClass, index);
 					*lid = requestedLid;
 				}
+
 			}
 		}
 	} else
@@ -1848,7 +1921,6 @@ sm_mc_get_group_class_lid(McGroupClass_t * groupClass, PKey_t pKey, uint8_t mtu,
 			*lid = newLid = lidClass->lids[0].lid;
 			++lidClass->lids[0].usageCount;
 			heapTrickleDown(lidClass, 0);
-
 		} else
 		{
 			// This branch deals with the replication of the lid tables during a standby
@@ -1886,6 +1958,7 @@ sm_multicast_decommision_group(McGroup_t * group)
 {
 	McGroupClass_t * groupClass = NULL;
 	LidClass_t * lidClass = NULL;
+	PKeyUsage_t * PKeyU = NULL;
 	Status_t status = VSTATUS_OK;
 	int i = 0;
 
@@ -1895,7 +1968,7 @@ sm_multicast_decommision_group(McGroup_t * group)
 #if defined(TEST_HEAP)
 	assert(groupClass != NULL);
 #endif
-
+	
 	if (groupClass->maximumLids != 0)
 	{
 
@@ -1903,6 +1976,8 @@ sm_multicast_decommision_group(McGroup_t * group)
 #if defined(TEST_HEAP)
 		assert(lidClass != NULL);
 #endif
+		if (groupClass->maximumLidsperPkey != 0)
+			PKeyU = getPKeyU(groupClass, group->pKey);
 
         for (i = 0; i < lidClass->lidsUsed; ++i) {
             if (lidClass->lids[i].lid == group->mLid) {
@@ -1945,6 +2020,13 @@ sm_multicast_decommision_group(McGroup_t * group)
 					// entry as unused
 					--lidClass->lidsUsed;
 					--groupClass->currentLids;
+					if (PKeyU != NULL) {
+						PKeyU->PKeyCount--;
+						if (PKeyU->PKeyCount == 0){
+							cl_qmap_remove_item(&groupClass->PKeyUsageMap, &PKeyU->PKeyItem);
+							PKeyU = NULL;
+						}
+					}
 
 				} else
 				{

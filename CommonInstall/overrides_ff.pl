@@ -59,6 +59,6 @@ sub overrides()
 # main_omnipathwrap_delta.pl calls this, but since we don't have comp_delta.pl
 # we just provide a dummy function to keep PERL happy
 # TBD - move this to util_init.pl?
-sub init_delta_rpm_info($)
+sub init_delta_info($)
 {
 }

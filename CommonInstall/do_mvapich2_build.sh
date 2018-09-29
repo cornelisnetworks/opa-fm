@@ -1,7 +1,7 @@
 #!/bin/bash
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015-2017, Intel Corporation
+# Copyright (c) 2015-2018, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -199,13 +199,17 @@ skip_prompt=n
 iflag=n	# undocumented option, build in context of install
 Qflag=n
 Oflag=n
-while getopts "idQO" o
+xflag=n	# undocumented option, source intel compiler environment
+Vflag=n # undocumented option, build verbs only transport
+while getopts "idQOV" o
 do
 	case "$o" in
 	i) iflag=y;;
 	Q) Qflag=y;;
 	O) Oflag=y;;
+	V) Vflag=y;;
 	d) skip_prompt=y;;
+	x) xflag=y;;
 	*) Usage;;
 	esac
 done
@@ -213,6 +217,12 @@ shift $((OPTIND -1))
 if [ $# -gt 2 ]
 then
 	Usage
+fi
+
+if [[  "$Vflag" == "y"  &&  \
+	( "$Qflag" == "y" || "$Oflag" == "y" ) ]]; then
+	echo "ERROR: Option -V cannot be used with any other" >&2
+	exit 1
 fi
 
 if [ "$(/usr/bin/id -u)" != 0 ]
@@ -231,7 +241,7 @@ then
 fi
 
 echo
-echo "OFA MVAPICH2 MPI Library/Tools rebuild"
+echo "IFS MVAPICH2 MPI Library/Tools rebuild"
 
 if [ x"$1" != x"" ]
 then
@@ -281,43 +291,50 @@ then
 	export MPICH_PREFIX="$1"
 fi
 
-PS3="Select MVAPICH2 Implementation (ofa recommended): "
-choices=("ofa")
-mvapich2_conf_impl=ofa
-mvapich2_conf_impl_define='impl ofa'
-interface=verbs
+# set up intel compiler environment
+if [ "$compiler" == "intel" -a "$xflag" == "y"  ]; then
+        source /opt/intel/bin/compilervars.sh intel64
+fi
 
+PS3="Select MVAPICH2 Transport : "
+choices=''
+mvapich2_conf_impl=''
+mvapich2_conf_impl_define=''
 # Now get MVAPICH2 capability options. Note that you can't build for
 # TrueScale and Omnipath at the same time.
-if [ "$skip_prompt" == "n" -a "$Qflag" == "n" -a "$Oflag" == "n" ]
+if [ "$Vflag" == y ]
+then
+	interface=verbs
+	mvapich2_conf_impl='ofa'
+
+elif [ "$skip_prompt" == "n" -a "$Qflag" == "n" -a "$Oflag" == "n" ]
 then
 	echo
 	# only have a choice if psm is installed
-	if rpm -qa|grep infinipath-devel >/dev/null 2>&1
+	if rpm -qa|grep infinipath-psm-devel >/dev/null 2>&1
 	then
 		choices+=("ts-psm")
-		PS3="Select MVAPICH2 Implementation (ts-psm recommended): "
+		PS3="Select MVAPICH2 Transport: "
 	fi
-	if rpm -qa|grep libpsm2 >/dev/null 2>&1
+	if rpm -qa|grep libpsm2-devel >/dev/null 2>&1
 	then
-		choices+=("opa-psm")
-		PS3="Select MVAPICH2 Implementation (opa-psm recommended): "
+		choices+=("opa-psm2")
+		PS3="Select MVAPICH2 Transport: "
 	fi
 	if [ ${#choices[@]} -gt 0 ] 
 	then
 		select mvapich2_conf_impl in ${choices[*]}
 		do
 			case "$mvapich2_conf_impl" in
-			ofa)
-				interface=verbs
-				break;;
 			ts-psm)
 				interface=psm
-		   		Qflag=y
+				Qflag=y
+				Oflag=n
 				break;;
-			opa-psm)
+			opa-psm2)
 				interface=psm
-		   		Oflag=y
+				Oflag=y
+				Qflag=n
 				break;;
 			esac
 		done
@@ -325,35 +342,34 @@ then
 		echo "ERROR: No RDMA stack available."
 		exit 1
 	fi
-elif [ "$Qflag" == "y" -o "$Oflag" == "y" ]
-then
+else # Default to PSM2
 	interface=psm
-else 
-	interface=verbs
+	Oflag=y
 fi
 
 case $interface in
 	verbs)
-		mvapich2_conf_impl_define="impl $mvapich2_conf_impl"
+		mvapich2_conf_impl_define="impl ofa"
 		mvapich2_path_suffix=
 		mvapich2_rpm_suffix=
 		;;
 	psm)
 		mvapich2_conf_impl=psm
 #		mvapich2_conf_impl_define="channel ch3:psm"
-		mvapich2_conf_impl_define="impl psm2"
 		mvapich2_conf_psm=
 		if [ "$Oflag" == "y" ]
 		then
-			# PSM indicated by qlc suffix so user can ID PSM vs verbs MPIs
+			# PSM2 indicated by hfi suffix so user can ID from PSM and verbs MPIs
+			mvapich2_conf_impl_define="impl psm2"
 			mvapich2_path_suffix="-hfi"
 			mvapich2_rpm_suffix="_hfi"
-   			PREREQ+=("libpsm2-devel")
+			PREREQ+=('libpsm2-devel')
 		else
-			# PSM indicated by qlc suffix so user can ID PSM vs verbs MPIs
+			# PSM indicated by qlc suffix so user can ID from PSM2 and  verbs MPIs
+			mvapich2_conf_impl_define="impl psm"
 			mvapich2_path_suffix="-qlc"
 			mvapich2_rpm_suffix="_qlc"
-   			PREREQ+=("infinipath-devel")
+			PREREQ+=('infinipath-psm-devel')
 		fi
 		;;
 esac

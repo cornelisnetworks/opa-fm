@@ -143,9 +143,6 @@ GetBytesFromMtu(uint8 mtu)
 	switch (mtu)
 	{
 		default:
-#if !defined (PRODUCT_STL1)
-		case STL_MTU_0:
-#endif
 			return 0;
 		case IB_MTU_256:
 			return 256;
@@ -169,12 +166,7 @@ GetBytesFromMtu(uint8 mtu)
 static __inline uint8
 GetMtuFromBytes(uint16 bytes)
 {
-#if !defined (PRODUCT_STL1)
-	if (! bytes)
-		return STL_MTU_0;
-	else
-#endif
-		 if (bytes <= 256)
+	if (bytes <= 256)
 		return IB_MTU_256;
 	else if (bytes <= 512)
 		return IB_MTU_512;

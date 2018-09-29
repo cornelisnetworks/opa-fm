@@ -1,7 +1,7 @@
 #!/bin/bash
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015-2017, Intel Corporation
+# Copyright (c) 2015-2018, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -97,53 +97,128 @@ then
     usage
 fi
 
-# NOTE: opaxmlextract produces the following CSV for each port:
-#    4 Link values (CSV 1-4)
-#    3 Cable values (CSV 5-7)
-#    6 Port values (CSV 8-13)
-#   14 Stat values (CSV 14-27)
+
+# NOTE: opareport -o errors generates XML output of this general form:
+#  <Link>
+#     <Rate>....
+#     <LinkDetails>....
+#     <Cable>
+#       ... cable information from topology.xml
+#     </Cable>
+#     <Port>
+#       .. information about 1st port excluding its CableInfo
+#     </Port>
+#     <Port>
+#       .. information about 2nd port excluding its CableInfo
+#     </Port>
+#     <CableInfo>
+#       .. information about the CableInfo for the cable between the two ports
+#     </CableInfo>
+#  </Link>
+  # opaxmlextract produces the following CSV format on each line:
+  #    1 Link ID (CSV 1) LinkID
+  #    3 Link values (CSV 2-4) (Rate, Internal, LinkDetails)
+  #    3 Cable values (CSV 5-7) (CableLength, CableLabel, CableDetails)
+  #    Port values (CSV 8-) (port details and error stats)
+  # due to the nesting of tags, opaxmlextract will output the following
+  #    All lines have LinkID and Rate and one set of Cable values or Port Values
 
 # Combine 2 ports for each link onto 1 line, removing redundant Link and Cable values
-
-ix=0
-
-/usr/sbin/opareport -x -d 10 -s -o errors -T "$@" | \
-  /usr/sbin/opaxmlextract -d \; -e Rate -e Internal -e LinkDetails \
-  -e CableLength -e CableLabel -e CableDetails -e Port.NodeGUID \
-  -e Port.PortGUID -e Port.PortNum -e Port.NodeType -e Port.NodeDesc \
-  -e Port.PortDetails \
-  -e XmitDataValue -e XmitPktsValue -e PortMulticastXmitPktsValue \
-  -e RcvDataValue -e RcvPktsValue -e MulticastRcvPktsValue \
-  -e XmitWaitValue -e CongDiscardsValue -e XmitTimeCongValue \
-  -e MarkFECNValue -e RcvFECNValue -e RcvBECNValue \
-  -e RcvBubbleValue -e XmitWastedBWValue -e XmitWaitDataValue \
-  -e LinkQualityIndicatorValue -e LocalLinkIntegrityErrorsValue \
-  -e RcvErrorsValue -e ExcessiveBufferOverrunsValue \
-  -e LinkErrorRecoveryValue -e LinkDownedValue -e UncorrectableErrorsValue \
-  -e FMConfigErrorsValue -e XmitConstraintErrorsValue \
-  -e RcvConstraintErrorsValue -e RcvSwitchRelayErrorsValue \
-  -e XmitDiscardsValue -e RcvRemotePhysicalErrorsValue | \
-  while read line
+EMPTY_PORT_STR=";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+link1=0
+link2=0
+printHeader=1
+curLinkID=""
+prevLinkID=""
+RateDetailsStr=";;"
+CableValuesStr=";;"
+Port1ValuesStr=$EMPTY_PORT_STR
+Port2ValuesStr=$EMPTY_PORT_STR
+while read line
 do
-  case $ix in
-  0)
-    echo $line";"`echo $line | cut -d \; -f 7-`
-    ix=$((ix+1))
-    ;;
+  curLinkID=`echo $line | cut -d \; -f 1`
 
-  1)
-    line1=$line
-    ix=$((ix+1))
-    ;;
+  # When Link_ID changes, print previous link and start new one
+  if [ "$curLinkID" != "$prevLinkID" ]
+  then
+    # Display header first time
+    if [ $printHeader -eq 1 ]
+    then
+      echo `echo $line | cut -d \; -f 2-`";"`echo $line | cut -d \; -f 8-`
+      printHeader=0
+      continue
+    fi
 
-  2)
-    line2=`echo $line | cut -d \; -f 7-`
-    echo $line1";"$line2
-    ix=1
-    ;;
-  esac
+    # Display the previous link before starting this new one
+    if [ "$prevLinkID" != "" ]
+    then
+      echo $RateDetailsStr";"$CableValuesStr";"$Port1ValuesStr";"$Port2ValuesStr
+    fi
 
-done
+    # Reset for the next set of data
+    link1=0
+    link2=0
+    RateDetailsStr=";;"
+    CableValuesStr=";;"
+    Port1ValuesStr=$EMPTY_PORT_STR
+    Port2ValuesStr=$EMPTY_PORT_STR
+    prevLinkID=$curLinkID
+  fi
+
+  if [ "$RateDetailsStr" == ";;" ]
+  then
+    RateDetailsStr=`echo $line | cut -d \; -f 2-4`
+  fi
+
+  if [ "$CableValuesStr" == ";;" ]
+  then
+    CableValuesStr=`echo $line | cut -d \; -f 5-7`
+  fi
+
+  if [ $link1 -eq 0 ]
+  then
+    if [ "$Port1ValuesStr" == "$EMPTY_PORT_STR" ]
+    then
+      Port1ValuesStr=`echo $line | cut -d \; -f 8-`
+    fi
+    if [ "$Port1ValuesStr" != "$EMPTY_PORT_STR" ]
+    then
+      link1=1
+    fi
+  elif [ $link2 -eq 0 ]
+  then
+    if [ "$Port2ValuesStr" == "$EMPTY_PORT_STR" ]
+    then
+      Port2ValuesStr=`echo $line | cut -d \; -f 8-`
+    fi
+    if [ "$Port2ValuesStr" != "$EMPTY_PORT_STR" ]
+    then
+      link2=1
+    fi
+  fi
+
+done < <(/usr/sbin/opareport -x -d 10 -s -o errors -T "$@" | \
+        /usr/sbin/opaxmlextract -d \; -e Link:id -e Rate -e Internal -e LinkDetails \
+        -e CableLength -e CableLabel -e CableDetails -e Port.NodeGUID \
+        -e Port.PortGUID -e Port.PortNum -e Port.NodeType -e Port.NodeDesc \
+        -e Port.PortDetails \
+        -e XmitDataValue -e XmitPktsValue -e PortMulticastXmitPktsValue \
+        -e RcvDataValue -e RcvPktsValue -e MulticastRcvPktsValue \
+        -e XmitWaitValue -e CongDiscardsValue -e XmitTimeCongValue \
+        -e MarkFECNValue -e RcvFECNValue -e RcvBECNValue \
+        -e RcvBubbleValue -e XmitWastedBWValue -e XmitWaitDataValue \
+        -e LinkQualityIndicatorValue -e LocalLinkIntegrityErrorsValue \
+        -e RcvErrorsValue -e ExcessiveBufferOverrunsValue \
+        -e LinkErrorRecoveryValue -e LinkDownedValue -e UncorrectableErrorsValue \
+        -e FMConfigErrorsValue -e XmitConstraintErrorsValue \
+        -e RcvConstraintErrorsValue -e RcvSwitchRelayErrorsValue \
+        -e XmitDiscardsValue -e RcvRemotePhysicalErrorsValue)
+
+# print the last link record
+if [ "$prevLinkID" != "" ]
+then
+  echo $RateDetailsStr";"$CableValuesStr";"$Port1ValuesStr";"$Port2ValuesStr
+fi
 
 exit 0
 

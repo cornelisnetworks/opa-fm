@@ -90,6 +90,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef __VS_G_
 #define __VS_G_
+
 #include <stl_types.h>
 #include <ib_status.h>
 #include <stdlib.h>
@@ -312,37 +313,25 @@ vs_thread_join (Thread_t *handle, void **value_ptr);
 /*=== Pool Services ===*/
 #define VMEM_PAGE	(0x00000008)	/* Return page aligned chunks	*/
 
-#ifdef __VXWORKS__
-/*== Partition and pool sizes, stored and set in Esm_Init.c == */
-extern size_t g_esmPartSize;
-extern size_t g_csPoolSize;
-#endif
-extern size_t g_fePoolSize;
-extern size_t g_pmPoolSize;
-extern size_t g_smPoolSize;
 
 #define DELETE_MARKER	0xCECE
-/*
- * buffer pool structure
-*/
-typedef	struct _PBuffer {
-	struct		_PBuffer *next, *prev;
-	uint8_t		*addr0;		// address of malloced buffer
-	uint8_t		*addr1;		// address of the user buffer
-	uint16_t	sentinel;	// to track double delete
-	uint32_t	size;
-} PBuffer_t;
+
+#ifndef USE_POOL_LOCK
+#define USE_POOL_LOCK 1
+#endif
 
 #define OPAQUE_POOL_ELEMENTS (8U)
+
 typedef struct
 {
   unsigned char name[VS_NAME_MAX];
   uint32_t options;
   uint32_t magic;
+#if USE_POOL_LOCK
   Lock_t lock;
+#endif /* USE_POOL_LOCK */
   size_t pagesize;
   uint64_t opaque[OPAQUE_POOL_ELEMENTS];
-  PBuffer_t *buffers;
 }
 Pool_t;
 /*
@@ -486,35 +475,6 @@ extern Status_t cs_psema_wait (Sema_t * handle, int timeout);
 #ifndef INT64_MIN
 #define INT64_MIN         (-INT64_MAX - 1LL)
 #endif
-
-/**********************************************************************
-*
-* FUNCTION
-*    cs_strlcpy
-*
-* DESCRIPTION
-*    Safe version of strncpy that will always null terminate. Copies up
-*    to dstsize-1 characters from source to dest plus a null terminator.
-*
-*
-* INPUTS
-*    dest         - A pointer to destination buffer
-*    source       - A pointer to source buffer
-*    dstsize      - Size of dest buffer
-*
-* OUTPUTS
-*    char       - On success, return pointer to dest
-*
-*
-**********************************************************************/
-static __inline__ char * cs_strlcpy(char *dest, const char *source, size_t dstsize)
-{
-	if(!dstsize)
-		return NULL;
-	dest[0] = '\0';
-	return strncat(dest,source,dstsize-1);
-}
-
 
 extern uint8_t cs_strtoui8 (const char *nptr, uint8_t return_error);
 extern uint16_t cs_strtoui16 (const char *nptr, uint16_t return_error);

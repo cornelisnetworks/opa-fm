@@ -1,11 +1,11 @@
 #!/usr/bin/perl
 # BEGIN_ICS_COPYRIGHT8 ****************************************
-# 
+#
 # Copyright (c) 2015-2017, Intel Corporation
-# 
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
-# 
+#
 #     * Redistributions of source code must retain the above copyright notice,
 #       this list of conditions and the following disclaimer.
 #     * Redistributions in binary form must reproduce the above copyright
@@ -14,7 +14,7 @@
 #     * Neither the name of Intel Corporation nor the names of its contributors
 #       may be used to endorse or promote products derived from this software
 #       without specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -25,7 +25,7 @@
 # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-# 
+#
 # END_ICS_COPYRIGHT8   ****************************************
 
 # [ICS VERSION STRING: unknown]
@@ -36,10 +36,9 @@ use strict;
 #use Math::BigInt;
 
 # ===========================================================================
-# Main menus, option handling and version handling for FF for OFED install
+# Main menus, option handling and version handling for FF for OFA install
 #
 
-@supported_kernels = ( $CUR_OS_VER );	# TBD how do we verify OS
 my $Build_OsVer=$CUR_OS_VER;
 my $Build_Debug=0;	# should we provide more info for debug
 my $Build_Temp="";	# temp area to use for build
@@ -50,66 +49,39 @@ $FirstIPoIBInterface=0; # first device is ib0
 
 	# Names of supported install components
 	# must be listed in dependency order such that prereqs appear 1st
+	# delta_debug must be last
 
-my @OmniPathAllComponents = ( "mvapich2_gcc_hfi",
-		   			"mvapich2_intel_hfi",
-					"openmpi_gcc_hfi",
-				   	"openmpi_intel_hfi",
- 					);
+my @OmniPathAllComponents = (
+	"intel_hfi",
+	"oftools", "opa_stack_dev", "fastfabric",
+	"delta_ipoib", "opafm", "opamgt_sdk",
+	"mvapich2_gcc_hfi", "mvapich2_intel_hfi",
+	"openmpi_gcc_hfi", "openmpi_intel_hfi",
+	"openmpi_gcc_cuda_hfi", "sandiashmem",
+	"mvapich2_gcc",	"openmpi_gcc", #"mpiRest",
+	"mpisrc", "delta_debug"	);
 
-# Other distros (older)
-my @Components_other = ( "opa_stack", "ibacm", "mpi_selector", "intel_hfi",
-		"oftools", "opa_stack_dev", "fastfabric", "rdma_ndd",
-		"delta_ipoib", "delta_srp", "delta_srpt", "opafm", "opamgt_sdk",
-	   	@OmniPathAllComponents, 
-		"sandiashmem",
-	   	"mvapich2_gcc", "openmpi_gcc",
-	   	"mpisrc", "delta_debug", );
-my @Components_rhel67 = ( "opa_stack", "ibacm", "mpi_selector", "intel_hfi",
-                "oftools", "opa_stack_dev", "fastfabric", "rdma_ndd",
-                "delta_ipoib", "delta_srp", "delta_srpt", "opafm", "opamgt_sdk",
-                @OmniPathAllComponents,
-                "mvapich2_gcc", "openmpi_gcc",
-                "mpisrc", "delta_debug", );
-my @Components_rhel72 = ( "opa_stack", "ibacm", "mpi_selector", "intel_hfi",
-		"oftools", "opa_stack_dev", "fastfabric", "rdma_ndd",
-		"delta_ipoib", "delta_srp", "delta_srpt", "opafm", "opamgt_sdk",
-	   	@OmniPathAllComponents,
-		"openmpi_gcc_cuda_hfi", "sandiashmem",
-	   	"mvapich2_gcc", "openmpi_gcc",
-	   	"mpisrc", "delta_debug", );
-my @Components_sles12_sp2 = ( "opa_stack", "ibacm", "mpi_selector", "intel_hfi",
-		"oftools", "opa_stack_dev", "fastfabric", "rdma_ndd",
-		"delta_ipoib", "delta_srp", "delta_srpt", "opafm", "opamgt_sdk",
-	   	@OmniPathAllComponents,
-		"openmpi_gcc_cuda_hfi", "sandiashmem",
-	   	"mvapich2_gcc", "openmpi_gcc",
-	   	"mpisrc", "delta_debug", );
-my @Components_rhel73 = ( "opa_stack", "ibacm", "mpi_selector", "intel_hfi",
-		"oftools", "opa_stack_dev", "fastfabric", "rdma_ndd",
-		"delta_ipoib", "delta_srp", "delta_srpt", "opafm", "opamgt_sdk",
-	   	@OmniPathAllComponents,
-		"openmpi_gcc_cuda_hfi",	"sandiashmem",
-	   	"mvapich2_gcc", "openmpi_gcc",
-	   	"mpisrc", "delta_debug", );
-my @Components_sles12_sp3 = ( "opa_stack", "ibacm", "mpi_selector", "intel_hfi",
-		"oftools", "opa_stack_dev", "fastfabric", "rdma_ndd",
-		"delta_ipoib", "delta_srp", "delta_srpt", "opafm", "opamgt_sdk",
-	   	@OmniPathAllComponents,
-		"openmpi_gcc_cuda_hfi", "sandiashmem",
-	   	"mvapich2_gcc", "openmpi_gcc",
-	   	"mpisrc", "delta_debug", );
-my @Components_rhel74 = ( "opa_stack", "ibacm", "mpi_selector", "intel_hfi",
-		"oftools", "opa_stack_dev", "fastfabric", "rdma_ndd",
-		"delta_ipoib", "delta_srp", "delta_srpt", "opafm", "opamgt_sdk",
-	   	@OmniPathAllComponents,
-		"openmpi_gcc_cuda_hfi",	"sandiashmem",
-	   	"mvapich2_gcc", "openmpi_gcc",
-	   	"mpisrc", "delta_debug", );
+my @Components_rhel72 = ( "opa_stack", "ibacm", "mpi_selector",
+		@OmniPathAllComponents);
+my @Components_sles12_sp2 = ( "opa_stack",
+		@OmniPathAllComponents );
+my @Components_rhel73 = ( "opa_stack", "mpi_selector",
+		@OmniPathAllComponents );
+my @Components_sles12_sp3 = ( "opa_stack",
+		@OmniPathAllComponents );
+my @Components_rhel74 = ( "opa_stack", "mpi_selector",
+		@OmniPathAllComponents );
+my @Components_rhel75 = ( "opa_stack", "mpi_selector",
+		@OmniPathAllComponents );
+my @Components_sles15 = ( "opa_stack",
+		@OmniPathAllComponents );
+
 @Components = ( );
 
-# delta_debug must be last
-
+# RHEL7.2, ibacm is a full component with rpms to install
+my @SubComponents_older = ( "rdma_ndd", "delta_srp", "delta_srpt" );
+# RHEL7.3 and newer AND SLES12.2 and newer
+my @SubComponents_newer = ( "ibacm", "rdma_ndd", "delta_srp", "delta_srpt" );
 @SubComponents = ( );
 
 	# an additional "special" component which is always installed when
@@ -128,9 +100,6 @@ $WrapperComponent = "opaconfig";
 # 	DefaultInstall => default installation (State_DoNotInstall or State_Install)
 #					  used only when available and ! installed
 #	SrcDir => directory name within install media for component
-#	DriverSubdir => directory within /lib/modules/$CUR_OS_VERSION/ to
-#					install driver to.  Set to "" if no drivers in component
-#					set to "." if no subdir
 # 	PreReq => other components which are prereqs of a given
 #				component/subcomponent
 #				Need space before and after each component name to
@@ -147,6 +116,29 @@ $WrapperComponent = "opaconfig";
 #			  used for hidden PreReq.  Hidden components can't HasStart
 #			  nor HasFirmware
 #	Disabled =>  components/subcomponents which are disabled from installation
+#	IsOFA =>  is an in-distro OFA component we upgrade (excludes MPI)
+#	KernelRpms => kernel rpms for given component, in dependency order
+#				These are rpms which are kernel version specific and
+#				will have kernel uname -r in rpm package name.
+#				For a given distro a separate version of each of these rpms
+#				may exist per kernel.  These are always architecture dependent
+#				Note KernelRpms are always installed before FirmwareRpms and
+#				UserRpms
+#	FirmwareRpms => firmware rpms for given component, in dependency order
+#				These are rpms which are not kernel specific.  For a given
+#				distro a single version of each of these rpms will
+#				exist per distro/arch combination.  In most cases they will
+#				be architecture independent (noarch).
+#				These are rpms which are installed in user space but
+#				ultimately end up in hardware such as HFI firmware, TMM firmware
+#				BIOS firmware, etc.
+#	UserRpms => user rpms for given component, in dependency order
+#				These are rpms which are not kernel specific.  For a given
+#				distro a single version of each of these rpms will
+#				exist per distro/arch combination.  Some of these may
+#				be architecture independent (noarch).
+#	DebugRpms => user rpms for component which should be installed as part
+#				of delta_debug component.
 #	HasStart =>  components/subcomponents which have autostart capability
 #	DefaultStart =>  should autostart default to Enable (1) or Disable (0)
 #				Not needed/ignored unless HasStart=1
@@ -157,261 +149,783 @@ $WrapperComponent = "opaconfig";
 #				facilitate compares so that compares do not mistake names
 #				such as mpidev for mpi
 #	StartComponents => components/subcomponents with start for this component
-#				if a component has a start script 
+#				if a component has a start script
 #				list the component as a subcomponent of itself
+#	StartupScript => name of startup script which controls startup of this
+#				component
+#	StartupParams => list of parameter names in $OPA_CONFIG which control
+#				startup of this component (set to yes/no values)
 #	HasFirmware =>  components which need HCA firmware update after installed
 #
 # Note both Components and SubComponents are included in the list below.
 # Components require all fields be supplied
 # SubComponents only require the following fields:
 #	Name, PreReq (should reference only components), HasStart, StartPreReq,
-#	DefaultStart
+#	DefaultStart, and optionally StartupScript, StartupParams
+#	Also SubComponents only require the IsAutostart2_X, autostart_desc_X,
+#	enable_autostart2_X, disable_autostart2_X and installed_X functions.
+#	Typically installed_X for a SubComponent will simply call installed_X for
+#	the component which contains it.
 %ComponentInfo = (
 		# our special WrapperComponent, limited use
 	"opaconfig" =>	{ Name => "opaconfig",
 					  DefaultInstall => $State_Install,
-					  SrcDir => ".", DriverSubdir => "",
+					  SrcDir => ".",
 					  PreReq => "", CoReq => "",
-					  Hidden => 0, Disabled => 0,
+					  Hidden => 0, Disabled => 0, IsOFA => 0,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ ],
+					  DebugRpms => [ ],
 					  HasStart => 0, HasFirmware => 0,
 					  StartPreReq => "",
 					  StartComponents => [ ],
-					},
-	"opa_stack" =>	{ Name => "OFA OPA Stack",
-					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
-					  # DriverSubdir varies per distro
-					  PreReq => "", CoReq => " oftools ",
- 						# TBD - HasFirmware - FW update
-					  Hidden => 0, Disabled => 0,
-					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
-					  StartPreReq => "",
-					  StartComponents => [ "opa_stack" ],
-					},
-		# ibacm is used in rhel72 and other only
-	"ibacm" =>		{ Name => "OFA IBACM",
-					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
-					  DriverSubdir => "",
-					  PreReq => " opa_stack ", CoReq => "",
-					  Hidden => 0, Disabled => 0,
-					  HasStart => 1, HasFirmware => 0, DefaultStart => 0,
-					  StartPreReq => " opa_stack ",
-					  StartComponents => [ "ibacm" ],
-					},
-	"intel_hfi" =>	{ Name => "Intel HFI Components",
-					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
-					  DriverSubdir => "updates",
-					  PreReq => " opa_stack ", CoReq => " oftools ",
- 						# TBD - HasFirmware - FW update
-					  Hidden => 0, Disabled => 0,
-					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
-					  StartPreReq => " opa_stack ",
-					  StartComponents => [ "intel_hfi" ],
+					  StartupScript => "",
+					  StartupParams => [ ]
+
 					},
 	"oftools" =>	{ Name => "OPA Tools",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob("./IntelOPA-Tools*.*"),
-					  DriverSubdir => "",
 					  PreReq => " opa_stack ", CoReq => " opa_stack ",
-					  Hidden => 0, Disabled => 0,
+					  Hidden => 0, Disabled => 0, IsOFA => 0,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ ],
+					  DebugRpms => [ ],
 					  HasStart => 1, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => " opa_stack ", # TBD
 					  StartComponents => [ ],
+					  StartupScript => "",
+					  StartupParams => [ ]
 					},
 	"mpi_selector" =>	{ Name => "MPI selector",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
-					  DriverSubdir => "",
+					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
 					  PreReq => " opa_stack ", CoReq => "",
-					  Hidden => 1, Disabled => 0,
+					  Hidden => 1, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ "mpi-selector" ],
+					  DebugRpms => [ ],
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
 					  StartComponents => [ ],
-					},
-	"opa_stack_dev" => { Name => "OFA OPA Development",
-					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
-					  DriverSubdir => "",
-					  PreReq => " opa_stack ", CoReq => "",
-					  Hidden => 0, Disabled => 0,
-					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
-					  StartPreReq => "",
-					  StartComponents => [ ],
+					  StartupScript => "",
+					  StartupParams => [ ]
 					},
 	"fastfabric" =>	{ Name => "FastFabric",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob("./IntelOPA-Tools*.*"),
-					  DriverSubdir => "",
 					  PreReq => " opa_stack oftools ", CoReq => "",
-					  Hidden => 0, Disabled => 0,
+					  Hidden => 0, Disabled => 0, IsOFA => 0,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ ],
+					  DebugRpms => [ ],
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => " opa_stack ",
 					  StartComponents => [ ],
+					  StartupScript => "",
+					  StartupParams => [ ]
 					},
+# TBD - only a startup script, should act like a subcomponent only
 	"delta_ipoib" =>	{ Name => "OFA IP over IB",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
-					  DriverSubdir => "updates",
+					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
 					  PreReq => " opa_stack ", CoReq => "",
-					  Hidden => 0, Disabled => 0,
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ ],
+					  DebugRpms => [ ],
 					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
 					  StartPreReq => " opa_stack ",
 					  StartComponents => [ "delta_ipoib" ],
+					  StartupScript => "",
+					  StartupParams => [ "IPOIB_LOAD" ]
 					},
 	"mvapich2_gcc" =>	{ Name => "MVAPICH2 (verbs,gcc)",
 					  DefaultInstall => $State_DoNotInstall,
-					  SrcDir => file_glob ("./OFED_MPIS.*"),
-					  DriverSubdir => "",
+					  SrcDir => file_glob ("./OFA_MPIS.*"),
 					  PreReq => " opa_stack mpi_selector intel_hfi ", CoReq => "",
-					  Hidden => 0, Disabled => 0,
+					  Hidden => 1, Disabled => 0, IsOFA => 0,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ ],
+					  DebugRpms => [ ],
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
 					  StartComponents => [ ],
+					  StartupScript => "",
+					  StartupParams => [ ]
 					},
 	"openmpi_gcc" =>	{ Name => "OpenMPI (verbs,gcc)",
 					  DefaultInstall => $State_DoNotInstall,
-					  SrcDir => file_glob ("./OFED_MPIS.*"),
-					  DriverSubdir => "",
+					  SrcDir => file_glob ("./OFA_MPIS.*"),
 					  PreReq => " opa_stack mpi_selector intel_hfi ", CoReq => "",
-					  Hidden => 0, Disabled => 0,
+					  Hidden => 1, Disabled => 0, IsOFA => 0,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ ],
+					  DebugRpms => [ ],
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
 					  StartComponents => [ ],
+					  StartupScript => "",
+					  StartupParams => [ ]
 					},
 	"sandiashmem" =>	{ Name => "Sandia-OpenSHMEM ",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
-					  DriverSubdir => "",
+					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
 					  PreReq => " opa_stack intel_hfi ", CoReq => "",
-					  Hidden => 0, Disabled => 0,
+# TBD - should IsOFA be 0?
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ "sandia-openshmem_gcc_hfi",
+									"sandia-openshmem_gcc_hfi-devel",
+									"sandia-openshmem_gcc_hfi-tests"
+								],
+					  DebugRpms => [ ],
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
 					  StartComponents => [ ],
+					  StartupScript => "",
+					  StartupParams => [ ]
 					},
 	"openmpi_gcc_cuda_hfi" =>{ Name => "OpenMPI (cuda,gcc)",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob ("./OFED_MPIS.*"),
-					  DriverSubdir => "",
+					  SrcDir => file_glob ("./OFA_MPIS.*"),
 					  PreReq => " opa_stack intel_hfi mpi_selector ", CoReq => "",
-					  Hidden => 0, Disabled => 0,
+					  Hidden => 0, Disabled => 0, IsOFA => 0,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ ],
+					  DebugRpms => [ ],
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
 					  StartComponents => [ ],
+					  StartupScript => "",
+					  StartupParams => [ ]
 					},
 	"mvapich2_gcc_hfi" =>	{ Name => "MVAPICH2 (hfi,gcc)",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob ("./OFED_MPIS.*"),
-					  DriverSubdir => "",
+					  SrcDir => file_glob ("./OFA_MPIS.*"),
 					  PreReq => " opa_stack intel_hfi mpi_selector ", CoReq => "",
-					  Hidden => 0, Disabled => 0,
+					  Hidden => 0, Disabled => 0, IsOFA => 0,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ ],
+					  DebugRpms => [ ],
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
 					  StartComponents => [ ],
+					  StartupScript => "",
+					  StartupParams => [ ]
 					},
 	"mvapich2_intel_hfi" =>	{ Name => "MVAPICH2 (hfi,Intel)",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob ("./OFED_MPIS.*"),
-					  DriverSubdir => "",
+					  SrcDir => file_glob ("./OFA_MPIS.*"),
 					  PreReq => " opa_stack intel_hfi mpi_selector ", CoReq => "",
-					  Hidden => 0, Disabled => 0,
+					  Hidden => 1, Disabled => 0, IsOFA => 0,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ ],
+					  DebugRpms => [ ],
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
 					  StartComponents => [ ],
+					  StartupScript => "",
+					  StartupParams => [ ]
 					},
 	"openmpi_gcc_hfi" =>	{ Name => "OpenMPI (hfi,gcc)",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob ("./OFED_MPIS.*"),
-					  DriverSubdir => "",
+					  SrcDir => file_glob ("./OFA_MPIS.*"),
 					  PreReq => " opa_stack intel_hfi mpi_selector ", CoReq => "",
-					  Hidden => 0, Disabled => 0,
+					  Hidden => 0, Disabled => 0, IsOFA => 0,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ ],
+					  DebugRpms => [ ],
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
 					  StartComponents => [ ],
+					  StartupScript => "",
+					  StartupParams => [ ]
 					},
 	"openmpi_intel_hfi" =>	{ Name => "OpenMPI (hfi,Intel)",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob ("./OFED_MPIS.*"),
-					  DriverSubdir => "",
+					  SrcDir => file_glob ("./OFA_MPIS.*"),
 					  PreReq => " opa_stack intel_hfi mpi_selector ", CoReq => "",
-					  Hidden => 0, Disabled => 0,
+					  Hidden => 1, Disabled => 0, IsOFA => 0,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ ],
+					  DebugRpms => [ ],
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
 					  StartComponents => [ ],
+					  StartupScript => "",
+					  StartupParams => [ ]
+					},
+# rest of MPI stuff which customer can build via do_build
+# this is included here so we can uninstall
+# special case use in comp_delta.pl, omitted from Components list
+# TBD - how to best refactor this so we remove these (do we still need to remove them?)
+	"mpiRest" =>	{ Name => "MpiRest (pgi,Intel)",
+					  DefaultInstall => $State_DoNotInstall,
+					  SrcDir => file_glob ("./OFA_MPIS.*"),
+					  PreReq => "", CoReq => "",
+					  Hidden => 1, Disabled => 1, IsOFA => 1,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ "mvapich2_pgi",
+									"mvapich2_intel", "mvapich2_pathscale",
+									"mvapich2_pgi_qlc", "mvapich2_gcc_qlc",
+									"mvapich2_intel_qlc", "mvapich2_pathscale_qlc",
+									"mvapich2_pgi_hfi", "mvapich2_pathscale_hfi",
+									"mvapich2_pgi_cuda_hfi", "mvapich2_pathscale_cuda_hfi",
+									"openmpi_pgi",
+									"openmpi_intel", "openmpi_pathscale",
+									"openmpi_pgi_qlc", "openmpi_gcc_qlc",
+									"openmpi_intel_qlc", "openmpi_pathscale_qlc",
+									"openmpi_pgi_hfi", "openmpi_pathscale_hfi",
+									"openmpi_pgi_cuda_hfi", "openmpi_pathscale_cuda_hfi",
+									"mpitests_mvapich2_pgi",
+									"mpitests_mvapich2_intel",
+									"mpitests_mvapich2_pathscale",
+									"mpitests_mvapich2_pgi_qlc", "mpitests_mvapich2_gcc_qlc",
+									"mpitests_mvapich2_intel_qlc", "mpitests_mvapich2_pathscale_qlc",
+									"mpitests_mvapich2_pgi_hfi", "mpitests_mvapich2_pathscale_hfi",
+									"mpitests_mvapich2_pgi_cuda_hfi", "mpitests_mvapich2_pathscale_cuda_hfi",
+									"mpitests_openmpi_pgi",
+									"mpitests_openmpi_intel",
+									"mpitests_openmpi_pathscale",
+									"mpitests_openmpi_pgi_qlc", "mpitests_openmpi_gcc_qlc",
+									"mpitests_openmpi_intel_qlc", "mpitests_openmpi_pathscale_qlc",
+									"mpitests_openmpi_pgi_hfi", "mpitests_openmpi_pathscale_hfi",
+									"mpitests_openmpi_pgi_cuda_hfi", "mpitests_openmpi_pathscale_cuda_hfi",
+								],
+					  DebugRpms => [ ],
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => "",
+					  StartComponents => [ ],
+					  StartupScript => "",
+					  StartupParams => [ ]
 					},
 	"mpisrc" =>{ Name => "MPI Source",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob ("./OFED_MPIS.*"),
-					  DriverSubdir => "",
+					  SrcDir => file_glob ("./OFA_MPIS.*"),
 					  PreReq => " opa_stack opa_stack_dev mpi_selector ", CoReq => "",
-					  Hidden => 0, Disabled => 0,
+					  Hidden => 0, Disabled => 0, IsOFA => 0,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ ],
+					  DebugRpms => [ ],
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
 					  StartComponents => [ ],
+					  StartupScript => "",
+					  StartupParams => [ ]
 					},
 	"opafm" =>	{ Name => "OPA FM",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob("./IntelOPA-FM.*"),
-					  DriverSubdir => "",
 					  PreReq => " opa_stack ", CoReq => "",
-					  Hidden => 0, Disabled => 0,
+					  Hidden => 0, Disabled => 0, IsOFA => 0,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ ],
+					  DebugRpms => [ ],
 					  HasStart => 1, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => " opa_stack ",
 					  #StartComponents => [ "qlgc_fm", "qlgc_fm_snmp"],
 					  StartComponents => [ "opafm" ],
+					  StartupScript => "",
+					  StartupParams => [ ]
 					},
 	"opamgt_sdk" => { Name => "OPA Management SDK",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob("./IntelOPA-Tools*.*"),
-					  DriverSubdir => "",
-					  Prereq => " opa_stack ", CoReq => "",
-					  Hidden => 0, Disabled => 0,
+					  PreReq => " opa_stack ", CoReq => "",
+					  Hidden => 0, Disabled => 0, IsOFA => 0,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ ],
+					  DebugRpms => [ ],
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => " opa_stack ",
 					  StartComponents => [ ],
+					  StartupScript => "",
+					  StartupParams => [ ]
 				  },
 	"delta_debug" =>	{ Name => "OFA Debug Info",
 					  DefaultInstall => $State_DoNotInstall,
-					  SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
-					  DriverSubdir => "",
+					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
 					  PreReq => " opa_stack ", CoReq => "",
-					  Hidden => 0, Disabled => 0,
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ ],
+					  DebugRpms => [ ],	# listed per comp
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
 					  StartComponents => [ ],
+					  StartupScript => "",
+					  StartupParams => [ ]
 					},
-	"rdma_ndd" =>              { Name => "RDMA NDD",
-                                          DefaultInstall => $State_Install,
-                                          SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
-                                          DriverSubdir => "",
-                                          PreReq => " opa_stack ", CoReq => "",
-                                          Hidden => 1, Disabled => 1,
-                                          HasStart => 1, HasFirmware => 0, DefaultStart => 1,
-                                          StartPreReq => " opa_stack ",
-                                          StartComponents => [ "rdma_ndd" ],
-                                        },
-	"delta_srp" =>              { Name => "OFA SRP",
-                                          DefaultInstall => $State_Install,
-                                          SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
-                                          DriverSubdir => "",
-                                          PreReq => " opa_stack ", CoReq => "",
-                                          Hidden => 1, Disabled => 1,
-                                          HasStart => 1, HasFirmware => 0, DefaultStart => 0,
-                                          StartPreReq => " opa_stack ",
-                                          StartComponents => [ "delta_srp" ],
-                                        },
-	"delta_srpt" =>              { Name => "OFA SRPT",
-                                          DefaultInstall => $State_Install,
-                                          SrcDir => file_glob("./IntelOPA-OFED_DELTA.*"),
-                                          DriverSubdir => "",
-                                          PreReq => " opa_stack ", CoReq => "",
-                                          Hidden => 1, Disabled => 1,
-                                          HasStart => 1, HasFirmware => 0, DefaultStart => 0,
-                                          StartPreReq => " opa_stack ",
-                                          StartComponents => [ "delta_srpt" ],
-                                        },
+		# rdma_ndd is a subcomponent
+		# it has a startup, but is considered part of opa_stack
+	"rdma_ndd" =>		{ Name => "RDMA NDD",
+					  PreReq => " opa_stack ",
+					  HasStart => 1, DefaultStart => 1,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ "rdma_ndd" ],
+					  StartupScript => "",
+					  StartupParams => [ ]
+					},
+		# delta_srp is a subcomponent
+		# it has a startup, but is considered part of opa_stack
+	"delta_srp" =>		{ Name => "OFA SRP",
+					  PreReq => " opa_stack ",
+					  HasStart => 1, DefaultStart => 0,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ "delta_srp" ],
+					  StartupScript => "",
+					  StartupParams => [ ]
+					},
+		# delta_srpt is a subcomponent
+		# it has a startup, but is considered part of opa_stack
+	"delta_srpt" =>		{ Name => "OFA SRPT",
+					  PreReq => " opa_stack ",
+					  HasStart => 1, DefaultStart => 0,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ "delta_srpt" ],
+					  StartupScript => "",
+					  StartupParams => [ ]
+					},
 	);
+
+# one of these opa_stack comp_info gets appended to ComponentInfo
+# for RHEL72
+my %opa_stack_rhel72_comp_info = (
+	"opa_stack" =>	{ Name => "OFA OPA Stack",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  PreReq => "", CoReq => " oftools ",
+						# TBD - HasFirmware - FW update
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ "kmod-ifs-kernel-updates" ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ "opa-scripts",
+									#"libibumad",
+									"srptools",
+									"libibmad",
+									"infiniband-diags",
+								],
+					  DebugRpms => [ #"libibumad-debuginfo",
+									"srptools-debuginfo",
+								],
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  StartPreReq => "",
+					  StartComponents => [ "opa_stack", "rdma_ndd", "delta_srp", "delta_srpt" ],
+					  StartupScript => "opa",
+					  StartupParams => [ "ARPTABLE_TUNING" ]
+					},
+);
+# for RHEL73
+my %opa_stack_rhel73_comp_info = (
+	"opa_stack" =>	{ Name => "OFA OPA Stack",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  PreReq => "", CoReq => " oftools ",
+						# TBD - HasFirmware - FW update
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ "kmod-ifs-kernel-updates" ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ "opa-scripts",
+									#"libibumad",
+									#"srptools",
+									#"libibmad",
+									"infiniband-diags",
+								],
+					  DebugRpms => [ #"libibumad-debuginfo",
+									#"srptools-debuginfo",
+								],
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  StartPreReq => "",
+					  StartComponents => [ "opa_stack", "ibacm", "rdma_ndd", "delta_srp", "delta_srpt" ],
+					  StartupScript => "opa",
+					  StartupParams => [ "ARPTABLE_TUNING" ]
+					},
+);
+# for RHEL74 and above
+my %opa_stack_rhel_comp_info = (
+	"opa_stack" =>	{ Name => "OFA OPA Stack",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  PreReq => "", CoReq => " oftools ",
+						# TBD - HasFirmware - FW update
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ "kmod-ifs-kernel-updates" ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ "opa-scripts",
+									#"libibumad",
+									#"srptools",
+									#"libibmad",
+									#"infiniband-diags",
+								],
+					  DebugRpms => [ #"libibumad-debuginfo",
+									#"srptools-debuginfo",
+								],
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  StartPreReq => "",
+					  StartComponents => [ "opa_stack", "ibacm", "rdma_ndd", "delta_srp", "delta_srpt" ],
+					  StartupScript => "opa",
+					  StartupParams => [ "ARPTABLE_TUNING" ]
+					},
+);
+# for RHEL74 HFI2
+my %opa_stack_rhel74_hfi2_comp_info = (
+	"opa_stack" =>	{ Name => "OFA OPA Stack",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  PreReq => "", CoReq => " oftools ",
+						# TBD - HasFirmware - FW update
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ "hfi2" ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ "opa-scripts",
+									#"libibumad",
+									#"srptools",
+									#"libibmad",
+									#"infiniband-diags",
+								],
+					  DebugRpms => [ #"libibumad-debuginfo",
+									#"srptools-debuginfo",
+								],
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  StartPreReq => "",
+					  StartComponents => [ "opa_stack", "ibacm", "rdma_ndd", "delta_srp", "delta_srpt" ],
+					  StartupScript => "opa",
+					  StartupParams => [ "ARPTABLE_TUNING" ]
+					},
+);
+# for SLES12sp2
+my %opa_stack_sles12_sp2_comp_info = (
+	"opa_stack" =>	{ Name => "OFA OPA Stack",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  PreReq => "", CoReq => " oftools ",
+						# TBD - HasFirmware - FW update
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ "ifs-kernel-updates-kmp-default" ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ "opa-scripts",
+									#"libibumad3",
+									#"srptools",
+									#"libibmad5",
+									"infiniband-diags",
+								],
+					  DebugRpms => [ ],
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  StartPreReq => "",
+					  StartComponents => [ "opa_stack", "ibacm", "rdma_ndd", "delta_srp", "delta_srpt" ],
+					  StartupScript => "opa",
+					  StartupParams => [ "ARPTABLE_TUNING" ]
+					},
+);
+# for SLES12sp3
+my %opa_stack_sles12_sp3_comp_info = (
+	"opa_stack" =>	{ Name => "OFA OPA Stack",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  PreReq => "", CoReq => " oftools ",
+						# TBD - HasFirmware - FW update
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ "ifs-kernel-updates-kmp-default" ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ "opa-scripts",
+									#"libibumad3",
+									#"srptools",
+									#"libibmad5",
+									#"infiniband-diags",
+								],
+					  DebugRpms => [ ],
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  StartPreReq => "",
+					  StartComponents => [ "opa_stack", "ibacm", "rdma_ndd", "delta_srp", "delta_srpt" ],
+					  StartupScript => "opa",
+					  StartupParams => [ "ARPTABLE_TUNING" ]
+					},
+);
+
+# for SLES15
+my %opa_stack_sles15_comp_info = (
+	"opa_stack" =>	{ Name => "OFA OPA Stack",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  PreReq => "", CoReq => " oftools ",
+						# TBD - HasFirmware - FW update
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ "ifs-kernel-updates-kmp-default" ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ "opa-scripts",
+									#"libibumad3",
+									#"srptools",
+									#"libibmad5",
+									#"infiniband-diags",
+								],
+					  DebugRpms => [ ],
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  StartPreReq => "",
+					  StartComponents => [ "opa_stack", "ibacm", "rdma_ndd", "delta_srp", "delta_srpt" ],
+					  StartupScript => "opa",
+					  StartupParams => [ "ARPTABLE_TUNING" ]
+					},
+);
+
+
+# one of these ibacm comp_info gets appended to ComponentInfo
+# for RHEL72
+my %ibacm_older_comp_info = (
+	"ibacm" =>		{ Name => "OFA IBACM",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  PreReq => " opa_stack ", CoReq => "",
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ "ibacm",],
+					  DebugRpms => [ "ibacm-debuginfo" ],
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ "ibacm" ],
+					  StartupScript => "ibacm",
+					  StartupParams => [ ]
+					},
+);
+
+# For RHEL73, SLES12sp2 and other newer distros
+		# ibacm is a subcomponent
+		# it has a startup, but is considered part of opa_stack
+my %ibacm_comp_info = (
+		# TBD - should be a StartComponent only for these distros
+	"ibacm" =>		{ Name => "OFA IBACM",
+					  PreReq => " opa_stack ",
+					  HasStart => 1, DefaultStart => 0,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ "ibacm" ],
+					  StartupScript => "ibacm",
+					  StartupParams => [ ]
+					},
+);
+
+
+# one of these intel_hfi comp_info gets appended to ComponentInfo
+# for RHEL72 which lacks libhfi1
+my %intel_hfi_older_comp_info = (
+	"intel_hfi" =>	{ Name => "Intel HFI Components",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  PreReq => " opa_stack ", CoReq => " oftools ",
+						# TBD - HasFirmware - FW update
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [
+									"hfi1-firmware", "hfi1-firmware_debug"
+								],
+					  UserRpms =>	  [ "libhfi1", "libhfi1-static",
+									"libpsm2",
+									"libpsm2-devel", "libpsm2-compat",
+									"libfabric", "libfabric-devel",
+									"libfabric-psm",
+									"libfabric-psm2", "libfabric-verbs",
+									"hfi1-diagtools-sw", "hfidiags",
+								],
+					  DebugRpms =>  [ "hfi1_debuginfo",
+									"hfi1-diagtools-sw-debuginfo",
+									"libpsm2-debuginfo", "libhfi1-debuginfo"
+								],
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ "intel_hfi" ],
+					  StartupScript => "",
+					  StartupParams => [ ]
+					},
+);
+# for RHEL73, SLES12.2 and other newer distros which include libhfi1
+my %intel_hfi_comp_info = (
+	"intel_hfi" =>	{ Name => "Intel HFI Components",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  PreReq => " opa_stack ", CoReq => " oftools ",
+						# TBD - HasFirmware - FW update
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [
+									"hfi1-firmware", "hfi1-firmware_debug"
+								],
+					  UserRpms => [ #"libhfi1", "libhfi1-static",
+									"libpsm2",
+									"libpsm2-devel", "libpsm2-compat",
+									"libfabric", "libfabric-devel",
+									"libfabric-psm",
+									"libfabric-psm2", "libfabric-verbs",
+									"hfi1-diagtools-sw", "hfidiags",
+								],
+					  DebugRpms =>  [ #"hfi1_debuginfo",
+									"hfi1-diagtools-sw-debuginfo",
+									"libpsm2-debuginfo", #"libhfi1-debuginfo"
+								],
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ "intel_hfi" ],
+					  StartupScript => "",
+					  StartupParams => [ ]
+					},
+);
+
+# For SLES12sp3 that has different name for libpsm2
+my %intel_hfi_sles123_comp_info = (
+	"intel_hfi" =>	{ Name => "Intel HFI Components",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  PreReq => " opa_stack ", CoReq => " oftools ",
+						# TBD - HasFirmware - FW update
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [
+									"hfi1-firmware", "hfi1-firmware_debug"
+								],
+					  UserRpms => [ #"libhfi1", "libhfi1-static",
+									"libpsm2-2",
+									"libpsm2-devel", "libpsm2-compat",
+									"libfabric", "libfabric-devel",
+									"libfabric-psm",
+									"libfabric-psm2", "libfabric-verbs",
+									"hfi1-diagtools-sw", "hfidiags",
+								],
+					  DebugRpms =>  [ #"hfi1_debuginfo",
+									"hfi1-diagtools-sw-debuginfo",
+									"libpsm2-debuginfo", #"libhfi1-debuginfo"
+								],
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ "intel_hfi" ],
+					  StartupScript => "",
+					  StartupParams => [ ]
+					},
+);
+
+# For SLES15 that has different name for libpsm2
+my %intel_hfi_sles15_comp_info = (
+	"intel_hfi" =>	{ Name => "Intel HFI Components",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  PreReq => " opa_stack ", CoReq => " oftools ",
+						# TBD - HasFirmware - FW update
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [
+									"hfi1-firmware", "hfi1-firmware_debug"
+								],
+					  UserRpms => [ #"libhfi1", "libhfi1-static",
+									"libpsm2-2",
+									"libpsm2-devel", "libpsm2-compat",
+									"libfabric", "libfabric-devel",
+									"libfabric-psm",
+									"libfabric-psm2", "libfabric-verbs",
+									"hfi1-diagtools-sw", "hfidiags",
+								],
+					  DebugRpms =>  [ #"hfi1_debuginfo",
+									"hfi1-diagtools-sw-debuginfo",
+									"libpsm2-debuginfo", #"libhfi1-debuginfo"
+								],
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ "intel_hfi" ],
+					  StartupScript => "",
+					  StartupParams => [ ]
+					},
+);
+
+# for RHEL74 HFI2
+my %intel_hfi__rhel74_hfi2_comp_info = (
+	"intel_hfi" =>	{ Name => "Intel HFI Components",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  PreReq => " opa_stack ", CoReq => " oftools ",
+						# TBD - HasFirmware - FW update
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [
+									"hfi1-firmware", "hfi1-firmware_debug"
+								],
+					  UserRpms => [ #"libhfi1", "libhfi1-static",
+									"libpsm2",
+									"libpsm2-devel", "libpsm2-compat",
+									"libfabric", "libfabric-devel",
+									"libfabric-fxr",
+									"libfabric-psm",
+									"libfabric-psm2", "libfabric-verbs",
+									"hfi1-diagtools-sw", "hfidiags",
+								],
+					  DebugRpms =>  [ #"hfi1_debuginfo",
+									"hfi1-diagtools-sw-debuginfo",
+									"libpsm2-debuginfo", #"libhfi1-debuginfo"
+								],
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ "intel_hfi" ],
+					  StartupScript => "",
+					  StartupParams => [ ]
+					},
+);
+# one of these opa_stack_dev comp_info gets appended to ComponentInfo
+# for RHEL72
+my %opa_stack_dev_rhel72_comp_info = (
+	"opa_stack_dev" => { Name => "OFA OPA Development",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  PreReq => " opa_stack ", CoReq => "",
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ "ifs-kernel-updates-devel" ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ "ibacm-devel",
+									#"libibumad-devel", "libibumad-static",
+									#"libibmad-devel", "libibmad-static"
+									],
+					  DebugRpms => [ ],
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => "",
+					  StartComponents => [ ],
+					  StartupScript => "",
+					  StartupParams => [ ]
+					},
+);
+# for RHEL73 and SLES12sp2 and newer distros
+my %opa_stack_dev_comp_info = (
+	"opa_stack_dev" => { Name => "OFA OPA Development",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  PreReq => " opa_stack ", CoReq => "",
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ "ifs-kernel-updates-devel" ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ #"ibacm-devel",
+									#"libibumad-devel", "libibumad-static",
+									#"libibmad-devel", "libibmad-static"
+									],
+					  DebugRpms => [ ],
+					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
+					  StartPreReq => "",
+					  StartComponents => [ ],
+					  StartupScript => "",
+					  StartupParams => [ ]
+					},
+);
 
 	# translate from startup script name to component/subcomponent name
 %StartupComponent = (
@@ -434,6 +948,7 @@ $WrapperComponent = "opaconfig";
 				"openmpi_gcc_hfi" => 0,
 				"openmpi_gcc_cuda_hfi" => 0,
 				"openmpi_intel_hfi" => 0,
+				"mpiRest" => 0,
 				"mpisrc" => 0,
 				"opafm" => 0,
 				"opamgt_sdk" => 0,
@@ -444,44 +959,98 @@ $WrapperComponent = "opaconfig";
 				"sandiashmem" => 0,
 			);
 
+# check whether we support HFI2
+sub support_HFI2()
+{
+	# right now we support HFI2 only in RHEL7.4 with kVer >= 4.6
+	if ("$CUR_VENDOR_VER" eq "ES74" && $CUR_OS_VER_SHORT >= 4.6) {
+		# We prefer to check it based on feature (i.e. hfi2 pkg) rather than version (i.e. content in version file)
+		my $rpmdir = "$RPMS_SUBDIR/$CUR_DISTRO_VENDOR-$CUR_VENDOR_VER";
+		my $srcdir = $opa_stack_rhel74_hfi2_comp_info{'opa_stack'}{'SrcDir'};
+		my @rpmlist = @{$opa_stack_rhel74_hfi2_comp_info{'opa_stack'}{'KernelRpms'}};
+		# this function get called before overrides, so we need to consider the case we run it from DELTA pkg that
+		# srcdir is current location, i.e. "."
+		return rpm_exists_list("$srcdir/$rpmdir", $CUR_OS_VER, @rpmlist) ||
+		       rpm_exists_list("./$rpmdir", $CUR_OS_VER, @rpmlist);
+	}
+	return 0;
+}
+
 sub init_components
 {
+	$HFI2_INSTALL = support_HFI2();
+
 	# The component list has slight variations per distro
-	# TBD - the DriverSubDir should be moved to a global per distro variable
-	# and ComponentInfo.DriverSubDir should be changed to a simple boolean
-	# to indicate if the given component has some drivers
 	if ( "$CUR_VENDOR_VER" eq "ES72" ) {
 		@Components = ( @Components_rhel72 );
-		$ComponentInfo{'opa_stack'}{'DriverSubdir'} = "extra/ifs-kernel-updates";
+		@SubComponents = ( @SubComponents_older );
+		%ComponentInfo = ( %ComponentInfo, %ibacm_older_comp_info,
+						%intel_hfi_older_comp_info,
+						%opa_stack_dev_rhel72_comp_info,
+						%opa_stack_rhel72_comp_info,
+						);
 		$ComponentInfo{'oftools'}{'PreReq'} = " opastack ibacm ";
 	} elsif ( "$CUR_VENDOR_VER" eq "ES122" ) {
 		@Components = ( @Components_sles12_sp2 );
-		$ComponentInfo{'opa_stack'}{'DriverSubdir'} = "updates/ifs-kernel-updates";
-		$ComponentInfo{'ibacm'}{'Hidden'} = 1;
-		$ComponentInfo{'ibacm'}{'Disabled'} = 1;
+		@SubComponents = ( @SubComponents_newer );
+		%ComponentInfo = ( %ComponentInfo, %ibacm_comp_info,
+						%intel_hfi_comp_info,
+						%opa_stack_dev_comp_info,
+						%opa_stack_sles12_sp2_comp_info,
+						);
 	} elsif ( "$CUR_VENDOR_VER" eq "ES73" ) {
 		@Components = ( @Components_rhel73 );
-		$ComponentInfo{'opa_stack'}{'DriverSubdir'} = "extra/ifs-kernel-updates";
-		$ComponentInfo{'ibacm'}{'Hidden'} = 1;
-		$ComponentInfo{'ibacm'}{'Disabled'} = 1;
+		@SubComponents = ( @SubComponents_newer );
+		%ComponentInfo = ( %ComponentInfo, %ibacm_comp_info,
+						%intel_hfi_comp_info,
+						%opa_stack_dev_comp_info,
+						%opa_stack_rhel73_comp_info,
+						);
 	} elsif ( "$CUR_VENDOR_VER" eq "ES123" ) {
 		@Components = ( @Components_sles12_sp3 );
-		$ComponentInfo{'opa_stack'}{'DriverSubdir'} = "updates/ifs-kernel-updates";
-		$ComponentInfo{'ibacm'}{'Hidden'} = 1;
-		$ComponentInfo{'ibacm'}{'Disabled'} = 1;
+		@SubComponents = ( @SubComponents_newer );
+		%ComponentInfo = ( %ComponentInfo, %ibacm_comp_info,
+						%intel_hfi_sles123_comp_info,
+						%opa_stack_dev_comp_info,
+						%opa_stack_sles12_sp3_comp_info,
+						);
 	} elsif ( "$CUR_VENDOR_VER" eq "ES74" ) {
+		@SubComponents = ( @SubComponents_newer );
 		@Components = ( @Components_rhel74 );
-		$ComponentInfo{'opa_stack'}{'DriverSubdir'} = "extra/ifs-kernel-updates";
-		$ComponentInfo{'ibacm'}{'Hidden'} = 1;
-		$ComponentInfo{'ibacm'}{'Disabled'} = 1;
-	} elsif ( "$CUR_VENDOR_VER" eq "ES67" ) {
-                @Components = ( @Components_rhel67 );
-                $ComponentInfo{'opa_stack'}{'DriverSubdir'} = "updates";
-                $ComponentInfo{'oftools'}{'PreReq'} = " opastack ibacm ";
+		if ($HFI2_INSTALL) {
+			%ComponentInfo = ( %ComponentInfo, %ibacm_comp_info,
+							%intel_hfi__rhel74_hfi2_comp_info,
+							%opa_stack_dev_comp_info,
+							%opa_stack_rhel74_hfi2_comp_info,
+							);
+		} else {
+			%ComponentInfo = ( %ComponentInfo, %ibacm_comp_info,
+							%intel_hfi_comp_info,
+							%opa_stack_dev_comp_info,
+							%opa_stack_rhel_comp_info,
+							);
+		}
+	} elsif ( "$CUR_VENDOR_VER" eq "ES75" ) {
+		@Components = ( @Components_rhel75 );
+		@SubComponents = ( @SubComponents_newer );
+		%ComponentInfo = ( %ComponentInfo, %ibacm_comp_info,
+						%intel_hfi_comp_info,
+						%opa_stack_dev_comp_info,
+						%opa_stack_rhel_comp_info,
+						);
+	} elsif ( "$CUR_VENDOR_VER" eq "ES15" ) {
+		@Components = ( @Components_sles15 );
+		@SubComponents = ( @SubComponents_newer );
+		%ComponentInfo = ( %ComponentInfo, %ibacm_comp_info,
+						%intel_hfi_sles15_comp_info,
+						%opa_stack_dev_comp_info,
+						%opa_stack_sles15_comp_info,
+						);
 	} else {
-		@Components = ( @Components_other );
-		$ComponentInfo{'opa_stack'}{'DriverSubdir'} = "updates";
-		$ComponentInfo{'oftools'}{'PreReq'} = " opastack ibacm ";
+		# unknown or unsupported distro, leave lists empty
+		# verify_distrib_files will catch unsupported distro
+		@Components = ( );
+		@SubComponents = ( );
 	}
 }
 
@@ -494,7 +1063,7 @@ sub init_components
 sub available_opaconfig
 {
 	my $srcdir=$ComponentInfo{'opaconfig'}{'SrcDir'};
-	return (rpm_resolve("$srcdir/*/", "any", "opaconfig"));
+	return (rpm_resolve("$srcdir/*/opaconfig", "any"));
 }
 
 sub installed_opaconfig
@@ -511,7 +1080,7 @@ sub installed_version_opaconfig
 sub media_version_opaconfig
 {
 	my $srcdir = $ComponentInfo{'opaconfig'}{'SrcDir'};
-	my $rpm = rpm_resolve("$srcdir/RPMS/*/", "any", "opaconfig");
+	my $rpm = rpm_resolve("$srcdir/RPMS/*/opaconfig", "any");
 	my $version = rpm_query_version_release($rpm);
 	return dot_version("$version");
 }
@@ -555,7 +1124,7 @@ sub install_opaconfig
 	NormalPrint("Installing $ComponentInfo{'opaconfig'}{'Name'}...\n");
 
 	# New Install Code
-	my $rpmfile = rpm_resolve("$srcdir/RPMS/*/", "any", "opaconfig");
+	my $rpmfile = rpm_resolve("$srcdir/RPMS/*/opaconfig", "any");
 	rpm_run_install($rpmfile, "any", " -U ");
 	# New Install Code
 
@@ -616,39 +1185,14 @@ if ( my_basename($0) ne "INSTALL" )
 	$FabricSetupScpFromDir="..";
 }
 
-#
-# Check if all basic requirements are ok
-#
-sub verify_os_ver 
-{
-	#my $supported_kernel;
-	#
-	#if (!$allow_install)
-	#{
-	#	my $catkernels = `cat $ROOT$BASE_DIR/supported_kernels`;
-	#	@supported_kernels = split( / +/, $catkernels);
-	#} else {
-	#	system("echo -n @supported_kernels > ./config/supported_kernels");
-	#}
-	#
-	#foreach my $supported_kernel_path ( @supported_kernels ) 
-	#{    
-	#	$supported_kernel = my_basename($supported_kernel_path);
-	#
-	#	$module_dirs[++$#module_dirs] = "/lib/modules/$supported_kernel";
-	#}
-	# make sure current OS version included so remove_driver works
-	$module_dirs[++$#module_dirs] = "/lib/modules/$CUR_OS_VER";
-}
-
 sub Usage
 {
 	if ( $allow_install ) {
-		#printf STDERR "Usage: $0 [-r root] [-v|-vv] -R osver -B osver [-d][-t tempdir] [--kernel_configure_options 'options'] [--prefix dir] [--without-depcheck] [--rebuild] [--force] [--answer keyword=value] [--debug]\n";
+		#printf STDERR "Usage: $0 [-r root] [-v|-vv] -R osver -B osver [-d][-t tempdir] [--prefix dir] [--without-depcheck] [--rebuild] [--force] [--answer keyword=value]\n";
 		#printf STDERR "               or\n";
-		#printf STDERR "Usage: $0 [-r root] [-v|-vv] [-a|-n|-U|-F|-u|-s|-i comp|-e comp] [-E comp] [-D comp] [-f] [--fwupdate asneeded|always] [-l] [--kernel_configure_options 'options'] [--prefix dir] [--without-depcheck] [--rebuild] [--force] [--answer keyword=value] [--debug]\n";
-		#printf STDERR "Usage: $0 [-r root] [-v|-vv] [-a|-n|-U|-F|-u|-s|-i comp|-e comp] [-E comp] [-D comp] [-f] [--fwupdate asneeded|always] [--kernel_configure_options 'options'] [--prefix dir] [--without-depcheck] [--rebuild] [--force] [--answer keyword=value]\n";
-		printf STDERR "Usage: $0 [-r root] [-v|-vv] -R osver -B osver [-a|-n|-U|-u|-s|-O|-N|-i comp|-e comp] [-E comp] [-D comp] [--user-space] [--kernel_configure_options 'options'] [--prefix dir] [--without-depcheck] [--rebuild] [--force] [--answer keyword=value]\n";
+		#printf STDERR "Usage: $0 [-r root] [-v|-vv] [-a|-n|-U|-F|-u|-s|-i comp|-e comp] [-E comp] [-D comp] [-f] [--fwupdate asneeded|always] [-l] [--prefix dir] [--without-depcheck] [--rebuild] [--force] [--answer keyword=value]\n";
+		#printf STDERR "Usage: $0 [-r root] [-v|-vv] [-a|-n|-U|-F|-u|-s|-i comp|-e comp] [-E comp] [-D comp] [-f] [--fwupdate asneeded|always] [--prefix dir] [--without-depcheck] [--rebuild] [--force] [--answer keyword=value]\n";
+		printf STDERR "Usage: $0 [-r root] [-v|-vv] -R osver [-a|-n|-U|-u|-s|-O|-N|-i comp|-e comp] [-G] [-E comp] [-D comp] [--user-space] [--prefix dir] [--without-depcheck] [--rebuild] [--force] [--answer keyword=value]\n";
 	} else {
 #		printf STDERR "Usage: $0 [-r root] [-v|-vv] [-F|-u|-s|-e comp] [-E comp] [-D comp]\n";
 #		printf STDERR "          [--fwupdate asneeded|always] [--user_queries|--no_user_queries] [--answer keyword=value]\n";
@@ -668,21 +1212,20 @@ sub Usage
 		printf STDERR "       -i comp - install the given component with default options\n";
 		printf STDERR "            can appear more than once on command line\n";
 #		printf STDERR "       -f - skip HCA firmware upgrade during install\n";
-		printf STDERR "       --user-space - Skip kernel space components during installation\n";
+		printf STDERR "       --user-space - Skip kernel space and firmware packages during installation\n";
+		printf STDERR "            can be useful when installing into a container\n";
 		#printf STDERR "       -l - skip creating/removing symlinks to /usr/local from /usr/lib/opa\n";
-		printf STDERR "       --kernel_configure_options 'options' - specify additional OFA build\n";
-		printf STDERR "             options for driver srpms.  Causes rebuild of all driver srpms\n";
 		printf STDERR "       --prefix dir - specify alternate directory prefix for install of OFA\n";
 		printf STDERR "             default is /usr.  Causes rebuild of needed srpms\n";
 		printf STDERR "       --without-depcheck - disable check of OS dependencies\n";
 		printf STDERR "       --rebuild - force OFA Delta rebuild\n";
-		printf STDERR "       --force - force install even if distos don't match\n";
+		printf STDERR "       --force - force install even if distro don't match\n";
 		printf STDERR "                 Use of this option can result in undefined behaviors\n";
 		printf STDERR "       -O - Keep current modified rpm config file\n";
 		printf STDERR "       -N - Use new default rpm config file\n";
-		# --debug, -t and -d options are purposely not documented
-		#printf STDERR "       --debug - build a debug version of modules\n";
-		printf STDERR "       -B osver - run build for all components targetting kernel osver\n";
+
+		# -B, -t and -d options are purposely not documented
+		#printf STDERR "       -B osver - run build for all components targetting kernel osver\n";
 		#printf STDERR "       -t - temp area for use by builds, only valid with -B\n";
 		#printf STDERR "       -d - enable build debugging assists, only valid with -B\n";
 		printf STDERR "       -R osver - force install for kernel osver rather than running kernel.\n";
@@ -736,29 +1279,27 @@ sub Usage
 
 my $Default_FirmwareUpgrade=0;	# -F option used to select default firmware upgrade
 
-# translate an ibaccess component name into the corresponding list of ofed comps
-# if the given name is invalid or has no corresponding OFED component
+# translate an ibaccess component name into the corresponding list of OFA comps
+# if the given name is invalid or has no corresponding OFA component
 # returns an empty list
 sub translate_comp
 {
 	my($arg)=$_[0];
-	if ("$arg" eq "opadev")			{ return ( "opa_stack_dev" );
-	} elsif ("$arg" eq "opa")		{ return ( "oftools",
-		"mvapich2_gcc_hfi", "openmpi_gcc_hfi", "mvapich2_intel_hfi",
-		"openmpi_intel_hfi");
-	} elsif ("$arg" eq "ipoib")		{ return ( "delta_ipoib" );
-	} elsif ("$arg" eq "mpi")		{ return ( "mvapich2_gcc", "openmpi_gcc", 
-		"mvapich2_gcc_hfi", "openmpi_gcc_hfi", "mvapich2_intel_hfi", 
-		"openmpi_intel_hfi");
-	} elsif ("$arg" eq "psm_mpi")	{ return ( "mvapich2_gcc_hfi",
-		"openmpi_gcc_hfi", "mvapich2_intel_hfi", 
-		"openmpi_intel_hfi");
-	} elsif ("$arg" eq "verbs_mpi")	{ return ( "mvapich2_gcc", "openmpi_gcc" );
-	} elsif ("$arg" eq "mvapich2")	{ return ( "mvapich2_gcc"); # legacy
-	} elsif ("$arg" eq "openmpi")	{ return ( "openmpi_gcc" ); # legacy
-	} elsif ("$arg" eq "pgas")		{ return ( "sandiashmem" );
-	} elsif ("$arg" eq "delta_mpisrc")	{ return ( "mpisrc" ); # legacy
-		# no ibaccess argument equivalent for:  
+	if ("$arg" eq "opadev") {
+		return ( "opa_stack_dev" );
+	} elsif ("$arg" eq "opa"){
+		return ("oftools","mvapich2_gcc_hfi", "openmpi_gcc_hfi");
+	} elsif ("$arg" eq "ipoib"){
+		return ( "delta_ipoib" );
+	} elsif ("$arg" eq "mpi"){
+		return ( "mvapich2_gcc_hfi","openmpi_gcc_hfi");
+	} elsif ("$arg" eq "psm_mpi"){
+		return ( "mvapich2_gcc_hfi","openmpi_gcc_hfi");
+	} elsif ("$arg" eq "pgas"){
+	        return ( "sandiashmem" );
+	} elsif ("$arg" eq "delta_mpisrc"){
+		return ( "mpisrc" ); # legacy
+		# no ibaccess argument equivalent for:
 		#	delta_debug
 		#
 	} else {
@@ -781,7 +1322,6 @@ sub process_args
 	my $comp = 0;
 	my $osver = 0;
 	my $setcurosver = 0;
-	my $setkerneloptions = 0;
 	my $setprefix = 0;
 	my $setfwmode = 0;
 	my $patch_ofed=0;
@@ -888,9 +1428,6 @@ sub process_args
 			} elsif ( $setbuildtemp ) {
 				$Build_Temp="$arg";
 				$setbuildtemp=0;
-			} elsif ( $setkerneloptions ) {
-				$OFED_kernel_configure_options="$arg";
-				$setkerneloptions=0;
 			} elsif ( $setprefix ) {
 				$OFED_prefix="$arg";
 				$setprefix=0;
@@ -904,7 +1441,6 @@ sub process_args
 #				$setfwmode = 0;
 			} elsif ( $setcurosver ) {
 				$CUR_OS_VER="$arg";
-				@supported_kernels = ( $CUR_OS_VER );
 				$setcurosver=0;
 			} elsif ( "$arg" eq "-r" ) {
 				$setroot=1;
@@ -952,8 +1488,6 @@ sub process_args
 					printf STDERR "Invalid combination of options: $arg not permitted with previous options\n";
 					Usage;
 				}
-			} elsif ( "$arg" eq "--kernel_configure_options" ) {
-				$setkerneloptions=1;
 			} elsif ( "$arg" eq "--prefix" ) {
 				$setprefix=1;
 			} elsif ( "$arg" eq "--fwupdate" ) {
@@ -963,11 +1497,16 @@ sub process_args
 			} elsif ( "$arg" eq "--without-depcheck" ) {
 				$rpm_check_dependencies=0;
 			} elsif ( "$arg" eq "--user-space" ) {
-				$skip_kernel = 1;
+				$user_space_only = 1;
 			} elsif ( "$arg" eq "--force" ) {
 				$Force_Install=1;
-			} elsif ( "$arg" eq "-G" ) {
-				$GPU_Install=1;
+			} elsif ( "$arg" eq "-G") {
+				if ($HFI2_INSTALL) {
+					printf STDERR "Invalid option: $arg not supported in 11.x OPA for HFI2.\n";
+					Usage;
+				} else {
+					$GPU_Install=1;
+				}
 			} elsif ( "$arg" eq "-C" ) {
 				ShowComponents;
 				exit(0);
@@ -1006,8 +1545,6 @@ sub process_args
 				# force rebuild
 				$Build_Force=1;
 				$OFED_force_rebuild=1;
-			} elsif ( "$arg" eq "--debug" ) {
-				$OFED_debug=1;
 			} elsif ( "$arg" eq "--user_queries" ) {
 				$Default_UserQueries=1;
 			} elsif ( "$arg" eq "--no_user_queries" ) {
@@ -1056,7 +1593,7 @@ sub process_args
 			$last_arg=$arg;
 		}
 	}
-	if ( $setroot || $setcomp || $setenabled || $setdisabled  || $setosver || $setbuildtemp || $setkerneloptions || $setprefix || $setfwmode || $setanswer) {
+	if ( $setroot || $setcomp || $setenabled || $setdisabled  || $setosver || $setbuildtemp || $setprefix || $setfwmode || $setanswer) {
 		printf STDERR "Missing argument for option: $last_arg\n";
 		Usage;
 	}
@@ -1066,9 +1603,7 @@ sub process_args
 		printf STDERR "Installation options not permitted in this mode\n";
 		Usage;
 	}
-	if ( ($Default_Build || $OFED_force_rebuild || $OFED_debug
-			 || ($OFED_kernel_configure_options ne '')
-			 || ($OFED_prefix ne '/usr'))
+	if ( ($Default_Build || $OFED_force_rebuild || ($OFED_prefix ne '/usr'))
 		&& ! $allow_install) {
 		printf STDERR "Build options not permitted in this mode\n";
 		Usage;
@@ -1181,7 +1716,6 @@ if ( ! $Default_Build ) {
 }
 
 if ( ! $Default_Build ) {
-	verify_os_ver;
 	verify_modtools;
 	if ($allow_install) {
 		verify_distrib_files;
@@ -1189,7 +1723,7 @@ if ( ! $Default_Build ) {
 }
 
 set_libdir;
-init_delta_rpm_info($CUR_OS_VER);
+init_delta_info($CUR_OS_VER);
 
 RESTART:
 if ($Default_Build) {
@@ -1277,5 +1811,6 @@ foreach my $INSTALL_CHOICE ( @INSTALL_CHOICES )
 	}
 }
 DONE:
+do_rebuild_ramdisk;
 close_log;
 exit $exit_code;

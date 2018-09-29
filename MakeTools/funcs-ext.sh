@@ -352,7 +352,10 @@ function showenv()
     if [[ "$RELEASE_TAG" == "" || "$1" == "-h" ]]; then
         local RELEASE_TAG_COMMENT="[use: export RELEASE_TAG=R#] "
     fi    	
-    
+    if [[ "$OPA_FEATURE_SET" == "" || "$1" == "-h" ]]; then
+        local OPA_FEATURE_SET_COMMENT="[use: setfs] "
+    fi
+
     echo "Build Target       : $TARGET_COMMENT$BUILD_TARGET"
     echo "Build Target OS    : $TARGET_COMMENT$OS_COMMENT$BUILD_TARGET_OS_VENDOR $BUILD_TARGET_OS $BUILD_TARGET_OS_VERSION $SMP"
     echo "Build Platform     : $TARGET_COMMENT$BUILD_PLATFORM_OS_VENDOR $BUILD_PLATFORM"
@@ -360,6 +363,7 @@ function showenv()
     echo "Build Unit Test    : $UNIT_TEST_COMMENT$BUILD_UNIT_TEST"
     echo "Build Configuration: $CONFIG_COMMENT$BUILD_CONFIG"
     echo "Release Tag        : $RELEASE_TAG_COMMENT$RELEASE_TAG"
+    echo "Build Feature Set  : $OPA_FEATURE_SET_COMMENT$OPA_FEATURE_SET"
     
     if [ "$BUILD_TARGET_OS" == "VXWORKS" ]; then
         if [[ "$BUILD_TMS" == "" || "$1" == "-h" ]]; then
@@ -705,7 +709,24 @@ function settarget()
 #---------------------------------------------------------------------------
 function os_vendor()
 {
-    if [ `uname -s` == "Darwin" ]
+    if [ -f /etc/os-release ]
+    then
+        id=$(grep ^ID= /etc/os-release | cut -f2 -d= | cut -f2 -d\")
+        case $id in
+            rhel)
+                rval=redhat
+                ;;
+            sles)
+                rval=SuSE
+                ;;
+            centos)
+                rval=redhat
+                ;;
+            *)
+                rval=""
+                ;;
+        esac
+    elif [ `uname -s` == "Darwin" ]
     then
         # Apple Mac
         rval=apple
@@ -1074,6 +1095,12 @@ function target()
         	export BUILD_CONFIG=`cat $TL_DIR/.defaultBuildConfig 2>&1 /dev/null`
         	echo "Build Configuration is ${BUILD_CONFIG:-empty.}"
     	fi        
+
+    	if [[ -e "$TL_DIR/.defaultFS" ]]; then
+        	export OPA_FEATURE_SET=`cat $TL_DIR/.defaultFS 2>&1 /dev/null`
+        	echo "OPA_FEATURE_SET is ${OPA_FEATURE_SET:-empty.}"
+    	fi
+
     fi       
     
 } # end function

@@ -571,7 +571,6 @@ FSTATUS (UMADT_DEREGISTER)(
 		);
 IBA_API UMADT_DEREGISTER iba_umadt_deregister;
 
-#if defined(PRODUCT_STL1)
 static __inline void
 GetSmiAddrFromPath( IN const IB_PATH_RECORD *pPathRecord,
 					OUT MadAddrStruct *pAddrInfo
@@ -582,7 +581,6 @@ GetSmiAddrFromPath( IN const IB_PATH_RECORD *pPathRecord,
 	pAddrInfo->StaticRate = pPathRecord->Rate;
 	pAddrInfo->AddrType.Smi.SourceLid = pPathRecord->SLID;
 }
-#endif
 
 static __inline void
 GetGsiAddrFromPath( IN const IB_PATH_RECORD *pPathRecord,

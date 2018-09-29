@@ -430,11 +430,11 @@ fe_initialize_config(FMXmlCompositeConfig_t *xml_config, uint32_t fe_instance)
 	// translate sm_env ("sm_#") to fe_env_str ("fm_#")
 	// we use this to identify our instance and hence which Fm section of config
 	memset (fe_env_str, 0, sizeof(fe_env_str));
-	cs_strlcpy ((void *)fe_env_str, (void*)sm_env, sizeof(fe_env_str));
+	StringCopy ((void *)fe_env_str, (void*)sm_env, sizeof(fe_env_str));
 	fe_env_str[0]='f';
 
 	// -X option information comes from sm's -X option
-	cs_strlcpy(fe_config_filename, sm_config_filename, sizeof(fe_config_filename));
+	StringCopy(fe_config_filename, sm_config_filename, sizeof(fe_config_filename));
 	
     //
     //	Get the environment variables before applying the command line overrides.

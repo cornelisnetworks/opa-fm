@@ -529,7 +529,7 @@ omgt_pa_get_port_stats(
     uint32_t                  *flags,
     uint32_t                   delta,
     uint32_t                   user_cntrs
-    );
+    ) __attribute__ ((deprecated));
 
 
 
@@ -566,7 +566,7 @@ omgt_pa_get_vf_port_stats(
     uint32_t                       *flags,
     uint32_t                        delta,
     uint32_t                        user_cntrs
-    );
+    ) __attribute__ ((deprecated));
 
 /**
  * @brief Freeze specified image

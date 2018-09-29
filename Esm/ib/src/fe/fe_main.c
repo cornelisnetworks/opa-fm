@@ -204,7 +204,7 @@ void fe_parse_xml_config(void) {
 
 #ifndef __VXWORKS__
     // if we cannot parse correctly the default values as mentioned above should still work
-    xml_config = parseFmConfig(fe_config_filename, IXML_PARSER_FLAG_NONE, fe_instance, /* full parse */ 0, /* embedded */ 0);
+    xml_config = parseFmConfig(fe_config_filename, IXML_PARSER_FLAG_NONE, fe_instance, /* full */ 0, /* preverify */ 0, /* embedded */ 0);
     if (!xml_config || !xml_config->fm_instance[fe_instance]) {
         IB_FATAL_ERROR_NODUMP("FE: unable to read configuration file");
     }

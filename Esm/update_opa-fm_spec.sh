@@ -45,10 +45,13 @@ then
 	cp $from $to
 fi
 
+sed -i "s/__RPM_FS/OPA_FEATURE_SET=$OPA_FEATURE_SET/g" $to
+
 if [ "$id" = "rhel" -o "$id" = "centos" ]
 then
 	GE_7_0=$(echo "$versionid >= 7.0" | bc)
 	GE_7_4=$(echo "$versionid >= 7.4" | bc)
+	GE_7_5=$(echo "$versionid >= 7.5" | bc)
 	if [ $GE_7_4 = 1 ]
 	then
 		sed -i "s/__RPM_BLDRQ1/expat-devel, rdma-core-devel, openssl-devel/g" $to
@@ -66,7 +69,7 @@ then
 		sed -i 's/RPM_INS=n/RPM_INS=y/g' $to
 		sed -i "s/__RPM_SYSCONF/%{_sysconfdir}\/init.d\/opafm/g" $to
 	fi
-	sed -i "s/__RPM_RQ2/Requires: libibumad%{?_isa}, libibmad%{?_isa}, libibverbs%{?_isa}, rdma, expat%{?_isa}, libhfi1, openssl%{?_isa}/g" $to
+	sed -i "s/__RPM_RQ2/Requires: libibumad%{?_isa}, libibverbs%{?_isa}, rdma, expat%{?_isa}, libhfi1, openssl%{?_isa}/g" $to
 	sed -i "/__RPM_DEBUG/,+1d" $to
 elif [ "$id" = "sles" ]
 then

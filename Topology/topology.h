@@ -636,6 +636,7 @@ typedef struct FabricData_s {
 	cl_qmap_t  ExpectedNodeGuidMap; //all expected FIs/SWs mapped by NodeGuid
 
 	void *context;				// application specific field
+	int ms_timeout;
 } FabricData_t;
 
 // these callbacks are called when an object with a non-null application
@@ -1040,7 +1041,7 @@ extern FSTATUS SmaSetVLArbTable(struct omgt_port *port, STL_LID dlid, STL_LID sl
 extern FSTATUS SmaSetSLSCMappingTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, STL_SLSCMAP *pSLSCMap);
 extern FSTATUS SmaSetSCSLMappingTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, STL_SCSLMAP *pSCSLMap);
 extern FSTATUS SmaSetSCSCMappingTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, uint8_t in_port, uint8_t out_port, STL_SCSCMAP *pSCSCMap);
-extern FSTATUS SmaSetSCVLMappingTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, uint8_t allPorts, uint8_t port_num, STL_SCVLMAP *pSCVLMap, uint16_t attr);
+extern FSTATUS SmaSetSCVLMappingTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, boolean asyncUpdate, boolean allPorts, uint8_t portNum, STL_SCVLMAP *pSCVLMap, uint16_t attr);
 extern FSTATUS SmaSetBufferControlTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, uint8_t startPort, uint8_t endPort, STL_BUFFER_CONTROL_TABLE pBCT[]);
 extern FSTATUS SmaSetLinearFDBTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, uint16_t block, STL_LINEAR_FORWARDING_TABLE *pFDB);
 extern FSTATUS SmaSetMulticastFDBTable(struct omgt_port *port, STL_LID dlid, STL_LID slid, uint8_t* path, uint32_t block, uint8_t position, STL_MULTICAST_FORWARDING_TABLE *pFDB);
@@ -1222,7 +1223,7 @@ typedef enum {
 	SWEEP_ALL			=0x000000003
 } SweepFlags_t;
 
-extern FSTATUS Sweep(EUI64 portGuid, FabricData_t *fabricp, FabricFlags_t fflags, SweepFlags_t flags, int quiet);
+extern FSTATUS Sweep(EUI64 portGuid, FabricData_t *fabricp, FabricFlags_t fflags, SweepFlags_t flags, int quiet, int ms_timeout);
 
 //extern FSTATUS GetPathToPort(EUI64 portGuid, PortData *portp, uint16 pkey);
 extern FSTATUS GetPaths(struct omgt_port *port, PortData *portp1, PortData *portp2,
@@ -1457,16 +1458,76 @@ static inline uint32 GetMulticastOffset(STL_LID mlid)
 	return (mlid & MULTICAST_LID_OFFSET_MASK);
 }
 
-static __inline int getIsVLrSupported(NodeData *nodep, PortData *portp)
+static inline PortData* getCapabilityPortData(NodeData *nodep, PortData *portp)
 {
-	if (nodep->NodeInfo.NodeType == STL_NODE_SW && portp->PortNum != 0) {
-		PortData * port0 = FindNodePort(nodep, 0);
-		if (port0 && port0->PortInfo.CapabilityMask3.s.IsVLrSupported)
-			return 1;
-	} else if (portp->PortInfo.CapabilityMask3.s.IsVLrSupported)
-		return 1;
+	if (nodep->NodeInfo.NodeType == STL_NODE_SW && portp->PortNum != 0)
+		return FindNodePort(nodep, 0);
 
+	return portp;
+}
+
+static inline int getIsVLrSupported(NodeData *nodep, PortData *portp)
+{
+	PortData* port = getCapabilityPortData(nodep, portp);
+	if (port && port->PortInfo.CapabilityMask3.s.IsVLrSupported)
+		return 1;
 	return 0;
+}
+
+static inline int getIsAsyncSC2VLSupported(NodeData *nodep, PortData *portp)
+{
+	PortData* port = getCapabilityPortData(nodep, portp);
+	if (port && port->PortInfo.CapabilityMask3.s.IsAsyncSC2VLSupported)
+		return 1;
+	return 0;
+}
+
+typedef enum {
+	SC2VL_UPDATE_TYPE_NONE = 0,
+	SC2VL_UPDATE_TYPE_SYNC,
+	SC2VL_UPDATE_TYPE_ASYNC
+} SC2VLUpdateType;
+
+static inline SC2VLUpdateType getSC2VLUpdateType(NodeData *nodep, PortData *portp, ScvlEnum_t scvlx)
+{
+	uint8_t currentPortState = portp->PortInfo.PortStates.s.PortState;
+	boolean currentPortAsyncSC2VL = getIsAsyncSC2VLSupported(nodep, portp);
+
+	// port must be at least in the Init state
+	if (currentPortState < IB_PORT_INIT)
+		return SC2VL_UPDATE_TYPE_NONE;
+
+	// switch port 0 - special case
+	if (nodep->NodeInfo.NodeType == STL_NODE_SW && portp->PortNum == 0) {
+		if (scvlx == Enum_SCVLt)
+			return SC2VL_UPDATE_TYPE_SYNC;
+
+		if (scvlx == Enum_SCVLr) {
+			if (currentPortState == IB_PORT_INIT)
+				return SC2VL_UPDATE_TYPE_SYNC;
+			if (currentPortAsyncSC2VL)
+				return SC2VL_UPDATE_TYPE_ASYNC;
+		}
+
+		return SC2VL_UPDATE_TYPE_NONE;
+	}
+
+	// in link state Init only sync update is allowed
+	if (currentPortState == IB_PORT_INIT)
+		return SC2VL_UPDATE_TYPE_SYNC;
+
+	// async update is allowed only when the link state is Armed or Active and both ports support async update
+	if (currentPortAsyncSC2VL) {
+		boolean neighborPortAsyncSC2VL = FALSE;
+
+		if (portp->neighbor && portp->neighbor->nodep->valid)
+			neighborPortAsyncSC2VL = getIsAsyncSC2VLSupported(portp->neighbor->nodep, portp->neighbor);
+
+		if (neighborPortAsyncSC2VL)
+			return SC2VL_UPDATE_TYPE_ASYNC;
+	}
+
+	return SC2VL_UPDATE_TYPE_NONE;
 }
 
 #ifdef __cplusplus

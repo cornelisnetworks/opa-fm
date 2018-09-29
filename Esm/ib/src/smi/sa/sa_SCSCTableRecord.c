@@ -127,6 +127,7 @@ sa_SCSCTableRecord_Set(uint8_t *slp, Node_t *nodep, Port_t *in_portp, Port_t *ou
     if ((nodep->nodeInfo.NodeType == NI_TYPE_SWITCH) && (in_portp->index>0) && (out_portp->index>0)) {
         scSCTableRecord.RID.InputPort = in_portp->index; 
         scSCTableRecord.RID.OutputPort = out_portp->index;
+        scSCTableRecord.RID_Secondary = extended;
 		if (ingressMap) {
 			memcpy(&scSCTableRecord.Map, ingressMap, sizeof(scSCTableRecord.Map));
 		} else {
@@ -253,6 +254,22 @@ sa_SCSCTableRecord_GetTable(Mai_t *maip, uint32_t *records) {
 
                 (void)sa_template_test_mask(samad.header.mask, samad.data, &data, sizeof(STL_SC_MAPPING_TABLE_RECORD), bytes, records);
 
+                if (nodep->switchInfo.CapabilityMask.s.IsExtendedSCSCSupported &&
+                    old_topology.routingModule->funcs.extended_scsc_in_use()) {
+                    if ((status = sa_check_len(data, sizeof(STL_SC_MAPPING_TABLE_RECORD), bytes)) != VSTATUS_OK) {
+                        maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
+                           IB_LOG_ERROR_FMT( "sa_SCSCTableRecord_GetTable",
+                               "Reached size limit at %d records", *records);
+                        goto done;
+                    }
+
+                    if ((status = sa_SCSCTableRecord_Set(data, nodep, in_portp, out_portp, lid, 1)) != VSTATUS_OK) {
+                        maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
+                        goto done;
+                    }
+
+                    (void)sa_template_test_mask(samad.header.mask, samad.data, &data, sizeof(STL_SC_MAPPING_TABLE_RECORD), bytes, records);
+                }
 
 				if (checkOutPort && out_portp->index == outPort) break;
             }

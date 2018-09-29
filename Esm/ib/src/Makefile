@@ -136,6 +136,7 @@ LOCALDEPLIBS = sm sa pm em fe if3sa if3 cs mai ibaccess config rem_conf net publ
 # FIXME - need to build zlib so can use well defined version?
 LOCALLIBS=rt $(OPENIB_USER_LIBS) z ssl crypto
 LOCAL_INCLUDE_DIRS = $(TL_DIR)/Topology $(TL_DIR)/IbPrint $(MOD_DIR)/src/smi/include
+LDLOCAL = -fopenmp
 
 ifneq "$(BUILD_TARGET_OS)" "VXWORKS"
 LOCALLIBS+= expat CodeVersion

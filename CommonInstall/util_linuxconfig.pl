@@ -123,16 +123,6 @@ sub disable_distro_ofed()
 	}
 }
 
-# Start rdma on run level 235 on RHEL67
-sub run_rdma_on_startup()
-{
-	if (-e "/etc/redhat-release") {
-		if (6.7 ==  `cat \"/etc/redhat-release\" | grep -o [0-9]\.[0-9]`) {
-			system ("chkconfig --level 235 rdma on");
-		}
-	}
-}
-
 # =============================================================================
 # The functions and constants below assist in editing limits.conf
 # to add IB specific entries related to memory locking
@@ -195,8 +185,11 @@ sub install_udev_permissions($)
                 # Installation of udev will be taken care during RPM installation, we just have to set
                 setup_env("OPA_UDEV_RULES", 1);
 	} elsif ( -e "$UDEV_RULES_DIR/$UDEV_RULES_FILE" ) {
-                #update environment variable accordingly
-                setup_env("OPA_UDEV_RULES", 0);
+		#update environment variable accordingly
+		setup_env("OPA_UDEV_RULES", 0);
+	} else {
+		# do nothing
+		setup_env("OPA_UDEV_RULES", -1);
 	}
 }
 
@@ -209,20 +202,15 @@ sub remove_udev_permissions()
 # Ensures OPA drivers are incorporated in the initial ram disk.
 #
 my $CallDracut = 0;
-my $DracutOutputLogFile = "";
 
 sub rebuild_ramdisk()
 {
-	# Save current logfile path
-	$DracutOutputLogFile = $LogFile;
+	# Just increase the count. We will do the rebuild at the end of the script.
 	$CallDracut++;
+}
 
-	# Capture INT/TERM to make sure end call is made
-	$SIG{INT} = sub {die "$!"};
-	$SIG{TERM} = sub {die "$!"};
-
-# Call dracut once only at the end of INSTALL
-END {
+sub do_rebuild_ramdisk()
+{
 	if ($CallDracut && -d '/boot') {
 		my $cmd = $DRACUT_EXE_FILE . ' --stdlog 0';
 		if ( -d '/dev') {
@@ -231,25 +219,26 @@ END {
 		my $kver = `uname -r | xargs echo -n`;
 		my $tmpfile = "/tmp/initramfs-$kver.img";
 
-		# Reopen logfile
-		open_log($DracutOutputLogFile);
 		if ( -e $cmd ) {
+DO_BOOT_IMG_BUILD:
 			NormalPrint("Rebuilding boot image with \"$cmd -f\"...");
 			# Try to build a temporary image first as a dry-run to make sure
 			# a failed run will not destroy an existing image.
-			if (system("$cmd -f $tmpfile") == 0) {
-				system("mv -f $tmpfile /boot/");
+			if (system("$cmd -f $tmpfile") == 0 && system("mv -f $tmpfile /boot/") == 0) {
 				NormalPrint("done.\n");
 			} else {
 				NormalPrint("failed.\n");
+				if (GetYesNo("Do you want to retry?", "n")) {
+					goto DO_BOOT_IMG_BUILD;
+				} else {
+					$exit_code = 1;
+				}
 			}
 		} else {
 			NormalPrint("$cmd not found, cannot update initial ram disk.");
+			$exit_code = 1;
 		}
-		close_log();
 	}
-}
-		
 }
 
 my $OPA_MODPROBE_DIR = "/etc/modprobe.d";
@@ -327,16 +316,7 @@ sub set_opairqbalance()
 		$new_args =~ s/--hintpolicy=[a-z]*//;
 		$new_args =~ s/-h [a-z]*//;
 
-		# In RHEL6.7 systems, irqbalance throws error if IRQBALANCE_ARGS
-		# starts with a space character.
-		# Swap the args to avoid leading space character when ${new_args} is empty
-		if (-e "/etc/redhat-release" &&
-			6 ==  `cat \"/etc/redhat-release\" | grep -o [0-9]\.[0-9] | cut -d\. -f1`) {
-			$new_args = "--hintpolicy=exact ${new_args}";
-		}
-		else {
-			$new_args = "$new_args --hintpolicy=exact";
-		}
+		$new_args = "$new_args --hintpolicy=exact";
 
 		if ($original_line eq "") {
 			# If there were no arguments in the existing file, just append.

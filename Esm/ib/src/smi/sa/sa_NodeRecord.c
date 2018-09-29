@@ -754,6 +754,7 @@ sa_NodeRecord_BuildCache(Node_t * head, SACacheEntry_t * cachep)
 			IB_EXIT("sa_NodeRecord_BuildCache", rc);
 			return rc;
 		} else {
+			memset(cachep->data,0,bytes);
 			cachep->len = bytes;
 		}
 

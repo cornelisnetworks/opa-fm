@@ -1110,7 +1110,11 @@ _get_alternate_path_port_group(Topology_t *topop, Node_t *src, Node_t *dst, uint
 	Node_t			*next_nodep;
 	Port_t			*portp;
 	uint16_t		best_cost = 0xffff;
+#ifdef __VXWORKS__
 	SwitchportToNextGuid_t *ordered_ports = (SwitchportToNextGuid_t *)topop->pad;
+#else
+	SwitchportToNextGuid_t ordered_ports[MAX_STL_PORTS] = {{0}};
+#endif /* __VXWORKS__ */
 
 	i = src->swIdx;
 	j = dst->swIdx;
@@ -1314,12 +1318,13 @@ _generate_scsc_map(Topology_t *topop, Node_t *switchp, int getSecondary, int *nu
 	}
 
 	// Setup SLs in use for use in SCSC Mapping setup
-	for (i = 0; i < topop->vfs_ptr->number_of_vfs_all; ++i) {
-		if (topop->vfs_ptr->v_fabric_all[i].standby) continue;
-		VF_t *vfp = &topop->vfs_ptr->v_fabric_all[i];
-		bitset_set(&linkSLsInuse, vfp->base_sl);
-		if (vfp->base_sl != vfp->resp_sl) bitset_set(&linkSLsInuse, vfp->resp_sl);
-		if (vfp->base_sl != vfp->mcast_sl) bitset_set(&linkSLsInuse, vfp->mcast_sl);
+	for (i = 0; i < topop->vfs_ptr->number_of_qos_all; ++i) {
+		QosConfig_t *qosp = &topop->vfs_ptr->qos_all[i];
+		bitset_set(&linkSLsInuse, qosp->base_sl);
+		if (qosp->base_sl != qosp->resp_sl)
+			bitset_set(&linkSLsInuse, qosp->resp_sl);
+		if (qosp->base_sl != qosp->mcast_sl)
+			bitset_set(&linkSLsInuse, qosp->mcast_sl);
 	}
 
 	// Setup illegal turn to drop or (if escape VLs in use) to start at 2nd set of SCs
@@ -1858,8 +1863,11 @@ _get_dor_port_group(Topology_t *topop, Node_t *switchp, Node_t* toSwitchp, uint8
 	DorNode_t		*srcDnp = (DorNode_t*)switchp->routingData;
 	DorTopology_t	*dorTop = (DorTopology_t *)topop->routingModule->data;
 	int				routingDim = routingDimension(topop, switchp, toSwitchp);
+#ifdef __VXWORKS__
 	SwitchportToNextGuid_t *ordered_ports = (SwitchportToNextGuid_t *)topop->pad;
-
+#else
+	SwitchportToNextGuid_t ordered_ports[MAX_STL_PORTS] = {{0}};
+#endif /* __VXWORKS__ */
 	ij = DorBitMapsIndex(switchp->swIdx, toSwitchp->swIdx);
 
 	if (routingDim >= SM_DOR_MAX_DIMENSIONS) {
@@ -2142,9 +2150,10 @@ static int get_node_information(Node_t *nodep, Port_t *portp, uint8_t *path, STL
 	Node_t		*cache_nodep = NULL;
 	Port_t		*cache_portp = NULL;
 	Status_t	status;
+	SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
 
 	memset(neighborNodeInfo, 0, sizeof(STL_NODE_INFO));
-	if ((status = SM_Get_NodeInfo(fd_topology, 0, path, neighborNodeInfo)) != VSTATUS_OK) {
+	if ((status = SM_Get_NodeInfo(fd_topology, 0, &addr, neighborNodeInfo)) != VSTATUS_OK) {
 		use_cache = sm_check_node_cache(nodep, portp, &cache_nodep, &cache_portp);
 		if (use_cache) {
 			memcpy(neighborNodeInfo, &cache_nodep->nodeInfo, sizeof(STL_NODE_INFO));
@@ -2168,7 +2177,8 @@ static int get_node_desc(Node_t *nodep, Port_t *portp, uint8_t *path, STL_NODE_D
 	Port_t		*cache_portp = NULL;
 	Status_t	status;
 
-	if ((status = SM_Get_NodeDesc(fd_topology, 0, path, nodeDesc)) != VSTATUS_OK) {
+    SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+	if ((status = SM_Get_NodeDesc(fd_topology, 0, &addr, nodeDesc)) != VSTATUS_OK) {
 		if((use_cache = sm_check_node_cache(nodep, portp, &cache_nodep, &cache_portp)) != 0){
 			memcpy(nodeDesc, &cache_nodep->nodeDesc, sizeof(STL_NODE_DESCRIPTION));
 		} else {
@@ -2198,9 +2208,9 @@ _discover_node(Topology_t *topop, Node_t *nodep, void *context)
 	Status_t	status;
 
 	if (nodep->nodeInfo.NodeType != NI_TYPE_SWITCH) {
+		dgIdx = smDorRouting.routeLast.dg_index;
 		// is hfi a member of the route last device group
-		if (strlen(smDorRouting.routeLast.member) == 0 ||
-			(dgIdx = smGetDgIdx(smDorRouting.routeLast.member)) == -1)
+		if (dgIdx == -1)
 			return VSTATUS_OK;
 
 		for_all_physical_ports(nodep, p) {
@@ -3508,7 +3518,7 @@ _map_scs_to_sls(RoutingModule_t *rm, const Qos_t * qos,
 	VirtualFabrics_t *VirtualFabrics, uint8_t *SLtoSC, uint8_t *SCtoSL)
 {
 	// Populate the SLtoSC and SCtoSL
-	int sc, sl, vl, vf, numSCs;
+	int sc, sl, vl, qs, numSCs;
 	int vls_needed=0, sls_needed=0, mcast_sls_needed=0;
 	int mcast_vl=-1, shared_sc=-1, shared_vl=-1;
 	bitset_t mappedSLs;
@@ -3528,27 +3538,26 @@ _map_scs_to_sls(RoutingModule_t *rm, const Qos_t * qos,
 	// We need to count the unique base and resp SLs to see if there are
 	// spare VLs we can use for multicast. Currently this will only be true
 	// if all VFs are sharing a single SL for base and resp.
-	for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
-		VF_t *vfp = &VirtualFabrics->v_fabric_all[vf];
-
-		if (!bitset_test(&mappedSLs, vfp->base_sl)) {
-			bitset_set(&mappedSLs, vfp->base_sl);
-			vls_needed += rm->funcs.num_routing_scs(vfp->base_sl, 0);
+	for (qs=0; qs < VirtualFabrics->number_of_qos_all; qs++) {
+		QosConfig_t *qosp = &VirtualFabrics->qos_all[qs];
+		if (!bitset_test(&mappedSLs, qosp->base_sl)) {
+			bitset_set(&mappedSLs, qosp->base_sl);
+			vls_needed += rm->funcs.num_routing_scs(qosp->base_sl, 0);
 			sls_needed++;
 		}
 
-		if (!bitset_test(&mappedSLs, vfp->resp_sl)) {
-			bitset_set(&mappedSLs, vfp->resp_sl);
-			vls_needed += rm->funcs.num_routing_scs(vfp->resp_sl, 0);
+		if (!bitset_test(&mappedSLs, qosp->resp_sl)) {
+			bitset_set(&mappedSLs, qosp->resp_sl);
+			vls_needed += rm->funcs.num_routing_scs(qosp->resp_sl, 0);
 			sls_needed++;
 		}
 
-		if (!bitset_test(&mappedSLs, vfp->mcast_sl) && !smDorRouting.overlayMCast) {
-			bitset_set(&mappedSLs, vfp->resp_sl);
+		if (!bitset_test(&mappedSLs, qosp->mcast_sl) && !smDorRouting.overlayMCast) {
+			bitset_set(&mappedSLs, qosp->resp_sl);
 			// In the case where only 8 VLs are available we will steal a
 			// VL from the unicast SLs.
 			if (sm_config.max_fixed_vls > SCVLMAP_BASE) {
-				vls_needed += rm->funcs.num_routing_scs(vfp->mcast_sl, 1);
+				vls_needed += rm->funcs.num_routing_scs(qosp->mcast_sl, 1);
 			}
 			sls_needed++;
 			mcast_sls_needed++;
@@ -3579,9 +3588,9 @@ _map_scs_to_sls(RoutingModule_t *rm, const Qos_t * qos,
 	}
 	sm_needed_vls = vls_needed; // update to just the number VLs of needed for the configuration specified
 
-	// For all VFs (not just active) map SCs and VLs to all unique SLs.
-	for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
-		VF_t *vfp = &VirtualFabrics->v_fabric_all[vf];
+	// For all QoSs (not just active) map SCs and VLs to all unique SLs.
+	for (qs=0; qs < VirtualFabrics->number_of_qos_all; qs++) {
+		QosConfig_t *qosp = &VirtualFabrics->qos_all[qs];
 		int sl_i, vl_i;
 
 		// Iterate over base, resp, and mcast.
@@ -3590,9 +3599,9 @@ _map_scs_to_sls(RoutingModule_t *rm, const Qos_t * qos,
 
 			switch (sl_i) {
 				default:
-				case 0: sl = vfp->base_sl; mc_sl = 0; break;
-				case 1: sl = vfp->resp_sl; mc_sl = 0; break;
-				case 2: sl = vfp->mcast_sl; mc_sl = 1; break;
+				case 0: sl = qosp->base_sl; mc_sl = 0; break;
+				case 1: sl = qosp->resp_sl; mc_sl = 0; break;
+				case 2: sl = qosp->mcast_sl; mc_sl = 1; break;
 			}
 
 			if (bitset_test(&mappedSLs, sl)) {
@@ -3624,12 +3633,12 @@ _map_scs_to_sls(RoutingModule_t *rm, const Qos_t * qos,
 			} else if (mc_sl) {
 				// We need to share the last VL the base_sl is using
 				// so we have to find the next SC that maps to that VL.
-				sc = _find_nth_sc(SLtoSC, SCtoSL, vfp->base_sl,
-					rm->funcs.num_routing_scs(vfp->base_sl, 0));
+				sc = _find_nth_sc(SLtoSC, SCtoSL, qosp->base_sl,
+					rm->funcs.num_routing_scs(qosp->base_sl, 0));
 				if (sc >= STL_MAX_SCS) {
 					// This should be impossible, but it doesn't hurt to check.
 					IB_LOG_ERROR_FMT(__func__,"Invalid SCtoSL mapping for "
-						"SL %d.", vfp->base_sl);
+							"SL %d.", qosp->base_sl);
 					goto fail;
 				}
 
@@ -3711,33 +3720,35 @@ static int
 _setup_qos(RoutingModule_t *rm, Qos_t * qos, VirtualFabrics_t *VirtualFabrics,
 	const uint8_t *SLtoSC, const uint8_t *SCtoSL)
 {
-	int sl, sc, vl, vf, numSCs;
+	int sl, sc, vl, qs, numSCs, num_qos_all;
 	int shared_vl=-1;
 	boolean mcast_sl = 0;
 
+	num_qos_all = MIN(VirtualFabrics->number_of_qos_all, MAX_QOS_GROUPS);
 	for (vl = 0; vl < STL_MAX_VLS; vl++) {
 		if(!bitset_init(&sm_pool, &qos->vlvf.vf[vl], MAX_VFABRICS)) {
 			IB_FATAL_ERROR("_setup_qos: Out of memory, exiting.");
 		}
 	}
-	for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
-		if (VirtualFabrics->v_fabric_all[vf].standby) continue;
-		VF_t *vfp = &VirtualFabrics->v_fabric_all[vf];
+	for (qs=0; qs < num_qos_all; qs++) {
+		QosConfig_t *qosp = &VirtualFabrics->qos_all[qs];
 		int i, j;
 
 		for (i = 0; i < 3; i++) {
 			switch (i) {
 				default:
 				case 0:
-					sl = vfp->base_sl; mcast_sl = 0;
+					sl = qosp->base_sl; mcast_sl = 0;
 					break;
 				case 1:
-					sl = vfp->resp_sl; mcast_sl = 0;
-					if (sl == vfp->base_sl) continue;
+					sl = qosp->resp_sl; mcast_sl = 0;
+					if (sl == qosp->base_sl) continue;
 					break;
 				case 2:
-					sl = vfp->mcast_sl; mcast_sl = 1;
-					if (sl == vfp->base_sl || sl == vfp->resp_sl) continue;
+					sl = qosp->mcast_sl; mcast_sl = 1;
+					if (sl == qosp->base_sl ||
+							sl == qosp->resp_sl)
+						continue;
 					break;
 			}
 
@@ -3761,7 +3772,7 @@ _setup_qos(RoutingModule_t *rm, Qos_t * qos, VirtualFabrics_t *VirtualFabrics,
 				// We assign the VL to high or low priority here but
 				// note that if the vl is the shared vl we keep the previous
 				// settings for the VL.
-				if (vl != shared_vl && vfp->priority) {
+				if (vl != shared_vl && qosp->priority) {
 					bitset_set(&qos->highPriorityVLs, vl);
 					qos->vlBandwidth.highPriority[vl] = 1;
 				} else if (vl != shared_vl) {
@@ -3770,32 +3781,31 @@ _setup_qos(RoutingModule_t *rm, Qos_t * qos, VirtualFabrics_t *VirtualFabrics,
 						shared_vl = vl;
 					}
 				}
-				bitset_set(&qos->vlvf.vf[vl], vf);
+				bitset_set(&qos->vlvf.vf[vl], qs);
 			}
 		}
 	}
 
 	int nonQosBw = 0;
 	int nonQos_base_sl = -1, nonQos_resp_sl = -1, nonQos_mcast_sl = -1;
-	for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
-		VF_t *vfp = &VirtualFabrics->v_fabric_all[vf];
-		if (vfp->standby) continue;
+	for (qs=0; qs < num_qos_all; qs++) {
+		QosConfig_t *qosp = &VirtualFabrics->qos_all[qs];
 
-		if (vfp->qos_enable) {
-			if (vfp->priority) continue;
+		if (qosp->qos_enable) {
+			if (qosp->priority) continue;
 
 			// Qos LowPriority
-			DivideBwUp(rm, qos, vfp->percent_bandwidth, vfp->base_sl,
-				vfp->resp_sl, vfp->mcast_sl, SLtoSC);
+			DivideBwUp(rm, qos, qosp->percent_bandwidth,
+				qosp->base_sl, qosp->resp_sl, qosp->mcast_sl, SLtoSC);
 		} else {
 			// NonQos only gets bandwidth once.
-			nonQosBw = vfp->percent_bandwidth;
-			nonQos_base_sl = vfp->base_sl;
-			if (vfp->resp_sl != vfp->base_sl) {
-				nonQos_resp_sl = vfp->resp_sl;
+			nonQosBw = qosp->percent_bandwidth;
+			nonQos_base_sl = qosp->base_sl;
+			if (qosp->resp_sl != qosp->base_sl) {
+				nonQos_resp_sl = qosp->resp_sl;
 			}
-			if (vfp->mcast_sl != vfp->base_sl) {
-				nonQos_mcast_sl = vfp->mcast_sl;
+			if (qosp->mcast_sl != qosp->base_sl) {
+				nonQos_mcast_sl = qosp->mcast_sl;
 			}
 		}
 	}

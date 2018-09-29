@@ -111,13 +111,29 @@ uint32 computeCongestion(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data
 	PmPort_t *port2 = NULL;
 	CongestionWeights_t *weights = (data ? (CongestionWeights_t *)data : &pm->congestionWeights);
 	uint32 Congestion;
+	uint64_t DeltaXmitWait;
 
 	if (port == NULL || imageIndex == PM_IMAGE_INDEX_INVALID) return 0;
 
+	DeltaXmitWait = port->Image[imageIndex].DeltaStlPortCounters.PortXmitWait;
 	port2 = port->Image[imageIndex].neighbor;
 
+	if (pm->flags & STL_PM_PROCESS_VL_COUNTERS && DeltaXmitWait) {
+		/* If VlXmitWait counters are available, use worst VL to properly weight the
+		 * port-level counter to prevent low levels of congestion appearing as severe congestion.
+		 */
+		uint64_t MaxDeltaVLXmitWait = 0;
+		uint32_t i, vlmask = port->Image[imageIndex].vlSelectMask;
+		for (i = 0; i < STL_MAX_VLS && vlmask; i++, vlmask >>= 1) {
+			if (vlmask & 0x1) {
+				UPDATE_MAX(MaxDeltaVLXmitWait, port->Image[imageIndex].DeltaStlVLPortCounters[vl_to_idx(i)].PortVLXmitWait);
+			}
+		}
+		DeltaXmitWait = (uint64_t)((double)MaxDeltaVLXmitWait * (double)MaxDeltaVLXmitWait / (double)DeltaXmitWait);
+	}
+
 	{
-		uint64 XmitWaitFlitTimes = port->Image[imageIndex].DeltaStlPortCounters.PortXmitWait;
+		uint64 XmitWaitFlitTimes = DeltaXmitWait;
 		uint64 XmitTimeCongFlitTimes = port->Image[imageIndex].DeltaStlPortCounters.PortXmitTimeCong;
 		/* Convert switch wait counter units from cycle time to flit time */
 		if (port->pmnodep->nodeType == STL_NODE_SW) {

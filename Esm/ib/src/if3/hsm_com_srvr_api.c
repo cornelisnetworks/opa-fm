@@ -109,7 +109,7 @@ hcom_server_init
 
 	// Initialize session data
 	hdl->buf_len = buf_len;
-	cs_strlcpy(hdl->path,socket_path, HSM_COM_SVR_MAX_PATH);
+	StringCopy(hdl->path,socket_path, HSM_COM_SVR_MAX_PATH);
 	hdl->callback = callback;
 
 

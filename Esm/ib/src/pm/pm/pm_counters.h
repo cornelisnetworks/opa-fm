@@ -151,6 +151,8 @@ typedef enum _pmCounters {
     pmCountersPaTxRespMadStatusStlPaNoVf,
     pmCountersPaTxRespMadStatusStlPaInvalidParam,
     pmCountersPaTxRespMadStatusStlPaNoImage,
+	pmCountersPaTxRespMadStatusStlPaNoData,
+	pmCountersPaTxRespMadStatusStlPaBadData,
 
 	pmCountersPaTxRespMadStatusUnknown,
 
@@ -222,73 +224,57 @@ static __inline__
 void INCREMENT_PM_MAD_STATUS_COUNTERS(Mai_t * mad) {
 	if (mad->base.mclass == MAD_CV_VFI_PM) {
 		switch (mad->base.status) {
-		 case MAD_STATUS_OK:
+		case MAD_STATUS_OK:
 			break;
-		 case MAD_STATUS_BUSY:
-			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusBusy);
-			break;
-		 case MAD_STATUS_REDIRECT:
-			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusRedirect);
-			break;
-		 case MAD_STATUS_BAD_CLASS:
-			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusBadClass);
-			break;
-		 case MAD_STATUS_BAD_METHOD:
-			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusBadMethod);
-			break;
-		 case MAD_STATUS_BAD_ATTR:
-			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusBadAttr);
-			break;
-		 case MAD_STATUS_BAD_FIELD:
-			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusBadField);
-			break;
-		 case STL_MAD_STATUS_STL_PA_UNAVAILABLE:
-			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusPaUnavailable);
-			break;
-		 case STL_MAD_STATUS_STL_PA_NO_GROUP:
-			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusPaNoGroup);
-			break;
-		 case STL_MAD_STATUS_STL_PA_NO_PORT:
-			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusPaNoPort);
-			break;
-		 case STL_MAD_STATUS_STL_PA_NO_VF:
-			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusStlPaNoVf);
-			break;
-		 case STL_MAD_STATUS_STL_PA_INVALID_PARAMETER:
-			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusStlPaInvalidParam);
-			break;
-		 case STL_MAD_STATUS_STL_PA_NO_IMAGE:
-			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusStlPaNoImage);
-			break;
-		 default:
-			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusUnknown);
-			break;
+		case MAD_STATUS_BUSY:
+			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusBusy); break;
+		case MAD_STATUS_REDIRECT:
+			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusRedirect); break;
+		case MAD_STATUS_BAD_CLASS:
+			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusBadClass); break;
+		case MAD_STATUS_BAD_METHOD:
+			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusBadMethod); break;
+		case MAD_STATUS_BAD_ATTR:
+			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusBadAttr); break;
+		case MAD_STATUS_BAD_FIELD:
+			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusBadField); break;
+		case STL_MAD_STATUS_STL_PA_UNAVAILABLE:
+			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusPaUnavailable); break;
+		case STL_MAD_STATUS_STL_PA_NO_GROUP:
+			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusPaNoGroup); break;
+		case STL_MAD_STATUS_STL_PA_NO_PORT:
+			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusPaNoPort); break;
+		case STL_MAD_STATUS_STL_PA_NO_VF:
+			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusStlPaNoVf); break;
+		case STL_MAD_STATUS_STL_PA_INVALID_PARAMETER:
+			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusStlPaInvalidParam); break;
+		case STL_MAD_STATUS_STL_PA_NO_IMAGE:
+			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusStlPaNoImage); break;
+		case STL_MAD_STATUS_STL_PA_NO_DATA:
+			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusStlPaNoData); break;
+		case STL_MAD_STATUS_STL_PA_BAD_DATA:
+			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusStlPaBadData); break;
+		default:
+			INCREMENT_PM_COUNTER(pmCountersPaTxRespMadStatusUnknown); break;
 		}
 	} else {  // PMA Status
 		switch (mad->base.status & ~MAD_STATUS_D_BIT) {
-		 case MAD_STATUS_OK:
+		case MAD_STATUS_OK:
 			break;
-		 case MAD_STATUS_BUSY:
-			INCREMENT_PM_COUNTER(pmCounterRxPmaMadStatusBusy);
-			break;
-		 case MAD_STATUS_REDIRECT:
-			INCREMENT_PM_COUNTER(pmCounterRxPmaMadStatusRedirect);
-			break;
-		 case MAD_STATUS_BAD_CLASS:
-			INCREMENT_PM_COUNTER(pmCounterRxPmaMadStatusBadClass);
-			break;
-		 case MAD_STATUS_BAD_METHOD:
-			INCREMENT_PM_COUNTER(pmCounterRxPmaMadStatusBadMethod);
-			break;
-		 case MAD_STATUS_BAD_ATTR:
-			INCREMENT_PM_COUNTER(pmCounterRxPmaMadStatusBadAttr);
-			break;
-		 case MAD_STATUS_BAD_FIELD:
-			INCREMENT_PM_COUNTER(pmCounterRxPmaMadStatusBadField);
-			break;
-		 default:
-			INCREMENT_PM_COUNTER(pmCounterRxPmaMadStatusUnknown);
-			break;
+		case MAD_STATUS_BUSY:
+			INCREMENT_PM_COUNTER(pmCounterRxPmaMadStatusBusy); break;
+		case MAD_STATUS_REDIRECT:
+			INCREMENT_PM_COUNTER(pmCounterRxPmaMadStatusRedirect); break;
+		case MAD_STATUS_BAD_CLASS:
+			INCREMENT_PM_COUNTER(pmCounterRxPmaMadStatusBadClass); break;
+		case MAD_STATUS_BAD_METHOD:
+			INCREMENT_PM_COUNTER(pmCounterRxPmaMadStatusBadMethod); break;
+		case MAD_STATUS_BAD_ATTR:
+			INCREMENT_PM_COUNTER(pmCounterRxPmaMadStatusBadAttr); break;
+		case MAD_STATUS_BAD_FIELD:
+			INCREMENT_PM_COUNTER(pmCounterRxPmaMadStatusBadField); break;
+		default:
+			INCREMENT_PM_COUNTER(pmCounterRxPmaMadStatusUnknown); break;
 		}
 	}
 }

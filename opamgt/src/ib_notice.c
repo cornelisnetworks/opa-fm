@@ -50,6 +50,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <infiniband/umad_types.h>
 #include <infiniband/umad_sa.h>
 #include <poll.h>
+#include <sys/uio.h>
 
 #define OPAMGT_PRIVATE 1
 

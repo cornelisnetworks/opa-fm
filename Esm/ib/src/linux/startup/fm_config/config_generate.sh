@@ -1,7 +1,7 @@
 #!/bin/bash
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015-2017, Intel Corporation
+# Copyright (c) 2015-2018, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -34,22 +34,38 @@ TEMP="$(mktemp)"
 trap "rm -f $TEMP; exit 1" SIGHUP SIGTERM SIGINT
 trap "rm -f $TEMP" EXIT
 
-Usage()
-{
-	echo "Usage: config_generate [-e] dest_file" >&2
-	echo "      -e  - generate file for embedded FM, default is to generate for host FM" >&2
-	exit 2
-}
-
 IFS_FM_BASE=/usr/lib/opa-fm
 tooldir=$IFS_FM_BASE/bin
-refdir=/usr/share/opa-fm
-
+OPAFM_SRC=/usr/share/opa-fm/opafm_src.xml
+CONFIG_XML=/etc/opa-fm/opafm.xml
 esm=n
-while getopts e param
+
+Usage()
+{
+	exitcode=$1
+	if [ "$exitcode" == "" ]
+	then
+		exitcode=2
+	fi
+	echo "Usage: config_generate [-e] [-s source_file] dest_file" >&2
+	echo "              or" >&2
+	echo "       config_generate --help" >&2
+	echo "      --help - produce full help text" >&2
+	echo "      -e  - generate file for embedded FM, default is to generate for host FM" >&2
+	echo "      -s  - source opafm XML file (default=$OPAFM_SRC)" >&2
+	exit $exitcode
+}
+
+if [ x"$1" = "x--help" ]
+then
+	Usage 0
+fi
+
+while getopts "es:" param
 do
 	case $param in
 	e)	esm=y;;
+	s)	OPAFM_SRC=$OPTARG;;
 	?)	Usage;;
 	esac
 done
@@ -57,9 +73,16 @@ shift $((OPTIND -1))
 
 if [ $# -lt 1 ]
 then
+	echo "Error: No destination file specified." >&2
 	Usage
 fi
 dest_file=$1
+
+if [ ! -f "$OPAFM_SRC" ]
+then
+	echo "Error: source file not found: \"$OPAFM_SRC\"" >&2
+	exit 1
+fi
 
 print_separator()
 {
@@ -252,7 +275,7 @@ if [ -e $dest_file ]
 then
 	if [ ! -f $dest_file ]
 	then
-		echo "config_generate: $dest_file exists but is not a file" >&2
+		echo "Error: $dest_file exists but is not a file" >&2
 		exit 1
 	fi
 	get_yes_no "Overwrite existing $dest_file" "n"
@@ -661,17 +684,36 @@ then
 fi
 
 print_separator
-$tooldir/config_convert $TEMP $refdir/opafm_src.xml > $dest_file
+echo "By default, VirtualFabrics set their QoS parameters within"
+echo "their own configuration. Alternatively, QOSGroups can be enabled."
+echo "This creates a set of QoS policies the fabric will adhere to,"
+echo "and each VirtualFabric will associate with one of the enabled"
+echo "QOSGroups. This is ideal for Multi-Tenant environments, where"
+echo "VirtualFabrics can be added and removed dynamically as long as they"
+echo "specify an existing QOSGroup."
+if [ "$esm" = y ]
+then
+	echo "Warning: Dynamic configuration is not supported on ESM"
+fi
+get_yes_no "Should QOSGroups be enabled" "n"
+if [ "$ans" -eq 1 ]
+then
+	echo "  Configuring VirtualFabrics to use QOSGroups"
+	echo "SM_0_mt_enable=yes" >> $TEMP
+fi
+
+print_separator
+$tooldir/config_convert $TEMP $OPAFM_SRC > $dest_file
 echo "Generated $dest_file"
 if [ "$esm" = y ]
 then
-	echo "To activate this configuration, $dest_file must be transfered to"
+	echo "To activate this configuration, $dest_file must be transferred to"
 	echo "the chassis and the FM must be restarted."
 	echo "The fastfabric TUI provides an easy way to do this."
-elif [ "$dest_file" != "/etc/opa-fm/opafm.xml" ]
+elif [ "$dest_file" != "$CONFIG_XML" ]
 then
 	echo "To activate this configuration, $dest_file must be copied to"
-	echo "/etc/opa-fm/opafm.xml and the FM must be restarted."
+	echo "$CONFIG_XML and the FM must be restarted."
 else
 	echo "To activate this configuration, the FM must be restarted."
 fi

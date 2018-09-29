@@ -257,10 +257,17 @@ static _inline void MemoryFixAddrLength(IN uint32 page_size,
  */
 static _inline char * StringCopy(char * dest, const char * source, size_t dstsize)
 {
-	if(!dstsize)
+	if(!dest || !dstsize || !source)
 		return NULL;
-	dest[0] = '\0';
-	return strncat(dest,source,dstsize-1);
+
+#if defined(VXWORKS)
+	size_t l = MIN(dstsize-1,strlen(source));
+#else
+	size_t l = strnlen(source, dstsize-1);
+#endif
+	memcpy(dest,source,l);
+	dest[l] = '\0';
+	return dest;
 }
 
 // convert a string to a uint or int
@@ -504,6 +511,10 @@ MemoryAllocateVxWorksTrack(
     IN uint32 Bytes,
 	IN char *reason,
 	IN void *caller);
+
+int
+MemoryTrackerTrackDeallocate(
+	IN void *pMemory);
 #endif
 
 #ifdef MEM_TRACK_ON

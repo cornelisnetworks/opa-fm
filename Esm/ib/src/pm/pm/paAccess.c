@@ -673,18 +673,17 @@ FSTATUS FindImage(
 }
 
 // locate group by name
-static FSTATUS LocateGroup(Pm_t *pm, const char *groupName, PmGroup_t **pmGroupP)
+static FSTATUS LocateGroup(PmImage_t *pmimagep, const char *groupName, int *groupIndex)
 {
 	int i;
-
-	if (strcmp(groupName, pm->AllPorts->Name) == 0) {
-		*pmGroupP = pm->AllPorts;
+	*groupIndex = -1;
+	if (strncmp(groupName, PA_ALL_GROUP_NAME, STL_PM_GROUPNAMELEN) == 0) {
 		return FSUCCESS;
 	}
 
-	for (i = 0; i < pm->NumGroups; i++) {
-		if (strcmp(groupName, pm->Groups[i]->Name) == 0) {
-			*pmGroupP = pm->Groups[i];
+	for (i = 0; i < pmimagep->NumGroups; i++) {
+		if (strncmp(groupName, pmimagep->Groups[i].Name, STL_PM_GROUPNAMELEN) == 0) {
+			*groupIndex = i;
 			return FSUCCESS;
 		}
 	}
@@ -706,39 +705,57 @@ static FSTATUS LocateGroup(Pm_t *pm, const char *groupName, PmGroup_t **pmGroupP
 *
 *************************************************************************************/
 
-FSTATUS paGetGroupList(Pm_t *pm, PmGroupList_t *GroupList)
+FSTATUS paGetGroupList(Pm_t *pm, PmGroupList_t *GroupList, uint32 imageIndex)
 {
-	Status_t			vStatus;
-	FSTATUS				fStatus = FSUCCESS;
-	int					i;
+	Status_t vStatus;
+	FSTATUS status = FSUCCESS;
+	int i;
+	STL_PA_IMAGE_ID_DATA retImgId = {0};
+	STL_PA_IMAGE_ID_DATA liveImgId = {0};
+	PmImage_t *pmImageP = NULL;
+	const char *msg;
 
 	// check input parameters
 	if (!pm || !GroupList)
 		return(FINVALID_PARAMETER);
 
-	AtomicIncrementVoid(&pm->refCount);	// prevent engine from stopping
-	if (! PmEngineRunning()) {	// see if is already stopped/stopping
-		fStatus = FUNAVAILABLE;
+	AtomicIncrementVoid(&pm->refCount); // prevent engine from stopping
+	if (! PmEngineRunning()) {          // see if is already stopped/stopping
+		status = FUNAVAILABLE;
 		goto done;
 	}
-	GroupList->NumGroups = pm->NumGroups + 1; // Number of Groups plus ALL Group
 
+	// collect statistics from last sweep and populate pmGroupInfo
+	(void)vs_rdlock(&pm->stateLock);
+	status = FindImage(pm, IMAGEID_TYPE_ANY, liveImgId, &imageIndex, &retImgId.imageNumber, NULL, &msg, NULL, NULL);
+	if (FSUCCESS != status) {
+		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
+		(void)vs_rwunlock(&pm->stateLock);
+		goto done;
+	}
+	pmImageP = &pm->Image[imageIndex];
+	(void)vs_rdlock(&pmImageP->imageLock);
+	(void)vs_rwunlock(&pm->stateLock);
+
+	GroupList->NumGroups = pmImageP->NumGroups + 1; // Number of Groups plus ALL Group
 	vStatus = vs_pool_alloc(&pm_pool, GroupList->NumGroups * STL_PM_GROUPNAMELEN,
-						   (void*)&GroupList->GroupList);
+		(void*)&GroupList->GroupList);
 	if (vStatus != VSTATUS_OK) {
 		IB_LOG_ERRORRC("Failed to allocate name list buffer for GroupList rc:", vStatus);
-		fStatus = FINSUFFICIENT_MEMORY;
-		goto done;
+		status = FINSUFFICIENT_MEMORY;
+		goto unlock;
 	}
 	// no lock needed, group names are constant once PM starts
-	snprintf(GroupList->GroupList[0].Name, STL_PM_GROUPNAMELEN, "%s", pm->AllPorts->Name);
+	StringCopy(GroupList->GroupList[0].Name, PA_ALL_GROUP_NAME, STL_PM_GROUPNAMELEN);
+	for (i = 0; i < pmImageP->NumGroups; i++) {
+		StringCopy(GroupList->GroupList[i+1].Name, pmImageP->Groups[i].Name, STL_PM_GROUPNAMELEN);
+	}
 
-	for (i = 0; i < pm->NumGroups; i++)
-		snprintf(GroupList->GroupList[i+1].Name, STL_PM_GROUPNAMELEN, "%s", pm->Groups[i]->Name);
-
+unlock:
+	(void)vs_rwunlock(&pmImageP->imageLock);
 done:
 	AtomicDecrementVoid(&pm->refCount);
-	return(fStatus);
+	return(status);
 }
 
 /*************************************************************************************
@@ -760,20 +777,18 @@ FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo,
 	STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE_ID_DATA *returnImageId)
 {
 	STL_PA_IMAGE_ID_DATA retImageId = {0};
-	FSTATUS				status = FSUCCESS;
-	PmGroup_t			*pmGroupP = NULL;
-	PmGroupImage_t		pmGroupImage;
-	PmImage_t			*pmImageP = NULL;
-	PmPortImage_t		*pmPortImageP = NULL, *pmPortImageNeighborP = NULL;
-	PmPort_t			*pmPortP = NULL;
-	uint32				imageIndex, imageInterval;
-	const char 			*msg;
-	boolean				sth = 0;
-	STL_LID 			lid;
-	boolean				isInternal = FALSE;
-	boolean				isGroupAll = FALSE;
-	PmHistoryRecord_t	*record = NULL;
-	PmCompositeImage_t	*cimg = NULL;
+	FSTATUS status = FSUCCESS;
+	PmGroupImage_t pmGroupImage;
+	PmImage_t *pmImageP = NULL;
+	PmPortImage_t *pmPortImageP = NULL, *pmPortImageNeighborP = NULL;
+	PmPort_t *pmPortP = NULL;
+	uint32 imageIndex, imageInterval;
+	int groupIndex = -1;
+	const char *msg;
+	boolean sth = 0, isInternal = FALSE, isGroupAll = FALSE;
+	STL_LID lid;
+	PmHistoryRecord_t *record = NULL;
+	PmCompositeImage_t *cimg = NULL;
 
 	// check input parameters
 	if (!pm || !groupName || !pmGroupInfo)
@@ -783,8 +798,8 @@ FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo,
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER) ;
 	}
 
-	AtomicIncrementVoid(&pm->refCount);	// prevent engine from stopping
-	if (! PmEngineRunning()) {	// see if is already stopped/stopping
+	AtomicIncrementVoid(&pm->refCount); // prevent engine from stopping
+	if (! PmEngineRunning()) {          // see if is already stopped/stopping
 		status = FUNAVAILABLE;
 		goto done;
 	}
@@ -792,7 +807,6 @@ FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo,
 	// collect statistics from last sweep and populate pmGroupInfo
 	(void)vs_rdlock(&pm->stateLock);
 	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, &imageIndex, &retImageId.imageNumber, &record, &msg, NULL, &cimg);
-
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
@@ -818,37 +832,20 @@ FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo,
 			goto error;
 		}
 		pmImageP = pm->ShortTermHistory.LoadedImage.img;
-		// look for the group
-		if (!strcmp(pm->ShortTermHistory.LoadedImage.AllGroup->Name, groupName)) {
-			pmGroupP = pm->ShortTermHistory.LoadedImage.AllGroup;
-			isInternal = isGroupAll = TRUE;
-		} else {
-			int i;
-			for (i = 0; i < PM_MAX_GROUPS; i++) {
-				if (!strcmp(pm->ShortTermHistory.LoadedImage.Groups[i]->Name, groupName)) {
-					pmGroupP = pm->ShortTermHistory.LoadedImage.Groups[i];
-					break;
-				}
-			}
-		}
-		if (!pmGroupP) {
-			IB_LOG_WARN_FMT(__func__, "Group %.*s not Found", (int)sizeof(groupName), groupName);
-			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_GROUP;
-			goto error;
-		}
 		imageIndex = 0; // STH always uses imageIndex 0
 	} else {
-		status = LocateGroup(pm, groupName, &pmGroupP);
-		if (status != FSUCCESS) {
-			IB_LOG_WARN_FMT(__func__, "Group %.*s not Found: %s", (int)sizeof(groupName), groupName, FSTATUS_ToString(status));
-			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_GROUP;
-			goto error;
-		}
-		if (pmGroupP == pm->AllPorts) isInternal = isGroupAll = TRUE;
-
 		pmImageP = &pm->Image[imageIndex];
 		(void)vs_rdlock(&pmImageP->imageLock);
 	}
+
+	status = LocateGroup(pmImageP, groupName, &groupIndex);
+	if (status != FSUCCESS) {
+		IB_LOG_WARN_FMT(__func__, "Group %.*s not Found: %s", (int)sizeof(groupName), groupName, FSTATUS_ToString(status));
+		status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_GROUP;
+		goto error;
+	}
+	// If Success, but Index is still -1, then it is All Group
+	if (groupIndex == -1) isInternal = isGroupAll = TRUE;
 
 	// Grab ImageTime from Pm Image
 	retImageId.imageTime.absoluteTime = (uint32)pmImageP->sweepStart;
@@ -865,13 +862,10 @@ FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo,
 			int p;
 			for (p=0; p <= pmNodeP->numPorts; p++) { // Includes port 0
 				pmPortP = pmNodeP->up.swPorts[p];
-				// if this is a sth image, the port may be 'empty' but not null 
-				// 'Empty' ports should be excluded from the count, and can be indentified by their having a port num and guid of 0
-				if (!pmPortP || (sth && !pmPortP->guid && !pmPortP->portNum)) continue;
-
-                pmPortImageP = &pmPortP->Image[imageIndex];
-                if (PmIsPortInGroup(pm, pmPortP, pmPortImageP, pmGroupP, sth, &isInternal)) {
-					if (isGroupAll || isInternal) {
+				if (!pa_valid_port(pmPortP, sth)) continue;
+				pmPortImageP = &pmPortP->Image[imageIndex];
+				if (PmIsPortInGroup(pmImageP, pmPortImageP, groupIndex, isGroupAll, &isInternal)) {
+					if (isInternal) {
 						if (pmPortImageP->u.s.queryStatus != PM_QUERY_STATUS_OK) {
 							PA_INC_COUNTER_NO_OVERFLOW(pmGroupImage.IntUtil.pmaNoRespPorts, IB_UINT16_MAX);
 						}
@@ -901,8 +895,8 @@ FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo,
 			pmPortP = pmNodeP->up.caPortp;
 			if (!pmPortP) continue;
 			pmPortImageP = &pmPortP->Image[imageIndex];
-			if (PmIsPortInGroup(pm, pmPortP, pmPortImageP, pmGroupP, sth, &isInternal)) {
-				if (isGroupAll || isInternal) {
+			if (PmIsPortInGroup(pmImageP, pmPortImageP, groupIndex, isGroupAll, &isInternal)) {
+				if (isInternal) {
 					if (pmPortImageP->u.s.queryStatus != PM_QUERY_STATUS_OK) {
 						PA_INC_COUNTER_NO_OVERFLOW(pmGroupImage.IntUtil.pmaNoRespPorts, IB_UINT16_MAX);
 					}
@@ -930,7 +924,7 @@ FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo,
 		}
 	}
 	FinalizeGroupStats(&pmGroupImage);
-	cs_strlcpy(pmGroupInfo->groupName, pmGroupP->Name, STL_PM_GROUPNAMELEN);
+	StringCopy(pmGroupInfo->groupName, groupName, STL_PM_GROUPNAMELEN);
 	pmGroupInfo->NumIntPorts = pmGroupImage.NumIntPorts;
 	pmGroupInfo->NumExtPorts = pmGroupImage.NumExtPorts;
 	memcpy(&pmGroupInfo->IntUtil, &pmGroupImage.IntUtil, sizeof(PmUtilStats_t));
@@ -943,13 +937,11 @@ FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo,
 	pmGroupInfo->MinExtRate = pmGroupImage.MinExtRate;
 	pmGroupInfo->MaxExtRate = pmGroupImage.MaxExtRate;
 
-	if (!sth) {
-		(void)vs_rwunlock(&pmImageP->imageLock);
-	} 
-
 	*returnImageId = retImageId;
 
 done:
+	if (!sth && pmImageP) (void)vs_rwunlock(&pmImageP->imageLock);
+
 	AtomicDecrementVoid(&pm->refCount);
 	return(status);
 error:
@@ -958,7 +950,7 @@ error:
 	goto done;
 }
 
-#define PORTLISTCHUNK	256
+#define PORTLISTCHUNK 256
 
 /*************************************************************************************
 *
@@ -979,15 +971,18 @@ FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConf
 	STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE_ID_DATA *returnImageId)
 {
 	STL_PA_IMAGE_ID_DATA retImageId = {0};
-	PmGroup_t			*pmGroupP = NULL;
-	STL_LID				lid;
-	uint32				imageIndex;
-	const char 			*msg;
-	PmImage_t			*pmimagep = NULL;
-	FSTATUS				status = FSUCCESS;
-	boolean				sth = 0;
-	PmHistoryRecord_t	*record = NULL;
-	PmCompositeImage_t	*cimg = NULL;
+	PmImage_t *pmimagep = NULL;
+	PmNode_t *pmnodep = NULL;
+	PmPort_t *pmportp = NULL;
+	PmPortImage_t *portImage = NULL;
+	STL_LID lid;
+	uint32 imageIndex;
+	const char *msg;
+	FSTATUS status = FSUCCESS;
+	boolean sth = 0, isGroupAll = FALSE;
+	int groupIndex = -1;
+	PmHistoryRecord_t *record = NULL;
+	PmCompositeImage_t *cimg = NULL;
 
 	// check input parameters
 	if (!pm || !groupName || !pmGroupConfig)
@@ -1002,8 +997,8 @@ FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConf
 	pmGroupConfig->portListSize = 0;
 	pmGroupConfig->portList = NULL;
 
-	AtomicIncrementVoid(&pm->refCount);	// prevent engine from stopping
-	if (! PmEngineRunning()) {	// see if is already stopped/stopping
+	AtomicIncrementVoid(&pm->refCount); // prevent engine from stopping
+	if (! PmEngineRunning()) {          // see if is already stopped/stopping
 		status = FUNAVAILABLE;
 		goto done;
 	}
@@ -1012,12 +1007,11 @@ FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConf
 	// check all ports for membership in our group
 	(void)vs_rdlock(&pm->stateLock);
 	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, &imageIndex, &retImageId.imageNumber, &record, &msg, NULL, &cimg);
-
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
 	}
-	
+
 	if (record || cimg) {
 		sth = 1;
 		if (record) {
@@ -1036,35 +1030,21 @@ FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConf
 			IB_LOG_WARN_FMT(__func__, "Unable to reconstitute composite image: %s", FSTATUS_ToString(status));
 			goto error;
 		}
-		// look for the group
-		if (!strcmp(pm->ShortTermHistory.LoadedImage.AllGroup->Name, groupName)) {
-			pmGroupP = pm->ShortTermHistory.LoadedImage.AllGroup;
-		} else {
-			int i;
-			for (i = 0; i < PM_MAX_GROUPS; i++) {
-				if (!strcmp(pm->ShortTermHistory.LoadedImage.Groups[i]->Name, groupName)) {
-					pmGroupP = pm->ShortTermHistory.LoadedImage.Groups[i];
-					break;
-				}
-			}
-		}
-		if (!pmGroupP) {
-			IB_LOG_WARN_FMT(__func__, "Group %.*s not Found", (int)sizeof(groupName), groupName);
-			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_GROUP;
-			goto error;
-		}
-		imageIndex = 0; // STH always uses imageIndex 0
 		pmimagep = pm->ShortTermHistory.LoadedImage.img;
+		imageIndex = 0; // STH always uses imageIndex 0
 	} else {
-		status = LocateGroup(pm, groupName, &pmGroupP);
-		if (status != FSUCCESS) {
-			IB_LOG_WARN_FMT(__func__, "Group %.*s not Found: %s", (int)sizeof(groupName), groupName, FSTATUS_ToString(status));
-			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_GROUP;
-			goto error;
-		}
 		pmimagep = &pm->Image[imageIndex];
 		(void)vs_rdlock(&pmimagep->imageLock);
 	}
+
+	status = LocateGroup(pmimagep, groupName, &groupIndex);
+	if (status != FSUCCESS) {
+		IB_LOG_WARN_FMT(__func__, "Group %.*s not Found: %s", (int)sizeof(groupName), groupName, FSTATUS_ToString(status));
+		status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_GROUP;
+		goto error;
+	}
+	// If Success, but Index is still -1, then it is All Group
+	if (groupIndex == -1) isGroupAll = TRUE;
 
 	// Grab ImageTime from Pm Image
 	retImageId.imageTime.absoluteTime = (uint32)pmimagep->sweepStart;
@@ -1072,18 +1052,14 @@ FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConf
 	(void)vs_rwunlock(&pm->stateLock);
 	for (lid=1; lid<= pmimagep->maxLid; ++lid) {
 		uint8 portnum;
-		PmNode_t *pmnodep = pmimagep->LidMap[lid];
-		if (! pmnodep)
-			continue;
+		pmnodep = pmimagep->LidMap[lid];
+		if (!pmnodep) continue;
 		if (pmnodep->nodeType == STL_NODE_SW) {
 			for (portnum=0; portnum<=pmnodep->numPorts; ++portnum) {
-				PmPort_t *pmportp = pmnodep->up.swPorts[portnum];
-				PmPortImage_t *portImage;
-				if (! pmportp)
-					continue;
+				pmportp = pmnodep->up.swPorts[portnum];
+				if (!pa_valid_port(pmportp, sth)) continue;
 				portImage = &pmportp->Image[imageIndex];
-				if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth, NULL))
-				{
+				if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, NULL)) {
 					if (pmGroupConfig->portListSize == pmGroupConfig->NumPorts) {
 						pmGroupConfig->portListSize += PORTLISTCHUNK;
 					}
@@ -1091,10 +1067,10 @@ FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConf
 				}
 			}
 		} else {
-			PmPort_t *pmportp = pmnodep->up.caPortp;
-			PmPortImage_t *portImage = &pmportp->Image[imageIndex];
-			if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth, NULL))
-			{
+			pmportp = pmnodep->up.caPortp;
+			if (!pa_valid_port(pmportp, sth)) continue;
+			portImage = &pmportp->Image[imageIndex];
+			if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, NULL)) {
 				if (pmGroupConfig->portListSize == pmGroupConfig->NumPorts) {
 					pmGroupConfig->portListSize += PORTLISTCHUNK;
 				}
@@ -1110,7 +1086,6 @@ FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConf
 	// allocate the port list
 	Status_t ret = vs_pool_alloc(&pm_pool, pmGroupConfig->portListSize * sizeof(PmPortConfig_t), (void *)&pmGroupConfig->portList);
 	if (ret != VSTATUS_OK) {
-		if (!sth) (void)vs_rwunlock(&pmimagep->imageLock);
 		status = FINSUFFICIENT_MEMORY;
 		IB_LOG_ERRORRC("Failed to allocate port list buffer for pmGroupConfig rc:", ret);
 		goto done;
@@ -1119,17 +1094,14 @@ FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConf
 	int i = 0;
 	for (lid=1; lid <= pmimagep->maxLid; ++lid) {
 		uint8 portnum;
-		PmNode_t *pmnodep = pmimagep->LidMap[lid];
-		if (!pmnodep) 
-			continue;
+		pmnodep = pmimagep->LidMap[lid];
+		if (!pmnodep) continue;
 		if (pmnodep->nodeType == STL_NODE_SW) {
 			for (portnum=0; portnum <= pmnodep->numPorts; ++portnum) {
-				PmPort_t *pmportp = pmnodep->up.swPorts[portnum];
-				PmPortImage_t *portImage;
-				if (!pmportp) 
-					continue;
+				pmportp = pmnodep->up.swPorts[portnum];
+				if (!pa_valid_port(pmportp, sth)) continue;
 				portImage = &pmportp->Image[imageIndex];
-				if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth, NULL)) {
+				if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, NULL)) {
 					pmGroupConfig->portList[i].lid = lid;
 					pmGroupConfig->portList[i].portNum = pmportp->portNum;
 					pmGroupConfig->portList[i].guid = pmnodep->NodeGUID;
@@ -1139,9 +1111,10 @@ FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConf
 				}
 			}
 		} else {
-			PmPort_t *pmportp = pmnodep->up.caPortp;
-			PmPortImage_t *portImage = &pmportp->Image[imageIndex];
-			if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth, NULL)) {
+			pmportp = pmnodep->up.caPortp;
+			if (!pa_valid_port(pmportp, sth)) continue;
+			portImage = &pmportp->Image[imageIndex];
+			if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, NULL)) {
 				pmGroupConfig->portList[i].lid = lid;
 				pmGroupConfig->portList[i].portNum = pmportp->portNum;
 				pmGroupConfig->portList[i].guid = pmnodep->NodeGUID;
@@ -1152,16 +1125,14 @@ FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConf
 		}
 	}
 norecords:
-	cs_strlcpy(pmGroupConfig->groupName, pmGroupP->Name, STL_PM_GROUPNAMELEN);
+	StringCopy(pmGroupConfig->groupName, groupName, STL_PM_GROUPNAMELEN);
 	*returnImageId = retImageId;
 
-	(void)vs_rwunlock(&pmimagep->imageLock);
 done:
-	if (sth)  {
 #ifndef __VXWORKS__
-		clearLoadedImage(&pm->ShortTermHistory);
+	if (sth) clearLoadedImage(&pm->ShortTermHistory);
 #endif
-	}
+	if (!sth && pmimagep) (void)vs_rwunlock(&pmimagep->imageLock);
 	AtomicDecrementVoid(&pm->refCount);
 	return(status);
 error:
@@ -1193,17 +1164,18 @@ FSTATUS paGetGroupNodeInfo(Pm_t *pm, char *groupName, uint64 nodeGUID, STL_LID n
 	PmGroupNodeInfo_t *pmGroupNodeInfo, STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE_ID_DATA *returnImageId)
 {
 	STL_PA_IMAGE_ID_DATA retImageId = {0};
-	PmGroup_t			*pmGroupP = NULL;
-	STL_LID				lid;
-	STL_LID				start_lid, end_lid;
-	uint32				imageIndex;
-	const char 			*msg;
-	PmImage_t			*pmimagep = NULL;
-	FSTATUS				status = FSUCCESS;
-	boolean				sth = 0;
-	PmHistoryRecord_t	*record = NULL;
-	PmCompositeImage_t	*cimg = NULL;
-	PmNode_t	*pmnodep = NULL;
+	STL_LID lid, start_lid, end_lid;
+	uint32 imageIndex;
+	int groupIndex = -1;
+	const char *msg;
+	PmImage_t *pmimagep = NULL;
+	FSTATUS status = FSUCCESS;
+	boolean sth = 0, isGroupAll = FALSE;
+	PmHistoryRecord_t *record = NULL;
+	PmCompositeImage_t *cimg = NULL;
+	PmNode_t *pmnodep = NULL;
+	PmPort_t *pmportp = NULL;
+	PmPortImage_t *portImage = NULL;
 	uint8 portnum = 0;
 	boolean nodeHasPortsInGroup = 0;
 
@@ -1219,8 +1191,8 @@ FSTATUS paGetGroupNodeInfo(Pm_t *pm, char *groupName, uint64 nodeGUID, STL_LID n
 	pmGroupNodeInfo->NumNodes = 0;
 	pmGroupNodeInfo->nodeList = NULL;
 
-	AtomicIncrementVoid(&pm->refCount);	// prevent engine from stopping
-	if (! PmEngineRunning()) {	// see if is already stopped/stopping
+	AtomicIncrementVoid(&pm->refCount); // prevent engine from stopping
+	if (! PmEngineRunning()) {          // see if is already stopped/stopping
 		status = FUNAVAILABLE;
 		goto done;
 	}
@@ -1229,7 +1201,6 @@ FSTATUS paGetGroupNodeInfo(Pm_t *pm, char *groupName, uint64 nodeGUID, STL_LID n
 	// check all ports for membership in our group
 	(void)vs_rdlock(&pm->stateLock);
 	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, &imageIndex, &retImageId.imageNumber, &record, &msg, NULL, &cimg);
-
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
@@ -1253,35 +1224,21 @@ FSTATUS paGetGroupNodeInfo(Pm_t *pm, char *groupName, uint64 nodeGUID, STL_LID n
 			IB_LOG_WARN_FMT(__func__, "Unable to reconstitute composite image: %s", FSTATUS_ToString(status));
 			goto error;
 		}
-		// look for the group
-		if (!strcmp(pm->ShortTermHistory.LoadedImage.AllGroup->Name, groupName)) {
-			pmGroupP = pm->ShortTermHistory.LoadedImage.AllGroup;
-		} else {
-			int i;
-			for (i = 0; i < PM_MAX_GROUPS; i++) {
-				if (!strcmp(pm->ShortTermHistory.LoadedImage.Groups[i]->Name, groupName)) {
-					pmGroupP = pm->ShortTermHistory.LoadedImage.Groups[i];
-					break;
-				}
-			}
-		}
-		if (!pmGroupP) {
-			IB_LOG_WARN_FMT(__func__, "Group %.*s not Found", (int)sizeof(groupName), groupName);
-			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_GROUP;
-			goto error;
-		}
-		imageIndex = 0; // STH always uses imageIndex 0
 		pmimagep = pm->ShortTermHistory.LoadedImage.img;
+		imageIndex = 0; // STH always uses imageIndex 0
 	} else {
-		status = LocateGroup(pm, groupName, &pmGroupP);
-		if (status != FSUCCESS) {
-			IB_LOG_WARN_FMT(__func__, "Group %.*s not Found: %s", (int)sizeof(groupName), groupName, FSTATUS_ToString(status));
-			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_GROUP;
-			goto error;
-		}
 		pmimagep = &pm->Image[imageIndex];
 		(void)vs_rdlock(&pmimagep->imageLock);
 	}
+
+	status = LocateGroup(pmimagep, groupName, &groupIndex);
+	if (status != FSUCCESS) {
+		IB_LOG_WARN_FMT(__func__, "Group %.*s not Found: %s", (int)sizeof(groupName), groupName, FSTATUS_ToString(status));
+		status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_GROUP;
+		goto error;
+	}
+	// If Success, but Index is still -1, then it is All Group
+	if (groupIndex == -1) isGroupAll = TRUE;
 
 	// Grab ImageTime from Pm Image
 	retImageId.imageTime.absoluteTime = (uint32)pmimagep->sweepStart;
@@ -1329,38 +1286,36 @@ FSTATUS paGetGroupNodeInfo(Pm_t *pm, char *groupName, uint64 nodeGUID, STL_LID n
 	for (lid = start_lid; lid <= end_lid; ++lid) {
 		pmnodep = pmimagep->LidMap[lid];
 		nodeHasPortsInGroup = 0;
-		if ( pmnodep ) {
-			/* If node desc is not empty and does not match then check for next record */
-			if (nodeDesc[0] != '\0') {
-				if (strncmp((const char *)pmnodep->nodeDesc.NodeString, nodeDesc, STL_PM_NODEDESCLEN))
-					continue;
-				/* If node desc matches then only that record is reported */
-				else {
-					start_lid = end_lid = lid;
-				}
+		if (!pmnodep) continue;
+
+		/* If node desc is not empty and does not match then check for next record */
+		if (nodeDesc[0] != '\0') {
+			if (strncmp((const char *)pmnodep->nodeDesc.NodeString, nodeDesc, STL_PM_NODEDESCLEN))
+				continue;
+			/* If node desc matches then only that record is reported */
+			else {
+				start_lid = end_lid = lid;
 			}
-			if (pmnodep->nodeType == STL_NODE_SW) {
-				for (portnum = 0; portnum <= pmnodep->numPorts; ++portnum) {
-					PmPort_t *pmportp = pmnodep->up.swPorts[portnum];
-					PmPortImage_t *portImage;
-					if (! pmportp)
-						continue;
-					portImage = &pmportp->Image[imageIndex];
-					if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth, NULL)) {
-					// Once a port is in the group that node is counted. Then proceed with next node.
-						if(!nodeHasPortsInGroup) {
-							pmGroupNodeInfo->NumNodes++;
-							nodeHasPortsInGroup = 1;
-						}
+		}
+		if (pmnodep->nodeType == STL_NODE_SW) {
+			for (portnum = 0; portnum <= pmnodep->numPorts; ++portnum) {
+				pmportp = pmnodep->up.swPorts[portnum];
+				if (!pa_valid_port(pmportp, sth)) continue;
+				portImage = &pmportp->Image[imageIndex];
+				if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, NULL)) {
+				// Once a port is in the group that node is counted. Then proceed with next node.
+					if(!nodeHasPortsInGroup) {
+						pmGroupNodeInfo->NumNodes++;
+						nodeHasPortsInGroup = 1;
 					}
 				}
-			} else {
-				PmPort_t *pmportp = pmnodep->up.caPortp;
-				PmPortImage_t *portImage = &pmportp->Image[imageIndex];
-				if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth, NULL))
-				{
-					pmGroupNodeInfo->NumNodes++;
-				}
+			}
+		} else {
+			pmportp = pmnodep->up.caPortp;
+			if (!pa_valid_port(pmportp, sth)) continue;
+			portImage = &pmportp->Image[imageIndex];
+			if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, NULL)) {
+				pmGroupNodeInfo->NumNodes++;
 			}
 		}
 	}
@@ -1387,52 +1342,46 @@ FSTATUS paGetGroupNodeInfo(Pm_t *pm, char *groupName, uint64 nodeGUID, STL_LID n
 	int i = 0;
 	for (lid = start_lid; lid <= end_lid; ++lid) {
 		pmnodep = pmimagep->LidMap[lid];
-		if ( pmnodep ) {
-			if (pmnodep->nodeType == STL_NODE_SW) {
-				for (portnum = 0; portnum <= pmnodep->numPorts; ++portnum) {
-					PmPort_t *pmportp = pmnodep->up.swPorts[portnum];
-					PmPortImage_t *portImage;
-					if (! pmportp)
-						continue;
-					portImage = &pmportp->Image[imageIndex];
-					if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth, NULL))
-					{
-						StlAddPortToPortMask(pmGroupNodeInfo->nodeList[i].portSelectMask, portnum);
-						nodeHasPortsInGroup = 1;
-					}
-				}
-			} else {
-				PmPort_t *pmportp = pmnodep->up.caPortp;
-				PmPortImage_t *portImage = &pmportp->Image[imageIndex];
-				if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth, NULL))
-				{
-					StlAddPortToPortMask(pmGroupNodeInfo->nodeList[i].portSelectMask, pmportp->portNum);
+		nodeHasPortsInGroup = 0;
+		if (!pmnodep) continue;
+		if (pmnodep->nodeType == STL_NODE_SW) {
+			for (portnum = 0; portnum <= pmnodep->numPorts; ++portnum) {
+				pmportp = pmnodep->up.swPorts[portnum];
+				if (!pa_valid_port(pmportp, sth)) continue;
+				portImage = &pmportp->Image[imageIndex];
+				if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, NULL)) {
+					StlAddPortToPortMask(pmGroupNodeInfo->nodeList[i].portSelectMask, portnum);
 					nodeHasPortsInGroup = 1;
 				}
 			}
-			if( nodeHasPortsInGroup ) {
-				pmGroupNodeInfo->nodeList[i].nodeLid= lid;
-				pmGroupNodeInfo->nodeList[i].nodeType = pmnodep->nodeType;
-				pmGroupNodeInfo->nodeList[i].nodeGuid = pmnodep->NodeGUID;
-				memcpy(pmGroupNodeInfo->nodeList[i].nodeDesc, (char *)pmnodep->nodeDesc.NodeString,
-					sizeof(pmGroupNodeInfo->nodeList[i].nodeDesc));
-				nodeHasPortsInGroup = 0;
-				i++;
+		} else {
+			pmportp = pmnodep->up.caPortp;
+			if (!pa_valid_port(pmportp, sth)) continue;
+			portImage = &pmportp->Image[imageIndex];
+			if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, NULL)) {
+				StlAddPortToPortMask(pmGroupNodeInfo->nodeList[i].portSelectMask, pmportp->portNum);
+				nodeHasPortsInGroup = 1;
 			}
+		}
+		if( nodeHasPortsInGroup ) {
+			pmGroupNodeInfo->nodeList[i].nodeLid = lid;
+			pmGroupNodeInfo->nodeList[i].nodeType = pmnodep->nodeType;
+			pmGroupNodeInfo->nodeList[i].nodeGuid = pmnodep->NodeGUID;
+			memcpy(pmGroupNodeInfo->nodeList[i].nodeDesc, (char *)pmnodep->nodeDesc.NodeString,
+				sizeof(pmGroupNodeInfo->nodeList[i].nodeDesc));
+			nodeHasPortsInGroup = 0;
+			i++;
 		}
 	}
 
 norecords:
-	cs_strlcpy(pmGroupNodeInfo->groupName, pmGroupP->Name, STL_PM_GROUPNAMELEN);
+	StringCopy(pmGroupNodeInfo->groupName, groupName, STL_PM_GROUPNAMELEN);
 	*returnImageId = retImageId;
-	if (!sth)
-		(void)vs_rwunlock(&pmimagep->imageLock);
 done:
-	if (sth)  {
 #ifndef __VXWORKS__
-		clearLoadedImage(&pm->ShortTermHistory);
+	if (sth) clearLoadedImage(&pm->ShortTermHistory);
 #endif
-	}
+	if (!sth && pmimagep) (void)vs_rwunlock(&pmimagep->imageLock);
 	AtomicDecrementVoid(&pm->refCount);
 	return(status);
 error:
@@ -1464,26 +1413,21 @@ FSTATUS paGetGroupLinkInfo(Pm_t *pm, char *groupName, STL_LID inputLID, uint8 in
 	PmGroupLinkInfo_t *pmGroupLinkInfo, STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE_ID_DATA *returnImageId)
 {
 	STL_PA_IMAGE_ID_DATA retImageId = {0};
-	PmGroup_t			*pmGroupP = NULL;
-	STL_LID				lid;
-	STL_LID				start_lid, end_lid;
-	uint8				start_port = 0;
-	uint8				end_port = 0;
-	uint32				imageIndex;
-	const char 			*msg;
-	PmImage_t			*pmimagep = NULL;
-	FSTATUS				status = FSUCCESS;
-	boolean				sth = 0;
-	PmHistoryRecord_t	*record = NULL;
-	PmCompositeImage_t	*cimg = NULL;
-	PmNode_t	*pmnodep = NULL;
-	uint8 portnum = 0;
-	PmPortImage_t *portImage = NULL;
-	PmPortImage_t *nbrPI = NULL;
-	PmPort_t *nbrPort = NULL;
-	boolean isNeighborInGroup = 0;
-	uint8				localStatus = STL_PA_FOCUS_STATUS_OK;
-	uint8				neighborStatus = STL_PA_FOCUS_STATUS_OK;
+	STL_LID lid, start_lid, end_lid;
+	uint8 start_port = 0, end_port = 0, portnum = 0;
+	uint32 imageIndex;
+	int groupIndex = -1;
+	const char *msg;
+	PmImage_t *pmimagep = NULL;
+	FSTATUS status = FSUCCESS;
+	boolean sth = 0, isGroupAll = FALSE, isInternal = FALSE;
+	PmHistoryRecord_t *record = NULL;
+	PmCompositeImage_t *cimg = NULL;
+	PmNode_t *pmnodep = NULL;
+	PmPort_t *pmportp = NULL, *nbrPort = NULL;
+	PmPortImage_t *portImage = NULL, *nbrPI = NULL;
+	uint8 localStatus = STL_PA_FOCUS_STATUS_OK;
+	uint8 neighborStatus = STL_PA_FOCUS_STATUS_OK;
 
 	// check input parameters
 	if (!pm || !groupName || !pmGroupLinkInfo)
@@ -1497,8 +1441,8 @@ FSTATUS paGetGroupLinkInfo(Pm_t *pm, char *groupName, STL_LID inputLID, uint8 in
 	pmGroupLinkInfo->NumLinks = 0;
 	pmGroupLinkInfo->linkInfoList = NULL;
 
-	AtomicIncrementVoid(&pm->refCount);// prevent engine from stopping
-	if (! PmEngineRunning()) {// see if is already stopped/stopping
+	AtomicIncrementVoid(&pm->refCount); // prevent engine from stopping
+	if (! PmEngineRunning()) {          // see if is already stopped/stopping
 		status = FUNAVAILABLE;
 		goto done;
 	}
@@ -1531,35 +1475,21 @@ FSTATUS paGetGroupLinkInfo(Pm_t *pm, char *groupName, STL_LID inputLID, uint8 in
 			IB_LOG_WARN_FMT(__func__, "Unable to reconstitute composite image: %s", FSTATUS_ToString(status));
 			goto error;
 		}
-		// look for the group
-		if (!strcmp(pm->ShortTermHistory.LoadedImage.AllGroup->Name, groupName)) {
-			pmGroupP = pm->ShortTermHistory.LoadedImage.AllGroup;
-		} else {
-			int i;
-			for (i = 0; i < PM_MAX_GROUPS; i++) {
-				if (!strcmp(pm->ShortTermHistory.LoadedImage.Groups[i]->Name, groupName)) {
-					pmGroupP = pm->ShortTermHistory.LoadedImage.Groups[i];
-					break;
-				}
-			}
-		}
-		if (!pmGroupP) {
-			IB_LOG_WARN_FMT(__func__, "Group %.*s not Found", (int)sizeof(groupName), groupName);
-			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_GROUP;
-			goto error;
-		}
-		imageIndex = 0; // STH always uses imageIndex 0
 		pmimagep = pm->ShortTermHistory.LoadedImage.img;
+		imageIndex = 0; // STH always uses imageIndex 0
 	} else {
-		status = LocateGroup(pm, groupName, &pmGroupP);
-		if (status != FSUCCESS) {
-			IB_LOG_WARN_FMT(__func__, "Group %.*s not Found: %s", (int)sizeof(groupName), groupName, FSTATUS_ToString(status));
-			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_GROUP;
-			goto error;
-		}
 		pmimagep = &pm->Image[imageIndex];
 		(void)vs_rdlock(&pmimagep->imageLock);
 	}
+
+	status = LocateGroup(pmimagep, groupName, &groupIndex);
+	if (status != FSUCCESS) {
+		IB_LOG_WARN_FMT(__func__, "Group %.*s not Found: %s", (int)sizeof(groupName), groupName, FSTATUS_ToString(status));
+		status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_GROUP;
+		goto error;
+	}
+	// If Success, but Index is still -1, then it is All Group
+	if (groupIndex == -1) isGroupAll = TRUE;
 
 	// Grab ImageTime from Pm Image
 	retImageId.imageTime.absoluteTime = (uint32)pmimagep->sweepStart;
@@ -1568,7 +1498,6 @@ FSTATUS paGetGroupLinkInfo(Pm_t *pm, char *groupName, STL_LID inputLID, uint8 in
 
 	start_lid = 1;
 	end_lid = pmimagep->maxLid;
-
 
 	//If LID and portnum are provided then record with that LID and portnum is reported.
 	if (inputLID) {
@@ -1589,7 +1518,6 @@ FSTATUS paGetGroupLinkInfo(Pm_t *pm, char *groupName, STL_LID inputLID, uint8 in
 			end_port = pmnodep->numPorts;
 		}
 		if (end_port > pmnodep->numPorts) {
-	                if (!sth) (void)vs_rwunlock(&pmimagep->imageLock);
 			status = FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;
 			IB_LOG_WARN_FMT(__func__,  "end port(%d) is greater than the number of ports(%d)",
 			end_port, pmnodep->numPorts);
@@ -1597,14 +1525,12 @@ FSTATUS paGetGroupLinkInfo(Pm_t *pm, char *groupName, STL_LID inputLID, uint8 in
 		}
 		if (pmnodep->nodeType == STL_NODE_SW) {
 			for (portnum = start_port; portnum <= end_port; ++portnum) {
-				PmPort_t *pmportp = pmnodep->up.swPorts[portnum];
-				if (! pmportp)
-					continue;
+				pmportp = pmnodep->up.swPorts[portnum];
+				if (!pa_valid_port(pmportp, sth)) continue;
 				portImage = &pmportp->Image[imageIndex];
-				if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth, &isNeighborInGroup))
-				{
+				if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, &isInternal)) {
 					//Make sure the link is accounted for only once
-					if (!inputLID && isNeighborInGroup && (lid > pmportp->neighbor_lid))
+					if (!inputLID && isInternal && (lid > pmportp->neighbor_lid))
 						continue;
 					nbrPort = portImage->neighbor;
 					if(!nbrPort) // Neighbor should never be NULL
@@ -1613,17 +1539,16 @@ FSTATUS paGetGroupLinkInfo(Pm_t *pm, char *groupName, STL_LID inputLID, uint8 in
 				}
 			}
 		} else {
-			PmPort_t *pmportp = pmnodep->up.caPortp;
-			if (pmportp) {
-				portImage = &pmportp->Image[imageIndex];
-				if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth, &isNeighborInGroup)) {
-					//Make sure the link is accounted for only once
-					if (!inputLID && isNeighborInGroup && (lid > pmportp->neighbor_lid))
-						continue;
-					nbrPort = portImage->neighbor;
-					if(nbrPort) // Neighbor should never be NULL
-						pmGroupLinkInfo->NumLinks++;
-				}
+			pmportp = pmnodep->up.caPortp;
+			if (!pa_valid_port(pmportp, sth)) continue;
+			portImage = &pmportp->Image[imageIndex];
+			if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, &isInternal)) {
+				//Make sure the link is accounted for only once
+				if (!inputLID && isInternal && (lid > pmportp->neighbor_lid))
+					continue;
+				nbrPort = portImage->neighbor;
+				if(nbrPort) // Neighbor should never be NULL
+					pmGroupLinkInfo->NumLinks++;
 			}
 		}
 	}
@@ -1637,7 +1562,6 @@ FSTATUS paGetGroupLinkInfo(Pm_t *pm, char *groupName, STL_LID inputLID, uint8 in
 	// allocate the port list
 	Status_t ret = vs_pool_alloc(&pm_pool, pmGroupLinkInfo->NumLinks* sizeof(PmLinkInfo_t), (void *)&pmGroupLinkInfo->linkInfoList);
 	if (ret != VSTATUS_OK) {
-		if (!sth) (void)vs_rwunlock(&pmimagep->imageLock);
 		status = FINSUFFICIENT_MEMORY;
 		IB_LOG_ERRORRC("Failed to allocate port list buffer for pmGroupLinkInfo rc:", ret);
 		goto done;
@@ -1659,14 +1583,12 @@ FSTATUS paGetGroupLinkInfo(Pm_t *pm, char *groupName, STL_LID inputLID, uint8 in
 		}
 		if (pmnodep->nodeType == STL_NODE_SW) {
 			for (portnum = start_port; portnum <= end_port; ++portnum) {
-				PmPort_t *pmportp = pmnodep->up.swPorts[portnum];
-				if (! pmportp)
-					continue;
+				pmportp = pmnodep->up.swPorts[portnum];
+				if (!pa_valid_port(pmportp, sth)) continue;
 				portImage = &pmportp->Image[imageIndex];
-				if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth, &isNeighborInGroup))
-				{
+				if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, &isInternal)) {
 					//Make sure the link is accounted for only once
-					if (!inputLID && isNeighborInGroup && (lid > pmportp->neighbor_lid))
+					if (!inputLID && isInternal && (lid > pmportp->neighbor_lid))
 						continue;
 					nbrPort = portImage->neighbor;
 					if(!nbrPort) // Neighbor should never be NULL
@@ -1707,64 +1629,60 @@ FSTATUS paGetGroupLinkInfo(Pm_t *pm, char *groupName, STL_LID inputLID, uint8 in
 				}
 			}
 		} else {
-			PmPort_t *pmportp = pmnodep->up.caPortp;
-			if (pmportp) {
-				portImage = &pmportp->Image[imageIndex];
-				if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth, &isNeighborInGroup)) {
-					//Make sure the link is accounted for only once
-					if (!inputLID && isNeighborInGroup && (lid > pmportp->neighbor_lid))
-						continue;
-					nbrPort = portImage->neighbor;
-					if(!nbrPort) // Neighbor should never be NULL
-						continue;
-					if (pmportp->u.s.PmaAvoid) {
-						// This means the PM was told to ignore this port during a sweep
-						localStatus = STL_PA_FOCUS_STATUS_PMA_IGNORE;
-					} else if (portImage->u.s.queryStatus != PM_QUERY_STATUS_OK) {
-						// This means there was a failure during the PM sweep when querying this port
-						localStatus = STL_PA_FOCUS_STATUS_PMA_FAILURE;
-					} else if (portImage->u.s.UnexpectedClear) {
-						// This means unexpected clear was set
-						localStatus = STL_PA_FOCUS_STATUS_UNEXPECTED_CLEAR;
-					}
-					nbrPI = &nbrPort->Image[imageIndex];
-					if (nbrPort->u.s.PmaAvoid) {
-						// This means the PM was told to ignore this port during a sweep
-						neighborStatus = STL_PA_FOCUS_STATUS_PMA_IGNORE;
-					} else if (nbrPI->u.s.queryStatus != PM_QUERY_STATUS_OK) {
-						// This means there was a failure during the PM sweep when querying this port
-						neighborStatus = STL_PA_FOCUS_STATUS_PMA_FAILURE;
-					} else if (portImage->u.s.UnexpectedClear) {
-						// This means unexpected clear was set
-						neighborStatus = STL_PA_FOCUS_STATUS_UNEXPECTED_CLEAR;
-					}
-					pmGroupLinkInfo->linkInfoList[i].fromLid = lid;
-					pmGroupLinkInfo->linkInfoList[i].toLid = pmportp->neighbor_lid;
-					pmGroupLinkInfo->linkInfoList[i].fromPort = pmportp->portNum;
-					pmGroupLinkInfo->linkInfoList[i].toPort = pmportp->neighbor_portNum;
-					pmGroupLinkInfo->linkInfoList[i].mtu = portImage->u.s.mtu;
-					pmGroupLinkInfo->linkInfoList[i].activeSpeed = portImage->u.s.activeSpeed;
-					pmGroupLinkInfo->linkInfoList[i].txLinkWidthDowngradeActive = portImage->u.s.txActiveWidth;
-					pmGroupLinkInfo->linkInfoList[i].rxLinkWidthDowngradeActive = portImage->u.s.rxActiveWidth;
-					pmGroupLinkInfo->linkInfoList[i].localStatus = localStatus;
-					pmGroupLinkInfo->linkInfoList[i].neighborStatus = neighborStatus;
-					i++;
+			pmportp = pmnodep->up.caPortp;
+			if (!pa_valid_port(pmportp, sth)) continue;
+			portImage = &pmportp->Image[imageIndex];
+			if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, &isInternal)) {
+				//Make sure the link is accounted for only once
+				if (!inputLID && isInternal && (lid > pmportp->neighbor_lid))
+					continue;
+				nbrPort = portImage->neighbor;
+				if(!nbrPort) // Neighbor should never be NULL
+					continue;
+				if (pmportp->u.s.PmaAvoid) {
+					// This means the PM was told to ignore this port during a sweep
+					localStatus = STL_PA_FOCUS_STATUS_PMA_IGNORE;
+				} else if (portImage->u.s.queryStatus != PM_QUERY_STATUS_OK) {
+					// This means there was a failure during the PM sweep when querying this port
+					localStatus = STL_PA_FOCUS_STATUS_PMA_FAILURE;
+				} else if (portImage->u.s.UnexpectedClear) {
+					// This means unexpected clear was set
+					localStatus = STL_PA_FOCUS_STATUS_UNEXPECTED_CLEAR;
 				}
+				nbrPI = &nbrPort->Image[imageIndex];
+				if (nbrPort->u.s.PmaAvoid) {
+					// This means the PM was told to ignore this port during a sweep
+					neighborStatus = STL_PA_FOCUS_STATUS_PMA_IGNORE;
+				} else if (nbrPI->u.s.queryStatus != PM_QUERY_STATUS_OK) {
+					// This means there was a failure during the PM sweep when querying this port
+					neighborStatus = STL_PA_FOCUS_STATUS_PMA_FAILURE;
+				} else if (portImage->u.s.UnexpectedClear) {
+					// This means unexpected clear was set
+					neighborStatus = STL_PA_FOCUS_STATUS_UNEXPECTED_CLEAR;
+				}
+				pmGroupLinkInfo->linkInfoList[i].fromLid = lid;
+				pmGroupLinkInfo->linkInfoList[i].toLid = pmportp->neighbor_lid;
+				pmGroupLinkInfo->linkInfoList[i].fromPort = pmportp->portNum;
+				pmGroupLinkInfo->linkInfoList[i].toPort = pmportp->neighbor_portNum;
+				pmGroupLinkInfo->linkInfoList[i].mtu = portImage->u.s.mtu;
+				pmGroupLinkInfo->linkInfoList[i].activeSpeed = portImage->u.s.activeSpeed;
+				pmGroupLinkInfo->linkInfoList[i].txLinkWidthDowngradeActive = portImage->u.s.txActiveWidth;
+				pmGroupLinkInfo->linkInfoList[i].rxLinkWidthDowngradeActive = portImage->u.s.rxActiveWidth;
+				pmGroupLinkInfo->linkInfoList[i].localStatus = localStatus;
+				pmGroupLinkInfo->linkInfoList[i].neighborStatus = neighborStatus;
+				i++;
 			}
 		}
 	}
 
 norecords:
-	cs_strlcpy(pmGroupLinkInfo->groupName, pmGroupP->Name, STL_PM_GROUPNAMELEN);
+	StringCopy(pmGroupLinkInfo->groupName, groupName, STL_PM_GROUPNAMELEN);
 	*returnImageId = retImageId;
-	if (!sth)
-		(void)vs_rwunlock(&pmimagep->imageLock);
 done:
-	if (sth)  {
 #ifndef __VXWORKS__
-		clearLoadedImage(&pm->ShortTermHistory);
+	if (sth) clearLoadedImage(&pm->ShortTermHistory);
 #endif
-	}
+	if (!sth && pmimagep) (void)vs_rwunlock(&pmimagep->imageLock);
 	AtomicDecrementVoid(&pm->refCount);
 	return(status);
 error:
@@ -1821,7 +1739,7 @@ FSTATUS paGetPortStats(Pm_t *pm, STL_LID lid, uint8 portNum, PmCompositePortCoun
 	}
 
 	AtomicIncrementVoid(&pm->refCount); // prevent engine from stopping
-	if (!PmEngineRunning()) {  // see if is already stopped/stopping
+	if (! PmEngineRunning()) {          // see if is already stopped/stopping
 		status = FUNAVAILABLE;
 		goto done;
 	}
@@ -1966,8 +1884,8 @@ FSTATUS paClearPortStats(Pm_t *pm, STL_LID lid, uint8 portNum, CounterSelectMask
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	}
 
-	AtomicIncrementVoid(&pm->refCount);	// prevent engine from stopping
-	if (! PmEngineRunning()) {	// see if is already stopped/stopping
+	AtomicIncrementVoid(&pm->refCount); // prevent engine from stopping
+	if (! PmEngineRunning()) {          // see if is already stopped/stopping
 		status = FUNAVAILABLE;
 		goto done;
 	}
@@ -2052,8 +1970,8 @@ FSTATUS paClearAllPortStats(Pm_t *pm, CounterSelectMask_t select)
 		IB_LOG_WARN_FMT(__func__, "Illegal select parameter: Must not be zero\n");
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	}
-	AtomicIncrementVoid(&pm->refCount);	// prevent engine from stopping
-	if (! PmEngineRunning()) {	// see if is already stopped/stopping
+	AtomicIncrementVoid(&pm->refCount); // prevent engine from stopping
+	if (! PmEngineRunning()) {          // see if is already stopped/stopping
 		status = FUNAVAILABLE;
 		goto done;
 	}
@@ -2125,8 +2043,8 @@ FSTATUS paFreezeFrameRenew(Pm_t *pm, STL_PA_IMAGE_ID_DATA *imageId)
 	if (!pm)
 		return(FINVALID_PARAMETER);
 
-	AtomicIncrementVoid(&pm->refCount);	// prevent engine from stopping
-	if (! PmEngineRunning()) {	// see if is already stopped/stopping
+	AtomicIncrementVoid(&pm->refCount); // prevent engine from stopping
+	if (! PmEngineRunning()) {          // see if is already stopped/stopping
 		status = FUNAVAILABLE;
 		goto done;
 	}
@@ -2137,7 +2055,7 @@ FSTATUS paFreezeFrameRenew(Pm_t *pm, STL_PA_IMAGE_ID_DATA *imageId)
 	if (FSUCCESS != status) {
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 	}
-	
+
 	if (record || (cimg && cimg !=  pm->ShortTermHistory.cachedComposite)) // not in the cache, never found
 			IB_LOG_WARN_FMT(__func__, "Unable to access cached composite image: %s", msg);
 
@@ -2179,8 +2097,8 @@ FSTATUS paFreezeFrameRelease(Pm_t *pm, STL_PA_IMAGE_ID_DATA *imageId)
 	if (!pm)
 		return(FINVALID_PARAMETER);
 
-	AtomicIncrementVoid(&pm->refCount);	// prevent engine from stopping
-	if (! PmEngineRunning()) {	// see if is already stopped/stopping
+	AtomicIncrementVoid(&pm->refCount); // prevent engine from stopping
+	if (! PmEngineRunning()) {          // see if is already stopped/stopping
 		status = FUNAVAILABLE;
 		goto done;
 	}
@@ -2288,8 +2206,8 @@ FSTATUS paFreezeFrameCreate(Pm_t *pm, STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE
 	if (!pm)
 		return(FINVALID_PARAMETER);
 
-	AtomicIncrementVoid(&pm->refCount);	// prevent engine from stopping
-	if (! PmEngineRunning()) {	// see if is already stopped/stopping
+	AtomicIncrementVoid(&pm->refCount); // prevent engine from stopping
+	if (! PmEngineRunning()) {          // see if is already stopped/stopping
 		status = FUNAVAILABLE;
 		goto done;
 	}
@@ -2321,7 +2239,7 @@ FSTATUS paFreezeFrameCreate(Pm_t *pm, STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE
 		(void)vs_rwunlock(&pm->stateLock);
 		goto done;
 	}
-	
+
 	// Find a Freeze Frame Slot
 	freezeIndex = allocFreezeFrame(pm, imageIndex);
 	if (freezeIndex >= pm_config.freeze_frame_images) {
@@ -2382,8 +2300,8 @@ FSTATUS paFreezeFrameMove(Pm_t *pm, STL_PA_IMAGE_ID_DATA ffImageId, STL_PA_IMAGE
 	if (!pm)
 		return(FINVALID_PARAMETER);
 
-	AtomicIncrementVoid(&pm->refCount);	// prevent engine from stopping
-	if (! PmEngineRunning()) {	// see if is already stopped/stopping
+	AtomicIncrementVoid(&pm->refCount); // prevent engine from stopping
+	if (! PmEngineRunning()) {          // see if is already stopped/stopping
 		status = FUNAVAILABLE;
 		goto done;
 	}
@@ -2401,7 +2319,7 @@ FSTATUS paFreezeFrameMove(Pm_t *pm, STL_PA_IMAGE_ID_DATA ffImageId, STL_PA_IMAGE
 		status = FINVALID_PARAMETER;
 		goto error;
 	}
-	
+
 	record = NULL;
 	cimg = NULL;
 	status = FindImage(pm, IMAGEID_TYPE_ANY, imageId, &imageIndex, &returnImageId->imageNumber, &record, &msg, NULL, &cimg);
@@ -2827,7 +2745,7 @@ FSTATUS addSortedPorts(PmFocusPorts_t *pmFocusPorts, sortInfo_t *sortInfo, uint3
 			pmFocusPorts->portList[portCount].value[i] = listp->value[i];
 		}
 		pmFocusPorts->portList[portCount].guid = (uint64)(listp->portp->pmnodep->NodeGUID);
-		cs_strlcpy(pmFocusPorts->portList[portCount].nodeDesc, (char *)listp->portp->pmnodep->nodeDesc.NodeString,
+		StringCopy(pmFocusPorts->portList[portCount].nodeDesc, (char *)listp->portp->pmnodep->nodeDesc.NodeString,
 			sizeof(pmFocusPorts->portList[portCount].nodeDesc));
 		if (listp->portNum != 0 && listp->neighborPortp != NULL) {
 			pmFocusPorts->portList[portCount].neighborStatus = listp->neighborStatus;
@@ -2837,7 +2755,7 @@ FSTATUS addSortedPorts(PmFocusPorts_t *pmFocusPorts, sortInfo_t *sortInfo, uint3
 				pmFocusPorts->portList[portCount].neighborValue[i] = listp->neighborValue[i];
 			}
 			pmFocusPorts->portList[portCount].neighborGuid = (uint64)(listp->neighborPortp->pmnodep->NodeGUID);
-			cs_strlcpy(pmFocusPorts->portList[portCount].neighborNodeDesc, (char *)listp->neighborPortp->pmnodep->nodeDesc.NodeString,
+			StringCopy(pmFocusPorts->portList[portCount].neighborNodeDesc, (char *)listp->neighborPortp->pmnodep->nodeDesc.NodeString,
 				sizeof(pmFocusPorts->portList[portCount].neighborNodeDesc));
 		} else {
 			pmFocusPorts->portList[portCount].neighborStatus = listp->neighborStatus;
@@ -2882,22 +2800,24 @@ FSTATUS paGetFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPorts,
 	uint32 start, uint32 range, STL_FOCUS_PORT_TUPLE *tuple, uint8 operator)
 {
 	STL_PA_IMAGE_ID_DATA retImageId = {0};
-	PmGroup_t			*pmGroupP = NULL;
-	STL_LID				lid;
-	uint32				imageIndex, imageInterval;
-	const char 			*msg;
-	PmImage_t			*pmimagep = NULL;
-	FSTATUS				status = FSUCCESS;
-	Status_t			allocStatus;
-	sortInfo_t			sortInfo;
-	ComputeFunc_t		computeFunc = NULL;
-	CompareFunc_t		compareFunc = NULL;
-	CompareFunc_t		candidateFunc = NULL;
-	boolean				sth = 0;
-	PmHistoryRecord_t	*record = NULL;
-	PmCompositeImage_t	*cimg = NULL;
-	uint32              allocatedItems = 0;
-	int                 i;
+	STL_LID lid;
+	uint32 imageIndex, imageInterval;
+	const char *msg;
+	PmImage_t *pmimagep = NULL;
+	PmNode_t *pmnodep = NULL;
+	PmPort_t *pmportp = NULL;
+	PmPortImage_t *portImage = NULL;
+	FSTATUS status = FSUCCESS;
+	Status_t allocStatus;
+	sortInfo_t sortInfo;
+	ComputeFunc_t computeFunc = NULL;
+	CompareFunc_t compareFunc = NULL;
+	CompareFunc_t candidateFunc = NULL;
+	boolean sth = 0, isGroupAll = FALSE;
+	PmHistoryRecord_t *record = NULL;
+	PmCompositeImage_t *cimg = NULL;
+	uint32 allocatedItems = 0;
+	int i, groupIndex = -1;
 
 	memset(&sortInfo, 0, sizeof(sortInfo));
 	void *computeData = NULL;
@@ -2912,7 +2832,11 @@ FSTATUS paGetFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPorts,
 	if (!range) {
 		IB_LOG_WARN_FMT(__func__, "Illegal range parameter: %d: must be greater than zero\n", range);
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
+	} else if (range > pm_config.subnet_size) {
+		IB_LOG_WARN_FMT(__func__, "Illegal range parameter: Exceeds maxmimum subnet size of %d\n", pm_config.subnet_size);
+		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	}
+
 	switch (select) {
 	case STL_PA_SELECT_UTIL_HIGH:
 		computeFunc = &computeUtilizationPct10;
@@ -2977,8 +2901,8 @@ FSTATUS paGetFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPorts,
 	pmFocusPorts->NumPorts = 0;
 	pmFocusPorts->portList = NULL;
 
-	AtomicIncrementVoid(&pm->refCount);	// prevent engine from stopping
-	if (! PmEngineRunning()) {	// see if is already stopped/stopping
+	AtomicIncrementVoid(&pm->refCount); // prevent engine from stopping
+	if (! PmEngineRunning()) {          // see if is already stopped/stopping
 		status = FUNAVAILABLE;
 		goto done;
 	}
@@ -3008,48 +2932,28 @@ FSTATUS paGetFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPorts,
 			IB_LOG_WARN_FMT(__func__, "Unable to reconstitute composite image: %s", FSTATUS_ToString(status));
 			goto error;
 		}
-		// find the group
-		if (!strcmp(pm->ShortTermHistory.LoadedImage.AllGroup->Name, groupName)) {
-			pmGroupP = pm->ShortTermHistory.LoadedImage.AllGroup;
-		} else {
-			for (i = 0; i < PM_MAX_GROUPS; i++) {
-				if (!strcmp(pm->ShortTermHistory.LoadedImage.Groups[i]->Name, groupName)) {
-					pmGroupP = pm->ShortTermHistory.LoadedImage.Groups[i];
-					break;
-				}
-			}
-		}
-		if (!pmGroupP) {
-			IB_LOG_WARN_FMT(__func__, "Group %.*s not Found", (int)sizeof(groupName), groupName);
-			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_GROUP;
-			goto error;
-		}
 		pmimagep = pm->ShortTermHistory.LoadedImage.img;
-		imageIndex = 0;
+		imageIndex = 0; // STH always uses imageIndex 0
 	} else {
-		status = LocateGroup(pm, groupName, &pmGroupP);
-		if (status != FSUCCESS) {
-			IB_LOG_WARN_FMT(__func__, "Group %.*s not Found: %s", (int)sizeof(groupName), groupName, FSTATUS_ToString(status));
-			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_GROUP;
-			goto error;
-		}
 		pmimagep = &pm->Image[imageIndex];
 		(void)vs_rdlock(&pmimagep->imageLock);
 	}
+
+	status = LocateGroup(pmimagep, groupName, &groupIndex);
+	if (status != FSUCCESS) {
+		IB_LOG_WARN_FMT(__func__, "Group %.*s not Found: %s", (int)sizeof(groupName), groupName, FSTATUS_ToString(status));
+		status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_GROUP;
+		goto error;
+	}
+	// If Success, but Index is still -1, then it is All Group
+	if (groupIndex == -1) isGroupAll = TRUE;
 
 	// Grab ImageTime from Pm Image
 	retImageId.imageTime.absoluteTime = (uint32)pmimagep->sweepStart;
 	imageInterval = pmimagep->imageInterval;
 
-	if (range > pm_config.subnet_size) {
-		IB_LOG_WARN_FMT(__func__, "Illegal range parameter: Exceeds maxmimum subnet size of %d\n", pm_config.subnet_size);
-		status = (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
-		goto error;
-	}
-
 	allocatedItems = pmimagep->HFIPorts + pmimagep->SwitchPorts;
 	allocStatus = vs_pool_alloc(&pm_pool, allocatedItems * sizeof(sortedValueEntry_t), (void*)&sortInfo.sortedValueListPool);
-
 	if (allocStatus != VSTATUS_OK) {
 		IB_LOG_ERRORRC("Failed to allocate list buffer for pmFocusPorts rc:", allocStatus);
 		status = FINSUFFICIENT_MEMORY;
@@ -3062,26 +2966,24 @@ FSTATUS paGetFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPorts,
 	(void)vs_rwunlock(&pm->stateLock);
 	for (lid = 1; lid <= pmimagep->maxLid; ++lid) {
 		uint8 portnum;
-		PmNode_t *pmnodep = pmimagep->LidMap[lid];
-
-		if (!pmnodep)
-			continue;
+		pmnodep = pmimagep->LidMap[lid];
+		if (!pmnodep)continue;
 
 		if (pmnodep->nodeType == STL_NODE_SW) {
 			for (portnum = 0; portnum <= pmnodep->numPorts; ++portnum) {
-				PmPort_t *pmportp = pmnodep->up.swPorts[portnum];
-				PmPortImage_t *portImage;
-				if (!pmportp) continue;
+				pmportp = pmnodep->up.swPorts[portnum];
+				if (!pa_valid_port(pmportp, sth)) continue;
 				portImage = &pmportp->Image[imageIndex];
-				if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth, NULL)) {
+				if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, NULL)) {
 					processFocusPort(pm, pmimagep, imageIndex, pmportp, portImage, lid, portnum,
 						computeFunc, compareFunc, candidateFunc, computeData, &sortInfo, tuple, operator);
 				}
 			}
 		} else {
-			PmPort_t *pmportp = pmnodep->up.caPortp;
-			PmPortImage_t *portImage = &pmportp->Image[imageIndex];
-			if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth, NULL)) {
+			pmportp = pmnodep->up.caPortp;
+			if (!pa_valid_port(pmportp, sth)) continue;
+			portImage = &pmportp->Image[imageIndex];
+			if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, NULL)) {
 				processFocusPort(pm, pmimagep, imageIndex, pmportp, portImage, lid, pmportp->portNum,
 					computeFunc, compareFunc, candidateFunc, computeData, &sortInfo, tuple, operator);
 			}
@@ -3095,17 +2997,9 @@ FSTATUS paGetFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPorts,
 	}
 
 	/* trim list */
-
-	if (start >= sortInfo.numValueEntries) {
-		IB_LOG_WARN_FMT(__func__, "Illegal start parameter: Exceeds range of available entries %d\n", sortInfo.numValueEntries);
-		status = (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
-		goto done;
-	}
-
 	sortInfo.numValueEntries = sortInfo.numValueEntries - start;
 
 	if (sortInfo.numValueEntries > 1) {
-		int i = 0;
 		sortedValueEntry_t *tmp = NULL;
 
 		/* shift list start point to start index */
@@ -3133,24 +3027,20 @@ FSTATUS paGetFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPorts,
 	} else if (sortInfo.numValueEntries == 1)
 		sortInfo.sortedValueListHead = sortInfo.sortedValueListTail;
 
-	cs_strlcpy(pmFocusPorts->groupName, pmGroupP->Name, STL_PM_GROUPNAMELEN);
+	StringCopy(pmFocusPorts->groupName, groupName, STL_PM_GROUPNAMELEN);
 	pmFocusPorts->NumPorts = sortInfo.numValueEntries;
 	if (pmFocusPorts->NumPorts)
 		status = addSortedPorts(pmFocusPorts, &sortInfo, imageIndex);
 
 	if (status == FSUCCESS)
-	*returnImageId = retImageId;
+		*returnImageId = retImageId;
 done:
 	if (sortInfo.sortedValueListPool != NULL)
 		vs_pool_free(&pm_pool, sortInfo.sortedValueListPool);
 #ifndef __VXWORKS__
-	if (sth) {
-		clearLoadedImage(&pm->ShortTermHistory);
-	}
+	if (sth) clearLoadedImage(&pm->ShortTermHistory);
 #endif
-	if (!sth && pmimagep) {
-		(void)vs_rwunlock(&pmimagep->imageLock);
-	}
+	if (!sth && pmimagep) (void)vs_rwunlock(&pmimagep->imageLock);
 	AtomicDecrementVoid(&pm->refCount);
 	return(status);
 error:
@@ -3239,14 +3129,14 @@ FSTATUS processExtFocusPort(Pm_t *pm, PmImage_t *pmimagep, uint32 imageIndex, Pm
 		pmFocusPorts->portList[pmFocusPorts->portCntr].rate = PmCalculateRate(pmportp->Image[imageIndex].u.s.activeSpeed, pmportp->Image[imageIndex].u.s.rxActiveWidth);
 		pmFocusPorts->portList[pmFocusPorts->portCntr].maxVlMtu = pmportp->Image[imageIndex].u.s.mtu;
 		pmFocusPorts->portList[pmFocusPorts->portCntr].guid = (uint64)(pmportp->pmnodep->NodeGUID);
-		cs_strlcpy(pmFocusPorts->portList[pmFocusPorts->portCntr].nodeDesc, (char *)pmportp->pmnodep->nodeDesc.NodeString,
+		StringCopy(pmFocusPorts->portList[pmFocusPorts->portCntr].nodeDesc, (char *)pmportp->pmnodep->nodeDesc.NodeString,
 			sizeof(pmFocusPorts->portList[pmFocusPorts->portCntr].nodeDesc));
 		if (portNum != 0 && nbrPt != NULL) {
 			pmFocusPorts->portList[pmFocusPorts->portCntr].neighborStatus = neighborStatus;
 			pmFocusPorts->portList[pmFocusPorts->portCntr].neighborLid = nbrPt->pmnodep->Image[imageIndex].lid;
 			pmFocusPorts->portList[pmFocusPorts->portCntr].neighborPortNum = nbrPt->portNum;
 			pmFocusPorts->portList[pmFocusPorts->portCntr].neighborGuid = (uint64)(nbrPt->pmnodep->NodeGUID);
-			cs_strlcpy(pmFocusPorts->portList[pmFocusPorts->portCntr].neighborNodeDesc, (char *)nbrPt->pmnodep->nodeDesc.NodeString,
+			StringCopy(pmFocusPorts->portList[pmFocusPorts->portCntr].neighborNodeDesc, (char *)nbrPt->pmnodep->nodeDesc.NodeString,
 				sizeof(pmFocusPorts->portList[pmFocusPorts->portCntr].neighborNodeDesc));
 		} else {
 			pmFocusPorts->portList[pmFocusPorts->portCntr].neighborStatus = neighborStatus;
@@ -3291,18 +3181,19 @@ FSTATUS paGetExtFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPor
 	uint32 start, uint32 range)
 {
 	STL_PA_IMAGE_ID_DATA retImageId = {0};
-	PmGroup_t			*pmGroupP = NULL;
-	STL_LID				lid;
-	uint32				imageIndex;
-	const char 			*msg;
-	PmImage_t			*pmimagep = NULL;
-	FSTATUS				status = FSUCCESS;
-
-	boolean				sth = 0;
-	PmHistoryRecord_t	*record = NULL;
-	PmCompositeImage_t	*cimg = NULL;
-	uint32              allocatedItems = 0;
-	int                 i;
+	PmNode_t *pmnodep = NULL;
+	PmPort_t *pmportp = NULL;
+	PmPortImage_t *portImage = NULL;
+	STL_LID lid;
+	uint32 imageIndex;
+	const char *msg;
+	PmImage_t *pmimagep = NULL;
+	FSTATUS status = FSUCCESS;
+	boolean sth = 0, isGroupAll = FALSE;
+	PmHistoryRecord_t *record = NULL;
+	PmCompositeImage_t *cimg = NULL;
+	uint32 allocatedItems = 0;
+	int i, groupIndex = -1;
 
 	// check input parameters
 	if (!pm || !groupName || !pmFocusPorts)
@@ -3314,14 +3205,17 @@ FSTATUS paGetExtFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPor
 	if (!range) {
 		IB_LOG_WARN_FMT(__func__, "Illegal range parameter: %d: must be greater than zero\n", range);
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
+	} else if (range > pm_config.subnet_size) {
+		IB_LOG_WARN_FMT(__func__, "Illegal range parameter: Exceeds maxmimum subnet size of %d\n", pm_config.subnet_size);
+		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	}
 
 	// initialize group config port list counts
 	pmFocusPorts->NumPorts = 0;
 	pmFocusPorts->portList = NULL;
 
-	AtomicIncrementVoid(&pm->refCount);	// prevent engine from stopping
-	if (! PmEngineRunning()) {	// see if is already stopped/stopping
+	AtomicIncrementVoid(&pm->refCount); // prevent engine from stopping
+	if (! PmEngineRunning()) {          // see if is already stopped/stopping
 		status = FUNAVAILABLE;
 		goto done;
 	}
@@ -3351,43 +3245,24 @@ FSTATUS paGetExtFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPor
 			IB_LOG_WARN_FMT(__func__, "Unable to reconstitute composite image: %s", FSTATUS_ToString(status));
 			goto error;
 		}
-		// find the group
-		if (!strcmp(pm->ShortTermHistory.LoadedImage.AllGroup->Name, groupName)) {
-			pmGroupP = pm->ShortTermHistory.LoadedImage.AllGroup;
-		} else {
-			for (i = 0; i < PM_MAX_GROUPS; i++) {
-				if (!strcmp(pm->ShortTermHistory.LoadedImage.Groups[i]->Name, groupName)) {
-					pmGroupP = pm->ShortTermHistory.LoadedImage.Groups[i];
-					break;
-				}
-			}
-		}
-		if (!pmGroupP) {
-			IB_LOG_WARN_FMT(__func__, "Group %.*s not Found", (int)sizeof(groupName), groupName);
-			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_GROUP;
-			goto error;
-		}
 		pmimagep = pm->ShortTermHistory.LoadedImage.img;
-		imageIndex = 0;
+		imageIndex = 0; // STH always uses imageIndex 0
 	} else {
-		status = LocateGroup(pm, groupName, &pmGroupP);
-		if (status != FSUCCESS) {
-			IB_LOG_WARN_FMT(__func__, "Group %.*s not Found: %s", (int)sizeof(groupName), groupName, FSTATUS_ToString(status));
-			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_GROUP;
-			goto error;
-		}
 		pmimagep = &pm->Image[imageIndex];
 		(void)vs_rdlock(&pmimagep->imageLock);
 	}
 
-	// Grab ImageTime from Pm Image
-	retImageId.imageTime.absoluteTime = (uint32)pmimagep->sweepStart;
-
-	if (range > pm_config.subnet_size) {
-		IB_LOG_WARN_FMT(__func__, "Illegal range parameter: Exceeds maxmimum subnet size of %d\n", pm_config.subnet_size);
-		status = (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
+	status = LocateGroup(pmimagep, groupName, &groupIndex);
+	if (status != FSUCCESS) {
+		IB_LOG_WARN_FMT(__func__, "Group %.*s not Found: %s", (int)sizeof(groupName), groupName, FSTATUS_ToString(status));
+		status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_GROUP;
 		goto error;
 	}
+	// If Success, but Index is still -1, then it is All Group
+	if (groupIndex == -1) isGroupAll = TRUE;
+
+	// Grab ImageTime from Pm Image
+	retImageId.imageTime.absoluteTime = (uint32)pmimagep->sweepStart;
 
 	if(select == STL_PA_SELECT_UNEXP_CLR_PORT){
 		allocatedItems = pmimagep->UnexpectedClearPorts;
@@ -3400,6 +3275,7 @@ FSTATUS paGetExtFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPor
 	if(allocatedItems == 0) {
 		IB_LOG_WARN_FMT(__func__, "No Matching Records\n");
 		status = FSUCCESS | MAD_STATUS_SA_NO_RECORDS;
+		(void)vs_rwunlock(&pm->stateLock);
 		goto done;
 	}
 
@@ -3412,30 +3288,28 @@ FSTATUS paGetExtFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPor
 
 	pmFocusPorts->NumPorts = allocatedItems;
 	pmFocusPorts->portCntr= 0;
-	cs_strlcpy(pmFocusPorts->groupName, pmGroupP->Name, STL_PM_GROUPNAMELEN);
+	StringCopy(pmFocusPorts->groupName, groupName, STL_PM_GROUPNAMELEN);
 
 	(void)vs_rwunlock(&pm->stateLock);
 	for (lid = 1; lid <= pmimagep->maxLid; ++lid) {
 		uint8 portnum;
-		PmNode_t *pmnodep = pmimagep->LidMap[lid];
-
-		if (!pmnodep)
-			continue;
+		pmnodep = pmimagep->LidMap[lid];
+		if (!pmnodep) continue;
 
 		if (pmnodep->nodeType == STL_NODE_SW) {
 			for (portnum = 0; portnum <= pmnodep->numPorts; ++portnum) {
-				PmPort_t *pmportp = pmnodep->up.swPorts[portnum];
-				PmPortImage_t *portImage;
-				if (!pmportp) continue;
+				pmportp = pmnodep->up.swPorts[portnum];
+				if (!pa_valid_port(pmportp, sth)) continue;
 				portImage = &pmportp->Image[imageIndex];
-				if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth, NULL)) {
+				if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, NULL)) {
 					processExtFocusPort(pm, pmimagep, imageIndex, pmportp, portImage, select, pmFocusPorts, lid, portnum);
 				}
 			}
 		} else {
-			PmPort_t *pmportp = pmnodep->up.caPortp;
-			PmPortImage_t *portImage = &pmportp->Image[imageIndex];
-			if (PmIsPortInGroup(pm, pmportp, portImage, pmGroupP, sth, NULL)) {
+			pmportp = pmnodep->up.caPortp;
+			if (!pa_valid_port(pmportp, sth)) continue;
+			portImage = &pmportp->Image[imageIndex];
+			if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, NULL)) {
 				processExtFocusPort(pm, pmimagep, imageIndex, pmportp, portImage, select, pmFocusPorts, lid, pmportp->portNum);
 			}
 		}
@@ -3462,16 +3336,12 @@ FSTATUS paGetExtFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPor
 	}
 
 	if (status == FSUCCESS)
-	*returnImageId = retImageId;
+		*returnImageId = retImageId;
 done:
 #ifndef __VXWORKS__
-	if (sth) {
-		clearLoadedImage(&pm->ShortTermHistory);
-	}
+	if (sth) clearLoadedImage(&pm->ShortTermHistory);
 #endif
-	if (!sth && pmimagep) {
-		(void)vs_rwunlock(&pmimagep->imageLock);
-	}
+	if (!sth && pmimagep) (void)vs_rwunlock(&pmimagep->imageLock);
 	AtomicDecrementVoid(&pm->refCount);
 	return(status);
 error:
@@ -3498,8 +3368,8 @@ FSTATUS paGetImageInfo(Pm_t *pm, STL_PA_IMAGE_ID_DATA imageId, PmImageInfo_t *im
 	if (!pm || !imageInfo)
 		return FINVALID_PARAMETER;
 
-	AtomicIncrementVoid(&pm->refCount);	// prevent engine from stopping
-	if (! PmEngineRunning()) {	// see if is already stopped/stopping
+	AtomicIncrementVoid(&pm->refCount); // prevent engine from stopping
+	if (! PmEngineRunning()) {          // see if is already stopped/stopping
 		status = FUNAVAILABLE;
 		goto done;
 	}
@@ -3558,7 +3428,7 @@ FSTATUS paGetImageInfo(Pm_t *pm, STL_PA_IMAGE_ID_DATA imageId, PmImageInfo_t *im
 			PmPort_t *pmportp = pm_node_lided_port(pmnodep);
 			imageInfo->SMInfo[i].portNumber = pmportp->portNum;
 			imageInfo->SMInfo[i].smPortGuid	= pmportp->guid;
-			cs_strlcpy(imageInfo->SMInfo[i].smNodeDesc, (char *)pmnodep->nodeDesc.NodeString,
+			StringCopy(imageInfo->SMInfo[i].smNodeDesc, (char *)pmnodep->nodeDesc.NodeString,
 				sizeof(imageInfo->SMInfo[i].smNodeDesc));
 		} else {
 			imageInfo->SMInfo[i].portNumber	= 0;
@@ -3716,19 +3586,17 @@ done:
 }
 
 // locate vf by name
-static FSTATUS LocateVF(Pm_t *pm, const char *vfName, PmVF_t **pmVFP, uint8 activeOnly, uint32 imageIndex, int *vfIdx)
+static FSTATUS LocateVF(PmImage_t *pmimagep, const char *vfName, int *vfIdx)
 {
 	int i;
 
-	if (vfIdx) *vfIdx = -1;
-	for (i = 0; i < pm->numVFs; i++) {
-		if (strcmp(vfName, pm->VFs[i]->Name) == 0) {
-			*pmVFP = pm->VFs[i];
-			if(*pmVFP && activeOnly <= (pm->VFs[i]->Image[imageIndex].isActive)) {
-				if (vfIdx) *vfIdx = i;
-									// True cases: activeOnly=0 & pm->VFs[i]->Image[imageIndex].isActive = 0 or 1	Locates VF in list of active and standby VFs
-				return FSUCCESS;	//             activeOnly=1 & pm->VFs[i]->Image[imageIndex].isActive = 1		Locates VF in list of only active
-			}
+	*vfIdx = -1;
+	for (i = 0; i < pmimagep->NumVFs; i++) {
+		if (!pmimagep->VFs[i].isActive) continue;
+
+		if (strncmp(vfName, pmimagep->VFs[i].Name, STL_PM_VFNAMELEN) == 0) {
+			*vfIdx = i;
+			return FSUCCESS;
 		}
 	}
 	return FNOT_FOUND;
@@ -3736,61 +3604,73 @@ static FSTATUS LocateVF(Pm_t *pm, const char *vfName, PmVF_t **pmVFP, uint8 acti
 
 FSTATUS paGetVFList(Pm_t *pm, PmVFList_t *VFList, uint32 imageIndex)
 {
-	Status_t			vStatus;
-	FSTATUS				fStatus = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
-	int					i, j;
+	Status_t vStatus;
+	FSTATUS status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
+	int i, j;
+	STL_PA_IMAGE_ID_DATA retImgId = {0};
+	STL_PA_IMAGE_ID_DATA liveImgId = {0};
+	PmImage_t *pmImageP = NULL;
+	const char *msg;
 
 	// check input parameters
 	if (!pm || !VFList)
 		return FINVALID_PARAMETER;
 
-	AtomicIncrementVoid(&pm->refCount);	// prevent engine from stopping
-	if (! PmEngineRunning()) {	// see if is already stopped/stopping
-		fStatus = FUNAVAILABLE;
-		goto done;
-	}
-	VFList->NumVFs = pm->numVFsActive;
-	vStatus = vs_pool_alloc(&pm_pool, VFList->NumVFs * STL_PM_VFNAMELEN,
-						   (void*)&VFList->VfList);
-	if (vStatus != VSTATUS_OK) {
-		IB_LOG_ERRORRC("Failed to allocate name list buffer for VFList rc:", vStatus);
-		fStatus = FINSUFFICIENT_MEMORY;
+	AtomicIncrementVoid(&pm->refCount); // prevent engine from stopping
+	if (! PmEngineRunning()) {          // see if is already stopped/stopping
+		status = FUNAVAILABLE;
 		goto done;
 	}
 
 	(void)vs_rdlock(&pm->stateLock);
-	for (i = 0, j = 0; i < pm->numVFs; i++) {
-		if (pm->VFs[i]->Image[imageIndex].isActive) {
-			cs_strlcpy(VFList->VfList[j++].Name, pm->VFs[i]->Name, STL_PM_VFNAMELEN);
-		}
+	status = FindImage(pm, IMAGEID_TYPE_ANY, liveImgId, &imageIndex, &retImgId.imageNumber, NULL, &msg, NULL, NULL);
+	if (FSUCCESS != status) {
+		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
+		(void)vs_rwunlock(&pm->stateLock);
+		goto done;
 	}
-	if (VFList->NumVFs)
-		fStatus = FSUCCESS;
-
+	pmImageP = &pm->Image[imageIndex];
+	(void)vs_rdlock(&pmImageP->imageLock);
 	(void)vs_rwunlock(&pm->stateLock);
 
+	VFList->NumVFs = pmImageP->NumVFsActive;
+	vStatus = vs_pool_alloc(&pm_pool, VFList->NumVFs * STL_PM_VFNAMELEN, (void*)&VFList->VfList);
+	if (vStatus != VSTATUS_OK) {
+		IB_LOG_ERRORRC("Failed to allocate name list buffer for VFList rc:", vStatus);
+		status = FINSUFFICIENT_MEMORY;
+		goto unlock;
+	}
+
+	for (i = 0, j = 0; i < pmImageP->NumVFs; i++) {
+		if (pmImageP->VFs[i].isActive) {
+			StringCopy(VFList->VfList[j++].Name, pmImageP->VFs[i].Name, STL_PM_VFNAMELEN);
+		}
+	}
+	status = FSUCCESS;
+unlock:
+	(void)vs_rwunlock(&pmImageP->imageLock);
 done:
 	AtomicDecrementVoid(&pm->refCount);
-	return(fStatus);
+	return(status);
 }
 
 FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, PmVFInfo_t *pmVFInfo, STL_PA_IMAGE_ID_DATA imageId,
-		STL_PA_IMAGE_ID_DATA *returnImageId)
+	STL_PA_IMAGE_ID_DATA *returnImageId)
 {
 	STL_PA_IMAGE_ID_DATA retImageId = {0};
-	FSTATUS				status = FSUCCESS;
-	PmVF_t				*pmVFP = NULL;
-	int					vfIdx = -1;
-	PmVFImage_t			pmVFImage;
-	PmImage_t			*pmImageP = NULL;
-	PmPortImage_t		*pmPortImageP = NULL;
-	PmPort_t			*pmPortP = NULL;
-	uint32				imageIndex, imageInterval;
-	const char 			*msg;
-	boolean				sth = FALSE;
-	STL_LID 			lid;
-	PmHistoryRecord_t	*record = NULL;
-	PmCompositeImage_t	*cimg = NULL;
+	FSTATUS status = FSUCCESS;
+	int vfIdx = -1;
+	PmVFImage_t pmVFImage;
+	PmImage_t *pmImageP = NULL;
+	PmNode_t *pmNodeP = NULL;
+	PmPort_t *pmPortP = NULL;
+	PmPortImage_t *pmPortImageP = NULL;
+	uint32 imageIndex, imageInterval;
+	const char *msg;
+	boolean sth = FALSE;
+	STL_LID lid;
+	PmHistoryRecord_t *record = NULL;
+	PmCompositeImage_t *cimg = NULL;
 
 	if (!pm || !vfName || !pmVFInfo)
 		return(FINVALID_PARAMETER);
@@ -3799,8 +3679,8 @@ FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, PmVFInfo_t *pmVFInfo, STL_PA_IMAGE_I
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	}
 
-	AtomicIncrementVoid(&pm->refCount);	// prevent engine from stopping
-	if (! PmEngineRunning()) {	// see if is already stopped/stopping
+	AtomicIncrementVoid(&pm->refCount); // prevent engine from stopping
+	if (! PmEngineRunning()) {          // see if is already stopped/stopping
 		status = FUNAVAILABLE;
 		goto done;
 	}
@@ -3831,35 +3711,17 @@ FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, PmVFInfo_t *pmVFInfo, STL_PA_IMAGE_I
 			goto error;
 		}
 		pmImageP = pm->ShortTermHistory.LoadedImage.img;
-		int i;
-		for (i = 0; i < MAX_VFABRICS; i++) {
-			if (!strcmp(pm->ShortTermHistory.LoadedImage.VFs[i]->Name, vfName)) {
-				pmVFP = pm->ShortTermHistory.LoadedImage.VFs[i];
-				vfIdx = i;
-				break;
-			}
-		}
-		if (!pmVFP || vfIdx == -1) {
-			IB_LOG_WARN_FMT(__func__, "VF %.*s not Found", (int)sizeof(vfName), vfName);
-			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
-			goto error;
-		}
 		imageIndex = 0; // STH always uses imageIndex 0
-		if (!pmVFP->Image[imageIndex].isActive) {
-			IB_LOG_WARN_FMT(__func__, "VF %.*s not active", (int)sizeof(pmVFP->Name), pmVFP->Name);
-			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
-			goto error;
-		}
 	} else {
-		status = LocateVF(pm, vfName, &pmVFP, 1, imageIndex, &vfIdx);
-		if (status != FSUCCESS || vfIdx == -1){
-			IB_LOG_WARN_FMT(__func__, "VF %.*s not Found: %s", (int)sizeof(vfName), vfName, FSTATUS_ToString(status));
-			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
-			goto error;
-		}
-
 		pmImageP = &pm->Image[imageIndex];
 		(void)vs_rdlock(&pmImageP->imageLock);
+	}
+
+	status = LocateVF(pmImageP, vfName, &vfIdx);
+	if (status != FSUCCESS || vfIdx == -1){
+		IB_LOG_WARN_FMT(__func__, "VF %.*s not Found: %s", (int)sizeof(vfName), vfName, FSTATUS_ToString(status));
+		status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
+		goto error;
 	}
 
 	// Grab ImageTime from Pm Image
@@ -3871,15 +3733,15 @@ FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, PmVFInfo_t *pmVFInfo, STL_PA_IMAGE_I
 	ClearVFStats(&pmVFImage);
 
 	for (lid = 1; lid <= pmImageP->maxLid; lid++) {
-		PmNode_t *pmNodeP = pmImageP->LidMap[lid];
+		pmNodeP = pmImageP->LidMap[lid];
 		if (!pmNodeP) continue;
 		if (pmNodeP->nodeType == STL_NODE_SW) {
 			int p;
 			for (p = 0; p <= pmNodeP->numPorts; p++) { // Includes port 0
 				pmPortP = pmNodeP->up.swPorts[p];
-				if (!pmPortP) continue;
+				if (!pa_valid_port(pmPortP, sth)) continue;
 				pmPortImageP = &pmPortP->Image[imageIndex];
-				if (PmIsPortInVF(pm, pmPortP, pmPortImageP, pmVFP, vfIdx)) {
+				if (PmIsPortInVF(pmImageP, pmPortImageP, vfIdx)) {
 					if (pmPortImageP->u.s.queryStatus != PM_QUERY_STATUS_OK) {
 						PA_INC_COUNTER_NO_OVERFLOW(pmVFImage.IntUtil.pmaNoRespPorts, IB_UINT16_MAX);
 					}
@@ -3892,9 +3754,9 @@ FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, PmVFInfo_t *pmVFInfo, STL_PA_IMAGE_I
 			}
 		} else {
 			pmPortP = pmNodeP->up.caPortp;
-			if (!pmPortP) continue;
+			if (!pa_valid_port(pmPortP, sth)) continue;
 			pmPortImageP = &pmPortP->Image[imageIndex];
-			if (PmIsPortInVF(pm, pmPortP, pmPortImageP, pmVFP, vfIdx)) {
+			if (PmIsPortInVF(pmImageP, pmPortImageP, vfIdx)) {
 				if (pmPortImageP->u.s.queryStatus != PM_QUERY_STATUS_OK) {
 					PA_INC_COUNTER_NO_OVERFLOW(pmVFImage.IntUtil.pmaNoRespPorts, IB_UINT16_MAX);
 				}
@@ -3907,19 +3769,17 @@ FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, PmVFInfo_t *pmVFInfo, STL_PA_IMAGE_I
 		}
 	}
 	FinalizeVFStats(&pmVFImage);
-	cs_strlcpy(pmVFInfo->vfName, vfName, sizeof(pmVFInfo->vfName));
+	StringCopy(pmVFInfo->vfName, vfName, sizeof(pmVFInfo->vfName));
 	pmVFInfo->NumPorts = pmVFImage.NumPorts;
 	memcpy(&pmVFInfo->IntUtil, &pmVFImage.IntUtil, sizeof(PmUtilStats_t));
 	memcpy(&pmVFInfo->IntErr, &pmVFImage.IntErr, sizeof(PmErrStats_t));
 	pmVFInfo->MinIntRate = pmVFImage.MinIntRate;
 	pmVFInfo->MaxIntRate = pmVFImage.MaxIntRate;
-	if (!sth) {
-		(void)vs_rwunlock(&pmImageP->imageLock);
-	}
 
 	*returnImageId = retImageId;
 
 done:
+	if (!sth && pmImageP) (void)vs_rwunlock(&pmImageP->imageLock);
 	AtomicDecrementVoid(&pm->refCount);
 	return(status);
 error:
@@ -3932,16 +3792,18 @@ FSTATUS paGetVFConfig(Pm_t *pm, char *vfName, uint64 vfSid, PmVFConfig_t *pmVFCo
 	STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE_ID_DATA *returnImageId)
 {
 	STL_PA_IMAGE_ID_DATA retImageId = {0};
-	PmVF_t				*pmVFP = NULL;
-	int					vfIdx = -1;
-	STL_LID 			lid;
-	uint32				imageIndex;
-	const char 			*msg;
-	PmImage_t			*pmImageP = NULL;
-	FSTATUS				status = FSUCCESS;
-	boolean				sth = 0;
-	PmHistoryRecord_t	*record = NULL;
-	PmCompositeImage_t	*cimg = NULL;
+	int vfIdx = -1;
+	STL_LID lid;
+	uint32 imageIndex;
+	const char *msg;
+	PmImage_t *pmImageP = NULL;
+	PmNode_t *pmnodep = NULL;
+	PmPort_t *pmportp = NULL;
+	PmPortImage_t *portImage = NULL;
+	FSTATUS status = FSUCCESS;
+	boolean sth = 0;
+	PmHistoryRecord_t *record = NULL;
+	PmCompositeImage_t *cimg = NULL;
 
 	// check input parameters
 	if (!pm || !vfName || !pmVFConfig)
@@ -3956,8 +3818,8 @@ FSTATUS paGetVFConfig(Pm_t *pm, char *vfName, uint64 vfSid, PmVFConfig_t *pmVFCo
 	pmVFConfig->portListSize = 0;
 	pmVFConfig->portList = NULL;
 
-	AtomicIncrementVoid(&pm->refCount);	// prevent engine from stopping
-	if (! PmEngineRunning()) {	// see if is already stopped/stopping
+	AtomicIncrementVoid(&pm->refCount); // prevent engine from stopping
+	if (! PmEngineRunning()) {          // see if is already stopped/stopping
 		status = FUNAVAILABLE;
 		goto done;
 	}
@@ -3973,7 +3835,6 @@ FSTATUS paGetVFConfig(Pm_t *pm, char *vfName, uint64 vfSid, PmVFConfig_t *pmVFCo
 
 	if (record || cimg) {
 		sth = 1;
-		int i;
 		if (record) {
 			status = PmLoadComposite(pm, record, &cimg);
 			if (status != FSUCCESS || !cimg) {
@@ -3989,34 +3850,17 @@ FSTATUS paGetVFConfig(Pm_t *pm, char *vfName, uint64 vfSid, PmVFConfig_t *pmVFCo
 			goto error;
 		}
 		pmImageP = pm->ShortTermHistory.LoadedImage.img;
-		for (i = 0; i < MAX_VFABRICS; i++) {
-			if (!strcmp(pm->ShortTermHistory.LoadedImage.VFs[i]->Name, vfName)) {
-				pmVFP = pm->ShortTermHistory.LoadedImage.VFs[i];
-				vfIdx = i;
-				break;
-			}
-		}
-		if (!pmVFP || vfIdx == -1) {
-			IB_LOG_WARN_FMT(__func__, "VF %.*s not Found", (int)sizeof(vfName), vfName);
-			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
-			goto error;
-		}
 		imageIndex = 0; // STH always uses imageIndex 0
-		if (!pmVFP->Image[imageIndex].isActive) {
-			IB_LOG_WARN_FMT(__func__, "VF %.*s not active", (int)sizeof(pmVFP->Name), pmVFP->Name);
-			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
-			goto error;
-		}
 	} else {
-		status = LocateVF(pm, vfName, &pmVFP, 1, imageIndex, &vfIdx);
-		if (status != FSUCCESS || vfIdx == -1){
-			IB_LOG_WARN_FMT(__func__, "VF %.*s not Found: %s", (int)sizeof(vfName), vfName, FSTATUS_ToString(status));
-			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
-			goto error;
-		}
-
 		pmImageP = &pm->Image[imageIndex];
 		(void)vs_rdlock(&pmImageP->imageLock);
+	}
+
+	status = LocateVF(pmImageP, vfName, &vfIdx);
+	if (status != FSUCCESS || vfIdx == -1){
+		IB_LOG_WARN_FMT(__func__, "VF %.*s not Found: %s", (int)sizeof(vfName), vfName, FSTATUS_ToString(status));
+		status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
+		goto error;
 	}
 
 	// Grab ImageTime from Pm Image
@@ -4025,17 +3869,14 @@ FSTATUS paGetVFConfig(Pm_t *pm, char *vfName, uint64 vfSid, PmVFConfig_t *pmVFCo
 	(void)vs_rwunlock(&pm->stateLock);
 	for (lid=1; lid<= pmImageP->maxLid; ++lid) {
 		uint8 portnum;
-		PmNode_t *pmnodep = pmImageP->LidMap[lid];
-		if (! pmnodep)
-			continue;
+		pmnodep = pmImageP->LidMap[lid];
+		if (!pmnodep) continue;
 		if (pmnodep->nodeType == STL_NODE_SW) {
 			for (portnum=0; portnum<=pmnodep->numPorts; ++portnum) {
-				PmPort_t *pmportp = pmnodep->up.swPorts[portnum];
-				PmPortImage_t *portImage;
-				if (! pmportp)
-					continue;
+				pmportp = pmnodep->up.swPorts[portnum];
+				if (!pa_valid_port(pmportp, sth)) continue;
 				portImage = &pmportp->Image[imageIndex];
-				if (PmIsPortInVF(pm, pmportp, portImage, pmVFP, vfIdx)) {
+				if (PmIsPortInVF(pmImageP, portImage, vfIdx)) {
 					if (pmVFConfig->portListSize == pmVFConfig->NumPorts) {
 						pmVFConfig->portListSize += PORTLISTCHUNK;
 					}
@@ -4043,9 +3884,10 @@ FSTATUS paGetVFConfig(Pm_t *pm, char *vfName, uint64 vfSid, PmVFConfig_t *pmVFCo
 				}
 			}
 		} else {
-			PmPort_t *pmportp = pmnodep->up.caPortp;
-			PmPortImage_t *portImage = &pmportp->Image[imageIndex];
-			if (PmIsPortInVF(pm, pmportp, portImage, pmVFP, vfIdx)) {
+			pmportp = pmnodep->up.caPortp;
+			if (!pa_valid_port(pmportp, sth)) continue;
+			portImage = &pmportp->Image[imageIndex];
+			if (PmIsPortInVF(pmImageP, portImage, vfIdx)) {
 				if (pmVFConfig->portListSize == pmVFConfig->NumPorts) {
 					pmVFConfig->portListSize += PORTLISTCHUNK;
 				}
@@ -4061,7 +3903,6 @@ FSTATUS paGetVFConfig(Pm_t *pm, char *vfName, uint64 vfSid, PmVFConfig_t *pmVFCo
 	// allocate the port list
 	Status_t ret = vs_pool_alloc(&pm_pool, pmVFConfig->portListSize * sizeof(PmPortConfig_t), (void *)&pmVFConfig->portList);
 	if (ret !=  VSTATUS_OK) {
-		if (!sth) (void)vs_rwunlock(&pmImageP->imageLock);
 		IB_LOG_ERRORRC("Failed to allocate list buffer for pmVFConfig rc:", ret);
 		status = FINSUFFICIENT_MEMORY;
 		goto done;
@@ -4071,16 +3912,13 @@ FSTATUS paGetVFConfig(Pm_t *pm, char *vfName, uint64 vfSid, PmVFConfig_t *pmVFCo
 	for (lid=1; lid <= pmImageP->maxLid; ++lid) {
 		uint8 portnum;
 		PmNode_t *pmnodep = pmImageP->LidMap[lid];
-		if (!pmnodep) 
-			continue;
+		if (!pmnodep) continue;
 		if (pmnodep->nodeType == STL_NODE_SW) {
 			for (portnum=0; portnum <= pmnodep->numPorts; ++portnum) {
-				PmPort_t *pmportp = pmnodep->up.swPorts[portnum];
-				PmPortImage_t *portImage;
-				if (!pmportp) 
-					continue;
+				pmportp = pmnodep->up.swPorts[portnum];
+				if (!pa_valid_port(pmportp, sth)) continue;
 				portImage = &pmportp->Image[imageIndex];
-				if (PmIsPortInVF(pm, pmportp, portImage, pmVFP, vfIdx)) {
+				if (PmIsPortInVF(pmImageP, portImage, vfIdx)) {
 					pmVFConfig->portList[i].lid = lid;
 					pmVFConfig->portList[i].portNum = pmportp->portNum;
 					pmVFConfig->portList[i].guid = pmnodep->NodeGUID;
@@ -4090,9 +3928,10 @@ FSTATUS paGetVFConfig(Pm_t *pm, char *vfName, uint64 vfSid, PmVFConfig_t *pmVFCo
 				}
 			}
 		} else {
-			PmPort_t *pmportp = pmnodep->up.caPortp;
-			PmPortImage_t *portImage = &pmportp->Image[imageIndex];
-			if (PmIsPortInVF(pm, pmportp, portImage, pmVFP, vfIdx)) {
+			pmportp = pmnodep->up.caPortp;
+			if (!pa_valid_port(pmportp, sth)) continue;
+			portImage = &pmportp->Image[imageIndex];
+			if (PmIsPortInVF(pmImageP, portImage, vfIdx)) {
 				pmVFConfig->portList[i].lid = lid;
 				pmVFConfig->portList[i].portNum = pmportp->portNum;
 				pmVFConfig->portList[i].guid = pmnodep->NodeGUID;
@@ -4104,11 +3943,11 @@ FSTATUS paGetVFConfig(Pm_t *pm, char *vfName, uint64 vfSid, PmVFConfig_t *pmVFCo
 	}
 
 norecords:
-	cs_strlcpy(pmVFConfig->vfName, pmVFP->Name, STL_PM_VFNAMELEN);
+	StringCopy(pmVFConfig->vfName, vfName, STL_PM_VFNAMELEN);
 	*returnImageId = retImageId;
 
-	if (!sth) (void)vs_rwunlock(&pmImageP->imageLock);
 done:
+	if (!sth && pmImageP) (void)vs_rwunlock(&pmImageP->imageLock);
 #ifndef __VXWORKS__
 	if (sth) clearLoadedImage(&pm->ShortTermHistory);
 #endif
@@ -4120,7 +3959,7 @@ error:
 	goto done;
 }
 
-FSTATUS GetVfPortCounters(PmCompositeVLCounters_t *vfPortCountersP, const PmVF_t *pmVFP, boolean useHiddenVF,
+FSTATUS GetVfPortCounters(PmImage_t *pmImageP, PmCompositeVLCounters_t *vfPortCountersP, int vfIdx, boolean useHiddenVF,
 	const PmPortImage_t *pmPortImageP, PmCompositeVLCounters_t *vlPortCountersP, uint32 *flagsp)
 {
 	uint32 SingleVLBit, vl, idx;
@@ -4130,7 +3969,7 @@ FSTATUS GetVfPortCounters(PmCompositeVLCounters_t *vfPortCountersP, const PmVF_t
 	FSTATUS status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
 
 	// Iterate through All VFs in Port
-	for (; i < (int)pmPortImageP->numVFs; i++) {
+	for (; i < (int)pmImageP->NumVFs; i++) {
 		uint32 vlmask = (i == -1 ? 0x8000 : pmPortImageP->vfvlmap[i].vlmask);
 
 		// Iterate through All VLs within each VF
@@ -4141,8 +3980,8 @@ FSTATUS GetVfPortCounters(PmCompositeVLCounters_t *vfPortCountersP, const PmVF_t
 			if ((vlmask & SingleVLBit) == 0) continue;
 
 			// If using Hidden VF only enter when i == -1 (one time for one vl[15])
-			// OR is VF pointer matches argument
-			if ((i == -1) || (pmPortImageP->vfvlmap[i].pVF == pmVFP)) {
+			// OR is VF index matches argument
+			if ((i == -1) || (i == vfIdx)) {
 
 				// Keep track of VLs within this VF
 				VFVlSelectMask |= SingleVLBit;
@@ -4181,11 +4020,6 @@ FSTATUS GetVfPortCounters(PmCompositeVLCounters_t *vfPortCountersP, const PmVF_t
 		*flagsp |= STL_PA_PC_FLAG_SHARED_VL;
 	}
 
-	IB_LOG_DEBUG3_FMT(__func__,
-		"vfName: %s, useHiddenVF: %s; Port's VLMask: 0x%08x; Port's Shared VLMask: 0x%08x; VF's VLMask: 0x%08x; Status: 0x%x",
-		(pmVFP ? pmVFP->Name : (useHiddenVF ? HIDDEN_VL15_VF : "(NULL)")), useHiddenVF ? "True" : "False",
-		VlSelectMask, VlSelectMaskShared, VFVlSelectMask, status);
-
 	return status;
 }
 FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID lid, uint8 portNum, char *vfName,
@@ -4193,18 +4027,17 @@ FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID lid, uint8 portNum, char *vfName,
 	STL_PA_IMAGE_ID_DATA imageId, uint32 *flagsp, STL_PA_IMAGE_ID_DATA *returnImageId)
 {
 	STL_PA_IMAGE_ID_DATA retImageId = {0};
-	FSTATUS				status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
-	PmPort_t			*pmPortP;
-	PmPortImage_t		*pmPortImageP;
-	const char 			*msg;
-	PmImage_t			*pmImageP;
-	uint32				imageIndex;
-	boolean				sth = 0;
-	PmVF_t				*pmVFP = NULL;
-	int					i, vfIdx = -1;
-	boolean				useHiddenVF = !strcmp(HIDDEN_VL15_VF, vfName);
-	PmHistoryRecord_t	*record = NULL;
-	PmCompositeImage_t	*cimg = NULL;
+	FSTATUS status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
+	PmImage_t *pmImageP = NULL;
+	PmPort_t *pmPortP = NULL;
+	PmPortImage_t *pmPortImageP = NULL;
+	const char *msg;
+	uint32 imageIndex;
+	boolean sth = 0;
+	int vfIdx = -1;
+	boolean useHiddenVF = !strcmp(HIDDEN_VL15_VF, vfName);
+	PmHistoryRecord_t *record = NULL;
+	PmCompositeImage_t *cimg = NULL;
 
 	if (!pm || !vfPortCountersP) {
 		return(FINVALID_PARAMETER);
@@ -4215,16 +4048,20 @@ FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID lid, uint8 portNum, char *vfName,
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	}
 	if (vfName[0] == '\0') {
-		IB_LOG_WARN_FMT(__func__, "Illegal vfName parameter: Empty String\n");
+		IB_LOG_WARN_FMT(__func__, "Illegal vfName parameter: Empty String");
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	}
 	if (!lid) {
 		IB_LOG_WARN_FMT(__func__,  "Illegal LID parameter: must not be zero");
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	}
+	if (!pm_config.process_vl_counters) {
+		IB_LOG_WARN_FMT(__func__, "Processing of VL Counters has been disabled, VF Port Counters query cannot be completed");
+		return(FINVALID_SETTING | STL_MAD_STATUS_STL_PA_NO_DATA);
+	}
 
-	AtomicIncrementVoid(&pm->refCount);	// prevent engine from stopping
-	if (! PmEngineRunning()) {	// see if is already stopped/stopping
+	AtomicIncrementVoid(&pm->refCount); // prevent engine from stopping
+	if (! PmEngineRunning()) {          // see if is already stopped/stopping
 		status = FUNAVAILABLE;
 		goto done;
 	}
@@ -4258,48 +4095,28 @@ FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID lid, uint8 portNum, char *vfName,
 			goto error;
 		}
 
-		if (!useHiddenVF) {
-			for (i = 0; i < MAX_VFABRICS; i++) {
-				if (!strcmp(pm->ShortTermHistory.LoadedImage.VFs[i]->Name, vfName)) {
-					pmVFP = pm->ShortTermHistory.LoadedImage.VFs[i];
-					vfIdx = i;
-					break;
-				}
-			}
-			if (!pmVFP || vfIdx == -1) {
-				IB_LOG_WARN_FMT(__func__, "Unable to Get VF Port Stats %s", "No such VF");
-				status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
-				goto error;
-			}
-			imageIndex = 0; // STH always uses imageIndex 0
-			if (!pmVFP->Image[imageIndex].isActive) {
-				IB_LOG_WARN_FMT(__func__, "VF %.*s not active", (int)sizeof(pmVFP->Name), pmVFP->Name);
-				status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
-				goto error;
-			}
-		}
 		pmImageP = pm->ShortTermHistory.LoadedImage.img;
-		imageIndex = 0;
+		imageIndex = 0; // STH always uses imageIndex 0
 	} else {
-		if (!useHiddenVF) {
-			status = LocateVF(pm, vfName, &pmVFP, 1, imageIndex, &vfIdx);
-			if (status != FSUCCESS || vfIdx == -1) {
-				IB_LOG_WARN_FMT(__func__, "VF %.*s not Found: %s", (int)sizeof(vfName), vfName, FSTATUS_ToString(status));
-				status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
-				goto error;
-			}
-		}
-
 		pmImageP = &pm->Image[imageIndex];
 		(void)vs_rdlock(&pmImageP->imageLock);
 	}
 
+	if (!useHiddenVF) {
+		status = LocateVF(pmImageP, vfName, &vfIdx);
+		if (status != FSUCCESS || vfIdx == -1){
+			IB_LOG_WARN_FMT(__func__, "VF %.*s not Found: %s", (int)sizeof(vfName), vfName, FSTATUS_ToString(status));
+			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
+			goto error;
+		}
+	}
+
 	pmPortP = pm_find_port(pmImageP, lid, portNum);
-	if (! pmPortP) {
+	if (!pmPortP) {
 		IB_LOG_WARN_FMT(__func__, "Port not found: Lid 0x%x Port %u", lid, portNum);
 		status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_PORT;
-		goto unlock;
-	} 
+		goto error;
+	}
 	pmPortImageP = &pmPortP->Image[imageIndex];
 	if (pmPortImageP->u.s.queryStatus != PM_QUERY_STATUS_OK) {
 		IB_LOG_WARN_FMT(__func__, "Port Query Status Not OK: %s: Lid 0x%x Port %u",
@@ -4314,15 +4131,15 @@ FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID lid, uint8 portNum, char *vfName,
 			} else if( pmPortImageP->u.s.queryStatus == PM_QUERY_STATUS_FAIL_QUERY){
 				status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_BAD_DATA;
 			}
-			goto unlock;
+			goto error;
 		}
 	}
 
 	if (userCntrs) {
 		vs_rdlock(&pm->totalsLock);
 		// Get Delta VF PortCounters From PA User Counters
-		status = GetVfPortCounters(vfPortCountersP, pmVFP, useHiddenVF, pmPortImageP,
-			pmPortP->StlVLPortCountersTotal, flagsp);
+		status = GetVfPortCounters(pmImageP, vfPortCountersP, vfIdx, useHiddenVF,
+			pmPortImageP, pmPortP->StlVLPortCountersTotal, flagsp);
 		vs_rwunlock(&pm->totalsLock);
 
 		*flagsp |= STL_PA_PC_FLAG_USER_COUNTERS |
@@ -4334,29 +4151,21 @@ FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID lid, uint8 portNum, char *vfName,
 
 		if (delta) {
 			// Get Delta VF PortCounters From Image's PmImage Counters
-			status = GetVfPortCounters(vfPortCountersP, pmVFP, useHiddenVF, pmPortImageP,
-				pmPortImageP->DeltaStlVLPortCounters, flagsp);
+			status = GetVfPortCounters(pmImageP, vfPortCountersP, vfIdx, useHiddenVF,
+				pmPortImageP, pmPortImageP->DeltaStlVLPortCounters, flagsp);
 			*flagsp |= STL_PA_PC_FLAG_DELTA;
 		} else {
 			// Get VF PortCounters From Image's PmImage Counters
-			status = GetVfPortCounters(vfPortCountersP, pmVFP, useHiddenVF, pmPortImageP,
-				pmPortImageP->StlVLPortCounters, flagsp);
+			status = GetVfPortCounters(pmImageP, vfPortCountersP, vfIdx, useHiddenVF,
+				pmPortImageP, pmPortImageP->StlVLPortCounters, flagsp);
 		}
 		*flagsp |= (pmPortImageP->u.s.UnexpectedClear ? STL_PA_PC_FLAG_UNEXPECTED_CLEAR : 0);
 		*returnImageId = retImageId;
 	}
-
-	if (status == FSUCCESS) {
-		(void)vs_rwunlock(&pm->stateLock);
-	}
-unlock:
-	if (!sth){
-		(void)vs_rwunlock(&pmImageP->imageLock);
-	}
-	if (status != FSUCCESS) {
-		goto error;
-	}
+	if (status != FSUCCESS) goto error;
+	(void)vs_rwunlock(&pm->stateLock);
 done:
+	if (!sth && pmImageP) (void)vs_rwunlock(&pmImageP->imageLock);
 	AtomicDecrementVoid(&pm->refCount);
 	return(status);
 error:
@@ -4367,28 +4176,31 @@ error:
 
 FSTATUS paClearVFPortStats(Pm_t *pm, STL_LID lid, uint8 portNum, STLVlCounterSelectMask select, char *vfName)
 {
-	FSTATUS				status = FSUCCESS;
-	PmImage_t			*pmimagep;
-	uint32				imageIndex;
+	FSTATUS status = FSUCCESS;
+	PmImage_t *pmimagep = NULL;
+	uint32 imageIndex;
+	boolean useHiddenVF = !strcmp(HIDDEN_VL15_VF, vfName);
+	int vfIdx = -1;
 
-	if (!vfName) {
-		return(FINVALID_PARAMETER);
-	}
 	if(!lid) {
-		IB_LOG_WARN_FMT(__func__, "Illegal LID parameter: Must not be zero\n");
+		IB_LOG_WARN_FMT(__func__, "Illegal LID parameter: Must not be zero");
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	}
 	if (!select.AsReg32) {
-		IB_LOG_WARN_FMT(__func__, "Illegal select parameter: Must not be zero\n");
+		IB_LOG_WARN_FMT(__func__, "Illegal select parameter: Must not be zero");
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	}
 	if (vfName[0] == '\0') {
-		IB_LOG_WARN_FMT(__func__, "Illegal vfName parameter: Empty String\n");
+		IB_LOG_WARN_FMT(__func__, "Illegal vfName parameter: Empty String");
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	}
+	if (!pm_config.process_vl_counters) {
+		IB_LOG_WARN_FMT(__func__, "Processing of VL Counters has been disabled, Clear VF Port Counters query cannot be completed");
+		return(FINVALID_SETTING | STL_MAD_STATUS_STL_PA_NO_DATA);
+	}
 
-	AtomicIncrementVoid(&pm->refCount);	// prevent engine from stopping
-	if (! PmEngineRunning()) {	// see if is already stopped/stopping
+	AtomicIncrementVoid(&pm->refCount); // prevent engine from stopping
+	if (! PmEngineRunning()) {          // see if is already stopped/stopping
 		status = FUNAVAILABLE;
 		goto done;
 	}
@@ -4405,6 +4217,15 @@ FSTATUS paClearVFPortStats(Pm_t *pm, STL_LID lid, uint8 portNum, STLVlCounterSel
 	(void)vs_rdlock(&pmimagep->imageLock);
 	(void)vs_rwunlock(&pm->stateLock);
 
+	if (!useHiddenVF) {
+		status = LocateVF(pmimagep, vfName, &vfIdx);
+		if (status != FSUCCESS || vfIdx == -1){
+			IB_LOG_WARN_FMT(__func__, "VF %.*s not Found: %s", (int)sizeof(vfName), vfName, FSTATUS_ToString(status));
+			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
+			goto done;
+		}
+	}
+
 	(void)vs_wrlock(&pm->totalsLock);
 	if (portNum == PM_ALL_PORT_SELECT) {
 		PmNode_t *pmnodep = pm_find_node(pmimagep, lid);
@@ -4412,21 +4233,21 @@ FSTATUS paClearVFPortStats(Pm_t *pm, STL_LID lid, uint8 portNum, STLVlCounterSel
 			IB_LOG_WARN_FMT(__func__, "Switch not found: LID: 0x%x", lid);
 			status = FNOT_FOUND;
 		} else {
-			status = PmClearNodeRunningVFCounters(pmnodep, select, vfName);
+			status = PmClearNodeRunningVFCounters(pmnodep, select, vfIdx, useHiddenVF);
 		}
 	} else {
-		PmPort_t	*pmportp = pm_find_port(pmimagep, lid, portNum);
+		PmPort_t *pmportp = pm_find_port(pmimagep, lid, portNum);
 		if (! pmportp) {
 			IB_LOG_WARN_FMT(__func__, "Port not found: Lid 0x%x Port %u", lid, portNum);
 			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_PORT;
 		} else {
-			status = PmClearPortRunningVFCounters(pmportp, select, vfName);
+			status = PmClearPortRunningVFCounters(pmportp, select, vfIdx, useHiddenVF);
 		}
 	}
 	(void)vs_rwunlock(&pm->totalsLock);
 
-	(void)vs_rwunlock(&pmimagep->imageLock);
 done:
+	if (pmimagep) (void)vs_rwunlock(&pmimagep->imageLock);
 	AtomicDecrementVoid(&pm->refCount);
 	return(status);
 error:
@@ -4492,14 +4313,14 @@ FSTATUS processExtVFFocusPort(Pm_t *pm, PmImage_t *pmimagep, uint32 imageIndex, 
 		pmVFFocusPorts->portList[pmVFFocusPorts->portCntr].rate = PmCalculateRate(pmportp->Image[imageIndex].u.s.activeSpeed, pmportp->Image[imageIndex].u.s.rxActiveWidth);
 		pmVFFocusPorts->portList[pmVFFocusPorts->portCntr].maxVlMtu = pmportp->Image[imageIndex].u.s.mtu;
 		pmVFFocusPorts->portList[pmVFFocusPorts->portCntr].guid = (uint64)(pmportp->pmnodep->NodeGUID);
-		cs_strlcpy(pmVFFocusPorts->portList[pmVFFocusPorts->portCntr].nodeDesc, (char *)pmportp->pmnodep->nodeDesc.NodeString,
+		StringCopy(pmVFFocusPorts->portList[pmVFFocusPorts->portCntr].nodeDesc, (char *)pmportp->pmnodep->nodeDesc.NodeString,
 			sizeof(pmVFFocusPorts->portList[pmVFFocusPorts->portCntr].nodeDesc));
 		if (portNum != 0 && nbrPt != NULL) {
 			pmVFFocusPorts->portList[pmVFFocusPorts->portCntr].neighborStatus = neighborStatus;
 			pmVFFocusPorts->portList[pmVFFocusPorts->portCntr].neighborLid = nbrPt->pmnodep->Image[imageIndex].lid;
 			pmVFFocusPorts->portList[pmVFFocusPorts->portCntr].neighborPortNum = nbrPt->portNum;
 			pmVFFocusPorts->portList[pmVFFocusPorts->portCntr].neighborGuid = (uint64)(nbrPt->pmnodep->NodeGUID);
-			cs_strlcpy(pmVFFocusPorts->portList[pmVFFocusPorts->portCntr].neighborNodeDesc, (char *)nbrPt->pmnodep->nodeDesc.NodeString,
+			StringCopy(pmVFFocusPorts->portList[pmVFFocusPorts->portCntr].neighborNodeDesc, (char *)nbrPt->pmnodep->nodeDesc.NodeString,
 				sizeof(pmVFFocusPorts->portList[pmVFFocusPorts->portCntr].neighborNodeDesc));
 		} else {
 			pmVFFocusPorts->portList[pmVFFocusPorts->portCntr].neighborStatus = neighborStatus;
@@ -4543,18 +4364,20 @@ FSTATUS paGetExtVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocus
 	uint32 start, uint32 range)
 {
 	STL_PA_IMAGE_ID_DATA retImageId = {0};
-	PmVF_t				*pmVFP = NULL;
-	int					vfIdx = -1;
-	STL_LID 			lid;
-	uint32				imageIndex;
-	const char 			*msg;
-	PmImage_t			*pmimagep = NULL;
-	FSTATUS				status = FSUCCESS;
-	boolean 			sth = 0;
-	PmHistoryRecord_t	*record = NULL;
-	PmCompositeImage_t	*cimg = NULL;
-	uint32              allocatedItems = 0;
-	int                 i;
+	int i, vfIdx = -1;
+	STL_LID lid;
+	uint32 imageIndex;
+	const char *msg;
+	PmImage_t *pmimagep = NULL;
+	PmNode_t *pmnodep = NULL;
+	PmPort_t *pmportp = NULL;
+	PmPortImage_t *portImage = NULL;
+	FSTATUS status = FSUCCESS;
+	boolean sth = 0;
+	PmHistoryRecord_t *record = NULL;
+	PmCompositeImage_t *cimg = NULL;
+	uint32 allocatedItems = 0;
+	uint8 portnum;
 
 	// check input parameters
 	if (!pm || !vfName || !pmVFFocusPorts)
@@ -4566,14 +4389,17 @@ FSTATUS paGetExtVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocus
 	if (!range) {
 		IB_LOG_WARN_FMT(__func__, "Illegal range parameter: %d: must be greater than zero\n", range);
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
+	} else if (range > pm_config.subnet_size) {
+		IB_LOG_WARN_FMT(__func__, "Illegal range parameter: Exceeds maxmimum subnet size of %d\n", pm_config.subnet_size);
+		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	}
 
 	// initialize group config port list counts
 	pmVFFocusPorts->NumPorts = 0;
 	pmVFFocusPorts->portList = NULL;
 
-	AtomicIncrementVoid(&pm->refCount);	// prevent engine from stopping
-	if (! PmEngineRunning()) {	// see if is already stopped/stopping
+	AtomicIncrementVoid(&pm->refCount); // prevent engine from stopping
+	if (! PmEngineRunning()) {          // see if is already stopped/stopping
 		status = FUNAVAILABLE;
 		goto done;
 	}
@@ -4586,7 +4412,6 @@ FSTATUS paGetExtVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocus
 	}
 
 	if (record || cimg) {
-		int i;
 		sth = 1;
 		if (record) {
 			status = PmLoadComposite(pm, record, &cimg);
@@ -4603,43 +4428,21 @@ FSTATUS paGetExtVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocus
 			goto error;
 		}
 		pmimagep = pm->ShortTermHistory.LoadedImage.img;
-		for (i = 0; i < MAX_VFABRICS; i++) {
-			if (!strcmp(pm->ShortTermHistory.LoadedImage.VFs[i]->Name, vfName)) {
-				pmVFP = pm->ShortTermHistory.LoadedImage.VFs[i];
-				vfIdx = i;
-				break;
-			}
-		}
-		if (!pmVFP || vfIdx == -1) {
-			IB_LOG_WARN_FMT(__func__, "VF %.*s not Found", (int)sizeof(vfName), vfName);
-			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
-			goto error;
-		}
 		imageIndex = 0; // STH always uses imageIndex 0
-		if (!pmVFP->Image[imageIndex].isActive) {
-			IB_LOG_WARN_FMT(__func__, "VF %.*s not active", (int)sizeof(pmVFP->Name), pmVFP->Name);
-			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
-			goto error;
-		}
 	} else {
-		status = LocateVF(pm, vfName, &pmVFP, 1, imageIndex, &vfIdx);
-		if (status != FSUCCESS || vfIdx == -1) {
-			IB_LOG_WARN_FMT(__func__, "VF %.*s not Found: %s", (int)sizeof(vfName), vfName, FSTATUS_ToString(status));
-			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
-			goto error;
-		}
 		pmimagep = &pm->Image[imageIndex];
 		(void)vs_rdlock(&pmimagep->imageLock);
 	}
 
-	// Grab ImageTime from Pm Image
-	retImageId.imageTime.absoluteTime = (uint32)pmimagep->sweepStart;
-
-	if (range > pm_config.subnet_size) {
-		IB_LOG_WARN_FMT(__func__, "Illegal range parameter: Exceeds maxmimum subnet size of %d\n", pm_config.subnet_size);
-		status = (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
+	status = LocateVF(pmimagep, vfName, &vfIdx);
+	if (status != FSUCCESS || vfIdx == -1){
+		IB_LOG_WARN_FMT(__func__, "VF %.*s not Found: %s", (int)sizeof(vfName), vfName, FSTATUS_ToString(status));
+		status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
 		goto error;
 	}
+
+	// Grab ImageTime from Pm Image
+	retImageId.imageTime.absoluteTime = (uint32)pmimagep->sweepStart;
 
 	if(select == STL_PA_SELECT_UNEXP_CLR_PORT){
 		allocatedItems = pmimagep->UnexpectedClearPorts;
@@ -4652,6 +4455,7 @@ FSTATUS paGetExtVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocus
 	if(allocatedItems == 0) {
 		IB_LOG_WARN_FMT(__func__, "No Matching Records\n");
 		status = FSUCCESS | MAD_STATUS_SA_NO_RECORDS;
+		(void)vs_rwunlock(&pm->stateLock);
 		goto done;
 	}
 
@@ -4663,31 +4467,28 @@ FSTATUS paGetExtVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocus
 	}
 
 	pmVFFocusPorts->NumPorts = allocatedItems;
-	pmVFFocusPorts->portCntr= 0;
-	cs_strlcpy(pmVFFocusPorts->vfName, pmVFP->Name, STL_PM_VFNAMELEN);
+	pmVFFocusPorts->portCntr = 0;
+	StringCopy(pmVFFocusPorts->vfName, vfName, STL_PM_VFNAMELEN);
 
 	(void)vs_rwunlock(&pm->stateLock);
 	for (lid = 1; lid <= pmimagep->maxLid; ++lid) {
-		uint8 portnum;
-		PmNode_t *pmnodep = pmimagep->LidMap[lid];
-
-		if (!pmnodep)
-			continue;
+		pmnodep = pmimagep->LidMap[lid];
+		if (!pmnodep) continue;
 
 		if (pmnodep->nodeType == STL_NODE_SW) {
 			for (portnum = 0; portnum <= pmnodep->numPorts; ++portnum) {
-				PmPort_t *pmportp = pmnodep->up.swPorts[portnum];
-				PmPortImage_t *portImage;
-				if (!pmportp) continue;
+				pmportp = pmnodep->up.swPorts[portnum];
+				if (!pa_valid_port(pmportp, sth)) continue;
 				portImage = &pmportp->Image[imageIndex];
-				if (PmIsPortInVF(pm, pmportp, portImage, pmVFP, vfIdx)) {
+				if (PmIsPortInVF(pmimagep, portImage, vfIdx)) {
 					processExtVFFocusPort(pm, pmimagep, imageIndex, pmportp, portImage, select, pmVFFocusPorts, lid, portnum);
 				}
 			}
 		} else {
-			PmPort_t *pmportp = pmnodep->up.caPortp;
-			PmPortImage_t *portImage = &pmportp->Image[imageIndex];
-			if (PmIsPortInVF(pm, pmportp, portImage, pmVFP, vfIdx)) {
+			pmportp = pmnodep->up.caPortp;
+			if (!pa_valid_port(pmportp, sth)) continue;
+			portImage = &pmportp->Image[imageIndex];
+			if (PmIsPortInVF(pmimagep, portImage, vfIdx)) {
 				processExtVFFocusPort(pm, pmimagep, imageIndex, pmportp, portImage, select, pmVFFocusPorts, lid, pmportp->portNum);
 			}
 		}
@@ -4717,13 +4518,9 @@ FSTATUS paGetExtVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocus
 	*returnImageId = retImageId;
 done:
 #ifndef __VXWORKS__
-	if (sth) {
-		clearLoadedImage(&pm->ShortTermHistory);
-	}
+	if (sth) clearLoadedImage(&pm->ShortTermHistory);
 #endif
-	if (!sth && pmimagep) {
-		(void)vs_rwunlock(&pmimagep->imageLock);
-	}
+	if (!sth && pmimagep) (void)vs_rwunlock(&pmimagep->imageLock);
 	AtomicDecrementVoid(&pm->refCount);
 	return(status);
 error:
@@ -4757,7 +4554,7 @@ FSTATUS addVFSortedPorts(PmVFFocusPorts_t *pmVFFocusPorts, sortInfo_t *sortInfo,
 		pmVFFocusPorts->portList[portCount].maxVlMtu = listp->portp->Image[imageIndex].u.s.mtu;
 		pmVFFocusPorts->portList[portCount].value[0] = listp->value[0];
 		pmVFFocusPorts->portList[portCount].guid = (uint64)(listp->portp->pmnodep->NodeGUID);
-		cs_strlcpy(pmVFFocusPorts->portList[portCount].nodeDesc, (char *)listp->portp->pmnodep->nodeDesc.NodeString,
+		StringCopy(pmVFFocusPorts->portList[portCount].nodeDesc, (char *)listp->portp->pmnodep->nodeDesc.NodeString,
 			sizeof(pmVFFocusPorts->portList[portCount].nodeDesc));
 		if (listp->portNum != 0 && listp->neighborPortp != NULL) {
 			pmVFFocusPorts->portList[portCount].neighborStatus = listp->neighborStatus;
@@ -4765,7 +4562,7 @@ FSTATUS addVFSortedPorts(PmVFFocusPorts_t *pmVFFocusPorts, sortInfo_t *sortInfo,
 			pmVFFocusPorts->portList[portCount].neighborPortNum = listp->neighborPortp->portNum;
 			pmVFFocusPorts->portList[portCount].neighborValue[0] = listp->neighborValue[0];
 			pmVFFocusPorts->portList[portCount].neighborGuid = (uint64)(listp->neighborPortp->pmnodep->NodeGUID);
-			cs_strlcpy(pmVFFocusPorts->portList[portCount].neighborNodeDesc, (char *)listp->neighborPortp->pmnodep->nodeDesc.NodeString,
+			StringCopy(pmVFFocusPorts->portList[portCount].neighborNodeDesc, (char *)listp->neighborPortp->pmnodep->nodeDesc.NodeString,
 				sizeof(pmVFFocusPorts->portList[portCount].neighborNodeDesc));
 		} else {
 			pmVFFocusPorts->portList[portCount].neighborStatus = listp->neighborStatus;
@@ -4787,22 +4584,24 @@ FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocusPor
 	uint32 start, uint32 range)
 {
 	STL_PA_IMAGE_ID_DATA retImageId = {0};
-	PmVF_t				*pmVFP = NULL;
-	int					vfIdx = -1;
-	STL_LID 			lid;
-	uint32				imageIndex, imageInterval;
-	const char 			*msg;
-	PmImage_t			*pmimagep = NULL;
-	FSTATUS				status = FSUCCESS;
-	Status_t			allocStatus;
-	sortInfo_t			sortInfo;
-	ComputeFunc_t		computeFunc = NULL;
-	CompareFunc_t		compareFunc = NULL;
-	CompareFunc_t		candidateFunc = NULL;
-	boolean 			sth = 0;
-	PmHistoryRecord_t	*record = NULL;
-	PmCompositeImage_t	*cimg = NULL;
-	uint32              allocatedItems = 0;
+	int vfIdx = -1;
+	STL_LID lid;
+	uint32 imageIndex, imageInterval;
+	const char *msg;
+	PmImage_t *pmimagep = NULL;
+	PmNode_t *pmnodep = NULL;
+	PmPort_t *pmportp = NULL;
+	PmPortImage_t *portImage = NULL;
+	FSTATUS status = FSUCCESS;
+	Status_t allocStatus;
+	sortInfo_t sortInfo;
+	ComputeFunc_t computeFunc = NULL;
+	CompareFunc_t compareFunc = NULL;
+	CompareFunc_t candidateFunc = NULL;
+	boolean sth = 0;
+	PmHistoryRecord_t *record = NULL;
+	PmCompositeImage_t *cimg = NULL;
+	uint32 allocatedItems = 0;
 
 	memset(&sortInfo, 0, sizeof(sortInfo));
 	void *computeData = NULL;
@@ -4816,6 +4615,9 @@ FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocusPor
 	}
 	if (!range) {
 		IB_LOG_WARN_FMT(__func__, "Illegal range parameter: %d: must be greater than zero\n", range);
+		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
+	} else if (range > pm_config.subnet_size) {
+		IB_LOG_WARN_FMT(__func__, "Illegal range parameter: Exceeds maxmimum subnet size of %d\n", pm_config.subnet_size);
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	}
 	switch (select) {
@@ -4880,8 +4682,8 @@ FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocusPor
 	pmVFFocusPorts->NumPorts = 0;
 	pmVFFocusPorts->portList = NULL;
 
-	AtomicIncrementVoid(&pm->refCount);	// prevent engine from stopping
-	if (! PmEngineRunning()) {	// see if is already stopped/stopping
+	AtomicIncrementVoid(&pm->refCount); // prevent engine from stopping
+	if (! PmEngineRunning()) {          // see if is already stopped/stopping
 		status = FUNAVAILABLE;
 		goto done;
 	}
@@ -4893,7 +4695,6 @@ FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocusPor
 		goto error;
 	}
 	if (record || cimg) {
-		int i;
 		sth = 1;
 		if (record) {
 			status = PmLoadComposite(pm, record, &cimg);
@@ -4910,44 +4711,22 @@ FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocusPor
 			goto error;
 		}
 		pmimagep = pm->ShortTermHistory.LoadedImage.img;
-		for (i = 0; i < MAX_VFABRICS; i++) {
-			if (!strcmp(pm->ShortTermHistory.LoadedImage.VFs[i]->Name, vfName)) {
-				pmVFP = pm->ShortTermHistory.LoadedImage.VFs[i];
-				vfIdx = i;
-				break;
-			}
-		}
-		if (!pmVFP || vfIdx == -1) {
-			IB_LOG_WARN_FMT(__func__, "VF %.*s not Found", (int)sizeof(vfName), vfName);
-			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
-			goto error;
-		}
 		imageIndex = 0; // STH always uses imageIndex 0
-		if (!pmVFP->Image[imageIndex].isActive) {
-			IB_LOG_WARN_FMT(__func__, "VF %.*s not active", (int)sizeof(pmVFP->Name), pmVFP->Name);
-			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
-			goto error;
-		}
 	} else {
-		status = LocateVF(pm, vfName, &pmVFP, 1, imageIndex, &vfIdx);
-		if (status != FSUCCESS || vfIdx == -1) {
-			IB_LOG_WARN_FMT(__func__, "VF %.*s not Found: %s", (int)sizeof(vfName), vfName, FSTATUS_ToString(status));
-			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
-			goto error;
-		}
 		pmimagep = &pm->Image[imageIndex];
 		(void)vs_rdlock(&pmimagep->imageLock);
+	}
+
+	status = LocateVF(pmimagep, vfName, &vfIdx);
+	if (status != FSUCCESS || vfIdx == -1){
+		IB_LOG_WARN_FMT(__func__, "VF %.*s not Found: %s", (int)sizeof(vfName), vfName, FSTATUS_ToString(status));
+		status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
+		goto error;
 	}
 
 	// Grab ImageTime from Pm Image
 	retImageId.imageTime.absoluteTime = (uint32)pmimagep->sweepStart;
 	imageInterval = pmimagep->imageInterval;
-
-	if (range > pm_config.subnet_size) {
-		IB_LOG_WARN_FMT(__func__, "Illegal range parameter: Exceeds maxmimum subnet size of %d\n", pm_config.subnet_size);
-		status = (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
-		goto error;
-	}
 
 	allocatedItems = pmimagep->HFIPorts + pmimagep->SwitchPorts;
 	allocStatus = vs_pool_alloc(&pm_pool, allocatedItems * sizeof(sortedValueEntry_t), (void*)&sortInfo.sortedValueListPool);
@@ -4963,24 +4742,24 @@ FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocusPor
 	(void)vs_rwunlock(&pm->stateLock);
 	for (lid = 1; lid <= pmimagep->maxLid; ++lid) {
 		uint8 portnum;
-		PmNode_t *pmnodep = pmimagep->LidMap[lid];
-		if (!pmnodep)
-			continue;
+		pmnodep = pmimagep->LidMap[lid];
+		if (!pmnodep) continue;
+
 		if (pmnodep->nodeType == STL_NODE_SW) {
 			for (portnum = 0; portnum <= pmnodep->numPorts; ++portnum) {
-				PmPort_t *pmportp = pmnodep->up.swPorts[portnum];
-				PmPortImage_t *portImage;
-				if (!pmportp) continue;
+				pmportp = pmnodep->up.swPorts[portnum];
+				if (!pa_valid_port(pmportp, sth)) continue;
 				portImage = &pmportp->Image[imageIndex];
-				if (PmIsPortInVF(pm, pmportp, portImage, pmVFP, vfIdx)) {
+				if (PmIsPortInVF(pmimagep, portImage, vfIdx)) {
 					processFocusPort(pm, pmimagep, imageIndex, pmportp, portImage, lid, portnum,
 						computeFunc, compareFunc, candidateFunc, computeData, &sortInfo, NULL, 0);
 				}
 			}
 		} else {
-			PmPort_t *pmportp = pmnodep->up.caPortp;
-			PmPortImage_t *portImage = &pmportp->Image[imageIndex];
-			if (PmIsPortInVF(pm, pmportp, portImage, pmVFP, vfIdx)) {
+			pmportp = pmnodep->up.caPortp;
+			if (!pa_valid_port(pmportp, sth)) continue;
+			portImage = &pmportp->Image[imageIndex];
+			if (PmIsPortInVF(pmimagep, portImage, vfIdx)) {
 				processFocusPort(pm, pmimagep, imageIndex, pmportp, portImage, lid, pmportp->portNum,
 					computeFunc, compareFunc, candidateFunc, computeData, &sortInfo, NULL, 0);
 			}
@@ -4994,13 +4773,6 @@ FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocusPor
 	}
 
 	/* trim list */
-
-	if (start >= sortInfo.numValueEntries) {
-		IB_LOG_WARN_FMT(__func__, "Illegal start parameter: Exceeds range of available entries %d\n", sortInfo.numValueEntries);
-		status = (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
-		goto done;
-	}
-
 	sortInfo.numValueEntries = sortInfo.numValueEntries - start;
 
 	if (sortInfo.numValueEntries > 1) {
@@ -5032,25 +4804,21 @@ FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocusPor
 	} else if (sortInfo.numValueEntries == 1)
 		sortInfo.sortedValueListHead = sortInfo.sortedValueListTail;
 
-	cs_strlcpy(pmVFFocusPorts->vfName, pmVFP->Name, STL_PM_VFNAMELEN);
+	StringCopy(pmVFFocusPorts->vfName, vfName, STL_PM_VFNAMELEN);
 	pmVFFocusPorts->NumPorts = sortInfo.numValueEntries;
 	if (pmVFFocusPorts->NumPorts)
 		status = addVFSortedPorts(pmVFFocusPorts, &sortInfo, imageIndex);
 
-        if (status == FSUCCESS)
-                *returnImageId = retImageId;
+	if (status == FSUCCESS){
+		*returnImageId = retImageId;
+	}
 done:
 	if (sortInfo.sortedValueListPool != NULL)
 		vs_pool_free(&pm_pool, sortInfo.sortedValueListPool);
-	if (sth) {
 #ifndef __VXWORKS__
-		clearLoadedImage(&pm->ShortTermHistory);
+	if (sth) clearLoadedImage(&pm->ShortTermHistory);
 #endif
-	}
-
-	if (!sth && pmimagep) {
-		(void)vs_rwunlock(&pmimagep->imageLock);
-	}
+	if (!sth && pmimagep) (void)vs_rwunlock(&pmimagep->imageLock);
 
 	AtomicDecrementVoid(&pm->refCount);
 	return(status);
@@ -5222,75 +4990,26 @@ void freeNodeList(Pm_t *pm, PmImage_t *pmimagep) {
 }	// End of freeNodeList()
 
 // Find Group by name
-static FSTATUS FindPmGroup(Pm_t *pm, PmGroup_t **pmgrouppp, PmGroup_t *sthgroupp) {
-    FSTATUS		ret = FNOT_FOUND;
-	uint32_t	i;
+static FSTATUS FindPmGroup(PmImage_t *pmimagep, PmGroup_t **pmgrouppp, PmGroup_t *sthgroupp) {
+	uint32_t i;
 
-	if (!pmgrouppp) {
-		ret = FINVALID_PARAMETER;
-		goto exit;
-	}
+	if (!pmgrouppp) return FINVALID_PARAMETER;
 
 	*pmgrouppp = NULL;
 	if (sthgroupp) {
-		if (!pm->AllPorts) {
-			ret = FINVALID_PARAMETER;	// Can't reference NULL data
-			goto exit;
-		}
-		if (!strcmp(sthgroupp->Name, pm->AllPorts->Name)) {
-			*pmgrouppp = pm->AllPorts;
-			ret = FSUCCESS;
-			goto exit;
-		}
-		for (i = 0; i < pm->NumGroups; i++) {
-			if (!pm->Groups[i]) {
-				ret = FINVALID_PARAMETER;	// Can't reference NULL data
-				goto exit;
-			}
-			if (!strcmp(sthgroupp->Name, pm->Groups[i]->Name)) {
-				*pmgrouppp = pm->Groups[i];
-				ret = FSUCCESS;
-				goto exit;
+		for (i = 0; i < pmimagep->NumGroups; i++) {
+			if (!strcmp(sthgroupp->Name, pmimagep->Groups[i].Name)) {
+				*pmgrouppp = &pmimagep->Groups[i];
+				return FSUCCESS;
 			}
 		}
 	}
-
-exit:
-	return ret;
-
+	return FNOT_FOUND;
 }	// End of FindPmGroup()
 
-// Find VF by name
-static FSTATUS FindPmVF(Pm_t *pm, PmVF_t **pmvfpp, PmVF_t *sthvfp) {
-    FSTATUS		ret = FNOT_FOUND;
-	uint32_t	i;
-
-	if (!pmvfpp) {
-		ret = FINVALID_PARAMETER;
-		goto exit;
-	}
-
-	*pmvfpp = NULL;
-	if (sthvfp) {
-		for (i = 0; i < pm->numVFs; i++) {
-			if (!pm->VFs[i]) {
-				ret = FINVALID_PARAMETER;	// Can't reference NULL data
-				goto exit;
-			}
-			if (!strcmp(sthvfp->Name, pm->VFs[i]->Name)) {
-				*pmvfpp = pm->VFs[i];
-				ret = FSUCCESS;
-				goto exit;
-			}
-		}
-	}
-exit:
-	return ret;
-
-}	// End of FindPmVF()
 
 // Copy Short Term History Port to PmImage Port
-FSTATUS CopyPortToPmImage(Pm_t *pm, PmNode_t *pmnodep, PmPort_t **pmportpp, PmPort_t *sthportp) {
+FSTATUS CopyPortToPmImage(Pm_t *pm, PmImage_t *pmimagep, PmNode_t *pmnodep, PmPort_t **pmportpp, PmPort_t *sthportp) {
     FSTATUS			ret = FSUCCESS;
 	uint32_t		i, j;
 	PmPort_t		*pmportp = NULL;
@@ -5340,13 +5059,13 @@ FSTATUS CopyPortToPmImage(Pm_t *pm, PmNode_t *pmnodep, PmPort_t **pmportpp, PmPo
 	memset(&pmportimgp->Groups, 0, sizeof(PmGroup_t *) * PM_MAX_GROUPS_PER_PORT);
 #if PM_COMPRESS_GROUPS
 	pmportimgp->numGroups = 0;
-	for (j = 0, i=0; i < sthportimgp->numGroups; i++)
+	for (j = 0, i = 0; i < sthportimgp->numGroups; i++)
 #else
-	for (j = 0, i=0; i<PM_MAX_GROUPS_PER_PORT; i++)
+	for (j = 0, i = 0; i < PM_MAX_GROUPS_PER_PORT; i++)
 #endif
 	{
 		if (!sthportimgp->Groups[i]) continue;
-		ret = FindPmGroup(pm, &pmportimgp->Groups[j], sthportimgp->Groups[i]);
+		ret = FindPmGroup(pmimagep, &pmportimgp->Groups[j], sthportimgp->Groups[i]);
 		if (ret == FSUCCESS) {
 			j++;
 		} else if (ret == FNOT_FOUND) {
@@ -5362,21 +5081,7 @@ FSTATUS CopyPortToPmImage(Pm_t *pm, PmNode_t *pmnodep, PmPort_t **pmportpp, PmPo
 #endif
 
 	// Copy port image VF groups
-	memset(&pmportimgp->vfvlmap, 0, sizeof(vfmap_t) * MAX_VFABRICS);
-	for (j = 0, i = 0; i < sthportimgp->numVFs; i++) {
-		if (!sthportimgp->vfvlmap[i].pVF) continue;
-		ret = FindPmVF(pm, &pmportimgp->vfvlmap[j].pVF, sthportimgp->vfvlmap[i].pVF);
-		if (ret == FSUCCESS) {
-			pmportimgp->vfvlmap[j].vlmask = sthportimgp->vfvlmap[i].vlmask;
-			j++;
-		} else if (ret == FNOT_FOUND) {
-			IB_LOG_ERROR_FMT(__func__, "Virtual Fabric not found: %s", sthportimgp->vfvlmap[i].pVF->Name);
-			ret = FSUCCESS;
-		} else {
-			IB_LOG_ERROR_FMT(__func__, "Error in Port Image VF:%d", ret);
-			goto exit_dealloc;
-		}
-	}
+	memcpy(pmportimgp->vfvlmap, sthportimgp->vfvlmap, sizeof(vfmap_t) * MAX_VFABRICS);
 
 	goto exit;
 
@@ -5392,7 +5097,7 @@ exit:
 }	// End of CopyPortToPmImage()
 
 // Copy Short Term History Node to PmImage Node
-FSTATUS CopyNodeToPmImage(Pm_t *pm, STL_LID lid, PmNode_t **pmnodepp, PmNode_t *sthnodep) {
+FSTATUS CopyNodeToPmImage(Pm_t *pm, PmImage_t *pmimagep, STL_LID lid, PmNode_t **pmnodepp, PmNode_t *sthnodep) {
     FSTATUS		ret = FSUCCESS;
 	Status_t	rc;
 	uint32_t	i;
@@ -5435,10 +5140,10 @@ FSTATUS CopyNodeToPmImage(Pm_t *pm, STL_LID lid, PmNode_t **pmnodepp, PmNode_t *
 		pmnodep->SystemImageGUID = sthnodep->SystemImageGUID;
 		cl_map_item_t *mi;
     	mi = cl_qmap_insert(&pm->AllNodes, guid, &pmnodep->AllNodesEntry);
-   		if (mi != &pmnodep->AllNodesEntry) {
-        		IB_LOG_ERRORLX("duplicate Node for portGuid", guid);
-        		goto exit_dealloc;
-    	}
+		if (mi != &pmnodep->AllNodesEntry) {
+			IB_LOG_ERRORLX("duplicate Node for portGuid", guid);
+			goto exit_dealloc;
+		}
 	}
 	pmnodep->nodeDesc = sthnodep->nodeDesc;
 	pmnodep->changed_count = pm->SweepIndex;
@@ -5461,14 +5166,14 @@ FSTATUS CopyNodeToPmImage(Pm_t *pm, STL_LID lid, PmNode_t **pmnodepp, PmNode_t *
 			MemoryClear(pmnodep->up.swPorts, sizeof(PmPort_t *) * (pmnodep->numPorts + 1));
 		}
 		for (i = 0; i <= pmnodep->numPorts; i++) {
-			ret = CopyPortToPmImage(pm, pmnodep, &pmnodep->up.swPorts[i], sthnodep ? sthnodep->up.swPorts[i] : NULL);
+			ret = CopyPortToPmImage(pm, pmimagep, pmnodep, &pmnodep->up.swPorts[i], sthnodep ? sthnodep->up.swPorts[i] : NULL);
 			if (ret != FSUCCESS) {
 				IB_LOG_ERROR_FMT(__func__, "Error in Port Copy:%d", ret);
 				goto exit_dealloc;
 			}
 		}
 	} else {
-		ret = CopyPortToPmImage(pm, pmnodep, &pmnodep->up.caPortp, sthnodep ? sthnodep->up.caPortp : NULL);
+		ret = CopyPortToPmImage(pm, pmimagep, pmnodep, &pmnodep->up.caPortp, sthnodep ? sthnodep->up.caPortp : NULL);
 		if (ret != FSUCCESS) {
 			IB_LOG_ERROR_FMT(__func__, "Error in Port Copy:%d", ret);
 			goto exit_dealloc;
@@ -5518,7 +5223,9 @@ FSTATUS CopyToPmImage(Pm_t *pm, PmImage_t *pmimagep, PmImage_t *sthimagep) {
 	// retain PmImage lock 
     orgImageLock = pmimagep->imageLock;
 
+	// Shallow Copy (includes VF/PmPortGroup data)
 	*pmimagep = *sthimagep;
+
 	pmimagep->LidMap = NULL;
 	rc = vs_pool_alloc(&pm_pool, sizeof(PmNode_t *) * (pmimagep->maxLid + 1), (void *)&pmimagep->LidMap);
 	if (rc != VSTATUS_OK || !pmimagep->LidMap) {
@@ -5528,7 +5235,7 @@ FSTATUS CopyToPmImage(Pm_t *pm, PmImage_t *pmimagep, PmImage_t *sthimagep) {
 	}
 	MemoryClear(pmimagep->LidMap, sizeof(PmNode_t *) * (pmimagep->maxLid + 1));
 	for (i = 1; i <= pmimagep->maxLid; i++) {
-		ret = CopyNodeToPmImage(pm, i, &pmimagep->LidMap[i], sthimagep->LidMap[i]);
+		ret = CopyNodeToPmImage(pm, pmimagep, i, &pmimagep->LidMap[i], sthimagep->LidMap[i]);
 		if (ret != FSUCCESS) {
 			IB_LOG_ERROR_FMT(__func__, "Error in Node Copy:%d", ret);
 			goto exit_dealloc;
@@ -5567,9 +5274,6 @@ FSTATUS PmReintegrate(Pm_t *pm, PmShortTermHistory_t *sth) {
     FSTATUS		ret = FSUCCESS;
 	PmImage_t	*pmimagep;
 	PmImage_t	*sthimagep;
-	PmGroup_t	*pmgroupp;
-	PmVF_t		*pmvfp;
-	uint32_t	i;
 
 	pmimagep = &pm->Image[pm->SweepIndex];
 	sthimagep = sth->LoadedImage.img;
@@ -5583,30 +5287,6 @@ FSTATUS PmReintegrate(Pm_t *pm, PmShortTermHistory_t *sth) {
 
 	freeNodeList(pm, pmimagep);	// Free old Node List (LidMap) if present
 
-	// Copy *LoadedImage.AllGroup
-	pm->AllPorts->Image[pm->SweepIndex] = sth->LoadedImage.AllGroup->Image[0];
-
-	// Copy *LoadedImage.Groups[]
-	for (i = 0; i < PM_MAX_GROUPS; i++) {
-		if (sth->LoadedImage.Groups[i]) {
-			ret = FindPmGroup(pm, &pmgroupp, sth->LoadedImage.Groups[i]);
-			if (ret == FSUCCESS) {
-				pmgroupp->Image[pm->SweepIndex] = sth->LoadedImage.Groups[i]->Image[0];
-			}
-		}
-	}
-
-	// Copy *LoadedImage.VFs[]
-	for (i = 0; i < MAX_VFABRICS; i++) {
-		if (sth->LoadedImage.VFs[i]) {
-			ret = FindPmVF(pm, &pmvfp, sth->LoadedImage.VFs[i]);
-			if (ret == FSUCCESS) {
-				pmvfp->Image[pm->SweepIndex] = sth->LoadedImage.VFs[i]->Image[0];
-			}
-		}
-	}
-
-	// Copy *LoadedImage.img
 	ret = CopyToPmImage(pm, pmimagep, sthimagep);
 	if (ret != FSUCCESS) {
 		IB_LOG_ERROR_FMT(__func__, "Error in Image Copy:%d", ret);

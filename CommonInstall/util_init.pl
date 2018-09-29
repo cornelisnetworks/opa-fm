@@ -46,15 +46,30 @@ my $exit_code=0;
 
 my $Force_Install = 0;# force option used to force install on unsupported distro
 my $GPU_Install = 0;
+my $HFI2_INSTALL = 0; # indicate whether we shall install HFI2
+# When --user-space is selected we are targeting a user space container for
+# installation and will skip kernel modules and firmware
+my $user_space_only = 0; # can be set to 1 by --user-space argument
 
-# some options specific to OFED builds
+# some options specific to OFA builds
 my $OFED_force_rebuild=0;
-my $OFED_kernel_configure_options="";
 my $OFED_prefix="/usr";
-my $OFED_debug = 0;	# if 1 build a debug version of modules
 
 my $CUR_OS_VER = `uname -r`;
 chomp $CUR_OS_VER;
+
+# related to HFI2_INSTALL. The following code is introduced to help us check b-s-m kernel for HFI2.
+# After we merge HFI2 into ifs-kernel-updates, we shall remove the following.
+my $CUR_OS_VER_SHORT = '';
+if ($CUR_OS_VER =~ /([0-9]+\.[0-9]+)/ ) {
+	$CUR_OS_VER_SHORT=$1;
+} else {
+	die "\n\nKernel version \"${CUR_OS_VER}\" doesn't have an extractable major/minor version!\n\n";
+}
+
+my $RPMS_SUBDIR = "RPMS";
+my $SRPMS_SUBDIR = "SRPMS";
+
 # firmware and data files
 my $OLD_BASE_DIR = "/etc/sysconfig/opa";
 my $BASE_DIR = "/etc/opa";
@@ -89,6 +104,10 @@ my $RPM = "/bin/rpm";
 
 # a few key commands to verify exist
 my @verify_cmds = ( "uname", "mv", "cp", "rm", "ln", "cmp", "yes", "echo", "sed", "chmod", "chown", "chgrp", "mkdir", "rmdir", "grep", "diff", "awk", "find", "xargs", "sort", "chroot");
+
+# opa-scripts expects the following env vars to be 0 or 1. We set them to the default value here
+setup_env("OPA_INSTALL_CALLER", 0);
+default_opascripts_env_vars();
 
 sub Abort(@);
 sub NormalPrint(@);
@@ -284,21 +303,39 @@ sub determine_os_version()
 {
 	# we use the current system to select the distribution
 	# TBD we expect client image for diskless client install to have these files
-	if ( -e "/etc/redhat-release" && !(-l "/etc/redhat-release") ) 
-	{
+	my $os_release_file = "/etc/os-release";
+	if ( -e "/etc/redhat-release" && !(-l "/etc/redhat-release") ) {
 		$CUR_DISTRO_VENDOR = "redhat";
 	} elsif ( -s "/etc/centos-release" ) {
 		$CUR_DISTRO_VENDOR = "redhat";
-	} elsif ( -s "/etc/UnitedLinux-release" ) {          
+	} elsif ( -s "/etc/UnitedLinux-release" ) {
 		$CUR_DISTRO_VENDOR = "UnitedLinux";
 		$NETWORK_CONF_DIR = "/etc/sysconfig/network";
-	} elsif ( -s "/etc/SuSE-release" ) {          
+	} elsif ( -s "/etc/SuSE-release" ) {
 		$CUR_DISTRO_VENDOR = "SuSE";
 		$NETWORK_CONF_DIR = "/etc/sysconfig/network";
 	} elsif ( -e "/usr/bin/lsb_release" ) {
 		$CUR_DISTRO_VENDOR = `/usr/bin/lsb_release -is`;
 		chop($CUR_DISTRO_VENDOR);
-		$CUR_DISTRO_VENDOR = lc($CUR_DISTRO_VENDOR); 
+		$CUR_DISTRO_VENDOR = lc($CUR_DISTRO_VENDOR);
+		if ($CUR_DISTRO_VENDOR eq "suse") {
+			$CUR_DISTRO_VENDOR = "SuSE";
+		}
+	} elsif ( -e $os_release_file) {
+		my %distroVendor = (
+			"rhel" => "redhat",
+			"centos" => "redhat",
+			"sles" => "SuSE"
+		);
+		my %network_conf_dir  = (
+			"rhel" => $NETWORK_CONF_DIR,
+			"centos" => $NETWORK_CONF_DIR,
+			"sles" => "/etc/sysconfig/network"
+		);
+		my $os_id = `cat $os_release_file | grep '^ID=' | cut -d'=' -f2 | tr -d [\\"\\.0] | tr -d ["\n"]`;
+		$CUR_DISTRO_VENDOR = $distroVendor{$os_id};
+		$NETWORK_CONF_DIR = $network_conf_dir{$os_id};
+		print "Current Distro: $CUR_DISTRO_VENDOR\n";
 	} else {
 		# autodetermine the distribution
 		open DISTRO_VENDOR, "ls /etc/*-release|grep -v lsb\|^os 2>/dev/null |"
@@ -315,7 +352,7 @@ sub determine_os_version()
 		}
 		close DISTRO_VENDOR;
 		if ( $CUR_DISTRO_VENDOR eq "" )
-		{            
+		{
 			NormalPrint "Unable to determine current Linux distribution.\n";
 			Abort "Please contact your support representative...\n";
 		} elsif ($CUR_DISTRO_VENDOR eq "SuSE") {
@@ -324,7 +361,6 @@ sub determine_os_version()
 			$CUR_DISTRO_VENDOR = "redhat";
 		}
 	}
-
 	$CUR_VENDOR_VER = os_vendor_version($CUR_DISTRO_VENDOR);
 	$CUR_VENDOR_MAJOR_VER = $CUR_VENDOR_VER;
 	$CUR_VENDOR_MAJOR_VER =~ s/\..*//;	# remove any . version suffix
@@ -400,6 +436,31 @@ sub verify_distrib_files
 			Abort "Please contact your support representative...\n";
 		}
 	}
+}
+
+# set the env vars to their default value, when the first we install opa-scripts, we will have proper configs
+sub default_opascripts_env_vars()
+{
+	setup_env("OPA_UDEV_RULES", 1);
+	setup_env("OPA_LIMITS_CONF", 1);
+	setup_env("OPA_ARPTABLE_TUNING", 1);
+	setup_env("OPA_SRP_LOAD", 0);
+	setup_env("OPA_SRPT_LOAD", 0);
+	setup_env("OPA_IRQBALANCE", 1);
+}
+
+# set the env vars for ALL opa-scripts system env variables. Use this subroutine with caution because it will set ALL
+# the env vars. The typical use case for the routine is seting all vars to -1, so opa-scripts will skip config on them.
+# This is useful when we intend to keep previous conf.
+sub set_opascript_env_vars($)
+{
+    my $env_value = shift();
+	setup_env("OPA_UDEV_RULES", $env_value);
+	setup_env("OPA_LIMITS_CONF", $env_value);
+	setup_env("OPA_ARPTABLE_TUNING", $env_value);
+	setup_env("OPA_SRP_LOAD", $env_value);
+	setup_env("OPA_SRPT_LOAD", $env_value);
+	setup_env("OPA_IRQBALANCE", $env_value);
 }
 
 # this will be replaced in component specific INSTALL with any special

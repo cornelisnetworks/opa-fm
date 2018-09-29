@@ -276,8 +276,8 @@ void hexout(uint8_t *cmd, int cc) {
 	tcnt = 0;
 	fprintf(stderr, "-----------------\n");
 	while(cc) {
-		cs_strlcpy(astr, "[................]", sizeof(hstr));
-		cs_strlcpy(hstr, "", sizeof(astr));
+		StringCopy(astr, "[................]", sizeof(hstr));
+		StringCopy(hstr, "", sizeof(astr));
 		
 		j = 0;
 		for(i=0;i<16 && cc>0;i++){

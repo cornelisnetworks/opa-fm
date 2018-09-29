@@ -1185,6 +1185,7 @@ FSTATUS FindCabinfLenPatPoint(FabricData_t *fabricp, const char* pattern, Point 
 {
 	FSTATUS status;
 	char *cur, scrubbed_pat[strlen(pattern) + 1];
+	char cablen_str[10] = {0}; // strlen("255") + 1 = 4
 
 	ASSERT(! PointValid(pPoint));
 	if (0 == (find_flag & FIND_FLAG_FABRIC))
@@ -1203,8 +1204,9 @@ FSTATUS FindCabinfLenPatPoint(FabricData_t *fabricp, const char* pattern, Point 
 			PortData *portp = (PortData *)QListObj(p);
 			STL_CABLE_INFO_STD *pCableInfo;
 			STL_CABLE_INFO_UP0_DD *pCableInfoDD;
-			uint8 xmit_tech;
+			CableTypeInfoType cableTypeInfo;
 			boolean qsfp_dd;
+			boolean cableLenValid;
 
 			pCableInfo = (STL_CABLE_INFO_STD *)portp->pCableInfoData;
 			if (!pCableInfo)
@@ -1212,38 +1214,34 @@ FSTATUS FindCabinfLenPatPoint(FabricData_t *fabricp, const char* pattern, Point 
 			pCableInfoDD = (STL_CABLE_INFO_UP0_DD *)portp->pCableInfoData;
 			qsfp_dd = (portp->pCableInfoData[0] == STL_CIB_STD_QSFP_DD);
 
+
+
 			if (!qsfp_dd) {
-				xmit_tech = pCableInfo->dev_tech.s.xmit_tech;
-				if ( ( ( (xmit_tech <= STL_CIB_STD_TXTECH_1490_DFB) &&
-						(xmit_tech != STL_CIB_STD_TXTECH_OTHER) &&
-						(pCableInfo->connector == STL_CIB_STD_CONNECTOR_NO_SEP) ) ||
-						(xmit_tech >= STL_CIB_STD_TXTECH_CU_UNEQ) )) {
-					char cablen_str[4] = {0}; // strlen("255") + 1 = 4
+				StlCableInfoDecodeCableType(pCableInfo->dev_tech.s.xmit_tech, pCableInfo->connector, pCableInfo->ident, &cableTypeInfo);
+				cableLenValid = cableTypeInfo.cableLengthValid;
 
-					snprintf(cablen_str, sizeof(cablen_str), "%u", pCableInfo->len_om4);
-					if (fnmatch(scrubbed_pat, cablen_str, 0) != 0)
-						continue;
+				StlCableInfoOM4LengthToText(pCableInfo->len_om4, cableLenValid, sizeof(cablen_str), cablen_str);
+				if (NULL != (cur = strchr(cablen_str, 'm')))
+					*cur = '\0';
+				if (fnmatch(scrubbed_pat, cablen_str, 0) != 0)
+					continue;
 
-					status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
-					if (FSUCCESS != status)
-						return status;
-				}
+				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+				if (FSUCCESS != status)
+					return status;
 			} else {
-				xmit_tech = pCableInfoDD->cable_type;
-				if ( ( ( (xmit_tech <= STL_CIB_STD_TXTECH_1490_DFB) &&
-						(xmit_tech != STL_CIB_STD_TXTECH_OTHER) &&
-						(pCableInfoDD->connector == STL_CIB_STD_CONNECTOR_NO_SEP) ) ||
-						(xmit_tech >= STL_CIB_STD_TXTECH_CU_UNEQ) )) {
-					char cablen_str[16] = {0};  // can have decimal places
+				StlCableInfoDecodeCableType(pCableInfoDD->cable_type, pCableInfoDD->connector, pCableInfoDD->ident, &cableTypeInfo);
+				cableLenValid = cableTypeInfo.cableLengthValid;
 
-					StlCableInfoDDCableLengthToText(pCableInfoDD->cableLengthEnc, sizeof(cablen_str), cablen_str);
-					if (fnmatch(scrubbed_pat, cablen_str, 0) != 0)
-						continue;
+				StlCableInfoDDCableLengthToText(pCableInfoDD->cableLengthEnc, cableLenValid, sizeof(cablen_str), cablen_str);
+				if (NULL != (cur = strchr(cablen_str, 'm')))
+					*cur = '\0';
+				if (fnmatch(scrubbed_pat, cablen_str, 0) != 0)
+					continue;
 
-					status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
-					if (FSUCCESS != status)
-						return status;
-				}
+				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+				if (FSUCCESS != status)
+					return status;
 			}
 		}
 	}

@@ -1283,7 +1283,7 @@ size_t CalculatePortInPacket(PmDispatcherNode_t *dispnode, PmDispatcherPacket_t 
 	case PM_DISP_NODE_CLASS_INFO:                return(-1);
 	case PM_DISP_NODE_GET_DATACOUNTERS:
 		if (pm_config.process_vl_counters) {
-			if (!disppacket->numVLs)
+			if (!disppacket->numPorts)		/* First port should set the numVLs */
 				disppacket->numVLs = dispnode->info.nextPort->NumVLs;
 			NumVLs = disppacket->numVLs;
 		}
@@ -1298,7 +1298,7 @@ size_t CalculatePortInPacket(PmDispatcherNode_t *dispnode, PmDispatcherPacket_t 
 		}
 	case PM_DISP_NODE_GET_ERRORCOUNTERS:
 		if (pm_config.process_vl_counters) {
-			if (!disppacket->numVLs)
+			if (!disppacket->numPorts)		/* First port should set the numVLs */
 				disppacket->numVLs = dispnode->info.nextPort->NumVLs;
 			NumVLs = disppacket->numVLs;
 		}

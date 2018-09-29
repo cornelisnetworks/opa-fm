@@ -367,7 +367,7 @@ sa_McMemberRecord_Set(Topology_t *topop, Mai_t *maip, uint32_t *records)
 
 	// The locks are already held when we are passed a topology.
 	if (!topop) {
-		(void)vs_wrlock(&old_topology_lock); 
+		(void)vs_rdlock(&old_topology_lock); 
 		(void)vs_lock(&sm_McGroups_lock);
 		got_old_topology_lock = TRUE;
 		topop = &old_topology;
@@ -1278,7 +1278,7 @@ sa_McMemberRecord_Delete(Topology_t *topop, Mai_t *maip, uint32_t *records)
 
 	if (!topop) {
 		topop = &old_topology;
-		(void)vs_wrlock(&old_topology_lock);
+		(void)vs_rdlock(&old_topology_lock);
 		got_old_topology_lock = TRUE;
 	}
 

@@ -127,7 +127,7 @@ cp $CONFIG_FILE $dumpLocation
 echo "Copying FM core dumps..."
 did_default=n
 did_core_copy=n
-for dir in /var/crash/opafm $($OPA_FM_BASE/bin/opaxmlextract -H -e CoreDumpDir < $CONFIG_FILE 2>/dev/null|sort -u)
+for dir in /var/crash/opafm $($OPA_FM_BASE/bin/opafmxmlextract -H -e CoreDumpDir < $CONFIG_FILE 2>/dev/null|sort -u)
 do
 	if [ -d $dir ]
 	then
@@ -193,7 +193,7 @@ fi
 if [ $did_core_copy == n ]
 then
 	echo "No core dumps present in default location, /var/crash/opafm"
-	echo "No core dumps present in opafm.xml specified location, $($OPA_FM_BASE/etc/opaxmlextract -H -e CoreDumpDir < $CONFIG_FILE 2>/dev/null|sort -u) "
+	echo "No core dumps present in opafm.xml specified location, $($OPA_FM_BASE/etc/opafmxmlextract -H -e CoreDumpDir < $CONFIG_FILE 2>/dev/null|sort -u) "
 	if [ -d ${core_path%/*} ]
 	then
 		echo "No core dumps present in $core_path"

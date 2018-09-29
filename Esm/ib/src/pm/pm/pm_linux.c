@@ -390,11 +390,11 @@ pm_initialize_config(void)
 	// translate sm_env ("sm_#") to pm_env_str ("pm_#")
 	// we use this to identify our instance and hence which Fm section of config
 	memset (pm_env_str, 0, sizeof(pm_env_str));
-	cs_strlcpy ((void *)pm_env_str, (void*)sm_env,sizeof(pm_env_str));
+	StringCopy ((void *)pm_env_str, (void*)sm_env,sizeof(pm_env_str));
 	pm_env_str[0]='p';
 
 	// -X option information comes from sm's -X option
-	cs_strlcpy(pm_config_filename, sm_config_filename, sizeof(pm_config_filename));
+	StringCopy(pm_config_filename, sm_config_filename, sizeof(pm_config_filename));
 	
     //
     //	Get the environment variables before applying the command line overrides.

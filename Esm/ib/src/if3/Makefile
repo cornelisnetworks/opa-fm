@@ -126,7 +126,7 @@ endif
 ifeq "$(BUILD_TARGET)" "ATOM"
 CLOCAL = -DADAPTOS -DADAPTOS_VXWORKS -DTF1_INCLUDE_X509 -DOPENSSL_NO_ENGINE
 #add include for config_compression which is in Xml directory
-CLOCAL += -I$(TL_DIR)/Xml -I$(TGT_DIR)/components/ip_net2-6.9/ipcrypto/openssl-1_0_1/include -I$(TGT_DIR)/components/ip_net2-6.9/ipssl2/openssl-1_0_1/include/openssl -I$(TGT_DIR)/components/ip_net2-6.9/ipssl2/openssl-1_0_1/include -I$(TGT_DIR)/components/ip_net2-6.9/ipcrypto/openssl-1_0_1/ -I$(TGT_DIR)/components/ip_net2-6.9/ipcrypto/include -I$(TGT_DIR)/components/ip_net2-6.9/ipcrypto/config/
+CLOCAL += -I$(TL_DIR)/Xml -I$(TGT_DIR)/components/ip_net2-6.9/ipcrypto/$(OPENSSL_VER)/include -I$(TGT_DIR)/components/ip_net2-6.9/ipssl2/$(OPENSSL_VER)/include/openssl -I$(TGT_DIR)/components/ip_net2-6.9/ipssl2/$(OPENSSL_VER)/include -I$(TGT_DIR)/components/ip_net2-6.9/ipcrypto/$(OPENSSL_VER)/ -I$(TGT_DIR)/components/ip_net2-6.9/ipcrypto/include -I$(TGT_DIR)/components/ip_net2-6.9/ipcrypto/config/
 else
 ifeq ($(BUILD_TARGET_OS),VXWORKS)
 CLOCAL = -DOPENSSL_NO_IDEA -DADAPTOS -DADAPTOS_VXWORKS -DTF1_INCLUDE_X509 -DOPENSSL_NO_ENGINE

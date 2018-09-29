@@ -202,6 +202,16 @@ then
 fi
 
 echo "---------------------------------------"
+# Import OPA Build feature settings.
+export OPA_FEATURE_SET=${OPA_FEATURE_SET:-$(cat $TL_DIR/$PROJ_FILE_DIR/DEFAULT_OPA_FEATURE_SET)}
+FEATURE_SETTINGS_FILE=opa_feature_settings.${PRODUCT}.$BUILD_CONFIG
+$TL_DIR/OpaBuildFeatureToggles/opa_build_import_feature_settings.sh
+if [ -e ./$FEATURE_SETTINGS_FILE ]; then
+	. ./$FEATURE_SETTINGS_FILE
+else
+	echo "$0: ERROR: OPA BUILD - $FEATURE_SETTINGS_FILE not found" >&2
+	exit 1
+fi
 showenv
 echo "---------------------------------------"
 
@@ -247,8 +257,24 @@ fi
 
 rm -rf $TL_DIR/$PROJ_FILE_DIR/packaged_files $TL_DIR/$PROJ_FILE_DIR/dist_files $TL_DIR/buildFeatureDefs
 
+
 # make sure buildFeatureDefs is in place for the build
-make -f Makefile.linux $TL_DIR/buildFeatureDefs
+make -f Makefile.linux $TL_DIR/buildFeatureDefs || exit 1
+
+# make sure opafm_src.xml is in place for the build
+(cd ib/src/linux/startup;make opafm_src.xml) || exit 1
+
+# make sure files from BaseFiles are in place
+while read comp fn
+do
+	if [ "$comp" != "HFM" ]
+	then
+		continue
+	fi
+	dir=$(dirname $fn)
+	bn=$(basename $fn)
+	(cd $TL_DIR/$dir;make $bn) || exit 1
+done < $TL_DIR/Fd/BaseFiles
 
 args=
 if [ "$inplace" = y ]
@@ -296,8 +322,8 @@ then
 
 		# Update the spec file
 		cp opa-fm.spec.base opa-fm.spec
-		sed -i "s/^Version:.*/Version: ${RPM_VER}/g" opa-fm.spec
-		sed -i "s/^Release:.*/Release: ${RPM_REL}%{?dist}/g" opa-fm.spec
+		sed -i "s/__RPM_VERSION/${RPM_VER}/g" opa-fm.spec
+		sed -i "s/__RPM_RELEASE/${RPM_REL}%{?dist}/g" opa-fm.spec
 		# update distro dependencies
 		./update_opa-fm_spec.sh
 		mv opa-fm.spec $RPMDIR/SPECS/
@@ -309,7 +335,8 @@ then
 			"$USE_UNIFDEF" \
 			"$RPMDIR/SOURCES/opa-fm.tar.gz" \
 			"$FILES_TO_TAR" \
-			" -X tar_exc_pattern --transform=s,$PROJ_FILE_DIR/debian,debian," \
+			" -X tar_exc_pattern " \
+			"--transform=s,$PROJ_FILE_DIR/debian,debian," \
 		|| exit 1
 		(
 			export BUILD_ARGS="$args"
@@ -329,7 +356,8 @@ then
 			"$USE_UNIFDEF" \
 			"$OPAFM_SOURCE_TARBALL" \
 			"$FILES_TO_TAR" \
-			" -X tar_exc_pattern --transform=s,$PROJ_FILE_DIR/debian,debian," \
+			" -X tar_exc_pattern " \
+			" --transform=s,$PROJ_FILE_DIR/debian,debian," \
 		|| exit 1
 		(
 			OPAFM_DIR="$RPMDIR/build/opa-fm-$RPM_VER"
@@ -346,6 +374,7 @@ then
 		) || exit 1
 	fi
 	make final_package
+	echo "$TL_DIR/$PROJ_FILE_DIR/$FEATURE_SETTINGS_FILE" >> packaged_files
 fi
 
 exit 0

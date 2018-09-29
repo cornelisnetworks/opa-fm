@@ -1066,6 +1066,7 @@ FSTATUS WalkMCRoute(FabricData_t *fabricp, McGroupData *mcgroupp, PortData *port
 	ListItemInitState(&pMcNodeLoopIncR->McNodeEntry);
 	pMcNodeLoopIncR->pPort = portp;
 	pMcNodeLoopIncR->entryPort = EntryPort;
+	pMcNodeLoopIncR->exitPort = 0;
 
 	QListSetObj(&pMcNodeLoopIncR->McNodeEntry, pMcNodeLoopIncR);
 	QListInsertTail(&pMcLoopInc->AllMcNodeLoopIncR , &pMcNodeLoopIncR->McNodeEntry);
@@ -1217,7 +1218,7 @@ FSTATUS WalkMCRoute(FabricData_t *fabricp, McGroupData *mcgroupp, PortData *port
 				(*pathCount)++;
 				return FUNAVAILABLE;
 			}
-			Port_res = (1<< (ix_port % STL_PORT_MASK_WIDTH)) & *pp;/// this must be compatible with 4 columns of 64 bits each
+			Port_res = ((uint64_t)1<< (ix_port % STL_PORT_MASK_WIDTH)) & *pp;/// this must be compatible with 4 columns of 64 bits each
 			if (Port_res != 0) { //matching port
 				pMcNodeLoopIncR->exitPort = ix_port; // save exit port
 				if (ix_port == 0) {
@@ -1249,8 +1250,6 @@ FSTATUS WalkMCRoute(FabricData_t *fabricp, McGroupData *mcgroupp, PortData *port
 			} // end of there is a match
 		}// end of entry port != exit port
 	} // end for looking for next port
-	portp->nodep->switchp->HasBeenVisited = 0;
-	//free record
 	QListRemoveTail(&pMcLoopInc->AllMcNodeLoopIncR);
 
 	return status;
@@ -1264,7 +1263,7 @@ FSTATUS ValidateMCRoutes(FabricData_t *fabricp, McGroupData *mcgroupp,
 
 	SwitchData *switchp;
 	PortData *portp1;
-
+	LIST_ITEM *n1;
 	portp1 = swp->pPort;
 
 	switchp = portp1->nodep->switchp;
@@ -1281,6 +1280,12 @@ FSTATUS ValidateMCRoutes(FabricData_t *fabricp, McGroupData *mcgroupp,
 	}
 
 	mcLoop.mlid = mcgroupp->MLID; // identifies the route to analyze
+
+	/* clear visited flag set in previous call to WalkMCRoute for every node */
+	for (n1 = QListHead(&fabricp->AllSWs ); n1 != NULL; n1= QListNext(&fabricp->AllSWs, n1)) {
+		NodeData * node = (NodeData*)QListObj(n1);
+		node->switchp->HasBeenVisited=0;
+	}
 	status = WalkMCRoute( fabricp, mcgroupp, portp1, 1, swp->EntryPort, &mcLoop, pathCount);
 
 	return status;

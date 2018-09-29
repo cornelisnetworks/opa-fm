@@ -168,19 +168,16 @@ sa_DeviceGroupName_GetTable(Mai_t *maip, uint32_t *records) {
 
 	(void)vs_rdlock(&old_topology_lock);
 
-	for (i = 0; i < MAX_VFABRIC_GROUPS; i++)
+	for (i = 0; i < old_topology.vfs_ptr->dg_config.number_of_dgs; i++)
 	{
-		if (dg_config.dg[i]->name) {
-			if ((status = sa_check_len(data, sizeof(STL_DEVICE_GROUP_NAME_RECORD), bytes)) != VSTATUS_OK) {
-				maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
-				IB_LOG_ERROR_FMT("sa_DeviceGroupName_GetTable", "Reached size limit at %d records", *records);
-				goto done;
-			}
-			memset(record.DeviceGroupName, 0, MAX_DG_NAME);
-			strncpy((char*)record.DeviceGroupName, dg_config.dg[i]->name, MAX_DG_NAME-1);
-			BSWAPCOPY_STL_DEVICE_GROUP_NAME_RECORD(&record, (STL_DEVICE_GROUP_NAME_RECORD*)data);
-			(void)sa_template_test_mask(samad.header.mask, samad.data, &data, sizeof(STL_DEVICE_GROUP_NAME_RECORD), bytes, records);
+		if ((status = sa_check_len(data, sizeof(STL_DEVICE_GROUP_NAME_RECORD), bytes)) != VSTATUS_OK) {
+			maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
+			IB_LOG_ERROR_FMT("sa_DeviceGroupName_GetTable", "Reached size limit at %d records", *records);
+			goto done;
 		}
+		StringCopy((char*)record.DeviceGroupName, old_topology.vfs_ptr->dg_config.dg[i]->name, MAX_DG_NAME);
+		BSWAPCOPY_STL_DEVICE_GROUP_NAME_RECORD(&record, (STL_DEVICE_GROUP_NAME_RECORD*)data);
+		(void)sa_template_test_mask(samad.header.mask, samad.data, &data, sizeof(STL_DEVICE_GROUP_NAME_RECORD), bytes, records);
 	}
 
 done:

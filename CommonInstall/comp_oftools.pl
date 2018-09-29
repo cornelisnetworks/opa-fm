@@ -36,7 +36,7 @@ use strict;
 #use Math::BigInt;
 
 # ==========================================================================
-# Fast Fabric Support tools for OFED (oftools) installation
+# Fast Fabric Support tools for OFA (oftools) installation
 
 sub available_oftools
 {
@@ -44,8 +44,8 @@ sub available_oftools
 # util_component.pl and simply put a list of rpms in the ComponentInfo
 # as well as perhaps config files
 	my $srcdir=$ComponentInfo{'oftools'}{'SrcDir'};
-	return ((rpm_resolve("$srcdir/RPMS/*/", "any", "opa-basic-tools") ne "")
-			&& (rpm_resolve("$srcdir/RPMS/*/", "any", "opa-address-resolution") ne "" ));
+	return ((rpm_resolve("$srcdir/RPMS/*/opa-basic-tools", "any") ne "")
+			&& (rpm_resolve("$srcdir/RPMS/*/opa-address-resolution", "any") ne "" ));
 }
 
 sub installed_oftools
@@ -64,7 +64,7 @@ sub installed_version_oftools
 sub media_version_oftools
 {
 	my $srcdir=$ComponentInfo{'oftools'}{'SrcDir'};
-	my $rpmfile = rpm_resolve("$srcdir/RPMS/*/", "any", "opa-basic-tools");
+	my $rpmfile = rpm_resolve("$srcdir/RPMS/*/opa-basic-tools", "any");
 	my $version= rpm_query_version_release("$rpmfile");
 	# assume media properly built with matching versions for all rpms
 	return dot_version("$version");
@@ -109,11 +109,13 @@ sub install_oftools
 	#LogPrint "Installing $ComponentInfo{'oftools'}{'Name'} $version $DBG_FREE for $CUR_OS_VER\n";
 	LogPrint "Installing $ComponentInfo{'oftools'}{'Name'} $version $DBG_FREE for $CUR_DISTRO_VENDOR $CUR_VENDOR_VER\n";
 
-	my $rpmfile = rpm_resolve("$srcdir/RPMS/*/", "any", "opa-basic-tools");
-	rpm_run_install($rpmfile, "any", " -U ");
+    # RHEL7.4 and older in-distro IFS defines opa-address-resolution depends on opa-basic-tools with exact version match
+    # that will fail our installation because of dependency check. We need to use '-nodeps' to force the installation
+	my $rpmfile = rpm_resolve("$srcdir/RPMS/*/opa-basic-tools", "any");
+	rpm_run_install($rpmfile, "any", " -U --nodeps ");
 
-	$rpmfile = rpm_resolve("$srcdir/RPMS/*/", "any", "opa-address-resolution");
-	rpm_run_install($rpmfile, "any", " -U ");
+	$rpmfile = rpm_resolve("$srcdir/RPMS/*/opa-address-resolution", "any");
+	rpm_run_install($rpmfile, "any", " -U --nodeps ");
 # TBD - could we figure out the list of config files from a query of rpm
 # and then simply iterate on each config file?
 	check_rpm_config_file("/etc/rdma/dsap.conf");

@@ -33,7 +33,6 @@
 settl
 
 . $TL_DIR/MakeTools/funcs-ext.sh
-
 export BUILD_PLATFORM_OS_VENDOR=`os_vendor`
 export BUILD_UNIT_TEST=no
 export BUILD_CONFIG=${BUILD_CONFIG:-release} # can be exported as "debug"

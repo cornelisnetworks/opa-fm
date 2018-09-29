@@ -1,6 +1,6 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015-2017, Intel Corporation
+# Copyright (c) 2015-2018, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -81,7 +81,7 @@ LIB_TARGETS_MISC	=
 # targets to build during CMDS phase
 CMD_TARGETS_SHLIB	= 
 CMD_TARGETS_EXE		= $(EXECUTABLE)
-CMD_TARGETS_MISC	= config_diff config_generate \
+CMD_TARGETS_MISC	= config_diff config_generate opafmconfigpp \
 				  $(BUILDDIR)/config_check $(BUILDDIR)/config_convert
 # files to remove during clean phase
 CLEAN_TARGETS_MISC	=  
@@ -160,7 +160,7 @@ $(BUILDDIR)/config_convert: $(BUILDDIR)/config_convert.o
 STAGE::
 	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_DIR)/etc \
 		$(BUILDDIR)/config_check config_generate $(BUILDDIR)/config_convert \
-		config_diff
+		config_diff opafmconfigpp
 #	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_IMAGE_DIR)/etc \
 #		config_diff config_generate \
 #		$(BUILDDIR)/config_check $(BUILDDIR)/config_convert

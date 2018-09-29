@@ -1346,6 +1346,8 @@ FSTATUS SmaSetSCSCMappingTable(struct omgt_port *port,
  * @param dlid Destination LID to send packet to
  * @param slid Source LID of mixed LRDR packet. Path describes hops after reaching this LID
  * @param path Directed route path to destination
+ * @param asyncUpdate Asynchronous update
+ * @param allPorts All ports starting at portNum
  * @param portNum Port number for desired port information
  * @param pSCVLMap Pointer to SCVL Mapping Table to set. Will be overwritten with response
  * @param attr SMP Attribute value - used to select between different SCVL Mapping Tables
@@ -1355,22 +1357,26 @@ FSTATUS SmaSetSCVLMappingTable(struct omgt_port *port,
 							   STL_LID dlid, 
 							   STL_LID slid,
 							   uint8_t* path,
-							   uint8_t allPorts,
-							   uint8_t port_num,
+							   boolean asyncUpdate,
+							   boolean allPorts,
+							   uint8_t portNum,
 							   STL_SCVLMAP *pSCVLMap,
 							   uint16_t attr)
 {
 	FSTATUS fstatus;
-	uint32 attrmod = (1<<24) | port_num;
+	uint32 attrmod = (1<<24) | portNum;
 	char attributeName[64];
 	uint32_t bufferLength = sizeof(STL_SCVLMAP);
 	uint8_t buffer[bufferLength];
 	memset(buffer, 0, bufferLength);
 
 	if (allPorts)
-		attrmod |= 1<<8;
+		attrmod |= 1 << 8;
 
-	snprintf(attributeName, sizeof(attributeName), "Set(SCVLMap %u)", port_num);
+	if (asyncUpdate)
+		attrmod |= 1 << 12;
+
+	snprintf(attributeName, sizeof(attributeName), "Set(SCVLMap %u)", portNum);
 	debugLogSmaRequest(attributeName, path, dlid, slid);
 
 	memcpy(buffer, pSCVLMap, bufferLength);

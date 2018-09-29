@@ -42,7 +42,6 @@ my @opafm_prereq = (
                     "bash",
                     "expat",
                     "glibc",
-                    "libibmad",
                     "libibumad",
                     "libibverbs",
                     "openssl-libs",

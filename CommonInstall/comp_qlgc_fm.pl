@@ -36,7 +36,7 @@ use strict;
 #use Math::BigInt;
 
 # ==========================================================================
-# OPA FM for OFED installation
+# OPA FM for OFA installation
 
 # autostart functions are per subcomponent
 # determine if the given capability is configured for Autostart at boot
@@ -62,12 +62,11 @@ sub disable_autostart2_opafm()
 sub available_opafm
 {
 	my $srcdir=$ComponentInfo{'opafm'}{'SrcDir'};
-	return (rpm_resolve("$srcdir/RPMS/*/", "any", "opa-fm") ne "");
+	return (rpm_resolve("$srcdir/RPMS/*/opa-fm", "any") ne "");
 }
 
 sub installed_opafm
 {
-	my $driver_subdir=$ComponentInfo{'opafm'}{'DriverSubdir'};
 	return rpm_is_installed("opa-fm", "any");
 }
 
@@ -82,7 +81,7 @@ sub installed_version_opafm
 sub media_version_opafm
 {
 	my $srcdir=$ComponentInfo{'opafm'}{'SrcDir'};
-	my $rpmfile = rpm_resolve("$srcdir/RPMS/*/", "any", "opa-fm");
+	my $rpmfile = rpm_resolve("$srcdir/RPMS/*/opa-fm", "any");
 	my $version= rpm_query_version_release("$rpmfile");
 	# assume media properly built with matching versions
 	return dot_version("$version");
@@ -122,7 +121,6 @@ sub install_opafm
 	my $installing_list = $_[1];	# what items are being installed/reinstalled
 
 	my $srcdir=$ComponentInfo{'opafm'}{'SrcDir'};
-	my $driver_subdir=$ComponentInfo{'opafm'}{'DriverSubdir'};
 	my $rc;
 	my $keep;
 	my $diff_src_dest;
@@ -138,14 +136,15 @@ sub install_opafm
 	my $fm_start = IsAutostart2_opafm();
 
 	# Install the rpm
-	my $rpmfile = rpm_resolve("$srcdir/RPMS/*/", "user", "opa-fm");
-	rpm_run_install($rpmfile, "user", "-U");
-	$rpmfile = rpm_resolve("$srcdir/RPMS/*/", "user", "opa-fm-debuginfo");
+	my $rpmfile = rpm_resolve("$srcdir/RPMS/*/opa-fm", "user");
+	rpm_run_install($rpmfile, "user", " -U ");
+	$rpmfile = rpm_resolve("$srcdir/RPMS/*/opa-fm-debuginfo", "user");
 	if ($rpmfile) {
 		rpm_run_install($rpmfile, "user", " -U ");
 	}
 
 	check_rpm_config_file("$CONFIG_DIR/opa-fm/opafm.xml", "/etc/sysconfig");
+	check_rpm_config_file("$CONFIG_DIR/opa-fm/opafm_pp.xml");
 	check_dir("/usr/lib/opa");
 
 	if ($fm_start) {
@@ -168,10 +167,10 @@ sub uninstall_opafm
 	my $install_list = $_[0];	# total that will be left installed when done
 	my $uninstalling_list = $_[1];	# what items are being uninstalled
 
-	my $driver_subdir=$ComponentInfo{'opafm'}{'DriverSubdir'};
 	NormalPrint("Uninstalling $ComponentInfo{'opafm'}{'Name'}...\n");
 
 	rpm_uninstall_list("any", "verbose", ( "opa-fm", "opa-fm-debuginfo") );
+	# just in case, newer rpms should clean these up
 	system("rm -rf $ROOT/usr/lib/opa/.comp_opafm.pl");
 	system("rmdir -p $ROOT/opt/iba/fm_tools 2>/dev/null");  # remove only if empty
 	system("rm -rf $ROOT/usr/lib/opa-fm");

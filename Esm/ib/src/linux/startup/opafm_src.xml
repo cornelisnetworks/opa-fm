@@ -39,7 +39,6 @@
     <!--        which match none of the Virtual Fabrics after filtering -->
     <!--        by src/dest/requester. -->
     <!--        Can be used as an easy catch-all. -->
-
     <!-- MGIDs (IB Multicast GIDs) are 128 bit values which identify -->
     <!-- multicast groups for Unreliable Datagram applications such as IPoIB -->
     <!-- MGIDs are represented as two 64 bit values separated by a colon (:) -->
@@ -419,7 +418,59 @@
       <NodeDesc>*Rack1*</NodeDesc>
     </DeviceGroup>
 
+                                                                                                                       <!--#SM_0_mt_enable#=-->
+    <!-- DeviceGroups found in specified directory, added via opafmconfigpp -->                                        <!--#SM_0_mt_enable#=-->
+    <!-- INCLUDE:DG_DIR=/etc/opa-fm/dgs -->                                                                            <!--#SM_0_mt_enable#=-->
+
   </DeviceGroups>
+
+  <!-- Quality of Service Configuration                                      -->
+  <!-- QOSGroups defined here are available for use in all FM instances      -->
+  <!-- If any QOSGroup is Enabled, all Enabled VirtualFabrics must           -->
+  <!-- specify a <QOSGroup>.                                                 -->
+  <!-- Additional QOSGroups may be defined here or per FM instance.          -->
+  <QOSGroups>
+    <!-- Every QOSGroup must have a unique <Name>                            -->
+    <!-- The name must be unique among all QOSGroup names within an          -->
+    <!-- FM instance.                                                        -->
+    <!-- When defined at Common level, must be unique within all instances.  -->
+    <!-- The name is limited to 64 characters and is case sensitive.         -->
+    <!-- Enable: <Enable>0</Enable>                                          -->
+    <!--        To access a QOSGroup within a VirtualFabric, the QOSGroup    -->
+    <!--        Must be enabled. QOSGroups default to Disabled.              -->
+    <!-- The following QOS parameters are supported. See VirtualFabrics for  -->
+    <!-- more information.                                                   -->
+    <!-- High Priority: <HighPriority>0</HighPriority>                       -->
+    <!-- Bandwidth Allocation: <Bandwidth>100%</Bandwidth>                   -->
+    <!-- Packet Lifetime Multiplier: <PktLifeTimeMult>2</PktLifeTimeMult>    -->
+    <!-- Base Service Level: <BaseSL>0</BaseSL>                              -->
+    <!-- Multicast Service Level: <MulticastSL>1</MulticastSL>               -->
+    <!-- FlowControlDisable: <FlowControlDisable>0</FlowControlDisable>      -->
+    <!-- Preemption Rank: <PreemptRank>0</PreemptRank>                       -->
+    <!-- HoqLife: <HoqLife>8ms</HoqLife>                                     -->
+                                                                                                                       <!--#SM_0_mt_enable#=-->
+    <!-- Example Low priority QOS configuration -->                                                                    <!--#SM_0_mt_enable#=-->
+    <QOSGroup>                                                                                                         <!--#SM_0_mt_enable#=-->
+      <Name>LowPriority</Name>                                                                                         <!--#SM_0_mt_enable#=-->
+      <Enable>1</Enable>                                                                                               <!--#SM_0_mt_enable#=-->
+      <!--<BaseSL>0</BaseSL> -->                                                                                       <!--#SM_0_mt_enable#=-->
+    </QOSGroup>                                                                                                        <!--#SM_0_mt_enable#=-->
+                                                                                                                       <!--#SM_0_mt_enable#=-->
+    <!-- Example High priority QOS configuration -->                                                                   <!--#SM_0_mt_enable#=-->
+    <QOSGroup>                                                                                                         <!--#SM_0_mt_enable#=-->
+      <Name>HighPriority</Name>                                                                                        <!--#SM_0_mt_enable#=-->
+      <Enable>0</Enable>                                                                                               <!--#SM_0_mt_enable#=-->
+      <HighPriority>1</HighPriority>                                                                                   <!--#SM_0_mt_enable#=-->
+    </QOSGroup>                                                                                                        <!--#SM_0_mt_enable#=-->
+                                                                                                                       <!--#SM_0_mt_enable#=-->
+    <!-- Example Networking QOS configuration -->                                                                      <!--#SM_0_mt_enable#=-->
+    <QOSGroup>                                                                                                         <!--#SM_0_mt_enable#=-->
+      <Name>Networking</Name>                                                                                          <!--#SM_0_mt_enable#=-->
+      <Enable>0</Enable>                                                                                               <!--#SM_0_mt_enable#=-->
+      <Bandwidth>10%</Bandwidth>                                                                                       <!--#SM_0_mt_enable#=-->
+      <FlowControlDisable>0</FlowControlDisable>                                                                       <!--#SM_0_mt_enable#=-->
+    </QOSGroup>                                                                                                        <!--#SM_0_mt_enable#=-->
+  </QOSGroups>
 
   <!-- Virtual Fabric Configuration                                          -->
   <!-- VirtualFabrics defined here are available for use in all FM instances -->
@@ -555,7 +606,7 @@
     <!--        Value will be rounded up to the next power of 2.             -->
     <!--        0 is invalid, default is 1                                   -->
     <!-- Service Levels:                                                     -->
-    <!--        Up to 2 service levels can be specified per VF: BaseSL       -->
+    <!--        Up to 2 service levels can be specified per VF: BaseSL,      -->
     <!--        and MulticastSL. If the configuration does not include       -->
     <!--        either of these service levels, the SM will allocate         -->
     <!--        unique SLs from the unused SLs. The SM will only allocate    -->
@@ -596,6 +647,16 @@
     <!--        specified per Virtual Fabric, default to the SM instance     -->
     <!--        values                                                       -->
 
+    <!-- Alternatively, a VirtualFabric can specify a QOSGroup instead of    -->
+    <!-- individual QOS parameters.                                          -->
+    <!-- QOSGroup: <QOSGroup>LowPriority</QOSGroup>                          -->
+    <!--        Specifies the name of the QOSGroup used by this VF.          -->
+    <!--        If any QOSGroup is enabled, all VirtualFabrics must          -->
+    <!--        specify a QOSGroup and no VirtualFabric may specify          -->
+    <!--        any other QOS parameter.                                     -->
+    <!--        If a VirtualFabric specifies a QOSGroup, it must             -->
+    <!--        also specify a PKey.                                         -->
+
     <!-- OPA requires a "Admin" partition.                                   -->
     <!-- To meet this requirement there must be an enabled VirtualFabric:    -->
     <!-- *  with a PKey of 0x7fff (or 0xffff)                                -->
@@ -619,27 +680,28 @@
       <Enable>0</Enable>
       <PKey>0x0002</PKey>
       <Security>1</Security>
-      <QOS>1</QOS>
-      <Bandwidth>10%</Bandwidth>
-      <FlowControlDisable>0</FlowControlDisable>
+      <QOS>1</QOS>                                                                                                     <!--#SM_0_mt_enable#!-->
+      <Bandwidth>10%</Bandwidth>                                                                                       <!--#SM_0_mt_enable#!-->
+      <FlowControlDisable>0</FlowControlDisable>                                                                       <!--#SM_0_mt_enable#!-->
+      <QOSGroup>Networking</QOSGroup>                                                                                  <!--#SM_0_mt_enable#=-->
       <Member>All</Member>   <!-- can use a smaller DeviceGroup if desired -->
       <!-- Since IPoIB uses Multicast, LimitedMembers wouldn't make sense -->
       <Application>Networking</Application>
     </VirtualFabric>
-
-    <!-- A default VF with all Devices and Applications -->
-    <!-- This is the default Virtual Fabric config -->
-    <VirtualFabric>
-      <Name>Default</Name>
-      <Enable>1</Enable>
-      <PKey>0x0001</PKey>
-      <Security>0</Security>
-      <QOS>0</QOS>
-      <Member>All</Member>
-      <Application>AllOthers</Application>
-      <MaxMTU>Unlimited</MaxMTU>
-      <MaxRate>Unlimited</MaxRate>
-    </VirtualFabric>
+                                                                                                                       <!--#SM_0_mt_enable#!-->
+    <!-- A default VF with all Devices and Applications -->                                                            <!--#SM_0_mt_enable#!-->
+    <!-- This is the default Virtual Fabric config -->                                                                 <!--#SM_0_mt_enable#!-->
+    <VirtualFabric>                                                                                                    <!--#SM_0_mt_enable#!-->
+      <Name>Default</Name>                                                                                             <!--#SM_0_mt_enable#!-->
+      <Enable>1</Enable>                                                                                               <!--#SM_0_mt_enable#!-->
+      <PKey>0x0001</PKey>                                                                                              <!--#SM_0_mt_enable#!-->
+      <Security>0</Security>                                                                                           <!--#SM_0_mt_enable#!-->
+      <QOS>0</QOS>                                                                                                     <!--#SM_0_mt_enable#!-->
+      <Member>All</Member>                                                                                             <!--#SM_0_mt_enable#!-->
+      <Application>AllOthers</Application>                                                                             <!--#SM_0_mt_enable#!-->
+      <MaxMTU>Unlimited</MaxMTU>                                                                                       <!--#SM_0_mt_enable#!-->
+      <MaxRate>Unlimited</MaxRate>                                                                                     <!--#SM_0_mt_enable#!-->
+    </VirtualFabric>                                                                                                   <!--#SM_0_mt_enable#!-->
 
     <!-- The Admin partition -->
     <!-- This gives non-SMs limited privileges -->
@@ -648,10 +710,12 @@
       <Enable>1</Enable>
       <PKey>0x7fff</PKey> <!-- must be OPA Management PKey -->
       <Security>1</Security>
-      <QOS>0</QOS>
-      <!-- <HighPriority>1</HighPriority> can make admin High priority -->
+      <QOS>0</QOS>                                                                                                     <!--#SM_0_mt_enable#!-->
+      <!-- <HighPriority>1</HighPriority> can make admin High priority -->                                             <!--#SM_0_mt_enable#!-->
+      <QOSGroup>LowPriority</QOSGroup>                                                                                 <!--#SM_0_mt_enable#=-->
+      <!-- <QOSGroup>HighPriority</QOSGroup> can make admin High priority -->                                          <!--#SM_0_mt_enable#=-->
       <Member>HFIDirectConnect</Member> <!-- Both HFIs directly connected -->
-      <Member>AllMgmtAllowed</Member> 
+      <Member>AllMgmtAllowed</Member>
       <Member>AllSWE0s</Member> <!-- so chassis CMU can access leafs & spines-->
       <!-- <Member>AdminNodes</Member> add more FF/admin nodes if desired -->
       <LimitedMember>All</LimitedMember>
@@ -662,102 +726,105 @@
       <!-- <MaxMTU>2048</MaxMTU> can reduce MTU, SA only uses MADs -->
     </VirtualFabric>
 
-    <!-- This vFabric can be used as a simple catchall.  When none of the -->
-    <!-- other enabled vFabrics include the "All" Application, this will -->
-    <!-- pick up the remaining applications.  This is also very useful when -->
-    <!-- uncertain about how to identify applications of interest such as -->
-    <!-- storage devices or file systems with undocumented Service IDs -->
-    <VirtualFabric>
-      <Name>AllOthers</Name>
-      <Enable>0</Enable>
-      <Security>1</Security>
-      <QOS>1</QOS>
-      <Bandwidth>20%</Bandwidth>
-      <Member>All</Member>    <!-- can be reduced in scope if desired -->
-      <Application>AllOthers</Application>
-    </VirtualFabric>
+    <!-- VirtualFabrics found in specified directory, added via opafmconfigpp -->                                      <!--#SM_0_mt_enable#=-->
+    <!-- INCLUDE:VF_DIR=/etc/opa-fm/vfs -->                                                                            <!--#SM_0_mt_enable#=-->
 
-    <!-- a template for a storage Virtual Fabric -->
-    <!-- This vFabric can be used for Lustre traffic.  The PKey field should -->
-    <!-- be specified to map Lustre traffic.  The CMA in OFA currently -->
-    <!-- specifies the PKey and ServiceID in the path record query.  The CMA -->
-    <!-- requires that the PKey match the PKey for networking traffic -->
-    <!-- (IPoIB). When setting up this vFabric the PKey should be configured -->
-    <!-- to be identical to the PKey used for IPoIB.  For example if the -->
-    <!-- Default VF is used for IPoIB, the PKey of the Default VF and the -->
-    <!-- PKey of the Storage VF should match. In addition, either the -->
-    <!-- <Security> should be disabled OR the VF should be changed from -->
-    <!-- <LimitedMember> to <Member>. -->
-    <VirtualFabric>
-      <Name>Storage</Name>
-      <Enable>0</Enable>
-      <Security>1</Security>
-      <QOS>1</QOS>
-      <Bandwidth>20%</Bandwidth>
-      <!-- <Member>group_with_storage_targets</Member> -->
-      <LimitedMember>All</LimitedMember>
-      <Application>Storage</Application>
-      <!-- <PreemptRank>1</PreemptRank> others can preempt this vf -->
-    </VirtualFabric>
-
-    <!-- a template for a compute Virtual Fabric -->
-    <!-- QOS is configured for utilization of 70% of the bandwidth for MPI -->
-    <VirtualFabric>
-      <Name>Compute</Name>
-      <Enable>0</Enable>
-      <PKey>0x0003</PKey> <!-- manually specify so can supply to MPI -->
-      <Security>1</Security>
-      <QOS>1</QOS>
-      <Bandwidth>70%</Bandwidth>
-      <!-- <Member>compute_nodes</Member> -->
-      <Member>All</Member>    <!-- can be reduced in scope if desired -->
-      <!-- if using the PSM vFabric examples below, use VerbsMPI not Compute -->
-      <Application>Compute</Application>
-      <!-- <Application>VerbsMPI</Application> -->
-      <!-- <PreemptRank>127</PreemptRank> can preempt all others -->
-      <!-- <HoqLife>8ms</HoqLife> Override SM instance value -->
-    </VirtualFabric>
-
-    <!-- when using Intel OmniPath Fabric HFIs with PSM technology,--> 
-    <!-- there is no need to configure PKey nor SL. FM can freely select -->
-    <!-- since PSM will query the SA using the PSM ServiceIds when -->
-    <!-- PSM_PATH_REC="opp" -->
-    <VirtualFabric>
-      <Name>PSM_Compute</Name>
-      <Enable>0</Enable>
-      <Security>1</Security>
-      <QOS>1</QOS>
-      <Bandwidth>70%</Bandwidth>
-      <!-- <Member>compute_nodes</Member> -->
-      <Member>All</Member>    <!-- can be reduced in scope if desired -->
-      <Application>PSM</Application>
-    </VirtualFabric>
-
-    <!-- when using PSM, Control and Data traffic can be separated into -->
-    <!-- different vFabrics. -->
-    <!-- To do this, PSM must be run with PSM_PATH_REC="opp" -->
-    <!-- Then enable these two VFs instead of the MPI Compute ones above -->
-    <VirtualFabric>
-      <Name>PSM_Compute_Control</Name>
-      <Enable>0</Enable>
-      <Security>1</Security>
-      <QOS>1</QOS>
-      <HighPriority>1</HighPriority> <!-- admin traffic is High priority -->
-      <!-- <Member>compute_nodes</Member> -->
-      <Member>All</Member>    <!-- can be reduced in scope if desired -->
-      <Application>PSM_Control</Application>
-    </VirtualFabric>
-
-    <VirtualFabric>
-      <Name>PSM_Compute_Data</Name>
-      <Enable>0</Enable>
-      <Security>1</Security>
-      <QOS>1</QOS>
-      <Bandwidth>70%</Bandwidth>
-      <!-- <Member>compute_nodes</Member> -->
-      <Member>All</Member>    <!-- can be reduced in scope if desired -->
-      <Application>PSM_Data</Application>
-    </VirtualFabric>
+    <!-- This vFabric can be used as a simple catchall.  When none of the -->                                          <!--#SM_0_mt_enable#!-->
+    <!-- other enabled vFabrics include the "All" Application, this will -->                                           <!--#SM_0_mt_enable#!-->
+    <!-- pick up the remaining applications.  This is also very useful when -->                                        <!--#SM_0_mt_enable#!-->
+    <!-- uncertain about how to identify applications of interest such as -->                                          <!--#SM_0_mt_enable#!-->
+    <!-- storage devices or file systems with undocumented Service IDs -->                                             <!--#SM_0_mt_enable#!-->
+    <VirtualFabric>                                                                                                    <!--#SM_0_mt_enable#!-->
+      <Name>AllOthers</Name>                                                                                           <!--#SM_0_mt_enable#!-->
+      <Enable>0</Enable>                                                                                               <!--#SM_0_mt_enable#!-->
+      <Security>1</Security>                                                                                           <!--#SM_0_mt_enable#!-->
+      <QOS>1</QOS>                                                                                                     <!--#SM_0_mt_enable#!-->
+      <Bandwidth>20%</Bandwidth>                                                                                       <!--#SM_0_mt_enable#!-->
+      <Member>All</Member>    <!-- can be reduced in scope if desired -->                                              <!--#SM_0_mt_enable#!-->
+      <Application>AllOthers</Application>                                                                             <!--#SM_0_mt_enable#!-->
+    </VirtualFabric>                                                                                                   <!--#SM_0_mt_enable#!-->
+                                                                                                                       <!--#SM_0_mt_enable#!-->
+    <!-- a template for a storage Virtual Fabric -->                                                                   <!--#SM_0_mt_enable#!-->
+    <!-- This vFabric can be used for Lustre traffic.  The PKey field should -->                                       <!--#SM_0_mt_enable#!-->
+    <!-- be specified to map Lustre traffic.  The CMA in OFA currently -->                                             <!--#SM_0_mt_enable#!-->
+    <!-- specifies the PKey and ServiceID in the path record query.  The CMA -->                                       <!--#SM_0_mt_enable#!-->
+    <!-- requires that the PKey match the PKey for networking traffic -->                                              <!--#SM_0_mt_enable#!-->
+    <!-- (IPoIB). When setting up this vFabric the PKey should be configured -->                                       <!--#SM_0_mt_enable#!-->
+    <!-- to be identical to the PKey used for IPoIB.  For example if the -->                                           <!--#SM_0_mt_enable#!-->
+    <!-- Default VF is used for IPoIB, the PKey of the Default VF and the -->                                          <!--#SM_0_mt_enable#!-->
+    <!-- PKey of the Storage VF should match. In addition, either the -->                                              <!--#SM_0_mt_enable#!-->
+    <!-- <Security> should be disabled OR the VF should be changed from -->                                            <!--#SM_0_mt_enable#!-->
+    <!-- <LimitedMember> to <Member>. -->                                                                              <!--#SM_0_mt_enable#!-->
+    <VirtualFabric>                                                                                                    <!--#SM_0_mt_enable#!-->
+      <Name>Storage</Name>                                                                                             <!--#SM_0_mt_enable#!-->
+      <Enable>0</Enable>                                                                                               <!--#SM_0_mt_enable#!-->
+      <Security>1</Security>                                                                                           <!--#SM_0_mt_enable#!-->
+      <QOS>1</QOS>                                                                                                     <!--#SM_0_mt_enable#!-->
+      <Bandwidth>20%</Bandwidth>                                                                                       <!--#SM_0_mt_enable#!-->
+      <!-- <Member>group_with_storage_targets</Member> -->                                                             <!--#SM_0_mt_enable#!-->
+      <LimitedMember>All</LimitedMember>                                                                               <!--#SM_0_mt_enable#!-->
+      <Application>Storage</Application>                                                                               <!--#SM_0_mt_enable#!-->
+      <!-- <PreemptRank>1</PreemptRank> others can preempt this vf -->                                                 <!--#SM_0_mt_enable#!-->
+    </VirtualFabric>                                                                                                   <!--#SM_0_mt_enable#!-->
+                                                                                                                       <!--#SM_0_mt_enable#!-->
+    <!-- a template for a compute Virtual Fabric -->                                                                   <!--#SM_0_mt_enable#!-->
+    <!-- QOS is configured for utilization of 70% of the bandwidth for MPI -->                                         <!--#SM_0_mt_enable#!-->
+    <VirtualFabric>                                                                                                    <!--#SM_0_mt_enable#!-->
+      <Name>Compute</Name>                                                                                             <!--#SM_0_mt_enable#!-->
+      <Enable>0</Enable>                                                                                               <!--#SM_0_mt_enable#!-->
+      <PKey>0x0003</PKey> <!-- manually specify so can supply to MPI -->                                               <!--#SM_0_mt_enable#!-->
+      <Security>1</Security>                                                                                           <!--#SM_0_mt_enable#!-->
+      <QOS>1</QOS>                                                                                                     <!--#SM_0_mt_enable#!-->
+      <Bandwidth>70%</Bandwidth>                                                                                       <!--#SM_0_mt_enable#!-->
+      <!-- <Member>compute_nodes</Member> -->                                                                          <!--#SM_0_mt_enable#!-->
+      <Member>All</Member>    <!-- can be reduced in scope if desired -->                                              <!--#SM_0_mt_enable#!-->
+      <!-- if using the PSM vFabric examples below, use VerbsMPI not Compute -->                                       <!--#SM_0_mt_enable#!-->
+      <Application>Compute</Application>                                                                               <!--#SM_0_mt_enable#!-->
+      <!-- <Application>VerbsMPI</Application> -->                                                                     <!--#SM_0_mt_enable#!-->
+      <!-- <PreemptRank>127</PreemptRank> can preempt all others -->                                                   <!--#SM_0_mt_enable#!-->
+      <!-- <HoqLife>8ms</HoqLife> Override SM instance value -->                                                       <!--#SM_0_mt_enable#!-->
+    </VirtualFabric>                                                                                                   <!--#SM_0_mt_enable#!-->
+                                                                                                                       <!--#SM_0_mt_enable#!-->
+    <!-- when using Intel OmniPath Fabric HFIs with PSM technology,-->                                                 <!--#SM_0_mt_enable#!-->
+    <!-- there is no need to configure PKey nor SL. FM can freely select -->                                           <!--#SM_0_mt_enable#!-->
+    <!-- since PSM will query the SA using the PSM ServiceIds when -->                                                 <!--#SM_0_mt_enable#!-->
+    <!-- PSM_PATH_REC="opp" -->                                                                                        <!--#SM_0_mt_enable#!-->
+    <VirtualFabric>                                                                                                    <!--#SM_0_mt_enable#!-->
+      <Name>PSM_Compute</Name>                                                                                         <!--#SM_0_mt_enable#!-->
+      <Enable>0</Enable>                                                                                               <!--#SM_0_mt_enable#!-->
+      <Security>1</Security>                                                                                           <!--#SM_0_mt_enable#!-->
+      <QOS>1</QOS>                                                                                                     <!--#SM_0_mt_enable#!-->
+      <Bandwidth>70%</Bandwidth>                                                                                       <!--#SM_0_mt_enable#!-->
+      <!-- <Member>compute_nodes</Member> -->                                                                          <!--#SM_0_mt_enable#!-->
+      <Member>All</Member>    <!-- can be reduced in scope if desired -->                                              <!--#SM_0_mt_enable#!-->
+      <Application>PSM</Application>                                                                                   <!--#SM_0_mt_enable#!-->
+    </VirtualFabric>                                                                                                   <!--#SM_0_mt_enable#!-->
+                                                                                                                       <!--#SM_0_mt_enable#!-->
+    <!-- when using PSM, Control and Data traffic can be separated into -->                                            <!--#SM_0_mt_enable#!-->
+    <!-- different vFabrics. -->                                                                                       <!--#SM_0_mt_enable#!-->
+    <!-- To do this, PSM must be run with PSM_PATH_REC="opp" -->                                                       <!--#SM_0_mt_enable#!-->
+    <!-- Then enable these two VFs instead of the MPI Compute ones above -->                                           <!--#SM_0_mt_enable#!-->
+    <VirtualFabric>                                                                                                    <!--#SM_0_mt_enable#!-->
+      <Name>PSM_Compute_Control</Name>                                                                                 <!--#SM_0_mt_enable#!-->
+      <Enable>0</Enable>                                                                                               <!--#SM_0_mt_enable#!-->
+      <Security>1</Security>                                                                                           <!--#SM_0_mt_enable#!-->
+      <QOS>1</QOS>                                                                                                     <!--#SM_0_mt_enable#!-->
+      <HighPriority>1</HighPriority> <!-- admin traffic is High priority -->                                           <!--#SM_0_mt_enable#!-->
+      <!-- <Member>compute_nodes</Member> -->                                                                          <!--#SM_0_mt_enable#!-->
+      <Member>All</Member>    <!-- can be reduced in scope if desired -->                                              <!--#SM_0_mt_enable#!-->
+      <Application>PSM_Control</Application>                                                                           <!--#SM_0_mt_enable#!-->
+    </VirtualFabric>                                                                                                   <!--#SM_0_mt_enable#!-->
+                                                                                                                       <!--#SM_0_mt_enable#!-->
+    <VirtualFabric>                                                                                                    <!--#SM_0_mt_enable#!-->
+      <Name>PSM_Compute_Data</Name>                                                                                    <!--#SM_0_mt_enable#!-->
+      <Enable>0</Enable>                                                                                               <!--#SM_0_mt_enable#!-->
+      <Security>1</Security>                                                                                           <!--#SM_0_mt_enable#!-->
+      <QOS>1</QOS>                                                                                                     <!--#SM_0_mt_enable#!-->
+      <Bandwidth>70%</Bandwidth>                                                                                       <!--#SM_0_mt_enable#!-->
+      <!-- <Member>compute_nodes</Member> -->                                                                          <!--#SM_0_mt_enable#!-->
+      <Member>All</Member>    <!-- can be reduced in scope if desired -->                                              <!--#SM_0_mt_enable#!-->
+      <Application>PSM_Data</Application>                                                                              <!--#SM_0_mt_enable#!-->
+    </VirtualFabric>                                                                                                   <!--#SM_0_mt_enable#!-->
   </VirtualFabrics>
 
   <!-- PM Port Group Configuration -->
@@ -1029,14 +1096,17 @@
       <!-- ISL on the same tier, the second HFI on the second ISL, etc. in   -->
       <!-- a pass through type assignment.                                   -->
       <PassThrough>0</PassThrough>
+      <!-- For 3-tier fat trees, converge routes at core to get optimal      -->
+      <!-- balance when down routing.                                        -->
+      <Converge>0</Converge>
     </FatTreeTopology>
-    
+
     <!-- **************** DG ShortestPath Topology **************************** -->
     <!-- When the routing algorithm is set to "dgshortestpath" the following -->
     <!-- section is used to configure the algorithm. -->
     <!-- Overall, "dgshortestpath" routing is a form of "Min Hop" or -->
     <!-- "Shortestpath" routing, except you can control the order in which -->
-    <!-- routes to end nodes are assigned. This can be used to ensure --> 
+    <!-- routes to end nodes are assigned. This can be used to ensure -->
     <!-- diversity of routing within groups of devices as well as the -->
     <!-- entire fabric overall. End nodes that are not members of any -->
     <!-- listed groups will be routed last. -->
@@ -1209,7 +1279,7 @@
       <!-- Number of Multicast LIDs available in fabric. -->
       <!-- Must be set <= smallest Multicast forwarding table size of all -->
       <!-- switches in fabric. -->
-      <MLIDTableCap>1024</MLIDTableCap>                                                                                <!--SM_0_mcastMLidTableCap:dec-->
+      <MLIDTableCap>8192</MLIDTableCap>                                                                                <!--SM_0_mcastMLidTableCap:dec-->
       <!-- Should multicast spanning tree be pruned to its minimal size. -->
       <!-- When disabled, multicast join and leave is optimized by -->
       <!-- building the spanning tree to include all switches, -->
@@ -1248,6 +1318,17 @@
       <!-- On a match the MGID will be given a MLID within a pool of -->
       <!-- MaxMLIDs. -->
       <!-- MGIDs are 128 bits specified as 2 colon separated 64 bit values -->
+      <!-- MGIDs in the same MLIDShare group with the same PKey will never -->
+      <!-- share MLIDs. -->
+      <!-- <MaxMLIDsPerPKey> is an optional field that restricts the number of -->
+      <!-- of MLIDs that any one PKey can consume. For example: in the following -->
+      <!-- section, a maximum of 500 MLIDs can be shared, but can be restricted to -->
+      <!-- allow sharing 4 MLIDs per PKey for matching MGIDs. -->
+      <!-- This can be useful when a single partition creates a large number of MGIDs -->
+      <!-- that may consume all available MLIDs, leaving another virtual partition -->
+      <!-- without any MLIDs to allocate. Another case is when many VFs create MGIDs, -->
+      <!-- some of them consuming the maximum allowed, leaving the remaining ones -->
+      <!-- with no MLIDs to allocate. -->
 
       <!-- IPv6 Solicited-Node multicast combined to 500 MLIDs -->
       <MLIDShare>
@@ -1255,6 +1336,17 @@
         <MGIDMask>0xffffffffffffffff:0xffffffffff000000</MGIDMask>
         <MGIDValue>0xff12601bffff0000:0x00000001ff000000</MGIDValue>
         <MaxMLIDs>500</MaxMLIDs>
+        <!-- <MaxMLIDsPerPKey>4</MaxMLIDsPerPKey> -->
+      </MLIDShare>
+
+      <!-- Catch-all for MGIDs not matched by another MLIDShare group -->
+      <MLIDShare>
+        <Enable>0</Enable>                                                                                             <!--#SM_0_mt_enable#!-->
+        <Enable>1</Enable>                                                                                             <!--#SM_0_mt_enable#=-->
+        <MGIDMask>0x0000000000000000:0x0000000000000000</MGIDMask>
+        <MGIDValue>0x0000000000000000:0x0000000000000000</MGIDValue>
+        <MaxMLIDs>8000</MaxMLIDs>
+        <MaxMLIDsPerPKey>8</MaxMLIDsPerPKey>
       </MLIDShare>
 
       <!-- *************************************************************** -->
@@ -1270,8 +1362,9 @@
       <!-- MGIDs can be specified in the following ways in the -->
       <!-- MulticastGroup section: -->
       <!-- a single MGID: <MGID>0xabc:0x123567</MGID> -->
-      <!-- If no MGIDs are specified, the IPv4 broadcast, IPv4 all nodes and -->
-      <!-- the IPv6 all nodes MGIDs will be created -->
+      <!-- If no MGIDs are specified, 4 IPv4 and/or 4 IPv6 multicast groups are -->
+      <!-- created depending on which application is defined in the matching VF -->
+      <!-- (Networking, IPv4 or IPv6) -->
 
       <!-- The following Policies and Controls can be specified -->
       <!-- Create: <Create>1</Create> -->
@@ -1289,8 +1382,9 @@
       <!-- MTU: <MTU>2048</MTU> specified in natural format -->
       <!--        e.g. one of '2048', '4096', '8192' or '10240' -->
       <!-- Service Level: <SL>0</SL> -->
-      <!--        SL can be specified, but must match the MulticastSL of the -->
-      <!--        associated VirtualFabric.  -->
+      <!--        SL can be specified, but must match the MulticastSL -->
+      <!--        (if present, otherwise the BaseSL) of the associated -->
+      <!--        VirtualFabric.  -->
       <!-- QKey: <QKey>0x0</QKey> -->
       <!-- Flow Label: <FlowLabel>0x0</FlowLabel> -->
       <!-- Traffic Class: <TClass>0x0</TClass> -->
@@ -1323,20 +1417,20 @@
         <MGID>0xff12401b80020000:0x00000000ffffffff</MGID> <!-- bcast -->
         <MGID>0xff12401b80020000:0x0000000000000001</MGID> <!-- all nodes -->
         <MGID>0xff12401b80020000:0x0000000000000002</MGID> <!-- all routers -->
-        <MGID>0xff12401b80020000:0x0000000000000016</MGID>
+        <MGID>0xff12401b80020000:0x00000000000000fb</MGID> <!-- all mDNS -->
         <!-- PKey 0x8002/0x0002 is part of IPv6 MGIDs below -->
         <!-- MGID = 0xffFS601bPPPPGGGG:GGGGGGGGGGGGGGGG -->
         <!-- where F=flags, S=scope, P=PKey and G=IP Multicast Group -->
         <MGID>0xff12601b80020000:0x0000000000000001</MGID> <!-- all nodes -->
         <MGID>0xff12601b80020000:0x0000000000000002</MGID> <!-- all routers -->
-        <MGID>0xff12601b80020000:0x0000000000000016</MGID> 
+        <MGID>0xff12601b80020000:0x0000000000000016</MGID> <!-- all MLDV2 routers -->
+        <MGID>0xff12601b80020000:0x00000000000000fb</MGID> <!-- all mDNS -->
         <MTU>2048</MTU>
         <Rate>100g</Rate>
         <QKey>0x0</QKey>
         <FlowLabel>0x0</FlowLabel>
         <TClass>0x0</TClass>
       </MulticastGroup>
-
     </Multicast>
 
     <!-- **************** Fabric Programming **************************** -->
@@ -1382,7 +1476,7 @@
     <!-- VL15CreditRate: Rate at which to return credits to a non-mgmt HFI. -->
     <!-- Helps avoid VL15 Denial of Service attacks against the fabric -->
     <!-- The field is defined as 1/(2^X) of the normal return rate. For -->
-    <!-- instance, if the field is set to 3, the credit return rate will be --> 
+    <!-- instance, if the field is set to 3, the credit return rate will be -->
     <!-- 1/(2^3) = 1/8 (one eighth) the normal credit return rate. -->
     <!-- Valid values are between 0 and 21, with 0 disabling the feature. -->
     <VL15CreditRate>18</VL15CreditRate>
@@ -1412,7 +1506,7 @@
     <!--     depth from port info. -->
     <!-- ReplayDepthOverride is an integer value (in bytes) that overrides -->
     <!--     the buffer depth returned in the port info. If not specified, -->
-    <!--     defaults to -1. Similar to WireDepthOveried as above. -->
+    <!--     defaults to -1. Similar to WireDepthOverride as above. -->
     <!--     A value of -1 indicates to use the value from port info. -->
     <!--     A value of 0 means to ignore Replay Depth, and use Wire Depth. -->
     <!--     Any other value indicates a byte-value to use instead of -->
@@ -1439,7 +1533,7 @@
     <!--        *Note: This setting is communicated to each SMA which is -->
     <!--            then responsible for performing the downgrades. This -->
     <!--            setting is independent of WidthPolicy discussed below -->
-    <!--    WidthPolicy-->
+    <!--    WidthPolicy -->
     <!--        This enforces the initial negotiated width for the link. -->
     <!--        "Supported" - The SM will disable links whose initial width -->
     <!--                      is not widest width supported by the devices -->
@@ -1478,7 +1572,7 @@
     <!--                  HW may impose additional constraints. -->
     <!--                  May also specify "MIN" or "MAX". Defaults to 4096 -->
     <!--   SmallPacket:   The maximum size (in bytes), for a "Small" (and -->
-    <!--                  therefore a candidate for a preempting packet). --> 
+    <!--                  therefore a candidate for a preempting packet). -->
     <!--                  Range is 32 to 8192 in 32 byte increments. -->
     <!--                  HW may impose additional constraints. -->
     <!--                  May also specify "MIN" or "MAX". Defaults to 256 -->
@@ -1515,8 +1609,8 @@
         <!-- A value in the range 0 to 15. Used to determine when       -->
         <!-- to use congestion marking. Higher values indicate more     -->
         <!-- aggressive congestion thresholds. 0 disables congestion    -->
-        <!-- marking. -->
-        <Threshold>1</Threshold>
+        <!-- marking. Default is 8. -->
+        <Threshold>8</Threshold>
         <!-- OPA CC SwitchCongestionSetting:Packet Size -->
         <!-- Minimum packet size to mark in 64 byte units. Packets      -->
         <!-- smaller than this size are ignored by congestion control.  -->
@@ -1525,7 +1619,8 @@
         <!-- OPA CC SwitchCongestionSetting:Marking Rate                -->
         <!-- The average number of packets between packets that are     -->
         <!-- eligible to be marked with a Forward Explicit Congestion   -->
-        <!-- Notification. Range is 0-65535. -->
+        <!-- Notification. Range is 0-65535. For Omni-Path Gen 1 switch -->
+        <!-- hardware, this value will be capped at 255                 -->
         <MarkingRate>0</MarkingRate>
         <!-- OPA CC SwitchCongestionSetting: Victim Marking             -->
         <!-- Boolean value (0 or 1). A value of 0 will cause marking    -->
@@ -1546,12 +1641,12 @@
         <!-- OPA CC FICongestionEntry:CCTI Increase                     -->
         <!-- The number to be added to the CCTI on the receipt of a BECN-->
         <!-- Range is 0-255. -->
-        <Increase>1</Increase>
+        <Increase>5</Increase>
         <!-- OPA CC FICongestionEntry:CCTI Timer                        -->
         <!-- Determines the amount of time that must elapse before      -->
         <!-- reducing the CCTI. Measured in multiples of 1.024 uS.      -->
         <!-- Range is 0 to 65535. -->
-        <Timer>1</Timer>
+        <Timer>10</Timer>
         <!-- OPA CC FICongestionEntry:Trigger Threshold                 -->
         <!-- When the CCTI is equal to this value, an event is logged   -->
         <!-- in the FI's congestion log. Range is 0-255.  -->
@@ -1572,7 +1667,8 @@
       </Fi>
     </CongestionControl>
 
-    <!-- Configures support for AdaptiveRouting in Switches -->
+
+    <!-- Configures support for AdaptiveRouting in Intel Switches -->
     <!-- Adaptive Routing monitors the performance of the possible paths between -->
     <!-- fabric endpoints and periodically rebalances the routes to reduce -->
     <!-- congestion and achieve a more balanced packet load -->
@@ -1585,7 +1681,7 @@
       <LostRouteOnly>0</LostRouteOnly>                                                                                 <!--SM_0_ar_lost_route_only:dec-->
       <!-- Algorithm the switch should use when selecting an egress port -->
       <!-- Algorithms are currently 0 = Random, 1 = Greedy and -->
-      <!-- 2 = GreedyRandom. Default is 2.-->
+      <!-- 2 = GreedyRandom. Default is 2. -->
       <Algorithm>2</Algorithm>
       <!-- Update Frequency: Specifies the minimum time between -->
       <!-- AR adjustments. Values range from 0 to 7 and are read as 2^n -->
@@ -1786,6 +1882,14 @@
 
     <!-- **************** Miscellaneous **************************** -->
     <LID>0</LID> <!-- lid for this SM, 0=pick any available -->                                                        <!--SM_0_lid:dec-->
+    <!-- How are unicast LIDs & LMCs assigned to end-ports -->
+    <!-- Serial: iterate over unicast LID space and assign the next -->
+    <!--  contiguous unassigned LID range large enough for the LMC -->
+    <!--  settings in use. -->
+    <!-- Topology: assign LID and LMC values from ports defined in -->
+    <!--  ExpectedLinks in the topology file used by PreDefinedTopology -->
+    <!--  Requires that PreDefinedTopology be enabled. -->
+    <LidStrategy>Serial</LidStrategy>
 
     <!-- Appliance nodes are nodes whose self-reported NodeGUIDs are -->
     <!-- expected not to match the NeighborNodeGUID on the appliance node's -->
@@ -1818,14 +1922,14 @@
     <!-- Number of port bounce events to log before suppressing the rest. -->
     <!-- 0 - No Limit, Any other number specifies exact number per sweep. -->
     <PortBounceLogLimit>0</PortBounceLogLimit>
-    
+
     <!-- Overrides of the Common.Shared parameters if desired -->
     <!-- <Priority>0</Priority> --> <!-- 0 to 15, higher wins -->                                                      <!--#SM_0_priority:dec-->
     <!-- <ElevatedPriority>0</ElevatedPriority> --> <!-- 0 to 15, higher wins -->                                      <!--#SM_0_elevated_priority:dec-->
     <!-- <LogLevel>2</LogLevel> -->                                                                                    <!--#SM_0_log_level:dec-->
     <!-- <LogFile></LogFile> -->                                                                                       <!--#SM_0_log_file-->
     <!-- <SyslogFacility>Local6</SyslogFacility> -->
-	
+
     <!-- Alternative to use of LogLevel.  Use of LogLevel recommended. -->
     <!-- for each subsystem there can be a LogMask.  The mask selects -->
     <!-- severities of log messages to enable: --> 
@@ -1854,7 +1958,7 @@
     <!-- ***********Additional parameters for debug/development use************ -->
     <!-- ********************************************************************** -->    
     <!-- Default values are shown below -->
-	
+
     <!-- <LoopTestOn>0</LoopTestOn> --> <!-- cable loop test -->                                                       <!--SM_0_loop_test_on:dec^=-->
     <!-- <LoopTestFastMode>0</LoopTestFastMode> -->
     <!-- <LoopTestPackets>5</LoopTestPackets> --> <!-- inject count -->                                                <!--SM_0_loop_test_packets:dec^=-->
@@ -1905,10 +2009,8 @@
 
     <!-- Storm Lake optimizations. -->
     <!-- <LftMultiblock>29</LftMultiblock> --> <!-- LFTs per MAD packet -->
-    <!-- <ScMultiblock>29</ScMultiblock> --> <!-- SC tables per MAD packet -->
     <!-- <UseAggregateMADs>1</UseAggregateMADs> --> <!-- Enable aggregate MADs -->
-    <!-- <OptimizedPortInfo>1</OptimizedPortInfo> --> <!-- Enable aggregate/multiblock portinfo -->
-	
+
     <!-- Cable Info Caching Policy -->
     <!-- The SM can be configured to collect Cable Info data and make -->
     <!-- that data available via Cable Info SA queries.               -->
@@ -1917,8 +2019,8 @@
     <!-- means that the SM assumes that it is only necessary to query -->
     <!-- one end of each cable in the fabric. -->
     <!-- <CableInfoPolicy>ByLink</CableInfoPolicy> -->
-    <!-- ********************************************************************** --> 
-    
+    <!-- ********************************************************************** -->
+
   </Sm>
 
   <!-- Common FE (Fabric Executive) attributes -->
@@ -2189,6 +2291,7 @@
     <!-- <FE_LogMask>0x000001ff</FE_LogMask> -->
     <!-- <APP_LogMask>0x000001ff</APP_LogMask> -->
   </Pm>
+
 </Common>
 
 <!-- A single FM Instance/subnet - this is the only instance supported for ESM -->
@@ -2204,6 +2307,7 @@
   <!-- Additional Instance Specific Virtual Fabrics -->
   <VirtualFabrics>
   </VirtualFabrics>
+
 
   <!-- Shared Instance config, applies to all components: SM, PM and FE -->
   <Shared>
@@ -2433,7 +2537,7 @@
     <!-- Overrides of the Common.Shared or Fm.Shared parameters if desired -->
     <!-- <LogFile>/var/log/fm2_log</LogFile> --> <!-- log for this instance -->
     <!-- <SyslogFacility>Local6</SyslogFacility> -->
-   </Shared>
+  </Shared>
 
   <!-- Instance Specific SM (Subnet Manager) attributes -->
   <Sm>
@@ -2501,7 +2605,6 @@
     <!-- <SyslogFacility>Local6</SyslogFacility> -->
     <!-- <LoopTestOn>0</LoopTestOn> --> <!-- cable loop test -->                                                       <!--#SM_2_loop_test_on:dec-->
     <!-- <LoopTestPackets>20</LoopTestPackets> --> <!-- inject count -->                                               <!--#SM_2_loop_test_packets:dec==1-->
-    <!-- <LIDSpacing>0x0</LIDSpacing> --> <!-- spacing of LIDs to test LFT -->                                         <!--#SM_2_topo_lid_offset:hex-->
     <!-- <SaRmppChecksum>0</SaRmppChecksum> --> <!-- RMPP internal checksum -->                                        <!--#SM_2_sa_rmpp_checksum:dec-->
     <!-- <DynamicPortAlloc>1</DynamicPortAlloc> -->                                                                    <!--#SM_2_dynamic_port_alloc:dec-->
 
@@ -2562,6 +2665,7 @@
   <!-- Additional Instance Specific Virtual Fabrics -->
   <VirtualFabrics>
   </VirtualFabrics>
+
   <!-- Shared Instance config, applies to all components: SM, PM and FE -->
   <Shared>
     <Start>0</Start> <!-- Overall Instance Startup, see fm0 for more info -->                                          <!--SM_3_start:dec-->

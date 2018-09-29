@@ -63,13 +63,12 @@ dgmh_pre_process_discovery(Topology_t *topop, void **outContext)
 {
 	Status_t status; 
 	DGTopology *dgp;
-	int i, allFound, dgIndex;
+	int i, allFound;
 
 	IB_LOG_INFO_FMT(__func__, "Initializing DGShortestPath.");
 
 	if (sm_config.dgRouting.dgCount == 0) {
-		IB_LOG_ERROR_FMT(__func__,"DG Routing selected but no Routing Order specified.");
-		return VSTATUS_BAD;
+		IB_LOG_WARN_FMT(__func__,"DG Routing selected but no Routing Order specified. Creating a default group.");
 	}
 
 	// NOTA BENE: vs_pool_alloc() zeroes out the allocated memory.
@@ -84,34 +83,28 @@ dgmh_pre_process_discovery(Topology_t *topop, void **outContext)
 	}
 	topop->routingModule->data = dgp;
 
-	// We read the config on every sweep out of an excess of caution - 
+	// We read the config on every sweep out of an excess of caution -
 	// in the future we may have to deal with device groups changing
 	// from sweep to sweep.
 	dgp->dgCount = sm_config.dgRouting.dgCount;
 	allFound = 0;
-	for (i=0; i<dgp->dgCount; i++) { 
+	for (i=0; i<dgp->dgCount; i++) {
 		cl_qmap_init(&(dgp->deviceGroup[i]), NULL);
-		cs_strlcpy(dgp->deviceGroupName[i],sm_config.dgRouting.dg[i].member,
-			MAX_VFABRIC_NAME);
-		if ((dgIndex = smGetDgIdx(dgp->deviceGroupName[i])) < 0) {
-			IB_LOG_ERROR_FMT(__func__,"DGMinHopTopology has undefined RoutingOrder DeviceGroup %s",
-							dgp->deviceGroupName[i]);
-			IB_FATAL_ERROR_NODUMP("FM cannot continue.");
-			return VSTATUS_BAD;
-		}
-		dgp->deviceGroupIndex[i] = dgIndex;
-		if (dg_config.dg[dgp->deviceGroupIndex[i]]->select_all && !allFound) {
+		StringCopy(dgp->deviceGroupName[i], sm_config.dgRouting.dg[i].member, MAX_VFABRIC_NAME);
+		dgp->deviceGroupIndex[i] = sm_config.dgRouting.dg[i].dg_index;
+		if (topop->vfs_ptr->dg_config.dg[dgp->deviceGroupIndex[i]]->select_all && !allFound) {
 			// The first group we find that has select_all set is our
 			// "All" group and is handled specially.
 			dgp->allGroup=i;
 			allFound=1;
 		}
 
-		IB_LOG_DEBUG4_FMT(__func__,"Group[%d] = %s, Index = %d", 
+		IB_LOG_DEBUG4_FMT(__func__,"Group[%d] = %s, Index = %d",
 			i, dgp->deviceGroupName[i], dgp->deviceGroupIndex[i]);
 	}
 
-	//If none of the ordered groups has the "all" flag set, we create
+	//If none of the ordered groups has the "all" flag set, or
+	//no routing order was defined in the config file, we create
 	//an "all" group of our own at the end of the list.
 	if (!allFound) {
 		dgp->allGroup = dgp->dgCount; 
@@ -540,12 +533,6 @@ dgmh_compare_device_groups(Topology_t *topop)
 		} 
 
 		oldnodep = nodep->old;
-		if (!bitset_equal(&(nodep->activePorts),&(oldnodep->activePorts))) {
-			IB_LOG_INFO_FMT(__func__,"Node 0x%"PRIx64" ports changed.",
-				nodep->nodeInfo.NodeGUID);
-			rebalance_needed = 1;
-			break;
-		} 
 
 		// NOTA BENE: This loop is a bit funky because for switches
 		// we only want to consider port 0, but for HFIs we want to
@@ -677,15 +664,6 @@ dgmh_post_process_routing_copy(Topology_t *src_topop, Topology_t *dst_topop, int
 }
 
 static Status_t
-dgmh_setup_switches_lrdr(Topology_t *topop, int rebalance, int routing_needed)
-{
-	IB_LOG_DEBUG4_FMT(__func__, "Rebalance = %d, Routing Needed = %d",
-		rebalance, routing_needed);
-	return	sm_setup_switches_lrdr_wave_discovery_order(topop, 
-		rebalance, routing_needed);
-}
-
-static Status_t
 dgmh_copy(struct _RoutingModule * dest, const struct _RoutingModule * src)
 {
 	memcpy(dest, src, sizeof(RoutingModule_t));
@@ -705,7 +683,6 @@ dgmh_make_routing_module(RoutingModule_t *rm)
 	rm->funcs.post_process_discovery = dgmh_post_process_discovery;
 	rm->funcs.post_process_routing = dgmh_post_process_routing;
 	rm->funcs.post_process_routing_copy = dgmh_post_process_routing_copy;
-	rm->funcs.setup_switches_lrdr = dgmh_setup_switches_lrdr;
 	rm->funcs.calculate_routes = dgmh_calculate_lft;
 	rm->release = dgmh_destroy;
 	rm->copy = dgmh_copy;

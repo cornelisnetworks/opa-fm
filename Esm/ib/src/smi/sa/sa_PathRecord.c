@@ -932,17 +932,20 @@ sa_PathRecord_Set(uint8_t * query, uint32_t* records, uint8_t cversion, uint32_t
 	//
 
 	VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
+	uint32_t qos_idx;
 
 	for (vf=0; (vf = bitset_find_next_one(&vfs, vf)) != -1; vf++) {
 		if (VirtualFabrics->v_fabric_all[vf].standby) continue;
+
+		qos_idx = VirtualFabrics->v_fabric_all[vf].qos_index;
 
 		pkey = VirtualFabrics->v_fabric_all[vf].pkey; 
 		vfMtu = Min(mtu, VirtualFabrics->v_fabric_all[vf].max_mtu_int);
 		vfRate = linkrate_gt(rate, VirtualFabrics->v_fabric_all[vf].max_rate_int) ?
 			VirtualFabrics->v_fabric_all[vf].max_rate_int : rate;
-		lifeMult = (!VirtualFabrics->v_fabric_all[vf].pkt_lifetime_specified) ? 0 :
-			VirtualFabrics->v_fabric_all[vf].pkt_lifetime_mult;
-		sl = VirtualFabrics->v_fabric_all[vf].base_sl;
+		lifeMult = (!VirtualFabrics->qos_all[qos_idx].pkt_lifetime_specified) ? 0 :
+			VirtualFabrics->qos_all[qos_idx].pkt_lifetime_mult;
+		sl = VirtualFabrics->qos_all[qos_idx].base_sl;
 
 		//
 		// Check for other VFs sharing same pkey & sls (same path).
@@ -951,9 +954,11 @@ sa_PathRecord_Set(uint8_t * query, uint32_t* records, uint8_t cversion, uint32_t
 		for (vf2 = vf+1; (vf2 = bitset_find_next_one(&vfs, vf2)) != -1; vf2++) {
 			if (VirtualFabrics->v_fabric_all[vf2].standby) continue;
 
+			qos_idx = VirtualFabrics->v_fabric_all[vf2].qos_index;
+
 			if (PKEY_VALUE(pkey) != PKEY_VALUE(VirtualFabrics->v_fabric_all[vf2].pkey)) continue;
 
-			if (sl != VirtualFabrics->v_fabric_all[vf2].base_sl)
+			if (sl != VirtualFabrics->qos_all[qos_idx].base_sl)
 				continue;
 
 
@@ -963,9 +968,9 @@ sa_PathRecord_Set(uint8_t * query, uint32_t* records, uint8_t cversion, uint32_t
 			if (linkrate_gt(vfRate, VirtualFabrics->v_fabric_all[vf2].max_rate_int)) {
 				vfRate = VirtualFabrics->v_fabric_all[vf2].max_rate_int;
 			}
-			if (VirtualFabrics->v_fabric_all[vf2].pkt_lifetime_specified &&
-				lifeMult < VirtualFabrics->v_fabric_all[vf2].pkt_lifetime_mult) {
-				lifeMult = VirtualFabrics->v_fabric_all[vf2].pkt_lifetime_mult;
+			if (VirtualFabrics->qos_all[qos_idx].pkt_lifetime_specified &&
+				lifeMult < VirtualFabrics->qos_all[qos_idx].pkt_lifetime_mult) {
+				lifeMult = VirtualFabrics->qos_all[qos_idx].pkt_lifetime_mult;
 			}
 
 			// Clear vf so dual path not reported.

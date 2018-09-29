@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2018, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -103,6 +103,11 @@ int isSweeping = 0;
 int	activateInProgress = 0;
 int	forceRebalanceNextSweep = 0;
 int oldSmActiveCount = 0;
+
+// variables used to synchronize sweeps on traps
+uint32_t    smFabricDiscoveryNeeded=0;
+uint64_t    lastTimeDiscoveryRequested=0;
+
 void dump_cost_array(uint16_t *);
 void showSmParms(void);
 
@@ -110,9 +115,19 @@ Status_t topology_initialize(void);
 Status_t topology_discovery(void);
 Status_t topology_transition(void);
 Status_t topology_resolve(void);
-Status_t topology_assignments(void);
+Status_t topology_assignments_pkey(void);
+Status_t topology_assignments_looptest(void);
+Status_t topology_assignments_switchinfo(void);
+Status_t topology_assignments_setup_switches(void);
+Status_t topology_assignments_lids(void);
+Status_t topology_assignments_update_fields(void);
+Status_t topology_assignments_vlarb(void);
+Status_t topology_assignments_buffer_control(void);
 Status_t topology_adaptiverouting(void);
+Status_t topology_arm(void);
 Status_t topology_activate(void);
+Status_t topology_cableinfo(void);
+Status_t topology_post_activate(void);
 Status_t topology_changes(Topology_t *old_topo, Topology_t *new_topo);
 Status_t topology_TrapUp(STL_NOTICE * noticep, Topology_t *, Topology_t *, Node_t *, Port_t *);
 Status_t topology_TrapDown(STL_NOTICE * noticep, Topology_t *, Topology_t *, Node_t *, Port_t *);
@@ -125,6 +140,8 @@ Status_t topology_cache_build(void);
 Status_t topology_cache_copy(void);
 Status_t topology_congestion(void);
 Status_t copy_congestion_control_data(void);
+Status_t topology_assignments_delayedpkeys(void);
+Status_t topology_reregisters(void);
 Status_t topology_db(void);
 Status_t topology_fe(void);
 Status_t topology_dump(void);
@@ -135,23 +152,40 @@ Status_t topology_sm_port_init_failure(void);
 Status_t topology_setup_switches_LR_DR(void);
 Status_t topology_update_cableinfo(void);
 
-
 typedef	Status_t  (*TFunc_t)(void);
 
-TFunc_t	topology_functions[] = {
-	topology_initialize,		// Initialize data structures, local SM port.
-	topology_discovery,			// Initial exploration of the fabric
-	topology_transition,		// Determine if this SM should be MASTER or STANDBY.
-	topology_userexit,			// NOOP!
-	topology_resolve,			// Sync the old topology with the new one.
-	topology_assignments,		// Assign LIDS, build LFTs, PGTs and PGFTs.
-	topology_adaptiverouting,	// Transmit PGTs and PGFTs to switches.
-	topology_activate,			// Bring all links to active.
-    sm_dbsync_upsmlist,			// Update our list of SMs in the fabric
-	topology_multicast,			// Build MFTs
-	topology_cache_build,		// Builds caches that are used by the SA.
-	topology_loopTest,			// Embedded only. Injects packets into fabric.
-	NULL
+typedef struct {
+	char * name;
+	TFunc_t func;
+} TFuncEntry_t;
+
+#define MAKE_TFUNC(name) { #name, name }
+#define END_TFUNC() { "(null)", NULL }
+
+TFuncEntry_t topology_functions[] = {
+	MAKE_TFUNC(topology_initialize),		// Initialize data structures, local SM port.
+	MAKE_TFUNC(topology_discovery),			// Initial exploration of the fabric
+	MAKE_TFUNC(topology_transition),		// Determine if this SM should be MASTER or STANDBY.
+	MAKE_TFUNC(topology_userexit),			// NOOP!
+	MAKE_TFUNC(topology_resolve),			// Resolve LID assignments.
+	MAKE_TFUNC(topology_assignments_pkey),
+	MAKE_TFUNC(topology_assignments_looptest),
+	MAKE_TFUNC(topology_assignments_switchinfo),
+	MAKE_TFUNC(topology_assignments_setup_switches),
+	MAKE_TFUNC(topology_assignments_lids),
+	MAKE_TFUNC(topology_assignments_update_fields),
+	MAKE_TFUNC(topology_assignments_vlarb),
+	MAKE_TFUNC(topology_assignments_buffer_control),
+	MAKE_TFUNC(topology_adaptiverouting),	// Transmit PGTs and PGFTs to switches.
+	MAKE_TFUNC(topology_arm),				// Bring all links to armed.
+	MAKE_TFUNC(topology_activate),			// Bring all links to active.
+	MAKE_TFUNC(topology_cableinfo),			// Fetch cableinfo.
+	MAKE_TFUNC(topology_post_activate),		// Misc post-activation non-packet logic.
+	MAKE_TFUNC(sm_dbsync_upsmlist),			// Update our list of SMs in the fabric
+	MAKE_TFUNC(topology_multicast),			// Build MFTs
+	MAKE_TFUNC(topology_cache_build),		// Builds caches that are used by the SA.
+	MAKE_TFUNC(topology_loopTest),			// Embedded only. Injects packets into fabric.
+	END_TFUNC()
 };
 
 static const char *sweep_reasons[] = {
@@ -247,9 +281,6 @@ extern int saNodeRecordSize(void);
 extern Status_t sm_sa_forward_trap(STL_NOTICE * noticep);
 extern char* printSwitchLft(int nodeIdx, int useNew, int haveLock, int buffer);
 extern Status_t sm_cong_config_copy(void);
-
-// externs
-extern  cs_Queue_ptr    sm_async_rcv_resp_queue;
 
 VirtualFabrics_t *previousVfPtr;
 extern VirtualFabrics_t *updatedVirtualFabrics;
@@ -417,6 +448,9 @@ static Status_t UpdateHoq(Node_t * nodep, Port_t * curPort, boolean * updHoq)
 
     uint32_t preemptibleVLs = 0;
 
+    // Update HLL, only if not port 0
+    if (curPort->index == 0) return status;
+
     memset(maxHoqVals, 0, sizeof(maxHoqVals));
 
     // Default VL15 to SM instance values.
@@ -451,26 +485,22 @@ static Status_t UpdateHoq(Node_t * nodep, Port_t * curPort, boolean * updHoq)
 
 	VirtualFabrics_t *vfs = sm_topop->vfs_ptr;
     uint8_t numVls = (curPort->portData->vl1 <= 15 ? curPort->portData->vl1 : curPort->portData->vl1+1);
-    for (vl = 0; vl < MAX(numVls, 16); vl++) {
-        if (numVls < 16 && vl==numVls)
-            vl = 15;   // skip to VL15
-
+	if (vlbwmap.has_qos) for (vl = 0; vl < numVls; vl++) {
+        if (vlbwmap.qos[vl] >= MAX_QOS_GROUPS) continue;
         if (vl == 15) continue;
-
-        uint32_t vf;
 
         if (bitset_nset(&vlvfmap.vf[vl]))
             bitset_set(&isVlActive, vl);
 
-        // find the max HoQ lifetime for each VL on the port
-        for (vf = 0; (vf = bitset_find_next_one(&vlvfmap.vf[vl],  vf)) != -1; ++vf){
-            if (vfs->v_fabric_all[vf].hoqlife_vf > maxHoqVals[vl])
-                maxHoqVals[vl] = vfs->v_fabric_all[vf].hoqlife_vf;
+        maxHoqVals[vl] = vfs->qos_all[vlbwmap.qos[vl]].hoqlife_qos;
 
-            // get a bitmask of preemptible VLs.
-            preemptibleVLs |= curPort->portData->curArb.vlarbMatrix[vl];
-        }
-    }
+        // get a bitmask of preemptible VLs.
+        preemptibleVLs |= curPort->portData->curArb.vlarbMatrix[vl];
+    } else {
+		// No QOS. One VL.
+    	maxHoqVals[0] = sm_config.hoqlife_n2;
+        bitset_set(&isVlActive, 0);
+	}
 
     // Bitfield indicating hi priority VLs
     bitset_t isVlHigh;
@@ -491,13 +521,10 @@ static Status_t UpdateHoq(Node_t * nodep, Port_t * curPort, boolean * updHoq)
         // Since perVL-VLStallCnt is limited in HW implementation,
         // just copy the SM-wide VLStallCnt into all active VLs
         // (including VL 15).
-        // Not applicable to Port 0.
-        if (curPort->index!=0) {
-            uint8_t vlStallCnt = sm_config.vlstall;
-            if (curPort->portData->portInfo.XmitQ[vl].VLStallCount != vlStallCnt) {
-                curPort->portData->portInfo.XmitQ[vl].VLStallCount = vlStallCnt;
-                *updHoq = 1;
-            }
+        uint8_t vlStallCnt = sm_config.vlstall;
+        if (curPort->portData->portInfo.XmitQ[vl].VLStallCount != vlStallCnt) {
+            curPort->portData->portInfo.XmitQ[vl].VLStallCount = vlStallCnt;
+            *updHoq = 1;
         }
 
         if (bitset_test(&isVlActive, vl)) {
@@ -525,13 +552,10 @@ static Status_t UpdateHoq(Node_t * nodep, Port_t * curPort, boolean * updHoq)
                     vl, oldHoq, maxHoqVals[vl]);
             }
 
-            // Update HLL, only if not port 0
-            if (curPort->index!=0) {
-                uint8 vlHll = maxHoqVals[vl];
-                if (curPort->portData->portInfo.XmitQ[vl].HOQLife != vlHll) {
-                    curPort->portData->portInfo.XmitQ[vl].HOQLife = vlHll;
-                    *updHoq = 1;
-                }
+            uint8 vlHll = maxHoqVals[vl];
+            if (curPort->portData->portInfo.XmitQ[vl].HOQLife != vlHll) {
+                curPort->portData->portInfo.XmitQ[vl].HOQLife = vlHll;
+                *updHoq = 1;
             }
         }
     }
@@ -596,6 +620,10 @@ sm_trigger_sweep(SweepReason_t reason)
 	AtomicWrite(&topology_triggered, 1);
 	(void)vs_time_get(&topology_sema_setTime);
 	(void)cs_vsema(&topology_sema);
+	// Since a sweep is triggered, clear the smFabricDiscoveryNeeded indicator
+	smFabricDiscoveryNeeded = 0;
+	// Since a sweep is triggered, clear the lastTimeDiscoveryRequested indicator
+	lastTimeDiscoveryRequested = 0;
 }
 
 /*
@@ -637,8 +665,8 @@ topology_main(uint32_t argc, uint8_t ** argv)
 {
 	int			i;
 	int			topologSemCount=0;
-	uint64_t	now, temp64;
-	Status_t	status = VSTATUS_OK;
+	uint64_t		now, temp64;
+	Status_t		status = VSTATUS_OK;
 	int			force;
 	int			newTopologyValid = 1;
 	int			sweepStartPacketCount=0;
@@ -654,48 +682,48 @@ topology_main(uint32_t argc, uint8_t ** argv)
 	AtomicWrite(&topology_triggered, 0);
 	cca_discovery_count = 0;
 
-//
-//	Get my thread name.
-//
+	//
+	//	Get my thread name.
+	//
 	(void)vs_thread_name(&sm_threads[SM_THREAD_TOPOLOGY].name);
 
-//
-//	Init data structures for tracking entities removed from fabric.
-//
+	//
+	//	Init data structures for tracking entities removed from fabric.
+	//
 	sm_removedEntities_init();
 
 	if (!bitset_init(&sm_pool, &new_switchesInUse, SM_NODE_NUM) ||
-		!bitset_init(&sm_pool, &old_switchesInUse, SM_NODE_NUM) ||
-		!bitset_init(&sm_pool, &new_endnodesInUse, SM_NODE_NUM)) {
+			!bitset_init(&sm_pool, &old_switchesInUse, SM_NODE_NUM) ||
+			!bitset_init(&sm_pool, &new_endnodesInUse, SM_NODE_NUM)) {
 		return;
 	}
 
-//
-// Initialize persistent topology
-//
+	//
+	// Initialize persistent topology
+	//
 	sm_popo_init(&sm_popo);
 
-//
-// Initialize our counters
-//
+	//
+	// Initialize our counters
+	//
 	sm_init_counters();
 
-    //
-    // wait for topology_rcv thread
-    //
-    while ((status = cs_psema(&topology_rcv_sema)) != VSTATUS_OK) {
-        IB_LOG_ERRORRC("timeout returned while waiting for topology_rcv_sema rc:", status);
-    }
+	//
+	// wait for topology_rcv thread
+	//
+	while ((status = cs_psema(&topology_rcv_sema)) != VSTATUS_OK) {
+		IB_LOG_ERRORRC("timeout returned while waiting for topology_rcv_sema rc:", status);
+	}
 
-//
-//	Wait for the async thread to kick us off.  After it does, we run through
-//	the topology setup code.  We then get the timer to determine when to do
-//	this again.
-//
-    /*
-     * move SM to discovery state now
-     */
-    (void)sm_transition(SM_STATE_DISCOVERING);
+	//
+	//	Wait for the async thread to kick us off.  After it does, we run through
+	//	the topology setup code.  We then get the timer to determine when to do
+	//	this again.
+	//
+	/*
+	 * move SM to discovery state now
+	 */
+	(void)sm_transition(SM_STATE_DISCOVERING);
 
 	while (1) {
 		if(topology_main_exit == 1){
@@ -715,24 +743,24 @@ topology_main(uint32_t argc, uint8_t ** argv)
 			oldSmActiveCount = oldSmCount;
 
 		smSendOutMFTs = 0;
-        newTopologyValid = 1;
-        topology_changed = 0;
+		newTopologyValid = 1;
+		topology_changed = 0;
 		topology_switch_port_changes = 0;
 		topology_cost_path_changes = 0;
 		routing_recalculated = 0;
-        status = VSTATUS_OK;
-        topologSemCount = -1;
-        topology_resweep = 0;
-        while (status == VSTATUS_OK && topologSemCount != 0) {
-            if ((status = cs_psema(&topology_sema)) != VSTATUS_OK) {
-                IB_FATAL_ERROR_NODUMP("TT: aborting - failed to take topology_sema");
-            } else {
-                if ((status = cs_sema_getcount(&topology_sema, &topologSemCount)) != VSTATUS_OK) {
-                    IB_FATAL_ERROR_NODUMP("TT: aborting - failed to get topology_sema count");
-                }
-            }
+		status = VSTATUS_OK;
+		topologSemCount = -1;
+		topology_resweep = 0;
+		while (status == VSTATUS_OK && topologSemCount != 0) {
+			if ((status = cs_psema(&topology_sema)) != VSTATUS_OK) {
+				IB_FATAL_ERROR_NODUMP("TT: aborting - failed to take topology_sema");
+			} else {
+				if ((status = cs_sema_getcount(&topology_sema, &topologSemCount)) != VSTATUS_OK) {
+					IB_FATAL_ERROR_NODUMP("TT: aborting - failed to get topology_sema count");
+				}
+			}
 			AtomicWrite(&topology_triggered, 0);
-        }
+		}
 		if(topology_main_exit == 1){
 #ifdef __VXWORKS__
 			ESM_LOG_ESMINFO("Topology Task exiting OK.", 0);
@@ -740,7 +768,7 @@ topology_main(uint32_t argc, uint8_t ** argv)
 			break;
 		}
 		(void)vs_time_get(&topology_sema_runTime);
-        sweepStartPacketCount = sm_smInfo.ActCount;
+		sweepStartPacketCount = sm_smInfo.ActCount;
 
 		if (sm_debug != 0) {
 			(void)printf(".");
@@ -754,15 +782,16 @@ topology_main(uint32_t argc, uint8_t ** argv)
 		if (sm_peer_quarantined && sm_state == SM_STATE_NOTACTIVE) {
 			STL_PORT_INFO portInfo;
 			uint8_t path[64];
-
 			memset((void*)path, 0, 64);
-			status = SM_Get_PortInfo(fd_sminfo, 1<<24, path, &portInfo);
+			SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+
+			status = SM_Get_PortInfo(fd_sminfo, 1<<24, &addr, &portInfo);
 			if (status != VSTATUS_OK) {
 				IB_LOG_ERROR_FMT(__func__,
-				  "Failed to get local port info; cannot transition back to DISCOVERING");
+						"Failed to get local port info; cannot transition back to DISCOVERING");
 			} else if (sm_peer_quarantined &&
-			  !portInfo.PortStates.s.IsSMConfigurationStarted &&
-			  portInfo.PortStates.s.PortState > IB_PORT_DOWN) {
+					!portInfo.PortStates.s.IsSMConfigurationStarted &&
+					portInfo.PortStates.s.PortState > IB_PORT_DOWN) {
 				sm_peer_quarantined = 0;
 				sm_transition(SM_STATE_DISCOVERING);
 			}
@@ -789,8 +818,23 @@ topology_main(uint32_t argc, uint8_t ** argv)
 
 				(void)vs_lock(&new_topology_lock);
 
-				for (i = 0; topology_functions[i] != NULL; i++) {
-					status = (topology_functions[i])();
+				for (i = 0; topology_functions[i].func != NULL; i++) {
+					uint64_t tstart;
+					vs_time_get(&tstart);
+					uint32_t pstart = AtomicRead(&smCounters[smCounterSmPacketTransmits].sinceLastSweep);
+					uint32_t rstart = AtomicRead(&smCounters[smCounterPacketRetransmits].sinceLastSweep);
+
+					status = (topology_functions[i]).func();
+
+					uint64_t tend;
+					vs_time_get(&tend);
+					uint32_t pend = AtomicRead(&smCounters[smCounterSmPacketTransmits].sinceLastSweep);
+					uint32_t rend = AtomicRead(&smCounters[smCounterPacketRetransmits].sinceLastSweep);
+
+					if (smDebugPerf) {
+						IB_LOG_INFINI_INFO_FMT(__func__, "TT: FUNC: %s: elapsed=%"PRIu64" packets=%u retries=%u status=%u",
+								topology_functions[i].name, tend - tstart, pend - pstart, rend - rstart, status);
+					}
 
 					// if the local port was marked down mid-sweep, we're not
 					// going to make progress.  reset the short-term quarantine
@@ -824,10 +868,10 @@ topology_main(uint32_t argc, uint8_t ** argv)
 									topo_abandon_count++;
 							}
 							if (topo_errors > sm_config.topo_errors_threshold &&
-							   topo_abandon_count > sm_config.topo_abandon_threshold) {
-							   // abandonment threshold exceeded, so ignore error conditions and
-							   // continue the sweep of the entire fabric
-							   continue;
+									topo_abandon_count > sm_config.topo_abandon_threshold) {
+								// abandonment threshold exceeded, so ignore error conditions and
+								// continue the sweep of the entire fabric
+								continue;
 							}
 						}
 
@@ -910,10 +954,14 @@ topology_main(uint32_t argc, uint8_t ** argv)
 							}
 						}
 					}
-
 					(void)topology_release_saved_topology();
 
 					(void)topology_dump();
+
+					/* Send Delayed Pkey Writes now that Topo is in SA */
+					(void)topology_assignments_delayedpkeys();
+					/* Send Client Rereg to ports */
+					(void)topology_reregisters();
 
 
 				} else {
@@ -939,8 +987,8 @@ topology_main(uint32_t argc, uint8_t ** argv)
 
 			if (sm_debug) sm_popo_report(&sm_popo);
 
-            (void)vs_time_get(&now);
-            if (newTopologyValid) {
+			(void)vs_time_get(&now);
+			if (newTopologyValid) {
 				int newSmCount = sm_dbsync_getSmCount();
 
 				int swDelta = ((int)sm_topop->num_sws - oldSwitchCount);
@@ -955,21 +1003,32 @@ topology_main(uint32_t argc, uint8_t ** argv)
 				if (haveDelta || smDebugPerf || ((sm_config.timer/1000000) >= 300) || ((temp64/1000000) > 60)) {
 #endif
 					IB_LOG_INFINI_INFO_FMT(__func__,
-                       "DISCOVERY CYCLE END. %d SWs, %d HFIs, %d end ports, %d total ports, %d SM(s), %d packets, %d retries, %d.%.3d sec sweep",
-                       sm_topop->num_sws, (sm_topop->num_nodes-sm_topop->num_sws), sm_topop->num_endports, sm_topop->num_ports, newSmCount,
-                       ((unsigned int)sm_smInfo.ActCount - sweepStartPacketCount),
-				       (int)AtomicRead(&smCounters[smCounterPacketRetransmits].sinceLastSweep),
-                       (unsigned int)(temp64/1000000), (unsigned int)((temp64 - temp64/1000000*1000000))/1000);
+							"DISCOVERY CYCLE END. %d SWs, %d HFIs, %d end ports, %d total ports, %d SM(s), %d packets, %d retries, %d.%.3d sec sweep",
+							sm_topop->num_sws, (sm_topop->num_nodes-sm_topop->num_sws), sm_topop->num_endports, sm_topop->num_ports, newSmCount,
+							((unsigned int)sm_smInfo.ActCount - sweepStartPacketCount),
+							(int)AtomicRead(&smCounters[smCounterPacketRetransmits].sinceLastSweep),
+							(unsigned int)(temp64/1000000), (unsigned int)((temp64 - temp64/1000000*1000000))/1000);
+#if !defined(__VXWORKS__)
+					if (sm_config.sm_debug_perf) {
+						char buf[128];
+						FILE *f = fopen("/proc/self/statm", "r");
+						if (f && fgets(buf,sizeof(buf),f)) {
+							IB_LOG_INFINI_INFO_FMT(__func__, "MEMORY CONSUMPTION: %s",buf);
+						}
+						if (f) fclose(f);
+					}
+#endif
+
 #ifdef __VXWORKS__
-                    if (!shutdown && sm_topop->num_nodes >= MAX_SUBNET_SIZE) {
-                        shutdown=1;
-                        IB_LOG_ERROR_FMT(__func__, "TT: aborting - fabric size exceeds the %d maximum nodes supported by the ESM", MAX_SUBNET_SIZE);
-                        smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_SM_SHUTDOWN,
-                            getMyCsmNodeId(), NULL,
-                            "Terminating SM after %d sweeps.", topology_passcount);
-                        sm_control_shutdown(NULL);
-                        exit(0);
-                    }
+					if (!shutdown && sm_topop->num_nodes >= MAX_SUBNET_SIZE) {
+						shutdown=1;
+						IB_LOG_ERROR_FMT(__func__, "TT: aborting - fabric size exceeds the %d maximum nodes supported by the ESM", MAX_SUBNET_SIZE);
+						smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_SM_SHUTDOWN,
+								getMyCsmNodeId(), NULL,
+								"Terminating SM after %d sweeps.", topology_passcount);
+						sm_control_shutdown(NULL);
+						exit(0);
+					}
 				}
 #endif
 				SET_PEAK_COUNTER(smMaxSweepTime, (uint32)(temp64/1000));
@@ -986,38 +1045,38 @@ topology_main(uint32_t argc, uint8_t ** argv)
 
 				if (smTerminateAfter && topology_passcount >= smTerminateAfter) {
 					smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_SM_SHUTDOWN,
-						getMyCsmNodeId(), NULL,
-						"Terminating SM after %d sweeps.", topology_passcount);
+							getMyCsmNodeId(), NULL,
+							"Terminating SM after %d sweeps.", topology_passcount);
 					IB_FATAL_ERROR_NODUMP("Terminating SM.");
 				} else if ( (topology_passcount > 1) && ( haveDelta )) {
 
 					if (sweepNodeAppearanceInfoMsgCount != 0) {
 						smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_APPEARANCE, getMyCsmNodeId(), NULL,
-						                "An additional %d nodes appeared in the fabric and were logged "
-						                "as INFO messages", sweepNodeAppearanceInfoMsgCount);
+								"An additional %d nodes appeared in the fabric and were logged "
+								"as INFO messages", sweepNodeAppearanceInfoMsgCount);
 					}
 
 					if (sweepNodeDisappearanceInfoMsgCount != 0) {
 						smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_DISAPPEARANCE, getMyCsmNodeId(), NULL,
-						"An additional %d nodes disappeared from the fabric and were logged "
-						"as INFO messages", sweepNodeDisappearanceInfoMsgCount);
+								"An additional %d nodes disappeared from the fabric and were logged "
+								"as INFO messages", sweepNodeDisappearanceInfoMsgCount);
 					}
 
 					smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_FABRIC_SUMMARY, getMyCsmNodeId(), NULL,
-					                "Change Summary: %d SWs %s, %d HFIs %s, %d end ports %s, "
-					                "%d total ports %s, %d SMs %s",
-					                abs(swDelta), swDelta >= 0 ? "appeared" : "disappeared",
-					                abs(hcaDelta), hcaDelta >= 0 ? "appeared" : "disappeared",
-					                abs(epDelta), epDelta >= 0 ? "appeared" : "disappeared",
-					                abs(tpDelta), tpDelta >= 0 ? "appeared" : "disappeared",
-					                abs(smDelta), smDelta >= 0 ? "appeared" : "disappeared");
+							"Change Summary: %d SWs %s, %d HFIs %s, %d end ports %s, "
+							"%d total ports %s, %d SMs %s",
+							abs(swDelta), swDelta >= 0 ? "appeared" : "disappeared",
+							abs(hcaDelta), hcaDelta >= 0 ? "appeared" : "disappeared",
+							abs(epDelta), epDelta >= 0 ? "appeared" : "disappeared",
+							abs(tpDelta), tpDelta >= 0 ? "appeared" : "disappeared",
+							abs(smDelta), smDelta >= 0 ? "appeared" : "disappeared");
 
 				}
 
 				if (haveDelta)
 					smCsmLogMessage(CSM_SEV_INFO, CSM_COND_FABRIC_SUMMARY, getMyCsmNodeId(), NULL,
-				                "%d SWs, %d HFIs, %d end ports, %d total ports, %d SM(s)",
-				                sm_topop->num_sws, (sm_topop->num_nodes-sm_topop->num_sws), sm_topop->num_endports, sm_topop->num_ports, newSmCount);
+							"%d SWs, %d HFIs, %d end ports, %d total ports, %d SM(s)",
+							sm_topop->num_sws, (sm_topop->num_nodes-sm_topop->num_sws), sm_topop->num_endports, sm_topop->num_ports, newSmCount);
 
 				if (sm_config.config_consistency_check_level == CHECK_ACTION_CCC_LEVEL)
 					newSmActiveCount = sm_dbsync_getActiveSmCount();
@@ -1034,12 +1093,12 @@ topology_main(uint32_t argc, uint8_t ** argv)
 				if (sm_config.config_consistency_check_level == CHECK_ACTION_CCC_LEVEL)
 					oldSmActiveCount = newSmActiveCount;
 
-                // if we've found more HFI's than we're configured for, issue a warning
-                if (sm_topop->num_endports > sm_config.subnet_size) {
-                	IB_LOG_WARN_FMT(__func__,
-                    	"the number of HFI EndPorts %d on the fabric exceeds the configured subnet size %d",
-                        sm_topop->num_endports, sm_config.subnet_size);
-                }
+				// if we've found more HFI's than we're configured for, issue a warning
+				if (sm_topop->num_endports > sm_config.subnet_size) {
+					IB_LOG_WARN_FMT(__func__,
+							"the number of HFI EndPorts %d on the fabric exceeds the configured subnet size %d",
+							sm_topop->num_endports, sm_config.subnet_size);
+				}
 
 
 #if 0
@@ -1055,12 +1114,12 @@ topology_main(uint32_t argc, uint8_t ** argv)
 
 				if (sm_popo_clear_short_quarantine(&sm_popo))
 					sm_request_resweep(0, 0, SM_SWEEP_REASON_UNQUARANTINE);
-			} else {
+			} else if (!sweepsPaused){
 				IB_LOG_INFINI_INFO_FMT(__func__,
-					"DISCOVERY CYCLE FAIL. %d SWs, %d HFIs, %d end ports, %d total ports, %d packets, %d retries",
-					sm_topop->num_sws, (sm_topop->num_nodes-sm_topop->num_sws), sm_topop->num_endports, sm_topop->num_ports,
-					((unsigned int)sm_smInfo.ActCount - sweepStartPacketCount),
-					(int)AtomicRead(&smCounters[smCounterPacketRetransmits].sinceLastSweep));
+						"DISCOVERY CYCLE FAIL. %d SWs, %d HFIs, %d end ports, %d total ports, %d packets, %d retries",
+						sm_topop->num_sws, (sm_topop->num_nodes-sm_topop->num_sws), sm_topop->num_endports, sm_topop->num_ports,
+						((unsigned int)sm_smInfo.ActCount - sweepStartPacketCount),
+						(int)AtomicRead(&smCounters[smCounterPacketRetransmits].sinceLastSweep));
 			}
 		} else {
 			/* clear the SA tables if necessary */
@@ -1069,16 +1128,16 @@ topology_main(uint32_t argc, uint8_t ** argv)
 		}
 
 		(void)vs_time_get(&now);
-        if (newTopologyValid && !topology_resweep) {
-	    forceRebalanceNextSweep = 0;
-            if (sm_config.timer != 0)
-            {
-                topology_wakeup_time = now + sm_config.timer;
-            }
-            else {
-                topology_wakeup_time = 0;
-            }
-        } else {
+		if (newTopologyValid && !topology_resweep) {
+			forceRebalanceNextSweep = 0;
+			if (sm_config.timer != 0)
+			{
+				topology_wakeup_time = now + sm_config.timer;
+			}
+			else {
+				topology_wakeup_time = 0;
+			}
+		} else {
 			if (lid_space_exhausted){
 				if (sm_config.timer != 0){
 					topology_wakeup_time = now + sm_config.timer;
@@ -1102,11 +1161,11 @@ topology_main(uint32_t argc, uint8_t ** argv)
 		sm_popo_end_sweep(&sm_popo);
 	}	// End of while(1)
 
-    /* clear the isSM bit from our port */
-    sm_clearIsSM();
+	/* clear the isSM bit from our port */
+	sm_clearIsSM();
 
 #ifdef __VXWORKS__
-// We need to clean the globals here.
+	// We need to clean the globals here.
 	topology_uninitialize();
 
 #endif
@@ -1148,7 +1207,7 @@ static int
 verify_admin_membership(Port_t *portp)
 {
 	int vfi, dg;
-	VFConfig_t *vfp = NULL;
+	VF_t *vfp = NULL;
 	int okay = 0;
 
 	(void)vs_rdlock(&old_topology_lock);
@@ -1157,8 +1216,9 @@ verify_admin_membership(Port_t *portp)
 		// Find the Admin VF.
 		for (vfi=0; vfi < old_topology.vfs_ptr->number_of_vfs_all; vfi++) {
 			if (old_topology.vfs_ptr->v_fabric_all[vfi].standby) continue;
-			if((old_topology.vfs_ptr->v_fabric_all[vfi].pkey & ~0x8000) == STL_DEFAULT_PKEY) {
-				vfp = vf_config.vf[vfi];
+			// Multiple VFs can have the Admin PKey, but only one can have the SA application
+			if (old_topology.vfs_ptr->v_fabric_all[vfi].apps.select_sa) {
+				vfp = &old_topology.vfs_ptr->v_fabric_all[vfi];
 				break;
 			}
 		}
@@ -1172,7 +1232,18 @@ verify_admin_membership(Port_t *portp)
 		IB_LOG_INFO_FMT(__func__,"\"%s\" is the admin VF.", vfp->name);
 
 		for (dg=0; dg < vfp->number_of_full_members; dg++) {
-			int dgIdx = smGetDgIdx(vfp->full_member[dg].member);
+			int dgIdx = vfp->full_member[dg].dg_index;
+			if (dgIdx != -1) {
+				if(isDgMember(dgIdx,portp->portData)) {
+					okay=1;
+					break;
+				}
+			}
+		}
+
+		// If security is off, then all members are full members
+		if (!okay && !vfp->security) for (dg=0; dg < vfp->number_of_limited_members; dg++) {
+			int dgIdx = vfp->limited_member[dg].dg_index;
 			if (dgIdx != -1) {
 				if(isDgMember(dgIdx,portp->portData)) {
 					okay=1;
@@ -1201,6 +1272,82 @@ done:
 	return okay;
 }
 
+static Status_t
+_query_local_port(uint8_t * lastMsg, STL_NODE_INFO * nodeInfo, STL_PORT_INFO * portInfo)
+{
+	Status_t status;
+
+	uint8_t path[64] = { 0 };
+    SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+
+	// get PortInfo record of the local port
+	status = SM_Get_PortInfo(fd_topology, (1<<24) | STL_SM_CONF_START_ATTR_MOD, &addr, portInfo);
+	if (status != VSTATUS_OK) {
+		IB_WARN_NOREPEAT(*lastMsg, 1, "can't get PortInfo, sleeping rc: %u", status);
+		return status;
+	}
+
+	if (portInfo->PortStates.s.PortState < IB_PORT_INIT) {
+		// Wait until the port is at least in INIT because the LNI process
+		// may change the local pkey table and other port information.
+		IB_WARN_NOREPEAT(*lastMsg, 2,
+			"Waiting for port (portnum=%d) to reach state INIT (portstate=%s)...",
+			sm_config.port, IbPortStateToText(portInfo->PortStates.s.PortState));
+		return VSTATUS_UNRECOVERABLE;
+	}
+
+	// Get NodeInfo record of the local port
+	status = SM_Get_NodeInfo(fd_topology, 0, &addr, nodeInfo);
+	if (status != VSTATUS_OK) {
+		IB_WARN_NOREPEAT(*lastMsg, 3, "can't get NodeInfo, sleeping rc: %u", status);
+		return status;
+	}
+
+	// Verify that the port has MgmtAllowed authority.
+	if (nodeInfo->NodeType == NI_TYPE_SWITCH) {
+		// get SwitchInfo record of the local switch
+		STL_SWITCH_INFO switchInfo;
+		status = SM_Get_SwitchInfo(fd_topology, 0, &addr, &switchInfo);
+		if (status != VSTATUS_OK) {
+			IB_WARN_NOREPEAT(*lastMsg, 4, "can't get local SwitchInfo, sleeping rc: %u", status);
+			return status;
+		}
+
+		if (!switchInfo.u2.s.EnhancedPort0) {
+			IB_WARN_NOREPEAT(*lastMsg, 5,
+				"MgmtAllowed not enabled for the local Embedded SM, sleeping rc: %u", status);
+			return VSTATUS_MISMATCH;
+		}
+	} else if (nodeInfo->NodeType == NI_TYPE_CA) {
+		if (portInfo->PortNeighborMode.NeighborNodeType == STL_NEIGH_NODE_TYPE_HFI) {
+			// Back to back configuration.
+			sm_hfi_direct_connect = TRUE;
+			IB_LOG_INFO_FMT(__func__, "Host SM's port is connected to an hfi port.");
+		} else if (portInfo->PortNeighborMode.NeighborNodeType == STL_NEIGH_NODE_TYPE_SW) {
+			// Normal fabric configuration.
+			sm_hfi_direct_connect = FALSE;
+			if (!portInfo->PortNeighborMode.MgmtAllowed) {
+				IB_WARN_NOREPEAT(*lastMsg, 6,
+					"Host SM's port is connected to a switch port but MgmtAllowed is not set. sleeping");
+				return VSTATUS_UNRECOVERABLE;
+			} else {
+				IB_LOG_INFO_FMT(__func__, "Host SM's port is connected to a switch port.");
+			}
+		} else {
+			IB_ERROR_NOREPEAT(*lastMsg, 7,
+				"SM's port is connected to an unknown type of node (NeighborNodeType = %d)",
+				portInfo->PortNeighborMode.NeighborNodeType);
+			return VSTATUS_UNRECOVERABLE;
+		}
+	} else {
+		IB_WARN_NOREPEAT(*lastMsg, 8,
+			"SM is running on an unknown node type. sleeping rc: %u", status);
+		return VSTATUS_MISMATCH;
+	}
+
+	return status;
+}
+
 Status_t
 topology_initialize(void)
 {
@@ -1218,6 +1365,7 @@ topology_initialize(void)
 	STL_NODE_INFO nodeInfo;
 	Port_t *portp;
 	Node_t *nodep;
+    SmpAddr_t addr;
 
 	IB_ENTER(__func__, 0, 0, 0, 0);
 
@@ -1226,10 +1374,7 @@ topology_initialize(void)
 	// we fail to get a MAD, or if a status check fails, wait a few seconds
 	// and re-start the loop.
 	//
-	do {
-		// Reset the path to our local port.
-		memset(path, 0, sizeof(path));
-
+	while (TRUE) {
 		// Stop if we've been externally terminated.
 		if(topology_main_exit) {
 #ifdef __VXWORKS__
@@ -1238,97 +1383,19 @@ topology_initialize(void)
 			return VSTATUS_UNRECOVERABLE;
 		}
 
-        // get PortInfo record of the local port
-		status = SM_Get_PortInfo(fd_topology, (1<<24) | STL_SM_CONF_START_ATTR_MOD,
-			path, &portInfo);
+		// if cumulative timeout is reached while we're in this loop for
+		// whatever reason, queries will always fail and we'll livelock.  reset
+		// cumulative timeout to avoid this.  this also acts as the first reset
+		// of the sweep, clearing any cumulative timeout incurred between
+		// sweeps
+		sm_popo_reset_errors(&sm_popo);
 
-		if (status != VSTATUS_OK) {
-			IB_WARN_NOREPEAT(lastMsg,1,"can't get PortInfo, sleeping rc: %u", status);
-			vs_thread_sleep(5 * VTIMER_1S);
-			continue;
-		}
+		status = _query_local_port(&lastMsg, &nodeInfo, &portInfo);
+		if (status == VSTATUS_OK)
+			break;
 
-		if (portInfo.PortStates.s.PortState < IB_PORT_INIT) {
-			// Wait until the port is at least in INIT because the LNI process
-			// may change the local pkey table and other port information.
-			//
-			// Note that we use the no repeat macro to prevent the log
-			// from being flooded with warnings.
-			IB_WARN_NOREPEAT(lastMsg,2,"Waiting for port (portnum=%d)"
-				" to reach state INIT (portstate=%s)...",
-				sm_config.port,
-				IbPortStateToText(portInfo.PortStates.s.PortState));
-			vs_thread_sleep(5 * VTIMER_1S);
-			status = VSTATUS_UNRECOVERABLE;
-			continue;
-		}
-
-		// Get NodeInfo record of the local port
-    	status = SM_Get_NodeInfo(fd_topology, 0, path, &nodeInfo);
-		if (status != VSTATUS_OK) {
-			IB_WARN_NOREPEAT(lastMsg,3, "can't get NodeInfo, sleeping rc: %u", status);
-			vs_thread_sleep(5 * VTIMER_1S);
-			continue;
-		}
-
-		//
-		// Verify that the port has MgmtAllowed authority.
-		//
-		if (nodeInfo.NodeType == NI_TYPE_SWITCH) {
-			// get SwitchInfo record of the local switch
-			STL_SWITCH_INFO switchInfo;
-			status = SM_Get_SwitchInfo(fd_topology, 0, path, &switchInfo);
-			if (status != VSTATUS_OK) {
-				IB_WARN_NOREPEAT(lastMsg,4,"can't get local SwitchInfo, sleeping rc: %u", status);
-				vs_thread_sleep(5 * VTIMER_1S);
-				continue;
-			}
-
-			if (!switchInfo.u2.s.EnhancedPort0) {
-				status = VSTATUS_MISMATCH;
-				IB_WARN_NOREPEAT(lastMsg,5, "MgmtAllowed not enabled for the local "
-					"Embedded SM, sleeping rc: %u", status);
-				vs_thread_sleep(5 * VTIMER_1S);
-				continue;
-			}
-
-		} else if (nodeInfo.NodeType == NI_TYPE_CA) {
-			if (portInfo.PortNeighborMode.NeighborNodeType ==
-				STL_NEIGH_NODE_TYPE_HFI) {
-				// Back to back configuration.
-				sm_hfi_direct_connect = TRUE;
-				IB_LOG_INFO_FMT(__func__,"Host SM's port is connected to an "
-					"hfi port.");
-			} else if (portInfo.PortNeighborMode.NeighborNodeType ==
-				STL_NEIGH_NODE_TYPE_SW) {
-				// Normal fabric configuration.
-				sm_hfi_direct_connect = FALSE;
-				if (!portInfo.PortNeighborMode.MgmtAllowed) {
-					IB_WARN_NOREPEAT(lastMsg,6,"Host SM's port is connected to a"
-						" switch port but MgmtAllowed is not set. sleeping");
-					vs_thread_sleep(5 * VTIMER_1S);
-					status = VSTATUS_UNRECOVERABLE;
-					continue;
-				} else {
-					IB_LOG_INFO_FMT(__func__,"Host SM's port is connected to a "
-						"switch port.");
-				}
-			} else {
-				IB_ERROR_NOREPEAT(lastMsg,7,"SM's port is connected to an"
-						" unknown type of node (NeighborNodeType = %d)",
-						portInfo.PortNeighborMode.NeighborNodeType);
-				vs_thread_sleep(5 * VTIMER_1S);
-				status = VSTATUS_UNRECOVERABLE;
-				continue;
-			}
-		} else {
-			status = VSTATUS_MISMATCH;
-			IB_WARN_NOREPEAT(lastMsg,8, "SM is running on an unknown node type. sleeping rc: %u",
-				status);
-			vs_thread_sleep(5 * VTIMER_1S);
-			continue;
-		}
-	} while (status != VSTATUS_OK);
+		vs_thread_sleep(5 * VTIMER_1S);
+	}
 
 	//
 	// Clear and initialize the new topology structure.
@@ -1463,7 +1530,8 @@ unlock_bail:
 		path[path[0]] = sm_config.port;
 
 		// Verify we can talk to our neighbor.
-		status = SM_Get_NodeInfo(fd_topology, 0, path, &neighborNodeInfo);
+        SMP_ADDR_SET_DR(&addr, path);
+		status = SM_Get_NodeInfo(fd_topology, 0, &addr, &neighborNodeInfo);
 		if (status != VSTATUS_OK) {
 			IB_ERROR_NOREPEAT(lastMsg,20, "Can't get neighbor NodeInfo, sleeping rc: %u", status);
 			return VSTATUS_UNRECOVERABLE;
@@ -1511,7 +1579,6 @@ topology_discovery(void)
 	Port_t		*portp, *neighborPortp = NULL;
 	Status_t	status;
     STL_SMINFO_RECORD sminforec={{0}, 0};
-    uint64_t    sTime, eTime;
 	void *routingContext;
 
 	IB_ENTER(__func__, 0, 0, 0, 0);
@@ -1561,13 +1628,9 @@ topology_discovery(void)
 
 	vs_time_get(&sm_newTopology.sweepStartTime);
 
-//
-//	Start a directed route exploration of the fabric.
-//
-    if (smDebugPerf) {
-        vs_time_get(&sTime);
-        IB_LOG_INFINI_INFO0("START directed route exploration of fabric");
-    }
+	//
+	//	Start a directed route exploration of the fabric.
+	//
 
 	// Note that the node list can grow while we are inside this loop, so
 	// we are guaranteed to loop over all new and existing nodes in the fabric.
@@ -1819,12 +1882,6 @@ topology_discovery(void)
 	}
 
 
-    if (smDebugPerf) {
-        vs_time_get(&eTime);
-        IB_LOG_INFINI_INFO("END directed route exploration of fabric, elapsed time(usecs)=",
-                           (int)(eTime-sTime));
-    }
-
 	IB_EXIT(__func__, VSTATUS_OK);
 	return(VSTATUS_OK);
 }
@@ -2025,14 +2082,8 @@ topology_resolve(void)
 	int		delta;
 	Node_t		*nodep;
 	Port_t		*portp;
-    uint64_t    sTime, eTime;
 
 	IB_ENTER(__func__, 0, 0, 0, 0);
-
-    if (smDebugPerf) {
-        vs_time_get(&sTime);
-        IB_LOG_INFINI_INFO0("STARTING resolve topology pass");
-    }
 
 	//
 	//	Setup the basic LID information for the topology.
@@ -2082,8 +2133,10 @@ topology_resolve(void)
 			}
 
 			int newLidCount;
-			if (sm_update_or_assign_lid(portp, 1, &newLidCount) != VSTATUS_OK) {
+			if ( (s = sm_update_or_assign_lid(portp, 1, &newLidCount)) != VSTATUS_OK) {
 				sm_mark_link_down(&sm_newTopology, portp);
+				if(lid_space_exhausted)
+					return s;
 			}
 
 			if (newLidCount) {
@@ -2128,10 +2181,9 @@ topology_resolve(void)
 		}
 	}
 
-    if (smDebugPerf) {
-        vs_time_get(&eTime);
-        IB_LOG_INFINI_INFO("END resolve topology pass, elapsed time(usecs)=", (int)(eTime-sTime));
-    }
+	if (smDebugPerf)
+		IB_LOG_INFINI_INFO_FMT(__func__, "max lid 0x%08x", sm_newTopology.maxLid);
+
 	IB_EXIT(__func__, VSTATUS_OK);
 	return(VSTATUS_OK);
 }
@@ -2163,12 +2215,6 @@ Status_t topology_setup_switches_LR_DR()
 	int				rebalance = forceRebalanceNextSweep;
 	int				routing_needed = 1;
 	int				route_root_switch = 0;
-	uint64_t		sTime, eTime;
-
-	if (smDebugPerf) {
-		vs_time_get(&sTime);
-		IB_LOG_INFINI_INFOX("STARTING ; MAXLID=", sm_topop->maxLid);
-	}
 
 	status = topology_setup_routing_cost_matrix();
 
@@ -2269,17 +2315,13 @@ Status_t topology_setup_switches_LR_DR()
 
 	sm_topop->switch_head->initDone = 1;
 
-	status = sm_topop->routingModule->funcs.setup_switches_lrdr(sm_topop, rebalance, routing_needed);
+	status = sm_setup_switches_lrdr_wave_discovery_order(sm_topop, rebalance, routing_needed);
 
 	if (sm_topop->deltaLidBlocks_init) {
 		bitset_free(&sm_topop->deltaLidBlocks);
 		sm_topop->deltaLidBlocks_init=0;
 	}
 
-	if (smDebugPerf) {
-		vs_time_get(&eTime);
-		IB_LOG_INFINI_INFO("END time=", (int)(eTime-sTime));
-	}
 	return status;
 }
 
@@ -2306,6 +2348,7 @@ static Status_t buffer_control_assignments(void)
 				sm_nodeDescString(nodep));
 			return (VSTATUS_NOMEM);
 		}
+		memset(tmp_bcts,0,bcts_size);
 
 		// Switches can potentially have identical BCTs on every port, but
 		// we exclude edge switches because BCTs for ports linked with HFIs are
@@ -2329,7 +2372,7 @@ static Status_t buffer_control_assignments(void)
 			    sm_mark_link_down(sm_topop, portp);
 			    topology_changed = 1;   /* indicates a fabric change has been detected */
 			    IB_LOG_ERROR_FMT(__func__,
-			           "Failed to init Buffer Control (setting port down) on node %s nodeGuid "FMT_U64" node index %d port index %d",
+			           "Failed to init Buffer Control (ignoring port) on node %s nodeGuid "FMT_U64" node index %d port index %d",
 			           sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, nodep->index, portp->index);
 			} else {
 				if (portp->portData->current.bfrctrl) {
@@ -2407,6 +2450,7 @@ static Status_t switchinfo_assignments(void)
 {
 	Status_t status;
 	Node_t *nodep;
+	SmpAddr_t addr;
 
 	for_all_switch_nodes(sm_topop, nodep) {
 		uint32_t	doSet=0;
@@ -2418,7 +2462,8 @@ static Status_t switchinfo_assignments(void)
 
 		/* if getSwitchInfo failed during discovery sweep, try now */
 		if (nodep->switchInfo.LinearFDBCap == 0 && nodep->switchInfo.MulticastFDBCap == 0) {
-			status = SM_Get_SwitchInfo(fd_topology, 0, nodep->path, &nodep->switchInfo);
+			SMP_ADDR_SET_DR(&addr, nodep->path);
+			status = SM_Get_SwitchInfo(fd_topology, 0, &addr, &nodep->switchInfo);
 			if (status != VSTATUS_OK) {
 				IB_LOG_ERROR_FMT(__func__,
 					"Failed to get Switchinfo for node %s guid "FMT_U64": status = %d",
@@ -2520,7 +2565,7 @@ static Status_t switchinfo_assignments(void)
 			// make the necessary changes at the switch, update the SwitchInfo
 			// data of the switch
 			nodep->switchInfo.AdaptiveRouting.s.Pause = pauseState ? 1 : 0;
-			SmpAddr_t addr = SMP_ADDR_CREATE_DR(nodep->path);
+			SMP_ADDR_SET_DR(&addr, nodep->path);
 			status = SM_Set_SwitchInfo(fd_topology, 0, &addr, &nodep->switchInfo, portp->portData->portInfo.M_Key);
 
 			if (status == VSTATUS_OK) {
@@ -2703,7 +2748,8 @@ static Status_t scvl_vlarb_assignments(void)
 
 					Port_t * switchP0 = sm_get_port(nodep, 0);
 					STL_LID dlid = switchP0->portData->lid;
-					status = SM_Set_PortInfo_LR(fd_topology, amod, sm_lid, dlid,
+					SmpAddr_t addr = SMP_ADDR_CREATE_LR(sm_lid, dlid);
+					status = SM_Set_PortInfo(fd_topology, amod, &addr,
 						&curPort->portData->portInfo, curPort->portData->portInfo.M_Key, NULL);
 
 					if (status != VSTATUS_OK) {
@@ -2740,7 +2786,7 @@ static Status_t scvl_vlarb_assignments(void)
 					sm_mark_link_down(sm_topop, portp);
 					topology_changed = 1;	/* indicates a fabric change has been detected */
 					IB_LOG_ERROR_FMT(__func__,
-						   "Failed to init SL2SC/SC2SL Map (setting port down) on node %s nodeGuid "FMT_U64" node index %d port index %d",
+						   "Failed to init SL2SC/SC2SL Map (ignoring port) on node %s nodeGuid "FMT_U64" node index %d port index %d",
 						   sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, nodep->index, portp->index);
 
 					status = sm_popo_port_error(&sm_popo, sm_topop, portp, status);
@@ -2762,7 +2808,7 @@ static Status_t scvl_vlarb_assignments(void)
 					sm_mark_link_down(sm_topop, portp);
 					topology_changed = 1;	/* indicates a fabric change has been detected */
 					IB_LOG_ERROR_FMT(__func__,
-						   "Failed to init VL Arb (setting port down) on node %s nodeGuid "FMT_U64" node index %d port index %d",
+						   "Failed to init VL Arb (ignoring port) on node %s nodeGuid "FMT_U64" node index %d port index %d",
 						   sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, nodep->index, portp->index);
 
 					status = sm_popo_port_error(&sm_popo, sm_topop, portp, status);
@@ -2776,55 +2822,65 @@ static Status_t scvl_vlarb_assignments(void)
 	return VSTATUS_OK;
 }
 
-
-
 Status_t
-topology_assignments(void)
+topology_assignments_pkey(void)
 {
-	Node_t			*nodep;
-	Status_t		status;
-    uint64_t        sTime, iTime=0, eTime;
-	Node_t			*oldnodep;
+	Status_t status;
+	Node_t *nodep;
 
-	IB_ENTER(__func__, 0, 0, 0, 0);
+	if (sm_state != SM_STATE_MASTER)
+		return VSTATUS_NOT_MASTER;
 
-	if (sm_state != SM_STATE_MASTER) {
-		IB_EXIT(__func__, VSTATUS_NOT_MASTER);
-		return(VSTATUS_NOT_MASTER);
-	}
-
-	//BMY: FIXME -  Why get pkeys in the assignments function and not during discovery? Is there an existing
-	//fabric walk loop this can be done in?
 	for_all_nodes(sm_topop, nodep) {
 		if ((status = sm_get_node_pkeys(sm_topop, nodep)) == VSTATUS_TIMEOUT_LIMIT)
 			return status;
 	}
 
-    //
-    // loop test - find loop paths through the switches
-    //
-    if ((status = loopTest_userexit_findPaths(sm_topop)) != VSTATUS_OK) {
-        IB_LOG_ERROR_FMT(__func__, "loopTest can't generate lids");
-    } else if (loopPathLidEnd != 0) {
-        sm_topop->maxLid = loopPathLidEnd;
-    }
+	return VSTATUS_OK;
+}
 
-    if (smDebugPerf) {
-        vs_time_get(&sTime);
-        IB_LOG_INFINI_INFOX("STARTING topology assignments; START switches setup; MAXLID=",sm_topop->maxLid);
-    }
+Status_t
+topology_assignments_looptest(void)
+{
+	Status_t status;
+
+	if (sm_state != SM_STATE_MASTER)
+		return VSTATUS_NOT_MASTER;
+
+	if ((status = loopTest_userexit_findPaths(sm_topop)) != VSTATUS_OK) {
+		IB_LOG_ERROR_FMT(__func__, "loopTest can't generate lids");
+	} else if (loopPathLidEnd != 0) {
+		sm_topop->maxLid = loopPathLidEnd;
+	}
+
+	return VSTATUS_OK;
+}
+
+Status_t
+topology_assignments_switchinfo(void)
+{
+	Status_t status;
+
+	if (sm_state != SM_STATE_MASTER)
+		return VSTATUS_NOT_MASTER;
 
 	if((status = switchinfo_assignments()) != VSTATUS_OK) {
 		IB_LOG_ERROR_FMT(__func__, "Switch Info Assignments Failed");
-        return status;
+		return status;
 	}
 
-    if (smDebugPerf) {
-        vs_time_get(&eTime);
-        IB_LOG_INFINI_INFO("topology assignments; END switches setup/START port setup, elapsed time(usecs)=",
-                           (int)(eTime-sTime));
-        iTime = sTime;
-    }
+	return VSTATUS_OK;
+}
+
+Status_t
+topology_assignments_setup_switches(void)
+{
+	Status_t status;
+	Node_t *nodep;
+	Node_t *oldnodep;
+
+	if (sm_state != SM_STATE_MASTER)
+		return VSTATUS_NOT_MASTER;
 
 	if (topology_passcount) {
 		/* MWHEINZ: FIXME - investigate why we do this here and not in the topology copy routines. */
@@ -2848,23 +2904,32 @@ topology_assignments(void)
 		return status;
 	}
 
+	return VSTATUS_OK;
+}
 
-    //
-    //      Set the Lids for all end ports.
-    //
+Status_t
+topology_assignments_lids(void)
+{
+	Status_t		status;
+
+	if (sm_state != SM_STATE_MASTER)
+		return VSTATUS_NOT_MASTER;
+
 	if((status = endnode_lid_assignments()) != VSTATUS_OK) {
 		return status;
 	}
-	if (topology_main_exit == 1) {
-		return VSTATUS_OK;
-	}
 
-    if (smDebugPerf) {
-        vs_time_get(&eTime);
-        IB_LOG_INFINI_INFO("topology assignments; END PORT setup/START SL/SC/VLARB setup; elapsed time(usecs)=",
-                           (int)(eTime-iTime));
-        iTime = eTime;
-    }
+	return VSTATUS_OK;
+}
+
+Status_t
+topology_assignments_update_fields(void)
+{
+	Status_t		status;
+	Node_t			*nodep;
+
+	if (sm_state != SM_STATE_MASTER)
+		return VSTATUS_NOT_MASTER;
 
 	for_all_nodes(sm_topop, nodep) {
 		Port_t * smaportp;
@@ -2902,41 +2967,38 @@ topology_assignments(void)
 		}
 	}
 
+	return VSTATUS_OK;
+}
+
+Status_t
+topology_assignments_vlarb(void)
+{
+	Status_t		status;
+
+	if (sm_state != SM_STATE_MASTER)
+		return VSTATUS_NOT_MASTER;
+
 	if((status = scvl_vlarb_assignments()) != VSTATUS_OK) {
 		return status;
 	}
-	if (topology_main_exit == 1) {
-		return VSTATUS_OK;
-	}
 
-    if (smDebugPerf) {
-        vs_time_get(&eTime);
-        IB_LOG_INFINI_INFO("topology assignments; END SL/SC/VLARB setup/START BfrCtrl; elapsed time(usecs)=",
-                           (int)(eTime-iTime));
-        iTime = eTime;
-    }
+	return VSTATUS_OK;
+}
+
+Status_t
+topology_assignments_buffer_control(void)
+{
+	Status_t		status;
+
+	if (sm_state != SM_STATE_MASTER)
+		return VSTATUS_NOT_MASTER;
 
 	if ((status = buffer_control_assignments()) != VSTATUS_OK)
 		return (status);
 
-
-	if (topology_main_exit == 1) {
-#ifdef __VXWORKS__
-		ESM_LOG_ESMINFO("topology_assignments: SM has been stopped", 0);
-#endif
-		IB_EXIT(__func__, VSTATUS_OK);
-		return(VSTATUS_OK);
-	}
-
-    if (smDebugPerf) {
-        vs_time_get(&eTime);
-        IB_LOG_INFINI_INFO("topology assignments; END BfrCtrl setup; elapsed time(usecs)=", (int)(eTime-iTime));
-        IB_LOG_INFINI_INFO("END topology assignments; elapsed time(usecs)=", (int)(eTime-sTime));
-    }
-
-	IB_EXIT(__func__, VSTATUS_OK);
-	return(VSTATUS_OK);
+	return VSTATUS_OK;
 }
+
 
 Status_t topology_setup_routing_cost_matrix(void)
 {
@@ -3077,7 +3139,6 @@ topology_adaptiverouting(void)
 {
 	Node_t		*nodep;
 	Status_t	status;
-    uint64_t    sTime, eTime;
 
 	IB_ENTER(__func__, 0, 0, 0, 0);
 
@@ -3093,11 +3154,6 @@ topology_adaptiverouting(void)
 //	For every switch that supports adaptive routing, we need to do adaptive routing switch table setup.
 //
 	if (sm_adaptiveRouting.enable) {
-    	if (smDebugPerf) {
-        	vs_time_get(&sTime);
-        	IB_LOG_INFINI_INFO0("START");
-    	}
-
 		for_all_switch_nodes(sm_topop, nodep) {
 			if (nodep->arSupport) {
 				if ((status=sm_AdaptiveRoutingSwitchUpdate(sm_topop, nodep)) != VSTATUS_OK) {
@@ -3115,10 +3171,6 @@ topology_adaptiverouting(void)
 				}
 			}
 		}
-		if (smDebugPerf) {
-			vs_time_get(&eTime);
-			IB_LOG_INFINI_INFO("END AR setup; elapsed time(usecs)=", (int)(eTime-sTime));
-		}
 	}
 
 	IB_EXIT(__func__, VSTATUS_OK);
@@ -3126,100 +3178,45 @@ topology_adaptiverouting(void)
 }
 
 Status_t
-topology_update_cableinfo(void) {
-	Status_t status = VSTATUS_OK;
-	Node_t* nodep;
-	Port_t* portp;
+topology_arm(void)
+{
+	Status_t	status = VSTATUS_OK;
+	Node_t		*nodep;
 
-	if (sm_config.cableInfoPolicy > CIP_NONE) {
-		for_all_nodes(sm_topop, nodep) {
-			for_all_ports(nodep, portp) {
-				// CableInfo updates take a long time, so allow us to short circuit out of them for now if
- 				// we have been told to resweep.
-				if (topology_resweep) return status;
-				if (sm_valid_port(portp) && !portp->portData->cableInfo &&
-					portp->state == IB_PORT_ACTIVE && sm_Port_t_IsCableInfoSupported(portp)) {
+	// If we aren't the master SM, then we go no further.
+	if (sm_state != SM_STATE_MASTER)
+		return VSTATUS_NOT_MASTER;
 
-					Port_t * neighPort = NULL;
-					if (sm_config.cableInfoPolicy == CIP_LINK) {
-						Node_t * neighNode = NULL;
-						neighPort = sm_find_neighbor_node_and_port(&sm_newTopology, portp, &neighNode);
-					}
+	// We are about to activate new nodes, so mark us as sweeping now.
+	activateInProgress = 1;
+	topology_port_bounce_log_num = 0;
 
-					if (neighPort && neighPort->portData->cableInfo) {
-						portp->portData->cableInfo = sm_CableInfo_copy(neighPort->portData->cableInfo);
-					}
-					else {
-						status = sm_update_cableinfo(sm_topop, nodep, portp);
+	// Transition ports from INIT to ARMED per DN0567
+	for_all_ca_nodes(sm_topop, nodep)
+		if ((status = sm_arm_node(sm_topop, nodep)) == VSTATUS_TIMEOUT_LIMIT)
+			return status;
+	for_all_switch_nodes(sm_topop, nodep)
+		if ((status = sm_arm_node(sm_topop, nodep)) == VSTATUS_TIMEOUT_LIMIT)
+			return status;
 
-						if (status == VSTATUS_OK) {
-						}
-						else if (status == VSTATUS_NOSUPPORT) {
-							IB_LOG_INFO_FMT(__func__,
-								"CableInfo not supported for node %s nodeGuid "FMT_U64" port %d",
-								sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index);
-							sm_Port_t_SetCableInfoSupported(portp, FALSE);
-						}
-						else {
-							IB_LOG_ERROR_FMT(__func__,
-								"Failed to Get(CableInfo) for node %s nodeGuid "FMT_U64" port %d",
-								sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index);
-							if (status == VSTATUS_TIMEOUT_LIMIT)
-								return status;
-						}
-					}
-				}
-			}
-		}
-	}
-
-	return status;
+	return VSTATUS_OK;
 }
 
 Status_t
 topology_activate(void)
 {
 	Status_t	status = VSTATUS_OK;
-	Port_t		*portp;
-	Node_t		*nodep;
-	uint64_t    sTime, iTime, eTime;
 	ActivationRetry_t retry = {0};
 
 	IB_ENTER(__func__, 0, 0, 0, 0);
 
-	//
 	//	If we aren't the master SM, then we go no further.
-	//
-	if (sm_state != SM_STATE_MASTER) {
-		IB_EXIT(__func__, VSTATUS_NOT_MASTER);
+	if (sm_state != SM_STATE_MASTER)
 		return VSTATUS_NOT_MASTER;
-	}
 
 	/* we are about to activate new nodes so mark us as sweeping now */
 	activateInProgress = 1;
 	topology_port_bounce_log_num = 0;
-
-	if (smDebugPerf) {
-		vs_time_get(&sTime);
-		IB_LOG_INFINI_INFO_FMT(__func__, "START ARM ports");
-	}
-
-	// Transition ports from INIT to ARMED per DN0567
-	for_all_ca_nodes(sm_topop, nodep)
-		if ((status = sm_arm_node(sm_topop, nodep)) == VSTATUS_TIMEOUT_LIMIT)
-			goto post_arm;
-	for_all_switch_nodes(sm_topop, nodep)
-		if ((status = sm_arm_node(sm_topop, nodep)) == VSTATUS_TIMEOUT_LIMIT)
-			goto post_arm;
-
-post_arm:
-	if (smDebugPerf) {
-		vs_time_get(&iTime);
-		IB_LOG_INFINI_INFO_FMT(__func__, "END ARM ports; elapsed time(usecs)=%"PRIu64, iTime - sTime);
-	}
-
-	if (status == VSTATUS_TIMEOUT_LIMIT)
-		return status;
 
 	// sending of armed idle flits can be delayed by several millis, preventing
 	// activation due to NeighborNormal not being set.  simply wait out the
@@ -3228,12 +3225,6 @@ post_arm:
 	// cases.  for sweeps proportional to this time, performance isn't critical,
 	// and for significantly longer sweeps, this delay is a non-issue
 	vs_thread_sleep(IDLE_FLIT_PROPAGATION_TIME);
-
-	if (smDebugPerf) {
-		// update activation phase start time to not include delay
-		vs_time_get(&iTime);
-		IB_LOG_INFINI_INFO_FMT(__func__, "START ACTIVATE ports");
-	}
 
 	// Transition ports from ARMED to ACTIVE per DN0567
 	do {
@@ -3244,21 +3235,21 @@ post_arm:
 				// failsafe activation: activate ports serially via Set(PortInfo)
 				// only. activate HFIs first to allow traffic flow a bit sooner
 				if ((status = sm_activate_all_hfi_first_safe(sm_topop, &retry)) == VSTATUS_TIMEOUT_LIMIT)
-					goto post_activate;
+					return status;
 				break;
 			case SCAE_SW_ONLY:
 				// only switches will cascade, as HFI activation should be paced.
 				// activate HFIs first to allow traffic flow a bit sooner and
 				// switches will implicitly cascade as a result
 				if ((status = sm_activate_all_hfi_first(sm_topop, &retry)) == VSTATUS_TIMEOUT_LIMIT)
-					goto post_activate;
+					return status;
 				break;
 			case SCAE_ALL:
 				// all ports will cascade: do switches first for faster overall
 				// cascade at scale, relying on activating switches to implicitly
 				// activate hfis
 				if ((status = sm_activate_all_switch_first(sm_topop, &retry)) == VSTATUS_TIMEOUT_LIMIT)
-					goto post_activate;
+					return status;
 				break;
 		}
 
@@ -3274,30 +3265,74 @@ post_arm:
 		IB_LOG_ERROR_FMT(__func__, "%d ports failed to go active due to NeighborNormal never being set", retry.failures);
 	}
 
-post_activate:
-	if (smDebugPerf) {
-		vs_time_get(&eTime);
-		IB_LOG_INFINI_INFO_FMT(__func__, "END ACTIVATE ports; elapsed time(usecs)=%"PRIu64, eTime - iTime);
+	return VSTATUS_OK;
+}
+
+Status_t
+topology_cableinfo(void)
+{
+	Status_t	status = VSTATUS_OK;
+	Node_t* nodep;
+	Port_t* portp;
+
+	// If we aren't the master SM, then we go no further.
+	if (sm_state != SM_STATE_MASTER)
+		return VSTATUS_NOT_MASTER;
+
+	// Update CableInfo for the ports who are still alive
+	if (sm_config.cableInfoPolicy > CIP_NONE) {
+		for_all_nodes(sm_topop, nodep) {
+			for_all_ports(nodep, portp) {
+				// CableInfo updates take a long time, so allow us to short circuit out of them for now if
+				// we have been told to resweep.
+				if (topology_resweep) return VSTATUS_OK;
+				if (sm_valid_port(portp) && !portp->portData->cableInfo &&
+					portp->state == IB_PORT_ACTIVE && sm_Port_t_IsCableInfoSupported(portp)) {
+
+					Port_t * neighPort = NULL;
+					if (sm_config.cableInfoPolicy == CIP_LINK) {
+						Node_t * neighNode = NULL;
+						neighPort = sm_find_neighbor_node_and_port(&sm_newTopology, portp, &neighNode);
+					}
+
+					if (neighPort && neighPort->portData->cableInfo) {
+						portp->portData->cableInfo = sm_CableInfo_copy(neighPort->portData->cableInfo);
+					}
+					else {
+						status = sm_update_cableinfo(sm_topop, nodep, portp);
+
+						if (status == VSTATUS_NOSUPPORT) {
+							IB_LOG_INFO_FMT(__func__,
+								"CableInfo not supported for node %s nodeGuid "FMT_U64" port %d",
+								sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index);
+							sm_Port_t_SetCableInfoSupported(portp, FALSE);
+						}
+						else if (status != VSTATUS_OK) {
+							IB_LOG_ERROR_FMT(__func__,
+								"Failed to Get(CableInfo) for node %s nodeGuid "FMT_U64" port %d",
+								sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index);
+							if (status == VSTATUS_TIMEOUT_LIMIT)
+								return status;
+						}
+					}
+				}
+			}
+		}
 	}
 
-	if (status == VSTATUS_TIMEOUT_LIMIT)
-		return status;
+	return VSTATUS_OK;
+}
 
-	if (smDebugPerf) {
-		IB_LOG_INFINI_INFO_FMT(__func__, "START CABLEINFO");
-		iTime = eTime;
-	}
+Status_t
+topology_post_activate()
+{
+	Port_t* portp;
 
-	// And update CableInfo for the ports who are still alive
-	topology_update_cableinfo();
+	// If we aren't the master SM, then we go no further.
+	if (sm_state != SM_STATE_MASTER)
+		return VSTATUS_NOT_MASTER;
 
-	if (smDebugPerf) {
-		vs_time_get(&eTime);
-		IB_LOG_INFINI_INFO_FMT(__func__, "END CABLEINFO; elapsed time(usecs)=%"PRIu64, eTime - iTime);
-		IB_LOG_INFINI_INFO_FMT(__func__, "END topology_activate; elapsed time(usecs)=%"PRIu64, eTime - sTime);
-	}
-
-    	if (topology_passcount) {
+	if (topology_passcount) {
 		sm_cong_config_copy();
 	}
 
@@ -3319,7 +3354,7 @@ post_activate:
 		for_all_ports(qnodep->quarantinedNode, portp) {
 			if(!sm_valid_port(portp)) {
 				if(portp && sm_dynamic_port_alloc()) {
-					if ((portp->portData = sm_alloc_port(NULL, qnodep->quarantinedNode, portp->index, NULL)) == NULL) {
+					if ((portp->portData = sm_alloc_port(NULL, qnodep->quarantinedNode, portp->index)) == NULL) {
 						IB_LOG_ERROR_FMT(__func__, "cannot create  port %d for quarantined node %s",
 										portp->index, sm_nodeDescString(qnodep->quarantinedNode));
 						continue;
@@ -3353,8 +3388,7 @@ post_activate:
 		vs_log_output_message(buf, FALSE);
 	}
 
-	IB_EXIT(__func__, VSTATUS_OK);
-	return(VSTATUS_OK);
+	return VSTATUS_OK;
 }
 
 
@@ -3362,7 +3396,6 @@ Status_t
 topology_multicast(void)
 {
 	Status_t	status=VSTATUS_OK;
-    uint64_t    sTime, eTime;
 
 	IB_ENTER(__func__, 0, 0, 0, 0);
 
@@ -3373,11 +3406,6 @@ topology_multicast(void)
 		IB_EXIT(__func__, VSTATUS_NOT_MASTER);
 		return VSTATUS_NOT_MASTER;
 	}
-
-    if (smDebugPerf) {
-        vs_time_get(&sTime);
-        IB_LOG_INFINI_INFO0("START setup of MFTs");
-    }
 
     sm_topop->routingModule->funcs.build_spanning_trees();
 
@@ -3403,11 +3431,6 @@ topology_multicast(void)
     } else {
         /* just copy over the switch mfts to new topology */
         (void) sm_multicast_switch_mft_copy();
-    }
-
-    if (smDebugPerf) {
-        vs_time_get(&eTime);
-        IB_LOG_INFINI_INFO("END setup of MFTs; elapsed time(usecs)=", (int)(eTime-sTime));
     }
 
 	IB_EXIT(__func__, status);
@@ -3484,8 +3507,13 @@ topology_changes(Topology_t *old_topo, Topology_t *new_topo)
 	Port_t		*newPortp	    = NULL;
 	Node_t		*newNodep	    = NULL;
 	STL_NOTICE	notice;
-	uint8_t     *oldChanges     = old_topo->pad;
-	uint8_t		*newChanges     = new_topo->pad;
+#ifdef __VXWORKS__
+	uint8_t		*oldChanges	= old_topo->pad;
+	uint8_t		*newChanges	= new_topo->pad;
+#else
+	uint8_t		*oldChanges	= NULL;
+	uint8_t		*newChanges	= NULL;
+#endif /* __VXWORKS__ */
 	const char detailAppearance[]   	= "inter-switch link appeared";
 	const char detailDisappearance[]	= "inter-switch link disappeared";
 
@@ -3511,12 +3539,33 @@ topology_changes(Topology_t *old_topo, Topology_t *new_topo)
      * Go through each old node and for each old node look for it in the new topology
 	 * If you get a match see if states changed
      */
+#ifdef __VXWORKS__
 	memset(oldChanges, 0, old_topo->num_nodes * sizeof(uint8_t));
 	memset(newChanges, 0, new_topo->num_nodes * sizeof(uint8_t));
+#else
+	if (old_topo->num_nodes > 0) {
+		status = vs_pool_alloc(&sm_pool, old_topo->num_nodes * sizeof(uint8_t), (void*)&oldChanges);
+		if(status != VSTATUS_OK) {
+			IB_LOG_ERRORRC("failed to allocate memory rc:", status);
+			return status;
+		}
+		memset(oldChanges, 0, old_topo->num_nodes * sizeof(uint8_t));
+	}
+	if (new_topo->num_nodes > 0) {
+		status = vs_pool_alloc(&sm_pool, new_topo->num_nodes * sizeof(uint8_t), (void*)&newChanges);
+		if(status != VSTATUS_OK) {
+			IB_LOG_ERRORRC("failed to allocate memory rc:", status);
+			(void)vs_pool_free(&sm_pool, oldChanges);
+			return status;
+		}
+		memset(newChanges, 0, new_topo->num_nodes * sizeof(uint8_t));
+	}
+#endif /*__VXWORKS__*/
 	for_all_nodes(old_topo, oldNodep) {
 
 		if ((newNodep = sm_find_guid(new_topo, oldNodep->nodeInfo.NodeGUID)) != NULL) {
-			oldChanges[oldNodep->index] = newChanges[newNodep->index] = 1;
+			if(oldChanges != NULL)	oldChanges[oldNodep->index] = 1;
+			if(newChanges != NULL)	newChanges[newNodep->index] = 1;
 			for_all_end_ports2Nodes(oldNodep, oldPortp, newNodep, newPortp) {
 				if (oldPortp->state <= IB_PORT_INIT) {
 					if (sm_valid_port(newPortp) && newPortp->state >= IB_PORT_ARMED) {
@@ -3576,7 +3625,7 @@ topology_changes(Topology_t *old_topo, Topology_t *new_topo)
 			}
 		}
 
-		if (!oldChanges[oldNodep->index]) {
+		if (oldChanges != NULL && !oldChanges[oldNodep->index]) {
 			/* Never found old node, add all of its armed or active ports to GID Lost list */
 			for_all_end_ports(oldNodep, oldPortp) {
 				if (sm_valid_port(oldPortp) && oldPortp->state >= IB_PORT_ARMED) {
@@ -3596,7 +3645,7 @@ topology_changes(Topology_t *old_topo, Topology_t *new_topo)
      */
     if (old_topo->num_nodes > 0) {
         for_all_nodes(new_topo, newNodep) {
-            if (!newChanges[newNodep->index]) {
+            if (newChanges != NULL && !newChanges[newNodep->index]) {
                 /* This is a new node, need to send trap for all ports up */
                 for_all_end_ports(newNodep, newPortp) {
                     if (sm_valid_port(newPortp) && newPortp->state >= IB_PORT_ARMED) {
@@ -3613,7 +3662,10 @@ topology_changes(Topology_t *old_topo, Topology_t *new_topo)
 	if (topology_cost_path_changes && routing_recalculated) {
 		status = topology_TrapCostMatrixChange(&notice);
 	}
-
+#ifndef __VXWORKS__
+	(void)vs_pool_free(&sm_pool, oldChanges);
+	(void)vs_pool_free(&sm_pool, newChanges);
+#endif /* __VXWORKS__ */
 	IB_EXIT(__func__, status);
 	return status;
 }
@@ -4107,7 +4159,7 @@ topology_free_topology(Topology_t * topop)
 
 	while ((qnodep = topop->quarantined_node_head) != NULL) {
 		topop->quarantined_node_head = qnodep->next;
-        Node_Quarantined_Delete(qnodep);
+		Node_Quarantined_Delete(topop, qnodep);
 	}
 
 	while ((nodep = topop->node_head) != NULL) {
@@ -4345,7 +4397,7 @@ Status_t copy_congestion_control_data(void)
 	for_all_nodes(sm_topop, nodep) {
 		Status_t status;
 		if (AtomicRead(&topology_triggered)) {
-			IB_LOG_INFINI_INFO0("sweep triggered; aborting congestion control data copy..");
+			IB_LOG_INFINI_INFO0("New sweep request, delaying Congestion Configuration until after next sweep");
 			status = VSTATUS_OK;
 			break;
 		}
@@ -4376,7 +4428,7 @@ Status_t topology_congestion(void)
 	for_all_nodes(sm_topop, nodep) {
 		Status_t status;
 		if (AtomicRead(&topology_triggered)) {
-			IB_LOG_INFINI_INFO0("sweep triggered; aborting congestion configuration");
+			IB_LOG_INFINI_INFO0("New sweep request, delaying Congestion Configuration until after next sweep");
 			status = VSTATUS_OK;
 			break;
 		}
@@ -4386,14 +4438,14 @@ Status_t topology_congestion(void)
 		}
 		if (sm_config.congestion.enable) {
 			Port_t *portp;
-			STL_LID dlid;
 			portp = sm_get_node_end_port(nodep);
 			if (!sm_valid_port(portp) || portp->state == IB_PORT_DOWN
 				) {
 				continue;
 			}
-			dlid = portp->portData->lid;
-			status = SM_Get_CongestionInfo_LR(fd_topology, 0, sm_lid, dlid, &nodep->congestionInfo);
+
+			SmpAddr_t addr = SMP_ADDR_CREATE_LR(sm_lid, portp->portData->lid);
+			status = SM_Get_CongestionInfo(fd_topology, 0, &addr, &nodep->congestionInfo);
 			if (status != VSTATUS_OK) {
 				IB_LOG_ERROR_FMT(__func__,
 					"Failed to get Congestion Info for NodeGUID "FMT_U64" [%s]; rc: %d",
@@ -4425,7 +4477,38 @@ Status_t topology_congestion(void)
 	IB_EXIT(__func__, VSTATUS_OK);
 	return VSTATUS_OK;
 }
+Status_t topology_assignments_delayedpkeys(void)
+{
+	Status_t status;
+	uint64_t sTime, eTime;
 
+	if (smDebugPerf) {
+		vs_time_get(&sTime);
+		IB_LOG_INFINI_INFO0("START SET Delayed Pkey Writes");
+	}
+	status = sm_set_delayed_pkeys();
+	if (smDebugPerf) {
+		vs_time_get(&eTime);
+		IB_LOG_INFINI_INFO("END SET Delayed Pkey Writes, elapsed time(usecs)=", (int)(eTime - sTime));
+	}
+	return status;
+}
+Status_t topology_reregisters(void)
+{
+    Status_t status;
+    uint64_t sTime, eTime;
+
+	if (smDebugPerf) {
+		vs_time_get(&sTime);
+		IB_LOG_INFINI_INFO0("START SET Client Reregister");
+	}
+	status = sm_set_all_reregisters();
+	if (smDebugPerf) {
+		vs_time_get(&eTime);
+		IB_LOG_INFINI_INFO("END SET Client Reregister, elapsed time(usecs)=", (int)(eTime - sTime));
+	}
+    return status;
+}
 
 static int s_esmLoopTestOption;
 static int s_esmLoopTestOptionSet;
@@ -4846,7 +4929,8 @@ int printMasterSMLid() {
 	Status_t	status;
 
 	(void)memset((void *)path, 0, 64);
-	if ((status = SM_Get_PortInfo(fd_sminfo, 1<<24, path, &portInfo)) != VSTATUS_OK) {
+	SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+	if ((status = SM_Get_PortInfo(fd_sminfo, 1<<24, &addr, &portInfo)) != VSTATUS_OK) {
 		sysPrintf("Unable to obtain Master SM LID - status=%d\n", (int)status);
 	} else {
 		sysPrintf("The Master SM LID is 0x%.4X\n", portInfo.MasterSMLID);
@@ -5055,20 +5139,11 @@ void printDgVfMemberships(void) {
 
 		VF_t* vfp;
 
-		IB_LOG_INFINI_INFO_FMT("topology_main", "Number of Active VFs: %d", VirtualFabrics->number_of_vfs);
-		for (vf=0; vf < VirtualFabrics->number_of_vfs; vf++) {
-			vfp = &VirtualFabrics->v_fabric[vf];
-			IB_LOG_INFINI_INFO_FMT("topology_main", "     VF: %s   Idx: %d", vfp->name, vfp->index);
-		}
-
-		int numStandbyVfs = VirtualFabrics->number_of_vfs_all - VirtualFabrics->number_of_vfs;
-
-		IB_LOG_INFINI_INFO_FMT("topology_main", "Number of Standby VFs: %d", numStandbyVfs);
+		IB_LOG_INFINI_INFO_FMT(__func__, "Number of Active VFs: %d", VirtualFabrics->number_of_vfs_all);
 		for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
-			if (VirtualFabrics->v_fabric_all[vf].standby) {
-				vfp = &VirtualFabrics->v_fabric_all[vf];
-				IB_LOG_INFINI_INFO_FMT("topology_main", "     VF: %s   Idx: %d", vfp->name, vfp->index);
-			}
+			vfp = &VirtualFabrics->v_fabrics_all[vf];
+			if (VirtualFabrics->v_fabric_all[vf].standby) continue;
+			IB_LOG_INFINI_INFO_FMT(__func__, "     VF: %s   Idx: %d", vfp->name, vfp->index);
 		}
 	}
 
@@ -5090,37 +5165,24 @@ void printDgVfMemberships(void) {
 
 				//loop and print all dg indexes for this port
 				numDgMemberships = 0;
-				numVfMemberships = 0;
-
-				int printedFirst = 0;
-				for (dgIdx=0; dgIdx<MAX_DEVGROUPS; ++dgIdx) {
-					int index = portPtr->portData->dgMemberList[dgIdx];
-					if (index != 65535) {
-						numDgMemberships++;
-						if (printedFirst) {
-							snprintfcat(dbgBuf, &len, ", %d", index);
-						}
-						else {
-							snprintfcat(dbgBuf, &len, "%d", index);
-							printedFirst = 1;
-						}
+				for (dgIdx=0; (dgIdx = bitset_find_next_one(&portPtr->portData->dgMember, dgIdx)) != -1; dgIdx++) {
+					if (numDgMemberships) {
+						snprintfcat(dbgBuf, &len, ", %d", dgIdx);
+					} else {
+						snprintfcat(dbgBuf, &len, "%d", dgIdx);
 					}
+					numDgMemberships++;
 				}
 				snprintfcat(dbgBuf, &len, "  VF: ");
 
-				printedFirst = 0;
-				for (vfIdx=0; vfIdx<MAX_VFABRICS; ++vfIdx) {
-					if (bitset_test(&portPtr->portData->vfMember, vfIdx)) {
-						numVfMemberships++;
-
-						if (printedFirst) {
-							snprintfcat(dbgBuf, &len, ", %d", vfIdx);
-						}
-						else {
-							snprintfcat(dbgBuf, &len, "%d", vfIdx);
-							printedFirst = 1;
-						}
+				numVfMemberships = 0;
+				for (vfIdx=0; (vfIdx = bitset_find_next_one(&portPtr->portData->vfMember, vfIdx)) != -1; vfIdx++) {
+					if (numVfMemberships) {
+						snprintfcat(dbgBuf, &len, ", %d", vfIdx);
+					} else {
+						snprintfcat(dbgBuf, &len, "%d", vfIdx);
 					}
+					numVfMemberships++;
 				}
 
 				if ((numDgMemberships == 0) && (numVfMemberships == 0) )

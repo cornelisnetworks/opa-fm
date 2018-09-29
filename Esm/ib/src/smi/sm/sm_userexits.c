@@ -143,7 +143,7 @@ static int checkForDupPath(Topology_t *top, uint16_t *nodeIdx, uint8_t *path) {
         }
         if (dup) {
             /*IB_LOG_INFO_FMT(__func__,
-               "duplicate of loop path lid[%d] found.....", loopPath->lid);*/
+               "duplicate of loop path lid[0x%x] found.....", loopPath->lid);*/
             return dup;
         }
     }
@@ -1215,7 +1215,7 @@ char*  printLoopPaths(int nodeIdx, int buffer) {
 		}
     	if (nodeIdx >= 0) {
         	portp = sm_get_port(nodep,0);
-        	buf = snprintfcat(buf, &len, "Node index=%d, GUID="FMT_U64", LID=%d has %d loops\n", nodeIdx, nodep->nodeInfo.NodeGUID,
+        	buf = snprintfcat(buf, &len, "Node index=%d, GUID="FMT_U64", LID=0x%x has %d loops\n", nodeIdx, nodep->nodeInfo.NodeGUID,
 				(sm_valid_port(portp)) ? (int)portp->portData->lid : -1, cnt);
     	}
     	buf = snprintfcat(buf, &len, "--------------------------------------------------------------------------\n");

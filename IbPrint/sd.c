@@ -77,7 +77,8 @@ void PrintQueryResultValue(PrintDest_t *dest, int indent, PrintDest_t *dbgDest,
 		
 		/* There should never be more than 1 ClassPortInfo in the results. */
 		if (p->NumClassPortInfo)
-			PrintClassPortInfo(dest, indent, &(p->ClassPortInfo[0]));
+			PrintClassPortInfo2(dest, indent, p->ClassPortInfo,
+				StlSaClassPortInfoCapMask, StlSaClassPortInfoCapMask2);
 		break;
 		}
 	case OutputTypeStlClassPortInfo:
@@ -283,7 +284,7 @@ void PrintQueryResultValue(PrintDest_t *dest, int indent, PrintDest_t *dbgDest,
                 PrintSeparator(dest);
                 lid=p->SCSCRecords[i].RID.LID;
             }
-			PrintStlSCSCTableRecord(dest, indent, &p->SCSCRecords[i]);
+			PrintStlSCSCTableRecord(dest, indent, p->SCSCRecords[i].RID_Secondary, &p->SCSCRecords[i]);
         }
 		break;
 		}

@@ -584,7 +584,7 @@ Status_t sa_getMulti_resend_ack(sa_cntxt_t *sa_cntxt) {
     } else {
 		INCREMENT_COUNTER(smCounterSaTxGetMultiAckRetries);
         if (saDebugPerf || saDebugRmpp) {
-            IB_LOG_WARN_FMT( "sa_getMulti_ack", "Timed out waiting for getMulti Direction Switch ACK from Lid[%d] for TID="FMT_U64", RETRYING COUNT [%d]",
+            IB_LOG_WARN_FMT( "sa_getMulti_ack", "Timed out waiting for getMulti Direction Switch ACK from Lid[0x%x] for TID="FMT_U64", RETRYING COUNT [%d]",
                    sa_cntxt->lid, sa_cntxt->tid, sa_cntxt->retries);
         }
     }
@@ -687,7 +687,7 @@ sa_receive_getmulti(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
             rc = sa_cntxt->processFunc((Mai_t *)&sa_cntxt->mad, sa_cntxt);
             if (saDebugRmpp) {
                 IB_LOG_INFINI_INFO_FMT( "sa_receive_getmulti", 
-                       "Non RMPP GetMulti from Lid[%d], TID="FMT_U64" processed",
+                       "Non RMPP GetMulti from Lid[0x%x], TID="FMT_U64" processed",
                        (int)maip->addrInfo.slid, sa_cntxt->tid);
 				INCREMENT_COUNTER(smCounterSaGetMultiNonRmpp);
             }
@@ -702,7 +702,7 @@ sa_receive_getmulti(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
          */
         if (samad.header.rmppType == RMPP_TYPE_NOT) {
             // invalid RMPP type
-            IB_LOG_WARN_FMT( "sa_receive_getmulti", "ABORTING - RMPP protocol error; type is NULL from Lid[%d] for TID="FMT_U64,
+            IB_LOG_WARN_FMT( "sa_receive_getmulti", "ABORTING - RMPP protocol error; type is NULL from Lid[0x%x] for TID="FMT_U64,
                    (int)maip->addrInfo.slid, maip->base.tid);
 			INCREMENT_COUNTER(smCounterRmppStatusAbortBadType);
             samad.header.rmppStatus = RMPP_STATUS_ABORT_BADTYPE;
@@ -778,7 +778,7 @@ sa_receive_getmulti(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
         // processing DATA packet
         if (saDebugRmpp) {
             IB_LOG_INFINI_INFO_FMT( "sa_receive_getmulti", 
-                   "Processing RMPP GETMULTI request from Lid[%d], TID="FMT_U64,
+                   "Processing RMPP GETMULTI request from Lid[0x%x], TID="FMT_U64,
                    (int)maip->addrInfo.slid, maip->base.tid);
         }
         if( sa_cntxt->hashed == 0 ) {
@@ -1169,7 +1169,7 @@ sa_send_multi(Mai_t *maip, sa_cntxt_t *sa_cntxt ) {
        if (saresp.header.rmppType == RMPP_TYPE_NOT && (saresp.header.u.tf.rmppFlags & RMPP_FLAGS_ACTIVE)) {
             // invalid RMPP type
             IB_LOG_WARN_FMT(__func__,
-                   "ABORTING - RMPP protocol error; RmppType is NULL in %s[%s] from Lid[%d] for TID="FMT_U64,
+                   "ABORTING - RMPP protocol error; RmppType is NULL in %s[%s] from Lid[0x%x] for TID="FMT_U64,
                    sa_getMethodText((int)sa_cntxt->method), sa_getAidName(maip->base.aid), (int)sa_cntxt->lid, sa_cntxt->tid);
 			INCREMENT_COUNTER(smCounterRmppStatusAbortBadType);
             sendAbort = 1;

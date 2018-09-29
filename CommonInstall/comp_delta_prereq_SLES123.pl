@@ -53,13 +53,6 @@ my @opa_stack_prereq = (
 );
 $comp_prereq_hash{'opa_stack_prereq'} = \@opa_stack_prereq;
 
-my @mpi_selector_prereq = (
-			"bash",
-			"coreutils",
-			"tcsh",
-);
-$comp_prereq_hash{'mpi_selector_prereq'} = \@mpi_selector_prereq;
-
 my @intel_hfi_prereq = (
 			"glibc",
 			"libgcc_s1",
@@ -78,11 +71,13 @@ my @mvapich2_gcc_hfi_prereq = (
 			"bash",
 			"glibc",
 			"libz1",
+			"mpi-selector",
 );
 $comp_prereq_hash{'mvapich2_gcc_hfi_prereq'} = \@mvapich2_gcc_hfi_prereq;
 
 my @mvapich2_intel_hfi_prereq = (
 			"bash",
+			"mpi-selector",
 );
 $comp_prereq_hash{'mvapich2_intel_hfi_prereq'} = \@mvapich2_intel_hfi_prereq;
 
@@ -102,11 +97,13 @@ my @openmpi_gcc_hfi_prereq = (
 			"libz1",
 			"opensm-libs3",
 			"opensm-devel",
+			"mpi-selector",
 );
 $comp_prereq_hash{'openmpi_gcc_hfi_prereq'} = \@openmpi_gcc_hfi_prereq;
 
 my @openmpi_intel_hfi_prereq = (
 			"bash",
+			"mpi-selector",
 );
 $comp_prereq_hash{'openmpi_intel_hfi_prereq'} = \@openmpi_intel_hfi_prereq;
 
@@ -116,6 +113,7 @@ my @mvapich2_prereq = (
 			"librdmacm1",
 			"glibc",
 			"libz1",
+			"mpi-selector",
 );
 $comp_prereq_hash{'mvapich2_prereq'} = \@mvapich2_prereq;
 
@@ -135,5 +133,6 @@ my @openmpi_prereq = (
 			"libz1",
 			"opensm-libs3",
 			"opensm-devel",
+			"mpi-selector",
 );
 $comp_prereq_hash{'openmpi_prereq'} = \@openmpi_prereq;

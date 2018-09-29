@@ -161,6 +161,23 @@ extern "C" {
 #define STL_SA_CAPABILITY2_DGDTRECORD_SUPPORT	  0x1000000
 #define STL_SA_CAPABILITY2_SWCOSTRECORD_SUPPORT   0x2000000
 
+/* SA Capmask Bits to return on IB SA ClassPortInfo */
+#define IB_SA_CAPABILITY_MASK(capmask) (capmask & \
+	(STL_CLASS_PORT_CAPMASK_TRAP             | \
+	STL_CLASS_PORT_CAPMASK_NOTICE            | \
+	STL_CLASS_PORT_CAPMASK_CM2               | \
+	STL_SA_CAPABILITY_MULTICAST_SUPPORT      | \
+	STL_SA_CAPABILITY_MULTIPATH_SUPPORT      | \
+	STL_SA_CAPABILITY_PORTINFO_CAPMASK_MATCH | \
+	STL_SA_CAPABILITY_PA_SERVICES_SUPPORT))
+
+/* SA Capmask2 Bits to return on IB SA ClassPortInfo */
+#define IB_SA_CAPABILITY2_MASK(capmask) (capmask & \
+	(STL_SA_CAPABILITY2_QOS_SUPPORT   | \
+	STL_SA_CAPABILITY2_MFTTOP_SUPPORT | \
+	STL_SA_CAPABILITY2_FULL_PORTINFO  | \
+	STL_SA_CAPABILITY2_EXT_SUPPORT))
+
 static __inline void
 StlSaClassPortInfoCapMask(char buf[80], uint16 cmask)
 {
@@ -361,10 +378,13 @@ typedef struct {
 		uint8	InputPort;				
 		uint8	OutputPort;
 	} PACK_SUFFIX RID;
-	uint16		Reserved;
-	
+	IB_BITFIELD2(uint8,
+			RID_Secondary:1,
+			Reserved2:7);
+	uint8		Reserved;
+
 	STL_SC		Map[STL_MAX_SCS]; 	
-	
+
 } PACK_SUFFIX STL_SC_MAPPING_TABLE_RECORD;
 
 #define STL_SC2SC_RECORD_COMP_LID 			0x0000000000000001ull

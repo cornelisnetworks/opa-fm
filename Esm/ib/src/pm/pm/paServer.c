@@ -112,7 +112,7 @@ pa_getGroupListResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	uint8_t		*data = pa_data;
 	uint32_t	records = 0;
 	uint32_t	responseSize = 0;
-	uint32_t	attribOffset;
+	uint32_t	attribOffset, imageIndex;
 	FSTATUS		status;
 	Status_t	vStatus;
 	PmGroupList_t	GroupList = {0};
@@ -124,7 +124,8 @@ pa_getGroupListResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	INCREMENT_PM_COUNTER(pmCounterPaRxGetGrpList);
 	IB_LOG_DEBUG1_FMT(__func__, "Getting group list");
 
-	status = paGetGroupList(&g_pmSweepData, &GroupList);
+	imageIndex = (g_pmSweepData.LastSweepIndex == PM_IMAGE_INDEX_INVALID ? 0 : g_pmSweepData.LastSweepIndex);
+	status = paGetGroupList(&g_pmSweepData, &GroupList, imageIndex);
 	if (status == FSUCCESS) {
 		records = GroupList.NumGroups;
 		responseSize = GroupList.NumGroups * STL_PM_GROUPNAMELEN;
@@ -1516,7 +1517,7 @@ pa_getGroupNodeInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 
 	INCREMENT_PM_COUNTER(pmCounterPaRxGetGrpNodeInfo);
 	BSWAP_STL_PA_GROUP_NODE_INFO_REQ(p);
-	cs_strlcpy(groupName, p->groupName, STL_PM_GROUPNAMELEN);
+	StringCopy(groupName, p->groupName, STL_PM_GROUPNAMELEN);
 
 	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", p->imageId.imageNumber, p->imageId.imageOffset);
 	IB_LOG_DEBUG1_FMT(__func__, "Group: %.*s", (int)sizeof(groupName), groupName);
@@ -1637,7 +1638,7 @@ pa_getGroupLinkInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 
 	INCREMENT_PM_COUNTER(pmCounterPaRxGetGrpLinkInfo);
 	BSWAP_STL_PA_GROUP_LINK_INFO_REQ(p);
-	cs_strlcpy(groupName, p->groupName, STL_PM_GROUPNAMELEN);
+	StringCopy(groupName, p->groupName, STL_PM_GROUPNAMELEN);
 
 
 	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", p->imageId.imageNumber, p->imageId.imageOffset);
@@ -1798,21 +1799,20 @@ pa_getFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		memset(response, 0, responseSize);
 
 		for (i = 0; i < pmFocusPorts.NumPorts; i++) {
-    		response[i].nodeLid				= pmFocusPorts.portList[i].lid;
-    		response[i].portNumber			= pmFocusPorts.portList[i].portNum;
-		response[i].localStatus			= pmFocusPorts.portList[i].localStatus;
-    		response[i].rate				= pmFocusPorts.portList[i].rate;
-		response[i].maxVlMtu					= pmFocusPorts.portList[i].maxVlMtu;
-    		response[i].value				= pmFocusPorts.portList[i].value[0];
-    		response[i].nodeGUID			= pmFocusPorts.portList[i].guid;
-    		strncpy(response[i].nodeDesc, pmFocusPorts.portList[i].nodeDesc, sizeof(response[i].nodeDesc)-1);
-		response[i].neighborStatus 		= pmFocusPorts.portList[i].neighborStatus;
-    		response[i].neighborLid 		= pmFocusPorts.portList[i].neighborLid;
-    		response[i].neighborPortNumber	= pmFocusPorts.portList[i].neighborPortNum;
-		response[i].neighborValue		= pmFocusPorts.portList[i].neighborValue[0];
-    		response[i].neighborGuid		= pmFocusPorts.portList[i].neighborGuid;
-    		strncpy(response[i].neighborNodeDesc, pmFocusPorts.portList[i].neighborNodeDesc,
-					sizeof(response[i].neighborNodeDesc)-1);
+			response[i].nodeLid				= pmFocusPorts.portList[i].lid;
+			response[i].portNumber			= pmFocusPorts.portList[i].portNum;
+			response[i].localStatus			= pmFocusPorts.portList[i].localStatus;
+			response[i].rate				= pmFocusPorts.portList[i].rate;
+			response[i].maxVlMtu			= pmFocusPorts.portList[i].maxVlMtu;
+			response[i].value				= pmFocusPorts.portList[i].value[0];
+			response[i].nodeGUID			= pmFocusPorts.portList[i].guid;
+			StringCopy(response[i].nodeDesc, pmFocusPorts.portList[i].nodeDesc, STL_PM_NODEDESCLEN);
+			response[i].neighborStatus 		= pmFocusPorts.portList[i].neighborStatus;
+			response[i].neighborLid 		= pmFocusPorts.portList[i].neighborLid;
+			response[i].neighborPortNumber	= pmFocusPorts.portList[i].neighborPortNum;
+			response[i].neighborValue		= pmFocusPorts.portList[i].neighborValue[0];
+			response[i].neighborGuid		= pmFocusPorts.portList[i].neighborGuid;
+			StringCopy(response[i].neighborNodeDesc, pmFocusPorts.portList[i].neighborNodeDesc, STL_PM_NODEDESCLEN);
 			response[i].imageId = retImageId;
 			response[i].imageId.imageOffset = 0;
 		}
@@ -2587,6 +2587,8 @@ pa_getVFPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		maip->base.status = MAD_STATUS_BAD_FIELD;						// NULL pointer passed to function
 	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
 		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Impropper parameter passed to function
+	} else if (status == (FINVALID_SETTING | STL_MAD_STATUS_STL_PA_NO_DATA)) {
+		maip->base.status = STL_MAD_STATUS_STL_PA_NO_DATA;				// Process Vl Counters Config option disabled, No Data
 	} else if (status == FNOT_FOUND) {
 		if (retImageId.imageNumber == BAD_IMAGE_ID)
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_IMAGE;			// Failed to access/find image
@@ -2669,6 +2671,8 @@ pa_clrVFPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		maip->base.status = MAD_STATUS_BAD_FIELD;						// NULL pointer passed to function
 	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
 		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Impropper parameter passed to function
+	} else if (status == (FINVALID_SETTING | STL_MAD_STATUS_STL_PA_NO_DATA)) {
+		maip->base.status = STL_MAD_STATUS_STL_PA_NO_DATA;				// Process Vl Counters Config option disabled, No Data
 	} else if (status == FNOT_FOUND) {
 		maip->base.status = STL_MAD_STATUS_STL_PA_NO_PORT;				// Failed to find switch node
 	} else if (status == (FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF)) {

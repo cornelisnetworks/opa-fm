@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2018, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -53,6 +53,16 @@ size_t bitset_nset(bitset_t *bitset) {
 	return bitset->nset_m;
 }
 
+static void _bitset_mask_off_unused_bits(bitset_t *bitset) {
+
+	uint32_t bits_left = bitset->nbits_m % 32;
+	if (bits_left) {
+		// Mask off the unused bits
+		uint32_t mask = (1 << bits_left) - 1;
+		bitset->bits_m[bitset->nwords_m-1] &= mask;
+	}
+}
+
 int bitset_init(Pool_t* pool, bitset_t *bitset, size_t nbits) {
     Status_t	status;
 
@@ -75,7 +85,7 @@ int bitset_init(Pool_t* pool, bitset_t *bitset, size_t nbits) {
 }
 
 size_t count_nset(bitset_t* bitset) {
-	size_t bits_counted = 0;
+	size_t bits_left = bitset->nbits_m;
 	size_t i = 0;
 	size_t nset = 0;
 
@@ -83,17 +93,14 @@ size_t count_nset(bitset_t* bitset) {
 		IB_LOG_INFINI_INFO0("bad bits");
 		return 0;
 	}
-
-	for (i=0; i<=bitset->nwords_m; i++) {
+	for (i = 0; bits_left >= 32; i++, bits_left -= 32) {
 		uint32_t word = bitset->bits_m[i];
-		size_t bit = 0;
-		for (bit=0; bit < 32; bit++) {
-			if (bits_counted >= bitset->nbits_m) return nset;
-			if (word & (1<<bit)) {
-				nset += 1;
-			}
-			bits_counted += 1;
-		}
+		nset += __builtin_popcount(word);
+	}
+	if (bits_left > 0) {
+		uint32_t mask = (1 << bits_left) - 1;
+		nset += __builtin_popcount(bitset->bits_m[i] & mask);
+		//bits_left = 0;
 	}
 	return nset;
 }
@@ -125,6 +132,7 @@ int bitset_resize(bitset_t *bitset, size_t n) {
 		bitset->nset_m = orig_nset;
 	} else {
 		memcpy(bitset->bits_m, orig_bits, bitset->nwords_m*sizeof(uint32_t));
+		_bitset_mask_off_unused_bits(bitset);
 		bitset->nset_m = count_nset(bitset);
 	}
 
@@ -156,6 +164,7 @@ void bitset_set_all(bitset_t *bitset) {
 	if (bitset->bits_m) {
 		memset(bitset->bits_m, 0xff, sizeof(uint32_t)*bitset->nwords_m);
 		bitset->nset_m = bitset->nbits_m;
+		_bitset_mask_off_unused_bits(bitset);
 	}
 }
 
@@ -231,40 +240,40 @@ int bitset_find_first_one(bitset_t *bitset) {
 }
 
 int bitset_find_next_one(bitset_t *bitset, unsigned bit) {
-	unsigned i_word;
-	unsigned i_bit = bit%32;
 
 	if (bitset && bitset->bits_m && (bit < bitset->nbits_m)) {
-		unsigned t_bit = bitset->nbits_m;
-		for (i_word = bit/32; i_word < bitset->nwords_m; i_word++) {
-			unsigned l_bit = (t_bit>=32)?32:t_bit;
-			t_bit -= 32;
-			if (bitset->bits_m[i_word] != 0) {
-				for (; i_bit < l_bit; i_bit++) {
-					if ((bitset->bits_m[i_word] & (1<<i_bit)) != 0) {
-						return i_word*32 + i_bit;
-					}
-				}
+		unsigned i_word;
+		uint32_t mask = (1 << (bit % 32)) - 1;
+		unsigned bits = bitset->nbits_m % 32;
+		uint32_t word;
+		for (i_word = bit / 32; i_word < bitset->nwords_m; i_word++) {
+			if (i_word == (bitset->nwords_m - 1) && bits != 0) {
+				/* Handle last Word if not 32bits */
+				mask |= ~((1 << bits) -1);
 			}
-			i_bit = 0;
+			word = bitset->bits_m[i_word] & ~mask;
+			if (word != 0) {
+				return (i_word * 32) + __builtin_ctz(word);
+			}
+			mask = 0;
 		}
 	}
 	return -1;
 }
 
 int bitset_find_last_one(bitset_t *bitset) {
-	int i_word;
-	int i_bit;
 
 	if (bitset && bitset->bits_m) {
+		unsigned i_word;
+		unsigned bits = bitset->nbits_m % 32;
+		uint32_t mask = (uint32_t)(-1);
+		if (bits) mask = (1 << bits) - 1;
 		for (i_word = bitset->nwords_m-1; i_word >= 0; i_word--) {
-			if (bitset->bits_m[i_word] == 0) continue;
-			for (i_bit=31; i_bit >= 0; i_bit--) {
-				if ((bitset->bits_m[i_word] & (1<<i_bit)) != 0) {
-					if (i_word*32 + i_bit < bitset->nbits_m)
-						return i_word*32 + i_bit;
-				}
+			uint32_t word = bitset->bits_m[i_word] & mask;
+			if (word) {
+				return (i_word * 32) + (32 - 1 - __builtin_clz(word));
 			}
+			mask = (uint32_t)(-1);
 		}
 	}
 	return -1;
@@ -275,40 +284,42 @@ int bitset_find_first_zero(bitset_t *bitset) {
 }
 
 int bitset_find_next_zero(bitset_t *bitset, unsigned bit) {
-	unsigned i_word = bit/32;
-	unsigned i_bit = bit%32;
 
 	if (bitset && bitset->bits_m && (bit < bitset->nbits_m)) {
-		unsigned t_bit = bitset->nbits_m;
+		unsigned i_word;
+		uint32_t mask = (1 << (bit % 32)) - 1;
+		unsigned bits = bitset->nbits_m % 32;
+		uint32_t word;
 		for (i_word = bit/32; i_word < bitset->nwords_m; i_word++) {
-			unsigned l_bit = (t_bit>=32)?32:t_bit;
-			t_bit -= 32;
-			if (bitset->bits_m[i_word] != 0xffffffff) {
-				for (; i_bit < l_bit; i_bit++) {
-					if ((bitset->bits_m[i_word] & (1<<i_bit)) == 0) {
-						return i_word*32 + i_bit;
-					}
-				}
+			if (i_word == (bitset->nwords_m - 1) && bits != 0) {
+				/* Handle last Word if not 32bits */
+				mask |= ~((1 << bits) -1);
 			}
-			i_bit = 0;
+			word = bitset->bits_m[i_word] | mask;
+			if (word != (uint32_t)(-1)) {
+				return (i_word * 32) + __builtin_ctz(~word);
+			}
+			mask = 0;
 		}
 	}
 	return -1;
 }
 
 int bitset_find_last_zero(bitset_t *bitset) {
-	int i_word;
-	int i_bit;
 
 	if (bitset && bitset->bits_m) {
-		for (i_word = bitset->nwords_m-1; i_word >= 0; i_word--) {
-			if (bitset->bits_m[i_word] == 0) return i_word * 32 + 31;
-			for (i_bit=31; i_bit >= 0; i_bit--) {
-				if ((bitset->bits_m[i_word] & (1<<i_bit)) == 0) {
-					if (i_word*32 + i_bit < bitset->nbits_m)
-						return i_word*32 + i_bit;
-				}
+		unsigned i_word;
+		unsigned bits = bitset->nbits_m % 32;
+		uint32_t mask = 0;
+		if (bits) mask = (1 << bits) - 1;
+		else bits = 32;
+		for (i_word = bitset->nwords_m - 1; i_word >= 0; i_word--) {
+			uint32_t word = bitset->bits_m[i_word] | mask;
+			if (word != (uint32_t)(-1)) {
+				return (i_word * 32) + (bits - 1 - __builtin_clz(~word));
 			}
+			bits = 32;
+			mask = 0;
 		}
 	}
 	return -1;

@@ -524,7 +524,7 @@ Status_t cs_cntxt_timeout_entry(cntxt_entry_t *tout_cntxt, generic_cntxt_t *cntx
 			|| (tout_cntxt->mad.base.mclass == MAD_CV_SUBN_DR) ) {
 			if (smDebugPerf) {
 				// exhausted the retries, release the context
-				IB_LOG_INFINI_INFO_FMT(__func__, "no response to %s of %s from lid %d, TID 0x%.16"CS64"X",
+				IB_LOG_INFINI_INFO_FMT(__func__, "no response to %s of %s from lid 0x%x, TID 0x%.16"CS64"X",
 					cs_getMethodText(tout_cntxt->mad.base.method), cs_getAidName(tout_cntxt->mad.base.mclass, tout_cntxt->mad.base.aid), 
 					tout_cntxt->lid, tout_cntxt->tid);
 			}

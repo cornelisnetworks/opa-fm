@@ -39,116 +39,100 @@
 #
 #Installation Prequisites array for delta components
 my @opa_stack_prereq = (
-			"bash",
-			"coreutils",
-			"glibc",
-			"grep",
-			"kernel-default",
-			"kmod-compat",
-			"libglib-2_0-0",
-			"libibverbs1",
-			"libudev1",
-			"libudev-devel",
-			"opensm-libs3",
-			"pciutils",
-			"perl",
-			"perl-base",
-			"rdma",
-			"systemd",
-			"kernel-devel",
-			"libibcm1",
+    "bash",
+    "kernel",
+    "kmod",
+    "rdma-core",
+    "systemd",
+    "glibc",
+    "pciutils",
+    "opensm-libs",
+    "libibcm",
+    "libibumad",
+    "rdma-core-devel",
 );
 $comp_prereq_hash{'opa_stack_prereq'} = \@opa_stack_prereq;
 
-my @ibacm_prereq = (
-			"aaa_base",
-			"bash",
-			"glibc",
-			"libibverbs1",
-);
-$comp_prereq_hash{'ibacm_prereq'} = \@ibacm_prereq;
-
 my @mpi_selector_prereq = (
-                    "bash",
-                    "coreutils",
-                    "tcsh",
+    "bash",
+    "coreutils",
+    "perl",
+    "perl-Getopt-Long",
+    "tcsh",
 );
 $comp_prereq_hash{'mpi_selector_prereq'} = \@mpi_selector_prereq;
 
 my @intel_hfi_prereq = (
-			"bash",
-			"glibc",
-			"libgcc_s1",
-			"libibverbs1",
-			"libncurses5",
-			"python-base",
-			"udev",
-			"libnuma1",
-			"irqbalance",
+    "bash",
+    "glibc",
+    "libgcc",
+    "python",
+    "systemd",
+    "numactl-libs",
+    "irqbalance",
 );
 $comp_prereq_hash{'intel_hfi_prereq'} = \@intel_hfi_prereq;
 
-my @mvapich2_gcc_hfi_prereq = (
-                    "bash",
-                    "glibc",
-                    "libz1",
-);
-$comp_prereq_hash{'mvapich2_gcc_hfi_prereq'} = \@mvapich2_gcc_hfi_prereq;
-
-my @mvapich2_intel_hfi_prereq = (
-                    "bash",
-);
-$comp_prereq_hash{'mvapich2_intel_hfi_prereq'} = \@mvapich2_intel_hfi_prereq;
-
-my @openmpi_gcc_hfi_prereq = (
-                    "glibc",
-                    "bash",
-		    "libpsm_infinipath1",
-                    "pkg-config",
-                    "libgcc_s1",
-                    "libgfortran3",
-		    "gcc-fortran",
-                    "libgomp1",
-                    "libibverbs1",
-                    "libquadmath0",
-                    "librdmacm1",
-                    "libstdc++6",
-                    "libz1",
-                    "opensm-libs3",
-		    "opensm-devel",
-                    "libz1",
-);
-$comp_prereq_hash{'openmpi_gcc_hfi_prereq'} = \@openmpi_gcc_hfi_prereq;
-
-my @openmpi_intel_hfi_prereq = (
-                    "bash",
-);
-$comp_prereq_hash{'openmpi_intel_hfi_prereq'} = \@openmpi_intel_hfi_prereq;
-
 my @mvapich2_prereq = (
-                    "bash",
-                    "libibverbs1",
-                    "librdmacm1",
-                    "glibc",
-                    "libz1",
+    "bash",
+    "libibverbs",
+    "librdmacm",
+    "glibc",
+    "zlib",
+    "sysfsutils",
 );
 $comp_prereq_hash{'mvapich2_prereq'} = \@mvapich2_prereq;
 
 my @openmpi_prereq = (
-                    "glibc",
-                    "bash",
-                    "libz1",
-                    "pkg-config",
-                    "libgcc_s1",
-                    "libgfortran3",
-		    "gcc-fortran",
-                    "libgomp1",
-                    "libibverbs1",
-                    "libquadmath0",
-                    "librdmacm1",
-                    "libstdc++6",
-                    "libz1",
-                    "opensm-libs3",
-		    "opensm-devel",
+    "bash",
+    "glibc",
+    "libgcc",
+    "libgfortran",
+    "gcc-gfortran",
+    "libgomp",
+    "libibverbs",
+    "libquadmath",
+    "librdmacm",
+    "libstdc++",
+    "libstdc++-devel",
+    "opensm-libs",
+    "pkgconfig",
+    "zlib",
 );
 $comp_prereq_hash{'openmpi_prereq'} = \@openmpi_prereq;
+
+my @mvapich2_gcc_hfi_prereq = (
+    "bash",
+    "zlib",
+    "glibc",
+);
+$comp_prereq_hash{'mvapich2_gcc_hfi_prereq'} = \@mvapich2_gcc_hfi_prereq;
+
+my @mvapich2_intel_hfi_prereq = (
+    "bash",
+);
+$comp_prereq_hash{'mvapich2_intel_hfi_prereq'} = \@mvapich2_intel_hfi_prereq;
+
+my @openmpi_gcc_hfi_prereq = (
+    "bash",
+    "glibc",
+    "infinipath-psm",
+    "libgcc",
+    "libgfortran",
+    "gcc-gfortran",
+    "libgomp",
+    "libibverbs",
+    "libquadmath",
+    "librdmacm",
+    "libstdc++",
+    "libstdc++-devel",
+    "opensm-libs",
+    "pkgconfig",
+    "zlib",
+);
+$comp_prereq_hash{'openmpi_gcc_hfi_prereq'} = \@openmpi_gcc_hfi_prereq;
+
+my @openmpi_intel_hfi_prereq = (
+    "bash",
+);
+$comp_prereq_hash{'openmpi_intel_hfi_prereq'} = \@openmpi_intel_hfi_prereq;

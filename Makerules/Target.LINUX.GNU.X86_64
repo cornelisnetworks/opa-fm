@@ -78,14 +78,19 @@ SHLIB_SONAME=$(notdir $(CMD_TARGETS_SHLIB))
 # -fcheck-new does the opposite of what the manual implies.
 # -fcheck-new DISABLES the run-time test of return value from new
 CMACH		= -pipe -DTARGET_CPU_FAMILY_X86 -Wall -Werror=format-security -D__X86_64__ -DCPU_LE -m64 -fno-strict-aliasing -fstack-protector
-CCMACH		= $(CMACH) -fcheck-new -Wno-ctor-dtor-privacy
+CCMACH		= -pipe -DTARGET_CPU_FAMILY_X86 -Wall -Werror=format-security -D__X86_64__ -DCPU_LE -m64 -fno-strict-aliasing -fstack-protector -fcheck-new -Wno-ctor-dtor-privacy
+ifeq ($(shell expr $(GCC_MAJOR_VERSION) \>= 7), 1)
+ifeq ($(shell expr $(GCC_MINOR_VERSION) \>= 0), 1)
+CMACH+= -std=gnu90 -Wno-misleading-indentation -Wno-format-truncation
+endif
+endif
 CSYS		= -DLINUX -Dlinux -D__LINUX__ 
 CCSYS		= $(CSYS)
 CCLIBS		= 
 release_CCOPT_Flags	=-O3 -fno-strength-reduce -D_FORTIFY_SOURCE=2
-debug_CCOPT_Flags	= -O -D_FORTIFY_SOURCE=2
+debug_CCOPT_Flags	= -O0
 release_COPT_Flags	=-O3 -fno-strength-reduce -D_FORTIFY_SOURCE=2
-debug_COPT_Flags	= -O -D_FORTIFY_SOURCE=2
+debug_COPT_Flags	= -O0
 # Assemble the optimization flags based upon desired build configuration.
 CCOPT		= $($(strip $(BUILD_CONFIG))_CCOPT_Flags)
 COPT		= $($(strip $(BUILD_CONFIG))_COPT_Flags)

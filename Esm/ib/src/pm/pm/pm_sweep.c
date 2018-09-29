@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2018, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -208,7 +208,7 @@ static void checkForChangesInStandbySMs(PmDbsyncSmInfo_t *base, PmDbsyncSmInfo_t
 				new->SMs[newIndex].histPmDbsyncNeeded = base->SMs[baseIndex].histPmDbsyncNeeded;
 				new->SMs[newIndex].rImgPmDbsyncNeeded = base->SMs[baseIndex].rImgPmDbsyncNeeded;
 				new->SMs[newIndex].numRImagesForSync = base->SMs[baseIndex].numRImagesForSync;
-				cs_strlcpy(new->SMs[newIndex].histImgListFile, base->SMs[newIndex].histImgListFile, 300);
+				StringCopy(new->SMs[newIndex].histImgListFile, base->SMs[newIndex].histImgListFile, 300);
 				new->SMs[newIndex].histImgFileIndex = base->SMs[newIndex].histImgFileIndex;
 				new->SMs[newIndex].numSweepImagesSent = base->SMs[baseIndex].numSweepImagesSent;
 				new->SMs[newIndex].numHistImagesSent = base->SMs[baseIndex].numHistImagesSent;
@@ -693,14 +693,6 @@ void PM_InitStaticRateToMBps(void)
 		s_StaticRateToMBps[i] = StlStaticRateToMBps(i);
 }
 
-char *getDGName(int dgIndex)
-{
-	DGConfig_t* dgp;
-
-	dgp = dg_config.dg[dgIndex];  // index always valid??
-	return(dgp->name);
-}
-
 int getUserPGIndex(char *groupName)
 {
 	int res = -1;
@@ -763,8 +755,6 @@ static void RemoveFromGroups(Pm_t *pm, PmPort_t *pmportp)
 			PmRemoveExtPortFromGroupIndex(portImage, grpIndex, groupp, imageIndex, 0);
 		}
 	}
-	// remove from AllPorts group
-	pm->AllPorts->Image[imageIndex].NumIntPorts--;
 	portImage->u.s.Initialized = 0;	// force analysis of groups when reappears
 }
 
@@ -776,14 +766,12 @@ static void AddToGroups(Pm_t *pm, PmPort_t *pmportp)
 	int grpIndex;
 	char *groupName;
 	uint32 imageIndex = pm->SweepIndex;
+	PmImage_t *pmimagep = &pm->Image[imageIndex];
 	PmPortImage_t *portImage = &pmportp->Image[imageIndex];
 
-	// add to AllPorts group
-	pm->AllPorts->Image[imageIndex].NumIntPorts++;
-
 	// identify other groups port should be added to
-	for (i=0,grpIndex=0; i<pm->NumGroups; i++) {
-		PmGroup_t *groupp = pm->Groups[i];
+	for (i = 0,grpIndex = 0; i < pmimagep->NumGroups; i++) {
+		PmGroup_t *groupp = &pmimagep->Groups[i];
 		groupName = groupp->Name;
 		// TBD - should a compare_node function be used so can skip
 		// iterating on all ports of a switch?  However does not fit in
@@ -843,10 +831,9 @@ void clear_pmport(Pm_t *pm, PmPort_t *pmportp)
 	pmportp->neighbor_lid = 0;	// no neighbor
 }
 
-void update_pm_vfvlmap(Pm_t *pm, PmPortImage_t *portImage, VlVfMap_t *vlvfmap)
+void update_pm_vfvlmap(PmImage_t *pmimagep, PmPortImage_t *portImage, VlVfMap_t *vlvfmap)
 {
 	int vl, vf;
-	PmVF_t *vfp;
 
 	portImage->numVFs = 0;
 	memset(&portImage->vfvlmap, 0, sizeof(vfmap_t) * MAX_VFABRICS);
@@ -855,10 +842,8 @@ void update_pm_vfvlmap(Pm_t *pm, PmPortImage_t *portImage, VlVfMap_t *vlvfmap)
 	for (vl = 0; vl < STL_MAX_VLS; vl++) {
 		/* loop and add VFs - may be duplicates if VF is using more than 1 vl on this port */
 		for(vf = 0; (vf = bitset_find_next_one(&vlvfmap->vf[vl], vf)) != -1; vf++){
-			vfp = pm->VFs[vf];
 
-			if(portImage->vfvlmap[vf].pVF != vfp){
-				portImage->vfvlmap[vf].pVF = vfp;
+			if(portImage->vfvlmap[vf].vlmask == 0){
 				portImage->numVFs++;
 			}
 
@@ -874,6 +859,7 @@ void update_pm_vfvlmap(Pm_t *pm, PmPortImage_t *portImage, VlVfMap_t *vlvfmap)
 static
 void update_pmport(Pm_t *pm, PmPort_t *pmportp, Node_t *nodep, Port_t *portp)
 {
+	PmImage_t *pmimagep = &pm->Image[pm->SweepIndex];
 	Node_t *neigh_nodep;
 	Port_t *neigh_portp;
 	PmPortImage_t *portImage = &pmportp->Image[pm->SweepIndex];
@@ -889,11 +875,11 @@ void update_pmport(Pm_t *pm, PmPort_t *pmportp, Node_t *nodep, Port_t *portp)
 		StlLinkWidthToInt(portp->portData->portInfo.LinkWidth.Active) -
 		StlLinkWidthToInt(portp->portData->portInfo.LinkWidthDowngrade.RxActive) : 0);
 	portImage->u.s.activeSpeed = portp->portData->portInfo.LinkSpeed.Active;
-	memcpy(portImage->dgMember,  portp->portData->dgMemberList, sizeof(portp->portData->dgMemberList));
-	if (pm_config.process_vl_counters) {
+	bitset_copy(&pmportp->dgMember, &portp->portData->dgMember);
+	{
 		VlVfMap_t vlvfmap;
 		old_topology.routingModule->funcs.select_vlvf_map(&old_topology, nodep, portp, &vlvfmap); // select is based on appropriate instance of _select_vlvf_map()
-		update_pm_vfvlmap(pm, portImage, &vlvfmap);
+		update_pm_vfvlmap(pmimagep, portImage, &vlvfmap);
 		// free bitsets allocated in select
 		for (vl = 0; vl < STL_MAX_VLS; vl++){
 			bitset_free(&vlvfmap.vf[vl]);
@@ -940,6 +926,11 @@ PmPort_t *new_pmport(Pm_t *pm)
 	}
 	memset(pmportp, 0, pm->PmPortSize);
 
+	if (!bitset_init(&pm_pool, &pmportp->dgMember, MAX_VFABRIC_GROUPS)) {
+		vs_pool_free(&pm_pool, pmportp);
+		return NULL;
+	}
+
 	return pmportp;
 }
 
@@ -978,6 +969,7 @@ void free_pmport(Pm_t *pm, PmPort_t *pmportp)
 		(int)sizeof(pmportp->pmnodep->nodeDesc.NodeString), pmportp->pmnodep->nodeDesc.NodeString,
 		pmportp->portNum, pmportp->pmnodep->NodeGUID, pmportp->pmnodep->Image[pm->SweepIndex].lid);
 	RemoveFromGroups(pm, pmportp);
+	bitset_free(&pmportp->dgMember);
 	vs_pool_free(&pm_pool, pmportp);
 }
 
@@ -1351,17 +1343,22 @@ uint32 connect_neighbor(Pm_t *pm, PmPort_t *pmportp)
 	PmPort_t *new_neighbor;
 	PmPortImage_t *portImage = &pmportp->Image[pm->SweepIndex];
 
-
-
 	if (pmportp->neighbor_lid) {
 		new_neighbor = pm_find_port(&pm->Image[pm->SweepIndex], pmportp->neighbor_lid, pmportp->neighbor_portNum);
 		if (new_neighbor) {
 			if (new_neighbor == portImage->neighbor)
-                IB_LOG_DEBUG1_FMT(__func__, "reconnect neighbors.  lid 0x%x Port %u neighbor lid 0x%x Port %u", pmportp->pmnodep->Image[pm->SweepIndex].lid, pmportp->portNum, new_neighbor->pmnodep->Image[pm->SweepIndex].lid, new_neighbor->portNum);
+                IB_LOG_DEBUG1_FMT(__func__,
+					"reconnect neighbors.  lid 0x%x Port %u neighbor lid 0x%x Port %u",
+					pmportp->pmnodep->Image[pm->SweepIndex].lid, pmportp->portNum,
+					new_neighbor->pmnodep->Image[pm->SweepIndex].lid, new_neighbor->portNum);
 			else
-                IB_LOG_VERBOSE_FMT(__func__, "connect neighbors.  lid 0x%x Port %u neighbor lid 0x%x Port %u", pmportp->pmnodep->Image[pm->SweepIndex].lid, pmportp->portNum, new_neighbor->pmnodep->Image[pm->SweepIndex].lid, new_neighbor->portNum);
+                IB_LOG_VERBOSE_FMT(__func__,
+					"connect neighbors.  lid 0x%x Port %u neighbor lid 0x%x Port %u",
+					pmportp->pmnodep->Image[pm->SweepIndex].lid, pmportp->portNum,
+					new_neighbor->pmnodep->Image[pm->SweepIndex].lid, new_neighbor->portNum);
 		} else {
-			IB_LOG_VERBOSE_FMT(__func__, "unable to find neighbor of lid 0x%x Port %u", pmportp->pmnodep->Image[pm->SweepIndex].lid, pmportp->portNum);
+			IB_LOG_VERBOSE_FMT(__func__, "unable to find neighbor of lid 0x%x Port %u",
+				pmportp->pmnodep->Image[pm->SweepIndex].lid, pmportp->portNum);
 		}
 	} else {
 		new_neighbor = NULL;
@@ -1573,6 +1570,7 @@ static FSTATUS pm_copy_topology(Pm_t *pm)
 				IB_LOG_ERRORRC("Failed to allocate PM Lid Map rc:", rc);
 				goto bail;
 			}
+			memset(newLidMap,0,newSize*sizeof(PmNode_t *));
 			if (newSize > pmimagep->lidMapSize) {
 				// growing
 				if (pmimagep->LidMap) {
@@ -1592,37 +1590,26 @@ static FSTATUS pm_copy_topology(Pm_t *pm)
 
 		//Update Active VFs
 		VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
-		pm->numVFs = 0;
-		pm->numVFsActive = 0;
+		pmimagep->NumVFs = 0;
+		pmimagep->NumVFsActive = 0;
 		for (i = 0; i < VirtualFabrics->number_of_vfs_all; i++) {
-			PmVF_t *vfp = pm->VFs[i];
-			if(! vfp) continue;
+			PmVF_t *vfp = &pmimagep->VFs[i];
+			vfp->isActive = 0;
 
-			if (strncmp(vfp->Name, VirtualFabrics->v_fabric_all[i].name, STL_PM_VFNAMELEN) == 0){
-				if(VirtualFabrics->v_fabric_all[i].standby){
-					vfp->Image[imageIndex].isActive = 0;
-				} else {
-					vfp->Image[imageIndex].isActive = 1;
-					pm->numVFsActive++;
-				}
-				pm->numVFs++;
-			} else{
-				IB_LOG_WARN_FMT(__func__, "PM VF list does not match SM VF: VF %d, SM: %.*s PM: %.*s ", i,
-					(int)sizeof(VirtualFabrics->v_fabric_all[i].name), VirtualFabrics->v_fabric_all[i].name,
-					(int)sizeof(vfp->Name), vfp->Name);
-				// TODO: Handle when VF list changes order.
+			StringCopy(vfp->Name, VirtualFabrics->v_fabric_all[i].name, STL_PM_VFNAMELEN);
+			if(!VirtualFabrics->v_fabric_all[i].standby) {
+				vfp->isActive = 1;
+				pmimagep->NumVFsActive++;
 			}
+			pmimagep->NumVFs++;
 		}
 		for ( ; i < MAX_VFABRICS; i++) {
-			pm->VFs[i]->Image[imageIndex].isActive = 0;
+			pmimagep->VFs[i].isActive = 0;
+			pmimagep->VFs[i].Name[0] = '\0';
 		}
-		if (pm->numVFs != VirtualFabrics->number_of_vfs_all) {
+		if (pmimagep->NumVFs != VirtualFabrics->number_of_vfs_all) {
 			IB_LOG_WARN_FMT(__func__, "PM VF list count does not match SM VF list: SM count: %u PM count: %u",
-				VirtualFabrics->number_of_vfs_all, pm->numVFs);
-		}
-		if (pm->numVFsActive != VirtualFabrics->number_of_vfs) {
-			IB_LOG_WARN_FMT(__func__, "PM VF list Active count does not match SM VF list: SM count: %u PM count: %u",
-				VirtualFabrics->number_of_vfs, pm->numVFsActive);
+				VirtualFabrics->number_of_vfs_all, pmimagep->NumVFs);
 		}
 
 		// copy all the ports which are in the new SM topology
@@ -2056,7 +2043,7 @@ FSTATUS divideAndCompress(unsigned char *input_data, size_t input_size, unsigned
 	size_t len = (input_size % pm_config.shortTermHistory.compressionDivisions ? 
 				  (input_size / pm_config.shortTermHistory.compressionDivisions) + 1:
 				  (input_size / pm_config.shortTermHistory.compressionDivisions));
-	int i;
+	int i = 0;
 
 	compression_threads = calloc(pm_config.shortTermHistory.compressionDivisions, sizeof(Thread_t));
 	if (compression_threads == NULL) {
@@ -2065,6 +2052,7 @@ FSTATUS divideAndCompress(unsigned char *input_data, size_t input_size, unsigned
 	}
 	// in parallel: call compressData on each division
 	struct compress_args args[pm_config.shortTermHistory.compressionDivisions];
+	memset(args, 0, sizeof(struct compress_args)*(pm_config.shortTermHistory.compressionDivisions));
 	int ret;
 
 	for (i = 0; i < pm_config.shortTermHistory.compressionDivisions; i++) {
@@ -2323,22 +2311,12 @@ static PmCompositePort_t *createCompositePort(PmPort_t *port, PmCompositeImage_t
 	for (x = 0; x < MAX_VFABRICS; x++) {
 		// use -1 to indicated no assignment
 		cport->compVfVlmap[x].VF = -1;
-		PmVF_t *VF = port->Image[imageIndex].vfvlmap[x].pVF;
 		uint32 vlmask = port->Image[imageIndex].vfvlmap[x].vlmask;
-		if (!VF) {
+		if (vlmask == 0) {
 			continue;
 		}
-
-		PmCompositeVF_t cVF = cimg->VFs[x];
-
-		// if the VF names match, then assign the index
-		if (strcmp(cVF.name, VF->Name) == 0) {
-			cport->compVfVlmap[x].VF = x;
-			cport->compVfVlmap[x].vlmask = vlmask;
-		} else {
-			IB_LOG_WARN_FMT(__func__, "Composite VF name doesn't match current VF: VF %d, PM: %.*s, Composite %.*s",
-					x, (int)sizeof(VF->Name), VF->Name, (int)sizeof(cVF.name), cVF.name);
-		}
+		cport->compVfVlmap[x].VF = x;
+		cport->compVfVlmap[x].vlmask = vlmask;
 	}
 	return cport;
 }
@@ -2431,27 +2409,11 @@ cleanup:
 
 static void copyCompositeGroup(PmGroup_t *group, PmCompositeGroup_t *cgroup, uint64 imageIndex) {
 	memcpy(cgroup->name, group->Name, STL_PM_GROUPNAMELEN);
-	cgroup->numIntPorts = group->Image[imageIndex].NumIntPorts;
-	cgroup->numExtPorts = group->Image[imageIndex].NumExtPorts;
-	cgroup->minIntRate = group->Image[imageIndex].MinIntRate;
-	cgroup->maxIntRate = group->Image[imageIndex].MaxIntRate;
-	cgroup->minExtRate = group->Image[imageIndex].MinExtRate;
-	cgroup->maxExtRate = group->Image[imageIndex].MaxExtRate;
-	memcpy(&(cgroup->intUtil), &(group->Image[imageIndex].IntUtil), sizeof(cgroup->intUtil));
-	memcpy(&(cgroup->sendUtil), &(group->Image[imageIndex].SendUtil), sizeof(cgroup->sendUtil));
-	memcpy(&(cgroup->recvUtil), &(group->Image[imageIndex].RecvUtil), sizeof(cgroup->recvUtil));
-	memcpy(&(cgroup->intErr), &(group->Image[imageIndex].IntErr), sizeof(cgroup->intErr));
-	memcpy(&(cgroup->extErr), &(group->Image[imageIndex].ExtErr), sizeof(cgroup->extErr));
 }
 
 static void copyCompositeVF(PmVF_t *VF, PmCompositeVF_t *cVF, uint64 imageIndex) {
-	memcpy(&(cVF->name), &(VF->Name), MAX_VFABRIC_NAME);
-	cVF->isActive = VF->Image->isActive;
-	cVF->numPorts = VF->Image->NumPorts;
-	cVF->minIntRate = VF->Image->MinIntRate;
-	cVF->maxIntRate = VF->Image->MaxIntRate;
-	memcpy(&(cVF->intUtil), &(VF->Image->IntUtil), sizeof(cVF->intUtil));
-	memcpy(&(cVF->intErr), &(VF->Image->IntErr), sizeof(cVF->intErr));
+	memcpy(cVF->name, VF->Name, MAX_VFABRIC_NAME);
+	cVF->isActive = VF->isActive;
 }
 
 #ifndef __VXWORKS__
@@ -2590,26 +2552,23 @@ PmCompositeImage_t *PmCreateComposite(Pm_t *pm, uint32 imageIndex, uint8 isCompr
 	cimg->skippedPorts = img->SkippedPorts;
 	cimg->unexpectedClearPorts = img->UnexpectedClearPorts;
 	cimg->downgradedPorts = img->DowngradedPorts;
-	cimg->numGroups = pm->NumGroups;
-	cimg->numVFs = pm->numVFs;
-	cimg->numVFsActive = pm->numVFsActive;
+	cimg->numGroups = img->NumGroups;
+	cimg->numVFs = img->NumVFs;
+	cimg->numVFsActive = img->NumVFsActive;
 	cimg->maxLid = img->maxLid;
 	cimg->numPorts = 0;
 	memcpy(cimg->SMs, img->SMs, sizeof(cimg->SMs[0]) * PM_HISTORY_MAX_SMS_PER_COMPOSITE);
 	
 	// copy all of the groups
-	copyCompositeGroup(pm->AllPorts, &(cimg->allPortsGroup), pm->history[imageIndex]);
-	for (i = 0; i < pm->NumGroups; i++) {
-		PmGroup_t *group = pm->Groups[i];
-		if (!group) 
-			continue;
+	for (i = 0; i < img->NumGroups; i++) {
+		PmGroup_t *group = &img->Groups[i];
+		if (group->Name[0] == '\0') continue;
 		copyCompositeGroup(group, &(cimg->groups[i]), pm->history[imageIndex]);
 	}
 	// do the same thing for VFs
-	for (i = 0; i < pm->numVFs; i++) {
-		PmVF_t *VF = pm->VFs[i];
-		if (!VF)
-			continue;
+	for (i = 0; i < img->NumVFs; i++) {
+		PmVF_t *VF = &img->VFs[i];
+		if (VF->Name[0] == '\0') continue;
 		copyCompositeVF(VF, &(cimg->VFs[i]), pm->history[imageIndex]);
 	}
 	// nodes
@@ -2742,28 +2701,6 @@ FSTATUS compoundImage(Pm_t *pm, uint32 imageIndex, PmCompositeImage_t *cimg) {
 	cimg->sweepDuration = (cimg->sweepDuration * cimg->header.common.imagesPerComposite + img->sweepDuration)
 		                 /(cimg->header.common.imagesPerComposite + 1);
 
-	// groups
-	int i;
-	for (i = 0; i < PM_MAX_GROUPS; i++) {
-		PmCompositeGroup_t *cgroup = &(cimg->groups[i]);
-		PmGroup_t *group = pm->Groups[i];
-		if (strcmp(cgroup->name, group->Name)) {
-			IB_LOG_WARN_FMT(__func__, "Group names are different- Expected: %s, Got: %s", cgroup->name, group->Name);
-			memcpy(cgroup->name, group->Name, STL_PM_GROUPNAMELEN);
-		}
-	}
-
-	// VFs
-	for (i = 0; i < MAX_VFABRICS; i++) {
-		PmCompositeVF_t *cVF = &(cimg->VFs[i]);
-		PmVF_t *VF = pm->VFs[i];
-		if (strcmp(cVF->name, VF->Name)) {
-			IB_LOG_WARN_FMT(__func__, "VF Names are different: %s %s", cVF->name, VF->Name);
-			memcpy(cVF->name, VF->Name, MAX_VFABRIC_NAME);
-		}
-		cVF->isActive = VF->Image[pm->history[imageIndex]].isActive;
-	}
-
 	// Nodes/Ports
 	STL_LID lid;
 	int j;
@@ -2831,90 +2768,37 @@ void clearLoadedImage(PmShortTermHistory_t *sth) {
 		free(sth->LoadedImage.img);
 		sth->LoadedImage.img = NULL;
 	}
-	if (sth->LoadedImage.AllGroup) {
-		free(sth->LoadedImage.AllGroup);
-		sth->LoadedImage.AllGroup = NULL;
-	}
-	for (i = 0; i < PM_MAX_GROUPS; i++) {
-		if (sth->LoadedImage.Groups[i]) {
-			free(sth->LoadedImage.Groups[i]);
-			sth->LoadedImage.Groups[i] = NULL;
-		}
-	}
-	for (i = 0; i < MAX_VFABRICS; i++) {
-		if (sth->LoadedImage.VFs[i]) {
-			free(sth->LoadedImage.VFs[i]);
-			sth->LoadedImage.VFs[i] = NULL;
-		}
-	}
 }
 
-/************************************************************************************* 
-    PmReconstituteVFImage - Reconstitute a compoiste VF into a VF
- 
-    Inputs:
-    	cVF - the composite VF
-    	
-    Returns:
-    	The reconstituted VF
- 
-*************************************************************************************/ 
-PmVF_t *PmReconstituteVFImage(PmCompositeVF_t *cVF) {
-	PmVF_t *pmVFP;
-	pmVFP = calloc(1, sizeof(PmVF_t));
-	if (!pmVFP) {
-		IB_LOG_ERROR0("Unable to allocate memory to reconstitute PM VF Image");
-		return NULL;
-	}
-	cs_strlcpy(pmVFP->Name, cVF->name, MAX_VFABRIC_NAME);
-	pmVFP->Image[0].isActive = cVF->isActive;
-	pmVFP->Image[0].NumPorts = cVF->numPorts;
-	pmVFP->Image[0].MinIntRate = cVF->minIntRate;
-	pmVFP->Image[0].MaxIntRate = cVF->maxIntRate;
-	memcpy(&(pmVFP->Image[0].IntUtil), &(cVF->intUtil), sizeof(PmUtilStats_t));
-	memcpy(&(pmVFP->Image[0].IntErr), &(cVF->intErr), sizeof(PmErrStats_t));
-	return pmVFP;
+/**
+ * PmReconstituteVFImage - Reconstitute a compoiste VF into a VF
+ *
+ * @param cVF - Composite VF
+ * @param pmVFP - In-Memory VF
+ */
+void PmReconstituteVFImage(PmCompositeVF_t *cVF, PmVF_t *pmVFP) {
+
+	StringCopy(pmVFP->Name, cVF->name, MAX_VFABRIC_NAME);
+	pmVFP->isActive = cVF->isActive;
 }
 
-/************************************************************************************* 
-    PmReconstituteGroupImage - Reconstitute a compoiste group into a group
- 
-    Inputs:
-    	cgroup - the composite group
-    	
-    Returns:
-    	The reconstituted group
- 
-*************************************************************************************/ 
-PmGroup_t *PmReconstituteGroupImage(PmCompositeGroup_t *cgroup)  {
-	PmGroup_t *pmGroupP;
-	pmGroupP = calloc(1, sizeof(PmGroup_t));
-	if (!pmGroupP) {
-		IB_LOG_ERROR0("Unable to allocate memory to reconstitute PM Group Image");
-		return NULL;
-	}
-	cs_strlcpy(pmGroupP->Name, cgroup->name, STL_PM_GROUPNAMELEN);
-	pmGroupP->Image[0].NumIntPorts = cgroup->numIntPorts;
-	pmGroupP->Image[0].NumExtPorts = cgroup->numExtPorts;
-	pmGroupP->Image[0].MinIntRate = cgroup->minIntRate;
-	pmGroupP->Image[0].MaxIntRate = cgroup->maxIntRate;
-	pmGroupP->Image[0].MinExtRate = cgroup->minExtRate;
-	pmGroupP->Image[0].MaxExtRate = cgroup->maxExtRate;
-	memcpy(&(pmGroupP->Image[0].IntUtil), &(cgroup->intUtil), sizeof(PmUtilStats_t));
-	memcpy(&(pmGroupP->Image[0].SendUtil), &(cgroup->sendUtil), sizeof(PmUtilStats_t));
-	memcpy(&(pmGroupP->Image[0].RecvUtil), &(cgroup->recvUtil), sizeof(PmUtilStats_t));
-	memcpy(&(pmGroupP->Image[0].IntErr), &(cgroup->intErr), sizeof(PmErrStats_t));
-	memcpy(&(pmGroupP->Image[0].ExtErr), &(cgroup->extErr), sizeof(PmErrStats_t));
+/**
+ * PmReconstituteGroupImage - Reconstitute a compoiste group into a group
+ *
+ * @param cgroup - Composite Group
+ * @param pmGroupP - In-Memory Group
+ */
+void PmReconstituteGroupImage(PmCompositeGroup_t *cgroup, PmGroup_t *pmGroupP) {
 
-	return pmGroupP;
+	StringCopy(pmGroupP->Name, cgroup->name, STL_PM_GROUPNAMELEN); 
 }
 
 /************************************************************************************* 
     PmReconstitutePortImage - Reconstitute a compoiste port into a port
  
     Inputs:
-	    sth - PM Short Term History
-    	cport - the composite port
+        img - new PM Short Term History image
+        cport - the composite port
     	
     Returns:
     	The reconstituted port
@@ -2924,7 +2808,7 @@ PmGroup_t *PmReconstituteGroupImage(PmCompositeGroup_t *cgroup)  {
     	image in order for them to get properly assigned for this port
  
 *************************************************************************************/ 
-PmPort_t *PmReconstitutePortImage(PmShortTermHistory_t *sth, PmCompositePort_t *cport) {
+PmPort_t *PmReconstitutePortImage(PmImage_t *img, PmCompositePort_t *cport) {
 	PmPort_t *pmportp;
 	pmportp = calloc(1, sizeof(PmPort_t)); 
 	if (!pmportp) {
@@ -2944,23 +2828,13 @@ PmPort_t *PmReconstitutePortImage(PmShortTermHistory_t *sth, PmCompositePort_t *
 	int i;
 	for (i = 0; i < PM_MAX_GROUPS_PER_PORT; i++) {
 		if (cport->groups[i] != (uint8)-1) { // -1 means no group
-			pmportp->Image[0].Groups[i] = sth->LoadedImage.Groups[cport->groups[i]];
+			pmportp->Image[0].Groups[i] = &img->Groups[cport->groups[i]];
 		} else {
 			pmportp->Image[0].Groups[i] = NULL;
 		}
 	}
-	uint8 sthVFidx;
-	for (i=0; i<MAX_VFABRICS; i++) {
-		sthVFidx = cport->compVfVlmap[i].VF;
-		if (sthVFidx == (uint8) -1) {
-			pmportp->Image[0].vfvlmap[i].pVF =  NULL;
-		} else if (sthVFidx >= MAX_VFABRICS) {
-			IB_LOG_ERROR_FMT(__func__,"Invalid VF index %d",sthVFidx);
-			pmportp->Image[0].vfvlmap[i].pVF =  NULL;
-		} else {
-			pmportp->Image[0].vfvlmap[i].vlmask = cport->compVfVlmap[i].vlmask;
-			pmportp->Image[0].vfvlmap[i].pVF = sth->LoadedImage.VFs[sthVFidx];
-		}
+	for (i = 0; i < MAX_VFABRICS; i++) {
+		pmportp->Image[0].vfvlmap[i].vlmask = cport->compVfVlmap[i].vlmask;
 	}
 
 	pmportp->Image[0].vlSelectMask = cport->vlSelectMask;
@@ -2979,14 +2853,14 @@ PmPort_t *PmReconstitutePortImage(PmShortTermHistory_t *sth, PmCompositePort_t *
     PmReconstituteNodeImage - Reconstitute a compoiste node into a node
  
     Inputs:
-	    sth - PM Short Term History
-    	cnode - the composite node
+        img - new PM Short Term History image
+        cnode - the composite node
     	
     Returns:
     	The reconstituted node
  
 *************************************************************************************/ 
-PmNode_t *PmReconstituteNodeImage(PmShortTermHistory_t *sth, PmCompositeNode_t *cnode) {
+PmNode_t *PmReconstituteNodeImage(PmImage_t *img, PmCompositeNode_t *cnode) {
 	PmNode_t *pmnodep;
 
 	if (!cnode->NodeGUID) {
@@ -3020,14 +2894,14 @@ PmNode_t *PmReconstituteNodeImage(PmShortTermHistory_t *sth, PmCompositeNode_t *
 			for (i = 0; i <= pmnodep->numPorts; i++) {
 				if (!cnode->ports[i]) 
 					continue;
-				pmnodep->up.swPorts[i] = PmReconstitutePortImage(sth, cnode->ports[i]);
+				pmnodep->up.swPorts[i] = PmReconstitutePortImage(img, cnode->ports[i]);
 				if (!pmnodep->up.swPorts[i]) {
 					//reconstituting the port failed!!!
 					goto cleanup;
 				}
 			}
 		} else {
-			pmnodep->up.caPortp = PmReconstitutePortImage(sth, cnode->ports[0]);
+			pmnodep->up.caPortp = PmReconstitutePortImage(img, cnode->ports[0]);
 			if (!pmnodep->up.caPortp) {
 				//reconstituting the port failed!!!
 				goto cleanup;
@@ -3070,13 +2944,16 @@ cleanup:
 *   	Status - FSUCCESS if okay
 * 
 *************************************************************************************/
-PmImage_t *PmReconstituteImage(PmShortTermHistory_t *sth, PmCompositeImage_t *cimg) {
+PmImage_t *PmReconstituteImage(PmCompositeImage_t *cimg) {
 	PmImage_t *img;
+	int i;
+
 	img = calloc(1, sizeof(PmImage_t));
 	if (!img) {
 		IB_LOG_ERROR0("Unable to allocate memory to reconstitute image");
 		return NULL;
 	}
+
 	img->maxLid = cimg->maxLid;
 	img->sweepStart = (time_t)cimg->sweepStart;
 	img->sweepDuration = cimg->sweepDuration;
@@ -3093,20 +2970,32 @@ PmImage_t *PmReconstituteImage(PmShortTermHistory_t *sth, PmCompositeImage_t *ci
 	img->SkippedPorts = cimg->skippedPorts;
 	img->UnexpectedClearPorts  = cimg->unexpectedClearPorts;
 	img->DowngradedPorts  = cimg->downgradedPorts;
+
+	img->NumGroups = cimg->numGroups;
+	for (i = 0; i < img->NumGroups && i < PM_MAX_GROUPS; i++) {
+		PmReconstituteGroupImage(&cimg->groups[i], &img->Groups[i]);
+	}
+
+	img->NumVFs = cimg->numVFs;
+	img->NumVFsActive = cimg->numVFsActive;
+	for (i = 0; i < img->NumVFs && i < MAX_VFABRICS; i++) {
+		PmReconstituteVFImage(&cimg->VFs[i], &img->VFs[i]);
+	}
+
 	// lid map
 	img->LidMap = calloc(1, sizeof(PmNode_t*)*(img->maxLid+1));
 	if (!img->LidMap) {
-		free(img);
-		return NULL;
+		goto fail;
 	}
 	img->lidMapSize = img->maxLid + 1;
-
-	int i;
 	for (i = 0; i <= img->maxLid; i++) {
-		img->LidMap[i] = PmReconstituteNodeImage(sth, cimg->nodes[i]);
+		img->LidMap[i] = PmReconstituteNodeImage(img, cimg->nodes[i]);
 	}
 
 	return img;
+fail:
+	free(img);
+	return NULL;
 }
 
 /************************************************************************************* 
@@ -3125,25 +3014,8 @@ FSTATUS PmReconstitute(PmShortTermHistory_t *sth, PmCompositeImage_t *cimg) {
 
 	// clear out whatever is in there first
 	clearLoadedImage(sth);
-
-	sth->LoadedImage.AllGroup = PmReconstituteGroupImage(&cimg->allPortsGroup);
-	if (!sth->LoadedImage.AllGroup) {
-		goto cleanup;
-	}
-	for (i = 0; i < PM_MAX_GROUPS; i++) {
-		sth->LoadedImage.Groups[i] = PmReconstituteGroupImage(&cimg->groups[i]);
-		if (!sth->LoadedImage.Groups[i]) {
-			goto cleanup;
-		}
-	}
-	for (i = 0; i < MAX_VFABRICS; i++) {
-		sth->LoadedImage.VFs[i] = PmReconstituteVFImage(&cimg->VFs[i]);
-		if (!sth->LoadedImage.VFs[i]) {
-			goto cleanup;
-		}
-	}
 	// convert the data in cimg to image data
-	sth->LoadedImage.img = PmReconstituteImage(sth, cimg);
+	sth->LoadedImage.img = PmReconstituteImage(cimg);
 	if (!sth->LoadedImage.img) {
 		goto cleanup;
 	}
@@ -4510,40 +4382,30 @@ boolean PmCompareSWPort(PmPort_t *pmportp, char *groupName)
 
 static boolean PmCompareUserPGPort(PmPort_t *pmportp, char *groupName)
 {
-	int i, j;
-	int pgIndex;
-	boolean res = 0;
-	Pm_t *pmp = &g_pmSweepData;
-	PMXmlConfig_t *pmxmlp = &pm_config;
-	PmPortImage_t *portImage = &pmportp->Image[pmp->SweepIndex];
+	int i;
+	int pgIdx = getUserPGIndex(groupName);
 
-	for (i = 0; i < MAX_DEVGROUPS; i++) {
-		if (portImage->dgMember[i] == DEFAULT_DEVGROUP_ID)
-			break;
-		pgIndex = getUserPGIndex(groupName);
-		if ((pgIndex < 0) || (pgIndex >= STL_PM_MAX_CUSTOM_PORT_GROUPS))
-			break;
-		for (j = 0; j < STL_PM_MAX_DG_PER_PMPG; j++) {
-			if(pmxmlp->pm_portgroups[pgIndex].Monitors[j].dg_Index == portImage->dgMember[i]){
-				res = 1;
-				break;
-			}
+	if (pgIdx < 0 || pgIdx >= STL_PM_MAX_CUSTOM_PORT_GROUPS) return FALSE;
+
+	for (i = 0; i < STL_PM_MAX_DG_PER_PMPG; i++) {
+		if (bitset_test(&pmportp->dgMember, pm_config.pm_portgroups[pgIdx].Monitors[i].dg_Index)) {
+			return TRUE;
 		}
 	}
-	return(res);
+	return FALSE;
 }
 
-static FSTATUS PmCreateGroup(Pm_t *pm, const char* name, PmComparePortFunc_t ComparePortFunc)
+static FSTATUS PmCreateGroup(PmImage_t *pmimagep, const char* name, PmComparePortFunc_t ComparePortFunc)
 {
 	PmGroup_t *groupp;
 
-	if (pm->NumGroups >= PM_MAX_GROUPS)
+	if (pmimagep->NumGroups >= PM_MAX_GROUPS)
 		return FUNAVAILABLE;
 
-	groupp = pm->Groups[pm->NumGroups];
-	cs_strlcpy(groupp->Name, name, STL_PM_GROUPNAMELEN);
+	groupp = &pmimagep->Groups[pmimagep->NumGroups];
+	StringCopy(groupp->Name, name, STL_PM_GROUPNAMELEN);
 	groupp->ComparePortFunc = ComparePortFunc;
-	pm->NumGroups++;
+	pmimagep->NumGroups++;
 	return FSUCCESS;
 }
 
@@ -4580,7 +4442,6 @@ static Status_t PmInit(Pm_t *pm, EUI64 portguid, uint16 pmflags,
 	Status_t status = VSTATUS_OK;
 	uint32 i;
 	uint32 size;
-	PMXmlConfig_t *pmp = &pm_config;
 
 	IB_LOG_INFO0("PmInit");
 	PM_InitStaticRateToMBps();
@@ -4629,36 +4490,6 @@ static Status_t PmInit(Pm_t *pm, EUI64 portguid, uint16 pmflags,
 
 	pm->PmPortSize = sizeof(PmPort_t)+sizeof(PmPortImage_t)*(pm_config.total_images-1);
 	pm->PmNodeSize = sizeof(PmNode_t)+sizeof(PmNodeImage_t)*(pm_config.total_images-1);
-
-	size = sizeof(PmGroup_t)+sizeof(PmGroupImage_t)*(pm_config.total_images-1);
-	status = vs_pool_alloc(&pm_pool, size, (void*)&pm->AllPorts);
-	if (status != VSTATUS_OK || ! pm->AllPorts) {
-		IB_LOG_ERRORRC("Failed to allocate PM AllPorts group rc:", status);
-		status = VSTATUS_NOMEM;
-		goto fail;
-	}
-	MemoryClear(pm->AllPorts, size);
-
-	for (i=0; i < PM_MAX_GROUPS; ++i) {
-		status = vs_pool_alloc(&pm_pool, size, (void*)&pm->Groups[i]);
-		if (status != VSTATUS_OK || ! pm->Groups[i]) {
-			IB_LOG_ERRORRC("Failed to allocate PM Groups rc:", status);
-			status = VSTATUS_NOMEM;
-			goto fail;
-		}
-		MemoryClear(pm->Groups[i], size);
-	}
-
-	size = sizeof(PmVF_t)+sizeof(PmVFImage_t)*(pm_config.total_images-1);
-	for (i=0; i < MAX_VFABRICS; ++i) {
-		status = vs_pool_alloc(&pm_pool, size, (void*)&pm->VFs[i]);
-		if (status != VSTATUS_OK || ! pm->VFs[i]) {
-			IB_LOG_ERRORRC("Failed to allocate PM VFs rc:", status);
-			status = VSTATUS_NOMEM;
-			goto fail;
-		}
-		MemoryClear(pm->VFs[i], size);
-	}
 
 	size = sizeof(PmImage_t)*pm_config.total_images;
 	status = vs_pool_alloc(&pm_pool, size, (void*)&pm->Image);
@@ -4730,24 +4561,6 @@ static Status_t PmInit(Pm_t *pm, EUI64 portguid, uint16 pmflags,
 		pmimagep->state = PM_IMAGE_INVALID;
 	}
 
-	cs_strlcpy(pm->AllPorts->Name, "All", STL_PM_GROUPNAMELEN);
-	PmCreateGroup(pm, "HFIs", PmCompareHFIPort);
-	//PmCreateGroup(pm, "TFIs", PmCompareTCAPort); //Temporary removal as TFIs do not exist in Gen1
-	PmCreateGroup(pm, "SWs", PmCompareSWPort);
-	for (i = 0; i < pmp->number_of_pm_groups; i++) {
-		PmCreateGroup(pm, pmp->pm_portgroups[i].Name, PmCompareUserPGPort);
-	}
-	// Create VFs
-	(void)vs_rdlock(&old_topology_lock);
-	VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
-	for (i = 0; i < VirtualFabrics->number_of_vfs_all; i++) {
-		PmVF_t *vfp = pm->VFs[i];
-		cs_strlcpy(vfp->Name, VirtualFabrics->v_fabric_all[i].name, STL_PM_VFNAMELEN);
-		pm->numVFs++;
-		if (!VirtualFabrics->v_fabric_all[i].standby) pm->numVFsActive++;
-	}
-	(void)vs_rwunlock(&old_topology_lock);
-
 #if CPU_LE
 	// Process STH files only on LE CPUs
 #ifndef __VXWORKS__
@@ -4761,7 +4574,6 @@ static Status_t PmInit(Pm_t *pm, EUI64 portguid, uint16 pmflags,
 	}
 #endif
 #endif	// End of #if CPU_LE
-
 
 	if (VSTATUS_OK != (status = PmDispatcherInit(pm)))
 		IB_FATAL_ERROR_NODUMP("Can't initialize PM Dispatcher");
@@ -4780,22 +4592,6 @@ fail:
 		vs_pool_free(&pm_pool, pm->Image);
 		pm->Image = NULL;
 	}
-	for (i=0; i < MAX_VFABRICS; ++i) {
-		if (pm->VFs[i]) {
-			vs_pool_free(&pm_pool, pm->VFs[i]);
-			pm->VFs[i] = NULL;
-		}
-	}
-	for (i=0; i < PM_MAX_GROUPS; ++i) {
-		if (pm->Groups[i]) {
-			vs_pool_free(&pm_pool, pm->Groups[i]);
-			pm->Groups[i] = NULL;
-		}
-	}
-	if (pm->AllPorts) {
-		vs_pool_free(&pm_pool, pm->AllPorts);
-		pm->AllPorts = NULL;
-	}
 
 	return status;
 }
@@ -4803,7 +4599,6 @@ fail:
 void PmDestroy(Pm_t *pm)
 {
 	STL_LID lid;
-	uint32 i;
 
 	IB_LOG_INFO0(__func__);
 
@@ -4851,23 +4646,8 @@ void PmDestroy(Pm_t *pm)
 		vs_pool_free(&pm_pool, pm->Image);
 		pm->Image = NULL;
 	}
-	for (i=0; i < MAX_VFABRICS; ++i) {
-		if (pm->VFs[i]) {
-			vs_pool_free(&pm_pool, pm->VFs[i]);
-			pm->VFs[i] = NULL;
-		}
-	}
-	for (i=0; i < PM_MAX_GROUPS; ++i) {
-		if (pm->Groups[i]) {
-			vs_pool_free(&pm_pool, pm->Groups[i]);
-			pm->Groups[i] = NULL;
-		}
-	}
-	if (pm->AllPorts) {
-		vs_pool_free(&pm_pool, pm->AllPorts);
-		pm->AllPorts = NULL;
-	}
 #ifndef __VXWORKS__
+	uint32 i;
 	if (pm->ShortTermHistory.currentComposite) {
 		PmFreeComposite(pm->ShortTermHistory.currentComposite);
 		pm->ShortTermHistory.currentComposite = NULL;
@@ -5190,6 +4970,7 @@ static FSTATUS PmSweep(Pm_t *pm)
 	uint64_t sweepStart;
 	uint64_t now;
 	time_t now_time;
+	int i;
 
 	(void)vs_wrlock(&pm->stateLock);
 	pmimagep = &pm->Image[pm->SweepIndex];
@@ -5200,6 +4981,14 @@ static FSTATUS PmSweep(Pm_t *pm)
 	(void)vs_rwunlock(&pm->stateLock);
 	vs_stdtime_get(&pmimagep->sweepStart);
 	vs_time_get(&sweepStart);
+
+	// Add PmPortGroups to Image
+	pmimagep->NumGroups = 0;
+	PmCreateGroup(pmimagep, "HFIs", PmCompareHFIPort);
+	PmCreateGroup(pmimagep, "SWs", PmCompareSWPort);
+	for (i = 0; i < pm_config.number_of_pm_groups; i++) {
+		PmCreateGroup(pmimagep, pm_config.pm_portgroups[i].Name, PmCompareUserPGPort);
+	}
 
 	// now since we marked the image state, we could technically unlock
 	// imageLock, but no harm in holding it, easier to maintain and review code

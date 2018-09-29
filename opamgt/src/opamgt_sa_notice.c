@@ -252,16 +252,17 @@ OMGT_STATUS_T omgt_sa_get_notice_report(struct omgt_port *port, STL_NOTICE **not
 		/* Determine Message Type */
 		msg = (struct omgt_thread_msg *)rcv_buf;
 		if (OMGT_TH_EVT_TRAP_MSG == msg->evt) {
+			int bufSize = MIN(msg->size,sizeof(rcv_buf)-sizeof(*msg));
 			/* Thread Event Type : Trap Message */
 
 			/* Allocate the Notice */
-			notice_buf = (STL_NOTICE *)calloc(1, msg->size);
+			notice_buf = (STL_NOTICE *)calloc(1, bufSize);
 			if (notice_buf == NULL) {
 				OMGT_OUTPUT_ERROR(port, "failed to allocate notice buffer\n");
 				return OMGT_STATUS_INSUFFICIENT_MEMORY;
 			}
 			/* Copy and allocate the Data */
-			memcpy(notice_buf, rcv_buf + sizeof(*msg), msg->size);
+			memcpy(notice_buf, rcv_buf + sizeof(*msg), bufSize);
 			BSWAP_STL_NOTICE(notice_buf);
 			trap_num = notice_buf->Attributes.Generic.TrapNumber;
 			OMGT_DBGPRINT(port, "trap message %u: %d bytes\n", trap_num, (int)(msg->size));

@@ -175,6 +175,10 @@ pm_counter_t pmCounters[pmCountersMax] = {
 	                                    = { "PA TX STATUS INVALID PARAMETER", 0, 0, 0 },
 	[pmCountersPaTxRespMadStatusStlPaNoImage]
 	                                    = { "PA TX STATUS NO IMAGE", 0, 0, 0 },
+	[pmCountersPaTxRespMadStatusStlPaNoData]
+	                                    = { "PA TX STATUS NO DATA", 0, 0, 0 },
+	[pmCountersPaTxRespMadStatusStlPaBadData]
+	                                    = { "PA TX STATUS BAD DATA", 0, 0, 0 },
 	[pmCountersPaTxRespMadStatusUnknown]= { "PA TX STATUS UNKNOWN", 0, 0, 0 },
 
 };

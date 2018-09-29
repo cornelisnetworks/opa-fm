@@ -1,11 +1,11 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015-2017, Intel Corporation
+# Copyright (c) 2017, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
 # 
-#     * Redistributions of source code must retain the above copyright notice,
+#     * Redistributions of source executacode must retain the above copyright notice,
 #       this list of conditions and the following disclaimer.
 #     * Redistributions in binary form must reproduce the above copyright
 #       notice, this list of conditions and the following disclaimer in the
@@ -38,12 +38,12 @@ include $(TL_DIR)/$(PROJ_FILE_DIR)/Makesettings.project
 # Name of SubProjects
 DS_SUBPROJECTS	= 
 # name of executable or downloadable image
-EXECUTABLE		= $(BUILDDIR)/jmtest$(EXE_SUFFIX)
+EXECUTABLE		= opamkdsapdb$(EXE_SUFFIX)
 # list of sub directories to build
 DIRS			= 
 # C files (.c)
 CFILES			= \
-				  jmtest.c
+				opamkdsapdb.c \
 				# Add more c files here
 # C++ files (.cpp)
 CCFILES			= \
@@ -75,19 +75,18 @@ OBJECTS			= $(CFILES:.c=$(OBJ_SUFFIX)) $(CCFILES:.cpp=$(OBJ_SUFFIX)) \
 RSCOBJECTS		= $(RSCFILES:.rc=$(RES_SUFFIX))
 # targets to build during LIBS phase
 LIB_TARGETS_IMPLIB	=
-#LIB_TARGETS_ARLIB	= $(LIB_PREFIX)name$(ARLIB_SUFFIX)
 LIB_TARGETS_ARLIB	= 
 LIB_TARGETS_EXP		= $(LIB_TARGETS_IMPLIB:$(ARLIB_SUFFIX)=$(EXP_SUFFIX))
 LIB_TARGETS_MISC	= 
 # targets to build during CMDS phase
 CMD_TARGETS_SHLIB	= 
 CMD_TARGETS_EXE		= $(EXECUTABLE)
-CMD_TARGETS_MISC	= 
+CMD_TARGETS_MISC	=
 # files to remove during clean phase
 CLEAN_TARGETS_MISC	=  
 CLEAN_TARGETS		= $(OBJECTS) $(RSCOBJECTS) $(IDL_TARGETS) $(CLEAN_TARGETS_MISC)
 # other files to remove during clobber phase
-CLOBBER_TARGETS_MISC=
+CLOBBER_TARGETS_MISC=$(shell test -f .clobber_targets && cat .clobber_targets) .clobber_targets
 # sub-directory to install to within bin
 BIN_SUBDIR		= 
 # sub-directory to install to within include
@@ -107,17 +106,30 @@ INCLUDE_SUBDIR		=
 #MIDLLOCAL	= User flags for IDL compiler [Empty]
 #RSCLOCAL	= User flags for resource compiler [Empty]
 #LOCALDEPLIBS	= User libraries to include in dependencies [Empty]
+LOCALDEPLIBS	= sm sa pm em fe if3sa if3 cs mai ibaccess config public vslogu Topology Xml opamgt-priv IbPrint net
 #LOCALLIBS		= User libraries to use when linking [Empty]
 #				(in addition to LOCALDEPLIBS)
 #LOCAL_LIB_DIRS	= User library directories for libpaths [Empty]
 
-CLOCAL	= 
-LOCAL_INCLUDE_DIRS = $(MOD_DIR)/src/smi/include
-LOCALDEPLIBS = cs ibaccess mai public vslogu opamgt-priv
-LOCALLIBS = pthread $(OPENIB_USER_LIBS)
+#LOCALDEPLIBS = ssoss_fm_api ssoss_core_unisck ssapi_core_common ssapi_common
+#LOCALDEPLIBS = sm sa pm fe if3sa if3 cs mai ibaccess config rem_conf net public vslogu Xml Md5 opamgt-priv
+#LOCALDEPLIBS = if3sa if3 cs mai ibaccess config rem_conf net public vslogu Xml Md5 opamgt-priv
+#LOCAL_INCLUDE_DIRS=.
+#LOCAL_INCLUDE_DIRS=$(MOD_DIR)/src/smi/include $(MOD_DIR)/src/fe/ $(OPENIB_USER_LIB_DIRS)
+LOCAL_INCLUDE_DIRS=$(MOD_DIR)/ib/include $(TL_DIR)/Esm/ib/src/if3 $(MOD_DIR)/src/smi/include $(TL_DIR)/Topology
+#LOCALLIBS=  crypto netsnmpagent netsnmpmibs netsnmphelpers netsnmp dl crypto m
+LOCALLIBS= rt $(OPENIB_USER_LIBS) z crypto expat CodeVersion
+CLOCAL = $(CPIE) $(shell pkg-config --cflags json-c) 
+LDLOCAL= $(shell pkg-config --libs json-c) -fopenmp
+LIBFILES= 
+
+VPATH=
 
 # Include Make Rules definitions and rules
 include $(PROJ_SM_DIR)/Makerules.module
+
+CFLAGS := $(CFLAGS)
+LDFLAGS :=  $(LDFLAGS)
 
 #=============================================================================#
 # Overrides:
@@ -136,15 +148,27 @@ include $(PROJ_SM_DIR)/Makerules.module
 # process Sub-directories
 include $(TL_DIR)/Makerules/Maketargets.toplevel
 
+%.c: $(MOD_DIR)/src/linux/opamkdsapdb/%.c
+	@echo $@ >> .clobber_targets
+	@rm -f $@
+	@ln $< $@
+
+$(BUILDDIR)/opamkdsapdb: $(BUILDDIR)/opamkdsapdb.o
+	$(VS)$(CC) $(LDFLAGS) $(CFLAGS)$@ $(BUILDDIR)/opamkdsapdb.o $(LDLIBS)
+
+#=============================================================================#
 # build cmds and libs
 include $(TL_DIR)/Makerules/Maketargets.build
 
 # install for includes, libs and cmds phases
 include $(TL_DIR)/Makerules/Maketargets.install
 
+INSTALL::
 # install for stage phase
-#include $(TL_DIR)/Makerules/Maketargets.stage
+include $(TL_DIR)/Makerules/Maketargets.stage
+
 STAGE::
+	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_IMAGE_DIR)/bin $(EXECUTABLE)
 
 # Unit test execution
 #include $(TL_DIR)/Makerules/Maketargets.runtest

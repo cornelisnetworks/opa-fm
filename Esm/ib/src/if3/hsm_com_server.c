@@ -43,7 +43,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 #include <libgen.h>
 #include <errno.h>
-#include "vs_g.h"
+#include "imemory.h"
 #include "hsm_com_srvr_api.h"
 #include "hsm_com_srvr_data.h"
 
@@ -84,7 +84,7 @@ int unix_serv_listen(char *name)
 	memset(&socketaddr,0,sizeof(socketaddr));
 
 	socketaddr.sun_family = AF_UNIX;
-	cs_strlcpy(socketaddr.sun_path,name,sizeof(socketaddr.sun_path));
+	StringCopy(socketaddr.sun_path,name,sizeof(socketaddr.sun_path));
 
 	len = SUN_LEN(&socketaddr);
 

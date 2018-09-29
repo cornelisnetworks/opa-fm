@@ -149,13 +149,14 @@ PrintStlPKeyTableRecord(PrintDest_t * dest, int indent,
 }
 
 void
-PrintStlSCSCTableRecord(PrintDest_t * dest, int indent,
+PrintStlSCSCTableRecord(PrintDest_t * dest, int indent, int extended,
 						const STL_SC_MAPPING_TABLE_RECORD * pSCSCMapRecord)
 {
-	PrintFunc(dest, "%*sLID: 0x%08x InputPort: %3u OutputPort: %3u\n",
+	PrintFunc(dest, "%*sLID: 0x%08x InputPort: %3u OutputPort: %3u %s\n",
 			  indent, "",
 			  pSCSCMapRecord->RID.LID, pSCSCMapRecord->RID.InputPort,
-			  pSCSCMapRecord->RID.OutputPort);
+			  pSCSCMapRecord->RID.OutputPort,
+			  !extended ? "" : "(secondary)");
 
 	PrintStlSCSCMap(dest, indent, "",
 						(STL_SCSCMAP *) & pSCSCMapRecord->Map, TRUE);
@@ -553,7 +554,7 @@ void PrintQuarantinedNodeRecord(PrintDest_t *dest, int indent, const STL_QUARANT
 	PrintFunc(dest, "%*s        SystemImageGuid: 0x%016" PRIx64 " BaseVersion: %d SmaVersion: %d\n", indent, "", pQuarantinedNodeRecord->NodeInfo.SystemImageGUID, pQuarantinedNodeRecord->NodeInfo.BaseVersion, pQuarantinedNodeRecord->NodeInfo.ClassVersion);
 	PrintFunc(dest, "%*s        VendorID: 0x%x DeviceId: 0x%x Revision: 0x%x\n", indent, "", pQuarantinedNodeRecord->NodeInfo.u1.s.VendorID, pQuarantinedNodeRecord->NodeInfo.DeviceID, pQuarantinedNodeRecord->NodeInfo.Revision);
 }
-                                                                                                                    
+ 
 void PrintStlCongestionInfoRecord(PrintDest_t *dest, int indent, const STL_CONGESTION_INFO_RECORD *pCongestionInfo) {
 	PrintFunc(dest, "%*sLID %d\n", indent, "", pCongestionInfo->LID);
 	PrintStlCongestionInfo(dest, indent, &pCongestionInfo->CongestionInfo, 0);

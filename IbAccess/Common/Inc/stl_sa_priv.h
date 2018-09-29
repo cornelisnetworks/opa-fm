@@ -338,11 +338,7 @@ CONVERT_IB2STL_MCMEMBER_RECORD(IB_MCMEMBER_RECORD *Src, STL_MCMEMBER_RECORD *Des
 	Dest->RID.MGID = Src->RID.MGID;
 	Dest->RID.PortGID = Src->RID.PortGID;
 	Dest->Q_Key = Src->Q_Key;
-#if !defined(PRODUCT_STL1)
 	Dest->MLID = MCAST16_TO_MCAST32(Src->MLID);
-#else
-	Dest->MLID = Src->MLID;
-#endif
 	Dest->MtuSelector = Src->MtuSelector;
 	Dest->Mtu = Src->Mtu;
 	Dest->TClass = Src->TClass;
@@ -366,11 +362,7 @@ CONVERT_STL2IB_MCMEMBER_RECORD(STL_MCMEMBER_RECORD *Src, IB_MCMEMBER_RECORD *Des
 	Dest->RID.MGID = Src->RID.MGID;
 	Dest->RID.PortGID = Src->RID.PortGID;
 	Dest->Q_Key = Src->Q_Key;
-#if !defined(PRODUCT_STL1)
 	Dest->MLID = MCAST32_TO_MCAST16(Src->MLID);
-#else
-	Dest->MLID = Src->MLID;
-#endif
 	Dest->MtuSelector = Src->MtuSelector;
 	Dest->Mtu = Src->Mtu;
 	Dest->TClass = Src->TClass;

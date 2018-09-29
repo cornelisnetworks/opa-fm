@@ -1139,7 +1139,7 @@ MemoryTrackerTrackAllocation(
 	return;
 }
 
-static int
+int
 MemoryTrackerTrackDeallocate( 
 	IN void *pMemory )
 {

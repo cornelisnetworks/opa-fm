@@ -388,7 +388,6 @@ typedef struct {
 
 } PACK_SUFFIX STL_NODE_INFO;
 
-
 /*
  * NodeDescription
  *
@@ -421,8 +420,10 @@ typedef struct {
 
 typedef	union {
 	uint16	AsReg16;
-	struct { IB_BITFIELD4( uint16,
-		Reserved:						13,
+	struct { IB_BITFIELD5( uint16,
+		Reserved:						12,
+
+		IsExtendedSCSCSupported:		1,	/* RO Extended SCSC */
 		IsAddrRangeConfigSupported:		1,	/* Can addr range for Multicast */
 											/* and Collectives be configured */
 		Reserved2:						1,
@@ -480,7 +481,7 @@ typedef struct {
 		} s;
 	} u1;
 
-	uint16  Reserved24;	
+	uint16	Reserved24;
 	uint16  PartitionEnforcementCap;	/* RO Specifies the number of entries in the */
 										/*  partition enforcement table */
 	uint8	PortGroupCap;			/* RO Specifies the maximum number of */
@@ -1201,6 +1202,7 @@ typedef struct {
 #define STL_DEFAULT_APP_PKEY_IDX	0
 #define STL_DEFAULT_CLIENT_PKEY_IDX	1
 #define STL_DEFAULT_FM_PKEY_IDX     2
+#define STL_MIN_PKEY_COUNT          3
 
 typedef union {
 	uint16  AsReg16;

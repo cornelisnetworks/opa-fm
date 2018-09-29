@@ -40,7 +40,7 @@ DS_SUBPROJECTS	=
 # name of executable or downloadable image
 EXECUTABLE		= # Sm$(EXE_SUFFIX)
 # list of sub directories to build
-DIRS			= log rem_conf startup fm_cmd
+DIRS			= log rem_conf startup fm_cmd opamkdsapdb
 # C files (.c)
 CFILES			= \
 				# Add more c files here

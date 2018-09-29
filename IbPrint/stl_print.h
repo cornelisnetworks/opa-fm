@@ -137,7 +137,7 @@ void PrintStlPortInfoRecord(PrintDest_t *dest, int indent, const STL_PORTINFO_RE
 void PrintStlPortStateInfo(PrintDest_t *dest, int indent, const STL_PORT_STATE_INFO *psip, uint16 portCount, uint16 startPort, int printLineByLine);
 void PrintStlSwitchInfoRecord(PrintDest_t *dest, int indent, const STL_SWITCHINFO_RECORD *pSwitchInfoRecord);
 void PrintStlPKeyTableRecord(PrintDest_t *dest, int indent, const STL_P_KEY_TABLE_RECORD *pPKeyTableRecord);
-void PrintStlSCSCTableRecord(PrintDest_t *dest, int indent, const STL_SC_MAPPING_TABLE_RECORD *pSCSCMapRecord);
+void PrintStlSCSCTableRecord(PrintDest_t *dest, int indent, int extended, const STL_SC_MAPPING_TABLE_RECORD *pSCSCMapRecord);
 void PrintStlSLSCTableRecord(PrintDest_t *dest, int indent, const STL_SL2SC_MAPPING_TABLE_RECORD *pSCSLMapRecord);
 void PrintStlSCSLTableRecord(PrintDest_t *dest, int indent, const STL_SC2SL_MAPPING_TABLE_RECORD *pSCSLMapRecord);
 void PrintStlSCVLxTableRecord(PrintDest_t *dest, int indent, const STL_SC2VL_R_MAPPING_TABLE_RECORD *pSCVLxMapRecord, uint16_t attribute);

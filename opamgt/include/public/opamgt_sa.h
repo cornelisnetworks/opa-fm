@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2018, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -496,6 +496,28 @@ omgt_sa_get_scvlt_table_records(
 
 
 /**
+ * @brief Query SA for SCVLr Table Records
+ *
+ * @param port			 port opened by omgt_open_port_*
+ * @param selector		 Criteria to select records.
+ *                		 Valid InputType values:
+ *                		 	NoInput, Lid
+ * @param num_records	Output: The number of records returned in query
+ * @param records		Output: Pointer to records.
+ *								Must be freed by calling omgt_sa_free_records
+ *
+ *@return		   OMGT_STATUS_SUCCESS if success, else error code
+ */
+OMGT_STATUS_T
+omgt_sa_get_scvlr_table_records(
+	struct omgt_port *port,
+	omgt_sa_selector_t *selector,
+	int32_t *num_records,
+	STL_SC2PVL_R_MAPPING_TABLE_RECORD **records
+	);
+
+
+/**
  * @brief Query SA for SCVLnt Table Records
  *
  * @param port			 port opened by omgt_open_port_*
@@ -515,6 +537,75 @@ omgt_sa_get_scvlnt_table_records(
 	int32_t *num_records,
 	STL_SC2PVL_NT_MAPPING_TABLE_RECORD **records
 	);
+
+
+/**
+ * @brief Query SA for DeviceGroupName Records
+ *
+ * @param port			 port opened by omgt_open_port_*
+ * @param selector		 Criteria to select records.
+ *                       Valid InputType values:
+ *                         NoInput
+ * @param num_records	 Output: The number of records returned in query
+ * @param records		 Output: Pointer to records.
+ *                               Must be freed by calling omgt_sa_free_records
+ *
+ * @return		OMGT_STATUS_SUCCESS if success, else error code
+ */
+OMGT_STATUS_T
+omgt_sa_get_devicegroupname_records(
+	struct omgt_port *port,
+	omgt_sa_selector_t *selector,
+	int32_t *num_records,
+	STL_DEVICE_GROUP_NAME_RECORD **records
+	);
+
+
+
+/**
+ * @brief Query SA for DeviceGroupMember Records
+ *
+ * @param port			 port opened by omgt_open_port_*
+ * @param selector		 Criteria to select records.
+ *                       Valid InputType values:
+ *                         NoInput, Lid, PortGuid, NodeDesc, DeviceGroup
+ * @param num_records	 Output: The number of records returned in query
+ * @param records		 Output: Pointer to records.
+ *                               Must be freed by calling omgt_sa_free_records
+ *
+ * @return		OMGT_STATUS_SUCCESS if success, else error code
+ */
+OMGT_STATUS_T
+omgt_sa_get_devicegroupmember_records(
+	struct omgt_port *port,
+	omgt_sa_selector_t *selector,
+	int32_t *num_records,
+	STL_DEVICE_GROUP_MEMBER_RECORD **records
+	);
+
+
+
+/**
+ * @brief Query SA for DeviceTreeMember Records
+ *
+ * @param port			 port opened by omgt_open_port_*
+ * @param selector		 Criteria to select records.
+ *                       Valid InputType values:
+ *                         NoInput, Lid
+ * @param num_records	 Output: The number of records returned in query
+ * @param records		 Output: Pointer to records.
+ *                               Must be freed by calling omgt_sa_free_records
+ *
+ * @return		OMGT_STATUS_SUCCESS if success, else error code
+ */
+OMGT_STATUS_T
+omgt_sa_get_devicetreemember_records(
+	struct omgt_port *port,
+	omgt_sa_selector_t *selector,
+	int32_t *num_records,
+	STL_DEVICE_TREE_MEMBER_RECORD **records
+	);
+
 
 
 /**
@@ -603,6 +694,8 @@ omgt_sa_get_vlarb_records(
 	int32_t *num_records,
 	STL_VLARBTABLE_RECORD **records
 	);
+
+
 
 
 /**

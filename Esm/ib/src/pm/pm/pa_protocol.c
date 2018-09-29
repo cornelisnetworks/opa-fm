@@ -624,7 +624,7 @@ pa_send_multi(Mai_t *maip, pa_cntxt_t *pa_cntxt)
        if (paresp.header.rmppType == RMPP_TYPE_NOT && (paresp.header.u.tf.rmppFlags & RMPP_FLAGS_ACTIVE)) {
             // invalid RMPP type
             IB_LOG_WARN_FMT(__func__, 
-                   "ABORTING - RMPP protocol error; RmppType is NULL in %s[%s] from Lid[%d] for TID="FMT_U64,
+                   "ABORTING - RMPP protocol error; RmppType is NULL in %s[%s] from Lid[0x%x] for TID="FMT_U64,
                    pa_getMethodText((int)pa_cntxt->method), pa_getAidName(maip->base.aid), (int)pa_cntxt->lid, pa_cntxt->tid);
 			INCREMENT_PM_COUNTER(pmCounterRmppStatusAbortBadType);
             sendAbort = 1;

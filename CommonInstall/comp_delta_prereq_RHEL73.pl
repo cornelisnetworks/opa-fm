@@ -98,7 +98,6 @@ my @openmpi_prereq = (
                     "libstdc++",
 		    "libstdc++-devel",
                     "opensm-libs",
-                    "papi",
                     "pkgconfig",
                     "zlib",
 );
@@ -130,7 +129,6 @@ my @openmpi_gcc_hfi_prereq = (
                     "libstdc++",
   		    "libstdc++-devel",
                     "opensm-libs",
-                    "papi",
                     "pkgconfig",
                     "zlib",
 );

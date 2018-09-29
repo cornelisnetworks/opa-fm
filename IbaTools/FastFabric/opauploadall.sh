@@ -1,7 +1,7 @@
 #!/bin/bash
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015-2017, Intel Corporation
+# Copyright (c) 2015-2018, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -70,7 +70,8 @@ Usage_full()
 	echo "user@ syntax cannot be used in filenames specified" >&2
 	echo "A local directory within upload_dir/ will be created for each hostname." >&2
 	echo "Destination file will be upload_dir/hostname/dest_file within the local system." >&2
-	echo "If copying multiple files, dest_file directory will be created." >&2
+	echo "If copying multiple files, or dest_file has a trailing /, dest_file" >&2
+	echo "   directory will be created." >&2
 	echo "To copy files from this host to hosts in the cluster use opascpall or" >&2
 	echo "   opadownloadall." >&2
 	exit 0
@@ -94,7 +95,8 @@ Usage()
 	echo "user@ syntax cannot be used in filenames specified" >&2
 	echo "A local directory within uploads/ will be created for each hostname." >&2
 	echo "Destination file will be uploads/hostname/dest_file within the local system." >&2
-	echo "If copying multiple files, dest_file directory will be created." >&2
+	echo "If copying multiple files, or dest_file has a trailing /, dest_file" >&2
+	echo "   directory will be created." >&2
 	echo "To copy files from this host to hosts in the cluster use opascpall or" >&2
 	echo "   opadownloadall." >&2
 	exit 2
@@ -144,11 +146,32 @@ for file in "$@"
 do
 	if [ ! -z "$dest" ]
 	then
-		files="$files $dest"
+		if [ ! -z "$files" ]
+		then
+			files="$files $dest"
+		else
+			files="$dest"
+		fi
 		file_count=`expr $file_count + 1`
 	fi
 	dest="$file"
 done
+
+# Determine if we need to create a directory
+create_dir=y
+if [ $file_count -le 1 ] && [ "${dest: -1}" != "/" ]
+then
+	create_dir=n
+	echo "$files" | grep -e "*" -e "\[" -e "?" >/dev/null
+	if [ "$?" -eq 0 ]; then
+		echo "opauploadall: Warning: possible wildcards in source_file. If multiple" >&2
+		echo "   files may match, dest_file should be a directory with trailing /" >&2
+	fi
+fi
+
+# Convert files to an array to iterate through while
+# avoiding wildcard expansion
+read -a files <<< $files
 
 running=0
 pids=""
@@ -156,12 +179,12 @@ stat=0
 for hostname in $HOSTS
 do
 	src_files=
-	for file in $files
+	for file in "${files[@]}"
 	do
 		src_files="$src_files $user@[$hostname]:$file"
 	done
 	mkdir -p $UPLOADS_DIR/$hostname
-	if [ $file_count -gt 1 ]
+	if [ "$create_dir" == "y" ]
 	then
 		mkdir -p $UPLOADS_DIR/$hostname/$dest
 	fi

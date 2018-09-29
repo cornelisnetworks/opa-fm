@@ -187,7 +187,7 @@ state_event_mad(Mai_t *maip) {
      * ONLY OUR SM (as far as I know) provides its smInfo in the LR GET request
      * we'll use that to find the standby sm node in topology (only if passcount > 0)
      */
-    BSWAPCOPY_STL_SM_INFO((STL_SM_INFO *)STL_GET_SMP_DATA(maip), &theirSmInfo);
+    BSWAPCOPY_STL_SM_INFO((STL_SM_INFO *)stl_mai_get_smp_data(maip), &theirSmInfo);
 
     /* get requester's nodeInfo using the portGuid from the smInfo request */
     portguid = theirSmInfo.PortGUID;
@@ -254,7 +254,7 @@ state_event_mad(Mai_t *maip) {
             ourSmInfo.ElapsedTime = 0;
         }
 
-        BSWAPCOPY_STL_SM_INFO(&ourSmInfo, (STL_SM_INFO *)STL_GET_SMP_DATA(maip));
+        BSWAPCOPY_STL_SM_INFO(&ourSmInfo, (STL_SM_INFO *)stl_mai_get_smp_data(maip));
 		if ((status = mai_stl_reply(fd_async, maip, sizeof(STL_SM_INFO))) != VSTATUS_OK) {
             IB_LOG_WARN_FMT(__func__, "failed to send reply [status=%d] to SMInfo GET request from node %s, lid[0x%x], portguid "FMT_U64", TID="FMT_U64,
                    status, nodescription, maip->addrInfo.slid, portguid, maip->base.tid);
@@ -404,7 +404,7 @@ sm_fsm_standby(Mai_t *maip, char *nodename)
 
 	IB_ENTER(__func__, maip->base.amod, 0, 0, 0);
 
-    BSWAPCOPY_STL_SM_INFO((STL_SM_INFO *)STL_GET_SMP_DATA(maip), &theirSmInfo);
+    BSWAPCOPY_STL_SM_INFO((STL_SM_INFO *)stl_mai_get_smp_data(maip), &theirSmInfo);
 
 	switch (maip->base.amod) {
 	case SM_AMOD_DISCOVER:				// C14-48
@@ -439,7 +439,7 @@ sm_fsm_standby(Mai_t *maip, char *nodename)
      * Reply to this Set(SMInfo).
      */
 	sm_smInfo.ActCount++;
-    BSWAPCOPY_STL_SM_INFO(&sm_smInfo, (STL_SM_INFO *)STL_GET_SMP_DATA(maip));
+    BSWAPCOPY_STL_SM_INFO(&sm_smInfo, (STL_SM_INFO *)stl_mai_get_smp_data(maip));
 	status = mai_stl_reply(fd_async, maip, sizeof(STL_SM_INFO));
 	if (status != VSTATUS_OK) {
 		IB_LOG_ERRORRC("sm_fsm_standby - bad mai_reply rc:", status);
@@ -508,7 +508,7 @@ sm_fsm_notactive(Mai_t *maip, char *nodename)
 
 	IB_ENTER(__func__, maip->base.amod, sm_state, 0, 0);
 
-    BSWAPCOPY_STL_SM_INFO((STL_SM_INFO *)STL_GET_SMP_DATA(maip), &theirSmInfo);
+    BSWAPCOPY_STL_SM_INFO((STL_SM_INFO *)stl_mai_get_smp_data(maip), &theirSmInfo);
 
 	switch (maip->base.amod) {
     case SM_AMOD_STANDBY:				// C14-54.1.1
@@ -536,7 +536,7 @@ sm_fsm_notactive(Mai_t *maip, char *nodename)
      * Reply to this Set(SMInfo).
      */
 	sm_smInfo.ActCount++;
-    BSWAPCOPY_STL_SM_INFO(&sm_smInfo, (STL_SM_INFO *)STL_GET_SMP_DATA(maip));
+    BSWAPCOPY_STL_SM_INFO(&sm_smInfo, (STL_SM_INFO *)stl_mai_get_smp_data(maip));
 	status = mai_stl_reply(fd_async, maip, sizeof(STL_SM_INFO));
 	if (status != VSTATUS_OK) {
 		IB_LOG_ERRORRC("sm_fsm_notactive - bad mai_reply rc:", status);
@@ -566,7 +566,7 @@ sm_fsm_master(Mai_t *maip, char *nodename)
 
 	IB_ENTER(__func__, maip->base.amod, sm_state, 0, 0);
 
-    BSWAPCOPY_STL_SM_INFO((STL_SM_INFO *)STL_GET_SMP_DATA(maip), &theirSmInfo);
+    BSWAPCOPY_STL_SM_INFO((STL_SM_INFO *)stl_mai_get_smp_data(maip), &theirSmInfo);
 
 	switch (maip->base.amod) {
     case SM_AMOD_HANDOVER:				// C14-61
@@ -602,7 +602,7 @@ sm_fsm_master(Mai_t *maip, char *nodename)
      * Reply to this Set(SMInfo).
      */
 	sm_smInfo.ActCount++;
-    BSWAPCOPY_STL_SM_INFO(&sm_smInfo, (STL_SM_INFO *)STL_GET_SMP_DATA(maip));
+    BSWAPCOPY_STL_SM_INFO(&sm_smInfo, (STL_SM_INFO *)stl_mai_get_smp_data(maip));
 	status = mai_stl_reply(fd_async, maip, sizeof(STL_SM_INFO));
 	if (status != VSTATUS_OK) {
 		IB_LOG_ERRORRC("sm_fsm_master - bad mai_reply rc:", status);
@@ -675,7 +675,7 @@ sm_fsm_discovering(Mai_t *maip, char *nodename)
 
 	IB_ENTER(__func__, maip->base.amod, sm_state, 0, 0);
 
-    BSWAPCOPY_STL_SM_INFO((STL_SM_INFO *)STL_GET_SMP_DATA(maip), &theirSmInfo);
+    BSWAPCOPY_STL_SM_INFO((STL_SM_INFO *)stl_mai_get_smp_data(maip), &theirSmInfo);
 //
 //	The SM in the DISCOVERING state does not have any valid transitions via
 //	the Set(SMInfo) method.
@@ -683,7 +683,7 @@ sm_fsm_discovering(Mai_t *maip, char *nodename)
 	maip->base.status = MAD_STATUS_BAD_ATTR;
     
 	sm_smInfo.ActCount++;
-    BSWAPCOPY_STL_SM_INFO(&sm_smInfo, (STL_SM_INFO *)STL_GET_SMP_DATA(maip));
+    BSWAPCOPY_STL_SM_INFO(&sm_smInfo, (STL_SM_INFO *)stl_mai_get_smp_data(maip));
 
 	status = mai_stl_reply(fd_async, maip, sizeof(STL_SM_INFO));
 	if (status != VSTATUS_OK) {
@@ -708,7 +708,7 @@ sm_fsm_default(Mai_t *maip, char *nodename)
 //	Send our reply to the requester.
 //
 	sm_smInfo.ActCount++;
-    BSWAPCOPY_STL_SM_INFO(&sm_smInfo, (STL_SM_INFO *)STL_GET_SMP_DATA(maip));
+    BSWAPCOPY_STL_SM_INFO(&sm_smInfo, (STL_SM_INFO *)stl_mai_get_smp_data(maip));
 
 	maip->base.status = MAD_STATUS_BAD_ATTR;
 	status = mai_stl_reply(fd_async, maip, sizeof(STL_SM_INFO));
@@ -727,6 +727,7 @@ sm_check_Master() {
 	STL_SM_INFO	theirSmInfo;
 	STL_PORT_INFO	portInfo;
 	uint8_t		path[64];
+	SmpAddr_t addr;
 
     static  uint32_t fsmCheckMasterFailed=0; // count of fails to check master
     static  uint32_t fsmMultMaxFail = 1; // multiplier for sm_config.master_ping_max_fail
@@ -734,8 +735,9 @@ sm_check_Master() {
     IB_ENTER(__func__, 0, 0, 0, 0);
 
     (void)memset((void *)path, 0, 64);
+	SMP_ADDR_SET_DR(&addr,path);
 
-    if ((status = SM_Get_PortInfo(fd_sminfo, 1<<24, path, &portInfo)) != VSTATUS_OK) {
+    if ((status = SM_Get_PortInfo(fd_sminfo, 1<<24, &addr, &portInfo)) != VSTATUS_OK) {
         IB_LOG_ERRORRC("failed to get master SM Lid from my PortInfo, rc:", status);
         // having a local problem
         // reset count, must be healthy before we can consider becoming master
@@ -780,7 +782,7 @@ sm_check_Master() {
         goto stay_standby; // not yet at threshold
     }
 
-    SmpAddr_t addr = SMP_ADDR_CREATE_LR(portInfo.LID, portInfo.MasterSMLID);
+    SMP_ADDR_SET_LR(&addr,portInfo.LID, portInfo.MasterSMLID);
     if ((status = SM_Get_SMInfo(fd_sminfo, 0, &addr, &theirSmInfo)) != VSTATUS_OK) {
         if (++fsmCheckMasterFailed >= fsmMultMaxFail * sm_config.master_ping_max_fail) {
             IB_LOG_WARNX("Switching to DISCOVERY state; Failed to get SmInfo from master SM at LID:", portInfo.MasterSMLID);

@@ -72,8 +72,6 @@ my @fastfabric_prereq = (
                     "rdma",
                     "tcl",
                     "zlib",
-		    "qperf",
-                    "perftest",
 );
 $comp_prereq_hash{'fastfabric_prereq'} = \@fastfabric_prereq;
 

@@ -41,6 +41,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define VTIMER_100_MILLISEC         100000ull
 #define VTIMER_200_MILLISEC         200000ull
 #define VTIMER_500_MILLISEC         500000ull
+#define RESP_WAIT_TIME		    1000
 
 #define CL_MAX_THREADS              4
 
@@ -120,6 +121,7 @@ FSTATUS InitFabricData(FabricData_t *fabricp, FabricFlags_t flags)
 	if (!(flags & FF_LIDARRAY)) {
 		cl_qmap_init(&fabricp->u.AllLids, NULL);
 	}
+	fabricp->ms_timeout = RESP_WAIT_TIME;
 	fabricp->flags = flags & (FF_LIDARRAY|FF_PMADIRECT|FF_SMADIRECT|FF_DOWNPORTINFO);
 	cl_qmap_init(&fabricp->AllSystems, NULL);
 	cl_qmap_init(&fabricp->ExpectedNodeGuidMap, NULL);

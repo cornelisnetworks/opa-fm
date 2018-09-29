@@ -215,7 +215,7 @@ get_config()
 
 	i=-1
 	export IFS=\;
-	EXTRACT_CMD="$IFS_FM_BASE/bin/opaxmlextract -H -e Common.Sm.Start -e Common.Fe.Start -e Fm.Shared.Name -e Fm.Shared.Start -e Fm.Sm.Start -e Fm.Fe.Start"
+	EXTRACT_CMD="$IFS_FM_BASE/bin/opafmxmlextract -H -e Common.Sm.Start -e Common.Fe.Start -e Fm.Shared.Name -e Fm.Shared.Start -e Fm.Sm.Start -e Fm.Fe.Start"
 	if [ "$quiet" != y ]
 	then
 		eval $EXTRACT_CMD < $CONFIG_FILE > $temp

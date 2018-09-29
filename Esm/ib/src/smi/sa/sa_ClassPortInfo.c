@@ -83,16 +83,8 @@ sa_ClassPortInfo(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 			memset(&myCPI.ib_version,0,sizeof(IB_CLASS_PORT_INFO));
 			myCPI.ib_version.BaseVersion = saClassPortInfo.BaseVersion;
 			myCPI.ib_version.ClassVersion = saClassPortInfo.ClassVersion;
-			myCPI.ib_version.CapMask =
-				STL_CLASS_PORT_CAPMASK_CM2 |
-				STL_SA_CAPABILITY_MULTICAST_SUPPORT |
-				STL_SA_CAPABILITY_PORTINFO_CAPMASK_MATCH |
-				STL_SA_CAPABILITY_PA_SERVICES_SUPPORT;
-			myCPI.ib_version.u1.s.CapMask2 =
-				STL_SA_CAPABILITY2_QOS_SUPPORT |
-				STL_SA_CAPABILITY2_MFTTOP_SUPPORT |
-				STL_SA_CAPABILITY2_FULL_PORTINFO |
-				STL_SA_CAPABILITY2_EXT_SUPPORT;
+			myCPI.ib_version.CapMask = IB_SA_CAPABILITY_MASK(saClassPortInfo.CapMask);
+			myCPI.ib_version.u1.s.CapMask2 = IB_SA_CAPABILITY2_MASK(saClassPortInfo.u1.s.CapMask2);
 			myCPI.ib_version.u1.s.RespTimeValue = saClassPortInfo.u1.s.RespTimeValue;
 			myCPI.ib_version.u3.s.RedirectQP = saClassPortInfo.u3.s.RedirectQP;
 			myCPI.ib_version.u5.s.TrapHopLimit = saClassPortInfo.u5.s.TrapHopLimit;

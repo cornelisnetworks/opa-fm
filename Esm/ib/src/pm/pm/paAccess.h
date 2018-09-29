@@ -249,7 +249,7 @@ typedef struct _pmGroupLinkInfo_s {
 //        Later, PM will handle this, and the parameter can be removed
 
 // get group list - caller declares Pm_T and PmGroupList_t, and passes pointers
-FSTATUS paGetGroupList(Pm_t *pm, PmGroupList_t *GroupList);
+FSTATUS paGetGroupList(Pm_t *pm, PmGroupList_t *GroupList, uint32 imageIndex);
 
 // get group info - caller declares Pm_T and PmGroupInfo_t, and passes pointers
 FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo,
@@ -330,6 +330,16 @@ FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocusPor
 FSTATUS paGetExtVFFocusPorts(Pm_t *pm, char *vfName, PmVFFocusPorts_t *pmVFFocusPorts,
 	STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE_ID_DATA *returnImageId, uint32 select,
 	uint32 start, uint32 range);
+
+static inline boolean pa_valid_port(PmPort_t *pmportp, boolean sth) {
+	if (!pmportp ||
+		/* if this is a sth image, the port may be 'empty' but not null
+		   'Empty' ports should be excluded from the count, and can be
+		   indentified by their having a port num and guid of 0 */
+		(sth && !pmportp->guid && !pmportp->portNum)) return FALSE;
+	return TRUE;
+}
+
 
 #ifdef __cplusplus
 };

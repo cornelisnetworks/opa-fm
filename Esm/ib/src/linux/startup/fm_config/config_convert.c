@@ -679,8 +679,7 @@ char* getOldValue(char *keyDescIn,int showMissing)
     if ((keyIn[2]=='_')&&(keyIn[4]=='_'))
     {
         //Parse out the system, instance an key
-        strncpy(system,keyIn,2);
-        system[2]=0;
+        StringCopy(system,keyIn,sizeof(system));
 
         char *secondUnderScore=strchr(&keyIn[3],'_');
 	if (!secondUnderScore) return NULL;
@@ -688,12 +687,9 @@ char* getOldValue(char *keyDescIn,int showMissing)
         int len=(int)(secondUnderScore-&keyIn[3]);
 	if (len>=INSTANCE_LEN) return NULL;
 
-        strncpy(instance,&keyIn[3],sizeof(instance));
+        StringCopy(instance,&keyIn[3],sizeof(instance));
 
-        instance[INSTANCE_LEN]=0;
-
-        strncpy(key,secondUnderScore+1,KEY_LEN);
-        key[KEY_LEN]=0;
+        StringCopy(key,secondUnderScore+1,sizeof(key));
 
     //    fprintf(stdout,"tag:%s sys:%s, instance:%s, key:%s\n",keyIn,system,instance,key);
         int instanceValue=atoi(instance);
@@ -902,17 +898,17 @@ int parseLine(char *line,
         // text                              <!--#oldKey#=-->
         // text                              <!--#oldKey#!-->
         // simple case, we need to output first and firstTag but "" for all else
-        cs_strlcpy(first,lineIn, buf_size);
+        StringCopy(first,lineIn, buf_size);
         int firstLen = strlen(first);
         while (firstLen > 1 && first[firstLen-1]==' ')
         {
             first[--firstLen]='\0';
         }
-        cs_strlcpy(tagOut,"", buf_size);
-        cs_strlcpy(valueOut,"", buf_size);
-        cs_strlcpy(last,"", buf_size);
-        cs_strlcpy(firstTag, first, buf_size);
-        cs_strlcpy(lastTag, last, buf_size);
+        StringCopy(tagOut,"", buf_size);
+        StringCopy(valueOut,"", buf_size);
+        StringCopy(last,"", buf_size);
+        StringCopy(firstTag, first, buf_size);
+        StringCopy(lastTag, last, buf_size);
         return 1;
     }
 
@@ -952,8 +948,7 @@ int parseLine(char *line,
         fprintf(stderr,"Invalid tag length %d\n%s\n",lineNumber,line);
         exit(1);
     }
-    strncpy(tag,leftBracket1+1,tagLength < sizeof(tag) ? tagLength : sizeof(tag));
-    if (tagLength==TAG_LENGTH) tag[tagLength-1]='\0';
+    StringCopy(tag,leftBracket1+1,tagLength < sizeof(tag) ? (tagLength+1) : sizeof(tag));
     startValue=rightBracket1+1;
     char *leftBracket2=strstr(rightBracket1+1,"</");
     if (leftBracket2==NULL)
@@ -975,8 +970,7 @@ int parseLine(char *line,
         fprintf(stderr,"left=%s right=%s",tag,rightBracket2);
         exit(1);
     }
-    strncpy(tag2,leftBracket2+2,tagLength < sizeof(tag2) ? tagLength : sizeof(tag2));
-    if (tagLength == TAG_LENGTH) tag2[tagLength-1]='\0';
+    StringCopy(tag2,leftBracket2+2,tagLength < sizeof(tag2) ? (tagLength+1) : sizeof(tag2));
     if (strncmp(tag,tag2,tagLength)!=0)
     {
         fprintf(stderr,"Closing tag does not match opening tag on line %d. %s!=%s\n%s\n",lineNumber,tag,tag2,line);
@@ -1002,8 +996,8 @@ int parseLine(char *line,
     char *commentStart=strstr(first,"<!--"); // start of comment open
     if (commentStart==NULL) {
         // no commented out tag
-        cs_strlcpy(firstTag, first, buf_size);
-        cs_strlcpy(lastTag, last, buf_size);
+        StringCopy(firstTag, first, buf_size);
+        StringCopy(lastTag, last, buf_size);
     } else {
         // remove the comment, keep everything else
         strncpy(firstTag, first, commentStart-first);
@@ -1013,7 +1007,7 @@ int parseLine(char *line,
             fprintf(stderr,"Missing open tag for commented out tag. Line %d\n",lineNumber-1);
             exit(1);
         }
-        cs_strlcpy(firstTag+(commentStart-first), tagStart, buf_size - (commentStart-first));
+        StringCopy(firstTag+(commentStart-first), tagStart, buf_size - (commentStart-first));
 
         // find the end of the comment
         char *tagEnd=strchr(last,'>');    // end of tag
@@ -1028,15 +1022,15 @@ int parseLine(char *line,
             fprintf(stderr,"Missing close comment for commented out tag. Line %d\n",lineNumber-1);
             exit(1);
         }
-        strncpy(lastTag, last, commentStart-last);
-        cs_strlcpy(lastTag+(commentStart-last), commentStart+3, buf_size - (commentStart-last));
+        StringCopy(lastTag, last, commentStart-last+1);
+        StringCopy(lastTag+(commentStart-last), commentStart+3, buf_size - (commentStart-last));
         lastLen = strlen(lastTag);
         while (lastLen > 1 && lastTag[lastLen-1]==' ')
         {
             lastTag[--lastLen]='\0';
         }
 
-    strncpy(tagOut,tag,255);
+    StringCopy(tagOut,tag,255);
     }
 
     return 1;
@@ -1303,7 +1297,7 @@ is_special (void) {
 			return (FALSE);
 		}
 		// we'll use VIEO_FM_BASE for creating the output file
-		cs_strlcpy ((void *)subnetSize, equals + 1, sizeof(subnetSize));
+		StringCopy ((void *)subnetSize, equals + 1, sizeof(subnetSize));
 		/* add SUBNET_SIZE to each manager environment */
 		memset (line_key, 0, 100);
 		strncpy ((void *)line_key, "SUBNET_SIZE", 11);
@@ -1323,7 +1317,7 @@ is_special (void) {
 			return (FALSE);
 		}
 		/* add SYSLOG_MODE to each manager's environment */
-		cs_strlcpy ((void *)syslogMode, equals + 1, sizeof(syslogMode));
+		StringCopy ((void *)syslogMode, equals + 1, sizeof(syslogMode));
 		memset (line_key, 0, 100);
 		strncpy ((void *)line_key, "SYSLOG_MODE", 11);
 		memset (line_value, 0, 200);

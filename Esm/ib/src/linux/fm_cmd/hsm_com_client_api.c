@@ -96,8 +96,8 @@ hcom_client_init
 	hdl->trans_id = 1;
 
 
-	cs_strlcpy(hdl->s_path,server_path, HSM_COM_SVR_MAX_PATH);
-	cs_strlcpy(hdl->c_path,client_path, HSM_COM_SVR_MAX_PATH);
+	StringCopy(hdl->s_path,server_path, HSM_COM_SVR_MAX_PATH);
+	StringCopy(hdl->c_path,client_path, HSM_COM_SVR_MAX_PATH);
 
 	if (mkstemp(hdl->c_path) == -1)
 	{

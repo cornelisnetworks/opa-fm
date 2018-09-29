@@ -243,17 +243,7 @@ BSWAPCOPY_STL_DR_SMP(DRStlSmp_t *Src, DRStlSmp_t *Dest)
 	lrp->M_Key = MKEY;							\
 }
 
-// USER ADVICE: Be careful with casting and using the macros below:
-// There exist two versions of stl_get_smp_data:
-//  1: Uses Mai_t* input parameter to be used with MAI API (FM only).
-//  2: Uses STL_SMP* input parameter to be used with tools.
-#define STL_GET_SMP_DATA(MAIP)  ((maip->base.mclass == MAD_CV_SUBN_DR) ?  \
-       ((DRStlSmp_t *)(maip->data))->SMPData : ((LRStlSmp_t *)(maip->data))->SMPData)
-
-#define STL_GET_MAI_KEY(MAIP)  ((maip->base.mclass == MAD_CV_SUBN_DR) ?  \
-       &(((DRStlSmp_t *)(maip->data))->M_Key) : &(((LRStlSmp_t *)(maip->data))->M_Key))
-
-static inline uint8_t *stl_get_smp_data(STL_SMP *smp)
+static __inline uint8_t* stl_get_smp_data(STL_SMP *smp)
 {
 	if (smp->common.MgmtClass == MCLASS_SM_DIRECTED_ROUTE) {
 		return smp->SmpExt.DirectedRoute.SMPData;
@@ -261,7 +251,7 @@ static inline uint8_t *stl_get_smp_data(STL_SMP *smp)
 	return smp->SmpExt.LIDRouted.SMPData;
 }
 
-static inline size_t stl_get_smp_data_size(STL_SMP *smp)
+static __inline size_t stl_get_smp_data_size(STL_SMP *smp)
 {
 	if (smp->common.MgmtClass == MCLASS_SM_DIRECTED_ROUTE) {
 		return STL_MAX_PAYLOAD_SMP_DR;
@@ -269,7 +259,7 @@ static inline size_t stl_get_smp_data_size(STL_SMP *smp)
 	return STL_MAX_PAYLOAD_SMP_LR;
 }
 
-static inline size_t stl_get_smp_header_size(STL_SMP * smp)
+static __inline size_t stl_get_smp_header_size(STL_SMP * smp)
 {
 	return sizeof(STL_SMP) - stl_get_smp_data_size(smp);
 }
@@ -402,8 +392,6 @@ BSWAP_STL_SWITCH_INFO(STL_SWITCH_INFO *Dest)
 	Dest->MulticastFDBTop = ntoh32(Dest->MulticastFDBTop);
 	Dest->CollectiveCap = ntoh32(Dest->CollectiveCap);
 	Dest->CollectiveTop = ntoh32(Dest->CollectiveTop);
-#if !defined(PRODUCT_STL1)
-#endif
 	Dest->PartitionEnforcementCap = ntoh16(Dest->PartitionEnforcementCap);
 	Dest->AdaptiveRouting.AsReg16 = ntoh16(Dest->AdaptiveRouting.AsReg16);
 	Dest->CapabilityMask.AsReg16 = ntoh16(Dest->CapabilityMask.AsReg16);
@@ -499,8 +487,6 @@ BSWAP_STL_PORT_INFO(STL_PORT_INFO *Dest)
 	Dest->PortErrorAction.AsReg32 = ntoh32(Dest->PortErrorAction.AsReg32);
 	Dest->M_KeyLeasePeriod = ntoh16(Dest->M_KeyLeasePeriod);
 
-#if !defined(PRODUCT_STL1)
-#endif
 
 
 	Dest->BufferUnits.AsReg32 = ntoh32(Dest->BufferUnits.AsReg32);
@@ -522,11 +508,8 @@ ZERO_RSVD_STL_PORT_INFO(STL_PORT_INFO * Dest)
 	Dest->PortStates.s.Reserved = 0;
 	Dest->PortPhysConfig.s.Reserved = 0;
 	Dest->MultiCollectMask.Reserved = 0;
-#if !defined(PRODUCT_STL1)
 	Dest->s2.Reserved = 0;
-#else
 	Dest->s1.Reserved = 0;
-#endif
 	Dest->s3.Reserved20 = 0;
 	Dest->s3.Reserved21 = 0;
 	Dest->s4.Reserved = 0;
@@ -544,14 +527,13 @@ ZERO_RSVD_STL_PORT_INFO(STL_PORT_INFO * Dest)
 	Dest->PortErrorAction.s.Reserved4 = 0;
 	Dest->PassThroughControl.Reserved = 0;
 	Dest->BufferUnits.s.Reserved = 0;
-#if !defined(PRODUCT_STL1)
-#endif
+
 	Dest->Reserved14 = 0;
+	Dest->BundleNextPort = 0;
+	Dest->BundleLane = 0;
 	// Reserved fields in the RO section
-#if !defined(PRODUCT_STL1)
 	Dest->Reserved27 = 0;
 	Dest->Reserved28 = 0;
-#endif
 	Dest->Reserved20 = 0;
 
 	Dest->CapabilityMask.s.CmReserved6 = 0;
@@ -770,9 +752,7 @@ BSWAP_STL_LED_INFO(STL_LED_INFO *Dest)
 static __inline void
 ZERO_RSVD_STL_LED_INFO(STL_LED_INFO *Dest) {
 
-#if !defined(PRODUCT_STL1)
 	Dest->u.s.Reserved = 0;
-#endif
 	Dest->Reserved2 = 0;
 
 }

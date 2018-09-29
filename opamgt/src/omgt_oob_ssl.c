@@ -63,6 +63,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
         snprintf(b, sizeof(b), "%s/%s", d, f); \
 }
 
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L) && !defined(__VXWORKS__)
+#define TLSv1_client_method()   TLS_client_method()
+#define TLSv1_server_method()   TLS_server_method()
+#define TLSv1_2_server_method() TLS_server_method()
+#define TLSv1_2_client_method() TLS_client_method()
+#endif
+
 static void omgt_oob_ssl_print_ciphers(struct omgt_port *port, SSL *ssl)
 {
 	int index = 0;

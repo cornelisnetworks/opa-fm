@@ -1,0 +1,31 @@
+
+# if we are not building via RPM (just doing "make"), we need to have
+# a dependency on buildFeatureDefs to make sure it gets created.
+# Otherwise, the rpm build scripts will handle creating buildFeatureDefs
+
+ifeq "$(MKRPM_REL)" ""
+ifeq "$(BUILD_TARGET_OS)" "VXWORKS"
+ALL:: $(GLOBAL_INCLUDE_DIR)/buildFeatureDefs
+INCLUDES:: $(GLOBAL_INCLUDE_DIR)/buildFeatureDefs
+else
+ALL:: $(TL_DIR)/buildFeatureDefs
+INCLUDES:: $(TL_DIR)/buildFeatureDefs
+endif
+endif
+
+
+# add vanilla buildFeatureDefs to clobber
+
+CLOBBER::
+	rm -f $(TL_DIR)/buildFeatureDefs
+
+
+# create buildFeatureDefs using unifdef2.sh
+
+$(TL_DIR)/buildFeatureDefs: $(TL_DIR)/Fd/buildFeatureDefs.base
+	$(TL_DIR)/MakeTools/unifdef2.sh $(OPA_FEATURE_SET) $< $@
+
+$(GLOBAL_INCLUDE_DIR)/buildFeatureDefs: $(TL_DIR)/Fd/buildFeatureDefs.base
+	mkdir -p $(GLOBAL_INCLUDE_DIR)
+	$(TL_DIR)/MakeTools/unifdef2.sh $(OPA_FEATURE_SET) $< $(GLOBAL_INCLUDE_DIR)/$@
+

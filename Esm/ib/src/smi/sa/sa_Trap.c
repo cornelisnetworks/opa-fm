@@ -429,7 +429,7 @@ sa_Trap(Mai_t *maip) {
 	IB_ENTER("sa_Trap", maip, 0, 0, 0);
 
 	/* Get the trap type and number */
-    (void)BSWAPCOPY_STL_NOTICE((STL_NOTICE *)STL_GET_SMP_DATA(maip), &notice);
+    (void)BSWAPCOPY_STL_NOTICE((STL_NOTICE *)stl_mai_get_smp_data(maip), &notice);
     tid = maip->base.tid;
 
 	INCREMENT_COUNTER(smCounterTrapsReceived);
@@ -491,7 +491,7 @@ sa_Trap(Mai_t *maip) {
 	}
 
 	/* Send a TrapRepress to the sender after inserting our Mkey */
-    BSWAPCOPY_STL_MKEY(&sm_config.mkey, STL_GET_MAI_KEY(maip));
+    BSWAPCOPY_STL_MKEY(&sm_config.mkey, stl_mai_get_mkey(maip));
 	(void)mai_reply(fd_async, maip);
 
 	/* Look for subscribers */
@@ -590,7 +590,8 @@ sa_Trap(Mai_t *maip) {
 				}
 
 				// Get fresh port info
-				status = SM_Get_PortInfo_LR(fd_async_request, (1 << 24) | portp->index, sm_lid, portp->portData->lid, &portInfo);
+				SmpAddr_t addr = SMP_ADDR_CREATE_LR(sm_lid, portp->portData->lid);
+				status = SM_Get_PortInfo(fd_async_request, (1 << 24) | portp->index, &addr, &portInfo);
 				if (status != VSTATUS_OK){
 					IB_LOG_WARN_FMT(__func__, 
 									"Cannot get PORTINFO for %s, TID="FMT_U64

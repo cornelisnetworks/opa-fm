@@ -1,11 +1,11 @@
 #!/bin/bash
 # BEGIN_ICS_COPYRIGHT8 ****************************************
-# 
-# Copyright (c) 2015, Intel Corporation
-# 
+#
+# Copyright (c) 2018, Intel Corporation
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
-# 
+#
 #     * Redistributions of source code must retain the above copyright notice,
 #       this list of conditions and the following disclaimer.
 #     * Redistributions in binary form must reproduce the above copyright
@@ -14,7 +14,7 @@
 #     * Neither the name of Intel Corporation nor the names of its contributors
 #       may be used to endorse or promote products derived from this software
 #       without specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -25,7 +25,7 @@
 # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-# 
+#
 # END_ICS_COPYRIGHT8   ****************************************
 
 # [ICS VERSION STRING: unknown]
@@ -70,7 +70,7 @@ fi
 
 Usage_full()
 {
-	echo "Usage: $cmd [-t portsfile] [-p ports] [-F focus] [-K mkey]" >&2
+	echo "Usage: $cmd [-t portsfile] [-p ports] [-F focus]" >&2
 	echo "              or" >&2
 	echo "       $cmd --help" >&2
 	echo "$capsubcmd all unused$extra switch ports" >&2
@@ -85,9 +85,8 @@ Usage_full()
 	echo "                 x:0 = 1st active port on HFI x" >&2
 	echo "                 x:y = HFI x, port y" >&2
 	echo "              The first HFI in the system is 1.  The first port on an HFI is 1." >&2
-    echo "   -F focus -  an opareport style focus argument to limit scope of operation" >&2
-    echo "               See opareport --help for more information" >&2
-    echo "   -K mkey  -  SM management key to access remote ports" >&2
+	echo "   -F focus -  an opareport style focus argument to limit scope of operation" >&2
+	echo "               See opareport --help for more information" >&2
 	echo " Environment:" >&2
 	echo "   PORTS - list of ports, used in absence of -t and -p" >&2
 	echo "   PORTS_FILE - file containing list of ports, used in absence of -t and -p" >&2
@@ -112,14 +111,13 @@ Usage()
 ## Main function:
 
 focus=""
-key=""
 
 if [ x"$1" = "x--help" ]
 then
 	Usage_full
 fi
 
-while getopts p:t:F:K: param
+while getopts p:t:F: param
 do
   case $param in
   p)
@@ -130,9 +128,6 @@ do
 
   F)
     focus="-F '$OPTARG'";;
-
-  K)
-    key="-K '$OPTARG'";;
 
   *)
     Usage;;
@@ -172,7 +167,7 @@ change_swports()
 	if [ "$?" -eq 0 -a "$lid" != "No Records Returned" ]
     then
       printf "%18s %3s %s\n" "$guid" "$port" "$nodedesc"
-      eval "$tool" $port_opts "$key" -l "$lid" -m "$port" "$subcmd" > /dev/null
+      eval "$tool" $port_opts -l "$lid" -m "$port" "$subcmd" > /dev/null
     fi
   done
   echo "-------------------------------------------------------------------------------"

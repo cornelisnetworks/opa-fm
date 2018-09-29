@@ -778,7 +778,7 @@ rmpp_send_multi_sa(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
         if (resp.header.rmppType == RMPP_TYPE_NOT && (resp.header.u.tf.rmppFlags & RMPP_FLAGS_ACTIVE)) {
             // invalid RMPP type
             IB_LOG_WARN_FMT(__func__, 
-                            "ABORTING - RMPP protocol error; RmppType is NULL in %s[%s] from Lid[%d] for TID="FMT_U64, 
+                            "ABORTING - RMPP protocol error; RmppType is NULL in %s[%s] from Lid[0x%x] for TID="FMT_U64,
                             info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), (int)rmpp_cntxt->lid, rmpp_cntxt->tid); 
             //INCREMENT_COUNTER(smCounterRmppStatusAbortBadType);
             sendAbort = 1; 
@@ -1870,7 +1870,7 @@ rmpp_protocol_init(
    
    g_usrId = (uint8_t)info->usrId; 
    argv[0] = &g_usrId;
-   strncpy(info->wt_thrd_name, wtName, MIN(strlen(wtName), sizeof(info->wt_thrd_name) - 1)); 
+   StringCopy(info->wt_thrd_name, wtName, sizeof(info->wt_thrd_name)); 
 
    IB_LOG_INFINI_INFO_FMT(__func__, "Starting RMPP Writer thread for user %d", g_usrId); 
    if ((status = vs_thread_create(&info->wt_thrd, (unsigned char *)thread_id, 
@@ -2612,7 +2612,7 @@ rmpp_receive_getmulti_response(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
          */
         if (samad.header.rmppType == RMPP_TYPE_NOT) {
             // invalid RMPP type
-            IB_LOG_WARN_FMT(__func__, "ABORTING - RMPP protocol error; type is NULL from Lid[%d] for TID="FMT_U64, 
+            IB_LOG_WARN_FMT(__func__, "ABORTING - RMPP protocol error; type is NULL from Lid[0x%x] for TID="FMT_U64,
                             (int)maip->addrInfo.slid, maip->base.tid); 
             //INCREMENT_COUNTER(smCounterRmppStatusAbortBadType);
             samad.header.rmppStatus = RMPP_STATUS_ABORT_BADTYPE;
@@ -2689,7 +2689,7 @@ rmpp_receive_getmulti_response(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
         // processing DATA packet
         if (if3DebugRmpp) {
             IB_LOG_INFINI_INFO_FMT(__func__, 
-                                   "Processing RMPP GETMULTI request from Lid[%d], TID="FMT_U64, 
+                                   "Processing RMPP GETMULTI request from Lid[0x%x], TID="FMT_U64,
                                    (int)maip->addrInfo.slid, maip->base.tid);
         }
         if (rmpp_cntxt->hashed == 0) {
@@ -3513,7 +3513,7 @@ rmpp_send_multi_vendor(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
         if (resp.header.rmppType == RMPP_TYPE_NOT && (resp.header.u.tf.rmppFlags & RMPP_FLAGS_ACTIVE)) {
             // invalid RMPP type
             IB_LOG_WARN_FMT(__func__,
-                            "ABORTING - RMPP protocol error; RmppType is NULL in %s[%s] from Lid[%d] for TID="FMT_U64,
+                            "ABORTING - RMPP protocol error; RmppType is NULL in %s[%s] from Lid[0x%x] for TID="FMT_U64,
                             info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)maip->base.mclass, (int)maip->base.aid), (int)rmpp_cntxt->lid, rmpp_cntxt->tid);
             sendAbort = 1;
             mad.header.rmppStatus = RMPP_STATUS_ABORT_BADTYPE;
@@ -4039,7 +4039,7 @@ is_not_valid_rmpp_pkt(Mai_t *maip, uint8_t *abortStatus)
 
     if (rmpp_hdr->rmppType == RMPP_TYPE_NOT) {
         IB_LOG_WARN_FMT(__func__, "ABORTING - RMPP protocol error;"
-                        "type is NULL from Lid[%d] for TID="FMT_U64,
+                        "type is NULL from Lid[0x%x] for TID="FMT_U64,
                         (int)maip->addrInfo.slid, maip->base.tid);
         *abortStatus = RMPP_STATUS_ABORT_BADTYPE;
     } else if (rmpp_hdr->rmppVersion != RMPP_VERSION) {
@@ -4248,7 +4248,7 @@ rmpp_process_non_rmpp_req(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
         }
         if (if3DebugRmpp) {
             IB_LOG_INFINI_INFO_FMT(__func__,
-                                   "Non RMPP GetMulti from Lid[%d],"
+                                   "Non RMPP GetMulti from Lid[0x%x],"
                                    "TID="FMT_U64" processed",
                                    (int)maip->addrInfo.slid,
                                    rmpp_cntxt->tid);
@@ -4836,7 +4836,7 @@ rmpp_process_multi_response(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
         // processing DATA packet
         if (if3DebugRmpp) {
             IB_LOG_INFINI_INFO_FMT(__func__,
-                                   "Processing RMPP GETMULTI request from Lid[%d], TID="FMT_U64,
+                                   "Processing RMPP GETMULTI request from Lid[0x%x], TID="FMT_U64,
                                    (int)maip->addrInfo.slid, maip->base.tid);
         }
         rc = rmpp_process_data_pkt(maip, rmpp_cntxt);

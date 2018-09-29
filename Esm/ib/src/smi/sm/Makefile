@@ -44,20 +44,17 @@ DIRS			=
 # C files (.c)
 CFILES			= \
 				  sm_main.c sm_fsm.c sm_topology.c sm_async.c sm_utility.c \
-				  sm_topology_rcv.c	sm_mkey.c sm_multicast.c sm_control.c \
+				  sm_topology_rcv.c sm_mkey.c sm_multicast.c sm_control.c \
 				  sm_userexits.c sm_attribute.c sm_idb.c sm_dbsync.c \
-	      		  sm_dbsync_util.c sm_routing.c sm_routing_funcs.c sm_dispatch.c \
+				  sm_dbsync_util.c sm_routing.c sm_routing_funcs.c sm_dispatch.c \
 				  sm_shortestpath.c sm_fattree.c sm_dgrouting.c sm_counters.c \
 		  		  sm_partMgr.c sm_qos.c sm_ar.c sm_timesync.c sm_jm.c sm_jm_wire.c \
 				  sm_buffer_control_tables.c stl_cca.c sm_scvlmatrix.c \
-				  sm_hypercube.c sm_dor.c sm_activate.c sm_routing_hft.c \
+				  sm_hypercube.c sm_dor.c sm_df.c sm_activate.c sm_routing_hft.c \
 				  sm_popo.c
 				# Add more c files here
 ifeq ($(BUILD_TARGET_OS),VXWORKS)
 CFILES			+= sm_vxWorks.c
-ifeq "$(STL_GEN)" "2"
-CFILES			+= sm_df.c
-endif
 else
 CFILES			+= sm_linux.c sm_diag_ctrl.c sm_statedump.c
 endif
@@ -129,7 +126,7 @@ INCLUDE_SUBDIR		=
 ifeq ($(BUILD_TARGET_OS),VXWORKS)
 CLOCAL = -DLOCAL_MOD_ID=VIEO_SM_MOD_ID $(CPIE) -xc
 else
-CLOCAL = -DLOCAL_MOD_ID=VIEO_SM_MOD_ID $(CPIE)
+CLOCAL = -DLOCAL_MOD_ID=VIEO_SM_MOD_ID $(CPIE) -fopenmp
 endif
 
 LOCAL_INCLUDE_DIRS = $(MOD_DIR)/src/smi/include $(MOD_DIR)/src/pm/pm/ $(TL_DIR)/BSP/bspcommon/h $(TL_DIR)/BSP/bspcommon/ibml/h $(OPENIB_USER_LIB_DIRS) \

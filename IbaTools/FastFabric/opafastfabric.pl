@@ -56,19 +56,16 @@ $BRAND =~ s/THIS_IS_THE_ICS_BRAND\://;
 $BRAND =~ s/%.*//;
 
 # TARGET_STACK
-# this is patched by Makefile to be IBACCESS or OPENIB
+# this is patched by Makefile to be IBACCESS or OPENIB, only OPENIB is supported
 my $IB_STACK_TYPE="THIS_IS_THE_IB_STACK_TYPE";
-# runtime alternative to get_local_stack_type IBACCESS or OPENIB
-#my $IB_STACK_TYPE=`/usr/lib/opa/tools/tcl_proc get_local_stack_type 2>/dev/null`;
-#chomp($LocalStackType);
-#if ( "$LocalStackType" eq "" ) {
-#	die "Unable to determine which IB stack type is installed";
-#}
 
+if ( "$IB_STACK_TYPE" ne "OPENIB" ) {
+	die "Fatal Error: STACK_TYPE not properly set.  opafastfabric script corrupted\n";
+}
 
 my $FF_CONF_FILE;
-my $OPA_CONFIG_DIR; # iba editable config scripts
-my $SYS_CONFIG_DIR; # iba editable config scripts
+my $OPA_CONFIG_DIR; # opa editable config scripts
+my $SYS_CONFIG_DIR; # system editable config scripts
 my $BIN_DIR;
 my $TOOLS_DIR;
 # where to install libraries
@@ -100,24 +97,13 @@ my $MENU_CHOICE=0;
 my $Default_Prompt=0;	 # use default values at prompts, non-interactive
 
 	# full name of component for error messages
-my %ComponentName;
-if ( "$IB_STACK_TYPE" eq "IBACCESS" ) {
-	%ComponentName = (
-				"iba" => "IB Network Stack",
+my %ComponentName = (
+				"oftools" => "OPA Tools",
 				"fastfabric" => "FastFabric",
-				"mpidev" => "MPI Development",
+				"mpiapps" => "opa-mpi-apps",	# a package name
 				"mpisrc" => "MPI Source",
-				"shmem" => "SHMEM",
+				"shmem" => "Sandia-OpenSHMEM devel",
 				);
-} else {	# OFED
-	%ComponentName = (
-				"iba" => "IB Tools",
-				"fastfabric" => "FastFabric",
-				"mpidev" => "MpiApps",
-				"mpisrc" => "MPI Source",
-				"shmem" => "SHMEM",
-				);
-}
 
 my @FabricSetupSteps;
 	# Names of fabric setup steps
@@ -206,15 +192,15 @@ my %FabricAdminStepsMenuDelimiter = (
 				"viewres" => "review",
 				);
 my @FabricMonitorSteps;
-@FabricMonitorSteps = ( "ibatop"
+@FabricMonitorSteps = ( "opatop"
 					);
 	# full name of steps for prompts
 my %FabricMonitorStepsName = (
-				"ibatop" => "Fabric Performance Monitoring"
+				"opatop" => "Fabric Performance Monitoring"
 				);
 # what to output before each menu item as a delimiter/marker
 my %FabricMonitorStepsMenuDelimiter = (
-				"ibatop" => ""
+				"opatop" => ""
 				);
 my @FabricChassisSteps = ( "config", "opapingall", "fwpush", "setup", "setupssh",
 				"reboot", "getconfig" , "fmconfig", "fmsecurityfiles", "fmgetsecurityfiles", "showallports", "fmcontrol", "opacaptureall", "opacmdall", "viewres"
@@ -717,25 +703,19 @@ sub remove_whitespace($)
 	return $string;
 }
 
-sub installed_mpidev
+sub installed_mpiapps
 {
 	return (system("rpm -q opa-mpi-apps > /dev/null") == 0);
 }
 
 sub installed_shmem
 {
-	return (system("rpm -q --whatprovides sandia-openshmem_gcc_hfi-devel") == 0);
+	return (system("rpm -q sandia-openshmem_gcc_hfi-devel >/dev/null") == 0);
 }
 
 sub installed_mpisrc
 {
-	#return (-e "$ROOT/usr/local/src/InfiniServMPI/.mpisrc" ||
-	#	-e "$ROOT/usr/src/opa/InfiniServMPI/.mpisrc");
-	if ( "$IB_STACK_TYPE" eq "IBACCESS" ) {
-		return (-e "$ROOT/usr/src/opa/InfiniServMPI/mpich/do_build");
-	} else {
-		return (-e "$ROOT/usr/src/opa/MPI/do_build");
-	}
+	return (-e "$ROOT/usr/src/opa/MPI/do_build");
 }
 
 sub check_user
@@ -1117,49 +1097,57 @@ sub fabricsetup_install
 				$install_mode="upgrade";
 				print "You have selected to perform an upgrade installation\n";
 				$options = read_ffconfig_param("FF_UPGRADE_OPTIONS");
-				if (! GetYesNo("Do you want to use the following upgrade options: '$options'?", "y")) {
-					do {
-						print "Enter upgrade options (or none):";
-						chomp($options = <STDIN>);
-						$options=remove_whitespace($options);
-					} until ( length($options) != 0);
+				if ("$options" ne "") {
+					if (! GetYesNo("Do you want to use the following upgrade options: '$options'?", "y")) {
+						do {
+							print "Enter upgrade options (or none):";
+							chomp($options = <STDIN>);
+							$options=remove_whitespace($options);
+						} until ( length($options) != 0);
+					}
+					if ("$options" eq "none") {
+						$options="";
+					}
+					else {
+						$options = "-U \'$options\'";
+					}
 				}
-				if ("$options" eq "none") {
-					$options="";
-				}
-				$options = "-U \'$options\'";
 			} elsif ("$choice" eq "i") {
 				$install_mode="load";
 				print "You have selected to perform an initial installation\n";
 				print "This will uninstall any existing OPA software on the selected nodes\n";
 				$options = read_ffconfig_param("FF_INSTALL_OPTIONS");
-				if (! GetYesNo("Do you want to use the following install options: '$options'?", "y")) {
-					do {
-						print "Enter install options (or none):";
-						chomp($options = <STDIN>);
-						$options=remove_whitespace($options);
-					} until ( length($options) != 0);
-				}
-				if ("$options" eq "none") {
-					$options="";
-				}
-				$options = "-I \'$options\'";
-				$packages = read_ffconfig_param("FF_PACKAGES");
-				if (! GetYesNo("Do you want to install the following packages?\n    $packages\n", "y")) {
-					do {
-						print "Enter packages (or none):";
-						chomp($packages = <STDIN>);
-						$packages=remove_whitespace($packages);
-					} until ( length($packages) != 0);
-					if ("$packages" eq "none") {
-						printf "You have selected to skip the installation step\n";
-						$install_mode="skip"
+				if ("$options" ne "") {
+					if (! GetYesNo("Do you want to use the following install options: '$options'?", "y")) {
+						do {
+							print "Enter install options (or none):";
+							chomp($options = <STDIN>);
+							$options=remove_whitespace($options);
+						} until ( length($options) != 0);
+					}
+					if ("$options" eq "none") {
+						$options="";
+					}
+					else {
+						$options = "-I \'$options\'";
+						$packages = read_ffconfig_param("FF_PACKAGES");
+						if ("$packages" ne "") {
+							if (! GetYesNo("Do you want to install the following packages?\n    $packages\n", "y")) {
+								do {
+									print "Enter packages (or none):";
+									chomp($packages = <STDIN>);
+									$packages=remove_whitespace($packages);
+								} until ( length($packages) != 0);
+							}
+							if ("$packages" eq "none") {
+								$packages="";
+							}
+							else {
+								$packages = "-P \'$packages\'";
+							}
+						}
 					}
 				}
-				$packages = "-P \'$packages\'";
-			} else {
-				print "You have selected to skip the installation/upgrade step\n";
-				$install_mode="skip";
 			}
 		}
 	} until (GetYesNo("Are you sure you want to proceed?", "n") );
@@ -1182,91 +1170,86 @@ sub fabricsetup_buildmpi
 	my $mpi_apps_dir = "/usr/src/opa/mpi_apps";
 	my $build_dir = read_ffconfig_param("FF_MPI_APPS_DIR");
 	if (! -e "$mpi_apps_dir/Makefile") {
-		print "$mpi_apps_dir: not found\n";
-		print "FF_MPI_APPS_DIR parameter must point to location of mpi_apps to build\n";
+		# the makefile and some of apps are part of opa-fastfabric package
+		print "$mpi_apps_dir/Makefile: not found\n";
+		print "Make sure opa-fastfabric is properly installed\n";
 		HitKeyCont;
 		return 1;
 	}
 	# for now do not build NASA, etc, just basic stuff
-	if ( "$IB_STACK_TYPE" eq "IBACCESS" ) {
-		if (run_fabric_cmd("cd $mpi_apps_dir; make clobber quick")) {
+	my $mode;
+	my $mpich_prefix;
+	my $inp;
+	do {
+		# get default MPI to use
+		$mpich_prefix= `cd $mpi_apps_dir 2>/dev/null; . ./select_mpi 2>/dev/null; echo \$MPICH_PREFIX`;
+		chomp $mpich_prefix;
+
+		# identify other alternatives
+		my $prefix="/usr";
+		my $dirs=`find $prefix/mpi -maxdepth 2 -mindepth 2 -type d 2>/dev/null|sort`;
+		$dirs=$dirs . `find /opt/intel/impi/*/intel64 -maxdepth 0 -type d 2>/dev/null|sort`;
+		my @dirs = split /[[:space:]]+/, $dirs;
+
+		#print "The following MPIs have been found on this system:\n";
+		if ( $dirs !~ m|$mpich_prefix|) {
+			# odd case, default is not in a normal location
+			#print "       $mpich_prefix\n";
+			@dirs = ($mpich_prefix, @dirs);
+		}
+		my @mpi_dirs = ();
+		foreach my $d ( @dirs ) {
+			next if ( ! -e "$d/bin/mpicc" ); # skip incomplete MPI dirs
+			#print "       $d\n";
+			@mpi_dirs = (@mpi_dirs, $d);
+		}
+
+		do {
+			$inp = selection_menu(
+				"Host Setup: $FabricSetupStepsName{'buildapps'}",
+				"MPI Directory Selection", "MPI Directory",
+			   	(@mpi_dirs, "Enter Other Directory"));
+			if ( "$inp" eq "" ) {
+				$inp = "none";
+			} elsif ( "$inp" eq "Enter Other Directory" ) {
+				do {
+					print "Enter MPI directory location (or none):";
+					chomp($inp = <STDIN>);
+					$inp=remove_whitespace($inp);
+				} until ( "$inp" ne "");
+			}
+			if ("$inp" ne "none" && ! -e "$inp" ) {
+				print "$inp: not found\n";
+				HitKeyCont;
+			}
+		} until ( "$inp" eq "none" || -e "$inp" );
+		$mpich_prefix=$inp;
+		if ("$mpich_prefix" eq "none" ) {
+			print "You have selected to skip the building of the MPI Apps step\n";
+			$mode="skip";
+		} else {
+			print "You have selected to use MPI: $mpich_prefix\n";
+			$mode="build";
+		}
+	} until (GetYesNo("Are you sure you want to proceed?", "n") );
+			
+	if ( "$mode" ne "build" ) {
+		return 0;
+	}
+	if ( -e "$build_dir/.filelist" ) {
+		run_fabric_cmd("cd $build_dir; rm -rf `cat .filelist`", "skip_prompt");
+	}
+	run_fabric_cmd("mkdir -p $build_dir; cp -r -p $mpi_apps_dir/. $build_dir", "skip_prompt");
+	run_fabric_cmd("cd $mpi_apps_dir; find . -mindepth 1 > $build_dir/.filelist", "skip_prompt");
+	if (!installed_mpiapps()){
+		print "Package $ComponentName{mpiapps} not installed. Only building subset of MPI Apps\n";
+		HitKeyCont;
+		if (run_fabric_cmd("cd $build_dir; MPICH_PREFIX=$mpich_prefix make clobber opa-base")) {
 			return 1;
 		}
-	} else { # OFED
-		my $mode;
-		my $mpich_prefix;
-		my $inp;
-		do {
-			# get default MPI to use
-			$mpich_prefix= `cd $mpi_apps_dir 2>/dev/null; . ./select_mpi 2>/dev/null; echo \$MPICH_PREFIX`;
-			chomp $mpich_prefix;
-
-			# identify other alternatives
-			my $prefix="/usr";
-			my $dirs=`find $prefix/mpi -maxdepth 2 -mindepth 2 -type d 2>/dev/null|sort`;
-			$dirs=$dirs . `find /opt/intel/impi/*/intel64 -maxdepth 0 -type d 2>/dev/null|sort`;
-			my @dirs = split /[[:space:]]+/, $dirs;
-
-			#print "The following MPIs have been found on this system:\n";
-			if ( $dirs !~ m|$mpich_prefix|) {
-				# odd case, default is not in a normal location
-				#print "       $mpich_prefix\n";
-				@dirs = ($mpich_prefix, @dirs);
-			}
-			my @mpi_dirs = ();
-			foreach my $d ( @dirs ) {
-				next if ( ! -e "$d/bin/mpicc" ); # skip incomplete MPI dirs
-				#print "       $d\n";
-				@mpi_dirs = (@mpi_dirs, $d);
-			}
-
-			do {
-				$inp = selection_menu(
-					"Host Setup: $FabricSetupStepsName{'buildapps'}",
-					"MPI Directory Selection", "MPI Directory",
-				   	(@mpi_dirs, "Enter Other Directory"));
-				if ( "$inp" eq "" ) {
-					$inp = "none";
-				} elsif ( "$inp" eq "Enter Other Directory" ) {
-					do {
-						print "Enter MPI directory location (or none):";
-						chomp($inp = <STDIN>);
-						$inp=remove_whitespace($inp);
-					} until ( "$inp" ne "");
-				}
-				if ("$inp" ne "none" && ! -e "$inp" ) {
-					print "$inp: not found\n";
-					HitKeyCont;
-				}
-			} until ( "$inp" eq "none" || -e "$inp" );
-			$mpich_prefix=$inp;
-			if ("$mpich_prefix" eq "none" ) {
-				print "You have selected to skip the building of the MPI Apps step\n";
-				$mode="skip";
-			} else {
-				print "You have selected to use MPI: $mpich_prefix\n";
-				$mode="build";
-			}
-		} until (GetYesNo("Are you sure you want to proceed?", "n") );
-			
-		if ( "$mode" ne "build" ) {
-			return 0;
-		}
-		if ( -e "$build_dir/.filelist" ) {
-			run_fabric_cmd("cd $build_dir; rm -rf `cat .filelist`", "skip_prompt");
-		}
-		run_fabric_cmd("mkdir -p $build_dir; cp -r -p $mpi_apps_dir/. $build_dir", "skip_prompt");
-		run_fabric_cmd("cd $mpi_apps_dir; find . -mindepth 1 > $build_dir/.filelist", "skip_prompt");
-		if (!installed_mpidev()){
-			print "Package opa-mpi-apps not installed. Only building subset of MPI Apps\n";
-			HitKeyCont;
-			if (run_fabric_cmd("cd $build_dir; MPICH_PREFIX=$mpich_prefix make clobber opa-base")) {
-				return 1;
-			}
-		} else{
-			if (run_fabric_cmd("cd $build_dir; MPICH_PREFIX=$mpich_prefix make clobber quick")) {
-				return 1;
-			}
+	} else{
+		if (run_fabric_cmd("cd $build_dir; MPICH_PREFIX=$mpich_prefix make clobber quick")) {
+			return 1;
 		}
 	}
 	if (! valid_config_file("Host File", $FabricSetupHostsFile) ) {
@@ -1283,7 +1266,6 @@ sub fabricsetup_buildshmem
 {
 	my $shmem_apps_dir = "/usr/src/opa/shmem_apps";
 	my $build_dir = read_ffconfig_param("FF_SHMEM_APPS_DIR");
-	# makes sure fastfabric installed, it provides shmem_apps
 	if ( ! installed_shmem() ) {
 		printf("$ComponentName{shmem} not installed on this system\n");
 		printf("Unable to Build SHMEM Test Apps\n");
@@ -1291,16 +1273,12 @@ sub fabricsetup_buildshmem
 		return;
 	}
 	if (! -e "$shmem_apps_dir/Makefile") {
-		print "$shmem_apps_dir: not found\n";
-		print "FF_SHMEM_APPS_DIR parameter must point to location of shmem_apps to build\n";
+		# the makefile and shmem_apps are part of opa-fastfabric package
+		print "$shmem_apps_dir/Makefile: not found\n";
+		print "Make sure opa-fastfabric is properly installed\n";
 		HitKeyCont;
 		return 1;
 	}
-	if ( "$IB_STACK_TYPE" eq "IBACCESS" ) {
-		# should not happen
-		return 1;
-	}
-	# OFED
 	my $mode;
 	my $mpich_prefix;
 	my $inp;
@@ -1394,7 +1372,7 @@ sub fabricsetup_buildapps
 			$res |= fabricsetup_buildshmem();
 		}
 	} else {
-		printf("Skipping option to build SHMEM Test Apps - SHMEM not installed\n");
+		printf("Skipping option to build SHMEM Test Apps - $ComponentName{shmem} not installed\n");
 		HitKeyCont;
 	}
 	return $res;
@@ -1422,35 +1400,23 @@ sub fabricsetup_rebuildmpi
 		HitKeyCont;
 		return;
 	}
-	if ( "$IB_STACK_TYPE" eq "IBACCESS" ) {
-		if (run_fabric_cmd("cd $ROOT/usr/src/opa/InfiniServMPI/mpich; ./do_build")) {
-			return 1;
-		}
-		if (! valid_config_file("Host File", $FabricSetupHostsFile) ) {
-			return 1;
-		}
-		# we just copy shared libraries
-		# do in two steps so user can see results of build before scp starts
-		return run_fabric_cmd("$BIN_DIR/opascpall -r -p -f $FabricSetupHostsFile $USRLOCALLIB_DIR/libtvmpich* $USRLOCALLIB_DIR/shared $USRLOCALLIB_DIR");
-	} else {	# OFED
-		if (run_fabric_cmd("cd $ROOT/usr/src/opa/MPI; ./do_build")) {
-			return 1;
-		}
-		if (! valid_config_file("Host File", $FabricSetupHostsFile) ) {
-			return 1;
-		}
-		# do in two steps so user can see results of build before scp starts
-		# determine where MPI was built and copy needed files to all nodes
-		my $mpich_prefix= read_simple_config_param("$ROOT/usr/src/opa/MPI/.mpiinfo", "MPICH_PREFIX");
-		# instead of copy, copy the actual rpms and install them
-		#return run_fabric_cmd("$BIN_DIR/opascpall -t -p -f $FabricSetupHostsFile $mpich_prefix $mpich_prefix");
-		my $mpi_rpms= read_simple_config_param("$ROOT/usr/src/opa/MPI/.mpiinfo", "MPI_RPMS");
-		if (run_fabric_cmd("cd /usr/src/opa/MPI && $BIN_DIR/opascpall -p -f $FabricSetupHostsFile $mpi_rpms /var/tmp")) {
-			return 1;
-		}
-		# need force for reinstall case
-		return run_fabric_cmd("$BIN_DIR/opacmdall -p -f $FabricSetupHostsFile 'cd /var/tmp; rpm -U --force $mpi_rpms; rm -f $mpi_rpms'");
+	if (run_fabric_cmd("cd $ROOT/usr/src/opa/MPI; ./do_build")) {
+		return 1;
 	}
+	if (! valid_config_file("Host File", $FabricSetupHostsFile) ) {
+		return 1;
+	}
+	# do in two steps so user can see results of build before scp starts
+	# determine where MPI was built and copy needed files to all nodes
+	my $mpich_prefix= read_simple_config_param("$ROOT/usr/src/opa/MPI/.mpiinfo", "MPICH_PREFIX");
+	# instead of copy, copy the actual rpms and install them
+	#return run_fabric_cmd("$BIN_DIR/opascpall -t -p -f $FabricSetupHostsFile $mpich_prefix $mpich_prefix");
+	my $mpi_rpms= read_simple_config_param("$ROOT/usr/src/opa/MPI/.mpiinfo", "MPI_RPMS");
+	if (run_fabric_cmd("cd /usr/src/opa/MPI && $BIN_DIR/opascpall -p -f $FabricSetupHostsFile $mpi_rpms /var/tmp")) {
+		return 1;
+	}
+	# need force for reinstall case
+	return run_fabric_cmd("$BIN_DIR/opacmdall -p -f $FabricSetupHostsFile 'cd /var/tmp; rpm -U --force $mpi_rpms; rm -f $mpi_rpms'");
 }
 sub fabricsetup_opacmdall
 {
@@ -1612,7 +1578,7 @@ sub fabricadmin_config
 sub fabricadmin_fabric_info
 {
 	if ( ! -e "$BIN_DIR/opafabricinfo" ) {
-		print "opafabricinfo requires $ComponentName{iba} be installed\n";
+		print "opafabricinfo requires $ComponentName{oftools} be installed\n";
 		HitKeyCont;
 		return 1;
 	}
@@ -1736,8 +1702,8 @@ sub fabricadmin_singlehost
 
 	#If HPL test is to be run, make sure mpi-tests package is installed
 	if (index($verifyhosts_tests,"hpl") != -1) {
-		if (!installed_mpidev()) {
-			print "Package opa-mpi-apps not found. Cannot hun HPL test.\n";
+		if (!installed_mpiapps()) {
+			print "Package $ComponentName{mpiapps} not installed. Cannot hun HPL test.\n";
         	HitKeyCont;
 			return 1;
 		}
@@ -1927,9 +1893,9 @@ sub fabricadmin_mpiperf
 		return run_fabric_cmd("$BIN_DIR/opahostadmin -f $FabricAdminHostsFile mpiperfdeviation");
 	} else {
 	
-		if (!installed_mpidev()) {
-			print "Package opa-mpi-apps not found.\n";
-			print "Cannot run the tests. Deviation tests can still be used. Please try again. \n";
+		if (!installed_mpiapps()) {
+			print "Package $ComponentName{mpiapps} not installed.\n";
+			print "Cannot run the mpiperf tests. Deviation tests can still be used. Please try again. \n";
 			HitKeyCont;
 			return 1;
 		}
@@ -2116,7 +2082,7 @@ DO_SETUP:
 }
 
 # Fabric Monitor
-sub fabricmonitor_ibatop
+sub fabricmonitor_opatop
 {
 	return run_fabric_cmd("$BIN_DIR/opatop");
 }

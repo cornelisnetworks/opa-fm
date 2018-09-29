@@ -407,6 +407,20 @@ void PmPrintExceededPortDetailsCongestion(PmPort_t *pmportp, PmPort_t *pmportnei
 
 	uint32 XmitWaitPct, XmitTimeCongPct;
 
+	if (pm_config.process_vl_counters && DeltaXmitWait) {
+		/* If VlXmitWait counters are available, use worst VL to properly weight the
+		 * port-level counter to prevent low levels of congestion appearing as severe congestion.
+		 */
+		uint64_t MaxDeltaVLXmitWait = 0;
+		uint32_t i, vlmask = portImage->vlSelectMask;
+		for (i = 0; i < STL_MAX_VLS && vlmask; i++, vlmask >>= 1) {
+			if (vlmask & 0x1) {
+				UPDATE_MAX(MaxDeltaVLXmitWait, GET_DELTA_VLCOUNTER(PortVLXmitWait, vl_to_idx(i)));
+			}
+		}
+		DeltaXmitWait = (uint64_t)((double)MaxDeltaVLXmitWait * (double)MaxDeltaVLXmitWait / (double)DeltaXmitWait);
+	}
+
 	{
 		/* Convert switch wait counter units from cycle time to flit time */
 		if (pmportp->pmnodep->nodeType == STL_NODE_SW) {
@@ -1148,13 +1162,12 @@ FSTATUS PmClearNodeRunningCounters(PmNode_t *pmnodep, CounterSelectMask_t select
 }
 
 FSTATUS PmClearPortRunningVFCounters(PmPort_t *pmportp, 
-					STLVlCounterSelectMask select, char *vfName)
+	STLVlCounterSelectMask select, int vfIdx, boolean useHiddenVF)
 {
 	PmCompositeVLCounters_t *pVLRunning;
 	PmPortImage_t *portImage = &pmportp->Image[g_pmSweepData.SweepIndex];
 	int vl = 0, j = 0;
-	boolean useHiddenVF = !strcmp(HIDDEN_VL15_VF, vfName);
-	int i = (useHiddenVF ? -1 : 0);
+	int i = (useHiddenVF ? -1 : vfIdx);
 	FSTATUS status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF;
 
 	pVLRunning = &pmportp->StlVLPortCountersTotal[0];
@@ -1162,30 +1175,25 @@ FSTATUS PmClearPortRunningVFCounters(PmPort_t *pmportp,
 #define CLEAR_SELECTED(counter) \
 	do { if (select.s.counter) pVLRunning[j].counter = 0; } while (0)
 
-	for (; i < (int)portImage->numVFs; i++) {
-		if ((i == -1) || (portImage->vfvlmap[i].pVF && !strcmp(portImage->vfvlmap[i].pVF->Name, vfName)) ) {
-			uint32 vlmask = (i == -1) ? 0x8000 : portImage->vfvlmap[i].vlmask;
-			for (vl = 0; vl < STL_MAX_VLS && vlmask; vl++, vlmask >>= 1) {
-				if ((vlmask & 0x1) == 0) continue;
-				j = vl_to_idx(vl);
-				CLEAR_SELECTED(PortVLXmitData);
-				CLEAR_SELECTED(PortVLRcvData);
-				CLEAR_SELECTED(PortVLXmitPkts);
-				CLEAR_SELECTED(PortVLRcvPkts);
-				CLEAR_SELECTED(PortVLXmitDiscards);
-				CLEAR_SELECTED(SwPortVLCongestion);
-				CLEAR_SELECTED(PortVLXmitWait);
-				CLEAR_SELECTED(PortVLRcvFECN);
-				CLEAR_SELECTED(PortVLRcvBECN);
-				CLEAR_SELECTED(PortVLXmitTimeCong);
-				CLEAR_SELECTED(PortVLXmitWastedBW);
-				CLEAR_SELECTED(PortVLXmitWaitData);
-				CLEAR_SELECTED(PortVLRcvBubble);
-				CLEAR_SELECTED(PortVLMarkFECN);
-				status = FSUCCESS;
-			}
-			break;
-		}
+	uint32 vlmask = (i == -1) ? 0x8000 : portImage->vfvlmap[i].vlmask;
+	for (vl = 0; vl < STL_MAX_VLS && vlmask; vl++, vlmask >>= 1) {
+		if ((vlmask & 0x1) == 0) continue;
+		j = vl_to_idx(vl);
+		CLEAR_SELECTED(PortVLXmitData);
+		CLEAR_SELECTED(PortVLRcvData);
+		CLEAR_SELECTED(PortVLXmitPkts);
+		CLEAR_SELECTED(PortVLRcvPkts);
+		CLEAR_SELECTED(PortVLXmitDiscards);
+		CLEAR_SELECTED(SwPortVLCongestion);
+		CLEAR_SELECTED(PortVLXmitWait);
+		CLEAR_SELECTED(PortVLRcvFECN);
+		CLEAR_SELECTED(PortVLRcvBECN);
+		CLEAR_SELECTED(PortVLXmitTimeCong);
+		CLEAR_SELECTED(PortVLXmitWastedBW);
+		CLEAR_SELECTED(PortVLXmitWaitData);
+		CLEAR_SELECTED(PortVLRcvBubble);
+		CLEAR_SELECTED(PortVLMarkFECN);
+		status = FSUCCESS;
 	}
 #undef CLEAR_SELECTED
 	return status;
@@ -1196,7 +1204,7 @@ FSTATUS PmClearPortRunningVFCounters(PmPort_t *pmportp,
 // have a history feature.
 // caller must have totalsLock held for write and imageLock held for read
 FSTATUS PmClearNodeRunningVFCounters(PmNode_t *pmnodep,
-					STLVlCounterSelectMask select, char *vfName)
+	STLVlCounterSelectMask select, int vfIdx, boolean useHiddenVF)
 {
 	FSTATUS status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_PORT;
 	if (pmnodep->nodeType == STL_NODE_SW) {
@@ -1205,10 +1213,10 @@ FSTATUS PmClearNodeRunningVFCounters(PmNode_t *pmnodep,
 		for (i=0; i<=pmnodep->numPorts; ++i) {
 			PmPort_t *pmportp = pmnodep->up.swPorts[i];
 			if (pmportp)
-				status |= PmClearPortRunningVFCounters(pmportp, select, vfName);
+				status |= PmClearPortRunningVFCounters(pmportp, select, vfIdx, useHiddenVF);
 		}
 		return status;
 	} else {
-		return PmClearPortRunningVFCounters(pmnodep->up.caPortp, select, vfName);
+		return PmClearPortRunningVFCounters(pmnodep->up.caPortp, select, vfIdx, useHiddenVF);
 	}
 }

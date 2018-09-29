@@ -278,6 +278,8 @@ pa_query_common(
 		case STL_MAD_STATUS_STL_PA_NO_GROUP:
 		case STL_MAD_STATUS_STL_PA_NO_PORT:
 		case STL_MAD_STATUS_STL_PA_NO_VF:
+		case STL_MAD_STATUS_STL_PA_NO_IMAGE:
+		case STL_MAD_STATUS_STL_PA_NO_DATA:
 			fstatus = FNOT_FOUND;
 			break;
 		case STL_MAD_STATUS_STL_PA_INVALID_PARAMETER:
@@ -286,6 +288,7 @@ pa_query_common(
 		case STL_MAD_STATUS_STL_PA_UNAVAILABLE:
 			fstatus = FINVALID_STATE;
 			break;
+		case STL_MAD_STATUS_STL_PA_BAD_DATA:
 		default:
 			fstatus = FERROR;
 			break;
@@ -2585,12 +2588,14 @@ omgt_pa_get_group_list(
     else if (query_results->ResultDataSize == 0)
     {
         OMGT_DBGPRINT(port, "No Records Returned\n");
-        goto fail;
+        *pNum_Groups = 0;
+        fstatus = OMGT_STATUS_SUCCESS;
+        goto done;
     }
     else
     {
 		p = (STL_PA_GROUP_LIST_RESULTS*)query_results->QueryResult;
-        
+
         // TBD remove some of these after additional MAD testing
         OMGT_DBGPRINT(port,  "MadStatus 0x%X: %s\n", port->pa_mad_status,
                   iba_pa_mad_status_msg(port));
@@ -2694,7 +2699,9 @@ omgt_pa_get_vf_list(
     else if (query_results->ResultDataSize == 0)
     {
         OMGT_DBGPRINT(port, "No Records Returned\n");
-        goto fail;
+        *pNum_VFs = 0;
+        fstatus = OMGT_STATUS_SUCCESS;
+        goto done;
     }
     else
     {
@@ -2808,7 +2815,8 @@ omgt_pa_get_group_info(
     else if (query_results->ResultDataSize == 0)
     {
         OMGT_DBGPRINT(port, "No Records Returned\n");
-        goto fail;
+        fstatus = OMGT_STATUS_SUCCESS;
+        goto done;
     }
     else
     {
@@ -2937,7 +2945,8 @@ omgt_pa_get_vf_info(
 	else if (query_results->ResultDataSize == 0)
 	{
 		OMGT_DBGPRINT(port, "No Records Returned\n");
-		goto fail;
+		status = OMGT_STATUS_SUCCESS;
+		goto done;
 	}
 	else
 	{
@@ -3028,7 +3037,9 @@ omgt_pa_get_group_config(
     else if (query_results->ResultDataSize == 0)
     {
         OMGT_DBGPRINT(port, "No Records Returned\n");
-        goto fail;
+        *pNum_ports = 0;
+		fstatus = OMGT_STATUS_SUCCESS;
+		goto done;
     }
     else
     {
@@ -3170,7 +3181,9 @@ omgt_pa_get_group_nodeinfo(
     else if (query_results->ResultDataSize == 0)
     {
         OMGT_DBGPRINT(port, "No Records Returned\n");
-        goto fail;
+        *pNum_nodes = 0;
+		fstatus = OMGT_STATUS_SUCCESS;
+		goto done;
     }
     else
     {
@@ -3307,7 +3320,9 @@ omgt_pa_get_group_linkinfo(
     else if (query_results->ResultDataSize == 0)
     {
         OMGT_DBGPRINT(port, "No Records Returned\n");
-        goto fail;
+        *pNum_links = 0;
+		fstatus = OMGT_STATUS_SUCCESS;
+		goto done;
     }
     else
     {
@@ -3440,7 +3455,9 @@ omgt_pa_get_vf_config(
     else if (query_results->ResultDataSize == 0)
     {
         OMGT_DBGPRINT(port, "No Records Returned\n");
-        goto fail;
+        *pNum_ports = 0;
+		fstatus = OMGT_STATUS_SUCCESS;
+		goto done;
     }
     else
     {
@@ -3586,7 +3603,9 @@ omgt_pa_get_group_focus(
     else if (query_results->ResultDataSize == 0)
     {
         OMGT_DBGPRINT(port, "No Records Returned\n");
-        goto fail;
+        *pNum_ports = 0;
+		fstatus = OMGT_STATUS_SUCCESS;
+		goto done;
     }
     else
     {
@@ -3734,7 +3753,9 @@ omgt_pa_get_vf_focus(
     else if (query_results->ResultDataSize == 0)
     {
         OMGT_DBGPRINT(port, "No Records Returned\n");
-        goto fail;
+        *pNum_ports = 0;
+		fstatus = OMGT_STATUS_SUCCESS;
+		goto done;
     }
     else
     {

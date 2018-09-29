@@ -197,7 +197,7 @@ sa_TraceRecord(Mai_t * maip, sa_cntxt_t * sa_cntxt)
 			sguid = ntoh64(*(uint64_t *) & src_portp->portData->gid[8]);
 			IB_LOG_WARN_FMT("sa_TraceRecord",
 							"Source Gid " FMT_GID
-							" in request from Lid %d does not match found GID's " FMT_GID " "
+							" in request from Lid 0x%x does not match found GID's " FMT_GID " "
 							"port guid of " FMT_U64, prefix, guid, maip->addrInfo.slid, pf2, sguid,
 							src_portp->portData->guid);
 			maip->base.status = MAD_STATUS_SA_REQ_INVALID_GID;

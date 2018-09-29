@@ -36,7 +36,15 @@ stage::
 #prepfiles:: prepfiles_global
 clobber:: clobber_global clobber_tools
 
+include $(TL_DIR)/Makerules/Rules.buildFeatureDefs
+include $(TL_DIR)/Makerules/Rules.baseFiles
+#ALL:: tools fmbuild
 ALL:: tools
+
+fmbuild: fmbuild.base
+	$(TL_DIR)/MakeTools/unifdef2.sh $(OPA_FEATURE_SET) $< $@
+	chmod 755 $@
+
 
 BSP_SPECIFIC_DIRS=
 
@@ -124,8 +132,8 @@ endif
 ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES74"
         PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL74.pl
 endif
-ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES121"
-        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_SLES121.pl
+ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES75"
+        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL75.pl
 endif
 ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES122"
         PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_SLES122.pl
@@ -133,6 +141,10 @@ endif
 ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES123"
         PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_SLES123.pl
 endif
+ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES15"
+        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_SLES15.pl
+endif
+
 
 # Source files to include in DSP File
 DSP_SOURCES		= $(INCLUDE_TARGETS) $(SOURCES) $(MISC_FILES) \
@@ -154,7 +166,7 @@ CMD_TARGETS_MISC	= INSTALL.pl comp.pl
 CLEAN_TARGETS_MISC	=  
 CLEAN_TARGETS		= $(OBJECTS) $(RSCOBJECTS) $(IDL_TARGETS) $(CLEAN_TARGETS_MISC)
 # other files to remove during clobber phase
-CLOBBER_TARGETS_MISC=
+CLOBBER_TARGETS_MISC= fm_install.sh update_opa-fm_spec.sh fmbuild
 # sub-directory to install to within bin
 BIN_SUBDIR		= 
 # sub-directory to install to within include

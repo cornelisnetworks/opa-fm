@@ -71,7 +71,6 @@ sm_get_buffer_control_tables(IBhandle_t fd_topology, Node_t *nodep,
 {
 	int port;
 	Status_t status = FERROR;
-	unsigned char *path;
 	uint8_t num_ports;
 	STL_BUFFER_CONTROL_TABLE *pbct;
     uint8 maxcount = STL_NUM_BFRCTLTAB_BLOCKS_PER_DRSMP;
@@ -103,7 +102,7 @@ sm_get_buffer_control_tables(IBhandle_t fd_topology, Node_t *nodep,
 		free(pbct);
 		return VSTATUS_BAD;
 	}
-	path = PathToPort(nodep, portp);
+	SmpAddr_t addr = SMP_ADDR_CREATE_DR(PathToPort(nodep, portp));
 
 	/*
 	 * FIXME Optimization:
@@ -117,7 +116,7 @@ sm_get_buffer_control_tables(IBhandle_t fd_topology, Node_t *nodep,
 		uint32_t am = (n << 24) | port;
 		STL_BUFFER_CONTROL_TABLE *buf = &pbct[port-start_port];
 
-		status = SM_Get_BufferControlTable(fd_topology, am, path, buf);
+		status = SM_Get_BufferControlTable(fd_topology, am, &addr, buf);
 		if (status != VSTATUS_OK) {
 			cs_log(VS_LOG_ERROR, "sm_get_buffer_control_table",
 					"buffer control table query failed; node %s; %s",
@@ -197,8 +196,10 @@ sm_set_buffer_control_tables(IBhandle_t fd_topology, Node_t *nodep,
 		// All the ports have identical BCts, so send one block with the all
 		// ports bit set.
 		uint32_t amod = (1<<24) + (1<<8) + start_port;
-		status = SM_Set_BufferControlTable_LR(fd_topology, amod, sm_lid,
-			dlid, &bcts[0], mkey, &madStatus);
+		SmpAddr_t addr = SMP_ADDR_CREATE_LR(sm_lid, dlid);
+
+		status = SM_Set_BufferControlTable(fd_topology, amod, &addr, &bcts[0],
+			mkey, &madStatus);
 		if (status != VSTATUS_OK) {
 			cs_log(VS_LOG_ERROR, "sm_set_buffer_control_table",
 				"buffer control table query failed; node %s; %s (madStatus=%s)",
@@ -248,9 +249,9 @@ sm_set_buffer_control_tables(IBhandle_t fd_topology, Node_t *nodep,
 					uint16_t first_port = port - num_ports + 1;
 					STL_BUFFER_CONTROL_TABLE *buf = &bcts[first_port-start_port];
 					uint32_t amod = ((num_ports-1)<<24) | first_port;
+					SmpAddr_t addr = SMP_ADDR_CREATE_LR(sm_lid, dlid);
 
-					status = SM_Set_BufferControlTable_LR(fd_topology, amod,
-						sm_lid, dlid, buf, mkey, &madStatus);
+					status = SM_Set_BufferControlTable(fd_topology, amod, &addr, buf, mkey, &madStatus);
 					if (status != VSTATUS_OK) {
 						cs_log(VS_LOG_ERROR, "sm_set_buffer_control_table",
 										"buffer control table query failed; node %s; %s (madStatus=%s)",
@@ -279,8 +280,9 @@ sm_set_buffer_control_tables(IBhandle_t fd_topology, Node_t *nodep,
 				uint16_t first_port = port - num_ports + 1;
 				STL_BUFFER_CONTROL_TABLE *buf = &bcts[first_port-start_port];
 				uint32_t amod = (num_ports<<24) | first_port;
+				SmpAddr_t addr = SMP_ADDR_CREATE_LR(sm_lid, dlid);
 
-				status = SM_Set_BufferControlTable_LR(fd_topology, amod, sm_lid, dlid, buf, mkey, &madStatus);
+				status = SM_Set_BufferControlTable(fd_topology, amod, &addr, buf, mkey, &madStatus);
 				if (status != VSTATUS_OK) {
 					cs_log(VS_LOG_ERROR, "sm_set_buffer_control_table",
 						"buffer control table query failed; node %s; %s (madStatus=%s)",
@@ -294,6 +296,13 @@ sm_set_buffer_control_tables(IBhandle_t fd_topology, Node_t *nodep,
 					uint8_t p;
 					for (p = first_port; p <= port; p++) {
 						Port_t *portp2 = sm_get_port(nodep, p);
+						if (!portp2) {
+							cs_log(VS_LOG_ERROR, "sm_set_buffer_control_table",
+								"invalid pointer for node %s, port %u",
+								sm_nodeDescString(nodep), p);
+							status = VSTATUS_BAD;
+							goto error;
+						}
 						memcpy(&portp2->portData->bufCtrlTable, &buf[p-first_port],
 							sizeof(portp2->portData->bufCtrlTable));
 					}

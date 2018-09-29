@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2018, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -31,7 +31,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ib_types.h"
 #include "sm_l.h"
 
-int fattreeBadSweepCount = 0;
 int rebalanceGoodSweep = 0;
 
 Status_t sm_shortestpath_make_routing_module(RoutingModule_t * rm);
@@ -48,7 +47,7 @@ _is_route_last(Node_t * nodep)
 	if (strlen(sm_config.ftreeRouting.routeLast.member) == 0)
 		return;
 
-	dgIdx = smGetDgIdx(sm_config.ftreeRouting.routeLast.member);
+	dgIdx = sm_config.ftreeRouting.routeLast.dg_index;
 	if (dgIdx == -1) {
 		IB_LOG_ERROR_FMT(__func__, "FatTreeTopology has undefined RoutingLast device group %s",
 							sm_config.ftreeRouting.routeLast.member);
@@ -72,7 +71,7 @@ static __inline__ int
 _is_core(Node_t* switchp) {
 
 	Port_t* portp;
-	int dgIdx = smGetDgIdx(sm_config.ftreeRouting.coreSwitches.member);
+	int dgIdx = sm_config.ftreeRouting.coreSwitches.dg_index;
 
 	if (dgIdx < 0) {
 		IB_LOG_ERROR_FMT(__func__, "FatTreeTopology has undefined CoreSwitches device group %s",
@@ -114,24 +113,38 @@ _incr_trunk_count(Node_t* switchp, Port_t* swportp, int *trunkCnt, uint8_t *trun
 }
 
 static __inline__ void
-_set_trunk_count(Node_t* switchp, int trunkCnt, uint8_t *trunkGrpCnt, uint16_t *trunkGrpNode) {
-	int min, i;
+_set_trunk_count(Node_t* switchp, int trunkCnt, uint8_t *trunkGrpCnt) {
+	int i;
 
+	// use max trunk count, ISLs may be down
 	switchp->uplinkTrunkCnt = trunkGrpCnt[0];
-	min = switchp->uplinkTrunkCnt;
 	for (i=1; i<trunkCnt; i++) {
 		if (trunkGrpCnt[i] > switchp->uplinkTrunkCnt) {
 			switchp->uplinkTrunkCnt = trunkGrpCnt[i];
 		}
-		if (min < trunkGrpCnt[i]) {
-			min = trunkGrpCnt[i];
-		}
-	}
-	if (abs(switchp->uplinkTrunkCnt - min) > 1) {
-		switchp->uplinkTrunkCnt = 1;
 	}
 }
 
+
+static void
+validateTier(Topology_t *topop, Node_t *switchp) {
+
+	if (rebalanceGoodSweep)
+		return;
+
+	Node_t	*oldSwitchp = switchp->old;
+	if (!oldSwitchp) {
+		oldSwitchp = sm_find_guid(&old_topology, switchp->nodeInfo.NodeGUID);
+	}
+
+	if (!oldSwitchp)
+		return;
+
+	if (switchp->tier != oldSwitchp->tier) {
+		// tier change, force a rebalance
+		rebalanceGoodSweep = 1;
+	}
+}
 
 static Status_t
 _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *context)
@@ -178,6 +191,7 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 					if (bitset_test(&processedSwitches, switchp->swIdx)) continue;
 	
 					Switch_Enqueue_Type(topop, switchp, 0, 1, sm_config.ftreeRouting.converge);
+					validateTier(topop, switchp);
 					bitset_set(&processedSwitches, switchp->swIdx);
 				}
 			}
@@ -187,7 +201,6 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 		for (t=1; t<sm_config.ftreeRouting.tierCount; t++) {
 			for_all_tier_switches(topop, switchp, t-1) {
 				trunkCnt = 0;
-				switchp->trunkGrouped = 1;
 				for_all_physical_ports(switchp, swportp) {
 					if (!sm_valid_port(swportp) ||
 						swportp->state <= IB_PORT_DOWN) continue;
@@ -209,10 +222,11 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 					if (bitset_test(&processedSwitches, nodep->swIdx)) continue;
 
 					Switch_Enqueue_Type(topop, nodep, t, 1, 0);
+					validateTier(topop, switchp);
 					bitset_set(&processedSwitches, nodep->swIdx);
 				}
 
-				_set_trunk_count(switchp, trunkCnt, trunkGrpCnt, trunkGrpNode);
+				_set_trunk_count(switchp, trunkCnt, trunkGrpCnt);
 			}
 
 			if (processedSwitches.nset_m == new_switchesInUse.nset_m) break;
@@ -232,7 +246,6 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 		for (t=sm_config.ftreeRouting.tierCount-1; t>0; t--) {
 			for_all_tier_switches(topop, switchp, t) {
 				trunkCnt = 0;
-				switchp->trunkGrouped = 1;
 				for_all_physical_ports(switchp, swportp) {
 					if (!sm_valid_port(swportp) ||
 						swportp->state <= IB_PORT_DOWN) continue;
@@ -265,7 +278,7 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 				}
 
 				if (trunkCnt) {
-					_set_trunk_count(switchp, trunkCnt, trunkGrpCnt, trunkGrpNode);
+					_set_trunk_count(switchp, trunkCnt, trunkGrpCnt);
 				}
 			}
 		}
@@ -273,7 +286,6 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 		// Process lowest tier, calculating uplink trunk count
 		for_all_tier_switches(topop, switchp, 0) {
 			trunkCnt = 0;
-			switchp->trunkGrouped = 1;
 			for_all_physical_ports(switchp, swportp) {
 				if (!sm_valid_port(swportp) ||
 					swportp->state <= IB_PORT_DOWN) continue;
@@ -286,7 +298,7 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 
 				_incr_trunk_count(switchp, swportp, &trunkCnt, trunkGrpCnt, trunkGrpNode);
 			}
-			_set_trunk_count(switchp, trunkCnt, trunkGrpCnt, trunkGrpNode);
+			_set_trunk_count(switchp, trunkCnt, trunkGrpCnt);
 		}
 	}
 
@@ -305,10 +317,10 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 				for_all_physical_ports(switchp, swportp) {
 					if (!sm_valid_port(swportp) || swportp->state <= IB_PORT_DOWN)
 						continue;
-					IB_LOG_INFINI_INFO_FMT(__func__, "Switch %s port %d: type %s tier %d, tierIndex %d, trunk %d grouped %d",
+					IB_LOG_INFINI_INFO_FMT(__func__, "Switch %s port %d: type %s tier %d, tierIndex %d, trunk %d",
 						sm_nodeDescString(switchp), swportp->index,
 						swportp->portData->uplink ? "uplink" : (swportp->portData->downlink ? "downlink" : "unknown"),
-						switchp->tier, switchp->tierIndex, switchp->uplinkTrunkCnt, switchp->trunkGrouped);
+						switchp->tier, switchp->tierIndex, switchp->uplinkTrunkCnt);
 				}
 			}
 		}
@@ -322,20 +334,11 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 	if (processedSwitches.nset_m != new_switchesInUse.nset_m) {
 		// Bad config or edge switch with no HFIs online.
 		if (sm_config.ftreeRouting.fis_on_same_tier) {
-			IB_LOG_WARN_FMT(__func__, "Switch(es) unassigned to/out-of-bound (fattree) tier. All HFIs offline on edge switch or check TierCount in config file.");
-
-			// When all HFIs come online, force rebalance of fabric.
-			fattreeBadSweepCount++;
-
+			if (sm_config.ftreeRouting.debug)
+				IB_LOG_WARN_FMT(__func__, "Switch(es) unassigned to/out-of-bound (fattree) tier. All HFIs offline on edge switch or check TierCount in config file.");
 		} else {
 			IB_LOG_WARN_FMT(__func__, "Switch(es) unassigned to/out-of-bound (fattree) tier. Check fattree configuration.");
 		}
-
-	} else if (fattreeBadSweepCount) {
-		// Looks like HFIs have been enabled on edge switch, force a rebalance this sweep
-		// instead of calculating deltas.
-		fattreeBadSweepCount = 0;
-		rebalanceGoodSweep = 1;
 	}
 
 	bitset_free(&processedSwitches);
@@ -389,7 +392,13 @@ _get_port_group(Topology_t *topop, Node_t *switchp, Node_t *nodep, uint8_t *port
 {
 	int i, j;
 	int end_port = 0;
+#ifdef __VXWORKS__
 	SwitchportToNextGuid_t *ordered_ports = (SwitchportToNextGuid_t *)topop->pad;
+	memset(ordered_ports, 0, sizeof(SwitchportToNextGuid_t) * switchp->nodeInfo.NumPorts);
+#else
+	SwitchportToNextGuid_t ordered_ports[MAX_STL_PORTS] = {{0}};
+#endif /* __VXWORKS__ */
+
 
 	IB_ENTER(__func__, switchp, nodep, 0, 0);
 
@@ -407,8 +416,6 @@ _get_port_group(Topology_t *topop, Node_t *switchp, Node_t *nodep, uint8_t *port
 		IB_EXIT(__func__, VSTATUS_OK);
 		return 0;
 	}
-
-	memset(ordered_ports, 0, sizeof(SwitchportToNextGuid_t) * switchp->nodeInfo.NumPorts);
 
 	end_port =  topop->routingModule->funcs.select_ports(topop, switchp, j, ordered_ports, 0);
 
@@ -437,7 +444,7 @@ _calculate_balanced_lfts(Topology_t *topop)
 	int upDestCount = 0;
 	int downDestCount = 0;
 	STL_LID currentLid;
-	int numPorts, t, i;
+	int numPorts, t, i, ioffset;
 	int r, routingIterations;
 	uint64_t sTime, eTime;
 	int ht, hfiTierEnd=0;
@@ -531,6 +538,7 @@ _calculate_balanced_lfts(Topology_t *topop)
 								if (!sm_valid_port(portp) || portp->state <= IB_PORT_DOWN) continue;
 
 								i = 0;
+								ioffset = 0;
 								for_all_port_lids(portp, currentLid) {
 									// Handle the case where switchp == toSwitchp.
 									// In this case, the target LID(s) are directly
@@ -567,21 +575,23 @@ _calculate_balanced_lfts(Topology_t *topop)
 									incr_lids_routed(topop, switchp, switchp->lft[currentLid]);
 
 									// Disperse lmc lids to different upstream switches
-									if (isUp && (switchp->uplinkTrunkCnt > 1) && switchp->trunkGrouped) {
-										// Uplink trunk group is "grouped" ports:
-										// that is, port 1-4 to same switch, 5-8 next switch, etc.
+									if (isUp && (switchp->uplinkTrunkCnt > 1)) {
 										i += switchp->uplinkTrunkCnt;
-										if ((i % numPorts) == 0) {
-											// add one so we don't use the same port
+										if (((i-ioffset) % numPorts) == 0) {
+											// When we have assigned an lmc lid to each trunk
+											// and loop back to the first one, increment the
+											// port index of the trunk so we don't use
+											// the same port.
 											i++;
+											ioffset++;
 										}
 									} else {
-										// If uplink trunk group, it has staggered ports:
-										// that is, ports 1,5,9,13 to same switch, ports 2,6,10,14
-										// to next switch, etc.
 										i++;
 									}
 								}
+								if (!numPorts)
+									continue;
+
 								pi++;
 								if (isUp) {
 									upDestCount += 1;
@@ -708,6 +718,180 @@ _copy_balanced_lfts(Topology_t *topop)
 }
 
 static Status_t
+_calculate_deltas_by_switch(Topology_t *topop)
+{
+	Node_t *nodep, *switchp, *toSwitchp;
+	Port_t *portp, *swPortp, *toSwitchPortp;
+	uint8_t portGroup[128];
+	int upDestCount = 0;
+	int downDestCount = 0;
+	STL_LID currentLid;
+	int numPorts, t, i, ioffset;
+	int r, routingIterations;
+	int ht, hfiTierEnd=0;
+	int isUp = 1;
+
+
+	// If we can't guarantee that all HFIs/FIs are on the same tier,
+	// balancing the LFTs is more complicated.
+	if (!sm_config.ftreeRouting.fis_on_same_tier) {
+		hfiTierEnd = sm_config.ftreeRouting.tierCount-1;
+	}
+
+	// if route last is indicated, balance over those HFIs on a second pass
+	routingIterations = (strlen(sm_config.ftreeRouting.routeLast.member) == 0) ? 1 : 2;
+
+	for (r=0; r<routingIterations; ++r) {
+		for (t=0; t<sm_config.ftreeRouting.tierCount; ++t) {
+			for_all_tier_switches(topop, switchp, t) {
+				upDestCount = downDestCount = 0;
+
+				// hfiTierEnd will be set to zero when config indicates all
+				// HFIs are on same the same tier.  If not, we need to visit
+				// all tiers since HFIs may be attached anywhere.
+				for (ht=0; ht<=hfiTierEnd; ht++) {
+					// Iterate over all switches on the FI/HFI tier.
+					for_all_tier_switches(topop, toSwitchp, ht) {
+						// passthru routes not effected by other switches
+						if (sm_config.ftreeRouting.passthru && r==0 && !toSwitchp->deltasRequired) continue;
+
+						// If this switch has no FI/HFIs, skip it.
+						if (!toSwitchp->edgeSwitch) continue;
+
+						if ((r==1) && !toSwitchp->skipBalance) {
+							// Second pass, done with this switch's attached HFIs.
+							continue;
+						}
+
+						if (switchp == toSwitchp) {
+							// handle direct attach - build LFT entries for
+							// FI/HFIs attached to this switch.
+							numPorts = 0;
+						} else {
+							// get a list of valid egress parts from switchp to toSwitchp.
+							// sort by system guid, then guid
+							numPorts = topop->routingModule->funcs.get_port_group(topop, switchp, toSwitchp, portGroup);
+
+							if (!numPorts) continue;
+
+							// portGroup will all be up or down per spine first routing.
+							swPortp = sm_get_port(switchp, portGroup[0]);
+
+							isUp = (swPortp && swPortp->portData->uplink);
+						}
+
+						int pi=0;
+						for_all_physical_ports(toSwitchp, toSwitchPortp) {
+							if (!sm_valid_port(toSwitchPortp) || toSwitchPortp->state <= IB_PORT_DOWN) continue;
+
+							// If the node connected to this port isn't a FI or is
+							// part of the skip balance list, skip to the next port.
+							// It will be setup on second pass.
+							nodep = sm_find_node(topop, toSwitchPortp->nodeno);
+							if (!nodep) continue;
+							if (nodep->nodeInfo.NodeType != NI_TYPE_CA) continue;
+							if ((r==0) && nodep->skipBalance) {
+								toSwitchp->skipBalance = 1;
+								continue;
+							}
+							if ((r==1) && !nodep->skipBalance) {
+								// Already programmed
+								continue;
+							}
+
+							for_all_end_ports(nodep, portp) {
+								if (!sm_valid_port(portp) || portp->state <= IB_PORT_DOWN) continue;
+
+								i = 0;
+								ioffset = 0;
+								for_all_port_lids(portp, currentLid) {
+									// Handle the case where switchp == toSwitchp.
+									// In this case, the target LID(s) are directly
+									// connected to the local switchp port.
+									if (!numPorts) {
+										switchp->lft[currentLid] = toSwitchPortp->index;
+										continue;
+									}
+
+									int newRoute = -1;
+									if (sm_config.ftreeRouting.converge &&
+										sm_config.ftreeRouting.tierCount == 3 && t == 1 && isUp && r == 0) {
+										// Converge at top of tree - gives better dispersion down routing
+										// for 3 tier fat tree for pairwise traffic.
+										// Passthru/converge work well with compute traffic, fall back to
+										// original fat tree algorithm for route last device group.
+										newRoute = portGroup[toSwitchp->tierIndex % numPorts];
+
+									} else if (sm_config.ftreeRouting.passthru && r == 0) {
+										// Use passthru
+										newRoute = portGroup[(i+pi+(t*toSwitchp->tierIndex)) % numPorts];
+
+									} else if (isUp) {
+										newRoute = portGroup[(i+upDestCount + switchp->tierIndex*switchp->uplinkTrunkCnt) % numPorts];
+
+									} else {
+										newRoute = portGroup[(i+downDestCount + switchp->tierIndex) % numPorts];
+									}
+
+									if (toSwitchp->deltasRequired && (switchp->lft[currentLid] != newRoute)) {
+										// only update routes where new endnode is present
+										switchp->lft[currentLid] = newRoute;
+
+										int curBlock = currentLid/LFTABLE_LIST_COUNT;
+										if (!bitset_test(&topop->deltaLidBlocks, curBlock)) {
+											if (sm_config.sm_debug_routing)
+												IB_LOG_INFINI_INFO_FMT(__func__,
+													"Setting curBlock %d due to ADD of lid 0x%x", curBlock, currentLid);
+											bitset_set(&topop->deltaLidBlocks, curBlock);
+										}
+
+										if (sm_config.ftreeRouting.debug)
+											IB_LOG_INFINI_INFO_FMT(__func__, "Switch %s to %s lid 0x%x outport %d (of %d) tierIndex %d uplinkTrunk %d",
+												sm_nodeDescString(switchp), sm_nodeDescString(nodep), currentLid,
+												switchp->lft[currentLid], numPorts, switchp->tierIndex, switchp->uplinkTrunkCnt);
+
+										incr_lids_routed(topop, switchp, switchp->lft[currentLid]);
+									} else {
+										// skip remaining lmc lids
+										break;
+									}
+
+									// Disperse lmc lids to different upstream switches
+									if (isUp && (switchp->uplinkTrunkCnt > 1)) {
+										i += switchp->uplinkTrunkCnt;
+										if (((i-ioffset) % numPorts) == 0) {
+											// When we have assigned an lmc lid to each trunk
+											// and loop back to the first one, increment the
+											// port index of the trunk so we don't use
+											// the same port.
+											i++;
+											ioffset++;
+										}
+									} else {
+										i++;
+									}
+								}
+								if (!numPorts)
+									continue;
+
+								pi++;
+								if (isUp) {
+									upDestCount += 1;
+								} else {
+									downDestCount += 1;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return VSTATUS_OK;
+}
+
+static Status_t
 _calculate_balanced_lft_deltas(Topology_t *topop)
 {
 	STL_LID		lid;
@@ -716,6 +900,7 @@ _calculate_balanced_lft_deltas(Topology_t *topop)
 	Port_t		*portp;
 	uint8_t		xftPorts[128];
 	STL_LID		curLid;
+	int			deltasRequired=0;
 
 	IB_ENTER(__func__, topop, 0, 0, 0);
 
@@ -761,16 +946,24 @@ _calculate_balanced_lft_deltas(Topology_t *topop)
 		if (lid != portp->portData->lid) continue;
 		if (!bitset_test(&new_endnodesInUse, nodep->index)) continue;
 
-		// This is a new node. Add it to the list of LFT records that have to be
-		// sent.
-		// TBD: what if lmc range straddles block?
-		if (curBlock != lid/LFTABLE_LIST_COUNT) {
-			// Set lft block num
-			curBlock = lid/LFTABLE_LIST_COUNT;
-			if (sm_config.sm_debug_routing && !bitset_test(&topop->deltaLidBlocks, curBlock))
-				IB_LOG_INFINI_INFO_FMT(__func__,
-						"Setting curBlock %d due to ADD of lid 0x%x", curBlock, lid);
-			bitset_set(&topop->deltaLidBlocks, curBlock);
+		Node_t* neighborSwitchp = sm_find_node(topop, portp->nodeno);
+		if (neighborSwitchp) {
+			// will rebalance routes for endpoint on this switch
+			neighborSwitchp->deltasRequired = 1;
+			deltasRequired = 1;
+			continue;
+		}
+
+		// This is a new node. Add it to the list of LFT records that have to be sent.
+		for_all_port_lids(portp, curLid) {
+			if (curBlock != curLid/LFTABLE_LIST_COUNT) {
+				// Set lft block num
+				curBlock = curLid/LFTABLE_LIST_COUNT;
+				if (sm_config.sm_debug_routing && !bitset_test(&topop->deltaLidBlocks, curBlock))
+					IB_LOG_INFINI_INFO_FMT(__func__,
+						"Setting curBlock %d due to ADD of lid 0x%x", curBlock, curLid);
+				bitset_set(&topop->deltaLidBlocks, curBlock);
+			}
 		}
 
 		// Add the node to all switch LFTs.
@@ -780,6 +973,11 @@ _calculate_balanced_lft_deltas(Topology_t *topop)
 				switchp->lft[curLid] = xftPorts[curLid - portp->portData->lid];
 			}
 		}
+	}
+
+	if (deltasRequired) {
+		// rebalance the deltas
+		_calculate_deltas_by_switch(topop);
 	}
 
 	if (topop->routingModule->funcs.setup_pgs) {
@@ -802,6 +1000,33 @@ _calculate_balanced_lft_deltas(Topology_t *topop)
 }
 
 static Status_t
+sm_routing_func_copy_balanced_lfts_deltas(Topology_t *src_topop, Topology_t *dst_topop)
+{
+	Status_t status;
+	Node_t  *switchp;
+	if (new_endnodesInUse.nset_m || (src_topop->num_endports != dst_topop->num_endports)) {
+		if (!bitset_init(&sm_pool, &dst_topop->deltaLidBlocks, dst_topop->maxLid/LFTABLE_LIST_COUNT+1)) {
+			IB_LOG_ERROR_FMT(__func__, "Failed to init deltaLidBlocks");
+			return VSTATUS_BAD;
+		}
+		dst_topop->deltaLidBlocks_init = 1;
+		status = _calculate_balanced_lft_deltas(dst_topop);
+		if(dst_topop->routingModule->funcs.can_send_partial_routes()) {
+			for_all_switch_nodes(dst_topop, switchp) {
+				sm_send_partial_lft(dst_topop, switchp, &dst_topop->deltaLidBlocks);
+			}
+		}
+		bitset_free(&sm_topop->deltaLidBlocks);
+		dst_topop->deltaLidBlocks_init=0;
+	}
+	else {
+		status = _copy_balanced_lfts(dst_topop);
+	}
+
+	return status;
+}
+
+static Status_t
 _init_switch_lfts(Topology_t * topop, int * routing_needed, int * rebalance)
 {
 	Status_t s=VSTATUS_OK;
@@ -819,23 +1044,6 @@ _init_switch_lfts(Topology_t * topop, int * routing_needed, int * rebalance)
 		routing_recalculated = 1;
 		rebalanceGoodSweep = 0;
 
-	} else if (	new_endnodesInUse.nset_m ||
-					old_topology.num_endports != topop->num_endports) {
-		// If I am following this, the deltas are now done in setup_floyds/copy_lfts.
-		// Disabling this for balanced, since it needs to be done across all switches.
-		// Setting routing needed so partial lfts are written.
-
-		if (!bitset_init(&sm_pool, &topop->deltaLidBlocks, topop->maxLid/LFTABLE_LIST_COUNT+1)) {
-			IB_LOG_ERROR_FMT(__func__, "Failed to init deltaLidBlocks");
-			return VSTATUS_BAD;
-		}
-		topop->deltaLidBlocks_init = 1;
-
-		s = _calculate_balanced_lft_deltas(topop);
-		*routing_needed = 1;
-
-	} else if (!*routing_needed) {
-			s = _copy_balanced_lfts(topop);
 	}
 
 	return s;
@@ -850,7 +1058,7 @@ _calculate_balanced_lft(Topology_t *topop, Node_t *switchp)
 	uint8_t portGroup[128];
 	int upDestCount = 0;
 	int downDestCount = 0;
-	int currentLid, numPorts, i;
+	int currentLid, numPorts, i, ioffset;
 	int r, routingIterations;
 	int ht, hfiTierEnd=0;
 	int isUp = 1;
@@ -935,6 +1143,7 @@ _calculate_balanced_lft(Topology_t *topop, Node_t *switchp)
 						if (!sm_valid_port(portp) || portp->state <= IB_PORT_DOWN) continue;
 
 						i = 0;
+						ioffset = 0;
 						for_all_port_lids(portp, currentLid) {
 							// Handle the case where switchp == toSwitchp.
 							// In this case, the target LID(s) are directly
@@ -972,21 +1181,23 @@ _calculate_balanced_lft(Topology_t *topop, Node_t *switchp)
 							incr_lids_routed(topop, switchp, switchp->lft[currentLid]);
 
 							// Disperse lmc lids to different upstream switches
-							if (isUp && (switchp->uplinkTrunkCnt > 1) && switchp->trunkGrouped) {
-								// Uplink trunk group is "grouped" ports:
-								// that is, port 1-4 to same switch, 5-8 next switch, etc.
+							if (isUp && (switchp->uplinkTrunkCnt > 1)) {
 								i += switchp->uplinkTrunkCnt;
-								if ((i % numPorts) == 0) {
-									// add one so we don't use the same port
+								if (((i-ioffset) % numPorts) == 0) {
+									// When we have assigned an lmc lid to each trunk
+									// and loop back to the first one, increment the
+									// port index of the trunk so we don't use
+									// the same port.
 									i++;
+									ioffset++;
 								}
 							} else {
-								// If uplink trunk group, it has staggered ports:
-								// that is, ports 1,5,9,13 to same switch, ports 2,6,10,14
-								// to next switch, etc.
 								i++;
 							}
 						}
+						if (!numPorts)
+							continue;
+
 						pi++;
 						if (isUp) {
 							upDestCount += 1;
@@ -1022,7 +1233,7 @@ static Status_t
 _make_fattree(RoutingModule_t * rm)
 {
 	rm->name = "fattree";
-	rm->funcs.copy_routing = sm_routing_func_copy_routing_noop;
+	rm->funcs.copy_routing = sm_routing_func_copy_balanced_lfts_deltas;
 	rm->funcs.can_send_partial_routes = sm_routing_func_can_send_partial_routes_true;
 	rm->funcs.init_switch_routing = _init_switch_lfts;
 	rm->funcs.calculate_routes = _calculate_balanced_lft;

@@ -156,8 +156,13 @@ hypercube_setup_xft(Topology_t *topop, Node_t *switchp, Node_t *nodep, Port_t *o
 	uint8_t numLids;
 	int lidsRoutedInc;
 	int offset=0;
-	SwitchportToNextGuid_t *ordered_ports = (SwitchportToNextGuid_t *)topop->pad;
 	int end_port = 0;
+#ifdef __VXWORKS__
+	SwitchportToNextGuid_t *ordered_ports = (SwitchportToNextGuid_t *)topop->pad;
+	memset(ordered_ports, 0, sizeof(SwitchportToNextGuid_t) * switchp->nodeInfo.NumPorts);
+#else
+        SwitchportToNextGuid_t ordered_ports[MAX_STL_PORTS] = {{0}};
+#endif /* __VXWORKS__ */
 
 	IB_ENTER(__func__, switchp, nodep, orig_portp, 0);
 
@@ -204,7 +209,6 @@ hypercube_setup_xft(Topology_t *topop, Node_t *switchp, Node_t *nodep, Port_t *o
 //	the ports which go to node[nodeno].
 //
 	if (orig_portp->portData->lmc == 0) {
-		memset(ordered_ports, 0, sizeof(SwitchportToNextGuid_t));
 
 		// select best port, hypercube_select_ports will return 1 or 0 (no path)
 		if ((end_port = hypercube_select_ports(topop, switchp, j, ordered_ports, 1)) == 0) {
@@ -224,7 +228,6 @@ hypercube_setup_xft(Topology_t *topop, Node_t *switchp, Node_t *nodep, Port_t *o
 		}
 
 	} else { // lmc > 0
-		memset(ordered_ports, 0, sizeof(SwitchportToNextGuid_t) * switchp->nodeInfo.NumPorts);
 
 		end_port = hypercube_select_ports(topop, switchp, j, ordered_ports, 0);
 		if (!end_port) {
@@ -301,7 +304,7 @@ _setup_routing_ctrl(Node_t *nodep)
 		if (!strlen(routeCtrlData->switches.member)) {
 			defaultData = routeCtrlData;
 		} else {
-			dgIdx = smGetDgIdx(routeCtrlData->switches.member);
+			dgIdx = routeCtrlData->switches.dg_index;
 			if (dgIdx < 0) {
 				IB_LOG_WARN_FMT(__func__, "HypercubeTopology has undefined EnhancedRoutingCtrl Switches group %s",
 											routeCtrlData->switches.member);
@@ -456,7 +459,7 @@ hypercube_post_process_discovery(Topology_t *topop, Status_t discoveryStatus, vo
 		return VSTATUS_OK;
 
 	// check for ca route last
-	dgIdx = smGetDgIdx(sm_config.hypercubeRouting.routeLast.member);
+	dgIdx = sm_config.hypercubeRouting.routeLast.dg_index;
 	if (dgIdx == -1) {
 		IB_LOG_WARN_FMT(__func__, "HypercubeTopology has undefined RouteLast Switches group %s",
 									sm_config.hypercubeRouting.routeLast.member);
@@ -834,7 +837,13 @@ static int
 hypercube_get_port_group(Topology_t *topop, Node_t *switchp, Node_t *nodep, uint8_t *portnos) {
 	int i, j;
 	int end_port = 0;
+#ifdef __VXWORKS__
 	SwitchportToNextGuid_t *ordered_ports = (SwitchportToNextGuid_t *)topop->pad;
+	memset(ordered_ports, 0, sizeof(SwitchportToNextGuid_t) * switchp->nodeInfo.NumPorts);
+#else
+	SwitchportToNextGuid_t ordered_ports[MAX_STL_PORTS] = {{0}};
+#endif /* __VXWORKS__ */
+
 
 	IB_ENTER(__func__, switchp, nodep, 0, 0);
 
@@ -852,8 +861,6 @@ hypercube_get_port_group(Topology_t *topop, Node_t *switchp, Node_t *nodep, uint
 		IB_EXIT(__func__, VSTATUS_OK);
 		return 0;
 	}
-
-	memset(ordered_ports, 0, sizeof(SwitchportToNextGuid_t) * switchp->nodeInfo.NumPorts);
 
 	end_port = topop->routingModule->funcs.select_ports(topop, switchp, j, ordered_ports, 0);
 

@@ -67,6 +67,7 @@ uint8_t		debug;					// debugging mode - default is FALSE
 uint8_t		checksum;				// checksum mode - default is FALSE
 uint8_t		embedded;				// is it called internally ?- default is FALSE
 char		config_file [PATH_MAX+1]; // location and name of the config file
+char		reconfig_file [PATH_MAX+1]; // location and name of the reconfig file
 Pool_t		startup_pool;			// a generic pool for malloc'ing memory
 #define		PROG_NAME_MAX 25
 char 		prog_name[PROG_NAME_MAX+1];
@@ -75,6 +76,7 @@ int instance = 0;
 
 // XML configuration data structure
 FMXmlCompositeConfig_t *xml_config = NULL;
+FMXmlCompositeConfig_t *xml_reconfig = NULL;
 FMXmlConfig_t *fmp;
 SMXmlConfig_t *smp;
 PMXmlConfig_t *pmp;
@@ -98,7 +100,7 @@ struct option options[]={
 void
 Usage (void)
 {
-	printf ("Usage %s [-s] [-c config_file] [-v] [-d]\n", prog_name);
+	printf ("Usage %s [-s] [-c config_file] [-v] [-d] [-r reconfig_file]\n", prog_name);
 	printf ("        or %s --help\n",prog_name);
 	printf ("\n");
 	printf ("   -c config file    (default=" FM_CONFIG_FILENAME ")\n");
@@ -107,6 +109,7 @@ Usage (void)
 	printf ("                     This option will point out inconsistencies or\n"); 
 	printf ("                     invalid settings in VF and multicast config.\n");
 	printf ("   -d                display configuration checksum information\n");
+	printf ("   -r reconfig_file  verify that reconfig_file is valid for dynamical reconfiguration\n");
 	printf ("\n");
 	printf ("Examples:\n");
 	printf ("  %s\n", prog_name);
@@ -120,7 +123,7 @@ Usage (void)
 void
 Usage_full (void)
 {
-	printf ("Usage %s [-s] [-c config_file] [-v] [-d]\n", prog_name);
+	printf ("Usage %s [-s] [-c config_file] [-v] [-d] [-r reconfig_file]\n", prog_name);
 	printf ("        or %s --help\n",prog_name);
 	printf ("\n");
 	printf ("   -c config file    (default=" FM_CONFIG_FILENAME ")\n");
@@ -129,6 +132,7 @@ Usage_full (void)
 	printf ("                     This is option will point out inconsistencies or\n"); 
 	printf ("                     invalid settings in VF and multicast config.\n");
 	printf ("   -d                display configuration checksum information\n");
+	printf ("   -r reconfig_file  verify that reconfig_file is valid for dynamical reconfiguration\n");
 	printf ("\n");
 	printf (" %s parses and verifies the configuration file of a FM.\n", prog_name);
 	printf ("Displays debugging and status information.\n");
@@ -143,15 +147,14 @@ Usage_full (void)
 
 static void print_warn(const char *msg)
 {
-	fprintf(stdout, "FM Instance %d: WARNING: %s",instance,msg);
+	fprintf(stdout, "FM Instance %d: WARNING: %s\n",instance,msg);
 }
 
 static void print_error(const char *msg)
 {
-	fprintf(stdout, "FM Instance %d: ERROR: %s",instance,msg);
+	fprintf(stdout, "FM Instance %d: ERROR: %s\n",instance,msg);
 }
 
- 
 int
 main (int argc, char *argv []) {
 	int		c;		// used to parse the command line
@@ -165,6 +168,7 @@ main (int argc, char *argv []) {
 	checksum    = FALSE;
 	embedded    = FALSE;
 	strncpy (config_file, FM_CONFIG_FILENAME, PATH_MAX);
+	strncpy (reconfig_file, "", PATH_MAX);
 	strncpy (tmp, argv[0], PATH_MAX);
 	tmp[PATH_MAX] = 0;
 	ptr = strrchr(tmp, '/');
@@ -172,16 +176,16 @@ main (int argc, char *argv []) {
 	prog_name[PROG_NAME_MAX]=0;
 	
 	VirtualFabrics_t *vf_configs[MAX_INSTANCES] = { NULL };
+	VirtualFabrics_t *vf_reconfigs[MAX_INSTANCES] = { NULL };
 
-	while ((c = getopt_long (argc, argv, "c:vsde", options, &index)) != -1) {
+	while ((c = getopt_long (argc, argv, "c:vsder:", options, &index)) != -1) {
 		switch (c) {
 		case '$':
 			Usage_full ();
 			break;
 		// input config file
 		case 'c':
-			strncpy(config_file, optarg, sizeof(config_file));
-			config_file[PATH_MAX-1]=0;
+			StringCopy(config_file, optarg, sizeof(config_file));
 			break;
 		case 'v':
 			debug = TRUE;
@@ -194,6 +198,9 @@ main (int argc, char *argv []) {
 			break;
 		case 'e':
 			embedded = TRUE;
+			break;
+		case 'r':
+			StringCopy(reconfig_file, optarg, sizeof(reconfig_file));
 			break;
 		default:
 			fprintf(stderr, "invalid argument -%c\n", c);
@@ -218,7 +225,7 @@ main (int argc, char *argv []) {
 	initXmlPoolFreeCallback(&freeXmlParserMemory);
 
 	// parse the XML config file
-	xml_config = parseFmConfig(config_file, parser_flags, /* instance does not matter for startup */ 0, /* full parse */ 1, /* embedded */ embedded);
+	xml_config = parseFmConfig(config_file, parser_flags, /* instance does not matter for startup */ 0, /* full */ 1, /* preverify */ 0, /* embedded */ embedded);
 	if (!xml_config) {
 		fprintf(stdout, "Could not open or there was a parse error while reading configuration file ('%s')\n", config_file);
 		ret = 1;
@@ -226,13 +233,12 @@ main (int argc, char *argv []) {
 	}
 
 	for (instance = 0; instance < xml_config->num_instances; instance++) {
-		vf_configs[instance] = renderVirtualFabricsConfig(instance, xml_config, &xml_config->fm_instance[instance]->sm_config, NULL);
+		vf_configs[instance] = renderVirtualFabricsConfig(instance, xml_config, print_error, print_warn);
 		if (vf_configs[instance] == NULL) {
-			fprintf(stdout, "Failed to allocate virtual fabrics config for instance %d.\n",instance);
+			fprintf(stdout, "FM instance %d of configuration file ('%s) is invalid.\n",instance,config_file);
 			ret = 1;
 			goto failed;
 		}
-		ret |= !applyVirtualFabricRules(vf_configs[instance], print_error, print_warn);
 	}
 
 	if (parser_flags & IXML_PARSER_FLAG_STRICT) {
@@ -247,8 +253,37 @@ main (int argc, char *argv []) {
 	if (checksum)
 		print_checksum_information(xml_config->num_instances, vf_configs);
 
+	// parse the new XML config file, if specified
+	if (strlen(reconfig_file)) {
+		xml_reconfig = parseFmConfig(reconfig_file, parser_flags, 0, /* full */ 1, /* preverify */ 0, /* embedded */ embedded);
+		if (!xml_reconfig) {
+			fprintf(stdout, "Could not open or there was a parse error while reading configuration file ('%s')\n", reconfig_file);
+			ret = 1;
+			goto failed;
+		}
+
+		for (instance = 0; instance < xml_config->num_instances; instance++) {
+			vf_reconfigs[instance] = reRenderVirtualFabricsConfig(instance, vf_configs[instance], xml_reconfig, print_error, print_warn);
+			if (vf_reconfigs[instance] == NULL) {
+				fprintf(stdout, "Reconfiguration to file ('%s') for instance %d is invalid\n",reconfig_file,instance);
+				ret = 1;
+				goto failed;
+			}
+		}
+	}
+
 failed:
-	// if we have an XML config then release it
+	// if we have XML configs then release them
+	if (xml_reconfig != NULL) {
+		for (instance = 0; instance < xml_reconfig->num_instances; instance++) {
+			if (vf_reconfigs[instance]) {
+				releaseVirtualFabricsConfig(vf_reconfigs[instance]);
+				vf_reconfigs[instance] = NULL;
+			}
+		}
+		releaseXmlConfig(xml_reconfig, /* full */ 1);
+		xml_config = NULL;
+	}
 	if (xml_config != NULL) {
 		for (instance = 0; instance < xml_config->num_instances; instance++) {
 			if (vf_configs[instance]) {

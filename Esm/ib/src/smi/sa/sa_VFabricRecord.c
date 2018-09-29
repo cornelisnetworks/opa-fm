@@ -118,6 +118,7 @@ static Status_t
 sa_VFabric_Set(STL_VFINFO_RECORD *vfrp, VirtualFabrics_t *vfsp, VF_t *vfp, STL_SA_MAD *samad, uint64_t serviceId, IB_GID mGid)
 {
 	
+	QosConfig_t *qos = &vfsp->qos_all[vfp->qos_index];
 	STL_VFINFO_RECORD vfRecord = {0};
 	
 	IB_ENTER(__func__, vfrp, 0, 0, 0);
@@ -132,7 +133,7 @@ sa_VFabric_Set(STL_VFINFO_RECORD *vfrp, VirtualFabrics_t *vfsp, VF_t *vfp, STL_S
 		vfRecord.s1.selectFlags = STL_VFINFO_REC_SEL_PKEY_QUERY;
 	}
 
-	if (vfp->qos_enable) {
+	if (qos->qos_enable) {
 		vfRecord.s1.selectFlags |= STL_VFINFO_REC_SEL_SL_QUERY;
 	}
 
@@ -140,42 +141,42 @@ sa_VFabric_Set(STL_VFINFO_RECORD *vfrp, VirtualFabrics_t *vfsp, VF_t *vfp, STL_S
 	vfRecord.s1.mtuSpecified = vfp->max_mtu_specified;
 	vfRecord.s1.rate = vfp->max_rate_int;
 	vfRecord.s1.rateSpecified = vfp->max_rate_specified;
-	vfRecord.s1.pktLifeTimeInc = vfp->pkt_lifetime_mult;
+	vfRecord.s1.pktLifeTimeInc = qos->pkt_lifetime_mult;
 	vfRecord.s1.pktLifeSpecified = 1; 
-	vfRecord.s1.slBase = vfp->base_sl;
+	vfRecord.s1.slBase = qos->base_sl;
 
-	if (vfp->resp_sl != UNDEFINED_XML8 &&
-		vfp->resp_sl != vfp->base_sl) {
+	if (qos->resp_sl != UNDEFINED_XML8 &&
+		qos->resp_sl != qos->base_sl) {
 
-		vfRecord.slResponse = vfp->resp_sl;
+		vfRecord.slResponse = qos->resp_sl;
 		vfRecord.slResponseSpecified = 1;
 	}
 
-	if (vfp->mcast_sl != UNDEFINED_XML8 &&
-		vfp->mcast_sl != vfp->base_sl) {
+	if (qos->mcast_sl != UNDEFINED_XML8 &&
+		qos->mcast_sl != qos->base_sl) {
 
-		vfRecord.slMulticast = vfp->mcast_sl;
+		vfRecord.slMulticast = qos->mcast_sl;
 		vfRecord.slMulticastSpecified = 1;
 	}
 
 	vfRecord.bandwidthPercent = 0;
-	vfRecord.priority = vfp->priority;
+	vfRecord.priority = qos->priority;
 	vfRecord.routingSLs = 1;
-	vfRecord.preemptionRank = vfp->preempt_rank;
-	vfRecord.hoqLife = vfp->hoqlife_vf;
+	vfRecord.preemptionRank = qos->preempt_rank;
+	vfRecord.hoqLife = qos->hoqlife_qos;
 	vfRecord.optionFlags = 0;
 
 	if (vfp->security) {
 		vfRecord.optionFlags |= STL_VFINFO_REC_OPT_SECURITY;
 	}
 
-	if (vfsp->qosEnabled && vfp->qos_enable) {
+	if (vfsp->qosEnabled && qos->qos_enable) {
 		vfRecord.optionFlags |= STL_VFINFO_REC_OPT_QOS;
-		if (!vfp->priority)
-			vfRecord.bandwidthPercent = vfp->percent_bandwidth;
+		if (!qos->priority)
+			vfRecord.bandwidthPercent = qos->percent_bandwidth;
 	}
 
-	if (vfp->flowControlDisable) {
+	if (qos->flowControlDisable) {
 		vfRecord.optionFlags |= STL_VFINFO_REC_OPT_FLOW_DISABLE;
 	}
 
@@ -267,7 +268,6 @@ sa_VFabric_GetTable(Mai_t *maip, uint32_t *records)
 		VF_t *vfp = &VirtualFabrics->v_fabric_all[vf];
 
 		if (vfp->standby) continue;
-
 		if ((samad.header.mask & STL_VFINFO_REC_COMP_PKEY) && 
 			(PKEY_VALUE(vfp->pkey) != PKEY_VALUE(vFabricRecord.pKey))) continue;
 
@@ -281,7 +281,7 @@ sa_VFabric_GetTable(Mai_t *maip, uint32_t *records)
 
 		// Component field only for slBase, not slResponse or slMulticast
 		if (samad.header.mask & STL_VFINFO_REC_COMP_SL &&
-			vfp->base_sl != vFabricRecord.s1.slBase) continue;
+			VirtualFabrics->qos_all[vfp->qos_index].base_sl != vFabricRecord.s1.slBase) continue;
 
 		if (samad.header.mask & STL_VFINFO_REC_COMP_SERVICEID) {
 			if (VSTATUS_OK != smVFValidateVfServiceId(vf, vFabricRecord.ServiceID) ) continue;

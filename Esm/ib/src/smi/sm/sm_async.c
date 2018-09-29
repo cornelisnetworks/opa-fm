@@ -160,12 +160,11 @@ async_main(uint32_t argc, uint8_t ** argv) {
 	Filter_t	filter;
 	Mai_t		mad;
     uint64_t	lastTimeAged=0, timeout=0;
-    uint64_t    lastTimeDiscoveryRequested=0;
     uint32_t    index = 99;
     IBhandle_t  handles[2];
 	int			lastState;
     uint64_t    lastTimePortChecked=0;
-	uint8_t		path[64], localPortFailure=0;
+	uint8_t		localPortFailure=0;
 	STL_PORT_INFO	portInfo;
 
 	IB_ENTER(__func__, 0, 0, 0, 0);
@@ -493,8 +492,10 @@ async_main(uint32_t argc, uint8_t ** argv) {
 		/* First time we come here, we will always check port state as lastTimePortChecked will be 0*/
 		if ((sm_state == SM_STATE_MASTER) && !smFabricDiscoveryNeeded && !isSweeping && 
 			((now - lastTimePortChecked) > (VTIMER_1S * 2))) {
+			uint8 path[64];
 			memset((void *)path, 0, 64);
-			status = SM_Get_PortInfo(fd_sminfo, 1<<24, path, &portInfo);
+			SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+			status = SM_Get_PortInfo(fd_sminfo, 1<<24, &addr, &portInfo);
 			if (status != VSTATUS_OK) {
 				IB_LOG_ERRORRC("can't get SM port PortInfo rc:", status);
 			} else {
@@ -520,9 +521,6 @@ async_main(uint32_t argc, uint8_t ** argv) {
 					setResweepReason(SM_SWEEP_REASON_LOCAL_PORT_FAIL);
 				}
                 topology_wakeup_time = now;
-                /* clear the indicators */
-                lastTimeDiscoveryRequested = 0;
-                smFabricDiscoveryNeeded = 0;
             }
         }
 
@@ -597,7 +595,7 @@ int sm_send_xml_file(uint8_t activate) {
 
 	syncFile->version = DBSYNC_FILE_TRANSPORT_VERSION;
 	syncFile->length = sizeof(SMDBSyncFile_t);
-	cs_strlcpy(syncFile->name, "opafm.xml", SMDBSYNCFILE_NAME_LEN);
+	StringCopy(syncFile->name, "opafm.xml", SMDBSYNCFILE_NAME_LEN);
 	syncFile->type = DBSYNC_FILE_XML_CONFIG;
 	syncFile->activate = activate;
 
@@ -807,7 +805,7 @@ char* sm_getMibPKeyDescription(char* vfName) {
 	VirtualFabrics_t* VirtualFabrics = old_topology.vfs_ptr;
 	VF_t* vf = findVfPointer(VirtualFabrics, vfName);
 	if (vf == NULL)
-		cs_strlcpy(pkey_description, "Default PKey", sizeof(pkey_description));
+		StringCopy(pkey_description, "Default PKey", sizeof(pkey_description));
 	else 
 		sprintf(pkey_description, "Virtual Fabric - %s", vf->name);
 	return pkey_description;

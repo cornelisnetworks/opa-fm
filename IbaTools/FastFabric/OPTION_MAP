@@ -7,6 +7,7 @@ List of command line options used in various Fast Fabric tools
 -a 'sguid ..;dguid..'   query by a list of port guids
 -b			Take a baseline without a health check
 -b date_time	begin time for performance stats interval query
+-b {b | b,c | ,c}   output a block of data with range of count
 -c			clobber previous result files before run
 -c			copy files before run (opaverifyhosts)
 -c			focus select value
@@ -52,7 +53,7 @@ List of command line options used in various Fast Fabric tools
 -m marker		marker for end of cmd output in opacmdall
 -m gid			query by multicast gid
 -m port			port in destination device to query
--n numprocs		number of processes per node for cabletests, number of hosts 
+-n numprocs		number of processes per node for cabletests, number of hosts
    			       for opacheckload
 -n guid			query by node guid
 -n image_number		64 bit image number
@@ -108,7 +109,7 @@ List of command line options used in various Fast Fabric tools
 -A 'sgid ...;dgid ...'  query by list of gids
 -B 'sguid ...;dguid ...' query by list of port guids
 -C			perform operation on chassis (default is hosts)
--C			clear error counters, clear performance counters 
+-C			clear error counters, clear performance counters
 -D point		Destination for trace route
 -D detail		detail level for opacapture
 -E 			ESM FE
@@ -124,7 +125,6 @@ List of command line options used in various Fast Fabric tools
 -I install_opts		install options for server install
 -I fm_bootstate		fmconfig and fmcontrol install options
 -K			do not clean temporary files
--K mkey			SM M-Key (used in selected commands)
 -L 			limit operation to specified focus
 -L opaswitches		node list file for inband operations on switches (or OPASWITCHES_FILE)
 -L lid			set PortInfo.LID = lid (opaportconfig)
@@ -148,7 +148,7 @@ List of command line options used in various Fast Fabric tools
 -P file			Read command parameters from command file (opaxml)
 -P packages		packages to load for server or chassis upgrade
 -R			configure remote hosts only (skips localhost in opasetupssh)
--R			skip "running/ssh" test 
+-R			skip "running/ssh" test
 -R			do not attempt to get routes (opadisablehosts, opagenswitches)
 -R path			filesystem path to search (oparchive)
 -Q 			skip "quarantine" test (opafindgood)

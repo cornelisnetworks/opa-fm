@@ -42,7 +42,6 @@
 my @oftools_prereq = (
                     "glibc",
                     "libgcc",
-                    "libibmad",
                     "libibumad",
                     "libibverbs",
                     "libstdc++",
@@ -59,7 +58,6 @@ my @fastfabric_prereq = (
                     "expect",
                     "glibc",
                     "libgcc",
-                    "libibmad",
                     "libibumad",
                     "libibverbs",
                     "libstdc++",
@@ -71,8 +69,6 @@ my @fastfabric_prereq = (
                     "rdma-core",
                     "tcl",
                     "zlib",
-		    "qperf",
-                    "perftest",
 );
 $comp_prereq_hash{'fastfabric_prereq'} = \@fastfabric_prereq;
 

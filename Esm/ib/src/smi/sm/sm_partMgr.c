@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2018, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -160,7 +160,7 @@ sm_revise_vf_memberships(PortData_t *portData, STL_PKEY_ELEMENT *pkeyTable, unsi
 		if (VirtualFabrics->v_fabric_all[vf].standby) continue;
 
 		if (bitset_test(&portData->vfMember, vf)) {
-			const uint16_t current_pkey = PKEY_VALUE(vf_config.vf[vf]->pkey);
+			const uint16_t current_pkey = PKEY_VALUE(VirtualFabrics->v_fabric_all[vf].pkey);
 			boolean removed = TRUE;
 
 			for (i = 0; i < pkeyCnt; ++i) {
@@ -199,10 +199,12 @@ sm_revise_vf_memberships(PortData_t *portData, STL_PKEY_ELEMENT *pkeyTable, unsi
 static inline void
 VfMapped(bitset_t *list, VirtualFabrics_t *VirtualFabrics, int vfIdx, uint16_t *vlHighLimit, uint8_t *enforcePkey)
 {
-	if (enforcePkey && VirtualFabrics->v_fabric_all[vfIdx].security)
+	VF_t *vf = &VirtualFabrics->v_fabric_all[vfIdx];
+	QosConfig_t *qos = &VirtualFabrics->qos_all[vf->qos_index];
+
+	if (enforcePkey && vf->security)
 		*enforcePkey = 1;
-	if (VirtualFabrics->v_fabric_all[vfIdx].qos_enable &&
-		VirtualFabrics->v_fabric_all[vfIdx].priority) {
+	if (qos->qos_enable && qos->priority) {
 		*vlHighLimit = *vlHighLimit + 1;
 	}
 	bitset_clear(list, vfIdx);
@@ -355,26 +357,111 @@ management_pkeys:
 
 	return bitset_find_last_one(&portp->portData->pkey_idxs) + 1;
 }
+static void sm_set_delayed_pkeys_callback(cntxt_entry_t *cntxt, Status_t status, void *data, Mai_t *mad)
+{
+	Node_t *nodep = (Node_t *)data;
+	uint8_t portnum = (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH ? (mad->base.amod >> 16) & 0xFF : 1);
+	Port_t *portp = sm_get_port(nodep, portnum);
+	boolean skip = (sm_config.skipAttributeWrite & SM_SKIP_WRITE_PKEY ? 1 : 0);
 
+	if (!skip && !sm_callback_check(cntxt, status, nodep, portp, mad)) {
+		// Handle Failure
+	} else {
+		//portp->portData->delayedPkeyWrite = 0;
+	}
+}
+Status_t sm_set_delayed_pkeys(void)
+{
+	Node_t *nodep;
+	Port_t *portp, *lidportp;
+	Status_t status;
+#if defined(IB_STACK_OPENIB)
+	boolean refreshDevPort = FALSE;
+#endif
+
+	(void)vs_rdlock(&old_topology_lock);
+
+	for_all_nodes(&old_topology, nodep) {
+		lidportp = sm_get_node_end_port(nodep);
+		if (!sm_valid_port(lidportp)) continue;
+
+		for_all_ports(nodep, portp) {
+			if (!sm_valid_port(portp)) continue;
+			if (!portp->portData->delayedPkeyWrite) continue;
+
+			uint8_t numPkeys = bitset_find_last_one(&portp->portData->pkey_idxs) + 1;
+			uint8_t numBlocks = (numPkeys + (NUM_PKEY_ELEMENTS_BLOCK - 1)) / NUM_PKEY_ELEMENTS_BLOCK;
+
+			uint32_t amod = (nodep->nodeInfo.NodeType == STL_NODE_SW ? portp->index << 16 : 0);
+			amod |= (numBlocks << 24);
+
+			SmpAddr_t addr = SMP_ADDR_CREATE_LR(sm_lid, lidportp->portData->lid);
+
+			status = SM_Set_PKeyTable_Dispatch(fd_topology, amod, &addr,
+				(STL_PARTITION_TABLE *)portp->portData->pPKey, sm_config.mkey,
+				nodep, &sm_asyncDispatch, sm_set_delayed_pkeys_callback, nodep);
+			if (status != VSTATUS_OK) {
+				IB_LOG_ERROR_FMT(__func__,
+					"Failed to Send Set PkeyTable (Additions) on port %u of node %s nodeGuid "FMT_U64": %s",
+					portp->index, sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, cs_convert_status(status));
+				break;
+			}
+
+#if defined(IB_STACK_OPENIB)
+			/* If Set(PkeyTable) was sent to local HFI, then refresh port */
+			if ((nodep->index == 0) && (portp->index == sm_config.port)) {
+				refreshDevPort = TRUE;
+			}
+#endif
+		}
+	}
+	(void)vs_rwunlock(&old_topology_lock);
+
+	status = sm_dispatch_wait(&sm_asyncDispatch);
+	if (status != VSTATUS_OK) {
+		sm_dispatch_clear(&sm_asyncDispatch);
+		IB_LOG_INFINI_INFO_FMT(__func__,
+			"Failed to wait on the dispatch queue for Client Reregistration rc: %s",
+			cs_convert_status(status));
+	}
+
+#if defined(IB_STACK_OPENIB)
+	if (refreshDevPort) {
+		IB_LOG_INFINI_INFO0("sm pkey table refresh");
+		status = ib_refresh_devport();
+		if (status != VSTATUS_OK) {
+			IB_LOG_ERRORRC("cannot refresh sm pkeys rc:", status);
+		}
+	}
+#endif
+
+	return status;
+}
 Status_t
 sm_set_portPkey(
 	Topology_t *topop, Node_t *nodep, Port_t *portp, Node_t *linkedNodep, Port_t *linkedPortp,
 	SmpAddr_t *addr, uint8_t *enforcePkey, uint16_t	*vlHighLimit)
 {
-	uint32_t    amod;
-	Status_t	status=VSTATUS_OK;
+	uint32_t   	 	amod;
+	Status_t		status=VSTATUS_OK;
+#ifdef __VXWORKS__
 	STL_PKEY_ELEMENT *otherPkey, *pkeyTable;
+#else
+	STL_PKEY_ELEMENT	otherPkey[SM_PKEYS] = {{0}};
+	STL_PKEY_ELEMENT	pkeyTable[SM_PKEYS] = {{0}};
+#endif /* __VXWORKS__ */
 	int			pkeyCap=0;
 	int			pkeyEntryCntr=0;
-	static int	pkeyExceededAlarm=0;
-	uint8_t		numBlocks=1;
-	uint8_t		pkeyWriteCnt;
+	static int		pkeyExceededAlarm=0;
+	uint8_t			numBlocks=1;
+	uint8_t			pkeyWriteCnt;
 
 	/* Set up the pkey port table */
+#ifdef __VXWORKS__
 	pkeyTable = (STL_PKEY_ELEMENT*)topop->pad;
 	otherPkey = &(((STL_PKEY_ELEMENT*)topop->pad)[SM_PKEYS]);
 	memset(topop->pad, 0, 2 * sizeof(PKey_t) * SM_PKEYS);
-
+#endif /* __VXWORKS__*/
 	*vlHighLimit = 0;
 
 	VirtualFabrics_t *VirtualFabrics = topop->vfs_ptr;
@@ -402,19 +489,28 @@ sm_set_portPkey(
 		if (linkedPortp && !portp->portData->isIsl)
 			pkeyCap = MIN(pkeyCap, linkedPortp->portData->nodePtr->nodeInfo.PartitionCap);
 
+		/* STL requires at least 2 entries for non-mgmt. HFIs and 3 for switch port 0 and mgmt. HFIs. */
+		/* It is generalizing, but we could safely say 3 is the min for all end points. */
+		if (pkeyCap < STL_MIN_PKEY_COUNT) {
+			IB_LOG_ERROR_FMT(__func__,
+					"Node %s ["FMT_U64":%d] invalid partition cap = %d",
+					sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index, pkeyCap);
+			return VSTATUS_BAD;
+		}
+
 		if (pkeyCap < pkeyEntryCntr) {
 			if (*enforcePkey) {
 				*enforcePkey = 0;
 				if (pkeyExceededAlarm++ < 20) {
 					IB_LOG_ERROR_FMT(__func__,
-           				"Switch %s ["FMT_U64":%d] partition cap = %d, pkeys configured for use = %d on remote FI port, no enforcement",
-           				sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index, pkeyCap, pkeyEntryCntr);
+						"Switch %s ["FMT_U64":%d] partition cap = %d, pkeys configured for use = %d on remote FI port, no enforcement",
+						sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index, pkeyCap, pkeyEntryCntr);
 				}
 			} else if (pkeyExceededAlarm++ < 20) {
 				IB_LOG_ERROR_FMT(__func__,
 						"Node %s ["FMT_U64":%d] partition cap = %d, pkeys configured for use = %d, truncating pkey table, "
 						"Virtual Fabric memberships may be affected!",
-           				sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index, pkeyCap, pkeyEntryCntr);
+						sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index, pkeyCap, pkeyEntryCntr);
 			}
 
 			sm_truncate_Pkeys(portp, pkeyCap, pkeyEntryCntr, pkeyTable, otherPkey);
@@ -422,8 +518,8 @@ sm_set_portPkey(
 
 		}
 		IB_LOG_DEBUG1_FMT(__func__,
-               "Node %s ["FMT_U64":%d] partition cap = %d, pkey = 0x%x", 
-               sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index, pkeyCap, otherPkey[0].AsReg16);
+			"Node %s ["FMT_U64":%d] partition cap = %d, pkey = 0x%x",
+			sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index, pkeyCap, otherPkey[0].AsReg16);
 
 		if (!portp->portData->current.pkeys)
 			return VSTATUS_BAD;
@@ -432,32 +528,92 @@ sm_set_portPkey(
 		if (nodep->nonRespCount)
 			return VSTATUS_OK;
 
-		if (sm_config.forceAttributeRewrite || nodep->nodeInfo.NodeType == NI_TYPE_SWITCH)
+		if (sm_config.forceAttributeRewrite || nodep->nodeInfo.NodeType == STL_NODE_SW)
 			pkeyWriteCnt = pkeyCap;
 		else
 			pkeyWriteCnt = bitset_find_last_one(&portp->portData->pkey_idxs) + 1;
 
 		numBlocks = (pkeyWriteCnt + NUM_PKEY_ELEMENTS_BLOCK - 1) / NUM_PKEY_ELEMENTS_BLOCK;
-		amod = (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH ? portp->index << 16 : 0) | ((0xff & numBlocks)<<24);
+		amod = (nodep->nodeInfo.NodeType == STL_NODE_SW ? portp->index << 16 : 0) | ((0xff & numBlocks)<<24);
 
 		if (memcmp((void *)portp->portData->pPKey, pkeyTable, pkeyWriteCnt * sizeof(STL_PKEY_ELEMENT)) || sm_config.forceAttributeRewrite) {
+			boolean SendUpdateNow = TRUE;
+			/* Removed Delayed PkeyWrite Bit */
+			portp->portData->delayedPkeyWrite = 0;
 			if (!portp->portData->isIsl || *enforcePkey) {
-				status = SM_Set_PKeyTable(fd_topology, amod, addr, (STL_PARTITION_TABLE*)pkeyTable, sm_config.mkey);
-				if (status != VSTATUS_OK) {
-					IB_LOG_WARN_FMT(__func__,
-						   "Failed to set Partition Table for node %s guid "FMT_U64" node index %d port index %d",
-						   sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, nodep->index, portp->index);
-					return(status);
-				}
-#if defined(IB_STACK_OPENIB)
-				if ((nodep->index == 0) && (portp->index == sm_config.port)) {
-					IB_LOG_INFINI_INFO0("sm pkey table refresh");
-					status = ib_refresh_devport();
-					if (status != VSTATUS_OK) {
-						IB_LOG_ERRORRC("cannot refresh sm pkeys rc:", status);
+				if (portp->state == IB_PORT_ACTIVE && portp->portData->current.pkeys
+				&& nodep->nodeInfo.NodeType == STL_NODE_SW) {
+					/* If SW port is active, Delay Additions to pkey table until
+					   after Release of topology */
+					int i, j, old_cnt = 0;
+					boolean isFound;
+
+					memset(pkeyTable, 0, pkeyWriteCnt * sizeof(STL_PKEY_ELEMENT));
+
+					STL_PKEY_ELEMENT *oldpkeys = portp->portData->pPKey;
+					for (i = 0; i < pkeyWriteCnt; i++) {
+						if (oldpkeys[i].AsReg16) old_cnt++;
 					}
+					for (i = 0; i < pkeyWriteCnt; i++) {
+						isFound = FALSE;
+						if (otherPkey[i].AsReg16 == 0) continue;
+
+						for (j = 0; j < pkeyWriteCnt; j++) {
+							// If Pkey Changed removed from Set and set delayed Wrtie
+							if (otherPkey[i].AsReg16 == oldpkeys[j].AsReg16) {
+								isFound = TRUE;
+								pkeyTable[j].AsReg16 = oldpkeys[j].AsReg16;
+								old_cnt--;
+								if (i != j) {
+									/* Pkey Found in Different Location, will need delayed write */
+									portp->portData->delayedPkeyWrite = 1;
+								}
+								break;
+							}
+						}
+						if (!isFound) {
+							/* Pkey Not Found in old table, will need delayed write */
+							pkeyTable[i].AsReg16 = 0;
+							portp->portData->delayedPkeyWrite = 1;
+						}
+					} // for all new pkeys
+
+					/* If there are no pkeys left in OLD, then we don not need
+					   to send pkeys now */
+					if (old_cnt <= 0) {
+						SendUpdateNow = FALSE;
+					}
+				} else if (portp->state == IB_PORT_ACTIVE) {
+					/* If port is Active, but does not fall into the above block,
+					 * then delay write of the full table and send nothing now.
+					 * HFIs should always be delayed if Active.
+					 */
+					SendUpdateNow = FALSE;
+					portp->portData->delayedPkeyWrite = 1;
 				}
+
+				if (SendUpdateNow) {
+					/* Sanity Check, Make sure at least one Default Pkey is present */
+					if (pkeyTable[STL_DEFAULT_CLIENT_PKEY_IDX].AsReg16 == 0 && pkeyTable[STL_DEFAULT_FM_PKEY_IDX].AsReg16 == 0) {
+						pkeyTable[STL_DEFAULT_CLIENT_PKEY_IDX].AsReg16 = STL_DEFAULT_CLIENT_PKEY;
+					}
+					status = SM_Set_PKeyTable(fd_topology, amod, addr, (STL_PARTITION_TABLE *)pkeyTable, sm_config.mkey);
+					if (status != VSTATUS_OK) {
+						IB_LOG_WARN_FMT(__func__,
+							   "Failed to set Partition Table for node %s guid "FMT_U64" node index %d port index %d",
+							   sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, nodep->index, portp->index);
+						return(status);
+					}
+#if defined(IB_STACK_OPENIB)
+					if ((nodep->index == 0) && (portp->index == sm_config.port)) {
+						IB_LOG_INFINI_INFO0("sm pkey table refresh");
+						status = ib_refresh_devport();
+						if (status != VSTATUS_OK) {
+							IB_LOG_ERRORRC("cannot refresh sm pkeys rc:", status);
+						}
+					}
 #endif
+				}
 				// Overwrite the SA repository PKey value, as we just reprogrammed the one on the device.
 				memcpy(portp->portData->pPKey, otherPkey, numBlocks * sizeof(STL_PARTITION_TABLE));
 			}
@@ -465,7 +621,7 @@ sm_set_portPkey(
 			// For ISLs or ports w/o PKey enforcement, leave SA repository PKey values as they are.
 			// Their value should reflect what's actually on the device from an earlier Get(), so they
 			// should be PoD PKey values for switch ports.
-	
+
 		} else {
 			IB_LOG_DEBUG1_FMT(__func__,
 				   "Node %s ["FMT_U64"] Pkey table already setup",
@@ -832,7 +988,6 @@ smGetValidatedVFs(Port_t* srcport, Port_t* dstport, uint16_t pkey, uint8_t reqSL
 
 	for (vf = 0; vf < VirtualFabrics->number_of_vfs_all && vf < MAX_VFABRICS; vf++) {
 		if (VirtualFabrics->v_fabric_all[vf].standby) continue;
-
 		if (checkServiceId) {
 			srvIdInVF = 0;
 			// Check for service ID
@@ -854,8 +1009,9 @@ smGetValidatedVFs(Port_t* srcport, Port_t* dstport, uint16_t pkey, uint8_t reqSL
 		if ((pkey != 0) && (PKEY_VALUE(pkey) != PKEY_VALUE(VirtualFabrics->v_fabric_all[vf].pkey))) continue;
 
 		// Are these the proper sls?
-		if ((reqSL < STL_MAX_SLS) && (reqSL != VirtualFabrics->v_fabric_all[vf].base_sl)) continue;
-		if ((respSL < STL_MAX_SLS) && (respSL != VirtualFabrics->v_fabric_all[vf].resp_sl)) continue;
+		uint32_t qos_idx = VirtualFabrics->v_fabric_all[vf].qos_index;
+		if ((reqSL < STL_MAX_SLS) && (reqSL != VirtualFabrics->qos_all[qos_idx].base_sl)) continue;
+		if ((respSL < STL_MAX_SLS) && (respSL != VirtualFabrics->qos_all[qos_idx].resp_sl)) continue;
 
 		if (sm_config.enforceVFPathRecs) {
 			// One is full?
@@ -882,8 +1038,6 @@ smGetValidatedVFs(Port_t* srcport, Port_t* dstport, uint16_t pkey, uint8_t reqSL
 			if (tstport == 0) continue; // Case where neither port is a full member of this VF
 
 			uint16_t tstpkey = VirtualFabrics->v_fabric_all[vf].pkey;
-			uint8_t tstSL = VirtualFabrics->v_fabric_all[vf].base_sl;
-			uint8_t tstrspSL = VirtualFabrics->v_fabric_all[vf].resp_sl;
 
 			for (vf2 = 0; vf2 < VirtualFabrics->number_of_vfs_all && vf2 < MAX_VFABRICS; vf2++) {
 				if (VirtualFabrics->v_fabric_all[vf2].standby) continue;
@@ -903,12 +1057,11 @@ smGetValidatedVFs(Port_t* srcport, Port_t* dstport, uint16_t pkey, uint8_t reqSL
 				}
 
 				// To have a path between VFs, the VFs must share the same PKEY and Base SL
-				// (AND Response SL if either VF requires Response SLs). Only need to check
-				// base SL b/c rules for SL sharing requires consistent pairing among VFs
+				// (AND Response SL if either VF requires Response SLs).
+				// Only need to check base SL b/c rules for SL sharing requires consistent pairing among VFs
 				if (PKEY_VALUE(tstpkey) != PKEY_VALUE(VirtualFabrics->v_fabric_all[vf2].pkey)) continue;
-				if (tstSL != VirtualFabrics->v_fabric_all[vf2].base_sl) continue;
-				if ((VirtualFabrics->v_fabric_all[vf].requires_resp_sl || VirtualFabrics->v_fabric_all[vf2].requires_resp_sl) &&
-					tstrspSL != VirtualFabrics->v_fabric_all[vf2].resp_sl) continue;
+				uint32_t qos_idx2 = VirtualFabrics->v_fabric_all[vf2].qos_index;
+				if (qos_idx != qos_idx2) continue;
 
 				if (bitset_test(&tstport->portData->vfMember, vf2)) {
 					bitset_set(vfs, vf2);
@@ -976,7 +1129,6 @@ smVFValidateVfMGid(VirtualFabrics_t *VirtualFabrics, int vf, uint64_t mGid[2])
 		return VSTATUS_BAD;
 
 	for (vf2 = 0; vf2 < VirtualFabrics->number_of_vfs_all && vf2 < MAX_VFABRICS; vf2++) {
-		if (VirtualFabrics->v_fabric_all[vf2].standby) continue;
 		if (smCheckMGid(&VirtualFabrics->v_fabric_all[vf2], mGid))
 			// mgid found in another VF
 			return VSTATUS_BAD;
@@ -1059,7 +1211,7 @@ smVFValidateMcGrpCreateParams(Port_t * joiner, Port_t * requestor,
 		cl_map_item_t   *it;
 		VF_t *vfp = &VirtualFabrics->v_fabric_all[vf];
 
-		if (vfp->standby) continue;
+		if (VirtualFabrics->v_fabric_all[vf].standby) continue;
 
 		// Continue if virtual fabric parameters don't match those in the mcMemberRecord.
 		mgidInVF = 0;
@@ -1092,8 +1244,10 @@ smVFValidateMcGrpCreateParams(Port_t * joiner, Port_t * requestor,
 			continue;
 		}
 
-		if ((vfp->mcast_sl != UNDEFINED_XML8 && mcMemberRec->SL != vfp->mcast_sl) ||
-			(vfp->mcast_sl == UNDEFINED_XML8 && mcMemberRec->SL != vfp->base_sl))
+		if ((VirtualFabrics->qos_all[vfp->qos_index].mcast_sl != UNDEFINED_XML8 &&
+				mcMemberRec->SL != VirtualFabrics->qos_all[vfp->qos_index].mcast_sl) ||
+			(VirtualFabrics->qos_all[vfp->qos_index].mcast_sl == UNDEFINED_XML8 &&
+					mcMemberRec->SL != VirtualFabrics->qos_all[vfp->qos_index].base_sl))
 			continue;
 
 		if (vfp->security &&
@@ -1185,11 +1339,13 @@ smGetVfMaxMtu(Port_t *portp, Port_t *reqportp, STL_MCMEMBER_RECORD *mcmp, uint8_
 
 	for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
     	cl_map_item_t   *cl_map_item;
+
 		if (VirtualFabrics->v_fabric_all[vf].standby) continue;
 
+		uint32_t qos_idx = VirtualFabrics->v_fabric_all[vf].qos_index;
 		if (PKEY_VALUE(mcmp->P_Key) != PKEY_VALUE(VirtualFabrics->v_fabric_all[vf].pkey)) continue;
-		if (!((mcmp->SL == VirtualFabrics->v_fabric_all[vf].base_sl) ||
-			(mcmp->SL == VirtualFabrics->v_fabric_all[vf].resp_sl))) continue;
+		if (!((mcmp->SL == VirtualFabrics->qos_all[qos_idx].base_sl) ||
+			(mcmp->SL == VirtualFabrics->qos_all[qos_idx].resp_sl))) continue;
 		if (!bitset_test(&portp->portData->vfMember, vf)) continue;
 		if (!bitset_test(&reqportp->portData->vfMember, vf)) continue;
 
@@ -1230,9 +1386,7 @@ smGetVfMaxMtu(Port_t *portp, Port_t *reqportp, STL_MCMEMBER_RECORD *mcmp, uint8_
 }
 
 void
-smProcessVFNodeMembers(Node_t *nodep, int vfIdx, char* memberName, uint8_t isFullMember) {
-
-	int dgIdx = smGetDgIdx(memberName);
+smProcessVFNodeMembers(Node_t *nodep, int vfIdx, int qosIdx, int dgIdx, char* memberName, uint8_t isFullMember) {
 
 	if (dgIdx != -1) {
 
@@ -1251,6 +1405,7 @@ smProcessVFNodeMembers(Node_t *nodep, int vfIdx, char* memberName, uint8_t isFul
 					//if dgMember, then set vfMember
 					nodeHasMembers = TRUE;
 					bitset_set(&portDataPtr->vfMember, vfIdx);
+					bitset_set(&portDataPtr->qosMember, qosIdx);
 
 					if (isFullMember) {
 						bitset_set(&portDataPtr->fullPKeyMember, vfIdx);
@@ -1269,16 +1424,15 @@ smProcessVFNodeMembers(Node_t *nodep, int vfIdx, char* memberName, uint8_t isFul
 void
 smSetupNodeVFs(Node_t *nodep) {
 
+	VF_t *vfp;
 	int	vf;
-	VFConfig_t* vfp;
 	VirtualFabrics_t *VirtualFabrics = sm_topop->vfs_ptr;
 
 	if (!VirtualFabrics) return;
 
 	for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
 		if (VirtualFabrics->v_fabric_all[vf].standby) continue;
-		// VfConfig index is the same as v_fabric_all
-		vfp = vf_config.vf[vf];
+		vfp = &VirtualFabrics->v_fabric_all[vf];
 
 		//loop on all DG members that are included and set vfMember based on already acquired knowledge
 
@@ -1287,7 +1441,8 @@ smSetupNodeVFs(Node_t *nodep) {
 		int arrayIdx;
 		for (arrayIdx=0; arrayIdx<vfp->number_of_full_members; arrayIdx++) {
 			isFullMember = 1;
-			smProcessVFNodeMembers(nodep, vf, vfp->full_member[arrayIdx].member, isFullMember);
+			smProcessVFNodeMembers(nodep, vf, vfp->qos_index, vfp->full_member[arrayIdx].dg_index,
+				vfp->full_member[arrayIdx].member, isFullMember);
 		}
 
 		//process all limited members
@@ -1301,7 +1456,8 @@ smSetupNodeVFs(Node_t *nodep) {
 				isFullMember = 0;
 			}
 
-			smProcessVFNodeMembers(nodep, vf, vfp->limited_member[arrayIdx].member, isFullMember);
+			smProcessVFNodeMembers(nodep, vf, vfp->qos_index, vfp->limited_member[arrayIdx].dg_index,
+				vfp->limited_member[arrayIdx].member, isFullMember);
 		}
 
 
@@ -1312,9 +1468,10 @@ smSetupNodeVFs(Node_t *nodep) {
 boolean
 smEvaluateNodeDG(Node_t* nodep, int dgIdxToEvaluate, PortRangeInfo_t* portInfo) {
 
+	DGXmlConfig_t *dg_config = &sm_topop->vfs_ptr->dg_config;
 	boolean isDgMember = FALSE;
 
-	DGConfig_t* dgp = dg_config.dg[dgIdxToEvaluate];
+	DGConfig_t* dgp = dg_config->dg[dgIdxToEvaluate];
 
 	//check "Select" definition section
 	if (dgp->select_all) {
@@ -1387,7 +1544,7 @@ smEvaluateNodeDG(Node_t* nodep, int dgIdxToEvaluate, PortRangeInfo_t* portInfo) 
 
 									//Make a copy of the node name, which we will manipulate to extract the number out of using the regmatch_t struct fields
 									char nodeName[strlen(sm_nodeDescString(nodep)) + 1];
-									cs_strlcpy(nodeName, sm_nodeDescString(nodep), sizeof(nodeName));
+									StringCopy(nodeName, sm_nodeDescString(nodep), sizeof(nodeName));
 									nodeName[regExprPtr->groupArray[bracketGroupNum].rm_eo] = 0;
 
 									//Get the number to evalute by incrementing the node name to the position of the number
@@ -1446,12 +1603,13 @@ smEvaluateNodeDG(Node_t* nodep, int dgIdxToEvaluate, PortRangeInfo_t* portInfo) 
 boolean
 smEvaluatePortDG(Node_t* nodep, Port_t* portp, int dgIdxToEvaluate, bitset_t* dgMemberForPort, bitset_t* dgsEvaluated) {
 
+	DGXmlConfig_t *dg_config = &sm_topop->vfs_ptr->dg_config;
 	boolean isDgMember = FALSE;
 
 	//Has dgIdxToEvaluate already been processed?
 	if (!bitset_test(dgsEvaluated, dgIdxToEvaluate)) {
 
-		DGConfig_t* dgp = dg_config.dg[dgIdxToEvaluate];
+		DGConfig_t* dgp = dg_config->dg[dgIdxToEvaluate];
 
 		//check select AllSWE0
 		if (portp->index == 0) {
@@ -1515,10 +1673,10 @@ smEvaluatePortDG(Node_t* nodep, Port_t* portp, int dgIdxToEvaluate, bitset_t* dg
 				while (group != NULL) {
 
 					//find dgIdxToEvaluate for group->name
-					int includedDgIdx = smGetDgIdx(group->group);
+					int includedDgIdx = group->dg_index;
 
 					//skip evaluating this group if we can't find a valid dgIdxToEvaluate
-					if ( (includedDgIdx != -1) && (includedDgIdx < dg_config.number_of_dgs) ) {
+					if ( (includedDgIdx != -1) && (includedDgIdx < dg_config->number_of_dgs) ) {
 
 						//check if we have already evaluated this includedDgIdx
 
@@ -1566,8 +1724,9 @@ smEvaluatePortDG(Node_t* nodep, Port_t* portp, int dgIdxToEvaluate, bitset_t* dg
 void
 smSetupNodeDGs(Node_t *nodep) {
 
+	DGXmlConfig_t *dg_config = &sm_topop->vfs_ptr->dg_config;
 	int dgIdx;
-	int numGroups = dg_config.number_of_dgs;
+	int numGroups = dg_config->number_of_dgs;
 	Node_t* oldnp = NULL;
 	int reuseDGs = 0;
 
@@ -1591,6 +1750,7 @@ smSetupNodeDGs(Node_t *nodep) {
 		// the exsting bitset.
 		oldnp = sm_find_guid(&old_topology, nodep->nodeInfo.NodeGUID);
 		if (oldnp &&
+			(old_topology.vfs_ptr == sm_topop->vfs_ptr) &&
 			(strncmp((const char *)oldnp->nodeDesc.NodeString,
 			(const char *)nodep->nodeDesc.NodeString,
 			sizeof(nodep->nodeDesc.NodeString))==0)) {
@@ -1667,8 +1827,6 @@ smSetupNodeDGs(Node_t *nodep) {
 			oldpp = sm_get_port(oldnp, portp->index);
 			if (sm_valid_port(oldpp)) {
 				bitset_copy(&portp->portData->dgMember, &oldpp->portData->dgMember);
-				memcpy(portp->portData->dgMemberList, oldpp->portData->dgMemberList,
-					sizeof(portp->portData->dgMemberList[0])*MAX_DEVGROUPS);
 				// Skip further evaluation.
 				continue;
 			}
@@ -1680,49 +1838,34 @@ smSetupNodeDGs(Node_t *nodep) {
 		bitset_t dgsEvaluated;
 		bitset_init(&sm_pool, &dgsEvaluated, numGroups);
 
-		bool_t isMember = FALSE;
-
-		int numMemberships = 0;
-
-		PortData_t *portDataPtr = portp->portData;
-
-		// Fill in default value for the dgMember array
-		// Nota Bene: This works because DEFAULT_DEVGROUP_ID is 0xffff.
-		memset(portDataPtr->dgMemberList,0xff, sizeof(portDataPtr->dgMemberList[0])*MAX_DEVGROUPS);
-
 		// loop on all device groups to determine which groups this port is a member of.
 		for (dgIdx = 0; dgIdx < numGroups; dgIdx++) {
-
+			bool_t isMember = FALSE;
+			// Check if Node is a Member
 			if (bitset_test(&nodep->dgMembership, dgIdx)) {
-
+				// If port range was specified, check if evaluated port is within range
 				if (numValidPortMatches[dgIdx] > 0) {
 					//loop on each defined port range
 					int portIdx;
 					for (portIdx = 0; portIdx < numValidPortMatches[dgIdx]; portIdx++) {
 						//verify port index is within the range defined
 						if ( (portp->index >= dgPortRanges[dgIdx][portIdx][0]) && (portp->index <= dgPortRanges[dgIdx][portIdx][1]) ) {
-							bitset_set(&portp->portData->dgMember, dgIdx);
+							isMember = TRUE;
 							bitset_set(&dgsEvaluated, dgIdx);
 						}
 					}
 				} else {
-					bitset_set(&portp->portData->dgMember, dgIdx);
+					// If port was not specified, assume all ports on node
+					isMember = TRUE;
 					bitset_set(&dgsEvaluated, dgIdx);
 				}
 			}
-
-			isMember = smEvaluatePortDG(nodep, portp, dgIdx, &portp->portData->dgMember, &dgsEvaluated);
+			// if port did not inherit membership from node, then evaluate port level details
+			if (!isMember)
+				isMember = smEvaluatePortDG(nodep, portp, dgIdx, &portp->portData->dgMember, &dgsEvaluated);
 
 			if (isMember) {
 				bitset_set(&portp->portData->dgMember, dgIdx);
-				// Update dgMember array
-				if (numMemberships < MAX_DEVGROUPS) {
-					portDataPtr->dgMemberList[numMemberships] = dgIdx;
-					numMemberships++;
-				} else {
-					IB_LOG_WARN_FMT(__func__, "Node %s not added to device group %s - Max members exceeeded",
-						sm_nodeDescString(nodep), dg_config.dg[dgIdx]->name);
-				}
 			}
 		}
 		bitset_free(&dgsEvaluated);
@@ -1730,15 +1873,14 @@ smSetupNodeDGs(Node_t *nodep) {
 }
 
 void smLogVFs() {
-	int					vf;
+	int					vf, qos;
 	VFAppSid_t*			sidp;
 	VFAppMgid_t*		mgidp;
 	VFDg_t*				mcastGrpp;
 	Node_t*				nodep;
 	Port_t*				portp;
 	int 				i;
-	char*				vfp;
-	cl_qmap_t			*cl_map;
+	char				*vfp, *qosp;
 	cl_map_item_t 		*cl_map_item;
 	VirtualFabrics_t *VirtualFabrics = sm_topop->vfs_ptr;
 
@@ -1747,8 +1889,32 @@ void smLogVFs() {
 		return;
 	}
 
-	IB_LOG_INFINI_INFO_FMT(__func__, "Number of VFs %d (securityEnabled= %d. qosEnabled= %d)",
-			VirtualFabrics->number_of_vfs_all, VirtualFabrics->securityEnabled, VirtualFabrics->qosEnabled);
+	IB_LOG_INFINI_INFO_FMT(__func__, "Number of QOS groups %d",
+			VirtualFabrics->number_of_qos_all);
+
+	for (qos=0; qos < VirtualFabrics->number_of_qos_all; qos++) {
+		qosp = VirtualFabrics->qos_all[qos].name;
+
+		IB_LOG_INFINI_INFO_FMT_VF( qosp, "smLogVFs", "Index= %d, qos_enable= %d, private= %d",
+				qos, VirtualFabrics->qos_all[qos].qos_enable,
+				VirtualFabrics->qos_all[qos].private_group);
+		IB_LOG_INFINI_INFO_FMT_VF( qosp, "smLogVFs", "base_sl= %d, resp_sl= %d, mcast_sl= %d",
+				VirtualFabrics->qos_all[qos].base_sl,
+				VirtualFabrics->qos_all[qos].resp_sl,
+				VirtualFabrics->qos_all[qos].mcast_sl);
+		IB_LOG_INFINI_INFO_FMT_VF( qosp, "smLogVFs", "flowControlDisable= %d, percent_bandwidth= %d",
+				VirtualFabrics->qos_all[qos].flowControlDisable,
+				VirtualFabrics->qos_all[qos].percent_bandwidth);
+		IB_LOG_INFINI_INFO_FMT_VF( qosp, "smLogVFs", "priority= %d, preempt_rank= %d",
+				VirtualFabrics->qos_all[qos].priority,
+				VirtualFabrics->qos_all[qos].preempt_rank);
+		IB_LOG_INFINI_INFO_FMT_VF( qosp, "smLogVFs", "pkt_lifetime_mult= %d, hoqlife= %d",
+				VirtualFabrics->qos_all[qos].pkt_lifetime_mult,
+				VirtualFabrics->qos_all[qos].hoqlife_qos);
+	}
+
+	IB_LOG_INFINI_INFO_FMT(__func__, "Number of VFs %d",
+			VirtualFabrics->number_of_vfs_all);
 
 	for (vf=0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
 		vfp = VirtualFabrics->v_fabric_all[vf].name;
@@ -1756,15 +1922,10 @@ void smLogVFs() {
 				VirtualFabrics->v_fabric_all[vf].index, VirtualFabrics->v_fabric_all[vf].pkey,
 				VirtualFabrics->v_fabric_all[vf].security, VirtualFabrics->v_fabric_all[vf].standby);
 
-		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "VF max_mtu_int= %d  max_rate_int= %d  pkt_lifetime_inc= %d ",
+		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "VF max_mtu_int= %d  max_rate_int= %d  QOS Index= %d ",
 				VirtualFabrics->v_fabric_all[vf].max_mtu_int, VirtualFabrics->v_fabric_all[vf].max_rate_int,
-				VirtualFabrics->v_fabric_all[vf].pkt_lifetime_mult);
+				VirtualFabrics->v_fabric_all[vf].qos_index);
 		
-		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "bandwidthPercent= %d  priority= %d",
-				VirtualFabrics->v_fabric_all[vf].percent_bandwidth, VirtualFabrics->v_fabric_all[vf].priority);
-		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "preemptionRank= %d  hoqLife= %d",
-				VirtualFabrics->v_fabric_all[vf].preempt_rank, VirtualFabrics->v_fabric_all[vf].hoqlife_vf);
-
 		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "VF APPs:");
 
 		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tselect_sa= %d, select_unmatched_sid= %d, select_unmatched_mgid= %d, select_pm= %d",
@@ -1789,66 +1950,15 @@ void smLogVFs() {
 		}
 
 		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "VF Full Members:");
-		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tselect_all=%d, select_self= %d, select_swe0=%d, select_hfi_direct_connect=%d",
-				VirtualFabrics->v_fabric_all[vf].full_members.select_all, VirtualFabrics->v_fabric_all[vf].full_members.select_self,
-				VirtualFabrics->v_fabric_all[vf].full_members.select_swe0,
-				VirtualFabrics->v_fabric_all[vf].full_members.select_hfi_direct_connect);
-		IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tnode_type_fi=%d, node_type_sw= %d,",
-				VirtualFabrics->v_fabric_all[vf].full_members.node_type_fi, VirtualFabrics->v_fabric_all[vf].full_members.node_type_sw);
-
-		cl_map = &VirtualFabrics->v_fabric_all[vf].full_members.sysGuidMap;
-		for (cl_map_item = cl_qmap_head(cl_map); cl_map_item != cl_qmap_end(cl_map); cl_map_item = cl_qmap_next(cl_map_item)) {
-			IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tsysGuid=  "FMT_U64"", cl_map_item->key);
+		for (i = 0; i < VirtualFabrics->v_fabric_all[vf].number_of_full_members; i++) {
+			IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tDeviceGroup: %s\n",VirtualFabrics->v_fabric_all[vf].full_member[i].member);
 		}
-		cl_map = &VirtualFabrics->v_fabric_all[vf].full_members.nodeGuidMap;
-		for (cl_map_item = cl_qmap_head(cl_map); cl_map_item != cl_qmap_end(cl_map); cl_map_item = cl_qmap_next(cl_map_item)) {
-			IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tnodeGuid=  "FMT_U64"", cl_map_item->key);
-		}
-		cl_map = &VirtualFabrics->v_fabric_all[vf].full_members.portGuidMap;
-		for (cl_map_item = cl_qmap_head(cl_map); cl_map_item != cl_qmap_end(cl_map); cl_map_item = cl_qmap_next(cl_map_item)) {
-			IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tportGuid=  "FMT_U64"", cl_map_item->key);
-		}
-		cl_map = &VirtualFabrics->v_fabric_all[vf].full_members.nodeDescMap;
-		for (cl_map_item = cl_qmap_head(cl_map); cl_map_item != cl_qmap_end(cl_map); cl_map_item = cl_qmap_next(cl_map_item)) {
-			IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tnodeDescription= %s", XML_QMAP_CHAR_CAST cl_map_item->key);
-		}
-
-/*
-		for (nodeDescrp=VirtualFabrics->v_fabric_all[vf].full_members.node_descr; nodeDescrp; nodeDescrp=nodeDescrp->next_node_description) {
-			IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tnodeDescription= %s", nodeDescrp->node_description);
-		}
-*/
 
 		if (VirtualFabrics->v_fabric_all[vf].security) {	
 			IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "VF Limited Members:");
-			IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tselect_all= %d, select_self= %d, select_swe0= %d, select_hfi_direct_connect=%d",
-				VirtualFabrics->v_fabric_all[vf].limited_members.select_all, VirtualFabrics->v_fabric_all[vf].limited_members.select_self,
-				VirtualFabrics->v_fabric_all[vf].limited_members.select_swe0, 
-				VirtualFabrics->v_fabric_all[vf].limited_members.select_hfi_direct_connect);
-
-			IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tnode_type_fi= %d, node_type_sw= %d",
-				VirtualFabrics->v_fabric_all[vf].limited_members.node_type_fi, VirtualFabrics->v_fabric_all[vf].limited_members.node_type_sw);
-			cl_map = &VirtualFabrics->v_fabric_all[vf].limited_members.sysGuidMap;
-			for (cl_map_item = cl_qmap_head(cl_map); cl_map_item != cl_qmap_end(cl_map); cl_map_item = cl_qmap_next(cl_map_item)) {
-				IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tsysGuid=  "FMT_U64"", cl_map_item->key);
+			for (i = 0; i < VirtualFabrics->v_fabric_all[vf].number_of_limited_members; i++) {
+				IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tDeviceGroup: %s\n",VirtualFabrics->v_fabric_all[vf].limited_member[i].member);
 			}
-			cl_map = &VirtualFabrics->v_fabric_all[vf].limited_members.nodeGuidMap;
-			for (cl_map_item = cl_qmap_head(cl_map); cl_map_item != cl_qmap_end(cl_map); cl_map_item = cl_qmap_next(cl_map_item)) {
-				IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tnodeGuid=  "FMT_U64"", cl_map_item->key);
-			}
-			cl_map = &VirtualFabrics->v_fabric_all[vf].limited_members.portGuidMap;
-			for (cl_map_item = cl_qmap_head(cl_map); cl_map_item != cl_qmap_end(cl_map); cl_map_item = cl_qmap_next(cl_map_item)) {
-				IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tportGuid=  "FMT_U64"", cl_map_item->key);
-			}
-			cl_map = &VirtualFabrics->v_fabric_all[vf].limited_members.nodeDescMap;
-			for (cl_map_item = cl_qmap_head(cl_map); cl_map_item != cl_qmap_end(cl_map); cl_map_item = cl_qmap_next(cl_map_item)) {
-				IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tnodeDescription= %s", XML_QMAP_CHAR_CAST cl_map_item->key);
-			}
-/*
-			for (nodeDescrp=VirtualFabrics->v_fabric_all[vf].limited_members.node_descr; nodeDescrp; nodeDescrp=nodeDescrp->next_node_description) {
-				IB_LOG_INFINI_INFO_FMT_VF( vfp, "smLogVFs", "\tnodeDescription= %s", nodeDescrp->node_description);
-			}
-*/
 		}
 		for (mcastGrpp = VirtualFabrics->v_fabric_all[vf].default_group; mcastGrpp; 
 			 mcastGrpp = mcastGrpp->next_default_group) {

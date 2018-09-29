@@ -70,6 +70,7 @@ extern uint32_t            saDebugRmpp;  // control SA RMPP INFO debug messages;
 extern IBhandle_t fdsa, fd_pm, pm_fd, dbsyncfd_if3;
 extern Pool_t fe_pool, pm_pool;
 
+extern size_t g_smPoolSize;
 
 /*
  *	Simulator definitions.
@@ -465,7 +466,7 @@ void bufferLargeSmDiagOutputs(fm_config_interation_data_t *iterationData) {
         iterationData->offset += FM_CONFIG_INTERMEDIATE_SIZE;
         return;
     }
-    cs_strlcpy(iterationData->intermediateBuffer, location, FM_CONFIG_INTERMEDIATE_BUFF);
+    StringCopy(iterationData->intermediateBuffer, location, FM_CONFIG_INTERMEDIATE_BUFF);
     iterationData->intermediateLength = strlen(location);
     iterationData->more = 0;
     iterationData->done = 1;

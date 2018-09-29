@@ -1,7 +1,7 @@
 #!/bin/bash
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015-2017, Intel Corporation
+# Copyright (c) 2015-2018, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -81,7 +81,7 @@ CheckPreReqs()
 	e=0;
 	i=0;
 	while [ $i -lt ${#PREREQ[@]} ]; do
-		rpm -q ${PREREQ[$i]} >/dev/null
+		rpm -qa | grep ${PREREQ[$i]} >/dev/null
 		if [ $? -ne 0 ]; then
 			if [ $e -eq 0 ]; then
 				 echo
@@ -198,13 +198,15 @@ iflag=n	# undocumented option, build in context of install
 Qflag=n
 Oflag=n
 Cflag=n
-while getopts "idQOC" o
+Vflag=n # undocumented option, build verbs only transport
+while getopts "idQOCV" o
 do
 	case "$o" in
 	i) iflag=y;;
 	Q) Qflag=y;;
 	O) Oflag=y;;
 	C) Cflag=y;;
+	V) Vflag=y;;
 	d) skip_prompt=y;;
 	*) Usage;;
 	esac
@@ -213,6 +215,12 @@ shift $((OPTIND -1))
 if [ $# -gt 2 ]
 then
 	Usage
+fi
+
+if [[  "$Vflag" == "y"  &&  \
+	( "$Qflag" == "y" || "$Oflag" == "y" || "$Cflag" == "y"  ) ]]; then
+	echo "ERROR: Option -V cannot be used with any other" >&2
+	exit 1
 fi
 
 if [ "$(/usr/bin/id -u)" != 0 ]
@@ -231,7 +239,7 @@ then
 fi
 
 echo
-echo "OFA OpenMPI MPI Library/Tools rebuild"
+echo "IFS OpenMPI MPI Library/Tools rebuild"
 
 if [ x"$1" != x"" ]
 then
@@ -282,87 +290,94 @@ then
 	export MPICH_PREFIX="$1"
 fi
 
-# now get openmpi options. Note that you can't build for
-# TrueScale and Omnipath at the same time.
-if [ "$skip_prompt" != y -a "$Qflag" != y -a "$Oflag" != y  -a "$Cflag" != y ]
+# now get openmpi options.
+if [ "$Vflag" != y ]
 then
-	if rpm -qa|grep infinipath-devel >/dev/null 2>&1
+	if [ "$skip_prompt" != y -a "$Qflag" != y ]
 	then
-		echo
-		get_yes_no "Build for True Scale HCA PSM" "y"
-		if [ "$ans" = 1 ]
+		if rpm -qa|grep infinipath-psm-devel >/dev/null 2>&1
 		then
-			Qflag=y
+			echo
+			get_yes_no "Build for True Scale HCA PSM" "y"
+			if [ "$ans" = 1 ]
+			then
+				Qflag=y
+			fi
 		fi
 	fi
-fi
 
-if [ "$skip_prompt" != y -a "$Oflag" != y -a "$Qflag" != y -a "$Cflag" != y ]
-then
-	if rpm -qa|grep libpsm2 >/dev/null 2>&1
+	if [ "$skip_prompt" != y -a "$Oflag" != y ]
 	then
-		echo
-		get_yes_no "Build for Omnipath HFI PSM2 and OFI" "y"
-		if [ "$ans" = 1 ]
+		if  rpm -qa|grep libpsm2-devel >/dev/null 2>&1  &&
+		    rpm -qa|grep libfabric-devel >/dev/null 2>&1
 		then
-			Oflag=y
+			echo
+			get_yes_no "Build for Omnipath HFI PSM2 and OFI" "y"
+			if [ "$ans" = 1 ]
+			then
+				Oflag=y
+			fi
 		fi
 	fi
-fi
 
-if [ "$skip_prompt" != y -a "$Oflag" != y -a "$Qflag" != y -a "$Cflag" != y ]
-then
-	if rpm -qa|grep libpsm2 >/dev/null 2>&1
+	if [ "$skip_prompt" != y -a "$Cflag" != y ]
 	then
-		echo
-		get_yes_no "Build for Omnipath HFI PSM with Cuda" "y"
-		if [ "$ans" = 1 ]
+		if  rpm -qa|grep libpsm2-devel >/dev/null 2>&1  &&
+		    rpm -qa|grep cuda-cudart-dev >/dev/null 2>&1
 		then
-			Cflag=y
+			echo
+			get_yes_no "Build for Omnipath HFI PSM2 with Cuda" "y"
+			if [ "$ans" = 1 ]
+			then
+				Cflag=y
+			fi
 		fi
-	fi
+    fi
 fi
+# if -d (skip_prompt) the only option provided, ./configure will run with
+# no paramters and build what is auto-detected
 
-if [ "$Qflag" = y ]
-then
-	PREREQ+=('infinipath-devel')
+openmpi_conf_psm=''
 
-	openmpi_conf_psm=
-	# PSM indicated by qlc suffix so user can ID PSM vs verbs MPIs
-	openmpi_path_suffix="-qlc"
-	openmpi_rpm_suffix="_qlc"
-	interface=psm
-elif [ "$Oflag" = y ]
+if [ "$Vflag" = y ]
 then
-	PREREQ+=('libpsm2-devel')
-	if [[ -f /etc/redhat-release && ($(cat /etc/redhat-release | grep 6.7) ) ]]; then
-                openmpi_conf_psm='--with-psm=/usr --with-psm2=/usr --disable-oshmem'
-        else
-                PREREQ+=('libfabric-devel')
-                openmpi_conf_psm='--with-psm=/usr --with-psm2=/usr --disable-oshmem --with-libfabric=/usr'
-        fi
-
-	# PSM indicated by qlc suffix so user can ID PSM vs verbs MPIs
-	openmpi_path_suffix="-hfi"
-	openmpi_rpm_suffix="_hfi"
-	interface=psm
-elif [ "$Cflag" = y ]
-then
-	PREREQ+=('libpsm2-devel' 'cuda')
-	
-	openmpi_conf_psm='--with-psm=/usr --with-psm2=/usr --disable-oshmem --with-cuda=/usr/local/cuda'
-	# PSM indicated by qlc suffix so user can ID PSM vs verbs MPIs
-	openmpi_path_suffix="-cuda-hfi"
-	openmpi_rpm_suffix="_cuda_hfi"
-	interface=psm
-else
 	# The openmpi configure script complains about enable-mca-no-build
 	# not being a supported option, but then actually executes it correctly.
 	#openmpi_conf_psm='--enable-mca-no-build=mtl-psm'
-	openmpi_conf_psm='--with-psm=no --with-psm2=no --enable-mca-no-build=mtl-psm --disable-oshmem'
+	openmpi_conf_psm='--with-psm=no --with-psm2=no --with-libfabric=no --enable-mca-no-build=mtl-psm '
 	openmpi_path_suffix=
 	openmpi_rpm_suffix=
 	interface=verbs
+else
+	if [ "$Qflag" = y ]
+	then
+		PREREQ+=('infinipath-psm-devel')
+		openmpi_conf_psm='--with-psm=/usr '
+		# PSM indicated by qlc suffix so user can ID PSM vs verbs or PSM2 MPIs
+		openmpi_path_suffix="-qlc"
+		openmpi_rpm_suffix="_qlc"
+		interface=psm
+	fi
+
+	if [ "$Oflag" = y ]
+	then
+		PREREQ+=('libpsm2-devel' 'libfabric-devel')
+		openmpi_conf_psm=" $openmpi_conf_psm --with-psm2=/usr --with-libfabric=/usr "
+		# PSM2 indicated by hfi suffix so user can ID from PSM or verbs MPIs
+		openmpi_path_suffix="-hfi"
+		openmpi_rpm_suffix="_hfi"
+		interface=psm
+	fi
+
+	if [ "$Cflag" = y ]
+	then
+		PREREQ+=('libpsm2-devel' 'cuda-cudart-dev')
+		openmpi_conf_psm=" $openmpi_conf_psm --with-psm2=/usr --with-cuda=/usr/local/cuda "
+		# CUDA indicated by -cuda suffix so user can ID  from PSM2 without cuda, PSM or verbs MPIs
+		openmpi_path_suffix="-cuda-hfi"
+		openmpi_rpm_suffix="_cuda_hfi"
+		interface=psm
+	fi
 fi
 
 CheckPreReqs
@@ -475,20 +490,12 @@ logfile=make.openmpi.$interface.$compiler
 		openmpi_comp_env=""
 	fi
 
-	# determine is it is required to build with MPI C++ bindings based on user input
-	if [[ "$CONFIG_OPTIONS" =~ .*disable-mpi-cxx*. ]]
-	then
-		enable_cxx_bindings=""
-	else
-		enable_cxx_bindings="--enable-mpi-cxx"
-	fi
-
 	case "$compiler" in
 	gcc)
 		openmpi_comp_env="$openmpi_comp_env CC=gcc CFLAGS=-O3"
 		if have_comp g++
 		then
-			openmpi_comp_env="$openmpi_comp_env CXX=g++ $enable_cxx_bindings"
+			openmpi_comp_env="$openmpi_comp_env CXX=g++"
 		else
 			openmpi_comp_env="$openmpi_comp_env --disable-mpi-cxx"
 		fi
@@ -507,7 +514,7 @@ logfile=make.openmpi.$interface.$compiler
 		disable_auto_requires="--define 'disable_auto_requires 1'"
 		if have_comp pathCC
 		then
-			openmpi_comp_env="$openmpi_comp_env CXX=pathCC $enable_cxx_bindings"
+			openmpi_comp_env="$openmpi_comp_env CXX=pathCC"
 		else
 			openmpi_comp_env="$openmpi_comp_env --disable-mpi-cxx"
 		fi
@@ -530,7 +537,7 @@ logfile=make.openmpi.$interface.$compiler
 		use_default_rpm_opt_flags=0
 		if have_comp pgCC
 		then
-			openmpi_comp_env="$openmpi_comp_env CXX=pgCC $enable_cxx_bindings"
+			openmpi_comp_env="$openmpi_comp_env CXX=pgCC"
 			# See http://www.pgroup.com/userforum/viewtopic.php?p=2371
 			openmpi_wrapper_cxx_flags="-fpic"
 		else
@@ -554,7 +561,7 @@ logfile=make.openmpi.$interface.$compiler
 		openmpi_comp_env="$openmpi_comp_env CC=icc"
 		if have_comp icpc
 		then
-			openmpi_comp_env="$openmpi_comp_env CXX=icpc $enable_cxx_bindings"
+			openmpi_comp_env="$openmpi_comp_env CXX=icpc"
 		else
 			openmpi_comp_env="$openmpi_comp_env --disable-mpi-cxx"
 		fi
@@ -619,7 +626,7 @@ logfile=make.openmpi.$interface.$compiler
 				--define '_defaultdocdir $MPICH_PREFIX' \
 				--define '_mandir %{_prefix}/share/man' \
 				--define 'mflags -j 4' \
-				--define 'configure_options $CONFIG_OPTIONS $openmpi_ldflags --with-verbs=$STACK_PREFIX --with-verbs-libdir=$STACK_PREFIX/$openmpi_lib $openmpi_comp_env $openmpi_conf_psm --with-contrib-vt-flags=--disable-iotrace --with-devel-headers' \
+				--define 'configure_options $CONFIG_OPTIONS $openmpi_ldflags --with-verbs=$STACK_PREFIX --with-verbs-libdir=$STACK_PREFIX/$openmpi_lib $openmpi_comp_env $openmpi_conf_psm --with-devel-headers --disable-oshmem' \
 				--define 'use_default_rpm_opt_flags $use_default_rpm_opt_flags' \
 				$disable_auto_requires"
 	cmd="$cmd \
@@ -715,7 +722,7 @@ egrep 'warning:' $logfile.res |sort -u |
 #egrep 'error:|Error | Stop' $logfile.res| sort -u |
 #	egrep -v 'error: this file was generated for autoconf 2.61.' > $logfile.err
 egrep 'error:|Error | Stop' $logfile.res| sort -u |
-	egrep -v 'configure: error: no BPatch.h found; check path for Dyninst package|configure: error: no papi.h found; check path for PAPI package|configure: error: no vtf3.h found; check path for VTF3 package|configure: error: MPI Correctness Checking support cannot be built inside Open MPI|configure: error: no bmi.h found; check path for BMI package first...|configure: error: no ctool/ctool.h found; check path for CTool package first...|configure: error: no cuda.h found; check path for CUDA Toolkit first...|configure: error: no cuda_runtime_api.h found; check path for CUDA Toolkit first...|configure: error: no cupti.h found; check path for CUPTI package first...|configure: error: no f2c.h found; check path for CLAPACK package first...|configure: error: no jvmti.h found; check path for JVMTI package first...|configure: error: no libcpc.h found; check path for CPC package first...|configure: error: no tau_instrumentor found; check path for PDToolkit first...|configure: error: no unimci-config found; check path for UniMCI package first...|"Error code:|"Unknown error:|strerror_r|configure: error: CUPTI API version could not be determined...' > $logfile.err
+	egrep -v 'configure: error: no BPatch.h found; check path for Dyninst package|configure: error: no vtf3.h found; check path for VTF3 package|configure: error: MPI Correctness Checking support cannot be built inside Open MPI|configure: error: no bmi.h found; check path for BMI package first...|configure: error: no ctool/ctool.h found; check path for CTool package first...|configure: error: no cuda.h found; check path for CUDA Toolkit first...|configure: error: no cuda_runtime_api.h found; check path for CUDA Toolkit first...|configure: error: no cupti.h found; check path for CUPTI package first...|configure: error: no f2c.h found; check path for CLAPACK package first...|configure: error: no jvmti.h found; check path for JVMTI package first...|configure: error: no libcpc.h found; check path for CPC package first...|configure: error: no tau_instrumentor found; check path for PDToolkit first...|configure: error: no unimci-config found; check path for UniMCI package first...|"Error code:|"Unknown error:|strerror_r|configure: error: CUPTI API version could not be determined...' > $logfile.err
 
 if [ -s $logfile.err ]
 then

@@ -257,7 +257,9 @@ void PrintStlPortInfo(PrintDest_t *dest, int indent, const STL_PORT_INFO *pPortI
 		PrintIntWithDots(dest, indent, "FlitControl.Preemption.MaxSmallPktLimit", (uint32)pPortInfo->FlitControl.Preemption.MaxSmallPktLimit);
 		PrintIntWithDots(dest, indent, "FlitControl.Preemption.PreemptionLimit", (uint32)pPortInfo->FlitControl.Preemption.PreemptionLimit);
 
-		PrintIntWithDots(dest, indent, "MaxLID", (uint32)pPortInfo->MaxLID);
+		if (pPortInfo->CapabilityMask3.s.IsMAXLIDSupported) {
+			PrintIntWithDots(dest, indent, "MaxLID", (uint32)pPortInfo->MaxLID);
+		}
 
 		PrintIntWithDots(dest, indent, "PortErrorAction.AsReg32", (uint32)pPortInfo->PortErrorAction.AsReg32);
 		PrintIntWithDots(dest, indent, "PortErrorAction.s.ExcessiveBufferOverrun", (uint32)pPortInfo->PortErrorAction.s.ExcessiveBufferOverrun);
@@ -343,8 +345,10 @@ void PrintStlPortInfo(PrintDest_t *dest, int indent, const STL_PORT_INFO *pPortI
 		PrintIntWithDots(dest, indent, "DiagCode.s.VendorDiagCode", (uint32)pPortInfo->DiagCode.s.VendorDiagCode);
 		PrintIntWithDots(dest, indent, "DiagCode.s.Chain", (uint32)pPortInfo->DiagCode.s.Chain);
 
-		PrintIntWithDots(dest, indent, "ReplayDepth.BufferDepth", (uint32)pPortInfo->ReplayDepth.BufferDepth);
-		PrintIntWithDots(dest, indent, "ReplayDepth.WireDepth", (uint32)pPortInfo->ReplayDepth.WireDepth);
+		PrintIntWithDots(dest, indent, "ReplayDepth.BufferDepth",
+			(uint32)((pPortInfo->ReplayDepthH.BufferDepthH << 8) | pPortInfo->ReplayDepth.BufferDepth));
+		PrintIntWithDots(dest, indent, "ReplayDepth.WireDepth",
+			(uint32)((pPortInfo->ReplayDepthH.WireDepthH << 8) | pPortInfo->ReplayDepth.WireDepth));
 		PrintIntWithDots(dest, indent, "PortNeighborMode.MgmtAllowed", (uint32)pPortInfo->PortNeighborMode.MgmtAllowed);
 		PrintIntWithDots(dest, indent, "PortNeighborMode.NeighborFWAuthenBypass", (uint32)pPortInfo->PortNeighborMode.NeighborFWAuthenBypass);
 		PrintIntWithDots(dest, indent, "PortNeighborMode.NeighborNodeType (0=FI,1=SW,>1=Unknown)", (uint32)pPortInfo->PortNeighborMode.NeighborNodeType);
@@ -627,7 +631,8 @@ void PrintStlPortInfo(PrintDest_t *dest, int indent, const STL_PORT_INFO *pPortI
 		// Other odds and ends?
 		PrintFunc(dest, "%*sReplayDepth Buffer 0x%02x; Wire 0x%02x\n",
 			indent, "", 
-			pPortInfo->ReplayDepth.BufferDepth, pPortInfo->ReplayDepth.WireDepth);
+			(pPortInfo->ReplayDepthH.BufferDepthH << 8) | pPortInfo->ReplayDepth.BufferDepth,
+			(pPortInfo->ReplayDepthH.WireDepthH << 8) | pPortInfo->ReplayDepth.WireDepth);
 		PrintFunc(dest, "%*sDiagCode: 0x%04x    LedEnabled: %-3s\n", indent, "", \
 			pPortInfo->DiagCode.AsReg16,
 			pPortInfo->PortStates.s.LEDEnabled? "On" : "Off");
@@ -829,6 +834,7 @@ void PrintStlSwitchInfo(PrintDest_t *dest, int indent, const STL_SWITCH_INFO *pS
         PrintIntWithDots(dest, indent, "AdaptiveRouting.s.Threshold", pSwitchInfo->AdaptiveRouting.s.Threshold);
         PrintIntWithDots(dest, indent, "CapabilityMask.AsReg16", pSwitchInfo->CapabilityMask.AsReg16);
         PrintIntWithDots(dest, indent, "CapabilityMask.s.IsAddrRangeConfigSupported", pSwitchInfo->CapabilityMask.s.IsAddrRangeConfigSupported);
+        PrintIntWithDots(dest, indent, "CapabilityMask.s.IsExtendedSCSCSupported", pSwitchInfo->CapabilityMask.s.IsExtendedSCSCSupported);
         PrintIntWithDots(dest, indent, "CapabilityMask.s.IsAdaptiveRoutingSupported", pSwitchInfo->CapabilityMask.s.IsAdaptiveRoutingSupported);
 
 #if 0
@@ -896,6 +902,10 @@ void PrintStlSwitchInfo(PrintDest_t *dest, int indent, const STL_SWITCH_INFO *pS
     				pSwitchInfo->CapabilityMask.s.IsAddrRangeConfigSupported,
                     pSwitchInfo->CapabilityMask.s.IsAdaptiveRoutingSupported);
 
+    	PrintFunc(dest, "%*sCapabilityMask: IsExtendedSCSCSupported: %u\n",
+    				indent, "", 
+                    pSwitchInfo->CapabilityMask.s.IsExtendedSCSCSupported);
+
 #if 0
         //Not Support in Gen 1.
         PrintFunc(dest, "*sCapabilityMaskCollectives: Reserved: %u\n", indent, "", pSwitchInfo->CapabilityMaskCollectives.s.Reserved);
@@ -906,6 +916,7 @@ void PrintStlSwitchInfo(PrintDest_t *dest, int indent, const STL_SWITCH_INFO *pS
 					pSwitchInfo->MultiCollectMask.CollectiveMask);
     }
 }
+
 void PrintStlCongestionInfo(PrintDest_t *dest, int indent, const STL_CONGESTION_INFO *pCongestionInfo, int printLineByLine)
 {
     if (printLineByLine) {
@@ -1031,11 +1042,10 @@ void PrintStlSwitchPortCongestionSettingSmp(PrintDest_t *dest, int indent, const
 	const uint8_t count = (smp->common.AttributeModifier>>24) & 0xff;
 	const STL_SWITCH_PORT_CONGESTION_SETTING_ELEMENT *element;
 	uint8_t i;
-
 	for (i = 0; i < count; ++i) {
 		element = &((STL_SWITCH_PORT_CONGESTION_SETTING*)stl_get_smp_data((STL_SMP*)smp))->Elements[i];
 		if (!printLineByLine)
-			PrintFunc(dest, "%*sPort %u:\n", indent, "", i);
+			PrintFunc(dest, "%*sPort %u:\n", indent, "", i + start);
 		PrintStlSwitchPortCongestionSettingElement(dest, indent + (printLineByLine ? 0 : 4), element,
 													i + start, printLineByLine);
 	}
@@ -1853,6 +1863,8 @@ void PrintStlCableInfoLowPage(PrintDest_t *dest, int indent, const uint8_t *cabl
 		}
 }
 
+#define MAX_CABLE_LENGTH_STR_LEN 8		// ~2-3 digits (poss. decimal pt) plus 'm'
+
 void PrintStlCableInfoHighPage(PrintDest_t *dest, int indent, const uint8_t *cableInfoData, uint8_t portType, uint8_t detail, int printLineByLine)
 {
 	unsigned int i;
@@ -1876,7 +1888,7 @@ void PrintStlCableInfoHighPage(PrintDest_t *dest, int indent, const uint8_t *cab
 			// Build ONELINE output line-by-line
 			strncpy(tempBuf, cableTypeInfo.cableTypeShortDesc, strlen(cableTypeInfo.cableTypeShortDesc));
 			PrintStrWithDots(dest, indent, "CableType", tempBuf);
-			StlCableInfoValidCableLengthToText(cableInfo->len_om4, cableLenValid, tempBuf);
+			StlCableInfoOM4LengthToText(cableInfo->len_om4, cableLenValid, sizeof(tempBuf), tempBuf);
 			PrintStrWithDots(dest, indent, "CableLength", tempBuf);
 			memcpy(tempBuf, cableInfo->vendor_name, sizeof(cableInfo->vendor_name));
 			tempBuf[sizeof(cableInfo->vendor_name)] = '\0';
@@ -1914,7 +1926,7 @@ void PrintStlCableInfoHighPage(PrintDest_t *dest, int indent, const uint8_t *cab
 			tempBuf[i + strlen(cableTypeInfo.cableTypeShortDesc)] = ',';
 			tempBuf[i + 1 + strlen(cableTypeInfo.cableTypeShortDesc)] = ' ';
 			i = STL_CIB_LINE1_FIELD2; 
-			StlCableInfoValidCableLengthToText(cableInfo->len_om4, cableLenValid, &tempBuf[i]);
+			StlCableInfoOM4LengthToText(cableInfo->len_om4, cableLenValid, MAX_CABLE_LENGTH_STR_LEN, &tempBuf[i]);
 			tempBuf[i + strlen(&tempBuf[i])] = ' ';
 			i = STL_CIB_LINE1_FIELD3;
 			memcpy(&tempBuf[i], cableInfo->vendor_name, sizeof(cableInfo->vendor_name));
@@ -2031,6 +2043,7 @@ void PrintStlCableInfoHighPage(PrintDest_t *dest, int indent, const uint8_t *cab
 void PrintStlCableInfoHighPage0DD(PrintDest_t *dest, int indent, const uint8_t *cableInfoData, uint8_t portType, uint8_t detail, int printLineByLine)
 {
 	unsigned int i;
+	boolean cableLenValid;			// Copper cable length valid
 	char tempBuf[129];
 	char tempStr[STL_CIB_STD_MAX_STRING + 1] = {'\0'};
 	STL_CABLE_INFO_UP0_DD* cableInfo;
@@ -2038,6 +2051,7 @@ void PrintStlCableInfoHighPage0DD(PrintDest_t *dest, int indent, const uint8_t *
 	cableInfo = (STL_CABLE_INFO_UP0_DD*)cableInfoData;
 
 	StlCableInfoDecodeCableType(cableInfo->cable_type, cableInfo->connector, cableInfo->ident, &cableTypeInfo);
+	cableLenValid = cableTypeInfo.cableLengthValid;
 
 	// Output CableInfo fields per detail level
 	switch (detail) {
@@ -2049,7 +2063,7 @@ void PrintStlCableInfoHighPage0DD(PrintDest_t *dest, int indent, const uint8_t *
 			// Build ONELINE output line-by-line
 			strncpy(tempBuf, cableTypeInfo.cableTypeShortDesc, strlen(cableTypeInfo.cableTypeShortDesc));
 			PrintStrWithDots(dest, indent, "CableType", tempBuf);
-			StlCableInfoDDCableLengthToText(cableInfo->cableLengthEnc, sizeof(tempBuf), tempBuf);
+			StlCableInfoDDCableLengthToText(cableInfo->cableLengthEnc, cableLenValid, sizeof(tempBuf), tempBuf);
 			PrintStrWithDots(dest, indent, "CableLength", tempBuf);
 			memcpy(tempBuf, cableInfo->vendor_name, sizeof(cableInfo->vendor_name));
 			tempBuf[sizeof(cableInfo->vendor_name)] = '\0';
@@ -2087,7 +2101,7 @@ void PrintStlCableInfoHighPage0DD(PrintDest_t *dest, int indent, const uint8_t *
 			tempBuf[i + strlen(cableTypeInfo.cableTypeShortDesc)] = ',';
 			tempBuf[i + 1 + strlen(cableTypeInfo.cableTypeShortDesc)] = ' ';
 			i = STL_CIB_LINE1_FIELD2; 
-			StlCableInfoDDCableLengthToText(cableInfo->cableLengthEnc, sizeof(tempBuf), tempBuf);
+			StlCableInfoDDCableLengthToText(cableInfo->cableLengthEnc, cableLenValid, sizeof(tempBuf), tempBuf);
 			tempBuf[i + strlen(&tempBuf[i])] = ' ';
 			i = STL_CIB_LINE1_FIELD3;
 			memcpy(&tempBuf[i], cableInfo->vendor_name, sizeof(cableInfo->vendor_name));

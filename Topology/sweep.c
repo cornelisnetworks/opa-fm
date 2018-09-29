@@ -851,6 +851,7 @@ FSTATUS ParseFocusPoint(EUI64 portGuid,
 				fprintf(stderr, "%s: Unable to open fabric interface.\n",
 						g_Top_cmdname);
 			} else {
+				omgt_set_timeout(omgt_port_session, fabricp->ms_timeout);
 				fstatus = ParseRoutePoint(omgt_port_session, portGuid, fabricp, 
 										  param, pPoint, pp);
 				omgt_close_port(omgt_port_session);
@@ -1171,6 +1172,7 @@ FSTATUS GetAllBCTs(EUI64 portGuid, FabricData_t *fabricp, Point *focus, int quie
 		fprintf(stderr, "%s: Unable to open fabric interface.\n",
 				g_Top_cmdname);
 	} else {
+		omgt_set_timeout(omgt_port_session, fabricp->ms_timeout);
 		if (fabricp->flags & FF_SMADIRECT) {
 			fstatus = GetAllBCTDirect(omgt_port_session, fabricp, focus, quiet);
 		} else {
@@ -1726,7 +1728,7 @@ static FSTATUS GetAllCablesSA(struct omgt_port *port,
 	status = omgt_query_sa(port, &query, &pQueryResults);
 
 	if (!pQueryResults) {
-		fprintf(stderr, "%*sSA CableInfo Record query Faile: %s\n", 0, "", iba_fstatus_msg(status));
+		fprintf(stderr, "%*sSA CableInfo Record query Failed: %s\n", 0, "", iba_fstatus_msg(status));
 		goto fail;
 	} else if (pQueryResults->Status != FSUCCESS) {
 		fprintf(stderr, "%*sSA CableInfo Record query Failed: %s MadStatus 0x%x: %s\n", 0, "",
@@ -2024,6 +2026,7 @@ FSTATUS GetAllMCGroups(EUI64 portGuid, FabricData_t *fabricp, Point *focus, int 
 	if (fstatus != FSUCCESS)
 		fprintf(stderr, "%s: Unable to open fabric interface.\n", g_Top_cmdname);
 	else  {
+		omgt_set_timeout(omgt_port_session, fabricp->ms_timeout);
 		fstatus = GetMCGroups(omgt_port_session, portGuid, fabricp, quiet, g_verbose_file);
 		omgt_close_port(omgt_port_session);
 	}
@@ -2610,7 +2613,7 @@ FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabric
 	if (status != FSUCCESS) {
 		return status;
 	}
-
+	omgt_set_timeout(g_portHandle, fabricp->ms_timeout);
 #ifdef PRODUCT_OPENIB_FF
 	if ((g_paclient_state == OMGT_SERVICE_STATE_UNKNOWN) && !(fabricp->flags & FF_PMADIRECT)){
 		g_paclient_state = omgt_pa_service_connect(g_portHandle);
@@ -3848,6 +3851,7 @@ FSTATUS GetAllPortVLInfo(EUI64 portGuid, FabricData_t *fabricp, Point *focus, in
 		fprintf(stderr, "%s: Unable to open fabric interface.\n",
 				g_Top_cmdname);
 	} else {
+		omgt_set_timeout(omgt_port_session, fabricp->ms_timeout);
 		if (fabricp->flags & FF_SMADIRECT) {
 			fstatus = GetAllPortVLInfoDirect(omgt_port_session, fabricp, focus, quiet, use_scsc);
 		} else {
@@ -4374,6 +4378,7 @@ FSTATUS GetAllFDBs(EUI64 portGuid, FabricData_t *fabricp, Point *focus, int quie
 		fprintf(stderr, "%s: Unable to open fabric interface.\n",
 				g_Top_cmdname);
 	} else {
+		omgt_set_timeout(omgt_port_session, fabricp->ms_timeout);
 		if (fabricp->flags & FF_SMADIRECT) {
 			fstatus = GetAllFDBsDirect(omgt_port_session, fabricp, focus, quiet);
 		} else {
@@ -4408,7 +4413,7 @@ FSTATUS ClearAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabr
 	if (status != FSUCCESS) {
 		return status;
 	}
-
+	omgt_set_timeout(g_portHandle, fabricp->ms_timeout);
 #ifdef PRODUCT_OPENIB_FF
 	if ((g_paclient_state == OMGT_SERVICE_STATE_UNKNOWN) && !(fabricp->flags & FF_PMADIRECT)) {
 		g_paclient_state = omgt_pa_service_connect(g_portHandle);
@@ -4557,7 +4562,7 @@ FSTATUS InitSweepVerbose(FILE *verbose_file)
 }
 
 // only FF_LIDARRAY fflag is used, others ignored
-FSTATUS Sweep(EUI64 portGuid, FabricData_t *fabricp, FabricFlags_t fflags,  SweepFlags_t flags, int quiet)
+FSTATUS Sweep(EUI64 portGuid, FabricData_t *fabricp, FabricFlags_t fflags,  SweepFlags_t flags, int quiet, int ms_timeout)
 {
 	FSTATUS fstatus;
 	struct omgt_port *omgt_port_session = NULL;
@@ -4567,14 +4572,14 @@ FSTATUS Sweep(EUI64 portGuid, FabricData_t *fabricp, FabricFlags_t fflags,  Swee
 					   	g_Top_cmdname);
 		return FERROR;
 	}
-
+	fabricp->ms_timeout = ms_timeout;
 	fstatus = omgt_open_port_by_guid(&omgt_port_session, portGuid, NULL);
 	if (fstatus != FSUCCESS) {
 		fprintf(stderr, "%s: Unable to open fabric interface.\n",
 					   	g_Top_cmdname);
 		return fstatus;
 	}
-
+	omgt_set_timeout(omgt_port_session, fabricp->ms_timeout);
 	time(&fabricp->time);
 #ifdef IB_STACK_OPENIB
 //	omgt_mad_refresh_pkey_glob();

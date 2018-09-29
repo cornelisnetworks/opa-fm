@@ -74,7 +74,7 @@ sm_mkey_check(Mai_t *maip, uint64_t *mkey) {
 	/* LR is slightly faster, so use it */
 	/* FIXME: perhaps caller can pass in mkey from their byteswapped header */
 	/* and avoid need for this call here */
-    BSWAPCOPY_STL_MKEY(STL_GET_MAI_KEY(maip), &request_mkey);
+    BSWAPCOPY_STL_MKEY(stl_mai_get_mkey(maip), &request_mkey);
     *mkey = request_mkey;
 	
     /*

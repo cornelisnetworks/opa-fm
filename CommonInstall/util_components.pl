@@ -252,15 +252,14 @@ my $WrapperComponent = "";
 # This provides more detailed information about each Component in @Components
 # since hashes are not retained in the order specified, we still need
 # @Components and @SubComponents to control install and menu order
+# Only items listed in @Components and @SubComponents are considered for install
+# As such, this may list some components which are N/A to the selected distro
 # Fields are as follows:
 #	Name => full name of component/subcomponent for prompts
 # 	DefaultInstall => default installation (State_DoNotInstall,
 # 					  State_DoNotAutoInstall or State_Install)
 #					  used only when available and ! installed
 #	SrcDir => directory name within install media for component
-#	DriverSubdir => directory within /lib/modules/$CUR_OS_VERSION/ to
-#					install driver to.  Set to "" if no drivers in component
-#					set to "." if no subdir
 # 	PreReq => other components which are prereqs of a given
 #				component/subcomponent
 #				Need space before and after each component name to
@@ -277,6 +276,29 @@ my $WrapperComponent = "";
 #			  used for hidden PreReq.  Hidden components can't HasStart
 #			  nor HasFirmware
 #	Disabled =>  components/subcomponents which are disabled from installation
+#	IsOFA =>  is an in-distro OFA component we upgrade (excludes MPI)
+#	KernelRpms => kernel rpms for given component, in dependency order
+#				These are rpms which are kernel version specific and
+#				will have kernel uname -r in rpm package name.
+#				For a given distro a separate version of each of these rpms
+#				may exist per kernel.  These are always architecture dependent
+#				Note KernelRpms are always installed before FirmwareRpms and
+#				UserRpms
+#	FirmwareRpms => firmware rpms for given component, in dependency order
+#				These are rpms which are not kernel specific.  For a given
+#				distro a single version of each of these rpms will
+#				exist per distro/arch combination.  In most cases they will
+#				be architecture independent (noarch).
+#				These are rpms which are installed in user space but
+#				ultimately end up in hardware such as HFI firmware, TMM firmware
+#				BIOS firmware, etc.
+#	UserRpms => user rpms for given component, in dependency order
+#				These are rpms which are not kernel specific.  For a given
+#				distro a single version of each of these rpms will
+#				exist per distro/arch combination.  Some of these may
+#				be architecture independent (noarch).
+#	DebugRpms => user rpms for component which should be installed as part
+#				of delta_debug component.
 #	HasStart =>  components/subcomponents which have autostart capability
 #	DefaultStart =>  should autostart default to Enable (1) or Disable (0)
 #				Not needed/ignored unless HasStart=1
@@ -289,13 +311,21 @@ my $WrapperComponent = "";
 #	StartComponents => components/subcomponents with start for this component
 #				if a component has a start script 
 #				list the component as a subcomponent of itself
+#	StartupScript => name of startup script which controls startup of this
+#				component
+#	StartupParams => list of parameter names in $OPA_CONFIG which control
+#				startup of this component (set to yes/no values)
 #	HasFirmware =>  components which need HCA firmware update after installed
 #
 # Note both Components and SubComponents are included in the list below.
 # Components require all fields be supplied
 # SubComponents only require the following fields:
 #	Name, PreReq (should reference only components), HasStart, StartPreReq,
-#	DefaultStart
+#	DefaultStart, and optionally StartupScript, StartupParams
+#	Also SubComponents only require the IsAutostart2_X, autostart_desc_X,
+#	enable_autostart2_X, disable_autostart2_X and installed_X functions.
+#	Typically installed_X for a SubComponent will simply call installed_X for
+#	the component which contains it.
 my %ComponentInfo = ();
 	# translate from startup script name to component/subcomponent name
 my %StartupComponent = ();
@@ -363,6 +393,15 @@ sub comp_has_startprereq_of($$)
 	} else {
 		return 0;
 	}
+}
+
+# package is supplied since for a few packages (such as GPU Direct specific
+# packages) we may pick a different directory based on package name
+sub comp_get_rpms_dir($$)
+{
+	my $comp = shift();
+	my $package = shift();
+	return eval "get_rpms_dir_$comp('$package')";
 }
 
 # for comp_is_available we specially handle the case of function not found
@@ -572,11 +611,13 @@ sub comp_install($$$)
 
 	# sanity check, should not get here if false
 	if (! comp_is_available($comp) ) {
+		$exit_code = 1;
 		return;
 	}
 	print_separator;
 	# this will catch failures in install of prereqs
 	if (! check_prereqs($comp)) {
+		$exit_code = 1;
 		return;
 	}
 
@@ -671,12 +712,18 @@ sub DumpComponents($)
 		return;
 	}
 	DebugPrint("\nComponents:\n");
-	foreach my $comp ( @Components ) {
+	foreach my $comp ( @Components, "mpiRest" ) {
 		DebugPrint("   $comp: '$ComponentInfo{$comp}{'Name'}' SrcDir: $ComponentInfo{$comp}{'SrcDir'}\n");
-		DebugPrint("           DefaultInstall: ".InstallStateToStr($ComponentInfo{$comp}{'DefaultInstall'})." DriverSubdir: $ComponentInfo{$comp}{'DriverSubdir'}\n");
+		DebugPrint("           DefaultInstall: ".InstallStateToStr($ComponentInfo{$comp}{'DefaultInstall'})."\n");
 		DebugPrint("           PreReq: $ComponentInfo{$comp}{'PreReq'} CoReq: $ComponentInfo{$comp}{'CoReq'}\n");
-		DebugPrint("           Hidden: $ComponentInfo{$comp}{'Hidden'} HasStart: $ComponentInfo{$comp}{'HasStart'} HasFirmware: $ComponentInfo{$comp}{'HasFirmware'}\n");
-		DebugPrint("           StartPreReq: $ComponentInfo{$comp}{'StartPreReq'} StartComponents: $ComponentInfo{$comp}{'StartComponents'}\n");
+		DebugPrint("           Hidden: $ComponentInfo{$comp}{'Hidden'} Disabled: $ComponentInfo{$comp}{'Disabled'} HasFirmware: $ComponentInfo{$comp}{'HasFirmware'} IsOFA: $ComponentInfo{$comp}{'IsOFA'}\n");
+		DebugPrint("           KernelRpms: @{ $ComponentInfo{$comp}{'KernelRpms'}}\n");
+		DebugPrint("           FirmwareRpms @{ $ComponentInfo{$comp}{'FirmwareRpms'}}\n");
+		DebugPrint("           UserRpms: @{ $ComponentInfo{$comp}{'UserRpms'}}\n");
+		DebugPrint("           DebugRpms: @{ $ComponentInfo{$comp}{'DebugRpms'}}\n");
+		DebugPrint("           HasStart: $ComponentInfo{$comp}{'HasStart'} DefaultStart: $ComponentInfo{$comp}{'DefaultStart'}\n");
+		DebugPrint("           StartPreReq: $ComponentInfo{$comp}{'StartPreReq'} StartComponents: @{ $ComponentInfo{$comp}{'StartComponents'}}\n");
+		DebugPrint("           StartupScript: $ComponentInfo{$comp}{'StartupScript'} StartupParams: @{ $ComponentInfo{$comp}{'StartupParams'}}\n");
 		if ($allow_install) {
 			my $avail = comp_is_available($comp);
 			DebugPrint("           IsAvailable: $avail");
@@ -699,6 +746,92 @@ sub DumpComponents($)
 		DebugPrint("           PreReq: $ComponentInfo{$comp}{'PreReq'} CoReq: $ComponentInfo{$comp}{'CoReq'}\n");
 		DebugPrint("           HasStart: $ComponentInfo{$comp}{'HasStart'}\n");
 		DebugPrint("           StartPreReq: $ComponentInfo{$comp}{'StartPreReq'}\n");
+		DebugPrint("           StartupScript: $ComponentInfo{$comp}{'StartupScript'} StartupParams: @{ $ComponentInfo{$comp}{'StartupParams'}}\n");
+	}
+}
+
+# output standard banner for component install
+# This function can be called within a components install_X function
+sub print_comp_install_banner($)
+{
+	my $comp = shift();
+
+	my $version=comp_media_version($comp);
+	chomp $version;
+	printf("Installing $ComponentInfo{$comp}{'Name'} $version $DBG_FREE...\n");
+	LogPrint "Installing $ComponentInfo{$comp}{'Name'} $version $DBG_FREE for $CUR_DISTRO_VENDOR $CUR_VENDOR_VER $CUR_OS_VER\n";
+}
+
+# install the given list of rpms for a component
+sub install_comp_rpm_list($$$@)
+{
+	my $comp = shift();
+	my $mode = shift();	# "user" or kernel rev or "firmware"
+	my $options = shift();	# additional rpm command options
+	my @package_list = @_;	# package names
+
+	my @rpmpath_list = ();
+
+	foreach my $package ( @package_list )
+	{
+		my $rpmsdir=comp_get_rpms_dir($comp, $package);
+		@rpmpath_list = ( @rpmpath_list, "$rpmsdir/$package" );
+	}
+	rpm_install_path_list_with_options($mode, "$options", @rpmpath_list);
+}
+
+# helper which does most of the work for installing rpms for a component
+# This function can be called within a components install_X function
+# installs KernelRpms, FirmwareRpms and UserRpms
+# caller must handle any non-RPM files
+sub install_comp_rpms($$$)
+{
+	my $comp = shift();
+	my $options = shift();	# additional rpm command options
+	my $install_list = shift();	# total that will be installed when done
+
+	if (! $user_space_only ) {
+		install_comp_rpm_list($comp, $CUR_OS_VER, "$options",
+								@{ $ComponentInfo{$comp}{'KernelRpms'}} );
+		install_comp_rpm_list($comp, "firmware", "$options",
+								@{ $ComponentInfo{$comp}{'FirmwareRpms'}} );
+	}
+	install_comp_rpm_list($comp, "user", "$options",
+								@{ $ComponentInfo{$comp}{'UserRpms'}} );
+	# DebugRpms are installed as part of 'delta_debug' component
+}
+
+# output standard banner for component uninstall
+# This function can be called within a components install_X function
+sub print_comp_uninstall_banner($)
+{
+	my $comp = shift();
+
+	NormalPrint("Uninstalling $ComponentInfo{$comp}{'Name'}...\n");
+}
+
+# helper which does most of the work for uinstalling rpms for a component
+# This function can be called within a components uninstall_X function
+# uninstalls KernelRpms, FirmwareRpms, UserRpms and DebugRpms
+# caller must handle any non-RPM files
+sub uninstall_comp_rpms($$$$$)
+{
+	my $comp = shift();
+	# the rpm command options
+	my $option = shift();
+	my $install_list = shift();
+	my $uninstalling_list = shift();
+	my $verbosity = shift();
+
+	rpm_uninstall_list2("any", "$option", $verbosity,
+					 @{ $ComponentInfo{$comp}{'DebugRpms'}});
+	rpm_uninstall_list2("any", "$option", $verbosity,
+					 @{ $ComponentInfo{$comp}{'UserRpms'}});
+	if (! $user_space_only ) {
+		rpm_uninstall_list2("any", "$option", $verbosity,
+					 @{ $ComponentInfo{$comp}{'FirmwareRpms'}});
+		rpm_uninstall_list2("any", "$option", $verbosity,
+					 @{ $ComponentInfo{$comp}{'KernelRpms'}});
 	}
 }
 
@@ -809,9 +942,9 @@ sub enable_components(@)
 
 sub install_startup($$$)
 {
-	my($srcdir) = shift();
-	my($WhichStartup) = shift();
-	my($StartupDesc) = shift();
+	my $srcdir = shift();
+	my $WhichStartup = shift();
+	my $StartupDesc = shift();
 	my $prompt;
 	my $res;
 
@@ -1427,7 +1560,7 @@ DO_INS:
 				}
 			}
 		}
-		show_autostart_menu(0, %installed);
+		show_autostart_menu(0);
 
 #		if ( $updateFirmware && ! $Skip_FirmwareUpgrade ) {
 #			update_hca_firmware;
@@ -1758,7 +1891,7 @@ sub reconfig_autostart()
 	}
 	if (! $Default_Autostart) {
 		# interactive menu, use previous value as default
-		show_autostart_menu(1, %installed);
+		show_autostart_menu(1);
 	} else {
 		if ( $Default_DisableAutostart) {
 			# build list of components/subcomponents to disable
@@ -1787,7 +1920,7 @@ sub reconfig_autostart()
 		}
 		if (! $Default_DisableAutostart && ! $Default_EnableAutostart) {
 			# use component specific default as value
-			show_autostart_menu(0, %installed);
+			show_autostart_menu(2);
 		}
 	}
 }
@@ -1795,11 +1928,12 @@ sub reconfig_autostart()
 # states:
 # $Start_Start - Enable Autostart
 # $Start_NoStart - Disable Autostart
-sub printStartState($$$)
+sub printStartState($$$$)
 {
 	my $enabled     = shift();
 	my $boldmessage = shift();
 	my $message   = shift();
+	my $state_change = shift();
 
 	if ( $enabled )
 	{
@@ -1807,7 +1941,12 @@ sub printStartState($$$)
 	} else {
 		print RED, "[Disable]", RESET;
 	}
-
+	if ( $state_change )
+	{
+		print " *";
+	} else {
+		print "  ";
+	}
 	if ("$message" ne "" && $boldmessage) {
 		print BOLD, RED "$message", RESET, "\n";
 	} else {
@@ -1841,10 +1980,9 @@ sub get_subscript($$$@)
 	}
 	return $i	# invalid entry return 1 past number of Components
 }
-sub show_autostart_menu($%)
+sub show_autostart_menu($)
 {
-	my $usePrevious = shift(); # should previous setting be used as default
-	my %selections = ( @_ );	# components to show
+	my $sel_mode = shift(); # possible values are: 1: keep previous, 0: use default, 2: enable
 
 	my $inp;
 	my @PromptAutostart = ();
@@ -1855,7 +1993,7 @@ sub show_autostart_menu($%)
 	my $i;
 	my $newenabled = 0;	# most recent state change for a comp
 	my $firstline = 0;
-	my $maxlines=14;
+	my $maxlines=13;
 
 	# figure out which to prompt for
 	# while selections may include SubComponents, we only look
@@ -1892,9 +2030,14 @@ sub show_autostart_menu($%)
 	foreach $comp ( @PromptAutostart )
 	{
 		DebugPrint("prompt for $comp\n");
-		if ($usePrevious) {
+		if ($sel_mode == 1) {
+			# keep previous
 			$enabled{$comp} = comp_IsAutostart2($comp);
+		} elsif ($sel_mode == 2) {
+			# enable
+			$enabled{$comp} = 1;
 		} else {
+			# use default
 			$enabled{$comp} = $ComponentInfo{$comp}{'DefaultStart'};
 		}
 	}
@@ -1915,16 +2058,21 @@ DO_AUTOSTART:
 		for ($i=0; $i < scalar(@PromptAutostart); $i++)
 		{
 			$comp = $PromptAutostart[$i];
+			my $state_change = 0;
+			if( comp_IsAutostart2($comp) != $enabled{$comp} )
+			{
+				$state_change = 1;
+			}
 			if ($index >= $firstline && $index < $firstline+$maxlines) {
-				printf ("%x) %-34s", $index-$firstline, comp_autostart_desc($comp));
+				printf ("%x) %-32s", $index-$firstline, comp_autostart_desc($comp));
 				printStartState($enabled{$comp},
-								$boldMessage{$comp}, $statusMessage{$comp});
+								$boldMessage{$comp}, $statusMessage{$comp}, $state_change);
 				$index++;
 			} else {
 				$index++;
 			}
 		}
-		
+		printf("\n*: new desired state\n");
 		printf ("\n");
 		if ($screens > 1 ) {
 			printf ("N) Next Screen\n");

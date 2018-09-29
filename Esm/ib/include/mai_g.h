@@ -201,6 +201,28 @@ typedef struct _Mai_t
   } Mai_t;
 
 
+static __inline uint8_t* stl_mai_get_smp_data(Mai_t *maip)
+{
+	if (maip->base.mclass == MCLASS_SM_DIRECTED_ROUTE) {
+		return ((DRStlSmp_t *)maip->data)->SMPData;
+	}
+	return ((LRStlSmp_t *)maip->data)->SMPData;
+}
+static __inline size_t stl_mai_get_smp_data_offset(Mai_t *maip)
+{
+	if (maip->base.mclass == MCLASS_SM_DIRECTED_ROUTE) {
+		return offsetof(DRStlSmp_t, SMPData);
+	}
+	return offsetof(LRStlSmp_t, SMPData);
+}
+static __inline uint64_t* stl_mai_get_mkey(Mai_t *maip)
+{
+	if (maip->base.mclass == MCLASS_SM_DIRECTED_ROUTE) {
+		return &(((DRStlSmp_t *)maip->data)->M_Key);
+	}
+	return &(((LRStlSmp_t *)maip->data)->M_Key);
+}
+
 /* Function for filter callback */
 typedef int (mai_filter_check_packet_t)(Mai_t * data);
 

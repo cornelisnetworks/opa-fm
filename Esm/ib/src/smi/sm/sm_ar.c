@@ -134,8 +134,9 @@ sm_AdaptiveRoutingSwitchUpdate(Topology_t* topop, Node_t* switchp)
 		// AMOD = NNNN NNNN PP 00 0000 0000 00AB BBBB
 		// AMOD = # blocks  00 ------------ --00 0000
 		amod = blocks<<24;
+		SmpAddr_t addr = SMP_ADDR_CREATE_LR(sm_lid, dlid);
 		
-		status = SM_Set_PortGroup(fd_topology, amod, sm_lid, dlid,
+		status = SM_Set_PortGroup(fd_topology, amod, &addr,
 			(STL_PORT_GROUP_TABLE*)switchp->pgt, blocks, sm_config.mkey);
 
 		if (status != VSTATUS_OK) {
@@ -148,7 +149,7 @@ sm_AdaptiveRoutingSwitchUpdate(Topology_t* topop, Node_t* switchp)
 			// AMOD = last blks 00 ------------ --00 001f
 			amod = ((blocks - MAX_PGT_BLOCK_NUM)<<24) | MAX_PGT_BLOCK_NUM;
 		
-			status = SM_Set_PortGroup(fd_topology, amod, sm_lid, dlid,
+			status = SM_Set_PortGroup(fd_topology, amod, &addr,
 				(STL_PORT_GROUP_TABLE*)&switchp->pgt[MAX_PGT_BLOCK_NUM*NUM_PGT_ELEMENTS_BLOCK], 
 				blocks, sm_config.mkey);
 
@@ -175,6 +176,7 @@ sm_AdaptiveRoutingSwitchUpdate(Topology_t* topop, Node_t* switchp)
 		STL_LID		currentLid;
 		uint16_t	currentSet, numBlocks;
 		uint32_t	amod;
+		SmpAddr_t	addr = SMP_ADDR_CREATE_LR(sm_lid, dlid);
 		const uint16_t  lids_per_mad = sm_config.lft_multi_block * MAX_LFT_ELEMENTS_BLOCK;
 		PORT * pgft = sm_Node_get_pgft_wr(switchp);
 		const uint32_t pgftSize = sm_Node_get_pgft_size(switchp);
@@ -200,8 +202,8 @@ sm_AdaptiveRoutingSwitchUpdate(Topology_t* topop, Node_t* switchp)
 			// AMOD = NNNN NNNN 0000 0ABB BBBB BBBB BBBB BBBB
 			// AMOD = numBlocks 0000 00[[[[[[current set]]]]]
 			amod = (numBlocks<<24) | currentSet;
-			status = SM_Set_PortGroupFwdTable(fd_topology, amod, sm_lid,
-				dlid, (STL_PORT_GROUP_FORWARDING_TABLE*)&pgft[currentLid],
+			status = SM_Set_PortGroupFwdTable(fd_topology, amod, &addr,
+				(STL_PORT_GROUP_FORWARDING_TABLE*)&pgft[currentLid],
 				numBlocks, sm_config.mkey);
 
 			if (status != VSTATUS_OK) {

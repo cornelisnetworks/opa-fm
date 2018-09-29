@@ -324,6 +324,7 @@ sa_main(void) {
 		IB_LOG_ERROR_FMT(__func__, "sa_main: can't allocate sa data");
 		return 4;
 	}
+	memset(sa_data,0,sa_data_length);
 
     //
     //	Fill in my ClassPortInfo_t and add it to the database.

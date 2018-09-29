@@ -30,6 +30,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* [ICS VERSION STRING: unknown] */
 
 #include <errno.h>
+#include <sys/time.h>
 
 #define OPAMGT_PRIVATE 1
 #include "ib_utils_openib.h"

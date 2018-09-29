@@ -140,23 +140,8 @@ static __inline uint32 StlMbpsToStaticRate(uint32 rate_mbps)
 		return IB_STATIC_RATE_80G;
 	else if (rate_mbps <= 103125)
 		return IB_STATIC_RATE_100G;
-#if !defined(PRODUCT_STL1)
-	else if (rate_mbps <= 112500)
-	    return IB_STATIC_RATE_112G;
-	else if (rate_mbps <= 120000)
-	    return IB_STATIC_RATE_120G;
-	else if (rate_mbps <= 154687)
-	    return IB_STATIC_RATE_168G;// STL_STATIC_RATE_150G
-	else if (rate_mbps <= 168750)
-	    return IB_STATIC_RATE_168G;
-	else if (rate_mbps <= 206250)
-	    return IB_STATIC_RATE_200G;
-	else
-	  return IB_STATIC_RATE_200G;
-#else
 	else
 	  return IB_STATIC_RATE_100G;
-#endif
 #if 0
 	// future
 	else if (rate_mbps <= 225000)
@@ -209,11 +194,7 @@ StlStaticRateToText(uint32 rate)
 		case IB_STATIC_RATE_200G:
 			return "200g";				// 206.25g
 		case IB_STATIC_RATE_168G:
-#if !defined(PRODUCT_STL1)
-			return "150g";				// STL_STATIC_RATE_150G;
-#else
 			return "168g";				// 168.75g
-#endif
 		case IB_STATIC_RATE_300G:
 			return "300g";				// 309.375g
 		default:
@@ -257,10 +238,6 @@ static __inline uint32 StlStaticRateToMbps(IB_STATIC_RATE rate)
 		return 77343;
 	case IB_STATIC_RATE_100G:
 		return 103125;
-#if !defined(PRODUCT_STL1)
-	case IB_STATIC_RATE_168G: // STL_STATIC_RATE_150G
-		return 154686;
-#endif
 	case IB_STATIC_RATE_200G:
 		return 206250;
 	case IB_STATIC_RATE_300G:
@@ -417,9 +394,9 @@ StlLinkWidthToText(uint16_t w, char *buf, size_t len)
 }
 
 // writes a text value for the provided link speed, or an error
-// if the specified speed is invalid. 
+// if the specified speed is unknown.
 //
-// NOTA BENE: This function will assert if the buffer is too short.  The buffer 
+// NOTA BENE: This function will assert if the buffer is too short.  The buffer
 // should be at least 16 bytes long to hold the error message.
 static __inline const char*
 StlLinkSpeedToText(uint16_t speed, char *str, size_t len)
@@ -434,24 +411,23 @@ StlLinkSpeedToText(uint16_t speed, char *str, size_t len)
 
 	str[0] = '\0';
 
-	if ((speed & (STL_LINK_SPEED_12_5G|STL_LINK_SPEED_25G))
-	  != speed) {
-		i = snprintf(str, len, "Invalid(0x%04X)", speed);
+	if (speed & STL_LINK_SPEED_12_5G) {
+		PRINT_OR_OUT(str, len, "12.5Gb,");
+		speed = speed ^ STL_LINK_SPEED_12_5G;
+	}
+	if (speed & STL_LINK_SPEED_25G) {
+		PRINT_OR_OUT(str, len, "25Gb,");
+		speed = speed ^ STL_LINK_SPEED_25G;
+	}
+	if (speed) {
+		i = snprintf(str+n, len-n, "Unk(0x%04X),", speed);
 		if (i >= len-n) {
 			DEBUG_ASSERT(0 == "IbPrint: ERROR buffer length short\n");
 			goto out;
 		}
-		// short-circuit, don't print the rest
-		goto out;
 		n+=i;
 	}
-
-	if (speed & STL_LINK_SPEED_12_5G)
-		PRINT_OR_OUT(str, len, "12.5Gb,");
-	if (speed & STL_LINK_SPEED_25G)
-		PRINT_OR_OUT(str, len, "25Gb,");
-    str[n-1] = 0; // Eliminate trailing comma
-
+	str[n-1] = 0; // Eliminate trailing comma
 out:
 	return (str);
 }
@@ -683,14 +659,13 @@ StlRoutingModeToText(uint8 rmode)
 static __inline const char*
 StlVLSchedulingConfigToText(STL_CAPABILITY_MASK3 cmask)
 {
-#if !defined(PRODUCT_STL1)
+	// Note, this will change output for existing users when mode == VLArb
 	if (cmask.AsReg16) {
 		if (cmask.s.VLSchedulingConfig == STL_VL_SCHED_MODE_VLARB)
 			return "VLArb";
 		else if (cmask.s.VLSchedulingConfig == STL_VL_SCHED_MODE_AUTOMATIC)
 			return "Automatic";
 	}
-#endif
 	return "";
 }
 
@@ -709,21 +684,20 @@ void FormatStlPortPacketFormat(char *buf, uint16_t packetFormat, int buflen)
 static __inline
 const char *FormatStlVLSchedulingMode(uint8_t mode)
 {
-	static const char *modes[] = {"VLARB ", "", "Auto "};
-
-	if (mode == 0 || mode == 2) {
-		return modes[mode];
-	} else {
-		return "";
+	switch (mode) {
+		case VL_SCHED_MODE_VLARB:
+			return "VLARB ";
+		case VL_SCHED_MODE_AUTOMATIC:
+			return "Auto ";
 	}
+
+	return "";
 }
 
 static __inline
 void FormatStlCapabilityMask3(char *buf, STL_CAPABILITY_MASK3 cmask, int buflen)
 {
-	buf[0] = '-';
 	if (cmask.AsReg16) {
-#if !defined(PRODUCT_STL1)
 		snprintf(buf, buflen, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
 			"",
 			"",
@@ -740,18 +714,11 @@ void FormatStlCapabilityMask3(char *buf, STL_CAPABILITY_MASK3 cmask, int buflen)
 			cmask.s.IsSharedGroupSpaceSupported?"SG ":"",
 			cmask.s.IsVLMarkerSupported?"VLM ":"",
 			cmask.s.IsVLrSupported?"VLr":"");
-#else
-		snprintf(buf, buflen, "%s%s%s%s%s%s%s",
-			cmask.s.IsSnoopSupported?"SN ":"",
-			cmask.s.IsAsyncSC2VLSupported?"aSC2VL ":"",
-			cmask.s.IsAddrRangeConfigSupported?"ARC ":"",
-			cmask.s.IsPassThroughSupported?"PT ":"",
-			cmask.s.IsSharedSpaceSupported?"SS ":"",
-			cmask.s.IsVLMarkerSupported?"VLM ":"",
-			cmask.s.IsVLrSupported?"VLr ":"");
-#endif
+		buf[buflen-1] = '\0';
 	}
-	buf[buflen-1] = '\0';
+	else {
+		StringCopy(buf,"-",buflen);
+	}
 }
 
 
@@ -1198,20 +1165,7 @@ void StlCableInfoCableLengthToText(uint8_t code_smf, uint8_t code_om1, uint8_t c
 #endif
 
 static __inline
-void StlCableInfoValidCableLengthToText(uint8_t code_len, uint8_t code_valid, char *text_out)
-{
-	if (! text_out)
-		return;
-	if (code_valid)
-		sprintf(text_out, "%um", code_len);
-	else
-		strcpy(text_out, "");
-	return;
-
-}	// End of StlCableInfoValidCableLengthToText()
-
-static __inline
-void StlCableInfoDDCableLengthToText(uint8_t code_len, int max_chars, char *text_out)
+void StlCableInfoDDCableLengthToText(uint8_t code_len, uint8_t code_valid, int max_chars, char *text_out)
 {
 	float computedLen;
 	uint8_t baseLen;
@@ -1221,31 +1175,37 @@ void StlCableInfoDDCableLengthToText(uint8_t code_len, int max_chars, char *text
 	int loopLim;
 	int i;
 
-	// code_len is 8-bits:
-	//   Bits 7-6 are exponent for multiplier for base length as a power of 10 (after subtracting 1)
-	//   Bits 5-0 are base length
 
-	baseLen = code_len & 0x3f;
-	exponent = (code_len >> 6) - 1;
+	if (code_valid) {
 
-	if (exponent < 0) {
-		factor = 0.1;
-		loopLim = -1 * exponent;
+		// code_len is 8-bits:
+		//   Bits 7-6 are exponent for multiplier for base length as a power of 10 (after subtracting 1)
+		//   Bits 5-0 are base length
+
+		baseLen = code_len & 0x3f;
+		exponent = (code_len >> 6) - 1;
+
+		if (exponent < 0) {
+			factor = 0.1;
+			loopLim = -1 * exponent;
+		} else {
+			factor = 10;
+			loopLim = exponent;
+		}
+		for (i = 0; i < loopLim; i++)
+			multiplier *= factor;
+
+		computedLen = multiplier * baseLen;
+
+		// if len <= 6.3, only display one decimal place
+		// otherwise display length as whole number
+		if (computedLen <= 6.3)
+			snprintf(text_out, max_chars, "%.1fm", computedLen);
+		else
+			snprintf(text_out, max_chars, "%dm", (uint32_t)computedLen);
 	} else {
-		factor = 10;
-		loopLim = exponent;
+		strcpy(text_out, "");
 	}
-	for (i = 0; i < loopLim; i++)
-		multiplier *= factor;
-
-	computedLen = multiplier * baseLen;
-
-	// if len <= 6.3, only display one decimal place
-	// otherwise display length as whole number
-	if (computedLen <= 6.3)
-		snprintf(text_out, max_chars, "%.1fm", computedLen);
-	else
-		snprintf(text_out, max_chars, "%dm", (uint32_t)computedLen);
 
 	return;
 

@@ -640,7 +640,7 @@ sub prompt_conf_param($$$$;$)
 		$env_value=0;
 	}
         # some configuation parameter are configured directly, some are by RPM. for RPM we will setup env variable.
-        if ( $OPA_INSTALL_ENV == "OPA_SRPHA_ENABLE" || $OPA_INSTALL_ENV == "OPA_RENICE_IB_MAD" || $OPA_INSTALL_ENV == "OPA_SET_IPOIB_CM" ) {
+        if ( $OPA_INSTALL_ENV eq "OPA_SRPHA_ENABLE" || $OPA_INSTALL_ENV eq "OPA_RENICE_IB_MAD" || $OPA_INSTALL_ENV eq "OPA_SET_IPOIB_CM" ) {
             change_conf_param($parameter, $value, $conf);
         } else {
             # setup env variable, RPM installation will configure these

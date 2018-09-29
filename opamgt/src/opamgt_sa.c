@@ -1105,8 +1105,13 @@ static FSTATUS omgt_query_sa_internal(struct omgt_port *port, OMGT_QUERY *pQuery
 			IB_CLASS_PORT_INFO_RESULTS *pCPIR;
 			IB_CLASS_PORT_INFO *pCPI;
 
-			if (pQuery->InputType != InputTypeNoInput)
-				break;
+			if (pQuery->InputType != InputTypeNoInput) {
+				OMGT_OUTPUT_ERROR(port, "Query not supported by opamgt: Input=%s, Output=%s\n",
+						iba_sd_query_input_type_msg(pQuery->InputType),
+						iba_sd_query_result_type_msg(pQuery->OutputType));
+
+				fstatus = FINVALID_PARAMETER; goto done;
+			}
 
 			MAD_SET_VERSION_INFO(&mad, IB_BASE_VERSION, MCLASS_SUBN_ADM, 
 								 IB_SUBN_ADM_CLASS_VERSION);
@@ -1131,8 +1136,13 @@ static FSTATUS omgt_query_sa_internal(struct omgt_port *port, OMGT_QUERY *pQuery
 			STL_CLASS_PORT_INFO_RESULT *pCPIR;
 			STL_CLASS_PORT_INFO *pCPI;
 
-			if (pQuery->InputType != InputTypeNoInput)
-				break;
+			if (pQuery->InputType != InputTypeNoInput) {
+				OMGT_OUTPUT_ERROR(port, "Query not supported by opamgt: Input=%s, Output=%s\n",
+						iba_sd_query_input_type_msg(pQuery->InputType),
+						iba_sd_query_result_type_msg(pQuery->OutputType));
+
+				fstatus = FINVALID_PARAMETER; goto done;
+			}
 
 			MAD_SET_ATTRIB_ID(&mad, STL_SA_ATTR_CLASS_PORT_INFO);
 			MAD_SET_METHOD_TYPE(&mad, SUBN_ADM_GET);
@@ -2306,18 +2316,23 @@ static FSTATUS omgt_query_sa_internal(struct omgt_port *port, OMGT_QUERY *pQuery
 			STL_FABRICINFO_RECORD_RESULT *pFIR;
 			STL_FABRICINFO_RECORD *pFI;
 
-			if (pQuery->InputType != InputTypeNoInput)
-				break;
+			if (pQuery->InputType != InputTypeNoInput) {
+				OMGT_OUTPUT_ERROR(port, "Query not supported by opamgt: Input=%s, Output=%s\n",
+						iba_sd_query_input_type_msg(pQuery->InputType),
+						iba_sd_query_result_type_msg(pQuery->OutputType));
+
+				fstatus = FINVALID_PARAMETER; goto done;
+			}
 
 			MAD_SET_ATTRIB_ID(&mad, STL_SA_ATTR_FABRICINFO_RECORD);
 			MAD_SET_METHOD_TYPE(&mad, SUBN_ADM_GET);
-			
+
 			fstatus = sa_query_common(&mad, &pRsp, sizeof(STL_FABRICINFO_RECORD), &pQR, port);
 			if (fstatus != FSUCCESS) break;
 
 			pFIR = (STL_FABRICINFO_RECORD_RESULT*)pQR->QueryResult;
 			pFI = &pFIR->FabricInfoRecord;
-			
+
 			// There should only be one FabricInfoRecord result.
 			if (pFIR->NumFabricInfoRecords > 0) {
 				*pFI = *((STL_FABRICINFO_RECORD*)(GET_RESULT_OFFSET(pRsp, 0)));

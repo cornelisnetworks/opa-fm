@@ -105,6 +105,7 @@ vs_pool_create (Pool_t * handle, uint32_t options,
     }
   (void) memset (handle, 0, sizeof (Pool_t));
 
+#if USE_POOL_LOCK
   rc = vs_lock_init (&handle->lock, VLOCK_LOCKED, VLOCK_THREAD);
   if (rc != VSTATUS_OK)
     {
@@ -112,11 +113,14 @@ vs_pool_create (Pool_t * handle, uint32_t options,
       IB_EXIT (function, VSTATUS_NOMEM);
       return VSTATUS_NOMEM;
     }
+#endif /* USE_POOL_LOCK */
 
   if (name == 0)
     {
+#if USE_POOL_LOCK
       (void) vs_unlock (&handle->lock);
       (void) vs_lock_delete (&handle->lock);
+#endif /* USE_POOL_LOCK */
       IB_LOG_ERROR0 ("name is null");
       IB_EXIT (function, VSTATUS_ILLPARM);
       return VSTATUS_ILLPARM;
@@ -133,8 +137,10 @@ vs_pool_create (Pool_t * handle, uint32_t options,
 
   if (namesize >= sizeof (handle->name))
     {
+#if USE_POOL_LOCK
       (void) vs_unlock (&handle->lock);
       (void) vs_lock_delete (&handle->lock);
+#endif /* USE_POOL_LOCK */
       IB_LOG_ERROR0 ("name doesn't contain a terminator");
       IB_EXIT (function, VSTATUS_ILLPARM);
       return VSTATUS_ILLPARM;
@@ -142,8 +148,10 @@ vs_pool_create (Pool_t * handle, uint32_t options,
 
   if ((options & ~valid_options) != (uint32_t) 0x00U)
     {
+#if USE_POOL_LOCK
       (void) vs_unlock (&handle->lock);
       (void) vs_lock_delete (&handle->lock);
+#endif /* USE_POOL_LOCK */
       IB_LOG_ERROR ("Invalid options specified: ", options);
       IB_EXIT (function, VSTATUS_ILLPARM);
       return VSTATUS_ILLPARM;
@@ -152,8 +160,10 @@ vs_pool_create (Pool_t * handle, uint32_t options,
 
   if (size == (size_t) 0x00U)
     {
+#if USE_POOL_LOCK
       (void) vs_unlock (&handle->lock);
       (void) vs_lock_delete (&handle->lock);
+#endif /* USE_POOL_LOCK */
       IB_LOG_ERROR0 ("Pool size is zero");
       IB_EXIT (function, VSTATUS_ILLPARM);
       return VSTATUS_ILLPARM;
@@ -164,8 +174,10 @@ vs_pool_create (Pool_t * handle, uint32_t options,
 
   if (size > (size_t) 0xFFFFFFF0U)
     {
+#if USE_POOL_LOCK
       (void) vs_unlock (&handle->lock);
       (void) vs_lock_delete (&handle->lock);
+#endif /* USE_POOL_LOCK */
       IB_LOG_ERROR ("Pool size is too big: high:", (uint32_t) (size));
       IB_LOG_ERROR ("Pool size is too big: low:", (uint32_t) (size));
       IB_EXIT (function, VSTATUS_ILLPARM);
@@ -179,8 +191,10 @@ vs_pool_create (Pool_t * handle, uint32_t options,
     {
       if (size < handle->pagesize)
 	{
+#if USE_POOL_LOCK
 	  (void) vs_unlock (&handle->lock);
 	  (void) vs_lock_delete (&handle->lock);
+#endif /* USE_POOL_LOCK */
 	  IB_LOG_ERROR ("size is less than pagesize:", size);
 	  IB_EXIT (function, VSTATUS_NOMEM);
 	  return VSTATUS_NOMEM;
@@ -191,12 +205,16 @@ vs_pool_create (Pool_t * handle, uint32_t options,
   if (rc == VSTATUS_OK)
     {
       handle->magic = VSPOOL_MAGIC;
+#if USE_POOL_LOCK
       (void) vs_unlock (&handle->lock);
+#endif /* USE_POOL_LOCK */
     }
   else
     {
+#if USE_POOL_LOCK
       (void) vs_unlock (&handle->lock);
       (void) vs_lock_delete (&handle->lock);
+#endif /* USE_POOL_LOCK */
     }
 
   IB_EXIT (function, rc);
@@ -246,6 +264,7 @@ vs_pool_delete (Pool_t * handle)
       return VSTATUS_ILLPARM;
     }
 
+#if USE_POOL_LOCK
   rc = vs_lock (&handle->lock);
   if (rc != VSTATUS_OK)
     {
@@ -253,17 +272,22 @@ vs_pool_delete (Pool_t * handle)
       IB_EXIT (function, VSTATUS_NXIO);
       return VSTATUS_NXIO;
     }
+#endif /* USE_POOL_LOCK */
 
   rc = vs_implpool_delete (handle);
   if (rc == VSTATUS_OK)
     {
       handle->magic = ~VSPOOL_MAGIC;
+#if USE_POOL_LOCK
       (void) vs_unlock (&handle->lock);
       (void) vs_lock_delete (&handle->lock);
+#endif /* USE_POOL_LOCK */
     }
   else
     {
+#if USE_POOL_LOCK
       (void) vs_unlock (&handle->lock);
+#endif /* USE_POOL_LOCK */
     }
   (void) memset (handle, 0, sizeof (Pool_t));
 
@@ -328,7 +352,7 @@ vs_pool_alloc (Pool_t * handle, size_t length, void **loc)
       return VSTATUS_ILLPARM;
     }
 
-  // TBD - do we need to lock here?
+#if USE_POOL_LOCK
   rc = vs_lock (&handle->lock);
   if (rc != VSTATUS_OK)
     {
@@ -336,10 +360,13 @@ vs_pool_alloc (Pool_t * handle, size_t length, void **loc)
       IB_EXIT (function, VSTATUS_NXIO);
       return VSTATUS_NXIO;
     }
+#endif /* USE_POOL_LOCK */
 
   rc = vs_implpool_alloc (handle, length, loc);
 
+#if USE_POOL_LOCK
   (void) vs_unlock (&handle->lock);
+#endif /* USE_POOL_LOCK */
   IB_EXIT (function, rc);
   return rc;
 }
@@ -394,6 +421,7 @@ vs_pool_free (Pool_t * handle, void *loc)
       return VSTATUS_ILLPARM;
     }
 
+#if USE_POOL_LOCK
   rc = vs_lock (&handle->lock);
   if (rc != VSTATUS_OK)
     {
@@ -401,10 +429,13 @@ vs_pool_free (Pool_t * handle, void *loc)
       IB_EXIT (function, VSTATUS_NXIO);
       return VSTATUS_NXIO;
     }
+#endif /* USE_POOL_LOCK */
 
   rc = vs_implpool_free (handle, loc);
 
+#if USE_POOL_LOCK
   (void) vs_unlock (&handle->lock);
+#endif /* USE_POOL_LOCK */
   IB_EXIT (function, rc);
   return rc;
 }
@@ -451,7 +482,7 @@ vs_pool_size (Pool_t * handle, uint64_t *numBytesAlloc)
       return VSTATUS_ILLPARM;
     }
 
-  // TBD - do we need to lock here?
+#if USE_POOL_LOCK
   rc = vs_lock (&handle->lock);
   if (rc != VSTATUS_OK)
     {
@@ -460,10 +491,13 @@ vs_pool_size (Pool_t * handle, uint64_t *numBytesAlloc)
       IB_EXIT (function, VSTATUS_NXIO);
       return VSTATUS_NXIO;
     }
+#endif /* USE_POOL_LOCK */
 
   rc = vs_implpool_size (handle, numBytesAlloc);
 
+#if USE_POOL_LOCK
   (void) vs_unlock (&handle->lock);
+#endif /* USE_POOL_LOCK */
   IB_EXIT (function, rc);
   return rc;
 }
