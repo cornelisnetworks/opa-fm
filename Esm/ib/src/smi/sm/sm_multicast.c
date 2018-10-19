@@ -1196,7 +1196,7 @@ Status_t sm_set_all_mft(int force, Topology_t *curr_tp, Topology_t *prev_tp)
 	SmpAddr_t		addr;
 	uint64_t		sTime, eTime;
 	int				dispatched = 0, mftBlockChange = 0;
-	uint16_t		old_portMask = 0;
+	STL_PORTMASK		old_portMask = 0;
 
 	if (smDebugPerf) {
 		vs_time_get(&sTime);
