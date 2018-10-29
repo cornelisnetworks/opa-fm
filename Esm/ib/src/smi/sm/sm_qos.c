@@ -1341,8 +1341,12 @@ sm_initialize_Switch_SCVLMaps(Topology_t * topop, Node_t * switchp)
                                     "Failed to set SCVL_nt Map for node %s nodeGuid " FMT_U64
                                     " output port %d", sm_nodeDescString(neighborNodep), 
                                     neighborNodep->nodeInfo.NodeGUID, neighborPortp->index);
+					sm_mark_link_down(sm_topop, neighborPortp);
                     status = sm_popo_port_error(&sm_popo, sm_topop, swportp, status);
-                    goto fail;
+					if (status == VSTATUS_TIMEOUT_LIMIT)
+                    	goto fail;
+					else
+						status = VSTATUS_OK; //reset status: switch did not fail, only neighbor
                 }
             } else {
                 IB_LOG_WARN_FMT(__func__, 
