@@ -1090,6 +1090,7 @@ sm_initialize_Switch_SCVLMaps(Topology_t * topop, Node_t * switchp)
     STL_SCVLMAP scvlmap; 
     int sentSCVLt = 0;
     int doAll = switchp->uniformVL;
+    boolean isMultiPort = FALSE;
     int interleaveEnabled = 0;
     uint8_t sc;
 
@@ -1265,6 +1266,7 @@ sm_initialize_Switch_SCVLMaps(Topology_t * topop, Node_t * switchp)
         // initialize the SC2VL_t map of the switch port
 
         STL_SCVLMAP * curScvl = &out_portp->portData->scvltMap;
+        isMultiPort = (doAll && (out_portp->index > 0));
 
         if (!doAll || !sentSCVLt) {
             status = topop->routingModule->funcs.select_scvl_map(topop, switchp, out_portp, neighborPortp, &scvlmap);
@@ -1284,7 +1286,7 @@ sm_initialize_Switch_SCVLMaps(Topology_t * topop, Node_t * switchp)
                     amod = ((out_portp->state == IB_PORT_INIT) || (out_portp->index == 0)) ?
                                 1 << 24 : (1 << 24) | 1 << 12;   // 1 block, synch/asynch respectively
                     amod |= (uint32_t)out_portp->index;
-                    if (doAll && (out_portp->index > 0))
+                    if (isMultiPort)
                         amod |= (1 << 8);
 
                     SMP_ADDR_SET_LR(&addr, sm_lid, swportp->portData->lid);
@@ -1293,11 +1295,17 @@ sm_initialize_Switch_SCVLMaps(Topology_t * topop, Node_t * switchp)
                     out_portp->portData->current.scvlt = (status == VSTATUS_OK);
                     if (status != VSTATUS_OK) {
                         IB_LOG_WARN_FMT(__func__, 
-                                    "Failed to set SCVL_t Map for node %s nodeGuid " FMT_U64
-                                    " output port %d", sm_nodeDescString(switchp), 
-                                    switchp->nodeInfo.NodeGUID, out_portp->index);
-                        status = sm_popo_port_error(&sm_popo, sm_topop, swportp, status);
-                        goto fail;
+                            "Failed to set SCVL_t Map for node %s nodeGuid " FMT_U64
+							" output port %d (%s)", sm_nodeDescString(switchp),
+							switchp->nodeInfo.NodeGUID, out_portp->index, isMultiPort ? "multi-port" : "single-port");
+						if(status == VSTATUS_TIMEOUT || isMultiPort) {
+							status = sm_popo_port_error(&sm_popo, sm_topop, swportp, status);
+							goto fail;
+						}
+						else {
+							sm_mark_link_down(sm_topop, out_portp);
+							status = VSTATUS_OK;
+						}
                     }
                     if (out_portp->index > 0)
                         sentSCVLt = 1;
