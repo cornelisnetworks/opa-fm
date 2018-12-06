@@ -342,7 +342,8 @@ sm_routing_route_old_switch(Topology_t *src_topop, Topology_t *dst_topop, Node_t
 
 	if ((new_endnodesInUse.nset_m ||
 		 src_topop->num_endports != dst_topop->num_endports) &&
-		dst_topop->routingModule->funcs.can_send_partial_routes()) {
+		dst_topop->routingModule->funcs.can_send_partial_routes() &&
+		!dst_topop->routingModule->funcs.needs_routing_recalc) {
 		if (sm_config.sm_debug_routing)
 			IB_LOG_INFINI_INFO_FMT(__func__, "Partial LFT send - switch %s", sm_nodeDescString(nodep));
 		sm_send_partial_lft(sm_topop, nodep, &sm_topop->deltaLidBlocks);
