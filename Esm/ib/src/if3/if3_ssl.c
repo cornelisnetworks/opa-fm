@@ -641,7 +641,7 @@ void * if3_ssl_accept(void *context, int clientfd)
         // required to present a certificate.  For now, strict security
         // enforement is not enforced. 
         if (!(cert = SSL_get_peer_certificate(session))) {
-            IB_LOG_INFINI_INFO_FMT(__func__, "Client has no certifcate to verfiy");
+            IB_LOG_INFINI_INFO_FMT(__func__, "Client has no certificate to verify");
         } else {
             long result;
 

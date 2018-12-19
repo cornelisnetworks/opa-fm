@@ -2031,7 +2031,7 @@ rmpp_open_cnx(
    if ((-1 != (usrId = rmpp_is_cnx_open(fd))) && (info = rmpp_get_userinfo(usrId))) {
        if (info->partial_close) {
            if (if3DebugRmpp) 
-               IB_LOG_WARN_FMT(__func__, "RMPP connection already openned for user %d", usrId); 
+               IB_LOG_WARN_FMT(__func__, "RMPP connection already opened for user %d", usrId);
            // simply create the filters for a partially open RMPP connection
            if ((status = rmpp_create_filters(info, fd, fh_req_get, fh_req_gettable, mclass)) == VSTATUS_OK) {
                info->partial_close = 0;
