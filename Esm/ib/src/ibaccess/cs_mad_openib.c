@@ -419,7 +419,7 @@ ib_recv_sma(IBhandle_t handle, Mai_t *mai, uint64_t timeout)
    // 				get back at least header of our request
    if (status != FSUCCESS && status != FTIMEOUT && status != FREJECT) {
       // unexpected problem getting packets
-      IB_LOG_ERRORSTR("Recieved SMA status:", iba_fstatus_msg(status)); 
+      IB_LOG_ERRORSTR("Received SMA status:", iba_fstatus_msg(status));
       IB_EXIT(__func__, VSTATUS_BAD); 
       return VSTATUS_BAD;
    }

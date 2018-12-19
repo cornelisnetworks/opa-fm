@@ -249,7 +249,7 @@ int getXMLConfigData(uint8_t *buffer, uint32_t bufflen, uint32_t *filelen)
 		buffer[index++] = nextByte;
 		if (index >= bufflen) {
 			*filelen = 0;
-			IB_LOG_ERROR("Buffer overrun geting ESM config file! rc:",0x0020);
+			IB_LOG_ERROR("Buffer overrun getting ESM config file! rc:",0x0020);
 			fclose(file);
 			return -1;
 		}

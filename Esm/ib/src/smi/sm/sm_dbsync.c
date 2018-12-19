@@ -777,7 +777,7 @@ static Status_t dbsync_setSMDBInform(SMSyncReq_t *syncReqp) {
                 } else {
                     /* successfully sync'd all INFORM records to standby SM */
                     IB_LOG_INFO_FMT(__func__, 
-                            "Full sync of %d INFORM records to SM at portGuid "FMT_U64", LID=[0x%x] was successfull",
+                            "Full sync of %d INFORM records to SM at portGuid "FMT_U64", LID=[0x%x] was successful",
                             numRecs, syncReqp->portguid, syncReqp->standbyLid);
                 }
             }
@@ -841,7 +841,7 @@ static Status_t dbsync_updateSMDBInform(SMSyncReq_t *syncReqp) {
             } else {
                 /* successfully sync'd all INFORM records to standby SM */
                 IB_LOG_INFO_FMT(__func__, 
-                        "%s of INFORM record to SM at portGuid "FMT_U64", LID=[0x%x] was successfull",
+                        "%s of INFORM record to SM at portGuid "FMT_U64", LID=[0x%x] was successful",
                         ((syncReqp->type == DBSYNC_TYPE_UPDATE) ? "UPDATE":"DELETE"), syncReqp->portguid, syncReqp->standbyLid);
             }
         }
@@ -1137,7 +1137,7 @@ static Status_t dbsync_setSMDBGroup(SMSyncReq_t *syncReqp) {
                 } else {
                     /* successfully sync'd all INFORM records to standby SM */
                     IB_LOG_INFO_FMT(__func__, 
-                            "Full sync of %d GROUP records to SM at portGuid "FMT_U64", LID=[0x%x] was successfull",
+                            "Full sync of %d GROUP records to SM at portGuid "FMT_U64", LID=[0x%x] was successful",
                             grpcnt, syncReqp->portguid, syncReqp->standbyLid);
                 }
             }
@@ -1253,7 +1253,7 @@ static Status_t dbsync_updateSMDBGroup(SMSyncReq_t *syncReqp) {
                 } else {
                     /* successfully sync'd all INFORM records to standby SM */
                     IB_LOG_INFO_FMT(__func__, 
-                            "%s of GROUP record to SM at portGuid "FMT_U64", LID=[0x%x] was successfull",
+                            "%s of GROUP record to SM at portGuid "FMT_U64", LID=[0x%x] was successful",
                             ((syncReqp->type == DBSYNC_TYPE_UPDATE) ? "UPDATE":"DELETE"), syncReqp->portguid, syncReqp->standbyLid);
                 }
             }
@@ -1561,7 +1561,7 @@ static Status_t dbsync_setSMDBService(SMSyncReq_t *syncReqp) {
                 } else {
                     /* successfully sync'd all INFORM records to standby SM */
                     IB_LOG_INFO_FMT(__func__, 
-                            "Full sync of %d SERVICE records with SM at portGuid "FMT_U64", LID=[0x%x] was successfull",
+                            "Full sync of %d SERVICE records with SM at portGuid "FMT_U64", LID=[0x%x] was successful",
                             numRecs, syncReqp->portguid, syncReqp->standbyLid);
                 }
             }
@@ -1618,7 +1618,7 @@ static Status_t dbsync_updateSMDBService(SMSyncReq_t *syncReqp) {
             } else {
                 /* successfully sync'd all INFORM records to standby SM */
                 IB_LOG_INFO_FMT(__func__, 
-                        "%s of SERVICE record to SM at portGuid "FMT_U64", LID=[0x%x] was successfull",
+                        "%s of SERVICE record to SM at portGuid "FMT_U64", LID=[0x%x] was successful",
                         ((syncReqp->type == DBSYNC_TYPE_UPDATE) ? "UPDATE":"DELETE"), syncReqp->portguid, syncReqp->standbyLid);
             }
         }
@@ -1880,7 +1880,7 @@ static Status_t dbsync_setSMDBMCRoot(SMSyncReq_t *syncReqp) {
             } else {
                 /* successfully sync'd to standby SM */
                 IB_LOG_INFO_FMT(__func__, 
-                        "Full sync of MC ROOT GUID "FMT_U64" with SM at portGuid "FMT_U64", LID=[0x%x] was successfull",
+                        "Full sync of MC ROOT GUID "FMT_U64" with SM at portGuid "FMT_U64", LID=[0x%x] was successful",
                         sm_mcSpanningTreeRootGuid, syncReqp->portguid, syncReqp->standbyLid);
             }
         }

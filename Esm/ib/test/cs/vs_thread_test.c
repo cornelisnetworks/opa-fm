@@ -151,13 +151,13 @@ static void thr_test_startup(uint32_t argc, uint8_t *argv[])
     /* Argv[0] == thread test index */
     if (argc < 1)
     {
-        IB_LOG_ERROR ("Internal test errror, no arguments", 0);
+        IB_LOG_ERROR ("Internal test error, no arguments", 0);
         return;
     }
 
     if (!argv[0])
     {
-        IB_LOG_ERROR ("Internal test errror, thread value not passed index", 0);
+        IB_LOG_ERROR ("Internal test error, thread value not passed index", 0);
         return;
     }
     idx = my_atou(argv[0]);
@@ -204,13 +204,13 @@ static void thr_name_test(uint32_t argc, uint8_t *argv[])
     /* Argv[0] == thread test index */
     if (argc < 1)
     {
-        IB_LOG_ERROR ("Internal test errror, no arguments", 0);
+        IB_LOG_ERROR ("Internal test error, no arguments", 0);
         return;
     }
 
     if (!argv[0])
     {
-        IB_LOG_ERROR ("Internal test errror, thread value not passed index", 0);
+        IB_LOG_ERROR ("Internal test error, thread value not passed index", 0);
         return;
     }
     idx = my_atou(argv[0]);
@@ -257,13 +257,13 @@ static void thr_groupname_test(uint32_t argc, uint8_t *argv[])
     /* Argv[0] == thread test index */
     if (argc < 1)
     {
-        IB_LOG_ERROR ("Internal test errror, no arguments", 0);
+        IB_LOG_ERROR ("Internal test error, no arguments", 0);
         return;
     }
 
     if (!argv[0])
     {
-        IB_LOG_ERROR ("Internal test errror, thread value not passed index", 0);
+        IB_LOG_ERROR ("Internal test error, thread value not passed index", 0);
         return;
     }
     idx = my_atou(argv[0]);
@@ -737,13 +737,13 @@ static void thr_null_name_test(uint32_t argc, uint8_t *argv[])
     /* Argv[0] == thread test index */
     if (argc < 1)
     {
-        IB_LOG_ERROR ("Internal test errror, no arguments", 0);
+        IB_LOG_ERROR ("Internal test error, no arguments", 0);
         return;
     }
 
     if (!argv[0])
     {
-        IB_LOG_ERROR ("Internal test errror, thread value not passed index", 0);
+        IB_LOG_ERROR ("Internal test error, thread value not passed index", 0);
         return;
     }
     idx = my_atou(argv[0]);
@@ -1002,13 +1002,13 @@ static void thr_null_exit_test(uint32_t argc, uint8_t *argv[])
     /* Argv[0] == thread test index */
     if (argc < 1)
     {
-        IB_LOG_ERROR ("Internal test errror, no arguments", 0);
+        IB_LOG_ERROR ("Internal test error, no arguments", 0);
         return;
     }
 
     if (!argv[0])
     {
-        IB_LOG_ERROR ("Internal test errror, thread value not passed index", 0);
+        IB_LOG_ERROR ("Internal test error, thread value not passed index", 0);
         return;
     }
     idx = my_atou(argv[0]);
@@ -1460,13 +1460,13 @@ static void thr_sleep_test(uint32_t argc, uint8_t *argv[])
     /* Argv[0] == thread test index */
     if (argc < 1)
     {
-        IB_LOG_ERROR ("Internal test errror, no arguments", 0);
+        IB_LOG_ERROR ("Internal test error, no arguments", 0);
         return;
     }
 
     if (!argv[0])
     {
-        IB_LOG_ERROR ("Internal test errror, thread value not passed index", 0);
+        IB_LOG_ERROR ("Internal test error, thread value not passed index", 0);
         return;
     }
     idx = my_atou(argv[0]);
@@ -1891,13 +1891,13 @@ thr_join_test(uint32_t argc, uint8_t *argv[])
     /* Argv[0] == thread test index */
     if (argc < 1)
     {
-        IB_LOG_ERROR ("Internal test errror, no arguments", 0);
+        IB_LOG_ERROR ("Internal test error, no arguments", 0);
         return;
     }
 
     if (!argv[0])
     {
-        IB_LOG_ERROR ("Internal test errror, thread value not passed index", 0);
+        IB_LOG_ERROR ("Internal test error, thread value not passed index", 0);
         return;
     }
     idx = my_atou(argv[0]);

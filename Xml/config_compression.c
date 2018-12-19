@@ -207,7 +207,7 @@ int copyFile(char *src, char*dst, int compressFlag, long *compressedFileSize) {
 							break;
 						}
 						if (header.version != COMP_VERSION) {
-							SCP_LOG("Unsuported compress file verison %d", __FUNCTION__, header.version);
+							SCP_LOG("Unsupported compress file verison %d", __FUNCTION__, header.version);
 							retVal = -1;
 							break;
 						}

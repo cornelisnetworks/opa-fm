@@ -1792,7 +1792,7 @@ void threadDecompress(uint32_t argc, uint8_t **argv) {
 
 	if (argc != 6)
 	{
-		IB_LOG_ERROR ("Internal errror, invalid arguments", argc);
+		IB_LOG_ERROR ("Internal error, invalid arguments", argc);
 		return;
 	}
 
@@ -1988,7 +1988,7 @@ void threadCompress(uint32_t argc, uint8_t **argv) {
 
 	if (argc != 6) // the check avoids variable not used warning
 	{
-		IB_LOG_ERROR ("Internal errror, invalid arguments", 0);
+		IB_LOG_ERROR ("Internal error, invalid arguments", 0);
 		return;
 	}
 

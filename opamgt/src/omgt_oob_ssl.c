@@ -386,7 +386,7 @@ void* omgt_oob_ssl_connect(struct omgt_port *port, void *context, int serverfd)
 		// is not presented by the server the connection will be rejected.
 		if (!(cert = SSL_get_peer_certificate(session))) {
 			status = OMGT_STATUS_NOT_FOUND;
-			OMGT_OUTPUT_ERROR(port, "server has no certifcate to verfiy\n");
+			OMGT_OUTPUT_ERROR(port, "server has no certificate to verify\n");
 		} else {
 			long result;
 

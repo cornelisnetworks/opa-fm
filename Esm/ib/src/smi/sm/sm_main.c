@@ -571,7 +571,7 @@ void sm_process_dor_info(VirtualFabrics_t *VirtualFabrics, SmDorRouting_t *dorCf
 
 	if (smDorRouting.warn_threshold > SM_DOR_MAX_WARN_THRESHOLD) {
 		IB_LOG_WARN_FMT(__func__,
-			 "MeshTorusTopology WarnThreshold of %d is higher than max suported %d. Defaulting to %d.",
+			 "MeshTorusTopology WarnThreshold of %d is higher than max supported %d. Defaulting to %d.",
 			 smDorRouting.warn_threshold, SM_DOR_MAX_WARN_THRESHOLD, SM_DOR_MAX_WARN_THRESHOLD);
 		smDorRouting.warn_threshold = SM_DOR_MAX_WARN_THRESHOLD;
 	}

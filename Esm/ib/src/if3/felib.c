@@ -1872,7 +1872,7 @@ if3_dbsync_reply_to_mngr(IBhandle_t fhdl, Mai_t * fmad,
         
         // send DB Synch reply to the remote STL SM that issued the request
         if (VSTATUS_OK != (rc = rmpp_send_reply(fmad, rmpp_cntxt))) {
-            IB_LOG_ERROR_FMT(__func__, "Failed to foward RMPP request to manager: rc %d", rc); 
+            IB_LOG_ERROR_FMT(__func__, "Failed to forward RMPP request to manager: rc %d", rc);
         }
         // deallocate the context
         rmpp_cntxt_release(rmpp_cntxt);
@@ -2076,7 +2076,7 @@ if3_mngr_send_mad(IBhandle_t fd, SA_MAD *psa, uint32_t dataLength, uint8_t *buff
         
         // forward FEC or STL manager single MAD request to STL manager
         if (VSTATUS_OK != (rc = rmpp_send_request(&mad, fe_cntxt))) {
-            IB_LOG_ERROR_FMT(__func__, "Failed to foward RMPP request to manager: rc %d", rc);
+            IB_LOG_ERROR_FMT(__func__, "Failed to forward RMPP request to manager: rc %d", rc);
         } else {
             // release context for single MAD request
             rmpp_cntxt_full_release(fe_cntxt);
@@ -2304,7 +2304,7 @@ if3_mngr_send_passthru_mad (IBhandle_t fd, SA_MAD *psa, uint32_t dataLength,
         
         // forward FEC or STL manager single MAD request to STL manager
         if (VSTATUS_OK != (rc = rmpp_send_request(&mad, fe_cntxt))) {
-            IB_LOG_ERROR_FMT(__func__, "Failed to foward RMPP request to manager: rc %d", rc); 
+            IB_LOG_ERROR_FMT(__func__, "Failed to forward RMPP request to manager: rc %d", rc);
         } else {
             // release context for single MAD request
             rmpp_cntxt_full_release(fe_cntxt);

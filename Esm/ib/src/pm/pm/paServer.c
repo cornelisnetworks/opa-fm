@@ -2542,7 +2542,7 @@ pa_getVFPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			(flags & STL_PA_PC_FLAG_UNEXPECTED_CLEAR?" (Unexpected Clear)":""),
 			(flags & STL_PA_PC_FLAG_CLEAR_FAIL?" (Clear Unsuccessful)":""));
 		IB_LOG_DEBUG2_FMT(__func__, " VF Name: %s", vfName);
-		IB_LOG_DEBUG2_FMT(__func__, "Perfromance:");
+		IB_LOG_DEBUG2_FMT(__func__, "Performance:");
 		IB_LOG_DEBUG2_FMT(__func__, " Xmit Data:       %10"PRIu64" MB (%"PRIu64" Flits)",
 						  response.portVFXmitData/FLITS_PER_MB, response.portVFXmitData);
 		IB_LOG_DEBUG2_FMT(__func__, " Xmit Pkts:       %10"PRIu64" ", response.portVFXmitPkts);
