@@ -1023,7 +1023,7 @@ mai_send_timeout(IBhandle_t fd, Mai_t * inbuf, uint64_t timeout)
     /*
      * All checking has been done, now we send to common services 
      */
-    rc = ib_send_sma(dc->hndl, buf, timeout);
+    rc = stl_send_sma(dc->hndl, buf, timeout);
     if (rc)
       {
 	  IB_LOG_INFO("mai_send: Error on hardware channel hndl:", dc->hndl);

@@ -49,6 +49,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "hsm_config_srvr_api.h"
 #include "hsm_config_srvr_data.h"
 #include "ibyteswap.h"
+#include "ifs_g.h"
 
 extern void setLoopPathLength(int len);
 extern void setLoopMinISLRedundancy(int num);
@@ -58,6 +59,7 @@ extern char* printLoopPaths(int nodeIdx, int buffer);
 extern char* printSwitchLft(int nodeIdx, int useNew, int haveLock, int buffer);
 extern char* printLoopTestConfig(int buffer);
 extern void bufferLargeSmDiagOutputs(fm_config_interation_data_t *interationData);
+extern void smAdaptiveRoutingUpdate(uint32_t, fm_ar_config_t);
 
 extern uint32_t sm_looptest_disabled_ar;
 
@@ -71,6 +73,7 @@ static uint32_t	sm_diag_fast_mode_start;
 char* sm_looptest_start(int numPkts) {
 	char * buf = NULL;
 	int len = 500, pos = 0;
+	fm_ar_config_t ar_config;
 
 	if (vs_pool_alloc(&sm_pool, len, (void*)&buf) != VSTATUS_OK) {
 		IB_FATAL_ERROR_NODUMP("sm_looptest_start: CAN'T ALLOCATE SPACE.");
@@ -81,7 +84,10 @@ char* sm_looptest_start(int numPkts) {
     if (!esmLoopTestOn) {
 		/* Disable AR if it is running */
 		if (sm_adaptiveRouting.enable) {
-			smAdaptiveRoutingToggle(0);
+			ar_config.enable = 0;
+			ar_config.frequency = -1;
+			ar_config.threshold = -1;
+			smAdaptiveRoutingUpdate(0, ar_config);
 			sm_looptest_disabled_ar = 1;
 		}
 
@@ -257,6 +263,7 @@ char* sm_set_loop_min_redundancy(int redundancy) {
 char* sm_looptest_stop(void) {
 	char * buf = NULL;
 	int len = 500;
+	fm_ar_config_t ar_config;
 
 	if (vs_pool_alloc(&sm_pool, len, (void*)&buf) != VSTATUS_OK) {
 		IB_FATAL_ERROR_NODUMP("sm_looptest_stop: CAN'T ALLOCATE SPACE.");
@@ -283,7 +290,10 @@ char* sm_looptest_stop(void) {
 
 		/* Re-enable AR if it is running */
 		if (sm_looptest_disabled_ar) {
-			smAdaptiveRoutingToggle(0);	
+			ar_config.enable = 1;
+			ar_config.frequency = -1;
+			ar_config.threshold = -1;
+			smAdaptiveRoutingUpdate(0, ar_config);
 			sm_looptest_disabled_ar = 0;
 		}
 
@@ -323,10 +333,32 @@ fm_msg_ret_code_t sm_diag_ctrl(fm_config_datagram_t *msg) {
 	int tmpvar=0, length = 0;
 	char * tmpData = NULL;
 	fm_config_interation_data_t *iterationData = NULL;
+	fm_ar_config_t ar_config;
 	boolean pauseSweeps = FALSE;
 
 	switch (msg->header.data_id) {
+	case FM_DT_SM_LOOP_TEST_START:
+	case FM_DT_SM_LOOP_TEST_FAST_MODE_START:
+	case FM_DT_SM_LOOP_TEST_FAST:
+	case FM_DT_SM_LOOP_TEST_INJECT_PACKETS:
+	case FM_DT_SM_LOOP_TEST_INJECT_ATNODE:
+	case FM_DT_SM_LOOP_TEST_INJECT_EACH_SWEEP:
+	case FM_DT_SM_LOOP_TEST_PATH_LEN:
+	case FM_DT_SM_LOOP_TEST_MIN_ISL_REDUNDANCY:
+	case FM_DT_LOG_LEVEL:
+	case FM_DT_LOG_MODE:
+	case FM_DT_LOG_MASK:
+	case FM_DT_SM_FORCE_ATTRIBUTE_REWRITE:
+	case FM_DT_SM_SKIP_ATTRIBUTE_WRITE:
+		// Consolidate argument size checks for commands that
+		// use uint32_t arguments here. Other commands should
+		// do their checks inline
+		if (msg->header.data_len < sizeof(uint32_t))
+			goto bail_bad_len;
+	}
 
+
+	switch (msg->header.data_id) {
 	case FM_DT_SM_LOOP_TEST_START:
 		tmpvar = (*(uint32_t *)&msg->data[0]);
     	if (!esmLoopTestOn) {
@@ -427,6 +459,8 @@ fm_msg_ret_code_t sm_diag_ctrl(fm_config_datagram_t *msg) {
 		break;
 
 	case FM_DT_SM_LOOP_TEST_SHOW_PATHS:
+		if (msg->header.data_len < sizeof(fm_config_interation_data_t))
+			goto bail_bad_len;
 		// get interation data and then get the return buffer
 		iterationData = (fm_config_interation_data_t *)&msg->data[0];
 		//if start bit is set then we are starting
@@ -452,7 +486,6 @@ fm_msg_ret_code_t sm_diag_ctrl(fm_config_datagram_t *msg) {
 			break;
 		}
 		
-		memcpy(&msg->data[0], iterationData, sizeof(fm_config_interation_data_t));
 		msg->data[msg->header.data_len - 1] = '\0';
 		
 		if (iterationData->done) {
@@ -463,6 +496,8 @@ fm_msg_ret_code_t sm_diag_ctrl(fm_config_datagram_t *msg) {
 		break;
 
 	case FM_DT_SM_LOOP_TEST_SHOW_LFTS:
+		if (msg->header.data_len < sizeof(fm_config_interation_data_t))
+			goto bail_bad_len;
 		// get interation data and then get the return buffer
 		iterationData = (fm_config_interation_data_t *)&msg->data[0];
 		//if start bit is set then we are starting
@@ -488,7 +523,6 @@ fm_msg_ret_code_t sm_diag_ctrl(fm_config_datagram_t *msg) {
 			break;
 		}
 		
-		memcpy(&msg->data[0], iterationData, sizeof(fm_config_interation_data_t));
 		msg->data[msg->header.data_len - 1] = '\0';
 		
 		if (iterationData->done) {
@@ -499,6 +533,8 @@ fm_msg_ret_code_t sm_diag_ctrl(fm_config_datagram_t *msg) {
 		break;
 
 	case FM_DT_SM_LOOP_TEST_SHOW_TOPO:
+		if (msg->header.data_len < sizeof(fm_config_interation_data_t))
+			goto bail_bad_len;
 		// get interation data and then get the return buffer
 		iterationData = (fm_config_interation_data_t *)&msg->data[0];
 		//if start bit is set then we are starting
@@ -524,7 +560,6 @@ fm_msg_ret_code_t sm_diag_ctrl(fm_config_datagram_t *msg) {
 			break;
 		}
 		
-		memcpy(&msg->data[0], iterationData, sizeof(fm_config_interation_data_t));
 		msg->data[msg->header.data_len - 1] = '\0';
 		
 		if (iterationData->done) {
@@ -557,6 +592,8 @@ fm_msg_ret_code_t sm_diag_ctrl(fm_config_datagram_t *msg) {
 		break;
 
 	case FM_DT_LOG_MASK:
+		if (msg->header.data_len < (sizeof(uint32_t) + sizeof(char)))
+			goto bail_bad_len;
 		sm_set_log_mask((char*)&msg->data[sizeof(uint32_t)],
 							*(uint32_t *)&msg->data[0]);
 		break;
@@ -614,11 +651,17 @@ fm_msg_ret_code_t sm_diag_ctrl(fm_config_datagram_t *msg) {
 		break;
 
 	case FM_DT_SM_GET_ADAPTIVE_ROUTING:
-		msg->data[0] = sm_get_smAdaptiveRouting();	
+		if (msg->header.data_len < sizeof(fm_ar_config_t))
+			goto bail_bad_len;
+		sm_get_smAdaptiveRouting(&ar_config);
+		memcpy(&msg->data[0], &ar_config, sizeof(fm_ar_config_t));
 		break;
 
 	case FM_DT_SM_SET_ADAPTIVE_ROUTING:
-		smSetAdaptiveRouting(*(uint32_t *)&msg->data[0]);
+		if (msg->header.data_len < sizeof(fm_ar_config_t))
+			goto bail_bad_len;
+		memcpy(&ar_config, (fm_ar_config_t *)&msg->data[0], sizeof(fm_ar_config_t));
+		smAdaptiveRoutingUpdate(1, ar_config);
 		break;
 
 	case FM_DT_SM_FORCE_ATTRIBUTE_REWRITE:
@@ -627,7 +670,7 @@ fm_msg_ret_code_t sm_diag_ctrl(fm_config_datagram_t *msg) {
 		break;
 
 	case FM_DT_SM_SKIP_ATTRIBUTE_WRITE:
-        sm_set_skip_attribute_write(msg->data);
+        sm_set_skip_attribute_write(*(uint32_t*)&msg->data[0]);
 		break;
 
 	case FM_DT_PAUSE_SWEEPS:
@@ -645,4 +688,7 @@ fm_msg_ret_code_t sm_diag_ctrl(fm_config_datagram_t *msg) {
 	}
 
 	return FM_RET_OK;
+
+bail_bad_len:
+	return FM_RET_BAD_LEN;
 }

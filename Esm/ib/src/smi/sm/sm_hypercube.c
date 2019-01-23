@@ -32,7 +32,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sm_l.h"
 #include "sm_dbsync.h"
 
-
 static __inline__ uint16_t hypercube_GetCost(PortData_t *portData) {
 	return (portData->routingCost ? portData->routingCost : 10);
 }

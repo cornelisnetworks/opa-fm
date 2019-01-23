@@ -52,6 +52,7 @@ typedef uint32		STL_LID;			/* Max LID size */
 #define MAX_STL_PORTS		64
 #define MAX_STL2_VLS		9
 
+
 typedef uint64		STL_PORTMASK;		/* Port mask element */
 
 #define STL_MAX_PORTMASK				256/(sizeof(STL_PORTMASK)*8)	/* Max Ports in select */

@@ -386,7 +386,7 @@ FSTATUS FindTraceRoute(struct omgt_port *port,
 		NumTraceRecords = ((STL_TRACE_RECORD_RESULTS*)pQueryResults->QueryResult)->NumTraceRecords;
 		pTraceRecords = ((STL_TRACE_RECORD_RESULTS*)pQueryResults->QueryResult)->TraceRecords;
 	} else {
-		status = GenTraceRoutePath(fabricp, pathp, &pTraceRecords, &NumTraceRecords);
+		status = GenTraceRoutePath(fabricp, pathp, 0, &pTraceRecords, &NumTraceRecords);
 		if (FSUCCESS != status) {
 			if (status == FUNAVAILABLE) {
 				fprintf(stderr, "%s: Routing Tables not available\n",
@@ -1563,7 +1563,7 @@ static FSTATUS GetIouIocs(struct omgt_port *port, FabricData_t *fabricp, IouData
 			MemoryDeallocate(iocp);
 			continue;
 		}
-		if (cl_qmap_insert(&fabricp->AllIOCs, iocp->IocProfile.IocGUID, &iocp->AllIOCsEntry) != &iocp->AllIOCsEntry)
+		if (cl_qmap_insert(&fabricp->AllIOCs, (uint64_t)iocp, &iocp->AllIOCsEntry) != &iocp->AllIOCsEntry)
 		{
 			fprintf(stderr, "%s: Duplicate IOC Guids found in IocProfiles: 0x%016"PRIx64", skipping\n",
 						   	g_Top_cmdname, iocp->IocProfile.IocGUID);
@@ -1633,14 +1633,20 @@ static FSTATUS GetPortCableInfoDirect(struct omgt_port *port,
 									  int quiet)
 {
 	FSTATUS status = FSUCCESS;
-	uint8_t cableInfo[STL_CIB_STD_LEN];
-	uint16_t addr;
+	uint8_t cableInfo[STL_CABLE_INFO_DATA_SIZE * 4];		// 2 blocks of lower page 0 and 2 blocks of upper page 0 
+	uint16_t addr, startAddr;
 	uint8_t *data;
 
 	if (! IsCableInfoAvailable(&portp->PortInfo))
 		return FSUCCESS;
 
-	for (addr = STL_CIB_STD_HIGH_PAGE_ADDR, data=cableInfo;
+	//Data in Low address space of Cable info is also accesed for Cable Health Report
+	if(fabricp->flags & FF_CABLELOWPAGE)
+		startAddr = STL_CIB_STD_LOW_PAGE_ADDR;
+	else
+		startAddr = STL_CIB_STD_HIGH_PAGE_ADDR;
+
+	for (addr = startAddr, data=cableInfo;
 		 addr + STL_CABLE_INFO_MAXLEN <= STL_CIB_STD_END_ADDR; addr += STL_CABLE_INFO_DATA_SIZE, data += STL_CABLE_INFO_DATA_SIZE)
 	{
 		status = SmaGetCableInfo(port, portp->EndPortLID, 0, NULL, portp->PortNum, addr, STL_CABLE_INFO_MAXLEN, data);
@@ -1652,14 +1658,21 @@ static FSTATUS GetPortCableInfoDirect(struct omgt_port *port,
 			break;
 		}
 	}
+
 	if (status != FSUCCESS)
 		return status;
+
 	if (! portp->pCableInfoData) {
 		if ((status = PortDataAllocateCableInfoData(fabricp, portp)) != FSUCCESS)
 			return status;
 	}
 
-	memcpy(portp->pCableInfoData, cableInfo, sizeof(cableInfo));
+	//Data in Low address space of Cable info is also copied for Cable Health Report
+	if(fabricp->flags & FF_CABLELOWPAGE)
+		memcpy(portp->pCableInfoData, cableInfo, sizeof(cableInfo));
+	else
+		memcpy(portp->pCableInfoData, cableInfo, STL_CIB_STD_LEN);
+
 	return FSUCCESS;
 }
 

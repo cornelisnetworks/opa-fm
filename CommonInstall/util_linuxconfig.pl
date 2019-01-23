@@ -217,7 +217,9 @@ sub do_rebuild_ramdisk()
 			$cmd = $DRACUT_EXE_FILE;
 		}
 		my $kver = `uname -r | xargs echo -n`;
-		my $tmpfile = "/tmp/initramfs-$kver.img";
+		#name of initramfs may vary between distros, so need to get it from lsinitrd
+		my ($current_initrd) = `lsinitrd` =~ m/(?:Image: \/boot\/)((?:[0-9]|[a-z]|[\._\+\-])+)/o;
+		my $tmpfile = "/tmp/$current_initrd";
 
 		if ( -e $cmd ) {
 DO_BOOT_IMG_BUILD:
@@ -225,6 +227,7 @@ DO_BOOT_IMG_BUILD:
 			# Try to build a temporary image first as a dry-run to make sure
 			# a failed run will not destroy an existing image.
 			if (system("$cmd -f $tmpfile") == 0 && system("mv -f $tmpfile /boot/") == 0) {
+				NormalPrint("New initramfs installed in /boot.\n");
 				NormalPrint("done.\n");
 			} else {
 				NormalPrint("failed.\n");

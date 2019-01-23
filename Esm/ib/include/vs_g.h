@@ -308,6 +308,11 @@ extern void vs_thread_sleep (uint64_t sleep_time);
 extern Status_t
 vs_thread_join (Thread_t *handle, void **value_ptr);
 
+/*
+ ** set name for the calling thread
+*/
+extern int vs_thread_setname(char* name);
+
 /*=== Threads ===*/
 
 /*=== Pool Services ===*/

@@ -95,7 +95,7 @@ $(BSP_TARGETS): $(OBJS) $(DEPLIBS_TARGETS)
 ifeq "$(RELEASE_TAG)" ""
 	$(PATCH_ENG_VERSION) $(EXECUTABLE)
 else
-	$(PATCH_VERSION) $(RELEASE_TAG) $(EXECUTABLE)
+	$(PATCH_VERSION) -n `$(CONVERT_RELEASETAG) $(RELEASE_TAG)` $(RELEASE_TAG) $(EXECUTABLE)
 endif
 	$(PATCH_BRAND) "$(BUILD_BRAND)" $(EXECUTABLE)
 	
@@ -122,7 +122,7 @@ ifeq "$(BUILD_TARGET)" "ATOM"
 	$(MAKE) NO_SSP=1 BUILD_SAFEBOOT=yes DEBUG_CODE="" ADVBOOT 
 endif
 
-safeboot advboot:
+safeboot advboot: $(TL_DIR)/Fd/buildFeatureDefs
 # don't checked NETF1 stuff for atom safe boot 
 ifeq "$(BUILD_TARGET)" "ATOM"
 	cd $(PRODUCT_HOME) && make clobber; 

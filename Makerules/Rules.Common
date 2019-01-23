@@ -261,7 +261,7 @@ prepfiles::
 ifeq "$(CARD_TYPE)" "X"
 prepfiles_global:: check_env check_brand
 	cd $(PROJ_STAGE_DIR) && find . -print| $(PREP)
-	-cd $(PROJ_STAGE_BIN_DIR) && $(PATCH_VERSION) $(RELEASE_TAG) *
+	-cd $(PROJ_STAGE_BIN_DIR) && $(PATCH_VERSION) -n `$(CONVERT_RELEASETAG) $(RELEASE_TAG)` $(RELEASE_TAG) *
 	-if [ -n "$(BRANDIT)" ]; then \
 	for x in $(BRAND_DIRS);\
 	do\
@@ -280,7 +280,7 @@ prepfiles_global:: check_env check_brand
 else
 prepfiles_global:: check_env check_brand
 	cd $(PROJ_STAGE_DIR) && find . -print| $(PREP)
-	-cd $(PROJ_STAGE_BIN_DIR) && $(PATCH_VERSION) $(RELEASE_TAG) *
+	-cd $(PROJ_STAGE_BIN_DIR) && $(PATCH_VERSION) -n `$(CONVERT_RELEASETAG) $(RELEASE_TAG)` $(RELEASE_TAG) *
 	-if [ -n "$(BRANDIT)" ]; then \
 	for x in $(BRAND_DIRS);\
 	do\
@@ -433,6 +433,26 @@ endif
 	$(CP) $< $@
 %.8: %.manPage
 	$(CP) $< $@
+
+
+# Rules for buildFeatureDefs
+
+# create buildFeatureDefs using unifdef2.sh
+
+#$(TL_DIR)/buildFeatureDefs: $(TL_DIR)/Fd/buildFeatureDefs.base
+#	$(TL_DIR)/MakeTools/unifdef2.sh $(OPA_FEATURE_SET) $< $@
+
+# Rules for base files
+
+# create file from base file using unifdef2.sh
+
+%:	%.base
+	$(TL_DIR)/MakeTools/unifdef2.sh $(OPA_FEATURE_SET) $< $@
+%.sh:	%.sh.base
+	$(TL_DIR)/MakeTools/unifdef2.sh $(OPA_FEATURE_SET) $< $@
+%.xlsx: %.xlsx.$(OPA_FEATURE_SET)
+	cp $< $@
+
 
 # TBD - makerules.build has this rule in it
 #ifeq "$(BUILD_TARGET_OS)" "LINUX"

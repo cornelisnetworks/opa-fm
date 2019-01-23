@@ -93,6 +93,24 @@ EventTrigger( IN EVENT *pEvent )
 }
 
 //-----------------------------------------------------------
+// Wakes all waiters intest of just one.
+//-----------------------------------------------------------
+void
+EventBroadcast( IN EVENT *pEvent )
+{
+
+	// Make sure that the event was Started
+	ASSERT (pEvent->ev_state == Started);
+	
+ 	pthread_mutex_lock( &pEvent->ev_mutex );
+	
+  	pEvent->ev_signaled = TRUE;
+	pthread_cond_broadcast(&pEvent->ev_condvar );	
+
+  	pthread_mutex_unlock( &pEvent->ev_mutex );
+}
+
+//-----------------------------------------------------------
 // Clear an event, as though it was never triggered
 //-----------------------------------------------------------
 void

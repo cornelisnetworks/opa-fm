@@ -75,22 +75,25 @@ omgt_pa_get_image_info(
     STL_PA_IMAGE_INFO_DATA     *pm_image_info 
     );
 
-/** 
- * @brief Get list of group names
+/**
+ * @brief Get list of group names from the current (live) image
  *
- * @param port              Port to operate on. 
- * @param pm_group_list     Pointer to group list to fill 
+ * @deprecated This function is deprecated and will be removed in a future release.
+ * @see omgt_pa_get_group_list2
  *
- * @return 
+ * @param port              Port to operate on.
+ * @param pm_group_list     Pointer to group list to fill
+ *
+ * @return
  *   OMGT_STATUS_SUCCESS - Get successful
  *     OMGT_STATUS_ERROR - Error
  */
 OMGT_STATUS_T
 omgt_pa_get_group_list(
-    struct omgt_port          *port,
-	uint32_t					 *pNum_Groups,
-    STL_PA_GROUP_LIST       **pm_group_list
-    );
+	struct omgt_port  *port,
+	uint32_t          *pNum_Groups,
+	STL_PA_GROUP_LIST **pm_group_list
+	);
 
 /**
  * @brief Release group list
@@ -102,13 +105,49 @@ omgt_pa_get_group_list(
  */
 void
 omgt_pa_release_group_list(
-    STL_PA_GROUP_LIST	    **pm_group_list
-    );
+	STL_PA_GROUP_LIST **pm_group_list
+	);
 
 /**
- * @brief Get list of vf names
+ * @brief Get list of group names from any image
  *
  * @param port              Port to operate on.
+ * @param pm_image_id_query ImageID to request
+ * @oaram pNum_Groups       Pointer to Number of records
+ * @param pm_group_list     Pointer to group list to fill
+ *
+ * @return
+ *   OMGT_STATUS_SUCCESS - Get successful
+ *     OMGT_STATUS_ERROR - Error
+ */
+OMGT_STATUS_T
+omgt_pa_get_group_list2(
+	struct omgt_port     *port,
+	STL_PA_IMAGE_ID_DATA pm_image_id_query,
+	uint32_t             *pNum_Groups,
+	STL_PA_GROUP_LIST2   **pm_group_list
+	);
+
+/**
+ * @brief Release group list2
+ *
+ * @param pm_group_list  Pointer to pointer to the group list2 to free.
+ *
+ * @return
+ *   None
+ */
+void
+omgt_pa_release_group_list2(
+	STL_PA_GROUP_LIST2 **pm_group_list
+	);
+
+/**
+ * @brief Get list of vf names from the current (live) image
+ *
+ * @deprecated This function is deprecated and will be removed in a future release.
+ * @see omgt_pa_get_vf_list2
+ *
+ * @param port           Port to operate on.
  * @param pm_vf_list     Pointer to vf list to fill
  *
  * @return
@@ -117,10 +156,10 @@ omgt_pa_release_group_list(
  */
 OMGT_STATUS_T
 omgt_pa_get_vf_list(
-    struct omgt_port          *port,
-	uint32_t					 *pNum_VFs,
-    STL_PA_VF_LIST  		**pm_vf_list
-    );
+	struct omgt_port *port,
+	uint32_t         *pNum_VFs,
+	STL_PA_VF_LIST   **pm_vf_list
+	);
 
 /**
  * @brief Release vf list
@@ -132,8 +171,41 @@ omgt_pa_get_vf_list(
  */
 void
 omgt_pa_release_vf_list(
-    STL_PA_VF_LIST	    **pm_vf_list
-    );
+	STL_PA_VF_LIST **pm_vf_list
+	);
+
+/**
+ * @brief Get list of vf names from any image
+ *
+ * @param port              Port to operate on.
+ * @param pm_image_id_query ImageId
+ * @param pNum_VFs          Pointer to Number of records
+ * @param pm_vf_list        Pointer to vf list to fill
+ *
+ * @return
+ *   OMGT_STATUS_SUCCESS - Get successful
+ *     OMGT_STATUS_ERROR - Error
+ */
+OMGT_STATUS_T
+omgt_pa_get_vf_list2(
+	struct omgt_port     *port,
+	STL_PA_IMAGE_ID_DATA pm_image_id_query,
+	uint32_t             *pNum_VFs,
+	STL_PA_VF_LIST2      **pm_vf_list
+	);
+
+/**
+ * @brief Release vf list2
+ *
+ * @param pm_vf_list         Pointer to pointer to the vf list2 to free.
+ *
+ * @return
+ *   None
+ */
+void
+omgt_pa_release_vf_list2(
+	STL_PA_VF_LIST2 **pm_vf_list
+	);
 
 /** 
  * @brief Get group info

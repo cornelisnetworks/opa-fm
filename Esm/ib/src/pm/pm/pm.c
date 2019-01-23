@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2018, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -87,6 +87,7 @@ uint32_t		pm_instance;
 
 extern Status_t pm_firstpass_comp(void);
 
+uint32_t g_pmDebugPerf = 0;
 int             pm_main(void);
 /* PM Globals */
 size_t				g_pmPoolSize;
@@ -169,11 +170,6 @@ void pm_parse_xml_config(void) {
 	// clear inconsistency flag
 	pm_inconsistency_posted = FALSE;
 
-	memset(&g_pmThresholds, 0, sizeof(g_pmThresholds));
-	memset(&g_pmThresholdsExceededMsgLimit, 0, sizeof(g_pmThresholdsExceededMsgLimit));
-	memset(&g_pmIntegrityWeights, 0, sizeof(g_pmIntegrityWeights));
-	memset(&g_pmCongestionWeights, 0, sizeof(g_pmCongestionWeights));
-
 #ifndef __VXWORKS__
 	// on VxWorks, these parameters come from SM, TBD - verify consistency
 	if (pm_log_level_override) {
@@ -236,38 +232,6 @@ void pm_parse_xml_config(void) {
 				pm_config.total_images, pm_config.freeze_frame_images+2);
 		pm_config.total_images = pm_config.freeze_frame_images+2;
 	}
-
-	g_pmThresholds.Integrity 		= pm_config.thresholds.Integrity;
-	g_pmThresholds.Congestion 		= pm_config.thresholds.Congestion;
-	g_pmThresholds.SmaCongestion 	= pm_config.thresholds.SmaCongestion;
-	g_pmThresholds.Bubble 			= pm_config.thresholds.Bubble;
-	g_pmThresholds.Security			= pm_config.thresholds.Security;
-	g_pmThresholds.Routing 			= pm_config.thresholds.Routing;
-
-	g_pmThresholdsExceededMsgLimit.Integrity 		= pm_config.thresholdsExceededMsgLimit.Integrity;
-	g_pmThresholdsExceededMsgLimit.Congestion 		= pm_config.thresholdsExceededMsgLimit.Congestion;
-	g_pmThresholdsExceededMsgLimit.SmaCongestion 	= pm_config.thresholdsExceededMsgLimit.SmaCongestion;
-	g_pmThresholdsExceededMsgLimit.Bubble 			= pm_config.thresholdsExceededMsgLimit.Bubble;
-	g_pmThresholdsExceededMsgLimit.Security 		= pm_config.thresholdsExceededMsgLimit.Security;
-	g_pmThresholdsExceededMsgLimit.Routing 			= pm_config.thresholdsExceededMsgLimit.Routing;
-
-	g_pmIntegrityWeights.LocalLinkIntegrityErrors = pm_config.integrityWeights.LocalLinkIntegrityErrors;
-	g_pmIntegrityWeights.PortRcvErrors            = pm_config.integrityWeights.PortRcvErrors;
-	g_pmIntegrityWeights.ExcessiveBufferOverruns  = pm_config.integrityWeights.ExcessiveBufferOverruns;
-	g_pmIntegrityWeights.LinkErrorRecovery        = pm_config.integrityWeights.LinkErrorRecovery;
-	g_pmIntegrityWeights.LinkDowned               = pm_config.integrityWeights.LinkDowned;
-	g_pmIntegrityWeights.UncorrectableErrors      = pm_config.integrityWeights.UncorrectableErrors;
-	g_pmIntegrityWeights.FMConfigErrors           = pm_config.integrityWeights.FMConfigErrors;
-	g_pmIntegrityWeights.LinkQualityIndicator     = pm_config.integrityWeights.LinkQualityIndicator;
-	g_pmIntegrityWeights.LinkWidthDowngrade       = pm_config.integrityWeights.LinkWidthDowngrade;
-
-	g_pmCongestionWeights.PortXmitWait     = pm_config.congestionWeights.PortXmitWait;
-	g_pmCongestionWeights.SwPortCongestion = pm_config.congestionWeights.SwPortCongestion;
-	g_pmCongestionWeights.PortRcvFECN      = pm_config.congestionWeights.PortRcvFECN;
-	g_pmCongestionWeights.PortRcvBECN      = pm_config.congestionWeights.PortRcvBECN;
-	g_pmCongestionWeights.PortXmitTimeCong = pm_config.congestionWeights.PortXmitTimeCong;
-	g_pmCongestionWeights.PortMarkFECN     = pm_config.congestionWeights.PortMarkFECN;
-	
 
 	// TBD - simply use sm_numEndPorts for unified SM?
     if (pm_config.subnet_size > MAX_SUBNET_SIZE) {
@@ -666,7 +630,7 @@ pm_main()
 
 #endif
 
-    // check device related configuration parameter settings, and display
+	// check device related configuration parameter settings, and display
     // appropriate warning messages.  And always synch with the current device
     // settings of the SM. 
     (void)sm_getDeviceConfigSettings(&pm_config.hca, &pm_config.port, &pm_config.port_guid);
@@ -954,6 +918,8 @@ pm_main()
 			case STL_PA_ATTRID_GET_FOCUS_PORTS_MULTISELECT:
 			case STL_PA_ATTRID_GET_GRP_NODE_INFO:
 			case STL_PA_ATTRID_GET_GRP_LINK_INFO:
+			case STL_PA_ATTRID_GET_GRP_LIST2:
+			case STL_PA_ATTRID_GET_VF_LIST2:
 				break;
 
 			default:

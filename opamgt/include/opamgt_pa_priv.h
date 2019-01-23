@@ -303,10 +303,17 @@ iba_pa_query_master_pm_lid(struct omgt_port *port);
  *   FSUCCESS       - Get successfully
  *     FERROR       - Error
  */
-FSTATUS 
+FSTATUS
 iba_pa_multi_mad_group_list_response_query(
     IN struct omgt_port              *port,
     IN POMGT_QUERY                  query,
+    OUT PQUERY_RESULT_VALUES        *pquery_result
+    );
+FSTATUS
+iba_pa_multi_mad_group_list2_response_query(
+    IN struct omgt_port             *port,
+    IN POMGT_QUERY                  query,
+    IN STL_PA_IMAGE_ID_DATA         *image_id,
     OUT PQUERY_RESULT_VALUES        *pquery_result
     );
 
@@ -483,10 +490,17 @@ iba_pa_multi_mad_focus_ports_multiselect_response_query (
  *   FSUCCESS       - Get successfully
  *     FERROR       - Error
  */
-FSTATUS 
+FSTATUS
 iba_pa_multi_mad_vf_list_response_query(
-    IN struct omgt_port              *port,
+    IN struct omgt_port             *port,
     IN POMGT_QUERY                  query,
+    OUT PQUERY_RESULT_VALUES        *pquery_result
+    );
+FSTATUS
+iba_pa_multi_mad_vf_list2_response_query(
+    IN struct omgt_port             *port,
+    IN POMGT_QUERY                  query,
+    IN STL_PA_IMAGE_ID_DATA         *image_id,
     OUT PQUERY_RESULT_VALUES        *pquery_result
     );
 

@@ -49,6 +49,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "hsm_config_client_data.h"
 #include "hsm_com_client_data.h"
 #include "cs_g.h"
+#include "ifs_g.h"
 
 extern int   getopt(int, char *const *, const char *);
 
@@ -134,7 +135,7 @@ static command_t commandList[] = {
 	{"smLooptestShowTopology",sm_looptest_show_loop_topology, FM_MGR_SM, "Displays the topology for the SM Loop Test"},
 	{"smLooptestShowConfig",sm_looptest_show_config, FM_MGR_SM, "Displays the current active loop configuration"},
 	{"smForceRebalance", sm_force_rebalance_toggle, FM_MGR_SM, "Toggle Force Rebalance setting for SM"},
-	{"smAdaptiveRouting", sm_adaptive_routing, FM_MGR_SM, "Displays or modifies Adaptive Routing setting for SM.\n                           Display (no arg), Disable=0, Enable=1"},
+	{"smAdaptiveRouting", sm_adaptive_routing, FM_MGR_SM, "Displays or modifies Adaptive Routing settings\n                           (enable/disable, frequency, threshold) for SM.\n                           Display (no arg), Disable=0, Enable=1. Additional arguments\n                           can be used to update the frequency and threshold.\n                           -f (frequency, valid values are from 0 to 7)\n                           -t (threshold, valid values are from 0 to 7)\n                           If frequency or threshold are not provided, they will be reset to default."},
 	{"smForceAttributeRewrite", sm_force_attribute_rewrite, FM_MGR_SM, "Set rewriting of all attributes upon resweeping.\n                           Disable=0, Enable=1"},
 	{"smSkipAttrWrite", sm_skip_attr_write, FM_MGR_SM, "Bitmask of attributes to be skipped(not written) during\n                           sweeps (-help for list)"},
 	{"smPauseSweeps", sm_pause_sweeps, FM_MGR_SM, "Pause SM sweeps"},
@@ -478,13 +479,42 @@ int sm_force_rebalance_toggle(p_fm_config_conx_hdlt hdl, fm_mgr_type_t mgr, int 
 }
 
 int sm_adaptive_routing(p_fm_config_conx_hdlt hdl, fm_mgr_type_t mgr, int argc, char *argv[]) {
-	fm_mgr_config_errno_t	res;
-	fm_msg_ret_code_t		ret_code;
-	uint32_t				enable=0;
+	fm_mgr_config_errno_t			res;
+	fm_msg_ret_code_t			ret_code;
+	fm_ar_config_t				ar_config;
 
-	if (argc == 1) {
-		enable = atol(argv[0]);
-		if((res = fm_mgr_simple_query(hdl, FM_ACT_GET, FM_DT_SM_SET_ADAPTIVE_ROUTING, mgr, sizeof(enable), (void*)&enable, &ret_code)) != FM_CONF_OK)
+	int					arg;
+	const char				* options="f:t:";
+
+	if (argc >= 1) {
+		ar_config.enable = atol(argv[0]);
+		if (ar_config.enable != 0 && ar_config.enable != 1) {
+			fprintf(stderr, "sm_adaptive_routing: Invalid argument %s. Valid values are 0 or 1.\n", argv[0]);
+			return 1;
+		}
+		ar_config.frequency = -1;
+		ar_config.threshold = -1;
+		optind = 1;  // reset the optind used by getopt to 1
+		while(-1 != (arg = getopt(argc, argv, options))) {
+			switch(arg) {
+				case 'f':
+					ar_config.frequency = atol(optarg);
+					if (AR_FREQUENCY_UPPER < ar_config.frequency) {
+						fprintf(stderr, "sm_adaptive_routing: Invalid argument for frequency %s. Valid values are from %d to %d.\n", optarg, AR_FREQUENCY_LOWER, AR_FREQUENCY_UPPER);
+						return 1;
+					}
+					break;
+				case 't':
+					ar_config.threshold = atol(optarg);
+					if (AR_THRESHOLD_UPPER < ar_config.threshold) {
+						fprintf(stderr, "sm_adaptive_routing: Invalid argument for threshold %s. Valid values are from %d to %d.\n", optarg, AR_THRESHOLD_LOWER, AR_THRESHOLD_UPPER);
+						return 1;
+					}
+					break;
+			}
+		}
+
+		if((res = fm_mgr_simple_query(hdl, FM_ACT_GET, FM_DT_SM_SET_ADAPTIVE_ROUTING, mgr, sizeof(ar_config), (void*)&ar_config, &ret_code)) != FM_CONF_OK)
 		{
 			fprintf(stderr, "sm_adaptive_routing: Failed to retrieve data: \n"
 		       	"\tError:(%d) %s \n\tRet code:(%d) %s\n",
@@ -495,14 +525,16 @@ int sm_adaptive_routing(p_fm_config_conx_hdlt hdl, fm_mgr_type_t mgr, int argc, 
     	}
 
 	} else if (argc == 0) {
-		if((res = fm_mgr_simple_query(hdl, FM_ACT_GET, FM_DT_SM_GET_ADAPTIVE_ROUTING, mgr, sizeof(enable), (void*)&enable, &ret_code)) != FM_CONF_OK)
+		if((res = fm_mgr_simple_query(hdl, FM_ACT_GET, FM_DT_SM_GET_ADAPTIVE_ROUTING, mgr, sizeof(ar_config), (void*)&ar_config, &ret_code)) != FM_CONF_OK)
 		{
 			fprintf(stderr, "sm_adaptive_routing: Failed to retrieve data: \n"
 		       	"\tError:(%d) %s \n\tRet code:(%d) %s\n",
 		       	res, fm_mgr_get_error_str(res),ret_code,
 		       	fm_mgr_get_resp_error_str(ret_code));
 		} else {
-			printf("SM Adaptive Routing is %s\n", enable ? "enabled" : "disabled");
+			printf("SM Adaptive Routing is %s\n", ar_config.enable ? "enabled" : "disabled");
+			printf("SM Adaptive Routing Frequency is %u\n", ar_config.frequency);
+			printf("SM Adaptive Routing Threshold is %u\n", ar_config.threshold);
 		}
 	}
 	return 0;

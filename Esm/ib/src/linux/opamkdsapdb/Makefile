@@ -106,17 +106,21 @@ INCLUDE_SUBDIR		=
 #MIDLLOCAL	= User flags for IDL compiler [Empty]
 #RSCLOCAL	= User flags for resource compiler [Empty]
 #LOCALDEPLIBS	= User libraries to include in dependencies [Empty]
-LOCALDEPLIBS	= sm sa pm em fe if3sa if3 cs mai ibaccess config public vslogu Topology Xml opamgt-priv IbPrint net
+LOCALDEPLIBS	= sm sa pm pa em fe if3sa if3 cs mai ibaccess config public vslogu Topology Xml opamgt-priv IbPrint net
 #LOCALLIBS		= User libraries to use when linking [Empty]
 #				(in addition to LOCALDEPLIBS)
-#LOCAL_LIB_DIRS	= User library directories for libpaths [Empty]
+LOCAL_LIB_DIRS	= /usr/lib64
 
 #LOCALDEPLIBS = ssoss_fm_api ssoss_core_unisck ssapi_core_common ssapi_common
 #LOCALDEPLIBS = sm sa pm fe if3sa if3 cs mai ibaccess config rem_conf net public vslogu Xml Md5 opamgt-priv
 #LOCALDEPLIBS = if3sa if3 cs mai ibaccess config rem_conf net public vslogu Xml Md5 opamgt-priv
 #LOCAL_INCLUDE_DIRS=.
 #LOCAL_INCLUDE_DIRS=$(MOD_DIR)/src/smi/include $(MOD_DIR)/src/fe/ $(OPENIB_USER_LIB_DIRS)
-LOCAL_INCLUDE_DIRS=$(MOD_DIR)/ib/include $(TL_DIR)/Esm/ib/src/if3 $(MOD_DIR)/src/smi/include $(TL_DIR)/Topology
+LOCAL_INCLUDE_DIRS = $(MOD_DIR)/ib/include \
+                     $(TL_DIR)/Esm/ib/src/if3 \
+                     $(MOD_DIR)/src/smi/include \
+                     $(MOD_DIR)/src/pm/include \
+                     $(TL_DIR)/Topology
 #LOCALLIBS=  crypto netsnmpagent netsnmpmibs netsnmphelpers netsnmp dl crypto m
 LOCALLIBS= rt $(OPENIB_USER_LIBS) z crypto expat CodeVersion
 CLOCAL = $(CPIE) $(shell pkg-config --cflags json-c) 

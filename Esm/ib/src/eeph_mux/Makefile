@@ -113,8 +113,7 @@ endif
 
 LOCALDEPLIBS=$(IBACCESS_USER_LIBS) Xml Topology opamgt-priv cs ibaccess if3 if3sa config vslogu
 LOCALLIBS=$(OPENIB_USER_LIBS) m rt
-LOCAL_LIB_DIRS=$(OPENIB_USER_LIB_DIRS) $(IBACCESS_USER_LIB_DIRS)
-
+LOCAL_LIB_DIRS=$(OPENIB_USER_LIB_DIRS) $(IBACCESS_USER_LIB_DIRS) /usr/lib64
 
 # Include Make Rules definitions and rules
 include $(PROJ_SM_DIR)/Makerules.module

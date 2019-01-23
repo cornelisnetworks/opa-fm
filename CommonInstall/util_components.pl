@@ -337,12 +337,13 @@ my $Start_Unspecified=0;
 my $Start_NoStart=1;
 my $Start_Start=2;
 
-sub ShowComponents()
+sub ShowComponents(;$)
 {
+	my $print_param = shift || \*STDOUT; #STDOUT as default parameter
 	foreach my $comp ( @Components )
 	{
 		if (! $ComponentInfo{$comp}{'Hidden'}) {
-			print " $comp";
+			print $print_param " $comp";
 		}
 	}
 	print "\n";

@@ -65,7 +65,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 extern	uint32_t	sm_port;
 
 extern	Pool_t		sm_pool;
-extern	Sema_t		sa_sema;
 extern 	uint8_t		nullData[];
 extern  uint64_t	topology_wakeup_time;
 uint32_t            sa_mft_reprog=0;
@@ -398,7 +397,7 @@ sa_main_reader(uint32_t argc, uint8_t ** argv) {
 	filter.mai_filter_check_packet = sa_reader_filter;
 	MAI_SET_FILTER_NAME (&filter, "SA Reader");
 
-	if (mai_filter_create(fd_sa, &filter, VFILTER_SHARE) != VSTATUS_OK) {
+	if (mai_filter_create(fd_sa->fdMai, &filter, VFILTER_SHARE) != VSTATUS_OK) {
 		IB_LOG_ERROR0("sa_main_reader: can't create SubnAdm(*) filter");
 		(void)vs_thread_exit(&sm_threads[SM_THREAD_SA_READER].handle);
 	}
@@ -410,7 +409,7 @@ sa_main_reader(uint32_t argc, uint8_t ** argv) {
      */
     reqTimeToLive = 4ull * ( (2*(1 << sm_config.sa_packet_lifetime_n2)) + (1 << sm_config.sa_resp_time_n2) ); 
 	while (1) {
-		status = mai_recv(fd_sa, &in_mad, VTIMER_1S/4);
+		status = mai_recv(fd_sa->fdMai, &in_mad, VTIMER_1S/4);
 
         if (sa_main_reader_exit == 1){
 #ifdef __VXWORKS__
@@ -540,7 +539,7 @@ sa_main_reader(uint32_t argc, uint8_t ** argv) {
     (void)sa_ServiceRecDelete();
     (void)sa_McGroupDelete();
     sm_multicast_destroy_mlid_list();
-	if (mai_filter_delete(fd_sa, &filter, VFILTER_SHARE) != VSTATUS_OK) {
+	if (mai_filter_delete(fd_sa->fdMai, &filter, VFILTER_SHARE) != VSTATUS_OK) {
 		IB_LOG_ERROR0("sa_main_reader: can't delete SubnAdm(*) filter");
 	}
 	//IB_LOG_INFINI_INFO0("sa_main_reader thread: Exiting OK");
@@ -571,13 +570,13 @@ sa_main_writer(uint32_t argc, uint8_t ** argv) {
 	filter.mai_filter_check_packet = sa_writer_filter;
 	MAI_SET_FILTER_NAME (&filter, "SA Writer");
 
-	if (mai_filter_create(fd_sa_writer, &filter, VFILTER_SHARE) != VSTATUS_OK) {
+	if (mai_filter_create(fd_sa_writer->fdMai, &filter, VFILTER_SHARE) != VSTATUS_OK) {
 		IB_LOG_ERROR0("esm_saw: can't create SubnAdm(*) filter");
 		(void)vs_thread_exit(&sm_threads[SM_THREAD_SA_WRITER].handle);
 	}
 
 	while (1) {
-		status = mai_recv(fd_sa_writer, &in_mad, VTIMER_1S/4);
+		status = mai_recv(fd_sa_writer->fdMai, &in_mad, VTIMER_1S/4);
         if (status != VSTATUS_OK && status != VSTATUS_TIMEOUT) {
             IB_LOG_ERRORRC("sa_main_writer: error on mai_recv rc:", status);
             vs_thread_sleep(VTIMER_1S/10);
@@ -759,7 +758,7 @@ void sa_cntxt_age(void)
                     // Touch the entry
                     tout_cntxt->tstamp = timeLastAged ;
                     // Call timeout
-                    tout_cntxt->sendFd = fd_sa_writer;       // use sa writer mai handle for restransmits
+                    tout_cntxt->sendFd = fd_sa_writer->fdMai;       // use sa writer mai handle for restransmits
                     if (tout_cntxt->method == SA_CM_GETMULTI && tout_cntxt->reqInProg) {
                         // resend the getMulti request ACK
                         sa_getMulti_resend_ack(tout_cntxt);

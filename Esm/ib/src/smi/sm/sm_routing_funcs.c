@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2018, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -357,6 +357,7 @@ _handle_unassigned_sl(QosConfig_t *pQos, uint8_t *sl, bitset_t *usedSLs, int *no
 // in sm_l.h
 extern Status_t sm_update_bw(RoutingModule_t *rm, VirtualFabrics_t *VirtualFabrics);
 extern Status_t sm_assign_scs_to_sls_FixedMap(RoutingModule_t *rm, VirtualFabrics_t *VirtualFabrics);
+extern Status_t sm_assign_scs_to_sls_NonFixedMap(RoutingModule_t *rm, VirtualFabrics_t *VirtualFabrics);
 
 // Routing Functions available to any routing algorithm
 
@@ -821,16 +822,22 @@ sm_routing_func_routing_mode_linear(void)
 	return STL_ROUTE_LINEAR;
 }
 
-int
+boolean
 sm_routing_func_false(void)
 {
 	return 0;
 }
 
-int
+boolean
 sm_routing_func_true(void)
 {
 	return 1;
+}
+
+boolean
+sm_routing_func_node_false(Topology_t *topop, Node_t *nodep)
+{
+	return 0;
 }
 
 
@@ -963,7 +970,6 @@ sm_routing_func_copy_routing_lfts(Topology_t *src_topop, Topology_t *dst_topop)
 	return VSTATUS_OK;
 }
 
-
 Status_t
 sm_routing_func_init_switch_routing_lfts(Topology_t * topop, int * routing_needed, int * rebalance)
 {
@@ -984,7 +990,6 @@ sm_routing_func_init_switch_routing_lfts(Topology_t * topop, int * routing_neede
 
 	return s;
 }
-
 
 Status_t
 sm_routing_func_calculate_lft(Topology_t * topop, Node_t * switchp)
@@ -1550,18 +1555,6 @@ sm_routing_func_needs_lft_recalc(Topology_t * topop, Node_t * nodep)
 }
 
 boolean
-sm_routing_func_can_send_partial_routes_true(void)
-{
-	return 1;
-}
-
-boolean
-sm_routing_func_can_send_partial_routes_false(void)
-{
-	return 0;
-}
-
-boolean
 sm_routing_func_do_spine_check(Topology_t * topop, Node_t * switchp)
 {
 	return sm_config.spine_first_routing && switchp->internalLinks;
@@ -1573,13 +1566,11 @@ sm_routing_func_write_minimal_lft_blocks(Topology_t * topop, Node_t * switchp, S
 	return sm_write_minimal_lft_blocks(topop, switchp, addr);
 }
 
-
 Status_t
 sm_routing_func_write_full_lfts_LR(Topology_t * topop, SwitchList_t * swlist, int rebalance)
 {
 	return sm_write_full_lfts_by_block_LR(topop, swlist, rebalance);
 }
-
 
 Status_t
 sm_routing_func_route_old_switch(Topology_t *src_topop, Topology_t *dst_topop, Node_t *nodep)
@@ -1642,6 +1633,12 @@ sm_routing_func_assign_scs_to_sls_fixedmap(RoutingModule_t *rm, VirtualFabrics_t
 }
 
 Status_t
+sm_routing_func_assign_scs_to_sls_nonfixedmap(RoutingModule_t *rm, VirtualFabrics_t *VirtualFabrics)
+{
+	return sm_assign_scs_to_sls_NonFixedMap(rm, VirtualFabrics);
+}
+
+Status_t
 sm_routing_func_assign_sls(RoutingModule_t *rm, VirtualFabrics_t *vfs)
 {
     int noqos_base = -1;
@@ -1664,12 +1661,12 @@ sm_routing_func_assign_sls(RoutingModule_t *rm, VirtualFabrics_t *vfs)
 
     // Now assign the unspecified SLs.
     // Assign SLs to QOSGroups in the order they appear in the config file.
-    // [This provides a predicable output for users.]
+    // [This provides a predictable output for users.]
     for (qos=0; qos < vfs->number_of_qos_all; qos++) {
         QosConfig_t *pQos = &vfs->qos_all[qos];
 
 		if (VSTATUS_OK != (ret = _handle_unassigned_sl(pQos, &pQos->base_sl, &usedSLs, &noqos_base,
-			0, MAX_SLS, "BaseSL", &numSCs, rm->funcs.num_routing_scs(pQos->resp_sl, 0))))
+			0, MAX_SLS, "BaseSL", &numSCs, rm->funcs.num_routing_scs(pQos->base_sl, 0))))
 			goto bail;
 		if (pQos->requires_resp_sl) {
 			if (VSTATUS_OK != (ret = _handle_unassigned_sl(pQos, &pQos->resp_sl, &usedSLs, &noqos_resp,
@@ -1687,7 +1684,6 @@ sm_routing_func_assign_sls(RoutingModule_t *rm, VirtualFabrics_t *vfs)
 				&noqos_mcast, 0, MAX_SLS, "MulticastSL", &numSCs,
 				rm->funcs.num_routing_scs(pQos->mcast_sl, 1))))
 				goto bail;
-			numSCs += rm->funcs.num_routing_scs(pQos->mcast_sl, 1);
 		} else if (pQos->mcast_sl == UNDEFINED_XML8) {
 			pQos->mcast_sl = pQos->base_sl;
         	if (sm_config.sm_debug_vf)
@@ -1696,24 +1692,16 @@ sm_routing_func_assign_sls(RoutingModule_t *rm, VirtualFabrics_t *vfs)
 		}
     }
 
+	// TODO: numSCs here does not take into account whether or not MulticastSLs can share
+	//       the same VL, or if multicast is being overlayed onto the base. These are
+	//       determined by the routing algorithm. Only side effect right now is printing
+	//       the wrong information to the log. numSCs isn't used anywhere else.
     IB_LOG_INFINI_INFO_FMT(__func__, "%d QOSGroups require %d SLs and %d SCs for operation",
                            vfs->number_of_qos_all, (int)bitset_nset(&usedSLs), numSCs);
 
 bail:
     bitset_free(&usedSLs);
     return ret;
-}
-
-boolean
-sm_routing_func_mcast_isolation_not_required(void)
-{
-	return 0;
-}
-
-boolean
-sm_routing_func_mcast_isolation_is_required(void)
-{
-	return 1;
 }
 
 int
@@ -1734,6 +1722,27 @@ sm_routing_func_one_routing_scs(int sl, boolean mcast_sl)
 	return 1;
 }
 
+static void
+sm_routing_func_delete_node(Node_t* nodep) {
+	if (nodep->routingData) {
+		vs_pool_free(&sm_pool, nodep->routingData);
+		nodep->routingData = NULL;
+	}
+}
+
+int
+sm_routing_func_no_oversubscribe(int sl, boolean mcast_sl)
+{
+	return 0;
+}
+
+Status_t
+sm_routing_func_process_xml_config_noop(void)
+{
+        return VSTATUS_OK;
+}
+
+
 RoutingFuncs_t defaultRoutingFuncs = {
     pre_process_discovery:		sm_routing_func_pre_process_discovery_noop,
     discover_node:				sm_routing_func_discover_node_noop,
@@ -1745,11 +1754,11 @@ RoutingFuncs_t defaultRoutingFuncs = {
     initialize_cost_matrix:		sm_routing_func_init_cost_matrix_floyds,
     calculate_cost_matrix:		sm_routing_func_calc_cost_matrix_floyds,
     routing_mode:				sm_routing_func_routing_mode_linear,
-
+    requires_dr:				sm_routing_func_node_false,
     extended_scsc_in_use:		sm_routing_func_false,
-
     copy_routing:				sm_routing_func_copy_routing_lfts,
     init_switch_routing:		sm_routing_func_init_switch_routing_lfts,
+	setup_switches_lrdr:		sm_setup_switches_lrdr_wave_discovery_order,
     calculate_routes: 			sm_routing_func_calculate_lft,
     setup_xft:					sm_routing_func_setup_xft,
     select_ports:				sm_routing_func_select_ports,
@@ -1767,7 +1776,7 @@ RoutingFuncs_t defaultRoutingFuncs = {
     process_swIdx_change:		sm_routing_func_process_swIdx_change_noop,
     check_switch_path_change:	sm_routing_func_check_switch_path_change,
     needs_routing_recalc: 		sm_routing_func_needs_lft_recalc,
-    can_send_partial_routes:	sm_routing_func_can_send_partial_routes_false,
+    can_send_partial_routes:	sm_routing_func_false,
 	do_spine_check:				sm_routing_func_do_spine_check,
     write_minimal_routes:		sm_routing_func_write_minimal_lft_blocks,
     write_full_routes_LR:		sm_routing_func_write_full_lfts_LR,
@@ -1777,8 +1786,12 @@ RoutingFuncs_t defaultRoutingFuncs = {
 	update_bw:					sm_routing_func_update_bw,
 	assign_scs_to_sls:			sm_routing_func_assign_scs_to_sls_fixedmap,
 	assign_sls:					sm_routing_func_assign_sls,
-	mcast_isolation_required:	sm_routing_func_mcast_isolation_not_required,
+	mcast_isolation_required:	sm_routing_func_false,
+	overlay_mcast:				sm_routing_func_false,
 	min_vls:					sm_routing_func_min_vls,
 	max_vls:					sm_routing_func_max_vls,
-	num_routing_scs:			sm_routing_func_one_routing_scs
+	num_routing_scs:			sm_routing_func_one_routing_scs,
+    oversubscribe_factor:		sm_routing_func_no_oversubscribe,
+	delete_node:				sm_routing_func_delete_node,
+	process_xml_config:			sm_routing_func_process_xml_config_noop
 };

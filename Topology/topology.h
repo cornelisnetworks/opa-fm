@@ -570,6 +570,7 @@ typedef enum {
 	FF_SMADIRECT		=0x000000400,	// Force direct SMA access
 	FF_BUFCTRLTABLE		=0x000000800,	// BufferControlData collected
 	FF_DOWNPORTINFO		=0x000001000,	// Get PortInfo for Down switch ports
+	FF_CABLELOWPAGE		=0x000004000,	//Get Lower memory of Cable Info
 } FabricFlags_t;
 
 // Handling for LIDs up to 24 bits
@@ -603,7 +604,8 @@ typedef struct FabricData_s {
 	QUICK_LIST AllVFs;		// list of VFData_t
 #if !defined(VXWORKS) || defined(BUILD_DMC)
 	QUICK_LIST AllIOUs;		// sorted by NodeGUID
-	cl_qmap_t AllIOCs;		// items are IocData, key is Ioc Guid
+	// AllIOCs uses IOCGUID as the primary key and NodeGUID as secodary key
+	cl_qmap_t AllIOCs;		// items are IocData
 #endif
 	cl_qmap_t AllSMs;		// items are SMData, key is PortGuid
 
@@ -978,7 +980,7 @@ extern FSTATUS FindNodeTypePoint(FabricData_t* fabricp, NODE_TYPE type, Point *p
 extern FSTATUS FindIocNamePoint(FabricData_t* fabricp, char *name, Point *pPoint, uint8 find_flag);
 extern FSTATUS FindIocNamePatPoint(FabricData_t* fabricp, char *pattern, Point *pPoint, uint8 find_flag);
 extern FSTATUS FindIocTypePoint(FabricData_t* fabricp, IocType type, Point *pPoint, uint8 find_flag);
-extern IocData * FindIocGuid(FabricData_t* fabricp, EUI64 guid);
+extern FSTATUS FindIocGuid(FabricData_t* fabricp, EUI64 guid, Point *pPoint);
 #endif
 extern SystemData * FindSystemGuid(FabricData_t* fabricp, EUI64 guid);
 extern FSTATUS FindRatePoint(FabricData_t* fabricp, uint32 rate, Point *pPoint, uint8 find_flag);
@@ -1279,7 +1281,7 @@ typedef FSTATUS (RouteCallback_t)(PortData *entryPortp, PortData *exitPortp, uin
 // FNOT_FOUND - unable to find starting port
 // FNOT_DONE - unable to trace route, dlid is a dead end
 extern FSTATUS WalkRoutePort(FabricData_t *fabricp,
-			   		PortData *portp, STL_LID dlid, uint8 SL,
+			   		PortData *portp, STL_LID dlid, uint8 SL, uint8 rc,
 			  		RouteCallback_t *callback, void *context);
 // walk by slid to dlid
 extern FSTATUS WalkRoute(FabricData_t *fabricp, STL_LID slid, STL_LID dlid,
@@ -1287,11 +1289,11 @@ extern FSTATUS WalkRoute(FabricData_t *fabricp, STL_LID slid, STL_LID dlid,
 
 // caller must free *ppTraceRecords
 extern FSTATUS GenTraceRoutePort(FabricData_t *fabricp,
-			   	PortData *portp, STL_LID dlid,
+			   	PortData *portp, STL_LID dlid, uint8 rc, 
 	   			STL_TRACE_RECORD **ppTraceRecords, uint32 *pNumTraceRecords);
-extern FSTATUS GenTraceRoute(FabricData_t *fabricp, STL_LID slid, STL_LID dlid,
+extern FSTATUS GenTraceRoute(FabricData_t *fabricp, STL_LID slid, STL_LID dlid, uint8 rc, 
 	   			STL_TRACE_RECORD **ppTraceRecords, uint32 *pNumTraceRecords);
-extern FSTATUS GenTraceRoutePath(FabricData_t *fabricp, IB_PATH_RECORD *pathp,
+extern FSTATUS GenTraceRoutePath(FabricData_t *fabricp, IB_PATH_RECORD *pathp, uint8 rc, 
 	   			STL_TRACE_RECORD **ppTraceRecords, uint32 *pNumTraceRecords);
 
 // Generate possible Path records from portp1 to portp2
@@ -1342,13 +1344,13 @@ typedef void (*ValidateCallback2_t)(PortData *portp, uint8 vl, void *context);
 extern FSTATUS ValidateRoutes(FabricData_t *fabricp,
 			   		PortData *portp1, PortData *portp2,
 					uint32 *totalPaths, uint32 *badPaths,
-					uint32 usedSLs,
+					uint32 usedSLs, uint8,
 				   	ValidateCallback_t callback, void *context,
 				   	ValidateCallback2_t callback2, void *context2);
 // validate all the routes between all LIDs
 // exclude loopback routes
 extern FSTATUS ValidateAllRoutes(FabricData_t *fabricp, EUI64 portGuid,
-					uint32 *totalPaths, uint32 *badPaths,
+					uint8 rc, uint32 *totalPaths, uint32 *badPaths,
 				   	ValidateCallback_t callback, void *context,
 				   	ValidateCallback2_t callback2, void *context2,
 					uint8 useSCSC);
@@ -1383,7 +1385,7 @@ typedef void (*ValidateCLLinkStepSummaryCallback_t)(uint32 id, const char *name,
 typedef FSTATUS (*ValidateCLTimeGetCallback_t)(uint64_t *address, pthread_mutex_t *lock);
 
 extern pthread_mutex_t g_cl_lock; 
-extern FSTATUS ValidateAllCreditLoopRoutes(FabricData_t *fabricp, EUI64 portGuid, 
+extern FSTATUS ValidateAllCreditLoopRoutes(FabricData_t *fabricp, EUI64 portGuid, uint8 rc, 
                                            ValidateCLRouteCallback_t routeCallback,
                                            ValidateCLFabricSummaryCallback_t fabricSummaryCallback,
                                            ValidateCLDataSummaryCallback_t dataSummaryCallback,

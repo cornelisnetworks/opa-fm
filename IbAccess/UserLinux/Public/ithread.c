@@ -29,22 +29,46 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 #include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 #include "datatypes.h"
 #include "ithread.h"
 #include "idebug.h"
 
 //----------------------------------------------------------------
+//Globals
+//----------------------------------------------------------------
+// threadNameKey is global to all threads which is used to access
+// the thread's name from its thread local storage.
+static pthread_key_t  threadNameKey;
+static pthread_once_t key_once = PTHREAD_ONCE_INIT;	// ensures key is only set once
+static int isNameKeySet = 0;	// to ensure key has been created before it is used.
+//----------------------------------------------------------------
+//Init function to set the threadNameKey once.
+//Invoked via the pthread_once interface in __UserThreadStartup.
+//----------------------------------------------------------------
+static void
+__ThreadMakeKey()
+{
+	int rc;
+
+	if ((rc = pthread_key_create(&threadNameKey, NULL)) == 0)
+		isNameKeySet = 1;
+	else
+		MsgOut("Failed to create thread name key, rc: %d.\n",rc);
+}
+//----------------------------------------------------------------
 // Internal function to initialize the thread data structure. This
 // function is typically called before a call to kernel_thread().
 //----------------------------------------------------------------
 static void 
 __InitializeThreadData(IN THREAD *pThread, IN THREAD_CALLBACK Callback, 
-                       IN void *Context)
+                       IN void *Context, IN char *Name)
 {
   	pThread->m_Private.m_Osd.tr_flags 	= 0;
   	pThread->m_Private.m_Callback 		= Callback;
   	pThread->m_Private.m_Context 		= Context;
+	memcpy(pThread->m_Private.m_Osd.tr_name, Name, THREAD_NAME_SIZE);
   	EventInit( &pThread->m_Private.m_Osd.tr_RunningEvent );
 }
 
@@ -61,7 +85,6 @@ static int
 __UserThreadStartup(void * arg)
 {
 	THREAD *pThread = (THREAD *) arg;
-
 	//
 	// Trigger the thread running event.
 	// The creating thread waits on this event.
@@ -69,11 +92,14 @@ __UserThreadStartup(void * arg)
 #if DEBUG_THREAD
 	DbgOut ("__UserThreadStartup( %p )[\n",pThread );
 #endif
-	setpgrp();
+	// create thread name_key
+	(void)pthread_once(&key_once, __ThreadMakeKey);
+	// set thread name
+	if (isNameKeySet)
+		ThreadSetName(pThread->m_Private.m_Osd.tr_name);
 
 	EventTrigger(&pThread->m_Private.m_Osd.tr_RunningEvent);
-
-	if (pThread->m_Private.m_Callback)
+		if (pThread->m_Private.m_Callback)
 	{
 		pThread->m_Private.m_Callback(pThread->m_Private.m_Context);
 	}
@@ -116,12 +142,12 @@ ThreadCreate( IN THREAD *pThread, IN char* Name, IN THREAD_CALLBACK Callback, IN
 	//
   	// Initialize the thread structure 
 	//
-  	__InitializeThreadData(pThread, Callback, Context);
+  	__InitializeThreadData(pThread, Callback, Context, Name);
 
 #if DEBUG_THREAD
 	DbgOut("__ThreadCreate( %p )[\n",pThread );
 #endif
-
+	
 	ret = pthread_create(&pThread->m_Private.m_Osd.tr_id,
 				 NULL,
 				(void *)__UserThreadStartup,
@@ -133,7 +159,7 @@ ThreadCreate( IN THREAD *pThread, IN char* Name, IN THREAD_CALLBACK Callback, IN
   	}
 	
 	// TBD - any way to set name of thread?
-
+	
 	//
   	// Wait for the "child" thread to indicate that it is up and running
 	// It assumes that the spawned thread will signal Running Event when it starts up
@@ -240,3 +266,30 @@ void ThreadSetPriority(IN THREAD_PRI pri)
 		MsgOut("Failed to set thread priority.\n");
 	}
 }
+
+//----------------------------------------------------------------
+//set thread name. using a thread specific key
+//----------------------------------------------------------------
+void ThreadSetName(IN char *name)
+{
+
+	if( pthread_setspecific(threadNameKey, name)!= 0)
+	{
+		MsgOut("Failed to Set Thread Name.\n");
+	}
+
+}
+
+//------------------------------------------------------------------
+// get thread name. returns the name which was set by
+// ThreadSetName().
+// -----------------------------------------------------------------
+char* ThreadGetName(void)
+{
+	char* name;
+
+	name = (char*)pthread_getspecific(threadNameKey);
+
+	return (name != NULL)?name:"null";
+}
+

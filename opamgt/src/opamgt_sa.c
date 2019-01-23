@@ -2942,7 +2942,7 @@ FSTATUS omgt_query_sa(struct omgt_port *port, OMGT_QUERY *pQuery,
 		if (fstatus == FSUCCESS) {
 			port->sa_service_state = OMGT_SERVICE_STATE_OPERATIONAL;
 			STL_CLASS_PORT_INFO *pClassPortInfo = NULL;
-			pClassPortInfo = (STL_CLASS_PORT_INFO*)cpi_query_result->QueryResult;
+			pClassPortInfo = &((STL_CLASS_PORT_INFO_RESULT *)cpi_query_result->QueryResult)->ClassPortInfo;
 			port->sa_capmask2 = pClassPortInfo->u1.s.CapMask2;
 			if (pQuery != NULL && ppQueryResult != NULL &&
 				pQuery->OutputType == OutputTypeStlClassPortInfo &&

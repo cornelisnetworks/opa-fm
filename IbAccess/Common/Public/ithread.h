@@ -110,6 +110,12 @@ void
 ThreadSetPriority(
 	IN THREAD_PRI pri);
 
+/*Sets Name for the calling thread */
+void ThreadSetName(
+	IN char *name);
+/* gets name of the calling thread set by ThreadSetName*/
+char* ThreadGetName(void);
+
 #ifdef __cplusplus
 }	/* extern "C" */
 #endif

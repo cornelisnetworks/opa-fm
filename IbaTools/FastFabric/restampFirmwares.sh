@@ -68,7 +68,7 @@ done
 
 for i in CMU.sw_aux CMU.mc1125 EIOU.pcix FCIOU.pcix IBX.sw_aux IBX.mc1125 I2K.mc1125 I3K.mc1125 I5K.t3 I9K.t3
 do
-	patch_version $NEWVERSION $i
+	patch_version -n `format_releasetag $NEWVERSION` $NEWVERSION $i
 done
 
 mkpkg CMU.sw_aux InfiniFabric sw_aux $CMU_PC $SWAUX_BC $STRIP $DEFLATE

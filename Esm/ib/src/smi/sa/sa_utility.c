@@ -91,8 +91,8 @@ uint32_t idbSetSmDefMcGrpTClass(uint32_t);
 extern	STL_CLASS_PORT_INFO	saClassPortInfo;
 Status_t    sa_receive_getmulti(Mai_t *maip, sa_cntxt_t* sa_cntxt);
 extern int createBroadcastGroup(uint16_t pkey, uint8_t mtu, uint8_t rate, uint8_t sl, uint32_t qkey, uint32_t fl, uint8_t tc);
-extern Status_t createMCastGroup(uint64_t*, uint16_t, uint8_t, uint8_t, uint8_t, uint32_t, uint32_t, uint8_t);
-extern Status_t	createMCastGroups(int, uint16_t, uint8_t, uint8_t, uint8_t, uint32_t, uint32_t, uint8_t); 
+extern Status_t createMCastGroup(uint64_t*, uint16_t, uint8_t, uint8_t, uint8_t, uint32_t, uint32_t, uint8_t, STL_LID, int);
+extern Status_t createMCastGroups(int, uint16_t, uint8_t, uint8_t, uint8_t, uint32_t, uint32_t, uint8_t, STL_LID);
 
 uint8_t		nullData[256];				// JSY - temp fix
 
@@ -243,7 +243,7 @@ sa_process_getmulti(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
         /* get the request to processing routine */
         sa_cntxt->processFunc((Mai_t *)&sa_cntxt->mad, sa_cntxt);
         /* switch the mai_handle to writer thread's now that we are sending rmpp response */
-        sa_cntxt->sendFd = fd_sa_writer;
+        sa_cntxt->sendFd = fd_sa_writer->fdMai;
     }
 
     IB_EXIT("sa_process_getmulti", VSTATUS_OK);
@@ -270,7 +270,7 @@ sa_process_mad(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 	}
 
     /* use sa reader mai handle for sending out 1st packet of responses */
-    sa_cntxt->sendFd = fd_sa;
+    sa_cntxt->sendFd = fd_sa->fdMai;
 
     /*
      * Since we have validated this MAD, we can now process it in an attribute specific way.
@@ -410,7 +410,7 @@ sa_process_mad(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
      * switch to sa writer mai handle for sending out remainder of rmpp responses
      * Mutipath request are set after complete receipt of requests in sa_process_getmulti
      */
-    if (maip->base.aid != SA_MULTIPATH_RECORD) sa_cntxt->sendFd = fd_sa_writer;
+    if (maip->base.aid != SA_MULTIPATH_RECORD) sa_cntxt->sendFd = fd_sa_writer->fdMai;
 
     if (saDebugPerf) {
         /* use the time received from umadt as start time if available */
@@ -544,7 +544,7 @@ Status_t sa_getMulti_resend_ack(sa_cntxt_t *sa_cntxt) {
     STL_LID    lid;
     Status_t    status=VSTATUS_OK;
     /* set the mai handle to use for sending - use reader handle fd_sa if no context */
-    IBhandle_t  fd = (sa_cntxt->sendFd) ? sa_cntxt->sendFd : fd_sa;
+    IBhandle_t  fd = (sa_cntxt->sendFd) ? sa_cntxt->sendFd : fd_sa->fdMai;
 
     // get input mad from context
     memcpy((void *)&mad, (void *)&sa_cntxt->mad, sizeof(Mai_t));
@@ -612,7 +612,7 @@ static Status_t send_ack(Mai_t *maip, STL_SA_MAD *samad, sa_cntxt_t* sa_cntxt, u
     Status_t    rc=VSTATUS_OK;
     STL_LID    lid;
     /* set the mai handle to use for sending - use reader handle fd_sa if no context */
-    IBhandle_t  fd = (sa_cntxt->sendFd) ? sa_cntxt->sendFd : fd_sa;
+    IBhandle_t  fd = (sa_cntxt->sendFd) ? sa_cntxt->sendFd : fd_sa->fdMai;
 
     samad->header.rmppType = RMPP_TYPE_ACK;
     /* set NewWindowLast (next ACK) */
@@ -664,7 +664,7 @@ sa_receive_getmulti(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
     uint32_t    len;
     Status_t    rc=VSTATUS_OK;
     /* set the mai handle to use for sending - use reader handle fd_sa if no context */
-    IBhandle_t  fd = (sa_cntxt->sendFd) ? sa_cntxt->sendFd : fd_sa;
+    IBhandle_t  fd = (sa_cntxt->sendFd) ? sa_cntxt->sendFd : fd_sa->fdMai;
 
 	IB_ENTER("sa_receive_getmulti", maip, sa_cntxt, 0, 0);
 
@@ -794,7 +794,7 @@ sa_receive_getmulti(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
             sa_cntxt->retries = 0;          // current retry count
             sa_cntxt->segTotal = 0;
             sa_cntxt->reqInProg = 1;
-            sa_cntxt->sendFd = fd_sa;       // use reader mai handle for receiving request
+            sa_cntxt->sendFd = fd_sa->fdMai;       // use reader mai handle for receiving request
             /* calculate packet and total transaction timeouts */
             sa_cntxt->RespTimeout = 4ull * ( (2*(1<<sm_config.sa_packet_lifetime_n2)) + (1<<saClassPortInfo.u1.s.RespTimeValue) );
             sa_cntxt->tTime = 0;            // for now just use max retries
@@ -1013,7 +1013,7 @@ sa_send_single(Mai_t *maip, sa_cntxt_t* sa_cntxt ) {
     uint32_t    datalen = sizeof(SAMadh_t);
 	STL_SA_MAD	samad;
     /* set the mai handle to use for sending - use reader handle fd_sa if no context */
-    IBhandle_t  fd = (sa_cntxt && sa_cntxt->sendFd) ? sa_cntxt->sendFd : fd_sa;
+    IBhandle_t  fd = (sa_cntxt && sa_cntxt->sendFd) ? sa_cntxt->sendFd : fd_sa->fdMai;
 
 	IB_ENTER("sa_send_single", maip, sa_cntxt, 0, 0);
 
@@ -1080,7 +1080,7 @@ sa_send_multi(Mai_t *maip, sa_cntxt_t *sa_cntxt ) {
     uint16_t    sendAbort=0;
     uint16_t    releaseContext=1;  /* release context here unless we are in resend mode */
     uint64_t    tnow, delta, ttemp;
-    IBhandle_t  fd = (sa_cntxt->sendFd) ? sa_cntxt->sendFd : fd_sa;
+    IBhandle_t  fd = (sa_cntxt->sendFd) ? sa_cntxt->sendFd : fd_sa->fdMai;
 	size_t      sa_data_size = IB_SA_DATA_LEN;
 
 	IB_ENTER("sa_send_multi", maip, sa_cntxt, sa_cntxt->len , 0);
@@ -2405,20 +2405,20 @@ Status_t sa_SetDefBcGrp(void) {
 
 	for (vf= 0; vf < VirtualFabrics->number_of_vfs_all && vf < MAX_VFABRICS; vf++) {
 		if (VirtualFabrics->v_fabric_all[vf].standby) continue;
-		for (mcastGrpp = VirtualFabrics->v_fabric_all[vf].default_group; mcastGrpp; 
+		for (mcastGrpp = VirtualFabrics->v_fabric_all[vf].default_group; mcastGrpp;
 			 mcastGrpp = mcastGrpp->next_default_group) {
 			if (mcastGrpp->def_mc_create) {
 				if (!mcastGrpp->mgidMapSize) {
-					createMCastGroups(vf, mcastGrpp->def_mc_pkey, 
-							mcastGrpp->def_mc_mtu_int, mcastGrpp->def_mc_rate_int,
-							mcastGrpp->def_mc_sl, mcastGrpp->def_mc_qkey,
-							mcastGrpp->def_mc_fl, mcastGrpp->def_mc_tc);
+					createMCastGroups(vf, mcastGrpp->def_mc_pkey,
+									  mcastGrpp->def_mc_mtu_int, mcastGrpp->def_mc_rate_int,
+									  mcastGrpp->def_mc_sl, mcastGrpp->def_mc_qkey,
+									  mcastGrpp->def_mc_fl, mcastGrpp->def_mc_tc, mcastGrpp->def_mc_mlid);
 				} else {
 					for_all_qmap_ptr(&mcastGrpp->mgidMap, cl_map_item, mgidp) {
 						createMCastGroup(mgidp->mgid, mcastGrpp->def_mc_pkey,
 								mcastGrpp->def_mc_mtu_int, mcastGrpp->def_mc_rate_int,
 								mcastGrpp->def_mc_sl, mcastGrpp->def_mc_qkey,
-								mcastGrpp->def_mc_fl, mcastGrpp->def_mc_tc);
+								mcastGrpp->def_mc_fl, mcastGrpp->def_mc_tc, mcastGrpp->def_mc_mlid, vf);
 					}
 				}
 			}

@@ -1,6 +1,6 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015-2017, Intel Corporation
+# Copyright (c) 2015-2018, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -43,14 +43,15 @@ EXECUTABLE		= # Sm$(EXE_SUFFIX)
 DIRS			= 
 # C files (.c)
 CFILES			= \
-				  paAccess.c pm_calc.c pm_groups.c mad_info.c pm_sweep.c \
-				  pm_mad.c pm_debug.c paServer.c pm_dispatch.c pm_async_rcv.c \
-				  pm_counters.c pm_vfs.c pm.c pa_protocol.c pa_categories.c
-				# Add more c files here
+				  pm.c pm_async_rcv.c pm_calc.c pm_counters.c \
+				  pm_debug.c pm_dispatch.c pm_groups.c \
+				  pm_mad.c pm_pma.c pm_sweep.c pm_vfs.c \
+
+				  # Add more c files here
 ifeq ($(BUILD_TARGET_OS),VXWORKS)
 CFILES			+=	pm_vxWorks.c
 else
-CFILES			+=	pm_linux.c pa_sth_old.c
+CFILES			+=	pm_linux.c
 endif
 # C++ files (.cpp)
 CCFILES			= \
@@ -117,8 +118,8 @@ INCLUDE_SUBDIR		=
 #				(in addition to LOCALDEPLIBS)
 #LOCAL_LIB_DIRS	= User library directories for libpaths [Empty]
 
-CLOCAL	= $(CPIE)
-LOCAL_INCLUDE_DIRS=$(MOD_DIR)/src/smi/include
+CLOCAL = -DLOCAL_MOD_ID=VIEO_PM_MOD_ID $(CPIE)
+LOCAL_INCLUDE_DIRS=$(MOD_DIR)/src/smi/include $(MOD_DIR)/src/pm/include
 LOCALDEPLIBS = 
 
 # Include Make Rules definitions and rules

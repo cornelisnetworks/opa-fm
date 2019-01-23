@@ -68,6 +68,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "iba/stl_sa_priv.h"
 #include "iba/stl_sm_priv.h"
 
+
 static Status_t	sa_Trap_Forward(SubscriberKeyp, STL_NOTICE *);
 
 extern	uint64_t	topology_wakeup_time;
@@ -411,6 +412,8 @@ static
 void _copy_CapMaskTrap(Port_t **portp, STL_TRAP_CHANGE_CAPABILITY_DATA *ccTrapRef) {
 	(*portp)->portData->portInfo.CapabilityMask.AsReg32 = ccTrapRef->CapabilityMask.AsReg32;
 	(*portp)->portData->portInfo.CapabilityMask3.AsReg16 = ccTrapRef->CapabilityMask3.AsReg16;
+
+
 }
 
 
@@ -499,7 +502,7 @@ sa_Trap(Mai_t *maip) {
 
 	/* Send a TrapRepress to the sender after inserting our Mkey */
     BSWAPCOPY_STL_MKEY(&sm_config.mkey, stl_mai_get_mkey(maip));
-	(void)mai_reply(fd_async, maip);
+	(void)mai_reply(fd_async->fdMai, maip);
 
 	/* Look for subscribers */
 	(void)vs_lock(&saSubscribers.subsLock);
@@ -555,8 +558,17 @@ sa_Trap(Mai_t *maip) {
             IB_LOG_INFINI_INFO_FMT( "sa_Trap", 
                    "Received a PORT STATE CHANGE trap from %s, TID="FMT_U64, desc, tid);
 		}
-		/* Must tell sm_top to re-sweep fabric */
-		sm_discovery_needed("Port State Change Trap", notice.IssuerLID);
+		vs_rdlock(&old_topology_lock);
+		if(topology_passcount > 0) {
+			portp = sm_find_node_and_port_lid(&old_topology, notice.IssuerLID, &nodep);
+			if(sm_flap_report_port_change_trap(&sm_popo, nodep))
+				/* tell sm_top to re-sweep fabric unless trap was generated from flapping port */
+				sm_discovery_needed("Port State Change Trap", notice.IssuerLID);
+		} else {
+			sm_discovery_needed("Port State Change Trap", notice.IssuerLID);
+		}
+		vs_unlock(&old_topology_lock);
+
 	} else if (notice.Attributes.Generic.TrapNumber == MAD_SMT_CAPABILITYMASK_CHANGE) {
 		STL_TRAP_CHANGE_CAPABILITY_DATA ccTrap;
 		STL_TRAP_CHANGE_CAPABILITY_DATA ccTrapRef;
@@ -579,6 +591,7 @@ sa_Trap(Mai_t *maip) {
 				//determine which bits in Capability Mask/Mask3 changed
 				ccTrap.CapabilityMask.AsReg32 ^= portp->portData->portInfo.CapabilityMask.AsReg32;
 				ccTrap.CapabilityMask3.AsReg16 ^= portp->portData->portInfo.CapabilityMask3.AsReg16;
+
 
 				if (ccTrap.CapabilityMask.s.IsSM){ //node's SM status changed, will need to trigger a sweep
 					if (ccTrapRef.CapabilityMask.s.IsSM){
@@ -841,7 +854,7 @@ static Status_t sa_Trap_Forward(SubscriberKeyp subsKeyp, STL_NOTICE * noticep) {
 
 	IB_ENTER("sa_Trap_Forward", subsKeyp, noticep, 0, 0);
 
-	(void)mai_alloc_tid(fd_saTrap, MAD_CV_SUBN_ADM, &tid);
+	(void)mai_alloc_tid(fd_saTrap->fdMai, MAD_CV_SUBN_ADM, &tid);
 
 	INCREMENT_COUNTER(smCounterSaTxReportNotice);
 
@@ -898,7 +911,7 @@ static Status_t sa_Trap_Forward(SubscriberKeyp subsKeyp, STL_NOTICE * noticep) {
     if ((madcntxt = cs_cntxt_get(&out_mad, &sm_notice_cntxt, FALSE)) == NULL) {
         // could not get a context, send report unreliably
         IB_LOG_WARN0("sa_Trap_Forward: can't allocate a notice context, sending unreliably");
-		if ((status = mai_send(fd_saTrap, &out_mad)) != VSTATUS_OK) {
+		if ((status = mai_send(fd_saTrap->fdMai, &out_mad)) != VSTATUS_OK) {
 			IB_LOG_ERRORRC("sa_Trap_Forward: can't send MAD unreliably rc:", status);
 		}
     } else {

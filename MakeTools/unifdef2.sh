@@ -164,6 +164,7 @@ fi
 #
 
 > $out_file
+chmod --reference=$in_file $out_file		# match permissions of in-file
 
 writing=1
 line_number=1

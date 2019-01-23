@@ -757,7 +757,6 @@ void IXmlParserEndHoqTimeout_Str(IXmlParserState_t *state,
 {
 	uint8_t value;
 	if (!IXmlParseTimeoutMultInf_Str(state, content, len, &value)) {
-		IXmlParserPrintError(state, "Invalid value");
 		return;
 	}
 
@@ -780,7 +779,6 @@ void IXmlParserEndHoqTimeout_Int(IXmlParserState_t *state,
 {
 	uint32_t value;
 	if (!IXmlParseUint32(state, content, len, &value)) {
-		IXmlParserPrintError(state, "Invalid value");
 		return;
 	}
 

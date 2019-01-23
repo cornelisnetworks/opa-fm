@@ -136,6 +136,8 @@ CableValuesStr=";;"
 Port1ValuesStr=";;"
 Port2ValuesStr=";;"
 
+header="Rate;LinkDetails;CableLength;CableLabel;CableDetails;Port.NodeDesc;Port.PortNum;LinkQualityIndicator.Value;Port.NodeDesc;Port.PortNum;LinkQualityIndicator.Value"
+
 while read line
 do
 
@@ -147,7 +149,7 @@ do
     # Display header first time
     if [ $printHeader -eq 1 ]
     then
-        echo "Rate;LinkDetails;CableLength;CableLabel;CableDetails;Port.NodeDesc;Port.PortNum;LinkQualityIndicator.Value;Port.NodeDesc;Port.PortNum;LinkQualityIndicator.Value"
+        echo $header
         printHeader=0
     fi
 
@@ -209,6 +211,13 @@ done < <(/usr/sbin/opareport -x -d 10 -s -o errors -T "$@" | \
         /usr/sbin/opaxmlextract -H -d \; -e Link:id -e Rate -e LinkDetails -e CableLength \
         -e CableLabel -e CableDetails -e Port.NodeDesc -e Port.PortNum \
         -e LinkQualityIndicator.Value)
+
+if [ $printHeader -eq 1 ]
+then
+  # No links displayed, still print header
+  echo $header
+fi
+
 
 # print the last link record
 if [ "$prevLinkID" != "" ]

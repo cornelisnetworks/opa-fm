@@ -54,10 +54,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define	_SM_DBSYNC_H_
 
 #include "os_g.h"
+#include "sm_parallelsweep.h"
 
 //
 // SM DBSYNC structure conversion routines
-// 
+//
 #define SMDBSYNC_NSIZE 84
 #define SMDBSYNC_CCC_NSIZE 56
 #define SMDBSYNC_SEND_FILE_NSIZE 100
@@ -353,7 +354,7 @@ void        sm_dbsync_recClear(void);
 void        sm_dbsync_procReq(void);
 int         sm_dbsync_getSmCount(void);
 int         sm_dbsync_getActiveSmCount(void);
-Status_t    sm_dbsync_upsmlist(void);
+Status_t    sm_dbsync_upsmlist(SweepContext_t *);
 Status_t    sm_dbsync_syncService(DBSyncType_t, OpaServiceRecordp);
 Status_t    sm_dbsync_syncInform(DBSyncType_t, SubscriberKeyp, STL_INFORM_INFO_RECORD *);
 Status_t    sm_dbsync_syncGroup(DBSyncType_t, IB_GID*);

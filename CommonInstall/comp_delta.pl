@@ -65,8 +65,6 @@ use strict;
 # ==========================================================================
 # OFA_Delta installation, includes Intel value-adding packages only
 
-my $default_prefix="/usr";
-
 # all kernel srpms
 # these are in the order we must build/process them to meet basic dependencies
 my @delta_kernel_srpms_rhel72 = ( 'kmod-ifs-kernel-updates' );
@@ -74,10 +72,12 @@ my @delta_kernel_srpms_rhel72 = ( 'kmod-ifs-kernel-updates' );
 my @delta_kernel_srpms_rhel74_hfi2 = ( 'hfi2' );
 my @delta_kernel_srpms_sles12_sp2 = ( 'ifs-kernel-updates-kmp-default' );
 my @delta_kernel_srpms_sles12_sp3 = ( 'ifs-kernel-updates-kmp-default' );
+my @delta_kernel_srpms_sles12_sp4 = ( 'ifs-kernel-updates-kmp-default' );
 my @delta_kernel_srpms_sles15 = ( 'ifs-kernel-updates-kmp-default' );
 my @delta_kernel_srpms_rhel73 = ( 'kmod-ifs-kernel-updates' );
 my @delta_kernel_srpms_rhel74 = ( 'kmod-ifs-kernel-updates' );
 my @delta_kernel_srpms_rhel75 = ( 'kmod-ifs-kernel-updates' );
+my @delta_kernel_srpms_rhel76 = ( 'kmod-ifs-kernel-updates' );
 my @delta_kernel_srpms = ( );
 
 # This provides information for all kernel srpms
@@ -141,6 +141,9 @@ sub init_delta_info($)
 		&& "$CUR_VENDOR_VER" eq 'ES123') {
 		@delta_kernel_srpms = ( @delta_kernel_srpms_sles12_sp3 );
 	} elsif ("$CUR_DISTRO_VENDOR" eq 'SuSE'
+		&& "$CUR_VENDOR_VER" eq 'ES124') {
+		@delta_kernel_srpms = ( @delta_kernel_srpms_sles12_sp4 );
+	} elsif ("$CUR_DISTRO_VENDOR" eq 'SuSE'
 		&& "$CUR_VENDOR_VER" eq 'ES15') {
 		@delta_kernel_srpms = ( @delta_kernel_srpms_sles15 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES74" ) {
@@ -149,6 +152,8 @@ sub init_delta_info($)
 		} else {
 			@delta_kernel_srpms = (@delta_kernel_srpms_rhel74);
 		}
+	} elsif ( "$CUR_VENDOR_VER" eq "ES76" ) {
+		@delta_kernel_srpms = ( @delta_kernel_srpms_rhel76 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES75" ) {
 		@delta_kernel_srpms = ( @delta_kernel_srpms_rhel75 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES73" ) {
@@ -849,6 +854,9 @@ sub installed_delta_opa_stack()
 			return ( has_version_delta()
 			      && rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
 		}
+	} elsif ( "$CUR_VENDOR_VER" eq "ES76" ) {
+		return ( has_version_delta()
+				&& rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
 	} elsif ( "$CUR_VENDOR_VER" eq "ES75" ) {
 		return ( has_version_delta()
 				&& rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
@@ -856,6 +864,9 @@ sub installed_delta_opa_stack()
 		return ( has_version_delta()
 				&& rpm_is_installed("ifs-kernel-updates-kmp-default", $CUR_OS_VER));
 	} elsif ( "$CUR_VENDOR_VER" eq 'ES123' ) {
+		return ( has_version_delta()
+				&& rpm_is_installed("ifs-kernel-updates-kmp-default", $CUR_OS_VER));
+	} elsif ( "$CUR_VENDOR_VER" eq 'ES124' ) {
 		return ( has_version_delta()
 				&& rpm_is_installed("ifs-kernel-updates-kmp-default", $CUR_OS_VER));
 	} elsif ( "$CUR_VENDOR_VER" eq 'ES15' ) {
@@ -1151,7 +1162,13 @@ sub installed_intel_hfi()
 	} elsif ( "$CUR_VENDOR_VER" eq "ES75" ) {
 		return (has_version_delta()
 		     && rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
+	} elsif ( "$CUR_VENDOR_VER" eq "ES76" ) {
+		return (has_version_delta()
+		     && rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
 	} elsif ( "$CUR_VENDOR_VER" eq "ES123" ) {
+		return (has_version_delta()
+		     && rpm_is_installed("ifs-kernel-updates-kmp-default", $CUR_OS_VER));
+	} elsif ( "$CUR_VENDOR_VER" eq "ES124" ) {
 		return (has_version_delta()
 		     && rpm_is_installed("ifs-kernel-updates-kmp-default", $CUR_OS_VER));
 	} elsif ( "$CUR_VENDOR_VER" eq "ES15" ) {
@@ -1649,7 +1666,8 @@ sub install_sandiashmem($$)
 	rpm_uninstall_list2("any", " --nodeps ", 'silent', @{ $ComponentInfo{'sandiashmem'}{'UserRpms'}});
 	my $rpmfile = rpm_resolve(delta_rpms_dir() . "/sandia-openshmem_gcc_hfi", "any");
 	if ( "$rpmfile" ne "" && -e "$rpmfile" ) {
-		# try to remove existed SOS folders
+		# try to remove existed SOS folders. Note this is the workaround for PR 144408. We shall remove the following
+		# code after we resolve the PR.
 		my @installed_pkgs = glob("$OFED_prefix/shmem/gcc/sandia-openshmem-*-hfi");
 		if (@installed_pkgs) {
 			foreach my $installed_pkg (@installed_pkgs) {

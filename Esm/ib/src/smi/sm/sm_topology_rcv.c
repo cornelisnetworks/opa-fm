@@ -98,7 +98,7 @@ createFilter(uint16_t aid, char* filterName, char* filterErrName) {
 	filter.mask.aid  = MAI_FMASK_ALL;
 	MAI_SET_FILTER_NAME (&filter, filterName);
 
-	status = mai_filter_create(fd_atopology, &filter, VFILTER_SHARE | VFILTER_PURGE);
+	status = mai_filter_create(fd_atopology->fdMai, &filter, VFILTER_SHARE | VFILTER_PURGE);
 	if (status != VSTATUS_OK) {
 		IB_LOG_ERRORRC("topology_rcv: can't create topology async receive filter for set responses rc:", status);
 		(void)vs_thread_exit(&sm_threads[SM_THREAD_ASYNC].handle);
@@ -122,7 +122,7 @@ createFilter(uint16_t aid, char* filterName, char* filterErrName) {
 	filter.mask.aid  = MAI_FMASK_ALL;
 	MAI_SET_FILTER_NAME (&filter, filterErrName);
 
-	status = mai_filter_create(fd_atopology, &filter, VFILTER_SHARE | VFILTER_PURGE);
+	status = mai_filter_create(fd_atopology->fdMai, &filter, VFILTER_SHARE | VFILTER_PURGE);
 	if (status != VSTATUS_OK) {
 		IB_LOG_ERRORRC("topology_rcv: can't create topology async receive filter for set errors rc:", status);
 		(void)vs_thread_exit(&sm_threads[SM_THREAD_ASYNC].handle);
@@ -157,7 +157,7 @@ topology_rcv(uint32_t argc, uint8_t ** argv) {
     sm_async_send_rcv_cntxt.hashTableDepth = CNTXT_HASH_TABLE_DEPTH;
     sm_async_send_rcv_cntxt.poolSize = MAX(32, sm_config.max_parallel_reqs);
     sm_async_send_rcv_cntxt.maxRetries = sm_config.max_retries;
-    sm_async_send_rcv_cntxt.ibHandle = fd_atopology;
+    sm_async_send_rcv_cntxt.ibHandle = fd_atopology->fdMai;
     sm_async_send_rcv_cntxt.errorOnSendFail = 0;
 #ifdef IB_STACK_OPENIB
 	// for openib we let umad do the timeouts.  Hence we add 1 second to
@@ -191,6 +191,7 @@ topology_rcv(uint32_t argc, uint8_t ** argv) {
 	createFilter(STL_MCLASS_ATTRIB_ID_MCAST_FWD_TABLE, "top_rcv_mft", "top_rcv_mft_err");
 	createFilter(STL_MCLASS_ATTRIB_ID_PART_TABLE, "top_rcv_pkey", "top_rcv_pkey_err");
 	createFilter(STL_MCLASS_ATTRIB_ID_PORT_INFO, "top_rcv_pi", "top_rcv_pi_err");
+	createFilter(STL_MCLASS_ATTRIB_ID_PORT_STATE_INFO, "top_rcv_psi", "top_rcv_psi_err");
 
     //
     //	Set the filter for catching LID routed get GUIDINFO responses on fd_atopology.
@@ -209,7 +210,7 @@ topology_rcv(uint32_t argc, uint8_t ** argv) {
 	filter.mask.aid  = 0xffff;
 	MAI_SET_FILTER_NAME (&filter, "top_rcv_guid");
 
-	status = mai_filter_create(fd_atopology, &filter, VFILTER_SHARE | VFILTER_PURGE);
+	status = mai_filter_create(fd_atopology->fdMai, &filter, VFILTER_SHARE | VFILTER_PURGE);
 	if (status != VSTATUS_OK) {
 		IB_LOG_ERRORRC("topology_rcv: can't create topology async receive filter for GuidInfo set responses rc:", status);
 		(void)vs_thread_exit(&sm_threads[SM_THREAD_ASYNC].handle);
@@ -233,7 +234,7 @@ topology_rcv(uint32_t argc, uint8_t ** argv) {
 	filter.mask.aid  = 0xffff;
 	MAI_SET_FILTER_NAME (&filter, "top_rcv_guid_er");
 
-	status = mai_filter_create(fd_atopology, &filter, VFILTER_SHARE | VFILTER_PURGE);
+	status = mai_filter_create(fd_atopology->fdMai, &filter, VFILTER_SHARE | VFILTER_PURGE);
 	if (status != VSTATUS_OK) {
 		IB_LOG_ERRORRC("topology_rcv: can't create topology async receive filter for GuidInfo set errors rc:", status);
 		(void)vs_thread_exit(&sm_threads[SM_THREAD_ASYNC].handle);
@@ -253,10 +254,10 @@ topology_rcv(uint32_t argc, uint8_t ** argv) {
 		 * on return value from cs_cntxt_age() below.
 		 */
 		if (sm_config.min_rcv_wait_msec) {
-		    status = mai_recv(fd_atopology, &mad, timeout);
+		    status = mai_recv(fd_atopology->fdMai, &mad, timeout);
 		}
 		else
-	        status = mai_recv(fd_atopology, &mad, 50000ull);
+	        status = mai_recv(fd_atopology->fdMai, &mad, 50000ull);
 
         if (status == VSTATUS_OK) {
             switch (mad.type) {
@@ -323,7 +324,7 @@ topology_rcv(uint32_t argc, uint8_t ** argv) {
 	} // end while loop
 
     //	Delete the filter.
-	if (mai_filter_delete(fd_atopology, &filter, VFILTER_SHARE | VFILTER_PURGE) != VSTATUS_OK) {
+	if (mai_filter_delete(fd_atopology->fdMai, &filter, VFILTER_SHARE | VFILTER_PURGE) != VSTATUS_OK) {
 		IB_LOG_ERROR0("topology_rcv: can't delete topology async receive filter");
 	}
 	// release the SM async send rcv context pool

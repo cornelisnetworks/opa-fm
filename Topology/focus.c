@@ -460,6 +460,7 @@ static FSTATUS ParseIocGuidPoint(FabricData_t *fabricp, char *arg, Point *pPoint
 {
 	char *param;
 	EUI64 guid;
+	FSTATUS status;
 	
 	ASSERT(! PointValid(pPoint));
 	if (FSUCCESS != StringToUint64(&guid, arg, pp, 0, TRUE))  {
@@ -475,15 +476,10 @@ static FSTATUS ParseIocGuidPoint(FabricData_t *fabricp, char *arg, Point *pPoint
 	if (0 == (find_flag & FIND_FLAG_FABRIC))
 		return FINVALID_OPERATION;
 	if (find_flag & FIND_FLAG_FABRIC) {
-		IocData *iocp;
-		iocp = FindIocGuid(fabricp, guid);
-		if (iocp) {
-			pPoint->u.iocp = iocp;
-			pPoint->Type = POINT_TYPE_IOC;
-		}
+		status = FindIocGuid(fabricp, guid, pPoint);
 	}
 	// N/A for FIND_FLAG_ENODE, FIND_FLAG_ESM and FIND_FLAG_ELINK
-	if (PointValid(pPoint)) {
+	if (status == FSUCCESS) {
 		if (NULL != (param = ComparePrefix(*pp, ":port:"))) {
 			return ParsePointPort(fabricp, param, pPoint, find_flag, NULL, NULL, pp);
 		}
@@ -491,7 +487,7 @@ static FSTATUS ParseIocGuidPoint(FabricData_t *fabricp, char *arg, Point *pPoint
 	} else {
 		fprintf(stderr, "%s: IOC GUID Not Found: 0x%016"PRIx64"\n",
 						g_Top_cmdname, guid);
-		return FNOT_FOUND;
+		return status;
 	}
 }
 #endif

@@ -1190,48 +1190,39 @@ mai_getqp(struct mai_fd *act, uint64_t wakeup)
 								   mad.addrInfo.slid, mad.base.tid, mad.base.status);
 						}
 						
-						  /* 
-                           * Now send back with error status if Device Management or Communication Management 
-                           * Send trap repress if a trap
-                           * ignore and drop otherwise
-                           */
-						  if (mad.type != MAI_TYPE_DROP && (mad.base.mclass == MAD_CV_DEV_MGT || mad.base.mclass == MAD_CV_COMM_MGT)) {
-						  /* Respond only to Get/Set/Send */
-                              mad.base.status = MAD_STATUS_BAD_ATTR;
-                              if (mad.base.method == MAD_CM_GET || mad.base.method == MAD_CM_SET) {
-							  mad.base.method = MAD_CM_GET_RESP;
-                              } else if (mad.base.method == MAD_CM_SEND) {
-							  mad.base.method = MAD_CM_SEND;
-                              } else {
-							  break;
-						  }
-                          } else if (mad.type != MAI_TYPE_DROP && (mad.base.mclass == MAD_CV_SUBN_LR && mad.base.method == MAD_CM_TRAP)) {
-							  /* send the trap repress on behalf of SM */
-                              mad.base.method = MAD_CM_TRAP_REPRESS;
-                              mad.base.status = MAD_STATUS_D_BIT;
-                              // Adjust the PKEY to PKEY_M, because the SMA has sent the trap
-                              // with a PKEY value of PKEY_m 
-                              mad.addrInfo.pkey = STL_DEFAULT_FM_PKEY;
-						  } else {
-							  break;  /* ignore packet */
-                          }
-						  
+						/*
+						 * Now send back with error status if Device Management
+						 * or Communication Management ignore and drop
+						 * otherwise
+						 */
+						if (mad.type != MAI_TYPE_DROP && (mad.base.mclass == MAD_CV_DEV_MGT || mad.base.mclass == MAD_CV_COMM_MGT)) {
+							/* Respond only to Get/Set/Send */
+							mad.base.status = MAD_STATUS_BAD_ATTR;
+							if (mad.base.method == MAD_CM_GET || mad.base.method == MAD_CM_SET) {
+								mad.base.method = MAD_CM_GET_RESP;
+							} else if (mad.base.method == MAD_CM_SEND) {
+								mad.base.method = MAD_CM_SEND;
+							} else {
+								break;
+							}
+						} else {
+							break;  /* ignore packet */
+						}
 
-						  /* First swap lids */
-						  tempLid = mad.addrInfo.dlid;
-						  mad.addrInfo.dlid = mad.addrInfo.slid;
-						  mad.addrInfo.slid = tempLid;
+						/* First swap lids */
+						tempLid = mad.addrInfo.dlid;
+						mad.addrInfo.dlid = mad.addrInfo.slid;
+						mad.addrInfo.slid = tempLid;
 
-						  /* Next swap QPs */
-						  tempQP = mad.addrInfo.destqp;
-						  mad.addrInfo.destqp = mad.addrInfo.srcqp;
-						  mad.addrInfo.srcqp = tempQP;
+						/* Next swap QPs */
+						tempQP = mad.addrInfo.destqp;
+						mad.addrInfo.destqp = mad.addrInfo.srcqp;
+						mad.addrInfo.srcqp = tempQP;
 
-						  status = ib_send_sma(chan, &mad, MAI_DEFAULT_SEND_TIMEOUT);
-						  if (status != VSTATUS_OK)
-						  {
-							  IB_LOG_WARNRC("failed to send error response rc:", status);
-						  }
+						status = stl_send_sma(chan, &mad, MAI_DEFAULT_SEND_TIMEOUT);
+						if (status != VSTATUS_OK) {
+							IB_LOG_WARNRC("failed to send error response rc:", status);
+						}
 
 					  }
 					  break;

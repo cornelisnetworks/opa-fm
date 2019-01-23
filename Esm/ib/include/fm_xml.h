@@ -130,6 +130,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define NONRESP_TIMEOUT  	600ull
 #define NONRESP_MAXRETRY 	3
 
+
 // Cable Info Policy
 #define CIP_NONE 0
 #define CIP_LINK 1
@@ -595,8 +596,7 @@ typedef struct _VFMem {
 // Internal rendering of Default Groups
 typedef struct _VFDg {
 	uint8_t				def_mc_create;				// if undefined will default to 1
-	uint8_t				prejoin_allowed;			// 0 = false, non-zero = true.
-													// if undefined will default to 0
+	uint32_t			def_mc_mlid;				// if undefined will default to 0x0
 	uint32_t			def_mc_pkey;			 	// if undefined will default to
 													// STL_DEFAULT_APP_PKEY
 	uint8_t				def_mc_mtu_int;				// if undefined will default to 0xff
@@ -621,8 +621,10 @@ typedef struct _VFabric {
 	uint32_t		pkey;							// if 0xffffffff use default pkey
 	uint32_t		qos_index;
 	uint8_t			qos_implicit;
-	uint8_t			added;							// For use on reconfiguration
-	uint8_t			removed;						// For use on reconfiguration
+	union {											// Index in old/new vf array
+		uint32_t    old_index;                      // if 0xFFFFFFFF (-1) then it is a new VF (added)
+		uint32_t    new_index;						// if 0xFFFFFFFF (-1) then it is a deleted VF (removed)
+	} reconf_idx;
 	uint8_t			standby;
 	uint8_t			security;						// defaults to 0 or false
 	uint8_t			max_mtu_int;					// if 0xff then unlimited
@@ -663,7 +665,7 @@ typedef struct _SMDPLXmlConfig {
 // SM Multicast DefaultGroup configuration
 typedef struct _SMMcastDefGrp {
 	uint32_t		def_mc_create;
-	uint32_t		prejoin_allowed;
+	uint32_t		def_mc_mlid;
 	char			virtual_fabric[MAX_VFABRIC_NAME];
 	uint32_t		def_mc_pkey;
 	uint8_t			def_mc_mtu_int;
@@ -732,6 +734,17 @@ typedef struct _SMLinkPolicyXmlConfig {
     SMPolicyConfig_t		speed_policy;
 } SMLinkPolicyXmlConfig_t;
 
+typedef struct _SMFlappingXmlConfig{
+	uint32_t window_size; //Size in minutes of sliding window over which bounce events are counted
+	uint32_t high_thresh; // Threshold of bounce events used to trigger quarantine state for port
+	uint32_t low_thresh; // threshold of bounce events to trigger unquarantine or unmonitor of port
+} SMFlappingXmlConfig_t;
+
+typedef struct _SMPortQuarantineXmlConfig {
+	uint8_t enabled;
+	SMFlappingXmlConfig_t flapping;
+} SMPortQuarantineXmlConfig_t;
+
 // SM configuration for Preemption
 typedef struct _SMPreemptionXmlConfig {
     uint32_t    small_packet;
@@ -790,6 +803,7 @@ typedef struct _SmFtreeRouting_t {
 	XMLMember_t	coreSwitches;			// device group indicating core switches
 	XMLMember_t	routeLast;				// device group indicating HFIs that should be routed last.
 } SmFtreeRouting_t;
+
 
 
 /*
@@ -914,6 +928,7 @@ typedef enum {
 } LidStrategy_t;
 
 
+
 // SM configuration
 typedef struct _SMXmlConfig {
 	uint64_t	subnet_prefix;
@@ -963,7 +978,7 @@ typedef struct _SMXmlConfig {
 	uint32_t	min_supported_vls;
 	uint64_t	cumulative_timeout_limit;
 	uint32_t	max_fixed_vls;
-
+	uint32_t	allow_mixed_vls;	// Don't quarantine nodes that can't support all VLs.
 	uint64_t	non_resp_tsec;
 	uint32_t	non_resp_max_count;
 
@@ -976,6 +991,7 @@ typedef struct _SMXmlConfig {
 
     SMLinkPolicyXmlConfig_t hfi_link_policy;
     SMLinkPolicyXmlConfig_t isl_link_policy;
+	SMPortQuarantineXmlConfig_t port_quarantine; 
     SMPreemptionXmlConfig_t preemption;
 
 	SmCongestionXmlConfig_t congestion;
@@ -1025,6 +1041,7 @@ typedef struct _SMXmlConfig {
 	uint32_t 	switchCascadeActivateEnable;// 0 - Disabled, 1 - Enable cascade activation using IsActiveOptimizeEnable
 	uint32_t 	neighborNormalRetries; 		// Number of retries when a port fails to go ACTIVE based on neighbor state (NeighborNormal flag)
 	uint8_t		terminateAfter;				// Undocumented setting. 0 - Disabled, #>0 - Terminate after # sweeps.
+	uint8_t		psThreads;					// Undocumented setting. The # of threads to use for parallel SM programming.
 	uint32_t 	portBounceLogLimit; 		// Number of port bounce log messages to show before suppressing the rest.
 	uint32_t	neighborFWAuthenEnable;     // used to enable/disable usage of NeighborFWAuthenBypass checking
     uint32_t    SslSecurityEnabled;
@@ -1080,7 +1097,10 @@ typedef struct _SMXmlConfig {
 	uint32_t	loop_test_packets;
 
 	char		dumpCounters[LOGFILE_SIZE];	// Undocumented setting. Null - Disabled. Not Null - dump performance counters after each sweep.
+
+	uint32_t	multicast_mask;
 	uint32_t	lid_strategy;
+	uint32_t	sm_dsap_enabled;
 	uint32_t	P_Key_8B;
 	uint32_t	P_Key_10B;
 } SMXmlConfig_t;
@@ -1210,6 +1230,7 @@ typedef struct _PMXmlConfig {
     uint32_t   	elevated_priority;
     uint32_t   	debug;
     uint32_t	debug_rmpp;
+	uint32_t	pm_debug_perf;
     uint32_t    log_level;
 	char		log_file[LOGFILE_SIZE];
 	uint32_t	syslog_mode;
@@ -1375,7 +1396,7 @@ extern int copyCompressXMLConfigFile(char *src, char *dst);
 extern void freeDgInfo(DGXmlConfig_t *dg);
 extern FSTATUS MatchImplicitMGIDtoVF(SMMcastDefGrp_t *mdgp, VirtualFabrics_t *vf_config);
 extern FSTATUS MatchExplicitMGIDtoVF(SMMcastDefGrp_t *mdgp, VirtualFabrics_t *vf_config, boolean update_active_vfabrics, int enforceVFPathRecs);
-
+int verifyAndConvertMGidString(char *mgidString, VFAppMgid_t *mgidMapping);
 // Export XML Memory mapping functions for the SM to use with the Topology lib on ESM
 #ifdef __VXWORKS__
 extern void* getParserMemory(size_t size);

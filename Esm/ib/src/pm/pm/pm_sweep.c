@@ -96,52 +96,17 @@ Thread_t g_pmAsyncRcvThread;
 boolean g_pmAsyncRcvThreadRunning = FALSE;
 Sema_t g_pmAsyncRcvSema;	// indicates AsyncRcvThread is ready
 
-// Max Compress/Decompress threads possible
-#define PM_MAX_NUM_COMPRESSION_DIVISIONS 32
-#define PM_HALF_SECOND ((uint64_t) 500000U)
+/* Flags used by the PM to determine what data needs to be recalculated instead of
+ * copied from previous Image.
+ */
+typedef enum {
+	PM_TOPO_RECALC_NONE = 0,
+	PM_TOPO_RECALC_VFS = (1<<0),  /* Recalculate VF Membership */
+	PM_TOPO_RECALC_PGS = (1<<1),  /* Recalculate PmPortGroup Membership */
+	PM_TOPO_RECALC_SMS = (1<<2),  /* Recalculate SmInfo Records */
 
-// default Thresholds
-ErrorSummary_t g_pmThresholds = {
-    Integrity:  100,
-    Congestion: 100,
-    SmaCongestion: 100,
-    Bubble: 100,
-    Security: 10,
-    Routing: 100
-};
-
-// default ThresholdsExceededMsgLimit
-PmThresholdsExceededMsgLimitXmlConfig_t g_pmThresholdsExceededMsgLimit = {
-    Integrity:  10,
-    Congestion: 0,
-    SmaCongestion: 0,
-    Bubble: 0,
-    Security: 10,
-    Routing: 10
-};
-
-// default Weights for components of Integrity
-IntegrityWeights_t g_pmIntegrityWeights = {
-    LocalLinkIntegrityErrors: 0,
-    PortRcvErrors: 100,
-    ExcessiveBufferOverruns: 100,
-    LinkErrorRecovery: 0,
-    LinkDowned: 25,
-    UncorrectableErrors: 100,
-    FMConfigErrors: 100,
-    LinkQualityIndicator: 40,
-    LinkWidthDowngrade: 100
-};
-
-// default Weights for components of Congestion
-CongestionWeights_t g_pmCongestionWeights = {
-    PortXmitWait: 10,
-    SwPortCongestion: 100,
-    PortRcvFECN: 5,
-    PortRcvBECN: 1,
-    PortXmitTimeCong: 25,
-    PortMarkFECN: 25
-};
+	PM_TOPO_RECALC_ALL = 0xFF     /* Recalculate ALL */
+} PmTopoReCalcFlags_t;
 
 /* DN445 - PA Failover feature. Thread to sync RAM/Disk short term PA history data per SM. */
 Thread_t              g_PmDbsyncThread;
@@ -857,7 +822,7 @@ void update_pm_vfvlmap(PmImage_t *pmimagep, PmPortImage_t *portImage, VlVfMap_t 
 // Update a Port's information (neighbor, state) for current SweepIndex
 // caller should verify portp is valid
 static
-void update_pmport(Pm_t *pm, PmPort_t *pmportp, Node_t *nodep, Port_t *portp)
+void update_pmport(Pm_t *pm, PmPort_t *pmportp, Node_t *nodep, Port_t *portp, PmTopoReCalcFlags_t recalc_flags)
 {
 	PmImage_t *pmimagep = &pm->Image[pm->SweepIndex];
 	Node_t *neigh_nodep;
@@ -875,8 +840,8 @@ void update_pmport(Pm_t *pm, PmPort_t *pmportp, Node_t *nodep, Port_t *portp)
 		StlLinkWidthToInt(portp->portData->portInfo.LinkWidth.Active) -
 		StlLinkWidthToInt(portp->portData->portInfo.LinkWidthDowngrade.RxActive) : 0);
 	portImage->u.s.activeSpeed = portp->portData->portInfo.LinkSpeed.Active;
-	bitset_copy(&pmportp->dgMember, &portp->portData->dgMember);
-	{
+	if (recalc_flags & PM_TOPO_RECALC_VFS) {
+		bitset_copy(&pmportp->dgMember, &portp->portData->dgMember);
 		VlVfMap_t vlvfmap;
 		old_topology.routingModule->funcs.select_vlvf_map(&old_topology, nodep, portp, &vlvfmap); // select is based on appropriate instance of _select_vlvf_map()
 		update_pm_vfvlmap(pmimagep, portImage, &vlvfmap);
@@ -884,6 +849,11 @@ void update_pmport(Pm_t *pm, PmPort_t *pmportp, Node_t *nodep, Port_t *portp)
 		for (vl = 0; vl < STL_MAX_VLS; vl++){
 			bitset_free(&vlvfmap.vf[vl]);
 		}
+	} else {
+		PmPortImage_t *portImagePrev = &pmportp->Image[pm->LastSweepIndex];
+		memcpy(portImage->vfvlmap, portImagePrev->vfvlmap, sizeof(vfmap_t)*MAX_VFABRICS);
+		portImage->vlSelectMask = portImagePrev->vlSelectMask;
+		portImage->numVFs = portImagePrev->numVFs;
 	}
 
 	// TBD - can't avoid sm_find_node, but it itself could be optimized
@@ -952,7 +922,7 @@ PmPort_t *allocate_pmport(Pm_t *pm, Node_t *nodep, Port_t *portp, PmNode_t *pmno
 		//Initialized = 0;
 	pmportp->pmnodep = pmnodep;
 
-	update_pmport(pm, pmportp, nodep, portp);	// update neighbor, state, rate and mtu 
+	update_pmport(pm, pmportp, nodep, portp, PM_TOPO_RECALC_ALL); // update neighbor, state, rate and mtu
 	// assumes pmportp->nodep PmaCapabilities already updated
 	PmUpdatePortPmaCapabilities(pmportp, portp);
 	IB_LOG_DEBUG1_FMT(__func__, "%.*s Guid "FMT_U64" LID 0x%x Port %u neighbor lid 0x%x Port %u",
@@ -1023,7 +993,7 @@ void update_pmnode(Pm_t *pm, PmNode_t *pmnodep, Node_t *nodep, Port_t *portp, Po
 	// when device revision changes we need to update the Pma Capabilities
 	if (pmnodep->deviceRevision != nodep->nodeInfo.Revision || g_pmFirstSweepAsMaster) {
 		pmnodep->deviceRevision = nodep->nodeInfo.Revision;
-		PmUpdateNodePmaCapabilities(pmnodep,nodep,(pm->flags & STL_PM_PROCESS_HFI_COUNTERS));
+		PmUpdateNodePmaCapabilities(pmnodep,nodep,(pm->pmFlags & STL_PM_PROCESS_HFI_COUNTERS));
 #if 1
 		// to be safe, clear out any previous ClassPortInfo
 		// be safe, will update capabilities when get class port info again
@@ -1049,7 +1019,7 @@ void update_pmnode(Pm_t *pm, PmNode_t *pmnodep, Node_t *nodep, Port_t *portp, Po
 // if still referenced, merely removes all ports from all groups for SweepIndex
 void release_pmnode(Pm_t *pm, PmNode_t *pmnodep)
 {
-	
+
 	uint32 refCount = AtomicDecrement(&pmnodep->refCount);
 	IB_LOG_DEBUG1_FMT(__func__, "%s %.*s Guid "FMT_U64" LID 0x%x",
 		refCount?"still referenced":"freeing",
@@ -1112,7 +1082,7 @@ PmNode_t *allocate_pmnode(Pm_t *pm, Node_t *nodep, Port_t *portp)
 	pmnodep->up.swPorts = NULL;
 	pmnodep->u.AsReg16 = 0;
 		//PmaGotClassPortInfo = 0;
-	PmUpdateNodePmaCapabilities(pmnodep, nodep, (pm->flags & STL_PM_PROCESS_HFI_COUNTERS));
+	PmUpdateNodePmaCapabilities(pmnodep, nodep, (pm->pmFlags & STL_PM_PROCESS_HFI_COUNTERS));
 
 	// default path information (no redirect)
 	initialize_path(pmnodep, portp->portData->lid, imageIndex);
@@ -1127,8 +1097,7 @@ PmNode_t *allocate_pmnode(Pm_t *pm, Node_t *nodep, Port_t *portp)
 			vs_pool_free(&pm_pool, pmnodep);
 			return NULL;
 		}
-		memset(pmnodep->up.swPorts, 0, 
-					   	sizeof(PmPort_t*)*(pmnodep->numPorts+1));
+		memset(pmnodep->up.swPorts, 0, sizeof(PmPort_t*)*(pmnodep->numPorts+1));
 		for (i=0; i<=pmnodep->numPorts; ++i) {
 			Port_t *portp2 = (i==0)?portp:sm_find_node_port(&old_topology, nodep, i);
 			if (sm_valid_port(portp2) && sm_port_active(portp2)
@@ -1284,7 +1253,7 @@ PmPort_t *pm_find_port(PmImage_t *pmimagep, STL_LID lid, uint8 portNum)
 // copy a "lid"'ed port (port 0 of switch, or port on FI)
 // caller has verified portp supplied is valid and active
 static Status_t
-pm_copy_topology_port(Pm_t *pm, Port_t *portp, Port_t *sm_portp)
+pm_copy_topology_port(Pm_t *pm, Port_t *portp, Port_t *sm_portp, PmTopoReCalcFlags_t recalc_flags)
 {
 	Status_t status = VSTATUS_OK;
 	PmNode_t *pmnodep;
@@ -1304,7 +1273,7 @@ pm_copy_topology_port(Pm_t *pm, Port_t *portp, Port_t *sm_portp)
 		int i;
 		PmImage_t *pmimagep = &pm->Image[pm->SweepIndex];
 		update_pmnode(pm, pmnodep, nodep, portp, sm_portp);
-		update_pmport(pm, pmnodep->up.swPorts[0], nodep, portp);
+		update_pmport(pm, pmnodep->up.swPorts[0], nodep, portp, recalc_flags);
 		pmimagep->SwitchPorts++;	// include Port 0
 		for (i=1; i<=pmnodep->numPorts; ++i) {
 			Port_t *portp2 = sm_find_node_port(&old_topology, nodep, i);
@@ -1326,12 +1295,12 @@ pm_copy_topology_port(Pm_t *pm, Port_t *portp, Port_t *sm_portp)
 				//free_pmport(pm, pmportp2);
 				//pmnodep->up.swPorts[i] = NULL;
 			} else if (portp2 && pmportp2) {
-				update_pmport(pm, pmportp2, nodep, portp2);
+				update_pmport(pm, pmportp2, nodep, portp2, recalc_flags);
 			}
 		}
 	} else {
 		update_pmnode(pm, pmnodep, nodep, portp, sm_portp);
-		update_pmport(pm, pmnodep->up.caPortp, nodep, portp);
+		update_pmport(pm, pmnodep->up.caPortp, nodep, portp, recalc_flags);
 	}
 	pmnodep->changed_count = topology_passcount; // topology_changed_count;
 	return status;
@@ -1381,7 +1350,7 @@ uint32 connect_neighbor(Pm_t *pm, PmPort_t *pmportp)
 // copy all the ports which are in the new SM topology
 // does not handle disappeared ports
 static Status_t
-pm_topology_copy_active_ports(Pm_t *pm, Port_t *sm_portp)
+pm_topology_copy_active_ports(Pm_t *pm, Port_t *sm_portp, PmTopoReCalcFlags_t recalc_flags)
 {
 	Node_t *nodep;
 	PmImage_t *pmimagep = &pm->Image[pm->SweepIndex];
@@ -1397,7 +1366,7 @@ pm_topology_copy_active_ports(Pm_t *pm, Port_t *sm_portp)
 			portp = sm_get_port(nodep, 0);
 			if (sm_valid_port(portp) && sm_port_active(portp)) {
 				pmimagep->SwitchNodes++;
-				if (pm_copy_topology_port(pm, portp, sm_portp) == VSTATUS_NOMEM)
+				if (pm_copy_topology_port(pm, portp, sm_portp, recalc_flags) == VSTATUS_NOMEM)
                     return VSTATUS_NOMEM;
 			}
 		} else {
@@ -1406,7 +1375,7 @@ pm_topology_copy_active_ports(Pm_t *pm, Port_t *sm_portp)
 					if (nodep->nodeInfo.NodeType == STL_NODE_FI) {
 						pmimagep->HFIPorts++;
 					}
-					if (pm_copy_topology_port(pm, portp, sm_portp) == VSTATUS_NOMEM)
+					if (pm_copy_topology_port(pm, portp, sm_portp, recalc_flags) == VSTATUS_NOMEM)
                         return VSTATUS_NOMEM;
 				}
 			}
@@ -1522,6 +1491,8 @@ static FSTATUS pm_copy_topology(Pm_t *pm)
 	uint32 newSize = 0;
 	uint32 imageIndex = pm->SweepIndex;
 	PmImage_t *pmimagep = &pm->Image[imageIndex];
+
+	PmTopoReCalcFlags_t recalc_flags = PM_TOPO_RECALC_NONE;
 	int i;
 	extern SMXmlConfig_t sm_config;
 
@@ -1532,7 +1503,7 @@ static FSTATUS pm_copy_topology(Pm_t *pm)
 	// sm_isMaster and topology_passcount are protected by new_topology_lock,
 	// but a quick read should be ok
 	// let SM become master and get a sweep done 1st
-    if (sm_isMaster() && topology_passcount >= 1)
+	if (sm_isMaster() && topology_passcount >= 1)
 		ret = FSUCCESS;
 
 #ifdef __VXWORKS__
@@ -1552,21 +1523,30 @@ static FSTATUS pm_copy_topology(Pm_t *pm)
 		PmNode_t **newLidMap;
 		Status_t rc;
 
+		// Check if we can just copy topology data from last image
+		if (pm->changed_count != topology_passcount || pm->LastSweepIndex == PM_IMAGE_INDEX_INVALID) {
+			recalc_flags = PM_TOPO_RECALC_ALL;
+		}
+		if (g_pmDebugPerf) {
+			IB_LOG_INFINI_INFO_FMT(__func__, "PM Topology Recalculate Flags: 0x%x", (uint8)recalc_flags);
+		}
+
 		IB_LOG_INFO_FMT(__func__, "START copy new PM topology: size=%u", pmimagep->lidMapSize);
-        IB_LOG_VERBOSE_FMT(__func__, "sm passcount=%u", topology_passcount);
+		IB_LOG_VERBOSE_FMT(__func__, "sm passcount=%u", topology_passcount);
 		sm_portp = sm_get_port(old_topology.node_head, pm_config.port);
 		pm->pm_slid = sm_lid;
 
 		oldMaxLid = pmimagep->maxLid;
 		// as needed grow or shink array, with some extra space for growth
-		if (pmimagep->lidMapSize < old_topology.maxLid+1
-			|| pmimagep->lidMapSize > old_topology.maxLid + PM_LID_MAP_FREE_THRESHOLD) {
+		if (pmimagep->lidMapSize < (old_topology.maxLid + 1)
+			|| pmimagep->lidMapSize > (old_topology.maxLid + PM_LID_MAP_FREE_THRESHOLD))
+		{
 			newSize = MIN(old_topology.maxLid+1+PM_LID_MAP_SPARE,sm_config.max_supported_lid+1);
 			IB_LOG_INFO_FMT(__func__, "resize lidMap oldSize=%u newSize=%u", pmimagep->lidMapSize, newSize);
 			rc = vs_pool_alloc(&pm_pool, newSize*sizeof(PmNode_t *),
 							(void*)&newLidMap);
 			if (rc != VSTATUS_OK || ! newLidMap) {
-                ret = FINSUFFICIENT_MEMORY;
+				ret = FINSUFFICIENT_MEMORY;
 				IB_LOG_ERRORRC("Failed to allocate PM Lid Map rc:", rc);
 				goto bail;
 			}
@@ -1589,36 +1569,43 @@ static FSTATUS pm_copy_topology(Pm_t *pm)
 		}
 
 		//Update Active VFs
-		VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
-		pmimagep->NumVFs = 0;
-		pmimagep->NumVFsActive = 0;
-		for (i = 0; i < VirtualFabrics->number_of_vfs_all; i++) {
-			PmVF_t *vfp = &pmimagep->VFs[i];
-			vfp->isActive = 0;
+		if (recalc_flags & PM_TOPO_RECALC_VFS) {
+			VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
+			pmimagep->NumVFs = 0;
+			pmimagep->NumVFsActive = 0;
+			for (i = 0; i < VirtualFabrics->number_of_vfs_all; i++) {
+				PmVF_t *vfp = &pmimagep->VFs[i];
+				vfp->isActive = 0;
 
-			StringCopy(vfp->Name, VirtualFabrics->v_fabric_all[i].name, STL_PM_VFNAMELEN);
-			if(!VirtualFabrics->v_fabric_all[i].standby) {
-				vfp->isActive = 1;
-				pmimagep->NumVFsActive++;
+				StringCopy(vfp->Name, VirtualFabrics->v_fabric_all[i].name, STL_PM_VFNAMELEN);
+				if(!VirtualFabrics->v_fabric_all[i].standby) {
+					vfp->isActive = 1;
+					pmimagep->NumVFsActive++;
+				}
+				pmimagep->NumVFs++;
 			}
-			pmimagep->NumVFs++;
-		}
-		for ( ; i < MAX_VFABRICS; i++) {
-			pmimagep->VFs[i].isActive = 0;
-			pmimagep->VFs[i].Name[0] = '\0';
-		}
-		if (pmimagep->NumVFs != VirtualFabrics->number_of_vfs_all) {
-			IB_LOG_WARN_FMT(__func__, "PM VF list count does not match SM VF list: SM count: %u PM count: %u",
-				VirtualFabrics->number_of_vfs_all, pmimagep->NumVFs);
+			for ( ; i < MAX_VFABRICS; i++) {
+				pmimagep->VFs[i].isActive = 0;
+				pmimagep->VFs[i].Name[0] = '\0';
+			}
+			if (pmimagep->NumVFs != VirtualFabrics->number_of_vfs_all) {
+				IB_LOG_WARN_FMT(__func__, "PM VF list count does not match SM VF list: SM count: %u PM count: %u",
+					VirtualFabrics->number_of_vfs_all, pmimagep->NumVFs);
+			}
+		} else {
+			PmImage_t *pmimageprevp = &pm->Image[pm->LastSweepIndex];
+			pmimagep->NumVFs = pmimageprevp->NumVFs;
+			pmimagep->NumVFsActive = pmimageprevp->NumVFsActive;
+			memcpy(pmimagep->VFs, pmimageprevp->VFs, sizeof(PmVF_t)*MAX_VFABRICS);
 		}
 
 		// copy all the ports which are in the new SM topology
 		// we will handle ports which have disappeared below
-		if (pm_topology_copy_active_ports(pm, sm_portp) == VSTATUS_NOMEM) {
-            ret = FINSUFFICIENT_MEMORY;
-            IB_LOG_ERRORRC("Failed to allocate copy of active ports rc:", VSTATUS_NOMEM);
-            goto bail;
-        }
+		if (pm_topology_copy_active_ports(pm, sm_portp, recalc_flags) == VSTATUS_NOMEM) {
+			ret = FINSUFFICIENT_MEMORY;
+			IB_LOG_ERRORRC("Failed to allocate copy of active ports rc:", VSTATUS_NOMEM);
+			goto bail;
+		}
 
 		// neighbors are handled below
 		pm->changed_count = topology_passcount; // topology_changed_count;
@@ -3012,6 +2999,12 @@ fail:
 FSTATUS PmReconstitute(PmShortTermHistory_t *sth, PmCompositeImage_t *cimg) {
 	int i;
 
+	/* Check if requested Image is already loaded */
+	if (sth->LoadedImage.img
+		&& (sth->LoadedImage.img->sweepStart == cimg->sweepStart))
+	{
+		return FSUCCESS;
+	}
 	// clear out whatever is in there first
 	clearLoadedImage(sth);
 	// convert the data in cimg to image data
@@ -3882,7 +3875,7 @@ store_file:
 	// Update the record.  Only fill in the filename. Leave the images
 	// per composite as zero. This is all the Standby cares about.
 	// If/When we become Master, we'll reread the history.
-	snprintf(rec->header.filename, sizeof(rec->header.filename), "%s", newfilename);
+	StringCopy(rec->header.filename, newfilename, sizeof(rec->header.filename));
 	for (i = 0; i < PM_HISTORY_MAX_IMAGES_PER_COMPOSITE; i++) {
 		rec->historyImageEntries[i].inx = INDEX_NOT_IN_USE;
 	}
@@ -4433,11 +4426,7 @@ static FSTATUS PmCreateGroup(PmImage_t *pmimagep, const char* name, PmComparePor
 // The goal is to limit clear operations, especially for stable clean
 // fabrics.  If it is desired to clear error counters every time they
 // are non-zero simply fill in 0 for all clearThreshold values.
-static Status_t PmInit(Pm_t *pm, EUI64 portguid, uint16 pmflags,
-				uint16 interval, const ErrorSummary_t *thresholds,
-			   	const IntegrityWeights_t *integrityWeights,
-			   	const CongestionWeights_t *congestionWeights,
-				uint8 errorClear)
+static Status_t PmInit(Pm_t *pm)
 {
 	Status_t status = VSTATUS_OK;
 	uint32 i;
@@ -4447,11 +4436,40 @@ static Status_t PmInit(Pm_t *pm, EUI64 portguid, uint16 pmflags,
 	PM_InitStaticRateToMBps();
 
 	MemoryClear(pm, sizeof(*pm));
-	pm->flags = pmflags;
-	pm->interval = interval;
-	pm->Thresholds = *thresholds;
-	pm->integrityWeights = *integrityWeights;
-	pm->congestionWeights = *congestionWeights;
+
+	pm->pmFlags = (pm_config.process_hfi_counters ? STL_PM_PROCESS_HFI_COUNTERS : 0)
+		| (pm_config.process_vl_counters ? STL_PM_PROCESS_VL_COUNTERS : 0)
+		| (pm_config.ClearDataXfer ? STL_PM_PROCESS_CLR_DATA_COUNTERS : 0)
+		| (pm_config.Clear64bit ? STL_PM_PROCESS_CLR_64BIT_COUNTERS : 0)
+		| (pm_config.Clear32bit ? STL_PM_PROCESS_CLR_32BIT_COUNTERS : 0)
+		| (pm_config.Clear8bit ? STL_PM_PROCESS_CLR_8BIT_COUNTERS : 0);
+
+	pm->interval   = pm_config.sweep_interval;
+	pm->ErrorClear = pm_config.ErrorClear;
+
+	pm->Thresholds.Integrity     = pm_config.thresholds.Integrity;
+	pm->Thresholds.Congestion    = pm_config.thresholds.Congestion;
+	pm->Thresholds.SmaCongestion = pm_config.thresholds.SmaCongestion;
+	pm->Thresholds.Bubble        = pm_config.thresholds.Bubble;
+	pm->Thresholds.Security      = pm_config.thresholds.Security;
+	pm->Thresholds.Routing       = pm_config.thresholds.Routing;
+
+	pm->integrityWeights.LocalLinkIntegrityErrors = pm_config.integrityWeights.LocalLinkIntegrityErrors;
+	pm->integrityWeights.PortRcvErrors            = pm_config.integrityWeights.PortRcvErrors;
+	pm->integrityWeights.ExcessiveBufferOverruns  = pm_config.integrityWeights.ExcessiveBufferOverruns;
+	pm->integrityWeights.LinkErrorRecovery        = pm_config.integrityWeights.LinkErrorRecovery;
+	pm->integrityWeights.LinkDowned               = pm_config.integrityWeights.LinkDowned;
+	pm->integrityWeights.UncorrectableErrors      = pm_config.integrityWeights.UncorrectableErrors;
+	pm->integrityWeights.FMConfigErrors           = pm_config.integrityWeights.FMConfigErrors;
+	pm->integrityWeights.LinkQualityIndicator     = pm_config.integrityWeights.LinkQualityIndicator;
+	pm->integrityWeights.LinkWidthDowngrade       = pm_config.integrityWeights.LinkWidthDowngrade;
+
+	pm->congestionWeights.PortXmitWait     = pm_config.congestionWeights.PortXmitWait;
+	pm->congestionWeights.SwPortCongestion = pm_config.congestionWeights.SwPortCongestion;
+	pm->congestionWeights.PortRcvFECN      = pm_config.congestionWeights.PortRcvFECN;
+	pm->congestionWeights.PortRcvBECN      = pm_config.congestionWeights.PortRcvBECN;
+	pm->congestionWeights.PortXmitTimeCong = pm_config.congestionWeights.PortXmitTimeCong;
+	pm->congestionWeights.PortMarkFECN     = pm_config.congestionWeights.PortMarkFECN;
 
 	IB_LOG_INFO_FMT(__func__, "SweepInterval=%u", pm->interval);
 	IB_LOG_INFO_FMT(__func__, "Thresholds.Integrity=%u", pm->Thresholds.Integrity);
@@ -4485,7 +4503,7 @@ static Status_t PmInit(Pm_t *pm, EUI64 portguid, uint16 pmflags,
 	IB_LOG_INFO_FMT(__func__, "CongestionWeights.XmitTimeCong=%u", pm->congestionWeights.PortXmitTimeCong);
 	IB_LOG_INFO_FMT(__func__, "CongestionWeights.MarkFECN=%u", pm->congestionWeights.PortMarkFECN);
 
-	IB_LOG_INFO_FMT(__func__, "ErrorClear=%u", errorClear);
+	IB_LOG_INFO_FMT(__func__, "ErrorClear=%u", pm->ErrorClear);
 
 
 	pm->PmPortSize = sizeof(PmPort_t)+sizeof(PmPortImage_t)*(pm_config.total_images-1);
@@ -4527,13 +4545,11 @@ static Status_t PmInit(Pm_t *pm, EUI64 portguid, uint16 pmflags,
 	LinkDownIgnoreMask.s.LocalLinkIntegrityErrors = 1;
 	LinkDownIgnoreMask.s.ExcessiveBufferOverruns = 1;
 
-	PM_BuildClearCounterSelect(&pm->clearCounterSelect, (pmflags & STL_PM_PROCESS_CLR_DATA_COUNTERS?1:0),
-							   (pmflags & STL_PM_PROCESS_CLR_64BIT_COUNTERS?1:0),
-							   (pmflags & STL_PM_PROCESS_CLR_32BIT_COUNTERS?1:0),
-							   (pmflags & STL_PM_PROCESS_CLR_8BIT_COUNTERS?1:0) );
+	PM_BuildClearCounterSelect(&pm->clearCounterSelect,
+		pm_config.ClearDataXfer, pm_config.Clear64bit,
+		pm_config.Clear32bit, pm_config.Clear8bit);
 
-	pm->ErrorClear = errorClear;
-	PmComputeClearThresholds(&pm->ClearThresholds, &pm->clearCounterSelect, errorClear);
+	PmComputeClearThresholds(&pm->ClearThresholds, &pm->clearCounterSelect, pm->ErrorClear);
 	pm->LastSweepIndex = PM_IMAGE_INDEX_INVALID;
 	pm->lastHistoryIndex = pm_config.total_images-1;
 	//pm->SweepIndex = 0;	// next sweep index to use - zeroed by MemoryClear
@@ -4871,7 +4887,7 @@ void PmFailPort(Pm_t *pm, PmPort_t *pmportp, uint8 queryStatus, uint8 method, ui
 }	// End of PmFailPort()
 
 void PmFailPacket(Pm_t *pm, PmDispatcherPacket_t *disppacket, uint8 queryStatus, uint8 method, uint16 aid)
-{	
+{
 	int i, j;
 	uint64 PortSelectMask;
 	PmPort_t *pmportp;
@@ -4947,7 +4963,11 @@ void PmFailNode(Pm_t *pm, PmNode_t *pmnodep, uint8 queryStatus, uint8 method, ui
 static FSTATUS PmSweepCounters(Pm_t *pm)
 {
 	FSTATUS status;
+	uint64_t stime, etime;
 
+	if (g_pmDebugPerf) {
+		(void)vs_time_get(&stime);
+	}
 	status = PmSweepAllPortCounters(pm);
 	if (status != FSUCCESS)
 		return status;
@@ -4955,8 +4975,16 @@ static FSTATUS PmSweepCounters(Pm_t *pm)
 		IB_LOG_INFO0("PM Engine shut down requested");
 		return FNOT_DONE;
 	}
-
+	if (g_pmDebugPerf) {
+		(void)vs_time_get(&etime);
+		IB_LOG_INFINI_INFO_FMT("PmSweepAllPortCounters", "%"PRIu64, (etime-stime));
+		(void)vs_time_get(&stime);
+	}
 	PmFinalizeAllPortStats(pm);
+	if (g_pmDebugPerf) {
+		(void)vs_time_get(&etime);
+		IB_LOG_INFINI_INFO_FMT("PmFinalizeAllPortStats","%"PRIu64, (etime-stime));
+	}
 	return FSUCCESS;
 }
 
@@ -4965,13 +4993,14 @@ static FSTATUS PmSweepCounters(Pm_t *pm)
 // returns TRUE if have topology and swept, FALSE otherwise
 static FSTATUS PmSweep(Pm_t *pm)
 {
-    FSTATUS ret = FSUCCESS;
+	FSTATUS ret = FSUCCESS;
 	PmImage_t *pmimagep;
 	uint64_t sweepStart;
-	uint64_t now;
+	uint64_t now, sTime, eTime;
 	time_t now_time;
 	int i;
 
+	PmDispatcherPerfInit(&pm->Dispatcher.perf_stats);
 	(void)vs_wrlock(&pm->stateLock);
 	pmimagep = &pm->Image[pm->SweepIndex];
 	pmimagep->sweepNum = pm->NumSweeps;
@@ -4981,6 +5010,7 @@ static FSTATUS PmSweep(Pm_t *pm)
 	(void)vs_rwunlock(&pm->stateLock);
 	vs_stdtime_get(&pmimagep->sweepStart);
 	vs_time_get(&sweepStart);
+	sTime = sweepStart;
 
 	// Add PmPortGroups to Image
 	pmimagep->NumGroups = 0;
@@ -5001,7 +5031,10 @@ static FSTATUS PmSweep(Pm_t *pm)
 		ret = FNOT_DONE;;
 		goto unlock_image;
 	}
-
+	if (g_pmDebugPerf) {
+		(void)vs_time_get(&eTime);
+		IB_LOG_INFINI_INFO_FMT("pm_copy_topology","%"PRIu64, (eTime - sTime));
+	}
 #if ENABLE_PMA_SWEEP
 	if (ret != FSUCCESS) {	/* standby */
 		g_pmFirstSweepAsMaster = TRUE;
@@ -5012,6 +5045,9 @@ static FSTATUS PmSweep(Pm_t *pm)
 	// Process STH files only on LE CPUs
 #ifndef __VXWORKS__
 	if (pm_config.shortTermHistory.enable && g_pmFirstSweepAsMaster) {
+		if (g_pmDebugPerf) {
+			(void)vs_time_get(&sTime);
+		}
 		if (pm->ShortTermHistory.currentComposite) {
 			//became master; free the old image now that it is no longer being used
 			PmFreeComposite(pm->ShortTermHistory.currentComposite);
@@ -5039,6 +5075,10 @@ static FSTATUS PmSweep(Pm_t *pm)
 				vs_pool_free(&pm_pool, pm->ShortTermHistory.historyRecords);
 			}
 		}
+		if (g_pmDebugPerf) {
+			(void)vs_time_get(&eTime);
+			IB_LOG_INFINI_INFO_FMT("PmLoadHistory","%"PRIu64, (eTime - sTime));
+		}
 	}
 #endif
 #endif	// End of #if CPU_LE
@@ -5059,7 +5099,7 @@ static FSTATUS PmSweep(Pm_t *pm)
 	vs_time_get(&now);
 	vs_stdtime_get(&now_time);
 	pmimagep->sweepDuration = (uint32)(now - sweepStart);
-	IB_LOG_INFO_FMT(__func__, "Sweep Done: %d packets, %d retries, duration %d.%.3d ms",
+	cs_log((g_pmDebugPerf ? VS_LOG_INFINI_INFO : VS_LOG_INFO), __func__, "Sweep Done: %d packets, %d retries, duration %d.%.3d ms",
 					(int)AtomicRead(&pmCounters[pmCounterPmPacketTransmits].sinceLastSweep),
 					(int)AtomicRead(&pmCounters[pmCounterPacketRetransmits].sinceLastSweep),
 				   	pmimagep->sweepDuration/1000, pmimagep->sweepDuration%1000);
@@ -5115,7 +5155,7 @@ static FSTATUS PmSweep(Pm_t *pm)
 		if (now_time > pm->Image[pm->SweepIndex].lastUsed
 			&& now_time - pm->Image[pm->SweepIndex].lastUsed > pm_config.freeze_frame_lease) {
 			pm->Image[pm->SweepIndex].ffRefCount = 0;
-			// paAccess will clean up FreezeFrame on next access or FF Create
+			// pa_access will clean up FreezeFrame on next access or FF Create
 		}
 		// skip past images which are frozen
 	} while (pm->Image[pm->SweepIndex].ffRefCount);
@@ -5175,16 +5215,7 @@ void PmEngineStart(void)
 	Status_t status;
 
 	if (ENABLE_ENGINE) {
-		status = PmInit(&g_pmSweepData, pm_config.port_guid,
-						(pm_config.process_hfi_counters ? STL_PM_PROCESS_HFI_COUNTERS : 0)
-						| (pm_config.process_vl_counters ? STL_PM_PROCESS_VL_COUNTERS : 0)
-						| (pm_config.ClearDataXfer ? STL_PM_PROCESS_CLR_DATA_COUNTERS : 0)
-						| (pm_config.Clear64bit ? STL_PM_PROCESS_CLR_64BIT_COUNTERS : 0)
-						| (pm_config.Clear32bit ? STL_PM_PROCESS_CLR_32BIT_COUNTERS : 0)
-						| (pm_config.Clear8bit ? STL_PM_PROCESS_CLR_8BIT_COUNTERS : 0),
-						pm_config.sweep_interval,
-						&g_pmThresholds, &g_pmIntegrityWeights, &g_pmCongestionWeights,
-						pm_config.ErrorClear);
+		status = PmInit(&g_pmSweepData);
 		if (status != VSTATUS_OK)
 			IB_FATAL_ERROR_NODUMP("Unable to initialize Pm Sweep Engine");
 

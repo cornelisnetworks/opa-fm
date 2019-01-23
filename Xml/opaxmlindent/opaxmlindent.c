@@ -184,8 +184,13 @@ int main(int argc, char **argv)
 		fprintf(stderr, "opaxmlindent: Can't use -k and -t together\n");
 		Usage(2);
 	}
-	if (argc > optind)
+	if (argc > optind){
 		filename = argv[optind++];
+		if (!filename) {
+			fprintf(stderr, "opaxmlindent: Error: null input filename\n");
+			exit(1);
+		}
+	}
 	if (argc > optind) {
 		Usage(2);
 	}

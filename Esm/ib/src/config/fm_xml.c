@@ -96,13 +96,6 @@ static int debug_log = 0;
 uint32_t scpInProcess = 0;
 #endif // __VXWORKS__
 
-#ifndef stringize
-#define stringize(x) #x
-#endif
-#ifndef add_quotes
-#define add_quotes(x) stringize(x)
-#endif
-
 #define PORTS_ALLOC_UNIT 8
 
 #ifndef __VXWORKS__
@@ -995,8 +988,9 @@ static void LidStrategyXmlParserEnd(IXmlParserState_t *state,
 	else if (!strcasecmp(content, "topology"))
 		*p = LID_STRATEGY_TOPOLOGY;
 	else {
-		IXmlParserPrintError(state, "LidStrategy must be one of "
-			"(serial,topology)"
+		IXmlParserPrintError(state, "LidStrategy must be one of (serial,topology%s%s)",
+			"",
+			""
 		);
 		return;
 	}
@@ -1327,6 +1321,7 @@ boolean pmInitConfig(PMXmlConfig_t *pmp)
 
 	DEFAULT_AND_CKSUM_INT(pmp->debug, 0, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_INT(pmp->debug_rmpp, 0, CKSUM_OVERALL_DISRUPT);
+	DEFAULT_AND_CKSUM_INT(pmp->pm_debug_perf, 0, CKSUM_OVERALL_DISRUPT);
 
 	DEFAULT_INT(pmp->subnet_size, DEFAULT_SUBNET_SIZE);
 	if (pmp->subnet_size > MAX_SUBNET_SIZE) {
@@ -1749,7 +1744,7 @@ boolean smInitConfig(SMXmlConfig_t *smp)
 	DEFAULT_INT(smp->IgnoreTraps, 0);
 	if (!smp->IgnoreTraps) {
 		DEFAULT_INT(smp->trap_hold_down, 1);
-		if (smp->trap_hold_down > smp->timer) {
+		if (smp->timer && (smp->trap_hold_down > smp->timer)) {
 			IB_LOG_WARN_FMT(__func__,"TrapHoldDown exceeds SweepInterval. Ignoring Traps.");
 			smp->IgnoreTraps = 1;
 		} else {
@@ -1863,6 +1858,7 @@ boolean smInitConfig(SMXmlConfig_t *smp)
 	DEFAULT_AND_CKSUM_INT(smp->sa_debug_perf, 0, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_INT(smp->sm_debug_vf, 0, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_INT(smp->sm_debug_routing, 0, CKSUM_OVERALL_DISRUPT);
+	DEFAULT_AND_CKSUM_INT(smp->sm_dsap_enabled, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_INT(smp->sm_debug_lid_assign, 0, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_INT(smp->debug_jm, 0, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_INT(smp->sa_rmpp_checksum, 0, CKSUM_OVERALL_DISRUPT);
@@ -1887,6 +1883,10 @@ boolean smInitConfig(SMXmlConfig_t *smp)
 	DEFAULT_AND_CKSUM_INT(smp->isl_link_policy.width_policy.policy, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_INT(smp->isl_link_policy.speed_policy.enabled, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_INT(smp->isl_link_policy.speed_policy.policy, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_INT(smp->port_quarantine.enabled, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_INT(smp->port_quarantine.flapping.window_size, 15, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_INT(smp->port_quarantine.flapping.high_thresh, 25, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_INT(smp->port_quarantine.flapping.low_thresh, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_INT(smp->preemption.small_packet, SM_PREEMPT_SMALL_PACKET_DEF, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_INT(smp->preemption.large_packet, SM_PREEMPT_LARGE_PACKET_DEF, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_INT(smp->preemption.preempt_limit, SM_PREEMPT_LIMIT_DEF, CKSUM_OVERALL_DISRUPT_CONSIST);
@@ -1950,61 +1950,61 @@ boolean smInitConfig(SMXmlConfig_t *smp)
 		DEFAULT_AND_CKSUM_INT(smp->adaptiveRouting.threshold, 3, CKSUM_OVERALL_DISRUPT_CONSIST);
 	}
 
-	DEFAULT_AND_CKSUM_INT(smp->ftreeRouting.passthru, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_INT(smp->ftreeRouting.converge, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_INT(smp->ftreeRouting.debug, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_INT(smp->ftreeRouting.tierCount, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_INT(smp->ftreeRouting.fis_on_same_tier, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
-
-
-	for (i = 0; i < smp->dgRouting.dgCount; i++) {
-		CKSUM_STR(smp->dgRouting.dg[i].member, CKSUM_OVERALL_DISRUPT_CONSIST);
+	// Checksum only the enabled routing algorithm
+	if (!strcasecmp(smp->routing_algorithm, "fattree")) {
+		DEFAULT_AND_CKSUM_INT(smp->ftreeRouting.passthru, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
+		DEFAULT_AND_CKSUM_INT(smp->ftreeRouting.converge, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
+		DEFAULT_AND_CKSUM_INT(smp->ftreeRouting.debug, 0, CKSUM_OVERALL_DISRUPT);
+		DEFAULT_AND_CKSUM_INT(smp->ftreeRouting.tierCount, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
+		DEFAULT_AND_CKSUM_INT(smp->ftreeRouting.fis_on_same_tier, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
+                CKSUM_STR(smp->ftreeRouting.coreSwitches.member, CKSUM_OVERALL_DISRUPT_CONSIST);
+                CKSUM_STR(smp->ftreeRouting.routeLast.member, CKSUM_OVERALL_DISRUPT_CONSIST);
 	}
 
-	DEFAULT_AND_CKSUM_INT(smp->hypercubeRouting.debug, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
-	CKSUM_STR(smp->hypercubeRouting.routeLast.member, CKSUM_OVERALL_DISRUPT_CONSIST);
 
-	SPRoutingCtrl = smp->hypercubeRouting.enhancedRoutingCtrl;
-	if (SPRoutingCtrl == (void *)~0ul) {
-		SPRoutingCtrl = NULL;
-		smp->hypercubeRouting.enhancedRoutingCtrl = NULL;
-	}
-
-	while (SPRoutingCtrl) {
-		SmSPRoutingPort_t *ports = SPRoutingCtrl->ports;
-		int portCount = SPRoutingCtrl->portCount;
-
-		CKSUM_STR(SPRoutingCtrl->switches.member, CKSUM_OVERALL_DISRUPT_CONSIST);
-		for (i = 0; i < portCount; i++, ports++) {
-			CKSUM_DATA(ports->pport, CKSUM_OVERALL_DISRUPT_CONSIST);
-			CKSUM_DATA(ports->vport, CKSUM_OVERALL_DISRUPT_CONSIST);
-			CKSUM_DATA(ports->cost, CKSUM_OVERALL_DISRUPT_CONSIST);
+	if (!strcasecmp(smp->routing_algorithm, "dgshortestpath")) {
+		for (i = 0; i < smp->dgRouting.dgCount; i++) {
+			CKSUM_STR(smp->dgRouting.dg[i].member, CKSUM_OVERALL_DISRUPT_CONSIST);
 		}
-		SPRoutingCtrl = SPRoutingCtrl->next;
+	}
+
+	if (!strcasecmp(smp->routing_algorithm, "hypercube")) {
+		DEFAULT_AND_CKSUM_INT(smp->hypercubeRouting.debug, 0, CKSUM_OVERALL_DISRUPT);
+		CKSUM_STR(smp->hypercubeRouting.routeLast.member, CKSUM_OVERALL_DISRUPT_CONSIST);
+	
+		SPRoutingCtrl = smp->hypercubeRouting.enhancedRoutingCtrl;
+		if (SPRoutingCtrl == (void *)~0ul) {
+			SPRoutingCtrl = NULL;
+			smp->hypercubeRouting.enhancedRoutingCtrl = NULL;
+		}
+
+		while (SPRoutingCtrl) {
+			SmSPRoutingPort_t *ports = SPRoutingCtrl->ports;
+			int portCount = SPRoutingCtrl->portCount;
+
+			CKSUM_STR(SPRoutingCtrl->switches.member, CKSUM_OVERALL_DISRUPT_CONSIST);
+			for (i = 0; i < portCount; i++, ports++) {
+				CKSUM_DATA(ports->pport, CKSUM_OVERALL_DISRUPT_CONSIST);
+				CKSUM_DATA(ports->vport, CKSUM_OVERALL_DISRUPT_CONSIST);
+				CKSUM_DATA(ports->cost, CKSUM_OVERALL_DISRUPT_CONSIST);
+			}
+			SPRoutingCtrl = SPRoutingCtrl->next;
+		}
 	}
 
 	if (!strcasecmp(smp->routing_algorithm, "dor")) {
 		// If using dor, checksum the smDorRouting config.
-		CKSUM_DATA(smp->smDorRouting.dimensionCount, CKSUM_OVERALL_DISRUPT_CONSIST);
-		CKSUM_DATA(smp->smDorRouting.numToroidal, CKSUM_OVERALL_DISRUPT_CONSIST);
+		DEFAULT_AND_CKSUM_INT(smp->smDorRouting.dimensionCount, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
+		DEFAULT_AND_CKSUM_INT(smp->smDorRouting.numToroidal, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 		CKSUM_DATA(smp->smDorRouting.dimension, CKSUM_OVERALL_DISRUPT_CONSIST);
-		CKSUM_DATA(smp->smDorRouting.escapeVLs, CKSUM_OVERALL_DISRUPT_CONSIST);
-		CKSUM_DATA(smp->smDorRouting.faultRegions, CKSUM_OVERALL_DISRUPT_CONSIST);
-		CKSUM_STR(smp->ftreeRouting.routeLast.member, CKSUM_OVERALL_DISRUPT_CONSIST);
-		CKSUM_DATA(smp->smDorRouting.debug, CKSUM_OVERALL_DISRUPT);
-		CKSUM_DATA(smp->smDorRouting.warn_threshold, CKSUM_OVERALL_DISRUPT);
-		CKSUM_DATA(smp->smDorRouting.routingSCs, CKSUM_OVERALL_DISRUPT_CONSIST);
+		DEFAULT_AND_CKSUM_INT(smp->smDorRouting.escapeVLs, DEFAULT_ESCAPE_VLS_IN_USE, CKSUM_OVERALL_DISRUPT_CONSIST);
+		DEFAULT_AND_CKSUM_INT(smp->smDorRouting.faultRegions, DEFAULT_FAULT_REGIONS_IN_USE, CKSUM_OVERALL_DISRUPT_CONSIST);
+		CKSUM_STR(smp->smDorRouting.routeLast.member, CKSUM_OVERALL_DISRUPT_CONSIST);
+		DEFAULT_AND_CKSUM_INT(smp->smDorRouting.debug,0, CKSUM_OVERALL_DISRUPT);
+		DEFAULT_AND_CKSUM_INT(smp->smDorRouting.warn_threshold, DEFAULT_DOR_PORT_PAIR_WARN_THRESHOLD, CKSUM_OVERALL_DISRUPT);
+		DEFAULT_AND_CKSUM_INT(smp->smDorRouting.routingSCs, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 		CKSUM_DATA(smp->smDorRouting.topology, CKSUM_OVERALL_DISRUPT_CONSIST);
-		CKSUM_DATA(smp->smDorRouting.overlayMCast, CKSUM_OVERALL_DISRUPT_CONSIST);
-	}
-
-	if (!strcasecmp(smp->routing_algorithm, "fattree")) {
-		//If using fattree, checksum the fattree configuration
-		CKSUM_DATA(smp->ftreeRouting.debug, CKSUM_OVERALL_DISRUPT);
-		CKSUM_DATA(smp->ftreeRouting.tierCount, CKSUM_OVERALL_DISRUPT);
-		CKSUM_DATA(smp->ftreeRouting.fis_on_same_tier, CKSUM_OVERALL_DISRUPT);
-		CKSUM_STR(smp->ftreeRouting.coreSwitches.member, CKSUM_OVERALL_DISRUPT_CONSIST);
-		CKSUM_STR(smp->ftreeRouting.routeLast.member, CKSUM_OVERALL_DISRUPT_CONSIST);
+		DEFAULT_AND_CKSUM_INT(smp->smDorRouting.overlayMCast, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	}
 
 	DEFAULT_AND_CKSUM_INT(smp->appliances.enable, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
@@ -2037,6 +2037,12 @@ boolean smInitConfig(SMXmlConfig_t *smp)
 		DEFAULT_AND_CKSUM_INT(smp->preDefTopo.fieldEnforcement.undefinedLink, FIELD_ENF_LEVEL_DISABLED, CKSUM_OVERALL_DISRUPT_CONSIST);
 	}
 
+	DEFAULT_AND_CKSUM_INT(smp->multicast_mask, SM_DEFAULT_MULTICAST_MASK, CKSUM_OVERALL_DISRUPT_CONSIST);
+	if (smp->multicast_mask == 0 || smp->multicast_mask > 7) {
+		IB_LOG_ERROR_FMT(__func__,"Terminating FM: MulticastMask (%d) out of range, valid values 1-7.", smp->multicast_mask);
+		return 0;
+	}
+
 	DEFAULT_AND_CKSUM_INT(smp->lid_strategy, LID_STRATEGY_SERIAL, CKSUM_OVERALL_DISRUPT_CONSIST);
 	if (smp->lid_strategy == LID_STRATEGY_TOPOLOGY && !smp->preDefTopo.enabled) {
 		IB_LOG_ERROR_FMT(__func__,"Terminating FM: Topology-LID strategy requires Pre Defined Topology enabled.");
@@ -2064,12 +2070,19 @@ boolean smInitConfig(SMXmlConfig_t *smp)
 		return 0;
 	}
 
+	// Verify that if DsapInUse is enabled, LidStrategy is set to Topology.
+	if ( (smp->sm_dsap_enabled == 1) && (smp->lid_strategy != LID_STRATEGY_TOPOLOGY) ) {
+		IB_LOG_ERROR_FMT(__func__, "LidStrategy must be set to Topology when DsapInUse is enabled");
+		return 0;
+}
+
 	DEFAULT_AND_CKSUM_INT(smp->minSharedVLMem, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_INT(smp->dedicatedVLMemMulti, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_INT(smp->cableInfoPolicy, CIP_LINK, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_INT(smp->timerScalingEnable, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_INT(smp->min_supported_vls, 8, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_INT(smp->max_fixed_vls, 8, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_INT(smp->allow_mixed_vls, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
 
 	CKSUM_DATA(smp->wireDepthOverride, CKSUM_OVERALL_DISRUPT_CONSIST);
 	CKSUM_DATA(smp->replayDepthOverride, CKSUM_OVERALL_DISRUPT_CONSIST);
@@ -2100,9 +2113,10 @@ boolean smInitConfig(SMXmlConfig_t *smp)
 	}
 	CKSUM_DATA(smp->defaultPortErrorAction, CKSUM_OVERALL_DISRUPT_CONSIST);
 
-	DEFAULT_AND_CKSUM_INT(smp->switchCascadeActivateEnable, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_INT(smp->switchCascadeActivateEnable, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_INT(smp->neighborNormalRetries, 2, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_INT(smp->terminateAfter, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_INT(smp->psThreads, 4, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_INT(smp->portBounceLogLimit, PORT_BOUNCE_LOG_NO_LIMIT, CKSUM_OVERALL_DISRUPT_CONSIST);
 	// FIXME: cjking - Temporary patch for FPGA related PR-124905
 	DEFAULT_AND_CKSUM_INT(smp->neighborFWAuthenEnable, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
@@ -2267,12 +2281,14 @@ void smShowConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 	printf("XML - sa_debug_perf %u\n", (unsigned int)smp->sa_debug_perf);
 	printf("XML - sm_debug_vf %u\n", (unsigned int)smp->sm_debug_vf);
 	printf("XML - sm_debug_routing %u\n", (unsigned int)smp->sm_debug_routing);
+	printf("XML - sm_dsap_enabled %u\n", (unsigned int)smp->sm_dsap_enabled);
 	printf("XML - sm_debug_lid_assign %u\n", (unsigned int)smp->sm_debug_lid_assign);
 	printf("XML - debug_jm %u\n", (unsigned int)smp->debug_jm);
 	printf("XML - sa_rmpp_checksum %u\n", (unsigned int)smp->sa_rmpp_checksum);
 	printf("XML - loop_test_on %u\n", (unsigned int)smp->loop_test_on);
 	printf("XML - loop_test_fast_mode %u\n", (unsigned int)smp->loop_test_fast_mode);
 	printf("XML - loop_test_packets %u\n", (unsigned int)smp->loop_test_packets);
+	printf("XML - multicast_mask %u\n", (unsigned int)smp->multicast_mask);
 	printf("XML - lid_strategy %u\n", (unsigned int)smp->lid_strategy);
 	printf("XML - non_resp_tsec %u\n", (unsigned int)smp->non_resp_tsec);
 	printf("XML - non_resp_max_count %u\n", (unsigned int)smp->non_resp_max_count);
@@ -2293,6 +2309,7 @@ void smShowConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
     printf("XML - timerScalingEnable  %d\n", (unsigned int) smp->timerScalingEnable);
 	printf("XML - min_supported_vls %d\n", (unsigned int)smp->min_supported_vls);
 	printf("XML - max_fixed_vls %d\n", (unsigned int)smp->max_fixed_vls);
+	printf("XML - allow_mixed_vls %d\n", (unsigned int)smp->allow_mixed_vls);
 	printf("XML - hfi_link_policy.link_max_downgrade 0x%x\n", (unsigned int)smp->hfi_link_policy.link_max_downgrade);
 	printf("XML - hfi_link_policy.link_width.enabled 0x%x\n", (unsigned int)smp->hfi_link_policy.width_policy.enabled);
 	printf("XML - hfi_link_policy.link_width.policy 0x%x\n", (unsigned int)smp->hfi_link_policy.width_policy.policy);
@@ -2303,6 +2320,7 @@ void smShowConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 	printf("XML - isl_link_policy.link_width.policy 0x%x\n", (unsigned int)smp->isl_link_policy.width_policy.policy);
 	printf("XML - isl_link_policy.link_speed.enabled 0x%x\n", (unsigned int)smp->isl_link_policy.speed_policy.enabled);
 	printf("XML - isl_link_policy.link_speed.policy 0x%x\n", (unsigned int)smp->isl_link_policy.speed_policy.policy);
+	printf("XML - port_quarantine.enabled 0x%x\n", (unsigned int)smp->port_quarantine.enabled);
 	printf("XML - preemption.small_packet 0x%x\n", (unsigned int) smp->preemption.small_packet);
 	printf("XML - preemption.large_packet 0x%x\n", (unsigned int) smp->preemption.large_packet);
 	printf("XML - preemption.preempt_limit 0x%x\n", (unsigned int) smp->preemption.preempt_limit);
@@ -2351,6 +2369,7 @@ void smShowConfig(SMXmlConfig_t *smp, SMDPLXmlConfig_t *dplp, SMMcastConfig_t *m
 
 	printf("XML - cableInfoPolicy %u\n", (unsigned int)smp->cableInfoPolicy);
 	printf("XML - terminateAfter %u\n", (unsigned int)smp->terminateAfter);
+	printf("XML - psThreads %u\n", (unsigned int)smp->psThreads);
 	printf("XML - dumpCounters %s\n", smp->dumpCounters);
 
 	printf("XML - sm_mc_config.mcast_mlid_table_cap %u\n", (unsigned int)mcp->mcast_mlid_table_cap);
@@ -3669,7 +3688,7 @@ void releaseVirtualFabricsConfig(VirtualFabrics_t *vfsip)
 }
 
 // create a checksum for one Virtual Fabric
-void checksumOneVirtualFabricsConfig(VFConfig_t *vf, VF_t *vfp)
+void checksumOneVirtualFabricsConfig(VFConfig_t *vf, VF_t *vfp, uint8_t requires_resp_sl)
 {
 	VFAppSid_t					*sidp;
 	VFAppMgid_t					*mgidp;
@@ -3687,6 +3706,7 @@ void checksumOneVirtualFabricsConfig(VFConfig_t *vf, VF_t *vfp)
 
 		// Only checksum these QOS parameters for VFs with implicit QOS groups
 		CKSUM_DATA(vf->qos_enable, csum_type);
+		CKSUM_DATA(requires_resp_sl, csum_type);
 		if (vf->qos_enable) {
 			CKSUM_DATA(vf->base_sl, csum_type);
 			CKSUM_DATA(vf->resp_sl, csum_type);
@@ -3741,7 +3761,10 @@ void checksumOneVirtualFabricsConfig(VFConfig_t *vf, VF_t *vfp)
 	}
 
 	for (dgp = vfp->default_group; dgp; dgp = dgp->next_default_group) {
+
 		CKSUM_DATA(dgp->def_mc_create, csum_type);
+
+
 		CKSUM_DATA(dgp->def_mc_pkey, csum_type);
 		CKSUM_DATA(dgp->def_mc_mtu_int, csum_type);
 		CKSUM_DATA(dgp->def_mc_rate_int, csum_type);
@@ -3770,7 +3793,7 @@ void checksumVirtualFabricsConfig(VFXmlConfig_t *vf_config, VirtualFabrics_t *vf
 	for (i = 0; i < vfsip->number_of_vfs_all; i++) {
 		vfp = &vfsip->v_fabric_all[i];
 		CKSUM_BEGIN;
-		checksumOneVirtualFabricsConfig(vf_config->vf[i], vfp);
+		checksumOneVirtualFabricsConfig(vf_config->vf[i], vfp, vfsip->qos_all[vfp->qos_index].requires_resp_sl);
 		CKSUM_END(vfp->overall_checksum, vfp->disruptive_checksum, vfp->consistency_checksum);
 	}
 
@@ -3783,7 +3806,7 @@ void checksumVirtualFabricsConfig(VFXmlConfig_t *vf_config, VirtualFabrics_t *vf
 
 	for (i = 0; i < vfsip->number_of_vfs_all; i++) {
 		vfp = &vfsip->v_fabric_all[i];
-		checksumOneVirtualFabricsConfig(vf_config->vf[i], vfp);
+		checksumOneVirtualFabricsConfig(vf_config->vf[i], vfp, vfsip->qos_all[vfp->qos_index].requires_resp_sl);
 	}
 
 	CKSUM_END(vfsip->overall_checksum, vfsip->disruptive_checksum, vfsip->consistency_checksum);
@@ -3991,6 +4014,7 @@ VF_t* findVfPointer(VirtualFabrics_t* vf_config, char* virtualFabric)
 		if (strcmp(virtualFabric, vf_config->v_fabric_all[i].name) == 0)
 			return &vf_config->v_fabric_all[i];
 	}
+
 	return NULL;
 }
 
@@ -4324,10 +4348,11 @@ boolean reRenderVirtualFabric(VirtualFabrics_t *oldVfsip, VirtualFabrics_t *vfsi
 		// Try to find this VF in the old configuration
 		oldVfip = findVfPointer(oldVfsip, vfp->name);
 		if (oldVfip) {
+			vfip->reconf_idx.old_index = oldVfip->index;
 			if (vfip->standby && !oldVfip->standby) {
-				oldVfip->removed = 1;
+				oldVfip->reconf_idx.new_index = (uint32_t)(-1);
 			} else if (!vfip->standby && oldVfip->standby) {
-				vfip->added = 1;
+				vfip->reconf_idx.old_index = (uint32_t)(-1);
 			}
 			// Make sure that changes (if any) are valid
 			if (vfip->qos_implicit || oldVfip->qos_implicit) {
@@ -4399,7 +4424,7 @@ boolean reRenderVirtualFabric(VirtualFabrics_t *oldVfsip, VirtualFabrics_t *vfsi
 				RENDER_VF_LOGGER(printError, "%s: Cannot add VF(%s) with explicit QOS settings.",cfgtype, vfip->name);
 				goto fail;
 			}
-			vfip->added = 1;
+			vfip->reconf_idx.old_index = (uint32_t)(-1);
 		}
 		if (requires_resp_sl && qosip->base_sl == qosip->resp_sl) {
 			RENDER_VF_LOGGER(printError, "%s: VF(%s) QOSGroup(%s) requires a unique RespSL", cfgtype, vfip->name, qosip->name);
@@ -4416,7 +4441,7 @@ boolean reRenderVirtualFabric(VirtualFabrics_t *oldVfsip, VirtualFabrics_t *vfsi
 			goto fail;
 		}
 		if (!vfip->standby) {
-			vfip->added = 1;
+			vfip->reconf_idx.old_index = (uint32_t)(-1);
 		}
 	}
 	vfsip->number_of_vfs_all++;
@@ -4583,6 +4608,7 @@ VirtualFabrics_t* reRenderVirtualFabricsConfig(uint32_t fm, VirtualFabrics_t *ol
 
 	char cfgtype[80];
 
+
 	if (oldVfsip) {
 		snprintf(cfgtype, sizeof(cfgtype), "Dynamic reconfiguration:");
 	} else {
@@ -4694,7 +4720,9 @@ VirtualFabrics_t* reRenderVirtualFabricsConfig(uint32_t fm, VirtualFabrics_t *ol
 			goto fail;
 		}
 
+
 	}
+
 	if (!isSAAssigned) {
 		RENDER_VF_LOGGER(printError, "%s: An Active Virtual Fabric must exist with <Select>SA</Select> configured in an Application.", cfgtype);
 		goto fail;
@@ -4722,8 +4750,11 @@ VirtualFabrics_t* reRenderVirtualFabricsConfig(uint32_t fm, VirtualFabrics_t *ol
 					RENDER_VF_LOGGER(printError, "%s: Cannot delete VF(%s) with explicit QOS parameters", cfgtype, oldVfip->name);
 					goto fail;
 				}
-				oldVfip->removed = 1;
+				oldVfip->reconf_idx.new_index = (uint32_t)(-1);
 			} else {
+				if (!vfip->standby)
+					oldVfip->reconf_idx.new_index = vfip->index;
+
 				if (oldVfip->qos_implicit) {
 					// Make sure VFs with explicit QOS aren't reordered during reconfiguration
 					if (vfip->index < lastImplicit) {
@@ -4759,7 +4790,9 @@ VirtualFabrics_t* reRenderVirtualFabricsConfig(uint32_t fm, VirtualFabrics_t *ol
 					}
 				}
 
+
 			status = MatchExplicitMGIDtoVF(mdgp, vfsip, FALSE /* update_active_vfabrics */, fm_instance->sm_config.enforceVFPathRecs);
+
 			if (status != FSUCCESS) {
 				switch (status) {
 					case FUNAVAILABLE:
@@ -4783,11 +4816,13 @@ VirtualFabrics_t* reRenderVirtualFabricsConfig(uint32_t fm, VirtualFabrics_t *ol
 
 		}
 	}
+
 	//match implicit MGIDs with VFs
 	for (default_group = 0; default_group < fm_instance->sm_mdg_config.number_of_groups; default_group++) {
 		mdgp = &fm_instance->sm_mdg_config.group[default_group];
 		// first assign VFs to all implicit MC groups
 		if (mdgp->number_of_mgids == 0) {
+
 			status = MatchImplicitMGIDtoVF(mdgp, vfsip);
 			if (status != FSUCCESS) {
 				switch (status) {
@@ -5095,6 +5130,7 @@ static void SmDPLifetimeXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD 
 }
 
 
+
 // "Sm/Appliances" start tag
 static void* SmAppliancesXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr)
 {
@@ -5362,6 +5398,7 @@ static IXML_FIELD SmMcastDgFields[] = {
 	{ tag:"Rate", format:'k', IXML_FIELD_INFO(SMMcastDefGrp_t, def_mc_rate_int), end_func:RateU8XmlParserEnd },
 	{ tag:"SL", format:'h', IXML_FIELD_INFO(SMMcastDefGrp_t, def_mc_sl) },
 	{ tag:"QKey", format:'h', IXML_FIELD_INFO(SMMcastDefGrp_t, def_mc_qkey) },
+// parsing is kept although the tag was removed from the xml file
 	{ tag:"FlowLabel", format:'h', IXML_FIELD_INFO(SMMcastDefGrp_t, def_mc_fl) },
 	{ tag:"TClass", format:'h', IXML_FIELD_INFO(SMMcastDefGrp_t, def_mc_tc) },
 	{ tag:"MGID", format:'k', end_func:VfDgMGidEnd },
@@ -5428,8 +5465,6 @@ static void SmMcastDgXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *fi
 		mdgp->def_mc_fl=0;
 	if (mdgp->def_mc_tc == UNDEFINED_XML32)
 		mdgp->def_mc_tc=0;
-	if (mdgp->prejoin_allowed == UNDEFINED_XML32)
-		mdgp->prejoin_allowed=0;
 
 	// check for max (AFTER skipping uncreatable groups)
 	if (defaultGroupInstance >= MAX_DEFAULT_GROUPS) {
@@ -5628,6 +5663,25 @@ static IXML_FIELD SmLinkPolicyFields[] = {
 	{ NULL }
 };
 
+static void * SmPortFlappingXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr)
+{
+	return &((SMPortQuarantineXmlConfig_t *)parent)->flapping;
+}
+
+static IXML_FIELD SmPortFlappingFields[] = {
+
+	{ tag:"WindowSize", format:'u', IXML_FIELD_INFO(SMFlappingXmlConfig_t, window_size) },
+	{ tag:"HighThreshold", format:'u', IXML_FIELD_INFO(SMFlappingXmlConfig_t, high_thresh) },
+	{ tag:"LowThreshold", format:'u', IXML_FIELD_INFO(SMFlappingXmlConfig_t, low_thresh) },
+	{NULL}
+};
+
+static IXML_FIELD SmPortQuarantineFields[] = {
+	{ tag:"Enable", format:'u', IXML_FIELD_INFO(SMPortQuarantineXmlConfig_t, enabled) },
+	{ tag:"Flapping", format:'k', subfields:SmPortFlappingFields, start_func:SmPortFlappingXmlParserStart},
+	{NULL}
+};
+
 // "Sm/HFILink Policy" start tag
 static void* SmHFILinkPolicyXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr)
 {
@@ -5639,6 +5693,12 @@ static void* SmISLLinkPolicyXmlParserStart(IXmlParserState_t *state, void *paren
 {
 	return &((SMXmlConfig_t *)parent)->isl_link_policy;
 }
+
+static void* SmPortQuarantineParserStart(IXmlParserState_t *state, void *parent, const char **attr)
+{
+	return &((SMXmlConfig_t *)parent)->port_quarantine;
+}
+
 
 static int minMaxNumString(IXmlParserState_t *state, const IXML_FIELD *field, char *str, uint32_t min, uint32_t max, uint32_t inc, boolean allowZero, uint32_t inf)
 {
@@ -6379,7 +6439,6 @@ static void SmUnicastLidXmlParserEnd(IXmlParserState_t *state,
 	uint32_t *real_lid = (uint32_t *)IXmlParserGetField(field, object);
 
 	if (! IXmlParseUint64(state, content, len, &long_lid)) {
-		IXmlParserPrintError(state, "Invalid value");
 		return;
 	}
 
@@ -6400,7 +6459,6 @@ static void SmSweepIntervalParserEnd(IXmlParserState_t *state,
 	uint64_t timer;
 
 	if (!IXmlParseUint64(state, content, len, &timer)) {
-		IXmlParserPrintError(state, "Invalid value");
 		return;
 	}
 
@@ -6420,7 +6478,6 @@ static void CumulativeTimeoutLimitParserEnd(IXmlParserState_t *state,
 	uint64_t value;
 
 	if (!IXmlParseUint64(state, content, len, &value)) {
-		IXmlParserPrintError(state, "Invalid value");
 		return;
 	}
 
@@ -6502,7 +6559,9 @@ static IXML_FIELD SmFields[] = {
 	{ tag:"LoopTestOn", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, loop_test_on) },
 	{ tag:"LoopTestFastMode", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, loop_test_fast_mode) },
 	{ tag:"LoopTestPackets", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, loop_test_packets) },
+	{ tag:"MulticastMask", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, multicast_mask) },
 	{ tag:"LidStrategy", format:'k', IXML_FIELD_INFO(SMXmlConfig_t, lid_strategy), end_func:LidStrategyXmlParserEnd },
+	{ tag:"DsapInUse", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, sm_dsap_enabled) },
 	{ tag:"CS_LogMask", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, log_masks[VIEO_CS_MOD_ID]), end_func:ParamU32XmlParserEnd },
 	{ tag:"MAI_LogMask", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, log_masks[VIEO_MAI_MOD_ID]), end_func:ParamU32XmlParserEnd },
 	{ tag:"CAL_LogMask", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, log_masks[VIEO_CAL_MOD_ID]), end_func:ParamU32XmlParserEnd },
@@ -6530,6 +6589,7 @@ static IXML_FIELD SmFields[] = {
 	{ tag:"DebugJm", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, debug_jm) },
 	{ tag:"HFILinkPolicy", format:'k', subfields:SmLinkPolicyFields, start_func:SmHFILinkPolicyXmlParserStart },
 	{ tag:"ISLLinkPolicy", format:'k', subfields:SmLinkPolicyFields, start_func:SmISLLinkPolicyXmlParserStart },
+	{ tag:"LongTermPortQuarantine", format:'k', subfields:SmPortQuarantineFields, start_func:SmPortQuarantineParserStart },
 	{ tag:"Preemption", format:'k', subfields:SmPreemptionFields, start_func:SmPreemptionXmlParserStart },
 	{ tag:"CongestionControl", format:'k', subfields:SmCongestionFields, start_func:SmCongestionXmlParserStart },
 	{ tag:"AdaptiveRouting", format:'k', subfields:SmAdaptiveRoutingFields, start_func:SmAdaptiveRoutingXmlParserStart, end_func:SmAdaptiveRoutingXmlParserEnd },
@@ -6559,11 +6619,13 @@ static IXML_FIELD SmFields[] = {
 	{ tag:"NeighborNormalRetries", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, neighborNormalRetries) },
 	{ tag:"PreDefinedTopology", format:'k', subfields:SmPreDefTopoFields, start_func:SmPreDefTopoXmlParserStart, end_func:SmPreDefTopoXmlParserEnd },
 	{ tag:"TerminateAfter", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, terminateAfter) },
+	{ tag:"PsThreads", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, psThreads) },
 	{ tag:"DumpCounters", format:'s', IXML_FIELD_INFO(SMXmlConfig_t, dumpCounters) },
 	{ tag:"PortBounceLogLimit", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, portBounceLogLimit) },
 	{ tag:"NeighborFWAuthenEnable", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, neighborFWAuthenEnable) },
 	{ tag:"MinSupportedVLs", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, min_supported_vls), end_func:MinSupportedVLsParserEnd },
 	{ tag:"MaxFixedVLs", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, max_fixed_vls) },
+	{ tag:"AllowMixedVLs", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, allow_mixed_vls) },
 	{ tag:"PKey_8B", format:'h',  IXML_FIELD_INFO(SMXmlConfig_t, P_Key_8B), end_func:PKey8BParserEnd},
 	{ tag:"PKey_10B", format:'h', IXML_FIELD_INFO(SMXmlConfig_t, P_Key_10B), end_func:PKey10BParserEnd},
 	{ tag:"CumulativeTimeoutLimit", format:'u', IXML_FIELD_INFO(SMXmlConfig_t, cumulative_timeout_limit), end_func:CumulativeTimeoutLimitParserEnd },
@@ -6606,6 +6668,15 @@ static void SmXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, vo
 	if (!valid) {
 		fprintf(stderr, "Error processing XML Sm tag\n");
 	} else {
+
+		if(smp->port_quarantine.enabled && smp->port_quarantine.flapping.high_thresh <
+			smp->port_quarantine.flapping.low_thresh){
+			IXmlParserPrintError(state, "Sm PortQuarantine Flapping high threshold must be greater than or equal to low threshold");
+			freeXmlMemory(smp, sizeof(SMXmlConfig_t), "SMXmlConfig_t SmXmlParserEnd()");
+			return;
+
+		}
+
 		if (smp->priority != UNDEFINED_XML32 && smp->priority > MAX_PRIORITY) {
 			IXmlParserPrintError(state, "Sm Priority must be in the range of 0-15");
 			freeXmlMemory(smp, sizeof(SMXmlConfig_t), "SMXmlConfig_t SmXmlParserEnd()");
@@ -6629,34 +6700,6 @@ static void SmXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, vo
 			return;
 		}
 #endif
-		if (strcasecmp(smp->routing_algorithm, "dor") == 0) {
-			if (smp->smDorRouting.dimensionCount == 0xff) {
-				IXmlParserPrintError(state, "Sm routing algorithm requires MeshTorusTopology configuration");
-				freeXmlMemory(smp, sizeof(SMXmlConfig_t), "SMXmlConfig_t SmXmlParserEnd()");
-				return;
-			}
-		}
-
-		if (strcasecmp(smp->routing_algorithm, "fattree") == 0) {
-			if ((smp->ftreeRouting.tierCount == 0) ||
-			 	(smp->ftreeRouting.tierCount > MAX_TIER)) {
-				IXmlParserPrintError(state, "Sm routing algorithm fattree requires TierCount setting between 1 and %d", MAX_TIER);
-				freeXmlMemory(smp, sizeof(SMXmlConfig_t), "SMXmlConfig_t SmXmlParserEnd()");
-				return;
-			}
-			if (!smp->ftreeRouting.fis_on_same_tier &&
-				(strlen(smp->ftreeRouting.coreSwitches.member) == 0)) {
-				IXmlParserPrintError(state, "Sm routing algorithm fattree requires CoreSwitches device group or HFIs on same tier");
-				freeXmlMemory(smp, sizeof(SMXmlConfig_t), "SMXmlConfig_t SmXmlParserEnd()");
-				return;
-			} else if (smp->ftreeRouting.fis_on_same_tier &&
-				(strlen(smp->ftreeRouting.coreSwitches.member) != 0)) {
-				IXmlParserPrintError(state, "Sm routing algorithm fattree has CoreSwitches device group defined, this has no effect when FIsOnSameTier is indicated");
-				freeXmlMemory(smp, sizeof(SMXmlConfig_t), "SMXmlConfig_t SmXmlParserEnd()");
-				return;
-			}
-		}
-
 
 
 		// Add check to see that lft_multi_block is not less than the minimum value of 1
@@ -6687,7 +6730,6 @@ static void FeTrapNumberParserEnd(IXmlParserState_t *state, const IXML_FIELD *fi
 		trap_num = TRAP_ALL; // TRAP_ALL Will Register for All Traps
 	// Else check if valid uint16 number
 	} else if (!IXmlParseUint16(state, content, len, &trap_num)) {
-		IXmlParserPrintError(state, "Invalid value");
 		return;
 	}
 
@@ -6898,7 +6940,6 @@ static void PmSweepIntervalParserEnd(IXmlParserState_t *state,
 	uint16 SweepInterval;
 
 	if (!IXmlParseUint16(state, content, len, &SweepInterval)) {
-		IXmlParserPrintError(state, "Invalid value");
 		return;
 	}
 
@@ -7077,6 +7118,7 @@ static IXML_FIELD PmFields[] = {
 	{ tag:"Resolution", format:'k', subfields:PmResolutionFields, start_func:PmResolutionXmlParserStart },
 	{ tag:"Debug", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, debug) },
 	{ tag:"RmppDebug", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, debug_rmpp) },
+	{ tag:"PmPerfDebug", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, pm_debug_perf) },
 	{ tag:"Priority", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, priority) },
 	{ tag:"ElevatedPriority", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, elevated_priority) },
 	{ tag:"LogLevel", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, log_level) },
@@ -8294,6 +8336,7 @@ static VFConfig_t* findVfByPkey(VFXmlConfig_t* vf_config, int pkey)
 		return NULL;
 
 	for (i = 0; i < vf_config->number_of_vfs; i++) {
+		if (vf_config->vf[i]->pkey == UNDEFINED_XML32) continue;
 		if (PKEY_VALUE(pkey) == PKEY_VALUE(vf_config->vf[i]->pkey)) {
 			return vf_config->vf[i];
 		}
@@ -8317,7 +8360,7 @@ static boolean validateQosSettings(IXmlParserState_t *state, QosXmlConfig_t *qos
 		}
 		if (qosp->resp_sl != UNDEFINED_XML8 ) {
 			IXmlParserPrintWarning(state, "QOS disabled, ignoring RespSL setting (%u)", qosp->resp_sl);
-			qosp->base_sl = UNDEFINED_XML8;
+			qosp->resp_sl = UNDEFINED_XML8;
 		}
 		if (qosp->mcast_sl != UNDEFINED_XML8 ) {
 			IXmlParserPrintWarning(state, "QOS disabled, ignoring MulticastSL setting (%u)", qosp->mcast_sl);
@@ -8371,7 +8414,7 @@ static boolean validateQosSettings(IXmlParserState_t *state, QosXmlConfig_t *qos
 	// validate MulticastSL
 	if (qosp->mcast_sl != UNDEFINED_XML8 ) {
 		if (qosp->mcast_sl > (STL_CONFIGURABLE_SLS - 1)) {
-			IXmlParserPrintError(state, "MulticastSL(%u) must be 0-%u", qosp->resp_sl, (STL_CONFIGURABLE_SLS - 1));
+			IXmlParserPrintError(state, "MulticastSL(%u) must be 0-%u", qosp->mcast_sl, (STL_CONFIGURABLE_SLS - 1));
 			goto fail;
 		}
 		if (!qosp->base_sl_specified) {
@@ -10712,6 +10755,7 @@ static boolean checkMC_VFProperties (SMMcastDefGrp_t *mcp, VirtualFabrics_t *v_f
 {
 	VF_t *v_fp = &v_fabricp->v_fabric_all[vf];
 
+
 	// check the VirtualFabric name
 	if (strlen(mcp->virtual_fabric) > 0 && strncmp(mcp->virtual_fabric, v_fp->name, sizeof(mcp->virtual_fabric)) != 0) {
 		return FALSE;
@@ -10776,7 +10820,8 @@ static boolean searchMgidsThruAppsinVF (VF_t *vf_p, uint64_t mcgidh, uint64_t mc
 }
 
 boolean PreCreateMCGroup (SMMcastDefGrp_t *mdgp, VirtualFabrics_t *matched_vfp, uint32_t vf)
-{	// create default group
+{
+	// create default group
 	VFDg_t *dgip, *dgi;
 	// go ahead and build the default group info
 	VFAppMgid_t *mgidp;
@@ -10798,8 +10843,6 @@ boolean PreCreateMCGroup (SMMcastDefGrp_t *mdgp, VirtualFabrics_t *matched_vfp, 
 	dgip->def_mc_qkey = mdgp->def_mc_qkey;
 	dgip->def_mc_fl = mdgp->def_mc_fl;
 	dgip->def_mc_tc = mdgp->def_mc_tc;
-
-	dgip->prejoin_allowed = mdgp->prejoin_allowed;
 
 
 	// add all of the individual MGID's to the list

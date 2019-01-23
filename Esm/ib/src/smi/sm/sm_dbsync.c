@@ -359,9 +359,8 @@ static Status_t dbsync_reconfigSMDBSync(SMSyncReq_t *syncReqp) {
                 "NULL portGuid "FMT_U64" or bad LID=[0x%x] for standby SM", 
                 syncReqp->portguid, syncReqp->standbyLid);
     }
-	/* Mark its sync capability as unknown. We'll have to rediscover it after it has reconfigured */
-	sm_dbsync_upSmDbsyncCap(syncReqp->portguid, DBSYNC_CAP_UNKNOWN);
-    sm_trigger_sweep(SM_SWEEP_REASON_UPDATED_STANDBY);
+    /* Mark its sync capability as unknown. We'll have to rediscover it after it has reconfigured */
+    sm_dbsync_upSmDbsyncCap(syncReqp->portguid, DBSYNC_CAP_UNKNOWN);
     IB_EXIT(__func__, 0);
     return status;
 }
@@ -576,11 +575,6 @@ static Status_t processSMDBSyncGetSet(Mai_t *maip, uint8_t *msgbuf, uint32_t len
             memcpy((void *)&smrec, (void *)smrecp, sizeof(SmRec_t));
             smrecp = &smrec;
 
-			if (sm_control_cmd == SM_CONTROL_RECONFIG) {
-				/* We haven't finished rereading our configuration, stall the caller */
-				smrec.dbsync.version = SM_DBSYNC_UNKNOWN;
-			}
-
             (void)BSWAPCOPY_SM_DBSYNC_DATA(&smrecp->dbsync, (SMDBSyncp)msgbuf);
             /* send the sync capability of standby SM */
 			status = dbSyncMngrReply (dbsyncfd_if3, maip, msgbuf, SMDBSYNC_NSIZE, VSTATUS_OK);
@@ -695,7 +689,20 @@ static Status_t processSMDBSyncGetSet(Mai_t *maip, uint8_t *msgbuf, uint32_t len
 			/* handle other file types here in the future */
 		}
     } else if (maip->base.amod == DBSYNC_AMOD_RECONFIG) {
-		sm_control_reconfig();
+        /* lock out SM record table */
+        if ((status = vs_lock(&smRecords.smLock)) != VSTATUS_OK) {
+            status = dbSyncMngrReply (dbsyncfd_if3, maip, msgbuf, 0, VSTATUS_DROP);
+            IB_FATAL_ERROR_NODUMP("processSMDBSyncGetSet: Can't lock SM Record table");
+        }
+        /* fetch our current dbsync settings */
+        if ((smrecp = (SmRecp)cs_hashtable_search(smRecords.smMap, &reckey)) != NULL) {
+			/* Set our version to unkown until reconfiguration completes */
+			smrecp->dbsync.version = SM_DBSYNC_UNKNOWN;
+        }
+        /* unlock the SM table */
+        (void)vs_unlock(&smRecords.smLock);
+
+        sm_control_reconfig();
         status = dbSyncMngrReply (dbsyncfd_if3, maip, msgbuf, 0, VSTATUS_OK);
         IB_LOG_INFO_FMT(__func__, 
                         "Reconfiguration request processed");
@@ -1411,7 +1418,7 @@ static Status_t processGroupSync(Mai_t *maip, uint8_t *msgbuf, uint32_t reclen) 
                 mcGroup->hopLimit = mcgs.hopLimit;
                 mcGroup->scope = mcgs.scope;
                 mcGroup->index_pool = mcgs.index_pool;
-                sm_multicast_mark_lid_in_use(mcgs.mLid);
+				sm_multicast_mark_lid_in_use(mcgs.mLid);
                 /* add members to group */
                 while (bufidx < reclen && memcnt < mcgs.membercount) {
         		    BSWAPCOPY_STL_MCMEMBER_SYNCDB((STL_MCMEMBER_SYNCDB*)&msgbuf[bufidx], &mcms);

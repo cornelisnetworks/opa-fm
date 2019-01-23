@@ -64,7 +64,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define OMGT_SA_DEVICE_NAME_LEN_MAX 32
 
-#define OMGT_SA_DEFAULT_LOCK_TIMEOUT 5000000ull // 5 seconds
+#define OMGT_SA_DEFAULT_LOCK_TIMEOUT 5 // seconds
 
 #ifndef container_of
 #define container_of(ptr, type, field) \
@@ -88,19 +88,12 @@ struct omgt_sa_event {
 
 int omgt_lock_sem(SEMAPHORE* const	pSema)
 {
-	int rc = EIO;
-	unsigned int ms = (OMGT_SA_DEFAULT_LOCK_TIMEOUT + 999)/1000;
-	do {
-		if (0 == sem_trywait( pSema )) {
-			rc = 0;
-			break;
-		} else if (errno != EAGAIN) {
-			rc = errno;
-			break;
-		}
-        usleep(1000);
-	} while (ms--);
-	return rc;
+	struct timespec ts;
+	clock_gettime(CLOCK_REALTIME, &ts);
+	ts.tv_sec += OMGT_SA_DEFAULT_LOCK_TIMEOUT;
+	int ret;
+	while ((ret = sem_timedwait(pSema, &ts)) && errno == EINTR) continue;
+	return ret ? errno : 0;
 }
 
 void omgt_unlock_sem(SEMAPHORE * const pSema)

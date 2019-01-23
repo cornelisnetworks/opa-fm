@@ -47,9 +47,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endif
 
 
-static STL_PARTITION_TABLE defaultPKeyTable = { {{ STL_DEFAULT_APP_PKEY }, { STL_DEFAULT_PKEY }} };
-
-static uint16_t defaultPKeys[PKEY_TABLE_LIST_COUNT] = { STL_DEFAULT_APP_PKEY, STL_DEFAULT_PKEY };
+static uint16_t defaultPKeys[SM_PKEYS] = { STL_DEFAULT_APP_PKEY, STL_DEFAULT_PKEY };
 
 int sm_check_node_cache_valid(Node_t *);
 
@@ -59,6 +57,11 @@ int sm_check_node_cache_valid(Node_t *);
 			pkeyEntry1[STL_DEFAULT_FM_PKEY_IDX].AsReg16 = key2; \
 			pkeyEntry2[STL_DEFAULT_FM_PKEY_IDX].AsReg16 = key2; \
 }
+
+typedef struct {
+	uint64_t	nodeGUID;
+	uint8_t		portIndex;
+} set_pkey_context_t;
 
 //----------------------------------------------------------------------------//
 static void sm_set_port_stl_mngnt_pkey(Node_t *nodep, Port_t *portp, uint16_t pkey,
@@ -359,22 +362,29 @@ management_pkeys:
 }
 static void sm_set_delayed_pkeys_callback(cntxt_entry_t *cntxt, Status_t status, void *data, Mai_t *mad)
 {
-	Node_t *nodep = (Node_t *)data;
-	uint8_t portnum = (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH ? (mad->base.amod >> 16) & 0xFF : 1);
-	Port_t *portp = sm_get_port(nodep, portnum);
+	set_pkey_context_t *ctx = (set_pkey_context_t *)data;
+	Port_t *portp = NULL;
 	boolean skip = (sm_config.skipAttributeWrite & SM_SKIP_WRITE_PKEY ? 1 : 0);
 
-	if (!skip && !sm_callback_check(cntxt, status, nodep, portp, mad)) {
-		// Handle Failure
-	} else {
-		//portp->portData->delayedPkeyWrite = 0;
+	vs_rdlock(&old_topology_lock);
+	Node_t *nodep = sm_find_guid(&old_topology, ctx->nodeGUID);
+	if(nodep){
+		portp = sm_get_port(nodep, ctx->portIndex);
 	}
+
+	if (!skip)
+		sm_callback_check(cntxt, status, nodep, portp, mad);
+
+	vs_rwunlock(&old_topology_lock);
+	vs_pool_free(&sm_pool, ctx);
 }
+
 Status_t sm_set_delayed_pkeys(void)
 {
 	Node_t *nodep;
 	Port_t *portp, *lidportp;
 	Status_t status;
+	set_pkey_context_t *ctx;
 #if defined(IB_STACK_OPENIB)
 	boolean refreshDevPort = FALSE;
 #endif
@@ -389,6 +399,19 @@ Status_t sm_set_delayed_pkeys(void)
 			if (!sm_valid_port(portp)) continue;
 			if (!portp->portData->delayedPkeyWrite) continue;
 
+			status = vs_pool_alloc(&sm_pool, sizeof(set_pkey_context_t), (void**) &ctx);
+			if (status != VSTATUS_OK) {
+				IB_LOG_ERROR_FMT(__func__,
+						"Failed to allocate memory for set_pkey_context, rc: %s",
+						cs_convert_status(status));
+				sm_dispatch_clear(&sm_asyncDispatch);
+				(void)vs_rwunlock(&old_topology_lock);
+				return status;
+			}
+
+			ctx->nodeGUID = nodep->nodeInfo.NodeGUID;
+			ctx->portIndex = portp->index;
+
 			uint8_t numPkeys = bitset_find_last_one(&portp->portData->pkey_idxs) + 1;
 			uint8_t numBlocks = (numPkeys + (NUM_PKEY_ELEMENTS_BLOCK - 1)) / NUM_PKEY_ELEMENTS_BLOCK;
 
@@ -399,8 +422,9 @@ Status_t sm_set_delayed_pkeys(void)
 
 			status = SM_Set_PKeyTable_Dispatch(fd_topology, amod, &addr,
 				(STL_PARTITION_TABLE *)portp->portData->pPKey, sm_config.mkey,
-				nodep, &sm_asyncDispatch, sm_set_delayed_pkeys_callback, nodep);
+				nodep, &sm_asyncDispatch, sm_set_delayed_pkeys_callback, ctx);
 			if (status != VSTATUS_OK) {
+				vs_pool_free(&sm_pool, ctx);
 				IB_LOG_ERROR_FMT(__func__,
 					"Failed to Send Set PkeyTable (Additions) on port %u of node %s nodeGuid "FMT_U64": %s",
 					portp->index, sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, cs_convert_status(status));
@@ -437,9 +461,10 @@ Status_t sm_set_delayed_pkeys(void)
 
 	return status;
 }
+
 Status_t
 sm_set_portPkey(
-	Topology_t *topop, Node_t *nodep, Port_t *portp, Node_t *linkedNodep, Port_t *linkedPortp,
+	ParallelSweepContext_t *psc, SmMaiHandle_t *fd, Topology_t *topop, Node_t *nodep, Port_t *portp, Node_t *linkedNodep, Port_t *linkedPortp,
 	SmpAddr_t *addr, uint8_t *enforcePkey, uint16_t	*vlHighLimit)
 {
 	uint32_t   	 	amod;
@@ -597,7 +622,11 @@ sm_set_portPkey(
 					if (pkeyTable[STL_DEFAULT_CLIENT_PKEY_IDX].AsReg16 == 0 && pkeyTable[STL_DEFAULT_FM_PKEY_IDX].AsReg16 == 0) {
 						pkeyTable[STL_DEFAULT_CLIENT_PKEY_IDX].AsReg16 = STL_DEFAULT_CLIENT_PKEY;
 					}
-					status = SM_Set_PKeyTable(fd_topology, amod, addr, (STL_PARTITION_TABLE *)pkeyTable, sm_config.mkey);
+
+					psc_unlock(psc);
+					status = SM_Set_PKeyTable(fd ? fd : fd_topology, amod, addr, (STL_PARTITION_TABLE *)pkeyTable, sm_config.mkey);
+					psc_lock(psc);
+
 					if (status != VSTATUS_OK) {
 						IB_LOG_WARN_FMT(__func__,
 							   "Failed to set Partition Table for node %s guid "FMT_U64" node index %d port index %d",
@@ -687,12 +716,11 @@ sm_set_local_port_pkey(STL_NODE_INFO *nodeInfop)
 Status_t
 setPKey(uint32_t index, uint16_t pkey, int forceSweep)
 {
-	if(index > PKEY_TABLE_LIST_COUNT-1){
+	if(index > SM_PKEYS-1){
 		return(VSTATUS_ILLPARM);
 	}
 
 	defaultPKeys[index] = pkey;
-	defaultPKeyTable.PartitionTableBlock[index].AsReg16 = pkey;
 
 	if(forceSweep)
 		sm_forceSweep("PKey Table Change");
@@ -702,7 +730,7 @@ setPKey(uint32_t index, uint16_t pkey, int forceSweep)
 
 uint16_t getPKey(uint8_t index) 
 {
-	if (index > PKEY_TABLE_LIST_COUNT - 1) {
+	if (index > SM_PKEYS - 1) {
 		return 0;
 	}
 	return defaultPKeys[index];
@@ -713,12 +741,12 @@ int checkPKey(uint16_t pkey)
 {
 	int i;
 
-	for (i = 0; i < PKEY_TABLE_LIST_COUNT; ++i) {
+	for (i = 0; i < SM_PKEYS; ++i) {
 		if (PKEY_VALUE(defaultPKeys[i]) == PKEY_VALUE(pkey)) {
 			break;
 		}
 	}
-	return (i < PKEY_TABLE_LIST_COUNT) ? i : -1;
+	return (i < SM_PKEYS) ? i : -1;
 }
 
 uint16_t
@@ -735,7 +763,7 @@ smGetPortPkey(uint16_t pkey, Port_t* portp)
 			return STL_DEFAULT_FM_PKEY;
 		}
 	}
-	for (i = 0; i < PKEY_TABLE_LIST_COUNT; ++i) {
+	for (i = 0; i < SM_PKEYS; ++i) {
 		if (PKEY_VALUE(portp->portData->pPKey[i].AsReg16) == PKEY_VALUE(pkey)) return portp->portData->pPKey[i].AsReg16;
 	}
 	return 0;
@@ -746,7 +774,7 @@ smCheckPortPKey(uint16_t pkey, Port_t* portp)
 {
 	int i;
 
-	for (i = 0; i < PKEY_TABLE_LIST_COUNT; ++i) {
+	for (i = 0; i < SM_PKEYS; ++i) {
 		if (PKEY_VALUE(portp->portData->pPKey[i].AsReg16) == PKEY_VALUE(pkey)) return 1;
 	}
 	return 0;
@@ -757,7 +785,7 @@ smValidatePortPKey(uint16_t pkey, Port_t* portp)
 {
 	int i;
 
-	for (i = 0; i < PKEY_TABLE_LIST_COUNT; ++i) {
+	for (i = 0; i < SM_PKEYS; ++i) {
 		if ((PKEY_VALUE(portp->portData->pPKey[i].AsReg16) == PKEY_VALUE(pkey)) &&
 			((PKEY_TYPE(pkey) == PKEY_TYPE_FULL) ||
 			 (PKEY_TYPE(portp->portData->pPKey[i].AsReg16) == PKEY_TYPE_FULL))) {
@@ -848,9 +876,9 @@ smValidatePortPKey2Way(uint16_t pkey, Port_t* port1p, Port_t* port2p)
 		else
 			return smValidatePortPKey(STL_DEFAULT_CLIENT_PKEY, port2p);
 	}
-	for (i=0; i<PKEY_TABLE_LIST_COUNT; ++i) {
+	for (i=0; i<SM_PKEYS; ++i) {
 		if (PKEY_VALUE(port1p->portData->pPKey[i].AsReg16) == PKEY_VALUE(pkey)) {
-			for (j=0; j<PKEY_TABLE_LIST_COUNT; ++j) {
+			for (j=0; j<SM_PKEYS; ++j) {
 				if (PKEY_VALUE(port2p->portData->pPKey[j].AsReg16) == PKEY_VALUE(pkey)) {
 					if ((PKEY_TYPE(port1p->portData->pPKey[i].AsReg16) == PKEY_TYPE_FULL) ||
 						(PKEY_TYPE(port2p->portData->pPKey[j].AsReg16) == PKEY_TYPE_FULL)) {
@@ -871,7 +899,7 @@ smGetRequestPkeyIndex(uint8_t pkeyIndex,  STL_LID slid) {
 	Port_t*		smPortp;
 	uint16_t	pkey;
 	
-	if (pkeyIndex > PKEY_TABLE_LIST_COUNT-1) return INVALID_PKEY;
+	if (pkeyIndex > SM_PKEYS-1) return INVALID_PKEY;
 
 	reqPortp = sm_find_active_port_lid(&old_topology, slid);
 	if (sm_valid_port(reqPortp) && (reqPortp->state > IB_PORT_DOWN)) {
@@ -891,7 +919,7 @@ smGetCommonPKey(Port_t* port1, Port_t* port2) {
 	uint8_t		pkeyEntry;
 	int			defPkeyEntry=-1;
 
-	for (pkeyEntry=0; pkeyEntry<PKEY_TABLE_LIST_COUNT; pkeyEntry++) {
+	for (pkeyEntry=0; pkeyEntry<SM_PKEYS; pkeyEntry++) {
 		pkey = port1->portData->pPKey[pkeyEntry].AsReg16;
 
 		if (PKEY_VALUE(pkey) == INVALID_PKEY) break;
@@ -1997,10 +2025,11 @@ void smLogVFs() {
 		}
 	}
 
-	for (i = 0; i < PKEY_TABLE_LIST_COUNT; ++i) {
+	for (i = 0; i < SM_PKEYS; ++i) {
 		if (PKEY_VALUE(defaultPKeys[i]) == 0) {
 			break;
 		}
 		IB_LOG_INFINI_INFO_FMT(__func__, "defaultPkeyEntry %d, pkey= 0x%x", i, defaultPKeys[i]);
 	}
 }
+

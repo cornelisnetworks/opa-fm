@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT3 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2018, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -36,12 +36,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "iba/stl_pa_priv.h"
 #include <iba/ibt.h>
 #include "pm_topology.h"
-#include "paAccess.h"
+#include "pa_access.h"
 #include <limits.h>
 #include <time.h>
-
-#undef LOCAL_MOD_ID
-#define LOCAL_MOD_ID VIEO_PA_MOD_ID
 
 extern uint8_t *pa_data;
 
@@ -73,7 +70,9 @@ pa_getClassPortInfoResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		response.CapMask =
 			STL_PA_CPI_CAPMASK_ABSTIMEQUERY |
 			STL_PA_CPI_CAPMASK_EXT_FOCUSTYPES |
-			STL_PA_CPI_CAPMASK_TOPO_INFO;
+			STL_PA_CPI_CAPMASK_TOPO_INFO |
+			STL_PA_CPI_CAPMASK_VF_FOCUSTYPES |
+			STL_PA_CPI_CAPMASK_IMAGE_LISTS;
 		response.u1.s.RespTimeValue = pa_respTimeValue;
 
 		IB_LOG_DEBUG2_FMT(__func__, "Base Version:  0x%x", response.BaseVersion);
@@ -111,24 +110,33 @@ pa_getGroupListResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 {
 	uint8_t		*data = pa_data;
 	uint32_t	records = 0;
-	uint32_t	responseSize = 0;
-	uint32_t	attribOffset, imageIndex;
+	uint32_t	responseSize = 0, recordSize;
+	uint32_t	attribOffset;
 	FSTATUS		status;
 	Status_t	vStatus;
 	PmGroupList_t	GroupList = {0};
-	STL_PA_GROUP_LIST *response = NULL;
+	uint8_t *response = NULL;
 	int			i;
+	STL_PA_IMAGE_ID_DATA imageId, retImageId;
 
 	IB_ENTER(__func__, maip, 0, 0, 0);
-	
+
 	INCREMENT_PM_COUNTER(pmCounterPaRxGetGrpList);
 	IB_LOG_DEBUG1_FMT(__func__, "Getting group list");
 
-	imageIndex = (g_pmSweepData.LastSweepIndex == PM_IMAGE_INDEX_INVALID ? 0 : g_pmSweepData.LastSweepIndex);
-	status = paGetGroupList(&g_pmSweepData, &GroupList, imageIndex);
-	if (status == FSUCCESS) {
+	if (maip->base.aid == STL_PA_ATTRID_GET_GRP_LIST2) {
+		STL_PA_IMAGE_ID_DATA *p = (STL_PA_IMAGE_ID_DATA *)&maip->data[STL_PA_DATA_OFFSET];
+		BSWAP_STL_PA_IMAGE_ID(p);
+		imageId = *p;
+		recordSize = sizeof(STL_PA_GROUP_LIST2);
+	} else {
+		memset(&imageId, 0, sizeof(STL_PA_IMAGE_ID_DATA));
+		recordSize = sizeof(STL_PA_GROUP_LIST);
+	}
+	status = paGetGroupList(&g_pmSweepData, &GroupList, imageId, &retImageId);
+	if (status == FSUCCESS && GroupList.NumGroups > 0) {
 		records = GroupList.NumGroups;
-		responseSize = GroupList.NumGroups * STL_PM_GROUPNAMELEN;
+		responseSize = GroupList.NumGroups * recordSize;
 		if (responseSize) {
 			vStatus = vs_pool_alloc(&pm_pool, responseSize, (void*)&response);
 			if (vStatus != VSTATUS_OK) {
@@ -137,25 +145,42 @@ pa_getGroupListResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 				goto done;
 			}
 			memset(response, 0, responseSize);
-		}
+		} else goto done;
 
 		IB_LOG_DEBUG2_FMT(__func__, "Number of groups: %u", GroupList.NumGroups);
-		for (i = 0; i < GroupList.NumGroups; i++) {
-    		strncpy(response[i].groupName, GroupList.GroupList[i].Name, STL_PM_GROUPNAMELEN-1);
-			IB_LOG_DEBUG2_FMT(__func__, "Group %d: %.*s", i+1,
-				(int)sizeof(response[i].groupName), response[i].groupName);
+		if (maip->base.aid == STL_PA_ATTRID_GET_GRP_LIST2) {
+			STL_PA_GROUP_LIST2 *resp = (STL_PA_GROUP_LIST2 *)response;
+			for (i = 0; i < GroupList.NumGroups; i++) {
+				StringCopy(resp[i].groupName, GroupList.GroupList[i].Name, STL_PM_GROUPNAMELEN);
+				IB_LOG_DEBUG2_FMT(__func__, "Group %d: %.*s", i+1,
+					(int)sizeof(resp[i].groupName), resp[i].groupName);
+				resp[i].imageId = retImageId;
+				BSWAP_STL_PA_IMAGE_ID(&resp[i].imageId);
+			}
+		} else {
+			STL_PA_GROUP_LIST *resp = (STL_PA_GROUP_LIST *)response;
+			for (i = 0; i < GroupList.NumGroups; i++) {
+				StringCopy(resp[i].groupName, GroupList.GroupList[i].Name, STL_PM_GROUPNAMELEN);
+				IB_LOG_DEBUG2_FMT(__func__, "Group %d: %.*s", i+1,
+					(int)sizeof(resp[i].groupName), resp[i].groupName);
+			}
 		}
-    	memcpy(data, response, responseSize);
+		memcpy(data, response, responseSize);
 	}
 
 done:
-    // determine reply status
+	// determine reply status
 	if (status == FUNAVAILABLE) {
-		maip->base.status = STL_MAD_STATUS_STL_PA_UNAVAILABLE;			// PM Engine Not Running
+		maip->base.status = STL_MAD_STATUS_STL_PA_UNAVAILABLE;			// PM engine not running
 	} else if (status == FINSUFFICIENT_MEMORY) {
 		maip->base.status = MAD_STATUS_SA_NO_RESOURCES;					// allocating array failed
 	} else if (status == FINVALID_PARAMETER) {
-		maip->base.status = MAD_STATUS_BAD_FIELD;						// PM image parameter incorrect
+		maip->base.status = MAD_STATUS_BAD_FIELD;						// NULL pointer passed to function
+	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
+		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Improper parameter passed to function
+	} else if (status == FNOT_FOUND) {
+		if (retImageId.imageNumber == BAD_IMAGE_ID)
+			maip->base.status = STL_MAD_STATUS_STL_PA_NO_IMAGE;			// Failed to access/find image
 	} else if (maip->base.status != MAD_STATUS_OK) {
 		records = 0;
 	} else if (records == 0) {
@@ -166,12 +191,12 @@ done:
 		maip->base.status = MAD_STATUS_SA_TOO_MANY_RECS;
 	}
 
-	attribOffset = sizeof(STL_PA_GROUP_LIST) + Calculate_Padding(sizeof(STL_PA_GROUP_LIST));
+	attribOffset = recordSize + Calculate_Padding(recordSize);
 	/* setup attribute offset for possible RMPP transfer */
 	pa_cntxt->attribLen = attribOffset / 8;
 
-    pa_cntxt_data(pa_cntxt, data, records * attribOffset);
-    // send response
+	pa_cntxt_data(pa_cntxt, data, records * attribOffset);
+	// send response
 	(void)pa_send_reply(maip, pa_cntxt);
 
 	if (GroupList.GroupList != NULL)
@@ -513,7 +538,7 @@ pa_getPmConfigResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		response.sizeHistory							  	= pm_config.total_images;
 		response.sizeFreeze								  	= pm_config.freeze_frame_images;
 		response.lease									  	= pm_config.freeze_frame_lease;
-		response.pmFlags								  	= g_pmSweepData.flags;
+		response.pmFlags								  	= g_pmSweepData.pmFlags;
 		response.memoryFootprint						  	= memoryFootprint;
 		response.maxAttempts							  	= pm_config.MaxRetries;
 		response.respTimeout							  	= pm_config.RcvWaitInterval;
@@ -1344,7 +1369,7 @@ done:
 	} else if (status == FINVALID_PARAMETER) {
 		maip->base.status = MAD_STATUS_BAD_FIELD;						// NULL pointer passed to function
 	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
-		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Impropper parameter passed to function
+		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Improper parameter passed to function
 	} else if (status == FNOT_FOUND) {
 		if (retImageId.imageNumber == BAD_IMAGE_ID)
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_IMAGE;			// Failed to access/find image
@@ -1459,7 +1484,7 @@ done:
 	} else if (status == FINVALID_PARAMETER) {
 		maip->base.status = MAD_STATUS_BAD_FIELD;						// NULL pointer passed to function
 	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
-		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Impropper parameter passed to function
+		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Improper parameter passed to function
 	} else if (status == FNOT_FOUND) {
 		if (retImageId.imageNumber == BAD_IMAGE_ID)
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_IMAGE;			// Failed to access/find image
@@ -1579,7 +1604,7 @@ done:
 	} else if (status == FINVALID_PARAMETER) {
 		maip->base.status = MAD_STATUS_BAD_FIELD;						// NULL pointer passed to function
 	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
-		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Impropper parameter passed to function
+		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Improper parameter passed to function
 	} else if (status == FNOT_FOUND) {
 		if (retImageId.imageNumber == BAD_IMAGE_ID)
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_IMAGE;			// Failed to access/find image
@@ -1707,7 +1732,7 @@ done:
 	} else if (status == FINVALID_PARAMETER) {
 		maip->base.status = MAD_STATUS_BAD_FIELD;						// NULL pointer passed to function
 	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
-		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Impropper parameter passed to function
+		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Improper parameter passed to function
 	} else if (status == FNOT_FOUND) {
 		if (retImageId.imageNumber == BAD_IMAGE_ID)
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_IMAGE;			// Failed to access/find image
@@ -1782,7 +1807,7 @@ pa_getFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			p->imageId, &retImageId, select, start, range);
 	} else {
 		status = paGetFocusPorts(&g_pmSweepData, groupName, &pmFocusPorts,
-			p->imageId, &retImageId, select, start, range, NULL, 0);
+			p->imageId, &retImageId, select, start, range);
 	}
 
 	if (status == FSUCCESS) {
@@ -1858,7 +1883,7 @@ done:
 	} else if (status == FINVALID_PARAMETER) {
 		maip->base.status = MAD_STATUS_BAD_FIELD;						// NULL pointer passed to function
 	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
-		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Impropper parameter passed to function
+		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Improper parameter passed to function
 	} else if (status == FNOT_FOUND) {
 		if (retImageId.imageNumber == BAD_IMAGE_ID)
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_IMAGE;			// Failed to access/find image
@@ -1918,7 +1943,7 @@ pa_getFocusPortsMultiSelectResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	start   = p->start;
 	range   = p->range;
 
-	strncpy(groupName, p->groupName, STL_PM_GROUPNAMELEN-1);
+	StringCopy(groupName, p->groupName, STL_PM_GROUPNAMELEN);
 	groupName[STL_PM_GROUPNAMELEN-1] = 0;
 
 	IB_LOG_DEBUG1_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d", p->imageId.imageNumber, p->imageId.imageOffset);
@@ -1937,14 +1962,15 @@ pa_getFocusPortsMultiSelectResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		}
 	}
 
-	status = paGetFocusPorts(&g_pmSweepData, groupName, &pmFocusPorts,
-		p->imageId, &retImageId, 0, start, range, p->tuple, p->logical_operator);
+	status = paGetMultiFocusPorts(&g_pmSweepData, groupName, &pmFocusPorts,
+		p->imageId, &retImageId, start, range, p->tuple, p->logical_operator);
 
 	// if this fails next time, then go ahead and call the original function to see if it works.
 	//
 
 	if (status == FSUCCESS) {
 		records = pmFocusPorts.NumPorts;
+		if (records == 0) goto done;
 		responseSize = pmFocusPorts.NumPorts * sizeof(STL_FOCUS_PORTS_MULTISELECT_RSP);
 		if (responseSize) {
 			vStatus = vs_pool_alloc(&pm_pool, responseSize, (void*)&response);
@@ -1953,29 +1979,30 @@ pa_getFocusPortsMultiSelectResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 				status = FINSUFFICIENT_MEMORY;
 				goto done;
 			}
+			memset(response, 0, responseSize);
 		}
-		memset(response, 0, responseSize);
 
 		for (i = 0; i < pmFocusPorts.NumPorts; i++) {
-			response[i].nodeLid	= pmFocusPorts.portList[i].lid;
-			response[i].portNumber	= pmFocusPorts.portList[i].portNum;
-			response[i].localStatus	= pmFocusPorts.portList[i].localStatus;
-			response[i].rate	= pmFocusPorts.portList[i].rate;
-			response[i].maxVlMtu		= pmFocusPorts.portList[i].maxVlMtu;
+			response[i].nodeLid     = pmFocusPorts.portList[i].lid;
+			response[i].portNumber  = pmFocusPorts.portList[i].portNum;
+			response[i].localStatus = pmFocusPorts.portList[i].localStatus;
+			response[i].rate        = pmFocusPorts.portList[i].rate;
+			response[i].maxVlMtu    = pmFocusPorts.portList[i].maxVlMtu;
+			response[i].nodeGUID    = pmFocusPorts.portList[i].guid;
 
 			for (j = 0; j < MAX_NUM_FOCUS_PORT_TUPLES; j++) {
-				response[i].value[j]			= pmFocusPorts.portList[i].value[j];
-				response[i].neighborValue[j]		= pmFocusPorts.portList[i].neighborValue[j];
+				response[i].value[j]         = pmFocusPorts.portList[i].value[j];
+				response[i].neighborValue[j] = pmFocusPorts.portList[i].neighborValue[j];
 			}
-			response[i].nodeGUID= pmFocusPorts.portList[i].guid;
-			strncpy(response[i].nodeDesc, pmFocusPorts.portList[i].nodeDesc, sizeof(response[i].nodeDesc)-1);
-			response[i].neighborStatus	= pmFocusPorts.portList[i].neighborStatus;
-			response[i].neighborLid		= pmFocusPorts.portList[i].neighborLid;
-			response[i].neighborPortNumber	= pmFocusPorts.portList[i].neighborPortNum;
+			StringCopy(response[i].nodeDesc, pmFocusPorts.portList[i].nodeDesc,
+				sizeof(response[i].nodeDesc));
+			response[i].neighborStatus     = pmFocusPorts.portList[i].neighborStatus;
+			response[i].neighborLid        = pmFocusPorts.portList[i].neighborLid;
+			response[i].neighborPortNumber = pmFocusPorts.portList[i].neighborPortNum;
 
-			response[i].neighborGuid	= pmFocusPorts.portList[i].neighborGuid;
-			strncpy(response[i].neighborNodeDesc, pmFocusPorts.portList[i].neighborNodeDesc,
-					sizeof(response[i].neighborNodeDesc)-1);
+			response[i].neighborGuid       = pmFocusPorts.portList[i].neighborGuid;
+			StringCopy(response[i].neighborNodeDesc, pmFocusPorts.portList[i].neighborNodeDesc,
+				sizeof(response[i].neighborNodeDesc));
 			response[i].imageId = retImageId;
 			response[i].imageId.imageOffset = 0;
 		}
@@ -2037,7 +2064,7 @@ done:
 	} else if (status == FINVALID_PARAMETER) {
 		maip->base.status = MAD_STATUS_BAD_FIELD;						// NULL pointer passed to function
 	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
-		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Impropper parameter passed to function
+		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Improper parameter passed to function
 	} else if (status == FNOT_FOUND) {
 		if (retImageId.imageNumber == BAD_IMAGE_ID)
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_IMAGE;			// Failed to access/find image
@@ -2076,25 +2103,33 @@ pa_getVFListResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 {
 	uint8_t		*data = pa_data;
 	uint32_t	records = 0;
-	uint32_t	responseSize = 0;
+	uint32_t	responseSize = 0, recordSize;
 	uint32_t	attribOffset;
-	uint32_t	imageIndex;
 	FSTATUS		status;
 	Status_t	vStatus;
 	PmVFList_t	VFList = {0};
-	STL_PA_VF_LIST *response = NULL;
+	uint8_t *response = NULL;
 	int			i;
+	STL_PA_IMAGE_ID_DATA imageId, retImageId;
 
 	IB_ENTER(__func__, maip, 0, 0, 0);
-	
+
 	INCREMENT_PM_COUNTER(pmCounterPaRxGetVFList);
 	IB_LOG_DEBUG1_FMT(__func__, "Getting VF list");
 
-	imageIndex = (g_pmSweepData.LastSweepIndex == PM_IMAGE_INDEX_INVALID ? 0 : g_pmSweepData.LastSweepIndex);
-	status = paGetVFList(&g_pmSweepData, &VFList, imageIndex);
-	if (status == FSUCCESS) {
+	if (maip->base.aid == STL_PA_ATTRID_GET_VF_LIST2) {
+		STL_PA_IMAGE_ID_DATA *p = (STL_PA_IMAGE_ID_DATA *)&maip->data[STL_PA_DATA_OFFSET];
+		BSWAP_STL_PA_IMAGE_ID(p);
+		imageId = *p;
+		recordSize = sizeof(STL_PA_VF_LIST2);
+	} else {
+		memset(&imageId, 0, sizeof(STL_PA_IMAGE_ID_DATA));
+		recordSize = sizeof(STL_PA_VF_LIST);
+	}
+	status = paGetVFList(&g_pmSweepData, &VFList, imageId, &retImageId);
+	if (status == FSUCCESS && VFList.NumVFs > 0) {
 		records = VFList.NumVFs;
-		responseSize = VFList.NumVFs * STL_PM_VFNAMELEN;
+		responseSize = VFList.NumVFs * recordSize;
 		if (responseSize) {
 			vStatus = vs_pool_alloc(&pm_pool, responseSize, (void*)&response);
 			if (vStatus != VSTATUS_OK) {
@@ -2103,15 +2138,27 @@ pa_getVFListResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 				goto done;
 			}
 			memset(response, 0, responseSize);
-		}
+		} else goto done;
 
 		IB_LOG_DEBUG2_FMT(__func__, "Number of VFs: %u", VFList.NumVFs);
-		for (i = 0; i < VFList.NumVFs; i++) {
-    		strncpy(response[i].vfName, VFList.VfList[i].Name, STL_PM_VFNAMELEN-1);
-			IB_LOG_DEBUG2_FMT(__func__, "VF %d: %.*s", i+1,
-				(int)sizeof(response[i].vfName),response[i].vfName);
+		if (maip->base.aid == STL_PA_ATTRID_GET_VF_LIST2) {
+			STL_PA_VF_LIST2 *resp = (STL_PA_VF_LIST2 *)response;
+			for (i = 0; i < VFList.NumVFs; i++) {
+				StringCopy(resp[i].vfName, VFList.VfList[i].Name, STL_PM_VFNAMELEN);
+				IB_LOG_DEBUG2_FMT(__func__, "VF %d: %.*s", i+1,
+					(int)sizeof(resp[i].vfName), resp[i].vfName);
+				resp[i].imageId = retImageId;
+				BSWAP_STL_PA_IMAGE_ID(&resp[i].imageId);
+			}
+		} else {
+			STL_PA_VF_LIST *resp = (STL_PA_VF_LIST *)response;
+			for (i = 0; i < VFList.NumVFs; i++) {
+				StringCopy(resp[i].vfName, VFList.VfList[i].Name, STL_PM_VFNAMELEN);
+				IB_LOG_DEBUG2_FMT(__func__, "VF %d: %.*s", i+1,
+					(int)sizeof(resp[i].vfName), resp[i].vfName);
+			}
 		}
-    	memcpy(data, response, responseSize);
+		memcpy(data, response, responseSize);
 	}
 
 done:
@@ -2124,6 +2171,11 @@ done:
 		maip->base.status = MAD_STATUS_BAD_FIELD;						// NULL pointer passed to function
 	} else if (status == (FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_VF)) {
 		maip->base.status = STL_MAD_STATUS_STL_PA_NO_VF;				// Failed to find VF
+	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
+		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Improper parameter passed to function
+	} else if (status == FNOT_FOUND) {
+		if (retImageId.imageNumber == BAD_IMAGE_ID)
+			maip->base.status = STL_MAD_STATUS_STL_PA_NO_IMAGE;			// Failed to access/find image
 	} else if (maip->base.status != MAD_STATUS_OK) {
 		records = 0;
 	} else if (records == 0) {
@@ -2134,7 +2186,7 @@ done:
 		maip->base.status = MAD_STATUS_SA_TOO_MANY_RECS;
 	}
 
-	attribOffset = sizeof(STL_PA_VF_LIST) + Calculate_Padding(sizeof(STL_PA_VF_LIST));
+	attribOffset = recordSize + Calculate_Padding(recordSize);
 	/* setup attribute offset for possible RMPP transfer */
 	pa_cntxt->attribLen = attribOffset / 8;
 
@@ -2327,7 +2379,7 @@ done:
 	} else if (status == FINVALID_PARAMETER) {
 		maip->base.status = MAD_STATUS_BAD_FIELD;						// NULL pointer passed to function
 	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
-		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Impropper parameter passed to function
+		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Improper parameter passed to function
 	} else if (status == FNOT_FOUND) {
 		if (retImageId.imageNumber == BAD_IMAGE_ID)
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_IMAGE;			// Failed to access/find image
@@ -2441,7 +2493,7 @@ done:
 	} else if (status == FINVALID_PARAMETER) {
 		maip->base.status = MAD_STATUS_BAD_FIELD;						// NULL pointer passed to function
 	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
-		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Impropper parameter passed to function
+		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Improper parameter passed to function
 	} else if (status == FNOT_FOUND) {
 		if (retImageId.imageNumber == BAD_IMAGE_ID)
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_IMAGE;			// Failed to access/find image
@@ -2586,7 +2638,7 @@ pa_getVFPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	} else if (status == FINVALID_PARAMETER) {
 		maip->base.status = MAD_STATUS_BAD_FIELD;						// NULL pointer passed to function
 	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
-		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Impropper parameter passed to function
+		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Improper parameter passed to function
 	} else if (status == (FINVALID_SETTING | STL_MAD_STATUS_STL_PA_NO_DATA)) {
 		maip->base.status = STL_MAD_STATUS_STL_PA_NO_DATA;				// Process Vl Counters Config option disabled, No Data
 	} else if (status == FNOT_FOUND) {
@@ -2670,7 +2722,7 @@ pa_clrVFPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	} else if (status == FINVALID_PARAMETER) {
 		maip->base.status = MAD_STATUS_BAD_FIELD;						// NULL pointer passed to function
 	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
-		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Impropper parameter passed to function
+		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Improper parameter passed to function
 	} else if (status == (FINVALID_SETTING | STL_MAD_STATUS_STL_PA_NO_DATA)) {
 		maip->base.status = STL_MAD_STATUS_STL_PA_NO_DATA;				// Process Vl Counters Config option disabled, No Data
 	} else if (status == FNOT_FOUND) {
@@ -2711,7 +2763,7 @@ pa_getVFFocusPortsResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	FSTATUS		status;
 	Status_t	vStatus;
 	uint32_t	select, start, range;
-	PmVFFocusPorts_t pmVFFocusPorts = {{0}};
+	PmFocusPorts_t pmVFFocusPorts = {{0}};
 	STL_PA_VF_FOCUS_PORTS_RSP *response = NULL;
 	STL_PA_VF_FOCUS_PORTS_REQ *p = (STL_PA_VF_FOCUS_PORTS_REQ *)&maip->data[STL_PA_DATA_OFFSET];
 	uint32		responseSize = 0;
@@ -2819,7 +2871,7 @@ done:
 	} else if (status == FINVALID_PARAMETER) {
 		maip->base.status = MAD_STATUS_BAD_FIELD;						// NULL pointer passed to function
 	} else if (status == (FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER)) {
-		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Impropper parameter passed to function
+		maip->base.status = STL_MAD_STATUS_STL_PA_INVALID_PARAMETER;	// Improper parameter passed to function
 	} else if (status == FNOT_FOUND) {
 		if (retImageId.imageNumber == BAD_IMAGE_ID)
 			maip->base.status = STL_MAD_STATUS_STL_PA_NO_IMAGE;			// Failed to access/find image

@@ -81,7 +81,10 @@ then
 	exit 1
 fi
 
-DATE=${DATE:-"`date +'%m/%d/%y %H:%M'`"}
+DATE_FMT='%m/%d/%y %H:%M'
+[ -z "$SOURCE_DATE_EPOCH" ] ||\
+	DATE=${DATE:-"`date -u -d@$SOURCE_DATE_EPOCH "+$DATE_FMT"`"}
+DATE=${DATE:-"`date "+$DATE_FMT"`"}
 
 if [ "$#" = 1 ]
 then

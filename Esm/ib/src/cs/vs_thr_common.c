@@ -101,6 +101,9 @@ extern Status_t
 impl_vs_thread_join(Thread_t *thr,
                           void **value_ptr);
 
+extern int 
+impl_vs_thread_setname(char *name);
+
 /**********************************************************************
 *
 * FUNCTION
@@ -594,4 +597,22 @@ vs_thread_join (Thread_t *handle, void **value_ptr)
 
     IB_EXIT (function, status);
     return status;
+}
+/**********************************************************************
+*
+* FUNCTION
+*    vs_thread_name_str
+*
+* DESCRIPTION
+*    Sets a globally unique thread name string for
+*    the currently executing thread.
+*
+* INPUTS
+*    thread name string  
+* OUTPUTS
+* Upon success returns 0   
+**********************************************************************/
+int vs_thread_setname(char* name)
+{
+	return impl_vs_thread_setname(name);
 }

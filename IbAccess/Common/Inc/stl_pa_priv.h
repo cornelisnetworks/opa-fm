@@ -611,6 +611,16 @@ typedef struct _STL_PA_VF_FOCUS_PORTS_RESULTS  {
     STL_PA_VF_FOCUS_PORTS_RSP FocusPortsRecords[1];		/* list of PA records returned */
 } STL_PA_VF_FOCUS_PORTS_RESULTS, *PSTL_PA_VF_FOCUS_PORTS_RESULTS;
 
+typedef struct _STL_PA_GROUP_LIST2_RESULTS  {
+    uint32 NumGroupList2Records;                /* Number of PA Records returned */
+    STL_PA_GROUP_LIST2 GroupList2Records[1];		/* list of PA records returned */
+} STL_PA_GROUP_LIST2_RESULTS, *PSTL_PA_GROUP_LIST2_RESULTS;
+
+typedef struct _STL_PA_VF_LIST2_RESULTS  {
+    uint32 NumVFList2Records;                /* Number of PA Records returned */
+    STL_PA_VF_LIST2 VFList2Records[1];		/* list of PA records returned */
+} STL_PA_VF_LIST2_RESULTS, *PSTL_PA_VF_LIST2_RESULTS;
+
 /* PortXmitData and PortRcvData are in units of flits (8 bytes) */
 #define FLITS_PER_MiB ((uint64)1024*(uint64)1024/(uint64)8)
 #define FLITS_PER_MB ((uint64)1000*(uint64)1000/(uint64)8)

@@ -132,12 +132,32 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 
 	IB_ENTER("sa_PathRecord", maip, 0, 0, 0);
 
-	if (cversion != SA_MAD_CVERSION) {
+	// Check Method
+	if (maip->base.method == SA_CM_GET) {
+		INCREMENT_COUNTER(smCounterSaRxGetPathRecord);
+	} else if (maip->base.method == SA_CM_GETTABLE) {
+		INCREMENT_COUNTER(smCounterSaRxGetTblPathRecord);
+	} else {
+		// Generate an error response and return.
+		maip->base.status = MAD_STATUS_BAD_METHOD;
+		IB_LOG_WARN_FMT(__func__, "invalid Method: %s (%u)",
+			cs_getMethodText(maip->base.method), maip->base.method);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
+	}
+
+	// Check Base and Class Version
+	if (maip->base.bversion == IB_BASE_VERSION && maip->base.cversion == SA_MAD_CVERSION) {
+		// IB Path Records
+	} else {
+		// Generate an error response and return.
 		maip->base.status = MAD_STATUS_BAD_CLASS;
-		(void) sa_send_reply(maip, sa_cntxt);
-		IB_LOG_WARN("invalid CLASS:", cversion);
-		IB_EXIT("sa_PathRecord", VSTATUS_OK);
-		return (VSTATUS_OK);
+		IB_LOG_WARN_FMT(__func__, "invalid Base and/or Class Versions: Base %u, Class %u",
+			maip->base.bversion, maip->base.cversion);
+		(void)sa_send_reply(maip, sa_cntxt);
+		IB_EXIT(__func__, VSTATUS_OK);
+		return VSTATUS_OK;
 	}
 
 	//
@@ -150,21 +170,6 @@ sa_PathRecord(Mai_t *maip, sa_cntxt_t* sa_cntxt) {
 	//
 	(void)vs_rdlock(&old_topology_lock);
 	bytes = 0;
-
-	//
-	//	Check the basic assumptions.
-	//
-	if (maip->base.method != SA_CM_GET) {
-		if (maip->base.method != SA_CM_GETTABLE) {
-			maip->base.status = MAD_STATUS_SA_REQ_INVALID;
-			IB_LOG_WARN("sa_PathRecord: bad method:", maip->base.method);
-			goto reply_PathRecord;
-		} else {
-			INCREMENT_COUNTER(smCounterSaRxGetTblPathRecord);
-		}
-	} else {
-		INCREMENT_COUNTER(smCounterSaRxGetPathRecord);
-	}
 
 	//
 	//  Verify the size of the data received for the request
@@ -879,7 +884,7 @@ sa_PathRecord_Set(uint8_t * query, uint32_t* records, uint8_t cversion, uint32_t
 				status = VSTATUS_BAD;
 				goto done_PathRecordSet;
 			}
-			portno = sm_get_route(&old_topology, next_nodep, inPortNum, last_portp->portData->lid);
+			portno = sm_get_route(&old_topology, next_nodep, inPortNum, last_portp->portData->lid, 0);
 			if (portno == 255) {
 				/* PR#101984 - no path from this node for given Lid */
 				IB_LOG_WARN_FMT("sa_PathRecord_Set",

@@ -82,7 +82,6 @@ static void sm_dispatch_cntxt_callback(cntxt_entry_t *cntxt, Status_t cntxtStatu
 	sm_dispatch_t *disp = req->disp;
 	Node_t *nodep = NULL;
 	uint64_t now;
-
 	if (req->sweepPasscount == disp->sweepPasscount) {
 		nodep = req->nodep;
 	} else {
@@ -91,7 +90,7 @@ static void sm_dispatch_cntxt_callback(cntxt_entry_t *cntxt, Status_t cntxtStatu
               	cntxt->lid, cntxt->mad.base.aid, cntxt->mad.base.amod);
 	}
 
-	if (cntxtStatus == VSTATUS_TIMEOUT) {
+	if (cntxtStatus == VSTATUS_TIMEOUT && req->sendParams.fd->enforceTimeoutLimit) {
 		vs_time_get(&now);
 		sm_popo_report_timeout(&sm_popo, MAX(0, now - req->sendTime));
 	}
@@ -260,7 +259,7 @@ Status_t sm_dispatch_new_req(
 	if (status != VSTATUS_OK) {
 		IB_LOG_ERROR_FMT(__func__,
 			"failed to allocate dispatch request (rc %d) for fd 0x%08"PRIxN", method 0x%02x, aid 0x%04x\n",
-			status, sendParams->fd, sendParams->method, sendParams->aid);
+			status, sendParams->fd->fdMai, sendParams->method, sendParams->aid);
 		return status;
 	}
 

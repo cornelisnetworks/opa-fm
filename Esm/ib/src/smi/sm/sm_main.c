@@ -55,6 +55,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ib_mad.h"
 #include "ib_status.h"
 #include "cs_g.h"
+#include "ifs_g.h"
 #include "sm_l.h"
 #include "sm_qos.h"
 #include "sa_l.h"
@@ -75,13 +76,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "mal_g.h"
 
-#ifndef stringize
-#define stringize(x) #x
-#endif
-#ifndef add_quotes
-#define add_quotes(x) stringize(x)
-#endif
-
 extern int sa_main(void);
 extern void sa_main_kill(void);
 extern void topology_main_kill(void);
@@ -89,6 +83,8 @@ extern void async_main_kill(void);
 extern void topology_rcv_kill(void);
 extern Status_t pm_main_kill(void);
 extern void fe_main_kill(void);
+#ifndef __VXWORKS__
+#endif
 
 
 
@@ -130,12 +126,11 @@ extern uint32_t            saRmppCheckSum; // control checksum of SA RMPP respon
 extern uint8_t             smTerminateAfter; // Used for performance testing.
 extern char*               smDumpCounters; // Used for performance testing.
 extern uint8_t sa_dynamicPlt[];   // entry zero set to 1 indicates table in use
-extern FabricData_t        preDefTopology;
 
 Pool_t		sm_pool;
 Pool_t		sm_xml_pool;
 
-Sema_t		sa_sema;
+Sema_t		topo_terminated_sema;
 
 LidMap_t	* lidmap = NULL;
 cl_qmap_t	* sm_GuidToLidMap = NULL;
@@ -254,28 +249,27 @@ uint32_t sm_looptest_disabled_ar = 0;
  */
 static RoutingModule_t *sm_main_routingModule = NULL;
 
-SmDorRouting_t smDorRouting;
-
 // pointer to Virtual Fabric configuration info
 VirtualFabrics_t *initialVfPtr  = NULL;
 VirtualFabrics_t *updatedVirtualFabrics = NULL;
 
-IBhandle_t	fd_sa;
-IBhandle_t	fd_sa_writer;
-IBhandle_t	fd_saTrap;
-IBhandle_t	fd_async;
-IBhandle_t	fd_async_request;
-IBhandle_t  fd_sminfo;
-IBhandle_t	fd_topology;
-IBhandle_t	fd_atopology;
-IBhandle_t	fd_loopTest;
-IBhandle_t	fd_dbsync;
+SmMaiHandle_t	*fd_sa = NULL;
+SmMaiHandle_t	*fd_sa_writer = NULL;
+SmMaiHandle_t	*fd_saTrap = NULL;
+SmMaiHandle_t	*fd_async = NULL;
+SmMaiHandle_t	*fd_async_request = NULL;
+SmMaiHandle_t	*fd_sminfo = NULL;
+SmMaiHandle_t	*fd_topology = NULL;
+SmMaiHandle_t	*fd_atopology = NULL;
+SmMaiHandle_t	*fd_loopTest = NULL;
+SmMaiHandle_t	*fd_dbsync = NULL;
+SmMaiHandle_t	*fd_flapping_port = NULL;
 
 Sema_t		state_sema;
 Sema_t		topology_sema;
-Sema_t      topology_rcv_sema;          // topology receive thread ready semaphore
-Lock_t		old_topology_lock;			// a RW Thread Lock
-Lock_t		new_topology_lock;			// a Thread Lock
+Sema_t     	topology_rcv_sema;		// topology receive thread ready semaphore
+Lock_t		old_topology_lock;		// a RW Thread Lock
+Lock_t		new_topology_lock;		// a Thread Lock
 Lock_t		tid_lock;
 Lock_t		handover_sent_lock;
 
@@ -540,61 +534,15 @@ void sm_set_force_attribute_rewrite(uint32_t force_attr_rewrite){
 	if (force_attr_rewrite) forceRebalanceNextSweep = 1;
 }
 
-void sm_set_skip_attribute_write(char * datap){
-    uint32_t tmp;
-    memcpy(&tmp, datap, sizeof(tmp));
-	sm_config.skipAttributeWrite = tmp;
-	IB_LOG_INFINI_INFO_FMT(__func__, "Setting skip attribute write to 0x%x", tmp);
+void sm_set_skip_attribute_write(uint32_t skip_attr_write) {
+	sm_config.skipAttributeWrite = skip_attr_write;
+	IB_LOG_INFINI_INFO_FMT(__func__, "Setting skip attribute write to 0x%x", skip_attr_write);
 }
 
 void sm_free_vf_mem(void) {
 	bitset_free(&sm_linkSLsInuse);
 }
 
-void sm_process_dor_info(VirtualFabrics_t *VirtualFabrics, SmDorRouting_t *dorCfg) {
-
-	int d,p;
-	smDorRouting = *dorCfg;
-	int toroidal_count = 0;
-
-	if (smDorRouting.dimensionCount == 0) {
-		IB_LOG_ERROR_FMT(__func__,
-						 "Routing algorithm configured as dor but no dimensions have been specified in the configuration.");
-		IB_FATAL_ERROR_NODUMP("Please specify required dimensions in the configuration. Exiting");
-	}
-
-	if (smDorRouting.dimensionCount > SM_DOR_MAX_DIMENSIONS) {
-		IB_LOG_ERROR_FMT(__func__, "Number of dimensions configured is %d but dor algorithm supports only %d dimensions.",
-						smDorRouting.dimensionCount, SM_DOR_MAX_DIMENSIONS);
-		IB_FATAL_ERROR_NODUMP("Please reconfigure with correct number of dimensions. Exiting");
-	}
-
-	if (smDorRouting.warn_threshold > SM_DOR_MAX_WARN_THRESHOLD) {
-		IB_LOG_WARN_FMT(__func__,
-			 "MeshTorusTopology WarnThreshold of %d is higher than max suported %d. Defaulting to %d.",
-			 smDorRouting.warn_threshold, SM_DOR_MAX_WARN_THRESHOLD, SM_DOR_MAX_WARN_THRESHOLD);
-		smDorRouting.warn_threshold = SM_DOR_MAX_WARN_THRESHOLD;
-	}
-	if (smDorRouting.debug) {
-		IB_LOG_INFINI_INFO_FMT(__func__, "DorTopology %s NumberOfDimensions %d routingSCs %d",
-				(smDorRouting.topology == DOR_MESH)?"mesh":((smDorRouting.topology == DOR_TORUS)? "torus":"partial torus"), 
-				smDorRouting.dimensionCount, smDorRouting.routingSCs);
-
-		for (d=0; d<smDorRouting.dimensionCount; d++) {
-			if (smDorRouting.dimension[d].toroidal)
-				toroidal_count++;
-
-   	   		IB_LOG_INFINI_INFO_FMT(__func__, "DorDimension %d is %s", 
-				d, smDorRouting.dimension[d].toroidal?"toroidal":"not toroidal");
-
-			for (p=0; p<smDorRouting.dimension[d].portCount; p++) {
-				IB_LOG_INFINI_INFO_FMT(__func__, "DorDimension %d PortPair %d,%d", d,
-					smDorRouting.dimension[d].portPair[p].port1, smDorRouting.dimension[d].portPair[p].port2);
-			}
-		}
-		IB_LOG_INFINI_INFO_FMT(__func__, "Total toroidal dimensions %d", toroidal_count);
-	}
-}
 
 static Status_t
 sm_resolve_pkeys_for_vfs(VirtualFabrics_t *VirtualFabrics)
@@ -956,6 +904,8 @@ Status_t sm_parse_xml_config(void) {
 			sm_log_masks[modid] = sm_config.log_masks[modid].value;
 	}
 	sm_init_log_setting();
+#ifndef __VXWORKS__
+#endif
 	vs_log_output_message("Subnet Manager starting up.", TRUE);
 #ifndef __VXWORKS__
     vs_log_output(VS_LOG_NONE, VIEO_NONE_MOD_ID, NULL, NULL,
@@ -1087,10 +1037,6 @@ Status_t sm_parse_xml_config(void) {
 		adaptiveRoutingDisable = 1;
 	else
 		adaptiveRoutingDisable = 0;
-
-	if (strncmp(sm_config.routing_algorithm, "dor", 32) == 0) {
-		sm_process_dor_info(initialVfPtr, &sm_config.smDorRouting);
-	}
 
 	// Is Adaptive Routing Enabled
 	if (sm_config.adaptiveRouting.enable && !adaptiveRoutingDisable) {
@@ -1516,6 +1462,48 @@ Status_t sm_parse_predef_topo(void)
 	return status;
 }
 
+
+Status_t
+sm_mai_handle_open(uint32_t qp, uint32_t dev, uint32_t port, boolean enforceTimeoutLimit, SmMaiHandle_t **fd) {
+        Status_t status;
+        status = vs_pool_alloc(&sm_pool, sizeof(SmMaiHandle_t), (void *)fd);
+        if(status) {
+                IB_LOG_ERROR_FMT (__func__, "Can't allocate memory for SM MAI handle");
+                return status;
+        }
+        (*fd)->enforceTimeoutLimit = enforceTimeoutLimit;
+        status = mai_open(qp, dev, port, &((*fd)->fdMai));
+        return status;
+}
+
+Status_t
+sm_mai_handle_close(SmMaiHandle_t **fd) {
+        Status_t status = VSTATUS_OK;
+	if(*fd) {
+		mai_close((*fd)->fdMai);
+		status = vs_pool_free(&sm_pool, *fd);
+		*fd = NULL;
+	}
+        return status;
+}
+
+#ifdef __VXWORKS__
+void
+sm_free_handles(void) {
+	sm_mai_handle_close(&fd_sa);
+	sm_mai_handle_close(&fd_sa_writer);
+	sm_mai_handle_close(&fd_saTrap);
+	sm_mai_handle_close(&fd_async);
+	sm_mai_handle_close(&fd_async_request);
+	sm_mai_handle_close(&fd_sminfo);
+	sm_mai_handle_close(&fd_topology);
+	sm_mai_handle_close(&fd_atopology);
+	sm_mai_handle_close(&fd_loopTest);
+	sm_mai_handle_close(&fd_dbsync);
+	sm_mai_handle_close(&fd_flapping_port);
+}
+#endif /* __VXWORKS__ */
+
 Status_t
 sm_main(void)
 {
@@ -1718,6 +1706,15 @@ sm_main(void)
 		return status;
 	}
 
+	if (sm_main_routingModule->funcs.process_xml_config) {
+		status = sm_main_routingModule->funcs.process_xml_config();
+		if (status != VSTATUS_OK) {
+			IB_FATAL_ERROR_NODUMP("Failed to process routing XML configuration");
+			return status;
+		}
+	}
+	IB_LOG_INFINI_INFO_FMT(__func__, "Routing Algorithm in use: %s", sm_config.routing_algorithm);
+
 	if ((status = sm_process_vf_info(initialVfPtr)) != VSTATUS_OK)
 		return status;
 
@@ -1735,8 +1732,8 @@ sm_main(void)
 		IB_FATAL_ERROR_NODUMP("can't initialize topology receive semaphore");
 	}
 
-	if ((status = cs_sema_create(&sa_sema, 0)) != VSTATUS_OK) {
-		IB_FATAL_ERROR_NODUMP("can't initialize sa semaphore");
+	if ((status = cs_sema_create(&topo_terminated_sema, 0)) != VSTATUS_OK) {
+		IB_FATAL_ERROR_NODUMP("can't initialize sm semaphore");
 	}
 
 	//
@@ -1790,7 +1787,7 @@ sm_main(void)
 	mai_init();
 
 #ifndef __VXWORKS__
-	FILE * tmp_log_file = strlen(sm_config.log_file) > 0 ? vs_log_get_logfile_fd() : NULL;
+	FILE * tmp_log_file = strlen(sm_config.log_file) > 0 ? vs_log_get_logfile_fd() : OMGT_DBG_FILE_SYSLOG;
 	struct omgt_params params = {.error_file = sm_log_level > 0 ? tmp_log_file : NULL,
 	                             .debug_file = sm_log_level > 2 ? tmp_log_file : NULL};
 	status = ib_init_devport(&sm_config.hca, &sm_config.port, &sm_config.port_guid, &params);
@@ -1819,54 +1816,58 @@ sm_main(void)
     //
 
 	// used by the SA for new queries
-	if ((status = mai_open(1, sm_config.hca, sm_config.port, &fd_sa)) != VSTATUS_OK) {
+	if ((status = sm_mai_handle_open(1, sm_config.hca, sm_config.port, FALSE, &fd_sa)) != VSTATUS_OK) {
 		IB_FATAL_ERROR_NODUMP("can't open fd_sa");
 	}
 
 	// used by the SA to handle RMPP responses and acks
-	if ((status = mai_open(1, sm_config.hca, sm_config.port, &fd_sa_writer)) != VSTATUS_OK) {
+	if ((status = sm_mai_handle_open(1, sm_config.hca, sm_config.port, FALSE, &fd_sa_writer)) != VSTATUS_OK) {
 		IB_FATAL_ERROR_NODUMP("can't open fd_sa_writer");
 	}
 
 	// used by the notice async context to handle SA reports (notices)
-	if ((status = mai_open(1, sm_config.hca, sm_config.port, &fd_saTrap)) != VSTATUS_OK) {
+	if ((status = sm_mai_handle_open(1, sm_config.hca, sm_config.port, FALSE, &fd_saTrap)) != VSTATUS_OK) {
 		IB_FATAL_ERROR_NODUMP("can't open fd_saTrap");
 	}
 
 	// used by the async thread to catch traps and SMInfo requests
-	if ((status = mai_open(0, sm_config.hca, sm_config.port, &fd_async)) != VSTATUS_OK) {
+	if ((status = sm_mai_handle_open(0, sm_config.hca, sm_config.port, FALSE, &fd_async)) != VSTATUS_OK) {
 		IB_FATAL_ERROR_NODUMP("can't open fd_async");
 	}
 
 	// used by the SA (via async thread) to handle outbound queries (e.g. PortInfo in response to traps)
-	if ((status = mai_open(0, sm_config.hca, sm_config.port, &fd_async_request)) != VSTATUS_OK) {
+	if ((status = sm_mai_handle_open(0, sm_config.hca, sm_config.port, FALSE, &fd_async_request)) != VSTATUS_OK) {
 		IB_FATAL_ERROR_NODUMP("can't open fd_async_request");
 	}
 
 	// used by the fsm (via async thread) for SMInfo and PortInfo GETs
-	if ((status = mai_open(0, sm_config.hca, sm_config.port, &fd_sminfo)) != VSTATUS_OK) {
+	if ((status = sm_mai_handle_open(0, sm_config.hca, sm_config.port, FALSE, &fd_sminfo)) != VSTATUS_OK) {
 		IB_FATAL_ERROR_NODUMP("can't open fd_sminfo");
 	}
 
 	// used for config consistency in the dbsync thread
-	if ((status = mai_open(0, sm_config.hca, sm_config.port, &fd_dbsync)) != VSTATUS_OK) {
+	if ((status = sm_mai_handle_open(0, sm_config.hca, sm_config.port, FALSE, &fd_dbsync)) != VSTATUS_OK) {
 		IB_FATAL_ERROR_NODUMP("can't open fd_dbsync");
 	}
 
 	// used by the topology thread for sweep SMPs
-	if ((status = mai_open(0, sm_config.hca, sm_config.port, &fd_topology)) != VSTATUS_OK) {
+	if ((status = sm_mai_handle_open(0, sm_config.hca, sm_config.port, TRUE, &fd_topology)) != VSTATUS_OK) {
 		IB_FATAL_ERROR_NODUMP("can't open fd_topology");
 	}
 
 	// used by the topology rcv thread for the async context
 	// (async LFT, MFT, and GuidInfo)
-	if ((status = mai_open(0, sm_config.hca, sm_config.port, &fd_atopology)) != VSTATUS_OK) {
+	if ((status = sm_mai_handle_open(0, sm_config.hca, sm_config.port, TRUE, &fd_atopology)) != VSTATUS_OK) {
 		IB_FATAL_ERROR_NODUMP("can't open fd_atopology");
 	}
 
 	// used to transmit loop packets
-	if ((status = mai_open(1, sm_config.hca, sm_config.port, &fd_loopTest)) != VSTATUS_OK) {
+	if ((status = sm_mai_handle_open(1, sm_config.hca, sm_config.port, FALSE, &fd_loopTest)) != VSTATUS_OK) {
 		IB_FATAL_ERROR_NODUMP("can't open fd_loopTest");
+	}
+
+	if ((status = sm_mai_handle_open(0, sm_config.hca, sm_config.port, FALSE, &fd_flapping_port)) != VSTATUS_OK) {
+		IB_FATAL_ERROR_NODUMP("can't open fd_flapping_port");
 	}
 
 	IB_LOG_INFO("fd_sa", fd_sa);
@@ -1879,6 +1880,7 @@ sm_main(void)
 	IB_LOG_INFO("fd_topology", fd_topology);
 	IB_LOG_INFO("fd_atopology", fd_atopology);
 	IB_LOG_INFO("fd_loopTest", fd_loopTest);
+	IB_LOG_INFO("fd_flapping_port", fd_flapping_port);
 
     //
     //	Create the SMInfo_t structure.
@@ -2098,10 +2100,11 @@ sm_main(void)
 	VirtualFabrics_t *VirtualFabricsToRelease = old_topology.vfs_ptr;
 	releaseVirtualFabricsConfig(VirtualFabricsToRelease);
 
-	sm_routing_freeModule(&sm_main_routingModule);
-
 	if (old_topology.routingModule)
 		sm_routing_freeModule(&old_topology.routingModule);
+
+	sm_routing_freeModule(&sm_main_routingModule);
+
 #endif /* #ifndef __VXWORKS__ */
 
 	IB_EXIT(__func__, VSTATUS_OK);
@@ -2184,55 +2187,59 @@ uint32_t sm_get_smAdaptiveRoutingConfigured(void) {
 	return sm_config.adaptiveRouting.enable;
 }
 
-uint32_t sm_get_smAdaptiveRouting(void) {
-	return sm_adaptiveRouting.enable;
+void sm_get_smAdaptiveRouting(fm_ar_config_t * ar_config) {
+	ar_config->enable = sm_adaptiveRouting.enable;
+	ar_config->frequency = sm_adaptiveRouting.arFrequency;
+	ar_config->threshold = sm_adaptiveRouting.threshold;
 }
 
-void smAdaptiveRoutingToggle(uint32_t externalCmd)
-{
-	if (sm_adaptiveRouting.enable) {
-		IB_LOG_INFINI_INFO0("Disabling Adaptive Routing");
-		memset(&sm_adaptiveRouting, 0, sizeof(SmAdaptiveRouting_t));
-		if (externalCmd) {
-			sm_forceSweep("Disabling Adaptive Routing");
+void smAdaptiveRoutingUpdate(uint32_t externalCmd, fm_ar_config_t ar_config) {
+	if (ar_config.enable == 0) {
+		if (sm_adaptiveRouting.enable) {
+			IB_LOG_INFINI_INFO0("Disabling Adaptive Routing");
+                	memset(&sm_adaptiveRouting, 0, sizeof(SmAdaptiveRouting_t));
+                	if (externalCmd) {
+                        	sm_forceSweep("Disabling Adaptive Routing");
+                	}
 		}
-
-	} else if (sm_config.adaptiveRouting.enable) {
+	} else {
+		// Adjust the frequency and threshold when configured to default
+		ar_config.frequency = (AR_FREQUENCY_UPPER < ar_config.frequency) ? sm_config.adaptiveRouting.arFrequency : ar_config.frequency;
+		ar_config.threshold = (AR_THRESHOLD_UPPER < ar_config.threshold) ? sm_config.adaptiveRouting.threshold : ar_config.threshold;
 		if (!esmLoopTestOn) {
-			IB_LOG_INFINI_INFO0("Re-enabling Adaptive Routing");
-			sm_adaptiveRouting.enable = sm_config.adaptiveRouting.enable;
-			sm_adaptiveRouting.algorithm = sm_config.adaptiveRouting.algorithm;
-			sm_adaptiveRouting.debug = sm_config.adaptiveRouting.debug;
-			sm_adaptiveRouting.lostRouteOnly = sm_config.adaptiveRouting.lostRouteOnly;
-			sm_adaptiveRouting.arFrequency = sm_config.adaptiveRouting.arFrequency;
+			if (ar_config.enable != sm_adaptiveRouting.enable ||
+			    ar_config.frequency != sm_adaptiveRouting.arFrequency ||
+			    ar_config.threshold != sm_adaptiveRouting.threshold) {
+				memset(&sm_adaptiveRouting, 0, sizeof(SmAdaptiveRouting_t));
+				// Requires a forced rebalance to setup tables.
+				forceRebalanceNextSweep = 1;
 
-			// Requires a forced rebalance to setup tables.
-			forceRebalanceNextSweep = 1;
-			if (externalCmd) {
-				sm_forceSweep("Re-enabling Adaptive Routing");
+				if (!sm_adaptiveRouting.enable) {
+					sm_adaptiveRouting.enable = 1;
+				}
+				if (ar_config.frequency != sm_adaptiveRouting.arFrequency) {
+					IB_LOG_INFINI_INFO("SM Adaptive Routing Frequency set to", ar_config.frequency);
+					sm_adaptiveRouting.arFrequency = ar_config.frequency;
+				}
+				if (ar_config.threshold != sm_adaptiveRouting.threshold) {
+					IB_LOG_INFINI_INFO("SM Adaptive Routing Threshold set to", ar_config.threshold);
+					sm_adaptiveRouting.threshold = ar_config.threshold;
+				}
+				if (sm_config.adaptiveRouting.enable) {
+					IB_LOG_INFINI_INFO0("Re-enabling Adaptive Routing");
+					sm_adaptiveRouting.algorithm = sm_config.adaptiveRouting.algorithm;
+					sm_adaptiveRouting.debug = sm_config.adaptiveRouting.debug;
+					sm_adaptiveRouting.lostRouteOnly = sm_config.adaptiveRouting.lostRouteOnly;
+					if (externalCmd) {
+						sm_forceSweep("Re-enabling Adaptive Routing");
+					}
+				} else if (externalCmd) {
+					sm_forceSweep("Enabling Adaptive Routing");
+				}
 			}
 		} else {
 			IB_LOG_WARN0("Cannot re-enable Adaptive Routing while Loop Test is running!");
 		}
-
-	} else if (externalCmd) {
-		if (!esmLoopTestOn) {
-			memset(&sm_adaptiveRouting, 0, sizeof(SmAdaptiveRouting_t));
-			sm_adaptiveRouting.enable = 1;
-
-			// Requires a forced rebalance to setup tables.
-			forceRebalanceNextSweep = 1;
-			sm_forceSweep("Enabling Adaptive Routing");
-		} else {
-			IB_LOG_WARN0("Cannot re-enable Adaptive Routing while Loop Test is running!");
-		}
-
-	}
-}
-
-void smSetAdaptiveRouting(uint32_t set) {
-	if (set != sm_adaptiveRouting.enable) {
-		smAdaptiveRoutingToggle(1);
 	}
 }
 
@@ -2410,51 +2417,66 @@ smProcessReconfigureRequest(void){
 					updatedVirtualFabrics = newVirtualFabrics;
 
 					/* Update our consistency checksums */
-    				sm_dbsync_checksums(savedVfConsistencyChecksum,
-                       					new_xml_config->fm_instance[sm_instance]->sm_config.consistency_checksum,
-                       					new_xml_config->fm_instance[sm_instance]->pm_config.consistency_checksum);
+					sm_dbsync_checksums(savedVfConsistencyChecksum,
+										new_xml_config->fm_instance[sm_instance]->sm_config.consistency_checksum,
+										new_xml_config->fm_instance[sm_instance]->pm_config.consistency_checksum);
 					
 					sm_config.overall_checksum = new_xml_config->fm_instance[sm_instance]->sm_config.overall_checksum;
-		 			pm_config.overall_checksum = new_xml_config->fm_instance[sm_instance]->pm_config.overall_checksum;
+					pm_config.overall_checksum = new_xml_config->fm_instance[sm_instance]->pm_config.overall_checksum;
 
 					if (sm_state == SM_STATE_MASTER) {
-   						SmRecKeyp       smreckeyp;
-   						SmRecp          smrecp;
-   						CS_HashTableItr_t itr;
+						SmRecKeyp       smreckeyp;
+						SmRecp          smrecp;
+						CS_HashTableItr_t itr;
 						Status_t status;
 
 						/*
 						 * Notify all standby SMs to reread their configuration.
 						 */
-   						/* lock out service record hash table */
-   						if ((status = vs_lock(&smRecords.smLock)) != VSTATUS_OK) {
-       						IB_LOG_ERRORRC("Can't lock SM Record table, rc:", status);
-   						} else {
+						/* lock out service record hash table */
+						if ((status = vs_lock(&smRecords.smLock)) != VSTATUS_OK) {
+							IB_LOG_ERRORRC("Can't lock SM Record table, rc:", status);
+						} else {
 							if (cs_hashtable_count(smRecords.smMap) > 1) {
-          						cs_hashtable_iterator(smRecords.smMap, &itr);
-          						do {
-               						smrecp = cs_hashtable_iterator_value(&itr);
-                					smreckeyp = cs_hashtable_iterator_key(&itr);
-                					if (smrecp->portguid == sm_smInfo.PortGUID) {
+								cs_hashtable_iterator(smRecords.smMap, &itr);
+								do {
+									smrecp = cs_hashtable_iterator_value(&itr);
+									smreckeyp = cs_hashtable_iterator_key(&itr);
+									if (smrecp->portguid == sm_smInfo.PortGUID) {
 										/* Skip us */
 										continue;
-                					} else if (smrecp->smInfoRec.SMInfo.u.s.SMStateCurrent <= SM_STATE_STANDBY) {
-    									IB_LOG_INFINI_INFO_FMT(__func__,
-                                           	"SM: Forwarding reconfiguration request to standby SM at Lid 0x%x, portGuid "FMT_U64,
-                                   			smrecp->lid, *smreckeyp);
-                            			(void) sm_dbsync_queueMsg(DBSYNC_TYPE_RECONFIG, DBSYNC_DATATYPE_NONE, smrecp->lid, smrecp->portguid, smrecp->isEmbedded, NULL);
-                					}
-        						} while (cs_hashtable_iterator_advance(&itr));
+									} else if (smrecp->smInfoRec.SMInfo.u.s.SMStateCurrent <= SM_STATE_STANDBY) {
+										IB_LOG_INFINI_INFO_FMT(__func__,
+															   "SM: Forwarding reconfiguration request to standby SM at Lid 0x%x, portGuid "FMT_U64,
+															   smrecp->lid, *smreckeyp);
+										(void) sm_dbsync_queueMsg(DBSYNC_TYPE_RECONFIG, DBSYNC_DATATYPE_NONE, smrecp->lid, smrecp->portguid, smrecp->isEmbedded, NULL);
+									}
+								} while (cs_hashtable_iterator_advance(&itr));
 							}
-    						vs_unlock(&smRecords.smLock);
+							vs_unlock(&smRecords.smLock);
 						}
 						// After a reconfiguration, force a resweep
 						sm_trigger_sweep(SM_SWEEP_REASON_RECONFIG);
+					} else if (sm_state == SM_STATE_STANDBY) {
+						SmRecKey_t reckey = sm_smInfo.PortGUID;  /* our guid */
+						SmRecp     smrecp;
+						Status_t   status;
+
+						if ((status = vs_lock(&smRecords.smLock)) != VSTATUS_OK) {
+							IB_LOG_ERRORRC("Can't lock SM Record table, rc:", status);
+						} else {
+        					/* fetch our current dbsync settings */
+        					if ((smrecp = (SmRecp)cs_hashtable_search(smRecords.smMap, &reckey)) != NULL) {
+            					/* Set our version to current value */
+            					smrecp->dbsync.version = SM_DBSYNC_VERSION;
+							}
+							vs_unlock(&smRecords.smLock);
+						}
 					}
-    				IB_LOG_INFINI_INFO0("SM: Reconfiguration completed successfully");
+					IB_LOG_INFINI_INFO0("SM: Reconfiguration completed successfully");
 				}
 			} else {
-    			IB_LOG_INFINI_INFO0("SM: No configuration changes to process; reconfiguration request being ignored");
+				IB_LOG_INFINI_INFO0("SM: No configuration changes to process; reconfiguration request being ignored");
 
 				//if nothing changed, release the new VirtualFabrics*
 				releaseVirtualFabricsConfig(newVirtualFabrics);
@@ -2480,17 +2502,24 @@ smProcessReconfigureRequest(void){
 }
 
 
-void
+Status_t
 sm_shutdown(void){
 	(void)pm_main_kill();
-    (void)fe_main_kill();
+	(void)fe_main_kill();
 
 
 	sa_main_kill();
 	topology_main_kill();
 	async_main_kill();
-    topology_rcv_kill();
-    sm_dbsync_kill();
+	topology_rcv_kill();
+	sm_dbsync_kill();
+
+	if (cs_psema_wait(&topo_terminated_sema, 60) == VSTATUS_TIMEOUT) {
+		return VSTATUS_TIMEOUT;
+	}
+
+	cs_sema_delete(&topo_terminated_sema);
+
 #if 0
 	sm_jm_destroy_job_table();
 #endif
@@ -2498,7 +2527,6 @@ sm_shutdown(void){
 	sm_lidmap_free();
 	sm_free_vf_mem();
 	sm_destroy_qos();
-
 #ifdef __VXWORKS__
 	/* Release VF config only after the threads are stopped as the
 	 * threads might be using VF related data.
@@ -2510,6 +2538,8 @@ sm_shutdown(void){
 	if (old_topology.routingModule)
 		sm_routing_freeModule(&old_topology.routingModule);
 #endif
+
+	return VSTATUS_OK;
 }
 
 #ifdef __VXWORKS__
@@ -2518,19 +2548,18 @@ sm_cleanGlobals(uint8_t stop){
 
 	if (stop) {
 		sm_spanning_tree_resetGlobals();
-
 		if (sm_pool.name[0] != 0) vs_pool_delete (&sm_pool);
 
-    	memset(&sm_pool,0,sizeof(sm_pool));
+		memset(&sm_pool,0,sizeof(sm_pool));
 
 		lidmap = NULL;
 
-    	memset(sm_env,0,sizeof(sm_env));
+		memset(sm_env,0,sizeof(sm_env));
 	}
 
-    sm_state = sm_prevState = SM_STATE_NOTACTIVE;
-    sm_portguid = 0;
-    sm_control_cmd = 0;
+	sm_state = sm_prevState = SM_STATE_NOTACTIVE;
+	sm_portguid = 0;
+	sm_control_cmd = 0;
 	numMcGroupClasses = 0;
 
 	sm_useIdealMcSpanningTreeRoot = 1;
@@ -2549,17 +2578,8 @@ sm_cleanGlobals(uint8_t stop){
 		memset(&sm_smInfo,0,sizeof(sm_smInfo));
 		sm_masterStartTime = 0;
 		sm_McGroups = 0;
-    	sm_numMcGroups = 0;
-    	AtomicWrite(&sm_McGroups_Need_Prog, 0);
-
-    	memset(&fd_sa,0,sizeof(fd_sa));
-		memset(&fd_saTrap,0,sizeof(fd_saTrap));
-    	memset(&fd_async,0,sizeof(fd_async));
-    	memset(&fd_sminfo,0,sizeof(fd_sminfo));
-    	memset(&fd_dbsync,0,sizeof(fd_dbsync));
-    	memset(&fd_topology,0,sizeof(fd_topology));
-    	memset(&fd_atopology,0,sizeof(fd_atopology));
-    	memset(&fd_loopTest,0,sizeof(fd_loopTest));
+		sm_numMcGroups = 0;
+		AtomicWrite(&sm_McGroups_Need_Prog, 0);
 
 		sm_threads = NULL;
 

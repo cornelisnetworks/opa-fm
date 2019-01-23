@@ -130,7 +130,6 @@ Status_t        ib_recv_sma(IBhandle_t handle, Mai_t * mad,
  *      the incoming MAD stream.  This assures that messages can be
  *      sent to managers/agents at any level in the pipeline.
  */
-Status_t        ib_send_sma(IBhandle_t handle, Mai_t * mad, uint64_t timeout);
 Status_t        stl_send_sma(IBhandle_t handle, Mai_t * mad, uint64_t timeout);
 
 /*

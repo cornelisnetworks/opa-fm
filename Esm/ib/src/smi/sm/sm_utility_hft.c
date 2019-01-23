@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2018, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -27,45 +27,5 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ** END_ICS_COPYRIGHT7   ****************************************/
 
-/* [ICS VERSION STRING: unknown] */
-
 #include "sm_l.h"
-#include "pm_l.h"
-#include "pm_topology.h"
-#include <iba/ibt.h>
-#include <limits.h>
-#include <iba/stl_helper.h>
 
-/* indicate if the given node supports a PMA */
-static boolean PmNodeHasPma(Node_t *nodep)
-{
-	return TRUE;
-}
-
-/* indicate if the given port supports a PMA */
-// assumes caller will first check if Node supports a PMA */
-static boolean PmPortHasPma(Port_t *portp)
-{
-	return TRUE;
-}
-
-/* Based on Node, determine PMA capabilities and limitations */
-/* this does not issue any packets on wire */
-void PmUpdateNodePmaCapabilities(PmNode_t *pmnodep, Node_t *nodep, boolean ProcessHFICounters)
-{
-	pmnodep->u.s.PmaAvoid = 0;
-	if ((nodep->nodeInfo.NodeType == STL_NODE_FI && !ProcessHFICounters) || !PmNodeHasPma(nodep)) {
-		pmnodep->u.s.PmaAvoid = 1;
-	}
-}
-
-/* Based on Port, determine PMA capabilities and limitations */
-/* Assumes PmUpdateNodePmaCapabilities already called for parent node */
-/* this does not issue any packets on wire */
-void PmUpdatePortPmaCapabilities(PmPort_t *pmportp, Port_t *portp)
-{
-	pmportp->u.s.PmaAvoid = 0;
-	if (pmportp->pmnodep->u.s.PmaAvoid || ! PmPortHasPma(portp)) {
-		pmportp->u.s.PmaAvoid = 1;
-	}
-}

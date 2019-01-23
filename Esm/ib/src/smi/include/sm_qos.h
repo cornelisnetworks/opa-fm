@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT1 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2018, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -35,26 +35,20 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define SCVLMAP_BASE        8
 #define SCVLMAP_MAX_INDEX   32
 
+// Used for routing modules
+Status_t sm_assign_scs_to_sls_FixedMap(RoutingModule_t *rm, VirtualFabrics_t *VirtualFabrics);
+Status_t sm_assign_scs_to_sls_NonFixedMap(RoutingModule_t *rm, VirtualFabrics_t *VirtualFabrics);
+
 extern uint8_t sm_SLtoSC[STL_MAX_SLS];
 extern uint8_t sm_SCtoSL[STL_MAX_SCS];
+extern Status_t sm_node_handleGetRespAggr(Node_t *, Port_t *, STL_AGGREGATE *, STL_AGGREGATE *);
 
-void	sm_printf_vf_debug(VirtualFabrics_t *vfs);
+void sm_printf_vf_debug(VirtualFabrics_t *vfs);
 
-Qos_t*	sm_alloc_qos(void);
-void	sm_free_qos(Qos_t* qos);
-void	sm_install_qos(Qos_t* qos);
-Qos_t*	sm_get_qos(uint8_t vl);
+Qos_t* sm_get_qos(uint8_t vl);
 
-void	sm_fill_SCVLMap(Qos_t *qos);
+void sm_fill_SCVLMap(Qos_t *qos);
 
-void 	sm_setup_qos_1vl(RoutingModule_t *rm, Qos_t * qos,
-			VirtualFabrics_t *VirtualFabrics);
-void 	sm_setup_qos(RoutingModule_t *rm, Qos_t * qos,
-			VirtualFabrics_t *VirtualFabrics, const uint8_t *SLtoSC);
-
-void	DivideBwUp(RoutingModule_t *rm, Qos_t *qos, int bw, int base_sl,
-			int resp_sl, int mcast_sl, const uint8_t *SLtoSC);
-
-void	sm_DbgPrintQOS(Qos_t * qos);
-
+Status_t sweep_assignments_vlarb(SweepContext_t *);
+Status_t sweep_assignments_buffer_control(SweepContext_t *);
 #endif //_SM_QOS_H_

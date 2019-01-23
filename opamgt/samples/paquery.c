@@ -49,6 +49,11 @@ void Usage(void)
 	fprintf(stderr, "           bubbles       - sorted by bubble category - highest first\n");
 	fprintf(stderr, "           security      - sorted by security category - highest first\n");
 	fprintf(stderr, "           routing       - sorted by routing category - highest first\n");
+	fprintf(stderr, "           vfutilhigh    - sorted by utilization - highest first\n");
+	fprintf(stderr, "           vfpktrate     - sorted by packet rate - highest first\n");
+	fprintf(stderr, "           vfutillow     - sorted by utilization - lowest first\n");
+	fprintf(stderr, "           vfcongestion  - sorted by congestion category - highest first\n");
+	fprintf(stderr, "           vfbubbles     - sorted by bubble category - highest first\n");
 	fprintf(stderr, "    -S/--start           - start of window for focus ports - should always be 0\n");
 	fprintf(stderr, "                           for now\n");
 	fprintf(stderr, "    -r/--range           - size of window for focus ports list\n");
@@ -160,6 +165,11 @@ OutputFocusMap_t OutputFocusTable[]= {
 	{"bubbles",          0x00030004},
 	{"security" ,        0x00030005},
 	{"routing",          0x00030006},
+	{"vfutilhigh",       0x00020083},
+	{"vfpktrate",        0x00020084},
+	{"vfutillow",        0x00020102},
+	{"vfcongestion",     0x00030007},
+	{"vfbubbles",        0x00030008},
 	{ NULL, 0},
 };
 
@@ -237,7 +247,7 @@ int main(int argc, char **argv)
 
 	int delta = 0;
 	int user_counters = 0;
-	int got_imageTime = 0;
+	int got_imageTime = 0, got_imageNum = 0, got_imageOffset = 0;
 
 	//where applicable, get current data by default
 	STL_PA_IMAGE_ID_DATA image_id_query = {.imageNumber = PACLIENT_IMAGE_CURRENT};
@@ -276,6 +286,8 @@ int main(int argc, char **argv)
 				break;
 			case 'n':
 				image_id_query.imageNumber = strtoul(optarg, NULL, 0);
+				got_imageNum = 1;
+				break;
 			case 'g':
 				snprintf(name_data, 256, "%s", optarg);
 				break;
@@ -287,6 +299,7 @@ int main(int argc, char **argv)
 				break;
 			case 'O':
 				image_id_query.imageOffset = strtol(optarg, NULL, 0);
+				got_imageOffset = 1;
 				break;
 			case 'y':
 				image_id_query.imageNumber = PACLIENT_IMAGE_TIMED;
@@ -416,6 +429,15 @@ int main(int argc, char **argv)
 			goto fail2;
 		}
 	}
+	//Check if VF level Focus selects are supported
+	if (IS_VF_FOCUS_SELECT(select)){
+		if (!(paCap.s.IsVFFocusTypesSupported)){
+			fprintf(stderr, "PA does not support VF Focus selects\n");
+			exitcode=1;
+			free(portInfo);
+			goto fail2;
+		}
+	}
 
 
 	//perform the requested operation
@@ -437,30 +459,68 @@ int main(int argc, char **argv)
 		} else {
 			printf("Image ID: 0x%"PRIx64"\n", pa_data.imageId.imageNumber);
 		}
-	} else if (!strcasecmp(type, "groupList")){
-		STL_PA_GROUP_LIST *pa_data = NULL;
+	} else if (!strcasecmp(type, "groupList")) {
+		if (paCap.s.IsPerImageListsSupported) {
+			STL_PA_GROUP_LIST2 *pa_data = NULL;
 
-		status = omgt_pa_get_group_list(port, &num_data, &pa_data);
-		if (OMGT_STATUS_SUCCESS != status){
-			fprintf(stderr, "failed to execute query. MadStatus=0x%x\n", omgt_get_pa_mad_status(port));
-		} else {
-			for (i = 0; i < num_data; ++i){
-				printf("Group Name: %s\n", pa_data[i].groupName);
+			status = omgt_pa_get_group_list2(port, image_id_query, &num_data, &pa_data);
+			if (OMGT_STATUS_SUCCESS != status){
+				fprintf(stderr, "failed to execute query. MadStatus=0x%x\n", omgt_get_pa_mad_status(port));
+			} else {
+				for (i = 0; i < num_data; ++i){
+					printf("Group Name: %s\n", pa_data[i].groupName);
+				}
+				printf("Image ID: 0x%"PRIx64"\n", pa_data[0].imageId.imageNumber);
+				// Some calls allocate memory and have associated release functions to free that memory
+				omgt_pa_release_group_list2(&pa_data);
 			}
-			// Some calls allocate memory and have associated release functions to free that memory
-			omgt_pa_release_group_list(&pa_data);
+		} else {
+			if (got_imageTime || got_imageNum || got_imageOffset) {
+				fprintf(stderr, "PA does not support Per Image Lists");
+			}
+			STL_PA_GROUP_LIST *pa_data = NULL;
+
+			status = omgt_pa_get_group_list(port, &num_data, &pa_data);
+			if (OMGT_STATUS_SUCCESS != status){
+				fprintf(stderr, "failed to execute query. MadStatus=0x%x\n", omgt_get_pa_mad_status(port));
+			} else {
+				for (i = 0; i < num_data; ++i){
+					printf("Group Name: %s\n", pa_data[i].groupName);
+				}
+				// Some calls allocate memory and have associated release functions to free that memory
+				omgt_pa_release_group_list(&pa_data);
+			}
 		}
 	} else if (!strcasecmp(type, "vfList")){
-		STL_PA_VF_LIST *pa_data = NULL;
+		if (paCap.s.IsPerImageListsSupported) {
+			STL_PA_VF_LIST2 *pa_data = NULL;
 
-		status = omgt_pa_get_vf_list(port, &num_data, &pa_data);
-		if (OMGT_STATUS_SUCCESS != status){
-			fprintf(stderr, "failed to execute query. MadStatus=0x%x\n", omgt_get_pa_mad_status(port));
-		} else {
-			for(i = 0; i < num_data; ++i){
-				printf("VF: %s\n", pa_data[i].vfName);
+			status = omgt_pa_get_vf_list2(port, image_id_query, &num_data, &pa_data);
+			if (OMGT_STATUS_SUCCESS != status){
+				fprintf(stderr, "failed to execute query. MadStatus=0x%x\n", omgt_get_pa_mad_status(port));
+			} else {
+				for (i = 0; i < num_data; ++i){
+					printf("VF Name: %s\n", pa_data[i].vfName);
+				}
+				printf("Image ID: 0x%"PRIx64"\n", pa_data[0].imageId.imageNumber);
+				// Some calls allocate memory and have associated release functions to free that memory
+				omgt_pa_release_vf_list2(&pa_data);
 			}
-			omgt_pa_release_vf_list(&pa_data);
+		} else {
+			if (got_imageTime || got_imageNum || got_imageOffset) {
+				fprintf(stderr, "PA does not support Per Image Lists");
+			}
+			STL_PA_VF_LIST *pa_data = NULL;
+
+			status = omgt_pa_get_vf_list(port, &num_data, &pa_data);
+			if (OMGT_STATUS_SUCCESS != status){
+				fprintf(stderr, "failed to execute query. MadStatus=0x%x\n", omgt_get_pa_mad_status(port));
+			} else {
+				for(i = 0; i < num_data; ++i){
+					printf("VF: %s\n", pa_data[i].vfName);
+				}
+				omgt_pa_release_vf_list(&pa_data);
+			}
 		}
 	} else if (!strcasecmp(type, "groupInfo")){
 		STL_PA_PM_GROUP_INFO_DATA pa_data;

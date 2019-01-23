@@ -621,8 +621,19 @@ sm_routing_init(void)
 	return status;
 }
 
+uint8_t
+sm_get_slsc(Topology_t *topop, Port_t* portp, uint8_t sl)
+{
+	// caller check not switch
+	if (sl >= STL_MAX_SLS)
+		return 0;
+
+	return (portp->portData->slscMap.SLSCMap[sl].SC);
+}
+
 int
-sm_get_route(Topology_t *topop, Node_t *switchp, uint8_t inport, STL_LID dlid) {
+sm_get_route(Topology_t *topop, Node_t *switchp, uint8_t inport, STL_LID dlid, uint8_t* sc)
+{
 
 
 	return switchp->lft ? switchp->lft[dlid] : 0xff;

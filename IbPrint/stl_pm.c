@@ -70,7 +70,7 @@ void PrintStlPortStatusRsp(PrintDest_t *dest, int indent, const STL_PORT_STATUS_
 
 	PrintFunc(dest, "%*sErrors: Signal Integrity\n",
 		indent+4, "");
-	PrintFunc(dest, "%*sLink Qual Indicator       %20u (%s)\n",
+	PrintFunc(dest, "%*s    Link Qual Indicator   %20u (%s)\n",
 		indent+4, "",
 		pStlPortStatusRsp->lq.s.LinkQualityIndicator,
 		StlLinkQualToText(pStlPortStatusRsp->lq.s.LinkQualityIndicator));
@@ -803,6 +803,12 @@ void PrintStlErrorInfoRsp(PrintDest_t *dest, int indent, const STL_ERROR_INFO_RS
 					PrintFunc(dest, "%*s    Rcv Constraint Info   %s\n",
 						indent+4, "",
 						":");
+					if(pStlErrorInfoRsp->Port[k].PortRcvConstraintErrorInfo.s.ErrorCode)
+						PrintFunc(dest, "%*s        Error Code        %s (%u)\n",
+							indent+4, "",
+							PortRcvConstraintErrorInfoToText(
+								pStlErrorInfoRsp->Port[k].PortRcvConstraintErrorInfo.s.ErrorCode),
+							pStlErrorInfoRsp->Port[k].PortRcvConstraintErrorInfo.s.ErrorCode);
 					PrintFunc(dest, "%*s        P_Key             0x%010x\n",
 						indent+4, "",
 						pStlErrorInfoRsp->Port[k].PortRcvConstraintErrorInfo.P_Key);

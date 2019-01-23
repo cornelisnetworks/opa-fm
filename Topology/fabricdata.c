@@ -111,8 +111,27 @@ void FreeLidMap(FabricData_t *fabricp)
 	}
 }
 
+#if !defined(VXWORKS) || defined(BUILD_DMC)
+static int CompareIOC(IN const uint64 key1, IN const uint64 key2)
+{
+	IocData *iocCompare = (IocData *)(key1);
+	IocData *iocKey = (IocData *)(key2);
+	if(iocKey->IocProfile.IocGUID == iocCompare->IocProfile.IocGUID) {
+		if(iocKey->ioup->nodep->NodeInfo.NodeGUID == iocCompare->ioup->nodep->NodeInfo.NodeGUID)
+			return 0;
+		else if(iocKey->ioup->nodep->NodeInfo.NodeGUID < iocCompare->ioup->nodep->NodeInfo.NodeGUID)
+			return 1;
+		else
+			return -1;
+	}
+	else if(iocKey->IocProfile.IocGUID < iocCompare->IocProfile.IocGUID)
+		return 1;
+	else
+		return -1;
+}
+#endif
 
-// only FF_LIDARRAY,FF_PMADIRECT,FF_SMADIRECT,FF_DOWNPORTINFO
+// only FF_LIDARRAY,FF_PMADIRECT,FF_SMADIRECT,FF_DOWNPORTINFO,FF_CABLELOWPAGE
 // flags are used, others ignored
 FSTATUS InitFabricData(FabricData_t *fabricp, FabricFlags_t flags)
 {
@@ -122,7 +141,7 @@ FSTATUS InitFabricData(FabricData_t *fabricp, FabricFlags_t flags)
 		cl_qmap_init(&fabricp->u.AllLids, NULL);
 	}
 	fabricp->ms_timeout = RESP_WAIT_TIME;
-	fabricp->flags = flags & (FF_LIDARRAY|FF_PMADIRECT|FF_SMADIRECT|FF_DOWNPORTINFO);
+	fabricp->flags = flags & (FF_LIDARRAY|FF_PMADIRECT|FF_SMADIRECT|FF_DOWNPORTINFO|FF_CABLELOWPAGE);
 	cl_qmap_init(&fabricp->AllSystems, NULL);
 	cl_qmap_init(&fabricp->ExpectedNodeGuidMap, NULL);
 	QListInitState(&fabricp->AllPorts);
@@ -173,7 +192,7 @@ FSTATUS InitFabricData(FabricData_t *fabricp, FabricFlags_t flags)
 		goto fail;
 	}
 #if !defined(VXWORKS) || defined(BUILD_DMC)
-	cl_qmap_init(&fabricp->AllIOCs, NULL);
+	cl_qmap_init(&fabricp->AllIOCs, CompareIOC);
 #endif
 	cl_qmap_init(&fabricp->AllSMs, NULL);
 
@@ -941,8 +960,16 @@ FSTATUS PortDataAllocateAllPartitionTable(FabricData_t *fabricp)
 
 FSTATUS PortDataAllocateCableInfoData(FabricData_t *fabricp, PortData *portp)
 {
+	uint16 size = STL_CIB_STD_LEN;
 	ASSERT(! portp->pCableInfoData);	// or could free if present
-	portp->pCableInfoData = MemoryAllocate2AndClear(STL_CIB_STD_LEN, IBA_MEM_FLAG_PREMPTABLE, MYTAG);
+
+	//Data in Low address space of Cable info is also accesed for Cable Health Report
+	if (fabricp) {
+		if (fabricp->flags & FF_CABLELOWPAGE)
+			size = STL_CABLE_INFO_DATA_SIZE * 4;    // 2 blocks of lower page 0 and 2 blocks of upper page 0
+	}
+
+	portp->pCableInfoData = MemoryAllocate2AndClear(size, IBA_MEM_FLAG_PREMPTABLE, MYTAG);
 	if (! portp->pCableInfoData) {
 		fprintf(stderr, "%s: Unable to allocate memory\n", g_Top_cmdname);
 		goto fail;
@@ -2515,7 +2542,6 @@ static void* CLFabricDataBuildRouteGraphThread(void *context)
    uint32 thrdId = ((clThreadContext_t *)context)->threadId; 
    ValidateCLTimeGetCallback_t timeGetCallback = ((clThreadContext_t *)context)->timeGetCallback;
    uint32 usedSLs = ((clThreadContext_t*)context)->usedSLs;
-   
    //PYTHON: for src_hfi in fabric.hfis :
    for (srcHcaLstp = ((clThreadContext_t *)context)->srcHcaList;
          l < ((clThreadContext_t *)context)->srcHcaListLength;
@@ -3174,7 +3200,7 @@ FSTATUS CLDataAddRoute(FabricData_t *fabricp, STL_LID slid, STL_LID dlid, PortDa
    if (mi != cl_qmap_end(&ccDevicep->map_dlid_to_route)) 
       ccRoutep = PARENT_STRUCT(mi, clRouteData_t, AllRoutesEntry); 
    
-   if (ccRoutep) {
+   if (ccRoutep){
       if (ccRoutep->portp != sportp) {
          status = FERROR; 
          fprintf(stderr, "Error, new route entry from SLID 0x%08x to DLID 0x%08x at 0x%016"PRIx64" has port %3.3u not expected port %3.3u\n", 

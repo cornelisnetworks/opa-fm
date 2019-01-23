@@ -61,7 +61,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "UiUtil.h"
 #endif
 
-extern	IBhandle_t	fd_dbsync;
+extern	SmMaiHandle_t	*fd_dbsync;
 
 /*
  * sync capability text display value
@@ -907,10 +907,10 @@ Status_t sm_dbsync_upSmDbsyncCap(SmRecKey_t recKey, DBSyncCap_t cap) {
 /*
  * update the lids of the SMs on the fabric
  * It should only be called from within the topology discovery loop.
- * It makes use of the current topology (new) being built to validate whether 
+ * It makes use of the current topology (new) being built to validate whether
  * the entries in the SM table are still valid.
 */
-Status_t sm_dbsync_upsmlist(void) {
+Status_t sm_dbsync_upsmlist(SweepContext_t *sweep_context) {
 	SmRecKeyp       smreckeyp;
     SmRecp          smrecp;
     CS_HashTableItr_t itr;
@@ -1761,7 +1761,17 @@ void sm_dbsync_standbyHello(SmRecKey_t recKey) {
 	}
 
 	if ((smrecp = (SmRecp)cs_hashtable_search(smRecords.smMap, &recKey)) != NULL) {
-		(void)vs_time_get(&smrecp->lastHello);
+
+		if (sm_config.monitor_standby_enable)
+			(void)vs_time_get(&smrecp->lastHello);
+
+		if (smrecp->syncCapability == DBSYNC_CAP_UNKNOWN) {
+			smrecp->syncCapability = DBSYNC_CAP_ASKING;
+			(void) sm_dbsync_queueMsg(DBSYNC_TYPE_GET_CAPABILITY, DBSYNC_DATATYPE_NONE, smrecp->lid, smrecp->portguid, smrecp->isEmbedded, NULL);
+			IB_LOG_INFO_FMT(__func__, 
+		                    "queued request for sync capability of SM node at Lid 0x%x, portGuid "FMT_U64" to SM table",
+		                    smrecp->lid, smrecp->portguid);
+		}
 	}
 
 	(void)vs_unlock(&smRecords.smLock);

@@ -249,9 +249,9 @@ sub showAnswerHelp()
 	 	printf STDERR "            occur during the operation.  answers to questions which are not\n";
 	 	printf STDERR "            asked are ignored.  Invalid answers will result in prompting\n";
 	 	printf STDERR "            for interactive installs or use of the default for non-interactive.\n";
-		printf STDERR "       Possible Questions:\n";
+		printf STDERR "            Possible Questions:\n";
 		foreach my $help (@AnswerHelp) {
-			printf STDERR "         $help\n";
+			printf STDERR "              $help\n";
 		}
 	} else {
 	 	printf STDERR "       --answer keyword=value - presently ignored\n";

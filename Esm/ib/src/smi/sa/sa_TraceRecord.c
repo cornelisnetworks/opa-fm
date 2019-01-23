@@ -508,6 +508,7 @@ sa_TraceRecord_Set(uint8_t ** cpp, STL_SA_MAD * samad, Port_t * src_portp, STL_L
 	Port_t *last_portp, *next_portp, *entry_portp;
 	uint32_t hopCount = 0;
 	int firstNode = TRUE;
+	uint8_t sc=0;
 
 
 	IB_ENTER("sa_TraceRecord_Set", *cpp, src_portp, dst_portp, pkey);
@@ -576,7 +577,7 @@ sa_TraceRecord_Set(uint8_t ** cpp, STL_SA_MAD * samad, Port_t * src_portp, STL_L
 				return (VSTATUS_BAD);
 			}
 			next_portp = sm_get_port(next_nodep, 0);
-			entry_portno = next_nodep->lft[slid];
+			entry_portno = sm_get_route(&old_topology, next_nodep, 0, slid, &sc);
 		}
 
 
@@ -598,7 +599,7 @@ sa_TraceRecord_Set(uint8_t ** cpp, STL_SA_MAD * samad, Port_t * src_portp, STL_L
 			}
 
 			/* Get the port number of exit port from node forwarding table. */
-			exit_portno = next_nodep->lft[dlid];
+			exit_portno = sm_get_route(&old_topology, next_nodep, entry_portp->index, dlid, &sc);
 
 			if (exit_portno == 255) {
 				/* PR#101984 - no path from this node for given Lid */

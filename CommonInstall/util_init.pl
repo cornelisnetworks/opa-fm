@@ -335,7 +335,6 @@ sub determine_os_version()
 		my $os_id = `cat $os_release_file | grep '^ID=' | cut -d'=' -f2 | tr -d [\\"\\.0] | tr -d ["\n"]`;
 		$CUR_DISTRO_VENDOR = $distroVendor{$os_id};
 		$NETWORK_CONF_DIR = $network_conf_dir{$os_id};
-		print "Current Distro: $CUR_DISTRO_VENDOR\n";
 	} else {
 		# autodetermine the distribution
 		open DISTRO_VENDOR, "ls /etc/*-release|grep -v lsb\|^os 2>/dev/null |"

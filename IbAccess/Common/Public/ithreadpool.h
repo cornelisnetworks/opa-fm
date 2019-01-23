@@ -85,6 +85,9 @@ void
 ThreadPoolSignal( 
 	IN THREAD_POOL *pThreadPool );
 
+void	
+ThreadPoolBroadcast( 
+	IN THREAD_POOL *pThreadPool );
 
 #ifdef __cplusplus
 }	/* extern "C" */

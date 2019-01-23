@@ -42,6 +42,7 @@ my @opa_stack_prereq = (
 			"bash",
 			"kmod",
 			"rdma-core",
+			"rdma-ndd",
 			"systemd",
 			"coreutils",
 			"grep",

@@ -94,7 +94,7 @@ typedef struct _PortLoopUsage {
 //---------------------------------------------------------------------------//
 
 Status_t
-topology_userexit(void) {
+sweep_userexit(SweepContext_t *sweep_context) {
 
 	IB_ENTER(__func__, 0, 0, 0, 0);
 	IB_EXIT(__func__, VSTATUS_OK);

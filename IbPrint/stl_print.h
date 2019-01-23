@@ -183,6 +183,7 @@ void PrintStlErrorInfoRsp(PrintDest_t *dest, int indent, const STL_ERROR_INFO_RS
 
 // PA
 void PrintStlPAGroupList(PrintDest_t *dest, int indent, const int numRecords, const STL_PA_GROUP_LIST *pGroupList);
+void PrintStlPAGroupList2(PrintDest_t *dest, int indent, const int numRecords, const STL_PA_GROUP_LIST2 *pGroupList);
 void PrintStlPAGroupInfo(PrintDest_t *dest, int indent, const STL_PA_PM_GROUP_INFO_DATA *pGroupInfo);
 void PrintStlPAGroupConfig(PrintDest_t *dest, int indent, const char *groupName, const int numRecords, const STL_PA_PM_GROUP_CFG_RSP *pGroupConfig);
 void PrintStlPAGroupNodeInfo(PrintDest_t *dest, int indent, const char *groupName, const int numRecords, const STL_PA_GROUP_NODEINFO_RSP *pGroupNodeInfo);
@@ -197,6 +198,7 @@ void PrintStlPAFocusPortsMultiSelect(PrintDest_t *dest, int indent, const char *
 void PrintStlPAImageInfo(PrintDest_t *dest, int indent, const STL_PA_IMAGE_INFO_DATA *pImageInfo);
 void PrintStlPAMoveFreeze(PrintDest_t *dest, int indent, const STL_MOVE_FREEZE_DATA *pMoveFreeze);
 void PrintStlPAVFList(PrintDest_t *dest, int indent, const int numRecords, const STL_PA_VF_LIST *pVFList);
+void PrintStlPAVFList2(PrintDest_t *dest, int indent, const int numRecords, const STL_PA_VF_LIST2 *pVFList);
 void PrintStlPAVFInfo(PrintDest_t *dest, int indent, const STL_PA_VF_INFO_DATA *pVFInfo);
 void PrintStlPAVFConfig(PrintDest_t *dest, int indent, const char *vfName, const int numRecords, const STL_PA_VF_CFG_RSP *pVFConfig);
 void PrintStlPAVFPortCounters(PrintDest_t *dest, int indent, const STL_PA_VF_PORT_COUNTERS_DATA *pVFPortCounters, const STL_LID nodeLid, const uint32 portNumber, const uint32 flags);

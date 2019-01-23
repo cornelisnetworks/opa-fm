@@ -153,7 +153,8 @@ ThreadPoolCreate(
 		char tname[THREAD_NAME_SIZE];
 
 		// -6 allows for '\0', [] and 3 digits of count
-		sprintf(tname, "%.*s[%d]", THREAD_NAME_SIZE-6, Name, i+1);
+		snprintf(tname, THREAD_NAME_SIZE, "%.*s[%d]",
+			THREAD_NAME_SIZE-6, Name, i+1);
 
 		// Create a new thread.
 		if( !(pThread = (THREAD*)MemoryAllocate( sizeof( THREAD ), FALSE, 0)) )
@@ -250,6 +251,24 @@ ThreadPoolSignal(
 #endif
 
 	if (pThreadPool->m_Initialized) {
-	EventTrigger( &pThreadPool->m_Event );
+		EventTrigger( &pThreadPool->m_Event );
+	}
 }
+
+#if !defined(__VXWORKS__)
+//
+// Releases all threads for execution.
+//
+void 
+ThreadPoolBroadcast(
+	IN THREAD_POOL *pThreadPool )
+{
+#if THREAD_POOL_DEBUG
+	DbgOut("ThreadPoolBroadcast: %p\n");
+#endif
+
+	if (pThreadPool->m_Initialized) {
+		EventBroadcast( &pThreadPool->m_Event );
+	}
 }
+#endif

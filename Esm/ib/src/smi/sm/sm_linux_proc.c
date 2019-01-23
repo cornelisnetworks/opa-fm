@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2018, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -99,7 +99,11 @@ extern void smLogLevelOverride(void);
  */
 void sm_linux_signal_handler(int a) {
 	if (a == SIGHUP) {
-		sm_control_reconfig();
+		if (sm_state == SM_STATE_MASTER)
+			sm_control_reconfig();
+		else {
+			IB_LOG_WARN_FMT(__func__, "Reconfigure request ignored: SM is not master (%s)", sm_getStateText(sm_state));
+		}
 	}
 	else {
 		sm_control_shutdown(NULL);

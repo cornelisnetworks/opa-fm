@@ -1,6 +1,6 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015-2017, Intel Corporation
+# Copyright (c) 2015-2018, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -122,7 +122,7 @@ PROJ_SM_DIR ?= $(TL_DIR)/Esm/ib
 
 # Include Make Rules definitions and rules
 ifneq "$(PROJ_SM_DIR)" ""
-LOCAL_INCLUDE_DIRS=$(MOD_DIR)/src/smi/include $(MOD_DIR)/src/pm/pm
+LOCAL_INCLUDE_DIRS=$(MOD_DIR)/src/smi/include $(MOD_DIR)/src/pm/include
 include $(PROJ_SM_DIR)/Makerules.module
 endif
 #=============================================================================#

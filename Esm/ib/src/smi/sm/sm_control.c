@@ -66,7 +66,10 @@ extern  Status_t sm_clearIsSM(void);
 #ifdef __LINUX__
 extern void mai_umadt_read_kill(void);
 #endif
-extern void sm_shutdown(void);
+extern Status_t sm_shutdown(void);
+
+#ifndef __VXWORKS__
+#endif
 
 Status_t
 sm_control(Mai_t *maip)
@@ -145,6 +148,8 @@ sm_control_shutdown(Mai_t *maip)
 	// Under Linux just completely bail. Let the OS clean up memory and threads. Results in clean
 	// and expedient shutdown on large clusters.
     IB_LOG_INFINI_INFO0("FM exiting.");
+
+
 	// Let file I/O that needs to complete finish prior to exiting to prevent issues when FM runs again
 	// next (HSM Only)
 	vs_wrlock(&linux_shutdown_lock);
@@ -155,7 +160,10 @@ sm_control_shutdown(Mai_t *maip)
     IB_LOG_INFINI_INFO0("turning off isSm bit in portInfo");
     sm_clearIsSM();
 
-    sm_shutdown();
+    if (sm_shutdown() != VSTATUS_OK) {
+		IB_LOG_ERROR_FMT(__func__, "Failed to stop the SM cleanly.");
+	}
+
     /* Signal the main thread that it is time to die. */
     sm_control_cmd = SM_CONTROL_SHUTDOWN;
 
@@ -238,7 +246,7 @@ sm_control_init()
 	filter.mask.mclass  = 0xff;
 	filter.mask.method  = 0xff;
 
-	status = mai_filter_create(fd_async, &filter, VFILTER_SHARE | VFILTER_PURGE);
+	status = mai_filter_create(fd_async->fdMai, &filter, VFILTER_SHARE | VFILTER_PURGE);
 	if (status != VSTATUS_OK) {
 		smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_OTHER_ERROR, getMyCsmNodeId(), NULL,
 			"can't create control filter %d", status);
@@ -282,7 +290,7 @@ sm_control_notify()
 	out_mad.data[2] = '\0';
 
 	INCREMENT_COUNTER(smCounterSmPacketTransmits);
-	status = mai_send(fd_async, &out_mad);
+	status = mai_send(fd_async->fdMai, &out_mad);
 	if (status != VSTATUS_OK) {
 		smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_OTHER_ERROR, getMyCsmNodeId(), NULL,
 			"can't send NOTIFY mad %d", status);

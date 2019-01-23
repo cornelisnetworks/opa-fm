@@ -234,6 +234,10 @@ fm_mgr_general_query
 	if ( (com_res = hcom_client_send_data(client_hdl,60,&com_dg,&com_dg)) != HSM_COM_OK )
 	{
 		free(dg);
+		if (ret_code)
+		{
+			*ret_code = FM_RET_CONX_CLOSED;
+		}
 		if(com_res == HSM_COM_NOT_CONNECTED)
 		{
 			return FM_CONF_ERR_DISC; 

@@ -309,89 +309,94 @@ sm_conf_fill_sm_mcast(void)
 hsm_com_errno_t 
 sm_conf_callback(hsm_com_datagram_t *data)
 {
+	hsm_com_errno_t ret;
 	fm_config_datagram_t *msg;
 
-	if(data->data_len >= sizeof(msg->header)){
-		msg = (fm_config_datagram_t*)data->buf;
-
-		switch (msg->header.data_id) {
-		case FM_DT_COMMON:
-			if (msg->header.data_len != sizeof(fm_config_common_t)) {
-				msg->header.ret_code = FM_RET_BAD_LEN;
-			} else {
-				msg->header.ret_code = sm_conf_fill_common(msg->header.action,(fm_config_common_t*)&msg->data[0]);
-			}
-			break;
-		case FM_DT_BM_CFG:
-		case FM_DT_PM_CFG:
-		case FM_DT_FE_CFG:
-			msg->header.ret_code = FM_RET_DT_NOT_SUPPORTED;
-			break;
-		case FM_DT_SM_CFG:
-			if (msg->header.data_len != sizeof(sm_config_t)) {
-				msg->header.ret_code = FM_RET_BAD_LEN;
-			} else {
-				msg->header.ret_code = sm_conf_fill_sm_conf(msg->header.action,(sm_config_t*)&msg->data[0]);
-			}
-			break;
-		case FM_DT_SM_PKEY:
-			msg->header.ret_code = FM_RET_DT_NOT_SUPPORTED;
-			break;
-		case FM_DT_SM_MC:
-			msg->header.ret_code = FM_RET_DT_NOT_SUPPORTED;
-			break;
-		case FM_DT_SM_STATUS:
-			if (msg->header.data_len != sizeof(fm_sm_status_t)) {
-				msg->header.ret_code = FM_RET_BAD_LEN;
-			} else {
-				msg->header.ret_code = sm_conf_fill_sm_status(msg->header.action,(fm_sm_status_t*)&msg->data[0]);
-			}
-			break;
-		case FM_DT_SM_LOOP_TEST_START:
-		case FM_DT_SM_LOOP_TEST_FAST_MODE_START:
-		case FM_DT_SM_LOOP_TEST_STOP:
-		case FM_DT_SM_LOOP_TEST_FAST:
-		case FM_DT_SM_LOOP_TEST_INJECT_PACKETS:
-		case FM_DT_SM_LOOP_TEST_INJECT_ATNODE:
-		case FM_DT_SM_LOOP_TEST_INJECT_EACH_SWEEP:
-		case FM_DT_SM_LOOP_TEST_PATH_LEN:
-		case FM_DT_SM_LOOP_TEST_MIN_ISL_REDUNDANCY:
-		case FM_DT_SM_LOOP_TEST_SHOW_PATHS:
-		case FM_DT_SM_LOOP_TEST_SHOW_LFTS:
-		case FM_DT_SM_LOOP_TEST_SHOW_TOPO:
-		case FM_DT_SM_LOOP_TEST_SHOW_CONFIG:
-		case FM_DT_FORCE_SWEEP:
-		case FM_DT_SM_RESTORE_PRIORITY:
-		case FM_DT_SM_GET_COUNTERS:
-		case FM_DT_SM_RESET_COUNTERS:
-		case FM_DT_SM_DUMP_STATE:
-		case FM_DT_LOG_LEVEL:
-		case FM_DT_LOG_MODE:
-		case FM_DT_LOG_MASK:
-		case FM_DT_SM_PERF_DEBUG_TOGGLE:
-		case FM_DT_SA_PERF_DEBUG_TOGGLE:
-		case FM_DT_RMPP_DEBUG_TOGGLE:
-		case FM_DT_SM_FORCE_REBALANCE_TOGGLE:
-		case FM_DT_SM_BROADCAST_XML_CONFIG:
-		case FM_DT_SM_GET_ADAPTIVE_ROUTING:
-		case FM_DT_SM_SET_ADAPTIVE_ROUTING:
-        case FM_DT_SM_FORCE_ATTRIBUTE_REWRITE:
-        case FM_DT_SM_SKIP_ATTRIBUTE_WRITE:
-        case FM_DT_PAUSE_SWEEPS:
-        case FM_DT_RESUME_SWEEPS:
-			msg->header.ret_code = sm_diag_ctrl(msg);
-			break;
-
-		default:
-			msg->header.ret_code = FM_RET_UNKNOWN_DT;
-			break;
-		}
-
-		return HSM_COM_OK;
+	if (data->data_len < sizeof(msg->header)) {
+		ret = HSM_COM_ERR_LEN;
+		goto bail;
 	}
 
+	msg = (fm_config_datagram_t*)data->buf;
 
-	return HSM_COM_ERR_LEN;
+	switch (msg->header.data_id) {
+	case FM_DT_COMMON:
+		if (msg->header.data_len != sizeof(fm_config_common_t)) {
+			msg->header.ret_code = FM_RET_BAD_LEN;
+		} else {
+			msg->header.ret_code = sm_conf_fill_common(msg->header.action,(fm_config_common_t*)&msg->data[0]);
+		}
+		break;
+	case FM_DT_BM_CFG:
+	case FM_DT_PM_CFG:
+	case FM_DT_FE_CFG:
+		msg->header.ret_code = FM_RET_DT_NOT_SUPPORTED;
+		break;
+	case FM_DT_SM_CFG:
+		if (msg->header.data_len != sizeof(sm_config_t)) {
+			msg->header.ret_code = FM_RET_BAD_LEN;
+		} else {
+			msg->header.ret_code = sm_conf_fill_sm_conf(msg->header.action,(sm_config_t*)&msg->data[0]);
+		}
+		break;
+	case FM_DT_SM_PKEY:
+		msg->header.ret_code = FM_RET_DT_NOT_SUPPORTED;
+		break;
+	case FM_DT_SM_MC:
+		msg->header.ret_code = FM_RET_DT_NOT_SUPPORTED;
+		break;
+	case FM_DT_SM_STATUS:
+		if (msg->header.data_len != sizeof(fm_sm_status_t)) {
+			msg->header.ret_code = FM_RET_BAD_LEN;
+		} else {
+			msg->header.ret_code = sm_conf_fill_sm_status(msg->header.action,(fm_sm_status_t*)&msg->data[0]);
+		}
+		break;
+	case FM_DT_SM_LOOP_TEST_START:
+	case FM_DT_SM_LOOP_TEST_FAST_MODE_START:
+	case FM_DT_SM_LOOP_TEST_STOP:
+	case FM_DT_SM_LOOP_TEST_FAST:
+	case FM_DT_SM_LOOP_TEST_INJECT_PACKETS:
+	case FM_DT_SM_LOOP_TEST_INJECT_ATNODE:
+	case FM_DT_SM_LOOP_TEST_INJECT_EACH_SWEEP:
+	case FM_DT_SM_LOOP_TEST_PATH_LEN:
+	case FM_DT_SM_LOOP_TEST_MIN_ISL_REDUNDANCY:
+	case FM_DT_SM_LOOP_TEST_SHOW_PATHS:
+	case FM_DT_SM_LOOP_TEST_SHOW_LFTS:
+	case FM_DT_SM_LOOP_TEST_SHOW_TOPO:
+	case FM_DT_SM_LOOP_TEST_SHOW_CONFIG:
+	case FM_DT_FORCE_SWEEP:
+	case FM_DT_SM_RESTORE_PRIORITY:
+	case FM_DT_SM_GET_COUNTERS:
+	case FM_DT_SM_RESET_COUNTERS:
+	case FM_DT_SM_DUMP_STATE:
+	case FM_DT_LOG_LEVEL:
+	case FM_DT_LOG_MODE:
+	case FM_DT_LOG_MASK:
+	case FM_DT_SM_PERF_DEBUG_TOGGLE:
+	case FM_DT_SA_PERF_DEBUG_TOGGLE:
+	case FM_DT_RMPP_DEBUG_TOGGLE:
+	case FM_DT_SM_FORCE_REBALANCE_TOGGLE:
+	case FM_DT_SM_BROADCAST_XML_CONFIG:
+	case FM_DT_SM_GET_ADAPTIVE_ROUTING:
+	case FM_DT_SM_SET_ADAPTIVE_ROUTING:
+	case FM_DT_SM_FORCE_ATTRIBUTE_REWRITE:
+	case FM_DT_SM_SKIP_ATTRIBUTE_WRITE:
+	case FM_DT_PAUSE_SWEEPS:
+	case FM_DT_RESUME_SWEEPS:
+		msg->header.ret_code = sm_diag_ctrl(msg);
+		break;
+
+	default:
+		msg->header.ret_code = FM_RET_UNKNOWN_DT;
+		break;
+	}
+
+	return HSM_COM_OK;
+
+bail:
+
+	return ret;
 }
 
 

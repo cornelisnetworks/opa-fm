@@ -211,6 +211,96 @@ static void PmMadSelectWrongPacketQuery(cntxt_entry_t *entry, Mai_t *mad, PmDisp
 	PmFailPacketQuery(entry, disppacket, mad->base.method, mad->base.aid);
 }
 
+// Dispatcher Perf globals
+static PmDispPerfMap_t g_pm_disp_perf_map[] = {
+	{ STL_PM_ATTRIB_ID_CLASS_PORTINFO,      STL_NODE_FI, MMTHD_GET, offsetof(PmDispatcherPerf_t, hfi_get_cpi) },
+	{ STL_PM_ATTRIB_ID_CLASS_PORTINFO,      STL_NODE_SW, MMTHD_GET, offsetof(PmDispatcherPerf_t, sw_get_cpi) },
+	{ STL_PM_ATTRIB_ID_PORT_STATUS,         STL_NODE_FI, MMTHD_GET, offsetof(PmDispatcherPerf_t, hfi_get_cntrs) },
+	{ STL_PM_ATTRIB_ID_DATA_PORT_COUNTERS,  STL_NODE_SW, MMTHD_GET, offsetof(PmDispatcherPerf_t, sw_get_data_cntrs) },
+	{ STL_PM_ATTRIB_ID_ERROR_PORT_COUNTERS, STL_NODE_SW, MMTHD_GET, offsetof(PmDispatcherPerf_t, sw_get_error_cntrs) },
+	{ STL_PM_ATTRIB_ID_CLEAR_PORT_STATUS,   STL_NODE_FI, MMTHD_SET, offsetof(PmDispatcherPerf_t, hfi_clr_cntrs) },
+	{ STL_PM_ATTRIB_ID_CLEAR_PORT_STATUS,   STL_NODE_SW, MMTHD_SET, offsetof(PmDispatcherPerf_t, sw_clr_cntrs) },
+	{ 0 }
+};
+
+// Dispatcher Perf Functions
+void PmDispatcherPerfInit(PmDispatcherPerf_t *perf)
+{
+	memset(perf, 0, sizeof(PmDispatcherPerf_t));
+	g_pmDebugPerf = pm_config.pm_debug_perf;
+}
+static PmDispatcherPerfPhase_t *PmDispatcherPerfGetPhase(Pm_t *pm, uint16_t aid, uint8_t node_type)
+{
+	int i;
+	for (i = 0; g_pm_disp_perf_map[i].phase_aid; i++) {
+		if (g_pm_disp_perf_map[i].phase_aid == aid
+			&& g_pm_disp_perf_map[i].phase_node_type == node_type)
+		{
+			return (PmDispatcherPerfPhase_t *)(((size_t)&pm->Dispatcher.perf_stats) + g_pm_disp_perf_map[i].phase_offset);
+		}
+	}
+	return NULL;
+}
+
+void PmDispatcherPerfCalcStart(Pm_t *pm, Mai_t *mad, PmNode_t *pmnodep)
+{
+	PmDispatcherPerfPhase_t *phase = PmDispatcherPerfGetPhase(pm, mad->base.aid, pmnodep->nodeType);
+	if (phase && phase->phase_start == 0) {
+		(void)vs_time_get(&phase->phase_start);
+		phase->min_roundtrip_time = (uint64_t )-1;
+	}
+}
+void PmDispatcherPerfCalcPost(Pm_t *pm, Mai_t *mad, cntxt_entry_t *entry, PmNode_t *pmnodep)
+{
+	PmDispatcherPerfPhase_t *phase = PmDispatcherPerfGetPhase(pm, mad->base.aid, pmnodep->nodeType);
+	uint64_t roundtrip = mad->intime - entry->tstamp;
+	if (phase == NULL) return;
+
+	/* Update end phase time (last packet received) */
+	phase->phase_end = mad->intime;
+	phase->phase_count++;
+	if (roundtrip < phase->min_roundtrip_time) {
+		phase->min_roundtrip_time = roundtrip;
+	}
+	if (roundtrip > phase->max_roundtrip_time) {
+		phase->max_roundtrip_time = roundtrip;
+	}
+	phase->sum_roundtrip_time += roundtrip;
+}
+static void PmDispatcherPerfEndHelper(PmDispatcherPerfPhase_t *phase, const char *phase_str)
+{
+	uint64_t avg_roundtrip_time = 0;
+
+	if (phase->phase_count > 0) {
+		avg_roundtrip_time = phase->sum_roundtrip_time / phase->phase_count;
+	}
+	IB_LOG_INFINI_INFO_FMT("PmDispatcherPerf", "%s, %"PRIu64", %"PRIu64", %"PRIu64", %"PRIu64", %"PRIu64,
+		phase_str, phase->phase_count, (phase->phase_end - phase->phase_start),
+		avg_roundtrip_time, phase->min_roundtrip_time, phase->max_roundtrip_time);
+	avg_roundtrip_time = 0;
+}
+void PmDispatcherPerfEnd(Pm_t *pm)
+{
+	int i;
+	char phase_desc[64];
+	PmDispatcherPerfPhase_t *phase;
+	IB_LOG_INFINI_INFO_FMT("PmDispatcherPerf", "Phase, NodeType, Pkt Count, Phase Time, RoundTrip (avg), RT (min), RT (max)");
+
+	for (i = 0; g_pm_disp_perf_map[i].phase_aid; i++) {
+		phase = PmDispatcherPerfGetPhase(pm, g_pm_disp_perf_map[i].phase_aid,
+			g_pm_disp_perf_map[i].phase_node_type);
+		if (phase) {
+			snprintf(phase_desc, 64, "%s(%s), %s",
+				StlPmMadMethodToText(g_pm_disp_perf_map[i].phase_method),
+				StlPmMadAttributeToText(g_pm_disp_perf_map[i].phase_aid),
+				StlNodeTypeToText(g_pm_disp_perf_map[i].phase_node_type));
+			PmDispatcherPerfEndHelper(phase, phase_desc);
+		}
+	}
+	IB_LOG_INFINI_INFO_FMT("Total DispatchCallback", "%"PRIu64,
+		pm->Dispatcher.perf_stats.callback_calc_time);
+}
+
 // Copy port counters in STL_PORT_STATUS_RSP to port counters as referenced
 //   by PmDispatcherPort_t.pPortImage->StlPortCounters/StlVLPortCounters
 static void PmCopyPortStatus(STL_PORT_STATUS_RSP *madp, PmDispatcherPacket_t * disppacket)
@@ -375,6 +465,10 @@ static cntxt_entry_t *PmInitMad(Pm_t *pm, PmNode_t *pmnodep,
 					pm->pm_slid, pmnodep->dlid, pmnodep->sl);
 
 	PmSetMadAddressAndTid(pm, pmnodep, entry);
+
+	if (g_pmDebugPerf) {
+		PmDispatcherPerfCalcStart(pm, &entry->mad, pmnodep);
+	}
 	return entry;
 }
 
@@ -460,6 +554,7 @@ static Status_t PmSendClearPortStatus(Pm_t *pm, PmDispatcherNode_t *dispnode,
 		pmnodep->NodeGUID, pmnodep->dlid, p->PortSelectMask[3], p->CounterSelectMask.AsReg32);
 
 	BSWAP_STL_CLEAR_PORT_STATUS_REQ(p);
+
 	cs_cntxt_set_callback(entry, DispatchPacketCallback, disppacket);
 	if (VSTATUS_OK ==  PmDispatcherSend(pm, entry))
 		return VSTATUS_OK;
@@ -495,6 +590,7 @@ static Status_t PmSendGetPortStatus(Pm_t *pm, PmDispatcherNode_t *dispnode,
 		pmnodep->NodeGUID, pmnodep->dlid, disppacket->DispPorts[0].pmportp->portNum);
 
 	BSWAP_STL_PORT_STATUS_REQ(p);
+
 	cs_cntxt_set_callback(entry, DispatchPacketCallback, disppacket);
 	if (VSTATUS_OK ==  PmDispatcherSend(pm, entry))
 		return VSTATUS_OK;
@@ -532,6 +628,7 @@ static Status_t PmSendGetDataPortCounters(Pm_t *pm, PmDispatcherNode_t *dispnode
 		pmnodep->NodeGUID, pmnodep->dlid, p->PortSelectMask[3]);
 
 	BSWAP_STL_DATA_PORT_COUNTERS_REQ(p);
+
 	cs_cntxt_set_callback(entry, DispatchPacketCallback, disppacket);
 	if (VSTATUS_OK ==  PmDispatcherSend(pm, entry))
 		return VSTATUS_OK;
@@ -567,6 +664,7 @@ static Status_t PmSendGetErrorPortCounters(Pm_t *pm, PmDispatcherNode_t *dispnod
 		pmnodep->NodeGUID, pmnodep->dlid, p->PortSelectMask[3], p->VLSelectMask);
 
 	BSWAP_STL_ERROR_PORT_COUNTERS_REQ(p);
+
 	cs_cntxt_set_callback(entry, DispatchPacketCallback, disppacket);
 	if (VSTATUS_OK ==  PmDispatcherSend(pm, entry))
 		return VSTATUS_OK;
@@ -607,6 +705,11 @@ static void DispatchPacketCallback(cntxt_entry_t *entry, Status_t status, void *
 	PmDispatcherNode_t *dispnode = disppacket->dispnode;
 	PmDispatcherPort_t *dispport;
 	STL_CLEAR_PORT_STATUS *clearPortStatusMad;
+	uint64_t sTime, eTime;
+
+	if (g_pmDebugPerf) {
+		(void)vs_time_get(&sTime);
+	}
 
 	IB_LOG_DEBUG3_FMT( __func__,"%.*s Guid "FMT_U64" LID 0x%x NodeState %u Ports %u PortSelectMask[3] "FMT_U64,
 		(int)sizeof(dispnode->info.pmnodep->nodeDesc.NodeString), dispnode->info.pmnodep->nodeDesc.NodeString,
@@ -729,6 +832,10 @@ static void DispatchPacketCallback(cntxt_entry_t *entry, Status_t status, void *
 	default:
 		ASSERT(0);	// or log error
 	}    // End of switch (dispnode->info.state)
+
+	if (g_pmDebugPerf) {
+		PmDispatcherPerfCalcPost(dispnode->pm, mad, entry, dispnode->info.pmnodep);
+	}
 	cs_cntxt_retire_nolock( entry, &dispnode->pm->Dispatcher.cntx  );
 
 	DispatchPacketDone(dispnode->pm, disppacket);
@@ -736,20 +843,25 @@ static void DispatchPacketCallback(cntxt_entry_t *entry, Status_t status, void *
 nextpacket:
 
 	if (VSTATUS_OK == DispatchNextPacket(dispnode->pm, dispnode, disppacket))
-		return;
+		goto done;
 
 	if (dispnode->info.numOutstandingPackets)
-		return;
+		goto done;
 
 	// all Ports Done
 	if (VSTATUS_OK == DispatchNodeNextStep(dispnode->pm, dispnode->info.pmnodep, dispnode))
-		return;
+		goto done;
 
 	// if NodeNextStep returns ! OK, then Node will be done
 	DEBUG_ASSERT(dispnode->info.state == PM_DISP_NODE_DONE);
 
 	// loops til finds a node or none left, wake main thread if all done
 	(void)DispatchNextNode(dispnode->pm, dispnode);
+done:
+	if (g_pmDebugPerf) {
+		(void)vs_time_get(&eTime);
+		dispnode->pm->Dispatcher.perf_stats.callback_calc_time += (eTime - sTime);
+	}
 
 }	// End of DispatchPacketCallback()
 
@@ -1361,6 +1473,11 @@ static void DispatchNodeCallback(cntxt_entry_t *entry, Status_t status, void *da
 {
 	PmDispatcherNode_t *dispnode = (PmDispatcherNode_t*)data;
 	PmNode_t *pmnodep = dispnode->info.pmnodep;
+	uint64_t sTime, eTime;
+
+	if (g_pmDebugPerf) {
+		(void)vs_time_get(&sTime);
+	}
 
 	IB_LOG_DEBUG3_FMT(__func__,"%.*s Guid "FMT_U64" LID 0x%x Node State %u",
 		(int)sizeof(pmnodep->nodeDesc.NodeString), pmnodep->nodeDesc.NodeString,
@@ -1386,10 +1503,14 @@ static void DispatchNodeCallback(cntxt_entry_t *entry, Status_t status, void *da
 	default:
 		ASSERT(0);	// or log error
 	}
+
+	if (g_pmDebugPerf) {
+		PmDispatcherPerfCalcPost(dispnode->pm, mad, entry, pmnodep);
+	}
 	cs_cntxt_retire_nolock( entry, &dispnode->pm->Dispatcher.cntx  );
 
 	if (VSTATUS_OK == DispatchNodeNextStep(dispnode->pm, pmnodep, dispnode))
-		return;
+		goto done;
 	// if NodeNextStep returns ! OK, then Node will be done
 
 nextnode:
@@ -1398,7 +1519,11 @@ nextnode:
 
 	// loops til finds a node or none left, wake main thread if all done
 	(void)DispatchNextNode(dispnode->pm, dispnode);
-
+done:
+	if (g_pmDebugPerf) {
+		(void)vs_time_get(&eTime);
+		dispnode->pm->Dispatcher.perf_stats.callback_calc_time += (eTime - sTime);
+	}
 }	// End of DispatchNodeCallback()
 
 // given node is completed
@@ -1447,7 +1572,6 @@ static Status_t DispatcherStartSweepAllNodes(Pm_t *pm)
 		pm->Dispatcher.DispNodes[slot].info.pmnodep = NULL;
 		pm->Dispatcher.DispNodes[slot].info.state = PM_DISP_NODE_NONE;
 	}
-	
 	for (slot = 0,dispnode = &pm->Dispatcher.DispNodes[slot];
 		slot < pm_config.MaxParallelNodes && pm->Dispatcher.nextLid <=pmimagep->maxLid;
 		) {
@@ -1516,6 +1640,10 @@ FSTATUS PmSweepAllPortCounters(Pm_t *pm)
 		IB_LOG_WARN_FMT(__func__, "%u Ports were unexpectedly cleared", pmimagep->UnexpectedClearPorts);
 	if (pmimagep->DowngradedPorts)
 		IB_LOG_INFO_FMT(__func__, "%u Ports were Downgraded", pmimagep->DowngradedPorts);
+	if (g_pmDebugPerf) {
+		PmDispatcherPerfEnd(pm);
+	}
+
 	if (pm_shutdown || g_pmEngineState != PM_ENGINE_STARTED)
 		return FNOT_DONE;
 	return FSUCCESS;

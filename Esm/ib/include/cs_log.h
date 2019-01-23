@@ -62,6 +62,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <cs_csm_log.h>
 #include <stdio.h>
 
+#ifndef stringize
+#define stringize(x) #x
+#endif
+#ifndef add_quotes
+#define add_quotes(x) stringize(x)
+#endif
+
 #ifdef __VXWORKS__
 
 #include <ESM_Messages.h>

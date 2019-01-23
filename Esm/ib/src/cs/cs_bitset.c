@@ -263,8 +263,8 @@ int bitset_find_next_one(bitset_t *bitset, unsigned bit) {
 
 int bitset_find_last_one(bitset_t *bitset) {
 
-	if (bitset && bitset->bits_m) {
-		unsigned i_word;
+	if (bitset && bitset->bits_m && bitset->nset_m) {
+		int i_word;
 		unsigned bits = bitset->nbits_m % 32;
 		uint32_t mask = (uint32_t)(-1);
 		if (bits) mask = (1 << bits) - 1;
@@ -307,8 +307,8 @@ int bitset_find_next_zero(bitset_t *bitset, unsigned bit) {
 
 int bitset_find_last_zero(bitset_t *bitset) {
 
-	if (bitset && bitset->bits_m) {
-		unsigned i_word;
+	if (bitset && bitset->bits_m && (bitset->nset_m != bitset->nbits_m)) {
+		int i_word;
 		unsigned bits = bitset->nbits_m % 32;
 		uint32_t mask = 0;
 		if (bits) mask = (1 << bits) - 1;
@@ -335,13 +335,13 @@ size_t bitset_nbits(bitset_t *bitset) {
 //
 void bitset_info_log(bitset_t* bitset, char* prelude) {
 	char*	string = NULL;
+	char*	s = NULL;
 	int		first = 1;
 	int		range = 0;
 	int		range_start = -1;
 	int		prev = -1;
 	int		bit = -1;
 	size_t	max_str_len = bitset->nset_m*5+1;
-	size_t	pos = 0;
 	int		res = 0;
     Status_t	status;
 	
@@ -379,52 +379,43 @@ void bitset_info_log(bitset_t* bitset, char* prelude) {
 		return;
 	}
 	string[0] = '\0';
+	s = string;
 
 	bit = bitset_find_first_one(bitset);
 
 	while (bit != -1) {
 		if (first) {
-			res = snprintf(string + pos, max_str_len - pos, "%d", bit);
-			if (res > 0){
-				pos += res;
-			} else {
-				if (res == 0)
-					break;
-				else
-					goto bail;
-			}
+			res = cs_snprintfcat(&s, &max_str_len, "%d", bit);
+			if (res == 0)
+				break;
+			else if (res < 0)
+				goto bail;
+
 			first = 0;
 		} else {
 			if (range && (prev != bit-1)) {
 				range = 0;
 				if ((prev - range_start) > 1) {
-					res = snprintf(string + pos, max_str_len - pos, "-%d,%d", prev, bit);
+					res = cs_snprintfcat(&s, &max_str_len, "-%d,%d", prev, bit);
 				} else {
-					res = snprintf(string + pos, max_str_len - pos, ",%d,%d", prev, bit);
+					res = cs_snprintfcat(&s, &max_str_len, ",%d,%d", prev, bit);
 				}
-				if (res > 0){
-					pos += res;
-				} else {
-					if (res == 0)
-						break;
-					else
-						goto bail;
-				}
+				if (res == 0)
+					break;
+				else if (res < 0)
+					goto bail;
+
 				prev = -1;
 				range_start = -1;
 			} else if (!range && (prev == bit-1)) {
 				range_start = prev;
 				range = 1;
 			} else if (!range) {
-				res = snprintf(string + pos, max_str_len - pos, ",%d", bit);
-				if (res > 0){
-					pos += res;
-				} else {
-					if (res == 0)
-						break;
-					else
-						goto bail;
-				}
+				res = cs_snprintfcat(&s, &max_str_len, ",%d", bit);
+				if (res == 0)
+					break;
+				else if (res < 0)
+					goto bail;
 			}
 		}
 		prev = bit;
@@ -433,13 +424,12 @@ void bitset_info_log(bitset_t* bitset, char* prelude) {
 
 	if (range && (prev != -1)) {
 		if ((prev - range_start) > 1) {
-			res = snprintf(string + pos, max_str_len - pos, "-%d", prev);
+			res = cs_snprintfcat(&s, &max_str_len, "-%d", prev);
 		} else {
-			res = snprintf(string + pos, max_str_len - pos, ",%d", prev);
+			res = cs_snprintfcat(&s, &max_str_len, ",%d", prev);
 		}
-		if (res > 0){
-			pos += res;
-		}
+		if (res < 0)
+			goto bail;
 	}
 
 bail:  

@@ -40,6 +40,27 @@ extern "C" {
 
 #include "iba/public/ipackon.h"
 
+/* L2 Codes */
+#define STL_L2_8B 0x0
+#define STL_L2_10B 0x1
+#define STL_L2_16B 0x2
+#define STL_L2_9B 0x3
+
+/* 9B LNH (L4) */
+#define STL_9B_LNH_BTH 0x2
+#define STL_9B_LNH_GRH 0x3
+
+/* L4 Types */
+#define STL_L4_TYPE_FM (0x08)
+#define STL_L4_TYPE_IB_LOCAL (0x09)
+#define STL_L4_TYPE_IB_GLOBAL (0x0A)
+#if defined(INCLUDE_STLEEP)
+#define STL_L4_TYPE_STLEEP (0x78)
+#define STL_L4_TYPE_STLEEP_EP (0x79)
+#endif
+
+
+
 /*
  * STL packet headers
  */
@@ -61,11 +82,10 @@ typedef struct _STL_8B_HDR {
 		SC:5,
 		DLID20:20);
 } STL_8B_HDR;
-
 static __inline void BSWAP_STL_8B_HDR( STL_8B_HDR *hdr) {
-#ifdef CPU_BE
-	hdr->u1.AsReg32 = ntoh32(hdr->u1.AsReg32);
-	hdr->u2.AsReg32 = ntoh32(hdr->u2.AsReg32);
+#if CPU_BE
+	hdr->u1.AsReg32 = le32toh(hdr->u1.AsReg32);
+	hdr->u2.AsReg32 = le32toh(hdr->u2.AsReg32);
 #endif
 }
 
@@ -91,7 +111,7 @@ typedef struct _STL_9B_HDR {
 } STL_9B_HDR;
 
 static __inline void BSWAP_STL_9B_HDR( STL_9B_HDR *hdr) {
-#ifdef CPU_LE
+#if CPU_LE
 	hdr->u1.AsReg16 = ntoh16(hdr->u1.AsReg16);
 	hdr->DLID16 = ntoh16(hdr->DLID16);
 	hdr->u3.AsReg16 = ntoh16(hdr->u3.AsReg16);
@@ -122,9 +142,9 @@ typedef struct _STL_10B_HDR {
 } STL_10B_HDR;
 
 static __inline void BSWAP_STL_10B_HDR( STL_10B_HDR *hdr) {
-#ifdef CPU_BE
-	hdr->u1.AsReg32 = ntoh32(hdr->u1.AsReg32);
-	hdr->u2.AsReg32 = ntoh32(hdr->u2.AsReg32);
+#if CPU_BE
+	hdr->u1.AsReg32 = le32toh(hdr->u1.AsReg32);
+	hdr->u2.AsReg32 = le32toh(hdr->u2.AsReg32);
 #endif
 }
 
@@ -154,15 +174,11 @@ typedef struct _STL_16B_HDR {
 } PACK_SUFFIX STL_16B_HDR;
 
 static __inline void BSWAP_STL_16B_HDR( STL_16B_HDR *hdr) {
-#if !defined(PRODUCT_STL1)
-	// LE format on the wire. No need to swap.
-#else
-#ifdef CPU_BE
-	hdr->u1.AsReg32 = ntoh32(hdr->u1.AsReg32);
-	hdr->u2.AsReg32 = ntoh32(hdr->u2.AsReg32);
-	hdr->Entropy = ntoh16(hdr->Entropy);
-	hdr->Pkey = ntoh16(hdr->Pkey);
-#endif
+#if CPU_BE
+	hdr->u1.AsReg32 = le32toh(hdr->u1.AsReg32);
+	hdr->u2.AsReg32 = le32toh(hdr->u2.AsReg32);
+	hdr->Entropy = le16toh(hdr->Entropy);
+	hdr->Pkey = le16toh(hdr->Pkey);
 #endif
 }
 
@@ -181,26 +197,40 @@ typedef struct _STL_16B_BTH {
 
 	uint16 Reserved;
 
-	union _STL_16B_BTH_QP {
-		uint32	AsUINT32;
+	STL_FIELDUNION3(Qp, 32,
+		Migrate:		1,
+		Reserved:		7,
+		DestQPNumber:	24);
 
-		struct _STL_16B_BTH_QP_S {IB_BITFIELD3(uint32,
-			Migrate:		1,
-			Reserved:		7,
-			DestQPNumber:	24)
-		} s;
-	} Qp;
-
-	union _STL_16B_BTH_PSN {
-		uint32	AsUINT32;
-
-		struct _STL_16B_BTH_PSN_S {IB_BITFIELD2(uint32,
-			AckReq:			1,
-			PSN:			31)
-		} s;
-	} Psn;
-
+	STL_FIELDUNION2(Psn, 32,
+		AckReq:			1,
+		PSN:			31);
 } PACK_SUFFIX STL_16B_BTH;
+static __inline void BSWAP_STL_16B_BTH(STL_16B_BTH *bth) {
+#if CPU_LE
+	bth->Qp.AsReg32 = ntoh32(bth->Qp.AsReg32);
+	bth->Psn.AsReg32 = ntoh32(bth->Psn.AsReg32);
+#endif
+}
+
+
+/*
+ * L4 FM Header
+ */
+typedef struct _STL_FMH {
+	STL_FIELDUNION2(DestQP, 32,
+		Reserved:     8,
+		DestQPNumber: 24);
+	STL_FIELDUNION2(SrcQP, 32,
+		Reserved:    8,
+		SrcQPNumber: 24);
+} PACK_SUFFIX STL_FMH;
+static __inline void BSWAP_STL_FMH(STL_FMH *fm_hdr) {
+#if CPU_LE
+	fm_hdr->DestQP.AsReg32 = ntoh32(fm_hdr->DestQP.AsReg32);
+	fm_hdr->SrcQP.AsReg32 = ntoh32(fm_hdr->SrcQP.AsReg32);
+#endif
+}
 
 
 #include "iba/public/ipackoff.h"

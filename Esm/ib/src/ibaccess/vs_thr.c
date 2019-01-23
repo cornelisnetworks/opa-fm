@@ -705,3 +705,29 @@ impl_vs_thread_join (Thread_t *handle, void **value_ptr)
     IB_EXIT (function, status);
     return status;
 }
+/*********************************************************************
+ *
+ * FUNCTION 
+ * 	impl_vs_thread_setname(char *name)
+ * 
+ * DESCRIPTION
+ *     Linux User Space implementation of vs_thread_setname() API.
+ *     Sets the name of the calling thread in the thread specific 
+ *     storage. 
+ * INPUTS
+ *     pointer to char* to the name of the thread.
+ *
+ * OUTPUTS
+ *
+ *
+ *********************************************************************/
+int 
+impl_vs_thread_setname(char *name)
+{
+   int rc = 0;
+   if(name_key_init) 
+   {
+	rc = pthread_setspecific(name_key, name);
+   }
+   return rc;
+}

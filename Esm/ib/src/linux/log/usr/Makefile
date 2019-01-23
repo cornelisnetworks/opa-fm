@@ -43,7 +43,8 @@ EXECUTABLE		= # Sm$(EXE_SUFFIX)
 DIRS			= 
 # C files (.c)
 CFILES			= \
-				  vslog.c
+				  vslog.c \
+				sqlite_messagelog.c
 				# Add more c files here
 # C++ files (.cpp)
 CCFILES			= \
@@ -106,13 +107,12 @@ INCLUDE_SUBDIR		=
 #MIDLLOCAL	= User flags for IDL compiler [Empty]
 #RSCLOCAL	= User flags for resource compiler [Empty]
 #LOCALDEPLIBS	= User libraries to include in dependencies [Empty]
-#LOCALLIBS		= User libraries to use when linking [Empty]
+#LOCALLIBS             = User libraries to use when linking [Empty]
 #				(in addition to LOCALDEPLIBS)
 #LOCAL_LIB_DIRS	= User library directories for libpaths [Empty]
 
 CLOCAL	= -DUSER_EXIT_ENABLED -DLINUX_USR_REL $(CPIE)
-LOCALDEPLIBS = 
-
+LOCALDEPLIBS =
 PROJ_SM_DIR ?= $(TL_DIR)/Esm/ib
 
 # pick up vslog.c
@@ -127,7 +127,6 @@ endif
 # Overrides:
 #-----------------------------------------------------------------------------#
 #CCOPT			=	# C++ optimization flags, default lets build config decide
-#COPT			=	# C optimization flags, default lets build config decide
 #SUBSYSTEM = Subsystem to build for (none, console or windows) [none]
 #					 (Windows Only)
 #USEMFC	= How Windows MFC should be used (none, static, shared, no_mfc) [none]

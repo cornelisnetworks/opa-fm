@@ -70,8 +70,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define LOCAL_MOD_ID            VIEO_SM_MOD_ID
 
-extern	IBhandle_t	fd_async;
-extern	IBhandle_t	fd_sminfo;
+extern	SmMaiHandle_t	*fd_async;
+extern	SmMaiHandle_t	*fd_sminfo;
 extern	uint64_t	topology_wakeup_time;
 
 extern	Status_t sm_fsm_standby(Mai_t *, char *);
@@ -255,7 +255,7 @@ state_event_mad(Mai_t *maip) {
         }
 
         BSWAPCOPY_STL_SM_INFO(&ourSmInfo, (STL_SM_INFO *)stl_mai_get_smp_data(maip));
-		if ((status = mai_stl_reply(fd_async, maip, sizeof(STL_SM_INFO))) != VSTATUS_OK) {
+		if ((status = mai_stl_reply(fd_async->fdMai, maip, sizeof(STL_SM_INFO))) != VSTATUS_OK) {
             IB_LOG_WARN_FMT(__func__, "failed to send reply [status=%d] to SMInfo GET request from node %s, lid[0x%x], portguid "FMT_U64", TID="FMT_U64,
                    status, nodescription, maip->addrInfo.slid, portguid, maip->base.tid);
         }
@@ -319,7 +319,7 @@ state_event_mad(Mai_t *maip) {
 						triggered_handover = 1;
 					}
                 }
-			} else if (sm_config.monitor_standby_enable) {
+			} else {
                 sm_dbsync_standbyHello(theirSmInfo.PortGUID);
             }
 			break;
@@ -358,7 +358,7 @@ state_event_mad(Mai_t *maip) {
         IB_LOG_WARN_FMT(__func__, 
                "SmInfo SET control packet not from a Master SM on node %s, lid [0x%x], portguid "FMT_U64", TID="FMT_U64,
                nodescription, maip->addrInfo.slid, portguid, maip->base.tid);
-		if ((status = mai_stl_reply(fd_async, maip, sizeof(STL_SM_INFO))) != VSTATUS_OK)
+		if ((status = mai_stl_reply(fd_async->fdMai, maip, sizeof(STL_SM_INFO))) != VSTATUS_OK)
             IB_LOG_WARN_FMT(__func__, 
                    "failed to send reply [status=%d] to SMInfo SET request from node %s, lid [0x%x], portguid "FMT_U64", TID="FMT_U64,
                    status, nodescription, maip->addrInfo.slid, portguid, maip->base.tid);
@@ -440,7 +440,7 @@ sm_fsm_standby(Mai_t *maip, char *nodename)
      */
 	sm_smInfo.ActCount++;
     BSWAPCOPY_STL_SM_INFO(&sm_smInfo, (STL_SM_INFO *)stl_mai_get_smp_data(maip));
-	status = mai_stl_reply(fd_async, maip, sizeof(STL_SM_INFO));
+	status = mai_stl_reply(fd_async->fdMai, maip, sizeof(STL_SM_INFO));
 	if (status != VSTATUS_OK) {
 		IB_LOG_ERRORRC("sm_fsm_standby - bad mai_reply rc:", status);
 	}
@@ -537,7 +537,7 @@ sm_fsm_notactive(Mai_t *maip, char *nodename)
      */
 	sm_smInfo.ActCount++;
     BSWAPCOPY_STL_SM_INFO(&sm_smInfo, (STL_SM_INFO *)stl_mai_get_smp_data(maip));
-	status = mai_stl_reply(fd_async, maip, sizeof(STL_SM_INFO));
+	status = mai_stl_reply(fd_async->fdMai, maip, sizeof(STL_SM_INFO));
 	if (status != VSTATUS_OK) {
 		IB_LOG_ERRORRC("sm_fsm_notactive - bad mai_reply rc:", status);
 	}
@@ -603,7 +603,7 @@ sm_fsm_master(Mai_t *maip, char *nodename)
      */
 	sm_smInfo.ActCount++;
     BSWAPCOPY_STL_SM_INFO(&sm_smInfo, (STL_SM_INFO *)stl_mai_get_smp_data(maip));
-	status = mai_stl_reply(fd_async, maip, sizeof(STL_SM_INFO));
+	status = mai_stl_reply(fd_async->fdMai, maip, sizeof(STL_SM_INFO));
 	if (status != VSTATUS_OK) {
 		IB_LOG_ERRORRC("sm_fsm_master - bad mai_reply rc:", status);
     }
@@ -685,7 +685,7 @@ sm_fsm_discovering(Mai_t *maip, char *nodename)
 	sm_smInfo.ActCount++;
     BSWAPCOPY_STL_SM_INFO(&sm_smInfo, (STL_SM_INFO *)stl_mai_get_smp_data(maip));
 
-	status = mai_stl_reply(fd_async, maip, sizeof(STL_SM_INFO));
+	status = mai_stl_reply(fd_async->fdMai, maip, sizeof(STL_SM_INFO));
 	if (status != VSTATUS_OK) {
 		IB_LOG_ERRORRC("sm_fsm_discovering - bad mai_reply rc:", status);
 	}
@@ -711,7 +711,7 @@ sm_fsm_default(Mai_t *maip, char *nodename)
     BSWAPCOPY_STL_SM_INFO(&sm_smInfo, (STL_SM_INFO *)stl_mai_get_smp_data(maip));
 
 	maip->base.status = MAD_STATUS_BAD_ATTR;
-	status = mai_stl_reply(fd_async, maip, sizeof(STL_SM_INFO));
+	status = mai_stl_reply(fd_async->fdMai, maip, sizeof(STL_SM_INFO));
 	IB_EXIT(__func__, status);
 	(void)(status); // fix "unused" warning
 	return(VSTATUS_OK);

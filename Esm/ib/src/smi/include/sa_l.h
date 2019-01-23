@@ -245,38 +245,10 @@ typedef enum {
 //
 #define linkrate_eq(r1, r2) ((r1) == (r2))
 #define linkrate_ne(r1, r2) ((r1) != (r2))
-#define linkrate_lt(r1, r2) (linkrate_to_ordinal(r1) < linkrate_to_ordinal(r2))
-#define linkrate_le(r1, r2) (linkrate_to_ordinal(r1) <= linkrate_to_ordinal(r2))
-#define linkrate_gt(r1, r2) (linkrate_to_ordinal(r1) > linkrate_to_ordinal(r2))
-#define linkrate_ge(r1, r2) (linkrate_to_ordinal(r1) >= linkrate_to_ordinal(r2))
-
-// This function maps an IBTA linkrate value to an integer for the sake of
-// comparing rates
-static __inline__ uint32_t linkrate_to_ordinal(uint32_t rate) {
-	// We map these to 10 times the actual rate so that in the future, if
-	// new rates get added, we don't have to shuffle any of the existing values
-	switch (rate) {
-	 case IB_STATIC_RATE_2_5G: return 25;
-	 case IB_STATIC_RATE_5G:   return 50;
-	 case IB_STATIC_RATE_10G:  return 100;
-	 case IB_STATIC_RATE_14G:  return 125; // STL_STATIC_RATE_12_5G
-	 case IB_STATIC_RATE_20G:  return 200;
-	 case IB_STATIC_RATE_25G:  return 250;
-	 case IB_STATIC_RATE_30G:  return 300;
-	 case IB_STATIC_RATE_40G:  return 375; // STL_STATIC_RATE_37_5G
-	 case IB_STATIC_RATE_56G:  return 500; // STL_STATIC_RATE_50G
-	 case IB_STATIC_RATE_60G:  return 600;
-	 case IB_STATIC_RATE_80G:  return 750; // STL_STATIC_RATE_75G
-	 case IB_STATIC_RATE_100G: return 1040;
-	 case IB_STATIC_RATE_112G: return 1120;
-	 case IB_STATIC_RATE_120G: return 1200;
-	 case IB_STATIC_RATE_168G: return 1560;// STL_STATIC_RATE_150G
-	 case IB_STATIC_RATE_200G: return 2080;
-	 case IB_STATIC_RATE_300G: return 3120;
-	 default:             return 25;
-	}
-	return 25;
-}
+#define linkrate_lt(r1, r2) (StlStaticRateToMbps(r1) < StlStaticRateToMbps(r2))
+#define linkrate_le(r1, r2) (StlStaticRateToMbps(r1) <= StlStaticRateToMbps(r2))
+#define linkrate_gt(r1, r2) (StlStaticRateToMbps(r1) > StlStaticRateToMbps(r2))
+#define linkrate_ge(r1, r2) (StlStaticRateToMbps(r1) >= StlStaticRateToMbps(r2))
 
 // iterators to help construct Path Record responses
 typedef struct lid_iterator_s {

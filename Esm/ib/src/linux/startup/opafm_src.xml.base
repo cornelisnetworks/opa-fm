@@ -1101,25 +1101,26 @@
       <Converge>0</Converge>
     </FatTreeTopology>
 
-    <!-- **************** DG ShortestPath Topology **************************** -->
+    <!-- **************** DG ShortestPath Topology ************************* -->
     <!-- When the routing algorithm is set to "dgshortestpath" the following -->
-    <!-- section is used to configure the algorithm. -->
-    <!-- Overall, "dgshortestpath" routing is a form of "Min Hop" or -->
-    <!-- "Shortestpath" routing, except you can control the order in which -->
-    <!-- routes to end nodes are assigned. This can be used to ensure -->
-    <!-- diversity of routing within groups of devices as well as the -->
-    <!-- entire fabric overall. End nodes that are not members of any -->
-    <!-- listed groups will be routed last. -->
+    <!-- section is used to configure the algorithm.                         -->
+    <!-- Overall, "dgshortestpath" routing is a form of "Min Hop" or         -->
+    <!-- "Shortestpath" routing, except you can control the order in which   -->
+    <!-- routes to end nodes are assigned. This can be used to ensure        -->
+    <!-- diversity of routing within groups of devices as well as the entire -->
+    <!-- fabric overall. End nodes that are not members of any listed groups -->
+    <!-- will be routed last.                                                -->
     <DGShortestPathTopology>
-        <!-- RoutingOrder lists the device groups in the order they should -->
-        <!-- be handled. Each device group must have been declared in the -->
-        <!-- DeviceGroups section. -->
+        <!-- RoutingOrder lists the device groups in the order they should   -->
+        <!-- be handled. Each device group must have been declared in the    -->
+        <!-- DeviceGroups section.                                           -->
         <!-- <RoutingOrder> -->
             <!-- <DeviceGroup>Compute</DeviceGroup> -->
             <!-- <DeviceGroup>All</DeviceGroup> -->
             <!-- <DeviceGroup>Storage</DeviceGroup> -->
         <!-- </RoutingOrder> -->
     </DGShortestPathTopology>
+
 
     <!-- **************** Mesh/Torus Topology **************************** -->
     <!-- When the RoutingAlgorithm is set to dor, the following section is -->
@@ -1386,7 +1387,6 @@
       <!--        (if present, otherwise the BaseSL) of the associated -->
       <!--        VirtualFabric.  -->
       <!-- QKey: <QKey>0x0</QKey> -->
-      <!-- Flow Label: <FlowLabel>0x0</FlowLabel> -->
       <!-- Traffic Class: <TClass>0x0</TClass> -->
 
       <!-- IPoIB IPv4 and IPv6 multicast for all VFs which have IPoIB -->
@@ -1398,7 +1398,6 @@
         <Rate>25g</Rate>                                                                                               <!--SM_0_def_mc_rate-->
         <!-- <SL>0</SL> -->                                                                                            <!--SM_0_def_mc_sl:dec-->
         <QKey>0x0</QKey>                                                                                               <!--SM_0_def_mc_qkey:hex-->
-        <FlowLabel>0x0</FlowLabel>                                                                                     <!--SM_0_def_mc_fl:hex-->
         <TClass>0x0</TClass>                                                                                           <!--SM_0_def_mc_tc:hex-->
       </MulticastGroup>
 
@@ -1428,7 +1427,6 @@
         <MTU>2048</MTU>
         <Rate>100g</Rate>
         <QKey>0x0</QKey>
-        <FlowLabel>0x0</FlowLabel>
         <TClass>0x0</TClass>
       </MulticastGroup>
     </Multicast>
@@ -1558,6 +1556,36 @@
             <Policy>Supported</Policy>
         </WidthPolicy>
     </ISLLinkPolicy>
+
+    <!-- Long Term Port Quarantine Configuration -->
+    <!-- Port Quarantine allows the FM to minimize disruption from -->
+    <!-- problematic ports over a period of time. -->
+    <!--     -->
+    <!--    Flapping -->
+    <!--        Ports that are repeatedly bouncing are considered flapping -->
+    <!--        The FM will monitor bouncing ports over a sliding window -->
+    <!--        and quarantine them when bounce events exceeds the -->
+    <!--        configured threshold. -->
+    <!--        WindowSize -->
+    <!--            Size in minutes of the sliding window bounce events -->
+    <!--            are monitored over. A value of 0 disables flapping detection -->
+    <!--        HighThreshold -->
+    <!--            When bounce events equal or exceed high threshold, port will be -->
+    <!--            quarantined --> 
+    <!--        LowThreshold -->
+    <!--            When bounce events is equal to or below low threshold, -->
+    <!--            port will be removed from quarantine.  -->
+
+    <LongTermPortQuarantine>
+        <Enable>1</Enable>
+        <Flapping>
+            <WindowSize>15</WindowSize>
+            <HighThreshold>25</HighThreshold>
+            <LowThreshold>0</LowThreshold>
+        </Flapping>
+    </LongTermPortQuarantine>
+
+
     <!-- Preemption Configuration -->
     <!-- Preemption is based on packet size and a VL/VF Preemption matrix. -->
     <!-- Preemption allows a "small" packet to preempt a "large" packet to -->
@@ -1882,14 +1910,25 @@
 
     <!-- **************** Miscellaneous **************************** -->
     <LID>0</LID> <!-- lid for this SM, 0=pick any available -->                                                        <!--SM_0_lid:dec-->
+
+    <!-- The number of high order bits (set to one) used for multicast -->
+    <!-- addresses when the address is greater than 16 bits. -->
+    <MulticastMask>4</MulticastMask>
+
     <!-- How are unicast LIDs & LMCs assigned to end-ports -->
     <!-- Serial: iterate over unicast LID space and assign the next -->
     <!--  contiguous unassigned LID range large enough for the LMC -->
     <!--  settings in use. -->
     <!-- Topology: assign LID and LMC values from ports defined in -->
     <!--  ExpectedLinks in the topology file used by PreDefinedTopology -->
-    <!--  Requires that PreDefinedTopology be enabled. -->
+    <!--  Requires that PreDefinedTopology be enabled. With LidStrategy -->
+    <!--  Topology, nodes not in the PreDefinedTopology file will not -->
+    <!--  be activated -->
     <LidStrategy>Serial</LidStrategy>
+
+    <!-- DSAP is part of job startup scalability improvements -->
+    <!-- Refer to documentation for details on how to setup and use DSAP -->
+    <DsapInUse>0</DsapInUse>
 
     <!-- Appliance nodes are nodes whose self-reported NodeGUIDs are -->
     <!-- expected not to match the NeighborNodeGUID on the appliance node's -->
@@ -1913,7 +1952,7 @@
 
     <!-- Enables fabric activation optimization to reduce packet counts -->
     <!-- during fabric bring up. 0-Disable, 1-Switches only, 2-All devices -->
-    <SwitchCascadeActivateEnable>0</SwitchCascadeActivateEnable>
+    <SwitchCascadeActivateEnable>1</SwitchCascadeActivateEnable>
 
     <!-- Number of times to retry activation upon detecting an armed port -->
     <!-- with a non-armed/active neighbor. -->

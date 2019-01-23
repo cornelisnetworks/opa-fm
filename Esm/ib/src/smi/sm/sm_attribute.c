@@ -71,7 +71,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 	than it is to make the 'how do you pack and unpack a request' stuff common.
 */
 static Status_t
-SM_Aggregate_impl( IBhandle_t fd, STL_AGGREGATE * inStart, STL_AGGREGATE * inEnd,
+SM_Aggregate_impl(
+	SmMaiHandle_t *fd, STL_AGGREGATE * inStart, STL_AGGREGATE * inEnd, size_t lastSegReqLen,
 	SmpAddr_t * addr, uint8 method, uint64_t mkey, STL_AGGREGATE ** lastSeg, uint32_t * madStatus);
 
 static boolean sm_valid_port_state(const STL_PORT_STATES * ps)
@@ -81,7 +82,7 @@ static boolean sm_valid_port_state(const STL_PORT_STATES * ps)
 }
 
 Status_t
-SM_Get_NodeDesc(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_NODE_DESCRIPTION *ndp) {
+SM_Get_NodeDesc(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_NODE_DESCRIPTION *ndp) {
    Status_t status;
    uint32_t bufferLength = sizeof(STL_NODE_DESCRIPTION); 
    uint8_t buffer[bufferLength];
@@ -99,7 +100,7 @@ SM_Get_NodeDesc(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_NODE_DESCRIPT
 }
 
 Status_t
-SM_Get_NodeInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_NODE_INFO *nip) {
+SM_Get_NodeInfo(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_NODE_INFO *nip) {
    Status_t status; 
    uint32_t bufferLength = sizeof(STL_NODE_INFO); 
    uint8_t buffer[bufferLength]; 
@@ -145,7 +146,7 @@ SM_Get_NodeInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_NODE_INFO *ni
 }
 
 Status_t
-SM_Get_PortInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_PORT_INFO *pip) {
+SM_Get_PortInfo(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_PORT_INFO *pip) {
    Status_t status; 
    uint32_t bufferLength = sizeof(STL_PORT_INFO); 
    uint8_t buffer[bufferLength]; 
@@ -164,7 +165,22 @@ SM_Get_PortInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_PORT_INFO *pi
 }
 
 Status_t
-SM_Get_PortStateInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_PORT_STATE_INFO *psip) {
+SM_Get_PortStateInfo_Dispatch(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, Node_t *nodep,
+	sm_dispatch_t *disp, cntxt_callback_t callback, void *cb_data)
+{
+	Status_t status;
+
+	INCREMENT_COUNTER(smCounterGetPortStateInfo);
+
+	status = sm_get_stl_attribute_async_dispatch(fd,
+		STL_MCLASS_ATTRIB_ID_PORT_STATE_INFO, amod, addr,
+		NULL, NULL, nodep, disp, callback, cb_data);
+	
+	return (status);
+}
+
+Status_t
+SM_Get_PortStateInfo(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_PORT_STATE_INFO *psip) {
 	Status_t status;
 	uint8_t portCount = (amod>>24 & 0xff);
 	uint32_t bufferLength = sizeof(STL_PORT_STATE_INFO) * portCount;
@@ -187,7 +203,7 @@ SM_Get_PortStateInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_PORT_STA
 }
 
 Status_t
-SM_Get_SwitchInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SWITCH_INFO *swp) {
+SM_Get_SwitchInfo(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_SWITCH_INFO *swp) {
 	Status_t status;
 	uint32_t bufferLength = sizeof(STL_SWITCH_INFO); 
 	uint8_t buffer[bufferLength];
@@ -204,7 +220,7 @@ SM_Get_SwitchInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SWITCH_INFO
 }
 
 Status_t
-SM_Get_SMInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SM_INFO *smip) {
+SM_Get_SMInfo(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_SM_INFO *smip) {
 	Status_t status;
     uint32_t bufferLength = sizeof(STL_SM_INFO); 
 	uint8_t buffer[bufferLength];
@@ -226,7 +242,7 @@ SM_Get_SMInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SM_INFO *smip) 
 }
 
 Status_t
-SM_Get_VLArbitration(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_VLARB_TABLE *vlp) {
+SM_Get_VLArbitration(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_VLARB_TABLE *vlp) {
     Status_t status;
     uint32_t bufferLength = 0; 
     uint8_t buffer[STL_MAD_PAYLOAD_SIZE];
@@ -252,7 +268,7 @@ SM_Get_VLArbitration(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_VLARB_TA
 
 
 Status_t
-SM_Get_SLSCMap(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SLSCMAP *slscp) {
+SM_Get_SLSCMap(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_SLSCMAP *slscp) {
 	Status_t status;
 	uint32_t bufferLength = sizeof(STL_SLSCMAP); 
 	uint8_t buffer[bufferLength];
@@ -269,7 +285,7 @@ SM_Get_SLSCMap(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SLSCMAP *slscp
 }
 
 Status_t
-SM_Get_SCVLrMap(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SCVLMAP *scvlp) {
+SM_Get_SCVLrMap(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_SCVLMAP *scvlp) {
 	Status_t status;
 	uint32_t bufferLength = sizeof(STL_SCVLMAP); 
 	uint8_t buffer[bufferLength];
@@ -287,7 +303,7 @@ SM_Get_SCVLrMap(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SCVLMAP *scvl
 }
 
 Status_t
-SM_Get_SCSLMap(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SCSLMAP *scslp) {
+SM_Get_SCSLMap(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_SCSLMAP *scslp) {
 	Status_t status;
 	uint32_t bufferLength = sizeof(STL_SCSLMAP); 
 	uint8_t buffer[bufferLength];
@@ -304,7 +320,7 @@ SM_Get_SCSLMap(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SCSLMAP *scslp
 }
 
 Status_t
-SM_Get_SCVLtMap(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SCVLMAP *scvlp) {
+SM_Get_SCVLtMap(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_SCVLMAP *scvlp) {
 	Status_t status;
 	uint32_t bufferLength = 0;
 	uint8_t buffer[STL_MAD_PAYLOAD_SIZE] = { 0 };
@@ -330,7 +346,7 @@ SM_Get_SCVLtMap(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SCVLMAP *scvl
 }
 
 Status_t
-SM_Get_SCVLntMap(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SCVLMAP *scvlp) {
+SM_Get_SCVLntMap(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_SCVLMAP *scvlp) {
 	Status_t status;
     uint32_t bufferLength = 0; 
 	uint8_t buffer[STL_MAD_PAYLOAD_SIZE] = { 0 };
@@ -357,7 +373,7 @@ SM_Get_SCVLntMap(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SCVLMAP *scv
 }
 
 Status_t
-SM_Get_PKeyTable(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_PARTITION_TABLE *pkp) {
+SM_Get_PKeyTable(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_PARTITION_TABLE *pkp) {
 	Status_t status;
 	const uint8_t blkCnt = (amod>>24) & 0xff;
 	uint32_t bufferLength = sizeof(STL_PARTITION_TABLE) * blkCnt;
@@ -380,7 +396,7 @@ SM_Get_PKeyTable(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_PARTITION_TA
 }
 
 Status_t
-SM_Get_BufferControlTable(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_BUFFER_CONTROL_TABLE pbct[])
+SM_Get_BufferControlTable(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_BUFFER_CONTROL_TABLE pbct[])
 {
 	Status_t status;
 	uint8_t portCount = (amod>>24 & 0xff);
@@ -408,7 +424,7 @@ SM_Get_BufferControlTable(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_BUF
 }
 
 Status_t
-SM_Get_LedInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_LED_INFO *li)
+SM_Get_LedInfo(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_LED_INFO *li)
 {
 	Status_t status;
 	uint32_t bufferLength = sizeof(STL_LED_INFO);
@@ -427,7 +443,7 @@ SM_Get_LedInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_LED_INFO *li)
 }
 
 Status_t
-SM_Set_LedInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_LED_INFO *li, uint64_t mkey)
+SM_Set_LedInfo(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_LED_INFO *li, uint64_t mkey)
 {
 	Status_t status;
 	uint32_t bufferLength = sizeof(STL_LED_INFO);
@@ -451,7 +467,7 @@ SM_Set_LedInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_LED_INFO *li, 
 // -------------------------------------------------------------------------- //
 
 Status_t
-SM_Set_PortInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t * addr, STL_PORT_INFO *pip, uint64_t mkey, uint32* madStatus) {
+SM_Set_PortInfo(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t * addr, STL_PORT_INFO *pip, uint64_t mkey, uint32* madStatus) {
    Status_t status;
    uint32_t bufferLength=sizeof(STL_PORT_INFO); 
    uint8_t buffer[bufferLength];
@@ -476,7 +492,7 @@ SM_Set_PortInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t * addr, STL_PORT_INFO *p
    return (status); 
 }
 Status_t
-SM_Set_PortInfo_Dispatch(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_PORT_INFO *pip,
+SM_Set_PortInfo_Dispatch(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_PORT_INFO *pip,
 	uint64_t mkey, Node_t *nodep, sm_dispatch_t *disp, cntxt_callback_t callback, void *cb_data)
 {
 	Status_t status;
@@ -510,8 +526,9 @@ SM_Set_PortInfo_Dispatch(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_PORT
 
 	return (status);
 }
+
 Status_t
-SM_Set_PortStateInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_PORT_STATE_INFO *psip, uint64_t mkey) {
+SM_Set_PortStateInfo(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_PORT_STATE_INFO *psip, uint64_t mkey) {
 	Status_t status;
 	uint32_t portCount = (0xff & (amod >> 24));
 	uint32_t bufferLength = portCount * sizeof(STL_PORT_STATE_INFO);
@@ -542,7 +559,7 @@ SM_Set_PortStateInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_PORT_STA
 }
 
 Status_t
-SM_Set_SwitchInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SWITCH_INFO *swp, uint64_t mkey) {
+SM_Set_SwitchInfo(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_SWITCH_INFO *swp, uint64_t mkey) {
 	Status_t status;
     uint32_t bufferLength = sizeof(STL_SWITCH_INFO); 
 	uint8_t buffer[bufferLength];
@@ -567,7 +584,7 @@ SM_Set_SwitchInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SWITCH_INFO
 }
 
 Status_t
-SM_Set_SMInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SM_INFO *smip, uint64_t mkey) {
+SM_Set_SMInfo(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_SM_INFO *smip, uint64_t mkey) {
 	Status_t status;
     uint32_t bufferLength = sizeof(STL_SM_INFO); 
 	uint8_t buffer[bufferLength];
@@ -597,7 +614,7 @@ SM_Set_SMInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SM_INFO *smip, 
 	@param vlpSize the amount of data to copy back from the SMA into @c vlp.
 */
 Status_t
-SM_Set_VLArbitration(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_VLARB_TABLE *vlp, size_t vlpSize, uint64_t mkey) {
+SM_Set_VLArbitration(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_VLARB_TABLE *vlp, size_t vlpSize, uint64_t mkey) {
 	Status_t status;
 	uint32_t bufferLength = sizeof(STL_VLARB_TABLE); 
 	uint8_t buffer[STL_MAD_PAYLOAD_SIZE] = { 0 };	// no need to zero, fills buffer
@@ -629,7 +646,7 @@ SM_Set_VLArbitration(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_VLARB_TA
 
 
 Status_t
-SM_Set_SLSCMap(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SLSCMAP *slscp, uint64_t mkey) {
+SM_Set_SLSCMap(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_SLSCMAP *slscp, uint64_t mkey) {
 	Status_t status;
     uint32_t bufferLength = sizeof(STL_SLSCMAP); 
 	uint8_t buffer[bufferLength];
@@ -654,7 +671,7 @@ SM_Set_SLSCMap(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SLSCMAP *slscp
 }
 
 Status_t
-SM_Set_SCVLrMap(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SCVLMAP *scvlp, uint64_t mkey) {
+SM_Set_SCVLrMap(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_SCVLMAP *scvlp, uint64_t mkey) {
 	Status_t status;
     uint32_t bufferLength = sizeof(STL_SCVLMAP); 
 	uint8_t buffer[bufferLength];
@@ -671,7 +688,7 @@ SM_Set_SCVLrMap(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SCVLMAP *scvl
 }
 
 Status_t
-SM_Set_SCSLMap(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SCSLMAP *scslp, uint64_t mkey) {
+SM_Set_SCSLMap(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_SCSLMAP *scslp, uint64_t mkey) {
 	Status_t status;
     uint32_t bufferLength = sizeof(STL_SCSLMAP); 
 	uint8_t buffer[bufferLength];
@@ -696,7 +713,7 @@ SM_Set_SCSLMap(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SCSLMAP *scslp
 }
 
 Status_t
-SM_Set_SCVLtMap(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SCVLMAP *scvlp, uint64_t mkey) {
+SM_Set_SCVLtMap(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_SCVLMAP *scvlp, uint64_t mkey) {
 	Status_t status;
     uint32_t bufferLength = sizeof(STL_SCVLMAP); 
 	uint8_t buffer[bufferLength];
@@ -717,7 +734,7 @@ SM_Set_SCVLtMap(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SCVLMAP *scvl
 }
 
 Status_t
-SM_Set_SCVLntMap(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SCVLMAP *scvlp, uint64_t mkey) {
+SM_Set_SCVLntMap(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_SCVLMAP *scvlp, uint64_t mkey) {
 	Status_t status;
     uint32_t bufferLength = sizeof(STL_SCVLMAP); 
 	uint8_t buffer[bufferLength];
@@ -738,7 +755,7 @@ SM_Set_SCVLntMap(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SCVLMAP *scv
 }
 
 Status_t
-SM_Set_SCSC(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SCSCMAP *scscp, uint64_t mkey) {
+SM_Set_SCSC(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_SCSCMAP *scscp, uint64_t mkey) {
 	Status_t status;
 	uint8_t numBlocks = amod >> 24;
 	uint32_t bufferLength = sizeof(STL_SCSCMAP)*numBlocks; 
@@ -758,7 +775,7 @@ SM_Set_SCSC(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SCSCMAP *scscp, u
 }
 
 Status_t
-SM_Set_SCSCMultiSet(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SCSC_MULTISET *scscp, uint64_t mkey) {
+SM_Set_SCSCMultiSet(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_SCSC_MULTISET *scscp, uint64_t mkey) {
 	Status_t status;
 	uint8_t numBlocks = amod >> 24;
     uint32_t bufferLength = sizeof(STL_SCSC_MULTISET)*numBlocks; 
@@ -778,7 +795,7 @@ SM_Set_SCSCMultiSet(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SCSC_MULT
 }
 
 Status_t
-SM_Set_LFT(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_LINEAR_FORWARDING_TABLE *lftp, uint64_t mkey) {
+SM_Set_LFT(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_LINEAR_FORWARDING_TABLE *lftp, uint64_t mkey) {
 	Status_t status;
     uint32_t bufferLength = sizeof(STL_LINEAR_FORWARDING_TABLE); 
 	uint8_t buffer[bufferLength];
@@ -802,7 +819,7 @@ SM_Set_LFT(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_LINEAR_FORWARDING_
 }
 
 Status_t
-SM_Set_LFT_Dispatch(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr,
+SM_Set_LFT_Dispatch(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr,
 					   STL_LINEAR_FORWARDING_TABLE *lftp, uint16_t count, 
 					   uint64_t mkey, Node_t *nodep, sm_dispatch_t *disp) {
 	Status_t status;
@@ -834,7 +851,7 @@ SM_Set_LFT_Dispatch(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr,
 
 
 Status_t
-SM_Set_MFT_Dispatch(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_MULTICAST_FORWARDING_TABLE *mftp,
+SM_Set_MFT_Dispatch(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_MULTICAST_FORWARDING_TABLE *mftp,
 	uint64_t mkey, Node_t *nodep, sm_dispatch_t *disp)
 {
 	Status_t status;
@@ -856,7 +873,7 @@ SM_Set_MFT_Dispatch(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_MULTICAST
 }
 
 Status_t
-SM_Set_PKeyTable(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_PARTITION_TABLE *pkp, uint64_t mkey) {
+SM_Set_PKeyTable(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_PARTITION_TABLE *pkp, uint64_t mkey) {
 	Status_t status;
 	const uint8_t blkCnt = (amod>>24) & 0xff;
     uint32_t bufferLength = sizeof(STL_PARTITION_TABLE) * blkCnt;
@@ -885,7 +902,7 @@ SM_Set_PKeyTable(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_PARTITION_TA
 	return(status);
 }
 Status_t
-SM_Set_PKeyTable_Dispatch(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_PARTITION_TABLE *pkp,
+SM_Set_PKeyTable_Dispatch(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_PARTITION_TABLE *pkp,
 	uint64_t mkey, Node_t *nodep, sm_dispatch_t *disp, cntxt_callback_t callback, void *cb_data)
 {
 
@@ -923,7 +940,7 @@ SM_Set_PKeyTable_Dispatch(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_PAR
 // "blocks" specifies the # of entries in pgp[]. Makes no attempt to
 // verify that "blocks" agrees with the value of "N" in amod.
 Status_t
-SM_Get_PortGroup(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_PORT_GROUP_TABLE pgp[], uint8_t blocks)
+SM_Get_PortGroup(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_PORT_GROUP_TABLE pgp[], uint8_t blocks)
 {
 	uint8_t i;
 	Status_t status;
@@ -946,7 +963,7 @@ SM_Get_PortGroup(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_PORT_GROUP_T
 // "blocks" specifies the # of entries in pgp[]. Makes no attempt to
 // verify that "blocks" agrees with the value of "N" in amod.
 Status_t
-SM_Set_PortGroup(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr,
+SM_Set_PortGroup(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr,
 	STL_PORT_GROUP_TABLE *pgp, uint8_t blocks, uint64_t mkey) {
 	Status_t	status;
 	uint8_t		i;
@@ -980,7 +997,7 @@ SM_Set_PortGroup(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr,
 // verify that "blocks" agrees with the value of "N" in amod. pgp must fit
 // in a single multi-block MAD.
 Status_t
-SM_Get_PortGroupFwdTable(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr,
+SM_Get_PortGroupFwdTable(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr,
 	STL_PORT_GROUP_FORWARDING_TABLE *pgftp, uint8_t blocks) {
 	Status_t	status;
 	uint8_t		i;
@@ -1006,7 +1023,7 @@ SM_Get_PortGroupFwdTable(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr,
 // verify that "blocks" agrees with the value of "N" in amod. pgftp must fit
 // in a single multi-block MAD.
 Status_t
-SM_Set_PortGroupFwdTable(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_PORT_GROUP_FORWARDING_TABLE *pgftp,
+SM_Set_PortGroupFwdTable(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_PORT_GROUP_FORWARDING_TABLE *pgftp,
 	uint8_t blocks, uint64_t mkey)
 {
 	uint8_t		i;
@@ -1038,7 +1055,7 @@ SM_Set_PortGroupFwdTable(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_PORT
 }
 
 Status_t
-SM_Get_CongestionInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_CONGESTION_INFO * congestionInfo) {
+SM_Get_CongestionInfo(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_CONGESTION_INFO * congestionInfo) {
 	uint32_t	bufferLength = sizeof(STL_CONGESTION_INFO);
 	uint8_t		buffer[bufferLength];
 	Status_t	status;
@@ -1055,7 +1072,7 @@ SM_Get_CongestionInfo(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_CONGEST
 }
 
 Status_t
-SM_Get_HfiCongestionSetting(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_HFI_CONGESTION_SETTING *hfics) {
+SM_Get_HfiCongestionSetting(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_HFI_CONGESTION_SETTING *hfics) {
 	uint32_t	bufferLength = sizeof(STL_HFI_CONGESTION_SETTING);
 	uint8_t		buffer[bufferLength];
 	Status_t status;
@@ -1071,7 +1088,7 @@ SM_Get_HfiCongestionSetting(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_H
 	return(status);
 }
 
-Status_t SM_Set_HfiCongestionSetting(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_HFI_CONGESTION_SETTING *hfics,
+Status_t SM_Set_HfiCongestionSetting(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_HFI_CONGESTION_SETTING *hfics,
 	uint64_t mkey)
 {
 	uint32_t bufferLength = sizeof(STL_HFI_CONGESTION_SETTING);
@@ -1097,7 +1114,7 @@ Status_t SM_Set_HfiCongestionSetting(IBhandle_t fd, uint32_t amod, SmpAddr_t *ad
 }
 
 Status_t
-SM_Get_HfiCongestionControl(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_HFI_CONGESTION_CONTROL_TABLE *hficct) {
+SM_Get_HfiCongestionControl(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_HFI_CONGESTION_CONTROL_TABLE *hficct) {
 	const uint8_t numBlocks = (amod>>24) & 0xff;
 	uint32_t	bufferLength = getCongTableSize(numBlocks);
 	uint8_t		buffer[bufferLength];
@@ -1115,7 +1132,7 @@ SM_Get_HfiCongestionControl(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_H
 }
 
 Status_t
-SM_Set_HfiCongestionControl(IBhandle_t fd, uint16 CCTI_Limit, const uint8_t numBlocks, uint32_t amod,
+SM_Set_HfiCongestionControl(SmMaiHandle_t *fd, uint16 CCTI_Limit, const uint8_t numBlocks, uint32_t amod,
 	SmpAddr_t *addr, STL_HFI_CONGESTION_CONTROL_TABLE_BLOCK *hficct, uint64_t mkey)
 {
 	Status_t status = VSTATUS_OK;
@@ -1141,7 +1158,7 @@ SM_Set_HfiCongestionControl(IBhandle_t fd, uint16 CCTI_Limit, const uint8_t numB
 }
 
 Status_t
-SM_Get_SwitchCongestionSetting(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SWITCH_CONGESTION_SETTING *swcs) {
+SM_Get_SwitchCongestionSetting(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_SWITCH_CONGESTION_SETTING *swcs) {
 	uint32_t	bufferLength = sizeof(STL_SWITCH_CONGESTION_SETTING);
 	uint8_t		buffer[bufferLength];
 	Status_t status;
@@ -1159,7 +1176,7 @@ SM_Get_SwitchCongestionSetting(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, ST
 }
 
 Status_t
-SM_Set_SwitchCongestionSetting(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr,
+SM_Set_SwitchCongestionSetting(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr,
 	STL_SWITCH_CONGESTION_SETTING *swcs, uint64_t mkey)
 {
 	uint32_t bufferLength = sizeof(STL_SWITCH_CONGESTION_SETTING);
@@ -1187,7 +1204,7 @@ SM_Set_SwitchCongestionSetting(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr,
 
 
 Status_t
-SM_Get_SwitchPortCongestionSetting(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_SWITCH_PORT_CONGESTION_SETTING *swpcs) {
+SM_Get_SwitchPortCongestionSetting(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_SWITCH_PORT_CONGESTION_SETTING *swpcs) {
 	const uint8_t count = (amod>>24) & 0xff;
 	uint32_t	bufferLength = sizeof(STL_SWITCH_PORT_CONGESTION_SETTING_ELEMENT) * count;
 	uint8_t		buffer[bufferLength];
@@ -1205,7 +1222,7 @@ SM_Get_SwitchPortCongestionSetting(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr
 }
 
 Status_t
-SM_Set_BufferControlTable(IBhandle_t fd, uint32_t amod, SmpAddr_t *addr, STL_BUFFER_CONTROL_TABLE pbct[], uint64_t mkey, uint32_t *madStatus)
+SM_Set_BufferControlTable(SmMaiHandle_t *fd, uint32_t amod, SmpAddr_t *addr, STL_BUFFER_CONTROL_TABLE pbct[], uint64_t mkey, uint32_t *madStatus)
 {
 	Status_t status;
 	uint32_t i;
@@ -1302,7 +1319,7 @@ SM_ComposeCableInfoAggr(uint8_t * buffer, size_t bufferSize,
 }
 
 Status_t
-SM_Get_CableInfo(IBhandle_t fd, uint8_t portIdx, uint8_t startSeg, uint8_t segCount, SmpAddr_t *addr, STL_CABLE_INFO * ci, uint32_t * madStatus)
+SM_Get_CableInfo(SmMaiHandle_t *fd, uint8_t portIdx, uint8_t startSeg, uint8_t segCount, SmpAddr_t *addr, STL_CABLE_INFO * ci, uint32_t * madStatus)
 {
 	Status_t status = VSTATUS_OK;
 	uint32_t bufferLength = sizeof(STL_CABLE_INFO);
@@ -1361,28 +1378,29 @@ SM_Get_CableInfo(IBhandle_t fd, uint8_t portIdx, uint8_t startSeg, uint8_t segCo
 
 
 Status_t
-SM_Get_Aggregate_DR(IBhandle_t fd, STL_AGGREGATE * start, STL_AGGREGATE * end,
-	uint8_t *path, STL_AGGREGATE ** lastSeg, uint32_t * madStatus)
+SM_Get_Aggregate_DR(SmMaiHandle_t *fd, STL_AGGREGATE * start, STL_AGGREGATE * end,
+	size_t lastSegReqLen, uint8_t *path, STL_AGGREGATE ** lastSeg, uint32_t * madStatus)
 {
 	SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
-	return SM_Aggregate_impl(fd, start, end, &addr, MAD_CM_GET, 0, lastSeg, madStatus);
+	return SM_Aggregate_impl(fd, start, end, lastSegReqLen, &addr, MAD_CM_GET, 0, lastSeg, madStatus);
 }
 
 Status_t
-SM_Get_Aggregate_LR(IBhandle_t fd, STL_AGGREGATE * start, STL_AGGREGATE * end,
-	STL_LID srcLid, STL_LID destLid, STL_AGGREGATE ** lastSeg, uint32_t * madStatus)
+SM_Get_Aggregate_LR(SmMaiHandle_t *fd, STL_AGGREGATE * start, STL_AGGREGATE * end,
+	size_t lastSegReqLen, STL_LID srcLid, STL_LID destLid, STL_AGGREGATE ** lastSeg,
+	uint32_t * madStatus)
 {
 	SmpAddr_t addr = SMP_ADDR_CREATE_LR(srcLid, destLid);
-	return SM_Aggregate_impl(fd, start, end, &addr, MAD_CM_GET, 0, lastSeg, madStatus);
+	return SM_Aggregate_impl(fd, start, end, lastSegReqLen, &addr, MAD_CM_GET, 0, lastSeg, madStatus);
 }
 
 
 Status_t
-SM_Set_Aggregate_LR(IBhandle_t fd, STL_AGGREGATE * start, STL_AGGREGATE * end,
+SM_Set_Aggregate_LR(SmMaiHandle_t *fd, STL_AGGREGATE * start, STL_AGGREGATE * end,
 	STL_LID srcLid, STL_LID destLid, uint64_t mkey, STL_AGGREGATE ** lastSeg, uint32_t * madStatus)
 {
 	SmpAddr_t addr = SMP_ADDR_CREATE_LR(srcLid, destLid);
-	return SM_Aggregate_impl(fd, start, end, &addr, MAD_CM_SET, mkey, lastSeg, madStatus);
+	return SM_Aggregate_impl(fd, start, end, 0, &addr, MAD_CM_SET, mkey, lastSeg, madStatus);
 }
 
 /**
@@ -1419,8 +1437,8 @@ SM_Set_Aggregate_LR(IBhandle_t fd, STL_AGGREGATE * start, STL_AGGREGATE * end,
 */
 static Status_t
 SM_Aggregate_impl(
-	IBhandle_t fd, STL_AGGREGATE * inStart, STL_AGGREGATE * inEnd, SmpAddr_t * addr,
-	uint8 method, uint64_t mkey, STL_AGGREGATE ** lastSeg, uint32_t * madStatus)
+	SmMaiHandle_t *fd, STL_AGGREGATE * inStart, STL_AGGREGATE * inEnd, size_t lastSegReqLen,
+	SmpAddr_t * addr, uint8 method, uint64_t mkey, STL_AGGREGATE ** lastSeg, uint32_t * madStatus)
 {
 	Status_t s = VSTATUS_OK;
 	uint32_t lclMadStatus;
@@ -1484,6 +1502,8 @@ SM_Aggregate_impl(
 		if (method == MAD_CM_GET) {
 			// Get() requests need only be as long as the last segment header
 			reqLength -= lastSegSize;
+			// However, some attributes have required data in the request struct
+			reqLength += lastSegReqLen;
 			INCREMENT_COUNTER(smCounterGetAggregate);
 		}
 		else {

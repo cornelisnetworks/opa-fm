@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2018, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -100,7 +100,7 @@ _verify_connectivity(Topology_t *topop)
 	DorTopology_t	*dorTop = (DorTopology_t *)topop->routingModule->data;
 	DorNode_t *switchDnp;
 
-	if (smDorRouting.debug) {
+	if (sm_config.smDorRouting.debug) {
 		for (i = 0; i < dorTop->numDimensions; ++i) {
 			if (!dorTop->toroidal[i])
 				IB_LOG_INFINI_INFO_FMT(__func__,
@@ -159,7 +159,7 @@ _verify_coordinates(Topology_t *topop)
 			oldnodep = sm_find_guid(&old_topology, switchp->nodeInfo.NodeGUID);
 		if (!oldnodep) continue;
 
-		for (i = 0; i < smDorRouting.dimensionCount; i++) {
+		for (i = 0; i < sm_config.smDorRouting.dimensionCount; i++) {
 			if (((DorNode_t*)switchp->routingData)->coords[i] ==
 				((DorNode_t*)oldnodep->routingData)->coords[i]) continue;
 
@@ -274,7 +274,7 @@ inline int port_pair_needs_warning(uint8_t p1, uint8_t p2)
 
 	idx = PORT_PAIR_WARN_IDX(p1, p2);
 
-	if (port_pair_warnings[idx] < smDorRouting.warn_threshold)	{
+	if (port_pair_warnings[idx] < sm_config.smDorRouting.warn_threshold)	{
 		port_pair_warnings[idx]++;
 		return 1;
 	} else {
@@ -418,13 +418,13 @@ _create_dimension(DorDiscoveryState_t *state, int configDim, DorTopology_t *dorT
 	int i, j, index = 0;
 	int8_t direction = 0;
 
-	for (i = 0; i < smDorRouting.dimensionCount; i++) {
-		for (j = 0; j < smDorRouting.dimension[i].portCount; j++) {
-			if (p == smDorRouting.dimension[i].portPair[j].port1) {
+	for (i = 0; i < sm_config.smDorRouting.dimensionCount; i++) {
+		for (j = 0; j < sm_config.smDorRouting.dimension[i].portCount; j++) {
+			if (p == sm_config.smDorRouting.dimension[i].portPair[j].port1) {
 				direction = 1;
 				index = i;
 				break;
-			} else if (p == smDorRouting.dimension[i].portPair[j].port2) {
+			} else if (p == sm_config.smDorRouting.dimension[i].portPair[j].port2) {
 				direction = -1;
 				index = i;
 				break;
@@ -450,7 +450,7 @@ _create_dimension(DorDiscoveryState_t *state, int configDim, DorTopology_t *dorT
 		_mark_toroidal_dimension(state, dorTop, index);
 	}
 
-	dorTop->dimensionLength[index] = smDorRouting.dimension[index].length;
+	dorTop->dimensionLength[index] = sm_config.smDorRouting.dimension[index].length;
 
 	dorTop->coordMinimums[index] = !dorTop->toroidal[index] ? (0 - (dorTop->dimensionLength[index] - 1)) : (0 -
 										(dorTop->dimensionLength[index] / 2) +
@@ -474,7 +474,7 @@ _create_dimension(DorDiscoveryState_t *state, int configDim, DorTopology_t *dorT
 	else if (nextCoord < dorTop->coordMinimums[index])
 		direction = 1;
 
-	if (smDorRouting.debug)
+	if (sm_config.smDorRouting.debug)
 		IB_LOG_INFINI_INFO_FMT(__func__,
 				"Dimension %d length %d coordMinimum %d coordMaximum %d",
 				index, dorTop->dimensionLength[index],
@@ -510,7 +510,7 @@ _create_dimension(DorDiscoveryState_t *state, int configDim, DorTopology_t *dorT
 	}
 
 	// mark config information that the dimension has been created
-	smDorRouting.dimension[configDim].created = 1;
+	sm_config.smDorRouting.dimension[configDim].created = 1;
 
 	return VSTATUS_OK;
 }
@@ -592,24 +592,24 @@ static int _get_dimension_and_direction(DorDiscoveryState_t *state, int config_d
 	DorDimension_t *dim = NULL;
 	DimLookupRval_t rval = DIM_LOOKUP_RVAL_NOTFOUND;
 
-	for (i = 0; i < smDorRouting.dimension[config_dim].portCount; i++) {
-		if (p1 == smDorRouting.dimension[config_dim].portPair[i].port1) {
+	for (i = 0; i < sm_config.smDorRouting.dimension[config_dim].portCount; i++) {
+		if (p1 == sm_config.smDorRouting.dimension[config_dim].portPair[i].port1) {
 			idx = 1;
 			break;
-		} else if (p1 == smDorRouting.dimension[config_dim].portPair[i].port2) {
+		} else if (p1 == sm_config.smDorRouting.dimension[config_dim].portPair[i].port2) {
 			idx = 2;
 			break;
 		}
 	}
 
 
-	for (i = 0; i < smDorRouting.dimension[config_dim].portCount; i++) {
+	for (i = 0; i < sm_config.smDorRouting.dimension[config_dim].portCount; i++) {
 		if (idx == 1) {
-			rval = _lookup_dimension(state, smDorRouting.dimension[config_dim].portPair[i].port1,
-								 smDorRouting.dimension[config_dim].portPair[i].port2, &dim);
+			rval = _lookup_dimension(state, sm_config.smDorRouting.dimension[config_dim].portPair[i].port1,
+								 sm_config.smDorRouting.dimension[config_dim].portPair[i].port2, &dim);
 		} else if (idx == 2) {
-			rval = _lookup_dimension(state, smDorRouting.dimension[config_dim].portPair[i].port2,
-								 smDorRouting.dimension[config_dim].portPair[i].port1, &dim);
+			rval = _lookup_dimension(state, sm_config.smDorRouting.dimension[config_dim].portPair[i].port2,
+								 sm_config.smDorRouting.dimension[config_dim].portPair[i].port1, &dim);
 		}
 		if (rval == DIM_LOOKUP_RVAL_FOUND) {
 			*dimension = dim->dimension;
@@ -625,14 +625,14 @@ is_configured_toroidal(int p1, int p2)
 {
 	int i, j;
 
-	for (i = 0; i < smDorRouting.dimensionCount; i++) {
-		if (!smDorRouting.dimension[i].toroidal)
+	for (i = 0; i < sm_config.smDorRouting.dimensionCount; i++) {
+		if (!sm_config.smDorRouting.dimension[i].toroidal)
 			continue;
-		for (j = 0; j < smDorRouting.dimension[i].portCount; j++) {
-			if (((p1 == smDorRouting.dimension[i].portPair[j].port1) &&
-				(p2 == smDorRouting.dimension[i].portPair[j].port2)) ||
-				((p1 == smDorRouting.dimension[i].portPair[j].port2) &&
-				(p2 == smDorRouting.dimension[i].portPair[j].port1)))
+		for (j = 0; j < sm_config.smDorRouting.dimension[i].portCount; j++) {
+			if (((p1 == sm_config.smDorRouting.dimension[i].portPair[j].port1) &&
+				(p2 == sm_config.smDorRouting.dimension[i].portPair[j].port2)) ||
+				((p1 == sm_config.smDorRouting.dimension[i].portPair[j].port2) &&
+				(p2 == sm_config.smDorRouting.dimension[i].portPair[j].port1)))
 				return 1;
 		}
 	}
@@ -644,14 +644,14 @@ static int
 get_configured_dimension(int p1, int p2)
 {
 	int i, j;
-	int l = MIN(MAX_DOR_DIMENSIONS, smDorRouting.dimensionCount);
+	int l = MIN(MAX_DOR_DIMENSIONS, sm_config.smDorRouting.dimensionCount);
 
 	for (i = 0; i < l; i++) {
-		for (j = 0; j < smDorRouting.dimension[i].portCount; j++) {
-			if (((p1 == smDorRouting.dimension[i].portPair[j].port1) &&
-				(p2 == smDorRouting.dimension[i].portPair[j].port2)) ||
-				((p1 == smDorRouting.dimension[i].portPair[j].port2) &&
-				(p2 == smDorRouting.dimension[i].portPair[j].port1)))
+		for (j = 0; j < sm_config.smDorRouting.dimension[i].portCount; j++) {
+			if (((p1 == sm_config.smDorRouting.dimension[i].portPair[j].port1) &&
+				(p2 == sm_config.smDorRouting.dimension[i].portPair[j].port2)) ||
+				((p1 == sm_config.smDorRouting.dimension[i].portPair[j].port2) &&
+				(p2 == sm_config.smDorRouting.dimension[i].portPair[j].port1)))
 				return i;
 		}
 	}
@@ -664,10 +664,10 @@ get_configured_dimension_for_port(int p)
 {
 	int i, j;
 
-	for (i = 0; i < smDorRouting.dimensionCount; i++) {
-		for (j = 0; j < smDorRouting.dimension[i].portCount; j++) {
-			if ((p == smDorRouting.dimension[i].portPair[j].port1) ||
-				(p == smDorRouting.dimension[i].portPair[j].port2))
+	for (i = 0; i < sm_config.smDorRouting.dimensionCount; i++) {
+		for (j = 0; j < sm_config.smDorRouting.dimension[i].portCount; j++) {
+			if ((p == sm_config.smDorRouting.dimension[i].portPair[j].port1) ||
+				(p == sm_config.smDorRouting.dimension[i].portPair[j].port2))
 				return i;
 		}
 	}
@@ -683,10 +683,10 @@ get_configured_port_pos_in_dim(int d, int p)
 	if (d < 0)
 		return -1;
 
-	for (j = 0; j < smDorRouting.dimension[d].portCount; j++) {
-		if (p == smDorRouting.dimension[d].portPair[j].port1)
+	for (j = 0; j < sm_config.smDorRouting.dimension[d].portCount; j++) {
+		if (p == sm_config.smDorRouting.dimension[d].portPair[j].port1)
 			return 1;
-		if (p == smDorRouting.dimension[d].portPair[j].port2)
+		if (p == sm_config.smDorRouting.dimension[d].portPair[j].port2)
 			return 2;
 	}
 
@@ -757,7 +757,7 @@ _propagate_coord_through_port(DorDiscoveryState_t *state,
 			config_dim = get_configured_dimension(portp->index, portp->portno);
 
 			if (config_dim >=0) {
-				if (smDorRouting.dimension[config_dim].created) {
+				if (sm_config.smDorRouting.dimension[config_dim].created) {
 					if (_get_dimension_and_direction(state, config_dim, portp->index, portp->portno, &dimension, &direction)) {
 						status = _extend_dimension(state, portp->index, portp->portno, dimension, direction, &dim);
 						if (status != VSTATUS_OK) {
@@ -884,7 +884,7 @@ _propagate_coord_through_port(DorDiscoveryState_t *state,
 			if (dorNode->coords[dim->dimension] == dorTop->coordMaximums[dim->dimension] &&
 			    neighborDorNode->coords[dim->dimension] == dorTop->coordMinimums[dim->dimension]) {
 				if (is_configured_toroidal(portp->index, portp->portno)) {
-					if (smDorRouting.debug) {
+					if (sm_config.smDorRouting.debug) {
 						IB_LOG_VERBOSE_FMT(__func__,
 						       "Found toroidal link for dimension %d in (direction %d, coord bounds [%d, %d]) between "
 						       "NodeGUID "FMT_U64" [%s] Port %d and NodeGUID "FMT_U64" [%s] Port %d",
@@ -920,7 +920,7 @@ _propagate_coord_through_port(DorDiscoveryState_t *state,
 			if (dorNode->coords[dim->dimension] == dorTop->coordMinimums[dim->dimension] &&
 			    neighborDorNode->coords[dim->dimension] == dorTop->coordMaximums[dim->dimension]) {
 				if (is_configured_toroidal(portp->index, portp->portno)) {
-					if (smDorRouting.debug) {
+					if (sm_config.smDorRouting.debug) {
 						IB_LOG_VERBOSE_FMT(__func__,
 						       "Found toroidal link for dimension %d in (direction %d, coord bounds [%d, %d]) between "
 						       "NodeGUID "FMT_U64" [%s] Port %d and NodeGUID "FMT_U64" [%s] Port %d",
@@ -990,7 +990,7 @@ _is_path_realizable(Topology_t *topop, Node_t *src, Node_t *dst, DorDirection di
 	int goLeft = 0;
 	int ij = DorBitMapsIndex(src->swIdx, dst->swIdx);
 
-	if (smDorRouting.debug && sm_config.sm_debug_routing)
+	if (sm_config.smDorRouting.debug && sm_config.sm_debug_routing)
 		IB_LOG_INFINI_INFO_FMT(__func__, "Entry [%s] to [%s] dir %s",
 		   	sm_nodeDescString(src), sm_nodeDescString(dst), dir == DorAny ? "Any" : (dir == DorRight ? "Right" : "Left"));
 
@@ -1083,7 +1083,7 @@ _is_path_realizable(Topology_t *topop, Node_t *src, Node_t *dst, DorDirection di
 	}
 
 	if (ijTest(dorTop->dorLeft, ij) || ijTest(dorTop->dorRight, ij)) {
-		if (smDorRouting.debug && sm_config.sm_debug_routing)
+		if (sm_config.smDorRouting.debug && sm_config.sm_debug_routing)
 			IB_LOG_INFINI_INFO_FMT(__func__,
 				"Path from %d [%s] to %d [%s] routes left %d right %d",
 				src->swIdx, sm_nodeDescString(src), dst->swIdx, sm_nodeDescString(dst),
@@ -1213,7 +1213,7 @@ _calc_dor_closure(Topology_t *topop)
 	for_all_switch_nodes(topop, ni) {
 		for_all_switch_nodes(topop, nj) {
 			if (ni == nj || _is_path_realizable(topop, ni, nj, DorAny)) continue;
-			if (smDorRouting.debug)
+			if (sm_config.smDorRouting.debug)
 				IB_LOG_WARN_FMT(__func__,
 						"Path from %d [%s] to %d [%s] is NOT realizable",
 						ni->swIdx, sm_nodeDescString(ni), nj->swIdx, sm_nodeDescString(nj));
@@ -1329,7 +1329,7 @@ _generate_scsc_map(Topology_t *topop, Node_t *switchp, int getSecondary, int *nu
 
 	// Setup illegal turn to drop or (if escape VLs in use) to start at 2nd set of SCs
 	memset(&scscBadTurn, 15, sizeof(scscBadTurn));
-	if (smDorRouting.routingSCs > 1) {
+	if (sm_config.smDorRouting.routingSCs > 1) {
 		for (i=0; i<STL_MAX_SLS; i++) {
 			if (!bitset_test(&linkSLsInuse, i)) continue;
 			firstSC = sm_SLtoSC[i];
@@ -1340,7 +1340,7 @@ _generate_scsc_map(Topology_t *topop, Node_t *switchp, int getSecondary, int *nu
 
 			for (j=firstSC+1; j<STL_MAX_SCS; j++) {
 				if (sm_SCtoSL[j] != i) continue;
-				if (smDorRouting.routingSCs == 2) {
+				if (sm_config.smDorRouting.routingSCs == 2) {
 					// mesh or no escape VLs - set first SC to next SC (dateline or escape)
 					scscBadTurn.SCSCMap[firstSC].SC = j;
 					scscBadTurn.SCSCMap[j].SC = j;
@@ -1374,7 +1374,7 @@ _generate_scsc_map(Topology_t *topop, Node_t *switchp, int getSecondary, int *nu
 	memset(&scsc0, 15, sizeof(scsc0));
 	memset(&scscPlus1, 15, sizeof(scscPlus1));
 
-	if (smDorRouting.routingSCs > 1) {
+	if (sm_config.smDorRouting.routingSCs > 1) {
 		for (i=0; i<STL_MAX_SLS; i++) {
 			if (!bitset_test(&linkSLsInuse, i)) continue;
 			firstSC = sm_SLtoSC[i];
@@ -1396,8 +1396,8 @@ _generate_scsc_map(Topology_t *topop, Node_t *switchp, int getSecondary, int *nu
 				scscPlus1.SCSCMap[firstSC].SC = scscPlus1.SCSCMap[j].SC = j;
 
 				setsComplete++;
-				if (setsComplete == 1 && smDorRouting.routingSCs == 2) break;
-				if (setsComplete == 2 && smDorRouting.routingSCs == 4) break;
+				if (setsComplete == 1 && sm_config.smDorRouting.routingSCs == 2) break;
+				if (setsComplete == 2 && sm_config.smDorRouting.routingSCs == 4) break;
 
 				firstSC = -1;
 			}
@@ -1418,7 +1418,7 @@ _generate_scsc_map(Topology_t *topop, Node_t *switchp, int getSecondary, int *nu
 	for_all_physical_ports(switchp, ingressPortp) {
 		if (!sm_valid_port(ingressPortp) || ingressPortp->state <= IB_PORT_DOWN) continue;
 
-		if (ingressPortp->portData->isIsl && smDorRouting.routingSCs > 1) continue;
+		if (ingressPortp->portData->isIsl && sm_config.smDorRouting.routingSCs > 1) continue;
 
 		needsSet = !ingressPortp->portData->current.scsc ||  sm_config.forceAttributeRewrite;
 		if (!needsSet) {
@@ -1446,7 +1446,7 @@ _generate_scsc_map(Topology_t *topop, Node_t *switchp, int getSecondary, int *nu
 	}
 
 	// Is this a mesh without escape VL?
-	if (smDorRouting.routingSCs == 1)
+	if (sm_config.smDorRouting.routingSCs == 1)
 		goto done;
 
 	// Any ISL -> HFI: SCSC0
@@ -1483,7 +1483,7 @@ _generate_scsc_map(Topology_t *topop, Node_t *switchp, int getSecondary, int *nu
 	for (dimension=0; dimension<dorTop->numDimensions; dimension++) {
 		datelineSwitch = isDatelineSwitch(topop, switchp, dimension);
 
-		if (smDorRouting.debug && datelineSwitch)
+		if (sm_config.smDorRouting.debug && datelineSwitch)
 			IB_LOG_INFINI_INFO_FMT(__func__, "Dateline switch %s in dimension %d)", sm_nodeDescString(switchp), dimension);
 
 		changeDim = illegalTurn = crossDateline1 = crossDateline2 = sameDim1 = sameDim2 = -1;
@@ -1513,7 +1513,7 @@ _generate_scsc_map(Topology_t *topop, Node_t *switchp, int getSecondary, int *nu
 					continue;
 				}
 
-				if (smDorRouting.topology == DOR_MESH && portDim[p2] >= dimension) {
+				if (sm_config.smDorRouting.topology == DOR_MESH && portDim[p2] >= dimension) {
 					// Setup scsc for same or higher dimension to no change
 					if (!ingressPortp->portData->current.scsc ||  sm_config.forceAttributeRewrite ||
 						!scscTmp || (memcmp((void *)&scscNoChg, (void *)scscTmp, sizeof(STL_SCSCMAP)) != 0)) {
@@ -1617,7 +1617,7 @@ done:
 		scsc = NULL;
 	}
 
-	if (smDorRouting.debug) {
+	if (sm_config.smDorRouting.debug) {
 		IB_LOG_INFINI_INFO_FMT(__func__,
 				   "Switch with NodeGUID "FMT_U64" [%s] has %d scsc multiset blocks",
 				   switchp->nodeInfo.NodeGUID, sm_nodeDescString(switchp), curBlock);
@@ -1964,7 +1964,7 @@ _calculate_lft(Topology_t * topop, Node_t *switchp)
 		return status;
 	}
 
-	if (smDorRouting.debug)
+	if (sm_config.smDorRouting.debug)
 		IB_LOG_INFINI_INFO_FMT(__func__, "Switch %s", sm_nodeDescString(switchp));
 
 	// Initialize port group top prior to setting up groups.
@@ -2018,7 +2018,7 @@ _calculate_lft(Topology_t * topop, Node_t *switchp)
 
 					incr_lids_routed(topop, switchp, switchp->lft[currentLid]);
 
-					if (smDorRouting.debug)
+					if (sm_config.smDorRouting.debug)
 						IB_LOG_VERBOSE_FMT(__func__, "Switch %s to %s lid 0x%x outport %d (of %d)",
 							sm_nodeDescString(switchp), sm_nodeDescString(nodep), currentLid,
 							switchp->lft[currentLid], numPorts);
@@ -2080,7 +2080,7 @@ _setup_xft(Topology_t *topop, Node_t *switchp, Node_t *endNodep,
 {
 	Status_t status = _get_outbound_port_dor(topop, switchp, endNodep, endPortp, portnos);
 
-	if (smDorRouting.debug)
+	if (sm_config.smDorRouting.debug)
 		IB_LOG_INFINI_INFO_FMT(__func__,
 			"Routing SW "FMT_U64" [%s] to DLID 0x%04x via DOR: EgressPort %d",
 			switchp->nodeInfo.NodeGUID, sm_nodeDescString(switchp), endPortp->portData->lid, portnos[0]);
@@ -2121,14 +2121,14 @@ _pre_process_discovery(Topology_t *topop, void **outContext)
 
 	*outContext = (void *)state;
 
-	for (i = 0; i < smDorRouting.dimensionCount; i++) {
-		if (smDorRouting.dimension[i].toroidal) {
+	for (i = 0; i < sm_config.smDorRouting.dimensionCount; i++) {
+		if (sm_config.smDorRouting.dimension[i].toroidal) {
 			dorTop->numToroidal++;
 		}
-		smDorRouting.dimension[i].created = 0;
+		sm_config.smDorRouting.dimension[i].created = 0;
 	}
 
-	dorTop->minReqScs = smDorRouting.routingSCs;
+	dorTop->minReqScs = sm_config.smDorRouting.routingSCs;
 
 	status = vs_pool_alloc(&sm_pool, (PORT_PAIR_WARN_ARR_SIZE * PORT_PAIR_WARN_ARR_SIZE), (void *)&port_pair_warnings);
 	if (status != VSTATUS_OK) {
@@ -2208,7 +2208,7 @@ _discover_node(Topology_t *topop, Node_t *nodep, void *context)
 	Status_t	status;
 
 	if (nodep->nodeInfo.NodeType != NI_TYPE_SWITCH) {
-		dgIdx = smDorRouting.routeLast.dg_index;
+		dgIdx = sm_config.smDorRouting.routeLast.dg_index;
 		// is hfi a member of the route last device group
 		if (dgIdx == -1)
 			return VSTATUS_OK;
@@ -2249,7 +2249,7 @@ _discover_node(Topology_t *topop, Node_t *nodep, void *context)
 		neighbor = sm_find_node(topop, p->nodeno);
 		if (neighbor) {
 			neighborType = neighbor->nodeInfo.NodeType;
-			if ((neighborType == NI_TYPE_CA) && !smDorRouting.debug)
+			if ((neighborType == NI_TYPE_CA) && !sm_config.smDorRouting.debug)
 				continue;
 			neighborNodeGuid = neighbor->nodeInfo.NodeGUID;
 			neighbor_portno = p->portno;
@@ -2266,7 +2266,7 @@ _discover_node(Topology_t *topop, Node_t *nodep, void *context)
 			if (!get_node_information(nodep, p, path, &neighborNodeInfo))
 				continue;
 			neighborType = neighborNodeInfo.NodeType;
-			if ((neighborType == NI_TYPE_CA) && !smDorRouting.debug)
+			if ((neighborType == NI_TYPE_CA) && !sm_config.smDorRouting.debug)
 				continue;
 			neighborNodeGuid = neighborNodeInfo.NodeGUID;
 			neighbor_portno = neighborNodeInfo.u1.s.LocalPortNum;
@@ -2331,7 +2331,7 @@ _discover_node(Topology_t *topop, Node_t *nodep, void *context)
 				/* Since the discovery is still in progress, we don't know if the current node is an end switch in a dimension */
 				/* So for now do this check only if the dimension has been marked toroidal, in which case the port pairs for end */
 				/* switches should also be connected to switches. */
-				if (smDorRouting.dimension[dim].toroidal == 0)
+				if (sm_config.smDorRouting.dimension[dim].toroidal == 0)
 					continue;
 				incorrect_ca = 1;
 			} else  {
@@ -2381,7 +2381,7 @@ _discover_node(Topology_t *topop, Node_t *nodep, void *context)
 			port_down = 1;
 			invalid_isl_found = 1;
 		} else if (incorrect_ca) {
-			if (incorrect_ca_warnings < smDorRouting.warn_threshold) {
+			if (incorrect_ca_warnings < sm_config.smDorRouting.warn_threshold) {
 				IB_LOG_WARN_FMT(__func__,
 							"NodeGuid "FMT_U64" [%s] port %d is specified as part of ISL port pair but"
 							" is connected to the HFI NodeGuid "FMT_U64" [%s] port %d."
@@ -2566,32 +2566,32 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 
 	dorTop->numDimensions = state->nextDimension;
 
-	if (dorTop->numDimensions < smDorRouting.dimensionCount) {
+	if (dorTop->numDimensions < sm_config.smDorRouting.dimensionCount) {
 		if (dorTop->numDimensions)
 			IB_LOG_WARN_FMT(__func__, "Only %d of the %d configured dimensions discovered",
-							dorTop->numDimensions, smDorRouting.dimensionCount);
+							dorTop->numDimensions, sm_config.smDorRouting.dimensionCount);
 		else
 			IB_LOG_WARN_FMT(__func__, "No dimensions discovered ! (%d dimensions were configured)",
-							smDorRouting.dimensionCount);
-		for (i = 0; i < smDorRouting.dimensionCount; i++) {
-			if (smDorRouting.dimension[i].created)
+							sm_config.smDorRouting.dimensionCount);
+		for (i = 0; i < sm_config.smDorRouting.dimensionCount; i++) {
+			if (sm_config.smDorRouting.dimension[i].created)
 				continue;
 			IB_LOG_WARN_FMT(__func__, "Dimension containing port pair %d %d not found",
-							smDorRouting.dimension[i].portPair[0].port1, smDorRouting.dimension[i].portPair[0].port2);
+							sm_config.smDorRouting.dimension[i].portPair[0].port1, sm_config.smDorRouting.dimension[i].portPair[0].port2);
 		}
-	} else 	if (dorTop->numDimensions > smDorRouting.dimensionCount) {
+	} else 	if (dorTop->numDimensions > sm_config.smDorRouting.dimensionCount) {
 		IB_LOG_WARN_FMT(__func__, "Fabric programming inconsistency ! %d dimensions found but only %d dimensions were configured",
-							dorTop->numDimensions, smDorRouting.dimensionCount);
+							dorTop->numDimensions, sm_config.smDorRouting.dimensionCount);
 	}
 
 
-	if (smDorRouting.debug)
+	if (sm_config.smDorRouting.debug)
 		IB_LOG_INFINI_INFO_FMT(__func__,
 		       "Number of dimensions: %d",
 		       dorTop->numDimensions);
 
 	for (i = 0; i < dorTop->numDimensions; ++i) {
-		if (smDorRouting.debug)
+		if (sm_config.smDorRouting.debug)
 			IB_LOG_INFINI_INFO_FMT(__func__,
 			       "Dimension %d: length %d [%s]",
 			       i, dorTop->dimensionLength[i],
@@ -2605,7 +2605,7 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 	if (state->scsAvailable < 2)
 		IB_LOG_WARN("not enough SCs available to route cycle-free SCs:", state->scsAvailable);
 
-	else if (smDorRouting.debug)
+	else if (sm_config.smDorRouting.debug)
 			IB_LOG_INFINI_INFO_FMT(__func__,
 			       "Routing with credit loop avoidance (%d SCs available)",
 			       MIN(1 << (state->scsAvailable - 1), 15));
@@ -2618,7 +2618,7 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 	vs_pool_free(&sm_pool, state);
 
 	// check for fault regions
-	if (smDorRouting.faultRegions)
+	if (sm_config.smDorRouting.faultRegions)
 		_verify_connectivity(topop);
 
 	_verify_dimension_lengths(topop);
@@ -2628,12 +2628,12 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 		return status;
 	}
 
-	if (smDorRouting.debug)
+	if (sm_config.smDorRouting.debug)
 		_dump_node_coordinates(topop);
 
 	_missing_switch_check(topop);
 
-	if (smDorRouting.debug)
+	if (sm_config.smDorRouting.debug)
 		_verify_coordinates(topop);
 
 	return VSTATUS_OK;
@@ -3219,7 +3219,7 @@ _build_spanning_trees(void)
 		goto bail;
 	}
 
-	if (smDorRouting.debug) {
+	if (sm_config.smDorRouting.debug) {
 		char buffer[32];
 		_coord_to_string(sm_topop,((DorNode_t*)(rootp->routingData))->coords,
 			buffer);
@@ -3240,7 +3240,7 @@ _build_spanning_trees(void)
 	_build_spanning_tree_branch(dorTop,dorTree,rootp,0);
 
 
-	if (smDorRouting.debug) {
+	if (sm_config.smDorRouting.debug) {
 		IB_LOG_INFINI_INFO_FMT(__func__,"Spanning tree before disruption fix up:");
 		_dump_spanning_tree(dorTree);
 	}
@@ -3323,7 +3323,7 @@ _build_spanning_trees(void)
 		}
 	}
 
-	if (smDorRouting.debug) {
+	if (sm_config.smDorRouting.debug) {
 		IB_LOG_INFINI_INFO_FMT(__func__,"Spanning tree after disruption fix up:");
 		_dump_spanning_tree(dorTree);
 	}
@@ -3426,450 +3426,68 @@ _num_routing_scs(int sls, boolean mc_sl)
 {
 	if (mc_sl) return 1;
 
-	return smDorRouting.routingSCs;
+	return sm_config.smDorRouting.routingSCs;
 }
 
-/*
- * The following several functions handling the mapping of SCs to SLs and VLs
- * to SCs. The basic rule of DOR routing is that unicast traffic requires 4 VLs
- * per SL, preferably uniquely distinct. This limits the maximum # of QoS
- * levels to two in the current generations of OPA hardware.
- *
- * Multicast traffic further complicates things. Because multicast traffic
- * follows a spanning tree through the fabric it usually does not comply with
- * the rule of DOR. For this reason we try to isolate multicast traffic on its
- * own VL(s) if at all possible, using the following rules:
- *
- *  0. Multicast will always be placed on its own SL(s).
- *
- * 	1. If the (new) multicast_isolate flag is set, or if there is only one QOS
- * 		level:
- * 		a. reserve the highest VL for multicast traffic.
- * 		b. Allocate VLs 0-3 to the base SL as normal.
- * 		c. If the 1st QOS level has multicast, use the reserved VL for that.
- * 		d. If there is a second QOS level, attempt to reserve the next 4 VLs for
- * 			the 2nd base SL.
- * 			i.  If we can only get 3 VLs, share the 4th VL from the 1st base SL.
- * 			ii. If we can't get at least 3 VLs, return an error.
- * 				(should be impossible)
- *
- * 	2. Else the flag is not set and there are 2 QOS levels:
- * 		a. Allocate VLs 0-3 to the base SL of the 1st QOS level.
- * 		b. Map VL3 to the multicast SL of the 1st QOS level.
- * 		c. Allocate VLs 4-7 to the base SL of the 2nd QOS level.
- *		d. Map VL7 to the multicast SL of the 2nd QOS level.
- *
- * Note that because DOR always returns true for mcast_isolation_required(),
- * the stock sm_routing_func_assign_sls() handles rule 0 for us.
- *
- * Note also that if we have end up supporting equipment with different numbers
- * of VLs (which could happen) we may have to restrict the SCVL maps to be as
- * consistent as possible.
- *
- */
-
-// starting with the SC AFTER starting_sc, return an SC that maps to vl.
-// (to find the first SC that maps to VL pass -1 as the starting SC.
-static inline int
-_find_next_sc(const Qos_t * qos, int vl, int starting_sc)
-{
-	int sc;
-
-	for (sc = starting_sc+1; sc < STL_MAX_SCS; sc++) {
-		if (qos->scvl.SCVLMap[sc].VL == vl) break;
-	}
-
-	return sc;
-}
-
-// Returns the Nth SC mapped to an SL, where N is between 1 and numSCs.
-// Returns STL_MAX_SCS if we run off the end of the table.
-static inline int
-_find_nth_sc(const uint8_t *SLtoSC, const uint8_t *SCtoSL, int sl, int n)
-{
-	int sc, i=0;
-
-	for (sc = SLtoSC[sl]; sc < STL_MAX_SCS; sc++)
-	{
-		if (SCtoSL[sc] == sl) i++;
-		if (i == n) break;
-	}
-
-	return sc;
-}
-
-/*
- * Maps SCs to SLs in a DOR compatible way - isolating multicast on its own VL
- * if it is at all possible, minimizing the overlap if it is not.
- *
- * Note that while we talk about supporting one or two QOS levels
- * in reality we are dealing with one or more Virtual Fabrics which
- * may or may not share SLs.
- *
- * Note that this code assumes that the SCVL map complies with the convention
- * that VLs are assigned to SCs in a monotonic, increasing and repeating
- * pattern. (In other words, 0,1,2,3,4,5,6,7,0,1,2,3,4,5,6,7, etc..)
- *
- * Note that this code assumes unicast will use more than one VL but multicast
- * will only need a single VL.
- */
-static Status_t
-_map_scs_to_sls(RoutingModule_t *rm, const Qos_t * qos,
-	VirtualFabrics_t *VirtualFabrics, uint8_t *SLtoSC, uint8_t *SCtoSL)
-{
-	// Populate the SLtoSC and SCtoSL
-	int sc, sl, vl, qs, numSCs;
-	int vls_needed=0, sls_needed=0, mcast_sls_needed=0;
-	int mcast_vl=-1, shared_sc=-1, shared_vl=-1;
-	bitset_t mappedSLs;
-	bitset_t freeVLs;
-	Status_t ret = VSTATUS_OK;
-
-	if (!bitset_init(&sm_pool, &mappedSLs, STL_MAX_SLS)
-	||  !bitset_init(&sm_pool, &freeVLs, qos->activeVLs)) {
-		IB_FATAL_ERROR("Out of memory, exiting.");
-	}
-
-	// Mark all VLs as free, except VL15, which is reserved for SMA traffic.
-	bitset_set_all(&freeVLs);
-	if (qos->activeVLs > 15)
-		bitset_clear(&freeVLs, 15);
-
-	// We need to count the unique base and resp SLs to see if there are
-	// spare VLs we can use for multicast. Currently this will only be true
-	// if all VFs are sharing a single SL for base and resp.
-	for (qs=0; qs < VirtualFabrics->number_of_qos_all; qs++) {
-		QosConfig_t *qosp = &VirtualFabrics->qos_all[qs];
-		if (!bitset_test(&mappedSLs, qosp->base_sl)) {
-			bitset_set(&mappedSLs, qosp->base_sl);
-			vls_needed += rm->funcs.num_routing_scs(qosp->base_sl, 0);
-			sls_needed++;
-		}
-
-		if (!bitset_test(&mappedSLs, qosp->resp_sl)) {
-			bitset_set(&mappedSLs, qosp->resp_sl);
-			vls_needed += rm->funcs.num_routing_scs(qosp->resp_sl, 0);
-			sls_needed++;
-		}
-
-		if (!bitset_test(&mappedSLs, qosp->mcast_sl) && !smDorRouting.overlayMCast) {
-			bitset_set(&mappedSLs, qosp->resp_sl);
-			// In the case where only 8 VLs are available we will steal a
-			// VL from the unicast SLs.
-			if (sm_config.max_fixed_vls > SCVLMAP_BASE) {
-				vls_needed += rm->funcs.num_routing_scs(qosp->mcast_sl, 1);
-			}
-			sls_needed++;
-			mcast_sls_needed++;
-		}
-	}
-	bitset_clear_all(&mappedSLs);
-
-	if (mcast_sls_needed>1) {
-		IB_LOG_ERROR_FMT(__func__,"The DOR topology can only support one "
-			"isolated multicast SL. Configuration requires %d.",
-			mcast_sls_needed);
-		ret = VSTATUS_BAD;
-	}
-	if (vls_needed > sm_config.max_fixed_vls) {
-		IB_LOG_ERROR_FMT(__func__,"Configuration requires at least %d VLs, which "
-			"exceeds the maximum # of VLs supported (%d).",
-			vls_needed, rm->funcs.min_vls());
-		ret = VSTATUS_BAD;
-	}
-	if (ret != VSTATUS_OK) goto fail;
-
-	if (vls_needed < sm_config.max_fixed_vls ||
-		!smDorRouting.overlayMCast) {
-		// If we have spare VLs or if multicast overlay is turned off,
-		// reserve the highest VL for multicast.
-		mcast_vl = sm_config.max_fixed_vls -1;
-		bitset_clear(&freeVLs, mcast_vl);
-	}
-	sm_needed_vls = vls_needed; // update to just the number VLs of needed for the configuration specified
-
-	// For all QoSs (not just active) map SCs and VLs to all unique SLs.
-	for (qs=0; qs < VirtualFabrics->number_of_qos_all; qs++) {
-		QosConfig_t *qosp = &VirtualFabrics->qos_all[qs];
-		int sl_i, vl_i;
-
-		// Iterate over base, resp, and mcast.
-		for (sl_i = 0; sl_i < 3; sl_i++) {
-			boolean mc_sl = 0;
-
-			switch (sl_i) {
-				default:
-				case 0: sl = qosp->base_sl; mc_sl = 0; break;
-				case 1: sl = qosp->resp_sl; mc_sl = 0; break;
-				case 2: sl = qosp->mcast_sl; mc_sl = 1; break;
-			}
-
-			if (bitset_test(&mappedSLs, sl)) {
-				// This can happen when multiple VFs share an SL or when
-				// resp_sl and/or mcast_sl == base_sl (which means they are
-				// unused).
-				continue;
-			}
-			bitset_set(&mappedSLs, sl);
-
-			numSCs = rm->funcs.num_routing_scs(sl, mc_sl);
-			if ((mcast_vl >= 0) && mc_sl) {
-				// Multicast is isolated on its own SL.
-				sc = _find_next_sc(qos, mcast_vl, -1);
-				// Should be impossible, but check anyway.
-				if (sc >= STL_MAX_SCS) {
-					IB_LOG_ERROR_FMT(__func__,"# of multicast SLs exceeds "
-						"oversubscription limits.");
-					goto fail;
-				}
-
-				// VL was previously marked as in use.
-				SCtoSL[sc] = sl;
-				SLtoSC[sl] = sc;
-
-				if (sm_config.sm_debug_vf)
-					IB_LOG_INFINI_INFO_FMT(__func__, "Mapping MCSL %d to "
-						"VL %d via SC %d", sl, mcast_vl, sc);
-			} else if (mc_sl) {
-				// We need to share the last VL the base_sl is using
-				// so we have to find the next SC that maps to that VL.
-				sc = _find_nth_sc(SLtoSC, SCtoSL, qosp->base_sl,
-					rm->funcs.num_routing_scs(qosp->base_sl, 0));
-				if (sc >= STL_MAX_SCS) {
-					// This should be impossible, but it doesn't hurt to check.
-					IB_LOG_ERROR_FMT(__func__,"Invalid SCtoSL mapping for "
-							"SL %d.", qosp->base_sl);
-					goto fail;
-				}
-
-				vl = qos->scvl.SCVLMap[sc].VL;
-				sc = _find_next_sc(qos, vl, sc);
-				if (sc >= STL_MAX_SCS) {
-					// This should be impossible, but it doesn't hurt to check.
-					IB_LOG_ERROR_FMT(__func__,"Could not find a free SC"
-						" to map to VL %d. Configuration exceeds"
-						" oversubscription limits.", vl);
-					goto fail;
-				}
-
-				// VL was previously marked as in use.
-				SCtoSL[sc] = sl;
-				SLtoSC[sl] = sc;
-				if (sm_config.sm_debug_vf)
-					IB_LOG_INFINI_INFO_FMT(__func__, "Mapping MCSL %d to "
-						"VL %d via SC %d", sl, vl, sc);
-			} else {
-				// If we can, find numSCs free VLs and assign them to this
-				// SL. If we can only find numSCs-1 VLs, try to oversubscribe
-				// the shared VL.
-				sc = -1;
-				for (vl_i = 0; vl_i < numSCs; vl_i++) {
-					// Find an unused VL. If we can't find numSCs VLs
-					// (including the shared_vl), fail out.
-					vl = bitset_find_first_one(&freeVLs);
-					if ((vl == -1 && vl_i < (numSCs-1)) ||
-						(vl == -1 && shared_vl == -1)) {
-						IB_LOG_ERROR_FMT(__func__, "Configuration cannot be mapped."
-							" Requires more than %d VLs.", qos->activeVLs);
-						goto fail;
-					} else if (vl == -1) {
-						// If we got here, then we need to use the shared vl.
-						shared_sc = _find_next_sc(qos, shared_vl, shared_sc);
-						vl = shared_vl;
-						sc = shared_sc;
-						SCtoSL[sc] = sl;
-						if (sm_config.sm_debug_vf)
-							IB_LOG_INFINI_INFO_FMT(__func__, "Mapping SL %d to "
-								"shared VL %d via SC %d", sl, vl, sc);
-					} else {
-						bitset_clear(&freeVLs, vl);
-						sc = _find_next_sc(qos, vl, sc);
-						if (sc >= STL_MAX_SCS) {
-							// This should be impossible, but it doesn't hurt to check.
-							IB_LOG_ERROR_FMT(__func__,"Could not find a free SC"
-								" to map to VL %d. Configuration exceeds"
-								" oversubscription limits.", vl);
-							goto fail;
-						}
-						if (sm_config.sm_debug_vf)
-							IB_LOG_INFINI_INFO_FMT(__func__,"Mapping SL %d to"
-								" VL %d via SC %d", sl, vl, sc);
-						SCtoSL[sc] = sl;
-						if (vl_i == 0) SLtoSC[sl] = sc;
-						if (vl_i == (numSCs-1) && shared_vl == -1) {
-							shared_vl = vl;
-							shared_sc = sc;
-						}
-					}
-				}
-			}
-		}
-	}
-	ret = VSTATUS_OK;
-
-fail:
-	bitset_free(&freeVLs);
-	bitset_free(&mappedSLs);
-
-	return ret;
-}
-
-// This function is nearly identical to sm_setup_qos except it has to handle
-// the case where two SLs are sharing a VL and one of the SLs is high priority.
 static int
-_setup_qos(RoutingModule_t *rm, Qos_t * qos, VirtualFabrics_t *VirtualFabrics,
-	const uint8_t *SLtoSC, const uint8_t *SCtoSL)
+_oversubscribe_factor(int sls, boolean mc_sl)
 {
-	int sl, sc, vl, qs, numSCs, num_qos_all;
-	int shared_vl=-1;
-	boolean mcast_sl = 0;
+	if (mc_sl) return 0;
 
-	num_qos_all = MIN(VirtualFabrics->number_of_qos_all, MAX_QOS_GROUPS);
-	for (vl = 0; vl < STL_MAX_VLS; vl++) {
-		if(!bitset_init(&sm_pool, &qos->vlvf.vf[vl], MAX_VFABRICS)) {
-			IB_FATAL_ERROR("_setup_qos: Out of memory, exiting.");
-		}
-	}
-	for (qs=0; qs < num_qos_all; qs++) {
-		QosConfig_t *qosp = &VirtualFabrics->qos_all[qs];
-		int i, j;
+	// Allow base SLs of multiple QOS groups to share 1 of their VLs if necessary.
+	return 1;
+}
 
-		for (i = 0; i < 3; i++) {
-			switch (i) {
-				default:
-				case 0:
-					sl = qosp->base_sl; mcast_sl = 0;
-					break;
-				case 1:
-					sl = qosp->resp_sl; mcast_sl = 0;
-					if (sl == qosp->base_sl) continue;
-					break;
-				case 2:
-					sl = qosp->mcast_sl; mcast_sl = 1;
-					if (sl == qosp->base_sl ||
-							sl == qosp->resp_sl)
-						continue;
-					break;
-			}
-
-			numSCs = rm->funcs.num_routing_scs(sl, mcast_sl);
-			for (j = 1; j <= numSCs; j++) {
-				sc = _find_nth_sc(SLtoSC, SCtoSL, sl, j);
-				if (sc == 15 || sc >= STL_MAX_SCS) {
-					IB_LOG_ERROR_FMT(__func__, "Missing SC:SL Mapping:"
-						"SL=%02d needs %d SCs, could not find the %d SC.",
-						sl, numSCs, j);
-					return VSTATUS_BAD;
-				}
-
-				vl = qos->scvl.SCVLMap[sc].VL;
-				if (vl == 15 || vl >= qos->numVLs) {
-					IB_LOG_ERROR_FMT(__func__, "Unexpected SC:VL Mapping:"
-						"SL=%02d SC=%02d VL=%02d", sl, sc, vl);
-					return VSTATUS_BAD;
-				}
-
-				// We assign the VL to high or low priority here but
-				// note that if the vl is the shared vl we keep the previous
-				// settings for the VL.
-				if (vl != shared_vl && qosp->priority) {
-					bitset_set(&qos->highPriorityVLs, vl);
-					qos->vlBandwidth.highPriority[vl] = 1;
-				} else if (vl != shared_vl) {
-					bitset_set(&qos->lowPriorityVLs, vl);
-					if (shared_vl == -1 && j == numSCs) {
-						shared_vl = vl;
-					}
-				}
-				bitset_set(&qos->vlvf.vf[vl], qs);
-			}
-		}
-	}
-
-	int nonQosBw = 0;
-	int nonQos_base_sl = -1, nonQos_resp_sl = -1, nonQos_mcast_sl = -1;
-	for (qs=0; qs < num_qos_all; qs++) {
-		QosConfig_t *qosp = &VirtualFabrics->qos_all[qs];
-
-		if (qosp->qos_enable) {
-			if (qosp->priority) continue;
-
-			// Qos LowPriority
-			DivideBwUp(rm, qos, qosp->percent_bandwidth,
-				qosp->base_sl, qosp->resp_sl, qosp->mcast_sl, SLtoSC);
-		} else {
-			// NonQos only gets bandwidth once.
-			nonQosBw = qosp->percent_bandwidth;
-			nonQos_base_sl = qosp->base_sl;
-			if (qosp->resp_sl != qosp->base_sl) {
-				nonQos_resp_sl = qosp->resp_sl;
-			}
-			if (qosp->mcast_sl != qosp->base_sl) {
-				nonQos_mcast_sl = qosp->mcast_sl;
-			}
-		}
-	}
-	// Add in the nonQosBw last
-	if (nonQosBw) {
-		if (nonQos_resp_sl == -1) nonQos_resp_sl = nonQos_base_sl;
-		if (nonQos_mcast_sl == -1) nonQos_mcast_sl = nonQos_base_sl;
-		DivideBwUp(rm, qos, nonQosBw, nonQos_base_sl, nonQos_resp_sl,
-			nonQos_mcast_sl, SLtoSC);
-	}
-
-	sm_DbgPrintQOS(qos);
-	return VSTATUS_OK;
+static boolean
+_overlay_mcast(void)
+{
+	return sm_config.smDorRouting.overlayMCast;
 }
 
 static Status_t
-_routing_func_assign_scs_to_sls(RoutingModule_t *rm, VirtualFabrics_t *vfs)
+_process_xml_config(void)
 {
-	Status_t ret;
-	uint8_t SLtoSC[STL_MAX_SLS];
-	uint8_t SCtoSL[STL_MAX_SCS];
-	Qos_t *qos = NULL;
-	int i;
+	int d, p, toroidal_count = 0;
 
-	if (rm->funcs.min_vls() > rm->funcs.max_vls()) {
-		IB_LOG_ERROR_FMT(__func__, "Configuration cannot be mapped. MinSupportedVLs (%d) cannot exceed MaxSupportedVLs (%d).",
-			rm->funcs.min_vls(),rm->funcs.max_vls());
+	if (sm_config.smDorRouting.dimensionCount == 0) {
+		IB_LOG_ERROR_FMT(__func__,
+			"Routing algorithm configured as dor but no dimensions have been specified in the configuration.");
 		return VSTATUS_BAD;
 	}
 
-	qos = sm_alloc_qos();
-
-	// Flag the maps as invalid.
-	memset(SLtoSC, 15, sizeof(SLtoSC));
-	memset(SCtoSL, 0xff, sizeof(SCtoSL));
-
-	// Populate the SCVL maps for each QOS level
-	for (i = 1; i <= rm->funcs.max_vls(); i++) {
-		sm_fill_SCVLMap(&qos[i]);
+	if (sm_config.smDorRouting.dimensionCount > SM_DOR_MAX_DIMENSIONS) {
+		IB_LOG_ERROR_FMT(__func__, "Number of dimensions configured is %d but dor algorithm supports only %d dimensions.",
+					sm_config.smDorRouting.dimensionCount, SM_DOR_MAX_DIMENSIONS);
+		return VSTATUS_BAD;
 	}
 
-	// Only perform SC to SL assignment on minimum supported VLs
-	ret = _map_scs_to_sls(rm, &qos[sm_config.max_fixed_vls], vfs, SLtoSC, SCtoSL);
-	if (ret != VSTATUS_OK) {
-		sm_free_qos(qos);
-		return ret;
+	if (sm_config.smDorRouting.warn_threshold > SM_DOR_MAX_WARN_THRESHOLD) {
+		IB_LOG_WARN_FMT(__func__,
+			"MeshTorusTopology WarnThreshold of %d is higher than max suported %d. Defaulting to %d.",
+			sm_config.smDorRouting.warn_threshold, SM_DOR_MAX_WARN_THRESHOLD, SM_DOR_MAX_WARN_THRESHOLD);
+		sm_config.smDorRouting.warn_threshold = SM_DOR_MAX_WARN_THRESHOLD;
 	}
 
-	// 1 VL is a special case, always set it up
-	sm_setup_qos_1vl(rm, &qos[1], vfs);
+	if (sm_config.smDorRouting.debug) {
+		IB_LOG_INFINI_INFO_FMT(__func__, "DorTopology %s NumberOfDimensions %d routingSCs %d",
+			(sm_config.smDorRouting.topology == DOR_MESH)?"mesh":((sm_config.smDorRouting.topology == DOR_TORUS)? "torus":"partial torus"),
+			sm_config.smDorRouting.dimensionCount, sm_config.smDorRouting.routingSCs);
 
-	// Set Qos for all supported number of VLs
-	for (i = rm->funcs.min_vls(); i <= rm->funcs.max_vls(); i++) {
-		ret = _setup_qos(rm, &qos[i], vfs, SLtoSC, SCtoSL);
-		if (ret != VSTATUS_OK) {
-			sm_free_qos(qos);
-			return ret;
+		for (d=0; d<sm_config.smDorRouting.dimensionCount; d++) {
+			if (sm_config.smDorRouting.dimension[d].toroidal)
+				toroidal_count++;
+
+			IB_LOG_INFINI_INFO_FMT(__func__, "DorDimension %d is %s",
+				d, sm_config.smDorRouting.dimension[d].toroidal?"toroidal":"not toroidal");
+
+			for (p=0; p<sm_config.smDorRouting.dimension[d].portCount; p++) {
+				IB_LOG_INFINI_INFO_FMT(__func__, "DorDimension %d PortPair %d,%d", d,
+					sm_config.smDorRouting.dimension[d].portPair[p].port1, sm_config.smDorRouting.dimension[d].portPair[p].port2);
+			}
 		}
+		IB_LOG_INFINI_INFO_FMT(__func__, "Total toroidal dimensions %d", toroidal_count);
 	}
 
-	memcpy(sm_SLtoSC, SLtoSC, sizeof(SLtoSC));
-	memcpy(sm_SCtoSL, SCtoSL, sizeof(SCtoSL));
-
-	sm_install_qos(qos);
 	return VSTATUS_OK;
 }
 
@@ -3891,11 +3509,13 @@ _make_routing_module(RoutingModule_t * rm)
 	rm->funcs.select_scsc_map = _generate_scsc_map;
 	rm->funcs.process_swIdx_change = _process_swIdx_change;
 	rm->funcs.update_bw = sm_routing_func_update_bw;
-	rm->funcs.assign_scs_to_sls = _routing_func_assign_scs_to_sls;
-	rm->funcs.assign_sls = sm_routing_func_assign_sls;
+	rm->funcs.assign_scs_to_sls = sm_routing_func_assign_scs_to_sls_nonfixedmap;
 	rm->funcs.num_routing_scs = _num_routing_scs;
 	rm->funcs.build_spanning_trees = _build_spanning_trees;
-	rm->funcs.mcast_isolation_required = sm_routing_func_mcast_isolation_is_required;
+	rm->funcs.mcast_isolation_required = sm_routing_func_true;
+	rm->funcs.overlay_mcast = _overlay_mcast;
+	rm->funcs.oversubscribe_factor = _oversubscribe_factor;
+	rm->funcs.process_xml_config = _process_xml_config;
 
 	rm->release = _release;
 	rm->copy = _copy;

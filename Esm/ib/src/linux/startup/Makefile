@@ -112,6 +112,8 @@ INCLUDE_SUBDIR		=
 #				(in addition to LOCALDEPLIBS)
 #LOCAL_LIB_DIRS	= User library directories for libpaths [Empty]
 
+LIB_DIRS += /usr/lib64
+
 CLOCAL	=  $(CPIE)
 LOCALDEPLIBS = cs ibaccess public config vslogu Xml expat opamgt-priv
 LOCALLIBS = pthread $(OPENIB_USER_LIBS) rt crypto
@@ -156,9 +158,6 @@ fm_capture: sm_capture
 
 $(BUILDDIR)/config_convert: $(PROJ_BIN_DIR)/config_convert
 	cp $(PROJ_BIN_DIR)/config_convert $(BUILDDIR)
-
-# need baseFile rules to create opafm_src.xml
-include $(TL_DIR)/Makerules/Rules.baseFiles
 
 opafm.xml : opafm_src.xml $(BUILDDIR)/config_convert
 	$(BUILDDIR)/config_convert dummy.config opafm_src.xml > opafm.xml

@@ -1,6 +1,6 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015-2017, Intel Corporation
+# Copyright (c) 2015-2018, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -120,7 +120,7 @@ INCLUDE_SUBDIR		=
 
 ifeq "$(BUILD_TARGET_OS)" "VXWORKS"
 #LOCALDEPLIBS = cs fe if3 if3sa mai net pm sa sm vxworks
-LOCALDEPLIBS = vxworks mai cs if3 if3sa em pm sm sa config fe net eeph eepha lacp mux
+LOCALDEPLIBS = vxworks mai cs if3 if3sa em pm pa sm sa config fe net eeph eepha lacp mux
 endif
 
 LOCAL_INCLUDE_DIRS = $(TL_DIR)/Topology $(TL_DIR)/IbPrint

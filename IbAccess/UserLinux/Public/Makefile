@@ -59,6 +59,7 @@ CFILES			= \
 				isemaphore.c \
 				ispinlock.c \
 				ithread.c \
+				ithreadpool.c \
 				itimer.c \
 				statustext.c \
 				# Add more c files here
@@ -102,6 +103,7 @@ INCLUDE_TARGETS	= \
 				$(COMMON_SRCDIR)/ispinlock.h \
 				$(COMMON_SRCDIR)/itcpip.h \
 				$(COMMON_SRCDIR)/ithread.h \
+				$(COMMON_SRCDIR)/ithreadpool.h \
 				$(COMMON_SRCDIR)/itimer.h \
 				$(COMMON_SRCDIR)/statustext.h \
 				datatypes_osd.h \

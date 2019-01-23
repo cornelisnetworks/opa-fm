@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2018, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -30,20 +30,92 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* [ICS VERSION STRING: unknown] */
 
 #include "sm_l.h"
+#include "sm_activate.h"
+
+// time after arming when we're in the idle flit propagation window
+#define IDLE_FLIT_PROPAGATION_TIME (50 * VTIMER_1_MILLISEC)
+
+//
+// API for interacting with sweep_activate()'s retry logic.
+//
+
+static uint8_t
+_activation_retry_attempts(ActivationRetry_t * retry)
+{
+	uint8_t r;
+
+	MutexAcquire(&retry->mutex);
+	r = retry ? retry->attempts : 0;
+	MutexRelease(&retry->mutex);
+	return r;
+}
+
+static void
+_activation_retry_inc_failures(ActivationRetry_t * retry)
+{
+	if (retry) {
+		MutexAcquire(&retry->mutex);
+		++ retry->failures;
+		MutexRelease(&retry->mutex);
+	}
+}
+
+static void
+_activation_retry_init(ActivationRetry_t * retry)
+{
+	MutexInitState(&retry->mutex);
+	MutexInit(&retry->mutex);
+}
+
+static void
+_activation_retry_destroy(ActivationRetry_t * retry)
+{
+	MutexDestroy(&retry->mutex);
+}
+
+typedef struct {
+	ParallelWorkItem_t item;
+	Node_t *nodep;
+	ActivationRetry_t * retry;
+} ActivateWorkItem_t;
+
+static ActivateWorkItem_t *
+_activate_workitem_alloc(Node_t *nodep, ActivationRetry_t * retry, 
+	PsWorker_t workfunc)
+{
+	ActivateWorkItem_t *workitem = NULL;
+	if (vs_pool_alloc(&sm_pool, sizeof(ActivateWorkItem_t),
+		(void**)&workitem) != VSTATUS_OK) {
+		return NULL;
+	}
+	memset(workitem, 0, sizeof(ActivateWorkItem_t));
+
+	workitem->nodep = nodep;
+	workitem->retry = retry;
+	workitem->item.workfunc = workfunc;
+
+	return workitem;
+}
+
+static void
+_activate_workitem_free(ActivateWorkItem_t *workitem)
+{
+	vs_pool_free(&sm_pool, workitem);
+}
 
 static __inline__ int
-needs_reregistration(Node_t * nodep, Port_t * portp, pActivationRetry_t retry)
+_needs_reregistration(Node_t * nodep, Port_t * portp, ActivationRetry_t * retry)
 {
 	// general conditions are only checked on first attempt.
 	// on retries, only reregister if it remains pending from previous attempts
-	if (activation_retry_attempts(retry))
-		return portp->portData->reregisterPending;
+	if (_activation_retry_attempts(retry))
+		return portp->poportp->registration.reregisterPending;
 
 	// reregister if new sm
 	if (topology_passcount < 1) return TRUE;
 
 	// reregister if previous attempts haven't yet succeeded
-	if (portp->portData->reregisterPending) return TRUE;
+	if (portp->poportp->registration.reregisterPending) return TRUE;
 
 	// reregister if node/port is new this sweep
 	Node_t * oldnodep = sm_find_guid(&old_topology, nodep->nodeInfo.NodeGUID);
@@ -57,7 +129,7 @@ needs_reregistration(Node_t * nodep, Port_t * portp, pActivationRetry_t retry)
 }
 
 static void
-handle_activate_failure(Port_t * portp)
+_handle_activate_failure(Port_t * portp)
 {
 	// limit resweeps, if a device consistently can't be activated, it may
 	// have a HW or config issue
@@ -66,7 +138,7 @@ handle_activate_failure(Port_t * portp)
 }
 
 static void
-handle_activate_bounce(Node_t * nodep, Port_t * portp)
+_handle_activate_bounce(Node_t * nodep, Port_t * portp)
 {
 	if(sm_config.portBounceLogLimit == PORT_BOUNCE_LOG_NO_LIMIT ||
 		topology_port_bounce_log_num < sm_config.portBounceLogLimit) {
@@ -88,26 +160,27 @@ handle_activate_bounce(Node_t * nodep, Port_t * portp)
 }
 
 static void
-handle_activate_retry(Node_t * nodep, Port_t * portp, pActivationRetry_t retry)
+_handle_activate_retry(Node_t * nodep, Port_t * portp, ActivationRetry_t * retry)
 {
-	activation_retry_inc_failures(retry);
+	_activation_retry_inc_failures(retry);
 
-	if(activation_retry_attempts(retry) == sm_config.neighborNormalRetries) {
+	if(_activation_retry_attempts(retry) == sm_config.neighborNormalRetries) {
 		IB_LOG_ERROR_FMT(__func__,
 			"Port will not go active for node %s nodeGuid "FMT_U64" port %d after %d retries",
-			sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index, activation_retry_attempts(retry));
-		handle_activate_failure(portp);
+			sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index, _activation_retry_attempts(retry));
+		_handle_activate_failure(portp);
 	}
 }
 
 static Status_t
-sm_arm_port(Topology_t * topop, Node_t * nodep, Port_t * portp)
+_arm_port(SmMaiHandle_t *ib_fd, Topology_t * topop, Node_t * nodep, Port_t * portp,
+	ParallelSweepContext_t *psc)
 {
 	Status_t status = VSTATUS_OK;
 	STL_PORT_INFO portInfo;
 	STL_LID dlid;
 	uint32_t madStatus = 0;
-    SmpAddr_t addr;
+	SmpAddr_t addr;
 
 	IB_ENTER(__func__, topop, nodep, portp, 0);
 
@@ -123,7 +196,8 @@ sm_arm_port(Topology_t * topop, Node_t * nodep, Port_t * portp)
 		if (!sm_valid_port(swportp)) {
 			IB_LOG_WARN_FMT(__func__, "Failed to get Port 0 of Switch " FMT_U64,
 							nodep->nodeInfo.NodeGUID);
-			return VSTATUS_BAD;
+			status = VSTATUS_BAD;
+			goto bail;
 		}
 		dlid = swportp->portData->lid;
 	} else {
@@ -136,14 +210,14 @@ sm_arm_port(Topology_t * topop, Node_t * nodep, Port_t * portp)
 		IB_LOG_WARN_FMT(__func__, "Node %s guid "FMT_U64
 			" port %u isn't in INIT state.",
 			sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index);
-		IB_EXIT(__func__, VSTATUS_BAD);
-		return (VSTATUS_BAD);
+		status = VSTATUS_BAD;
+		goto bail;
 	} else if (portInfo.PortStates.s.PortState > IB_PORT_INIT) {
 		IB_LOG_INFINI_INFO_FMT(__func__, "Node %s guid "FMT_U64
 			" port %u already armed or active.",
 			sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index);
-		IB_EXIT(__func__, VSTATUS_OK);
-		return (VSTATUS_OK);
+		status = VSTATUS_BAD;
+		goto bail;
 	}
 
 	// Set the "No change" attributes.
@@ -161,9 +235,10 @@ sm_arm_port(Topology_t * topop, Node_t * nodep, Port_t * portp)
 	//  Tell the port its new state.
 	//
 	SMP_ADDR_SET_LR(&addr, sm_lid, dlid);
-	status = SM_Set_PortInfo(fd_topology, (1 << 24) | (portp->index),
+	psc_unlock(psc);
+	status = SM_Set_PortInfo(ib_fd, (1 << 24) | (portp->index),
 		&addr, &portInfo, portp->portData->portInfo.M_Key, &madStatus);
-
+	psc_lock(psc);
 	if (status != VSTATUS_OK && madStatus != MAD_STATUS_INVALID_ATTRIB) {
 		IB_LOG_WARN_FMT(__func__,
 			"Cannot set PORTINFO for node %s nodeGuid " FMT_U64
@@ -172,7 +247,7 @@ sm_arm_port(Topology_t * topop, Node_t * nodep, Port_t * portp)
 
 	} else if(madStatus == MAD_STATUS_INVALID_ATTRIB &&
 		portInfo.PortStates.s.IsSMConfigurationStarted == 0) {
-		handle_activate_bounce(nodep, portp);
+		_handle_activate_bounce(nodep, portp);
 	} else if (portInfo.PortStates.s.PortState != IB_PORT_ARMED &&
 		!(madStatus == MAD_STATUS_INVALID_ATTRIB)) {
 
@@ -183,7 +258,7 @@ sm_arm_port(Topology_t * topop, Node_t * nodep, Port_t * portp)
 						IB_PORT_ARMED, portInfo.PortStates.s.PortState);
 		// limit resweeps, if a device consistently can't be activated, it may
 		// have a HW or config issue
-		handle_activate_failure(portp);
+		_handle_activate_failure(portp);
 	}
 
 	// To save an additional Set(PortInfo) per port, the HOQLife/XmitQ values may not have been
@@ -204,17 +279,22 @@ sm_arm_port(Topology_t * topop, Node_t * nodep, Port_t * portp)
 		//
 		portp->state = portInfo.PortStates.s.PortState;
 		portp->portData->portInfo = portInfo;
+		sm_popo_update_port_state(&sm_popo, portp, &portp->portData->portInfo.PortStates);
 
 		// Clear the LED if it was previously turned on.
-		sm_enable_port_led(nodep, portp, FALSE);
+		psc_unlock(psc);
+		sm_enable_port_led(ib_fd, nodep, portp, FALSE);
+		psc_lock(psc);
 	}
 
+bail:
 	IB_EXIT(__func__, status);
 	return (status);
 }
 
 static Port_t *
-sm_arm_switch(Topology_t *topop, Node_t *switchp)
+_arm_switch(SmMaiHandle_t *ib_fd, Topology_t *topop, Node_t *switchp,
+	ParallelSweepContext_t *psc)
 {
 	Port_t *swportp, *portp;
 	STL_LID dlid;
@@ -242,7 +322,9 @@ sm_arm_switch(Topology_t *topop, Node_t *switchp)
 					//port marked down administratively for link policy violation but real port state
 					//should still be in init, so set linkInitReason here
 					sm_set_linkinit_reason(switchp, portp, STL_LINKINIT_OUTSIDE_POLICY);
-					sm_enable_port_led(switchp, portp, TRUE);
+					psc_unlock(psc);
+					sm_enable_port_led(ib_fd, switchp, portp, TRUE);
+					psc_lock(psc);
 				}
 
 			} else {
@@ -280,8 +362,10 @@ sm_arm_switch(Topology_t *topop, Node_t *switchp)
 			uint32_t madStatus = 0;
 			STL_AGGREGATE *lastSeg = NULL;
 
-			status = SM_Set_Aggregate_LR(fd_topology, (STL_AGGREGATE*)buffer,
+			psc_unlock(psc);
+			status = SM_Set_Aggregate_LR(ib_fd, (STL_AGGREGATE*)buffer,
 				aggrHdr, sm_lid, dlid, sm_config.mkey, &lastSeg, &madStatus);
+			psc_lock(psc);
 
 			// Process the results
 			if (lastSeg) {
@@ -335,8 +419,9 @@ sm_arm_switch(Topology_t *topop, Node_t *switchp)
 					if (retPort->state == IB_PORT_ACTIVE)
 						retPort->portData->numFailedActivate = 0;
 
-
-					sm_enable_port_led(switchp, retPort, FALSE);
+					psc_unlock(psc);
+					sm_enable_port_led(ib_fd, switchp, retPort, FALSE);
+					psc_lock(psc);
 					bitset_clear(&switchp->initPorts, retPort->index);
 				}
 			} else {
@@ -349,10 +434,15 @@ sm_arm_switch(Topology_t *topop, Node_t *switchp)
 
 			// ARM this port manually if we had Aggregate troubles.
 			if (!lastSeg || aggrHdr->Result.s.Error) {
-				if (sm_valid_port(portp) && sm_arm_port(topop, switchp, portp) != VSTATUS_OK) {
-					IB_LOG_ERROR_FMT(__func__, "TT(ta): can't ARM switch %s nodeGuid "FMT_U64" node index %d port index %d",
-									sm_nodeDescString(switchp), switchp->nodeInfo.NodeGUID, switchp->index, portp->index);
-					sm_enable_port_led(switchp, portp, TRUE);
+				if (sm_valid_port(portp) && _arm_port(ib_fd, topop, switchp, portp,
+					psc) != VSTATUS_OK) {
+					IB_LOG_ERROR_FMT(__func__, "TT(ta): can't ARM switch %s "
+						"nodeGuid "FMT_U64" node index %d port index %d",
+						sm_nodeDescString(switchp), switchp->nodeInfo.NodeGUID,
+						switchp->index, portp->index);
+					psc_unlock(psc);
+					sm_enable_port_led(ib_fd, switchp, portp, TRUE);
+					psc_lock(psc);
 				}
 			}
 
@@ -366,15 +456,15 @@ sm_arm_switch(Topology_t *topop, Node_t *switchp)
 }
 
 Status_t
-sm_activate_port(Topology_t * topop, Node_t * nodep, Port_t * portp,
-	uint8_t forceReregister, pActivationRetry_t retry)
+sm_activate_port(SmMaiHandle_t *fd, Topology_t * topop, Node_t * nodep, Port_t * portp,
+	uint8_t forceReregister, ActivationRetry_t * retry)
 {
 	Status_t status = VSTATUS_OK;
 	STL_PORT_INFO portInfo;
 	STL_LID dlid;
 	uint32_t madStatus = 0;
 	int reregisterable = TRUE;
-    SmpAddr_t addr;
+	SmpAddr_t addr;
 
 	IB_ENTER(__func__, topop, nodep, portp, forceReregister);
 
@@ -389,7 +479,7 @@ sm_activate_port(Topology_t * topop, Node_t * nodep, Port_t * portp,
 			IB_LOG_WARN_FMT(__func__,
 				"Failed to find node %s nodeGuid "FMT_U64" port 0",
 				sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID);
-			sm_enable_port_led(nodep, portp, TRUE);
+			sm_enable_port_led(fd, nodep, portp, TRUE);
 			IB_EXIT(__func__, VSTATUS_BAD);
 			return VSTATUS_BAD;
 		}
@@ -406,13 +496,13 @@ sm_activate_port(Topology_t * topop, Node_t * nodep, Port_t * portp,
 		IB_LOG_WARN_FMT(__func__,
 			"Node %s nodeGuid "FMT_U64" port %u: state isn't ARMED or ACTIVE; state=%u",
 			sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index, portInfo.PortStates.s.PortState);
-		sm_enable_port_led(nodep, portp, TRUE);
+		sm_enable_port_led(fd, nodep, portp, TRUE);
 		IB_EXIT(__func__, VSTATUS_BAD);
 		return (VSTATUS_BAD);
 	}
 
 	if (portInfo.PortStates.s.PortState == IB_PORT_ACTIVE) {
-		if (reregisterable && (needs_reregistration(nodep, portp, retry) || forceReregister)) {
+		if (reregisterable && (_needs_reregistration(nodep, portp, retry) || forceReregister)) {
 			// In this case, the port is already active but we need to tell it to
 			// re-register any multicast groups. This might be because the FM was
 			// restarted or because the node just appeared in the fabric and
@@ -420,7 +510,7 @@ sm_activate_port(Topology_t * topop, Node_t * nodep, Port_t * portp,
 
 			// Indicate that reregistration is pending; will persist across
 			// sweeps until it succeeds or is no longer required (e.g. state change)
-			portp->portData->reregisterPending = 1;
+			portp->poportp->registration.reregisterPending = 1;
 		}
 		// If the port is already active, we don't need to actually send the MAD.
 		portp->state = portInfo.PortStates.s.PortState;
@@ -437,15 +527,15 @@ sm_activate_port(Topology_t * topop, Node_t * nodep, Port_t * portp,
 	//
 	//  Tell the port its new state.
 	//
-    SMP_ADDR_SET_LR(&addr, sm_lid, dlid);
-	status = SM_Set_PortInfo(fd_topology, (1 << 24) | (portp->index),
+	SMP_ADDR_SET_LR(&addr, sm_lid, dlid);
+	status = SM_Set_PortInfo(fd, (1 << 24) | (portp->index),
 		&addr, &portInfo, portp->portData->portInfo.M_Key, &madStatus);
 
 	if (status != VSTATUS_OK && madStatus != MAD_STATUS_INVALID_ATTRIB) {
 		IB_LOG_WARN_FMT(__func__,
 			"Cannot set PORTINFO for node %s nodeGuid "FMT_U64" port %d: status=%d madStatus=%u",
 			sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index, status, madStatus);
-		sm_enable_port_led(nodep, portp, TRUE);
+		sm_enable_port_led(fd, nodep, portp, TRUE);
 		IB_EXIT(__func__, status);
 		return (status);
 	}
@@ -453,10 +543,10 @@ sm_activate_port(Topology_t * topop, Node_t * nodep, Port_t * portp,
 	// check for failures to activate
 	if (portInfo.PortStates.s.PortState != IB_PORT_ACTIVE) {
 		if (madStatus == MAD_STATUS_INVALID_ATTRIB && !portInfo.PortStates.s.IsSMConfigurationStarted) {
-			handle_activate_bounce(nodep, portp);
+			_handle_activate_bounce(nodep, portp);
 		} else if (madStatus == MAD_STATUS_INVALID_ATTRIB && portp->index > 0 && !portInfo.PortStates.s.NeighborNormal) {
 			// check for obvious "neighbor normal not ready" failures
-			handle_activate_retry(nodep, portp, retry);
+			_handle_activate_retry(nodep, portp, retry);
 		} else if (madStatus == MAD_STATUS_INVALID_ATTRIB && portp->index > 0
 				&& !portp->portData->portInfo.PortStates.s.NeighborNormal
 				&& portInfo.PortStates.s.NeighborNormal) {
@@ -465,13 +555,13 @@ sm_activate_port(Topology_t * topop, Node_t * nodep, Port_t * portp,
 			// this Set, conservatively assume it was a race and trigger a
 			// retry.  if it fails on the retry, we'll fall through to the
 			// general failure case.
-			handle_activate_retry(nodep, portp, retry);
+			_handle_activate_retry(nodep, portp, retry);
 		} else {
 			IB_LOG_WARN_FMT(__func__,
 				"Activate port for node %s nodeGuid "FMT_U64" port %d: tried to set state to %d but returned %d",
 				sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index,
 				IB_PORT_ACTIVE, portInfo.PortStates.s.PortState);
-			handle_activate_failure(portp);
+			_handle_activate_failure(portp);
 		}
 	}
 
@@ -480,6 +570,7 @@ sm_activate_port(Topology_t * topop, Node_t * nodep, Port_t * portp,
 	//
 	portp->state = portInfo.PortStates.s.PortState;
 	portp->portData->portInfo = portInfo;
+	sm_popo_update_port_state(&sm_popo, portp, &portp->portData->portInfo.PortStates);
 	if (portp->state == IB_PORT_ACTIVE)
 		portp->portData->numFailedActivate = 0;
 
@@ -488,7 +579,8 @@ sm_activate_port(Topology_t * topop, Node_t * nodep, Port_t * portp,
 }
 
 static Status_t
-activate_switch_via_portinfo(Topology_t * topop, Node_t * nodep, pActivationRetry_t retry)
+_activate_switch_via_portinfo(SmMaiHandle_t *fd, Topology_t * topop, Node_t * nodep,
+	ActivationRetry_t * retry, ParallelSweepContext_t *psc)
 {
 	Status_t status;
 	Port_t * portp;
@@ -497,7 +589,9 @@ activate_switch_via_portinfo(Topology_t * topop, Node_t * nodep, pActivationRetr
 
 	for_all_physical_ports(nodep, portp) {
 		if (!sm_valid_port(portp) || portp->state < IB_PORT_ARMED) continue;
-		status = sm_activate_port(topop, nodep, portp, FALSE, retry);
+		psc_unlock(psc);
+		status = sm_activate_port(fd, topop, nodep, portp, FALSE, retry);
+		psc_lock(psc);
 		if (status != VSTATUS_OK) {
 			IB_LOG_WARN_FMT(__func__,
 				"Failed to activate node %s nodeGuid "FMT_U64" port 0; status=%u",
@@ -512,7 +606,9 @@ activate_switch_via_portinfo(Topology_t * topop, Node_t * nodep, pActivationRetr
 }
 
 static Status_t
-activate_switch_via_portstateinfo(Topology_t * topop, Node_t * nodep, Port_t * port0p, pActivationRetry_t retry)
+_activate_switch_via_portstateinfo(SmMaiHandle_t *fd, Topology_t * topop,
+	Node_t * nodep, Port_t * port0p, ActivationRetry_t * retry, 
+	ParallelSweepContext_t *psc)
 {
 	Status_t status = VSTATUS_OK;
 	int i;
@@ -520,7 +616,10 @@ activate_switch_via_portstateinfo(Topology_t * topop, Node_t * nodep, Port_t * p
 	IB_ENTER(__func__, topop, nodep, retry, 0);
 
 	STL_PORT_STATE_INFO * psi = NULL;
-	status = sm_set_node_port_states(topop, nodep, port0p, NULL, IB_PORT_ARMED, IB_PORT_ACTIVE, &psi);
+	psc_unlock(psc);
+	status = sm_set_node_port_states(fd, topop, nodep, port0p, NULL, IB_PORT_ARMED,
+		IB_PORT_ACTIVE, &psi);
+	psc_lock(psc);
 	if (status != VSTATUS_OK) {
 		IB_LOG_WARN_FMT(__func__,
 			"Failed Set(PortStateInfo) for node %s nodeGuid "FMT_U64": status=%u",
@@ -531,7 +630,7 @@ activate_switch_via_portstateinfo(Topology_t * topop, Node_t * nodep, Port_t * p
 
 		// if Set failed, see if we can Get and take advantage of any ports
 		// that succeeded
-		status = sm_get_node_port_states(topop, nodep, port0p, NULL, &psi);
+		status = sm_get_node_port_states(fd, topop, nodep, port0p, NULL, &psi, psc);
 		if (status != VSTATUS_OK) {
 			IB_LOG_WARN_FMT(__func__,
 				"Failed Get(PortStateInfo) for node %s nodeGuid "FMT_U64": status=%u",
@@ -541,7 +640,7 @@ activate_switch_via_portstateinfo(Topology_t * topop, Node_t * nodep, Port_t * p
 				return status;
 
 			// last resort... hit each port individually
-			status = activate_switch_via_portinfo(topop, nodep, retry);
+			status = _activate_switch_via_portinfo(fd, topop, nodep, retry, psc);
 			IB_EXIT(__func__, status);
 			return status;
 		}
@@ -569,14 +668,16 @@ activate_switch_via_portstateinfo(Topology_t * topop, Node_t * nodep, Port_t * p
 			case IB_PORT_ARMED:
 				// still armed or never got processed
 				if (!psi[i].PortStates.s.IsSMConfigurationStarted) {
-					handle_activate_bounce(nodep, portp);
+					_handle_activate_bounce(nodep, portp);
 				} else if (i > 0 && !psi[i].PortStates.s.NeighborNormal) {
-					handle_activate_retry(nodep, portp, retry);
+					_handle_activate_retry(nodep, portp, retry);
 				} else {
 					// looks okay; most likely that the Set(PortStateInfo) failed
 					// before reaching this port, or that NeighborNormal propagated
 					// between the set and get.  attempt directly via Set(PortInfo)
-					status = sm_activate_port(topop, nodep, portp, FALSE, retry);
+					psc_unlock(psc);
+					status = sm_activate_port(fd_topology, topop, nodep, portp, FALSE, retry);
+					psc_lock(psc);
 					if (status != VSTATUS_OK) {
 						IB_LOG_WARN_FMT(__func__,
 							"Failed to activate node %s nodeGuid "FMT_U64" port 0: status=%u",
@@ -588,7 +689,7 @@ activate_switch_via_portstateinfo(Topology_t * topop, Node_t * nodep, Port_t * p
 				break;
 			default:
 				// state < ARMED: port bounce
-				handle_activate_bounce(nodep, portp);
+				_handle_activate_bounce(nodep, portp);
 				break;
 		}
 	}
@@ -600,7 +701,8 @@ activate_switch_via_portstateinfo(Topology_t * topop, Node_t * nodep, Port_t * p
 }
 
 static Status_t
-activate_switch(Topology_t * topop, Node_t * nodep, pActivationRetry_t retry)
+_activate_switch(SmMaiHandle_t *fd, Topology_t * topop, Node_t * nodep,
+	ActivationRetry_t * retry, ParallelSweepContext_t *psc)
 {
 	Status_t status;
 
@@ -622,10 +724,12 @@ activate_switch(Topology_t * topop, Node_t * nodep, pActivationRetry_t retry)
 	//       - we're ARMED and retrying (as we only Set(PortStateInfo) on first attempt)
 	//       - we're ACTIVE and need a reregistration
 	if (  nodep->switchInfo.u2.s.EnhancedPort0
-	   && (  (port0p->state == IB_PORT_ARMED && activation_retry_attempts(retry))
-	      || (port0p->state == IB_PORT_ACTIVE && needs_reregistration(nodep, port0p, retry))))
+	   && (  (port0p->state == IB_PORT_ARMED && _activation_retry_attempts(retry))
+	      || (port0p->state == IB_PORT_ACTIVE && _needs_reregistration(nodep, port0p, retry))))
 	{
-		status = sm_activate_port(topop, nodep, port0p, FALSE, retry);
+		psc_unlock(psc);
+		status = sm_activate_port(fd, topop, nodep, port0p, FALSE, retry);
+		psc_lock(psc);
 		if (status != VSTATUS_OK) {
 			IB_LOG_WARN_FMT(__func__,
 				"Failed to activate node %s nodeGuid "FMT_U64" port 0: status=%u",
@@ -636,16 +740,17 @@ activate_switch(Topology_t * topop, Node_t * nodep, pActivationRetry_t retry)
 	}
 
 	// for remaining switch ports, use PortStateInfo on the first attempt
-	status = activation_retry_attempts(retry)
-		? activate_switch_via_portinfo(topop, nodep, retry)
-		: activate_switch_via_portstateinfo(topop, nodep, port0p, retry);
+	status = _activation_retry_attempts(retry)
+		? _activate_switch_via_portinfo(fd, topop, nodep, retry,  psc)
+		: _activate_switch_via_portstateinfo(fd, topop, nodep, port0p, retry,  psc);
 
 	IB_EXIT(__func__, status);
 	return status;
 }
 
 static Status_t
-activate_hfi(Topology_t * topop, Node_t * nodep, pActivationRetry_t retry)
+_activate_hfi(SmMaiHandle_t *fd, Topology_t * topop, Node_t * nodep,
+	ActivationRetry_t * retry, ParallelSweepContext_t *psc)
 {
 	Status_t status;
 	Port_t * portp;
@@ -654,7 +759,9 @@ activate_hfi(Topology_t * topop, Node_t * nodep, pActivationRetry_t retry)
 
 	for_all_ports(nodep, portp) {
 		if (!sm_valid_port(portp) || portp->state < IB_PORT_ARMED) continue;
-		status = sm_activate_port(topop, nodep, portp, FALSE, retry);
+		psc_unlock(psc);
+		status = sm_activate_port(fd, topop, nodep, portp, FALSE, retry);
+		psc_lock(psc);
 		if (status != VSTATUS_OK) {
 			IB_LOG_WARN_FMT(__func__,
 				"Failed to activate node %s nodeGuid "FMT_U64" port %u: status=%u",
@@ -668,67 +775,33 @@ activate_hfi(Topology_t * topop, Node_t * nodep, pActivationRetry_t retry)
 	return VSTATUS_OK;
 }
 
-// Activates a node "efficiently", e.g. leveraging PortStateInfo when available.
 static Status_t
-sm_activate_node(Topology_t * topop, Node_t * nodep, pActivationRetry_t retry)
-{
-	Status_t status = VSTATUS_OK;
-
-	IB_ENTER(__func__, topop, nodep, retry, 0);
-
-	if (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH) {
-		status = activate_switch(topop, nodep, retry);
-	} else if (nodep->nodeInfo.NodeType == NI_TYPE_CA) {
-		status = activate_hfi(topop, nodep, retry);
-	}
-
-	IB_EXIT(__func__, status);
-	return status;
-}
-
-// Activates a node conservatively: one port at a time via PortInfo only.
-static Status_t
-sm_activate_node_safe(Topology_t * topop, Node_t * nodep, pActivationRetry_t retry)
-{
-	Status_t status = VSTATUS_OK;
-	Port_t * portp;
-
-	IB_ENTER(__func__, topop, nodep, retry, 0);
-
-	for_all_ports(nodep, portp) {
-		if (!sm_valid_port(portp) || portp->state < IB_PORT_ARMED) continue;
-		status = sm_activate_port(sm_topop, nodep, portp, FALSE, retry);
-		if (status != VSTATUS_OK) {
-			IB_LOG_WARN_FMT(__func__,
-				"Failed to activate node %s nodeGuid "FMT_U64" port %u; status=%u",
-				sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index, status);
-			if ((status = sm_popo_port_error(&sm_popo, sm_topop, portp, status)) == VSTATUS_TIMEOUT_LIMIT)
-				return status;
-		}
-	}
-
-	IB_EXIT(__func__, status);
-	return status;
-}
-
-Status_t
-sm_arm_node(Topology_t * topop, Node_t * nodep)
+_arm_node(Topology_t *topop, Node_t *nodep, ParallelSweepContext_t *psc)
 {
 	Status_t status = VSTATUS_OK;
 	Port_t *portp;
 
+	MaiPool_t *mpp = psc_get_mai(psc);
+	if (!mpp) {
+		IB_LOG_ERROR_FMT(__func__, "Failed to allocate MAI handle.");
+		return VSTATUS_NOMEM;
+	}
+
+	psc_lock(psc);
 	if (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH && sm_config.use_aggregates)  {
-		sm_arm_switch(topop, nodep);
+		_arm_switch(mpp->fd, topop, nodep, psc);
 	} else {
 		for_all_ports(nodep, portp) {
 			if (sm_valid_port(portp) && portp->state == IB_PORT_INIT) {
-				status = sm_arm_port(topop, nodep, portp);
+				status = _arm_port(mpp->fd, topop, nodep, portp, psc);
 				if (status != VSTATUS_OK) {
 					IB_LOG_ERROR_FMT(__func__, "TT(ta): can't ARM node %s nodeGuid "FMT_U64" node index %d port index %d",
 									sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, nodep->index, portp->index);
-					sm_enable_port_led(nodep, portp, TRUE);
+					psc_unlock(psc);
+					sm_enable_port_led(mpp->fd, nodep, portp, TRUE);
+					psc_lock(psc);
 					if ((status = sm_popo_port_error(&sm_popo, sm_topop, portp, status)) == VSTATUS_TIMEOUT_LIMIT)
-						return status;
+						goto bail;
 				} else {
 					bitset_clear(&nodep->initPorts, portp->index);
 				}
@@ -736,63 +809,188 @@ sm_arm_node(Topology_t * topop, Node_t * nodep)
 				//port marked down administratively for link policy violation but real port state
 				//should still be in init, so set linkInitReason here
 				sm_set_linkinit_reason(nodep, portp, STL_LINKINIT_OUTSIDE_POLICY);
-				sm_enable_port_led(nodep, portp, TRUE);
+				psc_unlock(psc);
+				sm_enable_port_led(mpp->fd, nodep, portp, TRUE);
+				psc_lock(psc);
 			}
 		}
+	}
+
+bail:
+	psc_unlock(psc);
+	psc_free_mai(psc, mpp);
+	return status;
+}
+
+// Activates a node "efficiently", e.g. leveraging PortStateInfo when available.
+static void
+_activate_node(ParallelSweepContext_t *psc, 
+	ParallelWorkItem_t *pwi)
+{
+	Status_t status = VSTATUS_OK;
+
+	IB_ENTER(__func__, psc, pwi, 0, 0);
+	DEBUG_ASSERT(psc && pwi);
+
+	ActivateWorkItem_t * wi = PARENT_STRUCT(pwi, ActivateWorkItem_t, item);
+	Node_t *nodep = wi->nodep;
+
+	MaiPool_t *mpp = psc_get_mai(psc);
+	if (!psc || !mpp) {
+		IB_LOG_ERROR_FMT(__func__, "Failed to allocate MAI handle.");
+		status = VSTATUS_NOMEM;
+		goto bail;
+	}
+
+
+	psc_lock(psc);
+	if (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH) {
+		status = _activate_switch(mpp->fd, sm_topop, nodep, wi->retry, psc);
+	} else if (nodep->nodeInfo.NodeType == NI_TYPE_CA) {
+		status = _activate_hfi(mpp->fd, sm_topop, nodep, wi->retry, psc);
+	}
+	psc_unlock(psc);
+
+bail:
+	psc_free_mai(psc, mpp);
+	psc_set_status(psc, status);
+	if (status == VSTATUS_TIMEOUT_LIMIT) psc_stop(psc);
+	_activate_workitem_free(wi);
+
+	IB_EXIT(__func__, status);
+}
+
+// Activates a node conservatively: one port at a time via PortInfo only.
+static void 
+_safe_activate_node(ParallelSweepContext_t *psc,
+	ParallelWorkItem_t *pwi)
+{
+	Status_t status = VSTATUS_OK;
+
+	IB_ENTER(__func__, psc, pwi, 0, 0);
+	DEBUG_ASSERT(psc && pwi);
+
+	ActivateWorkItem_t * wi = PARENT_STRUCT(pwi, ActivateWorkItem_t, item);
+	Port_t *portp = NULL;
+	Node_t *nodep = wi->nodep;
+
+	MaiPool_t *mpp = psc_get_mai(psc);
+	if (!psc || !mpp) {
+		IB_LOG_ERROR_FMT(__func__, "Failed to allocate MAI handle.");
+		status = VSTATUS_NOMEM;
+	} else {
+		psc_lock(psc);
+		for_all_ports(nodep, portp) {
+			if (!sm_valid_port(portp) || portp->state < IB_PORT_ARMED) continue;
+			psc_unlock(psc);
+			status = sm_activate_port(mpp->fd, sm_topop, nodep, portp, FALSE, wi->retry);
+			psc_lock(psc);
+			if (status != VSTATUS_OK) {
+				IB_LOG_WARN_FMT(__func__,
+					"Failed to activate node %s nodeGuid "FMT_U64" port %u; status=%u",
+					sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index, status);
+				if ((status = sm_popo_port_error(&sm_popo, sm_topop, portp, status)) == VSTATUS_TIMEOUT_LIMIT)
+					psc_stop(psc);
+				break;
+			}
+		}
+		psc_unlock(psc);
+
+		psc_free_mai(psc, mpp);
+	}
+
+	psc_set_status(psc, status);
+	_activate_workitem_free(wi);
+
+	IB_EXIT(__func__, status);
+}
+
+static Status_t
+_activate_all_hfi_first_safe(ParallelSweepContext_t *psc, ActivationRetry_t * retry)
+{
+	Status_t status = VSTATUS_OK;
+	Node_t * nodep;
+	ActivateWorkItem_t *awip;
+
+	for_all_ca_nodes(sm_topop, nodep) {
+		awip = _activate_workitem_alloc(nodep, retry, _safe_activate_node);
+		if (awip == NULL) {
+			status = VSTATUS_NOMEM;
+			break;
+		}
+		psc_add_work_item(psc, &awip->item);
+	}
+
+	if (status == VSTATUS_OK) for_all_switch_nodes(sm_topop, nodep) {
+		awip = _activate_workitem_alloc(nodep, retry, _safe_activate_node);
+		if (awip == NULL) {
+			status = VSTATUS_NOMEM;
+			break;
+		}
+		psc_add_work_item(psc, &awip->item);
 	}
 
 	return status;
 }
 
-Status_t
-sm_activate_all_hfi_first_safe(Topology_t * topop, pActivationRetry_t retry)
+static Status_t
+_activate_all_hfi_first(ParallelSweepContext_t *psc, ActivationRetry_t * retry)
 {
 	Status_t status = VSTATUS_OK;
 	Node_t * nodep;
+	ActivateWorkItem_t *awip;
 
-	for_all_ca_nodes(topop, nodep)
-		if ((status = sm_activate_node_safe(topop, nodep, retry)) == VSTATUS_TIMEOUT_LIMIT)
-			return status;
-	for_all_switch_nodes(topop, nodep)
-		if ((status = sm_activate_node_safe(topop, nodep, retry)) == VSTATUS_TIMEOUT_LIMIT)
-			return status;
+	for_all_ca_nodes(sm_topop, nodep) {
+		awip = _activate_workitem_alloc(nodep, retry, _activate_node);
+		if (awip == NULL) {
+			status = VSTATUS_NOMEM;
+			break;
+		}
+		psc_add_work_item(psc, &awip->item);
+	}
 
-	return VSTATUS_OK;
+	if (status == VSTATUS_OK) for_all_switch_nodes(sm_topop, nodep) {
+		awip = _activate_workitem_alloc(nodep, retry, _activate_node);
+		if (awip == NULL) {
+			status = VSTATUS_NOMEM;
+			break;
+		}
+		psc_add_work_item(psc, &awip->item);
+	}
+
+	return status;
 }
 
-Status_t
-sm_activate_all_hfi_first(Topology_t * topop, pActivationRetry_t retry)
+static Status_t
+_activate_all_switch_first(ParallelSweepContext_t *psc, Topology_t * topop, ActivationRetry_t * retry)
 {
 	Status_t status = VSTATUS_OK;
 	Node_t * nodep;
+	ActivateWorkItem_t *awip;
 
-	for_all_ca_nodes(topop, nodep)
-		if ((status = sm_activate_node(topop, nodep, retry)) == VSTATUS_TIMEOUT_LIMIT)
-			return status;
-	for_all_switch_nodes(topop, nodep)
-		if ((status = sm_activate_node(topop, nodep, retry)) == VSTATUS_TIMEOUT_LIMIT)
-			return status;
+	for_all_switch_nodes(sm_topop, nodep) {
+		awip = _activate_workitem_alloc(nodep, retry, _activate_node);
+		if (awip == NULL) {
+			status = VSTATUS_NOMEM;
+			break;
+		}
+		psc_add_work_item(psc, &awip->item);
+	}
 
-	return VSTATUS_OK;
+	if (status == VSTATUS_OK) for_all_ca_nodes(sm_topop, nodep) {
+		awip = _activate_workitem_alloc(nodep, retry, _activate_node);
+		if (awip == NULL) {
+			status = VSTATUS_NOMEM;
+			break;
+		}
+		psc_add_work_item(psc, &awip->item);
+	}
+
+	return status;
 }
 
-Status_t
-sm_activate_all_switch_first(Topology_t * topop, pActivationRetry_t retry)
-{
-	Status_t status = VSTATUS_OK;
-	Node_t * nodep;
-
-	for_all_switch_nodes(topop, nodep)
-		if ((status = sm_activate_node(topop, nodep, retry)) == VSTATUS_TIMEOUT_LIMIT)
-			return status;
-	for_all_ca_nodes(topop, nodep)
-		if ((status = sm_activate_node(topop, nodep, retry)) == VSTATUS_TIMEOUT_LIMIT)
-			return status;
-
-	return VSTATUS_OK;
-}
-
-static void sm_set_all_reregisters_callback(cntxt_entry_t *cntxt, Status_t status, void *data, Mai_t *mad)
+static void
+_set_all_reregisters_callback(cntxt_entry_t *cntxt, Status_t status, void *data, Mai_t *mad)
 {
 	Node_t *nodep = (Node_t *)data;
 	Port_t *portp = (nodep ? sm_get_node_end_port(nodep) : NULL);
@@ -801,10 +999,12 @@ static void sm_set_all_reregisters_callback(cntxt_entry_t *cntxt, Status_t statu
 	if (!skip && !sm_callback_check(cntxt, status, nodep, portp, mad)) {
 		// Handle Failure
 	} else if (sm_valid_port(portp)) {
-		portp->portData->reregisterPending = 0;
+		portp->poportp->registration.reregisterPending = 0;
 	}
 }
-Status_t sm_set_all_reregisters(void)
+
+Status_t
+sm_set_all_reregisters(void)
 {
 	Node_t *nodep;
 	Port_t *portp;
@@ -813,7 +1013,7 @@ Status_t sm_set_all_reregisters(void)
 	for_all_nodes(&old_topology, nodep) {
 		portp = sm_get_node_end_port(nodep);
 		if (!sm_valid_port(portp) || portp->state != IB_PORT_ACTIVE) continue;
-		if (!portp->portData->reregisterPending) continue;
+		if (!portp->poportp->registration.reregisterPending) continue;
 
 		/* Only need to lock the Copy out of the port */
 		(void)vs_rdlock(&old_topology_lock);
@@ -828,7 +1028,7 @@ Status_t sm_set_all_reregisters(void)
 		SmpAddr_t addr = SMP_ADDR_CREATE_LR(sm_lid, portp->portData->lid);
 		status = SM_Set_PortInfo_Dispatch(fd_topology, (1 << 24) | portp->index,
 			&addr, &pi, portp->portData->portInfo.M_Key, nodep, &sm_asyncDispatch,
-			sm_set_all_reregisters_callback, nodep);
+			_set_all_reregisters_callback, nodep);
 		if (status != VSTATUS_OK) {
 			IB_LOG_ERROR_FMT(__func__, "Failed to Send Set Client Reregister on port of node %s nodeGuid "FMT_U64" port %u",
 				sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID, portp->index);
@@ -843,5 +1043,168 @@ Status_t sm_set_all_reregisters(void)
 			cs_convert_status(status));
 	}
 
+	return status;
+}
+
+static void
+_arm_worker(ParallelSweepContext_t *psc, ParallelWorkItem_t *psi)
+{
+	Status_t status;
+	ActivateWorkItem_t *awip = PARENT_STRUCT(psi, ActivateWorkItem_t, item);
+
+	status = _arm_node(sm_topop, awip->nodep, psc);
+	if (status == VSTATUS_TIMEOUT_LIMIT) {
+		psc_set_status(psc, status);
+		psc_stop(psc);
+	}
+
+	_activate_workitem_free(awip);
+}
+
+Status_t
+sweep_arm(SweepContext_t *sweep_context)
+{
+	Status_t	status = VSTATUS_OK;
+	Node_t		*nodep;
+	ActivateWorkItem_t *awip;
+
+	IB_ENTER(__func__, 0, 0, 0, 0);
+
+	// If we aren't the master SM, then we go no further.
+	if (sm_state != SM_STATE_MASTER) {
+		status = VSTATUS_NOT_MASTER;
+		goto bail;
+	}
+
+	// We are about to activate new nodes, so mark us as sweeping now.
+	activateInProgress = 1;
+	topology_port_bounce_log_num = 0;
+
+	// Enable the workers.
+	psc_go(sweep_context->psc);
+
+	// Transition ports from INIT to ARMED per DN0567
+
+	for_all_ca_nodes(sm_topop, nodep) {
+		awip = _activate_workitem_alloc(nodep, 0, _arm_worker);
+		if (awip == NULL) {
+			status = VSTATUS_NOMEM;
+			break;
+		}
+		psc_add_work_item(sweep_context->psc, &awip->item);
+	}
+
+	if (status == VSTATUS_OK) for_all_switch_nodes(sm_topop, nodep) {
+		awip = _activate_workitem_alloc(nodep, 0, _arm_worker);
+		if (awip == NULL) {
+			status = VSTATUS_NOMEM;
+			break;
+		}
+		psc_add_work_item(sweep_context->psc, &awip->item);
+	}
+
+	if (status == VSTATUS_OK) {
+		// Wait for the workers to arm all the ports.
+		status = psc_wait(sweep_context->psc);
+	} else {
+		// In this case, we failed to queue all the work items, so
+		// issue a terminate and wait for the workers to quiesce.
+		psc_stop(sweep_context->psc);
+		(void)psc_wait(sweep_context->psc);
+	}
+
+bail:
+	// When we get here, we're either done and the work queue is empty
+	// or we hit an error and stopped early. Either way, drain the work
+	// item queue just to be sure.
+	psc_drain_work_queue(sweep_context->psc);
+	IB_EXIT(__func__, status);
+	return status;
+}
+
+Status_t
+sweep_activate(SweepContext_t *sweep_context)
+{
+	Status_t	status = VSTATUS_OK;
+	ActivationRetry_t retry = {0};
+
+	IB_ENTER(__func__, 0, 0, 0, 0);
+
+	//	If we aren't the master SM, then we go no further.
+	if (sm_state != SM_STATE_MASTER)
+		return VSTATUS_NOT_MASTER;
+
+	/* we are about to activate new nodes so mark us as sweeping now */
+	activateInProgress = 1;
+	topology_port_bounce_log_num = 0;
+
+	// sending of armed idle flits can be delayed by several millis, preventing
+	// activation due to NeighborNormal not being set.  simply wait out the
+	// expected propagation time to avoid spamming the log with failures due
+	// to expected conditions, and to avoid complicating the code with edge
+	// cases.  for sweeps proportional to this time, performance isn't critical,
+	// and for significantly longer sweeps, this delay is a non-issue
+	vs_thread_sleep(IDLE_FLIT_PROPAGATION_TIME);
+
+	_activation_retry_init(&retry);
+
+	// Transition ports from ARMED to ACTIVE per DN0567
+	do {
+
+		psc_go(sweep_context->psc);
+		retry.failures = 0;
+
+		switch (sm_config.switchCascadeActivateEnable) {
+			case SCAE_SW_ONLY:
+				// only switches will cascade, as HFI activation should be paced.
+				// activate HFIs first to allow traffic flow a bit sooner and
+				// switches will implicitly cascade as a result
+				status = _activate_all_hfi_first(sweep_context->psc, &retry);
+				break;
+			case SCAE_ALL:
+				// all ports will cascade: do switches first for faster overall
+				// cascade at scale, relying on activating switches to implicitly
+				// activate hfis
+				status = _activate_all_switch_first(sweep_context->psc, sm_topop, &retry);
+				break;
+			default:
+				// failsafe activation: activate ports serially via Set(PortInfo)
+				// only. activate HFIs first to allow traffic flow a bit sooner
+				status = _activate_all_hfi_first_safe(sweep_context->psc, &retry);
+				break;
+		}
+		if (status == VSTATUS_OK) {
+			// Wait for the workers to arm all the ports.
+			status = psc_wait(sweep_context->psc);
+		} else {
+			// In this case, we failed to queue all the work items, so
+			// issue a terminate and wait for the workers to quiesce.
+			// Note that we preserve the previous status
+			psc_stop(sweep_context->psc);
+			(void)psc_wait(sweep_context->psc);
+		}
+
+		// When we got here, we're either done and the work queue is empty
+		// or we hit an error and stopped early. Either way, drain the work
+		// item queue just to be sure.
+		psc_drain_work_queue(sweep_context->psc);
+
+		if (sm_debug && (retry.failures || retry.attempts))
+			IB_LOG_WARN_FMT(__func__, "%u ports failed to go active on "
+				"attempt %u", retry.failures, retry.attempts);
+
+		if (retry.failures)
+			vs_thread_sleep(MIN(VTIMER_10_MILLISEC * (1 << retry.attempts),
+				VTIMER_1S));
+
+	} while ((status != VSTATUS_TIMEOUT_LIMIT) &&
+		(status != VSTATUS_UNRECOVERABLE) && (retry.failures &&
+		++retry.attempts <= sm_config.neighborNormalRetries));
+
+	if (retry.failures) {
+		IB_LOG_ERROR_FMT(__func__, "%d ports failed to go active due to NeighborNormal never being set", retry.failures);
+	}
+
+	_activation_retry_destroy(&retry);
 	return status;
 }

@@ -92,13 +92,15 @@ endif
 ifneq "$(VXWORKS_REV_6_9)" ""
 PRODUCT_DEFINES += -DVXWORKS_REV_6_9=$(VXWORKS_REV_6_9)
 endif
+ifeq "$(BUILD_OPAFISH)" "yes"
+PRODUCT_DEFINES += -DBUILD_OPAFISH
+endif
+ifeq "$(BUILD_CHASSISGUI2)" "yes"
+PRODUCT_DEFINES += -DBUILD_CHASSISGUI2
+endif
 
 # include buildFeatureDefs to let inplace build work for stream consistency
-ifeq "$(BUILD_TARGET_OS)" "VXWORKS"
-PRODUCT_DEFINES += -include $(GLOBAL_INCLUDE_DIR)/buildFeatureDefs
-else
-PRODUCT_DEFINES += -include $(TL_DIR)/buildFeatureDefs
-endif
+PRODUCT_DEFINES += -include $(TL_DIR)/Fd/buildFeatureDefs
 
 ifeq "$(BIOS_UPDATE_ENABLED)" "yes"
 PRODUCT_DEFINES += -DBIOS_UPDATE_ENABLED

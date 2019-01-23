@@ -60,14 +60,16 @@ extern "C" {
 
 /* ClassPortInfo Capability bits */
 
-typedef STL_FIELDUNION6(STL_PA_CLASS_PORT_INFO_CAPABILITY_MASK, 16,
-		Reserved1:                  4,      /* start of class dependent bits */
+typedef STL_FIELDUNION8(STL_PA_CLASS_PORT_INFO_CAPABILITY_MASK, 16,
+		Reserved1:                  2,      /* start of class dependent bits */
+		IsPerImageListsSupported:   1,      /* query to get group/vf list from specific images */
+		IsVFFocusTypesSupported:    1,      /* VF level Focus types */
 		IsTopologyInfoSupported:    1,      /* query to get the topology info from PM */
-						    /* (GetGroupNodeInfo and GetGroupLinkInfo) */
+		                                    /* (GetGroupNodeInfo and GetGroupLinkInfo) */
 		IsExtFocusTypesSupported:   1,      /* RO - PA supports extended focus types */
-						    /* (unexpclrport, norespport and */
-						    /* skippedport) in GetFocusPorts and */
-						    /* adds GetFocusPortsMultiSelect */
+		                                    /* (unexpclrport, norespport and */
+		                                    /* skippedport) in GetFocusPorts and */
+		                                    /* adds GetFocusPortsMultiSelect */
 		Reserved3:                  1,
 		IsAbsTimeQuerySupported:    1,      /* RO - PA supports AbsImageTime queries w/ absoluteTime in Image ID */
 		Reserved2:                  8);     /* class independent bits*/
@@ -78,6 +80,8 @@ typedef STL_FIELDUNION6(STL_PA_CLASS_PORT_INFO_CAPABILITY_MASK, 16,
 #define STL_PA_CPI_CAPMASK_ABSTIMEQUERY   0x0100
 #define STL_PA_CPI_CAPMASK_EXT_FOCUSTYPES 0x0400
 #define STL_PA_CPI_CAPMASK_TOPO_INFO      0x0800
+#define STL_PA_CPI_CAPMASK_VF_FOCUSTYPES  0x1000
+#define STL_PA_CPI_CAPMASK_IMAGE_LISTS    0x2000
 
 static __inline void
 StlPaClassPortInfoCapMask(char buf[80], uint16 cmask)
@@ -85,14 +89,16 @@ StlPaClassPortInfoCapMask(char buf[80], uint16 cmask)
 	if (!cmask) {
 		snprintf(buf, 80, "-");
 	} else {
-		snprintf(buf, 80, "%s%s%s%s%s%s",
+		snprintf(buf, 80, "%s%s%s%s%s%s%s%s",
 			(cmask & STL_CLASS_PORT_CAPMASK_TRAP) ? "Trap " : "",
 			(cmask & STL_CLASS_PORT_CAPMASK_NOTICE) ? "Notice " : "",
 			(cmask & STL_CLASS_PORT_CAPMASK_CM2) ? "CapMask2 " : "",
 			/* Class Specific */
 			(cmask & STL_PA_CPI_CAPMASK_ABSTIMEQUERY) ? "AbsTime " : "",
 			(cmask & STL_PA_CPI_CAPMASK_EXT_FOCUSTYPES) ? "ExtFocusTypes " : "",
-			(cmask & STL_PA_CPI_CAPMASK_TOPO_INFO) ? "TopologyInfo " : "");
+			(cmask & STL_PA_CPI_CAPMASK_TOPO_INFO) ? "TopologyInfo " : "",
+			(cmask & STL_PA_CPI_CAPMASK_VF_FOCUSTYPES) ? "VFFocusTypes " : "",
+			(cmask & STL_PA_CPI_CAPMASK_IMAGE_LISTS) ? "ImageLists " : "");
 	}
 }
 
@@ -105,6 +111,21 @@ StlPaClassPortInfoCapMask2(char buf[80], uint32 cmask)
 		buf[0] = '\0';
 	}
 }
+
+// Check to see if the VF Focus select is an UTIL BW category
+#define IS_FOCUS_SELECT_UTIL(SELECT) \
+	((SELECT == STL_PA_SELECT_UTIL_HIGH) || \
+	(SELECT == STL_PA_SELECT_UTIL_LOW) || \
+	(SELECT == STL_PA_SELECT_VF_UTIL_HIGH) || \
+	(SELECT == STL_PA_SELECT_VF_UTIL_LOW))
+
+// Check to see if it is a VF Focus select
+#define IS_VF_FOCUS_SELECT(SELECT) \
+	((SELECT == STL_PA_SELECT_VF_UTIL_HIGH) || \
+	(SELECT == STL_PA_SELECT_VF_UTIL_LOW) || \
+	(SELECT == STL_PA_SELECT_VF_UTIL_PKTS_HIGH) || \
+	(SELECT == STL_PA_SELECT_CATEGORY_VF_BUBBLE)  || \
+	(SELECT == STL_PA_SELECT_CATEGORY_VF_CONG))
 
 typedef struct _STL_PA_Group_List {
 	char					groupName[STL_PM_GROUPNAMELEN];	// \0 terminated - actual number indicated by numGroups
@@ -402,14 +423,19 @@ typedef struct _STL_MOVE_FREEZE_DATA {
 #define STL_PA_SELECT_UTIL_HIGH			0x00020001 // highest first, descending
 #define STL_PA_SELECT_UTIL_MC_HIGH		0x00020081 // not supported
 #define STL_PA_SELECT_UTIL_PKTS_HIGH	0x00020082
+#define STL_PA_SELECT_VF_UTIL_HIGH	0x00020083 // Only used with VFs
+#define STL_PA_SELECT_VF_UTIL_PKTS_HIGH	0x00020084 // Only used with VFs
 #define STL_PA_SELECT_UTIL_LOW			0x00020101 // lowest first, ascending
 #define STL_PA_SELECT_UTIL_MC_LOW		0x00020102 // not supported
+#define STL_PA_SELECT_VF_UTIL_LOW	0x00020103   // Only used with VFs
 #define STL_PA_SELECT_CATEGORY_INTEG	0x00030001 // hightest first, descending
 #define STL_PA_SELECT_CATEGORY_CONG		0x00030002
 #define STL_PA_SELECT_CATEGORY_SMA_CONG	0x00030003
 #define STL_PA_SELECT_CATEGORY_BUBBLE	0x00030004
 #define STL_PA_SELECT_CATEGORY_SEC		0x00030005
 #define STL_PA_SELECT_CATEGORY_ROUT		0x00030006
+#define STL_PA_SELECT_CATEGORY_VF_CONG		0x00030007  // Only used with VFs
+#define STL_PA_SELECT_CATEGORY_VF_BUBBLE	0x00030008  // Only used with VFs
 
 typedef struct _STL_FOCUS_PORTS_REQ {
 	char					groupName[STL_PM_GROUPNAMELEN];	// \0 terminated
@@ -477,12 +503,17 @@ const char* StlFocusAttributeToText(uint32 attribute)
 	case STL_PA_SELECT_UTIL_HIGH:         return "High Utilization";
 	case STL_PA_SELECT_UTIL_PKTS_HIGH:    return "Packet Rate";
 	case STL_PA_SELECT_UTIL_LOW:          return "Low Utilization";
+	case STL_PA_SELECT_VF_UTIL_HIGH:      return "VF High Utilization";
+	case STL_PA_SELECT_VF_UTIL_PKTS_HIGH: return "VF Packet Rate";
+	case STL_PA_SELECT_VF_UTIL_LOW:       return "VF Low Utilization";
 	case STL_PA_SELECT_CATEGORY_INTEG:    return "Integrity Errors";
 	case STL_PA_SELECT_CATEGORY_CONG:     return "Congestion";
 	case STL_PA_SELECT_CATEGORY_SMA_CONG: return "SMA Congestion";
 	case STL_PA_SELECT_CATEGORY_BUBBLE:   return "Bubble";
 	case STL_PA_SELECT_CATEGORY_SEC:      return "Security Errors";
 	case STL_PA_SELECT_CATEGORY_ROUT:     return "Routing Errors";
+	case STL_PA_SELECT_CATEGORY_VF_CONG:  return "VF Congestion";
+	case STL_PA_SELECT_CATEGORY_VF_BUBBLE:return "VF Bubble";
 	default:                              return "Unknown";
 	}
 }
@@ -745,6 +776,17 @@ typedef struct _STL_PA_Group_LinkInfo_Rsp {
 } PACK_SUFFIX STL_PA_GROUP_LINKINFO_RSP;
 
 
+typedef struct _STL_PA_GRP_LIST2 {
+	char                 groupName[STL_PM_GROUPNAMELEN]; // \0 terminated
+	STL_PA_IMAGE_ID_DATA imageId;
+} PACK_SUFFIX STL_PA_GROUP_LIST2;
+
+typedef struct _STL_PA_VF_LIST2 {
+	char                 vfName[STL_PM_VFNAMELEN]; // \0 terminated
+	STL_PA_IMAGE_ID_DATA imageId;
+} PACK_SUFFIX STL_PA_VF_LIST2;
+
+
 /* End of packed data structures */
 #include "iba/public/ipackoff.h"
 
@@ -756,30 +798,31 @@ typedef struct _STL_PA_Group_LinkInfo_Rsp {
 #define STL_PA_CMD_GETTABLE_RESP      (0x92)
 
 /* Performance Analysis attribute IDs */
-#define STL_PA_ATTRID_GET_CLASSPORTINFO	 0x01
-#define STL_PA_ATTRID_GET_GRP_LIST		 0xA0
-#define STL_PA_ATTRID_GET_GRP_INFO		 0xA1
-#define STL_PA_ATTRID_GET_GRP_CFG		 0xA2
-#define STL_PA_ATTRID_GET_PORT_CTRS		 0xA3
-#define STL_PA_ATTRID_CLR_PORT_CTRS		 0xA4
-#define STL_PA_ATTRID_CLR_ALL_PORT_CTRS	 0xA5
-#define STL_PA_ATTRID_GET_PM_CONFIG		 0xA6
-#define STL_PA_ATTRID_FREEZE_IMAGE		 0xA7
-#define STL_PA_ATTRID_RELEASE_IMAGE		 0xA8
-#define STL_PA_ATTRID_RENEW_IMAGE		 0xA9
-#define STL_PA_ATTRID_GET_FOCUS_PORTS	 0xAA
-#define STL_PA_ATTRID_GET_IMAGE_INFO	 0xAB
-#define STL_PA_ATTRID_MOVE_FREEZE_FRAME	 0xAC
-#define STL_PA_ATTRID_GET_VF_LIST      	 0xAD
-#define STL_PA_ATTRID_GET_VF_INFO      	 0xAE
-#define STL_PA_ATTRID_GET_VF_CONFIG    	 0xAF
-#define STL_PA_ATTRID_GET_VF_PORT_CTRS 	 0xB0
-#define STL_PA_ATTRID_CLR_VF_PORT_CTRS 	 0xB1
+#define STL_PA_ATTRID_GET_CLASSPORTINFO  0x01
+#define STL_PA_ATTRID_GET_GRP_LIST       0xA0
+#define STL_PA_ATTRID_GET_GRP_INFO       0xA1
+#define STL_PA_ATTRID_GET_GRP_CFG        0xA2
+#define STL_PA_ATTRID_GET_PORT_CTRS      0xA3
+#define STL_PA_ATTRID_CLR_PORT_CTRS      0xA4
+#define STL_PA_ATTRID_CLR_ALL_PORT_CTRS  0xA5
+#define STL_PA_ATTRID_GET_PM_CONFIG      0xA6
+#define STL_PA_ATTRID_FREEZE_IMAGE       0xA7
+#define STL_PA_ATTRID_RELEASE_IMAGE      0xA8
+#define STL_PA_ATTRID_RENEW_IMAGE        0xA9
+#define STL_PA_ATTRID_GET_FOCUS_PORTS    0xAA
+#define STL_PA_ATTRID_GET_IMAGE_INFO     0xAB
+#define STL_PA_ATTRID_MOVE_FREEZE_FRAME  0xAC
+#define STL_PA_ATTRID_GET_VF_LIST        0xAD
+#define STL_PA_ATTRID_GET_VF_INFO        0xAE
+#define STL_PA_ATTRID_GET_VF_CONFIG      0xAF
+#define STL_PA_ATTRID_GET_VF_PORT_CTRS   0xB0
+#define STL_PA_ATTRID_CLR_VF_PORT_CTRS   0xB1
 #define STL_PA_ATTRID_GET_VF_FOCUS_PORTS 0xB2
 #define STL_PA_ATTRID_GET_FOCUS_PORTS_MULTISELECT 0xB4
-#define STL_PA_ATTRID_GET_GRP_NODE_INFO		 0xB5
-#define STL_PA_ATTRID_GET_GRP_LINK_INFO		 0xB6
-
+#define STL_PA_ATTRID_GET_GRP_NODE_INFO  0xB5
+#define STL_PA_ATTRID_GET_GRP_LINK_INFO  0xB6
+#define STL_PA_ATTRID_GET_GRP_LIST2      0xB7
+#define STL_PA_ATTRID_GET_VF_LIST2       0xB8
 
 /* Performance Analysis MAD status values */
 #define STL_MAD_STATUS_STL_PA_UNAVAILABLE	0x0A00  // Engine unavailable

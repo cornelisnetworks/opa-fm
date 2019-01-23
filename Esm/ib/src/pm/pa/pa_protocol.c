@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2018, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -28,7 +28,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ** END_ICS_COPYRIGHT5   ****************************************/
 
 /* [ICS VERSION STRING: unknown] */
-#if defined(__VXWORKS__) || defined(__LINUX__)
 #include <ib_types.h>
 #include <ib_mad.h>
 #include <ib_status.h>
@@ -44,7 +43,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "pm_l.h"
 #include "pm_counters.h"
 #include "iba/stl_pa_priv.h"
-#include "paServer.h"
+#include "pa_server.h"
 #include "fm_xml.h"
 
 #ifdef __LINUX__
@@ -59,9 +58,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifdef __VXWORKS__
 #include <stdio.h>
 #endif
-
-#undef LOCAL_MOD_ID
-#define LOCAL_MOD_ID VIEO_PA_MOD_ID
 
 extern Pool_t pm_pool;
 extern uint8_t vfi_mclass;
@@ -186,85 +182,39 @@ static pa_cntxt_t *pa_hash[PA_CNTXT_HASH_TABLE_DEPTH];
 
 static void pa_main_writer(uint32_t argc, uint8_t ** argv);
 
-
+#define CASE_STL_PA_AID(aid) case STL_PA_ATTRID_##aid: return #aid
 
 static char *
 pa_getAidName(uint16_t aid)
 {
-    switch (aid) {
-    case STL_PA_ATTRID_GET_CLASSPORTINFO:
-        return "STL_GET_CLASSPORTINFO";
-        break;
-    case STL_PA_ATTRID_GET_GRP_LIST:
-        return "STL_GET_GRP_LIST";
-        break;
-    case STL_PA_ATTRID_GET_GRP_INFO:
-        return "STL_GET_GRP_INFO";
-        break;
-    case STL_PA_ATTRID_GET_GRP_CFG:
-        return "STL_GET_GRP_CONFIG";
-        break;
-    case STL_PA_ATTRID_GET_GRP_NODE_INFO:
-        return "STL_GET_GRP_NODEINFO";
-        break;
-    case STL_PA_ATTRID_GET_GRP_LINK_INFO:
-        return "STL_GET_GRP_LINKINFO";
-        break;
-    case STL_PA_ATTRID_GET_PORT_CTRS:
-        return "STL_GET_PORT_CNTRS";
-        break;
-    case STL_PA_ATTRID_CLR_PORT_CTRS:
-        return "STL_GET_CLR_PORT_CNTRS";
-        break;
-    case STL_PA_ATTRID_CLR_ALL_PORT_CTRS:
-        return "STL_GET_CLR_ALL_PORT_CNTRS";
-        break;
-    case STL_PA_ATTRID_GET_PM_CONFIG:
-        return "STL_GET_PM_CONFIG";
-        break;
-	case STL_PA_ATTRID_FREEZE_IMAGE:
-        return "STL_FREEZE_IMAGE";
-        break;
-	case STL_PA_ATTRID_RELEASE_IMAGE:
-        return "STL_RELEASE_IMAGE";
-        break;
-	case STL_PA_ATTRID_RENEW_IMAGE:
-        return "STL_RENEW_IMAGE";
-        break;
-	case STL_PA_ATTRID_GET_FOCUS_PORTS:
-        return "STL_GET_FOCUS_PORTS";
-        break;
-    case STL_PA_ATTRID_GET_FOCUS_PORTS_MULTISELECT:
-        return "STL_GET_FOCUS_PORTS_MULTISELECT";
-        break;
-    case STL_PA_ATTRID_GET_IMAGE_INFO:
-        return "STL_GET_IMAGE_INFO";
-        break;
-	case STL_PA_ATTRID_MOVE_FREEZE_FRAME:
-        return "STL_MOVE_FREEZE_FRAME";
-        break;
-	case STL_PA_ATTRID_GET_VF_LIST:
-        return "STL_GET_VF_LIST";
-        break;
-	case STL_PA_ATTRID_GET_VF_INFO:
-        return "STL_GET_VF_INFO";
-        break;
-	case STL_PA_ATTRID_GET_VF_CONFIG:
-        return "STL_GET_VF_CONFIG";
-        break;
-	case STL_PA_ATTRID_GET_VF_PORT_CTRS:
-        return "STL_GET_VF_PORT_CTRS";
-        break;
-	case STL_PA_ATTRID_CLR_VF_PORT_CTRS:
-        return "STL_CLR_VF_PORT_CTRS";
-        break;
-	case STL_PA_ATTRID_GET_VF_FOCUS_PORTS:
-        return "STL_GET_VF_FOCUS_PORTS";
-        break;
-    default:
-        return "UNKNOWN AID";
-        break;
-    }
+switch (aid) {
+	CASE_STL_PA_AID(GET_CLASSPORTINFO);
+	CASE_STL_PA_AID(GET_GRP_LIST);
+	CASE_STL_PA_AID(GET_GRP_INFO);
+	CASE_STL_PA_AID(GET_GRP_CFG);
+	CASE_STL_PA_AID(GET_GRP_NODE_INFO);
+	CASE_STL_PA_AID(GET_GRP_LINK_INFO);
+	CASE_STL_PA_AID(GET_PORT_CTRS);
+	CASE_STL_PA_AID(CLR_PORT_CTRS);
+	CASE_STL_PA_AID(CLR_ALL_PORT_CTRS);
+	CASE_STL_PA_AID(GET_PM_CONFIG);
+	CASE_STL_PA_AID(FREEZE_IMAGE);
+	CASE_STL_PA_AID(RELEASE_IMAGE);
+	CASE_STL_PA_AID(RENEW_IMAGE);
+	CASE_STL_PA_AID(GET_FOCUS_PORTS);
+	CASE_STL_PA_AID(GET_FOCUS_PORTS_MULTISELECT);
+	CASE_STL_PA_AID(GET_IMAGE_INFO);
+	CASE_STL_PA_AID(MOVE_FREEZE_FRAME);
+	CASE_STL_PA_AID(GET_VF_LIST);
+	CASE_STL_PA_AID(GET_VF_INFO);
+	CASE_STL_PA_AID(GET_VF_CONFIG);
+	CASE_STL_PA_AID(GET_VF_PORT_CTRS);
+	CASE_STL_PA_AID(CLR_VF_PORT_CTRS);
+	CASE_STL_PA_AID(GET_VF_FOCUS_PORTS);
+	CASE_STL_PA_AID(GET_VF_LIST2);
+	CASE_STL_PA_AID(GET_GRP_LIST2);
+	default: return "UNKNOWN AID";
+	}
 }
 
 static char *
@@ -1558,6 +1508,10 @@ pa_process_mad(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			(void)pa_getGroupNodeInfoResp(maip, pa_cntxt);
 		} else if (maip->base.aid == STL_PA_ATTRID_GET_GRP_LINK_INFO) {
 			(void)pa_getGroupLinkInfoResp(maip, pa_cntxt);
+		} else if (maip->base.aid == STL_PA_ATTRID_GET_GRP_LIST2) {
+			(void)pa_getGroupListResp(maip, pa_cntxt);
+		} else if (maip->base.aid == STL_PA_ATTRID_GET_VF_LIST2) {
+			(void)pa_getVFListResp(maip, pa_cntxt);
 		} else {
 			//(void)pa_getMultiMadResp(maip, pa_cntxt);
 			goto invalid;
@@ -1727,4 +1681,3 @@ pa_mngr_get_cmd(Mai_t * mad, uint8_t * processMad)
 	return pa_cntxt;
 }
 
-#endif

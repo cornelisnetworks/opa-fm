@@ -297,6 +297,11 @@ int main(int argc, char **argv)
 	if (argc == optind)
 		Usage();	// require input_file argument
 	input_file = argv[optind++];
+	if (!input_file) {
+		fprintf(stderr, "Error: null input filename\n");
+		exit_code = 1;
+		goto fail;
+	}
 	if (argc > optind)
 		Usage();
 

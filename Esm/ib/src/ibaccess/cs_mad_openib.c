@@ -508,78 +508,6 @@ ib_recv_sma(IBhandle_t handle, Mai_t *mai, uint64_t timeout)
 }
 
 //==============================================================================
-// ib_send_sma
-//==============================================================================
-Status_t
-ib_send_sma(IBhandle_t handle, Mai_t * mai, uint64_t timeout)
-{
-	FSTATUS  status;
-	Status_t rc;
-	uint8_t  buf[sizeof(Mai_t)];
-	int      filterMatch;
-	int adjusted_timeout;
-	struct omgt_mad_addr	addr;
-	
-	IB_ENTER(__func__, handle, mai, 0, 0);
-	
-	ASSERT(mai != NULL);
-	
-	if (mai->type == MAI_TYPE_INTERNAL) {
-		IB_LOG_VERBOSE_FMT(__func__, "local delivery for MAD to 0x%08x on QP %d",
-		       mai->addrInfo.dlid, mai->qp);
-		// for local delivery
-		(void)mai_mad_process(mai, &filterMatch);
-		IB_EXIT(__func__, VSTATUS_OK);
-		return VSTATUS_OK;
-	}
-	
-	if (  ib_instrumentJmMads
-	   && mai->base.mclass == 0x03 && mai->base.aid == 0xffb2) {
-		IB_LOG_INFINI_INFO_FMT( __func__,
-			"Sent: mclass 0x%02x method 0x%02x aid 0x%04x amod 0x%08x",
-			mai->base.mclass, mai->base.method, mai->base.aid, mai->base.amod);
-		dump_mad(mai->data, sizeof(mai->data), "  ");
-	}
-
-	rc = ib_mai_to_wire(mai, buf);
-	if (rc != VSTATUS_OK) {
-		IB_LOG_ERRORRC("Error converting MAD to wire format; rc:", rc);
-		IB_EXIT(__func__, rc);
-		return rc;
-	}
-	
-	// only send a timeout that is 90% of what the caller thinks it should be.
-	// this is to give OFED a moment to clear the MAD off the send list before
-	// the caller retries.  without this, the caller's retry might be rejected
-	// as a duplicate if it comes in too quickly
-	// TBD - once all callers fixed, use timeout as given
-	adjusted_timeout = (int)(timeout * 9 / 10 * VTIMER_1_MILLISEC / VTIMER_1S);
-	if (adjusted_timeout <= 0 && timeout > 0)
-		adjusted_timeout=1;
-	memset(&addr, 0, sizeof(addr));
-	addr.lid = mai->addrInfo.dlid;
-	addr.qpn = mai->addrInfo.destqp;
-	addr.qkey = mai->addrInfo.qkey;
-	addr.pkey = mai->addrInfo.pkey;
-	addr.sl = mai->addrInfo.sl;
-	status = omgt_send_mad2(g_port_handle, (void*)buf, IB_MAX_MAD_DATA, &addr, adjusted_timeout, 0);
-	if (status != FSUCCESS) {
-		if (mai->addrInfo.srcqp != 1) {
-			IB_LOG_INFO("Error sending packet via OPENIB interface; status:", status);
-		} else {
-			IB_LOG_INFO_FMT(__func__,
-		       "Error sending packet via OPENIB interface; status: %u (sl= %d, pkey= 0x%x)", 
-				status, mai->addrInfo.sl, mai->addrInfo.pkey);
-		}
-		IB_EXIT(__func__, VSTATUS_BAD);
-		return VSTATUS_BAD;
-	}
-	
-	IB_EXIT(__func__, VSTATUS_OK);
-	return VSTATUS_OK;
-}
-
-//==============================================================================
 // stl_send_sma
 //==============================================================================
 Status_t
@@ -588,7 +516,7 @@ stl_send_sma(IBhandle_t handle, Mai_t * mai, uint64_t timeout)
 	FSTATUS  status;
 	Status_t rc;
     uint32_t bufLen = 0;
-	uint8_t  buf[sizeof(Mai_t)];
+	uint8_t  buf[STL_MAX_MAD_DATA];
 	int      filterMatch;
 	int adjusted_timeout;
 	struct omgt_mad_addr	addr;
@@ -614,7 +542,19 @@ stl_send_sma(IBhandle_t handle, Mai_t * mai, uint64_t timeout)
 		dump_mad(mai->data, sizeof(mai->data), "  ");
 	}
 
-	rc = stl_mai_to_wire(mai, buf, &bufLen);
+	switch (mai->base.bversion) {
+		case STL_BASE_VERSION:
+			rc = stl_mai_to_wire(mai, buf, &bufLen);
+			break;
+		case IB_BASE_VERSION:
+			rc = ib_mai_to_wire(mai, buf);
+			bufLen = IB_MAX_MAD_DATA;
+			break;
+		default:
+			rc = VSTATUS_ILLPARM;
+			break;
+	}
+
 	if (rc != VSTATUS_OK) {
 		IB_LOG_ERRORRC("converting MAD to wire format; rc:", rc);
 		IB_EXIT(__func__, rc);
@@ -909,7 +849,7 @@ ib_mai_to_wire(Mai_t *mad, uint8_t *buf)
 	} else {
 		// we are constrained to send the number of bytes of the supported
 		// payload at all times 
-		if (mad->datasize && (mad->datasize != IB_MAD_PAYLOAD_SIZE)) {
+		if (mad->datasize && mad->datasize > IB_MAD_PAYLOAD_SIZE) {
 			IB_LOG_ERROR("datasize out of range:", mad->datasize);
 			IB_EXIT(__func__, VSTATUS_TOO_LARGE);
 			return VSTATUS_TOO_LARGE;
@@ -1054,8 +994,8 @@ stl_mai_to_wire(Mai_t *mad, uint8_t *buf, uint32_t *bufLen)
                mad->datasize = STL_MAD_PAYLOAD_SIZE;
        }
        
-       *bufLen = sizeof(mad->base) + mad->datasize;      
-       memcpy(buf + sizeof(mad->base), mad->data, mad->datasize); 
+       *bufLen = MAD_BASEHDR_SIZE + mad->datasize;
+       memcpy(buf + MAD_BASEHDR_SIZE, mad->data, mad->datasize);
        
        if (isDrouted) {
            STL_SMP *smp = (STL_SMP *)buf; 
@@ -1152,11 +1092,14 @@ stl_wire_to_mai(uint8_t *buf, Mai_t *mad, int len)
    }
    
    // Copy the data, if no data leave it zeroed from memset above
-   if (len > sizeof(MAD_COMMON))
-      memcpy(mad->data, buf + sizeof(MAD_COMMON), len - sizeof(MAD_COMMON));
-   mad->datasize = (mad->base.bversion == MAD_BVERSION) ? IB_MAD_PAYLOAD_SIZE : len; 
-   
-   (void)vs_time_get(&mad->intime); 
+   if (len > MAD_BASEHDR_SIZE) {
+      memcpy(mad->data, buf + MAD_BASEHDR_SIZE, len - MAD_BASEHDR_SIZE);
+      mad->datasize = len - MAD_BASEHDR_SIZE;
+   } else {
+      mad->datasize = 0;
+   }
+
+   (void)vs_time_get(&mad->intime);
    
    mad->active |= MAI_ACT_DATA | MAI_ACT_TSTAMP | MAI_ACT_FMASK; 
    

@@ -70,6 +70,7 @@ McGroup_t   *sm_McGroups = NULL;
 uint32_t    sm_numMcGroups = 0; 
 ATOMIC_UINT sm_McGroups_Need_Prog = 0; 
 Lock_t      sm_McGroups_lock;
+extern VirtualFabrics_t *updatedVirtualFabrics;
 
 extern	IB_GID nullGid;
 extern	Pool_t			sm_pool;
@@ -309,6 +310,7 @@ sa_McMemberRecord_Set(Topology_t *topop, Mai_t *maip, uint32_t *records)
 	char			*vfp=NULL;
 	IB_MCMEMBER_RECORD temporary_rec;
 	boolean			got_old_topology_lock = FALSE;
+	boolean			got_mcgroups_lock = FALSE;
 
 	IB_ENTER("sa_McMemberRecord_Set", maip, *records, 0, 0);
 
@@ -368,7 +370,6 @@ sa_McMemberRecord_Set(Topology_t *topop, Mai_t *maip, uint32_t *records)
 	// The locks are already held when we are passed a topology.
 	if (!topop) {
 		(void)vs_rdlock(&old_topology_lock); 
-		(void)vs_lock(&sm_McGroups_lock);
 		got_old_topology_lock = TRUE;
 		topop = &old_topology;
 	}
@@ -400,7 +401,6 @@ sa_McMemberRecord_Set(Topology_t *topop, Mai_t *maip, uint32_t *records)
 //
 	if ((req_portp = sm_find_active_port_lid(topop, maip->addrInfo.slid)) == NULL) {
 		//maip->base.status = activateInProgress ? MAD_STATUS_BUSY : MAD_STATUS_SA_REQ_INVALID;
-        // temp patch for Sun Oregon
         maip->base.status = activateInProgress ? 0x0700 : MAD_STATUS_SA_REQ_INVALID;
         if (saDebugPerf) {
 		IB_LOG_INFINI_INFO_FMT( "sa_McMemberRecord_Set", 
@@ -415,6 +415,20 @@ sa_McMemberRecord_Set(Topology_t *topop, Mai_t *maip, uint32_t *records)
 	req_nodep = sm_find_port_node(topop, req_portp);
 	req_nodeName = sm_nodeDescString(req_nodep);
 
+	if (updatedVirtualFabrics) {
+		// Found req port, set rereg and exit
+		req_portp->poportp->registration.reregisterPending = 1;
+		maip->base.status = MAD_STATUS_SA_REQ_DENIED;
+		if (saDebugPerf) {
+			IB_LOG_INFINI_INFO_FMT(__func__,
+				"Reconfiguration Sweep currently in process and cannot update McGroups until finished."
+				"Denied request from %s nodeGuid "FMT_U64" for port GID "FMT_GID", Group "FMT_GID" with status 0x%.4X",
+				req_nodeName, req_nodep->nodeInfo.NodeGUID,
+				prefix, guid, mGid[0], mGid[1], maip->base.status);
+		}
+		goto done;
+	}
+
 	smCsmFormatNodeId(&csmReqNode, (uint8_t*)req_nodeName, req_portp->index, req_nodep->nodeInfo.NodeGUID);
 
 	if (  ((neighbor_portp = sm_find_port(topop, req_portp->nodeno, req_portp->portno)) != NULL)
@@ -423,7 +437,7 @@ sa_McMemberRecord_Set(Topology_t *topop, Mai_t *maip, uint32_t *records)
 		                  neighbor_portp->index, (neighbor_portp->portData->nodePtr)->nodeInfo.NodeGUID);                
 		csmNeighborp = &csmConnectedNode;
 	}
-	
+
 //
 //	Find the port in question.
 //
@@ -452,6 +466,12 @@ sa_McMemberRecord_Set(Topology_t *topop, Mai_t *maip, uint32_t *records)
 			   prefix, guid, req_nodeName, req_portp->index, req_portp->portData->guid, maip->addrInfo.slid, mGid[0], mGid[1], maip->base.status);
 		goto done;
 	}
+
+	if (got_old_topology_lock) {
+		(void)vs_lock(&sm_McGroups_lock);
+		got_mcgroups_lock = TRUE;
+	}
+
 
 //
 //	Check the MTU to be sure that this port can receive packets.
@@ -795,7 +815,7 @@ sa_McMemberRecord_Set(Topology_t *topop, Mai_t *maip, uint32_t *records)
 		}
 
 		if ((status = sm_multicast_assign_lid(mcmp->RID.MGID, mcmp->Mtu, mcmp->Rate,
-		                                      mcmp->P_Key, &mLid)) != VSTATUS_OK) {
+		                                      mcmp->P_Key, 0, &mLid)) != VSTATUS_OK) {
 			maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
 			IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", "No multicast LIDs available for CREATE request from "
 				   "%s Port %d, PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
@@ -920,7 +940,7 @@ sa_McMemberRecord_Set(Topology_t *topop, Mai_t *maip, uint32_t *records)
 			}
 
 			if ((status = sm_multicast_assign_lid(mcmp->RID.MGID, mcmp->P_Key,
-			                                      mcmp->Mtu, mcmp->Rate, &mLid)) != VSTATUS_OK) {
+			                                      mcmp->Mtu, mcmp->Rate, 0, &mLid)) != VSTATUS_OK) {
 				maip->base.status = MAD_STATUS_SA_NO_RESOURCES;
 				IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", "No multicast LIDs available for CREATE "
 				       "request of group with MGID "FMT_GID" from %s Port %d, PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
@@ -1122,6 +1142,8 @@ sa_McMemberRecord_Set(Topology_t *topop, Mai_t *maip, uint32_t *records)
 			mcmp->Q_Key = mcGroup->qKey;
 			mcmp->SL = mcGroup->sl;
 			mcmp->HopLimit = mcGroup->hopLimit;
+			mcmp->TClass = mcGroup->tClass;
+			mcmp->Scope = mcGroup->scope;
 
 			if (!(mcMember = sm_find_multicast_member(mcGroup, mcmp->RID.PortGID))) {
 				McMember_Create(mcGroup, mcMember);
@@ -1147,7 +1169,8 @@ sa_McMemberRecord_Set(Topology_t *topop, Mai_t *maip, uint32_t *records)
 			/* don't change state if trigger already set, but
 			 * don't trigger sweep if joinstate has no change */
             newJoinState = (mcMember->state == STL_MCMRECORD_GETJOINSTATE(mcmp)) ? 0 : 1;
-			mcMember->record = *mcmp; 
+
+			mcMember->record = *mcmp;
 			mcMember->portGuid = guid;
 			mcMember->slid = maip->addrInfo.slid;
 			mcMember->state = STL_MCMRECORD_GETJOINSTATE(mcmp);
@@ -1167,12 +1190,12 @@ done:
 		 * This call could take a long time as it talks to each switch chip in the fabric and
 		 * blocks the SA. Instead, we will tigger a sweep which will pick up the group changes.
 		 */
-	
+
+
 		/* If not already triggered,
 		 * trigger sm_top to sweep and reprogram the switch MFTs */
-		if (!sa_mft_reprog) {
+		if (!sa_mft_reprog)
 			sa_mft_reprog = newJoinState; 
-		}
 	
 		/* Note the results */
 		*records = 1;
@@ -1217,10 +1240,11 @@ done:
 		}
 	}
 #endif
-
+	if (got_mcgroups_lock) {
+    	(void)vs_unlock(&sm_McGroups_lock);
+	}
 	if (got_old_topology_lock) {
-		vs_rwunlock(&old_topology_lock); 
-		vs_unlock(&sm_McGroups_lock);
+		vs_rwunlock(&old_topology_lock);
 	}
 
 	bitset_free(&mcGroupVf);
@@ -1294,7 +1318,7 @@ sa_McMemberRecord_Delete(Topology_t *topop, Mai_t *maip, uint32_t *records)
 
 	if (maip->base.bversion == STL_BASE_VERSION)
 	{
-	BSWAPCOPY_STL_SA_MAD((STL_SA_MAD*)maip->data, &samad, sizeof(STL_MCMEMBER_RECORD));
+		BSWAPCOPY_STL_SA_MAD((STL_SA_MAD*)maip->data, &samad, sizeof(STL_MCMEMBER_RECORD));
 		BSWAPCOPY_STL_MCMEMBER_RECORD((STL_MCMEMBER_RECORD*)samad.data, &mcMemberRecord);
 	}
 	else
@@ -1403,6 +1427,7 @@ sa_McMemberRecord_Delete(Topology_t *topop, Mai_t *maip, uint32_t *records)
 		status = VSTATUS_BAD;
 		goto done;
 	}
+
 
 //
 //	Check the joinState.
@@ -1526,6 +1551,7 @@ sa_McMemberRecord_Delete(Topology_t *topop, Mai_t *maip, uint32_t *records)
 
 	/* Trigger sm_top to sweep and reprogram the switch MFTs */
 	sa_mft_reprog = 1;
+
 
 //
 //	If the group doesn't have any members, then delete it.
@@ -1959,7 +1985,7 @@ Status_t createBroadcastGroup(uint16_t pkey, uint8_t mtu, uint8_t rate, uint8_t 
 		goto done;
 	}
 
-	if ((status = sm_multicast_assign_lid(mGid, pkey, mtu, rate, &mLid)) != VSTATUS_OK) {
+	if ((status = sm_multicast_assign_lid(mGid, pkey, mtu, rate, 0, &mLid)) != VSTATUS_OK) {
 		sysPrintf("Failed to allocate LID for broadcast group!\n");
 		goto done;
 	}
@@ -2231,14 +2257,14 @@ test_bc_group_getnext(void){
 
 }
 
-Status_t createMCastGroup(uint64_t* mgid, uint16_t pkey, uint8_t mtu, uint8_t rate, uint8_t sl, uint32_t qkey, uint32_t fl, uint8_t tc) {
+Status_t createMCastGroup(uint64_t* mgid, uint16_t pkey, uint8_t mtu, uint8_t rate, uint8_t sl,
+						  uint32_t qkey, uint32_t fl, uint8_t tc, uint32_t preset_mlid, int vf) {
 	Status_t			status;
 	McGroup_t			*mcGroup	= NULL;
 	McMember_t			*mcMember	= NULL;
 	STL_MCMEMBER_RECORD	*mcmp;
 	STL_LID			    mLid;
 	IB_GID				mGid;
-	int vf = 0;
 	VirtualFabrics_t *VirtualFabrics = old_topology.vfs_ptr;
 
 	if (!pkey) {
@@ -2265,12 +2291,9 @@ Status_t createMCastGroup(uint64_t* mgid, uint16_t pkey, uint8_t mtu, uint8_t ra
 	mcGroup = sm_find_multicast_gid(mGid);
 	if (mcGroup) {
 		if (VirtualFabrics) {
-			for (vf = 0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
-				if (VirtualFabrics->v_fabric_all[vf].standby) continue;
-				if ((PKEY_VALUE(VirtualFabrics->v_fabric_all[vf].pkey) == PKEY_VALUE(pkey)) &&
-					(smVFValidateVfMGid(VirtualFabrics, vf, mgid) == VSTATUS_OK)) {
-					bitset_set(&mcGroup->vfMembers, vf);
-				}
+			if ((PKEY_VALUE(VirtualFabrics->v_fabric_all[vf].pkey) == PKEY_VALUE(pkey)) &&
+				(smVFValidateVfMGid(VirtualFabrics, vf, mgid) == VSTATUS_OK)) {
+				bitset_set(&mcGroup->vfMembers, vf);
 			}
 		}
 		status = VSTATUS_OK;
@@ -2283,9 +2306,9 @@ Status_t createMCastGroup(uint64_t* mgid, uint16_t pkey, uint8_t mtu, uint8_t ra
 		goto done;
 	}
 
-	if ((status = sm_multicast_assign_lid(mGid, pkey, mtu, rate, &mLid)) != VSTATUS_OK) {
-		sysPrintf("Failed to allocate LID for broadcast group!\n");
-		goto done;
+	if ((status = sm_multicast_assign_lid(mGid, pkey, mtu, rate, preset_mlid, &mLid)) != VSTATUS_OK) {
+			sysPrintf("Failed to allocate LID for broadcast group!\n");
+			goto done;
 	}
 
 	McGroup_Create(mcGroup);
@@ -2293,12 +2316,9 @@ Status_t createMCastGroup(uint64_t* mgid, uint16_t pkey, uint8_t mtu, uint8_t ra
 	McMember_Create(mcGroup, mcMember);
 
 	if (VirtualFabrics) {
-		for (vf = 0; vf < VirtualFabrics->number_of_vfs_all; vf++) {
-			if (VirtualFabrics->v_fabric_all[vf].standby) continue;
-			if ((PKEY_VALUE(VirtualFabrics->v_fabric_all[vf].pkey) == PKEY_VALUE(pkey)) &&
-				(smVFValidateVfMGid(VirtualFabrics, vf, mgid) == VSTATUS_OK)) {
-				bitset_set(&mcGroup->vfMembers, vf);
-			}
+		if ((PKEY_VALUE(VirtualFabrics->v_fabric_all[vf].pkey) == PKEY_VALUE(pkey)) &&
+			(smVFValidateVfMGid(VirtualFabrics, vf, mgid) == VSTATUS_OK)) {
+			bitset_set(&mcGroup->vfMembers, vf);
 		}
 	}
 
@@ -2352,7 +2372,7 @@ done:
 	return status;
 }
 
-Status_t createMCastGroups(int vf, uint16_t pkey, uint8_t mtu, uint8_t rate, uint8_t sl, uint32_t qkey, uint32_t fl, uint8_t tc) {
+Status_t createMCastGroups(int vf, uint16_t pkey, uint8_t mtu, uint8_t rate, uint8_t sl, uint32_t qkey, uint32_t fl, uint8_t tc, STL_LID mlid) {
 	IB_GID		mGid;
 	//uint16_t	netPKey;
 	uint8_t		ipv6=0x60;
@@ -2378,7 +2398,7 @@ Status_t createMCastGroups(int vf, uint16_t pkey, uint8_t mtu, uint8_t rate, uin
 	vfmGid[1] = mGid.AsReg64s.L;
 
 	if (smVFValidateVfMGid(VirtualFabrics, vf, vfmGid) == VSTATUS_OK) {
-		if (createMCastGroup(vfmGid, pkey, mtu, rate, sl, qkey, fl, tc) == VSTATUS_OK) {
+		if (createMCastGroup(vfmGid, pkey, mtu, rate, sl, qkey, fl, tc, mlid, vf) == VSTATUS_OK) {
 			IB_LOG_VERBOSE_FMT_VF( VirtualFabrics->v_fabric_all[vf].name, "createMCastGroups", "Creating multicast GID "FMT_GID,
 			   		vfmGid[0], vfmGid[1]);
 
@@ -2387,7 +2407,7 @@ Status_t createMCastGroups(int vf, uint16_t pkey, uint8_t mtu, uint8_t rate, uin
 			vfmGid[0] = mGid.AsReg64s.H;
 			vfmGid[1] = mGid.AsReg64s.L;
 			if (smVFValidateVfMGid(VirtualFabrics, vf, vfmGid) == VSTATUS_OK) {
-				createMCastGroup(vfmGid, pkey, mtu, rate, sl, qkey, fl, tc);
+				createMCastGroup(vfmGid, pkey, mtu, rate, sl, qkey, fl, tc, mlid, vf);
 				IB_LOG_VERBOSE_FMT_VF(VirtualFabrics->v_fabric_all[vf].name, "createMCastGroups", "Creating multicast GID "FMT_GID,
 			   		vfmGid[0], vfmGid[1]);
 			}
@@ -2398,7 +2418,7 @@ Status_t createMCastGroups(int vf, uint16_t pkey, uint8_t mtu, uint8_t rate, uin
 			vfmGid[0] = mGid.AsReg64s.H;
 			vfmGid[1] = mGid.AsReg64s.L;
 			if ((smVFValidateVfMGid(VirtualFabrics, vf, vfmGid) == VSTATUS_OK) &&
-				(createMCastGroup(vfmGid, pkey, mtu, rate, sl, qkey, fl, tc) == VSTATUS_OK)) {
+				(createMCastGroup(vfmGid, pkey, mtu, rate, sl, qkey, fl, tc, mlid, vf) == VSTATUS_OK)) {
 				IB_LOG_VERBOSE_FMT_VF( VirtualFabrics->v_fabric_all[vf].name, "createMCastGroups", "Creating multicast GID "FMT_GID,
 		   				vfmGid[0], vfmGid[1]);
 			}
@@ -2408,7 +2428,7 @@ Status_t createMCastGroups(int vf, uint16_t pkey, uint8_t mtu, uint8_t rate, uin
 			vfmGid[0] = mGid.AsReg64s.H;
 			vfmGid[1] = mGid.AsReg64s.L;
 			if ((smVFValidateVfMGid(VirtualFabrics, vf, vfmGid) == VSTATUS_OK) &&
-				(createMCastGroup(vfmGid, pkey, mtu, rate, sl, qkey, fl, tc) == VSTATUS_OK)) {
+				(createMCastGroup(vfmGid, pkey, mtu, rate, sl, qkey, fl, tc, mlid, vf) == VSTATUS_OK)) {
 				IB_LOG_VERBOSE_FMT_VF( VirtualFabrics->v_fabric_all[vf].name, "createMCastGroups", "Creating multicast GID "FMT_GID,
 					vfmGid[0], vfmGid[1]);
             }
@@ -2423,7 +2443,7 @@ Status_t createMCastGroups(int vf, uint16_t pkey, uint8_t mtu, uint8_t rate, uin
 	vfmGid[0] = mGid.AsReg64s.H;
 	vfmGid[1] = mGid.AsReg64s.L;
 	if ((smVFValidateVfMGid(VirtualFabrics, vf, vfmGid) == VSTATUS_OK) &&
-		(createMCastGroup(vfmGid, pkey, mtu, rate, sl, qkey, fl, tc) == VSTATUS_OK)) {
+		(createMCastGroup(vfmGid, pkey, mtu, rate, sl, qkey, fl, tc, mlid, vf) == VSTATUS_OK)) {
 		IB_LOG_VERBOSE_FMT_VF( VirtualFabrics->v_fabric_all[vf].name, "createMCastGroups", "Creating multicast GID "FMT_GID,
 		   		vfmGid[0], vfmGid[1]);
 	}
@@ -2434,7 +2454,7 @@ Status_t createMCastGroups(int vf, uint16_t pkey, uint8_t mtu, uint8_t rate, uin
 	vfmGid[0] = mGid.AsReg64s.H;
 	vfmGid[1] = mGid.AsReg64s.L;
 	if ((smVFValidateVfMGid(VirtualFabrics, vf, vfmGid) == VSTATUS_OK) &&
-		(createMCastGroup(vfmGid, pkey, mtu, rate, sl, qkey, fl, tc) == VSTATUS_OK)) {
+		(createMCastGroup(vfmGid, pkey, mtu, rate, sl, qkey, fl, tc, mlid, vf) == VSTATUS_OK)) {
 		IB_LOG_VERBOSE_FMT_VF( VirtualFabrics->v_fabric_all[vf].name, "createMCastGroups", "Creating multicast GID "FMT_GID,
 		   		vfmGid[0], vfmGid[1]);
 	}
@@ -2445,7 +2465,7 @@ Status_t createMCastGroups(int vf, uint16_t pkey, uint8_t mtu, uint8_t rate, uin
 	vfmGid[0] = mGid.AsReg64s.H;
 	vfmGid[1] = mGid.AsReg64s.L;
 	if ((smVFValidateVfMGid(VirtualFabrics, vf, vfmGid) == VSTATUS_OK) &&
-		(createMCastGroup(vfmGid, pkey, mtu, rate, sl, qkey, fl, tc) == VSTATUS_OK)) {
+		(createMCastGroup(vfmGid, pkey, mtu, rate, sl, qkey, fl, tc, mlid, vf) == VSTATUS_OK)) {
 		IB_LOG_VERBOSE_FMT_VF( VirtualFabrics->v_fabric_all[vf].name, "createMCastGroups", "Creating multicast GID "FMT_GID,
 		   		vfmGid[0], vfmGid[1]);
 	}
@@ -2456,7 +2476,7 @@ Status_t createMCastGroups(int vf, uint16_t pkey, uint8_t mtu, uint8_t rate, uin
 	vfmGid[0] = mGid.AsReg64s.H;
 	vfmGid[1] = mGid.AsReg64s.L;
 	if ((smVFValidateVfMGid(VirtualFabrics, vf, vfmGid) == VSTATUS_OK) &&
-		(createMCastGroup(vfmGid, pkey, mtu, rate, sl, qkey, fl, tc) == VSTATUS_OK)) {
+		(createMCastGroup(vfmGid, pkey, mtu, rate, sl, qkey, fl, tc, mlid, vf) == VSTATUS_OK)) {
 		IB_LOG_VERBOSE_FMT_VF( VirtualFabrics->v_fabric_all[vf].name, "createMCastGroups", "Creating multicast GID "FMT_GID,
 		   		vfmGid[0], vfmGid[1]);
 	}

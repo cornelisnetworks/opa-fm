@@ -49,7 +49,8 @@ DSP_SOURCES= Makefile \
 			builddsw.sh \
 			finddspfiles.sh \
 			makewin32depend.sh \
-			prep.sh
+			prep.sh \
+			unpack_comp.sh
 DIRS		= \
 			patch_version \
 			installtargets \
@@ -66,11 +67,13 @@ CMD_TARGETS_MISC = \
 			get_input_comp_files \
 			finddspfiles \
 			ln-install \
-			makewin32depend
+			makewin32depend \
+			unpack_comp
 ifeq "$(PRODUCT)" "devtools"
 CMD_TARGETS_MISC += 	prep \
 			patch_engineer_version \
-			convert_releasetag
+			convert_releasetag \
+			format_releasetag
 endif
 
 INCLUDE_TARGETS		= 
@@ -81,6 +84,10 @@ include $(TL_DIR)/Makerules/Maketargets.toplevel
 
 include $(TL_DIR)/Makerules/Maketargets.build
 convert_releasetag: convert_releasetag.pl
+	cp $< $@
+	chmod 755 $@
+
+format_releasetag: format_releasetag.py
 	cp $< $@
 	chmod 755 $@
 

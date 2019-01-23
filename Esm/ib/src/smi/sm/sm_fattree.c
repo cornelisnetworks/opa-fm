@@ -93,7 +93,7 @@ _is_core(Node_t* switchp) {
 }
 
 static __inline__ void
-_incr_trunk_count(Node_t* switchp, Port_t* swportp, int *trunkCnt, uint8_t *trunkGrpCnt, uint16_t *trunkGrpNode) {
+_incr_trunk_count(Node_t* switchp, Port_t* swportp, int *trunkCnt, uint8_t *trunkGrpCnt, uint32_t *trunkGrpNode) {
 	int i;
 	int cnt = *trunkCnt;
 
@@ -146,6 +146,109 @@ validateTier(Topology_t *topop, Node_t *switchp) {
 	}
 }
 
+//
+// Enqueues the specified node into the topology tier lists.
+//
+static void
+_switch_enqueue(Topology_t * topop, Node_t * nodep, int tier, int checkName, int discoveryOrder)
+{
+	Node_t *prevNodep = NULL;
+	Node_t *curNodep = NULL;
+	char *nodeDesc = sm_nodeDescString(nodep);
+	int prefixLen = -1;
+	int c, suffixNum, curSuffixNum;
+	char *endptr = NULL;
+
+	if (tier<0) tier=0;
+
+	nodep->tier = tier + 1;
+
+	if (nodep->tier < topop->minTier)
+		topop->minTier = nodep->tier;
+	if (nodep->tier > topop->maxTier)
+		topop->maxTier = nodep->tier;
+
+	if (topop->tier_head[tier] == NULL) {
+		nodep->sw_next = NULL;
+		nodep->sw_prev = NULL;
+		topop->tier_head[tier] = nodep;
+		topop->tier_tail[tier] = nodep;
+		return;
+	}
+
+	if (discoveryOrder) {
+		// tail[tier]
+		nodep->sw_next = NULL;
+		nodep->sw_prev = topop->tier_tail[tier];
+		topop->tier_tail[tier]->sw_next = nodep;
+		topop->tier_tail[tier] = nodep;
+		return;
+	}
+
+	if (checkName) {
+		for (c = 0; c < strlen(nodeDesc); c++) {
+			if ((nodeDesc[c] >= '0') && (nodeDesc[c] <= '9')) {
+				if (c > 0) {
+					prefixLen = c;
+					suffixNum = strtoul(nodeDesc + prefixLen, NULL, 10);
+					break;
+				}
+			}
+		}
+	}
+
+	if (prefixLen > -1) {
+		curNodep = topop->tier_head[tier];
+		while (curNodep && (strncmp(sm_nodeDescString(curNodep), nodeDesc, prefixLen) < 0)) {
+			prevNodep = curNodep;
+			curNodep = curNodep->sw_next;
+		}
+
+		while (curNodep && (strncmp(sm_nodeDescString(curNodep), nodeDesc, prefixLen) == 0)) {
+			curSuffixNum = strtoul(sm_nodeDescString(curNodep) + prefixLen, &endptr, 10);
+
+			if (endptr == sm_nodeDescString(curNodep) + prefixLen) {
+				// alpha prefix of node inserted is subset of curNodep alpha prefix.
+				break;
+			}
+
+			if (suffixNum < curSuffixNum)
+				break;
+
+			prevNodep = curNodep;
+			curNodep = curNodep->sw_next;
+		}
+
+	} else {
+		curNodep = topop->tier_head[tier];
+		while (curNodep && (strcmp(sm_nodeDescString(curNodep), sm_nodeDescString(nodep)) < 0)) {
+			prevNodep = curNodep;
+			curNodep = curNodep->sw_next;
+		}
+	}
+
+	if (!prevNodep) {
+		// head[tier]
+		nodep->sw_prev = NULL;
+		nodep->sw_next = topop->tier_head[tier];
+		topop->tier_head[tier]->sw_prev = nodep;
+		topop->tier_head[tier] = nodep;
+
+	} else if (!curNodep) {
+		// tail[tier]
+		nodep->sw_next = NULL;
+		nodep->sw_prev = topop->tier_tail[tier];
+		topop->tier_tail[tier]->sw_next = nodep;
+		topop->tier_tail[tier] = nodep;
+	} else {
+		// insert
+		nodep->sw_next = prevNodep->sw_next;
+		nodep->sw_prev = curNodep->sw_prev;
+		curNodep->sw_prev = nodep;
+		prevNodep->sw_next = nodep;
+	}
+}
+
 static Status_t
 _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *context)
 {
@@ -153,11 +256,10 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 	Port_t		*swportp, *remotePortp;
 	bitset_t	processedSwitches;
 	uint8_t		trunkGrpCnt[255];
-	uint16_t	trunkGrpNode[255];
+	uint32_t	trunkGrpNode[255];
 	int			trunkCnt, i, t;
 
 	memset(trunkGrpCnt,0,sizeof(trunkGrpCnt));
-
 	if (topop->num_sws == 0) {
 		return VSTATUS_OK;
 	}
@@ -190,7 +292,7 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 					swportp->portData->downlink = 1;
 					if (bitset_test(&processedSwitches, switchp->swIdx)) continue;
 	
-					Switch_Enqueue_Type(topop, switchp, 0, 1, sm_config.ftreeRouting.converge);
+					_switch_enqueue(topop, switchp, 0, 1, sm_config.ftreeRouting.converge);
 					validateTier(topop, switchp);
 					bitset_set(&processedSwitches, switchp->swIdx);
 				}
@@ -221,7 +323,7 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 
 					if (bitset_test(&processedSwitches, nodep->swIdx)) continue;
 
-					Switch_Enqueue_Type(topop, nodep, t, 1, 0);
+					_switch_enqueue(topop, nodep, t, 1, 0);
 					validateTier(topop, switchp);
 					bitset_set(&processedSwitches, nodep->swIdx);
 				}
@@ -237,7 +339,7 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 		// Determine core switches from config information.
 		for_all_switch_nodes(topop, switchp) {
 			if (_is_core(switchp)) {
-				Switch_Enqueue_Type(topop, switchp, sm_config.ftreeRouting.tierCount-1, 0, 0);
+				_switch_enqueue(topop, switchp, sm_config.ftreeRouting.tierCount-1, 0, 0);
 				bitset_set(&processedSwitches, switchp->swIdx);
 			}
 		}
@@ -273,7 +375,7 @@ _post_process_discovery(Topology_t *topop, Status_t discoveryStatus, void *conte
 
 					if (bitset_test(&processedSwitches, nodep->swIdx)) continue;
 
-					Switch_Enqueue_Type(topop, nodep, t-1, 1, sm_config.ftreeRouting.converge);
+					_switch_enqueue(topop, nodep, t-1, 1, sm_config.ftreeRouting.converge);
 					bitset_set(&processedSwitches, nodep->swIdx);
 				}
 
@@ -722,6 +824,7 @@ _calculate_deltas_by_switch(Topology_t *topop)
 {
 	Node_t *nodep, *switchp, *toSwitchp;
 	Port_t *portp, *swPortp, *toSwitchPortp;
+	int curBlock = -1;
 	uint8_t portGroup[128];
 	int upDestCount = 0;
 	int downDestCount = 0;
@@ -801,7 +904,6 @@ _calculate_deltas_by_switch(Topology_t *topop)
 
 							for_all_end_ports(nodep, portp) {
 								if (!sm_valid_port(portp) || portp->state <= IB_PORT_DOWN) continue;
-
 								i = 0;
 								ioffset = 0;
 								for_all_port_lids(portp, currentLid) {
@@ -809,7 +911,16 @@ _calculate_deltas_by_switch(Topology_t *topop)
 									// In this case, the target LID(s) are directly
 									// connected to the local switchp port.
 									if (!numPorts) {
-										switchp->lft[currentLid] = toSwitchPortp->index;
+										if(switchp->lft[currentLid] != toSwitchPortp->index) {
+											switchp->lft[currentLid] = toSwitchPortp->index;
+											curBlock = currentLid/LFTABLE_LIST_COUNT;
+											if (!bitset_test(&topop->deltaLidBlocks, curBlock)) {
+												if (sm_config.sm_debug_routing)
+													IB_LOG_INFINI_INFO_FMT(__func__,
+															"Setting curBlock %d due to ADD of lid 0x%x", curBlock, currentLid);
+												bitset_set(&topop->deltaLidBlocks, curBlock);
+											}
+										}
 										continue;
 									}
 
@@ -837,7 +948,7 @@ _calculate_deltas_by_switch(Topology_t *topop)
 										// only update routes where new endnode is present
 										switchp->lft[currentLid] = newRoute;
 
-										int curBlock = currentLid/LFTABLE_LIST_COUNT;
+										curBlock = currentLid/LFTABLE_LIST_COUNT;
 										if (!bitset_test(&topop->deltaLidBlocks, curBlock)) {
 											if (sm_config.sm_debug_routing)
 												IB_LOG_INFINI_INFO_FMT(__func__,
@@ -1000,7 +1111,7 @@ _calculate_balanced_lft_deltas(Topology_t *topop)
 }
 
 static Status_t
-sm_routing_func_copy_balanced_lfts_deltas(Topology_t *src_topop, Topology_t *dst_topop)
+_routing_func_copy_balanced_lfts_deltas(Topology_t *src_topop, Topology_t *dst_topop)
 {
 	Status_t status;
 	Node_t  *switchp;
@@ -1230,16 +1341,40 @@ _calculate_balanced_lft(Topology_t *topop, Node_t *switchp)
 }
 
 static Status_t
+_process_xml_config(void)
+{
+	if (sm_config.ftreeRouting.tierCount == 0 || sm_config.ftreeRouting.tierCount > MAX_TIER) {
+		IB_LOG_ERROR_FMT(__func__,
+                	"Sm routing algorithm fattree requires TierCount setting between 1 and %d", MAX_TIER);
+		return VSTATUS_BAD;		
+	}
+
+	if (!sm_config.ftreeRouting.fis_on_same_tier && (strlen(sm_config.ftreeRouting.coreSwitches.member) == 0) ) {
+		IB_LOG_ERROR_FMT(__func__,
+			"Sm routing algorithm fattree requires CoreSwitches device group or HFIs on same tier");
+		return VSTATUS_BAD;
+	}
+
+	if (sm_config.ftreeRouting.fis_on_same_tier && (strlen(sm_config.ftreeRouting.coreSwitches.member) != 0) ) {
+		IB_LOG_WARN_FMT(__func__, "Sm routing algorithm fattree has FIsOnSameTier indicated, CoreSwitches has no effect");
+	}
+
+	return VSTATUS_OK;
+}
+
+
+static Status_t
 _make_fattree(RoutingModule_t * rm)
 {
 	rm->name = "fattree";
-	rm->funcs.copy_routing = sm_routing_func_copy_balanced_lfts_deltas;
-	rm->funcs.can_send_partial_routes = sm_routing_func_can_send_partial_routes_true;
+	rm->funcs.copy_routing = _routing_func_copy_balanced_lfts_deltas;
+	rm->funcs.can_send_partial_routes = sm_routing_func_true;
 	rm->funcs.init_switch_routing = _init_switch_lfts;
 	rm->funcs.calculate_routes = _calculate_balanced_lft;
 	rm->funcs.get_port_group = _get_port_group;
 	rm->funcs.post_process_discovery = _post_process_discovery;
 	rm->funcs.do_spine_check = _do_spine_check;
+	rm->funcs.process_xml_config = _process_xml_config;
 
 	return VSTATUS_OK;
 }

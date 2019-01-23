@@ -71,7 +71,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "tms/idb/icsSmMib.h"
 #endif
 
-extern	IBhandle_t	fd_sminfo;
+extern	SmMaiHandle_t *fd_sminfo;
 extern	Status_t policy_main(Mai_t *);
 extern	Status_t policy_topology(Mai_t *);
 extern	Status_t policy_node(Mai_t *);
@@ -187,7 +187,7 @@ async_main(uint32_t argc, uint8_t ** argv) {
     sm_notice_cntxt.hashTableDepth = CNTXT_HASH_TABLE_DEPTH;
     sm_notice_cntxt.poolSize = sm_notice_max_context;
     sm_notice_cntxt.maxRetries = sm_config.max_retries;
-    sm_notice_cntxt.ibHandle = fd_saTrap;
+    sm_notice_cntxt.ibHandle = fd_saTrap->fdMai;
     sm_notice_cntxt.errorOnSendFail = 0;
 #ifdef IB_STACK_OPENIB
 	// for openib we let umad do the timeouts.  Hence we add 1 second to
@@ -237,7 +237,7 @@ async_main(uint32_t argc, uint8_t ** argv) {
 	filter.mask.aid  = 0xffff;
 	MAI_SET_FILTER_NAME (&filter, "sm_async");
 
-	status = mai_filter_create(fd_async, &filter, VFILTER_SHARE);
+	status = mai_filter_create(fd_async->fdMai, &filter, VFILTER_SHARE);
 	if (status != VSTATUS_OK) {
 		smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_OTHER_ERROR, getMyCsmNodeId(), NULL,
 			"sm_async: can't create Get(SMInfo) filter %d", status);
@@ -257,7 +257,7 @@ async_main(uint32_t argc, uint8_t ** argv) {
 	filter.mask.aid  = 0xffff;
 	MAI_SET_FILTER_NAME (&filter, "sm_async");
 
-	status = mai_filter_create(fd_async, &filter, VFILTER_SHARE);
+	status = mai_filter_create(fd_async->fdMai, &filter, VFILTER_SHARE);
 	if (status != VSTATUS_OK) {
 		smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_OTHER_ERROR, getMyCsmNodeId(), NULL,
 			"sm_async: can't create Set(SMInfo) filter %d", status);
@@ -274,7 +274,7 @@ async_main(uint32_t argc, uint8_t ** argv) {
 	filter.mask.method  = 0xff;
 	MAI_SET_FILTER_NAME (&filter, "sm_async");
 
-	status = mai_filter_create(fd_async, &filter, VFILTER_SHARE);
+	status = mai_filter_create(fd_async->fdMai, &filter, VFILTER_SHARE);
 	if (status != VSTATUS_OK) {
 		smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_OTHER_ERROR, getMyCsmNodeId(), NULL,
 			"sm_async: can't create Trap(*) filter %s", status);
@@ -293,7 +293,7 @@ async_main(uint32_t argc, uint8_t ** argv) {
 	filter.mask.aid  = 0xffff;
 	MAI_SET_FILTER_NAME (&filter, "sm_saTrap");
 
-	status = mai_filter_create(fd_saTrap, &filter, VFILTER_SHARE | VFILTER_PURGE);
+	status = mai_filter_create(fd_saTrap->fdMai, &filter, VFILTER_SHARE | VFILTER_PURGE);
 	if (status != VSTATUS_OK) {
 		smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_OTHER_ERROR, getMyCsmNodeId(), NULL,
 			"sm_async: can't create CM_REPORT_RESP filter %d", status);
@@ -314,7 +314,7 @@ async_main(uint32_t argc, uint8_t ** argv) {
 	filter.mask.aid  = 0xffff;
 	MAI_SET_FILTER_NAME (&filter, "sm_saTrap_error");
 
-	status = mai_filter_create(fd_saTrap, &filter, VFILTER_SHARE | VFILTER_PURGE);
+	status = mai_filter_create(fd_saTrap->fdMai, &filter, VFILTER_SHARE | VFILTER_PURGE);
 	if (status != VSTATUS_OK) {
 		smCsmLogMessage(CSM_SEV_NOTICE, CSM_COND_OTHER_ERROR, getMyCsmNodeId(), NULL,
 			"sm_async: can't create CM_REPORT error filter %d", status);
@@ -337,8 +337,8 @@ async_main(uint32_t argc, uint8_t ** argv) {
     (void)vs_time_get(&lastTimeAged);
     nextTime = lastTimeAged + sm_masterCheckInterval;
 
-    handles[0] = fd_async;
-    handles[1] = fd_saTrap;
+    handles[0] = fd_async->fdMai;
+    handles[1] = fd_saTrap->fdMai;
 	while (1) {
         status = mai_recv_handles(handles, 2, delta_time, &index, &mad);
 

@@ -270,7 +270,9 @@ const char *stl_attribute_str(uint8_t BaseVersion, uint8_t class, uint16_t attr)
 		case STL_PA_ATTRID_GET_FOCUS_PORTS_MULTISELECT: return("MultiSelectFocusPorts");
 		case STL_PA_ATTRID_GET_GRP_NODE_INFO:       return("GroupNodeInfo");
 		case STL_PA_ATTRID_GET_GRP_LINK_INFO:       return("GroupLinkInfo");
-        }
+		case STL_PA_ATTRID_GET_GRP_LIST2:           return("GroupList2");
+		case STL_PA_ATTRID_GET_VF_LIST2:            return("VFList2");
+		}
         break;
 
 	}

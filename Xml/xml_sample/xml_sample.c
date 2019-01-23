@@ -126,9 +126,15 @@ void Usage(void)
 
 int main(int argc, char **argv)
 {
+	char *filename;
 	if (argc != 2)
 		Usage();
-	if (FSUCCESS == Xml2ParseInputFile(argv[1]))
+	filename = argv[1];
+	if (!filename) {
+		fprintf(stderr, "Error: null input filename\n");
+		exit(2);
+	}
+	if (FSUCCESS == Xml2ParseInputFile(filename))
 		exit(0);
 	else
 		exit(1);

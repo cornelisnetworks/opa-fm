@@ -114,7 +114,7 @@ INCLUDE_SUBDIR		=
 #LOCALLIBS		= User libraries to use when linking [Empty]
 #				(in addition to LOCALDEPLIBS)
 #LOCAL_LIB_DIRS	= User library directories for libpaths [Empty]
-
+LIB_DIRS += /usr/lib64
 
 
 # Additional Settings
@@ -130,7 +130,6 @@ LOCAL_INCLUDE_DIRS = $(MOD_DIR)/src/smi/include $(OPENIB_USER_LIB_DIRS) $(MOD_DI
 LOCALDEPLIBS=$(IBACCESS_USER_LIBS) opamgt-priv cs ibaccess config vslogu
 LOCALLIBS=$(OPENIB_USER_LIBS) m rt
 #LOCAL_LIB_DIRS=$(OPENIB_USER_LIB_DIRS) $(IBACCESS_USER_LIB_DIRS)
-
 
 # Include Make Rules definitions and rules
 include $(PROJ_SM_DIR)/Makerules.module

@@ -57,12 +57,13 @@ if [[ "${RELEASE_TYPE}" == "EMBARGOED" ]]
 then
         echo "Building Embargoed Release."
         export OPA_LICENSE_DIR=${TL_DIR}/CodeTemplates/EmbargoedNotices
+        export LICENSE_FUNCS=${TL_DIR}/CodeTemplates/license_funcs.sh
         # use tar command to copy files to temp dir
-        # then run update_license on files in temp dir
+        # then run update_all_licenses on files in temp dir
         TMP=$(mktemp -d)
         tar c -C ${SrcRoot} --exclude-vcs --ignore-case $FILE_TO_EXCLUDE ${FILES_TO_TAR} | \
         	tar x -C ${TMP}
-        ${TL_DIR}/CodeTemplates/update_license.sh -c -q $TMP
+        ${TL_DIR}/CodeTemplates/update_all_licenses.sh -c -q $TMP
         SrcRoot=${TMP}
 else
         echo "Building Public Release."
@@ -78,9 +79,10 @@ tar c -C ${SrcRoot} --exclude-vcs --ignore-case $FILE_TO_EXCLUDE ${FILES_TO_TAR}
 if [[ $USE_UNIFDEF = "yes" ]] ; then
         # Check if unifdef tool exists
         type unifdef > /dev/null 2>&1 || { echo "error: unifdef tool missing"; exit 1; }
-        find ${SrcTmp}/ -type f -regex ".*\.[ch][p]*$" -exec unifdef -m -f "${TL_DIR}/buildFeatureDefs" {} \;
+        find ${SrcTmp}/ -type f -regex ".*\.[ch][p]*$" -exec unifdef -m -f "${TL_DIR}/Fd/buildFeatureDefs" {} \;
         # Delete content of buildFeatureDefs before creating source tar for rpm
-        >${SrcTmp}/buildFeatureDefs
+        mkdir -p ${SrcTmp}/Fd
+        >${SrcTmp}/Fd/buildFeatureDefs
         >${SrcTmp}/Fd/buildFeatureDefs.base
 fi
 
@@ -88,7 +90,7 @@ fi
 
 while read comp fn
 do
-	if [ "$comp" = "$comp_arg" ]
+	if echo $comp | grep $comp_arg > /dev/null
 	then
 		cp ${TL_DIR}/$fn ${SrcTmp}/${fn}.base
 	fi

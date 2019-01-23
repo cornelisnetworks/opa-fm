@@ -229,9 +229,10 @@ then
 	exit 1
 fi
 
-MODULEVERSION=`$TL_DIR/MakeTools/convert_releasetag.pl $RELEASE_TAG`
-RPM_VER=`echo $MODULEVERSION|cut -d"." -f1-4`
-RPM_REL=`echo $MODULEVERSION.999.999.999.999|cut -d"." -f5`
+MODULEVERSION=`$TL_DIR/MakeTools/format_releasetag.py $RELEASE_TAG`
+RPMVERSION=`$TL_DIR/MakeTools/format_releasetag.py $RELEASE_TAG --format rpm`
+RPM_VER=`echo $RPMVERSION|cut -d"-" -f1`
+RPM_REL=`echo $RPMVERSION-999|cut -d"-" -f2`
 export MKRPM_VER=$RPM_VER
 export MKRPM_REL=$RPM_REL`rpm --eval %{?dist}`
 
@@ -251,15 +252,16 @@ then
 	#then
 		export REMOVE_DEPENDS=yes
 		make clobber clobber_stage clobber_release
+		(cd $TL_DIR/CommonInstall; make clobber_pl_files)
 		rm -f $TL_DIR/builtinplace.$PRODUCT.$BUILD_CONFIG
 	#fi
 fi
 
-rm -rf $TL_DIR/$PROJ_FILE_DIR/packaged_files $TL_DIR/$PROJ_FILE_DIR/dist_files $TL_DIR/buildFeatureDefs
+rm -rf $TL_DIR/$PROJ_FILE_DIR/packaged_files $TL_DIR/$PROJ_FILE_DIR/dist_files $TL_DIR/Fd/buildFeatureDefs
 
 
 # make sure buildFeatureDefs is in place for the build
-make -f Makefile.linux $TL_DIR/buildFeatureDefs || exit 1
+make -f Makefile.linux $TL_DIR/Fd/buildFeatureDefs || exit 1
 
 # make sure opafm_src.xml is in place for the build
 (cd ib/src/linux/startup;make opafm_src.xml) || exit 1
@@ -267,7 +269,7 @@ make -f Makefile.linux $TL_DIR/buildFeatureDefs || exit 1
 # make sure files from BaseFiles are in place
 while read comp fn
 do
-	if [ "$comp" != "HFM" ]
+	if ! echo $comp | grep HFM > /dev/null
 	then
 		continue
 	fi
@@ -275,6 +277,9 @@ do
 	bn=$(basename $fn)
 	(cd $TL_DIR/$dir;make $bn) || exit 1
 done < $TL_DIR/Fd/BaseFiles
+
+# make sure CommonInstall files are in place
+#(cd $TL_DIR/CommonInstall; make clobber_pl_files fm_files)
 
 args=
 if [ "$inplace" = y ]

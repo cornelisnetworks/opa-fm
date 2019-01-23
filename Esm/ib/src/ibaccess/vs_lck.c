@@ -98,7 +98,6 @@ typedef struct
   union {
     struct {                        // for THREAD
        pthread_mutex_t   mutex;
-       pthread_cond_t    cond;
     } lock;
     struct {                        // for RWTHREAD
        pthread_rwlock_t  rwlock;
@@ -211,18 +210,18 @@ vs_lock_init (Lock_t *handle,
       return VSTATUS_ILLPARM;
     }
 
-    (void)pthread_mutex_lock (&implpriv->u.lock.mutex);
-    (void)pthread_cond_init (&implpriv->u.lock.cond, NULL);
-    handle->status = VLOCK_FREE;
+    handle->type = VLOCK_THREAD;
+    handle->magic = VLOCK_THREADLOCK_MAGIC;
 
     if (state == VLOCK_LOCKED)
     {
+      (void)pthread_mutex_lock (&implpriv->u.lock.mutex);
       handle->status = VLOCK_LOCKED;
     }
-
-    handle->type = VLOCK_THREAD;
-    handle->magic = VLOCK_THREADLOCK_MAGIC;
-    (void)pthread_mutex_unlock (&implpriv->u.lock.mutex);
+    else
+    {
+      handle->status = VLOCK_FREE;
+    }
   }
   else if (type == VLOCK_RWTHREAD)
   {
@@ -374,13 +373,6 @@ vs_lock_delete (Lock_t *handle)
     handle->type = 0xFFFFFFFF;
     handle->status = 0xFFFFFFFF;
     handle->magic = 0;
-
-    /*
-    ** Awaken all sleeping threads
-    */
-    //IB_LOG_INFO0 ("waking threads waiting on lock");
-    (void)pthread_cond_broadcast (&implpriv->u.lock.cond);
-
     (void)pthread_mutex_unlock (&implpriv->u.lock.mutex);
     /* pthread_mutex_destroy (&implpriv->u.lock.mutex); tmp */
   } else {    // SPIN
@@ -403,12 +395,6 @@ vs_lock_delete (Lock_t *handle)
   return VSTATUS_OK;
 }
 
-// TBD - this could be simplified by directly using pthread_mutex lock
-// and not keeping VLOCK_LOCKED state nor the conditional.
-// question may be on the shutdown side.  This allows vs_lock_delete to
-// signal the cond and wake those waiting.  However vs_lock_delete cannot
-// do a pthread_mutex_destroy due to this model.
-// Probably need some cleanup on shutdown sequence then could simplify this.
 /**********************************************************************
 *
 * FUNCTION
@@ -425,6 +411,13 @@ vs_lock_delete (Lock_t *handle)
 *    Status_t - On success VSTATUS_OK is returned, otherwise
 *    the cause of the error.
 *
+* NOTES
+*    * handle->status is only maintained for debug asserts, as we
+*      rely directly on pthreads for locking state.
+*    * vs_lock_delete can not call pthread_mutex_destroy, as the mutex
+*      is intended to remain valid in order to handle racing locks and
+*      deletes (themselves a sign that we need to cleanup shutdown
+*      logic, as this case should be undefined).
 *
 * HISTORY
 *
@@ -437,7 +430,6 @@ vs_lock_delete (Lock_t *handle)
 Status_t
 vs_lock (Lock_t *handle)
 {
-  uint32_t          wake_me_up = 0;
   Implpriv_Lock_t   *implpriv;
   static const char function[] = "vs_lock";
 
@@ -469,8 +461,8 @@ vs_lock (Lock_t *handle)
 
   if (handle->magic != VLOCK_THREADLOCK_MAGIC)
   {
-    IB_LOG_ERRORX ("Lock does not exist magic:", handle->magic);
-    IB_EXIT (function, VSTATUS_ILLPARM);
+    IB_LOG_ERRORX("Lock does not exist magic:", handle->magic);
+    IB_EXIT(function, VSTATUS_ILLPARM);
     return VSTATUS_ILLPARM;
   }
 
@@ -480,34 +472,16 @@ vs_lock (Lock_t *handle)
   implpriv = (Implpriv_Lock_t *)handle->opaque;
   (void)pthread_mutex_lock (&implpriv->u.lock.mutex);
 
-  while (handle->status == VLOCK_LOCKED)
+  if (handle->magic != VLOCK_THREADLOCK_MAGIC)
   {
-    /* wait until we are woken, either by vs_lock_delete or vs_unlock */
-    //IB_LOG_INFO0 ("lock is locked, going to sleep");
-    wake_me_up = (uint32_t)1U;
-    (void)pthread_cond_wait (&implpriv->u.lock.cond, &implpriv->u.lock.mutex);
+    (void)pthread_mutex_unlock(&implpriv->u.lock.mutex);
+    IB_LOG_ERRORX("Lock deleted during acquisition attempt magic:", handle->magic);
+    IB_EXIT(function, VSTATUS_ILLPARM);
+    return VSTATUS_ILLPARM;
   }
 
-  if (wake_me_up == (uint32_t)1U)
-  {
-    //IB_LOG_INFO0 ("thread has woken up");
-  }
-
-  if (handle->magic == VLOCK_THREADLOCK_MAGIC)
-  {
-    //IB_LOG_INFO0 ("lock is free, locking");
-    handle->status = VLOCK_LOCKED;
-  }
-  else
-  {
-    (void)pthread_mutex_unlock (&implpriv->u.lock.mutex);
-    IB_LOG_ERROR0 ("Lock no longer exists");
-    IB_EXIT (function, VSTATUS_NXIO);
-    return VSTATUS_NXIO;
-  }
-
-  //IB_LOG_INFO ("handle->status", handle->status);
-  (void)pthread_mutex_unlock (&implpriv->u.lock.mutex);
+  DEBUG_ASSERT(handle->status == VLOCK_FREE);
+  handle->status = VLOCK_LOCKED;
 
   IB_EXIT (function, VSTATUS_OK);
   return VSTATUS_OK;
@@ -579,17 +553,9 @@ vs_unlock (Lock_t *handle)
   ** Unlock the lock
   */
   implpriv = (Implpriv_Lock_t *)handle->opaque;
-  (void)pthread_mutex_lock (&implpriv->u.lock.mutex);
-
+  DEBUG_ASSERT(handle->status == VLOCK_LOCKED);
   handle->status = VLOCK_FREE;
-  //IB_LOG_INFO ("handle->status =", handle->status);
-
-  /*
-  ** Awaken one sleeping thread
-  */
-  (void)pthread_cond_signal (&implpriv->u.lock.cond);
   (void)pthread_mutex_unlock (&implpriv->u.lock.mutex);
-  /* pthread_mutex_destroy (&implpriv->u.lock.mutex); tmp */
 
   IB_EXIT (function, VSTATUS_OK);
   return VSTATUS_OK;

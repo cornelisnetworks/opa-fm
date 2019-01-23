@@ -493,7 +493,7 @@ mai_shut_down(void)
 
 		p = &gMAI_DOWN_CL[0];
 		mai_dc_read_exit = 1;
-		rc = ib_send_sma(p->hndl, &mad, MAI_DEFAULT_SEND_TIMEOUT);
+		rc = stl_send_sma(p->hndl, &mad, MAI_DEFAULT_SEND_TIMEOUT);
 
 		if (rc)
 		  {

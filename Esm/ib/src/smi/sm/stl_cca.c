@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2018, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -31,6 +31,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <iba/stl_sm_priv.h>
 #include "stl_cca.h"
+#include "sm_parallelsweep.h"
+
 Status_t stl_sm_cca_hfi_ref_acquire(HfiCongestionControlTableRefCount_t** congConrfCount, uint32_t tableSize) {
 	Status_t status;
 	if ((status = vs_pool_alloc(&sm_pool, tableSize, (void *)&(*congConrfCount))) != VSTATUS_OK) {
@@ -132,7 +134,7 @@ int cap)
 	return VSTATUS_OK;
 }
 
-Status_t stl_sm_cca_configure_hfi(Node_t *nodep)
+Status_t stl_sm_cca_configure_hfi(ParallelSweepContext_t *psc, SmMaiHandle_t *fd, Node_t *nodep)
 {
 	Status_t status;
 	Port_t *portp;
@@ -178,8 +180,11 @@ Status_t stl_sm_cca_configure_hfi(Node_t *nodep)
 					payloadBlocks = MIN(payloadBlocks, maxBlocks);  // Limit the number of blocks to be sent
 					amod = payloadBlocks << 24 | i;
 					SmpAddr_t addr = SMP_ADDR_CREATE_LR(sm_lid, dlid);
-					status = SM_Set_HfiCongestionControl(fd_topology, congConRefCount->hfiCongCon.CCTI_Limit,
-														 payloadBlocks, amod, &addr, &congConRefCount->hfiCongCon.CCT_Block_List[i], sm_config.mkey);
+					psc_unlock(psc);
+					status = SM_Set_HfiCongestionControl(fd, congConRefCount->hfiCongCon.CCTI_Limit,
+							payloadBlocks, amod, &addr,
+							&congConRefCount->hfiCongCon.CCT_Block_List[i], sm_config.mkey);
+					psc_lock(psc);
 					if(status != VSTATUS_OK)
 						break;
 					else
@@ -226,7 +231,9 @@ Status_t stl_sm_cca_configure_hfi(Node_t *nodep)
 	if (0 != memcmp(&nodep->hfiCongestionSetting, &hfiCongSett, sizeof(STL_HFI_CONGESTION_SETTING))) { // if not same
 		dlid = portp->portData->lid;
 		SmpAddr_t addr = SMP_ADDR_CREATE_LR(sm_lid, dlid);
-		status = SM_Set_HfiCongestionSetting(fd_topology, 0, &addr, &hfiCongSett, sm_config.mkey);
+		psc_unlock(psc);
+		status = SM_Set_HfiCongestionSetting(fd, 0, &addr, &hfiCongSett, sm_config.mkey);
+		psc_lock(psc);
 		if (status != VSTATUS_OK) {
 			IB_LOG_ERROR_FMT(__func__,
 				"Failed to set HFI Congestion Setting Table for NodeGUID "FMT_U64" [%s]; rc: %d",
@@ -251,7 +258,7 @@ uint16 stl_sm_cca_resolve_marking_rate(Node_t *nodep, uint16 rate)
 }
 
 
-Status_t stl_sm_cca_configure_sw(Node_t *nodep)
+Status_t stl_sm_cca_configure_sw(ParallelSweepContext_t *psc, SmMaiHandle_t *fd, Node_t *nodep)
 {
 	Status_t status=VSTATUS_OK;
 	STL_SWITCH_CONGESTION_SETTING setting;
@@ -262,7 +269,7 @@ Status_t stl_sm_cca_configure_sw(Node_t *nodep)
 	Port_t *portp;
 
 	if (nodep->switchInfo.u2.s.EnhancedPort0) 
-		stl_sm_cca_configure_hfi(nodep);
+		stl_sm_cca_configure_hfi(psc, fd, nodep);
 
 	memset(&setting, 0, sizeof(STL_SWITCH_CONGESTION_SETTING));
 	if (sm_config.congestion.enable) {
@@ -301,7 +308,9 @@ Status_t stl_sm_cca_configure_sw(Node_t *nodep)
 	dlid = portp->portData->lid;
 	if (0 != memcmp(&nodep->swCongestionSetting, &setting, sizeof(STL_SWITCH_CONGESTION_SETTING))) { // if not same
 		SmpAddr_t addr = SMP_ADDR_CREATE_LR(sm_lid, dlid);
-		status = SM_Set_SwitchCongestionSetting(fd_topology, 0, &addr, &setting, sm_config.mkey);
+		psc_unlock(psc);
+		status = SM_Set_SwitchCongestionSetting(fd, 0, &addr, &setting, sm_config.mkey);
+		psc_lock(psc);
 		if (status != VSTATUS_OK) {
 			IB_LOG_ERROR_FMT(__func__,
 				"Failed to set switch Congestion Setting for NodeGUID "FMT_U64" [%s]; rc: %d",
@@ -322,7 +331,9 @@ Status_t stl_sm_cca_configure_sw(Node_t *nodep)
 	}
 
 	SmpAddr_t addr = SMP_ADDR_CREATE_LR(sm_lid, dlid);
-	status = SM_Get_SwitchPortCongestionSetting(fd_topology, ((uint32_t)port_count)<<24, &addr, swPortSet);
+	psc_unlock(psc);
+	status = SM_Get_SwitchPortCongestionSetting(fd, ((uint32_t)port_count)<<24, &addr, swPortSet);
+	psc_lock(psc);
 	if (status != VSTATUS_OK) {
 		IB_LOG_ERROR_FMT(__func__,
 			"Failed to get Switch Port Congestion Settings for NodeGUID "FMT_U64" [%s]; rc %d",

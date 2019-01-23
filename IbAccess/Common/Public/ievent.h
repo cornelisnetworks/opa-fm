@@ -67,6 +67,11 @@ void
 EventTrigger(
 	IN EVENT *pEvent );
 
+/* Signal all waiters of an event. */
+void
+EventBroadcast(
+	IN EVENT *pEvent);
+
 /* Clear an event from being signaled. */
 void
 EventClear( 

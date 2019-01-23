@@ -67,6 +67,18 @@ void PrintStlPAGroupList(PrintDest_t *dest, int indent, const int numRecords, co
 	return;
 }
 
+void PrintStlPAGroupList2(PrintDest_t *dest, int indent, const int numRecords, const STL_PA_GROUP_LIST2 *pGroupList)
+{
+	int i;
+
+	PrintFunc(dest, "%*sNumber of Groups: %u\n", indent, "", numRecords);
+	for (i = 0; i < numRecords; i++)
+		PrintFunc(dest, "%*sGroup %u: %s\n", indent, "", i+1, pGroupList[i].groupName);
+
+	PrintStlPAImageId(dest, indent+2, &pGroupList[0].imageId);
+	return;
+}
+
 void PrintStlPAGroupUtilStats(PrintDest_t *dest, int indent, const STL_PA_PM_UTIL_STATS *pUtilStat)
 {
 	int i;
@@ -512,7 +524,7 @@ void PrintStlPAFocusPortsMultiSelect(PrintDest_t *dest, int indent, const char *
 					PrintFunc(dest, "%*s   %-22s Value:  %16"PRIu64"   nbrValue:  %16"PRIu64"\n",
 						indent, "", StlFocusAttributeToText(tuple[j].select), pFocusPorts[i].value[j], pFocusPorts[i].neighborValue[j]);
 				} else {
-					PrintFunc(dest, "%*s  %-22s Value:  %16.1f   nbrValue:  %16.1f\n",
+					PrintFunc(dest, "%*s   %-22s Value:  %16.1f"   "   nbrValue:  %16.1f\n",
 						indent, "", StlFocusAttributeToText(tuple[j].select), (float)pFocusPorts[i].value[j]/10.0, (float)pFocusPorts[i].neighborValue[j]/10.0);
 				}
 			}
@@ -600,6 +612,18 @@ void PrintStlPAVFList(PrintDest_t *dest, int indent, const int numRecords, const
 	for (i = 0; i < numRecords; i++) {
 		PrintFunc(dest, "%*sVF %u: %s\n", indent, "", i+1, pVFList[i].vfName);
 	}
+	return;
+}
+
+void PrintStlPAVFList2(PrintDest_t *dest, int indent, const int numRecords, const STL_PA_VF_LIST2 *pVFList)
+{
+	int i;
+
+	PrintFunc(dest, "%*sNumber of VFs: %u\n", indent, "", numRecords);
+	for (i = 0; i < numRecords; i++) {
+		PrintFunc(dest, "%*sVF %u: %s\n", indent, "", i+1, pVFList[i].vfName);
+	}
+	PrintStlPAImageId(dest, indent+2, &pVFList[0].imageId);
 	return;
 }
 
@@ -743,14 +767,13 @@ void PrintStlPAVFFocusPorts(PrintDest_t *dest, int indent, const char *vfName, c
 				indent, "", i+start, pVFFocusPorts[i].nodeLid, pVFFocusPorts[i].portNumber,
 				StlStaticRateToText(pVFFocusPorts[i].rate), IbMTUToText(pVFFocusPorts[i].maxVlMtu),
 				pVFFocusPorts[i].neighborLid, pVFFocusPorts[i].neighborPortNumber);
-		if ( ( (select >= STL_PA_SELECT_CATEGORY_INTEG) &&
-			(select <= STL_PA_SELECT_CATEGORY_ROUT) ) ||
-			(select == STL_PA_SELECT_UTIL_PKTS_HIGH) ) {
-			PrintFunc(dest, "%*s   Value:   %16"PRIu64"   nbrValue:  %16"PRIu64"\n",
-					indent, "", pVFFocusPorts[i].value, pVFFocusPorts[i].neighborValue);
-		} else {
+
+		if (IS_FOCUS_SELECT_UTIL(select)) {
 			PrintFunc(dest, "%*s   Value:   %16.1f   nbrValue:  %16.1f\n",
 					indent, "", (float)pVFFocusPorts[i].value / 10.0, (float)pVFFocusPorts[i].neighborValue / 10.0);
+		} else {
+			PrintFunc(dest, "%*s   Value:   %16"PRIu64"   nbrValue:  %16"PRIu64"\n",
+					indent, "", pVFFocusPorts[i].value, pVFFocusPorts[i].neighborValue);
 		}
 		PrintFunc(dest, "%*s   GUID:  0x%016"PRIx64"   nbrGuid: 0x%016"PRIx64"\n",
 				indent, "", pVFFocusPorts[i].nodeGUID, pVFFocusPorts[i].neighborGuid);

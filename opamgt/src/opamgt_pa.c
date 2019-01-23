@@ -1060,47 +1060,47 @@ done:
 /**
  *  Get multi-record response for pa group data (group list).
  *
- * @param port                      Local port to operate on. 
- * @param query                     Pointer to the query 
- * @param pquery_result             Pointer to query result to be filled. The caller 
+ * @param port                      Local port to operate on.
+ * @param query                     Pointer to the query
+ * @param pquery_result             Pointer to query result to be filled. The caller
  *                                  has to free the buffer.
  *
- * @return 
+ * @return
  *   FSUCCESS       - Get successfully
  *     FERROR       - Error
  */
-FSTATUS 
+FSTATUS
 iba_pa_multi_mad_group_list_response_query(
-    IN struct omgt_port              *port,
-    IN POMGT_QUERY             query,
-    OUT PQUERY_RESULT_VALUES        *pquery_result
-    )
+	IN struct omgt_port       *port,
+	IN POMGT_QUERY            query,
+	OUT PQUERY_RESULT_VALUES  *pquery_result
+	)
 {
-    FSTATUS                     fstatus = FSUCCESS;
-    QUERY_RESULT_VALUES         *query_result = NULL;
-    SA_MAD                      *rsp_mad = NULL;
-    size_t                      rcv_buf_len = 0;
-    uint8_t                     request_data[PA_REQ_HEADER_SIZE] = {0};
-    STL_PA_GROUP_LIST     		*pa_data;
-    STL_PA_GROUP_LIST_RESULTS   *pa_result;
+	FSTATUS                     fstatus = FSUCCESS;
+	QUERY_RESULT_VALUES         *query_result = NULL;
+	SA_MAD                      *rsp_mad = NULL;
+	size_t                      rcv_buf_len = 0;
+	uint8_t                     request_data[PA_REQ_HEADER_SIZE] = { 0 };
+	STL_PA_GROUP_LIST           *pa_data;
+	STL_PA_GROUP_LIST_RESULTS   *pa_result;
 	int i;
 
-    DBG_ENTER_FUNC(port);
-    // Check the incoming port parameter
-    if (port == NULL) return FERROR;
-    
+	DBG_ENTER_FUNC(port);
+	// Check the incoming port parameter
+	if (port == NULL) return FERROR;
+
 	// process the command.
 	switch (query->OutputType) {
 	case OutputTypePaTableRecord:
 		// submit request
 		fstatus = pa_query_common(port, STL_PA_CMD_GETTABLE, STL_PA_ATTRID_GET_GRP_LIST, 0,
 			request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
-		if (fstatus != FSUCCESS){
+		if (fstatus != FSUCCESS) {
 			if (port->pa_verbose)
-			OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n",(unsigned int)fstatus);
+				OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n", (unsigned int)fstatus);
 			goto done;
 		} else {
-			if (port->pa_verbose){
+			if (port->pa_verbose) {
 				OMGT_DBGPRINT(port, "Completed request: OK\n");
 			}
 		}
@@ -1108,7 +1108,7 @@ iba_pa_multi_mad_group_list_response_query(
 		// translate the data.
 		pa_result = (STL_PA_GROUP_LIST_RESULTS *)query_result->QueryResult;
 		pa_data = pa_result->GroupListRecords;
-		for (i = 0; i < pa_result->NumGroupListRecords; i++){
+		for (i = 0; i < pa_result->NumGroupListRecords; i++) {
 			STL_PA_GROUP_LIST *groupname = (STL_PA_GROUP_LIST *)GET_RESULT_OFFSET(rsp_mad, i);
 			pa_data[i] = *groupname;
 		}
@@ -1132,7 +1132,76 @@ done:
 	DBG_EXIT_FUNC(port);
 	return fstatus;
 }
+FSTATUS
+iba_pa_multi_mad_group_list2_response_query(
+	IN struct omgt_port       *port,
+	IN POMGT_QUERY            query,
+	IN STL_PA_IMAGE_ID_DATA   *imageId,
+	OUT PQUERY_RESULT_VALUES  *pquery_result
+	)
+{
+	FSTATUS                     fstatus = FSUCCESS;
+	QUERY_RESULT_VALUES         *query_result = NULL;
+	SA_MAD                      *rsp_mad = NULL;
+	size_t                      rcv_buf_len = 0;
+	uint8_t                     request_data[PA_REQ_HEADER_SIZE + sizeof(STL_PA_IMAGE_ID_DATA)] = { 0 };
+	STL_PA_GROUP_LIST2          *pa_data;
+	STL_PA_GROUP_LIST2_RESULTS  *pa_result;
+	STL_PA_IMAGE_ID_DATA        *p;
+	int i;
 
+	DBG_ENTER_FUNC(port);
+	// Check the incoming port parameter
+	if (port == NULL) return FERROR;
+
+	p = (STL_PA_IMAGE_ID_DATA *)(((SA_MAD *)request_data)->Data);
+	*p = *imageId;
+	BSWAP_STL_PA_IMAGE_ID(p);
+
+	// process the command.
+	switch (query->OutputType) {
+	case OutputTypePaTableRecord:
+		// submit request
+		fstatus = pa_query_common(port, STL_PA_CMD_GETTABLE, STL_PA_ATTRID_GET_GRP_LIST2, 0,
+			request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
+		if (fstatus != FSUCCESS) {
+			if (port->pa_verbose)
+				OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n", (unsigned int)fstatus);
+			goto done;
+		} else {
+			if (port->pa_verbose) {
+				OMGT_DBGPRINT(port, "Completed request: OK\n");
+			}
+		}
+
+		// translate the data.
+		pa_result = (STL_PA_GROUP_LIST2_RESULTS *)query_result->QueryResult;
+		pa_data = pa_result->GroupList2Records;
+		for (i = 0; i < pa_result->NumGroupList2Records; i++) {
+			STL_PA_GROUP_LIST2 *group = (STL_PA_GROUP_LIST2 *)GET_RESULT_OFFSET(rsp_mad, i);
+			BSWAP_STL_PA_IMAGE_ID(&group->imageId);
+			pa_data[i] = *group;
+		}
+		break;
+
+	default:
+		OMGT_OUTPUT_ERROR(port, "Query Not supported in OPAMGT: Input=%s, Output=%s\n",
+			iba_pa_query_input_type_msg(query->InputType),
+			iba_pa_query_result_type_msg(query->OutputType));
+		fstatus = FERROR;
+		goto done;
+		break;
+	}
+
+done:
+	if (rsp_mad)
+		free(rsp_mad);
+
+	*pquery_result = query_result;
+
+	DBG_EXIT_FUNC(port);
+	return fstatus;
+}
 /**
  *  Get multi-record response for pa group info (stats).
  *
@@ -1785,7 +1854,76 @@ done:
 	DBG_EXIT_FUNC(port);
 	return fstatus;
 }
+FSTATUS
+iba_pa_multi_mad_vf_list2_response_query(
+	IN struct omgt_port       *port,
+	IN POMGT_QUERY            query,
+	IN STL_PA_IMAGE_ID_DATA   *imageId,
+	OUT PQUERY_RESULT_VALUES  *pquery_result
+	)
+{
+	FSTATUS                     fstatus = FSUCCESS;
+	QUERY_RESULT_VALUES         *query_result = NULL;
+	SA_MAD                      *rsp_mad = NULL;
+	size_t                      rcv_buf_len = 0;
+	uint8_t                     request_data[PA_REQ_HEADER_SIZE + sizeof(STL_PA_IMAGE_ID_DATA)] = { 0 };
+	STL_PA_VF_LIST2             *pa_data;
+	STL_PA_VF_LIST2_RESULTS     *pa_result;
+	STL_PA_IMAGE_ID_DATA        *p;
 
+	DBG_ENTER_FUNC(port);
+	// Check the incoming port parameter
+	if (port == NULL) return FERROR;
+
+	p = (STL_PA_IMAGE_ID_DATA *)(((SA_MAD *)request_data)->Data);
+	*p = *imageId;
+	BSWAP_STL_PA_IMAGE_ID(p);
+
+	// process the command.
+	switch (query->OutputType) {
+	case OutputTypePaTableRecord:
+		// submit request
+		fstatus = pa_query_common(port, STL_PA_CMD_GETTABLE, STL_PA_ATTRID_GET_VF_LIST2, 0,
+			request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
+		if (fstatus != FSUCCESS) {
+			if (port->pa_verbose)
+				OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n", (unsigned int)fstatus);
+			goto done;
+		} else {
+			if (port->pa_verbose) {
+				OMGT_DBGPRINT(port, "Completed request: OK\n");
+			}
+		}
+
+		int i;
+		// translate the data.
+		pa_result = (STL_PA_VF_LIST2_RESULTS *)query_result->QueryResult;
+		pa_data = pa_result->VFList2Records;
+		for (i = 0; i < pa_result->NumVFList2Records; i++) {
+			STL_PA_VF_LIST2 *vf = (STL_PA_VF_LIST2 *)GET_RESULT_OFFSET(rsp_mad, i);
+			BSWAP_STL_PA_IMAGE_ID(&vf->imageId);
+			pa_data[i] = *vf;
+		}
+		break;
+
+	default:
+		OMGT_OUTPUT_ERROR(port, "Query Not supported in OPAMGT: Input=%s, Output=%s\n",
+			iba_pa_query_input_type_msg(query->InputType),
+			iba_pa_query_result_type_msg(query->OutputType));
+		fstatus = FERROR;
+		goto done;
+		break;
+	}
+
+done:
+	if (rsp_mad)
+		free(rsp_mad);
+
+	*pquery_result = query_result;
+
+	DBG_EXIT_FUNC(port);
+	return fstatus;
+}
 /**
  *  Get multi-record response for pa vf info (stats).
  *
@@ -2542,9 +2680,9 @@ omgt_pa_get_image_info(
  */
 OMGT_STATUS_T
 omgt_pa_get_group_list(
-    struct omgt_port          *port,
-	uint32					 *pNum_Groups,
-    STL_PA_GROUP_LIST  		**pm_group_list
+    struct omgt_port   *port,
+    uint32             *pNum_Groups,
+    STL_PA_GROUP_LIST  **pm_group_list
     )
 {
     OMGT_STATUS_T				fstatus = OMGT_STATUS_ERROR;
@@ -2630,16 +2768,98 @@ fail:
 
 }
 
-void
-omgt_pa_release_group_list(
-    STL_PA_GROUP_LIST	    **pm_group_list
+void omgt_pa_release_group_list(STL_PA_GROUP_LIST **pm_group_list)
+{
+	if (pm_group_list && *pm_group_list) {
+		MemoryDeallocate(*pm_group_list);
+		*pm_group_list = NULL;
+	}
+}
+OMGT_STATUS_T
+omgt_pa_get_group_list2(
+    struct omgt_port     *port,
+    STL_PA_IMAGE_ID_DATA pm_image_id_query,
+    uint32               *pNum_Groups,
+    STL_PA_GROUP_LIST2   **pm_group_list
     )
 {
-    if (pm_group_list && *pm_group_list)
-    {
-        MemoryDeallocate(*pm_group_list);
-        *pm_group_list = NULL;
-    }
+	OMGT_STATUS_T              fstatus = OMGT_STATUS_ERROR;
+	uint32                     size_group_list;
+	OMGT_QUERY                 query;
+	PQUERY_RESULT_VALUES       query_results = NULL;
+	STL_PA_IMAGE_ID_DATA       image_id = pm_image_id_query;
+	STL_PA_GROUP_LIST2_RESULTS *p;
+
+	// Validate the parameters and state
+	if (!port || !pNum_Groups || !pm_group_list || *pm_group_list) {
+		OMGT_OUTPUT_ERROR(port, "invalid params or state\n");
+		return (fstatus);
+	}
+
+	memset(&query, 0, sizeof(query));   // initialize reserved fields
+	query.InputType     = InputTypeNoInput;
+	query.OutputType    = OutputTypePaTableRecord;
+
+	OMGT_DBGPRINT(port, "Getting Multi Record Response For Group List...\n");
+	OMGT_DBGPRINT(port, "Query: Input=%s, Output=%s\n",
+		iba_pa_query_input_type_msg(query.InputType),
+		iba_pa_query_result_type_msg(query.OutputType));
+
+	fstatus = iba_pa_multi_mad_group_list2_response_query(port, &query, &image_id, &query_results);
+
+	if (!query_results) {
+		OMGT_DBGPRINT(port,  "PA Group List2 query Failed: %s\n",
+			iba_fstatus_msg(fstatus));
+		goto fail;
+	} else if (query_results->Status != FSUCCESS) {
+		OMGT_DBGPRINT(port,  "PA Group List2 query Failed: %s MadStatus 0x%X: %s\n",
+			iba_fstatus_msg(query_results->Status),
+			port->pa_mad_status, iba_pa_mad_status_msg(port));
+		goto fail;
+	} else if (query_results->ResultDataSize == 0) {
+		OMGT_DBGPRINT(port, "No Records Returned\n");
+		*pNum_Groups = 0;
+		fstatus = OMGT_STATUS_SUCCESS;
+		goto done;
+	} else {
+		p = (STL_PA_GROUP_LIST2_RESULTS *)query_results->QueryResult;
+
+		// TBD remove some of these after additional MAD testing
+		OMGT_DBGPRINT(port, "MadStatus 0x%X: %s\n", port->pa_mad_status,
+			iba_pa_mad_status_msg(port));
+		OMGT_DBGPRINT(port, "%d Bytes Returned\n", query_results->ResultDataSize);
+		OMGT_DBGPRINT(port, "PA Multiple MAD Response for Group Data:\n");
+		OMGT_DBGPRINT(port, "NumGroupList2Records = %d\n",
+			(int)p->NumGroupList2Records);
+
+		*pNum_Groups = p->NumGroupList2Records;
+		size_group_list = sizeof(STL_PA_GROUP_LIST2) * *pNum_Groups;
+
+		if (!(*pm_group_list = MemoryAllocate2AndClear(size_group_list, IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG))) {
+			OMGT_OUTPUT_ERROR(port, "can not allocate memory\n");
+			goto fail;
+		}
+		memcpy(*pm_group_list, p->GroupList2Records, size_group_list);
+		fstatus = OMGT_STATUS_SUCCESS;
+	}
+
+done:
+	// omgt_query_port_fabric will have allocated a result buffer
+	// we must free the buffer when we are done with it
+	if (query_results)
+		omgt_free_query_result_buffer(query_results);
+	return (fstatus);
+fail:
+	fstatus = OMGT_STATUS_ERROR;
+	goto done;
+}
+
+void omgt_pa_release_group_list2(STL_PA_GROUP_LIST2 **pm_group_list)
+{
+	if (pm_group_list && *pm_group_list) {
+		MemoryDeallocate(*pm_group_list);
+		*pm_group_list = NULL;
+	}
 }
 /**
  *  Get list of vf names
@@ -2741,16 +2961,98 @@ fail:
 
 }
 
-void
-omgt_pa_release_vf_list(
-    STL_PA_VF_LIST	    **pm_vf_list
-    )
+void omgt_pa_release_vf_list(STL_PA_VF_LIST **pm_vf_list)
 {
-    if (pm_vf_list && *pm_vf_list)
-    {
-        MemoryDeallocate(*pm_vf_list);
-        *pm_vf_list = NULL;
-    }
+	if (pm_vf_list && *pm_vf_list) {
+		MemoryDeallocate(*pm_vf_list);
+		*pm_vf_list = NULL;
+	}
+}
+OMGT_STATUS_T
+omgt_pa_get_vf_list2(
+	struct omgt_port     *port,
+	STL_PA_IMAGE_ID_DATA pm_image_id_query,
+	uint32               *pNum_VFs,
+	STL_PA_VF_LIST2      **pm_vf_list
+	)
+{
+	OMGT_STATUS_T           fstatus = OMGT_STATUS_ERROR;
+	uint32                  size_vf_list;
+	OMGT_QUERY              query;
+	PQUERY_RESULT_VALUES    query_results = NULL;
+    STL_PA_IMAGE_ID_DATA    image_id = pm_image_id_query;
+	STL_PA_VF_LIST2_RESULTS *p;
+
+	// Validate the parameters and state
+	if (!port || !pNum_VFs || !pm_vf_list || *pm_vf_list) {
+		OMGT_OUTPUT_ERROR(port, "invalid params or state\n");
+		return (fstatus);
+	}
+
+	memset(&query, 0, sizeof(query));   // initialize reserved fields
+	query.InputType     = InputTypeNoInput;
+	query.OutputType    = OutputTypePaTableRecord;
+
+	OMGT_DBGPRINT(port, "Getting Multi Record Response For VF Data...\n");
+	OMGT_DBGPRINT(port, "Query: Input=%s, Output=%s\n",
+		iba_pa_query_input_type_msg(query.InputType),
+		iba_pa_query_result_type_msg(query.OutputType));
+
+	fstatus = iba_pa_multi_mad_vf_list2_response_query(port, &query, &image_id, &query_results);
+	if (!query_results) {
+		OMGT_DBGPRINT(port, "PA VF List2 query Failed: %s\n",
+			iba_fstatus_msg(fstatus));
+		goto fail;
+	} else if (query_results->Status != FSUCCESS) {
+		OMGT_DBGPRINT(port, "PA VF List2 query Failed: %s MadStatus 0x%X: %s\n",
+			iba_fstatus_msg(query_results->Status),
+			port->pa_mad_status, iba_pa_mad_status_msg(port));
+		goto fail;
+	} else if (query_results->ResultDataSize == 0) {
+		OMGT_DBGPRINT(port, "No Records Returned\n");
+		*pNum_VFs = 0;
+		fstatus = OMGT_STATUS_SUCCESS;
+		goto done;
+	} else {
+		p = (STL_PA_VF_LIST2_RESULTS *)query_results->QueryResult;
+
+		// TBD remove some of these after additional MAD testing
+		OMGT_DBGPRINT(port, "MadStatus 0x%X: %s\n", port->pa_mad_status,
+			iba_pa_mad_status_msg(port));
+		OMGT_DBGPRINT(port, "%d Bytes Returned\n", query_results->ResultDataSize);
+		OMGT_DBGPRINT(port, "PA Multiple MAD Response for VF Data:\n");
+		OMGT_DBGPRINT(port, "NumVFList2Records = %d\n",
+			(int)p->NumVFList2Records);
+
+		*pNum_VFs = p->NumVFList2Records;
+		size_vf_list = sizeof(STL_PA_VF_LIST2) * *pNum_VFs;
+
+		if (!(*pm_vf_list = MemoryAllocate2AndClear(size_vf_list, IBA_MEM_FLAG_PREMPTABLE, OMGT_MEMORY_TAG))) {
+			OMGT_OUTPUT_ERROR(port, "can not allocate memory\n");
+			goto fail;
+		}
+
+		memcpy(*pm_vf_list, p->VFList2Records, size_vf_list);
+		fstatus = OMGT_STATUS_SUCCESS;
+	}
+
+done:
+	// omgt_query_port_fabric will have allocated a result buffer
+	// we must free the buffer when we are done with it
+	if (query_results)
+		omgt_free_query_result_buffer(query_results);
+	return (fstatus);
+fail:
+	fstatus = OMGT_STATUS_ERROR;
+	goto done;
+
+}
+void omgt_pa_release_vf_list2(STL_PA_VF_LIST2 **pm_vf_list)
+{
+	if (pm_vf_list && *pm_vf_list) {
+		MemoryDeallocate(*pm_vf_list);
+		*pm_vf_list = NULL;
+	}
 }
 /** 
  *  Get group info

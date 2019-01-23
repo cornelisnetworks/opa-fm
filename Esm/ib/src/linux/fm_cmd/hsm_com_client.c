@@ -230,9 +230,12 @@ unix_sck_send_data(hsm_com_client_hdl_t *hdl, int timeout,
 
 	msg = (hsm_com_msg_t*)hdl->recv_buf;
 	if(msg->common.resp_code == HSM_COM_RESP_OK){
-		memcpy(recv->buf,&msg->data[0],msg->common.payload_len);
-		recv->data_len = msg->common.payload_len;
-		return HSM_COM_OK;
+		unsigned long l = msg->common.payload_len;
+		if (l <= recv->data_len){
+			memcpy(recv->buf,&msg->data[0], l);
+			recv->data_len = msg->common.payload_len;
+			return HSM_COM_OK;
+		}
 	}
 
 	return HSM_COM_BAD;

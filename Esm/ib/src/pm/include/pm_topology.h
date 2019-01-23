@@ -124,6 +124,7 @@ typedef union {
 #define MAX_PM_COMP_VFABRICS MAX_VFABRICS
 #endif /* __VXWORKS__ */
 
+extern uint32_t g_pmDebugPerf;
 
 // This is a consolidation of the counters of interest from PortStatus
 // We use the same datatypes for each counter (hence same range) as in PMA
@@ -301,8 +302,6 @@ typedef struct PmUtilStats_s {
 	uint32 reserved;
 
 } PACK_SUFFIX PmUtilStats_t;
-
-#define PA_INC_COUNTER_NO_OVERFLOW(cntr, max) do { if (cntr >= max) { cntr = max; } else { cntr++; } } while(0)
 
 // summary of error statistics for a group of ports
 typedef struct PmErrStats_s {
@@ -894,6 +893,31 @@ typedef struct PmShortTermHistory_s {
 } PmShortTermHistory_t;
 
 // ----------------------------------------------------------
+typedef struct PmDispPerfMap_s {
+	uint16 phase_aid;
+	uint8  phase_node_type;
+	uint8  phase_method;
+	size_t phase_offset;
+} PmDispPerfMap_t;
+
+typedef struct PmDispatcherPerfPhase_s {
+	uint64_t phase_start;
+	uint64_t phase_end;
+	uint64_t min_roundtrip_time;
+	uint64_t max_roundtrip_time;
+	uint64_t sum_roundtrip_time;
+	uint64_t phase_count;
+} PmDispatcherPerfPhase_t;
+typedef struct PmDispatcherPerf_s {
+	uint64_t callback_calc_time;
+	PmDispatcherPerfPhase_t hfi_get_cpi;
+	PmDispatcherPerfPhase_t sw_get_cpi;
+	PmDispatcherPerfPhase_t hfi_get_cntrs;
+	PmDispatcherPerfPhase_t sw_get_data_cntrs;
+	PmDispatcherPerfPhase_t sw_get_error_cntrs;
+	PmDispatcherPerfPhase_t hfi_clr_cntrs;
+	PmDispatcherPerfPhase_t sw_clr_cntrs;
+} PmDispatcherPerf_t;
 
 // high level PM configuration and statistics
 typedef struct Pm_s {
@@ -918,7 +942,7 @@ typedef struct Pm_s {
 	uint32 *freezeFrames;		// exclusively for FREEZE_FRAME
 
 	// configuration settings
-	uint16 flags;	// configured (see stl_pa.h pmFlags for a list)
+	uint32 pmFlags;     // configured (see stl_pa_types.h pmFlags for a list)
 	uint16 interval;	// in seconds
 	// threshold is per interval NOT per second
 	// set threshold to 0 to disable monitoring given Error type
@@ -947,6 +971,7 @@ typedef struct Pm_s {
 
 	struct PmDispatcher_s {
 		generic_cntxt_t cntx;
+		PmDispatcherPerf_t perf_stats;
 		Event_t sweepDone;
 		uint8	postedEvent;			// have we posted the sweepDone event
 		STL_LID	nextLid;
@@ -960,7 +985,11 @@ typedef struct Pm_s {
 	PmImage_t *Image;
 } Pm_t;
 
-
+typedef struct PmVFFocusPortComputeData_s {
+	uint32 imageInterval;
+	int vfIdx;
+	CongestionWeights_t congestionWeights;
+} PmVFFocusPortComputeData_t;
 
 static __inline
 void
@@ -1216,7 +1245,7 @@ FSTATUS PmReconstitute(PmShortTermHistory_t *sth, PmCompositeImage_t *cimg);
 // 	all data in image (including PmPort_t.Image[index], PmNode_t.Image[index]
 // 		and Pmgroup_t.Image[index]
 // 		except for fields protected by Pm.stateLock
-// 	paAccess must have this lock and verify state == VALID
+// 	pa_access must have this lock and verify state == VALID
 // 	Engine must get this lock in order to update topology or per image stats
 //
 // Pm.totalsLock is a rwlock, protects:
@@ -1228,7 +1257,7 @@ FSTATUS PmReconstitute(PmShortTermHistory_t *sth, PmCompositeImage_t *cimg);
 // Algorithm for stateLock allows client to check state before tring to
 // get imageLock.
 //
-// paAccess query (for lastsweep, history or freeze frame query):
+// pa_access query (for lastsweep, history or freeze frame query):
 // 	rdlock Pm.stateLock
 // 	index= convert image Id using Pm.LastSweepIndex	//copy to local while locked
 //  if Pm.Image[index].state != VALID - error
@@ -1246,7 +1275,7 @@ FSTATUS PmReconstitute(PmShortTermHistory_t *sth, PmCompositeImage_t *cimg);
 //  Pm.Image[index].state = INPROGRESS
 //  wrlock Pm.Image[index].imageLock	// make sure clients out
 //  rwunlock Pm.stateLock - we have in progress flag set
-// 	perform sweep - since it is the "active sweep" paAccess should not try to
+// 	perform sweep - since it is the "active sweep" pa_access should not try to
 // 		lock it while we sweep, INPROGRESS also protects it
 // 		if alloc or resize lidmap, set to NULLs.
 // 			As populate, inc ref count on node
@@ -1304,11 +1333,6 @@ FSTATUS PmReconstitute(PmShortTermHistory_t *sth, PmCompositeImage_t *cimg);
 // - can specify history index 0 to N
 // - bit to indicate if given index is history or freeze frame
 // - in sweep summary query, have timestamps, maxLids, etc
-
-extern ErrorSummary_t g_pmThresholds;
-extern PmThresholdsExceededMsgLimitXmlConfig_t g_pmThresholdsExceededMsgLimit;
-extern IntegrityWeights_t g_pmIntegrityWeights;
-extern CongestionWeights_t g_pmCongestionWeights;
 
 #define PM_ENGINE_STOPPED 0
 #define PM_ENGINE_STARTED 1
@@ -1399,6 +1423,11 @@ uint32 computeSecurity(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data);
 uint32 computeRouting(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data);
 uint32 computeUtilizationPct10(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data);
 uint32 computeDiscardsPct10(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data);
+uint32 computeVFSendMBps(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data);
+uint32 computeVFSendKPkts(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data);
+uint32 computeVFCongestion(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data);
+uint32 computeVFBubble(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data);
+uint32 computeVFUtilizationPct10(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data);
 
 
 // Given a MBps transfer rate and a theoretical maxMBps, compute the 
@@ -1508,6 +1537,8 @@ void PM_BuildClearCounterSelect(CounterSelectMask_t *select, boolean clearXfer, 
 
 //  insert a shortterm history file from the Master PM into the local history filelist
 FSTATUS injectHistoryFile(Pm_t *pm, char *filename, uint8_t *buffer, uint32_t filelen);
+
+void PmDispatcherPerfInit(PmDispatcherPerf_t *perf);
 
 #include "iba/public/ipackoff.h"
 

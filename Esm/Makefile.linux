@@ -26,7 +26,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # 
 # END_ICS_COPYRIGHT8   ****************************************
-# Makefile for OPENIB_HOST Project
+# Makefile for Esm Project
 
 # Include Make Control Settings
 include $(TL_DIR)/$(PROJ_FILE_DIR)/Makesettings.project
@@ -36,15 +36,7 @@ stage::
 #prepfiles:: prepfiles_global
 clobber:: clobber_global clobber_tools
 
-include $(TL_DIR)/Makerules/Rules.buildFeatureDefs
-include $(TL_DIR)/Makerules/Rules.baseFiles
-#ALL:: tools fmbuild
 ALL:: tools
-
-fmbuild: fmbuild.base
-	$(TL_DIR)/MakeTools/unifdef2.sh $(OPA_FEATURE_SET) $< $@
-	chmod 755 $@
-
 
 BSP_SPECIFIC_DIRS=
 
@@ -135,11 +127,17 @@ endif
 ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES75"
         PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL75.pl
 endif
+ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES76"
+        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL76.pl
+endif
 ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES122"
         PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_SLES122.pl
 endif
 ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES123"
         PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_SLES123.pl
+endif
+ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES124"
+        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_SLES124.pl
 endif
 ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES15"
         PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_SLES15.pl
@@ -166,7 +164,7 @@ CMD_TARGETS_MISC	= INSTALL.pl comp.pl
 CLEAN_TARGETS_MISC	=  
 CLEAN_TARGETS		= $(OBJECTS) $(RSCOBJECTS) $(IDL_TARGETS) $(CLEAN_TARGETS_MISC)
 # other files to remove during clobber phase
-CLOBBER_TARGETS_MISC= fm_install.sh update_opa-fm_spec.sh fmbuild
+CLOBBER_TARGETS_MISC= fm_install.sh update_opa-fm_spec.sh fmbuild $(TL_DIR)/Fd/buildFeatureDefs
 # sub-directory to install to within bin
 BIN_SUBDIR		= 
 # sub-directory to install to within include
@@ -261,9 +259,9 @@ endif
 	cp -r -L $(GLOBAL_BIN_DIR)/* $$dir/stage.rpm/ ; \
 	cd $$dir/stage.rpm ; \
 		find . -print| $(PREP); \
-		$(PATCH_VERSION) $(RELEASE_TAG) sm fe; \
+		$(PATCH_VERSION) -n `$(CONVERT_RELEASETAG) $(RELEASE_TAG)` $(RELEASE_TAG) sm fe; \
 		$(PATCH_BRAND) "$(BUILD_BRAND)" sm fe;
-	cd $(PROJ_STAGE_DIR) && $(PATCH_VERSION) -m % $(RELEASE_TAG) INSTALL
+	cd $(PROJ_STAGE_DIR) && $(PATCH_VERSION) -m %  -n `$(CONVERT_RELEASETAG) $(RELEASE_TAG)` $(RELEASE_TAG) INSTALL
 	cd $(PROJ_STAGE_DIR) && $(PATCH_BRAND) -m % "$(BUILD_BRAND)" INSTALL
 
 # package builds standard package
@@ -336,7 +334,7 @@ final_package:
 # Unit test execution
 #include $(TL_DIR)/Makerules/Maketargets.runtest
 
-tools:
+tools:	$(TL_DIR)/Fd/buildFeatureDefs
 	mkdir -p $(COMN_LIB_DIRS) $(GLOBAL_SHLIB_DIR)
 	cd $(TL_DIR)/MakeTools && $(MAKE) $(MFLAGS)
 clobber_tools:

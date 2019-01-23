@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015, Intel Corporation
+Copyright (c) 2018, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -26,49 +26,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ** END_ICS_COPYRIGHT2   ****************************************/
-
-/* [ICS VERSION STRING: unknown] */
-#ifndef _PM_L_H_
-#define _PM_L_H_
-
-#include <cs_g.h>		/* Global common services functions */
-#include <string.h>
-#include <ib_mad.h>
-#include "iquickmap.h"
-#include "pm_counters.h"
-/*
- * Change the definition of module id to that of PM 
- */
-#undef LOCAL_MOD_ID
-#define LOCAL_MOD_ID VIEO_PM_MOD_ID
-
-// 200 bytes per port is more than our current data structures need by a
-// reasonable margin (approx 1k for 24 ports).
-#define PM_MAX_DATA_LEN (36*200)
-
-/*
- * PM debug flag 
- * re-routes all verbose messages to InfiniInfo level
- */
-void pmDebugOn(void);
-void pmDebugOff(void);
-uint32_t pmDebugGet(void);
-
-/* debug trace control for embeded PM */
-#define _PM_TRACE(l) (l == 0) ? VS_LOG_VERBOSE : VS_LOG_INFINI_INFO
-
-// lease time for FreezeFrame, if idle more than this, discard Freeze
-extern int pm_shutdown;
-extern Pool_t pm_pool;
-
-
-#define DEFAULT_INTERVAL_USEC       (2000000)	// 2sec
-
-#define PM_CONN_ATTEMPTS       (10)          //how often to try to open connection
-#define PM_CONN_INTERVAL       (10000000)   //interval bettween attempts
-
-extern void PmEngineStart(void);
-extern void PmEngineStop(void);
-extern boolean PmEngineRunning(void);
-
+#ifndef _SM_CABLE_INFO_H_
+#define _SM_CABLE_INFO_H_
+Status_t parallel_cable_info(SweepContext_t *);
 #endif

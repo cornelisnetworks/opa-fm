@@ -61,7 +61,7 @@ void PrintIntWithDotsFull(PrintDest_t *dest, int indent, const char * name, uint
 {
 	//            0123456789012345678901234567890123456789012345678901234567890  
     char pad[] = ".............................................................";
-    char dataFormat[] = "%*s%s%.*s : 0x%018"PRIx64"\n"; //add padding for full width
+    char dataFormat[] = "%*s%s%.*s : 0x%016"PRIx64"\n"; //add padding for full width
 	size_t maxDotColumn = 60;
 #ifndef __VXWORKS__
 	int padLen = maxDotColumn-strnlen((const char *)name, maxDotColumn);
@@ -1891,13 +1891,13 @@ void PrintStlCableInfoHighPage(PrintDest_t *dest, int indent, const uint8_t *cab
 			StlCableInfoOM4LengthToText(cableInfo->len_om4, cableLenValid, sizeof(tempBuf), tempBuf);
 			PrintStrWithDots(dest, indent, "CableLength", tempBuf);
 			memcpy(tempBuf, cableInfo->vendor_name, sizeof(cableInfo->vendor_name));
-			tempBuf[sizeof(cableInfo->vendor_name)] = '\0';
+			StlCableInfoTrimTrailingWS(tempBuf, sizeof(cableInfo->vendor_name));
 			PrintStrWithDots(dest, indent, "CableVendorName", tempBuf);
 			memcpy(tempBuf, cableInfo->vendor_pn, sizeof(cableInfo->vendor_pn));
-			tempBuf[sizeof(cableInfo->vendor_pn)] = '\0';
+			StlCableInfoTrimTrailingWS(tempBuf, sizeof(cableInfo->vendor_pn));
 			PrintStrWithDots(dest, indent, "CableVendorPN", tempBuf);
 			memcpy(tempBuf, cableInfo->vendor_rev, sizeof(cableInfo->vendor_rev));
-			tempBuf[sizeof(cableInfo->vendor_rev)] = '\0';
+			StlCableInfoTrimTrailingWS(tempBuf, sizeof(cableInfo->vendor_rev));
 			PrintStrWithDots(dest, indent, "CableVendorRev", tempBuf);
 			if (detail == CABLEINFO_DETAIL_ONELINE)
 				break;
@@ -1906,7 +1906,7 @@ void PrintStlCableInfoHighPage(PrintDest_t *dest, int indent, const uint8_t *cab
 			PrintStrWithDots( dest, indent, "CablePowerClass",
 				StlCableInfoPowerClassToText(cableInfo->ext_ident.s.pwr_class_low, cableInfo->ext_ident.s.pwr_class_high) );
 			memcpy(tempBuf, cableInfo->vendor_sn, sizeof(cableInfo->vendor_sn));
-			tempBuf[sizeof(cableInfo->vendor_sn)] = '\0';
+			StlCableInfoTrimTrailingWS(tempBuf, sizeof(cableInfo->vendor_sn));
 			PrintStrWithDots(dest, indent, "CableVendorSN", tempBuf);
 			StlCableInfoDateCodeToText(cableInfo->date_code, tempBuf);
 			PrintStrWithDots(dest, indent, "CableDateCode", tempBuf);
@@ -1929,15 +1929,21 @@ void PrintStlCableInfoHighPage(PrintDest_t *dest, int indent, const uint8_t *cab
 			StlCableInfoOM4LengthToText(cableInfo->len_om4, cableLenValid, MAX_CABLE_LENGTH_STR_LEN, &tempBuf[i]);
 			tempBuf[i + strlen(&tempBuf[i])] = ' ';
 			i = STL_CIB_LINE1_FIELD3;
-			memcpy(&tempBuf[i], cableInfo->vendor_name, sizeof(cableInfo->vendor_name));
+			memcpy(tempStr, cableInfo->vendor_name, sizeof(cableInfo->vendor_name));
+			StlCableInfoTrimTrailingWS(tempStr, sizeof(cableInfo->vendor_name));
+			memcpy(&tempBuf[i], tempStr, strlen(tempStr));
 			i = STL_CIB_LINE1_FIELD4;
 			strcpy(&tempBuf[i], "P/N ");
 			i = STL_CIB_LINE1_FIELD5;
-			memcpy(&tempBuf[i], cableInfo->vendor_pn, sizeof(cableInfo->vendor_pn));
+			memcpy(tempStr, cableInfo->vendor_pn, sizeof(cableInfo->vendor_pn));
+			StlCableInfoTrimTrailingWS(tempStr, sizeof(cableInfo->vendor_pn));
+			memcpy(&tempBuf[i], tempStr, strlen(tempStr));
 			i = STL_CIB_LINE1_FIELD6;
 			strcpy(&tempBuf[i], "Rev ");
 			i = STL_CIB_LINE1_FIELD7;
-			memcpy(&tempBuf[i], cableInfo->vendor_rev, sizeof(cableInfo->vendor_rev));
+			memcpy(tempStr, cableInfo->vendor_rev, sizeof(cableInfo->vendor_rev));
+			StlCableInfoTrimTrailingWS(tempStr, sizeof(cableInfo->vendor_rev));
+			memcpy(&tempBuf[i], tempStr, strlen(tempStr));
 			i = STL_CIB_LINE1_FIELD8;
 			tempBuf[i] = '\0';
 			PrintFunc(dest, "%*s%s\n", indent, "", tempBuf);
@@ -1952,7 +1958,9 @@ void PrintStlCableInfoHighPage(PrintDest_t *dest, int indent, const uint8_t *cab
 			i = STL_CIB_LINE2_FIELD2;
 			strcpy(&tempBuf[i], "S/N ");
 			i = STL_CIB_LINE2_FIELD3;
-			memcpy(&tempBuf[i], cableInfo->vendor_sn, sizeof(cableInfo->vendor_sn));
+			memcpy(tempStr, cableInfo->vendor_sn, sizeof(cableInfo->vendor_sn));
+			StlCableInfoTrimTrailingWS(tempStr, sizeof(cableInfo->vendor_sn));
+			memcpy(&tempBuf[i], tempStr, strlen(tempStr));
 			i = STL_CIB_LINE2_FIELD4;
 			strcpy(&tempBuf[i], "Mfg ");
 			i = STL_CIB_LINE2_FIELD5;
@@ -1981,20 +1989,20 @@ void PrintStlCableInfoHighPage(PrintDest_t *dest, int indent, const uint8_t *cab
 			StlCableInfoCableTypeToTextLong(cableInfo->dev_tech.s.xmit_tech, cableInfo->connector, tempBuf);
 			PrintStrWithDots(dest, indent, "DeviceTech", tempBuf);
 			memcpy(tempStr, cableInfo->vendor_name, sizeof(cableInfo->vendor_name));
-			tempStr[sizeof(cableInfo->vendor_name)] = '\0';
+			StlCableInfoTrimTrailingWS(tempStr, sizeof(cableInfo->vendor_name));
 			PrintStrWithDots(dest, indent, "VendorName", tempStr);
 			snprintf(tempStr, sizeof(tempStr), "0x%02x%02x%02x", cableInfo->vendor_oui[0],
 				cableInfo->vendor_oui[1], cableInfo->vendor_oui[2]);
 			PrintStrWithDots(dest, indent, "VendorOUI", tempStr);
 			memcpy(tempStr, cableInfo->vendor_pn, sizeof(cableInfo->vendor_pn));
-			tempStr[sizeof(cableInfo->vendor_pn)] = '\0';
+			StlCableInfoTrimTrailingWS(tempStr, sizeof(cableInfo->vendor_pn));
 			PrintStrWithDots(dest, indent, "VendorPN", tempStr);
 			memcpy(tempStr, cableInfo->vendor_rev, sizeof(cableInfo->vendor_rev));
-			tempStr[sizeof(cableInfo->vendor_rev)] = '\0';
+			StlCableInfoTrimTrailingWS(tempStr, sizeof(cableInfo->vendor_rev));
 			PrintStrWithDots(dest, indent, "VendorRev", tempStr);
 			PrintIntWithDots(dest, indent, "CC_BASE", cableInfo->cc_base);
 			memcpy(tempStr, cableInfo->vendor_sn, sizeof(cableInfo->vendor_sn));
-			tempStr[sizeof(cableInfo->vendor_sn)] = '\0';
+			StlCableInfoTrimTrailingWS(tempStr, sizeof(cableInfo->vendor_sn));
 			PrintStrWithDots(dest, indent, "VendorSN", tempStr);
 			StlCableInfoDateCodeToText(cableInfo->date_code, tempBuf);
 			PrintStrWithDots(dest, indent, "DateCode", tempBuf);
@@ -2014,19 +2022,19 @@ void PrintStlCableInfoHighPage(PrintDest_t *dest, int indent, const uint8_t *cab
 			StlCableInfoCableTypeToTextLong(cableInfo->dev_tech.s.xmit_tech, cableInfo->connector, tempBuf);
 			PrintFunc(dest, "%*sDeviceTech: %s\n", indent+4, "", tempBuf);
 			memcpy(tempStr, cableInfo->vendor_name, sizeof(cableInfo->vendor_name));
-			tempStr[sizeof(cableInfo->vendor_name)] = '\0';
+			StlCableInfoTrimTrailingWS(tempStr, sizeof(cableInfo->vendor_name));
 			PrintFunc(dest, "%*sVendorName: %s\n", indent+4, "", tempStr); 
 			PrintFunc(dest, "%*sVendorOUI: 0x%02x%02x%02x\n", indent+4, "", cableInfo->vendor_oui[0],
 				cableInfo->vendor_oui[1], cableInfo->vendor_oui[2]);
 			memcpy(tempStr, cableInfo->vendor_pn, sizeof(cableInfo->vendor_pn));
-			tempStr[sizeof(cableInfo->vendor_pn)] = '\0';
+			StlCableInfoTrimTrailingWS(tempStr, sizeof(cableInfo->vendor_pn));
 			PrintFunc(dest, "%*sVendorPN: %s\n", indent+4, "", tempStr); 
 			memcpy(tempStr, cableInfo->vendor_rev, sizeof(cableInfo->vendor_rev));
-			tempStr[sizeof(cableInfo->vendor_rev)] = '\0';
+			StlCableInfoTrimTrailingWS(tempStr, sizeof(cableInfo->vendor_rev));
 			PrintFunc(dest, "%*sVendorRev: %s\n", indent+4, "", tempStr); 
 			PrintFunc(dest, "%*sCC_BASE: 0x%x\n", indent+4, "", cableInfo->cc_base);
 			memcpy(tempStr, cableInfo->vendor_sn, sizeof(cableInfo->vendor_sn));
-			tempStr[sizeof(cableInfo->vendor_sn)] = '\0';
+			StlCableInfoTrimTrailingWS(tempStr, sizeof(cableInfo->vendor_sn));
 			PrintFunc(dest, "%*sVendorSN: %s\n", indent+4, "", tempStr);
 			StlCableInfoDateCodeToText(cableInfo->date_code, tempBuf);
 			PrintFunc(dest, "%*sDateCode: %s\n", indent+4, "", tempBuf);
@@ -2066,13 +2074,13 @@ void PrintStlCableInfoHighPage0DD(PrintDest_t *dest, int indent, const uint8_t *
 			StlCableInfoDDCableLengthToText(cableInfo->cableLengthEnc, cableLenValid, sizeof(tempBuf), tempBuf);
 			PrintStrWithDots(dest, indent, "CableLength", tempBuf);
 			memcpy(tempBuf, cableInfo->vendor_name, sizeof(cableInfo->vendor_name));
-			tempBuf[sizeof(cableInfo->vendor_name)] = '\0';
+			StlCableInfoTrimTrailingWS(tempBuf, sizeof(cableInfo->vendor_name));
 			PrintStrWithDots(dest, indent, "CableVendorName", tempBuf);
 			memcpy(tempBuf, cableInfo->vendor_pn, sizeof(cableInfo->vendor_pn));
-			tempBuf[sizeof(cableInfo->vendor_pn)] = '\0';
+			StlCableInfoTrimTrailingWS(tempBuf, sizeof(cableInfo->vendor_pn));
 			PrintStrWithDots(dest, indent, "CableVendorPN", tempBuf);
 			memcpy(tempBuf, cableInfo->vendor_rev, sizeof(cableInfo->vendor_rev));
-			tempBuf[sizeof(cableInfo->vendor_rev)] = '\0';
+			StlCableInfoTrimTrailingWS(tempBuf, sizeof(cableInfo->vendor_rev));
 			PrintStrWithDots(dest, indent, "CableVendorRev", tempBuf);
 			if (detail == CABLEINFO_DETAIL_ONELINE)
 				break;
@@ -2081,7 +2089,7 @@ void PrintStlCableInfoHighPage0DD(PrintDest_t *dest, int indent, const uint8_t *
 			snprintf(tempBuf, 20, "%.2f W max", (float)cableInfo->powerMax / 4.0);
 			PrintStrWithDots( dest, indent, "CableMaxPower", tempBuf);
 			memcpy(tempBuf, cableInfo->vendor_sn, sizeof(cableInfo->vendor_sn));
-			tempBuf[sizeof(cableInfo->vendor_sn)] = '\0';
+			StlCableInfoTrimTrailingWS(tempBuf, sizeof(cableInfo->vendor_sn));
 			PrintStrWithDots(dest, indent, "CableVendorSN", tempBuf);
 			StlCableInfoDateCodeToText(cableInfo->date_code, tempBuf);
 			PrintStrWithDots(dest, indent, "CableDateCode", tempBuf);
@@ -2104,15 +2112,21 @@ void PrintStlCableInfoHighPage0DD(PrintDest_t *dest, int indent, const uint8_t *
 			StlCableInfoDDCableLengthToText(cableInfo->cableLengthEnc, cableLenValid, sizeof(tempBuf), tempBuf);
 			tempBuf[i + strlen(&tempBuf[i])] = ' ';
 			i = STL_CIB_LINE1_FIELD3;
-			memcpy(&tempBuf[i], cableInfo->vendor_name, sizeof(cableInfo->vendor_name));
+			memcpy(tempStr, cableInfo->vendor_name, sizeof(cableInfo->vendor_name));
+			StlCableInfoTrimTrailingWS(tempStr, sizeof(cableInfo->vendor_name));
+			memcpy(&tempBuf[i], tempStr, strlen(tempStr));
 			i = STL_CIB_LINE1_FIELD4;
 			strcpy(&tempBuf[i], "P/N ");
 			i = STL_CIB_LINE1_FIELD5;
-			memcpy(&tempBuf[i], cableInfo->vendor_pn, sizeof(cableInfo->vendor_pn));
+			memcpy(tempStr, cableInfo->vendor_pn, sizeof(cableInfo->vendor_pn));
+			StlCableInfoTrimTrailingWS(tempStr, sizeof(cableInfo->vendor_pn));
+			memcpy(&tempBuf[i], tempStr, strlen(tempStr));
 			i = STL_CIB_LINE1_FIELD6;
 			strcpy(&tempBuf[i], "Rev ");
 			i = STL_CIB_LINE1_FIELD7;
-			memcpy(&tempBuf[i], cableInfo->vendor_rev, sizeof(cableInfo->vendor_rev));
+			memcpy(tempStr, cableInfo->vendor_rev, sizeof(cableInfo->vendor_rev));
+			StlCableInfoTrimTrailingWS(tempStr, sizeof(cableInfo->vendor_rev));
+			memcpy(&tempBuf[i], tempStr, strlen(tempStr));
 			i = STL_CIB_LINE1_FIELD8;
 			tempBuf[i] = '\0';
 			PrintFunc(dest, "%*s%s\n", indent, "", tempBuf);
@@ -2127,7 +2141,9 @@ void PrintStlCableInfoHighPage0DD(PrintDest_t *dest, int indent, const uint8_t *
 			i = STL_CIB_LINE2_FIELD2;
 			strcpy(&tempBuf[i], "S/N ");
 			i = STL_CIB_LINE2_FIELD3;
-			memcpy(&tempBuf[i], cableInfo->vendor_sn, sizeof(cableInfo->vendor_sn));
+			memcpy(tempStr, cableInfo->vendor_sn, sizeof(cableInfo->vendor_sn));
+			StlCableInfoTrimTrailingWS(tempStr, sizeof(cableInfo->vendor_sn));
+			memcpy(&tempBuf[i], tempStr, strlen(tempStr));
 			i = STL_CIB_LINE2_FIELD4;
 			strcpy(&tempBuf[i], "Mfg ");
 			i = STL_CIB_LINE2_FIELD5;
@@ -2157,19 +2173,19 @@ void PrintStlCableInfoHighPage0DD(PrintDest_t *dest, int indent, const uint8_t *
 			StlCableInfoCableTypeToTextLong(cableInfo->cable_type, cableInfo->connector, tempBuf);
 			PrintStrWithDots(dest, indent, "DeviceTech", tempBuf);
 			memcpy(tempStr, cableInfo->vendor_name, sizeof(cableInfo->vendor_name));
-			tempStr[sizeof(cableInfo->vendor_name)] = '\0';
+			StlCableInfoTrimTrailingWS(tempStr, sizeof(cableInfo->vendor_name));
 			PrintStrWithDots(dest, indent, "VendorName", tempStr);
 			snprintf(tempStr, sizeof(tempStr), "0x%02x%02x%02x", cableInfo->vendor_oui[0],
 				cableInfo->vendor_oui[1], cableInfo->vendor_oui[2]);
 			PrintStrWithDots(dest, indent, "VendorOUI", tempStr);
 			memcpy(tempStr, cableInfo->vendor_pn, sizeof(cableInfo->vendor_pn));
-			tempStr[sizeof(cableInfo->vendor_pn)] = '\0';
+			StlCableInfoTrimTrailingWS(tempStr, sizeof(cableInfo->vendor_pn));
 			PrintStrWithDots(dest, indent, "VendorPN", tempStr);
 			memcpy(tempStr, cableInfo->vendor_rev, sizeof(cableInfo->vendor_rev));
-			tempStr[sizeof(cableInfo->vendor_rev)] = '\0';
+			StlCableInfoTrimTrailingWS(tempStr, sizeof(cableInfo->vendor_rev));
 			PrintStrWithDots(dest, indent, "VendorRev", tempStr);
 			memcpy(tempStr, cableInfo->vendor_sn, sizeof(cableInfo->vendor_sn));
-			tempStr[sizeof(cableInfo->vendor_sn)] = '\0';
+			StlCableInfoTrimTrailingWS(tempStr, sizeof(cableInfo->vendor_sn));
 			PrintStrWithDots(dest, indent, "VendorSN", tempStr);
 			StlCableInfoDateCodeToText(cableInfo->date_code, tempBuf);
 			PrintStrWithDots(dest, indent, "DateCode", tempBuf);
@@ -2186,18 +2202,18 @@ void PrintStlCableInfoHighPage0DD(PrintDest_t *dest, int indent, const uint8_t *
 			StlCableInfoCableTypeToTextLong(cableInfo->cable_type, cableInfo->connector, tempBuf);
 			PrintFunc(dest, "%*sDeviceTech: %s\n", indent+4, "", tempBuf);
 			memcpy(tempStr, cableInfo->vendor_name, sizeof(cableInfo->vendor_name));
-			tempStr[sizeof(cableInfo->vendor_name)] = '\0';
+			StlCableInfoTrimTrailingWS(tempStr, sizeof(cableInfo->vendor_name));
 			PrintFunc(dest, "%*sVendorName: %s\n", indent+4, "", tempStr); 
 			PrintFunc(dest, "%*sVendorOUI: 0x%02x%02x%02x\n", indent+4, "", cableInfo->vendor_oui[0],
 				cableInfo->vendor_oui[1], cableInfo->vendor_oui[2]);
 			memcpy(tempStr, cableInfo->vendor_pn, sizeof(cableInfo->vendor_pn));
-			tempStr[sizeof(cableInfo->vendor_pn)] = '\0';
+			StlCableInfoTrimTrailingWS(tempStr, sizeof(cableInfo->vendor_pn));
 			PrintFunc(dest, "%*sVendorPN: %s\n", indent+4, "", tempStr); 
 			memcpy(tempStr, cableInfo->vendor_rev, sizeof(cableInfo->vendor_rev));
-			tempStr[sizeof(cableInfo->vendor_rev)] = '\0';
+			StlCableInfoTrimTrailingWS(tempStr, sizeof(cableInfo->vendor_rev));
 			PrintFunc(dest, "%*sVendorRev: %s\n", indent+4, "", tempStr); 
 			memcpy(tempStr, cableInfo->vendor_sn, sizeof(cableInfo->vendor_sn));
-			tempStr[sizeof(cableInfo->vendor_sn)] = '\0';
+			StlCableInfoTrimTrailingWS(tempStr, sizeof(cableInfo->vendor_sn));
 			PrintFunc(dest, "%*sVendorSN: %s\n", indent+4, "", tempStr);
 			StlCableInfoDateCodeToText(cableInfo->date_code, tempBuf);
 			PrintFunc(dest, "%*sDateCode: %s\n", indent+4, "", tempBuf);

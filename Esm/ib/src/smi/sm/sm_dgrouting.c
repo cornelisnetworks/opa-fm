@@ -113,7 +113,7 @@ dgmh_pre_process_discovery(Topology_t *topop, void **outContext)
 	
 	IB_LOG_DEBUG4_FMT(__func__,"All Group = %d",dgp->allGroup);
 
-	// This context is only valid inside topology_discovery(), 
+	// This context is only valid inside sweep_discovery(), 
 	// that's not helpful for dg routing.
 	*outContext = NULL;
 	return VSTATUS_OK;

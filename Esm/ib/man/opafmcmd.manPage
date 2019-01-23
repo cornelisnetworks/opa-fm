@@ -6,7 +6,7 @@
 .\" .\" *                                                                   *
 .\" .\" *********************************************************************
 
-.TH opafmcmd 8 "Intel Corporation" "Copyright(C) 2015\-2018" "Master map: IFSFFCLIRG (Man Page)" 
+.TH opafmcmd 8 "Intel Corporation" "Copyright(C) 2015\-2018" "IFSFFCLIRG (Man Page)"
 .SH NAME
 opafmcmd
 
@@ -408,8 +408,22 @@ Toggles Force Rebalance setting for SM.
 
 .sp
 smAdaptiveRouting 
-Displays or modifies Adaptive Routing setting for SM. If no arguments are entered, displays current setting. Enter 0 to Disable. Enter 1 to Enable.
+Displays or modifies Adaptive Routing setting for SM.
 
+.IP
+If no arguments are entered, displays current setting.
+.IP
+Enter 0 to Disable.
+.IP
+Enter 1 to Enable.
+.IP
+Additional arguments after the first argument can be used to update frequency and threshold while enabling Adaptive Routing:
+.IP
+Enter -f \fIvalue\fR to update frequency. Valid values are 0 - 7.
+.IP
+Enter -t \fIvalue\fR to update threshold. Valid values are 0 - 7.
+.IP
+If frequency or threshold are not provided, they will be reset to default.
 .RE
 
 .RS

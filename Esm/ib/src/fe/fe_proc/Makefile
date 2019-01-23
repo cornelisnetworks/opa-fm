@@ -113,7 +113,7 @@ INCLUDE_SUBDIR		=
 #LOCALDEPLIBS	= User libraries to include in dependencies [Empty]
 #LOCALLIBS		= User libraries to use when linking [Empty]
 #				(in addition to LOCALDEPLIBS)
-#LOCAL_LIB_DIRS	= User library directories for libpaths [Empty]
+LOCAL_LIB_DIRS	= /usr/lib64
 
 CLOCAL	= -DUNIX $(CPIE)
 LOCAL_INCLUDE_DIRS=$(MOD_DIR)/src/smi/include $(MOD_DIR)/src/fe/ $(OPENIB_USER_LIB_DIRS)

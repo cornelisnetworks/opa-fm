@@ -115,6 +115,8 @@ else
 CLOCAL = $(CPIE)
 endif
 
+LIB_DIRS += /usr/lib64
+
 LOCAL_INCLUDE_DIRS = $(MOD_DIR)/src/smi/include $(OPENIB_USER_LIB_DIRS) $(MOD_DIR)/include
 
 LOCALDEPLIBS =$(IBACCESS_USER_LIBS) if3 if3sa net cs mai ibaccess config vslogu public Xml opamgt-priv

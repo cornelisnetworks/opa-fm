@@ -114,8 +114,7 @@ LOCAL_INCLUDE_DIRS = $(MOD_DIR)/src/smi/include $(OPENIB_USER_LIB_DIRS) $(MOD_DI
 
 LOCALDEPLIBS=$(IBACCESS_USER_LIBS) Xml Topology opamgt-priv cs mai ibaccess if3 if3sa config vslogu lacp
 LOCALLIBS=$(OPENIB_USER_LIBS) m rt
-LOCAL_LIB_DIRS=$(OPENIB_USER_LIB_DIRS) $(IBACCESS_USER_LIB_DIRS)
-
+LOCAL_LIB_DIRS=$(OPENIB_USER_LIB_DIRS) $(IBACCESS_USER_LIB_DIRS) /usr/lib64
 
 # Include Make Rules definitions and rules
 include $(PROJ_SM_DIR)/Makerules.module

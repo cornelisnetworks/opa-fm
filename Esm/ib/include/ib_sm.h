@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2018, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -278,7 +278,8 @@ typedef SMDBSync_t  *SMDBSyncp;         /* SM DBSYNC pointer type */
 // version 8 - 10.6 release
 // version 9 - 10.7 release
 // version 10 - 10.8 release
-#define     FM_PROTOCOL_VERSION    10
+// version 11 - 10.9 release
+#define     FM_PROTOCOL_VERSION    11
 
 
 typedef struct {

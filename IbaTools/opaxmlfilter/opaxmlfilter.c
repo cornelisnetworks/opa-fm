@@ -262,8 +262,13 @@ int main(int argc, char **argv)
 		fprintf(stderr, "opaxmlfilter: Can't use -k and -t together\n");
 		Usage(2);
 	}
-	if (argc > optind)
+	if (argc > optind){
 		filename = argv[optind++];
+		if (!filename) {
+			fprintf(stderr, "opaxmlfilter: Error: null input filename\n");
+			exit(1);
+		}
+	}
 	if (argc > optind)
 		Usage(2);
 	if (FSUCCESS != IXmlOutputInit(&output_state, stdout, indent, IXML_OUTPUT_FLAG_NONE, NULL))

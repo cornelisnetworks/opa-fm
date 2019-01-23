@@ -1514,6 +1514,7 @@ typedef struct {
 #define STL_CIB_STD_END_ADDR		(STL_CIB_STD_HIGH_PAGE_ADDR+STL_CABLE_INFO_PAGESZ-1)
 #define STL_CIB_STD_LEN				(STL_CABLE_INFO_PAGESZ)
 
+
 #define STL_CIB_STD_MAX_STRING			16		// Max ASCII string in STD CableInfo field
 
 // Byte 0 and byte 128: identifier (SFF-8024)
@@ -1566,6 +1567,40 @@ typedef struct {
 
 // Byte 252: opa_cert_data_rate
 #define STL_CIB_STD_OPACERTRATE_4X25G		0x02	// Certified data rate 4x25G
+
+// The following structure represents CableInfo page 0 Lower in memory.
+// (based on Rev 2.9.2 SFF-8636 memory map)
+typedef struct {
+	uint8	ident;					// 0: Identifier
+	uint8	status[2];				// 1-2: Status
+	uint8	interruptFlags[19];		// 3-21: Interrupt Flags
+	uint16	temperature; 			// 22-23: Module temperature
+	uint8	moduleMonitors1[2];		// 24-25: Module level Monitors
+	uint16	voltage; 				// 26-27: Supply Voltage
+	uint8	moduleMonitors2[6];		// 28-33: Module level Monitors
+	uint16	rxOpticalPwr1;			// 34-35: rx Optical Power 1
+	uint16	rxOpticalPwr2;			// 36-37: rx Optical Power 2
+	uint16	rxOpticalPwr3;			// 38-39: rx Optical Power 3
+	uint16	rxOpticalPwr4;			// 40-41: rx Optical Power 4
+	uint8	laneMonitors1[8];		// 42-49: Lane Specific Monitors
+	uint16	txOpticalPwr1;			// 50-51: tx Optical Power 1
+	uint16	txOpticalPwr2;			// 52-53: tx Optical Power 2
+	uint16	txOpticalPwr3;			// 54-55: tx Optical Power 3
+	uint16	txOpticalPwr4;			// 56-57: tx Optical Power 4
+	uint8	laneMonitors2[24];		// 34-81: Lane Specific Monitors
+	uint8	reserved1[4];			// 82-85: Reserved
+	uint8	controlBytes[14];		// 86-99: Control bytes
+	uint8	laneInterruptMasks[3];	// 100-102: Lane specific Indicator Interrupt Masks
+	uint8	moduleInterruptMasks[4];// 103-106: Module level interrupt masks
+	uint8	moduleProperties1[4];	// 107-110: Module Properties
+	uint8	assignedPCI[2];			// 111-112: Module type advertising code
+	uint8	moduleProperties2[3];	// 113-115: Module Properties
+	uint8	secondaryExtSpecCode;	// 116: Secondary Extended Spec Compliance Code
+	uint8	reserved2[2];			// 117-118: Reserved
+	uint8	passwordChangeArea[4];	// 119-122: Password Change Area
+	uint8	passwordEntryArea[4];	// 123-126: Password Entry Area
+	uint8	pageSelectType;			// 127: Page Select Type
+} PACK_SUFFIX STL_CABLE_INFO_LOW0_STD;
 
 // The following structure represents STD CableInfo page 0 upper in memory.
 // (based on SFF-8636 Rev 2-5)
@@ -1660,6 +1695,28 @@ typedef struct {
 	uint8	opa_cert_data_rate;		// 252: OPA certified data rate
 	uint8	vendor3[3];				// 253-255: Vendor specific
 } PACK_SUFFIX STL_CABLE_INFO_STD;
+
+// The following structure represents CableInfo page 0 Lower(DD) in memory.
+// (based on Rev 3.0 Memory map)
+typedef struct {
+	uint8	ident;					// 0: Identifier
+	uint8	versionID;				// 1: version ID
+	uint8	interrupt[2];			// 2-3: Flat mem, Interrupt
+	uint8	bankLaneFlag[4];		// 4-7: Bank Lane Flag summary
+	uint8	moduleFlags[6];			// 8-13: Module Flags
+	uint16	temperature;			// 14-15: Module temperature
+	uint16	voltage;				// 16-17: Supply Voltage
+	uint8	moduleMonitors[8];		// 14-25: Module Monitors
+	uint8	moduleGlobalCtrls[5];	// 26-30: Module Global Monitors
+	uint8	moduleMasks[6];			// 31-36: Module masks
+	uint8	reserved1[27];			// 37-63: Reserved
+	uint8	custom[21];				// 64-84: custom
+	uint8	moduleType;				// 85: Module type advertising code
+	uint8	moduleHostMediaInf[32];	// 86-117: Module Host-Media Interface Options
+	uint8	password[8];			// 118-125: Password Area
+	uint8	bankSelectType;			// 126: Bank Select Type
+	uint8	pageSelectType;			// 127: Page Select Type
+} PACK_SUFFIX STL_CABLE_INFO_LOW0_DD;
 
 // The following structure represents CableInfo page 0 upper (DD) in memory.
 // (based on Rev 0.61 frozen memory map)

@@ -217,8 +217,11 @@ export FF_DIFF_CMD=${FF_DIFF_CMD:-diff -C 1}
 # This MUST be a absolute path which exists on all nodes
 export FF_MPI_APPS_DIR=${FF_MPI_APPS_DIR:-$HOME/mpi_apps}
 
+#location of Cable Health Report files
+export FF_CABLE_HEALTH_REPORT_DIR=${FF_CABLE_HEALTH_REPORT_DIR:-/var/opt/opafm/cablehealth}
+
 # env variables to set within each rank of MPI runs done by fastfabric directly
-# alternatively the /usr/src/opa/mpi_apps/ofed.*.param files can be edited
+# alternatively the $FF_MPI_APPS_DIR/ofed.*.param files can be edited
 # with appropriate values.
 # example of PSM selection of vFabric by PKEY/SL
 #export FF_MPI_ENV=${FF_MPI_ENV:-PSM2_PKEY=0xffff HFI_SL=0 PSM2_MTU=2048}
@@ -229,7 +232,7 @@ export FF_MPI_APPS_DIR=${FF_MPI_APPS_DIR:-$HOME/mpi_apps}
 export FF_MPI_ENV=${FF_MPI_ENV:-}
 
 # configuration of arguments for MPI performance deviation testing
-# via /usr/src/opa/mpi_apps/deviation/deviation
+# via $FF_MPI_APPS_DIR/deviation/deviation
 # The defaults should work for most fabrics.  This can be made stricter
 # and/or specific to the fabric by using arguments such as -h hostname
 # -bwthres and -latthres.  Samples are provided for various topologies.

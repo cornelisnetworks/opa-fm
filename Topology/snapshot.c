@@ -3196,7 +3196,7 @@ static void IocDataXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *fiel
 	if (! valid)	// missing mandatory fields
 		goto failvalidate;
 
-	if (cl_qmap_insert(&fabricp->AllIOCs, iocp->IocProfile.IocGUID, &iocp->AllIOCsEntry) != &iocp->AllIOCsEntry)
+	if (cl_qmap_insert(&fabricp->AllIOCs, (uint64_t)iocp, &iocp->AllIOCsEntry) != &iocp->AllIOCsEntry)
 	{
 		IXmlParserPrintError(state, "Duplicate IOC Guids found: 0x%016"PRIx64, iocp->IocProfile.IocGUID);
 		goto failinsert;
