@@ -1220,10 +1220,6 @@ sub preinstall_intel_hfi($$)
     return preinstall_delta("intel_hfi", $install_list, $installing_list);
 }
 
-my $irq_perm_string = "Set IrqBalance to Exact?";
-AddAnswerHelp("IrqBalance", "$irq_perm_string");
-my $Default_IrqBalance = 1;
-
 sub install_intel_hfi($$)
 {
     my $install_list = shift();     # total that will be installed when done
@@ -1232,27 +1228,6 @@ sub install_intel_hfi($$)
     print_comp_install_banner('intel_hfi');
     setup_env("OPA_INSTALL_CALLER", 1);
 
-    # Adjust irqbalance
-    if ( -e "/etc/sysconfig/irqbalance" ) {
-		print "Intel strongly recommends that the irqbalance service be enabled\n";
-		print "and run using the --hintpolicy=exact option.\n";
-        $Default_IrqBalance = GetYesNoWithMemory("IrqBalance", 1, "$irq_perm_string", "y");
-        if ( $Default_IrqBalance == 1 ) {
-            #set env variable so that RPM can do post install configuration of IRQBALANCE
-            #  if opasystemconfig already exists, set it manually
-            if ( -f "/sbin/opasystemconfig" ) {
-                system("/sbin/opasystemconfig --enable Irq_Balance");
-            } else {
-                setup_env("OPA_IRQBALANCE", 1);
-            }
-        } else {
-            if ( -f "/sbin/opasystemconfig" ) {
-                system("/sbin/opasystemconfig --disable Irq_Balance");
-            } else {
-                setup_env("OPA_IRQBALANCE", 0);
-            }
-        }
-    }
     install_comp_rpms('intel_hfi', " -U --nodeps ", $install_list);
 
     need_reboot();
