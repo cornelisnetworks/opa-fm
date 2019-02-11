@@ -1300,7 +1300,7 @@ is_special (void) {
 		StringCopy ((void *)subnetSize, equals + 1, sizeof(subnetSize));
 		/* add SUBNET_SIZE to each manager environment */
 		memset (line_key, 0, 100);
-		strncpy ((void *)line_key, "SUBNET_SIZE", 11);
+		StringCopy ((void *)line_key, "SUBNET_SIZE", strlen("SUBNET_SIZE") + 1);
 		memset (line_value, 0, 200);
 		strncpy ((void *)line_value, (void *)subnetSize, 128);
 		for (i = 0; i < MAX_INSTANCES; i++) {
@@ -1319,7 +1319,7 @@ is_special (void) {
 		/* add SYSLOG_MODE to each manager's environment */
 		StringCopy ((void *)syslogMode, equals + 1, sizeof(syslogMode));
 		memset (line_key, 0, 100);
-		strncpy ((void *)line_key, "SYSLOG_MODE", 11);
+		StringCopy ((void *)line_key, "SYSLOG_MODE", strlen("SYSLOG_MODE") + 1);
 		memset (line_value, 0, 200);
 		strncpy ((void *)line_value, (void *)syslogMode, 16);
 		for (i = 0; i < MAX_INSTANCES; i++) {

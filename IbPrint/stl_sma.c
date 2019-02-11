@@ -1832,7 +1832,7 @@ void PrintStlCableInfoLowPage(PrintDest_t *dest, int indent, const uint8_t *cabl
 		case CABLEINFO_DETAIL_VERBOSE:
 			if (printLineByLine) {
 				StringCopy(tempBuf, tempBuf2, strlen(tempBuf2));
-				strncat(tempBuf2, ": Direct CableInfo", strlen(": Direct CableInfo"));
+				strncat(tempBuf2, ": Direct CableInfo", strlen(": Direct CableInfo") + 1);
 				PrintStrWithDots(dest, indent, tempBuf2, "");
 				PrintStrWithDots(dest, indent, "Temperature", temperature);
 				PrintStrWithDots(dest, indent, "Supply Voltage", vcc);
@@ -1848,7 +1848,7 @@ void PrintStlCableInfoLowPage(PrintDest_t *dest, int indent, const uint8_t *cabl
 		default:
 			if (printLineByLine) {
 				StringCopy(tempBuf, tempBuf2, strlen(tempBuf2));
-				strncat(tempBuf2, ": Direct CableInfo", strlen(": Direct CableInfo"));
+				strncat(tempBuf2, ": Direct CableInfo", strlen(": Direct CableInfo") + 1);
 				PrintStrWithDots(dest, indent, tempBuf2, "");
 				PrintStrWithDots(dest, indent, "Temperature", temperature);
 				PrintStrWithDots(dest, indent, "Supply Voltage", vcc);

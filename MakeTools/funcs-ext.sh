@@ -722,6 +722,9 @@ function os_vendor()
             centos)
                 rval=redhat
                 ;;
+            fedora)
+                rval=redhat
+                ;;
             *)
                 rval=""
                 ;;

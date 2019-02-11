@@ -99,6 +99,14 @@ then
 	sed -i "/__RPM_INS/,+1d" $to
 	sed -i "/__RPM_SYSCONF/,+1d" $to
 	sed -i "s/__RPM_RQ2/Requires: libibumad3, libibverbs1, rdma, libexpat1, openssl/g" $to
+elif [ "$id" = "fedora" ]
+then
+	sed -i "s/__RPM_BLDRQ1/expat-devel, rdma-core-devel, openssl-devel/g" $to
+	sed -i "s/__RPM_BLDRQ2/BuildRequires: systemd %{?systemd_requires} %{?BuildRequires}/g" $to
+	sed -i "s/__RPM_RQ1/Requires: systemd %{?systemd_requires}/g" $to
+	sed -i "/__RPM_SYSCONF/,+1d" $to
+	sed -i "s/__RPM_RQ2/Requires: libibumad%{?_isa}, libibverbs%{?_isa}, rdma, expat%{?_isa}, libhfi1, openssl%{?_isa}/g" $to
+	sed -i "/__RPM_DEBUG/,+1d" $to
 else
 	echo ERROR: Unsupported distribution: $id $versionid
 	exit 1
