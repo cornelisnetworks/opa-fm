@@ -67,7 +67,8 @@ my @fastfabric_prereq = (
 			"libstdc++6",
 			"libz1",
 			"bc",
-			"rdma-core", 
+			"rdma-core",
+			"rdma-ndd",
 );
 $comp_prereq_hash{'fastfabric_prereq'} = \@fastfabric_prereq;
 
@@ -82,5 +83,6 @@ my @opamgt_sdk_prereq = (
 			"libstdc++6",
 			"openssl",
 			"rdma-core-devel",
+			"rdma-ndd",
 );
 $comp_prereq_hash{'opamgt_sdk_prereq'} = \@opamgt_sdk_prereq;

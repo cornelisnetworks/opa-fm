@@ -39,6 +39,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 void PointInit(Point *point)
 {
 	point->Type = POINT_TYPE_NONE;
+	point->haveSW = FALSE;
+	point->haveFI = FALSE;
 	point->EnodeType = POINT_ENODE_TYPE_NONE;
 	point->EsmType = POINT_ESM_TYPE_NONE;
 	point->ElinkType = POINT_ELINK_TYPE_NONE;
@@ -73,6 +75,7 @@ static void PointInitSimple(Point *point, PointType type, void *object)
 		return;
 	case POINT_TYPE_PORT_LIST:
 	case POINT_TYPE_NODE_LIST:
+	case POINT_TYPE_NODE_PAIR_LIST:
 #if !defined(VXWORKS) || defined(BUILD_DMC)
 	case POINT_TYPE_IOC_LIST:
 #endif
@@ -149,7 +152,8 @@ static void PointInitElinkSimple(Point *point, PointElinkType type, void *object
 /* initialize a list point - sets it as an empty list */
 static FSTATUS PointInitList(Point *point, PointType type)
 {
-	DLIST *pList;
+	DLIST *pList = NULL;
+	DLIST *pList2 = NULL;
 
 	point->Type = POINT_TYPE_NONE;
 	switch (type) {
@@ -164,6 +168,16 @@ static FSTATUS PointInitList(Point *point, PointType type)
 		pList = &point->u.iocList;
 		break;
 #endif
+	case POINT_TYPE_NODE_PAIR_LIST:
+		pList = &point->u.nodePairList.nodePairList1;
+		pList2 = &point->u.nodePairList.nodePairList2;
+		//Initialize the Right of the list here. The Left side is done with the rest.
+		ListInitState(pList2);
+		if (! ListInit(pList2, MIN_LIST_ITEMS)) {
+			fprintf(stderr, "%s: unable to allocate memory\n", g_Top_cmdname);
+			return FINSUFFICIENT_MEMORY;
+		}
+		break;
 	default:
 		ASSERT(0);
 		return FINVALID_OPERATION;
@@ -171,6 +185,8 @@ static FSTATUS PointInitList(Point *point, PointType type)
 	ListInitState(pList);
 	if (! ListInit(pList, MIN_LIST_ITEMS)) {
 		fprintf(stderr, "%s: unable to allocate memory\n", g_Top_cmdname);
+		if(pList2)
+			ListDestroy(pList2);
 		return FINSUFFICIENT_MEMORY;
 	}
 	point->Type = type;
@@ -260,6 +276,9 @@ void PointFabricDestroy(Point *point)
 		ListDestroy(&point->u.iocList);
 		break;
 #endif
+	case POINT_TYPE_NODE_PAIR_LIST:
+		ListDestroy(&point->u.nodePairList.nodePairList1);
+		ListDestroy(&point->u.nodePairList.nodePairList2);
 	default:
 		break;
 	}
@@ -320,6 +339,15 @@ boolean PointValid(Point *point)
 			|| point->EnodeType != POINT_ENODE_TYPE_NONE
 			|| point->EsmType != POINT_ESM_TYPE_NONE
 			|| point->ElinkType != POINT_ELINK_TYPE_NONE));
+}
+
+/* Checks the point is in Init state  */
+boolean PointIsInInit(Point *point)
+{
+	return (point && (point->Type == POINT_TYPE_NONE
+			&& point->EnodeType == POINT_ENODE_TYPE_NONE
+			&& point->EsmType == POINT_ESM_TYPE_NONE
+			&& point->ElinkType == POINT_ELINK_TYPE_NONE));
 }
 
 /* append object to the list
@@ -485,6 +513,47 @@ FSTATUS PointElinkListAppend(Point *point, PointElinkType type, void *object)
 	return FSUCCESS;
 }
 
+/* append object to the list
+ * if this is the 1st insert to a "None" Point, it will initialize the
+ * list and set the point type.
+ * On failure, the point is destroyed by this routine
+ */
+FSTATUS PointNodePairListAppend(Point *point, uint8 side, void *object)
+{
+	FSTATUS status;
+	DLIST *pList;
+
+	if (point->Type == POINT_TYPE_NONE) {
+		status = PointInitList(point, POINT_TYPE_NODE_PAIR_LIST);
+		if (FSUCCESS != status) {
+			PointDestroy(point);
+			return status;
+		}
+	} else if (POINT_TYPE_NODE_PAIR_LIST != point->Type) {
+		ASSERT(0);
+		PointDestroy(point);
+		return FINVALID_OPERATION;
+	}
+
+	if (side == LSIDE_PAIR){
+		pList = &point->u.nodePairList.nodePairList1;
+	} else if(side == RSIDE_PAIR) {
+		pList = &point->u.nodePairList.nodePairList2;
+	} else {
+		ASSERT(0);
+		PointDestroy(point);
+		return FINVALID_OPERATION;
+	}
+
+	if (!ListInsertTail(pList, object)) {
+		fprintf(stderr, "%s: unable to allocate memory\n", g_Top_cmdname);
+		PointDestroy(point);
+		return FINSUFFICIENT_MEMORY;
+	}
+
+	return FSUCCESS;
+}
+
 /* Failures imply a caller bug or a failure to allocate memory */
 /* On failure will Destroy the whole dest point leaving it !PointValid */
 FSTATUS PointFabricCopy(Point *dest, Point *src)
@@ -517,6 +586,9 @@ FSTATUS PointFabricCopy(Point *dest, Point *src)
 		pSrcList = &src->u.iocList;
 		break;
 #endif
+	case POINT_TYPE_NODE_PAIR_LIST:
+		ASSERT(0); //don't come here
+		break;
 	}
 	if (pSrcList) {
 		for (i=ListHead(pSrcList); i != NULL; i = ListNext(pSrcList, i)) {
@@ -641,6 +713,88 @@ FSTATUS PointCopy(Point *dest, Point *src)
 	return PointElinkCopy(dest, src);
 }
 
+/* populate rest of node pairs from the list of nodes provided */
+/* nodePairList1 of NodePairList_t contains N entries and nodePairList2 of NodePairList_t contains M entries*/
+/* N x M nodes are populated in the point */
+FSTATUS PointPopulateNodePairList(Point *pPoint, NodePairList_t *nodePatPairs)
+{
+	FSTATUS status;
+	int leftSideCount, rightSideCount;
+	int n, m;
+	LIST_ITERATOR i;
+
+	leftSideCount = ListCount(&nodePatPairs->nodePairList1);
+	rightSideCount = ListCount(&nodePatPairs->nodePairList2);
+
+	//Populate N * M entries
+	DLIST *pList1 = &nodePatPairs->nodePairList1;
+	for(n = 0, i = ListHead(pList1); n < leftSideCount && i != NULL; n++, i = ListNext(pList1, i)) {
+		NodeData *nodep1 = (NodeData*)ListObj(i);
+		LIST_ITERATOR j;
+		DLIST *pList2 = &nodePatPairs->nodePairList2;
+		for (m = 0, j = ListHead(pList2); m < rightSideCount && j != NULL; m++, j = ListNext(pList2, j)) {
+			NodeData *nodep2 = (NodeData*)ListObj(j);
+			status = PointNodePairListAppend(pPoint, LSIDE_PAIR, nodep1);
+			if (FSUCCESS != status)
+				return status;
+			if (!pPoint->haveSW && (nodep1->NodeInfo.NodeType == STL_NODE_SW))
+				pPoint->haveSW = TRUE;
+			if (!pPoint->haveFI && (nodep1->NodeInfo.NodeType == STL_NODE_FI))
+				pPoint->haveFI = TRUE;
+
+			status = PointNodePairListAppend(pPoint, RSIDE_PAIR, nodep2);
+			if (FSUCCESS != status)
+				return status;
+			if (!pPoint->haveSW && (nodep2->NodeInfo.NodeType == STL_NODE_SW))
+				pPoint->haveSW = TRUE;
+			if (!pPoint->haveFI && (nodep1->NodeInfo.NodeType == STL_NODE_FI))
+				pPoint->haveFI = TRUE;
+
+		}
+	}
+	return FSUCCESS;
+}
+
+/* check if point is of Type NodePairList */
+boolean PointTypeIsNodePairList(Point *pPoint)
+{
+	if (pPoint){
+		if (POINT_TYPE_NODE_PAIR_LIST == pPoint->Type)
+			return TRUE;
+		}
+	return FALSE;
+}
+
+/* check if point is of Type NodeList */
+boolean PointIsTypeNodeList(Point *pPoint)
+{
+	if (pPoint){
+		if (POINT_TYPE_NODE_LIST == pPoint->Type)
+			return TRUE;
+	}
+	return FALSE;
+}
+
+/* check if haveSW flag is set */
+boolean PointHaveSw(Point *pPoint)
+{
+	if (pPoint){
+		if (pPoint->haveSW)
+			return TRUE;
+	}
+	return FALSE;
+}
+
+/* check if haveFI flag is set */
+boolean PointHaveFI(Point *pPoint)
+{
+	if (pPoint){
+		if (pPoint->haveFI)
+			return TRUE;
+	}
+	return FALSE;
+}
+
 /* These compare functions will compare the supplied object to the
  * specific relevant portion of the point.  Callers who wish to consider
  * both expected and fabric objects should call all the relevant routines
@@ -707,6 +861,24 @@ boolean ComparePortPoint(PortData *portp, Point *point)
 #endif
 	case POINT_TYPE_SYSTEM:
 		return (portp->nodep->systemp == point->u.systemp);
+	case POINT_TYPE_NODE_PAIR_LIST:
+		{
+		LIST_ITERATOR i;
+		DLIST *pList1 = &point->u.nodePairList.nodePairList1;
+		DLIST *pList2 = &point->u.nodePairList.nodePairList2;
+
+		for (i=ListHead(pList1); i != NULL; i = ListNext(pList1, i)) {
+			NodeData *nodep1 = (NodeData*)ListObj(i);
+			if (portp->nodep == nodep1)
+				return TRUE;
+		}
+		for (i=ListHead(pList2); i != NULL; i = ListNext(pList2, i)) {
+		NodeData *nodep2 = (NodeData*)ListObj(i);
+			if (portp->nodep== nodep2)
+				return TRUE;
+		}
+		return FALSE;
+		}
 	}
 	return TRUE;	// should not get here
 }
@@ -768,6 +940,25 @@ boolean CompareNodePoint(NodeData *nodep, Point *point)
 #endif
 	case POINT_TYPE_SYSTEM:
 		return (nodep->systemp == point->u.systemp);
+	case POINT_TYPE_NODE_PAIR_LIST:
+		{
+		LIST_ITERATOR i;
+		DLIST *pList1 = &point->u.nodePairList.nodePairList1;
+		DLIST *pList2 = &point->u.nodePairList.nodePairList2;
+
+		for (i=ListHead(pList1); i != NULL; i = ListNext(pList1, i)) {
+			NodeData *nodep1 = (NodeData*)ListObj(i);
+			if (nodep == nodep1)
+				return TRUE;
+		}
+		for (i=ListHead(pList2); i != NULL; i = ListNext(pList2, i)) {
+		NodeData *nodep2 = (NodeData*)ListObj(i);
+			if (nodep== nodep2)
+				return TRUE;
+		}
+		return FALSE;
+		}
+
 	}
 	return TRUE;	// should not get here
 }
@@ -881,6 +1072,25 @@ boolean CompareSystemPoint(SystemData *systemp, Point *point)
 #endif
 	case POINT_TYPE_SYSTEM:
 		return (systemp == point->u.systemp);
+	case POINT_TYPE_NODE_PAIR_LIST:
+		{
+		LIST_ITERATOR i;
+		DLIST *pList1 = &point->u.nodePairList.nodePairList1;
+		DLIST *pList2 = &point->u.nodePairList.nodePairList2;
+
+		for (i=ListHead(pList1); i != NULL; i = ListNext(pList1, i)) {
+			NodeData *nodep1 = (NodeData*)ListObj(i);
+			if (systemp == nodep1->systemp)
+				return TRUE;
+		}
+		for (i=ListHead(pList2); i != NULL; i = ListNext(pList2, i)) {
+		NodeData *nodep2 = (NodeData*)ListObj(i);
+			if (systemp == nodep2->systemp)
+				return TRUE;
+		}
+		return FALSE;
+		}
+
 	}
 	return TRUE;	// should not get here
 }
@@ -1153,6 +1363,8 @@ void PointFabricCompress(Point *point)
 		}
 #endif
 	case POINT_TYPE_SYSTEM:
+		break;
+	case POINT_TYPE_NODE_PAIR_LIST:
 		break;
 	}
 }

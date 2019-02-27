@@ -72,6 +72,7 @@ cp -t ${DESTDIR}/usr/lib/opa-fm/runtime sm
 cp -t ${DESTDIR}/usr/lib/opa-fm/runtime fe
 
 cp -t ${DESTDIR}/usr/lib/opa-fm/bin opafmconfigpp
+cp -t ${DESTDIR}/usr/lib/opa-fm/bin opafmvf
 cp -t ${DESTDIR}/usr/lib/opa-fm/bin config_check
 cp -t ${DESTDIR}/usr/lib/opa-fm/bin config_convert
 cp -t ${DESTDIR}/usr/lib/opa-fm/bin config_diff
@@ -90,5 +91,6 @@ cp -t ${DESTDIR}/usr/share/opa-fm/samples opa_comp_openssl.cnf-sample
 ln -s /usr/lib/opa-fm/bin/fm_cmd ${DESTDIR}/usr/sbin/opafmcmd
 ln -s /usr/lib/opa-fm/bin/fm_cmdall ${DESTDIR}/usr/sbin/opafmcmdall
 ln -s /usr/lib/opa-fm/bin/opafmconfigpp ${DESTDIR}/usr/sbin/opafmconfigpp
+ln -s /usr/lib/opa-fm/bin/opafmvf ${DESTDIR}/usr/sbin/opafmvf
 
 cp -t ${DESTDIR}/usr/share/man/man8 $fm_mans

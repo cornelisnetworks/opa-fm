@@ -56,7 +56,7 @@ sub disable_autostart($)
 	{
 		system "systemctl disable $WhichStartup >/dev/null 2>&1";
 	} else {
-		system "chroot /$ROOT /sbin/chkconfig $WhichStartup off > /dev/null 2>&1";
+		system "/sbin/chkconfig $WhichStartup off > /dev/null 2>&1";
 	}
 }
 
@@ -70,10 +70,10 @@ sub enable_autostart($)
 	{
 		system "systemctl enable $WhichStartup >/dev/null 2>&1";
 	} else {
-		system "chroot /$ROOT /sbin/chkconfig --del $WhichStartup > /dev/null 2>&1";
-		system "chroot /$ROOT /sbin/chkconfig --add $WhichStartup > /dev/null 2>&1";
+		system "/sbin/chkconfig --del $WhichStartup > /dev/null 2>&1";
+		system "/sbin/chkconfig --add $WhichStartup > /dev/null 2>&1";
 		# make sure its enabled now
-		system "chroot /$ROOT /sbin/chkconfig $WhichStartup on > /dev/null 2>&1";
+		system "/sbin/chkconfig $WhichStartup on > /dev/null 2>&1";
 	}
 }
 
@@ -95,7 +95,7 @@ sub IsAutostart($)
 		}
 	} else {
 		my $logoutput;
-		open(CHKCONFIG,"chroot /$ROOT /sbin/chkconfig --list $WhichStartup 2> /dev/null |") || Abort "Couldn't open a pipe for chkconfig\n";
+		open(CHKCONFIG,"/sbin/chkconfig --list $WhichStartup 2> /dev/null |") || Abort "Couldn't open a pipe for chkconfig\n";
 		$logoutput = <CHKCONFIG>;
 		close(CHKCONFIG);
 		# remove startup name from output, this way opamon is not mistaken for "on"
@@ -103,89 +103,13 @@ sub IsAutostart($)
 		if (grep /:on/, $logoutput)
 		{
 			return 1;
-		} elsif ( `ls $ROOT/etc/rc.d/rc3.d/S*$WhichStartup 2>/dev/null` ne "" ) {
-			# this case is an old install being updated
+		} elsif ( `ls /etc/rc.d/rc3.d/S*$WhichStartup 2>/dev/null` ne "" ||
+			`ls /etc/init.d/rc3.d/S*$WhichStartup 2>/dev/null` ne "") {
+			# this case is an old install being updated.
+			# A SLES OS may have no link from init.d to rc.d. So we check init.d folder as well.
 			return 1;
 		} else {
 			return 0;
 		}
 	}
 }
-
-# remove startup dependency
-sub del_insserv_conf($$)
-{
-	my($WhichStartup) = shift();	# our startup script
-	my($dependent) = shift();		# start up which must preceed it
-
-	if ( -e "$ROOT/$INSSERV_CONF" )
-	{
-		system "sed -e '/^\$$dependent\[ \\t\]/s/\[ \\t\]+\\+$WhichStartup//' > $TMP_CONF < $ROOT/$INSSERV_CONF";
-		system "mv $TMP_CONF $ROOT/$INSSERV_CONF";
-		system "chmod 444 $ROOT/$INSSERV_CONF";
-	}
-}
-
-# add startup dependency
-sub add_insserv_conf($$)
-{
-	my($WhichStartup) = shift();	# our startup script
-	my($dependent) = shift();		# startup which must preceed it
-
-	if ( -e "$ROOT/$INSSERV_CONF" )
-	{
-		del_insserv_conf("$WhichStartup", "$dependent");
-		system "sed -e '/^\$$dependent\[ \\t\]/s/\$/ +$WhichStartup/' > $TMP_CONF < $ROOT/$INSSERV_CONF";
-		system "mv $TMP_CONF $ROOT/$INSSERV_CONF";
-		system "chmod 444 $ROOT/$INSSERV_CONF";
-	}
-}
-
-# Determine if the specified utility is running.
-# Use 'pgrep' to check for a matching utility name.
-#
-# input:
-#	[0] = name of utility as output by 'ps'.
-# output:
-#	0 == named utility not running (reported by pgrep).
-#	1 == named utility is running.
-
-sub IsUtilityRunning($)
-{
-	my($WhichUtility) = shift();
-
-	my $result;
-
-	if ( ROOT_is_set() )
-	{
-		return 0;
-	}
-
-	$result = system("/usr/bin/pgrep $WhichUtility >/dev/null 2>/dev/null");
-	if ($result != 0 )
-	{
-		return 0;
-	} else {
-		return 1;
-	}
-}
-
-# prompts and stops a driver or autostart utility
-sub remove_startup($)
-{
-	my($WhichStartup) = shift();
-
-	# test added to avoid duplicate message
-	if ( -e "$ROOT$INIT_DIR/$WhichStartup" )
-	{
-		print "Removing $WhichStartup init scripts...\n";
-	}
-	# to be safe, remove and disable it even if missing
-	disable_autostart($WhichStartup);
-	if($SYSTEMCTL_EXEC ne 0)
-	{
-		system "chroot /$ROOT /sbin/chkconfig --del $WhichStartup > /dev/null 2>&1";
-		system "rm -f $ROOT$INIT_DIR/$WhichStartup";
-	}
-}
-

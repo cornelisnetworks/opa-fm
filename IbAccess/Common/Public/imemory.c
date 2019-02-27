@@ -34,6 +34,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "imemory.h"
 #include "idebug.h"
 #include "itimer.h"
+#include <stdarg.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -94,6 +95,46 @@ static MemoryTrackerFileName_t *MemoryTrackerBuckets[MEMORY_TRACKER_BUCKETS];
 extern unsigned long long strtoull (const char *__s, char **__endptr, int __base);
 extern long long strtoll (const char *__s, char **__endptr, int __base);
 #endif
+
+char*
+StringConcat(const char* str1, ...)
+{
+#ifdef VXWORKS
+#define stpcpy(s1, s2) (strcpy(s1, s2) + strlen(s2))
+#endif
+
+	if (!str1)
+		return NULL;
+
+	/* calculate length first */
+	size_t strings_length = 1 + strlen(str1);
+
+	va_list args;
+	va_start(args, str1);
+	char* str = va_arg(args, char*);
+	while (str) {
+		strings_length += strlen(str);
+		str = va_arg(args, char*);
+	}
+	va_end(args);
+
+	/* next, allocate a memory */
+	char* string = (char*)malloc(strings_length);
+	if (!string)
+		return NULL;
+
+	/* finally, create the string */
+	char* string_tmp = stpcpy(string, str1);
+	va_start(args, str1);
+	str = va_arg(args, char*);
+	while (str) {
+		string_tmp = stpcpy(string_tmp, str);
+		str = va_arg(args, char*);
+	}
+	va_end(args);
+
+	return string;
+}
 
 // convert a string to a uint64.  Very similar to strtoull except that
 // base=0 implies base 10 or 16, but excludes base 8

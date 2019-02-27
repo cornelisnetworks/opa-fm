@@ -29,8 +29,8 @@
 
 #[ICS VERSION STRING: unknown]
 Name: opa-fm
-Version: 10.9.0.3
-Release: 1%{?dist}
+Version: 10.9.1.0
+Release: 14%{?dist}
 %if 0%{?rhel}
 Epoch: 1
 %endif
@@ -60,7 +60,7 @@ __RPM_DEBUG
 The %{name} contains Intel Omni-Path fabric management applications. This 
 includes: the Subnet Manager, Baseboard Manager, Performance Manager, 
 Fabric Executive, and some fabric management tools.
-IFSComponent: FM 10.9.0.3.1%{?dist}
+IFSComponent: FM 10.9.1.0.14%{?dist}
 
 %prep
 %setup -q -c
@@ -106,6 +106,7 @@ __RPM_SYSCONF
 %{_sbindir}/opafmcmd
 %{_sbindir}/opafmcmdall
 %{_sbindir}/opafmconfigpp
+%{_sbindir}/opafmvf
 %{_mandir}/man8/*
 
 %changelog

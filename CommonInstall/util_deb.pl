@@ -150,7 +150,7 @@ sub	rpm_query_attr_pkg($$)
 	$attr = rpm_to_deb_attr_trans($attr);
 	$package = rpm_to_deb_pkg_trans($package);
 
-	my $val = `chroot /$ROOT dpkg-query --showformat='\${$attr}\n' --show $package 2>/dev/null`;
+	my $val = `dpkg-query --showformat='\${$attr}\n' --show $package 2>/dev/null`;
 
 	return $val; 
 }
@@ -190,7 +190,7 @@ sub rpms_installed_pkg($$)
 	$package = rpm_to_deb_pkg_trans($package);
 
 	$cpu = rpm_get_cpu_arch($mode);
-	my $cmd = 'chroot /'.$ROOT.' dpkg-query --showformat=\'${Package}:${Architecture}\' --show '.$package.' 2>/dev/null\n';
+	my $cmd = 'dpkg-query --showformat=\'${Package}:${Architecture}\' --show '.$package.' 2>/dev/null\n';
 	if ( "$mode" eq "any" ) {
 		DebugPrint($cmd."|");
 		open(debs, $cmd."|");
@@ -238,7 +238,7 @@ sub rpm_query_all($$)
 
 	$package = rpm_to_deb_pkg_trans($package);
 
-	my $res=`chroot $ROOT dpkg --get-selections 2>/dev/null |grep -v '\sdeinstall\s'|grep -i '$package'|grep '$filter'`;
+	my $res=`dpkg --get-selections 2>/dev/null |grep -v '\sdeinstall\s'|grep -i '$package'|grep '$filter'`;
 	$res=~s/\n/ /g;
 	return $res;
 }
@@ -287,13 +287,13 @@ sub rpm_is_installed($$)
 	$cpu = rpm_get_cpu_arch($mode);
 	if ("$mode" eq "any" ) {
 		# any variation is ok
-		my $cmd = "chroot /$ROOT dpkg -l '$package' | egrep '^ii' > /dev/null 2>&1";
+		my $cmd = "dpkg -l '$package' | egrep '^ii' > /dev/null 2>&1";
 		DebugPrint $cmd."\n";
 		$rc = system($cmd);
 		$last_checked = "any variation";
 	} elsif ("$mode" eq "user" || "$mode" eq "firmware") {
 		# verify $cpu version or any is installed
-		my $cmd = "chroot /$ROOT dpkg -l '$package' | egrep '^ii' 2>/dev/null|egrep '^$cpu\$|' >/dev/null 2>&1";
+		my $cmd = "dpkg -l '$package' | egrep '^ii' 2>/dev/null|egrep '^$cpu\$|' >/dev/null 2>&1";
 		DebugPrint $cmd."\n";
 		$rc = system $cmd;
 		$last_checked = "for $mode $cpu or noarch";
@@ -301,7 +301,7 @@ sub rpm_is_installed($$)
 		# $mode is kernel rev, verify proper kernel version is installed
 		# for kernel packages, RELEASE is kernel rev
 		my $release = rpm_tr_os_version($mode);
-		my $cmd = "chroot /$ROOT dpkg  --get-selections | grep $package.*'[%{VERSION}\\n]' | grep -v 'deinstall' 2>/dev/null|egrep '$release' >/dev/null 2>&1";
+		my $cmd = "dpkg  --get-selections | grep $package.*'[%{VERSION}\\n]' | grep -v 'deinstall' 2>/dev/null|egrep '$release' >/dev/null 2>&1";
 		DebugPrint $cmd."\n";
 		$rc = system $cmd;
 		$last_checked = "for kernel $release";
@@ -467,7 +467,7 @@ sub rpm_uninstall_matches($$$;$)
 
 	if ( "$rpms" ne "" ) {
 		LogPrint "uninstalling $name: dpkg -r $options $rpms\n";
-		my $out =`chroot /$ROOT dpkg -r $options $rpms 2>&1`;
+		my $out =`dpkg -r $options $rpms 2>&1`;
 		my $rc=$?;
 		NormalPrint("$out");
 		if ($rc != 0) {
@@ -488,7 +488,6 @@ sub rpm_run_install($$$)
 
 	$options = rpm_to_deb_option_trans($options);
 
-	my $chrootcmd="";
 
 	if ($user_space_only && "$mode" ne "user" && "$mode" ne "any") {
 		return;
@@ -499,24 +498,13 @@ sub rpm_run_install($$$)
 		return;
 	}
 
-	if (ROOT_is_set()) {
-		LogPrint "  cp $debfile $ROOT/var/tmp/rpminstall.tmp.deb\n";
-		if (0 != system("cp $debfile $ROOT/var/tmp/rpminstall.tmp.deb")) {
-			LogPrint "Unable to copy $debfile $ROOT/var/tmp/rpminstall.tmp.deb\n";
-			return;
-		}
-		# just to new ROOT relative name for use in commands below
-		$debfile = "/var/tmp/rpminstall.tmp.deb";
-		$chrootcmd="chroot $ROOT ";
-	}
-
 	my $package = rpm_query_name($debfile);
 	my $fullname = rpm_query_full_name($debfile);
 	my $out;
 
 	NormalPrint "installing ${fullname}...\n";
 
-	my $cmd = "$chrootcmd dpkg -i $options $debfile";
+	my $cmd = "dpkg -i $options $debfile";
 	LogPrint $cmd."\n";
 	$out=`$cmd 2>&1`;
 	if ( $? == 0 ) {
@@ -526,10 +514,6 @@ sub rpm_run_install($$$)
 		NormalPrint("$out");
 		$exit_code = 1;
 		HitKeyCont;
-	}
-
-	if (ROOT_is_set()) {
-		system("rm -f $ROOT/var/tmp/rpminstall.tmp.deb");
 	}
 }
 
@@ -550,7 +534,7 @@ sub rpm_uninstall($$$$)
 		if ( "$verbosity" ne "silent" ) {
 			print "Uninstalling ${fullname}...\n";
 		}
-		my $cmd = "chroot /$ROOT dpkg -r $options $fullname";
+		my $cmd = "dpkg -r $options $fullname";
 		LogPrint $cmd."\n";
 		my $out=`$cmd 2>&1`;
 		$rc |= $?;
@@ -795,13 +779,3 @@ sub check_rpmbuild_dependencies($)
 	}
 }
 
-# see if basic prereqs for building are installed
-# return 0 on success, or number of missing dependencies
-sub check_build_dependencies($)
-{
-	my $build_info = shift();	# what trying to build
-	my $err = 0;
-
-	$err = rpm_check_build_os_prereqs('user', $build_info, ('libc-dev'));
-	return $err;
-}

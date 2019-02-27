@@ -459,6 +459,60 @@ FSTATUS FindNodeNamePoint(FabricData_t *fabricp, char *name, Point *pPoint, uint
 }
 
 #ifndef __VXWORKS__
+
+/* append searched objects that match the pattern */
+FSTATUS PopoulateNodePatPairs(NodePairList_t *nodePatPairs, uint8 side, void *object)
+{
+	DLIST *pList;
+
+	if (side == LSIDE_PAIR){
+		pList = &nodePatPairs->nodePairList1;
+	} else if(side == RSIDE_PAIR) {
+		pList = &nodePatPairs->nodePairList2;
+	} else {
+		return FINVALID_OPERATION;
+	}
+
+	if (!ListInsertTail(pList, object)) {
+		fprintf(stderr, "%s: unable to allocate memory\n", g_Top_cmdname);
+		return FINSUFFICIENT_MEMORY;
+	}
+	return FSUCCESS;
+}
+
+// search for the NodeData
+// corresponding to the given node name pattern for the given Node Pair
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag or side contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindNodePatPairs(FabricData_t *fabricp, char *pattern, NodePairList_t *nodePatPairs,
+								uint8 find_flag, uint8 side)
+{
+	FSTATUS status;
+
+	if (0 == find_flag)
+		return FINVALID_OPERATION;
+
+	if (0 == side)
+		return FINVALID_OPERATION;
+
+	if (find_flag & FIND_FLAG_FABRIC){
+		cl_map_item_t *p;
+		/* the node can be of  type FI or SW */
+		for (p = cl_qmap_head(&fabricp->AllNodes); p != cl_qmap_end(&fabricp->AllNodes); p = cl_qmap_next(p)){
+			NodeData *nodep = PARENT_STRUCT(p, NodeData, AllNodesEntry);
+			/* find all SWs and FIs that match the pattern */
+			if (fnmatch(pattern, (char*)nodep->NodeDesc.NodeString, 0) == 0){
+				status = PopoulateNodePatPairs(nodePatPairs, side, nodep);
+				if (FSUCCESS != status)
+					return status;
+			}
+		}
+		return FSUCCESS;
+	}
+	return FNOT_FOUND;
+}
+
 // search for the NodeData, ExpectedNode and ExpectedSM
 // corresponding to the given node name pattern
 // FNOT_FOUND - no instances found
@@ -467,23 +521,41 @@ FSTATUS FindNodeNamePoint(FabricData_t *fabricp, char *name, Point *pPoint, uint
 FSTATUS FindNodeNamePatPoint(FabricData_t *fabricp, char *pattern, Point *pPoint, uint8 find_flag)
 {
 	FSTATUS status;
-	char Name[STL_NODE_DESCRIPTION_ARRAY_SIZE+1];
 
-	ASSERT(! PointValid(pPoint));
+	ASSERT(pPoint);
+	status = FindNodeNamePatPointUncompress(fabricp, pattern, pPoint, find_flag);
+	if (FSUCCESS == status)
+		PointCompress(pPoint);
+
+	return status;
+}
+
+// search for the NodeData, ExpectedNode and ExpectedSM
+// corresponding to the given node name pattern
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
+FSTATUS FindNodeNamePatPointUncompress(FabricData_t *fabricp, char *pattern, Point *pPoint, uint8 find_flag)
+{
+	FSTATUS status;
+
+	ASSERT(pPoint);
 	if (0 == find_flag)
 		return FINVALID_OPERATION;
 	if (find_flag & FIND_FLAG_FABRIC) {
 		cl_map_item_t *p;
 		for (p=cl_qmap_head(&fabricp->AllNodes); p != cl_qmap_end(&fabricp->AllNodes); p = cl_qmap_next(p)) {
 			NodeData *nodep = PARENT_STRUCT(p, NodeData, AllNodesEntry);
-
-			strncpy(Name, (char*)nodep->NodeDesc.NodeString, STL_NODE_DESCRIPTION_ARRAY_SIZE);
-			Name[STL_NODE_DESCRIPTION_ARRAY_SIZE] = '\0';
-			if (fnmatch(pattern, Name, 0) == 0)
+			if (fnmatch(pattern, (char*)nodep->NodeDesc.NodeString, 0) == 0)
 			{
 				status = PointListAppend(pPoint, POINT_TYPE_NODE_LIST, nodep);
 				if (FSUCCESS != status)
 					return status;
+				//Set flag if the node is a switch or FI
+				if (nodep->NodeInfo.NodeType == STL_NODE_SW)
+					pPoint->haveSW = TRUE;
+				else if (nodep->NodeInfo.NodeType == STL_NODE_FI)
+					pPoint->haveFI = TRUE;
 			}
 		}
 	}
@@ -540,7 +612,6 @@ FSTATUS FindNodeNamePatPoint(FabricData_t *fabricp, char *pattern, Point *pPoint
 						g_Top_cmdname, pattern);
 		return FNOT_FOUND;
 	}
-	PointCompress(pPoint);
 	return FSUCCESS;
 }
 

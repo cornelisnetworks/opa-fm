@@ -286,6 +286,8 @@
 ##CCLOCAL	= User defined C++ flags for compiling [Empty]
 ##CENV		= Environment defined C compilation flags [Not Defined]
 ##CCENV		= Environment defined C++ compilation flags [Not Defined]
+##CENVFS	= Environment defined C compilation flags per feature set [Not Defined]
+##CCENVFS	= Environment defined C++ compilation flags per feature set [Not Defined]
 ##CMOD		= module level defined C compilation flags [Not Defined]
 ##CCMOD		= module level defined C++ compilation flags [Not Defined]
 ##CPROJ		= project level defined C compilation flags [Not Defined]
@@ -326,6 +328,7 @@
 ##LDPDB_RELEASE	= LD option to create pdb file for release builds [/debug /pdbtype:sept /debugtype:both] (Windows Only)
 ##LDLOCAL	= User defined C flags for linking [Empty]
 ##LDENV		= Environment defined linker flags [Not Defined]
+##LDENVFS	= Environment defined linker flags per feature set [Not Defined]
 ##LDMOD		= module level defined linker flags [Not Defined]
 ##LDPROJ	= project level defined linker flags [Not Defined]
 ##LDMACH	= Flags to specify machine type to linker

@@ -293,7 +293,7 @@ sub Build_ifcfg($$$)
 	my($target, $SysCmd);
 	my ($temp);
 
-	$target = "$ROOT$NETWORK_CONF_DIR/ifcfg-$device";
+	$target = "$NETWORK_CONF_DIR/ifcfg-$device";
 	print("Creating ifcfg-$device for $ipaddr mask $netmask\n\n");
 
 	if ( "$CUR_DISTRO_VENDOR" eq "UnitedLinux" || "$CUR_DISTRO_VENDOR" eq "SuSE") {
@@ -417,7 +417,7 @@ sub Config_IP_Manually($$)
 	my($sampledev) = shift();
 
 	print "\n$compname requires an ifcfg file for each $compname device instance.\n";
-	print ("Manually create files such as '$ROOT$NETWORK_CONF_DIR/ifcfg-$sampledev'\n");
+	print ("Manually create files such as '$NETWORK_CONF_DIR/ifcfg-$sampledev'\n");
 }
 
 
@@ -426,7 +426,7 @@ sub Exist_ifcfg($)
 	my($prefix) = shift();
 
 	my $ifcfg_wildcard="$NETWORK_CONF_DIR/ifcfg-$prefix"."[0-9]*";
-	return ( `ls $ROOT$ifcfg_wildcard 2>/dev/null` ne "" );
+	return ( `ls $ifcfg_wildcard 2>/dev/null` ne "" );
 }
 
 #
@@ -464,7 +464,7 @@ sub Config_ifcfg($$$$$)
 			
 	# Check if ifcfg files are present
 	my $ifcfg_wildcard="$NETWORK_CONF_DIR/ifcfg-$prefix"."[0-9]*";
-	if ( `ls $ROOT$ifcfg_wildcard 2>/dev/null` ne "" )
+	if ( `ls $ifcfg_wildcard 2>/dev/null` ne "" )
 	{
 		if ($reconfig)
 		{
@@ -474,11 +474,11 @@ sub Config_ifcfg($$$$$)
 		if (! $reconfig 
 			|| check_keep_config("$ifcfg_wildcard", "$compname ifcfg files", "y"))
 		{
-			print "Leaving $ROOT$ifcfg_wildcard unchanged...\n";
+			print "Leaving $ifcfg_wildcard unchanged...\n";
 			return;
 		} 
-		print "removing $ROOT$ifcfg_wildcard\n";
-		system "rm -f $ROOT$ifcfg_wildcard";
+		print "removing $ifcfg_wildcard\n";
+		system "rm -f $ifcfg_wildcard";
 	}
 	if (GetYesNo("Configure $compname IPV4 addresses now?", "n") == 0)
 	{
@@ -591,32 +591,6 @@ sub Config_ifcfg($$$$$)
 	}
 }
 
-sub net_interface_down($)
-{
-	my($dev) = shift();	# base device name
-
-	my($a);				# device instance number
-	my($IF);			# interface name
-	my($SysCmd);
-
-	if ( ROOT_is_set() )
-	{
-		return;
-	}
-	# make sure the specified network interfaces are not running
-	for($a=0; $a < $MAX_HFI_PORTS; $a++)
-	{
-		$IF = "$NETWORK_CONF_DIR/ifcfg-".$dev."$a";
-		if ( -r $IF )
-		{
-			$SysCmd = "/sbin/ifdown $dev"."$a";
-			DebugPrint("cmd '$SysCmd'\n");
-			system $SysCmd;
-		}
-	}
-}
-
-
 # Remove ifcfg files.
 # driver should have already been unloaded.
 #
@@ -630,23 +604,23 @@ sub Remove_ifcfg($$$)
 	# IPoIB config files.
 
 	my $ifcfg_wildcard="$NETWORK_CONF_DIR/ifcfg-$prefix"."[0-9]*";
-	if ( `ls $ROOT$ifcfg_wildcard 2>/dev/null` ne "" )
+	if ( `ls $ifcfg_wildcard 2>/dev/null` ne "" )
 	{
 		if (check_keep_config("$ifcfg_wildcard", "$compname ifcfg files", "y"))
 		{
 			print "Keeping $compname ifcfg files ...\n";
 		} else {
-			print "removing $ROOT$ifcfg_wildcard\n";
-			system "rm -f $ROOT$ifcfg_wildcard";
+			print "removing $ifcfg_wildcard\n";
+			system "rm -f $ifcfg_wildcard";
 		}
 	}
 }
 
 sub check_network_config()
 {
-	my $nm=read_simple_config_param("$ROOT/etc/sysconfig/network/config", "NETWORKMANAGER");
+	my $nm=read_simple_config_param("/etc/sysconfig/network/config", "NETWORKMANAGER");
 	if ( "$nm" eq "yes" ) {
-		print RED "Please set NETWORKMANAGER=no in $ROOT/etc/sysconfig/network/config", RESET "\n";
+		print RED "Please set NETWORKMANAGER=no in /etc/sysconfig/network/config", RESET "\n";
 		HitKeyCont;
 	}
 }

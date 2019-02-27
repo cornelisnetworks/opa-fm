@@ -114,8 +114,6 @@ LOCAL_LIB_DIRS = /usr/lib64
 CLOCAL	=  $(CPIE)
 LOCALDEPLIBS = cs ibaccess config public vslogu Xml
 LOCALLIBS = rt crypto
-#needs the LDLOCAL for the OpenIb_Host build
-LDLOCAL = $(shell pkg-config --libs sqlite3)
 
 ifneq "$(BUILD_TARGET_OS)" "VXWORKS"
 LOCALLIBS+= expat

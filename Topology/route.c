@@ -36,7 +36,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "topology.h"
 #include "topology_internal.h"
 
-
 // For each device along the path, entry and exit port of device is provided
 // For the FI at the start of the route, only an exit port is provided
 // For the FI at the end of the route, only a entry port is provided
@@ -538,16 +537,16 @@ FSTATUS TabulateRoutes(FabricData_t *fabricp, PortData *portp1,
 	return FSUCCESS;
 }
 
-
-
-// tabulate all the routes between FIs, exclude loopback routes
-FSTATUS TabulateCARoutes(FabricData_t *fabricp, uint32 *totalPaths,
+// tabulate all the routes between FIs
+FSTATUS TabulateCARoutes(FabricData_t *fabricp, Point *focus, uint32 *totalPaths,
 							uint32 *badPaths, boolean fatTree)
 {
-	LIST_ITEM *n1, *n2;
+	LIST_ITERATOR i, j;
 	cl_map_item_t *p1, *p2;
+	LIST_ITEM *n1, *n2;
 	FSTATUS status;
 	uint32 pathCount, badPathCount;
+	int noOfLeftNodes, noOfRightNodes;
 
 	*totalPaths = 0;
 	*badPaths = 0;
@@ -557,25 +556,35 @@ FSTATUS TabulateCARoutes(FabricData_t *fabricp, uint32 *totalPaths,
 	if (fatTree)
 		DetermineSwitchTiers(fabricp);
 
-	// TBD - because IB is DLID routed, can save effort by getting routes from
-	// 1 FI per switch to all other FIs (or all FIs on other switches) and
-	// then multiply the result for that FI by the number of FIs on that switch
-	// In a pure fattree such an approach would reduce N*N to (N/18)*(N/18)
-	// so it would have a 18*18 reduction in effort, provided the cost of
-	// finding FIs is not to high, maybe we can loop here based on all switches?
-	for (n1=QListHead(&fabricp->AllFIs); n1 != NULL; n1 = QListNext(&fabricp->AllFIs, n1)) {
-		NodeData *nodep1 = (NodeData *)QListObj(n1);
-		for (p1=cl_qmap_head(&nodep1->Ports); p1 != cl_qmap_end(&nodep1->Ports); p1 = cl_qmap_next(p1)) {
-			PortData *portp1 = PARENT_STRUCT(p1, PortData, NodePortsEntry);
+	/* If there is FI in the node pair list only tabulate routes for the specified pairs*/
+	if(PointHaveFI(focus) && PointTypeIsNodePairList(focus)){
 
-			for (n2=QListHead(&fabricp->AllFIs); n2 != NULL; n2 = QListNext(&fabricp->AllFIs, n2)) {
-				NodeData *nodep2 = (NodeData *)QListObj(n2);
+		DLIST *pList1 = &focus->u.nodePairList.nodePairList1;
+		DLIST *pList2 = &focus->u.nodePairList.nodePairList2;
 
-				// enable this if we want to skip node to self paths
-				//if (nodep1 == nodep2) continue;
+		noOfLeftNodes = ListCount(pList1);
+		noOfRightNodes = ListCount(pList2);
 
-				for (p2=cl_qmap_head(&nodep2->Ports); p2 != cl_qmap_end(&nodep2->Ports); p2 = cl_qmap_next(p2)) {
+		if (noOfLeftNodes != noOfRightNodes) {
+			fprintf(stderr, "%s: Pairs are not complete \n", g_Top_cmdname);
+			return FINVALID_PARAMETER;
+		}
+
+		for (i = ListHead(pList1), j = ListHead(pList2); (i != NULL && j != NULL);
+				i = ListNext(pList1, i), j = ListNext(pList2, j) ) {
+			NodeData *nodepFromList1 = (NodeData*)ListObj(i);
+			NodeData *nodepFromList2 = (NodeData*)ListObj(j);
+
+			//skip switches
+			if ((nodepFromList1->NodeInfo.NodeType == STL_NODE_SW) || (nodepFromList2->NodeInfo.NodeType == STL_NODE_SW))
+				continue;
+
+			for (p1=cl_qmap_head(&nodepFromList1->Ports); p1 != cl_qmap_end(&nodepFromList1->Ports); p1 = cl_qmap_next(p1)) {
+				PortData *portp1 = PARENT_STRUCT(p1, PortData, NodePortsEntry);
+
+				for (p2=cl_qmap_head(&nodepFromList2->Ports); p2 != cl_qmap_end(&nodepFromList2->Ports); p2 = cl_qmap_next(p2)) {
 					PortData *portp2 = PARENT_STRUCT(p2, PortData, NodePortsEntry);
+
 					// skip loopback paths
 					if (portp1 == portp2) continue;
 					status = TabulateRoutes(fabricp, portp1, portp2, &pathCount, &badPathCount, fatTree);
@@ -583,6 +592,65 @@ FSTATUS TabulateCARoutes(FabricData_t *fabricp, uint32 *totalPaths,
 						return status;
 					*totalPaths += pathCount;
 					*badPaths += badPathCount;
+				}
+			}
+		}
+	/* If there is FI in the list, make N x N pairs and  tabulate routes for the formed pairs*/
+	}else if(PointHaveFI(focus)){
+		FIPortIterator a, b;
+		PortData *portp1, *portp2;
+		//point type which haveFI and only matches 1 node is invalid and should return error
+		if((POINT_TYPE_PORT == focus->Type) || (POINT_TYPE_NODE == focus->Type) ||
+#if !defined(VXWORKS) || defined(BUILD_DMC)
+			(POINT_TYPE_IOC == focus->Type) ||
+			((POINT_TYPE_IOC_LIST == focus->Type) && (1 == ListCount(&focus->u.iocList)))||
+#endif
+			((POINT_TYPE_PORT_LIST == focus->Type) && (1 == ListCount(&focus->u.portList)))||
+			((POINT_TYPE_NODE_LIST == focus->Type) && (1 == ListCount(&focus->u.nodeList)))||
+			((POINT_TYPE_SYSTEM == focus->Type) && (1 == cl_qmap_count(&focus->u.systemp->Nodes)))){
+			status = FINVALID_PARAMETER;
+			return status;
+		}
+		for(portp1 = FIPortIteratorHead(&a, focus); portp1 != NULL; portp1 = FIPortIteratorNext(&a) ) {
+			for(portp2 = FIPortIteratorHead(&b, focus); portp2 != NULL; portp2 = FIPortIteratorNext(&b) ) {
+				// skip loopback paths
+				if (portp1 == portp2)
+					continue;
+				status = TabulateRoutes(fabricp, portp1, portp2, &pathCount, &badPathCount, fatTree);
+				if (status == FUNAVAILABLE)
+					return status;
+				*totalPaths += pathCount;
+				*badPaths += badPathCount;
+			}
+		}
+	} else {
+		// TBD - because IB is DLID routed, can save effort by getting routes from
+		// 1 FI per switch to all other FIs (or all FIs on other switches) and
+		// then multiply the result for that FI by the number of FIs on that switch
+		// In a pure fattree such an approach would reduce N*N to (N/18)*(N/18)
+		// so it would have a 18*18 reduction in effort, provided the cost of
+		// finding FIs is not to high, maybe we can loop here based on all switches?
+		for (n1=QListHead(&fabricp->AllFIs); n1 != NULL; n1 = QListNext(&fabricp->AllFIs, n1)) {
+			NodeData *nodep1 = (NodeData *)QListObj(n1);
+			for (p1=cl_qmap_head(&nodep1->Ports); p1 != cl_qmap_end(&nodep1->Ports); p1 = cl_qmap_next(p1)) {
+				PortData *portp1 = PARENT_STRUCT(p1, PortData, NodePortsEntry);
+
+				for (n2=QListHead(&fabricp->AllFIs); n2 != NULL; n2 = QListNext(&fabricp->AllFIs, n2)) {
+					NodeData *nodep2 = (NodeData *)QListObj(n2);
+
+					// enable this if we want to skip node to self paths
+					//if (nodep1 == nodep2) continue;
+
+					for (p2=cl_qmap_head(&nodep2->Ports); p2 != cl_qmap_end(&nodep2->Ports); p2 = cl_qmap_next(p2)) {
+						PortData *portp2 = PARENT_STRUCT(p2, PortData, NodePortsEntry);
+						// skip loopback paths
+						if (portp1 == portp2) continue;
+							status = TabulateRoutes(fabricp, portp1, portp2, &pathCount, &badPathCount, fatTree);
+						if (status == FUNAVAILABLE)
+							return status;
+						*totalPaths += pathCount;
+						*badPaths += badPathCount;
+					}
 				}
 			}
 		}

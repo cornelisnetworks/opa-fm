@@ -39,6 +39,12 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "icsBspUtil.h"
 #endif
 
+#define FILENAME				256 //Length of file name
+#define MIN_LIST_ITEMS				100 // minimum items for ListInit to allocate for
+#define NODE_PAIR_DELIMITER_SIZE		1 //Length of delimiter while parsing for node pairs
+
+
+
 // Functions to Parse Focus arguments and build POINTs for matches
 typedef boolean (PointPortElinkCompareCallback_t)(ExpectedLink *elinkp, void *nodecmp, uint8 portnum);
 static FSTATUS ParsePointPort(FabricData_t *fabricp, char *arg, Point *pPoint, uint8 find_flag, PointPortElinkCompareCallback_t *callback, void *nodecmp, char **pp);
@@ -180,6 +186,10 @@ static FSTATUS ParsePointPort(FabricData_t *fabricp, char *arg, Point *pPoint, u
 			status = FINVALID_PARAMETER;
 			goto fail;
 		case POINT_TYPE_PORT_LIST:
+			ASSERT(0);	// should not be called for this type of point
+			status = FINVALID_PARAMETER;
+			goto fail;
+		case POINT_TYPE_NODE_PAIR_LIST:
 			ASSERT(0);	// should not be called for this type of point
 			status = FINVALID_PARAMETER;
 			goto fail;
@@ -376,6 +386,7 @@ static FSTATUS ParsePointPort(FabricData_t *fabricp, char *arg, Point *pPoint, u
 		case POINT_TYPE_NONE:
 		case POINT_TYPE_PORT:
 		case POINT_TYPE_PORT_LIST:
+		case POINT_TYPE_NODE_PAIR_LIST:
 			ASSERT(0);	// should not get here
 			break;
 		case POINT_TYPE_NODE:
@@ -597,6 +608,183 @@ static boolean PointPortElinkCompareNodeNamePat(ExpectedLink *elinkp, void *node
 				&& elinkp->portselp2->gotPortNum
 				&& elinkp->portselp2->PortNum == portnum
 				&& 0 == fnmatch(pattern, elinkp->portselp2->NodeDesc, 0)));
+}
+
+/* Initialize the nodepatPairs list*/
+static FSTATUS InitNodePatPairs(NodePairList_t *nodePatPairs)
+{
+	//Initialize the left side of the list here.
+	ListInitState(&nodePatPairs->nodePairList1);
+	if (! ListInit(&nodePatPairs->nodePairList1, MIN_LIST_ITEMS)) {
+		fprintf(stderr, "%s: unable to allocate memory\n", g_Top_cmdname);
+		return FINSUFFICIENT_MEMORY;
+	}
+
+	//Initialize the right side of the list here.
+	ListInitState(&nodePatPairs->nodePairList2);
+	if (! ListInit(&nodePatPairs->nodePairList2, MIN_LIST_ITEMS)) {
+		fprintf(stderr, "%s: unable to allocate memory\n", g_Top_cmdname);
+		if(&nodePatPairs->nodePairList1)
+			ListDestroy(&nodePatPairs->nodePairList1);
+		return FINSUFFICIENT_MEMORY;
+	}
+	return FSUCCESS;
+}
+
+/* Delete the nodepatpairs list*/
+FSTATUS DeleteNodePatPairs(NodePairList_t *nodePatPairs)
+{
+	if(nodePatPairs) {
+		//delete the left side of the list.
+		ListDestroy(&nodePatPairs->nodePairList1);
+		//delete the right side of the list.
+		ListDestroy(&nodePatPairs->nodePairList2);
+	}
+	return FSUCCESS;
+}
+
+/* Parse the node pairs/nodes file */
+static FSTATUS ParseNodePairPatFilePoint(FabricData_t *fabricp, char *arg, Point *pPoint, uint8 find_flag, uint8 pair_flag, char **pp)
+{
+	char *p, *pEol;
+	char patternLine[STL_NODE_DESCRIPTION_ARRAY_SIZE*2+NODE_PAIR_DELIMITER_SIZE+1];
+	char pattern[STL_NODE_DESCRIPTION_ARRAY_SIZE+1];
+	FSTATUS status;
+	char nodePatFileName[FILENAME] = {0};
+	struct stat fileStat;
+	FILE *fp;
+	NodePairList_t nodePatPairs;
+
+	ASSERT(PointIsInInit(pPoint));
+
+	if (0 == pair_flag)
+		return FINVALID_OPERATION;
+
+	if (NULL == arg) {
+		fprintf(stderr, "%s: Node pattern Filename missing\n", g_Top_cmdname);
+		return FINVALID_PARAMETER;
+	}
+
+	if (strlen(arg) > FILENAME - 1) {
+		fprintf(stderr, "%s: Node pattern Filename too long: %.*s\n",
+						g_Top_cmdname, (int)strlen(arg), arg);
+		return FINVALID_PARAMETER;
+	}
+
+	if ((PAIR_FLAG_NODE != pair_flag) && (PAIR_FLAG_NONE != pair_flag) ) {
+		fprintf(stderr, "%s: Pair flag argument is invalid: %d\n",
+						g_Top_cmdname, pair_flag);
+		return FINVALID_PARAMETER;
+	}
+	//Get file name
+	StringCopy(nodePatFileName, arg, (int)sizeof(nodePatFileName));
+	nodePatFileName[strlen(arg)] = '\0';
+
+	//There are no further focus to evaluate for node pair list
+	*pp = arg + strlen(arg);
+
+	// Check if file is present
+	if (stat(nodePatFileName, &fileStat) < 0) {
+		fprintf(stderr, "Error taking stat of file {%s}: %s\n",
+			nodePatFileName, strerror(errno));
+			return FINVALID_PARAMETER;
+	}
+
+	//Open file
+	if ((fp = fopen(nodePatFileName, "r")) == NULL) {
+		fprintf(stderr, "Error opening file %s for input: %s\n", nodePatFileName, strerror(errno));
+		return FINVALID_PARAMETER;
+	}
+
+	memset(patternLine, 0, sizeof(patternLine));
+
+	//Get one line at a time
+	while(fgets(patternLine, sizeof(patternLine), fp) != NULL){
+		//remove newline
+		if ((pEol = strrchr(patternLine, '\n')) != NULL) {
+			*pEol= '\0';
+		}
+		//When node pairs are given
+		if (PAIR_FLAG_NODE == pair_flag ) {
+			p = strchr(patternLine, ':');
+			if (p) {
+				memset(pattern, 0, sizeof(pattern));
+				//just log the error meesage
+				if (p - patternLine > STL_NODE_DESCRIPTION_ARRAY_SIZE) {
+					fprintf(stderr, "%s: Left side node name Not Found (too long): %.*s\n",
+						g_Top_cmdname, (int)(p - patternLine), patternLine);
+				}
+				// copy the Left side of node pair. +1 for '\0'
+				StringCopy(pattern, patternLine, (p - patternLine + 1));
+				pattern[(p - patternLine) + 1] = '\0';
+				status = InitNodePatPairs(&nodePatPairs);
+				if(FSUCCESS != status){
+					fprintf(stderr, "%s: Insufficient Memory\n",g_Top_cmdname );
+					goto fail;
+				}
+				// Find all the nodes that match the pattern for the left side
+				status = FindNodePatPairs(fabricp, pattern, &nodePatPairs, find_flag, LSIDE_PAIR);
+				// When there is invalid entry in the Left side of each line, the entire line is skipped
+				if ((FSUCCESS != status)){
+					DeleteNodePatPairs(&nodePatPairs);
+					continue;
+				}
+				memset(pattern, 0, sizeof(pattern));
+				//When there is invalid entry in the right side don't mark error as corresponding left side entry could be a Switch
+				if (pEol - p <= STL_NODE_DESCRIPTION_ARRAY_SIZE) {
+					// copy the Right side of node pair. +1 is for ':'
+					StringCopy(pattern, patternLine + (p - patternLine + 1), (pEol - p + 1));
+					// Find all the nodes that match the pattern for the right side
+					status = FindNodePatPairs(fabricp, pattern, &nodePatPairs, find_flag, RSIDE_PAIR);
+					// Only when there is insufficient memory error mark as error and return
+					if ((FSUCCESS != status) && (FINVALID_OPERATION != status) &&
+						(FNOT_FOUND != status)){
+						DeleteNodePatPairs(&nodePatPairs);
+						goto fail;
+					}
+				} else {
+					//just log the error meesage
+					fprintf(stderr, "%s: Right side node name (too long): %.*s\n",
+						g_Top_cmdname, (int)(pEol - p), p);
+				}
+			}else {
+				//just log error message
+				fprintf(stderr, "%s: Node pair is missing: %.*s\n",
+					g_Top_cmdname, (int)sizeof(patternLine), patternLine);
+			}
+			// The complete node pair List N*M  is populated for a single line in file
+			status = PointPopulateNodePairList(pPoint, &nodePatPairs);
+			if (FSUCCESS != status) {
+				//Log error and return if it fails to fom N*M list
+				fprintf(stderr, "%s: Error creating node pairs\n", g_Top_cmdname);
+				DeleteNodePatPairs(&nodePatPairs);
+				goto fail;
+			}
+			// Now the line is parsed and nadepat pairs are created, so free nodePatPairs
+			DeleteNodePatPairs(&nodePatPairs);
+		//When only one node is given
+		} else {
+			if (strlen(patternLine) <= STL_NODE_DESCRIPTION_ARRAY_SIZE) {
+				// Only when there is insufficient memory error or invalid operation error mark as error and return
+				// else proceed with next node in list
+				status = FindNodeNamePatPointUncompress(fabricp, patternLine, pPoint, find_flag);
+				if ((FSUCCESS != status) && (FNOT_FOUND != status))
+					goto fail;
+			} else {
+				//just log the error message and parse next line
+				fprintf(stderr, "%s: Node name (too long): %.*s\n",
+					g_Top_cmdname, (int)sizeof(patternLine), patternLine);
+			}
+		}
+		memset(patternLine, 0, sizeof(patternLine));
+	}
+	PointCompress(pPoint);
+	fclose(fp);
+	return FSUCCESS;
+
+fail:
+	fclose(fp);
+	return status;
 }
 
 static FSTATUS ParseNodeNamePatPoint(FabricData_t *fabricp, char *arg, Point *pPoint, uint8 find_flag, char **pp)
@@ -1630,6 +1818,10 @@ FSTATUS ParsePoint(FabricData_t *fabricp, char* arg, Point* pPoint, uint8 find_f
 		status = ParseNodeNamePatPoint(fabricp, param, pPoint, find_flag, pp);
 	} else if (NULL != (param = ComparePrefix(arg, "nodedetpat:"))) {
 		status = ParseNodeDetPatPoint(fabricp, param, pPoint, find_flag, pp);
+	} else if (NULL != (param = ComparePrefix(arg, "nodepatfile:"))) {
+		status = ParseNodePairPatFilePoint(fabricp, param, pPoint, find_flag, PAIR_FLAG_NONE, pp);
+	} else if (NULL != (param = ComparePrefix(arg, "nodepairpatfile:"))) {
+		status = ParseNodePairPatFilePoint(fabricp, param, pPoint, find_flag, PAIR_FLAG_NODE, pp);
 #endif
 	} else if (NULL != (param = ComparePrefix(arg, "nodetype:"))) {
 		status = ParseNodeTypePoint(fabricp, param, pPoint, find_flag, pp);
@@ -1686,4 +1878,377 @@ FSTATUS ParsePoint(FabricData_t *fabricp, char* arg, Point* pPoint, uint8 find_f
 		return FINVALID_PARAMETER;
 	}
 	return status;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// FIPortIteratorHead
+//
+// Description:
+//	Finds the first non-SW port for each type in the point.
+//
+// Inputs:
+//	pFIPortIterator	- Pointer to FIPortIterator object
+//	pFocus	- Pointer to user's compare function
+//
+// Outputs:
+//	None
+//
+// Returns:
+//	Pointer to port data.
+//
+///////////////////////////////////////////////////////////////////////////////
+PortData *FIPortIteratorHead(FIPortIterator *pFIPortIterator, Point *pFocus)
+{
+	pFIPortIterator->pPoint = pFocus;
+
+	switch(pFocus->Type)
+	{
+		case POINT_TYPE_PORT:
+		{
+			//return NULL if port belongs to a switch else return the port
+			if( STL_NODE_SW !=  pFocus->u.portp->nodep->NodeInfo.NodeType) {
+				//Flag to indicate the port is the only port and it is already returned
+				pFIPortIterator->u.PortIter.lastPortFlag = TRUE;
+				return pFocus->u.portp;
+			}
+			return NULL;
+		}
+		break;
+		case POINT_TYPE_PORT_LIST:
+		{
+			LIST_ITERATOR i;
+			//Go through the port list to find the first FI port. Skip all SW ports
+			for (i = ListHead(&pFocus->u.portList);
+				i != NULL; i = ListNext(&pFocus->u.portList, i)) {
+				PortData *portp = (PortData *)ListObj(i);
+				if(STL_NODE_SW == portp->nodep->NodeInfo.NodeType)
+					continue;
+				else {
+					//Store where in the point the current iterator is.
+					pFIPortIterator->u.PortListIter.currentPort = i;
+					return portp;
+				}
+			}
+			return NULL;
+		}
+		break;
+		case POINT_TYPE_NODE:
+		{
+			NodeData *nodep = pFocus->u.nodep;
+			// Get the first port only if it is a FI node. Return NULL for switch nodes.
+			if(STL_NODE_SW != nodep->NodeInfo.NodeType) {
+				cl_map_item_t * p = cl_qmap_head(&nodep->Ports);
+				if(p != cl_qmap_end(&nodep->Ports)) {
+					PortData *portp = PARENT_STRUCT(p, PortData, NodePortsEntry);
+					//Store where in the point the current iterator is.
+					pFIPortIterator->u.NodeIter.pCurrentPort = p;
+					pFIPortIterator->u.NodeIter.lastNodeFlag = TRUE;
+					return portp;
+				}
+			}
+			return NULL;
+		}
+		break;
+		case POINT_TYPE_NODE_LIST:
+		{
+			LIST_ITERATOR i;
+			//Iterate over the node list to get the first FI node.
+			for (i = ListHead(&pFocus->u.nodeList);
+				i != NULL; i = ListNext(&pFocus->u.nodeList, i)) {
+				NodeData *nodep = (NodeData*)ListObj(i);
+
+				//skip switches
+				if(nodep->NodeInfo.NodeType == STL_NODE_SW)
+					continue;
+				else {
+					cl_map_item_t *p = cl_qmap_head(&nodep->Ports);
+					if(p != cl_qmap_end(&nodep->Ports)){
+						PortData *portp = PARENT_STRUCT(p, PortData, NodePortsEntry);
+						//Store where in the point the current iterator is.
+						pFIPortIterator->u.NodeListIter.currentNode = i;
+						pFIPortIterator->u.NodeListIter.pCurrentPort = p;
+						return portp;
+					}
+				}
+			}
+			return NULL;
+		}
+		break;
+#if !defined(VXWORKS) || defined(BUILD_DMC)
+		case POINT_TYPE_IOC:
+		{
+			NodeData *nodep = pFocus->u.iocp->ioup->nodep;
+			//Get the first port for a FI node.
+			if(STL_NODE_SW != nodep->NodeInfo.NodeType) {
+				cl_map_item_t *p = cl_qmap_head(&nodep->Ports);
+				if(p != cl_qmap_end(&nodep->Ports))
+				{
+					PortData *portp = PARENT_STRUCT(p, PortData, NodePortsEntry);
+					//Store where in the point the current iterator is.
+					pFIPortIterator->u.IocIter.pCurrentPort = p;
+					pFIPortIterator->u.IocIter.lastIocFlag = TRUE;
+					return portp;
+				}
+			}
+			return NULL;
+		}
+		break;
+		case POINT_TYPE_IOC_LIST:
+		{
+			LIST_ITERATOR i;
+			//Iterate over the Ioc list to get the first FI node.
+			for (i = ListHead(&pFocus->u.iocList);
+				i != NULL; i = ListNext(&pFocus->u.iocList, i)) {
+				IocData *iocp = (IocData*)ListObj(i);
+				NodeData *nodep = iocp->ioup->nodep;
+				//skip switches
+				if(nodep->NodeInfo.NodeType == STL_NODE_SW)
+					continue;
+				else {
+					cl_map_item_t *p = cl_qmap_head(&nodep->Ports);
+					if (p != cl_qmap_end(&nodep->Ports))
+					{
+						PortData *portp = PARENT_STRUCT(p, PortData, NodePortsEntry);
+						//Store where in the point the current iterator is.
+						pFIPortIterator->u.IocListIter.currentNode = i;
+						pFIPortIterator->u.IocListIter.pCurrentPort = p;
+						return portp;
+					}
+				}
+			}
+			return NULL;
+		}
+		break;
+#endif
+		case POINT_TYPE_SYSTEM:
+		{
+			cl_map_item_t *s;
+			//Iterate over the nodes in the system to get the first FI node.
+			for (s = cl_qmap_head(&pFocus->u.systemp->Nodes);
+				s != cl_qmap_end(&pFocus->u.systemp->Nodes); s = cl_qmap_next(s)){
+				NodeData *nodep = PARENT_STRUCT(s, NodeData, SystemNodesEntry);
+				if(nodep->NodeInfo.NodeType == STL_NODE_SW)
+					continue;
+				else {
+					cl_map_item_t *p = cl_qmap_head(&nodep->Ports);
+					if (p != cl_qmap_end(&nodep->Ports))
+					{
+						PortData *portp = PARENT_STRUCT(p, PortData, NodePortsEntry);
+						//Store where in the point the current iterator is.
+						pFIPortIterator->u.SystemIter.pCurrentNode = s;
+						pFIPortIterator->u.SystemIter.pCurrentPort = p;
+						pFIPortIterator->u.SystemIter.lastSystemFlag = TRUE;
+						return portp;
+					}
+				}
+			}
+			return NULL;
+		}
+		break;
+		case POINT_TYPE_NONE:
+		case POINT_TYPE_NODE_PAIR_LIST:
+		default:
+			return NULL;
+		break;
+	}
+	return NULL;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// FIPortIteratorNext
+//
+// Description:
+//	Finds the next non-SW port for each type in the point
+//
+// Inputs:
+//	pFIPortIterator	- Pointer to FIPortIterator object
+//
+// Outputs:
+//	None
+//
+// Returns:
+//	Pointer to port data.
+//
+///////////////////////////////////////////////////////////////////////////////
+PortData *FIPortIteratorNext(FIPortIterator *pFIPortIterator)
+{
+	Point *pFocus = pFIPortIterator->pPoint;
+
+	switch(pFocus->Type)
+	{
+		case POINT_TYPE_PORT:
+		{
+			//Check if port is iterated over
+			if(pFIPortIterator->u.PortIter.lastPortFlag)
+				pFIPortIterator->u.PortIter.lastPortFlag = FALSE;
+			return NULL;
+		}
+		break;
+		case POINT_TYPE_PORT_LIST:
+		{
+			LIST_ITERATOR i;
+			//Get the next FI port using the stored position of the iterator in the point
+			for (i = ListNext(&pFocus->u.portList, pFIPortIterator->u.PortListIter.currentPort);
+				i != NULL; i = ListNext(&pFocus->u.portList,i)) {
+				PortData *portp = (PortData *)ListObj(i);
+				if(STL_NODE_SW == portp->nodep->NodeInfo.NodeType)
+					continue;
+				else {
+					//Store where in the point the current iterator is.
+					pFIPortIterator->u.PortListIter.currentPort = i;
+					return portp;
+				}
+			}
+			return NULL;
+		}
+		break;
+		case POINT_TYPE_NODE:
+		{
+			if (pFIPortIterator->u.NodeIter.lastNodeFlag){
+				//Get the next port using the stored position of the iterator in the point. It is an FI port.
+				cl_map_item_t *p = cl_qmap_next(pFIPortIterator->u.NodeIter.pCurrentPort);
+				if(p != cl_qmap_end(&pFocus->u.nodep->Ports)){
+					PortData *portp = PARENT_STRUCT(p, PortData, NodePortsEntry);
+					//Store where in the point the current iterator is.
+					pFIPortIterator->u.NodeIter.pCurrentPort = p;
+					return portp;
+				} else
+					pFIPortIterator->u.NodeIter.lastNodeFlag = FALSE;
+			}
+			return NULL;
+		}
+		break;
+		case POINT_TYPE_NODE_LIST:
+		{
+			LIST_ITERATOR i;
+			//Get the next port of the node using the stored position of the iterator in the point. It is an FI port.
+			NodeData *nodep = (NodeData*)ListObj(pFIPortIterator->u.NodeListIter.currentNode);
+			cl_map_item_t *p = cl_qmap_next(pFIPortIterator->u.NodeListIter.pCurrentPort);
+			if(p != cl_qmap_end(&nodep->Ports)){
+				PortData *portp = PARENT_STRUCT(p, PortData, NodePortsEntry);
+				//Store where in the point the current iterator is.
+				pFIPortIterator->u.NodeIter.pCurrentPort = p;
+				return portp;
+			} else {
+				//Iterate over the next node of the list
+				for (i = ListNext(&pFocus->u.nodeList, pFIPortIterator->u.NodeListIter.currentNode);
+					i != NULL; i = ListNext(&pFocus->u.nodeList, i)) {
+					nodep = (NodeData*)ListObj(i);
+					//skip switches
+					if(nodep->NodeInfo.NodeType == STL_NODE_SW)
+						continue;
+					else {
+						p = cl_qmap_head(&nodep->Ports);
+						if(p != cl_qmap_end(&nodep->Ports)){
+							PortData *portp = PARENT_STRUCT(p, PortData, NodePortsEntry);
+							//Store where in the point the current iterator is.
+							pFIPortIterator->u.NodeListIter.currentNode = i;
+							pFIPortIterator->u.NodeListIter.pCurrentPort = p;
+							return portp;
+						}
+					}
+				}
+			}
+			return NULL;
+		}
+		break;
+#if !defined(VXWORKS) || defined(BUILD_DMC)
+		case POINT_TYPE_IOC:
+		{
+			if (pFIPortIterator->u.IocIter.lastIocFlag){
+				//Get the next port using the stored position of the iterator in the point. It is an FI port.
+				cl_map_item_t *p = cl_qmap_next(pFIPortIterator->u.IocIter.pCurrentPort);
+				NodeData *nodep = pFocus->u.iocp->ioup->nodep;
+				if(p != cl_qmap_end(&nodep->Ports)){
+					PortData *portp = PARENT_STRUCT(p, PortData, NodePortsEntry);
+					//Store where in the point the current iterator is.
+					pFIPortIterator->u.IocIter.pCurrentPort = p;
+					return portp;
+				} else
+					pFIPortIterator->u.IocIter.lastIocFlag = FALSE;
+			}
+			return NULL;
+		}
+		break;
+		case POINT_TYPE_IOC_LIST:
+		{
+			LIST_ITERATOR i;
+			//Get the next port of the node using the stored position of the iterator in the point. It is an FI port.
+			IocData *iocp = (IocData*)ListObj(pFIPortIterator->u.IocListIter.currentNode);
+			NodeData *nodep = iocp->ioup->nodep;
+			cl_map_item_t *p = cl_qmap_next(pFIPortIterator->u.IocListIter.pCurrentPort);
+			if(p != cl_qmap_end(&nodep->Ports)){
+				PortData *portp = PARENT_STRUCT(p, PortData, NodePortsEntry);
+				//Store where in the point the current iterator is.
+				pFIPortIterator->u.IocListIter.pCurrentPort = p;
+				return portp;
+			} else {
+				//Iterate over the next Ioc of the list
+				for (i = ListNext(&pFocus->u.iocList, pFIPortIterator->u.IocListIter.currentNode);
+					i != NULL; i = ListNext(&pFocus->u.iocList, i)) {
+					iocp = (IocData*)ListObj(i);
+					nodep = iocp->ioup->nodep;
+					//skip switches
+					if(nodep->NodeInfo.NodeType == STL_NODE_SW)
+						continue;
+					else {
+						p = cl_qmap_head(&nodep->Ports);
+						if(p != cl_qmap_end(&nodep->Ports)){
+							PortData *portp = PARENT_STRUCT(p, PortData, NodePortsEntry);
+							//Store where in the point the current iterator is.
+							pFIPortIterator->u.IocListIter.currentNode = i;
+							pFIPortIterator->u.IocListIter.pCurrentPort = p;
+							return portp;
+						}
+					}
+				}
+			}
+			return NULL;
+		}
+		break;
+#endif
+		case POINT_TYPE_SYSTEM:
+		{
+			cl_map_item_t *s;
+			if (pFIPortIterator->u.SystemIter.lastSystemFlag){
+				//Get the next port using the stored position of the iterator in the point. It is an FI port.
+				NodeData *nodep = PARENT_STRUCT(pFIPortIterator->u.SystemIter.pCurrentNode, NodeData, SystemNodesEntry);
+				cl_map_item_t *p = cl_qmap_next(pFIPortIterator->u.SystemIter.pCurrentPort);
+				if(p != cl_qmap_end(&nodep->Ports)){
+					PortData *portp = PARENT_STRUCT(p, PortData, NodePortsEntry);
+					//Store where in the point the current iterator is.
+					pFIPortIterator->u.SystemIter.pCurrentPort = p;
+					return portp;
+				} else {
+					//Iterate over the next node of the list
+					for (s = cl_qmap_next(pFIPortIterator->u.SystemIter.pCurrentNode);
+						s != cl_qmap_end(&pFocus->u.systemp->Nodes); s = cl_qmap_next(s)) {
+						nodep = PARENT_STRUCT(s, NodeData, SystemNodesEntry);
+						//skip switches
+						if(nodep->NodeInfo.NodeType == STL_NODE_SW)
+							continue;
+						else {
+							p = cl_qmap_head(&nodep->Ports);
+							if(p != cl_qmap_end(&nodep->Ports)){
+								PortData *portp = PARENT_STRUCT(p, PortData, NodePortsEntry);
+								//Store where in the point the current iterator is.
+								pFIPortIterator->u.SystemIter.pCurrentNode = s;
+								pFIPortIterator->u.SystemIter.pCurrentPort = p;
+								return portp;
+							}
+						}
+					}
+					pFIPortIterator->u.SystemIter.lastSystemFlag = FALSE;
+				}
+			}
+			return NULL;
+		}
+		break;
+		case POINT_TYPE_NONE:
+		case POINT_TYPE_NODE_PAIR_LIST:
+		default:
+			return NULL;
+		break;
+	}
+	return NULL;
 }

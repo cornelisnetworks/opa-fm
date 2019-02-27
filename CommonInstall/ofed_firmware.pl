@@ -35,9 +35,3 @@ my $Default_FirmwareUpgradeMode="";	# --fwupdate option
 #  "" - normal operation for upgrade
 #  "asneeded" - force update to this rev unless already on HCA
 #  "always" - force update to this rev
-
-sub update_hca_firmware()
-{
-	print("Firmware Update unnecessary\n");
-    HitKeyCont;
-}

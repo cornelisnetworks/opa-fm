@@ -220,6 +220,9 @@ export FF_MPI_APPS_DIR=${FF_MPI_APPS_DIR:-$HOME/mpi_apps}
 #location of Cable Health Report files
 export FF_CABLE_HEALTH_REPORT_DIR=${FF_CABLE_HEALTH_REPORT_DIR:-/var/opt/opafm/cablehealth}
 
+# Maximum number of cable health report files to maintain
+export FF_CABLE_HEALTH_MAX_FILES=${FF_CABLE_HEALTH_MAX_FILES:- 255}
+
 # env variables to set within each rank of MPI runs done by fastfabric directly
 # alternatively the $FF_MPI_APPS_DIR/ofed.*.param files can be edited
 # with appropriate values.

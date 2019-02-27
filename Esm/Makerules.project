@@ -94,6 +94,7 @@ endif
 # We also put the intermediate files for rpm packaging (image and packages)
 # directly in STAGE_DIR
 PROJ_STAGE_DIR		= $(STAGE_DIR)/$(STAGE_SUB_DIR)
+PROJ_STAGE_ETC_DIR	= $(PROJ_STAGE_DIR)/etc
 PROJ_STAGE_BIN_DIR	= $(PROJ_STAGE_DIR)/bin
 PROJ_STAGE_MAN_DIR	= $(PROJ_STAGE_DIR)/man
 PROJ_STAGE_INCLUDE_DIR	= $(PROJ_STAGE_DIR)/include
@@ -135,7 +136,6 @@ CCPROJ			= $(CCNORTTI) $(CCNOEXH) $(CPROJ)
 # DBG and _DEBUG_ are primarily used by IbAccess and modules using it
 CPROJDEBUG		= -DICSDEBUG -DDBG -DIB_DEBUG
 DEPENDPROJ		=
-LDPROJ			= $(shell pkg-config --libs sqlite3)
 LINTPROJ		=
 MIDLPROJ		=
 RSCPROJ			=

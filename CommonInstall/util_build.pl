@@ -172,7 +172,6 @@ sub get_build_options($@)
 }
 
 # execute build_cmd within srcdir
-# note builds are done on local image not in $ROOT
 # return 0 on success, != 0 on failure
 sub run_build($$$$)
 {

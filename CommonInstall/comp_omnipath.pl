@@ -60,7 +60,7 @@ sub install_generic_mpi
     my @list = ( "$mpifullname", "mpitests_$mpifullname" );
     rpm_uninstall_list2("any", "--nodeps", 'silent', @list);
 	# cleanup from older installs just in case
-    system ("rm -rf $ROOT/usr/lib/opa/.comp_$mpifullname.pl");
+    system ("rm -rf /usr/lib/opa/.comp_$mpifullname.pl");
     
     my $rpmfile = rpm_resolve("$srcdir/$mpifullname", "any");
     if ( "$rpmfile" ne "" && -e "$rpmfile" ) {
@@ -135,8 +135,8 @@ sub uninstall_generic_mpi
 	# unfortunately mpi and mpitests can leave empty directories on uninstall
 	# this can confuse IFS MPI tools because correct MPI to use
 	# cannot be identified.  This remove such empty directories
-	if ( -d "$ROOT/$mpich_prefix" ) {
-		system("cd '$ROOT/$mpich_prefix'; rmdir -p tests/* >/dev/null 2>&1");
+	if ( -d "/$mpich_prefix" ) {
+		system("cd '/$mpich_prefix'; rmdir -p tests/* >/dev/null 2>&1");
 	}
     if ( -d $top ) {
 		my @files = glob("$top/*");
@@ -147,8 +147,8 @@ sub uninstall_generic_mpi
     }
     
 	# cleanup from older installs just in case
-    system ("rm -rf $ROOT/usr/lib/opa/.comp_$mpifullname.pl");
-    system ("rmdir $ROOT/usr/lib/opa 2>/dev/null"); # remove only if empty
+    system ("rm -rf /usr/lib/opa/.comp_$mpifullname.pl");
+    system ("rmdir /usr/lib/opa 2>/dev/null"); # remove only if empty
     $ComponentWasInstalled{$mpifullname} = 0;
 }
 
@@ -1142,8 +1142,8 @@ sub available_mpisrc()
 
 sub installed_mpisrc()
 {
-	my $srcdir = "$ROOT/usr/src/opa/MPI";
-	my $old_srcdir = "$ROOT/usr/lib/opa/src/MPI";
+	my $srcdir = "/usr/src/opa/MPI";
+	my $old_srcdir = "/usr/lib/opa/src/MPI";
 	return (has_mpisrc($srcdir) || has_mpisrc($old_srcdir));
 }
 
@@ -1158,7 +1158,7 @@ sub has_mpisrc($)
 # only called if installed_mpisrc is true
 sub installed_version_mpisrc()
 {
-	return `cat $ROOT/usr/src/opa/MPI/.version`;
+	return `cat /usr/src/opa/MPI/.version`;
 }
 
 # only called if available_mpisrc is true
@@ -1213,14 +1213,14 @@ sub install_mpisrc($$)
 	check_dir("/usr/src/opa");
 	check_dir("/usr/src/opa/MPI");
 	# remove old versions (.src.rpm and built .rpm files too)
-	system "rm -rf $ROOT/usr/src/opa/MPI/mvapich[-_]*.rpm 2>/dev/null";
-	system "rm -rf $ROOT/usr/src/opa/MPI/mvapich2[-_]*.rpm 2>/dev/null";
-	system "rm -rf $ROOT/usr/src/opa/MPI/openmpi[-_]*.rpm 2>/dev/null";
-	system "rm -rf $ROOT/usr/src/opa/MPI/mpitests[-_]*.rpm 2>/dev/null";
-	system "rm -rf $ROOT/usr/src/opa/MPI/make.*.res 2>/dev/null";
-	system "rm -rf $ROOT/usr/src/opa/MPI/make.*.err 2>/dev/null";
-	system "rm -rf $ROOT/usr/src/opa/MPI/make.*.warn 2>/dev/null";
-	system "rm -rf $ROOT/usr/src/opa/MPI/.mpiinfo 2>/dev/null";
+	system "rm -rf /usr/src/opa/MPI/mvapich[-_]*.rpm 2>/dev/null";
+	system "rm -rf /usr/src/opa/MPI/mvapich2[-_]*.rpm 2>/dev/null";
+	system "rm -rf /usr/src/opa/MPI/openmpi[-_]*.rpm 2>/dev/null";
+	system "rm -rf /usr/src/opa/MPI/mpitests[-_]*.rpm 2>/dev/null";
+	system "rm -rf /usr/src/opa/MPI/make.*.res 2>/dev/null";
+	system "rm -rf /usr/src/opa/MPI/make.*.err 2>/dev/null";
+	system "rm -rf /usr/src/opa/MPI/make.*.warn 2>/dev/null";
+	system "rm -rf /usr/src/opa/MPI/.mpiinfo 2>/dev/null";
 
 	# install new versions
 	foreach my $srpm ( "mvapich2", "openmpi", "mpitests" ) {
@@ -1252,20 +1252,20 @@ sub uninstall_mpisrc($$)
     NormalPrint ("Uninstalling $ComponentInfo{'mpisrc'}{'Name'}...\n");
 
 	# remove old versions (.src.rpm and built .rpm files too)
-	system "rm -rf $ROOT/usr/src/opa/MPI/.version 2>/dev/null";
-	system "rm -rf $ROOT/usr/src/opa/MPI/mvapich2[-_]*.rpm 2>/dev/null";
-	system "rm -rf $ROOT/usr/src/opa/MPI/openmpi[-_]*.rpm 2>/dev/null";
-	system "rm -rf $ROOT/usr/src/opa/MPI/mpitests[-_]*.rpm 2>/dev/null";
-	system "rm -rf $ROOT/usr/src/opa/MPI/make.*.res 2>/dev/null";
-	system "rm -rf $ROOT/usr/src/opa/MPI/make.*.err 2>/dev/null";
-	system "rm -rf $ROOT/usr/src/opa/MPI/make.*.warn 2>/dev/null";
-	system "rm -rf $ROOT/usr/src/opa/MPI/.mpiinfo 2>/dev/null";
-	system "rm -rf $ROOT/usr/src/opa/MPI/do_build 2>/dev/null";
-	system "rm -rf $ROOT/usr/src/opa/MPI/do_mvapich2_build 2>/dev/null";
-	system "rm -rf $ROOT/usr/src/opa/MPI/do_openmpi_build 2>/dev/null";
-	system "rm -rf $ROOT/usr/src/opa/MPI/.mpiinfo 2>/dev/null";
+	system "rm -rf /usr/src/opa/MPI/.version 2>/dev/null";
+	system "rm -rf /usr/src/opa/MPI/mvapich2[-_]*.rpm 2>/dev/null";
+	system "rm -rf /usr/src/opa/MPI/openmpi[-_]*.rpm 2>/dev/null";
+	system "rm -rf /usr/src/opa/MPI/mpitests[-_]*.rpm 2>/dev/null";
+	system "rm -rf /usr/src/opa/MPI/make.*.res 2>/dev/null";
+	system "rm -rf /usr/src/opa/MPI/make.*.err 2>/dev/null";
+	system "rm -rf /usr/src/opa/MPI/make.*.warn 2>/dev/null";
+	system "rm -rf /usr/src/opa/MPI/.mpiinfo 2>/dev/null";
+	system "rm -rf /usr/src/opa/MPI/do_build 2>/dev/null";
+	system "rm -rf /usr/src/opa/MPI/do_mvapich2_build 2>/dev/null";
+	system "rm -rf /usr/src/opa/MPI/do_openmpi_build 2>/dev/null";
+	system "rm -rf /usr/src/opa/MPI/.mpiinfo 2>/dev/null";
 
-	system "rmdir $ROOT/usr/src/opa/MPI 2>/dev/null"; # remove only if empty
-	system "rmdir $ROOT/usr/src/opa 2>/dev/null"; # remove only if empty
+	system "rmdir /usr/src/opa/MPI 2>/dev/null"; # remove only if empty
+	system "rmdir /usr/src/opa 2>/dev/null"; # remove only if empty
 	$ComponentWasInstalled{'mpisrc'}=0;
 }

@@ -307,6 +307,7 @@ then
 	echo "export RELEASE_TAG=${RELEASE_TAG}" >> build.env
 	echo "export BUILD_CONFIG=\${BUILD_CONFIG:-\"${BUILD_CONFIG}\"}" >> build.env
 	echo "export BUILD_WITH_STACK=${BUILD_WITH_STACK}" >> build.env
+	echo "export LDENVFS=${LDENVFS}" >> build.env
 
 	FILES_TO_TAR=
 	# if in-place build left builtbin, builtinclude and builtlibs, pick them up

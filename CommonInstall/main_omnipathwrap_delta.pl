@@ -1196,15 +1196,15 @@ sub install_opaconfig
 	# New Install Code
 
 	# remove the old style version file
-	system("rm -rf $ROOT/$BASE_DIR/version");
+	system("rm -rf /$BASE_DIR/version");
 	# version_wrapper is only for support (fetched in opacapture)
 	system("echo '$VERSION' > $BASE_DIR/version_wrapper 2>/dev/null");
 	# make sure we cleanup possibly old opaconfig_* files
-	system("rm -rf $ROOT/sbin/opa_config_ff");
-	system("rm -rf $ROOT/sbin/opa_config_fm");
-	system("rm -rf $ROOT/sbin/opa_config_srp");
-	system("rm -rf $ROOT/sbin/opa_config_vnic");
-	system("rm -rf $ROOT/sbin/opa_config_delta");
+	system("rm -rf /sbin/opa_config_ff");
+	system("rm -rf /sbin/opa_config_fm");
+	system("rm -rf /sbin/opa_config_srp");
+	system("rm -rf /sbin/opa_config_vnic");
+	system("rm -rf /sbin/opa_config_delta");
 
 	$ComponentWasInstalled{'opaconfig'}=1;
 }
@@ -1226,20 +1226,20 @@ sub uninstall_opaconfig
 	rpm_uninstall_list("any", "verbose", ("opaconfig") );
 	# New Uninstall Code
 
-	system("rm -rf $ROOT$BASE_DIR/version_wrapper");
-	system("rm -rf $ROOT$BASE_DIR/osid_wrapper");
+	system("rm -rf $BASE_DIR/version_wrapper");
+	system("rm -rf $BASE_DIR/osid_wrapper");
 	# remove the old style version file
-	system("rm -rf $ROOT/$BASE_DIR/version");
-	system("rm -rf $ROOT/sbin/opaconfig");
+	system("rm -rf /$BASE_DIR/version");
+	system("rm -rf /sbin/opaconfig");
 	# there is no ideal answer here, if we install updates separately
 	# then uninstall all with wrapper, make sure we cleanup
-	system("rm -rf $ROOT/sbin/opa_config_ff");
-	system("rm -rf $ROOT/sbin/opa_config_fm");
-	system("rm -rf $ROOT/sbin/opa_config_srp");
-	system("rm -rf $ROOT/sbin/opa_config_vnic");
-	system("rm -rf $ROOT/sbin/opa_config_delta");
-	system "rmdir $ROOT$BASE_DIR 2>/dev/null";	# remove only if empty
-	system "rmdir $ROOT$OPA_CONFIG_DIR 2>/dev/null";	# remove only if empty
+	system("rm -rf /sbin/opa_config_ff");
+	system("rm -rf /sbin/opa_config_fm");
+	system("rm -rf /sbin/opa_config_srp");
+	system("rm -rf /sbin/opa_config_vnic");
+	system("rm -rf /sbin/opa_config_delta");
+	system "rmdir $BASE_DIR 2>/dev/null";	# remove only if empty
+	system "rmdir $OPA_CONFIG_DIR 2>/dev/null";	# remove only if empty
 	$ComponentWasInstalled{'opaconfig'}=0;
 }
 
@@ -1259,11 +1259,11 @@ sub Usage
 		#printf STDERR "               or\n";
 		#printf STDERR "Usage: $0 [-r root] [-v|-vv] [-a|-n|-U|-F|-u|-s|-i comp|-e comp] [-E comp] [-D comp] [-f] [--fwupdate asneeded|always] [-l] [--prefix dir] [--without-depcheck] [--rebuild] [--force] [--answer keyword=value]\n";
 		#printf STDERR "Usage: $0 [-r root] [-v|-vv] [-a|-n|-U|-F|-u|-s|-i comp|-e comp] [-E comp] [-D comp] [-f] [--fwupdate asneeded|always] [--prefix dir] [--without-depcheck] [--rebuild] [--force] [--answer keyword=value]\n";
-		printf STDERR "Usage: $0 [-r root] [-v|-vv] -R osver [-a|-n|-U|-u|-s|-O|-N|-i comp|-e comp] [-G] [-E comp] [-D comp] [--user-space] [--prefix dir] [--without-depcheck] [--rebuild] [--force] [--answer keyword=value]\n";
+		printf STDERR "Usage: $0 [-v|-vv] -R osver [-a|-n|-U|-u|-s|-O|-N|-i comp|-e comp] [-G] [-E comp] [-D comp] [--user-space] [--without-depcheck] [--rebuild] [--force] [--answer keyword=value]\n";
 	} else {
 #		printf STDERR "Usage: $0 [-r root] [-v|-vv] [-F|-u|-s|-e comp] [-E comp] [-D comp]\n";
 #		printf STDERR "          [--fwupdate asneeded|always] [--user_queries|--no_user_queries] [--answer keyword=value]\n";
-		printf STDERR "Usage: $0 [-r root] [-v|-vv] [-u|-s|-e comp] [-E comp] [-D comp]\n";
+		printf STDERR "Usage: $0 [-v|-vv] [-u|-s|-e comp] [-E comp] [-D comp]\n";
 		printf STDERR "          [--user_queries|--no_user_queries] [--answer keyword=value]\n";
 	}
 	printf STDERR "               or\n";
@@ -1282,8 +1282,6 @@ sub Usage
 		printf STDERR "       --user-space - Skip kernel space and firmware packages during installation\n";
 		printf STDERR "            can be useful when installing into a container\n";
 		#printf STDERR "       -l - skip creating/removing symlinks to /usr/local from /usr/lib/opa\n";
-		printf STDERR "       --prefix dir - specify alternate directory prefix for install of OFA\n";
-		printf STDERR "             default is /usr.  Causes rebuild of needed srpms\n";
 		printf STDERR "       --without-depcheck - disable check of OS dependencies\n";
 		printf STDERR "       --rebuild - force OFA Delta rebuild\n";
 		printf STDERR "       --force - force install even if distro don't match\n";
@@ -1305,7 +1303,6 @@ sub Usage
 #	printf STDERR "            this option is ignored for interactive install\n";
 	printf STDERR "       -u - uninstall all ULPs and drivers with default options\n";
 	printf STDERR "       -s - enable autostart for all installed drivers\n";
-	printf STDERR "       -r - specify alternate root directory, default is /\n";
 	printf STDERR "       -e comp - uninstall the given component with default options\n";
 	printf STDERR "            can appear more than once on command line\n";
 	printf STDERR "       -E comp - enable autostart of given component\n";
@@ -1374,7 +1371,6 @@ sub process_args
 {
 	my $arg;
 	my $last_arg;
-	my $setroot = 0;
 	my $install_opt = 0;
 	my $setcomp = 0;
 	my $setanswer = 0;
@@ -1385,24 +1381,12 @@ sub process_args
 	my $comp = 0;
 	my $osver = 0;
 	my $setcurosver = 0;
-	my $setprefix = 0;
 	my $setfwmode = 0;
 	my $patch_ofed=0;
 
 	if (scalar @ARGV >= 1) {
 		foreach $arg (@ARGV) {
-			if ( $setroot ) {
-				$ROOT="$arg";
-				if (substr($ROOT,0,1) ne "/") {
-					printf STDERR "Invalid -r root (must be absolute path): '$ROOT'\n";
-					Usage;
-				}
-				if (! -d $ROOT) {
-					printf STDERR "Invalid -r root (directory not found): '$ROOT'\n";
-					Usage;
-				}
-				$setroot=0;
-			} elsif ( $setanswer ) {
+			if ( $setanswer ) {
 				my @pair = split /=/,$arg;
 				if ( scalar(@pair) != 2 ) {
 					printf STDERR "Invalid --answer keyword=value: '$arg'\n";
@@ -1491,9 +1475,6 @@ sub process_args
 			} elsif ( $setbuildtemp ) {
 				$Build_Temp="$arg";
 				$setbuildtemp=0;
-			} elsif ( $setprefix ) {
-				$OFED_prefix="$arg";
-				$setprefix=0;
 #			} elsif ( $setfwmode ) {
 #				if ( "$arg" eq "always" || "$arg" eq "asneeded") {
 #					$Default_FirmwareUpgradeMode="$arg";
@@ -1505,8 +1486,6 @@ sub process_args
 			} elsif ( $setcurosver ) {
 				$CUR_OS_VER="$arg";
 				$setcurosver=0;
-			} elsif ( "$arg" eq "-r" ) {
-				$setroot=1;
 			} elsif ( "$arg" eq "-v" ) {
 				$LogLevel=1;
 			} elsif ( "$arg" eq "-vv" ) {
@@ -1551,8 +1530,6 @@ sub process_args
 					printf STDERR "Invalid combination of options: $arg not permitted with previous options\n";
 					Usage;
 				}
-			} elsif ( "$arg" eq "--prefix" ) {
-				$setprefix=1;
 			} elsif ( "$arg" eq "--fwupdate" ) {
 				$setfwmode=1;
 			} elsif ( "$arg" eq "--answer" ) {
@@ -1656,7 +1633,7 @@ sub process_args
 			$last_arg=$arg;
 		}
 	}
-	if ( $setroot || $setcomp || $setenabled || $setdisabled  || $setosver || $setbuildtemp || $setprefix || $setfwmode || $setanswer) {
+	if ( $setcomp || $setenabled || $setdisabled  || $setosver || $setbuildtemp || $setfwmode || $setanswer) {
 		printf STDERR "Missing argument for option: $last_arg\n";
 		Usage;
 	}
@@ -1666,8 +1643,7 @@ sub process_args
 		printf STDERR "Installation options not permitted in this mode\n";
 		Usage;
 	}
-	if ( ($Default_Build || $OFED_force_rebuild || ($OFED_prefix ne '/usr'))
-		&& ! $allow_install) {
+	if ( ($Default_Build || $OFED_force_rebuild ) && ! $allow_install) {
 		printf STDERR "Build options not permitted in this mode\n";
 		Usage;
 	}
@@ -1717,7 +1693,6 @@ sub show_menu
 	if (scalar(@INSTALL_CHOICES) > 0) {
 		return;
 	}
-START:	
 	system "clear";
 	printf ("$BRAND OPA $VERSION Software\n\n");
 	if ($allow_install) {
@@ -1739,28 +1714,19 @@ START:
 	}
 	printf ("\n   X) Exit\n");
 
+	while( $inp < 1 || $inp > $max_inp) {
+		$inp = getch();
 
-	$inp = getch();      
-
-	if ($inp =~ /[qQ]/ || $inp =~ /[Xx]/ ) {
-		@INSTALL_CHOICES = ( 99999 );	# indicates exit, none selected
-		return;
-	}
-	if (ord($inp) == $KEY_ENTER) {           
-		goto START;
-	}
-
-	if ($inp =~ /[0123456789abcdefABCDEF]/)
-	{
-		$inp = hex($inp);
-	}
-
-	if ($inp < 1 || $inp > $max_inp) 
-	{
-#		printf ("Invalid choice...Try again\n");
-		goto START;
+		if ($inp =~ /[qQ]/ || $inp =~ /[Xx]/ ) {
+			return 1;
+		}
+		if ($inp =~ /[0123456789abcdefABCDEF]/)
+		{
+			$inp = hex($inp);
+		}
 	}
 	@INSTALL_CHOICES = ( $inp );
+	return 0;
 }
 
 determine_os_version;
@@ -1788,92 +1754,73 @@ if ( ! $Default_Build ) {
 set_libdir;
 init_delta_info($CUR_OS_VER);
 
-RESTART:
-if ($Default_Build) {
-	$exit_code = build_all_components($Build_OsVer, $Build_Debug, $Build_Temp, $Build_Force);
-	goto DONE;
-} else {
-	show_menu;
-}
+do{
+	if ($Default_Build) {
+		$exit_code = build_all_components($Build_OsVer, $Build_Debug, $Build_Temp, $Build_Force);
+		done();
+	} else {
+		if ( show_menu != 0) {
+		done();
+		}
+	}
 
-foreach my $INSTALL_CHOICE ( @INSTALL_CHOICES )
-{
-	if ($allow_install && $INSTALL_CHOICE == 1) 
+	foreach my $INSTALL_CHOICE ( @INSTALL_CHOICES )
 	{
-		select_debug_release(".");
-		show_install_menu(1);
-		if (! $Default_Prompt) {
-			goto RESTART;
-		} else {
-			if ($exit_code == 0) {
-				print "Done Installing OPA Software.\n"
-			} else {
-				print "Failed to install all OPA software.\n"
+		if ($allow_install && $INSTALL_CHOICE == 1)
+		{
+			select_debug_release(".");
+			show_install_menu(1);
+			if ($Default_Prompt) {
+				if ($exit_code == 0) {
+					print "Done Installing OPA Software.\n"
+				} else {
+					print "Failed to install all OPA software.\n"
+				}
 			}
 		}
-	} 
-	elsif ($INSTALL_CHOICE == 1) {
-		show_installed(1);
-		goto RESTART;
-	}
-	elsif ($INSTALL_CHOICE == 6)
-	{
-		show_uninstall_menu(1);
-		if (! $Default_Prompt ) {
-			goto RESTART;
-		} else {
-			if ($exit_code == 0) {
-				print "Done Uninstalling OPA Software.\n"
-			} else {
-				print "Failed to uninstall all OPA Software.\n"
+		elsif ($INSTALL_CHOICE == 1) {
+			show_installed(1);
+		}
+		elsif ($INSTALL_CHOICE == 6)
+		{
+			show_uninstall_menu(1);
+			if ( $Default_Prompt ) {
+				if ($exit_code == 0) {
+					print "Done Uninstalling OPA Software.\n"
+				} else {
+					print "Failed to uninstall all OPA Software.\n"
+				}
 			}
 		}
-	}
-	elsif ($INSTALL_CHOICE == 2) 
-	{     
-		Config_ifcfg(1,"$ComponentInfo{'delta_ipoib'}{'Name'}","ib", "$FirstIPoIBInterface",1);
-		check_network_config;
-		#Config_IPoIB_cfg;
-		goto RESTART;
-	}
-	elsif ($INSTALL_CHOICE == 3) 
-	{
-		reconfig_autostart;
-		if (! $Default_Prompt ) {
-			goto RESTART;
-		} else {
-			print "Done OPA Driver Autostart Configuration.\n"
+		elsif ($INSTALL_CHOICE == 2)
+		{
+			Config_ifcfg(1,"$ComponentInfo{'delta_ipoib'}{'Name'}","ib", "$FirstIPoIBInterface",1);
+			check_network_config;
 		}
-	}
-#	elsif ($INSTALL_CHOICE == 6)
-#	{
-#		# Update HFI Firmware
-#		update_hca_firmware;
-#		if (! $Default_Prompt ) {
-#			goto RESTART;
-#		} else {
-#			print "Done HFI Firmware Update.\n"
-#		}
-#	}
-	elsif ($INSTALL_CHOICE == 4) 
-	{
-		# Generate Supporting Information for Problem Report
-		capture_report($ComponentInfo{'oftools'}{'Name'});
-		goto RESTART;
-	}
-	elsif ($INSTALL_CHOICE == 5) 
-	{
-		# FastFabric (Host/Chassis/Switch Setup/Admin)
-		if ( "$ROOT" eq "" || "$ROOT" eq "/" ) {
+		elsif ($INSTALL_CHOICE == 3)
+		{
+			reconfig_autostart;
+			if ( $Default_Prompt ) {
+				print "Done OPA Driver Autostart Configuration.\n"
+			}
+		}
+		elsif ($INSTALL_CHOICE == 4)
+		{
+			# Generate Supporting Information for Problem Report
+			capture_report($ComponentInfo{'oftools'}{'Name'});
+		}
+		elsif ($INSTALL_CHOICE == 5)
+		{
+			# FastFabric (Host/Chassis/Switch Setup/Admin)
 			run_fastfabric($ComponentInfo{'fastfabric'}{'Name'});
-		} else {
-			print "Unable to run fastfabric when using an alternate root (-r)\n";
-			HitKeyCont;
 		}
-		goto RESTART;
 	}
+}while( !$Default_Prompt );
+done();
+sub done() {
+	if ( not $user_space_only ) {
+		do_rebuild_ramdisk;
+	}
+	close_log;
+	exit $exit_code;
 }
-DONE:
-do_rebuild_ramdisk;
-close_log;
-exit $exit_code;

@@ -48,7 +48,7 @@ sub	verify_modtools()
 
 	$look_str = "insmod version ";
 	$look_len = length ($look_str);
-	$ver = `$ROOT/sbin/insmod -V 2>&1 | grep \"$look_str\"`;
+	$ver = `/sbin/insmod -V 2>&1 | grep \"$look_str\"`;
 	chomp $ver;
 	$mod_ver = substr ($ver, $look_len - 1, length($ver)-$look_len+1);
 	$_ = $mod_ver;
@@ -80,28 +80,9 @@ sub check_depmod()
 		print_separator;
 		print "Generating module dependencies...\n";
 		LogPrint "Generating module dependencies: /sbin/depmod -aev\n";
-		system "chroot /$ROOT /sbin/depmod -aev > /dev/null 2>&1";
+		system "/sbin/depmod -aev > /dev/null 2>&1";
 		$RunDepmod=0;
 		return 1;
 	}
 	return 0;
-}
-
-# is the given driver available on the install media
-sub available_driver($$)
-{
-	my($srcdir) = shift();
-	my($WhichDriver) = shift();
-
-	$WhichDriver .= $DRIVER_SUFFIX;
-	return ( -e "$srcdir/$CUR_OS_VER/$DBG_FREE/$WhichDriver" );
-}
-
-# is the given driver installed on this system
-sub installed_driver($$)
-{
-	my($WhichDriver) = shift();
-	my($subdir) = shift();
-	$WhichDriver .= $DRIVER_SUFFIX;
-	return (-e "$ROOT/lib/modules/$CUR_OS_VER/$subdir/$WhichDriver" );
 }

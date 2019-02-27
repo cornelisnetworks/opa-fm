@@ -62,42 +62,16 @@ my $END_DRIVER_MARKER="OPA Drivers End here";
 # Keep track of whether we already did edits to avoid repeated edits
 my $DidConfig=0;
 
-sub	edit_modconf($)
-{
-	my($srcdir) = shift();	# directory containing $OPA_CONF file
-
-	if ($DidConfig == 1)
-	{
-		return;
-	}
-	edit_conf_file("$srcdir/$OPA_CONF.$CUR_DISTRO_VENDOR", "$MODULE_CONF_FILE",
-		"module dependencies", "$START_DRIVER_MARKER",  "$END_DRIVER_MARKER");
-	$DidConfig = 1;
-}
-
-# remove iba entries from modules.conf
-sub remove_modules_conf()
-{
-	$DidConfig = 0;
-	if (check_keep_config($MODULE_CONF_FILE, "", "y"))
-	{
-		print "Keeping $ROOT/$MODULE_CONF_FILE changes ...\n";
-	} else {
-		print "Modifying $ROOT$MODULE_CONF_FILE ...\n";
-		del_marks ("$START_DRIVER_MARKER", "$END_DRIVER_MARKER", 0, "$ROOT$MODULE_CONF_FILE");
-	}
-}
-
 # This code is from OFED, it removes lines related to IB from
 # modprobe.conf.  Used to prevent distro specific effects on OFED.
 sub disable_distro_ofed()
 {
-	if ( "$MODULE_CONF_DIST_FILE" ne "" && -f "$ROOT$MODULE_CONF_DIST_FILE" ) {
+	if ( "$MODULE_CONF_DIST_FILE" ne "" && -f "$MODULE_CONF_DIST_FILE" ) {
 		my $res;
 
-		$res = open(MDIST, "$ROOT$MODULE_CONF_DIST_FILE");
+		$res = open(MDIST, "$MODULE_CONF_DIST_FILE");
 		if ( ! $res ) {
-			NormalPrint("Can't open $ROOT$MODULE_CONF_DIST_FILE for input: $!");
+			NormalPrint("Can't open $MODULE_CONF_DIST_FILE for input: $!");
 			return;
 		}
 		my @mdist_lines;
@@ -106,9 +80,9 @@ sub disable_distro_ofed()
 		}
 		close(MDIST);
 
-		$res = open(MDIST, ">$ROOT$MODULE_CONF_DIST_FILE");
+		$res = open(MDIST, ">$MODULE_CONF_DIST_FILE");
 		if ( ! $res ) {
-			NormalPrint("Can't open $ROOT$MODULE_CONF_DIST_FILE for output: $!");
+			NormalPrint("Can't open $MODULE_CONF_DIST_FILE for output: $!");
 			return;
 		}
 		foreach my $line (@mdist_lines) {
@@ -145,14 +119,14 @@ my $OPA_SYSTEMCFG_FILE = "/sbin/opasystemconfig";
 sub remove_limits_conf()
 {
 	$DidLimits = 0;
-	if ( -e "$ROOT$LIMITS_CONF_FILE") {
+	if ( -e "$LIMITS_CONF_FILE") {
 		if (check_keep_config($LIMITS_CONF_FILE, "", "y"))
 		{
-			print "Keeping $ROOT/$LIMITS_CONF_FILE changes ...\n";
+			print "Keeping /$LIMITS_CONF_FILE changes ...\n";
 		} else {
-			print "Modifying $ROOT$LIMITS_CONF_FILE ...\n";
-			if ( -e "$ROOT$OPA_SYSTEMCFG_FILE" ) {
-			     system("$ROOT$OPA_SYSTEMCFG_FILE --disable Memory_Limit");
+			print "Modifying $LIMITS_CONF_FILE ...\n";
+			if ( -e "$OPA_SYSTEMCFG_FILE" ) {
+			     system("$OPA_SYSTEMCFG_FILE --disable Memory_Limit");
 			}
 		}
 	}
@@ -222,77 +196,23 @@ sub do_rebuild_ramdisk()
 		my $tmpfile = "/tmp/$current_initrd";
 
 		if ( -e $cmd ) {
-DO_BOOT_IMG_BUILD:
-			NormalPrint("Rebuilding boot image with \"$cmd -f\"...");
-			# Try to build a temporary image first as a dry-run to make sure
-			# a failed run will not destroy an existing image.
-			if (system("$cmd -f $tmpfile") == 0 && system("mv -f $tmpfile /boot/") == 0) {
-				NormalPrint("New initramfs installed in /boot.\n");
-				NormalPrint("done.\n");
-			} else {
-				NormalPrint("failed.\n");
-				if (GetYesNo("Do you want to retry?", "n")) {
-					goto DO_BOOT_IMG_BUILD;
+			do {
+				NormalPrint("Rebuilding boot image with \"$cmd -f\"...");
+				# Try to build a temporary image first as a dry-run to make sure
+				# a failed run will not destroy an existing image.
+				if (system("$cmd -f $tmpfile") == 0 && system("mv -f $tmpfile /boot/") == 0) {
+					NormalPrint("New initramfs installed in /boot.\n");
+					NormalPrint("done.\n");
+					return;
 				} else {
-					$exit_code = 1;
+					NormalPrint("failed.\n");
 				}
-			}
+			} while(GetYesNo("Do you want to retry?", "n"));
+			$exit_code = 1;
 		} else {
 			NormalPrint("$cmd not found, cannot update initial ram disk.");
 			$exit_code = 1;
 		}
 	}
 }
-
-my $OPA_MODPROBE_DIR = "/etc/modprobe.d";
-
-sub enable_mod_force_load_file($$)
-{
-	my ($module) = shift(); # module name
-	my ($conf_file) = shift(); # modprobe configuration file
-	my ($retval);
-
-	# Create the configuration file if not existing
-	if (! -e "$conf_file" ) {
-		system ("touch $conf_file");
-		system ("echo 'install $module modprobe -i -f $module \$CMDLINE_OPTS' > $conf_file");
-		return;
-	}
-	# Check if we have an entry for this module in the config file
-	$retval=`grep -e "install $module" -e "modprobe -i $module" $conf_file  2>/dev/null | grep -v "#"`;
-	if ("$retval" eq "") {
-		system ("echo 'install $module modprobe -i -f $module \$CMDLINE_OPTS' >> $conf_file");
-	} else {
-		system("sed -i 's/modprobe -i $module/modprobe -i -f $module/g' $conf_file");
-	}
-}
-
-sub enable_mod_force_load($)
-{
-	my ($module) = shift(); # module name
-	my ($file);
-	my ($retval);
-	my ($found) = 0;
-	my (@conf_files) = ( `ls $OPA_MODPROBE_DIR` );
-
-	# Check if there is any config file that contains install entry for the module
-	# if yes, update it; otherwise, create a new conf file.
-	chomp(@conf_files);
-	foreach $file (@conf_files) {
-		$retval=`grep "install $module" $OPA_MODPROBE_DIR/$file 2>/dev/null | grep -v "#"`;
-		if ("$retval" ne "") {
-			$found = 1;
-			$retval=`echo "$retval" | grep "modprobe -i $module"`;
-			if ("$retval" ne "") {
-				enable_mod_force_load_file($module, "$OPA_MODPROBE_DIR/$file");
-			}
-		}
-	}
-
-	if (!$found) {
-		enable_mod_force_load_file($module, 
-			"$OPA_MODPROBE_DIR/$module.conf");
-	}
-}
-
 

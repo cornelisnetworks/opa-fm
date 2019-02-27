@@ -2457,21 +2457,6 @@ smProcessReconfigureRequest(void){
 						}
 						// After a reconfiguration, force a resweep
 						sm_trigger_sweep(SM_SWEEP_REASON_RECONFIG);
-					} else if (sm_state == SM_STATE_STANDBY) {
-						SmRecKey_t reckey = sm_smInfo.PortGUID;  /* our guid */
-						SmRecp     smrecp;
-						Status_t   status;
-
-						if ((status = vs_lock(&smRecords.smLock)) != VSTATUS_OK) {
-							IB_LOG_ERRORRC("Can't lock SM Record table, rc:", status);
-						} else {
-        					/* fetch our current dbsync settings */
-        					if ((smrecp = (SmRecp)cs_hashtable_search(smRecords.smMap, &reckey)) != NULL) {
-            					/* Set our version to current value */
-            					smrecp->dbsync.version = SM_DBSYNC_VERSION;
-							}
-							vs_unlock(&smRecords.smLock);
-						}
 					}
 					IB_LOG_INFINI_INFO0("SM: Reconfiguration completed successfully");
 				}
@@ -2490,6 +2475,24 @@ smProcessReconfigureRequest(void){
 
 	//Optimize: release temp xml memory on sm cleanup, not every time we process
 	//reconfigure request
+
+
+	if (sm_state == SM_STATE_STANDBY) {
+		SmRecKey_t reckey = sm_smInfo.PortGUID;  /* our guid */
+		SmRecp     smrecp;
+		Status_t   status;
+
+		if ((status = vs_lock(&smRecords.smLock)) != VSTATUS_OK) {
+			IB_LOG_ERRORRC("Can't lock SM Record table, rc:", status);
+		} else {
+       		/* fetch our current dbsync settings */
+       		if ((smrecp = (SmRecp)cs_hashtable_search(smRecords.smMap, &reckey)) != NULL) {
+       			/* Set our version to current value */
+       			smrecp->dbsync.version = SM_DBSYNC_VERSION;
+			}
+			vs_unlock(&smRecords.smLock);
+		}
+	}
 
 	// Allow sweeps to run
 	(void)vs_unlock(&new_topology_lock);

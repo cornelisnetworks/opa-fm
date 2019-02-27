@@ -53,7 +53,7 @@ sub is_blacklisted($)
 {
 	my $module = shift();
 
-	my $file = "${ROOT}${HOTPLUG_BLACKLIST_FILE}";
+	my $file = "${HOTPLUG_BLACKLIST_FILE}";
 	my $found;
 
 	if (! -f "$file")
@@ -69,7 +69,7 @@ sub add_blacklist($)
 {
 	my $module = shift();
 
-	my $file = "${ROOT}${HOTPLUG_BLACKLIST_FILE}";
+	my $file = "${HOTPLUG_BLACKLIST_FILE}";
 	my $found;
 
 	if (! -e "$file")
@@ -101,7 +101,7 @@ sub add_blacklist($)
 	system "mv $TMP_CONF $file";
 
 	# also remove any hotplug config files which load the driver
-	open hwconfig, "ls $ROOT/$HOTPLUG_HARDWARE_DIR/hwcfg* 2>/dev/null |"
+	open hwconfig, "ls /$HOTPLUG_HARDWARE_DIR/hwcfg* 2>/dev/null |"
 			|| Abort "Unable to open pipe\n";
 	while (<hwconfig>) {
 		chop;
@@ -116,7 +116,7 @@ sub remove_blacklist($)
 {
 	my($module) = shift();
 
-	my($file) = "${ROOT}${HOTPLUG_BLACKLIST_FILE}";
+	my($file) = "${HOTPLUG_BLACKLIST_FILE}";
 	if (! -f "$file")
 	{
 		return;

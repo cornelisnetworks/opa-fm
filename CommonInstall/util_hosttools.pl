@@ -53,30 +53,29 @@ sub capture_report($)
 		HitKeyCont;
 		return;
 	}
+	do {
+		printf ("\n\nEnter Filename to Generate [q to quit] : ");
+		$inp = <STDIN>;
+		$inp=remove_whitespace($inp);
+		chomp $inp;
+		$_ = $inp;
+			
+		if (/^[Qq]$/) {
+			return;
+		}
 
-GET_FILENAME:
-	printf ("\n\nEnter Filename to Generate [q to quit] : ");
-	$inp = <STDIN>;
-	$inp=remove_whitespace($inp);
-	chomp $inp;
-	$_ = $inp;
-		
-	if (/^[Qq]$/) {
-		return;
-	}
+		if ( length($inp) == 0 ) {
+			next;
+		}
 
-	if ( length($inp) == 0 ) {
-		goto GET_FILENAME;
-	}
-
-	LogPrint "Capturing $INT_VERSION Report to $inp\n";
-	$detail=GetNumericValue("Capture detail level (1-Normal 2-Fabric 3-Fabric+FDB 4-Analysis):", 1, 1, 4);
-	close_log;
-	$result = system "$BIN_DIR/opacapture -d $detail $inp";
-	if ( $result != 0 ) {
-		printf("\nError generating $inp\n");
-		goto GET_FILENAME;
-	}
+		LogPrint "Capturing $INT_VERSION Report to $inp\n";
+		$detail=GetNumericValue("Capture detail level (1-Normal 2-Fabric 3-Fabric+FDB 4-Analysis):", 1, 1, 4);
+		close_log;
+		$result = system "$BIN_DIR/opacapture -d $detail $inp";
+		if ( $result != 0 ) {
+			printf("\nError generating $inp\n");
+		}
+	} while ($result != 0);
 	open_log;
 	HitKeyCont;
 }
@@ -94,7 +93,7 @@ sub run_fastfabric($)
 		HitKeyCont;
 		return;
 	}
-	system("$BIN_DIR/opafastfabric -r '$ROOT' --fromdir $FabricSetupScpFromDir");
+	system("$BIN_DIR/opafastfabric --fromdir $FabricSetupScpFromDir");
 	return;
 }
 

@@ -49,7 +49,8 @@ my @opa_stack_prereq = (
 			"libibmad5",
 			"libibcm1",
 			"libibumad3",
-		        "rdma-core-devel",
+			"rdma-core-devel",
+			"rdma-ndd",
 );
 $comp_prereq_hash{'opa_stack_prereq'} = \@opa_stack_prereq;
 

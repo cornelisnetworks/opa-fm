@@ -249,6 +249,12 @@
       <IncludeApplication>PSM</IncludeApplication>
     </Application>
 
+    <!-- default application used by VFs created by opafmvf tool -->                                                   <!--#SM_0_mt_enable#=-->
+    <Application>                                                                                                      <!--#SM_0_mt_enable#=-->
+      <Name>Tenant_Apps</Name>                                                                                         <!--#SM_0_mt_enable#=-->
+      <IncludeApplication>Compute</IncludeApplication>                                                                 <!--#SM_0_mt_enable#=-->
+    </Application>                                                                                                     <!--#SM_0_mt_enable#=-->
+                                                                                                                       <!--#SM_0_mt_enable#=-->
     <!-- This is a catchall which can be used to identify all applications  -->
     <!-- which are not part of some other vFabric.  -->
     <Application>
@@ -469,6 +475,12 @@
       <Enable>0</Enable>                                                                                               <!--#SM_0_mt_enable#=-->
       <Bandwidth>10%</Bandwidth>                                                                                       <!--#SM_0_mt_enable#=-->
       <FlowControlDisable>0</FlowControlDisable>                                                                       <!--#SM_0_mt_enable#=-->
+    </QOSGroup>                                                                                                        <!--#SM_0_mt_enable#=-->
+                                                                                                                       <!--#SM_0_mt_enable#=-->
+    <!-- default QOS used by VFs created by opafmvf tool -->                                                           <!--#SM_0_mt_enable#=-->
+    <QOSGroup>                                                                                                         <!--#SM_0_mt_enable#=-->
+      <Name>Tenant_QOS</Name>                                                                                          <!--#SM_0_mt_enable#=-->
+      <Enable>1</Enable>                                                                                               <!--#SM_0_mt_enable#=-->
     </QOSGroup>                                                                                                        <!--#SM_0_mt_enable#=-->
   </QOSGroups>
 

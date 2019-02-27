@@ -42,6 +42,7 @@ my @opafm_prereq = (
 			"glibc",
 			"bash",
 			"rdma-core",
+			"rdma-ndd",
 			"systemd",
 			"libexpat1",
 			"libibmad5",

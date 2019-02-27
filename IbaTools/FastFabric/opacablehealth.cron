@@ -1,0 +1,2 @@
+# [ICS VERSION STRING: unknown]
+0 2 * * sun root /usr/lib/opa/tools/opacablehealthcron > /dev/null 2>&1

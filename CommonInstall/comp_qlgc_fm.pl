@@ -171,9 +171,9 @@ sub uninstall_opafm
 
 	rpm_uninstall_list("any", "verbose", ( "opa-fm", "opa-fm-debuginfo") );
 	# just in case, newer rpms should clean these up
-	system("rm -rf $ROOT/usr/lib/opa/.comp_opafm.pl");
-	system("rmdir -p $ROOT/opt/iba/fm_tools 2>/dev/null");  # remove only if empty
-	system("rm -rf $ROOT/usr/lib/opa-fm");
+	system("rm -rf /usr/lib/opa/.comp_opafm.pl");
+	system("rmdir -p /opt/iba/fm_tools 2>/dev/null");  # remove only if empty
+	system("rm -rf /usr/lib/opa-fm");
 	$ComponentWasInstalled{'opafm'}=0;
 }
 

@@ -3069,9 +3069,9 @@ int getPMHistFileData(char *histPath, char *filename, uint32_t histindex, uint8_
     }
 
     snprintf(path, MAX_PATH, "%s/%s", histPath, filename);
-    file = fopen(path, "r" );
+    file = fopen(path, "rb" );
     if (!file) {
-        IB_LOG_ERROR("Error opening PA history image file! rc:",0x0020);
+        IB_LOG_ERROR_FMT(__func__,"Error opening PA history image file %s:%s.", path, strerror(errno));
         return -1;
     }
     while((nextByte = fgetc(file)) != EOF) {

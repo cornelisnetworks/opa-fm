@@ -139,21 +139,21 @@ sub uninstall_oftools
 	rpm_uninstall_list("any", "verbose", ("opa-basic-tools", "opa-address-resolution") );
 
 	# remove LSF and Moab related files
-	system("rm -rf $ROOT/usr/lib/opa/LSF_scripts");
-	system("rm -rf $ROOT/usr/lib/opa/Moab_scripts");
+	system("rm -rf /usr/lib/opa/LSF_scripts");
+	system("rm -rf /usr/lib/opa/Moab_scripts");
 
 	# may be created by opaverifyhosts
-	system("rm -rf $ROOT/usr/lib/opa/tools/nodescript.sh");
-	system("rm -rf $ROOT/usr/lib/opa/tools/nodeverify.sh");
+	system("rm -rf /usr/lib/opa/tools/nodescript.sh");
+	system("rm -rf /usr/lib/opa/tools/nodeverify.sh");
 
-	system "rmdir $ROOT/usr/lib/opa/tools 2>/dev/null";	# remove only if empty
+	system "rmdir /usr/lib/opa/tools 2>/dev/null";	# remove only if empty
 
 	# oftools is a prereq of fastfabric can cleanup shared files here
-	system("rm -rf $ROOT$BASE_DIR/version_ff");
-	system "rmdir $ROOT$BASE_DIR 2>/dev/null";	# remove only if empty
-	system "rmdir $ROOT$OPA_CONFIG_DIR 2>/dev/null";	# remove only if empty
-	system("rm -rf $ROOT/usr/lib/opa/.comp_oftools.pl");
-	system "rmdir $ROOT/usr/lib/opa 2>/dev/null";	# remove only if empty
+	system("rm -rf $BASE_DIR/version_ff");
+	system "rmdir $BASE_DIR 2>/dev/null";	# remove only if empty
+	system "rmdir $OPA_CONFIG_DIR 2>/dev/null";	# remove only if empty
+	system("rm -rf /usr/lib/opa/.comp_oftools.pl");
+	system "rmdir /usr/lib/opa 2>/dev/null";	# remove only if empty
 	$ComponentWasInstalled{'oftools'}=0;
 }
 

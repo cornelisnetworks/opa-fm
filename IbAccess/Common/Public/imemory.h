@@ -270,6 +270,17 @@ static _inline char * StringCopy(char * dest, const char * source, size_t dstsiz
 	return dest;
 }
 
+/**
+ * Concatenates all of the given strings into one long string. The returned
+ * string should be freed by #free. Variable arguments must end with NULL.
+ * Otherwise the function will be appending random memory junks.
+ * @param str1		first string to be concatenated
+ * @param ...		a NULL-terminated list of strings
+ * @return	newly allocated string containing all provided strings
+ */
+char* StringConcat(const char* str1, ...);
+
+
 // convert a string to a uint or int
 // Very similar to strtoull/strtoll except that
 // base=0 implies base 10 or 16, but excludes base 8

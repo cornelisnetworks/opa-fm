@@ -3957,7 +3957,7 @@ static FSTATUS GetAllFDBsSA(struct omgt_port *port, FabricData_t *fabricp, Point
 
 		if (ix_node%PROGRESS_FREQ == 0)
 			if (! quiet) ProgressPrint(FALSE, "Processed %6d of %6d Nodes...", ix_node, num_nodes);
-		if (focus && ! CompareNodePoint(nodep, focus))
+		if(focus && ! CompareNodePoint(nodep, focus))
 			continue;
 
 		// Process switch nodes
@@ -4270,7 +4270,7 @@ static FSTATUS GetAllFDBsDirect(struct omgt_port *port, FabricData_t *fabricp, P
 
 		if (ix_node%PROGRESS_FREQ == 0)
 			if (! quiet) ProgressPrint(FALSE, "Processed %6d of %6d Nodes...", ix_node, num_nodes);
-		if (focus && ! CompareNodePoint(nodep, focus))
+		if(focus && ! CompareNodePoint(nodep, focus))
 			continue;
 
 		// Process switch nodes

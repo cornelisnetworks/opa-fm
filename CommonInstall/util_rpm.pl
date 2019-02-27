@@ -76,7 +76,7 @@ sub rpm_tr_os_version($)
 sub	rpm_query_param($)
 {
 	my $param = shift();	# parameter name: such as _mandir, _sysconfdir, _target_cpu
-	my $ret = `chroot /$ROOT $RPM --eval "%{$param}"`;
+	my $ret = `$RPM --eval "%{$param}"`;
 	chomp $ret;
 	return $ret;
 }
@@ -99,7 +99,7 @@ sub	rpm_query_attr_pkg($$)
 	my $package = shift();	# installed package
 	my $attr = shift();	# attribute name: such as NAME or VERSION
 
-	return `chroot /$ROOT $RPM --queryformat "[%{$attr}]" -q $package 2>/dev/null`;
+	return `$RPM --queryformat "[%{$attr}]" -q $package 2>/dev/null`;
 }
 
 # determine if rpm parameters will allow srpms to build debuginfo rpms
@@ -152,7 +152,7 @@ sub rpm_query_full_name($)
 #sub rpm_query_full_name_pkg($)
 #{
 #	my $package = shift();	# installed package
-#	return `chroot /$ROOT $RPM --queryformat '[%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}]' -q $package 2>/dev/null`;
+#	return `$RPM --queryformat '[%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}]' -q $package 2>/dev/null`;
 #}
 
 sub rpm_get_cpu_arch($)
@@ -184,21 +184,21 @@ sub rpm_is_installed($$)
 	if ("$mode" eq "any" ) {
 		# any variation is ok
 		DebugPrint("$RPM -q $package > /dev/null 2>&1\n");
-		$rc = system("chroot /$ROOT $RPM -q $package > /dev/null 2>&1");
+		$rc = system("$RPM -q $package > /dev/null 2>&1");
 		$last_checked = "any variation";
 	} elsif ("$mode" eq "user" || "$mode" eq "firmware" || $package eq "hfi2") {
 		# the above check on hfi2 is a temporary work around because the current hfi2 kernel rpm has no kernel version
 		# number in file name (see STL-14187). After we resolve the issue, we shall remove the above check on hfi2
 		# verify $cpu version or noarch is installed
-		DebugPrint "chroot /$ROOT $RPM --queryformat '[%{ARCH}\\n]' -q $package 2>/dev/null|egrep '^$cpu\$|^noarch\$' >/dev/null 2>&1\n";
-		$rc = system "chroot /$ROOT $RPM --queryformat '[%{ARCH}\\n]' -q $package 2>/dev/null|egrep '^$cpu\$|^noarch\$' >/dev/null 2>&1";
+		DebugPrint "$RPM --queryformat '[%{ARCH}\\n]' -q $package 2>/dev/null|egrep '^$cpu\$|^noarch\$' >/dev/null 2>&1\n";
+		$rc = system "$RPM --queryformat '[%{ARCH}\\n]' -q $package 2>/dev/null|egrep '^$cpu\$|^noarch\$' >/dev/null 2>&1";
 		$last_checked = "for $mode $cpu or noarch";
 	} else {
 		# $mode is kernel rev, verify proper kernel version is installed
 		# for kernel packages, RELEASE is kernel rev
 		my $release = rpm_tr_os_version($mode);
-		DebugPrint "chroot /$ROOT $RPM --queryformat '[%{VERSION}\\n]' -q $package 2>/dev/null|egrep '$release' >/dev/null 2>&1\n";
-		$rc = system "chroot /$ROOT $RPM --queryformat '[%{VERSION}\\n]' -q $package 2>/dev/null|egrep '$release' >/dev/null 2>&1";
+		DebugPrint "$RPM --queryformat '[%{VERSION}\\n]' -q $package 2>/dev/null|egrep '$release' >/dev/null 2>&1\n";
+		$rc = system " $RPM --queryformat '[%{VERSION}\\n]' -q $package 2>/dev/null|egrep '$release' >/dev/null 2>&1";
 		$last_checked = "for kernel $release";
 	}
 	DebugPrint("Checked if $package $mode is installed: ".(($rc==0)?"yes":"no")."\n");
@@ -454,17 +454,17 @@ sub rpms_installed_pkg($$)
 
 	$cpu = rpm_get_cpu_arch($mode);
 	if ( "$mode" eq "any" ) {
-		DebugPrint("chroot /$ROOT $RPM --queryformat '[%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n]' -q $package 2>/dev/null\n");
-		open(rpms, "chroot /$ROOT $RPM --queryformat '[%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n]' -q $package 2>/dev/null|");
+		DebugPrint("$RPM --queryformat '[%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n]' -q $package 2>/dev/null\n");
+		open(rpms, "$RPM --queryformat '[%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n]' -q $package 2>/dev/null|");
 	} elsif ("$mode" eq "user" || "$mode" eq "firmware") {
-		DebugPrint("chroot /$ROOT $RPM --queryformat '[%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n]' -q $package 2>/dev/null|egrep '\.$cpu\$|\.noarch\$' 2>/dev/null\n");
-		open(rpms, "chroot /$ROOT $RPM --queryformat '[%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n]' -q $package 2>/dev/null|egrep '\.$cpu\$|\.noarch\$' 2>/dev/null|");
+		DebugPrint("$RPM --queryformat '[%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n]' -q $package 2>/dev/null|egrep '\.$cpu\$|\.noarch\$' 2>/dev/null\n");
+		open(rpms, "$RPM --queryformat '[%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n]' -q $package 2>/dev/null|egrep '\.$cpu\$|\.noarch\$' 2>/dev/null|");
 	} else {
 		# $mode is kernel rev, verify proper kernel version is installed
 		# for kernel packages, RELEASE is kernel rev
 		my $release = rpm_tr_os_version($mode);
-		DebugPrint("chroot /$ROOT $RPM --queryformat '[%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n]' -q $package 2>/dev/null|egrep '-$release\.$cpu\$' 2>/dev/null\n");
-		open(rpms, "chroot /$ROOT $RPM --queryformat '[%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n]' -q $package 2>/dev/null|egrep '-$release\.$cpu\$' 2>/dev/null|");
+		DebugPrint("$RPM --queryformat '[%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n]' -q $package 2>/dev/null|egrep '-$release\.$cpu\$' 2>/dev/null\n");
+		open(rpms, "$RPM --queryformat '[%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n]' -q $package 2>/dev/null|egrep '-$release\.$cpu\$' 2>/dev/null|");
 	}
 	@lines=<rpms>;
 	close(rpms);
@@ -527,7 +527,7 @@ sub rpm_query_all($$)
 	my $package = shift();
 	my $filter = shift();
 
-	my $res=`chroot /$ROOT $RPM -qa 2>/dev/null|grep -i '$package'|grep '$filter'`;
+	my $res=` $RPM -qa 2>/dev/null|grep -i '$package'|grep '$filter'`;
 	$res=~s/\n/ /g;
 	return $res;
 }
@@ -544,7 +544,7 @@ sub rpm_uninstall_matches($$$;$)
 
 	if ( "$rpms" ne "" ) {
 		LogPrint "uninstalling $name: $RPM -e $rpms\n";
-		my $out =`chroot /$ROOT $RPM -e $options $rpms 2>&1`;
+		my $out =`$RPM -e $options $rpms 2>&1`;
 		my $rc=$?;
 		NormalPrint("$out");
 		if ($rc != 0) {
@@ -570,7 +570,6 @@ sub rpm_run_install($$$)
 						# Hence for OFED we tend to uninstall the old rpms first
 						# and the rpm -i is used to install here.
 
-	my $chrootcmd="";
 	my $Uoption= 0;
 
 	if ($user_space_only && "$mode" ne "user" && "$mode" ne "any") {
@@ -587,17 +586,6 @@ sub rpm_run_install($$$)
 	if ( ! -e $rpmfile ) {
 		NormalPrint "Not Found: $rpmfile $mode\n";
 		return;
-	}
-
-	if (ROOT_is_set()) {
-		LogPrint "  cp $rpmfile $ROOT/var/tmp/rpminstall.tmp.rpm\n";
-		if (0 != system("cp $rpmfile $ROOT/var/tmp/rpminstall.tmp.rpm")) {
-			LogPrint "Unable to copy $rpmfile $ROOT/var/tmp/rpminstall.tmp.rpm\n";
-			return;
-		}
-		# just to new ROOT relative name for use in commands below
-		$rpmfile = "/var/tmp/rpminstall.tmp.rpm";
-		$chrootcmd="chroot $ROOT ";
 	}
 
 	my $package = rpm_query_name($rpmfile);
@@ -623,8 +611,8 @@ sub rpm_run_install($$$)
 		# when multiple architectures are installed, other architecture rpms
 		# are not affected by -U, however --force is needed in that case
 		# also need --force for reinstall case
-		LogPrint "  $chrootcmd$RPM -U --force $options $rpmfile\n";
-		$out=`$chrootcmd$RPM -U --force $options $rpmfile 2>&1`;
+		LogPrint "  $RPM -U --force $options $rpmfile\n";
+		$out=`$RPM -U --force $options $rpmfile 2>&1`;
 		if ( $? == 0 ) {
 			NormalPrint("$out");
 		} else {
@@ -641,8 +629,8 @@ sub rpm_run_install($$$)
 			# PPC64 SLES10 needs --force
 			$options='--force '."$options";
 		}
-		LogPrint "  $chrootcmd$RPM -i $options $rpmfile\n";
-		$out=`$chrootcmd$RPM -i $options $rpmfile 2>&1`;
+		LogPrint "  $RPM -i $options $rpmfile\n";
+		$out=`$RPM -i $options $rpmfile 2>&1`;
 		if ( $? == 0 ) {
 			NormalPrint("$out");
 		} else {
@@ -651,9 +639,6 @@ sub rpm_run_install($$$)
 			$exit_code = 1;
 			HitKeyCont;
 		}
-	}
-	if (ROOT_is_set()) {
-		system("rm -f $ROOT/var/tmp/rpminstall.tmp.rpm");
 	}
 }
 
@@ -672,8 +657,8 @@ sub rpm_uninstall($$$$)
 		if ( "$verbosity" ne "silent" ) {
 			print "uninstalling ${fullname}...\n";
 		}
-		LogPrint "chroot /$ROOT $RPM -e $options $fullname\n";
-		my $out=`chroot /$ROOT $RPM -e $options $fullname 2>&1`;
+		LogPrint "$RPM -e $options $fullname\n";
+		my $out=`$RPM -e $options $fullname 2>&1`;
 		$rc |= $?;
 		NormalPrint("$out");
 		if ($rc != 0) {
@@ -955,8 +940,8 @@ sub rpm_uninstall_all_list_with_options($$$@)
 	}
 	
 	if (scalar(@uninstall) != 0) {
-		LogPrint "chroot /$ROOT $RPM -e $options @uninstall\n";
-		my $out=`chroot /$ROOT $RPM -e $options @uninstall 2>&1`;
+		LogPrint "$RPM -e $options @uninstall\n";
+		my $out=`$RPM -e $options @uninstall 2>&1`;
 		my $rc=$?;
 		NormalPrint("$out");
 		if ($rc != 0) {
@@ -1025,13 +1010,3 @@ sub check_rpmbuild_dependencies($)
 	return $err;
 }
 
-# see if basic prereqs for building are installed
-# return 0 on success, or number of missing dependencies
-sub check_build_dependencies($)
-{
-	my $build_info = shift();	# what trying to build
-	my $err = 0;
-
-	$err = rpm_check_build_os_prereqs('user', $build_info, ('glibc-devel'));
-	return $err;
-}

@@ -80,35 +80,20 @@ sub make_dir($$$$)
 	my($group) = shift();
 	my($mode) = shift();
 
-	system "mkdir -p -m $mode $ROOT$dir";
-	system "chown $owner $ROOT$dir";
-	system "chgrp $group $ROOT$dir";
+	system "mkdir -p -m $mode $dir";
+	system "chown $owner $dir";
+	system "chgrp $group $dir";
 }
 
 sub check_dir($)
 {
 	my($dir) = shift();
-	if (! -d "$ROOT$dir" ) 
+	if (! -d "$dir" ) 
 	{
 		#Creating directory 
 
 		make_dir("$dir", "$OWNER", "$GROUP", "ugo=rx,u=rwx");
 	}
-}
-
-sub isDirectoryEmpty($)
-{
-	my($dir) = shift();
-	my $filecount=0;
-	if ( -e $dir and -d $dir )
-	{
-		$filecount=`ls -la $dir| wc -l`;
-		if ( $filecount < 4 )
-		{
-	    	return 1;
-		}       
-	}
-	return 0;
 }
 
 sub copy_file($$$$$)
@@ -123,37 +108,10 @@ sub copy_file($$$$$)
 
 	if ( -e $src)
 	{               
-		system "cp -rf $src $ROOT$dest";
-		system "chown $owner $ROOT$dest";
-		system "chgrp $group $ROOT$dest";
-		system "chmod $mode $ROOT$dest";
-	}
-}
-
-# Copy file and set security context if SELINUX is enabled;
-# If SELINUX is disabled, it will behave like copy_file()
-sub copy_file_context($$$$$$)
-{
-	my($src) = shift();
-	my($dest) = shift();
-	my($owner) = shift();
-	my($group) = shift();
-	my($mode) = shift();
-	my($context) = shift();
-	# only copy file if source exists, this keep all those cp errors for litering
-	# install for development.
-
-	if ( -e $src)
-	{
-		# If the destination file exists, somehow the context will not be
-		# overwritten using the "--context" option. Remove the file first.
-		if ( -e "$ROOT$dest" ) {
-			system "rm -rf $ROOT$dest";
-		}
-		system "cp -rf --context=$context $src $ROOT$dest 2>/dev/null";
-		system "chown $owner $ROOT$dest";
-		system "chgrp $group $ROOT$dest";
-		system "chmod $mode $ROOT$dest";
+		system "cp -rf $src $dest";
+		system "chown $owner $dest";
+		system "chgrp $group $dest";
+		system "chmod $mode $dest";
 	}
 }
 
@@ -179,7 +137,7 @@ sub copy_all_files($$$$$;$)
 	{
 	 	return;	
 	}
-	if (!-d "$ROOT$dest_dir")
+	if (!-d "$dest_dir")
 	{
 		return;
 	}
@@ -203,25 +161,10 @@ sub copy_all_files($$$$$;$)
 sub remove_file($)
 {
 	my($file) = shift();
-	system "rm -f $ROOT$file";
-}
-
-sub copy_driver_file($$)
-{
-	copy_file("$_[0]", "$_[1]", "$OWNER", "$GROUP", "ugo=r,u=rw");
+	system "rm -f $file";
 }
 
 sub copy_data_file($$)
-{
-	copy_file("$_[0]", "$_[1]", "$OWNER", "$GROUP", "ugo=r,u=rw");
-}
-
-sub copy_all_data_files($$;$)
-{
-	copy_all_files("$_[0]", "$_[1]", "$OWNER", "$GROUP", "ugo=r,u=rw","$_[2]");
-}
-
-sub copy_arlib_file($$)
 {
 	copy_file("$_[0]", "$_[1]", "$OWNER", "$GROUP", "ugo=r,u=rw");
 }
@@ -232,123 +175,27 @@ sub copy_systool_file($$)
 	copy_file("$_[0]", "$_[1]", "$OWNER", "$GROUP", "ug=rx,u=rwx");
 }
 
-sub copy_all_systool_files($$;$)
-{
-	copy_all_files("$_[0]", "$_[1]", "$OWNER", "$GROUP", "ugo=r,ug=rx,u=rwx", "$_[2]");
-}
-
-sub copy_bin_file($$)
-{
-	# general user execution
-	copy_file("$_[0]", "$_[1]", "$OWNER", "$GROUP", "ugo=rx,u=rwx");
-}
-
-sub remove_oldarlib($)
-{
-	my($libbase) = shift();
-	if ( "$LIB_DIR" ne "$OLD_LIB_DIR" )
-	{
-		system "rm -f $ROOT$libbase";
-	}
-}
-
-#
-# Removes a list of files from a directory
-# arg0 : target directory
-# arg1 : space delimited list of file names.
-#
-sub remove_file_list($@)
-{
-	my($dir)=shift();
-	my $f;
-
-	foreach $f (@_)
-	{
-		remove_file("$dir/$f");
-	}
-}
-
-# remove the files built from source or installed
 # (as listed in .files and .dirs)
-# $0 = dirname relative to $ROOT
+# $0 = dirname relative to 
 sub remove_installed_files($)
 {
 	my $dirname = shift();
 
 	# remove files we installed or user compiled, however do not remove
 	# any logs or other files the user may have created
-	if ( -d "$ROOT/$dirname" ) {
-		system "cd $ROOT/$dirname; for dir in `cat .dirs 2>/dev/null`; do ( cd \$dir; make clobber ) >/dev/null 2>&1; done";
-		system "cd $ROOT/$dirname; cat .files 2>/dev/null|xargs rm -f 2>/dev/null";
-		system "cd $ROOT/$dirname; cat .files 2>/dev/null|sort -r|xargs rmdir 2>/dev/null";
-		system "rm -f $ROOT/$dirname/.files 2>/dev/null";
-		system "rm -f $ROOT/$dirname/.dirs 2>/dev/null";
-		system "rmdir $ROOT/$dirname/ 2>/dev/null";
+	if ( -d "/$dirname" ) {
+		system "cd /$dirname; for dir in `cat .dirs 2>/dev/null`; do ( cd \$dir; make clobber ) >/dev/null 2>&1; done";
+		system "cd /$dirname; cat .files 2>/dev/null|xargs rm -f 2>/dev/null";
+		system "cd /$dirname; cat .files 2>/dev/null|sort -r|xargs rmdir 2>/dev/null";
+		system "rm -f /$dirname/.files 2>/dev/null";
+		system "rm -f /$dirname/.dirs 2>/dev/null";
+		system "rmdir /$dirname/ 2>/dev/null";
 	}
 }
 
 # ===========================================================================
 # Shared Libaries
 my $RunLdconfig=0;
-
-sub copy_shlib_file($$)
-{
-	$RunLdconfig=1;
-	copy_file("$_[0]", "$_[1]", "$OWNER", "$GROUP", "ugo=rx,u=rw");
-}
-
-sub copy_shlib($$$)
-{
-	my($src) = shift();
-	my($libbase) = shift();
-	my($version) = shift();
-
-	system "rm -f $ROOT${libbase}.so";
-	if ( ! -e $src )
-	{
-		if ( -e "$src.so.${version}" )
-		{
-			$src="$src.so.${version}";
-		}
-		elsif ( -e "$src.so" )
-		{
-			$src="$src.so";
-		}
-	}
-	if ( -e $src)
-	{
-		copy_shlib_file("$src", "${libbase}.so.${version}");
-		# source dir is not $ROOT so that when boot root, it will work properly
-		system "rm -f " . " $ROOT${libbase}.so";
-		system "ln -s " . my_basename("${libbase}.so.${version}") . " $ROOT${libbase}.so";
-	}
-}
-
-sub symlink_usrlocal_shlib($$$)
-{
-	# a /usr/lib/opa path w/o suffix (eg. a previous dest for copy_shlib)
-	my($src) = shift();
-	my($libbase) = shift();
-	my($version) = shift();
-
-	symlink_usrlocal("${src}.so.${version}", "${libbase}.so.${version}");
-	symlink_usrlocal("${src}.so.${version}", "${libbase}.so");
-}
-
-sub remove_shlib($)
-{
-	my($libbase) = shift();
-	$RunLdconfig=1;
-	system "rm -f $ROOT${libbase}.so $ROOT${libbase}.so.*";
-}
-
-sub remove_oldshlib($)
-{
-	if ( "$LIB_DIR" ne "$OLD_LIB_DIR" )
-	{
-		remove_shlib("$_[0]");
-	}
-}
 
 sub check_ldconfig()
 {
@@ -358,9 +205,9 @@ sub check_ldconfig()
 		print "Updating dynamic linker cache...\n";
 		# this is how /etc/rc.sysinit runs ldconfig
 		#LogPrint "Updating dynamic linker cache: /sbin/ldconfig -n /lib\n";
-		#system "chroot /$ROOT /sbin/ldconfig -n /lib > /dev/null 2>&1";
+		#system "/sbin/ldconfig -n /lib > /dev/null 2>&1";
 		LogPrint "Updating dynamic linker cache: /sbin/ldconfig\n";
-		system "chroot /$ROOT /sbin/ldconfig > /dev/null 2>&1";
+		system "/sbin/ldconfig > /dev/null 2>&1";
 		$RunLdconfig=0;
 		return 1;
 	}

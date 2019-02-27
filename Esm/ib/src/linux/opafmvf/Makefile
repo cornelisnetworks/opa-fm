@@ -1,6 +1,6 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015, Intel Corporation
+# Copyright (c) 2018, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -26,7 +26,6 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # 
 # END_ICS_COPYRIGHT8   ****************************************
-# Makefile for SM Module
 
 # Include Make Control Settings
 include $(TL_DIR)/$(PROJ_FILE_DIR)/Makesettings.project
@@ -38,20 +37,17 @@ include $(TL_DIR)/$(PROJ_FILE_DIR)/Makesettings.project
 # Name of SubProjects
 DS_SUBPROJECTS	= 
 # name of executable or downloadable image
-EXECUTABLE		= # Sm$(EXE_SUFFIX)
+EXECUTABLE		= $(BUILDDIR)/opafmvf$(EXE_SUFFIX)
 # list of sub directories to build
-DIRS			= log rem_conf startup fm_cmd opafmvf opamkdsapdb
+DIRS			= 
 # C files (.c)
-CFILES			= \
-				# Add more c files here
+CFILES			= cmd_common.c cmd_config.c cmd_mgmt.c cmd_query.c opafmvf.c tenant.c utils.c
 # C++ files (.cpp)
-CCFILES			= \
-				# Add more cpp files here
+CCFILES			= 
 # lex files (.lex)
-LFILES			= \
-				# Add more lex files here
+LFILES			= 
 # archive library files (basename, $ARFILES will add MOD_LIB_DIR/prefix and suffix)
-LIBFILES=
+LIBFILES		= 
 # Windows Resource Files (.rc)
 RSCFILES		=
 # Windows IDL File (.idl)
@@ -59,8 +55,7 @@ IDLFILE			=
 # Windows Linker Module Definitions (.def) file for dll's
 DEFFILE			=
 # targets to build during INCLUDES phase (add public includes here)
-INCLUDE_TARGETS	= \
-				# Add more h hpp files here
+INCLUDE_TARGETS		= 
 # Non-compiled files
 MISC_FILES		= 
 # all source files
@@ -74,16 +69,18 @@ OBJECTS			= $(CFILES:.c=$(OBJ_SUFFIX)) $(CCFILES:.cpp=$(OBJ_SUFFIX)) \
 RSCOBJECTS		= $(RSCFILES:.rc=$(RES_SUFFIX))
 # targets to build during LIBS phase
 LIB_TARGETS_IMPLIB	=
-#LIB_TARGETS_ARLIB	= $(LIB_PREFIX)Esm$(ARLIB_SUFFIX)
-LIB_TARGETS_ARLIB	=
+LIB_TARGETS_ARLIB	= 
 LIB_TARGETS_EXP		= $(LIB_TARGETS_IMPLIB:$(ARLIB_SUFFIX)=$(EXP_SUFFIX))
 LIB_TARGETS_MISC	= 
 # targets to build during CMDS phase
+SHLIB_VERSION		= 
 CMD_TARGETS_SHLIB	= 
 CMD_TARGETS_EXE		= $(EXECUTABLE)
 CMD_TARGETS_MISC	=
+CMD_TARGETS_DRIVER	=
+CMD_TARGETS_KEXT	=
 # files to remove during clean phase
-CLEAN_TARGETS_MISC	=  
+CLEAN_TARGETS_MISC=
 CLEAN_TARGETS		= $(OBJECTS) $(RSCOBJECTS) $(IDL_TARGETS) $(CLEAN_TARGETS_MISC)
 # other files to remove during clobber phase
 CLOBBER_TARGETS_MISC=
@@ -105,22 +102,18 @@ INCLUDE_SUBDIR		=
 #IMPLIBLOCAL	= User flags for Object Lirary Manager [Empty]
 #MIDLLOCAL	= User flags for IDL compiler [Empty]
 #RSCLOCAL	= User flags for resource compiler [Empty]
-#LOCALDEPLIBS	= User libraries to include in dependencies [Empty]
-#LOCALLIBS		= User libraries to use when linking [Empty]
-#				(in addition to LOCALDEPLIBS)
+LOCALDEPLIBS	= public Xml opamgt-priv
+LOCALLIBS		= $(OPENIB_USER_LIBS) expat
 #LOCAL_LIB_DIRS	= User library directories for libpaths [Empty]
 
-CLOCAL = $(CPIE)
-LOCALDEPLIBS = 
-
 # Include Make Rules definitions and rules
-include $(PROJ_SM_DIR)/Makerules.module
+include $(TL_DIR)/$(PROJ_FILE_DIR)/Makerules.project
 
 #=============================================================================#
 # Overrides:
 #-----------------------------------------------------------------------------#
 #CCOPT			=	# C++ optimization flags, default lets build config decide
-#COPT			=	# C optimization flags, default lets build config decide
+COPT			=	-std=gnu11 -Werror
 #SUBSYSTEM = Subsystem to build for (none, console or windows) [none]
 #					 (Windows Only)
 #USEMFC	= How Windows MFC should be used (none, static, shared, no_mfc) [none]
@@ -140,13 +133,10 @@ include $(TL_DIR)/Makerules/Maketargets.build
 include $(TL_DIR)/Makerules/Maketargets.install
 
 # install for stage phase
-#include $(TL_DIR)/Makerules/Maketargets.stage
-STAGE::
+include $(TL_DIR)/Makerules/Maketargets.stage
 
 # Unit test execution
 #include $(TL_DIR)/Makerules/Maketargets.runtest
-
-clobber:: clobber_module
 
 #=============================================================================#
 

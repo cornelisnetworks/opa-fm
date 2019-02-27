@@ -45,7 +45,7 @@ sub open_log(;$)
 {
 	my($logfile) = shift();
 	if ( "$logfile" eq "" ) {
-		$logfile="$ROOT/var/log/opa.log";
+		$logfile="/var/log/opa.log";
 	}
 	$LogFile = $logfile;
 	open(LOG_FD, ">>$logfile");
@@ -117,7 +117,6 @@ sub getch()
 	system("stty -echo raw");
 	$c=getc(STDIN);
 	system("stty echo -raw");
-	print "\n";
 	return $c;
 }
 

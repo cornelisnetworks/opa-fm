@@ -53,7 +53,6 @@ my $user_space_only = 0; # can be set to 1 by --user-space argument
 
 # some options specific to OFA builds
 my $OFED_force_rebuild=0;
-my $OFED_prefix="/usr";
 
 my $CUR_OS_VER = `uname -r`;
 chomp $CUR_OS_VER;
@@ -80,8 +79,6 @@ my $UVP_CONF_FILE = "$BASE_DIR/uvp.conf";
 my $UVP_CONF_FILE_SOURCE = "uvp.conf";
 my $DAT_CONF_FILE_SOURCE = "dat.conf";
 my $NETWORK_CONF_DIR = "/etc/sysconfig/network-scripts";
-my $ROOT = "/";	# TBD prepared to make this "" removes some // prompts and logs
-
 my $BIN_DIR = "/usr/sbin";
 
 #This string is compared in verify_os_rev for correct revision of
@@ -103,7 +100,7 @@ my $DBG_FREE="release";
 my $RPM = "/bin/rpm";
 
 # a few key commands to verify exist
-my @verify_cmds = ( "uname", "mv", "cp", "rm", "ln", "cmp", "yes", "echo", "sed", "chmod", "chown", "chgrp", "mkdir", "rmdir", "grep", "diff", "awk", "find", "xargs", "sort", "chroot");
+my @verify_cmds = ( "uname", "mv", "cp", "rm", "ln", "cmp", "yes", "echo", "sed", "chmod", "chown", "chgrp", "mkdir", "rmdir", "grep", "diff", "awk", "find", "xargs", "sort");
 
 # opa-scripts expects the following env vars to be 0 or 1. We set them to the default value here
 setup_env("OPA_INSTALL_CALLER", 0);
@@ -149,11 +146,6 @@ sub my_tolower($)
 	return "$str";
 }
 
-sub ROOT_is_set()
-{
-	return ("$ROOT" ne "/" && "$ROOT" ne "");
-}
-
 # ============================================================================
 # Version and branding
 
@@ -194,7 +186,7 @@ my $OLD_UVP_LIB_DIR = "/lib";
 
 sub set_libdir()
 {
-	if ( -d "$ROOT/lib64" )
+	if ( -d "/lib64" )
 	{
 		$LIB_DIR = "/lib64";
 		$UVP_LIB_DIR = "/lib64";
