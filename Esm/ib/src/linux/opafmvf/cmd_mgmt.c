@@ -35,7 +35,11 @@
 #include <signal.h>
 #include <string.h>
 #include <unistd.h>
-
+#include <stdio.h>
+#include <regex.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <limits.h>
 
 extern const char* default_dg_dir;
 extern const char* default_vf_dir;
@@ -58,7 +62,7 @@ const char* cmd_reset_help =
 
 const char* cmd_commit_help =
 	"Usage:\n"
-	"    opafmvf commit [-p path] [-o path] [-b] [-f]\n"
+	"    opafmvf commit [-p path] [-o path] [-b] [-f] [-s]\n"
 	"    opafmvf commit --help\n"
 	"\n"
 	"    --help                    - produce full help text\n"
@@ -68,6 +72,7 @@ const char* cmd_commit_help =
 	"                                default: /etc/opa-fm/opafm.xml\n"
 	"    -b/--backup               - backup old output XML file if exists\n"
 	"    -f/--force                - do not prompt\n"
+	"    -s/--skip-check           - Skip validation check on output. Speeds up command considerably\n"
 	"\n"
 	"Generate new configuration for OPA FM basing on the preprocess file and\n"
 	"configuration files from /etc/opa-fm/vfs and /etc/opa-fm/dgs directories.\n"
@@ -128,6 +133,7 @@ const char* cmd_restart_usage =
 
 
 const char* default_opafm_config = "/etc/opa-fm/opafm.xml";
+const char* default_ppfile = "/etc/opa-fm/opafm_pp.xml";
 
 
 static int
@@ -261,13 +267,153 @@ error:
 	return status;
 }
 
+
+static int dump_vfdg_files(FILE *out_file, char *dir_name)
+{
+	struct dirent *dp;
+	DIR *dir = opendir(dir_name);
+	if(dir == NULL){
+		log_error("Failed to open input directory %s: %s\n", dir_name, strerror(errno));
+		return 1;
+	}
+
+	while ((dp=readdir(dir)))
+	{
+		char* file_name = StringConcat(dir_name, "/",dp->d_name, NULL);
+		if (!file_name)
+			die("Out of memory");
+
+		if (dp->d_type == DT_REG) {
+			FILE *in_file = fopen(file_name, "r");
+			if(!in_file){
+				log_error("Failed to open input file %s: %s\n", file_name, strerror(errno));
+				free(file_name);
+				closedir(dir);
+				return 1;
+			}
+
+			char *line = NULL;
+			size_t len= 0;
+			ssize_t n_read = 0;
+			while((n_read = getline(&line, &len, in_file)) != -1) {
+				fwrite(line, n_read, 1, out_file);
+			}
+			fclose(in_file);
+		}
+		free(file_name);
+	}
+	closedir(dir);
+	return 0;
+}
+
+
+static int commit_file(FILE *in_file, FILE *out_file)
+{
+	char *line = NULL;
+	size_t len = 0;
+	ssize_t n_read = 0;
+
+	/*keep first line at top*/
+	n_read = getline(&line, &len, in_file);
+	fwrite(line, n_read, 1, out_file);
+
+	/*write metadata to file*/
+	fprintf(out_file,"<!-- Generated file. Do not edit. -->\n");
+	time_t epoch_time;
+	char date[26];
+	struct tm* tm_info;
+	time(&epoch_time);
+	tm_info = localtime(&epoch_time);
+	if(tm_info) {
+		strftime(date, 26, "%Y-%m-%d %H:%M:%S", tm_info);
+		fprintf(out_file,"<!-- Generated Date: %s -->\n", date);
+	}
+
+	/* Process input file and insert VF/DG includes */
+	char *pattern = "^[[:space:]]*<[!]--[[:space:]]*INCLUDE:.._DIR=\\(.*\\)[[:space:]]*-->.*";
+	regex_t regex;
+	regmatch_t regmatch[2];
+	regcomp(&regex, pattern, 0);
+
+	while((n_read = getline(&line, &len, in_file)) != -1) {
+
+		if(regexec(&regex, line, 2, regmatch, 0) == 0){
+			char dir_name[PATH_MAX];
+			if(regmatch[1].rm_eo - regmatch[1].rm_so >= PATH_MAX){
+				log_error("Path name is too long\n");
+				free(line);
+				regfree(&regex);
+				return 1;
+			}
+
+			StringCopy(dir_name, &line[regmatch[1].rm_so], regmatch[1].rm_eo - regmatch[1].rm_so);
+			printf("Processing files in  %s\n", dir_name);
+			if(dump_vfdg_files(out_file, dir_name)){
+				regfree(&regex);
+				free(line);
+				return 1;
+			}
+		} else {
+			fwrite(line, n_read, 1, out_file);
+		}
+	}
+
+	regfree(&regex);
+	free(line);
+	return 0;
+}
+
+static int commit_check(char *output_temp, const char *output)
+{
+	size_t len = 0;
+	ssize_t n_read = 0;
+	char *line = NULL;
+	char* cmd = StringConcat("/usr/lib/opa-fm/bin/config_check -c ", output_temp, " -s 2>&1",NULL);
+	if (!cmd)
+		die("Out of memory");
+	fflush(stdout);
+	FILE *config_check_pipe = popen(cmd, "r");
+	free(cmd);
+	if(!config_check_pipe){
+		log_error("Failed to open pipe to Config Check utility\n");
+		return 1;
+	}
+	char *output_check = StringConcat(output,".check",NULL);
+	if (!output_check)
+		die("Out of memory");
+	FILE *config_check_out_file = fopen(output_check,"w");
+	if(!config_check_out_file){
+		log_error("Failed to open output temp file %s: %s\n", output_check, strerror(errno));
+		free(output_check);
+		pclose(config_check_pipe);
+		return 1;
+	}
+	free(output_check);
+	while((n_read = getline(&line, &len, config_check_pipe)) != -1) {
+		fwrite(line, n_read, 1, config_check_out_file);
+		fprintf(stderr, "%s",line);
+	}
+	free(line);
+	fclose(config_check_out_file);
+	int cmd_status = pclose(config_check_pipe);
+	if(cmd_status){
+		log_error("Error: Config Check Failed: Review %s.check\n", output);
+		return 1;
+	}
+	log_info("Config Check Passed!\n");
+
+	return 0;
+}
+
+
 CmdStatus
 cmd_commit(int argc, char* argv[])
 {
-	const char* ppfile = NULL;
+	const char* ppfile = default_ppfile;
 	const char* output = default_opafm_config;
 	bool backup = false;
 	bool force = false;
+	bool skip_check = false;
 
 	/* parse options */
 	static struct option long_options[] = {
@@ -275,13 +421,14 @@ cmd_commit(int argc, char* argv[])
 		{"output", required_argument, 0, 'o'},
 		{"backup", no_argument,       0, 'b'},
 		{"force",  no_argument,       0, 'f'},
+		{"skip-check",   no_argument, 0, 's'},
 		{"help",   no_argument,       0, 'h'},
 		{0, 0, 0, 0}
 	};
 
 	optind = 0;
 	while (true) {
-		int c = getopt_long(argc, argv, "p:o:bf", long_options, NULL);
+		int c = getopt_long(argc, argv, "p:o:bfs", long_options, NULL);
 		if (c == -1)
 			break;
 
@@ -300,6 +447,9 @@ cmd_commit(int argc, char* argv[])
 			break;
 		case 'f':
 			force = true;
+			break;
+		case 's':
+			skip_check = true;
 			break;
 		default:
 			print_usage(cmd_commit_usage);
@@ -325,12 +475,13 @@ cmd_commit(int argc, char* argv[])
 		goto error;
 	}
 
-	/* check output file exists, if so prompt user */
-	if (!force) {
-		if (access(output, F_OK) == 0) {
+	/* check if output file exists, if so prompt user */
+	if (access(output, F_OK) == 0) {
+		if(!force) {
 			fprintf(stdout, "%s will be overwritten!\n", output);
 			fprintf(stdout, "Do you want to continue? [y/N] ");
 			fflush(stdout);
+			fflush(stderr);
 			if (!prompt_user()) {
 				status = CMD_STATUS_CANNOT_PERFORM;
 				goto error;
@@ -338,32 +489,76 @@ cmd_commit(int argc, char* argv[])
 		}
 	}
 
-	/* construct command line for opafmconfigpp */
-	const char* main_cmd = "opafmconfigpp -f";
-	const char* opt_1 = (ppfile) ? " -p" : "";
-	const char* opt_1_val = (ppfile) ? ppfile : "";
-	const char* opt_2 = (output) ? " -o" : "";
-	const char* opt_2_val = (output) ? output : "";
-	const char* opt_3 = (backup) ? " -b" : "";
-
-	char* cmd = StringConcat(main_cmd, opt_1, opt_1_val, opt_2, opt_2_val, opt_3, NULL);
-	if (!cmd)
+	FILE *in_file = fopen(ppfile, "r");
+	if(!in_file){
+		log_error("Failed to open input file %s: %s\n", ppfile, strerror(errno));
+		status = CMD_STATUS_CANNOT_PERFORM;
+		goto error;
+	}
+	char *output_temp = StringConcat(output,".tmp",NULL);
+	if (!output_temp)
 		die("Out of memory");
+	FILE *out_file = fopen(output_temp, "w");
+	if(!out_file){
+		log_error("Failed to open output file %s: %s\n", output, strerror(errno));
+		fclose(in_file);
+		status = CMD_STATUS_CANNOT_PERFORM;
+		free(output_temp);
+		goto error;
+	}
 
-	/* execute opafmconfigpp */
-	int cmd_status = exec_cmd(cmd);
+	if(commit_file(in_file, out_file)){
+		fclose(in_file);
+		fclose(out_file);
+		status = CMD_STATUS_CANNOT_PERFORM;
+		free(output_temp);
+		goto error;
+	}
 
-	free(cmd);
+	fclose(in_file);
+	fclose(out_file);
 
-	if (cmd_status) {
-		log_fatal("Could not generate a new configuration for fabric manager");
+	if(!skip_check){
+		if(commit_check(output_temp, output)){
+			status = CMD_STATUS_CANNOT_PERFORM;
+			free(output_temp);
+			goto error;
+		}
+	}
+
+
+	/* backup old config file if it exists */
+	if (access(output, F_OK) == 0 && backup) {
+		char* backup_name = StringConcat(output, ".bak", NULL);
+		if (!backup_name)
+			die("out of memory");
+		if(rename(output, backup_name) != 0){
+			free(output_temp);
+			free(backup_name);
+			log_error("Failed to backup file: %s\n", strerror(errno));
+			status = CMD_STATUS_CANNOT_PERFORM;
+			goto error;
+		}
+		free(backup_name);
+		log_info("Generated backup file %s.bak", output);
+	}
+
+
+	/* Make temp file permanent */
+	if(rename(output_temp, output) != 0){
+		free(output_temp);
+		log_error("Failed to rename temp file: %s\n", strerror(errno));
 		status = CMD_STATUS_CANNOT_PERFORM;
 		goto error;
 	}
 
+	free(output_temp);
 	log_info("Generated new configuration for fabric manager");
 
 error:
+
+	if(status != CMD_STATUS_OK)
+		log_fatal("Could not generate a new configuration for fabric manager");
 	program_lock_release(lock);
 
 	return status;

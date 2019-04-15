@@ -215,6 +215,12 @@ fi
 showenv
 echo "---------------------------------------"
 
+# To run thew klocwork scans using klocwork_analyze script, it requires OPA_FEATURE_SET and BUILD_TARGET_OS_ID
+# Copying the required variables to $TL_DIR/$PRODUCT_DIRNAME/klocwork.env
+if [ "$KW_ENABLE" = "yes" ]; then
+	echo "export OPA_FEATURE_SET=${OPA_FEATURE_SET}" >> $TL_DIR/$PRODUCT_DIRNAME/klocwork.env
+	echo "export BUILD_TARGET_OS_ID=${BUILD_TARGET_OS_ID}" >> $TL_DIR/$PRODUCT_DIRNAME/klocwork.env
+fi
 echo "build for: $BUILD_TARGET"
 echo "Stack to build for: $BUILD_WITH_STACK ($OFED_STACK_PREFIX)"
 

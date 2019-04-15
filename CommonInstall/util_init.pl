@@ -440,20 +440,6 @@ sub default_opascripts_env_vars()
 	setup_env("OPA_IRQBALANCE", 1);
 }
 
-# set the env vars for ALL opa-scripts system env variables. Use this subroutine with caution because it will set ALL
-# the env vars. The typical use case for the routine is seting all vars to -1, so opa-scripts will skip config on them.
-# This is useful when we intend to keep previous conf.
-sub set_opascript_env_vars($)
-{
-    my $env_value = shift();
-	setup_env("OPA_UDEV_RULES", $env_value);
-	setup_env("OPA_LIMITS_CONF", $env_value);
-	setup_env("OPA_ARPTABLE_TUNING", $env_value);
-	setup_env("OPA_SRP_LOAD", $env_value);
-	setup_env("OPA_SRPT_LOAD", $env_value);
-	setup_env("OPA_IRQBALANCE", $env_value);
-}
-
 # this will be replaced in component specific INSTALL with any special
 # overrides of things in main*pl
 sub overrides()

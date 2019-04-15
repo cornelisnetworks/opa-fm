@@ -894,8 +894,9 @@ sub install_opa_stack($$)
 
 	# do the following before we set any system env vars
 	if ( $Default_SameAutostart ) {
-		# set env vars to -1, so we will keep previous config
-		set_opascript_env_vars(-1);
+		# set env vars to -1 for SRP and SRPT, so we keep the autostart option
+		setup_env("OPA_SRP_LOAD", -1);
+		setup_env("OPA_SRPT_LOAD", -1);
 	}
 
 	#override the udev permissions.

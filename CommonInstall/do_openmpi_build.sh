@@ -606,7 +606,12 @@ logfile=make.openmpi.$interface.$compiler
 
 	if [ "$Cflag" = y ]
 	then
-		pref_env = "$pref_env MPI_STRESS_CUDA=1"
+		pref_env="$pref_env MPI_STRESS_CUDA=1"
+	else
+		# HWLOC component auto detects CUDA and will use it even if it is NOT
+		# a CUDA OMPI build. So, tell HWLOC to ignore CUDA (if found on the system)
+		# when not creating a CUDA build.
+		pref_env="$pref_env enable_gl=no"
 	fi
 
 	cmd="$pref_env rpmbuild --rebuild \

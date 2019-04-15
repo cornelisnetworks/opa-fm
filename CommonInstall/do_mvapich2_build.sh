@@ -548,7 +548,9 @@ logfile=make.mvapich2.$interface.$compiler
 		exit 1;;
 	esac
 
-	pref_env=
+	# HWLOC component auto detects CUDA and will use it if found on the system
+	# So, tell HWLOC to ignore CUDA: enable_gl=no
+	pref_env="enable_gl=no"
 	if [ "$STACK_PREFIX" != "/usr" ]
 	then
 		pref_env="$pref_env LD_LIBRARY_PATH=$STACK_PREFIX/lib64:$STACK_PREFIX/lib:\$LD_LIBRARY_PATH"
