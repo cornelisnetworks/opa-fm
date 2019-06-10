@@ -235,8 +235,8 @@ then
 	exit 1
 fi
 
-MODULEVERSION=`$TL_DIR/MakeTools/format_releasetag.py $RELEASE_TAG`
-RPMVERSION=`$TL_DIR/MakeTools/format_releasetag.py $RELEASE_TAG --format rpm`
+MODULEVERSION=`$TL_DIR/MakeTools/format_releasetag.sh $RELEASE_TAG`
+RPMVERSION=`$TL_DIR/MakeTools/format_releasetag.sh -f rpm $RELEASE_TAG`
 RPM_VER=`echo $RPMVERSION|cut -d"-" -f1`
 RPM_REL=`echo $RPMVERSION-999|cut -d"-" -f2`
 export MKRPM_VER=$RPM_VER

@@ -68,14 +68,14 @@ PREP		= prep
 PATCH_VERSION	= patch_version
 PATCH_ENG_VERSION	= $(MAKETOOLS_DIR)/patch_engineer_version.sh
 PATCH_BRAND	= patch_brand
-CONVERT_RELEASETAG	= $(MAKETOOLS_DIR)/format_releasetag.py
+CONVERT_RELEASETAG	= $(MAKETOOLS_DIR)/format_releasetag.sh
 else
 # the prefered setting, use tools in source itself
 PREP		= $(MAKETOOLS_DIR)/prep.sh
 PATCH_VERSION	= $(MAKETOOLS_DIR)/patch_version/patch_version
 PATCH_ENG_VERSION	= $(MAKETOOLS_DIR)/patch_engineer_version.sh
 PATCH_BRAND	= $(MAKETOOLS_DIR)/patch_version/patch_brand
-CONVERT_RELEASETAG	= $(MAKETOOLS_DIR)/format_releasetag.py
+CONVERT_RELEASETAG	= $(MAKETOOLS_DIR)/format_releasetag.sh
 endif
 
 # CD Generation

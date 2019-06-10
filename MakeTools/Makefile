@@ -87,10 +87,6 @@ convert_releasetag: convert_releasetag.pl
 	cp $< $@
 	chmod 755 $@
 
-format_releasetag: format_releasetag.py
-	cp $< $@
-	chmod 755 $@
-
 include $(TL_DIR)/Makerules/Maketargets.stage
 
 include $(TL_DIR)/Makerules/Maketargets.install
