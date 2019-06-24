@@ -2611,13 +2611,15 @@ FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabric
 	cl_map_item_t *p;
 #ifdef PRODUCT_OPENIB_FF
 	STL_LID lid = 0;
+	STL_PA_IMAGE_ID_DATA img_id_end = {0};
+	STL_PA_IMAGE_ID_DATA img_id_begin = {0};
 #endif
 	int i=0;
 	int num_nodes = cl_qmap_count(&fabricp->AllNodes);
 	uint32 node_count = 0;
 	uint32 nrsp_node_count = 0;
 	uint32 nrsp_port_count = 0;
-	STL_PortStatusData_t PortStatusData = { 0 };
+	STL_PORT_COUNTERS_DATA PortCountersData = { 0 };
 
 	if (! quiet) ProgressPrint(TRUE, "Getting All Port Counters...");
 
@@ -2634,6 +2636,50 @@ FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabric
 			fprintf(stderr, "GetAllPortCounters: PM/PA Client Unavailable\n");
 			return FERROR;
 		}
+	}
+
+	//verify pa has necessary capabilities
+	if (!(fabricp->flags & FF_PMADIRECT)) {
+		STL_CLASS_PORT_INFO *cpi;
+
+		if (omgt_pa_get_classportinfo(g_portHandle, &cpi) == FSUCCESS) {
+			STL_PA_CLASS_PORT_INFO_CAPABILITY_MASK paCap;
+
+			memcpy(&paCap, &cpi->CapMask, sizeof(STL_PA_CLASS_PORT_INFO_CAPABILITY_MASK));
+			MemoryDeallocate(cpi);
+			//if trying to query by time, check if feature available
+			if (begin || end) {
+				if (!(paCap.s.IsAbsTimeQuerySupported)) {
+					fprintf(stderr, "%s: PA does not support time queries\n", __func__);
+					return FERROR;
+				}
+			}
+		} else {
+			fprintf(stderr, "%s: failed to determine PA capabilities\n", __func__);
+			return FERROR;
+		}
+
+		// Verify Images exist before querying
+		if (end || begin) {
+			STL_PA_IMAGE_INFO_DATA img_info_end = {{0}};
+
+			img_id_end.imageNumber = PACLIENT_IMAGE_TIMED;
+			img_id_end.imageTime.absoluteTime = end ? end : begin;
+			status = omgt_pa_get_image_info(g_portHandle, img_id_end, &img_info_end);
+			if (status != FSUCCESS) {
+				fprintf(stderr, "%s: failed to get image info at %s\n", __func__, ctime((time_t *)&img_id_end.imageTime.absoluteTime));
+				return status;
+			}
+			img_id_end = img_info_end.imageId;
+
+			status = omgt_pa_freeze_image(g_portHandle, img_id_end, &img_id_end);
+			if (status != FSUCCESS) {
+				fprintf(stderr, "%s: failed to freeze image at %s\n", __func__, ctime((time_t *)&img_id_end.imageTime.absoluteTime));
+				return status;
+			}
+		}
+	} else if (begin || end) {
+		DBGPRINT("%s: Ignoring begin and/or end as we are getting counters direct from PMA", __func__);
 	}
 #endif
 	for (p=cl_qmap_head(&fabricp->AllNodes); p != cl_qmap_end(&fabricp->AllNodes); p = cl_qmap_next(p),i++) {
@@ -2685,78 +2731,22 @@ FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabric
 				continue;
 
 #ifdef PRODUCT_OPENIB_FF
-
 			/* use PaClient if available */
-			if (g_paclient_state == OMGT_SERVICE_STATE_OPERATIONAL)
-			{
-				if (!first_portp)
-					lid = portp->PortInfo.LID;
+			if (g_paclient_state == OMGT_SERVICE_STATE_OPERATIONAL) {
+				if (!first_portp) lid = portp->PortInfo.LID;
 
 				//if getting port counters by time, get latest counters first
 				STL_PORT_COUNTERS_DATA portCounters1 = {0};
-				STL_PA_IMAGE_ID_DATA imageIdQuery1 = {0};
 
-				imageIdQuery1.imageNumber = (end || begin) ? PACLIENT_IMAGE_TIMED : PACLIENT_IMAGE_CURRENT;
-				imageIdQuery1.imageTime.absoluteTime = end ? end : begin;
-
-				status = FERROR;
-				//verify pa has necessary capabilities
-				STL_CLASS_PORT_INFO * portInfo;
-				if (omgt_pa_get_classportinfo(g_portHandle, &portInfo) == FSUCCESS){
-					STL_PA_CLASS_PORT_INFO_CAPABILITY_MASK paCap;
-					memcpy(&paCap, &portInfo->CapMask, sizeof(STL_PA_CLASS_PORT_INFO_CAPABILITY_MASK));
-					//if trying to query by time, check if feature available
-					if (begin || end){
-						if (!(paCap.s.IsAbsTimeQuerySupported)){
-							DBGPRINT("PA does not support time queries\n");
-							status = FERROR;
-						}else{
-							status = FSUCCESS;
-						}
-					}
-					MemoryDeallocate(portInfo);
-				}else {
-						DBGPRINT("failed to determine PA capabilities\n");
-						status = FERROR;
-				}
-
-
-				status = omgt_pa_get_port_stats2(g_portHandle, imageIdQuery1, lid, portp->PortNum,
-							NULL, &portCounters1, NULL, 0, !(end || begin)); //last param is user_counters flag,
-							                                                 //if begin or end set we want raw
-							                                                 //counters
-				if (FSUCCESS == status){
-					if (begin && end){// need to perform another query
-						STL_PA_IMAGE_ID_DATA imageIdQuery2 = {0};
-
-						imageIdQuery2.imageNumber = PACLIENT_IMAGE_TIMED;
-						imageIdQuery2.imageTime.absoluteTime = begin; //we got counters for end first
-
-						STL_PORT_COUNTERS_DATA portCounters2 = {0};
-
-						status = omgt_pa_get_port_stats2(g_portHandle, imageIdQuery2, lid, portp->PortNum,
-								NULL, &portCounters2, NULL, 0, 0);
-
-						if (FSUCCESS == status){
-							CounterSelectMask_t clearedCounters = DiffPACounters(&portCounters1, &portCounters2, &portCounters1);
-							if (clearedCounters.AsReg32){
-								char counterBuf[128];
-								FormatStlCounterSelectMask(counterBuf, clearedCounters);
-								fprintf(stderr, "Counters reset, reporting latest count: %s\n", counterBuf);
-							}
-							StlPortCountersToPortStatus(&portCounters1, &PortStatusData);
-						}
-					}else{
-						StlPortCountersToPortStatus(&portCounters1, &PortStatusData);
-					}
+				status = omgt_pa_get_port_stats2(g_portHandle, img_id_end, lid, portp->PortNum,
+					NULL, &portCounters1, NULL, 0, !(end || begin)); //last param is user_counters flag,
+																	 //if begin or end set we want raw counters
+				if (FSUCCESS == status) {
+					PortCountersData = portCounters1;
 				}
 			}
 #endif
-			/* issue direct PMA query */
-			else {
-				if (begin || end){
-					continue;
-				}
+			else { /* issue direct PMA query */
 				STL_PORT_STATUS_RSP PortStatus;
 
 				if (! PortHasPma(portp))
@@ -2783,37 +2773,7 @@ FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabric
 					}
 				}
 				if (FSUCCESS == status) {
-					PortStatusData.PortXmitData = PortStatus.PortXmitData;
-					PortStatusData.PortRcvData = PortStatus.PortRcvData;
-					PortStatusData.PortXmitPkts = PortStatus.PortXmitPkts;
-					PortStatusData.PortRcvPkts = PortStatus.PortRcvPkts;
-					PortStatusData.PortMulticastXmitPkts = PortStatus.PortMulticastXmitPkts;
-					PortStatusData.PortMulticastRcvPkts = PortStatus.PortMulticastRcvPkts;
-					PortStatusData.LocalLinkIntegrityErrors = PortStatus.LocalLinkIntegrityErrors;
-					PortStatusData.FMConfigErrors = PortStatus.FMConfigErrors;
-					PortStatusData.PortRcvErrors = PortStatus.PortRcvErrors;
-					PortStatusData.ExcessiveBufferOverruns = PortStatus.ExcessiveBufferOverruns;
-					PortStatusData.PortRcvConstraintErrors = PortStatus.PortRcvConstraintErrors;
-					PortStatusData.PortRcvSwitchRelayErrors = PortStatus.PortRcvSwitchRelayErrors;
-					PortStatusData.PortXmitDiscards = PortStatus.PortXmitDiscards;
-					PortStatusData.PortXmitConstraintErrors = PortStatus.PortXmitConstraintErrors;
-					PortStatusData.PortRcvRemotePhysicalErrors = PortStatus.PortRcvRemotePhysicalErrors;
-					PortStatusData.SwPortCongestion = PortStatus.SwPortCongestion;
-					PortStatusData.PortXmitWait = PortStatus.PortXmitWait;
-					PortStatusData.PortRcvFECN = PortStatus.PortRcvFECN;
-					PortStatusData.PortRcvBECN = PortStatus.PortRcvBECN;
-					PortStatusData.PortXmitTimeCong = PortStatus.PortXmitTimeCong;
-					PortStatusData.PortXmitWastedBW = PortStatus.PortXmitWastedBW;
-					PortStatusData.PortXmitWaitData = PortStatus.PortXmitWaitData;
-					PortStatusData.PortRcvBubble = PortStatus.PortRcvBubble;
-					PortStatusData.PortMarkFECN = PortStatus.PortMarkFECN;
-					PortStatusData.LinkErrorRecovery  = PortStatus.LinkErrorRecovery;
-					PortStatusData.LinkDowned  = PortStatus.LinkDowned;
-					PortStatusData.UncorrectableErrors = PortStatus.UncorrectableErrors;
-					PortStatusData.lq = PortStatus.lq;
-					PortStatusData.lq.AsReg8 |= ((portp->PortInfo.LinkWidthDowngrade.RxActive < portp->PortInfo.LinkWidth.Active ?
-						StlLinkWidthToInt(portp->PortInfo.LinkWidth.Active) -
-						StlLinkWidthToInt(portp->PortInfo.LinkWidthDowngrade.RxActive) : 0) << 4);
+					StlPortStatusToPortCounters(&PortStatus, &PortCountersData, &portp->PortInfo);
 				}
 			}
 
@@ -2829,8 +2789,9 @@ FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabric
 				continue;
 			}
 
-			portp->pPortStatus = (STL_PortStatusData_t*)MemoryAllocate2AndClear(sizeof(STL_PortStatusData_t), IBA_MEM_FLAG_PREMPTABLE, MYTAG);
-			if (! portp->pPortStatus) {
+			portp->pPortCounters = (STL_PORT_COUNTERS_DATA *)MemoryAllocate2AndClear(sizeof(STL_PORT_COUNTERS_DATA),
+				IBA_MEM_FLAG_PREMPTABLE, MYTAG);
+			if (! portp->pPortCounters) {
 				DBGPRINT("Unable to allocate memory for Port Counters for Port %d LID 0x%08x Node 0x%016"PRIx64"\n",
 					portp->PortNum, portp->EndPortLID,
 					portp->nodep->NodeInfo.NodeGUID);
@@ -2842,7 +2803,7 @@ FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabric
 				continue;
 			}
 
-			*(portp->pPortStatus) = PortStatusData;
+			*(portp->pPortCounters) = PortCountersData;
 			got = TRUE;
 		}
 		if (got)
@@ -2850,6 +2811,91 @@ FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabric
 		if (fail)
 			nrsp_node_count++;
 	}
+#ifdef PRODUCT_OPENIB_FF
+	if ((begin || end) && (g_paclient_state == OMGT_SERVICE_STATE_OPERATIONAL)) {
+		status = omgt_pa_release_image(g_portHandle, img_id_end);
+		if (status != FSUCCESS) {
+			fprintf(stderr, "%s: failed to release frozen image at %s\n", __func__, ctime((time_t *)&img_id_end.imageTime.absoluteTime));
+			return status;
+		}
+	}
+	if (begin && end && (g_paclient_state == OMGT_SERVICE_STATE_OPERATIONAL)) {
+		STL_PA_IMAGE_INFO_DATA img_info_begin = {{0}};
+		// Verify Image exists
+		img_id_begin.imageNumber = PACLIENT_IMAGE_TIMED;
+		img_id_begin.imageTime.absoluteTime = begin;
+		status = omgt_pa_get_image_info(g_portHandle, img_id_begin, &img_info_begin);
+		if (status != FSUCCESS) {
+			fprintf(stderr, "%s: failed to get image info at %s\n", __func__, ctime((time_t *)&img_id_begin.imageTime.absoluteTime));
+			return status;
+		}
+		img_id_begin = img_info_begin.imageId;
+
+		status = omgt_pa_freeze_image(g_portHandle, img_id_begin, &img_id_begin);
+		if (status == FSUCCESS) {
+			for (i = 0, p = cl_qmap_head(&fabricp->AllNodes); p != cl_qmap_end(&fabricp->AllNodes); p = cl_qmap_next(p), i++)
+			{
+				NodeData *nodep = PARENT_STRUCT(p, NodeData, AllNodesEntry);
+				PortData *first_portp;
+				cl_map_item_t *q;
+
+				if (limitstats && focus && ! CompareNodePoint(nodep, focus))
+					continue;
+				if (i%PROGRESS_FREQ == 0)
+					if (! quiet) ProgressPrint(FALSE, "Processed %6d of %6d Nodes...", i, num_nodes);
+				if (cl_qmap_head(&nodep->Ports) == cl_qmap_end(&nodep->Ports))
+					continue; /* no ports */
+				/* issue all switch PMA requests to port 0, its only one with a LID */
+				if (nodep->NodeInfo.NodeType == STL_NODE_SW) {
+					first_portp = PARENT_STRUCT(cl_qmap_head(&nodep->Ports), PortData, NodePortsEntry);
+					lid = first_portp->PortInfo.LID;
+				} else {
+					first_portp = NULL;
+				}
+
+				for (q=cl_qmap_head(&nodep->Ports); q != cl_qmap_end(&nodep->Ports); q = cl_qmap_next(q)) {
+					PortData *portp = PARENT_STRUCT(q, PortData, NodePortsEntry);
+
+					if (focus && ! ComparePortPoint(portp, focus)
+						&& (limitstats || ! portp->neighbor || ! ComparePortPoint(portp->neighbor, focus)))
+						continue;
+					if (!portp->pPortCounters) continue;
+
+					if (!first_portp) lid = portp->PortInfo.LID;
+
+					STL_PORT_COUNTERS_DATA portCounters2 = {0};
+
+					status = omgt_pa_get_port_stats2(g_portHandle, img_id_begin, lid, portp->PortNum,
+						NULL, &portCounters2, NULL, 0, 0);
+					if (FSUCCESS == status) {
+
+						CounterSelectMask_t clearedCounters = DiffPACounters(
+							portp->pPortCounters, &portCounters2, portp->pPortCounters);
+
+						if (clearedCounters.AsReg32) {
+							char counterBuf[128];
+
+							FormatStlCounterSelectMask(counterBuf, clearedCounters);
+							fprintf(stderr, "Counters reset on LID 0x%x port %u Node 0x%016"PRIx64" Name: %.*s, reporting latest count: %s\n",
+								lid, portp->PortNum, portp->nodep->NodeInfo.NodeGUID,
+								STL_NODE_DESCRIPTION_ARRAY_SIZE, (char *)portp->nodep->NodeDesc.NodeString,
+								counterBuf);
+						}
+					}
+				}
+			} // END: for all nodes
+			status = omgt_pa_release_image(g_portHandle, img_id_begin);
+			if (status != FSUCCESS) {
+				fprintf(stderr, "%s: failed to release frozen image at %s\n", __func__, ctime((time_t *)&img_id_begin.imageTime.absoluteTime));
+				return status;
+			}
+		} else if (status != FSUCCESS) {
+			fprintf(stderr, "%s: failed to freeze image at %s\n", __func__, ctime((time_t *)&img_id_begin.imageTime.absoluteTime));
+			return status;
+		}
+	}
+#endif
+
 
 	//Close the opamgt port handle
 	if (g_portHandle) {

@@ -2122,17 +2122,17 @@ FSTATUS FindLinkQualityPoint(FabricData_t *fabricp, uint16 quality, LinkQualityC
 			PortData *portp = (PortData *)QListObj(p);
 
 			boolean match = FALSE;
-			if (!portp->pPortStatus)
+			if (!portp->pPortCounters)
 				continue;
 			switch (comp) {
 			case QUAL_EQ:
-				match = (uint16)(portp->pPortStatus->lq.s.LinkQualityIndicator) == quality;
+				match = (uint16)(portp->pPortCounters->lq.s.linkQualityIndicator) == quality;
 				break;
 			case QUAL_GE:
-				match = (uint16)(portp->pPortStatus->lq.s.LinkQualityIndicator) >= quality;
+				match = (uint16)(portp->pPortCounters->lq.s.linkQualityIndicator) >= quality;
 				break;
 			case QUAL_LE:
-				match = (uint16)(portp->pPortStatus->lq.s.LinkQualityIndicator) <= quality;
+				match = (uint16)(portp->pPortCounters->lq.s.linkQualityIndicator) <= quality;
 				break;
 			default:
 				break;

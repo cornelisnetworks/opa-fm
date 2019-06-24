@@ -1,4 +1,4 @@
-/* BEGIN_ICS_COPYRIGHT5 ****************************************
+/* BEGIN_ICS_COPYRIGHT2 ****************************************
 
 Copyright (c) 2015-2017, Intel Corporation
 
@@ -25,46 +25,26 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
- * ** END_ICS_COPYRIGHT5   ****************************************/
+** END_ICS_COPYRIGHT2   ****************************************/
 
-#include <stdio.h>
+/* [ICS VERSION STRING: unknown] */
+
+#ifndef _FM_DIGEST_HELPER_H_
+#define _FM_DIGEST_HELPER_H_
+
+#include <stdint.h>
 #include <stdlib.h>
-#include <stdarg.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include "ib_types.h"
+#include <stdio.h>
+#include <openssl/evp.h>
 
-#ifndef __VXWORKS__
-#include <openssl/md5.h>
-#else
-#include <Md5.h>
+typedef EVP_MD_CTX fm_digest_t;
+
+// maximum length in bytes of a hash across all supported digests
+#define FM_DIGEST_MAX 32
+
+fm_digest_t * fm_digest_start(void);
+int fm_digest_update(fm_digest_t *ctx, const void *data, size_t len);
+int fm_digest_finish(fm_digest_t *ctx, uint8_t *digest);
+int fm_digest_len(fm_digest_t * ctx);
+
 #endif
-
-void fm_md5_start(void *ctx)
-{
-#ifndef __VXWORKS__
-	MD5_Init((MD5_CTX *)ctx);
-#else
-	Md5_Start((Md5_Context_t *)ctx);
-#endif
-}
-
-void fm_md5_update(void *ctx, const void *data, size_t len)
-{
-#ifndef __VXWORKS__
-	MD5_Update((MD5_CTX *)ctx, data, len);
-#else
-	Md5_Update((Md5_Context_t *)ctx, (unsigned char *)data, len);
-#endif
-}
-
-void fm_md5_finish(void *ctx, uint8_t *computedMd5)
-{
-#ifndef __VXWORKS__
-	MD5_Final(computedMd5, (MD5_CTX *)ctx);
-#else
-	Md5_Finish((Md5_Context_t *)ctx, computedMd5);
-#endif
-
-}

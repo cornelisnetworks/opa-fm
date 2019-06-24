@@ -448,6 +448,7 @@ void PrintStlPMConfig(PrintDest_t *dest, int indent, const STL_PA_PM_CFG_DATA *p
 	return;
 }
 
+
 void PrintStlPAFocusPorts(PrintDest_t *dest, int indent, const char *groupName, const int numRecords, const uint32 select, const uint32 start, const uint32 range,
 	const STL_FOCUS_PORTS_RSP *pFocusPorts)
 {
@@ -463,14 +464,14 @@ void PrintStlPAFocusPorts(PrintDest_t *dest, int indent, const char *groupName, 
 				indent, "", i+start, pFocusPorts[i].nodeLid, pFocusPorts[i].portNumber,
 				StlStaticRateToText(pFocusPorts[i].rate), IbMTUToText(pFocusPorts[i].maxVlMtu),
 				pFocusPorts[i].neighborLid, pFocusPorts[i].neighborPortNumber);
-		if ( ( (select >= STL_PA_SELECT_CATEGORY_INTEG) &&
-			(select <= STL_PA_SELECT_CATEGORY_ROUT) ) ||
-			(select == STL_PA_SELECT_UTIL_PKTS_HIGH) ) {
-			PrintFunc(dest, "%*s   Value:  %16"PRIu64"   nbrValue:  %16"PRIu64"\n",
-					indent, "", pFocusPorts[i].value, pFocusPorts[i].neighborValue);
+		if (IS_FOCUS_SELECT_UTIL(select)) {
+			PrintFunc(dest, "%*s   Value:  %16.1f   nbrValue:  %16.1f\n",
+				indent, "", (float)pFocusPorts[i].value/10.0, (float)pFocusPorts[i].neighborValue/10.0);
+		} else if (IS_FOCUS_SELECT_NO_VAL(select)) {
+			// Skip print of Values
 		} else {
-			PrintFunc(dest, "%*s   Value:  %16.1f   nbrValue:   %16.1f\n",
-					indent, "", (float)pFocusPorts[i].value/10.0, (float)pFocusPorts[i].neighborValue/10.0);
+			PrintFunc(dest, "%*s   Value:  %16"PRIu64"   nbrValue:  %16"PRIu64"\n",
+				indent, "", pFocusPorts[i].value, pFocusPorts[i].neighborValue);
 		}
 		PrintFunc(dest, "%*s   GUID: 0x%016"PRIx64"   nbrGuid: 0x%016"PRIx64"\n",
 				indent, "", pFocusPorts[i].nodeGUID, pFocusPorts[i].neighborGuid);
@@ -518,14 +519,12 @@ void PrintStlPAFocusPortsMultiSelect(PrintDest_t *dest, int indent, const char *
 				pFocusPorts[i].neighborPortNumber);
 		for (j = 0; j < MAX_NUM_FOCUS_PORT_TUPLES; j++) {
 			if (tuple[j].comparator != FOCUS_PORTS_COMPARATOR_INVALID) {
-				if ( ( (tuple[j].select >= STL_PA_SELECT_CATEGORY_INTEG) &&
-					tuple[j].select <= STL_PA_SELECT_CATEGORY_ROUT) ||
-					(tuple[j].select == STL_PA_SELECT_UTIL_PKTS_HIGH) ) {
-					PrintFunc(dest, "%*s   %-22s Value:  %16"PRIu64"   nbrValue:  %16"PRIu64"\n",
-						indent, "", StlFocusAttributeToText(tuple[j].select), pFocusPorts[i].value[j], pFocusPorts[i].neighborValue[j]);
-				} else {
+				if (IS_FOCUS_SELECT_UTIL(tuple[j].select)) {
 					PrintFunc(dest, "%*s   %-22s Value:  %16.1f"   "   nbrValue:  %16.1f\n",
 						indent, "", StlFocusAttributeToText(tuple[j].select), (float)pFocusPorts[i].value[j]/10.0, (float)pFocusPorts[i].neighborValue[j]/10.0);
+				} else {
+					PrintFunc(dest, "%*s   %-22s Value:  %16"PRIu64"   nbrValue:  %16"PRIu64"\n",
+						indent, "", StlFocusAttributeToText(tuple[j].select), pFocusPorts[i].value[j], pFocusPorts[i].neighborValue[j]);
 				}
 			}
 		}
@@ -769,13 +768,15 @@ void PrintStlPAVFFocusPorts(PrintDest_t *dest, int indent, const char *vfName, c
 				pVFFocusPorts[i].neighborLid, pVFFocusPorts[i].neighborPortNumber);
 
 		if (IS_FOCUS_SELECT_UTIL(select)) {
-			PrintFunc(dest, "%*s   Value:   %16.1f   nbrValue:  %16.1f\n",
-					indent, "", (float)pVFFocusPorts[i].value / 10.0, (float)pVFFocusPorts[i].neighborValue / 10.0);
+			PrintFunc(dest, "%*s   Value:  %16.1f   nbrValue:  %16.1f\n",
+				indent, "", (float)pVFFocusPorts[i].value/10.0, (float)pVFFocusPorts[i].neighborValue/10.0);
+		} else if (IS_FOCUS_SELECT_NO_VAL(select)) {
+			// Skip print of Values
 		} else {
-			PrintFunc(dest, "%*s   Value:   %16"PRIu64"   nbrValue:  %16"PRIu64"\n",
-					indent, "", pVFFocusPorts[i].value, pVFFocusPorts[i].neighborValue);
+			PrintFunc(dest, "%*s   Value:  %16"PRIu64"   nbrValue:  %16"PRIu64"\n",
+				indent, "", pVFFocusPorts[i].value, pVFFocusPorts[i].neighborValue);
 		}
-		PrintFunc(dest, "%*s   GUID:  0x%016"PRIx64"   nbrGuid: 0x%016"PRIx64"\n",
+		PrintFunc(dest, "%*s   GUID: 0x%016"PRIx64"   nbrGuid: 0x%016"PRIx64"\n",
 				indent, "", pVFFocusPorts[i].nodeGUID, pVFFocusPorts[i].neighborGuid);
 		PrintFunc(dest, "%*s   Status: %s Name: %.*s\n",
 				indent, "",

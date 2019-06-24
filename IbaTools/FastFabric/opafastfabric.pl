@@ -653,7 +653,7 @@ DO_MENU:
 	if ($screens > 1 ) {
 		printf ("N) Next Screen\n");
 	}
-	printf (  "X) Return to Previous Menu (or ESC)\n");
+	printf (  "X) Return to Previous Menu (or ESC or Q)\n");
 	$inp = getch();
 	
 	if ($inp =~ /[qQ]/ || $inp =~ /[xX]/ || ord($inp) == $KEY_ESC) {
@@ -1485,7 +1485,7 @@ DO_SETUP:
 	}
 
 	printf ("\nP) Perform the Selected Actions              N) Select None\n");
-	printf (  "X) Return to Previous Menu (or ESC)\n");
+	printf (  "X) Return to Previous Menu (or ESC or Q)\n");
 			
 	%statusMessage = ();
 
@@ -2036,7 +2036,7 @@ DO_SETUP:
 	}
 
 	printf ("\nP) Perform the Selected Actions              N) Select None\n");
-	printf (  "X) Return to Previous Menu (or ESC)\n");
+	printf (  "X) Return to Previous Menu (or ESC or Q)\n");
 			
 	%statusMessage = ();
 
@@ -2113,7 +2113,7 @@ DO_SETUP:
 	}
 
 	printf ("\nP) Perform the Selected Actions              N) Select None\n");
-	printf (  "X) Return to Previous Menu (or ESC)\n");
+	printf (  "X) Return to Previous Menu (or ESC or Q)\n");
 			
 	%statusMessage = ();
 
@@ -2879,7 +2879,7 @@ DO_SETUP:
 	}
 
 	printf ("\nP) Perform the Selected Actions              N) Select None\n");
-	printf (  "X) Return to Previous Menu (or ESC)\n");
+	printf (  "X) Return to Previous Menu (or ESC or Q)\n");
 			
 	%statusMessage = ();
 
@@ -3233,7 +3233,7 @@ DO_SETUP:
 	}
 
 	printf ("\nP) Perform the Selected Actions              N) Select None\n");
-	printf (  "X) Return to Previous Menu (or ESC)\n");
+	printf (  "X) Return to Previous Menu (or ESC or Q)\n");
 			
 	%statusMessage = ();
 
@@ -3295,7 +3295,7 @@ START:
 	printf ("   3) Host Setup\n");
 	printf ("   4) Host Verification/Admin\n");
 	printf ("   5) Fabric Monitoring\n");
-	printf ("\n   X) Exit\n");
+	printf ("\n   X) Exit (or Q)\n");
 
 	$inp = getch();      
 

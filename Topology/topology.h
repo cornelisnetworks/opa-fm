@@ -99,8 +99,6 @@ typedef struct QOSData_s {
 } QOSData;
 
 
-typedef STL_PORT_STATUS_RSP STL_PortStatusData_t;
-
 // How many STL_CABLE_INFO structs to store per port
 #define PORTDATA_CABLEINFO_SIZE	4
 #define IFACE_MACLIST_SIZE		512
@@ -128,7 +126,7 @@ typedef struct PortData_s {
 
 	STL_LED_INFO LedInfo;			//Led Info for this port
 	IB_PATH_RECORD *pathp;			// Path Record to send to this port
-	STL_PortStatusData_t *pPortStatus;
+	STL_PORT_COUNTERS_DATA *pPortCounters;
 	struct ExpectedLink_s *elinkp;	// if supplied in topology input
 	QOSData		*pQOS;				// optional QOS
 	STL_PKEY_ELEMENT	*pPartitionTable;	// optional Partition Table
@@ -1081,7 +1079,7 @@ extern boolean NodeHasPma(NodeData *nodep);
 extern boolean PortHasPma(PortData *portp);
 extern void UpdateNodePmaCapabilities(NodeData *nodep, boolean ProcessHFICounters);
 extern FSTATUS STLPmGetClassPortInfo(struct omgt_port *port, PortData *portp);
-extern FSTATUS STLPmGetPortStatus(struct omgt_port *port, PortData *portp, uint8 portNum, STL_PortStatusData_t *pPortStatus);
+extern FSTATUS STLPmGetPortStatus(struct omgt_port *port, PortData *portp, uint8 portNum, STL_PORT_STATUS_RSP *pPortStatus);
 extern FSTATUS STLPmClearPortCounters(struct omgt_port *port, PortData *portp, uint8 lastPortIndex, uint32 counterselect);
 #if !defined(VXWORKS) || defined(BUILD_DMC)
 extern FSTATUS DmGetIouInfo(struct omgt_port *port, IB_PATH_RECORD *pathp, IOUnitInfo *pIouInfo);

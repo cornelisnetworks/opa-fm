@@ -70,13 +70,17 @@ my @Components_sles12_sp3 = ( "opa_stack",
 		@OmniPathAllComponents );
 my @Components_sles12_sp4 = ( "opa_stack",
 		@OmniPathAllComponents );
+my @Components_sles15 = ( "opa_stack",
+		@OmniPathAllComponents );
+my @Components_sles15_sp1 = ( "opa_stack",
+		@OmniPathAllComponents );
 my @Components_rhel74 = ( "opa_stack", "mpi_selector",
 		@OmniPathAllComponents );
 my @Components_rhel75 = ( "opa_stack", "mpi_selector",
 		@OmniPathAllComponents );
 my @Components_rhel76 = ( "opa_stack", "mpi_selector",
 		@OmniPathAllComponents );
-my @Components_sles15 = ( "opa_stack",
+my @Components_rhel8 = ( "opa_stack", "mpi_selector",
 		@OmniPathAllComponents );
 
 @Components = ( );
@@ -684,7 +688,7 @@ my %opa_stack_sles12_sp4_comp_info = (
 					},
 );
 
-# for SLES15
+# for SLES15.x
 my %opa_stack_sles15_comp_info = (
 	"opa_stack" =>	{ Name => "OFA OPA Stack",
 					  DefaultInstall => $State_Install,
@@ -809,6 +813,37 @@ my %intel_hfi_comp_info = (
 					  StartupParams => [ ]
 					},
 );
+#
+# for RHEL8, which does not currently support opa_stack and does not require libfabric-psm
+my %intel_hfi_rhel8_comp_info = (
+	"intel_hfi" =>	{ Name => "Intel HFI Components",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  PreReq => " opa_stack ", CoReq => " oftools ",
+						# TBD - HasFirmware - FW update
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [
+									"hfi1-firmware", "hfi1-firmware_debug"
+								],
+					  UserRpms => [ #"libhfi1", "libhfi1-static",
+									"libpsm2",
+									"libpsm2-devel", "libpsm2-compat",
+									"libfabric", "libfabric-devel",
+									"libfabric-psm2", "libfabric-verbs",
+									"hfi1-diagtools-sw", "hfidiags",
+								],
+					  DebugRpms =>  [ #"hfi1_debuginfo",
+									"hfi1-diagtools-sw-debuginfo",
+									"libpsm2-debuginfo", #"libhfi1-debuginfo"
+								],
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ "intel_hfi" ],
+					  StartupScript => "",
+					  StartupParams => [ ]
+					},
+);
 
 # For SLES12sp3 that has different name for libpsm2
 my %intel_hfi_sles123_comp_info = (
@@ -870,7 +905,7 @@ my %intel_hfi_sles124_comp_info = (
 					},
 );
 
-# For SLES15 that has different name for libpsm2
+# For SLES15.x that has different name for libpsm2
 my %intel_hfi_sles15_comp_info = (
 	"intel_hfi" =>	{ Name => "Intel HFI Components",
 					  DefaultInstall => $State_Install,
@@ -1105,8 +1140,24 @@ sub init_components
 						%opa_stack_dev_comp_info,
 						%opa_stack_rhel_comp_info,
 						);
+	} elsif ( "$CUR_VENDOR_VER" eq "ES8" ) {
+		@Components = ( @Components_rhel8 );
+		@SubComponents = ( @SubComponents_newer );
+		%ComponentInfo = ( %ComponentInfo, %ibacm_comp_info,
+						%intel_hfi_rhel8_comp_info,
+						%opa_stack_dev_comp_info,
+						%opa_stack_rhel_comp_info,
+						);
 	} elsif ( "$CUR_VENDOR_VER" eq "ES15" ) {
 		@Components = ( @Components_sles15 );
+		@SubComponents = ( @SubComponents_newer );
+		%ComponentInfo = ( %ComponentInfo, %ibacm_comp_info,
+						%intel_hfi_sles15_comp_info,
+						%opa_stack_dev_comp_info,
+						%opa_stack_sles15_comp_info,
+						);
+	} elsif ( "$CUR_VENDOR_VER" eq "ES151" ) {
+		@Components = ( @Components_sles15_sp1 );
 		@SubComponents = ( @SubComponents_newer );
 		%ComponentInfo = ( %ComponentInfo, %ibacm_comp_info,
 						%intel_hfi_sles15_comp_info,

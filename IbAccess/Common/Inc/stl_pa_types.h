@@ -112,7 +112,13 @@ StlPaClassPortInfoCapMask2(char buf[80], uint32 cmask)
 	}
 }
 
-// Check to see if the VF Focus select is an UTIL BW category
+// Check to see if the Focus Select has no Value
+#define IS_FOCUS_SELECT_NO_VAL(SELECT) \
+	((SELECT == STL_PA_SELECT_UNEXP_CLR_PORT) || \
+	(SELECT == STL_PA_SELECT_NO_RESP_PORT) || \
+	(SELECT == STL_PA_SELECT_SKIPPED_PORT))
+
+// Check to see if the Focus select is an UTIL BW category
 #define IS_FOCUS_SELECT_UTIL(SELECT) \
 	((SELECT == STL_PA_SELECT_UTIL_HIGH) || \
 	(SELECT == STL_PA_SELECT_UTIL_LOW) || \

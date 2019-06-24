@@ -78,7 +78,17 @@ my @delta_Components_rhel76 = ( "opa_stack", "mpi_selector", "intel_hfi",
 		"delta_ipoib",
 		"sandiashmem",
 		"delta_debug", );
+my @delta_Components_rhel8 = ( "opa_stack", "mpi_selector", "intel_hfi",
+		"opa_stack_dev",
+		"delta_ipoib",
+		"sandiashmem",
+		"delta_debug", );
 my @delta_Components_sles15 = ( "opa_stack", "intel_hfi",
+		"opa_stack_dev",
+		"delta_ipoib",
+		"sandiashmem",
+		"delta_debug", );
+my @delta_Components_sles15_sp1 = ( "opa_stack", "intel_hfi",
 		"opa_stack_dev",
 		"delta_ipoib",
 		"sandiashmem",
@@ -111,8 +121,12 @@ sub overrides()
 		@Components = ( @delta_Components_rhel75 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES76" ) {
 		@Components = ( @delta_Components_rhel76 );
+	} elsif ( "$CUR_VENDOR_VER" eq "ES8" ) {
+		@Components = ( @delta_Components_rhel8 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES15" ) {
 		@Components = ( @delta_Components_sles15 );
+	} elsif ( "$CUR_VENDOR_VER" eq "ES151" ) {
+		@Components = ( @delta_Components_sles15_sp1 );
 	} else {
 		# unsupported OS
 		@Components = ( );

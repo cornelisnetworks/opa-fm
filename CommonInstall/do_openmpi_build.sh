@@ -492,7 +492,11 @@ logfile=make.openmpi.$interface.$compiler
 
 	case "$compiler" in
 	gcc)
-		openmpi_comp_env="$openmpi_comp_env CC=gcc CFLAGS=-O3"
+		if [[ ( "$ID" == "rhel"  &&  $(echo "$VERSION_ID == 8.0" | bc -l) == 1 ) ]]; then
+			openmpi_comp_env="$openmpi_comp_env CC=gcc CFLAGS="-O3 -fPIC""
+		else
+			openmpi_comp_env="$openmpi_comp_env CC=gcc CFLAGS=-O3"
+		fi
 		if have_comp g++
 		then
 			openmpi_comp_env="$openmpi_comp_env CXX=g++"
@@ -727,7 +731,7 @@ egrep 'warning:' $logfile.res |sort -u |
 #egrep 'error:|Error | Stop' $logfile.res| sort -u |
 #	egrep -v 'error: this file was generated for autoconf 2.61.' > $logfile.err
 egrep 'error:|Error | Stop' $logfile.res| sort -u |
-	egrep -v 'configure: error: no BPatch.h found; check path for Dyninst package|configure: error: no vtf3.h found; check path for VTF3 package|configure: error: MPI Correctness Checking support cannot be built inside Open MPI|configure: error: no bmi.h found; check path for BMI package first...|configure: error: no ctool/ctool.h found; check path for CTool package first...|configure: error: no cuda.h found; check path for CUDA Toolkit first...|configure: error: no cuda_runtime_api.h found; check path for CUDA Toolkit first...|configure: error: no cupti.h found; check path for CUPTI package first...|configure: error: no f2c.h found; check path for CLAPACK package first...|configure: error: no jvmti.h found; check path for JVMTI package first...|configure: error: no libcpc.h found; check path for CPC package first...|configure: error: no tau_instrumentor found; check path for PDToolkit first...|configure: error: no unimci-config found; check path for UniMCI package first...|"Error code:|"Unknown error:|strerror_r|configure: error: CUPTI API version could not be determined...' > $logfile.err
+	egrep -v 'configure: error: no BPatch.h found; check path for Dyninst package|configure: error: no vtf3.h found; check path for VTF3 package|configure: error: MPI Correctness Checking support cannot be built inside Open MPI|configure: error: no bmi.h found; check path for BMI package first...|configure: error: no ctool/ctool.h found; check path for CTool package first...|configure: error: no cuda.h found; check path for CUDA Toolkit first...|configure: error: no cuda_runtime_api.h found; check path for CUDA Toolkit first...|configure: error: no cupti.h found; check path for CUPTI package first...|configure: error: no f2c.h found; check path for CLAPACK package first...|configure: error: no jvmti.h found; check path for JVMTI package first...|configure: error: no libcpc.h found; check path for CPC package first...|configure: error: no tau_instrumentor found; check path for PDToolkit first...|configure: error: no unimci-config found; check path for UniMCI package first...|"Error code:|"Unknown error:|strerror_r|configure: error: CUPTI API version could not be determined...|asprintf(&msg, "Unexpected sendto() error: errno=%d (%s)",' > $logfile.err
 
 if [ -s $logfile.err ]
 then

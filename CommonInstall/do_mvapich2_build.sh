@@ -511,6 +511,9 @@ logfile=make.mvapich2.$interface.$compiler
 				mvapich2_comp_env='CC="gcc -m64" CXX="g++ -m64" F77="gfortran -m64" FC="gfortran -m64"'
 			else
 				mvapich2_comp_env='CC=gcc CXX=g++ F77=gfortran FC=gfortran'
+				if [[ ( "$ID" == "rhel"  &&  $(echo "$VERSION_ID == 8.0" | bc -l) == 1 ) ]]; then
+					mvapich2_comp_env="$mvapich2_comp_env CFLAGS='-fPIC'"
+				fi
 			fi
 		else
 			if [ "$ARCH" = "PPC64" ]
@@ -518,6 +521,9 @@ logfile=make.mvapich2.$interface.$compiler
 				mvapich2_comp_env='CC="gcc -m64" CXX="g++ -m64" F77="g77 -m64" FC="/bin/false"'
 			else
 				mvapich2_comp_env='CC=gcc CXX=g++ F77=g77 FC=/bin/false'
+				if [[ ( "$ID" == "rhel"  &&  $(echo "$VERSION_ID == 8.0" | bc -l) == 1 ) ]]; then
+					mvapich2_comp_env="$mvapich2_comp_env CFLAGS='-fPIC'"
+				fi
 			fi
 		fi;;
 

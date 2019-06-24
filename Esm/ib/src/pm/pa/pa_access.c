@@ -1888,27 +1888,35 @@ error:
 	goto done;
 }
 
-// Add to the list only once. Add only if localStatus is set or when neighborStatus is set and local lid is lesser than neighbor lid.
-#define CHECK_UNEXPECTED_CLEAR_STATUS() \
-	((STL_PA_SELECT_UNEXP_CLR_PORT == select) && \
-		(((STL_PA_FOCUS_STATUS_UNEXPECTED_CLEAR == localStatus ) && (STL_PA_FOCUS_STATUS_UNEXPECTED_CLEAR != neighborStatus)) || \
-		((STL_PA_FOCUS_STATUS_UNEXPECTED_CLEAR == localStatus) && (STL_PA_FOCUS_STATUS_UNEXPECTED_CLEAR == neighborStatus) && \
-		(lid < nbrPt->pmnodep->Image[imageIndex].lid))))
+
+static __inline uint8 SelectToStatus(uint32 select) {
+	switch (select) {
+	case STL_PA_SELECT_UNEXP_CLR_PORT: return STL_PA_FOCUS_STATUS_UNEXPECTED_CLEAR;
+	case STL_PA_SELECT_NO_RESP_PORT:   return STL_PA_FOCUS_STATUS_PMA_FAILURE;
+	case STL_PA_SELECT_SKIPPED_PORT:   return STL_PA_FOCUS_STATUS_PMA_IGNORE;
+	default:
+		return STL_PA_FOCUS_STATUS_OK;
+	}
+	return STL_PA_FOCUS_STATUS_OK;
+}
 
 // Add to the list only once. Add only if localStatus is set or when neighborStatus is set and local lid is lesser than neighbor lid.
-#define CHECK_PMA_NRSP_STATUS() \
-	((STL_PA_SELECT_NO_RESP_PORT == select) && \
-		(((STL_PA_FOCUS_STATUS_PMA_FAILURE == localStatus) && (STL_PA_FOCUS_STATUS_PMA_FAILURE != neighborStatus)) || \
-		((STL_PA_FOCUS_STATUS_PMA_FAILURE == localStatus) && (STL_PA_FOCUS_STATUS_PMA_FAILURE == neighborStatus) && \
-		(lid < nbrPt->pmnodep->Image[imageIndex].lid))))
+static __inline boolean isExtFocusSelect(uint32 select, uint32 imageIndex, PmPort_t *pmportp, STL_LID lid) {
+	PmPortImage_t *portImage = &pmportp->Image[imageIndex];
+	uint8 selectStatus, localStatus, neighborStatus;
+	PmPort_t *nbrPt = portImage->neighbor;
 
-// Add to the list only once. Add only if localStatus is set or when neighborStatus is set and local lid is lesser than neighbor lid.
-#define CHECK_SKIPPED_STATUS() \
-	((STL_PA_SELECT_SKIPPED_PORT == select) && \
-		(((STL_PA_FOCUS_STATUS_PMA_IGNORE == localStatus) && (STL_PA_FOCUS_STATUS_PMA_IGNORE != neighborStatus)) || \
-		((STL_PA_FOCUS_STATUS_PMA_IGNORE == localStatus) && (STL_PA_FOCUS_STATUS_PMA_IGNORE == neighborStatus) && \
-		(lid < nbrPt->pmnodep->Image[imageIndex].lid))))
+	selectStatus = SelectToStatus(select);
+	localStatus = pa_get_port_status(pmportp, imageIndex);
+	neighborStatus = (pmportp->portNum == 0 ?
+		STL_PA_FOCUS_STATUS_OK : pa_get_port_status(nbrPt, imageIndex));
 
+	return (
+		((selectStatus == localStatus ) && (selectStatus != neighborStatus))
+		|| ((selectStatus == localStatus) && (selectStatus == neighborStatus)
+			&& (lid < nbrPt->pmnodep->Image[imageIndex].lid))
+		);
+}
 
 FSTATUS processExtFocusPort(uint32 imageIndex, PmPort_t *pmportp, uint32 select, PmFocusPorts_t *pmFocusPorts, STL_LID lid)
 {
@@ -1920,7 +1928,7 @@ FSTATUS processExtFocusPort(uint32 imageIndex, PmPort_t *pmportp, uint32 select,
 	neighborStatus = (pmportp->portNum == 0 ?
 		STL_PA_FOCUS_STATUS_OK : pa_get_port_status(nbrPt, imageIndex));
 
-	if((CHECK_UNEXPECTED_CLEAR_STATUS()) || (CHECK_SKIPPED_STATUS()) || (CHECK_PMA_NRSP_STATUS())){
+	if(isExtFocusSelect(select, imageIndex, pmportp, lid)){
 		pmFocusPorts->portList[pmFocusPorts->portCntr].lid = lid;
 		pmFocusPorts->portList[pmFocusPorts->portCntr].portNum = pmportp->portNum;
 		pmFocusPorts->portList[pmFocusPorts->portCntr].localStatus = localStatus;
@@ -2030,12 +2038,16 @@ FSTATUS paGetExtFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPor
 	// If Success, but Index is still -1, then it is All Group
 	if (groupIndex == -1) isGroupAll = TRUE;
 
-	if(select == STL_PA_SELECT_UNEXP_CLR_PORT){
-		allocatedItems = pmimagep->UnexpectedClearPorts;
-	} else if( select == STL_PA_SELECT_NO_RESP_PORT) {
-		allocatedItems = pmimagep->NoRespNodes;
-	} else {
-		allocatedItems = pmimagep->SkippedNodes;
+	// Get number of links
+	for_all_pmnodes(pmimagep, pmnodep, lid) {
+		for_all_pmports(pmnodep, pmportp, portnum, !requiresLock) {
+			portImage = &pmportp->Image[imageIndex];
+			if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, NULL)) {
+				if (isExtFocusSelect(select, imageIndex, pmportp, lid)){
+					allocatedItems++;
+				}
+			}
+		}
 	}
 
 	if(allocatedItems == 0) {
@@ -2733,12 +2745,16 @@ FSTATUS paGetExtVFFocusPorts(Pm_t *pm, char *vfName, PmFocusPorts_t *pmVFFocusPo
 		goto done;
 	}
 
-	if(select == STL_PA_SELECT_UNEXP_CLR_PORT){
-		allocatedItems = pmimagep->UnexpectedClearPorts;
-	} else if( select == STL_PA_SELECT_NO_RESP_PORT) {
-		allocatedItems = pmimagep->NoRespNodes;
-	} else {
-		allocatedItems = pmimagep->SkippedNodes;
+	// Get number of links
+	for_all_pmnodes(pmimagep, pmnodep, lid) {
+		for_all_pmports(pmnodep, pmportp, portnum, !requiresLock) {
+			portImage = &pmportp->Image[imageIndex];
+			if (PmIsPortInVF(pmimagep, portImage, vfIdx)) {
+				if (isExtFocusSelect(select, imageIndex, pmportp, lid)){
+					allocatedItems++;
+				}
+			}
+		}
 	}
 
 	if(allocatedItems == 0) {

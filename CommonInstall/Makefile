@@ -96,7 +96,10 @@ CMD_TARGETS_MISC	=
 CLEAN_TARGETS_MISC	=  
 CLEAN_TARGETS		= $(OBJECTS) $(RSCOBJECTS) $(IDL_TARGETS) $(CLEAN_TARGETS_MISC)
 # other files to remove during clobber phase
-CLOBBER_TARGETS_MISC= comp_ff_of_prereq_RHEL72.pl comp_ff_of_prereq_RHEL73.pl comp_ff_of_prereq_RHEL74.pl comp_ff_of_prereq_RHEL75.pl comp_ff_of_prereq_RHEL76.pl comp_ff_of_prereq_SLES122.pl comp_ff_of_prereq_SLES123.pl comp_ff_of_prereq_SLES124.pl comp_ff_of_prereq_SLES15.pl comp_fm_prereq_RHEL72.pl comp_fm_prereq_RHEL73.pl comp_fm_prereq_RHEL74.pl comp_fm_prereq_RHEL75.pl comp_fm_prereq_RHEL76.pl comp_fm_prereq_SLES122.pl comp_fm_prereq_SLES123.pl comp_fm_prereq_SLES124.pl comp_fm_prereq_SLES15.pl
+CLOBBER_TARGETS_MISC= comp_ff_of_prereq_RHEL72.pl comp_ff_of_prereq_RHEL73.pl comp_ff_of_prereq_RHEL74.pl comp_ff_of_prereq_RHEL75.pl comp_ff_of_prereq_RHEL76.pl comp_ff_of_prereq_RHEL8.pl \
+                      comp_ff_of_prereq_SLES122.pl comp_ff_of_prereq_SLES123.pl comp_ff_of_prereq_SLES124.pl comp_ff_of_prereq_SLES15.pl comp_ff_of_prereq_SLES151.pl \
+                      comp_fm_prereq_RHEL72.pl comp_fm_prereq_RHEL73.pl comp_fm_prereq_RHEL74.pl comp_fm_prereq_RHEL75.pl comp_fm_prereq_RHEL76.pl comp_fm_prereq_RHEL8.pl \
+                      comp_fm_prereq_SLES122.pl comp_fm_prereq_SLES123.pl comp_fm_prereq_SLES124.pl comp_fm_prereq_SLES15.pl comp_fm_prereq_SLES151.pl
 # sub-directory to install to within bin
 BIN_SUBDIR		= 
 # sub-directory to install to within include
@@ -123,11 +126,13 @@ INCLUDE_SUBDIR		=
 LOCALDEPLIBS = 
 
 FF_FILES = comp_ff_of_prereq_RHEL72.pl comp_ff_of_prereq_RHEL73.pl comp_ff_of_prereq_RHEL74.pl \
-	comp_ff_of_prereq_RHEL75.pl comp_ff_of_prereq_RHEL76.pl comp_ff_of_prereq_SLES122.pl \
-	comp_ff_of_prereq_SLES123.pl comp_ff_of_prereq_SLES124.pl comp_ff_of_prereq_SLES15.pl
+	comp_ff_of_prereq_RHEL75.pl comp_ff_of_prereq_RHEL76.pl comp_ff_of_prereq_RHEL8.pl \
+	comp_ff_of_prereq_SLES122.pl comp_ff_of_prereq_SLES123.pl comp_ff_of_prereq_SLES124.pl \
+	comp_ff_of_prereq_SLES15.pl comp_ff_of_prereq_SLES151.pl
 FM_FILES = comp_fm_prereq_RHEL72.pl comp_fm_prereq_RHEL73.pl comp_fm_prereq_RHEL74.pl \
-	comp_fm_prereq_RHEL75.pl comp_fm_prereq_RHEL76.pl comp_fm_prereq_SLES122.pl \
-	comp_fm_prereq_SLES123.pl comp_fm_prereq_SLES124.pl comp_fm_prereq_SLES15.pl
+	comp_fm_prereq_RHEL75.pl comp_fm_prereq_RHEL76.pl comp_fm_prereq_RHEL8.pl \
+	comp_fm_prereq_SLES122.pl comp_fm_prereq_SLES123.pl comp_fm_prereq_SLES124.pl \
+	comp_fm_prereq_SLES15.pl comp_fm_prereq_SLES151.pl
 
 # Include Make Rules definitions and rules
 include $(TL_DIR)/$(PROJ_FILE_DIR)/Makerules.project

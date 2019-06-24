@@ -51,7 +51,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <fm_xml.h>
 #define _GNU_SOURCE
 
-#include "fm_md5.h"
+#include "fm_digest.h"
 
 #ifdef __VXWORKS__
 #include "Ism_Idb.h"
@@ -379,12 +379,12 @@ uint32_t xml_compute_pool_size(uint8_t full)
 
 static void *cksumBegin(void)
 {
-	ctx_t *ctx;
+	fm_digest_t *ctx = fm_digest_start();
 
-	ctx = getXmlMemory(sizeof(ctx_t), "ctx_t cksumBegin()");
-	if (!ctx) return NULL;
-
-	fm_md5_start((void *)ctx);
+	if (!ctx) {
+		fprintf(stderr, "%s: checksum algorithm initialization failed\n", __func__);
+		return NULL;
+	}
 
 	return (void *)ctx;
 }
@@ -393,29 +393,21 @@ static void cksumData(void *ctx, void *block, uint32_t length)
 {
 	if (!ctx || !block || !length) return;
 
-	// MD5 checksum
-	fm_md5_update((void *)ctx, block, length);
+	fm_digest_update(ctx, block, length);
 }
 
 static uint32_t cksumEnd(void *ctx)
 {
-	uint8_t computedMd5[16];
-	uint32_t sum = 0;
-	uint32_t *word;
-	uint32_t i;
+	uint8_t digest[FM_DIGEST_MAX];
+	uint32_t checksum = 0;
 
 	if (!ctx) return 0;
 
+	fm_digest_finish(ctx, digest);
 
-	// MD5 checksum
-	fm_md5_finish((void *)ctx, computedMd5);
+	checksum = *(uint32_t *)digest;
 
-	word = (uint32_t*)computedMd5;
-	for (i = 0; i < 4; i++) {
-		sum += word[i];
-	}
-	freeXmlMemory(ctx, sizeof(ctx_t), "ctx_t cksumEnd()");
-	return sum;
+	return checksum;
 }
 
 #define CKSUM_MAX		3
@@ -444,12 +436,6 @@ static uint32_t cksumEnd(void *ctx)
 #define CKSUM_FILE(file, flags)
 #endif
 
-#ifdef CHECKSUM_DEBUG
-#define CKSUM_BEGIN { printf("CKSUM_BEGIN %s\n",__func__); BeginCksums(); }
-#else
-#define CKSUM_BEGIN { BeginCksums(); }
-#endif
-
 /*
  * Generic 'DEFAULT' macro for all integer types.
  */
@@ -466,18 +452,15 @@ static uint32_t cksumEnd(void *ctx)
 #define DEFAULT_STR(data, default) { if (!strlen(data)) StringCopy(data,default,sizeof(data)); }
 #define DEFAULT_AND_CKSUM_STR(data, default, flags) { DEFAULT_STR(data, default); AddToCksums(#data, &data, strlen(data), flags); }
 
-#ifdef CHECKSUM_DEBUG
-#define CKSUM_END(overall, disruptive, consistency) { EndCksums(&overall, &disruptive, &consistency); printf("CKSUM_END %s %d, %d, %d\n",__func__,overall,disruptive,consistency); }
-#else
-#define CKSUM_END(overall, disruptive, consistency) { EndCksums(&overall, &disruptive, &consistency); }
-#endif
+static fm_digest_t *cksum_ctx[CKSUM_MAX];
 
-
-static ctx_t *cksum_ctx[CKSUM_MAX];
-
-static boolean BeginCksums(void)
+static boolean BeginCksums(const char * scope)
 {
 	uint32_t i;
+
+#ifdef CHECKSUM_DEBUG
+	printf("CKSUM_BEGIN %s\n", scope);
+#endif
 
 	for (i = 0; i < CKSUM_MAX; i++) {
 		if (!(cksum_ctx[i] = cksumBegin())) {
@@ -507,19 +490,23 @@ static void AddToCksums(char *txt, void *block, uint32_t length, uint32_t flags)
 	}
 }
 
-static void EndCksums(uint32_t *overall_checksum, uint32_t *disruptive_checksum, uint32_t *consistency_checksum)
+static void EndCksums(const char * scope, uint32_t *overall_checksum, uint32_t *disruptive_checksum, uint32_t *consistency_checksum)
 {
-	uint32_t csum;
+	uint32_t csum0, csum1, csum2;
 
-	csum = cksumEnd(cksum_ctx[0]);
+	csum0 = cksumEnd(cksum_ctx[0]);
 	if (overall_checksum)
-		*overall_checksum = csum;
-	csum = cksumEnd(cksum_ctx[1]);
+		*overall_checksum = csum0;
+	csum1 = cksumEnd(cksum_ctx[1]);
 	if (disruptive_checksum)
-		*disruptive_checksum = csum;
-	csum = cksumEnd(cksum_ctx[2]);
+		*disruptive_checksum = csum1;
+	csum2 = cksumEnd(cksum_ctx[2]);
 	if (consistency_checksum)
-		*consistency_checksum = csum;
+		*consistency_checksum = csum2;
+
+#ifdef CHECKSUM_DEBUG
+	printf("CKSUM_END %s %d, %d, %d\n", scope, csum0, csum1, csum2);
+#endif
 }
 
 // Map handling routines
@@ -1212,14 +1199,16 @@ boolean startPmChecksum(PMXmlConfig_t *pmp)
 		return 0;
 	}
 
-	CKSUM_BEGIN;
+	if (!BeginCksums(__func__))
+		return 0;
+
 	return 1;
 }
 
 void endPmChecksum(PMXmlConfig_t *pmp, uint32_t instance)
 {
 
-	CKSUM_END(pmp->overall_checksum, pmp->disruptive_checksum, pmp->consistency_checksum);
+	EndCksums(__func__, &pmp->overall_checksum, &pmp->disruptive_checksum, &pmp->consistency_checksum);
 
 	if (xml_parse_debug)
 		fprintf(stdout, "Pm instance %u checksum overall %u disruptive %u consistency %u\n", (unsigned int)instance,
@@ -1700,7 +1689,9 @@ boolean startSmChecksum(SMXmlConfig_t *smp)
 		return 0;
 	}
 
-	CKSUM_BEGIN;
+	if (!BeginCksums(__func__))
+		return 0;
+
 	return 1;
 }
 
@@ -1711,7 +1702,7 @@ boolean endSmChecksum(SMXmlConfig_t *smp, uint32_t instance)
 	if (!smp)
 		return 0;
 
-	CKSUM_END(smp->overall_checksum, smp->disruptive_checksum, smp->consistency_checksum);
+	EndCksums(__func__, &smp->overall_checksum, &smp->disruptive_checksum, &smp->consistency_checksum);
 	if (xml_parse_debug)
 		fprintf(stdout, "Sm instance %u checksum overall %u disruptive %u consistency %u\n", (unsigned int)instance,
 			(unsigned int)smp->overall_checksum, (unsigned int)smp->disruptive_checksum, (unsigned int)smp->consistency_checksum);
@@ -3781,25 +3772,28 @@ void checksumOneVirtualFabricsConfig(VFConfig_t *vf, VF_t *vfp, uint8_t requires
 }
 
 // create a total checksum for the Virtual Fabric database
-void checksumVirtualFabricsConfig(VFXmlConfig_t *vf_config, VirtualFabrics_t *vfsip)
+static boolean checksumVirtualFabricsConfig(VFXmlConfig_t *vf_config, VirtualFabrics_t *vfsip)
 {
 	VF_t						*vfp;
 	uint32_t 					i;
 
 	if (!vfsip)
-		return;
+		return FALSE;
 
 	// Checksum each individual Virtual Fabric
 	for (i = 0; i < vfsip->number_of_vfs_all; i++) {
 		vfp = &vfsip->v_fabric_all[i];
-		CKSUM_BEGIN;
+		if (!BeginCksums(__func__))
+			return FALSE;
+
 		checksumOneVirtualFabricsConfig(vf_config->vf[i], vfp, vfsip->qos_all[vfp->qos_index].requires_resp_sl);
-		CKSUM_END(vfp->overall_checksum, vfp->disruptive_checksum, vfp->consistency_checksum);
+		EndCksums(__func__, &vfp->overall_checksum, &vfp->disruptive_checksum, &vfp->consistency_checksum);
 	}
 
 	// Checksum all of the Virtual Fabrics together
 
-	CKSUM_BEGIN;
+	if (!BeginCksums(__func__))
+		return FALSE;
 
 	// vfsip->securityEnabled // setup by SM
     // vfsip->qosEnabled      // setup by SM
@@ -3809,9 +3803,9 @@ void checksumVirtualFabricsConfig(VFXmlConfig_t *vf_config, VirtualFabrics_t *vf
 		checksumOneVirtualFabricsConfig(vf_config->vf[i], vfp, vfsip->qos_all[vfp->qos_index].requires_resp_sl);
 	}
 
-	CKSUM_END(vfsip->overall_checksum, vfsip->disruptive_checksum, vfsip->consistency_checksum);
+	EndCksums(__func__, &vfsip->overall_checksum, &vfsip->disruptive_checksum, &vfsip->consistency_checksum);
 
-	return;
+	return TRUE;
 }
 
 // find a pointer to a Application given the name
@@ -4968,8 +4962,10 @@ VirtualFabrics_t* reRenderVirtualFabricsConfig(uint32_t fm, VirtualFabrics_t *ol
 		fprintf(stdout, "Number of Virtual Fabrics %u\n", (unsigned int)vfsip->number_of_vfs_all);
 
 	// calculate Virtual Fabric database checksum
-	if (vfsip)
-		checksumVirtualFabricsConfig(&fm_instance->vf_config, vfsip);
+	if (vfsip) {
+		if (!checksumVirtualFabricsConfig(&fm_instance->vf_config, vfsip))
+			goto fail;
+	}
 
 	if (xml_memory_debug)
 		fprintf(stdout, "Memory level %u after reRenderVirtualFabricsConfig()\n", (unsigned int)memory);

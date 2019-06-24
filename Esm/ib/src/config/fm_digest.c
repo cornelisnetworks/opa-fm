@@ -1,4 +1,4 @@
-/* BEGIN_ICS_COPYRIGHT2 ****************************************
+/* BEGIN_ICS_COPYRIGHT5 ****************************************
 
 Copyright (c) 2015-2017, Intel Corporation
 
@@ -25,29 +25,46 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-** END_ICS_COPYRIGHT2   ****************************************/
+ * ** END_ICS_COPYRIGHT5   ****************************************/
 
-/* [ICS VERSION STRING: unknown] */
+#include "fm_digest.h"
 
-#ifndef _FM_MD5_HELPER_H_
-#define _FM_MD5_HELPER_H_
+#include <assert.h>
+#include <stdio.h>
+#include <stdarg.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include "ib_types.h"
 
-#ifndef __VXWORKS__
-#include <openssl/md5.h>
-#else
-#include <Md5.h>
-#endif
+fm_digest_t * fm_digest_start(void)
+{
+	fm_digest_t * ctx = EVP_MD_CTX_create();
+	if (!ctx) return NULL;
+	if (!EVP_DigestInit_ex(ctx, EVP_sha256(), NULL)) {
+		EVP_MD_CTX_destroy(ctx);
+		return NULL;
+	}
+	return ctx;
+}
 
-#ifndef __VXWORKS__
-typedef MD5_CTX ctx_t;
-#else
-typedef Md5_Context_t ctx_t;
-#endif
+int fm_digest_update(fm_digest_t *ctx, const void *data, size_t len)
+{
+	return EVP_DigestUpdate(ctx, data, len);
+}
 
+int fm_digest_finish(fm_digest_t *ctx, uint8_t *digest)
+{
+	unsigned int len;
+	if (EVP_DigestFinal_ex(ctx, digest, &len) != 1)
+		return 0;
+	EVP_MD_CTX_destroy(ctx);
+	return 1;
 
-void fm_md5_start(void *ctx);
-void fm_md5_update(void *ctx, const void *data, size_t len);
-void fm_md5_finish(void *ctx, uint8_t *computedMd5);
+}
 
+int fm_digest_len(fm_digest_t *ctx)
+{
+	return EVP_MD_CTX_size(ctx);
+}
 
-#endif

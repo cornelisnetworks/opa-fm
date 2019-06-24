@@ -1720,8 +1720,9 @@ FormatStlCounterSelectMask(char buf[128], CounterSelectMask_t mask) {
 /**
  * Compute difference of two sets of Port Counters
  *
- * @param data1 - pointer to later set of STL_PORT_COUNTERS_DATA counters
- * @param data2 - pointer to earlier set of STL_PORT_COUNTERS_DATA counters
+ * @param data1 - pointer to later (end) set of STL_PORT_COUNTERS_DATA counters
+ * @param data2 - pointer to earlier (begin) set of STL_PORT_COUNTERS_DATA
+ *                counters
  * @param result - pointer to where result of data1 - data2 will be stored
  *
  * Note: data1 should be >= data2. If this is not the case, result will be
@@ -1827,6 +1828,14 @@ static __inline CounterSelectMask_t DiffPAVFCounters(STL_PA_VF_PORT_COUNTERS_DAT
     LftTable[i/MAX_LFT_ELEMENTS_BLOCK].LftBlock[i%MAX_LFT_ELEMENTS_BLOCK]
 #define STL_PGFT_PORT_BLOCK(PgftTable, i) \
     PgftTable[i/NUM_PGFT_ELEMENTS_BLOCK].PgftBlock[i%NUM_PGFT_ELEMENTS_BLOCK]
+
+
+static __inline uint8
+StlGetNumLanesDown(STL_PORT_INFO *portInfo) {
+	return (portInfo->LinkWidthDowngrade.RxActive < portInfo->LinkWidth.Active ?
+		StlLinkWidthToInt(portInfo->LinkWidth.Active) -
+		StlLinkWidthToInt(portInfo->LinkWidthDowngrade.RxActive) : 0);
+}
 
 
 #ifdef __cplusplus

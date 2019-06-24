@@ -587,14 +587,14 @@ process_chassis()
 				continue
 			fi
 			rm -f $tempfile $tempfile.2 2>/dev/null
-			/usr/lib/opa/tools/tcl_proc chassis_sftp_cmd "sftp $user@\[${tchassis}\]" "get /firmware/$user/authorized_keys $tempfile" 2>&1| grep -q 'FAILED'
+			/usr/lib/opa/tools/tcl_proc chassis_sftp_cmd "sftp $user@\[${tchassis}\]:" "get /firmware/$user/authorized_keys $tempfile" 2>&1| grep -q 'FAILED'
 			if [ $? -eq 0 ] || [ ! -f $tempfile ]
 			then
 				echo "Unable to configure $tchassis for password-less ssh, skipping..."
 				continue
 			fi
 			cat ~/.ssh/id_rsa.pub $tempfile | sort -u > $tempfile.2
-			/usr/lib/opa/tools/tcl_proc chassis_sftp_cmd "sftp $user@\[${tchassis}\]" "put $tempfile.2 /firmware/$user/authorized_keys" 2>&1| grep -q 'FAILED'
+			/usr/lib/opa/tools/tcl_proc chassis_sftp_cmd "sftp $user@\[${tchassis}\]:" "put $tempfile.2 /firmware/$user/authorized_keys" 2>&1| grep -q 'FAILED'
 			if [ $? -eq 0 ]
 			then
 				echo "$tchassis password-less ssh config failed, skipping..."

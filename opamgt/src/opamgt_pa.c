@@ -953,10 +953,8 @@ iba_pa_single_mad_move_freeze_response_query(
     if (port == NULL) return response;
 
     p = (STL_MOVE_FREEZE_DATA *)(((SA_MAD *)request_data)->Data);
-    p->oldFreezeImage.imageNumber = hton64(move_info->oldFreezeImage.imageNumber);
-    p->oldFreezeImage.imageOffset = hton32(move_info->oldFreezeImage.imageOffset);
-    p->newFreezeImage.imageNumber = hton64(move_info->newFreezeImage.imageNumber);
-    p->newFreezeImage.imageOffset = hton32(move_info->newFreezeImage.imageOffset);
+	*p = *move_info;
+	BSWAP_STL_PA_MOVE_FREEZE(p);
 
 	// submit request
 	fstatus = pa_query_common(port, STL_PA_CMD_SET, STL_PA_ATTRID_MOVE_FREEZE_FRAME, 0,

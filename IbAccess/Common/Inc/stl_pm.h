@@ -35,6 +35,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "iba/ib_generalServices.h"
 #include "iba/stl_types.h"
 #include "iba/stl_pa_types.h"
+#include "iba/stl_helper.h"
 
 #if defined (__cplusplus)
 extern "C" {
@@ -754,43 +755,46 @@ BSWAP_STL_ERROR_INFO_RSP(STL_ERROR_INFO_RSP *Dest)
 
 
 /**
- * Copy data in a STL_PORT_COUNTERS_DATA variable into a STL_PortStatusData_t variable
+ * Copy data in a STL_PORT_STATUS_RSP variable into a STL_PORT_COUNTERS_DATA variable
  *
- * @param portCounters   - pointer to STL_PORT_COUNTERS_DATA variable from which to copy
- * @param portStatusData - pointer to STL_PortStatusData_t variable to copy to
+ * @param SrcPortStatus - pointer to STL_PORT_STATUS_RSP variable from which to copy
+ * @param DestPortCounters - pointer to STL_PORT_COUNTERS_DATA variable to copy to
+ * @param portInfo - optional pointer to STL_PORT_INFO varaible to gather numLanesDown from
  *
  */
-static __inline void StlPortCountersToPortStatus(STL_PORT_COUNTERS_DATA *portCounters, STL_PORT_STATUS_RSP *portStatusData)
+static __inline void StlPortStatusToPortCounters(STL_PORT_STATUS_RSP *SrcPortStatus, STL_PORT_COUNTERS_DATA *DestPortCounters, STL_PORT_INFO *portInfo)
 {
-	portStatusData->LinkErrorRecovery  = portCounters->linkErrorRecovery;
-	portStatusData->LinkDowned  = portCounters->linkDowned;
-	portStatusData->PortRcvErrors = portCounters->portRcvErrors;
-	portStatusData->PortRcvRemotePhysicalErrors = portCounters->portRcvRemotePhysicalErrors;
-	portStatusData->PortRcvSwitchRelayErrors = portCounters->portRcvSwitchRelayErrors;
-	portStatusData->PortXmitDiscards = portCounters->portXmitDiscards;
-	portStatusData->PortXmitConstraintErrors = portCounters->portXmitConstraintErrors;
-	portStatusData->PortRcvConstraintErrors = portCounters->portRcvConstraintErrors;
-	portStatusData->LocalLinkIntegrityErrors = portCounters->localLinkIntegrityErrors;
-	portStatusData->ExcessiveBufferOverruns = portCounters->excessiveBufferOverruns;
-	portStatusData->PortXmitData = portCounters->portXmitData;
-	portStatusData->PortRcvData = portCounters->portRcvData;
-	portStatusData->PortXmitPkts = portCounters->portXmitPkts;
-	portStatusData->PortRcvPkts = portCounters->portRcvPkts;
-	portStatusData->PortMulticastXmitPkts = portCounters->portMulticastXmitPkts;
-	portStatusData->PortMulticastRcvPkts = portCounters->portMulticastRcvPkts;
-	portStatusData->PortXmitWait = portCounters->portXmitWait;
-	portStatusData->SwPortCongestion = portCounters->swPortCongestion;
-	portStatusData->PortRcvFECN = portCounters->portRcvFECN;
-	portStatusData->PortRcvBECN = portCounters->portRcvBECN;
-	portStatusData->PortXmitTimeCong = portCounters->portXmitTimeCong;
-	portStatusData->PortXmitWastedBW = portCounters->portXmitWastedBW;
-	portStatusData->PortXmitWaitData = portCounters->portXmitWaitData;
-	portStatusData->PortRcvBubble = portCounters->portRcvBubble;
-	portStatusData->PortMarkFECN = portCounters->portMarkFECN;
-	portStatusData->FMConfigErrors = portCounters->fmConfigErrors;
-	portStatusData->UncorrectableErrors = portCounters->uncorrectableErrors;
-	portStatusData->lq.AsReg8 = portCounters->lq.AsReg8;
-
+	DestPortCounters->linkErrorRecovery           = SrcPortStatus->LinkErrorRecovery;
+	DestPortCounters->linkDowned                  = SrcPortStatus->LinkDowned;
+	DestPortCounters->portRcvErrors               = SrcPortStatus->PortRcvErrors;
+	DestPortCounters->portRcvRemotePhysicalErrors = SrcPortStatus->PortRcvRemotePhysicalErrors;
+	DestPortCounters->portRcvSwitchRelayErrors    = SrcPortStatus->PortRcvSwitchRelayErrors;
+	DestPortCounters->portXmitDiscards            = SrcPortStatus->PortXmitDiscards;
+	DestPortCounters->portXmitConstraintErrors    = SrcPortStatus->PortXmitConstraintErrors;
+	DestPortCounters->portRcvConstraintErrors     = SrcPortStatus->PortRcvConstraintErrors;
+	DestPortCounters->localLinkIntegrityErrors    = SrcPortStatus->LocalLinkIntegrityErrors;
+	DestPortCounters->excessiveBufferOverruns     = SrcPortStatus->ExcessiveBufferOverruns;
+	DestPortCounters->portXmitData                = SrcPortStatus->PortXmitData;
+	DestPortCounters->portRcvData                 = SrcPortStatus->PortRcvData;
+	DestPortCounters->portXmitPkts                = SrcPortStatus->PortXmitPkts;
+	DestPortCounters->portRcvPkts                 = SrcPortStatus->PortRcvPkts;
+	DestPortCounters->portMulticastXmitPkts       = SrcPortStatus->PortMulticastXmitPkts;
+	DestPortCounters->portMulticastRcvPkts        = SrcPortStatus->PortMulticastRcvPkts;
+	DestPortCounters->portXmitWait                = SrcPortStatus->PortXmitWait;
+	DestPortCounters->swPortCongestion            = SrcPortStatus->SwPortCongestion;
+	DestPortCounters->portRcvFECN                 = SrcPortStatus->PortRcvFECN;
+	DestPortCounters->portRcvBECN                 = SrcPortStatus->PortRcvBECN;
+	DestPortCounters->portXmitTimeCong            = SrcPortStatus->PortXmitTimeCong;
+	DestPortCounters->portXmitWastedBW            = SrcPortStatus->PortXmitWastedBW;
+	DestPortCounters->portXmitWaitData            = SrcPortStatus->PortXmitWaitData;
+	DestPortCounters->portRcvBubble               = SrcPortStatus->PortRcvBubble;
+	DestPortCounters->portMarkFECN                = SrcPortStatus->PortMarkFECN;
+	DestPortCounters->fmConfigErrors              = SrcPortStatus->FMConfigErrors;
+	DestPortCounters->uncorrectableErrors         = SrcPortStatus->UncorrectableErrors;
+	DestPortCounters->lq.s.linkQualityIndicator   = SrcPortStatus->lq.s.LinkQualityIndicator;
+	if (portInfo) {
+		DestPortCounters->lq.s.numLanesDown = StlGetNumLanesDown(portInfo);
+	}
 }
 
 #include "iba/public/ipackoff.h"

@@ -1772,7 +1772,7 @@ fail:
  * portp is the port to issue PMA request to (can be port 0 of switch), it need
  */
 FSTATUS STLPmGetPortStatus(struct omgt_port *port, PortData *portp, uint8 portNum,
-							STL_PortStatusData_t *pPortStatus)
+							STL_PORT_STATUS_RSP *pPortStatus)
 {
 	STL_PERF_MAD req;
 	STL_PERF_MAD resp;
@@ -1795,8 +1795,8 @@ FSTATUS STLPmGetPortStatus(struct omgt_port *port, PortData *portp, uint8 portNu
 							   0x01000000, &req, &resp);
 	if (FSUCCESS != fstatus)
 		goto fail;
-	BSWAP_STL_PORT_STATUS_RSP((STL_PORT_STATUS_RSP*)resp.PerfData);
-	*pPortStatus = *(STL_PortStatusData_t*)resp.PerfData;
+	BSWAP_STL_PORT_STATUS_RSP((STL_PORT_STATUS_RSP *)resp.PerfData);
+	*pPortStatus = *(STL_PORT_STATUS_RSP *)resp.PerfData;
 	DBGPRINT("SendPkts=0x%16"PRIx64"\n", pPortStatus->PortXmitPkts);
 fail:
 	return fstatus;

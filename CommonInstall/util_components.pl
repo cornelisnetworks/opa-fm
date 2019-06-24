@@ -1061,7 +1061,7 @@ sub show_install_menu($)
 		}
 	}
 
-	while() {
+	do {{
 		if ( $Default_Install) {
 			# setstate set UnInstall or DoNotInstall for those not available
 			# force install for all available even if UpToDate
@@ -1433,7 +1433,7 @@ sub show_install_menu($)
 			}
 			if (! $have_all_os_prereqs) {
 				HitKeyCont;
-				return
+				last;
 			}
 
 			# run pre-install for all components which will be installed
@@ -1444,7 +1444,7 @@ sub show_install_menu($)
 					if (0 != comp_preinstall($comp,$install_list,$installing_list)) {
 						NormalPrint "Unable to Prepare $ComponentInfo{$comp}{'Name'} for Install\n";
 						HitKeyCont;
-						return
+						last;
 					}
 				}
 			}
@@ -1519,13 +1519,10 @@ sub show_install_menu($)
 				HitKeyCont;
 			}
 			return;
-		# we had an error above
-			if (  $Default_Prompt ) {
-				$exit_code = 1;
-				return
-			}
 		}
-	}
+	}} until ($Default_Prompt);
+	# we had an error above
+	$exit_code = 1;
 }
 
 sub show_installed($)

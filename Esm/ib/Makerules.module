@@ -85,6 +85,10 @@ RSCMOD			=
 # Platform specific definitions:
 #-----------------------------------------------------------------------------#
 ifeq "$(BUILD_TARGET_OS)" "VXWORKS"
+MOD_INCLUDE_DIRS += \
+	$(TL_DIR)/BSP/bspcommon/wrs/config \
+	$(TGT_DIR)/components/ip_net2-6.9/ipcrypto/include \
+	$(TGT_DIR)/components/ip_net2-6.9/ipcrypto/$(OPENSSL_VER)/include
 # FIXME, change uses of __VXWORKS__ to VXWORKS
 CMOD  	+= -DCAL_IBACCESS -D__VXWORKS__ 
 ifeq "$(BUILD_TARGET)" "ATOM"

@@ -54,9 +54,9 @@ then
 	GE_7_5=$(echo "$versionid >= 7.5" | bc)
 	if [ $GE_7_4 = 1 ]
 	then
-		sed -i "s/__RPM_BLDRQ1/expat-devel, rdma-core-devel, openssl-devel/g" $to
+		sed -i "s/__RPM_BLDRQ1/expat-devel, rdma-core-devel, zlib-devel, openssl-devel/g" $to
 	else
-		sed -i "s/__RPM_BLDRQ1/expat-devel, libibumad-devel, libibverbs-devel, openssl-devel/g" $to
+		sed -i "s/__RPM_BLDRQ1/expat-devel, libibumad-devel, libibverbs-devel, zlib-devel, openssl-devel/g" $to
 	fi
 	if [ $GE_7_0 = 1 ]
 	then
@@ -78,9 +78,9 @@ then
 	GE_12_3=$(echo "$versionid >= 12.3" | bc)
 	if [ $GE_12_3 = 1 ]
 	then
-		sed -i "s/__RPM_BLDRQ1/libexpat-devel, rdma-core-devel, openssl-devel/g" $to
+		sed -i "s/__RPM_BLDRQ1/libexpat-devel, rdma-core-devel, zlib-devel, openssl-devel/g" $to
 	else
-		sed -i "s/__RPM_BLDRQ1/libexpat-devel, libibumad-devel, libibverbs-devel, openssl-devel/g" $to
+		sed -i "s/__RPM_BLDRQ1/libexpat-devel, libibumad-devel, libibverbs-devel, zlib-devel, openssl-devel/g" $to
 	fi
 	if [ $GE_12_1 = 1 ]
 	then
@@ -101,7 +101,7 @@ then
 	sed -i "s/__RPM_RQ2/Requires: libibumad3, libibverbs1, rdma, libexpat1, openssl/g" $to
 elif [ "$id" = "fedora" ]
 then
-	sed -i "s/__RPM_BLDRQ1/expat-devel, rdma-core-devel, openssl-devel/g" $to
+	sed -i "s/__RPM_BLDRQ1/expat-devel, rdma-core-devel, zlib-devel, openssl-devel/g" $to
 	sed -i "s/__RPM_BLDRQ2/BuildRequires: systemd %{?systemd_requires} %{?BuildRequires}/g" $to
 	sed -i "s/__RPM_RQ1/Requires: systemd %{?systemd_requires}/g" $to
 	sed -i "/__RPM_SYSCONF/,+1d" $to

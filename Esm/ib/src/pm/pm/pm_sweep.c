@@ -835,10 +835,7 @@ void update_pmport(Pm_t *pm, PmPort_t *pmportp, Node_t *nodep, Port_t *portp, Pm
 	portImage->u.s.mtu = portp->portData->maxVlMtu;
 	portImage->u.s.txActiveWidth = portp->portData->portInfo.LinkWidthDowngrade.TxActive;
 	portImage->u.s.rxActiveWidth = portp->portData->portInfo.LinkWidthDowngrade.RxActive;
-	portImage->StlPortCounters.lq.s.NumLanesDown =
-		(portp->portData->portInfo.LinkWidthDowngrade.RxActive < portp->portData->portInfo.LinkWidth.Active ?
-		StlLinkWidthToInt(portp->portData->portInfo.LinkWidth.Active) -
-		StlLinkWidthToInt(portp->portData->portInfo.LinkWidthDowngrade.RxActive) : 0);
+	portImage->StlPortCounters.lq.s.NumLanesDown = StlGetNumLanesDown(&portp->portData->portInfo);
 	portImage->u.s.activeSpeed = portp->portData->portInfo.LinkSpeed.Active;
 	if (recalc_flags & PM_TOPO_RECALC_VFS) {
 		bitset_copy(&pmportp->dgMember, &portp->portData->dgMember);

@@ -807,8 +807,8 @@ void PortDataFree(FabricData_t *fabricp, PortData *portp)
 	if (portp->PortGUID)
 		AllLidsRemove(fabricp, portp);
 	cl_qmap_remove_item(&nodep->Ports, &portp->NodePortsEntry);
-	if (portp->pPortStatus)
-		MemoryDeallocate(portp->pPortStatus);
+	if (portp->pPortCounters)
+		MemoryDeallocate(portp->pPortCounters);
 	PortDataFreeQOSData(fabricp, portp);
 	PortDataFreeBufCtrlTable(fabricp, portp);
 	PortDataFreePartitionTable(fabricp, portp);

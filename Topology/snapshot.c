@@ -41,7 +41,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* bitfields needs special handling: LinkQualityIndicator */
 static void PortStatusDataXmlOutputLinkQualityIndicator(IXmlOutputState_t *state, const char *tag, void *data)
 {
-	IXmlOutputUint(state, tag, ((STL_PortStatusData_t *)data)->lq.s.LinkQualityIndicator);
+	IXmlOutputUint(state, tag, ((STL_PORT_COUNTERS_DATA *)data)->lq.s.linkQualityIndicator);
 }
 
 static void PortStatusDataXmlParserEndLinkQualityIndicator(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
@@ -49,70 +49,72 @@ static void PortStatusDataXmlParserEndLinkQualityIndicator(IXmlParserState_t *st
 	uint8 value;
 	
 	if (IXmlParseUint8(state, content, len, &value))
-		((STL_PortStatusData_t *)object)->lq.s.LinkQualityIndicator = value;
+		((STL_PORT_COUNTERS_DATA *)object)->lq.s.linkQualityIndicator = value;
 }
 
 IXML_FIELD PortStatusDataFields[] = {
-	{ tag:"XmitData", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, PortXmitData) },
-	{ tag:"RcvData", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, PortRcvData) },
-	{ tag:"XmitPkts", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, PortXmitPkts) },
-	{ tag:"RcvPkts", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, PortRcvPkts) },
-	{ tag:"MulticastXmitPkts", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, PortMulticastXmitPkts) },
-	{ tag:"MulticastRcvPkts", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, PortMulticastRcvPkts) },
-	{ tag:"XmitWait", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, PortXmitWait) },
-	{ tag:"CongDiscards", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, SwPortCongestion) },
-	{ tag:"RcvFECN", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, PortRcvFECN) },
-	{ tag:"RcvBECN", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, PortRcvBECN) },
-	{ tag:"XmitTimeCong", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, PortXmitTimeCong) },
-	{ tag:"XmitWastedBW", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, PortXmitWastedBW) },
-	{ tag:"XmitWaitData", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, PortXmitWaitData) },
-	{ tag:"RcvBubble", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, PortRcvBubble) },
-	{ tag:"MarkFECN", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, PortMarkFECN) },
-	{ tag:"RcvConstraintErrors", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, PortRcvConstraintErrors) },
-	{ tag:"RcvSwitchRelayErrors", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, PortRcvSwitchRelayErrors) },
-	{ tag:"XmitDiscards", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, PortXmitDiscards) },
-	{ tag:"XmitConstraintErrors", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, PortXmitConstraintErrors) },
-	{ tag:"RcvRemotePhysicalErrors", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, PortRcvRemotePhysicalErrors) },
-	{ tag:"LocalLinkIntegrityErrors", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, LocalLinkIntegrityErrors) },
-	{ tag:"RcvErrors", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, PortRcvErrors) },
-	{ tag:"ExcessiveBufferOverruns", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, ExcessiveBufferOverruns) },
-	{ tag:"FMConfigErrors", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, FMConfigErrors) },
-	{ tag:"LinkErrorRecovery", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, LinkErrorRecovery) },
-	{ tag:"LinkDowned", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, LinkDowned) },
-	{ tag:"UncorrectableErrors", format:'U', IXML_FIELD_INFO(STL_PortStatusData_t, UncorrectableErrors) },
+	{ tag:"XmitData", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, portXmitData) },
+	{ tag:"RcvData", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, portRcvData) },
+	{ tag:"XmitPkts", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, portXmitPkts) },
+	{ tag:"RcvPkts", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, portRcvPkts) },
+	{ tag:"MulticastXmitPkts", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, portMulticastXmitPkts) },
+	{ tag:"MulticastRcvPkts", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, portMulticastRcvPkts) },
+	{ tag:"XmitWait", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, portXmitWait) },
+	{ tag:"CongDiscards", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, swPortCongestion) },
+	{ tag:"RcvFECN", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, portRcvFECN) },
+	{ tag:"RcvBECN", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, portRcvBECN) },
+	{ tag:"XmitTimeCong", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, portXmitTimeCong) },
+	{ tag:"XmitWastedBW", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, portXmitWastedBW) },
+	{ tag:"XmitWaitData", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, portXmitWaitData) },
+	{ tag:"RcvBubble", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, portRcvBubble) },
+	{ tag:"MarkFECN", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, portMarkFECN) },
+	{ tag:"RcvConstraintErrors", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, portRcvConstraintErrors) },
+	{ tag:"RcvSwitchRelayErrors", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, portRcvSwitchRelayErrors) },
+	{ tag:"XmitDiscards", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, portXmitDiscards) },
+	{ tag:"XmitConstraintErrors", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, portXmitConstraintErrors) },
+	{ tag:"RcvRemotePhysicalErrors", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, portRcvRemotePhysicalErrors) },
+	{ tag:"LocalLinkIntegrityErrors", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, localLinkIntegrityErrors) },
+	{ tag:"RcvErrors", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, portRcvErrors) },
+	{ tag:"ExcessiveBufferOverruns", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, excessiveBufferOverruns) },
+	{ tag:"FMConfigErrors", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, fmConfigErrors) },
+	{ tag:"LinkErrorRecovery", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, linkErrorRecovery) },
+	{ tag:"LinkDowned", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, linkDowned) },
+	{ tag:"UncorrectableErrors", format:'U', IXML_FIELD_INFO(STL_PORT_COUNTERS_DATA, uncorrectableErrors) },
 	{ tag:"LinkQualityIndicator", format:'K', format_func:PortStatusDataXmlOutputLinkQualityIndicator, end_func:PortStatusDataXmlParserEndLinkQualityIndicator }, // bitfield
 	{ NULL }
 };
 
 void PortStatusDataXmlOutput(IXmlOutputState_t *state, const char *tag, void *data)
 {
-	IXmlOutputStruct(state, tag, (STL_PortStatusData_t*)data, NULL, PortStatusDataFields);
+	IXmlOutputStruct(state, tag, (STL_PORT_COUNTERS_DATA *)data, NULL, PortStatusDataFields);
 }
 
 // only output if value != NULL
 void PortStatusDataXmlOutputOptional(IXmlOutputState_t *state, const char *tag, void *data)
 {
-	IXmlOutputOptionalStruct(state, tag, (STL_PortStatusData_t*)data, NULL, PortStatusDataFields);
+	IXmlOutputOptionalStruct(state, tag, (STL_PORT_COUNTERS_DATA *)data, NULL, PortStatusDataFields);
 }
 
 static void PortStatusDataXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
 {
-	STL_PortStatusData_t *pPortStatusData = (STL_PortStatusData_t*)object;
+	STL_PORT_COUNTERS_DATA *pPortCountersData = (STL_PORT_COUNTERS_DATA *)object;
 	PortData *portp = (PortData*)parent;
 
 	if (! valid)	// missing mandatory fields
 		goto failvalidate;
 
-	if (portp->pPortStatus) {
+	if (portp->pPortCounters) {
 		IXmlParserPrintError(state, "More than 1 PortStatus for Port");
 		goto failinsert;
 	}
-	portp->pPortStatus = pPortStatusData;
+	portp->pPortCounters = pPortCountersData;
+	// NumLanesDown is set in PortDataXmlParserEnd()
+
 	return;
 
 failinsert:
 failvalidate:
-	MemoryDeallocate(pPortStatusData);
+	MemoryDeallocate(pPortCountersData);
 }
 
 /****************************************************************************/
@@ -2099,7 +2101,7 @@ static void PortDataXmlOutputPortStatusData(IXmlOutputState_t *state, const char
 {
 	PortData *portp = (PortData*)data;
 
-	PortStatusDataXmlOutputOptional(state, "PortStatus", portp->pPortStatus);
+	PortStatusDataXmlOutputOptional(state, "PortStatus", portp->pPortCounters);
 }
 
 /* bitfields needs special handling: PassThroughControlDRControl */
@@ -2852,7 +2854,7 @@ static IXML_FIELD PortDataFields[] = {
 	{ tag:"VLArbitrationPreemptElements", format:'k', format_func:PortDataXmlOutputVLArbPreemptElements, subfields:VLArbFields, start_func:VLArbPreemptElementsXmlParserStart, end_func:VLArbPreemptElementsXmlParserEnd },
 	{ tag:"VLArbitrationPreemptMatrix", format:'k', format_func:PortDataXmlOutputVLArbPreemptMatrix, subfields:VLArbPreemptMatrixFields, start_func:VLArbPreemptMatrixXmlParserStart, end_func:VLArbPreemptMatrixXmlParserEnd },
 	{ tag:"PKeyTable", format:'k', format_func:PortDataXmlOutputPKeyTable, subfields:PKeyTableFields, start_func:PKeyTableXmlParserStart, end_func:PKeyTableXmlParserEnd }, // structure
-	{ tag:"PortStatus", format:'k', size:sizeof(STL_PortStatusData_t), format_func:PortDataXmlOutputPortStatusData, subfields:PortStatusDataFields, start_func:IXmlParserStartStruct, end_func:PortStatusDataXmlParserEnd }, // structure
+	{ tag:"PortStatus", format:'k', size:sizeof(STL_PORT_COUNTERS_DATA), format_func:PortDataXmlOutputPortStatusData, subfields:PortStatusDataFields, start_func:IXmlParserStartStruct, end_func:PortStatusDataXmlParserEnd }, // structure
 	{ tag:"CableInfo", format:'k', size:128, format_func:PortDataXmlOutputCableInfo, subfields:(IXML_FIELD*)CableInfoFields, start_func:CableInfoXmlParserStart}, 
 	{ tag:"LocalPortNum", format:'u', IXML_FIELD_INFO(PortData, PortInfo.LocalPortNum) },
 	{ tag:"PortStates", format:'h', IXML_FIELD_INFO(PortData, PortInfo.PortStates.AsReg32) },
@@ -3008,6 +3010,10 @@ static void PortDataXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *fie
 			portp->PortInfo.LinkSpeed.Active,
 			portp->PortInfo.LinkWidth.Active);
 
+	if (portp->pPortCounters) {
+		portp->pPortCounters->lq.s.numLanesDown = StlGetNumLanesDown(&portp->PortInfo);
+	}
+
 	if (parseCompleteFn) {
 		if (parseCompleteFn(state, object, parent) != FSUCCESS) {
 			goto failvalidate;
@@ -3030,8 +3036,8 @@ failvalidate:
 */
 void Snapshot_PortDataFree(PortData * portp, FabricData_t * fabricp)
 {
-	if (portp->pPortStatus)
-		MemoryDeallocate(portp->pPortStatus);
+	if (portp->pPortCounters)
+		MemoryDeallocate(portp->pPortCounters);
 	PortDataFreeQOSData(fabricp, portp);
 	PortDataFreePartitionTable(fabricp, portp);
 }
