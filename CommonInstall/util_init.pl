@@ -219,7 +219,11 @@ sub os_vendor_version($)
 			if (!system("grep -qi centos /etc/redhat-release")) {
 				$rval = `cat /etc/redhat-release | cut -d' ' -f4`;
 				$rval =~ m/(\d+).(\d+)/;
-				$rval="ES".$1.$2;
+				if ($2 eq "0") {
+					$rval="ES".$1;
+				} else {
+					$rval="ES".$1.$2;
+				}
 			}	
 		}
 	} elsif ($vendor eq "apple") {

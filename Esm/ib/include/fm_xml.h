@@ -1136,6 +1136,12 @@ typedef struct _PmThresholdsExceededMsgLimitXmlConfig {
 	uint32_t Routing;
 } PmThresholdsExceededMsgLimitXmlConfig_t;
 
+typedef struct _PmSweepErrorInfoThresholds {
+	uint32_t Integrity;
+	uint32_t Security;
+	uint32_t Routing;
+} PmSweepErrorInfoThresholds_t;
+
 // Pm IntegrityWeights
 typedef struct _PmIntegrityWeightsXmlConfig {
 	uint8_t LocalLinkIntegrityErrors;
@@ -1187,6 +1193,7 @@ typedef struct _PMXmlConfig {
     uint8_t	    Clear8bit;
 	uint8_t 	process_hfi_counters;
     uint8_t	    process_vl_counters;
+    uint8_t	    process_errorinfo;
     uint32_t	MaxRetries;
     uint32_t	RcvWaitInterval;
     uint32_t	MinRcvWaitInterval;
@@ -1238,6 +1245,8 @@ typedef struct _PMXmlConfig {
     FmParamU32_t log_masks[VIEO_LAST_MOD_ID+1];
 
 	PmThresholdsExceededMsgLimitXmlConfig_t thresholdsExceededMsgLimit;
+
+	PmSweepErrorInfoThresholds_t errorinfo_thresholds;
 
 } PMXmlConfig_t;
 

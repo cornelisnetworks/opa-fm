@@ -68,6 +68,10 @@ extern void IXmlOutputInitReasonValue(IXmlOutputState_t *state, const char *tag,
 extern void IXmlOutputOptionalInitReasonValue(IXmlOutputState_t *state, const char *tag, uint8 value);
 extern void IXmlOutputInitReason(IXmlOutputState_t *state, const char *tag, void *data);
 extern void IXmlOutputOptionalInitReason(IXmlOutputState_t *state, const char *tag, void *data);
+extern void IXmlOutputDownReasonValue(IXmlOutputState_t *state, const char *tag, uint8 value);
+extern void IXmlOutputOptionalDownReasonValue(IXmlOutputState_t *state, const char *tag, uint8 value);
+extern void IXmlOutputDownReason(IXmlOutputState_t *state, const char *tag, void *data);
+extern void IXmlOutputOptionalDownReason(IXmlOutputState_t *state, const char *tag, void *data);
 /* typically a bitfield, so need to call with value instead of ptr */
 extern void IXmlOutputPortPhysStateValue(IXmlOutputState_t *state, const char *tag, uint8 value);
 extern void IXmlOutputPortOptionalPhysStateValue(IXmlOutputState_t *state, const char *tag, uint8 value);

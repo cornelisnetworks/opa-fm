@@ -2753,7 +2753,96 @@ static IXML_FIELD MulticastFields[] = {
 };
 
 
+static void PortDataXmlOutputDownReason(IXmlOutputState_t *state, const char *tag, void *data)
+{
+	IXmlOutputDownReasonValue(state, tag, ((STL_LINKDOWN_REASON *)data)->LinkDownReason);
+}
+static void PortDataXmlParserEndDownReason(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	uint8 value;
 
+	if (IXmlParseUint8(state, content, len, &value))
+		((STL_LINKDOWN_REASON *)object)->LinkDownReason = value;
+}
+static void PortDataXmlOutputNeighborDownReason(IXmlOutputState_t *state, const char *tag, void *data)
+{
+	IXmlOutputDownReasonValue(state, tag, ((STL_LINKDOWN_REASON *)data)->NeighborLinkDownReason);
+}
+static void PortDataXmlParserEndNeighborDownReason(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	uint8 value;
+
+	if (IXmlParseUint8(state, content, len, &value))
+		((STL_LINKDOWN_REASON *)object)->NeighborLinkDownReason = value;
+}
+
+// LinkDownReasonLog
+static IXML_FIELD LDRLogFields[] = {
+	{ tag:"LinkDownReason", format:'k', format_func:PortDataXmlOutputDownReason, end_func:IXmlParserEndNoop },
+	{ tag:"LinkDownReason_Int", format:'K', format_func:IXmlOutputNoop, end_func:PortDataXmlParserEndDownReason },
+	{ tag:"NeighborLinkDownReason", format:'k', format_func:PortDataXmlOutputNeighborDownReason, end_func:IXmlParserEndNoop },
+	{ tag:"NeighborLinkDownReason_Int", format:'K', format_func:IXmlOutputNoop, end_func:PortDataXmlParserEndNeighborDownReason },
+	{ tag:"Timestamp", format:'U', IXML_FIELD_INFO(STL_LINKDOWN_REASON, Timestamp) },
+	{ NULL }
+};
+
+static void LDRLogEntryXmlFormatAttr(IXmlOutputState_t *state, void *data)
+{
+	IXmlOutputPrint(state, " idx=\"%d\"", *(int *)data);
+}
+static void PortDataXmlOutputLDRLog(IXmlOutputState_t *state, const char *tag, void *data)
+{
+	PortData *portp = (PortData *)data;	// data points to PortData
+
+	int i;
+	for (i = 0; i < STL_NUM_LINKDOWN_REASONS; ++i) {
+		STL_LINKDOWN_REASON *ldr = &portp->LinkDownReasons[i];
+
+		if (ldr->Timestamp) {
+			IXmlOutputStartAttrTag(state, tag, &i, LDRLogEntryXmlFormatAttr);
+
+			IXmlOutputStrUint(state, "LinkDownReason",
+				StlLinkDownReasonToText(ldr->LinkDownReason), ldr->LinkDownReason);
+			IXmlOutputStrUint(state, "NeighborLinkDownReason",
+				StlLinkDownReasonToText(ldr->NeighborLinkDownReason), ldr->NeighborLinkDownReason);
+
+			IXmlOutputUint64(state, "Timestamp", ldr->Timestamp);
+
+			IXmlOutputEndTag(state, tag);
+		}
+	}
+}
+
+static void *LDRLogXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr)
+{
+	PortData *pdata = (PortData *)parent;
+	int idx = -1;
+
+	if (attr == NULL) {
+		IXmlParserPrintError(state, "Failed to parse idx Attribute");
+		return NULL;
+	}
+
+	int i = 0;
+	while (attr[i]) {
+		if (!strcmp("idx", attr[i]) && attr[i+1] != NULL) {
+			if (attr[i + 1][1] == '\0') {
+				idx = attr[i + 1][0] - '0';
+				if (idx >= 0 && idx < STL_NUM_LINKDOWN_REASONS) {
+					return &pdata->LinkDownReasons[idx];
+				}
+			}
+		}
+		i++;
+	}
+
+	IXmlParserPrintError(state, "Failed to parse idx Attribute: %d", idx);
+	return NULL;
+}
+static void LDRLogXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void *object, void *parent, XML_Char *content, unsigned len, boolean valid)
+{
+	return;
+}
 /** =========================================================================
  * PortData definitions
  */
@@ -2881,6 +2970,7 @@ static IXML_FIELD PortDataFields[] = {
 	{ tag:"HFICongestionControlTable", format:'k', format_func:PortDataXmlOutputHFICCT, subfields:(IXML_FIELD*)HFICCTFields, start_func:HFICCTXmlParserStart},
 	{ tag:"BundleNextPort", format:'u', IXML_FIELD_INFO(PortData, PortInfo.BundleNextPort) },
 	{ tag:"BundleLane", format:'u', IXML_FIELD_INFO(PortData, PortInfo.BundleLane) },
+	{ tag:"LinkDownReasonLog", format:'k', format_func:PortDataXmlOutputLDRLog, subfields:LDRLogFields, start_func:LDRLogXmlParserStart, end_func:LDRLogXmlParserEnd }, // structure
 	{ NULL }
 };
 

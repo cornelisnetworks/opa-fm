@@ -81,8 +81,8 @@ LIB_TARGETS_MISC	=
 # targets to build during CMDS phase
 CMD_TARGETS_SHLIB	= 
 CMD_TARGETS_EXE		= $(EXECUTABLE)
-CMD_TARGETS_MISC	= opaextracterror opaextractperf \
-				opaextractstat opaextractstat2 opaextractlink
+CMD_TARGETS_MISC	= opaextracterror opaextractperf opaextractperf2 \
+				opaextractstat opaextractstat2 opaextractlink opamergeperf2
 # files to remove during clean phase
 CLEAN_TARGETS_MISC	=  
 CLEAN_TARGETS		= $(OBJECTS) $(RSCOBJECTS) $(IDL_TARGETS) $(CLEAN_TARGETS_MISC)
@@ -149,7 +149,7 @@ include $(TL_DIR)/Makerules/Maketargets.install
 # install for stage phase
 #include $(TL_DIR)/Makerules/Maketargets.stage
 STAGE::
-	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_FASTFABRIC_DIR) $(EXECUTABLE) opaextracterror opaextractperf opaextractstat opaextractstat2 opaextractlink
+	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_FASTFABRIC_DIR) $(EXECUTABLE) opaextracterror opaextractperf opaextractperf2 opaextractstat opaextractstat2 opaextractlink opamergeperf2
 
 # Unit test execution
 #include $(TL_DIR)/Makerules/Maketargets.runtest

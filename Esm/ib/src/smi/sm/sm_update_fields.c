@@ -609,8 +609,11 @@ _node_update_from_topo(Node_t * nodep, Topology_t * oldTopop, Topology_t * curTo
 {
     Port_t * portp;
 
-    if (nodep->nodeInfo.NodeType != NI_TYPE_SWITCH && !sm_config.use_cached_hfi_node_data)
-        return VSTATUS_OK;
+    if (!sm_popo_is_nonresp_this_sweep(&sm_popo, nodep)) {
+        if (nodep->nodeInfo.NodeType == STL_NODE_FI && !sm_config.use_cached_hfi_node_data) {
+            return VSTATUS_OK;
+        }
+    }
 
     if (&old_topology != oldTopop)
         return VSTATUS_BAD; // only support copying from old_topology now
@@ -649,21 +652,25 @@ _node_update_from_topo(Node_t * nodep, Topology_t * oldTopop, Topology_t * curTo
                     if (!sm_valid_port(oldPortp) || oldPortp->state < IB_PORT_ARMED)
                         continue;
 
+                    /* Update Tables if did not update previously */
+#define UPDATE_MAP(TEST, MAP, CNT) do { \
+        if (!portp->portData->current.TEST) { \
+            memcpy(&(portp->portData->MAP), &(oldPortp->portData->MAP), \
+                sizeof(portp->portData->MAP)*CNT); \
+            portp->portData->current.TEST = 1; \
+        }} while (0)
                     // Copy sl, sc, and vl related mapping tables
-                    portp->portData->slscMap = oldPortp->portData->slscMap;
-                    portp->portData->current.slsc = 1;
-                    portp->portData->scslMap = oldPortp->portData->scslMap;
-                    portp->portData->current.scsl = 1;
-                    portp->portData->scvltMap = oldPortp->portData->scvltMap;
-                    portp->portData->current.scvlt = 1;
-                    portp->portData->scvlntMap = oldPortp->portData->scvlntMap;
-                    portp->portData->current.scvlnt = 1;
-                    portp->portData->scvlrMap = oldPortp->portData->scvlrMap;
-                    portp->portData->current.scvlr = 1;
-                    portp->portData->bufCtrlTable = oldPortp->portData->bufCtrlTable;
-                    portp->portData->current.bfrctrl = 1;
+                    UPDATE_MAP(scsl, scslMap, 1);
+                    UPDATE_MAP(slsc, slscMap, 1);
+                    UPDATE_MAP(scvlt, scvltMap, 1);
+                    UPDATE_MAP(scvlnt, scvlntMap, 1);
+                    UPDATE_MAP(scvlr, scvlrMap, 1);
+                    UPDATE_MAP(bfrctrl, bufCtrlTable, 1);
 
-                    if (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH && !QListIsEmpty(&oldPortp->portData->scscMapList[0])) {
+                    if (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH
+                        && !portp->portData->current.scsc
+                        && !QListIsEmpty(&oldPortp->portData->scscMapList[0]))
+                    {
                         sm_copyPortDataSCSCMap(oldPortp, portp, 0);
                         portp->portData->current.scsc = 1;
 
@@ -674,15 +681,12 @@ _node_update_from_topo(Node_t * nodep, Topology_t * oldTopop, Topology_t * curTo
                     if (nodep->vlArb) {
                         //
                         // Copy vlarb
-                        memcpy(portp->portData->curArb.u.vlarb.vlarbLow, oldPortp->portData->curArb.u.vlarb.vlarbLow, sizeof(portp->portData->curArb.u.vlarb.vlarbLow));
-                        portp->portData->current.vlarbLow = 1;
-                        memcpy(portp->portData->curArb.u.vlarb.vlarbHigh, oldPortp->portData->curArb.u.vlarb.vlarbHigh, sizeof(portp->portData->curArb.u.vlarb.vlarbHigh));
-                        portp->portData->current.vlarbHigh = 1;
-                        memcpy(portp->portData->curArb.u.vlarb.vlarbPre, oldPortp->portData->curArb.u.vlarb.vlarbPre, sizeof(portp->portData->curArb.u.vlarb.vlarbPre));
-                        portp->portData->current.vlarbPre = 1;
-                        memcpy(portp->portData->curArb.vlarbMatrix, oldPortp->portData->curArb.vlarbMatrix, sizeof(portp->portData->curArb.vlarbMatrix));
-                        portp->portData->current.vlarbMatrix = 1;
+                        UPDATE_MAP(vlarbLow, curArb.u.vlarb.vlarbLow[0], STL_MAX_LOW_CAP);
+                        UPDATE_MAP(vlarbHigh, curArb.u.vlarb.vlarbHigh[0], STL_MAX_LOW_CAP);
+                        UPDATE_MAP(vlarbPre, curArb.u.vlarb.vlarbPre[0], STL_MAX_PREEMPT_CAP);
+                        UPDATE_MAP(vlarbMatrix, curArb.vlarbMatrix[0], STL_MAX_VLS);
                     }
+#undef UPDATE_MAP
                 }
             }
         }
@@ -711,7 +715,7 @@ _sm_node_updateFields(ParallelSweepContext_t *psc, SmMaiHandle_t *fd, STL_LID sl
 
     // Note that for a multi-port HFI, if one aggregate operation fails and non-aggregate
     // succeeds, aggregates will be disabled for all ports on that HFI
-    if (!nodep->aggregateEnable || s != VSTATUS_OK) {
+    if (!nodep->aggregateEnable || (s != VSTATUS_OK && s != VSTATUS_TIMEOUT && s != VSTATUS_TIMEOUT_LIMIT)) {
         s = _node_update_from_sma_solo(fd, psc, slid, nodep, smaportp);
 
         // Aggregate update failed but non-aggregate update succeeded, disable aggregates on this node
@@ -721,6 +725,12 @@ _sm_node_updateFields(ParallelSweepContext_t *psc, SmMaiHandle_t *fd, STL_LID sl
                 sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID);
             nodep->aggregateEnable = 0;
         }
+    }
+    if (sm_popo_inc_and_use_cache_nonresp(&sm_popo, nodep, &s)) {
+        // If it was non-responsive, try to copy from cache.
+        s = _node_update_from_topo(nodep, &old_topology, sm_topop);
+    } else if (s == VSTATUS_OK) {
+        sm_popo_clear_cache_nonresp(&sm_popo, nodep);
     }
 
     return s;

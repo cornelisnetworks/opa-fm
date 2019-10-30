@@ -379,23 +379,25 @@ typedef struct _STL_CONGESTION_WEIGHTS {
 #define STL_PM_PROCESS_CLR_64BIT_COUNTERS	0x00000008	// Enable Clearing of 64 bit Error Counters
 #define STL_PM_PROCESS_CLR_32BIT_COUNTERS	0x00000010	// Enable Clearing of 32 bit Error Counters
 #define STL_PM_PROCESS_CLR_8BIT_COUNTERS	0x00000020	// Enable Clearing of 8 bit Error Counters
+#define STL_PM_PROCESS_ERRORINFO			0x00000040	// Enable Getting/Clearing of Error Info
 
 static __inline
 void StlFormatPmFlags(char buf[80], uint32 pmFlags)
 {
 	snprintf(buf, 80, "%s=%s %s=%s %s=%s %s=%s",
-			"ProcessHFICntrs", pmFlags & STL_PM_PROCESS_HFI_COUNTERS ? "On" : "Off",
-			"ProcessVLCntrs",  pmFlags & STL_PM_PROCESS_VL_COUNTERS ? "On" : "Off",
-			"ClrDataCntrs",    pmFlags & STL_PM_PROCESS_CLR_DATA_COUNTERS ? "On" : "Off",
-			"Clr64bitErrCntrs", pmFlags & STL_PM_PROCESS_CLR_64BIT_COUNTERS ? "On" : "Off");
+		"ProcessHFICntrs", pmFlags & STL_PM_PROCESS_HFI_COUNTERS ? "On" : "Off",
+		"ProcessVLCntrs",  pmFlags & STL_PM_PROCESS_VL_COUNTERS ? "On" : "Off",
+		"ClrDataCntrs",    pmFlags & STL_PM_PROCESS_CLR_DATA_COUNTERS ? "On" : "Off",
+		"Clr64bitErrCntrs", pmFlags & STL_PM_PROCESS_CLR_64BIT_COUNTERS ? "On" : "Off");
 }
 
 static __inline
 void StlFormatPmFlags2(char buf[80], uint32 pmFlags)
 {
-	snprintf(buf, 80, "%s=%s %s=%s",
-			"Clr32bitErrCntrs", pmFlags & STL_PM_PROCESS_CLR_32BIT_COUNTERS ? "On" : "Off",
-			"Clr8bitErrCntrs",  pmFlags & STL_PM_PROCESS_CLR_8BIT_COUNTERS ? "On" : "Off");
+	snprintf(buf, 80, "%s=%s %s=%s %s=%s",
+		"Clr32bitErrCntrs", pmFlags & STL_PM_PROCESS_CLR_32BIT_COUNTERS ? "On" : "Off",
+		"Clr8bitErrCntrs",  pmFlags & STL_PM_PROCESS_CLR_8BIT_COUNTERS ? "On" : "Off",
+		"ProcessErrorInfo", pmFlags & STL_PM_PROCESS_ERRORINFO ? "On" : "Off");
 }
 
 typedef struct _STL_PA_PM_Cfg_Data {

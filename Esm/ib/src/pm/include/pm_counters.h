@@ -81,6 +81,7 @@ typedef enum _pmCounters {
 	pmCounterGetDataPortCounters, // Get(DataPortCounters)
 	pmCounterGetErrorPortCounters, // Get(ErrorPortCounters)
 	pmCounterGetErrorInfo, // Get(ErrorInfo)
+	pmCounterSetErrorInfo, // Set(ErrorInfo)
 
 	pmCounterRxGetResp,
 

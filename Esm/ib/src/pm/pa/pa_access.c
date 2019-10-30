@@ -173,7 +173,7 @@ FSTATUS paGetGroupInfo(Pm_t *pm, char *groupName, PmGroupInfo_t *pmGroupInfo,
 	ClearGroupStats(&pmGroupImage);
 
 	for_all_pmnodes(pmimagep, pmnodep, lid) {
-		for_all_pmports(pmnodep, pmportp, portnum, !requiresLock) {
+		for_all_pmports_sth(pmnodep, pmportp, portnum, !requiresLock) {
 			pmPortImageP = &pmportp->Image[imageIndex];
 			if (PmIsPortInGroup(pmimagep, pmPortImageP, groupIndex, isGroupAll, &isInternal)) {
 				if (isInternal) {
@@ -296,7 +296,7 @@ FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConf
 	if (groupIndex == -1) isGroupAll = TRUE;
 
 	for_all_pmnodes(pmimagep, pmnodep, lid) {
-		for_all_pmports(pmnodep, pmportp, portnum, !requiresLock) {
+		for_all_pmports_sth(pmnodep, pmportp, portnum, !requiresLock) {
 			portImage = &pmportp->Image[imageIndex];
 			if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, NULL)) {
 				if (pmGroupConfig->portListSize == pmGroupConfig->NumPorts) {
@@ -321,7 +321,7 @@ FSTATUS paGetGroupConfig(Pm_t *pm, char *groupName, PmGroupConfig_t *pmGroupConf
 	// copy the port list
 	int i = 0;
 	for_all_pmnodes(pmimagep, pmnodep, lid) {
-		for_all_pmports(pmnodep, pmportp, portnum, !requiresLock) {
+		for_all_pmports_sth(pmnodep, pmportp, portnum, !requiresLock) {
 			portImage = &pmportp->Image[imageIndex];
 			if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, NULL)) {
 				pmGroupConfig->portList[i].lid = lid;
@@ -462,7 +462,7 @@ FSTATUS paGetGroupNodeInfo(Pm_t *pm, char *groupName, uint64 nodeGUID, STL_LID n
 				start_lid = end_lid = lid;
 			}
 		}
-		for_all_pmports(pmnodep, pmportp, portnum, !requiresLock) {
+		for_all_pmports_sth(pmnodep, pmportp, portnum, !requiresLock) {
 			portImage = &pmportp->Image[imageIndex];
 			if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, NULL)) {
 			// Once a port is in the group that node is counted. Then proceed with next node.
@@ -492,7 +492,7 @@ FSTATUS paGetGroupNodeInfo(Pm_t *pm, char *groupName, uint64 nodeGUID, STL_LID n
 	// copy the port list
 	int i = 0;
 	for_some_pmnodes(pmimagep, pmnodep, lid, start_lid, end_lid) {
-		for_all_pmports(pmnodep, pmportp, portnum, !requiresLock) {
+		for_all_pmports_sth(pmnodep, pmportp, portnum, !requiresLock) {
 			portImage = &pmportp->Image[imageIndex];
 			if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, NULL)) {
 				StlAddPortToPortMask(pmGroupNodeInfo->nodeList[i].portSelectMask, portnum);
@@ -614,7 +614,7 @@ FSTATUS paGetGroupLinkInfo(Pm_t *pm, char *groupName, STL_LID inputLID, uint8 in
 			end_port, pmnodep->numPorts);
 			goto done;
 		}
-		for_some_pmports(pmnodep, pmportp, portnum, start_port, end_port, !requiresLock) {
+		for_some_pmports_sth(pmnodep, pmportp, portnum, start_port, end_port, !requiresLock) {
 			portImage = &pmportp->Image[imageIndex];
 			if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, &isInternal)) {
 				//Make sure the link is accounted for only once
@@ -650,7 +650,7 @@ FSTATUS paGetGroupLinkInfo(Pm_t *pm, char *groupName, STL_LID inputLID, uint8 in
 			start_port = 1;
 			end_port = pmnodep->numPorts;
 		}
-		for_some_pmports(pmnodep, pmportp, portnum, start_port, end_port, !requiresLock) {
+		for_some_pmports_sth(pmnodep, pmportp, portnum, start_port, end_port, !requiresLock) {
 			portImage = &pmportp->Image[imageIndex];
 			if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, &isInternal)) {
 				//Make sure the link is accounted for only once
@@ -945,7 +945,7 @@ FSTATUS paClearAllPortStats(Pm_t *pm, CounterSelectMask_t select)
 
 	(void)vs_wrlock(&pm->totalsLock);
 	for_all_pmnodes(pmimagep, pmnodep, lid) {
-		for_all_pmports(pmnodep, pmportp, portnum, FALSE) {
+		for_all_pmports_sth(pmnodep, pmportp, portnum, FALSE) {
 			status = PmClearPortRunningCounters(pmportp, select);
 			if (status != FSUCCESS)
 				IB_LOG_WARN_FMT(__func__,"Failed to Clear Counters on LID: 0x%x Port: %u", lid, portnum);
@@ -1000,11 +1000,15 @@ FSTATUS paFreezeFrameRenew(Pm_t *pm, STL_PA_IMAGE_ID_DATA *imageId)
 		IB_LOG_WARN_FMT(__func__, "Unable to get index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 	}
 
-	if (record || (cimg && cimg !=  pm->ShortTermHistory.cachedComposite)) // not in the cache, never found
+	int idx = getCachedCimgIdx(pm, cimg);
+	if (record || (cimg && (idx == -1)) ) // not in the cache, never found
 			IB_LOG_WARN_FMT(__func__, "Unable to access cached composite image: %s", msg);
 
-	if (cimg && cimg == pm->ShortTermHistory.cachedComposite) {
+	if (cimg && (idx != -1)) {
 		imageId->imageTime.absoluteTime = (uint32)cimg->sweepStart;
+
+		vs_stdtime_get(&pm->ShortTermHistory.CachedImages.lastUsed[idx]);
+		if (record) pm->ShortTermHistory.CachedImages.records[idx] = record;
 	} else if (imageIndex != PM_IMAGE_INDEX_INVALID) {
 		imageId->imageTime.absoluteTime = (uint32)pm->Image[imageIndex].sweepStart;
 	}
@@ -1055,10 +1059,13 @@ FSTATUS paFreezeFrameRelease(Pm_t *pm, STL_PA_IMAGE_ID_DATA *imageId)
 	}
 
 	if (record || cimg) {
-		if (cimg && cimg == pm->ShortTermHistory.cachedComposite) {
+		int idx = -1;
+		if (cimg && (idx = getCachedCimgIdx(pm, cimg)) != -1) {
 			imageId->imageTime.absoluteTime = (uint32)cimg->sweepStart;
-			PmFreeComposite(pm->ShortTermHistory.cachedComposite);
-			pm->ShortTermHistory.cachedComposite = NULL;
+			PmFreeComposite(pm->ShortTermHistory.CachedImages.cachedComposite[idx]);
+			pm->ShortTermHistory.CachedImages.cachedComposite[idx] = NULL;
+			pm->ShortTermHistory.CachedImages.lastUsed[idx] = 0;
+			pm->ShortTermHistory.CachedImages.records[idx] = NULL;
 			status = FSUCCESS;
 		} else {
 			IB_LOG_WARN_FMT(__func__, "Unable to find freeze frame: %s", msg);
@@ -1145,6 +1152,7 @@ FSTATUS paFreezeFrameCreate(Pm_t *pm, STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE
 	uint8				freezeIndex;
 	PmHistoryRecord_t	*record = NULL;
 	PmCompositeImage_t	*cimg = NULL;
+	int idx = -1;
 
 	// check input parameters
 	if (!pm)
@@ -1164,22 +1172,28 @@ FSTATUS paFreezeFrameCreate(Pm_t *pm, STL_PA_IMAGE_ID_DATA imageId, STL_PA_IMAGE
 	if (record || cimg) {
 		retImageId->imageNumber = imageId.imageNumber;
 		if (record) { // cache the disk image
-			status = PmFreezeComposite(pm, record);
+			status = PmFreezeComposite(pm, record, &idx);
 			if (status != FSUCCESS) {
 				IB_LOG_WARN_FMT(__func__, "Unable to freeze composite image: %s", FSTATUS_ToString(status));
 				goto error;
 			}
+			pm->ShortTermHistory.CachedImages.records[idx] = record;
 			retImageId->imageNumber = record->header.imageIDs[0];
-		} else if (cimg && pm->ShortTermHistory.cachedComposite) { // already frozen
-			retImageId->imageNumber = pm->ShortTermHistory.cachedComposite->header.common.imageIDs[0];
+		} else if (cimg && ((idx = getCachedCimgIdx(pm, cimg))) != -1) { // already frozen
+			retImageId->imageNumber = pm->ShortTermHistory.CachedImages.cachedComposite[idx]->header.common.imageIDs[0];
 		} else { // trying to freeze the current composite (unlikely but possible)
-			status = PmFreezeCurrent(pm);
+			status = PmFreezeCurrent(pm, &idx);
 			if (status != FSUCCESS) {
 				IB_LOG_WARN_FMT(__func__, "Unable to freeze current composite image: %s", FSTATUS_ToString(status));
 				goto error;
 			}
 		}
-		retImageId->imageTime.absoluteTime = (uint32)pm->ShortTermHistory.cachedComposite->sweepStart;
+		if (idx == -1) {
+			status = FINSUFFICIENT_MEMORY | STL_MAD_STATUS_STL_PA_NO_IMAGE;
+			goto error;
+		}
+		vs_stdtime_get(&pm->ShortTermHistory.CachedImages.lastUsed[idx]);
+		retImageId->imageTime.absoluteTime = (uint32)pm->ShortTermHistory.CachedImages.cachedComposite[idx]->sweepStart;
 		(void)vs_rwunlock(&pm->stateLock);
 		goto done;
 	}
@@ -1239,6 +1253,7 @@ FSTATUS paFreezeFrameMove(Pm_t *pm, STL_PA_IMAGE_ID_DATA ffImageId, STL_PA_IMAGE
 	boolean				oldIsComp = 0, newIsComp = 0;
 	PmHistoryRecord_t	*record = NULL;
 	PmCompositeImage_t	*cimg = NULL;
+	int idx = -1;
 
 	// check input parameters
 	if (!pm)
@@ -1256,12 +1271,19 @@ FSTATUS paFreezeFrameMove(Pm_t *pm, STL_PA_IMAGE_ID_DATA ffImageId, STL_PA_IMAGE
 		IB_LOG_WARN_FMT(__func__, "Unable to get freeze frame index from ImageId: %s: %s", FSTATUS_ToString(status), msg);
 		goto error;
 	}
-	if (cimg && cimg == pm->ShortTermHistory.cachedComposite) {
-		oldIsComp = 1;
-	} else if (cimg && cimg != pm->ShortTermHistory.cachedComposite) {
-		IB_LOG_WARN_FMT(__func__, "Unable to find freeze frame for ImageID: %s", msg);
-		status = FINVALID_PARAMETER;
-		goto error;
+	if (cimg) {
+		idx = getCachedCimgIdx(pm, cimg);
+		if (idx != -1) {
+			oldIsComp = 1;
+			PmFreeComposite(pm->ShortTermHistory.CachedImages.cachedComposite[idx]);
+			pm->ShortTermHistory.CachedImages.cachedComposite[idx] = NULL;
+			pm->ShortTermHistory.CachedImages.records[idx] = NULL;
+			pm->ShortTermHistory.CachedImages.lastUsed[idx] = 0;
+		} else {
+			IB_LOG_WARN_FMT(__func__, "Unable to find freeze frame for ImageID: %s", msg);
+			status = FINVALID_PARAMETER;
+			goto error;
+		}
 	}
 
 	record = NULL;
@@ -1274,17 +1296,21 @@ FSTATUS paFreezeFrameMove(Pm_t *pm, STL_PA_IMAGE_ID_DATA ffImageId, STL_PA_IMAGE
 	if (record || cimg) {
 		newIsComp = 1;
 		if (record) { //composite isn't already cached
-			status = PmFreezeComposite(pm, record);
+			status = PmFreezeComposite(pm, record, &idx);
 			if (status != FSUCCESS) {
 				IB_LOG_WARN_FMT(__func__, "Unable to freeze composite image: %s", FSTATUS_ToString(status));
 				goto error;
 			}
+			pm->ShortTermHistory.CachedImages.records[idx] = record;
 		} else {
-			status = PmFreezeCurrent(pm);
+			status = PmFreezeCurrent(pm, &idx);
 			if (status != FSUCCESS) {
 				IB_LOG_WARN_FMT(__func__, "Unable to freeze current composite image: %s", FSTATUS_ToString(status));
 				goto error;
 			}
+		}
+		if (idx != -1) {
+			vs_stdtime_get(&pm->ShortTermHistory.CachedImages.lastUsed[idx]);
 		}
 	}
 
@@ -1312,8 +1338,8 @@ FSTATUS paFreezeFrameMove(Pm_t *pm, STL_PA_IMAGE_ID_DATA ffImageId, STL_PA_IMAGE
 		returnImageId->imageNumber = BuildFreezeFrameImageId(pm, freezeIndex, clientId,
 			&returnImageId->imageTime.absoluteTime);
 	} else {
-		returnImageId->imageNumber = pm->ShortTermHistory.cachedComposite->header.common.imageIDs[0];
-		returnImageId->imageTime.absoluteTime = (uint32)pm->ShortTermHistory.cachedComposite->sweepStart;
+		returnImageId->imageNumber = pm->ShortTermHistory.CachedImages.cachedComposite[idx]->header.common.imageIDs[0];
+		returnImageId->imageTime.absoluteTime = (uint32)pm->ShortTermHistory.CachedImages.cachedComposite[idx]->sweepStart;
 	}
 	if (!oldIsComp) pm->Image[ffImageIndex].ffRefCount &= ~((uint64)1 << (uint64)ffClientId); // release old image
 	(void)vs_rwunlock(&pm->stateLock);
@@ -1566,7 +1592,7 @@ FSTATUS paGetFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPorts,
 	imageInterval = pmimagep->imageInterval;
 
 	for_all_pmnodes(pmimagep, pmnodep, lid) {
-		for_all_pmports(pmnodep, pmportp, portnum, !requiresLock) {
+		for_all_pmports_sth(pmnodep, pmportp, portnum, !requiresLock) {
 			portImage = &pmportp->Image[imageIndex];
 			if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, &isInternal)) {
 				/* If link is internal and lid is greater than neighbor's, then this link is already in the list */
@@ -1588,7 +1614,7 @@ FSTATUS paGetFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPorts,
 	memset(focusArray, 0, allocatedItems * sizeof(focusArrayItem_t));
 
 	for_all_pmnodes(pmimagep, pmnodep, lid) {
-		for_all_pmports(pmnodep, pmportp, portnum, !requiresLock) {
+		for_all_pmports_sth(pmnodep, pmportp, portnum, !requiresLock) {
 			portImage = &pmportp->Image[imageIndex];
 			if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, &isInternal)) {
 				/* If link is internal and lid is greater than neighbor's, then this link is already in the list */
@@ -1855,7 +1881,7 @@ FSTATUS paGetMultiFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusP
 	StringCopy(pmFocusPorts->name, groupName, STL_PM_GROUPNAMELEN);
 
 	for_all_pmnodes(pmimagep, pmnodep, lid) {
-		for_all_pmports(pmnodep, pmportp, portnum, !requiresLock) {
+		for_all_pmports_sth(pmnodep, pmportp, portnum, !requiresLock) {
 			portImage = &pmportp->Image[imageIndex];
 			if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, &isInternal)) {
 				/* If link is internal and lid is greater than neighbor's, then this link is already in the list */
@@ -2040,7 +2066,7 @@ FSTATUS paGetExtFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPor
 
 	// Get number of links
 	for_all_pmnodes(pmimagep, pmnodep, lid) {
-		for_all_pmports(pmnodep, pmportp, portnum, !requiresLock) {
+		for_all_pmports_sth(pmnodep, pmportp, portnum, !requiresLock) {
 			portImage = &pmportp->Image[imageIndex];
 			if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, NULL)) {
 				if (isExtFocusSelect(select, imageIndex, pmportp, lid)){
@@ -2068,7 +2094,7 @@ FSTATUS paGetExtFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPor
 	StringCopy(pmFocusPorts->name, groupName, STL_PM_GROUPNAMELEN);
 
 	for_all_pmnodes(pmimagep, pmnodep, lid) {
-		for_all_pmports(pmnodep, pmportp, portnum, !requiresLock) {
+		for_all_pmports_sth(pmnodep, pmportp, portnum, !requiresLock) {
 			portImage = &pmportp->Image[imageIndex];
 			if (PmIsPortInGroup(pmimagep, portImage, groupIndex, isGroupAll, NULL)) {
 				processExtFocusPort(imageIndex, pmportp, select, pmFocusPorts, lid);
@@ -2276,7 +2302,7 @@ FSTATUS paGetVFInfo(Pm_t *pm, char *vfName, PmVFInfo_t *pmVFInfo, STL_PA_IMAGE_I
 	ClearVFStats(&pmVFImage);
 
 	for_all_pmnodes(pmimagep, pmnodep, lid) {
-		for_all_pmports(pmnodep, pmportp, portnum, !requiresLock) {
+		for_all_pmports_sth(pmnodep, pmportp, portnum, !requiresLock) {
 			pmPortImageP = &pmportp->Image[imageIndex];
 			if (PmIsPortInVF(pmimagep, pmPortImageP, vfIdx)) {
 				if (pmPortImageP->u.s.queryStatus != PM_QUERY_STATUS_OK) {
@@ -2358,7 +2384,7 @@ FSTATUS paGetVFConfig(Pm_t *pm, char *vfName, uint64 vfSid, PmVFConfig_t *pmVFCo
 	}
 
 	for_all_pmnodes(pmimagep, pmnodep, lid) {
-		for_all_pmports(pmnodep, pmportp, portnum, !requiresLock) {
+		for_all_pmports_sth(pmnodep, pmportp, portnum, !requiresLock) {
 			portImage = &pmportp->Image[imageIndex];
 			if (PmIsPortInVF(pmimagep, portImage, vfIdx)) {
 				if (pmVFConfig->portListSize == pmVFConfig->NumPorts) {
@@ -2383,7 +2409,7 @@ FSTATUS paGetVFConfig(Pm_t *pm, char *vfName, uint64 vfSid, PmVFConfig_t *pmVFCo
 	// copy the port list
 	int i = 0;
 	for_all_pmnodes(pmimagep, pmnodep, lid) {
-		for_all_pmports(pmnodep, pmportp, portnum, !requiresLock) {
+		for_all_pmports_sth(pmnodep, pmportp, portnum, !requiresLock) {
 			portImage = &pmportp->Image[imageIndex];
 			if (PmIsPortInVF(pmimagep, portImage, vfIdx)) {
 				pmVFConfig->portList[i].lid = lid;
@@ -2503,7 +2529,7 @@ FSTATUS paGetVFPortStats(Pm_t *pm, STL_LID lid, uint8 portNum, char *vfName,
 		IB_LOG_WARN_FMT(__func__,  "Illegal LID parameter: must not be zero");
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	}
-	if (!pm_config.process_vl_counters) {
+	if ((pm->pmFlags & STL_PM_PROCESS_VL_COUNTERS) == 0) {
 		IB_LOG_WARN_FMT(__func__, "Processing of VL Counters has been disabled, VF Port Counters query cannot be completed");
 		return(FINVALID_SETTING | STL_MAD_STATUS_STL_PA_NO_DATA);
 	}
@@ -2616,7 +2642,7 @@ FSTATUS paClearVFPortStats(Pm_t *pm, STL_LID lid, uint8 portNum, STLVlCounterSel
 		IB_LOG_WARN_FMT(__func__, "Illegal vfName parameter: Empty String");
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	}
-	if (!pm_config.process_vl_counters) {
+	if ((pm->pmFlags & STL_PM_PROCESS_VL_COUNTERS) == 0) {
 		IB_LOG_WARN_FMT(__func__, "Processing of VL Counters has been disabled, Clear VF Port Counters query cannot be completed");
 		return(FINVALID_SETTING | STL_MAD_STATUS_STL_PA_NO_DATA);
 	}
@@ -2649,7 +2675,7 @@ FSTATUS paClearVFPortStats(Pm_t *pm, STL_LID lid, uint8 portNum, STLVlCounterSel
 			IB_LOG_WARN_FMT(__func__, "Switch not found: LID: 0x%x", lid);
 			status = FNOT_FOUND;
 		} else {
-			status = PmClearNodeRunningVFCounters(pmnodep, select, vfIdx, useHiddenVF);
+			status = PmClearNodeRunningVFCounters(pm, pmnodep, select, vfIdx, useHiddenVF);
 		}
 	} else {
 		PmPort_t *pmportp = pm_find_port(pmimagep, lid, portNum);
@@ -2657,7 +2683,7 @@ FSTATUS paClearVFPortStats(Pm_t *pm, STL_LID lid, uint8 portNum, STLVlCounterSel
 			IB_LOG_WARN_FMT(__func__, "Port not found: Lid 0x%x Port %u", lid, portNum);
 			status = FNOT_FOUND | STL_MAD_STATUS_STL_PA_NO_PORT;
 		} else {
-			status = PmClearPortRunningVFCounters(pmportp, select, vfIdx, useHiddenVF);
+			status = PmClearPortRunningVFCounters(pm, pmportp, select, vfIdx, useHiddenVF);
 		}
 	}
 	(void)vs_rwunlock(&pm->totalsLock);
@@ -2747,7 +2773,7 @@ FSTATUS paGetExtVFFocusPorts(Pm_t *pm, char *vfName, PmFocusPorts_t *pmVFFocusPo
 
 	// Get number of links
 	for_all_pmnodes(pmimagep, pmnodep, lid) {
-		for_all_pmports(pmnodep, pmportp, portnum, !requiresLock) {
+		for_all_pmports_sth(pmnodep, pmportp, portnum, !requiresLock) {
 			portImage = &pmportp->Image[imageIndex];
 			if (PmIsPortInVF(pmimagep, portImage, vfIdx)) {
 				if (isExtFocusSelect(select, imageIndex, pmportp, lid)){
@@ -2775,7 +2801,7 @@ FSTATUS paGetExtVFFocusPorts(Pm_t *pm, char *vfName, PmFocusPorts_t *pmVFFocusPo
 	StringCopy(pmVFFocusPorts->name, vfName, STL_PM_VFNAMELEN);
 
 	for_all_pmnodes(pmimagep, pmnodep, lid) {
-		for_all_pmports(pmnodep, pmportp, portnum, !requiresLock) {
+		for_all_pmports_sth(pmnodep, pmportp, portnum, !requiresLock) {
 			portImage = &pmportp->Image[imageIndex];
 			if (PmIsPortInVF(pmimagep, portImage, vfIdx)) {
 				processExtFocusPort(imageIndex, pmportp, select, pmVFFocusPorts, lid);
@@ -2854,7 +2880,7 @@ FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmFocusPorts_t *pmVFFocusPorts
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	}
 
-	if ((!pm_config.process_vl_counters) && (IS_VF_FOCUS_SELECT(select))) {
+	if ((pm->pmFlags & STL_PM_PROCESS_VL_COUNTERS) == 0 && (IS_VF_FOCUS_SELECT(select))) {
 		IB_LOG_WARN_FMT(__func__, "Processing of VL Counters has been disabled, Get VF Focus Port query cannot be completed");
 		return(FINVALID_SETTING | STL_MAD_STATUS_STL_PA_NO_DATA);
 	}
@@ -2962,7 +2988,7 @@ FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmFocusPorts_t *pmVFFocusPorts
 	vfComputeData.imageInterval = imageInterval;
 
 	for_all_pmnodes(pmimagep, pmnodep, lid) {
-		for_all_pmports(pmnodep, pmportp, portnum, !requiresLock) {
+		for_all_pmports_sth(pmnodep, pmportp, portnum, !requiresLock) {
 			portImage = &pmportp->Image[imageIndex];
 			if (PmIsPortInVF(pmimagep, portImage, vfIdx)) {
 				if (portnum && lid > pmportp->neighbor_lid) continue;
@@ -2983,7 +3009,7 @@ FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmFocusPorts_t *pmVFFocusPorts
 	memset(focusArray, 0, allocatedItems * sizeof(focusArrayItem_t));
 
 	for_all_pmnodes(pmimagep, pmnodep, lid) {
-		for_all_pmports(pmnodep, pmportp, portnum, !requiresLock) {
+		for_all_pmports_sth(pmnodep, pmportp, portnum, !requiresLock) {
 			portImage = &pmportp->Image[imageIndex];
 			if (PmIsPortInVF(pmimagep, portImage, vfIdx)) {
 				if (portnum && lid > pmportp->neighbor_lid) continue;
@@ -3044,8 +3070,13 @@ static void appendFreezeFrameDetails(uint8_t *buffer, uint32_t *index)
 			numFreezeImages++;
 		}
 	}
-	if (pm_config.shortTermHistory.enable && pm->ShortTermHistory.cachedComposite) {
-		numFreezeImages++;
+	if (pm_config.shortTermHistory.enable && pm->ShortTermHistory.CachedImages.cachedComposite) {
+		int i;
+		for (i = 0; i < pm_config.freeze_frame_images; i++) {
+			if (pm->ShortTermHistory.CachedImages.cachedComposite[i]) {
+				numFreezeImages++;
+			}
+		}
 	}
 	buffer[(*index)++]=numFreezeImages;
 	if (numFreezeImages == 0) {
@@ -3059,11 +3090,16 @@ static void appendFreezeFrameDetails(uint8_t *buffer, uint32_t *index)
 			IB_LOG_VERBOSELX("Appending freeze frame id", ffImageId);
 		}
 	}
-	if (pm_config.shortTermHistory.enable && pm->ShortTermHistory.cachedComposite) {
-		ffImageId = pm->ShortTermHistory.cachedComposite->header.common.imageIDs[0];
-		memcpy(&buffer[*index], &ffImageId, sizeof(uint64_t));
-		*index += sizeof(uint64_t);
-		IB_LOG_VERBOSELX("Appending Hist freeze frame id", ffImageId);
+	if (pm_config.shortTermHistory.enable && pm->ShortTermHistory.CachedImages.cachedComposite) {
+		int i;
+		for (i = 0; i < pm_config.freeze_frame_images; i++) {
+			if (pm->ShortTermHistory.CachedImages.cachedComposite[i]) {
+				ffImageId = pm->ShortTermHistory.CachedImages.cachedComposite[i]->header.common.imageIDs[0];
+				memcpy(&buffer[*index], &ffImageId, sizeof(uint64_t));
+				*index += sizeof(uint64_t);
+				IB_LOG_VERBOSELX("Appending Hist freeze frame id", ffImageId);
+			}
+		}
 	}
 	return;
 }
@@ -3174,8 +3210,7 @@ boolean PmCompareTCAPort(PmPort_t *pmportp, char *groupName);
 boolean PmCompareSWPort(PmPort_t *pmportp, char *groupName);
 
 extern void release_pmnode(Pm_t *pm, PmNode_t *pmnodep);
-extern void free_pmportList(Pm_t *pm, PmNode_t *pmnodep);
-extern void free_pmport(Pm_t *pm, PmPort_t *pmportp);
+extern void free_pmport(PmPort_t *pmportp);
 extern PmNode_t *get_pmnodep(Pm_t *pm, Guid_t guid, STL_LID lid);
 extern PmPort_t *new_pmport(Pm_t *pm);
 extern uint32 connect_neighbor(Pm_t *pm, PmPort_t *pmportp);
@@ -3267,12 +3302,8 @@ FSTATUS CopyPortToPmImage(Pm_t *pm, PmImage_t *pmimagep, PmNode_t *pmnodep, PmPo
 
 	// Copy port image port groups
 	memset(&pmportimgp->Groups, 0, sizeof(PmGroup_t *) * PM_MAX_GROUPS_PER_PORT);
-#if PM_COMPRESS_GROUPS
 	pmportimgp->numGroups = 0;
 	for (j = 0, i = 0; i < sthportimgp->numGroups; i++)
-#else
-	for (j = 0, i = 0; i < PM_MAX_GROUPS_PER_PORT; i++)
-#endif
 	{
 		if (!sthportimgp->Groups[i]) continue;
 		ret = FindPmGroup(pmimagep, &pmportimgp->Groups[j], sthportimgp->Groups[i]);
@@ -3286,9 +3317,7 @@ FSTATUS CopyPortToPmImage(Pm_t *pm, PmImage_t *pmimagep, PmNode_t *pmnodep, PmPo
 			goto exit_dealloc;
 		}
 	}
-#if PM_COMPRESS_GROUPS
 	pmportimgp->numGroups = j;
-#endif
 
 	// Copy port image VF groups
 	memcpy(pmportimgp->vfvlmap, sthportimgp->vfvlmap, sizeof(vfmap_t) * MAX_VFABRICS);
@@ -3296,7 +3325,7 @@ FSTATUS CopyPortToPmImage(Pm_t *pm, PmImage_t *pmimagep, PmNode_t *pmnodep, PmPo
 	goto exit;
 
 exit_dealloc:
-	free_pmport(pm, pmportp);
+	free_pmport(pmportp);
 	pmportp = NULL;
 
 exit:
@@ -3495,6 +3524,7 @@ FSTATUS PmReintegrate(Pm_t *pm, PmShortTermHistory_t *sth)
 	pmimagep->SkippedNodes = pmimagep->SkippedPorts = 0;
 	pmimagep->UnexpectedClearPorts = 0;
 	pmimagep->DowngradedPorts = 0;
+	pmimagep->ErrorInfoPorts = 0;
 //	(void)PmClearAllNodes(pm);
 
 	freeNodeList(pm, pmimagep);	// Free old Node List (LidMap) if present

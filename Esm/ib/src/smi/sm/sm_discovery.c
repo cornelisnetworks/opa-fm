@@ -45,9 +45,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "sm_parallelsweep.h"
 #include "sm_discovery.h"
 
-#define PORTINFO_UNAVAILABLE		0x01
-#define SWINFO_UNAVAILABLE		0x02
-#define NODEDESC_UNAVAILABLE		0x04
+#define PORTINFO_UNAVAILABLE    0x01
+#define SWINFO_UNAVAILABLE      0x02
+#define NODEDESC_UNAVAILABLE    0x04
 
 extern int		sm_peer_quarantined;
 extern Pool_t	sm_pool;
@@ -1224,8 +1224,8 @@ _setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t **nnp,
 	Node_t *linkednodep = NULL;
 	Port_t *portp, *oldportp, *swPortp = NULL;
 	int use_cache = 0;
-	Node_t *cache_nodep = NULL;
-	Port_t *cache_portp = NULL;
+	Node_t *cache_nodep = NULL, *noresp_nodep = NULL;
+	Port_t *cache_portp = NULL, *noresp_portp = NULL;
 	Status_t status = VSTATUS_OK;
 	STL_NODE_DESCRIPTION nodeDesc = {{ 0 }};
 	STL_NODE_INFO nodeInfo = { 0 };
@@ -1310,6 +1310,7 @@ _setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t **nnp,
 	// Check to see if we have cached info on this node.
 	//
 	if (topology_passcount && !local && upstreamPortp->state == IB_PORT_ACTIVE) {
+		sm_get_nonresp_cache_node_port(upstreamNodep, upstreamPortp, &noresp_nodep, &noresp_portp);
 		use_cache = sm_find_cached_neighbor(upstreamNodep, upstreamPortp, &cache_nodep, &cache_portp);
 	}
 
@@ -1344,6 +1345,17 @@ _setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t **nnp,
 					IB_LOG_ERRORRC("Get NodeInfo failed for local node. rc:",
 									status);
 					status = VSTATUS_UNRECOVERABLE;
+					goto bail;
+				} else if (sm_popo_inc_and_use_cache_nonresp(&sm_popo, noresp_nodep, &status)) {
+					status = VSTATUS_OK;
+					memcpy(&nodeInfo, &noresp_nodep->nodeInfo, sizeof(STL_NODE_INFO));
+					nodeInfo.PortGUID = noresp_portp->portData->guid;
+					nodeInfo.u1.s.LocalPortNum = noresp_portp->index;
+					IB_LOG_INFINI_INFO_FMT(__func__,
+						"Get NodeInfo failed for nodeGuid "FMT_U64" port %u, via node %s nodeGuid "FMT_U64" port %u; status=%d; using cached data",
+						upstreamPortp->portData ? upstreamPortp->portData->portInfo.NeighborNodeGUID : 0,
+						upstreamPortp->portData ? upstreamPortp->portData->portInfo.NeighborPortNum : 0,
+						sm_nodeDescString(upstreamNodep), upstreamNodep->nodeInfo.NodeGUID, upstreamPortp->index, status);
 				} else {
 					IB_LOG_WARN_FMT(__func__,
 						"Get NodeInfo failed for nodeGuid "FMT_U64" port %u, via node %s nodeGuid "FMT_U64" port %u; status=%d",
@@ -1366,8 +1378,10 @@ _setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t **nnp,
 						}
 					}
 					status = sm_popo_port_error(&sm_popo, topop, upstreamPortp, status);
+					goto bail;
 				}
-				goto bail;
+			} else {
+				sm_popo_clear_cache_nonresp(&sm_popo, noresp_nodep);
 			}
 		}
 	}
@@ -1450,11 +1464,41 @@ _setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t **nnp,
 			conPortInfo.LocalPortNum = upstreamPortp->portData->portInfo.NeighborPortNum;
 			switchInfo = cache_nodep->switchInfo;
 		} else {
-			psc_unlock(psc);
-			status = _get_discovery_node_attributes(fd, path, portNumber, &nodeDesc, conPIp,
-				(_get_trusted_node_type(upstreamPortp, &nodeInfo) == NI_TYPE_SWITCH) ? &switchInfo : NULL,
-				errStr, &discnodestatus);
-			psc_lock(psc);
+			if (!sm_popo_is_nonresp_this_sweep(&sm_popo, noresp_nodep)) {
+				psc_unlock(psc);
+				status = _get_discovery_node_attributes(fd, path, portNumber, &nodeDesc, conPIp,
+					(_get_trusted_node_type(upstreamPortp, &nodeInfo) == NI_TYPE_SWITCH) ? &switchInfo : NULL,
+					errStr, &discnodestatus);
+				psc_lock(psc);
+			} else {
+				// If port was previously nonResp this Sweep, then use cache for NodeDesc/PortInfo
+				status = VSTATUS_TIMEOUT;
+				discnodestatus = NODEDESC_UNAVAILABLE | PORTINFO_UNAVAILABLE;
+				sprintf(errStr, "Nonresponsive, skipping Get NodeDesc and PortInfo");
+			}
+			// If there was a failure this sweep and we can use the cache, then try.
+			if (sm_popo_inc_and_use_cache_nonresp(&sm_popo, noresp_nodep, &status)
+				&& discnodestatus != 0)
+			{
+				if (discnodestatus & NODEDESC_UNAVAILABLE) {
+					memcpy(&nodeDesc, &noresp_nodep->nodeDesc, sizeof(STL_NODE_DESCRIPTION));
+					discnodestatus &= ~NODEDESC_UNAVAILABLE;
+				}
+				if (discnodestatus & PORTINFO_UNAVAILABLE) {
+					memcpy(conPIp, &noresp_portp->portData->portInfo, sizeof(STL_PORT_INFO));
+					discnodestatus &= ~PORTINFO_UNAVAILABLE;
+				}
+				// if no more errors reset error status
+				if (discnodestatus == 0) {
+					status = VSTATUS_OK;
+					IB_LOG_INFINI_INFO_FMT(__func__, "%s for node off Port %d of Node"FMT_U64":%s; using cached data",
+						errStr, upstreamPortp->index, upstreamNodep->nodeInfo.NodeGUID,
+						sm_nodeDescString(upstreamNodep));
+					errStr[0] = '\0';
+				}
+			} else if (status == VSTATUS_OK) {
+				sm_popo_clear_cache_nonresp(&sm_popo, noresp_nodep);
+			}
 		}
 
 		if (*errStr) {
@@ -1476,9 +1520,7 @@ _setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t **nnp,
 			&quarantineReasons, discnodestatus);
 
 		if (discnodestatus & NODEDESC_UNAVAILABLE) {
-			StringCopy((char *) nodeDesc.NodeString,
-			"Not Available",
-			STL_NODE_DESCRIPTION_ARRAY_SIZE);
+			StringCopy((char *) nodeDesc.NodeString, "Not Available", STL_NODE_DESCRIPTION_ARRAY_SIZE);
 		}
 
 		// If the node is authentic and pre-defined topology is enabled, verify
@@ -1564,6 +1606,8 @@ _setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t **nnp,
 		// Check to see if the node existed in the previous topology.
 		if (cache_nodep) {
 			oldnodep = cache_nodep;
+		} else if (noresp_nodep) {
+			oldnodep = noresp_nodep;
 		} else {
 			oldnodep = sm_find_guid(&old_topology, nodeInfo.NodeGUID);
 		}
@@ -1976,12 +2020,12 @@ _setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t **nnp,
 	}
 
 	STL_PORT_INFO *newPortInfos;
-	bitset_t needPortInfo;
-	bitset_t skipPorts;
+	bitset_t needPortInfo, skipPorts, newlyDownPorts;
 
 	vs_pool_alloc(&sm_pool, sizeof(STL_PORT_INFO) * (end_port + 1), (void *)&newPortInfos );
 	bitset_init(&sm_pool, &needPortInfo, end_port + 1);
 	bitset_init(&sm_pool, &skipPorts, end_port + 1);
+	bitset_init(&sm_pool, &newlyDownPorts, end_port + 1);
 
 	for (i = start_port; i <= end_port; i++) {
 		if ((portp = sm_get_port(nodep, i)) == NULL) {
@@ -2063,24 +2107,21 @@ _setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t **nnp,
 				oldportp = sm_get_port(oldnodep, i);
 				if (sm_valid_port(oldportp)) {
 					if(oldportp->portData->portInfo.PortStates.s.PortState >
-						portStateInfo[i].PortStates.s.PortState)
+						portStateInfo[i].PortStates.s.PortState) {
 						sm_popo_monitor_port(&sm_popo, portp,
 							POPO_LONGTERM_FLAPPING);
+
+						// If PortState dropped back to INIT/DOWN, get the LinkDownReason
+						bitset_set(&newlyDownPorts, i);
+						bitset_set(&needPortInfo, i);
+					}
 				}
 			}
 		}
 
 		// If this port is down, then we don't care about most of it's portData
-		// and portInfo contents, so just copy linkDownReasons and jump to the
-		// part where we clean it up.
+		// and portInfo contents, so just jump to the part where we clean it up.
 		if (portStateInfo && portStateInfo[i].PortStates.s.PortState == IB_PORT_DOWN) {
-			oldnodep = sm_find_guid(&old_topology, nodep->nodeInfo.NodeGUID);
-			if (oldnodep) {
-				oldportp = sm_get_port(oldnodep, i);
-				if (sm_valid_port(oldportp)) {
-					topology_saveLdr(&sm_newTopology, nodep->nodeInfo.NodeGUID, oldportp);
-				}
-			}
 			sm_mark_link_down(topop, portp);
 			continue;
 		}
@@ -2103,6 +2144,7 @@ _setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t **nnp,
 	if (status == VSTATUS_TIMEOUT_LIMIT) {
 		bitset_free(&needPortInfo);
 		bitset_free(&skipPorts);
+		bitset_free(&newlyDownPorts);
 		vs_pool_free(&sm_pool, newPortInfos);
 		goto bail;
 	}
@@ -2117,8 +2159,11 @@ _setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t **nnp,
 
 		if (bitset_test(&skipPorts, i)) continue;
 
-		if (portStateInfo && portStateInfo[i].PortStates.s.PortState == IB_PORT_DOWN)
+		if (portStateInfo && portStateInfo[i].PortStates.s.PortState == IB_PORT_DOWN
+			&& !bitset_test(&newlyDownPorts, i))
+		{
 			goto cleanup_down_ports;
+		}
 
 		// There was a problem getting this port
 		if (bitset_test(&needPortInfo, i)) {
@@ -2195,8 +2240,6 @@ _setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t **nnp,
 				portp->portData->linkPolicyViolation  =
 					oldportp->portData->linkPolicyViolation;
 
-				memcpy(portp->portData->LinkDownReasons, oldportp->portData->LinkDownReasons, sizeof(STL_LINKDOWN_REASON) * STL_NUM_LINKDOWN_REASONS);
-
 				// Copy wire depth from old port data.
 				portp->portData->initWireDepth = oldportp->portData->initWireDepth;
 
@@ -2217,25 +2260,19 @@ _setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t **nnp,
 			}
 		}
 
-		if (old_topology.ldrCache && (!oldnodep || !sm_valid_port(oldportp))) {
-			// Port may have disappeared; try to get LinkDownReasons from cache
-			LdrCacheKey_t key;
-			cl_map_item_t *it;
-			key.guid = nodep->nodeInfo.NodeGUID;
-			key.index = portp->index;
+		/* save the portInfo and LinkDownReason*/
+		portp->portData->portInfo = newPortInfos[i];
+		sm_popo_update_port_state_with_ldr(&sm_popo, portp,
+			&portp->portData->portInfo.PortStates,
+			portp->portData->portInfo.LinkDownReason,
+			portp->portData->portInfo.NeighborLinkDownReason);
 
-			it = cl_qmap_get(old_topology.ldrCache, (long int)&key);
-			if (it != cl_qmap_end(old_topology.ldrCache)) {
-				LdrCacheEntry_t *c = PARENT_STRUCT(it, LdrCacheEntry_t, mapItem);
-				memcpy(portp->portData->LinkDownReasons, c->ldr,
-				  sizeof(STL_LINKDOWN_REASON) * STL_NUM_LINKDOWN_REASONS);
-			}
+		if (portStateInfo && portStateInfo[i].PortStates.s.PortState == IB_PORT_DOWN
+			&& bitset_test(&newlyDownPorts, i))
+		{
+			goto cleanup_down_ports;
 		}
 
-		/* save the portInfo */
-		portp->portData->portInfo = newPortInfos[i];
-		sm_popo_update_port_state(&sm_popo, portp,
-			&portp->portData->portInfo.PortStates);
 
 		/***** applicable to all non management ports *****/
 		if (nodep->nodeInfo.NodeType != NI_TYPE_SWITCH
@@ -2264,15 +2301,6 @@ _setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t **nnp,
 			if (nodep->nodeInfo.NodeType != NI_TYPE_SWITCH) {
 				if (sm_mark_new_endnode(nodep) != VSTATUS_OK)
 					topology_changed = 1;
-			}
-
-			// Update this port's list of LinkDownReasons if there is a new one
-			if(portInfo->LinkDownReason != STL_LINKDOWN_REASON_NONE ||
-			  portInfo->NeighborLinkDownReason != STL_LINKDOWN_REASON_NONE) {
-				int indexToUse = STL_LINKDOWN_REASON_NEXT_INDEX(portp->portData->LinkDownReasons);
-				portp->portData->LinkDownReasons[indexToUse].LinkDownReason = portInfo->LinkDownReason;
-				portp->portData->LinkDownReasons[indexToUse].Timestamp = (uint64_t) time(NULL);
-				portp->portData->LinkDownReasons[indexToUse].NeighborLinkDownReason = portInfo->NeighborLinkDownReason;
 			}
 		}
 
@@ -2316,6 +2344,7 @@ _setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t **nnp,
 				if (status == VSTATUS_TIMEOUT_LIMIT) {
 					bitset_free(&needPortInfo);
 					bitset_free(&skipPorts);
+					bitset_free(&newlyDownPorts);
 					vs_pool_free(&sm_pool, newPortInfos);
 					goto bail;
 				}
@@ -2369,6 +2398,7 @@ _setup_node(Topology_t * topop, FabricData_t * pdtop, Node_t **nnp,
 
 	bitset_free(&needPortInfo);
 	bitset_free(&skipPorts);
+	bitset_free(&newlyDownPorts);
 	vs_pool_free(&sm_pool, newPortInfos);
 
 	if (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH) {
@@ -2676,6 +2706,7 @@ sweep_discovery(SweepContext_t *sweep_context)
 	}
 
 	vs_time_get(&sm_newTopology.sweepStartTime);
+	sm_popo_begin_sweep(&sm_popo, sm_newTopology.sweepStartTime/VTIMER_1S);
 
 	//
 	//	Start a directed route exploration of the fabric.

@@ -190,17 +190,21 @@ sub do_rebuild_ramdisk()
 		if ( -d '/dev') {
 			$cmd = $DRACUT_EXE_FILE;
 		}
-		my $kver = `uname -r | xargs echo -n`;
 		#name of initramfs may vary between distros, so need to get it from lsinitrd
-		my ($current_initrd) = `lsinitrd` =~ m/(?:Image: \/boot\/)((?:[0-9]|[a-z]|[\._\+\-])+)/o;
-		my $tmpfile = "/tmp/$current_initrd";
+		my $current_initrd = `lsinitrd 2>&1 | head -n 1`;
+		my ($initrd_prefix) = $current_initrd =~ m/\/boot\/(\w+)-[\w\-\.]+.*/;
+		my $initrd_suffix = "";
+                if ($current_initrd =~ m/\.img[':]/) {
+                        $initrd_suffix = ".img";
+                }
+		my $tmpfile = "/tmp/$initrd_prefix-$CUR_OS_VER$initrd_suffix";
 
 		if ( -e $cmd ) {
 			do {
-				NormalPrint("Rebuilding boot image with \"$cmd -f\"...");
+				NormalPrint("Rebuilding boot image with \"$cmd -f $tmpfile $CUR_OS_VER\"...\n");
 				# Try to build a temporary image first as a dry-run to make sure
 				# a failed run will not destroy an existing image.
-				if (system("$cmd -f $tmpfile") == 0 && system("mv -f $tmpfile /boot/") == 0) {
+				if (system("$cmd -f $tmpfile $CUR_OS_VER") == 0 && system("mv -f $tmpfile /boot/") == 0) {
 					NormalPrint("New initramfs installed in /boot.\n");
 					NormalPrint("done.\n");
 					return;

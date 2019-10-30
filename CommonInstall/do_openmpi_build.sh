@@ -632,7 +632,7 @@ logfile=make.openmpi.$interface.$compiler
 				--define '_usr $STACK_PREFIX' \
 				--define 'ofed 0' \
 				--define '_prefix $MPICH_PREFIX' \
-				--define '_defaultdocdir $MPICH_PREFIX' \
+				--define '_defaultdocdir $MPICH_PREFIX/doc/..' \
 				--define '_mandir %{_prefix}/share/man' \
 				--define 'mflags -j 4' \
 				--define 'configure_options $CONFIG_OPTIONS $openmpi_ldflags --with-verbs=$STACK_PREFIX --with-verbs-libdir=$STACK_PREFIX/$openmpi_lib $openmpi_comp_env $openmpi_conf_psm --with-devel-headers --disable-oshmem' \

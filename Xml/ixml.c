@@ -442,6 +442,21 @@ void IXmlOutputOptionalStrUint(IXmlOutputState_t *state, const char *tag, const 
 		IXmlOutputStrUint(state, tag, str, value);
 }
 
+void IXmlOutputStrUint64(IXmlOutputState_t *state, const char *tag, const char* str, uint64 value)
+{
+	/* when serializing, we omit the string output tag */
+	if (! (state->flags & IXML_OUTPUT_FLAG_SERIALIZE)) {
+		IXmlOutputStr(state, tag, str);
+	}
+	IXmlOutputUint64(state, tag, value);
+}
+// only output if value != 0
+void IXmlOutputOptionalStrUint64(IXmlOutputState_t *state, const char *tag, const char* str, uint64 value)
+{
+	if (value)
+		IXmlOutputStrUint64(state, tag, str, value);
+}
+
 void IXmlOutputStrInt(IXmlOutputState_t *state, const char *tag, const char* str, int value)
 {
 	/* when serializing, we omit the string output and the _Int tag */

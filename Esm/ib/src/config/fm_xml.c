@@ -1253,6 +1253,7 @@ boolean pmInitConfig(PMXmlConfig_t *pmp)
 	DEFAULT_AND_CKSUM_INT(pmp->Clear8bit, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_INT(pmp->process_hfi_counters, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_INT(pmp->process_vl_counters, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_INT(pmp->process_errorinfo, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
 
 	DEFAULT_AND_CKSUM_INT(pmp->MaxRetries, PM_DEFAULT_MAX_ATTEMPTS, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_INT(pmp->RcvWaitInterval, PM_DEFAULT_RESP_TIMEOUT, CKSUM_OVERALL_DISRUPT_CONSIST);
@@ -1267,12 +1268,12 @@ boolean pmInitConfig(PMXmlConfig_t *pmp)
 	DEFAULT_AND_CKSUM_INT(pmp->total_images, MAX(pmp->freeze_frame_images + 2, PM_DEFAULT_TOTAL_IMAGES), CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_INT(pmp->image_update_interval, pmp->sweep_interval < 2 ? (pmp->sweep_interval + 1) / 2 : pmp->sweep_interval / 2);
 
-	DEFAULT_AND_CKSUM_INT(pmp->thresholds.Integrity, 100, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_INT(pmp->thresholds.Congestion, 100, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_INT(pmp->thresholds.SmaCongestion, 100, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_INT(pmp->thresholds.Bubble, 100, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_INT(pmp->thresholds.Security, 10, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_INT(pmp->thresholds.Routing, 100, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_INT(pmp->thresholds.Integrity, 100, CKSUM_OVERALL_CONSIST);
+	DEFAULT_AND_CKSUM_INT(pmp->thresholds.Congestion, 100, CKSUM_OVERALL_CONSIST);
+	DEFAULT_AND_CKSUM_INT(pmp->thresholds.SmaCongestion, 100, CKSUM_OVERALL_CONSIST);
+	DEFAULT_AND_CKSUM_INT(pmp->thresholds.Bubble, 100, CKSUM_OVERALL_CONSIST);
+	DEFAULT_AND_CKSUM_INT(pmp->thresholds.Security, 10, CKSUM_OVERALL_CONSIST);
+	DEFAULT_AND_CKSUM_INT(pmp->thresholds.Routing, 100, CKSUM_OVERALL_CONSIST);
 
 	DEFAULT_AND_CKSUM_INT(pmp->thresholdsExceededMsgLimit.Integrity, 10, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_INT(pmp->thresholdsExceededMsgLimit.Congestion, 0, CKSUM_OVERALL_DISRUPT);
@@ -1281,30 +1282,34 @@ boolean pmInitConfig(PMXmlConfig_t *pmp)
 	DEFAULT_AND_CKSUM_INT(pmp->thresholdsExceededMsgLimit.Security, 10, CKSUM_OVERALL_DISRUPT);
 	DEFAULT_AND_CKSUM_INT(pmp->thresholdsExceededMsgLimit.Routing, 10, CKSUM_OVERALL_DISRUPT);
 
-	DEFAULT_AND_CKSUM_INT(pmp->integrityWeights.LocalLinkIntegrityErrors, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_INT(pmp->integrityWeights.PortRcvErrors, 100, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_INT(pmp->integrityWeights.ExcessiveBufferOverruns, 100, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_INT(pmp->integrityWeights.LinkErrorRecovery, 0, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_INT(pmp->integrityWeights.LinkDowned, 25, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_INT(pmp->integrityWeights.UncorrectableErrors, 100, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_INT(pmp->integrityWeights.FMConfigErrors, 100, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_INT(pmp->integrityWeights.LinkQualityIndicator, 40, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_INT(pmp->integrityWeights.LinkWidthDowngrade, 100, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_INT(pmp->integrityWeights.LocalLinkIntegrityErrors, 0, CKSUM_OVERALL_CONSIST);
+	DEFAULT_AND_CKSUM_INT(pmp->integrityWeights.PortRcvErrors, 100, CKSUM_OVERALL_CONSIST);
+	DEFAULT_AND_CKSUM_INT(pmp->integrityWeights.ExcessiveBufferOverruns, 100, CKSUM_OVERALL_CONSIST);
+	DEFAULT_AND_CKSUM_INT(pmp->integrityWeights.LinkErrorRecovery, 0, CKSUM_OVERALL_CONSIST);
+	DEFAULT_AND_CKSUM_INT(pmp->integrityWeights.LinkDowned, 25, CKSUM_OVERALL_CONSIST);
+	DEFAULT_AND_CKSUM_INT(pmp->integrityWeights.UncorrectableErrors, 100, CKSUM_OVERALL_CONSIST);
+	DEFAULT_AND_CKSUM_INT(pmp->integrityWeights.FMConfigErrors, 100, CKSUM_OVERALL_CONSIST);
+	DEFAULT_AND_CKSUM_INT(pmp->integrityWeights.LinkQualityIndicator, 40, CKSUM_OVERALL_CONSIST);
+	DEFAULT_AND_CKSUM_INT(pmp->integrityWeights.LinkWidthDowngrade, 100, CKSUM_OVERALL_CONSIST);
 
-	DEFAULT_AND_CKSUM_INT(pmp->congestionWeights.PortXmitWait, 10, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_INT(pmp->congestionWeights.SwPortCongestion, 100, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_INT(pmp->congestionWeights.PortRcvFECN, 5, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_INT(pmp->congestionWeights.PortRcvBECN, 1, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_INT(pmp->congestionWeights.PortXmitTimeCong, 25, CKSUM_OVERALL_DISRUPT_CONSIST);
-	DEFAULT_AND_CKSUM_INT(pmp->congestionWeights.PortMarkFECN, 25, CKSUM_OVERALL_DISRUPT_CONSIST);
+	DEFAULT_AND_CKSUM_INT(pmp->congestionWeights.PortXmitWait, 10, CKSUM_OVERALL_CONSIST);
+	DEFAULT_AND_CKSUM_INT(pmp->congestionWeights.SwPortCongestion, 100, CKSUM_OVERALL_CONSIST);
+	DEFAULT_AND_CKSUM_INT(pmp->congestionWeights.PortRcvFECN, 5, CKSUM_OVERALL_CONSIST);
+	DEFAULT_AND_CKSUM_INT(pmp->congestionWeights.PortRcvBECN, 1, CKSUM_OVERALL_CONSIST);
+	DEFAULT_AND_CKSUM_INT(pmp->congestionWeights.PortXmitTimeCong, 25, CKSUM_OVERALL_CONSIST);
+	DEFAULT_AND_CKSUM_INT(pmp->congestionWeights.PortMarkFECN, 25, CKSUM_OVERALL_CONSIST);
 
 	DEFAULT_AND_CKSUM_INT(pmp->resolution.LocalLinkIntegrity, 8000000, CKSUM_OVERALL_DISRUPT_CONSIST);
 	DEFAULT_AND_CKSUM_INT(pmp->resolution.LinkErrorRecovery, 100000, CKSUM_OVERALL_DISRUPT_CONSIST);
 
+	DEFAULT_AND_CKSUM_INT(pmp->errorinfo_thresholds.Integrity, UNDEFINED_XML16, CKSUM_OVERALL_DISRUPT);
+	DEFAULT_AND_CKSUM_INT(pmp->errorinfo_thresholds.Security, 10, CKSUM_OVERALL_DISRUPT);
+	DEFAULT_AND_CKSUM_INT(pmp->errorinfo_thresholds.Routing, 10, CKSUM_OVERALL_DISRUPT);
+
 	for (i = 0; i < pmp->number_of_pm_groups; i++) {
 		if (pmp->pm_portgroups[i].Enabled) {
-			CKSUM_STR(pmp->pm_portgroups[i].Name, CKSUM_OVERALL_DISRUPT_CONSIST);
-			CKSUM_DATA(pmp->pm_portgroups[i].Monitors, CKSUM_OVERALL_DISRUPT_CONSIST);
+			CKSUM_STR(pmp->pm_portgroups[i].Name, CKSUM_OVERALL_CONSIST);
+			CKSUM_DATA(pmp->pm_portgroups[i].Monitors, CKSUM_OVERALL_CONSIST);
 		}
 	}
 
@@ -1409,6 +1414,7 @@ void pmShowConfig(PMXmlConfig_t *pmp)
 	printf("XML - Clear8bit %u\n", (unsigned int)pmp->Clear8bit);
 	printf("XML - process_hfi_counters %u\n", (unsigned int)pmp->process_hfi_counters);
 	printf("XML - process_vl_counters %u\n", (unsigned int)pmp->process_vl_counters);
+	printf("XML - process_errorinfo %u\n", (unsigned int)pmp->process_errorinfo);
 
 	printf("XML - MaxRetries %u\n", (unsigned int)pmp->MaxRetries);
 	printf("XML - RcvWaitInterval %u\n", (unsigned int)pmp->RcvWaitInterval);
@@ -1455,6 +1461,10 @@ void pmShowConfig(PMXmlConfig_t *pmp)
 
 	printf("XML - resolution.LocalLinkIntegrity %u\n",				(unsigned int)pmp->resolution.LocalLinkIntegrity);
 	printf("XML - resolution.LinkErrorRecovery %u\n",				(unsigned int)pmp->resolution.LinkErrorRecovery);
+
+	printf("XML - errorinfo_thresholds.Integrity %u\n", (unsigned int)pmp->errorinfo_thresholds.Integrity);
+	printf("XML - errorinfo_thresholds.Security %u\n",  (unsigned int)pmp->errorinfo_thresholds.Security);
+	printf("XML - errorinfo_thresholds.Routing %u\n",   (unsigned int)pmp->errorinfo_thresholds.Routing);
 
 	printf("XML - number_of_pm_groups %u\n", (unsigned int)pmp->number_of_pm_groups);
 	for (i = 0; i < pmp->number_of_pm_groups; i++) {
@@ -6948,6 +6958,35 @@ static void PmSweepIntervalParserEnd(IXmlParserState_t *state,
 	*(uint16 *)IXmlParserGetField(field, object) = SweepInterval;
 }
 
+static void PmSweepErrorInfoThresholdsParserEnd(IXmlParserState_t *state,
+	const IXML_FIELD *field, void *object, void *parent, XML_Char *content,
+	unsigned len, boolean valid)
+{
+	uint32 threshold = 0;
+	if (!strcasecmp(content, "Unlimited")) {
+		threshold = UNDEFINED_XML32;
+	} else if (!IXmlParseUint32(state, content, len, &threshold)) {
+		return;
+	}
+
+	*(uint32 *)IXmlParserGetField(field, object) = threshold;
+}
+
+
+static void* PmSweepErrorInfoThresholdsXmlParserStart(IXmlParserState_t *state, void *parent, const char **attr)
+{
+	return &((PMXmlConfig_t *)parent)->errorinfo_thresholds;
+}
+
+// SweepErrorInfoLogThresholds
+static IXML_FIELD PmSweepErrorInfoThresholds[] = {
+	{ tag:"Integrity", format:'u', IXML_FIELD_INFO(PmSweepErrorInfoThresholds_t, Integrity), end_func:PmSweepErrorInfoThresholdsParserEnd },
+	{ tag:"Security", format:'u', IXML_FIELD_INFO(PmSweepErrorInfoThresholds_t, Security), end_func:PmSweepErrorInfoThresholdsParserEnd },
+	{ tag:"Routing", format:'u', IXML_FIELD_INFO(PmSweepErrorInfoThresholds_t, Routing), end_func:PmSweepErrorInfoThresholdsParserEnd },
+	{ NULL }
+};
+
+
 // fields within "Pm/Thresholds" tag
 static IXML_FIELD PmThresholdsFields[] = {
 	{ tag:"Integrity", format:'u', IXML_FIELD_INFO(PmThresholdsXmlConfig_t, Integrity) },
@@ -7096,6 +7135,7 @@ static IXML_FIELD PmFields[] = {
 	{ tag:"Clear8bit", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, Clear8bit) },
 	{ tag:"ProcessVLCounters", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, process_vl_counters) },
 	{ tag:"ProcessHFICounters", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, process_hfi_counters) },
+	{ tag:"ProcessErrorInfo", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, process_errorinfo) },
 	{ tag:"MaxAttempts", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, MaxRetries) },
 	{ tag:"RespTimeout", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, RcvWaitInterval) },
 	{ tag:"MinRespTimeout", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, MinRcvWaitInterval) },
@@ -7112,6 +7152,7 @@ static IXML_FIELD PmFields[] = {
 	{ tag:"IntegrityWeights", format:'k', subfields:PmIntegrityWeightsFields, start_func:PmIntegrityWeightsXmlParserStart },
 	{ tag:"CongestionWeights", format:'k', subfields:PmCongestionWeightsFields, start_func:PmCongestionWeightsXmlParserStart },
 	{ tag:"Resolution", format:'k', subfields:PmResolutionFields, start_func:PmResolutionXmlParserStart },
+	{ tag:"SweepErrorInfoLogThresholds", format:'k', subfields:PmSweepErrorInfoThresholds, start_func:PmSweepErrorInfoThresholdsXmlParserStart },
 	{ tag:"Debug", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, debug) },
 	{ tag:"RmppDebug", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, debug_rmpp) },
 	{ tag:"PmPerfDebug", format:'u', IXML_FIELD_INFO(PMXmlConfig_t, pm_debug_perf) },

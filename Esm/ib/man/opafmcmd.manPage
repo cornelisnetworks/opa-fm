@@ -6,42 +6,39 @@
 .\" .\" *                                                                   *
 .\" .\" *********************************************************************
 
-.TH opafmcmd 8 "Intel Corporation" "Copyright(C) 2015\-2019" "IFSFFCLIRG (Man Page)" 
+.TH opafmcmd 8 "Intel Corporation" "Copyright(C) 2015\-2019" "IFSFFCLIRG (Man Page)"
 .SH NAME
 opafmcmd
 
-.NL
 
 .PP
 Executes a command to a specific instance of the Fabric Manager (FM). This command can be used, for example, to query the configuration attributes of a particular instance of an FM as well as issue subnet management commands.
 .SH Syntax
-.NL
-opafmcmd [-i \fIfm\(ulinstance\fR] cmd [ \fIargs\fR]
+opafmcmd [-i  \fIfm\(ulinstance\fR] cmd [ \fIargs\fR]
 .SH Options
-.NL
 
 .TP 10
---help 
-.NL
+--help
+
 Produces full help text.
 
 .TP 10
--i \fIfm\(ulinstance\fR 
-.NL
+-i \fIfm\(ulinstance\fR
+
 Specifies the number of the FM instance to act on.
 
 .IP
 Range is 0 to 7. Default is 0.
 .TP 10
-cmd [args] 
-.NL
+cmd [args]
+
 Specifies the commands and arguments (if applicable) to be run. Values include:
 
 .RS
 .TP 10
 
 .sp
-smForceSweep 
+smForceSweep
 Makes the Subnet Manager (SM) sweep now.
 
 .RE
@@ -50,7 +47,7 @@ Makes the Subnet Manager (SM) sweep now.
 .TP 10
 
 .sp
-smRestorePriority 
+smRestorePriority
 Restores the normal priority of the SM, if it is currently elevated.
 
 .RE
@@ -59,7 +56,7 @@ Restores the normal priority of the SM, if it is currently elevated.
 .TP 10
 
 .sp
-smShowCounters 
+smShowCounters
 Gets statistics and performance counters from the SM.
 
 .RE
@@ -68,7 +65,7 @@ Gets statistics and performance counters from the SM.
 .TP 10
 
 .sp
-smResetCounters 
+smResetCounters
 Resets SM statistics and performance counters.
 
 .RE
@@ -77,7 +74,7 @@ Resets SM statistics and performance counters.
 .TP 10
 
 .sp
-smStateDump 
+smStateDump
 Dumps internal SM state into specified directory.
 
 .RE
@@ -86,7 +83,7 @@ Dumps internal SM state into specified directory.
 .TP 10
 
 .sp
-smLogLevel 
+smLogLevel
 Sets the SM logging level. Values include:
 .RS
 
@@ -116,7 +113,7 @@ Sets the SM logging level. Values include:
 .TP 10
 
 .sp
-smLogMode 
+smLogMode
 Sets the SM log mode flags. Values include:
 .RS
 
@@ -134,7 +131,7 @@ Sets the SM log mode flags. Values include:
 .TP 10
 
 .sp
-smLogMask 
+smLogMask
 Sets the SM log mask for a specific subsystem to the value given. For a list of subsystems and mask bit meanings, see the files /etc/opa-fm/opafm.xml or /usr/share/opa-fm/opafm.xml.
 
 .RE
@@ -143,7 +140,7 @@ Sets the SM log mask for a specific subsystem to the value given. For a list of 
 .TP 10
 
 .sp
-smPerfDebug 
+smPerfDebug
 Toggles performance debug output for SM.
 
 .RE
@@ -152,7 +149,7 @@ Toggles performance debug output for SM.
 .TP 10
 
 .sp
-saPerfDebug 
+saPerfDebug
 Toggles performance debug output for Subnet Administration (SA).
 
 .RE
@@ -161,7 +158,7 @@ Toggles performance debug output for Subnet Administration (SA).
 .TP 10
 
 .sp
-saRmppDebug 
+saRmppDebug
 Toggles Reliable Message Passing Protocol (RMPP) debug output for SA.
 
 .RE
@@ -170,7 +167,7 @@ Toggles Reliable Message Passing Protocol (RMPP) debug output for SA.
 .TP 10
 
 .sp
-pmShowCounters 
+pmShowCounters
 Gets statistics and performance counters for the Performance Manager (PM).
 
 .RE
@@ -179,7 +176,7 @@ Gets statistics and performance counters for the Performance Manager (PM).
 .TP 10
 
 .sp
-pmResetCounters 
+pmResetCounters
 Resets statistics and performance counters for the PM.
 
 .RE
@@ -188,7 +185,7 @@ Resets statistics and performance counters for the PM.
 .TP 10
 
 .sp
-pmDebug 
+pmDebug
 Toggles debug output for PM.
 
 .RE
@@ -197,7 +194,7 @@ Toggles debug output for PM.
 .TP 10
 
 .sp
-pmRmppDebug 
+pmRmppDebug
 Toggles RMPP debug output for PM.
 
 .RE
@@ -206,7 +203,7 @@ Toggles RMPP debug output for PM.
 .TP 10
 
 .sp
-feLogLevel 
+feLogLevel
 Sets the Fabric Executive (FE) logging level. Values include:
 .RS
 
@@ -236,7 +233,7 @@ Sets the Fabric Executive (FE) logging level. Values include:
 .TP 10
 
 .sp
-feLogMode 
+feLogMode
 Sets the FE log mode flags.
 .RS
 
@@ -254,8 +251,8 @@ Sets the FE log mode flags.
 .TP 10
 
 .sp
-feLogMask 
-Sets the FE log mask for a specific subsystem to the value given. For a list of subsystems and mask bit meanings, see the files /etc/opa-fm/opafm.xml or /usr/share/opa-fm/opafm.xml 
+feLogMask
+Sets the FE log mask for a specific subsystem to the value given. For a list of subsystems and mask bit meanings, see the files /etc/opa-fm/opafm.xml or /usr/share/opa-fm/opafm.xml
 
 .RE
 
@@ -263,7 +260,7 @@ Sets the FE log mask for a specific subsystem to the value given. For a list of 
 .TP 10
 
 .sp
-feDebug 
+feDebug
 Toggles debug output for FE.
 
 .RE
@@ -272,7 +269,7 @@ Toggles debug output for FE.
 .TP 10
 
 .sp
-feRmppDebug 
+feRmppDebug
 Toggles RMPP debug output for FE.
 
 .RE
@@ -281,7 +278,7 @@ Toggles RMPP debug output for FE.
 .TP 10
 
 .sp
-smLooptestStart 
+smLooptestStart
 Starts loop test in normal mode. Specify the number of 256 byte packets. Default is 0.
 
 .RE
@@ -290,7 +287,7 @@ Starts loop test in normal mode. Specify the number of 256 byte packets. Default
 .TP 10
 
 .sp
-smLooptestFastModeStart 
+smLooptestFastModeStart
 Starts loop test in fast mode. Specify the number of 256 byte packets. Default is 5.
 
 .RE
@@ -299,7 +296,7 @@ Starts loop test in fast mode. Specify the number of 256 byte packets. Default i
 .TP 10
 
 .sp
-smLooptestStop 
+smLooptestStop
 Stops loop test. Returns switch LFTs back to normal.
 
 .RE
@@ -308,7 +305,7 @@ Stops loop test. Returns switch LFTs back to normal.
 .TP 10
 
 .sp
-smLooptestInjectPackets 
+smLooptestInjectPackets
 Enter \fInumPkts\fR to send to all switch loops. Default is 1.
 
 .RE
@@ -317,7 +314,7 @@ Enter \fInumPkts\fR to send to all switch loops. Default is 1.
 .TP 10
 
 .sp
-smLooptestInjectAtNode 
+smLooptestInjectAtNode
 Enter the switch node index to inject loop packets. Default is 0.
 
 .RE
@@ -326,7 +323,7 @@ Enter the switch node index to inject loop packets. Default is 0.
 .TP 10
 
 .sp
-smLooptestInjectEachSweep 
+smLooptestInjectEachSweep
 Sets whether to inject or stop injecting packets each sweep.
 .RS
 
@@ -344,7 +341,7 @@ Enter 0 to stop injecting each sweep.
 .TP 10
 
 .sp
-smLooptestPathLength 
+smLooptestPathLength
 Sets the loop path length. Range is 2 - 4. Default is 3.
 
 .RE
@@ -353,7 +350,7 @@ Sets the loop path length. Range is 2 - 4. Default is 3.
 .TP 10
 
 .sp
-smLooptestMinISLRedundancy 
+smLooptestMinISLRedundancy
 Sets the minimum number of loops in which to include each ISL. Default is 4.
 
 .RE
@@ -362,7 +359,7 @@ Sets the minimum number of loops in which to include each ISL. Default is 4.
 .TP 10
 
 .sp
-smLooptestShowLoopPaths 
+smLooptestShowLoopPaths
 Displays the loop paths given node index or all loop paths. Default is all.
 
 .RE
@@ -371,7 +368,7 @@ Displays the loop paths given node index or all loop paths. Default is all.
 .TP 10
 
 .sp
-smLooptestShowSwitchLft 
+smLooptestShowSwitchLft
 Displays a switch LFT given node index or all switches LFTs. Default is all.
 
 .RE
@@ -380,7 +377,7 @@ Displays a switch LFT given node index or all switches LFTs. Default is all.
 .TP 10
 
 .sp
-smLooptestShowTopology 
+smLooptestShowTopology
 Displays the topology for the SM Loop Test.
 
 .RE
@@ -389,7 +386,7 @@ Displays the topology for the SM Loop Test.
 .TP 10
 
 .sp
-smLooptestShowConfig 
+smLooptestShowConfig
 Displays the current active loop configuration.
 
 .RE
@@ -398,7 +395,7 @@ Displays the current active loop configuration.
 .TP 10
 
 .sp
-smForceRebalance 
+smForceRebalance
 Toggles Force Rebalance setting for SM.
 
 .RE
@@ -407,7 +404,7 @@ Toggles Force Rebalance setting for SM.
 .TP 10
 
 .sp
-smAdaptiveRouting 
+smAdaptiveRouting
 Displays or modifies Adaptive Routing setting for SM.
 
 .IP
@@ -430,7 +427,7 @@ If frequency or threshold are not provided, they will be reset to default.
 .TP 10
 
 .sp
-smForceAttributeRewrite 
+smForceAttributeRewrite
 Sets rewriting of all attributes upon resweeping.
 .RS
 
@@ -448,7 +445,7 @@ Enter 1 to Enable.
 .TP 10
 
 .sp
-smSkipAttrWrite 
+smSkipAttrWrite
 Specifies the bitmask of attributes to be skipped (not written) during sweeps. Enter -help for list of options.
 
 .RE
@@ -457,7 +454,7 @@ Specifies the bitmask of attributes to be skipped (not written) during sweeps. E
 .TP 10
 
 .sp
-smPauseSweeps 
+smPauseSweeps
 Pauses SM sweeps.
 
 .RE
@@ -466,13 +463,13 @@ Pauses SM sweeps.
 .TP 10
 
 .sp
-smResumeSweeps 
+smResumeSweeps
 Resumes SM sweeps.
 
 .RE
 
-.SH Example 
-.NL
+.SH Example
 opafmcmd smForceSweep
 .br
+
 opafmcmd -i 2 smLogLevel 3

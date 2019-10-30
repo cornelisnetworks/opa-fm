@@ -119,7 +119,7 @@ int fix_file(char* filename)
 	/* unfortunately CYGWIN or NT seem to be off on st_size since
 	 * you typically can't read size bytes here.  Linux is fine
 	 */
-	/*if (read(fd, buffer, size) != size)*/
+	/*if (read(fd, buffer, size) != size)*/
 	if (read(fd, buffer, size) == -1)
 	{
 		fprintf(stderr, "rm_version: Can't read: ");

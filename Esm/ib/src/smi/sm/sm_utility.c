@@ -972,64 +972,27 @@ sm_set_stl_attribute_async_dispatch(SmMaiHandle_t *fd, uint32_t aid, uint32_t am
 	return (status);
 }
 
-int
-sm_check_node_cache_valid(Node_t * nodep)
-{
-	uint64_t curtime = 0ll;
-
-	if (nodep->nodeInfo.NodeType == NI_TYPE_CA) {
-		(void) vs_time_get(&curtime);
-
-		if ((nodep->nonRespTime == 0) && (sm_config.non_resp_tsec != 0)) {
-			nodep->nonRespTime = curtime;
-			return 1;
-		} else {
-			if (((curtime - nodep->nonRespTime) < (sm_config.non_resp_tsec * VTIMER_1S)) ||
-				(nodep->nonRespCount < sm_config.non_resp_max_count)) {
-				return 1;
-			}
-		}
-	}
-
-	return 0;
-}
-
 /* Attempts to find a port's peer information from the old topoolgy. It then checks
    this info against use definable timers to verify if the cache is valid. */
-int
-sm_check_node_cache(Node_t * cnp, Port_t * cpp, Node_t ** nodep, Port_t ** portp)
+void sm_get_nonresp_cache_node_port(Node_t * cnp, Port_t * cpp, Node_t ** nodep, Port_t ** portp)
 {
 	Node_t *cache_nodep = NULL;
 	Port_t *cache_portp = NULL;
 
 	if (!(cnp && cpp)) {
-		return 0;
+		return;
 	}
 
 	if (topology_passcount &&
 		(cache_portp = sm_find_port_peer(&old_topology, cnp->nodeInfo.NodeGUID, cpp->index)) &&
 		(cache_nodep = sm_find_port_node(&old_topology, cache_portp))) {
 		if (cache_nodep->nodeInfo.NodeType == NI_TYPE_CA) {
-			if (sm_check_node_cache_valid(cache_nodep)) {
-				cache_nodep->nonRespCount++;
+			if (sm_popo_use_cache_nonresp(&sm_popo, cache_nodep)) {
 				*nodep = cache_nodep;
 				*portp = cache_portp;
-				IB_LOG_WARN_FMT(__func__,
-								"Port non-responsive using cached info GUID[" FMT_U64
-								"] Port: %d %s. If this persists verify health of node!",
-								cache_nodep->nodeInfo.NodeGUID, cache_portp->index,
-								sm_nodeDescString(cache_nodep));
-				return 1;
-			} else {
-				IB_LOG_WARN_FMT(__func__,
-								"Dropping Port from topology: Link is up but cache has expired GUID["
-								FMT_U64 "] Port: %d %s. Check health of node!",
-								cache_nodep->nodeInfo.NodeGUID, cache_portp->index,
-								sm_nodeDescString(cache_nodep));
 			}
 		}
 	}
-	return 0;
 }
 
 int
@@ -5386,26 +5349,30 @@ sm_transition(uint32_t new_state)
 		}
 		break;
 	case SM_STATE_DISCOVERING:
-		if ((new_state == SM_STATE_STANDBY) || (new_state == SM_STATE_MASTER) ||
-			(new_state == SM_STATE_NOTACTIVE)) {
+		if ((new_state == SM_STATE_STANDBY) || (new_state == SM_STATE_MASTER)
+			|| (new_state == SM_STATE_NOTACTIVE))
+		{
 			sm_state = new_state;
 			status = VSTATUS_OK;
 		}
 		break;
 	case SM_STATE_STANDBY:
-		if ((new_state == SM_STATE_MASTER) || (new_state == SM_STATE_DISCOVERING) ||
-			(new_state == SM_STATE_NOTACTIVE)) {
+		if ((new_state == SM_STATE_MASTER) || (new_state == SM_STATE_DISCOVERING)
+			|| (new_state == SM_STATE_NOTACTIVE))
+		{
 			sm_state = new_state;
 			status = VSTATUS_OK;
 		}
 		break;
 	case SM_STATE_MASTER:
-		if ((new_state == SM_STATE_STANDBY) || (new_state == SM_STATE_NOTACTIVE)) {
+		if ((new_state == SM_STATE_STANDBY) || (new_state == SM_STATE_NOTACTIVE)
+			|| (new_state == SM_STATE_DISCOVERING))
+		{
 			sm_state = new_state;
 			status = VSTATUS_OK;
+			// if we're transitioning away from master, restore the priority
+			sm_restorePriorityOnly();
 		}
-		// if we're transitioning away from master, restore the priority
-		sm_restorePriorityOnly();
 		break;
 	default:
 		break;

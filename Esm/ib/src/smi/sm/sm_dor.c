@@ -2146,7 +2146,6 @@ _pre_process_discovery(Topology_t *topop, void **outContext)
 
 static int get_node_information(Node_t *nodep, Port_t *portp, uint8_t *path, STL_NODE_INFO *neighborNodeInfo)
 {
-	int			use_cache = 0;
 	Node_t		*cache_nodep = NULL;
 	Port_t		*cache_portp = NULL;
 	Status_t	status;
@@ -2154,14 +2153,17 @@ static int get_node_information(Node_t *nodep, Port_t *portp, uint8_t *path, STL
 
 	memset(neighborNodeInfo, 0, sizeof(STL_NODE_INFO));
 	if ((status = SM_Get_NodeInfo(fd_topology, 0, &addr, neighborNodeInfo)) != VSTATUS_OK) {
-		use_cache = sm_check_node_cache(nodep, portp, &cache_nodep, &cache_portp);
-		if (use_cache) {
+		sm_get_nonresp_cache_node_port(nodep, portp, &cache_nodep, &cache_portp);
+		// @TODO: Handle VSTATUS_TIMEOUT_LIMIT
+		if (sm_popo_inc_and_use_cache_nonresp(&sm_popo, cache_nodep, NULL)) {
 			memcpy(neighborNodeInfo, &cache_nodep->nodeInfo, sizeof(STL_NODE_INFO));
 			neighborNodeInfo->PortGUID = cache_portp->portData->guid;
 			neighborNodeInfo->u1.s.LocalPortNum = cache_portp->index;
 		} else {
 			return 0;
 		}
+	} else {
+		sm_popo_clear_cache_nonresp(&sm_popo, nodep);
 	}
 
 	if (neighborNodeInfo->NodeGUID == 0ull)
@@ -2172,18 +2174,21 @@ static int get_node_information(Node_t *nodep, Port_t *portp, uint8_t *path, STL
 
 static int get_node_desc(Node_t *nodep, Port_t *portp, uint8_t *path, STL_NODE_DESCRIPTION *nodeDesc)
 {
-	int			use_cache = 0;
 	Node_t		*cache_nodep = NULL;
 	Port_t		*cache_portp = NULL;
 	Status_t	status;
 
-    SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
+	SmpAddr_t addr = SMP_ADDR_CREATE_DR(path);
 	if ((status = SM_Get_NodeDesc(fd_topology, 0, &addr, nodeDesc)) != VSTATUS_OK) {
-		if((use_cache = sm_check_node_cache(nodep, portp, &cache_nodep, &cache_portp)) != 0){
+		sm_get_nonresp_cache_node_port(nodep, portp, &cache_nodep, &cache_portp);
+		// @TODO: Handle VSTATUS_TIMEOUT_LIMIT
+		if (sm_popo_inc_and_use_cache_nonresp(&sm_popo, cache_nodep, NULL)) {
 			memcpy(nodeDesc, &cache_nodep->nodeDesc, sizeof(STL_NODE_DESCRIPTION));
 		} else {
 			return 0;
 		}
+	} else {
+		sm_popo_clear_cache_nonresp(&sm_popo, nodep);
 	}
 
 	return 1;

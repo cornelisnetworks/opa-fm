@@ -1738,6 +1738,23 @@ static FSTATUS ParseLinkQualityPoint(FabricData_t *fabricp, char *arg, Point *pP
 	return FindLinkQualityPoint(fabricp, quality, comp, pPoint, find_flag);
 }
 
+static FSTATUS ParseLinkDownReasonPoint(FabricData_t *fabricp, char *arg, Point *pPoint, uint8 find_flag, char **pp)
+{
+	uint8 ldr = IB_UINT8_MAX;
+	char *ldrp;
+	
+	ASSERT(! PointValid(pPoint));
+	*pp = arg;
+	if (NULL != (ldrp = ComparePrefix(arg, ":"))) {
+		*pp = ldrp;
+		if (FSUCCESS != StringToUint8(&ldr, ldrp, pp, 0, TRUE)) {
+			fprintf(stderr, "%s: Invalid Link Quality format: '%s'\n", g_Top_cmdname, arg);
+			return FINVALID_PARAMETER;
+		}
+	}
+
+	return FindLinkDownReasonPoint(fabricp, ldr, pPoint, find_flag);
+}
 /* parse the arg string and find the mentioned Point
  * arg string formats:
  * 	gid:subnet:guid
@@ -1869,6 +1886,8 @@ FSTATUS ParsePoint(FabricData_t *fabricp, char* arg, Point* pPoint, uint8 find_f
 		status = ParseSmPoint(fabricp, param, pPoint, find_flag, pp);
 	} else if (NULL != (param = ComparePrefix(arg, "linkqual"))) {
 		status = ParseLinkQualityPoint(fabricp, param, pPoint, find_flag, pp);
+	} else if (NULL != (param = ComparePrefix(arg, "ldr"))) {
+		status = ParseLinkDownReasonPoint(fabricp, param, pPoint, find_flag, pp);
 	} else {
 		fprintf(stderr, "%s: Invalid format: '%s'\n", g_Top_cmdname, arg);
 		return FINVALID_PARAMETER;

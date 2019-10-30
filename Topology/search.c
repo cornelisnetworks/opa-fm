@@ -2156,6 +2156,58 @@ FSTATUS FindLinkQualityPoint(FabricData_t *fabricp, uint16 quality, LinkQualityC
 	return FSUCCESS;
 }
 
+FSTATUS FindLinkDownReasonPoint(FabricData_t *fabricp, uint8 ldr, Point *pPoint, uint8 find_flag)
+{
+	FSTATUS status;
+
+	ASSERT(PointIsInInit(pPoint));
+	if (0 == (find_flag & FIND_FLAG_FABRIC))
+		return FINVALID_OPERATION;
+
+	if (find_flag & FIND_FLAG_FABRIC) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+			PortData *portp = (PortData *)QListObj(p);
+
+			boolean match = FALSE;
+			int i;
+			if (fabricp->flags & FF_SMADIRECT) { // SMA only
+				match = ldr == IB_UINT8_MAX
+					? portp->PortInfo.LinkDownReason != STL_LINKDOWN_REASON_NONE
+					: portp->PortInfo.LinkDownReason == ldr;
+				match |= ldr == IB_UINT8_MAX
+					? portp->PortInfo.NeighborLinkDownReason != STL_LINKDOWN_REASON_NONE
+					: portp->PortInfo.NeighborLinkDownReason == ldr;
+			} else { // SA
+				for (i = 0; i < STL_NUM_LINKDOWN_REASONS; ++i) {
+					STL_LINKDOWN_REASON *ldrp = &portp->LinkDownReasons[i];
+					if (ldrp->Timestamp != 0) {
+						match = ldr == IB_UINT8_MAX
+							? ldrp->LinkDownReason != STL_LINKDOWN_REASON_NONE
+							: ldrp->LinkDownReason == ldr;
+						match |= ldr == IB_UINT8_MAX
+							? ldrp->NeighborLinkDownReason != STL_LINKDOWN_REASON_NONE
+							: ldrp->NeighborLinkDownReason == ldr;
+					}
+					if (match) break;
+				}
+			}
+			if (match) {
+				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+				if (FSUCCESS != status) 
+					return status;
+			}
+		}
+	}
+	if (! PointValid(pPoint)) {
+		fprintf(stderr, "%s: Link Down Reason Not Found: %d\n", g_Top_cmdname, ldr);
+		return FNOT_FOUND;
+	}
+	PointCompress(pPoint);
+	return FSUCCESS;
+}
+
+
 // Search through the ExpectedSMs for matching portGuid
 // FNOT_FOUND - no instances found
 // FINVALID_PARAMETER - input parameter not valid

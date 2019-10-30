@@ -348,12 +348,19 @@ sub Build_ifcfg($$$)
 		system $SysCmd;
 
 		# SLES11 and newer have IPOIB_MODE option in ifcfg
-		$SysCmd = "echo \"IPOIB_MODE='connected'\" >> $target";
-		DebugPrint("cmd '$SysCmd'\n");
-		system $SysCmd;
-		$SysCmd = "echo \"MTU=65520\" >> $target";
-		DebugPrint("cmd '$SysCmd'\n");
-		system $SysCmd;
+		if ( "$CUR_VENDOR_VER" eq "ES123" ) {
+			$SysCmd = "echo \"IPOIB_MODE='connected'\" >> $target";
+			DebugPrint("cmd '$SysCmd'\n");
+			system $SysCmd;
+			$SysCmd = "echo \"MTU=65520\" >> $target";
+			DebugPrint("cmd '$SysCmd'\n");
+			system $SysCmd;
+		} else {
+			$SysCmd = "echo \"IPOIB_MODE='datagram'\" >> $target";
+			DebugPrint("cmd '$SysCmd'\n");
+			system $SysCmd;
+			NormalPrint "Note: IPoIB Mode is Datagram\n";
+		}
 	} else {
 		# Append the device instance name
 		$SysCmd = "echo DEVICE=$device > $target";
@@ -398,12 +405,13 @@ sub Build_ifcfg($$$)
 		DebugPrint("cmd '$SysCmd'\n");
 		system $SysCmd;
 
-		$SysCmd = "echo CONNECTED_MODE=yes >> $target";
+		$SysCmd = "echo CONNECTED_MODE=no >> $target";
 		DebugPrint("cmd '$SysCmd'\n");
 		system $SysCmd;
-		$SysCmd = "echo MTU=65520 >> $target";
-		DebugPrint("cmd '$SysCmd'\n");
-		system $SysCmd;
+#		$SysCmd = "echo MTU=65520 >> $target";
+#		DebugPrint("cmd '$SysCmd'\n");
+#		system $SysCmd;
+		NormalPrint "Note: IPoIB Mode is Datagram\n";
 	}
 
 	system "chown $OWNER $target";

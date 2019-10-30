@@ -289,6 +289,10 @@ typedef struct {
 	struct {
 		uint8_t	reregisterPending:1;	// True if we need to send a PortInfo with ClientReregister
 	} registration;
+	struct {
+		uint8_t updateLog:1;
+		STL_LINKDOWN_REASON ldr_log[STL_NUM_LINKDOWN_REASONS];
+	} ldr;
 } PopoPort_t;
 
 typedef struct _PopoNode {
@@ -299,6 +303,11 @@ typedef struct _PopoNode {
 		uint8_t numPorts;
 		uint64_t guid;
 	} info;
+	struct {
+		uint32_t nrSweepNum; //Sweep number of last failure
+		uint16_t nrCount; // Number of sweeps a Node Fails a get
+		uint64_t nrTime;  // Timestamp of first failure to respond
+	} nonresp;
 	struct {
 		uint8_t errorCount;
 	} quarantine;
@@ -321,6 +330,9 @@ typedef struct {
 		QUICK_LIST shortTerm; //Ports that will be quarantined only until the next successful SM sweep
 		QUICK_LIST longTerm;  //Ports that will be quarantined for multiple sweeps until underlying condition resolves
 	} quarantine;
+	struct {
+		uint64_t sweepStart; // Sweep start (in seconds) used by LinkdownReason Log
+	} ldr;
 } Popo_t;
 
 typedef struct {
@@ -398,7 +410,6 @@ typedef	struct _PortData {
 	/// Shared cable information; use sm_CableInfo_*() functions to create and manage
 	CableInfo_t * cableInfo;
 
-	STL_LINKDOWN_REASON LinkDownReasons[STL_NUM_LINKDOWN_REASONS];
 	uint8_t neighborQuarantined;
 	uint8_t linkPolicyViolation:2;  //port outside speed/width policy. 
 									//bit[0]: link below max supported
@@ -500,9 +511,7 @@ typedef	struct _Node {
 
 	bitset_t	vfMember;
 	bitset_t	fullPKeyMember;
-	bitset_t	dgMembership; 
-	uint16_t	nonRespCount;	// Number of times the node has not responded to gets/sets
-	uint64_t	nonRespTime;	// Timestamp of first failure to respond.
+	bitset_t	dgMembership;
 	uint8_t     asyncReqsSupported; // number of async requests node can handle
 	uint8_t     asyncReqsOutstanding; // number of async requests on the wire
 	uint8_t		portsInInit; 
@@ -1075,22 +1084,6 @@ typedef	struct _Topology {
 	uint8_t		pad[8192];	// general scratch pad area for ESM
 #endif
 } Topology_t;
-
-typedef struct {
-	uint64_t guid;
-	uint8_t index;
-} LdrCacheKey_t;
-
-typedef struct {
-	cl_map_item_t mapItem;
-	LdrCacheKey_t key;
-	STL_LINKDOWN_REASON ldr[STL_NUM_LINKDOWN_REASONS];
-} LdrCacheEntry_t;
-
-/**
- * Allocates topo->ldrCache in sm_pool if NULL.
- */
-void topology_saveLdr(Topology_t * topo, uint64_t guid, Port_t * port);
 
 Status_t sm_lidmap_alloc(void);
 void sm_lidmap_free(void);
@@ -2277,7 +2270,7 @@ Status_t	sm_send_stl_request(SmMaiHandle_t * fd, uint32_t method, uint32_t aid, 
 Status_t	sm_send_stl_request_impl(SmMaiHandle_t *, uint32_t, uint32_t, uint32_t, SmpAddr_t *, uint32_t, uint8_t *, uint32_t *, uint32_t, uint64_t, cntxt_callback_t, void *, uint32_t *);
 int 		sm_find_cached_node_port(Node_t *cnp, Port_t *cpp, Node_t **nodep, Port_t **portp);
 int 		sm_find_cached_neighbor(Node_t *cnp, Port_t *cpp, Node_t **nodep, Port_t **portp);
-int			sm_check_node_cache(Node_t *cnp, Port_t *cpp, Node_t **nodep, Port_t **portp);
+void		sm_get_nonresp_cache_node_port(Node_t *cnp, Port_t *cpp, Node_t **nodep, Port_t **portp);
 Status_t	sm_check_Master(void);
 Status_t	sm_initialize_port(ParallelSweepContext_t *psc, SmMaiHandle_t *, Topology_t *, Node_t *, Port_t *, SmpAddr_t *);
 Status_t	sm_initialize_port_LR_DR(ParallelSweepContext_t *psc, SmMaiHandle_t *fd, Topology_t *topop, Node_t *nodep, Port_t *portp);
@@ -2960,6 +2953,15 @@ extern PopoQuarantineType_t sm_popo_get_quarantine_type(Popo_t * popop, Port_t *
 extern PopoLongTermQuarantineReason_t sm_popo_get_quarantine_reason(Popo_t * popop, Port_t * portp);
 extern PopoQuarantineType_t sm_popo_get_quarantine_type_unsafe(Popo_t * popop, Port_t * portp);
 extern PopoLongTermQuarantineReason_t sm_popo_get_quarantine_reason_unsafe(Popo_t * popop, Port_t * portp);
+extern void sm_popo_get_ldr_log(Popo_t * popop, Port_t * portp, STL_LINKDOWN_REASON *log);
+extern uint64_t sm_popo_get_sweep_start(Popo_t * popop);
+
+extern boolean sm_popo_find_lastest_ldr(Popo_t * popop, Port_t * portp, STL_LINKDOWN_REASON *ldr);
+
+extern void sm_popo_clear_cache_nonresp(Popo_t *popop, Node_t *nodep);
+extern boolean sm_popo_is_nonresp_this_sweep(Popo_t *popop, Node_t *nodep);
+extern boolean sm_popo_use_cache_nonresp(Popo_t * popop, Node_t *nodep);
+extern boolean sm_popo_inc_and_use_cache_nonresp(Popo_t * popop, Node_t *nodep, Status_t *retStatus);
 
 extern uint64_t sm_popo_scale_timeout(Popo_t * popop, uint64_t timeout);
 extern void sm_popo_report_timeout(Popo_t * popop, uint64_t timeout);
@@ -2969,10 +2971,13 @@ extern boolean sm_popo_should_abandon(Popo_t * popop);
 extern void sm_popo_report_trap(Popo_t * popop);
 extern void sm_popo_update_node(PopoNode_t * ponodep);
 extern void sm_popo_end_sweep(Popo_t * popop);
+extern void sm_popo_begin_sweep(Popo_t *popop, uint64_t start_sweep);
 
 extern void sm_popo_monitor_port(Popo_t *popop, Port_t *portp, PopoLongTermQuarantineReason_t reason);
 extern void sm_popo_update_node_port_states(Popo_t *popop, Node_t * nodep, STL_PORT_STATE_INFO *psi);
 extern void sm_popo_update_port_state(Popo_t *popop, Port_t *portp, STL_PORT_STATES *pstatep);
+extern void sm_popo_update_port_state_with_ldr(Popo_t *popop, Port_t *portp, STL_PORT_STATES *pstatep,
+	uint8_t ldr, uint8_t nldr);
 extern void sm_popo_clear_port_trappedDown(Popo_t * popop);
 
 /**

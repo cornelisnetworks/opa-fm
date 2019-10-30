@@ -541,7 +541,7 @@ sub prompt_conf_param($$$$;$)
 	} else {
 		$prompt="$parameterDesc ($parameter)";
 	}
-	if (GetYesNo("Enable $prompt?", $default) == 1) {
+	if (GetYesNoWithMemory($parameter, 0, "Enable $prompt?", $default) == 1) {
 		$value="yes";
 		$env_value=1;
 	} else {

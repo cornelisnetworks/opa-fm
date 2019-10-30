@@ -102,7 +102,6 @@ my %ComponentName = (
 				"fastfabric" => "FastFabric",
 				"mpiapps" => "opa-mpi-apps",	# a package name
 				"mpisrc" => "MPI Source",
-				"shmem" => "Sandia-OpenSHMEM devel",
 				);
 
 my @FabricSetupSteps;
@@ -708,10 +707,6 @@ sub installed_mpiapps
 	return (system("rpm -q opa-mpi-apps > /dev/null") == 0);
 }
 
-sub installed_shmem
-{
-	return (system("rpm -q sandia-openshmem_gcc_hfi-devel >/dev/null") == 0);
-}
 
 sub installed_mpisrc
 {
@@ -1261,119 +1256,11 @@ sub fabricsetup_buildmpi
 	}
 	return 0;
 }
-
-sub fabricsetup_buildshmem
-{
-	my $shmem_apps_dir = "/usr/src/opa/shmem_apps";
-	my $build_dir = read_ffconfig_param("FF_SHMEM_APPS_DIR");
-	if ( ! installed_shmem() ) {
-		printf("$ComponentName{shmem} not installed on this system\n");
-		printf("Unable to Build SHMEM Test Apps\n");
-		HitKeyCont;
-		return;
-	}
-	if (! -e "$shmem_apps_dir/Makefile") {
-		# the makefile and shmem_apps are part of opa-fastfabric package
-		print "$shmem_apps_dir/Makefile: not found\n";
-		print "Make sure opa-fastfabric is properly installed\n";
-		HitKeyCont;
-		return 1;
-	}
-	my $mode;
-	my $mpich_prefix;
-	my $inp;
-	do {
-		# get default MPI to use
-		$mpich_prefix= `cd $shmem_apps_dir 2>/dev/null; . ./select_mpi 2>/dev/null; echo \$MPICH_PREFIX`;
-		chomp $mpich_prefix;
-
-		my $prefix="/usr";
-
-		# Selected MPI implementation does not affect compilation,
-		# only running. Limit selection to mvapich2 implementations as
-		# these are the only supported implementations
-		my $dirs=`find $prefix/mpi -maxdepth 2 -mindepth 2 -type d 2>/dev/null|grep mvapich2|sort`;
-		my @dirs = split /[[:space:]]+/, $dirs;
-		#print "The following MPIs have been found on this system:\n";
-		if ( $dirs !~ m|$mpich_prefix|) {
-			# odd case, default is not in a normal location
-			#print "       $mpich_prefix\n";
-			@dirs = ($mpich_prefix, @dirs);
-		}
-		my @mpi_dirs = ();
-		foreach my $d ( @dirs ) {
-			next if ( ! -e "$d/bin/mpicc" ); # skip incomplete MPI dirs
-			#print "       $d\n";
-			@mpi_dirs = (@mpi_dirs, $d);
-		}
-
-		do {
-			$inp = selection_menu(
-				"Host Setup: $FabricSetupStepsName{'buildapps'}",
-				"MPI Directory Selection for SHMEM Job Launch", "MPI Directory",
-			   	(@mpi_dirs, "Enter Other Directory"),
-				"Skip MPI Directory Selection for SHMEM Job Launch");
-			if ( "$inp" eq "" ) {
-				$inp = "cancel";
-			} elsif ("$inp" eq "Skip MPI Directory Selection for SHMEM Job Launch") {
-				$inp = "none";
-			} elsif ( "$inp" eq "Enter Other Directory" ) {
-				do {
-					print "Enter MPI directory location (or none):";
-					chomp($inp = <STDIN>);
-					$inp=remove_whitespace($inp);
-				} until ( "$inp" ne "");
-			}
-			if ("$inp" ne "none" && "$inp" ne "cancel" &&! -e "$inp" ) {
-				print "$inp: not found\n";
-				HitKeyCont;
-			}
-		} until ( "$inp" eq "none" || "$inp" eq "cancel" || -e "$inp" );
-		$mpich_prefix=$inp;
-		if ("$mpich_prefix" eq "none" ) {
-			print "You have selected to skip the selection of a default MPI for SHMEM job launch\n";
-			$mode="skip";
-		} elsif ("$mpich_prefix" eq "cancel" ) {
-			print "You have selected to cancel building of SHMEM Test apps\n";
-			$mode="cancel";
-		} else {
-			print "You have selected to use MPI: $mpich_prefix\n";
-			$mode="prefix";
-		}
-	} until (GetYesNo("Are you sure you want to proceed?", "n") );
-	if ( "$mode" eq "cancel" ) {
-		return;
-	}
-	if ( -e "$build_dir/.filelist" ) {
-		run_fabric_cmd("cd $build_dir; rm -rf `cat .filelist`", "skip_prompt");
-	}
-	run_fabric_cmd("mkdir -p $build_dir; cp -r -p $shmem_apps_dir/. $build_dir", "skip_prompt");
-	run_fabric_cmd("cd $shmem_apps_dir; find . -mindepth 1 > $build_dir/.filelist", "skip_prompt");
-	if ( "$mode" eq "prefix" ) {
-		run_fabric_cmd("cd $build_dir; echo $mpich_prefix > .prefix", "skip_prompt");
-	}
-	if (run_fabric_cmd("cd $build_dir; make clobber quick")) {
-		return 1;
-	}
-	if (! valid_config_file("Host File", $FabricSetupHostsFile) ) {
-		return 1;
-	}
-	# do in two steps so user can see results of build before scp starts
-	return run_fabric_cmd("$BIN_DIR/opascpall -t -p -f $FabricSetupHostsFile $build_dir $build_dir");
-}
 sub fabricsetup_buildapps
 {
 	my $res = 0;
 	if (GetYesNo("Do you want to build MPI Test Apps?", "y") ) {
 		$res = fabricsetup_buildmpi();
-	}
-	if ( installed_shmem() ) {
-		if (GetYesNo("Do you want to build SHMEM Test Apps?", "y") ) {
-			$res |= fabricsetup_buildshmem();
-		}
-	} else {
-		printf("Skipping option to build SHMEM Test Apps - $ComponentName{shmem} not installed\n");
-		HitKeyCont;
 	}
 	return $res;
 }

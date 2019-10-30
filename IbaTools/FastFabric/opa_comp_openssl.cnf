@@ -20,8 +20,8 @@ RANDFILE		= $ENV::HOME/.rnd
 # X.509v3 extensions in its main [= default] section.)
 
 [ req ]
-default_bits		= 2048
-default_md		= sha256
+default_bits		= Recommend referencing https://www.ssl.com/guide/ssl-best-practices
+default_md		= Recommend referencing https://www.ssl.com/guide/ssl-best-practices
 distinguished_name	= opa_comp_distinguished_name
 attributes		= req_attributes
 prompt              		= no

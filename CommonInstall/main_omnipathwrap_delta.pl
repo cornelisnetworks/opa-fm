@@ -56,7 +56,7 @@ my @OmniPathAllComponents = (
 	"delta_ipoib", "opafm", "opamgt_sdk",
 	"mvapich2_gcc_hfi", "mvapich2_intel_hfi",
 	"openmpi_gcc_hfi", "openmpi_intel_hfi",
-	"openmpi_gcc_cuda_hfi", "sandiashmem",
+	"openmpi_gcc_cuda_hfi",
 	"mvapich2_gcc",	"openmpi_gcc", #"mpiRest",
 	"mpisrc", "delta_debug"	);
 
@@ -79,6 +79,8 @@ my @Components_rhel74 = ( "opa_stack", "mpi_selector",
 my @Components_rhel75 = ( "opa_stack", "mpi_selector",
 		@OmniPathAllComponents );
 my @Components_rhel76 = ( "opa_stack", "mpi_selector",
+		@OmniPathAllComponents );
+my @Components_rhel77 = ( "opa_stack", "mpi_selector",
 		@OmniPathAllComponents );
 my @Components_rhel8 = ( "opa_stack", "mpi_selector",
 		@OmniPathAllComponents );
@@ -275,25 +277,6 @@ $WrapperComponent = "opaconfig";
 					  KernelRpms => [ ],
 					  FirmwareRpms => [ ],
 					  UserRpms => [ ],
-					  DebugRpms => [ ],
-					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
-					  StartPreReq => "",
-					  StartComponents => [ ],
-					  StartupScript => "",
-					  StartupParams => [ ]
-					},
-	"sandiashmem" =>	{ Name => "Sandia-OpenSHMEM ",
-					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
-					  PreReq => " opa_stack intel_hfi ", CoReq => "",
-# TBD - should IsOFA be 0?
-					  Hidden => 0, Disabled => 0, IsOFA => 1,
-					  KernelRpms => [ ],
-					  FirmwareRpms => [ ],
-					  UserRpms => [ "sandia-openshmem_gcc_hfi",
-									"sandia-openshmem_gcc_hfi-devel",
-									"sandia-openshmem_gcc_hfi-tests"
-								],
 					  DebugRpms => [ ],
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
@@ -1042,7 +1025,6 @@ my %opa_stack_dev_comp_info = (
 				"rdma_ndd" => 0,
 				"delta_srp" => 0,
 				"delta_srpt" => 0,
-				"sandiashmem" => 0,
 			);
 
 # check whether we support HFI2
@@ -1134,6 +1116,14 @@ sub init_components
 						);
 	} elsif ( "$CUR_VENDOR_VER" eq "ES76" ) {
 		@Components = ( @Components_rhel76 );
+		@SubComponents = ( @SubComponents_newer );
+		%ComponentInfo = ( %ComponentInfo, %ibacm_comp_info,
+						%intel_hfi_comp_info,
+						%opa_stack_dev_comp_info,
+						%opa_stack_rhel_comp_info,
+						);
+	} elsif ( "$CUR_VENDOR_VER" eq "ES77" ) {
+		@Components = ( @Components_rhel77 );
 		@SubComponents = ( @SubComponents_newer );
 		%ComponentInfo = ( %ComponentInfo, %ibacm_comp_info,
 						%intel_hfi_comp_info,
@@ -1406,8 +1396,6 @@ sub translate_comp
 		return ( "mvapich2_gcc_hfi","openmpi_gcc_hfi");
 	} elsif ("$arg" eq "psm_mpi"){
 		return ( "mvapich2_gcc_hfi","openmpi_gcc_hfi");
-	} elsif ("$arg" eq "pgas"){
-	        return ( "sandiashmem" );
 	} elsif ("$arg" eq "delta_mpisrc"){
 		return ( "mpisrc" ); # legacy
 		# no ibaccess argument equivalent for:

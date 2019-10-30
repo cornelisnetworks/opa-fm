@@ -49,8 +49,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 static uint16_t defaultPKeys[SM_PKEYS] = { STL_DEFAULT_APP_PKEY, STL_DEFAULT_PKEY };
 
-int sm_check_node_cache_valid(Node_t *);
-
 #define SET_PORT_STL_PKEY(key1, key2) { \
 			pkeyEntry1[STL_DEFAULT_CLIENT_PKEY_IDX].AsReg16 = key1; \
 			pkeyEntry2[STL_DEFAULT_CLIENT_PKEY_IDX].AsReg16 = key1; \
@@ -548,10 +546,6 @@ sm_set_portPkey(
 
 		if (!portp->portData->current.pkeys)
 			return VSTATUS_BAD;
-
-		/* Note: If node was previously non-responding break out */
-		if (nodep->nonRespCount)
-			return VSTATUS_OK;
 
 		if (sm_config.forceAttributeRewrite || nodep->nodeInfo.NodeType == STL_NODE_SW)
 			pkeyWriteCnt = pkeyCap;

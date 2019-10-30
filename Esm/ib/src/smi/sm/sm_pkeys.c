@@ -71,7 +71,7 @@ _get_pkeys_worker(ParallelSweepContext_t *psc, ParallelWorkItem_t *pwi)
 	size_t pkeyBlkCnt;
 	uint8_t pkeyCap;
 	bitset_t outstanding;
-	bool_t aggrFailure = 0;
+	boolean aggrFailure = FALSE;
 	Status_t status = VSTATUS_OK;
 
 	IB_ENTER(__func__, psc, pwi, 0, 0);
@@ -95,6 +95,8 @@ _get_pkeys_worker(ParallelSweepContext_t *psc, ParallelWorkItem_t *pwi)
 
 	bitset_init(&sm_pool, &outstanding, MAX_STL_PORTS + 1);
 	psc_lock(psc);
+	Node_t *cache_nodep = sm_find_guid(&old_topology, nodep->nodeInfo.NodeGUID);
+	Port_t *cache_portp = NULL;
 
 	for_all_ports(nodep, portp) {
 		bool_t skipPort = 0;
@@ -120,8 +122,6 @@ _get_pkeys_worker(ParallelSweepContext_t *psc, ParallelWorkItem_t *pwi)
 			!(portp->index > 0 && nodep->switchInfo.PartitionEnforcementCap))
 			skipPort = 1;
 
-		Node_t *cache_nodep = NULL;
-		Port_t *cache_portp = NULL;
 		if(!skipPort && sm_find_cached_node_port(nodep, portp, &cache_nodep, &cache_portp) && sm_valid_port(cache_portp)) {
 			memcpy(portp->portData->pPKey, cache_portp->portData->pPKey, sizeof(portp->portData->pPKey));
 			portp->portData->current.pkeys = 1;
@@ -134,6 +134,9 @@ _get_pkeys_worker(ParallelSweepContext_t *psc, ParallelWorkItem_t *pwi)
 		// We may need to send out a completed aggregate stil.
 		if (skipPort && !sm_config.use_aggregates)
 			continue;
+
+		// Skip Aggregates for HFIs (only one port)
+		aggrFailure = aggrFailure || (nodep->nodeInfo.NodeType == STL_NODE_FI);
 
 		if (sm_config.use_aggregates && !aggrFailure) {
 			const size_t blockSize = sizeof(STL_AGGREGATE) + 8 * ((sizeof(STL_PARTITION_TABLE) * pkeyBlkCnt + 7)/8);
@@ -217,7 +220,7 @@ _get_pkeys_worker(ParallelSweepContext_t *psc, ParallelWorkItem_t *pwi)
 					portp = sm_get_port(nodep, cport);
 					IB_LOG_WARN_FMT(__func__, "Get(Aggregate) failed for node %s guid "FMT_U64".",
 									sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID);
-					aggrFailure = 1;
+					aggrFailure = TRUE;
 				}
 			}
 		}
@@ -226,14 +229,33 @@ _get_pkeys_worker(ParallelSweepContext_t *psc, ParallelWorkItem_t *pwi)
 		if (!skipPort && portp && (aggrFailure || !sm_config.use_aggregates)) {
 			uint32_t amod = ((0xff & pkeyBlkCnt)<<24) |
 				((nodep->nodeInfo.NodeType == NI_TYPE_SWITCH ? portp->index : 0)<<16);
+			boolean isNewError = TRUE;
 
 			SmpAddr_t addr = SMP_ADDR_CREATE_DR(nodep->path);
 
-			psc_unlock(psc);
-			status = SM_Get_PKeyTable(maiPoolp->fd, amod, &addr, (STL_PARTITION_TABLE*)portp->portData->pPKey);
-			psc_lock(psc);
+			if (!sm_popo_is_nonresp_this_sweep(&sm_popo, cache_nodep)) {
+				psc_unlock(psc);
+				status = SM_Get_PKeyTable(maiPoolp->fd, amod, &addr, (STL_PARTITION_TABLE*)portp->portData->pPKey);
+				psc_lock(psc);
+			} else {
+				// If node was previously nonResp this Sweep, then use cache for Pkeys
+				status = VSTATUS_TIMEOUT;
+				isNewError = FALSE;
+			}
+			if (sm_popo_inc_and_use_cache_nonresp(&sm_popo, nodep, &status)
+				&& (topology_passcount && cache_nodep
+					&& (cache_portp = sm_find_node_port(&old_topology, cache_nodep, portp->index))))
+			{
+				IB_LOG_INFINI_INFO_FMT(__func__, "%s get Partition Table for node %s guid "FMT_U64
+					" node index %d port index %d; using cached data",
+					isNewError ? "Failed to" : "Nonresponsive, skipping", sm_nodeDescString(nodep),
+					nodep->nodeInfo.NodeGUID, nodep->index, portp->index);
 
-			if (status != VSTATUS_OK) {
+				memcpy(portp->portData->pPKey, cache_portp->portData->pPKey, sizeof(STL_PKEY_ELEMENT) * SM_PKEYS);
+				portp->portData->current.pkeys = 1;
+				status = VSTATUS_OK;
+
+			} else if (status != VSTATUS_OK) {
 				portp->portData->current.pkeys = 0;
 				IB_LOG_WARN_FMT(__func__, "Failed to get Partition Table for node %s guid "FMT_U64" node index"
 								"%d port index %d", sm_nodeDescString(nodep), nodep->nodeInfo.NodeGUID,
@@ -247,8 +269,10 @@ _get_pkeys_worker(ParallelSweepContext_t *psc, ParallelWorkItem_t *pwi)
 					psc_stop(psc);
 					goto exit;
 				}
-			} else
+			} else {
+				sm_popo_clear_cache_nonresp(&sm_popo, nodep);
 				portp->portData->current.pkeys = 1;
+			}
 		}
 	} // for_all_ports
 

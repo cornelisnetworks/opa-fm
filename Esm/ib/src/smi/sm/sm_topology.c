@@ -119,7 +119,7 @@ Status_t topology_changes(Topology_t *old_topo, Topology_t *new_topo);
 Status_t topology_TrapUp(STL_NOTICE * noticep, Topology_t *, Topology_t *, Node_t *, Port_t *);
 Status_t topology_TrapDown(STL_NOTICE * noticep, Topology_t *, Topology_t *, Node_t *, Port_t *);
 Status_t topology_TrapCostMatrixChange(STL_NOTICE *noticep);
-Status_t topology_free_topology(Topology_t * topop, boolean need_old_topo_lock);
+Status_t topology_free_topology(Topology_t * topop, boolean need_old_topo_lock, boolean freeRoutingMod);
 Status_t topology_copy(void);
 void	 topology_clearNew(void);
 Status_t topology_cache_copy(void);
@@ -408,19 +408,6 @@ int sm_evalPreemptLimit(int cfgLimit, Node_t * nodep)
 }
 
 //----------------------------------------------------------------------------
-
-static int LdrCacheKey_cmp(const uint64 ia, const uint64 ib)
-{
-	LdrCacheKey_t *a = (LdrCacheKey_t*) ((long int)ia);
-	LdrCacheKey_t *b = (LdrCacheKey_t*) ((long int)ib);
-
-	if (a->guid != b->guid)
-		return (a->guid < b->guid? -1: 1);
-	if (a->index != b->index)
-		return (a->index < b->index? -1: 1);
-	return 0;
-}
-
 
 // to be called from within a sweep.  requests another sweep be performed
 // after this one, but allows the current sweep to succeed
@@ -724,6 +711,11 @@ topology_main(uint32_t argc, uint8_t ** argv)
 							}
 						}
 
+						// If the sweep is unrecoverable, stop being master
+						if (status == VSTATUS_UNRECOVERABLE) {
+							(void)sm_transition(SM_STATE_DISCOVERING);
+						}
+
 						/*
 						 * PR# 101511
 						 * new topology is most likely incomplete.  This can be caused when a
@@ -805,6 +797,9 @@ topology_main(uint32_t argc, uint8_t ** argv)
 						/* we are no longer the master sm, clear passcount and SA tables */
 						topology_passcount = 0;
 						clearSaTables(&sm_sweep_context);
+
+						/* should also clear old_topo on transition away from master */
+						topology_free_topology(&old_topology, TRUE, FALSE);
 					}
 				}
 
@@ -958,6 +953,9 @@ topology_main(uint32_t argc, uint8_t ** argv)
 			/* clear the SA tables if necessary */
 			clearSaTables(&sm_sweep_context);
 			topology_passcount=0;
+
+			/* should also clear old_topo on transition away from master */
+			topology_free_topology(&old_topology, TRUE, FALSE);
 		}
 
 		(void)vs_time_get(&now);
@@ -1025,7 +1023,7 @@ topology_uninitialize(void)
 	bitset_free(&new_endnodesInUse);
 
 	(void)vs_lock(&new_topology_lock);
-	topology_free_topology(&old_topology,TRUE);
+	topology_free_topology(&old_topology, TRUE, TRUE);
 	(void)vs_unlock(&new_topology_lock);
 
 	memset(&old_topology, 0, sizeof(old_topology));
@@ -1236,6 +1234,10 @@ sweep_initialize(SweepContext_t *sweep_context)
 		if (status == VSTATUS_OK)
 			break;
 
+		// Local Port Failures, should stop being master
+		if (status == VSTATUS_UNRECOVERABLE) {
+			(void)sm_transition(SM_STATE_DISCOVERING);
+		}
 		vs_thread_sleep(5 * VTIMER_1S);
 	}
 
@@ -1298,22 +1300,20 @@ sweep_initialize(SweepContext_t *sweep_context)
 		IB_FATAL_ERROR_NODUMP("Failed to acquire old topology lock");
 
 	if (sm_topop->routingModule == NULL && old_topology.routingModule != NULL) {
-		if ((status = vs_pool_alloc(&sm_pool, sizeof(RoutingModule_t), (void*)&sm_topop->routingModule)) != VSTATUS_OK) {
+		if ((status = vs_pool_alloc(&sm_pool, sizeof(RoutingModule_t), (void *)&sm_topop->routingModule)) != VSTATUS_OK) {
 			goto unlock_bail;
 		}
 		memset(sm_topop->routingModule, 0, sizeof(RoutingModule_t));
 
 		if (old_topology.routingModule->copy) {
- 			status = old_topology.routingModule->copy(sm_topop->routingModule, old_topology.routingModule);
+			status = old_topology.routingModule->copy(sm_topop->routingModule, old_topology.routingModule);
 			if (status != VSTATUS_OK) {
 				goto unlock_bail;
 			}
-		}
-		else {
+		} else {
 			memcpy(sm_topop->routingModule, old_topology.routingModule, sizeof(RoutingModule_t));
 		}
 	}
-
 unlock_bail:
 
 	vs_rwunlock(&old_topology_lock);
@@ -2243,35 +2243,40 @@ sweep_multicast(SweepContext_t *sweep_context)
 	return(status);
 }
 
-void
-topology_saveLdr(Topology_t * topo, uint64_t guid, Port_t * port)
+static void _format_link_down_reason(Popo_t *popop, Port_t *portp, Port_t *linked_portp, char *buf, size_t bufsize)
 {
-	LdrCacheEntry_t *t;
-	int lastLdr = STL_LINKDOWN_REASON_LAST_INDEX(port->portData->LinkDownReasons);
+	STL_LINKDOWN_REASON ldr = {{0}};
+	STL_LINKDOWN_REASON linked_ldr = {{0}};
+	uint64_t thisSweep = sm_popo_get_sweep_start(popop);
 
-	if (lastLdr < 0)
-		return;
+	boolean useLDR = sm_popo_find_lastest_ldr(popop, portp, &ldr) && ldr.Timestamp == thisSweep;
+	boolean useLinkedLDR = sm_popo_find_lastest_ldr(popop, linked_portp, &linked_ldr) && linked_ldr.Timestamp == thisSweep;
 
-	if (!topo->ldrCache) {
-		if (vs_pool_alloc(&sm_pool, sizeof(cl_qmap_t),
-		  (void*)&topo->ldrCache) != VSTATUS_OK) {
-			IB_LOG_ERROR_FMT(__func__, "Failed to allocate memory for ldrCache");
-			return;
+	if (useLDR) {
+		if (ldr.LinkDownReason != 0) {
+			snprintf(buf, bufsize, "LinkDownReason: %s [%u] ",
+				StlLinkDownReasonToText(ldr.LinkDownReason), ldr.LinkDownReason);
+		} else if (ldr.NeighborLinkDownReason != 0) {
+			snprintf(buf, bufsize, "NeighborLinkDownReason: %s [%u] ",
+				StlLinkDownReasonToText(ldr.NeighborLinkDownReason), ldr.NeighborLinkDownReason);
 		}
-		cl_qmap_init(topo->ldrCache, LdrCacheKey_cmp);
 	}
-
-	if (vs_pool_alloc(&sm_pool, sizeof(LdrCacheEntry_t), (void*)&t) != VSTATUS_OK) {
-		IB_LOG_ERROR_FMT(__func__, "Failed to allocate memory for "
-		  "LinkDownReasons cache entry for port.");
-		return;
+	if (useLinkedLDR) {
+		int cnt = strlen(buf);
+		if (linked_ldr.NeighborLinkDownReason != 0
+			&& linked_ldr.NeighborLinkDownReason != ldr.LinkDownReason
+			&& linked_ldr.NeighborLinkDownReason != STL_LINKDOWN_REASON_NEIGHBOR_UNKNOWN)
+		{
+			snprintf(buf+cnt, bufsize-cnt, "LINKED:NeighborLinkDownReason: %s [%u]",
+				StlLinkDownReasonToText(linked_ldr.NeighborLinkDownReason), linked_ldr.NeighborLinkDownReason);
+		} else if (linked_ldr.LinkDownReason != 0
+			&& linked_ldr.LinkDownReason != ldr.NeighborLinkDownReason
+			&& linked_ldr.LinkDownReason != STL_LINKDOWN_REASON_NEIGHBOR_UNKNOWN)
+		{
+			snprintf(buf+cnt, bufsize-cnt, "LINKED:LinkDownReason: %s [%u]",
+				StlLinkDownReasonToText(linked_ldr.LinkDownReason), linked_ldr.LinkDownReason);
+		}
 	}
-
-	t->key.guid = guid;
-	t->key.index = port->index;
-	memcpy(&t->ldr, port->portData->LinkDownReasons,
-		sizeof(STL_LINKDOWN_REASON) * STL_NUM_LINKDOWN_REASONS);
-	cl_qmap_insert(topo->ldrCache, (long int)&t->key, &t->mapItem);
 }
 
 void
@@ -2279,6 +2284,7 @@ topology_log_isl_change(Topology_t *old_topo, Node_t *nodep, Port_t *portp, SmCs
 {
 	Port_t *linkedToPortp = NULL;
 	SmCsmNodeId_t csmNode, csmConnectedNode;
+	char ldr_buf[120] = {0};
 
 	if (portp->portData->pLid == 0xC000) {
 		smCsmFormatNodeId(&csmNode, (uint8_t *)sm_nodeDescString(nodep), portp->index, nodep->nodeInfo.NodeGUID);
@@ -2287,9 +2293,12 @@ topology_log_isl_change(Topology_t *old_topo, Node_t *nodep, Port_t *portp, SmCs
 			 && sm_valid_port(linkedToPortp)) {
 			smCsmFormatNodeId(&csmConnectedNode, (uint8_t *)sm_nodeDescString(linkedToPortp->portData->nodePtr),
 												linkedToPortp->index, (linkedToPortp->portData->nodePtr)->nodeInfo.NodeGUID);
-			smCsmLogMessage(CSM_SEV_NOTICE, condition, &csmNode, &csmConnectedNode, detail);
+
+			_format_link_down_reason(&sm_popo, portp, linkedToPortp, ldr_buf, sizeof(ldr_buf));
+			smCsmLogMessage(CSM_SEV_NOTICE, condition, &csmNode, &csmConnectedNode, "%s %s", detail, ldr_buf);
 		} else {
-			smCsmLogMessage(CSM_SEV_NOTICE, condition, &csmNode, NULL, detail);
+			_format_link_down_reason(&sm_popo, portp, NULL, ldr_buf, sizeof(ldr_buf));
+			smCsmLogMessage(CSM_SEV_NOTICE, condition, &csmNode, NULL, "%s %s", detail, ldr_buf);
 		}
 	} else {
 		if (  (linkedToPortp = sm_find_port(old_topo, portp->nodeno, portp->portno)) != NULL
@@ -2382,7 +2391,6 @@ topology_changes(Topology_t *old_topo, Topology_t *new_topo)
 					/* Old GID lost, add to list of things to trap on */
 					if (sm_valid_port(oldPortp)) {
 						status = topology_TrapDown(&notice, old_topo, new_topo, oldNodep, oldPortp);
-						topology_saveLdr(new_topo, oldNodep->nodeInfo.NodeGUID, oldPortp);
 					}
 				}
 			}
@@ -2437,7 +2445,6 @@ topology_changes(Topology_t *old_topo, Topology_t *new_topo)
 				if (sm_valid_port(oldPortp) && oldPortp->state >= IB_PORT_ARMED) {
 					/* port lost send trap */
 					status = topology_TrapDown(&notice, old_topo, new_topo, oldNodep, oldPortp);
-					topology_saveLdr(new_topo, oldNodep->nodeInfo.NodeGUID, oldPortp);
 				}
 			}
 			oldChanges[oldNodep->index] = 1;
@@ -2520,6 +2527,7 @@ topology_TrapUp(STL_NOTICE * noticep, Topology_t * tp_present, Topology_t * tp_m
 	Status_t status;
 	SmCsmNodeId_t nodeId, linkedId, * linkedIdPtr = NULL;
 	Port_t * p1p, * p2p, * linkedToPortp = NULL;
+	char ldr_buf[120] = {0};
 
 	IB_ENTER(__func__, 0, 0, 0, 0);
 
@@ -2560,11 +2568,13 @@ topology_TrapUp(STL_NOTICE * noticep, Topology_t * tp_present, Topology_t * tp_m
 		}
 
         if (node->nodeInfo.NodeType == NI_TYPE_SWITCH) {
+			_format_link_down_reason(&sm_popo, port, linkedToPortp, ldr_buf, sizeof(ldr_buf));
 			smCsmFormatNodeId(&nodeId, (uint8_t *)sm_nodeDescString(node), port->index, node->nodeInfo.NodeGUID);
-			smCsmLogMessage(nodeAppearanceSeverity, CSM_COND_APPEARANCE, &nodeId, linkedIdPtr, "Node type: switch");
+			smCsmLogMessage(nodeAppearanceSeverity, CSM_COND_APPEARANCE, &nodeId, linkedIdPtr, "NodeType: switch %s", ldr_buf);
         } else {
+			_format_link_down_reason(&sm_popo, port, linkedToPortp, ldr_buf, sizeof(ldr_buf));
 			smCsmFormatNodeId(&nodeId, (uint8_t *)sm_nodeDescString(node), port->index, port->portData->guid);
-			smCsmLogMessage(nodeAppearanceSeverity, CSM_COND_APPEARANCE, &nodeId, linkedIdPtr, "Node type: hfi");
+			smCsmLogMessage(nodeAppearanceSeverity, CSM_COND_APPEARANCE, &nodeId, linkedIdPtr, "NodeType: hfi %s", ldr_buf);
         }
     }
 
@@ -2590,6 +2600,7 @@ topology_TrapDown(STL_NOTICE * noticep, Topology_t * tp_present, Topology_t * tp
     uint32_t    groupChanges=0;
 	SmCsmNodeId_t nodeId, linkedId, * linkedIdPtr = NULL;
 	Port_t * extPortp, * p1p, * p2p, * linkedToPortp = NULL;
+	char ldr_buf[120] = {0};
 
 	IB_ENTER(__func__, 0, 0, 0, 0);
 
@@ -2623,11 +2634,13 @@ topology_TrapDown(STL_NOTICE * noticep, Topology_t * tp_present, Topology_t * tp
 	}
 
     if (node->nodeInfo.NodeType == NI_TYPE_SWITCH) {
+		_format_link_down_reason(&sm_popo, extPortp ? extPortp : port, linkedToPortp, ldr_buf, sizeof(ldr_buf));
 		smCsmFormatNodeId(&nodeId, (uint8_t *)sm_nodeDescString(node), extPortp ? extPortp->index : port->index, node->nodeInfo.NodeGUID);
-		smCsmLogMessage(nodeAppearanceSeverity, CSM_COND_DISAPPEARANCE, &nodeId, linkedIdPtr, "Node type: switch");
+		smCsmLogMessage(nodeAppearanceSeverity, CSM_COND_DISAPPEARANCE, &nodeId, linkedIdPtr, "NodeType: switch %s", ldr_buf);
     } else {
+		_format_link_down_reason(&sm_popo, port, linkedToPortp, ldr_buf, sizeof(ldr_buf));
 		smCsmFormatNodeId(&nodeId, (uint8_t *)sm_nodeDescString(node), port->index, port->portData->guid);
-		smCsmLogMessage(nodeAppearanceSeverity, CSM_COND_DISAPPEARANCE, &nodeId, linkedIdPtr, "Node type: hfi");
+		smCsmLogMessage(nodeAppearanceSeverity, CSM_COND_DISAPPEARANCE, &nodeId, linkedIdPtr, "NodeType: hfi %s", ldr_buf);
     }
 
 	// if applicable, clean it out of the list of disabled ports
@@ -2949,7 +2962,7 @@ topology_copy(void)
 	}
 
 	/* free Old topology */
-	topology_free_topology(&old_topology, FALSE);
+	topology_free_topology(&old_topology, FALSE, TRUE);
 
 	/* Copy New Topology to old_topology */
 	(void)memcpy((void *)&old_topology, (void *)&sm_newTopology, sizeof(Topology_t));
@@ -2996,7 +3009,7 @@ topology_copy(void)
 }
 
 Status_t
-topology_free_topology(Topology_t * topop, boolean need_old_topo_lock)
+topology_free_topology(Topology_t * topop, boolean need_old_topo_lock, boolean freeRoutingMod)
 {
 	LoopPath_t  *loopPath;
 	QuarantinedNode_t *qnodep;
@@ -3060,12 +3073,32 @@ topology_free_topology(Topology_t * topop, boolean need_old_topo_lock)
 	while ((qnodep = topop->quarantined_node_head) != NULL) {
 		topop->quarantined_node_head = qnodep->next;
 		Node_Quarantined_Delete(topop, qnodep);
+		topop->num_quarantined_nodes--;
 	}
+	DEBUG_ASSERT(topop->num_quarantined_nodes == 0); topop->num_quarantined_nodes = 0;
 
 	while ((nodep = topop->node_head) != NULL) {
 		topop->node_head = nodep->next;
+		topop->num_nodes--;
+		if (nodep->nodeInfo.NodeType == NI_TYPE_CA) {
+			topop->num_ports--;
+			topop->num_endports--;
+		} else {
+			Port_t *portp = NULL;
+			for_all_ports(nodep, portp) {
+				if (sm_valid_port(portp)) {
+					topop->num_ports--;
+				}
+			}
+			topop->num_sws--;
+		}
 		Node_Delete(topop, nodep);
 	}
+	DEBUG_ASSERT(topop->num_nodes == 0);    topop->num_nodes = 0;
+	DEBUG_ASSERT(topop->num_sws == 0);      topop->num_sws = 0;
+	DEBUG_ASSERT(topop->num_ports == 0);    topop->num_ports = 0;
+	DEBUG_ASSERT(topop->num_endports == 0); topop->num_endports = 0;
+	topop->max_sws = 0;
 
 	if (topop->cost != NULL) {
 		(void)vs_pool_free(&sm_pool, (void *)topop->cost);
@@ -3077,7 +3110,7 @@ topology_free_topology(Topology_t * topop, boolean need_old_topo_lock)
 		topop->path = NULL;
 	}
 
-	if (topop->routingModule)
+	if (freeRoutingMod && topop->routingModule)
 		sm_routing_freeModule(&topop->routingModule);
 
 	// release memory allocated for loop paths
@@ -3085,18 +3118,6 @@ topology_free_topology(Topology_t * topop, boolean need_old_topo_lock)
 	while ((loopPath = topop->loopPaths) != NULL) {
 		topop->loopPaths = loopPath->next;
 		(void)vs_pool_free(&sm_pool, (void *)loopPath);
-	}
-
-	if (topop->ldrCache) {
-		cl_map_item_t *it;
-		for (it = cl_qmap_head(topop->ldrCache);
-			it != cl_qmap_end(topop->ldrCache);) {
-			LdrCacheEntry_t *c = PARENT_STRUCT(it, LdrCacheEntry_t, mapItem);
-			it = cl_qmap_next(it);
-			vs_pool_free(&sm_pool, c);
-		}
-		vs_pool_free(&sm_pool, topop->ldrCache);
-		topop->ldrCache = NULL;
 	}
 
 	return VSTATUS_OK;
@@ -3147,7 +3168,7 @@ topology_clearNew(void)
         }
     }
 
-	topology_free_topology(&sm_newTopology, TRUE);
+	topology_free_topology(&sm_newTopology, TRUE, TRUE);
 
 	IB_EXIT(__func__, 0);
 	return;

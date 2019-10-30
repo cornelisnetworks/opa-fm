@@ -56,11 +56,6 @@ extern "C" {
 
 #include "iba/public/ipackon.h"
 
-// if 1, we compress groups such no gaps in portImage->groups
-//		this speeds up PM sweeps
-// if 0, we can have gaps, this speeds up Removing groups
-#define PM_COMPRESS_GROUPS 1
-
 		// used to mark unused entries in history and freezeFrame
 		// also used in LastSweepIndex to indicate no sweeps done yet
 #define PM_IMAGE_INDEX_INVALID 0xffffffff
@@ -70,7 +65,7 @@ extern "C" {
 #define PA_ALL_GROUP_NAME "All"
 
 // special ImageId of 0 is used to access live data
-// -1 is used to request Images by time 
+// -1 is used to request Images by time
 // other non-zero values are of the format below
 // This is an opaque format, the only user known ImageIds are 0 to access
 // live data and -1 (0xffffffffffffffff) for images by time
@@ -85,7 +80,7 @@ extern "C" {
 #define IMAGEID_TYPE_HISTORY_DISK	3	// Recent history *disk only*
 
 #define IMAGEID_MAX_INSTANCE_ID		256	// 8 bit field
-										  
+
 typedef union {
 	uint64_t	AsReg64;
 	struct {
@@ -185,6 +180,8 @@ typedef struct PmCompositeVfvlmap_s {
 	uint32	vlmask;
 	uint32  VF; //index into vf array
 } PmCompositeVfvlmap_t;
+
+typedef struct _port_error_info PmCompositeErrorInfo_t;
 
 #define UPDATE_MAX(max, cnt) do { if (cnt > max) max = cnt; } while (0)
 #define UPDATE_MIN(min, cnt) do { if (cnt < min) min = cnt; } while (0)
@@ -320,7 +317,8 @@ typedef struct PmErrStats_s {
 } PACK_SUFFIX PmErrStats_t;
 
 struct PmPort_s;
-typedef boolean (*PmComparePortFunc_t)(struct PmPort_s *pmportp, char *groupName);
+struct PmImage_s;
+typedef boolean (*PmComparePortFunc_t)(struct PmImage_s *pmimagep, struct PmPort_s *pmportp, char *groupName);
 
 // a group is a set of ports.  A given link can be:
 // 	in-group - both ports are within the same group
@@ -340,8 +338,13 @@ typedef boolean (*PmComparePortFunc_t)(struct PmPort_s *pmportp, char *groupName
 typedef struct PmGroup_s {
 	// configuration  - unchanging, no lock needed
 	char Name[STL_PM_GROUPNAMELEN];	// \0 terminated
+	uint32_t pg_index; // index into PmImage_t.Groups[]
+
 	// function to decide if new ports in topology should be added to group
 	PmComparePortFunc_t ComparePortFunc;
+
+	// dg_index from pm_config
+	uint16 dg_index[STL_PM_MAX_DG_PER_PMPG]; // (-1)0xFFFF = not used
 } PmGroup_t;
 
 typedef struct PmGroupImage_s {
@@ -502,7 +505,7 @@ typedef struct PmPort_s {
 	struct PmPortImage_s {
 		union {
 			uint32	AsReg32;
-			struct { IB_BITFIELD11(uint32,
+			struct { IB_BITFIELD12(uint32,
 				active:1, 			// is port IB_PORT_ACTIVE (SW port 0 fixed up)
 				mtu:4,				// enum IB_MTU - due to actual range, 3 bits
 				txActiveWidth:4,	// LinkWidthDowngrade.txActive
@@ -513,7 +516,8 @@ typedef struct PmPort_s {
 				UnexpectedClear:1,	// PMA Counters unexpectedly cleared
 				gotDataCntrs:1,		// Were Data Counters updated
 				gotErrorCntrs:1,	// Were Error Counters updated
-				Reserved:10)
+				gotErrorInfo:1,		// Was Error Info captured
+				Reserved:9)
 			} s;
 		} u;
 		struct PmPort_s	*neighbor;		// Pointer to Neighbor Port
@@ -535,23 +539,26 @@ typedef struct PmPort_s {
 		PmCompositePortCounters_t	DeltaStlPortCounters;				// Port Level Counters
 		PmCompositeVLCounters_t		DeltaStlVLPortCounters[MAX_PM_VLS];	// VL Level Counters
 
+		PmCompositeErrorInfo_t      ErrorInfo;
 
 	} Image[1]; // sized when allocate PmPort_t
 } PmPort_t;
 
-#define PM_PORT_ERROR_SUMMARY(portImage, lli, ler)	((portImage)->StlPortCounters.PortRcvConstraintErrors + \
-											(portImage)->StlPortCounters.PortRcvSwitchRelayErrors + \
-											(portImage)->StlPortCounters.PortRcvSwitchRelayErrors + \
-											(portImage)->StlPortCounters.PortXmitDiscards         + \
-											(portImage)->StlPortCounters.PortXmitConstraintErrors + \
-											(portImage)->StlPortCounters.PortRcvRemotePhysicalErrors + \
-											((portImage)->StlPortCounters.LocalLinkIntegrityErrors >> (lli?(lli + RES_ADDER_LLI):0)) + \
-											(portImage)->StlPortCounters.PortRcvErrors            + \
-											(portImage)->StlPortCounters.ExcessiveBufferOverruns  + \
-											(portImage)->StlPortCounters.FMConfigErrors           + \
-											((portImage)->StlPortCounters.LinkErrorRecovery >> (ler?(ler + RES_ADDER_LER):0)) + \
-											(portImage)->StlPortCounters.LinkDowned               + \
-											(portImage)->StlPortCounters.UncorrectableErrors)
+#define PM_PORT_ERROR_SUMMARY(portImage, lli, ler) \
+	((portImage)->StlPortCounters.PortRcvConstraintErrors + \
+	(portImage)->StlPortCounters.PortRcvSwitchRelayErrors + \
+	(portImage)->StlPortCounters.PortRcvSwitchRelayErrors + \
+	(portImage)->StlPortCounters.PortXmitDiscards         + \
+	(portImage)->StlPortCounters.PortXmitConstraintErrors + \
+	(portImage)->StlPortCounters.PortRcvRemotePhysicalErrors + \
+	((portImage)->StlPortCounters.LocalLinkIntegrityErrors >> (lli?(lli + RES_ADDER_LLI):0)) + \
+	(portImage)->StlPortCounters.PortRcvErrors            + \
+	(portImage)->StlPortCounters.ExcessiveBufferOverruns  + \
+	(portImage)->StlPortCounters.FMConfigErrors           + \
+	((portImage)->StlPortCounters.LinkErrorRecovery >> (ler?(ler + RES_ADDER_LER):0)) + \
+	(portImage)->StlPortCounters.LinkDowned               + \
+	(portImage)->StlPortCounters.UncorrectableErrors)
+
 
 typedef	struct PmPortImage_s PmPortImage_t;
 
@@ -599,7 +606,7 @@ typedef struct PmDispatcherPacket_s {
 	uint8                       numPorts;
 	uint8                       numVLs;
 	struct PmDispatcherNode_s  *dispnode;	        // setup once at boot
-	PmDispatcherPort_t         *DispPorts;         
+	PmDispatcherPort_t         *DispPorts;
 } PmDispatcherPacket_t;
 
 typedef enum {
@@ -609,7 +616,9 @@ typedef enum {
 	PM_DISP_NODE_GET_DATACOUNTERS	= 2,	// Getting Data Counters for Ports[]
 	PM_DISP_NODE_GET_ERRORCOUNTERS	= 3,	// Getting Error Counters for Ports[]
 	PM_DISP_NODE_CLR_PORT_STATUS	= 4,	// Clearing Counters for Ports[]
-	PM_DISP_NODE_DONE				= 5,	// all processing done for this node
+	PM_DISP_NODE_GET_ERRORINFO		= 5,	// Getting ErrorInfo for Ports[]
+	PM_DISP_NODE_CLR_ERRORINFO		= 6,	// Clearing ErrorInfo for Ports[]
+	PM_DISP_NODE_DONE				= 7,	// all processing done for this node
 } PmDispNodeState_t;
 
 struct Pm_s;
@@ -622,14 +631,16 @@ typedef struct PmDispatcherSwitchPort_s {
 				uint8	IsDispatched:1;		// Port has been dispatched
 				uint8	DoNotMerge:1;		// Query failed, retry with out mergeing to isolate port
 				uint8	NeedsClear:1;		// Replaces 256-bit mask in Node Struct.
-				uint8	NeedsError:1; 
-				uint8	Skip:1;				// Any other reason we should skip this packet. 
-				uint8	Reserved:3;
+				uint8	NeedsError:1;
+				uint8	Skip:1;				// Any other reason we should skip this packet.
+				uint8	NeedsErrorInfo:1;
+				uint8	NeedsClearErrorInfo:1;
+				uint8	Reserved:1;
 		} s;
 	} flags;
 	uint8	NumVLs;							// Number of active VLs in the Mask
 
-	uint32	VLSelectMask;					// VLSelect Mask associated with port.  
+	uint32	VLSelectMask;					// VLSelect Mask associated with port.
 } PmDispatcherSwitchPort_t;
 
 typedef struct PmDispatcherNode_s {
@@ -644,7 +655,9 @@ typedef struct PmDispatcherNode_s {
 				uint8	needError:1;	// Summary NeedsError from PmDispatcherSwitchPort_t
 				uint8	needClearSome:1;
 				uint8	canClearAll:1;
-				// 3 spare bits
+				uint8	needErrorInfo:1;	// Summary NeedsError from PmDispatcherSwitchPort_t
+				uint8	needClearErrorInfo:1;	// Summary NeedsError from PmDispatcherSwitchPort_t
+				// 1 spare bits
 			} s;
 		} u;
 		uint32	clearCounterSelect;	                // assumed to be same for all ports
@@ -709,6 +722,7 @@ typedef struct PmImage_s {
 	uint32		SkippedPorts;	// No PMA or filtered
 	uint32		UnexpectedClearPorts;	// Ports which whose counters decreased
 	uint32		DowngradedPorts; // Ports whose Link Width has been downgraded
+	uint32		ErrorInfoPorts;
 
 	// User Configured Groups + HFIs and SWs (All is implied)
 	uint32 NumGroups;
@@ -883,9 +897,15 @@ typedef struct PmShortTermHistory_s {
 	cl_qmap_t   imageTimes;       // map of all short term history images, keyed by start time
 	uint32	totalHistoryRecords;
 	uint8	currentInstanceId;
-	PmCompositeImage_t *cachedComposite;
-	struct _loaded_image {	
+	struct _cached_images {
+		PmCompositeImage_t **cachedComposite;   // Array of allocated Frozen STH CompImages
+		time_t *lastUsed;                       // Array of last time used for the same index image
+		PmHistoryRecord_t **records;            // Array to indicate what record is frozen in above arrays
+	} CachedImages;
+	struct _loaded_image {
 		PmImage_t *img;
+		PmHistoryRecord_t *record;  // pointer to record of the loaded image
+		time_t lastUsed; // time of last access.
 	} LoadedImage;
 	char	**invalidFiles; // keeps track of history filenames with a version mismatch
 	uint32	oldestInvalid; // index of the oldest invalid file
@@ -917,6 +937,10 @@ typedef struct PmDispatcherPerf_s {
 	PmDispatcherPerfPhase_t sw_get_error_cntrs;
 	PmDispatcherPerfPhase_t hfi_clr_cntrs;
 	PmDispatcherPerfPhase_t sw_clr_cntrs;
+	PmDispatcherPerfPhase_t hfi_get_error_info;
+	PmDispatcherPerfPhase_t sw_get_error_info;
+	PmDispatcherPerfPhase_t hfi_set_error_info;
+	PmDispatcherPerfPhase_t sw_set_error_info;
 } PmDispatcherPerf_t;
 
 // high level PM configuration and statistics
@@ -943,19 +967,16 @@ typedef struct Pm_s {
 
 	// configuration settings
 	uint32 pmFlags;     // configured (see stl_pa_types.h pmFlags for a list)
-	uint16 interval;	// in seconds
-	// threshold is per interval NOT per second
-	// set threshold to 0 to disable monitoring given Error type
-	ErrorSummary_t Thresholds;	// configured
-	// set weight to 0 to disable monitoring given Integrity counter
-	IntegrityWeights_t integrityWeights;	// configured
-	// set weight to 0 to disable monitoring given Congestion counter
-	CongestionWeights_t congestionWeights;	// configured
-
-	CounterSelectMask_t clearCounterSelect; 	// private - select all counters
-	PmCompositePortCounters_t ClearThresholds;	// configured
-
-	uint16		ErrorClear;		// Pm.ErrorClear config option
+	uint16 interval;    // Sweep Interval (in seconds)
+	ErrorSummary_t Thresholds;             // Category Threshold Values
+	IntegrityWeights_t integrityWeights;   // Weight applied to Counters before calculating Category
+	CongestionWeights_t congestionWeights; // Weight applied to Counters before calculating Category
+	CounterSelectMask_t clearCounterSelect;     // List of counters to check against ClearThreshold
+	PmCompositePortCounters_t ClearThresholds;  // MAX_VALUE * (ErrorClear/8)
+	uint16 ErrorClear;                          // Number of 8ths before we clear a counter
+	// Copy from pm_config
+	uint32 NumGroups; // User Configured Groups + HFIs and SWs (All is implied)
+	PmGroup_t Groups[PM_MAX_GROUPS];
 
 	// keep these as scratch area for use by current sweep, not kept per image
 	// private to engine thread, not protected by lock
@@ -1217,8 +1238,8 @@ FSTATUS rebuildComposite(PmCompositeImage_t *cimg, unsigned char *data, uint32 h
 void writeImageToBuffer(Pm_t *pm, uint32 histindex, uint8_t isCompressed, uint8_t *buffer, uint32_t *bIndex);
 void PmFreeComposite(PmCompositeImage_t *cimg);
 FSTATUS PmLoadComposite(Pm_t *pm, PmHistoryRecord_t *record, PmCompositeImage_t **cimg);
-FSTATUS PmFreezeComposite(Pm_t *pm, PmHistoryRecord_t *record);
-FSTATUS PmFreezeCurrent(Pm_t *pm);
+FSTATUS PmFreezeComposite(Pm_t *pm, PmHistoryRecord_t *record, int *idx);
+FSTATUS PmFreezeCurrent(Pm_t *pm, int *idx);
 void PmReconstituteVFImage(PmCompositeVF_t *cVF, PmVF_t *pmVFP);
 void PmReconstituteGroupImage(PmCompositeGroup_t *cgroup, PmGroup_t *pmGroupP);
 PmPort_t *PmReconstitutePortImage(PmImage_t *img, PmCompositePort_t *cport);
@@ -1362,7 +1383,7 @@ PmNode_t *pm_find_nodeguid(Pm_t *pm, uint64 nodeGUID);
 // have a history feature.
 // caller must have totalsLock held for write
 FSTATUS PmClearNodeRunningCounters(PmNode_t *pmnodep, CounterSelectMask_t select);
-FSTATUS PmClearNodeRunningVFCounters(PmNode_t *pmnodep, STLVlCounterSelectMask select,
+FSTATUS PmClearNodeRunningVFCounters(Pm_t *pm, PmNode_t *pmnodep, STLVlCounterSelectMask select,
 	int vfIdx, boolean useHiddenVF);
 
 // in mad_info.c
@@ -1376,6 +1397,42 @@ FSTATUS ProcessPmaClassPortInfo(PmNode_t* pmnodep, STL_CLASS_PORT_INFO *classp);
 Status_t PmDispatcherInit(Pm_t *pm);
 void PmDispatcherDestroy(Pm_t *pm);
 FSTATUS PmSweepAllPortCounters(Pm_t *pm);
+
+static __inline boolean isErrorInfoNeeded(Pm_t *pm,
+	PmCompositePortCounters_t *curr, PmCompositePortCounters_t *prev)
+{
+	if ((pm->pmFlags & STL_PM_PROCESS_ERRORINFO) == 0) return FALSE;
+	if (!prev) return TRUE;
+
+	// Some counters can be cleared on link bounce, so just check if they are
+	// different instead of current greater than previous.
+#define IS_DIFF_VAL(cntr) if (curr->cntr != prev->cntr) return TRUE
+	IS_DIFF_VAL(LinkDowned);
+	IS_DIFF_VAL(PortRcvErrors);
+	IS_DIFF_VAL(ExcessiveBufferOverruns);
+	IS_DIFF_VAL(PortXmitConstraintErrors);
+	IS_DIFF_VAL(PortRcvConstraintErrors);
+	IS_DIFF_VAL(PortRcvSwitchRelayErrors);
+	IS_DIFF_VAL(UncorrectableErrors);
+	IS_DIFF_VAL(FMConfigErrors);
+#undef IS_DIFF_VAL
+
+	return FALSE;
+}
+
+static __inline boolean isErrorInfoStatusSet(PmCompositeErrorInfo_t *pErrorInfo)
+{
+	if (pErrorInfo->PortRcvErrorInfo.s.Status)            return TRUE;
+	if (pErrorInfo->ExcessiveBufferOverrunInfo.s.Status)  return TRUE;
+	if (pErrorInfo->PortXmitConstraintErrorInfo.s.Status) return TRUE;
+	if (pErrorInfo->PortRcvConstraintErrorInfo.s.Status)  return TRUE;
+	if (pErrorInfo->PortRcvSwitchRelayErrorInfo.s.Status) return TRUE;
+	if (pErrorInfo->UncorrectableErrorInfo.s.Status)      return TRUE;
+	if (pErrorInfo->FMConfigErrorInfo.s.Status)           return TRUE;
+
+	return FALSE;
+}
+
 
 // pm_async_rcv.c
 extern generic_cntxt_t     *pm_async_send_rcv_cntxt;
@@ -1430,7 +1487,7 @@ uint32 computeVFBubble(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data);
 uint32 computeVFUtilizationPct10(Pm_t *pm, uint32 imageIndex, PmPort_t *port, void *data);
 
 
-// Given a MBps transfer rate and a theoretical maxMBps, compute the 
+// Given a MBps transfer rate and a theoretical maxMBps, compute the
 //  utilization bucket number from 0 to PM_UTIL_BUCKETS-1
 static __inline uint8 ComputeUtilBucket(uint32 SendMBps, uint32 maxMBps)
 {
@@ -1460,13 +1517,13 @@ static __inline uint8 ComputeErrBucket(uint32 errCnt, uint32 errThreshold)
 		 return errBucket;
 }
 
-void PmPrintExceededPort(PmPort_t *pmportp, uint32 index, const char *statistic, uint32 threshold, uint32 value);
-void PmPrintExceededPortDetailsIntegrity(PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint32 lastImageIndex);
-void PmPrintExceededPortDetailsCongestion(PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint32 lastImageIndex);
-void PmPrintExceededPortDetailsSmaCongestion(PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint32 lastImageIndex);
-void PmPrintExceededPortDetailsBubble(PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint32 lastImageIndex);
-void PmPrintExceededPortDetailsSecurity(PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint32 lastImageIndex);
-void PmPrintExceededPortDetailsRouting(PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint32 lastImageIndex);
+void PmPrintExceededPort(char *buf, size_t bufSize, PmPort_t *pmportp, uint32 index, const char *statistic, uint32 threshold, uint32 value);
+void PmPrintExceededPortDetailsIntegrity(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex);
+void PmPrintExceededPortDetailsCongestion(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex);
+void PmPrintExceededPortDetailsSmaCongestion(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex);
+void PmPrintExceededPortDetailsBubble(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex);
+void PmPrintExceededPortDetailsSecurity(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex);
+void PmPrintExceededPortDetailsRouting(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex);
 void PmFinalizePortStats(Pm_t *pm, PmPort_t *portp, uint32 index);
 boolean PmTabulatePort(Pm_t *pm, PmPort_t *portp, uint32 index,
 			   			uint32 *counterSelect);
@@ -1486,7 +1543,7 @@ void UpdateVFStats(Pm_t *pm, uint32 imageIndex, PmPort_t *port, PmVFImage_t *vfI
 // have a history feature.
 // caller must have totalsLock held for write
 extern FSTATUS PmClearPortRunningCounters(PmPort_t *pmportp, CounterSelectMask_t select);
-extern FSTATUS PmClearPortRunningVFCounters(PmPort_t *pmportp, STLVlCounterSelectMask select, int vfIdx, boolean useHiddenVF);
+extern FSTATUS PmClearPortRunningVFCounters(Pm_t *pm, PmPort_t *pmportp, STLVlCounterSelectMask select, int vfIdx, boolean useHiddenVF);
 
 // ? PMA Counter control allows interval and auto restart of counters, can remove
 // effect of PMA packet delays, etc.  Should we use it?  Does HW support it?
@@ -1501,9 +1558,6 @@ uint32 s_StaticRateToMBps[IB_STATIC_RATE_MAX+1];
 // adds a port to a group. used by PmAddExtPort and PmAddIntPort
 void PmAddPortToGroupIndex(PmPortImage_t* portImage, uint32 grpIndex, PmGroup_t *groupp, boolean internal);
 
-// removes a port from a group. used by other higher level routines
-void PmRemovePortFromGroupIndex(PmPortImage_t* portImage, uint32 grpIndex, PmGroup_t *groupp, uint8 compress);
-
 boolean PmIsPortInGroup(PmImage_t *pmimagep, PmPortImage_t *portImage,
 	int groupIndex, boolean isAllGroup, boolean *isInternal);
 boolean PmIsPortInVF(PmImage_t *pmimagep, PmPortImage_t *portImage,
@@ -1513,16 +1567,10 @@ boolean PmIsPortInVF(PmImage_t *pmimagep, PmPortImage_t *portImage,
 // the given group
 void PmAddExtPortToGroupIndex(PmPortImage_t* portImage, uint32 grpIndex, PmGroup_t *groupp, uint32 imageIndex);
 
-// removes a port from a group. used by other higher level routines
-void PmRemoveExtPortFromGroupIndex(PmPortImage_t* portImage, uint32 grpIndex, PmGroup_t *groupp, uint32 imageIndex, uint8 compress);
-
 // adds a port to a group where the neighbor of the port WILL be in
 // the given group
 // This DOES NOT add the neighbor.  Caller must do that separately.
 void PmAddIntPortToGroupIndex(PmPortImage_t* portImage, uint32 grpIndex, PmGroup_t *groupp, uint32 imageIndex);
-
-// removes a port from a group. used by other higher level routines
-void PmRemoveIntPortFromGroupIndex(PmPortImage_t* portImage, uint32 grpIndex, PmGroup_t *groupp, uint32 imageIndex, uint8 compress);
 
 // compute reasonable clearThresholds based on given threshold and weights
 // This can be used to initialize clearThreshold and then override just
@@ -1539,6 +1587,27 @@ void PM_BuildClearCounterSelect(CounterSelectMask_t *select, boolean clearXfer, 
 FSTATUS injectHistoryFile(Pm_t *pm, char *filename, uint8_t *buffer, uint32_t filelen);
 
 void PmDispatcherPerfInit(PmDispatcherPerf_t *perf);
+
+
+
+// PM Loop MACROS
+#define for_some_pmnodes(PMIMAGE, PMNODE, LID, START, END) \
+	for (LID = START, PMNODE = (PMIMAGE)->LidMap[LID]; LID <= END; ++LID, PMNODE = (PMIMAGE)->LidMap[LID]) \
+	if (PMNODE)
+
+#define for_all_pmnodes(PMIMAGE, PMNODE, LID) \
+	for_some_pmnodes(PMIMAGE, PMNODE, LID, 1, (PMIMAGE)->maxLid)
+
+#define pm_get_port(PMNODE, PORTNUM) ((PMNODE)->nodeType == STL_NODE_SW ? (PMNODE)->up.swPorts[PORTNUM] : (PMNODE)->up.caPortp)
+#define pm_get_port_idx(PMNODE) ((PMNODE)->nodeType == STL_NODE_SW ? 0 : 1)
+
+#define for_some_pmports(PMNODE, PMPORT, PORTNUM, START, END) \
+	for (PORTNUM = START, PMPORT = pm_get_port(PMNODE, PORTNUM); \
+		PORTNUM <= END; \
+		++PORTNUM, PMPORT = pm_get_port(PMNODE, PORTNUM))
+
+#define for_all_pmports(PMNODE, PMPORT, PORTNUM) \
+	for_some_pmports(PMNODE, PMPORT, PORTNUM, pm_get_port_idx(PMNODE), (PMNODE)->numPorts)
 
 #include "iba/public/ipackoff.h"
 

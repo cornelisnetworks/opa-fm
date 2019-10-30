@@ -59,7 +59,7 @@ static const char *FSTATUS_Strings[] = {
 const char *
 FSTATUS_ToString(FSTATUS status)
 {
-	return ((status & 0xFF) < FSTATUS_COUNT ? FSTATUS_Strings[status] : "");
+	return ((status & 0xFF) < FSTATUS_COUNT ? FSTATUS_Strings[status & 0xFF] : "");
 }
 // given an Image Index, build an externally usable FreezeFrame ImageId
 // this will allow future reference to this image via freezeFrames[]
@@ -81,6 +81,17 @@ BuildFreezeFrameImageId(Pm_t *pm, uint32 freezeIndex, uint8 clientId, uint32 *im
 	return id.AsReg64;
 }
 
+int getCachedCimgIdx(Pm_t *pm, PmCompositeImage_t *cimg) {
+	int i;
+	if (cimg == NULL || pm->ShortTermHistory.CachedImages.cachedComposite == NULL) return -1;
+
+	for (i = 0; i < pm_config.freeze_frame_images; i++) {
+		if (pm->ShortTermHistory.CachedImages.cachedComposite[i] == cimg) {
+			return i;
+		}
+	}
+	return -1;
+}
 // locate group by name
 FSTATUS
 LocateGroup(PmImage_t *pmimagep, const char *groupName, int *groupIndex)
@@ -564,12 +575,19 @@ FindImage(Pm_t *pm, uint8 type, STL_PA_IMAGE_ID_DATA imageId, uint32 *imageIndex
 	} else {
 		// image ID in history
 		// check frozen composite
-		if (!offset && pm->ShortTermHistory.cachedComposite) {
-			status = CheckComposite(pm, histId.AsReg64, pm->ShortTermHistory.cachedComposite);
-			if (status == FSUCCESS) {
-				// frozen cached composite was requested directly by image ID
-				*cimg = pm->ShortTermHistory.cachedComposite;
-				return status;
+		if (!offset) {
+			int i;
+			for(i = 0; i < pm_config.freeze_frame_images; i++) {
+				if (pm->ShortTermHistory.CachedImages.cachedComposite[i]) {
+					status = CheckComposite(pm, histId.AsReg64, pm->ShortTermHistory.CachedImages.cachedComposite[i]);
+					if (status == FSUCCESS) {
+						// frozen cached composite was requested directly by image ID
+						*cimg = pm->ShortTermHistory.CachedImages.cachedComposite[i];
+
+						vs_stdtime_get(&pm->ShortTermHistory.CachedImages.lastUsed[i]);
+						return status;
+					}
+				}
 			}
 		}
 		// check the current composite
@@ -757,23 +775,36 @@ FindPmImage(const char *func, Pm_t *pm, STL_PA_IMAGE_ID_DATA req_img, STL_PA_IMA
 	}
 	if (record || cimg) {
 		isSthImg = TRUE;
-		if (record) {
-			// try to load
+		if (record && record != pm->ShortTermHistory.LoadedImage.record) {
+			// try to load image if not already loaded
 			status = PmLoadComposite(pm, record, &cimg);
 			if (status != FSUCCESS || !cimg) {
 				IB_LOG_WARN_FMT(func, "Unable to load composite image: %s", FSTATUS_ToString(status));
 				goto error;
 			}
 		}
-		// set the return ID
-		ret_img.imageNumber = cimg->header.common.imageIDs[0];
-		// composite is loaded, reconstitute so we can use it
-		status = PmReconstitute(&pm->ShortTermHistory, cimg);
-		if (record) PmFreeComposite(cimg);
-		if (status != FSUCCESS) {
-			IB_LOG_WARN_FMT(func, "Unable to reconstitute composite image: %s", FSTATUS_ToString(status));
-			goto error;
+		// If new image loaded, then Reconstitute the composite image
+		if (cimg) {
+			ret_img.imageNumber = cimg->header.common.imageIDs[0];
+			// composite is loaded, reconstitute so we can use it
+			status = PmReconstitute(&pm->ShortTermHistory, cimg);
+			if (record) PmFreeComposite(cimg);
+			if (status != FSUCCESS) {
+				IB_LOG_WARN_FMT(func, "Unable to reconstitute composite image: %s", FSTATUS_ToString(status));
+				goto error;
+			}
 		}
+		if (record) {
+			// indicate loaded image
+			pm->ShortTermHistory.LoadedImage.record = record;
+			// set the return ID
+			ret_img.imageNumber = record->header.imageIDs[0];
+		} else if (cimg) {
+			// set the return ID
+			ret_img.imageNumber = cimg->header.common.imageIDs[0];
+		}
+		// Update last time Image was used.
+		vs_stdtime_get(&pm->ShortTermHistory.LoadedImage.lastUsed);
 		pmimagep = pm->ShortTermHistory.LoadedImage.img;
 		imgIndex = 0; // STH always uses imageIndex 0
 	} else {

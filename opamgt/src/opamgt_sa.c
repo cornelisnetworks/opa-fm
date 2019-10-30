@@ -789,6 +789,13 @@ FSTATUS omgt_input_value_conversion(OMGT_QUERY *output_query, QUERY_INPUT_VALUE 
 			output_query->InputValue.TraceRecord.GidPair.SourceGid =
 				old_query->GidPair.SourceGid;
 			break;
+		case InputTypeLid:
+			output_query->InputValue.TraceRecord.Lid.DLid =
+				old_query->Lid;
+			/* SourceGid is a new field for this InputType */
+			if (source_gid.AsReg64s.H == 0 || source_gid.AsReg64s.L == 0) return FERROR;
+			output_query->InputValue.TraceRecord.Lid.SourceGid = source_gid;
+			break;
 		default: return FNOT_FOUND;
 		}
 		break;
@@ -1675,6 +1682,17 @@ static FSTATUS omgt_query_sa_internal(struct omgt_port *port, OMGT_QUERY *pQuery
 				pPR->Reversible                    = 1;
 				pPR->NumbPath                      = PATHRECORD_NUMBPATH;
 				break;
+			case InputTypeLid:
+				mad.SaHdr.ComponentMask = IB_PATH_RECORD_COMP_DLID |
+					IB_PATH_RECORD_COMP_SLID |
+					IB_PATH_RECORD_COMP_REVERSIBLE |
+					IB_PATH_RECORD_COMP_NUMBPATH;
+				(void)omgt_port_get_port_lid(port, (uint32_t *)&pPR->SLID);
+				pPR->DLID                          = pQuery->InputValue.TraceRecord.Lid.DLid;
+				pPR->Reversible                    = 1;
+				pPR->NumbPath                      = PATHRECORD_NUMBPATH;
+				break;
+
 			default:
 				OMGT_OUTPUT_ERROR(port, "Query not supported by opamgt: Input=%s, Output=%s\n",
 						iba_sd_query_input_type_msg(pQuery->InputType),

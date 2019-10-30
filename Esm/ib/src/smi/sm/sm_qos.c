@@ -148,8 +148,6 @@ _set_weight_multiplier(Qos_t * qos);
 // The following is for uniform qos
 static Qos_t *sm_Qos = NULL;
 
-int sm_check_node_cache_valid(Node_t *);
-
 static Status_t _populate_sctosl(RoutingModule_t *rm, const Qos_t * qos,
 	VirtualFabrics_t *VirtualFabrics, uint8_t *SLtoSC, uint8_t *SCtoSL);
 static Status_t _setup_qos(RoutingModule_t *rm, Qos_t * qos,
@@ -1260,13 +1258,6 @@ _initialize_Switch_SCSCMap(ParallelSweepContext_t *psc, SmMaiHandle_t *fd,
 	int s;
 	int setCnt = 1;
 
-	/* Note: If node was previously non-responding. Don't bother going any further. */
-	if (switchp->nonRespCount) {
-		IB_LOG_WARN_FMT(__func__, "node is unresponsive %s", sm_nodeDescString(switchp));
-		IB_EXIT(__func__, 0);
-		return VSTATUS_OK;
-	}
-
 	if (switchp->nodeInfo.NodeType != NI_TYPE_SWITCH) {
 		IB_EXIT(__func__, 1);
 		return VSTATUS_BAD;
@@ -1667,11 +1658,6 @@ _initialize_Node_Port_SLSCMap(Topology_t * topop, Node_t * nodep, Port_t * out_p
 		return (VSTATUS_OK);
 	}
 
-	// note: if node was previously non-responding. Don't bother going any further.
-	if (nodep->nonRespCount) {
-		return (VSTATUS_OK);
-	}
-
 	if (!out_portp->portData->current.slsc) {
 		IB_LOG_WARN_FMT(__func__,
 			"SCSL for node %s nodeGuid "FMT_U64" port %d is not current",
@@ -1722,11 +1708,6 @@ _initialize_Node_Port_SCSLMap(Topology_t * topop, Node_t * nodep, Port_t * in_po
 
 	//
 	// set up the SC->SL mapping just for this port.
-
-	// note: if node was previously non-responding. Don't bother going any further.
-	if (nodep->nonRespCount) {
-		return (VSTATUS_OK);
-	}
 
 	if (!in_portp->portData->current.scsl) {
 		IB_LOG_WARN_FMT(__func__,
@@ -1782,10 +1763,6 @@ _initialize_Node_Port_SCVLMaps(ParallelSweepContext_t *psc, SmMaiHandle_t *fd,
 
 	//
 	// set up the SC->VL mappings just for this port and neighbor port.
-
-	// note: if node was previously non-responding. Don't bother going any further.
-	if (nodep->nonRespCount)
-		return (VSTATUS_OK);
 
 	if ((neighborNodep = sm_find_node(topop, in_portp->nodeno)) == NULL ||
 		(neighborPortp = sm_find_node_port(topop, neighborNodep, in_portp->portno)) == NULL ||
@@ -2630,12 +2607,6 @@ _initialize_VLArbitration(ParallelSweepContext_t *psc, SmMaiHandle_t *fd,
 	Status_t status = VSTATUS_OK;
 	STL_LID dlid=0;
 	IB_ENTER(__func__, topop, nodep, portp, 0);
-
-	/* Note: If node was previously non-responding. Don't bother going any further. */
-	if (nodep->nonRespCount) {
-		IB_EXIT(__func__, 0);
-		return (VSTATUS_OK);
-	}
 
 	if (!sm_valid_port(portp) || portp->state <= IB_PORT_DOWN) {	// Port is down
 		IB_EXIT(__func__, 1);

@@ -63,6 +63,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "cs_csm_log.h"
 #include "iba/public/imath.h"
 #include "if3.h"
+#include "pm_l.h"
 
 
 #ifndef __VXWORKS__
@@ -2415,6 +2416,8 @@ smProcessReconfigureRequest(void){
 						releaseVirtualFabricsConfig(updatedVirtualFabrics);
 					}
 					updatedVirtualFabrics = newVirtualFabrics;
+
+					pm_update_dyn_config(&new_xml_config->fm_instance[sm_instance]->pm_config);
 
 					/* Update our consistency checksums */
 					sm_dbsync_checksums(savedVfConsistencyChecksum,

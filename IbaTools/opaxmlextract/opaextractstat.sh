@@ -207,7 +207,7 @@ do
     fi
   fi
 
-done < <(/usr/sbin/opareport -x -d 10 -s -o errors -T "$@" | \
+done < <(/usr/sbin/opareport -x -Q -d 10 -s -o errors -T "$@" | \
         /usr/sbin/opaxmlextract -H -d \; -e Link:id -e Rate -e LinkDetails -e CableLength \
         -e CableLabel -e CableDetails -e Port.NodeDesc -e Port.PortNum \
         -e LinkQualityIndicator.Value)

@@ -71,7 +71,7 @@ x509_extensions	= opa_ca_cert_extensions        # The extentions to add to the c
 
 default_days	= 365			# how long to certify for
 default_crl_days= 30			# how long before next CRL
-default_md	= sha256		# default MD
+default_md	= Recommend referencing https://www.ssl.com/guide/ssl-best-practices
 preserve	= no			# keep passed DN ordering
 
 # A few difference way of specifying how similar the request should look
@@ -90,8 +90,8 @@ organizationalUnitName	= optional
 
 ####################################################################
 [ req ]
-default_bits		= 2048
-default_md		= sha256
+default_bits		= Recommend referencing https://www.ssl.com/guide/ssl-best-practices
+default_md		= Recommend referencing https://www.ssl.com/guide/ssl-best-practices
 default_keyfile 	= /root/opaCA/private/cakey.pem
 distinguished_name	= opa_ca_distinguished_name
 attributes		= req_attributes

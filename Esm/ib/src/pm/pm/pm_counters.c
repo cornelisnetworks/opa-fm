@@ -83,6 +83,7 @@ pm_counter_t pmCounters[pmCountersMax] = {
 	[pmCounterGetDataPortCounters]		= { "PM TX GET(DataPortCounters)", 0, 0, 0 },
 	[pmCounterGetErrorPortCounters]		= { "PM TX GET(ErrorPortCounters)", 0, 0, 0 },
 	[pmCounterGetErrorInfo]				= { "PM TX GET(ErrorInfo)", 0, 0, 0 },
+	[pmCounterSetErrorInfo]				= { "PM TX SET(ErrorInfo)", 0, 0, 0 },
 
 	[pmCounterRxGetResp]			= { "PM RX GETRESP(*)", 0, 0, 0 },
 

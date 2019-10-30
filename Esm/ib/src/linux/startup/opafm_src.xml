@@ -1346,8 +1346,8 @@
       <!-- IPv6 Solicited-Node multicast combined to 500 MLIDs -->
       <MLIDShare>
         <Enable>1</Enable>
-        <MGIDMask>0xffffffffffffffff:0xffffffffff000000</MGIDMask>
-        <MGIDValue>0xff12601bffff0000:0x00000001ff000000</MGIDValue>
+        <MGIDMask>0xffffffff0000ffff:0xffffffffff000000</MGIDMask>
+        <MGIDValue>0xff12601b00000000:0x00000001ff000000</MGIDValue>
         <MaxMLIDs>500</MaxMLIDs>
         <!-- <MaxMLIDsPerPKey>4</MaxMLIDsPerPKey> -->
       </MLIDShare>
@@ -2216,7 +2216,7 @@
     <!-- predetermined range, then weighted, and summed into the category -->
     <!-- 0 causes given counter to be ignored -->
     <CongestionWeights>
-        <XmitWaitPct>10</XmitWaitPct> <!-- 0.01% to 1%-->
+        <XmitWaitPct>0</XmitWaitPct> <!-- 0.01% to 1%-->
         <CongDiscards>100</CongDiscards>
         <RcvFECNPct>5</RcvFECNPct> <!-- 0.1% to 10%-->
         <RcvBECNPct>1</RcvBECNPct> <!-- 0.1% to 10%-->
@@ -2254,6 +2254,7 @@
     <!-- known to not support a PMA. -->
     <ProcessHFICounters>1</ProcessHFICounters> <!-- process HFI Counters -->
     <ProcessVLCounters>1</ProcessVLCounters> <!-- process Per-VL Counters -->
+    <ProcessErrorInfo>1</ProcessErrorInfo> <!-- process PMA Error Info -->
 
     <!-- These parameters tune how many concurrent PMA requests the PM -->
     <!-- can have in flight while querying the PMAs in the fabric. -->
@@ -2276,6 +2277,17 @@
     <!-- This sets a limit on the number of PMA Node or Port warning log -->
     <!-- messages output per sweep -->
     <SweepErrorsLogThreshold>10</SweepErrorsLogThreshold>
+
+    <!-- This sets a limit on the number of Port ErrorInfo register log -->
+    <!-- messages per sweep.                                            -->
+    <!--  A value of "0" will disable logging for the register          -->
+    <!--  A value of "Unlimited" will not limit the output              -->
+    <!-- Note: Requires ProcessErrorInfo set to 1                       -->
+    <SweepErrorInfoLogThresholds>
+        <Integrity>Unlimited</Integrity>
+        <Security>10</Security>
+        <Routing>10</Routing>
+    </SweepErrorInfoLogThresholds>
 
     <!-- Short Term History will enable the PM to store an extended time -->
     <!-- period of history data on the disk. -->

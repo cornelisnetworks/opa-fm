@@ -122,6 +122,7 @@ typedef struct PortData_s {
 	uint32 rate;			// Active rate for this port
 	STL_LID	EndPortLID;				// LID to get to device with this port
 	STL_PORT_INFO	PortInfo;			// do not use LocalPortNum,use PortNum above
+	STL_LINKDOWN_REASON LinkDownReasons[STL_NUM_LINKDOWN_REASONS];
 
 
 	STL_LED_INFO LedInfo;			//Led Info for this port
@@ -1032,6 +1033,7 @@ extern ExpectedNode* FindExpectedNodeByNodeGuid(const FabricData_t* fabricp, EUI
 extern ExpectedNode* FindExpectedNodeByNodeDesc(const FabricData_t* fabricp, const char* nodeDesc, uint8 NodeType);
 extern ExpectedLink* FindExpectedLinkByOneSide(const FabricData_t* fabricp, EUI64 nodeGuid, uint8 portNum, uint8* side);
 extern FSTATUS FindLinkQualityPoint(FabricData_t *fabricp, uint16 quality, LinkQualityCompare comp, Point *pPoint, uint8 find_flag);
+extern FSTATUS FindLinkDownReasonPoint(FabricData_t *fabricp, uint8 ldr, Point *pPoint, uint8 find_flag);
 extern FSTATUS FindExpectedSMByPortGuid(FabricData_t *fabricp, EUI64 portGuid);
 extern FSTATUS FindExpectedSMByNodeGuid(FabricData_t *fabricp, EUI64 nodeGuid);
 

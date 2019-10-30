@@ -166,7 +166,7 @@ sa_PortInfoRecord_Set(uint8_t *prp, Node_t *nodep, Port_t *portp, STL_SA_MAD *sa
 	portInfoRecord.RID.EndPortLID = lid;
 	portInfoRecord.RID.PortNum = portp->index;
 	portInfoRecord.PortInfo = portp->portData->portInfo;
-	memcpy(portInfoRecord.LinkDownReasons, portp->portData->LinkDownReasons, sizeof(STL_LINKDOWN_REASON) * STL_NUM_LINKDOWN_REASONS);
+	sm_popo_get_ldr_log(&sm_popo, portp, portInfoRecord.LinkDownReasons);
 
     /* IBTA 1.2 C15-0.2.2 - zero out mKey if not trusted request */
 	if (sm_smInfo.SM_Key && samad->header.smKey != sm_smInfo.SM_Key) {

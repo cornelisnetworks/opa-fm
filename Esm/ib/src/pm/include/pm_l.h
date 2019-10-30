@@ -36,6 +36,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ib_mad.h>
 #include "iquickmap.h"
 #include "pm_counters.h"
+#include "fm_xml.h"
 
 // 200 bytes per port is more than our current data structures need by a
 // reasonable margin (approx 1k for 24 ports).
@@ -65,5 +66,7 @@ extern Pool_t pm_pool;
 extern void PmEngineStart(void);
 extern void PmEngineStop(void);
 extern boolean PmEngineRunning(void);
+
+extern void pm_update_dyn_config(PMXmlConfig_t *new_pm_config);
 
 #endif

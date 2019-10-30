@@ -65,6 +65,7 @@ my @intel_hfi_prereq = (
 			"libncurses5",
 			"libnuma1",
 			"irqbalance",
+			"libatomic1",
 );
 $comp_prereq_hash{'intel_hfi_prereq'} = \@intel_hfi_prereq;
 

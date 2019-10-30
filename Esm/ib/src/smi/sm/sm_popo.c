@@ -380,8 +380,156 @@ sm_popo_get_quarantine_reason_unsafe(Popo_t * popop, Port_t * portp)
 		reason = portp->poportp->quarantine.longTermData.reason;
 	return reason;
 }
+void
+sm_popo_get_ldr_log(Popo_t * popop, Port_t * portp, STL_LINKDOWN_REASON *log)
+{
+	if (portp && log) {
+		sm_popo_lock(popop);
+		memcpy(log, portp->poportp->ldr.ldr_log, sizeof(STL_LINKDOWN_REASON) * STL_NUM_LINKDOWN_REASONS);
+		sm_popo_unlock(popop);
+	}
+}
+uint64_t
+sm_popo_get_sweep_start(Popo_t * popop)
+{
+	uint64_t sweep_start;
+	sm_popo_lock(popop);
+	sweep_start = popop->ldr.sweepStart;
+	sm_popo_unlock(popop);
+	return sweep_start;
+}
+boolean
+sm_popo_find_lastest_ldr(Popo_t * popop, Port_t * portp, STL_LINKDOWN_REASON *ldr)
+{
+	boolean ret = FALSE;
+	if (!portp || !ldr)
+		return FALSE;
+
+	sm_popo_lock(popop);
+	int idx = STL_LINKDOWN_REASON_LAST_INDEX(portp->poportp->ldr.ldr_log);
+	if (idx != -1 && portp->poportp->ldr.ldr_log[idx].Timestamp != 0) {
+		memcpy(ldr, &portp->poportp->ldr.ldr_log[idx], sizeof(STL_LINKDOWN_REASON));
+		ret = TRUE;
+	}
+	sm_popo_unlock(popop);
+	return ret;
+}
+
+static void
+ _popo_clear_cache_nonresp_unsafe(PopoNode_t *ponodep)
+{
+	ponodep->nonresp.nrSweepNum = 0;
+	ponodep->nonresp.nrTime = 0;
+	ponodep->nonresp.nrCount = 0;
+}
+
+void sm_popo_clear_cache_nonresp(Popo_t *popop, Node_t *nodep)
+{
+	if (nodep && nodep->nodeInfo.NodeType == STL_NODE_FI) {
+		sm_popo_lock(popop);
+		_popo_clear_cache_nonresp_unsafe(nodep->ponodep);
+		sm_popo_unlock(popop);
+	}
+}
+
+boolean sm_popo_is_nonresp_this_sweep(Popo_t *popop, Node_t *nodep)
+{
+	boolean isNonResp = FALSE;
+
+	/* If both options are disabled, so is feature */
+	if (sm_config.non_resp_tsec == 0 && sm_config.non_resp_max_count == 0) return isNonResp;
+
+	if (nodep && nodep->nodeInfo.NodeType == STL_NODE_FI) {
+		sm_popo_lock(popop);
+		/* If the Nodes was marked NonResp this Sweep Then the node is NonResp */
+		isNonResp = (nodep->ponodep->nonresp.nrSweepNum == topology_passcount)
+			&& nodep->ponodep->nonresp.nrCount > 0;
+		sm_popo_unlock(popop);
+	}
+	return isNonResp;
+}
+
+boolean sm_popo_use_cache_nonresp(Popo_t * popop, Node_t *nodep)
+{
+	uint64_t curtime, difftime;
+	boolean isValid = FALSE;
+
+	/* If both options are disabled, so is feature */
+	if (sm_config.non_resp_tsec == 0 && sm_config.non_resp_max_count == 0) return isValid;
+
+	if (nodep && nodep->nodeInfo.NodeType == STL_NODE_FI) {
+		sm_popo_lock(popop);
+		(void) vs_time_get(&curtime);
+
+		difftime = curtime - nodep->ponodep->nonresp.nrTime;
+
+		/* If NonResp Time is still less than Config
+		* OR SweepCount is less than MaxCount
+		* Then cache is still valid
+		*/
+		if (difftime < (sm_config.non_resp_tsec * VTIMER_1S)
+			|| nodep->ponodep->nonresp.nrCount < sm_config.non_resp_max_count)
+		{
+			isValid = TRUE;
+		}
+		sm_popo_unlock(popop);
+	}
+	return isValid;
+}
+boolean sm_popo_inc_and_use_cache_nonresp(Popo_t * popop, Node_t *nodep, Status_t *retStatus)
+{
+	uint64_t curtime, difftime;
+	boolean isValid = FALSE;
+
+	/* If both options are disabled, so is feature */
+	if (sm_config.non_resp_tsec == 0 && sm_config.non_resp_max_count == 0) return isValid;
+	/* If status is not Time out don't use cache */
+	if (retStatus && *retStatus != VSTATUS_TIMEOUT) return isValid;
+
+	if (nodep && nodep->nodeInfo.NodeType == STL_NODE_FI) {
+
+		/* Check if Timeout is exceeded for sweep */
+		if (AtomicRead(&popop->errors.cumulativeTimeout) >= sm_config.cumulative_timeout_limit) {
+			if (retStatus) *retStatus = VSTATUS_TIMEOUT_LIMIT;
+			return isValid;
+		}
+
+		sm_popo_lock(popop);
+		(void) vs_time_get(&curtime);
+
+		/* If NonRespSweepCount Check is enabled and it is a new sweep, then Update count */
+		if (sm_config.non_resp_max_count != 0
+			&& nodep->ponodep->nonresp.nrSweepNum != topology_passcount)
+		{
+			nodep->ponodep->nonresp.nrCount++;
+			nodep->ponodep->nonresp.nrSweepNum = topology_passcount;
+		}
+
+		/* If NonRespTime Check is enabled and Time has not been set, then set it */
+		if (sm_config.non_resp_tsec != 0
+			&& nodep->ponodep->nonresp.nrTime == 0)
+		{
+			nodep->ponodep->nonresp.nrTime = curtime;
+			nodep->ponodep->nonresp.nrSweepNum = topology_passcount;
+		}
+
+		difftime = curtime - nodep->ponodep->nonresp.nrTime;
+
+		/* If NonResp Time is still less than Config
+		* OR SweepCount is less than MaxCount
+		* Then cache is still valid
+		*/
+		if (difftime < (sm_config.non_resp_tsec * VTIMER_1S)
+			|| nodep->ponodep->nonresp.nrCount < sm_config.non_resp_max_count)
+		{
+			isValid = TRUE;
+		}
+		sm_popo_unlock(popop);
+	}
+	return isValid;
+}
 // An entire switch is considered quarantined if port zero is quarantined.
-// 
+//
 boolean
 sm_popo_is_node_quarantined(Popo_t * popop, uint64_t guid)
 {
@@ -438,7 +586,7 @@ sm_popo_quarantine_port_unsafe(Popo_t * popop, PopoPort_t * poportp, PopoQuarant
 void
 sm_popo_monitor_port(Popo_t *popop, Port_t *portp, PopoLongTermQuarantineReason_t reason)
 {
-	
+
 	if (!portp) return;
 
 	if (reason == POPO_LONGTERM_NONE) return;
@@ -451,7 +599,7 @@ sm_popo_monitor_port(Popo_t *popop, Port_t *portp, PopoLongTermQuarantineReason_
 
 	if (portp->poportp->quarantine.type == POPO_QUARANTINE_LONG) goto bail;
 
-	
+
 	if(reason == POPO_LONGTERM_FLAPPING){
 
 		if(sm_config.port_quarantine.flapping.window_size == 0){
@@ -466,7 +614,7 @@ sm_popo_monitor_port(Popo_t *popop, Port_t *portp, PopoLongTermQuarantineReason_
 	} else  {
 		//Only monitor state for LONGTERM_FLAPPING is currently implemented. As
 		//new reasons are implemented, new code blocks must be added here to
-		//allocate longTermData to the reasons specific type. 
+		//allocate longTermData to the reasons specific type.
 		goto bail;
 	}
 
@@ -539,7 +687,7 @@ Status_t
 sm_popo_port_error(Popo_t * popop, Topology_t * topop, Port_t * portp, Status_t status)
 {
 	Status_t retStatus = status;
-	if (!portp || status != VSTATUS_TIMEOUT)
+	if (!portp || (status != VSTATUS_TIMEOUT && status != VSTATUS_TIMEOUT_LIMIT))
 		return status;
 
 	sm_popo_lock(popop);
@@ -547,7 +695,7 @@ sm_popo_port_error(Popo_t * popop, Topology_t * topop, Port_t * portp, Status_t 
 	if(sm_config.cumulative_timeout_limit){
 		if(portp->poportp->quarantine.type != POPO_QUARANTINE_LONG) {
 			sm_popo_quarantine_port_unsafe(popop, portp->poportp, POPO_QUARANTINE_SHORT);
-	
+
 			Port_t * nportp = sm_find_port(topop, portp->nodeno, portp->portno);
 			if (nportp && nportp->poportp->quarantine.type != POPO_QUARANTINE_LONG)
 				sm_popo_quarantine_port_unsafe(popop, nportp->poportp, POPO_QUARANTINE_SHORT);
@@ -592,8 +740,40 @@ sm_popo_update_port_state(Popo_t *popop, Port_t *portp, STL_PORT_STATES *pstatep
 {
 	if(!portp)
 		return;
-	
+
 	sm_popo_lock(popop);
+	// On Port Arm/Activate LDR is cleared during Set
+	if (pstatep->s.PortState > IB_PORT_INIT) {
+		portp->poportp->ldr.updateLog = FALSE;
+	}
+	memcpy(&portp->poportp->portStates, pstatep, sizeof(STL_PORT_STATES));
+	sm_popo_unlock(popop);
+
+	return;
+}
+void
+sm_popo_update_port_state_with_ldr(Popo_t *popop, Port_t *portp, STL_PORT_STATES *pstatep,
+	uint8_t ldr, uint8_t nldr)
+{
+	if(!portp)
+		return;
+
+	sm_popo_lock(popop);
+	if ((ldr || nldr) && !portp->poportp->ldr.updateLog) {
+		int idx = STL_LINKDOWN_REASON_NEXT_INDEX(portp->poportp->ldr.ldr_log);
+		if (idx != -1) {
+			portp->poportp->ldr.ldr_log[idx].LinkDownReason = ldr;
+			portp->poportp->ldr.ldr_log[idx].NeighborLinkDownReason = nldr;
+			portp->poportp->ldr.ldr_log[idx].Timestamp = popop->ldr.sweepStart;
+			// Mark update flag to stop from double counting until PortInfo.LDR is cleared on Arm/Activate
+			portp->poportp->ldr.updateLog = TRUE;
+		}
+	}
+
+	// On Port Arm/Activate LDR is cleared during Set
+	if (pstatep->s.PortState > IB_PORT_INIT) {
+		portp->poportp->ldr.updateLog = FALSE;
+	}
 	memcpy(&portp->poportp->portStates, pstatep, sizeof(STL_PORT_STATES));
 	sm_popo_unlock(popop);
 
@@ -621,6 +801,24 @@ sm_popo_update_node_port_states(Popo_t *popop, Node_t * nodep, STL_PORT_STATE_IN
 void sm_popo_update_node(PopoNode_t * ponodep)
 {
 	ponodep->info.pass = topology_passcount;
+}
+
+void sm_popo_begin_sweep(Popo_t *popop, uint64_t start_sweep)
+{
+	cl_map_item_t *ni = NULL;
+
+	sm_popo_lock(popop);
+	// Sweep Start (in seconds) used for LinkdownReason Timestamp
+	popop->ldr.sweepStart = start_sweep;
+
+	if (topology_passcount == 0) {
+		/* If this is a new sweep as Master then reset nonresp values to avoid edge cases */
+		for (ni = cl_qmap_head(&popop->nodes); ni != cl_qmap_end(&popop->nodes); ni = cl_qmap_next(ni)) {
+			PopoNode_t *ponodep = PARENT_STRUCT(ni, PopoNode_t, nodesEntry);
+			_popo_clear_cache_nonresp_unsafe(ponodep);
+		}
+	}
+	sm_popo_unlock(popop);
 }
 
 void sm_popo_end_sweep(Popo_t * popop)

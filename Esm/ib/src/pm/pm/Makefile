@@ -120,7 +120,7 @@ INCLUDE_SUBDIR		=
 
 CLOCAL = -DLOCAL_MOD_ID=VIEO_PM_MOD_ID $(CPIE)
 LOCAL_INCLUDE_DIRS=$(MOD_DIR)/src/smi/include $(MOD_DIR)/src/pm/include
-LOCALDEPLIBS = 
+LOCALDEPLIBS = IbPrint
 
 # Include Make Rules definitions and rules
 include $(PROJ_SM_DIR)/Makerules.module

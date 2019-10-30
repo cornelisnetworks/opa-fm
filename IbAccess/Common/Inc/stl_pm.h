@@ -460,39 +460,29 @@ struct _port_error_info {
 	uint32	Reserved2;
 } PACK_SUFFIX;
 
+typedef union _STL_Error_Info_Mask {
+	uint32 AsReg32;
+	struct { IB_BITFIELD8(uint32,
+		PortRcvErrorInfo : 1,
+		ExcessiveBufferOverrunInfo : 1,
+		PortXmitConstraintErrorInfo : 1,
+		PortRcvConstraintErrorInfo : 1,
+		PortRcvSwitchRelayErrorInfo : 1,
+		UncorrectableErrorInfo : 1,
+		FMConfigErrorInfo : 1,
+		Reserved : 25)
+	} PACK_SUFFIX s;
+} PACK_SUFFIX STLErrorInfoMask_t;
+
 typedef struct _STL_Error_Info_Req {
 	uint64	PortSelectMask[4];				/* signifies for which ports the PMA is to respond */
-	union {
-		uint32 AsReg32;
-		struct { IB_BITFIELD8(uint32,
-			PortRcvErrorInfo : 1,
-			ExcessiveBufferOverrunInfo : 1,
-			PortXmitConstraintErrorInfo : 1,
-			PortRcvConstraintErrorInfo : 1,
-			PortRcvSwitchRelayErrorInfo : 1,
-			UncorrectableErrorInfo : 1,
-			FMConfigErrorInfo : 1,
-			Reserved : 25)
-		} PACK_SUFFIX s;
-	} ErrorInfoSelectMask;
+	STLErrorInfoMask_t ErrorInfoSelectMask;
 	uint32	Reserved;
 } PACK_SUFFIX STLErrorInfoReq, STL_ERROR_INFO_REQ;
 
 typedef struct _STL_Error_Info_Rsp {
 	uint64	PortSelectMask[4];				/* signifies for which ports the PMA is to respond */
-	union {
-		uint32 AsReg32;
-		struct { IB_BITFIELD8(uint32,
-			PortRcvErrorInfo : 1,
-			ExcessiveBufferOverrunInfo : 1,
-			PortXmitConstraintErrorInfo : 1,
-			PortRcvConstraintErrorInfo : 1,
-			PortRcvSwitchRelayErrorInfo : 1,
-			UncorrectableErrorInfo : 1,
-			FMConfigErrorInfo : 1,
-			Reserved : 25)
-		} PACK_SUFFIX s;
-	} ErrorInfoSelectMask;
+	STLErrorInfoMask_t ErrorInfoSelectMask;
 	uint32	Reserved;
 	struct _port_error_info Port[1]; /* x defined by number of ports in attribute modifier */
 } PACK_SUFFIX STLErrorInfoRsp, STL_ERROR_INFO_RSP;

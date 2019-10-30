@@ -70,6 +70,7 @@ my @intel_hfi_prereq = (
     "systemd",
     "numactl-libs",
     "irqbalance",
+    "libatomic",
 );
 $comp_prereq_hash{'intel_hfi_prereq'} = \@intel_hfi_prereq;
 

@@ -85,7 +85,7 @@ export FF_IPOIB_CONFIG=${FF_IPOIB_CONFIG:-static}
 export FF_IPOIB_NETMASK=${FF_IPOIB_NETMASK:-}
 
 # IPOIB Connected Mode. Legal values are "yes" (connected) and "no" (datagram).
-export FF_IPOIB_CONNECTED=${FF_IPOIB_CONNECTED:-yes}
+export FF_IPOIB_CONNECTED=${FF_IPOIB_CONNECTED:-no}
 
 # Maximum parallel processes for opahostadmin, opachassisadmin, opaswitchadmin
 # and -p option on other commands

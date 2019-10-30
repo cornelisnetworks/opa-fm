@@ -347,6 +347,8 @@ extern void IXmlOutputStr(IXmlOutputState_t *state, const char *tag, const char*
 extern void IXmlOutputOptionalStr(IXmlOutputState_t *state, const char *tag, const char* value);
 extern void IXmlOutputStrUint(IXmlOutputState_t *state, const char *tag, const char* str, unsigned value);
 extern void IXmlOutputOptionalStrUint(IXmlOutputState_t *state, const char *tag, const char* str, unsigned value);
+extern void IXmlOutputStrUint64(IXmlOutputState_t *state, const char *tag, const char* str, uint64 value);
+extern void IXmlOutputOptionalStrUint64(IXmlOutputState_t *state, const char *tag, const char* str, uint64 value);
 extern void IXmlOutputStrInt(IXmlOutputState_t *state, const char *tag, const char* str, int value);
 extern void IXmlOutputOptionalStrInt(IXmlOutputState_t *state, const char *tag, const char* str, int value);
 extern void IXmlOutputStruct(IXmlOutputState_t *state, const char *tag, void *data,

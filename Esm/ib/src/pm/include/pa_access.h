@@ -233,6 +233,7 @@ FSTATUS FindPmImage(const char *func, Pm_t *pm, STL_PA_IMAGE_ID_DATA req_img,
 	STL_PA_IMAGE_ID_DATA *rsp_img, PmImage_t **pm_image, uint32 *imageIndex,
 	boolean *requiresLock);
 
+int getCachedCimgIdx(Pm_t *pm, PmCompositeImage_t *cimg);
 uint64 BuildFreezeFrameImageId(Pm_t *pm, uint32 freezeIndex, uint8 clientId, uint32 *imageTime);
 FSTATUS LocateGroup(PmImage_t *pmimagep, const char *groupName, int *groupIndex);
 FSTATUS LocateVF(PmImage_t *pmimagep, const char *vfName, int *vfIdx);
@@ -362,25 +363,15 @@ static inline uint8_t pa_get_port_status(PmPort_t *pmportp, uint32_t imageIndex)
 	return STL_PA_FOCUS_STATUS_OK;
 }
 
-/* MACROs for loops */
-#define for_some_pmnodes(PMIMAGE, PMNODE, LID, START, END) \
-	for (LID = START, PMNODE = (PMIMAGE)->LidMap[LID]; LID <= END; ++LID, PMNODE = (PMIMAGE)->LidMap[LID]) \
-	if (PMNODE)
-
-#define for_all_pmnodes(PMIMAGE, PMNODE, LID) \
-	for_some_pmnodes(PMIMAGE, PMNODE, LID, 1, (PMIMAGE)->maxLid)
-
-#define pm_get_port(PMNODE, PORTNUM) ((PMNODE)->nodeType == STL_NODE_SW ? (PMNODE)->up.swPorts[PORTNUM] : (PMNODE)->up.caPortp)
-#define pm_get_port_idx(PMNODE) ((PMNODE)->nodeType == STL_NODE_SW ? 0 : 1)
-
-#define for_some_pmports(PMNODE, PMPORT, PORTNUM, START, END, STH_BOOL) \
+/* PA STH MACROs for loops */
+#define for_some_pmports_sth(PMNODE, PMPORT, PORTNUM, START, END, STH_BOOL) \
 	for (PORTNUM = START, PMPORT = pm_get_port(PMNODE, PORTNUM); \
 		PORTNUM <= END; \
 		++PORTNUM, PMPORT = pm_get_port(PMNODE, PORTNUM)) \
 	if (pa_valid_port(PMPORT, STH_BOOL))
 
-#define for_all_pmports(PMNODE, PMPORT, PORTNUM, STH_BOOL) \
-	for_some_pmports(PMNODE, PMPORT, PORTNUM, pm_get_port_idx(PMNODE), (PMNODE)->numPorts, STH_BOOL)
+#define for_all_pmports_sth(PMNODE, PMPORT, PORTNUM, STH_BOOL) \
+	for_some_pmports_sth(PMNODE, PMPORT, PORTNUM, pm_get_port_idx(PMNODE), (PMNODE)->numPorts, STH_BOOL)
 
 /** Example usage:
  *

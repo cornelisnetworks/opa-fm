@@ -564,12 +564,12 @@ pa_getPmConfigResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 		response.integrityWeights.LinkQualityIndicator     = g_pmSweepData.integrityWeights.LinkQualityIndicator;
 		response.integrityWeights.LinkWidthDowngrade       = g_pmSweepData.integrityWeights.LinkWidthDowngrade;
 
-		response.categoryThresholds.integrityErrors		  	= g_pmSweepData.Thresholds.Integrity;
-		response.categoryThresholds.congestion		  	= g_pmSweepData.Thresholds.Congestion;
-		response.categoryThresholds.smaCongestion	  	= g_pmSweepData.Thresholds.SmaCongestion;
-		response.categoryThresholds.bubble			  	= g_pmSweepData.Thresholds.Bubble;
-		response.categoryThresholds.securityErrors			  	= g_pmSweepData.Thresholds.Security;
-		response.categoryThresholds.routingErrors			  	= g_pmSweepData.Thresholds.Routing;
+		response.categoryThresholds.integrityErrors = g_pmSweepData.Thresholds.Integrity;
+		response.categoryThresholds.congestion      = g_pmSweepData.Thresholds.Congestion;
+		response.categoryThresholds.smaCongestion   = g_pmSweepData.Thresholds.SmaCongestion;
+		response.categoryThresholds.bubble          = g_pmSweepData.Thresholds.Bubble;
+		response.categoryThresholds.securityErrors  = g_pmSweepData.Thresholds.Security;
+		response.categoryThresholds.routingErrors   = g_pmSweepData.Thresholds.Routing;
 
 		IB_LOG_DEBUG2_FMT(__func__, "Sweep interval:     %u", response.sweepInterval);
 		IB_LOG_DEBUG2_FMT(__func__, "Max Clients:        %u", response.maxClients);
@@ -652,8 +652,8 @@ pa_freezeImageResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 	INCREMENT_PM_COUNTER(pmCounterPaRxFreezeImage);
 	BSWAP_STL_PA_IMAGE_ID(p);
 
-	IB_LOG_DEBUG1_FMT(__func__, "Freezing ImageID: Number 0x%"PRIx64" Offset %d", p->imageNumber,
-			                                                                      p->imageOffset);
+	IB_LOG_DEBUG1_FMT(__func__, "Freezing ImageID: Number 0x%"PRIx64" Offset %d",
+		p->imageNumber, p->imageOffset);
 
 	status = paFreezeFrameCreate(&g_pmSweepData, *p, &freezeImage);
 	if (status == FSUCCESS) {
@@ -668,15 +668,28 @@ pa_freezeImageResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			snprintf(buf, sizeof(buf), " Time %s", ctime((const time_t *)&absTime));
 			if ((strlen(buf)>0) && (buf[strlen(buf)-1] == '\n'))
 				buf[strlen(buf)-1] = '\0';
+		} else {
+			snprintf(buf, sizeof(buf), "Number 0x%"PRIx64" Offset %d",
+				response.imageNumber, response.imageOffset);
 		}
 
-		IB_LOG_DEBUG2_FMT(__func__, "ImageID: Number 0x%"PRIx64" Offset %d%s frozen successfully",
-			freezeImage.imageNumber, freezeImage.imageOffset, buf);
+		IB_LOG_DEBUG2_FMT(__func__, "ImageID: %s frozen successfully", buf);
     	BSWAP_STL_PA_IMAGE_ID(&response);
     	memcpy(data, &response, sizeof(response));
 	} else {
-		IB_LOG_WARN_FMT(__func__, "Error freezing ImageID: Number 0x%"PRIx64" Offset %d  status %s (%u)",
-			freezeImage.imageNumber, freezeImage.imageOffset, iba_fstatus_msg(status), status);
+		time_t absTime = (time_t)freezeImage.imageTime.absoluteTime;
+		char buf[80];
+
+		if (absTime) {
+			snprintf(buf, sizeof(buf), " Time %s", ctime((const time_t *)&absTime));
+			if ((strlen(buf)>0) && (buf[strlen(buf)-1] == '\n'))
+				buf[strlen(buf)-1] = '\0';
+		} else {
+			snprintf(buf, sizeof(buf), "Number 0x%"PRIx64" Offset %d",
+				freezeImage.imageNumber, freezeImage.imageOffset);
+		}
+		IB_LOG_WARN_FMT(__func__, "Error freezing ImageID: %s  status %s (0x%x)",
+			buf, iba_fstatus_msg(status), status);
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 	}
 

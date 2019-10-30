@@ -183,7 +183,7 @@ function genReport()
 				tempresults=$RateStr";"$LinkDetailsStr";"$CableValuesStr";"$CableInfoValuesStr";"$Port1ValuesStr";"$Port2ValuesStr
 			fi
 		fi
-	done < <(/usr/sbin/opareport -x -o links "$@" -d 3 | \
+	done < <(/usr/sbin/opareport -x -Q -o links "$@" -d 3 | \
 		/usr/sbin/opaxmlextract -H -d \; -e Link:id -e Rate -e LinkDetails -e CableLength \
 		-e CableLabel -e CableDetails -e DeviceTechShort -e CableInfo.Length \
 		-e CableInfo.VendorName -e CableInfo.VendorPN -e CableInfo.VendorRev \

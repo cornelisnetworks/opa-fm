@@ -1057,6 +1057,7 @@ PortData* NodeDataAddPort(FabricData_t *fabricp, NodeData *nodep, EUI64 guid, ST
 	QListSetObj(&portp->AllPortsEntry, portp);
 	portp->PortInfo = pPortInfo->PortInfo;
 	portp->EndPortLID = pPortInfo->RID.EndPortLID;
+	memcpy(portp->LinkDownReasons, pPortInfo->LinkDownReasons, STL_NUM_LINKDOWN_REASONS * sizeof(STL_LINKDOWN_REASON));
 
 	if (nodep->NodeInfo.NodeType == STL_NODE_SW) {
 		// a switch only gets 1 port Guid, we save it for switch

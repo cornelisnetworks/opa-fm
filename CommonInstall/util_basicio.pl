@@ -188,7 +188,7 @@ sub GetYesNo($$)
 	my($answer) = 0;
 
 	if ( $Default_Prompt ) {
-		NormalPrint "$Question -> $default\n";
+		NormalPrint "$Question ->$default\n";
 		if ( "$default" eq "y") {
 			return 1;
 		} elsif ("$default" eq "n") {

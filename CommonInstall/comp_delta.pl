@@ -79,6 +79,7 @@ my @delta_kernel_srpms_rhel73 = ( 'kmod-ifs-kernel-updates' );
 my @delta_kernel_srpms_rhel74 = ( 'kmod-ifs-kernel-updates' );
 my @delta_kernel_srpms_rhel75 = ( 'kmod-ifs-kernel-updates' );
 my @delta_kernel_srpms_rhel76 = ( 'kmod-ifs-kernel-updates' );
+my @delta_kernel_srpms_rhel77 = ( 'kmod-ifs-kernel-updates' );
 my @delta_kernel_srpms_rhel8 = ( 'kmod-ifs-kernel-updates' );
 my @delta_kernel_srpms = ( );
 
@@ -159,6 +160,8 @@ sub init_delta_info($)
 		}
 	} elsif ( "$CUR_VENDOR_VER" eq "ES8" ) {
 		@delta_kernel_srpms = ( @delta_kernel_srpms_rhel8 );
+	} elsif ( "$CUR_VENDOR_VER" eq "ES77" ) {
+		@delta_kernel_srpms = ( @delta_kernel_srpms_rhel77 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES76" ) {
 		@delta_kernel_srpms = ( @delta_kernel_srpms_rhel76 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES75" ) {
@@ -789,6 +792,9 @@ sub installed_delta_opa_stack()
 	} elsif ( "$CUR_VENDOR_VER" eq "ES8" ) {
 		return ( has_version_delta()
 				&& rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
+	} elsif ( "$CUR_VENDOR_VER" eq "ES77" ) {
+		return ( has_version_delta()
+				&& rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
 	} elsif ( "$CUR_VENDOR_VER" eq "ES76" ) {
 		return ( has_version_delta()
 				&& rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
@@ -896,6 +902,10 @@ sub preinstall_opa_stack($$)
 	return preinstall_delta("opa_stack", $install_list, $installing_list);
 }
 
+my $arptbl_tunning = "ARPTABLE_TUNING";
+my $arptbl_tunning_desc = 'Adjust kernel ARP table size for large fabrics';
+AddAnswerHelp("$arptbl_tunning", "$arptbl_tunning_desc");
+
 sub install_opa_stack($$)
 {
 	my $install_list = shift();	# total that will be installed when done
@@ -924,7 +934,7 @@ sub install_opa_stack($$)
 	check_config_dirs();
 	check_dir("/usr/lib/opa");
 
-	prompt_opa_conf_param('ARPTABLE_TUNING', 'Adjust kernel ARP table size for large fabrics', "y", 'OPA_ARPTABLE_TUNING');
+	prompt_opa_conf_param("$arptbl_tunning", "$arptbl_tunning_desc", "y", 'OPA_ARPTABLE_TUNING');
 
 	install_comp_rpms('opa_stack', " -U --nodeps ", $install_list);
 	# rdma.conf values not directly associated with driver startup are left
@@ -1092,6 +1102,9 @@ sub installed_intel_hfi()
 		return (has_version_delta()
 		     && rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
 	} elsif ( "$CUR_VENDOR_VER" eq "ES76" ) {
+		return (has_version_delta()
+		     && rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
+	} elsif ( "$CUR_VENDOR_VER" eq "ES77" ) {
 		return (has_version_delta()
 		     && rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
 	} elsif ( "$CUR_VENDOR_VER" eq "ES8" ) {
@@ -1501,119 +1514,6 @@ sub uninstall_mpi_selector($$)
 	print_comp_uninstall_banner('mpi_selector');
 	uninstall_comp_rpms('mpi_selector', '', $install_list, $uninstalling_list, 'verbose');
 	$ComponentWasInstalled{'mpi_selector'}=0;
-}
-
-# ==========================================================================
-# OFA sandiashmem for gcc installation
-
-sub get_rpms_dir_sandiashmem($)
-{
-	my $package = shift();
-	return get_rpms_dir_delta($package)
-}
-
-sub available_sandiashmem()
-{
-	my $srcdir=$ComponentInfo{'sandiashmem'}{'SrcDir'};
-	return ( -d "$srcdir/SRPMS" || -d "$srcdir/RPMS" );
-}
-
-sub installed_sandiashmem()
-{
-	return ((rpm_is_installed("sandia-openshmem_gcc_hfi", "user")
-			&& has_version_delta()));
-}
-
-# only called if installed_openshmem is true
-sub installed_version_sandiashmem()
-{
-	if ( -e "$BASE_DIR/version_delta" ) {
-		return `cat $BASE_DIR/version_delta`;
-	} else {
-		return 'Unknown';
-	}
-}
-
-# only called if available_openshmem is true
-sub media_version_sandiashmem()
-{
-	return media_version_delta();
-}
-
-sub build_sandiashmem($$$$)
-{
-	my $osver = shift();
-	my $debug = shift();	# enable extra debug of build itself
-	my $build_temp = shift();	# temp area for use by build
-	my $force = shift();	# force a rebuild
-	return 0;	# success
-}
-
-sub need_reinstall_sandiashmem($$)
-{
-	my $install_list = shift();	# total that will be installed when done
-	my $installing_list = shift();	# what items are being installed/reinstalled
-
-	return (need_reinstall_delta_comp('sandiashmem', $install_list, $installing_list));
-}
-
-sub preinstall_sandiashmem($$)
-{
-	my $install_list = shift();	# total that will be installed when done
-	my $installing_list = shift();	# what items are being installed/reinstalled
-
-	return preinstall_delta("sandiashmem", $install_list, $installing_list);
-}
-
-sub install_sandiashmem($$)
-{
-	my $install_list = shift();	# total that will be installed when done
-	my $installing_list = shift();	# what items are being installed/reinstalled
-
-	print_comp_install_banner('sandiashmem');
-
-	# make sure any old potentially custom built versions of sandiashmem  are uninstalled
-	rpm_uninstall_list2("any", " --nodeps ", 'silent', @{ $ComponentInfo{'sandiashmem'}{'UserRpms'}});
-	my $rpmfile = rpm_resolve(delta_rpms_dir() . "/sandia-openshmem_gcc_hfi", "any");
-	if ( "$rpmfile" ne "" && -e "$rpmfile" ) {
-		# try to remove existed SOS folders. Note this is the workaround for PR 144408. We shall remove the following
-		# code after we resolve the PR.
-		my @installed_pkgs = glob("/usr/shmem/gcc/sandia-openshmem-*-hfi");
-		if (@installed_pkgs) {
-			foreach my $installed_pkg (@installed_pkgs) {
-				if (GetYesNo ("Remove $installed_pkg directory?", "y")) {
-					LogPrint "rm -rf $installed_pkg\n";
-					system("rm -rf $installed_pkg");
-				}
-			}
-		}
-	}
-
-	install_comp_rpms('sandiashmem', " -U --nodeps ", $install_list);
-
-	$ComponentWasInstalled{'sandiashmem'}=1;
-}
-
-sub postinstall_sandiashmem($$)
-{
-	my $install_list = shift();	# total that will be installed when done
-	my $installing_list = shift();	# what items are being installed/reinstalled
-	#delta_restore_autostart('sandiashmem');
-}
-
-sub uninstall_sandiashmem($$)
-{
-	my $install_list = shift();	# total that will be left installed when done
-	my $uninstalling_list = shift();	# what items are being uninstalled
-
-	print_comp_uninstall_banner('sandiashmem');
-	uninstall_comp_rpms('sandiashmem', ' --nodeps ', $install_list, $uninstalling_list, 'verbose');
-	$ComponentWasInstalled{'sandiashmem'}=0;
-}
-
-sub check_os_prereqs_sandiashmem
-{
-	return rpm_check_os_prereqs("sandiashmem", "user");
 }
 
 # ==========================================================================

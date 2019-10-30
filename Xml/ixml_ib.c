@@ -241,6 +241,24 @@ void IXmlOutputOptionalInitReason(IXmlOutputState_t *state, const char *tag, voi
 	IXmlOutputOptionalInitReasonValue(state, tag, *(uint8 *)data);
 }
 
+/* link down reason */
+void IXmlOutputDownReasonValue(IXmlOutputState_t *state, const char *tag, uint8 value)
+{
+	IXmlOutputStrUint(state, tag, StlLinkDownReasonToText(value), value);
+}
+void IXmlOutputOptionalDownReasonValue(IXmlOutputState_t *state, const char *tag, uint8 value)
+{
+	IXmlOutputOptionalStrUint(state, tag, StlLinkDownReasonToText(value), value);
+}
+void IXmlOutputDownReason(IXmlOutputState_t *state, const char *tag, void *data)
+{
+	IXmlOutputDownReasonValue(state, tag, *(uint8 *)data);
+}
+void IXmlOutputOptionalDownReason(IXmlOutputState_t *state, const char *tag, void *data)
+{
+	IXmlOutputOptionalDownReasonValue(state, tag, *(uint8 *)data);
+}
+
 /* typically a bitfield, so need to call with value instead of ptr */
 void IXmlOutputPortPhysStateValue(IXmlOutputState_t *state, const char *tag, uint8 value)
 {

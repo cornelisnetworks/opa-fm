@@ -43,38 +43,7 @@ void PmAddPortToGroupIndex(PmPortImage_t * portImage, uint32 grpIndex,
 	portImage->Groups[grpIndex] = groupp;
 	if (internal)
 		portImage->InternalBitMask |= (1<<grpIndex);
-#if PM_COMPRESS_GROUPS
 	portImage->numGroups++;
-#endif
-}
-
-// removes a port from a group. used by other higher level routines
-void PmRemovePortFromGroupIndex(PmPortImage_t *portImage, uint32 grpIndex,
-	PmGroup_t *groupp, uint8 compress)
-{
-	if (PM_COMPRESS_GROUPS && compress) {
-		// compress rest of list
-		uint8 temp = (portImage->InternalBitMask & (0xff<<(grpIndex+1))) >> 1;
-		portImage->InternalBitMask &= ~(0xff<<grpIndex);
-		portImage->InternalBitMask |= (uint32)temp;
-#if PM_COMPRESS_GROUPS
-		for (; grpIndex<portImage->numGroups-1; grpIndex++) {
-#else
-		for (; grpIndex<PM_MAX_GROUPS_PER_PORT-1; grpIndex++) {
-#endif
-			portImage->Groups[grpIndex] = portImage->Groups[grpIndex+1];
-		}
-		portImage->Groups[grpIndex] = NULL;
-#if PM_COMPRESS_GROUPS
-		portImage->numGroups--;
-#endif
-	} else {
-		portImage->Groups[grpIndex] = NULL;
-		portImage->InternalBitMask &= ~(1<<grpIndex);
-#if PM_COMPRESS_GROUPS
-		portImage->numGroups--;
-#endif
-	}
 }
 
 static boolean PmIsPortImageInGroup(PmPortImage_t *portImage, PmGroup_t *groupp,
@@ -82,11 +51,7 @@ static boolean PmIsPortImageInGroup(PmPortImage_t *portImage, PmGroup_t *groupp,
 {
     uint32 i;
     boolean isInGroup = FALSE;
-#if PM_COMPRESS_GROUPS
     for (i = 0; i < portImage->numGroups; i++) {
-#else
-    for (i = 0; i < PM_MAX_GROUPS_PER_PORT; i++) {
-#endif
         if (portImage->Groups[i] == groupp) {
             isInGroup = TRUE;
             break;
@@ -120,14 +85,6 @@ void PmAddExtPortToGroupIndex(PmPortImage_t *portImage, uint32 grpIndex,
 	PmAddPortToGroupIndex(portImage, grpIndex, groupp, FALSE);
 }
 
-// removes a port from a group. used by other higher level routines
-void PmRemoveExtPortFromGroupIndex(PmPortImage_t *portImage, uint32 grpIndex,
-	PmGroup_t *groupp, uint32 imageIndex, uint8 compress)
-{
-	PmRemovePortFromGroupIndex(portImage, grpIndex, groupp, compress);
-}
-
-
 // adds a port to a group where the neighbor of the port WILL be in
 // the given group
 // This DOES NOT add the neighbor.  Caller must do that separately.
@@ -135,12 +92,5 @@ void PmAddIntPortToGroupIndex(PmPortImage_t *portImage, uint32 grpIndex,
 	PmGroup_t *groupp, uint32 imageIndex)
 {
 	PmAddPortToGroupIndex(portImage, grpIndex, groupp, TRUE);
-}
-
-// removes a port from a group. used by other higher level routines
-void PmRemoveIntPortFromGroupIndex(PmPortImage_t *portImage, uint32 grpIndex,
-	PmGroup_t *groupp, uint32 imageIndex, uint8 compress)
-{
-	PmRemovePortFromGroupIndex(portImage, grpIndex, groupp, compress);
 }
 

@@ -144,12 +144,15 @@ include $(TL_DIR)/IbaTools/Makerules.module
 #-----------------------------------------------------------------------------#
 #$(BUILDDIR)/opafastfabric.conf: opafastfabric.conf.$(BUILD_TARGET_OS).$(IB_STACK) $(BUILDDIR)
 opafastfabric.conf.def: opafastfabric.conf.$(BUILD_TARGET_OS).$(IB_STACK)
-	cp opafastfabric.conf.$(BUILD_TARGET_OS).$(IB_STACK) opafastfabric.conf.def
-	chmod a+x opafastfabric.conf.def
+	if [ "$(BUILD_TARGET_OS_VENDOR_VERSION)" = "ES123" ]; then \
+		sed -i '/FF_IPOIB_CONNECTED=/s/no/yes/' $<; \
+	fi;
+	$(CP) $< $@
+	chmod a+x $@
 
 opafastfabric.conf-sample: opafastfabric.conf.$(BUILD_TARGET_OS).$(IB_STACK)
-	cp opafastfabric.conf.$(BUILD_TARGET_OS).$(IB_STACK) opafastfabric.conf-sample
-	chmod a+x opafastfabric.conf-sample
+	$(CP) $< $@
+	chmod a+x $@
 
 .SUFFIXES: .pl -sample
 %:%.pl
