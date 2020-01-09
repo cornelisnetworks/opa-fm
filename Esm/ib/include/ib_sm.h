@@ -280,7 +280,8 @@ typedef SMDBSync_t  *SMDBSyncp;         /* SM DBSYNC pointer type */
 // version 10 - 10.8 release
 // version 11 - 10.9 release
 // version 12 - 10.9.3 release
-#define     FM_PROTOCOL_VERSION    12
+// version 13 - 10.10.1 release
+#define     FM_PROTOCOL_VERSION    13
 
 
 typedef struct {

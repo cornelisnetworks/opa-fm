@@ -70,6 +70,8 @@ my @Components_sles12_sp3 = ( "opa_stack",
 		@OmniPathAllComponents );
 my @Components_sles12_sp4 = ( "opa_stack",
 		@OmniPathAllComponents );
+my @Components_sles12_sp5 = ( "opa_stack",
+		@OmniPathAllComponents );
 my @Components_sles15 = ( "opa_stack",
 		@OmniPathAllComponents );
 my @Components_sles15_sp1 = ( "opa_stack",
@@ -83,6 +85,8 @@ my @Components_rhel76 = ( "opa_stack", "mpi_selector",
 my @Components_rhel77 = ( "opa_stack", "mpi_selector",
 		@OmniPathAllComponents );
 my @Components_rhel8 = ( "opa_stack", "mpi_selector",
+		@OmniPathAllComponents );
+my @Components_rhel81 = ( "opa_stack", "mpi_selector",
 		@OmniPathAllComponents );
 
 @Components = ( );
@@ -200,7 +204,7 @@ $WrapperComponent = "opaconfig";
 					  Hidden => 0, Disabled => 0, IsOFA => 0,
 					  KernelRpms => [ ],
 					  FirmwareRpms => [ ],
-					  UserRpms => [ ],
+					  UserRpms => [ "opa-basic-tools", "opa-address-resolution" ],
 					  DebugRpms => [ ],
 					  HasStart => 1, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => " opa_stack ", # TBD
@@ -230,7 +234,7 @@ $WrapperComponent = "opaconfig";
 					  Hidden => 0, Disabled => 0, IsOFA => 0,
 					  KernelRpms => [ ],
 					  FirmwareRpms => [ ],
-					  UserRpms => [ ],
+					  UserRpms => [ "opa-fastfabric", "opa-mpi-apps" ],
 					  DebugRpms => [ ],
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => " opa_stack ",
@@ -261,7 +265,7 @@ $WrapperComponent = "opaconfig";
 					  Hidden => 1, Disabled => 0, IsOFA => 0,
 					  KernelRpms => [ ],
 					  FirmwareRpms => [ ],
-					  UserRpms => [ ],
+					  UserRpms => [ "mvapich2_gcc", "mpitests_mvapich2_gcc" ],
 					  DebugRpms => [ ],
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
@@ -276,7 +280,7 @@ $WrapperComponent = "opaconfig";
 					  Hidden => 1, Disabled => 0, IsOFA => 0,
 					  KernelRpms => [ ],
 					  FirmwareRpms => [ ],
-					  UserRpms => [ ],
+					  UserRpms => [ "openmpi_gcc", "mpitests_openmpi_gcc" ],
 					  DebugRpms => [ ],
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
@@ -291,7 +295,7 @@ $WrapperComponent = "opaconfig";
 					  Hidden => 0, Disabled => 0, IsOFA => 0,
 					  KernelRpms => [ ],
 					  FirmwareRpms => [ ],
-					  UserRpms => [ ],
+					  UserRpms => [ "openmpi_gcc_cuda_hfi", "mpitests_openmpi_gcc_cuda_hfi" ],
 					  DebugRpms => [ ],
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
@@ -306,7 +310,7 @@ $WrapperComponent = "opaconfig";
 					  Hidden => 0, Disabled => 0, IsOFA => 0,
 					  KernelRpms => [ ],
 					  FirmwareRpms => [ ],
-					  UserRpms => [ ],
+					  UserRpms => [ "mvapich2_gcc_hfi", "mpitests_mvapich2_gcc_hfi" ],
 					  DebugRpms => [ ],
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
@@ -321,7 +325,7 @@ $WrapperComponent = "opaconfig";
 					  Hidden => 1, Disabled => 0, IsOFA => 0,
 					  KernelRpms => [ ],
 					  FirmwareRpms => [ ],
-					  UserRpms => [ ],
+					  UserRpms => [ "mvapich2_intel_hfi", "mpitests_mvapich2_intel_hfi" ],
 					  DebugRpms => [ ],
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
@@ -336,7 +340,7 @@ $WrapperComponent = "opaconfig";
 					  Hidden => 0, Disabled => 0, IsOFA => 0,
 					  KernelRpms => [ ],
 					  FirmwareRpms => [ ],
-					  UserRpms => [ ],
+					  UserRpms => [ "openmpi_gcc_hfi", "mpitests_openmpi_gcc_hfi" ],
 					  DebugRpms => [ ],
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
@@ -351,7 +355,7 @@ $WrapperComponent = "opaconfig";
 					  Hidden => 1, Disabled => 0, IsOFA => 0,
 					  KernelRpms => [ ],
 					  FirmwareRpms => [ ],
-					  UserRpms => [ ],
+					  UserRpms => [ "openmpi_intel_hfi", "mpitests_openmpi_intel_hfi" ],
 					  DebugRpms => [ ],
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => "",
@@ -426,7 +430,7 @@ $WrapperComponent = "opaconfig";
 					  Hidden => 0, Disabled => 0, IsOFA => 0,
 					  KernelRpms => [ ],
 					  FirmwareRpms => [ ],
-					  UserRpms => [ ],
+					  UserRpms => [ "opa-fm", "opa-fm-debuginfo" ],
 					  DebugRpms => [ ],
 					  HasStart => 1, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => " opa_stack ",
@@ -442,7 +446,7 @@ $WrapperComponent = "opaconfig";
 					  Hidden => 0, Disabled => 0, IsOFA => 0,
 					  KernelRpms => [ ],
 					  FirmwareRpms => [ ],
-					  UserRpms => [ ],
+					  UserRpms => [ "opa-libopamgt", "opa-libopamgt-devel" ],
 					  DebugRpms => [ ],
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => " opa_stack ",
@@ -671,6 +675,26 @@ my %opa_stack_sles12_sp4_comp_info = (
 					},
 );
 
+# for SLES12sp5
+my %opa_stack_sles12_sp5_comp_info = (
+	"opa_stack" =>	{ Name => "OFA OPA Stack",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  PreReq => "", CoReq => " oftools ",
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ "ifs-kernel-updates-kmp-default" ],
+					  FirmwareRpms => [ ],
+					  UserRpms => [ "opa-scripts",
+								],
+					  DebugRpms => [ ],
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  StartPreReq => "",
+					  StartComponents => [ "opa_stack", "ibacm", "rdma_ndd", "delta_srp", "delta_srpt" ],
+					  StartupScript => "opa",
+					  StartupParams => [ "ARPTABLE_TUNING" ]
+					},
+);
+
 # for SLES15.x
 my %opa_stack_sles15_comp_info = (
 	"opa_stack" =>	{ Name => "OFA OPA Stack",
@@ -828,6 +852,36 @@ my %intel_hfi_rhel8_comp_info = (
 					},
 );
 
+my %intel_hfi_rhel81_comp_info = (
+	"intel_hfi" =>	{ Name => "Intel HFI Components",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  PreReq => " opa_stack ", CoReq => " oftools ",
+						# TBD - HasFirmware - FW update
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [
+									"hfi1-firmware", "hfi1-firmware_debug"
+								],
+					  UserRpms => [ #"libhfi1", "libhfi1-static",
+									"libpsm2",
+									"libpsm2-devel", "libpsm2-compat",
+									"libfabric", "libfabric-devel",
+									"libfabric-psm2", "libfabric-verbs",
+									"hfi1-diagtools-sw", "hfidiags",
+								],
+					  DebugRpms =>  [ #"hfi1_debuginfo",
+									"hfi1-diagtools-sw-debuginfo",
+									"libpsm2-debuginfo", #"libhfi1-debuginfo"
+								],
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ "intel_hfi" ],
+					  StartupScript => "",
+					  StartupParams => [ ]
+					},
+);
+
 # For SLES12sp3 that has different name for libpsm2
 my %intel_hfi_sles123_comp_info = (
 	"intel_hfi" =>	{ Name => "Intel HFI Components",
@@ -861,6 +915,34 @@ my %intel_hfi_sles123_comp_info = (
 );
 
 my %intel_hfi_sles124_comp_info = (
+	"intel_hfi" =>	{ Name => "Intel HFI Components",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  PreReq => " opa_stack ", CoReq => " oftools ",
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [
+									"hfi1-firmware", "hfi1-firmware_debug"
+								],
+					  UserRpms => [ 		"libpsm2-2",
+									"libpsm2-devel", "libpsm2-compat",
+									"libfabric", "libfabric-devel",
+									"libfabric-psm",
+									"libfabric-psm2", "libfabric-verbs",
+									"hfi1-diagtools-sw", "hfidiags",
+								],
+					  DebugRpms =>  [ 		"hfi1-diagtools-sw-debuginfo",
+									"libpsm2-debuginfo", 
+								],
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ "intel_hfi" ],
+					  StartupScript => "",
+					  StartupParams => [ ]
+					},
+);
+
+my %intel_hfi_sles125_comp_info = (
 	"intel_hfi" =>	{ Name => "Intel HFI Components",
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
@@ -1090,6 +1172,14 @@ sub init_components
 						%opa_stack_dev_comp_info,
 						%opa_stack_sles12_sp4_comp_info,
 						);
+	} elsif ( "$CUR_VENDOR_VER" eq "ES125" ) {
+		@Components = ( @Components_sles12_sp5 );
+		@SubComponents = ( @SubComponents_newer );
+		%ComponentInfo = ( %ComponentInfo, %ibacm_comp_info,
+						%intel_hfi_sles125_comp_info,
+						%opa_stack_dev_comp_info,
+						%opa_stack_sles12_sp5_comp_info,
+						);
 	} elsif ( "$CUR_VENDOR_VER" eq "ES74" ) {
 		@SubComponents = ( @SubComponents_newer );
 		@Components = ( @Components_rhel74 );
@@ -1135,6 +1225,14 @@ sub init_components
 		@SubComponents = ( @SubComponents_newer );
 		%ComponentInfo = ( %ComponentInfo, %ibacm_comp_info,
 						%intel_hfi_rhel8_comp_info,
+						%opa_stack_dev_comp_info,
+						%opa_stack_rhel_comp_info,
+						);
+	} elsif ( "$CUR_VENDOR_VER" eq "ES81" ) {
+		@Components = ( @Components_rhel81 );
+		@SubComponents = ( @SubComponents_newer );
+		%ComponentInfo = ( %ComponentInfo, %ibacm_comp_info,
+						%intel_hfi_rhel81_comp_info,
 						%opa_stack_dev_comp_info,
 						%opa_stack_rhel_comp_info,
 						);
@@ -1231,6 +1329,9 @@ sub install_opaconfig
 	my $srcdir=$ComponentInfo{'opaconfig'}{'SrcDir'};
 	NormalPrint("Installing $ComponentInfo{'opaconfig'}{'Name'}...\n");
 
+	# all meta pkgs depend on opaconfig. We may directly upgrade opaconfig, so we remove them first.
+	rpm_uninstall_matches("opameta_", "opameta_", "", "");
+
 	# New Install Code
 	my $rpmfile = rpm_resolve("$srcdir/RPMS/*/opaconfig", "any");
 	rpm_run_install($rpmfile, "any", " -U ");
@@ -1262,6 +1363,9 @@ sub uninstall_opaconfig
 	my $uninstalling_list = $_[1];	# what items are being uninstalled
 
 	NormalPrint("Uninstalling $ComponentInfo{'opaconfig'}{'Name'}...\n");
+
+	# all meta pkgs depend on opaconfig. Remove them first.
+	rpm_uninstall_matches("opameta_", "opameta_", "", "");
 
 	# New Uninstall Code
 	rpm_uninstall_list("any", "verbose", ("opaconfig") );
@@ -1354,6 +1458,8 @@ sub Usage
 	printf STDERR "       -v - verbose logging\n";
 	printf STDERR "       -vv - very verbose debug logging\n";
 	printf STDERR "       -C - output list of supported components\n";
+#       Hidden feature for internal use
+#       printf STDERR "       -c comp - output component information in JSON format\n";
 	printf STDERR "       -V - output Version\n";
 
 	printf STDERR "       --user_queries - permit non-root users to query the fabric. (default)\n";
@@ -1589,6 +1695,10 @@ sub process_args
 			} elsif ( "$arg" eq "-C" ) {
 				ShowComponents;
 				exit(0);
+			} elsif ( "$arg" eq "-c" ) {
+				# undocumented option to output detailed information on a component
+				$Default_ShowCompInfo=1;
+				$setcomp=1;
 			} elsif ( "$arg" eq "-V" ) {
 				printf "$VERSION\n";
 				exit(0);
@@ -1777,6 +1887,11 @@ overrides;
 
 process_args;
 check_root_user;
+if ( $Default_ShowCompInfo )
+{
+        ShowCompInfo();
+        exit(0);
+}
 if ( ! $Default_Build ) {
 	open_log("");
 } else {

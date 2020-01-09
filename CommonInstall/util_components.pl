@@ -231,6 +231,7 @@ my $Default_DisableAutostart=0; # -D option used to select default disabling of 
 my %Default_DisabledComponents = ();		# components selected by -D
 my $Default_EnableAutostart=0; # -E option used to select default enabling of autostart for Default_EnabledComponents
 my %Default_EnabledComponents = ();		# components selected by -E
+my $Default_ShowCompInfo=0; # -c option used to select default component information display of Default_Components
 
 	# Names of supported install components
 	# must be listed in depdency order such that prereqs appear 1st
@@ -345,7 +346,178 @@ sub ShowComponents(;$)
 			print $print_param " $comp";
 		}
 	}
-	print "\n";
+	print $print_param "\n";
+}
+
+sub ShowCompInfo(;$)
+{
+	my $print_param = shift || \*STDOUT; #STDOUT as default parameter
+	print $print_param "[\n";
+	my $first_comp = 1;
+	my $first_item = 1;
+	foreach my $comp ( @Components )
+	{
+		if ( $Default_Components{$comp} ) {
+			if ($first_comp == 1) {
+				$first_comp = 0;
+				print $print_param " {\n";
+			} else {
+				print $print_param ",\n {\n";
+			}
+			print $print_param "  \"id\": \"$comp\",\n";
+			my $description = $ComponentInfo{$comp}{'Name'};
+			print $print_param "  \"description\": \"$description\",\n";
+			if ( $comp eq "delta_debug" ) {
+				print $print_param "  \"error\": \"Not apply. We ship debug rpms in meta pkg <component>_debuginfo.\"\n";
+				print $print_param " },\n";
+				next;
+			}
+			if (comp_is_available($comp)) {
+				print $print_param "  \"available\": \"yes\",\n";
+			} else {
+				print $print_param "  \"available\": \"no\",\n";
+			}
+			my $full_ver = comp_media_version($comp);
+			my ($version, $release) = GetVerRel($full_ver);
+			print $print_param "  \"version\": \"$version\",\n";
+			print $print_param "  \"release\": \"$release\",\n";
+			print $print_param "  \"prereqs\": [\n";
+			$first_item = 1;
+			my @reqs = split(/ /, $ComponentInfo{$comp}{'PreReq'});
+			foreach my $req (@reqs) {
+				# ignore req that is not a component. This is for the case we do not
+				# have mpi_selector for SLES
+				if ( $req ne '' && grep( /^$req$/, @Components) ) {
+					my $reqver = comp_media_version($req);
+					my ($version, $release) = GetVerRel($reqver);
+					$reqver = "$version-$release";
+					if ($first_item == 1) {
+						$first_item = 0;
+						print $print_param "   {\"id\": \"$req\", \"version\": \"$reqver\"}";
+					} else {
+						print $print_param ",\n   {\"id\": \"$req\", \"version\": \"$reqver\"}";
+					}
+				}
+			}
+			print $print_param "\n  ],\n";
+			@reqs = split(/ /, $ComponentInfo{$comp}{'CoReq'});
+			print $print_param "  \"coreqs\": [\n";
+			$first_item = 1;
+			foreach my $req (@reqs) {
+				# ignore req that is not a component. This is for the case we do not
+				# have mpi_selector for SLES
+				if ( $req ne '' && grep( /^$req$/, @Components) ) {
+					my $reqver = comp_media_version($req);
+					my ($version, $release) = GetVerRel($reqver);
+					$reqver = "$version-$release";
+					if ($first_item == 1) {
+						$first_item = 0;
+						print $print_param "   {\"id\": \"$req\", \"version\": \"$reqver\"}";
+					} else {
+						print $print_param ",\n   {\"id\": \"$req\", \"version\": \"$reqver\"}";
+					}
+				}
+			}
+			print $print_param "\n  ],\n";
+			if ( $comp eq "mpisrc" ) {
+				print $print_param "  \"srcrpms\": {\n";
+				print $print_param "   \"dest\": \"/usr/src/opa/MPI/\",\n";
+				my $srcdir=$ComponentInfo{'mpisrc'}{'SrcDir'};
+				print $print_param "   \"source\": \"$srcdir\",\n";
+				print $print_param "   \"resources\": [\n";
+				$first_item = 1;
+				foreach my $srpm ( "mvapich2", "openmpi", "mpitests" ) {
+					my $srpmfile = file_glob("$srcdir/${srpm}-*.src.rpm");
+					if ( "$srpmfile" ne "" ) {
+						my $file = my_basename($srpmfile);
+						if ($first_item == 1) {
+							$first_item = 0;
+							print $print_param "    \"$file\"";
+						} else {
+							print $print_param ",\n    \"$file\"";
+						}
+					}
+				}
+				print $print_param "\n   ]\n";
+				print $print_param "  },\n";
+				print $print_param "  \"tools\": {\n";
+				print $print_param "   \"dest\": \"/usr/src/opa/MPI/\",\n";
+				print $print_param "   \"source\": \"$srcdir\",\n";
+				print $print_param "   \"resources\": [\n";
+				print $print_param "    \"do_build\",\n";
+				print $print_param "    \"do_mvapich2_build\",\n";
+				print $print_param "    \"do_openmpi_build\"\n";
+				print $print_param "   ]\n";
+				print $print_param "  },\n";
+				print $print_param "  \"misc\": [\n";
+				print $print_param "   {\"dest\": \"/usr/src/opa/MPI/.version\", \"source\": \"$srcdir\", \"resource\": \"version\"}\n";
+				print $print_param "  ]\n";
+			} else {
+				print $print_param "  \"userrpms\": [\n";
+				ShowRpmList($print_param, "   ", "user", @{$ComponentInfo{$comp}{'UserRpms'}});
+				print $print_param "\n  ],\n";
+				print $print_param "  \"kernelrpms\": [\n";
+				ShowRpmList($print_param, "   ", $CUR_OS_VER, @{$ComponentInfo{$comp}{'KernelRpms'}});
+				print $print_param "\n  ],\n";
+				print $print_param "  \"firmwarerpms\": [\n";
+				ShowRpmList($print_param, "   ", "firmware", @{$ComponentInfo{$comp}{'FirmwareRpms'}});
+				print $print_param "\n  ],\n";
+				print $print_param "  \"debugrpms\": [\n";
+				ShowRpmList($print_param, "   ", "any", @{$ComponentInfo{$comp}{'DebugRpms'}});
+				print $print_param "\n  ]\n";
+			}
+
+			print $print_param " }";
+		}
+	}
+	print $print_param "\n]\n";
+}
+
+sub GetVerRel($)
+{
+	my $full_ver = shift();
+	my ($version, $release) = split('-', $full_ver, 2);
+	if ("$release" eq "") {
+		# assume the version is in expected format, and it shall be.
+		my @segs = split('\.', $version);
+		my $last = scalar(@segs)-1;
+		$version = join('.', @segs[0..3]);
+		$release = join('.', @segs[4..$last]);
+	}
+	return ($version, $release);
+}
+
+sub ShowRpmList($$$$@)
+{
+	my $print_param = shift();
+	my $prefix = shift();
+	my $mode = shift();
+	my @rpms = @_;
+	my $rpmsdir = "";
+	my $first_item = 1;
+	foreach my $rpm (@rpms) {
+		if ( $GPU_Install && -d file_glob("./repos/OPA_PKGS_CUDA") ) {
+			$rpmsdir=file_glob("./repos/OPA_PKGS_CUDA/RPMS");
+		} else {
+			$rpmsdir=file_glob("./repos/OPA_PKGS/RPMS");
+		}
+		my $rpm_file = rpm_resolve("$rpmsdir/$rpm", $mode);
+		if ( $rpm_file ne '' ) {
+			my $version = rpm_query_version_release($rpm_file);
+			my $epoch = rpm_query_attr($rpm_file, "EPOCH");
+			if ("$epoch" ne "") {
+				$version = "$epoch:$version";
+			}
+			if ($first_item == 1) {
+				$first_item = 0;
+				print $print_param "$prefix\{\"id\": \"$rpm\", \"version\": \"$version\"}";
+			} else {
+				print $print_param ",\n$prefix\{\"id\": \"$rpm\", \"version\": \"$version\"}";
+			}
+		} else {
+			DebugPrint "Not found $rpm";
+		}
+	}
 }
 
 # return 1 if $comp has a prereq of $prereq, 0 otherwise
@@ -822,6 +994,10 @@ sub uninstall_comp_rpms($$$$$)
 	my $install_list = shift();
 	my $uninstalling_list = shift();
 	my $verbosity = shift();
+
+	# try to uninstall meta pkg if it exists
+	my $metapkg = "opameta_$comp";
+	rpm_uninstall_matches($metapkg, $metapkg, '', "");
 
 	rpm_uninstall_list2("any", "$option", $verbosity,
 					 @{ $ComponentInfo{$comp}{'DebugRpms'}});
@@ -1359,6 +1535,9 @@ sub show_install_menu($)
 				}
 			}
 
+			# remove any alias pkgs if it exists. Meta pkgs will be handled in comp uninstall.
+			rpm_uninstall_matches("opanode_", "opanode_", "", "");
+
 			# first uninstall what will be removed, do this in reverse order
 			# so dependency issues are avoided
 			foreach $comp ( reverse(@Components) ) {
@@ -1783,6 +1962,9 @@ sub show_uninstall_menu($)
 					$uninstalling_list .= " $comp ";
 				}
 			}
+
+			# remove any alias pkgs if it exists. Meta pkgs will be handled in comp uninstall.
+			rpm_uninstall_matches("opanode_", "opanode_", "", "");
 
 			# perform the uninstall, work backwards through list
 			foreach $comp ( reverse(@Components) )

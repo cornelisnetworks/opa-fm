@@ -492,7 +492,7 @@ logfile=make.openmpi.$interface.$compiler
 
 	case "$compiler" in
 	gcc)
-		if [[ ( "$ID" == "rhel"  &&  $(echo "$VERSION_ID == 8.0" | bc -l) == 1 ) ]]; then
+		if [[ ( "$ID" == "rhel"  &&  $(echo "$VERSION_ID >= 8.0" | bc -l) == 1 ) ]]; then
 			openmpi_comp_env="$openmpi_comp_env CC=gcc CFLAGS="-O3 -fPIC""
 		else
 			openmpi_comp_env="$openmpi_comp_env CC=gcc CFLAGS=-O3"
@@ -684,6 +684,7 @@ logfile=make.openmpi.$interface.$compiler
 				--define 'root_path /' \
 				--define '_usr $STACK_PREFIX' \
 				--define 'path_to_mpihome $MPICH_PREFIX' \
+				--define 'enable_cuda $Cflag' \
 				$disable_auto_requires \
 				$mpitests_srpm"
 	echo "Executing: $cmd"

@@ -38,6 +38,12 @@ use strict;
 # ==========================================================================
 # Fast Fabric Support tools for OFA (oftools) installation
 
+sub get_rpms_dir_oftools
+{
+	my $srcdir=$ComponentInfo{'oftools'}{'SrcDir'};
+	return "$srcdir/RPMS/*";
+}
+
 sub available_oftools
 {
 # TBD - could we move the algorithms for many of these functions into
@@ -100,8 +106,6 @@ sub install_oftools
 	my $install_list = $_[0];	# total that will be installed when done
 	my $installing_list = $_[1];	# what items are being installed/reinstalled
 
-	my $srcdir=$ComponentInfo{'oftools'}{'SrcDir'};
-
 	my $version=media_version_oftools();
 	chomp $version;
 	printf("Installing $ComponentInfo{'oftools'}{'Name'} $version $DBG_FREE...\n");
@@ -109,13 +113,10 @@ sub install_oftools
 	#LogPrint "Installing $ComponentInfo{'oftools'}{'Name'} $version $DBG_FREE for $CUR_OS_VER\n";
 	LogPrint "Installing $ComponentInfo{'oftools'}{'Name'} $version $DBG_FREE for $CUR_DISTRO_VENDOR $CUR_VENDOR_VER\n";
 
-    # RHEL7.4 and older in-distro IFS defines opa-address-resolution depends on opa-basic-tools with exact version match
-    # that will fail our installation because of dependency check. We need to use '-nodeps' to force the installation
-	my $rpmfile = rpm_resolve("$srcdir/RPMS/*/opa-basic-tools", "any");
-	rpm_run_install($rpmfile, "any", " -U --nodeps ");
+	# RHEL7.4 and older in-distro IFS defines opa-address-resolution depends on opa-basic-tools with exact version match
+	# that will fail our installation because of dependency check. We need to use '-nodeps' to force the installation
+	install_comp_rpms('oftools', " -U --nodeps ", $install_list);
 
-	$rpmfile = rpm_resolve("$srcdir/RPMS/*/opa-address-resolution", "any");
-	rpm_run_install($rpmfile, "any", " -U --nodeps ");
 # TBD - could we figure out the list of config files from a query of rpm
 # and then simply iterate on each config file?
 	check_rpm_config_file("/etc/rdma/dsap.conf");
@@ -136,7 +137,7 @@ sub uninstall_oftools
 
 	NormalPrint("Uninstalling $ComponentInfo{'oftools'}{'Name'}...\n");
 
-	rpm_uninstall_list("any", "verbose", ("opa-basic-tools", "opa-address-resolution") );
+	uninstall_comp_rpms('oftools', '', $install_list, $uninstalling_list, 'verbose');
 
 	# remove LSF and Moab related files
 	system("rm -rf /usr/lib/opa/LSF_scripts");

@@ -57,8 +57,7 @@ sub install_generic_mpi
     printf ("Installing $ComponentInfo{$mpifullname}{'Name'} $version...\n");
     LogPrint ("Installing $ComponentInfo{$mpifullname}{'Name'} $version for $CUR_OS_VER\n");
     # make sure any old potentially custom built versions of mpi are uninstalled
-    my @list = ( "$mpifullname", "mpitests_$mpifullname" );
-    rpm_uninstall_list2("any", "--nodeps", 'silent', @list);
+    uninstall_comp_rpms($mpifullname, ' --nodeps ', $install_list, $installing_list, 'silent');
 	# cleanup from older installs just in case
     system ("rm -rf /usr/lib/opa/.comp_$mpifullname.pl");
     
@@ -79,7 +78,7 @@ sub install_generic_mpi
     # enable this code if mpitests is missing for some compilers or MPIs
     #my $mpitests_rpmfile = rpm_resolve("$srcdir/OtherMPIs/mpitests_$mpifullname", "any");
     #if ( "$mpitests_rpmfile" ne "" && -e "$mpitests_rpmfile" ) {
-        rpm_install_list_with_options ("$srcdir", "user", " -U --nodeps ", @list);
+        install_comp_rpms($mpifullname, " -U --nodeps ", $install_list);
     #} else {
     #    rpm_install("$srcdir/OtherMPIs/$mpifullname", "user");
     #}
@@ -129,8 +128,7 @@ sub uninstall_generic_mpi
     }
     
     # uninstall tests in case built by do_build
-    $rc = rpm_uninstall ("mpitests_$mpifullname", "user", "", "verbose");
-    $rc = rpm_uninstall ($mpifullname, "user", "", "verbose");
+    uninstall_comp_rpms($mpifullname, '', $install_list, $installing_list, 'verbose');
 
 	# unfortunately mpi and mpitests can leave empty directories on uninstall
 	# this can confuse IFS MPI tools because correct MPI to use
@@ -159,6 +157,11 @@ sub uninstall_generic_mpi
 # is component X available on the install media (use of this
 # allows for optional components in packaging or limited availability if a
 # component isn't available on some OS/CPU combos)
+sub get_rpms_dir_openmpi_gcc
+{
+    return $ComponentInfo{'openmpi_gcc'}{'SrcDir'};
+}
+
 sub available_openmpi_gcc
 {
     my $srcdir = $ComponentInfo{'openmpi_gcc'}{'SrcDir'};
@@ -267,6 +270,12 @@ sub uninstall_openmpi_gcc
 # is component X available on the install media (use of this
 # allows for optional components in packaging or limited availability if a
 # component isn't available on some OS/CPU combos)
+
+sub get_rpms_dir_mvapich2_gcc
+{
+    return $ComponentInfo{'mvapich2_gcc'}{'SrcDir'};
+}
+
 sub available_mvapich2_gcc
 {
     my $srcdir = $ComponentInfo{'mvapich2_gcc'}{'SrcDir'};
@@ -375,6 +384,12 @@ sub uninstall_mvapich2_gcc
 # is component X available on the install media (use of this
 # allows for optional components in packaging or limited availability if a
 # component isn't available on some OS/CPU combos)
+
+sub get_rpms_dir_openmpi_gcc_hfi
+{
+    return $ComponentInfo{'openmpi_gcc_hfi'}{'SrcDir'};
+}
+
 sub available_openmpi_gcc_hfi
 {
     my $srcdir = $ComponentInfo{'openmpi_gcc_hfi'}{'SrcDir'};
@@ -483,6 +498,12 @@ sub uninstall_openmpi_gcc_hfi
 # is component X available on the install media (use of this
 # allows for optional components in packaging or limited availability if a
 # component isn't available on some OS/CPU combos)
+
+sub get_rpms_dir_openmpi_intel_hfi
+{
+    return $ComponentInfo{'openmpi_intel_hfi'}{'SrcDir'};
+}
+
 sub available_openmpi_intel_hfi
 {
     my $srcdir = $ComponentInfo{'openmpi_intel_hfi'}{'SrcDir'};
@@ -591,6 +612,12 @@ sub uninstall_openmpi_intel_hfi
 # is component X available on the install media (use of this
 # allows for optional components in packaging or limited availability if a
 # component isn't available on some OS/CPU combos)
+
+sub get_rpms_dir_openmpi_pgi_hfi
+{
+    return $ComponentInfo{'openmpi_pgi_hfi'}{'SrcDir'};
+}
+
 sub available_openmpi_pgi_hfi
 {
     my $srcdir = $ComponentInfo{'openmpi_pgi_hfi'}{'SrcDir'};
@@ -699,6 +726,12 @@ sub uninstall_openmpi_pgi_hfi
 # is component X available on the install media (use of this
 # allows for optional components in packaging or limited availability if a
 # component isn't available on some OS/CPU combos)
+
+sub get_rpms_dir_mvapich2_gcc_hfi
+{
+    return $ComponentInfo{'mvapich2_gcc_hfi'}{'SrcDir'};
+}
+
 sub available_mvapich2_gcc_hfi
 {
     my $srcdir = $ComponentInfo{'mvapich2_gcc_hfi'}{'SrcDir'};
@@ -807,6 +840,12 @@ sub uninstall_mvapich2_gcc_hfi
 # is component X available on the install media (use of this
 # allows for optional components in packaging or limited availability if a
 # component isn't available on some OS/CPU combos)
+
+sub get_rpms_dir_mvapich2_intel_hfi
+{
+    return $ComponentInfo{'mvapich2_intel_hfi'}{'SrcDir'};
+}
+
 sub available_mvapich2_intel_hfi
 {
     my $srcdir = $ComponentInfo{'mvapich2_intel_hfi'}{'SrcDir'};
@@ -916,6 +955,12 @@ sub uninstall_mvapich2_intel_hfi
 # is component X available on the install media (use of this
 # allows for optional components in packaging or limited availability if a
 # component isn't available on some OS/CPU combos)
+
+sub get_rpms_dir_mvapich2_pgi_hfi
+{
+    return $ComponentInfo{'mvapich2_pgi_hfi'}{'SrcDir'};
+}
+
 sub available_mvapich2_pgi_hfi
 {
     my $srcdir = $ComponentInfo{'mvapich2_pgi_hfi'}{'SrcDir'};
@@ -1028,6 +1073,12 @@ sub uninstall_mvapich2_pgi_hfi
 # is component X available on the install media (use of this
 # allows for optional components in packaging or limited availability if a
 # component isn't available on some OS/CPU combos)
+
+sub get_rpms_dir_openmpi_gcc_cuda_hfi
+{
+    return $ComponentInfo{'openmpi_gcc_cuda_hfi'}{'SrcDir'};
+}
+
 sub available_openmpi_gcc_cuda_hfi
 {
     my $srcdir = $ComponentInfo{'openmpi_gcc_cuda_hfi'}{'SrcDir'};
@@ -1249,23 +1300,30 @@ sub uninstall_mpisrc($$)
 	my $install_list = shift();	# total that will be left installed when done
 	my $uninstalling_list = shift();	# what items are being uninstalled
 
-    NormalPrint ("Uninstalling $ComponentInfo{'mpisrc'}{'Name'}...\n");
+	NormalPrint ("Uninstalling $ComponentInfo{'mpisrc'}{'Name'}...\n");
 
-	# remove old versions (.src.rpm and built .rpm files too)
-	system "rm -rf /usr/src/opa/MPI/.version 2>/dev/null";
-	system "rm -rf /usr/src/opa/MPI/mvapich2[-_]*.rpm 2>/dev/null";
-	system "rm -rf /usr/src/opa/MPI/openmpi[-_]*.rpm 2>/dev/null";
-	system "rm -rf /usr/src/opa/MPI/mpitests[-_]*.rpm 2>/dev/null";
-	system "rm -rf /usr/src/opa/MPI/make.*.res 2>/dev/null";
-	system "rm -rf /usr/src/opa/MPI/make.*.err 2>/dev/null";
-	system "rm -rf /usr/src/opa/MPI/make.*.warn 2>/dev/null";
-	system "rm -rf /usr/src/opa/MPI/.mpiinfo 2>/dev/null";
-	system "rm -rf /usr/src/opa/MPI/do_build 2>/dev/null";
-	system "rm -rf /usr/src/opa/MPI/do_mvapich2_build 2>/dev/null";
-	system "rm -rf /usr/src/opa/MPI/do_openmpi_build 2>/dev/null";
-	system "rm -rf /usr/src/opa/MPI/.mpiinfo 2>/dev/null";
+	# try to uninstall meta pkg if it exists
+	if (rpm_is_installed("opameta_mpisrc", "any") ||
+	    rpm_is_installed("opameta_mpisrc_userspace", "any")) {
+		rpm_uninstall_matches("opameta_mpisrc", "opameta_mpisrc", "", "");
+	} else {
+		# remove old versions (.src.rpm and built .rpm files too)
+		system "rm -rf /usr/src/opa/MPI/.version 2>/dev/null";
+		system "rm -rf /usr/src/opa/MPI/mvapich2[-_]*.rpm 2>/dev/null";
+		system "rm -rf /usr/src/opa/MPI/openmpi[-_]*.rpm 2>/dev/null";
+		system "rm -rf /usr/src/opa/MPI/mpitests[-_]*.rpm 2>/dev/null";
+		system "rm -rf /usr/src/opa/MPI/make.*.res 2>/dev/null";
+		system "rm -rf /usr/src/opa/MPI/make.*.err 2>/dev/null";
+		system "rm -rf /usr/src/opa/MPI/make.*.warn 2>/dev/null";
+		system "rm -rf /usr/src/opa/MPI/.mpiinfo 2>/dev/null";
+		system "rm -rf /usr/src/opa/MPI/do_build 2>/dev/null";
+		system "rm -rf /usr/src/opa/MPI/do_mvapich2_build 2>/dev/null";
+		system "rm -rf /usr/src/opa/MPI/do_openmpi_build 2>/dev/null";
+		system "rm -rf /usr/src/opa/MPI/.mpiinfo 2>/dev/null";
 
-	system "rmdir /usr/src/opa/MPI 2>/dev/null"; # remove only if empty
-	system "rmdir /usr/src/opa 2>/dev/null"; # remove only if empty
+		system "rmdir /usr/src/opa/MPI 2>/dev/null"; # remove only if empty
+		system "rmdir /usr/src/opa 2>/dev/null"; # remove only if empty
+	}
+
 	$ComponentWasInstalled{'mpisrc'}=0;
 }

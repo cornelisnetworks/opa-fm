@@ -58,6 +58,10 @@ my @delta_Components_sles12_sp4 = ( "opa_stack", "intel_hfi",
 		"opa_stack_dev",
 		"delta_ipoib",
 		"delta_debug", );
+my @delta_Components_sles12_sp5 = ( "opa_stack", "intel_hfi",
+		"opa_stack_dev",
+		"delta_ipoib",
+		"delta_debug", );
 my @delta_Components_rhel74 = ( "opa_stack", "mpi_selector", "intel_hfi",
 		"opa_stack_dev",
 		"delta_ipoib",
@@ -75,6 +79,10 @@ my @delta_Components_rhel77 = ( "opa_stack", "mpi_selector", "intel_hfi",
 		"delta_ipoib",
 		"delta_debug", );
 my @delta_Components_rhel8 = ( "opa_stack", "mpi_selector", "intel_hfi",
+		"opa_stack_dev",
+		"delta_ipoib",
+		"delta_debug", );
+my @delta_Components_rhel81 = ( "opa_stack", "mpi_selector", "intel_hfi",
 		"opa_stack_dev",
 		"delta_ipoib",
 		"delta_debug", );
@@ -108,6 +116,8 @@ sub overrides()
 		@Components = ( @delta_Components_sles12_sp3 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES124" ) {
 		@Components = ( @delta_Components_sles12_sp4 );
+	} elsif ( "$CUR_VENDOR_VER" eq "ES125" ) {
+		@Components = ( @delta_Components_sles12_sp5 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES74" ) {
 		@Components = ( @delta_Components_rhel74 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES75" ) {
@@ -118,6 +128,8 @@ sub overrides()
 		@Components = ( @delta_Components_rhel77 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES8" ) {
 		@Components = ( @delta_Components_rhel8 );
+	} elsif ( "$CUR_VENDOR_VER" eq "ES81" ) {
+		@Components = ( @delta_Components_rhel81 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES15" ) {
 		@Components = ( @delta_Components_sles15 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES151" ) {

@@ -1674,9 +1674,6 @@
       <!-- When using PSM, the CC settings for a given job -->
       <!-- can be overridden with the following environment variables -->
       <!-- PSM_DISABLE_CCA 0 -->
-      <!-- PSM_CCTI_INCREMENT 1 -->
-      <!-- PSM_CCTI_TIMER 1 -->
-      <!-- PSM_CCTI_TABLE_SIZE 128 -->
       <Fi>
         <!-- OPA CC FICongestionEntry:CCTI Increase                     -->
         <!-- The number to be added to the CCTI on the receipt of a BECN-->

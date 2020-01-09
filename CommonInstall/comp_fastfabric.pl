@@ -40,6 +40,13 @@ use strict;
 
 my $FF_CONF_FILE = "/usr/lib/opa/tools/opafastfabric.conf";
 my $FF_TLS_CONF_FILE = "/etc/opa/opaff.xml";
+
+sub get_rpms_dir_fastfabric
+{
+	my $srcdir=$ComponentInfo{'fastfabric'}{'SrcDir'};
+	return "$srcdir/RPMS/*";
+}
+
 sub available_fastfabric
 {
 	my $srcdir=$ComponentInfo{'fastfabric'}{'SrcDir'};
@@ -104,7 +111,6 @@ sub install_fastfabric
 	my $install_list = $_[0];	# total that will be installed when done
 	my $installing_list = $_[1];	# what items are being installed/reinstalled
 
-	my $srcdir=$ComponentInfo{'fastfabric'}{'SrcDir'};
 	my $depricated_dir = "/etc/sysconfig/opa";
 
 	my $version=media_version_fastfabric();
@@ -112,8 +118,7 @@ sub install_fastfabric
 	printf("Installing $ComponentInfo{'fastfabric'}{'Name'} $version $DBG_FREE...\n");
 	LogPrint "Installing $ComponentInfo{'fastfabric'}{'Name'} $version $DBG_FREE for $CUR_DISTRO_VENDOR $CUR_VENDOR_VER\n";
 
-	my $rpmfile = rpm_resolve("$srcdir/RPMS/*/opa-fastfabric", "any");
-	rpm_run_install($rpmfile, "any", " -U ");
+	install_comp_rpms('fastfabric', " -U ", $install_list);
 
 	# TBD - spec file should do this
 	check_dir("/usr/share/opa/samples");
@@ -135,9 +140,6 @@ sub install_fastfabric
 	# TBD - spec file should remove this
 	system("rm -rf $OPA_CONFIG_DIR/iba_stat.conf");	# old config
 
-	$rpmfile = rpm_resolve("$srcdir/RPMS/*/opa-mpi-apps", "any");
-	rpm_run_install($rpmfile, "any", " -U ");
-
 	$ComponentWasInstalled{'fastfabric'}=1;
 }
 
@@ -152,8 +154,7 @@ sub uninstall_fastfabric
 	my $install_list = $_[0];	# total that will be left installed when done
 	my $uninstalling_list = $_[1];	# what items are being uninstalled
 
-
-	rpm_uninstall_list("any", "verbose", ("opa-mpi-apps", "opa-fastfabric") );
+	uninstall_comp_rpms('fastfabric', '', $install_list, $uninstalling_list, 'verbose');
 
 	NormalPrint("Uninstalling $ComponentInfo{'fastfabric'}{'Name'}...\n");
 	remove_conf_file("$ComponentInfo{'fastfabric'}{'Name'}", "$FF_CONF_FILE");
@@ -176,6 +177,12 @@ sub uninstall_fastfabric
 #############################################################################
 ##
 ##    OPAMGT SDK
+
+sub get_rpms_dir_opamgt_sdk
+{
+	my $srcdir=$ComponentInfo{'opamgt_sdk'}{'SrcDir'};
+	return "$srcdir/RPMS/*";
+}
 
 sub available_opamgt_sdk
 {
@@ -229,14 +236,12 @@ sub install_opamgt_sdk
 	my $install_list = $_[0];       # total that will be installed when done
 	my $installing_list = $_[1];    # what items are being installed/reinstalled
 
-	my $srcdir = $ComponentInfo{'opamgt_sdk'}{'SrcDir'};
 	my $version=media_version_opamgt_sdk();
 	chomp $version;
 	printf("Installing $ComponentInfo{'opamgt_sdk'}{'Name'} $version $DBG_FREE...\n");
 	LogPrint "Installing $ComponentInfo{'opamgt_sdk'}{'Name'} $version $DBG_FREE for $CUR_DISTRO_VENDOR $CUR_VENDOR_VER\n";
 
-	rpm_install("$srcdir/RPMS/*/opa-libopamgt", "any");
-	rpm_install("$srcdir/RPMS/*/opa-libopamgt-devel", "any");
+	install_comp_rpms('opamgt_sdk', "", $install_list);
 
 	$ComponentWasInstalled{'opamgt_sdk'}=1;
 }
@@ -248,6 +253,9 @@ sub postinstall_opamgt_sdk
 
 sub uninstall_opamgt_sdk
 {
-	rpm_uninstall_all_list("any", "verbose", ("opa-libopamgt-devel", "opa-libopamgt") );
+	my $install_list = $_[0];	# total that will be left installed when done
+	my $uninstalling_list = $_[1];	# what items are being uninstalled
+
+	uninstall_comp_rpms('opamgt_sdk', '', $install_list, $uninstalling_list, 'verbose');
 	$ComponentWasInstalled{'opamgt_sdk'}=0;
 }
