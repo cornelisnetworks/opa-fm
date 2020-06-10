@@ -719,6 +719,9 @@ function os_vendor()
             sles)
                 rval=SuSE
                 ;;
+            sle_hpc)
+                rval=SuSE
+                ;;
             centos)
                 rval=redhat
                 ;;

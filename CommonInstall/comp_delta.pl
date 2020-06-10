@@ -81,6 +81,7 @@ my @delta_kernel_srpms_rhel74 = ( 'kmod-ifs-kernel-updates' );
 my @delta_kernel_srpms_rhel75 = ( 'kmod-ifs-kernel-updates' );
 my @delta_kernel_srpms_rhel76 = ( 'kmod-ifs-kernel-updates' );
 my @delta_kernel_srpms_rhel77 = ( 'kmod-ifs-kernel-updates' );
+my @delta_kernel_srpms_rhel78 = ( 'kmod-ifs-kernel-updates' );
 my @delta_kernel_srpms_rhel8 = ( 'kmod-ifs-kernel-updates' );
 my @delta_kernel_srpms_rhel81 = ( 'kmod-ifs-kernel-updates' );
 my @delta_kernel_srpms = ( );
@@ -167,6 +168,8 @@ sub init_delta_info($)
 		@delta_kernel_srpms = ( @delta_kernel_srpms_rhel81 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES8" ) {
 		@delta_kernel_srpms = ( @delta_kernel_srpms_rhel8 );
+	} elsif ( "$CUR_VENDOR_VER" eq "ES78" ) {
+		@delta_kernel_srpms = ( @delta_kernel_srpms_rhel78 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES77" ) {
 		@delta_kernel_srpms = ( @delta_kernel_srpms_rhel77 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES76" ) {
@@ -226,7 +229,7 @@ sub delta_srpm_file($$)
 			$result = file_glob("$srcdir/$SRPMS_SUBDIR/CUDA/$globname");
 		} else {
 			NormalPrint("CUDA specific SRPMs do not exist\n");
-			exit 0;
+			exit 1;
 		}
 	} else {
 		$result = file_glob("$srcdir/$SRPMS_SUBDIR/$globname");
@@ -265,7 +268,7 @@ sub get_rpms_dir_delta($)
 				$rpmsdir=$rpmsdir."/CUDA";
 			} else {
 				NormalPrint("CUDA specific packages do not exist\n");
-				exit 0;
+				exit 1;
 			}
 	}
 	return $rpmsdir;
@@ -802,6 +805,9 @@ sub installed_delta_opa_stack()
 	} elsif ( "$CUR_VENDOR_VER" eq "ES8" ) {
 		return ( has_version_delta()
 				&& rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
+	} elsif ( "$CUR_VENDOR_VER" eq "ES78" ) {
+		return ( has_version_delta()
+				&& rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
 	} elsif ( "$CUR_VENDOR_VER" eq "ES77" ) {
 		return ( has_version_delta()
 				&& rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
@@ -1118,6 +1124,9 @@ sub installed_intel_hfi()
 		return (has_version_delta()
 		     && rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
 	} elsif ( "$CUR_VENDOR_VER" eq "ES77" ) {
+		return (has_version_delta()
+		     && rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
+	} elsif ( "$CUR_VENDOR_VER" eq "ES78" ) {
 		return (has_version_delta()
 		     && rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
 	} elsif ( "$CUR_VENDOR_VER" eq "ES8" ) {

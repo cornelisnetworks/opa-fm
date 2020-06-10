@@ -39,6 +39,7 @@ INCLUDE_TARGETS	= \
 MAN_PAGE_8_FILES = \
 				opafmcmd.8 \
 				opafmcmdall.8 \
+				opafmconfigpp.8 \
 				# Add more man pages for chapter 8
 MISC_FILES= \
 				$(MAN_PAGE_8_FILES) \

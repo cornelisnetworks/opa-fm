@@ -44,6 +44,7 @@ my $Build_Debug=0;	# should we provide more info for debug
 my $Build_Temp="";	# temp area to use for build
 my $Default_Build = 0;	# -B option used to select build
 my $Build_Force = 0;# rebuild option used to force full rebuild
+my $To_Show_Comps = 0; # indicate whether we need to show components or not
 
 $FirstIPoIBInterface=0; # first device is ib0
 
@@ -83,6 +84,8 @@ my @Components_rhel75 = ( "opa_stack", "mpi_selector",
 my @Components_rhel76 = ( "opa_stack", "mpi_selector",
 		@OmniPathAllComponents );
 my @Components_rhel77 = ( "opa_stack", "mpi_selector",
+		@OmniPathAllComponents );
+my @Components_rhel78 = ( "opa_stack", "mpi_selector",
 		@OmniPathAllComponents );
 my @Components_rhel8 = ( "opa_stack", "mpi_selector",
 		@OmniPathAllComponents );
@@ -292,7 +295,7 @@ $WrapperComponent = "opaconfig";
 					  DefaultInstall => $State_Install,
 					  SrcDir => file_glob ("./OFA_MPIS.*"),
 					  PreReq => " opa_stack intel_hfi mpi_selector ", CoReq => "",
-					  Hidden => 0, Disabled => 0, IsOFA => 0,
+					  Hidden => 1, Disabled => 1, IsOFA => 0,
 					  KernelRpms => [ ],
 					  FirmwareRpms => [ ],
 					  UserRpms => [ "openmpi_gcc_cuda_hfi", "mpitests_openmpi_gcc_cuda_hfi" ],
@@ -500,6 +503,29 @@ $WrapperComponent = "opaconfig";
 					  StartupParams => [ ]
 					},
 	);
+
+# We can improve ComponentInfo to include the following. But since they are used
+# for mpisrc only, extending ComponentInfo doesn't benefit other components.
+# We directly define them here where
+#     Dest => installation location
+#     SrcRpms => src rpms to install
+#     BuildScripts => build script to install
+#     MiscFiles => misc files, such as version file. This field includes 'Dest'
+#                  and 'Src' to define the installed file name and source file
+#                  name. For SrcRpms and BuildScript fields, the installed file
+#                  name will be the same name as source file.
+#     DirtyFiles => dirty files will be cleared during install/uninstall, such
+#                   as the build generated files.
+%ExtraMpisrcInfo = (
+	Dest => "/usr/src/opa/MPI",
+	SrcRpms => ["mvapich2", "openmpi", "mpitests"],
+	BuildScripts => ["do_build", "do_mvapich2_build", "do_openmpi_build"],
+	MiscFiles => [{
+		Dest => ".version",
+		Src => "version"}],
+	DirtyFiles => [ "{mvapich2,openmpi,mpitests}_*.rpm",
+	                "make.*.{res,err,warn}", ".mpiinfo"]
+);
 
 # one of these opa_stack comp_info gets appended to ComponentInfo
 # for RHEL72
@@ -1220,6 +1246,14 @@ sub init_components
 						%opa_stack_dev_comp_info,
 						%opa_stack_rhel_comp_info,
 						);
+	} elsif ( "$CUR_VENDOR_VER" eq "ES78" ) {
+		@Components = ( @Components_rhel78 );
+		@SubComponents = ( @SubComponents_newer );
+		%ComponentInfo = ( %ComponentInfo, %ibacm_comp_info,
+						%intel_hfi_comp_info,
+						%opa_stack_dev_comp_info,
+						%opa_stack_rhel_comp_info,
+						);
 	} elsif ( "$CUR_VENDOR_VER" eq "ES8" ) {
 		@Components = ( @Components_rhel8 );
 		@SubComponents = ( @SubComponents_newer );
@@ -1691,10 +1725,11 @@ sub process_args
 					Usage;
 				} else {
 					$GPU_Install=1;
+					$ComponentInfo{"openmpi_gcc_cuda_hfi"}{'Hidden'} = 0;
+					$ComponentInfo{"openmpi_gcc_cuda_hfi"}{'Disabled'} = 0;
 				}
 			} elsif ( "$arg" eq "-C" ) {
-				ShowComponents;
-				exit(0);
+				$To_Show_Comps = 1;
 			} elsif ( "$arg" eq "-c" ) {
 				# undocumented option to output detailed information on a component
 				$Default_ShowCompInfo=1;
@@ -1781,6 +1816,11 @@ sub process_args
 			}
 			$last_arg=$arg;
 		}
+	}
+
+	if ($To_Show_Comps == 1) {
+		ShowComponents;
+		exit(0);
 	}
 	if ( $setcomp || $setenabled || $setdisabled  || $setosver || $setbuildtemp || $setfwmode || $setanswer) {
 		printf STDERR "Missing argument for option: $last_arg\n";

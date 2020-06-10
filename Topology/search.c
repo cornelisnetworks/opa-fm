@@ -2109,6 +2109,59 @@ ExpectedLink* FindExpectedLinkByOneSide(const FabricData_t *fabricp, EUI64 nodeG
 // FNOT_FOUND - no instances found
 // FINVALID_OPERATION - find_flag contains no applicable searches
 // other - error allocating memory or initializing structures
+FSTATUS FindLinkCRCPoint(FabricData_t *fabricp, uint16 crc, LinkCRCCompare comp, Point *pPoint, uint8 find_flag)
+{
+	FSTATUS status;
+
+	ASSERT(! PointValid(pPoint));
+	if (0 == (find_flag & FIND_FLAG_FABRIC))
+		return FINVALID_OPERATION;
+	if (find_flag & FIND_FLAG_FABRIC) {
+		LIST_ITEM *p;
+		for (p=QListHead(&fabricp->AllPorts); p != NULL; p = QListNext(&fabricp->AllPorts, p)) {
+			PortData *portp = (PortData *)QListObj(p);
+
+			boolean match = FALSE;
+			/* omit switch port 0, CRC is often odd and N/A */
+			if (portp->PortNum == 0)
+				continue;
+			switch (comp) {
+			case CRC_EQ:
+				match = (portp->PortInfo.PortLTPCRCMode.s.Active == crc );
+				break;
+			case CRC_NE:
+				match = (portp->PortInfo.PortLTPCRCMode.s.Active != crc );
+				break;
+			default:
+				break;
+			}
+			if (match) {
+				status = PointListAppend(pPoint, POINT_TYPE_PORT_LIST, portp);
+				if (FSUCCESS != status) 
+					return status;
+			}
+		}
+	}
+
+	// N/A for FIND_FLAG_ENODE, FIND_FLAG_ESM and FIND_FLAG_ELINK
+
+	if (! PointValid(pPoint)) {
+		char tempbuf[20];
+		fprintf(stderr, "%s: Link CRC Not Found: %s %s\n",
+						g_Top_cmdname,
+						(comp == CRC_EQ)? "EQ"
+						: (comp == CRC_NE) ? "NE"
+						: "", /* should not happen */
+						StlPortLtpCrcModeToText(crc, tempbuf, sizeof(tempbuf)));
+		return FNOT_FOUND;
+	}
+	PointCompress(pPoint);
+	return FSUCCESS;
+}
+
+// FNOT_FOUND - no instances found
+// FINVALID_OPERATION - find_flag contains no applicable searches
+// other - error allocating memory or initializing structures
 FSTATUS FindLinkQualityPoint(FabricData_t *fabricp, uint16 quality, LinkQualityCompare comp, Point *pPoint, uint8 find_flag)
 {
 	FSTATUS status;
@@ -2148,8 +2201,13 @@ FSTATUS FindLinkQualityPoint(FabricData_t *fabricp, uint16 quality, LinkQualityC
 	// N/A for FIND_FLAG_ENODE, FIND_FLAG_ESM and FIND_FLAG_ELINK
 
 	if (! PointValid(pPoint)) {
-		fprintf(stderr, "%s: Link Quality Not Found: %d\n",
-						g_Top_cmdname, quality);
+		fprintf(stderr, "%s: Link Quality Not Found: %s %d\n",
+						g_Top_cmdname,
+						(comp == QUAL_EQ)? "EQ"
+						: (comp == QUAL_GE) ? "GE"
+						: (comp == QUAL_LE) ? "LE"
+						: "", /* should not happen */
+						quality);
 		return FNOT_FOUND;
 	}
 	PointCompress(pPoint);

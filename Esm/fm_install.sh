@@ -37,7 +37,7 @@
 #	exit 1
 #fi
 
-fm_mans="opafmcmd.8 opafmcmdall.8"
+fm_mans="opafmcmd.8 opafmcmdall.8 opafmconfigpp.8"
 
 mkdir -p ${DESTDIR}/usr/sbin
 mkdir -p ${DESTDIR}/usr/lib/systemd/system

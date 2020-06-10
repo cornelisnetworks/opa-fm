@@ -791,6 +791,11 @@ typedef enum {
 	QUAL_LE
 } LinkQualityCompare;
 
+typedef enum {
+	CRC_EQ,
+	CRC_NE
+} LinkCRCCompare;
+
 // simple way to convert time_t to a localtime date string in dest
 // (from Topology/getdate.c)
 extern void Top_formattime(char *dest, size_t max, time_t t);
@@ -1032,6 +1037,7 @@ extern PortData * FindNodeGuidPort(FabricData_t *fabricp,EUI64 nodeguid, uint8 p
 extern ExpectedNode* FindExpectedNodeByNodeGuid(const FabricData_t* fabricp, EUI64 nodeGuid);
 extern ExpectedNode* FindExpectedNodeByNodeDesc(const FabricData_t* fabricp, const char* nodeDesc, uint8 NodeType);
 extern ExpectedLink* FindExpectedLinkByOneSide(const FabricData_t* fabricp, EUI64 nodeGuid, uint8 portNum, uint8* side);
+extern FSTATUS FindLinkCRCPoint(FabricData_t *fabricp, uint16 crc, LinkCRCCompare comp, Point *pPoint, uint8 find_flag);
 extern FSTATUS FindLinkQualityPoint(FabricData_t *fabricp, uint16 quality, LinkQualityCompare comp, Point *pPoint, uint8 find_flag);
 extern FSTATUS FindLinkDownReasonPoint(FabricData_t *fabricp, uint8 ldr, Point *pPoint, uint8 find_flag);
 extern FSTATUS FindExpectedSMByPortGuid(FabricData_t *fabricp, EUI64 portGuid);

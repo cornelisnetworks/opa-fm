@@ -1704,9 +1704,60 @@ static FSTATUS ParseSmDetailsPatPoint(FabricData_t *fabricp, char *arg, Point *p
 	return FindSmDetailsPatPoint(fabricp, arg, pPoint, find_flag);
 }
 
+static FSTATUS ParseLinkCRCPoint(FabricData_t *fabricp, char *arg, Point *pPoint, uint8 find_flag, char **pp)
+{
+	LinkCRCCompare comp = CRC_EQ;
+	uint16 crc;
+	char *next;
+
+	ASSERT(! PointValid(pPoint));
+	*pp = arg;
+	if (NULL != (next = ComparePrefix(arg, "NE:"))) {
+		comp = CRC_NE; // not equal
+	} else if (NULL != (next = ComparePrefix(arg, ":"))) {
+		comp = CRC_EQ; // equal
+	} else {
+		fprintf(stderr, "%s: Invalid Link CRC format: '%s'\n",
+				g_Top_cmdname, arg);
+		return FINVALID_PARAMETER;
+	}
+
+	*pp = next;
+	if (NULL != (next = ComparePrefix(*pp, "14b"))) {
+		*pp = next;
+		crc = STL_PORT_LTP_CRC_MODE_14;
+	} else if (NULL != (next = ComparePrefix(*pp, "14-bit"))) {
+		*pp = next;
+		crc = STL_PORT_LTP_CRC_MODE_14;
+	} else if (NULL != (next = ComparePrefix(*pp, "16b"))) {
+		*pp = next;
+		crc = STL_PORT_LTP_CRC_MODE_16;
+	} else if (NULL != (next = ComparePrefix(*pp, "16-bit"))) {
+		*pp = next;
+		crc = STL_PORT_LTP_CRC_MODE_16;
+	} else if (NULL != (next = ComparePrefix(*pp, "48b"))) {
+		*pp = next;
+		crc = STL_PORT_LTP_CRC_MODE_48;
+	} else if (NULL != (next = ComparePrefix(*pp, "48-bit"))) {
+		*pp = next;
+		crc = STL_PORT_LTP_CRC_MODE_48;
+	} else if (NULL != (next = ComparePrefix(*pp, "per_lane"))) {
+		*pp = next;
+		crc = STL_PORT_LTP_CRC_MODE_12_16_PER_LANE;
+	} else if (NULL != (next = ComparePrefix(*pp, "12-16/lane"))) {
+		*pp = next;
+		crc = STL_PORT_LTP_CRC_MODE_12_16_PER_LANE;
+	} else {
+		fprintf(stderr, "%s: Invalid Link CRC format: '%s'\n", g_Top_cmdname, arg);
+		return FINVALID_PARAMETER;
+	}
+
+	return FindLinkCRCPoint(fabricp, crc, comp, pPoint, find_flag);
+}
+
 static FSTATUS ParseLinkQualityPoint(FabricData_t *fabricp, char *arg, Point *pPoint, uint8 find_flag, char **pp)
 {
-	LinkQualityCompare comp;
+	LinkQualityCompare comp = QUAL_EQ;
 	uint16 quality;
 	char *Quality;
 	
@@ -1748,7 +1799,7 @@ static FSTATUS ParseLinkDownReasonPoint(FabricData_t *fabricp, char *arg, Point 
 	if (NULL != (ldrp = ComparePrefix(arg, ":"))) {
 		*pp = ldrp;
 		if (FSUCCESS != StringToUint8(&ldr, ldrp, pp, 0, TRUE)) {
-			fprintf(stderr, "%s: Invalid Link Quality format: '%s'\n", g_Top_cmdname, arg);
+			fprintf(stderr, "%s: Invalid Link Down Reason format: '%s'\n", g_Top_cmdname, arg);
 			return FINVALID_PARAMETER;
 		}
 	}
@@ -1884,6 +1935,8 @@ FSTATUS ParsePoint(FabricData_t *fabricp, char* arg, Point* pPoint, uint8 find_f
 		status = ParseSmDetailsPatPoint(fabricp, param, pPoint, find_flag, pp);
 	} else if (NULL != (param = ComparePrefix(arg, "sm"))) {
 		status = ParseSmPoint(fabricp, param, pPoint, find_flag, pp);
+	} else if (NULL != (param = ComparePrefix(arg, "linkcrc"))) {
+		status = ParseLinkCRCPoint(fabricp, param, pPoint, find_flag, pp);
 	} else if (NULL != (param = ComparePrefix(arg, "linkqual"))) {
 		status = ParseLinkQualityPoint(fabricp, param, pPoint, find_flag, pp);
 	} else if (NULL != (param = ComparePrefix(arg, "ldr"))) {

@@ -1193,7 +1193,7 @@ sub available_mpisrc()
 
 sub installed_mpisrc()
 {
-	my $srcdir = "/usr/src/opa/MPI";
+	my $srcdir = $ExtraMpisrcInfo{'Dest'};
 	my $old_srcdir = "/usr/lib/opa/src/MPI";
 	return (has_mpisrc($srcdir) || has_mpisrc($old_srcdir));
 }
@@ -1201,15 +1201,18 @@ sub installed_mpisrc()
 sub has_mpisrc($)
 {
 	my $srcdir = shift();
-	return (file_glob("$srcdir/mvapich*.src.rpm") ne ""
-	        && file_glob("$srcdir/openmpi*.src.rpm") ne ""
-	        && file_glob("$srcdir/mpitests*.src.rpm") ne "");
+	foreach my $srpm (@{$ExtraMpisrcInfo{'SrcRpms'}}) {
+		if (file_glob("$srcdir/${srpm}*.src.rpm") eq "") {
+			return 0;
+		}
+	}
+	return 1;
 }
 
 # only called if installed_mpisrc is true
 sub installed_version_mpisrc()
 {
-	return `cat /usr/src/opa/MPI/.version`;
+	return `cat $ExtraMpisrcInfo{'Dest'}/.version`;
 }
 
 # only called if available_mpisrc is true
@@ -1255,36 +1258,41 @@ sub install_mpisrc($$)
 	my $installing_list = shift();	# what items are being installed/reinstalled
 
 	my $srcdir=$ComponentInfo{'mpisrc'}{'SrcDir'};
-    my $version = media_version_mpisrc();
-    chomp $version;
+	my $version = media_version_mpisrc();
+	chomp $version;
 
-    printf ("Installing $ComponentInfo{'mpisrc'}{'Name'} $version...\n");
-    LogPrint ("Installing $ComponentInfo{'mpisrc'}{'Name'} $version for $CUR_OS_VER\n");
+	printf ("Installing $ComponentInfo{'mpisrc'}{'Name'} $version...\n");
+	LogPrint ("Installing $ComponentInfo{'mpisrc'}{'Name'} $version for $CUR_OS_VER\n");
 
-	check_dir("/usr/src/opa");
-	check_dir("/usr/src/opa/MPI");
+	my $destdir = $ExtraMpisrcInfo{'Dest'};
+	check_dir($destdir);
 	# remove old versions (.src.rpm and built .rpm files too)
-	system "rm -rf /usr/src/opa/MPI/mvapich[-_]*.rpm 2>/dev/null";
-	system "rm -rf /usr/src/opa/MPI/mvapich2[-_]*.rpm 2>/dev/null";
-	system "rm -rf /usr/src/opa/MPI/openmpi[-_]*.rpm 2>/dev/null";
-	system "rm -rf /usr/src/opa/MPI/mpitests[-_]*.rpm 2>/dev/null";
-	system "rm -rf /usr/src/opa/MPI/make.*.res 2>/dev/null";
-	system "rm -rf /usr/src/opa/MPI/make.*.err 2>/dev/null";
-	system "rm -rf /usr/src/opa/MPI/make.*.warn 2>/dev/null";
-	system "rm -rf /usr/src/opa/MPI/.mpiinfo 2>/dev/null";
+	system "rm -f $destdir/mvapich[-_]*.rpm 2>/dev/null";
+	foreach my $srpm (@{$ExtraMpisrcInfo{'SrcRpms'}})
+	{
+		system "rm -f $destdir/$srpm-*.rpm 2>/dev/null";
+	}
+	foreach my $file (@{$ExtraMpisrcInfo{'DirtyFiles'}})
+	{
+		system "rm -f $destdir/$file 2>/dev/null";
+	}
 
 	# install new versions
-	foreach my $srpm ( "mvapich2", "openmpi", "mpitests" ) {
+	foreach my $srpm (@{$ExtraMpisrcInfo{'SrcRpms'}}) {
 		my $srpmfile = file_glob("$srcdir/${srpm}-*.src.rpm");
 		if ( "$srpmfile" ne "" ) {
 			my $file = my_basename($srpmfile);
-			copy_data_file($srpmfile, "/usr/src/opa/MPI/$file");
+			copy_data_file($srpmfile, "$destdir/$file");
 		}
 	}
-	copy_systool_file("$srcdir/do_build", "/usr/src/opa/MPI/do_build");
-	copy_systool_file("$srcdir/do_mvapich2_build", "/usr/src/opa/MPI/do_mvapich2_build");
-	copy_systool_file("$srcdir/do_openmpi_build", "/usr/src/opa/MPI/do_openmpi_build");
-	copy_data_file("$srcdir/version", "/usr/src/opa/MPI/.version");
+	foreach my $script (@{$ExtraMpisrcInfo{'BuildScripts'}}) {
+		copy_systool_file("$srcdir/$script", "$destdir/$script");
+	}
+	foreach my $file (@{$ExtraMpisrcInfo{'MiscFiles'}}) {
+		my $src = ${$file}{'Src'};
+		my $dest = ${$file}{'Dest'};
+		copy_data_file("$srcdir/$src", "$destdir/$dest");
+	}
 
 	$ComponentWasInstalled{'mpisrc'}=1;
 }
@@ -1307,21 +1315,23 @@ sub uninstall_mpisrc($$)
 	    rpm_is_installed("opameta_mpisrc_userspace", "any")) {
 		rpm_uninstall_matches("opameta_mpisrc", "opameta_mpisrc", "", "");
 	} else {
+		my $destdir = $ExtraMpisrcInfo{'Dest'};
 		# remove old versions (.src.rpm and built .rpm files too)
-		system "rm -rf /usr/src/opa/MPI/.version 2>/dev/null";
-		system "rm -rf /usr/src/opa/MPI/mvapich2[-_]*.rpm 2>/dev/null";
-		system "rm -rf /usr/src/opa/MPI/openmpi[-_]*.rpm 2>/dev/null";
-		system "rm -rf /usr/src/opa/MPI/mpitests[-_]*.rpm 2>/dev/null";
-		system "rm -rf /usr/src/opa/MPI/make.*.res 2>/dev/null";
-		system "rm -rf /usr/src/opa/MPI/make.*.err 2>/dev/null";
-		system "rm -rf /usr/src/opa/MPI/make.*.warn 2>/dev/null";
-		system "rm -rf /usr/src/opa/MPI/.mpiinfo 2>/dev/null";
-		system "rm -rf /usr/src/opa/MPI/do_build 2>/dev/null";
-		system "rm -rf /usr/src/opa/MPI/do_mvapich2_build 2>/dev/null";
-		system "rm -rf /usr/src/opa/MPI/do_openmpi_build 2>/dev/null";
-		system "rm -rf /usr/src/opa/MPI/.mpiinfo 2>/dev/null";
+		foreach my $srpm (@{$ExtraMpisrcInfo{'SrcRpms'}}) {
+			system "rm -f $destdir/$srpm-*.rpm 2>/dev/null";
+		}
+		foreach my $script (@{$ExtraMpisrcInfo{'BuildScripts'}}) {
+			system "rm -f $destdir/$script 2>/dev/null";
+		}
+		foreach my $file (@{$ExtraMpisrcInfo{'MiscFiles'}}) {
+			my $destfile = ${$file}{'Dest'};
+			system "rm -f $destdir/$destfile 2>/dev/null";
+		}
+		foreach my $file (@{$ExtraMpisrcInfo{'DirtyFiles'}}) {
+			system "rm -f $destdir/$file 2>/dev/null";
+		}
 
-		system "rmdir /usr/src/opa/MPI 2>/dev/null"; # remove only if empty
+		system "rmdir $destdir 2>/dev/null"; # remove only if empty
 		system "rmdir /usr/src/opa 2>/dev/null"; # remove only if empty
 	}
 

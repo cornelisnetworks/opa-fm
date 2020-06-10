@@ -65,6 +65,9 @@ VERSION_ID=""
 
 if [ -e /etc/os-release ]; then
     . /etc/os-release
+    if [[ "$ID" == "sle_hpc" ]]; then
+        ID="sles"
+    fi
 else
     echo /etc/os-release is not available !!!
 fi

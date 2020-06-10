@@ -1,0 +1,90 @@
+.\" .\" *********************************************************************
+.\" .\" *                                                                   *
+.\" .\" *             Copyright 2015-2019, Intel Corporation                *
+.\" .\" *                                                                   *
+.\" .\" *                       All Rights Reserved.                        *
+.\" .\" *                                                                   *
+.\" .\" *********************************************************************
+
+.TH opafmconfigpp 8 "Intel Corporation" "Copyright(C) 2015\-2019" "IFSFFCLIRG (Man Page)"
+.SH NAME
+opafmconfigpp
+
+
+.PP
+Merges opafm.xml pre-process file with set of VirtualFabric and DeviceGroup XML files.
+.SH Syntax
+opafmconfigpp [-p  \fIppfile\fR] [-o  \fIoutput\fR] [-b] [-s] [-f] [-h]
+.SH Options
+
+.TP 10
+-h
+
+Produces full help text.
+
+.TP 10
+-p \fIppfile\fR
+
+Specifies the file to preprocess. Default is /etc/opa-fm/opafm\(ulpp.xml.
+
+.TP 10
+-o \fIoutput\fR
+
+Specifies the output XML file. Default is /etc/opa-fm/opafm.xml.
+
+.TP 10
+-b
+
+Backs up the old output file if one exists. Default is 0.
+
+.TP 10
+-s
+
+Skips running Config Check on output. Default is 0.
+
+.TP 10
+-f
+
+Forces overwrite of old output file. Default is 0.
+
+.SH Notes
+
+.PP
+The output file will contain two comments at the top, along with the local time it was generated.
+.PP
+The special INCLUDE comments follow this style:
+.PP
+
+.br
+   <!-- INCLUDE:DG\(ulDIR=$DG\(ulDIR -->
+.br
+
+   <!-- INCLUDE:VF\(ulDIR=$VF\(ulDIR -->
+
+.br
+
+.PP
+Examples:
+.PP
+
+.br
+   <!-- INCLUDE:VF\(ulDIR=/etc/opa-fm/vfs -->
+.br
+
+   <!-- INCLUDE:VF\(ulDIR=/etc/opa-fm/vfs\(ulfm1 -->
+.br
+
+   <!-- INCLUDE:DG\(ulDIR=/etc/opa-fm/dgs -->
+.br
+
+   <!-- INCLUDE:DG\(ulDIR=/etc/opa-fm/dgs\(ulfm0 -->
+
+.br
+
+.PP
+INCLUDE comments will be replaced with contents of the given directories.
+.SH Example
+opafmconfigpp
+.br
+
+opafmconfigpp -b -s

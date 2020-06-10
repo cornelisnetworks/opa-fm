@@ -332,6 +332,8 @@ my %StartupComponent = ();
 	# has component been installed since last configured autostart
 my %ComponentWasInstalled = ();
 
+my %ExtraMpisrcInfo = ();
+
 # constants for autostart functions $configure argument
 my $Start_Unspecified=0;
 my $Start_NoStart=1;
@@ -364,24 +366,24 @@ sub ShowCompInfo(;$)
 			} else {
 				print $print_param ",\n {\n";
 			}
-			print $print_param "  \"id\": \"$comp\",\n";
-			my $description = $ComponentInfo{$comp}{'Name'};
-			print $print_param "  \"description\": \"$description\",\n";
+			print $print_param "  \"ID\": \"$comp\",\n";
+			my $name = $ComponentInfo{$comp}{'Name'};
+			print $print_param "  \"Name\": \"$name\",\n";
 			if ( $comp eq "delta_debug" ) {
 				print $print_param "  \"error\": \"Not apply. We ship debug rpms in meta pkg <component>_debuginfo.\"\n";
 				print $print_param " },\n";
 				next;
 			}
 			if (comp_is_available($comp)) {
-				print $print_param "  \"available\": \"yes\",\n";
+				print $print_param "  \"Available\": \"yes\",\n";
 			} else {
-				print $print_param "  \"available\": \"no\",\n";
+				print $print_param "  \"Available\": \"no\",\n";
 			}
 			my $full_ver = comp_media_version($comp);
 			my ($version, $release) = GetVerRel($full_ver);
-			print $print_param "  \"version\": \"$version\",\n";
-			print $print_param "  \"release\": \"$release\",\n";
-			print $print_param "  \"prereqs\": [\n";
+			print $print_param "  \"Version\": \"$version\",\n";
+			print $print_param "  \"Release\": \"$release\",\n";
+			print $print_param "  \"PreReq\": [\n";
 			$first_item = 1;
 			my @reqs = split(/ /, $ComponentInfo{$comp}{'PreReq'});
 			foreach my $req (@reqs) {
@@ -393,15 +395,15 @@ sub ShowCompInfo(;$)
 					$reqver = "$version-$release";
 					if ($first_item == 1) {
 						$first_item = 0;
-						print $print_param "   {\"id\": \"$req\", \"version\": \"$reqver\"}";
+						print $print_param "   {\"ID\": \"$req\", \"Version\": \"$reqver\"}";
 					} else {
-						print $print_param ",\n   {\"id\": \"$req\", \"version\": \"$reqver\"}";
+						print $print_param ",\n   {\"ID\": \"$req\", \"Version\": \"$reqver\"}";
 					}
 				}
 			}
 			print $print_param "\n  ],\n";
 			@reqs = split(/ /, $ComponentInfo{$comp}{'CoReq'});
-			print $print_param "  \"coreqs\": [\n";
+			print $print_param "  \"CoReq\": [\n";
 			$first_item = 1;
 			foreach my $req (@reqs) {
 				# ignore req that is not a component. This is for the case we do not
@@ -412,21 +414,22 @@ sub ShowCompInfo(;$)
 					$reqver = "$version-$release";
 					if ($first_item == 1) {
 						$first_item = 0;
-						print $print_param "   {\"id\": \"$req\", \"version\": \"$reqver\"}";
+						print $print_param "   {\"ID\": \"$req\", \"Version\": \"$reqver\"}";
 					} else {
-						print $print_param ",\n   {\"id\": \"$req\", \"version\": \"$reqver\"}";
+						print $print_param ",\n   {\"ID\": \"$req\", \"Version\": \"$reqver\"}";
 					}
 				}
 			}
 			print $print_param "\n  ],\n";
 			if ( $comp eq "mpisrc" ) {
-				print $print_param "  \"srcrpms\": {\n";
-				print $print_param "   \"dest\": \"/usr/src/opa/MPI/\",\n";
+				print $print_param "  \"SrcRpms\": {\n";
+				my $destdir = $ExtraMpisrcInfo{'Dest'};
+				print $print_param "   \"Dest\": \"$destdir\",\n";
 				my $srcdir=$ComponentInfo{'mpisrc'}{'SrcDir'};
-				print $print_param "   \"source\": \"$srcdir\",\n";
-				print $print_param "   \"resources\": [\n";
+				print $print_param "   \"Source\": \"$srcdir\",\n";
+				print $print_param "   \"Resources\": [\n";
 				$first_item = 1;
-				foreach my $srpm ( "mvapich2", "openmpi", "mpitests" ) {
+				foreach my $srpm (@{$ExtraMpisrcInfo{'SrcRpms'}}) {
 					my $srpmfile = file_glob("$srcdir/${srpm}-*.src.rpm");
 					if ( "$srpmfile" ne "" ) {
 						my $file = my_basename($srpmfile);
@@ -440,29 +443,60 @@ sub ShowCompInfo(;$)
 				}
 				print $print_param "\n   ]\n";
 				print $print_param "  },\n";
-				print $print_param "  \"tools\": {\n";
-				print $print_param "   \"dest\": \"/usr/src/opa/MPI/\",\n";
-				print $print_param "   \"source\": \"$srcdir\",\n";
-				print $print_param "   \"resources\": [\n";
-				print $print_param "    \"do_build\",\n";
-				print $print_param "    \"do_mvapich2_build\",\n";
-				print $print_param "    \"do_openmpi_build\"\n";
-				print $print_param "   ]\n";
+				print $print_param "  \"BuildScripts\": {\n";
+				print $print_param "   \"Dest\": \"$destdir\",\n";
+				print $print_param "   \"Source\": \"$srcdir\",\n";
+				print $print_param "   \"Resources\": [\n";
+				$first_item = 1;
+				foreach my $script (@{$ExtraMpisrcInfo{'BuildScripts'}}) {
+					if ($first_item == 1) {
+						$first_item = 0;
+						print $print_param "    \"$script\"";
+					} else {
+						print $print_param ",\n    \"$script\"";
+					}
+				}
+				print $print_param "\n   ]\n";
 				print $print_param "  },\n";
-				print $print_param "  \"misc\": [\n";
-				print $print_param "   {\"dest\": \"/usr/src/opa/MPI/.version\", \"source\": \"$srcdir\", \"resource\": \"version\"}\n";
-				print $print_param "  ]\n";
+				print $print_param "  \"MiscFiles\": [\n";
+				$first_item = 1;
+				foreach my $file (@{$ExtraMpisrcInfo{'MiscFiles'}}) {
+					my $src = ${$file}{'Src'};
+					my $dest = ${$file}{'Dest'};
+					if ($first_item == 1) {
+						$first_item = 0;
+					} else {
+						print $print_param ",\n";
+					}
+					print $print_param "    {\"Dest\": \"$destdir/$dest\", \"Src\": \"$srcdir/$src\"}";
+				}
+				print $print_param "\n  ],\n";
+				print $print_param "  \"DirtyFiles\": {\n";
+				print $print_param "   \"Dest\": \"$destdir\",\n";
+				print $print_param "   \"Source\": \"\",\n";
+				print $print_param "   \"Resources\": [\n";
+				$first_item = 1;
+				foreach my $file (@{$ExtraMpisrcInfo{'DirtyFiles'}}) {
+					if ($first_item == 1) {
+						$first_item = 0;
+						print $print_param "    \"$file\"";
+					} else {
+						print $print_param ",\n    \"$file\"";
+					}
+				}
+				print $print_param "\n   ]\n";
+				print $print_param "  }\n";
 			} else {
-				print $print_param "  \"userrpms\": [\n";
+				print $print_param "  \"UserRpms\": [\n";
 				ShowRpmList($print_param, "   ", "user", @{$ComponentInfo{$comp}{'UserRpms'}});
 				print $print_param "\n  ],\n";
-				print $print_param "  \"kernelrpms\": [\n";
+				print $print_param "  \"KernelRpms\": [\n";
 				ShowRpmList($print_param, "   ", $CUR_OS_VER, @{$ComponentInfo{$comp}{'KernelRpms'}});
 				print $print_param "\n  ],\n";
-				print $print_param "  \"firmwarerpms\": [\n";
+				print $print_param "  \"FirmwareRpms\": [\n";
 				ShowRpmList($print_param, "   ", "firmware", @{$ComponentInfo{$comp}{'FirmwareRpms'}});
 				print $print_param "\n  ],\n";
-				print $print_param "  \"debugrpms\": [\n";
+				print $print_param "  \"DebugTpms\": [\n";
 				ShowRpmList($print_param, "   ", "any", @{$ComponentInfo{$comp}{'DebugRpms'}});
 				print $print_param "\n  ]\n";
 			}
@@ -510,9 +544,9 @@ sub ShowRpmList($$$$@)
 			}
 			if ($first_item == 1) {
 				$first_item = 0;
-				print $print_param "$prefix\{\"id\": \"$rpm\", \"version\": \"$version\"}";
+				print $print_param "$prefix\{\"ID\": \"$rpm\", \"Version\": \"$version\"}";
 			} else {
-				print $print_param ",\n$prefix\{\"id\": \"$rpm\", \"version\": \"$version\"}";
+				print $print_param ",\n$prefix\{\"ID\": \"$rpm\", \"Version\": \"$version\"}";
 			}
 		} else {
 			DebugPrint "Not found $rpm";

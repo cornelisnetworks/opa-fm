@@ -128,11 +128,13 @@ INCLUDE_SUBDIR		=
 LOCALDEPLIBS = 
 
 FF_FILES = comp_ff_of_prereq_RHEL72.pl comp_ff_of_prereq_RHEL73.pl comp_ff_of_prereq_RHEL74.pl \
-	comp_ff_of_prereq_RHEL75.pl comp_ff_of_prereq_RHEL76.pl comp_ff_of_prereq_RHEL77.pl comp_ff_of_prereq_RHEL8.pl comp_ff_of_prereq_RHEL81.pl \
+	comp_ff_of_prereq_RHEL75.pl comp_ff_of_prereq_RHEL76.pl comp_ff_of_prereq_RHEL77.pl comp_ff_of_prereq_RHEL78.pl \
+    comp_ff_of_prereq_RHEL8.pl comp_ff_of_prereq_RHEL81.pl \
 	comp_ff_of_prereq_SLES122.pl comp_ff_of_prereq_SLES123.pl comp_ff_of_prereq_SLES124.pl \
 	comp_ff_of_prereq_SLES15.pl comp_ff_of_prereq_SLES151.pl
 FM_FILES = comp_fm_prereq_RHEL72.pl comp_fm_prereq_RHEL73.pl comp_fm_prereq_RHEL74.pl \
-	comp_fm_prereq_RHEL75.pl comp_fm_prereq_RHEL76.pl comp_fm_prereq_RHEL77.pl comp_fm_prereq_RHEL8.pl comp_fm_prereq_RHEL81.pl \
+	comp_fm_prereq_RHEL75.pl comp_fm_prereq_RHEL76.pl comp_fm_prereq_RHEL77.pl comp_fm_prereq_RHEL78.pl \
+    comp_fm_prereq_RHEL8.pl comp_fm_prereq_RHEL81.pl \
 	comp_fm_prereq_SLES122.pl comp_fm_prereq_SLES123.pl comp_fm_prereq_SLES124.pl \
 	comp_fm_prereq_SLES15.pl comp_fm_prereq_SLES151.pl
 

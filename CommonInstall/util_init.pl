@@ -321,12 +321,14 @@ sub determine_os_version()
 		my %distroVendor = (
 			"rhel" => "redhat",
 			"centos" => "redhat",
-			"sles" => "SuSE"
+			"sles" => "SuSE",
+			"sle_hpc" => "SuSE"
 		);
 		my %network_conf_dir  = (
 			"rhel" => $NETWORK_CONF_DIR,
 			"centos" => $NETWORK_CONF_DIR,
-			"sles" => "/etc/sysconfig/network"
+			"sles" => "/etc/sysconfig/network",
+			"sle_hpc" => "/etc/sysconfig/network"
 		);
 		my $os_id = `cat $os_release_file | grep '^ID=' | cut -d'=' -f2 | tr -d [\\"\\.0] | tr -d ["\n"]`;
 		$CUR_DISTRO_VENDOR = $distroVendor{$os_id};
