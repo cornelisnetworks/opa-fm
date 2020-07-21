@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -641,7 +641,7 @@ void * if3_ssl_accept(void *context, int clientfd)
         // required to present a certificate.  For now, strict security
         // enforement is not enforced. 
         if (!(cert = SSL_get_peer_certificate(session))) {
-            IB_LOG_INFINI_INFO_FMT(__func__, "Client has no certifcate to verfiy");
+            IB_LOG_INFINI_INFO_FMT(__func__, "Client has no certificate to verify");
         } else {
             long result;
 

@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -548,7 +548,7 @@ sa_Trap(Mai_t *maip) {
 	if (sm_config.IgnoreTraps) {
 		// filter out all traps
 		sm_get_lid_info(desc, notice.IssuerLID);
-		IB_LOG_WARN_FMT(__func__, "Dropping trap recieved from %s", desc);
+		IB_LOG_WARN_FMT(__func__, "Dropping trap received from %s", desc);
 	/*
 	 *	If it is a port state change or capabilitymask change, I must signal for a sweep
 	 */

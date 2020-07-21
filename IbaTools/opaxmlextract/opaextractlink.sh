@@ -1,11 +1,11 @@
 #!/bin/bash
 # BEGIN_ICS_COPYRIGHT8 ****************************************
-# 
-# Copyright (c) 2015-2017, Intel Corporation
-# 
+#
+# Copyright (c) 2015-2020, Intel Corporation
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
-# 
+#
 #     * Redistributions of source code must retain the above copyright notice,
 #       this list of conditions and the following disclaimer.
 #     * Redistributions in binary form must reproduce the above copyright
@@ -14,7 +14,7 @@
 #     * Neither the name of Intel Corporation nor the names of its contributors
 #       may be used to endorse or promote products derived from this software
 #       without specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -25,7 +25,7 @@
 # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-# 
+#
 # END_ICS_COPYRIGHT8   ****************************************
 
 # [ICS VERSION STRING: unknown]
@@ -33,6 +33,10 @@
 # Run opareport -o links, then:
 #   Extract optional cable values, and values for both ports of each link
 #   Remove redundant information and combine cable and port information
+
+tempfile="$(mktemp)"
+trap "rm -f $tempfile; exit 1" SIGHUP SIGTERM SIGINT
+trap "rm -f $tempfile" EXIT
 
 Usage_full()
 {
@@ -63,12 +67,12 @@ Usage_full()
 	echo "See the man page for \"opareport\" for the full set of options." >&2
 	echo "By design, the tool ignores \"-o/--output\" report option." >&2
 	echo >&2
-	exit 0
 }
 
 if [[ "$1" == "--help" ]]
 then
 	Usage_full
+	exit 0
 fi
 
   # opareport -o links generates XML output of this general form:
@@ -106,6 +110,14 @@ function genReport()
 	curLinkID=""
 	prevLinkID=""
 	tempresults=""
+
+	/usr/sbin/opareport -x -Q -o links "$@" -d 3 > $tempfile
+	if [ ! -s $tempfile ]
+	then
+		echo "opaextractlink: Unable to get links report" >&2
+		Usage_full
+		exit 1
+	fi
 
 	while read line
 	do
@@ -183,7 +195,7 @@ function genReport()
 				tempresults=$RateStr";"$LinkDetailsStr";"$CableValuesStr";"$CableInfoValuesStr";"$Port1ValuesStr";"$Port2ValuesStr
 			fi
 		fi
-	done < <(/usr/sbin/opareport -x -Q -o links "$@" -d 3 | \
+	done < <(cat $tempfile | \
 		/usr/sbin/opaxmlextract -H -d \; -e Link:id -e Rate -e LinkDetails -e CableLength \
 		-e CableLabel -e CableDetails -e DeviceTechShort -e CableInfo.Length \
 		-e CableInfo.VendorName -e CableInfo.VendorPN -e CableInfo.VendorRev \

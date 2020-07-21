@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT3 ****************************************
 
-Copyright (c) 2015-2018, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -1839,7 +1839,7 @@ FSTATUS paGetMultiFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusP
 		IB_LOG_WARN_FMT(__func__, "Illegal range parameter: %d: must be greater than zero\n", range);
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	} else if (range > pm_config.subnet_size) {
-		IB_LOG_WARN_FMT(__func__, "Illegal range parameter: Exceeds maxmimum subnet size of %d\n", pm_config.subnet_size);
+		IB_LOG_WARN_FMT(__func__, "Illegal range parameter: Exceeds maximum subnet size of %d\n", pm_config.subnet_size);
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	}
 
@@ -2035,7 +2035,7 @@ FSTATUS paGetExtFocusPorts(Pm_t *pm, char *groupName, PmFocusPorts_t *pmFocusPor
 		IB_LOG_WARN_FMT(__func__, "Illegal range parameter: %d: must be greater than zero\n", range);
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	} else if (range > pm_config.subnet_size) {
-		IB_LOG_WARN_FMT(__func__, "Illegal range parameter: Exceeds maxmimum subnet size of %d\n", pm_config.subnet_size);
+		IB_LOG_WARN_FMT(__func__, "Illegal range parameter: Exceeds maximum subnet size of %d\n", pm_config.subnet_size);
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	}
 
@@ -2744,7 +2744,7 @@ FSTATUS paGetExtVFFocusPorts(Pm_t *pm, char *vfName, PmFocusPorts_t *pmVFFocusPo
 		IB_LOG_WARN_FMT(__func__, "Illegal range parameter: %d: must be greater than zero\n", range);
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	} else if (range > pm_config.subnet_size) {
-		IB_LOG_WARN_FMT(__func__, "Illegal range parameter: Exceeds maxmimum subnet size of %d\n", pm_config.subnet_size);
+		IB_LOG_WARN_FMT(__func__, "Illegal range parameter: Exceeds maximum subnet size of %d\n", pm_config.subnet_size);
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	}
 
@@ -2876,7 +2876,7 @@ FSTATUS paGetVFFocusPorts(Pm_t *pm, char *vfName, PmFocusPorts_t *pmVFFocusPorts
 		IB_LOG_WARN_FMT(__func__, "Illegal range parameter: %d: must be greater than zero\n", range);
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	} else if (range > pm_config.subnet_size) {
-		IB_LOG_WARN_FMT(__func__, "Illegal range parameter: Exceeds maxmimum subnet size of %d\n", pm_config.subnet_size);
+		IB_LOG_WARN_FMT(__func__, "Illegal range parameter: Exceeds maximum subnet size of %d\n", pm_config.subnet_size);
 		return(FINVALID_PARAMETER | STL_MAD_STATUS_STL_PA_INVALID_PARAMETER);
 	}
 

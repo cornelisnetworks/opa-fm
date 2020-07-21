@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT3 ****************************************
 
-Copyright (c) 2015-2018, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -528,7 +528,7 @@ pa_getPmConfigResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 
 	vStatus = vs_pool_size(&pm_pool, &memoryFootprint);
 	if (vStatus != VSTATUS_OK) {
-		IB_LOG_WARN_FMT(__func__, "Unable to get MemmoryFootPrint vStatus: %u", vStatus );
+		IB_LOG_WARN_FMT(__func__, "Unable to get memory footprint. vStatus: %u", vStatus );
 		memoryFootprint = (uint64)-1;
 	}
 	if (status == FSUCCESS) {
@@ -2607,7 +2607,7 @@ pa_getVFPortCountersResp(Mai_t *maip, pa_cntxt_t* pa_cntxt)
 			(flags & STL_PA_PC_FLAG_UNEXPECTED_CLEAR?" (Unexpected Clear)":""),
 			(flags & STL_PA_PC_FLAG_CLEAR_FAIL?" (Clear Unsuccessful)":""));
 		IB_LOG_DEBUG2_FMT(__func__, " VF Name: %s", vfName);
-		IB_LOG_DEBUG2_FMT(__func__, "Perfromance:");
+		IB_LOG_DEBUG2_FMT(__func__, "Performance:");
 		IB_LOG_DEBUG2_FMT(__func__, " Xmit Data:       %10"PRIu64" MB (%"PRIu64" Flits)",
 						  response.portVFXmitData/FLITS_PER_MB, response.portVFXmitData);
 		IB_LOG_DEBUG2_FMT(__func__, " Xmit Pkts:       %10"PRIu64" ", response.portVFXmitPkts);

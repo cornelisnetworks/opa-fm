@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -82,7 +82,7 @@ usage(char *cmd)
     fprintf(stderr,
             "  -t <VAL>\t\ttimeout in microseconds per snmp packet\n");
     fprintf(stderr,
-            "  -r <VAL>\t\tNumber of retrys per request\n");
+            "  -r <VAL>\t\tNumber of retries per request\n");
     fprintf(stderr,
             " \n\n"); 
     fflush(stderr);

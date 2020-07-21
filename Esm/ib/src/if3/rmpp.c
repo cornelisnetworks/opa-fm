@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -933,7 +933,7 @@ rmpp_send_multi_sa(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
             }
             if (chkSum != rmpp_cntxt->chkSum) {
                 IB_LOG_ERROR_FMT(__func__, 
-                                 "CHECKSUM FAILED [%d vs %d] for completeted %s[%s] RMPP TRANSACTION from LID[0x%x], TID["FMT_U64"]", 
+                                 "CHECKSUM FAILED [%d vs %d] for completed %s[%s] RMPP TRANSACTION from LID[0x%x], TID["FMT_U64"]", 
                                  chkSum, rmpp_cntxt->chkSum, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)rmpp_cntxt->mad.base.mclass, (int)rmpp_cntxt->mad.base.aid), 
                                  rmpp_cntxt->lid, rmpp_cntxt->tid);
             }
@@ -2031,7 +2031,7 @@ rmpp_open_cnx(
    if ((-1 != (usrId = rmpp_is_cnx_open(fd))) && (info = rmpp_get_userinfo(usrId))) {
        if (info->partial_close) {
            if (if3DebugRmpp) 
-               IB_LOG_WARN_FMT(__func__, "RMPP connection already openned for user %d", usrId); 
+               IB_LOG_WARN_FMT(__func__, "RMPP connection already opened for user %d", usrId); 
            // simply create the filters for a partially open RMPP connection
            if ((status = rmpp_create_filters(info, fd, fh_req_get, fh_req_gettable, mclass)) == VSTATUS_OK) {
                info->partial_close = 0;
@@ -3660,7 +3660,7 @@ rmpp_send_multi_vendor(Mai_t *maip, rmpp_cntxt_t *rmpp_cntxt)
             }
             if (chkSum != rmpp_cntxt->chkSum) {
                 IB_LOG_ERROR_FMT(__func__,
-                                 "CHECKSUM FAILED [%d vs %d] for completeted %s[%s] RMPP TRANSACTION from LID[0x%x], TID["FMT_U64"]",
+                                 "CHECKSUM FAILED [%d vs %d] for completed %s[%s] RMPP TRANSACTION from LID[0x%x], TID["FMT_U64"]",
                                  chkSum, rmpp_cntxt->chkSum, info->rmpp_get_method_text((int)rmpp_cntxt->method), info->rmpp_get_aid_name((int)rmpp_cntxt->mad.base.mclass, (int)rmpp_cntxt->mad.base.aid),
                                  rmpp_cntxt->lid, rmpp_cntxt->tid);
             }

@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -396,7 +396,7 @@ cs_convert_status (Status_t status) {
 	case VSTATUS_UNRECOVERABLE: return "108: unrecoverable error";
 	case VSTATUS_TIMEOUT_LIMIT: return "109: cumulative timeout limit reached";
 	case VSTATUS_ITERATOR_OUT_OF_DATE: return "119: data referred by case updated or deleted.";
-	case VSTATUS_INSUFFICIENT_PERMISSION: return "120: client has insufficient privillages";
+	case VSTATUS_INSUFFICIENT_PERMISSION: return "120: client has insufficient privileges";
 	case VSTATUS_INVALID_CQ_HANDLE: return "126: CQ handle is invalid";
 	case VSTATUS_INVALID_FORMAT: return "127: Data format is invalid";
 	case VSTATUS_REJECT: return "128: Request rejected";

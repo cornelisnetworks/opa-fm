@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT1 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -696,7 +696,7 @@ int loadConfig(void){
 				selected_device[i].guid = guid;
 			}
 			if (!selected_device[i].guid || !selected_device[i].port) {
-				fprintf(stderr, "Invalid config detected! Coundn't find device for instance %d!.\n", i);
+				fprintf(stderr, "Invalid config detected! Couldn't find device for instance %d!.\n", i);
 				releaseXmlConfig(xml_config, /* full */ 1);
 				return 1;
 			}

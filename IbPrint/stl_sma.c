@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2018, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -1706,7 +1706,7 @@ void PrintStlInformInfo(PrintDest_t *dest, int indent,
 	if (pInformInfo->IsGeneric)
 	{
 		char buf[8];
-		PrintFunc(dest, "%*s%sSubcribe: Type: %8s Generic: Trap: %5d "
+		PrintFunc(dest, "%*s%sSubscribe: Type: %8s Generic: Trap: %5d "
 				"QPN: 0x%06x\n",
 				indent, "",
 				pInformInfo->Subscribe?"":"Un",
@@ -1720,7 +1720,7 @@ void PrintStlInformInfo(PrintDest_t *dest, int indent,
 	} else {
 		char buf[8];
 		FormatTimeoutMult(buf, pInformInfo->u.Generic.u1.s.RespTimeValue);
-		PrintFunc(dest, "%*s%sSubcribe: Type: %8s VendorId: 0x%04x DeviceId: 0x%04x QPN: 0x%06x\n",
+		PrintFunc(dest, "%*s%sSubscribe: Type: %8s VendorId: 0x%04x DeviceId: 0x%04x QPN: 0x%06x\n",
 				indent, "",
 				pInformInfo->Subscribe?"":"Un",
 				IbNoticeTypeToText(pInformInfo->Type),

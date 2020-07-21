@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -653,7 +653,7 @@ sm_fsm_master(Mai_t *maip, char *nodename)
                    sm_getStateText(sm_smInfo.u.s.SMStateCurrent), sm_getStateText(theirSmInfo.u.s.SMStateCurrent), nodename, slid, theirSmInfo.PortGUID);
         } else {
             IB_LOG_INFINI_INFO_FMT(__func__, 
-                   "[%s] SM successfully acknowleded Handover from remote SM node %s, LID [0x%x], portguid ["FMT_U64"]",
+                   "[%s] SM successfully acknowledged Handover from remote SM node %s, LID [0x%x], portguid ["FMT_U64"]",
                    sm_getStateText(sm_smInfo.u.s.SMStateCurrent), nodename, slid, theirSmInfo.PortGUID);
         }
         /* make transition to MASTER state */

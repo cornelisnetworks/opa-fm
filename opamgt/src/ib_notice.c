@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -690,7 +690,7 @@ int create_sa_qp(struct omgt_port *port)
     }
 
     if (ibv_req_notify_cq(port->sa_qp_cq, 0)) {
-        OMGT_OUTPUT_ERROR(port, "Notice: req_notifiy_cq: failed\n");
+        OMGT_OUTPUT_ERROR(port, "Notice: req_notify_cq: failed\n");
         goto pd_fail;
     }
 

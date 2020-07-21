@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -386,7 +386,7 @@ void* omgt_oob_ssl_connect(struct omgt_port *port, void *context, int serverfd)
 		// is not presented by the server the connection will be rejected.
 		if (!(cert = SSL_get_peer_certificate(session))) {
 			status = OMGT_STATUS_NOT_FOUND;
-			OMGT_OUTPUT_ERROR(port, "server has no certifcate to verfiy\n");
+			OMGT_OUTPUT_ERROR(port, "server has no certificate to verify\n");
 		} else {
 			long result;
 

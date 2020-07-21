@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2018, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -193,7 +193,7 @@ static const char *sweep_reasons[] = {
 	[SM_SWEEP_REASON_FAILED_SWEEP] = "Problems during previous sweep, retrying.",
 	[SM_SWEEP_REASON_TRAP_EVENT] = "Trap event occurred that requires re-sweep.",
 	[SM_SWEEP_REASON_UNQUARANTINE] = "Last sweep succeeded with quarantined devices: clearing short-term quarantine and retrying.",
-	[SM_SWEEP_REASON_UNDETERMINED] = "No reason was specified (WARNING: abormal!)."
+	[SM_SWEEP_REASON_UNDETERMINED] = "No reason was specified (WARNING: abnormal!)."
 };
 
 SweepReason_t sm_resweep_reason = SM_SWEEP_REASON_INIT;
@@ -1104,7 +1104,7 @@ verify_admin_membership(Port_t *portp)
 				vfp->full_member[dg].member);
 		}
 	} else {
-		IB_LOG_ERROR_FMT(__func__,"Unabled to validate SM's membership in Admin VF.");
+		IB_LOG_ERROR_FMT(__func__,"Unable to validate SM's membership in Admin VF.");
 	}
 
 done:
@@ -1319,6 +1319,13 @@ unlock_bail:
 	vs_rwunlock(&old_topology_lock);
 	if (status != VSTATUS_OK)
 		IB_FATAL_ERROR_NODUMP("Failed to release old topology lock");
+
+	if (sm_state == SM_STATE_DISCOVERING) {
+		// Local port connection to neighbor switch (root switch) disrupted for some reason.
+		// LFTs might be incomplete (especially if the root switch is an unmanaged switch that was rebooted),
+		// so indicate that a fabric change has been detected to ensure update of LFTs.
+		topology_changed = 1;
+	}
 
 	status = sm_setup_local_node(sm_topop, &preDefTopology);
 	if (status != VSTATUS_OK) {

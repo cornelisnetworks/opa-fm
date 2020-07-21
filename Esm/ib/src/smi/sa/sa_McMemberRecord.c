@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -1409,7 +1409,7 @@ sa_McMemberRecord_Delete(Topology_t *topop, Mai_t *maip, uint32_t *records)
 	if ((mcGroup = sm_find_multicast_gid(mcmp->RID.MGID)) == NULL) {
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID_GID;
 		IB_LOG_VERBOSE_FMT_VF( vfp, "sa_McMemberRecord_Delete",
-			   "Cound not find multicast GID of "FMT_GID" in list of active multicast GIDs,"
+			   "Could not find multicast GID of "FMT_GID" in list of active multicast GIDs,"
 			   " for request from %s Port %d, PortGUID "FMT_U64", LID 0x%.8X",
 			   mcastGid[0], mcastGid[1], senderName, senderPort->index, senderGuid,
 			   maip->addrInfo.slid);
@@ -1419,7 +1419,7 @@ sa_McMemberRecord_Delete(Topology_t *topop, Mai_t *maip, uint32_t *records)
 	if ((mcMember = sm_find_multicast_member(mcGroup, mcmp->RID.PortGID)) == NULL) {
 		maip->base.status = MAD_STATUS_SA_REQ_INVALID_GID;
 		IB_LOG_VERBOSE_FMT_VF( vfp, "sa_McMemberRecord_Delete",
-			   "Cound not find multicast member with port GID of "FMT_GID" in list "
+			   "Could not find multicast member with port GID of "FMT_GID" in list "
 			   "for multicast group with GID "FMT_GID
 			   " for request from %s Port %d, PortGUID "FMT_U64", LID 0x%.8X",
 			   prefix, guid, mcastGid[0], mcastGid[1], senderName, senderPort->index, senderGuid,

@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -860,7 +860,7 @@ static void destroy_sa_qp(struct omgt_port *port)
 
     /* Free any remaining unregistration messages */
     if (!LIST_EMPTY(&port->pending_reg_msg_head)) {
-        OMGT_OUTPUT_ERROR(port, "Ignoring Pending Notice un-registation requests\n");
+        OMGT_OUTPUT_ERROR(port, "Ignoring Pending Notice un-registration requests\n");
         omgt_sa_remove_all_pending_reg_msgs(port);
     }
 

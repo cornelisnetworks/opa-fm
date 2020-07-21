@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT4 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -445,7 +445,7 @@ SubnetAdmRecv(
 				{
 					IBT_ELEMENT *pElement;
 
-					_DBG_DUMP_MEMORY(_DBG_LVL_ERROR, ("Coalesed"), (void*)buffer, messageSize);
+					_DBG_DUMP_MEMORY(_DBG_LVL_ERROR, ("Coalesced"), (void*)buffer, messageSize);
 
 					for (i=0,pElement = &pDgrmList->Element; pElement; i++,pElement=pElement->pNextElement)
 					{

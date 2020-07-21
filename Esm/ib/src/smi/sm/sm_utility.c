@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2018, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -2379,8 +2379,6 @@ sm_initialize_port(ParallelSweepContext_t *psc, SmMaiHandle_t *fd, Topology_t * 
 				needSet = 1;
 			}
 
-		} else {
-			portInfo.FlitControl.Interleave.s.DistanceEnabled = STL_PORT_FLIT_DISTANCE_MODE_NONE;
 		}
 
 		if (portp->portData->portInfo.PortMode.s.IsVLMarkerEnabled !=
@@ -2486,7 +2484,14 @@ sm_initialize_port(ParallelSweepContext_t *psc, SmMaiHandle_t *fd, Topology_t * 
 
 		if (portInfo.s4.OperationalVL != portp->portData->vl1) {
 			portInfo.s4.OperationalVL = portp->portData->vl1;	/* JSY - interop fix */
-			needSet = 1;
+			// Workaround for WFR Driver Bug:
+			// Driver does not retain the OperationalVL field value configured by the SM.  This causes
+			// the SM to issue a Set PortInfo on every sweep.
+			// The workaround is to set the OperationalVL field at least once, and ignore all other
+			// discrepancies between the OperationalVL and vl1 fields. 
+			if (nodep->nodeInfo.NodeType != NI_TYPE_CA || portp->state == IB_PORT_INIT) {
+				needSet = 1;
+			}
 		} else {
 			portInfo.s4.OperationalVL = 0;
 		}
@@ -2577,24 +2582,26 @@ sm_initialize_port(ParallelSweepContext_t *psc, SmMaiHandle_t *fd, Topology_t * 
 		needSet = 1;
 	}
 
-	/* check pkey enforcement on switch linked to FI */
-	if (enforcePkey) {
-		if (!portInfo.s3.PartitionEnforcementInbound) {
-			portInfo.s3.PartitionEnforcementInbound = 1;
-			needSet = 1;
-		}
-		if (!portInfo.s3.PartitionEnforcementOutbound) {
-			portInfo.s3.PartitionEnforcementOutbound = 1;
-			needSet = 1;
-		}
-	} else {
-		if (portInfo.s3.PartitionEnforcementInbound) {
-			portInfo.s3.PartitionEnforcementInbound = 0;
-			needSet = 1;
-		}
-		if (portInfo.s3.PartitionEnforcementOutbound) {
-			portInfo.s3.PartitionEnforcementOutbound = 0;
-			needSet = 1;
+	/* check pkey enforcement on switch external ports, N/A for HFIs and switch port 0 */
+	if (nodep->nodeInfo.NodeType == NI_TYPE_SWITCH && portp->index > 0) {
+		if (enforcePkey) {
+			if (!portInfo.s3.PartitionEnforcementInbound) {
+				portInfo.s3.PartitionEnforcementInbound = 1;
+				needSet = 1;
+			}
+			if (!portInfo.s3.PartitionEnforcementOutbound) {
+				portInfo.s3.PartitionEnforcementOutbound = 1;
+				needSet = 1;
+			}
+		} else {
+			if (portInfo.s3.PartitionEnforcementInbound) {
+				portInfo.s3.PartitionEnforcementInbound = 0;
+				needSet = 1;
+			}
+			if (portInfo.s3.PartitionEnforcementOutbound) {
+				portInfo.s3.PartitionEnforcementOutbound = 0;
+				needSet = 1;
+			}
 		}
 	}
 

@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -540,7 +540,7 @@ fm_mgr_get_error_str
 {
 	switch(err){
 		case FM_CONF_ERR_LEN:
-			return "Response data legth invalid";
+			return "Response data length invalid";
 		case FM_CONF_ERR_VERSION:
 			return "Client/Server version mismatch";
 		case FM_CONF_ERR_DISC:
@@ -570,7 +570,7 @@ fm_mgr_get_error_str
 		case FM_CONF_SEND_ERR:
 			return "Send error";
 		case FM_CONF_INIT_ERR:
-			return "Could not initalize resource";
+			return "Could not initialize resource";
 		case FM_CONF_NO_RESP:
 			return "No Response";
 		case FM_CONF_MAX_ERROR_NUM:

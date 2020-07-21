@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT3 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -2093,7 +2093,7 @@ static __inline void StoreU64(uint8* addr, uint64 value)
         vartype field2; \
         vartype field1;
 #else
-#error "Uknown Byte order, neither CPU_LE nor CPU_BE set"
+#error "Unknown Byte order, neither CPU_LE nor CPU_BE set"
 #endif  /* CPU_LE */
 
 #ifdef __cplusplus

@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -832,7 +832,7 @@ static NetConnection *NewConnection()  {
     rc = vs_pool_alloc(&fe_pool,sizeof(NetConnection),(void *)&conn);
 
     if (rc != VSTATUS_OK) {
-        IB_LOG_ERROR0("Unable to allocate memory for a NetConnetion");
+        IB_LOG_ERROR0("Unable to allocate memory for a NetConnection");
     }
     else {
         memset(conn, 0, sizeof(NetConnection));

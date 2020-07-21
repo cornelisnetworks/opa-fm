@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2018, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -1518,12 +1518,12 @@ static __inline uint8 ComputeErrBucket(uint32 errCnt, uint32 errThreshold)
 }
 
 void PmPrintExceededPort(char *buf, size_t bufSize, PmPort_t *pmportp, uint32 index, const char *statistic, uint32 threshold, uint32 value);
-void PmPrintExceededPortDetailsIntegrity(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex);
-void PmPrintExceededPortDetailsCongestion(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex);
-void PmPrintExceededPortDetailsSmaCongestion(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex);
-void PmPrintExceededPortDetailsBubble(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex);
-void PmPrintExceededPortDetailsSecurity(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex);
-void PmPrintExceededPortDetailsRouting(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex);
+void PmPrintExceededPortDetailsIntegrity(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint8 printErrorInfo);
+void PmPrintExceededPortDetailsCongestion(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint8 printErrorInfo);
+void PmPrintExceededPortDetailsSmaCongestion(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint8 printErrorInfo);
+void PmPrintExceededPortDetailsBubble(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint8 printErrorInfo);
+void PmPrintExceededPortDetailsSecurity(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint8 printErrorInfo);
+void PmPrintExceededPortDetailsRouting(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex, uint8 printErrorInfo);
 void PmFinalizePortStats(Pm_t *pm, PmPort_t *portp, uint32 index);
 boolean PmTabulatePort(Pm_t *pm, PmPort_t *portp, uint32 index,
 			   			uint32 *counterSelect);

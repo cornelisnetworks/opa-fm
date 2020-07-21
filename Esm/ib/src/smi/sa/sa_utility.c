@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -1327,7 +1327,7 @@ sa_send_multi(Mai_t *maip, sa_cntxt_t *sa_cntxt ) {
             }
             if (chkSum != sa_cntxt->chkSum) {
                 IB_LOG_ERROR_FMT(__func__,
-                       "CHECKSUM FAILED [%d vs %d] for completeted %s[%s] RMPP TRANSACTION from LID[0x%x], TID["FMT_U64"]",
+                       "CHECKSUM FAILED [%d vs %d] for completed %s[%s] RMPP TRANSACTION from LID[0x%x], TID["FMT_U64"]",
                        chkSum, sa_cntxt->chkSum, sa_getMethodText((int)sa_cntxt->method), sa_getAidName(sa_cntxt->mad.base.aid), 
                        sa_cntxt->lid, sa_cntxt->tid);
             }

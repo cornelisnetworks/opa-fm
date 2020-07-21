@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -82,7 +82,7 @@ cs_Queue_ptr cs_queue_CreateQueue( Pool_t *pool, uint32_t MaxElements ) {
         que->Capacity = MaxElements;
         cs_queue_MakeEmpty( que );
         IB_LOG_VERBOSE_FMT(__func__,
-               "Created Queue with entry count of %d and total Queue aize of %d",
+               "Created Queue with entry count of %d and total Queue size of %d",
                que->Capacity, qsize);
     }
     return que;

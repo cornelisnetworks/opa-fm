@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -137,6 +137,12 @@ static void FieldXmlParserEnd(IXmlParserState_t *input_state, const IXML_FIELD *
 		if (white && ! g_keep_newline && hasNewline) {
 			// no real content, but has a newline, probably an empty list
 			// no output here, and EndTag will be on a fresh line
+		} else if (white && g_keep_newline && hasNewline && len) {
+			// no real content, but has a newline (need to keep them)
+			// output here, trimmed from trailing spaces,
+			// EndTag will be on a last line with indent
+			len = IXmlTrimTrailingSpaces(content,len);
+			IXmlOutputPrintStrNewlineContent(output_state, content);
 		} else if (len) {
 			// tag had content, output it with appropriate XML escapes for
 			// special characters

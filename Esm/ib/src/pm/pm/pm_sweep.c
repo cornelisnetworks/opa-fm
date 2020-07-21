@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2018, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -142,6 +142,16 @@ typedef struct PmDbsyncSmInfo_s {
 } PmDbsyncSmInfo_t;
 PmDbsyncSmInfo_t      basePmDbsyncSmInfo;
 PmDbsyncSmInfo_t      newPmDbsyncSmInfo;
+
+typedef struct _PmLogErrorInfoThresholds {
+	uint32_t Integrity;
+	uint32_t Security;
+	uint32_t Routing;
+	/* Following thresholds not supported */
+	uint32_t Congestion;
+	uint32_t SmaCongestion;
+	uint32_t Bubble;
+} PmLogErrorInfoThresholds_t;
 
 /* Helper function to check if any add/delete changes happened to standby SMs. */
 static void checkForChangesInStandbySMs(PmDbsyncSmInfo_t *base, PmDbsyncSmInfo_t *new)
@@ -1101,7 +1111,10 @@ PmNode_t *get_pmnodep(Pm_t *pm, Guid_t guid, STL_LID lid)
 		pmnodep = PARENT_STRUCT(mi, PmNode_t, AllNodesEntry);
 		AtomicIncrementVoid(&pmnodep->refCount);
 		if (pm->LastSweepIndex == PM_IMAGE_INDEX_INVALID
-			|| pmnodep != pm->Image[pm->LastSweepIndex].LidMap[lid]) {
+			|| pmnodep->Image[pm->LastSweepIndex].lid != lid
+			|| (lid < pm->Image[pm->LastSweepIndex].lidMapSize
+				&& pmnodep != pm->Image[pm->LastSweepIndex].LidMap[lid]))
+		{
 			// lid changed since last pm sweep
 #if 1
 			// clear out any previous redirect
@@ -1755,7 +1768,7 @@ void threadDecompress(uint32_t argc, uint8_t **argv) {
 
 	if (argc != 6)
 	{
-		IB_LOG_ERROR ("Internal errror, invalid arguments", argc);
+		IB_LOG_ERROR ("Internal error, invalid arguments", argc);
 		return;
 	}
 
@@ -1951,7 +1964,7 @@ void threadCompress(uint32_t argc, uint8_t **argv) {
 
 	if (argc != 6) // the check avoids variable not used warning
 	{
-		IB_LOG_ERROR ("Internal errror, invalid arguments", 0);
+		IB_LOG_ERROR ("Internal error, invalid arguments", 0);
 		return;
 	}
 
@@ -4793,126 +4806,6 @@ void PmDestroy(Pm_t *pm)
 #endif
 }
 
-
-static __inline void
-FormatStlPortErrorInfo(char *buf, size_t bufsize, PmCompositeErrorInfo_t *err, STLErrorInfoMask_t *mask) {
-	int i;
-	PrintDest_t str;
-	PrintDestInitBuffer(&str, buf, bufsize);
-
-	// If mask is given and no bits are set return.
-	if (mask && mask->AsReg32 == 0) return;
-
-	// If mask is not given assume print any with a valid status.
-	if ((!mask || mask->s.UncorrectableErrorInfo) && err->UncorrectableErrorInfo.s.Status) {
-		PrintFunc(&str, "UncErr[%u:%s] ", err->UncorrectableErrorInfo.s.ErrorCode,
-			UncorrectableErrorInfoToText(err->UncorrectableErrorInfo.s.ErrorCode));
-	}
-
-	if ((!mask || mask->s.PortRcvErrorInfo) && err->PortRcvErrorInfo.s.Status) {
-		PrintFunc(&str, "RcvErr[%u:%s]", err->PortRcvErrorInfo.s.ErrorCode,
-			PortRcvErrorInfoToText(err->PortRcvErrorInfo.s.ErrorCode));
-
-		if (err->PortRcvErrorInfo.s.ErrorCode == 1
-			|| (err->PortRcvErrorInfo.s.ErrorCode >= 4 && err->PortRcvErrorInfo.s.ErrorCode <= 12))
-		{
-			// Flit 1
-			PrintFunc(&str, "={F1=0x");
-			for (i = 0; i < 8; i++) {
-				PrintFunc(&str, "%02x", err->PortRcvErrorInfo.ErrorInfo.EI1to12.PacketFlit1[i]);
-			}
-			PrintFunc(&str, ":%u", err->PortRcvErrorInfo.ErrorInfo.EI1to12.s.Flit1Bits);
-			//Flit 2
-			PrintFunc(&str, ";F2=0x");
-			for (i = 0; i < 8; i++) {
-				PrintFunc(&str, "%02x", err->PortRcvErrorInfo.ErrorInfo.EI1to12.PacketFlit2[i]);
-			}
-			PrintFunc(&str, ":%u} ", err->PortRcvErrorInfo.ErrorInfo.EI1to12.s.Flit2Bits);
-		} else if (err->PortRcvErrorInfo.s.ErrorCode == 13) {
-			PrintFunc(&str, "={F=0x");
-			for (i = 0; i < 8; i++) {
-				PrintFunc(&str, "%02x", err->PortRcvErrorInfo.ErrorInfo.EI13.PacketBytes[i]);
-			}
-			PrintFunc(&str, ":%u} ", err->PortRcvErrorInfo.ErrorInfo.EI13.s.FlitBits);
-		} else {
-			PrintFunc(&str, " ");
-		}
-	}
-
-	if ((!mask || mask->s.ExcessiveBufferOverrunInfo) && err->ExcessiveBufferOverrunInfo.s.Status) {
-		PrintFunc(&str, "ExsBufOvrn={SC=%u} ", err->ExcessiveBufferOverrunInfo.s.SC);
-	}
-
-	if ((!mask || mask->s.FMConfigErrorInfo) && err->FMConfigErrorInfo.s.Status) {
-		PrintFunc(&str, "FmCfgErr[%u:%s]", err->FMConfigErrorInfo.s.ErrorCode,
-			FMConfigErrorInfoToText(err->FMConfigErrorInfo.s.ErrorCode));
-		switch (err->FMConfigErrorInfo.s.ErrorCode) {
-		case 0:
-		case 1:
-		case 2:
-		case 8:
-			PrintFunc(&str, "={Distance=%u} ", err->FMConfigErrorInfo.ErrorInfo.EI0to2_8.Distance);
-			break;
-		case 3:
-		case 4:
-		case 5:
-			PrintFunc(&str, "={VL=%u} ", err->FMConfigErrorInfo.ErrorInfo.EI3to5.VL);
-			break;
-		case 6:
-			PrintFunc(&str, "={BadBits=%x} ", err->FMConfigErrorInfo.ErrorInfo.EI6.BadFlitBits);
-			break;
-		case 7:
-			PrintFunc(&str, "={SC=%x} ", err->FMConfigErrorInfo.ErrorInfo.EI7.SC);
-			break;
-		default:
-			PrintFunc(&str, " ");
-		}
-	}
-
-	if ((!mask || mask->s.PortRcvSwitchRelayErrorInfo) && err->PortRcvSwitchRelayErrorInfo.s.Status) {
-		PrintFunc(&str, "RxSwRlyErr[%u:%s]",
-			err->PortRcvSwitchRelayErrorInfo.s.ErrorCode,
-			PortRcvSwitchRelayErrorInfoToText(err->PortRcvSwitchRelayErrorInfo.s.ErrorCode));
-		switch (err->PortRcvSwitchRelayErrorInfo.s.ErrorCode) {
-		case 0:
-			PrintFunc(&str, "={DLID=0x%x;SLID=0x%x;SC=%u;RC=%u} ",
-				err->PortRcvSwitchRelayErrorInfo.ErrorInfo.EI0.DLID,
-				((err->PortRcvSwitchRelayErrorInfo.SLID_23_16 << 16)
-					| err->PortRcvSwitchRelayErrorInfo.SLID_15_0),
-				err->PortRcvSwitchRelayErrorInfo.ErrorInfo.EI0.SC,
-				err->PortRcvSwitchRelayErrorInfo.s.RC);
-			break;
-		case 2:
-			PrintFunc(&str, "={DLID=0x%x;SLID=0x%x;EPortNum=%u;RC=%u} ",
-				((err->PortRcvSwitchRelayErrorInfo.ErrorInfo.EI2.DLID_23_16 << 16)
-					| err->PortRcvSwitchRelayErrorInfo.ErrorInfo.EI2.DLID_15_0),
-				((err->PortRcvSwitchRelayErrorInfo.SLID_23_16 << 16)
-					| err->PortRcvSwitchRelayErrorInfo.SLID_15_0),
-				err->PortRcvSwitchRelayErrorInfo.ErrorInfo.EI2.EgressPortNum,
-				err->PortRcvSwitchRelayErrorInfo.s.RC);
-			break;
-		case 3:
-			PrintFunc(&str, "={EPortNum=%u;SC=%u} ",
-				err->PortRcvSwitchRelayErrorInfo.ErrorInfo.EI3.EgressPortNum,
-				err->PortRcvSwitchRelayErrorInfo.ErrorInfo.EI3.SC);
-			break;
-		default:
-			PrintFunc(&str, " ");
-		}
-	}
-
-	if ((!mask || mask->s.PortXmitConstraintErrorInfo) && err->PortXmitConstraintErrorInfo.s.Status) {
-		PrintFunc(&str, "TxCnstErr={pkey=0x%04x;SLID=0x%x} ",
-			err->PortXmitConstraintErrorInfo.P_Key, err->PortXmitConstraintErrorInfo.SLID);
-	}
-
-	if ((!mask || mask->s.PortRcvConstraintErrorInfo) && err->PortRcvConstraintErrorInfo.s.Status) {
-		PrintFunc(&str, "RxCnstErr[%u:%s]={pkey=0x%04x;SLID=0x%x} ",
-			err->PortRcvConstraintErrorInfo.s.ErrorCode,
-			PortRcvConstraintErrorInfoToText(err->PortRcvConstraintErrorInfo.s.ErrorCode),
-			err->PortRcvConstraintErrorInfo.P_Key, err->PortRcvConstraintErrorInfo.SLID);
-	}
-}
 // After all individual ports have been tabulated, we tabulate totals for
 // all groups.  We must do this after port tabulation because some counters
 // need to look at both sides of a link to pick the max or combine error
@@ -4924,12 +4817,12 @@ FormatStlPortErrorInfo(char *buf, size_t bufsize, PmCompositeErrorInfo_t *err, S
 static void PmFinalizeAllPortStats(Pm_t *pm)
 {
 	PmThresholdsExceededMsgLimitXmlConfig_t thresholdsExceededMsgCount = {0};
-	PmSweepErrorInfoThresholds_t thresholdsErrorInfoCount = {0};
+	PmLogErrorInfoThresholds_t thresholdsErrorInfoCount = {0}, pmErrorInfoThresholds = {0};
 	STL_LID lid;
 	PmImage_t *pmimagep = &pm->Image[pm->SweepIndex];
 	PmNode_t *pmnodep = NULL;
 	PmPort_t *pmportp;
-	uint8 portnum;
+	uint8 portnum, printErrorInfoSummary=0;
 
 	// get totalsLock so we can update RunningTotals and avoid any races
 	// with paClearPortCounters
@@ -4942,6 +4835,11 @@ static void PmFinalizeAllPortStats(Pm_t *pm)
 			}
 		}
 	}
+
+	pmErrorInfoThresholds.Integrity = pm_config.errorinfo_thresholds.Integrity;
+	pmErrorInfoThresholds.Security = pm_config.errorinfo_thresholds.Security;
+	pmErrorInfoThresholds.Routing = pm_config.errorinfo_thresholds.Routing;
+
 	(void)vs_rwunlock(&pm->totalsLock);
 
 	// Log Ports which exceeded threshold up to ThresholdExceededMsgLimit
@@ -4953,8 +4851,14 @@ static void PmFinalizeAllPortStats(Pm_t *pm)
 				char buf[512]; \
 				PmPort_t *pmportp2 = pmportp->Image[pm->SweepIndex].neighbor; \
 				PmPrintExceededPort(buf, sizeof(buf), pmportp, pm->SweepIndex, #stat, pm->Thresholds.stat, stat); \
-				PmPrintExceededPortDetails##stat(buf, pm, pmportp, pmportp2, pm->SweepIndex); \
+				uint8 printErrorInfo = (pmErrorInfoThresholds.stat == IB_UINT32_MAX \
+						|| thresholdsErrorInfoCount.stat < pmErrorInfoThresholds.stat); \
+				PmPrintExceededPortDetails##stat(buf, pm, pmportp, pmportp2, pm->SweepIndex, printErrorInfo); \
 				thresholdsExceededMsgCount.stat++; \
+				if (printErrorInfo) { \
+					thresholdsErrorInfoCount.stat++; \
+					printErrorInfoSummary = 1; \
+				} \
 			} \
 		} \
 	} while (0)
@@ -4970,57 +4874,6 @@ static void PmFinalizeAllPortStats(Pm_t *pm)
 				LOG_EXCEEDED_THRESHOLD(Bubble);
 				LOG_EXCEEDED_THRESHOLD(Security);
 				LOG_EXCEEDED_THRESHOLD(Routing);
-
-				if (pmportp->Image[pm->SweepIndex].u.s.gotErrorInfo) {
-					char buf[256] = {0};
-					STLErrorInfoMask_t mask = {0};
-
-					if (pm_config.errorinfo_thresholds.Integrity == IB_UINT32_MAX
-						|| thresholdsErrorInfoCount.Integrity < pm_config.errorinfo_thresholds.Integrity)
-					{
-						mask.s.PortRcvErrorInfo
-							= pmportp->Image[pm->SweepIndex].ErrorInfo.PortRcvErrorInfo.s.Status;
-						mask.s.ExcessiveBufferOverrunInfo
-							= pmportp->Image[pm->SweepIndex].ErrorInfo.ExcessiveBufferOverrunInfo.s.Status;
-						mask.s.UncorrectableErrorInfo
-							= pmportp->Image[pm->SweepIndex].ErrorInfo.UncorrectableErrorInfo.s.Status;
-						mask.s.FMConfigErrorInfo
-							= pmportp->Image[pm->SweepIndex].ErrorInfo.FMConfigErrorInfo.s.Status;
-
-						thresholdsErrorInfoCount.Integrity++;
-					}
-					if (pm_config.errorinfo_thresholds.Security == IB_UINT32_MAX
-						|| thresholdsErrorInfoCount.Security < pm_config.errorinfo_thresholds.Security)
-					{
-						mask.s.PortXmitConstraintErrorInfo
-							= pmportp->Image[pm->SweepIndex].ErrorInfo.PortXmitConstraintErrorInfo.s.Status;
-						mask.s.PortRcvConstraintErrorInfo
-							= pmportp->Image[pm->SweepIndex].ErrorInfo.PortRcvConstraintErrorInfo.s.Status;
-
-						thresholdsErrorInfoCount.Security++;
-					}
-					if (pm_config.errorinfo_thresholds.Routing == IB_UINT32_MAX
-						|| thresholdsErrorInfoCount.Routing < pm_config.errorinfo_thresholds.Routing)
-					{
-						mask.s.PortRcvSwitchRelayErrorInfo
-							= pmportp->Image[pm->SweepIndex].ErrorInfo.PortRcvSwitchRelayErrorInfo.s.Status;
-
-						thresholdsErrorInfoCount.Routing++;
-					}
-
-					// If one reg has a valid status and can be printed then print port
-					if (mask.AsReg32) {
-						FormatStlPortErrorInfo(buf, sizeof(buf), &pmportp->Image[pm->SweepIndex].ErrorInfo, &mask);
-						IB_LOG_INFINI_INFO_FMT(NULL, "ErrorInfo was set on %.*s Guid "FMT_U64" LID 0x%x Port %u: %s",
-							(int)sizeof(pmnodep->nodeDesc.NodeString), (char *)pmnodep->nodeDesc.NodeString,
-							pmnodep->NodeGUID, lid, portnum, buf);
-					} else {
-						FormatStlPortErrorInfo(buf, sizeof(buf), &pmportp->Image[pm->SweepIndex].ErrorInfo, NULL);
-						IB_LOG_INFO_FMT(NULL, "ErrorInfo was set on %.*s Guid "FMT_U64" LID 0x%x Port %u: %s",
-							(int)sizeof(pmnodep->nodeDesc.NodeString), (char *)pmnodep->nodeDesc.NodeString,
-							pmnodep->NodeGUID, lid, portnum, buf);
-					}
-				}
 			}
 		}
 	}
@@ -5036,7 +4889,7 @@ static void PmFinalizeAllPortStats(Pm_t *pm)
 	if (pmimagep->DowngradedPorts)
 		IB_LOG_INFINI_INFO_FMT(__func__, "%u Port%s Downgraded",
 			pmimagep->DowngradedPorts, pmimagep->DowngradedPorts > 1 ? "s were" : " was");
-	if (pmimagep->ErrorInfoPorts)
+	if (printErrorInfoSummary && pmimagep->ErrorInfoPorts)
 		IB_LOG_INFINI_INFO_FMT(__func__, "%u Port%s had ErrorInfo",
 			pmimagep->ErrorInfoPorts, pmimagep->ErrorInfoPorts > 1 ? "s" : "");
 }

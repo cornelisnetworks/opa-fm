@@ -28,7 +28,7 @@ void Usage()
 	fprintf(stderr, "    -b  oob_host       - perform out of band query. For this example, oob_host\n");
 	fprintf(stderr, "                         should have format hostname[:port] or a.b.c.d[:port]\n");
 	fprintf(stderr, "    -o/--output type   - output type\n");
-	fprintf(stderr, "    -x local_gid       - local gid for out-of-band queryies that need a local gid\n");
+	fprintf(stderr, "    -x local_gid       - local gid for out-of-band queries that need a local gid\n");
 	fprintf(stdout, "type: (default is node)\n");
 	fprintf(stdout, "    classportinfo - classportinfo of the SA\n");
 	fprintf(stdout, "    systemguid    - list of system image guids\n");

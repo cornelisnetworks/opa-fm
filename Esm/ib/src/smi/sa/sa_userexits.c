@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -85,7 +85,7 @@ multipathrecord_userexit(uint8_t *data, uint32_t *records) {
 Status_t
 servicerecord_userexit(Mai_t *maip) {
 
-	IB_ENTER("servicerecord_usrexit", maip, 0, 0, 0);
+	IB_ENTER("servicerecord_userexit", maip, 0, 0, 0);
 
 	IB_EXIT("servicerecord_userexit", VSTATUS_OK);
 	return(VSTATUS_OK);

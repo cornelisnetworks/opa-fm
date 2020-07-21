@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -369,7 +369,7 @@ static FSTATUS sa_query_common(SA_MAD * pSA, SA_MAD **ppRsp, uint32_t record_siz
 		(*ppRsp)->SaHdr.AttributeOffset, (*ppRsp)->SaHdr.AttributeOffset,
 		((*ppRsp)->SaHdr.AttributeOffset * 8));
 	OMGT_DBGPRINT(port, " Reserved (0x%x)\n", (*ppRsp)->SaHdr.Reserved);
-	OMGT_DBGPRINT(port, " ComponetMask (0x%016"PRIx64")\n", (*ppRsp)->SaHdr.ComponentMask);
+	OMGT_DBGPRINT(port, " ComponentMask (0x%016"PRIx64")\n", (*ppRsp)->SaHdr.ComponentMask);
 
 	// if no records IBTA 1.2.1 says AttributeOffset should be 0
 	if ((*ppRsp)->common.mr.AsReg8 == SUBN_ADM_GET_RESP) {

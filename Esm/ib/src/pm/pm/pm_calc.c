@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -36,6 +36,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "pm_topology.h"
 #include <limits.h>
 #include <iba/stl_helper.h>
+#include "stl_print.h" /* PrintDest_t */
 
 extern CounterSelectMask_t LinkDownIgnoreMask;
 
@@ -312,8 +313,143 @@ void PmPrintExceededPort(char *buf, size_t bufSize, PmPort_t *pmportp, uint32 in
 #define GET_NEIGHBOR_DELTA_VLCOUNTER(vlcntr, vl) \
 	(portImageNeighbor ? portImageNeighbor->DeltaStlVLPortCounters[vl].vlcntr : 0)
 
+static __inline void
+FormatStlPortErrorInfo(char *buf, size_t bufsize, PmCompositeErrorInfo_t *err, STLErrorInfoMask_t *mask) {
+	int i;
+	PrintDest_t str;
+	PrintDestInitBuffer(&str, buf, bufsize);
+
+	// If mask is given and no bits are set return.
+	if (mask && mask->AsReg32 == 0) return;
+
+	// If mask is not given assume print any with a valid status.
+	if ((!mask || mask->s.UncorrectableErrorInfo) && err->UncorrectableErrorInfo.s.Status) {
+		PrintFunc(&str, "UncErr[%u:%s] ", err->UncorrectableErrorInfo.s.ErrorCode,
+			UncorrectableErrorInfoToText(err->UncorrectableErrorInfo.s.ErrorCode));
+	}
+
+	if ((!mask || mask->s.PortRcvErrorInfo) && err->PortRcvErrorInfo.s.Status) {
+		PrintFunc(&str, "RcvErr[%u:%s]", err->PortRcvErrorInfo.s.ErrorCode,
+			PortRcvErrorInfoToText(err->PortRcvErrorInfo.s.ErrorCode));
+
+		if (err->PortRcvErrorInfo.s.ErrorCode == 1
+			|| (err->PortRcvErrorInfo.s.ErrorCode >= 4 && err->PortRcvErrorInfo.s.ErrorCode <= 12))
+		{
+			// Flit 1
+			PrintFunc(&str, "={F1=0x");
+			for (i = 0; i < 8; i++) {
+				PrintFunc(&str, "%02x", err->PortRcvErrorInfo.ErrorInfo.EI1to12.PacketFlit1[i]);
+			}
+			PrintFunc(&str, ":%u", err->PortRcvErrorInfo.ErrorInfo.EI1to12.s.Flit1Bits);
+			//Flit 2
+			PrintFunc(&str, ";F2=0x");
+			for (i = 0; i < 8; i++) {
+				PrintFunc(&str, "%02x", err->PortRcvErrorInfo.ErrorInfo.EI1to12.PacketFlit2[i]);
+			}
+			PrintFunc(&str, ":%u} ", err->PortRcvErrorInfo.ErrorInfo.EI1to12.s.Flit2Bits);
+		} else if (err->PortRcvErrorInfo.s.ErrorCode == 13) {
+			PrintFunc(&str, "={F=0x");
+			for (i = 0; i < 8; i++) {
+				PrintFunc(&str, "%02x", err->PortRcvErrorInfo.ErrorInfo.EI13.PacketBytes[i]);
+			}
+			PrintFunc(&str, ":%u} ", err->PortRcvErrorInfo.ErrorInfo.EI13.s.FlitBits);
+		} else {
+			PrintFunc(&str, " ");
+		}
+	}
+
+	if ((!mask || mask->s.ExcessiveBufferOverrunInfo) && err->ExcessiveBufferOverrunInfo.s.Status) {
+		PrintFunc(&str, "ExsBufOvrn={SC=%u} ", err->ExcessiveBufferOverrunInfo.s.SC);
+	}
+
+	if ((!mask || mask->s.FMConfigErrorInfo) && err->FMConfigErrorInfo.s.Status) {
+		PrintFunc(&str, "FmCfgErr[%u:%s]", err->FMConfigErrorInfo.s.ErrorCode,
+			FMConfigErrorInfoToText(err->FMConfigErrorInfo.s.ErrorCode));
+		switch (err->FMConfigErrorInfo.s.ErrorCode) {
+		case 0:
+		case 1:
+		case 2:
+		case 8:
+			PrintFunc(&str, "={Distance=%u} ", err->FMConfigErrorInfo.ErrorInfo.EI0to2_8.Distance);
+			break;
+		case 3:
+		case 4:
+		case 5:
+			PrintFunc(&str, "={VL=%u} ", err->FMConfigErrorInfo.ErrorInfo.EI3to5.VL);
+			break;
+		case 6:
+			PrintFunc(&str, "={BadBits=%x} ", err->FMConfigErrorInfo.ErrorInfo.EI6.BadFlitBits);
+			break;
+		case 7:
+			PrintFunc(&str, "={SC=%x} ", err->FMConfigErrorInfo.ErrorInfo.EI7.SC);
+			break;
+		default:
+			PrintFunc(&str, " ");
+		}
+	}
+
+	if ((!mask || mask->s.PortRcvSwitchRelayErrorInfo) && err->PortRcvSwitchRelayErrorInfo.s.Status) {
+		PrintFunc(&str, "RxSwRlyErr[%u:%s]",
+			err->PortRcvSwitchRelayErrorInfo.s.ErrorCode,
+			PortRcvSwitchRelayErrorInfoToText(err->PortRcvSwitchRelayErrorInfo.s.ErrorCode));
+		switch (err->PortRcvSwitchRelayErrorInfo.s.ErrorCode) {
+		case 0:
+			PrintFunc(&str, "={DLID=0x%x;SLID=0x%x;SC=%u;RC=%u} ",
+				err->PortRcvSwitchRelayErrorInfo.ErrorInfo.EI0.DLID,
+				((err->PortRcvSwitchRelayErrorInfo.SLID_23_16 << 16)
+					| err->PortRcvSwitchRelayErrorInfo.SLID_15_0),
+				err->PortRcvSwitchRelayErrorInfo.ErrorInfo.EI0.SC,
+				err->PortRcvSwitchRelayErrorInfo.s.RC);
+			break;
+		case 2:
+			PrintFunc(&str, "={DLID=0x%x;SLID=0x%x;EPortNum=%u;RC=%u} ",
+				((err->PortRcvSwitchRelayErrorInfo.ErrorInfo.EI2.DLID_23_16 << 16)
+					| err->PortRcvSwitchRelayErrorInfo.ErrorInfo.EI2.DLID_15_0),
+				((err->PortRcvSwitchRelayErrorInfo.SLID_23_16 << 16)
+					| err->PortRcvSwitchRelayErrorInfo.SLID_15_0),
+				err->PortRcvSwitchRelayErrorInfo.ErrorInfo.EI2.EgressPortNum,
+				err->PortRcvSwitchRelayErrorInfo.s.RC);
+			break;
+		case 3:
+			PrintFunc(&str, "={EPortNum=%u;SC=%u} ",
+				err->PortRcvSwitchRelayErrorInfo.ErrorInfo.EI3.EgressPortNum,
+				err->PortRcvSwitchRelayErrorInfo.ErrorInfo.EI3.SC);
+			break;
+		default:
+			PrintFunc(&str, " ");
+		}
+	}
+
+	if ((!mask || mask->s.PortXmitConstraintErrorInfo) && err->PortXmitConstraintErrorInfo.s.Status) {
+		PrintFunc(&str, "TxCnstErr={pkey=0x%04x;SLID=0x%x} ",
+			err->PortXmitConstraintErrorInfo.P_Key, err->PortXmitConstraintErrorInfo.SLID);
+	}
+
+	if ((!mask || mask->s.PortRcvConstraintErrorInfo) && err->PortRcvConstraintErrorInfo.s.Status) {
+		PrintFunc(&str, "RxCnstErr[%u:%s]={pkey=0x%04x;SLID=0x%x} ",
+			err->PortRcvConstraintErrorInfo.s.ErrorCode,
+			PortRcvConstraintErrorInfoToText(err->PortRcvConstraintErrorInfo.s.ErrorCode),
+			err->PortRcvConstraintErrorInfo.P_Key, err->PortRcvConstraintErrorInfo.SLID);
+	}
+}
+
+static void PmPrintExceededPortDetailsErrorInfo(PmPort_t *pmportp,  uint32 imageIndex, STLErrorInfoMask_t mask, char *buf)
+{
+
+	// If one reg has a valid status and can be printed then print port
+	if (mask.AsReg32) {
+		IB_LOG_WARN_FMT(NULL, "ErrorInfo was set on %.*s Guid "FMT_U64" LID 0x%x Port %u: %s",
+			(int)sizeof(pmportp->pmnodep->nodeDesc.NodeString), (char *)pmportp->pmnodep->nodeDesc.NodeString,
+			pmportp->pmnodep->NodeGUID, pmportp->pmnodep->Image[imageIndex].lid, pmportp->portNum, buf);
+	} else {
+		IB_LOG_INFO_FMT(NULL, "ErrorInfo was set on %.*s Guid "FMT_U64" LID 0x%x Port %u: No data found",
+			(int)sizeof(pmportp->pmnodep->nodeDesc.NodeString), (char *)pmportp->pmnodep->nodeDesc.NodeString,
+			pmportp->pmnodep->NodeGUID, pmportp->pmnodep->Image[imageIndex].lid, pmportp->portNum);
+	}
+}
+
 void PmPrintExceededPortDetailsIntegrity(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp,
-	PmPort_t *pmportneighborp, uint32 imageIndex)
+	PmPort_t *pmportneighborp, uint32 imageIndex, uint8 printErrorInfo)
 {
 	PmPortImage_t *portImage = &pmportp->Image[imageIndex];
 	PmPortImage_t *portImageNeighbor = (pmportneighborp ? &pmportneighborp->Image[imageIndex] : NULL);
@@ -379,12 +515,35 @@ void PmPrintExceededPortDetailsIntegrity(char *exceededMessage, Pm_t *pm, PmPort
 		buffSpace -= strlen(logMessage);
 		logMessage += strlen(logMessage);
 	}
-
 	IB_LOG_WARN_FMT(NULL, "%s Details: %s", exceededMessage, message);
+
+	if (printErrorInfo) {
+		if (portImage->u.s.gotErrorInfo) {
+			char buf[256] = {0};
+			STLErrorInfoMask_t mask = {0};
+
+			mask.s.PortRcvErrorInfo = portImage->ErrorInfo.PortRcvErrorInfo.s.Status;
+			mask.s.UncorrectableErrorInfo = portImage->ErrorInfo.UncorrectableErrorInfo.s.Status;
+			mask.s.FMConfigErrorInfo = portImage->ErrorInfo.FMConfigErrorInfo.s.Status;
+
+			FormatStlPortErrorInfo(buf, sizeof(buf), &portImage->ErrorInfo, &mask);
+			PmPrintExceededPortDetailsErrorInfo(pmportp, imageIndex, mask, buf);
+		}
+
+		if (portImageNeighbor && portImageNeighbor->u.s.gotErrorInfo) {
+			char buf[256] = {0};
+			STLErrorInfoMask_t mask = {0};
+
+			mask.s.ExcessiveBufferOverrunInfo = portImageNeighbor->ErrorInfo.ExcessiveBufferOverrunInfo.s.Status;
+
+			FormatStlPortErrorInfo(buf, sizeof(buf), &portImageNeighbor->ErrorInfo, &mask);
+			PmPrintExceededPortDetailsErrorInfo(pmportneighborp, imageIndex, mask, buf);
+		}
+	}
 }
 
 void PmPrintExceededPortDetailsCongestion(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp,
-	PmPort_t *pmportneighborp, uint32 imageIndex)
+	PmPort_t *pmportneighborp, uint32 imageIndex, uint8 printErrorInfo)
 {
 	PmPortImage_t *portImage = &pmportp->Image[imageIndex];
 	PmPortImage_t *portImageNeighbor = (pmportneighborp ? &pmportneighborp->Image[imageIndex] : NULL);
@@ -472,7 +631,7 @@ void PmPrintExceededPortDetailsCongestion(char *exceededMessage, Pm_t *pm, PmPor
 }
 
 void PmPrintExceededPortDetailsSmaCongestion(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp,
-	PmPort_t *pmportneighborp, uint32 imageIndex)
+	PmPort_t *pmportneighborp, uint32 imageIndex, uint8 printErrorInfo)
 {
 	PmPortImage_t *portImage = &pmportp->Image[imageIndex];
 	PmPortImage_t *portImageNeighbor = (pmportneighborp ? &pmportneighborp->Image[imageIndex] : NULL);
@@ -547,7 +706,7 @@ void PmPrintExceededPortDetailsSmaCongestion(char *exceededMessage, Pm_t *pm, Pm
 }
 
 void PmPrintExceededPortDetailsBubble(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp,
-	PmPort_t *pmportneighborp, uint32 imageIndex)
+	PmPort_t *pmportneighborp, uint32 imageIndex, uint8 printErrorInfo)
 {
 	PmPortImage_t *portImage = &pmportp->Image[imageIndex];
 	PmPortImage_t *portImageNeighbor = (pmportneighborp ? &pmportneighborp->Image[imageIndex] : NULL);
@@ -577,7 +736,8 @@ void PmPrintExceededPortDetailsBubble(char *exceededMessage, Pm_t *pm, PmPort_t 
 		exceededMessage, DeltaXmitWastedBW, DeltaXmitWaitData, XmitBubblePct, DeltaRcvBubble_N, RcvBubblePct);
 }
 
-void PmPrintExceededPortDetailsSecurity(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex)
+void PmPrintExceededPortDetailsSecurity(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp,
+	PmPort_t *pmportneighborp, uint32 imageIndex, uint8 printErrorInfo)
 {
 	PmPortImage_t *portImage = &pmportp->Image[imageIndex];
 	PmPortImage_t *portImageNeighbor = (pmportneighborp ? &pmportneighborp->Image[imageIndex] : NULL);
@@ -585,15 +745,47 @@ void PmPrintExceededPortDetailsSecurity(char *exceededMessage, Pm_t *pm, PmPort_
 	IB_LOG_WARN_FMT(NULL, "%s Details: TxCE=%"PRIu64", neighbor RxCE=%"PRIu64" ", exceededMessage,
 		GET_DELTA_COUNTER(PortXmitConstraintErrors),
 		GET_NEIGHBOR_DELTA_COUNTER(PortRcvConstraintErrors));
+
+	if (printErrorInfo) {
+		if (portImage->u.s.gotErrorInfo) {
+			char buf[256] = {0};
+			STLErrorInfoMask_t mask = {0};
+
+			mask.s.PortXmitConstraintErrorInfo = portImage->ErrorInfo.PortXmitConstraintErrorInfo.s.Status;
+			FormatStlPortErrorInfo(buf, sizeof(buf), &portImage->ErrorInfo, &mask);
+			PmPrintExceededPortDetailsErrorInfo(pmportp, imageIndex, mask, buf);
+		}
+
+		if (portImageNeighbor && portImageNeighbor->u.s.gotErrorInfo) {
+			char buf[256] = {0};
+			STLErrorInfoMask_t mask = {0};
+
+			mask.s.PortRcvConstraintErrorInfo =
+				portImageNeighbor->ErrorInfo.PortRcvConstraintErrorInfo.s.Status;
+			FormatStlPortErrorInfo(buf, sizeof(buf), &portImageNeighbor->ErrorInfo, &mask);
+			PmPrintExceededPortDetailsErrorInfo(pmportneighborp, imageIndex, mask, buf);
+		}
+	}
 }
-void PmPrintExceededPortDetailsRouting(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp, PmPort_t *pmportneighborp, uint32 imageIndex)
+
+void PmPrintExceededPortDetailsRouting(char *exceededMessage, Pm_t *pm, PmPort_t *pmportp,
+	PmPort_t *pmportneighborp, uint32 imageIndex, uint8 printErrorInfo)
 {
 	PmPortImage_t *portImage = &pmportp->Image[imageIndex];
-	/*PmPortImage_t *portImageNeighbor = (pmportneighborp ? &pmportneighborp->Image[imageIndex] : NULL); */
 
 	IB_LOG_WARN_FMT(NULL, "%s Details: RxSR=%"PRIu64" ", exceededMessage,
 		GET_DELTA_COUNTER(PortRcvSwitchRelayErrors));
+
+	if (printErrorInfo && portImage->u.s.gotErrorInfo) {
+		char buf[256] = {0};
+		STLErrorInfoMask_t mask = {0};
+
+		mask.s.PortRcvSwitchRelayErrorInfo = portImage->ErrorInfo.PortRcvSwitchRelayErrorInfo.s.Status;
+		FormatStlPortErrorInfo(buf, sizeof(buf), &portImage->ErrorInfo, &mask);
+		PmPrintExceededPortDetailsErrorInfo(pmportp, imageIndex, mask, buf);
+	}
 }
+
 #undef GET_DELTA_COUNTER
 #undef GET_NEIGHBOR_DELTA_COUNTER
 #undef GET_DELTA_VLCOUNTER

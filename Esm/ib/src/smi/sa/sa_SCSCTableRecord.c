@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -137,7 +137,7 @@ sa_SCSCTableRecord_Set(uint8_t *slp, Node_t *nodep, Port_t *in_portp, Port_t *ou
 		}
     } else {
         IB_LOG_ERROR_FMT( "sa_SCSCTableRecord_Set",
-               "Invalid call for non-swith or port 0 for Node Guid["FMT_U64"], %s",
+               "Invalid call for non-switch or port 0 for Node Guid["FMT_U64"], %s",
                nodep->nodeInfo.NodeGUID, sm_nodeDescString(nodep));
 		IB_EXIT("sa_SCSCTableRecord_Set", VSTATUS_BAD);
 		return(VSTATUS_BAD);

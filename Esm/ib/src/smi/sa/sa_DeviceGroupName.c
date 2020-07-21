@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -162,7 +162,7 @@ sa_DeviceGroupName_GetTable(Mai_t *maip, uint32_t *records) {
 		IB_LOG_WARN_FMT(__func__,
 			"sa_create_template_mask failed.  maip->base.aid 0x%x samad.header.mask 0x%"PRIx64,
 			maip->base.aid, samad.header.mask);
-		IB_EXIT("sa_DevceiGroupRecord_GetTable", VSTATUS_OK);
+		IB_EXIT("sa_DeviceGroupRecord_GetTable", VSTATUS_OK);
 		return VSTATUS_OK;
 	}
 

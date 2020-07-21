@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2018, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -3468,7 +3468,7 @@ _process_xml_config(void)
 
 	if (sm_config.smDorRouting.warn_threshold > SM_DOR_MAX_WARN_THRESHOLD) {
 		IB_LOG_WARN_FMT(__func__,
-			"MeshTorusTopology WarnThreshold of %d is higher than max suported %d. Defaulting to %d.",
+			"MeshTorusTopology WarnThreshold of %d is higher than max supported %d. Defaulting to %d.",
 			sm_config.smDorRouting.warn_threshold, SM_DOR_MAX_WARN_THRESHOLD, SM_DOR_MAX_WARN_THRESHOLD);
 		sm_config.smDorRouting.warn_threshold = SM_DOR_MAX_WARN_THRESHOLD;
 	}

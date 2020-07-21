@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -129,7 +129,7 @@ uint32_t fe_vieo_init(uint8_t *logName)
                                DM_IF3_MCLASS,&fd_dm);
 
         if (rc != VSTATUS_OK) {
-            IB_LOG_INFINI_INFORC("Failed to open Device Manager, wil try later. rc:", rc);
+            IB_LOG_INFINI_INFORC("Failed to open Device Manager, will try later. rc:", rc);
             fd_dm = INVALID_HANDLE;
         }
 

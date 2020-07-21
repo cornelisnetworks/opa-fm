@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -813,8 +813,8 @@ maif_match(Mai_t * data, Filter_t * filter)
 		     filter->dev,filter->port,(int)filter->qp);
     
     IB_LOG_VERBOSE("filter value & mask",filter);     
-    //IB_LOG_DATA("fliler value",&filter->value,sizeof(filter->value));    
-    //IB_LOG_DATA("fliler mask",&filter->mask,sizeof(filter->mask));
+    //IB_LOG_DATA("filter value",&filter->value,sizeof(filter->value));    
+    //IB_LOG_DATA("filter mask",&filter->mask,sizeof(filter->mask));
 
     if (filter->active & MAI_ACT_FMASK)
       {

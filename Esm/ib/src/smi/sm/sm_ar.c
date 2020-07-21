@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2018, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -211,8 +211,12 @@ sm_AdaptiveRoutingSwitchUpdate(ParallelSweepContext_t *psc, SmMaiHandle_t *fd, T
 
 			// The # of blocks we can send in this MAD. Normally 
 			// sm_config.lft_multi_block but will be less for the last send.
-			numBlocks = ( currentLid + lids_per_mad <= pgftCap) ?  sm_config.lft_multi_block :
-				1 + (pgftCap - (currentLid+1))/NUM_PGFT_ELEMENTS_BLOCK;
+			if (currentLid + lids_per_mad <= pgftCap) {
+				numBlocks = sm_config.lft_multi_block;
+			} else {
+				numBlocks = (pgftCap - currentLid) / NUM_PGFT_ELEMENTS_BLOCK;
+				if ( (pgftCap - currentLid) % NUM_PGFT_ELEMENTS_BLOCK) numBlocks++;
+			}
 			// AMOD = NNNN NNNN 0000 0ABB BBBB BBBB BBBB BBBB
 			// AMOD = numBlocks 0000 00[[[[[[current set]]]]]
 			amod = (numBlocks<<24) | currentSet;

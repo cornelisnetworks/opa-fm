@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -397,6 +397,13 @@ void IXmlOutputPrintStrLen(IXmlOutputState_t *state, const char* value, int len)
 void IXmlOutputPrintStr(IXmlOutputState_t *state, const char* value)
 {
 	IXmlOutputPrintStrLen(state, value, IB_INT32_MAX);
+}
+
+void IXmlOutputPrintStrNewlineContent(IXmlOutputState_t *state, const char* value)
+{
+	IXmlOutputPrintStrLen(state, value, IB_INT32_MAX);
+	state->flags &= ~IXML_OUTPUT_FLAG_START_NEED_NL;// don't need NL, using NL from content
+	state->flags &= ~IXML_OUTPUT_FLAG_HAD_CONTENT;	// not real content
 }
 
 void IXmlOutputStrLen(IXmlOutputState_t *state, const char *tag, const char* value, int len)
@@ -892,6 +899,19 @@ boolean IXmlIsWhitespace(const XML_Char *str, boolean *hasNewline)
 		}
 	}
 	return TRUE;
+}
+
+/* discard trailing whitespace in str in last line, return new length
+ * str modified in place
+ */
+unsigned IXmlTrimTrailingSpaces(XML_Char *str, unsigned len)
+{
+	// trim trailing spaces till newline
+	while (len && isspace(str[len-1]) && str[len-1]!='\r' && str[len-1]!='\n')
+		len--;
+	str[len] = 0;
+
+	return len;
 }
 
 /* discard leading and trailing whitespace in str, return new length

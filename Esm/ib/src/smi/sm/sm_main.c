@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2018, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -422,7 +422,7 @@ void sm_init_plt_table(void){
                 sa_dynamicPlt[6], sa_dynamicPlt[7], sa_dynamicPlt[8], sa_dynamicPlt[9]);
         vs_log_output_message(msgbuf, FALSE);
     } else {
-        sprintf(msgbuf, "SM: Dynamic packet lifetime is OFF, using saPacketLifetime contant %d", (unsigned int)sm_config.sa_packet_lifetime_n2);
+        sprintf(msgbuf, "SM: Dynamic packet lifetime is OFF, using saPacketLifetime constant %d", (unsigned int)sm_config.sa_packet_lifetime_n2);
         vs_log_output_message(msgbuf, FALSE);
     }
 	return;
@@ -2471,7 +2471,7 @@ smProcessReconfigureRequest(void){
 			}
 
 		} else {
-			IB_LOG_ERROR0("SM: Error processing reconfigure request; reRenderVirtaulFabricsConfig failed");
+			IB_LOG_ERROR0("SM: Error processing reconfigure request; reRenderVirtualFabricsConfig failed");
 		}
 
 	}

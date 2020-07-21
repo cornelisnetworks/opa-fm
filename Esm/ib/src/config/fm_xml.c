@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015-2018, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -242,7 +242,7 @@ int getXMLConfigData(uint8_t *buffer, uint32_t bufflen, uint32_t *filelen)
 		buffer[index++] = nextByte;
 		if (index >= bufflen) {
 			*filelen = 0;
-			IB_LOG_ERROR("Buffer overrun geting ESM config file! rc:",0x0020);
+			IB_LOG_ERROR("Buffer overrun getting ESM config file! rc:",0x0020);
 			fclose(file);
 			return -1;
 		}
@@ -940,7 +940,7 @@ void BasisU8XmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *field, void
 		return;
 	}
 	if (!content) {
-		IXmlParserPrintError(state, "Invald %s tag value, cannot be empty", field->tag);
+		IXmlParserPrintError(state, "Invalid %s tag value, cannot be empty", field->tag);
 		return;
     }
 
@@ -5452,7 +5452,7 @@ static void SmMcastDgXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD *fi
 	// if the group is disabled; skip it
 	if (mdgp->def_mc_create == 0) {
 		if (xml_parse_debug)
-			fprintf(stdout, "MulticastGroup ingnored: Create == 0\n");
+			fprintf(stdout, "MulticastGroup ignored: Create == 0\n");
 		goto cleanup;
 	}
 
@@ -6740,7 +6740,7 @@ static void FeTrapNumberParserEnd(IXmlParserState_t *state, const IXML_FIELD *fi
 	}
 
 	if (feTrapSubInstance >= FE_MAX_TRAP_SUBS && trap_num != TRAP_ALL) {
-		IXmlParserPrintWarning(state, "Trap Subscriptions Limit Excceded, only %u Subscriptions. Trap %u will be ignored",
+		IXmlParserPrintWarning(state, "Trap Subscriptions Limit Exceeded, only %u Subscriptions. Trap %u will be ignored",
 			FE_MAX_TRAP_SUBS, trap_num);
 		return;
 	}

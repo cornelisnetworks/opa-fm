@@ -1828,6 +1828,7 @@
     <!-- interval can be zero (do not sweep) or between 3 and 86400 seconds. -->
     <SweepInterval>300</SweepInterval> <!-- max seconds between sweeps -->                                             <!--SM_0_timer:dec-->
     <IgnoreTraps>0</IgnoreTraps> <!-- don't sweep nor log when traps occur -->
+    <TrapHoldDown>1</TrapHoldDown> <!-- seconds to delay sweep after trap -->
     <!-- When MinRespTimeout below is set to 0: -->
     <!-- The SM waits up to RespTimeout milliseconds for responses. -->
     <!-- the SM will retry the request, with the same timeout, up to -->

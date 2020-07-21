@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT5 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -207,7 +207,7 @@ int copyFile(char *src, char*dst, int compressFlag, long *compressedFileSize) {
 							break;
 						}
 						if (header.version != COMP_VERSION) {
-							SCP_LOG("Unsuported compress file verison %d", __FUNCTION__, header.version);
+							SCP_LOG("Unsuported compress file version %d", __FUNCTION__, header.version);
 							retVal = -1;
 							break;
 						}

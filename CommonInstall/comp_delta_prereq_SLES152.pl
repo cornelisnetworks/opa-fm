@@ -37,53 +37,102 @@
 #
 ## ==========================================================================
 #
-#Installation Prequisites array for fast fabric
-#and of tools component
-
-my @oftools_prereq = (
-			"glibc",
-			"libgcc_s1",
+#Installation Prequisites array for delta components
+my @opa_stack_prereq = (
+			"bash",
+			"kmod",
+			"rdma-core",
+			"rdma-ndd",
+			"systemd",
+			"coreutils",
+			"grep",
+			"libosmcomp5",
 			"libibmad5",
 			"libibumad3",
-			"libibverbs1",
-			"libhfi1verbs-rdmav2 ",
-			"libstdc++6",
-			"ibacm",
+			"rdma-core-devel",
 );
-$comp_prereq_hash{'oftools_prereq'} = \@oftools_prereq;
+$comp_prereq_hash{'opa_stack_prereq'} = \@opa_stack_prereq;
 
-my @fastfabric_prereq = (
+my @intel_hfi_prereq = (
+			"glibc",
+			"libgcc_s1",
+			"bash",
+			"udev",
+			"libudev-devel",
+			"python-base",
+			"libedit0",
+			"libncurses6",
+			"libnuma1",
+			"irqbalance",
+			"libatomic1",
+);
+$comp_prereq_hash{'intel_hfi_prereq'} = \@intel_hfi_prereq;
+
+my @mvapich2_gcc_hfi_prereq = (
+			"bash",
+			"glibc",
+			"libz1",
+			"mpi-selector",
+);
+$comp_prereq_hash{'mvapich2_gcc_hfi_prereq'} = \@mvapich2_gcc_hfi_prereq;
+
+my @mvapich2_intel_hfi_prereq = (
+			"bash",
+			"mpi-selector",
+);
+$comp_prereq_hash{'mvapich2_intel_hfi_prereq'} = \@mvapich2_intel_hfi_prereq;
+
+my @openmpi_gcc_hfi_prereq = (
 			"glibc",
 			"bash",
-			"expect",
-			"perl-base",
-			"tcl",
-			"libexpat1",
+			"libpsm_infinipath1",
+			"pkg-config",
 			"libgcc_s1",
-			"libibmad5",
-			"libibumad3",
+			"libgfortran4",
+			"gcc-fortran",
+			"libgomp1",
 			"libibverbs1",
-			"libhfi1verbs-rdmav2",
-			"libncurses5",
-			"libopenssl1_0_0",
+			"libquadmath0",
+			"librdmacm1",
 			"libstdc++6",
 			"libz1",
-			"bc",
-			"rdma", 
+			"opensm-devel",
+			"mpi-selector",
 );
-$comp_prereq_hash{'fastfabric_prereq'} = \@fastfabric_prereq;
+$comp_prereq_hash{'openmpi_gcc_hfi_prereq'} = \@openmpi_gcc_hfi_prereq;
 
-my @opamgt_sdk_prereq = (
+my @openmpi_intel_hfi_prereq = (
 			"bash",
-			"glibc",
-			"libgcc_s1",
-			"libibumad-devel",
-			"libibumad3",
-			"libibverbs-devel",
-			"libibverbs1",
-			"libopenssl-devel",
-			"libopenssl1_0_0",
-			"libstdc++6",
-			"openssl",
+			"mpi-selector",
 );
-$comp_prereq_hash{'opamgt_sdk_prereq'} = \@opamgt_sdk_prereq;
+$comp_prereq_hash{'openmpi_intel_hfi_prereq'} = \@openmpi_intel_hfi_prereq;
+
+my @mvapich2_prereq = (
+			"bash",
+			"libibverbs1",
+			"librdmacm1",
+			"glibc",
+			"libz1",
+			"mpi-selector",
+);
+$comp_prereq_hash{'mvapich2_prereq'} = \@mvapich2_prereq;
+
+my @openmpi_prereq = (
+			"glibc",
+			"bash",
+			"libz1",
+			"pkg-config",
+			"libgcc_s1",
+			"libgfortran3",
+			"gcc-fortran",
+			"libgomp1",
+			"libibverbs1",
+			"libquadmath0",
+			"librdmacm1",
+			"libstdc++6",
+			"libz1",
+			"opensm-libs3",
+			"opensm-devel",
+			"mpi-selector",
+);
+$comp_prereq_hash{'openmpi_prereq'} = \@openmpi_prereq;

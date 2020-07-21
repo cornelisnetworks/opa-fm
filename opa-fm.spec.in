@@ -1,6 +1,6 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
-# Copyright (c) 2015-2018, Intel Corporation
+# Copyright (c) 2015-2020, Intel Corporation
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -29,8 +29,8 @@
 
 #[ICS VERSION STRING: unknown]
 Name: opa-fm
-Version: 10.10.2.0
-Release: 44%{?dist}
+Version: 10.10.3.0
+Release: 11%{?dist}
 %if 0%{?rhel}
 Epoch: 1
 %endif
@@ -39,7 +39,7 @@ Summary: Intel Omni-Path Fabric Management Software
 License: BSD
 Url: https://github.com/intel/opa-fm
 # tarball created by:
-# git clone https://github.com/01org/opa-fm.git
+# git clone https://github.com/intel/opa-fm.git
 # cd opa-fm
 # tar czf opa-fm.tar.gz --exclude-cvs .
 Source0: %{name}.tar.gz
@@ -51,8 +51,10 @@ Requires: rdma
 BuildRequires: __RPM_BLDRQ1
 
 __RPM_BLDRQ2
+__RPM_BLDRQ3
 __RPM_RQ1
 __RPM_RQ2
+__RPM_RQ3
 
 __RPM_DEBUG
 
@@ -60,7 +62,7 @@ __RPM_DEBUG
 The %{name} contains Intel Omni-Path fabric management applications. This 
 includes: the Subnet Manager, Baseboard Manager, Performance Manager, 
 Fabric Executive, and some fabric management tools.
-IFSComponent: FM 10.10.2.0.44%{?dist}
+IFSComponent: FM 10.10.3.0.11%{?dist}
 
 %prep
 %setup -q -c

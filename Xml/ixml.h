@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -341,6 +341,7 @@ extern void IXmlOutputHex64(IXmlOutputState_t *state, const char *tag, uint64 va
 extern void IXmlOutputOptionalHex64(IXmlOutputState_t *state, const char *tag, uint64 value);
 extern void IXmlOutputPrintStrLen(IXmlOutputState_t *state, const char* value, int len);
 extern void IXmlOutputPrintStr(IXmlOutputState_t *state, const char* value);
+extern void IXmlOutputPrintStrNewlineContent(IXmlOutputState_t *state, const char* value);
 extern void IXmlOutputStrLen(IXmlOutputState_t *state, const char *tag, const char* value, int len);
 extern void IXmlOutputOptionalStrLen(IXmlOutputState_t *state, const char *tag, const char* value, int len);
 extern void IXmlOutputStr(IXmlOutputState_t *state, const char *tag, const char* value);
@@ -493,6 +494,11 @@ extern void IXmlParserEndNoop(struct IXmlParserState *state,
 
 /* return TRUE if current field's contents are empty or all whitespace */
 boolean IXmlIsWhitespace(const XML_Char *str, boolean *hasNewline);
+
+/* discard trailing whitespace in str in last line, return new length
+ * str modified in place
+ */
+unsigned IXmlTrimTrailingSpaces(XML_Char *str, unsigned len);
 
 /* discard leading and trailing whitespace in str, return new length
  * str modified in place

@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -91,7 +91,7 @@ sm_counter_t smCounters[smCountersMax] = {
 	[smCounterTrapRePath]				= { "SM RX TRAP(RePath)", 0, 0, 0 },
 	[smCounterTrapPortStateChg]			= { "SM RX TRAP(PortStateChg)", 0, 0, 0 },
 	[smCounterTrapLinkIntegrity]		= { "SM RX TRAP(LinkIntegrity)", 0, 0, 0 },
-	[smCounterTrapBufOverrun]			= { "SM RX TRAP(BufferOverun)", 0, 0, 0 },
+	[smCounterTrapBufOverrun]			= { "SM RX TRAP(BufferOverrun)", 0, 0, 0 },
 	[smCounterTrapFlowControl]			= { "SM RX TRAP(FlowControl)", 0, 0, 0 },
 	[smCounterTrapLocalChg]				= { "SM RX TRAP(LocalChange)", 0, 0, 0 },
 	[smCounterTrapSysImgChg]			= { "SM RX TRAP(SysImageChg)", 0, 0, 0 },

@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT6 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -1034,7 +1034,7 @@ const char* iba_event_record_msg(IB_EVENT_RECORD *p_event)
     switch (p_event->EventType) 
     {
         default:
-			return "Uknown Event";
+			return "Unknown Event";
             break;
 		case AsyncEventPathMigrated:
             return "QP Path Migrated";

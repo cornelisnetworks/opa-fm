@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -384,7 +384,7 @@ static Status_t dbsync_getSMDBCCCSync(SMSyncReq_t *syncReqp) {
         if ((status = dbSyncCmdToMgr(dbsyncfd_if3, DBSYNC_AID_SYNC, DBSYNC_AMOD_GET_CCC, 
 			NULL, 0, msgbuf, &len, &resp_status)) != VSTATUS_OK) {
             IB_LOG_INFO_FMT(__func__, 
-            	"get of stanby SM at portGuid "FMT_U64", LID=[0x%x] Failed (rc=%d)",
+            	"get of standby SM at portGuid "FMT_U64", LID=[0x%x] Failed (rc=%d)",
                 syncReqp->portguid, syncReqp->standbyLid, status);
         } else if (len <= 0) {
             status=VSTATUS_BAD;
@@ -784,7 +784,7 @@ static Status_t dbsync_setSMDBInform(SMSyncReq_t *syncReqp) {
                 } else {
                     /* successfully sync'd all INFORM records to standby SM */
                     IB_LOG_INFO_FMT(__func__, 
-                            "Full sync of %d INFORM records to SM at portGuid "FMT_U64", LID=[0x%x] was successfull",
+                            "Full sync of %d INFORM records to SM at portGuid "FMT_U64", LID=[0x%x] was successful",
                             numRecs, syncReqp->portguid, syncReqp->standbyLid);
                 }
             }
@@ -848,7 +848,7 @@ static Status_t dbsync_updateSMDBInform(SMSyncReq_t *syncReqp) {
             } else {
                 /* successfully sync'd all INFORM records to standby SM */
                 IB_LOG_INFO_FMT(__func__, 
-                        "%s of INFORM record to SM at portGuid "FMT_U64", LID=[0x%x] was successfull",
+                        "%s of INFORM record to SM at portGuid "FMT_U64", LID=[0x%x] was successful",
                         ((syncReqp->type == DBSYNC_TYPE_UPDATE) ? "UPDATE":"DELETE"), syncReqp->portguid, syncReqp->standbyLid);
             }
         }
@@ -1144,7 +1144,7 @@ static Status_t dbsync_setSMDBGroup(SMSyncReq_t *syncReqp) {
                 } else {
                     /* successfully sync'd all INFORM records to standby SM */
                     IB_LOG_INFO_FMT(__func__, 
-                            "Full sync of %d GROUP records to SM at portGuid "FMT_U64", LID=[0x%x] was successfull",
+                            "Full sync of %d GROUP records to SM at portGuid "FMT_U64", LID=[0x%x] was successful",
                             grpcnt, syncReqp->portguid, syncReqp->standbyLid);
                 }
             }
@@ -1260,7 +1260,7 @@ static Status_t dbsync_updateSMDBGroup(SMSyncReq_t *syncReqp) {
                 } else {
                     /* successfully sync'd all INFORM records to standby SM */
                     IB_LOG_INFO_FMT(__func__, 
-                            "%s of GROUP record to SM at portGuid "FMT_U64", LID=[0x%x] was successfull",
+                            "%s of GROUP record to SM at portGuid "FMT_U64", LID=[0x%x] was successful",
                             ((syncReqp->type == DBSYNC_TYPE_UPDATE) ? "UPDATE":"DELETE"), syncReqp->portguid, syncReqp->standbyLid);
                 }
             }
@@ -1568,7 +1568,7 @@ static Status_t dbsync_setSMDBService(SMSyncReq_t *syncReqp) {
                 } else {
                     /* successfully sync'd all INFORM records to standby SM */
                     IB_LOG_INFO_FMT(__func__, 
-                            "Full sync of %d SERVICE records with SM at portGuid "FMT_U64", LID=[0x%x] was successfull",
+                            "Full sync of %d SERVICE records with SM at portGuid "FMT_U64", LID=[0x%x] was successful",
                             numRecs, syncReqp->portguid, syncReqp->standbyLid);
                 }
             }
@@ -1625,7 +1625,7 @@ static Status_t dbsync_updateSMDBService(SMSyncReq_t *syncReqp) {
             } else {
                 /* successfully sync'd all INFORM records to standby SM */
                 IB_LOG_INFO_FMT(__func__, 
-                        "%s of SERVICE record to SM at portGuid "FMT_U64", LID=[0x%x] was successfull",
+                        "%s of SERVICE record to SM at portGuid "FMT_U64", LID=[0x%x] was successful",
                         ((syncReqp->type == DBSYNC_TYPE_UPDATE) ? "UPDATE":"DELETE"), syncReqp->portguid, syncReqp->standbyLid);
             }
         }
@@ -1887,7 +1887,7 @@ static Status_t dbsync_setSMDBMCRoot(SMSyncReq_t *syncReqp) {
             } else {
                 /* successfully sync'd to standby SM */
                 IB_LOG_INFO_FMT(__func__, 
-                        "Full sync of MC ROOT GUID "FMT_U64" with SM at portGuid "FMT_U64", LID=[0x%x] was successfull",
+                        "Full sync of MC ROOT GUID "FMT_U64" with SM at portGuid "FMT_U64", LID=[0x%x] was successful",
                         sm_mcSpanningTreeRootGuid, syncReqp->portguid, syncReqp->standbyLid);
             }
         }
@@ -2355,7 +2355,7 @@ static void dbsync_procReqQ(void) {
 
 /*
  * sm_dbsync main function
- * processes requests off the dbsync queue when in master mode, sending sync messages to stanby SMs
+ * processes requests off the dbsync queue when in master mode, sending sync messages to standby SMs
  * processes sync messages from master when in standby mode
 */
 void sm_dbsync(uint32_t argc, uint8_t ** argv) {

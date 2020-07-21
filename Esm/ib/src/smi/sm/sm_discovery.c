@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2018, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -411,7 +411,7 @@ _validate_predef_fields(Topology_t* topop, FabricData_t* pdtop, Node_t * upstrea
 
 		if (hitCnt > 1 && (pdtCfg->logMessageThreshold == 0 || forcePrint ||
 			topop->preDefLogCounts.totalLogCount < pdtCfg->logMessageThreshold)) {
-			IB_LOG_WARN_FMT(__func__, "Mutlitple expected links matched by node"
+			IB_LOG_WARN_FMT(__func__, "Multiple expected links matched by node"
 				" desc and port number. NodeGUID: "FMT_U64", NodeDesc: %s,"
 				" PortNum: %d", upstreamNodep->nodeInfo.NodeGUID, sm_nodeDescString(upstreamNodep),
 				upstreamPortp->index);

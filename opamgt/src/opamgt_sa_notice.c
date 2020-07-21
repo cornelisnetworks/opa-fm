@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -219,7 +219,7 @@ OMGT_STATUS_T omgt_sa_get_notice_report(struct omgt_port *port, STL_NOTICE **not
 		/* Otherwise error */
 		} else {
 			SA_MAD *samad = (SA_MAD *)&packet->MadData.common;
-			OMGT_OUTPUT_ERROR(port, "Unexpected OOB MAD recieved: %s %s(%s)\n",
+			OMGT_OUTPUT_ERROR(port, "Unexpected OOB MAD received: %s %s(%s)\n",
 				stl_class_str(samad->common.BaseVersion, samad->common.MgmtClass),
 				stl_method_str(samad->common.BaseVersion, samad->common.MgmtClass, samad->common.mr.AsReg8),
 				stl_attribute_str(samad->common.BaseVersion, samad->common.MgmtClass, hton16(samad->common.AttributeID)));

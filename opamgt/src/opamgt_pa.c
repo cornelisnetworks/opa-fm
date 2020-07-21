@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -251,7 +251,7 @@ pa_query_common(
 		rcv_mad->SaHdr.AttributeOffset, rcv_mad->SaHdr.AttributeOffset,
 		(rcv_mad->SaHdr.AttributeOffset * 8));
 	OMGT_DBGPRINT(port, " Reserved (0x%x)\n", rcv_mad->SaHdr.Reserved);
-	//OMGT_DBGPRINT(port, " ComponetMask (0x%016"PRIx64")\n", rcv_mad->SaHdr.ComponentMask);
+	//OMGT_DBGPRINT(port, " ComponentMask (0x%016"PRIx64")\n", rcv_mad->SaHdr.ComponentMask);
 
 	rec_sz = rcv_mad->SaHdr.AttributeOffset * 8;
 	if (rcv_mad->common.mr.AsReg8 == STL_PA_CMD_GET_RESP) {
@@ -401,7 +401,7 @@ omgt_pa_get_classportinfo(
 		request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
 	if (fstatus != FSUCCESS) {
 		if (port->pa_verbose)
-			OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n",  (unsigned int)fstatus);
+			OMGT_OUTPUT_ERROR(port, "Error, request failed: status=%u\n",  (unsigned int)fstatus);
 		goto done;
 	} else if (rsp_mad->SaHdr.AttributeOffset) {
 		if (port->pa_verbose)
@@ -490,7 +490,7 @@ iba_pa_single_mad_port_counters_response_query(
 		request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
 	if (fstatus != FSUCCESS) {
 		if (port->pa_verbose)
-			OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n",  (unsigned int)fstatus);
+			OMGT_OUTPUT_ERROR(port, "Error, request failed: status=%u\n",  (unsigned int)fstatus);
 		goto done;
 	} else if (rsp_mad->SaHdr.AttributeOffset) {
 		if (port->pa_verbose)
@@ -566,7 +566,7 @@ iba_pa_single_mad_clr_port_counters_response_query(
 		request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
 	if (fstatus != FSUCCESS) {
 		if (port->pa_verbose)
-			OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n",  (unsigned int)fstatus);
+			OMGT_OUTPUT_ERROR(port, "Error, request failed: status=%u\n",  (unsigned int)fstatus);
 		goto done;
 	} else if (rsp_mad->SaHdr.AttributeOffset) {
 		if (port->pa_verbose)
@@ -634,7 +634,7 @@ iba_pa_single_mad_clr_all_port_counters_response_query(
 		request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
 	if (fstatus != FSUCCESS) {
 		if (port->pa_verbose)
-			OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n",  (unsigned int)fstatus);
+			OMGT_OUTPUT_ERROR(port, "Error, request failed: status=%u\n",  (unsigned int)fstatus);
 		goto done;
 	} else if (rsp_mad->SaHdr.AttributeOffset) {
 		if (port->pa_verbose)
@@ -694,7 +694,7 @@ iba_pa_single_mad_get_pm_config_response_query(
 		request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
 	if (fstatus != FSUCCESS) {
 		if (port->pa_verbose)
-			OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n",  (unsigned int)fstatus);
+			OMGT_OUTPUT_ERROR(port, "Error, request failed: status=%u\n",  (unsigned int)fstatus);
 		goto done;
 	} else if (rsp_mad->SaHdr.AttributeOffset) {
 		if (port->pa_verbose)
@@ -761,7 +761,7 @@ iba_pa_single_mad_freeze_image_response_query(
 		request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
 	if (fstatus != FSUCCESS) {
 		if (port->pa_verbose)
-			OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n",  (unsigned int)fstatus);
+			OMGT_OUTPUT_ERROR(port, "Error, request failed: status=%u\n",  (unsigned int)fstatus);
 		goto done;
 	} else if (rsp_mad->SaHdr.AttributeOffset) {
 		if (port->pa_verbose)
@@ -828,7 +828,7 @@ iba_pa_single_mad_release_image_response_query(
 		request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
 	if (fstatus != FSUCCESS) {
 		if (port->pa_verbose)
-			OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n",  (unsigned int)fstatus);
+			OMGT_OUTPUT_ERROR(port, "Error, request failed: status=%u\n",  (unsigned int)fstatus);
 		goto done;
 	} else if (rsp_mad->SaHdr.AttributeOffset) {
 		if (port->pa_verbose)
@@ -895,7 +895,7 @@ iba_pa_single_mad_renew_image_response_query(
 		request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
 	if (fstatus != FSUCCESS) {
 		if (port->pa_verbose)
-			OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n",  (unsigned int)fstatus);
+			OMGT_OUTPUT_ERROR(port, "Error, request failed: status=%u\n",  (unsigned int)fstatus);
 		goto done;
 	} else if (rsp_mad->SaHdr.AttributeOffset) {
 		if (port->pa_verbose)
@@ -961,7 +961,7 @@ iba_pa_single_mad_move_freeze_response_query(
 		request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
 	if (fstatus != FSUCCESS) {
 		if (port->pa_verbose)
-			OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n",  (unsigned int)fstatus);
+			OMGT_OUTPUT_ERROR(port, "Error, request failed: status=%u\n",  (unsigned int)fstatus);
 		goto done;
 	} else if (rsp_mad->SaHdr.AttributeOffset) {
 		if (port->pa_verbose)
@@ -1029,7 +1029,7 @@ iba_pa_multi_mad_get_image_info_response_query (
 		request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
 	if (fstatus != FSUCCESS) {
 		if (port->pa_verbose)
-			OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n",  (unsigned int)fstatus);
+			OMGT_OUTPUT_ERROR(port, "Error, request failed: status=%u\n",  (unsigned int)fstatus);
 		goto done;
 	} else {
 		if (port->pa_verbose) {
@@ -1095,7 +1095,7 @@ iba_pa_multi_mad_group_list_response_query(
 			request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
 		if (fstatus != FSUCCESS) {
 			if (port->pa_verbose)
-				OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n", (unsigned int)fstatus);
+				OMGT_OUTPUT_ERROR(port, "Error, request failed: status=%u\n", (unsigned int)fstatus);
 			goto done;
 		} else {
 			if (port->pa_verbose) {
@@ -1164,7 +1164,7 @@ iba_pa_multi_mad_group_list2_response_query(
 			request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
 		if (fstatus != FSUCCESS) {
 			if (port->pa_verbose)
-				OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n", (unsigned int)fstatus);
+				OMGT_OUTPUT_ERROR(port, "Error, request failed: status=%u\n", (unsigned int)fstatus);
 			goto done;
 		} else {
 			if (port->pa_verbose) {
@@ -1251,7 +1251,7 @@ iba_pa_multi_mad_group_stats_response_query(
 			request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
 		if (fstatus != FSUCCESS){
 			if (port->pa_verbose)
-			OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n",(unsigned int)fstatus);
+			OMGT_OUTPUT_ERROR(port, "Error, request failed: status=%u\n",(unsigned int)fstatus);
 			goto done;
 		} else {
 			if (port->pa_verbose){
@@ -1340,7 +1340,7 @@ iba_pa_multi_mad_group_config_response_query(
 			request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
 		if (fstatus != FSUCCESS){
 			if (port->pa_verbose)
-			OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n",(unsigned int)fstatus);
+			OMGT_OUTPUT_ERROR(port, "Error, request failed: status=%u\n",(unsigned int)fstatus);
 			goto done;
 		} else {
 			if (port->pa_verbose){
@@ -1439,7 +1439,7 @@ iba_pa_multi_mad_group_nodeinfo_response_query(
 			request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
 		if (fstatus != FSUCCESS){
 			if (port->pa_verbose)
-				OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n",(unsigned int)fstatus);
+				OMGT_OUTPUT_ERROR(port, "Error, request failed: status=%u\n",(unsigned int)fstatus);
 			goto done;
 		} else {
 			if (port->pa_verbose){
@@ -1534,7 +1534,7 @@ iba_pa_multi_mad_group_linkinfo_response_query(
 			request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
 		if (fstatus != FSUCCESS){
 			if (port->pa_verbose)
-				OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n",(unsigned int)fstatus);
+				OMGT_OUTPUT_ERROR(port, "Error, request failed: status=%u\n",(unsigned int)fstatus);
 			goto done;
 		} else {
 			if (port->pa_verbose){
@@ -1633,7 +1633,7 @@ iba_pa_multi_mad_focus_ports_response_query (
 			request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
 		if (fstatus != FSUCCESS) {
 			if (port->pa_verbose)
-				OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n", (unsigned int)fstatus);
+				OMGT_OUTPUT_ERROR(port, "Error, request failed: status=%u\n", (unsigned int)fstatus);
 			goto done;
 		} else {
 			if (port->pa_verbose) {
@@ -1740,7 +1740,7 @@ iba_pa_multi_mad_focus_ports_multiselect_response_query (
 			request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
 		if (fstatus != FSUCCESS) {
 			if (port->pa_verbose)
-				OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n", (unsigned int)fstatus);
+				OMGT_OUTPUT_ERROR(port, "Error, request failed: status=%u\n", (unsigned int)fstatus);
 			goto done;
 		} else {
 			if (port->pa_verbose) {
@@ -1817,7 +1817,7 @@ iba_pa_multi_mad_vf_list_response_query(
 			request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
 		if (fstatus != FSUCCESS){
 			if (port->pa_verbose)
-			OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n",(unsigned int)fstatus);
+			OMGT_OUTPUT_ERROR(port, "Error, request failed: status=%u\n",(unsigned int)fstatus);
 			goto done;
 		} else {
 			if (port->pa_verbose){
@@ -1885,7 +1885,7 @@ iba_pa_multi_mad_vf_list2_response_query(
 			request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
 		if (fstatus != FSUCCESS) {
 			if (port->pa_verbose)
-				OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n", (unsigned int)fstatus);
+				OMGT_OUTPUT_ERROR(port, "Error, request failed: status=%u\n", (unsigned int)fstatus);
 			goto done;
 		} else {
 			if (port->pa_verbose) {
@@ -1973,7 +1973,7 @@ iba_pa_multi_mad_vf_info_response_query(
 			request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
 		if (fstatus != FSUCCESS){
 			if (port->pa_verbose)
-			OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n",(unsigned int)fstatus);
+			OMGT_OUTPUT_ERROR(port, "Error, request failed: status=%u\n",(unsigned int)fstatus);
 			goto done;
 		} else {
 			if (port->pa_verbose){
@@ -2062,7 +2062,7 @@ iba_pa_multi_mad_vf_config_response_query(
 			request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
 		if (fstatus != FSUCCESS) {
 			if (port->pa_verbose)
-				OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n", (unsigned int)fstatus);
+				OMGT_OUTPUT_ERROR(port, "Error, request failed: status=%u\n", (unsigned int)fstatus);
 			goto done;
 		} else {
 			if (port->pa_verbose) {
@@ -2140,7 +2140,7 @@ iba_pa_single_mad_vf_port_counters_response_query(
 		request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
 	if (fstatus != FSUCCESS) {
 		if (port->pa_verbose)
-			OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n",  (unsigned int)fstatus);
+			OMGT_OUTPUT_ERROR(port, "Error, request failed: status=%u\n",  (unsigned int)fstatus);
 		goto done;
 	} else if (rsp_mad->SaHdr.AttributeOffset) {
 		if (port->pa_verbose)
@@ -2203,7 +2203,7 @@ iba_pa_single_mad_clr_vf_port_counters_response_query(
 		request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
 	if (fstatus != FSUCCESS) {
 		if (port->pa_verbose)
-			OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n",  (unsigned int)fstatus);
+			OMGT_OUTPUT_ERROR(port, "Error, request failed: status=%u\n",  (unsigned int)fstatus);
 		goto done;
 	} else if (rsp_mad->SaHdr.AttributeOffset) {
 		if (port->pa_verbose)
@@ -2277,7 +2277,7 @@ iba_pa_multi_mad_vf_focus_ports_response_query (
 			request_data, sizeof(request_data), &rcv_buf_len, &rsp_mad, &query_result);
 		if (fstatus != FSUCCESS){
 			if (port->pa_verbose)
-			OMGT_OUTPUT_ERROR(port, "Error, requeset failed: status=%u\n",(unsigned int)fstatus);
+			OMGT_OUTPUT_ERROR(port, "Error, request failed: status=%u\n",(unsigned int)fstatus);
 			goto done;
 		} else {
 			if (port->pa_verbose){

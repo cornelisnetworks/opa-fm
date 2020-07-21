@@ -1,6 +1,6 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
-Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2015-2020, Intel Corporation
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -577,7 +577,7 @@ if3_mngr_mad_init (Mai_t * madp, ManagerInfo_t * fp)
 	madp->base.bversion = MAD_BVERSION;
     if (madp->base.mclass == MAD_CV_SUBN_ADM) {
         madp->base.cversion = SA_MAD_CVERSION;
-        IB_LOG_INFO("seting CVERSION for SA queries to 1.1 compliant seting ",
+        IB_LOG_INFO("setting CVERSION for SA queries to 1.1 compliant seting ",
                            madp->base.cversion); 
     } else
         madp->base.cversion = MAD_CVERSION;
@@ -907,7 +907,7 @@ if3_open (uint32_t dev, uint32_t port, uint8_t mclass, IBhandle_t * pfd)
 	mi->mclass = mclass;
 
 	/*
-	 * Now open mai and querry and other general incoming stuff
+	 * Now open mai and query and other general incoming stuff
 	 */
 	rc = mai_open (MAI_GSI_QP, dev, port, &mi->fdr);
 
@@ -1200,7 +1200,7 @@ if3_cntrl_cmd_send (IBhandle_t fd, uint8_t cmd)
 		}
 
 		if (rc != VSTATUS_OK && rc != VSTATUS_MAI_INTERNAL) {
-			IB_LOG_WARNRC("mai_recev failed rc:", rc);
+			IB_LOG_WARNRC("if3_recv failed rc:", rc);
 			goto bail;
 		}
 
@@ -1241,7 +1241,7 @@ open_mngr_cnx(uint32_t dev, uint32_t port,
     mi->mclass = mclass; 
     
     //
-    // open mai and querry and other general incoming stuff
+    // open mai and query and other general incoming stuff
     rc = mai_open(MAI_GSI_QP, dev, port, &mi->fdr);     
     if (rc != VSTATUS_OK) {
         IB_LOG_ERRORRC("can't open mai rc:", rc); 
@@ -1529,7 +1529,7 @@ if3_mngr_open_cnx_fe (uint32_t dev, uint32_t port, uint16_t mclass, IBhandle_t *
 	mi->mclass = mclass;
 
 	/*
-	 * Now open mai and querry and other general incoming stuff
+	 * Now open mai and query and other general incoming stuff
 	 */
 
 	rc = mai_open (MAI_GSI_QP, dev, port, &mi->fdr);
@@ -1872,7 +1872,7 @@ if3_dbsync_reply_to_mngr(IBhandle_t fhdl, Mai_t * fmad,
         
         // send DB Synch reply to the remote STL SM that issued the request
         if (VSTATUS_OK != (rc = rmpp_send_reply(fmad, rmpp_cntxt))) {
-            IB_LOG_ERROR_FMT(__func__, "Failed to foward RMPP request to manager: rc %d", rc); 
+            IB_LOG_ERROR_FMT(__func__, "Failed to forward RMPP request to manager: rc %d", rc); 
         }
         // deallocate the context
         rmpp_cntxt_release(rmpp_cntxt);
@@ -2076,7 +2076,7 @@ if3_mngr_send_mad(IBhandle_t fd, SA_MAD *psa, uint32_t dataLength, uint8_t *buff
         
         // forward FEC or STL manager single MAD request to STL manager
         if (VSTATUS_OK != (rc = rmpp_send_request(&mad, fe_cntxt))) {
-            IB_LOG_ERROR_FMT(__func__, "Failed to foward RMPP request to manager: rc %d", rc);
+            IB_LOG_ERROR_FMT(__func__, "Failed to forward RMPP request to manager: rc %d", rc);
         } else {
             // release context for single MAD request
             rmpp_cntxt_full_release(fe_cntxt);
@@ -2304,7 +2304,7 @@ if3_mngr_send_passthru_mad (IBhandle_t fd, SA_MAD *psa, uint32_t dataLength,
         
         // forward FEC or STL manager single MAD request to STL manager
         if (VSTATUS_OK != (rc = rmpp_send_request(&mad, fe_cntxt))) {
-            IB_LOG_ERROR_FMT(__func__, "Failed to foward RMPP request to manager: rc %d", rc); 
+            IB_LOG_ERROR_FMT(__func__, "Failed to forward RMPP request to manager: rc %d", rc); 
         } else {
             // release context for single MAD request
             rmpp_cntxt_full_release(fe_cntxt);
@@ -3062,7 +3062,7 @@ if3_mngr_register_sa (IBhandle_t fd, uint8_t * servName, uint64_t servID, uint32
 				IB_LOG_ERROR0 ("too many service records at SA");
 				rc = VSTATUS_BUSY;
 			} else {
-				IB_LOG_ERRORRC("error querrying SA rc:", rc);
+				IB_LOG_ERRORRC("error querying SA rc:", rc);
 
 			}
 			goto done;
