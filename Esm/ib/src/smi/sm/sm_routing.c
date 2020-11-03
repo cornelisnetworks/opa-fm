@@ -493,14 +493,14 @@ sm_Node_prune_portgroups(Node_t * switchp)
 			}
 
 			Port_t * port = &switchp->port[portIdx];
-			if (!sm_valid_port(port) || port->state < IB_PORT_INIT) continue;
-
-			if (linkrate_ge(port->portData->rate, maxRate)) {
-				if (linkrate_gt(port->portData->rate,maxRate)) {
-					newPm = 0;
-					maxRate = port->portData->rate;
+			if (sm_valid_port(port) && port->state >= IB_PORT_INIT) {
+				if (linkrate_ge(port->portData->rate, maxRate)) {
+					if (linkrate_gt(port->portData->rate,maxRate)) {
+						newPm = 0;
+						maxRate = port->portData->rate;
+					}
+					newPm |= ((STL_PORTMASK)1) << (port->index - 1) % STL_PORT_MASK_WIDTH;
 				}
-				newPm |= ((STL_PORTMASK)1) << (port->index - 1) % STL_PORT_MASK_WIDTH;
 			}
 
 			portIdx++;
