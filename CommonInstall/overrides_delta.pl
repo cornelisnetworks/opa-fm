@@ -138,7 +138,7 @@ sub overrides()
 		@Components = ( @delta_Components_rhel76 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES77" ) {
 		@Components = ( @delta_Components_rhel77 );
-	} elsif ( "$CUR_VENDOR_VER" eq "ES78" ) {
+	} elsif ( "$CUR_VENDOR_VER" eq "ES78" || "$CUR_VENDOR_VER" eq "ES79" ) {
 		@Components = ( @delta_Components_rhel78 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES8" ) {
 		@Components = ( @delta_Components_rhel8 );

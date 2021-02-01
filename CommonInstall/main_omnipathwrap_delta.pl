@@ -1280,7 +1280,7 @@ sub init_components
 						%opa_stack_dev_comp_info,
 						%opa_stack_rhel_comp_info,
 						);
-	} elsif ( "$CUR_VENDOR_VER" eq "ES78" ) {
+	} elsif ( "$CUR_VENDOR_VER" eq "ES78" || "$CUR_VENDOR_VER" eq "ES79" ) {
 		@Components = ( @Components_rhel78 );
 		@SubComponents = ( @SubComponents_newer );
 		%ComponentInfo = ( %ComponentInfo, %ibacm_comp_info,

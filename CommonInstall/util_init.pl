@@ -381,6 +381,11 @@ sub verify_distrib_files
 		Abort "Please contact your support representative...\n";
 	}
 
+	# Make ES79 look like ES78 for installation
+	if ( "$CUR_VENDOR_VER" eq "ES79" ) {
+		$CUR_VENDOR_VER="ES78";
+	}
+
 	my $archname;
 	my $supported_archname;
 	if ( "$supported_arch" ne "$ARCH"

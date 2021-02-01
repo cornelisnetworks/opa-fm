@@ -175,7 +175,7 @@ sub init_delta_info($)
 		@delta_kernel_srpms = ( @delta_kernel_srpms_rhel81 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES8" ) {
 		@delta_kernel_srpms = ( @delta_kernel_srpms_rhel8 );
-	} elsif ( "$CUR_VENDOR_VER" eq "ES78" ) {
+	} elsif ( "$CUR_VENDOR_VER" eq "ES78" || "$CUR_VENDOR_VER" eq "ES79" ) {
 		@delta_kernel_srpms = ( @delta_kernel_srpms_rhel78 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES77" ) {
 		@delta_kernel_srpms = ( @delta_kernel_srpms_rhel77 );
@@ -815,7 +815,7 @@ sub installed_delta_opa_stack()
 	} elsif ( "$CUR_VENDOR_VER" eq "ES8" ) {
 		return ( has_version_delta()
 				&& rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
-	} elsif ( "$CUR_VENDOR_VER" eq "ES78" ) {
+	} elsif ( "$CUR_VENDOR_VER" eq "ES78" || "$CUR_VENDOR_VER" eq "ES79" ) {
 		return ( has_version_delta()
 				&& rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
 	} elsif ( "$CUR_VENDOR_VER" eq "ES77" ) {
@@ -1139,7 +1139,7 @@ sub installed_intel_hfi()
 	} elsif ( "$CUR_VENDOR_VER" eq "ES77" ) {
 		return (has_version_delta()
 		     && rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
-	} elsif ( "$CUR_VENDOR_VER" eq "ES78" ) {
+	} elsif ( "$CUR_VENDOR_VER" eq "ES78" || "$CUR_VENDOR_VER" eq "ES79" ) {
 		return (has_version_delta()
 		     && rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
 	} elsif ( "$CUR_VENDOR_VER" eq "ES8" ) {
