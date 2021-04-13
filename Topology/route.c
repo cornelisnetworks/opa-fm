@@ -1705,7 +1705,7 @@ FSTATUS ValidateAllCreditLoopRoutes(FabricData_t *fabricp, EUI64 portGuid, uint8
    detail = cp->detail; 
    xmlFmt = (cp->format == 1) ? 1 : 0; 
    
-   if (!xmlFmt && cp->detail >= 3) {
+   if (!xmlFmt && cp->detail >= 4) {
       timeGetCallback(&sTotalTime, &g_cl_lock); 
       timeGetCallback(&sTime, &g_cl_lock); 
       printf("START build all the routes\n"); 
@@ -1722,7 +1722,7 @@ FSTATUS ValidateAllCreditLoopRoutes(FabricData_t *fabricp, EUI64 portGuid, uint8
    // collect routing information between all endnodes within the fabric 
    for (n1 = QListHead(&fabricp->AllFIs); n1 != NULL; n1 = QListNext(&fabricp->AllFIs, n1)) {
       NodeData *nodep1 = (NodeData *)QListObj(n1); 
-      if (!xmlFmt && cp->detail >= 3) {
+      if (!xmlFmt && cp->detail >= 4) {
          printf("START build all routes from %s\n", nodep1->NodeDesc.NodeString);
       }
 
@@ -1756,7 +1756,7 @@ FSTATUS ValidateAllCreditLoopRoutes(FabricData_t *fabricp, EUI64 portGuid, uint8
             }
          }
       }
-      if (!xmlFmt && cp->detail >= 3) {
+      if (!xmlFmt && cp->detail >= 4) {
          printf("END build all routes from %s\n", nodep1->NodeDesc.NodeString); 
          printf("%d of %d HFI nodes completed\n", ++nodeCount, QListCount(&fabricp->AllFIs));
       } else {
@@ -1766,7 +1766,7 @@ FSTATUS ValidateAllCreditLoopRoutes(FabricData_t *fabricp, EUI64 portGuid, uint8
       }
    }
    
-   if (!xmlFmt && cp->detail >= 3) {
+   if (!xmlFmt && cp->detail >= 4) {
       timeGetCallback(&eTime, &g_cl_lock); 
       printf("END build all the routes; elapsed time(usec)=%d, (sec)=%d\n", 
              (int)(eTime - sTime), ((int)(eTime - sTime)) / CL_TIME_DIVISOR); 
@@ -1787,7 +1787,7 @@ FSTATUS ValidateAllCreditLoopRoutes(FabricData_t *fabricp, EUI64 portGuid, uint8
    if (!CLFabricDataBuildRouteGraph(fabricp, routeSummaryCallback, timeGetCallback, cp, usedSLs)) {
       clGraphData_t *graphp; 
       
-      if (detail >= 3) {
+      if (detail >= 4) {
          //PYTHON: full_graph.summary('Full graph')
          (void)CLGraphDataSummary(&fabricp->Graph, (xmlFmt) ? "FullGraph" : "Full graph", dataSummaryCallback, cp); 
       }      
@@ -1796,7 +1796,7 @@ FSTATUS ValidateAllCreditLoopRoutes(FabricData_t *fabricp, EUI64 portGuid, uint8
       //PYTHON: pruned_graph.prune()
       (void)CLGraphDataPrune(&fabricp->Graph, timeGetCallback, detail, cp->quiet); 
       
-      if (detail >= 3) {
+      if (detail >= 4) {
          //PYTHON: pruned_graph.summary('Pruned graph')
          (void)CLGraphDataSummary(&fabricp->Graph, (xmlFmt) ? "PrunedGraph" : "Pruned graph", dataSummaryCallback, cp);
       }
@@ -1817,7 +1817,7 @@ FSTATUS ValidateAllCreditLoopRoutes(FabricData_t *fabricp, EUI64 portGuid, uint8
          
          //PYTHON: while split_graph :
          while (graphp) {
-            if (detail >= 3) {
+            if (detail >= 4) {
                if (xmlFmt) 
                   sprintf(title, "SplitGraph%d", count); 
                else 
@@ -1845,7 +1845,7 @@ FSTATUS ValidateAllCreditLoopRoutes(FabricData_t *fabricp, EUI64 portGuid, uint8
             count += 1;
          }
          
-         if (detail >= 3 && count > 1) 
+         if (detail >= 4 && count > 1) 
             printf("Dependencies split into %d disconnected graphs\n", count);
       }
       
@@ -1855,7 +1855,7 @@ FSTATUS ValidateAllCreditLoopRoutes(FabricData_t *fabricp, EUI64 portGuid, uint8
          fprintf(stderr, "Warning, failed to deallocate route credit loop data\n");
    }
    
-   if (!xmlFmt && cp->detail >= 3) {
+   if (!xmlFmt && cp->detail >= 4) {
       timeGetCallback(&eTotalTime, &g_cl_lock); 
       printf("END Credit loop validation; elapsed time(usec)=%12"PRIu64", (sec)=%12"PRIu64"\n", 
              (eTotalTime - sTotalTime), ((eTotalTime - sTotalTime)) / CL_TIME_DIVISOR); 

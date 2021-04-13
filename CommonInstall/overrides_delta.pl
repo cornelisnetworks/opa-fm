@@ -2,6 +2,7 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 #
 # Copyright (c) 2015-2020, Intel Corporation
+# Copyright (c) 2020, Cornelis Networks, Inc.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -94,6 +95,10 @@ my @delta_Components_rhel82 = ( "opa_stack", "mpi_selector", "intel_hfi",
 		"opa_stack_dev",
 		"delta_ipoib",
 		"delta_debug", );
+my @delta_Components_rhel83 = ( "opa_stack", "mpi_selector", "intel_hfi",
+		"opa_stack_dev",
+		"delta_ipoib",
+		"delta_debug", );
 my @delta_Components_sles15 = ( "opa_stack", "intel_hfi",
 		"opa_stack_dev",
 		"delta_ipoib",
@@ -146,6 +151,8 @@ sub overrides()
 		@Components = ( @delta_Components_rhel81 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES82" ) {
 		@Components = ( @delta_Components_rhel82 );
+	} elsif ( "$CUR_VENDOR_VER" eq "ES83" ) {
+		@Components = ( @delta_Components_rhel83 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES15" ) {
 		@Components = ( @delta_Components_sles15 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES151" ) {

@@ -2549,7 +2549,7 @@ static void* CLFabricDataBuildRouteGraphThread(void *context)
         srcHcaLstp = QListNext(&fabricp->FIs, srcHcaLstp), l++) {
       clDeviceData_t *src_hfip = (clDeviceData_t *)QListObj(srcHcaLstp); 
       
-      if (verbose >= 3) {
+      if (verbose >= 4) {
          timeGetCallback(&((clThreadContext_t *)context)->sTime, &g_cl_lock); 
          printf("[%d] START build all routes from %s (SLID 0x%08x)\n", 
                 (int)thrdId, src_hfip->nodep->NodeDesc.NodeString, src_hfip->Lid);
@@ -2722,7 +2722,7 @@ static void* CLFabricDataBuildRouteGraphThread(void *context)
          }
       }
       
-      if (verbose >= 3) {
+      if (verbose >= 4) {
          timeGetCallback(&((clThreadContext_t *)context)->eTime, &g_cl_lock); 
          printf("[%d] END build all routes from %s (SLID 0x%08x); elapsed time(usec)=%d, (sec)=%d\n", 
                 (int)thrdId, src_hfip->nodep->NodeDesc.NodeString, src_hfip->Lid, 
@@ -3005,7 +3005,7 @@ static int CLDijkstraCheckDistancesAndRoutes(clGraphData_t *graphp, uint32 **dis
       }
    }
    
-   if (verbose >= 3) 
+   if (verbose >= 4) 
       printf("Check route summary : %d dependency graph routes have errors\n", errors); 
    
    return errors;
@@ -3101,7 +3101,7 @@ NodeData* CLDataAddDevice(FabricData_t *fabricp, NodeData *nodep, STL_LID lid, i
          else 
             QListInsertTail(&fabricp->Switches, &ccDevicep->AllDeviceTypesEntry);   //PYTHON: fabric.switches.append(device)
          if (verbose >= 4 && !quiet) 
-            ProgressPrint(TRUE, "Add %s %s with GUID 0x%016"PRIx64" and LID 0x%08x", 
+            ProgressPrint(FALSE, "Add %s %s with GUID 0x%016"PRIx64" and LID 0x%08x", 
                    StlNodeTypeToText(nodep->NodeInfo.NodeType), 
                    (char *)nodep->NodeDesc.NodeString, 
                    nodep->NodeInfo.NodeGUID, 
@@ -3169,7 +3169,7 @@ FSTATUS CLDataAddConnection(FabricData_t *fabricp, PortData *portp1, PortData *p
             ccConnp->VL = portp1->pQOS->SC2VLMaps[Enum_SCVLt].SCVLMap[sc];
          
          if (verbose >= 4 && !quiet) 
-            ProgressPrint(TRUE, "Add connection 0x%016"PRIx64":%3.3u to 0x%016"PRIx64":%3.3u at rate %s",
+            ProgressPrint(FALSE, "Add connection 0x%016"PRIx64":%3.3u to 0x%016"PRIx64":%3.3u at rate %s",
                    portp1->nodep->NodeInfo.NodeGUID, portp1->PortNum, portp2->nodep->NodeInfo.NodeGUID,
                    portp2->PortNum, StlStaticRateToText(portp1->rate));
       }
@@ -3227,7 +3227,7 @@ FSTATUS CLDataAddRoute(FabricData_t *fabricp, STL_LID slid, STL_LID dlid, PortDa
             //PYTHON: fabric.routes += 1
             fabricp->RouteCount++; 
             if (verbose >= 4 && !quiet) 
-               ProgressPrint(TRUE, "Add route SLID 0x%08x to DLID 0x%08x at GUID 0x%016"PRIx64" using port %3.3u",
+               ProgressPrint(FALSE, "Add route SLID 0x%08x to DLID 0x%08x at GUID 0x%016"PRIx64" port %3.3u",
                       slid, dlid, sportp->nodep->NodeInfo.NodeGUID, sportp->PortNum);
          }
       }
@@ -3261,6 +3261,7 @@ FSTATUS CLFabricDataBuildRouteGraph(FabricData_t *fabricp,  ValidateCLRouteSumma
    ValidateCreditLoopRoutesContext_t *cp = (ValidateCreditLoopRoutesContext_t *)context; 
    int xmlFmt = (cp->format == 1) ? 1 : 0; 
    int verbose = (xmlFmt) ? 0 : cp->detail; 
+   int singleThreaded = 1;
    uint32 maxHcaListEntry = QListCount(&fabricp->FIs) / CL_MAX_THREADS; 
    clThreadContext_t *threadContexts; 
    
@@ -3278,7 +3279,7 @@ FSTATUS CLFabricDataBuildRouteGraph(FabricData_t *fabricp,  ValidateCLRouteSumma
       return status;
    }
    
-   if (!xmlFmt && verbose >= 3) {
+   if (!xmlFmt && verbose >= 4) {
       timeGetCallback(&sTime, &g_cl_lock); 
       printf("START build graphical layout of all the routes\n"); 
    }
@@ -3286,7 +3287,7 @@ FSTATUS CLFabricDataBuildRouteGraph(FabricData_t *fabricp,  ValidateCLRouteSumma
    pthread_mutex_init(&g_cl_lock, NULL); 
    
    //PYTHON: for src_hfi in fabric.hfis :
-   if (QListCount(&fabricp->FIs) < 100) {
+   if ((singleThreaded) || (QListCount(&fabricp->FIs) < 100)) {
       threadContexts[0].srcHcaList = QListHead(&fabricp->FIs); 
       
       // determine whether to start worker thread
@@ -3349,7 +3350,7 @@ FSTATUS CLFabricDataBuildRouteGraph(FabricData_t *fabricp,  ValidateCLRouteSumma
    if (!cp->quiet)
       ProgressPrint(TRUE, "Done Building Graphical Layout of All Routes");
    
-   if (!xmlFmt && verbose >= 3) {
+   if (!xmlFmt && verbose >= 4) {
       timeGetCallback(&eTime, &g_cl_lock); 
       printf("END build graphical layout of all the routes; elapsed time(usec)=%d, (sec)=%d\n", 
              (int)(eTime - sTime), ((int)(eTime - sTime)) / CL_TIME_DIVISOR); 
@@ -3358,7 +3359,7 @@ FSTATUS CLFabricDataBuildRouteGraph(FabricData_t *fabricp,  ValidateCLRouteSumma
    //
    // report routes summary
    if (hops_histogram != NULL) {
-      if (verbose >= 3) 
+      if (verbose >= 4) 
          routeSummaryCallback(present_routes, missing_routes, hops_histogram_entries, hops_histogram, context); 
       MemoryDeallocate(hops_histogram);
    }
@@ -3408,7 +3409,7 @@ void CLGraphDataPrune(clGraphData_t *graphp, ValidateCLTimeGetCallback_t timeGet
    uint32 ii, vv, progress = 1, round = 0; 
    uint64_t sTime = 0, eTime = 0; 
    
-   if (verbose >= 3 && !quiet) {
+   if (verbose >= 4 && !quiet) {
       timeGetCallback(&sTime, &g_cl_lock); 
       ProgressPrint(TRUE, "START pruning of graphical layout of all the routes");
    }
@@ -3430,7 +3431,7 @@ void CLGraphDataPrune(clGraphData_t *graphp, ValidateCLTimeGetCallback_t timeGet
                for (ii = 0; ii < vertexp->InboundCount; ii++) {
                   if (vertexp->Inbound[ii] >= 0) {
                      if (verbose >= 4 && !quiet) 
-                        ProgressPrint(TRUE, "Remove arc id %d since vertex id %d is pure sink", 
+                        ProgressPrint(FALSE, "Remove arc id %d since vertex id %d is pure sink", 
                                vertexp->Inbound[ii], vertexp->Id); 
                      //PYTHON: self.del_arc(arc_id);
                      CLGraphDataDelArc(graphp, vertexp->Inbound[ii]); 
@@ -3446,7 +3447,7 @@ void CLGraphDataPrune(clGraphData_t *graphp, ValidateCLTimeGetCallback_t timeGet
                for (ii = 0; ii < vertexp->OutboundCount; ii++) {
                   if (vertexp->Outbound[ii] >= 0) {
                      if (verbose >= 4 && !quiet) 
-                        ProgressPrint(TRUE, "Remove arc id %d since vertex id %d is pure source", 
+                        ProgressPrint(FALSE, "Remove arc id %d since vertex id %d is pure source", 
                                vertexp->Outbound[ii], vertexp->Id); 
                      //PYTHON: self.del_arc(arc_id);
                      CLGraphDataDelArc(graphp, vertexp->Outbound[ii]); 
@@ -3464,7 +3465,7 @@ void CLGraphDataPrune(clGraphData_t *graphp, ValidateCLTimeGetCallback_t timeGet
          ProgressPrint(TRUE, "Graph pruning round %d : deleted %d arcs", round, progress);
    }
    
-   if (verbose >= 3 && !quiet) {
+   if (verbose >= 4 && !quiet) {
       timeGetCallback(&eTime, &g_cl_lock); 
       ProgressPrint(TRUE, "END pruning of graphical layout of all the routes; elapsed time(usec)=%d, (sec)=%d", 
              (int)(eTime - sTime), ((int)(eTime - sTime)) / CL_TIME_DIVISOR);
@@ -3512,7 +3513,7 @@ FSTATUS CLDijkstraFindDistancesAndRoutes(clGraphData_t *graphp, clDijkstraDistan
    
    //PYTHON: num_vertices = graph.num_vertices
    numVertices = graphp->NumVertices; 
-   if (verbose >= 3) 
+   if (verbose >= 4) 
       printf("Calculating distances for %d vertices in graph\n", numVertices); 
    
    //PYTHON: for i in graph.vertices :
@@ -3735,7 +3736,7 @@ FSTATUS CLDijkstraFindDistancesAndRoutes(clGraphData_t *graphp, clDijkstraDistan
       }
    }
    
-   if (verbose >= 3) 
+   if (verbose >= 4) 
       printf("Maximum distance is %d\n", maxDistance); 
    
    // deallocate temporary buffers
@@ -3821,10 +3822,8 @@ void CLDijkstraFindCycles(FabricData_t *fabricp,
             uint32 step; 
             clVertixData_t *j; 
             
-            if (dii || verbose >= 3) {
+            if (dii || verbose >= 4) {
                (void)linkSummaryCallback(i->Id, ib_connection_source_to_str(fabricp, i->Connection), dii, 1, indent, context); 
-               if (verbose >= 4)
-                   (void)pathSummaryCallback(fabricp, i->Connection, indent + 4, context);                                
             }
             
             j = i;      //PYTHON: j = i
@@ -3847,8 +3846,9 @@ void CLDijkstraFindCycles(FabricData_t *fabricp,
             if (drp->routes) {
                //PYTHON: for step in range(0, dii) :
                for (step = 0; step < dii; step++) {
-                  (void)linkStepSummaryCallback(j->Id, ib_connection_source_to_str(fabricp, j->Connection), step, 1, indent + 4, context);
-                  if (verbose >= 4)
+                  if (verbose >= 2)
+					  (void)linkStepSummaryCallback(j->Id, ib_connection_source_to_str(fabricp, j->Connection), step, 1, indent + 4, context);
+                  if (verbose >= 3)
                       (void)pathSummaryCallback(fabricp, j->Connection, indent + 8, context);                   
                   // insert XML token to indicate the end of link step summary section
                   if (xmlFmt) 
@@ -3868,8 +3868,9 @@ void CLDijkstraFindCycles(FabricData_t *fabricp,
                for (step = 0; step < dii; step++) {
                   uint32 jj; 
                   
-                  (void)linkStepSummaryCallback(j->Id, ib_connection_source_to_str(fabricp, j->Connection), step, 1, indent + 4, context); 
-                  if (verbose >= 4)
+                  if (verbose >= 2)
+					  (void)linkStepSummaryCallback(j->Id, ib_connection_source_to_str(fabricp, j->Connection), step, 1, indent + 4, context); 
+                  if (verbose >= 3)
                       (void)pathSummaryCallback(fabricp, j->Connection, indent + 8, context); 
                   // insert XML token to indicate the end of link step summary section
                   if (xmlFmt) 
@@ -3940,7 +3941,7 @@ void CLDijkstraFindCycles(FabricData_t *fabricp,
       }
    }
    
-   if (verbose >= 3) {
+   if (verbose >= 4) {
       if (!cycles) 
          printf("Routes are deadlock free!\n"); 
       else {

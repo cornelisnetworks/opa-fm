@@ -85,7 +85,6 @@ $comp_prereq_hash{'mvapich2_intel_hfi_prereq'} = \@mvapich2_intel_hfi_prereq;
 my @openmpi_gcc_hfi_prereq = (
 			"glibc",
 			"bash",
-			"libpsm_infinipath1",
 			"pkg-config",
 			"libgcc_s1",
 			"libgfortran3",

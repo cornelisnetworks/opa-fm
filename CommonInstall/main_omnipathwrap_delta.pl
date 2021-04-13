@@ -2,6 +2,7 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 #
 # Copyright (c) 2015-2020, Intel Corporation
+# Copyright (c) 2020, Cornelis Networks, Inc.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -94,6 +95,8 @@ my @Components_rhel8 = ( "opa_stack", "mpi_selector",
 my @Components_rhel81 = ( "opa_stack", "mpi_selector",
 		@OmniPathAllComponents );
 my @Components_rhel82 = ( "opa_stack", "mpi_selector",
+		@OmniPathAllComponents );
+my @Components_rhel83 = ( "opa_stack", "mpi_selector",
 		@OmniPathAllComponents );
 
 @Components = ( );
@@ -942,6 +945,36 @@ my %intel_hfi_rhel82_comp_info = (
 					},
 );
 
+my %intel_hfi_rhel83_comp_info = (
+	"intel_hfi" =>	{ Name => "Intel HFI Components",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  PreReq => " opa_stack ", CoReq => " oftools ",
+						# TBD - HasFirmware - FW update
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [
+									"hfi1-firmware", "hfi1-firmware_debug"
+								],
+					  UserRpms => [ #"libhfi1", "libhfi1-static",
+									"libpsm2",
+									"libpsm2-devel", "libpsm2-compat",
+									"libfabric", "libfabric-devel",
+									"libfabric-psm2", "libfabric-verbs",
+									"hfi1-diagtools-sw", "hfidiags",
+								],
+					  DebugRpms =>  [ #"hfi1_debuginfo",
+									"hfi1-diagtools-sw-debuginfo",
+									"libpsm2-debuginfo", #"libhfi1-debuginfo"
+								],
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ "intel_hfi" ],
+					  StartupScript => "",
+					  StartupParams => [ ]
+					},
+);
+
 # For SLES12sp3 that has different name for libpsm2
 my %intel_hfi_sles123_comp_info = (
 	"intel_hfi" =>	{ Name => "Intel HFI Components",
@@ -1309,6 +1342,14 @@ sub init_components
 		@SubComponents = ( @SubComponents_newer );
 		%ComponentInfo = ( %ComponentInfo, %ibacm_comp_info,
 						%intel_hfi_rhel82_comp_info,
+						%opa_stack_dev_comp_info,
+						%opa_stack_rhel_comp_info,
+						);
+	} elsif ( "$CUR_VENDOR_VER" eq "ES83" ) {
+		@Components = ( @Components_rhel83 );
+		@SubComponents = ( @SubComponents_newer );
+		%ComponentInfo = ( %ComponentInfo, %ibacm_comp_info,
+						%intel_hfi_rhel83_comp_info,
 						%opa_stack_dev_comp_info,
 						%opa_stack_rhel_comp_info,
 						);

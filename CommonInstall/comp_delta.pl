@@ -2,6 +2,7 @@
 # BEGIN_ICS_COPYRIGHT8
 #
 # Copyright (c) 2015-2020, Intel Corporation
+# Copyright (c) 2020, Cornelis Networks, Inc.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -86,6 +87,7 @@ my @delta_kernel_srpms_rhel78 = ( 'kmod-ifs-kernel-updates' );
 my @delta_kernel_srpms_rhel8 = ( 'kmod-ifs-kernel-updates' );
 my @delta_kernel_srpms_rhel81 = ( 'kmod-ifs-kernel-updates' );
 my @delta_kernel_srpms_rhel82 = ( 'kmod-ifs-kernel-updates' );
+my @delta_kernel_srpms_rhel83 = ( 'kmod-ifs-kernel-updates' );
 my @delta_kernel_srpms = ( );
 
 # This provides information for all kernel srpms
@@ -169,6 +171,8 @@ sub init_delta_info($)
 		} else {
 			@delta_kernel_srpms = (@delta_kernel_srpms_rhel74);
 		}
+	} elsif ( "$CUR_VENDOR_VER" eq "ES83" ) {
+		@delta_kernel_srpms = ( @delta_kernel_srpms_rhel83 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES82" ) {
 		@delta_kernel_srpms = ( @delta_kernel_srpms_rhel82 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES81" ) {
@@ -806,6 +810,9 @@ sub installed_delta_opa_stack()
 			return ( has_version_delta()
 			      && rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
 		}
+	} elsif ( "$CUR_VENDOR_VER" eq "ES83" ) {
+		return ( has_version_delta()
+				&& rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
 	} elsif ( "$CUR_VENDOR_VER" eq "ES82" ) {
 		return ( has_version_delta()
 				&& rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
@@ -1149,6 +1156,9 @@ sub installed_intel_hfi()
 		return (has_version_delta()
 		     && rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
 	} elsif ( "$CUR_VENDOR_VER" eq "ES82" ) {
+		return (has_version_delta()
+		     && rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
+	} elsif ( "$CUR_VENDOR_VER" eq "ES83" ) {
 		return (has_version_delta()
 		     && rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
 	} elsif ( "$CUR_VENDOR_VER" eq "ES123" ) {

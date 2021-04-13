@@ -2,6 +2,7 @@
 ## BEGIN_ICS_COPYRIGHT8 ****************************************
 #
 # Copyright (c) 2015-2020, Intel Corporation
+# Copyright (c) 2020, Cornelis Networks, Inc.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -37,101 +38,16 @@
 #
 ## ==========================================================================
 #
-#Installation Prequisites array for delta components
-my @opa_stack_prereq = (
+#Installation Prequisites array for opafm
+my @opafm_prereq = (
 			"bash",
-			"kmod",
+			"expat",
+			"glibc",
+			"libibumad",
+			"libibverbs",
+			"openssl-libs",
 			"rdma-core",
-			"rdma-ndd",
 			"systemd",
-			"coreutils",
-			"grep",
-			"libosmcomp5",
-			"libibmad5",
-			"libibumad3",
-			"rdma-core-devel",
+			"zlib",
 );
-$comp_prereq_hash{'opa_stack_prereq'} = \@opa_stack_prereq;
-
-my @intel_hfi_prereq = (
-			"glibc",
-			"libgcc_s1",
-			"bash",
-			"udev",
-			"libudev-devel",
-			"python-base",
-			"libedit0",
-			"libncurses6",
-			"libnuma1",
-			"irqbalance",
-			"libatomic1",
-);
-$comp_prereq_hash{'intel_hfi_prereq'} = \@intel_hfi_prereq;
-
-my @mvapich2_gcc_hfi_prereq = (
-			"bash",
-			"glibc",
-			"libz1",
-			"mpi-selector",
-);
-$comp_prereq_hash{'mvapich2_gcc_hfi_prereq'} = \@mvapich2_gcc_hfi_prereq;
-
-my @mvapich2_intel_hfi_prereq = (
-			"bash",
-			"mpi-selector",
-);
-$comp_prereq_hash{'mvapich2_intel_hfi_prereq'} = \@mvapich2_intel_hfi_prereq;
-
-my @openmpi_gcc_hfi_prereq = (
-			"glibc",
-			"bash",
-			"pkg-config",
-			"libgcc_s1",
-			"libgfortran4",
-			"gcc-fortran",
-			"libgomp1",
-			"libibverbs1",
-			"libquadmath0",
-			"librdmacm1",
-			"libstdc++6",
-			"libz1",
-			"opensm-devel",
-			"mpi-selector",
-);
-$comp_prereq_hash{'openmpi_gcc_hfi_prereq'} = \@openmpi_gcc_hfi_prereq;
-
-my @openmpi_intel_hfi_prereq = (
-			"bash",
-			"mpi-selector",
-);
-$comp_prereq_hash{'openmpi_intel_hfi_prereq'} = \@openmpi_intel_hfi_prereq;
-
-my @mvapich2_prereq = (
-			"bash",
-			"libibverbs1",
-			"librdmacm1",
-			"glibc",
-			"libz1",
-			"mpi-selector",
-);
-$comp_prereq_hash{'mvapich2_prereq'} = \@mvapich2_prereq;
-
-my @openmpi_prereq = (
-			"glibc",
-			"bash",
-			"libz1",
-			"pkg-config",
-			"libgcc_s1",
-			"libgfortran3",
-			"gcc-fortran",
-			"libgomp1",
-			"libibverbs1",
-			"libquadmath0",
-			"librdmacm1",
-			"libstdc++6",
-			"libz1",
-			"opensm-libs3",
-			"opensm-devel",
-			"mpi-selector",
-);
-$comp_prereq_hash{'openmpi_prereq'} = \@openmpi_prereq;
+$comp_prereq_hash{'opafm_prereq'} = \@opafm_prereq;
