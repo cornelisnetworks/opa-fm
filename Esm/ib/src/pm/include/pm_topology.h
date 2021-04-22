@@ -1551,7 +1551,7 @@ extern FSTATUS PmClearPortRunningVFCounters(Pm_t *pm, PmPort_t *pmportp, STLVlCo
 // compute theoretical limits for each rate
 //extern void PM_InitLswfToMBps(void);
 // ideally should be static, extern due to split of sweep.c and calc.c
-uint32 s_StaticRateToMBps[IB_STATIC_RATE_MAX+1];
+extern uint32 s_StaticRateToMBps[IB_STATIC_RATE_MAX+1];
 
 // This group of functions accept an index into the pmportp->Groups[]
 // caller should search for appropriate entry in array to act on

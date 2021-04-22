@@ -120,7 +120,6 @@ uint64_t	topology_sema_setTime=0;
 uint64_t	topology_sema_runTime=0;
 uint32_t   	sm_def_mc_group;
 extern uint32_t            smDebugPerf;  // control SM performance messages; default is off
-extern uint32_t            saDebugPerf;  // control SA performance messages; default is off
 extern uint32_t            saDebugRmpp;  // control SA RMPP INFO debug messages; default is off
 extern uint32_t            sm_debug;    // SM debug; default is off
 extern uint32_t            saRmppCheckSum; // control checksum of SA RMPP responses; default is off;
@@ -223,7 +222,7 @@ SMMcastConfig_t 			sm_mc_config;
 SmMcastMlidShare_t 			sm_mls_config;
 SMMcastDefGrpCfg_t 			sm_mdg_config;
 
-uint32_t    				xml_trace = 0;
+static uint32_t    			xml_trace = 0;
 
 extern uint32_t pm_conf_start;
 extern uint32_t bm_conf_start;

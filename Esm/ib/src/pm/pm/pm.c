@@ -126,9 +126,6 @@ extern Status_t vfi_GetPortGuid(ManagerInfo_t * fp, uint32_t gididx);
 
 #define SID_ASCII_FORMAT "%02x%02x%02x%02x%02x%02x%02x%02x"
 static IB_SERVICE_RECORD  pmServRer;
-#ifndef __VXWORKS__
-static char msgbuf[256];
-#endif
 
 
 #if 0

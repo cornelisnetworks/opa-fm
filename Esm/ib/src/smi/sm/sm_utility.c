@@ -86,7 +86,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endif
 
 extern Lock_t tid_lock;
-uint32_t sm_instance;
+extern uint32_t sm_instance;
 //#define TRACK_SEARCHES
 
 uint32_t sm_node_guid_cnt = 0;
