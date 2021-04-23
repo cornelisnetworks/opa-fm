@@ -290,9 +290,7 @@ endif
 	mkdir $$dir/stage.rpm; \
 	cp -r -L $(GLOBAL_BIN_DIR)/* $$dir/stage.rpm/ ; \
 	cd $$dir/stage.rpm ; \
-		find . -print| $(PREP); \
-		$(PATCH_VERSION) -n `$(CONVERT_RELEASETAG) $(RELEASE_TAG)` $(RELEASE_TAG) sm fe; \
-		$(PATCH_BRAND) "$(BUILD_BRAND)" sm fe;
+		find . -print| $(PREP);
 	cd $(PROJ_STAGE_DIR) && $(PATCH_VERSION) -m %  -n `$(CONVERT_RELEASETAG) $(RELEASE_TAG)` $(RELEASE_TAG) INSTALL
 	cd $(PROJ_STAGE_DIR) && $(PATCH_BRAND) -m % "$(BUILD_BRAND)" INSTALL
 
