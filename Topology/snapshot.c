@@ -2516,7 +2516,8 @@ static void *McPortGIDXmlParserStart(IXmlParserState_t *state, void *parent, con
 	// no preexisting membership info
 	mcmemberp->MemberInfo.JoinFullMember=0;
 	mcmemberp->MemberInfo.JoinNonMember=0;
-	mcmemberp->MemberInfo.JoinSendOnlyMember=0;
+	mcmemberp->MemberInfo.JoinSendOnlyNonMember=0;
+	mcmemberp->MemberInfo.JoinSendOnlyFullMember=0;
 
 	return mcmemberp;
 }
@@ -2604,7 +2605,9 @@ static void McMembershipXmlParserEnd(IXmlParserState_t *state, const IXML_FIELD 
 		value = value >> 1;
 		mcmemberp->MemberInfo.JoinNonMember = value & 1;
 		value = value >> 1;
-		mcmemberp->MemberInfo.JoinSendOnlyMember = value & 1;
+		mcmemberp->MemberInfo.JoinSendOnlyNonMember = value & 1;
+		value = value >> 1;
+		mcmemberp->MemberInfo.JoinSendOnlyFullMember = value & 1;
 	}
 
 	return;
@@ -2681,7 +2684,8 @@ static void McMembershipXmlOutput(IXmlOutputState_t *state, const char* tag, voi
 	McMemberData *pMcMemberRecord = (McMemberData *)data;
 	uint8	Memberstatus;
 
-	Memberstatus = (pMcMemberRecord->MemberInfo.JoinSendOnlyMember<<2 |
+	Memberstatus = (pMcMemberRecord->MemberInfo.JoinSendOnlyFullMember<<3 |
+				pMcMemberRecord->MemberInfo.JoinSendOnlyNonMember<<2 |
 				pMcMemberRecord->MemberInfo.JoinNonMember<<1 |
 				pMcMemberRecord->MemberInfo.JoinFullMember);
 

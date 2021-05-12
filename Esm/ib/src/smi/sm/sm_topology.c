@@ -2741,7 +2741,7 @@ topology_TrapDown(STL_NOTICE * noticep, Topology_t * tp_present, Topology_t * tp
 		portguid = mcMember->portGuid;
 
 		/* Found it, now we must remove it */
-		if (!(mcMember->state & MCMEMBER_STATE_FULL_MEMBER)) {
+		if (!(IS_MCMEMBER_STATE_FULL_MEMBER(mcMember))) {
             IB_LOG_INFO_FMT(__func__, "Non full mcMember "FMT_U64" of multicast group "
                    "GID "FMT_GID" is no longer in fabric", portguid, mcastGid[0], mcastGid[1]);
 		} else {

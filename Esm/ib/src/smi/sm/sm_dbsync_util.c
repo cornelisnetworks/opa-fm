@@ -1117,7 +1117,7 @@ Status_t sm_dbsync_upsmlist(SweepContext_t *sweep_context) {
 
                         // delete this member
                         mcmp = mcMember->next;
-                        if (!(mcMember->state & MCMEMBER_STATE_FULL_MEMBER)) {
+                        if (!(IS_MCMEMBER_STATE_FULL_MEMBER(mcMember))) {
                             IB_LOG_INFO_FMT(__func__, "Non full mcMember "FMT_U64" of multicast group "
                                    "GID "FMT_U64":"FMT_U64" is no longer in fabric",
                                    mcMember->portGuid, mcastGid[0], mcastGid[1]);

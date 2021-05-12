@@ -358,7 +358,6 @@ sa_McMemberRecord_Set(Topology_t *topop, Mai_t *maip, uint32_t *records)
 	mcmp->Reserved = 0;
 	mcmp->Reserved2 = 0;
 	mcmp->Reserved3 = 0;
-	mcmp->Reserved4 = 0;
 	mcmp->Reserved5 = 0;
 
 	mGid[0] = mcmp->RID.MGID.Type.Global.SubnetPrefix;
@@ -763,7 +762,7 @@ sa_McMemberRecord_Set(Topology_t *topop, Mai_t *maip, uint32_t *records)
 			goto done;
 		}
 
-		if (!(mcmp->JoinFullMember)) {
+		if (!(IS_MCMEMBER_RECORD_JOIN_FULL_MEMBER(mcmp))) {
 			maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 			IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", "Join state of 0x%.2X not full member "
 				   "for NULL GID CREATE request from %s Port %d, PortGUID "FMT_U64", LID 0x%.8X, returning status 0x%.4X",
@@ -890,7 +889,7 @@ sa_McMemberRecord_Set(Topology_t *topop, Mai_t *maip, uint32_t *records)
                 }
 			}
 
-			if (!(mcmp->JoinFullMember)) {
+			if (!(IS_MCMEMBER_RECORD_JOIN_FULL_MEMBER(mcmp))) {
 				maip->base.status = MAD_STATUS_SA_REQ_INVALID;
 				IB_LOG_ERROR_FMT_VF( vfp, "sa_McMemberRecord_Set", "Join state of 0x%.2X not full member "
 					   "for NEW MGID of "FMT_GID" for CREATE request from %s Port %d, PortGUID "FMT_U64", "
@@ -1147,7 +1146,7 @@ sa_McMemberRecord_Set(Topology_t *topop, Mai_t *maip, uint32_t *records)
 
 			if (!(mcMember = sm_find_multicast_member(mcGroup, mcmp->RID.PortGID))) {
 				McMember_Create(mcGroup, mcMember);
-				if (mcmp->JoinFullMember) {
+				if (IS_MCMEMBER_RECORD_JOIN_FULL_MEMBER(mcmp)) {
 					mcGroup->members_full++;
 				}
                 /* new member: sync the group change with standby SMs */
@@ -1155,9 +1154,10 @@ sa_McMemberRecord_Set(Topology_t *topop, Mai_t *maip, uint32_t *records)
 			} else {
 				mcmp->JoinFullMember |= mcMember->state & MCMEMBER_STATE_FULL_MEMBER;
 				mcmp->JoinNonMember |= mcMember->state & MCMEMBER_STATE_NON_MEMBER;
-				mcmp->JoinSendOnlyMember |= mcMember->state & MCMEMBER_STATE_SENDONLY_MEMBER;
-				if (!(mcMember->state & MCMEMBER_STATE_FULL_MEMBER)) { /* If we were not a full member */
-					if (mcmp->JoinFullMember) {	/* but are a full member now */
+				mcmp->JoinSendOnlyNonMember |= mcMember->state & MCMEMBER_STATE_SENDONLY_NON_MEMBER;
+				mcmp->JoinSendOnlyFullMember |= mcMember->state & MCMEMBER_STATE_SENDONLY_FULL_MEMBER;
+				if (!(IS_MCMEMBER_STATE_FULL_MEMBER(mcMember))) { /* If we were not a full member */
+					if (IS_MCMEMBER_RECORD_JOIN_FULL_MEMBER(mcmp)) {	/* but are a full member now */
 						mcGroup->members_full++;
 					}
 				}
@@ -1334,7 +1334,6 @@ sa_McMemberRecord_Delete(Topology_t *topop, Mai_t *maip, uint32_t *records)
 	mcmp->Reserved = 0;
 	mcmp->Reserved2 = 0;
 	mcmp->Reserved3 = 0;
-	mcmp->Reserved4 = 0;
 	mcmp->Reserved5 = 0;
 
 	/* setup return data if successfull */
@@ -1492,7 +1491,7 @@ sa_McMemberRecord_Delete(Topology_t *topop, Mai_t *maip, uint32_t *records)
 	joinstate = mcMember->state & ~STL_MCMRECORD_GETJOINSTATE(mcmp);
 	if (joinstate == 0) {
 		//	Delete the multicast member and decrement full member count if needed
-		if (mcMember->state & MCMEMBER_STATE_FULL_MEMBER) {
+		if (IS_MCMEMBER_STATE_FULL_MEMBER(mcMember)) {
 			IB_LOG_VERBOSE_FMT_VF( vfp, "sa_McMemberRecord_Delete", "full mcMember "FMT_U64" left multicast group "
 				   "GID "FMT_GID,
 				   mcMember->portGuid, mcastGid[0], mcastGid[1]);
@@ -1505,8 +1504,8 @@ sa_McMemberRecord_Delete(Topology_t *topop, Mai_t *maip, uint32_t *records)
 		McMember_Delete(mcGroup, mcMember);
 	} else {
         /* decrement the number of full members in group if member is removing full membership */
-		if (mcMember->state & MCMEMBER_STATE_FULL_MEMBER  && 
-            mcmp->JoinFullMember) {
+		if ((mcMember->state & MCMEMBER_STATE_FULL_MEMBER && mcmp->JoinFullMember) || 
+            (mcMember->state & MCMEMBER_STATE_SENDONLY_FULL_MEMBER && mcmp->JoinSendOnlyFullMember)) {
 			IB_LOG_VERBOSE_FMT_VF( vfp, "sa_McMemberRecord_Delete", 
                    "full mcMember "FMT_U64" downgrading membership in multicast group "
 				   "GID "FMT_GID,
@@ -1625,7 +1624,6 @@ sa_McMemberRecord_GetTable(Mai_t *maip, uint32_t *records) {
 	mcMemQuery.Reserved = 0;
 	mcMemQuery.Reserved2 = 0;
 	mcMemQuery.Reserved3 = 0;
-	mcMemQuery.Reserved4 = 0;
 	mcMemQuery.Reserved5 = 0;
 
     //
@@ -1697,7 +1695,8 @@ sa_McMemberRecord_GetTable(Mai_t *maip, uint32_t *records) {
 					data -= sizeof(STL_MCMEMBER_RECORD) + bytes;
 					BSWAPCOPY_STL_MCMEMBER_RECORD((STL_MCMEMBER_RECORD*)data, &mcMemTemp);
 					memset(&mcMemTemp.RID.PortGID, 0, sizeof(mcMemTemp.RID.PortGID));
-					mcMemTemp.JoinSendOnlyMember = 0;
+					mcMemTemp.JoinSendOnlyFullMember = 0;
+					mcMemTemp.JoinSendOnlyNonMember = 0;
 					mcMemTemp.JoinNonMember = 0;
 					mcMemTemp.JoinFullMember = 0;
 					mcMemTemp.ProxyJoin = 0;
@@ -1834,10 +1833,10 @@ sa_McMemberRecord_IBGetTable(Mai_t *maip, uint32_t *records)
 			converted.u1.s.HopLimit = mcmp->record.HopLimit;
 			converted.Scope = mcmp->record.Scope;
 			converted.JoinFullMember = mcmp->record.JoinFullMember;
-			converted.JoinSendOnlyMember = mcmp->record.JoinSendOnlyMember;
+			converted.JoinSendOnlyNonMember = mcmp->record.JoinSendOnlyNonMember;
+			converted.JoinSendOnlyFullMember = mcmp->record.JoinSendOnlyFullMember;
 			converted.JoinNonMember = mcmp->record.JoinNonMember;
 			converted.ProxyJoin = mcmp->record.ProxyJoin;
-			converted.Reserved = 0;
 			converted.Reserved2 = 0;
 			converted.Reserved3[0] = 0;
 			converted.Reserved3[1] = 0;
@@ -1851,7 +1850,8 @@ sa_McMemberRecord_IBGetTable(Mai_t *maip, uint32_t *records)
 					BSWAPCOPY_IB_MCMEMBER_RECORD((IB_MCMEMBER_RECORD*)data, &mcMemTemp);
 					memset(&mcMemTemp.RID.PortGID, 0, sizeof(mcMemTemp.RID.PortGID));
 					mcMemTemp.JoinFullMember = 0;
-					mcMemTemp.JoinSendOnlyMember = 0;
+					mcMemTemp.JoinSendOnlyNonMember = 0;
+					mcMemTemp.JoinSendOnlyFullMember = 0;
 					mcMemTemp.JoinNonMember = 0;
 					mcMemTemp.ProxyJoin = 0;
 					BSWAPCOPY_IB_MCMEMBER_RECORD(&mcMemTemp, (IB_MCMEMBER_RECORD*)data);
@@ -2032,7 +2032,8 @@ Status_t createBroadcastGroup(uint16_t pkey, uint8_t mtu, uint8_t rate, uint8_t 
 	mcmp->Scope			= mcGroup->scope;
 	mcmp->JoinFullMember	= mcMember->state & MCMEMBER_STATE_FULL_MEMBER;
 	mcmp->JoinNonMember	= mcMember->state & MCMEMBER_STATE_NON_MEMBER;
-	mcmp->JoinSendOnlyMember = mcMember->state & MCMEMBER_STATE_SENDONLY_MEMBER;
+	mcmp->JoinSendOnlyNonMember = mcMember->state & MCMEMBER_STATE_SENDONLY_NON_MEMBER;
+	mcmp->JoinSendOnlyFullMember = mcMember->state & MCMEMBER_STATE_SENDONLY_FULL_MEMBER;
 	mcmp->ProxyJoin     = mcMember->proxy;
 
 	emptyBroadcastGroup = 1;
@@ -2361,7 +2362,8 @@ Status_t createMCastGroup(uint64_t* mgid, uint16_t pkey, uint8_t mtu, uint8_t ra
 	mcmp->Scope			= mcGroup->scope;
 	mcmp->JoinFullMember	= mcMember->state & MCMEMBER_STATE_FULL_MEMBER;
 	mcmp->JoinNonMember	= mcMember->state & MCMEMBER_STATE_NON_MEMBER;
-	mcmp->JoinSendOnlyMember = mcMember->state & MCMEMBER_STATE_SENDONLY_MEMBER;
+	mcmp->JoinSendOnlyNonMember = mcMember->state & MCMEMBER_STATE_SENDONLY_NON_MEMBER;
+	mcmp->JoinSendOnlyFullMember = mcMember->state & MCMEMBER_STATE_SENDONLY_FULL_MEMBER;
 	mcmp->ProxyJoin     = mcMember->proxy;
 
 	emptyBroadcastGroup = 1;

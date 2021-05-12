@@ -232,12 +232,13 @@ PrintStlMcMemberRecord(PrintDest_t * dest, int indent,
 			  pMcMemberRecord->RID.MGID.AsReg64s.L);
 	PrintFunc(dest,
 			  "%*sPortGid: 0x%016" PRIx64 ":0x%016" PRIx64
-			  " Membership: %s%s%s\n", indent, "",
+			  " Membership: %s%s%s%s\n", indent, "",
 			  pMcMemberRecord->RID.PortGID.Type.Global.SubnetPrefix,
 			  pMcMemberRecord->RID.PortGID.Type.Global.InterfaceID,
 			  pMcMemberRecord->JoinFullMember ? "Full " : "",
 			  pMcMemberRecord->JoinNonMember ? "Non " : "",
-			  pMcMemberRecord->JoinSendOnlyMember ? "Sendonly " : "");
+			  pMcMemberRecord->JoinSendOnlyNonMember ? "SendonlyNon " : "",
+			  pMcMemberRecord->JoinSendOnlyFullMember ? "SendonlyFull " : "");
 	FormatTimeoutMult(buf, pMcMemberRecord->PktLifeTime);
 	PrintFunc(dest,
 			  "%*sMLID: 0x%08x PKey: 0x%04x Mtu: %5s Rate: %4s PktLifeTime: %s\n",
