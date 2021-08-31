@@ -257,6 +257,18 @@ sub os_vendor_version($)
 			$rval = `cat /etc/redhat-release`;
 			$rval =~ m/(\d+).(\d+)/;
 			$rval="ES".$1;
+		} elsif (!system("grep -qi almalinux /etc/redhat-release")) {
+			# Find a number of the form "#.#" and output the portion
+			# to the left of the decimal point.
+			$rval = `cat /etc/redhat-release`;
+			$rval =~ m/(\d+).(\d+)/;
+			$rval="ES".$1;
+		} elsif (!system("grep -qi cloudlinux /etc/redhat-release")) {
+			# Find a number of the form "#.#" and output the portion
+			# to the left of the decimal point.
+			$rval = `cat /etc/redhat-release`;
+			$rval =~ m/(\d+).(\d+)/;
+			$rval="ES".$1;
 		} elsif (!system("grep -qi enterprise /etc/redhat-release")) {
 			# Red Hat Enterprise Linux Server release $a.$b (name)
 			#PR 110926
@@ -304,6 +316,10 @@ sub determine_os_version()
 		$CUR_DISTRO_VENDOR = "redhat";
 	} elsif ( -s "/etc/centos-release" ) {
 		$CUR_DISTRO_VENDOR = "redhat";
+	} elsif ( -s "/etc/almalinux-release" ) {
+		$CUR_DISTRO_VENDOR = "redhat";
+	} elsif ( -s "/etc/cloudlinux-release" ) {
+		$CUR_DISTRO_VENDOR = "redhat";
 	} elsif ( -s "/etc/UnitedLinux-release" ) {
 		$CUR_DISTRO_VENDOR = "UnitedLinux";
 		$NETWORK_CONF_DIR = "/etc/sysconfig/network";
@@ -321,12 +337,16 @@ sub determine_os_version()
 		my %distroVendor = (
 			"rhel" => "redhat",
 			"centos" => "redhat",
+			"almalinux" => "redhat",
+			"cloudlinux" => "redhat",
 			"sles" => "SuSE",
 			"sle_hpc" => "SuSE"
 		);
 		my %network_conf_dir  = (
 			"rhel" => $NETWORK_CONF_DIR,
 			"centos" => $NETWORK_CONF_DIR,
+			"almalinux" => $NETWORK_CONF_DIR,
+			"cloudlinux" => $NETWORK_CONF_DIR,
 			"sles" => "/etc/sysconfig/network",
 			"sle_hpc" => "/etc/sysconfig/network"
 		);
@@ -355,6 +375,10 @@ sub determine_os_version()
 		} elsif ($CUR_DISTRO_VENDOR eq "SuSE") {
 			$NETWORK_CONF_DIR = "/etc/sysconfig/network";
 		} elsif ($CUR_DISTRO_VENDOR eq "centos") {
+			$CUR_DISTRO_VENDOR = "redhat";
+		} elsif ($CUR_DISTRO_VENDOR eq "almalinux") {
+			$CUR_DISTRO_VENDOR = "redhat";
+		} elsif ($CUR_DISTRO_VENDOR eq "cloudlinux") {
 			$CUR_DISTRO_VENDOR = "redhat";
 		}
 	}
