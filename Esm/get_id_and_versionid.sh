@@ -99,6 +99,14 @@ else
 		then
 			# Scientific Linux.
 			rval=`cat /etc/redhat-release | sed -r 's/^.+([[:digit:]])\.([[:digit:]]).+$/\1.\2/'`
+		elif grep -qi almalinux /etc/redhat-release
+		then
+			# AlmaLinux.
+			rval=`cat /etc/redhat-release | sed -r 's/^.+([[:digit:]])\.([[:digit:]]).+$/\1.\2/'`
+		elif grep -qi cloudlinux /etc/redhat-release
+		then
+			# CloudLinux.
+			rval=`cat /etc/redhat-release | sed -r 's/^.+([[:digit:]])\.([[:digit:]]).+$/\1.\2/'`
 		else
 			rval=`cat /etc/redhat-release | cut -d' ' -f5`
 		fi
