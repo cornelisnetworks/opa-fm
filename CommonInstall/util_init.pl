@@ -263,6 +263,12 @@ sub os_vendor_version($)
 			$rval = `cat /etc/redhat-release`;
 			$rval =~ m/(\d+).(\d+)/;
 			$rval="ES".$1;
+		} elsif (!system("grep -qi cloudlinux /etc/redhat-release")) {
+			# Find a number of the form "#.#" and output the portion
+			# to the left of the decimal point.
+			$rval = `cat /etc/redhat-release`;
+			$rval =~ m/(\d+).(\d+)/;
+			$rval="ES".$1;
 		} elsif (!system("grep -qi enterprise /etc/redhat-release")) {
 			# Red Hat Enterprise Linux Server release $a.$b (name)
 			#PR 110926
