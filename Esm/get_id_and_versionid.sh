@@ -99,6 +99,10 @@ else
 		then
 			# Scientific Linux.
 			rval=`cat /etc/redhat-release | sed -r 's/^.+([[:digit:]])\.([[:digit:]]).+$/\1.\2/'`
+		elif grep -qi rocky /etc/redhat-release
+		then
+			# Rocky Linux.
+			rval=`cat /etc/redhat-release | sed -r 's/^.+([[:digit:]])\.([[:digit:]]).+$/\1.\2/'`
 		else
 			rval=`cat /etc/redhat-release | cut -d' ' -f5`
 		fi

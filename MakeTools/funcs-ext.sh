@@ -725,6 +725,9 @@ function os_vendor()
             centos)
                 rval=redhat
                 ;;
+            rocky)
+                rval=redhat
+                ;;
             fedora)
                 rval=redhat
                 ;;
@@ -833,6 +836,10 @@ function os_vendor_version()
 		elif grep -qi scientific /etc/redhat-release
 		then
 			# Scientific Linux.
+			rval="ES"`cat /etc/redhat-release | sed -r 's/^.+([[:digit:]])\.([[:digit:]]).+$/\1/'`
+		elif grep -qi rocky /etc/redhat-release
+		then
+			# Rocky Linux.
 			rval="ES"`cat /etc/redhat-release | sed -r 's/^.+([[:digit:]])\.([[:digit:]]).+$/\1/'`
 		else
 			rval=`cat /etc/redhat-release | cut -d' ' -f5`
