@@ -728,6 +728,9 @@ function os_vendor()
             fedora)
                 rval=redhat
                 ;;
+            virtuozzo)
+                rval=redhat
+                ;;
             *)
                 rval=""
                 ;;
@@ -754,6 +757,9 @@ function os_vendor()
 				rval=UnitedLinux
 			fi
 		elif [ $rval = 'centos' ]
+		then
+			rval=redhat
+		elif [ $rval = 'virtuozzo' ]
 		then
 			rval=redhat
 		elif [ $rval != 'os' ]
@@ -829,6 +835,10 @@ function os_vendor_version()
 		elif grep -qi centos /etc/redhat-release
 		then
 			# CentOS 
+			rval="ES"`cat /etc/redhat-release | sed -r 's/^.+([[:digit:]])\.([[:digit:]]).+$/\1\2/'`
+		elif grep -qi virtuozzo /etc/redhat-release
+		then
+			# Virtuozzo
 			rval="ES"`cat /etc/redhat-release | sed -r 's/^.+([[:digit:]])\.([[:digit:]]).+$/\1\2/'`
 		elif grep -qi scientific /etc/redhat-release
 		then
