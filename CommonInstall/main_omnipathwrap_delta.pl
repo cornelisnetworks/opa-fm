@@ -2,7 +2,7 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 #
 # Copyright (c) 2015-2020, Intel Corporation
-# Copyright (c) 2020, Cornelis Networks, Inc.
+# Copyright (c) 2020-2021, Cornelis Networks
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -80,6 +80,8 @@ my @Components_sles15_sp1 = ( "opa_stack",
 		@OmniPathAllComponents );
 my @Components_sles15_sp2 = ( "opa_stack",
 		@OmniPathAllComponents );
+my @Components_sles15_sp3 = ( "opa_stack",
+		@OmniPathAllComponents );
 my @Components_rhel74 = ( "opa_stack", "mpi_selector",
 		@OmniPathAllComponents );
 my @Components_rhel75 = ( "opa_stack", "mpi_selector",
@@ -97,6 +99,10 @@ my @Components_rhel81 = ( "opa_stack", "mpi_selector",
 my @Components_rhel82 = ( "opa_stack", "mpi_selector",
 		@OmniPathAllComponents );
 my @Components_rhel83 = ( "opa_stack", "mpi_selector",
+		@OmniPathAllComponents );
+my @Components_rhel84 = ( "opa_stack", "mpi_selector",
+		@OmniPathAllComponents );
+my @Components_rhel85 = ( "opa_stack", "mpi_selector",
 		@OmniPathAllComponents );
 
 @Components = ( );
@@ -209,7 +215,7 @@ $WrapperComponent = "opaconfig";
 					},
 	"oftools" =>	{ Name => "OPA Tools",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-Tools*.*"),
+					  SrcDir => file_glob("./CornelisOPX-Tools*.*"),
 					  PreReq => " opa_stack ", CoReq => " opa_stack ",
 					  Hidden => 0, Disabled => 0, IsOFA => 0,
 					  KernelRpms => [ ],
@@ -224,7 +230,7 @@ $WrapperComponent = "opaconfig";
 					},
 	"mpi_selector" =>	{ Name => "MPI selector",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => " opa_stack ", CoReq => "",
 					  Hidden => 1, Disabled => 0, IsOFA => 1,
 					  KernelRpms => [ ],
@@ -239,7 +245,7 @@ $WrapperComponent = "opaconfig";
 					},
 	"fastfabric" =>	{ Name => "FastFabric",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-Tools*.*"),
+					  SrcDir => file_glob("./CornelisOPX-Tools*.*"),
 					  PreReq => " opa_stack oftools ", CoReq => "",
 					  Hidden => 0, Disabled => 0, IsOFA => 0,
 					  KernelRpms => [ ],
@@ -255,7 +261,7 @@ $WrapperComponent = "opaconfig";
 # TBD - only a startup script, should act like a subcomponent only
 	"delta_ipoib" =>	{ Name => "OFA IP over IB",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => " opa_stack ", CoReq => "",
 					  Hidden => 0, Disabled => 0, IsOFA => 1,
 					  KernelRpms => [ ],
@@ -435,7 +441,7 @@ $WrapperComponent = "opaconfig";
 					},
 	"opafm" =>	{ Name => "OPA FM",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-FM.*"),
+					  SrcDir => file_glob("./CornelisOPX-FM.*"),
 					  PreReq => " opa_stack ", CoReq => "",
 					  Hidden => 0, Disabled => 0, IsOFA => 0,
 					  KernelRpms => [ ],
@@ -451,7 +457,7 @@ $WrapperComponent = "opaconfig";
 					},
 	"opamgt_sdk" => { Name => "OPA Management SDK",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-Tools*.*"),
+					  SrcDir => file_glob("./CornelisOPX-Tools*.*"),
 					  PreReq => " opa_stack ", CoReq => "",
 					  Hidden => 0, Disabled => 0, IsOFA => 0,
 					  KernelRpms => [ ],
@@ -466,7 +472,7 @@ $WrapperComponent = "opaconfig";
 				  },
 	"delta_debug" =>	{ Name => "OFA Debug Info",
 					  DefaultInstall => $State_DoNotInstall,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => " opa_stack ", CoReq => "",
 					  Hidden => 0, Disabled => 0, IsOFA => 1,
 					  KernelRpms => [ ],
@@ -539,7 +545,7 @@ $WrapperComponent = "opaconfig";
 my %opa_stack_rhel72_comp_info = (
 	"opa_stack" =>	{ Name => "OFA OPA Stack",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => "", CoReq => " oftools ",
 						# TBD - HasFirmware - FW update
 					  Hidden => 0, Disabled => 0, IsOFA => 1,
@@ -565,7 +571,7 @@ my %opa_stack_rhel72_comp_info = (
 my %opa_stack_rhel73_comp_info = (
 	"opa_stack" =>	{ Name => "OFA OPA Stack",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => "", CoReq => " oftools ",
 						# TBD - HasFirmware - FW update
 					  Hidden => 0, Disabled => 0, IsOFA => 1,
@@ -591,7 +597,7 @@ my %opa_stack_rhel73_comp_info = (
 my %opa_stack_rhel_comp_info = (
 	"opa_stack" =>	{ Name => "OFA OPA Stack",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => "", CoReq => " oftools ",
 						# TBD - HasFirmware - FW update
 					  Hidden => 0, Disabled => 0, IsOFA => 1,
@@ -617,7 +623,7 @@ my %opa_stack_rhel_comp_info = (
 my %opa_stack_rhel74_hfi2_comp_info = (
 	"opa_stack" =>	{ Name => "OFA OPA Stack",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => "", CoReq => " oftools ",
 						# TBD - HasFirmware - FW update
 					  Hidden => 0, Disabled => 0, IsOFA => 1,
@@ -643,7 +649,7 @@ my %opa_stack_rhel74_hfi2_comp_info = (
 my %opa_stack_sles12_sp2_comp_info = (
 	"opa_stack" =>	{ Name => "OFA OPA Stack",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => "", CoReq => " oftools ",
 						# TBD - HasFirmware - FW update
 					  Hidden => 0, Disabled => 0, IsOFA => 1,
@@ -667,7 +673,7 @@ my %opa_stack_sles12_sp2_comp_info = (
 my %opa_stack_sles12_sp3_comp_info = (
 	"opa_stack" =>	{ Name => "OFA OPA Stack",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => "", CoReq => " oftools ",
 						# TBD - HasFirmware - FW update
 					  Hidden => 0, Disabled => 0, IsOFA => 1,
@@ -692,7 +698,7 @@ my %opa_stack_sles12_sp3_comp_info = (
 my %opa_stack_sles12_sp4_comp_info = (
 	"opa_stack" =>	{ Name => "OFA OPA Stack",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => "", CoReq => " oftools ",
 					  Hidden => 0, Disabled => 0, IsOFA => 1,
 					  KernelRpms => [ "ifs-kernel-updates-kmp-default" ],
@@ -712,7 +718,7 @@ my %opa_stack_sles12_sp4_comp_info = (
 my %opa_stack_sles12_sp5_comp_info = (
 	"opa_stack" =>	{ Name => "OFA OPA Stack",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => "", CoReq => " oftools ",
 					  Hidden => 0, Disabled => 0, IsOFA => 1,
 					  KernelRpms => [ "ifs-kernel-updates-kmp-default" ],
@@ -732,7 +738,7 @@ my %opa_stack_sles12_sp5_comp_info = (
 my %opa_stack_sles15_comp_info = (
 	"opa_stack" =>	{ Name => "OFA OPA Stack",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => "", CoReq => " oftools ",
 						# TBD - HasFirmware - FW update
 					  Hidden => 0, Disabled => 0, IsOFA => 1,
@@ -759,7 +765,7 @@ my %opa_stack_sles15_comp_info = (
 my %ibacm_older_comp_info = (
 	"ibacm" =>		{ Name => "OFA IBACM",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => " opa_stack ", CoReq => "",
 					  Hidden => 0, Disabled => 0, IsOFA => 1,
 					  KernelRpms => [ ],
@@ -793,9 +799,9 @@ my %ibacm_comp_info = (
 # one of these intel_hfi comp_info gets appended to ComponentInfo
 # for RHEL72 which lacks libhfi1
 my %intel_hfi_older_comp_info = (
-	"intel_hfi" =>	{ Name => "Intel HFI Components",
+	"intel_hfi" =>	{ Name => "Cornelis HFI Components",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => " opa_stack ", CoReq => " oftools ",
 						# TBD - HasFirmware - FW update
 					  Hidden => 0, Disabled => 0, IsOFA => 1,
@@ -824,9 +830,9 @@ my %intel_hfi_older_comp_info = (
 );
 # for RHEL73, SLES12.2 and other newer distros which include libhfi1
 my %intel_hfi_comp_info = (
-	"intel_hfi" =>	{ Name => "Intel HFI Components",
+	"intel_hfi" =>	{ Name => "Cornelis HFI Components",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => " opa_stack ", CoReq => " oftools ",
 						# TBD - HasFirmware - FW update
 					  Hidden => 0, Disabled => 0, IsOFA => 1,
@@ -856,9 +862,9 @@ my %intel_hfi_comp_info = (
 #
 # for RHEL8, which does not currently support opa_stack and does not require libfabric-psm
 my %intel_hfi_rhel8_comp_info = (
-	"intel_hfi" =>	{ Name => "Intel HFI Components",
+	"intel_hfi" =>	{ Name => "Cornelis HFI Components",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => " opa_stack ", CoReq => " oftools ",
 						# TBD - HasFirmware - FW update
 					  Hidden => 0, Disabled => 0, IsOFA => 1,
@@ -886,9 +892,9 @@ my %intel_hfi_rhel8_comp_info = (
 );
 
 my %intel_hfi_rhel81_comp_info = (
-	"intel_hfi" =>	{ Name => "Intel HFI Components",
+	"intel_hfi" =>	{ Name => "Cornelis HFI Components",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => " opa_stack ", CoReq => " oftools ",
 						# TBD - HasFirmware - FW update
 					  Hidden => 0, Disabled => 0, IsOFA => 1,
@@ -916,9 +922,9 @@ my %intel_hfi_rhel81_comp_info = (
 );
 
 my %intel_hfi_rhel82_comp_info = (
-	"intel_hfi" =>	{ Name => "Intel HFI Components",
+	"intel_hfi" =>	{ Name => "Cornelis HFI Components",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => " opa_stack ", CoReq => " oftools ",
 						# TBD - HasFirmware - FW update
 					  Hidden => 0, Disabled => 0, IsOFA => 1,
@@ -946,9 +952,69 @@ my %intel_hfi_rhel82_comp_info = (
 );
 
 my %intel_hfi_rhel83_comp_info = (
-	"intel_hfi" =>	{ Name => "Intel HFI Components",
+	"intel_hfi" =>	{ Name => "Cornelis HFI Components",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
+					  PreReq => " opa_stack ", CoReq => " oftools ",
+						# TBD - HasFirmware - FW update
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [
+									"hfi1-firmware", "hfi1-firmware_debug"
+								],
+					  UserRpms => [ #"libhfi1", "libhfi1-static",
+									"libpsm2",
+									"libpsm2-devel", "libpsm2-compat",
+									"libfabric", "libfabric-devel",
+									"libfabric-psm2", "libfabric-verbs",
+									"hfi1-diagtools-sw", "hfidiags",
+								],
+					  DebugRpms =>  [ #"hfi1_debuginfo",
+									"hfi1-diagtools-sw-debuginfo",
+									"libpsm2-debuginfo", #"libhfi1-debuginfo"
+								],
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ "intel_hfi" ],
+					  StartupScript => "",
+					  StartupParams => [ ]
+					},
+);
+
+my %intel_hfi_rhel84_comp_info = (
+	"intel_hfi" =>	{ Name => "Cornelis HFI Components",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
+					  PreReq => " opa_stack ", CoReq => " oftools ",
+						# TBD - HasFirmware - FW update
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [
+									"hfi1-firmware", "hfi1-firmware_debug"
+								],
+					  UserRpms => [ #"libhfi1", "libhfi1-static",
+									"libpsm2",
+									"libpsm2-devel", "libpsm2-compat",
+									"libfabric", "libfabric-devel",
+									"libfabric-psm2", "libfabric-verbs",
+									"hfi1-diagtools-sw", "hfidiags",
+								],
+					  DebugRpms =>  [ #"hfi1_debuginfo",
+									"hfi1-diagtools-sw-debuginfo",
+									"libpsm2-debuginfo", #"libhfi1-debuginfo"
+								],
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ "intel_hfi" ],
+					  StartupScript => "",
+					  StartupParams => [ ]
+					},
+);
+
+my %intel_hfi_rhel85_comp_info = (
+	"intel_hfi" =>	{ Name => "Cornelis HFI Components",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => " opa_stack ", CoReq => " oftools ",
 						# TBD - HasFirmware - FW update
 					  Hidden => 0, Disabled => 0, IsOFA => 1,
@@ -977,9 +1043,9 @@ my %intel_hfi_rhel83_comp_info = (
 
 # For SLES12sp3 that has different name for libpsm2
 my %intel_hfi_sles123_comp_info = (
-	"intel_hfi" =>	{ Name => "Intel HFI Components",
+	"intel_hfi" =>	{ Name => "Cornelis HFI Components",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => " opa_stack ", CoReq => " oftools ",
 						# TBD - HasFirmware - FW update
 					  Hidden => 0, Disabled => 0, IsOFA => 1,
@@ -1008,9 +1074,9 @@ my %intel_hfi_sles123_comp_info = (
 );
 
 my %intel_hfi_sles124_comp_info = (
-	"intel_hfi" =>	{ Name => "Intel HFI Components",
+	"intel_hfi" =>	{ Name => "Cornelis HFI Components",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => " opa_stack ", CoReq => " oftools ",
 					  Hidden => 0, Disabled => 0, IsOFA => 1,
 					  KernelRpms => [ ],
@@ -1036,9 +1102,9 @@ my %intel_hfi_sles124_comp_info = (
 );
 
 my %intel_hfi_sles125_comp_info = (
-	"intel_hfi" =>	{ Name => "Intel HFI Components",
+	"intel_hfi" =>	{ Name => "Cornelis HFI Components",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => " opa_stack ", CoReq => " oftools ",
 					  Hidden => 0, Disabled => 0, IsOFA => 1,
 					  KernelRpms => [ ],
@@ -1065,9 +1131,9 @@ my %intel_hfi_sles125_comp_info = (
 
 # For SLES15.x that has different name for libpsm2
 my %intel_hfi_sles15_comp_info = (
-	"intel_hfi" =>	{ Name => "Intel HFI Components",
+	"intel_hfi" =>	{ Name => "Cornelis HFI Components",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => " opa_stack ", CoReq => " oftools ",
 						# TBD - HasFirmware - FW update
 					  Hidden => 0, Disabled => 0, IsOFA => 1,
@@ -1097,9 +1163,9 @@ my %intel_hfi_sles15_comp_info = (
 
 # for RHEL74 HFI2
 my %intel_hfi__rhel74_hfi2_comp_info = (
-	"intel_hfi" =>	{ Name => "Intel HFI Components",
+	"intel_hfi" =>	{ Name => "Cornelis HFI Components",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => " opa_stack ", CoReq => " oftools ",
 						# TBD - HasFirmware - FW update
 					  Hidden => 0, Disabled => 0, IsOFA => 1,
@@ -1132,7 +1198,7 @@ my %intel_hfi__rhel74_hfi2_comp_info = (
 my %opa_stack_dev_rhel72_comp_info = (
 	"opa_stack_dev" => { Name => "OFA OPA Development",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => " opa_stack ", CoReq => "",
 					  Hidden => 0, Disabled => 0, IsOFA => 1,
 					  KernelRpms => [ "ifs-kernel-updates-devel" ],
@@ -1153,7 +1219,7 @@ my %opa_stack_dev_rhel72_comp_info = (
 my %opa_stack_dev_comp_info = (
 	"opa_stack_dev" => { Name => "OFA OPA Development",
 					  DefaultInstall => $State_Install,
-					  SrcDir => file_glob("./IntelOPA-OFA_DELTA.*"),
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
 					  PreReq => " opa_stack ", CoReq => "",
 					  Hidden => 0, Disabled => 0, IsOFA => 1,
 					  KernelRpms => [ "ifs-kernel-updates-devel" ],
@@ -1353,6 +1419,22 @@ sub init_components
 						%opa_stack_dev_comp_info,
 						%opa_stack_rhel_comp_info,
 						);
+	} elsif ( "$CUR_VENDOR_VER" eq "ES84" ) {
+		@Components = ( @Components_rhel84 );
+		@SubComponents = ( @SubComponents_newer );
+		%ComponentInfo = ( %ComponentInfo, %ibacm_comp_info,
+						%intel_hfi_rhel84_comp_info,
+						%opa_stack_dev_comp_info,
+						%opa_stack_rhel_comp_info,
+						);
+	} elsif ( "$CUR_VENDOR_VER" eq "ES85" ) {
+		@Components = ( @Components_rhel85 );
+		@SubComponents = ( @SubComponents_newer );
+		%ComponentInfo = ( %ComponentInfo, %ibacm_comp_info,
+						%intel_hfi_rhel85_comp_info,
+						%opa_stack_dev_comp_info,
+						%opa_stack_rhel_comp_info,
+						);
 	} elsif ( "$CUR_VENDOR_VER" eq "ES15" ) {
 		@Components = ( @Components_sles15 );
 		@SubComponents = ( @SubComponents_newer );
@@ -1371,6 +1453,14 @@ sub init_components
 						);
 	} elsif ( "$CUR_VENDOR_VER" eq "ES152" ) {
 		@Components = ( @Components_sles15_sp2 );
+		@SubComponents = ( @SubComponents_newer );
+		%ComponentInfo = ( %ComponentInfo, %ibacm_comp_info,
+						%intel_hfi_sles15_comp_info,
+						%opa_stack_dev_comp_info,
+						%opa_stack_sles15_comp_info,
+						);
+	} elsif ( "$CUR_VENDOR_VER" eq "ES153" ) {
+		@Components = ( @Components_sles15_sp3 );
 		@SubComponents = ( @SubComponents_newer );
 		%ComponentInfo = ( %ComponentInfo, %ibacm_comp_info,
 						%intel_hfi_sles15_comp_info,

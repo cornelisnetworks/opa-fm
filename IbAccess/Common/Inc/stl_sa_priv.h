@@ -351,7 +351,8 @@ CONVERT_IB2STL_MCMEMBER_RECORD(IB_MCMEMBER_RECORD *Src, STL_MCMEMBER_RECORD *Des
 	Dest->HopLimit = Src->u1.s.HopLimit;
 	Dest->Scope = Src->Scope;
 	Dest->JoinFullMember = Src->JoinFullMember;
-	Dest->JoinSendOnlyMember = Src->JoinSendOnlyMember;
+	Dest->JoinSendOnlyNonMember = Src->JoinSendOnlyNonMember;
+	Dest->JoinSendOnlyFullMember = Src->JoinSendOnlyFullMember;
 	Dest->JoinNonMember = Src->JoinNonMember;
 	Dest->ProxyJoin = Src->ProxyJoin;
 }
@@ -376,10 +377,10 @@ CONVERT_STL2IB_MCMEMBER_RECORD(STL_MCMEMBER_RECORD *Src, IB_MCMEMBER_RECORD *Des
 	Dest->u1.s.HopLimit = Src->HopLimit;
 	Dest->Scope = Src->Scope;
 	Dest->JoinFullMember = Src->JoinFullMember;
-	Dest->JoinSendOnlyMember = Src->JoinSendOnlyMember;
+	Dest->JoinSendOnlyNonMember = Src->JoinSendOnlyNonMember;
+	Dest->JoinSendOnlyFullMember = Src->JoinSendOnlyFullMember;
 	Dest->JoinNonMember = Src->JoinNonMember;
 	Dest->ProxyJoin = Src->ProxyJoin;
-	Dest->Reserved = 0;
 	Dest->Reserved2 = 0;
 	Dest->Reserved3[0] = 0;
 	Dest->Reserved3[1] = 0;

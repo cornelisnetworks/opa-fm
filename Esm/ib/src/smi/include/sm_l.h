@@ -1127,9 +1127,21 @@ typedef	struct _McMember {
 	uint32_t		index; /* Used by OOB mgmt interface to track record */
 } McMember_t;
 
-#define MCMEMBER_STATE_FULL_MEMBER       0x01
-#define MCMEMBER_STATE_NON_MEMBER        0x02
-#define MCMEMBER_STATE_SENDONLY_MEMBER   0x04
+#define MCMEMBER_STATE_FULL_MEMBER          0x01
+#define MCMEMBER_STATE_NON_MEMBER           0x02
+#define MCMEMBER_STATE_SENDONLY_NON_MEMBER  0x04
+#define MCMEMBER_STATE_SENDONLY_FULL_MEMBER 0x08
+
+#define IS_MCMEMBER_STATE_FULL_MEMBER(mcMember) \
+	(((mcMember)->state & MCMEMBER_STATE_FULL_MEMBER) || \
+	 ((mcMember)->state & MCMEMBER_STATE_SENDONLY_FULL_MEMBER))
+
+#define IS_MCMEMBER_RECORD_JOIN_FULL_MEMBER(mcmp) \
+	(((mcmp)->JoinFullMember) || ((mcmp)->JoinSendOnlyFullMember))
+
+#define IS_MCMEMBER_RECORD_JOIN_SEND_ONLY(mcMember) \
+	(((mcMember)->record.JoinSendOnlyNonMember) || \
+	 ((mcMember)->record.JoinSendOnlyFullMember))
 
 typedef enum {
 	McGroupBehaviorStrict = 0,

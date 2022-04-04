@@ -3,14 +3,14 @@ All the util_*pl files are provide utility functions for use.
 The comp*pl files are various examples of comp.pl files for assorted products.
 
 the main*pl files are the main installer algorithm for assorted packagings,
-the one of interest for IntelOPA-IFS is main_omnipathwrap_delta.pl
+the one of interest for CornelisOPX-OPXS is main_omnipathwrap_delta.pl
 
 The comp_qlgc_fm.pl is a good example.  It implements a component consisting of
 two user space rpms with init.d scripts.
 
 The main*pl defines which components are part of the packaging and what their
-capabilities are.  main_omnipathwrap_delta.pl is a packaging for IntelOPA-IFS
-and IntelOPA-Basic.  This main is also used for individual component INSTALLs
+capabilities are.  main_omnipathwrap_delta.pl is a packaging for CornelisOPX-OPXS
+and CornelisOPX-Basic.  This main is also used for individual component INSTALLs
 along with the corresponding override*pl file.
 
 routines in a comp.pl file:

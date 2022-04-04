@@ -120,7 +120,6 @@ uint64_t	topology_sema_setTime=0;
 uint64_t	topology_sema_runTime=0;
 uint32_t   	sm_def_mc_group;
 extern uint32_t            smDebugPerf;  // control SM performance messages; default is off
-extern uint32_t            saDebugPerf;  // control SA performance messages; default is off
 extern uint32_t            saDebugRmpp;  // control SA RMPP INFO debug messages; default is off
 extern uint32_t            sm_debug;    // SM debug; default is off
 extern uint32_t            saRmppCheckSum; // control checksum of SA RMPP responses; default is off;
@@ -199,7 +198,7 @@ SmAdaptiveRouting_t sm_adaptiveRouting;
 // XML configuration data structure
 #ifdef __VXWORKS__
 extern FMXmlCompositeConfig_t *xml_config;
-static uint32_t    			xml_trace = 0;
+static uint32_t    			sm_xml_trace = 0;
 extern SMXmlConfig_t 		sm_config;
 extern FEXmlConfig_t 		fe_config;
 extern PMXmlConfig_t 		pm_config;
@@ -223,7 +222,7 @@ SMMcastConfig_t 			sm_mc_config;
 SmMcastMlidShare_t 			sm_mls_config;
 SMMcastDefGrpCfg_t 			sm_mdg_config;
 
-uint32_t    				xml_trace = 0;
+uint32_t					sm_xml_trace = 0;
 
 extern uint32_t pm_conf_start;
 extern uint32_t bm_conf_start;
@@ -852,9 +851,9 @@ Status_t sm_parse_xml_config(void) {
 
 	if (xml_config->xmlDebug.xml_sm_debug) {
 		printf("###########sm_env %s sm_instance %u\n", sm_env, (unsigned int)sm_instance);
-		xml_trace = 1;
+		sm_xml_trace = 1;
 	} else {
-		xml_trace = 0;
+		sm_xml_trace = 0;
 	}
 
 	// copy the configurations to local structures and adjust accordingly
@@ -933,7 +932,7 @@ Status_t sm_parse_xml_config(void) {
 
 #ifndef __VXWORKS__ // not required for ESM
 	// for debugging XML do not deamonize
-	if (xml_trace)
+	if (sm_xml_trace)
 		sm_nodaemon = 1;
 #endif // __VXWORKS__
 
@@ -1058,11 +1057,11 @@ Status_t sm_parse_xml_config(void) {
 		memset(&sm_adaptiveRouting, 0, sizeof(SmAdaptiveRouting_t));
 	}
 
-	if (xml_trace) {
+	if (sm_xml_trace) {
 		smShowConfig(&sm_config, &sm_dpl_config, &sm_mc_config, &sm_mls_config);
 	}
 
-	if (xml_trace) {
+	if (sm_xml_trace) {
 		printf("XML - SM old overall_checksum %llu new overall_checksum %llu\n",
 			(long long unsigned int)sm_overall_checksum, (long long unsigned int)sm_config.overall_checksum);
 		printf("XML - SM old consistency_checksum %llu new consistency_checksum %llu\n",
@@ -2059,7 +2058,7 @@ sm_main(void)
 	sm_conf_server_init();
 
 #ifndef __VXWORKS__
-	if (xml_trace)
+	if (sm_xml_trace)
 		fprintf(stdout, "\nSM Initial Config Done\n");
 #endif
 

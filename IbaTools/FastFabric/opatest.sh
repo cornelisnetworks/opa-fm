@@ -2,6 +2,7 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 #
 # Copyright (c) 2015-2020, Intel Corporation
+# Copyright (c) 2021, Cornelis Networks
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -72,17 +73,17 @@ Usage_opahostadmin_full()
 	echo "                    default is '$FF_IPOIB_SUFFIX'" >&2
 	echo "  -f hostfile - file with hosts in cluster, default is $CONFIG_DIR/opa/hosts" >&2
 	echo "  -h hosts - list of hosts to execute operation against" >&2
-	echo "  -r release - IntelOPA release to load/upgrade to, default is $FF_PRODUCT_VERSION" >&2
+	echo "  -r release - CornelisOPX release to load/upgrade to, default is $FF_PRODUCT_VERSION" >&2
 	echo "  -d dir - directory to get product.release.tgz from for load/upgrade" >&2
-	echo "  -I install_options - IntelOPA install options" >&2
-	echo "  -U upgrade_options - IntelOPA upgrade options" >&2
-	echo "  -T product - IntelOPA product type to install" >&2
+	echo "  -I install_options - CornelisOPX install options" >&2
+	echo "  -U upgrade_options - CornelisOPX upgrade options" >&2
+	echo "  -T product - CornelisOPX product type to install" >&2
 	echo "               default is $FF_PRODUCT" >&2
-	echo "               Other options include: IntelOPA-Basic.<distro>," >&2
-	echo "                                      IntelOPA-IFS.<distro>" >&2
+	echo "               Other options include: CornelisOPX-Basic.<distro>," >&2
+	echo "                                      CornelisOPX-OPXS.<distro>" >&2
 	echo "               Where <distro> is the distro and CPU, such as RHEL7-x86_64" >&2
-	echo "  -P packages - IntelOPA packages to install, default is '$FF_PACKAGES'" >&2
-	echo "                See IntelOPA INSTALL -C for a complete list of packages" >&2
+	echo "  -P packages - CornelisOPX packages to install, default is '$FF_PACKAGES'" >&2
+	echo "                See CornelisOPX INSTALL -C for a complete list of packages" >&2
 	echo "  -m netmask - IPoIB netmask to use for configipoib" >&2
 	echo "  -S - securely prompt for password for user on remote system" >&2
 	echo "  operation - operation to perform. operation can be one or more of:" >&2
@@ -278,14 +279,14 @@ Usage_opahostadmin()
 	echo "  --help - produce full help text" >&2
 	echo "  -c - clobber result files from any previous run before starting this run" >&2
 	echo "  -f hostfile - file with hosts in cluster, default is $CONFIG_DIR/opa/hosts" >&2
-	echo "  -r release - IntelOPA release to load/upgrade to, default is $FF_PRODUCT_VERSION" >&2
+	echo "  -r release - CornelisOPX release to load/upgrade to, default is $FF_PRODUCT_VERSION" >&2
 	echo "  -d dir - directory to get product.release.tgz from for load/upgrade" >&2
-	echo "  -T product - IntelOPA product type to install" >&2
+	echo "  -T product - CornelisOPX product type to install" >&2
 	echo "               default is $FF_PRODUCT" >&2
-	echo "               Other options include: IntelOPA-Basic.<distro>, IntelOPA-IFS.<distro>" >&2
+	echo "               Other options include: CornelisOPX-Basic.<distro>, CornelisOPX-OPXS.<distro>" >&2
 	echo "               Where <distro> is the distro and CPU, such as RHEL7-x86_64" >&2
-	echo "  -P packages - IntelOPA packages to install, default is '$FF_PACKAGES'" >&2
-	echo "                See IntelOPA INSTALL -C for a complete list of packages" >&2
+	echo "  -P packages - CornelisOPX packages to install, default is '$FF_PACKAGES'" >&2
+	echo "                See CornelisOPX INSTALL -C for a complete list of packages" >&2
 	echo "  -S - securely prompt for password for user on remote system" >&2
 	echo "  operation - operation to perform. operation can be one or more of:" >&2
 	echo "              load - initial install of all hosts" >&2
@@ -478,7 +479,7 @@ export TL_DIR=/usr/lib/opa/tools
 export TEST_IDENTIFY=no
 export TEST_SHOW_CONFIG=no
 export TEST_SHOW_START=yes
-export CFG_PRODUCT="${FF_PRODUCT:-IntelOPA-Basic}"
+export CFG_PRODUCT="${FF_PRODUCT:-CornelisOPX-Basic}"
 export CFG_INSTALL_OPTIONS="$FF_INSTALL_OPTIONS"
 export CFG_UPGRADE_OPTIONS="$FF_UPGRADE_OPTIONS"
 export CFG_IPOIB_NETMASK="$FF_IPOIB_NETMASK"

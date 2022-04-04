@@ -2,6 +2,7 @@
 ## BEGIN_ICS_COPYRIGHT8 ****************************************
 #
 # Copyright (c) 2015-2020, Intel Corporation
+# Copyright (c) 2020, Cornelis Networks, Inc.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -37,53 +38,16 @@
 #
 ## ==========================================================================
 #
-#Installation Prequisites array for fast fabric
-#and of tools component
-
-my @oftools_prereq = (
-			"glibc",
-			"libgcc_s1",
-			"libibmad5",
-			"libibumad3",
-			"libibverbs1",
-			"libhfi1verbs-rdmav2 ",
-			"libstdc++6",
-			"ibacm",
-);
-$comp_prereq_hash{'oftools_prereq'} = \@oftools_prereq;
-
-my @fastfabric_prereq = (
-			"glibc",
+#Installation Prequisites array for opafm
+my @opafm_prereq = (
 			"bash",
-			"expect",
-			"perl-base",
-			"tcl",
-			"libexpat1",
-			"libgcc_s1",
-			"libibmad5",
-			"libibumad3",
-			"libibverbs1",
-			"libhfi1verbs-rdmav2",
-			"libncurses5",
-			"libopenssl1_0_0",
-			"libstdc++6",
-			"libz1",
-			"bc",
-			"rdma", 
-);
-$comp_prereq_hash{'fastfabric_prereq'} = \@fastfabric_prereq;
-
-my @opamgt_sdk_prereq = (
-			"bash",
+			"expat",
 			"glibc",
-			"libgcc_s1",
-			"libibumad-devel",
-			"libibumad3",
-			"libibverbs-devel",
-			"libibverbs1",
-			"libopenssl-devel",
-			"libopenssl1_0_0",
-			"libstdc++6",
-			"openssl",
+			"libibumad",
+			"libibverbs",
+			"openssl-libs",
+			"rdma-core",
+			"systemd",
+			"zlib",
 );
-$comp_prereq_hash{'opamgt_sdk_prereq'} = \@opamgt_sdk_prereq;
+$comp_prereq_hash{'opafm_prereq'} = \@opafm_prereq;

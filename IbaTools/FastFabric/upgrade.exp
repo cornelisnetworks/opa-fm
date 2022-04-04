@@ -124,7 +124,7 @@ File: /usr/lib/opa/tools/upgrade.exp" case_setup case_cleanup {
 			# given driver, its possible that its not on the media
 			# so we can't expect it to be installed
 			# for now assume Stack or Enablement tools are always on media
-			set drivers {{((OFED OPA Stack)|(OFA OPA Stack)|(OFED IBACM)|(OFA IBACM)|(Intel HFI Components)|(OPA Tools)|(OFED IP over IB)|(OFA IP over IB)|(OPA FM))}}
+			set drivers {{((OFED OPA Stack)|(OFA OPA Stack)|(OFED IBACM)|(OFA IBACM)|(Cornelis HFI Components)|(OPA Tools)|(OFED IP over IB)|(OFA IP over IB)|(OPA FM))}}
 
 			install_all $host "$drivers" 0 0 0 "" "$env(CFG_RELEASE)" "-U $env(CFG_UPGRADE_OPTIONS)" "$env(CFG_SCPFROMDIR)" "$env(CFG_PRODUCT)"
 		}

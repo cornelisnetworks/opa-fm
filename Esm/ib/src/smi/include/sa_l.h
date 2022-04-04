@@ -314,7 +314,7 @@ Status_t	sa_Authenticate_Path(STL_LID, STL_LID);
 Status_t	sa_Authenticate_Access(uint32_t, STL_LID, STL_LID, STL_LID);
 Status_t	sa_Compare_Node_Port_PKeys(Node_t*, Port_t*);
 Status_t	sa_Compare_Port_PKeys(Port_t*, Port_t*);
-uint32_t    saDebugPerf;  // control SA performance messages; default is off
+extern uint32_t    saDebugPerf;  // control SA performance messages; default is off
 
 Status_t	sa_data_offset(uint16_t class, uint16_t type);
 Status_t	sa_create_template_mask(uint16_t, uint64_t);

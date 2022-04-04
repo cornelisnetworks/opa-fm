@@ -2613,6 +2613,7 @@ FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabric
 	STL_LID lid = 0;
 	STL_PA_IMAGE_ID_DATA img_id_end = {0};
 	STL_PA_IMAGE_ID_DATA img_id_begin = {0};
+	uint32 absolute_time;
 #endif
 	int i=0;
 	int num_nodes = cl_qmap_count(&fabricp->AllNodes);
@@ -2667,14 +2668,16 @@ FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabric
 			img_id_end.imageTime.absoluteTime = end ? end : begin;
 			status = omgt_pa_get_image_info(g_portHandle, img_id_end, &img_info_end);
 			if (status != FSUCCESS) {
-				fprintf(stderr, "%s: failed to get image info at %s\n", __func__, ctime((time_t *)&img_id_end.imageTime.absoluteTime));
+				memcpy((uint8 *)&absolute_time, (uint8 *)&img_id_end.imageTime.absoluteTime, sizeof(uint32));
+				fprintf(stderr, "%s: failed to get image info at %s\n", __func__, ctime((time_t *)&absolute_time));
 				return status;
 			}
 			img_id_end = img_info_end.imageId;
 
 			status = omgt_pa_freeze_image(g_portHandle, img_id_end, &img_id_end);
 			if (status != FSUCCESS) {
-				fprintf(stderr, "%s: failed to freeze image at %s\n", __func__, ctime((time_t *)&img_id_end.imageTime.absoluteTime));
+				memcpy((uint8 *)&absolute_time, (uint8 *)&img_id_end.imageTime.absoluteTime, sizeof(uint32));
+				fprintf(stderr, "%s: failed to freeze image at %s\n", __func__, ctime((time_t *)&absolute_time));
 				return status;
 			}
 		}
@@ -2815,7 +2818,8 @@ FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabric
 	if ((begin || end) && (g_paclient_state == OMGT_SERVICE_STATE_OPERATIONAL)) {
 		status = omgt_pa_release_image(g_portHandle, img_id_end);
 		if (status != FSUCCESS) {
-			fprintf(stderr, "%s: failed to release frozen image at %s\n", __func__, ctime((time_t *)&img_id_end.imageTime.absoluteTime));
+			memcpy((uint8 *)&absolute_time, (uint8 *)&img_id_end.imageTime.absoluteTime, sizeof(uint32));
+			fprintf(stderr, "%s: failed to release frozen image at %s\n", __func__, ctime((time_t *)&absolute_time));
 			return status;
 		}
 	}
@@ -2826,7 +2830,8 @@ FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabric
 		img_id_begin.imageTime.absoluteTime = begin;
 		status = omgt_pa_get_image_info(g_portHandle, img_id_begin, &img_info_begin);
 		if (status != FSUCCESS) {
-			fprintf(stderr, "%s: failed to get image info at %s\n", __func__, ctime((time_t *)&img_id_begin.imageTime.absoluteTime));
+			memcpy((uint8 *)&absolute_time, (uint8 *)&img_id_begin.imageTime.absoluteTime, sizeof(uint32));
+			fprintf(stderr, "%s: failed to get image info at %s\n", __func__, ctime((time_t *)&absolute_time));
 			return status;
 		}
 		img_id_begin = img_info_begin.imageId;
@@ -2886,11 +2891,13 @@ FSTATUS GetAllPortCounters(EUI64 portGuid, IB_GID localGid, FabricData_t *fabric
 			} // END: for all nodes
 			status = omgt_pa_release_image(g_portHandle, img_id_begin);
 			if (status != FSUCCESS) {
-				fprintf(stderr, "%s: failed to release frozen image at %s\n", __func__, ctime((time_t *)&img_id_begin.imageTime.absoluteTime));
+				memcpy((uint8 *)&absolute_time, (uint8 *)&img_id_begin.imageTime.absoluteTime, sizeof(uint32));
+				fprintf(stderr, "%s: failed to release frozen image at %s\n", __func__, ctime((time_t *)&absolute_time));
 				return status;
 			}
 		} else if (status != FSUCCESS) {
-			fprintf(stderr, "%s: failed to freeze image at %s\n", __func__, ctime((time_t *)&img_id_begin.imageTime.absoluteTime));
+			memcpy((uint8 *)&absolute_time, (uint8 *)&img_id_begin.imageTime.absoluteTime, sizeof(uint32));
+			fprintf(stderr, "%s: failed to freeze image at %s\n", __func__, ctime((time_t *)&absolute_time));
 			return status;
 		}
 	}

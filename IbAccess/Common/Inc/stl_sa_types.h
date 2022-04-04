@@ -154,12 +154,13 @@ extern "C" {
 #define STL_SA_CAPABILITY_PA_SERVICES_SUPPORT    0x8000
 
 /* 32 bit values, lower 27 bits are capabilities*/
-#define STL_SA_CAPABILITY2_QOS_SUPPORT            0x0000002
-#define STL_SA_CAPABILITY2_MFTTOP_SUPPORT         0x0000008
-#define STL_SA_CAPABILITY2_FULL_PORTINFO          0x0000040
-#define STL_SA_CAPABILITY2_EXT_SUPPORT            0x0000080
-#define STL_SA_CAPABILITY2_DGDTRECORD_SUPPORT	  0x1000000
-#define STL_SA_CAPABILITY2_SWCOSTRECORD_SUPPORT   0x2000000
+#define STL_SA_CAPABILITY2_QOS_SUPPORT            		0x0000002
+#define STL_SA_CAPABILITY2_MFTTOP_SUPPORT         		0x0000008
+#define STL_SA_CAPABILITY2_FULL_PORTINFO          		0x0000040
+#define STL_SA_CAPABILITY2_EXT_SUPPORT            		0x0000080
+#define STL_SA_CAPABILITY2_SENDONLY_FULL_MEM_SUPPORT	0x0001000
+#define STL_SA_CAPABILITY2_DGDTRECORD_SUPPORT	  		0x1000000
+#define STL_SA_CAPABILITY2_SWCOSTRECORD_SUPPORT   		0x2000000
 
 /* SA Capmask Bits to return on IB SA ClassPortInfo */
 #define IB_SA_CAPABILITY_MASK(capmask) (capmask & \
@@ -201,11 +202,12 @@ StlSaClassPortInfoCapMask2(char buf[80], uint32 cmask)
 	if (!cmask) {
 		snprintf(buf, 80, "-");
 	} else {
-		snprintf(buf, 80, "%s%s%s%s%s%s",
+		snprintf(buf, 80, "%s%s%s%s%s%s%s",
 			(cmask & STL_SA_CAPABILITY2_QOS_SUPPORT) ? "QoS " : "",
 			(cmask & STL_SA_CAPABILITY2_MFTTOP_SUPPORT) ? "MFTTop " : "",
 			(cmask & STL_SA_CAPABILITY2_FULL_PORTINFO) ? "FullPortInfo " : "",
 			(cmask & STL_SA_CAPABILITY2_EXT_SUPPORT) ? "ExtSpeed " : "",
+			(cmask & STL_SA_CAPABILITY2_SENDONLY_FULL_MEM_SUPPORT) ? "SendOnlyFullMember " : "",
 			(cmask & STL_SA_CAPABILITY2_DGDTRECORD_SUPPORT) ? "DG/DT " : "",
 			(cmask & STL_SA_CAPABILITY2_SWCOSTRECORD_SUPPORT) ? "SwCost " : "");
 	}
@@ -722,8 +724,8 @@ typedef struct {
 	/* 48 bytes */
 	IB_BITFIELD5(uint8,
 			Scope:4,
-			Reserved4:1,
-			JoinSendOnlyMember:1, // NOTE: Treat these 4 JoinStates as 1 attr.
+			JoinSendOnlyFullMember:1,
+			JoinSendOnlyNonMember:1, // NOTE: Treat these 4 JoinStates as 1 attr.
 			JoinNonMember:1,
 			JoinFullMember:1);
 
@@ -774,7 +776,8 @@ typedef struct {
 						| STL_MCMEMBER_COMPONENTMASK_JNSTATE \
 						| STL_MCMEMBER_COMPONENTMASK_PORTGID )
 
-#define STL_MCMRECORD_GETJOINSTATE(REC)		( (REC)->JoinSendOnlyMember \
+#define STL_MCMRECORD_GETJOINSTATE(REC)		( (REC)->JoinSendOnlyFullMember \
+						| (REC)->JoinSendOnlyNonMember \
 						| (REC)->JoinNonMember \
 						| (REC)->JoinFullMember )
 

@@ -50,7 +50,7 @@ $VERSION =~ s/%.*//;
 my $INT_VERSION = "THIS_IS_THE_ICS_INTERNAL_VERSION_NUMBER:@(#)000.000.000.000B000";
 $INT_VERSION =~ s/THIS_IS_THE_ICS_INTERNAL_VERSION_NUMBER:@\(#\)//;
 $INT_VERSION =~ s/%.*//;
-my $BRAND = "THIS_IS_THE_ICS_BRAND:Intel%                    ";
+my $BRAND = "THIS_IS_THE_ICS_BRAND:Cornelis%                 ";
 # backslash before : is so patch_brand doesn't replace string
 $BRAND =~ s/THIS_IS_THE_ICS_BRAND\://;
 $BRAND =~ s/%.*//;

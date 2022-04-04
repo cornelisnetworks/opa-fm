@@ -536,15 +536,15 @@ typedef struct _IB_MCMEMBER_RECORD {
 	} u1;
 #if CPU_BE
 	uint8	Scope:4;
-	uint8	Reserved:1;
-	uint8	JoinSendOnlyMember:1;
+	uint8	JoinSendOnlyFullMember:1;
+	uint8	JoinSendOnlyNonMember:1;
 	uint8	JoinNonMember:1;
 	uint8	JoinFullMember:1;
 #else
 	uint8	JoinFullMember:1;
 	uint8	JoinNonMember:1;
-	uint8	JoinSendOnlyMember:1;
-	uint8	Reserved:1;
+	uint8	JoinSendOnlyNonMember:1;
+	uint8	JoinSendOnlyFullMember:1;
 	uint8	Scope:4;
 #endif
 #if CPU_BE

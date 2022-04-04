@@ -797,7 +797,7 @@
       <!-- <HoqLife>8ms</HoqLife> Override SM instance value -->                                                       <!--#SM_0_mt_enable#!-->
     </VirtualFabric>                                                                                                   <!--#SM_0_mt_enable#!-->
                                                                                                                        <!--#SM_0_mt_enable#!-->
-    <!-- when using Intel OmniPath Fabric HFIs with PSM technology,-->                                                 <!--#SM_0_mt_enable#!-->
+    <!-- when using Cornelis OmniPath Fabric HFIs with PSM technology,-->                                              <!--#SM_0_mt_enable#!-->
     <!-- there is no need to configure PKey nor SL. FM can freely select -->                                           <!--#SM_0_mt_enable#!-->
     <!-- since PSM will query the SA using the PSM ServiceIds when -->                                                 <!--#SM_0_mt_enable#!-->
     <!-- PSM_PATH_REC="opp" -->                                                                                        <!--#SM_0_mt_enable#!-->
@@ -1036,14 +1036,14 @@
     <!-- dor -      Dimension ordered routing for use with mesh and torus  -->
     <!--            topologies cabled in port-to-dimension order.          -->
     <!--            See the <MeshTorusTopology> section below for more     -->
-    <!--            information. (Intel Technical Preview)                 -->
+    <!--            information. (Cornelis Technical Preview)              -->
     <!-- hypercube - A variation of dg shortest path for enhanced          -->
     <!--            hypercube and mesh topologies.  See section            -->
     <!--            <HypercubeTopology> below. (Supported via 3rd parties) -->
     <RoutingAlgorithm>shortestpath</RoutingAlgorithm>
 
     <!-- SpineFirstRouting - An option to avoid credit loops in complex    -->
-    <!--            fabrics using Intel Switches.                          -->
+    <!--            fabrics using Cornelis Switches.                       -->
     <!--            Given equal length routes, this option routes through  -->
     <!--            director class switches spine first. This avoids       -->
     <!--            credit loops caused by routing via edge/leaf switches  -->
@@ -1054,7 +1054,7 @@
     <!-- LIDs to a single physical port, allowing the SM to configure the fabric with -->
     <!-- multiple routes between each end node port, it further helps applications to -->
     <!-- load balance traffic. This permits selected applications (such as MPIs using -->
-    <!-- Intel(R) PSM) to optimize performance and/or resiliency by using dispersive  -->
+    <!--Cornelis(TM) PSM to optimize performance and/or resiliency by using dispersive-->
     <!-- routing. Default 0 assigns 1 LID per HFI. LMC is used for Failover/Redundant -->
     <!-- Routing and for Dispersive Routing. -->
     <Lmc>0</Lmc>  <!-- assign 2^lmc LIDs to all FIs (Lmc can be 0-7) -->                                               <!--SM_0_lmc:dec-->
@@ -1705,7 +1705,7 @@
     </CongestionControl>
 
 
-    <!-- Configures support for AdaptiveRouting in Intel Switches -->
+    <!-- Configures support for AdaptiveRouting in Cornelis Switches -->
     <!-- Adaptive Routing monitors the performance of the possible paths between -->
     <!-- fabric endpoints and periodically rebalances the routes to reduce -->
     <!-- congestion and achieve a more balanced packet load -->
@@ -2074,7 +2074,7 @@
 
   <!-- Common FE (Fabric Executive) attributes -->
   <Fe>
-    <!-- The FE is required by the Intel Omni-Path FM GUI. -->
+    <!-- The FE is required by the Cornelis Omni-Path FM GUI. -->
     <!-- To enable the FE, configure the SslSecurity parameters in this file -->
     <!-- as desired. -->
     <!-- For Host FM then set Start to 1. -->

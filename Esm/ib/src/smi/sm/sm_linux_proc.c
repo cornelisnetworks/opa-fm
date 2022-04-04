@@ -85,7 +85,7 @@ extern	int		opterr;
 extern	int		optopt;
 extern	char		*optarg;
 extern  uint32_t sm_nodaemon;
-extern  uint32_t xml_trace;
+extern  uint32_t sm_xml_trace;
 
 extern void* getSmXmlParserMemory(uint32_t size, char* info);
 extern void freeSmXmlParserMemory(void *address, uint32_t size, char* info);
@@ -177,7 +177,7 @@ main(int argc, char *argv[]) {
 	while ((c = getopt(argc, argv, Opts)) != -1) {
 		switch (c) {
 		case 'D':
-			if (!xml_trace)
+			if (!sm_xml_trace)
 				sm_nodaemon = 0;
 			break;
 		case 'n':
