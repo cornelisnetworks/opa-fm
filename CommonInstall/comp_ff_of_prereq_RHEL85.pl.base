@@ -2,6 +2,7 @@
 ## BEGIN_ICS_COPYRIGHT8 ****************************************
 #
 # Copyright (c) 2015-2020, Intel Corporation
+# Copyright (c) 2020, Cornelis Networks, Inc.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -37,16 +38,51 @@
 #
 ## ==========================================================================
 #
-#Installation Prequisites array for opafm
-my @opafm_prereq = (
-			"bash",
-			"expat",
-			"glibc",
-			"libibumad",
-			"libibverbs",
-			"openssl-libs",
-			"rdma",
-			"systemd",
-			"zlib",
+#Installation Prequisites array for fast fabric
+#and of tools component
+my @oftools_prereq = (
+    "glibc",
+    "libgcc",
+    "libibumad",
+    "libibverbs",
+    "libstdc++",
+    "ibacm",
+    "rdma-core",
 );
-$comp_prereq_hash{'opafm_prereq'} = \@opafm_prereq;
+$comp_prereq_hash{'oftools_prereq'} = \@oftools_prereq;
+
+my @fastfabric_prereq = (
+    "atlas",
+    "bash",
+    "bc",
+    "expat",
+    "expect",
+    "glibc",
+    "libgcc",
+    "libibumad",
+    "libibverbs",
+    "libstdc++",
+    "ncurses-libs",
+    "openssl-libs",
+    "perl",
+    "perl-Getopt-Long",
+    "perl-Socket",
+    "rdma-core",
+    "tcl",
+    "zlib",
+);
+$comp_prereq_hash{'fastfabric_prereq'} = \@fastfabric_prereq;
+
+my @opamgt_sdk_prereq = (
+    "bash",
+    "glibc",
+    "libgcc",
+    "libibumad",
+    "libibverbs",
+    "libstdc++",
+    "openssl",
+    "openssl-devel",
+    "openssl-libs",
+    "rdma-core-devel",
+);
+$comp_prereq_hash{'opamgt_sdk_prereq'} = \@opamgt_sdk_prereq;

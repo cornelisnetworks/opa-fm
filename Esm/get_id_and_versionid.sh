@@ -57,6 +57,9 @@ else
 			elif [ $rval = 'centos' ]
 			then
 				rval=redhat
+			elif [ $rval = 'rocky' ]
+			then
+				rval=redhat
 			elif [ $rval != 'os' ]
 			then
 				break
@@ -94,6 +97,10 @@ else
 		elif grep -qi centos /etc/redhat-release
 		then
 			# CentOS 
+			rval=`cat /etc/redhat-release | sed -r 's/^.+([[:digit:]])\.([[:digit:]]).+$/\1.\2/'`
+		elif grep -qi rocky /etc/redhat-release
+		then
+			# Rocky
 			rval=`cat /etc/redhat-release | sed -r 's/^.+([[:digit:]])\.([[:digit:]]).+$/\1.\2/'`
 		elif grep -qi scientific /etc/redhat-release
 		then

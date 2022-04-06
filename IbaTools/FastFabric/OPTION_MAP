@@ -158,7 +158,7 @@ List of command line options used in various Fast Fabric tools
 -S point		source for trace route
 -S serviceid		query a specific service id
 -S state		new port state (opaportconfig)
--T product		IntelOPA product type to install
+-T product		CornelisOPX product type to install
 -T timelimit		timelimit for opacmdall operations and tools using opacmdall
 -T file			name of topology file input/output file or SSL/TLS parameters XML file
 -U			only perform connect (for opasetupssh)

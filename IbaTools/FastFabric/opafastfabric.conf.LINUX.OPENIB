@@ -104,13 +104,13 @@ export FF_TIMEOUT_MULT=${FF_TIMEOUT_MULT:-2}
 #export FF_RESULT_DIR=${FF_RESULT_DIR:-.}
 export FF_RESULT_DIR=${FF_RESULT_DIR:-$HOME}
 
-# IntelOPA product to install during opahostadmin load and upgrade
-export FF_PRODUCT=${FF_PRODUCT:-IntelOPA-Basic.`cat /usr/lib/opa/tools/osid_wrapper`}
+# CornelisOPX product to install during opahostadmin load and upgrade
+export FF_PRODUCT=${FF_PRODUCT:-CornelisOPX-Basic.`cat /usr/lib/opa/tools/osid_wrapper`}
 
-# IntelOPA product version to install during opahostadmin load and upgrade
+# CornelisOPX product version to install during opahostadmin load and upgrade
 export FF_PRODUCT_VERSION=${FF_PRODUCT_VERSION:-`cat /etc/opa/version_wrapper 2>/dev/null`}
 
-# IntelOPA packages to install during opahostadmin load [-P option]
+# CornelisOPX packages to install during opahostadmin load [-P option]
 #export FF_PACKAGES=${FF_PACKAGES:-oftools ipoib mpi pgas}
 #export FF_PACKAGES=${FF_PACKAGES:-oftools ipoib psm_mpi pgas}
 export FF_PACKAGES=${FF_PACKAGES:-oftools ipoib psm_mpi}

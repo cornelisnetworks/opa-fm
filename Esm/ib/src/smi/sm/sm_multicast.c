@@ -613,7 +613,8 @@ static Status_t sm_createMCastGrp(int vf, uint64_t* mgid, uint16_t pkey, uint8_t
 	mcmp->Scope = mcGroup->scope;
 	mcmp->JoinFullMember = mcMember->state & MCMEMBER_STATE_FULL_MEMBER;
 	mcmp->JoinNonMember = 0;
-	mcmp->JoinSendOnlyMember = 0;
+	mcmp->JoinSendOnlyNonMember = 0;
+	mcmp->JoinSendOnlyFullMember = 0;
 	mcmp->ProxyJoin = mcMember->proxy;
 
 	return VSTATUS_OK;
@@ -909,7 +910,7 @@ void sm_add_mcmember_port_masks(void)
 			if ((mcMember->record.JoinNonMember) ||
 				(mcMember->record.JoinFullMember)) {
 				nodep->mft[offset][Mft_Position(portp->portno)] |= Mft_PortmaskBit(portp->portno);
-			} else if (mcMember->record.JoinSendOnlyMember) {
+			} else if (IS_MCMEMBER_RECORD_JOIN_SEND_ONLY(mcMember)) {
 				// mark this switch as having a send only broadcast group member so we do not prune
 				nodep->hasSendOnlyMember = 1;
 			}

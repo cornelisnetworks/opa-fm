@@ -84,9 +84,9 @@ PROJ_SBR_DIR		= $(GLOBAL_SBR_DIR)
 ifeq "$(RELEASE_TAG)" ""
 # only use engineer's name for directory name (omit timestamp part),
 # otherwise each partial build goes to a different place
-STAGE_SUB_DIR		= IntelOPA-FM-$(BUILD_TARGET_OS_ID).$(shell $(PATCH_ENG_VERSION)|cut -d"." -f1)
+STAGE_SUB_DIR		= CornelisOPX-FM-$(BUILD_TARGET_OS_ID).$(shell $(PATCH_ENG_VERSION)|cut -d"." -f1)
 else
-STAGE_SUB_DIR		= IntelOPA-FM.$(BUILD_TARGET_OS_ID).$(MODULEVERSION)
+STAGE_SUB_DIR		= CornelisOPX-FM.$(BUILD_TARGET_OS_ID).$(MODULEVERSION)
 endif
 # items which we don't plan to package and are side effects, such as
 # fastfabric, we put up in STAGE_DIR so

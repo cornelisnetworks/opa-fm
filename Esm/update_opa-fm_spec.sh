@@ -47,7 +47,7 @@ fi
 
 sed -i "s/__RPM_FS/OPA_FEATURE_SET=opa10/g" $to
 
-if [ "$id" = "rhel" -o "$id" = "centos" ]
+if [ "$id" = "rhel" -o "$id" = "centos" -o "$id" = "rocky" ]
 then
 	GE_7_0=$(echo "$versionid >= 7.0" | bc)
 	GE_7_4=$(echo "$versionid >= 7.4" | bc)

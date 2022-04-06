@@ -725,6 +725,9 @@ function os_vendor()
             centos)
                 rval=redhat
                 ;;
+            rocky)
+                rval=redhat
+                ;;
             fedora)
                 rval=redhat
                 ;;
@@ -754,6 +757,9 @@ function os_vendor()
 				rval=UnitedLinux
 			fi
 		elif [ $rval = 'centos' ]
+		then
+			rval=redhat
+		elif [ $rval = 'rocky' ]
 		then
 			rval=redhat
 		elif [ $rval != 'os' ]
@@ -829,6 +835,10 @@ function os_vendor_version()
 		elif grep -qi centos /etc/redhat-release
 		then
 			# CentOS 
+			rval="ES"`cat /etc/redhat-release | sed -r 's/^.+([[:digit:]])\.([[:digit:]]).+$/\1\2/'`
+		elif grep -qi rocky /etc/redhat-release
+		then
+			# Rocky
 			rval="ES"`cat /etc/redhat-release | sed -r 's/^.+([[:digit:]])\.([[:digit:]]).+$/\1\2/'`
 		elif grep -qi scientific /etc/redhat-release
 		then
@@ -1307,13 +1317,20 @@ getIntelcompilervarsfile()
 	prefix=$1
 	subdir=$2
 	foundfile=
-	for f in $(ls -rd /opt/intel/${prefix}*)
-	do
-		if [ -f $f/$subdir/bin/compilervars.sh ]
-		then
-			foundfile=$f/$subdir/bin/compilervars.sh
-			break
-		fi
-	done
+	if [ "$prefix" == "oneapi" ];
+	then
+		foundfile=/opt/intel/${prefix}/setvars.sh
+
+	else
+
+		for f in $(ls -rd /opt/intel/${prefix}*)
+		do
+			if [ -f $f/$subdir/bin/compilervars.sh ]
+			then
+				foundfile=$f/$subdir/bin/compilervars.sh
+				break
+			fi
+		done
+	fi
 	echo "$foundfile"
 }

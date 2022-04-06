@@ -1,7 +1,7 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 #
 # Copyright (c) 2015-2020, Intel Corporation
-# Copyright (c) 2020, Cornelis Networks, Inc.
+# Copyright (c) 2020-2021, Cornelis Networks, Inc.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -116,21 +116,6 @@ INSTALL_SOURCES	= \
  				$(TL_DIR)/CommonInstall/main_omnipathwrap_delta.pl
 COMP_SOURCES = $(TL_DIR)/CommonInstall/comp_qlgc_fm.pl
 
-ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES72"
-        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL72.pl
-endif
-ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES73"
-        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL73.pl
-endif
-ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES74"
-        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL74.pl
-endif
-ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES75"
-        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL75.pl
-endif
-ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES76"
-        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL76.pl
-endif
 ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES77"
         PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL77.pl
 endif
@@ -149,8 +134,11 @@ endif
 ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES83"
         PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL83.pl
 endif
-ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES122"
-        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_SLES122.pl
+ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES84"
+        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL84.pl
+endif
+ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES85"
+        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL85.pl
 endif
 ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES123"
         PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_SLES123.pl
@@ -169,6 +157,9 @@ ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES151"
 endif
 ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES152"
         PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_SLES152.pl
+endif
+ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES153"
+        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_SLES153.pl
 endif
 
 
@@ -301,14 +292,14 @@ package: fmbuild
 	mkdir -p $(RELEASE_DIR)
 	rm -f packaged_files dist_files
 	cd $(STAGE_DIR) ; \
-	dir=`echo IntelOPA-FM.*`; \
-	ver=`expr IntelOPA-FM.* : 'IntelOPA-FM.\(.*\)$$'`; \
-	rm -rf $(RELEASE_DIR)/IntelOPA-FM.$$ver; \
-	mkdir -p $(RELEASE_DIR)/IntelOPA-FM.$$ver ; \
-	cp -r $$dir/arch $$dir/distro $$dir/distro_version $$dir/os_id $$dir/README $(RELEASE_DIR)/IntelOPA-FM.$$ver 2>/dev/null; \
-	cp -r $$dir/INSTALL $$dir/comp.pl $$dir/Version $(RELEASE_DIR)/IntelOPA-FM.$$ver ; \
-	echo "$(RELEASE_DIR)/IntelOPA-FM.$$ver.tgz" >> $(TL_DIR)/packaged_files; \
-	echo "$(RELEASE_DIR)/IntelOPA-FM.$$ver.tgz" >> $(TL_DIR)/dist_files; \
+	dir=`echo CornelisOPX-FM.*` ; \
+	ver=`expr CornelisOPX-FM.* : 'CornelisOPX-FM.\(.*\)$$'`; \
+	rm -rf $(RELEASE_DIR)/CornelisOPX-FM.$$ver; \
+	mkdir -p $(RELEASE_DIR)/CornelisOPX-FM.$$ver ; \
+	cp -r $$dir/arch $$dir/distro $$dir/distro_version $$dir/os_id $$dir/README $(RELEASE_DIR)/CornelisOPX-FM.$$ver 2>/dev/null; \
+	cp -r $$dir/INSTALL $$dir/comp.pl $$dir/Version $(RELEASE_DIR)/CornelisOPX-FM.$$ver ; \
+	echo "$(RELEASE_DIR)/CornelisOPX-FM.$$ver.tgz" >> $(TL_DIR)/packaged_files; \
+	echo "$(RELEASE_DIR)/CornelisOPX-FM.$$ver.tgz" >> $(TL_DIR)/dist_files; \
 
 .PHONY:  package
 
