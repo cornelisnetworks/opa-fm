@@ -1615,7 +1615,7 @@ _initialize_Switch_SCVLMaps(ParallelSweepContext_t *psc, SmMaiHandle_t *fd,
 						" output port %d", sm_nodeDescString(neighborNodep),
 						neighborNodep->nodeInfo.NodeGUID, neighborPortp->index);
 					sm_mark_link_down(sm_topop, neighborPortp);
-					status = sm_popo_port_error(&sm_popo, sm_topop, swportp, status);
+					status = sm_popo_port_error(&sm_popo, sm_topop, neighborPortp, status);
 					if (status == VSTATUS_TIMEOUT_LIMIT)
 						goto fail;
 					else
