@@ -105,12 +105,14 @@ CLOBBER_TARGETS_MISC= comp_ff_of_prereq_RHEL77.pl \
 					comp_ff_of_prereq_RHEL83.pl \
 					comp_ff_of_prereq_RHEL84.pl \
 					comp_ff_of_prereq_RHEL85.pl \
+					comp_ff_of_prereq_RHEL86.pl \
 					comp_ff_of_prereq_SLES123.pl \
 					comp_ff_of_prereq_SLES124.pl \
 					comp_ff_of_prereq_SLES15.pl \
 					comp_ff_of_prereq_SLES151.pl \
 					comp_ff_of_prereq_SLES152.pl \
 					comp_ff_of_prereq_SLES153.pl \
+					comp_ff_of_prereq_SLES154.pl \
 					comp_fm_prereq_RHEL77.pl \
 					comp_fm_prereq_RHEL8.pl \
 					comp_fm_prereq_RHEL81.pl \
@@ -118,12 +120,14 @@ CLOBBER_TARGETS_MISC= comp_ff_of_prereq_RHEL77.pl \
 					comp_fm_prereq_RHEL83.pl \
 					comp_fm_prereq_RHEL84.pl \
 					comp_fm_prereq_RHEL85.pl \
+					comp_fm_prereq_RHEL86.pl \
 					comp_fm_prereq_SLES123.pl \
 					comp_fm_prereq_SLES124.pl \
 					comp_fm_prereq_SLES15.pl \
 					comp_fm_prereq_SLES151.pl \
 					comp_fm_prereq_SLES152.pl \
-					comp_fm_prereq_SLES153.pl
+					comp_fm_prereq_SLES153.pl \
+					comp_fm_prereq_SLES154.pl
 # sub-directory to install to within bin
 BIN_SUBDIR		= 
 # sub-directory to install to within include
@@ -157,12 +161,14 @@ FF_FILES = comp_ff_of_prereq_RHEL77.pl \
 	comp_ff_of_prereq_RHEL83.pl \
 	comp_ff_of_prereq_RHEL84.pl \
 	comp_ff_of_prereq_RHEL85.pl \
+	comp_ff_of_prereq_RHEL86.pl \
 	comp_ff_of_prereq_SLES123.pl \
 	comp_ff_of_prereq_SLES124.pl \
 	comp_ff_of_prereq_SLES15.pl \
 	comp_ff_of_prereq_SLES151.pl \
 	comp_ff_of_prereq_SLES152.pl \
-	comp_ff_of_prereq_SLES153.pl
+	comp_ff_of_prereq_SLES153.pl \
+	comp_ff_of_prereq_SLES154.pl
 FM_FILES = comp_fm_prereq_RHEL77.pl \
 	comp_fm_prereq_RHEL78.pl \
 	comp_fm_prereq_RHEL8.pl \
@@ -171,12 +177,14 @@ FM_FILES = comp_fm_prereq_RHEL77.pl \
 	comp_fm_prereq_RHEL83.pl \
 	comp_fm_prereq_RHEL84.pl \
 	comp_fm_prereq_RHEL85.pl \
+	comp_fm_prereq_RHEL86.pl \
 	comp_fm_prereq_SLES123.pl \
 	comp_fm_prereq_SLES124.pl \
 	comp_fm_prereq_SLES15.pl \
 	comp_fm_prereq_SLES151.pl \
 	comp_fm_prereq_SLES152.pl \
-	comp_fm_prereq_SLES153.pl
+	comp_fm_prereq_SLES153.pl \
+	comp_fm_prereq_SLES154.pl
 
 # Include Make Rules definitions and rules
 include $(TL_DIR)/$(PROJ_FILE_DIR)/Makerules.project
