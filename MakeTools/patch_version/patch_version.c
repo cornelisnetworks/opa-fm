@@ -8,6 +8,7 @@
 /* BEGIN_ICS_COPYRIGHT7 ****************************************
 
 Copyright (c) 2015-2020, Intel Corporation
+Copyright (c) 2021, Cornelis Networks, Inc.
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -67,7 +68,7 @@ and/or the product takes a long amount of time to compile.
 	patch_brand brand [file ...]
 
 @param release_tag - version tag of the form R#_#M#P#I# or R#_#A#I# or R#_#B#I#
-@param brand - a branding string such as "Intel"
+@param brand - a branding string such as "Cornelis Networks"
 @param file - object/exe file(s) to place the #.#.#.# style version string in
 		If no files are specified, the program merely
 		performs the simpler behaviour of outputing the #.#.#.#
@@ -107,7 +108,7 @@ and/or the product takes a long amount of time to compile.
 		return(version);
 	}
 
-	#define ICS_BUILD_BRAND "THIS_IS_THE_ICS_BRAND:Intel\000                    "
+	#define ICS_BUILD_BRAND "THIS_IS_THE_ICS_BRAND:Cornelis Networks\000        "
 	const char* GetCodeBrand(void)
 	{
 		static const char* BuildBrand=ICS_BUILD_BRAND;
@@ -142,8 +143,8 @@ and/or the product takes a long amount of time to compile.
 
 #define ICS_BUILD_VERSION "THIS_IS_THE_ICS_VERSION_NUMBER:@(#)000.000.000.000B000"
 #define ICS_BUILD_INTERNAL_VERSION "THIS_IS_THE_ICS_INTERNAL_VERSION_NUMBER:@(#)000.000.000.000B000I0000"
-#define ICS_BUILD_BRAND "THIS_IS_THE_ICS_BRAND:Intel\000           "
-#define DEFAULT_BRAND "Intel"
+#define ICS_BUILD_BRAND "THIS_IS_THE_ICS_BRAND:Cornelis\000        "
+#define DEFAULT_BRAND "Cornelis"
 
 typedef enum { B_FALSE=0, B_TRUE } boolean;
 

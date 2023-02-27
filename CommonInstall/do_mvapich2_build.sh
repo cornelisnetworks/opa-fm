@@ -28,7 +28,7 @@
 #
 # END_ICS_COPYRIGHT8   ****************************************
 
-# This file incorporates work covered by the following copyright and permission notice 
+# This file incorporates work covered by the following copyright and permission notice
 
 #[ICS VERSION STRING: unknown]
 
@@ -73,7 +73,8 @@ else
 fi
 
 if [[ ( "$ID" == "rhel"  &&  $(echo "$VERSION_ID > 7.3" | bc -l) == 1 ) || \
-	( "$ID" == "sles"  && $(echo "$VERSION_ID > 12.2" | bc -l) == 1 ) ]]; then
+    ( "$ID" == "sles"  && $(echo "$VERSION_ID > 12.2" | bc -l) == 1 ) || \
+    ( "$ID" == "rocky") ]]; then
     PREREQ=("rdma-core-devel" "mpi-selector")
 else
     PREREQ=("libibverbs-devel" "librdmacm-devel" "mpi-selector")
@@ -103,7 +104,7 @@ CheckPreReqs()
 		fi
 		echo
 		exit 2
-	fi	
+	fi
 }
 
 Usage()
@@ -324,7 +325,7 @@ then
 		choices+=("opa-psm2")
 		PS3="Select MVAPICH2 Transport: "
 	fi
-	if [ ${#choices[@]} -gt 0 ] 
+	if [ ${#choices[@]} -gt 0 ]
 	then
 		select mvapich2_conf_impl in ${choices[*]}
 		do
@@ -426,16 +427,21 @@ then
 	export CFLAGS="-m64 -g -O2"
 	export CPPFLAGS="-m64 -g -O2"
 	export CXXFLAGS="-m64 -g -O2"
-	export FFLAGS="-m64 -g -O2"
 	export FCFLAGS="-m64 -g -O2"
 	export LDLIBS="-m64 -g -O2 -L/usr/lib64 -L/usr/X11R6/lib64"
 else
+    if [[ ( "$ID" == "rocky" &&  $(echo "$VERSION_ID >= 9.0" | bc -l) == 1 ) || \
+          ( "$ID" == "rhel"  &&  $(echo "$VERSION_ID >= 9.0" | bc -l) == 1 ) ]]; then
+                export CFLAGS="-fcommon"
+		export FFLAGS="-fallow-argument-mismatch"
+	else
+		unset CFLAGS
+		unset FFLAGS
+	fi
 	# just to be safe
-	unset LDFLAGS
-	unset CFLAGS
-	unset CPPFLAGS
-	unset CXXFLAGS
-	unset FFLAGS
+        unset LDFLAGS
+        unset CPPFLAGS
+        unset CXXFLAGS
 	unset FCFLAGS
 	unset LDLIBS
 fi
@@ -514,8 +520,12 @@ logfile=make.mvapich2.$interface.$compiler
 				mvapich2_comp_env='CC="gcc -m64" CXX="g++ -m64" F77="gfortran -m64" FC="gfortran -m64"'
 			else
 				mvapich2_comp_env='CC=gcc CXX=g++ F77=gfortran FC=gfortran'
-				if [[ ( "$ID" == "rhel"  &&  $(echo "$VERSION_ID >= 8.0" | bc -l) == 1 ) ]]; then
-					mvapich2_comp_env="$mvapich2_comp_env CFLAGS='-fPIC'"
+				if [[ ( "$ID" == "rocky" ) || ( "$ID" == "rhel"  &&  $(echo "$VERSION_ID >= 8.0" | bc -l) == 1 ) ]]; then
+					if [[ ( $(echo "$VERSION_ID >= 9.0" | bc -l) == 1 ) ]]; then
+						mvapich2_comp_env="$mvapich2_comp_env CFLAGS=\"-fPIC -fcommon\""
+					else
+						mvapich2_comp_env="$mvapich2_comp_env CFLAGS=\"-fPIC\""
+					fi
 				fi
 			fi
 		else
@@ -524,9 +534,13 @@ logfile=make.mvapich2.$interface.$compiler
 				mvapich2_comp_env='CC="gcc -m64" CXX="g++ -m64" F77="g77 -m64" FC="/bin/false"'
 			else
 				mvapich2_comp_env='CC=gcc CXX=g++ F77=g77 FC=/bin/false'
-				if [[ ( "$ID" == "rhel"  &&  $(echo "$VERSION_ID >= 8.0" | bc -l) == 1 ) ]]; then
-					mvapich2_comp_env="$mvapich2_comp_env CFLAGS='-fPIC'"
-				fi
+				if [[ ( "$ID" == "rocky" ) || ( "$ID" == "rhel"  &&  $(echo "$VERSION_ID >= 8.0" | bc -l) == 1 ) ]]; then
+					if [[ ( $(echo "$VERSION_ID >= 9.0" | bc -l) == 1 ) ]]; then
+                                                mvapich2_comp_env="$mvapich2_comp_env CFLAGS=\"-fPIC -fcommon\""
+					else
+						mvapich2_comp_env="$mvapich2_comp_env CFLAGS=\"-fPIC\""
+					fi
+                                fi
 			fi
 		fi;;
 
@@ -545,7 +559,7 @@ logfile=make.mvapich2.$interface.$compiler
 
 	intel)
 		disable_auto_requires="--define 'disable_auto_requires 1'"
-		if [ "$mvapich2_conf_shared_libs" = 1 ] 
+		if [ "$mvapich2_conf_shared_libs" = 1 ]
 		then
 			mvapich2_comp_env='CC=icc CXX=icpc F77=ifort FC=ifort'
 		else
@@ -667,7 +681,7 @@ logfile=make.mvapich2.$interface.$compiler
 		echo "error: mpitests_mvapich2_$compiler$mvapich2_rpm_suffix Build ERROR: bad exit code"
 		exit 1
 	fi
-	
+
 	if [ "$iflag" = n ]
 	then
 		mv $RPM_DIR/RPMS/$target_cpu/mpitests_mvapich2_$compiler$mvapich2_rpm_suffix-$mpitests_fullversion.$target_cpu.rpm $DESTDIR

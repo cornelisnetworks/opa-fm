@@ -418,6 +418,17 @@ Status_t sm_set_delayed_pkeys(void)
 
 			SmpAddr_t addr = SMP_ADDR_CREATE_LR(sm_lid, lidportp->portData->lid);
 
+			/* Sanity Check, Make sure at least Default Pkey(s) are present */
+			if (nodep->nodeInfo.NodeType == STL_NODE_SW) {
+				if (portp->portData->pPKey[STL_DEFAULT_CLIENT_PKEY_IDX].AsReg16 == 0)
+					portp->portData->pPKey[STL_DEFAULT_CLIENT_PKEY_IDX].AsReg16 = STL_DEFAULT_CLIENT_PKEY;
+				if (portp->portData->pPKey[STL_DEFAULT_FM_PKEY_IDX].AsReg16 == 0)
+					portp->portData->pPKey[STL_DEFAULT_FM_PKEY_IDX].AsReg16 = STL_DEFAULT_FM_PKEY;
+			} else if (portp->portData->pPKey[STL_DEFAULT_CLIENT_PKEY_IDX].AsReg16 == 0 &&
+				portp->portData->pPKey[STL_DEFAULT_FM_PKEY_IDX].AsReg16 == 0) {
+				portp->portData->pPKey[STL_DEFAULT_CLIENT_PKEY_IDX].AsReg16 = STL_DEFAULT_CLIENT_PKEY;
+			}
+
 			status = SM_Set_PKeyTable_Dispatch(fd_topology, amod, &addr,
 				(STL_PARTITION_TABLE *)portp->portData->pPKey, sm_config.mkey,
 				nodep, &sm_asyncDispatch, sm_set_delayed_pkeys_callback, ctx);
@@ -612,8 +623,14 @@ sm_set_portPkey(
 				}
 
 				if (SendUpdateNow) {
-					/* Sanity Check, Make sure at least one Default Pkey is present */
-					if (pkeyTable[STL_DEFAULT_CLIENT_PKEY_IDX].AsReg16 == 0 && pkeyTable[STL_DEFAULT_FM_PKEY_IDX].AsReg16 == 0) {
+					/* Sanity Check, Make sure at least Default Pkey(s) are present */
+					if (nodep->nodeInfo.NodeType == STL_NODE_SW) {
+						if (pkeyTable[STL_DEFAULT_CLIENT_PKEY_IDX].AsReg16 == 0)
+							pkeyTable[STL_DEFAULT_CLIENT_PKEY_IDX].AsReg16 = STL_DEFAULT_CLIENT_PKEY;
+						if (pkeyTable[STL_DEFAULT_FM_PKEY_IDX].AsReg16 == 0)
+							pkeyTable[STL_DEFAULT_FM_PKEY_IDX].AsReg16 = STL_DEFAULT_FM_PKEY;
+					} else if (pkeyTable[STL_DEFAULT_CLIENT_PKEY_IDX].AsReg16 == 0 &&
+						pkeyTable[STL_DEFAULT_FM_PKEY_IDX].AsReg16 == 0) {
 						pkeyTable[STL_DEFAULT_CLIENT_PKEY_IDX].AsReg16 = STL_DEFAULT_CLIENT_PKEY;
 					}
 

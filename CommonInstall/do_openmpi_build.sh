@@ -2,6 +2,7 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 #
 # Copyright (c) 2015-2020, Intel Corporation
+# Copyright (c) 2022, Cornelis Networks
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -62,6 +63,8 @@
 
 ID=""
 VERSION_ID=""
+
+DEF_CONFIG_OPTIONS='--with-hwloc=internal --with-libevent=internal --with-pmix=internal'
 
 if [ -e /etc/os-release ]; then
 	. /etc/os-release
@@ -124,7 +127,7 @@ Usage()
 	echo "            VERSION is openmpi version (eg. 1.0.0)" >&2
 	echo "    CONFIG_OPTIONS - additional OpenMPI configuration options to be" >&2
 	echo "            specified via configure_options parameter to srpm" >&2
-	echo "            Default is ''" >&2
+	echo "            Default is '$DEF_CONFIG_OPTIONS'" >&2
 	echo "    INSTALL_ROOT - location of system image in which to install." >&2
 	echo "            Default is '/'" >&2
 	echo "" >&2
@@ -308,7 +311,7 @@ fi
 # if -d (skip_prompt) the only option provided, ./configure will run with
 # no paramters and build what is auto-detected
 
-openmpi_conf_psm=''
+openmpi_conf=''
 
 # we no longer supports verbs.
 openmpi_verbs='--enable-mca-no-build=btl-openib --without-verbs'
@@ -316,7 +319,7 @@ openmpi_verbs='--enable-mca-no-build=btl-openib --without-verbs'
 if [ "$Qflag" = y ]
 then
 	PREREQ+=('infinipath-psm-devel')
-	openmpi_conf_psm='--with-psm=/usr '
+	openmpi_conf='--with-psm=/usr '
 	# PSM indicated by qlc suffix so user can ID PSM vs OFI or PSM2 MPIs
 	openmpi_path_suffix="-qlc"
 	openmpi_rpm_suffix="_qlc"
@@ -326,7 +329,7 @@ fi
 if [ "$Oflag" = y ]
 then
 	PREREQ+=('libpsm2-devel' 'libfabric-devel')
-	openmpi_conf_psm=" $openmpi_conf_psm --with-psm2=/usr --with-libfabric=/usr "
+	openmpi_conf=" $openmpi_conf --with-psm2=/usr --with-libfabric=/usr "
 	# PSM2 indicated by hfi suffix so user can ID from PSM or OFI MPIs
 	openmpi_path_suffix="-hfi"
 	openmpi_rpm_suffix="_hfi"
@@ -336,7 +339,7 @@ fi
 if [ "$Cflag" = y ]
 then
 	PREREQ+=('libpsm2-devel' 'cuda-cudart-dev')
-	openmpi_conf_psm=" $openmpi_conf_psm --with-psm2=/usr --with-cuda=/usr/local/cuda "
+	openmpi_conf=" $openmpi_conf --with-psm2=/usr --with-cuda=/usr/local/cuda "
 	# CUDA indicated by -cuda suffix so user can ID  from PSM2 without cuda, PSM or OFI MPIs
 	openmpi_path_suffix="-cuda-hfi"
 	openmpi_rpm_suffix="_cuda_hfi"
@@ -377,7 +380,7 @@ logfile=make.openmpi.$interface.$compiler
 	mpitests_version=$(ls $mpitests_srpm 2>/dev/null|head -1|cut -f2 -d-)
 	mpitests_fullversion=$(ls $mpitests_srpm 2>/dev/null|head -1|cut -f2- -d-|sed -e 's/.src.rpm//')
 	MPICH_PREFIX=${MPICH_PREFIX:-$STACK_PREFIX/mpi/$compiler/openmpi-$openmpi_version$openmpi_path_suffix}
-	CONFIG_OPTIONS=${CONFIG_OPTIONS:-""}
+	CONFIG_OPTIONS=${CONFIG_OPTIONS:-${DEF_CONFIG_OPTIONS}}
 
 	if [ x"$openmpi_version" = x"" ]
 	then
@@ -437,7 +440,7 @@ logfile=make.openmpi.$interface.$compiler
 
 	case "$compiler" in
 	gcc)
-		if [[ ( "$ID" == "rhel"  &&  $(echo "$VERSION_ID >= 8.0" | bc -l) == 1 ) ]]; then
+		if [[ ( "$ID" == "rocky" ) || ( "$ID" == "rhel"  &&  $(echo "$VERSION_ID >= 8.0" | bc -l) == 1 ) ]]; then
 			openmpi_comp_env="$openmpi_comp_env CC=gcc CFLAGS=\"-O3 -fPIC\""
 		else
 			openmpi_comp_env="$openmpi_comp_env CC=gcc CFLAGS=-O3"
@@ -453,9 +456,9 @@ logfile=make.openmpi.$interface.$compiler
 			openmpi_comp_env="$openmpi_comp_env F77=gfortran FC=gfortran"
 		elif have_comp g77
 		then
-			openmpi_comp_env="$openmpi_comp_env F77=g77 --disable-mpi-f90"
+			openmpi_comp_env="$openmpi_comp_env F77=g77 "
 		else
-			openmpi_comp_env="$openmpi_comp_env --disable-mpi-f77 --disable-mpi-f90"
+			openmpi_comp_env="$openmpi_comp_env --disable-mpi-fortran"
 		fi;;
 
 	pathscale)
@@ -471,7 +474,7 @@ logfile=make.openmpi.$interface.$compiler
 		then
 			openmpi_comp_env="$openmpi_comp_env F77=pathf90 FC=pathf90"
 		else
-			openmpi_comp_env="$openmpi_comp_env --disable-mpi-f77 --disable-mpi-f90"
+			openmpi_comp_env="$openmpi_comp_env --disable-mpi-fortran"
 		fi
 		# test for fedora core 6 or redhat EL5
 		if { [ -f /etc/fedora-release ] && { uname -r|grep fc6; }; } \
@@ -496,13 +499,13 @@ logfile=make.openmpi.$interface.$compiler
 		then
 			openmpi_comp_env="$openmpi_comp_env F77=pgf77"
 		else
-			openmpi_comp_env="$openmpi_comp_env --disable-mpi-f77"
+			openmpi_comp_env="$openmpi_comp_env --disable-mpi-fortran"
 		fi
 		if have_comp pgf90
 		then
 			openmpi_comp_env="$openmpi_comp_env FC=pgf90 FCFLAGS=-O2"
 		else
-			openmpi_comp_env="$openmpi_comp_env --disable-mpi-f90"
+			openmpi_comp_env="$openmpi_comp_env --disable-mpi-fortran"
 		fi;;
 
 	intel)
@@ -518,7 +521,7 @@ logfile=make.openmpi.$interface.$compiler
 		then
 			openmpi_comp_env="$openmpi_comp_env F77=ifort FC=ifort"
 		else
-			openmpi_comp_env="$openmpi_comp_env --disable-mpi-f77 --disable-mpi-f90"
+			openmpi_comp_env="$openmpi_comp_env --disable-mpi-fortran"
 		fi;;
 
 	*)
@@ -565,7 +568,7 @@ logfile=make.openmpi.$interface.$compiler
 				--define '_defaultdocdir $MPICH_PREFIX/doc/..' \
 				--define '_mandir %{_prefix}/share/man' \
 				--define 'mflags -j 4' \
-				--define 'configure_options $CONFIG_OPTIONS $openmpi_ldflags $openmpi_comp_env $openmpi_conf_psm --with-devel-headers --disable-oshmem $openmpi_verbs' \
+				--define 'configure_options $CONFIG_OPTIONS $openmpi_ldflags $openmpi_comp_env $openmpi_conf --with-devel-headers --disable-oshmem $openmpi_verbs' \
 				--define 'use_default_rpm_opt_flags $use_default_rpm_opt_flags' \
 				$disable_auto_requires"
 	cmd="$cmd \
@@ -604,6 +607,7 @@ logfile=make.openmpi.$interface.$compiler
 	echo "Building test programs $mpitests_version for OpenMPI MPI $openmpi_version..."
 	# mpitests uses buildroot instead of build_root, play it safe for future
 	# and define both
+	export LD_LIBRARY_PATH=$MPICH_PREFIX/lib64:$LD_LIBRARY_PATH
 	cmd="$pref_env rpmbuild --rebuild \
 				--define '_topdir $RPM_DIR' \
 				--buildroot '$BUILD_ROOT' \

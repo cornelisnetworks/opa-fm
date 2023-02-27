@@ -1119,17 +1119,6 @@ sa_McMemberRecord_Set(Topology_t *topop, Mai_t *maip, uint32_t *records)
 				goto done;
 			}
 
-			if (VirtualFabrics != NULL && VirtualFabrics->securityEnabled &&
-			   bitset_test_intersection(&mcGroup->vfMembers, &req_portp->portData->fullPKeyMember) == 0) {
-				maip->base.status = MAD_STATUS_SA_REQ_INVALID;
-				IB_LOG_ERROR_FMT_VF( vfp, __func__, "Failing group join request for PortGUID "FMT_U64 
-				       " from %s Port %d, PortGUID "FMT_U64", LID 0x%08X because it is not a full member of virtual fabric with MGid "FMT_GID,
-					   portp->portData->guid, 
-					   req_nodeName, req_portp->index, req_portp->portData->guid, 
-					   maip->addrInfo.slid, mGid[0], mGid[1]);
-				goto done;
-			}
-
 			mcmp->MLID = mcGroup->mLid;
 			mcmp->MtuSelector = IB_SELECTOR_EQ;
 			mcmp->Mtu = mcGroup->mtu;

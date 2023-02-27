@@ -93,6 +93,7 @@ my @delta_kernel_srpms_rhel83 = ( 'kmod-ifs-kernel-updates' );
 my @delta_kernel_srpms_rhel84 = ( 'kmod-ifs-kernel-updates' );
 my @delta_kernel_srpms_rhel85 = ( 'kmod-ifs-kernel-updates' );
 my @delta_kernel_srpms_rhel86 = ( 'kmod-ifs-kernel-updates' );
+my @delta_kernel_srpms_rhel9 = ( 'kmod-ifs-kernel-updates' );
 my @delta_kernel_srpms = ( );
 
 # This provides information for all kernel srpms
@@ -184,6 +185,8 @@ sub init_delta_info($)
 		}
 	} elsif ( "$CUR_VENDOR_VER" eq "ES86" ) {
 		@delta_kernel_srpms = ( @delta_kernel_srpms_rhel86 );
+	} elsif ( "$CUR_VENDOR_VER" eq "ES9" ) {
+		@delta_kernel_srpms = ( @delta_kernel_srpms_rhel9 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES85" ) {
 		@delta_kernel_srpms = ( @delta_kernel_srpms_rhel85 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES84" ) {
@@ -830,6 +833,9 @@ sub installed_delta_opa_stack()
 	} elsif ( "$CUR_VENDOR_VER" eq "ES86" ) {
 		return ( has_version_delta()
 				&& rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
+	} elsif ( "$CUR_VENDOR_VER" eq "ES9" ) {
+		return ( has_version_delta()
+				&& rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
 	} elsif ( "$CUR_VENDOR_VER" eq "ES85" ) {
 		return ( has_version_delta()
 				&& rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
@@ -1200,6 +1206,9 @@ sub installed_intel_hfi()
 		return (has_version_delta()
 		     && rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
 	} elsif ( "$CUR_VENDOR_VER" eq "ES86" ) {
+		return (has_version_delta()
+		     && rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
+	} elsif ( "$CUR_VENDOR_VER" eq "ES9" ) {
 		return (has_version_delta()
 		     && rpm_is_installed("kmod-ifs-kernel-updates", $CUR_OS_VER));
 	} elsif ( "$CUR_VENDOR_VER" eq "ES123" ) {

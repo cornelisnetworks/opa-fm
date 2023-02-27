@@ -111,6 +111,10 @@ my @delta_Components_rhel86 = ( "opa_stack", "mpi_selector", "intel_hfi",
 		"opa_stack_dev",
 		"delta_ipoib",
 		"delta_debug", );
+my @delta_Components_rhel9 = ( "opa_stack", "mpi_selector", "intel_hfi",
+		"opa_stack_dev",
+		"delta_ipoib",
+		"delta_debug", );
 my @delta_Components_sles15 = ( "opa_stack", "intel_hfi",
 		"opa_stack_dev",
 		"delta_ipoib",
@@ -179,6 +183,8 @@ sub overrides()
 		@Components = ( @delta_Components_rhel85 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES86" ) {
 		@Components = ( @delta_Components_rhel86 );
+	} elsif ( "$CUR_VENDOR_VER" eq "ES9" ) {
+		@Components = ( @delta_Components_rhel9 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES15" ) {
 		@Components = ( @delta_Components_sles15 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES151" ) {
