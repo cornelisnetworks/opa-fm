@@ -4685,13 +4685,6 @@ VirtualFabrics_t* reRenderVirtualFabricsConfig(uint32_t fm, VirtualFabrics_t *ol
 				         "or PA Service ID configured in an Application", cfgtype, vfip->name);
 				goto fail;
 			}
-			// make sure that either All or AllMgmtAllowed is included in Admin fabric - this rule was added
-			// to make sure IBTA works for PR112665
-			if (!is_all_or_allmgmt_full) {
-				RENDER_VF_LOGGER(printError, "%s: VF(%s) must have <Select>All</Select> or <Select>AllMgmtAllowed</Select> configured in a Member",
-					         cfgtype, vfip->name);
-				goto fail;
-			}
 		} else if (vfip->apps.select_sa || checkVFSID(vfip, STL_PM_SERVICE_ID) ||
 				vfip->apps.select_pm
 

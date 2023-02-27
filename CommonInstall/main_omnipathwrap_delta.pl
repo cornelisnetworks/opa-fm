@@ -108,6 +108,8 @@ my @Components_rhel85 = ( "opa_stack", "mpi_selector",
 		@OmniPathAllComponents );
 my @Components_rhel86 = ( "opa_stack", "mpi_selector",
 		@OmniPathAllComponents );
+my @Components_rhel9 = ( "opa_stack", "mpi_selector",
+		@OmniPathAllComponents );
 
 @Components = ( );
 
@@ -224,7 +226,7 @@ $WrapperComponent = "opaconfig";
 					  Hidden => 0, Disabled => 0, IsOFA => 0,
 					  KernelRpms => [ ],
 					  FirmwareRpms => [ ],
-					  UserRpms => [ "opa-basic-tools", "opa-address-resolution" ],
+					  UserRpms => [ "opa-basic-tools", "opa-address-resolution", "opa-address-resolution-devel" ],
 					  DebugRpms => [ ],
 					  HasStart => 1, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => " opa_stack ", # TBD
@@ -254,7 +256,7 @@ $WrapperComponent = "opaconfig";
 					  Hidden => 0, Disabled => 0, IsOFA => 0,
 					  KernelRpms => [ ],
 					  FirmwareRpms => [ ],
-					  UserRpms => [ "opa-fastfabric", "opa-mpi-apps" ],
+					  UserRpms => [ "opa-fastfabric", "opa-mpi-apps", "opa-snapconfig" ],
 					  DebugRpms => [ ],
 					  HasStart => 0, HasFirmware => 0, DefaultStart => 0,
 					  StartPreReq => " opa_stack ",
@@ -1075,6 +1077,36 @@ my %intel_hfi_rhel86_comp_info = (
 					},
 );
 
+my %intel_hfi_rhel9_comp_info = (
+	"intel_hfi" =>	{ Name => "Cornelis HFI Components",
+					  DefaultInstall => $State_Install,
+					  SrcDir => file_glob("./CornelisOPX-OFA_DELTA.*"),
+					  PreReq => " opa_stack ", CoReq => " oftools ",
+						# TBD - HasFirmware - FW update
+					  Hidden => 0, Disabled => 0, IsOFA => 1,
+					  KernelRpms => [ ],
+					  FirmwareRpms => [
+									"hfi1-firmware", "hfi1-firmware_debug"
+								],
+					  UserRpms => [ #"libhfi1", "libhfi1-static",
+									"libpsm2",
+									"libpsm2-devel", "libpsm2-compat",
+									"libfabric", "libfabric-devel",
+									"libfabric-psm2", "libfabric-verbs",
+									"hfi1-diagtools-sw", "hfidiags",
+								],
+					  DebugRpms =>  [ #"hfi1_debuginfo",
+									"hfi1-diagtools-sw-debuginfo",
+									"libpsm2-debuginfo", #"libhfi1-debuginfo"
+								],
+					  HasStart => 1, HasFirmware => 0, DefaultStart => 1,
+					  StartPreReq => " opa_stack ",
+					  StartComponents => [ "intel_hfi" ],
+					  StartupScript => "",
+					  StartupParams => [ ]
+					},
+);
+
 # For SLES12sp3 that has different name for libpsm2
 my %intel_hfi_sles123_comp_info = (
 	"intel_hfi" =>	{ Name => "Cornelis HFI Components",
@@ -1474,6 +1506,14 @@ sub init_components
 		@SubComponents = ( @SubComponents_newer );
 		%ComponentInfo = ( %ComponentInfo, %ibacm_comp_info,
 						%intel_hfi_rhel86_comp_info,
+						%opa_stack_dev_comp_info,
+						%opa_stack_rhel_comp_info,
+						);
+	} elsif ( "$CUR_VENDOR_VER" eq "ES9" ) {
+		@Components = ( @Components_rhel9 );
+		@SubComponents = ( @SubComponents_newer );
+		%ComponentInfo = ( %ComponentInfo, %ibacm_comp_info,
+						%intel_hfi_rhel85_comp_info,
 						%opa_stack_dev_comp_info,
 						%opa_stack_rhel_comp_info,
 						);

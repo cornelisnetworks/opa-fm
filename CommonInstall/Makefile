@@ -106,6 +106,7 @@ CLOBBER_TARGETS_MISC= comp_ff_of_prereq_RHEL77.pl \
 					comp_ff_of_prereq_RHEL84.pl \
 					comp_ff_of_prereq_RHEL85.pl \
 					comp_ff_of_prereq_RHEL86.pl \
+					comp_ff_of_prereq_RHEL9.pl \
 					comp_ff_of_prereq_SLES123.pl \
 					comp_ff_of_prereq_SLES124.pl \
 					comp_ff_of_prereq_SLES15.pl \
@@ -121,6 +122,7 @@ CLOBBER_TARGETS_MISC= comp_ff_of_prereq_RHEL77.pl \
 					comp_fm_prereq_RHEL84.pl \
 					comp_fm_prereq_RHEL85.pl \
 					comp_fm_prereq_RHEL86.pl \
+					comp_fm_prereq_RHEL9.pl \
 					comp_fm_prereq_SLES123.pl \
 					comp_fm_prereq_SLES124.pl \
 					comp_fm_prereq_SLES15.pl \
@@ -162,6 +164,7 @@ FF_FILES = comp_ff_of_prereq_RHEL77.pl \
 	comp_ff_of_prereq_RHEL84.pl \
 	comp_ff_of_prereq_RHEL85.pl \
 	comp_ff_of_prereq_RHEL86.pl \
+	comp_ff_of_prereq_RHEL9.pl \
 	comp_ff_of_prereq_SLES123.pl \
 	comp_ff_of_prereq_SLES124.pl \
 	comp_ff_of_prereq_SLES15.pl \
@@ -178,6 +181,7 @@ FM_FILES = comp_fm_prereq_RHEL77.pl \
 	comp_fm_prereq_RHEL84.pl \
 	comp_fm_prereq_RHEL85.pl \
 	comp_fm_prereq_RHEL86.pl \
+	comp_fm_prereq_RHEL9.pl \
 	comp_fm_prereq_SLES123.pl \
 	comp_fm_prereq_SLES124.pl \
 	comp_fm_prereq_SLES15.pl \
