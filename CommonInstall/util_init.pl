@@ -224,6 +224,14 @@ sub os_vendor_version($)
 				} else {
 					$rval="ES".$1.$2;
 				}
+			elsif (!system("grep -qi circle /etc/redhat-release")) {
+				$rval = `cat /etc/redhat-release | cut -d' ' -f4`;
+				$rval =~ m/(\d+).(\d+)/;
+				if ($2 eq "0") {
+					$rval="ES".$1;
+				} else {
+					$rval="ES".$1.$2;
+				}
 			} elsif (!system("grep -qi rocky /etc/redhat-release")) {
 				$rval = `cat /etc/redhat-release | cut -d' ' -f4`;
 				$rval =~ m/(\d+).(\d+)/;
@@ -254,6 +262,12 @@ sub os_vendor_version($)
 			$rval=`cat /etc/redhat-release | cut -d' ' -f7`;
 			chop($rval);
 		} elsif (!system("grep -qi centos /etc/redhat-release")) {
+			# Find a number of the form "#.#" and output the portion
+			# to the left of the decimal point.
+			$rval = `cat /etc/redhat-release`;
+			$rval =~ m/(\d+).(\d+)/;
+			$rval="ES".$1.$2;
+		} elsif (!system("grep -qi circle /etc/redhat-release")) {
 			# Find a number of the form "#.#" and output the portion
 			# to the left of the decimal point.
 			$rval = `cat /etc/redhat-release`;
@@ -318,6 +332,8 @@ sub determine_os_version()
 		$CUR_DISTRO_VENDOR = "redhat";
 	} elsif ( -s "/etc/centos-release" ) {
 		$CUR_DISTRO_VENDOR = "redhat";
+	} elsif ( -s "/etc/circle-release" ) {
+		$CUR_DISTRO_VENDOR = "redhat";
 	} elsif ( -s "/etc/rocky-release" ) {
 		$CUR_DISTRO_VENDOR = "redhat";
 	} elsif ( -s "/etc/UnitedLinux-release" ) {
@@ -337,6 +353,7 @@ sub determine_os_version()
 		my %distroVendor = (
 			"rhel" => "redhat",
 			"centos" => "redhat",
+			"circle" => "redhat",
 			"rocky" => "redhat",
 			"sles" => "SuSE",
 			"sle_hpc" => "SuSE"
@@ -344,6 +361,7 @@ sub determine_os_version()
 		my %network_conf_dir  = (
 			"rhel" => $NETWORK_CONF_DIR,
 			"centos" => $NETWORK_CONF_DIR,
+			"circle" => $NETWORK_CONF_DIR,
 			"rocky" => $NETWORK_CONF_DIR,
 			"sles" => "/etc/sysconfig/network",
 			"sle_hpc" => "/etc/sysconfig/network"
@@ -373,6 +391,8 @@ sub determine_os_version()
 		} elsif ($CUR_DISTRO_VENDOR eq "SuSE") {
 			$NETWORK_CONF_DIR = "/etc/sysconfig/network";
 		} elsif ($CUR_DISTRO_VENDOR eq "centos") {
+			$CUR_DISTRO_VENDOR = "redhat";
+		} elsif ($CUR_DISTRO_VENDOR eq "circle") {
 			$CUR_DISTRO_VENDOR = "redhat";
 		} elsif ($CUR_DISTRO_VENDOR eq "rocky") {
 			$CUR_DISTRO_VENDOR = "redhat";
