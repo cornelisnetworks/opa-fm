@@ -1,6 +1,7 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 # 
 # Copyright (c) 2015, Intel Corporation
+# Copyright (c) 2024, Tactical Computing Labs, LLC
 # 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -65,6 +66,8 @@ DSP_SOURCES= Defs.BuildPlatform.CYGWIN \
 			Target.LINUX.GNU.EM64T \
 			Target.LINUX.GNU.IA32 \
 			Target.LINUX.GNU.IA64 \
+			Target.LINUX.GNU.RISCV \
+			Target.LINUX.GNU.RISCV64 \
 			Target.LINUX.GNU.MIPS64 \
 			Target.LINUX.GNU.X86_64 \
 			Target.LINUX.INTEL.IA32 \

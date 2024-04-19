@@ -2,6 +2,7 @@
 ## BEGIN_ICS_COPYRIGHT8 ****************************************
 #
 # Copyright (c) 2015-2020, Intel Corporation
+# Copyright (c) 2024, Tactical Computing Labs, LLC
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -86,7 +87,7 @@ my $BIN_DIR = "/usr/sbin";
 my $CUR_DISTRO_VENDOR = "";
 my $CUR_VENDOR_VER = "";	# full version (such as ES5.1)
 my $CUR_VENDOR_MAJOR_VER = "";    # just major number part (such as ES5)
-my $ARCH = `uname -m | sed -e s/ppc/PPC/ -e s/powerpc/PPC/ -e s/i.86/IA32/ -e s/ia64/IA64/ -e s/x86_64/X86_64/`;
+my $ARCH = `uname -m | sed -e s/ppc/PPC/ -e s/powerpc/PPC/ -e s/i.86/IA32/ -e s/ia64/IA64/ -e s/x86_64/X86_64/ -e s/riscv/RISCV/ -e s/riscv64/RISCV64/`;
 chomp $ARCH;
 my $DRIVER_SUFFIX=".o";
 if (substr($CUR_OS_VER,0,3) eq "2.6" || substr($CUR_OS_VER,0,2) eq "3.")
@@ -431,7 +432,13 @@ sub verify_distrib_files
 		if ( $ARCH eq "PPC" ) {
 			$archname="the PowerPC";
 		} 
-		
+		if ( $ARCH eq "RISCV" ) {
+			$archname="RISCV";
+		} 
+		if ( $ARCH eq "RISCV64" ) {
+			$archname="RISCV64";
+		} 
+
 		NormalPrint "$CUR_DISTRO_VENDOR $CUR_VENDOR_VER for $archname is not supported by this installation\n";
 		NormalPrint "This installation supports the following Linux Distributions:\n";
 		$supported_archname=$ARCH;
@@ -449,6 +456,12 @@ sub verify_distrib_files
 		} 
 		if ( $supported_arch eq "PPC" ) {
 			$supported_archname="the PowerPC";
+		} 
+		if ( $ARCH eq "RISCV" ) {
+			$archname="RISCV";
+		} 
+		if ( $ARCH eq "RISCV64" ) {
+			$archname="RISCV64";
 		} 
 		NormalPrint "For $supported_archname: $supported_distro_vendor.$supported_distro_vendor_ver\n";
 		if ( $Force_Install ) {
