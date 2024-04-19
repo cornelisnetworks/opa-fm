@@ -1,6 +1,7 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 #
 # Copyright (c) 2015-2020, Intel Corporation
+# Copyright (c) 2024, Tactical Computing Labs, LLC
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -186,7 +187,8 @@ endif # VXWORKS
 #endif # DARWIN
 ifeq "$(BUILD_TARGET_OS)" "LINUX"
 ifndef BUILD_TARGET_OS_VERSION
-$(error BUILD_TARGET_OS_VERSION not defined)
+        	    BUILD_TARGET_OS_VERSION=5.19.17
+#$(error BUILD_TARGET_OS_VERSION not defined)
 endif
 ICS_KERNEL_CONF_FILE:=$(TL_DIR)/Makerules/LINUX/$(BUILD_TARGET).$(BUILD_TARGET_OS_VENDOR).$(BUILD_TARGET_OS_VERSION).h
 endif # LINUX

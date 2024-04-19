@@ -2,6 +2,7 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 #
 # Copyright (c) 2015-2020, Intel Corporation
+# Copyright (c) 2024, Tactical Computing Labs, LLC
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -47,7 +48,7 @@ fi
 
 sed -i "s/__RPM_FS/OPA_FEATURE_SET=opa10/g" $to
 
-if [ "$id" = "rhel" -o "$id" = "centos" -o "$id" = "rocky" ]
+if [ "$id" = "rhel" -o "$id" = "centos" -o "$id" = "rocky" -o "$id" = "ubuntu" ]
 then
 	GE_7_0=$(echo "$versionid >= 7.0" | bc)
 	GE_7_4=$(echo "$versionid >= 7.4" | bc)

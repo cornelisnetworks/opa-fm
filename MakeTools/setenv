@@ -2,6 +2,7 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 #
 # Copyright (c) 2015-2020, Intel Corporation
+# Copyright (c) 2024, Tactical Computing Labs, LLC
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -65,6 +66,10 @@ case `uname -m` in
 	;;
 ppc64)
 	export BUILD_TARGET=PPC64
+	;;
+riscv|riscv64)
+	export BUILD_TARGET=RISCV
+	BUILD_TARGET_OS_VERSION=5.19.17
 	;;
 i686|ia32|IA32)
 	export BUILD_TARGET=IA32
