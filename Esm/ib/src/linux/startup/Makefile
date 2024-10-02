@@ -145,7 +145,7 @@ include $(TL_DIR)/Makerules/Maketargets.build
 include $(TL_DIR)/Makerules/Maketargets.install
 
 $(BUILDDIR)/opafmd: $(BUILDDIR)/opafmd.o
-	$(VS)$(CC) -pthread $(LDFLAGS)$@ $(BUILDDIR)/opafmd.o $(LDLIBS)
+	$(VS)$(CC) -pie -pthread $(LDFLAGS)$@ $(BUILDDIR)/opafmd.o $(LDLIBS)
 
 $(BUILDDIR)/opaxmlextract: $(PROJ_BIN_DIR)/opaxmlextract
 	cp $(PROJ_BIN_DIR)/opaxmlextract $(BUILDDIR)

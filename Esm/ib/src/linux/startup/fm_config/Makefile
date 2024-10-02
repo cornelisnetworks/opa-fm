@@ -150,10 +150,10 @@ include $(TL_DIR)/Makerules/Maketargets.build
 include $(TL_DIR)/Makerules/Maketargets.install
 
 $(BUILDDIR)/config_check: $(BUILDDIR)/config_check.o
-	$(VS)$(CC) $(LDFLAGS)$@ $(BUILDDIR)/config_check.o $(LDLIBS)
+	$(VS)$(CC) -pie $(LDFLAGS)$@ $(BUILDDIR)/config_check.o $(LDLIBS)
 
 $(BUILDDIR)/config_convert: $(BUILDDIR)/config_convert.o
-	$(VS)$(CC) $(LDFLAGS)$@ $(BUILDDIR)/config_convert.o $(LDLIBS)
+	$(VS)$(CC) -pie $(LDFLAGS)$@ $(BUILDDIR)/config_convert.o $(LDLIBS)
 
 # install for stage phase
 #include $(TL_DIR)/Makerules/Maketargets.stage

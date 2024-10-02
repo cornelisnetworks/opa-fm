@@ -127,7 +127,7 @@ else # BUILD_TARGET_OS is not VXWORKS
 $(CMD_TARGETS_EXE) :	$(CT_OBJECTS) $(RSCOBJECTS) $(DEPLIBS_TARGETS)
 	@echo Linking executable...
 	@mkdir -p $(dir $@)
-	$(VS)$(CC) $(LDFLAGS)$@ $(CT_OBJECTS) $(LDLIBS)
+	$(VS)$(CC) -pie $(LDFLAGS)$@ $(CT_OBJECTS) $(LDLIBS)
 endif # BUILD_TARGET_OS is VXWORKS
 endif # CMD_TARGETS_EXE non-null
 
