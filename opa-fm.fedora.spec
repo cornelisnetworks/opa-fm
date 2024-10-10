@@ -3,7 +3,7 @@
 Name: opa-fm
 Epoch: 1
 Version: 10.12.1.0.6
-Release: 2%{?dist}
+Release: 3%{?dist}
 Summary: Cornelis Networks Omni-Path Fabric Management Software
 
 License: GPLv2 or BSD
@@ -61,17 +61,18 @@ chmod a-x %{buildroot}/%{_prefix}/share/opa-fm/opafm_src.xml
 %config(noreplace) %{_sysconfdir}/opa-fm/opafm.xml
 %config(noreplace) %{_sysconfdir}/opa-fm/opafm_pp.xml
 %{_sysconfdir}/opa-fm
-%{_prefix}/lib/opa-fm/bin/*
-%{_prefix}/lib/opa-fm/runtime/*
-%{_prefix}/share/opa-fm/*
+%{_prefix}/lib/opa-fm
+%{_prefix}/lib/opa-fm/bin/
+%{_prefix}/lib/opa-fm/runtime/
+%{_prefix}/share/opa-fm/
 %{_sbindir}/opafmcmd
 %{_sbindir}/opafmcmdall
 %{_sbindir}/opafmconfigpp
 %{_sbindir}/opafmvf
-%{_mandir}/man8/*
+%{_mandir}/man8/
 
 %changelog
-* Tue Oct 1 2024 Dennis Dalessandro <dennis.dalessandro@cornelisnetworks.com> - 1:10.12.1.0.6-2
+* Tue Oct 1 2024 Dennis Dalessandro <dennis.dalessandro@cornelisnetworks.com> - 1:10.12.1.0.6-3
 - Remove inappropriate comment 
 - Consolidate RHEL spec file into Cornelis repo.
 - Checked RH patches bundled with SRPM into CN GH repo.
