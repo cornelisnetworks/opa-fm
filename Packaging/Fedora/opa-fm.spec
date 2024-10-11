@@ -41,7 +41,7 @@ cd Esm
 OPA_FEATURE_SET=opa10 ./fmbuild $BUILD_ARGS
 
 %install
-BUILDDIR=%{_builddir} DESTDIR=%{buildroot} LIBDIR=%{_libdir} RPM_INS=n ./Esm/fm_install.sh
+BUILDDIR=%{_builddir} DESTDIR=%{buildroot} LIBDIR=/usr/lib RPM_INS=n ./Esm/fm_install.sh
 chmod 644 %{buildroot}/%{_unitdir}/opafm.service
 mkdir -p %{buildroot}/%{_localstatedir}/usr/lib/opa-fm/
 chmod a-x %{buildroot}/%{_prefix}/share/opa-fm/opafm_src.xml
