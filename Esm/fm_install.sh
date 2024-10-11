@@ -40,19 +40,19 @@
 fm_mans="opafmcmd.8 opafmcmdall.8 opafmconfigpp.8"
 
 mkdir -p ${DESTDIR}/usr/sbin
-mkdir -p ${DESTDIR}/usr/lib/systemd/system
-mkdir -p ${DESTDIR}/usr/lib/opa-fm/{bin,runtime}
+mkdir -p ${DESTDIR}${LIBDIR}/systemd/system
+mkdir -p ${DESTDIR}${LIBDIR}/opa-fm/{bin,runtime}
 mkdir -p ${DESTDIR}/usr/share/opa-fm/samples
 mkdir -p ${DESTDIR}/usr/share/man/man8
 mkdir -p ${DESTDIR}/etc/opa-fm/vfs
 mkdir -p ${DESTDIR}/etc/opa-fm/dgs
-mkdir -p ${DESTDIR}/usr/lib/opa
+mkdir -p ${DESTDIR}${LIBDIR}/opa
 
 cd stage.rpm
 
-cp -t ${DESTDIR}/usr/lib/systemd/system opafm.service
-cp -t ${DESTDIR}/usr/lib/opa-fm/bin opafmctrl
-cp -t ${DESTDIR}/usr/lib/opa-fm/bin opafmd
+cp -t ${DESTDIR}${LIBDIR}/systemd/system opafm.service
+cp -t ${DESTDIR}${LIBDIR}/opa-fm/bin opafmctrl
+cp -t ${DESTDIR}${LIBDIR}/opa-fm/bin opafmd
 
 if [ "$RPM_INS" = "y" ]
 then
@@ -63,23 +63,23 @@ fi
 cp -t ${DESTDIR}/etc/opa-fm opafm.xml
 cp -t ${DESTDIR}/etc/opa-fm opafm_pp.xml
 
-cp -t ${DESTDIR}/usr/lib/opa-fm/bin fm_capture
-cp -t ${DESTDIR}/usr/lib/opa-fm/bin fm_cmd
-cp -t ${DESTDIR}/usr/lib/opa-fm/bin fm_cmdall
-cp -t ${DESTDIR}/usr/lib/opa-fm/bin smpoolsize
+cp -t ${DESTDIR}${LIBDIR}/opa-fm/bin fm_capture
+cp -t ${DESTDIR}${LIBDIR}/opa-fm/bin fm_cmd
+cp -t ${DESTDIR}${LIBDIR}/opa-fm/bin fm_cmdall
+cp -t ${DESTDIR}${LIBDIR}/opa-fm/bin smpoolsize
 
-cp -t ${DESTDIR}/usr/lib/opa-fm/runtime sm
-cp -t ${DESTDIR}/usr/lib/opa-fm/runtime fe
+cp -t ${DESTDIR}${LIBDIR}/opa-fm/runtime sm
+cp -t ${DESTDIR}${LIBDIR}/opa-fm/runtime fe
 
-cp -t ${DESTDIR}/usr/lib/opa-fm/bin opafmconfigpp
-cp -t ${DESTDIR}/usr/lib/opa-fm/bin opafmvf
-cp -t ${DESTDIR}/usr/lib/opa-fm/bin config_check
-cp -t ${DESTDIR}/usr/lib/opa-fm/bin config_convert
-cp -t ${DESTDIR}/usr/lib/opa-fm/bin config_diff
-cp -t ${DESTDIR}/usr/lib/opa-fm/bin config_generate
-cp -t ${DESTDIR}/usr/lib/opa-fm/bin opafm
-cp opaxmlextract ${DESTDIR}/usr/lib/opa-fm/bin/opafmxmlextract
-cp opaxmlfilter ${DESTDIR}/usr/lib/opa-fm/bin/opafmxmlfilter
+cp -t ${DESTDIR}${LIBDIR}/opa-fm/bin opafmconfigpp
+cp -t ${DESTDIR}${LIBDIR}/opa-fm/bin opafmvf
+cp -t ${DESTDIR}${LIBDIR}/opa-fm/bin config_check
+cp -t ${DESTDIR}${LIBDIR}/opa-fm/bin config_convert
+cp -t ${DESTDIR}${LIBDIR}/opa-fm/bin config_diff
+cp -t ${DESTDIR}${LIBDIR}/opa-fm/bin config_generate
+cp -t ${DESTDIR}${LIBDIR}/opa-fm/bin opafm
+cp opaxmlextract ${DESTDIR}${LIBDIR}/opa-fm/bin/opafmxmlextract
+cp opaxmlfilter ${DESTDIR}${LIBDIR}/opa-fm/bin/opafmxmlfilter
 
 cp -t ${DESTDIR}/usr/share/opa-fm opafm_src.xml
 cp -t ${DESTDIR}/usr/share/opa-fm opafm.xml
@@ -88,9 +88,9 @@ cp -t ${DESTDIR}/usr/share/opa-fm opafm_pp.xml
 cp -t ${DESTDIR}/usr/share/opa-fm/samples opa_ca_openssl.cnf-sample
 cp -t ${DESTDIR}/usr/share/opa-fm/samples opa_comp_openssl.cnf-sample
 
-ln -s /usr/lib/opa-fm/bin/fm_cmd ${DESTDIR}/usr/sbin/opafmcmd
-ln -s /usr/lib/opa-fm/bin/fm_cmdall ${DESTDIR}/usr/sbin/opafmcmdall
-ln -s /usr/lib/opa-fm/bin/opafmconfigpp ${DESTDIR}/usr/sbin/opafmconfigpp
-ln -s /usr/lib/opa-fm/bin/opafmvf ${DESTDIR}/usr/sbin/opafmvf
+ln -s ${LIBDIR}/opa-fm/bin/fm_cmd ${DESTDIR}/usr/sbin/opafmcmd
+ln -s ${LIBDIR}/opa-fm/bin/fm_cmdall ${DESTDIR}/usr/sbin/opafmcmdall
+ln -s ${LIBDIR}/opa-fm/bin/opafmconfigpp ${DESTDIR}/usr/sbin/opafmconfigpp
+ln -s ${LIBDIR}/opa-fm/bin/opafmvf ${DESTDIR}/usr/sbin/opafmvf
 
 cp -t ${DESTDIR}/usr/share/man/man8 $fm_mans
