@@ -3,10 +3,10 @@
 Name: opa-fm
 Epoch: 1
 Version: 10.12.1.0.6
-Release: 3%{?dist}
+Release: 4%{?dist}
 Summary: Cornelis Networks Omni-Path Fabric Management Software
 
-License: GPLv2 or BSD
+License: (GPL-2.0-only AND BSD-3-Clause) OR (GPL-2.0-only AND BSD-2-Clause) 
 Url: https://github.com/cornelisnetworks/opa-fm
 Source0: https://github.com/cornelisnetworks/opa-fm/archive/refs/tags/opa-fm-v%{version}.tar.gz
 
