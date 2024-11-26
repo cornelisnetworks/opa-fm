@@ -5,7 +5,8 @@ OPA Fabric Manager
 
   1. mkdir -p $HOME/rpmbuild/{SOURCES,RPMS,SRPMS}
   
-  2. tar czf $HOME/rpmbuild/SOURCES/opa-fm-v`grep Version opa-fm.fedora.spec | awk '{print $2}'`.tar.gz --exclude-vcs .
+  2. tar czf ~/rpmbuild/SOURCES/opa-fm-v`grep Version Packaging/Fedora/opa-fm.spec | awk '{print $2}'`.tar.gz --exclude vcs .
+
      OR
      Download tar ball from https://github.com/cornelisnetworks/opa-fm/releases
      and place in $HOME/rpmbuild/SOURCES
@@ -15,7 +16,7 @@ OPA Fabric Manager
      !!
 
 
-  3. rpmbuild -ba ./opa-fm.fedora.spec
+  3. rpmbuild -ba Packaging/Fedora/opa-fm.spec
 
   This will build the opa-fm RPM in $HOME/rpmbuild/RPMS(architecture)/
 
