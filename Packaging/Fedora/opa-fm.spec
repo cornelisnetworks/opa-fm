@@ -56,7 +56,6 @@ chmod a-x %{buildroot}/%{_prefix}/share/opa-fm/opafm_src.xml
 %systemd_postun_with_restart opafm.service
 
 %files
-%doc Esm/README
 %{_unitdir}/opafm.service
 %config(noreplace) %{_sysconfdir}/opa-fm/opafm.xml
 %config(noreplace) %{_sysconfdir}/opa-fm/opafm_pp.xml
@@ -76,7 +75,6 @@ chmod a-x %{buildroot}/%{_prefix}/share/opa-fm/opafm_src.xml
 - Remove inappropriate comment 
 - Consolidate RHEL spec file into Cornelis repo.
 - Checked RH patches bundled with SRPM into CN GH repo.
-- Update README
 - Update release number
 
 * Fri Jun 02 2023 Kamal Heib <kheib@redhat.com> - 1:10.12.1.0.6-1

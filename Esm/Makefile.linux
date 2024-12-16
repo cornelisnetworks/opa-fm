@@ -88,8 +88,6 @@ DEFFILE			=
 # targets to build during INCLUDES phase (add public includes here)
 INCLUDE_TARGETS	= \
 				# Add more h hpp files here
-# Non-compiled files
-MISC_FILES		= $(PWD)/README 
 # all source files
 SOURCES			= $(CFILES) $(CCFILES) $(LFILES) $(RSCFILES) $(IDLFILE)
 ifeq "$(BUILD_TARGET_OS_VENDOR)" "ubuntu"
@@ -275,7 +273,6 @@ endif
 	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_DIR) INSTALL.pl
 	cd $(PROJ_STAGE_DIR) ; mv INSTALL.pl INSTALL
 	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_DIR) comp.pl
-	$(VS)$(STAGE_INSTALL) $(STAGE_INSTALL_DIR_OPT) $(PROJ_STAGE_DIR) README
 
 # put version number into a file to facilitate rpm construction
 # presently only INSTALL, sm and fe allow dynamic version patch
@@ -305,7 +302,6 @@ package: fmbuild
 	ver=`expr CornelisOPX-FM.* : 'CornelisOPX-FM.\(.*\)$$'`; \
 	rm -rf $(RELEASE_DIR)/CornelisOPX-FM.$$ver; \
 	mkdir -p $(RELEASE_DIR)/CornelisOPX-FM.$$ver ; \
-	cp -r $$dir/arch $$dir/distro $$dir/distro_version $$dir/os_id $$dir/README $(RELEASE_DIR)/CornelisOPX-FM.$$ver 2>/dev/null; \
 	cp -r $$dir/INSTALL $$dir/comp.pl $$dir/Version $(RELEASE_DIR)/CornelisOPX-FM.$$ver ; \
 	echo "$(RELEASE_DIR)/CornelisOPX-FM.$$ver.tgz" >> $(TL_DIR)/packaged_files; \
 	echo "$(RELEASE_DIR)/CornelisOPX-FM.$$ver.tgz" >> $(TL_DIR)/dist_files; \
