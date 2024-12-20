@@ -111,7 +111,39 @@ my @delta_Components_rhel86 = ( "opa_stack", "mpi_selector", "intel_hfi",
 		"opa_stack_dev",
 		"delta_ipoib",
 		"delta_debug", );
+my @delta_Components_rhel87 = ( "opa_stack", "mpi_selector", "intel_hfi",
+		"opa_stack_dev",
+		"delta_ipoib",
+		"delta_debug", );
+my @delta_Components_rhel88 = ( "opa_stack", "mpi_selector", "intel_hfi",
+		"opa_stack_dev",
+		"delta_ipoib",
+		"delta_debug", );
+my @delta_Components_rhel89 = ( "opa_stack", "mpi_selector", "intel_hfi",
+		"opa_stack_dev",
+		"delta_ipoib",
+		"delta_debug", );
+my @delta_Components_rhel810 = ( "opa_stack", "mpi_selector", "intel_hfi",
+		"opa_stack_dev",
+		"delta_ipoib",
+		"delta_debug", );
 my @delta_Components_rhel9 = ( "opa_stack", "mpi_selector", "intel_hfi",
+		"opa_stack_dev",
+		"delta_ipoib",
+		"delta_debug", );
+my @delta_Components_rhel91 = ( "opa_stack", "mpi_selector", "intel_hfi",
+		"opa_stack_dev",
+		"delta_ipoib",
+		"delta_debug", );
+my @delta_Components_rhel92 = ( "opa_stack", "mpi_selector", "intel_hfi",
+		"opa_stack_dev",
+		"delta_ipoib",
+		"delta_debug", );
+my @delta_Components_rhel93 = ( "opa_stack", "mpi_selector", "intel_hfi",
+		"opa_stack_dev",
+		"delta_ipoib",
+		"delta_debug", );
+my @delta_Components_rhel94 = ( "opa_stack", "mpi_selector", "intel_hfi",
 		"opa_stack_dev",
 		"delta_ipoib",
 		"delta_debug", );
@@ -132,6 +164,14 @@ my @delta_Components_sles15_sp3 = ( "opa_stack", "intel_hfi",
 		"delta_ipoib",
 		"delta_debug", );
 my @delta_Components_sles15_sp4 = ( "opa_stack", "intel_hfi",
+		"opa_stack_dev",
+		"delta_ipoib",
+		"delta_debug", );
+my @delta_Components_sles15_sp5 = ( "opa_stack", "intel_hfi",
+		"opa_stack_dev",
+		"delta_ipoib",
+		"delta_debug", );
+my @delta_Components_sles15_sp6 = ( "opa_stack", "intel_hfi",
 		"opa_stack_dev",
 		"delta_ipoib",
 		"delta_debug", );
@@ -183,8 +223,24 @@ sub overrides()
 		@Components = ( @delta_Components_rhel85 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES86" ) {
 		@Components = ( @delta_Components_rhel86 );
+	} elsif ( "$CUR_VENDOR_VER" eq "ES87" ) {
+		@Components = ( @delta_Components_rhel87 );
+	} elsif ( "$CUR_VENDOR_VER" eq "ES88" ) {
+		@Components = ( @delta_Components_rhel88 );
+	} elsif ( "$CUR_VENDOR_VER" eq "ES89" ) {
+		@Components = ( @delta_Components_rhel89 );
+	} elsif ( "$CUR_VENDOR_VER" eq "ES810" ) {
+		@Components = ( @delta_Components_rhel810 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES9" ) {
 		@Components = ( @delta_Components_rhel9 );
+	} elsif ( "$CUR_VENDOR_VER" eq "ES91" ) {
+		@Components = ( @delta_Components_rhel91 );
+	} elsif ( "$CUR_VENDOR_VER" eq "ES92" ) {
+		@Components = ( @delta_Components_rhel92 );
+	} elsif ( "$CUR_VENDOR_VER" eq "ES93" ) {
+		@Components = ( @delta_Components_rhel93 );
+	} elsif ( "$CUR_VENDOR_VER" eq "ES94" ) {
+		@Components = ( @delta_Components_rhel94 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES15" ) {
 		@Components = ( @delta_Components_sles15 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES151" ) {
@@ -195,6 +251,10 @@ sub overrides()
 		@Components = ( @delta_Components_sles15_sp3 );
 	} elsif ( "$CUR_VENDOR_VER" eq "ES154" ) {
 		@Components = ( @delta_Components_sles15_sp4 );
+	} elsif ( "$CUR_VENDOR_VER" eq "ES155" ) {
+		@Components = ( @delta_Components_sles15_sp5 );
+	} elsif ( "$CUR_VENDOR_VER" eq "ES156" ) {
+		@Components = ( @delta_Components_sles15_sp6 );
 	} else {
 		# unsupported OS
 		@Components = ( );

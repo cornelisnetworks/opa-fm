@@ -211,7 +211,7 @@ sub os_vendor_version($)
 		if ($vendor eq "ubuntu") {
 			$rval=`cat /etc/os-release | grep VERSION_ID | cut -d'=' -f2 | tr -d [\\"\\.]`;
 		} else {
-			$rval=`cat /etc/os-release | grep VERSION_ID | cut -d'=' -f2 | tr -d [\\"\\.0]`;
+			$rval=`cat /etc/os-release | grep VERSION_ID | cut -d'=' -f2 | tr -d [\\"] | sed 's/\\.0\$//' | tr -d [\\.]`;
 		}
 		chop($rval);
 		$rval="ES".$rval;
@@ -348,7 +348,7 @@ sub determine_os_version()
 			"sles" => "/etc/sysconfig/network",
 			"sle_hpc" => "/etc/sysconfig/network"
 		);
-		my $os_id = `cat $os_release_file | grep '^ID=' | cut -d'=' -f2 | tr -d [\\"\\.0] | tr -d ["\n"]`;
+		my $os_id = `cat $os_release_file | grep '^ID=' | cut -d'=' -f2 | tr -d [\\"] | sed 's/\\.0$//' | tr -d [\\.\n]`;
 		$CUR_DISTRO_VENDOR = $distroVendor{$os_id};
 		$NETWORK_CONF_DIR = $network_conf_dir{$os_id};
 	} else {

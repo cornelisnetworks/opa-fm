@@ -143,8 +143,32 @@ endif
 ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES86"
         PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL86.pl
 endif
+ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES87"
+        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL87.pl
+endif
+ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES88"
+        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL88.pl
+endif
+ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES89"
+        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL89.pl
+endif
+ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES810"
+        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL810.pl
+endif
 ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES9"
         PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL9.pl
+endif
+ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES91"
+        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL91.pl
+endif
+ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES92"
+        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL92.pl
+endif
+ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES93"
+        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL93.pl
+endif
+ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES94"
+        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_RHEL94.pl
 endif
 ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES123"
         PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_SLES123.pl
@@ -170,7 +194,12 @@ endif
 ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES154"
         PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_SLES154.pl
 endif
-
+ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES155"
+        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_SLES155.pl
+endif
+ifeq "$(BUILD_TARGET_OS_VENDOR_VERSION)" "ES156"
+        PREREQ_SOURCE= $(TL_DIR)/CommonInstall/comp_fm_prereq_SLES156.pl
+endif
 
 # Source files to include in DSP File
 DSP_SOURCES		= $(INCLUDE_TARGETS) $(SOURCES) $(MISC_FILES) \
