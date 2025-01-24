@@ -2,8 +2,8 @@
 
 Name: opa-fm
 Epoch: 1
-Version: 10.12.1.0.6
-Release: 4%{?dist}
+Version: 10.14.4.0.20
+Release: 1%{?dist}
 Summary: Cornelis Networks Omni-Path Fabric Management Software
 
 License: (GPL-2.0-only AND BSD-3-Clause) OR (GPL-2.0-only AND BSD-2-Clause) 
