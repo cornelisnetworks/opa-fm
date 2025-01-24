@@ -7,6 +7,9 @@ OPA Fabric Manager
   
   2. tar czf ~/rpmbuild/SOURCES/opa-fm-v`grep Version Packaging/Fedora/opa-fm.spec | awk '{print $2}'`.tar.gz --exclude vcs .
 
+     Copy and paste the following line to display the location of the tarball:
+     echo "~/rpmbuild/SOURCES/opa-fm-v`grep Version Packaging/Fedora/opa-fm.spec | awk '{print $2}'`.tar.gz"
+
      OR
      Download tar ball from https://github.com/cornelisnetworks/opa-fm/releases
      and place in $HOME/rpmbuild/SOURCES
