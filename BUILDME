@@ -1,0 +1,11 @@
+echo "Prepping /tmp/rpmbuild"
+rm -rf /tmp/rpmbuild
+mkdir -p /tmp/rpmbuild/BUILD
+mkdir -p /tmp/rpmbuild/BUILDROOT
+mkdir -p /tmp/rpmbuild/RPMS
+mkdir -p /tmp/rpmbuild/SRPMS
+mkdir -p /tmp/rpmbuild/SOURCES
+echo "Creating Tarball"
+tar czf /tmp/rpmbuild/SOURCES/opa-fm-v`grep Version Packaging/Fedora/opa-fm.spec | awk '{print $2}'`.tar.gz --exclude vcs . && \
+rpmbuild --define '_topdir /tmp/rpmbuild' -ba Packaging/Fedora/opa-fm.spec
+
