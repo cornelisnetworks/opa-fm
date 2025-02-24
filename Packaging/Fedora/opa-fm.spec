@@ -59,18 +59,46 @@ chmod a-x %{buildroot}/%{_prefix}/share/opa-fm/opafm_src.xml
 %{_unitdir}/opafm.service
 %config(noreplace) %{_sysconfdir}/opa-fm/opafm.xml
 %config(noreplace) %{_sysconfdir}/opa-fm/opafm_pp.xml
-%{_sysconfdir}/opa-fm
-%{_prefix}/lib/opa-fm
-%{_prefix}/lib/opa-fm/bin/
-%{_prefix}/lib/opa-fm/runtime/
-%{_prefix}/share/opa-fm/
+%{_prefix}/lib/opa-fm/bin/config_check
+%{_prefix}/lib/opa-fm/bin/config_convert
+%{_prefix}/lib/opa-fm/bin/config_diff
+%{_prefix}/lib/opa-fm/bin/config_generate
+%{_prefix}/lib/opa-fm/bin/fm_capture
+%{_prefix}/lib/opa-fm/bin/fm_cmd
+%{_prefix}/lib/opa-fm/bin/fm_cmdall
+%{_prefix}/lib/opa-fm/bin/opafm
+%{_prefix}/lib/opa-fm/bin/opafmconfigpp
+%{_prefix}/lib/opa-fm/bin/opafmctrl
+%{_prefix}/lib/opa-fm/bin/opafmd
+%{_prefix}/lib/opa-fm/bin/opafmvf
+%{_prefix}/lib/opa-fm/bin/opafmxmlextract
+%{_prefix}/lib/opa-fm/bin/opafmxmlfilter
+%{_prefix}/lib/opa-fm/bin/smpoolsize
+%{_prefix}/lib/opa-fm/runtime/fe
+%{_prefix}/lib/opa-fm/runtime/sm
+%{_prefix}/share/opa-fm/opafm.xml
+%{_prefix}/share/opa-fm/opafm_pp.xml
+%{_prefix}/share/opa-fm/opafm_src.xml
+%{_prefix}/share/opa-fm/samples/opa_ca_openssl.cnf-sample
+%{_prefix}/share/opa-fm/samples/opa_comp_openssl.cnf-sample
 %{_sbindir}/opafmcmd
 %{_sbindir}/opafmcmdall
 %{_sbindir}/opafmconfigpp
 %{_sbindir}/opafmvf
-%{_mandir}/man8/
+%{_mandir}/man8/opafmcmd.8.gz
+%{_mandir}/man8/opafmcmdall.8.gz
+%{_mandir}/man8/opafmconfigpp.8.gz
+%{_sysconfdir}/opa-fm/dgs
+%{_sysconfdir}/opa-fm/vfs
+
+
+
 
 %changelog
+* Mon Feb 24 2025 Dennis Dalessandro <dennis.dalessandro@cornelisnetworkscom> - 1:10.14.4.0.20-1
+- Fix up packaging
+- Update to the latest 10.14 FM changes
+
 * Tue Oct 1 2024 Dennis Dalessandro <dennis.dalessandro@cornelisnetworks.com> - 1:10.12.1.0.6-3
 - Remove inappropriate comment 
 - Consolidate RHEL spec file into Cornelis repo.
