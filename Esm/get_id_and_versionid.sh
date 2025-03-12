@@ -57,6 +57,9 @@ else
 			elif [ $rval = 'centos' ]
 			then
 				rval=redhat
+			elif [ $rval = 'circle' ]
+			then
+				rval=redhat
 			elif [ $rval = 'rocky' ]
 			then
 				rval=redhat
@@ -97,6 +100,10 @@ else
 		elif grep -qi centos /etc/redhat-release
 		then
 			# CentOS 
+			rval=`cat /etc/redhat-release | sed -r 's/^.+([[:digit:]])\.([[:digit:]]).+$/\1.\2/'`
+		elif grep -qi circle /etc/redhat-release
+		then
+			# Circle Linux
 			rval=`cat /etc/redhat-release | sed -r 's/^.+([[:digit:]])\.([[:digit:]]).+$/\1.\2/'`
 		elif grep -qi rocky /etc/redhat-release
 		then

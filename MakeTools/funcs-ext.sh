@@ -725,6 +725,9 @@ function os_vendor()
             centos)
                 rval=redhat
                 ;;
+            circle)
+                rval=redhat
+                ;;
             rocky)
                 rval=redhat
                 ;;
@@ -757,6 +760,9 @@ function os_vendor()
 				rval=UnitedLinux
 			fi
 		elif [ $rval = 'centos' ]
+		then
+			rval=redhat
+		elif [ $rval = 'circle' ]
 		then
 			rval=redhat
 		elif [ $rval = 'rocky' ]
@@ -835,6 +841,10 @@ function os_vendor_version()
 		elif grep -qi centos /etc/redhat-release
 		then
 			# CentOS 
+			rval="ES"`cat /etc/redhat-release | sed -r 's/^.+([[:digit:]])\.([[:digit:]]).+$/\1\2/'`
+		elif grep -qi circle /etc/redhat-release
+		then
+			# Circle Linux 
 			rval="ES"`cat /etc/redhat-release | sed -r 's/^.+([[:digit:]])\.([[:digit:]]).+$/\1\2/'`
 		elif grep -qi rocky /etc/redhat-release
 		then
