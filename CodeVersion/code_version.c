@@ -53,7 +53,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // or the internal whatversion tool
 //
 #define ICS_BUILD_VERSION "THIS_IS_THE_ICS_VERSION_NUMBER:@(#)000.000.000.000B000"
-const char* GetCodeVersion(void)
+const char* __attribute__((used))  GetCodeVersion(void)
 {
 	static const char* BuildVersion=ICS_BUILD_VERSION;
 	static char* version;
@@ -83,7 +83,7 @@ const char* GetCodeVersion(void)
 // or the internal whatversion tool
 //
 #define ICS_BUILD_INTERNAL_VERSION "THIS_IS_THE_ICS_INTERNAL_VERSION_NUMBER:@(#)000.000.000.000B000I0000"
-const char* GetCodeInternalVersion(void)
+const char* __attribute__((used)) GetCodeInternalVersion(void)
 {
 	static const char* BuildVersion=ICS_BUILD_INTERNAL_VERSION;
 	static char* version;
@@ -112,7 +112,7 @@ const char* GetCodeInternalVersion(void)
 // or the internal whatversion tool
 //
 #define ICS_BUILD_BRAND "THIS_IS_THE_ICS_BRAND:Intel\000                    "
-const char* GetCodeBrand(void)
+const char* __attribute__((used))  GetCodeBrand(void)
 {
 	static const char* BuildBrand=ICS_BUILD_BRAND;
 	static char* brand;
