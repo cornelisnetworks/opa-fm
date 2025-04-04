@@ -2,6 +2,7 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 #
 # Copyright (c) 2015-2020, Intel Corporation
+# Copyright (c) 2024, Tactical Computing Labs, LLC
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -143,7 +144,7 @@ unset MAKEFLAGS
 # fixup possible missing path to X11
 export PATH=$PATH:/usr/X11R6/bin
 
-ARCH=$(uname -m | sed -e s/ppc/PPC/ -e s/powerpc/PPC/ -e s/i.86/IA32/ -e s/ia64/IA64/ -e s/x86_64/X86_64/)
+ARCH=$(uname -m | sed -e s/ppc/PPC/ -e s/powerpc/PPC/ -e s/i.86/IA32/ -e s/ia64/IA64/ -e s/x86_64/X86_64/ -e s/riscv/RISCV/ -e s/riscv64/RISCV64/)
 
 target_cpu=$(rpm --eval '%{_target_cpu}')
 dist_rpm_rel_int=0
@@ -517,7 +518,13 @@ logfile=make.mvapich2.$interface.$compiler
 		then
 			if [ "$ARCH" = "PPC64" ]
 			then
-				mvapich2_comp_env='CC="gcc -m64" CXX="g++ -m64" F77="gfortran -m64" FC="gfortran -m64"'
+				mvapich2_comp_env='CC="gcc" CXX="g++" F77="gfortran" FC="gfortran"'
+			elif [ "$ARCH" = "RISCV" ]
+			then
+				mvapich2_comp_env='CC="gcc" CXX="g++" F77="gfortran" FC="gfortran"'
+			elif [ "$ARCH" = "RISCV64" ]
+			then
+				mvapich2_comp_env='CC="gcc" CXX="g++" F77="gfortran" FC="gfortran"'
 			else
 				mvapich2_comp_env='CC=gcc CXX=g++ F77=gfortran FC=gfortran'
 				if [[ ( "$ID" == "rocky" ) || ( "$ID" == "rhel"  &&  $(echo "$VERSION_ID >= 8.0" | bc -l) == 1 ) ]]; then
@@ -531,7 +538,13 @@ logfile=make.mvapich2.$interface.$compiler
 		else
 			if [ "$ARCH" = "PPC64" ]
 			then
-				mvapich2_comp_env='CC="gcc -m64" CXX="g++ -m64" F77="g77 -m64" FC="/bin/false"'
+				mvapich2_comp_env='CC="gcc -m64" CXX="g++" F77="g77" FC="/bin/false"'
+			elif [ "$ARCH" = "RISCV" ]
+			then
+				mvapich2_comp_env='CC="gcc" CXX="g++" F77="gfortran" FC="gfortran"'
+			elif [ "$ARCH" = "RISCV64" ]
+			then
+				mvapich2_comp_env='CC="gcc" CXX="g++" F77="gfortran" FC="gfortran"'
 			else
 				mvapich2_comp_env='CC=gcc CXX=g++ F77=g77 FC=/bin/false'
 				if [[ ( "$ID" == "rocky" ) || ( "$ID" == "rhel"  &&  $(echo "$VERSION_ID >= 8.0" | bc -l) == 1 ) ]]; then

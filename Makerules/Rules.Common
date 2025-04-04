@@ -1,6 +1,7 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 #
 # Copyright (c) 2015-2020, Intel Corporation
+# Copyright (c) 2024, Tactical Computing Labs, LLC
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -691,7 +692,7 @@ endif # BUILD_TARGET_OS is WIN32
 #-----------------------------------------------------------------------------#
 # Check the environment for the BUILD_TARGET variable for validity
 
-SUPPORTED_TARGETS = ATOM MIPS I386 IA32 IA64 MIPS_BSP CYGWIN WIN32 X86_64 PPC PPC64 EM64T
+SUPPORTED_TARGETS = ATOM MIPS I386 IA32 IA64 MIPS_BSP CYGWIN WIN32 X86_64 PPC PPC64 RISCV RISCV64 EM64T
 badtarget:
 	@echo "Invalid BUILD_TARGET value was specified: $(BUILD_TARGET)"
 	@echo "Must be one of: $(SUPPORTED_TARGETS)"

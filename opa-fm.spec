@@ -30,8 +30,8 @@
 
 #[ICS VERSION STRING: unknown]
 Name: opa-fm
-Version: 10.14.4.0
-Release: 20%{?dist}
+Version: 10.12.1.0
+Release: 3%{?dist}
 %if 0%{?rhel}
 Epoch: 1
 %endif
@@ -49,28 +49,24 @@ Source0: %{name}.tar.gz
 
 #Requires: rdma
 
-#BuildRequires: __RPM_BLDRQ1
+#BuildRequires: expat-devel, rdma-core-devel, zlib-devel, openssl-devel
 
-#__RPM_BLDRQ2
-#__RPM_BLDRQ3
-#__RPM_RQ1
-#__RPM_RQ2
-#__RPM_RQ3
-
-#__RPM_DEBUG
+#BuildRequires: systemd %{?systemd_requires} %{?BuildRequires}
+#Requires: systemd %{?systemd_requires}
+#Requires: libibumad%{?_isa}, libibverbs%{?_isa}, rdma, expat%{?_isa}, libhfi1, openssl%{?_isa}
 
 %description
 The %{name} contains Intel Omni-Path fabric management applications. This 
 includes: the Subnet Manager, Baseboard Manager, Performance Manager, 
 Fabric Executive, and some fabric management tools.
-IFSComponent: FM 10.14.4.0.20%{?dist}
+IFSComponent: FM 10.12.1.0.6%{?dist}
 
 %prep
 %setup -q -c
 
 %build
 cd Esm
-__RPM_FS ./fmbuild $BUILD_ARGS
+OPA_FEATURE_SET=opa10 ./fmbuild $BUILD_ARGS
 
 %install
 BUILDDIR=%{_builddir} DESTDIR=%{buildroot} LIBDIR=%{_libdir} RPM_INS=n ./Esm/fm_install.sh
@@ -95,8 +91,6 @@ fi
 
 %files
 %doc Esm/README 
-
-__RPM_SYSCONF
 
 /usr/lib/systemd/system/opafm.service
 %config(noreplace) %{_sysconfdir}/opa-fm/opafm.xml

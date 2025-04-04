@@ -2,6 +2,7 @@
 # BEGIN_ICS_COPYRIGHT8 ****************************************
 #
 # Copyright (c) 2015-2020, Intel Corporation
+# Copyright (c) 2024, Tactical Computing Labs, LLC
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -503,7 +504,7 @@ function settarget()
     local message
 
     if [[ "$1" == "-h" ]]; then
-        printf "Usage: target ia32|ia64|x86_64|em64t|mips|atom|ppc|ppc64\n"
+        printf "Usage: target ia32|ia64|x86_64|em64t|mips|atom|ppc|ppc64|riscv|riscv64\n"
         return
     fi
     
@@ -647,6 +648,16 @@ function settarget()
 	    export BUILD_TARGET_TOOLCHAIN=GNU
 	    export BUILD_TARGET=PPC64
 	    ;;
+	RISCV)
+	    targetos LINUX
+	    export BUILD_TARGET_TOOLCHAIN=GNU
+	    export BUILD_TARGET=RISCV
+	    ;;
+	RISCV64)
+	    targetos LINUX
+	    export BUILD_TARGET_TOOLCHAIN=GNU
+	    export BUILD_TARGET=RISCV64
+	    ;;
 	EM64T)
 	    targetos LINUX
 	    export BUILD_TARGET_TOOLCHAIN=GNU
@@ -656,7 +667,7 @@ function settarget()
             if [ "$1" != "" ]; then
                printf "Unknown target $1\n"
             fi
-            printf "Usage: target ia32|ia64|x86_64|em64t|mips|atom|ppc64\n\n"
+            printf "Usage: target ia32|ia64|x86_64|em64t|mips|atom|ppc64|riscv|riscv64\n\n"
             return
             ;;    
         esac
@@ -787,11 +798,14 @@ function os_vendor_version()
 		# - use VERSION_ID - it has a common format among distros 
 		# - mimic old way and drop $minor if eq 0 (see redhat handling below)
 		# - drop '.'(dot)
-		if [ $1 = "ubuntu" ]; then
+	        case $1 in
+		ubuntu)
 			rval=ES$(echo $VERSION_ID | sed -e 's/\.//')
-		else
+			;;
+		*)
 			rval=ES$(echo $VERSION_ID | sed -e 's/\.[0]//' -e 's/\.//')
-        	fi
+			;;
+		esac
 		echo $rval
 		return
 	fi
@@ -931,7 +945,7 @@ function target()
         fi
     else
     	if [[ "$1" == "-h" ]]; then
-	    printf "Usage: target ia32|ia64|x86_64|em64t|mips|atom|ppc64\n"
+	    printf "Usage: target ia32|ia64|x86_64|em64t|mips|atom|ppc64|riscv|riscv64\n"
 	    return
 	fi    
             
@@ -975,6 +989,17 @@ function target()
         	    export BUILD_TARGET_OS_VERSION=5.4
         	    export BUILD_TARGET=MIPS
         	    ;;
+	RISCV)
+	    targetos LINUX
+	    export BUILD_TARGET_TOOLCHAIN=GNU
+	    export BUILD_TARGET=RISCV
+	    ;;
+	RISCV64)
+	    targetos LINUX
+	    export BUILD_TARGET_TOOLCHAIN=GNU
+	    export BUILD_TARGET=RISCV64
+	    ;;
+
         	X86|I386)
         	    #if checkwindbase; then 
         	    #	return
@@ -1073,6 +1098,17 @@ function target()
 	        export BUILD_TARGET_TOOLCHAIN=GNU
 	        export BUILD_TARGET=PPC64
 		;;
+	RISCV)
+	    targetos LINUX
+	    export BUILD_TARGET_TOOLCHAIN=GNU
+	    export BUILD_TARGET=RISCV
+	    ;;
+	RISCV64)
+	    targetos LINUX
+	    export BUILD_TARGET_TOOLCHAIN=GNU
+	    export BUILD_TARGET=RISCV64
+	    ;;
+
 	    EM64T)
 		targetos LINUX
 		export BUILD_TARGET_TOOLCHAIN=GNU
@@ -1082,7 +1118,7 @@ function target()
                 if [ "$1" != "" ]; then
                    printf "Unknown target $1\n"
                 fi
-                printf "Usage: target ia32|ia64|x86_64|em64t|mips|atom|ppc64\n\n"
+                printf "Usage: target ia32|ia64|x86_64|em64t|mips|atom|ppc64|riscv|riscv64\n\n"
                 return
                 ;;    
             esac

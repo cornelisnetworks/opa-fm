@@ -1,6 +1,7 @@
 /* BEGIN_ICS_COPYRIGHT2 ****************************************
 
 Copyright (c) 2015-2017, Intel Corporation
+Copyright (c) 2024, Tactical Computing Labs, LLC
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
@@ -186,6 +187,22 @@ static _inline void CpuPrefetch(void *addr)
 {
 	asm volatile("dcbt 0,%0" :: "r" (addr));
 }
+#elif defined(__riscv) || defined(__riscv_xlen)
+static _inline void IoBarrierRead(void)
+			{ __asm__ __volatile__ ("fence" : : : "memory"); }
+static _inline void IoBarrierWrite(void)
+			{ __asm__ __volatile__ ("fence" : : : "memory"); }
+static _inline void IoBarrierReadWrite(void)
+			{ __asm__ __volatile__ ("fence" : : : "memory"); }
+
+static _inline void CpuBarrierRead(void)
+			{ __asm__ __volatile__ ("fence.i" : : : "memory"); }
+static _inline void CpuBarrierWrite(void)
+			{ __asm__ __volatile__ ("fence" : : : "memory"); }
+static _inline void CpuBarrierReadWrite(void)
+			{ __asm__ __volatile__ ("fence.i" : : : "memory"); }
+
+static _inline void CpuPrefetch(void *addr){}
 #else
 #error "Unsupported CPU type"
 #endif
